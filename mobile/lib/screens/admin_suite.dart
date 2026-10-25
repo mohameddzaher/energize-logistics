@@ -8,6 +8,7 @@ import '../ui/export_sheet.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import '../ui/search_field.dart';
 import 'package:provider/provider.dart';
 import '../services/auth.dart';
 
@@ -108,6 +109,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
   String? _error;
   String _q = '';
   String _role = '';
+  final _searchCtl = TextEditingController(); // النصُّ يبقى مطابقًا لـ_q بعد التحميل
 
   late final void Function() _onLive;
 
@@ -121,7 +123,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
   }
 
   @override
-  void dispose() { Live.instance.off('user:deleted', _onLive); super.dispose(); }
+  void dispose() { Live.instance.off('user:deleted', _onLive); _searchCtl.dispose(); super.dispose(); }
 
   static String _status(Map<String, dynamic> u) => (u['status'] ?? (u['isLocked'] == true ? 'locked' : u['isActive'] == false ? 'inactive' : 'active')).toString();
   static final _exportCols = [
@@ -242,9 +244,11 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
               : Column(children: [
                   Padding(
                     padding: const EdgeInsets.fromLTRB(14, 12, 14, 0),
-                    child: TextField(
+                    child: SearchField(
+                      controller: _searchCtl,
                       onChanged: (v) => setState(() => _q = v),
-                      decoration: InputDecoration(hintText: tr('ابحث بالاسم أو البريد…', 'Search…'), prefixIcon: const Icon(Icons.search), suffixText: '${filtered.length}'),
+                      hint: tr('ابحث بالاسم أو البريد…', 'Search…'),
+                      suffixText: '${filtered.length}',
                     ),
                   ),
                   Padding(
@@ -268,8 +272,9 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
                     child: RefreshIndicator(
                       onRefresh: _load,
                       child: filtered.isEmpty
-                          ? ListView(children: [const SizedBox(height: 80), EmptyState(icon: Icons.group_outlined, title: tr('لا يوجد مستخدمون', 'No users'))])
+                          ? ListView(keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag, children: [const SizedBox(height: 80), EmptyState(icon: Icons.group_outlined, title: q.isNotEmpty ? tr('لا نتائج مطابقة', 'No matches') : tr('لا يوجد مستخدمون', 'No users'))])
                           : ListView.separated(
+                              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                               padding: const EdgeInsets.all(14),
                               itemCount: filtered.length,
                               separatorBuilder: (_, __) => const SizedBox(height: 8),
@@ -535,11 +540,12 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
       builder: (c) => StatefulBuilder(builder: (c, set) {
         final f = roles.where((r) => q.isEmpty || _fold('$r ${_roleName(r)}').contains(_fold(q))).toList();
         return DraggableScrollableSheet(expand: false, initialChildSize: 0.75, maxChildSize: 0.92, builder: (c2, scroll) => Column(children: [
-          Padding(padding: const EdgeInsets.fromLTRB(14, 14, 14, 6), child: TextField(
+          Padding(padding: const EdgeInsets.fromLTRB(14, 14, 14, 6), child: SearchField(
             autofocus: true, onChanged: (v) => set(() => q = v.trim()),
-            decoration: InputDecoration(hintText: tr('ابحث عن دور…', 'Search a role…'), prefixIcon: const Icon(Icons.search)),
+            hint: tr('ابحث عن دور…', 'Search a role…'),
           )),
-          Expanded(child: ListView(controller: scroll, children: [
+          Expanded(child: ListView(controller: scroll, keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag, children: [
+            if (f.isEmpty) Padding(padding: const EdgeInsets.all(24), child: Text(tr('لا نتائج مطابقة', 'No matches'), textAlign: TextAlign.center, style: const TextStyle(color: T.inkFaint))),
             for (final r in f) ListTile(
               selected: r == _role,
               title: Text(_roleName(r)),
@@ -1234,7 +1240,8 @@ class _SearchSheetState extends State<_SearchSheet> {
   void dispose() { _t?.cancel(); super.dispose(); }
 
   Future<void> _run(String q) async {
-    if (q.trim().length < widget.minChars) { setState(() => _rows = const []); return; }
+    // يُلغي أيَّ ردٍّ سابقٍ ما زال في الطريق (حتى عند المسح)
+    if (q.trim().length < widget.minChars) { _seq++; setState(() { _rows = const []; _loading = false; }); return; }
     final mine = ++_seq;
     setState(() => _loading = true);
     final r = await widget.fetch(q.trim());
@@ -1247,16 +1254,17 @@ class _SearchSheetState extends State<_SearchSheet> {
     child: DraggableScrollableSheet(
       expand: false, initialChildSize: 0.75, maxChildSize: 0.92,
       builder: (c, scroll) => Column(children: [
-        Padding(padding: const EdgeInsets.fromLTRB(14, 14, 14, 6), child: TextField(
+        Padding(padding: const EdgeInsets.fromLTRB(14, 14, 14, 6), child: SearchField(
           autofocus: true,
-          onChanged: (v) { _t?.cancel(); _t = Timer(const Duration(milliseconds: 250), () => _run(v)); },
-          decoration: InputDecoration(hintText: widget.title, prefixIcon: const Icon(Icons.search)),
+          onChanged: (v) { _t?.cancel(); _t = Timer(const Duration(milliseconds: 350), () => _run(v)); },
+          hint: widget.title,
         )),
         if (_loading) const LinearProgressIndicator(minHeight: 2),
         Expanded(child: _rows.isEmpty && !_loading
             ? EmptyState(icon: Icons.search_off_rounded, title: tr('لا نتائج', 'No results'))
             : ListView.builder(
                 controller: scroll, itemCount: _rows.length,
+                keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                 itemBuilder: (c2, i) {
                   final r = _rows[i];
                   final off = widget.disabled?.call(r) ?? false;

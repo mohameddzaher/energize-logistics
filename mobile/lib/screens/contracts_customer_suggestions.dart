@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../services/api.dart';
 import '../services/lang.dart';
 import '../ui/theme.dart';
+import '../ui/search_field.dart';
 
 /// زرُّ «إضافة» في «عملاء العقود» — نظيرُ زرَّي الويب: «إضافة عميل» و«اقتراحات»
 /// (عملاء يشحنون معنا ولا سجلّ لهم: GET /api/contracts/customers/suggestions،
@@ -34,6 +35,7 @@ class _CreateSheet extends StatefulWidget {
 class _CreateSheetState extends State<_CreateSheet> {
   List<Map<String, dynamic>>? _sugs;
   String _q = '';
+  final _searchCtl = TextEditingController(); // النصُّ يبقى مطابقًا لـ_q بعد تبديل التبويب
   String? _adding;
   bool _added = false, _saving = false;
   final _name = TextEditingController(), _sector = TextEditingController(), _contact = TextEditingController(),
@@ -43,7 +45,7 @@ class _CreateSheetState extends State<_CreateSheet> {
   void initState() { super.initState(); _loadSuggestions(); }
 
   @override
-  void dispose() { for (final c in [_name, _sector, _contact, _phone, _rep]) { c.dispose(); } super.dispose(); }
+  void dispose() { for (final c in [_name, _sector, _contact, _phone, _rep, _searchCtl]) { c.dispose(); } super.dispose(); }
 
   void _snack(Object e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e is ApiException ? e.message : e.toString()))); }
 
@@ -128,8 +130,9 @@ class _CreateSheetState extends State<_CreateSheet> {
                   ),
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                    child: TextField(
-                      decoration: InputDecoration(prefixIcon: const Icon(Icons.search), hintText: tr('ابحث بالاسم…', 'Search by name…')),
+                    child: SearchField(
+                      controller: _searchCtl,
+                      hint: tr('ابحث بالاسم…', 'Search by name…'),
                       onChanged: (v) => setState(() => _q = v),
                     ),
                   ),
@@ -139,10 +142,11 @@ class _CreateSheetState extends State<_CreateSheet> {
                         : shown.isEmpty
                             ? Center(child: Padding(
                                 padding: const EdgeInsets.all(24),
-                                child: Text(tr('لا عميلَ خارج السجل — كلُّ من يشحن معنا مسجَّل.', 'Nobody outside the register — everyone shipping with us is registered.'),
+                                child: Text(q.isNotEmpty ? tr('لا نتائج مطابقة', 'No matches') : tr('لا عميلَ خارج السجل — كلُّ من يشحن معنا مسجَّل.', 'Nobody outside the register — everyone shipping with us is registered.'),
                                     textAlign: TextAlign.center, style: const TextStyle(color: T.inkFaint)),
                               ))
                             : ListView.separated(
+                                keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                                 itemCount: shown.length,
                                 separatorBuilder: (_, __) => const Divider(height: 1),
                                 itemBuilder: (_, i) {

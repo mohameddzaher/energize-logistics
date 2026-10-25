@@ -140,18 +140,27 @@ class _LookupSheetState extends State<_LookupSheet> {
           child: Column(children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(14, 14, 14, 6),
+              // الخانةُ تحمل عنوانَ القائمة فتبقى TextField — ومعها ✕ يمسح ويُغلق اللوحة
               child: TextField(
                 controller: _q,
                 onChanged: (_) => setState(() {}),
+                textInputAction: TextInputAction.search,
+                onSubmitted: (_) => FocusScope.of(context).unfocus(),
+                onTapOutside: (_) => FocusScope.of(context).unfocus(),
                 decoration: InputDecoration(
                   labelText: widget.title,
                   hintText: tr('ابحث أو اكتب قيمةً جديدة…', 'Search or type a new value…'),
                   prefixIcon: const Icon(Icons.search),
+                  suffixIcon: _q.text.isEmpty ? null : IconButton(
+                    icon: const Icon(Icons.close_rounded),
+                    tooltip: tr('مسح البحث', 'Clear search'),
+                    onPressed: () { _q.clear(); setState(() {}); FocusScope.of(context).unfocus(); },
+                  ),
                 ),
               ),
             ),
             Expanded(
-              child: ListView(children: [
+              child: ListView(keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag, children: [
                 if (typed.isNotEmpty && !exact)
                   ListTile(
                     dense: true,

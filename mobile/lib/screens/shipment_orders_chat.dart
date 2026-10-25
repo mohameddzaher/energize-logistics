@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../services/api.dart';
 import '../services/lang.dart';
 import '../ui/app_scaffold.dart';
+import '../ui/search_field.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import 'shipment_orders.dart';
@@ -256,10 +257,11 @@ class _ShipmentOrdersChatScreenState extends State<ShipmentOrdersChatScreen> {
         backgroundColor: dashed ? T.canvas : Colors.white,
       );
 
-  Widget _searchBox(String hint) => TextField(
+  Widget _searchBox(String hint) => SearchField(
         controller: _search,
         onChanged: (_) => setState(() {}),
-        decoration: InputDecoration(hintText: hint, prefixIcon: const Icon(Icons.search), isDense: true),
+        hint: hint,
+        dense: true,
       );
 
   String _fmtDate(String v, bool withTime) {

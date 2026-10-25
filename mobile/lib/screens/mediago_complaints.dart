@@ -14,6 +14,7 @@ import '../services/notifications.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import '../ui/search_field.dart';
 import 'admin_suite.dart' show NotificationsScreen;
 
 /// شكاوى Media Go — نظيرُ /system/b2c/mediago-complaints.
@@ -85,6 +86,7 @@ class _MediaGoComplaintsScreenState extends State<MediaGoComplaintsScreen> {
   Map<String, dynamic>? _d;
   String? _error;
   String _q = '';
+  final _searchCtl = TextEditingController();
   String _status = '';
   String _issue = '';
   // يومٌ بعينه = فترةٌ أوّلُها آخرُها (yyyy-MM-dd) — والخادمُ يعدّ اليومَ بتوقيت السعوديّة.
@@ -114,6 +116,7 @@ class _MediaGoComplaintsScreenState extends State<MediaGoComplaintsScreen> {
   void dispose() {
     Live.instance.off('mediago:complaint', _onLive);
     _debounce?.cancel();
+    _searchCtl.dispose();
     super.dispose();
   }
 
@@ -243,6 +246,7 @@ class _MediaGoComplaintsScreenState extends State<MediaGoComplaintsScreen> {
     return RefreshIndicator(
       onRefresh: _load,
       child: ListView(
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
         padding: const EdgeInsets.fromLTRB(14, 12, 14, 90),
         children: [
           // اللافتة
@@ -272,13 +276,9 @@ class _MediaGoComplaintsScreenState extends State<MediaGoComplaintsScreen> {
             ]),
           ),
           const SizedBox(height: 10),
-          TextField(
-            decoration: InputDecoration(
-              prefixIcon: const Icon(Icons.search_rounded),
-              hintText: _bx(partner, 'ابحث بالمرجع أو الدبّاب أو الشاشة', 'Search ref, motorcycle or screen'),
-              filled: true, fillColor: Colors.white, isDense: true,
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: T.line)),
-            ),
+          SearchField(
+            controller: _searchCtl, dense: true,
+            hint: _bx(partner, 'ابحث بالمرجع أو الدبّاب أو الشاشة', 'Search ref, motorcycle or screen'),
             onChanged: (v) { _q = v.trim(); _debounce?.cancel(); _debounce = Timer(const Duration(milliseconds: 350), _load); },
           ),
           const SizedBox(height: 8),
@@ -311,7 +311,7 @@ class _MediaGoComplaintsScreenState extends State<MediaGoComplaintsScreen> {
           ),
           const SizedBox(height: 8),
           if (items.isEmpty)
-            EmptyState(icon: Icons.connected_tv_outlined, title: _bx(partner, 'لا بلاغات', 'No complaints'))
+            EmptyState(icon: Icons.connected_tv_outlined, title: _q.isNotEmpty ? _bx(partner, 'لا نتائج مطابقة للبحث', 'No matches') : _bx(partner, 'لا بلاغات', 'No complaints'))
           else
             ...(_table
                 ? [for (final r in items) _row(r, meta, partner)]
@@ -1273,10 +1273,10 @@ class _MotoSheetState extends State<_MotoSheet> {
         child: Column(children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(14, 0, 14, 8),
-            child: TextField(
-              autofocus: true,
-              decoration: InputDecoration(prefixIcon: const Icon(Icons.search_rounded), hintText: tr('اللوحة أو التسلسلي أو السائق', 'Plate, serial or rider'), isDense: true, border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
-              onChanged: (v) { _t?.cancel(); _t = Timer(const Duration(milliseconds: 300), () => _search(v.trim())); },
+            child: SearchField(
+              autofocus: true, dense: true,
+              hint: tr('اللوحة أو التسلسلي أو السائق', 'Plate, serial or rider'),
+              onChanged: (v) { _t?.cancel(); _t = Timer(const Duration(milliseconds: 350), () => _search(v.trim())); },
             ),
           ),
           if (_busy) const LinearProgressIndicator(minHeight: 2),
@@ -1284,6 +1284,7 @@ class _MotoSheetState extends State<_MotoSheet> {
             child: _items.isEmpty && !_busy
                 ? Center(child: Text(tr('لا نتائج — اكتب الرقم يدويًّا', 'No match — type the number manually'), style: const TextStyle(color: T.inkSoft)))
                 : ListView.separated(
+                    keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                     itemCount: _items.length,
                     separatorBuilder: (_, __) => const Divider(height: 1),
                     itemBuilder: (_, i) {

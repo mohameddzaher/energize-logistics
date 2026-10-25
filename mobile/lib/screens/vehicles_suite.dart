@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../services/api.dart';
 import '../services/lang.dart';
 import '../services/live.dart';
 import '../ui/app_scaffold.dart';
+import '../ui/search_field.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import 'package:provider/provider.dart';
@@ -131,6 +133,8 @@ class _VehiclesListScreenState extends State<VehiclesListScreen> {
   bool _loading = true;
   String? _error;
   late String _q = widget.initialSearch ?? '';
+  // نصُّ البحث في متحكِّمٍ يملكه الشاشة
+  late final _searchCtl = TextEditingController(text: _q);
   late String _status = widget.initialStatus ?? '';
   late String _type = widget.initialType ?? '';
   int _seq = 0;
@@ -152,6 +156,7 @@ class _VehiclesListScreenState extends State<VehiclesListScreen> {
     Live.instance.off('vreg:updated', _onLive);
     Live.instance.off('vehicle:updated', _onLive);
     Live.instance.off('vehicle:authorization', _onLive);
+    _searchCtl.dispose();
     super.dispose();
   }
 
@@ -253,14 +258,14 @@ class _VehiclesListScreenState extends State<VehiclesListScreen> {
       body: Column(children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(14, 12, 14, 0),
-          child: TextFormField(
-            initialValue: _q,
+          child: SearchField(
+            controller: _searchCtl,
             onChanged: (v) {
               _q = v;
               final s = ++_seq;
-              Future.delayed(const Duration(milliseconds: 300), () { if (mounted && s == _seq) _load(); });
+              Future.delayed(const Duration(milliseconds: 350), () { if (mounted && s == _seq) _load(); });
             },
-            decoration: InputDecoration(hintText: tr('ابحث باللوحة أو الموظف…', 'Search…'), prefixIcon: const Icon(Icons.search), suffixText: '${_rows.length}'),
+            hint: tr('ابحث باللوحة أو الموظف…', 'Search…'), suffixText: '${_rows.length}',
           ),
         ),
         Padding(
@@ -279,8 +284,9 @@ class _VehiclesListScreenState extends State<VehiclesListScreen> {
                   : RefreshIndicator(
                       onRefresh: _load,
                       child: _rows.isEmpty
-                          ? ListView(children: [const SizedBox(height: 80), EmptyState(icon: Icons.directions_car_outlined, title: tr('لا توجد مركبات', 'No vehicles'))])
+                          ? ListView(children: [const SizedBox(height: 80), EmptyState(icon: Icons.directions_car_outlined, title: _q.trim().isNotEmpty ? tr('لا نتائج مطابقة', 'No matches') : tr('لا توجد مركبات', 'No vehicles'))])
                           : ListView.separated(
+                              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                               padding: const EdgeInsets.fromLTRB(14, 10, 14, 90),
                               itemCount: _rows.length,
                               separatorBuilder: (_, __) => const SizedBox(height: 8),
@@ -441,20 +447,22 @@ Future<void> editVehicleSheet(BuildContext context, Map<String, dynamic>? v, Fut
 
 // searchable employee picker shared by authorize/transfer/accident
 Future<Map<String, dynamic>?> pickVehicleEmployee(BuildContext context) async {
+  // الحالةُ خارج builder: إعادةُ بناء النافذة لا تُصفِّرها والخانةُ مكتوبة
+  String q = '';
+  List<Map<String, dynamic>> emps = [];
+  bool loading = true;
+  int seq = 0;
+  Timer? debounce;
   return showModalBottomSheet<Map<String, dynamic>>(
     context: context,
     isScrollControlled: true,
     builder: (c) {
-      String q = '';
-      List<Map<String, dynamic>> emps = [];
-      bool loading = true;
-      int seq = 0;
       return StatefulBuilder(builder: (c, setS) {
         Future<void> search() async {
           final mine = ++seq;
           try {
             final d = await Api.instance.get('/api/vehicles/employees${q.trim().isEmpty ? '' : '?q=${Uri.encodeQueryComponent(q.trim())}'}');
-            if (mine != seq) return;
+            if (mine != seq || !c.mounted) return;
             emps = _l(d['employees']);
           } catch (_) {}
           if (c.mounted && mine == seq) setS(() => loading = false);
@@ -468,16 +476,24 @@ Future<Map<String, dynamic>?> pickVehicleEmployee(BuildContext context) async {
               child: Column(children: [
                 Padding(
                   padding: const EdgeInsets.all(14),
-                  child: TextField(
+                  child: SearchField(
                     autofocus: true,
-                    onChanged: (v) { q = v; setS(() => loading = true); search(); },
-                    decoration: InputDecoration(hintText: tr('ابحث عن الموظف…', 'Search employee…'), prefixIcon: const Icon(Icons.search)),
+                    onChanged: (v) {
+                      q = v;
+                      setS(() => loading = true);
+                      debounce?.cancel();
+                      debounce = Timer(const Duration(milliseconds: 350), () { if (c.mounted) search(); });
+                    },
+                    hint: tr('ابحث عن الموظف…', 'Search employee…'),
                   ),
                 ),
                 Expanded(
                   child: loading
                       ? const Center(child: CircularProgressIndicator())
-                      : ListView.builder(
+                      : emps.isEmpty && q.trim().isNotEmpty
+                          ? Center(child: Text(tr('لا نتائج مطابقة', 'No matches'), style: const TextStyle(color: T.inkFaint)))
+                          : ListView.builder(
+                          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                           itemCount: emps.length,
                           itemBuilder: (c, i) => ListTile(
                             title: Text(empName(emps[i]), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),

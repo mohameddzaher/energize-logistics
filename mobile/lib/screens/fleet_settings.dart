@@ -6,6 +6,7 @@ import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import 'fleet_reference_lists.dart';
+import '../ui/search_field.dart';
 
 /// إعدادات إدارة الأسطول — نفس صفحة الويب: مبلغ بونص الجمعة، الهدف الشهري
 /// الافتراضي للسيارة، وتعديل هدف كل سيارة على حدة. القوائم المرجعية (أنواع
@@ -26,6 +27,8 @@ class _FleetSettingsScreenState extends State<FleetSettingsScreen> {
   final Map<String, TextEditingController> _targets = {};
   final Set<String> _savingVeh = {};
   String _q = '';
+  // الخانةُ تُهدَم مع التحميل والتمرير — النصُّ في متحكِّمٍ يبقى مع الكلمة.
+  final _searchCtl = TextEditingController();
   late final void Function() _onLive;
 
   @override
@@ -45,6 +48,7 @@ class _FleetSettingsScreenState extends State<FleetSettingsScreen> {
     Live.instance.off('fleet:vehicles', _onLive);
     _fridayBonus.dispose();
     _defaultTarget.dispose();
+    _searchCtl.dispose();
     for (final c in _targets.values) { c.dispose(); }
     super.dispose();
   }
@@ -139,6 +143,7 @@ class _FleetSettingsScreenState extends State<FleetSettingsScreen> {
                   onRefresh: _load,
                   child: ListView(
                     padding: const EdgeInsets.all(14),
+                    keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                     children: [
                       AppCard(
                         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -163,11 +168,14 @@ class _FleetSettingsScreenState extends State<FleetSettingsScreen> {
                       const SizedBox(height: 16),
                       Text(tr('الهدف الشهري لكل سيارة', 'Monthly target per vehicle'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
                       const SizedBox(height: 8),
-                      TextField(
+                      SearchField(
+                        controller: _searchCtl,
                         onChanged: (v) => setState(() => _q = v),
-                        decoration: InputDecoration(hintText: tr('ابحث باللوحة أو المشرف…', 'Search plate, supervisor…'), prefixIcon: const Icon(Icons.search)),
+                        hint: tr('ابحث باللوحة أو المشرف…', 'Search plate, supervisor…'),
                       ),
                       const SizedBox(height: 8),
+                      if (vehicles.isEmpty && _q.trim().isNotEmpty)
+                        Padding(padding: const EdgeInsets.all(14), child: Center(child: Text(tr('لا نتائج', 'No matches'), style: const TextStyle(color: T.inkFaint)))),
                       ...vehicles.map((v) {
                         final id = (v['_id'] ?? '').toString();
                         final saving = _savingVeh.contains(id);

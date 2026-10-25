@@ -10,6 +10,7 @@ import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import '../ui/vehicle_month_log.dart' show monthKeyNow;
+import '../ui/search_field.dart';
 
 /// مصاريف السوّاق — ما يُستحقّ للرجل على كلّ حمولة، وهل صُرِف.
 ///
@@ -215,7 +216,7 @@ class _FleetDriverExpensesScreenState extends State<FleetDriverExpensesScreen> {
       title: Text(tr('مصاريف السوّاق', 'Driver expenses')),
       body: RefreshIndicator(
         onRefresh: _load,
-        child: ListView(padding: const EdgeInsets.all(14), children: [
+        child: ListView(padding: const EdgeInsets.all(14), keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag, children: [
           Text(
             tr('المبلغ هو مصروف السائق المكتوب وقت إنشاء الحمولة، والإيبان من ملفّ السائق.',
                 'The amount is the driver expense entered when the load was created; the IBAN comes from the driver’s profile.'),
@@ -306,14 +307,10 @@ class _FleetDriverExpensesScreenState extends State<FleetDriverExpensesScreen> {
                   ),
               ]),
               const SizedBox(height: 8),
-              TextField(
-                controller: _searchCtrl,
+              SearchField(
+                controller: _searchCtrl, dense: true,
                 onChanged: _onSearch,
-                decoration: InputDecoration(
-                  isDense: true,
-                  prefixIcon: const Icon(Icons.search, size: 18),
-                  hintText: tr('كشف أو سائق أو لوحة…', 'Waybill, driver or plate…'),
-                ),
+                hint: tr('كشف أو سائق أو لوحة…', 'Waybill, driver or plate…'),
               ),
             ]),
           ),

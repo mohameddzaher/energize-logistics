@@ -10,6 +10,7 @@ import '../ui/export_sheet.dart';
 import '../ui/lookup_field.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import '../ui/search_field.dart';
 import 'b2c_column_filter.dart';
 import 'light_transport_add.dart';
 import 'light_transport_profile.dart';
@@ -178,6 +179,8 @@ class _LightTransportListScreenState extends State<LightTransportListScreen> {
   String? _error;
   String _q = '';
   Timer? _debounce;
+  // متحكِّمُ البحث عند الشاشة: يبقى نصُّه بعد التحميل/الخطأ، و«مسح الكل» يمسحه.
+  final _searchCtl = TextEditingController();
   final Map<String, String> _f = {};
   Map<String, Set<String>> _cf = {};
   final Map<String, Map<String, dynamic>> _picked = {};
@@ -199,6 +202,7 @@ class _LightTransportListScreenState extends State<LightTransportListScreen> {
   @override
   void dispose() {
     _debounce?.cancel();
+    _searchCtl.dispose();
     Live.instance.off('lt:*', _onLive);
     Live.instance.off('hr:employee', _onLive);
     super.dispose();
@@ -246,6 +250,8 @@ class _LightTransportListScreenState extends State<LightTransportListScreen> {
   }
 
   void _clear() {
+    _debounce?.cancel();
+    _searchCtl.clear();
     setState(() { _f.clear(); _q = ''; });
     _load();
   }
@@ -534,7 +540,7 @@ class _LightTransportListScreenState extends State<LightTransportListScreen> {
               ? ErrorRetry(message: _error!, onRetry: () { setState(() => _loading = true); _load(); })
               : RefreshIndicator(
                   onRefresh: _load,
-                  child: CustomScrollView(slivers: [
+                  child: CustomScrollView(keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag, slivers: [
                     SliverPadding(
                       padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
                       sliver: SliverList.list(children: [
@@ -572,11 +578,9 @@ class _LightTransportListScreenState extends State<LightTransportListScreen> {
                         ]),
                         const SizedBox(height: 10),
                         // البحثُ في الخادم: يصل سجلَّ المركبات أيضًا (التسلسليّ ورقمُ التفويض).
-                        TextField(
-                          decoration: InputDecoration(
-                            isDense: true, prefixIcon: const Icon(Icons.search),
-                            hintText: tr('اسم · هوية · لوحة · مشرف · مشروع · سجل…', 'name, ID, plate, supervisor, project, register…'),
-                          ),
+                        SearchField(
+                          controller: _searchCtl, dense: true,
+                          hint: tr('اسم · هوية · لوحة · مشرف · مشروع · سجل…', 'name, ID, plate, supervisor, project, register…'),
                           onChanged: (v) {
                             _q = v.trim();
                             _debounce?.cancel();

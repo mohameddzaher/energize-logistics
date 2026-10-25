@@ -4,6 +4,7 @@ import '../services/api.dart';
 import '../services/lang.dart';
 import '../services/live.dart';
 import '../ui/app_scaffold.dart';
+import '../ui/search_field.dart';
 import '../ui/contact.dart';
 import '../ui/export_sheet.dart';
 import '../ui/theme.dart';
@@ -302,7 +303,7 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
               ? ErrorRetry(message: _error!, onRetry: () { setState(() => _loading = true); _load(); })
               : RefreshIndicator(
                   onRefresh: _load,
-                  child: ListView(padding: const EdgeInsets.fromLTRB(14, 12, 14, 90), children: [
+                  child: ListView(keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag, padding: const EdgeInsets.fromLTRB(14, 12, 14, 90), children: [
                     // ── بطاقاتُ الحالات: هي الفلتر، وتنتقي أكثرَ من واحدة ──
                     SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: [
                       _statusCard(tr('كل الشحنات', 'All shipments'), _total, T.navy, _statuses.isEmpty, () => _refilter(_statuses.clear)),
@@ -318,16 +319,13 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
                           () => _refilter(() { final on = _isSet(_done); _statuses.clear(); if (!on) _statuses.addAll(_done); }))),
                     ]),
                     const SizedBox(height: 10),
-                    TextField(
+                    SearchField(
                       controller: _searchCtrl,
                       onChanged: (v) {
                         _debounce?.cancel();
-                        _debounce = Timer(const Duration(milliseconds: 300), () => _refilter(() => _q = v));
+                        _debounce = Timer(const Duration(milliseconds: 350), () => _refilter(() => _q = v));
                       },
-                      decoration: InputDecoration(
-                        hintText: tr('بحث برقم البوليصة أو كشف التخريج أو العميل أو المورّد أو السائق أو المدينة…', 'waybill, graduation no., customer, supplier, driver, city…'),
-                        prefixIcon: const Icon(Icons.search),
-                      ),
+                      hint: tr('بحث برقم البوليصة أو كشف التخريج أو العميل أو المورّد أو السائق أو المدينة…', 'waybill, graduation no., customer, supplier, driver, city…'),
                     ),
                     const SizedBox(height: 8),
                     SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: [
@@ -498,12 +496,14 @@ class _ColumnValuesSheetState extends State<_ColumnValuesSheet> {
       child: SizedBox(height: MediaQuery.of(context).size.height * 0.7, child: Column(children: [
         Text(widget.title, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
         const SizedBox(height: 8),
-        TextField(
-          decoration: InputDecoration(hintText: tr('بحث…', 'Search…'), prefixIcon: const Icon(Icons.search)),
-          onChanged: (v) { _t?.cancel(); _t = Timer(const Duration(milliseconds: 300), () => _run(v)); },
+        SearchField(
+          hint: tr('بحث…', 'Search…'),
+          onChanged: (v) { _t?.cancel(); _t = Timer(const Duration(milliseconds: 350), () => _run(v)); },
         ),
         if (_loading) const LinearProgressIndicator(minHeight: 2),
-        Expanded(child: ListView(children: [
+        Expanded(child: ListView(keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag, children: [
+          if (!_loading && _values.isEmpty)
+            Padding(padding: const EdgeInsets.all(18), child: Text(tr('لا نتائج', 'No matches'), textAlign: TextAlign.center, style: const TextStyle(color: T.inkFaint))),
           for (final v in _values)
             CheckboxListTile(
               dense: true,

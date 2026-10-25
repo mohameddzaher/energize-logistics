@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
@@ -5,6 +6,7 @@ import 'package:share_plus/share_plus.dart';
 import '../services/api.dart';
 import '../services/lang.dart';
 import '../ui/theme.dart';
+import '../ui/search_field.dart';
 
 /// ما تشترك فيه شاشاتُ التشغيل: الحالات، أنواعُ الدفع، فلاترُ الأعمدة،
 /// أوضاعُ الفترة، وتصديرُ ملفّات الخادم — نظيرُ lib/ops.ts وlib/paymentKind
@@ -288,6 +290,9 @@ Future<Set<String>?> opsPickColumnFilter(
   bool started = false;
   bool truncated = false;
   int seq = 0;
+  // بحثٌ أثناء الكتابة بتأخيرٍ قصير — وبعد إغلاق اللوحة لا يُرسَم شيء.
+  Timer? debounce;
+  bool closed = false;
   Future<void> fetch(StateSetter set) async {
     final mine = ++seq;
     try {
@@ -300,6 +305,7 @@ Future<Set<String>?> opsPickColumnFilter(
       if (mine != seq) return;
       opts = [];
     }
+    if (closed) return;
     busy = false;
     set(() {});
   }
@@ -325,10 +331,16 @@ Future<Set<String>?> opsPickColumnFilter(
               ),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: TextField(
-                  textInputAction: TextInputAction.search,
-                  decoration: InputDecoration(hintText: tr('ابحث…', 'Search…'), prefixIcon: const Icon(Icons.search), isDense: true),
-                  onSubmitted: (v) { q = v.trim(); busy = true; set(() {}); fetch(set); },
+                child: SearchField(
+                  dense: true,
+                  hint: tr('ابحث…', 'Search…'),
+                  onChanged: (v) {
+                    debounce?.cancel();
+                    debounce = Timer(const Duration(milliseconds: 350), () {
+                      if (closed) return;
+                      q = v.trim(); busy = true; set(() {}); fetch(set);
+                    });
+                  },
                 ),
               ),
               if (truncated)
@@ -342,7 +354,7 @@ Future<Set<String>?> opsPickColumnFilter(
                     ? const Center(child: CircularProgressIndicator())
                     : opts.isEmpty
                         ? Center(child: Text(tr('لا نتائج', 'No matches'), style: const TextStyle(color: T.inkFaint)))
-                        : ListView(children: [
+                        : ListView(keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag, children: [
                             for (final o in opts)
                               CheckboxListTile(
                                 dense: true,
@@ -366,6 +378,8 @@ Future<Set<String>?> opsPickColumnFilter(
       );
     }),
   );
+  closed = true;
+  debounce?.cancel();
   return ok == true ? picked : null;
 }
 

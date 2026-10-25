@@ -8,6 +8,7 @@ import '../services/auth.dart';
 import 'clearance_quick_view.dart';
 import 'ops_report_detail.dart';
 import 'report_follow_ups.dart';
+import 'search_field.dart';
 import 'theme.dart';
 import 'widgets.dart';
 
@@ -200,12 +201,14 @@ class _PickerState extends State<_Picker> {
   bool _saving = false;
   int _seq = 0;
   Timer? _t;
+  String _typed = ''; // لرسالة «لا نتائج»
 
   @override
   void dispose() { _t?.cancel(); super.dispose(); }
 
   Future<void> _search(String q) async {
     final mine = ++_seq;
+    _typed = q.trim();
     if (q.trim().length < 2) { setState(() { _hits = []; _busy = false; }); return; }
     setState(() => _busy = true);
     try {
@@ -241,15 +244,17 @@ class _PickerState extends State<_Picker> {
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Text(tr('ربط بمعاملة تخليص', 'Link to a customs clearance'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
         const SizedBox(height: 10),
-        TextField(
+        SearchField(
           autofocus: true,
-          onChanged: (v) { _t?.cancel(); _chosen = null; _units.clear(); _t = Timer(const Duration(milliseconds: 300), () => _search(v)); },
-          decoration: InputDecoration(prefixIcon: const Icon(Icons.search), hintText: tr('رقم المعاملة أو البوليصة أو الحاوية أو العميل', 'Clearance, B/L, container or customer')),
+          onChanged: (v) { _t?.cancel(); _chosen = null; _units.clear(); _t = Timer(const Duration(milliseconds: 350), () => _search(v)); },
+          hint: tr('رقم المعاملة أو البوليصة أو الحاوية أو العميل', 'Clearance, B/L, container or customer'),
         ),
         const SizedBox(height: 8),
         if (_busy) const LinearProgressIndicator(minHeight: 2),
         Expanded(
-          child: ListView(children: [
+          child: ListView(keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag, children: [
+            if (!_busy && _hits.isEmpty && _typed.length >= 2)
+              Padding(padding: const EdgeInsets.all(18), child: Text(tr('لا نتائج مطابقة', 'No matches'), textAlign: TextAlign.center, style: const TextStyle(color: T.inkFaint))),
             for (final h in _hits)
               ListTile(
                 dense: true,

@@ -7,6 +7,7 @@ import '../ui/app_scaffold.dart';
 import '../ui/export_sheet.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import '../ui/search_field.dart';
 import 'collections_party.dart';
 
 // ═════════════════════════════════════════════════════════════════════════
@@ -57,6 +58,8 @@ class _CollectionsAgingScreenState extends State<CollectionsAgingScreen> {
   String _search = '', _officer = '', _grade = '', _department = '', _location = '', _creditDays = '', _band = '';
   String _sort = 'outstanding', _dir = 'desc';
   Timer? _deb;
+  Timer? _searchDeb; // مؤقِّتُ البحث مستقلٌّ — كان التحديثُ الحيّ يُلغي بحثًا مُنتظِرًا
+  final _searchCtl = TextEditingController(); // النصُّ يبقى مطابقًا لـ_search
   late final void Function() _onLive;
 
   @override
@@ -82,6 +85,8 @@ class _CollectionsAgingScreenState extends State<CollectionsAgingScreen> {
     Live.instance.off('collections:party', _onLive);
     Live.instance.off('collections:changed', _onLive);
     _deb?.cancel();
+    _searchDeb?.cancel();
+    _searchCtl.dispose();
     super.dispose();
   }
 
@@ -296,7 +301,7 @@ class _CollectionsAgingScreenState extends State<CollectionsAgingScreen> {
                   Expanded(
                     child: RefreshIndicator(
                       onRefresh: _load,
-                      child: ListView(padding: const EdgeInsets.all(12), children: [
+                      child: ListView(padding: const EdgeInsets.all(12), keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag, children: [
                         // البطاقاتُ تعكس الفلترَ النشط.
                         Row(children: [
                           for (final c in [
@@ -340,12 +345,13 @@ class _CollectionsAgingScreenState extends State<CollectionsAgingScreen> {
                               onSelected: (_) { setState(() => _band = _band == 'noDate' ? '' : 'noDate'); _refilter(); }),
                         ]),
                         const SizedBox(height: 10),
-                        TextField(
-                          decoration: InputDecoration(isDense: true, prefixIcon: const Icon(Icons.search, size: 18),
-                              hintText: tr('ابحث بالاسم أو الكود أو الموظف…', 'Search name, code, officer…')),
+                        SearchField(
+                          controller: _searchCtl,
+                          dense: true,
+                          hint: tr('ابحث بالاسم أو الكود أو الموظف…', 'Search name, code, officer…'),
                           onChanged: (v) {
-                            _deb?.cancel();
-                            _deb = Timer(const Duration(milliseconds: 300), () { _search = v.trim(); _refilter(); });
+                            _searchDeb?.cancel();
+                            _searchDeb = Timer(const Duration(milliseconds: 350), () { _search = v.trim(); _refilter(); });
                           },
                         ),
                         const SizedBox(height: 8),
@@ -361,6 +367,8 @@ class _CollectionsAgingScreenState extends State<CollectionsAgingScreen> {
                             if (_active)
                               TextButton.icon(
                                 onPressed: () {
+                                  _searchDeb?.cancel();
+                                  _searchCtl.clear();
                                   setState(() { _search = ''; _officer = ''; _grade = ''; _department = ''; _location = ''; _creditDays = ''; _band = ''; });
                                   _refilter();
                                 },

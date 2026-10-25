@@ -10,6 +10,7 @@ import '../ui/export_sheet.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import 'crm_form.dart';
+import '../ui/search_field.dart';
 
 /// مهامّ العلاقات — نظيرُ /system/crm/tasks: «الكلّ / مهامّي»، الحالة، البحث
 /// (كلّها على الخادم)، والدائرةُ بجانب المهمّة تُكملها أو تعيد فتحها بضغطةٍ
@@ -202,8 +203,8 @@ class _CrmTasksScreenState extends State<CrmTasksScreen> {
         ),
         Padding(
           padding: const EdgeInsets.fromLTRB(14, 4, 14, 4),
-          child: TextField(
-            decoration: InputDecoration(hintText: tr('بحث…', 'Search…'), prefixIcon: const Icon(Icons.search), suffixText: '${_items.length}'),
+          child: SearchField(
+            hint: tr('بحث…', 'Search…'), suffixText: '${_items.length}',
             onChanged: (v) {
               _q = v;
               _debounce?.cancel();
@@ -221,6 +222,7 @@ class _CrmTasksScreenState extends State<CrmTasksScreen> {
                       child: _items.isEmpty
                           ? ListView(children: [const SizedBox(height: 80), EmptyState(icon: Icons.task_alt_outlined, title: tr('لا توجد نتائج', 'No results'))])
                           : ListView.builder(
+                              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                               padding: const EdgeInsets.fromLTRB(14, 4, 14, 90),
                               itemCount: _items.length,
                               itemBuilder: (c, i) {

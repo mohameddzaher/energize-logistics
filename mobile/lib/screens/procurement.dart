@@ -7,6 +7,7 @@ import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import '../ui/api_picker.dart' show pickFromApi;
 import '../ui/export_sheet.dart';
+import '../ui/search_field.dart';
 import 'package:provider/provider.dart';
 import '../services/auth.dart';
 
@@ -65,6 +66,8 @@ class _ProcRequestsScreenState extends State<ProcRequestsScreen> {
   bool _loading = true;
   String? _error;
   String _q = '';
+  // متحكِّمُ البحث عند الشاشة: اختيارُ حالةٍ يُعيد التحميل فلا تعود الخانةُ فارغةً والكلمةُ تُرشِّح.
+  final _searchCtl = TextEditingController();
   String _status = '';
   late final void Function() _onLive;
 
@@ -79,6 +82,7 @@ class _ProcRequestsScreenState extends State<ProcRequestsScreen> {
   @override
   void dispose() {
     Live.instance.off('procurement:pr', _onLive);
+    _searchCtl.dispose();
     super.dispose();
   }
 
@@ -138,10 +142,7 @@ class _ProcRequestsScreenState extends State<ProcRequestsScreen> {
               : Column(children: [
                   Padding(
                     padding: const EdgeInsets.fromLTRB(14, 12, 14, 0),
-                    child: TextField(
-                      onChanged: (v) => setState(() => _q = v),
-                      decoration: InputDecoration(hintText: tr('ابحث بالعنوان أو الرقم…', 'Search…'), prefixIcon: const Icon(Icons.search)),
-                    ),
+                    child: SearchField(controller: _searchCtl, hint: tr('ابحث بالعنوان أو الرقم…', 'Search…'), onChanged: (v) => setState(() => _q = v)),
                   ),
                   Padding(
                     padding: const EdgeInsets.fromLTRB(14, 8, 14, 4),
@@ -174,6 +175,7 @@ class _ProcRequestsScreenState extends State<ProcRequestsScreen> {
                       child: filtered.isEmpty
                           ? EmptyState(icon: Icons.request_quote_outlined, title: tr('لا توجد طلبات مطابقة', 'No matches'))
                           : ListView.separated(
+                              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                               padding: const EdgeInsets.all(14),
                               itemCount: filtered.length,
                               separatorBuilder: (_, __) => const SizedBox(height: 8),
@@ -302,14 +304,11 @@ class _ProcRequestsScreenState extends State<ProcRequestsScreen> {
               child: Column(children: [
                 Padding(
                   padding: const EdgeInsets.all(14),
-                  child: TextField(
-                    autofocus: true,
-                    onChanged: (v) => setS(() => q = v),
-                    decoration: InputDecoration(hintText: tr('ابحث عن المورد…', 'Search vendor…'), prefixIcon: const Icon(Icons.search)),
-                  ),
+                  child: SearchField(autofocus: true, hint: tr('ابحث عن المورد…', 'Search vendor…'), onChanged: (v) => setS(() => q = v)),
                 ),
                 Expanded(
                   child: ListView.builder(
+                    keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                     itemCount: list.length,
                     itemBuilder: (c, i) => ListTile(
                       title: Text(_vendorName(list[i]), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
@@ -480,6 +479,8 @@ class _ProcOrdersScreenState extends State<ProcOrdersScreen> {
   bool _loading = true;
   String? _error;
   String _q = '';
+  // متحكِّمُ البحث عند الشاشة: اختيارُ حالةٍ يُعيد التحميل فلا تعود الخانةُ فارغةً والكلمةُ تُرشِّح.
+  final _searchCtl = TextEditingController();
   late final void Function() _onLive;
 
   @override
@@ -494,6 +495,7 @@ class _ProcOrdersScreenState extends State<ProcOrdersScreen> {
   @override
   void dispose() {
     Live.instance.off('procurement:po', _onLive);
+    _searchCtl.dispose();
     super.dispose();
   }
 
@@ -728,10 +730,7 @@ class _ProcOrdersScreenState extends State<ProcOrdersScreen> {
               : Column(children: [
                   Padding(
                     padding: const EdgeInsets.fromLTRB(14, 12, 14, 4),
-                    child: TextField(
-                      onChanged: (v) => setState(() => _q = v),
-                      decoration: InputDecoration(hintText: tr('ابحث برقم الأمر أو المورد…', 'Search…'), prefixIcon: const Icon(Icons.search)),
-                    ),
+                    child: SearchField(controller: _searchCtl, hint: tr('ابحث برقم الأمر أو المورد…', 'Search…'), onChanged: (v) => setState(() => _q = v)),
                   ),
                   SizedBox(
                     height: 44,
@@ -755,8 +754,9 @@ class _ProcOrdersScreenState extends State<ProcOrdersScreen> {
                     child: RefreshIndicator(
                       onRefresh: _load,
                       child: filtered.isEmpty
-                          ? EmptyState(icon: Icons.shopping_cart_outlined, title: tr('لا توجد أوامر شراء', 'No orders'))
+                          ? EmptyState(icon: Icons.shopping_cart_outlined, title: _q.trim().isNotEmpty ? tr('لا نتائج مطابقة للبحث', 'No matches') : tr('لا توجد أوامر شراء', 'No orders'))
                           : ListView.separated(
+                              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                               padding: const EdgeInsets.all(14),
                               itemCount: filtered.length,
                               separatorBuilder: (_, __) => const SizedBox(height: 8),
@@ -815,6 +815,8 @@ class _ProcBillsScreenState extends State<ProcBillsScreen> {
   bool _loading = true;
   String? _error;
   String _q = '';
+  // متحكِّمُ البحث عند الشاشة: اختيارُ حالةٍ يُعيد التحميل فلا تعود الخانةُ فارغةً والكلمةُ تُرشِّح.
+  final _searchCtl = TextEditingController();
   String _status = '';
   late final void Function() _onLive;
 
@@ -829,6 +831,7 @@ class _ProcBillsScreenState extends State<ProcBillsScreen> {
   @override
   void dispose() {
     Live.instance.off('procurement:bill', _onLive);
+    _searchCtl.dispose();
     super.dispose();
   }
 
@@ -999,10 +1002,7 @@ class _ProcBillsScreenState extends State<ProcBillsScreen> {
               : Column(children: [
                   Padding(
                     padding: const EdgeInsets.fromLTRB(14, 12, 14, 0),
-                    child: TextField(
-                      onChanged: (v) => setState(() => _q = v),
-                      decoration: InputDecoration(hintText: tr('ابحث برقم الفاتورة أو المورد…', 'Search…'), prefixIcon: const Icon(Icons.search)),
-                    ),
+                    child: SearchField(controller: _searchCtl, hint: tr('ابحث برقم الفاتورة أو المورد…', 'Search…'), onChanged: (v) => setState(() => _q = v)),
                   ),
                   Padding(
                     padding: const EdgeInsets.fromLTRB(14, 8, 14, 4),
@@ -1030,8 +1030,9 @@ class _ProcBillsScreenState extends State<ProcBillsScreen> {
                     child: RefreshIndicator(
                       onRefresh: _load,
                       child: filtered.isEmpty
-                          ? EmptyState(icon: Icons.receipt_long_outlined, title: tr('لا توجد فواتير', 'No bills'))
+                          ? EmptyState(icon: Icons.receipt_long_outlined, title: _q.trim().isNotEmpty ? tr('لا نتائج مطابقة للبحث', 'No matches') : tr('لا توجد فواتير', 'No bills'))
                           : ListView.separated(
+                              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                               padding: const EdgeInsets.all(14),
                               itemCount: filtered.length,
                               separatorBuilder: (_, __) => const SizedBox(height: 8),

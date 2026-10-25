@@ -7,6 +7,7 @@ import '../ui/app_scaffold.dart';
 import '../ui/lookup_field.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import '../ui/search_field.dart';
 
 /// مركباتُ النقل الخفيف — مركباتُ مشاريع القسم (كيتا، هنقرستيشن، أمازون، نينجا).
 ///
@@ -39,6 +40,7 @@ class _B2cVehiclesScreenState extends State<B2cVehiclesScreen> {
   Map<String, dynamic>? _d;
   String? _error;
   String _q = '';
+  final _searchCtl = TextEditingController(); // النصُّ يبقى مطابقًا لـ_q بعد التحديث الحيّ
   // '' | noAuthorization | expired | expiringSoon | noDriver | hold
   String _state = '';
 
@@ -57,6 +59,7 @@ class _B2cVehiclesScreenState extends State<B2cVehiclesScreen> {
   void dispose() {
     Live.instance.off('vreg:updated', _onLive);
     Live.instance.off('lt:updated', _onLive);
+    _searchCtl.dispose();
     super.dispose();
   }
 
@@ -131,7 +134,7 @@ class _B2cVehiclesScreenState extends State<B2cVehiclesScreen> {
       ('noDriver', tr('بلا قائدٍ فعليّ', 'No actual driver'), sum['noDriver'], T.inkSoft),
       ('hold', tr('بانتظار التسليم', 'Awaiting hand-over'), sum['hold'], T.warn),
     ];
-    return ListView(padding: const EdgeInsets.all(14), children: [
+    return ListView(padding: const EdgeInsets.all(14), keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag, children: [
       // ── الملخّص: بطاقةٌ تُضغَط فتُفلتَر القائمة، وتُضغَط ثانيةً فتعود ───────
       SizedBox(
         height: 74,
@@ -163,14 +166,16 @@ class _B2cVehiclesScreenState extends State<B2cVehiclesScreen> {
         ),
       ),
       const SizedBox(height: 10),
-      TextField(
+      SearchField(
+        controller: _searchCtl,
+        dense: true,
         onChanged: (v) => setState(() => _q = v),
-        decoration: InputDecoration(hintText: tr('اللوحة / الاسم / الهوية / رقم التفويض…', 'plate / name / ID / auth. number…'), prefixIcon: const Icon(Icons.search), isDense: true),
+        hint: tr('اللوحة / الاسم / الهوية / رقم التفويض…', 'plate / name / ID / auth. number…'),
       ),
       const SizedBox(height: 8),
       Text('${rows.length} ${tr('مركبة', 'vehicles')}', style: const TextStyle(fontSize: 11.5, color: T.inkFaint)),
       const SizedBox(height: 8),
-      if (rows.isEmpty) EmptyState(icon: Icons.local_shipping_outlined, title: tr('لا مركباتَ في هذا العرض', 'No vehicles in this view')),
+      if (rows.isEmpty) EmptyState(icon: Icons.local_shipping_outlined, title: _q.trim().isNotEmpty ? tr('لا نتائج مطابقة', 'No matches') : tr('لا مركباتَ في هذا العرض', 'No vehicles in this view')),
       for (final r in rows) Padding(
         padding: const EdgeInsets.only(bottom: 8),
         child: canEdit ? Pressable(onTap: () => _edit(r, canEditPlate), child: _card(r, canEdit)) : _card(r, canEdit),

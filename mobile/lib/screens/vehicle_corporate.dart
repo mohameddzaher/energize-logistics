@@ -7,6 +7,7 @@ import '../services/lang.dart';
 import '../services/live.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/export_sheet.dart';
+import '../ui/search_field.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import 'vehicle_registry.dart' show money, fmtDate, daysText;
@@ -803,6 +804,8 @@ class _DriverRosterScreen extends StatefulWidget {
 class _DriverRosterScreenState extends State<_DriverRosterScreen> {
   late Map<String, dynamic> _p = widget.initial;
   String _q = '';
+  // متحكِّمٌ للشاشة: الخانةُ لا تعود فارغةً إذا مُرِّرت خارج الشاشة ثم عادت
+  final _searchCtl = TextEditingController();
   String? _busyId;
   int _seq = 0;
   late final void Function() _onLive;
@@ -815,7 +818,7 @@ class _DriverRosterScreenState extends State<_DriverRosterScreen> {
   }
 
   @override
-  void dispose() { Live.instance.off('vreg:updated', _onLive); super.dispose(); }
+  void dispose() { Live.instance.off('vreg:updated', _onLive); _searchCtl.dispose(); super.dispose(); }
 
   Future<void> _reload() async {
     final my = ++_seq;
@@ -892,12 +895,13 @@ class _DriverRosterScreenState extends State<_DriverRosterScreen> {
     final per = _p['premiumPerPersonSar'];
     return AppScaffold(
       title: Text(tr('السائقون المشمولون', 'Drivers covered')),
-      body: ListView(padding: const EdgeInsets.all(14), children: [
+      body: ListView(keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag, padding: const EdgeInsets.all(14), children: [
         Text((_p['scopeAr'] ?? '').toString(), style: const TextStyle(fontSize: 12.5, color: T.inkFaint)),
         const SizedBox(height: 8),
-        TextField(
+        SearchField(
+          controller: _searchCtl,
           onChanged: (v) => setState(() => _q = v),
-          decoration: InputDecoration(prefixIcon: const Icon(Icons.search), hintText: tr('ابحث بالاسم أو الهوية أو الرقم الوظيفي…', 'Name, ID or employee no…')),
+          hint: tr('ابحث بالاسم أو الهوية أو الرقم الوظيفي…', 'Name, ID or employee no…'),
         ),
         if (per != null)
           Padding(padding: const EdgeInsets.only(top: 8), child: Text(

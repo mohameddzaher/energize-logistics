@@ -6,6 +6,7 @@ import '../services/lang.dart';
 import '../services/live.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/contact.dart';
+import '../ui/search_field.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 
@@ -328,24 +329,27 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
     String? hint,
     List<Map<String, dynamic>> initial = const [],
   }) {
+    // الحالةُ خارج builder: إعادةُ بناء النافذة لا تُصفِّرها والخانةُ ما زالت مكتوبة
+    var rows = List<Map<String, dynamic>>.from(initial);
+    var busy = false;
+    var seq = 0;
+    var typed = '';
+    Timer? debounce;
     return showModalBottomSheet<Map<String, dynamic>>(
       context: context,
       isScrollControlled: true,
       builder: (c) {
-        var rows = List<Map<String, dynamic>>.from(initial);
-        var busy = false;
-        var seq = 0;
-        Timer? debounce;
         return StatefulBuilder(builder: (c, setS) {
           Future<void> run(String q) async {
             final mine = ++seq;
+            if (!c.mounted) return;
             setS(() => busy = true);
             try {
               final r = await fetch(q);
-              if (mine != seq) return;
+              if (mine != seq || !c.mounted) return;
               setS(() { rows = r; busy = false; });
             } catch (_) {
-              if (mine == seq) setS(() => busy = false);
+              if (mine == seq && c.mounted) setS(() => busy = false);
             }
           }
           if (rows.isEmpty && !busy && seq == 0) run('');
@@ -357,25 +361,22 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
                 child: Column(children: [
                   Padding(
                     padding: const EdgeInsets.all(14),
-                    child: TextField(
+                    child: SearchField(
                       autofocus: true,
+                      hint: hint ?? '${tr('ابحث في', 'Search')} $title…',
                       onChanged: (v) {
+                        typed = v.trim();
                         debounce?.cancel();
-                        debounce = Timer(const Duration(milliseconds: 300), () => run(v.trim()));
+                        debounce = Timer(const Duration(milliseconds: 350), () => run(typed));
                       },
-                      decoration: InputDecoration(
-                        hintText: hint ?? '${tr('ابحث في', 'Search')} $title…',
-                        prefixIcon: const Icon(Icons.search),
-                        suffixIcon: busy
-                            ? const Padding(padding: EdgeInsets.all(12), child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)))
-                            : null,
-                      ),
                     ),
                   ),
+                  if (busy) const LinearProgressIndicator(minHeight: 2),
                   Expanded(
                     child: rows.isEmpty
                         ? Center(child: Text(busy ? '…' : tr('لا نتائج', 'No matches'), style: const TextStyle(fontSize: 13)))
                         : ListView.builder(
+                            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                             itemCount: rows.length,
                             itemBuilder: (c, i) => ListTile(
                               title: Text(label(rows[i]), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
@@ -435,11 +436,11 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
   }
 
   Future<P?> _pickSheet<P>(String title, List<P> items, String Function(P) label, {String Function(P)? sub}) {
+    String q = ''; // خارج builder كي لا تُصفَّر والخانةُ مكتوبة
     return showModalBottomSheet<P>(
       context: context,
       isScrollControlled: true,
       builder: (c) {
-        String q = '';
         return StatefulBuilder(builder: (c, setS) {
           final fq = _fold(q.trim());
           final list = items.where((x) => fq.isEmpty || _fold('${label(x)} ${sub?.call(x) ?? ''}').contains(fq)).toList();
@@ -451,14 +452,17 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
                 child: Column(children: [
                   Padding(
                     padding: const EdgeInsets.all(14),
-                    child: TextField(
+                    child: SearchField(
                       autofocus: true,
                       onChanged: (v) => setS(() => q = v),
-                      decoration: InputDecoration(hintText: '${tr('ابحث في', 'Search')} $title…', prefixIcon: const Icon(Icons.search)),
+                      hint: '${tr('ابحث في', 'Search')} $title…',
                     ),
                   ),
                   Expanded(
-                    child: ListView.builder(
+                    child: list.isEmpty && q.trim().isNotEmpty
+                        ? Center(child: Text(tr('لا نتائج', 'No matches'), style: const TextStyle(fontSize: 13)))
+                        : ListView.builder(
+                      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                       itemCount: list.length,
                       itemBuilder: (c, i) => ListTile(
                         title: Text(label(list[i]), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),

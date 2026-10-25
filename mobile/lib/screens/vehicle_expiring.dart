@@ -6,6 +6,7 @@ import '../services/lang.dart';
 import '../services/live.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/export_sheet.dart';
+import '../ui/search_field.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import 'vehicle_documents.dart' show stateMetaOf;
@@ -36,6 +37,8 @@ class _VehicleExpiringScreenState extends State<VehicleExpiringScreen> {
   late String _state = widget.state ?? '';
   bool _includeExpired = true;
   String _q = '';
+  // متحكِّمٌ للشاشة: الخانةُ لا تعود فارغةً بعد التمرير أو التحديث
+  final _searchCtl = TextEditingController();
   bool _mutedOnly = false;
   Map<String, dynamic>? _d;
   bool _loading = true;
@@ -56,6 +59,7 @@ class _VehicleExpiringScreenState extends State<VehicleExpiringScreen> {
   void dispose() {
     Live.instance.off('vreg:updated', _onLive);
     _withinCtl.dispose();
+    _searchCtl.dispose();
     super.dispose();
   }
 
@@ -204,7 +208,7 @@ class _VehicleExpiringScreenState extends State<VehicleExpiringScreen> {
               ? ErrorRetry(message: _error!, onRetry: () { setState(() => _loading = true); _load(); })
               : RefreshIndicator(
                   onRefresh: _load,
-                  child: ListView(padding: const EdgeInsets.fromLTRB(14, 12, 14, 90), children: [
+                  child: ListView(keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag, padding: const EdgeInsets.fromLTRB(14, 12, 14, 90), children: [
                     AppCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                       Row(children: [
                         Text(tr('ينتهي خلال', 'Expiring within'), style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
@@ -225,9 +229,11 @@ class _VehicleExpiringScreenState extends State<VehicleExpiringScreen> {
                         _chip(tr('الكل', 'All'), _within.isEmpty, () { setState(() { _within = ''; _withinCtl.clear(); }); _load(); }, tone: T.ink),
                       ])),
                       const Divider(height: 18),
-                      TextField(
+                      SearchField(
+                        controller: _searchCtl,
+                        dense: true,
                         onChanged: (x) => setState(() => _q = x),
-                        decoration: InputDecoration(isDense: true, hintText: tr('لوحة · اسم · مالك · قطاع · ماركة…', 'Plate · name · owner · sector · brand…'), prefixIcon: const Icon(Icons.search)),
+                        hint: tr('لوحة · اسم · مالك · قطاع · ماركة…', 'Plate · name · owner · sector · brand…'),
                       ),
                       const SizedBox(height: 8),
                       Row(children: [
@@ -315,7 +321,7 @@ class _VehicleExpiringScreenState extends State<VehicleExpiringScreen> {
                         if (_picked.isNotEmpty) TextButton(onPressed: () => setState(() => _picked.clear()), child: Text(tr('إلغاء الاختيار', 'Clear'))),
                       ]),
                     if (rows.isEmpty)
-                      Padding(padding: const EdgeInsets.only(top: 40), child: EmptyState(icon: Icons.event_available_outlined, title: tr('لا شيء ينتهي خلال هذه المدة', 'Nothing expires in this window'))),
+                      Padding(padding: const EdgeInsets.only(top: 40), child: EmptyState(icon: Icons.event_available_outlined, title: _q.trim().isNotEmpty ? tr('لا نتائج مطابقة', 'No matches') : tr('لا شيء ينتهي خلال هذه المدة', 'Nothing expires in this window'))),
                     ...rows.map((r) {
                       final m = stateMetaOf(r['state']?.toString());
                       final key = _rowKey(r);

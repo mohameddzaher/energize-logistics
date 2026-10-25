@@ -4,6 +4,7 @@ import '../services/api.dart';
 import '../services/auth.dart';
 import '../services/lang.dart';
 import '../ui/theme.dart';
+import '../ui/search_field.dart';
 
 /// إجراءاتُ صفّ الشاحنة في «سيارات الأسطول» — نظيرُ عمودَي السائقين وزرّ
 /// «تعيين المشرف» في صفحة الويب /system/fleet/vehicles.
@@ -26,12 +27,14 @@ Map<String, dynamic>? _seat(Map<String, dynamic> v, int n) {
 
 /// لوحُ اختيارٍ بحثيّ: (القيمة، النص، التلميح). يرجع القيمة أو null لو أُلغي.
 Future<String?> _pick(BuildContext context, String title, List<(String, String, String)> options, String current) {
+  // الكلمةُ في متحكِّمٍ خارجَ الباني: لو أُعيد بناءُ اللوح (اللوحة تظهر) لا تُنسى.
+  final ctl = TextEditingController();
   return showModalBottomSheet<String>(
     context: context, isScrollControlled: true, backgroundColor: Colors.white,
     shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
     builder: (c) {
-      var q = '';
       return StatefulBuilder(builder: (c, set) {
+        final q = ctl.text.trim();
         final shown = options.where((o) => q.isEmpty || o.$2.toLowerCase().contains(q.toLowerCase()) || o.$3.toLowerCase().contains(q.toLowerCase())).toList();
         return SizedBox(
           height: MediaQuery.of(c).size.height * 0.75,
@@ -42,12 +45,14 @@ Future<String?> _pick(BuildContext context, String title, List<(String, String, 
             ),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: TextField(
-                decoration: InputDecoration(prefixIcon: const Icon(Icons.search), hintText: tr('بحث…', 'Search…')),
-                onChanged: (v) => set(() => q = v.trim()),
+              child: SearchField(
+                controller: ctl,
+                hint: tr('بحث…', 'Search…'),
+                onChanged: (_) => set(() {}),
               ),
             ),
-            Expanded(child: ListView(children: [
+            Expanded(child: ListView(keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag, children: [
+              if (shown.isEmpty) Padding(padding: const EdgeInsets.all(24), child: Center(child: Text(tr('لا نتائج', 'No matches'), style: const TextStyle(color: T.inkFaint)))),
               for (final o in shown)
                 ListTile(
                   title: Text(o.$2, style: const TextStyle(fontWeight: FontWeight.w700)),
@@ -60,7 +65,7 @@ Future<String?> _pick(BuildContext context, String title, List<(String, String, 
         );
       });
     },
-  );
+  ).whenComplete(ctl.dispose);
 }
 
 /// «الطاقم»: المقعدان يُكتبان في نداءٍ واحد PATCH /vehicles/:id/drivers {first, second}

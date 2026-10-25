@@ -8,6 +8,7 @@ import '../ui/export_sheet.dart';
 import '../ui/theme.dart';
 import '../ui/tire_sensor_badge.dart';
 import '../ui/widgets.dart';
+import '../ui/search_field.dart';
 import 'ls2_common.dart';
 import 'ls2_vehicle_detail.dart';
 
@@ -123,10 +124,7 @@ class _Ls2LiveScreenState extends State<Ls2LiveScreen> {
         ),
         Padding(
           padding: const EdgeInsets.fromLTRB(14, 8, 14, 0),
-          child: TextField(
-            onChanged: (v) => setState(() => _q = v),
-            decoration: InputDecoration(hintText: tr('بحث…', 'Search…'), prefixIcon: const Icon(Icons.search), isDense: true, suffixText: '${rows.length}'),
-          ),
+          child: SearchField(hint: tr('بحث…', 'Search…'), dense: true, suffixText: '${rows.length}', onChanged: (v) => setState(() => _q = v)),
         ),
         SizedBox(
           height: 46,
@@ -158,8 +156,9 @@ class _Ls2LiveScreenState extends State<Ls2LiveScreen> {
                   : RefreshIndicator(
                       onRefresh: _load,
                       child: rows.isEmpty
-                          ? ListView(children: [const SizedBox(height: 80), EmptyState(icon: Icons.satellite_alt_outlined, title: tr('لا توجد بيانات', 'No data'))])
+                          ? ListView(children: [const SizedBox(height: 80), EmptyState(icon: Icons.satellite_alt_outlined, title: _q.trim().isNotEmpty ? tr('لا نتائج مطابقة للبحث', 'No matches') : tr('لا توجد بيانات', 'No data'))])
                           : ListView.separated(
+                              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                               padding: const EdgeInsets.all(14),
                               itemCount: rows.length,
                               separatorBuilder: (_, __) => const SizedBox(height: 8),

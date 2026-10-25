@@ -4,6 +4,7 @@ import '../services/lang.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import '../ui/search_field.dart';
 
 /// البيانات المرجعية — إدارة كل القوائم المنسدلة القابلة للتعديل في النظام.
 /// مطابقة لصفحة الويب /system/settings/reference-data: قائمة الأنواع مجمّعة
@@ -55,13 +56,13 @@ class _ReferenceDataScreenState extends State<ReferenceDataScreen> {
               : Column(children: [
                   Padding(
                     padding: const EdgeInsets.fromLTRB(14, 12, 14, 6),
-                    child: TextField(
-                      onChanged: (v) => setState(() => _q = v),
-                      decoration: InputDecoration(hintText: tr('ابحث عن قائمة…', 'Search a list…'), prefixIcon: const Icon(Icons.search)),
-                    ),
+                    child: SearchField(hint: tr('ابحث عن قائمة…', 'Search a list…'), onChanged: (v) => setState(() => _q = v)),
                   ),
                   Expanded(
-                    child: ListView(
+                    child: types.isEmpty
+                        ? EmptyState(icon: Icons.search_off, title: q.isNotEmpty ? tr('لا نتائج مطابقة للبحث', 'No matches') : tr('لا توجد قوائم', 'No lists'))
+                        : ListView(
+                      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                       padding: const EdgeInsets.all(14),
                       children: byModule.entries.map((g) => Column(
                             crossAxisAlignment: CrossAxisAlignment.start,

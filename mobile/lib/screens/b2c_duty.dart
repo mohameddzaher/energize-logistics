@@ -6,6 +6,7 @@ import '../services/live.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import '../ui/search_field.dart';
 import '../ui/live_shot.dart';
 
 /// تفقُّد بداية الدوام — شاشةُ المشرف على الهاتف.
@@ -46,6 +47,7 @@ class _B2cDutyScreenState extends State<B2cDutyScreen> {
   List<Map<String, dynamic>> _bikes = [];
   String _mode = 'reps';
   String _q = '';
+  final _searchCtl = TextEditingController(); // النصُّ يبقى مطابقًا لـ_q بعد التحديث الحيّ
   bool _loading = true;
   String? _error;
   late final void Function() _onLive;
@@ -61,6 +63,7 @@ class _B2cDutyScreenState extends State<B2cDutyScreen> {
   @override
   void dispose() {
     Live.instance.off('b2c:duty', _onLive);
+    _searchCtl.dispose();
     super.dispose();
   }
 
@@ -147,6 +150,7 @@ class _B2cDutyScreenState extends State<B2cDutyScreen> {
                         ])
                       : ListView(
                           padding: const EdgeInsets.fromLTRB(14, 12, 14, 24),
+                          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                           children: [
                             // التفقّدُ بالمندوب أو بالدبّاب.
                             Row(children: [
@@ -164,14 +168,13 @@ class _B2cDutyScreenState extends State<B2cDutyScreen> {
                               ],
                             ]),
                             const SizedBox(height: 10),
-                            TextField(
+                            SearchField(
+                              controller: _searchCtl,
+                              dense: true,
                               onChanged: (v) => setState(() => _q = v),
-                              decoration: InputDecoration(
-                                isDense: true, prefixIcon: const Icon(Icons.search),
-                                hintText: bikesMode
-                                    ? tr('ابحث باللوحة أو الراكب أو المفوَّض…', 'Search plate, rider or authorised person…')
-                                    : tr('ابحث بالاسم أو الهوية أو اللوحة…', 'Search name, ID or plate…'),
-                              ),
+                              hint: bikesMode
+                                  ? tr('ابحث باللوحة أو الراكب أو المفوَّض…', 'Search plate, rider or authorised person…')
+                                  : tr('ابحث بالاسم أو الهوية أو اللوحة…', 'Search name, ID or plate…'),
                             ),
                             const SizedBox(height: 10),
                             Row(children: [

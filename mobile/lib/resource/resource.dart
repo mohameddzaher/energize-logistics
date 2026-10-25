@@ -8,6 +8,7 @@ import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import '../ui/export_sheet.dart';
+import '../ui/search_field.dart';
 
 /// The native CRUD engine: one generic screen that gives ANY system resource
 /// a full native page — list + Arabic-folded search + create + edit + delete,
@@ -195,6 +196,7 @@ class _ResourceScreenState extends State<ResourceScreen> {
   bool _loadingMore = false;
   String? _error;
   String _q = '';
+  final _searchCtl = TextEditingController();
   String _filter = '';        // '' = الكل ؛ وإلا قيمة filterField المختارة
   _Sort _sort = _Sort.none;
   int _limit = 200;           // يزيد عند «تحميل المزيد» — بدل القص الصامت
@@ -226,6 +228,7 @@ class _ResourceScreenState extends State<ResourceScreen> {
   @override
   void dispose() {
     _searchTimer?.cancel();
+    _searchCtl.dispose();
     Live.instance.off(cfg.liveEvent, _onLive);
     for (final e in cfg.extraLiveEvents) { Live.instance.off(e, _onLive); }
     super.dispose();
@@ -239,7 +242,9 @@ class _ResourceScreenState extends State<ResourceScreen> {
     _searchTimer = Timer(const Duration(milliseconds: 350), () { if (mounted) _load(); });
   }
 
+  int _seq = 0; // الأحدثُ وحدَه يُكتب: بحثٌ أقدمُ يصل متأخّرًا لا يمحو نتيجةَ الأحدث
   Future<void> _load() async {
+    final mine = ++_seq;
     try {
       final qs = [
         if (cfg.listQuery.isNotEmpty) cfg.listQuery,
@@ -247,7 +252,7 @@ class _ResourceScreenState extends State<ResourceScreen> {
         if (cfg.serverSearch && _q.trim().isNotEmpty) 'q=${Uri.encodeQueryComponent(_q.trim())}',
       ].join('&');
       final d = await Api.instance.get('${cfg.endpoint}?$qs');
-      if (!mounted) return;
+      if (!mounted || mine != _seq) return;
       // نتحمّل أي شكل استجابة: {listKey:[...]} أو مصفوفة مباشرة — بلا كراش.
       final raw = d is Map ? d[cfg.listKey] : (d is List ? d : null);
       setState(() {
@@ -257,7 +262,7 @@ class _ResourceScreenState extends State<ResourceScreen> {
         _error = null;
       });
     } catch (e) {
-      if (mounted) setState(() { _loading = false; _loadingMore = false; _error = e.toString(); });
+      if (mounted && mine == _seq) setState(() { _loading = false; _loadingMore = false; _error = e.toString(); });
     }
   }
 
@@ -558,35 +563,34 @@ class _ResourceScreenState extends State<ResourceScreen> {
               label: Text(tr('إضافة', 'Add')),
             )
           : null,
-      body: _loading
-          ? ListView(padding: const EdgeInsets.all(14), children: const [
-              Shimmer(height: 48), SizedBox(height: 10), Shimmer(), SizedBox(height: 10),
-              Shimmer(), SizedBox(height: 10), Shimmer(),
-            ])
-          : _error != null
-              ? ErrorRetry(message: _error!, onRetry: () { setState(() => _loading = true); _load(); })
-              : Column(children: [
+      // خانةُ البحث ثابتةٌ فوق، لا تُستبدَل وقتَ التحميل أو الخطأ — كانت تُرسَم
+      // من جديدٍ فارغةً والكلمةُ ما زالت تُرشِّح، فيختفي المحتوى ولا يُمسَح.
+      body: Column(children: [
                   Padding(
                     padding: const EdgeInsets.fromLTRB(14, 12, 14, 4),
-                    child: TextField(
+                    child: SearchField(
+                      controller: _searchCtl,
                       onChanged: (v) {
                         setState(() => _q = v);
                         if (cfg.serverSearch) _searchDebounced();
                       },
-                      decoration: InputDecoration(
-                        hintText: cfg.searchHint != null ? tr(cfg.searchHint!.$1, cfg.searchHint!.$2) : tr('ابحث…', 'Search…'),
-                        hintMaxLines: 2,
-                        prefixIcon: const Icon(Icons.search),
-                        suffixText: '${filtered.length}',
-                      ),
+                      hint: cfg.searchHint != null ? tr(cfg.searchHint!.$1, cfg.searchHint!.$2) : null,
+                      suffixText: _loading ? null : '${filtered.length}',
                     ),
                   ),
                   Expanded(
-                    child: RefreshIndicator(
+                    child: _loading
+          ? ListView(padding: const EdgeInsets.all(14), children: const [
+              Shimmer(), SizedBox(height: 10), Shimmer(), SizedBox(height: 10), Shimmer(),
+            ])
+          : _error != null
+              ? ErrorRetry(message: _error!, onRetry: () { setState(() => _loading = true); _load(); })
+              : RefreshIndicator(
                       onRefresh: _load,
                       child: filtered.isEmpty
                           ? EmptyState(icon: cfg.icon, title: tr('لا توجد بيانات مطابقة', 'No matches'))
                           : ListView.separated(
+                              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                               padding: const EdgeInsets.fromLTRB(14, 8, 14, 90),
                               // صف إضافي في النهاية لزر «تحميل المزيد» عندما نكون على الحدّ.
                               itemCount: filtered.length + ((_rows.length >= _limit && _filter.isEmpty && q.isEmpty) ? 1 : 0),
@@ -1065,10 +1069,9 @@ class _LookupPickerState extends State<_LookupPicker> {
           ),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 14),
-            child: TextField(
+            child: SearchField(
               autofocus: true,
               onChanged: (v) { setState(() => _q = v); _onQueryChanged(); },
-              decoration: InputDecoration(hintText: tr('ابحث…', 'Search…'), prefixIcon: const Icon(Icons.search)),
             ),
           ),
           Expanded(

@@ -6,6 +6,7 @@ import '../services/live.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import '../ui/search_field.dart';
 import '../ui/customs_link.dart';
 import '../ui/report_follow_ups.dart';
 import 'collection_attachments.dart';
@@ -138,6 +139,7 @@ class _CollectionsReceivablesScreenState extends State<CollectionsReceivablesScr
   int _seq = 0;
   void Function()? _onLive;
   final _search = TextEditingController();
+  Timer? _searchDeb; // البحثُ أثناء الكتابة — و✕ يُعيد القائمة كاملة
 
   @override
   void initState() {
@@ -151,6 +153,7 @@ class _CollectionsReceivablesScreenState extends State<CollectionsReceivablesScr
   void dispose() {
     if (_onLive != null) Live.instance.off('collections:changed', _onLive!);
     _search.dispose();
+    _searchDeb?.cancel();
     super.dispose();
   }
 
@@ -213,12 +216,13 @@ class _CollectionsReceivablesScreenState extends State<CollectionsReceivablesScr
                   if (picked.isNotEmpty) TextButton(onPressed: () => set(picked.clear), child: Text(tr('مسح', 'Clear'))),
                 ]),
                 if (opts.length > 8)
-                  TextField(
-                    decoration: InputDecoration(isDense: true, prefixIcon: const Icon(Icons.search, size: 18), hintText: tr('ابحث…', 'Search…')),
+                  SearchField(
+                    dense: true,
+                    hint: tr('ابحث…', 'Search…'),
                     onChanged: (v) => set(() => search = v.trim()),
                   ),
                 Flexible(
-                  child: ListView(shrinkWrap: true, children: [
+                  child: ListView(shrinkWrap: true, keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag, children: [
                     for (final o in shown)
                       CheckboxListTile(
                         dense: true,
@@ -230,7 +234,7 @@ class _CollectionsReceivablesScreenState extends State<CollectionsReceivablesScr
                         secondary: Text('${o['count'] ?? 0}', style: const TextStyle(fontSize: 12, color: T.inkFaint)),
                       ),
                     if (shown.isEmpty)
-                      Padding(padding: const EdgeInsets.all(18), child: Text(tr('لا قيم', 'No values'), textAlign: TextAlign.center, style: const TextStyle(color: T.inkFaint))),
+                      Padding(padding: const EdgeInsets.all(18), child: Text(search.isNotEmpty ? tr('لا نتائج مطابقة', 'No matches') : tr('لا قيم', 'No values'), textAlign: TextAlign.center, style: const TextStyle(color: T.inkFaint))),
                   ]),
                 ),
                 const SizedBox(height: 8),
@@ -383,18 +387,17 @@ class _CollectionsReceivablesScreenState extends State<CollectionsReceivablesScr
             }
             return false;
           },
-          child: ListView(padding: const EdgeInsets.all(14), children: [
+          child: ListView(padding: const EdgeInsets.all(14), keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag, children: [
             if (chips.isNotEmpty) Wrap(spacing: 6, runSpacing: 6, children: chips),
             const SizedBox(height: 8),
-            TextField(
+            SearchField(
               controller: _search,
-              textInputAction: TextInputAction.search,
-              decoration: InputDecoration(
-                isDense: true,
-                prefixIcon: const Icon(Icons.search, size: 18),
-                hintText: tr('رقم الفاتورة أو الكشف أو العميل…', 'Number, customer or code…'),
-              ),
-              onSubmitted: (v) { _q = v.trim(); _load(); },
+              dense: true,
+              hint: tr('رقم الفاتورة أو الكشف أو العميل…', 'Number, customer or code…'),
+              onChanged: (v) {
+                _searchDeb?.cancel();
+                _searchDeb = Timer(const Duration(milliseconds: 350), () { if (!mounted || v.trim() == _q) return; _q = v.trim(); _load(); });
+              },
             ),
             const SizedBox(height: 8),
             SizedBox(
@@ -419,7 +422,7 @@ class _CollectionsReceivablesScreenState extends State<CollectionsReceivablesScr
             else if (_error != null && _rows.isEmpty)
               ErrorRetry(message: _error!, onRetry: _load)
             else if (_rows.isEmpty)
-              EmptyState(icon: Icons.inbox_outlined, title: tr('لا صفوف', 'No rows'))
+              EmptyState(icon: Icons.inbox_outlined, title: _q.isNotEmpty ? tr('لا نتائج مطابقة', 'No matches') : tr('لا صفوف', 'No rows'))
             else
               ..._rows.map(_row),
             if (_more) const Padding(padding: EdgeInsets.all(12), child: Center(child: CircularProgressIndicator(strokeWidth: 2))),
@@ -631,6 +634,8 @@ class _CollectionsCasesScreenState extends State<CollectionsCasesScreen> {
   String _open = '';
   Map<String, dynamic>? _mini;
   Timer? _tick;
+  Timer? _searchDeb; // مستقلٌّ عن مؤقِّت التحديث الحيّ — كان يُلغي بحثًا مُنتظِرًا
+  final _searchCtl = TextEditingController(); // النصُّ يبقى مطابقًا لـ_q
   void Function()? _onLive;
 
   @override
@@ -652,6 +657,8 @@ class _CollectionsCasesScreenState extends State<CollectionsCasesScreen> {
       Live.instance.off(e, _onLive!);
     }
     _tick?.cancel();
+    _searchDeb?.cancel();
+    _searchCtl.dispose();
     super.dispose();
   }
 
@@ -882,15 +889,16 @@ class _CollectionsCasesScreenState extends State<CollectionsCasesScreen> {
               ? ErrorRetry(message: _error!, onRetry: _load)
               : RefreshIndicator(
                   onRefresh: _load,
-                  child: ListView(padding: const EdgeInsets.all(14), children: [
+                  child: ListView(padding: const EdgeInsets.all(14), keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag, children: [
                     Row(children: [card('negotiating'), const SizedBox(width: 10), card('legal')]),
                     const SizedBox(height: 10),
-                    TextField(
-                      textInputAction: TextInputAction.search,
-                      decoration: InputDecoration(isDense: true, prefixIcon: const Icon(Icons.search, size: 18), hintText: tr('اسم العميل أو كوده…', 'Customer or code…')),
+                    SearchField(
+                      controller: _searchCtl,
+                      dense: true,
+                      hint: tr('اسم العميل أو كوده…', 'Customer or code…'),
                       onChanged: (v) {
-                        _tick?.cancel();
-                        _tick = Timer(const Duration(milliseconds: 350), () { _q = v.trim(); _load(); });
+                        _searchDeb?.cancel();
+                        _searchDeb = Timer(const Duration(milliseconds: 350), () { _q = v.trim(); _load(); });
                       },
                     ),
                     const SizedBox(height: 8),
@@ -915,7 +923,7 @@ class _CollectionsCasesScreenState extends State<CollectionsCasesScreen> {
                       child: Text(tr('${parties.length} عميل · ${_money(totalValue)}', '${parties.length} customers · ${_money(totalValue)}'),
                           style: const TextStyle(fontSize: 12, color: T.inkSoft)),
                     ),
-                    if (parties.isEmpty) EmptyState(icon: Icons.gavel_rounded, title: tr('لا عملاء تحت التفاوض أو في القضايا', 'No customers in cases')),
+                    if (parties.isEmpty) EmptyState(icon: Icons.gavel_rounded, title: _q.isNotEmpty ? tr('لا نتائج مطابقة', 'No matches') : tr('لا عملاء تحت التفاوض أو في القضايا', 'No customers in cases')),
                     for (final p in parties)
                       Padding(
                         padding: const EdgeInsets.only(bottom: 8),

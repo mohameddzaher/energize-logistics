@@ -6,6 +6,7 @@ import '../ui/app_scaffold.dart';
 import '../ui/export_sheet.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import '../ui/search_field.dart';
 import 'performance_evaluations.dart';
 
 /// تقييم الأداء (للإدارة العليا) — نظرة كل الأقسام: التغطية، متوسط النسبة،
@@ -22,6 +23,8 @@ class _PerformanceOverviewScreenState extends State<PerformanceOverviewScreen> {
   bool _loading = true;
   String? _error;
   String _q = '';
+  // متحكِّمُ البحث عند الشاشة: الخانةُ وسطَ قائمةٍ تُبنى من جديد، فلا يضيع نصُّها والكلمةُ تُرشِّح.
+  final _searchCtl = TextEditingController();
   // الفترة ربعٌ كالويب (currentPeriod) ويُتنقّل بينها بالأسهم.
   int _year = DateTime.now().year;
   int _quarter = (DateTime.now().month - 1) ~/ 3 + 1;
@@ -45,6 +48,7 @@ class _PerformanceOverviewScreenState extends State<PerformanceOverviewScreen> {
   @override
   void dispose() {
     Live.instance.off('performance:updated', _onLive);
+    _searchCtl.dispose();
     super.dispose();
   }
 
@@ -116,7 +120,7 @@ class _PerformanceOverviewScreenState extends State<PerformanceOverviewScreen> {
               ? ErrorRetry(message: _error!, onRetry: () { setState(() => _loading = true); _load(); })
               : RefreshIndicator(
                   onRefresh: _load,
-                  child: ListView(padding: const EdgeInsets.all(14), children: [
+                  child: ListView(keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag, padding: const EdgeInsets.all(14), children: [
                     AppCard(
                       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                       child: Row(children: [
@@ -168,15 +172,12 @@ class _PerformanceOverviewScreenState extends State<PerformanceOverviewScreen> {
                       ),
                     ],
                     const SizedBox(height: 14),
-                    TextField(
-                      onChanged: (v) => setState(() => _q = v),
-                      decoration: InputDecoration(hintText: tr('ابحث بالقسم…', 'Search department…'), prefixIcon: const Icon(Icons.search)),
-                    ),
+                    SearchField(controller: _searchCtl, hint: tr('ابحث بالقسم…', 'Search department…'), onChanged: (v) => setState(() => _q = v)),
                     const SizedBox(height: 10),
                     Text(tr('الأقسام', 'Departments'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
                     const SizedBox(height: 8),
                     if (deps.isEmpty)
-                      EmptyState(icon: Icons.workspaces_outline, title: tr('لا توجد أقسام', 'No departments'))
+                      EmptyState(icon: Icons.workspaces_outline, title: _q.trim().isNotEmpty ? tr('لا نتائج مطابقة للبحث', 'No matches') : tr('لا توجد أقسام', 'No departments'))
                     else
                       ...deps.map((dep) {
                         final cov = (dep['coverage'] is num) ? (dep['coverage'] as num) : 0;

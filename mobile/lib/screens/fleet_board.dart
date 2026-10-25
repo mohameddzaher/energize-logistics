@@ -5,6 +5,7 @@ import '../services/live.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import '../ui/search_field.dart';
 
 /// لوحة إدارة الأسطول — the vehicle cards board, native: every truck a card
 /// colored by its computed state (late/arrived/moving/preparing/idle),
@@ -35,6 +36,8 @@ class _FleetBoardScreenState extends State<FleetBoardScreen> {
   String _filter = '';
   String _city = '';
   String _q = '';
+  // الخانةُ تُهدَم مع التحميل والتمرير — النصُّ في متحكِّمٍ يبقى مع الكلمة.
+  final _searchCtl = TextEditingController();
   late final void Function() _onLive;
 
   @override
@@ -56,6 +59,7 @@ class _FleetBoardScreenState extends State<FleetBoardScreen> {
     Live.instance.off('vreg:updated', _onLive);
     Live.instance.off('fleet:drivers', _onLive);
     Live.instance.off('fleet:vehicles', _onLive);
+    _searchCtl.dispose();
     super.dispose();
   }
 
@@ -135,14 +139,13 @@ class _FleetBoardScreenState extends State<FleetBoardScreen> {
                   onRefresh: _load,
                   child: ListView(
                     padding: const EdgeInsets.all(14),
+                    keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                     children: [
                       // بحث شامل: لوحة/سائق/عميل/مدينة/بوليصة/مشرف.
-                      TextField(
+                      SearchField(
+                        controller: _searchCtl,
                         onChanged: (v) => setState(() => _q = v),
-                        decoration: InputDecoration(
-                          hintText: tr('ابحث باللوحة أو السائق أو العميل أو الوجهة…', 'Search plate, driver, customer, city…'),
-                          prefixIcon: const Icon(Icons.search),
-                        ),
+                        hint: tr('ابحث باللوحة أو السائق أو العميل أو الوجهة…', 'Search plate, driver, customer, city…'),
                       ),
                       const SizedBox(height: 10),
                       // State filter chips — tap to focus, tap again to clear.

@@ -4,6 +4,7 @@ import '../services/lang.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import '../ui/search_field.dart';
 
 /// الحسابات — شجرة الحسابات ودفتر اليومية (عرض وإنشاء قيد متوازن).
 
@@ -33,9 +34,13 @@ class _AccountsScreenState extends State<AccountsScreen> {
   String? _error;
   String _q = '';
   String _type = '';
+  final _searchCtl = TextEditingController(); // النصُّ يبقى مطابقًا لـ_q بعد التحميل
 
   @override
   void initState() { super.initState(); _load(); }
+
+  @override
+  void dispose() { _searchCtl.dispose(); super.dispose(); }
 
   Future<void> _load() async {
     try {
@@ -170,9 +175,11 @@ class _AccountsScreenState extends State<AccountsScreen> {
               : Column(children: [
                   Padding(
                     padding: const EdgeInsets.fromLTRB(14, 12, 14, 0),
-                    child: TextField(
+                    child: SearchField(
+                      controller: _searchCtl,
                       onChanged: (v) => setState(() => _q = v),
-                      decoration: InputDecoration(hintText: tr('ابحث بالكود أو الاسم…', 'Search…'), prefixIcon: const Icon(Icons.search), suffixText: '${filtered.length}'),
+                      hint: tr('ابحث بالكود أو الاسم…', 'Search…'),
+                      suffixText: '${filtered.length}',
                     ),
                   ),
                   Padding(
@@ -204,8 +211,9 @@ class _AccountsScreenState extends State<AccountsScreen> {
                     child: RefreshIndicator(
                       onRefresh: _load,
                       child: filtered.isEmpty
-                          ? ListView(children: [const SizedBox(height: 80), EmptyState(icon: Icons.account_tree_outlined, title: tr('لا توجد حسابات', 'No accounts'))])
+                          ? ListView(keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag, children: [const SizedBox(height: 80), EmptyState(icon: Icons.account_tree_outlined, title: q.isNotEmpty ? tr('لا نتائج مطابقة', 'No matches') : tr('لا توجد حسابات', 'No accounts'))])
                           : ListView.separated(
+                              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                               padding: const EdgeInsets.all(14),
                               itemCount: filtered.length,
                               separatorBuilder: (_, __) => const SizedBox(height: 8),
@@ -257,9 +265,13 @@ class _JournalScreenState extends State<JournalScreen> {
   bool _loading = true;
   String? _error;
   String _q = '';
+  final _searchCtl = TextEditingController(); // النصُّ يبقى مطابقًا لـ_q بعد التحميل
 
   @override
   void initState() { super.initState(); _load(); }
+
+  @override
+  void dispose() { _searchCtl.dispose(); super.dispose(); }
 
   Future<void> _load() async {
     try {
@@ -311,11 +323,12 @@ class _JournalScreenState extends State<JournalScreen> {
                   child: Column(children: [
                     Padding(
                       padding: const EdgeInsets.all(14),
-                      child: TextField(autofocus: true, onChanged: (v) => setP(() => q = v),
-                          decoration: InputDecoration(hintText: tr('ابحث عن الحساب…', 'Search account…'), prefixIcon: const Icon(Icons.search))),
+                      child: SearchField(autofocus: true, onChanged: (v) => setP(() => q = v),
+                          hint: tr('ابحث عن الحساب…', 'Search account…')),
                     ),
                     Expanded(
                       child: ListView.builder(
+                        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                         itemCount: list.length,
                         itemBuilder: (p, i) => ListTile(
                           dense: true,
@@ -450,17 +463,19 @@ class _JournalScreenState extends State<JournalScreen> {
               : Column(children: [
                   Padding(
                     padding: const EdgeInsets.fromLTRB(14, 12, 14, 4),
-                    child: TextField(
+                    child: SearchField(
+                      controller: _searchCtl,
                       onChanged: (v) => setState(() => _q = v),
-                      decoration: InputDecoration(hintText: tr('ابحث بالرقم أو البيان…', 'Search…'), prefixIcon: const Icon(Icons.search)),
+                      hint: tr('ابحث بالرقم أو البيان…', 'Search…'),
                     ),
                   ),
                   Expanded(
                     child: RefreshIndicator(
                       onRefresh: _load,
                       child: filtered.isEmpty
-                          ? ListView(children: [const SizedBox(height: 80), EmptyState(icon: Icons.menu_book_outlined, title: tr('لا توجد قيود', 'No entries'))])
+                          ? ListView(keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag, children: [const SizedBox(height: 80), EmptyState(icon: Icons.menu_book_outlined, title: q.isNotEmpty ? tr('لا نتائج مطابقة', 'No matches') : tr('لا توجد قيود', 'No entries'))])
                           : ListView.separated(
+                              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                               padding: const EdgeInsets.all(14),
                               itemCount: filtered.length,
                               separatorBuilder: (_, __) => const SizedBox(height: 8),

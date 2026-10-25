@@ -7,6 +7,7 @@ import '../ui/app_scaffold.dart';
 import '../ui/export_sheet.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import '../ui/search_field.dart';
 import 'collections_party.dart';
 
 /// الفريق — أداءُ كلّ موظّف تحصيل، ومَن يتولّى أيَّ حساب (كصفحة الموقع
@@ -50,6 +51,7 @@ class _CollectionsTeamScreenState extends State<CollectionsTeamScreen> {
   String _from = '', _to = '';
   String _officerFilter = '';
   String _search = '';
+  final _searchCtl = TextEditingController(); // النصُّ يبقى مطابقًا لـ_search إن خرجت الخانةُ من الشاشة
   final Set<String> _sel = {};
   String _assignTo = '';
   bool _saving = false;
@@ -64,7 +66,7 @@ class _CollectionsTeamScreenState extends State<CollectionsTeamScreen> {
   }
 
   @override
-  void dispose() { _deb?.cancel(); super.dispose(); }
+  void dispose() { _deb?.cancel(); _searchCtl.dispose(); super.dispose(); }
 
   Future<void> _loadPerf() async {
     final mine = ++_perfSeq;
@@ -226,7 +228,7 @@ class _CollectionsTeamScreenState extends State<CollectionsTeamScreen> {
           ? ListView(padding: const EdgeInsets.all(14), children: const [Shimmer(height: 120), SizedBox(height: 10), Shimmer(height: 200)])
           : RefreshIndicator(
               onRefresh: () => Future.wait([_loadPerf(), _loadRows()]),
-              child: ListView(padding: const EdgeInsets.fromLTRB(14, 12, 14, 40), children: [
+              child: ListView(padding: const EdgeInsets.fromLTRB(14, 12, 14, 40), keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag, children: [
                 Text(tr('أداءُ كل موظف تحصيل، ومَن يتولّى أي عميل.', 'How each collection officer is doing, and who handles which customer.'),
                     style: const TextStyle(fontSize: 12.5, color: T.inkFaint)),
                 if (_error != null) Padding(padding: const EdgeInsets.only(top: 8), child: ErrorRetry(message: _error!, onRetry: _loadPerf)),
@@ -275,9 +277,11 @@ class _CollectionsTeamScreenState extends State<CollectionsTeamScreen> {
                       child: Text(allSel ? tr('إلغاء التحديد', 'Clear') : tr('تحديد الكل', 'Select all')),
                     ),
                   ]),
-                  TextField(
+                  SearchField(
+                    controller: _searchCtl,
+                    dense: true,
                     onChanged: (v) { _deb?.cancel(); _deb = Timer(const Duration(milliseconds: 350), () { _search = v.trim(); _loadRows(); }); },
-                    decoration: InputDecoration(hintText: tr('ابحث عن حساب…', 'Find an account…'), prefixIcon: const Icon(Icons.search), isDense: true),
+                    hint: tr('ابحث عن حساب…', 'Find an account…'),
                   ),
                   if (_sel.isNotEmpty) ...[
                     const SizedBox(height: 8),
@@ -307,6 +311,8 @@ class _CollectionsTeamScreenState extends State<CollectionsTeamScreen> {
                   ],
                   if (_msg.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 8), child: Text(_msg, style: const TextStyle(color: T.success, fontSize: 12.5))),
                   const SizedBox(height: 8),
+                  if (_rows.isEmpty && _search.isNotEmpty)
+                    Padding(padding: const EdgeInsets.all(16), child: Center(child: Text(tr('لا نتائج مطابقة', 'No matches'), style: const TextStyle(color: T.inkFaint)))),
                   for (final r in _rows)
                     Card(
                       margin: const EdgeInsets.only(bottom: 6),

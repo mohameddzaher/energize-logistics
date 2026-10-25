@@ -10,6 +10,7 @@ import '../ui/app_scaffold.dart';
 import '../ui/file_upload.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import '../ui/search_field.dart';
 import 'customs_detail.dart';
 
 /// خطّةُ العمل (JP) — نظيرُ `JpBoard` و`JpDashboard` في الموقع.
@@ -1234,11 +1235,12 @@ class _LinkSearchState extends State<_LinkSearch> {
   String? _error;
   Timer? _debounce;
   int _seq = 0;
+  final _searchCtl = TextEditingController();
 
   @override
   void initState() { super.initState(); _load(''); }
   @override
-  void dispose() { _debounce?.cancel(); super.dispose(); }
+  void dispose() { _debounce?.cancel(); _searchCtl.dispose(); super.dispose(); }
 
   Future<void> _load(String q) async {
     final mine = ++_seq;
@@ -1261,20 +1263,20 @@ class _LinkSearchState extends State<_LinkSearch> {
         builder: (c, scroll) => Column(children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(14, 14, 14, 6),
-            child: TextField(
-              autofocus: true,
-              onChanged: (v) { _debounce?.cancel(); _debounce = Timer(const Duration(milliseconds: 300), () => _load(v)); },
-              decoration: InputDecoration(hintText: '${widget.title}…', prefixIcon: const Icon(Icons.search)),
+            child: SearchField(
+              controller: _searchCtl, autofocus: true,
+              onChanged: (v) { _debounce?.cancel(); _debounce = Timer(const Duration(milliseconds: 350), () => _load(v)); },
+              hint: '${widget.title}…',
             ),
           ),
           Expanded(child: _loading
               ? const Center(child: CircularProgressIndicator())
               : _error != null
-                  ? ErrorRetry(message: _error!, onRetry: () => _load(''))
+                  ? ErrorRetry(message: _error!, onRetry: () => _load(_searchCtl.text))
                   : _rows.isEmpty
                       ? EmptyState(icon: Icons.search_off_rounded, title: tr('لا نتائج', 'No results'))
                       : ListView.builder(
-                          controller: scroll, padding: const EdgeInsets.fromLTRB(8, 6, 8, 20), itemCount: _rows.length,
+                          controller: scroll, keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag, padding: const EdgeInsets.fromLTRB(8, 6, 8, 20), itemCount: _rows.length,
                           itemBuilder: (c2, i) => ListTile(
                             title: Text((_rows[i]['label'] ?? '').toString(), style: const TextStyle(fontSize: 14)),
                             onTap: () => Navigator.pop(c, _rows[i]),

@@ -3,6 +3,7 @@
 // Media Go تطلب تصويرَ إعلانٍ على مركباتنا، ونحن نصوّر لكلّ مركبةٍ تحقّقَها (صورًا أو
 // فيديو حتى ١٥ ثانية) ونراجعه ثمّ «تمّ» فيصلها مركبةً مركبة، وتردّ بملاحظة.
 // والحسابُ كلُّه في الخادم (backend/controllers/mediagoAdController).
+import 'dart:async';
 import 'dart:convert';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -15,6 +16,7 @@ import '../services/live.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import '../ui/search_field.dart';
 
 const _api = '/api/b2c/mediago-ads';
 String _url(String u) => u.startsWith('http') ? u : '${AppConfig.apiBase}$u';
@@ -49,6 +51,7 @@ class _MediaGoAdsScreenState extends State<MediaGoAdsScreen> {
   final Map<String, String> _f = {};
   final _q = TextEditingController();
   int _seq = 0;
+  Timer? _debounce;
   late final void Function() _onLive;
 
   @override
@@ -62,6 +65,7 @@ class _MediaGoAdsScreenState extends State<MediaGoAdsScreen> {
   @override
   void dispose() {
     Live.instance.off('mediago:ad', _onLive);
+    _debounce?.cancel();
     _q.dispose();
     super.dispose();
   }
@@ -102,9 +106,10 @@ class _MediaGoAdsScreenState extends State<MediaGoAdsScreen> {
             ? ListView(padding: const EdgeInsets.all(14), children: const [Shimmer(height: 120), SizedBox(height: 10), Shimmer(height: 120)])
             : RefreshIndicator(
                 onRefresh: _load,
-                child: ListView(padding: const EdgeInsets.fromLTRB(14, 12, 14, 90), children: [
-                  TextField(controller: _q, onChanged: (_) => _load(),
-                      decoration: InputDecoration(isDense: true, prefixIcon: const Icon(Icons.search), hintText: tr('ابحث بالإعلان أو الطلب أو اللوحة…', 'Search ad, request or plate…'))),
+                child: ListView(keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag, padding: const EdgeInsets.fromLTRB(14, 12, 14, 90), children: [
+                  // بحثُ الخادم بتأخيرٍ قصير — وعدّادُ الطلبات يقبل آخرَ ردٍّ وحدَه.
+                  SearchField(controller: _q, dense: true, hint: tr('ابحث بالإعلان أو الطلب أو اللوحة…', 'Search ad, request or plate…'),
+                      onChanged: (_) { _debounce?.cancel(); _debounce = Timer(const Duration(milliseconds: 350), _load); }),
                   const SizedBox(height: 8),
                   SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: [
                     for (final s in _maps(meta?['status']))
@@ -119,7 +124,7 @@ class _MediaGoAdsScreenState extends State<MediaGoAdsScreen> {
                       chip('${tr('${m['ar']}', '${m['en']}')} ${c('location', '${m['key']}')}', _f['location'] == m['key'], () => _set('location', '${m['key']}'), icon: Icons.place_outlined),
                   ])),
                   const SizedBox(height: 8),
-                  if (items.isEmpty) Padding(padding: const EdgeInsets.all(30), child: EmptyState(icon: Icons.movie_outlined, title: tr('لا طلبات هنا', 'No requests here'))),
+                  if (items.isEmpty) Padding(padding: const EdgeInsets.all(30), child: EmptyState(icon: Icons.movie_outlined, title: _q.text.trim().isNotEmpty ? tr('لا نتائج مطابقة للبحث', 'No matches') : tr('لا طلبات هنا', 'No requests here'))),
                   // جدولٌ لا بطاقات (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢) — والضغطُ على الصفّ يفتح صفحتَه.
                   if (items.isNotEmpty)
                     AppCard(
@@ -185,11 +190,18 @@ class _MediaGoAdCreateScreenState extends State<MediaGoAdCreateScreen> {
   final List<Map<String, dynamic>> _picked = [];
   List<Map<String, dynamic>> _opts = const [];
   bool _busy = false;
+  // آخرُ بحثٍ وحدَه يُكتب — ردٌّ أقدمُ يصل متأخّرًا لا يمحو الأحدث.
+  int _vSeq = 0;
+  Timer? _vDebounce;
+
+  @override
+  void dispose() { _vDebounce?.cancel(); super.dispose(); }
 
   Future<void> _search() async {
+    final mine = ++_vSeq;
     try {
       final d = await Api.instance.get('$_api/vehicles${_vq.text.trim().isEmpty ? '' : '?q=${Uri.encodeQueryComponent(_vq.text.trim())}'}');
-      if (mounted) setState(() => _opts = _maps(d['items']));
+      if (mounted && mine == _vSeq) setState(() => _opts = _maps(d['items']));
     } catch (_) {}
   }
 
@@ -238,7 +250,7 @@ class _MediaGoAdCreateScreenState extends State<MediaGoAdCreateScreen> {
         if (_company == 'energize') ...[
           Text('${tr('المركبات *', 'Vehicles *')} (${_picked.length})', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
           if (_picked.isNotEmpty) Wrap(spacing: 6, children: [for (final v in _picked) InputChip(label: Text('${v['plateNumber']}'), onDeleted: () => setState(() => _picked.remove(v)))]),
-          TextField(controller: _vq, onChanged: (_) => _search(), decoration: InputDecoration(isDense: true, prefixIcon: const Icon(Icons.search), hintText: tr('ابحث برقم المركبة…', 'Search vehicle number…'))),
+          SearchField(controller: _vq, dense: true, hint: tr('ابحث برقم المركبة…', 'Search vehicle number…'), onChanged: (_) { _vDebounce?.cancel(); _vDebounce = Timer(const Duration(milliseconds: 350), _search); }),
           SizedBox(height: 220, child: ListView(children: [
             for (final v in _opts) CheckboxListTile(
               dense: true, value: _picked.any((x) => x['_id'] == v['_id']),

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -9,6 +10,7 @@ import '../ui/app_scaffold.dart';
 import '../ui/export_sheet.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import '../ui/search_field.dart';
 
 /// بريد الشركة — صناديق البريد على هوستنجر (@energize-logistics.com).
 ///
@@ -33,6 +35,9 @@ class _ItEmailsScreenState extends State<ItEmailsScreen> {
   bool _canReveal = false;
   String? _error;
   String _q = '';
+  // الخانةُ تُهدَم مع الخطأ والتحميل — النصُّ في متحكِّمٍ يبقى مع الكلمة.
+  final _searchCtl = TextEditingController();
+  Timer? _debounce;
   String _linked = '';
   String _status = '';
   String _type = '';
@@ -50,6 +55,8 @@ class _ItEmailsScreenState extends State<ItEmailsScreen> {
   @override
   void dispose() {
     Live.instance.off('it:emails', _onLive);
+    _debounce?.cancel();
+    _searchCtl.dispose();
     super.dispose();
   }
 
@@ -297,19 +304,19 @@ class _ItEmailsScreenState extends State<ItEmailsScreen> {
                   ),
                   Padding(
                     padding: const EdgeInsets.fromLTRB(14, 8, 14, 8),
-                    child: TextField(
-                      onChanged: (v) { _q = v; _load(); },
-                      decoration: InputDecoration(
-                        hintText: tr('ابحث بالاسم أو البريد…', 'name or email…'),
-                        prefixIcon: const Icon(Icons.search, size: 18), isDense: true),
+                    child: SearchField(
+                      controller: _searchCtl, dense: true,
+                      onChanged: (v) { _q = v; _debounce?.cancel(); _debounce = Timer(const Duration(milliseconds: 350), _load); },
+                      hint: tr('ابحث بالاسم أو البريد…', 'name or email…'),
                     ),
                   ),
                   Expanded(child: RefreshIndicator(
                     onRefresh: _load,
                     child: _rows.isEmpty
                         ? ListView(children: [Padding(padding: const EdgeInsets.only(top: 50),
-                            child: EmptyState(icon: Icons.mail_outline, title: tr('لا توجد صناديق', 'No mailboxes')))])
+                            child: EmptyState(icon: Icons.mail_outline, title: _q.trim().isNotEmpty ? tr('لا نتائج', 'No matches') : tr('لا توجد صناديق', 'No mailboxes')))])
                         : ListView.builder(
+                            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                             padding: const EdgeInsets.fromLTRB(14, 0, 14, 90),
                             itemCount: _rows.length,
                             itemBuilder: (c, i) {
@@ -503,17 +510,23 @@ class _ItEmailsScreenState extends State<ItEmailsScreen> {
     final search = TextEditingController();
     List<Map<String, dynamic>> found = [];
     bool busy = false;
+    // بحثٌ في الخادم: تأخيرٌ قصير، والأحدثُ وحدَه يُعرض.
+    int seq = 0;
+    Timer? deb;
     return showModalBottomSheet<Map<String, dynamic>>(
       context: ctx, isScrollControlled: true, backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (c) => StatefulBuilder(builder: (c2, setInner) {
         Future<void> run() async {
+          final my = ++seq;
           setInner(() => busy = true);
+          List<Map<String, dynamic>> res;
           try {
             final d = await Api.instance.get('/api/it/emails/employees?q=${Uri.encodeQueryComponent(search.text.trim())}');
-            found = List<Map<String, dynamic>>.from(d['employees'] ?? []);
-          } catch (_) { found = []; }
-          setInner(() => busy = false);
+            res = List<Map<String, dynamic>>.from(d['employees'] ?? []);
+          } catch (_) { res = []; }
+          if (my != seq || !c2.mounted) return;
+          setInner(() { found = res; busy = false; });
         }
         if (found.isEmpty && !busy && search.text.isEmpty) run();
         return Padding(
@@ -521,11 +534,10 @@ class _ItEmailsScreenState extends State<ItEmailsScreen> {
           child: SizedBox(
             height: MediaQuery.of(c2).size.height * 0.6,
             child: Column(children: [
-              TextField(
-                controller: search, autofocus: true,
-                onChanged: (_) => run(),
-                decoration: InputDecoration(hintText: tr('ابحث بالاسم أو الرقم الوظيفي…', 'name or employee no…'),
-                    prefixIcon: const Icon(Icons.search, size: 18), isDense: true),
+              SearchField(
+                controller: search, autofocus: true, dense: true,
+                onChanged: (_) { deb?.cancel(); deb = Timer(const Duration(milliseconds: 350), () { if (c2.mounted) run(); }); },
+                hint: tr('ابحث بالاسم أو الرقم الوظيفي…', 'name or employee no…'),
               ),
               const SizedBox(height: 8),
               ListTile(
@@ -537,7 +549,10 @@ class _ItEmailsScreenState extends State<ItEmailsScreen> {
               const Divider(height: 1),
               Expanded(child: busy
                   ? const Center(child: CircularProgressIndicator())
+                  : found.isEmpty && search.text.trim().isNotEmpty
+                  ? Center(child: Text(tr('لا نتائج', 'No matches'), style: const TextStyle(color: T.inkFaint)))
                   : ListView.separated(
+                      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                       itemCount: found.length,
                       separatorBuilder: (_, __) => const Divider(height: 1),
                       itemBuilder: (c3, i) {
@@ -557,6 +572,6 @@ class _ItEmailsScreenState extends State<ItEmailsScreen> {
           ),
         );
       }),
-    );
+    ).whenComplete(() => deb?.cancel());
   }
 }

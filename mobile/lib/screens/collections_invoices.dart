@@ -9,6 +9,7 @@ import '../ui/export_sheet.dart';
 import '../ui/report_follow_ups.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import '../ui/search_field.dart';
 import '../resource/configs.dart' show collectionsCanEdit, collectionsCanEditAmount;
 import 'collection_attachments.dart';
 import 'collection_collect.dart';
@@ -670,7 +671,7 @@ class _CollectionsInvoicesScreenState extends State<CollectionsInvoicesScreen> {
                   Expanded(
                     child: RefreshIndicator(
                       onRefresh: _load,
-                      child: ListView(padding: const EdgeInsets.fromLTRB(12, 10, 12, 20), children: [
+                      child: ListView(padding: const EdgeInsets.fromLTRB(12, 10, 12, 20), keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag, children: [
                         // ── حالةُ التحصيل — والعددُ تحت الفلاتر الأخرى ──────────
                         SizedBox(
                           height: 40,
@@ -691,13 +692,10 @@ class _CollectionsInvoicesScreenState extends State<CollectionsInvoicesScreen> {
                         const SizedBox(height: 10),
                         Row(children: [
                           Expanded(
-                            child: TextField(
+                            child: SearchField(
                               controller: _search,
-                              textInputAction: TextInputAction.search,
-                              decoration: InputDecoration(
-                                isDense: true, prefixIcon: const Icon(Icons.search, size: 18),
-                                hintText: _cash ? tr('رقم الكشف أو العميل أو السند…', 'report no., customer, voucher…') : tr('رقم الفاتورة أو العميل…', 'invoice no., customer…'),
-                              ),
+                              dense: true,
+                              hint: _cash ? tr('رقم الكشف أو العميل أو السند…', 'report no., customer, voucher…') : tr('رقم الفاتورة أو العميل…', 'invoice no., customer…'),
                               onChanged: (v) {
                                 _deb?.cancel();
                                 _deb = Timer(const Duration(milliseconds: 350), () { _q = v.trim(); _refilter(); });
@@ -764,14 +762,18 @@ class _SearchPickState extends State<_SearchPick> {
         child: Column(children: [
           Padding(
             padding: const EdgeInsets.all(12),
-            child: TextField(
+            child: SearchField(
               autofocus: true,
-              decoration: InputDecoration(isDense: true, prefixIcon: const Icon(Icons.search), hintText: widget.title),
+              dense: true,
+              hint: widget.title,
               onChanged: (v) => setState(() => _q = v.trim()),
             ),
           ),
+          if (list.isEmpty && q.isNotEmpty)
+            Padding(padding: const EdgeInsets.all(20), child: Text(tr('لا نتائج مطابقة', 'No matches'), style: const TextStyle(color: T.inkFaint))),
           Expanded(
             child: ListView.builder(
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
               itemCount: list.length,
               itemBuilder: (c, i) => ListTile(title: Text(list[i]), onTap: () => Navigator.pop(context, list[i])),
             ),

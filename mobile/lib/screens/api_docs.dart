@@ -5,6 +5,7 @@ import '../services/lang.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import '../ui/search_field.dart';
 
 /// توثيقُ الـ API — مثلُ /system/api-docs في الويب (صاحبُ الشركة، ٢٠٢٦/١٠/٢٥:
 /// «كلّ حاجة على كلّ حاجة»). الوثيقةُ نفسُها من الخادم (`/api/docs/internal.json`)،
@@ -32,12 +33,16 @@ class _ApiDocsScreenState extends State<ApiDocsScreen> {
   bool _loading = true;
   String? _error;
   String _q = '';
+  final _searchCtl = TextEditingController(); // النصُّ يبقى مطابقًا لـ_q بعد التحديث
 
   @override
   void initState() {
     super.initState();
     _load();
   }
+
+  @override
+  void dispose() { _searchCtl.dispose(); super.dispose(); }
 
   Future<void> _load() async {
     setState(() { _loading = true; _error = null; });
@@ -99,7 +104,7 @@ class _ApiDocsScreenState extends State<ApiDocsScreen> {
               ? EmptyState(icon: Icons.error_outline, title: _error!)
               : RefreshIndicator(
                   onRefresh: _load,
-                  child: ListView(padding: const EdgeInsets.all(14), children: [
+                  child: ListView(padding: const EdgeInsets.all(14), keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag, children: [
                     AppCard(
                       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                         Text(tr('يُبنى من الكود لحظةَ فتحه — أيُّ إضافةٍ أو تعديلٍ أو حذفٍ يظهر هنا مع النشر.',
@@ -129,11 +134,14 @@ class _ApiDocsScreenState extends State<ApiDocsScreen> {
                       ]),
                     ),
                     const SizedBox(height: 10),
-                    TextField(
-                      decoration: InputDecoration(prefixIcon: const Icon(Icons.search), hintText: tr('ابحث بمسارٍ أو حقل', 'Search a path or field')),
+                    SearchField(
+                      controller: _searchCtl,
+                      hint: tr('ابحث بمسارٍ أو حقل', 'Search a path or field'),
                       onChanged: (v) => setState(() => _q = v),
                     ),
                     const SizedBox(height: 10),
+                    if (groups.isEmpty && q.isNotEmpty)
+                      EmptyState(icon: Icons.search_off_rounded, title: tr('لا نتائج مطابقة', 'No matches')),
                     for (final g in groups)
                       Padding(
                         padding: const EdgeInsets.only(bottom: 8),

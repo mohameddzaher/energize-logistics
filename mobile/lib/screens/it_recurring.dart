@@ -8,6 +8,7 @@ import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import 'it_common.dart';
 import 'it_tickets.dart';
+import '../ui/search_field.dart';
 
 /// المشاكل المتكررة — تجميع التذاكر المتشابهة (بالبصمة) بعدد التكرار، لكشف
 /// الأعطال المزمنة. نفس /api/it/tickets/recurring على الويب: فلترُ التصنيف على
@@ -103,9 +104,10 @@ class _ItRecurringScreenState extends State<ItRecurringScreen> {
         Padding(
           padding: const EdgeInsets.fromLTRB(14, 12, 14, 0),
           child: Row(children: [
-            Expanded(flex: 3, child: TextField(
+            Expanded(flex: 3, child: SearchField(
+              dense: true,
               onChanged: (v) => setState(() => _q = v),
-              decoration: InputDecoration(hintText: tr('بحث في المشكلات...', 'Search problems...'), prefixIcon: const Icon(Icons.search), isDense: true),
+              hint: tr('بحث في المشكلات...', 'Search problems...'),
             )),
             const SizedBox(width: 8),
             Expanded(flex: 2, child: ItFilterDropdown(label: tr('التصنيف', 'Category'), value: _category, options: ticketCategories,
@@ -128,8 +130,9 @@ class _ItRecurringScreenState extends State<ItRecurringScreen> {
                   : RefreshIndicator(
                       onRefresh: _load,
                       child: rows.isEmpty
-                          ? ListView(children: [const SizedBox(height: 80), EmptyState(icon: Icons.check_circle_outline, title: tr('لا توجد مشكلات متكررة — وضع جيد.', 'No recurring problems — all good.'))])
+                          ? ListView(children: [const SizedBox(height: 80), EmptyState(icon: Icons.check_circle_outline, title: _q.trim().isNotEmpty ? tr('لا نتائج', 'No matches') : tr('لا توجد مشكلات متكررة — وضع جيد.', 'No recurring problems — all good.'))])
                           : ListView.separated(
+                              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                               padding: const EdgeInsets.all(14),
                               itemCount: rows.length,
                               separatorBuilder: (_, __) => const SizedBox(height: 10),

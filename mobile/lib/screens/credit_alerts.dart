@@ -6,6 +6,7 @@ import '../ui/app_scaffold.dart';
 import '../ui/export_sheet.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import '../ui/search_field.dart';
 
 /// تنبيهاتُ الائتمان — نظيرُ /system/credit-alerts في الموقع: العملاءُ الذين
 /// قاربوا حدَّهم أو تجاوزوه، من `/api/analytics/credit-alerts` نفسِها.
@@ -33,6 +34,7 @@ class _CreditAlertsScreenState extends State<CreditAlertsScreen> {
   String? _error;
   bool _loading = true;
   String _q = '';
+  final _searchCtl = TextEditingController(); // النصُّ يبقى مطابقًا لـ_q
   int _seq = 0;
   late final void Function() _onLive;
 
@@ -51,6 +53,7 @@ class _CreditAlertsScreenState extends State<CreditAlertsScreen> {
     for (final e in _events) {
       Live.instance.off(e, _onLive);
     }
+    _searchCtl.dispose();
     super.dispose();
   }
 
@@ -121,6 +124,7 @@ class _CreditAlertsScreenState extends State<CreditAlertsScreen> {
                   onRefresh: _load,
                   child: ListView(
                     padding: const EdgeInsets.fromLTRB(14, 10, 14, 24),
+                    keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                     children: [
                       Text(tr('العملاء الذين يقتربون من حد الائتمان أو تجاوزوه', 'Customers approaching or exceeding credit limits'),
                           style: const TextStyle(fontSize: 12, color: T.inkSoft)),
@@ -131,13 +135,15 @@ class _CreditAlertsScreenState extends State<CreditAlertsScreen> {
                         _card(tr('إجمالي التنبيهات', 'Total Alerts'), _d?['total'], tr('استخدام ائتماني 70%+', '70%+ credit usage'), T.orange),
                       ]),
                       const SizedBox(height: 10),
-                      TextField(
+                      SearchField(
+                        controller: _searchCtl,
+                        dense: true,
                         onChanged: (v) => setState(() => _q = v),
-                        decoration: InputDecoration(prefixIcon: const Icon(Icons.search), hintText: '${tr('بحث', 'Search')}...', isDense: true),
+                        hint: '${tr('بحث', 'Search')}...',
                       ),
                       const SizedBox(height: 8),
                       if (rows.isEmpty)
-                        EmptyState(icon: Icons.shield_outlined, title: tr('لا توجد تنبيهات', 'No credit alerts'))
+                        EmptyState(icon: Icons.shield_outlined, title: _q.trim().isNotEmpty ? tr('لا نتائج مطابقة', 'No matches') : tr('لا توجد تنبيهات', 'No credit alerts'))
                       else
                         ...rows.map((r) {
                           final usage = (r['usagePercent'] as num?) ?? 0;

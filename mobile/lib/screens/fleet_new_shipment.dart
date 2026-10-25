@@ -5,6 +5,7 @@ import '../ui/contact.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import '../ui/search_field.dart';
 
 /// إنشاء حمولة — the same flow the web form runs: pick the customer (or add a
 /// new one inline), pick the vehicle from a live-availability list (carrying
@@ -397,17 +398,19 @@ class _FleetNewShipmentScreenState extends State<FleetNewShipmentScreen> {
               ),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: TextField(
+                child: SearchField(
                   controller: ctrl,
-                  autofocus: false,
                   onChanged: (_) => setSheet(() {}),
-                  decoration: InputDecoration(hintText: tr('ابحث…', 'Search…'), prefixIcon: const Icon(Icons.search)),
+                  hint: tr('ابحث…', 'Search…'),
                 ),
               ),
               const SizedBox(height: 6),
               Expanded(
-                child: ListView.builder(
+                child: filtered.isEmpty
+                    ? Center(child: Text(tr('لا نتائج', 'No matches'), style: const TextStyle(color: T.inkFaint)))
+                    : ListView.builder(
                   controller: scroll,
+                  keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                   itemCount: filtered.length,
                   itemBuilder: (c3, i) {
                     final item = filtered[i];

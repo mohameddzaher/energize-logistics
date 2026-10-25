@@ -7,6 +7,7 @@ import '../services/live.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import '../ui/search_field.dart';
 
 /// موردو مخزن النقل الثقيل — مَن تُشترى منه قطعُ الغيار.
 ///
@@ -45,6 +46,7 @@ class _Ls2SuppliersScreenState extends State<Ls2SuppliersScreen> {
   bool _loading = true;
   String? _error;
   String _q = '';
+  final _searchCtl = TextEditingController();
 
   @override
   void initState() {
@@ -54,7 +56,7 @@ class _Ls2SuppliersScreenState extends State<Ls2SuppliersScreen> {
   }
 
   @override
-  void dispose() { Live.instance.off('ls2:store', _onLive); super.dispose(); }
+  void dispose() { Live.instance.off('ls2:store', _onLive); _searchCtl.dispose(); super.dispose(); }
 
   void _onLive() { _load(); }
 
@@ -145,10 +147,7 @@ class _Ls2SuppliersScreenState extends State<Ls2SuppliersScreen> {
                   ),
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    child: TextField(
-                      onChanged: (v) => setState(() => _q = v),
-                      decoration: InputDecoration(hintText: tr('ابحث بالاسم / الجوال / المدينة…', 'name / phone / city…'), prefixIcon: const Icon(Icons.search), isDense: true),
-                    ),
+                    child: SearchField(controller: _searchCtl, hint: tr('ابحث بالاسم / الجوال / المدينة…', 'name / phone / city…'), dense: true, onChanged: (v) => setState(() => _q = v)),
                   ),
                   Expanded(
                     child: RefreshIndicator(
@@ -163,6 +162,7 @@ class _Ls2SuppliersScreenState extends State<Ls2SuppliersScreen> {
                               ),
                             ])
                           : ListView.separated(
+                              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                               padding: const EdgeInsets.fromLTRB(12, 12, 12, 88),
                               itemCount: shown.length,
                               separatorBuilder: (_, __) => const SizedBox(height: 8),

@@ -3,6 +3,7 @@ import '../services/api.dart';
 import '../services/lang.dart';
 import '../services/live.dart';
 import '../ui/app_scaffold.dart';
+import '../ui/search_field.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 
@@ -199,13 +200,14 @@ class _SectionDashScreenState extends State<SectionDashScreen> {
                 if (f.searchable)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 6),
-                    child: TextField(
-                      decoration: InputDecoration(isDense: true, prefixIcon: const Icon(Icons.search, size: 18), hintText: tr('ابحث…', 'Search…')),
+                    child: SearchField(
+                      dense: true,
+                      hint: tr('ابحث…', 'Search…'),
                       onChanged: (v) => setSheet(() => q = v.trim()),
                     ),
                   ),
                 Flexible(
-                  child: ListView(shrinkWrap: true, children: [
+                  child: ListView(shrinkWrap: true, keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag, children: [
                     for (final o in shown)
                       CheckboxListTile(
                         dense: true,

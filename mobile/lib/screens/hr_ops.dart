@@ -10,6 +10,7 @@ import '../ui/widgets.dart';
 import 'fleet_reference_lists.dart';
 import 'hr_common.dart';
 import 'hr_master.dart';
+import '../ui/search_field.dart';
 
 /// شاشاتُ الموارد البشريّة التشغيليّة — نظيرُ /system/hr/contracts و/custody
 /// و/settings و«تسليم صنفٍ من المخزون» في الموقع: الأفعالُ نفسُها على النقاط نفسِها.
@@ -147,6 +148,8 @@ class _ContractsListState extends State<_ContractsList> with AutomaticKeepAliveC
   bool _loading = true;
   String? _error;
   String _q = '';
+  // الخانةُ تُهدَم مع التحميل والتمرير — النصُّ في متحكِّمٍ يبقى مع الكلمة.
+  final _searchCtl = TextEditingController();
   String _status = '';
   String _type = '';
   int _seq = 0;
@@ -168,6 +171,7 @@ class _ContractsListState extends State<_ContractsList> with AutomaticKeepAliveC
   void dispose() {
     Live.instance.off('hr:contract', _onLive);
     Live.instance.off('hr:master', _onLive);
+    _searchCtl.dispose();
     super.dispose();
   }
 
@@ -374,11 +378,12 @@ class _ContractsListState extends State<_ContractsList> with AutomaticKeepAliveC
       floatingActionButton: FloatingActionButton.extended(onPressed: () => _form(), icon: const Icon(Icons.add), label: Text(tr('عقد جديد', 'New contract'))),
       body: RefreshIndicator(
         onRefresh: _load,
-        child: ListView(padding: const EdgeInsets.all(14), children: [
+        child: ListView(padding: const EdgeInsets.all(14), keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag, children: [
           Row(children: [
-            Expanded(child: TextField(
+            Expanded(child: SearchField(
+              controller: _searchCtl, dense: true,
               onChanged: (v) => setState(() => _q = v),
-              decoration: InputDecoration(isDense: true, prefixIcon: const Icon(Icons.search), hintText: tr('ابحث بالاسم أو الهوية أو رقم العقد…', 'Search name, ID, contract no…')),
+              hint: tr('ابحث بالاسم أو الهوية أو رقم العقد…', 'Search name, ID, contract no…'),
             )),
             PopupMenuButton<String>(
               icon: const Icon(Icons.file_download_outlined),
@@ -472,6 +477,8 @@ class _HrCustodyScreenState extends State<HrCustodyScreen> {
   bool _loading = true;
   String? _error;
   String _q = '';
+  // الخانةُ تُهدَم مع التحميل والتمرير — النصُّ في متحكِّمٍ يبقى مع الكلمة.
+  final _searchCtl = TextEditingController();
   String _status = '';
   String _source = '';
   int _seq = 0;
@@ -489,6 +496,7 @@ class _HrCustodyScreenState extends State<HrCustodyScreen> {
   @override
   void dispose() {
     Live.instance.off('hr:asset', _onLive);
+    _searchCtl.dispose();
     super.dispose();
   }
 
@@ -660,12 +668,13 @@ class _HrCustodyScreenState extends State<HrCustodyScreen> {
               ? ErrorRetry(message: _error!, onRetry: _load)
               : RefreshIndicator(
                   onRefresh: _load,
-                  child: ListView(padding: const EdgeInsets.all(14), children: [
+                  child: ListView(padding: const EdgeInsets.all(14), keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag, children: [
                     Text('${_all.where((a) => a['status'] == 'assigned').length} ${tr('عهدة بيد الموظفين', 'items assigned')}', style: const TextStyle(fontWeight: FontWeight.w700, color: T.inkSoft)),
                     const SizedBox(height: 8),
-                    TextField(
+                    SearchField(
+                      controller: _searchCtl, dense: true,
                       onChanged: (v) => setState(() => _q = v),
-                      decoration: InputDecoration(isDense: true, prefixIcon: const Icon(Icons.search), hintText: tr('ابحث بالصنف أو الرقم التسلسلي أو الموظف…', 'Search item, serial or employee…')),
+                      hint: tr('ابحث بالصنف أو الرقم التسلسلي أو الموظف…', 'Search item, serial or employee…'),
                     ),
                     const SizedBox(height: 8),
                     Wrap(spacing: 6, runSpacing: 6, children: [

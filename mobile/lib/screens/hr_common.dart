@@ -5,6 +5,7 @@ import '../services/auth.dart';
 import '../services/hijri.dart';
 import '../services/lang.dart';
 import '../ui/theme.dart';
+import '../ui/search_field.dart';
 
 /// أدواتٌ مشتركةٌ بين شاشات الموارد البشريّة في التطبيق — نظيرُ lib/hr.ts وHRKit
 /// في الموقع: مَن هو من فريق القسم، ومنتقي الموظّف، وخانةُ التاريخ بتقويميها.
@@ -141,10 +142,10 @@ class _EmpPickerState extends State<_EmpPicker> {
           ),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: TextField(
-              autofocus: true,
+            child: SearchField(
+              autofocus: true, dense: true,
               onChanged: (v) => setState(() => _q = v),
-              decoration: InputDecoration(isDense: true, prefixIcon: const Icon(Icons.search), hintText: tr('اسم / رقم وظيفي / رقم هوية…', 'name / employee no / ID…')),
+              hint: tr('اسم / رقم وظيفي / رقم هوية…', 'name / employee no / ID…'),
             ),
           ),
           Expanded(
@@ -153,6 +154,7 @@ class _EmpPickerState extends State<_EmpPicker> {
                 : list.isEmpty
                     ? Center(child: Text(tr('لا موظف مطابق', 'No matching employee')))
                     : ListView.separated(
+                        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                         itemCount: list.length,
                         separatorBuilder: (_, __) => const Divider(height: 1),
                         itemBuilder: (c, i) {

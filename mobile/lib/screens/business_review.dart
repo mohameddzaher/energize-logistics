@@ -6,6 +6,7 @@ import '../ui/app_scaffold.dart';
 import '../ui/export_sheet.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import '../ui/search_field.dart';
 import 'business_review_kit.dart';
 import 'business_review_meeting.dart';
 
@@ -151,6 +152,7 @@ class _MeetingsTabState extends State<_MeetingsTab> {
   String _cadence = '';
   String _status = '';
   String _q = '';
+  final _searchCtl = TextEditingController(); // النصُّ يبقى مطابقًا لـ_q بعد التحميل
   bool _loading = true;
   String? _error;
   int _seq = 0;
@@ -169,6 +171,7 @@ class _MeetingsTabState extends State<_MeetingsTab> {
   void dispose() {
     Live.instance.off('br:meeting', _onLive);
     Live.instance.off('br:action', _onLive);
+    _searchCtl.dispose();
     super.dispose();
   }
 
@@ -295,8 +298,10 @@ class _MeetingsTabState extends State<_MeetingsTab> {
     return Padding(
       padding: const EdgeInsets.fromLTRB(14, 10, 14, 0),
       child: Column(children: [
-        TextField(
-          decoration: InputDecoration(prefixIcon: const Icon(Icons.search, size: 20), hintText: tr('ابحث في الاجتماعات…', 'Search meetings…'), isDense: true),
+        SearchField(
+          controller: _searchCtl,
+          dense: true,
+          hint: tr('ابحث في الاجتماعات…', 'Search meetings…'),
           onChanged: (v) => setState(() => _q = v),
         ),
         const SizedBox(height: 8),
@@ -350,14 +355,14 @@ class _MeetingsTabState extends State<_MeetingsTab> {
     final rows = s.isEmpty ? _rows : _rows.where((m) => '${m['title']} ${m['refNumber']} ${m['location'] ?? ''}'.toLowerCase().contains(s)).toList();
     return RefreshIndicator(
       onRefresh: _load,
-      child: ListView(padding: const EdgeInsets.only(bottom: 80), children: [
+      child: ListView(padding: const EdgeInsets.only(bottom: 80), keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag, children: [
         _tiles(),
         _upcoming(),
         _cards(),
         _filters(),
         if (_loading) const Padding(padding: EdgeInsets.symmetric(horizontal: 14, vertical: 6), child: LinearProgressIndicator(minHeight: 2)),
         if (rows.isEmpty)
-          Padding(padding: const EdgeInsets.only(top: 40), child: EmptyState(icon: Icons.event_note_outlined, title: tr('لا توجد اجتماعات بعد.', 'No meetings yet.'))),
+          Padding(padding: const EdgeInsets.only(top: 40), child: EmptyState(icon: Icons.event_note_outlined, title: s.isNotEmpty ? tr('لا نتائج مطابقة', 'No matches') : tr('لا توجد اجتماعات بعد.', 'No meetings yet.'))),
         for (final m in rows) _meetingCard(m),
       ]),
     );
@@ -417,7 +422,11 @@ class _NewMeetingScreenState extends State<_NewMeetingScreen> {
   late List<String> _attendees;
   String _chair = '';
   String _peopleQ = '';
+  final _peopleCtl = TextEditingController(); // يبقى مطابقًا لـ_peopleQ إن خرجت الخانةُ من الشاشة
   bool _busy = false;
+
+  @override
+  void dispose() { _peopleCtl.dispose(); super.dispose(); }
 
   List<Map<String, dynamic>> get _participants => List<Map<String, dynamic>>.from(widget.meta['participants'] ?? []);
 
@@ -465,7 +474,7 @@ class _NewMeetingScreenState extends State<_NewMeetingScreen> {
         _attendees.contains(p['_id']) || q.isEmpty || '${p['name']} ${p['department'] ?? ''} ${p['jobTitle'] ?? ''} ${p['role']}'.toLowerCase().contains(q)).toList();
     return AppScaffold(
       title: Text(tr('جدولة اجتماع مراجعة', 'Schedule a review meeting')),
-      body: ListView(padding: const EdgeInsets.all(14), children: [
+      body: ListView(padding: const EdgeInsets.all(14), keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag, children: [
         TextField(controller: _title, decoration: InputDecoration(labelText: tr('عنوان الاجتماع *', 'Title *'), hintText: tr('مثال: اجتماع مراجعة الأعمال الأسبوعي', 'e.g. Weekly business review'))),
         const SizedBox(height: 10),
         Row(children: [
@@ -522,8 +531,10 @@ class _NewMeetingScreenState extends State<_NewMeetingScreen> {
         const SizedBox(height: 14),
         Text('${tr('الحاضرون *', 'Attendees *')} — ${tr('مديرو الأقسام والإدارة', 'department heads and the board')}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
         const SizedBox(height: 6),
-        TextField(
-          decoration: InputDecoration(prefixIcon: const Icon(Icons.search, size: 19), hintText: tr('ابحث بالاسم أو القسم أو المسمى…', 'Search by name, department or role…'), isDense: true),
+        SearchField(
+          controller: _peopleCtl,
+          dense: true,
+          hint: tr('ابحث بالاسم أو القسم أو المسمى…', 'Search by name, department or role…'),
           onChanged: (v) => setState(() => _peopleQ = v),
         ),
         const SizedBox(height: 6),
@@ -599,6 +610,7 @@ class _ActionsTabState extends State<_ActionsTab> {
   String _status = '';
   String _assignee = '';
   String _q = '';
+  final _searchCtl = TextEditingController(); // النصُّ يبقى مطابقًا لـ_q بعد التحميل
   bool _onlyOverdue = false;
   int _seq = 0;
 
@@ -616,6 +628,7 @@ class _ActionsTabState extends State<_ActionsTab> {
   void dispose() {
     Live.instance.off('br:action', _onLive);
     Live.instance.off('br:updated', _onLive);
+    _searchCtl.dispose();
     super.dispose();
   }
 
@@ -708,8 +721,10 @@ class _ActionsTabState extends State<_ActionsTab> {
       child: Column(children: [
         Row(children: [
           Expanded(
-            child: TextField(
-              decoration: InputDecoration(prefixIcon: const Icon(Icons.search, size: 20), hintText: tr('ابحث في البنود…', 'Search actions…'), isDense: true),
+            child: SearchField(
+              controller: _searchCtl,
+              dense: true,
+              hint: tr('ابحث في البنود…', 'Search actions…'),
               onChanged: (v) => setState(() => _q = v),
             ),
           ),
@@ -805,7 +820,7 @@ class _ActionsTabState extends State<_ActionsTab> {
 
     return RefreshIndicator(
       onRefresh: _load,
-      child: ListView(padding: const EdgeInsets.only(bottom: 80), children: [
+      child: ListView(padding: const EdgeInsets.only(bottom: 80), keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag, children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(14, 12, 14, 6),
           child: Row(children: [

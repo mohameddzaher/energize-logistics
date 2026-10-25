@@ -9,6 +9,7 @@ import '../ui/app_scaffold.dart';
 import '../ui/contact.dart' show callNumber;
 import '../ui/export_sheet.dart';
 import '../ui/lookup_field.dart';
+import '../ui/search_field.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import 'vehicle_registry.dart' show VehicleRegistryDetailScreen;
@@ -328,7 +329,7 @@ class _VehicleDriverCardsScreenState extends State<VehicleDriverCardsScreen> {
               ? ErrorRetry(message: _error!, onRetry: () { setState(() => _loading = true); _load(); })
               : RefreshIndicator(
                   onRefresh: _load,
-                  child: ListView(padding: const EdgeInsets.fromLTRB(14, 12, 14, 90), children: [
+                  child: ListView(keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag, padding: const EdgeInsets.fromLTRB(14, 12, 14, 90), children: [
                     // البطاقاتُ تُفلتِر بالضغط: الرقمُ الذي يُقرأ هو الذي يُفتح.
                     Wrap(spacing: 8, runSpacing: 8, children: [
                       _stat(tr('إجمالي السائقين', 'Total drivers'), t['drivers'] ?? t['total'] ?? 0, T.ink,
@@ -347,10 +348,10 @@ class _VehicleDriverCardsScreenState extends State<VehicleDriverCardsScreen> {
                       _stat(tr('سائقين النقل الخفيف', 'Light-transport drivers'), t['light'], T.violet, onTap: () => setState(() => _fClass = _fClass == 'light' ? '' : 'light'), on: _fClass == 'light'),
                     ]),
                     const SizedBox(height: 12),
-                    TextField(
+                    SearchField(
                       controller: _qc,
                       onChanged: (x) => setState(() => _q = x),
-                      decoration: InputDecoration(prefixIcon: const Icon(Icons.search), hintText: tr('بحث بالاسم أو الهوية أو رقم البطاقة أو الجوال أو السجل…', 'name, ID, card no., phone, register…')),
+                      hint: tr('بحث بالاسم أو الهوية أو رقم البطاقة أو الجوال أو السجل…', 'name, ID, card no., phone, register…'),
                     ),
                     const SizedBox(height: 8),
                     Wrap(spacing: 6, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
@@ -362,7 +363,7 @@ class _VehicleDriverCardsScreenState extends State<VehicleDriverCardsScreen> {
                           [('covered', tr('مشمول', 'Covered')), ('required', tr('مطلوب ضمُّه', 'Required'))], (x) => _fFid = x),
                       if (_activeF > 0 || _q.isNotEmpty)
                         TextButton.icon(
-                          onPressed: () => setState(() { _fState = ''; _fReg = ''; _fType = ''; _fFid = ''; _fClass = ''; _q = ''; }),
+                          onPressed: () => setState(() { _fState = ''; _fReg = ''; _fType = ''; _fFid = ''; _fClass = ''; _q = ''; _qc.clear(); }),
                           icon: const Icon(Icons.restart_alt, size: 16),
                           label: Text(tr('مسح', 'Clear')),
                         ),
@@ -622,11 +623,13 @@ class _EmpPickerState extends State<_EmpPicker> {
           child: Column(children: [
             Padding(
               padding: const EdgeInsets.all(12),
-              child: TextField(autofocus: true, onChanged: (x) => setState(() => _q = x),
-                  decoration: InputDecoration(prefixIcon: const Icon(Icons.search), hintText: tr('اسم أو رقم وظيفي أو إقامة…', 'name, employee no. or iqama…'))),
+              child: SearchField(autofocus: true, onChanged: (x) => setState(() => _q = x),
+                  hint: tr('اسم أو رقم وظيفي أو إقامة…', 'name, employee no. or iqama…')),
             ),
             Expanded(
-              child: ListView(children: [
+              child: ListView(keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag, children: [
+                if (list.isEmpty && _q.trim().isNotEmpty)
+                  Padding(padding: const EdgeInsets.all(18), child: Text(tr('لا نتائج مطابقة', 'No matches'), textAlign: TextAlign.center, style: const TextStyle(color: T.inkFaint))),
                 for (final e in list)
                   ListTile(
                     dense: true,

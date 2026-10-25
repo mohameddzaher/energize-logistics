@@ -6,6 +6,7 @@ import '../services/live.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import '../ui/search_field.dart';
 
 /// حالةُ المركبات — أرقامُ شاحناتنا الحيّة في قسمِ من يقودها.
 ///
@@ -27,6 +28,8 @@ class _FleetHealthScreenState extends State<FleetHealthScreen> {
   bool _loading = true;
   String? _error;
   String _q = '';
+  // الخانةُ تُهدَم مع الخطأ وإعادة المحاولة — النصُّ في متحكِّمٍ يبقى مع الكلمة.
+  final _searchCtl = TextEditingController();
   String _filter = '';
   Timer? _tick;
 
@@ -47,6 +50,7 @@ class _FleetHealthScreenState extends State<FleetHealthScreen> {
   void dispose() {
     _tick?.cancel();
     for (final e in _events) { Live.instance.off(e, _onLive); }
+    _searchCtl.dispose();
     super.dispose();
   }
 
@@ -129,12 +133,10 @@ class _FleetHealthScreenState extends State<FleetHealthScreen> {
               : Column(children: [
                   Padding(
                     padding: const EdgeInsets.fromLTRB(14, 12, 14, 0),
-                    child: TextField(
+                    child: SearchField(
+                      controller: _searchCtl,
                       onChanged: (v) => setState(() => _q = v),
-                      decoration: InputDecoration(
-                        hintText: tr('ابحث باللوحة أو السائق…', 'Plate or driver…'),
-                        prefixIcon: const Icon(Icons.search),
-                      ),
+                      hint: tr('ابحث باللوحة أو السائق…', 'Plate or driver…'),
                     ),
                   ),
                   Padding(
@@ -172,6 +174,7 @@ class _FleetHealthScreenState extends State<FleetHealthScreen> {
                       child: _shown.isEmpty
                           ? EmptyState(icon: Icons.local_shipping_outlined, title: tr('لا شاحنات مطابقة', 'No matches'))
                           : ListView.separated(
+                              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                               padding: const EdgeInsets.all(14),
                               itemCount: _shown.length,
                               separatorBuilder: (_, __) => const SizedBox(height: 8),

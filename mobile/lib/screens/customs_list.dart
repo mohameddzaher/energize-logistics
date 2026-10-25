@@ -10,6 +10,7 @@ import '../ui/export_sheet.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import 'customs_detail.dart';
+import '../ui/search_field.dart';
 
 /// معاملاتُ التخليص — نظيرُ `/system/customs` في الموقع (page.tsx).
 ///
@@ -580,16 +581,11 @@ class _CustomsListScreenState extends State<CustomsListScreen> {
           padding: const EdgeInsets.fromLTRB(14, 10, 14, 4),
           child: Row(children: [
             Expanded(
-              child: TextField(
-                controller: _search,
+              child: SearchField(
+                controller: _search, dense: true,
                 onChanged: _onSearch,
-                decoration: InputDecoration(
-                  isDense: true,
-                  prefixIcon: const Icon(Icons.search),
-                  hintText: tr('ابحث بأيّ رقمٍ أو اسم: المعاملة، الحاوية، البوليصة، البيان، الفاتورة، العميل، الوكيل…',
-                      'Any number or name: ref, container, BL, declaration, invoice, customer, agent…'),
-                  suffixIcon: _search.text.isEmpty ? null : IconButton(icon: const Icon(Icons.close), onPressed: () { _search.clear(); _onSearch(''); }),
-                ),
+                hint: tr('ابحث بأيّ رقمٍ أو اسم: المعاملة، الحاوية، البوليصة، البيان، الفاتورة، العميل، الوكيل…',
+                    'Any number or name: ref, container, BL, declaration, invoice, customer, agent…'),
               ),
             ),
             const SizedBox(width: 8),
@@ -621,6 +617,7 @@ class _CustomsListScreenState extends State<CustomsListScreen> {
                       child: shown.isEmpty
                           ? ListView(children: [EmptyState(icon: Icons.directions_boat_outlined, title: tr('لا معاملات', 'No clearances'))])
                           : ListView.separated(
+                              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                               padding: const EdgeInsets.fromLTRB(14, 6, 14, 90),
                               itemCount: shown.length,
                               separatorBuilder: (_, __) => const SizedBox(height: 8),
@@ -672,13 +669,14 @@ class _CreateSheetState extends State<_CreateSheet> {
                 width: double.maxFinite,
                 height: 420,
                 child: Column(children: [
-                  TextField(autofocus: true, onChanged: (v) => setSt(() => q = v),
-                      decoration: InputDecoration(isDense: true, prefixIcon: const Icon(Icons.search), hintText: tr('اكتب للبحث…', 'Type to search…'))),
+                  SearchField(autofocus: true, dense: true, onChanged: (v) => setSt(() => q = v),
+                      hint: tr('اكتب للبحث…', 'Type to search…')),
                   const SizedBox(height: 6),
                   Expanded(
                     child: shown.isEmpty
                         ? Center(child: Text(tr('لا نتائج — أضِفه من صفحته', 'No match — add it from its page'), style: const TextStyle(color: T.inkFaint)))
                         : ListView.builder(
+                            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                             itemCount: shown.length,
                             itemBuilder: (_, i) => ListTile(
                               dense: true,

@@ -5,6 +5,7 @@ import '../services/lang.dart';
 import '../services/live.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/export_sheet.dart';
+import '../ui/search_field.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import 'shipment_order_detail.dart';
@@ -146,7 +147,7 @@ class _ShipmentOrdersAnalyticsScreenState extends State<ShipmentOrdersAnalyticsS
               ? ErrorRetry(message: _error!, onRetry: _load)
               : RefreshIndicator(
                   onRefresh: _load,
-                  child: ListView(padding: const EdgeInsets.all(14), children: [
+                  child: ListView(keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag, padding: const EdgeInsets.all(14), children: [
                     // ── الفلاتر ──
                     AppCard(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                       Wrap(spacing: 6, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
@@ -176,15 +177,15 @@ class _ShipmentOrdersAnalyticsScreenState extends State<ShipmentOrdersAnalyticsS
                       ),
                       const SizedBox(height: 6),
                       Row(children: [
-                        Expanded(child: TextField(
+                        Expanded(child: SearchField(
                           controller: _searchCtrl,
-                          decoration: InputDecoration(hintText: tr('عميل، مورّد، مدينة، سائق، بوليصة…', 'customer, supplier, city, driver, waybill…'), prefixIcon: const Icon(Icons.search)),
-                          onChanged: (v) { _debounce?.cancel(); _debounce = Timer(const Duration(milliseconds: 300), () => _refilter(() => _q = v)); },
+                          hint: tr('عميل، مورّد، مدينة، سائق، بوليصة…', 'customer, supplier, city, driver, waybill…'),
+                          onChanged: (v) { _debounce?.cancel(); _debounce = Timer(const Duration(milliseconds: 350), () => _refilter(() => _q = v)); },
                         )),
                         IconButton(
                           tooltip: tr('مسح', 'Reset'),
                           icon: const Icon(Icons.restart_alt),
-                          onPressed: () { _searchCtrl.clear(); _refilter(() { _from = ''; _to = ''; _status = ''; _q = ''; _source = ''; }); },
+                          onPressed: () { _debounce?.cancel(); _searchCtrl.clear(); _refilter(() { _from = ''; _to = ''; _status = ''; _q = ''; _source = ''; }); },
                         ),
                       ]),
                     ])),

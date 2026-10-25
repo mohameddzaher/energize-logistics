@@ -5,6 +5,7 @@ import '../services/live.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import '../ui/search_field.dart';
 
 /// تنشيط الموردين الجدد — native: the outreach log with interest states and
 /// the one-tap «تحويل إلى مورد».
@@ -19,6 +20,7 @@ class _ContractsProspectsScreenState extends State<ContractsProspectsScreen> {
   bool _loading = true;
   String? _error;
   String _q = '';
+  final _searchCtl = TextEditingController(); // النصُّ يبقى مطابقًا لـ_q بعد التحميل
   late final void Function() _onLive;
 
   @override
@@ -32,6 +34,7 @@ class _ContractsProspectsScreenState extends State<ContractsProspectsScreen> {
   @override
   void dispose() {
     Live.instance.off('contracts:updated', _onLive);
+    _searchCtl.dispose();
     super.dispose();
   }
 
@@ -199,20 +202,19 @@ class _ContractsProspectsScreenState extends State<ContractsProspectsScreen> {
               : Column(children: [
                   Padding(
                     padding: const EdgeInsets.fromLTRB(14, 12, 14, 4),
-                    child: TextField(
+                    child: SearchField(
+                      controller: _searchCtl,
                       onChanged: (v) => setState(() => _q = v),
-                      decoration: InputDecoration(
-                        hintText: tr('ابحث بالاسم أو المقر…', 'Search…'),
-                        prefixIcon: const Icon(Icons.search),
-                      ),
+                      hint: tr('ابحث بالاسم أو المقر…', 'Search…'),
                     ),
                   ),
                   Expanded(
                     child: RefreshIndicator(
                       onRefresh: _load,
                       child: filtered.isEmpty
-                          ? EmptyState(icon: Icons.phone_in_talk_outlined, title: tr('لا توجد شركات في سجل التنشيط', 'No prospects'))
+                          ? EmptyState(icon: Icons.phone_in_talk_outlined, title: q.isNotEmpty ? tr('لا نتائج مطابقة', 'No matches') : tr('لا توجد شركات في سجل التنشيط', 'No prospects'))
                           : ListView.separated(
+                              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                               padding: const EdgeInsets.all(14),
                               itemCount: filtered.length,
                               separatorBuilder: (_, __) => const SizedBox(height: 8),

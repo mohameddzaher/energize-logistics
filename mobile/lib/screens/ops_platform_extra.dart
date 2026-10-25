@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -9,6 +10,7 @@ import '../ui/app_scaffold.dart';
 import '../ui/export_sheet.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import '../ui/search_field.dart';
 import 'ops_common.dart';
 
 /// منصّةُ العمليات — ما لا يقوم به الجدولُ العامّ: صفحةُ الشحنات بفلاترها
@@ -120,6 +122,9 @@ class _OpsShipmentsScreenState extends State<OpsShipmentsScreen> {
   bool _stale = false;
   int _page = 1;
   String _q = '';
+  // البحثُ أثناء الكتابة بتأخيرٍ قصير؛ والمتحكِّمُ عند الشاشة كي لا يضيع النصُّ إذا خرجت الخانةُ من الشاشة.
+  final _searchCtl = TextEditingController();
+  Timer? _debounce;
   String _field = '';
   late final Set<String> _statuses = {if (widget.initialStatus != null) widget.initialStatus!};
   DateTime? _from;
@@ -156,6 +161,8 @@ class _OpsShipmentsScreenState extends State<OpsShipmentsScreen> {
   void dispose() {
     Live.instance.off('ops:shipments:changed', _onChanged);
     Live.instance.offData('ops:stats', _onStats);
+    _debounce?.cancel();
+    _searchCtl.dispose();
     super.dispose();
   }
 
@@ -286,7 +293,7 @@ class _OpsShipmentsScreenState extends State<OpsShipmentsScreen> {
           ? ListView(padding: const EdgeInsets.all(14), children: const [Shimmer(height: 70), SizedBox(height: 10), Shimmer(), SizedBox(height: 10), Shimmer()])
           : RefreshIndicator(
               onRefresh: () async { await Future.wait([_load(), _loadCounts()]); },
-              child: ListView(padding: const EdgeInsets.fromLTRB(14, 10, 14, 24), children: [
+              child: ListView(keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag, padding: const EdgeInsets.fromLTRB(14, 10, 14, 24), children: [
                 Text('${opsMoney(_meta?['totalItems'] ?? _items.length)} ${tr('الإجمالي', 'Total')} · ${tr('مباشر', 'Live')}', style: const TextStyle(fontSize: 11.5, color: T.inkSoft)),
                 if (_stale) _banner(tr('تعذّر تحديث البيانات — معروض آخر نسخة محفوظة، وجاري إعادة المحاولة…', 'Could not refresh — showing last known data, retrying…')),
                 if (_countsState == 'error')
@@ -326,11 +333,13 @@ class _OpsShipmentsScreenState extends State<OpsShipmentsScreen> {
                   ),
                   const SizedBox(width: 6),
                   Expanded(
-                    child: TextField(
-                      textInputAction: TextInputAction.search,
-                      onSubmitted: (v) { _q = v.trim(); _refilter(); },
-                      onChanged: (v) { if (v.isEmpty && _q.isNotEmpty) { _q = ''; _refilter(); } },
-                      decoration: InputDecoration(hintText: tr(_searchFields.firstWhere((f) => f.$1 == _field).$2, _searchFields.firstWhere((f) => f.$1 == _field).$3), prefixIcon: const Icon(Icons.search), isDense: true),
+                    child: SearchField(
+                      controller: _searchCtl, dense: true,
+                      hint: tr(_searchFields.firstWhere((f) => f.$1 == _field).$2, _searchFields.firstWhere((f) => f.$1 == _field).$3),
+                      onChanged: (v) {
+                        _debounce?.cancel();
+                        _debounce = Timer(const Duration(milliseconds: 350), () { if (mounted && v.trim() != _q) { _q = v.trim(); _refilter(); } });
+                      },
                     ),
                   ),
                 ]),
@@ -357,7 +366,7 @@ class _OpsShipmentsScreenState extends State<OpsShipmentsScreen> {
                 ]),
                 if (_loading) const Padding(padding: EdgeInsets.only(top: 6), child: LinearProgressIndicator(minHeight: 2)),
                 const SizedBox(height: 8),
-                if (_items.isEmpty) EmptyState(icon: Icons.local_shipping_outlined, title: tr('لا توجد سجلات', 'No records')),
+                if (_items.isEmpty) EmptyState(icon: Icons.local_shipping_outlined, title: _q.isNotEmpty ? tr('لا نتائج مطابقة للبحث', 'No matches') : tr('لا توجد سجلات', 'No records')),
                 for (final r in _items) Padding(padding: const EdgeInsets.only(bottom: 8), child: OpsShipmentCard(row: r, onChanged: _load)),
                 if (totalPages > 1)
                   Row(mainAxisAlignment: MainAxisAlignment.center, children: [
@@ -690,6 +699,8 @@ class _OpsShipmentHistoryState extends State<OpsShipmentHistory> {
   int _page = 1;
   String _status = '';
   String _q = '';
+  final _searchCtl = TextEditingController();
+  Timer? _debounce;
   String _field = '';
   int _seq = 0;
   late final void Function() _reload;
@@ -712,6 +723,8 @@ class _OpsShipmentHistoryState extends State<OpsShipmentHistory> {
   void dispose() {
     Live.instance.off('ops:shipments:changed', _reload);
     Live.instance.off('ops:stats', _stats);
+    _debounce?.cancel();
+    _searchCtl.dispose();
     super.dispose();
   }
 
@@ -796,16 +809,18 @@ class _OpsShipmentHistoryState extends State<OpsShipmentHistory> {
         ),
         const SizedBox(width: 6),
         Expanded(
-          child: TextField(
-            textInputAction: TextInputAction.search,
-            onSubmitted: (v) { _q = v.trim(); _refilter(); },
-            onChanged: (v) { if (v.isEmpty && _q.isNotEmpty) { _q = ''; _refilter(); } },
-            decoration: InputDecoration(hintText: tr('بحث في الشحنات…', 'Search shipments…'), prefixIcon: const Icon(Icons.search), isDense: true),
+          child: SearchField(
+            controller: _searchCtl, dense: true,
+            hint: tr('بحث في الشحنات…', 'Search shipments…'),
+            onChanged: (v) {
+              _debounce?.cancel();
+              _debounce = Timer(const Duration(milliseconds: 350), () { if (mounted && v.trim() != _q) { _q = v.trim(); _refilter(); } });
+            },
           ),
         ),
       ]),
       const SizedBox(height: 8),
-      if (_ships.isEmpty) Padding(padding: const EdgeInsets.all(20), child: Center(child: Text(tr('لا توجد سجلات', 'No records'), style: const TextStyle(color: T.inkFaint)))),
+      if (_ships.isEmpty) Padding(padding: const EdgeInsets.all(20), child: Center(child: Text(_q.isNotEmpty ? tr('لا نتائج مطابقة للبحث', 'No matches') : tr('لا توجد سجلات', 'No records'), style: const TextStyle(color: T.inkFaint)))),
       for (final s in _ships) Padding(padding: const EdgeInsets.only(bottom: 8), child: OpsShipmentCard(row: s, onChanged: _loadShips)),
       if (totalPages > 1)
         Row(mainAxisAlignment: MainAxisAlignment.center, children: [

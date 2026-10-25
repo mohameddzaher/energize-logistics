@@ -203,15 +203,26 @@ class _StaffRequestsScreenState extends State<StaffRequestsScreen> {
                 const SizedBox(height: 10),
                 TextField(controller: body, maxLines: 3, decoration: InputDecoration(labelText: tr('التفاصيل', 'Details'))),
                 const SizedBox(height: 10),
+                // خانةُ بحثٍ ضمن نموذج — تبقى بعنوانها، ومعها ✕ يمسح ويُغلق اللوحة
                 TextField(
                   controller: search,
                   onChanged: (_) => setSt(() {}),
+                  textInputAction: TextInputAction.search,
+                  onSubmitted: (_) => FocusScope.of(c).unfocus(),
+                  onTapOutside: (_) => FocusScope.of(c).unfocus(),
                   decoration: InputDecoration(
                     labelText: tr('أضِف موظفًا (اختياري)', 'Add an employee (optional)'),
                     hintText: tr('ابحث بالاسم أو الإقامة أو الرقم الوظيفي…', 'name, ID or number…'),
                     prefixIcon: const Icon(Icons.search),
+                    suffixIcon: search.text.isEmpty ? null : IconButton(
+                      icon: const Icon(Icons.close, size: 18),
+                      tooltip: tr('مسح', 'Clear'),
+                      onPressed: () { search.clear(); setSt(() {}); FocusScope.of(c).unfocus(); },
+                    ),
                   ),
                 ),
+                if (q.isNotEmpty && shown.isEmpty && emps.isNotEmpty)
+                  Padding(padding: const EdgeInsets.all(10), child: Text(tr('لا نتائج مطابقة', 'No matches'), textAlign: TextAlign.center, style: const TextStyle(color: T.inkFaint))),
                 for (final e in shown)
                   ListTile(
                     dense: true,

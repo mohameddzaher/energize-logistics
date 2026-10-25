@@ -11,6 +11,7 @@ import '../ui/lookup_field.dart';
 import '../ui/theme.dart';
 import '../ui/tire_states.dart';
 import '../ui/widgets.dart';
+import '../ui/search_field.dart';
 import 'ls2_common.dart';
 import 'ls2_tires.dart';
 import 'ls2_vehicle_assets.dart';
@@ -50,6 +51,11 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
   bool _sensorLoaded = false;
   bool _sensorRequested = false;
   String _qSensor = '';
+  // متحكِّماتُ البحث عند الشاشة: التبويبُ والتحميلُ يُعيدان بناءَ الخانات، فلا يضيع النصُّ والكلمةُ تُرشِّح.
+  final _qCtl = TextEditingController();
+  final _qFlatCtl = TextEditingController();
+  final _qTrailCtl = TextEditingController();
+  final _qSensorCtl = TextEditingController();
   final Set<String> _openSensor = {};
   late final void Function() _onLive;
 
@@ -67,6 +73,7 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
   void dispose() {
     Live.instance.off('ls2:updated', _onLive);
     Live.instance.off('vreg:updated', _onLive);
+    for (final c in [_qCtl, _qFlatCtl, _qTrailCtl, _qSensorCtl]) { c.dispose(); }
     super.dispose();
   }
 
@@ -365,7 +372,7 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
                             padding: const EdgeInsets.only(left: 6),
                             child: FilterChip(
                               selected: selected,
-                              onSelected: (_) => setState(() { _filter = selected ? '' : f.$1; _q = ''; }),
+                              onSelected: (_) => setState(() { _filter = selected ? '' : f.$1; _q = ''; _qCtl.clear(); }),
                               label: Text('${f.$2} (${f.$3})'),
                               labelStyle: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: selected ? Colors.white : f.$4),
                               selectedColor: f.$4,
@@ -381,10 +388,7 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
                   ),
                   Padding(
                     padding: const EdgeInsets.fromLTRB(14, 8, 14, 4),
-                    child: TextField(
-                      onChanged: (v) => setState(() => _q = v),
-                      decoration: InputDecoration(hintText: tr('ابحث بالسيريال أو اللوحة أو النوع…', 'Search…'), prefixIcon: const Icon(Icons.search), suffixText: '${filtered.length}'),
-                    ),
+                    child: SearchField(controller: _qCtl, hint: tr('ابحث بالسيريال أو اللوحة أو النوع…', 'Search…'), suffixText: '${filtered.length}', onChanged: (v) => setState(() => _q = v)),
                   ),
                   Expanded(
                     child: RefreshIndicator(
@@ -392,6 +396,7 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
                       child: filtered.isEmpty
                           ? ListView(children: [const SizedBox(height: 80), EmptyState(icon: Icons.circle_outlined, title: tr('لا توجد كاوتشات مطابقة', 'No matches'))])
                           : ListView.separated(
+                              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                               padding: const EdgeInsets.all(14),
                               itemCount: filtered.length,
                               separatorBuilder: (_, __) => const SizedBox(height: 8),
@@ -478,17 +483,15 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
       ),
       Padding(
         padding: const EdgeInsets.fromLTRB(14, 8, 14, 4),
-        child: TextField(
-          onChanged: (v) => setState(() => _qSensor = v),
-          decoration: InputDecoration(hintText: tr('لوحة أو سائق…', 'Plate or driver…'), prefixIcon: const Icon(Icons.search), isDense: true, suffixText: '${rows.length}'),
-        ),
+        child: SearchField(controller: _qSensorCtl, hint: tr('لوحة أو سائق…', 'Plate or driver…'), dense: true, suffixText: '${rows.length}', onChanged: (v) => setState(() => _qSensor = v)),
       ),
       Expanded(
         child: RefreshIndicator(
           onRefresh: _loadSensors,
           child: rows.isEmpty
-              ? ListView(children: [const SizedBox(height: 80), EmptyState(icon: Icons.sensors_off_outlined, title: tr('لا توجد بيانات', 'No data'))])
+              ? ListView(children: [const SizedBox(height: 80), EmptyState(icon: Icons.sensors_off_outlined, title: _qSensor.trim().isNotEmpty ? tr('لا نتائج مطابقة للبحث', 'No matches') : tr('لا توجد بيانات', 'No data'))])
               : ListView.separated(
+                  keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                   padding: const EdgeInsets.all(14),
                   itemCount: rows.length,
                   separatorBuilder: (_, __) => const SizedBox(height: 8),
@@ -551,10 +554,7 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
     return Column(children: [
       Padding(
         padding: const EdgeInsets.fromLTRB(14, 10, 14, 4),
-        child: TextField(
-          onChanged: (v) => setState(() => _qFlat = v),
-          decoration: InputDecoration(hintText: tr('ابحث بلوحة السطحة أو الرقم أو النوع…', 'Search flatbeds…'), prefixIcon: const Icon(Icons.search), suffixText: '${list.length}'),
-        ),
+        child: SearchField(controller: _qFlatCtl, hint: tr('ابحث بلوحة السطحة أو الرقم أو النوع…', 'Search flatbeds…'), suffixText: '${list.length}', onChanged: (v) => setState(() => _qFlat = v)),
       ),
       Expanded(
         child: RefreshIndicator(
@@ -562,6 +562,7 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
           child: list.isEmpty
               ? ListView(children: [const SizedBox(height: 80), EmptyState(icon: Icons.local_shipping_outlined, title: tr('لا توجد سطحات مطابقة', 'No matches'))])
               : ListView.separated(
+                  keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                   padding: const EdgeInsets.all(14),
                   itemCount: list.length,
                   separatorBuilder: (_, __) => const SizedBox(height: 8),
@@ -636,10 +637,7 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
         padding: const EdgeInsets.fromLTRB(14, 10, 14, 0),
         child: Row(children: [
           Expanded(
-            child: TextField(
-              onChanged: (v) => setState(() => _qTrail = v),
-              decoration: InputDecoration(hintText: tr('ابحث برقم التيدر أو السطحة…', 'Search trailers…'), prefixIcon: const Icon(Icons.search), suffixText: '${list.length}'),
-            ),
+            child: SearchField(controller: _qTrailCtl, hint: tr('ابحث برقم التيدر أو السطحة…', 'Search trailers…'), suffixText: '${list.length}', onChanged: (v) => setState(() => _qTrail = v)),
           ),
           const SizedBox(width: 8),
           FilledButton.tonalIcon(
@@ -656,6 +654,7 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
           child: list.isEmpty
               ? ListView(children: [const SizedBox(height: 80), EmptyState(icon: Icons.rv_hookup_outlined, title: tr('لا توجد تيدرات مطابقة', 'No matches'))])
               : ListView.separated(
+                  keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                   padding: const EdgeInsets.all(14),
                   itemCount: list.length,
                   separatorBuilder: (_, __) => const SizedBox(height: 8),
@@ -1004,13 +1003,13 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
                 child: Column(children: [
                   Padding(
                     padding: const EdgeInsets.all(14),
-                    child: TextField(autofocus: true, onChanged: (v) => setS(() => q = v),
-                        decoration: InputDecoration(hintText: tr('ابحث عن لوحة الشاحنة…', 'Search truck plate…'), prefixIcon: const Icon(Icons.search))),
+                    child: SearchField(autofocus: true, hint: tr('ابحث عن لوحة الشاحنة…', 'Search truck plate…'), onChanged: (v) => setS(() => q = v)),
                   ),
                   Expanded(
                     child: list.isEmpty
-                        ? EmptyState(icon: Icons.local_shipping_outlined, title: tr('لا توجد شاحنات', 'No trucks'))
+                        ? EmptyState(icon: Icons.local_shipping_outlined, title: q.trim().isNotEmpty ? tr('لا نتائج مطابقة للبحث', 'No matches') : tr('لا توجد شاحنات', 'No trucks'))
                         : ListView.builder(
+                            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                             itemCount: list.length,
                             itemBuilder: (c, i) => ListTile(
                               leading: const Icon(Icons.local_shipping_outlined, color: T.navy),
@@ -1153,8 +1152,7 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
                 child: Column(children: [
                   Padding(
                     padding: const EdgeInsets.all(14),
-                    child: TextField(autofocus: true, onChanged: (v) => setS(() => q = v),
-                        decoration: InputDecoration(hintText: tr('ابحث بالسيريال أو الرقم…', 'Search serial / number…'), prefixIcon: const Icon(Icons.search))),
+                    child: SearchField(autofocus: true, hint: tr('ابحث بالسيريال أو الرقم…', 'Search serial / number…'), onChanged: (v) => setS(() => q = v)),
                   ),
                   ListTile(
                     leading: const Icon(Icons.block, color: T.inkFaint),
@@ -1164,8 +1162,9 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
                   const Divider(height: 1),
                   Expanded(
                     child: list.isEmpty
-                        ? EmptyState(icon: Icons.tire_repair_outlined, title: tr('لا توجد فردات متاحة', 'No available tires'))
+                        ? EmptyState(icon: Icons.tire_repair_outlined, title: q.trim().isNotEmpty ? tr('لا نتائج مطابقة للبحث', 'No matches') : tr('لا توجد فردات متاحة', 'No available tires'))
                         : ListView.builder(
+                            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                             itemCount: list.length,
                             itemBuilder: (c, i) {
                               final x = list[i];
@@ -1577,8 +1576,7 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
                 ),
                 Padding(
                   padding: const EdgeInsets.all(14),
-                  child: TextField(autofocus: true, onChanged: (v) => setS(() => q = v),
-                      decoration: InputDecoration(hintText: tr('ابحث برقم التيدر أو العربية…', 'Search trailer or truck…'), prefixIcon: const Icon(Icons.search))),
+                  child: SearchField(autofocus: true, hint: tr('ابحث برقم التيدر أو العربية…', 'Search trailer or truck…'), onChanged: (v) => setS(() => q = v)),
                 ),
                 if (cur.isNotEmpty) ListTile(
                   leading: const Icon(Icons.download_outlined, color: T.warn),
@@ -1586,6 +1584,7 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
                   onTap: () => Navigator.pop(c, <String, dynamic>{'_unhitch': true}),
                 ),
                 Expanded(child: ListView.builder(
+                  keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                   itemCount: list.length,
                   itemBuilder: (c, i) {
                     final t = list[i];

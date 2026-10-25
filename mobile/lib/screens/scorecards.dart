@@ -4,6 +4,7 @@ import '../services/lang.dart';
 import '../services/live.dart';
 import '../ui/export_sheet.dart';
 import '../ui/app_scaffold.dart';
+import '../ui/search_field.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import 'reports.dart';
@@ -132,9 +133,14 @@ class _Ls2DriverPerformanceScreenState extends State<Ls2DriverPerformanceScreen>
   bool _deep = false;
   String? _error;
   String _q = '';
+  // متحكِّمٌ للشاشة: الخانةُ تعود بنصِّها بعد التحميل
+  final _searchCtl = TextEditingController();
 
   @override
   void initState() { super.initState(); _load(); }
+
+  @override
+  void dispose() { _searchCtl.dispose(); super.dispose(); }
 
   Future<void> _load() async {
     try {
@@ -274,15 +280,19 @@ class _Ls2DriverPerformanceScreenState extends State<Ls2DriverPerformanceScreen>
                   ),
                   Padding(
                     padding: const EdgeInsets.fromLTRB(14, 4, 14, 4),
-                    child: TextField(
+                    child: SearchField(
+                      controller: _searchCtl,
                       onChanged: (v) => setState(() => _q = v),
-                      decoration: InputDecoration(hintText: tr('ابحث عن السائق…', 'Search driver…'), prefixIcon: const Icon(Icons.search), suffixText: '${rows.length}'),
+                      hint: tr('ابحث عن السائق…', 'Search driver…'), suffixText: '${rows.length}',
                     ),
                   ),
                   Expanded(
-                    child: RefreshIndicator(
+                    child: rows.isEmpty && _q.trim().isNotEmpty
+                        ? EmptyState(icon: Icons.search_off_rounded, title: tr('لا نتائج مطابقة', 'No matches'))
+                        : RefreshIndicator(
                       onRefresh: _load,
                       child: ListView.builder(
+                        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                         padding: const EdgeInsets.fromLTRB(14, 4, 14, 20),
                         itemCount: rows.length,
                         itemBuilder: (c, i) {
@@ -344,6 +354,8 @@ class _FleetDriverKpisScreenState extends State<FleetDriverKpisScreen> {
   bool _loading = true;
   String? _error;
   String _q = '';
+  // متحكِّمٌ للشاشة: الخانةُ تعود بنصِّها بعد التحميل
+  final _searchCtl = TextEditingController();
   // الفترة: اسمٌ (preset) أو مدى مخصَّص — الخادمُ يحسم الحدود.
   String _preset = 'this_month';
   DateTimeRange? _range;
@@ -363,6 +375,7 @@ class _FleetDriverKpisScreenState extends State<FleetDriverKpisScreen> {
   @override
   void dispose() {
     for (final e in _events) { Live.instance.off(e, _onLive); }
+    _searchCtl.dispose();
     super.dispose();
   }
 
@@ -529,15 +542,19 @@ class _FleetDriverKpisScreenState extends State<FleetDriverKpisScreen> {
                   ),
                   Padding(
                     padding: const EdgeInsets.fromLTRB(14, 4, 14, 4),
-                    child: TextField(
+                    child: SearchField(
+                      controller: _searchCtl,
                       onChanged: (v) => setState(() => _q = v),
-                      decoration: InputDecoration(hintText: tr('ابحث عن السائق…', 'Search driver…'), prefixIcon: const Icon(Icons.search), suffixText: '${rows.length}'),
+                      hint: tr('ابحث عن السائق…', 'Search driver…'), suffixText: '${rows.length}',
                     ),
                   ),
                   Expanded(
-                    child: RefreshIndicator(
+                    child: rows.isEmpty && _q.trim().isNotEmpty
+                        ? EmptyState(icon: Icons.search_off_rounded, title: tr('لا نتائج مطابقة', 'No matches'))
+                        : RefreshIndicator(
                       onRefresh: _load,
                       child: ListView.builder(
+                        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                         padding: const EdgeInsets.fromLTRB(14, 4, 14, 20),
                         itemCount: rows.length,
                         itemBuilder: (c, i) {
@@ -594,6 +611,8 @@ class _CrmKpisScreenState extends State<CrmKpisScreen> {
   bool _loading = true;
   String? _error;
   String _q = '';
+  // متحكِّمٌ للشاشة: الخانةُ تعود بنصِّها بعد التحميل
+  final _searchCtl = TextEditingController();
   // ── التصنيفُ والعلاماتُ تُرسَل مرّةً أعلى الحمولة ──────────────────────────
   // كانت تُكرَّر في كلّ صفٍّ لثلاثة آلافِ مورّد (خمسةُ ميجابايت يهضمها الهاتف
   // ليعرض صفًّا واحدًا). والآن: مفتاحٌ في الصفّ، ونصُّه وشكلُه من هنا.
@@ -634,6 +653,9 @@ class _CrmKpisScreenState extends State<CrmKpisScreen> {
 
   @override
   void initState() { super.initState(); _load(); }
+
+  @override
+  void dispose() { _searchCtl.dispose(); super.dispose(); }
 
   Future<void> _load() async {
     final mine = ++_seq;
@@ -795,18 +817,20 @@ class _CrmKpisScreenState extends State<CrmKpisScreen> {
                   ),
                   Padding(
                     padding: const EdgeInsets.fromLTRB(14, 4, 14, 4),
-                    child: TextField(
+                    child: SearchField(
+                      controller: _searchCtl,
                       onChanged: (v) => setState(() => _q = v),
-                      decoration: InputDecoration(
-                        hintText: _isVendors ? tr('ابحث عن مورد…', 'Search vendor…') : tr('ابحث عن عميل…', 'Search customer…'),
-                        prefixIcon: const Icon(Icons.search), suffixText: '${rows.length}',
-                      ),
+                      hint: _isVendors ? tr('ابحث عن مورد…', 'Search vendor…') : tr('ابحث عن عميل…', 'Search customer…'),
+                      suffixText: '${rows.length}',
                     ),
                   ),
                   Expanded(
-                    child: RefreshIndicator(
+                    child: rows.isEmpty && _q.trim().isNotEmpty
+                        ? EmptyState(icon: Icons.search_off_rounded, title: tr('لا نتائج مطابقة', 'No matches'))
+                        : RefreshIndicator(
                       onRefresh: _load,
                       child: ListView.builder(
+                        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                         padding: const EdgeInsets.fromLTRB(14, 4, 14, 20),
                         itemCount: rows.length,
                         itemBuilder: (c, i) {

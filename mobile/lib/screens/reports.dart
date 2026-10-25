@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:printing/printing.dart';
 import '../services/api.dart';
 import '../services/lang.dart';
 import '../ui/app_scaffold.dart';
+import '../ui/search_field.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 
@@ -50,6 +52,10 @@ class _ReportsScreenState extends State<ReportsScreen> {
   List<Map<String, dynamic>> _options = [];
   bool _optionsLoading = false;
   String _q = '';
+  // نصُّ البحث في متحكِّمٍ يملكه الشاشة — يبقى ظاهرًا عند إعادة فتح النافذة
+  final _searchCtl = TextEditingController();
+  Timer? _qT;
+  int _optSeq = 0;
   String? _selectedId;
   String? _selectedName;
 
@@ -70,6 +76,13 @@ class _ReportsScreenState extends State<ReportsScreen> {
     _selectedId = widget.entityId;
     _selectedName = widget.entityName;
     _loadSubjects();
+  }
+
+  @override
+  void dispose() {
+    _qT?.cancel();
+    _searchCtl.dispose();
+    super.dispose();
   }
 
   Future<void> _loadSubjects() async {
@@ -93,17 +106,18 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
   Future<void> _loadOptions() async {
     if (_subject.isEmpty) return;
+    final seq = ++_optSeq; // آخرُ ردٍّ فقط يُطبَّق
     setState(() => _optionsLoading = true);
     try {
       final qs = _q.trim().isEmpty ? '' : '?q=${Uri.encodeComponent(_q.trim())}';
       final d = await Api.instance.get('/api/reports/$_subject/options$qs');
-      if (!mounted) return;
+      if (!mounted || seq != _optSeq) return;
       setState(() {
         _options = List<Map<String, dynamic>>.from(d['items'] ?? []);
         _optionsLoading = false;
       });
     } catch (_) {
-      if (mounted) setState(() { _options = []; _optionsLoading = false; });
+      if (mounted && seq == _optSeq) setState(() { _options = []; _optionsLoading = false; });
     }
   }
 
@@ -233,24 +247,25 @@ class _ReportsScreenState extends State<ReportsScreen> {
             child: Column(children: [
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                child: TextField(
-                  autofocus: false,
-                  decoration: InputDecoration(
-                    hintText: tr('ابحث…', 'Search…'),
-                    prefixIcon: const Icon(Icons.search),
-                  ),
+                child: SearchField(
+                  controller: _searchCtl,
+                  hint: tr('ابحث…', 'Search…'),
                   onChanged: (v) {
                     _q = v;
-                    _loadOptions().then((_) => setSheet(() {}));
+                    _qT?.cancel();
+                    _qT = Timer(const Duration(milliseconds: 350), () {
+                      _loadOptions().then((_) { if (c.mounted) setSheet(() {}); });
+                    });
                   },
                 ),
               ),
               if (_optionsLoading) const LinearProgressIndicator(minHeight: 2),
               Expanded(
                 child: _options.isEmpty
-                    ? Center(child: Text(tr('لا توجد عناصر', 'Nothing to report on'),
+                    ? Center(child: Text(_q.trim().isNotEmpty ? tr('لا نتائج مطابقة', 'No matches') : tr('لا توجد عناصر', 'Nothing to report on'),
                         style: const TextStyle(color: T.inkFaint, fontSize: 13)))
                     : ListView.builder(
+                        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                         itemCount: _options.length,
                         itemBuilder: (c, i) {
                           final o = _options[i];
@@ -316,7 +331,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                         onSelected: (_) {
                           setState(() {
                             _subject = k; _selectedId = null; _selectedName = null;
-                            _doc = null; _q = ''; _error = null;
+                            _doc = null; _q = ''; _searchCtl.clear(); _error = null;
                           });
                           _loadOptions();
                         },

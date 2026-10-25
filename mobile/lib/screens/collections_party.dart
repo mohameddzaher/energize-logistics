@@ -10,6 +10,7 @@ import '../ui/export_sheet.dart';
 import '../ui/portal_account_card.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import '../ui/search_field.dart';
 import '../resource/configs.dart' show collectionsCanEdit;
 import 'collection_attachments.dart';
 import 'collections_invoices.dart' show openTaxInvoice;
@@ -777,8 +778,9 @@ class _CollectionsBulkAssignScreenState extends State<CollectionsBulkAssignScree
         body: Column(children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
-            child: TextField(
-              decoration: InputDecoration(isDense: true, prefixIcon: const Icon(Icons.search, size: 18), hintText: tr('ابحث بالاسم أو الكود…', 'Search name or code…')),
+            child: SearchField(
+              dense: true,
+              hint: tr('ابحث بالاسم أو الكود…', 'Search name or code…'),
               onChanged: (v) {
                 _deb?.cancel();
                 _deb = Timer(const Duration(milliseconds: 350), () { _q = v.trim(); _load(); });
@@ -801,7 +803,10 @@ class _CollectionsBulkAssignScreenState extends State<CollectionsBulkAssignScree
           Expanded(
             child: _loading
                 ? const Center(child: CircularProgressIndicator())
+                : _rows.isEmpty
+                    ? Center(child: Text(_q.isNotEmpty ? tr('لا نتائج مطابقة', 'No matches') : tr('لا حسابات', 'No accounts'), style: const TextStyle(color: T.inkFaint)))
                 : ListView.builder(
+                    keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                     itemCount: _rows.length,
                     itemBuilder: (c, i) {
                       final r = _rows[i];

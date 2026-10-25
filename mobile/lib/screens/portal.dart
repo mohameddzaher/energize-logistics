@@ -6,6 +6,7 @@ import '../ui/app_scaffold.dart';
 import '../ui/export_sheet.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import '../ui/search_field.dart';
 import 'customs_detail.dart' show customsStageLabel;
 import 'package:printing/printing.dart';
 
@@ -307,6 +308,8 @@ class _ShipmentsTabState extends State<_ShipmentsTab> {
   bool _loading = true;
   String? _error;
   String _q = '';
+  // متحكِّمُ البحث عند الشاشة: خطأُ تحديثٍ حيٍّ ثمّ إعادةُ المحاولة لا يُفرغ الخانةَ والكلمةُ تُرشِّح.
+  final _searchCtl = TextEditingController();
   String _status = '';
   late final void Function() _onLive = _load;
 
@@ -320,6 +323,7 @@ class _ShipmentsTabState extends State<_ShipmentsTab> {
   @override
   void dispose() {
     Live.instance.off('fleet:updated', _onLive);
+    _searchCtl.dispose();
     super.dispose();
   }
 
@@ -493,15 +497,16 @@ class _ShipmentsTabState extends State<_ShipmentsTab> {
     return Column(children: [
       Padding(
         padding: const EdgeInsets.fromLTRB(14, 12, 14, 4),
-        child: TextField(
-          onChanged: (v) => setState(() => _q = v),
-          decoration: InputDecoration(
-            hintText: tr('ابحث برقم البوليصة أو المدينة…', 'Search waybill or city…'),
-            prefixIcon: const Icon(Icons.search),
+        // زرُّ التصدير بجوار الخانة — مكانُه داخلها صار لزرّ ✕.
+        child: Row(children: [
+          Expanded(child: SearchField(
+            controller: _searchCtl,
+            hint: tr('ابحث برقم البوليصة أو المدينة…', 'Search waybill or city…'),
             suffixText: '${rows.length}',
-            suffixIcon: _exportMenu((scope) => _export(rows, scope)),
-          ),
-        ),
+            onChanged: (v) => setState(() => _q = v),
+          )),
+          _exportMenu((scope) => _export(rows, scope)),
+        ]),
       ),
       SizedBox(
         height: 42,
@@ -538,10 +543,11 @@ class _ShipmentsTabState extends State<_ShipmentsTab> {
               ? ListView(children: [
                   Padding(
                     padding: const EdgeInsets.only(top: 60),
-                    child: EmptyState(icon: Icons.local_shipping_outlined, title: tr('لا توجد شحنات', 'No shipments')),
+                    child: EmptyState(icon: Icons.local_shipping_outlined, title: q.isNotEmpty ? tr('لا نتائج مطابقة للبحث', 'No matches') : tr('لا توجد شحنات', 'No shipments')),
                   ),
                 ])
               : ListView.builder(
+                  keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                   padding: const EdgeInsets.fromLTRB(14, 8, 14, 20),
                   itemCount: rows.length,
                   itemBuilder: (c, i) {

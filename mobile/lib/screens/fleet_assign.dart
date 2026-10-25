@@ -7,6 +7,7 @@ import '../services/live.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import '../ui/search_field.dart';
 
 /// توزيع السيارات على المشرفين — نفس شاشة الويب /system/fleet/assign: اختر
 /// المشرف، علّم على السيارات، واحفظ الإسناد دفعة واحدة. وكل سيارة تُنقَل وحدها
@@ -45,6 +46,8 @@ class _FleetAssignScreenState extends State<FleetAssignScreen> {
   String _target = '';       // المشرف المستهدف
   final Set<String> _selected = {};
   String _q = '';
+  // الخانةُ تُهدَم مع التحميل والتمرير — النصُّ في متحكِّمٍ يبقى مع الكلمة.
+  final _searchCtl = TextEditingController();
   String _owner = '';        // '' الكل، 'none' غير مُسند، أو معرف مشرف
   int _seq = 0;              // ردٌّ قديم لا يكتب فوق الأحدث
   late final void Function() _onLive;
@@ -66,6 +69,7 @@ class _FleetAssignScreenState extends State<FleetAssignScreen> {
     Live.instance.off('fleet:vehicles', _onLive);
     Live.instance.off('fleet:updated', _onLive);
     Live.instance.off('vreg:updated', _onLive);
+    _searchCtl.dispose();
     Live.instance.off('hr:employee', _onLive);
     super.dispose();
   }
@@ -206,6 +210,7 @@ class _FleetAssignScreenState extends State<FleetAssignScreen> {
 
     return ListView(
       padding: const EdgeInsets.all(14),
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       children: [
         if (_supervisors.isEmpty) ...[
           Container(
@@ -273,13 +278,10 @@ class _FleetAssignScreenState extends State<FleetAssignScreen> {
               ),
             ]),
             const SizedBox(height: 10),
-            TextField(
+            SearchField(
+              controller: _searchCtl, dense: true,
               onChanged: (v) => setState(() => _q = v),
-              decoration: InputDecoration(
-                hintText: tr('ابحث باللوحة أو السائق…', 'Search plate / driver…'),
-                prefixIcon: const Icon(Icons.search),
-                isDense: true,
-              ),
+              hint: tr('ابحث باللوحة أو السائق…', 'Search plate / driver…'),
             ),
           ]),
         ),

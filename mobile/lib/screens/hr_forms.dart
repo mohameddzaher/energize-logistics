@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -10,6 +11,7 @@ import '../services/live.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import '../ui/search_field.dart';
 
 /// النماذجُ والخطاباتُ الرسميّة — مكتبةُ أوراق الموارد البشريّة.
 ///
@@ -34,6 +36,9 @@ class _HrFormsScreenState extends State<HrFormsScreen> {
   String? _error;
   String _cat = '';
   String _q = '';
+  // تبديلُ التصنيف يُعيد التحميلَ فتُهدَم الخانة — النصُّ في متحكِّمٍ يبقى مع الكلمة.
+  final _searchCtl = TextEditingController();
+  Timer? _debounce;
   bool _archived = false;
   int _seq = 0;
   late final void Function() _onLive;
@@ -55,6 +60,8 @@ class _HrFormsScreenState extends State<HrFormsScreen> {
   @override
   void dispose() {
     Live.instance.off('hr:forms', _onLive);
+    _debounce?.cancel();
+    _searchCtl.dispose();
     super.dispose();
   }
 
@@ -78,7 +85,7 @@ class _HrFormsScreenState extends State<HrFormsScreen> {
         _error = null;
       });
     } catch (e) {
-      if (mounted) setState(() { _loading = false; _error = e.toString(); });
+      if (mounted && mine == _seq) setState(() { _loading = false; _error = e.toString(); });
     }
   }
 
@@ -226,13 +233,11 @@ class _HrFormsScreenState extends State<HrFormsScreen> {
               ? ErrorRetry(message: _error!, onRetry: () { setState(() => _loading = true); _load(); })
               : RefreshIndicator(
                   onRefresh: _load,
-                  child: ListView(padding: const EdgeInsets.all(14), children: [
-                    TextField(
-                      onChanged: (v) { _q = v; _load(); },
-                      decoration: InputDecoration(
-                        hintText: tr('ابحث باسم النموذج…', 'Search by name…'),
-                        prefixIcon: const Icon(Icons.search),
-                      ),
+                  child: ListView(padding: const EdgeInsets.all(14), keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag, children: [
+                    SearchField(
+                      controller: _searchCtl,
+                      onChanged: (v) { _q = v; _debounce?.cancel(); _debounce = Timer(const Duration(milliseconds: 350), _load); },
+                      hint: tr('ابحث باسم النموذج…', 'Search by name…'),
                     ),
                     const SizedBox(height: 10),
                     SingleChildScrollView(

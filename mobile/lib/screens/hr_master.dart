@@ -12,6 +12,7 @@ import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import 'hr_common.dart';
 import 'hr_employee_profile.dart';
+import '../ui/search_field.dart';
 
 /// ماستر الموارد البشريّة في التطبيق — نظيرُ /system/hr/master/[group] و
 /// /master/expiring و/master/grid وتحليلِ الأقسام في الموقع.
@@ -242,6 +243,8 @@ class _HrMasterGroupScreenState extends State<HrMasterGroupScreen> {
   int _seq = 0;
   Timer? _debounce;
   final _withinCtrl = TextEditingController();
+  // الخانةُ في قائمةٍ تُطوى مع التمرير — النصُّ في متحكِّمٍ يبقى مع الكلمة.
+  final _searchCtl = TextEditingController();
   late final void Function() _onLive;
 
   String get g => widget.group;
@@ -277,6 +280,7 @@ class _HrMasterGroupScreenState extends State<HrMasterGroupScreen> {
     _debounce?.cancel();
     Live.instance.off('hr:master', _onLive);
     Live.instance.off('hr:contract', _onLive);
+    _searchCtl.dispose();
     super.dispose();
   }
 
@@ -672,7 +676,7 @@ class _HrMasterGroupScreenState extends State<HrMasterGroupScreen> {
     final states = sum['states'] is Map ? Map<String, dynamic>.from(sum['states']) : null;
     return RefreshIndicator(
       onRefresh: _load,
-      child: ListView(padding: const EdgeInsets.all(14), children: [
+      child: ListView(padding: const EdgeInsets.all(14), keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag, children: [
         HrQuickFilters(value: _filters, onChanged: (v) => _changed(() => _filters = Map.of(v))),
         if (_filters.isNotEmpty)
           Padding(
@@ -741,13 +745,14 @@ class _HrMasterGroupScreenState extends State<HrMasterGroupScreen> {
           ]),
         const SizedBox(height: 10),
         // ── البحثُ والحقلُ والحالةُ والمدّة ──
-        TextField(
+        SearchField(
+          controller: _searchCtl, dense: true,
           onChanged: (v) {
             _q = v;
             _debounce?.cancel();
-            _debounce = Timer(const Duration(milliseconds: 300), () => _changed(() {}));
+            _debounce = Timer(const Duration(milliseconds: 300), () { if (mounted) _changed(() {}); });
           },
-          decoration: InputDecoration(isDense: true, prefixIcon: const Icon(Icons.search), hintText: tr('اسم / رقم وظيفي / رقم هوية…', 'name / employee no / ID…')),
+          hint: tr('اسم / رقم وظيفي / رقم هوية…', 'name / employee no / ID…'),
         ),
         const SizedBox(height: 8),
         Row(children: [
@@ -808,7 +813,8 @@ class _HrMasterGroupScreenState extends State<HrMasterGroupScreen> {
         ],
         Row(children: [
           if (_q.isNotEmpty || _field.isNotEmpty || _status.isNotEmpty || _state.isNotEmpty || _within.isNotEmpty)
-            TextButton(onPressed: () => _changed(() { _field = ''; _status = ''; _state = ''; _within = ''; _withinCtrl.clear(); }), child: Text(tr('إلغاء الفلترة', 'Clear'))),
+            // «إلغاء الفلترة» يمسح الكلمةَ أيضًا — كان يظهر بسببها ولا يمسحها.
+            TextButton(onPressed: () => _changed(() { _debounce?.cancel(); _q = ''; _searchCtl.clear(); _field = ''; _status = ''; _state = ''; _within = ''; _withinCtrl.clear(); }), child: Text(tr('إلغاء الفلترة', 'Clear'))),
           const Spacer(),
           Text('${rows.length} ${tr('موظف', 'people')}', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5)),
           if (_renewable && _canEdit && rows.isNotEmpty)
@@ -926,6 +932,7 @@ class _HrExpiringScreenState extends State<HrExpiringScreen> {
   void dispose() {
     _debounce?.cancel();
     for (final e in ['hr:master', 'hr:employee', 'hr:contract']) { Live.instance.off(e, _onLive); }
+    _qCtrl.dispose();
     super.dispose();
   }
 
@@ -1011,7 +1018,7 @@ class _HrExpiringScreenState extends State<HrExpiringScreen> {
           ? (_error != null ? ErrorRetry(message: _error!, onRetry: _load) : const Center(child: CircularProgressIndicator()))
           : RefreshIndicator(
               onRefresh: _load,
-              child: ListView(padding: const EdgeInsets.all(14), children: [
+              child: ListView(padding: const EdgeInsets.all(14), keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag, children: [
                 if (_filters.isNotEmpty)
                   Container(
                     margin: const EdgeInsets.only(bottom: 8),
@@ -1022,14 +1029,14 @@ class _HrExpiringScreenState extends State<HrExpiringScreen> {
                       TextButton(onPressed: () => _set(() => _filters.clear()), child: Text(tr('عرض الكل', 'Show all'))),
                     ]),
                   ),
-                TextField(
-                  controller: _qCtrl,
+                SearchField(
+                  controller: _qCtrl, dense: true,
                   onChanged: (v) {
                     _q = v;
                     _debounce?.cancel();
                     _debounce = Timer(const Duration(milliseconds: 300), _load);
                   },
-                  decoration: InputDecoration(isDense: true, prefixIcon: const Icon(Icons.search), hintText: tr('ابحث بالاسم أو رقم الهوية أو الرقم الوظيفي', 'Name, ID or employee no.')),
+                  hint: tr('ابحث بالاسم أو رقم الهوية أو الرقم الوظيفي', 'Name, ID or employee no.'),
                 ),
                 const SizedBox(height: 8),
                 Wrap(spacing: 6, runSpacing: 6, children: [
@@ -1178,6 +1185,8 @@ class _HrMasterGridScreenState extends State<HrMasterGridScreen> {
   List<String> _visible = _gridVisibleMemo ?? _defaultGridCols;
   int _seq = 0;
   Timer? _debounce;
+  // الخانةُ تُهدَم مع الخطأ — النصُّ في متحكِّمٍ يبقى مع الكلمة.
+  final _searchCtl = TextEditingController();
   late final void Function() _onLive;
 
   @override
@@ -1195,6 +1204,7 @@ class _HrMasterGridScreenState extends State<HrMasterGridScreen> {
     _debounce?.cancel();
     Live.instance.off('hr:master', _onLive);
     Live.instance.off('hr:employee', _onLive);
+    _searchCtl.dispose();
     super.dispose();
   }
 
@@ -1295,11 +1305,13 @@ class _HrMasterGridScreenState extends State<HrMasterGridScreen> {
               TextButton(onPressed: () => setS(() { sel..clear()..addAll(_defaultGridCols); }), child: Text(tr('الافتراضي', 'Default'))),
               TextButton(onPressed: () => setS(() => sel.addAll(all.map((x) => x.key))), child: Text(tr('الكل', 'All'))),
             ])),
-            Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: TextField(
+            Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: SearchField(
+              dense: true,
               onChanged: (v) => setS(() => q = v.trim()),
-              decoration: InputDecoration(isDense: true, prefixIcon: const Icon(Icons.search), hintText: tr('ابحث…', 'Search…')),
+              hint: tr('ابحث…', 'Search…'),
             )),
-            Expanded(child: ListView(children: [
+            Expanded(child: ListView(keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag, children: [
+              if (list.isEmpty) Padding(padding: const EdgeInsets.all(24), child: Center(child: Text(tr('لا نتائج', 'No matches'), style: const TextStyle(color: T.inkFaint)))),
               for (final x in list)
                 CheckboxListTile(
                   dense: true,
@@ -1348,11 +1360,13 @@ class _HrMasterGridScreenState extends State<HrMasterGridScreen> {
               Expanded(child: Text(c.label, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800))),
               if (sel.isNotEmpty) TextButton(onPressed: () => setS(sel.clear), child: Text(tr('مسح', 'Clear'))),
             ])),
-            Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: TextField(
+            Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: SearchField(
+              dense: true,
               onChanged: (v) => setS(() => q = v.trim()),
-              decoration: InputDecoration(isDense: true, prefixIcon: const Icon(Icons.search), hintText: tr('ابحث…', 'Search…')),
+              hint: tr('ابحث…', 'Search…'),
             )),
-            Expanded(child: ListView(children: [
+            Expanded(child: ListView(keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag, children: [
+              if (list.isEmpty) Padding(padding: const EdgeInsets.all(24), child: Center(child: Text(tr('لا نتائج', 'No matches'), style: const TextStyle(color: T.inkFaint)))),
               for (final o in list)
                 CheckboxListTile(
                   dense: true,
@@ -1442,9 +1456,10 @@ class _HrMasterGridScreenState extends State<HrMasterGridScreen> {
                   Padding(
                     padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
                     child: Row(children: [
-                      Expanded(child: TextField(
-                        onChanged: (v) { _q = v; _debounce?.cancel(); _debounce = Timer(const Duration(milliseconds: 300), () => _refilter(() {})); },
-                        decoration: InputDecoration(isDense: true, prefixIcon: const Icon(Icons.search), hintText: tr('بحث بالاسم أو الرقم الوظيفي أو الهوية…', 'name, employee no., ID…')),
+                      Expanded(child: SearchField(
+                        controller: _searchCtl, dense: true,
+                        onChanged: (v) { _q = v; _debounce?.cancel(); _debounce = Timer(const Duration(milliseconds: 300), () { if (mounted) _refilter(() {}); }); },
+                        hint: tr('بحث بالاسم أو الرقم الوظيفي أو الهوية…', 'name, employee no., ID…'),
                       )),
                       if (_colFilters.isNotEmpty)
                         TextButton(onPressed: () => _refilter(_colFilters.clear), child: Text(tr('مسح فلاتر الأعمدة (${_colFilters.length})', 'Clear column filters (${_colFilters.length})'), style: const TextStyle(fontSize: 11.5))),

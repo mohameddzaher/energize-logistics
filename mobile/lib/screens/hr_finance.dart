@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../config.dart';
@@ -12,6 +13,7 @@ import '../ui/hr_quick.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import 'hr_employee_profile.dart';
+import '../ui/search_field.dart';
 
 /// ماليّاتُ الموارد البشريّة — نظيرةُ `/system/finance/hr/residency` و`/system/hr/finance-follow`.
 ///
@@ -120,6 +122,9 @@ class _HrDocFeesViewState extends State<HrDocFeesView> with AutomaticKeepAliveCl
   String _doc = '';
   String _paid = '';
   String _q = '';
+  // الخانةُ في قائمةٍ تُطوى مع التمرير — النصُّ في متحكِّمٍ يبقى مع الكلمة.
+  final _searchCtl = TextEditingController();
+  Timer? _debounce;
   Map<String, String> _quick = {};
   Map<String, dynamic>? _d;
   bool _loading = true;
@@ -141,6 +146,8 @@ class _HrDocFeesViewState extends State<HrDocFeesView> with AutomaticKeepAliveCl
   @override
   void dispose() {
     for (final e in ['hr-finance:changed', 'hr:master', 'hr:employee']) { Live.instance.off(e, _onLive); }
+    _debounce?.cancel();
+    _searchCtl.dispose();
     super.dispose();
   }
 
@@ -320,7 +327,7 @@ class _HrDocFeesViewState extends State<HrDocFeesView> with AutomaticKeepAliveCl
 
     return RefreshIndicator(
       onRefresh: _load,
-      child: ListView(padding: const EdgeInsets.fromLTRB(12, 12, 12, 90), children: [
+      child: ListView(padding: const EdgeInsets.fromLTRB(12, 12, 12, 90), keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag, children: [
         SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           child: Row(children: [
@@ -342,12 +349,15 @@ class _HrDocFeesViewState extends State<HrDocFeesView> with AutomaticKeepAliveCl
           ]),
         ),
         const SizedBox(height: 8),
-        TextField(
-          onSubmitted: (v) => _refilter(() => _q = v.trim()),
-          onChanged: (v) { if (v.isEmpty && _q.isNotEmpty) _refilter(() => _q = ''); },
-          textInputAction: TextInputAction.search,
-          decoration: InputDecoration(isDense: true, prefixIcon: const Icon(Icons.search),
-              hintText: tr('ابحث بالاسم أو رقم الإقامة أو الرقم الوظيفي', 'Name, iqama or employee no.')),
+        SearchField(
+          controller: _searchCtl, dense: true,
+          onChanged: (v) {
+            _debounce?.cancel();
+            _debounce = Timer(const Duration(milliseconds: 350), () {
+              if (mounted && v.trim() != _q) _refilter(() => _q = v.trim());
+            });
+          },
+          hint: tr('ابحث بالاسم أو رقم الإقامة أو الرقم الوظيفي', 'Name, iqama or employee no.'),
         ),
         const SizedBox(height: 8),
         HrQuickFilters(
@@ -535,6 +545,9 @@ class _HrFinanceRequestsViewState extends State<HrFinanceRequestsView> with Auto
 
   late String _status = widget.finance ? 'pending' : '';
   String _q = '';
+  // الخانةُ تُهدَم مع الخطأ والتمرير — النصُّ في متحكِّمٍ يبقى مع الكلمة.
+  final _searchCtl = TextEditingController();
+  Timer? _debounce;
   List<Map<String, dynamic>> _rows = [];
   Map<String, dynamic> _counts = {};
   Map<String, dynamic> _can = {};
@@ -554,6 +567,8 @@ class _HrFinanceRequestsViewState extends State<HrFinanceRequestsView> with Auto
   @override
   void dispose() {
     Live.instance.off('hr-finance:changed', _onLive);
+    _debounce?.cancel();
+    _searchCtl.dispose();
     super.dispose();
   }
 
@@ -672,14 +687,12 @@ class _HrFinanceRequestsViewState extends State<HrFinanceRequestsView> with Auto
               child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                 Text(tr('طلب جديد إلى الإدارة المالية', 'New request to Finance'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
                 const SizedBox(height: 10),
-                TextField(
+                Text(tr('أضِف موظفًا', 'Add an employee'), style: const TextStyle(fontSize: 12, color: T.inkSoft)),
+                const SizedBox(height: 4),
+                SearchField(
                   controller: search,
                   onChanged: (_) => setSt(() {}),
-                  decoration: InputDecoration(
-                    labelText: tr('أضِف موظفًا', 'Add an employee'),
-                    hintText: tr('ابحث بالاسم أو الإقامة أو الرقم الوظيفي…', 'name, iqama or number…'),
-                    prefixIcon: const Icon(Icons.search),
-                  ),
+                  hint: tr('ابحث بالاسم أو الإقامة أو الرقم الوظيفي…', 'name, iqama or number…'),
                 ),
                 for (final e in shown)
                   ListTile(
@@ -763,7 +776,7 @@ class _HrFinanceRequestsViewState extends State<HrFinanceRequestsView> with Auto
     return Stack(children: [
       RefreshIndicator(
         onRefresh: _load,
-        child: ListView(padding: const EdgeInsets.fromLTRB(12, 12, 12, 90), children: [
+        child: ListView(padding: const EdgeInsets.fromLTRB(12, 12, 12, 90), keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag, children: [
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: Row(children: [
@@ -783,15 +796,18 @@ class _HrFinanceRequestsViewState extends State<HrFinanceRequestsView> with Auto
             ]),
           ),
           const SizedBox(height: 8),
-          TextField(
-            onSubmitted: (v) { _q = v.trim(); _load(); },
-            onChanged: (v) { if (v.isEmpty && _q.isNotEmpty) { _q = ''; _load(); } },
-            textInputAction: TextInputAction.search,
-            decoration: InputDecoration(isDense: true, prefixIcon: const Icon(Icons.search),
-                hintText: tr('ابحث برقم الطلب أو اسم موظف أو رقم إقامته', 'Request no., employee or iqama')),
+          SearchField(
+            controller: _searchCtl, dense: true,
+            onChanged: (v) {
+              _debounce?.cancel();
+              _debounce = Timer(const Duration(milliseconds: 350), () {
+                if (mounted && v.trim() != _q) { _q = v.trim(); _load(); }
+              });
+            },
+            hint: tr('ابحث برقم الطلب أو اسم موظف أو رقم إقامته', 'Request no., employee or iqama'),
           ),
           const SizedBox(height: 10),
-          if (_rows.isEmpty) EmptyState(icon: Icons.inbox_outlined, title: tr('لا طلباتَ هنا', 'No requests here')),
+          if (_rows.isEmpty) EmptyState(icon: Icons.inbox_outlined, title: _q.isNotEmpty ? tr('لا نتائج', 'No matches') : tr('لا طلباتَ هنا', 'No requests here')),
           for (final r in _rows) _card(r, canAnswer),
         ]),
       ),

@@ -4,6 +4,7 @@ import '../services/lang.dart';
 import '../services/live.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/export_sheet.dart';
+import '../ui/search_field.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import 'it_common.dart';
@@ -43,6 +44,8 @@ class _ItStockScreenState extends State<ItStockScreen> {
   bool _loading = true;
   String? _error;
   String _q = '';
+  // متحكِّمُ البحث عند الشاشة: النصُّ الظاهر = الكلمةُ المرشِّحة دائمًا.
+  final _searchCtl = TextEditingController();
   String _type = '';
   String _condition = '';
   int _seq = 0;
@@ -61,6 +64,7 @@ class _ItStockScreenState extends State<ItStockScreen> {
   void dispose() {
     Live.instance.off('it:updated', _onLive);
     Live.instance.off('hr:asset', _onLive);
+    _searchCtl.dispose();
     super.dispose();
   }
 
@@ -130,7 +134,7 @@ class _ItStockScreenState extends State<ItStockScreen> {
               ? ErrorRetry(message: _error!, onRetry: () { setState(() => _loading = true); _load(); })
               : RefreshIndicator(
                   onRefresh: _load,
-                  child: ListView(padding: const EdgeInsets.fromLTRB(14, 12, 14, 90), children: [
+                  child: ListView(keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag, padding: const EdgeInsets.fromLTRB(14, 12, 14, 90), children: [
                     GridView.count(
                       crossAxisCount: 2, shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
                       mainAxisSpacing: 8, crossAxisSpacing: 8, childAspectRatio: 1.9,
@@ -151,9 +155,10 @@ class _ItStockScreenState extends State<ItStockScreen> {
                       }).toList()),
                     ])),
                     const SizedBox(height: 10),
-                    TextField(
+                    SearchField(
+                      controller: _searchCtl, dense: true,
                       onChanged: (v) => setState(() => _q = v),
-                      decoration: InputDecoration(hintText: tr('بحث بالجهاز أو الرقم التسلسلي أو الماركة...', 'Search item, serial or brand...'), prefixIcon: const Icon(Icons.search), isDense: true),
+                      hint: tr('بحث بالجهاز أو الرقم التسلسلي أو الماركة...', 'Search item, serial or brand...'),
                     ),
                     const SizedBox(height: 8),
                     Row(children: [
@@ -166,7 +171,7 @@ class _ItStockScreenState extends State<ItStockScreen> {
                           onChanged: (v) { setState(() => _condition = v); _load(); })),
                     ]),
                     const SizedBox(height: 10),
-                    if (rows.isEmpty) EmptyState(icon: Icons.inventory_outlined, title: tr('المستودع فارغ.', 'No items in stock.')),
+                    if (rows.isEmpty) EmptyState(icon: _q.trim().isNotEmpty ? Icons.search_off : Icons.inventory_outlined, title: _q.trim().isNotEmpty ? tr('لا نتائج مطابقة للبحث.', 'No matches.') : tr('المستودع فارغ.', 'No items in stock.')),
                     for (final a in rows) Padding(
                       padding: const EdgeInsets.only(bottom: 8),
                       child: AppCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [

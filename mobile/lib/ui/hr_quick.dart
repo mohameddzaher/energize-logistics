@@ -9,6 +9,7 @@
 import 'package:flutter/material.dart';
 import '../services/api.dart';
 import '../services/lang.dart';
+import 'search_field.dart';
 import 'theme.dart';
 
 /// يفتح قائمةً فيها بحث ويُرجع ما اختير ('' = مسح، null = إلغاء).
@@ -48,10 +49,11 @@ class _PickSheetState extends State<_PickSheet> {
           ),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: TextField(
+            child: SearchField(
               autofocus: widget.options.length > 8,
+              dense: true,
               onChanged: (v) => setState(() => _q = v.trim()),
-              decoration: InputDecoration(isDense: true, prefixIcon: const Icon(Icons.search), hintText: tr('ابحث…', 'Search…')),
+              hint: tr('ابحث…', 'Search…'),
             ),
           ),
           const SizedBox(height: 6),
@@ -59,6 +61,7 @@ class _PickSheetState extends State<_PickSheet> {
             child: list.isEmpty
                 ? Center(child: Text(tr('لا نتائج', 'No matches'), style: const TextStyle(color: T.inkFaint)))
                 : ListView.builder(
+                    keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                     itemCount: list.length,
                     itemBuilder: (_, i) {
                       final o = list[i];
@@ -236,13 +239,14 @@ class _MultiSheetState extends State<_MultiSheet> {
           ),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: TextField(
+            child: SearchField(
+              dense: true,
               onChanged: (v) => setState(() => _q = v.trim()),
-              decoration: InputDecoration(isDense: true, prefixIcon: const Icon(Icons.search), hintText: tr('ابحث…', 'Search…')),
+              hint: tr('ابحث…', 'Search…'),
             ),
           ),
           Expanded(
-            child: ListView(children: [
+            child: ListView(keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag, children: [
               for (final o in list)
                 CheckboxListTile(
                   dense: true,

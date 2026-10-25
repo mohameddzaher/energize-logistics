@@ -7,6 +7,7 @@ import '../ui/export_sheet.dart';
 import '../ui/report_button.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import '../ui/search_field.dart';
 import 'ls2_common.dart';
 
 /// سائقو لوكيشن سوليوشن — كيلومترات الفترة لكل سائق، مركبته الحالية،
@@ -22,6 +23,8 @@ class _Ls2DriversScreenState extends State<Ls2DriversScreen> {
   bool _loading = true;
   String? _error;
   String _q = '';
+  // متحكِّمُ البحث عند الشاشة: تغييرُ الفترة يُعيد التحميل فلا تعود الخانةُ فارغةً والكلمةُ تُرشِّح.
+  final _searchCtl = TextEditingController();
   String _chip = '';
   DateTimeRange _range = ls2ThisMonthToDate();
   int _seq = 0;
@@ -37,7 +40,7 @@ class _Ls2DriversScreenState extends State<Ls2DriversScreen> {
   }
 
   @override
-  void dispose() { Live.instance.offData('ls2:updated', _onLive); super.dispose(); }
+  void dispose() { Live.instance.offData('ls2:updated', _onLive); _searchCtl.dispose(); super.dispose(); }
 
   String get _from => ls2Ymd(_range.start);
   String get _to => ls2Ymd(_range.end);
@@ -168,10 +171,7 @@ class _Ls2DriversScreenState extends State<Ls2DriversScreen> {
                   Ls2RangeBar(value: _range, onChanged: (r) { setState(() { _range = r; _loading = true; }); _load(); }),
                   Padding(
                     padding: const EdgeInsets.fromLTRB(14, 8, 14, 4),
-                    child: TextField(
-                      onChanged: (v) => setState(() => _q = v),
-                      decoration: InputDecoration(hintText: tr('ابحث عن السائق…', 'Search driver…'), prefixIcon: const Icon(Icons.search), suffixText: '${filtered.length} · ${ls2Km(totalKm)}'),
-                    ),
+                    child: SearchField(controller: _searchCtl, hint: tr('ابحث عن السائق…', 'Search driver…'), suffixText: '${filtered.length} · ${ls2Km(totalKm)}', onChanged: (v) => setState(() => _q = v)),
                   ),
                   SizedBox(
                     height: 42,
@@ -193,8 +193,9 @@ class _Ls2DriversScreenState extends State<Ls2DriversScreen> {
                     child: RefreshIndicator(
                       onRefresh: _load,
                       child: filtered.isEmpty
-                          ? ListView(children: [const SizedBox(height: 80), EmptyState(icon: Icons.badge_outlined, title: tr('لا يوجد سائقون', 'No drivers'))])
+                          ? ListView(children: [const SizedBox(height: 80), EmptyState(icon: q.isNotEmpty ? Icons.search_off : Icons.badge_outlined, title: q.isNotEmpty ? tr('لا نتائج مطابقة للبحث', 'No matches') : tr('لا يوجد سائقون', 'No drivers'))])
                           : ListView.separated(
+                              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                               padding: const EdgeInsets.all(14),
                               itemCount: filtered.length,
                               separatorBuilder: (_, __) => const SizedBox(height: 8),

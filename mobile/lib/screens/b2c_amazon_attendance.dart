@@ -6,6 +6,7 @@ import '../services/live.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import '../ui/search_field.dart';
 import 'b2c_daily.dart' show AttendanceToggle;
 
 /// متابعةُ مناديب أمازون — نظيرُ /system/b2c/amazon-attendance.
@@ -24,6 +25,7 @@ class _B2cAmazonAttendanceScreenState extends State<B2cAmazonAttendanceScreen> {
   bool _forbidden = false;
   String _date = '';
   String _q = '';
+  final _searchCtl = TextEditingController(); // النصُّ يبقى مطابقًا لـ_q بعد إعادة التحميل
   String _filter = ''; // '' | present | absent
   final Map<String, String> _state = {}; // saving | error
   Timer? _debounce;
@@ -41,6 +43,7 @@ class _B2cAmazonAttendanceScreenState extends State<B2cAmazonAttendanceScreen> {
   void dispose() {
     for (final e in ['b2c:attendance', 'lt:updated']) { Live.instance.off(e, _onLive); }
     _debounce?.cancel();
+    _searchCtl.dispose();
     super.dispose();
   }
 
@@ -124,7 +127,7 @@ class _B2cAmazonAttendanceScreenState extends State<B2cAmazonAttendanceScreen> {
       title: title,
       body: RefreshIndicator(
         onRefresh: _load,
-        child: ListView(padding: const EdgeInsets.all(12), children: [
+        child: ListView(padding: const EdgeInsets.all(12), keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag, children: [
           if (projects.isNotEmpty) Padding(
             padding: const EdgeInsets.only(bottom: 6),
             child: Text(tr('المشاريع: ${projects.join('، ')}', 'Projects: ${projects.join(', ')}'), style: const TextStyle(fontSize: 12, color: T.inkFaint)),
@@ -152,9 +155,11 @@ class _B2cAmazonAttendanceScreenState extends State<B2cAmazonAttendanceScreen> {
           Text(tr('الجميع حاضرون افتراضيًّا — علِّم مَن لم يحضر فقط.', 'Everyone is present by default — mark only the absent.'),
               style: const TextStyle(fontSize: 12, color: T.inkSoft)),
           const SizedBox(height: 8),
-          TextField(
+          SearchField(
+            controller: _searchCtl,
+            dense: true,
             onChanged: (v) => setState(() => _q = v),
-            decoration: InputDecoration(isDense: true, prefixIcon: const Icon(Icons.search), hintText: tr('ابحث بالاسم أو رقم الإقامة أو المشرف', 'Search…')),
+            hint: tr('ابحث بالاسم أو رقم الإقامة أو المشرف', 'Search…'),
           ),
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 6),

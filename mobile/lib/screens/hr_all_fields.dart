@@ -5,6 +5,7 @@ import '../services/live.dart';
 import '../ui/hr_quick.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import '../ui/search_field.dart';
 
 /// «كل البيانات» — كلُّ خانات ماستر الموارد البشريّة للموظّف، نظيرُ
 /// EmployeeMasterFields في الموقع.
@@ -26,6 +27,8 @@ class _HrAllFieldsTabState extends State<HrAllFieldsTab> with AutomaticKeepAlive
   Map<String, List<String>> _choices = {};
   String? _error;
   String _q = '';
+  // الخانةُ في قائمةٍ تُطوى مع التمرير — النصُّ في متحكِّمٍ يبقى مع الكلمة.
+  final _searchCtl = TextEditingController();
   late final void Function() _onLive;
 
   @override
@@ -42,6 +45,7 @@ class _HrAllFieldsTabState extends State<HrAllFieldsTab> with AutomaticKeepAlive
   @override
   void dispose() {
     for (final e in ['hr:master', 'hr:employee', 'hr:contract', 'lt:updated']) { Live.instance.off(e, _onLive); }
+    _searchCtl.dispose();
     super.dispose();
   }
 
@@ -148,15 +152,18 @@ class _HrAllFieldsTabState extends State<HrAllFieldsTab> with AutomaticKeepAlive
     ].where((g) => (g['fields'] as List).isNotEmpty).toList();
     return RefreshIndicator(
       onRefresh: _load,
-      child: ListView(padding: const EdgeInsets.all(14), children: [
-        TextField(
+      child: ListView(padding: const EdgeInsets.all(14), keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag, children: [
+        SearchField(
+          controller: _searchCtl, dense: true,
           onChanged: (v) => setState(() => _q = v.trim()),
-          decoration: InputDecoration(isDense: true, prefixIcon: const Icon(Icons.search), hintText: tr('ابحث في البيانات…', 'Search fields…')),
+          hint: tr('ابحث في البيانات…', 'Search fields…'),
         ),
         const SizedBox(height: 6),
         Text(tr('كل بيانات الماستر — اضغط أي خانة لتعديلها، والتعديل يظهر في كل مكان فورًا.', 'Every master field — tap to edit; it shows everywhere at once.'),
             style: const TextStyle(fontSize: 11.5, color: T.inkFaint)),
         const SizedBox(height: 8),
+        if (groups.isEmpty && _q.isNotEmpty)
+          Padding(padding: const EdgeInsets.all(24), child: Center(child: Text(tr('لا نتائج', 'No matches'), style: const TextStyle(color: T.inkFaint)))),
         for (final g in groups)
           Padding(
             padding: const EdgeInsets.only(bottom: 10),

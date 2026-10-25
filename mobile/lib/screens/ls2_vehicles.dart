@@ -7,6 +7,7 @@ import '../ui/export_sheet.dart';
 import '../ui/theme.dart';
 import '../ui/tire_sensor_badge.dart';
 import '../ui/widgets.dart';
+import '../ui/search_field.dart';
 import 'package:provider/provider.dart';
 import '../services/auth.dart';
 import 'ls2_common.dart';
@@ -474,14 +475,7 @@ class _Ls2VehiclesScreenState extends State<Ls2VehiclesScreen> {
       body: Column(children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(14, 12, 14, 0),
-          child: TextField(
-            onChanged: (v) => setState(() => _q = v),
-            decoration: InputDecoration(
-              hintText: tr('ابحث باللوحة أو السائق…', 'Search plate or driver…'),
-              prefixIcon: const Icon(Icons.search),
-              suffixText: '${rows.length}',
-            ),
-          ),
+          child: SearchField(hint: tr('ابحث باللوحة أو السائق…', 'Search plate or driver…'), suffixText: '${rows.length}', onChanged: (v) => setState(() => _q = v)),
         ),
         Padding(
           padding: const EdgeInsets.fromLTRB(14, 8, 14, 4),
@@ -523,6 +517,7 @@ class _Ls2VehiclesScreenState extends State<Ls2VehiclesScreen> {
                       child: rows.isEmpty
                           ? ListView(children: [const SizedBox(height: 80), EmptyState(icon: Icons.local_shipping_outlined, title: tr('لا توجد مركبات مطابقة', 'No matching vehicles'))])
                           : ListView.separated(
+                              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                               padding: const EdgeInsets.all(14),
                               itemCount: rows.length,
                               separatorBuilder: (_, __) => const SizedBox(height: 8),

@@ -13,6 +13,7 @@
 import 'package:flutter/material.dart';
 import '../services/api.dart';
 import '../services/lang.dart';
+import 'search_field.dart';
 import 'theme.dart';
 import 'widgets.dart';
 
@@ -70,11 +71,19 @@ class _FilterSheetState extends State<_FilterSheet> {
   bool _loading = true;
   String? _expanded;
   final Map<String, String> _search = {};
+  // متحكِّمٌ لكلّ حقل: الخانةُ تعود بنصِّها بعد الطيّ أو التمرير
+  final Map<String, TextEditingController> _searchCtl = {};
 
   @override
   void initState() {
     super.initState();
     _load();
+  }
+
+  @override
+  void dispose() {
+    for (final c in _searchCtl.values) { c.dispose(); }
+    super.dispose();
   }
 
   // تُعاد قراءة القيم مع كل تغيير — بعد اختيار «جدة» يصير عدد كل جنسية عددها
@@ -232,21 +241,20 @@ class _FilterSheetState extends State<_FilterSheet> {
           if (f.values.length > 8)
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 0, 12, 6),
-              child: TextField(
-                decoration: InputDecoration(
-                  isDense: true,
-                  hintText: tr('بحث…', 'Search…'),
-                  prefixIcon: const Icon(Icons.search, size: 16),
-                  border: const OutlineInputBorder(),
-                ),
-                style: const TextStyle(fontSize: 12),
+              child: SearchField(
+                controller: _searchCtl.putIfAbsent(f.key, () => TextEditingController(text: _search[f.key] ?? '')),
+                dense: true,
+                hint: tr('بحث…', 'Search…'),
                 onChanged: (v) => setState(() => _search[f.key] = v),
               ),
             ),
           ConstrainedBox(
             constraints: const BoxConstraints(maxHeight: 240),
-            child: ListView(
+            child: vals.isEmpty && q.isNotEmpty
+                ? Padding(padding: const EdgeInsets.all(12), child: Text(tr('لا نتائج مطابقة', 'No matches'), style: const TextStyle(fontSize: 12, color: T.inkFaint)))
+                : ListView(
               shrinkWrap: true,
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
               children: vals.map((v) {
                 final on = sel.contains(v.key);
                 return InkWell(

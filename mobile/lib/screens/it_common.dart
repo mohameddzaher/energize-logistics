@@ -4,6 +4,7 @@ import '../services/api.dart';
 import '../services/auth.dart';
 import '../services/lang.dart';
 import '../ui/theme.dart';
+import '../ui/search_field.dart';
 
 /// أدواتٌ مشتركة بين شاشات تقنية المعلومات — نظيرُ lib/it.ts في الويب:
 /// تسمياتُ البلاغات، وتنسيقُ التاريخ وزمن الحلّ، ومنتقي الموظّف والتاريخ.
@@ -168,15 +169,16 @@ Future<Map<String, dynamic>?> pickFromList(
   required String Function(Map<String, dynamic>) label,
   String Function(Map<String, dynamic>)? hint,
 }) {
+  // الكلمةُ في متحكِّمٍ خارجَ الباني: لو أُعيد بناءُ اللوح (اللوحة تظهر) لا تُنسى.
+  final ctl = TextEditingController();
   return showModalBottomSheet<Map<String, dynamic>>(
     context: context,
     isScrollControlled: true,
     backgroundColor: Colors.white,
     shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
     builder: (c) {
-      String q = '';
       return StatefulBuilder(builder: (c, setS) {
-        final fq = _fold(q.trim());
+        final fq = _fold(ctl.text.trim());
         final list = items.where((e) => fq.isEmpty || _fold('${label(e)} ${hint?.call(e) ?? ''}').contains(fq)).toList();
         return SafeArea(
           child: Padding(
@@ -190,16 +192,17 @@ Future<Map<String, dynamic>?> pickFromList(
                 ),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(14, 6, 14, 6),
-                  child: TextField(
-                    autofocus: true,
-                    onChanged: (v) => setS(() => q = v),
-                    decoration: InputDecoration(hintText: tr('ابحث…', 'Search…'), prefixIcon: const Icon(Icons.search), isDense: true),
+                  child: SearchField(
+                    controller: ctl, autofocus: true, dense: true,
+                    onChanged: (_) => setS(() {}),
+                    hint: tr('ابحث…', 'Search…'),
                   ),
                 ),
                 Expanded(
                   child: list.isEmpty
                       ? Center(child: Text(tr('لا توجد نتائج', 'No matches'), style: const TextStyle(color: T.inkFaint)))
                       : ListView.separated(
+                          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                           itemCount: list.length,
                           separatorBuilder: (_, __) => const Divider(height: 1),
                           itemBuilder: (c, i) {
@@ -219,7 +222,7 @@ Future<Map<String, dynamic>?> pickFromList(
         );
       });
     },
-  );
+  ).whenComplete(ctl.dispose);
 }
 
 /// خانةُ تاريخ تُفتح بالضغط — القيمة YYYY-MM-DD أو فارغة.

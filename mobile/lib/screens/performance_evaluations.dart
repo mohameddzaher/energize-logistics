@@ -6,6 +6,7 @@ import '../ui/app_scaffold.dart';
 import '../ui/doc_pdf.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import '../ui/search_field.dart';
 
 /// تقييم الأداء — قائمة التقييمات، وتقييم موظف عبر قالب معاييره الموزونة
 /// (كل معيار من ٥) مع حساب النسبة والفئة مباشرة — /api/performance.
@@ -89,13 +90,13 @@ class _EvaluationsScreenState extends State<EvaluationsScreen> {
                 child: Column(children: [
                   Padding(
                     padding: const EdgeInsets.all(14),
-                    child: TextField(autofocus: true, onChanged: (v) => setS(() => q = v),
-                        decoration: InputDecoration(hintText: tr('اختر موظفًا للتقييم…', 'Choose employee…'), prefixIcon: const Icon(Icons.search))),
+                    child: SearchField(autofocus: true, hint: tr('اختر موظفًا للتقييم…', 'Choose employee…'), onChanged: (v) => setS(() => q = v)),
                   ),
                   Expanded(
                     child: list.isEmpty
-                        ? EmptyState(icon: Icons.groups_outlined, title: tr('لا يوجد أعضاء فريق', 'No team members'))
+                        ? EmptyState(icon: Icons.groups_outlined, title: q.isNotEmpty ? tr('لا نتائج مطابقة للبحث', 'No matches') : tr('لا يوجد أعضاء فريق', 'No team members'))
                         : ListView.builder(
+                            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                             itemCount: list.length,
                             itemBuilder: (c, i) {
                               final e = list[i]['employee'] as Map<String, dynamic>? ?? list[i];

@@ -9,6 +9,7 @@ import '../ui/app_scaffold.dart';
 import '../ui/export_sheet.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import '../ui/search_field.dart';
 import 'b2c_column_filter.dart';
 import 'light_transport_list.dart' show canEditLtUser;
 import 'light_transport_profile.dart';
@@ -59,6 +60,7 @@ class _LtOperatingOrdersScreenState extends State<LtOperatingOrdersScreen> {
   bool _loading = true;
   String? _error;
   String _q = '';
+  final _searchCtl = TextEditingController(); // النصُّ يبقى مطابقًا لـ_q بعد إعادة التحميل
   Timer? _debounce;
   String _status = '';
   String _from = '', _to = '';
@@ -77,6 +79,7 @@ class _LtOperatingOrdersScreenState extends State<LtOperatingOrdersScreen> {
   void dispose() {
     _debounce?.cancel();
     Live.instance.off('lt:*', _onLive);
+    _searchCtl.dispose();
     super.dispose();
   }
 
@@ -239,7 +242,7 @@ class _LtOperatingOrdersScreenState extends State<LtOperatingOrdersScreen> {
               ? ErrorRetry(message: _error!, onRetry: () { setState(() => _loading = true); _load(); })
               : RefreshIndicator(
                   onRefresh: _load,
-                  child: ListView(padding: const EdgeInsets.fromLTRB(12, 12, 12, 90), children: [
+                  child: ListView(padding: const EdgeInsets.fromLTRB(12, 12, 12, 90), keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag, children: [
                     Row(children: [
                       stat(tr('الإجمالي', 'Total'), shown.length, T.ink, onTap: () => setState(() => _status = ''), on: _status.isEmpty),
                       const SizedBox(width: 6),
@@ -256,8 +259,10 @@ class _LtOperatingOrdersScreenState extends State<LtOperatingOrdersScreen> {
                           onTap: () => setState(() => _onlyMismatch = !_onlyMismatch), on: _onlyMismatch),
                     ]),
                     const SizedBox(height: 10),
-                    TextField(
-                      decoration: InputDecoration(isDense: true, prefixIcon: const Icon(Icons.search), hintText: tr('رقم الأمر · الموظف · الهوية · اللوحة…', 'order no., employee, ID, plate…')),
+                    SearchField(
+                      controller: _searchCtl,
+                      dense: true,
+                      hint: tr('رقم الأمر · الموظف · الهوية · اللوحة…', 'order no., employee, ID, plate…'),
                       onChanged: (v) { _q = v.trim(); _debounce?.cancel(); _debounce = Timer(const Duration(milliseconds: 350), _load); },
                     ),
                     const SizedBox(height: 8),
@@ -282,7 +287,7 @@ class _LtOperatingOrdersScreenState extends State<LtOperatingOrdersScreen> {
                     ]),
                     const SizedBox(height: 6),
                     if (shown.isEmpty)
-                      EmptyState(icon: Icons.assignment_ind_outlined, title: tr('لا أوامر تشغيل', 'No operating orders'))
+                      EmptyState(icon: Icons.assignment_ind_outlined, title: _q.isNotEmpty ? tr('لا نتائج مطابقة', 'No matches') : tr('لا أوامر تشغيل', 'No operating orders'))
                     else
                       for (final o in shown) _tile(o, canEdit),
                   ]),
@@ -349,9 +354,9 @@ Future<String?> _pick(BuildContext context, String title, List<(String, String)>
                 Padding(padding: const EdgeInsets.fromLTRB(16, 0, 16, 6), child: Text(title, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15))),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: TextField(autofocus: true, decoration: InputDecoration(isDense: true, prefixIcon: const Icon(Icons.search), hintText: tr('ابحث…', 'Search…')), onChanged: (v) => setD(() => q = v.trim())),
+                  child: SearchField(autofocus: true, dense: true, hint: tr('ابحث…', 'Search…'), onChanged: (v) => setD(() => q = v.trim())),
                 ),
-                Expanded(child: ListView(children: [
+                Expanded(child: ListView(keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag, children: [
                   for (final o in list) ListTile(dense: true, title: Text(o.$2), onTap: () => Navigator.pop(c, o.$1)),
                 ])),
               ]),

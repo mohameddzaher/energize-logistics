@@ -7,6 +7,7 @@ import '../services/lang.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import '../ui/search_field.dart';
 import '../services/live.dart';
 import '../ui/file_upload.dart';
 import '../ui/leave_chain.dart';
@@ -29,6 +30,7 @@ class ApprovalsScreen extends StatefulWidget {
 class _ApprovalsScreenState extends State<ApprovalsScreen> {
   List<Map<String, dynamic>> _leaves = [];
   String _q = ''; // البحث بالاسم أو نوع الإجازة أو السبب — كالويب
+  final _searchCtl = TextEditingController(); // النصُّ يبقى مطابقًا لـ_q بعد التحديث الحيّ
   bool _loading = true;
   String? _error;
   late final void Function() _onLive;
@@ -44,6 +46,7 @@ class _ApprovalsScreenState extends State<ApprovalsScreen> {
   @override
   void dispose() {
     Live.instance.off('hr:leave', _onLive);
+    _searchCtl.dispose();
     super.dispose();
   }
 
@@ -206,10 +209,12 @@ class _ApprovalsScreenState extends State<ApprovalsScreen> {
                         ])
                       : ListView(
                           padding: const EdgeInsets.fromLTRB(14, 12, 14, 24),
+                          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                           children: [
-                            TextField(
-                              decoration: InputDecoration(prefixIcon: const Icon(Icons.search), isDense: true,
-                                  hintText: tr('ابحث بالاسم أو نوع الإجازة أو السبب…', 'Search by name, leave type or reason…')),
+                            SearchField(
+                              controller: _searchCtl,
+                              dense: true,
+                              hint: tr('ابحث بالاسم أو نوع الإجازة أو السبب…', 'Search by name, leave type or reason…'),
                               onChanged: (v) => setState(() => _q = v),
                             ),
                             const SizedBox(height: 10),

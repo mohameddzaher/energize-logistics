@@ -9,6 +9,7 @@ import '../ui/app_scaffold.dart';
 import '../ui/contact.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import '../ui/search_field.dart';
 
 /// شحنات إدارة الأسطول — native: search, status filter chips, and a detail
 /// sheet with the follow-up form (the 3-hour cadence lives on this screen).
@@ -43,6 +44,8 @@ class _FleetShipmentsScreenState extends State<FleetShipmentsScreen> {
   bool _loading = true;
   String? _error;
   String _q = '';
+  // تبديلُ الحالة يُعيد التحميلَ فتُهدَم الخانة — النصُّ في متحكِّمٍ يبقى مع الكلمة.
+  final _searchCtl = TextEditingController();
   String _status = '';
   late final void Function() _onLive;
   /// المعلَّمُ: المعرّف → الصفُّ نفسُه، فيبقى معروفًا ولو غاب عن الشاشة.
@@ -67,6 +70,7 @@ class _FleetShipmentsScreenState extends State<FleetShipmentsScreen> {
   @override
   void dispose() {
     Live.instance.off('fleet:updated', _onLive);
+    _searchCtl.dispose();
     super.dispose();
   }
 
@@ -160,12 +164,10 @@ class _FleetShipmentsScreenState extends State<FleetShipmentsScreen> {
               : Column(children: [
                   Padding(
                     padding: const EdgeInsets.fromLTRB(14, 12, 14, 0),
-                    child: TextField(
+                    child: SearchField(
+                      controller: _searchCtl,
                       onChanged: (v) => setState(() => _q = v),
-                      decoration: InputDecoration(
-                        hintText: tr('ابحث برقم البوليصة أو العميل أو اللوحة…', 'Search waybill, customer, plate…'),
-                        prefixIcon: const Icon(Icons.search),
-                      ),
+                      hint: tr('ابحث برقم البوليصة أو العميل أو اللوحة…', 'Search waybill, customer, plate…'),
                     ),
                   ),
                   Padding(
@@ -239,6 +241,7 @@ class _FleetShipmentsScreenState extends State<FleetShipmentsScreen> {
                       child: filtered.isEmpty
                           ? EmptyState(icon: Icons.inventory_2_outlined, title: tr('لا توجد شحنات مطابقة', 'No matching shipments'))
                           : ListView.separated(
+                              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                               padding: const EdgeInsets.all(14),
                               itemCount: filtered.length,
                               separatorBuilder: (_, __) => const SizedBox(height: 8),

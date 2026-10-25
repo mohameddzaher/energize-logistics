@@ -6,6 +6,7 @@ import '../ui/app_scaffold.dart';
 import '../ui/export_sheet.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import '../ui/search_field.dart';
 import 'it_common.dart';
 import 'jp.dart';
 
@@ -43,6 +44,8 @@ class _ItTicketsScreenState extends State<ItTicketsScreen> {
   bool _loading = true;
   String? _error;
   String _q = '';
+  // متحكِّمُ البحث عند الشاشة: «مسح الفلاتر» يمسح الخانةَ أيضًا.
+  final _searchCtl = TextEditingController();
   late String _status = widget.initialStatus;
   String _category = '';
   String _priority = '';
@@ -62,6 +65,7 @@ class _ItTicketsScreenState extends State<ItTicketsScreen> {
   @override
   void dispose() {
     Live.instance.off('it:updated', _onLive);
+    _searchCtl.dispose();
     super.dispose();
   }
 
@@ -139,9 +143,10 @@ class _ItTicketsScreenState extends State<ItTicketsScreen> {
       body: Column(children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(14, 12, 14, 0),
-          child: TextField(
+          child: SearchField(
+            controller: _searchCtl, dense: true,
             onChanged: (v) => setState(() => _q = v),
-            decoration: InputDecoration(hintText: tr('بحث بالعنوان أو رقم البلاغ...', 'Search title or ticket #...'), prefixIcon: const Icon(Icons.search), isDense: true),
+            hint: tr('بحث بالعنوان أو رقم البلاغ...', 'Search title or ticket #...'),
           ),
         ),
         Padding(
@@ -165,7 +170,7 @@ class _ItTicketsScreenState extends State<ItTicketsScreen> {
             const Spacer(),
             if (_anyFilter)
               TextButton(
-                onPressed: () => _set(() { _status = ''; _category = ''; _priority = ''; _from = ''; _to = ''; _q = ''; }),
+                onPressed: () => _set(() { _status = ''; _category = ''; _priority = ''; _from = ''; _to = ''; _q = ''; _searchCtl.clear(); }),
                 child: Text(tr('مسح الفلاتر', 'Clear filters'), style: const TextStyle(fontSize: 12)),
               ),
           ]),
@@ -178,8 +183,9 @@ class _ItTicketsScreenState extends State<ItTicketsScreen> {
                   : RefreshIndicator(
                       onRefresh: _load,
                       child: rows.isEmpty
-                          ? ListView(children: [const SizedBox(height: 60), EmptyState(icon: Icons.confirmation_number_outlined, title: tr('لا توجد بلاغات.', 'No tickets found.'))])
+                          ? ListView(children: [const SizedBox(height: 60), EmptyState(icon: _q.trim().isNotEmpty ? Icons.search_off : Icons.confirmation_number_outlined, title: _q.trim().isNotEmpty ? tr('لا نتائج مطابقة للبحث.', 'No matches.') : tr('لا توجد بلاغات.', 'No tickets found.'))])
                           : ListView.separated(
+                              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                               padding: const EdgeInsets.fromLTRB(14, 6, 14, 90),
                               itemCount: rows.length,
                               separatorBuilder: (_, __) => const SizedBox(height: 8),

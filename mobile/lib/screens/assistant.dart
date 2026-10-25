@@ -7,6 +7,7 @@ import '../services/lang.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import '../ui/search_field.dart';
 import 'reports.dart' show ReportBlock;
 
 /// المساعد — سؤالٌ عن أيّ شيءٍ في النظام.
@@ -34,6 +35,9 @@ class _AssistantScreenState extends State<AssistantScreen> {
   Map<String, dynamic>? _topic;
   List<Map<String, dynamic>> _options = [];
   bool _optBusy = false;
+  Timer? _optDebounce;
+  int _optSeq = 0; // الأحدثُ وحدَه يُقبَل في بحث الخيارات أيضًا
+  final _searchCtl = TextEditingController();
 
   List<Map<String, dynamic>> _groups = [];
   bool _searching = false;
@@ -52,7 +56,7 @@ class _AssistantScreenState extends State<AssistantScreen> {
   }
 
   @override
-  void dispose() { _debounce?.cancel(); super.dispose(); }
+  void dispose() { _debounce?.cancel(); _optDebounce?.cancel(); _searchCtl.dispose(); super.dispose(); }
 
   Future<void> _loadSections() async {
     try {
@@ -73,7 +77,8 @@ class _AssistantScreenState extends State<AssistantScreen> {
   /// ترتيبَ الردود، فردُّ «مح» الواصلُ متأخّرًا يمحو نتائجَ «محمد».
   void _onQuery(String v) {
     _debounce?.cancel();
-    if (v.trim().length < 2) { setState(() { _groups = []; _searching = false; }); return; }
+    // المسحُ يُبطل أيَّ ردٍّ ما زال في الطريق
+    if (v.trim().length < 2) { _seq++; setState(() { _groups = []; _searching = false; }); return; }
     setState(() => _searching = true);
     _debounce = Timer(const Duration(milliseconds: 320), () async {
       final mine = ++_seq;
@@ -88,14 +93,15 @@ class _AssistantScreenState extends State<AssistantScreen> {
   }
 
   Future<void> _loadOptions(Map<String, dynamic> topic, [String q = '']) async {
+    final mine = ++_optSeq;
     setState(() => _optBusy = true);
     try {
       final d = await Api.instance.get(
           '/api/assistant/topics/${topic['key']}/options${q.isEmpty ? '' : '?q=${Uri.encodeQueryComponent(q)}'}');
-      if (!mounted) return;
+      if (!mounted || mine != _optSeq) return;
       setState(() { _options = List<Map<String, dynamic>>.from(d['items'] ?? []); _optBusy = false; });
     } catch (_) {
-      if (mounted) setState(() { _options = []; _optBusy = false; });
+      if (mounted && mine == _optSeq) setState(() { _options = []; _optBusy = false; });
     }
   }
 
@@ -148,20 +154,17 @@ class _AssistantScreenState extends State<AssistantScreen> {
       title: Text(tr('المساعد', 'Assistant')),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(14, 12, 14, 28),
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
         children: [
           // ── اكتبْ ما تعرفه ──────────────────────────────────────────────
           AppCard(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              TextField(
+              SearchField(
+                controller: _searchCtl,
                 onChanged: _onQuery,
-                decoration: InputDecoration(
-                  hintText: tr('لوحة أو اسم عميل أو رقم بوليصة أو إقامة…', 'Plate, customer, waybill or iqama…'),
-                  prefixIcon: const Icon(Icons.search, size: 20),
-                  suffixIcon: _searching
-                      ? const Padding(padding: EdgeInsets.all(12), child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)))
-                      : null,
-                ),
+                hint: tr('لوحة أو اسم عميل أو رقم بوليصة أو إقامة…', 'Plate, customer, waybill or iqama…'),
               ),
+              if (_searching) const LinearProgressIndicator(minHeight: 2),
               const SizedBox(height: 10),
               Wrap(spacing: 6, runSpacing: 6, children: [
                 Padding(padding: const EdgeInsets.only(top: 6), child: Text(tr('الفترة', 'Period'), style: const TextStyle(fontSize: 11, color: T.inkFaint))),
@@ -237,9 +240,14 @@ class _AssistantScreenState extends State<AssistantScreen> {
                   ])
                 else ...[
                   if ((_topic!['searchable'] ?? false) == true)
-                    TextField(
-                      onChanged: (v) => _loadOptions(_topic!, v),
-                      decoration: InputDecoration(hintText: tr('ابحث…', 'Search…'), prefixIcon: const Icon(Icons.search, size: 18)),
+                    SearchField(
+                      key: ValueKey('opt-${_topic!['key']}'),
+                      onChanged: (v) {
+                        final tp = _topic!;
+                        _optDebounce?.cancel();
+                        _optDebounce = Timer(const Duration(milliseconds: 350), () { if (mounted && _topic == tp) _loadOptions(tp, v.trim()); });
+                      },
+                      hint: tr('ابحث…', 'Search…'),
                     ),
                   const SizedBox(height: 8),
                   if (_optBusy) const Shimmer(height: 40)

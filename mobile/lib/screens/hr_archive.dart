@@ -8,6 +8,7 @@ import '../ui/export_sheet.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import 'hr_employee_profile.dart';
+import '../ui/search_field.dart';
 
 /// الأرشيف — مطابقٌ لصفحة الموقع `/system/hr/archive`.
 ///
@@ -23,6 +24,8 @@ class _HrArchiveScreenState extends State<HrArchiveScreen> {
   Map<String, dynamic>? _d;
   String? _error;
   String _q = '';
+  // الخانةُ في قائمةٍ تُطوى مع التمرير — النصُّ في متحكِّمٍ يبقى مع الكلمة.
+  final _searchCtl = TextEditingController();
   // البحثُ عند الخادم (`q=`) كالموقع — والردُّ الأقدمُ لا يكتب فوق الأحدث.
   int _seq = 0;
   Timer? _debounce;
@@ -42,6 +45,7 @@ class _HrArchiveScreenState extends State<HrArchiveScreen> {
     Live.instance.off('hr:employee', _onLive);
     Live.instance.off('hr:master', _onLive);
     _debounce?.cancel();
+    _searchCtl.dispose();
     super.dispose();
   }
 
@@ -111,7 +115,7 @@ class _HrArchiveScreenState extends State<HrArchiveScreen> {
           ? (_error != null ? ErrorRetry(message: _error!, onRetry: _load) : const Center(child: CircularProgressIndicator()))
           : RefreshIndicator(
               onRefresh: _load,
-              child: ListView(padding: const EdgeInsets.all(14), children: [
+              child: ListView(padding: const EdgeInsets.all(14), keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag, children: [
                 Row(children: [
                   Expanded(child: StatCard(label: tr('في الأرشيف', 'Archived'), value: c['total'] ?? 0, color: T.inkSoft, icon: Icons.archive_outlined)),
                   const SizedBox(width: 8),
@@ -120,16 +124,17 @@ class _HrArchiveScreenState extends State<HrArchiveScreen> {
                   Expanded(child: StatCard(label: tr('فريلانسر', 'Freelance'), value: c['freelance'] ?? 0, color: T.violet, icon: Icons.work_outline)),
                 ]),
                 const SizedBox(height: 10),
-                TextField(
+                SearchField(
+                  controller: _searchCtl, dense: true,
                   onChanged: (v) {
                     _q = v;
                     _debounce?.cancel();
-                    _debounce = Timer(const Duration(milliseconds: 250), _load);
+                    _debounce = Timer(const Duration(milliseconds: 350), _load);
                   },
-                  decoration: InputDecoration(isDense: true, prefixIcon: const Icon(Icons.search), hintText: tr('الاسم، الرقم الوظيفي، رقم الهوية…', 'Name, emp. no., ID…')),
+                  hint: tr('الاسم، الرقم الوظيفي، رقم الهوية…', 'Name, emp. no., ID…'),
                 ),
                 const SizedBox(height: 10),
-                if (items.isEmpty) EmptyState(icon: Icons.archive_outlined, title: tr('الأرشيف فارغ', 'The archive is empty')),
+                if (items.isEmpty) EmptyState(icon: Icons.archive_outlined, title: _q.trim().isNotEmpty ? tr('لا نتائج', 'No matches') : tr('الأرشيف فارغ', 'The archive is empty')),
                 for (final e in items)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 8),

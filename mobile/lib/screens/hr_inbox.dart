@@ -9,6 +9,7 @@ import '../ui/leave_chain.dart';
 import '../ui/widgets.dart';
 import '../ui/export_sheet.dart';
 import 'hr_leave_pdf.dart';
+import '../ui/search_field.dart';
 
 /// HR — طلبات الإجازات (قرارات الموارد البشرية) وطلبات الموظفين (الرد وتغيير
 /// الحالة): the two HR inboxes, native.
@@ -28,6 +29,8 @@ class _HrLeavesScreenState extends State<HrLeavesScreen> {
   String _status = '';
   // بحثٌ بالموظّف أو مقدّم الطلب — كالموقع (يُصفّى المحمَّل).
   String _q = '';
+  // تبديلُ الحالة يُعيد التحميلَ فتُهدَم الخانة — النصُّ في متحكِّمٍ يبقى مع الكلمة.
+  final _searchCtl = TextEditingController();
   int _seq = 0;
   late final void Function() _onLive;
 
@@ -85,6 +88,7 @@ class _HrLeavesScreenState extends State<HrLeavesScreen> {
   @override
   void dispose() {
     Live.instance.off('hr:leave', _onLive);
+    _searchCtl.dispose();
     super.dispose();
   }
 
@@ -238,10 +242,10 @@ class _HrLeavesScreenState extends State<HrLeavesScreen> {
                     style: const TextStyle(fontSize: 11.5, color: T.inkFaint),
                   ),
                   const SizedBox(height: 12),
-                  TextField(
-                    controller: search,
+                  SearchField(
+                    controller: search, dense: true,
                     onChanged: (_) => setSt(() {}),
-                    decoration: InputDecoration(isDense: true, prefixIcon: const Icon(Icons.search, size: 18), labelText: tr('ابحث عن الموظّف', 'Search employee')),
+                    hint: tr('ابحث عن الموظّف', 'Search employee'),
                   ),
                   const SizedBox(height: 8),
                   DropdownButtonFormField<String>(
@@ -491,9 +495,10 @@ class _HrLeavesScreenState extends State<HrLeavesScreen> {
               : Column(children: [
                   Padding(
                     padding: const EdgeInsets.fromLTRB(14, 10, 14, 0),
-                    child: TextField(
+                    child: SearchField(
+                      controller: _searchCtl, dense: true,
                       onChanged: (v) => setState(() => _q = v),
-                      decoration: InputDecoration(isDense: true, prefixIcon: const Icon(Icons.search), hintText: tr('ابحث باسم الموظف…', 'Search by employee…')),
+                      hint: tr('ابحث باسم الموظف…', 'Search by employee…'),
                     ),
                   ),
                   Padding(
@@ -525,8 +530,9 @@ class _HrLeavesScreenState extends State<HrLeavesScreen> {
                     child: RefreshIndicator(
                       onRefresh: _load,
                       child: _shown.isEmpty
-                          ? EmptyState(icon: Icons.event_available_outlined, title: tr('لا توجد طلبات', 'No requests'))
+                          ? EmptyState(icon: Icons.event_available_outlined, title: _q.trim().isNotEmpty ? tr('لا نتائج', 'No matches') : tr('لا توجد طلبات', 'No requests'))
                           : ListView.separated(
+                              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                               padding: const EdgeInsets.all(14),
                               itemCount: _shown.length,
                               separatorBuilder: (_, __) => const SizedBox(height: 8),

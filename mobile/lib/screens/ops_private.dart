@@ -9,6 +9,7 @@ import '../ui/app_scaffold.dart';
 import '../ui/export_sheet.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import '../ui/search_field.dart';
 import 'ops_common.dart';
 
 /// «التشغيل — خاصّ»: كشوفُ التشغيل نفسُها بقيمة البيع وربحها.
@@ -63,6 +64,8 @@ class _OpsPrivateScreenState extends State<OpsPrivateScreen> {
   bool _loading = true;
   String? _error;
   String _q = '';
+  // متحكِّمُ البحث عند الشاشة: خطأٌ أو إعادةُ تحميلٍ لا تُرجع الخانةَ فارغةً والكلمةُ تُرشِّح.
+  final _searchCtl = TextEditingController();
   Timer? _debounce;
   int _page = 1;
   int _pages = 1;
@@ -100,6 +103,7 @@ class _OpsPrivateScreenState extends State<OpsPrivateScreen> {
     for (final e in _events) { Live.instance.off(e, _onLive); }
     _liveTimer?.cancel();
     _debounce?.cancel();
+    _searchCtl.dispose();
     super.dispose();
   }
 
@@ -375,13 +379,13 @@ class _OpsPrivateScreenState extends State<OpsPrivateScreen> {
             onTap: () { _priced = _priced == 'no' ? '' : 'no'; _reload(); }),
       ]),
       const SizedBox(height: 10),
-      TextField(
+      SearchField(
+        controller: _searchCtl, dense: true,
+        hint: tr('كشف أو عميل أو مدينة…', 'Sheet, customer or city…'),
         onChanged: (v) {
           _debounce?.cancel();
-          _debounce = Timer(const Duration(milliseconds: 350), () { _q = v; _reload(); });
+          _debounce = Timer(const Duration(milliseconds: 350), () { if (!mounted) return; _q = v; _reload(); });
         },
-        textInputAction: TextInputAction.search,
-        decoration: InputDecoration(hintText: tr('كشف أو عميل أو مدينة…', 'Sheet, customer or city…'), prefixIcon: const Icon(Icons.search), isDense: true),
       ),
       const SizedBox(height: 6),
       OpsPeriodBar(period: _period, onChanged: _reload),
@@ -488,13 +492,14 @@ class _OpsPrivateScreenState extends State<OpsPrivateScreen> {
               : RefreshIndicator(
                   onRefresh: _load,
                   child: ListView(
+                    keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                     padding: const EdgeInsets.all(14),
                     children: [
                       _header(),
                       const SizedBox(height: 10),
                       if (_loading) const LinearProgressIndicator(minHeight: 2),
                       if (_rows.isEmpty)
-                        EmptyState(icon: Icons.lock_outline, title: _cf.isNotEmpty || _priced.isNotEmpty || _pendingOnly ? tr('لا نتائج للفلتر المحدد', 'No rows match the filters') : tr('لا كشوف', 'No sheets'))
+                        EmptyState(icon: Icons.lock_outline, title: _cf.isNotEmpty || _priced.isNotEmpty || _pendingOnly || _q.trim().isNotEmpty ? tr('لا نتائج للفلتر المحدد', 'No rows match the filters') : tr('لا كشوف', 'No sheets'))
                       else
                         for (final w in _rows) ...[_rowCard(w), const SizedBox(height: 8)],
                       if (_pages > 1)

@@ -9,6 +9,7 @@ import '../services/notifications.dart';
 import '../screens/my_profile.dart';
 import '../screens/admin_suite.dart' show NotificationsScreen;
 import 'theme.dart';
+import 'search_field.dart';
 
 /// The app-wide scaffold: EVERY screen gets the burger drawer (all sections)
 /// beside the back button — no more going all the way home to switch pages.
@@ -286,15 +287,11 @@ class _AppDrawerState extends State<AppDrawer> {
         // بحث سريع في كل الأقسام والصفحات
         Padding(
           padding: const EdgeInsets.fromLTRB(12, 10, 12, 4),
-          child: TextField(
+          // كان ✕ يمسح البحثَ ويترك الكلمةَ مكتوبةً في الخانة (بلا متحكِّم).
+          child: SearchField(
+            dense: true,
+            hint: tr('ابحث عن قسم أو صفحة…', 'Search sections & pages…'),
             onChanged: (v) => setState(() => _q = v),
-            decoration: InputDecoration(
-              isDense: true,
-              hintText: tr('ابحث عن قسم أو صفحة…', 'Search sections & pages…'),
-              prefixIcon: const Icon(Icons.search, size: 20),
-              suffixIcon: _q.isNotEmpty ? IconButton(icon: const Icon(Icons.close, size: 18), onPressed: () => setState(() => _q = '')) : null,
-              contentPadding: const EdgeInsets.symmetric(vertical: 8),
-            ),
           ),
         ),
         // نتائج البحث المسطّحة

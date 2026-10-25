@@ -6,6 +6,7 @@ import '../ui/app_scaffold.dart';
 import '../ui/export_sheet.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import '../ui/search_field.dart';
 import 'ls2_common.dart';
 import 'ls2_vehicle_detail.dart';
 
@@ -23,6 +24,8 @@ class _Ls2TemperatureScreenState extends State<Ls2TemperatureScreen> {
   bool _loading = true;
   String? _error;
   String _q = '';
+  // متحكِّمُ البحث عند الشاشة: خطأُ تحديثٍ حيٍّ ثمّ إعادةُ المحاولة لا يُفرغ الخانةَ والكلمةُ تُرشِّح.
+  final _searchCtl = TextEditingController();
   String _sort = 'tire'; // tire | coolant
   late final void Function() _onLive;
 
@@ -35,7 +38,7 @@ class _Ls2TemperatureScreenState extends State<Ls2TemperatureScreen> {
   }
 
   @override
-  void dispose() { Live.instance.off('ls2:updated', _onLive); super.dispose(); }
+  void dispose() { Live.instance.off('ls2:updated', _onLive); _searchCtl.dispose(); super.dispose(); }
 
   Future<void> _load() async {
     try {
@@ -136,7 +139,7 @@ class _Ls2TemperatureScreenState extends State<Ls2TemperatureScreen> {
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
                     child: Row(children: [
-                      Expanded(child: TextField(onChanged: (v) => setState(() => _q = v), decoration: InputDecoration(hintText: tr('ابحث بالمركبة…', 'Search vehicle…'), prefixIcon: const Icon(Icons.search), isDense: true))),
+                      Expanded(child: SearchField(controller: _searchCtl, hint: tr('ابحث بالمركبة…', 'Search vehicle…'), dense: true, onChanged: (v) => setState(() => _q = v))),
                       const SizedBox(width: 8),
                       ToggleButtons(
                         isSelected: [_sort == 'tire', _sort == 'coolant'],
@@ -151,8 +154,9 @@ class _Ls2TemperatureScreenState extends State<Ls2TemperatureScreen> {
                     child: RefreshIndicator(
                       onRefresh: _load,
                       child: rows.isEmpty
-                          ? EmptyState(icon: Icons.thermostat_outlined, title: tr('لا توجد بيانات حرارة', 'No temperature data'))
+                          ? ListView(keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag, children: [EmptyState(icon: q.isNotEmpty ? Icons.search_off : Icons.thermostat_outlined, title: q.isNotEmpty ? tr('لا نتائج مطابقة للبحث', 'No matches') : tr('لا توجد بيانات حرارة', 'No temperature data'))])
                           : ListView.separated(
+                              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                               padding: const EdgeInsets.all(14),
                               itemCount: rows.length,
                               separatorBuilder: (_, __) => const SizedBox(height: 8),

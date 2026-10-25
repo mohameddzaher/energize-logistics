@@ -4,6 +4,7 @@ import '../services/lang.dart';
 import '../services/live.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/export_sheet.dart';
+import '../ui/search_field.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import 'wallet_branch.dart';
@@ -23,6 +24,8 @@ class _WalletDashboardScreenState extends State<WalletDashboardScreen> {
   bool _loading = true;
   String? _error;
   String _q = '';
+  // متحكِّمٌ للشاشة: الخانةُ تعود بنصِّها بعد التحميل
+  final _searchCtl = TextEditingController();
   int _seq = 0;
   String _mode = 'single'; // single | month | range
   DateTime _date = DateTime.now();
@@ -47,6 +50,7 @@ class _WalletDashboardScreenState extends State<WalletDashboardScreen> {
     for (final e in _events) {
       Live.instance.off(e, _onLive);
     }
+    _searchCtl.dispose();
     super.dispose();
   }
 
@@ -222,6 +226,7 @@ class _WalletDashboardScreenState extends State<WalletDashboardScreen> {
       body: RefreshIndicator(
         onRefresh: () => _load(spinner: false),
         child: ListView(
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
           padding: const EdgeInsets.all(14),
           children: [
             _periodBar(),
@@ -252,15 +257,16 @@ class _WalletDashboardScreenState extends State<WalletDashboardScreen> {
                 ],
               ),
               const SizedBox(height: 14),
-              TextField(
+              SearchField(
+                controller: _searchCtl,
                 onChanged: (v) => setState(() => _q = v),
-                decoration: InputDecoration(hintText: tr('ابحث باسم الفرع…', 'Search branch…'), prefixIcon: const Icon(Icons.search)),
+                hint: tr('ابحث باسم الفرع…', 'Search branch…'),
               ),
               const SizedBox(height: 10),
               Text(tr('الفروع', 'Branches'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
               const SizedBox(height: 8),
               if (rows.isEmpty)
-                EmptyState(icon: Icons.store_mall_directory_outlined, title: tr('لا توجد فروع', 'No branches'))
+                EmptyState(icon: Icons.store_mall_directory_outlined, title: _q.trim().isNotEmpty ? tr('لا نتائج مطابقة', 'No matches') : tr('لا توجد فروع', 'No branches'))
               else
                 ...rows.map(_branchCard),
               const SizedBox(height: 24),

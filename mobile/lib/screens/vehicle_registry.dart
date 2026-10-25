@@ -4,6 +4,7 @@ import '../ui/filter_sheet.dart';
 import '../services/lang.dart';
 import '../services/live.dart';
 import '../ui/app_scaffold.dart';
+import '../ui/search_field.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import '../services/flex_match.dart';
@@ -112,6 +113,8 @@ class _VehicleRegistryListScreenState extends State<VehicleRegistryListScreen> {
   bool _loading = true;
   String? _error;
   late String _q = widget.initialQuery ?? '';
+  // نصُّ البحث في متحكِّمٍ يملكه الشاشة: الظاهرُ = المُرشِّح دائمًا
+  late final _searchCtl = TextEditingController(text: _q);
   int _seq = 0;
   // الأعمدةُ المعروضة في البطاقة وفي «تصدير المعروض» — «الأساسيّة» أوّلًا كالموقع.
   List<String> _visible = List.of(baseColumnKeys);
@@ -135,7 +138,7 @@ class _VehicleRegistryListScreenState extends State<VehicleRegistryListScreen> {
   }
 
   @override
-  void dispose() { Live.instance.off('vreg:updated', _onLive); super.dispose(); }
+  void dispose() { Live.instance.off('vreg:updated', _onLive); _searchCtl.dispose(); super.dispose(); }
 
   // البحثُ والفلاترُ على الخادم، وردٌّ قديمٌ لا يكتب فوق أحدث.
   Future<void> _load() async {
@@ -239,23 +242,20 @@ class _VehicleRegistryListScreenState extends State<VehicleRegistryListScreen> {
         icon: const Icon(Icons.add),
         label: Text(tr('إضافة', 'Add')),
       ),
-      body: _loading
-          ? ListView(padding: const EdgeInsets.all(14), children: const [Shimmer(height: 48), SizedBox(height: 10), Shimmer(), SizedBox(height: 10), Shimmer()])
-          : _error != null
-              ? ErrorRetry(message: _error!, onRetry: () { setState(() => _loading = true); _load(); })
-              : Column(children: [
+      body: Column(children: [
+          // البحثُ خارج فرع التحميل/الخطأ — لا يُعاد رسمُه فارغًا
                   Padding(
                     padding: const EdgeInsets.fromLTRB(14, 12, 14, 6),
                     child: Row(children: [
                       Expanded(
-                        child: TextFormField(
-                          initialValue: _q,
+                        child: SearchField(
+                          controller: _searchCtl,
                           onChanged: (v) {
                             setState(() => _q = v);
                             final mine = ++_seq;
-                            Future.delayed(const Duration(milliseconds: 250), () { if (mounted && mine == _seq) _load(); });
+                            Future.delayed(const Duration(milliseconds: 350), () { if (mounted && mine == _seq) _load(); });
                           },
-                          decoration: InputDecoration(hintText: tr('ابحث بلوحة/هيكل/مالك/بوليصة…', 'plate / chassis / owner…'), prefixIcon: const Icon(Icons.search)),
+                          hint: tr('ابحث بلوحة/هيكل/مالك/بوليصة…', 'plate / chassis / owner…'),
                         ),
                       ),
                       const SizedBox(width: 8),
@@ -299,6 +299,11 @@ class _VehicleRegistryListScreenState extends State<VehicleRegistryListScreen> {
                       ),
                     ]),
                   ),
+          Expanded(child: _loading
+          ? ListView(padding: const EdgeInsets.all(14), children: const [Shimmer(height: 48), SizedBox(height: 10), Shimmer(), SizedBox(height: 10), Shimmer()])
+          : _error != null
+              ? ErrorRetry(message: _error!, onRetry: () { setState(() => _loading = true); _load(); })
+              : Column(children: [
                   if (widget.filterLabel != null)
                     Padding(padding: const EdgeInsets.symmetric(horizontal: 14), child: Align(alignment: AlignmentDirectional.centerStart, child: Chip2(widget.filterLabel!, T.navy))),
                   Expanded(
@@ -307,6 +312,7 @@ class _VehicleRegistryListScreenState extends State<VehicleRegistryListScreen> {
                       child: rows.isEmpty
                           ? ListView(children: [const SizedBox(height: 80), EmptyState(icon: Icons.directions_car_outlined, title: tr('لا توجد مركبات مطابقة', 'No matching vehicles'))])
                           : ListView.separated(
+                              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                               padding: const EdgeInsets.fromLTRB(14, 10, 14, 90),
                               itemCount: rows.length,
                               separatorBuilder: (_, __) => const SizedBox(height: 8),
@@ -361,7 +367,8 @@ class _VehicleRegistryListScreenState extends State<VehicleRegistryListScreen> {
                     ),
                   ),
                   Padding(padding: const EdgeInsets.all(8), child: Text(tr('$_total مركبة', '$_total vehicles'), style: const TextStyle(fontSize: 11.5, color: T.inkFaint))),
-                ]),
+                ])),
+        ]),
     );
   }
 }

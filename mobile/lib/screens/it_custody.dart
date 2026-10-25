@@ -10,6 +10,7 @@ import '../ui/lookup_field.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import 'it_common.dart';
+import '../ui/search_field.dart';
 
 /// عهد الأجهزة (IT) — the custody register with the full action set, نظيرُ
 /// /system/it/custody: تسليمٌ (من المخزن أو جديد)، نقل، إرجاع، تالف، بيع وإرجاعُ
@@ -319,14 +320,14 @@ class _ItCustodyScreenState extends State<ItCustodyScreen> {
               ? ErrorRetry(message: _error!, onRetry: () { setState(() => _loading = true); _load(); })
               : RefreshIndicator(
                   onRefresh: _load,
-                  child: CustomScrollView(slivers: [
+                  child: CustomScrollView(keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag, slivers: [
                     SliverToBoxAdapter(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                       Padding(
                         padding: const EdgeInsets.fromLTRB(14, 12, 14, 0),
-                        child: TextField(
-                          controller: _search,
+                        child: SearchField(
+                          controller: _search, dense: true,
                           onChanged: _searchChanged,
-                          decoration: InputDecoration(hintText: tr('ابحث بالجهاز أو الرقم التسلسلي أو الموظف…', 'Search item, serial or employee…'), prefixIcon: const Icon(Icons.search), isDense: true),
+                          hint: tr('ابحث بالجهاز أو الرقم التسلسلي أو الموظف…', 'Search item, serial or employee…'),
                         ),
                       ),
                       // «المعروض» يصف القائمة، و«إجمالي السجل» يقول من أيٍّ اقتُطعت ويُرجع الكلَّ بالضغط.

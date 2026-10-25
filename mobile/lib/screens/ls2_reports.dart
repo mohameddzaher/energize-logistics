@@ -6,6 +6,7 @@ import '../ui/app_scaffold.dart';
 import '../ui/export_sheet.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import '../ui/search_field.dart';
 import 'ls2_common.dart';
 import 'ls2_vehicle_detail.dart';
 
@@ -43,6 +44,8 @@ class _Ls2ReportsScreenState extends State<Ls2ReportsScreen> with SingleTickerPr
   bool _loading = true;
   String? _error;
   String _q = '';
+  // متحكِّمُ البحث عند الشاشة: تبديلُ التبويب يُعيد بناءَ الخانة فلا يضيع نصُّها.
+  final _searchCtl = TextEditingController();
   String _maint = 'all';
   String _sortKey = 'km';
   bool _asc = false;
@@ -80,6 +83,7 @@ class _Ls2ReportsScreenState extends State<Ls2ReportsScreen> with SingleTickerPr
   void dispose() {
     Live.instance.offData('ls2:updated', _onLive);
     _tab.dispose();
+    _searchCtl.dispose();
     super.dispose();
   }
 
@@ -372,10 +376,10 @@ class _Ls2ReportsScreenState extends State<Ls2ReportsScreen> with SingleTickerPr
               child: Column(children: [
                 Padding(
                   padding: const EdgeInsets.all(14),
-                  child: TextField(autofocus: true, onChanged: (v) => setS(() => q = v),
-                      decoration: InputDecoration(hintText: tr('اللوحة أو السائق…', 'Plate or driver…'), prefixIcon: const Icon(Icons.search))),
+                  child: SearchField(autofocus: true, hint: tr('اللوحة أو السائق…', 'Plate or driver…'), onChanged: (v) => setS(() => q = v)),
                 ),
                 Expanded(child: ListView.builder(
+                  keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                   itemCount: list.length,
                   itemBuilder: (c, i) {
                     final v = list[i];
@@ -448,7 +452,7 @@ class _Ls2ReportsScreenState extends State<Ls2ReportsScreen> with SingleTickerPr
     final rows = _rows;
     return RefreshIndicator(
       onRefresh: _loadFleet,
-      child: ListView(padding: const EdgeInsets.fromLTRB(14, 6, 14, 24), children: [
+      child: ListView(keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag, padding: const EdgeInsets.fromLTRB(14, 6, 14, 24), children: [
         if (_error != null) Padding(padding: const EdgeInsets.only(bottom: 8), child: Text(_error!, style: const TextStyle(color: T.danger, fontSize: 12))),
         Wrap(spacing: 8, runSpacing: 8, children: [
           _stat(tr('إجمالي المركبات', 'Total vehicles'), ls2Fmt(s['vehicles'])),
@@ -471,10 +475,7 @@ class _Ls2ReportsScreenState extends State<Ls2ReportsScreen> with SingleTickerPr
                 style: const TextStyle(fontSize: 12, color: T.warn, fontWeight: FontWeight.w700)),
           ),
         const SizedBox(height: 10),
-        TextField(
-          onChanged: (v) => setState(() => _q = v),
-          decoration: InputDecoration(hintText: tr('بحث لوحة / سائق / ماركة / VIN…', 'Search plate / driver / brand / VIN…'), prefixIcon: const Icon(Icons.search), isDense: true),
-        ),
+        SearchField(controller: _searchCtl, hint: tr('بحث لوحة / سائق / ماركة / VIN…', 'Search plate / driver / brand / VIN…'), dense: true, onChanged: (v) => setState(() => _q = v)),
         const SizedBox(height: 8),
         Wrap(spacing: 6, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
           for (final f in const [('all', 'الكل', 'All'), ('due', 'صيانة قريبة', 'Service due'), ('overdue', 'صيانة متأخرة', 'Overdue')])
@@ -506,7 +507,7 @@ class _Ls2ReportsScreenState extends State<Ls2ReportsScreen> with SingleTickerPr
               style: const TextStyle(fontSize: 11, color: T.inkFaint)),
         ),
         if (rows.isEmpty)
-          Padding(padding: const EdgeInsets.only(top: 40), child: EmptyState(icon: Icons.summarize_outlined, title: tr('لا توجد بيانات', 'No data'))),
+          Padding(padding: const EdgeInsets.only(top: 40), child: EmptyState(icon: Icons.summarize_outlined, title: _q.trim().isNotEmpty ? tr('لا نتائج مطابقة للبحث', 'No matches') : tr('لا توجد بيانات', 'No data'))),
         for (final r in rows) _fleetRow(r),
       ]),
     );

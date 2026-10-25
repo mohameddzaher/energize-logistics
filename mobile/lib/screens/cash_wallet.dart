@@ -9,6 +9,7 @@ import '../ui/app_scaffold.dart';
 import '../ui/export_sheet.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import '../ui/search_field.dart';
 import 'wallet_common.dart';
 
 /// المحفظة اليومية (النقدية) — محفظة الفرع اليومية: التحصيلات والمصروفات
@@ -88,6 +89,7 @@ class _CashWalletScreenState extends State<CashWalletScreen> {
   // تصفيةٌ محلّيّة على الحركات المعروضة (نظيرُ فلاتر الأعمدة في الموقع).
   String _typeFilter = '';
   String _q = '';
+  final _searchCtl = TextEditingController(); // النصُّ يبقى مطابقًا لـ_q بعد التحميل (الخانةُ داخل فرع «ما بعد التحميل»)
 
   late final void Function() _onLive;
   static const _events = ['wallet:transaction', 'wallet:transactionDeleted', 'wallet:dayClosed', 'wallet:dayReopened'];
@@ -121,6 +123,7 @@ class _CashWalletScreenState extends State<CashWalletScreen> {
     for (final e in _events) {
       Live.instance.off(e, _onLive);
     }
+    _searchCtl.dispose();
     super.dispose();
   }
 
@@ -738,7 +741,7 @@ class _CashWalletScreenState extends State<CashWalletScreen> {
           : null,
       body: RefreshIndicator(
         onRefresh: () => _load(spinner: false),
-        child: ListView(padding: const EdgeInsets.all(14), children: [
+        child: ListView(padding: const EdgeInsets.all(14), keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag, children: [
           if (_canSelectBranch && _branches.isNotEmpty) ...[_branchPicker(), const SizedBox(height: 10)],
           _periodBar(),
           const SizedBox(height: 12),
@@ -767,10 +770,11 @@ class _CashWalletScreenState extends State<CashWalletScreen> {
                 ),
             ]),
             const SizedBox(height: 6),
-            TextField(
+            SearchField(
+              controller: _searchCtl,
+              dense: true,
               onChanged: (v) => setState(() => _q = v),
-              decoration: InputDecoration(hintText: tr('ابحث: كشف، عميل، سائق، سند…', 'Search: report, customer, driver, receipt…'),
-                  prefixIcon: const Icon(Icons.search), isDense: true),
+              hint: tr('ابحث: كشف، عميل، سائق، سند…', 'Search: report, customer, driver, receipt…'),
             ),
             const SizedBox(height: 6),
             SingleChildScrollView(
@@ -788,7 +792,7 @@ class _CashWalletScreenState extends State<CashWalletScreen> {
               ]),
             ),
             const SizedBox(height: 8),
-            if (shown.isEmpty) EmptyState(icon: Icons.receipt_long_outlined, title: tr('لا توجد حركات', 'No transactions')),
+            if (shown.isEmpty) EmptyState(icon: Icons.receipt_long_outlined, title: _q.trim().isNotEmpty ? tr('لا نتائج مطابقة', 'No matches') : tr('لا توجد حركات', 'No transactions')),
             ...shown.map((t) => _txRow(t, canFix)),
             const SizedBox(height: 80),
           ],

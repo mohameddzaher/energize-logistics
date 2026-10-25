@@ -5,6 +5,7 @@ import '../services/auth.dart';
 import '../services/lang.dart';
 import '../services/live.dart';
 import '../ui/app_scaffold.dart';
+import '../ui/search_field.dart';
 import '../ui/filter_sheet.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
@@ -351,6 +352,8 @@ class _VehicleDocumentsScreenState extends State<VehicleDocumentsScreen> {
   List<Map<String, dynamic>> _rows = [];
   Map<String, String> _filters = {};
   late String _q = widget.initialQuery ?? '';
+  // نصُّ البحث في متحكِّمٍ يملكه الشاشة: الظاهرُ = المُرشِّح دائمًا
+  late final _searchCtl = TextEditingController(text: _q);
   String _chip = '';
   // «ينتهي خلال» — يعمل فوق الشرائح لا بدلًا منها، كالموقع.
   String _within = '';
@@ -375,6 +378,7 @@ class _VehicleDocumentsScreenState extends State<VehicleDocumentsScreen> {
   void dispose() {
     Live.instance.off('vreg:updated', _onLive);
     _withinCtl.dispose();
+    _searchCtl.dispose();
     super.dispose();
   }
 
@@ -516,10 +520,9 @@ class _VehicleDocumentsScreenState extends State<VehicleDocumentsScreen> {
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(tr('اختر المركبة', 'Pick a vehicle'), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
               const SizedBox(height: 10),
-              TextField(
-                autofocus: false,
+              SearchField(
                 onChanged: (v) => setSheet(() => q = v),
-                decoration: InputDecoration(hintText: tr('ابحث بلوحة أو مالك أو إدارة…', 'Search plate, owner or department…'), prefixIcon: const Icon(Icons.search)),
+                hint: tr('ابحث بلوحة أو مالك أو إدارة…', 'Search plate, owner or department…'),
               ),
               // الافتراضُ «التي بلا بيانات»: هي سببُ فتح الشاشة. ومن أراد تصحيح
               // مركبةٍ مسجَّلة يرفع العلامة — لا يُمنع منها.
@@ -536,6 +539,7 @@ class _VehicleDocumentsScreenState extends State<VehicleDocumentsScreen> {
                     : list.isEmpty
                         ? Center(child: Text(tr('لا مركبات مطابقة', 'No matching vehicles'), style: const TextStyle(color: T.inkFaint)))
                         : ListView.separated(
+                            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                             itemCount: list.length,
                             separatorBuilder: (_, __) => const Divider(height: 1),
                             itemBuilder: (c2, i) => ListTile(
@@ -1226,23 +1230,20 @@ class _VehicleDocumentsScreenState extends State<VehicleDocumentsScreen> {
         icon: const Icon(Icons.add),
         label: Text(tr('إضافة', 'Add')),
       ),
-      body: _loading
-          ? ListView(padding: const EdgeInsets.all(14), children: const [Shimmer(height: 48), SizedBox(height: 10), Shimmer(), SizedBox(height: 10), Shimmer()])
-          : _error != null
-              ? ErrorRetry(message: _error!, onRetry: () { setState(() => _loading = true); _load(); })
-              : Column(children: [
+      body: Column(children: [
+          // البحثُ خارج فرع التحميل/الخطأ — لا يُعاد رسمُه فارغًا
                   Padding(
                     padding: const EdgeInsets.fromLTRB(14, 12, 14, 6),
                     child: Row(children: [
                       Expanded(
-                        child: TextFormField(
-                          initialValue: _q,
+                        child: SearchField(
+                          controller: _searchCtl,
                           onChanged: (v) {
                             setState(() => _q = v);
                             final mine = ++_seq;
-                            Future.delayed(const Duration(milliseconds: 250), () { if (mounted && mine == _seq) _load(); });
+                            Future.delayed(const Duration(milliseconds: 350), () { if (mounted && mine == _seq) _load(); });
                           },
-                          decoration: InputDecoration(hintText: tr('ابحث بأيّ شيء — لوحة، هيكل، مالك، رقم هويّة، رقم وثيقة…', 'Search anything — plate, chassis, owner, ID, policy…'), prefixIcon: const Icon(Icons.search)),
+                          hint: tr('ابحث بأيّ شيء — لوحة، هيكل، مالك، رقم هويّة، رقم وثيقة…', 'Search anything — plate, chassis, owner, ID, policy…'),
                         ),
                       ),
                       const SizedBox(width: 8),
@@ -1267,6 +1268,11 @@ class _VehicleDocumentsScreenState extends State<VehicleDocumentsScreen> {
                       ),
                     ]),
                   ),
+          Expanded(child: _loading
+          ? ListView(padding: const EdgeInsets.all(14), children: const [Shimmer(height: 48), SizedBox(height: 10), Shimmer(), SizedBox(height: 10), Shimmer()])
+          : _error != null
+              ? ErrorRetry(message: _error!, onRetry: () { setState(() => _loading = true); _load(); })
+              : Column(children: [
                   // ── «ما الذي ينتهي قبل كذا يومًا؟» — يعمل مع الفلتر والشرائح.
                   if (k0 != null)
                     Padding(
@@ -1361,6 +1367,7 @@ class _VehicleDocumentsScreenState extends State<VehicleDocumentsScreen> {
                       child: rows.isEmpty
                           ? ListView(children: [const SizedBox(height: 80), EmptyState(icon: f.icon, title: tr('لا نتائج مطابقة', 'No matching rows'))])
                           : ListView.separated(
+                              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                               padding: const EdgeInsets.all(14),
                               itemCount: rows.length,
                               separatorBuilder: (_, __) => const SizedBox(height: 8),
@@ -1488,7 +1495,8 @@ class _VehicleDocumentsScreenState extends State<VehicleDocumentsScreen> {
                     child: Text(tr('${rows.length} من $_total مركبة', '${rows.length} of $_total vehicles'),
                         style: const TextStyle(fontSize: 11.5, color: T.inkFaint)),
                   ),
-                ]),
+                ])),
+        ]),
     );
   }
 }

@@ -9,6 +9,7 @@ import '../ui/app_scaffold.dart';
 import '../ui/export_sheet.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import '../ui/search_field.dart';
 import 'ops_common.dart';
 
 /// أنواعُ الدفع — صفةُ كلّ عميلٍ في مكانٍ واحد (نظيرُ /system/operations/payment-types).
@@ -37,6 +38,8 @@ class _OpsPaymentTypesScreenState extends State<OpsPaymentTypesScreen> {
   bool _loading = true;
   String? _error;
   String _q = '';
+  // متحكِّمُ البحث عند الشاشة: خطأُ تحديثٍ ثمّ إعادةُ المحاولة لا يُفرغ الخانةَ والكلمةُ تُرشِّح.
+  final _searchCtl = TextEditingController();
   String _filter = ''; // '' | cash | tax | none | conflict
   String? _saving;
   String? _unifying;
@@ -59,6 +62,7 @@ class _OpsPaymentTypesScreenState extends State<OpsPaymentTypesScreen> {
   void dispose() {
     Live.instance.off('workflow:updated', _onLive);
     _live?.cancel();
+    _searchCtl.dispose();
     super.dispose();
   }
 
@@ -217,7 +221,7 @@ class _OpsPaymentTypesScreenState extends State<OpsPaymentTypesScreen> {
               ? ErrorRetry(message: _error!, onRetry: () { setState(() => _loading = true); _load(); })
               : RefreshIndicator(
                   onRefresh: _load,
-                  child: ListView(padding: const EdgeInsets.all(14), children: [
+                  child: ListView(keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag, padding: const EdgeInsets.all(14), children: [
                     // القاعدةُ مكتوبةٌ حيث تُطبَّق.
                     Container(
                       padding: const EdgeInsets.all(10),
@@ -229,10 +233,7 @@ class _OpsPaymentTypesScreenState extends State<OpsPaymentTypesScreen> {
                       ]), style: const TextStyle(fontSize: 11.5, color: T.inkSoft, height: 1.5)),
                     ),
                     const SizedBox(height: 10),
-                    TextField(
-                      onChanged: (v) => setState(() => _q = v),
-                      decoration: InputDecoration(hintText: tr('ابحث باسم العميل أو الكود…', 'Customer or code…'), prefixIcon: const Icon(Icons.search), isDense: true),
-                    ),
+                    SearchField(controller: _searchCtl, hint: tr('ابحث باسم العميل أو الكود…', 'Customer or code…'), dense: true, onChanged: (v) => setState(() => _q = v)),
                     const SizedBox(height: 8),
                     SingleChildScrollView(
                       scrollDirection: Axis.horizontal,

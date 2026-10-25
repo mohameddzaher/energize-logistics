@@ -6,6 +6,7 @@ import '../services/live.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import '../ui/search_field.dart';
 
 /// مدخلات الأوردرات — للإدخال وحدَه، نظيرُ /system/b2c/daily-entry (صاحبُ الشركة، ٢٠٢٦/١٠/١٩).
 ///
@@ -23,6 +24,7 @@ class _B2cDailyEntryScreenState extends State<B2cDailyEntryScreen> {
   String? _error;
   String _date = '';
   String _q = '';
+  final _searchCtl = TextEditingController(); // النصُّ يبقى مطابقًا لـ_q بعد إعادة التحميل
   String _project = '';
   final Map<String, TextEditingController> _ctrls = {};
   final Set<String> _dirty = {};
@@ -43,6 +45,7 @@ class _B2cDailyEntryScreenState extends State<B2cDailyEntryScreen> {
     for (final e in ['b2c:order:upserted', 'lt:updated', 'b2c:entry:scope']) { Live.instance.off(e, _onLive); }
     _debounce?.cancel();
     for (final c in _ctrls.values) { c.dispose(); }
+    _searchCtl.dispose();
     super.dispose();
   }
 
@@ -126,7 +129,7 @@ class _B2cDailyEntryScreenState extends State<B2cDailyEntryScreen> {
       title: Text(tr('مدخلات الأوردرات', 'Orders entry')),
       body: RefreshIndicator(
         onRefresh: _load,
-        child: ListView(padding: const EdgeInsets.all(12), children: [
+        child: ListView(padding: const EdgeInsets.all(12), keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag, children: [
           if (scope is List) Padding(
             padding: const EdgeInsets.only(bottom: 6),
             child: Text(tr('المشاريع المُسندة إليك: ${scope.isEmpty ? 'لم يُسنَد إليك مشروعٌ بعد' : scope.join('، ')}', 'Your projects: ${scope.join(', ')}'),
@@ -144,9 +147,11 @@ class _B2cDailyEntryScreenState extends State<B2cDailyEntryScreen> {
             IconButton(icon: const Icon(Icons.chevron_left), onPressed: _date.compareTo(today) >= 0 ? null : () { setState(() => _date = _shift(1)); _load(); }),
           ])),
           const SizedBox(height: 8),
-          TextField(
+          SearchField(
+            controller: _searchCtl,
+            dense: true,
             onChanged: (v) => setState(() => _q = v),
-            decoration: InputDecoration(isDense: true, prefixIcon: const Icon(Icons.search), hintText: tr('ابحث بالاسم أو رقم الإقامة أو المشروع', 'Search…')),
+            hint: tr('ابحث بالاسم أو رقم الإقامة أو المشروع', 'Search…'),
           ),
           if (projects.length > 1)
             Padding(

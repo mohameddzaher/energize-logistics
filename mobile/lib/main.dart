@@ -30,7 +30,19 @@ class EnergizeApp extends StatelessWidget {
           locale: Locale(Lang.instance.ar ? 'ar' : 'en'),
           builder: (context, child) => Directionality(
             textDirection: Lang.instance.ar ? TextDirection.rtl : TextDirection.ltr,
-            child: child!,
+            // لوحةُ المفاتيح تُغلَق في كلّ شاشة: ضغطةٌ على مكانٍ فارغ أو سحبُ القائمة
+            // (صاحبُ الشركة: «السيرش… مبعرفش أقفله»). الأزرارُ تكسب ضغطتَها كما هي.
+            child: GestureDetector(
+              behavior: HitTestBehavior.translucent,
+              onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
+              child: NotificationListener<ScrollUpdateNotification>(
+                onNotification: (n) {
+                  if (n.dragDetails != null) FocusManager.instance.primaryFocus?.unfocus();
+                  return false;
+                },
+                child: child!,
+              ),
+            ),
           ),
           theme: T.theme(),
           home: const _Gate(),

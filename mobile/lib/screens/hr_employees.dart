@@ -13,6 +13,7 @@ import '../ui/app_scaffold.dart';
 import 'hr_employee_profile.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import '../ui/search_field.dart';
 
 /// الموظفون — native register: server-side search (name / iqama / number),
 /// status chips and a detail sheet per employee.
@@ -45,6 +46,8 @@ class _HrEmployeesScreenState extends State<HrEmployeesScreen> {
   bool _b2cOnly = false;
   Timer? _debounce;
   final _qCtrl = TextEditingController();
+  // الأحدثُ وحدَه يُعرض: ردٌّ قديمٌ (أو ردُّ ما قبل المسح) لا يكتب فوق جديد.
+  int _seq = 0;
 
   @override
   void initState() {
@@ -62,10 +65,12 @@ class _HrEmployeesScreenState extends State<HrEmployeesScreen> {
     _debounce?.cancel();
     Live.instance.off('hr:master', _onLive);
     Live.instance.off('hr:employee', _onLive);
+    _qCtrl.dispose();
     super.dispose();
   }
 
   Future<void> _load() async {
+    final mine = ++_seq;
     try {
       final params = <String>[];
       if (_qCtrl.text.trim().isNotEmpty) params.add('q=${Uri.encodeComponent(_qCtrl.text.trim())}');
@@ -73,7 +78,7 @@ class _HrEmployeesScreenState extends State<HrEmployeesScreen> {
       if (_b2cOnly) params.add('createdVia=b2c');
       _filters.forEach((k, v) { if (v.isNotEmpty) params.add('$k=${Uri.encodeComponent(v)}'); });
       final d = await Api.instance.get('/api/hr/employees${params.isEmpty ? '' : '?${params.join('&')}'}');
-      if (!mounted) return;
+      if (!mounted || mine != _seq) return;
       setState(() {
         _rows = List<Map<String, dynamic>>.from(d['employees'] ?? []);
         _fromB2c = ((d['fromB2c'] ?? 0) as num).toInt();
@@ -81,13 +86,13 @@ class _HrEmployeesScreenState extends State<HrEmployeesScreen> {
         _error = null;
       });
     } catch (e) {
-      if (mounted) setState(() { _loading = false; _error = e.toString(); });
+      if (mounted && mine == _seq) setState(() { _loading = false; _error = e.toString(); });
     }
   }
 
   void _onSearch(String v) {
     _debounce?.cancel();
-    _debounce = Timer(const Duration(milliseconds: 350), () { setState(() => _loading = true); _load(); });
+    _debounce = Timer(const Duration(milliseconds: 350), () { if (!mounted) return; setState(() => _loading = true); _load(); });
   }
 
   String _name(Map<String, dynamic> e) {
@@ -218,13 +223,10 @@ class _HrEmployeesScreenState extends State<HrEmployeesScreen> {
           padding: const EdgeInsets.fromLTRB(14, 12, 14, 0),
           child: Row(children: [
             Expanded(
-              child: TextField(
+              child: SearchField(
                 controller: _qCtrl,
                 onChanged: _onSearch,
-                decoration: InputDecoration(
-                  hintText: tr('ابحث بالاسم أو الإقامة أو رقم الموظف…', 'Search name, iqama, number…'),
-                  prefixIcon: const Icon(Icons.search),
-                ),
+                hint: tr('ابحث بالاسم أو الإقامة أو رقم الموظف…', 'Search name, iqama, number…'),
               ),
             ),
             const SizedBox(width: 8),
@@ -333,6 +335,7 @@ class _HrEmployeesScreenState extends State<HrEmployeesScreen> {
                                   : null,
                             )
                           : ListView.separated(
+                              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                               padding: const EdgeInsets.all(14),
                               itemCount: _rows.length,
                               separatorBuilder: (_, __) => const SizedBox(height: 8),

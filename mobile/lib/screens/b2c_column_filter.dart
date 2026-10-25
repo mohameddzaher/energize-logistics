@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/lang.dart';
 import '../ui/theme.dart';
+import '../ui/search_field.dart';
 
 /// فلاترُ الأعمدة — نظيرُ رأس الجدول في الويب (useColumnFilters):
 /// لكلّ عمودٍ قائمةُ قيمه الموجودةِ فعلًا، يُختار منها واحدةٌ أو أكثر،
@@ -118,8 +119,10 @@ class _ColSheetState extends State<_ColSheet> {
     return Column(children: [
       Padding(
         padding: const EdgeInsets.symmetric(horizontal: 14),
-        child: TextField(
-          decoration: InputDecoration(isDense: true, prefixIcon: const Icon(Icons.search, size: 18), hintText: tr('بحث في القيم', 'Search values')),
+        child: SearchField(
+          key: ValueKey('vals-${c.key}'), // كلُّ عمودٍ يبدأ بخانةٍ فارغة كـ_q
+          dense: true,
+          hint: tr('بحث في القيم', 'Search values'),
           onChanged: (v) => setState(() => _q = v.trim()),
         ),
       ),
@@ -128,7 +131,9 @@ class _ColSheetState extends State<_ColSheet> {
         TextButton(onPressed: () => setState(() => _f.remove(c.key)), child: Text(tr('مسح', 'Clear'))),
       ]),
       Expanded(
-        child: ListView(children: [
+        child: ListView(keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag, children: [
+          if (shown.isEmpty && _q.isNotEmpty)
+            Padding(padding: const EdgeInsets.all(20), child: Text(tr('لا نتائج مطابقة', 'No matches'), textAlign: TextAlign.center, style: const TextStyle(color: T.inkFaint))),
           for (final k in shown)
             CheckboxListTile(
               dense: true,

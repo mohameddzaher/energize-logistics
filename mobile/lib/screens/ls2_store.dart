@@ -10,6 +10,7 @@ import '../ui/export_sheet.dart';
 import '../ui/lookup_field.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import '../ui/search_field.dart';
 
 /// مخزن النقل الثقيل (LS2) — قطع الغيار: أصناف برصيد وسعر وحالة، حركات وارد/صادر
 /// (صادر على عربية / وارد من عربية)، إضافة أصناف، وسجل حركات. مطابق للويب.
@@ -67,6 +68,8 @@ class _Ls2StoreScreenState extends State<Ls2StoreScreen> {
   bool _loading = true;
   String? _error;
   String _q = '';
+  // متحكِّمُ البحث عند الشاشة: خطأٌ ثمّ إعادةُ محاولةٍ لا تُرجع الخانةَ فارغةً والكلمةُ تُرشِّح.
+  final _searchCtl = TextEditingController();
   String _statusF = '';
   String _catF = '';
   // يومُ الشراء والمورد — يُفلتَران في الخادم، لا فيما جُلب.
@@ -103,6 +106,7 @@ class _Ls2StoreScreenState extends State<Ls2StoreScreen> {
     Live.instance.off('ls2:store', _onLive);
     Live.instance.off('vreg:updated', _loadPlates);
     _debounce?.cancel();
+    _searchCtl.dispose();
     super.dispose();
   }
 
@@ -202,13 +206,10 @@ class _Ls2StoreScreenState extends State<Ls2StoreScreen> {
                 child: Column(children: [
                   Padding(
                     padding: const EdgeInsets.all(14),
-                    child: TextField(
+                    child: SearchField(
                       autofocus: true,
+                      hint: tr('اللوحة أو المشروع أو اسم الراكب…', 'Plate, project or rider…'),
                       onChanged: (v) => setS(() => q = v),
-                      decoration: InputDecoration(
-                        hintText: tr('اللوحة أو المشروع أو اسم الراكب…', 'Plate, project or rider…'),
-                        prefixIcon: const Icon(Icons.search),
-                      ),
                     ),
                   ),
                   Padding(
@@ -222,6 +223,7 @@ class _Ls2StoreScreenState extends State<Ls2StoreScreen> {
                   const Divider(height: 14),
                   Expanded(
                     child: ListView.builder(
+                      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                       itemCount: list.length,
                       itemBuilder: (c, i) {
                         final r = list[i];
@@ -322,13 +324,14 @@ class _Ls2StoreScreenState extends State<Ls2StoreScreen> {
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                     child: Row(children: [
-                      Expanded(child: TextField(
+                      Expanded(child: SearchField(
+                        controller: _searchCtl, dense: true,
+                        hint: tr('ابحث بالاسم/الكود/الموديل…', 'name / code / model…'),
                         onChanged: (v) {
                           _q = v;
                           _debounce?.cancel();
-                          _debounce = Timer(const Duration(milliseconds: 300), _load);
+                          _debounce = Timer(const Duration(milliseconds: 350), _load);
                         },
-                        decoration: InputDecoration(hintText: tr('ابحث بالاسم/الكود/الموديل…', 'name / code / model…'), prefixIcon: const Icon(Icons.search), isDense: true),
                       )),
                       if (_statusF.isNotEmpty) Padding(padding: const EdgeInsets.only(right: 6, left: 6), child: InputChip(label: Text(_sLabel(_statusF)), onDeleted: () => setState(() => _statusF = ''))),
                     ]),
@@ -370,8 +373,9 @@ class _Ls2StoreScreenState extends State<Ls2StoreScreen> {
                     child: RefreshIndicator(
                       onRefresh: _load,
                       child: items.isEmpty
-                          ? EmptyState(icon: Icons.inventory_2_outlined, title: tr('لا توجد أصناف مطابقة', 'No items'))
+                          ? ListView(keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag, children: [EmptyState(icon: Icons.inventory_2_outlined, title: tr('لا توجد أصناف مطابقة', 'No items'))])
                           : ListView.separated(
+                              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                               padding: const EdgeInsets.fromLTRB(12, 12, 12, 88),
                               itemCount: items.length,
                               separatorBuilder: (_, __) => const SizedBox(height: 8),
@@ -876,17 +880,14 @@ class _SupplierSheetState extends State<_SupplierSheet> {
           child: Column(children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(14, 14, 14, 6),
-              child: TextField(
+              child: SearchField(
                 controller: _q,
+                hint: widget.allowNew ? tr('ابحث أو اكتب اسمَ موردٍ جديد…', 'Search or type a new supplier…') : tr('ابحث عن مورد…', 'Search suppliers…'),
                 onChanged: (_) => setState(() {}),
-                decoration: InputDecoration(
-                  hintText: widget.allowNew ? tr('ابحث أو اكتب اسمَ موردٍ جديد…', 'Search or type a new supplier…') : tr('ابحث عن مورد…', 'Search suppliers…'),
-                  prefixIcon: const Icon(Icons.search),
-                ),
               ),
             ),
             Expanded(
-              child: ListView(children: [
+              child: ListView(keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag, children: [
                 if (widget.allowNew && typed.isNotEmpty && !exact)
                   ListTile(
                     dense: true,
@@ -1747,13 +1748,13 @@ class _LogSheetState extends State<_LogSheet> {
           ),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 14),
-            child: TextField(
-              controller: _qC,
+            child: SearchField(
+              controller: _qC, dense: true,
+              hint: tr('الصنف / المورد / المركبة / السبب…', 'item / supplier / vehicle / reason…'),
               onChanged: (_) {
                 _debounce?.cancel();
-                _debounce = Timer(const Duration(milliseconds: 300), _run);
+                _debounce = Timer(const Duration(milliseconds: 350), _run);
               },
-              decoration: InputDecoration(hintText: tr('الصنف / المورد / المركبة / السبب…', 'item / supplier / vehicle / reason…'), prefixIcon: const Icon(Icons.search), isDense: true),
             ),
           ),
           const SizedBox(height: 6),
@@ -1785,7 +1786,7 @@ class _LogSheetState extends State<_LogSheet> {
               : _movs.isEmpty
                   ? EmptyState(icon: Icons.history, title: tr('لا حركاتَ في هذا العرض', 'No movements in this view'))
                   : ListView.separated(
-                      controller: scroll, padding: const EdgeInsets.symmetric(horizontal: 14),
+                      controller: scroll, keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag, padding: const EdgeInsets.symmetric(horizontal: 14),
                       itemCount: _movs.length, separatorBuilder: (_, __) => const Divider(height: 1),
                       itemBuilder: (c3, i) => _row(_movs[i]),
                     )),

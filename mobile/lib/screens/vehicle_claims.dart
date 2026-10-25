@@ -12,6 +12,7 @@ import '../ui/app_scaffold.dart';
 import '../ui/export_sheet.dart';
 import '../ui/file_upload.dart';
 import '../ui/lookup_field.dart';
+import '../ui/search_field.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import 'vehicle_registry.dart' show VehicleRegistryDetailScreen;
@@ -173,7 +174,7 @@ class _VehicleClaimsScreenState extends State<VehicleClaimsScreen> {
     }
   }
 
-  void _debounced() { _deb?.cancel(); _deb = Timer(const Duration(milliseconds: 250), _load); }
+  void _debounced() { _deb?.cancel(); _deb = Timer(const Duration(milliseconds: 350), _load); }
 
   List<Map<String, dynamic>> get _all => _list(_d?['claims']);
 
@@ -336,7 +337,7 @@ class _VehicleClaimsScreenState extends State<VehicleClaimsScreen> {
               ? ErrorRetry(message: _error!, onRetry: () { setState(() => _loading = true); _load(); })
               : RefreshIndicator(
                   onRefresh: _load,
-                  child: ListView(padding: const EdgeInsets.fromLTRB(12, 12, 12, 90), children: [
+                  child: ListView(keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag, padding: const EdgeInsets.fromLTRB(12, 12, 12, 90), children: [
                     Text(tr('متابعة المطالبة من الحادث لحد الاسترداد', 'From the accident to the money back'),
                         style: const TextStyle(color: T.inkFaint, fontSize: 12.5)),
                     const SizedBox(height: 10),
@@ -345,7 +346,7 @@ class _VehicleClaimsScreenState extends State<VehicleClaimsScreen> {
                     _filters(),
                     const SizedBox(height: 8),
                     if (rows.isEmpty)
-                      EmptyState(icon: Icons.car_crash_outlined, title: tr('لا توجد حوادث', 'No claims'))
+                      EmptyState(icon: Icons.car_crash_outlined, title: _q.text.trim().isNotEmpty ? tr('لا نتائج مطابقة', 'No matches') : tr('لا توجد حوادث', 'No claims'))
                     else
                       for (final r in rows) _card(r, canManage),
                   ]),
@@ -405,15 +406,11 @@ class _VehicleClaimsScreenState extends State<VehicleClaimsScreen> {
     final filesLabel = _files == 'with' ? tr('لها مرفقات', 'With files')
         : _files == 'without' ? tr('بلا مرفقات', 'Without files') : tr('المرفقات: الكل', 'Files: all');
     return AppCard(padding: const EdgeInsets.all(10), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      TextField(
+      SearchField(
         controller: _q,
+        dense: true,
         onChanged: (_) { setState(() {}); _debounced(); },
-        decoration: InputDecoration(
-          isDense: true, prefixIcon: const Icon(Icons.search, size: 20),
-          hintText: tr('لوحة / رقم حادث / شركة تأمين / الطرف الآخر…', 'plate / accident no / insurer…'),
-          suffixIcon: _q.text.isEmpty ? null : IconButton(icon: const Icon(Icons.close, size: 18),
-              onPressed: () { _q.clear(); setState(() {}); _load(); }),
-        ),
+        hint: tr('لوحة / رقم حادث / شركة تأمين / الطرف الآخر…', 'plate / accident no / insurer…'),
       ),
       const SizedBox(height: 8),
       SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: [

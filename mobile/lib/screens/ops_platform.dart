@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/api.dart';
@@ -7,6 +8,7 @@ import '../services/live.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import '../ui/search_field.dart';
 import 'ops_common.dart' show opsLoc, opsMoney, opsYmd, opsDate;
 import 'ops_platform_extra.dart';
 
@@ -309,6 +311,9 @@ class _OpsResourceScreenState extends State<_OpsGenericResourceScreen> {
   bool _stale = false;
   String? _error;
   String _q = '';
+  // البحثُ أثناء الكتابة بتأخيرٍ قصير؛ والمتحكِّمُ عند الشاشة كي يمسحه «مسح الكل» أيضًا.
+  final _searchCtl = TextEditingController();
+  Timer? _debounce;
   final Map<String, String> _filters = {};
   int _page = 1;
   int _lastPage = 1;
@@ -335,6 +340,8 @@ class _OpsResourceScreenState extends State<_OpsGenericResourceScreen> {
   void dispose() {
     Live.instance.off('ops:${widget.cfg.key}:changed', _onLive);
     Live.instance.off('ops:stats', _onLive);
+    _debounce?.cancel();
+    _searchCtl.dispose();
     super.dispose();
   }
 
@@ -425,15 +432,14 @@ class _OpsResourceScreenState extends State<_OpsGenericResourceScreen> {
       body: Column(children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(14, 12, 14, 4),
-          child: TextField(
-            onSubmitted: (v) { _q = v; _reload(); },
-            onChanged: (v) { _q = v; if (v.isEmpty) _reload(); },
-            textInputAction: TextInputAction.search,
-            decoration: InputDecoration(
-              hintText: tr('ابحث ثم اضغط إدخال…', 'Search then press enter…'),
-              prefixIcon: const Icon(Icons.search),
-              isDense: true,
-            ),
+          child: SearchField(
+            controller: _searchCtl, dense: true,
+            hint: tr('ابحث…', 'Search…'),
+            onChanged: (v) {
+              _q = v;
+              _debounce?.cancel();
+              _debounce = Timer(const Duration(milliseconds: 350), () { if (mounted) _reload(); });
+            },
           ),
         ),
         if (_filterDefs.isNotEmpty || anyFilter)
@@ -467,7 +473,7 @@ class _OpsResourceScreenState extends State<_OpsGenericResourceScreen> {
                   ),
                 if (anyFilter)
                   TextButton.icon(
-                    onPressed: () { setState(_filters.clear); _q = ''; _reload(); },
+                    onPressed: () { _debounce?.cancel(); _searchCtl.clear(); setState(_filters.clear); _q = ''; _reload(); },
                     icon: const Icon(Icons.close, size: 16),
                     label: Text(tr('مسح الكل', 'Reset all')),
                   ),
@@ -492,8 +498,9 @@ class _OpsResourceScreenState extends State<_OpsGenericResourceScreen> {
                   : RefreshIndicator(
                       onRefresh: _load,
                       child: _rows.isEmpty
-                          ? ListView(children: [const SizedBox(height: 80), EmptyState(icon: cfg.icon, title: tr('لا توجد سجلات', 'No records'))])
+                          ? ListView(children: [const SizedBox(height: 80), EmptyState(icon: cfg.icon, title: _q.trim().isNotEmpty ? tr('لا نتائج مطابقة للبحث', 'No matches') : tr('لا توجد سجلات', 'No records'))])
                           : ListView.separated(
+                              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                               padding: const EdgeInsets.all(14),
                               itemCount: _rows.length,
                               separatorBuilder: (_, __) => const SizedBox(height: 8),
@@ -821,17 +828,23 @@ class _OpsRefPickerState extends State<_OpsRefPicker> {
   bool _loading = true;
   String? _error;
   String _q = '';
+  // آخرُ بحثٍ وحدَه يُكتب — ردٌّ أقدمُ يصل متأخّرًا لا يمحو الأحدث.
+  int _seq = 0;
+  Timer? _debounce;
 
   @override
   void initState() { super.initState(); _load(); }
+  @override
+  void dispose() { _debounce?.cancel(); super.dispose(); }
 
   Future<void> _load() async {
+    final mine = ++_seq;
     try {
       final d = await Api.instance.get('/api/ops/${widget.resource}?page=1&limit=200&lang=${Lang.instance.ar ? 'ar' : 'en'}${_q.trim().isEmpty ? '' : '&search=${Uri.encodeQueryComponent(_q.trim())}'}');
-      if (!mounted) return;
+      if (!mounted || mine != _seq) return;
       setState(() { _rows = List<Map<String, dynamic>>.from((d['items'] ?? d['data'] ?? []) as List); _loading = false; _error = null; });
     } catch (e) {
-      if (mounted) setState(() { _loading = false; _error = e.toString(); });
+      if (mounted && mine == _seq) setState(() { _loading = false; _error = e.toString(); });
     }
   }
 
@@ -846,12 +859,14 @@ class _OpsRefPickerState extends State<_OpsRefPicker> {
         builder: (c, scroll) => Column(children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(14, 14, 14, 6),
-            child: TextField(
+            child: SearchField(
               autofocus: true,
-              onSubmitted: (v) { setState(() { _q = v; _loading = true; }); _load(); },
-              onChanged: (v) => _q = v,
-              textInputAction: TextInputAction.search,
-              decoration: InputDecoration(hintText: tr('ابحث ثم إدخال…', 'Search then enter…'), prefixIcon: const Icon(Icons.search)),
+              hint: tr('ابحث ثم إدخال…', 'Search then enter…'),
+              onChanged: (v) {
+                _q = v;
+                _debounce?.cancel();
+                _debounce = Timer(const Duration(milliseconds: 350), () { if (mounted) { setState(() => _loading = true); _load(); } });
+              },
             ),
           ),
           Expanded(
@@ -863,6 +878,7 @@ class _OpsRefPickerState extends State<_OpsRefPicker> {
                         ? EmptyState(icon: Icons.link_off_rounded, title: tr('لا نتائج', 'No results'))
                         : ListView.builder(
                             controller: scroll,
+                            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                             padding: const EdgeInsets.fromLTRB(8, 6, 8, 20),
                             itemCount: _rows.length,
                             itemBuilder: (c2, i) {

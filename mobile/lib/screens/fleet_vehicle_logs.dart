@@ -8,6 +8,7 @@ import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import '../ui/vehicle_month_log.dart';
+import '../ui/search_field.dart';
 
 /// سجلّات السيارات — الشهرُ كلُّه لكلّ سيّارة، ثمّ السجلُّ الكامل لمن تُختار.
 ///
@@ -32,6 +33,8 @@ class _FleetVehicleLogsScreenState extends State<FleetVehicleLogsScreen> {
   String _month = monthKeyNow();
   String _plate = '';
   String _search = '';
+  // تبديلُ الشهر يُعيد التحميلَ فتُهدَم الخانة — النصُّ في متحكِّمٍ يبقى مع الكلمة.
+  final _searchCtl = TextEditingController();
 
   late final void Function() _onLive;
 
@@ -47,6 +50,7 @@ class _FleetVehicleLogsScreenState extends State<FleetVehicleLogsScreen> {
   @override
   void dispose() {
     Live.instance.off('fleet:updated', _onLive);
+    _searchCtl.dispose();
     super.dispose();
   }
 
@@ -91,7 +95,7 @@ class _FleetVehicleLogsScreenState extends State<FleetVehicleLogsScreen> {
               ? Center(child: Padding(padding: const EdgeInsets.all(24), child: Text(_error!)))
               : RefreshIndicator(
                   onRefresh: _load,
-                  child: ListView(padding: const EdgeInsets.all(14), children: [
+                  child: ListView(padding: const EdgeInsets.all(14), keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag, children: [
                     AppCard(
                       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                         Row(children: [
@@ -117,13 +121,10 @@ class _FleetVehicleLogsScreenState extends State<FleetVehicleLogsScreen> {
                                 style: const TextStyle(fontSize: 11.5, color: T.inkFaint)),
                           ]),
                         const SizedBox(height: 8),
-                        TextField(
+                        SearchField(
+                          controller: _searchCtl, dense: true,
                           onChanged: (v) => setState(() => _search = v),
-                          decoration: InputDecoration(
-                            isDense: true,
-                            prefixIcon: const Icon(Icons.search, size: 18),
-                            hintText: tr('ابحث بلوحة أو مشرف', 'Search plate or supervisor'),
-                          ),
+                          hint: tr('ابحث بلوحة أو مشرف', 'Search plate or supervisor'),
                         ),
                       ]),
                     ),

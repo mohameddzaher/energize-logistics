@@ -11,6 +11,7 @@ import '../ui/app_scaffold.dart';
 import '../ui/file_upload.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import '../ui/search_field.dart';
 
 /// دفترُ العهدة — الكاش، وكارت المشتريات، والورشة. شاشةٌ واحدةٌ لعهدتين:
 /// النقلُ الخفيف (`LtCustodyScreen`) والنقلُ الثقيل (`HtCustodyScreen`)، مطابقةٌ
@@ -109,6 +110,8 @@ class _CustodyLedgerScreenState extends State<CustodyLedgerScreen> {
   String _account = 'cash';
   String _direction = '';
   String _q = '';
+  // الخانةُ تُطوى مع التمرير فيُعاد بناؤها — النصُّ في متحكِّمٍ لا يضيع.
+  final _searchCtl = TextEditingController();
   DateTimeRange? _range;
   String? _error;
   int _seq = 0;
@@ -136,6 +139,7 @@ class _CustodyLedgerScreenState extends State<CustodyLedgerScreen> {
   void dispose() {
     Live.instance.off(cfg.event, _onLive);
     _debounce?.cancel();
+    _searchCtl.dispose();
     super.dispose();
   }
 
@@ -236,7 +240,7 @@ class _CustodyLedgerScreenState extends State<CustodyLedgerScreen> {
     final canEdit = d['canEdit'] == true;
     final sources = List.from((rules['inSources'] as Map)[_account] ?? const []);
     final toCash = List.from(rules['toCash'] ?? const []).contains(_account);
-    return ListView(padding: const EdgeInsets.all(14), children: [
+    return ListView(padding: const EdgeInsets.all(14), keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag, children: [
       // ── الحساباتُ الثلاثة بالعرض ──────────────────────────────────────────
       Row(children: [
         for (final a in _accounts) ...[
@@ -264,9 +268,10 @@ class _CustodyLedgerScreenState extends State<CustodyLedgerScreen> {
       ],
       const SizedBox(height: 12),
       // ── الفلاتر ───────────────────────────────────────────────────────────
-      TextField(
+      SearchField(
+        controller: _searchCtl, dense: true,
         onChanged: (v) { _q = v; _debounce?.cancel(); _debounce = Timer(const Duration(milliseconds: 350), _load); },
-        decoration: InputDecoration(hintText: cfg.vehicles ? tr('الاسم، رقم الإقامة، اللوحة، البيان…', 'Name, ID no., plate, detail…') : tr('اسم المندوب، رقم الإقامة، البيان…', 'Rep name, ID no., detail…'), prefixIcon: const Icon(Icons.search), isDense: true),
+        hint: cfg.vehicles ? tr('الاسم، رقم الإقامة، اللوحة، البيان…', 'Name, ID no., plate, detail…') : tr('اسم المندوب، رقم الإقامة، البيان…', 'Rep name, ID no., detail…'),
       ),
       const SizedBox(height: 8),
       Wrap(spacing: 6, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
@@ -713,13 +718,13 @@ class _VehiclePickerState extends State<_VehiclePicker> {
           child: Column(children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(14, 14, 14, 6),
-              child: TextField(
-                autofocus: true,
+              child: SearchField(
+                autofocus: true, dense: true,
                 onChanged: (v) => setState(() => _q = v),
-                decoration: InputDecoration(hintText: tr('ابحث باللوحة أو الاسم أو السائق…', 'Search plate, name or driver…'), prefixIcon: const Icon(Icons.search), isDense: true),
+                hint: tr('ابحث باللوحة أو الاسم أو السائق…', 'Search plate, name or driver…'),
               ),
             ),
-            Expanded(child: ListView(children: [
+            Expanded(child: ListView(keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag, children: [
               ListTile(
                 dense: true,
                 title: Text(widget.noneLabel, style: TextStyle(fontWeight: FontWeight.w700, color: widget.current.isEmpty ? T.orange : T.inkSoft)),

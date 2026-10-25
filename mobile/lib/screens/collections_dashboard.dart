@@ -9,6 +9,7 @@ import '../ui/app_scaffold.dart';
 import '../ui/export_sheet.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import '../ui/search_field.dart';
 import 'collections_party.dart';
 import 'collections_receivables.dart';
 
@@ -184,11 +185,12 @@ class _CollectionsDashboardScreenState extends State<CollectionsDashboardScreen>
                 if (picked.isNotEmpty) TextButton(onPressed: () => setSheet(picked.clear), child: Text(tr('مسح', 'Clear'))),
               ]),
               if (f.$4)
-                Padding(padding: const EdgeInsets.only(bottom: 6), child: TextField(
-                  decoration: InputDecoration(isDense: true, prefixIcon: const Icon(Icons.search, size: 18), hintText: tr('ابحث…', 'Search…')),
+                Padding(padding: const EdgeInsets.only(bottom: 6), child: SearchField(
+                  dense: true,
+                  hint: tr('ابحث…', 'Search…'),
                   onChanged: (v) => setSheet(() => q = v.trim()),
                 )),
-              Flexible(child: ListView(shrinkWrap: true, children: [
+              Flexible(child: ListView(shrinkWrap: true, keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag, children: [
                 for (final o in shown)
                   CheckboxListTile(
                     dense: true, contentPadding: EdgeInsets.zero, controlAffinity: ListTileControlAffinity.leading,
@@ -677,14 +679,16 @@ class _DefaultTermSheetState extends State<_DefaultTermSheet> {
             Text(tr('اكتب مدّة سداد كلّ عميل كما اتُّفق معه — تُحفظ في ملفّه وتُعاد خطورةُ فواتيره فورًا',
                 'Enter each customer’s agreed term — saved to their file, risk recomputed at once'), style: const TextStyle(fontSize: 11.5, color: T.inkFaint)),
             const SizedBox(height: 8),
-            TextField(
+            SearchField(
+              dense: true,
               onChanged: (v) => setState(() => _q = v),
-              decoration: InputDecoration(isDense: true, prefixIcon: const Icon(Icons.search, size: 18), hintText: tr('ابحث بالاسم أو الكود أو المسؤول…', 'Search name, code, officer…')),
+              hint: tr('ابحث بالاسم أو الكود أو المسؤول…', 'Search name, code, officer…'),
             ),
           ])),
           Expanded(child: shown.isEmpty
-              ? Center(child: Text(tr('لا عملاء', 'No customers'), style: const TextStyle(color: T.inkFaint)))
+              ? Center(child: Text(s.isNotEmpty ? tr('لا نتائج مطابقة', 'No matches') : tr('لا عملاء', 'No customers'), style: const TextStyle(color: T.inkFaint)))
               : ListView.builder(
+                  keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                   padding: const EdgeInsets.fromLTRB(12, 6, 12, 20),
                   itemCount: shown.length,
                   itemBuilder: (_, i) {

@@ -6,6 +6,7 @@ import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import 'fleet_customer_profile.dart';
+import '../ui/search_field.dart';
 
 /// تحليلات إدارة الأسطول — نفس تحليلات صفحة الويب /system/fleet/dashboard:
 /// الدخل، الأهداف، ترتيب السيارات/السواقين/العملاء/المشرفين، اتجاه الشهور.
@@ -33,6 +34,8 @@ class _FleetAnalyticsScreenState extends State<FleetAnalyticsScreen> {
   bool _loading = true;
   String? _error;
   String _q = '';
+  // الخانةُ تُهدَم مع التحميل والتمرير — النصُّ في متحكِّمٍ يبقى مع الكلمة.
+  final _searchCtl = TextEditingController();
   String _preset = 'thisMonth'; // thisMonth | lastMonth | all
   late final void Function() _onLive;
 
@@ -58,6 +61,7 @@ class _FleetAnalyticsScreenState extends State<FleetAnalyticsScreen> {
   @override
   void dispose() {
     Live.instance.off('fleet:updated', _onLive);
+    _searchCtl.dispose();
     super.dispose();
   }
 
@@ -146,6 +150,7 @@ class _FleetAnalyticsScreenState extends State<FleetAnalyticsScreen> {
 
     return ListView(
       padding: const EdgeInsets.all(14),
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       children: [
         // فلتر الفترة
         SingleChildScrollView(
@@ -157,12 +162,10 @@ class _FleetAnalyticsScreenState extends State<FleetAnalyticsScreen> {
           ]),
         ),
         const SizedBox(height: 10),
-        TextField(
+        SearchField(
+          controller: _searchCtl,
           onChanged: (v) => setState(() => _q = v),
-          decoration: InputDecoration(
-            hintText: tr('ابحث في السيارات/السواقين/العملاء/المشرفين…', 'Search vehicles, drivers, customers…'),
-            prefixIcon: const Icon(Icons.search),
-          ),
+          hint: tr('ابحث في السيارات/السواقين/العملاء/المشرفين…', 'Search vehicles, drivers, customers…'),
         ),
         const SizedBox(height: 12),
         // بطاقات المؤشرات

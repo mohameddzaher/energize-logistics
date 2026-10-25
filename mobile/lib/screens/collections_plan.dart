@@ -8,6 +8,7 @@ import '../services/lang.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import '../ui/search_field.dart';
 import 'collections_party.dart';
 
 /// الخطّةُ اليوميّة — «مَن أزور اليوم، وماذا حدث» (كصفحة الموقع
@@ -325,6 +326,7 @@ class _NewTaskSheetState extends State<_NewTaskSheet> {
   late String _officerName = widget.myName;
   Timer? _deb;
   int _seq = 0;
+  bool _pending = false; // بحثٌ جارٍ — لا تُعرَض «لا نتائج» قبل الردّ
   bool _saving = false;
   String _err = '';
 
@@ -334,14 +336,16 @@ class _NewTaskSheetState extends State<_NewTaskSheet> {
   void _search(String v) {
     setState(() { _party = ''; _partyName = ''; });
     _deb?.cancel();
-    if (v.trim().isEmpty) { setState(() => _hits = []); return; }
-    _deb = Timer(const Duration(milliseconds: 300), () async {
+    // المسحُ يُبطل أيَّ ردٍّ ما زال في الطريق
+    if (v.trim().isEmpty) { _seq++; setState(() { _hits = []; _pending = false; }); return; }
+    setState(() => _pending = true);
+    _deb = Timer(const Duration(milliseconds: 350), () async {
       final mine = ++_seq;
       try {
         final d = await Api.instance.get('/api/collections-dept/ledger/aging?search=${Uri.encodeQueryComponent(v)}&limit=8');
-        if (mounted && mine == _seq) setState(() => _hits = List<Map<String, dynamic>>.from(d['rows'] ?? const []));
+        if (mounted && mine == _seq) setState(() { _hits = List<Map<String, dynamic>>.from(d['rows'] ?? const []); _pending = false; });
       } catch (_) {
-        if (mounted && mine == _seq) setState(() => _hits = []);
+        if (mounted && mine == _seq) setState(() { _hits = []; _pending = false; });
       }
     });
   }
@@ -376,8 +380,10 @@ class _NewTaskSheetState extends State<_NewTaskSheet> {
             trailing: IconButton(icon: const Icon(Icons.close), onPressed: () => setState(() { _party = ''; _partyName = ''; })),
           )
         else ...[
-          TextField(controller: _q, onChanged: _search, autofocus: true,
-              decoration: InputDecoration(labelText: tr('العميل', 'Customer'), hintText: tr('ابحث بالاسم أو الكود…', 'Search name or code…'), prefixIcon: const Icon(Icons.search))),
+          SearchField(controller: _q, onChanged: _search, autofocus: true,
+              hint: tr('ابحث بالاسم أو الكود…', 'Search name or code…')),
+          if (_hits.isEmpty && !_pending && _q.text.trim().isNotEmpty)
+            Padding(padding: const EdgeInsets.all(12), child: Text(tr('لا نتائج مطابقة', 'No matches'), style: const TextStyle(color: T.inkFaint))),
           for (final h in _hits)
             ListTile(
               dense: true,

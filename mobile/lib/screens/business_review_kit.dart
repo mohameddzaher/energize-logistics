@@ -6,6 +6,7 @@ import '../services/auth.dart';
 import '../services/lang.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import '../ui/search_field.dart';
 
 /// مراجعة الأعمال — أدواتٌ مشتركة بين القائمة وصفحة الاجتماع (BusinessReviewKit في الويب).
 
@@ -121,14 +122,18 @@ Future<Map<String, dynamic>?> brPickPerson(BuildContext context, List<Map<String
           child: Column(children: [
             Padding(
               padding: EdgeInsets.fromLTRB(14, 14, 14, 8 + MediaQuery.of(c).viewInsets.bottom * 0),
-              child: TextField(
+              child: SearchField(
                 autofocus: true,
-                decoration: InputDecoration(prefixIcon: const Icon(Icons.search), hintText: title ?? tr('ابحث بالاسم أو القسم…', 'Search by name or department…'), isDense: true),
+                dense: true,
+                hint: title ?? tr('ابحث بالاسم أو القسم…', 'Search by name or department…'),
                 onChanged: (v) => setS(() => q = v),
               ),
             ),
+            if (list.isEmpty && q.trim().isNotEmpty)
+              Padding(padding: const EdgeInsets.all(20), child: Text(tr('لا نتائج مطابقة', 'No matches'), style: const TextStyle(color: T.inkFaint))),
             Expanded(
               child: ListView.builder(
+                keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                 itemCount: list.length,
                 itemBuilder: (_, i) {
                   final p = list[i];

@@ -5,6 +5,7 @@ import '../services/lang.dart';
 import '../ui/api_picker.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/lookup_field.dart';
+import '../ui/search_field.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import 'vehicle_documents.dart' show ReqToggle;
@@ -402,19 +403,23 @@ class _VehicleRegistryFormState extends State<_VehicleRegistryForm> {
 
 /// بحثٌ عن شخصٍ في الموظّفين وملفّات القسم (`/person-lookup`) — نظيرُ PersonLookup.
 Future<Map<String, dynamic>?> _personSearch(BuildContext context, String title) {
+  // الحالةُ خارج builder: إعادةُ بناء النافذة لا تُصفِّرها والخانةُ مكتوبة
+  List<Map<String, dynamic>> rows = [];
+  bool loading = false;
+  int seq = 0;
+  String typed = '';
   return showModalBottomSheet<Map<String, dynamic>>(
     context: context,
     isScrollControlled: true,
     builder: (c) {
-      List<Map<String, dynamic>> rows = [];
-      bool loading = false;
-      int seq = 0;
       return StatefulBuilder(builder: (c, setS) {
         Future<void> search(String q) async {
           final mine = ++seq;
+          typed = q.trim();
           if (q.trim().length < 2) { setS(() { rows = []; loading = false; }); return; }
           setS(() => loading = true);
-          await Future.delayed(const Duration(milliseconds: 300));
+          await Future.delayed(const Duration(milliseconds: 350));
+          if (!c.mounted) return;
           if (mine != seq) return;
           try {
             final d = await Api.instance.get('/api/vehicle-registry/person-lookup?q=${Uri.encodeQueryComponent(q.trim())}');
@@ -431,13 +436,14 @@ Future<Map<String, dynamic>?> _personSearch(BuildContext context, String title) 
               child: Column(children: [
                 Padding(
                   padding: const EdgeInsets.all(14),
-                  child: TextField(autofocus: true, onChanged: search,
-                      decoration: InputDecoration(hintText: title, prefixIcon: const Icon(Icons.search))),
+                  child: SearchField(autofocus: true, onChanged: search, hint: title),
                 ),
                 Expanded(
                   child: loading
                       ? const Center(child: CircularProgressIndicator())
-                      : ListView(children: rows.map((p) => ListTile(
+                      : rows.isEmpty && typed.length >= 2
+                          ? Center(child: Text(tr('لا نتائج مطابقة', 'No matches'), style: const TextStyle(color: T.inkFaint)))
+                          : ListView(keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag, children: rows.map((p) => ListTile(
                             title: Text('${p['name'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.w700)),
                             subtitle: Text([p['idNumber'], p['phone'], p['jobTitleAr'] ?? p['source']].where((x) => (x ?? '').toString().isNotEmpty).join(' · ')),
                             onTap: () => Navigator.pop(c, p),

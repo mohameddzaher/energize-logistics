@@ -7,6 +7,7 @@ import '../ui/app_scaffold.dart';
 import '../ui/export_sheet.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import '../ui/search_field.dart';
 import 'collection_attachments.dart';
 import 'collections_aging.dart' show bandLabel;
 import 'collections_invoices.dart' show openTaxInvoice;
@@ -54,6 +55,8 @@ class _CollectionsLedgerScreenState extends State<CollectionsLedgerScreen> {
   String? _error;
   String _search = '', _status = '', _kind = '', _officer = '', _band = '', _open = '', _dateField = 'invoiceDate', _from = '', _to = '';
   Timer? _deb;
+  Timer? _searchDeb; // مؤقِّتُ البحث مستقلٌّ — كان التحديثُ الحيّ يُلغي بحثًا مُنتظِرًا
+  final _searchCtl = TextEditingController(); // النصُّ يبقى مطابقًا لـ_search
   late final void Function() _onLive;
 
   @override
@@ -80,6 +83,8 @@ class _CollectionsLedgerScreenState extends State<CollectionsLedgerScreen> {
     Live.instance.off('collections:party', _onLive);
     Live.instance.off('collections:changed', _onLive);
     _deb?.cancel();
+    _searchDeb?.cancel();
+    _searchCtl.dispose();
     super.dispose();
   }
 
@@ -267,7 +272,7 @@ class _CollectionsLedgerScreenState extends State<CollectionsLedgerScreen> {
                   Expanded(
                     child: RefreshIndicator(
                       onRefresh: _load,
-                      child: ListView(padding: const EdgeInsets.all(12), children: [
+                      child: ListView(padding: const EdgeInsets.all(12), keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag, children: [
                         Row(children: [
                           for (final c in [
                             (tr('فواتير', 'Invoices'), _m(_total), T.ink),
@@ -283,11 +288,13 @@ class _CollectionsLedgerScreenState extends State<CollectionsLedgerScreen> {
                             )),
                         ]),
                         const SizedBox(height: 10),
-                        TextField(
-                          decoration: InputDecoration(isDense: true, prefixIcon: const Icon(Icons.search, size: 18), hintText: tr('رقم فاتورة أو عميل أو كود…', 'Invoice no, customer, code…')),
+                        SearchField(
+                          controller: _searchCtl,
+                          dense: true,
+                          hint: tr('رقم فاتورة أو عميل أو كود…', 'Invoice no, customer, code…'),
                           onChanged: (v) {
-                            _deb?.cancel();
-                            _deb = Timer(const Duration(milliseconds: 300), () { _search = v.trim(); _refilter(); });
+                            _searchDeb?.cancel();
+                            _searchDeb = Timer(const Duration(milliseconds: 350), () { _search = v.trim(); _refilter(); });
                           },
                         ),
                         const SizedBox(height: 8),
@@ -342,13 +349,15 @@ class _CollectionsLedgerScreenState extends State<CollectionsLedgerScreen> {
                               tooltip: tr('مسح', 'Clear'),
                               icon: const Icon(Icons.filter_alt_off_outlined, color: T.danger),
                               onPressed: () {
+                                _searchDeb?.cancel();
+                                _searchCtl.clear();
                                 setState(() { _search = ''; _status = ''; _kind = ''; _officer = ''; _band = ''; _open = ''; _from = ''; _to = ''; });
                                 _refilter();
                               },
                             ),
                         ]),
                         const SizedBox(height: 6),
-                        if (_rows.isEmpty) EmptyState(icon: Icons.menu_book_outlined, title: tr('لا فواتير', 'No invoices')),
+                        if (_rows.isEmpty) EmptyState(icon: Icons.menu_book_outlined, title: _active ? tr('لا نتائج مطابقة', 'No matches') : tr('لا فواتير', 'No invoices')),
                         for (final r in _rows) _card(r),
                         if (_pages > 1)
                           Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [

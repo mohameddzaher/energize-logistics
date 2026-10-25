@@ -4,6 +4,7 @@ import '../services/lang.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import '../ui/search_field.dart';
 
 /// تقارير الحسابات — أعمار الديون (المدينون/الدائنون)، ميزان المراجعة، وقائمة
 /// الدخل. مطابقة لصفحات الويب /system/accounting/{receivables,payables,
@@ -41,9 +42,13 @@ class _AgingReportScreenState extends State<AgingReportScreen> {
   bool _loading = true;
   String? _error;
   String _q = '';
+  final _searchCtl = TextEditingController(); // النصُّ يبقى مطابقًا لـ_q بعد إعادة الرسم
 
   @override
   void initState() { super.initState(); _load(); }
+
+  @override
+  void dispose() { _searchCtl.dispose(); super.dispose(); }
 
   Future<void> _load() async {
     try {
@@ -79,7 +84,7 @@ class _AgingReportScreenState extends State<AgingReportScreen> {
               ? ErrorRetry(message: _error!, onRetry: () { setState(() => _loading = true); _load(); })
               : RefreshIndicator(
                   onRefresh: _load,
-                  child: ListView(padding: const EdgeInsets.all(14), children: [
+                  child: ListView(padding: const EdgeInsets.all(14), keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag, children: [
                     AppCard(
                       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                         Row(children: [
@@ -97,13 +102,14 @@ class _AgingReportScreenState extends State<AgingReportScreen> {
                       ]),
                     ),
                     const SizedBox(height: 12),
-                    TextField(
+                    SearchField(
+                      controller: _searchCtl,
                       onChanged: (v) => setState(() => _q = v),
-                      decoration: InputDecoration(hintText: tr('ابحث…', 'Search…'), prefixIcon: const Icon(Icons.search)),
+                      hint: tr('ابحث…', 'Search…'),
                     ),
                     const SizedBox(height: 10),
                     if (filtered.isEmpty)
-                      EmptyState(icon: Icons.receipt_long_outlined, title: tr('لا توجد مستحقات', 'Nothing outstanding'))
+                      EmptyState(icon: Icons.receipt_long_outlined, title: q.isNotEmpty ? tr('لا نتائج مطابقة', 'No matches') : tr('لا توجد مستحقات', 'Nothing outstanding'))
                     else
                       ...filtered.map((r) {
                         final days = (r['daysOverdue'] is num) ? (r['daysOverdue'] as num).toInt() : 0;

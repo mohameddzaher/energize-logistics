@@ -5,6 +5,7 @@ import '../services/live.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import '../ui/search_field.dart';
 
 /// أنشطة التسويق — منشورات وإعلانات وحملات عبر المنصات، بمقاييسها
 /// (ظهور/نقرات/عملاء محتملون) — إنشاء وعرض مع الفلاتر.
@@ -48,6 +49,8 @@ class _MarketingActivitiesScreenState extends State<MarketingActivitiesScreen> {
   bool _loading = true;
   String? _error;
   String _q = '';
+  // متحكِّمُ البحث عند الشاشة: اختيارُ منصّةٍ يُعيد التحميل فلا تعود الخانةُ فارغةً والكلمةُ تُرشِّح.
+  final _searchCtl = TextEditingController();
   String _platform = '';
   late final void Function() _onLive;
 
@@ -62,6 +65,7 @@ class _MarketingActivitiesScreenState extends State<MarketingActivitiesScreen> {
   @override
   void dispose() {
     Live.instance.off('marketing:updated', _onLive);
+    _searchCtl.dispose();
     super.dispose();
   }
 
@@ -252,10 +256,7 @@ class _MarketingActivitiesScreenState extends State<MarketingActivitiesScreen> {
               : Column(children: [
                   Padding(
                     padding: const EdgeInsets.fromLTRB(14, 12, 14, 0),
-                    child: TextField(
-                      onChanged: (v) => setState(() => _q = v),
-                      decoration: InputDecoration(hintText: tr('ابحث…', 'Search…'), prefixIcon: const Icon(Icons.search), suffixText: '${filtered.length}'),
-                    ),
+                    child: SearchField(controller: _searchCtl, hint: tr('ابحث…', 'Search…'), suffixText: '${filtered.length}', onChanged: (v) => setState(() => _q = v)),
                   ),
                   Padding(
                     padding: const EdgeInsets.fromLTRB(14, 8, 14, 4),
@@ -286,8 +287,9 @@ class _MarketingActivitiesScreenState extends State<MarketingActivitiesScreen> {
                     child: RefreshIndicator(
                       onRefresh: _load,
                       child: filtered.isEmpty
-                          ? ListView(children: [const SizedBox(height: 80), EmptyState(icon: Icons.campaign_outlined, title: tr('لا توجد أنشطة', 'No activities'))])
+                          ? ListView(children: [const SizedBox(height: 80), EmptyState(icon: Icons.campaign_outlined, title: q.isNotEmpty ? tr('لا نتائج مطابقة للبحث', 'No matches') : tr('لا توجد أنشطة', 'No activities'))])
                           : ListView.separated(
+                              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                               padding: const EdgeInsets.all(14),
                               itemCount: filtered.length,
                               separatorBuilder: (_, __) => const SizedBox(height: 8),

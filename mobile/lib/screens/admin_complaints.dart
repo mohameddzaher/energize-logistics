@@ -9,6 +9,7 @@ import '../ui/app_scaffold.dart';
 import '../ui/export_sheet.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import '../ui/search_field.dart';
 
 /// شكاوى العملاء (العامّة) — نظيرُ /system/complaints في الويب: إنشاء، حلّ،
 /// حذف، فلاتر الحالة والتصنيف والأولويّة والبحث (على الخادم، ٢٠ في الصفحة)،
@@ -257,9 +258,10 @@ class _AdminComplaintsScreenState extends State<AdminComplaintsScreen> {
       body: Column(children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(14, 12, 14, 4),
-          child: TextField(
+          child: SearchField(
             onChanged: (v) { _debounce?.cancel(); _debounce = Timer(const Duration(milliseconds: 400), () => _set(() => _search = v.trim())); },
-            decoration: InputDecoration(hintText: tr('ابحث بالموضوع أو العميل…', 'Search…'), prefixIcon: const Icon(Icons.search), suffixText: '$_total'),
+            hint: tr('ابحث بالموضوع أو العميل…', 'Search…'),
+            suffixText: '$_total',
           ),
         ),
         SizedBox(height: 44, child: ListView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4), children: [
@@ -280,8 +282,9 @@ class _AdminComplaintsScreenState extends State<AdminComplaintsScreen> {
                 : RefreshIndicator(
                     onRefresh: _load,
                     child: _rows.isEmpty
-                        ? ListView(children: [const SizedBox(height: 80), EmptyState(icon: Icons.forum_outlined, title: tr('لا توجد شكاوى', 'No complaints'))])
+                        ? ListView(keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag, children: [const SizedBox(height: 80), EmptyState(icon: Icons.forum_outlined, title: _search.isNotEmpty ? tr('لا نتائج مطابقة', 'No matches') : tr('لا توجد شكاوى', 'No complaints'))])
                         : ListView.separated(
+                            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                             padding: const EdgeInsets.fromLTRB(14, 6, 14, 96),
                             itemCount: _rows.length,
                             separatorBuilder: (_, __) => const SizedBox(height: 8),

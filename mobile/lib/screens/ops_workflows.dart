@@ -11,6 +11,7 @@ import '../ui/export_sheet.dart';
 import '../ui/lookup_field.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import '../ui/search_field.dart';
 import 'ops_common.dart';
 import 'ops_workflow_detail.dart';
 import 'ops_workflow_new.dart';
@@ -905,20 +906,13 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
       ),
       Padding(
         padding: const EdgeInsets.fromLTRB(14, 8, 14, 0),
-        child: TextField(
-          controller: _qCtrl,
+        child: SearchField(
+          controller: _qCtrl, dense: true,
+          hint: tr('ابحث برقم الكشف أو المالك أو العميل…', 'Search report, owner or customer…'),
           onChanged: (v) {
             _debounce?.cancel();
-            _debounce = Timer(const Duration(milliseconds: 350), () { _q = v; _reload(); });
+            _debounce = Timer(const Duration(milliseconds: 350), () { if (!mounted) return; _q = v; _reload(); });
           },
-          textInputAction: TextInputAction.search,
-          onSubmitted: (v) { _debounce?.cancel(); _q = v; _reload(); },
-          decoration: InputDecoration(
-            hintText: tr('ابحث برقم الكشف أو المالك أو العميل…', 'Search report, owner or customer…'),
-            prefixIcon: const Icon(Icons.search),
-            isDense: true,
-            suffixIcon: _qCtrl.text.isEmpty ? null : IconButton(icon: const Icon(Icons.close, size: 18), onPressed: () { _qCtrl.clear(); _q = ''; _reload(); }),
-          ),
         ),
       ),
       Padding(
@@ -1082,6 +1076,7 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
               : RefreshIndicator(
                   onRefresh: _load,
                   child: ListView(
+                    keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                     padding: const EdgeInsets.only(bottom: 90),
                     children: [
                       _header(),
@@ -1090,7 +1085,7 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
                       if (_rows.isEmpty)
                         EmptyState(
                           icon: Icons.workspaces_outline,
-                          title: _pendingOnly ? tr('لا توجد فواتير معلقة', 'No pending invoices') : (_cf.isNotEmpty ? tr('لا نتائج للفلتر المحدد', 'No rows match the filters') : tr('لا توجد كشوف', 'No sheets')),
+                          title: _pendingOnly ? tr('لا توجد فواتير معلقة', 'No pending invoices') : (_cf.isNotEmpty || _q.trim().isNotEmpty ? tr('لا نتائج للفلتر المحدد', 'No rows match the filters') : tr('لا توجد كشوف', 'No sheets')),
                         )
                       else
                         for (var i = 0; i < _rows.length; i++)

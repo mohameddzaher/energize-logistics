@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/api.dart';
 import '../services/lang.dart';
+import '../ui/search_field.dart';
 import '../ui/widgets.dart';
 
 /// منتقي بحثٍ عام: يجلب من endpoint ويعرض قائمةً قابلةً للبحث، ويرجّع المختار.
@@ -69,10 +70,10 @@ class _ApiPickerState extends State<_ApiPicker> {
         builder: (c, scroll) => Column(children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(14, 14, 14, 6),
-            child: TextField(
+            child: SearchField(
               autofocus: true,
               onChanged: (v) => setState(() => _q = v),
-              decoration: InputDecoration(hintText: '${widget.title}…', prefixIcon: const Icon(Icons.search)),
+              hint: '${widget.title}…',
             ),
           ),
           Expanded(
@@ -84,6 +85,7 @@ class _ApiPickerState extends State<_ApiPicker> {
                         ? EmptyState(icon: Icons.search_off_rounded, title: tr('لا نتائج', 'No results'))
                         : ListView.builder(
                             controller: scroll,
+                            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                             padding: const EdgeInsets.fromLTRB(8, 6, 8, 20),
                             itemCount: filtered.length,
                             itemBuilder: (c2, i) => ListTile(

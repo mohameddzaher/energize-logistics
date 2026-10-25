@@ -12,6 +12,7 @@ import '../ui/export_sheet.dart';
 import '../ui/file_upload.dart';
 import '../ui/clearance_quick_view.dart';
 import 'hr_finance.dart' show FinanceResidencyScreen;
+import '../ui/search_field.dart';
 
 /// الإدارة المالية — مالُ كلّ قسمٍ في موضعٍ واحد، من الحمولة نفسِها التي
 /// تعرضها صفحاتُ الموقع (/api/finance). فلا يختلف رقمٌ بين الهاتف والموقع.
@@ -419,9 +420,17 @@ class _FinTableCard extends StatefulWidget {
 class _FinTableCardState extends State<_FinTableCard> {
   static const _page = 100;
   String _q = '';
+  // الجدولُ يُطوى فتُهدَم خانتُه — النصُّ في متحكِّمٍ يبقى مع الكلمة.
+  final _searchCtl = TextEditingController();
   int _limit = _page;
   String? _sortKey;
   int _dir = 1;
+
+  @override
+  void dispose() {
+    _searchCtl.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -467,9 +476,10 @@ class _FinTableCardState extends State<_FinTableCard> {
         children: [
           Row(children: [
             Expanded(
-              child: TextField(
+              child: SearchField(
+                controller: _searchCtl, dense: true,
                 onChanged: (v) => setState(() { _q = v; _limit = _page; }),
-                decoration: InputDecoration(isDense: true, prefixIcon: const Icon(Icons.search, size: 18), hintText: tr('بحث…', 'Search…')),
+                hint: tr('بحث…', 'Search…'),
               ),
             ),
             PopupMenuButton<String>(
@@ -673,6 +683,7 @@ class _CustomsPaymentRequestsState extends State<_CustomsPaymentRequests> {
   bool _loading = true;
   String _tab = 'pending';
   String _search = '';
+  final _searchCtl = TextEditingController();
   bool _legacy = false;
   int _page = 1;
   int _pages = 1;
@@ -694,6 +705,7 @@ class _CustomsPaymentRequestsState extends State<_CustomsPaymentRequests> {
   void dispose() {
     _debounce?.cancel();
     Live.instance.off('customs:updated', _onLive);
+    _searchCtl.dispose();
     super.dispose();
   }
 
@@ -858,13 +870,13 @@ class _CustomsPaymentRequestsState extends State<_CustomsPaymentRequests> {
           ]),
         ),
         const SizedBox(height: 6),
-        TextField(
+        SearchField(
+          controller: _searchCtl, dense: true,
           onChanged: (v) {
             _debounce?.cancel();
-            _debounce = Timer(const Duration(milliseconds: 300), () { setState(() { _search = v.trim(); _page = 1; }); _load(); });
+            _debounce = Timer(const Duration(milliseconds: 300), () { if (!mounted) return; setState(() { _search = v.trim(); _page = 1; }); _load(); });
           },
-          decoration: InputDecoration(isDense: true, prefixIcon: const Icon(Icons.search, size: 18),
-              hintText: tr('رقم معاملة، عميل، بند…', 'Transaction, customer, item…')),
+          hint: tr('رقم معاملة، عميل، بند…', 'Transaction, customer, item…'),
         ),
         // علاماتُ «تم» المنقولة من شيت الماستر — ليست قراراتٍ من الماليّة.
         if (legacyN > 0)
@@ -1239,6 +1251,7 @@ class _CustomsCustomerInvoicesState extends State<_CustomsCustomerInvoices> {
   bool _loading = true;
   bool _onlyAwaiting = false;
   String _q = '';
+  final _searchCtl = TextEditingController();
   int _limit = 40;
   int _seq = 0;
   late final void Function() _onLive;
@@ -1254,6 +1267,7 @@ class _CustomsCustomerInvoicesState extends State<_CustomsCustomerInvoices> {
   @override
   void dispose() {
     Live.instance.off('customs:updated', _onLive);
+    _searchCtl.dispose();
     super.dispose();
   }
 
@@ -1295,9 +1309,10 @@ class _CustomsCustomerInvoicesState extends State<_CustomsCustomerInvoices> {
         const SizedBox(height: 8),
         Row(children: [
           Expanded(
-            child: TextField(
+            child: SearchField(
+              controller: _searchCtl, dense: true,
               onChanged: (v) => setState(() { _q = v; _limit = 40; }),
-              decoration: InputDecoration(isDense: true, prefixIcon: const Icon(Icons.search, size: 18), hintText: tr('فاتورة، بوليصة، معاملة، عميل', 'Invoice, BL, transaction, customer')),
+              hint: tr('فاتورة، بوليصة، معاملة، عميل', 'Invoice, BL, transaction, customer'),
             ),
           ),
           const SizedBox(width: 6),

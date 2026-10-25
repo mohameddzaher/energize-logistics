@@ -5,6 +5,7 @@ import '../services/lang.dart';
 import '../services/live.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/export_sheet.dart';
+import '../ui/search_field.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import 'vehicle_corporate.dart' show vStateColor, vStateLabel;
@@ -254,8 +255,8 @@ class _VehicleRecordsScreenState extends State<VehicleRecordsScreen> {
                   Padding(
                     padding: const EdgeInsets.fromLTRB(14, 6, 14, 4),
                     child: Row(children: [
-                      Expanded(child: TextField(controller: _qCtl, onChanged: (v) => setState(() => _q = v),
-                          decoration: InputDecoration(hintText: tr('بحث…', 'Search…'), prefixIcon: const Icon(Icons.search)))),
+                      Expanded(child: SearchField(controller: _qCtl, onChanged: (v) => setState(() => _q = v),
+                          hint: tr('بحث…', 'Search…'))),
                       const SizedBox(width: 8),
                       Badge(
                         isLabelVisible: _colFilters.isNotEmpty,
@@ -302,6 +303,7 @@ class _VehicleRecordsScreenState extends State<VehicleRecordsScreen> {
                       child: shown.isEmpty
                           ? ListView(children: [EmptyState(icon: Icons.inventory_2_outlined, title: tr('لا نتائج', 'No results'))])
                           : ListView.separated(
+                              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                               padding: const EdgeInsets.fromLTRB(14, 6, 14, 14),
                               itemCount: shown.length,
                               separatorBuilder: (_, __) => const SizedBox(height: 8),
@@ -448,10 +450,12 @@ class _ColumnFilterSheetState extends State<_ColumnFilterSheet> {
             Expanded(child: Text(tr(col.$2, col.$3), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15))),
             if (sel.isNotEmpty) TextButton(onPressed: () => setState(() => _v.remove(_open)), child: Text(tr('مسح', 'Clear'))),
           ])),
-          Padding(padding: const EdgeInsets.symmetric(horizontal: 14), child: TextField(
+          Padding(padding: const EdgeInsets.symmetric(horizontal: 14), child: SearchField(
             onChanged: (v) => setState(() => _q = v),
-            decoration: InputDecoration(hintText: tr('بحث…', 'Search…'), prefixIcon: const Icon(Icons.search)))),
-          Expanded(child: ListView(controller: sc, children: [
+            hint: tr('بحث…', 'Search…'))),
+          Expanded(child: ListView(controller: sc, keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag, children: [
+            if (values.isEmpty && q.isNotEmpty)
+              Padding(padding: const EdgeInsets.all(18), child: Text(tr('لا نتائج مطابقة', 'No matches'), textAlign: TextAlign.center, style: const TextStyle(color: T.inkFaint))),
             for (final k in values)
               CheckboxListTile(
                 dense: true, value: sel.contains(k), activeColor: T.orange,

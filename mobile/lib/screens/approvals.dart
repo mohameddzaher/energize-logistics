@@ -28,6 +28,7 @@ class ApprovalsScreen extends StatefulWidget {
 
 class _ApprovalsScreenState extends State<ApprovalsScreen> {
   List<Map<String, dynamic>> _leaves = [];
+  String _q = ''; // البحث بالاسم أو نوع الإجازة أو السبب — كالويب
   bool _loading = true;
   String? _error;
   late final void Function() _onLive;
@@ -177,8 +178,16 @@ class _ApprovalsScreenState extends State<ApprovalsScreen> {
   Widget build(BuildContext context) {
     // صندوقُ الوارد لا يحمل إلا ما ينتظر قرارًا، فكلُّه قابلٌ للبتّ. وكانت
     // القسمةُ على `pending_manager` وحدَها — فما بلغ الموارد أو الحسابات سقط.
-    final pending = _leaves.where((l) => leaveIsActionable(l['status'])).toList();
-    final past = _leaves.where((l) => !leaveIsActionable(l['status'])).toList();
+    final q = _q.trim().toLowerCase();
+    bool hit(Map<String, dynamic> l) {
+      if (q.isEmpty) return true;
+      String n(dynamic p) => p is Map ? '${p['firstName'] ?? ''} ${p['lastName'] ?? ''} ${p['arabicName'] ?? ''}' : '';
+      final t = l['leaveType'] is Map ? '${l['leaveType']['nameAr'] ?? ''} ${l['leaveType']['nameEn'] ?? ''}' : '';
+      return '${n(l['employee'])} ${n(l['requester'])} $t ${l['reason'] ?? ''}'.toLowerCase().contains(q);
+    }
+    final shown = _leaves.where(hit).toList();
+    final pending = shown.where((l) => leaveIsActionable(l['status'])).toList();
+    final past = shown.where((l) => !leaveIsActionable(l['status'])).toList();
 
     return AppScaffold(
       title: Text(tr('موافقات الإجازات', 'Leave Approvals')),
@@ -190,7 +199,7 @@ class _ApprovalsScreenState extends State<ApprovalsScreen> {
               ? ErrorRetry(message: _error!, onRetry: () { setState(() => _loading = true); _load(); })
               : RefreshIndicator(
                   onRefresh: _load,
-                  child: (pending.isEmpty && past.isEmpty)
+                  child: _leaves.isEmpty
                       ? ListView(children: [
                           const SizedBox(height: 80),
                           EmptyState(icon: Icons.verified_outlined, title: tr('لا شيء ينتظر قرارك', 'Nothing awaits your decision')),
@@ -198,6 +207,14 @@ class _ApprovalsScreenState extends State<ApprovalsScreen> {
                       : ListView(
                           padding: const EdgeInsets.fromLTRB(14, 12, 14, 24),
                           children: [
+                            TextField(
+                              decoration: InputDecoration(prefixIcon: const Icon(Icons.search), isDense: true,
+                                  hintText: tr('ابحث بالاسم أو نوع الإجازة أو السبب…', 'Search by name, leave type or reason…')),
+                              onChanged: (v) => setState(() => _q = v),
+                            ),
+                            const SizedBox(height: 10),
+                            if (q.isNotEmpty && shown.isEmpty)
+                              Padding(padding: const EdgeInsets.symmetric(vertical: 30), child: Center(child: Text(tr('لا نتائج لهذا البحث', 'No matches'), style: const TextStyle(color: T.inkSoft)))),
                             ...pending.asMap().entries.map((e) => _card(e.value, actionable: true, i: e.key)),
                             if (past.isNotEmpty) ...[
                               const SizedBox(height: 12),

@@ -107,11 +107,14 @@ exports.login = async (req, res) => {
 
     // Keep this device's session ALONGSIDE any existing ones (phone + desktop +
     // other browsers all stay logged in). Cap to the most recent MAX_SESSIONS.
-    const existing = Array.isArray(user.refreshTokens) ? user.refreshTokens : [];
-    user.refreshTokens = [...existing, refreshToken].slice(-MAX_SESSIONS);
-    user.refreshToken = refreshToken; // legacy field, kept in sync
-    user.lastLogin = new Date();
-    await user.save();
+    // ── تحديثٌ ذرّيّ لا `user.save()` ───────────────────────────────────────
+    // دخولان للمستخدم نفسِه في اللحظة نفسِها (الجوّال والموقع معًا) كانا يقرآن
+    // النسخةَ نفسَها ويحفظانها، فيرفض الثاني بـVersionError ويردّ ٥٠٠. الإضافةُ في
+    // القاعدة نفسِها لا تتعارض. (ظهر في اختبار الشاشات الآليّ، ٢٠٢٦/١٠/٢٥.)
+    await User.updateOne({ _id: user._id }, {
+      $push: { refreshTokens: { $each: [refreshToken], $slice: -MAX_SESSIONS } },
+      $set: { refreshToken, lastLogin: new Date() }, // refreshToken: الحقلُ القديم، يبقى متزامنًا
+    });
     // A cached (pre-login) copy may be stale now that we've updated the user.
     invalidateUserCache(user._id);
 
@@ -202,8 +205,7 @@ exports.refresh = async (req, res) => {
     }
     // Migrate a legacy-only session into the sessions array.
     if (!sessions.includes(token)) {
-      user.refreshTokens = [...sessions, token].slice(-MAX_SESSIONS);
-      await user.save();
+      await User.updateOne({ _id: user._id }, { $push: { refreshTokens: { $each: [token], $slice: -MAX_SESSIONS } } });
     }
 
     if (!user.isActive || user.isLocked) {

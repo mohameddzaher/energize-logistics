@@ -254,7 +254,18 @@ void main() {
 
     // ── real login through the app's AuthProvider ──
     final auth = AuthProvider();
-    await auth.login(_email, _password);
+    // parallel shards log in as the same user at once; the backend's login
+    // save() then races (VersionError → 500), so retry with a staggered delay.
+    for (var attempt = 0;; attempt++) {
+      try {
+        await auth.login(_email, _password);
+        break;
+      } catch (e) {
+        if (attempt >= 6) rethrow;
+        debugPrint('QA login retry ${attempt + 1}: $e');
+        await Future<void>.delayed(Duration(milliseconds: 700 * (attempt + 1) + 300 * _shard));
+      }
+    }
     auth.loading = false;
     expect(auth.user, isNotNull);
     debugPrint('QA logged in as ${auth.user?['email']} role=${auth.role}');
@@ -320,10 +331,26 @@ void main() {
       await tester.pump();
     }
 
-    bool busy() =>
-        find.byType(CircularProgressIndicator).evaluate().isNotEmpty ||
-        find.byType(LinearProgressIndicator).evaluate().isNotEmpty ||
-        find.byType(RefreshProgressIndicator).evaluate().isNotEmpty;
+    // Finder traversal can hit a viewport mid-rebuild under the fully-live
+    // frame policy (null check in _ViewportElement.debugVisitOnstageChildren);
+    // treat that as "still busy" / "unknown" rather than aborting the run.
+    bool busy() {
+      try {
+        return find.byType(CircularProgressIndicator).evaluate().isNotEmpty ||
+            find.byType(LinearProgressIndicator).evaluate().isNotEmpty ||
+            find.byType(RefreshProgressIndicator).evaluate().isNotEmpty;
+      } catch (_) {
+        return true;
+      }
+    }
+
+    int countOf(Type t) {
+      try {
+        return find.byType(t).evaluate().length;
+      } catch (_) {
+        return -1;
+      }
+    }
 
     Future<int> settle() async {
       final t0 = DateTime.now();
@@ -385,78 +412,99 @@ void main() {
       );
     }
 
+    Future<void> runCfg(PageRef r, Cfg c) async {
+      Lang.instance.ar = c.ar;
+      tester.view.devicePixelRatio = c.dpr;
+      tester.view.physicalSize = Size(c.w * c.dpr, c.h * c.dpr);
+      errors.clear();
+      final sw = Stopwatch()..start();
+      await tester.pumpWidget(harness(r, c));
+      drainTester();
+      final loadMs = await settle();
+      drainTester();
+      final stillLoading = busy();
+      String? shot;
+      if (_shots && c.shot) shot = await shoot(r, c);
+      final pageErrors = List<Map<String, dynamic>>.from(errors);
+
+      Map<String, dynamic>? searchRes;
+      if (c.search) {
+        errors.clear();
+        final fields = find.byType(TextField);
+        final n = countOf(TextField);
+        if (n > 0) {
+          final before = apiRequests;
+          final textsBefore = countOf(Text);
+          String? err;
+          try {
+            await tester.enterText(fields.first, c.ar ? 'مح' : 'qa');
+            await wait(const Duration(milliseconds: 600));
+            await settle();
+          } catch (e) {
+            err = e.toString().split('\n').first;
+          }
+          drainTester();
+          searchRes = {
+            'fields': n,
+            'requests': apiRequests - before,
+            'textWidgetsBefore': textsBefore,
+            'textWidgetsAfter': countOf(Text),
+            'enterError': err,
+            'errors': List<Map<String, dynamic>>.from(errors),
+          };
+        } else {
+          searchRes = {'fields': 0};
+        }
+      }
+      sw.stop();
+      final rec = {
+        'index': r.index,
+        'id': r.id,
+        'section': r.section,
+        'sectionKey': r.sectionKey,
+        'titleAr': r.page.arTitle,
+        'titleEn': r.page.enTitle,
+        'cfg': c.id,
+        'w': c.w,
+        'h': c.h,
+        'lang': c.ar ? 'ar' : 'en',
+        'textScale': c.textScale,
+        'loadMs': loadMs,
+        'stillLoading': stillLoading,
+        'ms': sw.elapsedMilliseconds,
+        'errors': pageErrors,
+        if (shot != null) 'shot': shot,
+        if (searchRes != null) 'search': searchRes,
+      };
+      await jsonl.writeAsString('${jsonEncode(rec)}\n', mode: FileMode.append);
+      debugPrint('QA ${r.index} ${r.id} ${c.id} errors=${pageErrors.length} ${sw.elapsedMilliseconds}ms');
+      // unmount (dispose timers/sockets of the screen) before the next config
+      await tester.pumpWidget(const SizedBox.shrink());
+      drainTester();
+    }
+
     try {
       for (final r in mine) {
         await progress.writeAsString('${r.index} ${r.id}\n', mode: FileMode.append);
         for (final c in _cfgs) {
-          Lang.instance.ar = c.ar;
-          tester.view.devicePixelRatio = c.dpr;
-          tester.view.physicalSize = Size(c.w * c.dpr, c.h * c.dpr);
-          errors.clear();
-          final sw = Stopwatch()..start();
-          await tester.pumpWidget(harness(r, c));
-          drainTester();
-          final loadMs = await settle();
-          drainTester();
-          final stillLoading = busy();
-          String? shot;
-          if (_shots && c.shot) shot = await shoot(r, c);
-          final pageErrors = List<Map<String, dynamic>>.from(errors);
-
-          Map<String, dynamic>? searchRes;
-          if (c.search) {
-            errors.clear();
-            final fields = find.byType(TextField);
-            final n = fields.evaluate().length;
-            if (n > 0) {
-              final before = apiRequests;
-              final textsBefore = find.byType(Text).evaluate().length;
-              String? err;
-              try {
-                await tester.enterText(fields.first, c.ar ? 'مح' : 'qa');
-                await wait(const Duration(milliseconds: 600));
-                await settle();
-              } catch (e) {
-                err = e.toString().split('\n').first;
-              }
-              drainTester();
-              searchRes = {
-                'fields': n,
-                'requests': apiRequests - before,
-                'textWidgetsBefore': textsBefore,
-                'textWidgetsAfter': find.byType(Text).evaluate().length,
-                'enterError': err,
-                'errors': List<Map<String, dynamic>>.from(errors),
-              };
-            } else {
-              searchRes = {'fields': 0};
-            }
+          try {
+            await runCfg(r, c);
+          } catch (e, st) {
+            // harness-level failure for this page/config: record and move on
+            final rec = {
+              'index': r.index, 'id': r.id, 'section': r.section, 'sectionKey': r.sectionKey,
+              'titleAr': r.page.arTitle, 'titleEn': r.page.enTitle, 'cfg': c.id, 'w': c.w, 'h': c.h,
+              'lang': c.ar ? 'ar' : 'en', 'textScale': c.textScale, 'loadMs': 0, 'stillLoading': false, 'ms': 0,
+              'harnessError': e.toString().split('\n').first,
+              'errors': [...errors, _fromObject(e, st)],
+            };
+            await jsonl.writeAsString('${jsonEncode(rec)}\n', mode: FileMode.append);
+            debugPrint('QA ${r.index} ${r.id} ${c.id} HARNESS ERROR $e');
+            try {
+              await tester.pumpWidget(const SizedBox.shrink());
+            } catch (_) {}
+            drainTester();
           }
-          sw.stop();
-          final rec = {
-            'index': r.index,
-            'id': r.id,
-            'section': r.section,
-            'sectionKey': r.sectionKey,
-            'titleAr': r.page.arTitle,
-            'titleEn': r.page.enTitle,
-            'cfg': c.id,
-            'w': c.w,
-            'h': c.h,
-            'lang': c.ar ? 'ar' : 'en',
-            'textScale': c.textScale,
-            'loadMs': loadMs,
-            'stillLoading': stillLoading,
-            'ms': sw.elapsedMilliseconds,
-            'errors': pageErrors,
-            if (shot != null) 'shot': shot,
-            if (searchRes != null) 'search': searchRes,
-          };
-          await jsonl.writeAsString('${jsonEncode(rec)}\n', mode: FileMode.append);
-          debugPrint('QA ${r.index} ${r.id} ${c.id} errors=${pageErrors.length} ${sw.elapsedMilliseconds}ms');
-          // unmount (dispose timers/sockets of the screen) before the next config
-          await tester.pumpWidget(const SizedBox.shrink());
-          drainTester();
         }
       }
       await File('${res.path}/done_shard$_shard.txt').writeAsString('done ${mine.length}\n');

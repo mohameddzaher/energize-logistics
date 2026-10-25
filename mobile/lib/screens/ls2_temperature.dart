@@ -3,8 +3,10 @@ import '../services/api.dart';
 import '../services/lang.dart';
 import '../services/live.dart';
 import '../ui/app_scaffold.dart';
+import '../ui/export_sheet.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import 'ls2_common.dart';
 import 'ls2_vehicle_detail.dart';
 
 /// حرارة الأسطول (LS2) — ترتيب المركبات حسب أعلى حرارة إطار/تبريد، مع تلوين
@@ -43,7 +45,8 @@ class _Ls2TemperatureScreenState extends State<Ls2TemperatureScreen> {
       ]);
       if (!mounted) return;
       setState(() {
-        _vehicles = List<Map<String, dynamic>>.from(res[0]['vehicles'] ?? []);
+        // النقطةُ تردّ `items` — و`vehicles` كان يُقرأ فتخرج القائمةُ فارغةً بلا خطأ.
+        _vehicles = List<Map<String, dynamic>>.from(res[0]['items'] ?? res[0]['vehicles'] ?? []);
         _thresholds = Map<String, dynamic>.from(res[1]['thresholds'] ?? {});
         _loading = false;
         _error = null;
@@ -60,6 +63,37 @@ class _Ls2TemperatureScreenState extends State<Ls2TemperatureScreen> {
     return n ?? dflt;
   }
 
+  double _thrAny(List<String> keys, double dflt) {
+    for (final k in keys) {
+      if (_thresholds.containsKey(k)) return _thr(k, dflt);
+    }
+    return dflt;
+  }
+
+  static final _cols = [
+    ExportCol('اللوحة', 'Plate', (r) => r['plate'] ?? r['name'] ?? ''),
+    ExportCol('السائق', 'Driver', (r) => r['driver'] ?? ''),
+    ExportCol('حرارة الموتور °م', 'Coolant °C', (r) => r['coolantC'] ?? ''),
+    ExportCol('أقصى حرارة كاوتش', 'Max Tire Temp °C', (r) => r['maxTireTempC'] ?? ''),
+    ExportCol('أقل حرارة كاوتش', 'Min Tire Temp °C', (r) => r['minTireTempC'] ?? ''),
+    ExportCol('أقصى ضغط', 'Max Pressure psi', (r) => r['maxTirePressurePsi'] ?? ''),
+    ExportCol('أقل ضغط', 'Min Pressure psi', (r) => r['minTirePressurePsi'] ?? ''),
+    ExportCol('أعطال حساسات', 'Sensor Faults', (r) => r['tireFaults'] ?? ''),
+    ExportCol('الحالة', 'Status', (r) { final st = ls2Status(r['status']); return tr(st.$1, st.$2); }),
+  ];
+
+  /// «المعروض»: ما وصلت منه قراءةُ حرارة (ورقتان كالموقع) · «الكل»: الأسطول كلُّه.
+  Future<void> _export() {
+    final tire = _vehicles.where((v) => v['maxTireTempC'] != null).toList()
+      ..sort((a, b) => (_n(b['maxTireTempC']) ?? 0).compareTo(_n(a['maxTireTempC']) ?? 0));
+    final engine = _vehicles.where((v) => v['coolantC'] != null).toList()
+      ..sort((a, b) => (_n(b['coolantC']) ?? 0).compareTo(_n(a['coolantC']) ?? 0));
+    return ls2ExportMenu(context, fileName: 'ls2-temperature', options: [
+      ('المعروض حاليًا', 'Shown on screen', [(tr('حرارة الكاوتش', 'Tire temperature'), _cols, tire), (tr('حرارة الموتور', 'Engine coolant'), _cols, engine)]),
+      ('الكل', 'All', [(tr('الحرارة', 'Temperature'), _cols, _vehicles)]),
+    ]);
+  }
+
   Color _tempColor(double? v, double warn, double danger) {
     if (v == null) return T.inkFaint;
     if (v >= danger) return T.danger;
@@ -69,8 +103,9 @@ class _Ls2TemperatureScreenState extends State<Ls2TemperatureScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final tireWarn = _thr('tireTempC', 75), tireDanger = _thr('tireTempMaxC', 85);
-    final coolWarn = _thr('coolantC', 95), coolDanger = _thr('coolantMaxC', 105);
+    // أسماءُ العتبات كما في إعدادات القسم (والأسماءُ القديمة احتياطًا).
+    final tireWarn = _thr('tireTempC', 75), tireDanger = _thrAny(['tireTempCriticalC', 'tireTempMaxC'], 85);
+    final coolWarn = _thrAny(['coolantTempC', 'coolantC'], 100), coolDanger = _thrAny(['coolantTempCriticalC', 'coolantMaxC'], 110);
     String fold(String s) => s.replaceAll(RegExp('[أإآ]'), 'ا').replaceAll('ى', 'ي').replaceAll('ة', 'ه').toLowerCase();
     final q = fold(_q.trim());
     var rows = _vehicles.where((v) => q.isEmpty || [v['plate'], v['name']].any((x) => fold((x ?? '').toString()).contains(q))).toList();
@@ -84,6 +119,7 @@ class _Ls2TemperatureScreenState extends State<Ls2TemperatureScreen> {
 
     return AppScaffold(
       title: Text(tr('حرارة الأسطول', 'Fleet Temperature')),
+      actions: [IconButton(tooltip: tr('تصدير Excel', 'Export to Excel'), icon: const Icon(Icons.file_download_outlined), onPressed: _export)],
       body: _loading
           ? ListView(padding: const EdgeInsets.all(14), children: const [Shimmer(height: 60), SizedBox(height: 10), Shimmer(), SizedBox(height: 10), Shimmer()])
           : _error != null

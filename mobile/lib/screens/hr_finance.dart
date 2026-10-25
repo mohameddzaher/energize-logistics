@@ -6,6 +6,7 @@ import '../services/hijri.dart';
 import '../services/lang.dart';
 import '../services/live.dart';
 import '../ui/app_scaffold.dart';
+import '../ui/export_sheet.dart';
 import '../ui/file_upload.dart';
 import '../ui/hr_quick.dart';
 import '../ui/theme.dart';
@@ -360,6 +361,7 @@ class _HrDocFeesViewState extends State<HrDocFeesView> with AutomaticKeepAliveCl
           Expanded(child: Text(tr('المعروض: ${_n(_d, 'total')} مستند · غير مدفوع ${_n(_d, 'unpaidShown')}', 'Shown: ${_n(_d, 'total')} · unpaid ${_n(_d, 'unpaidShown')}'),
               style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: T.inkSoft))),
           if (_loading) const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+          _exportMenu(rows),
         ]),
         if (canPay) ...[
           const SizedBox(height: 6),
@@ -389,6 +391,53 @@ class _HrDocFeesViewState extends State<HrDocFeesView> with AutomaticKeepAliveCl
       ]),
     );
   }
+
+  // ── التصدير — أعمدةُ الموقع نفسُها (HrDocFees.tsx)، والمعروضُ أو الكلّ ──
+  static Map<String, dynamic> _pay0(Map<String, dynamic> r) => r['payment'] is Map ? Map<String, dynamic>.from(r['payment'] as Map) : const {};
+  static final _exportCols = [
+    ExportCol('الرقم الوظيفي', 'Employee no.', (r) => r['employeeNumber'] ?? ''),
+    ExportCol('الاسم', 'Name', (r) => r['name'] ?? ''),
+    ExportCol('رقم الإقامة', 'Iqama no.', (r) => r['idNumber'] ?? ''),
+    ExportCol('المستند', 'Document', (r) => _docLabel('${r['docType']}')),
+    ExportCol('تاريخ الانتهاء', 'Expiry date', (r) => '${r['expiryDate'] ?? ''}'.split('T').first),
+    ExportCol('تاريخ الانتهاء (هجري)', 'Expiry (Hijri)', (r) => hijriDay(r['expiryDate'])),
+    ExportCol('المتبقي (يوم)', 'Days left', (r) => r['daysLeft'] ?? ''),
+    ExportCol('القسم', 'Department', (r) => r['department'] ?? ''),
+    ExportCol('الفئة الوظيفية', 'Staff category', (r) => r['staffCategory'] ?? ''),
+    ExportCol('المشروع', 'Project', (r) => r['project'] ?? ''),
+    ExportCol('المدينة', 'City', (r) => r['branchName'] ?? ''),
+    ExportCol('الجنسية', 'Nationality', (r) => r['nationality'] ?? ''),
+    ExportCol('السجل التجاري', 'Register', (r) => r['registerNumber'] ?? ''),
+    ExportCol('حالة الدفع', 'Payment', (r) => r['paid'] == true ? tr('مدفوع', 'Paid') : tr('غير مدفوع', 'Unpaid')),
+    ExportCol('المبلغ', 'Amount', (r) => _pay0(r)['amount'] ?? ''),
+    ExportCol('دفعها', 'Paid by', (r) => _pay0(r)['paidByName'] ?? ''),
+    ExportCol('تاريخ الدفع', 'Paid at', (r) => _pay0(r)['paidAt'] != null ? _stamp(_pay0(r)['paidAt']) : ''),
+    ExportCol('ملاحظة الدفع', 'Payment note', (r) => _pay0(r)['note'] ?? ''),
+  ];
+
+  Widget _exportMenu(List<Map<String, dynamic>> rows) => PopupMenuButton<String>(
+        tooltip: tr('تصدير Excel', 'Export Excel'),
+        icon: const Icon(Icons.file_download_outlined, color: T.navy),
+        onSelected: (k) async {
+          final sheet = tr('الإقامات ورخص العمل', 'Iqamas & permits');
+          var out = rows;
+          if (k == 'all' && _query.isNotEmpty) {
+            try {
+              final full = await Api.instance.get(widget.listUrl);
+              out = List<Map<String, dynamic>>.from(((full as Map)['rows'] as List? ?? const []).map((e) => Map<String, dynamic>.from(e as Map)));
+            } catch (e) {
+              if (mounted) _snack(context, e.toString());
+              return;
+            }
+          }
+          if (!mounted) return;
+          exportExcel(context, fileName: 'iqama-work-permit-fees', sheets: [(sheet, _exportCols, out)]);
+        },
+        itemBuilder: (_) => [
+          if (_query.isNotEmpty) PopupMenuItem(value: 'shown', child: Text(tr('المعروض (${rows.length})', 'Shown (${rows.length})'))),
+          PopupMenuItem(value: 'all', child: Text(tr('الكل', 'All'))),
+        ],
+      );
 
   Widget _row(Map<String, dynamic> r, bool canPay) {
     final on = _all || _sel.contains(r['key']);

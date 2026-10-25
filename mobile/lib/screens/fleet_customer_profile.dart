@@ -6,6 +6,10 @@ import '../ui/app_scaffold.dart';
 import '../ui/contact.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import '../ui/export_sheet.dart';
+import '../ui/portal_account_card.dart';
+import '../ui/report_button.dart';
+import 'fleet_customer_presence.dart';
 
 /// ملف العميل — عميل واحد بكامل سجل رحلاته وإحصائياته، وتعديل نوعه وتقييمنا له.
 /// مطابق لصفحة الويب /system/fleet/customers/[id].
@@ -142,6 +146,26 @@ class _FleetCustomerProfileScreenState extends State<FleetCustomerProfileScreen>
 
     return AppScaffold(
       title: Text(c['name']?.toString() ?? tr('ملف العميل', 'Customer')),
+      // تصديرُ سجلّ رحلاته الكامل — كـExportMenu في صفحة الويب.
+      actions: [
+        if (d != null)
+          ExportButton(
+            fileName: 'customer-${c['name'] ?? ''}',
+            sheetName: 'Trips',
+            columns: [
+              ExportCol('البوليصة', 'Waybill', (s) => s['waybillNumber']),
+              ExportCol('من', 'From', (s) => s['fromCity']),
+              ExportCol('إلى', 'To', (s) => s['toCity']),
+              ExportCol('اللوحة', 'Plate', (s) => s['vehiclePlate']),
+              ExportCol('السائق', 'Driver', (s) => s['driverName']),
+              ExportCol('نوع الحمولة', 'Load type', (s) => _loadTypeLabel((s['loadType'] ?? '').toString())),
+              ExportCol('السعر', 'Price', (s) => s['price']),
+              ExportCol('الحالة', 'Status', (s) => _statusLabel(s['status']?.toString())),
+              ExportCol('تاريخ التحميل', 'Load date', (s) => (s['loadDate'] ?? '').toString().split('T').first),
+            ],
+            rows: () => shipments,
+          ),
+      ],
       body: _loading
           ? ListView(padding: const EdgeInsets.all(14), children: const [
               Shimmer(height: 90), SizedBox(height: 10), Shimmer(height: 140), SizedBox(height: 10), Shimmer(height: 200),
@@ -153,6 +177,9 @@ class _FleetCustomerProfileScreenState extends State<FleetCustomerProfileScreen>
                   child: ListView(
                     padding: const EdgeInsets.all(14),
                     children: [
+                      // العميلُ نفسُه في الأقسام الأخرى
+                      CustomerPresence(reg: 'fleet', id: (c['_id'] ?? widget.customerId).toString(), onChanged: _load),
+                      const SizedBox(height: 10),
                       // بطاقات الإحصاءات
                       GridView.count(
                         crossAxisCount: 2,
@@ -170,6 +197,14 @@ class _FleetCustomerProfileScreenState extends State<FleetCustomerProfileScreen>
                           _tile(tr('مصروف السائقين', 'Driver expense'), _money(stats['driverExpense']), T.danger, Icons.money_off_outlined),
                         ],
                       ),
+                      const SizedBox(height: 12),
+                      Align(
+                        alignment: AlignmentDirectional.centerEnd,
+                        child: ReportButton(subject: 'customer', id: (c['name'] ?? '').toString(), label: tr('التقرير الشامل للعميل', 'Full customer report')),
+                      ),
+                      const SizedBox(height: 8),
+                      // حساب البوابة — العميل يتابع رحلاته وبوالصه بنفسه
+                      PortalAccountCard(source: 'fleet_customer', refId: widget.customerId, name: (c['name'] ?? '').toString()),
                       const SizedBox(height: 12),
                       // ── الربط بالـCRM ─────────────────────────────────────
                       // العميل هنا وشركتُه في الـCRM سجلّان مستقلّان يجمعهما

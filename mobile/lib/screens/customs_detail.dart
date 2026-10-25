@@ -440,6 +440,60 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
     if (r != null) _note.clear();
   }
 
+  /// حذفُ ملاحظةٍ من السجلّ — DELETE /:id/notes/:noteId كما في الموقع.
+  Future<void> _deleteNote(Map<String, dynamic> nt) async {
+    final ok = await _confirm(tr('حذف الملاحظة؟', 'Delete note?'), '${nt['text'] ?? ''}', action: tr('حذف', 'Delete'));
+    if (!ok) return;
+    await _send(() => Api.instance.delete('/api/customs-clearance/${widget.clearanceId}/notes/${nt['_id']}'),
+        ok: tr('حُذفت الملاحظة', 'Note deleted'));
+  }
+
+  /// تعديلُ المرفق: اسمُه ومرحلتُه — PUT /:id/attachments/:attId كما في الموقع.
+  Future<void> _editAttachment(Map<String, dynamic> att) async {
+    final cargo = (_c?['cargoType'] ?? 'containers').toString();
+    final title = TextEditingController(text: '${att['title'] ?? att['fileName'] ?? ''}');
+    final origTitle = title.text;
+    final origStage = '${att['stage'] ?? ''}';
+    String stage = customsStages.any((x) => x.$1 == origStage) ? origStage : '';
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (c) => StatefulBuilder(
+        builder: (c, setSt) => AlertDialog(
+          title: Text(tr('تعديل المرفق', 'Edit attachment')),
+          content: Column(mainAxisSize: MainAxisSize.min, children: [
+            TextField(controller: title, autofocus: true, decoration: InputDecoration(labelText: tr('اسم الملفّ', 'Title'))),
+            const SizedBox(height: 10),
+            DropdownButtonFormField<String>(
+              initialValue: stage,
+              isExpanded: true,
+              decoration: InputDecoration(labelText: tr('المرحلة', 'Stage')),
+              items: [
+                DropdownMenuItem(value: '', child: Text(tr('عامّ', 'General'))),
+                ...customsStages.map((x) => DropdownMenuItem(value: x.$1, child: Text(customsStageLabel(x.$1, cargo), overflow: TextOverflow.ellipsis))),
+              ],
+              onChanged: (v) => setSt(() => stage = v ?? ''),
+            ),
+          ]),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('إلغاء', 'Cancel'))),
+            FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(tr('حفظ', 'Save'))),
+          ],
+        ),
+      ),
+    );
+    final t = title.text.trim();
+    title.dispose();
+    if (ok != true) return;
+    // ما تغيّر وحدَه — كالموقع: الاسمُ يُحفظ عند الخروج من خانته، والمرحلةُ عند اختيارها.
+    final body = <String, dynamic>{
+      if (t.isNotEmpty && t != origTitle) 'title': t,
+      if (stage != origStage) 'stage': stage,
+    };
+    if (body.isEmpty) return;
+    await _send(() => Api.instance.put('/api/customs-clearance/${widget.clearanceId}/attachments/${att['_id']}', body),
+        ok: tr('حُفظ المرفق', 'Attachment saved'));
+  }
+
   String _when(dynamic v) {
     final d = DateTime.tryParse('${v ?? ''}');
     if (d == null) return '';
@@ -801,8 +855,21 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
                                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                                     Text('${nt['text'] ?? ''}', style: const TextStyle(fontSize: 12.5)),
                                     const SizedBox(height: 3),
-                                    Text('${nt['byName'] ?? ''} · ${_when(nt['at'])}',
-                                        style: const TextStyle(fontSize: 10.5, color: T.inkFaint)),
+                                    Row(children: [
+                                      Expanded(
+                                        child: Text('${nt['byName'] ?? tr('غير معروف', 'unknown')} · ${_when(nt['at'])}',
+                                            style: const TextStyle(fontSize: 10.5, color: T.inkFaint)),
+                                      ),
+                                      // حذفُ الملاحظة — لمن يعدّل في التخليص، كما في الموقع (ClearanceNotes).
+                                      if (canEditCustoms(context) && '${nt['_id'] ?? ''}'.isNotEmpty)
+                                        InkWell(
+                                          onTap: _saving ? null : () => _deleteNote(nt),
+                                          child: const Padding(
+                                            padding: EdgeInsets.all(2),
+                                            child: Icon(Icons.delete_outline, size: 16, color: T.danger),
+                                          ),
+                                        ),
+                                    ]),
                                   ]),
                                 )),
                           if ('${c['notes'] ?? ''}'.isNotEmpty)
@@ -958,8 +1025,12 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
                                     tooltip: tr('فتح', 'Open'), onPressed: () => customsOpenFile(context, att['fileUrl'])),
                                 IconButton(visualDensity: VisualDensity.compact, icon: const Icon(Icons.download_rounded, size: 18, color: T.orange),
                                     tooltip: tr('تنزيل', 'Download'), onPressed: () => _openFile(url)),
-                                IconButton(visualDensity: VisualDensity.compact, icon: const Icon(Icons.delete_outline, size: 18, color: T.danger),
-                                    onPressed: _saving ? null : () => _deleteAttachment(att)),
+                                if (canEditCustoms(context)) ...[
+                                  IconButton(visualDensity: VisualDensity.compact, icon: const Icon(Icons.edit_outlined, size: 18, color: T.inkSoft),
+                                      tooltip: tr('تعديل', 'Edit'), onPressed: _saving ? null : () => _editAttachment(att)),
+                                  IconButton(visualDensity: VisualDensity.compact, icon: const Icon(Icons.delete_outline, size: 18, color: T.danger),
+                                      onPressed: _saving ? null : () => _deleteAttachment(att)),
+                                ],
                               ]),
                             );
                           }),

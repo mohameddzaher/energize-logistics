@@ -1,10 +1,15 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../services/api.dart';
 import '../services/lang.dart';
 import '../services/notifications.dart';
+import '../services/live.dart';
+import '../ui/export_sheet.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import 'package:provider/provider.dart';
+import '../services/auth.dart';
 
 /// أدوات الإدارة — المستخدمون (إنشاء/تعديل/قفل/حذف)، مصفوفة الصلاحيات
 /// (دور × قسم: بدون/عرض/تحرير)، والإشعارات الشخصية.
@@ -104,8 +109,33 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
   String _q = '';
   String _role = '';
 
+  late final void Function() _onLive;
+
   @override
-  void initState() { super.initState(); loadServerRoles().then((_) { if (mounted) setState(() {}); }); _load(); }
+  void initState() {
+    super.initState();
+    loadServerRoles().then((_) { if (mounted) setState(() {}); });
+    _load();
+    _onLive = () => _load();
+    Live.instance.on('user:deleted', _onLive);
+  }
+
+  @override
+  void dispose() { Live.instance.off('user:deleted', _onLive); super.dispose(); }
+
+  static String _status(Map<String, dynamic> u) => (u['status'] ?? (u['isLocked'] == true ? 'locked' : u['isActive'] == false ? 'inactive' : 'active')).toString();
+  static final _exportCols = [
+    ExportCol('الاسم الأول', 'First name', (u) => u['firstName']),
+    ExportCol('اسم العائلة', 'Last name', (u) => u['lastName']),
+    ExportCol('البريد', 'Email', (u) => u['email']),
+    ExportCol('الدور', 'Role', (u) => roleLabel(u['role'])),
+    ExportCol('الفرع', 'Branch', (u) => u['branch'] is Map ? u['branch']['name'] : ''),
+    ExportCol('الحالة', 'Status', (u) => switch (_status(u)) {
+          'active' => tr('نشط', 'Active'), 'locked' => tr('مقفول', 'Locked'), 'inactive' => tr('موقوف', 'Inactive'), final x => x,
+        }),
+    ExportCol('آخر دخول', 'Last login', (u) => (u['lastLogin'] ?? '').toString().replaceFirst('T', ' ').split('.').first),
+    ExportCol('تاريخ الإنشاء', 'Created', (u) => (u['createdAt'] ?? '').toString().split('T').first),
+  ];
 
   Future<void> _load() async {
     try {
@@ -117,84 +147,14 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
     }
   }
 
+  // النموذجُ كاملًا في شاشةٍ — كالويب: نوعُ الحساب (موظّف/عميل/مورد)، والدور،
+  // والمديرُ المباشر (يُقترَح من الهيكل)، وربطُ ملفّ الموظّف، والفرع، ومشاريعُ
+  // B2C وفروعُه، وعملاءُ الموظّف، وصفحاتُ العمل عن بُعد.
   Future<void> _editSheet(Map<String, dynamic>? u) async {
-    final email = TextEditingController(text: (u?['email'] ?? '').toString());
-    final password = TextEditingController();
-    final firstName = TextEditingController(text: (u?['firstName'] ?? '').toString());
-    final lastName = TextEditingController(text: (u?['lastName'] ?? '').toString());
-    String role = (u?['role'] ?? 'employee').toString();
-    bool active = u?['isActive'] != false;
-    await showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      builder: (c) => StatefulBuilder(builder: (c, setS) => SafeArea(
-        child: Padding(
-          padding: EdgeInsets.fromLTRB(16, 16, 16, MediaQuery.of(c).viewInsets.bottom + 16),
-          child: SingleChildScrollView(
-            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(u == null ? tr('مستخدم جديد', 'New user') : tr('تعديل المستخدم', 'Edit user'),
-                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
-              const SizedBox(height: 12),
-              Row(children: [
-                Expanded(child: TextField(controller: firstName, decoration: InputDecoration(labelText: tr('الاسم الأول *', 'First name *')))),
-                const SizedBox(width: 10),
-                Expanded(child: TextField(controller: lastName, decoration: InputDecoration(labelText: tr('اسم العائلة *', 'Last name *')))),
-              ]),
-              const SizedBox(height: 10),
-              if (u == null) ...[
-                TextField(controller: email, keyboardType: TextInputType.emailAddress, decoration: InputDecoration(labelText: tr('البريد *', 'Email *'))),
-                const SizedBox(height: 10),
-                TextField(controller: password, obscureText: true, decoration: InputDecoration(labelText: tr('كلمة المرور *', 'Password *'))),
-                const SizedBox(height: 10),
-              ],
-              DropdownButtonFormField<String>(
-                initialValue: roleKeys().contains(role) ? role : null,
-                isExpanded: true,
-                decoration: InputDecoration(labelText: tr('الدور', 'Role')),
-                items: roleKeys().where((r) => r != 'super_admin').map((r) => DropdownMenuItem(value: r, child: Text(roleLabel(r), overflow: TextOverflow.ellipsis))).toList(),
-                onChanged: (v) => setS(() => role = v ?? role),
-              ),
-              if (u != null)
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: Text(tr('حساب مُفعّل', 'Account active'), style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700)),
-                  value: active,
-                  onChanged: (v) => setS(() => active = v),
-                ),
-              const SizedBox(height: 12),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton(
-                  onPressed: () async {
-                    if (firstName.text.trim().isEmpty) return;
-                    try {
-                      if (u == null) {
-                        if (email.text.trim().isEmpty || password.text.isEmpty) return;
-                        await Api.instance.post('/api/users', {
-                          'email': email.text.trim(), 'password': password.text,
-                          'firstName': firstName.text.trim(), 'lastName': lastName.text.trim(),
-                          'role': role,
-                        });
-                      } else {
-                        await Api.instance.put('/api/users/${u['_id']}', {
-                          'firstName': firstName.text.trim(), 'lastName': lastName.text.trim(),
-                          'role': role, 'isActive': active,
-                        });
-                      }
-                      if (c.mounted) Navigator.pop(c);
-                      _load();
-                    } catch (e) {
-                      if (c.mounted) ScaffoldMessenger.of(c).showSnackBar(SnackBar(content: Text(e.toString())));
-                    }
-                  },
-                  child: Text(u == null ? tr('إنشاء', 'Create') : tr('حفظ', 'Save')),
-                ),
-              ),
-            ]),
-          ),
-        ),
-      )),
-    );
+    final changed = await Navigator.of(context).push<bool>(MaterialPageRoute(
+      builder: (_) => _UserFormScreen(user: u, users: _rows),
+    ));
+    if (changed == true) _load();
   }
 
   Future<void> _delete(Map<String, dynamic> u) async {
@@ -269,6 +229,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
 
     return AppScaffold(
       title: Text(tr('المستخدمون', 'Users')),
+      actions: [ExportButton(fileName: 'users', sheetName: tr('المستخدمون', 'Users'), columns: _exportCols, rows: () => filtered)],
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _editSheet(null),
         icon: const Icon(Icons.person_add_alt_outlined),
@@ -331,6 +292,9 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
                                               Chip2(roleLabel(u['role']), T.navy),
                                               if (!active) Chip2(tr('موقوف', 'Inactive'), T.danger),
                                               if (u['isLocked'] == true) Chip2(tr('مقفول', 'Locked'), T.warn),
+                                              if (u['branch'] is Map) Chip2('${u['branch']['name'] ?? ''}', T.inkSoft, icon: Icons.store_mall_directory_outlined),
+                                              if (u['linkedEmployee'] is Map) Chip2(tr('مرتبط بملف موظف', 'HR linked'), T.success, icon: Icons.badge_outlined),
+                                              if (u['partner'] is Map) Chip2('${u['partner']['name'] ?? ''}', T.orange, icon: Icons.storefront_outlined),
                                             ]),
                                           ]),
                                         ),
@@ -362,7 +326,24 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
   }
 }
 
-// ── مصفوفة الصلاحيات ────────────────────────────────────────────────────────
+// ── الأدوار والصلاحيّات ─────────────────────────────────────────────────────
+// نظيرُ /system/permissions في الويب: طبقتان — **القسم** (ممنوع/مشاهدة/تعديل)
+// يقرّر القراءةَ والكتابة، و**الصفحة** (مفتوحة/مغلقة) تقرّر أين داخلَ ما منحه
+// القسم. وصفحةُ الدخول للدور، وأنواعُ المستخدمين المصنوعة (إنشاء/حذف).
+// الحفظُ PUT واحدٌ بالخريطة كاملةً `{sections, pages, pagesAll:true, homePage}`
+// — بلا `pages` كان الهاتفُ يحفظ الأقسامَ ويترك الصفحاتِ على حالها.
+const _sectionAr = {
+  'Main': 'الرئيسية', 'Operations': 'العمليات', 'Collections': 'التحصيل', 'Operations Platform': 'منصة الأوبريشن (B2B)',
+  'B2C': 'B2C', 'Workshop': 'الورشة', 'Admin': 'الإدارة', 'Tools': 'الأدوات', 'Portal': 'البوابة', 'Remote': 'العمل عن بُعد',
+  'HR': 'الموارد البشرية', 'Self Service': 'الخدمة الذاتية', 'CRM': 'إدارة العلاقات', 'Sales': 'المبيعات',
+  'Accounting': 'الإدارة المالية', 'Procurement': 'المشتريات', 'Customs': 'التخليص الجمركي', 'Vehicles': 'المركبات',
+  'Location Solutions': 'لوكيشن سوليوشن', 'Performance': 'تقييم الأداء', 'Marketing': 'التسويق',
+  'Business Development': 'تطوير الأعمال', 'Software & IT': 'البرمجيات وتقنية المعلومات', 'Shipment Orders': 'طلبات الشحنات',
+  'Fleet Management': 'إدارة الأسطول', 'Administration': 'الشؤون الإدارية', 'Contracts': 'إدارة العقود',
+  'Business Review': 'مراجعة الأعمال', 'Executive': 'الإدارة العليا',
+};
+String sectionLabel(String s) => tr(_sectionAr[s] ?? s, s);
+
 class PermissionsScreen extends StatefulWidget {
   const PermissionsScreen({super.key});
   @override
@@ -371,90 +352,385 @@ class PermissionsScreen extends StatefulWidget {
 
 class _PermissionsScreenState extends State<PermissionsScreen> {
   Map<String, dynamic>? _d;
-  bool _loading = true;
+  bool _loading = true, _saving = false;
   String? _error;
   String _role = '';
+  Map<String, String> _draft = {};
+  Map<String, bool> _pageDraft = {};
+  String _home = '';
+  final Set<String> _open = {};
 
   @override
   void initState() { super.initState(); loadServerRoles().then((_) { if (mounted) setState(() {}); }); _load(); }
 
-  Future<void> _load() async {
+  void _msg(String m) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m))); }
+
+  Future<void> _load({String? select}) async {
     try {
-      final d = await Api.instance.get('/api/admin/permissions');
+      final d = Map<String, dynamic>.from(await Api.instance.get('/api/admin/permissions'));
       if (!mounted) return;
+      final roles = List<String>.from(d['roles'] ?? []);
       setState(() {
-        _d = Map<String, dynamic>.from(d);
-        _role = _role.isEmpty ? (List<String>.from(d['roles'] ?? []).firstWhere((r) => r != 'super_admin', orElse: () => '')) : _role;
-        _loading = false;
-        _error = null;
+        _d = d;
+        _role = select ?? (_role.isNotEmpty && roles.contains(_role) ? _role : (roles.isEmpty ? '' : roles.first));
+        _loading = false; _error = null;
       });
+      _seed();
     } catch (e) {
-      if (mounted) setState(() { _loading = false; _error = e.toString(); });
+      if (mounted) setState(() { _loading = false; _error = e is ApiException ? e.message : e.toString(); });
     }
   }
 
-  Future<void> _set(String section, String level) async {
-    final perms = Map<String, dynamic>.from((_d?['permissions'] as Map?)?[_role] ?? {});
-    perms[section] = level;
-    setState(() => (_d!['permissions'] as Map)[_role] = perms);
+  List<Map<String, dynamic>> get _catalog => List<Map<String, dynamic>>.from((_d?['catalog'] ?? const []).map((e) => Map<String, dynamic>.from(e)));
+  List<String> get _managed => List<String>.from(_d?['sections'] ?? const []);
+  Map<String, dynamic> _of(String key) => Map<String, dynamic>.from((_d?[key] as Map?)?[_role] ?? const {});
+  String get _origHome => ((_d?['explicit'] as Map?)?[_role]?['homePage'] ?? '').toString();
+
+  void _seed() {
+    if (_role.isEmpty) return;
+    setState(() {
+      _draft = _of('permissions').map((k, v) => MapEntry(k, v.toString()));
+      _pageDraft = _of('pages').map((k, v) => MapEntry(k, v == true));
+      _home = _origHome;
+    });
+  }
+
+  bool get _dirty {
+    final orig = _of('permissions'), origPages = _of('pages');
+    if (_managed.any((s) => (_draft[s] ?? 'none') != (orig[s] ?? 'none').toString())) return true;
+    if (_catalog.any((p) => (_pageDraft[p['key']] ?? false) != (origPages[p['key']] == true))) return true;
+    return _home != _origHome;
+  }
+
+  String _roleName(String r) {
+    final l = (_d?['roleLabels'] as Map?)?[r];
+    return l is Map ? tr('${l['ar'] ?? r}', '${l['en'] ?? r}') : roleLabel(r);
+  }
+  bool _isCustom(String r) => ((_d?['roleLabels'] as Map?)?[r] as Map?)?['custom'] == true;
+
+  // تغييرُ القسم يجرّ صفحاتِه معه، كالويب.
+  void _setLevel(String section, String level) => setState(() {
+    _draft[section] = level;
+    for (final p in _catalog.where((x) => x['section'] == section)) { _pageDraft[p['key']] = level != 'none'; }
+  });
+
+  void _setAll(String level) => setState(() {
+    for (final s in _managed) { _draft[s] = level; }
+    for (final p in _catalog) { if (_managed.contains(p['section'])) _pageDraft[p['key']] = level != 'none'; }
+  });
+
+  void _setSectionPages(String section, bool on) => setState(() {
+    for (final p in _catalog.where((x) => x['section'] == section)) { _pageDraft[p['key']] = on; }
+  });
+
+  // صفحةٌ في قسمٍ غيرِ ممنوح: الضغطةُ تمنحه «مشاهدة» وتفتح هذه الصفحةَ وحدَها.
+  void _openOnePage(String section, String key) {
+    setState(() {
+      _draft[section] = 'view';
+      for (final p in _catalog.where((x) => x['section'] == section)) { _pageDraft[p['key']] = p['key'] == key; }
+    });
+    _msg(tr('مُنح القسمُ «${sectionLabel(section)}» مشاهدةً، وفُتحت هذه الصفحةُ وحدَها فيه — اضغط «حفظ» ليسري.',
+        'Granted “${sectionLabel(section)}” view access with only this page open — press Save to apply.'));
+  }
+
+  Future<void> _save() async {
+    if (_role.isEmpty || _d == null) return;
+    setState(() => _saving = true);
     try {
-      await Api.instance.put('/api/admin/permissions/$_role', {'sections': perms});
-    } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
-      _load();
+      final pages = {for (final p in _catalog) p['key'].toString(): _pageDraft[p['key']] == true};
+      final res = Map<String, dynamic>.from(await Api.instance.put('/api/admin/permissions/$_role',
+          {'sections': _draft, 'pages': pages, 'pagesAll': true, 'homePage': _home}));
+      final perms = Map<String, dynamic>.from(res['permissions'] ?? {});
+      final differ = _draft.entries.where((e) => _managed.contains(e.key) && (perms[e.key] ?? 'none') != e.value).map((e) => sectionLabel(e.key)).toList();
+      setState(() {
+        (_d!['permissions'] as Map)[_role] = perms;
+        (_d!['pages'] as Map)[_role] = Map<String, dynamic>.from(res['pages'] ?? {});
+        final ex = Map<String, dynamic>.from(_d!['explicit'] ?? {});
+        ex[_role] = {...Map<String, dynamic>.from(ex[_role] ?? {}), 'homePage': _home};
+        _d!['explicit'] = ex;
+      });
+      _seed();
+      final granted = perms.values.where((v) => v != 'none').length;
+      final pagesNow = Map<String, dynamic>.from(res['pages'] ?? {}).values.where((v) => v == true).length;
+      _msg(differ.isNotEmpty
+          ? tr('حُفِظ، وفي ${differ.length} قسمًا اختلفت النتيجةُ عمّا طُلب: ${differ.join('، ')}', 'Saved, but ${differ.length} section(s) came back different: ${differ.join(', ')}')
+          : tr('حُفِظت صلاحيّاتُ «${_roleName(_role)}» — $granted قسمًا و$pagesNow صفحة', 'Saved “${_roleName(_role)}” — $granted sections, $pagesNow pages'));
+      if (mounted) {
+        final auth = context.read<AuthProvider>();
+        if (auth.role == _role) auth.refreshUser();
+      }
+    } catch (e) { _msg(e is ApiException ? e.message : tr('تعذّر الحفظ', 'Could not save')); }
+    if (mounted) setState(() => _saving = false);
+  }
+
+  Future<void> _newRole() async {
+    final ar = TextEditingController(), en = TextEditingController(), key = TextEditingController(), desc = TextEditingController();
+    final ok = await showModalBottomSheet<bool>(
+      context: context, isScrollControlled: true, backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      builder: (c) => StatefulBuilder(builder: (c, set) => Padding(
+        padding: EdgeInsets.fromLTRB(16, 16, 16, MediaQuery.of(c).viewInsets.bottom + 16),
+        child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Text(tr('نوع مستخدم جديد', 'New user type'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+          const SizedBox(height: 10),
+          TextField(controller: ar, onChanged: (_) => set(() {}), decoration: InputDecoration(labelText: tr('الاسم بالعربية *', 'Arabic name *'), hintText: tr('مثال: مراجع مالي', 'e.g. Financial reviewer'))),
+          TextField(controller: en, onChanged: (_) => set(() {}), decoration: InputDecoration(labelText: tr('الاسم بالإنجليزية *', 'English name *'), hintText: 'Financial reviewer')),
+          TextField(
+            controller: key,
+            onChanged: (v) {
+              final clean = v.toLowerCase().replaceAll(RegExp(r'[^a-z0-9_]'), '_');
+              if (clean != v) key.value = TextEditingValue(text: clean, selection: TextSelection.collapsed(offset: clean.length));
+              set(() {});
+            },
+            decoration: InputDecoration(labelText: tr('المفتاح *', 'Key *'), hintText: 'financial_reviewer'),
+          ),
+          Padding(padding: const EdgeInsets.only(top: 4), child: Text(
+            tr('حروفٌ لاتينيّةٌ صغيرةٌ وأرقامٌ وشرطةٌ سفليّة. يُكتب على كلّ مستخدمٍ يحمل هذا النوع ولا يُغيَّر بعد الإنشاء. ولاحقة «_manager» محجوزةٌ لمديري الأقسام.',
+               'Lowercase letters, digits and underscores. It cannot change afterwards. The “_manager” suffix is reserved for section managers.'),
+            style: const TextStyle(fontSize: 11.5, color: T.inkFaint))),
+          TextField(controller: desc, decoration: InputDecoration(labelText: tr('لماذا صُنع هذا النوع', 'Why this type exists'))),
+          const SizedBox(height: 8),
+          Text(tr('يُولَد بلا صلاحيّةٍ واحدة: لا قسمَ ولا صفحة. تُمنَح له من هذه الشاشة بعد إنشائه مباشرةً.',
+                  'It is born with nothing: no section, no page. Grant them on this screen right after creating it.'),
+              style: const TextStyle(fontSize: 12, color: T.inkSoft)),
+          const SizedBox(height: 12),
+          FilledButton(
+            onPressed: key.text.trim().isEmpty || ar.text.trim().isEmpty || en.text.trim().isEmpty ? null : () => Navigator.pop(c, true),
+            child: Text(tr('إنشاء', 'Create')),
+          ),
+        ])),
+      )),
+    );
+    if (ok != true) return;
+    try {
+      await Api.instance.post('/api/admin/roles', {'key': key.text.trim(), 'nameAr': ar.text.trim(), 'nameEn': en.text.trim(), 'description': desc.text.trim()});
+      _msg(tr('صُنع النوع «${ar.text.trim()}» — امنحه أقسامَه وصفحاتِه الآن', 'Role created — grant its sections and pages now'));
+      await loadServerRoles();
+      await _load(select: key.text.trim());
+    } catch (e) { _msg(e is ApiException ? e.message : tr('تعذّر الإنشاء', 'Could not create')); }
+  }
+
+  Future<void> _deleteRole() async {
+    final ok = await showDialog<bool>(context: context, builder: (c) => AlertDialog(
+      title: Text(tr('حذف النوع «${_roleName(_role)}»؟', 'Delete role “${_roleName(_role)}”?')),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('إلغاء', 'Cancel'))),
+        FilledButton(style: FilledButton.styleFrom(backgroundColor: T.danger), onPressed: () => Navigator.pop(c, true), child: Text(tr('حذف', 'Delete'))),
+      ],
+    ));
+    if (ok != true) return;
+    try {
+      await Api.instance.delete('/api/admin/roles/$_role');
+      final roles = List<String>.from(_d?['roles'] ?? []).where((r) => r != _role).toList();
+      await _load(select: roles.isEmpty ? '' : roles.first);
+    } catch (e) { _msg(e is ApiException ? e.message : tr('تعذّر الحذف', 'Could not delete')); }
+  }
+
+  Future<void> _pickRole() async {
+    final roles = List<String>.from(_d?['roles'] ?? []);
+    String q = '';
+    final picked = await showModalBottomSheet<String>(
+      context: context, isScrollControlled: true, backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      builder: (c) => StatefulBuilder(builder: (c, set) {
+        final f = roles.where((r) => q.isEmpty || _fold('$r ${_roleName(r)}').contains(_fold(q))).toList();
+        return DraggableScrollableSheet(expand: false, initialChildSize: 0.75, maxChildSize: 0.92, builder: (c2, scroll) => Column(children: [
+          Padding(padding: const EdgeInsets.fromLTRB(14, 14, 14, 6), child: TextField(
+            autofocus: true, onChanged: (v) => set(() => q = v.trim()),
+            decoration: InputDecoration(hintText: tr('ابحث عن دور…', 'Search a role…'), prefixIcon: const Icon(Icons.search)),
+          )),
+          Expanded(child: ListView(controller: scroll, children: [
+            for (final r in f) ListTile(
+              selected: r == _role,
+              title: Text(_roleName(r)),
+              trailing: _isCustom(r) ? Chip2(tr('مُصنَّع', 'custom'), T.orange) : null,
+              onTap: () => Navigator.pop(c, r),
+            ),
+          ])),
+        ]));
+      }),
+    );
+    if (picked == null || picked == _role || !mounted) return;
+    if (_dirty) {
+      final leave = await showDialog<bool>(context: context, builder: (c) => AlertDialog(
+        title: Text(tr('تغييراتٌ لم تُحفظ', 'Unsaved changes')),
+        content: Text(tr('الانتقالُ إلى دورٍ آخر يتجاهلها.', 'Switching roles discards them.')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('بقاء', 'Stay'))),
+          FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(tr('تجاهل', 'Discard'))),
+        ],
+      ));
+      if (leave != true) return;
     }
+    setState(() => _role = picked);
+    _seed();
+  }
+
+  Widget _levelBar(String section) {
+    final cur = _draft[section] ?? 'none';
+    return SegmentedButton<String>(
+      style: const ButtonStyle(visualDensity: VisualDensity.compact),
+      showSelectedIcon: false,
+      segments: [
+        ButtonSegment(value: 'none', label: Text(tr('ممنوع', 'None'), style: const TextStyle(fontSize: 10.5))),
+        ButtonSegment(value: 'view', label: Text(tr('مشاهدة', 'View'), style: const TextStyle(fontSize: 10.5))),
+        ButtonSegment(value: 'edit', label: Text(tr('تعديل', 'Edit'), style: const TextStyle(fontSize: 10.5))),
+      ],
+      selected: {['none', 'view', 'edit'].contains(cur) ? cur : 'none'},
+      onSelectionChanged: (v) => _setLevel(section, v.first),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final sections = List<String>.from(_d?['sections'] ?? []);
-    final roles = List<String>.from(_d?['roles'] ?? []).where((r) => r != 'super_admin').toList();
-    final perms = Map<String, dynamic>.from((_d?['permissions'] as Map?)?[_role] ?? {});
+    final me = context.watch<AuthProvider>().role;
+    // role-only كالويب: من يضبط المصفوفةَ لا يُمنَحها منها، وصنعُ الأنواع لمدير النظام.
+    final isSuper = const ['super_admin', 'it_manager', 'it_specialist'].contains(me);
+    final canMakeRoles = me == 'super_admin';
+    final catalog = _catalog;
+    final managed = _managed;
+    final unmanaged = <String>{for (final p in catalog) if (!managed.contains(p['section'])) p['section'].toString()}.toList();
+    final all = [...managed, ...unmanaged];
+    final granted = catalog.where((p) => _pageDraft[p['key']] == true).toList();
+    final desc = (((_d?['roleLabels'] as Map?)?[_role] as Map?)?['description'] ?? '').toString();
 
     return AppScaffold(
-      title: Text(tr('الصلاحيات', 'Permissions')),
-      body: _loading
+      title: Text(tr('الأدوار والصلاحيات', 'Roles & Permissions')),
+      actions: [
+        if (canMakeRoles) IconButton(tooltip: tr('نوع مستخدم جديد', 'New user type'), onPressed: _newRole, icon: const Icon(Icons.person_add_alt)),
+      ],
+      body: !isSuper
+          ? EmptyState(icon: Icons.lock_outline, title: tr('غير مصرّح', 'Not authorized'))
+          : _loading
           ? ListView(padding: const EdgeInsets.all(14), children: const [Shimmer(height: 48), SizedBox(height: 10), Shimmer(), SizedBox(height: 10), Shimmer()])
           : _error != null
               ? ErrorRetry(message: _error!, onRetry: () { setState(() => _loading = true); _load(); })
               : Column(children: [
                   Padding(
                     padding: const EdgeInsets.fromLTRB(14, 12, 14, 4),
-                    child: DropdownButtonFormField<String>(
-                      initialValue: roles.contains(_role) ? _role : null,
-                      isExpanded: true,
-                      decoration: InputDecoration(labelText: tr('الدور', 'Role')),
-                      items: roles.map((r) => DropdownMenuItem(value: r, child: Text(roleLabel(r), overflow: TextOverflow.ellipsis))).toList(),
-                      onChanged: (v) => setState(() => _role = v ?? _role),
-                    ),
+                    child: Row(children: [
+                      Expanded(child: OutlinedButton(
+                        style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(46), alignment: AlignmentDirectional.centerStart),
+                        onPressed: _pickRole,
+                        child: Row(children: [
+                          const Icon(Icons.badge_outlined, size: 18),
+                          const SizedBox(width: 8),
+                          Expanded(child: Text(_role.isEmpty ? tr('اختر دورًا', 'Pick a role') : _roleName(_role), overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w800))),
+                          if (_isCustom(_role)) Chip2(tr('مُصنَّع', 'custom'), T.orange),
+                          const Icon(Icons.expand_more),
+                        ]),
+                      )),
+                      if (_isCustom(_role) && canMakeRoles)
+                        IconButton(tooltip: tr('حذف النوع', 'Delete role'), onPressed: _deleteRole, icon: const Icon(Icons.delete_outline, color: T.danger)),
+                    ]),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 14),
+                    child: Row(children: [
+                      Expanded(child: Text(
+                        '${tr('${granted.length} صفحة مفتوحة من ${catalog.length}', '${granted.length} of ${catalog.length} pages open')}${desc.isEmpty ? '' : ' · $desc'}',
+                        style: const TextStyle(fontSize: 11.5, color: T.inkFaint), maxLines: 2, overflow: TextOverflow.ellipsis)),
+                      PopupMenuButton<String>(
+                        tooltip: tr('الكلّ', 'All'),
+                        icon: const Icon(Icons.done_all, size: 20),
+                        onSelected: _setAll,
+                        itemBuilder: (_) => [
+                          PopupMenuItem(value: 'none', child: Text(tr('الكلّ ممنوع', 'All none'))),
+                          PopupMenuItem(value: 'view', child: Text(tr('الكلّ مشاهدة', 'All view'))),
+                          PopupMenuItem(value: 'edit', child: Text(tr('الكلّ تعديل', 'All edit'))),
+                        ],
+                      ),
+                    ]),
                   ),
                   Expanded(
-                    child: ListView.separated(
-                      padding: const EdgeInsets.all(14),
-                      itemCount: sections.length,
-                      separatorBuilder: (_, __) => const SizedBox(height: 8),
-                      itemBuilder: (c, i) {
-                        final s = sections[i];
-                        final level = (perms[s] ?? 'none').toString();
-                        return AppCard(
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                          child: Row(children: [
-                            Expanded(child: Text(s, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13))),
-                            SegmentedButton<String>(
-                              style: const ButtonStyle(visualDensity: VisualDensity.compact),
-                              segments: [
-                                ButtonSegment(value: 'none', label: Text(tr('بدون', 'None'), style: const TextStyle(fontSize: 10.5))),
-                                ButtonSegment(value: 'view', label: Text(tr('عرض', 'View'), style: const TextStyle(fontSize: 10.5))),
-                                ButtonSegment(value: 'edit', label: Text(tr('تحرير', 'Edit'), style: const TextStyle(fontSize: 10.5))),
-                              ],
-                              selected: {['none', 'view', 'edit'].contains(level) ? level : 'none'},
-                              onSelectionChanged: (v) => _set(s, v.first),
+                    child: ListView(
+                      padding: const EdgeInsets.fromLTRB(14, 4, 14, 14),
+                      children: [
+                        for (final section in all) () {
+                          final pages = catalog.where((p) => p['section'] == section).toList();
+                          final isManaged = managed.contains(section);
+                          final cur = _draft[section] ?? 'none';
+                          final on = pages.where((p) => _pageDraft[p['key']] == true).length;
+                          final open = _open.contains(section);
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: AppCard(
+                              padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+                              child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                                InkWell(
+                                  onTap: () => setState(() => open ? _open.remove(section) : _open.add(section)),
+                                  child: Row(children: [
+                                    Icon(open ? Icons.expand_more : Icons.chevron_left, size: 20, color: T.inkFaint),
+                                    Expanded(child: Text(sectionLabel(section), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13))),
+                                    Text('$on/${pages.length}', style: const TextStyle(fontSize: 11, color: T.inkFaint)),
+                                  ]),
+                                ),
+                                const SizedBox(height: 6),
+                                if (isManaged) Align(alignment: AlignmentDirectional.centerEnd, child: _levelBar(section))
+                                else Text(tr('بالصفحات فقط', 'pages only'), style: const TextStyle(fontSize: 11, color: T.inkFaint)),
+                                if (open) ...[
+                                  const SizedBox(height: 6),
+                                  Wrap(spacing: 8, children: [
+                                    TextButton(onPressed: () => _setSectionPages(section, true), child: Text(tr('فتح الكل', 'Open all'), style: const TextStyle(fontSize: 12))),
+                                    TextButton(onPressed: () => _setSectionPages(section, false), child: Text(tr('إغلاق الكل', 'Close all'), style: const TextStyle(fontSize: 12))),
+                                  ]),
+                                  if (isManaged && cur == 'none')
+                                    Text(tr('القسمُ غيرُ ممنوح — اضغط أيّ صفحةٍ لمنحه «مشاهدة» وفتحِها وحدَها.', 'Section not granted — tap a page to grant view and open just it.'),
+                                        style: const TextStyle(fontSize: 11, color: T.warn)),
+                                  if (!isManaged)
+                                    Text(tr('التأشيرُ يفتح الشاشةَ وأفعالَها — إلّا هذه الشاشةَ نفسَها وحسابَ مديرِ النظام.', 'Ticking opens the screen and its actions — except this screen itself and a super admin account.'),
+                                        style: const TextStyle(fontSize: 11, color: T.inkSoft)),
+                                  for (final pg in pages)
+                                    isManaged && cur == 'none'
+                                        ? ListTile(
+                                            dense: true, contentPadding: EdgeInsets.zero,
+                                            leading: const Icon(Icons.lock_outline, size: 18, color: T.inkFaint),
+                                            title: Text(tr('${pg['ar']}', '${pg['en']}'), style: const TextStyle(fontSize: 13, color: T.inkSoft)),
+                                            onTap: () => _openOnePage(section, pg['key'].toString()),
+                                          )
+                                        : CheckboxListTile(
+                                            dense: true, contentPadding: EdgeInsets.zero, controlAffinity: ListTileControlAffinity.leading,
+                                            value: _pageDraft[pg['key']] == true,
+                                            title: Text(tr('${pg['ar']}', '${pg['en']}'), style: const TextStyle(fontSize: 13)),
+                                            onChanged: (v) => setState(() => _pageDraft[pg['key'].toString()] = v == true),
+                                          ),
+                                ],
+                              ]),
                             ),
-                          ]),
-                        );
-                      },
+                          );
+                        }(),
+                      ],
                     ),
                   ),
+                  if (_role.isNotEmpty) SafeArea(top: false, child: Container(
+                    padding: const EdgeInsets.fromLTRB(14, 8, 14, 8),
+                    decoration: const BoxDecoration(color: Colors.white, border: Border(top: BorderSide(color: T.line))),
+                    child: Column(mainAxisSize: MainAxisSize.min, children: [
+                      // أوّلُ شاشةٍ تُفتَح للدور — من صفحاته المفتوحة.
+                      DropdownButtonFormField<String>(
+                        initialValue: _home.isEmpty || granted.any((p) => p['key'] == _home) ? _home : '',
+                        isExpanded: true,
+                        decoration: InputDecoration(isDense: true, labelText: tr('صفحة الدخول', 'Landing page'), prefixIcon: const Icon(Icons.home_outlined, size: 18)),
+                        items: [
+                          DropdownMenuItem(value: '', child: Text(tr('الافتراضيّة لهذا الدور', 'Default for this role'))),
+                          for (final p in granted) DropdownMenuItem(value: p['key'].toString(), child: Text('${sectionLabel(p['section'].toString())} — ${tr('${p['ar']}', '${p['en']}')}', overflow: TextOverflow.ellipsis)),
+                        ],
+                        onChanged: (v) => setState(() => _home = v ?? ''),
+                      ),
+                      const SizedBox(height: 8),
+                      Row(children: [
+                        if (_dirty) Text(tr('تغييراتٌ غير محفوظة', 'Unsaved changes'), style: const TextStyle(color: T.warn, fontSize: 12)),
+                        const Spacer(),
+                        TextButton(onPressed: !_dirty || _saving ? null : _seed, child: Text(tr('تراجع', 'Reset'))),
+                        FilledButton.icon(
+                          style: FilledButton.styleFrom(backgroundColor: T.orange),
+                          onPressed: !_dirty || _saving ? null : _save,
+                          icon: _saving ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.save_outlined, size: 18),
+                          label: Text(_saving ? tr('جارٍ الحفظ…', 'Saving…') : tr('حفظ', 'Save')),
+                        ),
+                      ]),
+                    ]),
+                  )),
                 ]),
     );
   }
@@ -572,4 +848,428 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                 ]),
     );
   }
+}
+
+// ── نموذجُ المستخدم ─────────────────────────────────────────────────────────
+const _remotePages = [
+  ('attendance', 'الحضور والانصراف', 'Attendance'), ('dashboard', 'لوحتي', 'My Dashboard'), ('leave', 'الإجازات', 'Leave'),
+  ('chat', 'الرسائل', 'Messages'), ('tasks', 'مهامي', 'My Tasks'), ('report', 'التقرير اليومي', 'Daily Report'),
+  ('announcements', 'الإعلانات', 'Announcements'),
+];
+
+String _idOf(dynamic v) => v is Map ? (v['_id'] ?? '').toString() : (v ?? '').toString();
+String _uName(Map<String, dynamic> u) => '${u['firstName'] ?? ''} ${u['lastName'] ?? ''}'.trim();
+
+class _UserFormScreen extends StatefulWidget {
+  const _UserFormScreen({required this.user, required this.users});
+  final Map<String, dynamic>? user;
+  final List<Map<String, dynamic>> users;
+  @override
+  State<_UserFormScreen> createState() => _UserFormScreenState();
+}
+
+class _UserFormScreenState extends State<_UserFormScreen> {
+  late final TextEditingController _email, _password, _first, _last;
+  String _accountType = 'employee', _role = 'employee', _manager = '', _branch = '', _linkedCustomer = '';
+  String _linkedEmployee = '', _linkedEmployeeLabel = '', _partnerSource = '', _partnerRefId = '', _partnerLabel = '';
+  bool _active = true, _saving = false, _showPw = false;
+  List<String> _projects = [], _branches = [], _customers = [], _remote = _remotePages.map((p) => p.$1).toList();
+  List<Map<String, dynamic>> _branchOpts = [], _projectOpts = [], _customerOpts = [], _b2cHeads = [], _remoteManagers = [];
+  String? _err;
+
+  Map<String, dynamic>? get _u => widget.user;
+
+  @override
+  void initState() {
+    super.initState();
+    final u = _u;
+    _email = TextEditingController(text: (u?['email'] ?? '').toString());
+    _password = TextEditingController();
+    _first = TextEditingController(text: (u?['firstName'] ?? '').toString());
+    _last = TextEditingController(text: (u?['lastName'] ?? '').toString());
+    if (u != null) {
+      _role = (u['role'] ?? 'employee').toString();
+      _active = u['isActive'] != false;
+      _manager = _idOf(u['manager']);
+      _branch = _idOf(u['branch']);
+      _linkedCustomer = _idOf(u['linkedCustomer']);
+      _customers = List.from(u['assignedCustomers'] ?? const []).map(_idOf).toList();
+      _projects = List.from(u['assignedProjects'] ?? const []).map(_idOf).toList();
+      _branches = List.from(u['assignedBranches'] ?? const []).map(_idOf).toList();
+      final ra = List.from(u['remoteAccess'] ?? const []).map((e) => e.toString()).toList();
+      if (ra.isNotEmpty) _remote = ra;
+      final le = u['linkedEmployee'];
+      if (le is Map) {
+        _linkedEmployee = _idOf(le);
+        _linkedEmployeeLabel = '${le['firstName'] ?? ''} ${le['lastName'] ?? ''}${le['iqamaNumber'] != null ? ' (${le['iqamaNumber']})' : ''}';
+      }
+      _accountType = (u['accountType'] ?? (_role == 'client' ? 'customer' : 'employee')).toString();
+      final pt = u['partner'];
+      _partnerSource = pt is Map ? '${pt['source'] ?? ''}' : (_role == 'client' && _linkedCustomer.isNotEmpty ? 'customer' : '');
+      _partnerRefId = pt is Map ? '${pt['refId'] ?? ''}' : (_role == 'client' ? _linkedCustomer : '');
+      _partnerLabel = pt is Map ? '${pt['name'] ?? ''}' : (u['linkedCustomer'] is Map ? '${u['linkedCustomer']['companyName'] ?? ''}' : '');
+    }
+    _loadOptions();
+  }
+
+  @override
+  void dispose() { _email.dispose(); _password.dispose(); _first.dispose(); _last.dispose(); super.dispose(); }
+
+  Future<List<Map<String, dynamic>>> _list(String path, String key) async {
+    try {
+      final d = await Api.instance.get(path);
+      final raw = d is Map ? d[key] : d;
+      return raw is List ? List<Map<String, dynamic>>.from(raw.whereType<Map>().map((e) => Map<String, dynamic>.from(e))) : [];
+    } catch (_) { return []; }
+  }
+
+  Future<void> _loadOptions() async {
+    final r = await Future.wait([
+      _list('/api/branches?active=true', 'branches'),
+      _list('/api/b2c/projects?active=true', 'projects'),
+      _list('/api/customers', 'customers'),
+      _list('/api/users?role=b2c_manager', 'users'),
+      _list('/api/users?role=remote_manager', 'users'),
+    ]);
+    if (!mounted) return;
+    setState(() { _branchOpts = r[0]; _projectOpts = r[1]; _customerOpts = r[2]; _b2cHeads = r[3]; _remoteManagers = r[4]; });
+  }
+
+  // المديرُ يُقترَح من الهيكل عند الإنشاء — يُقترَح ولا يُفرَض.
+  Future<void> _onRole(String role) async {
+    setState(() { _role = role; _linkedCustomer = ''; _customers = []; });
+    if (const ['super_admin', 'admin', 'client'].contains(role)) { setState(() => _manager = ''); return; }
+    if (_u != null) return;
+    try {
+      final d = await Api.instance.get('/api/users/suggest-manager?role=$role');
+      final m = d['manager'];
+      if (m is Map && mounted) setState(() => _manager = _idOf(m));
+    } catch (_) {}
+  }
+
+  Future<Map<String, dynamic>?> _search({
+    required String title, required Future<List<Map<String, dynamic>>> Function(String q) fetch,
+    required String Function(Map<String, dynamic>) label, String Function(Map<String, dynamic>)? sub,
+    bool Function(Map<String, dynamic>)? disabled, int minChars = 0,
+  }) => showModalBottomSheet<Map<String, dynamic>>(
+    context: context, isScrollControlled: true, backgroundColor: Colors.white,
+    shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+    builder: (_) => _SearchSheet(title: title, fetch: fetch, label: label, sub: sub, disabled: disabled, minChars: minChars),
+  );
+
+  Future<void> _pickRole() async {
+    final keys = roleKeys().where((r) => r != 'super_admin' || _role == 'super_admin').toList();
+    final picked = await _search(
+      title: tr('ابحث باسم الدور…', 'Search a role…'),
+      fetch: (q) async => [for (final k in keys) if (q.isEmpty || _fold('$k ${roleLabel(k)}').contains(_fold(q))) {'_id': k}],
+      label: (r) => roleLabel(r['_id']),
+    );
+    if (picked != null) _onRole(picked['_id'].toString());
+  }
+
+  Future<void> _pickManager() async {
+    final others = widget.users.where((x) => x['_id'] != _u?['_id'] && x['role'] != 'client').toList();
+    final picked = await _search(
+      title: tr('ابحث بالاسم أو الدور…', 'Name or role…'),
+      fetch: (q) async => [
+        {'_id': '', 'firstName': tr('بدون مدير (تروح للموارد البشرية مباشرة)', 'No manager (goes straight to HR)')},
+        for (final x in others) if (q.isEmpty || _fold('${_uName(x)} ${roleLabel(x['role'])}').contains(_fold(q))) x,
+      ],
+      label: (x) => _uName(x), sub: (x) => x['role'] == null ? '' : roleLabel(x['role']),
+    );
+    if (picked != null) setState(() => _manager = picked['_id'].toString());
+  }
+
+  Future<void> _pickEmployee() async {
+    final picked = await _search(
+      title: tr('ابحث بالاسم أو رقم الإقامة أو رقم الموظف…', 'Name, iqama or employee #…'), minChars: 2,
+      fetch: (q) => _list('/api/hr/employees-search?q=${Uri.encodeQueryComponent(q)}', 'employees'),
+      label: (e) => _uName(e),
+      sub: (e) => [e['jobTitle'], e['iqamaNumber'], if (e['employeeNumber'] != null) '#${e['employeeNumber']}'].where((x) => x != null && '$x'.isNotEmpty).join(' · '),
+    );
+    if (picked == null) return;
+    setState(() {
+      _linkedEmployee = _idOf(picked);
+      _linkedEmployeeLabel = '${_uName(picked)}${picked['iqamaNumber'] != null ? ' (${picked['iqamaNumber']})' : picked['employeeNumber'] != null ? ' (#${picked['employeeNumber']})' : ''}';
+    });
+  }
+
+  Future<void> _pickPartner() async {
+    final picked = await _search(
+      title: tr('ابحث بالاسم…', 'Search by name…'),
+      fetch: (q) => _list('/api/partners?kind=$_accountType${q.isEmpty ? '' : '&q=${Uri.encodeQueryComponent(q)}'}&limit=400', 'items'),
+      label: (o) => '${o['name'] ?? ''}',
+      sub: (o) => o['account'] is Map && o['account']['_id'] != _u?['_id']
+          ? tr('له حساب بالفعل: ${o['account']['email']}', 'Already has a login: ${o['account']['email']}')
+          : tr('${o['registerAr'] ?? ''}', '${o['registerEn'] ?? ''}'),
+      disabled: (o) => o['account'] is Map && o['account']['_id'] != _u?['_id'],
+    );
+    if (picked == null) return;
+    setState(() {
+      _partnerSource = '${picked['source']}'; _partnerRefId = '${picked['refId']}';
+      _partnerLabel = '${picked['name']} — ${tr('${picked['registerAr'] ?? ''}', '${picked['registerEn'] ?? ''}')}';
+      if (_first.text.trim().isEmpty) _first.text = '${picked['name'] ?? ''}';
+      if (_email.text.trim().isEmpty && '${picked['email'] ?? ''}'.isNotEmpty) _email.text = '${picked['email']}';
+    });
+  }
+
+  Future<void> _save() async {
+    setState(() { _saving = true; _err = null; });
+    try {
+      final isNew = _u == null;
+      if (_first.text.trim().isEmpty || _email.text.trim().isEmpty || (isNew && _password.text.isEmpty)) {
+        throw ApiException(0, tr('أكمل الاسم والبريد وكلمة المرور', 'Fill in name, email and password'));
+      }
+      final body = <String, dynamic>{
+        'email': _email.text.trim(), 'firstName': _first.text.trim(), 'lastName': _last.text.trim(),
+        'role': _role, 'accountType': _accountType,
+        if (_password.text.isNotEmpty) 'password': _password.text,
+        if (!isNew) 'isActive': _active,
+      };
+      if (_accountType != 'employee') {
+        if (_partnerRefId.isEmpty) throw ApiException(0, tr('اختر العميل أو المورد المرتبط بهذا الحساب', 'Pick the customer or supplier this account belongs to'));
+        body['partner'] = {'source': _partnerSource, 'refId': _partnerRefId};
+      } else {
+        if (_role == 'client' && _linkedCustomer.isNotEmpty) body['linkedCustomer'] = _linkedCustomer;
+        if (_role == 'employee' && (!isNew || _customers.isNotEmpty)) body['assignedCustomers'] = _customers;
+        if (isNew) { if (_branch.isNotEmpty) body['branch'] = _branch; } else { body['branch'] = _branch.isEmpty ? null : _branch; }
+        final b2c = _role == 'b2c_project_lead' || _role == 'b2c_manager';
+        if (b2c) {
+          body['assignedProjects'] = _projects; body['assignedBranches'] = _branches;
+          if (!isNew) body['remoteAccess'] = <String>[];
+        } else if (_role == 'remote_employee') {
+          body['remoteAccess'] = _remote;
+          if (!isNew) { body['assignedProjects'] = <String>[]; body['assignedBranches'] = <String>[]; }
+        } else if (!isNew) {
+          body['assignedProjects'] = <String>[]; body['assignedBranches'] = <String>[]; body['remoteAccess'] = <String>[];
+        }
+        if (isNew) {
+          if (_manager.isNotEmpty) body['manager'] = _manager;
+          if (_linkedEmployee.isNotEmpty) body['linkedEmployee'] = _linkedEmployee;
+        } else {
+          body['manager'] = _manager.isEmpty ? null : _manager;
+          body['linkedEmployee'] = _linkedEmployee.isEmpty ? null : _linkedEmployee;
+        }
+      }
+      if (isNew) {
+        await Api.instance.post('/api/users', body);
+      } else {
+        await Api.instance.put('/api/users/${_u!['_id']}', body);
+      }
+      if (mounted) Navigator.pop(context, true);
+    } catch (e) {
+      if (mounted) setState(() { _err = e is ApiException ? e.message : e.toString(); _saving = false; });
+    }
+  }
+
+  Widget _label(String s) => Padding(padding: const EdgeInsets.only(top: 14, bottom: 6), child: Text(s, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)));
+
+  Widget _pickerTile(String text, VoidCallback onTap, {VoidCallback? onClear, IconData icon = Icons.search}) => OutlinedButton(
+    style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(46), alignment: AlignmentDirectional.centerStart),
+    onPressed: onTap,
+    child: Row(children: [
+      Icon(icon, size: 18), const SizedBox(width: 8),
+      Expanded(child: Text(text, overflow: TextOverflow.ellipsis)),
+      if (onClear != null) InkWell(onTap: onClear, child: const Icon(Icons.close, size: 18, color: T.inkFaint)),
+    ]),
+  );
+
+  Widget _checks(List<Map<String, dynamic>> opts, List<String> sel, String Function(Map<String, dynamic>) label, {String empty = '—'}) => Container(
+    constraints: const BoxConstraints(maxHeight: 220),
+    decoration: BoxDecoration(border: Border.all(color: T.line), borderRadius: BorderRadius.circular(10)),
+    child: opts.isEmpty
+        ? Padding(padding: const EdgeInsets.all(12), child: Text(empty, style: const TextStyle(color: T.inkFaint, fontSize: 12)))
+        : ListView(shrinkWrap: true, children: [
+            for (final o in opts) CheckboxListTile(
+              dense: true, controlAffinity: ListTileControlAffinity.leading,
+              value: sel.contains(_idOf(o)), title: Text(label(o), style: const TextStyle(fontSize: 13)),
+              onChanged: (v) => setState(() { final id = _idOf(o); v == true ? sel.add(id) : sel.remove(id); }),
+            ),
+          ]),
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    final isNew = _u == null;
+    final mgr = widget.users.firstWhere((x) => x['_id'] == _manager, orElse: () => const {});
+    final showManager = _accountType == 'employee' && !const ['client', 'super_admin', 'admin', 'b2c_project_lead', 'remote_employee'].contains(_role);
+    return AppScaffold(
+      title: Text(isNew ? tr('مستخدم جديد', 'New user') : tr('تعديل المستخدم', 'Edit user')),
+      body: ListView(padding: const EdgeInsets.fromLTRB(16, 12, 16, 40), children: [
+        // ── نوعُ الحساب ──
+        SegmentedButton<String>(
+          showSelectedIcon: false,
+          segments: [
+            ButtonSegment(value: 'employee', label: Text(tr('موظف', 'Staff'))),
+            ButtonSegment(value: 'customer', label: Text(tr('عميل', 'Customer'))),
+            ButtonSegment(value: 'vendor', label: Text(tr('مورد', 'Supplier'))),
+          ],
+          selected: {_accountType},
+          onSelectionChanged: (v) => setState(() { _accountType = v.first; _partnerRefId = ''; _partnerSource = ''; _partnerLabel = ''; }),
+        ),
+        if (_accountType != 'employee') ...[
+          _label(_accountType == 'vendor' ? tr('المورد المرتبط *', 'Linked supplier *') : tr('العميل المرتبط *', 'Linked customer *')),
+          _pickerTile(_partnerRefId.isEmpty ? tr('ابحث بالاسم…', 'Search by name…') : _partnerLabel, _pickPartner,
+              icon: Icons.storefront_outlined, onClear: _partnerRefId.isEmpty ? null : () => setState(() { _partnerRefId = ''; _partnerSource = ''; _partnerLabel = ''; })),
+          Padding(padding: const EdgeInsets.only(top: 4), child: Text(
+            tr('تجمع القائمة كل سجلات العملاء والموردين في الشركة — وبجانب كل اسم القسم المسجَّل فيه.', 'This list merges every customer/supplier register in the company.'),
+            style: const TextStyle(fontSize: 11, color: T.inkFaint))),
+        ],
+        const SizedBox(height: 12),
+        Row(children: [
+          Expanded(child: TextField(controller: _first, decoration: InputDecoration(labelText: tr('الاسم الأول *', 'First name *')))),
+          const SizedBox(width: 10),
+          Expanded(child: TextField(controller: _last, decoration: InputDecoration(labelText: tr('اسم العائلة', 'Last name')))),
+        ]),
+        const SizedBox(height: 10),
+        TextField(controller: _email, keyboardType: TextInputType.emailAddress, decoration: InputDecoration(labelText: tr('البريد *', 'Email *'))),
+        const SizedBox(height: 10),
+        TextField(
+          controller: _password, obscureText: !_showPw,
+          decoration: InputDecoration(
+            labelText: isNew ? tr('كلمة المرور *', 'Password *') : tr('كلمة مرور جديدة (اختياري)', 'New password (optional)'),
+            suffixIcon: IconButton(onPressed: () => setState(() => _showPw = !_showPw), icon: Icon(_showPw ? Icons.visibility_off : Icons.visibility)),
+          ),
+        ),
+        if (_accountType == 'employee') ...[
+          _label(tr('الدور', 'Role')),
+          _pickerTile(roleLabel(_role), _pickRole, icon: Icons.badge_outlined),
+          if (showManager) ...[
+            _label('${tr('المدير المباشر', 'Direct Manager')}  ${tr('(اختياري — يُقترح تلقائيًا حسب القسم)', '(optional — auto-suggested by role)')}'),
+            _pickerTile(mgr.isEmpty ? tr('بدون مدير (تروح للموارد البشرية مباشرة)', 'No manager (goes straight to HR)') : '${_uName(mgr)} — ${roleLabel(mgr['role'])}',
+                _pickManager, icon: Icons.supervisor_account_outlined, onClear: _manager.isEmpty ? null : () => setState(() => _manager = '')),
+          ],
+          if (_role != 'client') ...[
+            _label(tr('ربط بملف موظف (الموارد البشرية)', 'Link to Employee Profile (HR)')),
+            _pickerTile(_linkedEmployee.isEmpty ? tr('ابحث بالاسم أو رقم الإقامة أو رقم الموظف...', 'Search by name, iqama, or employee #...') : _linkedEmployeeLabel,
+                _pickEmployee, icon: Icons.badge_outlined, onClear: _linkedEmployee.isEmpty ? null : () => setState(() { _linkedEmployee = ''; _linkedEmployeeLabel = ''; })),
+          ],
+          if (const ['operations_staff', 'operations_manager', 'procurement_staff'].contains(_role)) ...[
+            _label(tr('الفرع *', 'Branch *')),
+            DropdownButtonFormField<String>(
+              initialValue: _branchOpts.any((b) => _idOf(b) == _branch) ? _branch : '', isExpanded: true,
+              items: [DropdownMenuItem(value: '', child: Text(tr('اختر الفرع...', 'Select branch...'))), for (final b in _branchOpts) DropdownMenuItem(value: _idOf(b), child: Text('${b['name'] ?? ''}'))],
+              onChanged: (v) => setState(() => _branch = v ?? ''),
+            ),
+          ],
+          if (_role == 'client') ...[
+            _label(tr('العميل المرتبط', 'Linked customer')),
+            DropdownButtonFormField<String>(
+              initialValue: _customerOpts.any((c) => _idOf(c) == _linkedCustomer) ? _linkedCustomer : '', isExpanded: true,
+              items: [DropdownMenuItem(value: '', child: Text(tr('العميل...', 'Customer...'))), for (final c in _customerOpts) DropdownMenuItem(value: _idOf(c), child: Text('${c['companyName'] ?? ''}', overflow: TextOverflow.ellipsis))],
+              onChanged: (v) => setState(() => _linkedCustomer = v ?? ''),
+            ),
+          ],
+          if (_role == 'b2c_manager' || _role == 'b2c_project_lead') ...[
+            _label('${tr('المشاريع المعينة', 'Assigned Projects')} (${_projects.length})${_role == 'b2c_manager' ? tr(' — اختياري، له صلاحية كل المشاريع', ' — optional, has access to all') : ''}'),
+            _checks(_projectOpts, _projects, (p) => '${p['name'] ?? ''}'),
+            _label('${tr('الفروع المعينة', 'Assigned Branches')} (${_branches.length})'),
+            _checks(_branchOpts, _branches, (b) => '${b['name'] ?? ''}'),
+            if (_role == 'b2c_project_lead') ...[
+              _label(tr('المدير المباشر (مدير B2C)', 'Direct Manager (B2C Manager)')),
+              DropdownButtonFormField<String>(
+                initialValue: _b2cHeads.any((h) => _idOf(h) == _manager) ? _manager : '', isExpanded: true,
+                items: [DropdownMenuItem(value: '', child: Text(tr('بدون', 'None'))), for (final h in _b2cHeads) DropdownMenuItem(value: _idOf(h), child: Text('${_uName(h)} — ${h['email'] ?? ''}', overflow: TextOverflow.ellipsis))],
+                onChanged: (v) => setState(() => _manager = v ?? ''),
+              ),
+            ],
+          ],
+          if (_role == 'employee') ...[
+            _label('${tr('العملاء المعيّنون', 'Assigned customers')} (${_customers.length})'),
+            _checks(_customerOpts, _customers, (c) => '${c['companyName'] ?? ''}'),
+          ],
+          if (_role == 'remote_employee') ...[
+            _label(tr('المدير المباشر (مدير العمل عن بُعد)', 'Direct Manager (Remote Manager)')),
+            DropdownButtonFormField<String>(
+              initialValue: _remoteManagers.any((h) => _idOf(h) == _manager) ? _manager : '', isExpanded: true,
+              items: [DropdownMenuItem(value: '', child: Text(tr('بدون (السوبر أدمن فقط)', 'None (super admin only)'))), for (final h in _remoteManagers) DropdownMenuItem(value: _idOf(h), child: Text('${_uName(h)} — ${h['email'] ?? ''}', overflow: TextOverflow.ellipsis))],
+              onChanged: (v) => setState(() => _manager = v ?? ''),
+            ),
+            _label('${tr('الصفحات المسموح بها', 'Allowed Pages')} (${_remote.length})'),
+            for (final p in _remotePages) CheckboxListTile(
+              dense: true, controlAffinity: ListTileControlAffinity.leading,
+              value: _remote.contains(p.$1), title: Text(tr(p.$2, p.$3)),
+              onChanged: (v) => setState(() => v == true ? _remote.add(p.$1) : _remote.remove(p.$1)),
+            ),
+          ],
+        ],
+        if (!isNew) SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: Text(tr('حساب مُفعّل', 'Account active'), style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700)),
+          value: _active, onChanged: (v) => setState(() => _active = v),
+        ),
+        if (_err != null) Padding(padding: const EdgeInsets.only(top: 10), child: Text(_err!, style: const TextStyle(color: T.danger))),
+        const SizedBox(height: 16),
+        FilledButton(
+          onPressed: _saving ? null : _save,
+          child: _saving ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : Text(isNew ? tr('إنشاء', 'Create') : tr('حفظ', 'Save')),
+        ),
+      ]),
+    );
+  }
+}
+
+/// لوحُ بحثٍ عام: يُعيد الجلب مع كلّ كتابة (مؤجَّلًا)، وردٌّ أقدم لا يغلب أحدث.
+class _SearchSheet extends StatefulWidget {
+  const _SearchSheet({required this.title, required this.fetch, required this.label, this.sub, this.disabled, this.minChars = 0});
+  final String title;
+  final Future<List<Map<String, dynamic>>> Function(String q) fetch;
+  final String Function(Map<String, dynamic>) label;
+  final String Function(Map<String, dynamic>)? sub;
+  final bool Function(Map<String, dynamic>)? disabled;
+  final int minChars;
+  @override
+  State<_SearchSheet> createState() => _SearchSheetState();
+}
+
+class _SearchSheetState extends State<_SearchSheet> {
+  List<Map<String, dynamic>> _rows = const [];
+  bool _loading = false;
+  int _seq = 0;
+  Timer? _t;
+
+  @override
+  void initState() { super.initState(); if (widget.minChars == 0) _run(''); }
+  @override
+  void dispose() { _t?.cancel(); super.dispose(); }
+
+  Future<void> _run(String q) async {
+    if (q.trim().length < widget.minChars) { setState(() => _rows = const []); return; }
+    final mine = ++_seq;
+    setState(() => _loading = true);
+    final r = await widget.fetch(q.trim());
+    if (mounted && mine == _seq) setState(() { _rows = r; _loading = false; });
+  }
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+    child: DraggableScrollableSheet(
+      expand: false, initialChildSize: 0.75, maxChildSize: 0.92,
+      builder: (c, scroll) => Column(children: [
+        Padding(padding: const EdgeInsets.fromLTRB(14, 14, 14, 6), child: TextField(
+          autofocus: true,
+          onChanged: (v) { _t?.cancel(); _t = Timer(const Duration(milliseconds: 250), () => _run(v)); },
+          decoration: InputDecoration(hintText: widget.title, prefixIcon: const Icon(Icons.search)),
+        )),
+        if (_loading) const LinearProgressIndicator(minHeight: 2),
+        Expanded(child: _rows.isEmpty && !_loading
+            ? EmptyState(icon: Icons.search_off_rounded, title: tr('لا نتائج', 'No results'))
+            : ListView.builder(
+                controller: scroll, itemCount: _rows.length,
+                itemBuilder: (c2, i) {
+                  final r = _rows[i];
+                  final off = widget.disabled?.call(r) ?? false;
+                  final sub = widget.sub?.call(r) ?? '';
+                  return ListTile(
+                    enabled: !off,
+                    title: Text(widget.label(r)),
+                    subtitle: sub.isEmpty ? null : Text(sub, style: TextStyle(fontSize: 11.5, color: off ? T.danger : T.orange)),
+                    onTap: () => Navigator.pop(c, r),
+                  );
+                },
+              )),
+      ]),
+    ),
+  );
 }

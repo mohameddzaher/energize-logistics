@@ -9,7 +9,12 @@ import '../services/live.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import '../ui/export_sheet.dart';
 import '../ui/file_upload.dart';
+import '../ui/portal_account_card.dart';
+import 'customs_contracts.dart' show CustomsPartyContracts;
+import 'customs_detail.dart' show CustomsDetailScreen, customsStageLabel;
+import 'fleet_customer_presence.dart' show CustomerPresence;
 import 'jp.dart' show JpTaskPanel;
 
 /// أطرافُ التخليص — العميلُ ووكيلُ الشحن والناقل: ملفُّ الطرف (بياناتُه
@@ -390,6 +395,173 @@ class _CustomsPartyScreenState extends State<CustomsPartyScreen> {
     }
   }
 
+  String _crmId(Map<String, dynamic> p) {
+    final c = p['crmCompany'];
+    return c is Map ? '${c['_id'] ?? ''}' : '${c ?? ''}';
+  }
+
+  static String _money(dynamic v) {
+    final n = v is num ? v : num.tryParse('${v ?? ''}') ?? 0;
+    return n.round().toString().replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (m) => ',');
+  }
+
+  static String _dt(dynamic v) {
+    final d = DateTime.tryParse('${v ?? ''}')?.toLocal();
+    return d == null ? '—' : '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
+  }
+
+  String _stageText(Map c) => c['cancelled'] == true
+      ? tr('ملغاة', 'Cancelled')
+      : c['isCompleted'] == true
+          ? tr('مغلقة', 'Closed')
+          : customsStageLabel(
+              '${(c['pipeline'] is Map ? c['pipeline']['next'] : null) ?? c['stage'] ?? ''}', '${c['cargoType'] ?? 'containers'}');
+
+  num _num(dynamic v) => v is num ? v : num.tryParse('${v ?? ''}') ?? 0;
+
+  /// أرقامُ الطرف، ونموُّه بالشهر، والتجميعات، وكلُّ معاملاته — كملفّ الطرف في الموقع.
+  List<Widget> _profileExtras(String kind, Map<String, dynamic> t) {
+    final d = _d ?? const {};
+    final seesMoney = d['money'] == true;
+    final isAgent = kind == 'agent';
+    final deals = _maps(d['deals']);
+    Widget stat(String label, String value, {Color? color}) => AppCard(
+          padding: const EdgeInsets.all(10),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.center, children: [
+            Text(label, style: const TextStyle(fontSize: 11, color: T.inkSoft), maxLines: 1, overflow: TextOverflow.ellipsis),
+            FittedBox(fit: BoxFit.scaleDown, alignment: AlignmentDirectional.centerStart,
+                child: Text(value, style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900, color: color ?? T.ink))),
+          ]),
+        );
+    Widget bars(String title, List<Map<String, dynamic>> rows) {
+      if (rows.isEmpty) return const SizedBox.shrink();
+      final max = rows.fold<num>(1, (a, r) => _num(r['n']) > a ? _num(r['n']) : a);
+      return Padding(
+        padding: const EdgeInsets.only(top: 12),
+        child: AppCard(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Text(title, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5)),
+            const SizedBox(height: 6),
+            for (final r in rows)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 3),
+                child: Row(children: [
+                  SizedBox(width: 120, child: Text('${r['name'] ?? ''}', style: const TextStyle(fontSize: 11.5, color: T.inkSoft), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                  Expanded(
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(4),
+                      child: LinearProgressIndicator(value: (_num(r['n']) / max).clamp(0, 1).toDouble(), minHeight: 6, backgroundColor: T.line, color: T.orange),
+                    ),
+                  ),
+                  SizedBox(width: 34, child: Text('${r['n'] ?? 0}', textAlign: TextAlign.end, style: const TextStyle(fontSize: 11, color: T.inkSoft))),
+                ]),
+              ),
+          ]),
+        ),
+      );
+    }
+    final cols = [
+      ExportCol('المرجع', 'Ref', (r) => r['refNumber'] ?? ''),
+      ExportCol('البوليصة', 'BL', (r) => r['blNumber'] ?? ''),
+      isAgent ? ExportCol('العميل', 'Customer', (r) => r['customerName'] ?? '') : ExportCol('وكيل الشحن', 'Agent', (r) => r['shippingAgent'] ?? ''),
+      ExportCol('الميناء', 'Port', (r) => r['port'] ?? ''),
+      ExportCol('المرحلة', 'Stage', (r) => _stageText(r)),
+      ExportCol('حاويات', 'Containers', (r) => _num(r['containerCount'])),
+      ExportCol('الإيراد', 'Revenue', (r) => _num(r['revenue'] is Map ? r['revenue']['totalInvoiced'] : 0)),
+      ExportCol('التكلفة', 'Cost', (r) => _num(r['costs'] is Map ? r['costs']['total'] : 0)),
+      if (seesMoney) ExportCol('الربح', 'Profit', (r) => _num(r['revenue'] is Map ? r['revenue']['profit'] : 0)),
+      ExportCol('التاريخ', 'Date', (r) => _dt(r['createdAt'])),
+    ];
+    final byMonth = _maps(d['byMonth']);
+    final maxMonth = byMonth.fold<num>(1, (a, r) => _num(r['revenue']) > a ? _num(r['revenue']) : a);
+    return [
+      const SizedBox(height: 12),
+      GridView.count(
+        crossAxisCount: 3, shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
+        crossAxisSpacing: 8, mainAxisSpacing: 8, childAspectRatio: 1.45,
+        children: [
+          stat(tr('معاملات', 'Deals'), _money(t['deals'])),
+          stat(tr('حاويات', 'Containers'), _money(t['containers'])),
+          stat(tr('الإيراد', 'Revenue'), _money(t['revenue']), color: T.success),
+          stat(tr('التكلفة', 'Cost'), _money(t['cost'])),
+          if (seesMoney) stat(tr('الربح', 'Profit'), _money(t['profit']), color: _num(t['profit']) >= 0 ? T.success : T.danger),
+          if (seesMoney) stat(tr('الهامش', 'Margin'), '${t['margin'] ?? 0}%', color: _num(t['margin']) >= 0 ? T.success : T.danger),
+          stat(tr('لم تُفوتَر', 'Uninvoiced'), _money(t['uninvoiced']), color: _num(t['uninvoiced']) != 0 ? T.warn : null),
+          if (seesMoney) stat(tr('متوسط الربح للمعاملة', 'Avg profit / deal'), _money(t['avgProfit'])),
+          stat(tr('إجمالي الوزن', 'Total weight'), _money(t['weight'])),
+          stat(tr('أول معاملة', 'First deal'), _dt(t['firstDealAt'])),
+          stat(tr('آخر معاملة', 'Last deal'), _dt(t['lastDealAt'])),
+        ],
+      ),
+      if (byMonth.length > 1)
+        Padding(
+          padding: const EdgeInsets.only(top: 12),
+          child: AppCard(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              Text(tr('بالشهر', 'By month'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5)),
+              const SizedBox(height: 6),
+              for (final m in byMonth)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 3),
+                  child: Row(children: [
+                    SizedBox(width: 64, child: Text('${m['key']}', style: const TextStyle(fontSize: 11, color: T.inkSoft))),
+                    Expanded(
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(4),
+                        child: LinearProgressIndicator(value: (_num(m['revenue']) / maxMonth).clamp(0, 1).toDouble(), minHeight: 6, backgroundColor: T.line, color: T.success),
+                      ),
+                    ),
+                    SizedBox(
+                      width: 120,
+                      child: Text('${_money(m['revenue'])}${seesMoney ? ' · ${_money(m['profit'])}' : ''}',
+                          textAlign: TextAlign.end, style: const TextStyle(fontSize: 11, color: T.inkSoft)),
+                    ),
+                  ]),
+                ),
+            ]),
+          ),
+        ),
+      bars(tr('حسب المرحلة', 'By stage'), _maps(d['byStage'])),
+      bars(tr('حسب الميناء', 'By port'), _maps(d['byPort'])),
+      bars(isAgent ? tr('أكثر العملاء معه', 'Top customers') : tr('أكثر الوكلاء معه', 'Top agents'), _maps(d['byCounterparty'])),
+      const SizedBox(height: 12),
+      AppCard(
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Row(children: [
+            Expanded(child: Text('${tr('كلّ المعاملات', 'All deals')} (${deals.length})', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14))),
+            ExportButton(fileName: 'customs-${_d?['party']?['name'] ?? widget.name}', sheetName: tr('معاملات', 'Deals'), columns: cols, rows: () => deals),
+          ]),
+          if (deals.isEmpty) Text(tr('لا معاملات', 'No deals'), style: const TextStyle(fontSize: 12.5, color: T.inkFaint)),
+          for (final c in deals)
+            InkWell(
+              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => CustomsDetailScreen(clearanceId: '${c['_id']}', ref: '${c['refNumber'] ?? ''}'))),
+              child: Opacity(
+                opacity: c['cancelled'] == true ? 0.5 : 1,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Row(children: [
+                      Expanded(child: Text('${c['refNumber'] ?? '—'}${'${c['blNumber'] ?? ''}'.isNotEmpty ? ' · ${c['blNumber']}' : ''}',
+                          style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800))),
+                      Text(_money(c['revenue'] is Map ? c['revenue']['totalInvoiced'] : 0), style: const TextStyle(fontSize: 12, color: T.success, fontWeight: FontWeight.w700)),
+                    ]),
+                    Text([
+                      '${(isAgent ? c['customerName'] : c['shippingAgent']) ?? ''}',
+                      if ('${c['port'] ?? ''}'.isNotEmpty) '${c['port']}',
+                      _stageText(c),
+                      '${c['containerCount'] ?? 0} ${tr('حاوية', 'cntrs')}',
+                      if (seesMoney) '${tr('الربح', 'Profit')} ${_money(c['revenue'] is Map ? c['revenue']['profit'] : 0)}',
+                      _dt(c['createdAt']),
+                    ].where((x) => x.isNotEmpty).join(' · '), style: const TextStyle(fontSize: 11.5, color: T.inkSoft)),
+                  ]),
+                ),
+              ),
+            ),
+        ]),
+      ),
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
     final canEdit = canEditCustoms(context);
@@ -407,6 +579,14 @@ class _CustomsPartyScreenState extends State<CustomsPartyScreen> {
               : RefreshIndicator(
                   onRefresh: _load,
                   child: ListView(padding: const EdgeInsets.all(14), children: [
+                    // العميلُ نفسُه في الأقسام الأخرى، وحسابُ بوابته — كالموقع.
+                    if (kind == 'customer') ...[
+                      CustomerPresence(reg: 'customs', id: '${p['_id'] ?? widget.partyId}', onChanged: _load),
+                      if (_crmId(p).isNotEmpty) ...[
+                        PortalAccountCard(source: 'crm_company', refId: _crmId(p), name: name),
+                        const SizedBox(height: 12),
+                      ],
+                    ],
                     AppCard(
                       topAccent: T.navy,
                       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -423,15 +603,6 @@ class _CustomsPartyScreenState extends State<CustomsPartyScreen> {
                               style: const TextStyle(fontSize: 12, color: T.inkFaint))
                         else
                           ...details,
-                        if (totals.isNotEmpty) ...[
-                          const SizedBox(height: 8),
-                          Wrap(spacing: 6, runSpacing: 6, children: [
-                            Chip2('${tr('معاملات', 'Deals')}: ${totals['deals'] ?? 0}', T.navy),
-                            Chip2('${tr('حاويات', 'Containers')}: ${totals['containers'] ?? 0}', T.violet),
-                            if ((totals['uninvoiced'] ?? 0) != 0)
-                              Chip2('${tr('لم تُفوتَر', 'Not invoiced')}: ${totals['uninvoiced']}', T.warn),
-                          ]),
-                        ],
                       ]),
                     ),
                     const SizedBox(height: 12),
@@ -450,6 +621,12 @@ class _CustomsPartyScreenState extends State<CustomsPartyScreen> {
                         ),
                       ]),
                     ),
+                    ..._profileExtras(kind, totals),
+                    // عقودُنا معه — ولا عقودَ بيننا وبين وكلاء الشحن (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢).
+                    if (kind != 'agent') ...[
+                      const SizedBox(height: 12),
+                      CustomsPartyContracts(partyId: '${p['_id'] ?? widget.partyId}', partyName: name, partyKind: kind, canEdit: canEdit),
+                    ],
                     const SizedBox(height: 12),
                     JpTaskPanel(section: 'customs', kind: kind, refId: '${p['_id'] ?? widget.partyId}'),
                     const SizedBox(height: 20),

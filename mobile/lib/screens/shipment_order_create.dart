@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import '../services/api.dart';
 import '../services/lang.dart';
+import '../services/live.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/contact.dart';
 import '../ui/theme.dart';
@@ -80,10 +81,104 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
 
   bool get _editing => widget.order != null;
 
+  // ── وخيارٌ يضيفه زميلٌ يظهر هنا بلا إعادة فتح (`shipmentOrders:fields`) ──
+  late final void Function() _onFields = _reloadFields;
+  // سوّاقُ الشاحنة المختارة، فإن لم يُسجَّل لها سائقٌ فسوّاقُ مورّدها.
+  List<Map<String, dynamic>> _drivers = [];
+  bool _savingCustomer = false;
+
   @override
   void initState() {
     super.initState();
-    _load();
+    _load().then((_) => _loadDrivers());
+    Live.instance.on('shipmentOrders:fields', _onFields);
+  }
+
+  @override
+  void dispose() {
+    Live.instance.off('shipmentOrders:fields', _onFields);
+    super.dispose();
+  }
+
+  Future<void> _reloadFields() async {
+    try {
+      final d = await Api.instance.get('/api/shipment-orders/fields');
+      if (mounted) setState(() => _fields = List<Map<String, dynamic>>.from(d['fields'] ?? []));
+    } catch (_) {}
+  }
+
+  /// كما في الويب: سوّاقُ الشاحنة أوّلًا، فإن لم يكن لها سائقٌ فسوّاقُ المورّد.
+  Future<void> _loadDrivers() async {
+    final vId = _vehicle?['_id'];
+    final sId = _supplier?['_id'];
+    if (vId == null && sId == null) { if (mounted) setState(() => _drivers = []); return; }
+    try {
+      final d = await Api.instance.get('/api/shipment-orders/drivers?${vId != null ? 'vehicle=$vId' : 'supplier=$sId'}&limit=200');
+      var rows = List<Map<String, dynamic>>.from(d['drivers'] ?? []);
+      if (rows.isEmpty && sId != null && vId != null) {
+        final alt = await Api.instance.get('/api/shipment-orders/drivers?supplier=$sId&limit=200');
+        rows = List<Map<String, dynamic>>.from(alt['drivers'] ?? []);
+      }
+      if (mounted) setState(() => _drivers = rows);
+    } catch (_) {
+      if (mounted) setState(() => _drivers = []);
+    }
+  }
+
+  /// العميلُ الجديد يُسجَّل حين يُكتب اسمُه لا حين تُحفَظ الشحنة — فيراه
+  /// التحصيلُ وصفحةُ العملاء وزملاؤه في اللحظة نفسِها.
+  Future<void> _saveCustomer() async {
+    final name = _ncName.text.trim();
+    if (name.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('اكتب اسم العميل.', 'Name the customer.'))));
+      return;
+    }
+    setState(() => _savingCustomer = true);
+    try {
+      final d = await Api.instance.post('/api/shipment-orders/customers', {'name': name, 'phone': saPhone(_ncPhone.text)});
+      final c = Map<String, dynamic>.from(d['customer'] ?? {});
+      if (!mounted) return;
+      setState(() {
+        _customers = [..._customers, c]..sort((a, b) => '${a['name'] ?? ''}'.compareTo('${b['name'] ?? ''}'));
+        _savingCustomer = false;
+        _ncName.clear();
+        _ncPhone.clear();
+      });
+      _applyCustomer(c);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('سُجِّل العميل «${c['name']}»', 'Customer “${c['name']}” registered'))));
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _savingCustomer = false);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e is ApiException ? e.message : '$e')));
+    }
+  }
+
+  /// خيارٌ جديد في قائمةٍ — يُحفَظ في تعريف الحقل (إعدادات القسم) ويُختار فورًا.
+  Future<void> _addOption(Map<String, dynamic> f, String label) async {
+    final c = TextEditingController();
+    final v = await showDialog<String>(context: context, builder: (dc) => AlertDialog(
+      title: Text(tr('إضافة $label', 'Add $label')),
+      content: TextField(controller: c, autofocus: true, decoration: InputDecoration(hintText: tr('$label الجديد…', 'New $label…'))),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(dc), child: Text(tr('إلغاء', 'Cancel'))),
+        FilledButton(onPressed: () => Navigator.pop(dc, c.text.trim()), child: Text(tr('إضافة', 'Add'))),
+      ],
+    ));
+    if (v == null || v.isEmpty) return;
+    try {
+      final d = await Api.instance.post('/api/shipment-orders/fields/${f['_id']}/options', {'ar': v});
+      final nf = Map<String, dynamic>.from(d['field'] ?? {});
+      if (!mounted) return;
+      final opts = List<Map<String, dynamic>>.from(nf['options'] ?? []);
+      final hit = opts.firstWhere((o) => o['ar'] == v || o['key'] == v, orElse: () => const {});
+      setState(() {
+        _fields = _fields.map((x) => x['_id'] == f['_id'] ? nf : x).toList();
+        _form['${f['key']}'] = hit.isEmpty ? v : '${hit['key']}';
+        if (f['key'] == 'fromCity' || f['key'] == 'toCity') _applyRoutePrice();
+      });
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e is ApiException ? e.message : tr('تعذّرت الإضافة', 'Could not add'))));
+    }
   }
 
   TextEditingController _ctrl(String key) =>
@@ -387,6 +482,10 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
   Future<void> _addSupplier() async {
     final nameC = TextEditingController();
     final phoneC = TextEditingController();
+    // سائقُه يُسجَّل معه — والفريلانسرُ بلا اسمِ سائقٍ هو نفسُه السائق.
+    final dNameC = TextEditingController();
+    final dPhoneC = TextEditingController();
+    final dIqamaC = TextEditingController();
     var type = 'company';
     final ok = await showDialog<bool>(
       context: context,
@@ -408,6 +507,13 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
                 ),
               ),
           ]),
+          const Divider(height: 20),
+          Align(alignment: AlignmentDirectional.centerStart, child: Text(tr('سائقُه (اختياري)', 'Its driver (optional)'), style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700))),
+          TextField(controller: dNameC, decoration: InputDecoration(labelText: tr('اسم السائق', 'Driver name'))),
+          const SizedBox(height: 6),
+          PhoneSA(controller: dPhoneC, label: tr('جوال السائق', 'Driver phone')),
+          const SizedBox(height: 6),
+          TextField(controller: dIqamaC, decoration: InputDecoration(labelText: tr('رقم الإقامة', 'Residence number'))),
         ]),
         actions: [
           TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('إلغاء', 'Cancel'))),
@@ -429,6 +535,34 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
         _vehicle = null;
         _savingSupplier = false;
       });
+      final drvName = dNameC.text.trim().isNotEmpty ? dNameC.text.trim() : (type == 'freelancer' ? nameC.text.trim() : '');
+      Map<String, dynamic>? savedDriver;
+      if (drvName.isNotEmpty) {
+        try {
+          final dd = await Api.instance.post('/api/shipment-orders/drivers', {
+            'name': drvName,
+            'phone': dPhoneC.text.trim().isNotEmpty ? saPhone(dPhoneC.text) : (type == 'freelancer' ? saPhone(phoneC.text) : ''),
+            'residenceNumber': dIqamaC.text.trim(),
+            'supplier': sup['_id'],
+          });
+          savedDriver = Map<String, dynamic>.from(dd['driver'] ?? {});
+          if (!mounted) return;
+          setState(() {
+            _drivers = [savedDriver!, ..._drivers];
+            _form['driverName'] = savedDriver['name'];
+            _ctrls.remove('driverName');
+            if ('${savedDriver['phone'] ?? ''}'.isNotEmpty) { _form['driverPhone'] = savedDriver['phone']; _ctrls.remove('driverPhone'); }
+          });
+        } catch (e) {
+          if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e is ApiException ? e.message : tr('سُجِّل المورّد ولم يُسجَّل السائق', 'Supplier saved, driver did not'))));
+        }
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr(
+          'سُجِّل المورد «${sup['name']}»${savedDriver != null ? ' وسائقُه «${savedDriver['name']}»' : ''} — تجدهما في صفحة المورّدين',
+          'Supplier “${sup['name']}”${savedDriver != null ? ' and driver “${savedDriver['name']}”' : ''} registered'))));
+      }
+      _loadDrivers();
     } catch (e) {
       if (!mounted) return;
       setState(() => _savingSupplier = false);
@@ -567,7 +701,8 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
     if (type == 'select' || type == 'cards') {
       final options = List<Map<String, dynamic>>.from(f['options'] ?? []);
       final current = (_form[k] ?? '').toString();
-      return DropdownButtonFormField<String>(
+      // ── وما ليس في القائمة يُضاف من مكانه (كالويب) — يُكتب في الإعدادات نفسِها.
+      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [DropdownButtonFormField<String>(
         initialValue: options.any((o) => o['key'] == current) ? current : null,
         isExpanded: true,
         decoration: deco,
@@ -586,7 +721,16 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
             if (pay.isNotEmpty) _form['paymentMethod'] = pay;
           }
         }),
-      );
+      ),
+        Align(
+          alignment: AlignmentDirectional.centerStart,
+          child: TextButton(
+            style: TextButton.styleFrom(visualDensity: VisualDensity.compact, padding: const EdgeInsets.symmetric(horizontal: 4)),
+            onPressed: () => _addOption(f, label),
+            child: Text('+ ${tr('إضافة $label', 'Add $label')}', style: const TextStyle(fontSize: 12, color: T.orange, fontWeight: FontWeight.w700)),
+          ),
+        ),
+      ]);
     }
 
     // ── و«يوم» غيرُ «لحظة» ──────────────────────────────────────────────────
@@ -714,6 +858,15 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
                           TextField(controller: _ncName, decoration: InputDecoration(labelText: tr('اسم العميل الجديد *', 'New customer name *'))),
                           const SizedBox(height: 8),
                           PhoneSA(controller: _ncPhone, label: tr('الهاتف', 'Phone')),
+                          const SizedBox(height: 6),
+                          Align(
+                            alignment: AlignmentDirectional.centerEnd,
+                            child: FilledButton.icon(
+                              onPressed: _savingCustomer ? null : _saveCustomer,
+                              icon: _savingCustomer ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.person_add_alt, size: 17),
+                              label: Text(tr('تسجيل العميل', 'Register customer')),
+                            ),
+                          ),
                         ],
                         const Divider(height: 18),
                         // ── والمورّدُ تحتَه كما في الويب ──────────────────
@@ -738,7 +891,7 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
                                   hint: tr('الاسم أو الجوّال أو السجل…', 'Name, phone or CR…'),
                                   initial: _suppliers,
                                 );
-                                if (sp != null) setState(() { _supplier = sp; _vehicle = null; });
+                                if (sp != null) { setState(() { _supplier = sp; _vehicle = null; }); _loadDrivers(); }
                               },
                               icon: const Icon(Icons.storefront_outlined, size: 17),
                               label: Text(_supplier == null ? tr('اختر المورّد…', 'Choose supplier…') : (_supplier!['name'] ?? '').toString(),
@@ -802,7 +955,7 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
                                 },
                                 hint: tr('اللوحة أو السائق أو بطاقة التشغيل…', 'Plate, driver or operation card…'),
                               );
-                              if (v != null) _applyVehicle(v);
+                              if (v != null) { _applyVehicle(v); _loadDrivers(); }
                             },
                             icon: const Icon(Icons.search, size: 17),
                             label: Text(_vehicle == null ? tr('اختر الشاحنة… (اختياري)', 'Choose truck… (optional)') : (_vehicle!['plate'] ?? '').toString(),
@@ -849,7 +1002,29 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
                             child: TextField(
                               controller: _ctrl('driverName'),
                               onChanged: (v) => _form['driverName'] = v,
-                              decoration: InputDecoration(labelText: tr('اسم السائق', 'Driver name')),
+                              decoration: InputDecoration(
+                                labelText: tr('اسم السائق', 'Driver name'),
+                                // المسجَّلون اقتراحاتٌ لا حصر: من ليس في السجلّ يُكتب اسمُه.
+                                suffixIcon: _drivers.isEmpty ? null : IconButton(
+                                  icon: const Icon(Icons.arrow_drop_down_circle_outlined, size: 20),
+                                  tooltip: tr('السوّاق المسجَّلون', 'Registered drivers'),
+                                  onPressed: () async {
+                                    final d = await _pickSheet<Map<String, dynamic>>(tr('السوّاق', 'drivers'), _drivers, (d) => '${d['name'] ?? ''}', sub: (d) {
+                                      final exp = '${d['driverCardExpiry'] ?? ''}'.length >= 10 ? '${d['driverCardExpiry']}'.substring(0, 10) : '';
+                                      final over = exp.isNotEmpty && (DateTime.tryParse(exp)?.isBefore(DateTime.now()) ?? false);
+                                      return [d['phone'], d['residenceNumber'], d['nationality'],
+                                        if (exp.isNotEmpty) over ? tr('بطاقة التشغيل منتهية $exp', 'Driver card expired $exp') : tr('بطاقة التشغيل حتى $exp', 'Card valid to $exp'),
+                                      ].where((e) => '${e ?? ''}'.isNotEmpty).join(' · ');
+                                    });
+                                    if (d == null) return;
+                                    setState(() {
+                                      _form['driverName'] = d['name'];
+                                      _ctrls.remove('driverName');
+                                      if ('${d['phone'] ?? ''}'.isNotEmpty) { _form['driverPhone'] = d['phone']; _ctrls.remove('driverPhone'); }
+                                    });
+                                  },
+                                ),
+                              ),
                             ),
                           ),
                           const SizedBox(width: 8),

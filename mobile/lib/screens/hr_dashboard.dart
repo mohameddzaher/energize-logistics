@@ -8,6 +8,9 @@ import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import '../ui/hr_quick.dart';
 import 'hr_employee_profile.dart';
+import 'hr_inbox.dart';
+import 'hr_master.dart';
+import 'hr_ops.dart';
 
 /// لوحة الموارد البشرية — native: the headline numbers, department split and
 /// the expiring-documents list, from the same endpoint the web dashboard uses.
@@ -41,7 +44,35 @@ class _HrDashboardScreenState extends State<HrDashboardScreen> {
   }
 
   Map<String, dynamic>? _m;
+  Map<String, dynamic>? _dept;
   Map<String, String> _filters = {};
+  int _seq = 0;
+
+  // ── كلُّ رقمٍ يفتح الصفوفَ التي وراءه، حاملًا فلترَ اللوحة ──────────────────
+  // «الهوية» هي المجموعة العامّة التي تعرض الموظّف ببياناته الأساسيّة (كالموقع).
+  void _open(String group, [Map<String, String> q = const {}]) => Navigator.push(context, MaterialPageRoute(
+      builder: (_) => HrMasterGroupScreen(group: group, initial: {..._filters, ...q})));
+  void _drill(Map<String, String> q) => _open('identity', q);
+  /// الانتهاءاتُ بالفلتر الحاليّ وبالمدّة التي عُدَّ بها الرقم (`alert.warnDays`).
+  void _openExpiring([String? state]) {
+    final wd = ((_m?['alert'] as Map?) ?? const {})['warnDays'];
+    Navigator.push(context, MaterialPageRoute(builder: (_) => HrExpiringScreen(initial: {
+      ..._filters, if (wd != null) 'withinDays': '$wd', if (state != null) 'state': state,
+    })));
+  }
+  void _push(Widget w) => Navigator.push(context, MaterialPageRoute(builder: (_) => w));
+
+  /// «يعمل» بنصفيه: يعمل · إجازة — كسطر التفصيل في الموقع.
+  void _dutyHalf(String half) {
+    final dd = ((((_m?['totals'] as Map?) ?? const {})['onDutyDetail'] as Map?)?[half] as Map?) ?? const {};
+    showModalBottomSheet(context: context, builder: (c) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
+      ListTile(title: Text(half == 'sponsored' ? tr('على الكفالة', 'Sponsored') : tr('فريلانسر', 'Freelance'), style: const TextStyle(fontWeight: FontWeight.w800))),
+      ListTile(leading: const Icon(Icons.work_outline, color: T.success), title: Text(tr('يعمل', 'Working')), trailing: Text('${dd['working'] ?? 0}'),
+          onTap: () { Navigator.pop(c); _drill({'employment': 'working', 'engagement': half}); }),
+      ListTile(leading: const Icon(Icons.beach_access_outlined, color: T.info), title: Text(tr('إجازة', 'On leave')), trailing: Text('${dd['leave'] ?? 0}'),
+          onTap: () { Navigator.pop(c); _drill({'employment': 'leave', 'engagement': half}); }),
+    ])));
+  }
 
   /// كارتٌ برقمه، وتحته نصفاه: على الكفالة · فريلانسر (من «رقم السجل التجاري»).
   Widget _halfCard(String label, dynamic value, Map<String, dynamic> mt, String key, Color c,
@@ -78,6 +109,7 @@ class _HrDashboardScreenState extends State<HrDashboardScreen> {
   }
 
   Future<void> _load() async {
+    final mine = ++_seq;
     try {
       // فلترُ اللوحة (القسم، المدينة، حالة العمل، المشروع، الجنسية) يُرسَل مع الطلبين —
       // فيُحسَب عليه كلُّ رقمٍ عن الموظّفين، كالموقع. راجع ui/hr_quick.dart.
@@ -87,11 +119,44 @@ class _HrDashboardScreenState extends State<HrDashboardScreen> {
       // كروتُ اللوحة بنصفيها (على الكفالة · فريلانسر) — من نظرة الموارد البشريّة نفسِها.
       Map<String, dynamic>? m;
       try { m = Map<String, dynamic>.from(await Api.instance.get('/api/hr/master/overview$qs') as Map); } catch (_) {}
-      if (!mounted) return;
-      setState(() { _d = Map<String, dynamic>.from(d); _m = m; _loading = false; _error = null; });
+      // تحليلُ الأقسام يقرأ الفلترَ نفسَه — فلا يبقى رقمان على مجموعتين.
+      Map<String, dynamic>? dep;
+      try { dep = Map<String, dynamic>.from(await Api.instance.get('/api/hr/master/by-department$qs') as Map); } catch (_) {}
+      if (!mounted || mine != _seq) return;
+      setState(() { _d = Map<String, dynamic>.from(d); _m = m; _dept = dep ?? _dept; _loading = false; _error = null; });
     } catch (e) {
-      if (mounted) setState(() { _loading = false; _error = e.toString(); });
+      if (mounted && mine == _seq) setState(() { _loading = false; _error = e.toString(); });
     }
+  }
+
+  /// شريطُ التنقّل بين صفحات الماستر — MasterNav: الرقمُ = المنتهي والقريب.
+  Widget _masterNav() {
+    final groups = List<Map<String, dynamic>>.from(_m?['groups'] ?? const []);
+    final scope = Map<String, dynamic>.from((_m?['expiryScope'] as Map?) ?? const {});
+    final exp = ((_m?['totals'] as Map?) ?? const {})['expiringSoon'] ?? 0;
+    Widget chip(String label, VoidCallback onTap, {int? count, IconData? icon}) => Padding(
+          padding: const EdgeInsetsDirectional.only(end: 6),
+          child: ActionChip(
+            avatar: icon == null ? null : Icon(icon, size: 16, color: T.navy),
+            label: Text(count == null ? label : '$label  $count', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: (count ?? 0) > 0 ? T.danger : T.ink)),
+            onPressed: onTap,
+          ),
+        );
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(children: [
+        chip(tr('الانتهاءات', 'Expiries'), () => _openExpiring(), count: (exp as num).toInt(), icon: Icons.event_busy_outlined),
+        chip(tr('الماستر', 'Master grid'), () => _push(const HrMasterGridScreen()), icon: Icons.grid_on_outlined),
+        for (final g in groups)
+          chip(Lang.instance.ar ? '${g['ar']}' : '${g['en']}', () {
+            final n = g['needsAttention'];
+            Navigator.push(context, MaterialPageRoute(builder: (_) => HrMasterGroupScreen(group: '${g['key']}',
+                initial: (n is num && n > 0) ? {'state': 'attention', for (final e in scope.entries) e.key: '${e.value}'} : const {})));
+          }, count: g['needsAttention'] is num ? (g['needsAttention'] as num).toInt() : null),
+        chip(tr('العهد', 'Custody'), () => _push(const HrCustodyScreen()), icon: Icons.devices_other_outlined),
+        chip(tr('الإعدادات', 'Settings'), () => _push(const HrSettingsScreen()), icon: Icons.settings_outlined),
+      ]),
+    );
   }
 
   @override
@@ -121,43 +186,46 @@ class _HrDashboardScreenState extends State<HrDashboardScreen> {
                         const SizedBox(height: 6),
                         HrQuickFilters(value: _filters, onChanged: (v) { setState(() => _filters = v); _load(); }),
                       ])),
+                      const SizedBox(height: 8),
+                      _masterNav(),
                       const SizedBox(height: 10),
                       Row(children: [
-                        Expanded(child: FadeSlideIn(child: StatCard(label: tr('إجمالي الموظفين', 'Employees'), value: s['totalEmployees'] ?? 0, color: T.navy, icon: Icons.groups_outlined))),
+                        Expanded(child: FadeSlideIn(child: Pressable(onTap: () => _open('identity'), child: StatCard(label: tr('إجمالي الموظفين', 'Employees'), value: mt?['employees'] ?? s['totalEmployees'] ?? 0, color: T.navy, icon: Icons.groups_outlined)))),
                         const SizedBox(width: 10),
-                        Expanded(child: FadeSlideIn(delayMs: 60, child: StatCard(label: tr('على رأس العمل', 'Active'), value: s['activeEmployees'] ?? 0, color: T.success, icon: Icons.task_alt_outlined))),
+                        Expanded(child: FadeSlideIn(delayMs: 60, child: Pressable(onTap: () => _drill({'employment': 'working'}), child: StatCard(label: tr('على رأس العمل', 'Active'), value: s['activeEmployees'] ?? 0, color: T.success, icon: Icons.task_alt_outlined)))),
                       ]),
                       const SizedBox(height: 10),
                       Row(children: [
                         Expanded(child: FadeSlideIn(delayMs: 120, child: StatCard(label: tr('في إجازة', 'On leave'), value: s['onLeaveCount'] ?? 0, color: T.info, icon: Icons.beach_access_outlined))),
                         const SizedBox(width: 10),
-                        Expanded(child: FadeSlideIn(delayMs: 160, child: StatCard(label: tr('إجازات قيد المراجعة', 'Pending leaves'), value: s['pendingLeaves'] ?? 0, color: T.warn, icon: Icons.hourglass_top_outlined))),
+                        Expanded(child: FadeSlideIn(delayMs: 160, child: Pressable(onTap: () => _push(const HrLeavesScreen()), child: StatCard(label: tr('إجازات قيد المراجعة', 'Pending leaves'), value: s['pendingLeaves'] ?? 0, color: T.warn, icon: Icons.hourglass_top_outlined)))),
                         const SizedBox(width: 10),
-                        Expanded(child: FadeSlideIn(delayMs: 200, child: StatCard(label: tr('طلبات مفتوحة', 'Open requests'), value: s['openRequests'] ?? 0, color: T.violet, icon: Icons.mark_email_unread_outlined))),
+                        Expanded(child: FadeSlideIn(delayMs: 200, child: Pressable(onTap: () => _push(const HrRequestsScreen()), child: StatCard(label: tr('طلبات مفتوحة', 'Open requests'), value: s['openRequests'] ?? 0, color: T.violet, icon: Icons.mark_email_unread_outlined)))),
                       ]),
                       const SizedBox(height: 10),
                       Row(children: [
-                        Expanded(child: FadeSlideIn(delayMs: 240, child: StatCard(label: tr('مستندات منتهية', 'Expired docs'), value: s['expiredDocsCount'] ?? 0, color: T.danger, icon: Icons.error_outline))),
+                        Expanded(child: FadeSlideIn(delayMs: 240, child: Pressable(onTap: () => _openExpiring('expired'), child: StatCard(label: tr('مستندات منتهية', 'Expired docs'), value: s['expiredDocsCount'] ?? 0, color: T.danger, icon: Icons.error_outline)))),
                         const SizedBox(width: 10),
-                        Expanded(child: FadeSlideIn(delayMs: 280, child: StatCard(label: tr('عهد بعهدة الموظفين', 'Assigned assets'), value: s['assignedAssets'] ?? 0, color: T.cyan, icon: Icons.devices_other_outlined))),
+                        Expanded(child: FadeSlideIn(delayMs: 280, child: Pressable(onTap: () => _push(const HrCustodyScreen()), child: StatCard(label: tr('عهد بعهدة الموظفين', 'Assigned assets'), value: s['assignedAssets'] ?? 0, color: T.cyan, icon: Icons.devices_other_outlined)))),
                       ]),
                       // ── كروتُ الموقع بنصفيها: على الكفالة · فريلانسر ──
                       if (mt != null) ...[
                         const SizedBox(height: 10),
-                        _halfCard(tr('يعمل', 'Working'), mt['active'], mt, 'active', T.success, onHalf: (k) {
-                          final dd = ((mt['onDutyDetail'] as Map?)?[k] as Map?) ?? const {};
-                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
-                            '${k == 'sponsored' ? tr('على الكفالة', 'Sponsored') : tr('فريلانسر', 'Freelance')}: ${tr('يعمل', 'working')} ${dd['working'] ?? 0} · ${tr('إجازة', 'on leave')} ${dd['leave'] ?? 0}')));
-                        }),
+                        _halfCard(tr('يعمل', 'Working'), mt['active'], mt, 'active', T.success,
+                            onTap: () => _drill({'employment': 'working'}), onHalf: _dutyHalf),
                         const SizedBox(height: 8),
                         _halfCard(tr('لا يعمل — داخل النظام', 'Not working — in system'), mt['noKind'], mt, 'noKind', T.inkSoft,
-                            sub: tr('بلا حالة محدّدة · ينتظر الخروج من النظام', 'no status set · awaiting system exit')),
+                            sub: tr('بلا حالة محدّدة · ينتظر الخروج من النظام', 'no status set · awaiting system exit'),
+                            onTap: () => _drill({'employment': 'nokind'}), onHalf: (k) => _drill({'employment': 'nokind', 'engagement': k})),
                         const SizedBox(height: 8),
-                        _halfCard(tr('لا يعمل — انتظار نقل الكفالة', 'Not working — awaiting transfer'), mt['transfer'], mt, 'transfer', T.warn),
+                        _halfCard(tr('لا يعمل — انتظار نقل الكفالة', 'Not working — awaiting transfer'), mt['transfer'], mt, 'transfer', T.warn,
+                            onTap: () => _open('iqama', {'employment': 'transfer'}), onHalf: (k) => _open('iqama', {'employment': 'transfer', 'engagement': k})),
                         const SizedBox(height: 8),
-                        _halfCard(tr('لا يعمل — خروج نهائي', 'Not working — final exit'), mt['finalExit'], mt, 'finalExit', T.danger),
+                        _halfCard(tr('لا يعمل — خروج نهائي', 'Not working — final exit'), mt['finalExit'], mt, 'finalExit', T.danger,
+                            onTap: () => _drill({'employment': 'final_exit'}), onHalf: (k) => _drill({'employment': 'final_exit', 'engagement': k})),
                         const SizedBox(height: 8),
-                        _halfCard(tr('شركة شقيقة', 'Sister company'), mt['sister'], mt, 'sister', T.cyan),
+                        _halfCard(tr('شركة شقيقة', 'Sister company'), mt['sister'], mt, 'sister', T.cyan,
+                            onTap: () => _drill({'employment': 'sister'}), onHalf: (k) => _drill({'employment': 'sister', 'engagement': k})),
                         // والخمسةُ مجموعُها إجماليُّ الموظفين — يُقال صراحةً.
                         Padding(
                           padding: const EdgeInsets.only(top: 4),
@@ -166,6 +234,32 @@ class _HrDashboardScreenState extends State<HrDashboardScreen> {
                         ),
                         const Divider(height: 20),
                         // والأرشيفُ ليس هنا — صفحتُه وحدَها في قسم الموارد البشريّة.
+                        _halfCard(tr('خانات مطلوبة', 'Required fields'), mt['required'], mt, 'required', T.danger,
+                            onTap: () => _open('required', {'status': 'required'}), onHalf: (k) => _open('required', {'status': 'required', 'engagement': k})),
+                        const SizedBox(height: 8),
+                        _halfCard(tr('مستندات منتهية أو قريبة الانتهاء', 'Expired or expiring documents'), mt['expiringSoon'], mt, 'expiringSoon', const Color(0xFFEA580C),
+                            onTap: () => _openExpiring()),
+                        if (mt['expiringStates'] is Map)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 6),
+                            child: Wrap(spacing: 6, children: [
+                              for (final k in const ['expired', 'critical', 'warning'])
+                                ActionChip(
+                                  label: Text('${hrStateLabel(k)} ${(mt['expiringStates'] as Map)[k] ?? 0}', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: hrStateColor(k))),
+                                  onPressed: () => _openExpiring(k),
+                                ),
+                            ]),
+                          ),
+                        const SizedBox(height: 8),
+                        _halfCard(tr('مسجّل بالتأمينات', 'GOSI registered'), mt['gosiRegistered'], mt, 'gosiRegistered', T.info,
+                            onTap: () => _open('socialInsurance', {'field': 'gosiNumber', 'status': 'filled'}),
+                            onHalf: (k) => _open('socialInsurance', {'field': 'gosiNumber', 'status': 'filled', 'engagement': k})),
+                        const SizedBox(height: 8),
+                        _halfCard(tr('خارج المملكة', 'Outside kingdom'), mt['outsideKingdom'], mt, 'outsideKingdom', T.inkSoft,
+                            onTap: () => _drill({'outsideKingdom': '1'}), onHalf: (k) => _drill({'outsideKingdom': '1', 'engagement': k})),
+                        const SizedBox(height: 8),
+                        Pressable(onTap: () => _drill({'engagement': 'freelance'}),
+                            child: StatCard(label: tr('فريلانسر', 'Freelancers'), value: mt['freelancers'] ?? 0, color: T.ink, icon: Icons.work_outline)),
                       ],
                       // ── العقود التي تحتاج انتباهًا — مطابقٌ للوحة الموقع ──
                       if (((s['noContractCount'] ?? 0) as num) > 0 || ((s['lapsedContractsCount'] ?? 0) as num) > 0) ...[
@@ -181,6 +275,62 @@ class _HrDashboardScreenState extends State<HrDashboardScreen> {
                             child: StatCard(label: tr('عقود منتهية لم تُجدَّد', 'Expired, not renewed'), value: s['lapsedContractsCount'] ?? 0, color: T.warn, icon: Icons.event_busy_outlined),
                           )),
                         ]),
+                      ],
+                      // ── تحليلُ الأقسام: «أيُّ الأقسام أسوأ؟» ──
+                      if (_dept != null && (_dept!['departments'] as List? ?? const []).isNotEmpty) ...[
+                        const SizedBox(height: 14),
+                        HrDeptAnalysis(
+                          data: _dept!,
+                          active: _filters['department'] ?? '',
+                          onOpen: _drill,
+                          onFilter: (dept) {
+                            // الضغطةُ الثانيةُ على القسم نفسِه ترفع القصرَ عنه.
+                            setState(() { if (_filters['department'] == dept) { _filters.remove('department'); } else { _filters = {..._filters, 'department': dept}; } });
+                            _load();
+                          },
+                        ),
+                      ],
+                      // ── ابدأ من هنا — أكثر البيانات نقصًا ──
+                      if ((_m?['topRequired'] as List? ?? const []).isNotEmpty) ...[
+                        const SizedBox(height: 12),
+                        AppCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Text(tr('ابدأ من هنا — أكثر البيانات نقصًا', 'Start here — most missing'), style: const TextStyle(fontWeight: FontWeight.w800)),
+                          const SizedBox(height: 8),
+                          Wrap(spacing: 6, runSpacing: 6, children: [
+                            for (final f in List<Map<String, dynamic>>.from(_m!['topRequired']))
+                              ActionChip(
+                                backgroundColor: T.danger.withValues(alpha: 0.06),
+                                label: Text('${f['required']} · ${Lang.instance.ar ? f['ar'] : f['en']} (${f['groupAr'] ?? ''})', style: const TextStyle(fontSize: 11.5, color: T.danger, fontWeight: FontWeight.w700)),
+                                onPressed: () => _open('${f['groupKey']}', {'field': '${f['key']}', 'status': 'required'}),
+                              ),
+                          ]),
+                        ])),
+                      ],
+                      // ── المستندات ومواعيد انتهائها — حالاتُ كلّ مجموعة تفتح صفوفَها ──
+                      if ((_m?['groups'] as List? ?? const []).any((g) => (g as Map)['document'] == true)) ...[
+                        const SizedBox(height: 12),
+                        AppCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Text(tr('المستندات ومواعيد انتهائها', 'Documents and their expiry'), style: const TextStyle(fontWeight: FontWeight.w800)),
+                          for (final g in List<Map<String, dynamic>>.from(_m!['groups']).where((g) => g['document'] == true))
+                            Padding(
+                              padding: const EdgeInsets.only(top: 8),
+                              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                InkWell(onTap: () => _open('${g['key']}'), child: Text(Lang.instance.ar ? '${g['ar']}' : '${g['en']}', style: const TextStyle(fontWeight: FontWeight.w700, color: T.navy))),
+                                Wrap(spacing: 6, runSpacing: 4, children: [
+                                  for (final k in const ['expired', 'critical', 'warning', 'valid', 'missing'])
+                                    if ((((g['states'] as Map?) ?? const {})[k] ?? 0) as num > 0)
+                                      ActionChip(
+                                        visualDensity: VisualDensity.compact,
+                                        label: Text('${hrStateLabel(k)} ${(g['states'] as Map)[k]}', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: hrStateColor(k))),
+                                        onPressed: () => _open('${g['key']}', {
+                                          for (final e in ((_m?['expiryScope'] as Map?) ?? const {}).entries) '${e.key}': '${e.value}',
+                                          'state': k,
+                                        }),
+                                      ),
+                                ]),
+                              ]),
+                            ),
+                        ])),
                       ],
                       const SizedBox(height: 14),
                       // By department

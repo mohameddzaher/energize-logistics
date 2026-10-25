@@ -6,6 +6,8 @@ import '../ui/app_scaffold.dart';
 import '../ui/contact.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import 'fleet_customer_presence.dart';
+import '../ui/portal_account_card.dart';
 
 /// ملفُّ العميل — مطابقٌ لصفحة الويب /system/shipment-orders/customers/[id]
 /// و/system/operations/customers/[id] (وهما شاشةٌ واحدة).
@@ -195,6 +197,11 @@ class _CustomerRegistryProfileScreenState extends State<CustomerRegistryProfileS
                           _tile(tr('آخر عمل', 'Last work'), _day(a['lastAt']), T.cyan, Icons.event_available_outlined),
                         ],
                       ),
+                      const SizedBox(height: 12),
+                      // «نفس العميل في: …» وحسابُ البوابة — كملفّ العميل على الويب.
+                      CustomerPresence(reg: 'shipment', id: widget.customerId, onChanged: _load),
+                      const SizedBox(height: 8),
+                      PortalAccountCard(source: 'shipment_order_customer', refId: widget.customerId, name: c['name']?.toString()),
                       const SizedBox(height: 12),
 
                       AppCard(

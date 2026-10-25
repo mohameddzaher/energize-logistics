@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../services/api.dart';
 import '../services/lang.dart';
@@ -8,6 +9,10 @@ import '../ui/widgets.dart';
 import '../ui/customs_link.dart';
 import '../ui/report_follow_ups.dart';
 import 'collection_attachments.dart';
+import 'collections_invoices.dart' show CollectionsTaxInvoiceScreen;
+import 'collections_party.dart';
+import 'ops_workflow_detail.dart';
+import '../ui/export_sheet.dart';
 import '../resource/configs.dart' show collectionsCanEdit;
 
 // ── تفاصيلُ المديونيّة — شاشةُ كلِّ رقمٍ في لوحة التحصيل ─────────────────────
@@ -617,22 +622,36 @@ class CollectionsCasesScreen extends StatefulWidget {
 class _CollectionsCasesScreenState extends State<CollectionsCasesScreen> {
   Map<String, dynamic>? _data;
   String? _error;
-  String _state = '';
+  // الفلاترُ متعدّدةُ القيم كالموقع: الحالة، مسؤول التحصيل، نوع الدفع، الاستحقاق.
+  final Set<String> _state = {}, _officer = {}, _pay = {}, _due = {};
   String _q = '';
-  int _seq = 0;
+  int _seq = 0, _miniSeq = 0;
+  String _busy = '';
+  // فواتيرُ عميلٍ تُفتَح تحت صفّه.
+  String _open = '';
+  Map<String, dynamic>? _mini;
+  Timer? _tick;
   void Function()? _onLive;
 
   @override
   void initState() {
     super.initState();
     _load();
-    _onLive = () => _load();
-    Live.instance.on('collections:changed', _onLive!);
+    _onLive = () {
+      _tick?.cancel();
+      _tick = Timer(const Duration(milliseconds: 800), _load);
+    };
+    for (final e in const ['collections:changed', 'collections:party', 'workflow:updated']) {
+      Live.instance.on(e, _onLive!);
+    }
   }
 
   @override
   void dispose() {
-    if (_onLive != null) Live.instance.off('collections:changed', _onLive!);
+    for (final e in const ['collections:changed', 'collections:party', 'workflow:updated']) {
+      Live.instance.off(e, _onLive!);
+    }
+    _tick?.cancel();
     super.dispose();
   }
 
@@ -640,7 +659,10 @@ class _CollectionsCasesScreenState extends State<CollectionsCasesScreen> {
     final mine = ++_seq;
     try {
       final d = await Api.instance.get('/api/collections-dept/receivables/cases?${[
-        if (_state.isNotEmpty) 'state=$_state',
+        if (_state.isNotEmpty) 'state=${_state.join(',')}',
+        if (_officer.isNotEmpty) 'officer=${Uri.encodeQueryComponent(_officer.join(','))}',
+        if (_pay.isNotEmpty) 'pay=${_pay.join(',')}',
+        if (_due.isNotEmpty) 'dueState=${_due.join(',')}',
         if (_q.isNotEmpty) 'q=${Uri.encodeQueryComponent(_q)}',
       ].join('&')}');
       if (!mounted || mine != _seq) return;
@@ -650,23 +672,197 @@ class _CollectionsCasesScreenState extends State<CollectionsCasesScreen> {
     }
   }
 
+  Future<void> _toggle(Map<String, dynamic> p) async {
+    final key = '${p['key']}';
+    if (_open == key) { setState(() => _open = ''); return; }
+    setState(() { _open = key; _mini = null; });
+    final mine = ++_miniSeq;
+    try {
+      final d = await Api.instance.get('/api/collections-dept/receivables/rows?${[
+        'parties=${Uri.encodeQueryComponent(key)}', 'issue=${p['state']}', 'limit=50',
+        if (_pay.isNotEmpty) 'pay=${_pay.join(',')}',
+        if (_due.isNotEmpty) 'dueState=${_due.join(',')}',
+      ].join('&')}');
+      if (!mounted || mine != _miniSeq) return;
+      setState(() => _mini = {'key': key, 'rows': d['rows'] ?? const [], 'total': d['total'] ?? 0});
+    } catch (e) {
+      if (mounted && mine == _miniSeq) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e is ApiException ? e.message : tr('تعذّر التحميل', 'Could not load'))));
+      }
+    }
+  }
+
+  void _openReceivables(Map<String, dynamic> p) => Navigator.push(context, MaterialPageRoute(builder: (_) => CollectionsReceivablesScreen(
+        title: '${p['name']}',
+        query: {
+          'parties': '${p['key']}', 'issue': '${p['state']}',
+          if (_pay.isNotEmpty) 'pay': _pay.join(','),
+          if (_due.isNotEmpty) 'dueState': _due.join(','),
+        },
+      )));
+
+  /// تحت التفاوض أو قضايا — ببيانٍ يُكتب؛ أو رفعُ الحالة.
+  Future<void> _setIssue(Map<String, dynamic> p, String next) async {
+    var note = '';
+    if (next != 'none') {
+      final ctrl = TextEditingController(text: '${p['state']}' == next ? '${p['note'] ?? ''}' : '');
+      final v = await showDialog<String>(
+        context: context,
+        builder: (c) => AlertDialog(
+          title: Text(next == 'legal' ? tr('قضايا', 'Legal') : tr('تحت التفاوض', 'Negotiating')),
+          content: TextField(controller: ctrl, autofocus: true, maxLines: 3, minLines: 1, decoration: InputDecoration(
+            labelText: next == 'legal' ? tr('رقمُ القضيّة أو بيانُها — «${p['name']}»', 'Case number or details — “${p['name']}”')
+                : tr('ما المتَّفقُ عليه مع «${p['name']}»؟', 'What was agreed with “${p['name']}”?'),
+          )),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(c), child: Text(tr('إلغاء', 'Cancel'))),
+            FilledButton(onPressed: () => Navigator.pop(c, ctrl.text.trim()), child: Text(tr('حفظ', 'Save'))),
+          ],
+        ),
+      );
+      ctrl.dispose();
+      if (v == null || v.isEmpty) return;
+      note = v;
+    }
+    setState(() => _busy = '${p['key']}');
+    try {
+      await Api.instance.put('/api/collections-dept/parties/${p['party']}/issue', {'state': next, 'note': note});
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(next == 'none' ? tr('رُفعت الحالة', 'Cleared') : tr('سُجِّلت الحالة', 'Recorded'))));
+      await _load();
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e is ApiException ? e.message : tr('تعذّر الحفظ', 'Could not save'))));
+    }
+    if (mounted) setState(() => _busy = '');
+  }
+
+  Future<void> _pickMulti(String title, List<(String, String)> opts, Set<String> sel) async {
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (c) => StatefulBuilder(builder: (c, set) => SafeArea(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: MediaQuery.of(c).size.height * 0.7),
+          child: ListView(shrinkWrap: true, children: [
+            ListTile(title: Text(title, style: const TextStyle(fontWeight: FontWeight.w800)),
+                trailing: TextButton(onPressed: () => Navigator.pop(c), child: Text(tr('تم', 'Done')))),
+            for (final o in opts)
+              CheckboxListTile(
+                value: sel.contains(o.$1), title: Text(o.$2),
+                onChanged: (_) => set(() { if (!sel.remove(o.$1)) sel.add(o.$1); }),
+              ),
+          ]),
+        ),
+      )),
+    );
+    setState(() {});
+    _load();
+  }
+
+  Widget _filter(String label, Set<String> sel, List<(String, String)> opts) => Padding(
+        padding: const EdgeInsetsDirectional.only(end: 6),
+        child: InputChip(
+          label: Text(sel.isEmpty ? label : '$label (${sel.length})'),
+          selected: sel.isNotEmpty,
+          onPressed: () => _pickMulti(label, opts, sel),
+          onDeleted: sel.isEmpty ? null : () { setState(sel.clear); _load(); },
+        ),
+      );
+
+  static String _stateLabel(String s) => s == 'legal' ? tr('قضايا', 'Legal') : tr('تحت التفاوض', 'Negotiating');
+
+  List<ExportCol> get _cols => [
+        ExportCol('العميل', 'Customer', (r) => r['name']),
+        ExportCol('الكود', 'Code', (r) => r['code']),
+        ExportCol('الحالة', 'State', (r) => _stateLabel('${r['state']}')),
+        ExportCol('البيان', 'Note', (r) => r['note']),
+        ExportCol('منذ', 'Since', (r) => _date(r['since'])),
+        ExportCol('سجّلها', 'Recorded by', (r) => r['updatedByName']),
+        ExportCol('مسؤول التحصيل', 'Collector', (r) => r['officer']),
+        ExportCol('فواتير مفتوحة', 'Open invoices', (r) => r['count']),
+        ExportCol('المديونية', 'Outstanding', (r) => r['value']),
+        ExportCol('منها متأخر', 'Of which late', (r) => r['lateValue']),
+        ExportCol('منها مرتفع الخطورة', 'Of which hard risk', (r) => r['hardValue']),
+        ExportCol('أقدم عمر (يوم)', 'Oldest (days)', (r) => r['oldest']),
+      ];
+
+  Widget _miniRows(Map<String, dynamic> p) {
+    final bands = (p['bands'] as Map?) ?? const {};
+    final m = _mini;
+    final rows = m != null && m['key'] == p['key'] ? [for (final r in (m['rows'] as List)) Map<String, dynamic>.from(r as Map)] : null;
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      const Divider(),
+      // شرائحُ العمر لهذا العميل — قيمٌ لا ألوان.
+      Wrap(spacing: 10, runSpacing: 2, children: [
+        for (final b in const ['d1_15', 'd16_30', 'd31_60', 'd61_90', 'd91_plus'])
+          Text('${_lbl(_bandLabels, b)}: ${_money(bands[b])}', style: const TextStyle(fontSize: 11.5, color: T.inkSoft)),
+        Text('${tr('المدّة', 'Term')}: ${p['term'] ?? '—'}${(p['creditDays'] ?? 0) == 0 ? ' (${tr('افتراضية', 'default')})' : ''}',
+            style: const TextStyle(fontSize: 11.5, color: T.inkSoft)),
+      ]),
+      const SizedBox(height: 6),
+      if (rows == null)
+        Text(tr('جارٍ التحميل…', 'Loading…'), style: const TextStyle(fontSize: 12, color: T.inkFaint))
+      else if (rows.isEmpty)
+        Text(tr('لا فواتير مفتوحة', 'No open invoices'), style: const TextStyle(fontSize: 12, color: T.inkFaint))
+      else
+        for (final r in rows)
+          InkWell(
+            onTap: () {
+              if ('${r['kind']}' == 'tax') {
+                Navigator.push(context, MaterialPageRoute(builder: (_) => CollectionsTaxInvoiceScreen(invoiceNumber: '${r['invoiceNumber']}')));
+              } else if ('${r['workflowId'] ?? ''}'.isNotEmpty) {
+                Navigator.push(context, MaterialPageRoute(builder: (_) => OpsWorkflowDetailScreen(id: '${r['workflowId']}')));
+              }
+            },
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Row(children: [
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text('${r['invoiceNumber'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.w700, color: T.orange, fontSize: 12.5)),
+                    Text([
+                      _lbl(_payLabels, '${r['payKind'] ?? ''}'),
+                      '${tr('الإصدار', 'Issued')} ${_date(r['invoiceDate'])}',
+                      '${tr('التسليم', 'Delivered')} ${_date(r['deliveryDate'])}',
+                      '${tr('الاستحقاق', 'Due')} ${_date(r['dueDate'])}',
+                      '${tr('العمر', 'Age')} ${r['age'] ?? '—'}',
+                      if ((r['daysLate'] is num) && (r['daysLate'] as num) > 0) '${tr('التأخير', 'Late')} ${r['daysLate']}',
+                    ].join(' · '), style: const TextStyle(fontSize: 11, color: T.inkFaint)),
+                  ]),
+                ),
+                Text(_money(r['total']), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12.5)),
+              ]),
+            ),
+          ),
+      if (m != null && m['key'] == p['key'] && ((m['total'] as num?) ?? 0) > (rows?.length ?? 0))
+        TextButton(
+          onPressed: () => _openReceivables(p),
+          child: Text(tr('يُعرَض ${rows?.length ?? 0} من ${m['total']} — افتح الكلّ', 'Showing ${rows?.length ?? 0} of ${m['total']} — open all')),
+        ),
+    ]);
+  }
+
   @override
   Widget build(BuildContext context) {
     final parties = [for (final p in (_data?['parties'] as List? ?? const [])) Map<String, dynamic>.from(p as Map)];
     final summary = (_data?['summary'] as Map?) ?? const {};
+    final officers = [for (final o in (_data?['officers'] as List? ?? const [])) '$o'];
+    final manager = '${((_data?['manager'] as Map?) ?? const {})['name'] ?? ''}';
+    final totalValue = parties.fold<num>(0, (a, p) => a + ((p['value'] as num?) ?? 0));
+    final active = _state.length + _officer.length + _pay.length + _due.length + (_q.isNotEmpty ? 1 : 0);
     Widget card(String s) {
       final n = (summary[s] as Map?) ?? const {};
-      final on = _state == s;
+      final on = _state.length == 1 && _state.contains(s);
       return Expanded(
         child: Pressable(
-          onTap: () { setState(() => _state = on ? '' : s); _load(); },
+          onTap: () { setState(() { _state.clear(); if (!on) _state.add(s); }); _load(); },
           child: AppCard(
             padding: const EdgeInsets.all(12),
+            topAccent: on ? T.orange : null,
             child: Column(children: [
               Text(_lbl(_issueLabels, s), style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: on ? T.ink : T.inkSoft)),
               const SizedBox(height: 4),
               Text(_money(n['value']), style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900)),
-              Text('${_money(n['customers'])} ${tr('عميل', 'customers')} · ${_money(n['count'])} ${tr('فاتورة', 'invoices')}',
+              Text('${_money(n['customers'])} ${tr('عميل', 'customers')} · ${_money(n['count'])} ${tr('فاتورة مفتوحة', 'open invoices')}',
                   style: const TextStyle(fontSize: 11, color: T.inkFaint)),
             ]),
           ),
@@ -676,6 +872,10 @@ class _CollectionsCasesScreenState extends State<CollectionsCasesScreen> {
 
     return AppScaffold(
       title: Text(tr('القضايا', 'Cases')),
+      actions: [
+        if (parties.isNotEmpty)
+          ExportButton(fileName: 'collections-cases', sheetName: tr('القضايا', 'Cases'), columns: _cols, rows: () => parties),
+      ],
       body: _data == null && _error == null
           ? ListView(padding: const EdgeInsets.all(14), children: const [Shimmer(height: 90), SizedBox(height: 10), Shimmer()])
           : _error != null && _data == null
@@ -688,38 +888,91 @@ class _CollectionsCasesScreenState extends State<CollectionsCasesScreen> {
                     TextField(
                       textInputAction: TextInputAction.search,
                       decoration: InputDecoration(isDense: true, prefixIcon: const Icon(Icons.search, size: 18), hintText: tr('اسم العميل أو كوده…', 'Customer or code…')),
-                      onSubmitted: (v) { _q = v.trim(); _load(); },
+                      onChanged: (v) {
+                        _tick?.cancel();
+                        _tick = Timer(const Duration(milliseconds: 350), () { _q = v.trim(); _load(); });
+                      },
                     ),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 8),
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(children: [
+                        _filter(tr('الحالة', 'State'), _state, [('negotiating', _stateLabel('negotiating')), ('legal', _stateLabel('legal'))]),
+                        _filter(tr('مسؤول التحصيل', 'Collector'), _officer,
+                            [for (final o in officers) (o, o == manager ? '$o — ${tr('مدير القسم', 'Dept. manager')}' : o)]),
+                        _filter(tr('نوع الدفع', 'Payment type'), _pay, [for (final e in _payLabels.entries) (e.key, tr(e.value.$1, e.value.$2))]),
+                        _filter(tr('الاستحقاق', 'Due status'), _due, [for (final e in _dueLabels.entries) (e.key, tr(e.value.$1, e.value.$2))]),
+                        if (active > 0)
+                          TextButton.icon(
+                            onPressed: () { setState(() { _state.clear(); _officer.clear(); _pay.clear(); _due.clear(); }); _load(); },
+                            icon: const Icon(Icons.close, color: T.danger),
+                            label: Text(tr('إزالة الفلاتر ($active)', 'Clear filters ($active)'), style: const TextStyle(color: T.danger)),
+                          ),
+                      ]),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 6),
+                      child: Text(tr('${parties.length} عميل · ${_money(totalValue)}', '${parties.length} customers · ${_money(totalValue)}'),
+                          style: const TextStyle(fontSize: 12, color: T.inkSoft)),
+                    ),
                     if (parties.isEmpty) EmptyState(icon: Icons.gavel_rounded, title: tr('لا عملاء تحت التفاوض أو في القضايا', 'No customers in cases')),
                     for (final p in parties)
                       Padding(
                         padding: const EdgeInsets.only(bottom: 8),
                         child: Pressable(
-                          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => CollectionsReceivablesScreen(
-                                title: '${p['name']}',
-                                query: {'parties': '${p['key']}', 'issue': '${p['state']}'},
-                              ))),
+                          onTap: () => _toggle(p),
                           child: AppCard(
                             padding: const EdgeInsets.all(12),
                             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                               Row(children: [
-                                Expanded(child: Text('${p['name']}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5))),
-                                Text(_money(p['value']), style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 14.5)),
+                                Icon(_open == '${p['key']}' ? Icons.expand_less : Icons.expand_more, size: 18, color: T.inkFaint),
+                                Expanded(
+                                  child: InkWell(
+                                    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => CollectionsPartyScreen(id: '${p['party']}'))),
+                                    child: Text('${p['name']}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5, color: T.orange)),
+                                  ),
+                                ),
+                                InkWell(
+                                  onTap: ((p['count'] as num?) ?? 0) > 0 ? () => _openReceivables(p) : null,
+                                  child: Text(_money(p['value']), style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 14.5, decoration: TextDecoration.underline)),
+                                ),
                               ]),
                               const SizedBox(height: 4),
                               Wrap(spacing: 6, runSpacing: 4, children: [
-                                Chip2(_lbl(_issueLabels, '${p['state']}'), T.navy, icon: Icons.gavel_rounded),
+                                Chip2(_lbl(_issueLabels, '${p['state']}'), '${p['state']}' == 'legal' ? T.danger : T.info, icon: Icons.gavel_rounded),
                                 Chip2('${_money(p['count'])} ${tr('فاتورة مفتوحة', 'open invoices')}', T.inkSoft),
                                 if ('${p['code'] ?? ''}'.isNotEmpty) Chip2('${p['code']}', T.inkSoft),
+                                Chip2('${tr('متأخر', 'late')} ${_money(p['lateValue'])}', T.warn),
+                                Chip2('${tr('مرتفع الخطورة', 'hard risk')} ${_money(p['hardValue'])}', T.danger),
                               ]),
                               if ('${p['note'] ?? ''}'.isNotEmpty) ...[
                                 const SizedBox(height: 4),
                                 Text('${p['note']}', maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, color: T.inkSoft)),
                               ],
                               const SizedBox(height: 4),
-                              Text('${tr('منذ', 'Since')} ${_date(p['since'])} · ${p['officer'] ?? '—'} · ${tr('متأخر', 'late')} ${_money(p['lateValue'])} · ${tr('أقدم', 'oldest')} ${p['oldest'] ?? '—'}',
-                                  style: const TextStyle(fontSize: 11, color: T.inkFaint)),
+                              Text([
+                                '${tr('منذ', 'Since')} ${_date(p['since'])}',
+                                if ('${p['updatedByName'] ?? ''}'.isNotEmpty) '${p['updatedByName']}',
+                                '${p['officer'] ?? '—'}${p['officerIsDefault'] == true ? ' (${tr('غير مُسنَد', 'unassigned')})' : ''}',
+                                '${tr('أقدم', 'oldest')} ${p['oldest'] ?? '—'}',
+                              ].join(' · '), style: const TextStyle(fontSize: 11, color: T.inkFaint)),
+                              Row(children: [
+                                if (collectionsCanEdit) ...[
+                                  IconButton(tooltip: tr('تحت التفاوض', 'Negotiating'), icon: const Icon(Icons.handshake_outlined, size: 20),
+                                      onPressed: _busy == '${p['key']}' ? null : () => _setIssue(p, 'negotiating')),
+                                  IconButton(tooltip: tr('قضايا', 'Legal'), icon: const Icon(Icons.balance_rounded, size: 20),
+                                      onPressed: _busy == '${p['key']}' ? null : () => _setIssue(p, 'legal')),
+                                  IconButton(tooltip: tr('رفعُ الحالة', 'Clear'), icon: const Icon(Icons.block, size: 20),
+                                      onPressed: _busy == '${p['key']}' ? null : () => _setIssue(p, 'none')),
+                                ],
+                                const Spacer(),
+                                TextButton.icon(
+                                  onPressed: ((p['count'] as num?) ?? 0) > 0 ? () => _openReceivables(p) : null,
+                                  icon: const Icon(Icons.open_in_new, size: 16),
+                                  label: Text(tr('تفاصيل المديونية', 'Receivables detail')),
+                                ),
+                              ]),
+                              if (_open == '${p['key']}') _miniRows(p),
                             ]),
                           ),
                         ),

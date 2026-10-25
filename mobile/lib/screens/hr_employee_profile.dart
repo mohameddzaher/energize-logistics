@@ -11,6 +11,10 @@ import '../ui/file_upload.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import '../ui/hr_quick.dart';
+import '../ui/report_button.dart';
+import '../ui/export_sheet.dart';
+import 'package:url_launcher/url_launcher.dart';
+import '../config.dart';
 import 'hr_all_fields.dart';
 import 'jp.dart' show JpTaskPanel;
 
@@ -137,7 +141,7 @@ class _HrEmployeeProfileScreenState extends State<HrEmployeeProfileScreen> {
     final picked = await pickFileAsDataUrl();
     if (picked == null || !mounted) return;
     final title = TextEditingController(text: picked.fileName.replaceAll(RegExp(r'\.[^.]+$'), ''));
-    final category = TextEditingController();
+    String category = 'other';
     DateTime? expiry;
     final ok = await showModalBottomSheet<bool>(
       context: context,
@@ -158,7 +162,12 @@ class _HrEmployeeProfileScreenState extends State<HrEmployeeProfileScreen> {
           const SizedBox(height: 12),
           TextField(controller: title, decoration: InputDecoration(labelText: tr('اسم المستند *', 'Document name *'))),
           const SizedBox(height: 10),
-          TextField(controller: category, decoration: InputDecoration(labelText: tr('التصنيف', 'Category'))),
+          DropdownButtonFormField<String>(
+            initialValue: category,
+            decoration: InputDecoration(labelText: tr('التصنيف', 'Category')),
+            items: [for (final c in hrDocCategories) DropdownMenuItem(value: c.$1, child: Text(tr(c.$2, c.$3)))],
+            onChanged: (v) => setS(() => category = v ?? category),
+          ),
           const SizedBox(height: 10),
           OutlinedButton.icon(
             icon: const Icon(Icons.calendar_month_outlined, size: 18),
@@ -180,11 +189,79 @@ class _HrEmployeeProfileScreenState extends State<HrEmployeeProfileScreen> {
         'title': title.text.trim(),
         'fileName': picked.fileName,
         'dataUrl': picked.dataUrl,
-        if (category.text.trim().isNotEmpty) 'category': category.text.trim(),
+        'category': category,
         if (expiry != null) 'expiryDate': expiry!.toIso8601String().split('T').first,
       });
       _load();
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('تم رفع المستند', 'Document uploaded'))));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+    }
+  }
+
+  /// فتحُ الملفّ المرفوع (يُقدَّم من `/api/uploads/...`) بمتصفّح الجهاز.
+  Future<void> _openDocument(Map<String, dynamic> doc) async {
+    final u = '${doc['fileUrl'] ?? ''}';
+    if (u.isEmpty) return;
+    final ok = await launchUrl(Uri.parse(u.startsWith('http') ? u : '${AppConfig.apiBase}$u'), mode: LaunchMode.externalApplication);
+    if (!ok && mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('تعذّر فتح الملف', 'Could not open the file'))));
+  }
+
+  /// تعديلُ بيانات الملفّ (الاسم · التصنيف · الانتهاء · الملاحظات) — PUT /api/hr/documents/:id
+  /// كنموذج «تعديل ملف» في الموقع. الملفُّ نفسُه لا يُستبدل من هنا ولا هناك.
+  Future<void> _editDocument(Map<String, dynamic> doc) async {
+    final title = TextEditingController(text: '${doc['title'] ?? ''}');
+    final notes = TextEditingController(text: '${doc['notes'] ?? ''}');
+    String category = hrDocCategories.any((c) => c.$1 == doc['category']) ? '${doc['category']}' : 'other';
+    DateTime? expiry = DateTime.tryParse('${doc['expiryDate'] ?? ''}');
+    final ok = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (c) => StatefulBuilder(builder: (c, setS) => Padding(
+        padding: EdgeInsets.fromLTRB(18, 18, 18, MediaQuery.of(c).viewInsets.bottom + 18),
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(tr('تعديل ملف', 'Edit file'), style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 12),
+          TextField(controller: title, decoration: InputDecoration(labelText: tr('اسم الملف / الوصف', 'Name / description'))),
+          const SizedBox(height: 10),
+          DropdownButtonFormField<String>(
+            initialValue: category,
+            decoration: InputDecoration(labelText: tr('التصنيف', 'Category')),
+            items: [for (final x in hrDocCategories) DropdownMenuItem(value: x.$1, child: Text(tr(x.$2, x.$3)))],
+            onChanged: (v) => setS(() => category = v ?? category),
+          ),
+          const SizedBox(height: 10),
+          Row(children: [
+            Expanded(child: OutlinedButton.icon(
+              icon: const Icon(Icons.calendar_month_outlined, size: 18),
+              style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(48), alignment: AlignmentDirectional.centerStart),
+              label: Text('${tr('تاريخ انتهاء المستند', 'Document expiry')}: ${expiry == null ? '—' : expiry!.toIso8601String().split('T').first}${expiry == null ? '' : '\n${hijriHint(expiry, ar: Lang.instance.ar)}'}'),
+              onPressed: () async {
+                final d = await showDatePicker(context: c, initialDate: expiry ?? DateTime.now(), firstDate: DateTime(2000), lastDate: DateTime(2060));
+                if (d != null) setS(() => expiry = d);
+              },
+            )),
+            if (expiry != null) IconButton(tooltip: tr('مسح', 'Clear'), onPressed: () => setS(() => expiry = null), icon: const Icon(Icons.close)),
+          ]),
+          const SizedBox(height: 10),
+          TextField(controller: notes, maxLines: 2, decoration: InputDecoration(labelText: tr('ملاحظات', 'Notes'))),
+          const SizedBox(height: 14),
+          SizedBox(width: double.infinity, child: FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(tr('حفظ', 'Save')))),
+        ]),
+      )),
+    );
+    if (ok != true || title.text.trim().isEmpty) return;
+    try {
+      await Api.instance.put('/api/hr/documents/${doc['_id']}', {
+        'title': title.text.trim(),
+        'category': category,
+        'expiryDate': expiry == null ? '' : expiry!.toIso8601String().split('T').first,
+        'notes': notes.text.trim(),
+      });
+      _load();
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('تم الحفظ', 'Saved'))));
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
     }
@@ -355,6 +432,11 @@ class _HrEmployeeProfileScreenState extends State<HrEmployeeProfileScreen> {
   // ── الأرشيف: إنهاءُ الخدمة ← خروجٌ من النظام ← الأرشيف — كالموقع ─────────
   // والفريلانسرُ لا خروجَ له: إنهاءُ خدمته يؤرشفه (utils/hrEngagement في الخادم).
   bool get _terminated => _emp['employmentStatus'] == 'terminated';
+  /// فريقُ الموارد البشريّة بالدور أو بمنح القسم — isHRStaff في الموقع.
+  bool get _hrStaff {
+    final a = context.read<AuthProvider>();
+    return const ['super_admin', 'admin', 'hr_manager', 'hr_specialist'].contains(a.role) || a.canAccessSection('HR');
+  }
   bool get _freelance => RegExp(r'فري\s*لانس|فريلانس|freelanc', caseSensitive: false).hasMatch('${_emp['registerNumber'] ?? ''}');
   bool get _outOfSystem => '${_emp['systemStatus'] ?? ''}'.trim() == 'خارج النظام';
   bool get _archived => _terminated && (_outOfSystem || _freelance);
@@ -555,6 +637,8 @@ class _HrEmployeeProfileScreenState extends State<HrEmployeeProfileScreen> {
       child: AppScaffold(
         title: Text(_loading ? tr('ملف الموظف', 'Employee') : _name),
         actions: [
+          // «تقرير الموظف» PDF — لفريق الموارد البشريّة كالموقع.
+          if (!_loading && _hrStaff) ReportButton(subject: 'employee', id: '${_emp['_id'] ?? widget.employeeId}', compact: true),
           IconButton(icon: const Icon(Icons.post_add_outlined), tooltip: tr('عقد جديد', 'New contract'), onPressed: _loading ? null : _newContract),
           IconButton(icon: const Icon(Icons.edit_outlined), tooltip: tr('تعديل', 'Edit'), onPressed: _loading ? null : _edit),
           if (!_loading)
@@ -787,8 +871,10 @@ class _HrEmployeeProfileScreenState extends State<HrEmployeeProfileScreen> {
                     ]),
                     // ── المستندات ──
                     _listTab(documents, Icons.folder_open_outlined, tr('لا توجد مستندات — استخدم «رفع مستند» من القائمة', 'No documents — use "Upload document" from the menu'), (doc) {
+                      final cat = hrDocCategories.where((x) => x.$1 == doc['category']).toList();
                       return Pressable(
-                        onLongPress: () => _deleteDocument(doc),
+                        onTap: () => _openDocument(doc),
+                        onLongPress: _hrStaff ? () => _deleteDocument(doc) : null,
                         child: AppCard(
                           child: Row(children: [
                             const Icon(Icons.insert_drive_file_outlined, color: T.violet, size: 20),
@@ -796,33 +882,23 @@ class _HrEmployeeProfileScreenState extends State<HrEmployeeProfileScreen> {
                             Expanded(
                               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                                 Text((doc['title'] ?? doc['fileName'] ?? '').toString(), style: const TextStyle(fontWeight: FontWeight.w700)),
-                                Text([_date(doc['createdAt']), if ((doc['category'] ?? '').toString().isNotEmpty) doc['category']].join(' · '), style: const TextStyle(fontSize: 11.5, color: T.inkFaint)),
+                                Text([_date(doc['createdAt']), cat.isNotEmpty ? tr(cat.first.$2, cat.first.$3) : (doc['category'] ?? '')].where((x) => '$x'.isNotEmpty).join(' · '), style: const TextStyle(fontSize: 11.5, color: T.inkFaint)),
+                                if ('${doc['expiryDate'] ?? ''}'.isNotEmpty)
+                                  Text('${tr('الانتهاء', 'Expiry')}: ${_date(doc['expiryDate'])}', style: const TextStyle(fontSize: 11.5, color: T.inkSoft)),
                               ]),
                             ),
-                            const Icon(Icons.delete_outline, size: 17, color: T.inkFaint),
+                            if (_hrStaff) ...[
+                              IconButton(tooltip: tr('تعديل', 'Edit'), icon: const Icon(Icons.edit_outlined, size: 18, color: T.navy), onPressed: () => _editDocument(doc)),
+                              IconButton(tooltip: tr('حذف', 'Delete'), icon: const Icon(Icons.delete_outline, size: 18, color: T.inkFaint), onPressed: () => _deleteDocument(doc)),
+                            ],
                           ]),
                         ),
                       );
                     }),
                     // ── المركبات ──
                     _EmployeeVehiclesTab(employeeId: widget.employeeId),
-                    // ── السجل (التجديدات) ──
-                    _listTab(renewals, Icons.history_rounded, tr('لا يوجد سجل تجديدات', 'No renewal history'), (rn) {
-                      return AppCard(
-                        child: Row(children: [
-                          const Icon(Icons.autorenew_rounded, color: T.info, size: 20),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                              Text((rn['docType'] ?? '').toString(), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
-                              Text('${tr('من', 'from')} ${_date(rn['previousExpiry'])} ${tr('إلى', 'to')} ${_date(rn['newExpiry'])}',
-                                  style: const TextStyle(fontSize: 11.5, color: T.inkSoft)),
-                            ]),
-                          ),
-                          Text(_date(rn['createdAt']), style: const TextStyle(fontSize: 10.5, color: T.inkFaint)),
-                        ]),
-                      );
-                    }),
+                    // ── السجل: التجديدات + سجلّ التغييرات (/audit) — كالموقع ──
+                    _HistoryTab(employeeId: widget.employeeId, renewals: renewals, staff: _hrStaff, fileName: 'employee-${_emp['employeeNumber'] ?? widget.employeeId}'),
                   ]),
       ),
     );
@@ -1197,4 +1273,165 @@ Widget _contractChip(Map c) {
   // حالتان لا غير (٢٠٢٦/١٠/١٩): ساري أو منتهي — «مفسوخ» و«مجدَّد» القديمان منتهيان.
   if (status.isEmpty) return const Chip2('—', T.inkFaint);
   return status == 'active' ? Chip2(tr('ساري', 'Active'), T.success) : Chip2(tr('منتهي', 'Expired'), T.inkFaint);
+}
+
+
+/// تصنيفاتُ ملفّات الموظّف — DOCUMENT_CATEGORIES في الموقع.
+const hrDocCategories = [
+  ('iqama', 'صورة الإقامة', 'Iqama'), ('passport', 'صورة الجواز', 'Passport'),
+  ('license', 'رخصة القيادة', 'Driving License'), ('driverCard', 'كارت السائق', 'Driver Card'),
+  ('contract', 'العقد', 'Contract'), ('insurance', 'التأمين', 'Insurance'),
+  ('national_id', 'الهوية الوطنية', 'National ID'), ('photo', 'صورة شخصية', 'Photo'), ('other', 'أخرى', 'Other'),
+];
+
+const _auditActions = {
+  'create_employee': ('إنشاء الملف', 'Created profile'),
+  'update_employee': ('تعديل البيانات', 'Edited profile'),
+  'delete_employee': ('حذف الملف', 'Deleted profile'),
+  'renew_document': ('تجديد مستند', 'Renewed document'),
+  'terminate_employee': ('إنهاء الخدمة', 'Ended service'),
+  'reactivate_employee': ('إعادة تفعيل', 'Reactivated'),
+  'add_employee_document': ('إضافة ملف', 'Added file'),
+  'update_employee_document': ('تعديل ملف', 'Edited file'),
+  'delete_employee_document': ('حذف ملف', 'Removed file'),
+  'create_vehicle_claim': ('تسجيل الحادثة', 'Claim opened'),
+  'update_vehicle_claim': ('تعديل المطالبة', 'Claim edited'),
+  'delete_vehicle_claim': ('حذف المطالبة', 'Claim removed'),
+  'add_claim_attachment': ('إرفاق ملفّ', 'Attachment added'),
+  'delete_claim_attachment': ('حذف مرفق', 'Attachment removed'),
+};
+String _auditLabel(dynamic k) { final m = _auditActions['$k']; return m == null ? '${k ?? ''}' : tr(m.$1, m.$2); }
+String _userName(dynamic u) => u is Map ? '${u['firstName'] ?? ''} ${u['lastName'] ?? ''}'.trim() : '';
+String _dd(dynamic v) { final g = gregDay(v); final h = hijriDay(v); return g.isEmpty ? '—' : (h.isEmpty ? g : '$g · $h ${tr('هـ', 'AH')}'); }
+
+/// تبويبُ «السجل»: التجديدات، وسجلُّ التغييرات من GET /api/hr/employees/:id/audit
+/// (لفريق الموارد البشريّة وحدَه — الخادمُ لا يُتيحه لغيرهم). ومعه التصدير.
+class _HistoryTab extends StatefulWidget {
+  final String employeeId;
+  final List<Map<String, dynamic>> renewals;
+  final bool staff;
+  final String fileName;
+  const _HistoryTab({required this.employeeId, required this.renewals, required this.staff, required this.fileName});
+  @override
+  State<_HistoryTab> createState() => _HistoryTabState();
+}
+
+class _HistoryTabState extends State<_HistoryTab> with AutomaticKeepAliveClientMixin {
+  List<Map<String, dynamic>> _logs = [];
+  bool _loading = true;
+  late final void Function() _onLive;
+
+  @override
+  bool get wantKeepAlive => true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+    _onLive = () => _load();
+    Live.instance.on('hr:employee', _onLive);
+  }
+
+  @override
+  void dispose() {
+    Live.instance.off('hr:employee', _onLive);
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    if (!widget.staff) { if (mounted) setState(() => _loading = false); return; }
+    try {
+      final d = await Api.instance.get('/api/hr/employees/${widget.employeeId}/audit');
+      if (mounted) setState(() { _logs = List<Map<String, dynamic>>.from((d as Map)['logs'] ?? []); _loading = false; });
+    } catch (_) {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  void _export() {
+    exportExcel(context, fileName: widget.fileName, sheets: [
+      (tr('التجديدات', 'Renewals'), [
+        ExportCol('المستند', 'Document', (r) => r['docType'] ?? ''),
+        ExportCol('الانتهاء السابق الميلادي', 'Previous expiry (Gregorian)', (r) => gregDay(r['previousExpiry'])),
+        ExportCol('الانتهاء السابق الهجري', 'Previous expiry (Hijri)', (r) => hijriDay(r['previousExpiry'])),
+        ExportCol('الانتهاء الجديد الميلادي', 'New expiry (Gregorian)', (r) => gregDay(r['newExpiry'])),
+        ExportCol('الانتهاء الجديد الهجري', 'New expiry (Hijri)', (r) => hijriDay(r['newExpiry'])),
+        ExportCol('الرقم الجديد', 'New number', (r) => r['documentNumber'] ?? ''),
+        ExportCol('تاريخ التجديد', 'Renewed at', (r) => gregDay(r['renewedAt'] ?? r['createdAt'])),
+        ExportCol('نفّذه', 'Renewed by', (r) => _userName(r['renewedBy'])),
+        ExportCol('ملاحظات', 'Notes', (r) => r['notes'] ?? ''),
+      ], widget.renewals),
+      if (widget.staff)
+        (tr('سجل التغييرات', 'Change log'), [
+          ExportCol('الإجراء', 'Action', (r) => _auditLabel(r['action'])),
+          ExportCol('التاريخ الميلادي', 'Changed (Gregorian)', (r) => '${r['createdAt'] ?? ''}'.replaceFirst('T', ' ').split('.').first),
+          ExportCol('التاريخ الهجري', 'Changed (Hijri)', (r) => hijriDay(r['createdAt'])),
+          ExportCol('المستخدم', 'User', (r) => _userName(r['user'])),
+          ExportCol('الحقول المتغيّرة', 'Changed fields', (r) {
+            final a = (r['changes'] is Map) ? (r['changes'] as Map)['after'] : null;
+            return a is Map ? a.keys.join('، ') : '';
+          }),
+        ], _logs),
+    ]);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
+    return RefreshIndicator(
+      onRefresh: _load,
+      child: ListView(padding: const EdgeInsets.all(14), children: [
+        Row(children: [
+          Expanded(child: Text(tr('سجل التجديدات', 'Renewals'), style: const TextStyle(fontWeight: FontWeight.w800))),
+          IconButton(tooltip: tr('تصدير Excel', 'Export to Excel'), icon: const Icon(Icons.file_download_outlined), onPressed: _export),
+        ]),
+        if (widget.renewals.isEmpty)
+          Padding(padding: const EdgeInsets.all(12), child: Text(tr('لا توجد تجديدات', 'No renewals yet'), style: const TextStyle(color: T.inkFaint))),
+        for (final rn in widget.renewals)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: AppCard(
+              child: Row(children: [
+                const Icon(Icons.autorenew_rounded, color: T.info, size: 20),
+                const SizedBox(width: 10),
+                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('${rn['docType'] ?? ''}${'${rn['documentNumber'] ?? ''}'.isNotEmpty ? ' · ${rn['documentNumber']}' : ''}', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+                  Text('${_dd(rn['previousExpiry'])} ← ${_dd(rn['newExpiry'])}', style: const TextStyle(fontSize: 11.5, color: T.inkSoft)),
+                  if ('${rn['notes'] ?? ''}'.isNotEmpty) Text('${rn['notes']}', style: const TextStyle(fontSize: 11.5, color: T.inkFaint)),
+                  Text([gregDay(rn['renewedAt'] ?? rn['createdAt']), _userName(rn['renewedBy'])].where((x) => x.isNotEmpty).join(' · '), style: const TextStyle(fontSize: 10.5, color: T.inkFaint)),
+                ])),
+              ]),
+            ),
+          ),
+        if (widget.staff) ...[
+          const SizedBox(height: 10),
+          Text(tr('سجل التغييرات', 'Change Log'), style: const TextStyle(fontWeight: FontWeight.w800)),
+          const SizedBox(height: 6),
+          if (_loading) const Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator())),
+          if (!_loading && _logs.isEmpty)
+            Padding(padding: const EdgeInsets.all(12), child: Text(tr('لا يوجد سجل بعد', 'No history yet'), style: const TextStyle(color: T.inkFaint))),
+          for (final a in _logs)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: AppCard(
+                child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  const Padding(padding: EdgeInsets.only(top: 4), child: Icon(Icons.circle, size: 10, color: T.orange)),
+                  const SizedBox(width: 10),
+                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(_auditLabel(a['action']), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+                    Text([
+                      '${a['createdAt'] ?? ''}'.replaceFirst('T', ' ').split('.').first,
+                      if (hijriDay(a['createdAt']).isNotEmpty) '${hijriDay(a['createdAt'])} ${tr('هـ', 'AH')}',
+                      _userName(a['user']),
+                    ].where((x) => x.isNotEmpty).join(' · '), style: const TextStyle(fontSize: 11, color: T.inkFaint)),
+                    if (a['changes'] is Map && (a['changes'] as Map)['after'] is Map)
+                      Text(((a['changes'] as Map)['after'] as Map).keys.take(8).join('، '), style: const TextStyle(fontSize: 11.5, color: T.inkSoft)),
+                  ])),
+                ]),
+              ),
+            ),
+        ],
+      ]),
+    );
+  }
 }

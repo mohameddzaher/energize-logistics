@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import '../services/api.dart';
 import '../services/lang.dart';
+import '../services/live.dart';
 import '../ui/app_scaffold.dart';
+import '../ui/export_sheet.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import 'customs_detail.dart' show customsStageLabel;
@@ -82,9 +84,21 @@ class _PortalScreenState extends State<PortalScreen> {
   Map<String, dynamic>? _overview;
   bool _loading = true;
   String? _error;
+  // حيّةٌ كالويب: أيُّ حركةٍ على رحلةٍ تُعيد قراءةَ النظرة العامّة.
+  late final void Function() _onLive = _load;
 
   @override
-  void initState() { super.initState(); _load(); }
+  void initState() {
+    super.initState();
+    _load();
+    Live.instance.on('fleet:updated', _onLive);
+  }
+
+  @override
+  void dispose() {
+    Live.instance.off('fleet:updated', _onLive);
+    super.dispose();
+  }
 
   Future<void> _load() async {
     try {
@@ -294,9 +308,48 @@ class _ShipmentsTabState extends State<_ShipmentsTab> {
   String? _error;
   String _q = '';
   String _status = '';
+  late final void Function() _onLive = _load;
 
   @override
-  void initState() { super.initState(); _load(); }
+  void initState() {
+    super.initState();
+    _load();
+    Live.instance.on('fleet:updated', _onLive);
+  }
+
+  @override
+  void dispose() {
+    Live.instance.off('fleet:updated', _onLive);
+    super.dispose();
+  }
+
+  // أعمدةُ تصدير الويب — والمبلغُ للمورّد وحدَه: العميلُ لا يرى سعرًا.
+  List<ExportCol> get _exportCols => [
+        ExportCol(_isPlatform ? 'رقم الكشف' : 'رقم البوليصة', _isPlatform ? 'Report #' : 'Waybill #', (r) => r['waybillNumber']),
+        ExportCol('التاريخ', 'Date', (r) => _date(r['loadDate'] ?? r['createdAt'])),
+        ExportCol('من', 'From', (r) => r['fromCity']),
+        ExportCol('إلى', 'To', (r) => r['toCity']),
+        ExportCol('المركبة', 'Truck', (r) => r['vehiclePlate'] ?? r['vehicleName'] ?? '—'),
+        ExportCol('السائق', 'Driver', (r) => r['driverName']),
+        if (_isPlatform) ExportCol('نوع المركبة', 'Truck type', (r) {
+          final v = [r['truckType'], r['truckSize']].where((x) => '${x ?? ''}'.isNotEmpty).join(' · ');
+          return v.isEmpty ? '—' : v;
+        }),
+        ExportCol('الحالة', 'Status', (r) {
+          final l = _statusLabels['${r['status'] ?? ''}'];
+          return l == null ? '${r['status'] ?? ''}' : tr(l.$1, l.$2);
+        }),
+        if (widget.type == 'vendor') ExportCol('المبلغ', 'Amount', (r) => _money(r['buyPrice'])),
+      ];
+
+  void _export(List<Map<String, dynamic>> shown, String scope) {
+    final rows = scope == 'shown' ? shown : _rows;
+    if (rows.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('لا صفوف للتصدير', 'Nothing to export'))));
+      return;
+    }
+    exportExcel(context, fileName: 'my-shipments-${widget.type}', sheets: [(tr('شحناتي', 'My shipments'), _exportCols, rows)]);
+  }
 
   Future<void> _load() async {
     try {
@@ -442,7 +495,12 @@ class _ShipmentsTabState extends State<_ShipmentsTab> {
         padding: const EdgeInsets.fromLTRB(14, 12, 14, 4),
         child: TextField(
           onChanged: (v) => setState(() => _q = v),
-          decoration: InputDecoration(hintText: tr('ابحث برقم البوليصة أو المدينة…', 'Search waybill or city…'), prefixIcon: const Icon(Icons.search), suffixText: '${rows.length}'),
+          decoration: InputDecoration(
+            hintText: tr('ابحث برقم البوليصة أو المدينة…', 'Search waybill or city…'),
+            prefixIcon: const Icon(Icons.search),
+            suffixText: '${rows.length}',
+            suffixIcon: _exportMenu((scope) => _export(rows, scope)),
+          ),
         ),
       ),
       SizedBox(
@@ -613,6 +671,25 @@ class _CustomsTabState extends State<_CustomsTab> {
     );
   }
 
+  void _export() {
+    if (_rows.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('لا صفوف للتصدير', 'Nothing to export'))));
+      return;
+    }
+    exportExcel(context, fileName: 'my-customs-files', sheets: [(tr('معاملاتي', 'My customs files'), [
+      ExportCol('الرقم المرجعي', 'Reference', (c) => c['refNumber']),
+      ExportCol('رقم البوليصة', 'BL number', (c) => c['blNumber']),
+      ExportCol('رقم البيان', 'Declaration', (c) => c['declarationNumber']),
+      ExportCol('المرحلة', 'Stage', (c) => _customsProgress(c).label),
+      ExportCol('الميناء', 'Port', (c) => c['port']),
+      ExportCol('الحاويات', 'Containers', (c) => c['containerCount']),
+      ExportCol('الوزن', 'Weight', (c) => c['totalWeight']),
+      ExportCol('قيمة الفاتورة', 'Invoice value', (c) => _money(c['invoiceValue'])),
+      ExportCol('الشركة المصدّرة', 'Exporter', (c) => c['exporterCompany']),
+      ExportCol('تاريخ الفتح', 'Opened', (c) => _date(c['createdAt'])),
+    ], _rows)]);
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_loading) {
@@ -630,9 +707,16 @@ class _CustomsTabState extends State<_CustomsTab> {
       onRefresh: _load,
       child: ListView.builder(
         padding: const EdgeInsets.fromLTRB(14, 12, 14, 20),
-        itemCount: _rows.length,
+        itemCount: _rows.length + 1,
         itemBuilder: (ctx, i) {
-          final c = _rows[i];
+          if (i == 0) {
+            return Align(alignment: AlignmentDirectional.centerEnd, child: TextButton.icon(
+              onPressed: _export,
+              icon: const Icon(Icons.file_download_outlined, size: 18),
+              label: Text(tr('تصدير Excel', 'Export Excel')),
+            ));
+          }
+          final c = _rows[i - 1];
           final pr = _customsProgress(c);
           return Padding(
             padding: const EdgeInsets.only(bottom: 10),
@@ -681,9 +765,22 @@ class _FinanceTabState extends State<_FinanceTab> {
   Map<String, dynamic>? _data;
   bool _loading = true;
   String? _error;
+  // أحداثُ صفحتي الفواتير والمدفوعات في الويب.
+  static const _events = ['invoice:created', 'invoice:updated', 'payment:received', 'payment:logged', 'payment:deleted'];
+  late final void Function() _onLive = _load;
 
   @override
-  void initState() { super.initState(); _load(); }
+  void initState() {
+    super.initState();
+    _load();
+    for (final e in _events) { Live.instance.on(e, _onLive); }
+  }
+
+  @override
+  void dispose() {
+    for (final e in _events) { Live.instance.off(e, _onLive); }
+    super.dispose();
+  }
 
   Future<void> _load() async {
     try {
@@ -718,14 +815,24 @@ class _FinanceTabState extends State<_FinanceTab> {
           Expanded(child: StatCard(label: tr('متأخر', 'Overdue'), value: _n(totals['overdue']), color: T.danger, icon: Icons.warning_amber_outlined)),
         ]),
         const SizedBox(height: 16),
-        Text(tr('الفواتير', 'Invoices'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
-        const SizedBox(height: 8),
+        Row(children: [
+          Expanded(child: Text(tr('الفواتير', 'Invoices'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14))),
+          if (invoices.isNotEmpty)
+            TextButton.icon(
+              onPressed: () => exportExcel(context, fileName: 'My_Invoices', sheets: [('Invoices', _invoiceCols, invoices)]),
+              icon: const Icon(Icons.file_download_outlined, size: 18),
+              label: Text(tr('تصدير', 'Export')),
+            ),
+        ]),
+        const SizedBox(height: 4),
         if (invoices.isEmpty) Text(tr('لا توجد فواتير', 'No invoices'), style: const TextStyle(fontSize: 12, color: T.inkFaint)),
         ...invoices.map((inv) {
           final overdue = inv['isOverdue'] == true;
           return Padding(
             padding: const EdgeInsets.only(bottom: 8),
-            child: AppCard(
+            child: Pressable(
+              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => _InvoiceDetailScreen(invoiceId: '${inv['_id']}', number: '${inv['invoiceNumber'] ?? ''}'))),
+              child: AppCard(
               padding: const EdgeInsets.all(12),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Row(children: [
@@ -746,12 +853,20 @@ class _FinanceTabState extends State<_FinanceTab> {
                 Text('${tr('الاستحقاق', 'Due')}: ${_date(inv['dueDate'])}', style: const TextStyle(fontSize: 11, color: T.inkFaint)),
               ]),
             ),
+            ),
           );
         }),
         if (payments.isNotEmpty) ...[
           const SizedBox(height: 16),
-          Text(tr('المدفوعات', 'Payments'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
-          const SizedBox(height: 8),
+          Row(children: [
+            Expanded(child: Text(tr('المدفوعات', 'Payments'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14))),
+            // السجلُّ كاملًا في شاشته — هنا أحدثُها وحدَها.
+            TextButton(
+              onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const _PaymentsScreen())),
+              child: Text(tr('كل المدفوعات', 'All payments')),
+            ),
+          ]),
+          const SizedBox(height: 4),
           ...payments.take(30).map((p) => Padding(
                 padding: const EdgeInsets.only(bottom: 8),
                 child: AppCard(
@@ -764,6 +879,259 @@ class _FinanceTabState extends State<_FinanceTab> {
               )),
         ],
       ]),
+    );
+  }
+}
+
+/// قائمةُ التصدير: المعروضُ أو الكلّ — كـ ExportMenu في الويب.
+Widget _exportMenu(void Function(String scope) onPick) => PopupMenuButton<String>(
+      tooltip: tr('تصدير Excel', 'Export Excel'),
+      icon: const Icon(Icons.file_download_outlined),
+      onSelected: onPick,
+      itemBuilder: (_) => [
+        PopupMenuItem(value: 'shown', child: Text(tr('المعروض', 'Shown'))),
+        PopupMenuItem(value: 'all', child: Text(tr('الكل', 'All'))),
+      ],
+    );
+
+String _daysText(Map inv) => inv['isOverdue'] == true
+    ? '-${_n(inv['overdueDays']).round()}${tr('ي', 'd')}'
+    : inv['status'] == 'paid' ? tr('مدفوعة', 'Paid') : '${_n(inv['remainingDays']).round()}${tr('ي', 'd')}';
+
+/// أعمدةُ تصدير «فواتيري» في الويب.
+List<ExportCol> get _invoiceCols => [
+      ExportCol('رقم الفاتورة', 'Invoice #', (r) => r['invoiceNumber']),
+      ExportCol('المبلغ', 'Amount', (r) => r['amount']),
+      ExportCol('المدفوع', 'Paid', (r) => r['paidAmount']),
+      ExportCol('المتبقي', 'Balance', (r) => r['balance']),
+      ExportCol('تاريخ الفاتورة', 'Invoice date', (r) => _date(r['invoiceDate'])),
+      ExportCol('الاستحقاق', 'Due date', (r) => _date(r['dueDate'])),
+      ExportCol('الأيام', 'Days', (r) => _daysText(r)),
+      ExportCol('الحالة', 'Status', (r) => r['status']),
+    ];
+
+String _method(dynamic v) => '${v ?? ''}'.replaceFirst('_', ' ');
+
+/// ── تفاصيلُ الفاتورة ومدفوعاتُها — نظيرُ /system/portal/invoices/[id] ──────
+class _InvoiceDetailScreen extends StatefulWidget {
+  final String invoiceId;
+  final String number;
+  const _InvoiceDetailScreen({required this.invoiceId, required this.number});
+  @override
+  State<_InvoiceDetailScreen> createState() => _InvoiceDetailScreenState();
+}
+
+class _InvoiceDetailScreenState extends State<_InvoiceDetailScreen> {
+  Map<String, dynamic>? _inv;
+  List<Map<String, dynamic>> _payments = [];
+  bool _loading = true;
+  String? _error;
+  static const _events = ['invoice:updated', 'payment:received', 'payment:logged', 'payment:deleted'];
+  late final void Function() _onLive = _load;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+    for (final e in _events) { Live.instance.on(e, _onLive); }
+  }
+
+  @override
+  void dispose() {
+    for (final e in _events) { Live.instance.off(e, _onLive); }
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    try {
+      final r = await Future.wait([
+        Api.instance.get('/api/invoices/${widget.invoiceId}'),
+        Api.instance.get('/api/payments?invoice=${widget.invoiceId}'),
+      ]);
+      if (!mounted) return;
+      setState(() {
+        _inv = r[0]['invoice'] is Map ? Map<String, dynamic>.from(r[0]['invoice']) : null;
+        _payments = List<Map<String, dynamic>>.from(r[1]['payments'] ?? const []);
+        _loading = false;
+        _error = null;
+      });
+    } catch (e) {
+      if (mounted) setState(() { _loading = false; _error = e.toString(); });
+    }
+  }
+
+  void _export() {
+    final inv = _inv;
+    if (inv == null) return;
+    exportExcel(context, fileName: 'Invoice_${inv['invoiceNumber']}', sheets: [
+      ('Invoice', [
+        ExportCol('رقم الفاتورة', 'Invoice #', (r) => r['invoiceNumber']),
+        ExportCol('الحالة', 'Status', (r) => r['status']),
+        ExportCol('مدة الائتمان (أيام)', 'Credit Term (Days)', (r) => r['creditTerm']),
+        ExportCol('المبلغ', 'Amount', (r) => r['amount']),
+        ExportCol('المدفوع', 'Paid', (r) => r['paidAmount']),
+        ExportCol('المتبقي', 'Balance', (r) => r['balance']),
+        ExportCol('تاريخ الفاتورة', 'Invoice Date', (r) => _date(r['invoiceDate'])),
+        ExportCol('الاستحقاق', 'Due Date', (r) => _date(r['dueDate'])),
+        ExportCol('متأخرة', 'Overdue', (r) => r['isOverdue'] == true),
+        ExportCol('أيام التأخير', 'Overdue Days', (r) => r['overdueDays']),
+        ExportCol('الأيام المتبقية', 'Remaining Days', (r) => r['remainingDays']),
+      ], [inv]),
+      ('Payments', [
+        ExportCol('التاريخ', 'Date', (r) => _date(r['paymentDate'])),
+        ExportCol('المبلغ', 'Amount', (r) => r['amount']),
+        ExportCol('الطريقة', 'Method', (r) => _method(r['paymentMethod'])),
+        ExportCol('المرجع', 'Reference', (r) => r['reference']),
+      ], _payments),
+    ]);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final inv = _inv;
+    final overdue = inv?['isOverdue'] == true;
+    final soon = !overdue && inv?['status'] != 'paid' && _n(inv?['remainingDays']) <= 5;
+    final color = overdue ? T.danger : soon ? T.warn : T.success;
+    return AppScaffold(
+      title: Text('${tr('فاتورة', 'Invoice')} #${inv?['invoiceNumber'] ?? widget.number}'),
+      actions: [if (inv != null) IconButton(tooltip: tr('تصدير', 'Export'), icon: const Icon(Icons.file_download_outlined), onPressed: _export)],
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : _error != null
+              ? ErrorRetry(message: _error!, onRetry: () { setState(() => _loading = true); _load(); })
+              : inv == null
+                  ? EmptyState(icon: Icons.receipt_long_outlined, title: tr('لا توجد فواتير', 'No invoices'))
+                  : RefreshIndicator(
+                      onRefresh: _load,
+                      child: ListView(padding: const EdgeInsets.all(14), children: [
+                        AppCard(topAccent: color, child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                          Row(children: [
+                            Expanded(child: Text('${tr('مدة الائتمان', 'Credit term')}: ${inv['creditTerm'] ?? '—'} ${tr('يوم', 'days')}',
+                                style: const TextStyle(fontSize: 12.5, color: T.inkSoft))),
+                            Chip2('${inv['status'] ?? ''}'.toUpperCase(), color),
+                          ]),
+                          if (overdue)
+                            Padding(padding: const EdgeInsets.only(top: 8), child: Text(
+                              tr('هذه الفاتورة متأخرة ${_n(inv['overdueDays']).round()} يومًا عن مدة الائتمان (${inv['creditTerm']} يومًا).',
+                                  'This invoice is ${_n(inv['overdueDays']).round()} days overdue past the ${inv['creditTerm']}-day credit term.'),
+                              style: const TextStyle(fontSize: 12.5, color: T.danger, fontWeight: FontWeight.w700))),
+                          if (soon)
+                            Padding(padding: const EdgeInsets.only(top: 8), child: Text(
+                              tr('يجب سداد الفاتورة #${inv['invoiceNumber']} خلال ${_n(inv['remainingDays']).round()} يومًا (مدة الائتمان ${inv['creditTerm']} يومًا).',
+                                  'Invoice #${inv['invoiceNumber']} must be paid within ${_n(inv['remainingDays']).round()} days (${inv['creditTerm']}-day term).'),
+                              style: const TextStyle(fontSize: 12.5, color: Color(0xFF92400E), fontWeight: FontWeight.w700))),
+                          const SizedBox(height: 12),
+                          Row(children: [
+                            for (final x in [
+                              (tr('المبلغ', 'Amount'), _money(inv['amount']), T.ink),
+                              (tr('المدفوع', 'Paid'), _money(inv['paidAmount']), T.success),
+                              (tr('المتبقي', 'Balance'), _money(inv['balance']), T.danger),
+                              (overdue ? tr('أيام التأخير', 'Overdue days') : tr('الأيام المتبقية', 'Remaining days'),
+                                  '${_n(overdue ? inv['overdueDays'] : inv['remainingDays']).round()}', overdue ? T.danger : T.success),
+                            ])
+                              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                Text(x.$1, style: const TextStyle(fontSize: 10.5, color: T.inkFaint)),
+                                Text(x.$2, style: TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: x.$3)),
+                              ])),
+                          ]),
+                          const Divider(height: 20),
+                          Text('${tr('تاريخ الفاتورة', 'Invoice date')}: ${_date(inv['invoiceDate'])}    ${tr('الاستحقاق', 'Due date')}: ${_date(inv['dueDate'])}',
+                              style: const TextStyle(fontSize: 12, color: T.inkSoft)),
+                        ])),
+                        const SizedBox(height: 14),
+                        Text(tr('المدفوعات', 'Payments'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+                        const SizedBox(height: 8),
+                        if (_payments.isEmpty) Text(tr('لا توجد مدفوعات', 'No payments'), style: const TextStyle(fontSize: 12, color: T.inkFaint)),
+                        for (final p in _payments)
+                          Padding(padding: const EdgeInsets.only(bottom: 8), child: AppCard(padding: const EdgeInsets.all(12), child: Row(children: [
+                            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                              Text(_date(p['paymentDate']), style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
+                              Text('${_method(p['paymentMethod'])}${'${p['reference'] ?? ''}'.isNotEmpty ? ' · ${p['reference']}' : ''}', style: const TextStyle(fontSize: 11.5, color: T.inkFaint)),
+                            ])),
+                            Chip2(_money(p['amount']), T.success),
+                          ]))),
+                      ]),
+                    ),
+    );
+  }
+}
+
+/// ── سجلُّ المدفوعات كاملًا — نظيرُ /system/portal/payments ────────────────────
+class _PaymentsScreen extends StatefulWidget {
+  const _PaymentsScreen();
+  @override
+  State<_PaymentsScreen> createState() => _PaymentsScreenState();
+}
+
+class _PaymentsScreenState extends State<_PaymentsScreen> {
+  List<Map<String, dynamic>> _rows = [];
+  bool _loading = true;
+  String? _error;
+  static const _events = ['payment:received', 'payment:logged', 'payment:deleted'];
+  late final void Function() _onLive = _load;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+    for (final e in _events) { Live.instance.on(e, _onLive); }
+  }
+
+  @override
+  void dispose() {
+    for (final e in _events) { Live.instance.off(e, _onLive); }
+    super.dispose();
+  }
+
+  // الخادمُ يرقّم بخمسين افتراضيًّا — والسجلُّ هنا كاملٌ بلا سقفٍ عمليّ.
+  Future<void> _load() async {
+    try {
+      final d = await Api.instance.get('/api/payments?page=1&limit=100000');
+      if (!mounted) return;
+      setState(() { _rows = List<Map<String, dynamic>>.from(d['payments'] ?? const []); _loading = false; _error = null; });
+    } catch (e) {
+      if (mounted) setState(() { _loading = false; _error = e.toString(); });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final total = _rows.fold<num>(0, (s, p) => s + _n(p['amount']));
+    return AppScaffold(
+      title: Text(tr('مدفوعاتي', 'My Payments')),
+      actions: [
+        if (_rows.isNotEmpty)
+          ExportButton(fileName: 'Payment_History', sheetName: 'Payments', rows: () => _rows, columns: [
+            ExportCol('تاريخ الدفع', 'Payment date', (r) => _date(r['paymentDate'])),
+            ExportCol('رقم الفاتورة', 'Invoice #', (r) => r['invoice'] is Map ? r['invoice']['invoiceNumber'] : ''),
+            ExportCol('المبلغ', 'Amount', (r) => r['amount']),
+            ExportCol('طريقة الدفع', 'Payment method', (r) => _method(r['paymentMethod'])),
+            ExportCol('المرجع', 'Reference', (r) => r['reference']),
+          ]),
+      ],
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : _error != null
+              ? ErrorRetry(message: _error!, onRetry: () { setState(() => _loading = true); _load(); })
+              : RefreshIndicator(
+                  onRefresh: _load,
+                  child: ListView(padding: const EdgeInsets.all(14), children: [
+                    AppCard(child: Row(children: [
+                      Expanded(child: Text(tr('إجمالي المدفوع', 'Total paid'), style: const TextStyle(fontWeight: FontWeight.w700))),
+                      Text(_money(total), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: T.success)),
+                    ])),
+                    const SizedBox(height: 10),
+                    if (_rows.isEmpty) EmptyState(icon: Icons.payments_outlined, title: tr('لا توجد مدفوعات', 'No payments')),
+                    for (final p in _rows)
+                      Padding(padding: const EdgeInsets.only(bottom: 8), child: AppCard(padding: const EdgeInsets.all(12), child: Row(children: [
+                        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Text('#${p['invoice'] is Map ? p['invoice']['invoiceNumber'] : '-'} · ${_date(p['paymentDate'])}', style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
+                          Text('${_method(p['paymentMethod'])}${'${p['reference'] ?? ''}'.isNotEmpty ? ' · ${p['reference']}' : ''}', style: const TextStyle(fontSize: 11.5, color: T.inkFaint)),
+                        ])),
+                        Chip2(_money(p['amount']), T.success),
+                      ]))),
+                  ]),
+                ),
     );
   }
 }

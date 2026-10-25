@@ -6,6 +6,9 @@ import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import '../ui/api_picker.dart' show pickFromApi;
+import '../ui/export_sheet.dart';
+import 'package:provider/provider.dart';
+import '../services/auth.dart';
 
 /// المشتريات — طلبات الشراء (المسار الكامل: مسودة → اعتماد → أمر شراء)،
 /// أوامر الشراء (استلام)، وفواتير الموردين (تسجيل دفعات).
@@ -483,6 +486,7 @@ class _ProcOrdersScreenState extends State<ProcOrdersScreen> {
   void initState() {
     super.initState();
     _load();
+    _loadOpts();
     _onLive = () => _load();
     Live.instance.on('procurement:po', _onLive);
   }
@@ -493,49 +497,102 @@ class _ProcOrdersScreenState extends State<ProcOrdersScreen> {
     super.dispose();
   }
 
+  String _status = ''; // فلترُ الحالة — يُنفَّذ على الخادم كالويب
+  int _seq = 0;          // ردٌّ أقدمُ لا يغلب أحدث حين يتغيّر الفلتر
+  num _vatDefault = 15;
+
   Future<void> _load() async {
+    final mine = ++_seq;
     try {
-      final d = await Api.instance.get('/api/procurement/orders');
-      if (!mounted) return;
+      final d = await Api.instance.get('/api/procurement/orders${_status.isEmpty ? '' : '?status=$_status'}');
+      if (!mounted || mine != _seq) return;
       setState(() { _rows = List<Map<String, dynamic>>.from(d['orders'] ?? []); _loading = false; _error = null; });
     } catch (e) {
-      if (mounted) setState(() { _loading = false; _error = e.toString(); });
+      if (mounted && mine == _seq) setState(() { _loading = false; _error = e.toString(); });
     }
+  }
+
+  Future<void> _loadOpts() async {
+    try {
+      final o = await Api.instance.get('/api/procurement/options');
+      final v = o['KSA_VAT_RATE'];
+      if (v is num) _vatDefault = v;
+    } catch (_) {}
+  }
+
+  bool get _canManage {
+    final auth = context.read<AuthProvider>();
+    return const ['super_admin', 'admin', 'procurement_manager'].contains(auth.role) || auth.canEditSection('Procurement');
   }
 
   String _fold(String s) => s.replaceAll(RegExp('[أإآ]'), 'ا').replaceAll('ى', 'ي').replaceAll('ة', 'ه').toLowerCase();
 
-  // أمر شراء مستقل: اختيار المورد + بنود + تاريخ متوقع → POST /orders (مسودة).
-  Future<void> _createPO() async {
-    final vendor = await pickFromApi(context,
-        endpoint: '/api/procurement/options', listKey: 'vendors',
-        label: (v) => _vendorName(v), title: tr('اختر المورد', 'Pick vendor'));
-    if (vendor == null || !mounted) return;
-    final notes = TextEditingController();
-    DateTime? expected;
+  void _msg(Object e) {
+    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e is ApiException ? e.message : e.toString())));
+  }
+
+  // أمرُ شراء جديد أو تعديلُ قائم — نفسُ نموذج الويب: مورد + ضريبة% + تاريخ متوقع
+  // + بنود. التعديلُ PUT على الأمر نفسه فيبقى رقمُه وأثرُه في الطلب والفاتورة.
+  Future<void> _poSheet({Map<String, dynamic>? existing}) async {
+    Map<String, dynamic>? vendor = existing == null
+        ? null
+        : (existing['vendor'] is Map ? Map<String, dynamic>.from(existing['vendor']) : {'_id': existing['vendor']});
+    if (existing == null) {
+      vendor = await pickFromApi(context,
+          endpoint: '/api/procurement/options', listKey: 'vendors',
+          label: (v) => _vendorName(v), title: tr('اختر المورد', 'Pick vendor'));
+      if (vendor == null || !mounted) return;
+    }
+    final notes = TextEditingController(text: (existing?['notes'] ?? '').toString());
+    final vat = TextEditingController(text: '${existing?['vatRate'] ?? _vatDefault}');
+    DateTime? expected = DateTime.tryParse((existing?['expectedDate'] ?? '').toString());
     final items = <({TextEditingController desc, TextEditingController qty, TextEditingController price})>[
-      (desc: TextEditingController(), qty: TextEditingController(text: '1'), price: TextEditingController()),
+      for (final l in List.from(existing?['items'] ?? const []))
+        (desc: TextEditingController(text: '${l['description'] ?? ''}'), qty: TextEditingController(text: '${l['quantity'] ?? 1}'), price: TextEditingController(text: '${l['unitPrice'] ?? ''}')),
     ];
+    if (items.isEmpty) items.add((desc: TextEditingController(), qty: TextEditingController(text: '1'), price: TextEditingController()));
+    num sub() => items.fold<num>(0, (s, l) => s + (num.tryParse(l.qty.text) ?? 0) * (num.tryParse(l.price.text) ?? 0));
     final ok = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (c) => StatefulBuilder(builder: (c, setS) => Padding(
+      builder: (c) => StatefulBuilder(builder: (c, setS) {
+        final s = sub();
+        final v = s * (num.tryParse(vat.text) ?? 0) / 100;
+        return Padding(
         padding: EdgeInsets.fromLTRB(16, 16, 16, MediaQuery.of(c).viewInsets.bottom + 16),
         child: SingleChildScrollView(
           child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('${tr('أمر شراء جديد', 'New PO')} — ${_vendorName(vendor)}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
-            const SizedBox(height: 12),
+            Text(existing == null
+                    ? tr('أمر شراء جديد', 'New PO')
+                    : '${tr('تعديل أمر الشراء', 'Edit PO')} ${existing['poNumber'] ?? ''}',
+                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+            const SizedBox(height: 10),
             OutlinedButton.icon(
-              icon: const Icon(Icons.event, size: 17),
+              icon: const Icon(Icons.storefront_outlined, size: 17),
               style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(46), alignment: AlignmentDirectional.centerStart),
-              label: Text('${tr('التاريخ المتوقع', 'Expected date')}: ${expected == null ? tr('اختر', 'Pick') : expected!.toIso8601String().split('T').first}'),
+              label: Text('${tr('المورد', 'Vendor')}: ${_vendorName(vendor)}'),
               onPressed: () async {
-                final d = await showDatePicker(context: c, initialDate: DateTime.now().add(const Duration(days: 7)), firstDate: DateTime.now().subtract(const Duration(days: 30)), lastDate: DateTime(2035));
-                if (d != null) setS(() => expected = d);
+                final p = await pickFromApi(c, endpoint: '/api/procurement/options', listKey: 'vendors',
+                    label: (x) => _vendorName(x), title: tr('اختر المورد', 'Pick vendor'));
+                if (p != null) setS(() => vendor = p);
               },
             ),
+            const SizedBox(height: 8),
+            Row(children: [
+              Expanded(child: TextField(controller: vat, keyboardType: TextInputType.number, onChanged: (_) => setS(() {}),
+                  decoration: InputDecoration(labelText: tr('الضريبة %', 'VAT %'), isDense: true))),
+              const SizedBox(width: 8),
+              Expanded(flex: 2, child: OutlinedButton.icon(
+                icon: const Icon(Icons.event, size: 17),
+                label: Text(expected == null ? tr('التاريخ المتوقع', 'Expected date') : expected!.toIso8601String().split('T').first),
+                onPressed: () async {
+                  final d = await showDatePicker(context: c, initialDate: expected ?? DateTime.now().add(const Duration(days: 7)), firstDate: DateTime(2020), lastDate: DateTime(2035));
+                  if (d != null) setS(() => expected = d);
+                },
+              )),
+            ]),
             const SizedBox(height: 12),
             Text(tr('البنود', 'Items'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5)),
             const SizedBox(height: 6),
@@ -544,9 +601,9 @@ class _ProcOrdersScreenState extends State<ProcOrdersScreen> {
               child: Row(children: [
                 Expanded(flex: 3, child: TextField(controller: e.value.desc, decoration: InputDecoration(labelText: tr('الوصف', 'Description'), isDense: true))),
                 const SizedBox(width: 6),
-                Expanded(child: TextField(controller: e.value.qty, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: tr('كمية', 'Qty'), isDense: true))),
+                Expanded(child: TextField(controller: e.value.qty, keyboardType: TextInputType.number, onChanged: (_) => setS(() {}), decoration: InputDecoration(labelText: tr('كمية', 'Qty'), isDense: true))),
                 const SizedBox(width: 6),
-                Expanded(flex: 2, child: TextField(controller: e.value.price, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: tr('سعر', 'Price'), isDense: true))),
+                Expanded(flex: 2, child: TextField(controller: e.value.price, keyboardType: TextInputType.number, onChanged: (_) => setS(() {}), decoration: InputDecoration(labelText: tr('سعر', 'Price'), isDense: true))),
                 IconButton(icon: const Icon(Icons.remove_circle_outline, size: 20, color: T.danger), onPressed: items.length == 1 ? null : () => setS(() => items.removeAt(e.key))),
               ]),
             )),
@@ -554,50 +611,96 @@ class _ProcOrdersScreenState extends State<ProcOrdersScreen> {
               onPressed: () => setS(() => items.add((desc: TextEditingController(), qty: TextEditingController(text: '1'), price: TextEditingController()))),
               icon: const Icon(Icons.add, size: 18), label: Text(tr('إضافة بند', 'Add item')),
             ),
+            Wrap(spacing: 14, children: [
+              Text('${tr('المجموع الفرعي', 'Subtotal')}: ${_money(s)}', style: const TextStyle(color: T.inkSoft)),
+              Text('${tr('الضريبة', 'VAT')}: ${_money(v)}', style: const TextStyle(color: T.inkSoft)),
+              Text('${tr('الإجمالي', 'Total')}: ${_money(s + v)}', style: const TextStyle(fontWeight: FontWeight.w800)),
+            ]),
             const SizedBox(height: 8),
             TextField(controller: notes, decoration: InputDecoration(labelText: tr('ملاحظات', 'Notes'))),
             const SizedBox(height: 14),
-            SizedBox(width: double.infinity, child: FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(tr('إنشاء أمر الشراء', 'Create PO')))),
+            SizedBox(width: double.infinity, child: FilledButton(onPressed: () => Navigator.pop(c, true),
+                child: Text(existing == null ? tr('إنشاء أمر الشراء', 'Create PO') : tr('حفظ', 'Save')))),
           ]),
         ),
-      )),
+      );
+      }),
     );
     if (ok != true) return;
     final lines = items.where((l) => l.desc.text.trim().isNotEmpty)
         .map((l) => {'description': l.desc.text.trim(), 'quantity': num.tryParse(l.qty.text) ?? 1, 'unitPrice': num.tryParse(l.price.text) ?? 0}).toList();
-    if (lines.isEmpty) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('أضِف بندًا واحدًا على الأقل', 'Add at least one item')))); return; }
-    try {
-      await Api.instance.post('/api/procurement/orders', {
-        'vendor': vendor['_id'], 'items': lines, 'status': 'draft',
-        if (expected != null) 'expectedDate': expected!.toIso8601String().split('T').first,
-        if (notes.text.trim().isNotEmpty) 'notes': notes.text.trim(),
-      });
-      _load();
-    } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+    if (lines.isEmpty) {
+      _msg(tr('أضِف بندًا واحدًا على الأقل', 'Add at least one item'));
+      return;
     }
+    final body = {
+      'vendor': vendor!['_id'], 'items': lines, 'vatRate': num.tryParse(vat.text) ?? _vatDefault,
+      'expectedDate': expected?.toIso8601String().split('T').first,
+      'notes': notes.text.trim(),
+    };
+    try {
+      if (existing != null) {
+        await Api.instance.put('/api/procurement/orders/${existing['_id']}', body);
+      } else {
+        await Api.instance.post('/api/procurement/orders', {...body, 'status': 'draft'});
+      }
+      _load();
+    } catch (e) { _msg(e); }
   }
 
+  Future<bool> _confirm(String title, String body, {bool danger = false}) async =>
+      await showDialog<bool>(
+        context: context,
+        builder: (c) => AlertDialog(
+          title: Text(title),
+          content: Text(body),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('إلغاء', 'Cancel'))),
+            FilledButton(style: danger ? FilledButton.styleFrom(backgroundColor: T.danger) : null, onPressed: () => Navigator.pop(c, true), child: Text(tr('تأكيد', 'Confirm'))),
+          ],
+        ),
+      ) == true;
+
   Future<void> _receive(Map<String, dynamic> r) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (c) => AlertDialog(
-        title: Text(tr('تأكيد الاستلام', 'Confirm receipt')),
-        content: Text('${r['poNumber'] ?? ''} · ${_money(r['total'])} ${tr('ر.س', 'SAR')}'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('إلغاء', 'Cancel'))),
-          FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(tr('تم الاستلام', 'Received'))),
-        ],
-      ),
-    );
-    if (ok != true) return;
+    if (!await _confirm(tr('تأكيد الاستلام', 'Confirm receipt'), '${r['poNumber'] ?? ''} · ${_money(r['total'])} ${tr('ر.س', 'SAR')}')) return;
     try {
       await Api.instance.post('/api/procurement/orders/${r['_id']}/receive');
       _load();
-    } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
-    }
+    } catch (e) { _msg(e); }
   }
+
+  Future<void> _delete(Map<String, dynamic> r) async {
+    if (!await _confirm(tr('حذف أمر الشراء؟', 'Delete this order?'), '${r['poNumber'] ?? ''} · ${_vendorName(r['vendor'])}', danger: true)) return;
+    try {
+      await Api.instance.delete('/api/procurement/orders/${r['_id']}');
+      _load();
+    } catch (e) { _msg(e); }
+  }
+
+  // فاتورةُ مورد من أمر الشراء — تُرحَّل قيدًا كالويب.
+  Future<void> _billFromPO(Map<String, dynamic> r) async {
+    if (!await _confirm(tr('إنشاء فاتورة مورد', 'Create vendor bill'),
+        '${tr('المورد', 'Vendor')}: ${_vendorName(r['vendor'])}\n${tr('المجموع الفرعي', 'Subtotal')}: ${_money(r['subtotal'])}\n${tr('الضريبة', 'VAT')}: ${_money(r['vatAmount'])}')) {
+      return;
+    }
+    try {
+      await Api.instance.post('/api/procurement/bills', {
+        'vendor': r['vendor'] is Map ? r['vendor']['_id'] : r['vendor'],
+        'purchaseOrder': r['_id'], 'subtotal': r['subtotal'], 'vatAmount': r['vatAmount'],
+      });
+      _msg(tr('أُنشئت الفاتورة ورُحّلت', 'Bill created and posted'));
+      _load();
+    } catch (e) { _msg(e); }
+  }
+
+  static final _exportCols = [
+    ExportCol('#', '#', (r) => r['poNumber']),
+    ExportCol('المورد', 'Vendor', (r) => _vendorName(r['vendor'])),
+    ExportCol('الإجمالي', 'Total', (r) => r['total']),
+    ExportCol('الضريبة', 'VAT', (r) => r['vatAmount']),
+    ExportCol('الحالة', 'Status', (r) { final s = _poStatuses[r['status']]; return s == null ? r['status'] : tr(s.$1, s.$2); }),
+    ExportCol('التاريخ المتوقع', 'Expected', (r) => (r['expectedDate'] ?? '').toString().split('T').first),
+  ];
 
   @override
   Widget build(BuildContext context) {
@@ -606,12 +709,16 @@ class _ProcOrdersScreenState extends State<ProcOrdersScreen> {
       if (q.isEmpty) return true;
       return [r['poNumber'], _vendorName(r['vendor'])].any((x) => _fold((x ?? '').toString()).contains(q));
     }).toList();
+    final canManage = _canManage;
 
     return AppScaffold(
       title: Text(tr('أوامر الشراء', 'Purchase Orders')),
+      actions: [
+        ExportButton(fileName: 'purchase-orders', sheetName: tr('أوامر الشراء', 'Purchase Orders'), columns: _exportCols, rows: () => filtered),
+      ],
       floatingActionButton: FloatingActionButton.extended(
         backgroundColor: T.navy, foregroundColor: Colors.white,
-        onPressed: _createPO,
+        onPressed: () => _poSheet(),
         icon: const Icon(Icons.add), label: Text(tr('أمر شراء', 'New PO')),
       ),
       body: _loading
@@ -624,6 +731,24 @@ class _ProcOrdersScreenState extends State<ProcOrdersScreen> {
                     child: TextField(
                       onChanged: (v) => setState(() => _q = v),
                       decoration: InputDecoration(hintText: tr('ابحث برقم الأمر أو المورد…', 'Search…'), prefixIcon: const Icon(Icons.search)),
+                    ),
+                  ),
+                  SizedBox(
+                    height: 44,
+                    child: ListView(
+                      scrollDirection: Axis.horizontal,
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                      children: [
+                        for (final e in [('', ('كل الحالات', 'All statuses', T.navy)), ..._poStatuses.entries.map((x) => (x.key, x.value))])
+                          Padding(
+                            padding: const EdgeInsetsDirectional.only(end: 6),
+                            child: ChoiceChip(
+                              label: Text(tr(e.$2.$1, e.$2.$2)),
+                              selected: _status == e.$1,
+                              onSelected: (_) { setState(() { _status = e.$1; _loading = true; }); _load(); },
+                            ),
+                          ),
+                      ],
                     ),
                   ),
                   Expanded(
@@ -639,6 +764,7 @@ class _ProcOrdersScreenState extends State<ProcOrdersScreen> {
                                 final r = filtered[i];
                                 final st = _poStatuses[r['status']] ?? ('—', '—', T.inkFaint);
                                 final receivable = ['draft', 'sent', 'partially_received'].contains(r['status']);
+                                final billable = r['status'] != 'cancelled' && r['status'] != 'billed';
                                 return FadeSlideIn(
                                   delayMs: (i * 15).clamp(0, 150),
                                   child: AppCard(
@@ -651,15 +777,19 @@ class _ProcOrdersScreenState extends State<ProcOrdersScreen> {
                                       const SizedBox(height: 4),
                                       Text(_vendorName(r['vendor']), style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
                                       const SizedBox(height: 6),
-                                      Row(children: [
+                                      Wrap(spacing: 6, runSpacing: 4, children: [
                                         Chip2('${_money(r['total'])} ${tr('ر.س', 'SAR')}', T.info, icon: Icons.payments_outlined),
-                                        const Spacer(),
+                                        if (r['expectedDate'] != null)
+                                          Chip2((r['expectedDate'] ?? '').toString().split('T').first, T.inkFaint, icon: Icons.event),
+                                      ]),
+                                      Row(mainAxisAlignment: MainAxisAlignment.end, children: [
                                         if (receivable)
-                                          TextButton.icon(
-                                            onPressed: () => _receive(r),
-                                            icon: const Icon(Icons.inventory_2_outlined, size: 17),
-                                            label: Text(tr('تم الاستلام', 'Receive'), style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
-                                          ),
+                                          IconButton(tooltip: tr('تم الاستلام', 'Receive'), onPressed: () => _receive(r), icon: const Icon(Icons.inventory_2_outlined, size: 20, color: T.success)),
+                                        if (billable)
+                                          IconButton(tooltip: tr('إنشاء فاتورة مورد', 'Create bill'), onPressed: () => _billFromPO(r), icon: const Icon(Icons.receipt_long_outlined, size: 20, color: T.violet)),
+                                        IconButton(tooltip: tr('تعديل', 'Edit'), onPressed: () => _poSheet(existing: r), icon: const Icon(Icons.edit_outlined, size: 20, color: T.inkFaint)),
+                                        if (canManage)
+                                          IconButton(tooltip: tr('حذف', 'Delete'), onPressed: () => _delete(r), icon: const Icon(Icons.delete_outline, size: 20, color: T.danger)),
                                       ]),
                                     ]),
                                   ),

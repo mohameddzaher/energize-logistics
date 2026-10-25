@@ -6,14 +6,19 @@ import '../services/api.dart';
 import '../services/lang.dart';
 import '../services/live.dart';
 import '../ui/app_scaffold.dart';
+import '../ui/export_sheet.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import 'wallet_common.dart';
 
 /// المحفظة اليومية (النقدية) — محفظة الفرع اليومية: التحصيلات والمصروفات
 /// والمشتريات، مع تسجيل حركة وإغلاق اليوم — /api/wallet/daily.
+/// نظيرُ /system/wallet في الموقع: يومٌ أو فترةٌ أو شهر، ومحدِّدُ الفرع،
+/// وتعديلُ الحركة وحذفُها ونقلُها، وإعادةُ فتح اليوم، والتصدير.
 // أهلُ المال يملكون في المحفظة ما يملكه مديرُ النظام — مرآةُ
 // backend/src/config/financeAuthority.js؛ والخادمُ هو الحارس.
-bool _financePowers(String role) => const {'super_admin', 'cfo', 'accounting_manager', 'accountant'}.contains(role);
+const _financeFullRoles = ['cfo', 'accounting_manager', 'accountant'];
+bool _financePowers(String role) => role == 'super_admin' || _financeFullRoles.contains(role);
 
 class CashWalletScreen extends StatefulWidget {
   const CashWalletScreen({super.key});
@@ -24,7 +29,7 @@ class CashWalletScreen extends StatefulWidget {
 const _txTypes = {
   'collection': ('تحصيل', 'Collection', T.success, Icons.south_west),
   'expense': ('مصروف', 'Expense', T.danger, Icons.north_east),
-  'purchase': ('شراء', 'Purchase', T.orange, Icons.shopping_bag_outlined),
+  'purchase': ('مشتريات', 'Purchase', T.info, Icons.shopping_bag_outlined),
   // ── واستلامُ الفواتير الضريبيّة ─────────────────────────────────────────
   // اسمُ الزرّ يقول الفعلَ لا الشيء: «فاتورة ضريبية» تُقرأ كأنّها إصدارٌ أو
   // دفعُ قيمة، والفعلُ استلام. وهو قيدٌ بلا مبلغ: يقول إنّ كشوفَ هذه الفواتير
@@ -32,16 +37,32 @@ const _txTypes = {
   'tax_invoice': ('استلام فاتورة ضريبية', 'Tax invoices received', T.inkFaint, Icons.receipt_long_outlined),
 };
 
-String _money(dynamic v) {
-  final n = (v is num) ? v : num.tryParse(v?.toString() ?? '') ?? 0;
-  return n.toStringAsFixed(0).replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (m) => ',');
+String _typeLabel(dynamic t) {
+  final x = _txTypes[t];
+  return x == null ? '${t ?? ''}' : tr(x.$1, x.$2);
 }
+
+String _money(dynamic v) => walletMoney(v);
+
+/// البيانُ والعميلُ والسائقُ — الأعمدةُ نفسُها في الموقع (statementOf / customerOf / driverOf).
+String _statementOf(Map t) => '${t['description'] ?? ''}'.isNotEmpty ? '${t['description']}' : '${t['itemName'] ?? ''}';
+String _customerOf(Map t) => t['customer'] is Map ? '${t['customer']['companyName'] ?? ''} (${t['customer']['customerNumber'] ?? ''})' : '';
+String _driverOf(Map t) {
+  if (t['driver'] is Map && '${t['driver']['name'] ?? ''}'.isNotEmpty) return '${t['driver']['name']}';
+  for (final k in ['driverName', 'purchaseDriverName']) {
+    if ('${t[k] ?? ''}'.isNotEmpty) return '${t[k]}';
+  }
+  return '';
+}
+String _op(Map t, String k) => t['operationDetails'] is Map ? '${t['operationDetails'][k] ?? ''}' : '';
 
 class _CashWalletScreenState extends State<CashWalletScreen> {
   Map<String, dynamic>? _wallet;
   List<Map<String, dynamic>> _transactions = [];
+  List<Map<String, dynamic>> _rangeWallets = [];
   bool _loading = true;
   String? _error;
+  int _seq = 0; // ردٌّ أقدمُ لا يكتب فوق أحدث حين يتبدّل الفرعُ أو التاريخ.
   /// ── أوّلُ يومٍ للدفتر — مرآةُ `config/walletStart.js` في الخادم ─────────────
   ///
   /// الخادمُ هو المانعُ فعلًا: يردّ كلَّ قراءةٍ وكتابةٍ قبل هذا اليوم. وهذه
@@ -49,67 +70,152 @@ class _CashWalletScreenState extends State<CashWalletScreen> {
   /// اختيارُه، فيكتشف المنعَ بعد الضغط بدل أن يقرأه قبله.
   static final DateTime walletStart = DateTime(2026, 9, 1);
 
-  DateTime _date = DateTime.now().isBefore(walletStart) ? walletStart : DateTime.now();
-  late final void Function() _onLive;
+  static DateTime _startOfBook(DateTime d) => d.isBefore(walletStart) ? walletStart : d;
 
-  String get _dateKey => '${_date.year}-${_date.month.toString().padLeft(2, '0')}-${_date.day.toString().padLeft(2, '0')}';
+  // ── يومٌ أو فترةٌ أو شهر ─────────────────────────────────────────────────
+  // الفترةُ والشهرُ للقراءة وحدَها: الحركةُ تخصّ يومًا، والإقفالُ فعلُ يوم.
+  String _mode = 'day';
+  DateTime _date = _startOfBook(DateTime.now());
+  DateTime _from = _startOfBook(DateTime.now());
+  DateTime _to = DateTime.now();
+  DateTime _month = DateTime(DateTime.now().year, DateTime.now().month);
+
+  // محدِّدُ الفرع — لمن لا يُقفَل على فرعه (موظّفُ العمليات وحدَه يُقفَل).
+  List<Map<String, dynamic>> _branches = [];
+  String _branchId = '';
+  int _branchUsers = 0;
+
+  // تصفيةٌ محلّيّة على الحركات المعروضة (نظيرُ فلاتر الأعمدة في الموقع).
+  String _typeFilter = '';
+  String _q = '';
+
+  late final void Function() _onLive;
+  static const _events = ['wallet:transaction', 'wallet:transactionDeleted', 'wallet:dayClosed', 'wallet:dayReopened'];
+
+  String get _dateKey => walletDayKey(_date);
+
+  AuthProvider get _auth => context.read<AuthProvider>();
+  String get _role => _auth.role;
+  bool get _superPowers => _auth.user?['superAdminPowers'] == true;
+  /// مديرُ النظام وأهلُ المال: التعديلُ والحذفُ والنقلُ وإعادةُ الفتح (hasFinancePowers).
+  bool get _finance => _financePowers(_role) || _superPowers;
+  bool get _isManager => const ['super_admin', 'admin', 'operations_manager', 'operations_staff', ..._financeFullRoles].contains(_role)
+      || _auth.canEditSection('Operations');
+  bool get _readOnly => _role == 'moderator';
+  /// الكتابةُ في يومٍ أُقفل سلطةٌ ماليّة — role-only كما في الخادم (`mayWriteIntoClosedDay`).
+  bool get _canWriteClosedDay => const ['super_admin', 'admin', 'operations_manager', ..._financeFullRoles].contains(_role) || _superPowers;
+  bool get _canSelectBranch => _role.isNotEmpty && _role != 'operations_staff';
 
   @override
   void initState() {
     super.initState();
-    _load();
-    _onLive = () => _load();
-    Live.instance.on('wallet:transaction', _onLive);
-    Live.instance.on('wallet:dayClosed', _onLive);
-    Live.instance.on('wallet:dayReopened', _onLive);
+    _onLive = () => _load(spinner: false);
+    for (final e in _events) {
+      Live.instance.on(e, _onLive);
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) => _init());
   }
 
   @override
   void dispose() {
-    Live.instance.off('wallet:transaction', _onLive);
-    Live.instance.off('wallet:dayClosed', _onLive);
-    Live.instance.off('wallet:dayReopened', _onLive);
+    for (final e in _events) {
+      Live.instance.off(e, _onLive);
+    }
     super.dispose();
   }
 
-  Future<void> _load() async {
+  /// قائمةُ الفروع تُقرأ مرّةً واحدة وتخدم الغرضين: محدِّدُ الفرع، وفرعُ المشتريات.
+  Future<void> _init() async {
     try {
-      final d = await Api.instance.get('/api/wallet/daily?date=$_dateKey');
-      if (!mounted) return;
-      setState(() {
-        _wallet = d['wallet'] is Map ? Map<String, dynamic>.from(d['wallet']) : {};
-        _transactions = List<Map<String, dynamic>>.from(d['transactions'] ?? []);
-        _loading = false;
-        _error = null;
-      });
-    } catch (e) {
-      if (mounted) setState(() { _loading = false; _error = e.toString(); });
+      final d = await Api.instance.get('/api/branches');
+      final list = d is Map ? (d['branches'] ?? []) : (d ?? []);
+      _branches = List<Map<String, dynamic>>.from((list as List).whereType<Map>().map((m) => Map<String, dynamic>.from(m)));
+      if (_canSelectBranch && _branchId.isEmpty && _branches.isNotEmpty) {
+        _branchId = '${_branches.first['_id']}';
+        _loadBranchUsers();
+      }
+    } catch (_) { /* تبقى القائمةُ فارغة. */ }
+    await _load();
+  }
+
+  /// موظّفو الفرع للعرض وحدَه — «مَن يعمل على هذه المحفظة». وتعذُّرُ قراءتِه لا يُقال خطأً.
+  Future<void> _loadBranchUsers() async {
+    final id = _branchId;
+    try {
+      final d = await Api.instance.get('/api/users?branch=$id');
+      final list = (d is Map ? d['users'] : d) as List? ?? const [];
+      final n = list.whereType<Map>().where((u) => const ['operations_staff', 'operations_manager'].contains(u['role'])).length;
+      if (mounted && id == _branchId) setState(() => _branchUsers = n);
+    } catch (_) {
+      if (mounted) setState(() => _branchUsers = 0);
     }
   }
 
-  num _n(dynamic v) => v is num ? v : num.tryParse(v?.toString() ?? '') ?? 0;
+  String get _branchQ => _canSelectBranch && _branchId.isNotEmpty ? '&branchId=$_branchId' : '';
 
-  // ── نقلُ حركةٍ إلى فرعٍ آخر أو يومٍ آخر — لمديرِ النظام وحدَه ──────────────
-  // نظيرُ «نقل» في الموقع. والقيدُ يُسجَّل في اليوم الخطأ كما يُسجَّل في الفرع
-  // الخطأ — بل أكثر: مَن يُدخل عهدةَ أمسِ صباحًا يكتب تاريخَ اليوم بلا أن
-  // ينتبه. وعلاجُه بالحذف وإعادةِ التسجيل يمحو سطرَ المراجعة الذي يقول إنّ
-  // القيدَ كان.
-  //
-  // واليوميّتان يُعاد حسابهما وتتدحرج أرصدتُهما في الخادم — راجع
-  // `moveTransaction`. والشاشةُ تسمع `wallet:transaction` فتُحدَّث وحدَها.
-  List<Map<String, dynamic>> _branches = [];
-
-  Future<void> _loadBranches() async {
-    if (_branches.isNotEmpty) return;
-    try {
-      final d = await Api.instance.get('/api/branches?active=true');
-      _branches = List<Map<String, dynamic>>.from(d['branches'] ?? []);
-    } catch (_) { /* تبقى القائمةُ فارغةً: يُنقَل بالتاريخ وحدَه. */ }
+  (String, String) _rangeBounds() {
+    if (_mode == 'month') {
+      var end = walletMonthEnd(_month);
+      final cap = walletDayKey(DateTime.now().add(const Duration(days: 1)));
+      // والشهرُ الجاري ينتهي عند حدّ الدفتر، لا في آخر أيّامه.
+      if (!_finance && end.compareTo(cap) > 0) end = cap;
+      return ('${walletMonthKey(_month)}-01', end);
+    }
+    return (walletDayKey(_from), walletDayKey(_to));
   }
 
+  Future<void> _load({bool spinner = true}) async {
+    if (_canSelectBranch && _branchId.isEmpty) {
+      if (mounted) setState(() { _loading = false; _wallet = null; _transactions = []; });
+      return;
+    }
+    final my = ++_seq;
+    if (spinner && mounted) setState(() => _loading = true);
+    try {
+      if (_mode == 'day') {
+        final d = await Api.instance.get('/api/wallet/daily?date=$_dateKey$_branchQ');
+        if (!mounted || my != _seq) return;
+        setState(() {
+          _wallet = d['wallet'] is Map ? Map<String, dynamic>.from(d['wallet']) : null;
+          _transactions = List<Map<String, dynamic>>.from(d['transactions'] ?? []);
+          _rangeWallets = [];
+          _loading = false;
+          _error = null;
+        });
+      } else {
+        final (f, t) = _rangeBounds();
+        final d = await Api.instance.get('/api/wallet/range?dateFrom=$f&dateTo=$t$_branchQ');
+        if (!mounted || my != _seq) return;
+        setState(() {
+          _wallet = null;
+          _rangeWallets = List<Map<String, dynamic>>.from(d['wallets'] ?? []);
+          _transactions = List<Map<String, dynamic>>.from(d['transactions'] ?? []);
+          _loading = false;
+          _error = null;
+        });
+      }
+    } catch (e) {
+      if (!mounted || my != _seq) return;
+      final msg = e.toString();
+      setState(() {
+        _loading = false;
+        _wallet = null;
+        _transactions = [];
+        _error = msg.contains('branch')
+            ? tr('لم يتم تعيين فرع لهذا المستخدم. يرجى تعيين فرع من إعدادات المستخدمين.', 'No branch assigned to this user. Please assign a branch in User Settings.')
+            : msg;
+      });
+    }
+  }
+
+  void _snack(String m) {
+    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
+  }
+
+  // ── نقلُ حركةٍ إلى فرعٍ آخر أو يومٍ آخر — لأهل المال ──────────────────────
+  // نظيرُ «نقل» في الموقع. واليوميّتان يُعاد حسابهما وتتدحرج أرصدتُهما في
+  // الخادم — راجع `moveTransaction`.
   Future<void> _moveTransaction(Map<String, dynamic> t) async {
-    await _loadBranches();
-    if (!mounted) return;
     final fromBranch = (t['branch'] ?? '').toString();
     final fromDate = (t['date'] ?? _dateKey).toString();
     String toBranch = fromBranch;
@@ -125,15 +231,14 @@ class _CashWalletScreenState extends State<CashWalletScreen> {
           child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(tr('نقل الحركة', 'Move transaction'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
             const SizedBox(height: 4),
-            Text('${tr(_txTypes[t['type']]?.$1 ?? '—', _txTypes[t['type']]?.$2 ?? '—')} · ${_money(t['amount'])} · $fromDate',
+            Text('${_typeLabel(t['type'])} · ${_money(t['amount'])} · $fromDate',
                 style: const TextStyle(fontSize: 11.5, color: T.inkFaint)),
             const SizedBox(height: 14),
-            // والفرعُ الحاليُّ يبقى في القائمة: النقلُ قد يكون في التاريخ وحدَه.
             if (_branches.isNotEmpty)
               DropdownButtonFormField<String>(
                 initialValue: _branches.any((b) => b['_id'] == toBranch) ? toBranch : null,
                 decoration: InputDecoration(labelText: tr('الفرع', 'Branch'), border: const OutlineInputBorder(), isDense: true),
-                items: _branches.map((b) => DropdownMenuItem(value: b['_id'] as String, child: Text((b['name'] ?? '').toString(), style: const TextStyle(fontSize: 13)))).toList(),
+                items: _branches.map((b) => DropdownMenuItem(value: '${b['_id']}', child: Text((b['name'] ?? '').toString(), style: const TextStyle(fontSize: 13)))).toList(),
                 onChanged: (v) => setS(() => toBranch = v ?? toBranch),
               ),
             const SizedBox(height: 10),
@@ -141,9 +246,7 @@ class _CashWalletScreenState extends State<CashWalletScreen> {
               onPressed: () async {
                 final d = DateTime.tryParse(toDate) ?? DateTime.now();
                 final v = await showDatePicker(context: c, initialDate: d, firstDate: DateTime(2020), lastDate: DateTime(2100));
-                if (v != null) {
-                  setS(() => toDate = '${v.year}-${v.month.toString().padLeft(2, '0')}-${v.day.toString().padLeft(2, '0')}');
-                }
+                if (v != null) setS(() => toDate = walletDayKey(v));
               },
               icon: const Icon(Icons.event, size: 17),
               label: Text('${tr('التاريخ', 'Date')}: $toDate', style: const TextStyle(fontWeight: FontWeight.w700)),
@@ -157,25 +260,16 @@ class _CashWalletScreenState extends State<CashWalletScreen> {
             SizedBox(
               width: double.infinity,
               child: FilledButton.icon(
-                // والزرُّ لا يعمل حتّى يتغيّر أحدُهما — ونقلٌ إلى حيث هو خطأٌ
-                // يردّه الخادم، فلا يُعرَض بابًا على الشاشة.
                 onPressed: busy || (toBranch == fromBranch && toDate == fromDate) ? null : () async {
                   setS(() => busy = true);
                   try {
-                    final r = await Api.instance.patch('/api/wallet/transactions/${t['_id']}/move',
-                        {'branch': toBranch, 'date': toDate});
+                    final r = await Api.instance.patch('/api/wallet/transactions/${t['_id']}/move', {'branch': toBranch, 'date': toDate});
                     if (c.mounted) Navigator.pop(c);
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text((r is Map ? r['message'] : null)?.toString() ?? tr('نُقلت الحركة', 'Moved'))));
-                      setState(() => _loading = true);
-                      await _load();
-                    }
+                    _snack((r is Map ? r['message'] : null)?.toString() ?? tr('نُقلت الحركة', 'Moved'));
+                    await _load(spinner: false);
                   } catch (e) {
                     setS(() => busy = false);
-                    if (c.mounted) {
-                      ScaffoldMessenger.of(c).showSnackBar(SnackBar(content: Text(e.toString())));
-                    }
+                    if (c.mounted) ScaffoldMessenger.of(c).showSnackBar(SnackBar(content: Text(e.toString())));
                   }
                 },
                 icon: busy
@@ -190,135 +284,175 @@ class _CashWalletScreenState extends State<CashWalletScreen> {
     );
   }
 
-  Future<void> _addTransaction() async {
-    String type = 'collection';
-    final amount = TextEditingController();
-    final desc = TextEditingController();
-    final dsNumber = TextEditingController();
-    // الاستلامُ يقع على حزمةِ كشوفٍ لا على واحد: يأتي المندوبُ بسبعةٍ فيسجّلها
-    // دفعةً، وقيدٌ لكلٍّ يعني تكرارَ التاريخ سبعَ مرّاتٍ ومَن يملّ يترك الباقي.
-    final reportInput = TextEditingController();
-    final reports = <String>[];
+  // ── تعديلُ حركةٍ سُجِّلت — لأهل المال وحدَهم (maySettle في الخادم) ─────────
+  Future<void> _editTransaction(Map<String, dynamic> t) async {
+    final type = '${t['type']}';
+    final amount = TextEditingController(text: '${t['amount'] ?? ''}');
+    final notes = TextEditingController(text: '${t['notes'] ?? ''}');
+    final itemName = TextEditingController(text: '${t['itemName'] ?? ''}');
+    final ds = TextEditingController(text: '${t['deliveryStatementNumber'] ?? ''}');
+    final desc = TextEditingController(text: '${t['description'] ?? ''}');
+    final pds = TextEditingController(text: '${t['purchaseDeliveryStatementNumber'] ?? ''}');
+    final pDriver = TextEditingController(text: '${t['purchaseDriverName'] ?? ''}');
+    final pReceipt = TextEditingController(text: '${t['purchaseReceiptNumber'] ?? ''}');
+    String pBranch = '${t['purchaseBranch'] ?? ''}';
+    // والقيمةُ التاريخيّةُ تبقى في القائمة وإن لم توافق فرعًا قائمًا.
+    final branchNames = <String>{if (pBranch.isNotEmpty) pBranch, ..._branches.map((b) => '${b['name'] ?? ''}').where((x) => x.isNotEmpty)}.toList();
+    bool busy = false;
     await showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      builder: (c) => StatefulBuilder(builder: (c, setS) => SafeArea(
-        child: Padding(
-          padding: EdgeInsets.fromLTRB(16, 16, 16, MediaQuery.of(c).viewInsets.bottom + 16),
-          child: SingleChildScrollView(
-            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(tr('حركة نقدية', 'Cash entry'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
-              const SizedBox(height: 12),
-              SegmentedButton<String>(
-                segments: _txTypes.entries.map((e) => ButtonSegment(value: e.key, label: Text(tr(e.value.$1, e.value.$2), style: const TextStyle(fontSize: 11.5)), icon: Icon(e.value.$4, size: 15))).toList(),
-                selected: {type},
-                onSelectionChanged: (s) => setS(() => type = s.first),
-              ),
-              const SizedBox(height: 12),
-              // ── ولا يُسأل عن مبلغٍ في قيد الاستلام ──────────────────────
-              // لا مالَ فيه. وعرضُ الخانة مطلوبةً يوقف الموظّفَ أمام سؤالٍ لا
-              // جوابَ له فيكتب صفرًا ليمرّ.
-              if (type != 'tax_invoice') ...[
-                TextField(controller: amount, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: tr('المبلغ *', 'Amount *'))),
-                const SizedBox(height: 10),
-              ],
-              if (type == 'collection' || type == 'purchase') ...[
-                TextField(controller: dsNumber, decoration: InputDecoration(labelText: tr('رقم كشف التخريج (يربط تلقائيًا)', 'Delivery statement # (auto-links)'))),
-                const SizedBox(height: 10),
-              ],
-              if (type == 'tax_invoice') ...[
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(color: T.inkFaint.withValues(alpha: .08), borderRadius: BorderRadius.circular(8)),
-                  child: Text(
-                    tr('تسجيلُ استلام — تقول به إنّ كشوف هذه الفواتير صارت بيدك. لا مبلغَ فيه ولا يدخل رصيدَ العهدة.',
-                       'A receipt record — these reports are now in your hands. No amount, and it does not touch the balance.'),
-                    style: const TextStyle(fontSize: 11.5, color: T.inkSoft)),
-                ),
-                const SizedBox(height: 10),
-                Row(children: [
-                  Expanded(child: TextField(
-                    controller: reportInput,
-                    textInputAction: TextInputAction.done,
-                    decoration: InputDecoration(labelText: tr('رقم كشف التخريج', 'Dispatch report number')),
-                    onSubmitted: (v) {
-                      final x = v.trim();
-                      if (x.isEmpty || reports.contains(x)) return;
-                      setS(() { reports.add(x); reportInput.clear(); });
-                    },
-                  )),
-                  const SizedBox(width: 8),
-                  FilledButton(
-                    onPressed: () {
-                      final x = reportInput.text.trim();
-                      if (x.isEmpty || reports.contains(x)) return;
-                      setS(() { reports.add(x); reportInput.clear(); });
-                    },
-                    child: Text(tr('إضافة', 'Add')),
-                  ),
-                ]),
-                if (reports.isNotEmpty) ...[
-                  const SizedBox(height: 8),
-                  Wrap(spacing: 6, runSpacing: 6, children: reports.map((r) => Chip(
-                    label: Text(r, style: const TextStyle(fontSize: 11.5)),
-                    onDeleted: () => setS(() => reports.remove(r)),
-                  )).toList()),
+      builder: (c) => StatefulBuilder(builder: (c, setS) {
+        Widget f(TextEditingController ctl, String ar, String en, {bool number = false, int lines = 1}) => Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: TextField(controller: ctl, maxLines: lines,
+                  keyboardType: number ? const TextInputType.numberWithOptions(decimal: true) : null,
+                  decoration: InputDecoration(labelText: tr(ar, en), border: const OutlineInputBorder(), isDense: true)),
+            );
+        return SafeArea(
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(16, 16, 16, MediaQuery.of(c).viewInsets.bottom + 16),
+            child: SingleChildScrollView(
+              child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('${tr('تعديل المعاملة', 'Edit transaction')} — ${_typeLabel(type)}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+                const SizedBox(height: 12),
+                f(amount, 'المبلغ (ريال) *', 'Amount (SAR) *', number: true),
+                if (type == 'collection') ...[
+                  f(ds, 'رقم كشف التخريج', 'Delivery statement #'),
+                  f(desc, 'البيان', 'Description'),
                 ],
-                const SizedBox(height: 10),
-              ],
-              TextField(controller: desc, decoration: InputDecoration(labelText: tr('البيان / الوصف', 'Description'))),
-              const SizedBox(height: 14),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton(
-                  onPressed: () async {
-                    // ما بقي في خانة الكتابة ولم يُضَف يُحسب: مَن كتب رقمًا
-                    // وضغط «تسجيل» قصد إضافتَه، وإسقاطُه بصمتٍ يفقده كشفًا.
-                    final pending = reportInput.text.trim();
-                    final allReports = [...reports, if (pending.isNotEmpty && !reports.contains(pending)) pending];
-                    if (type == 'tax_invoice') {
-                      if (allReports.isEmpty) return;
-                    } else if ((num.tryParse(amount.text) ?? 0) <= 0) {
-                      return;
-                    }
-                    final body = <String, dynamic>{
-                      'type': type,
-                      'amount': type == 'tax_invoice' ? 0 : num.tryParse(amount.text),
-                      'date': _dateKey,
-                      if (desc.text.trim().isNotEmpty) 'description': desc.text.trim(),
-                      if (type == 'tax_invoice') 'receivedReportNumbers': allReports,
-                    };
-                    if (type == 'collection' && dsNumber.text.trim().isNotEmpty) body['deliveryStatementNumber'] = dsNumber.text.trim();
-                    if (type == 'purchase' && dsNumber.text.trim().isNotEmpty) body['purchaseDeliveryStatementNumber'] = dsNumber.text.trim();
-                    try {
-                      final res = await Api.instance.post('/api/wallet/transactions', body);
-                      // ورقمٌ لا كشفَ له يُقال، فلا يُظنّ أنّ السبعةَ خُتمت
-                      // وقد خُتم منها خمسة.
-                      final unknown = (res is Map ? res['unknownReports'] : null) as List?;
-                      if (c.mounted && unknown != null && unknown.isNotEmpty) {
-                        ScaffoldMessenger.of(c).showSnackBar(SnackBar(content: Text(
-                          tr('حُفظ — ولم نجد كشوفًا بهذه الأرقام: ', 'Saved — no reports found for: ') + unknown.join('، '))));
+                if (type == 'expense') f(itemName, 'الصنف / الوصف', 'Item / description'),
+                if (type == 'purchase') ...[
+                  f(pds, 'رقم كشف التخريج', 'Delivery statement #'),
+                  f(pDriver, 'اسم السائق', 'Driver name'),
+                  f(pReceipt, 'رقم السند', 'Receipt number'),
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: DropdownButtonFormField<String>(
+                      initialValue: pBranch.isEmpty ? '' : pBranch,
+                      isExpanded: true,
+                      decoration: InputDecoration(labelText: tr('الفرع', 'Branch'), border: const OutlineInputBorder(), isDense: true),
+                      items: [
+                        DropdownMenuItem(value: '', child: Text(tr('— اختر الفرع —', '— choose branch —'))),
+                        ...branchNames.map((n) => DropdownMenuItem(value: n, child: Text(n))),
+                      ],
+                      onChanged: (v) => setS(() => pBranch = v ?? ''),
+                    ),
+                  ),
+                ],
+                f(notes, 'ملاحظات', 'Notes', lines: 2),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    onPressed: busy ? null : () async {
+                      final n = num.tryParse(amount.text.trim());
+                      if (n == null || n <= 0) return;
+                      String? v(TextEditingController x) => x.text.trim().isEmpty ? null : x.text.trim();
+                      final body = <String, dynamic>{'amount': n, 'notes': v(notes)};
+                      if (type == 'expense') body['itemName'] = v(itemName);
+                      if (type == 'collection') { body['deliveryStatementNumber'] = v(ds); body['description'] = v(desc); }
+                      if (type == 'purchase') {
+                        body['purchaseDeliveryStatementNumber'] = v(pds);
+                        body['purchaseDriverName'] = v(pDriver);
+                        body['purchaseReceiptNumber'] = v(pReceipt);
+                        body['purchaseBranch'] = pBranch.isEmpty ? null : pBranch;
                       }
-                      if (c.mounted) Navigator.pop(c);
-                      _load();
-                    } catch (e) {
-                      if (c.mounted) ScaffoldMessenger.of(c).showSnackBar(SnackBar(content: Text(e.toString())));
-                    }
-                  },
-                  child: Text(tr('تسجيل', 'Record')),
+                      body.removeWhere((k, val) => val == null);
+                      setS(() => busy = true);
+                      try {
+                        await Api.instance.put('/api/wallet/transactions/${t['_id']}', body);
+                        if (c.mounted) Navigator.pop(c);
+                        await _load(spinner: false);
+                      } catch (e) {
+                        setS(() => busy = false);
+                        if (c.mounted) ScaffoldMessenger.of(c).showSnackBar(SnackBar(content: Text(e.toString())));
+                      }
+                    },
+                    child: Text(tr('حفظ التعديلات', 'Save changes')),
+                  ),
                 ),
-              ),
-            ]),
+              ]),
+            ),
           ),
-        ),
-      )),
+        );
+      }),
     );
   }
 
-  /// كشوفُ التخريج في حركات اليوم — مرتَّبةً وبلا تكرار. نظيرُ الزرّ في الموقع.
-  List<String> _dayReportNumbers() {
+  Future<bool> _confirm(String msg) async => await showDialog<bool>(
+        context: context,
+        builder: (c) => AlertDialog(
+          content: Text(msg),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('إلغاء', 'Cancel'))),
+            FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(tr('تأكيد', 'Confirm'))),
+          ],
+        ),
+      ) == true;
+
+  Future<void> _deleteTransaction(Map<String, dynamic> t) async {
+    if (!await _confirm(tr('هل تريد حذف هذه المعاملة؟', 'Delete this transaction?'))) return;
+    try {
+      await Api.instance.delete('/api/wallet/transactions/${t['_id']}');
+      await _load(spinner: false);
+    } catch (e) {
+      _snack(e.toString());
+    }
+  }
+
+  // ── وإعادةُ الفتح لأهل المال وحدَهم — يومٌ أُقفل صار رقمًا في دفترٍ مُقَرّ ────
+  Future<void> _reopenDay() async {
+    final id = _wallet?['_id'];
+    if (id == null) return;
+    if (!await _confirm(tr('هل تريد إعادة فتح هذا اليوم؟', 'Reopen this day?'))) return;
+    try {
+      await Api.instance.post('/api/wallet/reopen/$id');
+      await _load(spinner: false);
+    } catch (e) {
+      _snack(e.toString());
+    }
+  }
+
+  Future<void> _txActions(Map<String, dynamic> t) async {
+    final a = await showModalBottomSheet<String>(
+      context: context,
+      builder: (c) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          ListTile(leading: const Icon(Icons.edit_outlined), title: Text(tr('تعديل', 'Edit')), onTap: () => Navigator.pop(c, 'edit')),
+          ListTile(leading: const Icon(Icons.swap_horiz, color: T.info), title: Text(tr('نقل إلى فرع / يوم آخر', 'Move to another branch / day')), onTap: () => Navigator.pop(c, 'move')),
+          ListTile(leading: const Icon(Icons.delete_outline, color: T.danger), title: Text(tr('حذف', 'Delete'), style: const TextStyle(color: T.danger)), onTap: () => Navigator.pop(c, 'delete')),
+        ]),
+      ),
+    );
+    if (a == 'edit') await _editTransaction(t);
+    if (a == 'move') await _moveTransaction(t);
+    if (a == 'delete') await _deleteTransaction(t);
+  }
+
+  Future<void> _addTransaction() async {
+    final type = await showModalBottomSheet<String>(
+      context: context,
+      builder: (c) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: _txTypes.entries.map((e) => ListTile(
+          leading: Icon(e.value.$4, color: e.value.$3),
+          title: Text(tr(e.value.$1, e.value.$2), style: const TextStyle(fontWeight: FontWeight.w700)),
+          onTap: () => Navigator.pop(c, e.key),
+        )).toList()),
+      ),
+    );
+    if (type == null || !mounted) return;
+    final saved = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      builder: (c) => _TxForm(type: type, date: _dateKey, branchId: _canSelectBranch ? _branchId : ''),
+    );
+    if (saved == true) _load(spinner: false);
+  }
+
+  /// كشوفُ التخريج في الحركات المعروضة — مرتَّبةً وبلا تكرار. نظيرُ الزرّ في الموقع.
+  List<String> _reportNumbers(List<Map<String, dynamic>> txs) {
     final out = <String>{};
-    for (final t in _transactions) {
+    for (final t in txs) {
       for (final v in [
         t['deliveryStatementNumber'],
         t['purchaseDeliveryStatementNumber'],
@@ -338,198 +472,782 @@ class _CashWalletScreenState extends State<CashWalletScreen> {
     return list;
   }
 
-  Future<void> _copyDayReports() async {
-    final nums = _dayReportNumbers();
+  Future<void> _copyReports(List<Map<String, dynamic>> txs) async {
+    final nums = _reportNumbers(txs);
     if (nums.isEmpty) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('لا كشوف في اليوم', 'No report numbers'))));
+      _snack(tr('لا كشوفَ في المعروض', 'No report numbers in view'));
       return;
     }
     await Clipboard.setData(ClipboardData(text: nums.join('\n')));
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('${tr('نُسِخ', 'Copied')} ${nums.length} ${tr('كشفًا', 'reports')}')));
-    }
+    _snack('${tr('نُسِخ', 'Copied')} ${nums.length} ${tr('كشفًا', 'reports')}');
   }
 
   Future<void> _closeDay() async {
-    final actualCash = TextEditingController(text: _n(_wallet?['closingBalance']).toStringAsFixed(0));
-    final reason = TextEditingController();
+    final w = _wallet ?? {};
+    final expected = walletNum(w['closingBalance']);
+    final actualCash = TextEditingController();
+    final notes = TextEditingController();
     final ok = await showDialog<bool>(
       context: context,
-      builder: (c) => AlertDialog(
-        title: Text(tr('إغلاق اليوم', 'Close day')),
-        content: Column(mainAxisSize: MainAxisSize.min, children: [
-          Text('${tr('الرصيد المتوقع', 'Expected')}: ${_money(_wallet?['closingBalance'])} ${tr('ر.س', 'SAR')}', style: const TextStyle(fontSize: 12.5, color: T.inkSoft)),
-          const SizedBox(height: 10),
-          TextField(controller: actualCash, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: tr('النقد الفعلي', 'Actual cash'))),
-          const SizedBox(height: 10),
-          TextField(controller: reason, decoration: InputDecoration(labelText: tr('سبب الفرق (إن وُجد)', 'Difference reason'))),
-        ]),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('إلغاء', 'Cancel'))),
-          FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(tr('إغلاق', 'Close'))),
-        ],
-      ),
+      builder: (c) => StatefulBuilder(builder: (c, setS) {
+        final a = num.tryParse(actualCash.text.trim());
+        final diff = a == null ? 0 : expected - a;
+        return AlertDialog(
+          title: Text(tr('إغلاق اليوم', 'Close day')),
+          content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            // الرصيدُ المتوقّعُ للمدير وحدَه — كما في الموقع: الموظّفُ يعدّ ما بيده ولا يُلقَّن الرقم.
+            if (_isManager) ...[
+              Text('${tr('الرصيد النقدي المتوقع', 'Expected cash balance')}: ${_money(expected)} ${tr('ر.س', 'SAR')}', style: const TextStyle(fontSize: 12.5, color: T.inkSoft)),
+              const SizedBox(height: 10),
+            ],
+            TextField(controller: actualCash, keyboardType: const TextInputType.numberWithOptions(decimal: true), onChanged: (_) => setS(() {}),
+                decoration: InputDecoration(labelText: tr('النقد الفعلي (ريال) *', 'Cash in hand (SAR) *'))),
+            if (a != null && diff != 0) ...[
+              const SizedBox(height: 8),
+              Text('${diff > 0 ? tr('عجز', 'Deficit') : tr('فائض', 'Surplus')}: ${_money(diff.abs())}',
+                  style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: diff > 0 ? T.danger : T.success)),
+            ],
+            const SizedBox(height: 10),
+            TextField(controller: notes, maxLines: 2, decoration: InputDecoration(labelText: tr('ملاحظات (اختياري)', 'Notes (optional)'))),
+          ]),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('إلغاء', 'Cancel'))),
+            FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(tr('إغلاق اليوم', 'Close day'))),
+          ],
+        );
+      }),
     );
     if (ok != true) return;
     try {
       await Api.instance.post('/api/wallet/close-day', {
         'date': _dateKey,
-        if (actualCash.text.trim().isNotEmpty) 'actualCash': num.tryParse(actualCash.text),
-        if (reason.text.trim().isNotEmpty) 'differenceReason': reason.text.trim(),
+        if (_canSelectBranch && _branchId.isNotEmpty) 'branchId': _branchId,
+        if (actualCash.text.trim().isNotEmpty) 'actualCash': num.tryParse(actualCash.text.trim()),
+        'differenceReason': '',
+        'differenceNotes': notes.text.trim(),
       });
-      _load();
+      // ومَن ليس مديرًا ينتقل إلى الغد بعد الإقفال — كما في الموقع.
+      if (!_isManager) {
+        setState(() => _date = _date.add(const Duration(days: 1)));
+      }
+      _load(spinner: false);
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+      _snack(e.toString());
     }
   }
 
+  // ── التصدير — أعمدةُ الموقع نفسُها (walletSummaryColumns / txColumns) ──────
+  List<ExportCol> get _summaryCols => [
+        ExportCol('الفرع', 'Branch', (r) => r['branch'] is Map ? '${r['branch']['name'] ?? ''}' : ''),
+        ExportCol('التاريخ', 'Date', (r) => '${r['date'] ?? ''}'),
+        ExportCol('الرصيد الافتتاحي (SAR)', 'Opening (SAR)', (r) => walletNum(r['openingBalance'])),
+        ExportCol('التحصيلات (SAR)', 'Collections (SAR)', (r) => walletNum(r['totalCollections'])),
+        ExportCol('المصروفات (SAR)', 'Expenses (SAR)', (r) => walletNum(r['totalExpenses'])),
+        ExportCol('المشتريات (SAR)', 'Purchases (SAR)', (r) => walletNum(r['totalPurchases'])),
+        ExportCol('الرصيد الختامي (SAR)', 'Closing balance (SAR)', (r) => walletNum(r['closingBalance'])),
+        ExportCol('الحالة', 'Status', (r) => r['isClosed'] == true ? tr('مغلق', 'Closed') : tr('مفتوح', 'Open')),
+        ExportCol('الفعلي (SAR)', 'Actual (SAR)', (r) => r['actualCash'] != null ? walletNum(r['actualCash']) : (r['isClosed'] == true ? 0 : tr('مفتوح', 'Open'))),
+        ExportCol('فرق النقد (SAR)', 'Cash Difference (SAR)', (r) => r['cashDifference'] != null ? walletNum(r['cashDifference']) : (r['isClosed'] == true ? 0 : tr('مفتوح', 'Open'))),
+      ];
+
+  List<ExportCol> get _txCols => [
+        ExportCol('التاريخ', 'Date', (r) => '${r['date'] ?? ''}'),
+        ExportCol('الوقت', 'Time', (r) => walletTime(r['createdAt'])),
+        ExportCol('النوع', 'Type', (r) => _typeLabel(r['type'])),
+        ExportCol('المبلغ (SAR)', 'Amount (SAR)', (r) => r['type'] == 'tax_invoice' ? tr('خارج الرصيد', 'off-balance') : walletNum(r['amount'])),
+        ExportCol('البيان', 'Statement', (r) => _statementOf(r)),
+        ExportCol('العميل', 'Customer', (r) => _customerOf(r)),
+        ExportCol('من الشركة', 'From company', (r) => r['collectionSource'] == 'company' ? tr('نعم', 'Yes') : ''),
+        ExportCol('رقم كشف التخريج', 'Delivery statement #', (r) => '${r['deliveryStatementNumber'] ?? ''}'.isNotEmpty ? '${r['deliveryStatementNumber']}' : '${r['purchaseDeliveryStatementNumber'] ?? ''}'),
+        ExportCol('السند', 'Receipt', (r) => '${r['purchaseReceiptNumber'] ?? ''}'),
+        ExportCol('السائق', 'Driver', (r) => _driverOf(r)),
+        ExportCol('الفرع', 'Branch', (r) => '${r['purchaseBranch'] ?? ''}'.isNotEmpty ? '${r['purchaseBranch']}' : _op(r, 'branch')),
+        ExportCol('العميل (الكشف)', 'Client', (r) => _op(r, 'client')),
+        ExportCol('من', 'From', (r) => _op(r, 'from')),
+        ExportCol('إلى', 'To', (r) => _op(r, 'to')),
+        ExportCol('نوع السيارة', 'Car type', (r) => _op(r, 'carType')),
+        ExportCol('الطول', 'Length', (r) => _op(r, 'length')),
+        ExportCol('رقم السيارة', 'Car number', (r) => _op(r, 'carNumber')),
+        ExportCol('تاريخ الكشف', 'Report date', (r) => r['operationDetails'] is Map ? walletDateGb(r['operationDetails']['reportDate']) : ''),
+        ExportCol('ملاحظات', 'Notes', (r) => '${r['notes'] ?? ''}'),
+        ExportCol('سجّلها', 'Recorded by', (r) => walletUserName(r['user'])),
+        ExportCol('كشوف الفاتورة الضريبيّة', 'Received reports', (r) {
+          final l = (r['receivedReportNumbers'] as List?) ?? const [];
+          return (l.isNotEmpty ? l : [r['receivedDocNumber']]).where((x) => '${x ?? ''}'.isNotEmpty).join(' , ');
+        }),
+        ExportCol('مرجع', 'Reference', (r) => '${r['reference'] ?? ''}'),
+        ExportCol('مُعلَّمة', 'Flagged', (r) => r['isFlagged'] == true),
+      ];
+
+  String get _shownLabel {
+    if (_mode == 'day') return _dateKey;
+    if (_mode == 'month') return walletMonthKey(_month);
+    return '${walletDayKey(_from)} → ${walletDayKey(_to)}';
+  }
+
+  String get _branchName {
+    if (_wallet?['branch'] is Map) return '${_wallet!['branch']['name'] ?? ''}';
+    final b = _branches.where((b) => '${b['_id']}' == _branchId);
+    return b.isEmpty ? '' : '${b.first['name'] ?? ''}';
+  }
+
+  Future<void> _export(List<Map<String, dynamic>> shown) async {
+    final which = await showModalBottomSheet<String>(
+      context: context,
+      builder: (c) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          ListTile(leading: const Icon(Icons.filter_alt_outlined), title: Text('${tr('المعروض', 'Shown')} — $_shownLabel'), onTap: () => Navigator.pop(c, 'shown')),
+          ListTile(leading: const Icon(Icons.all_inclusive), title: Text(tr('الكل', 'All')), onTap: () => Navigator.pop(c, 'all')),
+        ]),
+      ),
+    );
+    if (which == null || !mounted) return;
+    final file = 'Wallet_${_branchName.isEmpty ? 'wallet' : _branchName}_${_shownLabel.replaceAll(RegExp(r'[^0-9A-Za-z-]'), '_')}';
+    List<Map<String, dynamic>> wallets;
+    List<Map<String, dynamic>> txs;
+    if (which == 'shown') {
+      wallets = _mode == 'day' ? [if (_wallet != null) _wallet!] : _rangeWallets;
+      txs = shown;
+    } else {
+      try {
+        final d = await Api.instance.get('/api/wallet/range?dateFrom=2000-01-01&dateTo=2100-12-31$_branchQ');
+        wallets = List<Map<String, dynamic>>.from(d['wallets'] ?? []);
+        txs = List<Map<String, dynamic>>.from(d['transactions'] ?? []);
+      } catch (e) {
+        _snack(e.toString());
+        return;
+      }
+    }
+    if (!mounted) return;
+    await exportExcel(context, fileName: file, sheets: [
+      (tr('ملخّص المحفظة', 'Wallet summary'), _summaryCols, wallets),
+      (tr('المحفظة اليومية', 'Daily Wallet'), _txCols, txs),
+    ]);
+  }
+
+  List<Map<String, dynamic>> get _shownTx {
+    final q = _q.trim().toLowerCase();
+    return _transactions.where((t) {
+      if (_typeFilter.isNotEmpty && t['type'] != _typeFilter) return false;
+      if (q.isEmpty) return true;
+      final hay = [
+        _statementOf(t), _customerOf(t), _driverOf(t), t['deliveryStatementNumber'], t['purchaseDeliveryStatementNumber'],
+        t['purchaseReceiptNumber'], t['purchaseBranch'], _op(t, 'client'), _op(t, 'carNumber'), t['notes'], walletUserName(t['user']),
+        ...((t['receivedReportNumbers'] as List?) ?? const []),
+      ].map((x) => '${x ?? ''}').join(' ').toLowerCase();
+      return hay.contains(q);
+    }).toList();
+  }
+
+  Future<void> _pickDay() async {
+    // والغدُ داخلٌ: العملُ يتجاوز منتصفَ الليل. ومديرُ النظام وأهلُ المال بلا حدّ.
+    final v = await showDatePicker(
+        context: context,
+        initialDate: _date,
+        firstDate: _finance ? DateTime(2020) : walletStart,
+        lastDate: _finance ? DateTime(2100) : DateTime.now().add(const Duration(days: 1)));
+    if (v != null) { setState(() => _date = v); _load(); }
+  }
+
+  Future<void> _pickRange() async {
+    final v = await showDateRangePicker(
+      context: context,
+      initialDateRange: DateTimeRange(start: _from, end: _to.isBefore(_from) ? _from : _to),
+      firstDate: _finance ? DateTime(2020) : walletStart,
+      lastDate: _finance ? DateTime(2100) : DateTime.now().add(const Duration(days: 1)),
+    );
+    if (v != null) { setState(() { _from = v.start; _to = v.end; }); _load(); }
+  }
+
+  Widget _periodBar() {
+    final chips = Row(children: [
+      Expanded(child: SegmentedButton<String>(
+        segments: [
+          ButtonSegment(value: 'day', label: Text(tr('يوم', 'Day'))),
+          ButtonSegment(value: 'range', label: Text(tr('فترة', 'Period'))),
+          ButtonSegment(value: 'month', label: Text(tr('شهر', 'Month'))),
+        ],
+        selected: {_mode},
+        showSelectedIcon: false,
+        onSelectionChanged: (s) { setState(() => _mode = s.first); _load(); },
+      )),
+    ]);
+    Widget picker;
+    if (_mode == 'day') {
+      picker = Row(children: [
+        Expanded(child: OutlinedButton.icon(onPressed: _pickDay, icon: const Icon(Icons.event, size: 17),
+            label: Text(_dateKey, style: const TextStyle(fontWeight: FontWeight.w800)))),
+        const SizedBox(width: 6),
+        TextButton(onPressed: () { setState(() => _date = _startOfBook(DateTime.now())); _load(); }, child: Text(tr('اليوم', 'Today'))),
+      ]);
+    } else if (_mode == 'range') {
+      picker = Row(children: [
+        Expanded(child: OutlinedButton.icon(onPressed: _pickRange, icon: const Icon(Icons.date_range, size: 17),
+            label: Text('${walletDayKey(_from)} → ${walletDayKey(_to)}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12.5)))),
+        const SizedBox(width: 6),
+        TextButton(onPressed: () {
+          final n = DateTime.now();
+          setState(() { _from = _startOfBook(DateTime(n.year, n.month, 1)); _to = n; });
+          _load();
+        }, child: Text(tr('هذا الشهر', 'This month'))),
+      ]);
+    } else {
+      picker = OutlinedButton.icon(
+        onPressed: () async {
+          final m = await pickWalletMonth(context, _month,
+              fromYear: _finance ? 2023 : walletStart.year,
+              toYear: _finance ? null : DateTime.now().add(const Duration(days: 1)).year);
+          if (m != null) { setState(() => _month = m); _load(); }
+        },
+        icon: const Icon(Icons.calendar_month, size: 17),
+        label: Text(walletMonthLabel(_month), style: const TextStyle(fontWeight: FontWeight.w800)),
+      );
+    }
+    return Column(children: [chips, const SizedBox(height: 8), SizedBox(width: double.infinity, child: picker)]);
+  }
+
+  Widget _branchPicker() => DropdownButtonFormField<String>(
+        initialValue: _branches.any((b) => '${b['_id']}' == _branchId) ? _branchId : null,
+        isExpanded: true,
+        decoration: InputDecoration(labelText: tr('الفرع', 'Branch'), border: const OutlineInputBorder(), isDense: true,
+            helperText: _branchUsers > 0 ? tr('$_branchUsers موظفًا على هذه المحفظة', '$_branchUsers staff on this wallet') : null),
+        items: _branches.map((b) => DropdownMenuItem(value: '${b['_id']}', child: Text('${b['name'] ?? ''}'))).toList(),
+        onChanged: (v) {
+          if (v == null || v == _branchId) return;
+          setState(() { _branchId = v; _branchUsers = 0; _wallet = null; _transactions = []; });
+          _loadBranchUsers();
+          _load();
+        },
+      );
+
   @override
   Widget build(BuildContext context) {
-    final w = _wallet ?? {};
-    final closed = w['isClosed'] == true;
+    final w = _wallet;
+    final closed = w?['isClosed'] == true;
+    final shown = _shownTx;
+    final canAdd = !_readOnly && _mode == 'day' && w != null && (!closed || _canWriteClosedDay);
+    final canFix = _mode == 'day' && w != null && _finance;
 
     return AppScaffold(
       title: Text(tr('المحفظة اليومية', 'Daily Wallet')),
-      floatingActionButton: closed
-          ? null
-          : FloatingActionButton.extended(onPressed: _addTransaction, icon: const Icon(Icons.add), label: Text(tr('حركة', 'Entry'))),
-      body: _loading
-          ? ListView(padding: const EdgeInsets.all(14), children: const [Shimmer(height: 150), SizedBox(height: 10), Shimmer(), SizedBox(height: 10), Shimmer()])
-          : _error != null
-              ? ErrorRetry(message: _error!, onRetry: () { setState(() => _loading = true); _load(); })
-              : RefreshIndicator(
-                  onRefresh: _load,
-                  child: ListView(padding: const EdgeInsets.all(14), children: [
-                    // date picker
-                    Row(children: [
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: () async {
-                            // والغدُ داخلٌ: العملُ يتجاوز منتصفَ الليل، فقيدُ الواحدة صباحًا قيدُ
-                            // الغد بالتقويم لا بالعمل. وما بعده يردّه الخادم.
-                            //
-                            // ومديرُ النظام وحدَه بلا حدّ: الحدّان حمايةٌ من الخطأ اليوميّ لا
-                            // قاعدةٌ محاسبيّة، ويبقى بعدهما تصحيحٌ حقيقيّ يحتاج بابًا —
-                            // راجع backend/src/config/walletStart.js.
-                            final free = _financePowers(context.read<AuthProvider>().role);
-                            final v = await showDatePicker(
-                                context: context,
-                                initialDate: _date,
-                                firstDate: free ? DateTime(2020) : walletStart,
-                                lastDate: free ? DateTime(2100) : DateTime.now().add(const Duration(days: 1)));
-                            if (v != null) { setState(() { _date = v; _loading = true; }); _load(); }
-                          },
-                          icon: const Icon(Icons.event, size: 17),
-                          label: Text(_dateKey, style: const TextStyle(fontWeight: FontWeight.w800)),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Chip2(closed ? tr('مُغلق', 'Closed') : tr('مفتوح', 'Open'), closed ? T.inkFaint : T.success),
-                    ]),
-                    const SizedBox(height: 12),
-                    // wallet summary
-                    FadeSlideIn(
-                      child: AppCard(
-                        topAccent: closed ? T.inkFaint : T.navy,
-                        child: Column(children: [
-                          Text(tr('الرصيد الختامي', 'Closing balance'), style: const TextStyle(fontSize: 12.5, color: T.inkSoft, fontWeight: FontWeight.w700)),
-                          const SizedBox(height: 4),
-                          Text('${_money(w['closingBalance'])} ${tr('ر.س', 'SAR')}', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900)),
-                          const SizedBox(height: 12),
-                          Row(children: [
-                            _sumCol(tr('افتتاحي', 'Opening'), _money(w['openingBalance']), T.inkFaint),
-                            _sumCol(tr('تحصيلات', 'Collections'), _money(w['totalCollections']), T.success),
-                            _sumCol(tr('مصروفات', 'Expenses'), _money(w['totalExpenses']), T.danger),
-                            _sumCol(tr('مشتريات', 'Purchases'), _money(w['totalPurchases']), T.orange),
-                          ]),
-                          if (w['actualCash'] != null) ...[
-                            const Divider(height: 18),
-                            Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
-                              Text('${tr('الفعلي', 'Actual')}: ${_money(w['actualCash'])}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
-                              Text('${tr('الفرق', 'Diff')}: ${_money(w['cashDifference'])}', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: _n(w['cashDifference']) == 0 ? T.success : T.danger)),
-                            ]),
-                          ],
-                        ]),
-                      ),
-                    ),
-                    if (!closed) ...[
-                      const SizedBox(height: 10),
-                      SizedBox(width: double.infinity, child: OutlinedButton.icon(onPressed: _closeDay, icon: const Icon(Icons.lock_outline, size: 17), label: Text(tr('إغلاق اليوم', 'Close day')))),
-                    ],
-                    const SizedBox(height: 14),
-                    Row(children: [
-                      Text('${tr('الحركات', 'Transactions')} (${_transactions.length})', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
-                      const Spacer(),
-                      // ── وكشوفُ اليوم تُنسَخ بضغطة ────────────────────────
-                      // نظيرُ الزرّ في الموقع: من يحتاج كشوفَ يومٍ كلَّها
-                      // ليلصقها في رسالةٍ أو ورقة لا يقرؤها صفًّا صفًّا.
-                      if (_transactions.isNotEmpty)
-                        TextButton.icon(
-                          onPressed: _copyDayReports,
-                          icon: const Icon(Icons.copy_all_outlined, size: 16),
-                          label: Text('${tr('نسخ الكشوف', 'Copy reports')} (${_dayReportNumbers().length})',
-                              style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700)),
-                        ),
-                    ]),
-                    const SizedBox(height: 8),
-                    if (_transactions.isEmpty) EmptyState(icon: Icons.receipt_long_outlined, title: tr('لا توجد حركات', 'No transactions')),
-                    ..._transactions.map((t) {
-                      final ty = _txTypes[t['type']] ?? ('—', '—', T.inkFaint, Icons.help_outline);
-                      final isIn = t['type'] == 'collection';
-                      final label = t['customer'] is Map ? (t['customer']['companyName'] ?? '') : (t['description'] ?? t['itemName'] ?? t['vendorName'] ?? '');
-                      // ولا يُعرَض البابُ لمن لا يملكه: الحارسُ في الخادم
-                      // (`super_admin`)، وزرٌّ يُضغَط ليُقال «لا صلاحية» عطبٌ
-                      // في الشاشة لا حماية.
-                      final canMove = _financePowers(context.read<AuthProvider>().role);
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 8),
-                        child: GestureDetector(
-                          onLongPress: canMove ? () => _moveTransaction(t) : null,
-                          child: AppCard(
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                          child: Row(children: [
-                            Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: ty.$3.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(10)), child: Icon(ty.$4, size: 17, color: ty.$3)),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                                Text(label.toString().isEmpty ? tr(ty.$1, ty.$2) : label.toString(), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5), maxLines: 1, overflow: TextOverflow.ellipsis),
-                                Text('${tr(ty.$1, ty.$2)}${(t['deliveryStatementNumber'] ?? '').toString().isNotEmpty ? ' · ${t['deliveryStatementNumber']}' : ''}', style: const TextStyle(fontSize: 10.5, color: T.inkFaint)),
-                                // الكشوفُ المستلَمة هي كلُّ محتوى قيد الاستلام،
-                                // فتُعرَض في سطره لا خلف نقرة.
-                                if (t['type'] == 'tax_invoice')
-                                  Text(
-                                    ((t['receivedReportNumbers'] as List?)?.isNotEmpty == true
-                                        ? (t['receivedReportNumbers'] as List).join('، ')
-                                        : (t['receivedDocNumber'] ?? '').toString()),
-                                    style: const TextStyle(fontSize: 10.5, color: T.inkSoft, fontWeight: FontWeight.w600)),
-                              ]),
-                            ),
-                            // ولا يُعرَض مبلغٌ لقيدٍ لا مالَ فيه: «−0» تُقرأ
-                            // خطأً في التسجيل.
-                            if (t['type'] == 'tax_invoice')
-                              Text(tr('خارج الرصيد', 'off-balance'), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 11, color: T.inkFaint))
-                            else
-                              Text('${isIn ? '+' : '−'}${_money(t['amount'])}', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14, color: ty.$3)),
-                            if (canMove) ...[
-                              const SizedBox(width: 6),
-                              Icon(Icons.swap_horiz, size: 15, color: T.inkFaint.withValues(alpha: 0.6)),
-                            ],
-                          ]),
-                        ),
-                        ),
-                      );
-                    }),
-                    const SizedBox(height: 20),
-                  ]),
+      actions: [
+        IconButton(tooltip: tr('تصدير Excel', 'Export to Excel'), icon: const Icon(Icons.file_download_outlined), onPressed: () => _export(shown)),
+      ],
+      floatingActionButton: canAdd
+          ? FloatingActionButton.extended(onPressed: _addTransaction, icon: const Icon(Icons.add), label: Text(tr('حركة', 'Entry')))
+          : null,
+      body: RefreshIndicator(
+        onRefresh: () => _load(spinner: false),
+        child: ListView(padding: const EdgeInsets.all(14), children: [
+          if (_canSelectBranch && _branches.isNotEmpty) ...[_branchPicker(), const SizedBox(height: 10)],
+          _periodBar(),
+          const SizedBox(height: 12),
+          if (_loading)
+            ...const [Shimmer(height: 150), SizedBox(height: 10), Shimmer(), SizedBox(height: 10), Shimmer()]
+          else if (_error != null)
+            ErrorRetry(message: _error!, onRetry: () => _load())
+          else ...[
+            if (_mode == 'day' && w == null)
+              EmptyState(icon: Icons.account_balance_wallet_outlined,
+                  title: _canSelectBranch ? tr('اختر الفرع', 'Select a branch') : tr('لا يوجد فرع لحسابك', 'No branch on your account'),
+                  subtitle: _canSelectBranch ? null : tr('تواصل مع الإدارة', 'Contact the administrator')),
+            if (w != null) ..._dayCards(w, closed),
+            if (_mode != 'day') _rangeCards(),
+            const SizedBox(height: 14),
+            Row(children: [
+              Text('${tr('الحركات', 'Transactions')} (${shown.length})', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+              const Spacer(),
+              // ── وكشوفُ المعروض تُنسَخ بضغطة — نظيرُ الزرّ في الموقع.
+              if (shown.isNotEmpty)
+                TextButton.icon(
+                  onPressed: () => _copyReports(shown),
+                  icon: const Icon(Icons.copy_all_outlined, size: 16),
+                  label: Text('${tr('نسخ الكشوف', 'Copy reports')} (${_reportNumbers(shown).length})',
+                      style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700)),
                 ),
+            ]),
+            const SizedBox(height: 6),
+            TextField(
+              onChanged: (v) => setState(() => _q = v),
+              decoration: InputDecoration(hintText: tr('ابحث: كشف، عميل، سائق، سند…', 'Search: report, customer, driver, receipt…'),
+                  prefixIcon: const Icon(Icons.search), isDense: true),
+            ),
+            const SizedBox(height: 6),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(children: [
+                Padding(padding: const EdgeInsetsDirectional.only(end: 6), child: ChoiceChip(label: Text(tr('الكل', 'All')), selected: _typeFilter.isEmpty, onSelected: (_) => setState(() => _typeFilter = ''))),
+                ..._txTypes.entries.map((e) => Padding(
+                      padding: const EdgeInsetsDirectional.only(end: 6),
+                      child: ChoiceChip(
+                        label: Text('${tr(e.value.$1, e.value.$2)} (${_transactions.where((t) => t['type'] == e.key).length})'),
+                        selected: _typeFilter == e.key,
+                        onSelected: (_) => setState(() => _typeFilter = _typeFilter == e.key ? '' : e.key),
+                      ),
+                    )),
+              ]),
+            ),
+            const SizedBox(height: 8),
+            if (shown.isEmpty) EmptyState(icon: Icons.receipt_long_outlined, title: tr('لا توجد حركات', 'No transactions')),
+            ...shown.map((t) => _txRow(t, canFix)),
+            const SizedBox(height: 80),
+          ],
+        ]),
+      ),
+    );
+  }
+
+  List<Widget> _dayCards(Map<String, dynamic> w, bool closed) {
+    final diff = walletNum(w['cashDifference']);
+    return [
+      FadeSlideIn(
+        child: AppCard(
+          topAccent: closed ? T.inkFaint : T.navy,
+          child: Column(children: [
+            Row(children: [
+              Expanded(child: Text(_branchName, style: const TextStyle(fontSize: 12.5, color: T.inkSoft, fontWeight: FontWeight.w700))),
+              Chip2(closed ? tr('مُغلق', 'Closed') : tr('مفتوح', 'Open'), closed ? T.danger : T.success),
+            ]),
+            const SizedBox(height: 6),
+            Text(tr('الرصيد الختامي', 'Closing balance'), style: const TextStyle(fontSize: 12.5, color: T.inkSoft, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 4),
+            Text('${_money(w['closingBalance'])} ${tr('ر.س', 'SAR')}', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: T.orange)),
+            const SizedBox(height: 12),
+            Row(children: [
+              _sumCol(tr('افتتاحي', 'Opening'), _money(w['openingBalance']), T.ink),
+              _sumCol(tr('تحصيلات', 'Collections'), '+${_money(w['totalCollections'])}', T.success),
+              _sumCol(tr('مصروفات', 'Expenses'), '-${_money(w['totalExpenses'])}', T.danger),
+              _sumCol(tr('مشتريات', 'Purchases'), '-${_money(w['totalPurchases'])}', T.info),
+            ]),
+          ]),
+        ),
+      ),
+      // فرقُ العدّ — للمدير وحدَه، كما في الموقع.
+      if (_isManager && closed && w['cashDifference'] != null && diff != 0) ...[
+        const SizedBox(height: 10),
+        AppCard(
+          topAccent: diff > 0 ? T.danger : T.success,
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('${diff > 0 ? tr('عجز', 'Deficit') : tr('فائض', 'Surplus')}: ${_money(diff.abs())}',
+                style: TextStyle(fontWeight: FontWeight.w800, color: diff > 0 ? T.danger : T.success)),
+            const SizedBox(height: 2),
+            Text('${tr('المتوقع', 'Expected')}: ${_money(w['closingBalance'])} | ${tr('الفعلي', 'Actual')}: ${_money(w['actualCash'] ?? 0)}'
+                '${'${w['differenceReason'] ?? ''}'.isNotEmpty ? ' | ${tr('السبب', 'Reason')}: ${w['differenceReason']}' : ''}',
+                style: const TextStyle(fontSize: 11.5, color: T.inkFaint)),
+          ]),
+        ),
+      ],
+      if (!_readOnly) ...[
+        const SizedBox(height: 10),
+        // ولا يُترَك الفراغُ بلا تفسير: من أقفل يومَه يعرف لماذا اختفت الأزرار.
+        if (closed && !_canWriteClosedDay)
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(color: T.warn.withValues(alpha: .1), borderRadius: BorderRadius.circular(10), border: Border.all(color: T.warn.withValues(alpha: .3))),
+            child: Row(children: [
+              const Icon(Icons.lock_outline, size: 16, color: T.warn),
+              const SizedBox(width: 8),
+              Expanded(child: Text(tr('اليوم مُقفل — لا تُسجَّل فيه حركة. اطلب من مدير النظام إعادة فتحه إن كان هناك قيدٌ ناقص.',
+                  'The day is closed — no entries can be recorded. Ask a system administrator to reopen it.'),
+                  style: const TextStyle(fontSize: 11.5, color: T.ink))),
+            ]),
+          ),
+        if (!closed)
+          SizedBox(width: double.infinity, child: FilledButton.icon(onPressed: _closeDay, icon: const Icon(Icons.lock_outline, size: 17), label: Text(tr('إغلاق اليوم', 'Close day')))),
+        if (closed && _finance) ...[
+          const SizedBox(height: 8),
+          SizedBox(width: double.infinity, child: OutlinedButton.icon(onPressed: _reopenDay, icon: const Icon(Icons.lock_open, size: 17, color: T.warn), label: Text(tr('إعادة فتح اليوم', 'Reopen day')))),
+        ],
+      ],
+    ];
+  }
+
+  /// بطاقاتُ الفترة — والرصيدُ لا يُجمَع: افتتاحُ أوّلِ يومٍ وإقفالُ آخرِه.
+  Widget _rangeCards() {
+    num s(String k) => _rangeWallets.fold<num>(0, (a, w) => a + walletNum(w[k]));
+    final opening = _rangeWallets.isEmpty ? 0 : walletNum(_rangeWallets.first['openingBalance']);
+    final closing = _rangeWallets.isEmpty ? 0 : walletNum(_rangeWallets.last['closingBalance']);
+    return AppCard(
+      child: Column(children: [
+        Row(children: [
+          _sumCol(tr('عدد الأيام', 'Days'), '${_rangeWallets.length}', T.ink),
+          _sumCol(tr('عدد الحركات', 'Transactions'), '${_transactions.length}', T.ink),
+          _sumCol(tr('رصيد أول يوم ← آخر يوم', 'Opening → closing'), '${_money(opening)} → ${_money(closing)}', T.orange),
+        ]),
+        const Divider(height: 18),
+        Row(children: [
+          _sumCol(tr('إجمالي التحصيل', 'Collections'), _money(s('totalCollections')), T.success),
+          _sumCol(tr('إجمالي المصروفات', 'Expenses'), _money(s('totalExpenses')), T.danger),
+          _sumCol(tr('إجمالي المشتريات', 'Purchases'), _money(s('totalPurchases')), T.violet),
+        ]),
+      ]),
+    );
+  }
+
+  Widget _txRow(Map<String, dynamic> t, bool canFix) {
+    final ty = _txTypes[t['type']] ?? ('—', '—', T.inkFaint, Icons.help_outline);
+    final isIn = t['type'] == 'collection';
+    final customer = t['customer'] is Map ? '${t['customer']['companyName'] ?? ''}' : '';
+    final label = customer.isNotEmpty ? customer : _statementOf(t).isNotEmpty ? _statementOf(t) : '${t['vendorName'] ?? ''}';
+    final ds = '${t['deliveryStatementNumber'] ?? ''}'.isNotEmpty ? '${t['deliveryStatementNumber']}' : '${t['purchaseDeliveryStatementNumber'] ?? ''}';
+    final meta = [
+      _typeLabel(t['type']),
+      if (_mode != 'day') '${t['date'] ?? ''}',
+      walletTime(t['createdAt']),
+      if (ds.isNotEmpty) ds,
+      if ('${t['purchaseReceiptNumber'] ?? ''}'.isNotEmpty) '${tr('سند', 'Rcpt')} ${t['purchaseReceiptNumber']}',
+      if (_driverOf(t).isNotEmpty) _driverOf(t),
+      if (walletUserName(t['user']).isNotEmpty) walletUserName(t['user']),
+    ].where((x) => x.isNotEmpty).join(' · ');
+    final op = t['operationDetails'] is Map ? [_op(t, 'client'), [_op(t, 'from'), _op(t, 'to')].where((x) => x.isNotEmpty).join(' ← '), _op(t, 'carNumber')].where((x) => x.isNotEmpty).join(' · ') : '';
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: canFix ? () => _txActions(t) : null,
+        child: AppCard(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          child: Row(children: [
+            Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: ty.$3.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(10)), child: Icon(ty.$4, size: 17, color: ty.$3)),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(children: [
+                  Flexible(child: Text(label.isEmpty ? tr(ty.$1, ty.$2) : label, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                  if (t['isFlagged'] == true) const Padding(padding: EdgeInsetsDirectional.only(start: 4), child: Icon(Icons.flag, size: 13, color: T.danger)),
+                ]),
+                Text(meta, style: const TextStyle(fontSize: 10.5, color: T.inkFaint)),
+                if (op.isNotEmpty) Text(op, style: const TextStyle(fontSize: 10.5, color: T.inkSoft)),
+                if ('${t['notes'] ?? ''}'.isNotEmpty) Text('${t['notes']}', style: const TextStyle(fontSize: 10.5, color: T.inkSoft), maxLines: 2, overflow: TextOverflow.ellipsis),
+                // الكشوفُ المستلَمة هي كلُّ محتوى قيد الاستلام، فتُعرَض في سطره.
+                if (t['type'] == 'tax_invoice')
+                  Text(
+                    ((t['receivedReportNumbers'] as List?)?.isNotEmpty == true
+                        ? (t['receivedReportNumbers'] as List).join('، ')
+                        : (t['receivedDocNumber'] ?? '').toString()),
+                    style: const TextStyle(fontSize: 10.5, color: T.inkSoft, fontWeight: FontWeight.w600)),
+              ]),
+            ),
+            if (t['type'] == 'tax_invoice')
+              Text(tr('خارج الرصيد', 'off-balance'), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 11, color: T.inkFaint))
+            else
+              Text('${isIn ? '+' : '−'}${_money(t['amount'])}', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14, color: ty.$3)),
+            if (canFix) ...[
+              const SizedBox(width: 4),
+              Icon(Icons.more_vert, size: 16, color: T.inkFaint.withValues(alpha: 0.7)),
+            ],
+          ]),
+        ),
+      ),
     );
   }
 
   Widget _sumCol(String label, String value, Color color) => Expanded(
         child: Column(children: [
-          Text(label, style: const TextStyle(fontSize: 9.5, color: T.inkFaint, fontWeight: FontWeight.w700)),
-          Text(value, style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w900, color: color)),
+          Text(label, textAlign: TextAlign.center, style: const TextStyle(fontSize: 9.5, color: T.inkFaint, fontWeight: FontWeight.w700)),
+          FittedBox(fit: BoxFit.scaleDown, child: Text(value, style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w900, color: color))),
         ]),
       );
+}
+
+/// نموذجُ الحركة — نظيرُ نافذة الإضافة في الموقع، نوعًا نوعًا:
+/// التحصيلُ من العميل (بكشفٍ يُبحث عنه) أو من الشركة (ببيان)، والمصروفُ بصنفه،
+/// والمشترياتُ لكشفٍ وُجد فعلًا ولم يُشترَ ولا يُسجَّل قبل استلام السند،
+/// واستلامُ الفواتير الضريبيّة أزواجًا (كشفٌ وسندُه) بلا مبلغ.
+class _TxForm extends StatefulWidget {
+  final String type;
+  final String date;
+  final String branchId;
+  const _TxForm({required this.type, required this.date, required this.branchId});
+  @override
+  State<_TxForm> createState() => _TxFormState();
+}
+
+class _TxFormState extends State<_TxForm> {
+  final _amount = TextEditingController();
+  final _notes = TextEditingController();
+  final _ds = TextEditingController();
+  final _desc = TextEditingController();
+  final _item = TextEditingController();
+  final _pSearch = TextEditingController();
+  final _pDriver = TextEditingController();
+  final _pReceipt = TextEditingController();
+  final _pBranch = TextEditingController();
+  final _rReport = TextEditingController();
+  final _rSand = TextEditingController();
+  final _mismatchNote = TextEditingController();
+  String _source = 'client';
+  String _mismatch = '';
+  final List<(String, String)> _received = [];
+  bool _busy = false;
+  String _err = '';
+
+  // بحثُ الكشف
+  String _collMsg = '';
+  bool _collFound = false;
+  String _pMsg = '';
+  bool _pFound = false;
+  String _pReport = '';
+  Map? _pAlready;
+  (bool, String)? _pBond;
+  num? _selling;
+  num? _expected;
+
+  static const _statusAr = {
+    'requesting': 'قيد الطلب', 'loading': 'جارٍ التحميل', 'uploaded': 'تم التحميل', 'on_way': 'في الطريق', 'arrived': 'وصلت',
+    'bond_sent': 'أُرسل السند', 'late': 'متأخرة', 'invoiced': 'تمت الفوترة', 'cancelled': 'ملغاة',
+  };
+
+  String get type => widget.type;
+
+  bool get _canSubmit {
+    if (type == 'tax_invoice') return _received.isNotEmpty || _rReport.text.trim().isNotEmpty;
+    final a = num.tryParse(_amount.text.trim()) ?? 0;
+    if (type == 'purchase') return a > 0 && _pFound && _pAlready == null && _pBond?.$1 != false;
+    return a > 0;
+  }
+
+  Future<void> _lookupCollection() async {
+    final q = _ds.text.trim();
+    if (q.isEmpty) return;
+    setState(() { _collMsg = ''; _collFound = false; });
+    try {
+      final d = await Api.instance.get('/api/wallet/lookup-report?reportNumber=${Uri.encodeQueryComponent(q)}');
+      setState(() { _ds.text = '${d['reportNumber'] ?? q}'; _collFound = true; _collMsg = tr('الكشف موجود ✓', 'Report found ✓'); });
+    } catch (e) {
+      setState(() { _collFound = false; _collMsg = e.toString(); });
+    }
+  }
+
+  Future<void> _lookupPurchase() async {
+    final q = _pSearch.text.trim();
+    if (q.isEmpty) return;
+    setState(() { _pMsg = ''; _pFound = false; _pAlready = null; _pBond = null; _selling = null; _expected = null; });
+    try {
+      final d = await Api.instance.get('/api/wallet/lookup-report?reportNumber=${Uri.encodeQueryComponent(q)}');
+      setState(() {
+        _pReport = '${d['reportNumber'] ?? q}';
+        _pSearch.text = _pReport;
+        if ('${d['driverName'] ?? ''}'.isNotEmpty) _pDriver.text = '${d['driverName']}';
+        if ('${d['branch'] ?? ''}'.isNotEmpty) _pBranch.text = '${d['branch']}';
+        final pv = walletNum(d['purchaseValue']);
+        if (_amount.text.trim().isEmpty && pv > 0) _amount.text = '$pv';
+        _selling = walletNum(d['sellingValue']) > 0 ? walletNum(d['sellingValue']) : null;
+        _expected = d['purchaseValue'] != null ? pv : null;
+        _pFound = true;
+        _pAlready = d['alreadyPurchased'] is Map ? d['alreadyPurchased'] as Map : null;
+        _pBond = (d['bondReceived'] == true, '${d['applicationStatus'] ?? ''}');
+        _pMsg = '${tr('سعر الشراء', 'Purchase price')}: ${walletMoney(pv)}';
+      });
+    } catch (e) {
+      setState(() { _pFound = false; _pMsg = e.toString(); });
+    }
+  }
+
+  void _addReceived() {
+    final r = _rReport.text.trim();
+    if (r.isEmpty || _received.any((x) => x.$1 == r)) return;
+    setState(() { _received.add((r, _rSand.text.trim())); _rReport.clear(); _rSand.clear(); });
+  }
+
+  Future<void> _submit() async {
+    if (!_canSubmit) return;
+    setState(() { _busy = true; _err = ''; });
+    final body = <String, dynamic>{
+      'date': widget.date,
+      'type': type,
+      'amount': num.tryParse(_amount.text.trim()) ?? 0,
+      if (_notes.text.trim().isNotEmpty) 'notes': _notes.text.trim(),
+      if (widget.branchId.isNotEmpty) 'branchId': widget.branchId,
+    };
+    // ما بقي في خانة الكتابة ولم يُضَف يُحسب: مَن كتبه وضغط «تسجيل» قصد إضافتَه.
+    final pairs = [..._received];
+    final pending = _rReport.text.trim();
+    if (pending.isNotEmpty && !pairs.any((x) => x.$1 == pending)) pairs.add((pending, _rSand.text.trim()));
+    if (type == 'purchase' && _expected != null && ((num.tryParse(_amount.text.trim()) ?? 0) - _expected!).abs() > 0.009) {
+      if (_mismatch.isEmpty) { setState(() { _busy = false; _err = tr('اختر سبب اختلاف المبلغ', 'Select a reason for the amount difference'); }); return; }
+      if (_mismatch == 'other' && _mismatchNote.text.trim().isEmpty) { setState(() { _busy = false; _err = tr('اكتب سبب الاختلاف', 'Write the reason for the difference'); }); return; }
+      body['mismatchReason'] = _mismatch;
+      if (_mismatch == 'other') body['mismatchNote'] = _mismatchNote.text.trim();
+    }
+    if (type == 'collection') {
+      body['collectionSource'] = _source;
+      if (_source == 'client' && _ds.text.trim().isNotEmpty) body['deliveryStatementNumber'] = _ds.text.trim();
+      if (_source == 'company' && _desc.text.trim().isNotEmpty) body['description'] = _desc.text.trim();
+    }
+    if (type == 'expense' && _item.text.trim().isNotEmpty) body['itemName'] = _item.text.trim();
+    if (type == 'tax_invoice') {
+      body['amount'] = 0;
+      body['receivedReports'] = pairs.map((p) => {'reportNumber': p.$1, 'documentNumber': p.$2}).toList();
+    }
+    if (type == 'purchase') {
+      for (final (k, c) in [('purchaseDeliveryStatementNumber', _pSearch), ('purchaseDriverName', _pDriver), ('purchaseReceiptNumber', _pReceipt), ('purchaseBranch', _pBranch)]) {
+        if (c.text.trim().isNotEmpty) body[k] = c.text.trim();
+      }
+    }
+    try {
+      final res = await Api.instance.post('/api/wallet/transactions', body);
+      final unknown = (res is Map ? res['unknownReports'] : null) as List?;
+      if (!mounted) return;
+      if (unknown != null && unknown.isNotEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
+            tr('حُفظ القيد — ولم نجد كشوفًا بهذه الأرقام: ', 'Saved — but no reports found for: ') + unknown.join('، '))));
+      }
+      Navigator.pop(context, true);
+    } catch (e) {
+      if (mounted) setState(() { _busy = false; _err = e.toString(); });
+    }
+  }
+
+  Widget _field(TextEditingController c, String ar, String en, {bool number = false, bool readOnly = false, int lines = 1, Widget? suffix, VoidCallback? onSubmit}) => Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: TextField(
+          controller: c, readOnly: readOnly, maxLines: lines,
+          keyboardType: number ? const TextInputType.numberWithOptions(decimal: true) : null,
+          onChanged: (_) => setState(() {}),
+          onSubmitted: onSubmit == null ? null : (_) => onSubmit(),
+          decoration: InputDecoration(labelText: tr(ar, en), border: const OutlineInputBorder(), isDense: true, suffixIcon: suffix,
+              filled: readOnly, fillColor: readOnly ? T.canvas : null),
+        ),
+      );
+
+  Widget _msg(String m, bool ok) => Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Text(m, style: TextStyle(fontSize: 11.5, color: ok ? T.success : T.danger, fontWeight: FontWeight.w600)),
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    final ty = _txTypes[type]!;
+    final amountN = num.tryParse(_amount.text.trim());
+    final differs = type == 'purchase' && _expected != null && amountN != null && (amountN - _expected!).abs() > 0.009;
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(16, 16, 16, MediaQuery.of(context).viewInsets.bottom + 16),
+        child: SingleChildScrollView(
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Icon(ty.$4, color: ty.$3),
+              const SizedBox(width: 8),
+              Text('${tr('إضافة', 'Add')} ${tr(ty.$1, ty.$2)}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+              const Spacer(),
+              Text(widget.date, style: const TextStyle(fontSize: 11.5, color: T.inkFaint)),
+            ]),
+            const SizedBox(height: 12),
+            if (type == 'purchase') ...[
+              _field(_pSearch, 'رقم كشف التخريج *', 'Delivery statement # *', onSubmit: _lookupPurchase,
+                  suffix: IconButton(icon: const Icon(Icons.search), onPressed: _lookupPurchase)),
+              if (_pBond != null && !_pBond!.$1)
+                _msg(tr('لا تُسجَّل مشتريات قبل استلام السند — ${_pBond!.$2.isEmpty ? 'الحالة غير محدَّدة' : 'حالتُه الآن: ${_statusAr[_pBond!.$2] ?? _pBond!.$2}'}',
+                        'No purchase before the bond is received — current status: ${_pBond!.$2.isEmpty ? 'unknown' : _pBond!.$2}'), false),
+              if (_pAlready != null)
+                _msg(tr('سُجّلت مشترياتٌ لهذا الكشف من قبل: ${walletMoney(_pAlready!['amount'])} ريال بتاريخ ${_pAlready!['date'] ?? ''}'
+                        '${'${_pAlready!['branch'] ?? ''}'.isNotEmpty ? ' — من عهدة ${_pAlready!['branch']}' : ''}'
+                        '${'${_pAlready!['by'] ?? ''}'.isNotEmpty ? ' — بواسطة ${_pAlready!['by']}' : ''}'
+                        '${'${_pAlready!['receipt'] ?? ''}'.isNotEmpty ? ' — سند ${_pAlready!['receipt']}' : ''}',
+                        'Already purchased: ${walletMoney(_pAlready!['amount'])} SAR on ${_pAlready!['date'] ?? ''}'), false),
+              if (_pMsg.isNotEmpty && _pAlready == null) _msg(_pMsg, _pFound),
+              if (_selling != null) _msg('${tr('سعر البيع', 'Selling Price')}: ${walletMoney(_selling)}', true),
+            ],
+            if (type != 'tax_invoice') ...[
+              _field(_amount, 'المبلغ (ريال) *', 'Amount (SAR) *', number: true),
+              if (type == 'purchase' && _expected != null && amountN != null)
+                differs
+                    ? _msg('⚠ ${tr('المبلغ مختلف عن سعر الشراء', 'Amount differs from the purchase price')} (${walletMoney(_expected)})', false)
+                    : _msg('✓ ${tr('المبلغ مطابق لسعر الشراء', 'Amount matches the purchase price')} (${walletMoney(_expected)})', true),
+              if (differs) ...[
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: DropdownButtonFormField<String>(
+                    initialValue: _mismatch,
+                    decoration: InputDecoration(labelText: tr('سبب الاختلاف *', 'Reason for the difference *'), border: const OutlineInputBorder(), isDense: true),
+                    items: [
+                      const DropdownMenuItem(value: '', child: Text('—')),
+                      DropdownMenuItem(value: 'daily', child: Text(tr('يومية', 'Daily'))),
+                      DropdownMenuItem(value: 'violation', child: Text(tr('مخالفة', 'Violation'))),
+                      DropdownMenuItem(value: 'other', child: Text(tr('أخرى', 'Other'))),
+                    ],
+                    onChanged: (v) => setState(() => _mismatch = v ?? ''),
+                  ),
+                ),
+                if (_mismatch == 'other') _field(_mismatchNote, 'اكتب سبب الاختلاف', 'Write the reason', lines: 2),
+              ],
+            ],
+            if (type == 'collection') ...[
+              SegmentedButton<String>(
+                segments: [
+                  ButtonSegment(value: 'client', label: Text(tr('من العميل', 'From Client'))),
+                  ButtonSegment(value: 'company', label: Text(tr('من الشركة', 'From Company'))),
+                ],
+                selected: {_source},
+                onSelectionChanged: (s) => setState(() => _source = s.first),
+              ),
+              const SizedBox(height: 10),
+              if (_source == 'client') ...[
+                _field(_ds, 'رقم كشف التخريج *', 'Delivery statement # *', onSubmit: _lookupCollection,
+                    suffix: IconButton(icon: const Icon(Icons.search), onPressed: _lookupCollection)),
+                if (_collMsg.isNotEmpty) _msg(_collMsg, _collFound),
+              ] else
+                _field(_desc, 'البيان *', 'Description *'),
+            ],
+            if (type == 'expense') _field(_item, 'البيان *', 'Description *'),
+            if (type == 'purchase') ...[
+              _field(_pDriver, 'اسم السائق', 'Driver name', readOnly: _pFound),
+              _field(_pReceipt, 'رقم السند — يُكتب في الكشف تلقائيًّا', 'Receipt number — written onto the report'),
+              _field(_pBranch, 'الفرع', 'Branch', readOnly: _pFound),
+              if (_pFound)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: Text(tr('اسم السائق والفرع مأخوذان من كشف التخريج ولا يُعدَّلان — إن كانا خطأً فالتصحيح في الكشف نفسه.',
+                      'Driver and branch come from the dispatch sheet and cannot be edited — correct them on the sheet itself.'),
+                      style: const TextStyle(fontSize: 11, color: T.inkSoft)),
+                ),
+            ],
+            if (type == 'tax_invoice') ...[
+              Container(
+                padding: const EdgeInsets.all(10),
+                margin: const EdgeInsets.only(bottom: 10),
+                decoration: BoxDecoration(color: T.inkFaint.withValues(alpha: .08), borderRadius: BorderRadius.circular(8)),
+                child: Text(
+                  tr('تسجيلُ استلام — تقول به إنّ كشوف هذه الفواتير صارت بيدك. لا مبلغَ فيه، ولا يدخل رصيدَ العهدة ولا إقفالَ اليوم.',
+                     'A receipt record — these reports are now in your hands. No amount, and it does not touch the wallet balance or the day’s close.'),
+                  style: const TextStyle(fontSize: 11.5, color: T.inkSoft)),
+              ),
+              // ولكلّ كشفٍ سندُه — يُكتبان معًا فيُحفظان زوجًا.
+              Row(children: [
+                Expanded(child: _field(_rReport, 'رقم الكشف', 'Report number', onSubmit: _addReceived)),
+                const SizedBox(width: 6),
+                Expanded(child: _field(_rSand, 'رقم السند (اختياري)', 'Voucher no (optional)', onSubmit: _addReceived)),
+                const SizedBox(width: 6),
+                Padding(padding: const EdgeInsets.only(bottom: 10), child: FilledButton(onPressed: _addReceived, child: Text(tr('إضافة', 'Add')))),
+              ]),
+              if (_received.isNotEmpty)
+                Wrap(spacing: 6, runSpacing: 6, children: _received.map((r) => Chip(
+                  label: Text('${r.$1} · ${r.$2.isEmpty ? tr('بلا سند', 'no vch') : '${tr('سند', 'vch')} ${r.$2}'}', style: const TextStyle(fontSize: 11.5)),
+                  onDeleted: () => setState(() => _received.remove(r)),
+                )).toList()),
+              Padding(
+                padding: const EdgeInsets.only(top: 4, bottom: 10),
+                child: Text(_received.isNotEmpty
+                    ? tr('${_received.length} كشفًا في هذا القيد', '${_received.length} reports in this record')
+                    : tr('يمكنك إضافة أكثر من كشف في القيد الواحد — ولكل كشف رقم سنده', 'Add more than one report — each with its own voucher number'),
+                    style: const TextStyle(fontSize: 11, color: T.inkFaint)),
+              ),
+            ],
+            _field(_notes, 'ملاحظات', 'Notes', lines: 2),
+            if (_err.isNotEmpty) _msg(_err, false),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                onPressed: _busy || !_canSubmit ? null : _submit,
+                child: _busy
+                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                    : Text('${tr('إضافة', 'Add')} ${tr(ty.$1, ty.$2)}'),
+              ),
+            ),
+          ]),
+        ),
+      ),
+    );
+  }
 }

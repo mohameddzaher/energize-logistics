@@ -6,6 +6,7 @@ import '../services/auth.dart';
 import '../services/lang.dart';
 import '../services/live.dart';
 import '../ui/app_scaffold.dart';
+import '../ui/export_sheet.dart';
 import '../ui/lookup_field.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
@@ -77,6 +78,9 @@ class _Ls2StoreScreenState extends State<Ls2StoreScreen> {
   int _seq = 0;
   Timer? _debounce;
   late final void Function() _onLive;
+  // تحديدُ عدّة أصناف لحركةٍ جماعيّة (صادر أو وارد) — بالمعرّف لا بالصفّ، كي
+  // يبقى التحديدُ صحيحًا إن تغيّر الفلتر بعده (كالموقع).
+  final Set<String> _picked = {};
 
   /// نقاطُ الموردين بجوار نقاط المخزن: `/store` ← `/suppliers`.
   String get _supBase => widget.base.replaceFirst(RegExp(r'/store$'), '/suppliers');
@@ -286,6 +290,12 @@ class _Ls2StoreScreenState extends State<Ls2StoreScreen> {
         // فاتورةُ شراءٍ واحدةٌ فيها عدّةُ أصناف — تُكتب في نموذجٍ واحد.
         if (canEdit) IconButton(icon: const Icon(Icons.playlist_add), tooltip: tr('إضافة عدّة أصناف', 'Add several items'), onPressed: _openBulkCreate),
         IconButton(icon: const Icon(Icons.history), tooltip: tr('سجل الحركات', 'Movements'), onPressed: _openLog),
+        // نفسُ تصدير الموقع: المعروض (بعد الفلتر) أو كلُّ الأصناف.
+        IconButton(
+          tooltip: tr('تصدير Excel', 'Export to Excel'),
+          icon: const Icon(Icons.file_download_outlined),
+          onPressed: () => _exportMenu(items),
+        ),
       ],
       floatingActionButton: !canEdit ? null : FloatingActionButton.extended(
         backgroundColor: const Color(0xFF12325C), foregroundColor: Colors.white,
@@ -372,11 +382,24 @@ class _Ls2StoreScreenState extends State<Ls2StoreScreen> {
                                   if ((it['purchaseDate'] ?? '').toString().isNotEmpty) '${tr('تاريخ الشراء', 'Purchased')}: ${_dmy(it['purchaseDate'])}',
                                   if ((it['supplierName'] ?? '').toString().isNotEmpty) '${tr('المورد', 'Supplier')}: ${it['supplierName']}',
                                 ].join(' · ');
+                                final id = (it['_id'] ?? '').toString();
+                                final picked = _picked.contains(id);
                                 return Pressable(
                                   onTap: canEdit ? () => _openItemForm(it) : null,
+                                  onLongPress: canEdit ? () => setState(() => picked ? _picked.remove(id) : _picked.add(id)) : null,
                                   child: AppCard(
+                                    topAccent: picked ? T.orange : null,
                                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                                       Row(children: [
+                                        if (canEdit)
+                                          SizedBox(
+                                            width: 30, height: 28,
+                                            child: Checkbox(
+                                              value: picked, activeColor: T.orange,
+                                              visualDensity: VisualDensity.compact,
+                                              onChanged: (_) => setState(() => picked ? _picked.remove(id) : _picked.add(id)),
+                                            ),
+                                          ),
                                         Expanded(child: Text((it['name'] ?? '').toString(), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14))),
                                         Chip2(_sLabel(st), _sColor(st)),
                                       ]),
@@ -405,6 +428,11 @@ class _Ls2StoreScreenState extends State<Ls2StoreScreen> {
                                           icon: const Icon(Icons.north, size: 16), label: Text(tr('صادر', 'Out')),
                                           onPressed: () => _openMovement(it, 'out'),
                                         )),
+                                        IconButton(
+                                          tooltip: tr('حذف الصنف', 'Delete item'),
+                                          icon: const Icon(Icons.delete_outline, color: T.danger),
+                                          onPressed: () => _deleteItem(it),
+                                        ),
                                       ]),
                                       ],
                                     ]),
@@ -414,8 +442,123 @@ class _Ls2StoreScreenState extends State<Ls2StoreScreen> {
                             ),
                     ),
                   ),
+                  // شريطُ الإجراء الجماعيّ — يظهر فور تحديد أوّل صنف: صادرٌ ووارد
+                  // جنبًا إلى جنب، وكلاهما يقبل كميةً مختلفةً لكلّ صنف.
+                  if (canEdit && _picked.isNotEmpty)
+                    SafeArea(
+                      top: false,
+                      child: Container(
+                        padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+                        decoration: BoxDecoration(color: Colors.white, boxShadow: T.softShadow),
+                        child: Row(children: [
+                          Expanded(child: Text(tr('${_picked.length} صنف محدَّد', '${_picked.length} selected'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13))),
+                          TextButton(onPressed: () => setState(_picked.clear), child: Text(tr('إلغاء', 'Clear'))),
+                          const SizedBox(width: 4),
+                          FilledButton(
+                            style: FilledButton.styleFrom(backgroundColor: T.success, visualDensity: VisualDensity.compact),
+                            onPressed: () => _openBulk('in'),
+                            child: Text(tr('وارد (${_picked.length})', 'Receive (${_picked.length})')),
+                          ),
+                          const SizedBox(width: 6),
+                          FilledButton(
+                            style: FilledButton.styleFrom(backgroundColor: T.orange, visualDensity: VisualDensity.compact),
+                            onPressed: () => _openBulk('out'),
+                            child: Text(tr('صادر (${_picked.length})', 'Issue (${_picked.length})')),
+                          ),
+                        ]),
+                      ),
+                    ),
                 ]),
     );
+  }
+
+  // ── حذف صنف ──
+  Future<void> _deleteItem(Map<String, dynamic> it) async {
+    final ok = await showDialog<bool>(context: context, builder: (c) => AlertDialog(
+      title: Text(tr('حذف الصنف «${it['name']}»؟', 'Delete "${it['name']}"?')),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('إلغاء', 'Cancel'))),
+        FilledButton(style: FilledButton.styleFrom(backgroundColor: T.danger), onPressed: () => Navigator.pop(c, true), child: Text(tr('حذف', 'Delete'))),
+      ],
+    ));
+    if (ok != true) return;
+    try {
+      await Api.instance.delete('${widget.base}/${it['_id']}');
+      _picked.remove((it['_id'] ?? '').toString());
+      _toast(tr('تم الحذف', 'Deleted'));
+      _load();
+    } catch (e) { _toast(e.toString()); }
+  }
+
+  // ── حركة جماعيّة لعدّة أصناف ──
+  Future<void> _openBulk(String kind) async {
+    final sel = _items.where((x) => _picked.contains((x['_id'] ?? '').toString())).toList();
+    if (sel.isEmpty) return;
+    final ok = await showModalBottomSheet<bool>(
+      context: context, isScrollControlled: true, backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (_) => _BulkMovementSheet(base: widget.base, items: sel, kind: kind, suppliers: _suppliers, plates: _plates, pickPlate: _pickPlate),
+    );
+    if (ok != true) return;
+    setState(_picked.clear);
+    _load();
+    _loadSuppliers();
+  }
+
+  // ── التصدير: المعروض أو الكلّ أو سجلّ الحركات ──
+  static final _itemCols = <ExportCol>[
+    ExportCol('الكود', 'Code', (r) => r['code'] ?? ''),
+    ExportCol('الصنف', 'Item', (r) => r['name'] ?? ''),
+    ExportCol('التصنيف', 'Category', (r) => r['categoryAr'] ?? r['category'] ?? ''),
+    ExportCol('تاريخ الشراء', 'Purchase date', (r) => (r['purchaseDate'] ?? '').toString().isEmpty ? '' : _dmy(r['purchaseDate'])),
+    ExportCol('المورد', 'Supplier', (r) => r['supplierName'] ?? ''),
+    ExportCol('العدد', 'Qty', (r) => r['quantity']),
+    ExportCol('الوحدة', 'Unit', (r) => r['unit'] ?? ''),
+    ExportCol('الحد الأدنى', 'Min qty', (r) => r['minQuantity']),
+    ExportCol('سعر القطعة الواحدة', 'Unit price', (r) => r['unitPrice']),
+    ExportCol('الإجمالي (العدد × السعر)', 'Total (qty × price)', (r) => r['value']),
+    ExportCol('الحالة', 'Status', (r) { final m = _statusMeta[r['status']]; return m == null ? (r['status'] ?? '') : tr(m.$1, m.$2); }),
+    ExportCol('الموديلات المتوافقة', 'Compatible models', (r) => ((r['compatibleModels'] as List?) ?? const []).join('، ')),
+    ExportCol('ملاحظات', 'Notes', (r) => r['notes'] ?? ''),
+  ];
+  static final _moveCols = <ExportCol>[
+    ExportCol('التاريخ', 'Date', (r) => (r['date'] ?? '').toString().isEmpty ? '' : _dmy(r['date'])),
+    ExportCol('سُجِّلت في', 'Recorded at', (r) => (r['createdAt'] ?? '').toString().replaceFirst('T', ' ').split('.').first),
+    ExportCol('الصنف', 'Item', (r) => r['itemName'] ?? ''),
+    ExportCol('الحركة', 'Type', (r) => r['type'] == 'in' ? tr('وارد', 'In') : tr('صادر', 'Out')),
+    ExportCol('الكمية', 'Qty', (r) => r['quantity']),
+    ExportCol('الوحدة', 'Unit', (r) => r['unit'] ?? ''),
+    ExportCol('المورد', 'Supplier', (r) => r['supplierName'] ?? ''),
+    ExportCol('سعر القطعة', 'Unit price', (r) => r['unitPrice'] ?? ''),
+    ExportCol('الإجمالي', 'Total', (r) => r['total'] ?? ''),
+    ExportCol('المركبة', 'Vehicle', (r) => r['vehiclePlate'] ?? ''),
+    ExportCol('السبب', 'Reason', (r) => r['reason'] ?? ''),
+    ExportCol('الرصيد بعدها', 'Balance after', (r) => r['balanceAfter']),
+    ExportCol('بواسطة', 'By', (r) => r['performedByName'] ?? ''),
+  ];
+
+  Future<void> _exportMenu(List<Map<String, dynamic>> shown) async {
+    final pick = await showModalBottomSheet<String>(
+      context: context,
+      builder: (c) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
+        ListTile(leading: const Icon(Icons.filter_alt_outlined), title: Text(tr('المعروض حاليًا (بعد الفلتر)', 'Current view (filtered)')), onTap: () => Navigator.pop(c, 'shown')),
+        ListTile(leading: const Icon(Icons.select_all), title: Text(tr('كل الأصناف', 'All items')), onTap: () => Navigator.pop(c, 'all')),
+        ListTile(leading: const Icon(Icons.history), title: Text(tr('سجل الحركات', 'Movements log')), onTap: () => Navigator.pop(c, 'movements')),
+      ])),
+    );
+    if (pick == null || !mounted) return;
+    final name = tr(widget.titleAr, widget.titleEn);
+    if (pick == 'movements') {
+      try {
+        final d = await Api.instance.get('${widget.base}/movements?limit=1000');
+        if (!mounted) return;
+        await exportExcel(context, fileName: 'store-movements', sheets: [(tr('الحركات', 'Movements'), _moveCols, List<Map<String, dynamic>>.from(d['movements'] ?? []))]);
+      } catch (e) { _toast(e.toString()); }
+      return;
+    }
+    final rows = pick == 'shown' ? shown : _items;
+    if (rows.isEmpty) { _toast(tr('لا صفوف للتصدير', 'Nothing to export')); return; }
+    await exportExcel(context, fileName: 'store', sheets: [(name, _itemCols, rows)]);
   }
 
   Widget _kv(String label, String value, Color color) => Row(mainAxisSize: MainAxisSize.min, children: [
@@ -940,6 +1083,201 @@ class _MovementSheetState extends State<_MovementSheet> {
             style: FilledButton.styleFrom(backgroundColor: isIn ? T.success : T.orange),
             onPressed: _busy ? null : _submit,
             child: Text(_busy ? tr('جارٍ التسجيل…', 'Recording…') : tr('تسجيل الحركة', 'Record')))),
+        ]),
+      ),
+    );
+  }
+}
+
+/// حركةٌ جماعيّة لعدّة أصناف — صادر أو وارد (نظيرُ BulkOutModal في الموقع).
+///
+/// الكميةُ بجوار كلّ صنف وافتراضُها ١، والرصيدُ المتوقَّع بعد الحركة يظهر قبل
+/// التأكيد. والصنفُ الذي لا يكفي رصيدُه يُعلَّم بالأحمر، والعمليّةُ كلُّها تُرفض
+/// إن بقي واحدٌ منها ناقصًا — والخادمُ يُعيد أيَّ صنفٍ رفضه بالاسم.
+class _BulkMovementSheet extends StatefulWidget {
+  final String base;
+  final List<Map<String, dynamic>> items;
+  final String kind; // in | out
+  final List<Map<String, dynamic>> suppliers;
+  final List<Map<String, dynamic>> plates;
+  final Future<Map<String, dynamic>?> Function() pickPlate;
+  const _BulkMovementSheet({required this.base, required this.items, required this.kind, required this.suppliers, required this.plates, required this.pickPlate});
+  @override
+  State<_BulkMovementSheet> createState() => _BulkMovementSheetState();
+}
+
+class _BulkMovementSheetState extends State<_BulkMovementSheet> {
+  late final Map<String, TextEditingController> _qty = {
+    for (final i in widget.items) (i['_id'] ?? '').toString(): TextEditingController(text: '1'),
+  };
+  late final Map<String, TextEditingController> _price = {
+    for (final i in widget.items) (i['_id'] ?? '').toString(): TextEditingController(text: _numOf(i['unitPrice']) > 0 ? '${i['unitPrice']}' : ''),
+  };
+  final _reason = TextEditingController();
+  String _plate = '';
+  String _supplier = '';
+  String _date = _todayYmd();
+  bool _busy = false;
+  String? _err;
+  Map<String, String> _errors = {};
+
+  bool get _isIn => widget.kind == 'in';
+
+  @override
+  void dispose() {
+    for (final c in [..._qty.values, ..._price.values]) { c.dispose(); }
+    _reason.dispose();
+    super.dispose();
+  }
+
+  num _n(String id) { final v = num.tryParse(_qty[id]!.text.trim()) ?? 1; return v < 1 ? 1 : v; }
+
+  Future<void> _submit() async {
+    setState(() { _busy = true; _err = null; _errors = {}; });
+    try {
+      final r = await Api.instance.post('${widget.base}/bulk-movement', {
+        'type': widget.kind,
+        'lines': [
+          for (final i in widget.items)
+            {
+              'item': i['_id'],
+              'quantity': _n((i['_id'] ?? '').toString()),
+              if (_isIn) 'unitPrice': num.tryParse(_price[(i['_id'] ?? '').toString()]!.text.trim()) ?? 0,
+            },
+        ],
+        'vehiclePlate': _plate.trim(),
+        'reason': _reason.text.trim(),
+        if (_isIn) 'date': _date,
+        if (_isIn && _supplier.isNotEmpty) ..._supplierBody(_supplier),
+      });
+      if (!mounted) return;
+      final sum = r is Map ? r['summary'] : null;
+      final total = widget.items.fold<num>(0, (a, i) => a + _n((i['_id'] ?? '').toString()));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr(
+        '${_isIn ? 'سُجِّل وارد' : 'سُجِّل صادر'} ${sum?['items'] ?? widget.items.length} صنف · ${sum?['totalQty'] ?? total} قطعة',
+        '${_isIn ? 'Received' : 'Issued'} ${sum?['items'] ?? widget.items.length} items · ${sum?['totalQty'] ?? total} units'))));
+      Navigator.pop(context, true);
+    } on ApiException catch (e) {
+      final errs = e.data['errors'];
+      final map = <String, String>{};
+      if (errs is List) {
+        for (final x in errs) { if (x is Map && x['id'] != null) map['${x['id']}'] = '${x['message'] ?? ''}'; }
+      }
+      if (mounted) {
+        setState(() {
+          _busy = false; _errors = map;
+          _err = map.isNotEmpty ? tr('رُفضت العملية بالكامل — لم يتغيّر أي رصيد', 'Rejected in full — no balance changed') : e.message;
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() { _busy = false; _err = e.toString(); });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isIn = _isIn;
+    final accent = isIn ? T.success : T.orange;
+    final short = isIn ? const [] : widget.items.where((i) => _numOf(i['quantity']) < _n((i['_id'] ?? '').toString())).toList();
+    final unpriced = isIn ? widget.items.where((i) => !((num.tryParse(_price[(i['_id'] ?? '').toString()]!.text.trim()) ?? 0) > 0)).toList() : const [];
+    final totalQty = widget.items.fold<num>(0, (a, i) => a + _n((i['_id'] ?? '').toString()));
+    return Padding(
+      padding: EdgeInsets.fromLTRB(18, 16, 18, MediaQuery.of(context).viewInsets.bottom + 18),
+      child: SizedBox(
+        height: MediaQuery.of(context).size.height * 0.82,
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(isIn ? tr('وارد لعدة أصناف', 'Receive multiple items') : tr('صادر لعدة أصناف', 'Issue multiple items'),
+              style: TextStyle(fontWeight: FontWeight.w900, fontSize: 17, color: accent)),
+          Text(tr('${widget.items.length} صنف محدَّد · $totalQty قطعة', '${widget.items.length} items · $totalQty units'),
+              style: const TextStyle(fontSize: 12.5, color: T.inkFaint)),
+          const SizedBox(height: 10),
+          if (_err != null) _errBox(_err!),
+          Expanded(
+            child: ListView(children: [
+              if (isIn) ...[
+                _SupplierField(suppliers: widget.suppliers, value: _supplier, onChanged: (v) => setState(() => _supplier = v)),
+                const SizedBox(height: 10),
+                _DateField(label: tr('تاريخ الشراء', 'Purchase date'), value: _date, onChanged: (v) => setState(() => _date = v)),
+                const SizedBox(height: 10),
+              ],
+              OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(alignment: AlignmentDirectional.centerStart, minimumSize: const Size(double.infinity, 48)),
+                onPressed: () async {
+                  final r = await widget.pickPlate();
+                  if (r != null && mounted) setState(() => _plate = (r['plate'] ?? '').toString());
+                },
+                icon: const Icon(Icons.local_shipping_outlined, size: 18),
+                label: Text(
+                  _plate.trim().isEmpty
+                      ? (isIn ? tr('واردة من مركبة (اختياري)', 'In from vehicle (optional)') : tr('صادرة على مركبة', 'Out to vehicle'))
+                      : _plate,
+                  style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700),
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextField(controller: _reason, decoration: InputDecoration(labelText: tr('ملاحظة / سبب', 'Reason'))),
+              const SizedBox(height: 12),
+              Row(children: [
+                Expanded(child: Text(tr('الكمية لكل صنف', 'Quantity per item'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12.5))),
+                TextButton(
+                  onPressed: () => setState(() { for (final c in _qty.values) { c.text = '1'; } }),
+                  child: Text(tr('إرجاع الكل إلى ١', 'Reset all to 1'), style: const TextStyle(fontSize: 12)),
+                ),
+              ]),
+              for (final i in widget.items) () {
+                final id = (i['_id'] ?? '').toString();
+                final q = _numOf(i['quantity']);
+                final n = _n(id);
+                final bad = _errors[id] ?? (!isIn && q < n ? tr('الرصيد $q والمطلوب $n', 'Stock $q, need $n') : '');
+                final after = isIn ? q + n : q - n;
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 6),
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: bad.isNotEmpty ? const Color(0xFFFFF1F2) : const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Row(children: [
+                      Expanded(child: Text('${i['name'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                      Text('$q ${i['unit'] ?? ''}', style: const TextStyle(fontSize: 11.5, color: T.inkFaint)),
+                    ]),
+                    const SizedBox(height: 6),
+                    Row(children: [
+                      SizedBox(width: 80, child: TextField(
+                        controller: _qty[id], keyboardType: TextInputType.number, textAlign: TextAlign.center,
+                        onChanged: (_) => setState(() {}),
+                        decoration: InputDecoration(isDense: true, labelText: tr('الكمية', 'Qty')),
+                      )),
+                      if (isIn) ...[
+                        const SizedBox(width: 8),
+                        SizedBox(width: 100, child: TextField(
+                          controller: _price[id], keyboardType: const TextInputType.numberWithOptions(decimal: true), textAlign: TextAlign.center,
+                          onChanged: (_) => setState(() {}),
+                          decoration: InputDecoration(isDense: true, labelText: tr('سعر القطعة', 'Unit price')),
+                        )),
+                      ],
+                      const Spacer(),
+                      Text('→ ${after < 0 ? 0 : after}', style: TextStyle(fontWeight: FontWeight.w800, color: bad.isNotEmpty ? T.danger : T.inkSoft)),
+                    ]),
+                    if (bad.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 4), child: Text(bad, style: const TextStyle(fontSize: 11.5, color: T.danger, fontWeight: FontWeight.w700))),
+                  ]),
+                );
+              }(),
+              if (short.isNotEmpty)
+                Text(tr('${short.length} صنف رصيده غير كافٍ — سترفض العملية بالكامل', '${short.length} items short — the whole issue will be rejected'),
+                    style: const TextStyle(fontSize: 12, color: T.danger, fontWeight: FontWeight.w700)),
+              if (unpriced.isNotEmpty)
+                Text(tr('اكتب سعر القطعة الواحدة لـ ${unpriced.length} صنف', 'Enter the unit price for ${unpriced.length} item(s)'),
+                    style: const TextStyle(fontSize: 12, color: T.danger, fontWeight: FontWeight.w700)),
+            ]),
+          ),
+          const SizedBox(height: 8),
+          SizedBox(width: double.infinity, child: FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: accent),
+            onPressed: _busy || short.isNotEmpty || unpriced.isNotEmpty ? null : _submit,
+            child: Text(_busy ? tr('جارٍ التسجيل…', 'Recording…') : (isIn ? tr('تسجيل الوارد', 'Record receipt') : tr('تسجيل الصادر', 'Record issue'))),
+          )),
         ]),
       ),
     );

@@ -1,12 +1,17 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
+import '../config.dart';
 import '../services/api.dart';
 import '../services/lang.dart';
 import '../services/live.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import '../ui/export_sheet.dart';
 import '../ui/file_upload.dart';
 import '../ui/clearance_quick_view.dart';
+import 'hr_finance.dart' show FinanceResidencyScreen;
 
 /// الإدارة المالية — مالُ كلّ قسمٍ في موضعٍ واحد، من الحمولة نفسِها التي
 /// تعرضها صفحاتُ الموقع (/api/finance). فلا يختلف رقمٌ بين الهاتف والموقع.
@@ -253,6 +258,36 @@ class _FinanceDeptScreenState extends State<FinanceDeptScreen> {
     }
   }
 
+  String get _fileName {
+    final p = _d?['period'] is Map ? _d!['period'] as Map : const {};
+    return 'finance-${widget.dept}-${p['from'] ?? ''}-${p['to'] ?? ''}';
+  }
+
+  /// التصديرُ الكامل كالموقع: ورقةُ الملخّص ثمّ ورقةٌ لكلّ جدول.
+  void _exportAll() {
+    final d = _d;
+    if (d == null) return;
+    final cards = List<Map<String, dynamic>>.from(d['cards'] ?? []);
+    final tables = List<Map<String, dynamic>>.from(d['tables'] ?? []);
+    exportExcel(context, fileName: _fileName, sheets: [
+      (
+        tr('الملخص', 'Summary'),
+        [
+          ExportCol('البند', 'Item', (r) => r['label']),
+          ExportCol('القيمة', 'Value', (r) => r['value']),
+        ],
+        [
+          for (final c in cards)
+            {
+              'label': tr('${c['ar']}', '${c['en']}'),
+              'value': c['format'] == 'pct' ? '${(((c['value'] as num?) ?? 0) * 10).round() / 10}%' : c['value'],
+            },
+        ],
+      ),
+      for (final t in tables) _finSheet(t),
+    ]);
+  }
+
   @override
   Widget build(BuildContext context) {
     final cards = List<Map<String, dynamic>>.from(_d?['cards'] ?? []);
@@ -260,6 +295,14 @@ class _FinanceDeptScreenState extends State<FinanceDeptScreen> {
     final notes = List<Map<String, dynamic>>.from(_d?['notes'] ?? []);
     return AppScaffold(
       title: Text(tr(widget.arTitle, widget.enTitle)),
+      actions: [
+        if (_d != null)
+          IconButton(
+            tooltip: tr('تصدير Excel — الصفحة كاملة (${tables.length + 1} شيت)', 'Export Excel — whole page (${tables.length + 1} sheets)'),
+            icon: const Icon(Icons.file_download_outlined),
+            onPressed: _exportAll,
+          ),
+      ],
       body: Column(children: [
         _PeriodChips(value: _preset, onChanged: (v) { setState(() { _preset = v; _loading = true; }); _load(); }),
         Expanded(
@@ -272,11 +315,19 @@ class _FinanceDeptScreenState extends State<FinanceDeptScreen> {
                       child: ListView(
                         padding: const EdgeInsets.fromLTRB(14, 8, 14, 24),
                         children: [
-                          // ── طلباتُ صرف التخليص ───────────────────────────
-                          // ما طلب قسمُ التخليص دفعَه — يُقرَّر فيه من الهاتف
-                          // كما يُقرَّر من الموقع، بالعقد نفسِه.
+                          // ── مدخلُ الإقامات ورخص العمل — فوق ماليّات الموارد البشريّة كالموقع.
+                          if (widget.dept == 'hr') ...[
+                            const _HrDocsBanner(),
+                            const SizedBox(height: 12),
+                          ],
+                          // ── التخليص: طلباتُ الصرف، ثمّ طلباتُ الفوترة، ثمّ فواتيرُ العملاء —
+                          // بترتيب صفحة الموقع (finance/customs/page.tsx).
                           if (widget.dept == 'customs') ...[
                             const _CustomsPaymentRequests(),
+                            const SizedBox(height: 12),
+                            const _CustomsInvoiceRequests(),
+                            const SizedBox(height: 12),
+                            const _CustomsCustomerInvoices(),
                             const SizedBox(height: 12),
                           ],
                           Wrap(spacing: 8, runSpacing: 8, children: cards.map((c) {
@@ -308,7 +359,15 @@ class _FinanceDeptScreenState extends State<FinanceDeptScreen> {
                           const SizedBox(height: 12),
                           ...tables.map((t) => Padding(
                                 padding: const EdgeInsets.only(bottom: 10),
-                                child: _FinTableCard(table: t),
+                                child: _FinTableCard(
+                                  key: ValueKey('${widget.dept}-${t['key']}'),
+                                  table: t,
+                                  fileName: _fileName,
+                                  // صفُّ معاملةِ تخليص يفتح نافذتَها هنا — كـ onOpenRow في الموقع.
+                                  onOpenRow: widget.dept == 'customs'
+                                      ? (r) { if ('${r['_customsId'] ?? ''}'.isNotEmpty) showClearanceQuickView(context, '${r['_customsId']}'); }
+                                      : null,
+                                ),
                               )),
                         ],
                       ),
@@ -319,55 +378,178 @@ class _FinanceDeptScreenState extends State<FinanceDeptScreen> {
   }
 }
 
-/// جدولٌ على الهاتف: عنوانُه وعددُ صفوفه ومجموعُ أعمدة المال، ويُفتح على صفوفه
-/// بطاقةً بطاقة — العمودُ الأوّل عنوانُ البطاقة والباقي سطورٌ تحته.
-class _FinTableCard extends StatelessWidget {
-  const _FinTableCard({required this.table});
+/// ورقةُ تصديرٍ لجدولٍ ماليّ — الأعمدةُ بعناوينها، والتاريخُ نصًّا، والنسبةُ بمنزلةٍ واحدة.
+(String, List<ExportCol>, List<Map<String, dynamic>>) _finSheet(Map<String, dynamic> t, [List<Map<String, dynamic>>? rows]) {
+  final cols = List<Map<String, dynamic>>.from(t['columns'] ?? []);
+  final name = tr('${t['ar']}', '${t['en']}');
+  return (
+    name.length > 28 ? name.substring(0, 28) : name,
+    [
+      for (final c in cols)
+        ExportCol('${c['ar']}', '${c['en']}', (r) {
+          final v = r[c['key']];
+          switch (c['format']) {
+            case 'date': return fmtFin(v, 'date');
+            case 'pct': return v == null ? '' : ((num.tryParse('$v') ?? 0) * 10).round() / 10;
+            case 'money':
+            case 'number': return v is num ? v : (num.tryParse('${v ?? ''}') ?? v ?? '');
+            default: return v ?? '';
+          }
+        }),
+    ],
+    rows ?? List<Map<String, dynamic>>.from(t['rows'] ?? []),
+  );
+}
+
+String _foldFin(dynamic v) => '${v ?? ''}'
+    .replaceAll(RegExp('[أإآ]'), 'ا').replaceAll(RegExp('[ةه]'), 'ه').replaceAll(RegExp('[ىي]'), 'ي').toLowerCase();
+
+/// جدولٌ على الهاتف — نظيرُ FinanceTable: بحثٌ، وفرزٌ بعمود، ومجموعُ أعمدة المال
+/// والأعداد للمعروض، وصفوفٌ تُعرض مئةً مئة («عرض المزيد») بلا سقف، وتصديرُ الجدول
+/// وحدَه — المعروضُ بعد البحث أو كلُّه.
+class _FinTableCard extends StatefulWidget {
+  const _FinTableCard({super.key, required this.table, required this.fileName, this.onOpenRow});
   final Map<String, dynamic> table;
+  final String fileName;
+  final void Function(Map<String, dynamic>)? onOpenRow;
+  @override
+  State<_FinTableCard> createState() => _FinTableCardState();
+}
+
+class _FinTableCardState extends State<_FinTableCard> {
+  static const _page = 100;
+  String _q = '';
+  int _limit = _page;
+  String? _sortKey;
+  int _dir = 1;
 
   @override
   Widget build(BuildContext context) {
-    final cols = List<Map<String, dynamic>>.from(table['columns'] ?? []);
-    final rows = List<Map<String, dynamic>>.from(table['rows'] ?? []);
-    final moneyCols = cols.where((c) => c['format'] == 'money').toList();
+    final t = widget.table;
+    final cols = List<Map<String, dynamic>>.from(t['columns'] ?? []);
+    final all = List<Map<String, dynamic>>.from(t['rows'] ?? []);
+    final n = _foldFin(_q.trim());
+    var shown = n.isEmpty ? all : all.where((r) => cols.any((c) => _foldFin(r[c['key']]).contains(n))).toList();
+    if (_sortKey != null) {
+      final col = cols.firstWhere((c) => c['key'] == _sortKey, orElse: () => const {});
+      final numeric = ['money', 'number', 'pct'].contains(col['format']);
+      shown = [...shown]..sort((a, b) {
+          final x = a[_sortKey]; final y = b[_sortKey];
+          if (numeric) return ((num.tryParse('$x') ?? 0).compareTo(num.tryParse('$y') ?? 0)) * _dir;
+          return '${x ?? ''}'.compareTo('${y ?? ''}') * _dir;
+        });
+    }
+    final totalCols = cols.where((c) => c['format'] == 'money' || c['format'] == 'number').toList();
+    num sumOf(String k) => shown.fold<num>(0, (a, r) => a + (num.tryParse('${r[k] ?? ''}') ?? 0));
+    final tableName = tr('${t['ar']}', '${t['en']}');
+    final fname = '${widget.fileName}-${t['key']}';
+
     return AppCard(
       padding: EdgeInsets.zero,
       child: ExpansionTile(
         shape: const Border(),
-        title: Text(tr('${table['ar']}', '${table['en']}'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
-        subtitle: Text(
-          [
-            '${rows.length} ${tr('صف', 'rows')}',
-            if (moneyCols.isNotEmpty)
-              '${tr(moneyCols.first['ar'], moneyCols.first['en'])}: ${fmtFin(rows.fold<num>(0, (a, r) => a + ((r[moneyCols.first['key']] as num?) ?? 0)), 'money')}',
-          ].join(' · '),
-          style: const TextStyle(fontSize: 11.5, color: T.inkSoft),
-        ),
+        title: Text(tableName, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+        subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(
+            [
+              '${shown.length}${shown.length != all.length ? ' / ${all.length}' : ''} ${tr('صف', 'rows')}',
+              if (totalCols.isNotEmpty) '${tr('${totalCols.first['ar']}', '${totalCols.first['en']}')}: ${fmtFin(sumOf('${totalCols.first['key']}'), '${totalCols.first['format']}')}',
+            ].join(' · '),
+            style: const TextStyle(fontSize: 11.5, color: T.inkSoft),
+          ),
+          if (Lang.instance.ar && '${t['noteAr'] ?? ''}'.isNotEmpty)
+            Text('${t['noteAr']}', style: const TextStyle(fontSize: 11, color: T.inkFaint)),
+          if (t['capped'] == true)
+            Text(tr('تُعرض أحدث ٢٠٠٠ حركة — ضيّق الفترة لرؤية الباقي.', 'Showing the latest 2,000 — narrow the period.'),
+                style: const TextStyle(fontSize: 11, color: T.warn)),
+        ]),
         childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
         children: [
-          if (rows.isEmpty) Text(tr('لا بيانات في هذه الفترة', 'No data in this period'), style: const TextStyle(color: T.inkFaint)),
-          ...rows.take(60).map((r) => Container(
+          Row(children: [
+            Expanded(
+              child: TextField(
+                onChanged: (v) => setState(() { _q = v; _limit = _page; }),
+                decoration: InputDecoration(isDense: true, prefixIcon: const Icon(Icons.search, size: 18), hintText: tr('بحث…', 'Search…')),
+              ),
+            ),
+            PopupMenuButton<String>(
+              tooltip: tr('فرز', 'Sort'),
+              icon: Icon(Icons.sort, color: _sortKey != null ? T.orange : T.inkSoft),
+              onSelected: (k) => setState(() {
+                if (k == '') { _sortKey = null; return; }
+                if (_sortKey == k) { _dir = -_dir; } else {
+                  _sortKey = k;
+                  final c = cols.firstWhere((c) => c['key'] == k);
+                  _dir = ['money', 'number', 'pct'].contains(c['format']) ? -1 : 1;
+                }
+              }),
+              itemBuilder: (_) => [
+                if (_sortKey != null) PopupMenuItem(value: '', child: Text(tr('بلا فرز', 'No sort'))),
+                for (final c in cols)
+                  PopupMenuItem(value: '${c['key']}', child: Text('${tr('${c['ar']}', '${c['en']}')}${_sortKey == c['key'] ? (_dir > 0 ? ' ↑' : ' ↓') : ''}')),
+              ],
+            ),
+            PopupMenuButton<String>(
+              tooltip: tr('تصدير Excel', 'Export Excel'),
+              icon: const Icon(Icons.file_download_outlined, color: T.navy),
+              onSelected: (k) => exportExcel(context, fileName: fname, sheets: [_finSheet(t, k == 'all' ? all : shown)]),
+              itemBuilder: (_) => [
+                PopupMenuItem(value: 'shown', child: Text(tr('المعروض (${shown.length})', 'Shown (${shown.length})'))),
+                if (shown.length != all.length) PopupMenuItem(value: 'all', child: Text(tr('الكل (${all.length})', 'All (${all.length})'))),
+              ],
+            ),
+          ]),
+          if (shown.isEmpty)
+            Padding(padding: const EdgeInsets.only(top: 10), child: Text(tr('لا بيانات في هذه الفترة', 'No data in this period'), style: const TextStyle(color: T.inkFaint))),
+          ...shown.take(_limit).map((r) {
+            final opens = r['_open'] == true && widget.onOpenRow != null;
+            return InkWell(
+              onTap: opens ? () => widget.onOpenRow!(r) : null,
+              child: Container(
                 margin: const EdgeInsets.only(top: 8),
                 padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(color: T.canvas, borderRadius: BorderRadius.circular(10)),
+                decoration: BoxDecoration(color: T.canvas, borderRadius: BorderRadius.circular(10),
+                    border: opens ? Border.all(color: T.orange.withValues(alpha: 0.3)) : null),
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(fmtFin(r[cols.first['key']], '${cols.first['format']}'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
+                  Row(children: [
+                    Expanded(child: Text(fmtFin(r[cols.first['key']], '${cols.first['format']}'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13))),
+                    if (opens) const Icon(Icons.open_in_new, size: 14, color: T.orange),
+                  ]),
                   ...cols.skip(1).map((c) => Padding(
                         padding: const EdgeInsets.only(top: 2),
                         child: Row(children: [
                           Expanded(child: Text(tr('${c['ar']}', '${c['en']}'), style: const TextStyle(fontSize: 11.5, color: T.inkSoft))),
-                          Text(fmtFin(r[c['key']], '${c['format']}'),
-                              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700,
-                                  color: (num.tryParse('${r[c['key']]}') ?? 0) < 0 && c['format'] != 'text' ? T.danger : T.ink)),
+                          Flexible(
+                            child: Text(fmtFin(r[c['key']], '${c['format']}'), textAlign: TextAlign.end,
+                                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700,
+                                    color: (num.tryParse('${r[c['key']]}') ?? 0) < 0 && c['format'] != 'text' ? T.danger : T.ink)),
+                          ),
                         ]),
                       )),
                 ]),
-              )),
-          if (rows.length > 60)
-            Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: Text(tr('تُعرض أول ٦٠ صفًا — الجدول كاملًا وتصديره من الموقع.', 'First 60 rows — the full table and export are on the website.'),
-                  style: const TextStyle(fontSize: 11, color: T.inkFaint)),
+              ),
+            );
+          }),
+          if (shown.length > _limit)
+            TextButton(
+              onPressed: () => setState(() => _limit += _page * 3),
+              child: Text(tr('عرض المزيد (${shown.length - _limit} متبقي)', 'Show more (${shown.length - _limit} left)')),
+            ),
+          // المجموعُ في الذيل لأعمدة المال والأعداد — للمعروض بعد البحث.
+          if (shown.isNotEmpty && totalCols.isNotEmpty)
+            Container(
+              margin: const EdgeInsets.only(top: 8),
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(color: T.navy.withValues(alpha: 0.07), borderRadius: BorderRadius.circular(10)),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(tr('الإجمالي', 'Total'), style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13)),
+                for (final c in totalCols)
+                  Row(children: [
+                    Expanded(child: Text(tr('${c['ar']}', '${c['en']}'), style: const TextStyle(fontSize: 11.5, color: T.inkSoft))),
+                    Text(fmtFin(sumOf('${c['key']}'), '${c['format']}'),
+                        style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w900, color: sumOf('${c['key']}') < 0 ? T.danger : T.ink)),
+                  ]),
+              ]),
             ),
         ],
       ),
@@ -375,11 +557,109 @@ class _FinTableCard extends StatelessWidget {
   }
 }
 
-/// طلباتُ صرف التخليص — المعلَّقةُ أوّلًا، وثلاثةُ أجوبةٍ لكلّ طلب.
-String _fmtAmt(dynamic v) {
-  final n = v is num ? v : num.tryParse('${v ?? ''}') ?? 0;
-  return n.toStringAsFixed(0).replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (m) => ',');
+/// مدخلُ «الإقامات ورخص العمل» فوق ماليّات الموارد البشريّة — أرقامُه حيّة (`hr-finance:changed`).
+class _HrDocsBanner extends StatefulWidget {
+  const _HrDocsBanner();
+  @override
+  State<_HrDocsBanner> createState() => _HrDocsBannerState();
 }
+
+class _HrDocsBannerState extends State<_HrDocsBanner> {
+  Map<String, dynamic>? _s;
+  int _seq = 0;
+  late final void Function() _onLive;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+    _onLive = () => _load();
+    Live.instance.on('hr-finance:changed', _onLive);
+  }
+
+  @override
+  void dispose() {
+    Live.instance.off('hr-finance:changed', _onLive);
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    final mine = ++_seq;
+    try {
+      final d = await Api.instance.get('/api/finance/hr-docs/summary');
+      if (!mounted || mine != _seq) return;
+      setState(() => _s = Map<String, dynamic>.from(d as Map));
+    } catch (_) {/* البطاقةُ تبقى بلا أرقام */}
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = _s;
+    return InkWell(
+      borderRadius: BorderRadius.circular(16),
+      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const FinanceResidencyScreen())),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: T.orange.withValues(alpha: 0.4))),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Container(
+              width: 38, height: 38,
+              decoration: BoxDecoration(color: T.orange.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(10)),
+              child: const Icon(Icons.badge_outlined, color: T.orange, size: 20),
+            ),
+            const SizedBox(width: 10),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(tr('الإقامات ورخص العمل', 'Iqamas & work permits'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+              Text(tr('رسوم التجديد المنتهية وما بقي عليه 20 يومًا فأقل — وطلبات الموارد البشرية إلى المالية',
+                      'Renewal fees expired or due within 20 days — and HR requests to Finance'),
+                  style: const TextStyle(fontSize: 11.5, color: T.inkSoft)),
+            ])),
+            const Icon(Icons.chevron_left_rounded, color: T.inkFaint),
+          ]),
+          if (s != null) ...[
+            const SizedBox(height: 8),
+            Wrap(spacing: 6, runSpacing: 6, children: [
+              Chip2('${tr('غير مدفوع', 'Unpaid')} ${s['unpaid'] ?? 0}', T.ink),
+              Chip2('${tr('منها منتهية', 'Of which expired')} ${s['unpaidExpired'] ?? 0}', T.danger),
+              Chip2('${tr('طلبات قيد الانتظار', 'Pending requests')} ${s['pendingRequests'] ?? 0}', T.orange),
+            ]),
+          ],
+        ]),
+      ),
+    );
+  }
+}
+
+/// طلباتُ صرف التخليص — نظيرُ CustomsPaymentRequests: خمسُ قوائم، وبحثٌ على
+/// الخادم، والسجلُّ المنقول، وصفحاتٌ بخمسين، وإثباتُ دفعٍ بملفٍّ أو أكثر.
+String _fmtAmt(dynamic v) {
+  if (v == null) return '—';
+  final n = v is num ? v : num.tryParse('$v') ?? 0;
+  final fixed = (n * 100).round() / 100;
+  final parts = fixed.toString().split('.');
+  final i = parts[0].replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (m) => ',');
+  return parts.length > 1 && parts[1] != '0' ? '$i.${parts[1]}' : i;
+}
+
+String _dmy(dynamic d) {
+  final s = '${d ?? ''}';
+  if (s.isEmpty) return '—';
+  final x = DateTime.tryParse(s);
+  if (x == null) return s;
+  final l = x.toLocal();
+  return '${l.day.toString().padLeft(2, '0')}/${l.month.toString().padLeft(2, '0')}/${l.year}';
+}
+
+void _openUrl(String u) =>
+    launchUrl(Uri.parse(u.startsWith('http') ? u : '${AppConfig.apiBase}$u'), mode: LaunchMode.externalApplication);
+
+const _payBadge = <String, (String, String, Color)>{
+  'pending': ('بانتظار الدفع', 'Awaiting', T.warn),
+  'paid': ('مدفوعة', 'Paid', T.success),
+  'returned': ('مُعادة', 'Returned', T.info),
+  'rejected': ('مرفوضة', 'Rejected', T.danger),
+};
 
 class _CustomsPaymentRequests extends StatefulWidget {
   const _CustomsPaymentRequests();
@@ -392,7 +672,13 @@ class _CustomsPaymentRequestsState extends State<_CustomsPaymentRequests> {
   Map<String, dynamic> _counts = const {};
   bool _loading = true;
   String _tab = 'pending';
+  String _search = '';
+  bool _legacy = false;
+  int _page = 1;
+  int _pages = 1;
+  int _total = 0;
   int _seq = 0;
+  Timer? _debounce;
   late final void Function() _onLive;
 
   @override
@@ -406,6 +692,7 @@ class _CustomsPaymentRequestsState extends State<_CustomsPaymentRequests> {
 
   @override
   void dispose() {
+    _debounce?.cancel();
     Live.instance.off('customs:updated', _onLive);
     super.dispose();
   }
@@ -413,78 +700,30 @@ class _CustomsPaymentRequestsState extends State<_CustomsPaymentRequests> {
   Future<void> _load() async {
     final mine = ++_seq;
     try {
-      final invoices = _tab == 'invoices';
-      // طلباتُ الفوترة (٢٠٢٦/١٠/٢٢): التخليصُ يطلب والماليّةُ تقول «تمّت الفوترة».
-      final invreq = _tab == 'invreq';
-      final d = await Api.instance.get(invoices
-          ? '/api/customs-clearance/invoices?limit=50'
-          : invreq
-              ? '/api/customs-clearance/invoice-requests?status=pending'
-              : '/api/customs-clearance/payment-requests?status=$_tab&limit=50');
+      final qs = [
+        'status=$_tab', 'page=$_page', 'limit=50',
+        if (_search.isNotEmpty) 'search=${Uri.encodeComponent(_search)}',
+        if (_legacy) 'legacy=1',
+      ].join('&');
+      final d = await Api.instance.get('/api/customs-clearance/payment-requests?$qs');
       if (!mounted || mine != _seq) return;
       setState(() {
-        _rows = List<Map<String, dynamic>>.from((invoices ? d['invoices'] : d['requests']) ?? const []);
-        _counts = invoices ? Map<String, dynamic>.from(d['summary'] ?? const {})
-            : invreq ? {..._counts, 'invreq': (d['counts'] as Map?)?['pending'] ?? 0}
-            : {...Map<String, dynamic>.from(d['counts'] ?? const {}), 'invreq': _counts['invreq'] ?? 0};
+        _rows = List<Map<String, dynamic>>.from(d['requests'] ?? const []);
+        _counts = Map<String, dynamic>.from(d['counts'] ?? const {});
+        _total = ((d['total'] as num?) ?? 0).toInt();
+        _pages = ((d['pages'] as num?) ?? 1).toInt();
         _loading = false;
       });
     } catch (_) {
-      if (mounted) setState(() => _loading = false);
+      if (mounted && mine == _seq) setState(() => _loading = false);
     }
   }
 
-  /// جوابُ طلب الفوترة: «تمّت الفوترة» (رقمٌ وفاتورةٌ نهائيّةٌ اختياريّان) أو إعادةٌ أو رفضٌ بسبب.
-  Future<void> _decideInvoice(Map<String, dynamic> r, String decision) async {
-    final noteCtrl = TextEditingController();
-    final noCtrl = TextEditingController();
-    PickedFile? inv;
-    final go = await showModalBottomSheet<bool>(
-      context: context,
-      isScrollControlled: true,
-      builder: (c) => StatefulBuilder(builder: (c, setSheet) => SafeArea(
-        child: Padding(
-          padding: EdgeInsets.fromLTRB(16, 16, 16, MediaQuery.of(c).viewInsets.bottom + 16),
-          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(decision == 'invoiced' ? tr('تمّت الفوترة', 'Mark invoiced')
-                : decision == 'returned' ? tr('إعادة للتصحيح', 'Return') : tr('رفض طلب الفوترة', 'Reject'),
-                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
-            Text('${r['refNumber'] ?? ''} · ${r['customerName'] ?? ''}', style: const TextStyle(fontSize: 11.5, color: T.inkFaint)),
-            const SizedBox(height: 10),
-            if (decision == 'invoiced') ...[
-              TextField(controller: noCtrl, decoration: InputDecoration(labelText: tr('رقم الفاتورة (اختياري)', 'Invoice number (optional)'))),
-              const SizedBox(height: 8),
-              OutlinedButton.icon(
-                onPressed: () async { final f = await pickFileAsDataUrl(); if (f != null) setSheet(() => inv = f); },
-                icon: const Icon(Icons.attach_file, size: 18),
-                label: Text(inv == null ? tr('إرفاق الفاتورة النهائية (اختياري)', 'Attach final invoice (optional)') : inv!.fileName),
-              ),
-            ],
-            TextField(controller: noteCtrl, maxLines: 2,
-                decoration: InputDecoration(labelText: decision == 'invoiced' ? tr('ملاحظة (اختياري)', 'Note (optional)') : tr('السبب', 'Reason'))),
-            const SizedBox(height: 12),
-            SizedBox(width: double.infinity, child: FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(tr('تأكيد', 'Confirm')))),
-          ]),
-        ),
-      )),
-    );
-    if (go != true) return;
-    try {
-      await Api.instance.patch('/api/customs-clearance/${r['clearanceId']}/invoice-request/decision', {
-        'decision': decision,
-        'note': noteCtrl.text.trim(),
-        if (decision == 'invoiced') 'invoiceNumber': noCtrl.text.trim(),
-        if (inv != null) 'file': {'dataUrl': inv!.dataUrl, 'fileName': inv!.fileName},
-      });
-      _load();
-    } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
-    }
-  }
+  void _pickTab(String k) { setState(() { _tab = k; _page = 1; _loading = true; }); _load(); }
 
   Future<void> _decide(Map<String, dynamic> r, String decision) async {
     final noteCtrl = TextEditingController();
-    PickedFile? proof;
+    final files = <PickedFile>[];
     final go = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
@@ -498,31 +737,46 @@ class _CustomsPaymentRequestsState extends State<_CustomsPaymentRequests> {
                       : tr('رفض الطلب', 'Reject the request'),
               style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
             const SizedBox(height: 4),
-            Text('${r['refNumber'] ?? ''} · ${r['label'] ?? r['key'] ?? ''}',
+            Text('${r['refNumber'] ?? ''} · ${r['label'] ?? r['key'] ?? ''} · ${_fmtAmt(r['amount'])}',
                 style: const TextStyle(fontSize: 11.5, color: T.inkFaint)),
             const SizedBox(height: 12),
             TextField(
               controller: noteCtrl,
               maxLines: 2,
-              decoration: InputDecoration(labelText: tr('ملاحظة (اختياري)', 'Note (optional)')),
+              decoration: InputDecoration(
+                labelText: tr('ملاحظة (اختياري)', 'Note (optional)'),
+                hintText: decision == 'returned' ? tr('ما الذي يُصحَّح؟ «السعر مرتفع»…', 'What should be corrected?') : tr('سببٌ إن كان له سبب…', 'A reason, if there is one…'),
+              ),
             ),
             if (decision == 'paid') ...[
               const SizedBox(height: 10),
-              OutlinedButton.icon(
-                onPressed: () async {
-                  final f = await pickFileAsDataUrl();
-                  if (f != null) setSheet(() => proof = f);
-                },
-                icon: const Icon(Icons.attach_file, size: 18),
-                label: Text(proof == null
-                    ? tr('إرفاق إثبات الدفع (اختياري)', 'Attach proof (optional)')
-                    : proof!.fileName),
-              ),
+              Text(tr('إثبات الدفع (اختياري · ملف أو أكثر)', 'Payment proof (optional · one or more)'), style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
+              const SizedBox(height: 6),
+              Wrap(spacing: 6, runSpacing: 6, children: [
+                for (final f in files) Chip(label: Text(f.fileName, style: const TextStyle(fontSize: 12)), onDeleted: () => setSheet(() => files.remove(f))),
+                ActionChip(
+                  avatar: const Icon(Icons.attach_file, size: 16),
+                  label: Text(tr('إرفاق ملفات', 'Attach files')),
+                  onPressed: () async {
+                    final got = await pickFilesAsDataUrls();
+                    // ٢٠ ميجا للملفّ كالموقع — وما زاد يُقال ولا يُرسَل.
+                    final ok = got.where((f) => f.sizeBytes <= 20 * 1024 * 1024).toList();
+                    if (ok.length < got.length && c.mounted) {
+                      ScaffoldMessenger.of(c).showSnackBar(SnackBar(content: Text(tr('ملفٌّ أكبر من ٢٠ ميجابايت لم يُرفق', 'A file over 20MB was skipped'))));
+                    }
+                    setSheet(() => files.addAll(ok));
+                  },
+                ),
+              ]),
             ],
             const SizedBox(height: 12),
             SizedBox(
               width: double.infinity,
-              child: FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(tr('تأكيد', 'Confirm'))),
+              child: FilledButton(
+                style: FilledButton.styleFrom(backgroundColor: decision == 'paid' ? T.success : decision == 'returned' ? T.info : T.danger),
+                onPressed: () => Navigator.pop(c, true),
+                child: Text(tr('تأكيد', 'Confirm')),
+              ),
             ),
           ]),
         ),
@@ -535,9 +789,10 @@ class _CustomsPaymentRequestsState extends State<_CustomsPaymentRequests> {
         {
           'decision': decision,
           'note': noteCtrl.text.trim(),
-          if (proof != null) 'files': [{'dataUrl': proof!.dataUrl, 'fileName': proof!.fileName}],
+          'files': [for (final f in files) {'dataUrl': f.dataUrl, 'fileName': f.fileName}],
         },
       );
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('تم تسجيل القرار', 'Decision recorded'))));
       _load();
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
@@ -546,6 +801,7 @@ class _CustomsPaymentRequestsState extends State<_CustomsPaymentRequests> {
 
   @override
   Widget build(BuildContext context) {
+    final legacyN = ((_counts['legacy'] as num?) ?? 0).toInt();
     return AppCard(
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
@@ -559,22 +815,25 @@ class _CustomsPaymentRequestsState extends State<_CustomsPaymentRequests> {
         const SizedBox(height: 10),
         Row(children: [
           for (final x in [
-            (tr('بانتظار الدفع', 'Awaiting'), '${_counts['pending'] ?? 0}', T.warn),
-            (tr('مبالغ منتظِرة', 'Awaiting SAR'), _fmtAmt(_counts['amountPending']), T.warn),
-            (tr('مدفوعة', 'Paid'), '${_counts['paid'] ?? 0}', T.success),
-            (tr('مبالغ مدفوعة', 'Paid SAR'), _fmtAmt(_counts['amountPaid']), T.success),
+            (tr('بانتظار الدفع', 'Awaiting'), '${_counts['pending'] ?? 0}', T.warn, 'pending'),
+            (tr('مبالغ منتظِرة', 'Awaiting SAR'), _fmtAmt(_counts['amountPending'] ?? 0), T.warn, 'pending'),
+            (tr('مدفوعة', 'Paid'), '${_counts['paid'] ?? 0}', T.success, 'paid'),
+            (tr('مبالغ مدفوعة', 'Paid SAR'), _fmtAmt(_counts['amountPaid'] ?? 0), T.success, 'paid'),
           ])
             Expanded(
-              child: Container(
-                margin: const EdgeInsets.symmetric(horizontal: 2),
-                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 8),
-                decoration: BoxDecoration(color: x.$3.withValues(alpha: 0.07), borderRadius: BorderRadius.circular(10)),
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(x.$1, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 9.5, color: T.inkSoft, fontWeight: FontWeight.w600)),
-                  const SizedBox(height: 2),
-                  FittedBox(fit: BoxFit.scaleDown, alignment: AlignmentDirectional.centerStart,
-                      child: Text(x.$2, style: TextStyle(fontWeight: FontWeight.w900, fontSize: 13, color: x.$3))),
-                ]),
+              child: InkWell(
+                onTap: () => _pickTab(x.$4),
+                child: Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 2),
+                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 8),
+                  decoration: BoxDecoration(color: x.$3.withValues(alpha: 0.07), borderRadius: BorderRadius.circular(10)),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(x.$1, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 9.5, color: T.inkSoft, fontWeight: FontWeight.w600)),
+                    const SizedBox(height: 2),
+                    FittedBox(fit: BoxFit.scaleDown, alignment: AlignmentDirectional.centerStart,
+                        child: Text(x.$2, style: TextStyle(fontWeight: FontWeight.w900, fontSize: 13, color: x.$3))),
+                  ]),
+                ),
               ),
             ),
         ]),
@@ -582,17 +841,14 @@ class _CustomsPaymentRequestsState extends State<_CustomsPaymentRequests> {
         SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           child: Row(children: [
-            // ── و«فواتير العملاء» وجهٌ آخر لنفس القسم ────────────────────────
-            // الأربعةُ الأولى **ما ندفعه** (طلباتُ صرفٍ من التخليص)، وهذه **ما
-            // نقبضه**: فاتورةٌ تُصدَر للعميل ببنودها ومجاميعها — قبل إنهاء المعاملة
-            // (راجع backend/utils/customsInvoice). ولا تُقرآن في شاشتين.
-            for (final t in const [('pending', 'بانتظار الدفع', 'Awaiting'), ('invreq', 'طلبات الفوترة', 'Invoice requests'), ('paid', 'مدفوعة', 'Paid'), ('returned', 'مُعادة', 'Returned'), ('rejected', 'مرفوضة', 'Rejected'), ('invoices', 'فواتير العملاء', 'Customer invoices')])
+            for (final t in const [('pending', 'بانتظار الدفع', 'Awaiting'), ('paid', 'مدفوعة', 'Paid'), ('returned', 'مُعادة', 'Returned'), ('rejected', 'مرفوضة', 'Rejected'), ('all', 'الكل', 'All')])
               Padding(
-                padding: const EdgeInsets.only(left: 6),
+                padding: const EdgeInsetsDirectional.only(end: 6),
                 child: FilterChip(
                   selected: _tab == t.$1,
-                  onSelected: (_) { setState(() { _tab = t.$1; _loading = true; }); _load(); },
-                  label: Text(tr(t.$2, t.$3)),
+                  showCheckmark: false,
+                  onSelected: (_) => _pickTab(t.$1),
+                  label: Text('${tr(t.$2, t.$3)}${t.$1 != 'all' && _counts[t.$1] != null ? ' ${_counts[t.$1]}' : ''}'),
                   labelStyle: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: _tab == t.$1 ? Colors.white : T.inkSoft),
                   selectedColor: T.navy,
                   side: BorderSide.none,
@@ -602,131 +858,499 @@ class _CustomsPaymentRequestsState extends State<_CustomsPaymentRequests> {
           ]),
         ),
         const SizedBox(height: 6),
-        if (_tab == 'invoices' && !_loading && ((_counts['awaitingTransportInvoice'] ?? 0) as num) > 0)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 2),
-            child: Chip2(tr('${_counts['awaitingTransportInvoice']} فاتورة بانتظار فاتورة النقل', '${_counts['awaitingTransportInvoice']} awaiting the transport invoice'), T.danger, icon: Icons.error_outline),
+        TextField(
+          onChanged: (v) {
+            _debounce?.cancel();
+            _debounce = Timer(const Duration(milliseconds: 300), () { setState(() { _search = v.trim(); _page = 1; }); _load(); });
+          },
+          decoration: InputDecoration(isDense: true, prefixIcon: const Icon(Icons.search, size: 18),
+              hintText: tr('رقم معاملة، عميل، بند…', 'Transaction, customer, item…')),
+        ),
+        // علاماتُ «تم» المنقولة من شيت الماستر — ليست قراراتٍ من الماليّة.
+        if (legacyN > 0)
+          CheckboxListTile(
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            controlAffinity: ListTileControlAffinity.leading,
+            value: _legacy,
+            onChanged: (v) { setState(() { _legacy = v == true; _page = 1; _loading = true; }); _load(); },
+            title: Text(tr('السجلّ المنقول ($legacyN)', 'Imported history ($legacyN)'), style: const TextStyle(fontSize: 12)),
           ),
-        if (_loading)
+        if (_loading && _rows.isEmpty)
           const Padding(padding: EdgeInsets.all(14), child: Center(child: CircularProgressIndicator(strokeWidth: 2)))
         else if (_rows.isEmpty)
-          Padding(padding: const EdgeInsets.all(14), child: Center(child: Text(tr('لا طلبات', 'Nothing here'), style: const TextStyle(fontSize: 12, color: T.inkFaint))))
+          Padding(padding: const EdgeInsets.all(14), child: Center(child: Text(
+              _tab == 'pending' ? tr('لا طلبات بانتظار الدفع.', 'Nothing awaiting payment.') : tr('لا طلبات في هذه القائمة.', 'Nothing here.'),
+              style: const TextStyle(fontSize: 12, color: T.inkFaint))))
         else
-          if (_tab == 'invreq')
-            ..._rows.take(60).map((r) => Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(color: T.inkFaint.withValues(alpha: 0.05), borderRadius: BorderRadius.circular(12)),
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Row(children: [
-                    Expanded(child: Text('${r['customerName'] ?? '—'}', style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800))),
-                    InkWell(
-                      onTap: () => showClearanceQuickView(context, '${r['clearanceId']}'),
-                      child: Text('${r['refNumber'] ?? ''}', style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: T.orange)),
-                    ),
-                  ]),
-                  const SizedBox(height: 2),
-                  Text('${tr('الإجمالي', 'Total')} ${_fmtAmt(r['total'])} · ${tr('ض', 'VAT')} ${_fmtAmt(r['vat'])} · ${(r['lines'] as List?)?.length ?? 0} ${tr('بند', 'lines')}',
-                      style: const TextStyle(fontSize: 11, color: T.inkSoft)),
-                  Text('${tr('طلبها', 'By')} ${r['requestedByName'] ?? '—'}${r['isCompleted'] == true ? ' · ${tr('مغلقة', 'closed')}' : ''}',
-                      style: const TextStyle(fontSize: 10.5, color: T.inkFaint)),
-                  const SizedBox(height: 8),
-                  Row(children: [
-                    Expanded(child: FilledButton(onPressed: () => _decideInvoice(r, 'invoiced'), child: Text(tr('تمّت الفوترة', 'Invoiced'), style: const TextStyle(fontSize: 12)))),
-                    const SizedBox(width: 6),
-                    OutlinedButton(onPressed: () => _decideInvoice(r, 'returned'), child: Text(tr('إعادة', 'Return'), style: const TextStyle(fontSize: 12))),
-                    const SizedBox(width: 6),
-                    OutlinedButton(onPressed: () => _decideInvoice(r, 'rejected'), child: Text(tr('رفض', 'Reject'), style: const TextStyle(fontSize: 12, color: T.danger))),
-                  ]),
-                ]),
+          ..._rows.map(_row),
+        if (_pages > 1)
+          Row(children: [
+            Text(tr('$_total طلب', '$_total requests'), style: const TextStyle(fontSize: 11.5, color: T.inkSoft)),
+            const Spacer(),
+            IconButton(
+              icon: Icon(Lang.instance.ar ? Icons.chevron_right : Icons.chevron_left),
+              onPressed: _page <= 1 ? null : () { setState(() => _page--); _load(); },
+            ),
+            Text('$_page / $_pages', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12)),
+            IconButton(
+              icon: Icon(Lang.instance.ar ? Icons.chevron_left : Icons.chevron_right),
+              onPressed: _page >= _pages ? null : () { setState(() => _page++); _load(); },
+            ),
+          ]),
+      ]),
+    );
+  }
+
+  Widget _row(Map<String, dynamic> r) {
+    final st = '${r['payStatus'] ?? 'pending'}';
+    final badge = _payBadge[st] ?? _payBadge['pending']!;
+    final proofs = List<Map<String, dynamic>>.from((r['proofFiles'] as List? ?? const []).map((e) => Map<String, dynamic>.from(e as Map)));
+    return Opacity(
+      opacity: _loading ? 0.6 : 1,
+      child: Container(
+        margin: const EdgeInsets.only(top: 8),
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(color: T.inkFaint.withValues(alpha: 0.05), borderRadius: BorderRadius.circular(12)),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Expanded(child: Text('${r['customerName'] ?? '—'}', style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800))),
+            // رقمُ المعاملة يفتح تفاصيلَها هنا — شاشةُ التخليص لا تُفتح للماليّة.
+            InkWell(
+              onTap: () => showClearanceQuickView(context, '${r['clearanceId']}'),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                child: Text('${r['refNumber'] ?? '—'}',
+                    style: const TextStyle(fontSize: 12, color: T.orange, fontWeight: FontWeight.w800, decoration: TextDecoration.underline)),
               ),
-            ))
-          // فواتيرُ العملاء صفٌّ آخر: رقمُ الفاتورة ومجاميعُها، لا قرارَ دفعٍ.
-          else if (_tab == 'invoices')
-            ..._rows.take(40).map((r) {
-              final tot = Map<String, dynamic>.from(r['totals'] ?? const {});
-              final billed = Map<String, dynamic>.from(r['billed'] ?? const {});
-              final pass = Map<String, dynamic>.from(r['passThrough'] ?? const {});
-              String m(dynamic v) => (((v ?? 0) as num).round()).toString();
-              return Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(color: T.inkFaint.withValues(alpha: 0.05), borderRadius: BorderRadius.circular(12)),
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Row(children: [
-                      Expanded(child: Text('${r['customerName'] ?? '—'}', style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800))),
-                      Text('${r['invoiceNumber'] ?? ''}', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: T.orange)),
-                    ]),
-                    // فُوترت ولم تصل فاتورةُ نقلها: المعاملةُ لم تُنهَ بعد.
-                    if (r['awaitingTransportInvoice'] == true)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 4),
-                        child: Chip2(tr('بانتظار فاتورة النقل', 'Awaiting transport invoice'), T.danger, icon: Icons.error_outline),
-                      ),
-                    const SizedBox(height: 2),
-                    Text([
-                      if ((r['refNumber'] ?? '').toString().isNotEmpty) '${tr('رقم المعاملة', 'Transaction no.')} ${r['refNumber']}',
-                      if ((r['declarationNumber'] ?? '').toString().isNotEmpty) '${tr('بيان', 'Decl')} ${r['declarationNumber']}',
-                    ].join(' · '), style: const TextStyle(fontSize: 11, color: T.inkSoft)),
-                    const SizedBox(height: 6),
-                    Row(children: [
-                      Expanded(child: Text('${tr('يمرّ كما هو', 'Pass-through')}: ${m(pass['total'])}', style: const TextStyle(fontSize: 11, color: T.inkSoft))),
-                      Expanded(child: Text('${tr('مفوتر', 'Billed')}: ${m(billed['net'])} + ${tr('ض', 'VAT')} ${m(billed['vat'])}', style: const TextStyle(fontSize: 11, color: T.inkSoft))),
-                    ]),
-                    const SizedBox(height: 4),
-                    Row(children: [
-                      Text('${tr('الإجمالي', 'Total')} ', style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700)),
-                      Text(m(tot['grand']), style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: T.navy)),
-                      const Spacer(),
-                      InkWell(
-                        onTap: () => showClearanceQuickView(context, '${r['_id']}'),
-                        child: const Padding(padding: EdgeInsets.all(4), child: Icon(Icons.open_in_new, size: 15, color: T.orange)),
-                      ),
-                    ]),
-                  ]),
-                ),
-              );
-            })
+            ),
+          ]),
+          const SizedBox(height: 2),
+          Row(children: [
+            Expanded(child: Text('${r['label'] ?? r['key'] ?? ''} · ${_dmy(r['date'])}', style: const TextStyle(fontSize: 11.5))),
+            Text(_fmtAmt(r['amount']), style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w900)),
+          ]),
+          if ('${r['note'] ?? ''}'.isNotEmpty) Text('${r['note']}', style: const TextStyle(fontSize: 11, color: T.inkSoft)),
+          Text('${tr('طلبها', 'By')} ${r['addedByName'] ?? '—'}${r['addedAt'] != null ? ' · ${_dmy(r['addedAt'])}' : ''}',
+              style: const TextStyle(fontSize: 10.5, color: T.inkFaint)),
+          const SizedBox(height: 4),
+          Wrap(spacing: 6, runSpacing: 4, crossAxisAlignment: WrapCrossAlignment.center, children: [
+            Chip2(tr(badge.$1, badge.$2), badge.$3),
+            if ('${r['fileUrl'] ?? ''}'.isNotEmpty)
+              ActionChip(
+                visualDensity: VisualDensity.compact,
+                avatar: const Icon(Icons.attach_file, size: 14),
+                label: Text('${r['fileName'] ?? tr('المرفق', 'file')}', style: const TextStyle(fontSize: 11)),
+                onPressed: () => _openUrl('${r['fileUrl']}'),
+              )
+            else
+              Text(tr('بلا مرفق', 'no file'), style: const TextStyle(fontSize: 11, color: T.warn)),
+            for (final f in proofs)
+              ActionChip(
+                visualDensity: VisualDensity.compact,
+                avatar: const Icon(Icons.receipt_long, size: 14, color: T.success),
+                label: Text('${f['fileName'] ?? tr('إثبات', 'proof')}', style: const TextStyle(fontSize: 11, color: T.success)),
+                onPressed: () => _openUrl('${f['fileUrl']}'),
+              ),
+          ]),
+          if ('${r['decisionNote'] ?? ''}'.isNotEmpty)
+            Text('${r['decisionNote']}', style: const TextStyle(fontSize: 11, color: T.inkSoft)),
+          if ('${r['decidedByName'] ?? ''}'.isNotEmpty && r['legacy'] != true)
+            Text('${r['decidedByName']}', style: const TextStyle(fontSize: 10.5, color: T.inkFaint)),
+          if (r['legacy'] == true)
+            Padding(padding: const EdgeInsets.only(top: 4), child: Text(tr('سجلّ منقول', 'imported'), style: const TextStyle(fontSize: 11, color: T.inkFaint)))
           else
-          ..._rows.take(40).map((r) => Padding(
-            padding: const EdgeInsets.only(top: 8),
-            child: Container(
+            Row(children: [
+              const Spacer(),
+              if (st != 'paid')
+                FilledButton.icon(
+                  style: FilledButton.styleFrom(backgroundColor: T.success, visualDensity: VisualDensity.compact),
+                  onPressed: () => _decide(r, 'paid'),
+                  icon: const Icon(Icons.check, size: 16),
+                  label: Text(tr('تم الدفع', 'Paid'), style: const TextStyle(fontSize: 12)),
+                ),
+              if (st != 'returned')
+                IconButton(tooltip: tr('إرجاع الطلب', 'Return'), icon: const Icon(Icons.undo, size: 18, color: T.info), onPressed: () => _decide(r, 'returned')),
+              if (st != 'rejected')
+                IconButton(tooltip: tr('رفض الطلب', 'Reject'), icon: const Icon(Icons.block, size: 18, color: T.danger), onPressed: () => _decide(r, 'rejected')),
+            ]),
+        ]),
+      ),
+    );
+  }
+}
+
+/// طلباتُ الفوترة — نظيرُ CustomsInvoiceRequests: أربعُ حالاتٍ والكلّ، وبنودُ
+/// الفاتورة تُفتح تحتها، والقرارُ لما ينتظر وحدَه (والسببُ شرطٌ للإعادة والرفض).
+const _invStatus = <String, (String, String, Color)>{
+  'pending': ('بانتظار الفوترة', 'Awaiting invoicing', T.warn),
+  'invoiced': ('تمّت الفوترة', 'Invoiced', T.success),
+  'returned': ('أُعيد للتصحيح', 'Returned', T.info),
+  'rejected': ('مرفوض', 'Rejected', T.danger),
+};
+
+class _CustomsInvoiceRequests extends StatefulWidget {
+  const _CustomsInvoiceRequests();
+  @override
+  State<_CustomsInvoiceRequests> createState() => _CustomsInvoiceRequestsState();
+}
+
+class _CustomsInvoiceRequestsState extends State<_CustomsInvoiceRequests> {
+  List<Map<String, dynamic>>? _rows;
+  Map<String, dynamic> _counts = const {};
+  String _tab = 'pending';
+  String? _open;
+  int _seq = 0;
+  late final void Function() _onLive;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+    _onLive = () => _load();
+    Live.instance.on('customs:updated', _onLive);
+  }
+
+  @override
+  void dispose() {
+    Live.instance.off('customs:updated', _onLive);
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    final mine = ++_seq;
+    try {
+      final d = await Api.instance.get('/api/customs-clearance/invoice-requests?status=$_tab');
+      if (!mounted || mine != _seq) return;
+      setState(() {
+        _rows = List<Map<String, dynamic>>.from(d['requests'] ?? const []);
+        _counts = Map<String, dynamic>.from(d['counts'] ?? const {});
+      });
+    } catch (_) {
+      if (mounted && mine == _seq) setState(() => _rows = const []);
+    }
+  }
+
+  Future<void> _decide(Map<String, dynamic> r, String decision) async {
+    final noteCtrl = TextEditingController();
+    final noCtrl = TextEditingController();
+    PickedFile? inv;
+    final go = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      builder: (c) => StatefulBuilder(builder: (c, setSheet) => SafeArea(
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(16, 16, 16, MediaQuery.of(c).viewInsets.bottom + 16),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('${decision == 'invoiced' ? tr('تمّت الفوترة', 'Mark invoiced')
+                : decision == 'returned' ? tr('إعادة للتصحيح', 'Return for correction') : tr('رفض طلب الفوترة', 'Reject request')} · ${r['refNumber'] ?? ''}',
+                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+            const SizedBox(height: 10),
+            if (decision == 'invoiced') ...[
+              TextField(controller: noCtrl, decoration: InputDecoration(labelText: tr('رقم الفاتورة في نظامكم (اختياري — وإلّا يُعطى رقمٌ متسلسل)', 'Invoice number in your system (optional)'))),
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                onPressed: () async {
+                  final f = await pickFileAsDataUrl();
+                  if (f == null) return;
+                  if (f.sizeBytes > 20 * 1024 * 1024) {
+                    if (c.mounted) ScaffoldMessenger.of(c).showSnackBar(SnackBar(content: Text(tr('الملفّ أكبر من ٢٠ ميجا', 'File over 20MB'))));
+                    return;
+                  }
+                  setSheet(() => inv = f);
+                },
+                icon: const Icon(Icons.attach_file, size: 18),
+                label: Text(inv == null ? tr('الفاتورة النهائية (اختياري)', 'Final invoice (optional)') : inv!.fileName),
+              ),
+            ],
+            TextField(controller: noteCtrl, maxLines: 2,
+                decoration: InputDecoration(labelText: decision == 'invoiced' ? tr('ملاحظة (اختياري)', 'Note (optional)') : tr('السبب *', 'Reason *'))),
+            const SizedBox(height: 12),
+            SizedBox(width: double.infinity, child: FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: decision == 'rejected' ? T.danger : decision == 'returned' ? T.navy : T.success),
+              onPressed: () {
+                if (decision != 'invoiced' && noteCtrl.text.trim().isEmpty) {
+                  ScaffoldMessenger.of(c).showSnackBar(SnackBar(content: Text(tr('اكتب السبب', 'Write the reason'))));
+                  return;
+                }
+                Navigator.pop(c, true);
+              },
+              child: Text(tr('تأكيد', 'Confirm')),
+            )),
+          ]),
+        ),
+      )),
+    );
+    if (go != true) return;
+    try {
+      await Api.instance.patch('/api/customs-clearance/${r['clearanceId']}/invoice-request/decision', {
+        'decision': decision,
+        'note': noteCtrl.text.trim(),
+        if (decision == 'invoiced') 'invoiceNumber': noCtrl.text.trim(),
+        if (decision == 'invoiced') 'file': inv == null ? null : {'dataUrl': inv!.dataUrl, 'fileName': inv!.fileName},
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(decision == 'invoiced' ? tr('سُجّلت الفوترة', 'Marked invoiced') : tr('سُجّل القرار', 'Decision saved'))));
+      }
+      _load();
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final rows = _rows;
+    final pending = ((_counts['pending'] as num?) ?? 0).toInt();
+    return AppCard(
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          const Icon(Icons.receipt_outlined, size: 18, color: T.orange),
+          const SizedBox(width: 6),
+          Expanded(child: Text(tr('طلبات الفوترة', 'Invoice requests'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5))),
+          if (pending > 0) Chip2('$pending', T.danger),
+        ]),
+        Text(tr('يطلبها التخليصُ عند الإقفال — فوتِرها في نظامك ثمّ «تمّت الفوترة» هنا.', 'Customs requests them on closing — invoice in your system, then mark it here.'),
+            style: const TextStyle(fontSize: 11, color: T.inkFaint)),
+        const SizedBox(height: 8),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(children: [
+            for (final k in const ['pending', 'invoiced', 'returned', 'rejected', 'all'])
+              Padding(
+                padding: const EdgeInsetsDirectional.only(end: 6),
+                child: FilterChip(
+                  selected: _tab == k,
+                  showCheckmark: false,
+                  onSelected: (_) { setState(() { _tab = k; _rows = null; }); _load(); },
+                  label: Text(k == 'all' ? tr('الكلّ', 'All')
+                      : '${tr(_invStatus[k]!.$1, _invStatus[k]!.$2)}${((_counts[k] as num?) ?? 0) > 0 ? ' (${_counts[k]})' : ''}'),
+                  labelStyle: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: _tab == k ? Colors.white : T.inkSoft),
+                  selectedColor: T.navy,
+                  side: BorderSide.none,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                ),
+              ),
+          ]),
+        ),
+        if (rows == null)
+          const Padding(padding: EdgeInsets.all(14), child: Center(child: CircularProgressIndicator(strokeWidth: 2)))
+        else if (rows.isEmpty)
+          Padding(padding: const EdgeInsets.all(14), child: Center(child: Text(
+              _tab == 'pending' ? tr('لا طلبات فوترة تنتظر', 'Nothing awaiting invoicing') : tr('لا شيء هنا', 'Nothing here'),
+              style: const TextStyle(fontSize: 12, color: T.inkFaint))))
+        else
+          ...rows.map((r) {
+            final st = _invStatus['${r['status']}'] ?? _invStatus['pending']!;
+            final lines = List<Map<String, dynamic>>.from((r['lines'] as List? ?? const []).map((e) => Map<String, dynamic>.from(e as Map)));
+            final open = _open == '${r['clearanceId']}';
+            return Container(
+              margin: const EdgeInsets.only(top: 8),
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(color: T.inkFaint.withValues(alpha: 0.05), borderRadius: BorderRadius.circular(12)),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Row(children: [
                   Expanded(child: Text('${r['customerName'] ?? '—'}', style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800))),
-                  // رقمُ المعاملة يفتح تفاصيلَها هنا — شاشةُ التخليص لا تُفتح للماليّة.
                   InkWell(
                     onTap: () => showClearanceQuickView(context, '${r['clearanceId']}'),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                      child: Text('${r['refNumber'] ?? ''}',
-                          style: const TextStyle(fontSize: 12, color: T.orange, fontWeight: FontWeight.w800, decoration: TextDecoration.underline)),
-                    ),
+                    child: Text('${r['refNumber'] ?? '—'}', style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: T.orange, decoration: TextDecoration.underline)),
                   ),
                 ]),
+                if ('${r['blNumber'] ?? ''}'.isNotEmpty || r['isCompleted'] == true)
+                  Text('${r['blNumber'] ?? ''}${r['isCompleted'] == true ? ' · ${tr('مغلقة', 'Closed')}' : ''}', style: const TextStyle(fontSize: 11, color: T.inkFaint)),
                 const SizedBox(height: 2),
-                Text('${r['label'] ?? r['key'] ?? ''} · ${r['amount'] ?? '—'}${r['note'] != null && '${r['note']}'.isNotEmpty ? ' · ${r['note']}' : ''}',
-                    style: const TextStyle(fontSize: 11.5)),
-                if ('${r['decisionNote'] ?? ''}'.isNotEmpty)
-                  Text('${r['decisionNote']}', style: const TextStyle(fontSize: 11, color: T.inkSoft)),
-                const SizedBox(height: 6),
-                Row(children: [
+                InkWell(
+                  onTap: () => setState(() => _open = open ? null : '${r['clearanceId']}'),
+                  child: Row(children: [
+                    Text(_fmtAmt(r['total']), style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: T.navy, decoration: TextDecoration.underline)),
+                    const SizedBox(width: 6),
+                    Expanded(child: Text('${tr('شامل الضريبة', 'incl. VAT')} ${_fmtAmt(r['vat'])} · ${lines.length} ${tr('بند', 'lines')}',
+                        style: const TextStyle(fontSize: 11, color: T.inkSoft))),
+                    Icon(open ? Icons.expand_less : Icons.expand_more, size: 18, color: T.inkFaint),
+                  ]),
+                ),
+                if (open)
+                  Container(
+                    margin: const EdgeInsets.only(top: 6),
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8)),
+                    child: Column(children: [
+                      for (final l in lines)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 2),
+                          child: Row(children: [
+                            Expanded(child: Text('${l['label'] ?? ''}${l['from'] == 'stage' ? ' (${tr('مرحلة سداد', 'payment stage')})' : ''}', style: const TextStyle(fontSize: 11.5))),
+                            if ('${l['fileUrl'] ?? ''}'.isNotEmpty)
+                              InkWell(onTap: () => _openUrl('${l['fileUrl']}'), child: const Icon(Icons.attach_file, size: 14, color: T.info)),
+                            const SizedBox(width: 6),
+                            Text(_fmtAmt(l['amount']), style: const TextStyle(fontSize: 11.5)),
+                            if (((l['vat'] as num?) ?? 0) != 0) Text('  +${_fmtAmt(l['vat'])}', style: const TextStyle(fontSize: 11, color: T.inkFaint)),
+                            const SizedBox(width: 6),
+                            Text(_fmtAmt(l['total']), style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800)),
+                          ]),
+                        ),
+                    ]),
+                  ),
+                Text('${tr('طلبها', 'By')} ${r['requestedByName'] ?? '—'} · ${_dmy(r['requestedAt'])}${'${r['note'] ?? ''}'.isNotEmpty ? ' · «${r['note']}»' : ''}',
+                    style: const TextStyle(fontSize: 10.5, color: T.inkFaint)),
+                const SizedBox(height: 4),
+                Wrap(spacing: 6, runSpacing: 4, crossAxisAlignment: WrapCrossAlignment.center, children: [
+                  Chip2(tr(st.$1, st.$2), st.$3),
+                  if ('${r['invoiceNumber'] ?? ''}'.isNotEmpty) Text('${r['invoiceNumber']}', style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700)),
                   if ('${r['fileUrl'] ?? ''}'.isNotEmpty)
-                    Text(tr('مرفق ✓', 'file ✓'), style: const TextStyle(fontSize: 11, color: T.success, fontWeight: FontWeight.w700))
-                  else
-                    Text(tr('بلا مرفق', 'no file'), style: const TextStyle(fontSize: 11, color: T.warn)),
-                  const Spacer(),
-                  IconButton(tooltip: tr('تم الدفع', 'Paid'), icon: const Icon(Icons.check, size: 18, color: T.success), onPressed: () => _decide(r, 'paid')),
-                  IconButton(tooltip: tr('إرجاع', 'Return'), icon: const Icon(Icons.undo, size: 18, color: T.info), onPressed: () => _decide(r, 'returned')),
-                  IconButton(tooltip: tr('رفض', 'Reject'), icon: const Icon(Icons.block, size: 18, color: T.danger), onPressed: () => _decide(r, 'rejected')),
+                    ActionChip(
+                      visualDensity: VisualDensity.compact,
+                      avatar: const Icon(Icons.task_outlined, size: 14),
+                      label: Text(tr('الفاتورة النهائية', 'Final invoice'), style: const TextStyle(fontSize: 11)),
+                      onPressed: () => _openUrl('${r['fileUrl']}'),
+                    ),
                 ]),
+                if ('${r['decisionNote'] ?? ''}'.isNotEmpty) Text('«${r['decisionNote']}»', style: const TextStyle(fontSize: 11, color: T.inkSoft)),
+                if ('${r['decidedByName'] ?? ''}'.isNotEmpty) Text('${r['decidedByName']} · ${_dmy(r['decidedAt'])}', style: const TextStyle(fontSize: 10.5, color: T.inkFaint)),
+                if (r['status'] == 'pending') ...[
+                  const SizedBox(height: 8),
+                  Row(children: [
+                    Expanded(child: FilledButton(style: FilledButton.styleFrom(backgroundColor: T.success), onPressed: () => _decide(r, 'invoiced'), child: Text(tr('تمّت الفوترة', 'Invoiced'), style: const TextStyle(fontSize: 12)))),
+                    const SizedBox(width: 6),
+                    OutlinedButton(onPressed: () => _decide(r, 'returned'), child: Text(tr('إعادة', 'Return'), style: const TextStyle(fontSize: 12))),
+                    const SizedBox(width: 6),
+                    OutlinedButton(onPressed: () => _decide(r, 'rejected'), child: Text(tr('رفض', 'Reject'), style: const TextStyle(fontSize: 12, color: T.danger))),
+                  ]),
+                ],
               ]),
+            );
+          }),
+      ]),
+    );
+  }
+}
+
+/// فواتيرُ عملاء التخليص — نظيرُ CustomsCustomerInvoices: ما أصدره القسمُ ليُفوتَر
+/// (حتّى ٣٠٠)، وما لم تصل فاتورةُ نقله بالأحمر وله زرُّ تصفيةٍ وحدَه.
+class _CustomsCustomerInvoices extends StatefulWidget {
+  const _CustomsCustomerInvoices();
+  @override
+  State<_CustomsCustomerInvoices> createState() => _CustomsCustomerInvoicesState();
+}
+
+class _CustomsCustomerInvoicesState extends State<_CustomsCustomerInvoices> {
+  List<Map<String, dynamic>> _rows = const [];
+  Map<String, dynamic> _summary = const {};
+  bool _loading = true;
+  bool _onlyAwaiting = false;
+  String _q = '';
+  int _limit = 40;
+  int _seq = 0;
+  late final void Function() _onLive;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+    _onLive = () => _load();
+    Live.instance.on('customs:updated', _onLive);
+  }
+
+  @override
+  void dispose() {
+    Live.instance.off('customs:updated', _onLive);
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    final mine = ++_seq;
+    try {
+      final d = await Api.instance.get('/api/customs-clearance/invoices?limit=300');
+      if (!mounted || mine != _seq) return;
+      setState(() {
+        _rows = List<Map<String, dynamic>>.from(d['invoices'] ?? const []);
+        _summary = Map<String, dynamic>.from(d['summary'] ?? const {});
+        _loading = false;
+      });
+    } catch (_) {
+      if (mounted && mine == _seq) setState(() => _loading = false);
+    }
+  }
+
+  String _state(Map<String, dynamic> r) => r['awaitingTransportInvoice'] == true
+      ? tr('بانتظار فاتورة النقل', 'Awaiting transport invoice')
+      : r['isCompleted'] == true ? tr('مغلقة', 'Closed') : tr('مفتوحة', 'Open');
+
+  @override
+  Widget build(BuildContext context) {
+    final awaiting = ((_summary['awaitingTransportInvoice'] as num?) ?? 0).toInt();
+    final base = _onlyAwaiting ? _rows.where((r) => r['awaitingTransportInvoice'] == true).toList() : _rows;
+    final n = _foldFin(_q.trim());
+    final shown = n.isEmpty ? base : base.where((r) => _foldFin([r['invoiceNumber'], r['blNumber'], r['refNumber'], r['customerName']].join(' ')).contains(n)).toList();
+    return AppCard(
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          const Icon(Icons.receipt_long_outlined, size: 18, color: T.orange),
+          const SizedBox(width: 6),
+          Expanded(child: Text(tr('فواتير عملاء التخليص', 'Customs customer invoices'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5))),
+        ]),
+        Text(tr('${_summary['count'] ?? 0} فاتورة · الإجمالي ${_fmtAmt(_summary['grand'] ?? 0)} ر.س — اضغط الفاتورة لعرض معاملتها',
+                '${_summary['count'] ?? 0} invoices · total ${_fmtAmt(_summary['grand'] ?? 0)} SAR — tap one to see its transaction'),
+            style: const TextStyle(fontSize: 11, color: T.inkFaint)),
+        const SizedBox(height: 8),
+        Row(children: [
+          Expanded(
+            child: TextField(
+              onChanged: (v) => setState(() { _q = v; _limit = 40; }),
+              decoration: InputDecoration(isDense: true, prefixIcon: const Icon(Icons.search, size: 18), hintText: tr('فاتورة، بوليصة، معاملة، عميل', 'Invoice, BL, transaction, customer')),
             ),
-          )),
+          ),
+          const SizedBox(width: 6),
+          FilterChip(
+            selected: _onlyAwaiting,
+            showCheckmark: false,
+            onSelected: (awaiting > 0 || _onlyAwaiting) ? (v) => setState(() { _onlyAwaiting = v; _limit = 40; }) : null,
+            avatar: Icon(Icons.warning_amber_rounded, size: 15, color: _onlyAwaiting ? Colors.white : T.danger),
+            label: Text('$awaiting'),
+            labelStyle: TextStyle(fontWeight: FontWeight.w800, color: _onlyAwaiting ? Colors.white : T.danger),
+            selectedColor: T.danger,
+            tooltip: tr('بانتظار فاتورة النقل', 'Awaiting transport invoice'),
+          ),
+        ]),
+        if (_loading)
+          const Padding(padding: EdgeInsets.all(14), child: Center(child: CircularProgressIndicator(strokeWidth: 2)))
+        else if (shown.isEmpty)
+          Padding(padding: const EdgeInsets.all(14), child: Center(child: Text(tr('لا فواتير.', 'No invoices.'), style: const TextStyle(fontSize: 12, color: T.inkFaint))))
+        else ...[
+          ...shown.take(_limit).map((r) {
+            final tot = Map<String, dynamic>.from(r['totals'] ?? const {});
+            final red = r['awaitingTransportInvoice'] == true;
+            return InkWell(
+              onTap: () => showClearanceQuickView(context, '${r['_id']}'),
+              child: Container(
+                margin: const EdgeInsets.only(top: 8),
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(color: red ? T.danger.withValues(alpha: 0.07) : T.inkFaint.withValues(alpha: 0.05), borderRadius: BorderRadius.circular(12)),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Row(children: [
+                    Expanded(child: Text('${r['customerName'] ?? '—'}', style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800))),
+                    Text('${r['invoiceNumber'] ?? ''}', style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: T.orange)),
+                  ]),
+                  Text([
+                    _dmy(r['invoiceAt']),
+                    if ('${r['blNumber'] ?? ''}'.isNotEmpty) '${tr('بوليصة', 'BL')} ${r['blNumber']}',
+                    if ('${r['refNumber'] ?? ''}'.isNotEmpty) '${tr('معاملة', 'Txn')} ${r['refNumber']}',
+                  ].join(' · '), style: const TextStyle(fontSize: 11, color: T.inkSoft)),
+                  const SizedBox(height: 4),
+                  Row(children: [
+                    Expanded(child: Text('${tr('قبل الضريبة', 'Net')} ${_fmtAmt(tot['net'] ?? 0)} · ${tr('الضريبة', 'VAT')} ${_fmtAmt(tot['vat'] ?? 0)}',
+                        style: const TextStyle(fontSize: 11, color: T.inkSoft))),
+                    Text(_fmtAmt(tot['grand'] ?? 0), style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: T.navy)),
+                  ]),
+                  const SizedBox(height: 4),
+                  Chip2(_state(r), red ? T.danger : r['isCompleted'] == true ? T.success : T.info, icon: red ? Icons.error_outline : null),
+                ]),
+              ),
+            );
+          }),
+          if (shown.length > _limit)
+            TextButton(onPressed: () => setState(() => _limit += 100), child: Text(tr('عرض المزيد (${shown.length - _limit} متبقي)', 'Show more (${shown.length - _limit} left)'))),
+        ],
       ]),
     );
   }

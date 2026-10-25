@@ -3,6 +3,8 @@ import '../services/api.dart';
 import '../services/lang.dart';
 import '../services/live.dart';
 import '../ui/app_scaffold.dart';
+import '../ui/export_sheet.dart';
+import 'sales_dashboard.dart' show SalesMonthPicker, salesThisPeriod;
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 
@@ -25,6 +27,9 @@ class _SalesPerformanceScreenState extends State<SalesPerformanceScreen> {
   List<Map<String, dynamic>> _rows = [];
   bool _loading = true;
   String? _error;
+  // الشهرُ المختار (YYYY-MM) كالويب — والعدّادُ يمنع ردَّ شهرٍ سابقٍ من الكتابة فوق الأحدث.
+  String _period = salesThisPeriod();
+  int _seq = 0;
 
   // `sales:updated` نداءُ القسم: صفقةٌ تغيّرت أو هدفٌ وُضع — كما على الويب.
   @override
@@ -34,12 +39,13 @@ class _SalesPerformanceScreenState extends State<SalesPerformanceScreen> {
   void dispose() { Live.instance.off('sales:updated', _load); super.dispose(); }
 
   Future<void> _load() async {
+    final mine = ++_seq;
     try {
-      final d = await Api.instance.get('/api/sales/performance');
-      if (!mounted) return;
+      final d = await Api.instance.get('/api/sales/performance?period=$_period');
+      if (!mounted || mine != _seq) return;
       setState(() { _rows = List<Map<String, dynamic>>.from(d['rows'] ?? []); _loading = false; _error = null; });
     } catch (e) {
-      if (mounted) setState(() { _loading = false; _error = e.toString(); });
+      if (mounted && mine == _seq) setState(() { _loading = false; _error = e.toString(); });
     }
   }
 
@@ -49,6 +55,29 @@ class _SalesPerformanceScreenState extends State<SalesPerformanceScreen> {
   Widget build(BuildContext context) {
     return AppScaffold(
       title: Text(tr('أداء المبيعات', 'Sales Performance')),
+      actions: [
+        ExportButton(
+          fileName: 'sales-performance-$_period',
+          sheetName: tr('أداء المبيعات', 'Sales Performance'),
+          rows: () => _rows,
+          columns: [
+            ExportCol('المندوب', 'Rep', (r) => r['rep'] is Map ? r['rep']['name'] : ''),
+            ExportCol('المحقَّق', 'Won', (r) => r['wonValue']),
+            ExportCol('عدد الصفقات الرابحة', 'Won Count', (r) => r['wonCount']),
+            ExportCol('الهدف', 'Target', (r) => r['target']),
+            ExportCol('نسبة التحقيق', 'Attainment', (r) => r['attainment']),
+            ExportCol('المفتوحة', 'Open', (r) => r['openValue']),
+            ExportCol('عدد الصفقات المفتوحة', 'Open Count', (r) => r['openCount']),
+          ],
+        ),
+      ],
+      appBarBottom: PreferredSize(
+        preferredSize: const Size.fromHeight(62),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+          child: SalesMonthPicker(value: _period, onChanged: (p) { setState(() { _period = p; _loading = true; }); _load(); }),
+        ),
+      ),
       body: _loading
           ? ListView(padding: const EdgeInsets.all(14), children: const [Shimmer(height: 90), SizedBox(height: 10), Shimmer(height: 90)])
           : _error != null

@@ -5,6 +5,13 @@ import '../services/live.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import 'package:provider/provider.dart';
+import '../services/auth.dart';
+import 'reference_data.dart' show LookupValuesScreen;
+import 'vehicle_corporate.dart' show VehicleCorporatePoliciesScreen;
+import 'vehicle_documents.dart';
+import 'vehicle_driver_cards.dart' show VehicleDriverCardsScreen;
+import 'vehicle_expiring.dart';
 import 'vehicle_registry.dart';
 
 // ══════════════════ لوحة التحليلات ══════════════════
@@ -196,113 +203,35 @@ class _VRDashState extends State<VehicleRegistryDashboardScreen> {
 }
 
 // ══════════════════ الانتهاءات والتجديد ══════════════════
-// الاسم الظاهر واحدٌ في الموقع والتطبيق: الموقع دمج «تنبيهات المركبات» في
-// «الانتهاءات والتجديد»، فبقاء اسمين لشاشةٍ واحدة يجعل المستخدم يبحث عن شاشةٍ
-// لا وجود لها. اسم الصنف باقٍ كما هو لأنه داخليٌّ لا يراه أحد.
-class VehicleRegistryAlertsScreen extends StatefulWidget {
-  const VehicleRegistryAlertsScreen({super.key});
+// الاسمُ الداخليّ باقٍ (القائمةُ والنظرةُ الشاملة تفتحانه)، والشاشةُ نفسُها
+// صارت توأمَ صفحة الموقع — راجع vehicle_expiring.dart.
+class VehicleRegistryAlertsScreen extends StatelessWidget {
+  final String? doc, state;
+  const VehicleRegistryAlertsScreen({super.key, this.doc, this.state});
   @override
-  State<VehicleRegistryAlertsScreen> createState() => _VRAlertsState();
+  Widget build(BuildContext context) => VehicleExpiringScreen(doc: doc, state: state);
 }
 
-class _VRAlertsState extends State<VehicleRegistryAlertsScreen> {
-  Map<String, dynamic>? _data;
-  bool _loading = true;
-  String? _error;
-  String _doc = '', _status = '';
-  late final void Function() _onLive;
+// ══════════════════ إعدادات القسم ══════════════════
+// تبويبان كالموقع: «القوائم المرجعية» (قوائمُ القسم المنسدلة) و«عتبات التنبيه».
+const _settingsDocs = [
+  ('insurance', 'تأمين المركبات', 'Vehicle insurance'),
+  ('operatingCard', 'بطاقات التشغيل', 'Operating cards'),
+  ('vehicleLicense', 'رخص السير', 'Vehicle licences'),
+  ('inspection', 'الفحص الدوري', 'Periodic inspection'),
+  ('authorization', 'التفاويض', 'Authorisations'),
+  ('gps', 'أجهزة التتبّع GPS', 'GPS devices'),
+  ('driverCard', 'بطاقات السائقين', 'Driver cards'),
+  ('corporatePolicy', 'وثائق تأمين الشركة', 'Corporate policies'),
+];
+const _bands = [
+  ('expired', 'منتهٍ', 'Expired', Color(0xFFB91C1C)),
+  ('critical', 'حرج', 'Critical', Color(0xFFC2410C)),
+  ('warning', 'تحذير', 'Warning', Color(0xFFB45309)),
+  ('upcoming', 'قريب', 'Soon', Color(0xFF0369A1)),
+  ('valid', 'ساري', 'Valid', Color(0xFF047857)),
+];
 
-  @override
-  void initState() {
-    super.initState();
-    _load();
-    _onLive = () => _load();
-    Live.instance.on('vreg:updated', _onLive);
-  }
-
-  @override
-  void dispose() { Live.instance.off('vreg:updated', _onLive); super.dispose(); }
-
-  Future<void> _load() async {
-    try {
-      final d = await Api.instance.get('/api/vehicle-registry/alerts');
-      if (!mounted) return;
-      setState(() { _data = Map<String, dynamic>.from(d); _loading = false; _error = null; });
-    } catch (e) { if (mounted) setState(() { _loading = false; _error = e.toString(); }); }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final d = _data;
-    final all = List<Map<String, dynamic>>.from(d?['items'] ?? []);
-    final items = all.where((i) => (_doc.isEmpty || i['docType'] == _doc) && (_status.isEmpty || i['status'] == _status)).toList();
-    final bs = Map<String, dynamic>.from(d?['byStatus'] ?? {});
-    final byDoc = Map<String, dynamic>.from(d?['byDoc'] ?? {});
-    return AppScaffold(
-      title: Text(tr('الانتهاءات والتجديد', 'Expiries & Renewals')),
-      actions: [IconButton(icon: const Icon(Icons.settings_outlined), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const VehicleRegistrySettingsScreen())))],
-      body: _loading
-          ? ListView(padding: const EdgeInsets.all(14), children: const [Shimmer(height: 70), SizedBox(height: 10), Shimmer(height: 60)])
-          : _error != null
-              ? ErrorRetry(message: _error!, onRetry: () { setState(() => _loading = true); _load(); })
-              : RefreshIndicator(
-                  onRefresh: _load,
-                  child: ListView(padding: const EdgeInsets.all(14), children: [
-                    Row(children: ['expired', 'critical', 'warning'].map((s) {
-                      final sel = _status == s;
-                      return Expanded(child: Padding(padding: const EdgeInsets.symmetric(horizontal: 3), child: Pressable(
-                        onTap: () => setState(() => _status = sel ? '' : s),
-                        child: AppCard(
-                          topAccent: sel ? statusColor(s) : null,
-                          padding: const EdgeInsets.all(12),
-                          child: Column(children: [
-                            Text('${bs[s] ?? 0}', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: statusColor(s))),
-                            Text(statusLabel(s), style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600, color: T.inkSoft)),
-                          ]),
-                        ),
-                      )));
-                    }).toList()),
-                    const SizedBox(height: 10),
-                    SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: [
-                      Padding(padding: const EdgeInsets.only(left: 6), child: FilterChip(selected: _doc.isEmpty, label: Text(tr('الكل', 'All')), onSelected: (_) => setState(() => _doc = ''), labelStyle: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: _doc.isEmpty ? Colors.white : T.navy), selectedColor: T.navy, backgroundColor: T.navy.withValues(alpha: 0.08), side: BorderSide.none, checkmarkColor: Colors.white)),
-                      ...docTypes.where((dt) => byDoc[dt.$1] != null).map((dt) {
-                        final sel = _doc == dt.$1;
-                        return Padding(padding: const EdgeInsets.only(left: 6), child: FilterChip(selected: sel, label: Text('${tr(dt.$2, dt.$3)} (${byDoc[dt.$1]})'), onSelected: (_) => setState(() => _doc = sel ? '' : dt.$1), labelStyle: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: sel ? Colors.white : T.navy), selectedColor: T.navy, backgroundColor: T.navy.withValues(alpha: 0.08), side: BorderSide.none, checkmarkColor: Colors.white));
-                      }),
-                    ])),
-                    const SizedBox(height: 10),
-                    if (items.isEmpty)
-                      EmptyState(icon: Icons.check_circle_outline, title: tr('لا توجد تنبيهات', 'No alerts'))
-                    else
-                      ...items.map((i) => Padding(
-                            padding: const EdgeInsets.only(bottom: 8),
-                            child: Pressable(
-                              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => VehicleRegistryDetailScreen(id: (i['vehicleId'] ?? '').toString(), plate: (i['plateNumber'] ?? '').toString()))),
-                              child: AppCard(
-                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                                child: Row(children: [
-                                  Container(width: 10, height: 10, decoration: BoxDecoration(color: statusColor((i['status'] ?? '').toString()), shape: BoxShape.circle)),
-                                  const SizedBox(width: 10),
-                                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                                    Text('${i['plateNumber'] ?? ''} · ${i['brandAr'] ?? ''} ${i['modelAr'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
-                                    Text('${docLabel((i['docType'] ?? '').toString())} · ${i['sectorAr'] ?? ''}', style: const TextStyle(fontSize: 11, color: T.inkFaint)),
-                                  ])),
-                                  Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-                                    Text(daysText(i['daysRemaining']), style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12.5, color: statusColor((i['status'] ?? '').toString()))),
-                                    Text(fmtDate(i['expiryDate']), style: const TextStyle(fontSize: 10.5, color: T.inkFaint)),
-                                  ]),
-                                ]),
-                              ),
-                            ),
-                          )),
-                    const SizedBox(height: 24),
-                  ]),
-                ),
-    );
-  }
-}
-
-// ══════════════════ الإعدادات ══════════════════
 class VehicleRegistrySettingsScreen extends StatefulWidget {
   const VehicleRegistrySettingsScreen({super.key});
   @override
@@ -310,69 +239,189 @@ class VehicleRegistrySettingsScreen extends StatefulWidget {
 }
 
 class _VRSettingsState extends State<VehicleRegistrySettingsScreen> {
-  Map<String, dynamic> _alerts = {};
+  int _tab = 0;
+  Map<String, Map<String, dynamic>> _alerts = {};
+  Map<String, dynamic> _counts = {};
+  List<Map<String, dynamic>> _types = [];
   bool _loading = true, _saving = false;
   String? _error;
+  final _ctl = <String, TextEditingController>{};
 
   @override
   void initState() { super.initState(); _load(); }
 
+  @override
+  void dispose() { for (final c in _ctl.values) { c.dispose(); } super.dispose(); }
+
   Future<void> _load() async {
     try {
-      final d = await Api.instance.get('/api/vehicle-registry/settings');
+      final r = await Future.wait([Api.instance.get('/api/vehicle-registry/settings'), Api.instance.get('/api/lookups/types')]);
       if (!mounted) return;
-      setState(() { _alerts = Map<String, dynamic>.from(d['config']?['alerts'] ?? {}); _loading = false; _error = null; });
+      final d = r[0];
+      final alerts = Map<String, dynamic>.from(d['config']?['alerts'] ?? {});
+      setState(() {
+        _alerts = {
+          for (final x in _settingsDocs)
+            x.$1: Map<String, dynamic>.from((alerts[x.$1] as Map?) ?? {'enabled': false, 'soonDays': 90, 'warnDays': 30, 'criticalDays': 7}),
+        };
+        for (final x in _settingsDocs) {
+          for (final f in ['soonDays', 'warnDays', 'criticalDays']) {
+            (_ctl['${x.$1}.$f'] ??= TextEditingController()).text = '${_alerts[x.$1]![f] ?? ''}';
+          }
+        }
+        _counts = Map<String, dynamic>.from(d['counts'] ?? {});
+        // قوائمُ القسم وحدَها — ومعها قائمةُ أنواع مهامّ JP للقسم.
+        _types = List<Map<String, dynamic>>.from(r[1]['types'] ?? [])
+            .where((t) => t['module'] == 'vehicles' || t['type'] == 'jp_task_vehicles').toList();
+        _loading = false; _error = null;
+      });
     } catch (e) { if (mounted) setState(() { _loading = false; _error = e.toString(); }); }
   }
 
+  int _n(dynamic v) => v is num ? v.toInt() : int.tryParse('$v') ?? 0;
+  bool _bad(Map c) => c['enabled'] == true && (_n(c['criticalDays']) > _n(c['warnDays']) || _n(c['warnDays']) > _n(c['soonDays']));
+
   Future<void> _save() async {
+    if (_alerts.values.any(_bad)) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('راجع العتبات المعلَّمة بالأحمر: حرج ≤ تحذير ≤ قريب', 'Fix the rows in red: critical ≤ warning ≤ soon'))));
+      return;
+    }
     setState(() => _saving = true);
     try {
       await Api.instance.put('/api/vehicle-registry/settings', {'alerts': _alerts});
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('تم حفظ الإعدادات', 'Settings saved'))));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('حُفظت الإعدادات', 'Settings saved'))));
+      await _load();
     } catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString()))); }
     finally { if (mounted) setState(() => _saving = false); }
   }
 
+  void _openPage(String key) {
+    Widget? w = switch (key) {
+      'insurance' => VehicleDocumentsScreen(family: vehicleInsuranceFamily),
+      'operatingCard' => VehicleDocumentsScreen(family: vehicleOperatingCardFamily),
+      'vehicleLicense' => VehicleDocumentsScreen(family: vehicleLicenceFamily),
+      'inspection' => VehicleDocumentsScreen(family: vehicleInspectionFamily),
+      'authorization' => VehicleDocumentsScreen(family: vehicleAuthorizationFamily),
+      'gps' => VehicleDocumentsScreen(family: vehicleGpsFamily),
+      'driverCard' => const VehicleDriverCardsScreen(),
+      'corporatePolicy' => const VehicleCorporatePoliciesScreen(),
+      _ => null,
+    };
+    if (w != null) Navigator.push(context, MaterialPageRoute(builder: (_) => w));
+  }
+
+  Widget _lists() => _types.isEmpty
+      ? EmptyState(icon: Icons.list_alt_outlined, title: tr('لا قوائم', 'No lists'))
+      : ListView(padding: const EdgeInsets.all(14), children: _types.map((t) {
+          final name = (Lang.instance.ar ? t['nameAr'] : t['nameEn'])?.toString() ?? (t['type'] ?? '').toString();
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Pressable(
+              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => LookupValuesScreen(
+                  type: (t['type'] ?? '').toString(), title: name, canManage: t['canManage'] == true))),
+              child: AppCard(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+                child: Row(children: [
+                  const Icon(Icons.list_alt_outlined, color: T.navy, size: 20),
+                  const SizedBox(width: 10),
+                  Expanded(child: Text(name, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5))),
+                  if (t['canManage'] != true) const Icon(Icons.lock_outline, size: 15, color: T.inkFaint),
+                  Icon(Lang.instance.ar ? Icons.chevron_left : Icons.chevron_right, color: T.inkFaint),
+                ]),
+              ),
+            ),
+          );
+        }).toList());
+
+  Widget _alertsTab(bool canEdit) => ListView(padding: const EdgeInsets.all(14), children: [
+        Text(tr('كلُّ رقمٍ عددُ أيّامٍ قبل الانتهاء، وكلُّ صفٍّ يُغيّر شرائحَ صفحته الثلاث: «حرج» و«تحذير» و«قريب». و«الوضع الآن» يقول ما تقوله هذه الأرقامُ على بياناتك في هذه اللحظة، فالصفرُ فيه صفرٌ حقيقيّ لا إعدادٌ لم يُحفَظ.',
+                'Each number is days before expiry, and each row drives its page’s three bands — critical, warning and soon. “Right now” shows what these numbers say about your data at this moment.'),
+            style: const TextStyle(fontSize: 12, color: T.inkFaint, height: 1.5)),
+        const SizedBox(height: 8),
+        Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(color: const Color(0xFFF8FAFC), borderRadius: BorderRadius.circular(10), border: Border.all(color: const Color(0xFFE2E8F0))),
+          child: Text(tr('القاعدة: حرج ≤ تحذير ≤ قريب. مثال: حرج ٧، تحذير ٣٠، قريب ٩٠.', 'Rule: critical ≤ warning ≤ soon. Example: 7, 30, 90.'), style: const TextStyle(fontSize: 12)),
+        ),
+        const SizedBox(height: 10),
+        ..._settingsDocs.map((d) {
+          final c = _alerts[d.$1]!;
+          final on = c['enabled'] == true;
+          final bad = _bad(c);
+          final counts = Map<String, dynamic>.from((_counts[d.$1] as Map?) ?? {});
+          Widget num(String f, String ar, String en) => Expanded(child: TextField(
+                controller: _ctl['${d.$1}.$f'],
+                enabled: canEdit && on,
+                keyboardType: TextInputType.number,
+                textAlign: TextAlign.center,
+                decoration: InputDecoration(isDense: true, labelText: tr(ar, en)),
+                onChanged: (v) => setState(() => c[f] = int.tryParse(v) ?? 0),
+              ));
+          final crit = _n(c['criticalDays']), warn = _n(c['warnDays']), soon = _n(c['soonDays']);
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: AppCard(
+              topAccent: bad ? T.danger : null,
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(children: [
+                  Expanded(child: Text(tr(d.$2, d.$3), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5))),
+                  TextButton(onPressed: () => _openPage(d.$1), child: Text(tr('الصفحة ↗', 'page ↗'), style: const TextStyle(fontSize: 11.5))),
+                  Switch(value: on, onChanged: !canEdit ? null : (v) => setState(() => c['enabled'] = v)),
+                ]),
+                if (bad) Text(tr('حرج ≤ تحذير ≤ قريب', 'critical ≤ warning ≤ soon'), style: const TextStyle(fontSize: 11, color: T.danger)),
+                const SizedBox(height: 6),
+                Row(children: [
+                  num('soonDays', 'قريب (يوم)', 'Soon (days)'),
+                  const SizedBox(width: 8),
+                  num('warnDays', 'تحذير (يوم)', 'Warning (days)'),
+                  const SizedBox(width: 8),
+                  num('criticalDays', 'حرج (يوم)', 'Critical (days)'),
+                ]),
+                const SizedBox(height: 8),
+                // المدى الفعليّ مكتوبًا صريحًا — لا ثلاثةُ أرقامٍ يُحسب مداها في الرأس.
+                Text('${tr('حرج', 'Crit')} ≤$crit · ${tr('تحذير', 'Warn')}${warn > crit ? ' ${crit + 1}–$warn' : ' — ${tr('معطَّلة', 'off')}'} · '
+                    '${tr('قريب', 'Soon')}${soon > warn ? ' ${warn + 1}–$soon' : ' — ${tr('معطَّلة', 'off')}'}',
+                    style: const TextStyle(fontSize: 11.5, color: T.inkSoft)),
+                const SizedBox(height: 6),
+                Wrap(spacing: 5, runSpacing: 5, children: [
+                  ..._bands.where((b) => _n(counts[b.$1]) > 0).map((b) => Chip2('${tr(b.$2, b.$3)} ${counts[b.$1]}', b.$4)),
+                  if (!_bands.any((b) => _n(counts[b.$1]) > 0)) Text(tr('لا بيانات بتاريخ', 'no dated records'), style: const TextStyle(fontSize: 11.5, color: T.inkFaint)),
+                ]),
+              ]),
+            ),
+          );
+        }),
+        if (canEdit) ...[
+          const SizedBox(height: 8),
+          FilledButton.icon(icon: const Icon(Icons.save_outlined, size: 18), onPressed: _saving ? null : _save, label: Text(tr('حفظ', 'Save'))),
+        ],
+        const SizedBox(height: 24),
+      ]);
+
   @override
   Widget build(BuildContext context) {
+    final auth = context.watch<AuthProvider>();
+    final canEdit = ['super_admin', 'admin', 'vehicles_manager'].contains(auth.role) || auth.canEditSection('Vehicles');
     return AppScaffold(
-      title: Text(tr('إعدادات التنبيهات', 'Alert Settings')),
+      title: Text(tr('إعدادات قسم المركبات', 'Vehicles settings')),
       body: _loading
           ? ListView(padding: const EdgeInsets.all(14), children: const [Shimmer(height: 70), SizedBox(height: 10), Shimmer(height: 70)])
           : _error != null
               ? ErrorRetry(message: _error!, onRetry: () { setState(() => _loading = true); _load(); })
-              : ListView(padding: const EdgeInsets.all(14), children: [
-                  Text(tr('حدّد لكل مستند متى يبدأ التنبيه قبل انتهائه', 'Set how early each document warns'), style: const TextStyle(fontSize: 12.5, color: T.inkFaint)),
-                  const SizedBox(height: 10),
-                  ...docTypes.map((dt) {
-                    final a = Map<String, dynamic>.from(_alerts[dt.$1] ?? {'enabled': true, 'warnDays': 60});
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: AppCard(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                        child: Row(children: [
-                          Expanded(child: Text(tr(dt.$2, dt.$3), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5))),
-                          SizedBox(width: 64, child: TextField(
-                            enabled: a['enabled'] == true,
-                            controller: TextEditingController(text: (a['warnDays'] ?? 60).toString()),
-                            keyboardType: TextInputType.number, textAlign: TextAlign.center,
-                            decoration: const InputDecoration(isDense: true, contentPadding: EdgeInsets.symmetric(vertical: 10, horizontal: 6)),
-                            onChanged: (v) { _alerts[dt.$1] = {...a, 'warnDays': int.tryParse(v) ?? 0}; },
-                          )),
-                          const SizedBox(width: 4),
-                          Text(tr('يوم', 'd'), style: const TextStyle(fontSize: 11, color: T.inkFaint)),
-                          const SizedBox(width: 6),
-                          Switch(value: a['enabled'] == true, onChanged: (v) => setState(() => _alerts[dt.$1] = {...a, 'enabled': v})),
-                        ]),
-                      ),
-                    );
-                  }),
-                  const SizedBox(height: 6),
-                  Text(tr('مثال: التأمين 60 يوم = تظهر تنبيهاته قبل الانتهاء بشهرين.', 'e.g. Insurance 60d = alerts start two months before expiry.'), style: const TextStyle(fontSize: 11, color: T.inkFaint)),
-                  const SizedBox(height: 14),
-                  FilledButton.icon(icon: const Icon(Icons.save_outlined, size: 18), onPressed: _saving ? null : _save, label: Text(tr('حفظ الإعدادات', 'Save settings'))),
-                  const SizedBox(height: 24),
+              : Column(children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(14, 12, 14, 0),
+                    child: SegmentedButton<int>(
+                      segments: [
+                        ButtonSegment(value: 0, icon: const Icon(Icons.sell_outlined, size: 18), label: Text(tr('القوائم المرجعية', 'Reference lists'))),
+                        ButtonSegment(value: 1, icon: const Icon(Icons.notifications_active_outlined, size: 18), label: Text(tr('عتبات التنبيه', 'Alert thresholds'))),
+                      ],
+                      selected: {_tab},
+                      showSelectedIcon: false,
+                      onSelectionChanged: (x) => setState(() => _tab = x.first),
+                    ),
+                  ),
+                  Expanded(child: _tab == 0 ? _lists() : _alertsTab(canEdit)),
                 ]),
     );
   }

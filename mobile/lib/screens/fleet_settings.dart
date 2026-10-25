@@ -5,10 +5,11 @@ import '../services/live.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import 'fleet_reference_lists.dart';
 
 /// إعدادات إدارة الأسطول — نفس صفحة الويب: مبلغ بونص الجمعة، الهدف الشهري
 /// الافتراضي للسيارة، وتعديل هدف كل سيارة على حدة. القوائم المرجعية (أنواع
-/// الإيجار/الدفع/الحمولة) تُدار من صفحة البيانات المرجعية على الويب.
+/// الإيجار/الدفع/الحمولة) تُدار من هنا كما في الويب (FleetReferenceLists).
 class FleetSettingsScreen extends StatefulWidget {
   const FleetSettingsScreen({super.key});
   @override
@@ -156,6 +157,9 @@ class _FleetSettingsScreenState extends State<FleetSettingsScreen> {
                           ),
                         ]),
                       ),
+                      const SizedBox(height: 16),
+                      // قوائمُ القسم المنسدلة — كـReferenceDataManager في صفحة الويب.
+                      const FleetReferenceLists(),
                       const SizedBox(height: 16),
                       Text(tr('الهدف الشهري لكل سيارة', 'Monthly target per vehicle'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
                       const SizedBox(height: 8),

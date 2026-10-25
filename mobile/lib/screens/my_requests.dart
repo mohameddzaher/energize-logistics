@@ -6,6 +6,7 @@ import '../services/live.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import '../ui/export_sheet.dart';
 
 /// طلباتي — HR requests (salary certificate, letters, …): history + new request
 /// + فتح الطلب لقراءة رد الموارد البشرية والرد عليه (نفس مسار الويب).
@@ -81,14 +82,38 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
     }
   }
 
-  void _newRequest() {
+  void _newRequest([Map<String, dynamic>? editing]) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (c) => _NewRequestSheet(onDone: _load),
+      builder: (c) => _NewRequestSheet(onDone: _load, editing: editing),
     );
+  }
+
+  /// ما دام مفتوحًا ولم يردّ عليه أحدٌ غيرُ صاحبه فهو ملكُه: يُعدَّل أو يُحذف (كالموقع).
+  bool _editable(Map<String, dynamic> r) {
+    if (r['status'] != 'open') return false;
+    final me = '${r['requester'] is Map ? r['requester']['_id'] : r['requester']}';
+    final thread = List<Map<String, dynamic>>.from(r['thread'] ?? const []);
+    return thread.where((m) => '${m['sender'] is Map ? m['sender']['_id'] : m['sender']}' != me).isEmpty;
+  }
+
+  Future<void> _remove(Map<String, dynamic> r) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        content: Text(tr('حذف هذا الطلب نهائيًّا؟', 'Delete this request permanently?')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('إلغاء', 'Cancel'))),
+          FilledButton(style: FilledButton.styleFrom(backgroundColor: T.danger), onPressed: () => Navigator.pop(c, true), child: Text(tr('حذف', 'Delete'))),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try { await Api.instance.delete('/api/hr/me/requests/${r['_id']}'); _load(); }
+    catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString()))); }
   }
 
   void _open(Map<String, dynamic> r) {
@@ -113,6 +138,21 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
 
     return AppScaffold(
       title: Text(tr('طلباتي', 'My Requests')),
+      // التصدير: طلباتي كلُّها — أعمدةُ الموقع (النوع · الموضوع · الحالة · آخر تحديث بتقويميه).
+      actions: [
+        ExportButton(
+          fileName: 'my-requests',
+          sheetName: tr('طلباتي', 'My Requests'),
+          rows: () => _requests,
+          columns: [
+            ExportCol('النوع', 'Category', (r) => _catLabel(r['category'])),
+            ExportCol('الموضوع', 'Subject', (r) => r['subject'] ?? ''),
+            ExportCol('الحالة', 'Status', (r) { final st = _reqStatus[r['status']]; return st == null ? '${r['status'] ?? ''}' : tr(st.$1, st.$2); }),
+            ExportCol('تاريخ آخر تحديث الميلادي', 'Last updated (Gregorian)', (r) => '${r['updatedAt'] ?? ''}'.replaceFirst('T', ' ').split('.').first),
+            ExportCol('تاريخ آخر تحديث الهجري', 'Last updated (Hijri)', (r) => hijriDay(r['updatedAt'])),
+          ],
+        ),
+      ],
       appBarBottom: (!_loading && _error == null && _requests.isNotEmpty)
           ? PreferredSize(
               preferredSize: const Size.fromHeight(46),
@@ -200,6 +240,19 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
                                             maxLines: 1, overflow: TextOverflow.ellipsis,
                                             style: const TextStyle(fontSize: 12, color: T.inkSoft)),
                                       ],
+                                      if (_editable(r))
+                                        Row(children: [
+                                          TextButton.icon(
+                                            onPressed: () => _newRequest(r),
+                                            icon: const Icon(Icons.edit_outlined, size: 15),
+                                            label: Text(tr('تعديل', 'Edit'), style: const TextStyle(fontSize: 12)),
+                                          ),
+                                          TextButton.icon(
+                                            onPressed: () => _remove(r),
+                                            icon: const Icon(Icons.delete_outline, size: 15, color: T.danger),
+                                            label: Text(tr('حذف', 'Delete'), style: const TextStyle(color: T.danger, fontSize: 12)),
+                                          ),
+                                        ]),
                                     ],
                                   ),
                                 ),
@@ -423,7 +476,9 @@ class _Chip extends StatelessWidget {
 
 class _NewRequestSheet extends StatefulWidget {
   final Future<void> Function() onDone;
-  const _NewRequestSheet({required this.onDone});
+  /// طلبٌ قائمٌ يُعدَّل (PUT /api/hr/me/requests/:id) — وإلّا طلبٌ جديد.
+  final Map<String, dynamic>? editing;
+  const _NewRequestSheet({required this.onDone, this.editing});
   @override
   State<_NewRequestSheet> createState() => _NewRequestSheetState();
 }
@@ -433,6 +488,18 @@ class _NewRequestSheetState extends State<_NewRequestSheet> {
   final _subject = TextEditingController();
   final _body = TextEditingController();
   bool _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final r = widget.editing;
+    if (r != null) {
+      if (_categories.any((c) => c.$1 == r['category'])) _category = '${r['category']}';
+      _subject.text = '${r['subject'] ?? ''}';
+      final thread = r['thread'] as List? ?? const [];
+      _body.text = thread.isEmpty ? '' : '${(thread.first as Map)['body'] ?? ''}';
+    }
+  }
 
   @override
   void dispose() {
@@ -445,11 +512,12 @@ class _NewRequestSheetState extends State<_NewRequestSheet> {
     if (_subject.text.trim().isEmpty || _busy) return;
     setState(() => _busy = true);
     try {
-      await Api.instance.post('/api/hr/me/requests', {
-        'category': _category,
-        'subject': _subject.text,
-        'body': _body.text,
-      });
+      final body = {'category': _category, 'subject': _subject.text, 'body': _body.text};
+      if (widget.editing != null) {
+        await Api.instance.put('/api/hr/me/requests/${widget.editing!['_id']}', body);
+      } else {
+        await Api.instance.post('/api/hr/me/requests', body);
+      }
       widget.onDone();
       if (mounted) Navigator.pop(context);
     } catch (e) {
@@ -467,7 +535,7 @@ class _NewRequestSheetState extends State<_NewRequestSheet> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(tr('طلب جديد', 'New request'), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          Text(widget.editing != null ? tr('تعديل الطلب', 'Edit request') : tr('طلب جديد', 'New request'), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
           const SizedBox(height: 14),
           DropdownButtonFormField<String>(
             initialValue: _category,

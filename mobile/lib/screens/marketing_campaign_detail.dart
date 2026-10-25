@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../services/api.dart';
+import '../services/auth.dart';
 import '../services/lang.dart';
 import '../services/live.dart';
 import '../ui/app_scaffold.dart';
+import '../ui/export_sheet.dart';
+import 'crm_form.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import 'jp.dart' show JpTaskPanel;
@@ -24,6 +28,25 @@ const _campaignStatus = {
   'completed': ('مكتملة', 'Completed', T.info),
   'cancelled': ('ملغاة', 'Cancelled', T.danger),
 };
+
+// أدوارُ التسويق كما في الويب (lib/marketing.ts) — التعديلُ لـ canEditMarketing.
+const _mktAdminRoles = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'marketing_manager', 'marketing_specialist', 'bd_manager'];
+bool canEditMarketing(AuthProvider a) => _mktAdminRoles.contains(a.role) || a.canEditSection('Marketing');
+
+const _platforms = <(String, String, String)>[
+  ('facebook', 'فيسبوك', 'Facebook'), ('instagram', 'إنستغرام', 'Instagram'), ('twitter', 'إكس / تويتر', 'X / Twitter'),
+  ('linkedin', 'لينكد إن', 'LinkedIn'), ('tiktok', 'تيك توك', 'TikTok'), ('snapchat', 'سناب شات', 'Snapchat'),
+  ('google_ads', 'إعلانات جوجل', 'Google Ads'), ('youtube', 'يوتيوب', 'YouTube'), ('website', 'الموقع الإلكتروني', 'Website'),
+  ('email', 'البريد الإلكتروني', 'Email'), ('whatsapp', 'واتساب', 'WhatsApp'), ('offline', 'خارج الإنترنت', 'Offline'), ('other', 'أخرى', 'Other'),
+];
+const _objectives = <(String, String, String)>[
+  ('awareness', 'الوعي بالعلامة', 'Awareness'), ('leads', 'جذب عملاء محتملين', 'Leads'), ('engagement', 'التفاعل', 'Engagement'),
+  ('traffic', 'زيارات الموقع', 'Traffic'), ('sales', 'المبيعات', 'Sales'), ('recruitment', 'التوظيف', 'Recruitment'), ('other', 'أخرى', 'Other'),
+];
+const _statuses = <(String, String, String)>[
+  ('planned', 'مخططة', 'Planned'), ('active', 'نشطة', 'Active'), ('paused', 'متوقفة مؤقتاً', 'Paused'),
+  ('completed', 'مكتملة', 'Completed'), ('cancelled', 'ملغاة', 'Cancelled'),
+];
 
 List<Map<String, dynamic>> _l(dynamic v) =>
     v is List ? List<Map<String, dynamic>>.from(v.whereType<Map>().map((e) => Map<String, dynamic>.from(e))) : const [];
@@ -76,14 +99,117 @@ class _MarketingCampaignDetailScreenState extends State<MarketingCampaignDetailS
 
   num _n(dynamic v) => v is num ? v : num.tryParse(v?.toString() ?? '') ?? 0;
 
+  void _snack(String m) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
+
+  /// تعديلُ الحملة — نفس حقول التعديل في صفحة الويب (PUT /campaigns/:id).
+  Future<void> _edit() async {
+    final c = Map<String, dynamic>.from(_campaign ?? {});
+    await showCrmForm(
+      context,
+      title: tr('تعديل الحملة', 'Edit campaign'),
+      initial: c,
+      fields: const [
+        CrmField('name', 'اسم الحملة (إنجليزي)', 'Campaign name (EN)', required: true),
+        CrmField('nameAr', 'اسم الحملة (عربي)', 'Campaign name (AR)'),
+        CrmField('platform', 'المنصة', 'Platform', kind: CrmFieldKind.select, options: _platforms),
+        CrmField('objective', 'الهدف', 'Objective', kind: CrmFieldKind.select, options: _objectives),
+        CrmField('status', 'الحالة', 'Status', kind: CrmFieldKind.select, options: _statuses),
+        CrmField('targetAudience', 'الجمهور المستهدف', 'Target audience'),
+        CrmField('startDate', 'تاريخ البداية', 'Start date', kind: CrmFieldKind.date),
+        CrmField('endDate', 'تاريخ النهاية', 'End date', kind: CrmFieldKind.date),
+        CrmField('budget', 'الميزانية', 'Budget', kind: CrmFieldKind.number),
+        CrmField('spend', 'الإنفاق', 'Spend', kind: CrmFieldKind.number),
+        CrmField('revenue', 'الإيراد', 'Revenue', kind: CrmFieldKind.number),
+        CrmField('impressions', 'مرات الظهور', 'Impressions', kind: CrmFieldKind.number),
+        CrmField('reach', 'الوصول', 'Reach', kind: CrmFieldKind.number),
+        CrmField('clicks', 'النقرات', 'Clicks', kind: CrmFieldKind.number),
+        CrmField('engagements', 'التفاعلات', 'Engagements', kind: CrmFieldKind.number),
+        CrmField('leads', 'العملاء المحتملون', 'Leads', kind: CrmFieldKind.number),
+        CrmField('conversions', 'التحويلات', 'Conversions', kind: CrmFieldKind.number),
+        CrmField('description', 'الوصف', 'Description', kind: CrmFieldKind.multiline),
+        CrmField('notes', 'ملاحظات', 'Notes', kind: CrmFieldKind.multiline),
+      ],
+      onSave: (v) async {
+        final body = <String, dynamic>{...c, ...v};
+        body.remove('_id');
+        if (body['owner'] is Map) body['owner'] = body['owner']['_id'];
+        try {
+          await Api.instance.put('/api/marketing/campaigns/${widget.campaignId}', body);
+          await _load();
+          return null;
+        } catch (e) { return e is ApiException ? e.message : e.toString(); }
+      },
+    );
+  }
+
+  /// الحذفُ من صفحة الحملة — تُحذف معها أنشطتها وأرقامها.
+  Future<void> _remove() async {
+    final ok = await showDialog<bool>(context: context, builder: (c) => AlertDialog(
+      title: Text(tr('حذف الحملة', 'Delete campaign')),
+      content: Text(tr('حذف هذه الحملة نهائيًّا؟ تُحذف معها أنشطتها وأرقامها.', 'Delete this campaign permanently? Its activities and numbers go with it.')),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('إلغاء', 'Cancel'))),
+        FilledButton(style: FilledButton.styleFrom(backgroundColor: T.danger), onPressed: () => Navigator.pop(c, true), child: Text(tr('حذف', 'Delete'))),
+      ],
+    ));
+    if (ok != true) return;
+    try {
+      await Api.instance.delete('/api/marketing/campaigns/${widget.campaignId}');
+      if (mounted) Navigator.pop(context);
+    } catch (e) { if (mounted) _snack(e is ApiException ? e.message : e.toString()); }
+  }
+
+  String _lbl(List<(String, String, String)> l, dynamic k) {
+    for (final o in l) { if (o.$1 == '$k') return tr(o.$2, o.$3); }
+    return '${k ?? ''}';
+  }
+
+  /// «ملف الحملة كاملًا»: البيانات والأرقام في ورقة، والأنشطة في ورقة.
+  void _export() {
+    final c = _campaign ?? {};
+    final brief = <Map<String, dynamic>>[
+      for (final e in <(String, String, dynamic)>[
+        ('الاسم', 'Name', c['name']), ('الاسم العربي', 'Arabic name', c['nameAr']),
+        ('المنصة', 'Platform', _lbl(_platforms, c['platform'])), ('الهدف', 'Objective', _lbl(_objectives, c['objective'])),
+        ('الحالة', 'Status', _lbl(_statuses, c['status'])), ('الجمهور المستهدف', 'Target audience', c['targetAudience']),
+        ('تاريخ البداية', 'Start date', c['startDate']), ('تاريخ النهاية', 'End date', c['endDate']),
+        ('الميزانية', 'Budget', c['budget']), ('الإنفاق', 'Spend', c['spend']), ('الإيراد', 'Revenue', c['revenue']),
+        ('مرات الظهور', 'Impressions', c['impressions']), ('الوصول', 'Reach', c['reach']), ('النقرات', 'Clicks', c['clicks']),
+        ('التفاعلات', 'Engagements', c['engagements']), ('العملاء المحتملون', 'Leads', c['leads']), ('التحويلات', 'Conversions', c['conversions']),
+        ('CTR %', 'CTR %', c['ctr']), ('CPL', 'CPL', c['cpl']), ('ROAS', 'ROAS', c['roas']),
+        ('الوصف', 'Description', c['description']), ('ملاحظات', 'Notes', c['notes']),
+      ]) {'k': tr(e.$1, e.$2), 'v': e.$3},
+    ];
+    exportExcel(context, fileName: 'campaign-${'${c['name'] ?? widget.campaignId}'.toLowerCase().replaceAll(RegExp(r'\s+'), '-')}', sheets: [
+      (tr('الحملة', 'Campaign'), [ExportCol('البند', 'Field', (r) => r['k']), ExportCol('القيمة', 'Value', (r) => r['v'])], brief),
+      if (_activities.isNotEmpty)
+        (tr('أنشطة الحملة', 'Activities'), [
+          ExportCol('التاريخ', 'Date', (r) => _d(r['date'])),
+          ExportCol('العنوان', 'Title', (r) => r['title'] ?? r['type']),
+          ExportCol('النوع', 'Type', (r) => r['type']),
+          ExportCol('المنصة', 'Platform', (r) => _lbl(_platforms, r['platform'])),
+          ExportCol('مرات الظهور', 'Impressions', (r) => r['metrics'] is Map ? r['metrics']['impressions'] : null),
+          ExportCol('النقرات', 'Clicks', (r) => r['metrics'] is Map ? r['metrics']['clicks'] : null),
+          ExportCol('العملاء المحتملون', 'Leads', (r) => r['metrics'] is Map ? r['metrics']['leads'] : null),
+          ExportCol('الإنفاق', 'Spend', (r) => r['spend']),
+        ], _activities),
+    ]);
+  }
+
   @override
   Widget build(BuildContext context) {
     final c = _campaign ?? {};
     final st = _campaignStatus[c['status']] ?? ('—', '—', T.inkFaint);
     final budget = _n(c['budget']), spend = _n(c['spend']);
 
+    final canEdit = canEditMarketing(context.watch<AuthProvider>());
     return AppScaffold(
       title: Text(widget.name),
+      actions: [
+        if (_campaign != null) IconButton(tooltip: tr('تصدير Excel', 'Export to Excel'), onPressed: _export, icon: const Icon(Icons.file_download_outlined)),
+        if (_campaign != null && canEdit) IconButton(tooltip: tr('تعديل', 'Edit'), onPressed: _edit, icon: const Icon(Icons.edit_outlined)),
+        if (_campaign != null && canEdit) IconButton(tooltip: tr('حذف الحملة', 'Delete campaign'), onPressed: _remove, icon: const Icon(Icons.delete_outline)),
+      ],
       body: _loading
           ? ListView(padding: const EdgeInsets.all(14), children: const [Shimmer(height: 150), SizedBox(height: 10), Shimmer(), SizedBox(height: 10), Shimmer()])
           : _error != null

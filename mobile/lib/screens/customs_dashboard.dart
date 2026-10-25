@@ -4,6 +4,7 @@ import '../services/api.dart';
 import '../services/lang.dart';
 import '../services/live.dart';
 import '../ui/app_scaffold.dart';
+import '../ui/export_sheet.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import 'customs_detail.dart';
@@ -49,20 +50,63 @@ class _CustomsDashboardScreenState extends State<CustomsDashboardScreen> {
   bool _allCustomers = false;
   int _seq = 0;
   late final void Function() _onLive;
+  late final void Function(dynamic) _onJp;
 
   @override
   void initState() {
     super.initState();
     _load();
     _onLive = () => _load();
-    Live.instance.on('customs:updated', _onLive);
+    // كالموقع: الإنشاءُ والتعديلُ والحذفُ، ومهامُّ خطّة العمل للقسم (عمودُ المهامّ).
+    _onJp = (p) { if (p is! Map || p['section'] == 'customs') _load(); };
+    for (final e in const ['customs:created', 'customs:updated', 'customs:deleted']) {
+      Live.instance.on(e, _onLive);
+    }
+    Live.instance.onData('jp:changed', _onJp);
   }
 
   @override
   void dispose() {
-    Live.instance.off('customs:updated', _onLive);
+    for (final e in const ['customs:created', 'customs:updated', 'customs:deleted']) {
+      Live.instance.off(e, _onLive);
+    }
+    Live.instance.offData('jp:changed', _onJp);
     super.dispose();
   }
+
+  /// أعمدةُ تصدير اللوحة — نفسُ أعمدة الموقع (exportCols).
+  static String _bucketWord(Map<String, dynamic> r) => switch ('${r['bucket']}') {
+        'cancelled' => tr('ملغاة', 'Cancelled'),
+        'upcoming' => tr('قادمة', 'Upcoming'),
+        'closed' => r['invoiced'] == true ? tr('مغلقة مفوترة', 'Closed · invoiced') : tr('مغلقة لم تُفوتَر', 'Closed · not invoiced'),
+        _ => tr('مفتوحة', 'Open'),
+      };
+  static dynamic _us(Map<String, dynamic> r, String k) => r['unitsState'] is Map ? _i(r['unitsState'][k]) : 0;
+  static final List<ExportCol> _exportCols = [
+    ExportCol('رقم البوليصة', 'BL no.', (r) => r['blNumber'] ?? ''),
+    ExportCol('رقم المعاملة', 'Transaction no.', (r) => r['refNumber'] ?? ''),
+    ExportCol('العميل', 'Customer', (r) => r['customerName'] ?? ''),
+    ExportCol('وكيل الشحن', 'Agent', (r) => r['shippingAgent'] ?? ''),
+    ExportCol('الفرع', 'Branch', (r) => r['branch'] == 'dammam' ? tr('الدمام', 'Dammam') : tr('جدة', 'Jeddah')),
+    ExportCol('النوع', 'Type', (r) => r['cargoType'] == 'vehicles' ? tr('سيّارات', 'Vehicles') : tr('حاويات', 'Containers')),
+    ExportCol('العدد', 'Units', (r) => _i(r['units'])),
+    const ExportCol('الحالة', 'State', _bucketWord),
+    ExportCol('المرحلة المنتظَرة', 'Waiting on', (r) => r['bucket'] == 'open'
+        ? ('${r['next'] ?? ''}'.isEmpty ? tr('اكتملت مراحلُها — بقي الإنهاء', 'All stages done — to be closed') : customsStageLabel('${r['next']}', '${r['cargoType'] ?? 'containers'}'))
+        : '—'),
+    ExportCol('نسبة المراحل', 'Progress', (r) => '${_i(r['percent'])}%'),
+    ExportCol('رقم الفاتورة', 'Invoice no.', (r) => '${r['invoiceNumber'] ?? ''}'.isEmpty ? '—' : r['invoiceNumber']),
+    ExportCol('فاتورة النقل', 'Transport invoice', (r) => r['awaitingTransportInvoice'] == true
+        ? tr('لم تُستلَم', 'Not received') : '${r['invoiceNumber'] ?? ''}'.isNotEmpty ? tr('مستلَمة', 'Received') : '—'),
+    ExportCol('آخر موعد إرجاع', 'Return deadline', (r) => '${r['returnDeadline'] ?? ''}'.isEmpty ? '—' : r['returnDeadline']),
+    ExportCol('في الميناء', 'At port', (r) => _us(r, 'atPort')),
+    ExportCol('في الساحة', 'In yard', (r) => _us(r, 'inYard')),
+    ExportCol('سُلِّمت', 'Delivered', (r) => _us(r, 'delivered')),
+    ExportCol('لم تُرجَع', 'Not returned', (r) => _us(r, 'notReturned')),
+    ExportCol('متأخّرة الإرجاع', 'Late to return', (r) => _us(r, 'late')),
+    ExportCol('أنشأها', 'Created by', (r) => r['createdByName'] ?? ''),
+    ExportCol('تاريخ المعاملة', 'Transaction date', (r) => '${r['date'] ?? ''}'.isEmpty ? '—' : r['date']),
+  ];
 
   Future<void> _load() async {
     // ردُّ النداء الأقدم لا يغلب الأحدث: غيرُ المفلتَر أبطأ، فلو وصل آخِرًا
@@ -223,6 +267,8 @@ class _CustomsDashboardScreenState extends State<CustomsDashboardScreen> {
             padding: const EdgeInsets.fromLTRB(16, 14, 8, 6),
             child: Row(children: [
               Expanded(child: Text('$title (${rows.length})', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15))),
+              // تصديرُ المعروض — كزرّ «تصدير» فوق جدول اللوحة في الموقع.
+              ExportButton(fileName: 'customs-dashboard', sheetName: title, columns: _exportCols, rows: () => rows),
               IconButton(onPressed: () => Navigator.pop(c), icon: const Icon(Icons.close)),
             ]),
           ),
@@ -332,6 +378,11 @@ class _CustomsDashboardScreenState extends State<CustomsDashboardScreen> {
     final d = _d;
     return AppScaffold(
       title: Text(tr('لوحة القسم', 'Section Dashboard')),
+      actions: [
+        // كلُّ معاملات اللوحة بفلاترها (عدا الملغاة) — «الكلّ» في الموقع.
+        ExportButton(fileName: 'customs-dashboard-all', sheetName: tr('كلّ المعاملات', 'All transactions'), columns: _exportCols,
+            rows: () => _maps(_d?['rows']).where((r) => r['bucket'] != 'cancelled').toList()),
+      ],
       body: _loading && d == null
           ? ListView(padding: const EdgeInsets.all(14), children: const [
               Shimmer(height: 92), SizedBox(height: 10), Shimmer(height: 180), SizedBox(height: 10), Shimmer(height: 180),

@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import '../services/api.dart';
 import '../services/lang.dart';
+import '../services/live.dart';
+import '../ui/export_sheet.dart';
+import 'marketing_dashboard.dart' show MarketingRange, MarketingRangePicker, marketingThisMonth, marketingRangeQs;
 import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
@@ -24,21 +27,29 @@ class _MarketingReportScreenState extends State<MarketingReportScreen> {
   bool _loading = true;
   String? _error;
   String _period = 'weekly';
+  // المدى كالويب: من أوّل الشهر حتى اليوم افتراضًا.
+  MarketingRange _range = marketingThisMonth();
+  int _seq = 0;
+
+  // حيٌّ على `marketing:updated` — نشاطٌ يُضاف يظهر في التقرير في اللحظة.
+  @override
+  void initState() { super.initState(); _load(); Live.instance.on('marketing:updated', _load); }
 
   @override
-  void initState() { super.initState(); _load(); }
+  void dispose() { Live.instance.off('marketing:updated', _load); super.dispose(); }
 
   Future<void> _load() async {
+    final mine = ++_seq;
     try {
-      final d = await Api.instance.get('/api/marketing/report?period=$_period');
-      if (!mounted) return;
+      final d = await Api.instance.get('/api/marketing/report?period=$_period&${marketingRangeQs(_range)}');
+      if (!mounted || mine != _seq) return;
       setState(() {
         _rows = List<Map<String, dynamic>>.from(d['rows'] ?? []);
         _summary = d['summary'] is Map ? Map<String, dynamic>.from(d['summary']) : {};
         _loading = false; _error = null;
       });
     } catch (e) {
-      if (mounted) setState(() { _loading = false; _error = e.toString(); });
+      if (mounted && mine == _seq) setState(() { _loading = false; _error = e.toString(); });
     }
   }
 
@@ -56,6 +67,24 @@ class _MarketingReportScreenState extends State<MarketingReportScreen> {
   Widget build(BuildContext context) {
     return AppScaffold(
       title: Text(tr('التقرير الدوري', 'Periodic Report')),
+      actions: [
+        ExportButton(
+          fileName: 'marketing-report-$_period',
+          sheetName: tr('التقرير', 'Report'),
+          rows: () => _rows,
+          columns: [
+            ExportCol('الفترة', 'Period', (r) => r['label'] ?? ''),
+            ExportCol('الأنشطة', 'Activities', (r) => r['activities'] ?? 0),
+            ExportCol('مرات الظهور', 'Impressions', (r) => r['impressions'] ?? 0),
+            ExportCol('الوصول', 'Reach', (r) => r['reach'] ?? 0),
+            ExportCol('النقرات', 'Clicks', (r) => r['clicks'] ?? 0),
+            ExportCol('التفاعلات', 'Engagements', (r) => r['engagements'] ?? 0),
+            ExportCol('العملاء المحتملون', 'Leads', (r) => r['leads'] ?? 0),
+            ExportCol('التحويلات', 'Conversions', (r) => r['conversions'] ?? 0),
+            ExportCol('الإنفاق', 'Spend', (r) => r['spend'] ?? 0),
+          ],
+        ),
+      ],
       appBarBottom: PreferredSize(
         preferredSize: const Size.fromHeight(48),
         child: Padding(
@@ -86,6 +115,11 @@ class _MarketingReportScreenState extends State<MarketingReportScreen> {
                   onRefresh: _load,
                   child: ListView(padding: const EdgeInsets.all(14), children: [
                     AppCard(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                      child: MarketingRangePicker(value: _range, onChanged: (r) { setState(() { _range = r; _loading = true; }); _load(); }),
+                    ),
+                    const SizedBox(height: 10),
+                    AppCard(
                       topAccent: T.violet,
                       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                         Text(tr('الإجمالي', 'Summary'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
@@ -100,6 +134,9 @@ class _MarketingReportScreenState extends State<MarketingReportScreen> {
                             _metric('وصول', 'Reach', _summary['reach'], T.cyan),
                             _metric('تفاعل', 'Engagements', _summary['engagements'], T.warn),
                             _metric('عملاء', 'Leads', _summary['leads'], T.success),
+                            _metric('تحويلات', 'Conversions', _summary['conversions'], T.navy),
+                            _metric('إنفاق', 'Spend', _summary['spend'], T.orange),
+                            _metric('فترات', 'Periods', _summary['buckets'], T.inkSoft),
                           ],
                         ),
                       ]),

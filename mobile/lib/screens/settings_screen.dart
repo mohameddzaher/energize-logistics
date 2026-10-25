@@ -38,6 +38,18 @@ class SettingsScreen extends StatelessWidget {
         _tile(context, Icons.draw_outlined, tr('توقيعاتي', 'My signatures'), () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SignaturesScreen()))),
         _tile(context, Icons.lock_outline, tr('تغيير كلمة المرور', 'Change password'), () => _changePassword(context)),
         _tile(context, Icons.translate, tr('اللغة', 'Language'), () => Lang.instance.toggle(), trailing: Text(tr('العربية', 'English'), style: const TextStyle(fontWeight: FontWeight.w700, color: T.navy))),
+        // ── لمدير النظام وحده كالويب: إعادةُ حساب درجات المخاطر + معلوماتُ النظام ──
+        if (const ['super_admin', 'it_manager', 'it_specialist'].contains(auth.role)) ...[
+          _tile(context, Icons.shield_outlined, tr('إعادة حساب المخاطر', 'Recalculate risk scores'), () => _recalcRisk(context)),
+          AppCard(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Text(tr('معلومات النظام', 'System information'), style: const TextStyle(fontWeight: FontWeight.w800)),
+            const SizedBox(height: 6),
+            _info(tr('النظام', 'System'), 'Energize Logistics — Enterprise Management System'),
+            _info(tr('الإصدار', 'Version'), '1.0.0'),
+            _info(tr('نطاق درجة المخاطر', 'Risk Score Range'), tr('0-100 (منخفض: 0-30، متوسط: 31-60، مرتفع: 61-100)', '0-100 (Low: 0-30, Medium: 31-60, High: 61-100)')),
+          ])),
+          const SizedBox(height: 8),
+        ],
         _tile(context, Icons.logout_rounded, tr('تسجيل الخروج', 'Sign out'), () async {
           final ok = await showDialog<bool>(
             context: context,
@@ -54,6 +66,39 @@ class SettingsScreen extends StatelessWidget {
         }, danger: true),
       ]),
     );
+  }
+
+  Widget _info(String k, String v) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Expanded(child: Text(k, style: const TextStyle(color: T.inkSoft, fontSize: 12.5))),
+          Expanded(flex: 2, child: Text(v, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600))),
+        ]),
+      );
+
+  /// تشغيلُ إعادة حسابٍ شاملة لدرجات المخاطر لجميع العملاء — POST /api/analytics/risk/recalculate.
+  Future<void> _recalcRisk(BuildContext context) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: Text(tr('إعادة حساب المخاطر', 'Recalculate risk scores')),
+        content: Text(tr('تشغيل إعادة حساب شاملة لدرجات المخاطر لجميع العملاء.', 'Manually trigger a full risk score recalculation for all customers.')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('إلغاء', 'Cancel'))),
+          FilledButton(style: FilledButton.styleFrom(backgroundColor: T.orange), onPressed: () => Navigator.pop(c, true), child: Text(tr('إعادة الحساب', 'Recalculate'))),
+        ],
+      ),
+    );
+    if (ok != true || !context.mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.showSnackBar(SnackBar(content: Text(tr('جارٍ إعادة الحساب…', 'Recalculating…'))));
+    try {
+      final d = await Api.instance.post('/api/analytics/risk/recalculate');
+      final n = (d is Map && d['results'] is List) ? (d['results'] as List).length : 0;
+      messenger.showSnackBar(SnackBar(content: Text(tr('تمت إعادة احتساب درجات المخاطر لعدد $n عميل.', 'Risk scores recalculated for $n customers.'))));
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text('${tr('خطأ: ', 'Error: ')}${e is ApiException ? e.message : e}')));
+    }
   }
 
   Widget _tile(BuildContext context, IconData icon, String label, VoidCallback onTap, {Widget? trailing, bool danger = false}) => Padding(

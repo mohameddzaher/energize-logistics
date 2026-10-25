@@ -1,6 +1,10 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../services/api.dart';
+import '../services/auth.dart';
+import '../services/hijri.dart';
+import '../ui/export_sheet.dart';
 import '../ui/filter_sheet.dart';
 import '../ui/hr_quick.dart';
 import '../services/lang.dart';
@@ -92,6 +96,82 @@ class _HrEmployeesScreenState extends State<HrEmployeesScreen> {
     return Lang.instance.ar ? (ar.isNotEmpty ? ar : en) : (en.isNotEmpty ? en : ar);
   }
 
+  // ── أفعالُ الصفّ كالموقع: تعديل · إنهاء الخدمة (يفتح الملفّ) · حذفٌ نهائيّ ──
+  // إنهاءُ الخدمة لا يُفعَل من القائمة: يُكتب سببُه وتاريخُه في ملفّ الموظّف
+  // ويُحرَس بالعهدة والتفويض — فالزرُّ يفتح الملفّ. والحذفُ لمدير النظام وحدَه.
+  void _editRow(Map<String, dynamic> e) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      builder: (c) => EditEmployeeSheet(employee: e, onDone: () async => _load()),
+    );
+  }
+
+  Future<void> _removeForGood(Map<String, dynamic> e) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: Text(tr('حذف سجلّ «${_name(e)}» نهائيًّا؟', 'Permanently delete "${_name(e)}"?')),
+        content: Text(tr(
+          'يُحذَف السجلُّ ومستنداتُه وتجديداتُه ولا يظهر في أيّ قائمة. لمن ترك العمل استعمل «إنهاء الخدمة» — الحذفُ لسجلٍّ أُدخل خطأً أو مكرَّرًا. تُحفَظ نسخةٌ منه في سجلّ المراجعة.',
+          'The record, its documents and renewals are removed. For someone who left, use "End service" — delete is for a record entered by mistake or duplicated. A copy is kept in the audit log.')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('إلغاء', 'Cancel'))),
+          FilledButton(style: FilledButton.styleFrom(backgroundColor: T.danger), onPressed: () => Navigator.pop(c, true), child: Text(tr('حذف نهائيّ', 'Delete permanently'))),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await Api.instance.delete('/api/hr/employees/${e['_id']}');
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('حُذف السجلّ', 'Record deleted'))));
+      _load();
+    } catch (err) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err.toString())));
+    }
+  }
+
+  Widget _rowMenu(Map<String, dynamic> e) {
+    final role = context.read<AuthProvider>().role;
+    final canEnd = (role == 'super_admin' || role == 'hr_manager') && e['employmentStatus'] != 'terminated';
+    return PopupMenuButton<String>(
+      icon: const Icon(Icons.more_vert, color: T.inkFaint, size: 20),
+      onSelected: (v) {
+        if (v == 'edit') _editRow(e);
+        if (v == 'end') _open(e);
+        if (v == 'delete') _removeForGood(e);
+      },
+      itemBuilder: (_) => [
+        PopupMenuItem(value: 'edit', child: Row(children: [const Icon(Icons.edit_outlined, size: 18, color: T.navy), const SizedBox(width: 10), Text(tr('تعديل', 'Edit'))])),
+        if (canEnd)
+          PopupMenuItem(value: 'end', child: Row(children: [const Icon(Icons.person_remove_outlined, size: 18, color: T.warn), const SizedBox(width: 10), Text(tr('إنهاء الخدمة — من ملفّ الموظّف', 'End service — in the employee file'))])),
+        if (role == 'super_admin')
+          PopupMenuItem(value: 'delete', child: Row(children: [const Icon(Icons.delete_forever_outlined, size: 18, color: T.danger), const SizedBox(width: 10), Text(tr('حذف السجلّ نهائيًّا (مدير النظام)', 'Delete permanently (system admin)'), style: const TextStyle(color: T.danger))])),
+      ],
+    );
+  }
+
+  String _d(dynamic v) => gregDay(v);
+
+  List<ExportCol> get _exportCols => [
+        ExportCol('الاسم', 'Name', (r) => '${r['firstName'] ?? ''} ${r['lastName'] ?? ''}'.trim()),
+        ExportCol('الاسم بالعربي', 'Arabic Name', (r) => r['arabicName'] ?? ''),
+        ExportCol('رقم الموظف', 'Employee no.', (r) => r['employeeNumber'] ?? ''),
+        ExportCol('المسمى الوظيفي', 'Job Title', (r) => r['jobTitle'] ?? ''),
+        ExportCol('نوع الهوية', 'ID Type', (r) => r['idType'] ?? ''),
+        ExportCol('الإقامة', 'Iqama', (r) => r['iqamaNumber'] ?? ''),
+        ExportCol('تاريخ انتهاء الإقامة الميلادي', 'Iqama Expiry (Gregorian)', (r) => _d(r['iqamaExpiry'])),
+        ExportCol('تاريخ انتهاء الإقامة الهجري', 'Iqama Expiry (Hijri)', (r) => hijriDay(r['iqamaExpiry'])),
+        ExportCol('الهوية الوطنية', 'National ID', (r) => r['nationalId'] ?? ''),
+        ExportCol('الجنسية', 'Nationality', (r) => r['nationality'] ?? ''),
+        ExportCol('الجوال', 'Phone', (r) => r['phone'] ?? ''),
+        ExportCol('الحالة', 'Status', (r) => r['employmentStatus'] ?? ''),
+        ExportCol('تاريخ التعيين (ميلادي)', 'Hire Date (Gregorian)', (r) => _d(r['hireDate'])),
+        ExportCol('تاريخ التعيين (هجري)', 'Hire Date (Hijri)', (r) => hijriDay(r['hireDate'])),
+      ];
+
   Future<void> _open(Map<String, dynamic> e) async {
     final deleted = await Navigator.push<bool>(context, MaterialPageRoute(
         builder: (c) => HrEmployeeProfileScreen(employeeId: e['_id'].toString())));
@@ -103,6 +183,27 @@ class _HrEmployeesScreenState extends State<HrEmployeesScreen> {
   Widget build(BuildContext context) {
     return AppScaffold(
       title: Text(tr('الموظفون', 'Employees')),
+      // التصدير: المعروضُ تحت الفلتر، أو السجلُّ كلُّه — نطاقا الموقع.
+      actions: [
+        PopupMenuButton<String>(
+          icon: const Icon(Icons.file_download_outlined),
+          tooltip: tr('تصدير Excel', 'Export to Excel'),
+          onSelected: (v) async {
+            var rows = _rows;
+            final messenger = ScaffoldMessenger.of(context);
+            if (v == 'all') {
+              try { rows = List<Map<String, dynamic>>.from((await Api.instance.get('/api/hr/employees'))['employees'] ?? []); }
+              catch (e) { messenger.showSnackBar(SnackBar(content: Text(e.toString()))); return; }
+            }
+            if (!context.mounted) return;
+            exportExcel(context, fileName: 'employees', sheets: [('Employees', _exportCols, rows)]);
+          },
+          itemBuilder: (_) => [
+            PopupMenuItem(value: 'shown', child: Text(tr('المعروض (${_rows.length})', 'Shown (${_rows.length})'))),
+            PopupMenuItem(value: 'all', child: Text(tr('الكل', 'All'))),
+          ],
+        ),
+      ],
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => showModalBottomSheet(
           context: context,
@@ -271,6 +372,7 @@ class _HrEmployeesScreenState extends State<HrEmployeesScreen> {
                                           if (b2cOpChip(e['b2cOpStatus']) != null)
                                             Padding(padding: const EdgeInsets.only(top: 4), child: b2cOpChip(e['b2cOpStatus'])!),
                                         ]),
+                                        _rowMenu(e),
                                       ]),
                                     ),
                                   ),

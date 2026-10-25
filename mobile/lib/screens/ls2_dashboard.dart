@@ -3,10 +3,13 @@ import '../services/api.dart';
 import '../services/lang.dart';
 import '../services/live.dart';
 import '../ui/app_scaffold.dart';
+import '../ui/export_sheet.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import 'ls2_vehicles.dart';
 import 'ls2_alerts.dart';
+import 'ls2_common.dart';
+import 'ls2_live.dart';
 
 /// لوحة لوكيشن سوليوشن — حالة الأسطول الحية، التنبيهات، الصيانة المستحقة،
 /// الحرارة، ومسافات الفترة — نفس أقسام لوحة الويب.
@@ -20,6 +23,8 @@ class _Ls2DashboardScreenState extends State<Ls2DashboardScreen> {
   Map<String, dynamic>? _d;
   bool _loading = true;
   String? _error;
+  DateTimeRange _range = ls2ThisMonthToDate();
+  int _seq = 0;
   late final void Function() _onLive;
 
   @override
@@ -37,9 +42,10 @@ class _Ls2DashboardScreenState extends State<Ls2DashboardScreen> {
   }
 
   Future<void> _load() async {
+    final seq = ++_seq;
     try {
-      final d = await Api.instance.get('/api/ls2/dashboard');
-      if (!mounted) return;
+      final d = await Api.instance.get('/api/ls2/dashboard?from=${ls2Ymd(_range.start)}&to=${ls2Ymd(_range.end)}');
+      if (!mounted || seq != _seq) return;
       setState(() { _d = Map<String, dynamic>.from(d); _loading = false; _error = null; });
     } catch (e) {
       if (mounted) setState(() { _loading = false; _error = e.toString(); });
@@ -62,6 +68,60 @@ class _Ls2DashboardScreenState extends State<Ls2DashboardScreen> {
         ]),
       );
 
+  /// ملفٌّ واحدٌ يعكس كلَّ لوحةٍ في الشاشة — نفسُ أوراق تصدير الموقع.
+  Future<void> _export() async {
+    final d = _d;
+    if (d == null) return;
+    final fleet = _m(d['fleet']);
+    final sc = _m(fleet['statusCounts']);
+    final alerts = _m(d['alerts']);
+    final sev = _m(alerts['bySeverity']);
+    final maint = _m(d['maintenance']);
+    final temp = _m(d['temperature']);
+    final dist = _m(d['distance']);
+    final kv = [ExportCol('المؤشر', 'Metric', (r) => r['metric']), ExportCol('القيمة', 'Value', (r) => r['value'] ?? '')];
+    List<ExportCol> veh(List<ExportCol> extra) => [ExportCol('اللوحة', 'Plate', (r) => r['plate'] ?? r['unitId'] ?? ''), ExportCol('السائق', 'Driver', (r) => r['driver'] ?? ''), ...extra];
+    final summary = [
+      {'metric': tr('إجمالي المركبات', 'Total vehicles'), 'value': fleet['total']},
+      {'metric': tr('متصلة', 'Online'), 'value': fleet['online']},
+      for (final k in ['moving', 'idle', 'stopped', 'offline']) {'metric': tr(ls2Status(k).$1, ls2Status(k).$2), 'value': sc[k] ?? 0},
+      {'metric': tr('تنبيهات مفتوحة', 'Open alerts'), 'value': alerts['totalOpen']},
+      {'metric': tr('مركبات عليها تنبيهات', 'Vehicles with alerts'), 'value': alerts['vehiclesWithAlerts']},
+      for (final k in ['critical', 'warning', 'info']) {'metric': '${tr('تنبيهات', 'Alerts')} — ${tr(ls2Severity(k).$1, ls2Severity(k).$2)}', 'value': sev[k] ?? 0},
+      {'metric': tr('صيانة متأخرة', 'Service overdue'), 'value': maint['overdueCount']},
+      {'metric': tr('صيانة قريبة', 'Service due'), 'value': maint['dueCount']},
+      {'metric': '${tr('متوسط حرارة الكاوتش', 'Avg tire temp')} (°C)', 'value': temp['avgTireTempC'] ?? ''},
+      {'metric': '${tr('أقصى حرارة كاوتش', 'Max tire temp')} (°C)', 'value': temp['maxTireTempC'] ?? ''},
+      {'metric': '${tr('متوسط حرارة الموتور', 'Avg engine temp')} (°C)', 'value': temp['avgCoolantC'] ?? ''},
+      {'metric': '${tr('أقصى حرارة موتور', 'Max engine temp')} (°C)', 'value': temp['maxCoolantC'] ?? ''},
+      {'metric': tr('كاوتش ساخن', 'Hot tires'), 'value': temp['hotTires']},
+      {'metric': tr('موتور ساخن', 'Hot engines'), 'value': temp['hotEngines']},
+      {'metric': '${tr('إجمالي المسافة', 'Total distance')} (${tr('كم', 'km')}) · ${dist['from'] ?? ls2Ymd(_range.start)} → ${dist['to'] ?? ls2Ymd(_range.end)}', 'value': dist['totalKm'] ?? 0},
+      {'metric': tr('مركبات تحركت', 'Vehicles moved'), 'value': dist['movedVehicles'] ?? 0},
+      {'metric': '${tr('متوسط المركبة', 'Avg per vehicle')} (${tr('كم', 'km')})', 'value': dist['avgKm'] ?? 0},
+    ];
+    final byType = _m(alerts['byType']).entries.map((e) => {'type': ls2AlertType(e.key), 'count': e.value}).toList()
+      ..sort((a, b) => (ls2Num(b['count']) ?? 0).compareTo(ls2Num(a['count']) ?? 0));
+    await exportExcel(context, fileName: 'ls2-dashboard', sheets: [
+      (tr('الملخص', 'Summary'), kv, summary),
+      (tr('التنبيهات حسب النوع', 'Alerts by type'), [ExportCol('النوع', 'Type', (r) => r['type']), ExportCol('العدد', 'Count', (r) => r['count'])], byType),
+      (tr('الأعلى مسافة', 'Top distance'), veh([ExportCol('المسافة (كم)', 'Distance (km)', (r) => r['km'] ?? '')]), _l(dist['topMovers'])),
+      (tr('الأسخن كواتش', 'Hottest tires'), veh([ExportCol('الحرارة °C', 'Temp °C', (r) => r['value'] ?? '')]), _l(temp['topHotTires'])),
+      (tr('الأقرب للصيانة', 'Nearest to service'), veh([
+        ExportCol('العداد كم', 'Odometer km', (r) => r['odometerKm'] ?? ''),
+        ExportCol('المتبقي للصيانة كم', 'Km to service', (r) => r['kmToService'] ?? ''),
+        ExportCol('الحالة', 'Status', (r) => tr(ls2Maint(r['statusLevel']).$1, ls2Maint(r['statusLevel']).$2)),
+      ]), _l(maint['nearest'])),
+      (tr('أحدث التنبيهات', 'Latest alerts'), [
+        ExportCol('اللوحة', 'Plate', (r) => r['plate'] ?? r['unitId'] ?? ''),
+        ExportCol('النوع', 'Type', (r) => ls2AlertType(r['type'])),
+        ExportCol('الخطورة', 'Severity', (r) => tr(ls2Severity(r['severity']).$1, ls2Severity(r['severity']).$2)),
+        const ExportCol('الرسالة', 'Message', ls2AlertMessage),
+        ExportCol('آخر رصد', 'Last seen', (r) => ls2DateTime(r['lastSeenAt'])),
+      ], _l(alerts['latest'])),
+    ]);
+  }
+
   @override
   Widget build(BuildContext context) {
     final fleet = _m(_d?['fleet']);
@@ -74,6 +134,7 @@ class _Ls2DashboardScreenState extends State<Ls2DashboardScreen> {
 
     return AppScaffold(
       title: Text(tr('لوحة لوكيشن سوليوشن', 'LS2 Dashboard')),
+      actions: [IconButton(tooltip: tr('تصدير Excel', 'Export to Excel'), icon: const Icon(Icons.file_download_outlined), onPressed: _export)],
       body: _loading
           ? ListView(padding: const EdgeInsets.all(14), children: const [Shimmer(height: 100), SizedBox(height: 10), Shimmer(height: 100), SizedBox(height: 10), Shimmer(height: 160)])
           : _error != null
@@ -81,10 +142,13 @@ class _Ls2DashboardScreenState extends State<Ls2DashboardScreen> {
               : RefreshIndicator(
                   onRefresh: _load,
                   child: ListView(padding: const EdgeInsets.all(14), children: [
-                    // ── حالة الأسطول ──
+                    // الفترةُ تحكم لوحةَ المسافات — كـ RangePicker في الموقع.
+                    Ls2RangeBar(value: _range, onChanged: (r) { setState(() => _range = r); _load(); }),
+                    const SizedBox(height: 10),
+                    // ── حالة الأسطول ── (تفتح الأسطولَ المباشر كالموقع)
                     FadeSlideIn(
                       child: Pressable(
-                        onTap: () => _open(const Ls2VehiclesScreen()),
+                        onTap: () => _open(const Ls2LiveScreen()),
                         child: AppCard(
                           topAccent: T.navy,
                           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [

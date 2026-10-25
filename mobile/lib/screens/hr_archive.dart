@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../services/api.dart';
 import '../services/lang.dart';
 import '../services/live.dart';
 import '../ui/app_scaffold.dart';
+import '../ui/export_sheet.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import 'hr_employee_profile.dart';
@@ -21,6 +23,9 @@ class _HrArchiveScreenState extends State<HrArchiveScreen> {
   Map<String, dynamic>? _d;
   String? _error;
   String _q = '';
+  // البحثُ عند الخادم (`q=`) كالموقع — والردُّ الأقدمُ لا يكتب فوق الأحدث.
+  int _seq = 0;
+  Timer? _debounce;
   late final void Function() _onLive;
 
   @override
@@ -36,29 +41,72 @@ class _HrArchiveScreenState extends State<HrArchiveScreen> {
   void dispose() {
     Live.instance.off('hr:employee', _onLive);
     Live.instance.off('hr:master', _onLive);
+    _debounce?.cancel();
     super.dispose();
   }
 
   Future<void> _load() async {
+    final mine = ++_seq;
     try {
-      final d = await Api.instance.get('/api/hr/archive');
-      if (mounted) setState(() { _d = Map<String, dynamic>.from(d as Map); _error = null; });
+      final q = _q.trim();
+      final d = await Api.instance.get('/api/hr/archive${q.isEmpty ? '' : '?q=${Uri.encodeQueryComponent(q)}'}');
+      if (mounted && mine == _seq) setState(() { _d = Map<String, dynamic>.from(d as Map); _error = null; });
     } catch (e) {
-      if (mounted) setState(() => _error = e.toString());
+      if (mounted && mine == _seq) setState(() => _error = e.toString());
     }
   }
+
+  /// «إرجاع للنظام» — لتصحيح خروجٍ سُجِّل خطأً. والفريلانسرُ لا يُرجَع من هنا (كالموقع).
+  Future<void> _returnBack(Map<String, dynamic> r) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: Text(tr('إعادة إلى النظام؟', 'Return to the system?')),
+        content: Text(tr('يعود ${r['name'] ?? ''} داخل النظام ويخرج من الأرشيف — لتصحيح خروجٍ سُجِّل خطأً.', 'For correcting an exit recorded by mistake.')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('إلغاء', 'Cancel'))),
+          FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(tr('إعادة', 'Return'))),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await Api.instance.post('/api/hr/employees/${r['_id']}/return-system', {});
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('أُعيد إلى النظام', 'Returned'))));
+      _load();
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e is ApiException ? e.message : e.toString())));
+    }
+  }
+
+  String _fmt(dynamic v) => '${v ?? ''}'.length >= 10 ? '$v'.substring(0, 10).split('-').reversed.join('/') : '—';
 
   String _eng(dynamic k) => k == 'sponsored' ? tr('على الكفالة', 'Sponsored') : k == 'freelance' ? tr('فريلانسر', 'Freelance') : k == 'trainee' ? tr('متدرب', 'Trainee') : '—';
 
   @override
   Widget build(BuildContext context) {
     final d = _d;
-    final all = d == null ? const <Map<String, dynamic>>[] : [for (final x in (d['items'] as List? ?? const [])) Map<String, dynamic>.from(x as Map)];
-    final q = _q.trim();
-    final items = q.isEmpty ? all : all.where((e) => '${e['name']} ${e['employeeNumber'] ?? ''} ${e['iqamaNumber'] ?? ''} ${e['nationalId'] ?? ''}'.contains(q)).toList();
+    final items = d == null ? const <Map<String, dynamic>>[] : [for (final x in (d['items'] as List? ?? const [])) Map<String, dynamic>.from(x as Map)];
     final c = (d?['counts'] as Map?) ?? const {};
     return AppScaffold(
       title: Text(tr('الأرشيف', 'Archive')),
+      actions: [
+        // أعمدةُ تصدير الموقع نفسُها.
+        ExportButton(
+          fileName: 'hr-archive',
+          sheetName: tr('الأرشيف', 'Archive'),
+          rows: () => items,
+          columns: [
+            ExportCol('الرقم الوظيفي', 'Emp. no.', (r) => r['employeeNumber'] ?? ''),
+            ExportCol('الموظف', 'Employee', (r) => r['name'] ?? ''),
+            ExportCol('رقم الهوية / الإقامة', 'ID / Iqama', (r) => '${r['iqamaNumber'] ?? ''}'.isNotEmpty ? r['iqamaNumber'] : (r['nationalId'] ?? '—')),
+            ExportCol('النوع', 'Type', (r) => _eng(r['engagement'])),
+            ExportCol('القسم', 'Department', (r) => '${r['department'] ?? ''}'.isEmpty ? '—' : r['department']),
+            ExportCol('تاريخ انتهاء الخدمة', 'Service ended', (r) => _fmt(r['terminatedAt'])),
+            ExportCol('السبب', 'Reason', (r) => '${r['terminationReason'] ?? ''}'.isEmpty ? '—' : r['terminationReason']),
+          ],
+        ),
+      ],
       body: d == null
           ? (_error != null ? ErrorRetry(message: _error!, onRetry: _load) : const Center(child: CircularProgressIndicator()))
           : RefreshIndicator(
@@ -73,7 +121,11 @@ class _HrArchiveScreenState extends State<HrArchiveScreen> {
                 ]),
                 const SizedBox(height: 10),
                 TextField(
-                  onChanged: (v) => setState(() => _q = v),
+                  onChanged: (v) {
+                    _q = v;
+                    _debounce?.cancel();
+                    _debounce = Timer(const Duration(milliseconds: 250), _load);
+                  },
                   decoration: InputDecoration(isDense: true, prefixIcon: const Icon(Icons.search), hintText: tr('الاسم، الرقم الوظيفي، رقم الهوية…', 'Name, emp. no., ID…')),
                 ),
                 const SizedBox(height: 10),
@@ -84,7 +136,8 @@ class _HrArchiveScreenState extends State<HrArchiveScreen> {
                     child: Pressable(
                       onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => HrEmployeeProfileScreen(employeeId: '${e['_id']}'))),
                       child: AppCard(
-                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        child: Row(children: [
+                          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                           Text('${e['name'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
                           const SizedBox(height: 2),
                           Text([
@@ -92,6 +145,15 @@ class _HrArchiveScreenState extends State<HrArchiveScreen> {
                             if ('${e['terminatedAt'] ?? ''}'.length >= 10) '${tr('انتهت', 'ended')} ${'${e['terminatedAt']}'.substring(0, 10).split('-').reversed.join('/')}',
                           ].where((x) => x != null && '$x'.isNotEmpty && '$x' != '—').join(' · '),
                               style: const TextStyle(fontSize: 11.5, color: T.inkFaint)),
+                          if ('${e['terminationReason'] ?? ''}'.isNotEmpty)
+                            Text('${e['terminationReason']}', maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11.5, color: T.inkSoft)),
+                          ])),
+                          if (e['engagement'] != 'freelance')
+                            IconButton(
+                              tooltip: tr('إعادة إلى النظام', 'Return to the system'),
+                              icon: const Icon(Icons.undo_rounded, color: T.orange),
+                              onPressed: () => _returnBack(e),
+                            ),
                         ]),
                       ),
                     ),

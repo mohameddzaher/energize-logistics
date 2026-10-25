@@ -7,6 +7,8 @@ import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/leave_chain.dart';
 import '../ui/widgets.dart';
+import '../ui/export_sheet.dart';
+import 'hr_leave_pdf.dart';
 
 /// HR — طلبات الإجازات (قرارات الموارد البشرية) وطلبات الموظفين (الرد وتغيير
 /// الحالة): the two HR inboxes, native.
@@ -24,7 +26,53 @@ class _HrLeavesScreenState extends State<HrLeavesScreen> {
   bool _loading = true;
   String? _error;
   String _status = '';
+  // بحثٌ بالموظّف أو مقدّم الطلب — كالموقع (يُصفّى المحمَّل).
+  String _q = '';
+  int _seq = 0;
   late final void Function() _onLive;
+
+  String _empName(Map<String, dynamic> l) => l['employee'] is Map
+      ? ((l['employee']['arabicName'] ?? '').toString().isNotEmpty && Lang.instance.ar
+          ? '${l['employee']['arabicName']}'
+          : '${l['employee']['firstName'] ?? ''} ${l['employee']['lastName'] ?? ''}'.trim())
+      : '';
+  String _reqName(Map<String, dynamic> l) => l['requester'] is Map ? '${l['requester']['firstName'] ?? ''} ${l['requester']['lastName'] ?? ''}'.trim() : '';
+
+  List<Map<String, dynamic>> get _shown {
+    final q = _q.trim().toLowerCase();
+    if (q.isEmpty) return _rows;
+    return _rows.where((l) => _empName(l).toLowerCase().contains(q) || _reqName(l).toLowerCase().contains(q)
+        || '${(l['employee'] as Map?)?['arabicName'] ?? ''}'.contains(q)).toList();
+  }
+
+  // أعمدةُ تصدير الموقع: الموظّف · النوع · البداية والنهاية بتقويميهما · الأيّام · الحالة · السبب.
+  List<ExportCol> get _exportCols => [
+        ExportCol('Employee', 'Employee', (r) => _empName(r)),
+        ExportCol('Type', 'Type', (r) => r['leaveType'] is Map ? (r['leaveType']['nameEn'] ?? r['leaveType']['nameAr'] ?? '') : ''),
+        ExportCol('تاريخ البداية الميلادي', 'Start date (Gregorian)', (r) => gregDay(r['startDate'])),
+        ExportCol('تاريخ البداية الهجري', 'Start date (Hijri)', (r) => hijriDay(r['startDate'])),
+        ExportCol('تاريخ النهاية الميلادي', 'End date (Gregorian)', (r) => gregDay(r['endDate'])),
+        ExportCol('تاريخ النهاية الهجري', 'End date (Hijri)', (r) => hijriDay(r['endDate'])),
+        ExportCol('Days', 'Days', (r) => r['days'] ?? ''),
+        ExportCol('Status', 'Status', (r) => r['status'] ?? ''),
+        ExportCol('Reason', 'Reason', (r) => r['reason'] ?? ''),
+      ];
+
+  Future<void> _export(String scope) async {
+    var rows = _shown;
+    final messenger = ScaffoldMessenger.of(context);
+    // فلترُ الحالة عند الخادم — فـ«الكل» يعيد النداء بلا حالة وإلّا خرج السجلُّ مبتورًا.
+    if (scope == 'all') {
+      if (_status.isEmpty) {
+        rows = _rows;
+      } else {
+        try { rows = List<Map<String, dynamic>>.from((await Api.instance.get('/api/hr/leaves'))['leaves'] ?? []); }
+        catch (e) { messenger.showSnackBar(SnackBar(content: Text(e.toString()))); return; }
+      }
+    }
+    if (!mounted) return;
+    exportExcel(context, fileName: 'leaves', sheets: [('Leaves', _exportCols, rows)]);
+  }
 
   @override
   void initState() {
@@ -41,10 +89,11 @@ class _HrLeavesScreenState extends State<HrLeavesScreen> {
   }
 
   Future<void> _load() async {
+    final mine = ++_seq;
     try {
       final qs = _status.isEmpty ? '' : '?status=$_status';
       final d = await Api.instance.get('/api/hr/leaves$qs');
-      if (!mounted) return;
+      if (!mounted || mine != _seq) return;
       setState(() { _rows = List<Map<String, dynamic>>.from(d['leaves'] ?? []); _loading = false; _error = null; });
     } catch (e) {
       if (mounted) setState(() { _loading = false; _error = e.toString(); });
@@ -420,6 +469,15 @@ class _HrLeavesScreenState extends State<HrLeavesScreen> {
     return AppScaffold(
       title: Text(tr('طلبات الإجازات', 'Leave Requests')),
       actions: [
+        PopupMenuButton<String>(
+          icon: const Icon(Icons.file_download_outlined),
+          tooltip: tr('تصدير Excel', 'Export to Excel'),
+          onSelected: _export,
+          itemBuilder: (_) => [
+            PopupMenuItem(value: 'shown', child: Text(tr('المعروض', 'Shown'))),
+            PopupMenuItem(value: 'all', child: Text(tr('الكل', 'All'))),
+          ],
+        ),
         IconButton(
           icon: const Icon(Icons.event_repeat_outlined),
           tooltip: tr('تسجيل إجازة قديمة', 'Record a past leave'),
@@ -431,6 +489,13 @@ class _HrLeavesScreenState extends State<HrLeavesScreen> {
           : _error != null
               ? ErrorRetry(message: _error!, onRetry: () { setState(() => _loading = true); _load(); })
               : Column(children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(14, 10, 14, 0),
+                    child: TextField(
+                      onChanged: (v) => setState(() => _q = v),
+                      decoration: InputDecoration(isDense: true, prefixIcon: const Icon(Icons.search), hintText: tr('ابحث باسم الموظف…', 'Search by employee…')),
+                    ),
+                  ),
                   Padding(
                     padding: const EdgeInsets.fromLTRB(14, 10, 14, 4),
                     child: SingleChildScrollView(
@@ -459,14 +524,14 @@ class _HrLeavesScreenState extends State<HrLeavesScreen> {
                   Expanded(
                     child: RefreshIndicator(
                       onRefresh: _load,
-                      child: _rows.isEmpty
+                      child: _shown.isEmpty
                           ? EmptyState(icon: Icons.event_available_outlined, title: tr('لا توجد طلبات', 'No requests'))
                           : ListView.separated(
                               padding: const EdgeInsets.all(14),
-                              itemCount: _rows.length,
+                              itemCount: _shown.length,
                               separatorBuilder: (_, __) => const SizedBox(height: 8),
                               itemBuilder: (c, i) {
-                                final l = _rows[i];
+                                final l = _shown[i];
                                 final st = leaveStatusOf(l['status']);
                                 final emp = l['employee'] is Map
                                     ? ((l['employee']['arabicName'] ?? '').toString().isNotEmpty
@@ -483,6 +548,13 @@ class _HrLeavesScreenState extends State<HrLeavesScreen> {
                                       Row(children: [
                                         Expanded(child: Text(emp.toString(), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14))),
                                         Chip2(tr(st.$1, st.$2), st.$3),
+                                        // ورقةُ الإجازة الرسميّة PDF بتوقيعاتها — كزرّ PDF في الموقع.
+                                        IconButton(
+                                          visualDensity: VisualDensity.compact,
+                                          tooltip: tr('تحميل ورقة الإجازة PDF', 'Download PDF sheet'),
+                                          icon: const Icon(Icons.picture_as_pdf_outlined, size: 18, color: T.navy),
+                                          onPressed: () => downloadLeaveSheet(context, '${l['_id']}'),
+                                        ),
                                         IconButton(
                                           visualDensity: VisualDensity.compact,
                                           tooltip: tr('تعديل', 'Edit'),

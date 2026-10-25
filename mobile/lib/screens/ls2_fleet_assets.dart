@@ -1,12 +1,18 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../services/api.dart';
+import '../services/auth.dart';
 import '../services/lang.dart';
 import '../services/live.dart';
 import '../ui/app_scaffold.dart';
+import '../ui/export_sheet.dart';
 import '../ui/lookup_field.dart';
 import '../ui/theme.dart';
 import '../ui/tire_states.dart';
 import '../ui/widgets.dart';
+import 'ls2_common.dart';
+import 'ls2_tires.dart';
 import 'ls2_vehicle_assets.dart';
 
 /// أصول الأسطول (الكاوتشات والتريلات والسطحات) — نفس عمليات الويب:
@@ -39,13 +45,19 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
   String _qFlat = '';
   String _qTrail = '';
   String _filter = '';
+  // مطابقةُ السينسورات: المسجَّل في كشف الورشة مقابلَ ما يُرسله Wialon فعلًا.
+  List<Map<String, dynamic>> _sensorRows = [];
+  bool _sensorLoaded = false;
+  bool _sensorRequested = false;
+  String _qSensor = '';
+  final Set<String> _openSensor = {};
   late final void Function() _onLive;
 
   @override
   void initState() {
     super.initState();
     _load();
-    _onLive = () => _load();
+    _onLive = () { _load(); if (_sensorLoaded) _loadSensors(); };
     Live.instance.on('ls2:updated', _onLive);
     // لوحةُ كلّ سطحةٍ في سجلّ المركبات — تعديلُها هناك يظهر هنا في الحال.
     Live.instance.on('vreg:updated', _onLive);
@@ -66,6 +78,155 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
     } catch (e) {
       if (mounted) setState(() { _loading = false; _error = e.toString(); });
     }
+  }
+
+  Future<void> _loadSensors() async {
+    try {
+      final d = await Api.instance.get('/api/ls2/assets/sensor-check');
+      if (mounted) setState(() { _sensorRows = _l(d['rows']); _sensorLoaded = true; });
+    } catch (_) {
+      if (mounted) setState(() => _sensorLoaded = true);
+    }
+  }
+
+  /// رتبةُ الإدارة في القسم — كـ isLs2Admin في الموقع (الاستيرادُ لها وحدَها).
+  bool _isAdmin(AuthProvider a) =>
+      const ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'workshop_manager', 'location_manager', 'vehicles_manager'].contains(a.role)
+      || a.canEditSection('Location Solutions');
+
+  // ── استيراد كشف الورشة (JSON) — آمنٌ للتكرار: الفردةُ على عربيةٍ أخرى تُسجَّل نقلًا.
+  Future<void> _import() async {
+    final ctrl = TextEditingController();
+    Map<String, dynamic>? result;
+    bool busy = false;
+    await showModalBottomSheet(
+      context: context, isScrollControlled: true, backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (c) => StatefulBuilder(builder: (c, setS) => Padding(
+        padding: EdgeInsets.fromLTRB(16, 16, 16, MediaQuery.of(c).viewInsets.bottom + 16),
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Text(tr('استيراد كشف الورشة (JSON)', 'Import workshop JSON'), style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
+          const SizedBox(height: 6),
+          Text(tr('ألصِق صيغة JSON نفسها المستخدَمة في الورشة: { "vehicles": [...] } و/أو { "flatbeds": [...] }. الاستيراد آمن للتكرار: الفردة التي تظهر على مركبة أخرى تُسجَّل كنقل بتاريخه، لا كتسجيل جديد.',
+                  'Paste the workshop-collected JSON: { "vehicles": [...] } and/or { "flatbeds": [...] }. Idempotent: a serial appearing on another truck is recorded as a transfer, not a duplicate.'),
+              style: const TextStyle(fontSize: 12, color: T.inkFaint)),
+          const SizedBox(height: 10),
+          TextField(
+            controller: ctrl, maxLines: 10, minLines: 6, textDirection: TextDirection.ltr,
+            style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+            decoration: const InputDecoration(hintText: '{ "vehicles": [ { "vehicle_number": "2708", "trailer_number": "23", "tires": [ ... ] } ] }'),
+          ),
+          if (result != null)
+            Container(
+              margin: const EdgeInsets.only(top: 10),
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(color: T.success.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(10)),
+              child: Text(tr(
+                'تم: ${result!['flatbeds']} سطحة · ${result!['trailers']} حركة تيدر · ${result!['tiresNew']} فردة جديدة · ${result!['tiresMoved']} نُقلت · ${result!['tiresUnchanged']} بدون تغيير',
+                'Done: ${result!['flatbeds']} flatbeds · ${result!['trailers']} trailer moves · ${result!['tiresNew']} new tires · ${result!['tiresMoved']} moved · ${result!['tiresUnchanged']} unchanged'),
+                style: const TextStyle(color: T.success, fontWeight: FontWeight.w700, fontSize: 12.5)),
+            ),
+          const SizedBox(height: 12),
+          Row(children: [
+            Expanded(child: FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: T.orange),
+              onPressed: busy ? null : () async {
+                dynamic payload;
+                try { payload = jsonDecode(ctrl.text); } catch (_) {
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('JSON غير صالح', 'Invalid JSON'))));
+                  return;
+                }
+                setS(() => busy = true);
+                try {
+                  final r = await Api.instance.post('/api/ls2/assets/import', payload);
+                  setS(() { result = _m(r['summary']); busy = false; });
+                } catch (e) {
+                  setS(() => busy = false);
+                  if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+                }
+              },
+              child: Text(busy ? tr('جارٍ الاستيراد…', 'Importing…') : tr('استيراد', 'Import')),
+            )),
+            if (result != null) ...[
+              const SizedBox(width: 8),
+              Expanded(child: OutlinedButton(onPressed: () => Navigator.pop(c), child: Text(tr('إغلاق وتحديث', 'Close & refresh')))),
+            ],
+          ]),
+        ]),
+      )),
+    );
+    _load();
+  }
+
+  Map<String, dynamic> _m(dynamic v) => v is Map ? Map<String, dynamic>.from(v) : <String, dynamic>{};
+
+  // ── Excel: التبويب الحالي (بعد الفلتر) أو كلّ الأصول بثلاث أوراق ──
+  static const _sensorLabels = {'yes': ('يوجد', 'Has sensor'), 'no': ('لا يوجد', 'No sensor'), 'unknown': ('غير محدد', 'Unknown')};
+  List<ExportCol> get _flatbedCols => [
+        ExportCol('الترقيم', 'No.', (r) => r['numbering'] ?? ''),
+        ExportCol('اللوحة', 'Plate', (r) => r['plate'] ?? ''),
+        ExportCol('الدفعة', 'Batch', (r) => r['batch'] ?? ''),
+        ExportCol('الماركة', 'Brand', (r) => r['brand'] ?? ''),
+        ExportCol('التيدر الحالي', 'Trailer', (r) => r['currentTrailerNumber'] ?? ''),
+        ExportCol('السائق', 'Driver', (r) => r['driver'] ?? ''),
+        ExportCol('العداد (كم)', 'Odometer (km)', (r) => r['odometerKm'] ?? ''),
+        ExportCol('كاوتشات مسجّلة', 'Registered tires', (r) => r['tireCount'] ?? ''),
+      ];
+  List<ExportCol> get _trailerCols => [
+        ExportCol('رقم التيدر', 'Trailer no.', (r) => r['trailerNumber'] ?? ''),
+        ExportCol('مركّب على', 'On flatbed', (r) => r['currentPlate'] ?? tr('غير مركّب', 'unhitched')),
+        ExportCol('الحالة', 'Status', (r) => r['status'] ?? ''),
+        ExportCol('ملاحظات', 'Notes', (r) => r['notes'] ?? ''),
+      ];
+  List<ExportCol> get _tireCols => [
+        ExportCol('رقم الفردة', 'Tire no.', (r) => r['tireNumber'] ?? ''),
+        ExportCol('السيريال', 'Serial', (r) => r['serial'] ?? ''),
+        ExportCol('النوع', 'Type', (r) => r['type'] ?? ''),
+        ExportCol('المقاس', 'Size', (r) => r['size'] ?? ''),
+        ExportCol('سينسور', 'Sensor', (r) { final x = _sensorLabels[r['sensor']]; return x == null ? (r['sensor'] ?? '') : tr(x.$1, x.$2); }),
+        ExportCol('الدرجة', 'Grade', (r) => r['condition'] == 'new' ? tr('جديد', 'New') : tr('مستعمل', 'Used')),
+        ExportCol('الحالة ٪', 'Cond. %', (r) => r['conditionPercent'] != null ? '${r['conditionPercent']}%' : ''),
+        ExportCol('الحالة', 'Status', (r) { final st = tireStateOf(r); return tr(st.ar, st.en); }),
+        ExportCol('السيارة', 'Vehicle', (r) => r['plate'] ?? ''),
+        ExportCol('المكان الآن', 'Where now', _placeOf),
+        ExportCol('التيدر', 'Trailer', (r) => tireStateKey(r) == 'mounted' && RegExp('تيدر|تريلة').hasMatch('${r['section'] ?? ''}') ? (r['trailerNumber'] ?? '') : ''),
+        ExportCol('الموقع', 'Position', (r) => r['positionLabel'] ?? ''),
+        ExportCol('القسم', 'Section', (r) => r['section'] ?? ''),
+        ExportCol('استبن؟', 'Spare?', (r) => r['isSpare'] == true ? tr('نعم', 'Yes') : ''),
+        ExportCol('ملاحظات', 'Notes', (r) => r['notes'] ?? ''),
+      ];
+  List<ExportCol> get _sensorCols => [
+        ExportCol('اللوحة', 'Plate', (r) => r['plate'] ?? ''),
+        ExportCol('السائق', 'Driver', (r) => r['driver'] ?? ''),
+        ExportCol('كاوتشات مسجّلة', 'Registered tires', (r) => r['registeredTotal'] ?? ''),
+        ExportCol('مسجّل بها سينسور', 'Registered w/ sensor', (r) => r['registeredWithSensor'] ?? ''),
+        ExportCol('يرسل فعليًا (مباشر)', 'Actually reporting', (r) => r['liveReporting'] ?? ''),
+        ExportCol('مطابقة؟', 'Match?', (r) => r['match'] == null ? tr('لا توجد بيانات حية', 'no live data') : r['match'] == true ? tr('متطابق', 'match') : tr('غير متطابق', 'MISMATCH')),
+      ];
+
+  Future<void> _export(int tab, List<Map<String, dynamic>> tiresShown) async {
+    final flatbeds = _l(_d?['flatbeds']);
+    final trailers = _l(_d?['trailers']);
+    final current = switch (tab) {
+      1 => (tr('السطحات', 'Flatbeds'), _flatbedCols, _filtered(flatbeds, _qFlat, (f) => [f['plate'], f['registryPlate'], f['numbering'], f['brand'], f['batch'], f['currentTrailerNumber'], f['driver']])),
+      2 => (tr('التيدرات', 'Trailers'), _trailerCols, _filtered(trailers, _qTrail, (x) => [x['trailerNumber'], x['currentPlate'], x['status']])),
+      3 => (tr('مطابقة السينسورات', 'Sensor check'), _sensorCols, _filtered(_sensorRows, _qSensor, (r) => [r['plate'], r['driver']])),
+      _ => (tr('الكاوتشات', 'Tires'), _tireCols, tiresShown),
+    };
+    await ls2ExportMenu(context, fileName: 'ls2-assets', options: [
+      ('التبويب الحالي (بعد الفلتر)', 'Current tab (filtered)', [current]),
+      ('كل الأصول (٣ شيتات)', 'All assets (3 sheets)', [
+        (tr('السطحات', 'Flatbeds'), _flatbedCols, flatbeds),
+        (tr('التيدرات', 'Trailers'), _trailerCols, trailers),
+        (tr('الكاوتشات', 'Tires'), _tireCols, _l(_d?['tires'])),
+      ]),
+    ]);
+  }
+
+  List<Map<String, dynamic>> _filtered(List<Map<String, dynamic>> rows, String q, List<dynamic> Function(Map<String, dynamic>) fields) {
+    final f = _fold(q.trim());
+    if (f.isEmpty) return rows;
+    return rows.where((r) => fields(r).any((x) => _fold((x ?? '').toString()).contains(f))).toList();
   }
 
   String _fold(String s) => s.replaceAll(RegExp('[أإآ]'), 'ا').replaceAll('ى', 'ي').replaceAll('ة', 'ه').toLowerCase();
@@ -156,10 +317,18 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
     final flatbeds = _l(_d?['flatbeds']);
     final trailers = _l(_d?['trailers']);
 
+    final admin = _isAdmin(context.watch<AuthProvider>());
     return DefaultTabController(
-      length: 3,
-      child: AppScaffold(
+      length: 4,
+      child: Builder(builder: (tabCtx) => AppScaffold(
       title: Text(tr('أصول الأسطول', 'Fleet Assets')),
+      actions: [
+        if (admin) IconButton(tooltip: tr('استيراد JSON الورشة', 'Import workshop JSON'), icon: const Icon(Icons.upload_file_outlined), onPressed: _import),
+        IconButton(
+          tooltip: tr('تصدير Excel', 'Export to Excel'), icon: const Icon(Icons.file_download_outlined),
+          onPressed: () => _export(DefaultTabController.of(tabCtx).index, filtered),
+        ),
+      ],
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _createTire,
         icon: const Icon(Icons.add),
@@ -171,10 +340,12 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
         indicatorColor: T.orange,
         indicatorWeight: 3,
         labelStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5),
+        isScrollable: true,
         tabs: [
           Tab(text: '${tr('الكاوتشات', 'Tires')} (${tires.length})'),
           Tab(text: '${tr('السطحات', 'Flatbeds')} (${flatbeds.length})'),
           Tab(text: '${tr('التيدرات', 'Trailers')} (${trailers.length})'),
+          Tab(text: tr('مطابقة السينسورات', 'Sensor check')),
         ],
       ),
       body: _loading
@@ -284,9 +455,89 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
                 ]),
                 _flatbedsTab(flatbeds),
                 _trailersTab(trailers),
+                _sensorsTab(),
               ]),
-      ),
+      )),
     );
+  }
+
+  // ── تبويب مطابقة السينسورات ──
+  // ترقيمُ Wialon (محور/إطار) غيرُ ترقيم الورشة (١–١٤)، فتُقارَن الأعدادُ
+  // ويُعرَض الترقيمان معًا للمطابقة اليدويّة.
+  Widget _sensorsTab() {
+    if (!_sensorLoaded) {
+      if (!_sensorRequested) { _sensorRequested = true; _loadSensors(); }
+      return ListView(padding: const EdgeInsets.all(14), children: const [Shimmer(), SizedBox(height: 10), Shimmer()]);
+    }
+    final rows = _filtered(_sensorRows, _qSensor, (r) => [r['plate'], r['driver']]);
+    return Column(children: [
+      Padding(
+        padding: const EdgeInsets.fromLTRB(14, 10, 14, 0),
+        child: Text(tr('مقارنة بين المسجَّل في كشف الورشة (يوجد / لا يوجد حسّاس) وبين ما يصل فعليًا من Wialon.', 'Registered sensor flags (workshop sheet) vs what Wialon actually reports.'),
+            style: const TextStyle(fontSize: 11.5, color: T.inkFaint)),
+      ),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(14, 8, 14, 4),
+        child: TextField(
+          onChanged: (v) => setState(() => _qSensor = v),
+          decoration: InputDecoration(hintText: tr('لوحة أو سائق…', 'Plate or driver…'), prefixIcon: const Icon(Icons.search), isDense: true, suffixText: '${rows.length}'),
+        ),
+      ),
+      Expanded(
+        child: RefreshIndicator(
+          onRefresh: _loadSensors,
+          child: rows.isEmpty
+              ? ListView(children: [const SizedBox(height: 80), EmptyState(icon: Icons.sensors_off_outlined, title: tr('لا توجد بيانات', 'No data'))])
+              : ListView.separated(
+                  padding: const EdgeInsets.all(14),
+                  itemCount: rows.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 8),
+                  itemBuilder: (c, i) {
+                    final r = rows[i];
+                    final plate = '${r['plate'] ?? ''}';
+                    final open = _openSensor.contains(plate);
+                    final match = r['match'];
+                    final (label, color) = match == null
+                        ? (tr('لا بيانات حية', 'No live data'), T.inkFaint)
+                        : match == true ? (tr('متطابق', 'Match'), T.success) : (tr('غير متطابق', 'MISMATCH'), T.danger);
+                    return Pressable(
+                      onTap: () => setState(() => open ? _openSensor.remove(plate) : _openSensor.add(plate)),
+                      child: AppCard(
+                        topAccent: color,
+                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Row(children: [
+                            Expanded(child: Text(plate, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14))),
+                            Chip2(label, color),
+                            Icon(open ? Icons.expand_less : Icons.expand_more, color: T.inkFaint),
+                          ]),
+                          if ((r['driver'] ?? '').toString().isNotEmpty) Text('${r['driver']}', style: const TextStyle(fontSize: 12, color: T.inkSoft)),
+                          const SizedBox(height: 6),
+                          Wrap(spacing: 6, runSpacing: 6, children: [
+                            Chip2('${tr('مسجّل', 'Registered')}: ${r['registeredTotal'] ?? 0}', T.navy),
+                            Chip2('${tr('مسجّل بسينسور', 'With sensor')}: ${r['registeredWithSensor'] ?? 0}', T.cyan),
+                            Chip2('${tr('يرسل فعليًا', 'Reporting')}: ${r['hasLive'] == true ? r['liveReporting'] ?? 0 : '—'}', T.violet),
+                          ]),
+                          if (open) ...[
+                            const Divider(),
+                            Text(tr('المسجّل بسينسور (كشف الورشة)', 'Registered with sensor (workshop)'), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12)),
+                            if (_l(r['registeredSensorPositions']).isEmpty) const Text('—'),
+                            for (final p in _l(r['registeredSensorPositions']))
+                              Text('${(p['positionLabel'] ?? '').toString().isNotEmpty ? p['positionLabel'] : 'اطار ${p['positionNumber']}'} · ${p['section'] ?? ''} — ${p['serial'] ?? ''}', style: const TextStyle(fontSize: 11.5, color: T.inkSoft)),
+                            const SizedBox(height: 6),
+                            Text(tr('ما يُرسِل فعليًا (Wialon)', 'Actually reporting (Wialon)'), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12)),
+                            if (r['hasLive'] != true) Text(tr('العربية غير موجودة في Wialon', 'Vehicle not in Wialon'), style: const TextStyle(fontSize: 11.5, color: T.inkFaint)),
+                            if (r['hasLive'] == true && _l(r['livePositions']).isEmpty) const Text('—'),
+                            for (final p in _l(r['livePositions']))
+                              Text(tr('محور ${p['axle']} · إطار ${p['position']}', 'Axle ${p['axle']} · tire ${p['position']}'), style: const TextStyle(fontSize: 11.5, color: T.inkSoft)),
+                          ],
+                        ]),
+                      ),
+                    );
+                  },
+                ),
+        ),
+      ),
+    ]);
   }
 
   // ── تبويب السطحات ──
@@ -561,6 +812,10 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
             ),
             const SizedBox(height: 14),
             Wrap(spacing: 8, runSpacing: 8, children: [
+              // حياةُ الفردة: على أيّ عربياتٍ كانت، وكم مشت، وكلُّ ما حدث لها.
+              _chip(sheet, Icons.timeline, tr('حياة الفردة', 'Tire life'), T.orange, () async {
+                await Navigator.push(context, MaterialPageRoute(builder: (_) => Ls2TireProfileScreen(tireId: '${t['_id']}', serial: '${t['serial'] ?? ''}')));
+              }),
               if (status == 'mounted')
                 _chip(sheet, Icons.download_outlined, tr('فك من الشاحنة', 'Dismount'), T.warn, () => _dismount(t)),
               if (status == 'mounted')

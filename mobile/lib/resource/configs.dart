@@ -5,18 +5,25 @@ import '../services/lang.dart';
 import '../ui/theme.dart';
 import '../screens/crm_company_profile.dart';
 import '../screens/contracts_vendor_profile.dart';
+import '../screens/contracts_customer_suggestions.dart';
+import '../screens/contracts_agreement_files.dart';
 import '../screens/customs_detail.dart';
 import '../screens/customs_party.dart';
+import '../screens/customs_contracts.dart' show manageCustomsContractFiles;
 import '../screens/collection_attachments.dart';
 import '../screens/collection_collect.dart';
+import '../screens/collections_party.dart' show CollectionsPartyScreen, openCollectionsBulkAssign;
 import '../ui/customs_contract_pricing.dart';
 import '../screens/fleet_customer_profile.dart';
 import '../screens/fleet_vehicle_analytics.dart';
+import '../screens/fleet_vehicle_actions.dart';
 import '../screens/customer_registry_profile.dart';
+import '../screens/ops_customer_portal.dart';
 import '../screens/bd_opportunity_detail.dart';
 import '../screens/marketing_campaign_detail.dart';
 import '../screens/light_transport_add.dart';
 import '../screens/light_transport_profile.dart';
+import '../screens/hr_ops.dart' show hrStockAssign, HrAssetVocab;
 import 'resource.dart';
 
 /// Page definitions on the CRUD engine — each entry IS a full native page
@@ -189,12 +196,18 @@ final fleetVehiclesCfg = ResourceConfig(
     ]),
     FieldSpec('notes', 'ملاحظات', 'Notes', type: FieldType.textarea),
   ],
+  // الطاقمُ (المقعدان معًا) والمشرفُ من قائمة الصفّ — كعمودَي السائقين وزرّ المشرف في الويب.
+  rowActions: (r) => const [
+    ResourceAction(icon: Icons.groups_outlined, ar: 'الطاقم (السائقان)', en: 'Crew (drivers)', color: T.navy, run: openFleetVehicleCrew),
+    ResourceAction(icon: Icons.manage_accounts_outlined, ar: 'تعيين المشرف', en: 'Assign supervisor', color: T.orange, run: openFleetVehicleSupervisor),
+  ],
 );
 
 final fleetCustomersCfg = ResourceConfig(
   onOpen: (c, r) => Navigator.push(c, MaterialPageRoute(builder: (_) => FleetCustomerProfileScreen(customerId: (r['_id'] ?? '').toString()))),
   arTitle: 'عملاء الأسطول', enTitle: 'Fleet Customers', icon: Icons.people_outline,
   endpoint: '/api/fleet/customers', listKey: 'customers', liveEvent: 'fleet:customers',
+  extraLiveEvents: const ['fleet:updated', 'customers:changed'],
   searchFields: const ['name', 'phone', 'email', 'taxNumber'],
   titleOf: (r) => _s(r, 'name'),
   // السطر الثاني يحمل أرقامه لا بيانات تواصله وحدها: مئتا عميلٍ في قائمةٍ
@@ -228,6 +241,35 @@ final fleetCustomersCfg = ResourceConfig(
     FieldSpec('customerType', 'نوع العميل', 'Customer type', type: FieldType.select,
         options: [('heavy', 'نقل ثقيل', 'Heavy transport'), ('branch', 'عميل فروع', 'Branch customer')]),
     FieldSpec('notes', 'ملاحظات', 'Notes', type: FieldType.textarea),
+  ],
+  // الحذفُ العامّ يعطّل فقط؛ والويب يحذف نهائيًّا من لا حمولة له — فالإزالةُ إجراءُ صفّ.
+  canDelete: false,
+  rowActions: (r) => const [
+    ResourceAction(icon: Icons.delete_outline, ar: 'إزالة', en: 'Remove', color: T.danger, run: removeFleetCustomer),
+  ],
+);
+
+/// العملاءُ المعطَّلون (المؤرشفون) — الويب يعرضهم بفلتر «الحالة: معطَّل» ويعيدهم
+/// بزرّ «إعادة تفعيل»؛ ومن لا حمولة له يُحذف نهائيًّا.
+final fleetCustomersArchivedCfg = ResourceConfig(
+  onOpen: (c, r) => Navigator.push(c, MaterialPageRoute(builder: (_) => FleetCustomerProfileScreen(customerId: (r['_id'] ?? '').toString()))),
+  arTitle: 'العملاء المؤرشفون', enTitle: 'Archived Customers', icon: Icons.archive_outlined,
+  endpoint: '/api/fleet/customers', listKey: 'customers', liveEvent: 'fleet:customers',
+  listQuery: 'state=${Uri.encodeQueryComponent('معطَّل')}',
+  searchFields: const ['name', 'phone', 'email', 'taxNumber'],
+  titleOf: (r) => _s(r, 'name'),
+  subtitleOf: (r) => [if ((r['trips'] ?? 0) != 0) 'حمولات: ${r['trips']}', _s(r, 'phone')].where((x) => x.isNotEmpty).join(' · '),
+  chipsOf: (r) => [('معطَّل', T.inkFaint)],
+  canCreate: false, canEdit: false, canDelete: false,
+  fields: const [
+    FieldSpec('name', 'اسم العميل', 'Name'),
+    FieldSpec('phone', 'رقم الجوال', 'Phone'),
+    FieldSpec('email', 'البريد الإلكتروني', 'Email'),
+  ],
+  rowActions: (r) => [
+    const ResourceAction(icon: Icons.restore, ar: 'إعادة تفعيل', en: 'Restore', color: T.success, run: restoreFleetCustomer),
+    if ((r['trips'] ?? 0) == 0)
+      const ResourceAction(icon: Icons.delete_forever_outlined, ar: 'حذف نهائي', en: 'Delete permanently', color: T.danger, run: removeFleetCustomer),
   ],
 );
 
@@ -282,6 +324,8 @@ final contractsVendorsCfg = ResourceConfig(
 // شحناتُه معنا وقيمتُها — تُقرأ من كشوف التشغيل ولا تُكتب هنا.
 final contractsCustomersCfg = ResourceConfig(
   filterField: 'status',
+  // «إضافة» تفتح الإضافةَ اليدويّة واقتراحاتِ من يشحن معنا بلا سجلّ — كزرَّي الويب.
+  onCreate: openContractsCustomerCreate,
   arTitle: 'العملاء', enTitle: 'Customers', icon: Icons.handshake_outlined,
   endpoint: '/api/contracts/customers', listKey: 'customers',
   updateMethod: 'PATCH', liveEvent: 'contracts:updated',
@@ -337,6 +381,11 @@ final contractsAgreementsCfg = ResourceConfig(
   searchFields: const ['partyName', 'contactPerson', 'phone', 'subject'],
   titleOf: (r) => _s(r, 'partyName'),
   subtitleOf: (r) => _s(r, 'subject'),
+  // مرفقاتُ العقد (رفعٌ وحذفٌ وفتح) — نافذةُ المرفقات في الويب.
+  rowActions: (r) => [
+    ResourceAction(icon: Icons.attach_file_rounded, ar: 'المرفقات (${(r['attachments'] as List? ?? const []).length})',
+        en: 'Attachments (${(r['attachments'] as List? ?? const []).length})', color: T.cyan, run: openAgreementFiles),
+  ],
   chipsOf: (r) => [
     switch (_s(r, 'department')) {
       '3pl' => ('موردو 3PL', T.cyan),
@@ -379,6 +428,8 @@ final contractsAgreementsCfg = ResourceConfig(
 );
 
 // ── إدارة العلاقات (CRM) ─────────────────────────────────────────────────────
+String _crmCustomerLabel(Map<String, dynamic> r) => _s(r, 'companyName');
+
 final crmCompaniesCfg = ResourceConfig(
   onOpen: (c, r) => Navigator.push(c, MaterialPageRoute(builder: (_) => CrmCompanyProfileScreen(companyId: (r['_id'] ?? '').toString(), name: (r['name'] ?? '').toString()))),
   arTitle: 'الشركات', enTitle: 'Companies', icon: Icons.apartment_outlined,
@@ -390,9 +441,21 @@ final crmCompaniesCfg = ResourceConfig(
     if (_s(r, 'status').isNotEmpty) (_s(r, 'status'), T.cyan),
     if (r['rating'] != null && r['rating'] != 0) ('★ ${r['rating']}', T.warn),
   ],
+  // التقييمُ بالنجوم من القائمة نفسِها (PATCH /rate) — كعمود النجوم في جدول الويب.
+  rowActions: (r) => [
+    const ResourceAction(icon: Icons.star_outline_rounded, ar: 'التقييم', en: 'Rate', color: T.warn, run: crmRateCompany),
+  ],
   fields: const [
     FieldSpec('name', 'اسم الشركة', 'Company name', required: true),
     FieldSpec('arabicName', 'الاسم العربي', 'Arabic name'),
+    FieldSpec('status', 'الحالة', 'Status', type: FieldType.select, options: [
+      ('lead', 'عميل محتمل', 'Lead'), ('prospect', 'مهتم', 'Prospect'), ('active', 'نشط', 'Active'),
+      ('inactive', 'غير نشط', 'Inactive'), ('churned', 'منسحب', 'Churned'),
+    ]),
+    // الربطُ بعميلٍ في سجلّ العملاء (الهجين) — /api/crm/customers-search كما في الويب.
+    FieldSpec('linkedCustomer', 'العميل المرتبط (سجل العملاء)', 'Linked customer (registry)',
+        type: FieldType.lookup, lookupEndpoint: '/api/crm/customers-search', lookupListKey: 'customers',
+        lookupQuery: '', lookupServerSearch: true, lookupLabel: _crmCustomerLabel),
     FieldSpec('industry', 'المجال', 'Industry'),
     FieldSpec('phone', 'رقم الهاتف', 'Phone', type: FieldType.phone),
     FieldSpec('whatsapp', 'واتساب', 'WhatsApp', type: FieldType.phone),
@@ -594,18 +657,19 @@ final crmDealsCfg = ResourceConfig(
   titleOf: (r) => _s(r, 'title'),
   subtitleOf: (r) => [_s(r, 'source')].where((x) => x.isNotEmpty).join(' · '),
   chipsOf: (r) => [
-    (_s(r, 'stage'), T.cyan),
+    (crmDealStages.where((x) => x.$1 == _s(r, 'stage')).map((x) => tr(x.$2, x.$3)).firstOrNull ?? _s(r, 'stage'),
+        crmDealStageColors[_s(r, 'stage')] ?? T.cyan),
     if (r['value'] != null) ('${r['value']} ${_s(r, 'currency')}', T.success),
     if (r['probability'] != null) ('${r['probability']}%', T.inkSoft),
+  ],
+  // نقلُ المرحلة — نظيرُ سحب البطاقة بين أعمدة اللوحة (PATCH /deals/:id/move).
+  rowActions: (r) => [
+    const ResourceAction(icon: Icons.swap_horiz_rounded, ar: 'نقل المرحلة', en: 'Move stage', color: T.info, run: crmMoveDeal),
   ],
   fields: [
     const FieldSpec('title', 'عنوان الصفقة', 'Title', required: true),
     _crmCompanyLookup(),
-    const FieldSpec('stage', 'المرحلة', 'Stage', type: FieldType.select, options: [
-      ('lead', 'عميل محتمل', 'Lead'), ('qualified', 'مؤهلة', 'Qualified'),
-      ('proposal', 'عرض مقدم', 'Proposal'), ('negotiation', 'تفاوض', 'Negotiation'),
-      ('won', 'مكسوبة', 'Won'), ('lost', 'خاسرة', 'Lost'),
-    ]),
+    const FieldSpec('stage', 'المرحلة', 'Stage', type: FieldType.select, options: crmDealStages),
     const FieldSpec('value', 'القيمة', 'Value', type: FieldType.number),
     const FieldSpec('probability', 'الاحتمالية %', 'Probability %', type: FieldType.number),
     const FieldSpec('expectedCloseDate', 'تاريخ الإغلاق المتوقع', 'Expected close', type: FieldType.date),
@@ -623,9 +687,10 @@ final crmTasksCfg = ResourceConfig(
   subtitleOf: (r) => _s(r, 'description'),
   chipsOf: (r) => [
     switch (_s(r, 'status')) {
-      'done' => ('منجزة', T.success),
-      'in_progress' => ('قيد التنفيذ', T.info),
-      _ => ('مفتوحة', T.warn),
+      'done' => (tr('مكتملة', 'Done'), T.success),
+      'in_progress' => (tr('قيد التنفيذ', 'In Progress'), T.info),
+      'cancelled' => (tr('ملغاة', 'Cancelled'), T.inkFaint),
+      _ => (tr('للتنفيذ', 'To Do'), T.warn),
     },
     if (_s(r, 'dueDate').isNotEmpty) (_s(r, 'dueDate').split('T').first, T.inkSoft),
   ],
@@ -634,10 +699,11 @@ final crmTasksCfg = ResourceConfig(
     _crmCompanyLookup(),
     const FieldSpec('description', 'التفاصيل', 'Details', type: FieldType.textarea),
     const FieldSpec('status', 'الحالة', 'Status', type: FieldType.select, options: [
-      ('open', 'مفتوحة', 'Open'), ('in_progress', 'قيد التنفيذ', 'In progress'), ('done', 'منجزة', 'Done'),
+      ('todo', 'للتنفيذ', 'To Do'), ('in_progress', 'قيد التنفيذ', 'In progress'),
+      ('done', 'مكتملة', 'Done'), ('cancelled', 'ملغاة', 'Cancelled'),
     ]),
     const FieldSpec('priority', 'الأولوية', 'Priority', type: FieldType.select, options: [
-      ('high', 'مرتفعة', 'High'), ('medium', 'متوسطة', 'Medium'), ('low', 'منخفضة', 'Low'),
+      ('low', 'منخفضة', 'Low'), ('medium', 'متوسطة', 'Medium'), ('high', 'عالية', 'High'), ('urgent', 'عاجلة', 'Urgent'),
     ]),
     const FieldSpec('dueDate', 'تاريخ الاستحقاق', 'Due date', type: FieldType.date),
   ],
@@ -814,6 +880,8 @@ final customsCfg = ResourceConfig(
   onOpen: (c, r) => Navigator.push(c, MaterialPageRoute(builder: (_) => CustomsDetailScreen(clearanceId: (r['_id'] ?? '').toString(), ref: (r['refNumber'] ?? '').toString()))),
   arTitle: 'التخليص الجمركي', enTitle: 'Customs Clearance', icon: Icons.directions_boat_outlined,
   endpoint: '/api/customs-clearance', listKey: 'clearances', liveEvent: 'customs:updated',
+  // الإنشاءُ والحذفُ من شاشةٍ أخرى يظهران هنا في الحال — كالموقع.
+  extraLiveEvents: const ['customs:created', 'customs:deleted'],
   // القائمةُ تحمل ما يُعرَض فقط، والنموذجُ يعدّل حقولًا ليست فيها (قيمةُ الفاتورة،
   // تاريخُ البيان، الملاحظة) — فتُقرأ المعاملةُ كاملةً قبل التعبئة.
   editFullKey: 'clearance',
@@ -1051,6 +1119,10 @@ ResourceConfig customersRegisterCfg({required bool canEdit, required bool canDel
   // الملاحظةُ لا عمودَ لها في السجلّ فلا تُنقَل فيه — وتُقرأ من ملفّ العميل قبل التعديل.
   editFullKey: 'customer',
   listKey: 'customers', liveEvent: 'shipmentOrders:customers',
+  // حسابُ البوابة من السطر — كزرّ المفتاح في سجلّ العملاء على الويب (الأبوابُ الثلاثة).
+  rowActions: (r) => const [
+    ResourceAction(icon: Icons.key_outlined, ar: 'حساب البوابة', en: 'Portal login', color: T.orange, run: openCustomerPortalLogin),
+  ],
   searchFields: const ['name', 'phone', 'email', 'branch'],
   sortFields: const [('sheets', 'الكشوف', 'Sheets'), ('routesCount', 'المسارات', 'Routes')],
   titleOf: (r) => _s(r, 'name'),
@@ -1299,6 +1371,16 @@ ResourceConfig _collectionsPartyCfg({required bool customer}) => ResourceConfig(
       sortFields: const [
         ('outstanding', 'المستحق', 'Outstanding'),
         ('reports', 'عدد الكشوف', 'Reports'),
+      ],
+      // ── الصفُّ يفتح ملفَّ الطرف (والتحرير من القلم) — كاسمه في الموقع ─────
+      onOpen: (ctx, r) => Navigator.push(ctx, MaterialPageRoute(builder: (_) => CollectionsPartyScreen(id: _s(r, '_id')))),
+      // ── وإسنادُ موظّف التحصيل: لهذا الحساب، أو لحساباتٍ معًا ────────────
+      rowActions: (r) => [
+        if (collectionsCanEdit)
+          ResourceAction(
+            icon: Icons.group_add_outlined, ar: 'إسناد إلى موظف تحصيل', en: 'Assign to an officer', color: T.navy,
+            run: (ctx, r) => openCollectionsBulkAssign(ctx, kind: customer ? 'customer' : 'supplier', initial: r),
+          ),
       ],
     );
 
@@ -1597,6 +1679,7 @@ final shipmentOrdersFieldsCfg = ResourceConfig(
 
 // ── موردو العلاقات (3PL) — CRM Vendors ───────────────────────────────────────
 final crmVendorsCfg = ResourceConfig(
+  onOpen: (c, r) => Navigator.push(c, MaterialPageRoute(builder: (_) => CrmVendorDetailScreen(vendor: r))),
   arTitle: 'الموردون (3PL)', enTitle: 'CRM Vendors', icon: Icons.local_shipping_outlined,
   endpoint: '/api/crm-vendors', listKey: 'items', updateMethod: 'PUT', liveEvent: 'crm:vendor',
   searchFields: const ['name', 'energizeRep', 'representative', 'mobile', 'headOffice', 'vendorType'],
@@ -1621,6 +1704,8 @@ final crmVendorsCfg = ResourceConfig(
     FieldSpec('hasPapers', 'لديه أوراق', 'Has papers', type: FieldType.checkbox),
     FieldSpec('vendorSideSigned', 'وقّع المورد', 'Vendor signed', type: FieldType.checkbox),
     FieldSpec('ourSideSigned', 'وقّعنا', 'We signed', type: FieldType.checkbox),
+    FieldSpec('isNewVendor', 'مورد جديد', 'New vendor', type: FieldType.checkbox),
+    FieldSpec('contractDate', 'تاريخ العقد', 'Contract date'),
     FieldSpec('notes', 'ملاحظات', 'Notes', type: FieldType.textarea),
   ],
 );
@@ -1667,22 +1752,37 @@ final hrContractsCfg = ResourceConfig(
 final hrStockCfg = ResourceConfig(
   arTitle: 'مخزون الموارد البشرية', enTitle: 'HR Stock', icon: Icons.inventory_2_outlined,
   endpoint: '/api/hr/stock', listKey: 'items', liveEvent: 'hr:asset',
-  searchFields: const ['name', 'type', 'brand', 'model', 'serialNumber', 'location'],
+  searchFields: const ['name', 'type', 'brand', 'model', 'serialNumber', 'specs', 'location'],
   titleOf: (r) => _s(r, 'name'),
-  subtitleOf: (r) => [_s(r, 'brand'), _s(r, 'model'), _s(r, 'serialNumber')].where((x) => x.isNotEmpty).join(' · '),
+  subtitleOf: (r) => [HrAssetVocab.typeLabel(r['type']), _s(r, 'brand'), _s(r, 'model'), _s(r, 'serialNumber'), _s(r, 'location')].where((x) => x.isNotEmpty && x != 'null').join(' · '),
   chipsOf: (r) => [
-    if (r['quantity'] != null) ('الكمية: ${r['quantity']}', T.navy),
-    if (_s(r, 'condition').isNotEmpty) (_s(r, 'condition'), T.cyan),
-    if (_s(r, 'status') == 'in_stock') ('متوفر', T.success),
+    ('الكمية: ${(r['quantity'] is num && r['quantity'] > 0) ? r['quantity'] : 1}', T.navy),
+    if (_s(r, 'condition').isNotEmpty) (HrAssetVocab.conditionLabel(r['condition']), _s(r, 'condition') == 'damaged' ? T.danger : T.cyan),
+  ],
+  // التالفُ شريحةٌ تُفتَح كبطاقة «التالف» في الموقع.
+  filterField: 'condition',
+  // «تسليم لموظف» — POST /api/hr/stock/:id/assign كالموقع (يُختار الموظّف والتاريخ والحالة).
+  rowActions: (r) => [
+    ResourceAction(icon: Icons.person_add_alt_outlined, ar: 'تسليم لموظف', en: 'Assign to employee', color: T.orange,
+        run: (c, row) => hrStockAssign(c, row)),
   ],
   fields: const [
     FieldSpec('name', 'اسم الصنف', 'Name', required: true),
-    FieldSpec('type', 'النوع', 'Type'),
+    FieldSpec('type', 'النوع', 'Type', type: FieldType.select, options: [
+      ('laptop', 'حاسب محمول', 'Laptop'), ('desktop', 'حاسب مكتبي', 'Desktop'), ('phone', 'هاتف', 'Phone'),
+      ('tablet', 'جهاز لوحي', 'Tablet'), ('sim', 'شريحة اتصال', 'SIM Card'), ('monitor', 'شاشة', 'Monitor'),
+      ('keyboard', 'لوحة مفاتيح', 'Keyboard'), ('mouse', 'فأرة', 'Mouse'), ('headset', 'سماعة رأس', 'Headset'),
+      ('printer', 'طابعة', 'Printer'), ('router', 'موجّه شبكة', 'Router'), ('charger', 'شاحن', 'Charger'),
+      ('cable', 'كبل', 'Cable'), ('laptop_bag', 'حقيبة حاسب', 'Laptop Bag'), ('accessory', 'ملحق', 'Accessory'),
+      ('access_card', 'بطاقة دخول', 'Access Card'), ('vehicle', 'مركبة', 'Vehicle'), ('tool', 'أداة', 'Tool'), ('other', 'أخرى', 'Other'),
+    ]),
+    FieldSpec('serialNumber', 'السيريال', 'Serial'),
+    FieldSpec('condition', 'الحالة', 'Condition', type: FieldType.select, options: [
+      ('new', 'جديد', 'New'), ('good', 'جيد', 'Good'), ('fair', 'مقبول', 'Fair'), ('damaged', 'تالف', 'Damaged'),
+    ]),
     FieldSpec('brand', 'الماركة', 'Brand'),
     FieldSpec('model', 'الموديل', 'Model'),
-    FieldSpec('serialNumber', 'السيريال', 'Serial'),
     FieldSpec('quantity', 'الكمية', 'Quantity', type: FieldType.number),
-    FieldSpec('condition', 'الحالة', 'Condition'),
     FieldSpec('location', 'المكان', 'Location'),
     FieldSpec('value', 'القيمة', 'Value', type: FieldType.number),
     FieldSpec('notes', 'ملاحظات', 'Notes', type: FieldType.textarea),
@@ -1773,8 +1873,7 @@ bool _hasContractPricing(Map<String, dynamic> r) {
 }
 
 // ── عقودُ التخليص ────────────────────────────────────────────────────────────
-// عقدُنا مع عميلٍ أو وكيلٍ أو ناقل. ومرفقُ العقد يُرفع من الموقع — الهاتفُ
-// يقرأ العقدَ ويُنشئه ويعدّله، والورقةُ تُرفَع حيث تُمسح.
+// عقدُنا مع عميلٍ أو وكيلٍ أو ناقل — يُقرأ ويُنشأ ويُعدَّل، ومرفقُه يُرفع من صفّه.
 final customsContractsCfg = ResourceConfig(
   arTitle: 'عقود التخليص', enTitle: 'Customs Contracts', icon: Icons.assignment_outlined,
   endpoint: '/api/customs-clearance/contracts', listKey: 'contracts',
@@ -1801,6 +1900,11 @@ final customsContractsCfg = ResourceConfig(
   // أسعارُ العميل (أجورُ التخليص ووجهاتُ النقل) مصفوفةٌ متداخلة لا يكتبها النموذجُ
   // العامّ — فلها ورقتُها، ولعقد العميل وحدَه.
   rowActions: (r) => [
+    // مرفقُ العقد (الموقَّعُ نفسُه) يُرفع ويُفتح ويُحذف من صفّه — كالموقع.
+    ResourceAction(
+      icon: Icons.attach_file_rounded, ar: 'مرفقات العقد', en: 'Contract files', color: T.cyan,
+      run: (c, row) => manageCustomsContractFiles(c, row),
+    ),
     if (_s(r, 'partyKind') == 'customer')
       const ResourceAction(
         icon: Icons.price_change_outlined, ar: 'أسعار التعاقد مع العميل', en: 'Customer contract prices', color: T.navy,
@@ -1822,6 +1926,7 @@ final customsContractsCfg = ResourceConfig(
       ('per_month', 'شهريًّا', 'Per month'), ('per_shipment', 'للشحنة', 'Per shipment'),
     ]),
     FieldSpec('paymentTermDays', 'مهلة السداد (يوم)', 'Payment terms (days)', type: FieldType.number),
+    FieldSpec('autoRenew', 'تجديد تلقائي', 'Auto-renews', type: FieldType.checkbox),
     FieldSpec('status', 'الحالة', 'State', type: FieldType.select, options: [
       ('active', 'ساري', 'Active'), ('draft', 'مسودّة', 'Draft'),
       ('expired', 'منتهٍ', 'Expired'), ('terminated', 'مفسوخ', 'Terminated'),

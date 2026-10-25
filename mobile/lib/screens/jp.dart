@@ -6,7 +6,6 @@ import '../config.dart';
 import '../services/api.dart';
 import '../services/lang.dart';
 import '../services/live.dart';
-import '../ui/api_picker.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/file_upload.dart';
 import '../ui/theme.dart';
@@ -366,20 +365,90 @@ class _JpScreenState extends State<JpScreen> {
         : Api.instance.post('/api/jp/projects/${project!['_id']}/hand-down', {'assignedTo': who}));
   }
 
-  Future<void> _newProject() async {
-    final name = TextEditingController();
-    final ok = await showDialog<bool>(context: context, builder: (c) => AlertDialog(
-      title: Text(tr('مشروع جديد', 'New project')),
-      content: TextField(controller: name, autofocus: true, decoration: InputDecoration(hintText: tr('مثال: حملة رمضان', 'e.g. Ramadan campaign'))),
+  /// مشروعٌ جديد أو تعديلُ قائم — الاسم والوصف وتاريخ الانتهاء، كالموقع.
+  Future<void> _projectForm([Map<String, dynamic>? p]) async {
+    final name = TextEditingController(text: (p?['name'] ?? '').toString());
+    final desc = TextEditingController(text: (p?['description'] ?? '').toString());
+    var end = (p?['endDate'] ?? '').toString();
+    if (end.length >= 10) end = end.substring(0, 10);
+    final ok = await showDialog<bool>(context: context, builder: (c) => StatefulBuilder(builder: (c, set) => AlertDialog(
+      title: Text(p == null ? tr('مشروع جديد', 'New project') : tr('تعديل المشروع', 'Edit project')),
+      content: Column(mainAxisSize: MainAxisSize.min, children: [
+        TextField(controller: name, autofocus: true, decoration: InputDecoration(labelText: tr('الاسم', 'Name'), hintText: tr('مثال: حملة رمضان', 'e.g. Ramadan campaign'))),
+        TextField(controller: desc, maxLines: 2, decoration: InputDecoration(labelText: tr('الوصف (اختياري)', 'Description (optional)'))),
+        const SizedBox(height: 8),
+        Row(children: [
+          Expanded(child: OutlinedButton.icon(
+            icon: const Icon(Icons.event, size: 16),
+            label: Text(end.isEmpty ? tr('تاريخ الانتهاء (اختياري)', 'End date (optional)') : end),
+            onPressed: () async {
+              final d = await showDatePicker(context: c, initialDate: DateTime.tryParse(end) ?? DateTime.now(), firstDate: DateTime(2020), lastDate: DateTime(2035));
+              if (d != null) set(() => end = _ymd(d));
+            },
+          )),
+          if (end.isNotEmpty) IconButton(icon: const Icon(Icons.clear, size: 18), onPressed: () => set(() => end = '')),
+        ]),
+      ]),
       actions: [
         TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('إلغاء', 'Cancel'))),
         FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(tr('حفظ', 'Save'))),
       ],
-    ));
+    )));
     if (ok != true || name.text.trim().isEmpty) return;
-    await _run(() => Api.instance.post('/api/jp/projects', {
-      'scope': widget.scope, if (widget.section != null) 'section': widget.section, 'name': name.text.trim(),
-    }));
+    final body = {'name': name.text.trim(), 'description': desc.text.trim(), 'endDate': end};
+    await _run(() => p != null
+        ? Api.instance.patch('/api/jp/projects/${p['_id']}', body)
+        : Api.instance.post('/api/jp/projects', {'scope': widget.scope, if (widget.section != null) 'section': widget.section, ...body}));
+  }
+
+  Future<void> _projectMenu(Map<String, dynamic> p) async {
+    final active = p['status'] == 'active';
+    final canHand = _management && !_canManage && _mySection.isNotEmpty;
+    final pick = await showModalBottomSheet<String>(
+      context: context, backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      builder: (c) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
+        ListTile(title: Text((p['name'] ?? '').toString(), style: const TextStyle(fontWeight: FontWeight.w800)),
+            subtitle: Text(tr('${p['done'] ?? 0} من ${p['total'] ?? 0} تمّت', '${p['done'] ?? 0} of ${p['total'] ?? 0} done'))),
+        if (_canManage) ...[
+          ListTile(leading: const Icon(Icons.edit_outlined), title: Text(tr('تعديل', 'Edit')), onTap: () => Navigator.pop(c, 'edit')),
+          ListTile(leading: Icon(active ? Icons.lock_outline : Icons.lock_open_outlined), title: Text(active ? tr('إغلاق', 'Close') : tr('إعادة فتح', 'Reopen')), onTap: () => Navigator.pop(c, 'toggle')),
+          ListTile(leading: const Icon(Icons.delete_outline, color: T.danger), title: Text(tr('حذف', 'Delete'), style: const TextStyle(color: T.danger)), onTap: () => Navigator.pop(c, 'delete')),
+        ],
+        if (canHand) ListTile(leading: const Icon(Icons.subdirectory_arrow_left, color: T.orange), title: Text(tr('إسنادُ مهامّي فيه إلى موظّف', 'Assign my tasks to staff')), onTap: () => Navigator.pop(c, 'hand')),
+      ])),
+    );
+    if (!mounted || pick == null) return;
+    switch (pick) {
+      case 'edit': await _projectForm(p);
+      case 'toggle': await _run(() => Api.instance.patch('/api/jp/projects/${p['_id']}', {'status': active ? 'closed' : 'active'}));
+      case 'hand': await _handDown(project: p);
+      case 'delete':
+        final ok = await showDialog<bool>(context: context, builder: (c) => AlertDialog(
+          title: Text(tr('حذف المشروع؟', 'Delete project?')),
+          content: Text(tr('حذفُ مشروع «${p['name']}»؟ مهامُّه تبقى بلا مشروع.', 'Delete project “${p['name']}”? Its tasks stay, without a project.')),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('إلغاء', 'Cancel'))),
+            FilledButton(style: FilledButton.styleFrom(backgroundColor: T.danger), onPressed: () => Navigator.pop(c, true), child: Text(tr('حذف', 'Delete'))),
+          ],
+        ));
+        if (ok != true) return;
+        if (_project == p['_id']) _project = '';
+        await _run(() => Api.instance.delete('/api/jp/projects/${p['_id']}'));
+    }
+  }
+
+  /// حذفُ مرفقٍ من المهمّة — لمن يعدّلها أو لمن رفعه، كالموقع.
+  Future<void> _removeFile(Map<String, dynamic> t, Map<String, dynamic> a) async {
+    final ok = await showDialog<bool>(context: context, builder: (c) => AlertDialog(
+      title: Text(tr('حذف المرفق؟', 'Remove file?')),
+      content: Text((a['fileName'] ?? '').toString()),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('إلغاء', 'Cancel'))),
+        FilledButton(style: FilledButton.styleFrom(backgroundColor: T.danger), onPressed: () => Navigator.pop(c, true), child: Text(tr('حذف', 'Delete'))),
+      ],
+    ));
+    if (ok == true) await _run(() => Api.instance.delete('/api/jp/tasks/${t['_id']}/attachments/${a['_id']}'));
   }
 
   Widget _chip(String label, bool on, VoidCallback tap, {Color color = T.navy, int? n}) => Padding(
@@ -401,7 +470,7 @@ class _JpScreenState extends State<JpScreen> {
     return AppScaffold(
       title: Text(title),
       actions: [
-        if (_canManage) IconButton(tooltip: tr('مشروع جديد', 'New project'), icon: const Icon(Icons.create_new_folder_outlined), onPressed: _newProject),
+        if (_canManage) IconButton(tooltip: tr('مشروع جديد', 'New project'), icon: const Icon(Icons.create_new_folder_outlined), onPressed: () => _projectForm()),
       ],
       floatingActionButton: _me == null ? null : FloatingActionButton.extended(
         backgroundColor: T.navy, foregroundColor: Colors.white, onPressed: () => _openForm(),
@@ -422,9 +491,13 @@ class _JpScreenState extends State<JpScreen> {
                 _chip(tr('الكلّ', 'All'), _status.isEmpty, () => _set(() => _status = ''), color: T.inkSoft),
               ])),
               if (_projects.isNotEmpty) SizedBox(height: 46, child: ListView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.fromLTRB(14, 6, 14, 2), children: [
-                for (final p in _projects) GestureDetector(
-                  onLongPress: (_management && !_canManage && _mySection.isNotEmpty) ? () => _handDown(project: p) : null,
-                  child: _chip('${p['name']} · ${p['done'] ?? 0}/${p['total'] ?? 0}', _project == p['_id'], () => _set(() => _project = _project == p['_id'] ? '' : p['_id'].toString()), color: T.orange),
+                // ضغطةٌ تفتح المشروع، وضغطةٌ مطوّلة تعديلُه وإغلاقُه وحذفُه (أو إسنادُه).
+                for (final p in _projects) Opacity(
+                  opacity: p['status'] == 'closed' ? 0.55 : 1,
+                  child: GestureDetector(
+                    onLongPress: (_canManage || (_management && _mySection.isNotEmpty)) ? () => _projectMenu(p) : null,
+                    child: _chip('${p['name']} · ${p['done'] ?? 0}/${p['total'] ?? 0}', _project == p['_id'], () => _set(() => _project = _project == p['_id'] ? '' : p['_id'].toString()), color: T.orange),
+                  ),
                 ),
               ])),
               Expanded(child: _loading
@@ -516,10 +589,14 @@ class _JpScreenState extends State<JpScreen> {
             style: const TextStyle(fontSize: 12, color: T.inkSoft))),
           if (done && (t['doneNote'] ?? '').toString().isNotEmpty) Padding(padding: const EdgeInsets.only(top: 6), child: Text(t['doneNote'].toString(), style: const TextStyle(fontSize: 12.5, color: T.success))),
           if (files.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 6), child: Wrap(spacing: 6, runSpacing: 6, children: [
-            for (final a in files) InkWell(
-              onTap: () => launchUrl(Uri.parse('${AppConfig.apiBase}${a['fileUrl']}'), mode: LaunchMode.externalApplication),
-              child: Chip2((a['fileName'] ?? tr('ملف', 'File')).toString(), a['phase'] == 'done' ? T.success : T.inkSoft, icon: Icons.attach_file),
-            ),
+            for (final a in files) Row(mainAxisSize: MainAxisSize.min, children: [
+              InkWell(
+                onTap: () => launchUrl(Uri.parse('${AppConfig.apiBase}${a['fileUrl']}'), mode: LaunchMode.externalApplication),
+                child: Chip2((a['fileName'] ?? tr('ملف', 'File')).toString(), a['phase'] == 'done' ? T.success : T.inkSoft, icon: Icons.attach_file),
+              ),
+              if (can['edit'] == true || _id(a['uploadedBy']) == (_me?['me'] ?? '').toString())
+                InkWell(onTap: () => _removeFile(t, a), child: const Padding(padding: EdgeInsets.all(3), child: Icon(Icons.close, size: 15, color: T.inkFaint))),
+            ]),
           ])),
           Row(mainAxisAlignment: MainAxisAlignment.end, children: [
             if (can['comment'] == true || List.from(t['comments'] ?? []).isNotEmpty) TextButton.icon(
@@ -599,9 +676,12 @@ class _JpFormState extends State<_JpForm> {
 
   Future<void> _addLink(String kind) async {
     final k = _linkKinds[kind]!;
-    final picked = await pickFromApi(context,
-        endpoint: '/api/jp/link-options?scope=section&section=${Uri.encodeQueryComponent(widget.section ?? '')}&kind=$kind',
-        listKey: 'options', label: (r) => (r['label'] ?? '').toString(), title: tr(k.$1, k.$2));
+    // البحثُ عند الخادم (q) كالموقع — المعاملاتُ بالآلاف، وأحدثُ ٢٠٠ لا تكفي.
+    final picked = await showModalBottomSheet<Map<String, dynamic>>(
+      context: context, isScrollControlled: true, backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      builder: (_) => _LinkSearch(section: widget.section ?? '', kind: kind, title: tr(k.$1, k.$2)),
+    );
     if (picked == null || !mounted) return;
     final ref = (picked['value'] ?? '').toString();
     if (ref.isEmpty || _links.any((l) => l['kind'] == kind && l['ref'] == ref)) return;
@@ -787,6 +867,9 @@ class _JpDashScreenState extends State<JpDashScreen> {
   Map<String, dynamic>? _d;
   String? _error;
   String _assignee = '';
+  // فلاترُ اللوحة كالموقع: المدى والمشروع والنوع وطريقة التواصل — كلُّها على الخادم.
+  String _from = '', _to = '', _project = '', _kind = '', _action = '';
+  int _seq = 0;
   // اليوميّة (٢٠٢٦/١٠/٢٢): مَن عمل على ماذا في يومٍ بعينه وكم أخذ.
   Map<String, dynamic>? _daily;
   String _day = '';
@@ -798,11 +881,75 @@ class _JpDashScreenState extends State<JpDashScreen> {
   void dispose() { Live.instance.off('jp:changed', _onLive); super.dispose(); }
 
   Future<void> _load() async {
+    final mine = ++_seq;
     try {
-      final d = Map<String, dynamic>.from(await Api.instance.get('/api/jp/dashboard?${_qs(widget.scope, widget.section)}${_assignee.isEmpty ? '' : '&assignee=$_assignee'}'));
-      if (mounted) setState(() { _d = d; _error = null; });
-    } catch (e) { if (mounted) setState(() => _error = e.toString()); }
+      final f = [
+        if (_assignee.isNotEmpty) 'assignee=$_assignee',
+        if (_from.isNotEmpty) 'from=$_from',
+        if (_to.isNotEmpty) 'to=$_to',
+        if (_project.isNotEmpty) 'project=$_project',
+        if (_kind.isNotEmpty) 'kind=$_kind',
+        if (_action.isNotEmpty) 'action=$_action',
+      ].map((x) => '&$x').join();
+      final d = Map<String, dynamic>.from(await Api.instance.get('/api/jp/dashboard?${_qs(widget.scope, widget.section)}$f'));
+      if (mounted && mine == _seq) setState(() { _d = d; _error = null; });
+    } catch (e) { if (mounted && mine == _seq) setState(() => _error = e.toString()); }
     _loadDaily();
+  }
+
+  Future<void> _pickRange() async {
+    final now = DateTime.now();
+    final r = await showDateRangePicker(
+      context: context, firstDate: DateTime(2024), lastDate: DateTime(now.year + 1, 12, 31),
+      initialDateRange: _from.isEmpty || _to.isEmpty ? null : DateTimeRange(start: DateTime.parse(_from), end: DateTime.parse(_to)),
+    );
+    if (r == null) return;
+    setState(() { _from = _ymd(r.start); _to = _ymd(r.end); });
+    _load();
+  }
+
+  Widget _filters(Map<String, dynamic> d, bool management) {
+    final projects = List<Map<String, dynamic>>.from(d['projectOptions'] ?? const []);
+    final active = [_from, _to, _project, _kind, _action, _assignee].any((x) => x.isNotEmpty);
+    Widget drop(String label, String value, List<(String, String)> items, void Function(String) on) => DropdownButtonFormField<String>(
+      initialValue: items.any((x) => x.$1 == value) ? value : '', isExpanded: true,
+      decoration: InputDecoration(isDense: true, labelText: label, border: const OutlineInputBorder()),
+      items: [for (final x in items) DropdownMenuItem(value: x.$1, child: Text(x.$2, overflow: TextOverflow.ellipsis))],
+      onChanged: (v) { setState(() => on(v ?? '')); _load(); },
+    );
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Row(children: [
+        Expanded(child: OutlinedButton.icon(
+          icon: const Icon(Icons.date_range, size: 18),
+          label: Text(_from.isEmpty ? tr('كلُّ الفترات', 'Any period') : '$_from → $_to', overflow: TextOverflow.ellipsis),
+          onPressed: _pickRange,
+        )),
+        if (active) TextButton.icon(
+          icon: const Icon(Icons.close, size: 16), label: Text(tr('إزالة الفلاتر', 'Clear')),
+          onPressed: () { setState(() { _from = _to = _project = _kind = _action = _assignee = ''; }); _load(); },
+        ),
+      ]),
+      const SizedBox(height: 8),
+      Row(children: [
+        if (projects.isNotEmpty) ...[
+          Expanded(child: drop(tr('المشروع', 'Project'), _project, [
+            ('', tr('كلُّ المشروعات', 'All projects')),
+            for (final p in projects) (p['_id'].toString(), (p['name'] ?? '').toString()),
+            ('none', tr('بلا مشروع', 'No project')),
+          ], (v) => _project = v)),
+          const SizedBox(width: 8),
+        ],
+        Expanded(child: drop(tr('النوع', 'Kind'), _kind, [
+          ('', tr('مهامّ وطلبات', 'Tasks and requests')), ('task', tr('مهامّ فقط', 'Tasks only')), ('request', tr('طلبات فقط', 'Requests only')),
+        ], (v) => _kind = v)),
+      ]),
+      const SizedBox(height: 8),
+      drop(tr('طريقة التواصل', 'Contact method'), _action, [
+        ('', tr('كلُّ طرق التواصل', 'Any contact method')),
+        for (final e in _actions.entries) (e.key, tr(e.value.$1, e.value.$2)),
+        ('none', tr('بلا تواصل', 'No contact')),
+      ], (v) => _action = v),
+    ]);
   }
 
   Future<void> _loadDaily() async {
@@ -896,6 +1043,8 @@ class _JpDashScreenState extends State<JpDashScreen> {
                       ],
                       onChanged: (v) { setState(() => _assignee = v ?? ''); _load(); },
                     ),
+                    const SizedBox(height: 8),
+                    _filters(d, management),
                     const SizedBox(height: 10),
                     GridView.count(
                       crossAxisCount: 3, shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
@@ -993,14 +1142,33 @@ class _JpTaskPanelState extends State<JpTaskPanel> {
     } catch (_) { if (mounted) setState(() => _hidden = true); }
   }
 
-  void _add() {
+  /// اسمُ ما فُتحت منه اللوحة — المعاملةُ أو طرفُ التخليص يُقرأ ليُعرَض في
+  /// النموذج كما في الموقع؛ والخادمُ يلتقط الاسمَ عند الحفظ على كلّ حال.
+  String _label = '';
+  Future<void> _lookupLabel() async {
+    if (_label.isNotEmpty) return;
+    try {
+      if (widget.kind == 'clearance') {
+        final r = await Api.instance.get('/api/customs-clearance/${widget.refId}');
+        final c = Map<String, dynamic>.from(r['clearance'] ?? {});
+        _label = [c['blNumber'] ?? c['refNumber'], c['customerName']].where((x) => x != null && '$x'.isNotEmpty).join(' · ');
+      } else if (const ['customer', 'agent', 'carrier'].contains(widget.kind)) {
+        final r = await Api.instance.get('/api/customs-clearance/parties/${widget.refId}');
+        _label = (r['party']?['name'] ?? '').toString();
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _add() async {
+    await _lookupLabel();
+    if (!mounted) return;
     final me = Map<String, dynamic>.from(_me!);
     showModalBottomSheet(
       context: context, isScrollControlled: true, backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
       builder: (c) => _JpForm(
         scope: 'section', section: widget.section, me: me, projects: const [], task: null, presetProject: '',
-        presetLinks: [{'kind': widget.kind, 'ref': widget.refId, 'label': tr('هذا', 'this')}], onDone: _load,
+        presetLinks: [{'kind': widget.kind, 'ref': widget.refId, 'label': _label.isEmpty ? tr('هذا', 'this') : _label}], onDone: _load,
       ),
     );
   }
@@ -1047,6 +1215,73 @@ class _JpTaskPanelState extends State<JpTaskPanel> {
             );
           }(),
       ]),
+    );
+  }
+}
+
+/// بحثُ ما تُربَط به المهمّة عند الخادم (/api/jp/link-options&q=) — نظيرُ
+/// LinkPicker في الموقع: يُكتب رقمُ البوليصة أو اسمُ العميل فيُبحث في السجلّ كلّه.
+class _LinkSearch extends StatefulWidget {
+  const _LinkSearch({required this.section, required this.kind, required this.title});
+  final String section, kind, title;
+  @override
+  State<_LinkSearch> createState() => _LinkSearchState();
+}
+
+class _LinkSearchState extends State<_LinkSearch> {
+  List<Map<String, dynamic>> _rows = const [];
+  bool _loading = true;
+  String? _error;
+  Timer? _debounce;
+  int _seq = 0;
+
+  @override
+  void initState() { super.initState(); _load(''); }
+  @override
+  void dispose() { _debounce?.cancel(); super.dispose(); }
+
+  Future<void> _load(String q) async {
+    final mine = ++_seq;
+    setState(() => _loading = true);
+    try {
+      final d = await Api.instance.get('/api/jp/link-options?scope=section&section=${Uri.encodeQueryComponent(widget.section)}&kind=${widget.kind}&q=${Uri.encodeQueryComponent(q.trim())}&limit=100');
+      if (!mounted || mine != _seq) return;
+      setState(() { _rows = List<Map<String, dynamic>>.from((d['options'] ?? const []).map((e) => Map<String, dynamic>.from(e))); _loading = false; _error = null; });
+    } catch (e) {
+      if (mounted && mine == _seq) setState(() { _loading = false; _error = e.toString(); });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      child: DraggableScrollableSheet(
+        expand: false, initialChildSize: 0.7, maxChildSize: 0.92,
+        builder: (c, scroll) => Column(children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 14, 14, 6),
+            child: TextField(
+              autofocus: true,
+              onChanged: (v) { _debounce?.cancel(); _debounce = Timer(const Duration(milliseconds: 300), () => _load(v)); },
+              decoration: InputDecoration(hintText: '${widget.title}…', prefixIcon: const Icon(Icons.search)),
+            ),
+          ),
+          Expanded(child: _loading
+              ? const Center(child: CircularProgressIndicator())
+              : _error != null
+                  ? ErrorRetry(message: _error!, onRetry: () => _load(''))
+                  : _rows.isEmpty
+                      ? EmptyState(icon: Icons.search_off_rounded, title: tr('لا نتائج', 'No results'))
+                      : ListView.builder(
+                          controller: scroll, padding: const EdgeInsets.fromLTRB(8, 6, 8, 20), itemCount: _rows.length,
+                          itemBuilder: (c2, i) => ListTile(
+                            title: Text((_rows[i]['label'] ?? '').toString(), style: const TextStyle(fontSize: 14)),
+                            onTap: () => Navigator.pop(c, _rows[i]),
+                          ),
+                        )),
+        ]),
+      ),
     );
   }
 }

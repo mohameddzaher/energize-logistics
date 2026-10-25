@@ -8,9 +8,12 @@ import '../ui/app_scaffold.dart';
 import '../ui/filter_sheet.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
-import 'vehicle_registry.dart' show docLabel, fmtDate, daysText, money, statusColor, statusLabel;
+import 'vehicle_registry.dart' show fmtDate, daysText, money;
 import '../services/flex_match.dart';
 import '../ui/api_picker.dart';
+import '../ui/export_sheet.dart';
+import '../ui/lookup_field.dart';
+import 'vehicle_renew.dart';
 
 /// ── شاشةُ عائلةِ مستندٍ واحدة، نظيرُ صفحات المستندات في الموقع ─────────────
 ///
@@ -108,6 +111,20 @@ class DocFamily {
   /// مركبةٍ برقمها، ورقمٌ واحدٌ على مئةٍ منها يجعل المئةَ نسخةً من ورقةٍ واحدة.
   /// نسخةٌ من `sharedNumber` في الخادم، والخادمُ يرفض المخالف.
   final bool sharedPaper;
+
+  /// اسمُ ملفّ التصدير — نفسُ fileName في صفحة الموقع.
+  final String fileName;
+
+  /// صفحةٌ لها فعلُها الخاصّ لا تعرض «مسح البيانات» (التفاويض: إلغاءُ التفويض
+  /// فعلٌ له طرفان، والمسحُ يمسّ الأوّل ويترك الثاني).
+  final bool hideClear;
+
+  /// زرّا «تفويض / إلغاء التفويض» على الصفّ — صفحةُ التفاويض وحدَها.
+  final bool authActions;
+
+  /// اسمُ المستند في الشريحة — «التأمين منتهٍ» لا «منتهٍ».
+  String get docLabelAr => docKey == null ? arTitle : renewDocLabelAr(docKey!);
+  String get docLabelEn => docKey == null ? enTitle : renewDocLabelEn(docKey!);
   const DocFamily({
     required this.docKey,
     required this.arTitle,
@@ -119,6 +136,9 @@ class DocFamily {
     this.editable = const [],
     this.sharedPaper = false,
     this.keyField,
+    this.fileName = 'vehicle-documents',
+    this.hideClear = false,
+    this.authActions = false,
   });
 }
 
@@ -131,10 +151,10 @@ class DocFamily {
 /// توأمُ `components/vehicles/ReqToggle` على الموقع، ويكتب الحقلَ نفسَه
 /// (`<root>.statusCode`) — فما يُعلَّم من التطبيق يُقرأ في الموقع وفي النظرة
 /// الشاملة، ولا نسخةَ ثانية من الحقيقة.
-class _ReqToggle extends StatelessWidget {
+class ReqToggle extends StatelessWidget {
   final String label, code;
   final ValueChanged<String> onChanged;
-  const _ReqToggle({required this.label, required this.code, required this.onChanged});
+  const ReqToggle({super.key, required this.label, required this.code, required this.onChanged});
 
   /// أوضاعٌ مسجَّلةٌ تعني «غير مطلوب» — كما يقرؤها الخادم.
   static bool _off(String c) => c == 'not_required' || c == 'not_in_use';
@@ -259,6 +279,16 @@ bool _hasDoc(Map v, List<DocEditField> fields, [String? keyField]) {
   });
 }
 
+/// كلُّ قيم الصفّ النصّيّة والرقميّة حتى عمق ٣ — كـ deepValues في الموقع.
+List<String> _deepValues(dynamic o, [int depth = 0]) {
+  if (o == null || depth > 3) return const [];
+  if (o is List) return o.expand((x) => _deepValues(x, depth + 1)).toList();
+  if (o is Map) {
+    return o.entries.where((e) => e.key != '_id' && e.key != '__v').expand((e) => _deepValues(e.value, depth + 1)).toList();
+  }
+  return (o is String || o is num) ? ['$o'] : const [];
+}
+
 /// الطيُّ الموحَّد — راجع services/flex_match.
 String _fold(String s) => flexFold(s);
 
@@ -270,9 +300,49 @@ Map<String, dynamic> _state(Map v, String docKey) {
   return {'status': _s(st?['status']).isEmpty ? 'none' : _s(st?['status']), 'days': st?['days']};
 }
 
+/// حالةُ المستند بمفردات صفحات العائلات في الموقع (`stateOf`): `none` ← missing،
+/// و`not_required` ← not_applicable. وجدولُ عرضِها `stateMetaOf` لا يعود فارغًا.
+String docStateKey(Map v, String docKey) {
+  final s = _s(_state(v, docKey)['status']);
+  if (s == 'none' || s.isEmpty) return 'missing';
+  if (s == 'not_required') return 'not_applicable';
+  return s;
+}
+
+const _stateMeta = {
+  'expired': ('منتهي', 'Expired', Color(0xFFDC2626)),
+  'due': ('قارب على الانتهاء', 'Due soon', Color(0xFFF59E0B)),
+  'valid': ('ساري', 'Valid', Color(0xFF16A34A)),
+  'critical': ('حرج', 'Critical', Color(0xFFEA580C)),
+  'warning': ('تحذير', 'Warning', Color(0xFFF59E0B)),
+  'upcoming': ('قريب', 'Upcoming', Color(0xFF0EA5E9)),
+  'missing': ('مطلوب — بلا تاريخ', 'Needed — no date', Color(0xFF94A3B8)),
+  'not_applicable': ('غير مطلوب', 'Not applicable', Color(0xFF64748B)),
+};
+
+/// توأمُ `stateMeta` — اسمٌ ولون، وما لا يُعرَف يُعرض رماديًّا باسمه.
+(String, Color) stateMetaOf(String? s) {
+  final m = _stateMeta[s ?? 'valid'];
+  if (m == null) return ((s ?? '—'), const Color(0xFF64748B));
+  return (tr(m.$1, m.$2), m.$3);
+}
+
+/// «مطلوبٌ منّا هذا المستند؟» كما يقرؤه الموقع (`docNeed`):
+/// have · required · not_required · unknown.
+String _docNeed(Map v, String docKey) {
+  if (docDateOf(v, docKey) != null && docDateOf(v, docKey)!.isNotEmpty) return 'have';
+  final root = docKey == 'authorization' ? 'authorizedPerson' : docKey;
+  final code = _s(_sub(v, root)['statusCode']);
+  if (ReqToggle._off(code)) return 'not_required';
+  if (code == 'required' || code == 'none' || code.isEmpty) return 'required';
+  return 'unknown';
+}
+
 class VehicleDocumentsScreen extends StatefulWidget {
   final DocFamily family;
-  const VehicleDocumentsScreen({super.key, required this.family});
+  /// بحثٌ مسبَق — ملفُّ المركبة يفتح الصفحةَ على لوحتها (`?q=` في الموقع).
+  final String? initialQuery;
+  const VehicleDocumentsScreen({super.key, required this.family, this.initialQuery});
   @override
   State<VehicleDocumentsScreen> createState() => _VehicleDocumentsScreenState();
 }
@@ -280,8 +350,14 @@ class VehicleDocumentsScreen extends StatefulWidget {
 class _VehicleDocumentsScreenState extends State<VehicleDocumentsScreen> {
   List<Map<String, dynamic>> _rows = [];
   Map<String, String> _filters = {};
-  String _q = '';
+  late String _q = widget.initialQuery ?? '';
   String _chip = '';
+  // «ينتهي خلال» — يعمل فوق الشرائح لا بدلًا منها، كالموقع.
+  String _within = '';
+  final _withinCtl = TextEditingController();
+  bool _includeExpired = true;
+  final Set<String> _picked = {};
+  int _seq = 0;
   int _total = 0;
   bool _loading = true;
   String? _error;
@@ -298,23 +374,29 @@ class _VehicleDocumentsScreenState extends State<VehicleDocumentsScreen> {
   @override
   void dispose() {
     Live.instance.off('vreg:updated', _onLive);
+    _withinCtl.dispose();
     super.dispose();
   }
 
+  // البحثُ والفلاترُ على الخادم كالموقع، وردٌّ قديمٌ لا يكتب فوق أحدث.
   Future<void> _load() async {
+    final mine = ++_seq;
     try {
       final p = <String>['limit=2000'];
+      if (_q.trim().isNotEmpty) p.add('q=${Uri.encodeQueryComponent(_q.trim())}');
       _filters.forEach((k, v) { if (v.isNotEmpty) p.add('$k=${Uri.encodeComponent(v)}'); });
       final d = await Api.instance.get('/api/vehicle-registry?${p.join('&')}');
-      if (!mounted) return;
+      if (!mounted || mine != _seq) return;
       setState(() {
         _rows = List<Map<String, dynamic>>.from(d['vehicles'] ?? []);
         _total = (d['total'] ?? 0) as int;
         _loading = false;
         _error = null;
+        // الاختيارُ الذي خرج من النتيجة لا يبقى محفوظًا في الخفاء.
+        _picked.removeWhere((id) => !_rows.any((v) => _s(v['_id']) == id));
       });
     } catch (e) {
-      if (mounted) setState(() { _loading = false; _error = e.toString(); });
+      if (mounted && mine == _seq) setState(() { _loading = false; _error = e.toString(); });
     }
   }
 
@@ -334,16 +416,18 @@ class _VehicleDocumentsScreenState extends State<VehicleDocumentsScreen> {
     // قائمةَ العمل نصفين لا يُقرآن معًا. والاسمُ يحمل اسمَ المستند — «التأمين
     // منتهٍ» لا «منتهٍ» — لأنّ «منتهٍ» وحدَها تترك السائل يسأل: منتهٍ ماذا؟
     // توأمُ هذا في components/vehicles/DocumentFamilyPage.tsx.
-    final due = ['critical', 'warning', 'upcoming'];
     return [
       const DocChip('', 'الكل', 'All', T.navy),
-      DocChip('expired', '${f.arTitle} منتهٍ', '${f.enTitle} expired', T.danger,
-          (v) => _state(v, k)['status'] == 'expired'),
-      DocChip('due', 'قارب على الانتهاء', 'Due soon', const Color(0xFFCA8A04),
-          (v) => due.contains(_state(v, k)['status'])),
-      DocChip('valid', 'ساري', 'Valid', T.success, (v) => _state(v, k)['status'] == 'valid'),
+      DocChip('expired', '${f.docLabelAr} منتهٍ', '${f.docLabelEn} expired', T.danger,
+          (v) => docStateKey(v, k) == 'expired'),
+      // ثلاثُ شرائحَ بدل واحدة: «حرج» عملُ اليوم و«تحذير» عملُ الأسبوع و«قريب»
+      // تجهيزٌ للشهر القادم — كالموقع.
+      DocChip('critical', 'حرج', 'Critical', const Color(0xFFEA580C), (v) => docStateKey(v, k) == 'critical'),
+      DocChip('warning', 'تحذير', 'Warning', const Color(0xFFF59E0B), (v) => docStateKey(v, k) == 'warning'),
+      DocChip('upcoming', 'قريب', 'Upcoming', const Color(0xFF0EA5E9), (v) => docStateKey(v, k) == 'upcoming'),
+      DocChip('valid', 'ساري', 'Valid', T.success, (v) => docStateKey(v, k) == 'valid'),
       DocChip('needed', 'مطلوب — ناقص', 'Needed — missing', T.danger,
-          (v) => ['none', 'missing', 'required'].contains(_state(v, k)['status'])),
+          (v) => _docNeed(v, k) == 'required' || docStateKey(v, k) == 'missing'),
     ];
   }
 
@@ -542,7 +626,7 @@ class _VehicleDocumentsScreenState extends State<VehicleDocumentsScreen> {
               const SizedBox(height: 12),
               // السؤالُ قبل الخانات لا بعدها: جوابُه «غير مطلوب» يجعل ما تحته
               // بلا معنى، ومن أجاب به لا يُنتظَر منه أن يملأ تاريخًا.
-              _ReqToggle(
+              ReqToggle(
                 label: tr('هل هذا المستند مطلوبٌ على هذه المركبة؟', 'Is this document required on this vehicle?'),
                 code: need,
                 onChanged: (x) => setSheet(() => need = x),
@@ -893,99 +977,174 @@ class _VehicleDocumentsScreenState extends State<VehicleDocumentsScreen> {
   Future<void> _renew(Map v) async {
     final k = widget.family.docKey;
     if (k == null) return;
-    final numberLabel = _numberLabel(k);
-    final current = numberLabel == null ? '' : _numberOf(v, k);
-    DateTime? newExpiry;
-    final number = TextEditingController();
-    final cost = TextEditingController();
-    final note = TextEditingController();
+    if (await showRenewSheet(context, renewTargetOf(v, k))) _load();
+  }
 
-    final ok = await showModalBottomSheet<bool>(
+  Future<void> _bulkRenew() async {
+    final k = widget.family.docKey;
+    if (k == null || _picked.isEmpty) return;
+    final rows = _rows.where((v) => _picked.contains(_s(v['_id']))).map((v) => renewTargetOf(v, k)).toList();
+    if (await showBulkRenewSheet(context, rows)) {
+      setState(() => _picked.clear());
+      _load();
+    }
+  }
+
+  // ── التفاويض: تفويضٌ وإلغاءٌ على الصفّ — فعلان لا خانتان تُمسحان ──────────
+  Future<void> _revokeAuth(Map v) async {
+    final who = _s(_sub(v, 'authorizedPerson')['name']);
+    final ok = await showDialog<bool>(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (c) => StatefulBuilder(
-        builder: (c, setSheet) => Padding(
-          padding: EdgeInsets.fromLTRB(18, 18, 18, MediaQuery.of(c).viewInsets.bottom + 18),
-          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(tr('تجديد ${docLabel(k)}', 'Renew ${docLabel(k)}'),
-                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
-            Text('${_s(v['plateNumber'])} · ${tr('ينتهي', 'expires')} ${fmtDate(_dateOf(v, k))}',
-                style: const TextStyle(fontSize: 12.5, color: T.inkFaint)),
-            const SizedBox(height: 14),
-            OutlinedButton.icon(
-              icon: const Icon(Icons.calendar_month_outlined, size: 18),
-              style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(48), alignment: AlignmentDirectional.centerStart),
-              label: Text('${tr('تاريخ الانتهاء الجديد', 'New expiry')}: '
-                  '${newExpiry == null ? tr('اختر', 'Pick') : newExpiry!.toIso8601String().split('T').first}'),
-              onPressed: () async {
-                final d = await showDatePicker(
-                  context: c,
-                  initialDate: DateTime.now().add(const Duration(days: 365)),
-                  // الخادم يرفض تاريخًا في الماضي، فمنعُه هنا أوضح من رسالة خطأ بعد الإرسال.
-                  firstDate: DateTime.now(),
-                  lastDate: DateTime(2040),
-                );
-                if (d != null) setSheet(() => newExpiry = d);
-              },
-            ),
-            if (numberLabel != null) ...[
-              const SizedBox(height: 10),
-              TextField(
-                controller: number,
-                textDirection: TextDirection.ltr,
-                decoration: InputDecoration(
-                  labelText: '$numberLabel — ${tr('اتركه فارغًا إن لم يتغيّر', 'blank if unchanged')}',
-                  hintText: current.isEmpty ? null : current,
-                  helperText: current.isEmpty ? null : '${tr('الحالي', 'Current')}: $current',
-                ),
-              ),
-            ],
-            const SizedBox(height: 10),
-            TextField(controller: cost, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: tr('التكلفة (ر.س)', 'Cost (SAR)'))),
-            const SizedBox(height: 10),
-            TextField(controller: note, decoration: InputDecoration(labelText: tr('ملاحظة (اختياري)', 'Note (optional)'))),
-            const SizedBox(height: 8),
-            Text(
-              tr('يُقيَّد في سجل المركبة: التاريخ السابق والجديد، والرقم السابق إن استُبدل، واسم من نفّذه.',
-                  'Recorded on the vehicle: old and new date, the old number if replaced, and who did it.'),
-              style: const TextStyle(fontSize: 11.5, color: T.inkFaint),
-            ),
-            const SizedBox(height: 14),
-            FilledButton(
-              onPressed: newExpiry == null ? null : () => Navigator.pop(c, true),
-              child: Text(tr('تأكيد التجديد', 'Confirm renewal')),
-            ),
-          ]),
-        ),
+      builder: (c) => AlertDialog(
+        title: Text(tr('إلغاء التفويض', 'Revoke authorisation')),
+        content: Text(tr(
+          'سيُلغى تفويضُ ${who.isNotEmpty ? '«$who»' : 'المفوَّض'} على المركبة ${_s(v['plateNumber'])}. المركبةُ تبقى في السجلّ كما هي — الذي يزول هو التفويضُ وحدَه، ويختفي من ملفّ الموظّف في الموارد البشريّة.',
+          'The authorisation of ${who.isNotEmpty ? '"$who"' : 'the holder'} on vehicle ${_s(v['plateNumber'])} will be revoked. The vehicle stays in the registry — only the authorisation goes, and it disappears from the employee\'s HR file.')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('رجوع', 'Back'))),
+          FilledButton(style: FilledButton.styleFrom(backgroundColor: T.danger), onPressed: () => Navigator.pop(c, true), child: Text(tr('إلغاء التفويض', 'Revoke'))),
+        ],
       ),
     );
-    if (ok != true || newExpiry == null) return;
+    if (ok != true) return;
     try {
-      await Api.instance.post('/api/vehicle-registry/${v['_id']}/renew', {
-        'document': k,
-        'newExpiry': newExpiry!.toIso8601String().split('T').first,
-        if (number.text.trim().isNotEmpty) 'documentNumber': number.text.trim(),
-        if (cost.text.trim().isNotEmpty) 'cost': num.tryParse(cost.text.trim()),
-        if (note.text.trim().isNotEmpty) 'note': note.text.trim(),
-      });
-      await _load();
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('تم التجديد', 'Renewed'))));
+      final r = await Api.instance.post('/api/vehicle-registry/${v['_id']}/authorization', {'action': 'revoke'});
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_s(r is Map ? r['message'] : null).isEmpty ? tr('أُلغي التفويض', 'Revoked') : r['message'].toString())));
+      _load();
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
     }
   }
 
+  Future<void> _assignAuth(Map v) async {
+    Map<String, dynamic>? emp;
+    final job = TextEditingController(), number = TextEditingController();
+    String start = '', end = '';
+    String err = '';
+    bool saving = false;
+    String? msg;
+    Widget dateBtn(BuildContext c, String label, String val, ValueChanged<String> on) => OutlinedButton.icon(
+          icon: const Icon(Icons.event, size: 18),
+          style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(46), alignment: AlignmentDirectional.centerStart),
+          label: Text('$label: ${val.isEmpty ? '—' : val}'),
+          onPressed: () async {
+            final d = await showDatePicker(context: c, initialDate: DateTime.tryParse(val) ?? DateTime.now(), firstDate: DateTime(2000), lastDate: DateTime(2100));
+            if (d != null) on(d.toIso8601String().split('T').first);
+          },
+        );
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (c) => StatefulBuilder(builder: (c, setS) => Padding(
+        padding: EdgeInsets.fromLTRB(18, 18, 18, MediaQuery.of(c).viewInsets.bottom + 18),
+        child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Text(tr('تفويض مركبة', 'Authorise a vehicle'), style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+          Text([_s(v['plateNumber']), _s(v['ownerNameAr'])].where((x) => x.isNotEmpty).join(' · '), style: const TextStyle(fontSize: 12.5, color: T.inkFaint)),
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            icon: const Icon(Icons.person_search_outlined, size: 18),
+            style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(48), alignment: AlignmentDirectional.centerStart),
+            label: Text('${tr('الموظّف *', 'Employee *')}: ${emp == null ? tr('اختر', 'Pick') : _s(emp!['name'])}', overflow: TextOverflow.ellipsis),
+            onPressed: () async {
+              final p = await pickFromApi(c, endpoint: '/api/vehicle-registry/people', listKey: 'people',
+                  label: (r) => ['${r['name'] ?? ''}', '${r['idNumber'] ?? ''}', '${r['jobTitleAr'] ?? ''}'].where((x) => x.isNotEmpty).join(' · '),
+                  title: tr('الموظّف', 'Employee'));
+              if (p == null) return;
+              setS(() { emp = p; if (job.text.trim().isEmpty) job.text = _s(p['jobTitleAr']); });
+            },
+          ),
+          if (emp != null)
+            Padding(padding: const EdgeInsets.only(top: 4), child: Text([_s(emp!['idNumber']), _s(emp!['phone']), _s(emp!['projectAr'])].where((x) => x.isNotEmpty).join(' · '),
+                style: const TextStyle(fontSize: 11.5, color: T.success))),
+          const SizedBox(height: 10),
+          LookupField(type: 'vehicle_job_title', controller: job, label: tr('المسمّى الوظيفي', 'Job title')),
+          const SizedBox(height: 10),
+          TextField(controller: number, textDirection: TextDirection.ltr, decoration: InputDecoration(labelText: tr('رقم التفويض', 'Authorisation number'))),
+          const SizedBox(height: 10),
+          dateBtn(c, tr('بداية التفويض', 'Start date'), start, (x) => setS(() => start = x)),
+          const SizedBox(height: 8),
+          dateBtn(c, tr('نهاية التفويض', 'End date'), end, (x) => setS(() => end = x)),
+          const SizedBox(height: 8),
+          Text(tr('يُكتب التفويضُ على المركبة، ويظهر في ملفّ الموظّف متى عُرف برقم إقامته.',
+              'The authorisation is written on the vehicle, and appears in the employee\'s file once matched by iqama number.'), style: const TextStyle(fontSize: 11, color: T.inkFaint)),
+          if (err.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 6), child: Text(err, style: const TextStyle(color: T.danger, fontSize: 12.5))),
+          const SizedBox(height: 12),
+          FilledButton.icon(
+            icon: const Icon(Icons.save_outlined),
+            label: Text(tr('تفويض', 'Authorise')),
+            onPressed: saving || emp == null ? null : () async {
+              setS(() { saving = true; err = ''; });
+              try {
+                final r = await Api.instance.post('/api/vehicle-registry/${v['_id']}/authorization', {
+                  'action': 'assign', 'name': _s(emp!['name']), 'iqamaNumber': _s(emp!['idNumber']),
+                  'jobTitleAr': job.text.trim(), 'authorizationNumber': number.text.trim(),
+                  'startDate': start, 'expiryDate': end,
+                  'employeeId': emp!['employeeId'], 'ltId': emp!['ltId'],
+                });
+                msg = _s(r is Map ? r['message'] : null);
+                if (c.mounted) Navigator.pop(c);
+              } catch (e) { setS(() { saving = false; err = e.toString(); }); }
+            },
+          ),
+        ])),
+      )),
+    );
+    if (msg != null) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg!.isEmpty ? tr('تمّ التفويض', 'Authorised') : msg!)));
+      _load();
+    }
+  }
+
+  // ── التصدير: «المعروض» بعد الفلتر والشريحة والبحث، و«الكلّ» السجلّ كلّه ─────
+  List<ExportCol> get _exportCols {
+    final f = widget.family;
+    final k = f.docKey;
+    return [
+      ExportCol('رقم اللوحة', 'Plate', (v) => v['plateNumber'] ?? ''),
+      ExportCol('رقم الهيكل', 'Chassis', (v) => v['chassisNumber'] ?? ''),
+      ExportCol('الرقم التسلسلي', 'Serial', (v) => v['serialNumber'] ?? ''),
+      ExportCol('نوع التسجيل', 'Registration type', (v) => v['registrationTypeAr'] ?? ''),
+      ExportCol('ماركة المركبة', 'Brand', (v) => v['brandAr'] ?? ''),
+      ExportCol('طراز المركبة', 'Model', (v) => v['modelAr'] ?? ''),
+      ExportCol('الموديل', 'Year', (v) => v['modelYear'] ?? ''),
+      ExportCol('اللون', 'Colour', (v) => v['colorAr'] ?? ''),
+      ExportCol('القطاع', 'Sector', (v) => v['sectorAr'] ?? ''),
+      ExportCol('الإدارة', 'Department', (v) => v['departmentAr'] ?? ''),
+      ExportCol('المدينة', 'City', (v) => v['cityAr'] ?? ''),
+      ExportCol('المالك', 'Owner', (v) => v['ownerNameAr'] ?? ''),
+      ...f.fields.where((x) => !const ['المالك', 'الإدارة'].contains(x.ar)).map((x) => ExportCol(x.ar, x.en, (v) => x.get(v))),
+      if (k != null) ...[
+        ExportCol('الحالة', 'State', (v) => stateMetaOf(docStateKey(v, k)).$1),
+        ExportCol('الأيام المتبقية', 'Days left', (v) => _state(v, k)['days'] ?? ''),
+      ],
+    ];
+  }
+
+  Future<void> _export(List<Map<String, dynamic>> shown) async {
+    final f = widget.family;
+    final scope = await showModalBottomSheet<String>(context: context, builder: (c) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
+      ListTile(leading: const Icon(Icons.filter_alt_outlined), title: Text(tr('تصدير المعروض (بعد الفلتر)', 'Export what is shown (filtered)')), subtitle: Text('${shown.length}'), onTap: () => Navigator.pop(c, 'shown')),
+      ListTile(leading: const Icon(Icons.select_all), title: Text(tr('تصدير الكلّ', 'Export everything')), subtitle: Text(tr('السجلّ كلُّه', 'whole register')), onTap: () => Navigator.pop(c, 'all')),
+    ])));
+    if (scope == null || !mounted) return;
+    var rows = shown;
+    if (scope == 'all') {
+      try {
+        rows = List<Map<String, dynamic>>.from((await Api.instance.get('/api/vehicle-registry?limit=2000'))['vehicles'] ?? []);
+      } catch (e) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+        return;
+      }
+    }
+    if (!mounted) return;
+    final title = tr(f.arTitle, f.enTitle);
+    await exportExcel(context, fileName: f.fileName, sheets: [(title.length > 28 ? title.substring(0, 28) : title, _exportCols, rows)]);
+  }
+
   // اسمُ رقم المستند ومسارُه — نفس ما يعرّفه الخادم في config/vehicleDocuments.
   // ورخصةُ السير والفحص لا رقم لهما، فلا خانةَ لهما في نافذة التجديد.
-  String? _numberLabel(String k) => switch (k) {
-        'insurance' => tr('رقم وثيقة التأمين', 'Policy number'),
-        'operatingCard' => tr('رقم بطاقة التشغيل', 'Operating card number'),
-        'gps' => tr('سريال جهاز التتبّع', 'GPS serial'),
-        'authorization' => tr('رقم التفويض', 'Authorisation number'),
-        _ => null,
-      };
   String _numberOf(Map v, String k) => switch (k) {
         'insurance' => _s(_sub(v, 'insurance')['policyNumber']),
         'operatingCard' => _s(_sub(v, 'operatingCard')['cardNumber']),
@@ -1014,20 +1173,47 @@ class _VehicleDocumentsScreenState extends State<VehicleDocumentsScreen> {
     /// الحذف الحقيقيّ صلاحيةٌ أضيق من التعديل — وهذه هي القسمة نفسها في الخادم.
     final canDelete = _adminRoles.contains(auth.role)
         || (auth.role != 'client' && auth.canEditSection('Vehicles'));
+    // ── البحث يمرّ مرّتين فلا بدّ أن يتّفقا ───────────────────────────────
+    // الخادمُ يبحث في كلّ حقلٍ نصّيّ، ثمّ تُصفّى النتيجةُ هنا بكلّ قيم الصفّ
+    // (كـ deepValues في الموقع) — وإلّا أسقطت الشاشةُ ما وجده الخادم.
     final q = _fold(_q);
     final searched = q.isEmpty
         ? _rows
-        : _rows.where((v) => f.searchIn(v).any((x) => _fold(x).contains(q))).toList();
+        : _rows.where((v) => [..._deepValues(v), ...f.searchIn(v)].any((x) => _fold(x).contains(q))).toList();
     final chips = _chips;
     final active = chips.firstWhere((c) => c.key == _chip, orElse: () => chips.first);
-    final rows = active.test == null ? searched : searched.where((v) => active.test!(v)).toList();
+    final chipped = active.test == null ? searched : searched.where((v) => active.test!(v)).toList();
+    // ── ومدى الأيام فوق الشرائح لا بدلًا منها؛ وما لا تاريخَ له يخرج من أيّ مدًى.
+    final k0 = f.docKey;
+    final withinN = int.tryParse(_within);
+    final rows = (k0 == null || withinN == null) ? chipped : chipped.where((v) {
+      final d = _state(v, k0)['days'];
+      if (d == null) return false;
+      final n = d is num ? d : num.tryParse('$d') ?? 0;
+      if (n < 0) return _includeExpired;
+      return n <= withinN;
+    }).toList();
 
-    final canRenewShared = f.sharedPaper && f.docKey != null
-        && (_editRoles.contains(auth.role) || auth.canEditSection('Vehicles'));
+    final canEditVeh = _editRoles.contains(auth.role) || auth.canEditSection('Vehicles');
+    final canRenewShared = f.sharedPaper && f.docKey != null && canEditVeh;
+    final renewable = f.docKey != null && canEditVeh;
+    final allPicked = rows.isNotEmpty && rows.every((v) => _picked.contains(_s(v['_id'])));
 
     return AppScaffold(
       title: Text(tr(f.arTitle, f.enTitle)),
       actions: [
+        if (renewable && _picked.isNotEmpty)
+          TextButton.icon(
+            style: TextButton.styleFrom(foregroundColor: Colors.white),
+            icon: const Icon(Icons.autorenew, size: 18),
+            label: Text(tr('تجديد ${_picked.length}', 'Renew ${_picked.length}')),
+            onPressed: _bulkRenew,
+          ),
+        IconButton(
+          tooltip: tr('تصدير Excel', 'Export to Excel'),
+          icon: const Icon(Icons.file_download_outlined),
+          onPressed: _loading ? null : () => _export(rows),
+        ),
         if (canRenewShared)
           IconButton(
             tooltip: tr('تجديد وثيقة كاملة', 'Renew a whole policy'),
@@ -1049,9 +1235,14 @@ class _VehicleDocumentsScreenState extends State<VehicleDocumentsScreen> {
                     padding: const EdgeInsets.fromLTRB(14, 12, 14, 6),
                     child: Row(children: [
                       Expanded(
-                        child: TextField(
-                          onChanged: (v) => setState(() => _q = v),
-                          decoration: InputDecoration(hintText: tr('ابحث بلوحة أو رقم…', 'Search plate or number…'), prefixIcon: const Icon(Icons.search)),
+                        child: TextFormField(
+                          initialValue: _q,
+                          onChanged: (v) {
+                            setState(() => _q = v);
+                            final mine = ++_seq;
+                            Future.delayed(const Duration(milliseconds: 250), () { if (mounted && mine == _seq) _load(); });
+                          },
+                          decoration: InputDecoration(hintText: tr('ابحث بأيّ شيء — لوحة، هيكل، مالك، رقم هويّة، رقم وثيقة…', 'Search anything — plate, chassis, owner, ID, policy…'), prefixIcon: const Icon(Icons.search)),
                         ),
                       ),
                       const SizedBox(width: 8),
@@ -1076,6 +1267,74 @@ class _VehicleDocumentsScreenState extends State<VehicleDocumentsScreen> {
                       ),
                     ]),
                   ),
+                  // ── «ما الذي ينتهي قبل كذا يومًا؟» — يعمل مع الفلتر والشرائح.
+                  if (k0 != null)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(14, 0, 14, 4),
+                      child: SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(children: [
+                          Text(tr('ينتهي خلال', 'Expiring within'), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                          const SizedBox(width: 6),
+                          SizedBox(
+                            width: 64,
+                            child: TextField(
+                              controller: _withinCtl,
+                              keyboardType: TextInputType.number,
+                              textAlign: TextAlign.center,
+                              decoration: InputDecoration(isDense: true, hintText: tr('الكل', 'Any')),
+                              onChanged: (x) => setState(() => _within = x.trim()),
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          for (final n in const [7, 15, 30, 60, 90, 180])
+                            Padding(
+                              padding: const EdgeInsetsDirectional.only(end: 4),
+                              child: ChoiceChip(
+                                visualDensity: VisualDensity.compact,
+                                label: Text('$n', style: const TextStyle(fontSize: 11.5)),
+                                selected: _within == '$n',
+                                onSelected: (_) => setState(() { _within = '$n'; _withinCtl.text = '$n'; }),
+                              ),
+                            ),
+                          ChoiceChip(
+                            visualDensity: VisualDensity.compact,
+                            label: Text(tr('الكل', 'All'), style: const TextStyle(fontSize: 11.5)),
+                            selected: _within.isEmpty,
+                            onSelected: (_) => setState(() { _within = ''; _withinCtl.clear(); }),
+                          ),
+                          if (_within.isNotEmpty) ...[
+                            Checkbox(value: _includeExpired, onChanged: (x) => setState(() => _includeExpired = x == true)),
+                            Text(tr('يشمل المنتهي', 'Include expired'), style: const TextStyle(fontSize: 11.5)),
+                          ],
+                        ]),
+                      ),
+                    ),
+                  if (renewable)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 6),
+                      child: Row(children: [
+                        Checkbox(
+                          value: allPicked,
+                          onChanged: (_) => setState(() {
+                            if (allPicked) {
+                              for (final v in rows) { _picked.remove(_s(v['_id'])); }
+                            } else {
+                              for (final v in rows) { _picked.add(_s(v['_id'])); }
+                            }
+                          }),
+                        ),
+                        Text(tr('اختيار كل المعروض', 'Select all shown'), style: const TextStyle(fontSize: 12)),
+                        const Spacer(),
+                        if (_picked.isNotEmpty)
+                          TextButton.icon(
+                            icon: const Icon(Icons.autorenew, size: 17),
+                            label: Text(tr('تجديد ${_picked.length} مستند', 'Renew ${_picked.length}')),
+                            style: TextButton.styleFrom(foregroundColor: T.success),
+                            onPressed: _bulkRenew,
+                          ),
+                      ]),
+                    ),
                   SizedBox(
                     height: 42,
                     child: ListView(
@@ -1109,15 +1368,21 @@ class _VehicleDocumentsScreenState extends State<VehicleDocumentsScreen> {
                                 final v = rows[i];
                                 final k = f.docKey;
                                 final st = k == null ? null : _state(v, k);
-                                final s = _s(st?['status']).isEmpty ? 'none' : _s(st?['status']);
+                                final meta = k == null ? null : stateMetaOf(docStateKey(v, k));
+                                final id = _s(v['_id']);
                                 return AppCard(
-                                  topAccent: st == null ? T.navy : statusColor(s),
+                                  topAccent: meta == null ? T.navy : meta.$2,
                                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                                     Row(children: [
+                                      if (renewable)
+                                        SizedBox(width: 30, height: 24, child: Checkbox(
+                                          value: _picked.contains(id),
+                                          onChanged: (x) => setState(() => x == true ? _picked.add(id) : _picked.remove(id)),
+                                        )),
                                       Text(_s(v['plateNumber']), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
                                       const Spacer(),
-                                      if (st != null)
-                                        Chip2(st['days'] == null ? statusLabel(s) : daysText(st['days']), statusColor(s)),
+                                      if (meta != null)
+                                        Chip2(st!['days'] == null ? meta.$1 : '${meta.$1} · ${daysText(st['days'])}', meta.$2),
                                     ]),
                                     // ── ومَن هذه المركبة، لا رقمُها وحده ──────────────────────
                                     // اللوحةُ تقول أيُّ صفٍّ هذا ولا تقول أيُّ مركبةٍ هي، ومن
@@ -1149,12 +1414,26 @@ class _VehicleDocumentsScreenState extends State<VehicleDocumentsScreen> {
                                         ]),
                                       );
                                     }),
-                                    if (k != null || canEdit) ...[
+                                    if (renewable || canEdit || (f.authActions && canEditVeh)) ...[
                                       const SizedBox(height: 6),
                                       Align(
                                         alignment: AlignmentDirectional.centerEnd,
                                         child: Wrap(spacing: 2, children: [
-                                          if (k != null)
+                                          if (f.authActions && canEditVeh)
+                                            _s(_sub(v, 'authorizedPerson')['name']).isNotEmpty
+                                                ? TextButton.icon(
+                                                    onPressed: () => _revokeAuth(v),
+                                                    icon: const Icon(Icons.person_remove_outlined, size: 17),
+                                                    label: Text(tr('إلغاء التفويض', 'Revoke')),
+                                                    style: TextButton.styleFrom(foregroundColor: T.danger),
+                                                  )
+                                                : TextButton.icon(
+                                                    onPressed: () => _assignAuth(v),
+                                                    icon: const Icon(Icons.person_add_alt_1_outlined, size: 17),
+                                                    label: Text(tr('تفويض', 'Authorise')),
+                                                    style: TextButton.styleFrom(foregroundColor: T.success),
+                                                  ),
+                                          if (renewable)
                                             TextButton.icon(
                                               onPressed: () => _renew(v),
                                               icon: const Icon(Icons.autorenew_rounded, size: 17),
@@ -1183,7 +1462,7 @@ class _VehicleDocumentsScreenState extends State<VehicleDocumentsScreen> {
                                             ),
                                           // المِمحاة لا سلّةُ المهملات: الأيقونةُ
                                           // نفسها تقول إن الممسوح بياناتٌ لا مركبة.
-                                          if (canEdit && _hasDoc(v, f.editable, f.keyField))
+                                          if (canEdit && !f.hideClear && _hasDoc(v, f.editable, f.keyField))
                                             IconButton(
                                               tooltip: tr('مسح بيانات هذا المستند', 'Clear this document'),
                                               icon: const Icon(Icons.backspace_outlined, size: 18, color: T.danger),
@@ -1220,6 +1499,7 @@ class _VehicleDocumentsScreenState extends State<VehicleDocumentsScreen> {
 
 final vehicleInsuranceFamily = DocFamily(
   docKey: 'insurance',
+  fileName: 'vehicle-insurance',
   sharedPaper: true,
   arTitle: 'تأمين المركبات', enTitle: 'Vehicle Insurance',
   icon: Icons.shield_outlined,
@@ -1240,8 +1520,8 @@ final vehicleInsuranceFamily = DocFamily(
   // المركبة بلا تأمين وهي مؤمَّنة.
   editable: const [
     DocEditField('insurance.policyNumber', 'رقم وثيقة التأمين', 'Policy number', mono: true),
-    DocEditField('insurance.companyAr', 'شركة التأمين', 'Insurer'),
-    DocEditField('insurance.coverageTypeAr', 'نوع التأمين', 'Coverage type'),
+    DocEditField('insurance.companyAr', 'شركة التأمين', 'Insurer', lookup: 'vehicle_insurance_company'),
+    DocEditField('insurance.coverageTypeAr', 'نوع التأمين', 'Coverage type', lookup: 'vehicle_coverage_type'),
     DocEditField('insurance.expiryDate', 'تاريخ انتهاء التأمين', 'Insurance expiry', kind: 'date'),
     DocEditField('insurance.premiumSar', 'قيمة التأمين (ر.س)', 'Premium (SAR)', kind: 'number'),
     DocEditField('insurance.premiumStatusAr', 'جهة سداد القسط', 'Who pays the premium'),
@@ -1250,6 +1530,7 @@ final vehicleInsuranceFamily = DocFamily(
 
 final vehicleOperatingCardFamily = DocFamily(
   docKey: 'operatingCard',
+  fileName: 'vehicle-operating-cards',
   arTitle: 'بطاقات التشغيل', enTitle: 'Operating Cards',
   icon: Icons.credit_card_outlined,
   fields: [
@@ -1269,6 +1550,9 @@ final vehicleOperatingCardFamily = DocFamily(
 
 final vehicleAuthorizationFamily = DocFamily(
   docKey: 'authorization',
+  fileName: 'vehicle-authorizations',
+  hideClear: true,
+  authActions: true,
   arTitle: 'التفاويض', enTitle: 'Authorisations',
   icon: Icons.assignment_ind_outlined,
   fields: [
@@ -1320,6 +1604,7 @@ final vehicleAuthorizationFamily = DocFamily(
 final vehicleFuelCardFamily = DocFamily(
   // لا تاريخ انتهاء لشريحة الوقود، فلا عمودَ حالةٍ ولا زرَّ تجديد.
   docKey: null,
+  fileName: 'vehicle-fuel-cards',
   arTitle: 'بترو اب — شرائح الوقود', enTitle: 'Petro App Cards',
   icon: Icons.local_gas_station_outlined,
   // وجودُ الشريحة رقمُها لا أيُّ خانةٍ مملوءة — عشرُ مركباتٍ عندها حالةُ شريحةٍ
@@ -1352,8 +1637,8 @@ final vehicleFuelCardFamily = DocFamily(
     DocEditField('fuelCard.cardNumber', 'رقم شريحة بترو اب', 'Petro App chip number', mono: true),
     DocEditField('fuelCard.plateOnInvoiceAr', 'رقم اللوحة في فاتورة بترو اب', 'Plate on Petro App invoice'),
     DocEditField('fuelCard.provider', 'المزوّد', 'Provider'),
-    DocEditField('fuelCard.statusAr', 'حالة الشريحة', 'Chip status'),
-    DocEditField('fuelCard.consumptionTypeAr', 'نوع الاستهلاك', 'Consumption type'),
+    DocEditField('fuelCard.statusAr', 'حالة الشريحة', 'Chip status', lookup: 'vehicle_fuel_card_status'),
+    DocEditField('fuelCard.consumptionTypeAr', 'نوع الاستهلاك', 'Consumption type', lookup: 'vehicle_consumption_type'),
     DocEditField('fuelCard.limitSar', 'حد الاستهلاك (ر.س)', 'Consumption limit (SAR)', kind: 'number'),
     DocEditField('fuelCard.limitStatus', 'مفتوح — بلا سقف صرف', 'Open — no spending ceiling', kind: 'flag', on: 'open'),
   ],
@@ -1366,9 +1651,9 @@ final vehicleFuelCardFamily = DocFamily(
     // بصفوفٍ لا يُفتَح منها شيء.
     DocChip('none', 'بلا شريحة — مطلوبة', 'No chip — needed', T.danger,
         (v) => _s(_sub(v, 'fuelCard')['cardNumber']).isEmpty
-            && !_ReqToggle._off(_s(_sub(v, 'fuelCard')['statusCode']))),
+            && !ReqToggle._off(_s(_sub(v, 'fuelCard')['statusCode']))),
     DocChip('notReq', 'غير مطلوبة', 'Not required', T.inkFaint,
-        (v) => _ReqToggle._off(_s(_sub(v, 'fuelCard')['statusCode']))),
+        (v) => ReqToggle._off(_s(_sub(v, 'fuelCard')['statusCode']))),
     DocChip('open', 'بلا سقف استهلاك', 'No ceiling', T.orange, (v) => _sub(v, 'fuelCard')['limitStatus'] == 'open'),
     DocChip('noInvoicePlate', 'بلا لوحة على الفاتورة', 'No plate on invoice', T.violet,
         (v) => _s(_sub(v, 'fuelCard')['cardNumber']).isNotEmpty && _s(_sub(v, 'fuelCard')['plateOnInvoiceAr']).isEmpty),
@@ -1377,6 +1662,7 @@ final vehicleFuelCardFamily = DocFamily(
 
 final vehicleGpsFamily = DocFamily(
   docKey: 'gps',
+  fileName: 'vehicle-gps',
   arTitle: 'أجهزة التتبّع GPS', enTitle: 'GPS Devices',
   icon: Icons.satellite_alt_outlined,
   fields: [
@@ -1391,9 +1677,9 @@ final vehicleGpsFamily = DocFamily(
   // وحالةُ الجهاز حقلٌ مستقلّ عن تاريخ الاشتراك: جهازٌ مسروق باشتراكٍ ساري وضعٌ
   // قائم، ولو اشتُقّت إحداهما من الأخرى لضاع.
   editable: const [
-    DocEditField('gps.deviceModel', 'جهاز GPS', 'GPS device'),
-    DocEditField('gps.deviceStatusAr', 'حالة جهاز GPS', 'Device status'),
-    DocEditField('gps.provider', 'شركة الـGPS', 'GPS provider'),
+    DocEditField('gps.deviceModel', 'جهاز GPS', 'GPS device', lookup: 'vehicle_gps_device'),
+    DocEditField('gps.deviceStatusAr', 'حالة جهاز GPS', 'Device status', lookup: 'vehicle_gps_device_status'),
+    DocEditField('gps.provider', 'شركة الـGPS', 'GPS provider', lookup: 'vehicle_gps_provider'),
     DocEditField('gps.serialImei', 'سريال GPS', 'GPS serial', mono: true),
     DocEditField('gps.simNumber', 'رقم الشريحة', 'SIM number', mono: true),
     DocEditField('gps.expiryDate', 'تاريخ انتهاء الـGPS', 'Subscription expiry', kind: 'date'),
@@ -1402,6 +1688,7 @@ final vehicleGpsFamily = DocFamily(
 
 final vehicleLicenceFamily = DocFamily(
   docKey: 'vehicleLicense',
+  fileName: 'vehicle-licenses',
   arTitle: 'رخص السير', enTitle: 'Vehicle Licences',
   icon: Icons.description_outlined,
   fields: [
@@ -1422,6 +1709,7 @@ final vehicleLicenceFamily = DocFamily(
 
 final vehicleInspectionFamily = DocFamily(
   docKey: 'inspection',
+  fileName: 'vehicle-inspection',
   arTitle: 'الفحص الدوري', enTitle: 'Periodic Inspection',
   icon: Icons.fact_check_outlined,
   // ── ولا سطرَ «حالة الفحص» ──────────────────────────────────────────────────

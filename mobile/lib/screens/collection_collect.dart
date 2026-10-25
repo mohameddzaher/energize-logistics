@@ -43,6 +43,10 @@ class _CollectSheetState extends State<_CollectSheet> {
   late DateTime _date;
   bool _saving = false;
   String? _error;
+  // تعديلُ دفعةٍ في مكانها: مبلغُها ويومُها — كنافذة الموقع.
+  String? _editPay;
+  final _editAmount = TextEditingController();
+  DateTime? _editDate;
 
   Map<String, dynamic> get r => widget.row;
   num get _value => _num(r['value']);
@@ -66,6 +70,7 @@ class _CollectSheetState extends State<_CollectSheet> {
   void dispose() {
     _amount.dispose();
     _note.dispose();
+    _editAmount.dispose();
     super.dispose();
   }
 
@@ -102,6 +107,114 @@ class _CollectSheetState extends State<_CollectSheet> {
     } catch (e) {
       if (mounted) setState(() { _saving = false; _error = e.toString(); });
     }
+  }
+
+  /// الفاتورةُ الضريبيّةُ برقمها، والكشفُ النقديُّ بمعرّفه.
+  Map<String, dynamic> get _target => widget.isCash ? {'id': '${r['_id']}'} : {'invoiceNumber': '${r['invoiceNumber']}'};
+
+  String _d(DateTime d) => '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+  void _done(dynamic res, String fallback) {
+    if (!mounted) return;
+    final msg = res is Map && '${res['message'] ?? ''}'.isNotEmpty ? '${res['message']}' : fallback;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    Navigator.pop(context, true);
+  }
+
+  /// تعديلُ دفعة — ويُعاد حسابُ الحالة في الخادم.
+  Future<void> _savePayment() async {
+    final a = num.tryParse(_editAmount.text.replaceAll(',', '').trim());
+    if (a == null || a <= 0) { setState(() => _error = tr('اكتب المبلغ رقمًا أكبر من صفر', 'Enter an amount greater than zero')); return; }
+    setState(() { _saving = true; _error = null; });
+    try {
+      final res = await Api.instance.put('/api/collections-dept/invoices/payments', {
+        ..._target, 'paymentId': _editPay, 'amount': a, 'date': _editDate == null ? '' : _d(_editDate!),
+      });
+      _done(res, tr('عُدِّلت الدفعة', 'Payment updated'));
+    } catch (e) {
+      if (mounted) setState(() { _saving = false; _error = e.toString(); });
+    }
+  }
+
+  /// رفعُ دفعة — والسببُ اختياريّ.
+  Future<void> _removePayment(Map p) async {
+    final ctrl = TextEditingController();
+    final reason = await showDialog<String>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: Text(tr('رفع الدفعة', 'Remove payment')),
+        content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(tr('تُرفع دفعة ${_money(_num(p['amount']))} ويُعاد حساب الباقي.', 'Remove the ${_money(_num(p['amount']))} payment and recompute the balance.')),
+          TextField(controller: ctrl, decoration: InputDecoration(labelText: tr('السبب (اختياري)', 'Reason (optional)'))),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c), child: Text(tr('إلغاء', 'Cancel'))),
+          FilledButton(style: FilledButton.styleFrom(backgroundColor: T.danger), onPressed: () => Navigator.pop(c, ctrl.text.trim()), child: Text(tr('رفع الدفعة', 'Remove'))),
+        ],
+      ),
+    );
+    ctrl.dispose();
+    if (reason == null) return;
+    setState(() { _saving = true; _error = null; });
+    try {
+      final res = await Api.instance.post('/api/collections-dept/invoices/payments/remove', {
+        ..._target, 'paymentId': '${p['_id']}', 'reason': reason,
+      });
+      _done(res, tr('رُفعت الدفعة', 'Payment removed'));
+    } catch (e) {
+      if (mounted) setState(() { _saving = false; _error = e.toString(); });
+    }
+  }
+
+  Widget _paymentRow(Map p) {
+    final id = '${p['_id'] ?? ''}';
+    if (_editPay == id) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 6),
+        child: Row(children: [
+          Expanded(child: TextField(controller: _editAmount, keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: InputDecoration(isDense: true, labelText: tr('المبلغ', 'Amount')))),
+          const SizedBox(width: 6),
+          TextButton.icon(
+            icon: const Icon(Icons.event_outlined, size: 16),
+            label: Text(_editDate == null ? '—' : _d(_editDate!)),
+            onPressed: () async {
+              final d = await showDatePicker(context: context, initialDate: _editDate ?? DateTime.now(),
+                  firstDate: DateTime(2020), lastDate: DateTime.now().add(const Duration(days: 365)));
+              if (d != null) setState(() => _editDate = d);
+            },
+          ),
+          IconButton(tooltip: tr('حفظ', 'Save'), icon: const Icon(Icons.check_rounded, color: T.success), onPressed: _saving ? null : _savePayment),
+          IconButton(tooltip: tr('إلغاء', 'Cancel'), icon: const Icon(Icons.close_rounded), onPressed: () => setState(() => _editPay = null)),
+        ]),
+      );
+    }
+    final full = '${p['mode'] ?? ''}' == 'full';
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: Row(children: [
+        Expanded(
+          child: Text(
+            '${_money(_num(p['amount']))} · ${'${p['date'] ?? ''}'.split('T').first} · ${full ? tr('إتمام', 'Final') : tr('جزئية', 'Partial')}'
+            '${'${p['byName'] ?? ''}'.isNotEmpty ? ' · ${p['byName']}' : ''}'
+            '${'${p['note'] ?? ''}'.isNotEmpty ? ' · ${p['note']}' : ''}',
+            style: const TextStyle(fontSize: 12.5),
+          ),
+        ),
+        TextButton(
+          onPressed: _saving ? null : () => setState(() {
+            _editPay = id;
+            _editAmount.text = _money(_num(p['amount']));
+            _editDate = DateTime.tryParse('${p['date'] ?? ''}');
+          }),
+          child: Text(tr('تعديل', 'Edit')),
+        ),
+        TextButton(
+          onPressed: _saving ? null : () => _removePayment(p),
+          child: Text(tr('رفع', 'Remove'), style: const TextStyle(color: T.danger)),
+        ),
+      ]),
+    );
   }
 
   Widget _figure(String label, num v, Color c) => Expanded(
@@ -189,16 +302,8 @@ class _CollectSheetState extends State<_CollectSheet> {
             if (payments.isNotEmpty) ...[
               const SizedBox(height: 14),
               Text(tr('الدفعات', 'Payments'), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Colors.black54)),
-              for (final p in payments)
-                Padding(
-                  padding: const EdgeInsets.only(top: 6),
-                  child: Text(
-                    '${_money(_num(p['amount']))} · ${'${p['date'] ?? ''}'.split('T').first}'
-                    '${'${p['byName'] ?? ''}'.isNotEmpty ? ' · ${p['byName']}' : ''}'
-                    '${'${p['note'] ?? ''}'.isNotEmpty ? ' · ${p['note']}' : ''}',
-                    style: const TextStyle(fontSize: 12.5),
-                  ),
-                ),
+              // كلُّ دفعةٍ بمبلغها ويومها وكاتبها — تُعدَّل أو تُرفَع وحدَها.
+              for (final p in payments) _paymentRow(p),
             ],
             if (_error != null) ...[
               const SizedBox(height: 10),

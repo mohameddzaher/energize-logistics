@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../services/api.dart';
+import '../services/auth.dart';
 import '../services/lang.dart';
 import '../services/live.dart';
 import '../ui/app_scaffold.dart';
+import '../ui/export_sheet.dart';
 import '../ui/file_upload.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
@@ -17,6 +20,32 @@ class ContractsVendorProfileScreen extends StatefulWidget {
   @override
   State<ContractsVendorProfileScreen> createState() => _ContractsVendorProfileScreenState();
 }
+
+// canEditContracts في الويب: الدورُ أو صلاحيةُ «تعديل» على القسم.
+const _contractsEditRoles = ['super_admin', 'admin', 'contracts_manager', 'it_manager', 'it_specialist'];
+
+// الحقولُ التي تُعدَّل في مكانها — نفسُ ما يُحفظ بـPATCH /api/contracts/vendors/:id.
+const _editFields = <(String, String, String, bool)>[
+  ('name', 'اسم المورد', 'Vendor name', false),
+  ('crNumber', 'السجل التجاري', 'CR number', false),
+  ('vendorType', 'نوع المورد', 'Type', false),
+  ('energizeRep', 'مندوب التنشيط', 'Energize rep', false),
+  ('operationsRep', 'مندوب التشغيل', 'Operations rep', false),
+  ('contactPerson', 'ممثل المورد', 'Contact person', false),
+  ('phone', 'الجوال', 'Phone', false),
+  ('headquarters', 'المقر الرئيسي', 'Headquarters', false),
+  ('destinations', 'الوجهات', 'Destinations', false),
+  ('vehicleTypes', 'أنواع السيارات', 'Vehicle types', false),
+  ('fleetSize', 'عدد السيارات', 'Fleet size', true),
+  ('monthlyCapacity', 'الطاقة الشهرية المتوقعة', 'Monthly capacity', true),
+  ('paymentTermDays', 'مدة السداد (يوم)', 'Payment term (days)', true),
+  ('renewalPolicy', 'سياسة التجديد', 'Renewal policy', false),
+  ('pricingNotes', 'التسعير', 'Pricing', false),
+  ('operationalStatus', 'الحالة التشغيلية', 'Operational status', false),
+  ('missingDocuments', 'المستندات الناقصة', 'Missing documents', false),
+  ('followUpNotes', 'ملاحظات المتابعة', 'Follow-up notes', false),
+  ('notes', 'ملاحظات', 'Notes', false),
+];
 
 const _monthsAr = ['', 'يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
 const _monthsEn = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -89,7 +118,139 @@ class _ContractsVendorProfileScreenState extends State<ContractsVendorProfileScr
     }
   }
 
+  bool get _canEdit {
+    final a = context.read<AuthProvider>();
+    return _contractsEditRoles.contains(a.role) || a.canEditSection('Contracts');
+  }
+
+  void _snack(Object e) {
+    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e is ApiException ? e.message : e.toString())));
+  }
+
+  /// تقييمُ المورد (نجومٌ + ملاحظات) — نافذةُ «تقييم المورد» في الويب.
+  Future<void> _rate() async {
+    final v = _vendor ?? {};
+    var rating = (_n(v['rating'])).toInt();
+    final notes = TextEditingController(text: (v['ratingNotes'] ?? '').toString());
+    final can = _canEdit;
+    final ok = await showDialog<bool>(context: context, builder: (c) => StatefulBuilder(builder: (c, set) => AlertDialog(
+      title: Text(tr('تقييم المورد', 'Rate vendor')),
+      content: Column(mainAxisSize: MainAxisSize.min, children: [
+        Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+          for (final n in [1, 2, 3, 4, 5])
+            IconButton(
+              onPressed: can ? () => set(() => rating = n == rating ? 0 : n) : null,
+              icon: Icon(n <= rating ? Icons.star_rounded : Icons.star_outline_rounded, color: n <= rating ? const Color(0xFFF59E0B) : T.inkFaint, size: 30),
+            ),
+        ]),
+        TextField(controller: notes, enabled: can, maxLines: 3, decoration: InputDecoration(labelText: tr('ملاحظات التقييم', 'Rating notes'))),
+      ]),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('إلغاء', 'Cancel'))),
+        if (can) FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(tr('حفظ التقييم', 'Save'))),
+      ],
+    )));
+    if (ok != true) return;
+    try {
+      await Api.instance.patch('/api/contracts/vendors/${widget.vendorId}', {'rating': rating == 0 ? null : rating, 'ratingNotes': notes.text.trim()});
+      _load();
+    } catch (e) { _snack(e); }
+  }
+
+  /// تعديلُ بيانات المورد في مكانها (PATCH) — بلا رجوعٍ إلى السجلّ.
+  Future<void> _edit() async {
+    final v = _vendor ?? {};
+    final ctrls = {for (final f in _editFields) f.$1: TextEditingController(text: v[f.$1] == null ? '' : v[f.$1].toString())};
+    var docs = v['documentsReceived'] == true, vendorSide = v['vendorSideContract'] == true, ourSide = v['ourSideContract'] == true;
+    final ok = await showModalBottomSheet<bool>(
+      context: context, isScrollControlled: true, backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      builder: (c) => StatefulBuilder(builder: (c, set) => Padding(
+        padding: EdgeInsets.only(bottom: MediaQuery.of(c).viewInsets.bottom),
+        child: SizedBox(
+          height: MediaQuery.of(c).size.height * 0.85,
+          child: ListView(padding: const EdgeInsets.all(16), children: [
+            Text(tr('تعديل بيانات المورد', 'Edit vendor'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+            const SizedBox(height: 10),
+            for (final f in _editFields)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: TextField(
+                  controller: ctrls[f.$1],
+                  keyboardType: f.$4 ? TextInputType.number : TextInputType.text,
+                  maxLines: f.$1.endsWith('Notes') || f.$1 == 'notes' ? 3 : 1,
+                  decoration: InputDecoration(labelText: tr(f.$2, f.$3)),
+                ),
+              ),
+            CheckboxListTile(contentPadding: EdgeInsets.zero, value: vendorSide, onChanged: (x) => set(() => vendorSide = x == true), title: Text(tr('وقّع المورد', 'Vendor signed'))),
+            CheckboxListTile(contentPadding: EdgeInsets.zero, value: ourSide, onChanged: (x) => set(() => ourSide = x == true), title: Text(tr('وقّعنا نحن', 'We signed'))),
+            CheckboxListTile(contentPadding: EdgeInsets.zero, value: docs, onChanged: (x) => set(() => docs = x == true), title: Text(tr('المستندات مكتملة', 'Documents complete'))),
+            const SizedBox(height: 8),
+            FilledButton.icon(onPressed: () => Navigator.pop(c, true), icon: const Icon(Icons.save_outlined), label: Text(tr('حفظ', 'Save'))),
+          ]),
+        ),
+      )),
+    );
+    if (ok != true) return;
+    final body = <String, dynamic>{
+      for (final f in _editFields)
+        f.$1: f.$4 ? (ctrls[f.$1]!.text.trim().isEmpty ? null : num.tryParse(ctrls[f.$1]!.text.trim())) : ctrls[f.$1]!.text.trim(),
+      'vendorSideContract': vendorSide, 'ourSideContract': ourSide, 'documentsReceived': docs,
+    };
+    if ((body['name'] as String).isEmpty) { _snack(tr('اسم المورد مطلوب', 'Vendor name is required')); return; }
+    try {
+      await Api.instance.patch('/api/contracts/vendors/${widget.vendorId}', body);
+      _load();
+    } catch (e) { _snack(e); }
+  }
+
+  /// تصديرُ ملفّ المورد كاملًا — ورقةٌ لكلّ جدولٍ كما في الويب.
+  void _export() {
+    final v = _vendor ?? {};
+    final orders = _util.fold<num>(0, (a, r) => a + _n(r['orders']));
+    final cap = _util.fold<num>(0, (a, r) => a + _n(r['expectedMonthlyCapacity']));
+    final info = <Map<String, dynamic>>[
+      {'l': tr('المورد', 'Vendor'), 'v': v['name']},
+      {'l': tr('حالة العقد', 'Contract status'), 'v': v['status']},
+      for (final f in _editFields) {'l': tr(f.$2, f.$3), 'v': v[f.$1]},
+      {'l': tr('إجمالي الطلبات المسجلة', 'Total recorded orders'), 'v': orders},
+      {'l': tr('متوسط الاستغلال', 'Avg utilisation'), 'v': cap > 0 ? '${(orders / cap * 100).toStringAsFixed(0)}%' : '—'},
+      {'l': tr('أشهر مسجلة', 'Months on record'), 'v': _util.length},
+      {'l': tr('مستندات مستلمة', 'Documents received'), 'v': v['documentsReceived'] == true},
+      {'l': tr('التقييم', 'Rating'), 'v': v['rating'] != null ? '${v['rating']}/5' : '—'},
+      {'l': tr('ملاحظات التقييم', 'Rating notes'), 'v': v['ratingNotes']},
+    ];
+    final atts = List<Map<String, dynamic>>.from((v['attachments'] as List? ?? const []).whereType<Map>().map((e) => Map<String, dynamic>.from(e)));
+    exportExcel(context, fileName: 'vendor-${v['crNumber'] ?? widget.vendorId}', sheets: [
+      (tr('بيانات المورد', 'Vendor'), [ExportCol('البند', 'Item', (r) => r['l']), ExportCol('القيمة', 'Value', (r) => r['v'])], info),
+      if (atts.isNotEmpty)
+        (tr('المرفقات', 'Attachments'), [
+          ExportCol('الوصف', 'Title', (r) => (r['title'] ?? r['fileName'] ?? '').toString()),
+          ExportCol('اسم الملف', 'File', (r) => r['fileName']),
+          ExportCol('الحجم (ك.ب)', 'Size (KB)', (r) => (_n(r['size']) / 1024).round()),
+          ExportCol('تاريخ الرفع', 'Uploaded', (r) => (r['uploadedAt'] ?? '').toString().split('T').first),
+          ExportCol('رفعه', 'Uploaded by', (r) => r['uploadedByName']),
+        ], atts),
+      if (_util.isNotEmpty)
+        (tr('التاريخ التشغيلي', 'Monthly history'), [
+          ExportCol('الشهر', 'Month', (r) => '${r['year']}-${r['month'].toString().padLeft(2, '0')}'),
+          ExportCol('الطلبات', 'Orders', (r) => _n(r['orders'])),
+          ExportCol('الطاقة المتوقعة', 'Capacity', (r) => _n(r['expectedMonthlyCapacity'])),
+          ExportCol('الاستغلال', 'Utilisation', (r) => _n(r['expectedMonthlyCapacity']) > 0 ? '${(_n(r['orders']) / _n(r['expectedMonthlyCapacity']) * 100).toStringAsFixed(0)}%' : '—'),
+          ExportCol('مندوب التشغيل', 'Ops rep', (r) => r['operationsRep']),
+        ], _util),
+    ]);
+  }
+
   Future<void> _deleteAttachment(Map<String, dynamic> att) async {
+    final ok = await showDialog<bool>(context: context, builder: (c) => AlertDialog(
+      content: Text(tr('حذف هذا المرفق نهائيًا؟', 'Delete this attachment?')),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('إلغاء', 'Cancel'))),
+        FilledButton(style: FilledButton.styleFrom(backgroundColor: T.danger), onPressed: () => Navigator.pop(c, true), child: Text(tr('حذف', 'Delete'))),
+      ],
+    ));
+    if (ok != true) return;
     try { await Api.instance.delete('/api/contracts/vendors/${widget.vendorId}/attachments/${att['_id']}'); _load(); }
     catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString()))); }
   }
@@ -110,7 +271,12 @@ class _ContractsVendorProfileScreenState extends State<ContractsVendorProfileScr
     return AppScaffold(
       title: Text(widget.name),
       actions: [
-        IconButton(icon: const Icon(Icons.upload_file_outlined), tooltip: tr('رفع مرفق', 'Upload attachment'), onPressed: _loading ? null : _uploadAttachment),
+        if (!_loading && _vendor != null) ...[
+          IconButton(icon: const Icon(Icons.file_download_outlined), tooltip: tr('تصدير Excel', 'Export to Excel'), onPressed: _export),
+          IconButton(icon: const Icon(Icons.star_outline_rounded), tooltip: tr('تقييم المورد', 'Rate'), onPressed: _rate),
+          if (_canEdit) IconButton(icon: const Icon(Icons.edit_outlined), tooltip: tr('تعديل', 'Edit'), onPressed: _edit),
+          if (_canEdit) IconButton(icon: const Icon(Icons.upload_file_outlined), tooltip: tr('رفع مرفق', 'Upload attachment'), onPressed: _uploadAttachment),
+        ],
       ],
       body: _loading
           ? ListView(padding: const EdgeInsets.all(14), children: const [Shimmer(height: 150), SizedBox(height: 10), Shimmer(height: 220)])
@@ -137,6 +303,15 @@ class _ContractsVendorProfileScreenState extends State<ContractsVendorProfileScr
                             Chip2(v['ourSideContract'] == true ? tr('عقدنا ✓', 'Our side ✓') : tr('عقدنا ✗', 'Our side ✗'), v['ourSideContract'] == true ? T.success : T.danger),
                           ]),
                           ...[
+                            (Icons.badge_outlined, v['crNumber'] == null ? null : '${tr('السجل التجاري', 'CR')}: ${v['crNumber']}'),
+                            (Icons.support_agent_outlined, v['energizeRep'] == null ? null : '${tr('مندوب التنشيط', 'Energize rep')}: ${v['energizeRep']}'),
+                            (Icons.engineering_outlined, v['operationsRep'] == null ? null : '${tr('مندوب التشغيل', 'Operations rep')}: ${v['operationsRep']}'),
+                            (Icons.location_city_outlined, v['headquarters']),
+                            (Icons.alt_route, v['destinations'] == null ? null : '${tr('الوجهات', 'Destinations')}: ${v['destinations']}'),
+                            (Icons.local_shipping_outlined, v['vehicleTypes']),
+                            (Icons.payments_outlined, v['paymentTermDays'] == null ? null : '${tr('مدة السداد', 'Payment term')}: ${v['paymentTermDays']}'),
+                            (Icons.sell_outlined, v['pricingNotes']),
+                            (Icons.star_half_rounded, v['ratingNotes']),
                             (Icons.person_outline, v['contactPerson']),
                             (Icons.phone_outlined, v['phone']),
                             (Icons.email_outlined, v['email']),
@@ -203,7 +378,7 @@ class _ContractsVendorProfileScreenState extends State<ContractsVendorProfileScr
                           Row(children: [
                             Text('${tr('المرفقات', 'Attachments')} (${attachments.length})', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
                             const Spacer(),
-                            TextButton.icon(onPressed: _uploadAttachment, icon: const Icon(Icons.add, size: 16), label: Text(tr('رفع', 'Upload'))),
+                            if (_canEdit) TextButton.icon(onPressed: _uploadAttachment, icon: const Icon(Icons.add, size: 16), label: Text(tr('رفع', 'Upload'))),
                           ]),
                           if (attachments.isEmpty)
                             Padding(padding: const EdgeInsets.symmetric(vertical: 8), child: Text(tr('لا توجد مرفقات', 'No attachments'), style: const TextStyle(color: T.inkFaint, fontSize: 12.5))),
@@ -213,7 +388,7 @@ class _ContractsVendorProfileScreenState extends State<ContractsVendorProfileScr
                                   const Icon(Icons.attach_file_rounded, size: 17, color: T.navy),
                                   const SizedBox(width: 8),
                                   Expanded(child: Text((att['title'] ?? att['fileName'] ?? att['originalName'] ?? '—').toString(), style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600), maxLines: 1, overflow: TextOverflow.ellipsis)),
-                                  IconButton(visualDensity: VisualDensity.compact, icon: const Icon(Icons.delete_outline, size: 18, color: T.danger), onPressed: () => _deleteAttachment(att)),
+                                  if (_canEdit) IconButton(visualDensity: VisualDensity.compact, icon: const Icon(Icons.delete_outline, size: 18, color: T.danger), onPressed: () => _deleteAttachment(att)),
                                 ]),
                               )),
                         ]),

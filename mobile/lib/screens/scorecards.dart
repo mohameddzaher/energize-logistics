@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../services/api.dart';
 import '../services/lang.dart';
+import '../services/live.dart';
+import '../ui/export_sheet.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
@@ -24,6 +26,31 @@ Color _hex(String? s, [Color fallback = T.inkFaint]) {
 
 num _n(dynamic v) => v is num ? v : 0;
 String _num(dynamic v) => v == null ? '—' : _n(v).round().toString();
+
+String _iso(DateTime d) => '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+/// شريطُ الفترة «من → إلى» — نظيرُ DateRangeFilter في الويب.
+class _RangeBar extends StatelessWidget {
+  final DateTime from, to;
+  final void Function(DateTime from, DateTime to) onChanged;
+  const _RangeBar({required this.from, required this.to, required this.onChanged});
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.fromLTRB(14, 10, 14, 0),
+        child: OutlinedButton.icon(
+          icon: const Icon(Icons.date_range_outlined, size: 18),
+          label: Text('${_iso(from)}  →  ${_iso(to)}'),
+          onPressed: () async {
+            final r = await showDateRangePicker(
+              context: context,
+              firstDate: DateTime(2018), lastDate: DateTime.now().add(const Duration(days: 365)),
+              initialDateRange: DateTimeRange(start: from, end: to),
+            );
+            if (r != null) onChanged(r.start, r.end);
+          },
+        ),
+      );
+}
 
 /// The 0–100 bar every row shows.
 class _ScoreBar extends StatelessWidget {
@@ -305,29 +332,84 @@ class FleetDriverKpisScreen extends StatefulWidget {
   State<FleetDriverKpisScreen> createState() => _FleetDriverKpisScreenState();
 }
 
+// فتراتُ الأسطول بمفاتيح الخادم نفسِها (PeriodFilter في الويب).
+const _fleetPresets = [
+  ('today', 'اليوم', 'Today'), ('yesterday', 'أمس', 'Yesterday'), ('last_7', 'آخر ٧ أيام', 'Last 7 days'),
+  ('this_month', 'هذا الشهر', 'This month'), ('last_month', 'الشهر الماضي', 'Last month'), ('all', 'كل الفترات', 'All time'),
+];
+
 class _FleetDriverKpisScreenState extends State<FleetDriverKpisScreen> {
   List<Map<String, dynamic>> _rows = [];
   Map<String, dynamic> _summary = {};
   bool _loading = true;
   String? _error;
   String _q = '';
+  // الفترة: اسمٌ (preset) أو مدى مخصَّص — الخادمُ يحسم الحدود.
+  String _preset = 'this_month';
+  DateTimeRange? _range;
+  int _seq = 0;
+  late final void Function() _onLive;
+  // الشاحنةُ من سجلّ المركبات والسائقُ من الموارد البشريّة — كما يسمع الويب.
+  static const _events = ['fleet:updated', 'vreg:updated', 'fleet:drivers', 'fleet:vehicles', 'hr:employee'];
 
   @override
-  void initState() { super.initState(); _load(); }
+  void initState() {
+    super.initState();
+    _onLive = () => _load();
+    for (final e in _events) { Live.instance.on(e, _onLive); }
+    _load();
+  }
+
+  @override
+  void dispose() {
+    for (final e in _events) { Live.instance.off(e, _onLive); }
+    super.dispose();
+  }
+
+  String get _periodQs => _range != null
+      ? 'from=${_iso(_range!.start)}&to=${_iso(_range!.end)}'
+      : 'preset=$_preset';
 
   Future<void> _load() async {
+    final mine = ++_seq;
     try {
-      final d = await Api.instance.get('/api/fleet/driver-kpis');
-      if (!mounted) return;
+      final d = await Api.instance.get('/api/fleet/driver-kpis?$_periodQs');
+      if (!mounted || mine != _seq) return;
       setState(() {
         _rows = List<Map<String, dynamic>>.from(d['items'] ?? []);
         _summary = Map<String, dynamic>.from(d['summary'] ?? {});
         _loading = false; _error = null;
       });
     } catch (e) {
-      if (mounted) setState(() { _loading = false; _error = e.toString(); });
+      if (mounted && mine == _seq) setState(() { _loading = false; _error = e.toString(); });
     }
   }
+
+  Widget _periodBar() => SizedBox(
+        height: 46,
+        child: ListView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.fromLTRB(14, 8, 14, 0), children: [
+          for (final p in _fleetPresets)
+            Padding(
+              padding: const EdgeInsetsDirectional.only(end: 6),
+              child: ChoiceChip(
+                label: Text(tr(p.$2, p.$3)),
+                selected: _range == null && _preset == p.$1,
+                onSelected: (_) { setState(() { _preset = p.$1; _range = null; }); _load(); },
+              ),
+            ),
+          ActionChip(
+            avatar: const Icon(Icons.date_range_outlined, size: 16),
+            label: Text(_range == null ? tr('مدى مخصَّص', 'Custom range') : '${_iso(_range!.start)} → ${_iso(_range!.end)}'),
+            onPressed: () async {
+              final r = await showDateRangePicker(
+                context: context, firstDate: DateTime(2018), lastDate: DateTime.now().add(const Duration(days: 365)),
+                initialDateRange: _range,
+              );
+              if (r != null) { setState(() => _range = r); _load(); }
+            },
+          ),
+        ]),
+      );
 
   void _open(Map<String, dynamic> r) {
     showModalBottomSheet(
@@ -392,11 +474,38 @@ class _FleetDriverKpisScreenState extends State<FleetDriverKpisScreen> {
 
     return AppScaffold(
       title: Text(tr('تقييم السائقين', 'Driver KPIs')),
+      actions: [
+        ExportButton(
+          fileName: 'fleet-driver-kpis',
+          rows: () => rows,
+          columns: [
+            ExportCol('السائق', 'Driver', (r) => r['name']),
+            ExportCol('حقّق الهدف', 'On target', (r) => r['achieved'] == true ? tr('نعم', 'Yes') : r['achieved'] == false ? tr('لا', 'No') : '—'),
+            ExportCol('نسبة التحقيق', 'Attainment %', (r) => r['targetPct']),
+            ExportCol('المسافة (كم)', 'Distance (km)', (r) => r['km']),
+            ExportCol('هدف المسافة', 'Target km', (r) => r['targetKm']),
+            ExportCol('هدف الحمولات', 'Target loads', (r) => r['targetLoads']),
+            ExportCol('التقييم', 'Score', (r) => r['score']),
+            ExportCol('التصنيف', 'Band', (r) => tr('${r['bandAr'] ?? ''}', '${r['bandEn'] ?? ''}')),
+            ExportCol('الحمولات', 'Loads', (r) => r['trips']),
+            ExportCol('الدخل', 'Income', (r) => r['income']),
+            ExportCol('مصروف السائق', 'Driver expense', (r) => r['expense']),
+            ExportCol('وصلت', 'Delivered', (r) => r['done']),
+            ExportCol('متأخرة', 'Late', (r) => r['late']),
+            ExportCol('ملغاة', 'Cancelled', (r) => r['cancelled']),
+            ExportCol('نسبة الالتزام %', 'On-time %', (r) => r['onTimeRate'] ?? '—'),
+            ExportCol('انتظام المتابعة %', 'Follow-up %', (r) => r['followUpRate'] ?? '—'),
+            ExportCol('المركبة', 'Truck', (r) => r['vehicle'] is Map ? r['vehicle']['plate'] : '—'),
+            ExportCol('الجوال', 'Phone', (r) => r['phone']),
+          ],
+        ),
+      ],
       body: _loading
           ? ListView(padding: const EdgeInsets.all(14), children: const [Shimmer(height: 70), SizedBox(height: 10), Shimmer(), SizedBox(height: 10), Shimmer()])
           : _error != null
               ? ErrorRetry(message: _error!, onRetry: () { setState(() => _loading = true); _load(); })
               : Column(children: [
+                  _periodBar(),
                   Padding(
                     padding: const EdgeInsets.fromLTRB(14, 12, 14, 6),
                     child: Row(children: [
@@ -493,6 +602,11 @@ class _CrmKpisScreenState extends State<CrmKpisScreen> {
   final Map<String, Map<String, dynamic>> _details = {};
 
   bool get _isVendors => widget.kind == 'vendors';
+  // الفترةُ كالويب: آخرُ ١٢ شهرًا افتراضًا، وتُرسَل مع القائمة والتفصيل.
+  DateTime _from = DateTime(DateTime.now().year - 1, DateTime.now().month, DateTime.now().day);
+  DateTime _to = DateTime.now();
+  int _seq = 0;
+  String get _rangeQs => 'from=${_iso(_from)}&to=${_iso(_to)}';
 
   Map<String, dynamic> _bandOf(Map<String, dynamic> r) {
     final k = '${r['band'] ?? ''}';
@@ -509,7 +623,7 @@ class _CrmKpisScreenState extends State<CrmKpisScreen> {
     if (cached != null) return cached;
     try {
       final d = await Api.instance.get(
-          '/api/crm/kpis/${widget.kind}/detail?key=${Uri.encodeQueryComponent(k)}');
+          '/api/crm/kpis/${widget.kind}/detail?key=${Uri.encodeQueryComponent(k)}&$_rangeQs');
       final m = Map<String, dynamic>.from(d);
       _details[k] = m;
       return m;
@@ -522,9 +636,10 @@ class _CrmKpisScreenState extends State<CrmKpisScreen> {
   void initState() { super.initState(); _load(); }
 
   Future<void> _load() async {
+    final mine = ++_seq;
     try {
-      final d = await Api.instance.get('/api/crm/kpis/${widget.kind}');
-      if (!mounted) return;
+      final d = await Api.instance.get('/api/crm/kpis/${widget.kind}?$_rangeQs');
+      if (!mounted || mine != _seq) return;
       setState(() {
         _rows = List<Map<String, dynamic>>.from(d['items'] ?? []);
         _summary = Map<String, dynamic>.from(d['summary'] ?? {});
@@ -534,9 +649,43 @@ class _CrmKpisScreenState extends State<CrmKpisScreen> {
         _loading = false; _error = null;
       });
     } catch (e) {
-      if (mounted) setState(() { _loading = false; _error = e.toString(); });
+      if (mounted && mine == _seq) setState(() { _loading = false; _error = e.toString(); });
     }
   }
+
+  List<ExportCol> get _exportCols => _isVendors
+      ? [
+          ExportCol('المورد', 'Vendor', (r) => r['name']),
+          ExportCol('التقييم', 'Score', (r) => r['score']),
+          ExportCol('التصنيف', 'Band', (r) => tr('${_bandOf(r)['ar'] ?? r['bandAr'] ?? ''}', '${_bandOf(r)['en'] ?? r['bandEn'] ?? ''}')),
+          ExportCol('الحمولات', 'Loads', (r) => r['loads']),
+          ExportCol('التشغيل من الطاقة %', 'Utilisation %', (r) => r['utilisationPct'] ?? '—'),
+          ExportCol('الحصة %', 'Share %', (r) => r['sharePct']),
+          ExportCol('التكلفة', 'Cost', (r) => r['cost']),
+          ExportCol('الهامش %', 'Margin %', (r) => r['marginPct'] ?? '—'),
+          ExportCol('اكتمال العقد %', 'Contract %', (r) => r['contractScore']),
+          ExportCol('عدد السيارات', 'Cars', (r) => r['carsCount'] ?? '—'),
+          ExportCol('أيام منذ آخر تشغيل', 'Days since last load', (r) => r['daysSinceLastLoad'] ?? '—'),
+          ExportCol('مندوب تنشيط', 'Rep', (r) => r['energizeRep']),
+          ExportCol('المقر', 'Head office', (r) => r['headOffice']),
+          ExportCol('الجوال', 'Mobile', (r) => r['mobile']),
+        ]
+      : [
+          ExportCol('العميل', 'Customer', (r) => r['name']),
+          ExportCol('التقييم', 'Score', (r) => r['score']),
+          ExportCol('التصنيف', 'Band', (r) => tr('${_bandOf(r)['ar'] ?? ''}', '${_bandOf(r)['en'] ?? ''}')),
+          ExportCol('الإيرادات', 'Revenue', (r) => r['revenue']),
+          ExportCol('المستحق', 'Outstanding', (r) => r['outstanding']),
+          ExportCol('المتأخر', 'Overdue', (r) => r['overdueAmount']),
+          ExportCol('متوسط التأخير', 'Avg days late', (r) => r['avgDaysLate'] ?? '—'),
+          ExportCol('الشحنات', 'Shipments', (r) => r['shipments']),
+          ExportCol('نقل ثقيل', 'Heavy transport', (r) => r['fleetTrips']),
+          ExportCol('طلبات شحن', 'Shipment orders', (r) => r['shipmentOrders']),
+          ExportCol('معاملات تخليص', 'Customs files', (r) => r['customsJobs']),
+          ExportCol('النمو %', 'Growth %', (r) => r['revenueGrowthPct'] ?? '—'),
+          ExportCol('أيام منذ آخر تواصل', 'Days since contact', (r) => r['daysSinceLastTouch'] ?? '—'),
+          ExportCol('المسؤول', 'Owner', (r) => r['owner']),
+        ];
 
   void _open(Map<String, dynamic> r) {
     final flags = List.from(r['flags'] ?? []);
@@ -611,11 +760,23 @@ class _CrmKpisScreenState extends State<CrmKpisScreen> {
 
     return AppScaffold(
       title: Text(_isVendors ? tr('مؤشرات الموردين', 'Vendor KPIs') : tr('مؤشرات العملاء', 'Customer KPIs')),
+      actions: [
+        ExportButton(
+          fileName: 'crm-${_isVendors ? 'vendor' : 'customer'}-kpis-${_iso(_from)}_${_iso(_to)}',
+          sheetName: _isVendors ? tr('مؤشرات الموردين', 'Vendor KPIs') : tr('مؤشرات العملاء', 'Customer KPIs'),
+          rows: () => rows,
+          columns: _exportCols,
+        ),
+      ],
       body: _loading
           ? ListView(padding: const EdgeInsets.all(14), children: const [Shimmer(height: 70), SizedBox(height: 10), Shimmer(), SizedBox(height: 10), Shimmer()])
           : _error != null
               ? ErrorRetry(message: _error!, onRetry: () { setState(() => _loading = true); _load(); })
               : Column(children: [
+                  _RangeBar(from: _from, to: _to, onChanged: (f, t) {
+                    setState(() { _from = f; _to = t; _details.clear(); });
+                    _load();
+                  }),
                   Padding(
                     padding: const EdgeInsets.fromLTRB(14, 12, 14, 6),
                     child: Row(children: [

@@ -1,12 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../services/api.dart';
+import '../services/auth.dart';
 import '../services/lang.dart';
 import '../services/live.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import 'ops_common.dart' show opsLoc, opsMoney, opsYmd, opsDate;
+import 'ops_platform_extra.dart';
 
-/// منصة العمليات (UPL) — المرآة الحية: لوحة، الشحنات بجدولها الزمني،
+/// منصة العمليات (UPL) — المرآة الحية: لوحة، الشحنات (ops_platform_extra.dart)،
 /// و١٢ جدول مرجعي ببحث الخادم وترقيم الصفحات، كما على الويب.
 
 enum OpsKind { text, badge, rel, money, phone, boolean, date }
@@ -53,6 +57,7 @@ const opsResources = [
     OpsCol('nationality', 'الجنسية', 'Nationality'),
     OpsCol('driver_card_number', 'رقم البطاقة', 'Card #'),
     OpsCol('company_name', 'الشركة', 'Company'),
+    OpsCol('created_at', 'الإنشاء', 'Created', OpsKind.date),
   ]),
   OpsCfg('cars', 'المركبات', 'Cars', Icons.directions_car_outlined, [
     OpsCol('name', 'الاسم', 'Name'),
@@ -67,6 +72,7 @@ const opsResources = [
     OpsCol('owner_phone', 'الهاتف', 'Phone', OpsKind.phone),
     OpsCol('car_owner_number', 'رقم المالك', 'Owner #'),
     OpsCol('manager_name', 'المدير', 'Manager'),
+    OpsCol('created_at', 'الإنشاء', 'Created', OpsKind.date),
   ]),
   OpsCfg('users', 'العملاء', 'Customers', Icons.people_outline, [
     OpsCol('name', 'الاسم', 'Name'),
@@ -168,6 +174,11 @@ const opsFields = <String, List<OpsField>>{
     OpsField('manager_name', 'اسم المدير', 'Manager name'),
     OpsField('manager_phone', 'هاتف المدير', 'Manager phone'),
     OpsField('accountant_name', 'المحاسب', 'Accountant'),
+    OpsField('accountant_phone', 'هاتف المحاسب', 'Accountant phone'),
+    OpsField('payment_terms', 'شروط الدفع', 'Payment terms', required: true),
+    OpsField('agreed_price_statement', 'السعر المتفق', 'Agreed price', required: true),
+    OpsField('owner_id', 'المستخدم (المالك)', 'User (owner)', type: 'ref', ref: 'users', required: true),
+    OpsField('delegate_id', 'المندوب', 'Delegate', type: 'ref', ref: 'admins', required: true),
   ],
   'users': [
     OpsField('name', 'الاسم', 'Name'),
@@ -254,60 +265,118 @@ String opsCell(Map<String, dynamic> r, OpsCol c) {
 }
 
 // ── القائمة العامة ──────────────────────────────────────────────────────────
-class OpsResourceScreen extends StatefulWidget {
+/// فلاترُ كلّ مورد — نفسُ `filters` في lib/ops.ts (القيمُ 'true'/'false' كما يرسلها الويب).
+const _activeFilter = ('active', 'الحالة', 'Status', [('true', 'مُفعّل', 'Active'), ('false', 'غير مُفعّل', 'Inactive')]);
+const opsResourceFilters = <String, List<(String, String, String, List<(String, String, String)>)>>{
+  'cars': [_activeFilter],
+  'users': [
+    _activeFilter,
+    ('verified', 'التوثيق', 'Verified', [('true', 'موثّق', 'Verified'), ('false', 'غير موثّق', 'Unverified')]),
+    ('user_type', 'النوع', 'Type', [('individual', 'فرد', 'Individual'), ('business', 'شركة', 'Business')]),
+  ],
+  'branches': [_activeFilter],
+  'cities': [_activeFilter],
+  'countries': [_activeFilter],
+  'truck-types': [_activeFilter],
+  'truck-sizes': [_activeFilter],
+  'load-types': [_activeFilter],
+  'car-brands': [_activeFilter],
+  'car-colors': [_activeFilter],
+};
+
+/// الصفوفُ التي تفتح ملفًّا كاملًا بدل نافذة التفاصيل (`profile: true`).
+const _profileResources = {'drivers', 'users'};
+
+/// الشحناتُ لها صفحتُها (فلاتر غنيّة وسير حالات)؛ وبقيّةُ الموارد جدولٌ عامّ.
+class OpsResourceScreen extends StatelessWidget {
   final OpsCfg cfg;
   const OpsResourceScreen({super.key, required this.cfg});
   @override
-  State<OpsResourceScreen> createState() => _OpsResourceScreenState();
+  Widget build(BuildContext context) =>
+      cfg.key == 'shipments' ? const OpsShipmentsScreen() : _OpsGenericResourceScreen(cfg: cfg);
 }
 
-class _OpsResourceScreenState extends State<OpsResourceScreen> {
+class _OpsGenericResourceScreen extends StatefulWidget {
+  final OpsCfg cfg;
+  const _OpsGenericResourceScreen({required this.cfg});
+  @override
+  State<_OpsGenericResourceScreen> createState() => _OpsResourceScreenState();
+}
+
+class _OpsResourceScreenState extends State<_OpsGenericResourceScreen> {
   List<Map<String, dynamic>> _rows = [];
   bool _loading = true;
+  bool _stale = false;
   String? _error;
   String _q = '';
-  String _active = ''; // '' الكل · '1' مُفعّل · '0' موقوف
+  final Map<String, String> _filters = {};
   int _page = 1;
   int _lastPage = 1;
+  int? _totalItems;
+  int _seq = 0;
   late final void Function() _onLive;
 
   List<OpsField> get _fields => opsFields[widget.cfg.key] ?? const [];
-  bool get _writable => _fields.isNotEmpty;
-  bool get _hasActive => _fields.any((f) => f.key == 'active');
+  bool get _admin => isOpsAdmin(context.read<AuthProvider>());
+  bool get _writable => _admin && _fields.isNotEmpty;
+  List<(String, String, String, List<(String, String, String)>)> get _filterDefs => opsResourceFilters[widget.cfg.key] ?? const [];
 
   @override
   void initState() {
     super.initState();
     _load();
     _onLive = () => _load(silent: true);
-    // الخادمُ يعلن `ops:<المورد>:changed` (opsController) — كان الاسمُ بلا اللاحقة فلا يتحدّث شيء.
+    // الخادمُ يعلن `ops:<المورد>:changed`، و`ops:stats` يلتقط ما أُضيف أو حُذف في المنصّة نفسِها.
     Live.instance.on('ops:${widget.cfg.key}:changed', _onLive);
+    Live.instance.on('ops:stats', _onLive);
   }
 
   @override
   void dispose() {
     Live.instance.off('ops:${widget.cfg.key}:changed', _onLive);
+    Live.instance.off('ops:stats', _onLive);
     super.dispose();
   }
 
   Future<void> _load({bool silent = false}) async {
+    final mine = ++_seq;
     try {
       final params = [
-        'page=$_page', 'limit=50', 'lang=${Lang.instance.ar ? 'ar' : 'en'}',
+        'page=$_page', 'limit=25', 'lang=${Lang.instance.ar ? 'ar' : 'en'}',
         if (_q.trim().isNotEmpty) 'search=${Uri.encodeQueryComponent(_q.trim())}',
-        if (_active.isNotEmpty) 'active=$_active',
+        for (final e in _filters.entries) if (e.value.isNotEmpty) '${e.key}=${Uri.encodeQueryComponent(e.value)}',
       ];
       final d = await Api.instance.get('/api/ops/${widget.cfg.key}?${params.join('&')}');
-      if (!mounted) return;
+      if (!mounted || mine != _seq) return;
       setState(() {
         _rows = List<Map<String, dynamic>>.from((d['items'] ?? d['data'] ?? []) as List);
         final meta = d['meta'];
         _lastPage = meta is Map ? ((meta['totalPages'] ?? meta['last_page'] ?? 1) as num).toInt() : 1;
+        _totalItems = meta is Map && meta['totalItems'] is num ? (meta['totalItems'] as num).toInt() : null;
         _loading = false;
+        _stale = false;
         _error = null;
       });
     } catch (e) {
-      if (mounted && !silent) setState(() { _loading = false; _error = e.toString(); });
+      if (!mounted || mine != _seq) return;
+      // تعثُّرُ المنصّة لا يُفرغ ما يُعرض.
+      setState(() {
+        _loading = false;
+        if (_rows.isEmpty && !silent) { _error = e.toString(); } else { _stale = true; }
+      });
+    }
+  }
+
+  void _reload() { setState(() { _page = 1; _loading = _rows.isEmpty; }); _load(); }
+
+  void _open(Map<String, dynamic> r) {
+    final id = '${r['id'] ?? ''}';
+    if (_profileResources.contains(widget.cfg.key) && id.isNotEmpty) {
+      Navigator.push(context, MaterialPageRoute(builder: (_) => widget.cfg.key == 'users'
+          ? OpsCustomerProfileScreen(id: id)
+          : OpsDriverProfileScreen(id: id)));
+    } else {
+      _detailSheet(context, r);
     }
   }
 
@@ -326,7 +395,7 @@ class _OpsResourceScreenState extends State<OpsResourceScreen> {
       context: context,
       builder: (c) => AlertDialog(
         title: Text(tr('تأكيد الحذف', 'Confirm delete')),
-        content: Text(tr('حذف هذا العنصر نهائيًا؟', 'Delete this item?')),
+        content: Text(tr('حذف هذا السجل؟', 'Delete this record?')),
         actions: [
           TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('إلغاء', 'Cancel'))),
           FilledButton(style: FilledButton.styleFrom(backgroundColor: T.danger), onPressed: () => Navigator.pop(c, true), child: Text(tr('حذف', 'Delete'))),
@@ -338,44 +407,14 @@ class _OpsResourceScreenState extends State<OpsResourceScreen> {
     catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString()))); }
   }
 
-  // تغيير حالة الشحنة — نفس عقد الويب: PATCH /admin/shipments/status { status, ids:[id] }.
-  Future<void> _changeStatus(Map<String, dynamic> row) async {
-    final picked = await showModalBottomSheet<String>(
-      context: context,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (c) => SafeArea(
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(18, 14, 18, 6),
-            child: Align(alignment: AlignmentDirectional.centerStart, child: Text(tr('تغيير حالة الشحنة', 'Change shipment status'), style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800))),
-          ),
-          for (final e in opsShipmentStatuses.entries)
-            ListTile(
-              leading: Container(width: 12, height: 12, decoration: BoxDecoration(color: e.value.$3, shape: BoxShape.circle)),
-              title: Text(tr(e.value.$1, e.value.$2), style: const TextStyle(fontSize: 14)),
-              trailing: row['status'] == e.key ? const Icon(Icons.check, color: T.navy) : null,
-              onTap: () => Navigator.pop(c, e.key),
-            ),
-          const SizedBox(height: 6),
-        ]),
-      ),
-    );
-    if (picked == null || picked == row['status']) return;
-    try {
-      await Api.instance.patch('/api/ops/shipments/status', {'status': picked, 'ids': [row['id']]});
-      _load();
-    } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final cfg = widget.cfg;
-    final isShipments = cfg.key == 'shipments';
+    final admin = isOpsAdmin(context.watch<AuthProvider>());
+    final anyFilter = _q.isNotEmpty || _filters.values.any((v) => v.isNotEmpty);
     return AppScaffold(
       title: Text(tr(cfg.ar, cfg.en)),
+      actions: [IconButton(tooltip: tr('تحديث', 'Refresh'), icon: const Icon(Icons.refresh), onPressed: _load)],
       floatingActionButton: _writable
           ? FloatingActionButton.extended(
               backgroundColor: T.navy, foregroundColor: Colors.white,
@@ -387,40 +426,64 @@ class _OpsResourceScreenState extends State<OpsResourceScreen> {
         Padding(
           padding: const EdgeInsets.fromLTRB(14, 12, 14, 4),
           child: TextField(
-            onSubmitted: (v) { setState(() { _q = v; _page = 1; _loading = true; }); _load(); },
-            onChanged: (v) => _q = v,
+            onSubmitted: (v) { _q = v; _reload(); },
+            onChanged: (v) { _q = v; if (v.isEmpty) _reload(); },
             textInputAction: TextInputAction.search,
             decoration: InputDecoration(
               hintText: tr('ابحث ثم اضغط إدخال…', 'Search then press enter…'),
               prefixIcon: const Icon(Icons.search),
-              suffixIcon: IconButton(icon: const Icon(Icons.arrow_circle_left_outlined), onPressed: () { setState(() { _page = 1; _loading = true; }); _load(); }),
+              isDense: true,
             ),
           ),
         ),
-        if (_hasActive)
+        if (_filterDefs.isNotEmpty || anyFilter)
           SizedBox(
-            height: 42,
+            height: 44,
             child: ListView(
               scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.fromLTRB(14, 0, 14, 6),
+              padding: const EdgeInsets.fromLTRB(14, 2, 14, 6),
               children: [
-                for (final f in [('', 'الكل', 'All'), ('1', 'مُفعّل', 'Active'), ('0', 'موقوف', 'Inactive')])
+                for (final f in _filterDefs)
                   Padding(
-                    padding: const EdgeInsets.only(left: 6),
-                    child: ChoiceChip(
-                      selected: _active == f.$1,
-                      onSelected: (_) { setState(() { _active = f.$1; _page = 1; _loading = true; }); _load(); },
-                      label: Text(tr(f.$2, f.$3)),
-                      labelStyle: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: _active == f.$1 ? Colors.white : T.navy),
-                      selectedColor: T.navy,
-                      backgroundColor: T.navy.withValues(alpha: 0.08),
-                      side: BorderSide.none,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                    padding: const EdgeInsetsDirectional.only(end: 6),
+                    child: PopupMenuButton<String>(
+                      onSelected: (v) { setState(() => _filters[f.$1] = v); _reload(); },
+                      itemBuilder: (_) => [
+                        PopupMenuItem(value: '', child: Text('${tr(f.$2, f.$3)} · ${tr('الكل', 'All')}')),
+                        for (final o in f.$4) PopupMenuItem(value: o.$1, child: Text(tr(o.$2, o.$3))),
+                      ],
+                      child: Chip(
+                        visualDensity: VisualDensity.compact,
+                        backgroundColor: (_filters[f.$1] ?? '').isNotEmpty ? T.navy : T.navy.withValues(alpha: 0.08),
+                        side: BorderSide.none,
+                        label: Text(
+                          (_filters[f.$1] ?? '').isEmpty
+                              ? '${tr(f.$2, f.$3)} · ${tr('الكل', 'All')}'
+                              : () { final o = f.$4.firstWhere((x) => x.$1 == _filters[f.$1]); return '${tr(f.$2, f.$3)}: ${tr(o.$2, o.$3)}'; }(),
+                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: (_filters[f.$1] ?? '').isNotEmpty ? Colors.white : T.navy),
+                        ),
+                      ),
                     ),
+                  ),
+                if (anyFilter)
+                  TextButton.icon(
+                    onPressed: () { setState(_filters.clear); _q = ''; _reload(); },
+                    icon: const Icon(Icons.close, size: 16),
+                    label: Text(tr('مسح الكل', 'Reset all')),
                   ),
               ],
             ),
           ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          child: Row(children: [
+            Text('${_totalItems ?? _rows.length} ${tr('الإجمالي', 'Total')} · ${tr('مباشر', 'Live')}', style: const TextStyle(fontSize: 11, color: T.inkSoft)),
+            if (_stale) ...[
+              const SizedBox(width: 8),
+              Expanded(child: Text(tr('تعذّر التحديث — آخر نسخة محفوظة', 'Could not refresh — last known data'), style: const TextStyle(fontSize: 11, color: T.warn), overflow: TextOverflow.ellipsis)),
+            ],
+          ]),
+        ),
         Expanded(
           child: _loading
               ? ListView(padding: const EdgeInsets.all(14), children: const [Shimmer(), SizedBox(height: 10), Shimmer(), SizedBox(height: 10), Shimmer()])
@@ -429,7 +492,7 @@ class _OpsResourceScreenState extends State<OpsResourceScreen> {
                   : RefreshIndicator(
                       onRefresh: _load,
                       child: _rows.isEmpty
-                          ? ListView(children: [const SizedBox(height: 80), EmptyState(icon: cfg.icon, title: tr('لا توجد بيانات', 'No data'))])
+                          ? ListView(children: [const SizedBox(height: 80), EmptyState(icon: cfg.icon, title: tr('لا توجد سجلات', 'No records'))])
                           : ListView.separated(
                               padding: const EdgeInsets.all(14),
                               itemCount: _rows.length,
@@ -437,33 +500,22 @@ class _OpsResourceScreenState extends State<OpsResourceScreen> {
                               itemBuilder: (c, i) {
                                 final r = _rows[i];
                                 final title = opsCell(r, cfg.cols.first);
-                                final statusKey = (r['status'] ?? '').toString();
-                                final st = isShipments ? opsShipmentStatuses[statusKey] : null;
                                 return FadeSlideIn(
                                   delayMs: (i * 12).clamp(0, 120),
                                   child: Pressable(
-                                    onTap: () => isShipments
-                                        ? Navigator.push(c, MaterialPageRoute(builder: (_) => OpsShipmentTimelineScreen(shipment: r)))
-                                        : _detailSheet(c, r),
+                                    onTap: () => _open(r),
                                     child: AppCard(
-                                      topAccent: st?.$3,
                                       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                                         Row(children: [
                                           Expanded(child: Text(title.isEmpty ? '—' : title, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5))),
-                                          if (st != null) Chip2(tr(st.$1, st.$2), st.$3),
-                                          if (isShipments)
-                                            IconButton(
-                                              visualDensity: VisualDensity.compact,
-                                              icon: const Icon(Icons.swap_horiz_rounded, size: 20, color: T.navy),
-                                              tooltip: tr('تغيير الحالة', 'Change status'),
-                                              onPressed: () => _changeStatus(r),
-                                            )
-                                          else if (_writable)
+                                          if (_profileResources.contains(cfg.key)) const Icon(Icons.chevron_left, size: 18, color: T.inkFaint),
+                                          if (admin)
                                             PopupMenuButton<int>(
                                               icon: const Icon(Icons.more_vert, size: 20, color: T.inkFaint),
-                                              onSelected: (v) => v == 0 ? _openForm(row: r) : _delete(r),
+                                              onSelected: (v) => v == 0 ? _openForm(row: r) : v == 1 ? _delete(r) : _detailSheet(context, r),
                                               itemBuilder: (c2) => [
-                                                PopupMenuItem(value: 0, child: Row(children: [const Icon(Icons.edit_outlined, size: 18, color: T.navy), const SizedBox(width: 10), Text(tr('تعديل', 'Edit'))])),
+                                                PopupMenuItem(value: 2, child: Row(children: [const Icon(Icons.visibility_outlined, size: 18, color: T.inkSoft), const SizedBox(width: 10), Text(tr('التفاصيل', 'Details'))])),
+                                                if (_writable) PopupMenuItem(value: 0, child: Row(children: [const Icon(Icons.edit_outlined, size: 18, color: T.navy), const SizedBox(width: 10), Text(tr('تعديل', 'Edit'))])),
                                                 PopupMenuItem(value: 1, child: Row(children: [const Icon(Icons.delete_outline, size: 18, color: T.danger), const SizedBox(width: 10), Text(tr('حذف', 'Delete'))])),
                                               ],
                                             ),
@@ -492,13 +544,13 @@ class _OpsResourceScreenState extends State<OpsResourceScreen> {
               padding: const EdgeInsets.symmetric(vertical: 6),
               child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
                 IconButton(
-                  onPressed: _page > 1 ? () { setState(() { _page--; _loading = true; }); _load(); } : null,
-                  icon: const Icon(Icons.chevron_right),
+                  onPressed: _page > 1 ? () { setState(() => _page--); _load(); } : null,
+                  icon: Icon(Lang.instance.ar ? Icons.chevron_right : Icons.chevron_left),
                 ),
                 Text('$_page / $_lastPage', style: const TextStyle(fontWeight: FontWeight.w800)),
                 IconButton(
-                  onPressed: _page < _lastPage ? () { setState(() { _page++; _loading = true; }); _load(); } : null,
-                  icon: const Icon(Icons.chevron_left),
+                  onPressed: _page < _lastPage ? () { setState(() => _page++); _load(); } : null,
+                  icon: Icon(Lang.instance.ar ? Icons.chevron_left : Icons.chevron_right),
                 ),
               ]),
             ),
@@ -515,19 +567,23 @@ class _OpsResourceScreenState extends State<OpsResourceScreen> {
         child: SizedBox(
           height: MediaQuery.of(c).size.height * 0.7,
           child: ListView(padding: const EdgeInsets.all(18), children: [
-            Text(opsCell(r, widget.cfg.cols.first), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+            Text('${tr(widget.cfg.ar, widget.cfg.en)} · ${tr('التفاصيل', 'Details')}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
             const SizedBox(height: 10),
-            ...r.entries.where((e) => e.value != null && e.value.toString().isNotEmpty && e.value is! List).map((e) {
+            ...r.entries.map((e) {
+              final raw = e.value;
               String v;
-              if (e.value is Map) {
-                final m = e.value as Map;
-                v = (m['name'] is Map
-                        ? (Lang.instance.ar ? m['name']['ar'] : m['name']['en'])
-                        : m['name'] ?? m['ar'] ?? m['en'] ?? '')
-                    .toString();
-                if (v.isEmpty) return const SizedBox.shrink();
+              if (raw == null || raw == '') {
+                v = '—';
+              } else if (raw is bool) {
+                v = raw ? '✓' : '✗';
+              } else if (raw is Map || raw is List) {
+                final ln = opsLoc(raw);
+                v = ln.isNotEmpty ? ln : raw.toString();
+              } else if (raw is String && RegExp(r'\d{4}-\d{2}-\d{2}T').hasMatch(raw)) {
+                final d = DateTime.tryParse(raw)?.toLocal();
+                v = d == null ? raw : '${opsDate(opsYmd(d))} ${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
               } else {
-                v = e.value.toString();
+                v = raw.toString();
               }
               return Padding(
                 padding: const EdgeInsets.only(bottom: 7),
@@ -540,104 +596,6 @@ class _OpsResourceScreenState extends State<OpsResourceScreen> {
           ]),
         ),
       ),
-    );
-  }
-}
-
-// ── الجدول الزمني للشحنة ────────────────────────────────────────────────────
-class OpsShipmentTimelineScreen extends StatefulWidget {
-  final Map<String, dynamic> shipment;
-  const OpsShipmentTimelineScreen({super.key, required this.shipment});
-  @override
-  State<OpsShipmentTimelineScreen> createState() => _OpsShipmentTimelineScreenState();
-}
-
-class _OpsShipmentTimelineScreenState extends State<OpsShipmentTimelineScreen> {
-  List<Map<String, dynamic>> _items = [];
-  bool _loading = true;
-  String? _error;
-
-  @override
-  void initState() { super.initState(); _load(); }
-
-  Future<void> _load() async {
-    try {
-      final s = widget.shipment;
-      final params = [
-        'lang=${Lang.instance.ar ? 'ar' : 'en'}',
-        if (s['created_at'] != null) 'created_at=${Uri.encodeQueryComponent(s['created_at'].toString())}',
-      ];
-      final d = await Api.instance.get('/api/ops/shipments/timeline/${s['id']}?${params.join('&')}');
-      if (!mounted) return;
-      final data = d['items'] ?? d;
-      setState(() {
-        _items = data is List ? List<Map<String, dynamic>>.from(data.whereType<Map>().map((e) => Map<String, dynamic>.from(e))) : [];
-        _loading = false;
-        _error = null;
-      });
-    } catch (e) {
-      if (mounted) setState(() { _loading = false; _error = e.toString(); });
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final s = widget.shipment;
-    return AppScaffold(
-      title: Text('${tr('شحنة', 'Shipment')} ${s['reference_num'] ?? s['id'] ?? ''}'),
-      body: _loading
-          ? ListView(padding: const EdgeInsets.all(14), children: const [Shimmer(height: 110), SizedBox(height: 10), Shimmer(), SizedBox(height: 10), Shimmer()])
-          : _error != null
-              ? ErrorRetry(message: _error!, onRetry: () { setState(() => _loading = true); _load(); })
-              : RefreshIndicator(
-                  onRefresh: _load,
-                  child: ListView(padding: const EdgeInsets.all(14), children: [
-                    FadeSlideIn(
-                      child: AppCard(
-                        topAccent: opsShipmentStatuses[(s['status'] ?? '').toString()]?.$3 ?? T.navy,
-                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                          Text('${s['address_from'] ?? '—'} ← ${s['address_to'] ?? '—'}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
-                          const SizedBox(height: 6),
-                          Wrap(spacing: 6, runSpacing: 6, children: [
-                            if (s['driver'] is Map) Chip2((s['driver']['name'] ?? '').toString(), T.navy, icon: Icons.badge_outlined),
-                            if (s['selling_price'] != null) Chip2('${s['selling_price']} ${tr('ر.س', 'SAR')}', T.violet),
-                            if (s['payment_method'] != null) Chip2(s['payment_method'].toString(), T.info),
-                          ]),
-                        ]),
-                      ),
-                    ),
-                    const SizedBox(height: 14),
-                    Text(tr('الجدول الزمني', 'Timeline'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
-                    const SizedBox(height: 8),
-                    if (_items.isEmpty) EmptyState(icon: Icons.timeline_outlined, title: tr('لا يوجد جدول زمني', 'No timeline')),
-                    ..._items.map((e) {
-                      final st = opsShipmentStatuses[(e['status'] ?? '').toString()] ?? ('—', '—', T.inkFaint);
-                      final at = DateTime.tryParse((e['created_at'] ?? '').toString())?.toLocal();
-                      final admin = e['admin'] is Map ? (e['admin']['name'] ?? '').toString() : '';
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 4),
-                        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                          Column(children: [
-                            Container(width: 12, height: 12, decoration: BoxDecoration(color: st.$3, shape: BoxShape.circle)),
-                            Container(width: 2, height: 42, color: T.navy.withValues(alpha: 0.12)),
-                          ]),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                              Text(tr(st.$1, st.$2), style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: st.$3)),
-                              Text(
-                                '${at != null ? '${at.day}/${at.month}/${at.year} ${at.hour}:${at.minute.toString().padLeft(2, '0')}' : '—'}'
-                                '${admin.isNotEmpty ? ' · $admin' : ''}',
-                                style: const TextStyle(fontSize: 11.5, color: T.inkSoft),
-                              ),
-                            ]),
-                          ),
-                        ]),
-                      );
-                    }),
-                    const SizedBox(height: 20),
-                  ]),
-                ),
     );
   }
 }
@@ -926,6 +884,19 @@ class _OpsRefPickerState extends State<_OpsRefPicker> {
 }
 
 // ── لوحة المنصة ─────────────────────────────────────────────────────────────
+/// نظيرُ /system/ops: بطاقاتُ الأعداد (تُضغط فتفتح الجدول)، وتوزيعُ الحالات
+/// (يُضغط فيفتح الشحنات مصفّاةً)، والإيراداتُ الشهريّة، وأحدثُ الشحنات،
+/// ولوحتا الصدارة — مع فلتر الفرع وفترةٍ جاهزة (اليوم/أمس/٧ أيام/الشهر/الكل)
+/// أو يومٍ بعينه أو مدى.
+const _countCards = [
+  ('shipments', 'shipments', 'الشحنات', 'Shipments', Icons.local_shipping_outlined, T.orange),
+  ('drivers', 'drivers', 'السائقون', 'Drivers', Icons.badge_outlined, T.info),
+  ('cars', 'cars', 'المركبات', 'Cars', Icons.directions_car_outlined, T.success),
+  ('carOwners', 'car-owners', 'أصحاب المركبات', 'Car Owners', Icons.person_pin_outlined, T.violet),
+  ('users', 'users', 'العملاء', 'Customers', Icons.people_outline, T.cyan),
+  ('branches', 'branches', 'الفروع', 'Branches', Icons.store_outlined, T.warn),
+];
+
 class OpsDashboardScreen extends StatefulWidget {
   const OpsDashboardScreen({super.key});
   @override
@@ -935,88 +906,303 @@ class OpsDashboardScreen extends StatefulWidget {
 class _OpsDashboardScreenState extends State<OpsDashboardScreen> {
   Map<String, dynamic>? _d;
   bool _loading = true;
-  String? _error;
-  late final void Function() _onLive;
+  String _from = '';
+  String _to = '';
+  String _branch = '';
+  List<Map<String, dynamic>> _branches = [];
+  int _seq = 0;
+  bool _retried = false;
+  late final void Function() _onChanged;
+  late final void Function(dynamic) _onStats;
 
   @override
   void initState() {
     super.initState();
     _load();
-    _onLive = () => _load();
-    Live.instance.on('ops:stats', _onLive);
-    Live.instance.on('ops:shipments:changed', _onLive);
+    Api.instance.get('/api/ops/branches?limit=100&lang=${Lang.instance.ar ? 'ar' : 'en'}').then((d) {
+      if (mounted) setState(() => _branches = List<Map<String, dynamic>>.from((d['items'] ?? const []) as List));
+    }).catchError((_) {});
+    _onChanged = () => _load();
+    // دفعُ الإحصاءات الحيّة غيرُ مفلتر — يُهمَل حين يكون هناك فلتر.
+    _onStats = (stats) {
+      if (_from.isNotEmpty || _to.isNotEmpty || _branch.isNotEmpty || stats is! Map || !mounted) return;
+      setState(() => _d = {...?_d, 'stats': stats});
+    };
+    Live.instance.onData('ops:stats', _onStats);
+    Live.instance.on('ops:shipments:changed', _onChanged);
   }
 
   @override
   void dispose() {
-    Live.instance.off('ops:stats', _onLive);
-    Live.instance.off('ops:shipments:changed', _onLive);
+    Live.instance.offData('ops:stats', _onStats);
+    Live.instance.off('ops:shipments:changed', _onChanged);
     super.dispose();
   }
 
   Future<void> _load() async {
+    final mine = ++_seq;
     try {
-      final d = await Api.instance.get('/api/ops/dashboard?lang=${Lang.instance.ar ? 'ar' : 'en'}');
-      if (!mounted) return;
-      setState(() { _d = Map<String, dynamic>.from(d); _loading = false; _error = null; });
-    } catch (e) {
-      if (mounted) setState(() { _loading = false; _error = e.toString(); });
-    }
+      final qs = [
+        'lang=${Lang.instance.ar ? 'ar' : 'en'}',
+        if (_from.isNotEmpty) 'date_from=$_from',
+        if (_to.isNotEmpty) 'date_to=$_to',
+        if (_branch.isNotEmpty) 'branches=$_branch',
+      ];
+      final d = await Api.instance.get('/api/ops/dashboard?${qs.join('&')}');
+      if (!mounted || mine != _seq) return;
+      // ردٌّ فارغٌ من منصّةٍ متعثّرة لا يمسح ما يُعرض.
+      if (d is Map && d['upstreamUnavailable'] != true && (d['stats'] != null || d['home'] != null)) {
+        setState(() => _d = Map<String, dynamic>.from(d));
+      }
+      if (d is Map && d['stale'] == true && !_retried) {
+        _retried = true;
+        Future.delayed(const Duration(milliseconds: 2500), () { if (mounted) _load(); });
+      } else if (d is Map && d['stale'] != true) {
+        _retried = false;
+      }
+    } catch (_) {/* يبقى ما سبق */}
+    if (mounted && mine == _seq) setState(() => _loading = false);
   }
 
-  // يلتقط كل الأزواج الرقمية (بما فيها المتداخلة مستوى واحد) لعرضها كبطاقات.
-  List<(String, num)> _numbers(Map<String, dynamic> m, [String prefix = '']) {
-    final out = <(String, num)>[];
-    m.forEach((k, v) {
-      if (v is num) {
-        out.add(('$prefix$k', v));
-      } else if (v is Map && prefix.isEmpty) {
-        out.addAll(_numbers(Map<String, dynamic>.from(v), '$k · '));
-      }
-    });
-    return out;
+  void _setRange(String from, String to) { setState(() { _from = from; _to = to; }); _load(); }
+
+  void _go(String route, {String? status}) {
+    final widget = route == 'shipments'
+        ? OpsShipmentsScreen(initialStatus: status)
+        : OpsResourceScreen(cfg: opsResources.firstWhere((c) => c.key == route));
+    Navigator.push(context, MaterialPageRoute(builder: (_) => widget));
   }
+
+  Widget _leaderboard(String title, Color color, List rows, String valueKey, String route) => AppCard(
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Row(children: [Icon(Icons.emoji_events_outlined, size: 18, color: color), const SizedBox(width: 6), Expanded(child: Text(title, style: const TextStyle(fontWeight: FontWeight.w800)))]),
+          const SizedBox(height: 6),
+          if (rows.isEmpty) const Text('—', style: TextStyle(color: T.inkFaint)),
+          for (var i = 0; i < rows.length; i++)
+            Pressable(
+              onTap: () => _go(route),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 5),
+                child: Row(children: [
+                  CircleAvatar(radius: 11, backgroundColor: T.canvas, child: Text('${i + 1}', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: T.inkSoft))),
+                  const SizedBox(width: 8),
+                  Expanded(child: Text(opsLoc((rows[i] as Map)['name']), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                  Text(opsMoney((rows[i] as Map)[valueKey]), style: const TextStyle(fontWeight: FontWeight.w800)),
+                ]),
+              ),
+            ),
+        ]),
+      );
 
   @override
   Widget build(BuildContext context) {
-    final home = _d?['home'] is Map ? Map<String, dynamic>.from(_d!['home']) : <String, dynamic>{};
+    final now = DateTime.now();
+    final today = opsYmd(now);
+    final presets = [
+      ('اليوم', 'Today', today, today),
+      ('أمس', 'Yesterday', opsYmd(now.subtract(const Duration(days: 1))), opsYmd(now.subtract(const Duration(days: 1)))),
+      ('آخر 7 أيام', 'Last 7 days', opsYmd(now.subtract(const Duration(days: 6))), today),
+      ('هذا الشهر', 'This month', opsYmd(DateTime(now.year, now.month, 1)), today),
+      ('الكل', 'All', '', ''),
+    ];
     final stats = _d?['stats'] is Map ? Map<String, dynamic>.from(_d!['stats']) : <String, dynamic>{};
-    final numbers = [..._numbers(home), ..._numbers(stats)];
+    final counts = stats['counts'] is Map ? Map<String, dynamic>.from(stats['counts']) : <String, dynamic>{};
+    final chart = stats['statusesShipmentsChart'] is List ? stats['statusesShipmentsChart'] as List : const [];
+    final homeStats = _d?['home'] is Map && _d!['home']['stats'] is List ? _d!['home']['stats'] as List : const [];
+    final statusStats = chart.isNotEmpty ? chart : homeStats.where((s) => s is Map && s['status'] != 'all').toList();
+    final charts = _d?['charts'] is Map ? Map<String, dynamic>.from(_d!['charts']) : <String, dynamic>{};
+    final revenue = charts['monthlyRevenueBarChart'] is List ? charts['monthlyRevenueBarChart'] as List : const [];
+    final latest = charts['latestShipments'] is List ? charts['latestShipments'] as List : const [];
+    final topDrivers = charts['topDrivers'] is List ? charts['topDrivers'] as List : const [];
+    final topOwners = charts['topCarOwners'] is List ? charts['topCarOwners'] as List : const [];
+    final maxRev = revenue.fold<num>(0, (a, r) => r is Map && (r['revenue'] ?? 0) is num && (r['revenue'] as num) > a ? r['revenue'] as num : a);
+    final singleDay = _from.isNotEmpty && _from == _to;
     return AppScaffold(
-      title: Text(tr('لوحة منصة العمليات', 'Ops Dashboard')),
-      body: _loading
+      title: Text(tr('لوحة الأوبريشن', 'Operations Dashboard')),
+      actions: [IconButton(tooltip: tr('تحديث', 'Refresh'), icon: const Icon(Icons.refresh), onPressed: _load)],
+      body: _loading && _d == null
           ? ListView(padding: const EdgeInsets.all(14), children: const [Shimmer(height: 90), SizedBox(height: 10), Shimmer(height: 90), SizedBox(height: 10), Shimmer()])
-          : _error != null
-              ? ErrorRetry(message: _error!, onRetry: () { setState(() => _loading = true); _load(); })
-              : RefreshIndicator(
-                  onRefresh: _load,
-                  child: numbers.isEmpty
-                      ? ListView(children: [const SizedBox(height: 80), EmptyState(icon: Icons.query_stats_outlined, title: tr('لا تتوفر بيانات من المنصة الآن', 'No platform data right now'))])
-                      : GridView.count(
-                          padding: const EdgeInsets.all(14),
-                          crossAxisCount: 2,
-                          mainAxisSpacing: 10,
-                          crossAxisSpacing: 10,
-                          childAspectRatio: 1.9,
-                          children: numbers.take(24).toList().asMap().entries.map((e) {
-                            final colors = [T.navy, T.info, T.success, T.orange, T.violet, T.cyan, T.warn, T.danger];
-                            final color = colors[e.key % colors.length];
-                            return FadeSlideIn(
-                              delayMs: e.key * 25,
-                              child: AppCard(
-                                topAccent: color,
-                                padding: const EdgeInsets.all(12),
-                                child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.center, children: [
-                                  Text(e.value.$1, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: T.inkSoft)),
-                                  const SizedBox(height: 4),
-                                  Text(e.value.$2.toStringAsFixed(e.value.$2.truncateToDouble() == e.value.$2 ? 0 : 1),
-                                      style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w900)),
+          : RefreshIndicator(
+              onRefresh: _load,
+              child: ListView(padding: const EdgeInsets.all(14), children: [
+                Text(tr('مرآة حيّة لنظام عمليات الميدان · مباشر', 'Live mirror of the field operations system · Live'), style: const TextStyle(fontSize: 11.5, color: T.inkSoft)),
+                const SizedBox(height: 8),
+                // ── الفلاتر: الفرع، والفترات الجاهزة، ويومٌ بعينه، ومدى ──────────
+                AppCard(
+                  padding: const EdgeInsets.all(10),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                    DropdownButtonFormField<String>(
+                      initialValue: _branch,
+                      isExpanded: true,
+                      decoration: InputDecoration(labelText: tr('الفرع', 'Branch'), isDense: true),
+                      items: [
+                        DropdownMenuItem(value: '', child: Text(tr('كل الفروع', 'All branches'))),
+                        for (final b in _branches) DropdownMenuItem(value: '${b['id']}', child: Text(opsLoc(b['name']), overflow: TextOverflow.ellipsis)),
+                      ],
+                      onChanged: (v) { setState(() => _branch = v ?? ''); _load(); },
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(spacing: 6, runSpacing: 6, children: [
+                      for (final p in presets)
+                        ChoiceChip(
+                          visualDensity: VisualDensity.compact,
+                          label: Text(tr(p.$1, p.$2)),
+                          selected: _from == p.$3 && _to == p.$4,
+                          selectedColor: T.orange,
+                          labelStyle: TextStyle(fontSize: 12, color: _from == p.$3 && _to == p.$4 ? Colors.white : T.ink),
+                          onSelected: (_) => _setRange(p.$3, p.$4),
+                        ),
+                    ]),
+                    const SizedBox(height: 8),
+                    Row(children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          icon: const Icon(Icons.today, size: 16),
+                          label: Text(singleDay ? opsDate(_from) : tr('يوم محدد', 'Specific day'), style: const TextStyle(fontSize: 12)),
+                          onPressed: () async {
+                            final d = await showDatePicker(context: context, initialDate: DateTime.tryParse(_from) ?? now, firstDate: DateTime(2018), lastDate: DateTime(now.year + 1));
+                            if (d != null) _setRange(opsYmd(d), opsYmd(d));
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          icon: const Icon(Icons.date_range, size: 16),
+                          label: Text(_from.isNotEmpty && !singleDay ? '${opsDate(_from)} → ${_to.isEmpty ? '…' : opsDate(_to)}' : tr('من — إلى', 'From — To'), style: const TextStyle(fontSize: 12), overflow: TextOverflow.ellipsis),
+                          onPressed: () async {
+                            final r = await showDateRangePicker(context: context, firstDate: DateTime(2018), lastDate: DateTime(now.year + 1),
+                                initialDateRange: _from.isNotEmpty && _to.isNotEmpty ? DateTimeRange(start: DateTime.parse(_from), end: DateTime.parse(_to)) : null);
+                            if (r != null) _setRange(opsYmd(r.start), opsYmd(r.end));
+                          },
+                        ),
+                      ),
+                      if (_from.isNotEmpty || _to.isNotEmpty || _branch.isNotEmpty)
+                        IconButton(tooltip: tr('مسح', 'Clear'), icon: const Icon(Icons.close, size: 18), onPressed: () { setState(() { _from = ''; _to = ''; _branch = ''; }); _load(); }),
+                    ]),
+                  ]),
+                ),
+                const SizedBox(height: 10),
+                // ── بطاقاتُ الأعداد ────────────────────────────────────────
+                GridView.count(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  crossAxisCount: 3,
+                  mainAxisSpacing: 8,
+                  crossAxisSpacing: 8,
+                  childAspectRatio: 1.25,
+                  children: [
+                    for (final c in _countCards)
+                      Pressable(
+                        onTap: () => _go(c.$2),
+                        child: AppCard(
+                          padding: const EdgeInsets.all(10),
+                          child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                            Row(children: [Icon(c.$5, size: 18, color: c.$6), const Spacer(), const Icon(Icons.chevron_left, size: 16, color: T.line)]),
+                            FittedBox(fit: BoxFit.scaleDown, alignment: AlignmentDirectional.centerStart,
+                                child: Text(counts[c.$1] == null ? '—' : opsMoney(num.tryParse('${counts[c.$1]}') ?? counts[c.$1]), style: TextStyle(fontSize: 19, fontWeight: FontWeight.w900, color: c.$6))),
+                            Text(tr(c.$3, c.$4), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, color: T.inkSoft)),
+                          ]),
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                // ── توزيعُ الحالات ─────────────────────────────────────────
+                AppCard(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                    Text(tr('توزيع حالات الشحنات', 'Shipment Status Breakdown'), style: const TextStyle(fontWeight: FontWeight.w800)),
+                    const SizedBox(height: 8),
+                    Wrap(spacing: 8, runSpacing: 8, children: [
+                      for (final s in statusStats.whereType<Map>())
+                        Pressable(
+                          onTap: () => _go('shipments', status: '${s['status']}'),
+                          child: Container(
+                            width: 100,
+                            padding: const EdgeInsets.all(9),
+                            decoration: BoxDecoration(
+                              color: (opsShipmentStatuses['${s['status']}']?.$3 ?? T.inkFaint).withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                              Text(opsMoney(num.tryParse('${s['count']}') ?? 0), style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: opsShipmentStatuses['${s['status']}']?.$3 ?? T.ink)),
+                              Text(() { final st = opsShipmentStatuses['${s['status']}']; return st == null ? '${s['status']}' : tr(st.$1, st.$2); }(),
+                                  maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11)),
+                            ]),
+                          ),
+                        ),
+                    ]),
+                  ]),
+                ),
+                // ── الإيراداتُ الشهريّة ─────────────────────────────────────
+                if (revenue.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  AppCard(
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                      Text(tr('الإيرادات الشهرية', 'Monthly Revenue'), style: const TextStyle(fontWeight: FontWeight.w800)),
+                      const SizedBox(height: 10),
+                      SizedBox(
+                        height: 170,
+                        child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                          for (final r in revenue.whereType<Map>())
+                            Expanded(
+                              child: Tooltip(
+                                message: '${r['month']}: ${opsMoney(r['revenue'])}',
+                                child: Column(mainAxisAlignment: MainAxisAlignment.end, children: [
+                                  Text(((r['revenue'] ?? 0) as num) >= 1000 ? '${(((r['revenue'] ?? 0) as num) / 1000).toStringAsFixed(0)}k' : opsMoney(r['revenue'] ?? 0),
+                                      style: const TextStyle(fontSize: 8.5, color: T.inkSoft)),
+                                  const SizedBox(height: 2),
+                                  Container(
+                                    height: maxRev > 0 ? 130 * (((r['revenue'] ?? 0) as num) / maxRev).toDouble() : 0,
+                                    margin: const EdgeInsets.symmetric(horizontal: 2),
+                                    decoration: const BoxDecoration(color: T.orange, borderRadius: BorderRadius.vertical(top: Radius.circular(5))),
+                                  ),
+                                  const SizedBox(height: 3),
+                                  Text('${r['month'] ?? ''}', maxLines: 1, overflow: TextOverflow.clip, style: const TextStyle(fontSize: 8.5, color: T.inkFaint)),
                                 ]),
                               ),
-                            );
-                          }).toList(),
+                            ),
+                        ]),
+                      ),
+                    ]),
+                  ),
+                ],
+                const SizedBox(height: 12),
+                // ── أحدثُ الشحنات ──────────────────────────────────────────
+                AppCard(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                    Row(children: [
+                      Expanded(child: Text(tr('أحدث الشحنات', 'Latest Shipments'), style: const TextStyle(fontWeight: FontWeight.w800))),
+                      TextButton(onPressed: () => _go('shipments'), child: Text(tr('عرض الكل', 'View all'))),
+                    ]),
+                    if (latest.isEmpty) Text(tr('لا توجد سجلات', 'No records'), style: const TextStyle(color: T.inkFaint)),
+                    for (final s in latest.whereType<Map>())
+                      Pressable(
+                        onTap: () => _go('shipments'),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 6),
+                          child: Row(children: [
+                            Expanded(
+                              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                Text('#${s['reference_num'] ?? '${s['id']}'.substring(0, '${s['id']}'.length.clamp(0, 6))} · ${s['address_from'] ?? ''} → ${s['address_to'] ?? ''}',
+                                    maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600)),
+                                Text(opsLoc(s['user'] is Map ? s['user']['name'] : null), maxLines: 1, style: const TextStyle(fontSize: 11, color: T.inkFaint)),
+                              ]),
+                            ),
+                            if (opsShipmentStatuses['${s['status']}'] != null)
+                              Chip2(tr(opsShipmentStatuses['${s['status']}']!.$1, opsShipmentStatuses['${s['status']}']!.$2), opsShipmentStatuses['${s['status']}']!.$3),
+                          ]),
                         ),
+                      ),
+                  ]),
                 ),
+                const SizedBox(height: 12),
+                _leaderboard(tr('أعلى السائقين (شحنات مكتملة)', 'Top Drivers (completed)'), T.info, topDrivers, 'completedShipments', 'drivers'),
+                const SizedBox(height: 12),
+                _leaderboard(tr('أعلى أصحاب المركبات', 'Top Car Owners'), T.violet, topOwners, 'totalShipments', 'car-owners'),
+                const SizedBox(height: 20),
+              ]),
+            ),
     );
   }
 }

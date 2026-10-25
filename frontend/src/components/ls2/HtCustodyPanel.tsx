@@ -43,6 +43,7 @@ export default function HtCustodyPanel({ by, ar, showVehicle = false }: {
 }) {
   const { user } = useAuth();
   const t = (a: string, e: string) => (ar ? a : e);
+  // role-only: الدفترُ `authorize.strict` في الخادم (routes/htCustody) — منحُ القسم لا يفتحه.
   const allowed = !!user && (HT_CUSTODY_ROLES.includes(user.role) || !!(user as any).superAdminPowers);
   const [rows, setRows] = useState<Entry[] | null>(null);
   const guard = useLatestRequest();

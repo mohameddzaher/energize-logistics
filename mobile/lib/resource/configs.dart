@@ -62,8 +62,10 @@ Color _docColor(dynamic d) {
 // ── إدارة الأسطول ────────────────────────────────────────────────────────────
 final fleetDriversCfg = ResourceConfig(
   arTitle: 'السائقون', enTitle: 'Drivers', icon: Icons.badge_outlined,
-  endpoint: '/api/fleet/drivers', listKey: 'drivers', liveEvent: 'fleet:updated',
-  extraLiveEvents: const ['hr:employee', 'vreg:updated'],
+  // تعديلُ السائق يُعلَن بـ`fleet:drivers` (و`fleet:updated` للحمولات) — كانت الشاشةُ
+  // تسمع الثاني وحده فلا تتحدّث بعد تعديل سائق (٢٠٢٦/١٠/٢٥).
+  endpoint: '/api/fleet/drivers', listKey: 'drivers', liveEvent: 'fleet:drivers',
+  extraLiveEvents: const ['fleet:updated', 'fleet:vehicles', 'hr:employee', 'hr:master', 'vreg:updated'],
   // اسمُ الزميل يُبحَث به أيضًا: من يكتب اسمَ سائقٍ يريد صفَّه وصفَّ من يشاركه
   // الشاحنة. والخادمُ يرسل `mate` مع كلّ صفّ، فالبحثُ المحليُّ يقرؤه بنقطة.
   searchFields: const ['name', 'phone', 'iqama', 'mate.name'],
@@ -145,7 +147,8 @@ final fleetDriversCfg = ResourceConfig(
 final fleetVehiclesCfg = ResourceConfig(
   filterField: 'trailerType',
   arTitle: 'سيارات الأسطول', enTitle: 'Fleet Vehicles', icon: Icons.local_shipping_outlined,
-  endpoint: '/api/fleet/vehicles', listKey: 'vehicles', liveEvent: 'fleet:updated',
+  endpoint: '/api/fleet/vehicles', listKey: 'vehicles', liveEvent: 'fleet:vehicles',
+  extraLiveEvents: const ['fleet:updated', 'fleet:drivers', 'vreg:updated'],
   searchFields: const ['plate', 'name', 'trailerType', 'supervisorName'],
   titleOf: (r) => _s(r, 'plate'),
   // ── وطاقمُها بالرتبة في السطر الثاني ──────────────────────────────────────
@@ -1591,7 +1594,7 @@ final shipmentOrdersFieldsCfg = ResourceConfig(
 // ── موردو العلاقات (3PL) — CRM Vendors ───────────────────────────────────────
 final crmVendorsCfg = ResourceConfig(
   arTitle: 'الموردون (3PL)', enTitle: 'CRM Vendors', icon: Icons.local_shipping_outlined,
-  endpoint: '/api/crm-vendors', listKey: 'items', updateMethod: 'PUT', liveEvent: 'crm:updated',
+  endpoint: '/api/crm-vendors', listKey: 'items', updateMethod: 'PUT', liveEvent: 'crm:vendor',
   searchFields: const ['name', 'energizeRep', 'representative', 'mobile', 'headOffice', 'vendorType'],
   titleOf: (r) => _s(r, 'name'),
   subtitleOf: (r) => [_s(r, 'vendorType'), _s(r, 'representative'), _s(r, 'mobile')].where((x) => x.isNotEmpty).join(' · '),
@@ -1659,7 +1662,7 @@ final hrContractsCfg = ResourceConfig(
 // ── مخزون الموارد البشرية — HR Stock ─────────────────────────────────────────
 final hrStockCfg = ResourceConfig(
   arTitle: 'مخزون الموارد البشرية', enTitle: 'HR Stock', icon: Icons.inventory_2_outlined,
-  endpoint: '/api/hr/stock', listKey: 'items', liveEvent: 'hr:updated',
+  endpoint: '/api/hr/stock', listKey: 'items', liveEvent: 'hr:asset',
   searchFields: const ['name', 'type', 'brand', 'model', 'serialNumber', 'location'],
   titleOf: (r) => _s(r, 'name'),
   subtitleOf: (r) => [_s(r, 'brand'), _s(r, 'model'), _s(r, 'serialNumber')].where((x) => x.isNotEmpty).join(' · '),

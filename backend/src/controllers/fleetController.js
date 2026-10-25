@@ -893,9 +893,40 @@ exports.updateDriver = async (req, res) => {
     const driver = await FleetDriver.findById(req.params.id);
     if (!driver) return res.status(404).json({ message: 'Driver not found' });
     const data = pick(req.body, DRIVER_EDITABLE);
-    // المربوطُ بملفّه: الاسمُ والجوالُ والإقامةُ والجنسيّةُ والإيبانُ تُصحَّح في
-    // الموارد البشريّة لا هنا — وإلّا عادت النسخةُ تخالف الأصل.
-    if (driver.employee) FI.HR_OWNED_DRIVER_FIELDS.forEach((f) => { delete data[f]; });
+    // ── المربوطُ بملفّه: ما يُعدَّل هنا يُكتب في ملفّه أيضًا (٢٠٢٦/١٠/٢٥) ────────
+    // كانت هذه الخاناتُ الخمسُ تُحذف من الطلب بصمت والردُّ «حُفظ» — والقائمةُ تقرأ
+    // من الموارد البشريّة، فيرى مديرُ الأسطول أنّ تعديله «لا يسمع». فصار التعديلُ
+    // يُكتب في الملفّ نفسِه (فتبقى النسختان واحدة) ويُقيَّد أنّه من الأسطول.
+    let hrWritten = null;
+    if (driver.employee) {
+      const Employee = require('../models/Employee');
+      const emp = await Employee.findById(driver.employee).select('arabicName firstName lastName phone nationality iban idType iqamaNumber nationalId employmentStatus').lean();
+      if (emp) {
+        const S2 = (v) => String(v == null ? '' : v).trim();
+        const hrSet = {};
+        if (data.name !== undefined && S2(data.name) && S2(data.name) !== S2(emp.arabicName || `${emp.firstName || ''} ${emp.lastName || ''}`)) hrSet.arabicName = S2(data.name);
+        if (data.phone !== undefined && S2(data.phone) !== S2(emp.phone)) hrSet.phone = S2(data.phone);
+        if (data.nationality !== undefined && S2(data.nationality) !== S2(emp.nationality)) hrSet.nationality = S2(data.nationality);
+        if (data.iban !== undefined && S2(data.iban) !== S2(emp.iban)) hrSet.iban = S2(data.iban);
+        if (data.iqama !== undefined && S2(data.iqama)) {
+          const col = emp.idType === 'national_id' ? 'nationalId' : 'iqamaNumber';
+          if (S2(data.iqama) !== S2(emp[col])) hrSet[col] = S2(data.iqama);
+        }
+        if (Object.keys(hrSet).length) {
+          await Employee.findByIdAndUpdate(emp._id, { $set: hrSet }, { runValidators: true });
+          hrWritten = hrSet;
+          try { emitToAll('hr:employee', { id: String(emp._id) }); emitToAll('hr:master', { at: Date.now() }); } catch (_) { /* */ }
+        }
+        // وحالةُ العمل: الإنهاءُ والإيقافُ والإجازةُ المعتمدة تقرّرها الموارد البشريّة —
+        // يُقال ذلك صراحةً بدل «حُفظ» لا أثرَ له.
+        if (data.working === true && ['terminated', 'suspended', 'on_leave'].includes(emp.employmentStatus)) {
+          return res.status(409).json({
+            code: 'HR_OWNS_STATUS',
+            message: `حالة هذا السائق من الموارد البشرية (${emp.employmentStatus === 'terminated' ? 'انتهت خدمته' : emp.employmentStatus === 'suspended' ? 'موقوف' : 'في إجازة'}) — تُعدَّل من ملفّه هناك`,
+          });
+        }
+      }
+    }
     // Vehicle moves go through the two-seat rule, not a raw write.
     if (data.vehicle !== undefined || data.seat !== undefined) {
       const toVehicle = data.vehicle !== undefined ? (data.vehicle || null) : driver.vehicle;
@@ -910,7 +941,13 @@ exports.updateDriver = async (req, res) => {
     Object.assign(driver, data);
     await driver.save();
     emit('fleet:drivers', {});
-    res.json({ driver });
+    if (hrWritten) {
+      logAudit({ user: req.user, action: 'update_from_fleet', entity: 'Employee', entityId: driver.employee, changes: { after: hrWritten, details: 'تعديل من صفحة سائقي الأسطول' }, ipAddress: req.ip }).catch(() => {});
+    }
+    // الصفُّ كما تعرضه القائمة (بما في ملفّه) — فتتحدّث الشاشةُ بالردّ نفسِه.
+    const view = driver.toObject();
+    await FI.decorateDrivers([view]);
+    res.json({ driver: view, hrUpdated: !!hrWritten });
   } catch (error) {
     if (error.status === 400) return res.status(400).json({ message: error.message });
     res.status(500).json({ message: 'Failed to update the driver' });

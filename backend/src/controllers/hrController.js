@@ -2459,12 +2459,15 @@ exports.listLicenses = async (req, res) => {
   }
 };
 
+// صفحةُ التراخيص تسمع `hr:license` على الموقع والتطبيق — ولم يكن يُرسَل قطّ (٢٠٢٦/١٠/٢٥).
+const announceLicense = () => { try { require('../websocket/socketManager').emitToAll('hr:license', { at: Date.now() }); } catch (_) { /* */ } };
 exports.createLicense = async (req, res) => {
   try {
     if (denyNonStaff(req, res)) return;
     if (!req.body.name || !req.body.category) return res.status(400).json({ message: 'Category and name are required' });
     const license = await CompanyLicense.create({ ...req.body, createdBy: req.user._id });
     await notifyHR({ title: 'License added', message: license.name, relatedEntity: 'CompanyLicense', relatedEntityId: license._id, event: 'hr:license' });
+    announceLicense();
     res.status(201).json({ license });
   } catch (error) {
     console.error('createLicense error:', error);
@@ -2482,6 +2485,7 @@ exports.updateLicense = async (req, res) => {
     });
     await license.save();
     try { emitToUser(String(req.user._id), 'hr:license', { id: String(license._id) }); } catch (e) {}
+    announceLicense();
     res.json({ license });
   } catch (error) {
     return sendMongooseError(res, error, 'Failed to update license');
@@ -2492,6 +2496,7 @@ exports.deleteLicense = async (req, res) => {
   try {
     if (denyNonStaff(req, res)) return;
     await CompanyLicense.findByIdAndDelete(req.params.id);
+    announceLicense();
     res.json({ message: 'License deleted' });
   } catch (error) {
     res.status(500).json({ message: 'Failed to delete license' });

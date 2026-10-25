@@ -476,26 +476,26 @@ export default function FleetDriversPage() {
           </PrimaryButton>
         </>}>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {/* المربوطُ بملفّه: الاسمُ والجوالُ والإقامةُ والإيبانُ والجنسيّةُ تُصحَّح في
-              الموارد البشريّة فتظهر في كلّ قسم — لا نسخةَ هنا تخالفها. */}
+          {/* المربوطُ بملفّه: ما يُعدَّل هنا يُكتب في ملفّه في الموارد البشريّة أيضًا
+              (٢٠٢٦/١٠/٢٥) — نسخةٌ واحدة، ويظهر في كلّ قسمٍ فورًا. */}
           {editing?.hrLinked && (
             <p className="sm:col-span-2 text-xs text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
-              {ar ? 'هذا السائق مربوط بملفّه في الموارد البشرية — الاسم والجوال والإقامة والإيبان والجنسية تُعدَّل من ملفّه هناك.'
-                : 'This driver is linked to his HR file — name, phone, iqama, IBAN and nationality are edited there.'}
+              {ar ? 'هذا السائق مربوط بملفّه في الموارد البشرية — ما تعدّله هنا (الاسم، الجوال، الإقامة، الإيبان، الجنسية) يُحفَظ في ملفّه هناك أيضًا.'
+                : 'This driver is linked to his HR file — what you edit here is saved to his HR file too.'}
             </p>
           )}
-          <Field label={ar ? 'الاسم *' : 'Name *'} span2><TextInput value={form.name} disabled={!!editing?.hrLinked} onChange={(e) => setForm((f: any) => ({ ...f, name: e.target.value }))} /></Field>
-          <Field label={ar ? 'الجوال' : 'Phone'}><TextInput value={form.phone} disabled={!!editing?.hrLinked} onChange={(e) => setForm((f: any) => ({ ...f, phone: e.target.value }))} /></Field>
-          <Field label={ar ? 'رقم الإقامة' : 'Iqama'}><TextInput value={form.iqama} disabled={!!editing?.hrLinked} onChange={(e) => setForm((f: any) => ({ ...f, iqama: e.target.value }))} /></Field>
+          <Field label={ar ? 'الاسم *' : 'Name *'} span2><TextInput value={form.name} onChange={(e) => setForm((f: any) => ({ ...f, name: e.target.value }))} /></Field>
+          <Field label={ar ? 'الجوال' : 'Phone'}><TextInput value={form.phone} onChange={(e) => setForm((f: any) => ({ ...f, phone: e.target.value }))} /></Field>
+          <Field label={ar ? 'رقم الإقامة' : 'Iqama'}><TextInput value={form.iqama} onChange={(e) => setForm((f: any) => ({ ...f, iqama: e.target.value }))} /></Field>
           {/* ── الإيبان يُكتب هنا مرّةً ─────────────────────────────────────
               مصاريفُ السوّاق تُحوَّل إليه، وصفحتُها تقرؤه من هنا لا من سطر
               الحمولة — يُكتب مرّةً ويُصحَّح مرّةً، بدل أن يُنسَخ في كلّ كشف
               فيُخطئ رقمٌ واحدٌ فيذهب المالُ إلى حسابٍ آخر. */}
           <Field label={ar ? 'رقم الإيبان (لتحويل المصاريف)' : 'IBAN (for expense transfers)'}>
-            <TextInput value={form.iban} dir="ltr" placeholder="SA00 0000 0000 0000 0000 0000" disabled={!!editing?.hrLinked}
+            <TextInput value={form.iban} dir="ltr" placeholder="SA00 0000 0000 0000 0000 0000"
               onChange={(e) => setForm((f: any) => ({ ...f, iban: e.target.value.toUpperCase() }))} />
           </Field>
-          <Field label={ar ? 'الجنسية' : 'Nationality'}><TextInput value={form.nationality} disabled={!!editing?.hrLinked} onChange={(e) => setForm((f: any) => ({ ...f, nationality: e.target.value }))} /></Field>
+          <Field label={ar ? 'الجنسية' : 'Nationality'}><TextInput value={form.nationality} onChange={(e) => setForm((f: any) => ({ ...f, nationality: e.target.value }))} /></Field>
           <Field label={ar ? 'الحالة' : 'Status'}>
             <Select value={form.working ? 'yes' : 'no'} onChange={(e) => setForm((f: any) => ({ ...f, working: e.target.value === 'yes' }))}>
               <option value="yes">{ar ? 'يعمل' : 'Working'}</option>

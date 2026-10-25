@@ -5,6 +5,7 @@ import '../services/auth.dart';
 import '../services/hijri.dart';
 import '../services/lang.dart';
 import '../services/live.dart';
+import '../ui/ht_custody_panel.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/file_upload.dart';
 import '../ui/theme.dart';
@@ -758,7 +759,16 @@ class _HrEmployeeProfileScreenState extends State<HrEmployeeProfileScreen> {
                       );
                     }),
                     // ── العهد ──
-                    _listTab(assets, Icons.devices_other_outlined, tr('لا توجد عهد', 'No custody items'), (a) {
+                    // والعهدةُ بالمال من دفتر النقل الثقيل فوق العهد العينيّة — حيّةً مع الدفتر.
+                    Column(children: [
+                      ConstrainedBox(
+                        constraints: const BoxConstraints(maxHeight: 320),
+                        child: SingleChildScrollView(
+                          padding: const EdgeInsets.fromLTRB(14, 14, 14, 0),
+                          child: HtCustodyPanel(employeeId: widget.employeeId, showVehicle: true),
+                        ),
+                      ),
+                      Expanded(child: _listTab(assets, Icons.devices_other_outlined, tr('لا توجد عهد', 'No custody items'), (a) {
                       return AppCard(
                         child: Row(children: [
                           const Icon(Icons.devices_other_outlined, color: T.cyan, size: 20),
@@ -773,7 +783,8 @@ class _HrEmployeeProfileScreenState extends State<HrEmployeeProfileScreen> {
                           Chip2((a['status'] ?? '—').toString(), T.navy),
                         ]),
                       );
-                    }),
+                    })),
+                    ]),
                     // ── المستندات ──
                     _listTab(documents, Icons.folder_open_outlined, tr('لا توجد مستندات — استخدم «رفع مستند» من القائمة', 'No documents — use "Upload document" from the menu'), (doc) {
                       return Pressable(

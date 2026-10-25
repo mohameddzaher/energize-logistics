@@ -8,6 +8,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import JpTaskPanel from '@/components/jp/JpTaskPanel';
 import { useSocket } from '@/hooks/useSocket';
+import HtCustodyPanel from '@/components/ls2/HtCustodyPanel';
 import api from '@/lib/api';
 import {
   ArrowLeft, ArrowRight, Edit, RefreshCw, UserX, UserCheck, Plus, Trash2, FileText, ExternalLink, Check, Paperclip,
@@ -619,6 +620,8 @@ export default function EmployeeProfilePage() {
         </DataCard>
       )}
 
+      {/* وعهدةُ النقل الثقيل المسجَّلةُ عليه بالمال (صادرٌ إليه أو واردٌ منه). */}
+      {tab === 'custody' && <HtCustodyPanel by={{ employee: String(e._id) }} ar={ar} showVehicle />}
       {tab === 'custody' && (
         <DataCard empty={!data.assets.length} emptyText={tx.noCustodyItems}>
           <table className="w-full text-sm">

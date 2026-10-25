@@ -11,6 +11,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import JpTaskPanel from '@/components/jp/JpTaskPanel';
 import { useSocket } from '@/hooks/useSocket';
+import HtCustodyPanel from '@/components/ls2/HtCustodyPanel';
 import api from '@/lib/api';
 import {
   Truck, ArrowLeft, RefreshCw, Gauge, Thermometer, Fuel, Weight, Activity, Zap, MapPin, Wrench, Bell, Clock, Satellite, Route, AlertCircle, CheckCircle2, FileText, Fingerprint, Navigation, Droplet, MapPinned, FileDown, Loader2, User,
@@ -427,6 +428,9 @@ export default function Ls2VehicleDetailPage() {
         unitId={v.unitId} plate={v.plate} currentOdo={v.odometerKm}
         lang={lang as Lang} isRTL={isRTL} admin={isLs2Admin(user)}
       />
+
+      {/* عهدةُ النقل الثقيل المنسوبةُ إلى هذه الشاحنة — حيّةً مع الدفتر. */}
+      <HtCustodyPanel by={{ vehicle: v.unitId }} ar={lang === 'ar'} />
 
       {/* Workshop asset registry: which physical tires (by serial) + trailer are
           on this truck, and their movement history. Hidden until data exists. */}

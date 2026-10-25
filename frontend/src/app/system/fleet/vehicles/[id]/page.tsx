@@ -15,6 +15,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import { useLatestRequest } from '@/hooks/useLatestRequest';
+import HtCustodyPanel from '@/components/ls2/HtCustodyPanel';
 import api from '@/lib/api';
 import { ResponsiveContainer, ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, CartesianGrid, Legend } from 'recharts';
 import { Spinner, PageHeader, StatCard, ErrorNotice } from '@/components/hr/HRKit';
@@ -421,6 +422,9 @@ function VehicleAnalyticsInner() {
           </table>
         </ScrollX>
       </div>
+
+      {/* عهدةُ النقل الثقيل على هذه الشاحنة (تُختار في الدفتر من أسطول لوكيشن). */}
+      {d.tech?.ls2?.unitId != null && <HtCustodyPanel by={{ vehicle: d.tech.ls2.unitId }} ar={ar} />}
     </div>
   );
 }

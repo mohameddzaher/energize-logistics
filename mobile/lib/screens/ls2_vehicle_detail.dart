@@ -10,6 +10,7 @@ import '../ui/widgets.dart';
 import 'reports.dart';
 import 'ls2_vehicle_assets.dart';
 import 'jp.dart' show JpTaskPanel;
+import '../ui/ht_custody_panel.dart';
 
 /// تفاصيل المركبة (لوكيشن سوليوشن) — خمس تبويبات كما في الويب:
 /// نظرة عامة (حساسات حية + إطارات)، الصيانة (فواصل + تسجيل خدمة + مؤجلات)،
@@ -395,6 +396,11 @@ class _OverviewTab extends StatelessWidget {
         if ('${v['_id'] ?? ''}'.isNotEmpty) ...[
           const SizedBox(height: 12),
           JpTaskPanel(section: 'ls2', kind: 'truck', refId: '${v['_id']}'),
+        ],
+        // عهدةُ النقل الثقيل المنسوبةُ إلى هذه الشاحنة — حيّةً مع الدفتر.
+        if ('${v['unitId'] ?? ''}'.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          HtCustodyPanel(vehicleUnitId: '${v['unitId']}'),
         ],
         const SizedBox(height: 20),
       ]),

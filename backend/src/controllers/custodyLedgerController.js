@@ -123,6 +123,11 @@ function makeCustodyController(cfg) {
       if (['rep', 'company', 'cash'].includes(q.target)) f.target = q.target;
       if (['card', 'workshop', 'bank', 'maintenance', 'rep', 'opening'].includes(q.source)) f.source = q.source;
       if (vehicles && q.vehicle && Number.isFinite(Number(q.vehicle))) f.vehicleUnitId = Number(q.vehicle);
+      // ── ومن ملفّ السيّارة وملفّ الموظّف (صاحبُ الشركة، ٢٠٢٦/١٠/٢٥) ──────────
+      // الشاحنةُ في إدارة الأسطول تُعرَف بمركبتها في السجلّ لا برقم وحدة لوكيشن،
+      // والموظّفُ بملفّه في الموارد البشريّة — وكلاهما مرجعٌ محفوظٌ على القيد.
+      if (vehicles && mongoose.isValidObjectId(q.vehicleMaster)) f.vehicleMaster = new mongoose.Types.ObjectId(String(q.vehicleMaster));
+      if (mongoose.isValidObjectId(q.employee)) f.employee = new mongoose.Types.ObjectId(String(q.employee));
       if (YMD.test(q.from || '') || YMD.test(q.to || '')) {
         f.date = {};
         if (YMD.test(q.from || '')) f.date.$gte = q.from;

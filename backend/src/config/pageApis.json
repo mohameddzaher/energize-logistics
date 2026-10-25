@@ -610,6 +610,7 @@
         "/api/jp/projects",
         "/api/jp/tasks",
         "/api/lookups/types",
+        "/api/ls2/custody",
         "/api/partners/account"
       ],
       "wildcard": false
@@ -663,7 +664,8 @@
         "/api/fleet/arrivals",
         "/api/fleet/drivers",
         "/api/fleet/supervisors",
-        "/api/fleet/vehicles"
+        "/api/fleet/vehicles",
+        "/api/ls2/custody"
       ],
       "wildcard": false
     },
@@ -1040,6 +1042,7 @@
         "/api/lookups/types",
         "/api/ls2/assets/tires",
         "/api/ls2/assets/vehicle",
+        "/api/ls2/custody",
         "/api/ls2/dashboard",
         "/api/ls2/registry-conflicts",
         "/api/ls2/repairs",
@@ -2076,6 +2079,7 @@
         "/api/jp/projects",
         "/api/jp/tasks",
         "/api/lookups/types",
+        "/api/ls2/custody",
         "/api/uploads/...",
         "/api/vehicles/by-employee"
       ],

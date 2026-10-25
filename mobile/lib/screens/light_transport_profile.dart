@@ -8,6 +8,7 @@ import '../services/live.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import '../ui/export_sheet.dart';
 import 'jp.dart' show JpTaskPanel;
 
 /// ملفُّ موظّف النقل الخفيف — مطابقٌ لصفحة الويب
@@ -108,6 +109,39 @@ class _LightTransportProfileScreenState extends State<LightTransportProfileScree
     }
   }
 
+  String _ymd(dynamic v) {
+    final d = v == null ? null : DateTime.tryParse(v.toString());
+    return d == null ? '' : d.toIso8601String().substring(0, 10);
+  }
+
+  /// صفوفُ التصدير — البنودُ نفسُها التي يصدّرها الموقع وبترتيبها.
+  List<Map<String, dynamic>> _flat(Map<String, dynamic> e) {
+    final kind = _s(e, 'staffKind');
+    Map<String, dynamic>? m(String k) => (e[k] as Map?)?.cast<String, dynamic>();
+    return [
+      (tr('الاسم', 'Name'), _s(e, 'name')),
+      (tr('رقم الهوية', 'ID number'), _s(e, 'idNumber')),
+      (tr('الوظيفة', 'Job'), _s(e, 'jobTitleAr')),
+      (tr('النوع', 'Kind'), kind == 'rep' ? tr('مندوب', 'Rep') : kind == 'admin' ? tr('إداري', 'Admin') : ''),
+      (tr('المشروع', 'Project'), _s(e, 'projectAr')),
+      (tr('الفرع', 'Branch'), _s(e, 'cityAr')),
+      (tr('المشرف', 'Supervisor'), _s(e, 'supervisorName')),
+      (tr('انتهاء كارت التشغيل', 'Operating card expiry'), _ymd(m('operatingCard')?['expiryDate'])),
+      (tr('انتهاء الفحص الدوري', 'Inspection expiry'), _ymd(m('inspection')?['expiryDate'])),
+      (tr('على الكفالة / فري لانسر', 'Sponsored / freelance'), _s(e, 'contractTypeShown').isNotEmpty ? _s(e, 'contractTypeShown') : _s(e, 'contractTypeAr')),
+      (tr('رقم السجل', 'Register'), _s(e, 'registerNumber')),
+      (tr('حالة العمل', 'Status'), _s(e, 'workStatusShown')),
+      (tr('الجنسية', 'Nationality'), _s(e, 'nationalityAr')),
+      (tr('تاريخ التعيين', 'Hire date'), _ymd(e['hireDate'])),
+      (tr('الجوال', 'Phone'), _s(e, 'phone')),
+      (tr('نوع المركبة', 'Vehicle type'), _s(e, 'vehicleTypeAr')),
+      (tr('رقم اللوحة', 'Plate'), _s(e, 'vehiclePlate')),
+      (tr('الرقم التسلسلي', 'Serial'), _s(m('vehicle'), 'serialNumber')),
+      (tr('السكن', 'Housing'), _s(m('housing'), 'name')),
+      (tr('الغرفة', 'Room'), _s(e, 'housingRoom')),
+    ].map((x) => <String, dynamic>{'field': x.$1, 'value': x.$2}).toList();
+  }
+
   Widget _row(String label, String value, {bool mono = false}) => Padding(
         padding: const EdgeInsets.symmetric(vertical: 5),
         child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -131,6 +165,14 @@ class _LightTransportProfileScreenState extends State<LightTransportProfileScree
     return AppScaffold(
       title: Text(e == null ? tr('ملف الموظف', 'Employee') : _s(e, 'name')),
       actions: [
+        // تصديرُ ملفّ الموظف (البند · القيمة) — كزرّ «تصدير» في الموقع.
+        if (e != null)
+          ExportButton(
+            fileName: 'lt-${_s(e, 'idNumber')}',
+            sheetName: 'Employee',
+            columns: [ExportCol('البند', 'Field', (r) => r['field']), ExportCol('القيمة', 'Value', (r) => r['value'])],
+            rows: () => _flat(e),
+          ),
         if (e != null && ltTransferRoles.contains(context.read<AuthProvider>().role))
           TextButton.icon(onPressed: () => _transfer(e), icon: const Icon(Icons.swap_horiz, color: Colors.white), label: Text(tr('نقل المشروع', 'Transfer'), style: const TextStyle(color: Colors.white))),
       ],

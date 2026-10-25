@@ -1,5 +1,4 @@
 import '../screens/mediago_ads.dart';
-import '../screens/light_transport_profile.dart' show ltTransferRoles;
 import '../screens/jp.dart';
 import 'package:flutter/material.dart';
 import '../services/auth.dart';
@@ -86,6 +85,14 @@ import '../screens/reports.dart';
 import '../screens/business_review.dart';
 import '../screens/portal.dart';
 import '../screens/api_docs.dart';
+import '../screens/it_dashboard.dart';
+import '../screens/it_tickets.dart';
+import '../screens/it_stock.dart';
+import '../screens/light_transport_list.dart';
+import '../screens/b2c_operating_orders.dart';
+import '../screens/b2c_dashboard.dart';
+import '../screens/b2c_orders_analysis.dart';
+import '../screens/performance_settings.dart';
 import '../screens/vehicles_suite.dart';
 import '../screens/fleet_driver_expenses.dart';
 import '../screens/fleet_assign.dart';
@@ -170,7 +177,6 @@ List<AppSection> sectionsFor(AuthProvider auth) {
     canEdit: customerEditRoles.contains(role) || auth.canEditSection('Shipment Orders'),
     canDelete: customerRemoveRoles.contains(role) || auth.canEditSection('Shipment Orders'),
   );
-  final ltEmployeesCfg = lightTransportCfg(canAdd: _ltOwners.contains(role), canTransfer: ltTransferRoles.contains(role));
   // الهدفُ يضعه المدير، أو دورٌ من خارج فريق القسم مُنح «تعديلَه» (canSetTargets في الخادم).
   const salesTeam = ['super_admin', 'admin', 'sales_manager', 'sales_rep', 'operations_manager', 'operations_staff'];
   final canSetTargets = const ['super_admin', 'admin', 'sales_manager'].contains(role)
@@ -522,13 +528,13 @@ List<AppSection> sectionsFor(AuthProvider auth) {
       key: 'Software & IT', arTitle: 'البرمجيات وتقنية المعلومات', enTitle: 'Software & IT', icon: Icons.computer_outlined,
       roles: const [..._admins],
       pages: [
-        AppPage('اللوحة', 'Dashboard', Icons.dashboard_outlined, (c) => SectionDashScreen(spec: itDashSpec)),
-        AppPage('التذاكر والمشكلات', 'Tickets', Icons.confirmation_number_outlined, (c) => ResourceScreen(config: itTicketsCfg), path: '/system/it/tickets'),
+        AppPage('اللوحة', 'Dashboard', Icons.dashboard_outlined, (c) => const ItDashboardScreen(), path: '/system/it'),
+        AppPage('التذاكر والمشكلات', 'Tickets', Icons.confirmation_number_outlined, (c) => const ItTicketsScreen(), path: '/system/it/tickets'),
         AppPage('المشاكل المتكررة', 'Recurring', Icons.repeat_rounded, (c) => const ItRecurringScreen(), path: '/system/it/recurring'),
         AppPage('عهد الأجهزة', 'Custody', Icons.devices_other_outlined, (c) => const ItCustodyScreen(), path: '/system/it/custody'),
         AppPage('الأنظمة والخدمات', 'Systems', Icons.dns_outlined, (c) => ResourceScreen(config: itSystemsCfg), path: '/system/it/systems'),
         AppPage('بريد الشركة', 'Company Email', Icons.mail_outline, (c) => const ItEmailsScreen(), path: '/system/it/emails'),
-        AppPage('مستودع الأجهزة', 'IT Stock', Icons.inventory_outlined, (c) => ResourceScreen(config: itStockCfg)),
+        AppPage('مستودع الأجهزة', 'IT Stock', Icons.inventory_outlined, (c) => const ItStockScreen(), path: '/system/it/stock'),
         if (jpMember(role, 'it')) AppPage('خطّة العمل (JP)', 'JP', Icons.event_available_outlined, (c) => const JpScreen(section: 'it'), path: '/system/it/jp'),
         if (jpManager(role, 'it')) AppPage('لوحة JP', 'JP Dashboard', Icons.insights_outlined, (c) => const JpDashScreen(section: 'it'), path: '/system/it/jp-dashboard'),
         if (jpManager(role, 'it') && role != 'super_admin') AppPage('خطّة الإدارة (Management JP)', 'Management JP', Icons.workspace_premium_outlined, (c) => const JpScreen(scope: 'management'), path: '/system/it/management-jp'),
@@ -604,7 +610,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         AppPage('تفقّد بداية الدوام', 'Duty Start Check', Icons.photo_camera_outlined, (c) => const B2cDutyScreen(), path: '/system/b2c/duty/start'),
         AppPage('سجل التفقّد', 'Duty Register', Icons.fact_check_outlined, (c) => const B2cDutyRegisterScreen(), path: '/system/b2c/duty'),
       ] : [
-        AppPage('اللوحة', 'Dashboard', Icons.dashboard_outlined, (c) => SectionDashScreen(spec: b2cDashSpec), path: '/system/b2c/dashboard'),
+        AppPage('اللوحة', 'Dashboard', Icons.dashboard_outlined, (c) => const B2cDashboardScreen(), path: '/system/b2c/dashboard'),
         AppPage('المشاريع', 'Projects', Icons.folder_special_outlined, (c) => ResourceScreen(config: b2cProjectsCfg), path: '/system/b2c/projects'),
         AppPage('مدخلات الأوردرات', 'Orders Entry', Icons.edit_calendar_outlined, (c) => const B2cDailyEntryScreen(), path: '/system/b2c/daily-entry'),
         AppPage('متابعة مناديب أمازون', 'Amazon Reps Attendance', Icons.how_to_reg_outlined, (c) => const B2cAmazonAttendanceScreen(), path: '/system/b2c/amazon-attendance'),
@@ -637,13 +643,13 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         // «مناديب المبيعات» كانت تقرأ `B2CRep` — وهم مَن لهم تقاريرُ طلبات،
         // فلا يظهر فيها مشرفٌ ولا ميكانيكيٌّ ولا عاملُ نظافة: أحدَ عشرَ من
         // مئةٍ وواحدٍ وستّين. وتلك الصفحةُ صارت «تحليل الأوردرات» على الويب.
-        AppPage('موظفون النقل الخفيف', 'Light-transport Employees', Icons.two_wheeler_outlined, (c) => ResourceScreen(config: ltEmployeesCfg), path: '/system/b2c/light-transport'),
+        AppPage('موظفون النقل الخفيف', 'Light-transport Employees', Icons.two_wheeler_outlined, (c) => const LightTransportListScreen(), path: '/system/b2c/light-transport'),
         // تأجيرُ اليوزرات — يُعَدّ في «إجمالي المناديب» بلوحة القسم. مطابقٌ للموقع.
         if (const ['super_admin', 'admin', 'it_manager', 'it_specialist', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead', 'cfo', 'accounting_manager', 'accountant'].contains(role)) AppPage('تأجير اليوزرات', 'User Rentals', Icons.key_outlined, (c) => ResourceScreen(config: ltUserRentalsCfg(canWrite: true, canDelete: const ['super_admin', 'b2c_manager', 'b2c_deputy'].contains(role))), path: '/system/b2c/user-rentals'),
-        AppPage('أوامر التشغيل', 'Operating Orders', Icons.assignment_ind_outlined, (c) => ResourceScreen(config: lightTransportOrdersCfg), path: '/system/b2c/orders'),
-        AppPage('تحليل الأوردرات', 'Orders Analysis', Icons.insights_outlined, (c) => SectionDashScreen(spec: b2cOrdersDashSpec), path: '/system/b2c/orders-analysis'),
+        AppPage('أوامر التشغيل', 'Operating Orders', Icons.assignment_ind_outlined, (c) => const LtOperatingOrdersScreen(), path: '/system/b2c/orders'),
+        AppPage('تحليل الأوردرات', 'Orders Analysis', Icons.insights_outlined, (c) => const B2cOrdersAnalysisScreen(), path: '/system/b2c/orders-analysis'),
         // السكنُ والقوائمُ المنسدلة — كما في «إعدادات القسم» على الويب.
-        AppPage('السكن', 'Housing', Icons.home_work_outlined, (c) => const LightTransportHousingScreen(), path: '/system/b2c/settings'),
+        AppPage('إعدادات القسم', 'B2C settings', Icons.home_work_outlined, (c) => const LightTransportHousingScreen(), path: '/system/b2c/settings'),
         // حساباتُ تطبيق التوصيل — تبويبٌ في «إعدادات القسم» على الويب: «غير مرتبط» يُراجَع.
         AppPage('حسابات التطبيق', 'App accounts', Icons.sports_motorsports_outlined, (c) => ResourceScreen(config: b2cRepsCfg(canEdit: _ltOwners.contains(role))), path: '/system/b2c/settings'),
         AppPage('الشكاوى', 'Complaints', Icons.report_outlined, (c) => const SectionWorkScreen(section: 'b2c', complaints: true), path: '/system/b2c/complaints'),
@@ -658,8 +664,9 @@ List<AppSection> sectionsFor(AuthProvider auth) {
       roles: const ['super_admin'], managed: false,
       pages: [
         AppPage('نظرة كل الأقسام', 'All Departments', Icons.insights_outlined, (c) => const PerformanceOverviewScreen(), path: '/system/performance/overview'),
-        AppPage('التقييمات', 'Evaluations', Icons.rate_review_outlined, (c) => const EvaluationsScreen()),
-        AppPage('طلبات التعديل', 'Edit Requests', Icons.inbox_outlined, (c) => const PerformanceEditRequestsScreen()),
+        AppPage('التقييمات', 'Evaluations', Icons.rate_review_outlined, (c) => const EvaluationsScreen(), path: '/system/performance'),
+        AppPage('طلبات التعديل', 'Edit Requests', Icons.inbox_outlined, (c) => const PerformanceEditRequestsScreen(), path: '/system/performance/requests'),
+        AppPage('إعداد المؤشرات', 'Configure', Icons.tune_outlined, (c) => const PerformanceSettingsScreen(), path: '/system/performance/settings'),
       ],
     ),
     AppSection(

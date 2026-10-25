@@ -4,17 +4,21 @@ import 'package:provider/provider.dart';
 import '../services/api.dart';
 import '../services/auth.dart';
 import '../services/lang.dart';
+import '../services/live.dart';
 import '../ui/app_scaffold.dart';
+import '../ui/export_sheet.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import 'remote_filters.dart';
 
 /// العمل عن بُعد — الإجازات، المهام، التقرير اليومي، الإعلانات، والمحادثات.
-/// لا يبث هذا القسم أحداثًا لحظية، فالشاشات تعتمد السحب للتحديث
-/// (والمحادثة تستطلع كل عشر ثوانٍ وهي مفتوحة).
+/// لحظيًّا كالويب: «remote:task» يُحدّث المهام، و«remote:message» يُلحق الرسالة
+/// بالمحادثة المفتوحة (مع استطلاعٍ أبطأ احتياطًا لو انقطع المقبس).
 
 const _leaveTypes = {
   'annual': ('سنوية', 'Annual'),
   'sick': ('مرضية', 'Sick'),
+  'emergency': ('طارئة', 'Emergency'),
   'personal': ('شخصية', 'Personal'),
   'unpaid': ('بدون راتب', 'Unpaid'),
   'other': ('أخرى', 'Other'),
@@ -26,15 +30,23 @@ const _leaveStatuses = {
   'rejected': ('مرفوضة', 'Rejected', T.danger),
 };
 
-String _userName(dynamic u) =>
-    u is Map ? '${u['firstName'] ?? ''} ${u['lastName'] ?? ''}'.trim() : '—';
+String _userName(dynamic u) => remoteUserName(u);
+
+/// الطارئة والمرضية لا تُخطَّط فهي معفاة؛ وغيرها يُقدَّم قبل ٣٠ يومًا (الخادم يفرضها).
+const _noNoticeLeave = {'sick', 'emergency'};
+const _leaveNoticeDays = 30;
+DateTime _earliestLeaveStart(String type) {
+  final now = DateTime.now();
+  final today = DateTime(now.year, now.month, now.day);
+  return _noNoticeLeave.contains(type) ? today : today.add(const Duration(days: _leaveNoticeDays));
+}
 
 String _d(dynamic v) {
   final d = v != null ? DateTime.tryParse(v.toString())?.toLocal() : null;
   return d == null ? (v ?? '—').toString() : '${d.day}/${d.month}/${d.year}';
 }
 
-bool _isRemoteStaff(AuthProvider auth) => auth.role != 'remote_employee';
+bool _isRemoteStaff(AuthProvider auth) => isRemoteStaff(auth);
 
 // ── الإجازات ────────────────────────────────────────────────────────────────
 class RemoteLeavesScreen extends StatefulWidget {
@@ -47,17 +59,23 @@ class _RemoteLeavesScreenState extends State<RemoteLeavesScreen> {
   List<Map<String, dynamic>> _rows = [];
   bool _loading = true;
   String? _error;
+  // فلاتر المشرف — كالويب: الموظف والحالة (على الخادم).
+  String _userId = '';
+  String _status = '';
+  int _seq = 0;
 
   @override
   void initState() { super.initState(); _load(); }
 
   Future<void> _load() async {
+    final my = ++_seq;
     try {
-      final d = await Api.instance.get('/api/remote/leave');
-      if (!mounted) return;
+      final q = [if (_status.isNotEmpty) 'status=$_status', if (_userId.isNotEmpty) 'userId=$_userId'];
+      final d = await Api.instance.get('/api/remote/leave${q.isEmpty ? '' : '?${q.join('&')}'}');
+      if (!mounted || my != _seq) return;
       setState(() { _rows = List<Map<String, dynamic>>.from(d['leaves'] ?? []); _loading = false; _error = null; });
     } catch (e) {
-      if (mounted) setState(() { _loading = false; _error = e.toString(); });
+      if (mounted && my == _seq) setState(() { _loading = false; _error = e.toString(); });
     }
   }
 
@@ -90,9 +108,10 @@ class _RemoteLeavesScreenState extends State<RemoteLeavesScreen> {
 
   Future<void> _create() async {
     String type = 'annual';
-    DateTime start = DateTime.now();
-    DateTime end = DateTime.now();
+    DateTime start = _earliestLeaveStart(type);
+    DateTime end = start;
     final reason = TextEditingController();
+    String err = '';
     await showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -101,8 +120,8 @@ class _RemoteLeavesScreenState extends State<RemoteLeavesScreen> {
           final v = await showDatePicker(
             context: c,
             initialDate: isStart ? start : end,
-            firstDate: DateTime.now().subtract(const Duration(days: 30)),
-            lastDate: DateTime.now().add(const Duration(days: 365)),
+            firstDate: isStart ? _earliestLeaveStart(type) : start,
+            lastDate: DateTime.now().add(const Duration(days: 730)),
           );
           if (v != null) setS(() { if (isStart) { start = v; if (end.isBefore(v)) end = v; } else { end = v; } });
         }
@@ -117,8 +136,25 @@ class _RemoteLeavesScreenState extends State<RemoteLeavesScreen> {
                 initialValue: type,
                 decoration: InputDecoration(labelText: tr('النوع', 'Type')),
                 items: _leaveTypes.entries.map((e) => DropdownMenuItem(value: e.key, child: Text(tr(e.value.$1, e.value.$2)))).toList(),
-                onChanged: (v) => setS(() => type = v ?? type),
+                onChanged: (v) => setS(() {
+                  type = v ?? type;
+                  // نوعٌ مخطَّط لا يرث تاريخًا يكسر القاعدة.
+                  final min = _earliestLeaveStart(type);
+                  if (start.isBefore(min)) { start = min; end = min; }
+                }),
               ),
+              const SizedBox(height: 4),
+              Text(
+                _noNoticeLeave.contains(type)
+                    ? tr('إجازة طارئة/مرضية — معفاة من الإخطار المسبق.', 'Emergency / sick leave — exempt from advance notice.')
+                    : tr('تُقدَّم قبل موعدها بـ $_leaveNoticeDays يومًا على الأقل — أقرب بداية ${fmt(_earliestLeaveStart(type))}.',
+                        'Must be requested at least $_leaveNoticeDays days ahead — earliest start ${fmt(_earliestLeaveStart(type))}.'),
+                style: TextStyle(fontSize: 11.5, color: _noNoticeLeave.contains(type) ? T.success : T.warn),
+              ),
+              if (err.isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Text(err, style: const TextStyle(fontSize: 12, color: T.danger)),
+              ],
               const SizedBox(height: 10),
               Row(children: [
                 Expanded(child: OutlinedButton.icon(onPressed: () => pick(true), icon: const Icon(Icons.event, size: 17), label: Text('${tr('من', 'From')} ${fmt(start)}', style: const TextStyle(fontSize: 12.5)))),
@@ -132,6 +168,13 @@ class _RemoteLeavesScreenState extends State<RemoteLeavesScreen> {
                 width: double.infinity,
                 child: FilledButton(
                   onPressed: () async {
+                    if (end.isBefore(start)) { setS(() => err = tr('تاريخ النهاية قبل البداية', 'End date is before start date')); return; }
+                    final min = _earliestLeaveStart(type);
+                    if (start.isBefore(min)) {
+                      setS(() => err = tr('يجب تقديم هذا الطلب قبل موعد بدايته بـ $_leaveNoticeDays يومًا على الأقل (أقرب بداية ${fmt(min)}). الطارئة والمرضية معفاة.',
+                          'This request must be filed at least $_leaveNoticeDays days before it starts (earliest ${fmt(min)}). Emergency and sick leave are exempt.'));
+                      return;
+                    }
                     try {
                       await Api.instance.post('/api/remote/leave', {
                         'type': type, 'startDate': fmt(start), 'endDate': fmt(end),
@@ -140,7 +183,7 @@ class _RemoteLeavesScreenState extends State<RemoteLeavesScreen> {
                       if (c.mounted) Navigator.pop(c);
                       _load();
                     } catch (e) {
-                      if (c.mounted) ScaffoldMessenger.of(c).showSnackBar(SnackBar(content: Text(e.toString())));
+                      setS(() => err = e.toString());
                     }
                   },
                   child: Text(tr('إرسال الطلب', 'Submit')),
@@ -168,14 +211,33 @@ class _RemoteLeavesScreenState extends State<RemoteLeavesScreen> {
               ? ErrorRetry(message: _error!, onRetry: () { setState(() => _loading = true); _load(); })
               : RefreshIndicator(
                   onRefresh: _load,
-                  child: _rows.isEmpty
-                      ? ListView(children: [const SizedBox(height: 80), EmptyState(icon: Icons.beach_access_outlined, title: tr('لا توجد طلبات إجازة', 'No leave requests'))])
-                      : ListView.separated(
+                  child: ListView.separated(
                           padding: const EdgeInsets.all(14),
-                          itemCount: _rows.length,
+                          itemCount: _rows.length + 1,
                           separatorBuilder: (_, __) => const SizedBox(height: 8),
                           itemBuilder: (c, i) {
-                            final r = _rows[i];
+                            if (i == 0) {
+                              return Column(children: [
+                                if (staff)
+                                  RemoteFilterBar(
+                                    userId: _userId,
+                                    withDates: false,
+                                    onChanged: (u, _, __) { setState(() { _userId = u; _loading = true; }); _load(); },
+                                    extra: DropdownButtonFormField<String>(
+                                      initialValue: _status,
+                                      isExpanded: true,
+                                      decoration: InputDecoration(labelText: tr('الحالة', 'Status'), isDense: true),
+                                      items: [
+                                        DropdownMenuItem(value: '', child: Text(tr('الكل', 'All'))),
+                                        ..._leaveStatuses.entries.map((e) => DropdownMenuItem(value: e.key, child: Text(tr(e.value.$1, e.value.$2)))),
+                                      ],
+                                      onChanged: (v) { setState(() { _status = v ?? ''; _loading = true; }); _load(); },
+                                    ),
+                                  ),
+                                if (_rows.isEmpty) ...[const SizedBox(height: 60), EmptyState(icon: Icons.beach_access_outlined, title: tr('لا توجد طلبات إجازة', 'No leave requests'))],
+                              ]);
+                            }
+                            final r = _rows[i - 1];
                             final st = _leaveStatuses[r['status']] ?? ('—', '—', T.inkFaint);
                             final ty = _leaveTypes[r['type']] ?? ('—', '—');
                             return FadeSlideIn(
@@ -196,6 +258,11 @@ class _RemoteLeavesScreenState extends State<RemoteLeavesScreen> {
                                   if ((r['reason'] ?? '').toString().isNotEmpty) ...[
                                     const SizedBox(height: 5),
                                     Text(r['reason'], style: const TextStyle(fontSize: 12.5, color: T.inkSoft)),
+                                  ],
+                                  if (r['status'] != 'pending' && r['reviewedBy'] is Map) ...[
+                                    const SizedBox(height: 4),
+                                    Text('${tr('بواسطة', 'By')} ${_userName(r['reviewedBy'])}${(r['reviewNote'] ?? '').toString().isNotEmpty ? ' — ${r['reviewNote']}' : ''}',
+                                        style: const TextStyle(fontSize: 11.5, color: T.inkFaint)),
                                   ],
                                   if (staff && r['status'] == 'pending') ...[
                                     const SizedBox(height: 6),
@@ -230,25 +297,44 @@ class _RemoteTasksScreenState extends State<RemoteTasksScreen> {
   List<Map<String, dynamic>> _rows = [];
   bool _loading = true;
   String? _error;
+  String _userId = '';
+  int _seq = 0;
+
+  void _onLive() => _load();
 
   @override
-  void initState() { super.initState(); _load(); }
+  void initState() {
+    super.initState();
+    _load();
+    // الموظف يتلقّى نبضةً لحظيّةً حين تُسند إليه مهمّة — كالويب.
+    Live.instance.on('remote:task', _onLive);
+  }
+
+  @override
+  void dispose() {
+    Live.instance.off('remote:task', _onLive);
+    super.dispose();
+  }
 
   Future<void> _load() async {
+    final my = ++_seq;
     try {
-      final d = await Api.instance.get('/api/remote/tasks');
-      if (!mounted) return;
+      final d = await Api.instance.get('/api/remote/tasks${_userId.isEmpty ? '' : '?userId=$_userId'}');
+      if (!mounted || my != _seq) return;
       setState(() { _rows = List<Map<String, dynamic>>.from(d['tasks'] ?? []); _loading = false; _error = null; });
     } catch (e) {
-      if (mounted) setState(() { _loading = false; _error = e.toString(); });
+      if (mounted && my == _seq) setState(() { _loading = false; _error = e.toString(); });
     }
   }
 
   Future<void> _toggle(Map<String, dynamic> r) async {
+    // تفاؤليّ كالويب، ويُعاد التحميل عند الفشل.
+    final next = !(r['done'] == true);
+    setState(() => r['done'] = next);
     try {
-      await Api.instance.patch('/api/remote/tasks/${r['_id']}', {'done': !(r['done'] == true)});
-      _load();
+      await Api.instance.patch('/api/remote/tasks/${r['_id']}', {'done': next});
     } catch (e) {
+      _load();
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
     }
   }
@@ -334,14 +420,23 @@ class _RemoteTasksScreenState extends State<RemoteTasksScreen> {
               ? ErrorRetry(message: _error!, onRetry: () { setState(() => _loading = true); _load(); })
               : RefreshIndicator(
                   onRefresh: _load,
-                  child: _rows.isEmpty
-                      ? ListView(children: [const SizedBox(height: 80), EmptyState(icon: Icons.task_alt_outlined, title: tr('لا توجد مهام', 'No tasks'))])
-                      : ListView.separated(
+                  child: ListView.separated(
                           padding: const EdgeInsets.all(14),
-                          itemCount: _rows.length,
+                          itemCount: _rows.length + 1,
                           separatorBuilder: (_, __) => const SizedBox(height: 8),
                           itemBuilder: (c, i) {
-                            final r = _rows[i];
+                            if (i == 0) {
+                              return Column(children: [
+                                if (staff)
+                                  RemoteFilterBar(
+                                    userId: _userId,
+                                    withDates: false,
+                                    onChanged: (u, _, __) { setState(() { _userId = u; _loading = true; }); _load(); },
+                                  ),
+                                if (_rows.isEmpty) ...[const SizedBox(height: 60), EmptyState(icon: Icons.task_alt_outlined, title: tr('لا توجد مهام', 'No tasks'))],
+                              ]);
+                            }
+                            final r = _rows[i - 1];
                             final done = r['done'] == true;
                             return FadeSlideIn(
                               delayMs: (i * 15).clamp(0, 150),
@@ -359,6 +454,7 @@ class _RemoteTasksScreenState extends State<RemoteTasksScreen> {
                                       Wrap(spacing: 6, children: [
                                         if (staff && r['user'] != null) Chip2(_userName(r['user']), T.navy, icon: Icons.person_outline),
                                         if (r['dueDate'] != null) Chip2(_d(r['dueDate']), T.info, icon: Icons.event),
+                                        if (r['assignedBy'] is Map) Chip2('${tr('بواسطة', 'By')}: ${_userName(r['assignedBy'])}', T.inkFaint),
                                       ]),
                                     ]),
                                   ),
@@ -366,8 +462,9 @@ class _RemoteTasksScreenState extends State<RemoteTasksScreen> {
                                     IconButton(
                                       icon: const Icon(Icons.delete_outline, size: 19, color: T.danger),
                                       onPressed: () async {
-                                        try { await Api.instance.delete('/api/remote/tasks/${r['_id']}'); _load(); }
-                                        catch (e) { if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString()))); }
+                                        setState(() => _rows.remove(r));
+                                        try { await Api.instance.delete('/api/remote/tasks/${r['_id']}'); }
+                                        catch (e) { _load(); if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString()))); }
                                       },
                                     ),
                                 ]),
@@ -388,42 +485,66 @@ class RemoteReportScreen extends StatefulWidget {
 }
 
 class _RemoteReportScreenState extends State<RemoteReportScreen> {
-  Map<String, dynamic>? _today;
   List<Map<String, dynamic>> _rows = [];
   bool _loading = true;
   String? _error;
   final _body = TextEditingController();
+  String _todayDate = '';
+  bool _hasToday = false;
+  bool _saving = false;
+  String _saved = '';
+  // فلاتر المشرف — كالويب: الموظف ومن/إلى على الخادم.
+  String _userId = '';
+  String? _from, _to;
+  int _seq = 0;
 
   @override
   void initState() { super.initState(); _load(); }
 
+  @override
+  void dispose() { _body.dispose(); super.dispose(); }
+
   Future<void> _load() async {
+    final my = ++_seq;
     try {
-      final auth = context.read<AuthProvider>();
+      final staff = _isRemoteStaff(context.read<AuthProvider>());
+      final q = [
+        if (staff && _userId.isNotEmpty) 'userId=$_userId',
+        if (staff && _from != null) 'from=$_from',
+        if (staff && _to != null) 'to=$_to',
+      ];
       final results = await Future.wait([
-        if (!_isRemoteStaff(auth)) Api.instance.get('/api/remote/reports/today').catchError((_) => <String, dynamic>{}),
-        Api.instance.get('/api/remote/reports'),
+        Api.instance.get('/api/remote/reports${q.isEmpty ? '' : '?${q.join('&')}'}'),
+        if (!staff) Api.instance.get('/api/remote/reports/today'),
       ]);
-      if (!mounted) return;
+      if (!mounted || my != _seq) return;
       setState(() {
-        _today = results.length > 1 ? results[0]['report'] as Map<String, dynamic>? : null;
-        _rows = List<Map<String, dynamic>>.from(results.last['reports'] ?? []);
+        _rows = List<Map<String, dynamic>>.from(results[0]['reports'] ?? []);
+        if (!staff) {
+          final t = results[1];
+          _todayDate = (t['today'] ?? '').toString();
+          // تقريرُ اليوم يُفتح للتعديل كالويب: يُملأ النصّ ويُحفظ من جديد.
+          if (t['report'] is Map) { _hasToday = true; _body.text = (t['report']['body'] ?? '').toString(); }
+        }
         _loading = false;
         _error = null;
       });
     } catch (e) {
-      if (mounted) setState(() { _loading = false; _error = e.toString(); });
+      if (mounted && my == _seq) setState(() { _loading = false; _error = e.toString(); });
     }
   }
 
   Future<void> _submit() async {
-    if (_body.text.trim().isEmpty) return;
+    if (_body.text.trim().isEmpty || _saving) return;
+    setState(() { _saving = true; _saved = ''; });
     try {
-      await Api.instance.post('/api/remote/reports', {'body': _body.text.trim()});
-      _body.clear();
+      await Api.instance.post('/api/remote/reports', {'body': _body.text});
+      if (mounted) setState(() => _saved = '${tr('تم حفظ التقرير', 'Report saved')} ✓');
       _load();
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+    } finally {
+      if (mounted) setState(() => _saving = false);
     }
   }
 
@@ -432,45 +553,54 @@ class _RemoteReportScreenState extends State<RemoteReportScreen> {
     final auth = context.watch<AuthProvider>();
     final staff = _isRemoteStaff(auth);
     return AppScaffold(
-      title: Text(tr('التقرير اليومي', 'Daily Report')),
-      body: _loading
+      title: Text(staff ? tr('تقارير الفريق اليومية', 'Team daily reports') : tr('التقرير اليومي', 'Daily Report')),
+      body: _loading && _rows.isEmpty && !staff
           ? ListView(padding: const EdgeInsets.all(14), children: const [Shimmer(height: 120), SizedBox(height: 10), Shimmer(), SizedBox(height: 10), Shimmer()])
           : _error != null
               ? ErrorRetry(message: _error!, onRetry: () { setState(() => _loading = true); _load(); })
               : RefreshIndicator(
                   onRefresh: _load,
                   child: ListView(padding: const EdgeInsets.all(14), children: [
+                    if (staff)
+                      RemoteFilterBar(
+                        userId: _userId, from: _from, to: _to,
+                        onChanged: (u, f, t) { setState(() { _userId = u; _from = f; _to = t; _loading = true; }); _load(); },
+                      ),
                     if (!staff)
                       FadeSlideIn(
                         child: AppCard(
-                          topAccent: _today != null ? T.success : T.orange,
-                          child: _today != null
-                              ? Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                                  Text(tr('تقرير اليوم مُرسل ✔', "Today's report sent ✔"), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14, color: T.success)),
-                                  const SizedBox(height: 6),
-                                  Text((_today!['body'] ?? '').toString(), style: const TextStyle(fontSize: 13)),
-                                ])
-                              : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                                  Text(tr('ماذا أنجزت اليوم؟', 'What did you do today?'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
-                                  const SizedBox(height: 8),
-                                  TextField(controller: _body, maxLines: 4, decoration: InputDecoration(hintText: tr('اكتب تقريرك…', 'Write your report…'))),
-                                  const SizedBox(height: 10),
-                                  SizedBox(width: double.infinity, child: FilledButton(onPressed: _submit, child: Text(tr('إرسال التقرير', 'Submit')))),
-                                ]),
+                          topAccent: _hasToday ? T.success : T.orange,
+                          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            Text('${tr('تقرير اليوم', "Today's report")} ($_todayDate)', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+                            const SizedBox(height: 8),
+                            TextField(controller: _body, maxLines: 6, decoration: InputDecoration(hintText: tr('اكتب ما أنجزته اليوم…', 'Write what you did today…'))),
+                            const SizedBox(height: 10),
+                            Row(children: [
+                              Expanded(child: Text(_saved, style: const TextStyle(color: T.success, fontSize: 12.5))),
+                              FilledButton.icon(
+                                onPressed: _saving ? null : _submit,
+                                icon: _saving ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.send_rounded, size: 17),
+                                label: Text(tr('حفظ وإرسال', 'Save & submit')),
+                              ),
+                            ]),
+                          ]),
                         ),
                       ),
                     const SizedBox(height: 14),
-                    Text(tr('التقارير السابقة', 'Previous reports'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
-                    const SizedBox(height: 8),
-                    if (_rows.isEmpty) EmptyState(icon: Icons.description_outlined, title: tr('لا توجد تقارير بعد', 'No reports yet')),
-                    ..._rows.take(40).map((r) => Padding(
+                    if (!staff) ...[
+                      Text(tr('تقاريري السابقة', 'My previous reports'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+                      const SizedBox(height: 8),
+                    ],
+                    if (_loading) ...const [Shimmer(), SizedBox(height: 10), Shimmer()]
+                    else if (_rows.isEmpty) EmptyState(icon: Icons.description_outlined, title: tr('لا توجد تقارير', 'No reports'))
+                    else ..._rows.map((r) => Padding(
                       padding: const EdgeInsets.only(bottom: 8),
                       child: AppCard(
                         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                           Row(children: [
                             if (staff) Expanded(child: Text(_userName(r['user']), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5))),
                             if (!staff) const Spacer(),
-                            Chip2(_d(r['date'] ?? r['createdAt']), T.navy, icon: Icons.event),
+                            Chip2((r['date'] ?? _d(r['createdAt'])).toString(), T.navy, icon: Icons.event),
                           ]),
                           const SizedBox(height: 5),
                           Text((r['body'] ?? '').toString(), style: const TextStyle(fontSize: 12.5)),
@@ -643,8 +773,21 @@ class _RemoteThreadsScreenState extends State<_RemoteThreadsScreen> {
   bool _loading = true;
   String? _error;
 
+  void _onMsg(dynamic _) => _load();
+
   @override
-  void initState() { super.initState(); _load(); }
+  void initState() {
+    super.initState();
+    _load();
+    // رسالةٌ واردة تُحدّث القائمة (آخر رسالة وغير المقروء) لحظيًّا.
+    Live.instance.onData('remote:message', _onMsg);
+  }
+
+  @override
+  void dispose() {
+    Live.instance.offData('remote:message', _onMsg);
+    super.dispose();
+  }
 
   Future<void> _load() async {
     try {
@@ -732,14 +875,35 @@ class _RemoteChatScreenState extends State<RemoteChatScreen> {
   void initState() {
     super.initState();
     _load();
-    _poll = Timer.periodic(const Duration(seconds: 10), (_) => _load(silent: true));
+    // المقبس أوّلًا كالويب؛ والاستطلاع البطيء احتياطٌ لو انقطع الاتصال.
+    Live.instance.onData('remote:message', _onIncoming);
+    _poll = Timer.periodic(const Duration(seconds: 45), (_) => _load(silent: true));
   }
 
   @override
   void dispose() {
+    Live.instance.offData('remote:message', _onIncoming);
     _poll?.cancel();
     _scroll.dispose();
     super.dispose();
+  }
+
+  /// {employee, message} — المشرف يُلحقها إن كانت لمحادثته المفتوحة، والموظف دائمًا.
+  void _onIncoming(dynamic payload) {
+    if (!mounted || payload is! Map) return;
+    final emp = (payload['employee'] ?? '').toString();
+    if (widget.employeeId != null && emp != widget.employeeId) return;
+    final m = payload['message'];
+    if (m is! Map) { _load(silent: true); return; }
+    _append(Map<String, dynamic>.from(m));
+  }
+
+  void _append(Map<String, dynamic> m) {
+    if (_rows.any((x) => x['_id'] != null && x['_id'] == m['_id'])) return;
+    setState(() => _rows = [..._rows, m]);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scroll.hasClients) _scroll.jumpTo(_scroll.position.maxScrollExtent);
+    });
   }
 
   Future<void> _load({bool silent = false}) async {
@@ -764,9 +928,15 @@ class _RemoteChatScreenState extends State<RemoteChatScreen> {
     if (text.isEmpty) return;
     _msg.clear();
     try {
-      await Api.instance.post(_path, {'body': text});
-      _load();
+      final d = await Api.instance.post(_path, {'body': text});
+      if (!mounted) return;
+      if (d is Map && d['message'] is Map) {
+        _append(Map<String, dynamic>.from(d['message']));
+      } else {
+        _load();
+      }
     } catch (e) {
+      _msg.text = text;
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
     }
   }
@@ -853,17 +1023,23 @@ class _RemoteDashboardScreenState extends State<RemoteDashboardScreen> {
   Map<String, dynamic>? _d;
   bool _loading = true;
   String? _error;
+  // فلاتر المشرف — كالويب: الموظف (أو الفريق كلّه) ومن/إلى.
+  String _userId = '';
+  String? _from, _to;
+  int _seq = 0;
 
   @override
   void initState() { super.initState(); _load(); }
 
   Future<void> _load() async {
+    final my = ++_seq;
     try {
-      final d = await Api.instance.get('/api/remote/dashboard');
-      if (!mounted) return;
+      final q = [if (_userId.isNotEmpty) 'userId=$_userId', if (_from != null) 'from=$_from', if (_to != null) 'to=$_to'];
+      final d = await Api.instance.get('/api/remote/dashboard${q.isEmpty ? '' : '?${q.join('&')}'}');
+      if (!mounted || my != _seq) return;
       setState(() { _d = Map<String, dynamic>.from(d); _loading = false; _error = null; });
     } catch (e) {
-      if (mounted) setState(() { _loading = false; _error = e.toString(); });
+      if (mounted && my == _seq) setState(() { _loading = false; _error = e.toString(); });
     }
   }
 
@@ -883,19 +1059,44 @@ class _RemoteDashboardScreenState extends State<RemoteDashboardScreen> {
   Widget build(BuildContext context) {
     final s = _d?['summary'] is Map ? Map<String, dynamic>.from(_d!['summary']) : {};
     final per = List<Map<String, dynamic>>.from(_d?['perEmployee'] ?? []);
+    final staff = _isRemoteStaff(context.watch<AuthProvider>());
     return AppScaffold(
-      title: Text(tr('لوحة العمل عن بُعد', 'Remote Dashboard')),
-      body: _loading
+      title: Text(staff ? tr('لوحة الفريق', 'Team dashboard') : tr('لوحتي', 'My dashboard')),
+      // الصفوف حصائلُ الفترة المختارة — فتصديرٌ واحد لما يُرى، كالويب.
+      actions: [
+        if (staff && per.isNotEmpty)
+          ExportButton(
+            fileName: 'remote-dashboard',
+            sheetName: tr('لكل موظف', 'Per employee'),
+            columns: [
+              ExportCol('الموظف', 'Employee', (r) => r['name']),
+              ExportCol('أيام العمل', 'Days worked', (r) => r['daysWorked']),
+              ExportCol('الساعات', 'Hours', (r) => fmtDuration(r['totalMinutes'])),
+              ExportCol('أيام الإجازات', 'Leave days', (r) => r['leaveDays']),
+            ],
+            rows: () => per,
+          ),
+      ],
+      body: _loading && _d == null
           ? ListView(padding: const EdgeInsets.all(14), children: const [Shimmer(height: 90), SizedBox(height: 10), Shimmer(height: 160)])
           : _error != null
               ? ErrorRetry(message: _error!, onRetry: () { setState(() => _loading = true); _load(); })
               : RefreshIndicator(
                   onRefresh: _load,
                   child: ListView(padding: const EdgeInsets.all(14), children: [
+                    if (staff) ...[
+                      RemoteFilterBar(
+                        userId: _userId, from: _from, to: _to,
+                        allLabelAr: 'الفريق كلّه', allLabelEn: 'Whole team',
+                        onChanged: (u, f, t) { setState(() { _userId = u; _from = f; _to = t; _loading = true; }); _load(); },
+                      ),
+                      const SizedBox(height: 10),
+                    ],
+                    if (_loading) const LinearProgressIndicator(minHeight: 2),
                     Row(children: [
                       _stat('أيام العمل', 'Days worked', s['daysWorked'], Icons.event_available_outlined, T.success),
                       const SizedBox(width: 10),
-                      _stat('الساعات', 'Hours', s['totalHours'], Icons.schedule_outlined, T.info),
+                      _stat('الساعات', 'Hours', fmtDuration(s['totalMinutes']), Icons.schedule_outlined, T.info),
                     ]),
                     const SizedBox(height: 10),
                     Row(children: [
@@ -903,7 +1104,7 @@ class _RemoteDashboardScreenState extends State<RemoteDashboardScreen> {
                       const SizedBox(width: 10),
                       _stat('طلبات معلّقة', 'Pending leaves', s['pendingLeaves'], Icons.pending_actions_outlined, T.danger),
                     ]),
-                    if (per.isNotEmpty) ...[
+                    if (staff && per.isNotEmpty) ...[
                       const SizedBox(height: 16),
                       Text(tr('لكل موظف', 'Per employee'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
                       const SizedBox(height: 8),
@@ -919,7 +1120,8 @@ class _RemoteDashboardScreenState extends State<RemoteDashboardScreen> {
                               Expanded(child: Text((u['name'] ?? '—').toString(), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13))),
                               Wrap(spacing: 6, children: [
                                 Chip2('${u['daysWorked'] ?? 0} ${tr('يوم', 'd')}', T.success),
-                                Chip2('${((u['totalMinutes'] ?? 0) as num) ~/ 60} ${tr('س', 'h')}', T.info),
+                                Chip2(fmtDuration(u['totalMinutes']), T.info),
+                                Chip2('${u['leaveDays'] ?? 0} ${tr('إجازة', 'leave')}', T.warn),
                               ]),
                             ]),
                           ),

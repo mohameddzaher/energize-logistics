@@ -3,6 +3,7 @@ import '../services/api.dart';
 import '../services/lang.dart';
 import '../services/live.dart';
 import '../ui/app_scaffold.dart';
+import '../ui/doc_pdf.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 
@@ -263,6 +264,71 @@ class _EvaluateEmployeeScreenState extends State<EvaluateEmployeeScreen> {
     return (weighted: weightedScore, pct: pct.toDouble(), answered: answered);
   }
 
+  /// طلب تعديل تقييمٍ مُرسَلٍ مقفول — يقرّره المدير العام (كالويب).
+  Future<void> _requestEdit() async {
+    final evId = (_form?['evaluation'] is Map ? _form!['evaluation']['_id'] : null)?.toString();
+    if (evId == null) return;
+    final reason = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: Text(tr('طلب تعديل التقييم', 'Request an edit')),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          Text(tr('اكتب سبب التعديل. المدير العام هو من يوافق أو يرفض، ولو وافق هتقدر تعدّل مرة واحدة.',
+                  'Explain why. The super admin approves or rejects; an approval lets you correct it once.'),
+              style: const TextStyle(fontSize: 12, color: T.inkSoft)),
+          const SizedBox(height: 10),
+          TextField(controller: reason, maxLines: 4, decoration: InputDecoration(hintText: tr('مثال: تم إدخال درجة خاطئة في المؤشر الثالث', 'e.g. wrong score entered on criterion 3'))),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('إلغاء', 'Cancel'))),
+          FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(tr('إرسال الطلب', 'Send request'))),
+        ],
+      ),
+    );
+    if (ok != true || reason.text.trim().isEmpty) return;
+    try {
+      await Api.instance.post('/api/performance/evaluations/$evId/request-edit', {'reason': reason.text.trim()});
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('تم إرسال طلب التعديل للمدير العام', 'Edit request sent to the super admin'))));
+      _load();
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e is ApiException ? e.message : tr('فشل إرسال الطلب', 'Could not send the request'))));
+    }
+  }
+
+  /// تقرير التقييم PDF — نفس محتوى تصدير الويب (البيانات، المؤشرات، النتيجة).
+  Future<void> _pdf() async {
+    final f = _form;
+    if (f == null) return;
+    final emp = f['employee'] is Map ? Map<String, dynamic>.from(f['employee']) : <String, dynamic>{};
+    final t = f['template'] is Map ? Map<String, dynamic>.from(f['template']) : <String, dynamic>{};
+    final totals = _totals();
+    double sumW = 0;
+    for (final c in _criteria) { sumW += (c['weight'] as num?)?.toDouble() ?? 0; }
+    final band = totals.pct >= 90 ? _bands['excellent']! : totals.pct >= 80 ? _bands['very_good']! : totals.pct >= 70 ? _bands['good']! : _bands['not_eligible']!;
+    final ev = f['evaluation'] is Map ? Map<String, dynamic>.from(f['evaluation']) : <String, dynamic>{};
+    await printDocument(
+      title: tr('تقييم أداء موظف', 'Employee Performance Evaluation'),
+      subtitle: '${emp['name'] ?? widget.name} — ${f['periodLabel'] ?? f['periodKey'] ?? ''}',
+      rows: [
+        (tr('الموظف', 'Employee'), (emp['name'] ?? widget.name).toString()),
+        (tr('المسمى الوظيفي', 'Job title'), (emp['jobTitle'] ?? '—').toString()),
+        (tr('القسم', 'Department'), (emp['department'] ?? '—').toString()),
+        (tr('النموذج', 'Template'), (t['nameAr'] ?? '—').toString()),
+        (tr('الفترة', 'Period'), (f['periodLabel'] ?? f['periodKey'] ?? '—').toString()),
+        (tr('المُقيِّم', 'Evaluator'), (ev['evaluatorName'] ?? '—').toString()),
+        (tr('التاريخ', 'Date'), (ev['evaluationDate'] ?? DateTime.now().toIso8601String().substring(0, 10)).toString()),
+        for (var i = 0; i < _criteria.length; i++)
+          ('${i + 1}. ${(_criteria[i]['titleAr'] ?? _criteria[i]['title'] ?? '').toString()} (${(_criteria[i]['weight'] ?? 0)}%)',
+              _scores[(_criteria[i]['key'] ?? '').toString()] != null ? '${_scores[(_criteria[i]['key'] ?? '').toString()]} / 5' : '—'),
+        (tr('الدرجة المرجّحة', 'Weighted score'), sumW > 0 ? '${(totals.weighted / sumW * 5).toStringAsFixed(1)} / 5' : '—'),
+        (tr('النسبة المئوية', 'Percentage'), '${totals.pct.toStringAsFixed(1)}%'),
+        (tr('الشريحة', 'Band'), tr(band.$1, band.$2)),
+        if ((ev['notes'] ?? '').toString().isNotEmpty) (tr('ملاحظات المُقيِّم', 'Evaluator notes'), ev['notes'].toString()),
+      ],
+    );
+  }
+
   Future<void> _save({required bool submit}) async {
     final t = _form?['template'];
     if (t is! Map || (t['_id'] ?? '').toString().isEmpty) {
@@ -294,15 +360,31 @@ class _EvaluateEmployeeScreenState extends State<EvaluateEmployeeScreen> {
     }
   }
 
+  Widget _banner(String text, Color color) => Container(
+        width: double.infinity,
+        margin: const EdgeInsets.fromLTRB(14, 12, 14, 0),
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(color: color.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(12), border: Border.all(color: color.withValues(alpha: 0.3))),
+        child: Text(text, style: TextStyle(fontSize: 12, color: color, fontWeight: FontWeight.w600)),
+      );
+
   @override
   Widget build(BuildContext context) {
     final template = _form?['template'];
-    final locked = _form?['permissions'] is Map && _form!['permissions']['locked'] == true;
+    final perms = _form?['permissions'] is Map ? Map<String, dynamic>.from(_form!['permissions']) : <String, dynamic>{};
+    // المقفول يُعرض كاملًا للقراءة فقط — readOnly = !canEdit كالويب.
+    final locked = perms['canEdit'] == false || perms['locked'] == true;
+    final submitted = _form?['evaluation'] is Map && _form!['evaluation']['status'] == 'submitted';
+    final req = perms['editRequest'] is Map ? Map<String, dynamic>.from(perms['editRequest']) : null;
     final totals = _loading ? (weighted: 0.0, pct: 0.0, answered: 0) : _totals();
     final band = totals.pct >= 90 ? _bands['excellent']! : totals.pct >= 80 ? _bands['very_good']! : totals.pct >= 70 ? _bands['good']! : _bands['not_eligible']!;
 
     return AppScaffold(
       title: Text('${tr('تقييم', 'Evaluate')} ${widget.name}'),
+      actions: [
+        if (!_loading && template is Map)
+          IconButton(tooltip: 'PDF', icon: const Icon(Icons.picture_as_pdf_outlined), onPressed: _pdf),
+      ],
       body: _loading
           ? ListView(padding: const EdgeInsets.all(14), children: const [Shimmer(height: 90), SizedBox(height: 10), Shimmer(height: 120), SizedBox(height: 10), Shimmer(height: 120)])
           : _error != null
@@ -310,6 +392,45 @@ class _EvaluateEmployeeScreenState extends State<EvaluateEmployeeScreen> {
               : template is! Map || _criteria.isEmpty
                   ? EmptyState(icon: Icons.assignment_late_outlined, title: tr('لا يوجد قالب تقييم لهذا الموظف/القسم', 'No template for this employee'))
                   : Column(children: [
+                      // حالة القفل وطلب التعديل — كالويب.
+                      if (submitted && perms['locked'] == true)
+                        Container(
+                          width: double.infinity,
+                          margin: const EdgeInsets.fromLTRB(14, 12, 14, 0),
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(color: T.canvas, borderRadius: BorderRadius.circular(12), border: Border.all(color: T.line)),
+                          child: Row(children: [
+                            const Icon(Icons.lock_outline, size: 18, color: T.inkSoft),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                Text(
+                                  req?['status'] == 'pending'
+                                      ? tr('طلب التعديل قيد مراجعة المدير العام', 'Your edit request is awaiting super-admin approval')
+                                      : req?['status'] == 'rejected'
+                                          ? tr('تم رفض طلب التعديل — التقييم مقفول', 'Edit request rejected — the evaluation stays locked')
+                                          : tr('هذا التقييم مُرسل ومقفول — لا يمكن تعديله', 'This evaluation is submitted and locked'),
+                                  style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700),
+                                ),
+                                if (req?['status'] == 'rejected' && (req?['decisionNote'] ?? '').toString().isNotEmpty)
+                                  Text('${tr('سبب الرفض: ', 'Reason: ')}${req!['decisionNote']}', style: const TextStyle(fontSize: 11, color: T.inkFaint)),
+                                if (req?['status'] == 'pending' && (req?['reason'] ?? '').toString().isNotEmpty)
+                                  Text('${tr('سببك: ', 'Your reason: ')}${req!['reason']}', style: const TextStyle(fontSize: 11, color: T.inkFaint)),
+                              ]),
+                            ),
+                            if (perms['canRequestEdit'] == true)
+                              FilledButton(
+                                style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 10)),
+                                onPressed: _requestEdit,
+                                child: Text(tr('طلب تعديل', 'Request edit'), style: const TextStyle(fontSize: 12)),
+                              ),
+                          ]),
+                        ),
+                      if (submitted && perms['locked'] != true && req?['status'] == 'approved')
+                        _banner(tr('تمت الموافقة على التعديل — يمكنك التعديل وإعادة الإرسال مرة واحدة.', 'Edit approved — you may correct and resubmit once.'), T.success),
+                      if (submitted && perms['locked'] != true && req?['status'] != 'approved' && perms['canOverride'] == true)
+                        _banner(tr('تقييم مُرسل — بصفتك المدير العام يمكنك تعديله مباشرة، وسيُسجَّل التعديل في السجل.',
+                            'Submitted evaluation — as super admin you can edit it directly; the change is recorded in its history.'), T.info),
                       // live score header
                       Container(
                         width: double.infinity,

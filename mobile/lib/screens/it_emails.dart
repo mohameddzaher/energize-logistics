@@ -6,6 +6,7 @@ import '../services/auth.dart';
 import '../services/lang.dart';
 import '../services/live.dart';
 import '../ui/app_scaffold.dart';
+import '../ui/export_sheet.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 
@@ -33,6 +34,11 @@ class _ItEmailsScreenState extends State<ItEmailsScreen> {
   String? _error;
   String _q = '';
   String _linked = '';
+  String _status = '';
+  String _type = '';
+  /// «بدون كلمة مرور» فلترٌ قائمٌ بنفسِه على الخادم (`hasPassword=no`) — المعدودُ هو المعروض.
+  String _hasPassword = '';
+  int _seq = 0;
 
   @override
   void initState() {
@@ -49,13 +55,20 @@ class _ItEmailsScreenState extends State<ItEmailsScreen> {
 
   void _onLive() { if (mounted) _load(); }
 
+  List<String> _qs({bool withPassword = true}) => [
+        if (_q.trim().isNotEmpty) 'q=${Uri.encodeQueryComponent(_q.trim())}',
+        if (_status.isNotEmpty) 'status=$_status',
+        if (_type.isNotEmpty) 'mailboxType=$_type',
+        if (_linked.isNotEmpty) 'linked=$_linked',
+        if (withPassword && _hasPassword.isNotEmpty) 'hasPassword=$_hasPassword',
+      ];
+
   Future<void> _load() async {
+    final my = ++_seq;
     try {
-      final qs = <String>[];
-      if (_q.trim().isNotEmpty) qs.add('q=${Uri.encodeQueryComponent(_q.trim())}');
-      if (_linked.isNotEmpty) qs.add('linked=$_linked');
+      final qs = _qs();
       final d = await Api.instance.get('/api/it/emails${qs.isEmpty ? '' : '?${qs.join('&')}'}');
-      if (!mounted) return;
+      if (!mounted || my != _seq) return;
       setState(() {
         _rows = List<Map<String, dynamic>>.from(d['emails'] ?? []);
         _counts = Map<String, dynamic>.from(d['counts'] ?? {});
@@ -65,7 +78,70 @@ class _ItEmailsScreenState extends State<ItEmailsScreen> {
         _error = null;
       });
     } catch (e) {
-      if (mounted) setState(() { _loading = false; _error = e is ApiException ? e.message : e.toString(); });
+      if (mounted && my == _seq) setState(() { _loading = false; _error = e is ApiException ? e.message : e.toString(); });
+    }
+  }
+
+  static final _baseCols = [
+    ExportCol('الاسم', 'Name', (r) => r['displayName'] ?? ''),
+    ExportCol('البريد', 'Email', (r) => r['email'] ?? ''),
+    ExportCol('الموظف', 'Employee', (r) => r['employeeName'] ?? ''),
+    ExportCol('القسم', 'Department', (r) => r['department'] ?? ''),
+    ExportCol('ملاحظات', 'Notes', (r) => r['notes'] ?? ''),
+  ];
+
+  /// التصدير: بدون كلمات المرور (الصفوف المعروضة)، أو معها — تُجلب لحظةَ الاختيار
+  /// من /api/it/emails/export بنفس صلاحية الكشف، والجلبُ نفسُه يُسجَّل في سجل التدقيق.
+  Future<void> _export() async {
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      builder: (c) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
+        ListTile(leading: const Icon(Icons.table_view_outlined), title: Text(tr('بدون كلمات المرور', 'Without passwords')), onTap: () => Navigator.pop(c, 'plain')),
+        ListTile(
+          enabled: _canReveal,
+          leading: const Icon(Icons.key_outlined),
+          title: Text(tr('مع كلمات المرور', 'With passwords')),
+          trailing: Text(tr('مسجَّل', 'recorded'), style: const TextStyle(fontSize: 11, color: T.inkFaint)),
+          onTap: () => Navigator.pop(c, 'withpw'),
+        ),
+      ])),
+    );
+    if (choice == null || !mounted) return;
+    final sheet = tr('بريد الشركة', 'Company email');
+    if (choice == 'plain') {
+      await exportExcel(context, fileName: 'company-emails', sheets: [(sheet, _baseCols, _rows)]);
+      return;
+    }
+    try {
+      final qs = _qs(withPassword: false);
+      final d = await Api.instance.get('/api/it/emails/export${qs.isEmpty ? '' : '?${qs.join('&')}'}');
+      if (!mounted) return;
+      await exportExcel(context, fileName: 'company-emails', sheets: [
+        (sheet, [..._baseCols, ExportCol('كلمة المرور', 'Password', (r) => r['password'] ?? '')], List<Map<String, dynamic>>.from(d['rows'] ?? [])),
+      ]);
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e is ApiException ? e.message : e.toString())));
+    }
+  }
+
+  /// يزيله من سجلّ النظام فقط — الصندوقُ نفسُه على هوستنجر يبقى ويُغلق من هناك.
+  Future<void> _delete(Map<String, dynamic> r) async {
+    final ok = await showDialog<bool>(context: context, builder: (c) => AlertDialog(
+      title: Text(tr('حذف «${r['email']}» من السجل؟', 'Remove "${r['email']}"?')),
+      content: Text(tr('هذا يزيله من سجل النظام فقط — أما صندوق البريد نفسه على هوستنجر فلن يُحذَف، ويجب إغلاقه من هناك.',
+          'This removes it from the register only — the mailbox itself on Hostinger is untouched.')),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('إلغاء', 'Cancel'))),
+        FilledButton(style: FilledButton.styleFrom(backgroundColor: T.danger), onPressed: () => Navigator.pop(c, true), child: Text(tr('حذف', 'Delete'))),
+      ],
+    ));
+    if (ok != true) return;
+    try {
+      await Api.instance.delete('/api/it/emails/${r['_id']}');
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('تم الحذف', 'Deleted'))));
+      _load();
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e is ApiException ? e.message : e.toString())));
     }
   }
 
@@ -98,12 +174,11 @@ class _ItEmailsScreenState extends State<ItEmailsScreen> {
     }
   }
 
-  Widget _chip(String label, String value, String key) {
-    final active = _linked == value;
+  Widget _chip(String label, String key, bool active, VoidCallback toggle) {
     return Padding(
       padding: const EdgeInsets.only(left: 6, right: 6),
       child: Pressable(
-        onTap: () { setState(() { _linked = active ? '' : value; _loading = true; }); _load(); },
+        onTap: () { setState(toggle); _load(); },
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           decoration: BoxDecoration(
@@ -129,6 +204,7 @@ class _ItEmailsScreenState extends State<ItEmailsScreen> {
 
     return AppScaffold(
       title: Text(tr('بريد الشركة', 'Company Email')),
+      actions: [IconButton(tooltip: tr('تصدير Excel', 'Export to Excel'), icon: const Icon(Icons.file_download_outlined), onPressed: _export)],
       floatingActionButton: !canEdit ? null : FloatingActionButton.extended(
         backgroundColor: T.orange,
         onPressed: () => _openForm(null),
@@ -169,14 +245,58 @@ class _ItEmailsScreenState extends State<ItEmailsScreen> {
                   SizedBox(
                     height: 72,
                     child: ListView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.fromLTRB(8, 12, 8, 4), children: [
-                      _chip(tr('الإجمالي', 'Total'), '', 'total'),
-                      _chip(tr('مربوط', 'Linked'), 'yes', 'linked'),
-                      _chip(tr('غير مربوط', 'Unlinked'), 'no', 'unlinked'),
-                      _chip(tr('بدون كلمة مرور', 'No password'), '', 'withoutPassword'),
+                      // «الإجمالي» يُرجع الكلّ، والبقيّةُ تفلتر بالضغط وتُلغى بالضغط ثانيةً.
+                      _chip(tr('الإجمالي', 'Total'), 'total', _status.isEmpty && _type.isEmpty && _linked.isEmpty && _hasPassword.isEmpty,
+                          () { _status = ''; _type = ''; _linked = ''; _hasPassword = ''; }),
+                      _chip(tr('نشط', 'Active'), 'active', _status == 'active', () => _status = _status == 'active' ? '' : 'active'),
+                      _chip(tr('مربوط', 'Linked'), 'linked', _linked == 'yes', () => _linked = _linked == 'yes' ? '' : 'yes'),
+                      _chip(tr('غير مربوط', 'Unlinked'), 'unlinked', _linked == 'no', () => _linked = _linked == 'no' ? '' : 'no'),
+                      _chip(tr('بدون كلمة مرور', 'No password'), 'withoutPassword', _hasPassword == 'no', () => _hasPassword = _hasPassword == 'no' ? '' : 'no'),
                     ]),
                   ),
                   Padding(
-                    padding: const EdgeInsets.fromLTRB(14, 4, 14, 8),
+                    padding: const EdgeInsets.fromLTRB(14, 4, 14, 0),
+                    child: Row(children: [
+                      Expanded(child: DropdownButtonFormField<String>(
+                        key: ValueKey('_status$_status'),
+                        initialValue: _status, isExpanded: true,
+                        decoration: InputDecoration(labelText: tr('الحالة', 'Status'), isDense: true),
+                        items: [
+                          DropdownMenuItem(value: '', child: Text(tr('كل الحالات', 'All statuses'))),
+                          DropdownMenuItem(value: 'active', child: Text(tr('نشط', 'Active'))),
+                          DropdownMenuItem(value: 'suspended', child: Text(tr('موقوف', 'Suspended'))),
+                          DropdownMenuItem(value: 'closed', child: Text(tr('مغلق', 'Closed'))),
+                        ],
+                        onChanged: (v) { setState(() => _status = v ?? ''); _load(); },
+                      )),
+                      const SizedBox(width: 6),
+                      Expanded(child: DropdownButtonFormField<String>(
+                        key: ValueKey('_type$_type'),
+                        initialValue: _type, isExpanded: true,
+                        decoration: InputDecoration(labelText: tr('النوع', 'Type'), isDense: true),
+                        items: [
+                          DropdownMenuItem(value: '', child: Text(tr('كل الأنواع', 'All types'))),
+                          DropdownMenuItem(value: 'personal', child: Text(tr('شخصي', 'Personal'))),
+                          DropdownMenuItem(value: 'functional', child: Text(tr('وظيفي', 'Functional'))),
+                        ],
+                        onChanged: (v) { setState(() => _type = v ?? ''); _load(); },
+                      )),
+                      const SizedBox(width: 6),
+                      Expanded(child: DropdownButtonFormField<String>(
+                        key: ValueKey('_linked$_linked'),
+                        initialValue: _linked, isExpanded: true,
+                        decoration: InputDecoration(labelText: tr('الربط', 'Link'), isDense: true),
+                        items: [
+                          DropdownMenuItem(value: '', child: Text(tr('مربوط وغير مربوط', 'Linked & unlinked'))),
+                          DropdownMenuItem(value: 'yes', child: Text(tr('مربوط بموظف', 'Linked'))),
+                          DropdownMenuItem(value: 'no', child: Text(tr('غير مربوط', 'Not linked'))),
+                        ],
+                        onChanged: (v) { setState(() => _linked = v ?? ''); _load(); },
+                      )),
+                    ]),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(14, 8, 14, 8),
                     child: TextField(
                       onChanged: (v) { _q = v; _load(); },
                       decoration: InputDecoration(
@@ -226,15 +346,20 @@ class _ItEmailsScreenState extends State<ItEmailsScreen> {
                                             style: const TextStyle(fontSize: 10.5, color: T.danger)),
                                     ]),
                                     if (canEdit)
-                                      Align(
-                                        alignment: AlignmentDirectional.centerEnd,
-                                        child: TextButton.icon(
+                                      Row(mainAxisAlignment: MainAxisAlignment.end, children: [
+                                        TextButton.icon(
                                           onPressed: () => _openForm(r),
                                           style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 6)),
                                           icon: const Icon(Icons.edit_outlined, size: 15),
                                           label: Text(tr('تعديل', 'Edit'), style: const TextStyle(fontSize: 11)),
                                         ),
-                                      ),
+                                        TextButton.icon(
+                                          onPressed: () => _delete(r),
+                                          style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 6), foregroundColor: T.danger),
+                                          icon: const Icon(Icons.delete_outline, size: 15),
+                                          label: Text(tr('حذف', 'Delete'), style: const TextStyle(fontSize: 11)),
+                                        ),
+                                      ]),
                                   ]),
                                 ),
                               );
@@ -251,6 +376,7 @@ class _ItEmailsScreenState extends State<ItEmailsScreen> {
     final name = TextEditingController(text: (row?['displayName'] ?? '').toString());
     final pw = TextEditingController();
     final notes = TextEditingController(text: (row?['notes'] ?? '').toString());
+    final functionAr = TextEditingController(text: (row?['functionAr'] ?? '').toString());
     String type = (row?['mailboxType'] ?? 'personal').toString();
     String status = (row?['status'] ?? 'active').toString();
     bool more = false;
@@ -334,6 +460,10 @@ class _ItEmailsScreenState extends State<ItEmailsScreen> {
                   ],
                   onChanged: (v) => setInner(() => status = v ?? 'active'))),
               ]),
+              if (type == 'functional') ...[
+                const SizedBox(height: 10),
+                TextField(controller: functionAr, decoration: InputDecoration(labelText: tr('وظيفة الصندوق', 'What it is for'))),
+              ],
               const SizedBox(height: 10),
               TextField(controller: notes, maxLines: 2, decoration: InputDecoration(labelText: tr('ملاحظات', 'Notes'))),
             ],
@@ -353,6 +483,7 @@ class _ItEmailsScreenState extends State<ItEmailsScreen> {
       'email': lp.contains('@') ? lp : '$lp@$_domain',
       'displayName': name.text.trim(),
       'mailboxType': type,
+      'functionAr': functionAr.text.trim(),
       'status': status,
       'notes': notes.text.trim(),
       'employee': emp?['_id'],

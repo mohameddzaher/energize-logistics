@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../config.dart';
 import '../services/api.dart';
+import '../services/auth.dart';
+import '../ui/export_sheet.dart';
 import '../services/lang.dart';
 import '../services/live.dart';
 import '../ui/app_scaffold.dart';
@@ -192,8 +196,87 @@ class _B2cDutyRegisterScreenState extends State<B2cDutyRegisterScreen> {
     return '';
   }
 
+  /// مَن يراجع التفقّد (سليم / عليه ملاحظة) — كمسار الخادم: READ في routes/b2c.js.
+  static const _reviewRoles = ['super_admin', 'admin', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead'];
+
+  String _when(dynamic v) {
+    final d = v == null ? null : DateTime.tryParse('$v')?.toLocal();
+    if (d == null) return '';
+    String two(int x) => x.toString().padLeft(2, '0');
+    return '${two(d.day)}/${two(d.month)}/${d.year} ${two(d.hour)}:${two(d.minute)}';
+  }
+
+  /// قرارُ الإدارة على التفقّد — PATCH /api/b2c/duty/:id/review {verdict, note}.
+  Future<void> _review(BuildContext sheet, Map<String, dynamic> r, String verdict, String note) async {
+    try {
+      await Api.instance.patch('/api/b2c/duty/${r['_id']}/review', {'verdict': verdict, 'note': note});
+      if (sheet.mounted) Navigator.pop(sheet);
+      _load();
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e is ApiException ? e.message : tr('تعذّر الحفظ', 'Failed'))));
+    }
+  }
+
+  Widget _details(BuildContext c, Map<String, dynamic> r, TextEditingController note) {
+    final canReview = _reviewRoles.contains(c.read<AuthProvider>().role);
+    final review = (r['review'] is Map) ? Map<String, dynamic>.from(r['review']) : <String, dynamic>{};
+    final loc = r['location'] is Map ? r['location'] as Map : null;
+    final by = review['by'] is Map ? review['by'] as Map : null;
+    Widget kv(String k, String v, {bool danger = false}) => v.isEmpty ? const SizedBox.shrink() : Padding(
+          padding: const EdgeInsets.only(bottom: 3),
+          child: Text.rich(TextSpan(children: [
+            TextSpan(text: '$k: ', style: const TextStyle(color: T.inkFaint)),
+            TextSpan(text: v, style: TextStyle(fontWeight: FontWeight.w700, color: danger ? T.danger : T.ink)),
+          ]), style: const TextStyle(fontSize: 12.5)),
+        );
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      kv(tr('المركبة', 'Vehicle'), [r['vehicleType'], r['vehiclePlate']].where((x) => x != null && '$x'.isNotEmpty).join(' · ')),
+      kv(tr('وقت التفقّد', 'Checked at'), _when(r['checkedAt'])),
+      kv(tr('الفرع', 'Branch'), r['branch'] is Map ? '${r['branch']['name'] ?? ''}' : ''),
+      if (r['hasDamage'] == true) kv(tr('التلف', 'Damage'), (r['damageNotes'] ?? '').toString().isEmpty ? tr('نعم', 'Yes') : '${r['damageNotes']}', danger: true),
+      if (loc != null && loc['lat'] != null)
+        Align(
+          alignment: AlignmentDirectional.centerStart,
+          child: TextButton.icon(
+            onPressed: () => launchUrl(Uri.parse('https://maps.google.com/?q=${loc['lat']},${loc['lng']}'), mode: LaunchMode.externalApplication),
+            icon: const Icon(Icons.place_outlined, size: 16),
+            label: Text(tr('موقع المشرف وقت التفقّد', 'Supervisor location at check')),
+          ),
+        ),
+      if (review['verdict'] != null)
+        Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: Align(alignment: AlignmentDirectional.centerStart,
+              child: review['verdict'] == 'flagged' ? Chip2(tr('عليها ملاحظة', 'Flagged'), T.danger) : Chip2(tr('سليم', 'OK'), T.success)),
+        ),
+      if (canReview) ...[
+        const Divider(height: 18),
+        TextField(controller: note, maxLines: 2, decoration: InputDecoration(labelText: tr('ملاحظة الإدارة', 'Management note'), isDense: true)),
+        const SizedBox(height: 8),
+        Row(mainAxisAlignment: MainAxisAlignment.end, children: [
+          OutlinedButton.icon(
+            style: OutlinedButton.styleFrom(foregroundColor: T.danger),
+            onPressed: () => _review(c, r, 'flagged', note.text.trim()),
+            icon: const Icon(Icons.flag_outlined, size: 16), label: Text(tr('تسجيل ملاحظة', 'Flag')),
+          ),
+          const SizedBox(width: 8),
+          FilledButton.icon(
+            style: FilledButton.styleFrom(backgroundColor: T.success),
+            onPressed: () => _review(c, r, 'ok', note.text.trim()),
+            icon: const Icon(Icons.check_circle_outline, size: 16), label: Text(tr('سليم', 'OK')),
+          ),
+        ]),
+      ] else if ((review['note'] ?? '').toString().isNotEmpty)
+        kv(tr('ملاحظة الإدارة', 'Management note'), '${review['note']}'),
+      if (review['at'] != null)
+        Text('${tr('راجعها', 'Reviewed by')} ${by?['firstName'] ?? ''} ${by?['lastName'] ?? ''} — ${_when(review['at'])}',
+            style: const TextStyle(fontSize: 11, color: T.inkFaint)),
+    ]);
+  }
+
   Future<void> _openPhotos(Map<String, dynamic> r) async {
     final photos = List<Map<String, dynamic>>.from(r['photos'] ?? []);
+    final note = TextEditingController(text: (r['review'] is Map ? r['review']['note'] ?? '' : '').toString());
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -209,13 +292,21 @@ class _B2cDutyRegisterScreenState extends State<B2cDutyRegisterScreen> {
               ]),
             ),
             Expanded(
-              child: photos.isEmpty
-                  ? Center(child: Text(tr('لا صور', 'No photos'), style: const TextStyle(color: T.inkFaint)))
-                  : ListView.builder(
+              child: ListView.builder(
                       padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
-                      itemCount: photos.length,
+                      itemCount: photos.length + 1,
                       itemBuilder: (c, i) {
-                        final p = photos[i];
+                        // أوّلًا: تفاصيلُ التفقّد وقرارُ الإدارة عليه (كنافذة الموقع).
+                        if (i == 0) {
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 12),
+                            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                              _details(c, r, note),
+                              if (photos.isEmpty) Padding(padding: const EdgeInsets.only(top: 20), child: Center(child: Text(tr('لا صور', 'No photos'), style: const TextStyle(color: T.inkFaint)))),
+                            ]),
+                          );
+                        }
+                        final p = photos[i - 1];
                         final kind = _kinds[(p['kind'] ?? 'vehicle').toString()];
                         return Padding(
                           padding: const EdgeInsets.only(bottom: 12),
@@ -248,6 +339,7 @@ class _B2cDutyRegisterScreenState extends State<B2cDutyRegisterScreen> {
         ),
       ),
     );
+    note.dispose();
   }
 
   Widget _filters() {
@@ -438,13 +530,15 @@ class _B2cDutyRegisterScreenState extends State<B2cDutyRegisterScreen> {
               ),
               if (meta != null) Chip2(tr(meta.$1, meta.$2), meta.$3),
             ]),
-            if (photos.isNotEmpty || onBehalf) ...[
+            if (photos.isNotEmpty || onBehalf || r['review'] is Map) ...[
               const SizedBox(height: 8),
               Wrap(spacing: 6, runSpacing: 6, children: [
                 for (final k in _kinds.entries)
                   if (photos.where((p) => (p['kind'] ?? 'vehicle').toString() == k.key).isNotEmpty)
                     Chip2('${tr(k.value.$1, k.value.$2)} ${photos.where((p) => (p['kind'] ?? 'vehicle').toString() == k.key).length}', T.navy),
                 if (onBehalf) Chip2('${tr('عن', 'for')} $owner', T.violet),
+                if (r['review'] is Map && r['review']['verdict'] == 'flagged') Chip2(tr('عليها ملاحظة', 'Flagged'), T.danger),
+                if (r['review'] is Map && r['review']['verdict'] == 'ok') Chip2(tr('سليم', 'OK'), T.success),
                 if (_opsOf(r).isNotEmpty) Chip2('${tr('تشغيليّه', 'ops')}: ${_opsOf(r)}', T.cyan),
               ]),
             ],
@@ -464,6 +558,30 @@ class _B2cDutyRegisterScreenState extends State<B2cDutyRegisterScreen> {
     final compliance = _totals['compliance'];
     return AppScaffold(
       title: Text(tr('سجل تفقّد الدوام', 'Duty register')),
+      actions: [
+        // تصديرُ السجلّ بأعمدة الموقع — وروابطُ الصور لكلّ نوع.
+        ExportButton(
+          fileName: 'b2c-duty', sheetName: tr('تفقّد بداية الدوام', 'Duty checks'),
+          columns: [
+            ExportCol('اليوم', 'Day', (r) => r['dateKey']),
+            ExportCol('المندوب', 'Rider', _nameOf),
+            ExportCol('رقم الهوية', 'ID number', (r) => r['ltEmployee'] is Map ? (r['ltEmployee']['idNumber'] ?? '') : ''),
+            ExportCol('المشرف الذي تفقّد', 'Checked by', (r) => r['supervisorName']),
+            ExportCol('مشرف التفقد', 'Duty supervisor', _ownerOf),
+            ExportCol('المشرف التشغيلي', 'Ops supervisor', _opsOf),
+            ExportCol('الحالة', 'Outcome', (r) { final o = _outcomes['${r['outcome']}']; return o == null ? r['outcome'] : tr(o.$1, o.$2); }),
+            ExportCol('الفرع', 'Branch', (r) => r['branch'] is Map ? (r['branch']['name'] ?? '') : ''),
+            for (final k in _kinds.entries)
+              ExportCol('صورة ${k.value.$1}', '${k.value.$2} photo', (r) => [
+                    for (final p in List<Map<String, dynamic>>.from(r['photos'] ?? []))
+                      if ((p['kind'] ?? 'vehicle').toString() == k.key) '${AppConfig.apiBase}${p['fileUrl']}',
+                  ].join('\n')),
+            ExportCol('ملاحظات', 'Notes', (r) => r['notes']),
+            ExportCol('وقت التفقّد', 'Checked at', (r) => _when(r['checkedAt'])),
+          ],
+          rows: () => _rows,
+        ),
+      ],
       body: _loading && _rows.isEmpty
           ? ListView(padding: const EdgeInsets.all(14), children: const [Shimmer(height: 120), SizedBox(height: 10), Shimmer(height: 90), SizedBox(height: 10), Shimmer(height: 90)])
           : _error != null && _rows.isEmpty

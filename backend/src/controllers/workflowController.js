@@ -3305,3 +3305,8 @@ exports.clearCustomsLink = async (req, res) => {
     res.status(500).json({ message: 'تعذّر فكّ الربط' });
   }
 };
+
+// ── للتوثيق (services/apiFieldScan): الحقولُ التي يقبلها الإنشاءُ والتعديل هي
+// القائمةُ نفسُها التي يُرشِّح بها filterFieldsByRole — مرجعٌ لا نسخة، فتتبعها.
+exports.createWorkflow.__docFields = { body: ALL_FIELDS };
+exports.updateWorkflow.__docFields = { body: ALL_FIELDS };

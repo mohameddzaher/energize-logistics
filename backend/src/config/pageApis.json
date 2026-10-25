@@ -2799,6 +2799,13 @@
       ],
       "wildcard": false
     },
+    "/system/api-docs": {
+      "apis": [
+        "/api/docs/internal.json",
+        "/api/docs/stats"
+      ],
+      "wildcard": false
+    },
     "/system/complaints": {
       "apis": [
         "/api/complaints"

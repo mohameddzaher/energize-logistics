@@ -1,3 +1,8 @@
+> **⚠️ نسخة مكتوبة باليد بتاريخ 2026-08-26 — قد لا تطابق النظام الآن.**
+> المرجع الحيّ (يُبنى من الكود لحظةَ فتحه — المسارات والفلاتر والحقول):
+> - للشركاء: `https://api.energize-logistics.com/api/docs?key=<المفتاح>`
+> - السطح الداخليّ كاملًا (للإدارة): داخل النظام ← الإدارة ← «توثيق الـ API» (`/system/api-docs`)
+
 # Fleet API — 60-second check
 
 If you are seeing an authentication error, run **this exact command first**.

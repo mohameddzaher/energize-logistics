@@ -1,3 +1,8 @@
+> **⚠️ نسخة مكتوبة باليد بتاريخ 2026-09-22 — قد لا تطابق النظام الآن.**
+> المرجع الحيّ (يُبنى من الكود لحظةَ فتحه — المسارات والفلاتر والحقول):
+> - للشركاء: `https://api.energize-logistics.com/api/docs?key=<المفتاح>`
+> - السطح الداخليّ كاملًا (للإدارة): داخل النظام ← الإدارة ← «توثيق الـ API» (`/system/api-docs`)
+
 # Energize Logistics — Live Fleet API
 
 A **read-only** API that gives you the live state of the truck fleet: position, speed,

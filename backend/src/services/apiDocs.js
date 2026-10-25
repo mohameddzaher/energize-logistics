@@ -23,6 +23,7 @@
  *     فهي خريطةُ ما نملك. تُقرأ بحسابٍ إداريّ.
  */
 const { version } = require('../../package.json');
+const { routeFields } = require('./apiFieldScan');
 
 /** ‏`/api/hr/employees/:id` → `/api/hr/employees/{id}` بصيغة OpenAPI. */
 const toOpenApiPath = (p) => p.replace(/:([A-Za-z0-9_]+)/g, '{$1}');
@@ -92,9 +93,15 @@ function walk(stack, prefix = '', inherited = {}) {
     if (layer.route) {
       const methods = Object.keys(layer.route.methods || {}).filter((m) => m !== '_all');
       const own = (layer.route.stack || []).reduce((acc, l) => ({ ...acc, ...guardOf(l.handle) }), {});
-      const full = `${prefix}${layer.route.path}`.replace(/\/{2,}/g, '/');
+      // `router.get('/')` تحت `/api/x` يصير `/api/x/` — والمسارُ واحد، فبلا الشرطة الأخيرة.
+      const full = `${prefix}${layer.route.path}`.replace(/\/{2,}/g, '/').replace(/(.)\/$/, '$1');
       const base = inheritedFor(layer.route.path);
-      for (const method of methods) out.push({ method: method.toUpperCase(), path: full, ...base, ...own });
+      for (const method of methods) {
+        // الطبقاتُ نفسُها تُحمَل غيرَ قابلةٍ للعدّ — منها تُقرأ الحقول (apiFieldScan) ولا تظهر في الإحصاء.
+        const r = { method: method.toUpperCase(), path: full, ...base, ...own };
+        Object.defineProperty(r, 'stack', { value: layer.route.stack, enumerable: false });
+        out.push(r);
+      }
       continue;
     }
     if (layer.name === 'router' && layer.handle && layer.handle.stack) {
@@ -180,6 +187,16 @@ function buildOpenApi(app, { scope = 'partner', baseUrl = 'https://api.energize-
       name, in: 'path', required: true, schema: { type: 'string' },
       description: name === 'id' ? 'معرّفُ السجلّ (ObjectId)' : undefined,
     }));
+    // ── والحقولُ من الكود نفسِه: فلاترُ القائمة وما يُرسَل في الحفظ ────────────
+    // تُقرأ لحظةَ فتح الوثيقة (services/apiFieldScan) — حقلٌ يُضاف أو يُحذَف في
+    // المعالِج يظهر أو يختفي هنا بلا أن يكتبه أحد.
+    const fields = routeFields(r.stack);
+    const pathNames = new Set(params.map((x) => x.name));
+    for (const f of fields.query) {
+      if (pathNames.has(f.name)) continue;
+      params.push({ name: f.name, in: 'query', required: f.required, schema: { type: 'string' } });
+    }
+    const hasBody = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(r.method) && fields.body.length;
     const security = [];
     if (r.apiKey) security.push({ apiKey: [] });
     if (r.auth || r.section || r.roles) { security.push({ bearer: [] }); security.push({ cookie: [] }); }
@@ -189,6 +206,10 @@ function buildOpenApi(app, { scope = 'partner', baseUrl = 'https://api.energize-
     if (r.roles) notes.push(`الأدوارُ المقبولة: ${r.roles.join('، ')} — أو من مُنح القسمَ «تعديلًا» من مصفوفة الصلاحيّات.`);
     if (r.apiKey) notes.push('يُفتَح بترويسة `x-api-key`.');
     if (!security.length) notes.push('مفتوحٌ بلا مصادقة.');
+    const fieldsNow = routeFields(r.stack);
+    if (['POST', 'PUT', 'PATCH'].includes(r.method) && !fieldsNow.body.length && fieldsNow.wholeBody) {
+      notes.push('يأخذ الجسمَ كما جاء — حقولُ السجلّ نفسُها (لا قائمةَ حقولٍ مكتوبةً في المعالِج).');
+    }
 
     paths[key][r.method.toLowerCase()] = {
       tags: [groupOf(r.path)],
@@ -196,9 +217,24 @@ function buildOpenApi(app, { scope = 'partner', baseUrl = 'https://api.energize-
       description: notes.join(' '),
       ...(params.length ? { parameters: params } : {}),
       ...(security.length ? { security } : {}),
-      ...(['POST', 'PUT', 'PATCH'].includes(r.method)
-        ? { requestBody: { required: false, content: { 'application/json': { schema: { type: 'object' } } } } }
-        : {}),
+      ...(hasBody
+        ? {
+          requestBody: {
+            required: fields.body.some((f) => f.required),
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: Object.fromEntries(fields.body.map((f) => [f.name, {}])),
+                  ...(fields.body.some((f) => f.required) ? { required: fields.body.filter((f) => f.required).map((f) => f.name) } : {}),
+                },
+              },
+            },
+          },
+        }
+        : (['POST', 'PUT', 'PATCH'].includes(r.method)
+          ? { requestBody: { required: false, content: { 'application/json': { schema: { type: 'object' } } } } }
+          : {})),
       responses: RESPONSES,
     };
   }
@@ -248,7 +284,10 @@ function buildOpenApi(app, { scope = 'partner', baseUrl = 'https://api.energize-
 function stats(app) {
   const all = walk(app._router && app._router.stack).filter((r) => r.path.startsWith('/api'));
   const groups = new Set(all.map((r) => groupOf(r.path)));
-  return { routes: all.length, groups: groups.size, partner: all.filter((r) => r.path.startsWith('/api/fleet-api')).length };
+  // وكم مسارًا قُرئت حقولُه — مقياسُ ما تغطّيه القراءةُ الآليّة.
+  let withFields = 0;
+  for (const r of all) { const f = routeFields(r.stack); if (f.query.length || f.body.length) withFields += 1; }
+  return { routes: all.length, groups: groups.size, partner: all.filter((r) => r.path.startsWith('/api/fleet-api')).length, withFields };
 }
 
 module.exports = { buildOpenApi, stats, walk };

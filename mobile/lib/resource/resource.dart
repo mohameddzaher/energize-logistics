@@ -7,6 +7,7 @@ import '../services/live.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import '../ui/export_sheet.dart';
 
 /// The native CRUD engine: one generic screen that gives ANY system resource
 /// a full native page — list + Arabic-folded search + create + edit + delete,
@@ -472,6 +473,25 @@ class _ResourceScreenState extends State<ResourceScreen> {
     );
   }
 
+  /// أعمدةُ التصدير: العنوانُ ثمّ حقولُ النموذج بأسمائها، والاختيارُ بنصّه لا بقيمته.
+  List<ExportCol> _exportColumns() => [
+        ExportCol(cfg.arTitle, cfg.enTitle, (r) => cfg.titleOf(r)),
+        for (final f in cfg.fields)
+          ExportCol(f.ar, f.en, (r) {
+            final raw = _path(r, f.name);
+            final v = r[f.name];
+            if (f.options != null) {
+              final o = f.options!.where((x) => x.$1 == raw).toList();
+              if (o.isNotEmpty) return tr(o.first.$2, o.first.$3);
+            }
+            if (v is Map && f.lookupLabel != null) return f.lookupLabel!(Map<String, dynamic>.from(v));
+            if (v is List) return v.join('، ');
+            if (f.type == FieldType.number) return num.tryParse(raw) ?? raw;
+            if (f.type == FieldType.date && raw.length >= 10) return raw.substring(0, 10);
+            return raw;
+          }),
+      ];
+
   @override
   Widget build(BuildContext context) {
     final q = _fold(_q.trim());
@@ -499,6 +519,9 @@ class _ResourceScreenState extends State<ResourceScreen> {
             tooltip: tr('ترتيب', 'Sort'),
             onPressed: _openSort,
           ),
+        // تصديرُ ما يُرى (تحت الشريحة والبحث والفرز) — كـExportMenu في الويب.
+        if (!_loading && _error == null && _rows.isNotEmpty)
+          ExportButton(fileName: cfg.enTitle, sheetName: cfg.title, columns: _exportColumns(), rows: () => filtered),
       ],
       appBarBottom: (!_loading && _error == null && fSpec != null && _rows.isNotEmpty)
           ? PreferredSize(

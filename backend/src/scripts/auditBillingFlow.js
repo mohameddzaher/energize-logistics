@@ -113,14 +113,24 @@ const call = async (method, path, ck, body) => {
       `سند=${dbc.documentNumber}`);
     ok('وتواريخُ الإرسال والتسليم والفاتورة فارغة', !dbc.sendingDate && !dbc.deliveryDate && !dbc.invoiceDate);
 
-    const blocked = await call('PUT', `/api/workflows/${cid}`, op.ck, { invoiceNumber: 'ZZ-INV', netInvoice: 900 });
+    // نوعٌ نقديٌّ مختارٌ مع رقم فاتورةٍ في التعديل نفسِه — تناقضٌ يُرفض. (أمّا الرقمُ
+    // وحدَه فيجعل الكشفَ «آجل - فاتورة» — يُفحص على كشفٍ آخر أدناه.)
+    const blocked = await call('PUT', `/api/workflows/${cid}`, op.ck, { paymentType: 'cash_3pl', invoiceNumber: 'ZZ-INV', netInvoice: 900 });
     const dbc2 = await OperationsWorkflow.findById(cid).select('invoiceNumber netInvoice').lean();
-    ok('محاولةُ فوترة كشفٍ نقديّ تُرفض باسمها',
-      blocked.status === 400 && blocked.json?.code === 'CASH_INVOICE_LOCKED', `${blocked.status}`);
+    ok('نوعٌ نقديٌّ مع رقم فاتورة يُرفض باسمه',
+      blocked.status === 400 && blocked.json?.code === 'CASH_INVOICE_NUMBER', `${blocked.status}`);
     // المقفولُ يُقرأ صفرًا كما طُلب («يتكتب جواهم رقم صفر») — والمهمّ أنّ ما
     // كتبه المستخدمُ لم يمرّ: لا «ZZ-INV» ولا ٩٠٠.
     ok('ولم يمرّ ما كتبه المستخدم', dbc2.invoiceNumber === '0' && dbc2.netInvoice === 0,
       `فاتورة=${dbc2.invoiceNumber} صافي=${dbc2.netInvoice}`);
+
+    // ورقمُ فاتورةٍ وحدَه على كشفٍ نقديّ يجعله «آجل - فاتورة» ويُقبل (صاحبُ الشركة، ٢٠٢٦/١٠/٢٥).
+    const cash2 = await mk({ paymentType: 'cash_3pl', sellingValue: 500 });
+    const turned = await call('PUT', `/api/workflows/${cash2.json?._id}`, op.ck, { invoiceNumber: 'ZZ-INV-2' });
+    const dbt = await OperationsWorkflow.findById(cash2.json?._id).select('paymentType paymentSubtype invoiceNumber').lean();
+    ok('رقمُ الفاتورة يجعل النقديَّ «آجل - فاتورة»',
+      turned.status === 200 && dbt.paymentType === 'tax' && dbt.paymentSubtype === 'deferred_invoice' && dbt.invoiceNumber === 'ZZ-INV-2',
+      `${turned.status} · ${dbt.paymentType}/${dbt.paymentSubtype} · ${dbt.invoiceNumber}`);
 
     // والتحصيلُ يبقى مفتوحًا على النقديّ — وهو عملُ القسم فيه.
     const openOnCash = await call('PUT', `/api/workflows/${cid}`, op.ck, { accountingReview: 'تم', collectedAmount: 480 });

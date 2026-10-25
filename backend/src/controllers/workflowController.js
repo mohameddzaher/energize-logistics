@@ -6,7 +6,7 @@ const { flexSpaceRegex } = require('../utils/plateKey');
 const logAudit = require('../utils/auditLogger');
 const { emitToAll, emitPerRole } = require('../websocket/socketManager');
 const {
-  derivePaymentTypeFor, hasTaxInvoice, NO_INVOICE_RX, isUnified, hasIssuedInvoice, ISSUED_INVOICE_QUERY,
+  derivePaymentTypeFor, hasTaxInvoice, TAX_SUBTYPE, subtypeFamily, NO_INVOICE_RX, isUnified, hasIssuedInvoice, ISSUED_INVOICE_QUERY,
   normalizePaymentChoice, paymentKindCondition, PAYMENT_KIND_EXPR, paymentKindLabel,
 } = require('../utils/paymentType');
 const XLSX = require('xlsx');
@@ -523,6 +523,24 @@ async function syncOpsInvoices(rawNumbers) {
 const LEDGER_FIELDS = ['invoiceNumber', 'netInvoice', 'tax', 'totalInvoice', 'invoiceDate', 'paymentType', 'username', 'executionStatus'];
 
 function applyBillingRules(patch, current = {}) {
+  // ── رقمُ فاتورةٍ حقيقيّ = «آجل - فاتورة» (صاحبُ الشركة، ٢٠٢٦/١٠/٢٥) ────────
+  // «كلّ أيّ حاجة ضريبي بقت آجل - فاتورة»: والضريبيُّ يُعرَف برقم فاتورته. فكان
+  // ملفُّ الفواتير يأتي برقمٍ لكشفٍ عليه «نقدي - 3PL» أو «كاش» فيُرفض («غيِّر
+  // نوعه إلى ضريبي أوّلًا») — والرقمُ نفسُه هو التغيير: كتابتُه إصدارُ الفاتورة.
+  // فيصير الكشفُ «آجل - فاتورة» ويُقبل الرقم، من الملفّ والتعديل الفرديّ والجماعيّ.
+  // إلّا أن يختار التعديلُ نفسُه نوعًا نقديًّا بيدٍ مع الرقم: تناقضٌ يُرفض كما كان.
+  if (Object.prototype.hasOwnProperty.call(patch, 'invoiceNumber') && hasTaxInvoice(patch)) {
+    const hasType = Object.prototype.hasOwnProperty.call(patch, 'paymentType');
+    const chosen = hasType ? String(patch.paymentType || '') : '';
+    const handPickedCash = hasType && !patch.__derivedPaymentType
+      && (chosen === 'cash' || subtypeFamily(chosen) === 'cash');
+    const effective = hasType ? (subtypeFamily(chosen) || chosen) : current.paymentType;
+    if (!handPickedCash && effective !== 'tax') {
+      patch.paymentType = TAX_SUBTYPE;
+      delete patch.__derivedPaymentType;   // رقمُ فاتورةٍ كتبه إنسان — اختيارُ يد
+    }
+  }
+
   // ── النوعُ المختارُ يكتب عائلتَه أوّلًا ──────────────────────────────────
   // «نقدي - 3PL» يصل هنا `paymentType` = 'cash_3pl'، فيصير النوعُ `cash_3pl`
   // والعائلةُ `cash` — ثمّ تسري قواعدُ الكاش كلُّها على العائلة كما كانت.
@@ -1466,6 +1484,7 @@ function stampInvoiceDate(patch, current) {
   patch.invoiceDate = new Date(`${require('../utils/companyDay').todayKey()}T00:00:00.000Z`);
 }
 exports._stampInvoiceDate = stampInvoiceDate;
+exports._applyBillingRules = applyBillingRules;
 
 /**
  * ── قيمةُ البيع إلى منصّة التشغيل ───────────────────────────────────────────
@@ -1699,7 +1718,7 @@ exports.updateWorkflow = async (req, res) => {
       return res.status(400).json({
         code: 'CASH_INVOICE_NUMBER',
         fields: ['invoiceNumber'],
-        message: 'الكشف نقديّ — الكاش ليس له رقم فاتورة. غيّر نوع الدفع إلى «ضريبي» أوّلًا ثمّ اكتب الرقم.',
+        message: 'اخترتَ نوعًا نقديًّا مع رقم فاتورة — الكاش ليس له رقم فاتورة. اترك النوع (يصير «آجل - فاتورة» برقمه) أو امسح الرقم.',
       });
     }
     if (billing.blocked.length && sentKeys.every((k) => billing.blocked.includes(k))) {
@@ -3081,7 +3100,7 @@ exports.importInvoices = async (req, res) => {
       await fillPaymentTypeFromCustomer(own, r);
       stampInvoiceDate(own, r);
       const billed = applyBillingRules(own, r);
-      if (billed.blocked.includes('invoiceNumber')) { skipped.push({ reportNumber: rep, reason: 'كشف نقديّ — لا رقم فاتورة له (غيِّر نوعه إلى ضريبي أوّلًا)' }); continue; }
+      if (billed.blocked.includes('invoiceNumber')) { skipped.push({ reportNumber: rep, reason: 'نوعٌ نقديٌّ في الملفّ مع رقم فاتورة — الرقمُ وحدَه يجعله «آجل - فاتورة»' }); continue; }
       const patch = billed.patch;
       const diff = Object.keys(patch).filter((k) => {
         const a = patch[k]; const b = r[k];

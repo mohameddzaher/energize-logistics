@@ -1,6 +1,6 @@
 /**
  * Energize — شيتات أوردرات B2C (سكربت جوجل).
- * الإصدار: 2026-10-21 (ترتيبُ المناديب + تعديلُ الشهور القديمة لمسؤولي القسم)
+ * الإصدار: 2026-10-25 (عمودُ «إقامة السائق الفعلي» للقراءة والنسخ + «فلتر» محفوظ في كلّ شهر)
  *
  * يُلصَق مرّةً في script.google.com ويُشغَّل `setup` مرّةً واحدة (وبعد كلّ تحديثٍ للسكربت). بعدها:
  *   · يُنشئ ملفًّا لكلّ مشروع في فولدر «Energize — مدخلات الأوردرات (B2C)» —
@@ -14,7 +14,7 @@
  *     يكتبون في أيّ يومٍ من أيّ شهر (والشهورُ القديمةُ لهم وحدَهم)، ويسحبون الصفوفَ
  *     ليرتّبوا المناديب فيُحفظ الترتيبُ في النظام ويسري على كلّ الشهور.
  */
-const VERSION = '2026-10-21';
+const VERSION = '2026-10-25';
 const API = 'https://api.energize-logistics.com/api/public/b2c-sheets';
 const TOKEN = '__TOKEN__';
 const FOLDER_ID = '1FBDdrjmyigID-vjos0MgSSh-NJUVIUca';
@@ -29,6 +29,10 @@ const HEAD = '#12325c';
 const SETTINGS = 'الإعدادات';
 const HELP = 'طريقة الاستخدام';
 const TOTAL_LABEL = /اجمال|إجمال/;
+// الأعمدةُ الثابتة قبل الأيّام: الإقامة، المندوب، المشرف، إقامةُ السائق الفعليّ، الإجمالي.
+const FIXED = 5;
+const FIRST_DAY = FIXED + 1;
+const FILTER_TITLE = 'فلتر';
 const props = PropertiesService.getScriptProperties();
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -110,7 +114,7 @@ function onSheetEdit(e) {
     const id = String(ids[i][0] || '').trim();
     if (!id || TOTAL_LABEL.test(id) || r0 + i < 2) continue;
     for (let j = 0; j < vals[i].length; j++) {
-      const col = c0 + j; const day = col - 4;
+      const col = c0 + j; const day = col - FIXED;
       if (day < 1 || day > days) continue;
       if (id === '—') { skipped += 1; continue; } // حسابٌ قديمٌ بلا مندوبٍ في السجلّ
       const v = vals[i][j];
@@ -259,6 +263,8 @@ function writeSettings_(ss, data) {
       ['ترتيبُ المناديب: يسحب مسؤولُ القسم الصفَّ من رقمه على اليمين إلى مكانه — فيُحفظ الترتيبُ في النظام ويسري على كلّ الشهور وعلى «مدخلات الأوردرات». ويُغيَّر أيضًا من «شيتات جوجل ← ترتيب المناديب» في النظام. ومَن يُضاف جديدًا يأتي في الآخر.'],
       ['من نُقل إلى مشروعٍ آخر يظهر في ملفّ مشروعه الجديد، ويُكتب في الأيّام التي لم يكن فيها هنا «في <المشروع>».'],
       ['الألوان: أخضر = بلغ الهدف اليومي، أحمر = أقلّ منه. والهدفُ من صفحة «المشاريع» في النظام.'],
+      ['«إقامة السائق الفعلي»: رقمُ إقامة من يركب مركبة المندوب فعلًا (من سجلّ المركبات في النظام) — للقراءة والنسخ فقط.'],
+      ['الفلترة: بيانات ← طرق عرض الفلتر ← «فلتر» — كلُّ واحدٍ يفلتر لنفسه ولا يتغيّر شيءٌ عند غيره. وللخروج: علامةُ × أعلى يمين الشريط الرمادي.'],
     ];
     h.getRange(1, 1, lines.length, 1).setValues(lines).setWrap(true).setVerticalAlignment('middle');
     h.setColumnWidth(1, 900); h.setRowHeights(1, lines.length, 34);
@@ -274,20 +280,20 @@ function renderMonth_(ss, p, mk, m, heads) {
   const fresh = !sh;
   if (!sh) { sh = ss.insertSheet(name); sh.setRightToLeft(true); }
   const days = m.days; const rows = m.rows; const n = rows.length;
-  const width = 4 + days;
+  const width = FIXED + days;
   const L = (c) => columnLetter_(c);
 
   // القيمُ المطلوبة
-  const header = ['رقم الإقامة', 'اسم المندوب', 'المشرف', 'الإجمالي'];
+  const header = ['رقم الإقامة', 'اسم المندوب', 'المشرف', 'إقامة السائق الفعلي', 'الإجمالي'];
   for (let d = 1; d <= days; d++) header.push(d);
   const grid = [header];
   rows.forEach((r, i) => {
-    const line = [r.id, r.name, r.sup || '—', `=SUM(E${i + 2}:${L(width)}${i + 2})`];
+    const line = [r.id, r.name, r.sup || '—', r.actual || '—', `=SUM(${L(FIRST_DAY)}${i + 2}:${L(width)}${i + 2})`];
     for (let d = 1; d <= days; d++) { const v = r.cells[d]; line.push(v === undefined || v === null ? '' : v); }
     grid.push(line);
   });
-  const tot = ['الإجمالي', 'إجمالي اليوم', '', n ? `=SUM(D2:D${n + 1})` : 0];
-  for (let c = 5; c <= width; c++) tot.push(n ? `=SUM(${L(c)}2:${L(c)}${n + 1})` : 0);
+  const tot = ['الإجمالي', 'إجمالي اليوم', '', '', n ? `=SUM(${L(FIXED)}2:${L(FIXED)}${n + 1})` : 0];
+  for (let c = FIRST_DAY; c <= width; c++) tot.push(n ? `=SUM(${L(c)}2:${L(c)}${n + 1})` : 0);
   grid.push(tot);
 
   // البنيةُ نفسُها؟ (الصفوف بأرقامها وترتيبها وعددُ الأيّام) — فتُحدَّث الخاناتُ المختلفة وحدَها.
@@ -297,24 +303,24 @@ function renderMonth_(ss, p, mk, m, heads) {
   const cache = CacheService.getScriptCache();
   if (sameShape) {
     if (n) {
-      const cur = sh.getRange(2, 5, n, days).getValues();
+      const cur = sh.getRange(2, FIRST_DAY, n, days).getValues();
       for (let i = 0; i < n; i++) {
         for (let j = 0; j < days; j++) {
-          const want = grid[i + 1][4 + j];
+          const want = grid[i + 1][FIXED + j];
           const have = cur[i][j];
           if (String(want) === String(have)) continue;
-          if (cache.get(`edit:${ss.getId()}:${name}:${i + 2}:${j + 5}`)) continue; // عُدِّلت للتوّ هنا
-          sh.getRange(i + 2, j + 5).setValue(want);
+          if (cache.get(`edit:${ss.getId()}:${name}:${i + 2}:${j + FIRST_DAY}`)) continue; // عُدِّلت للتوّ هنا
+          sh.getRange(i + 2, j + FIRST_DAY).setValue(want);
         }
       }
-      // الأسماءُ والمشرفون قد تتغيّر على النظام (أو كتب فيها مسؤولٌ بالخطأ)
-      const names = sh.getRange(2, 2, n, 2).getValues();
-      const want = rows.map((r) => [r.name, r.sup || '—']);
-      if (JSON.stringify(names) !== JSON.stringify(want)) sh.getRange(2, 2, n, 2).setValues(want);
+      // الأسماءُ والمشرفون وإقامةُ السائق الفعليّ قد تتغيّر على النظام (أو كتب فيها مسؤولٌ بالخطأ)
+      const names = sh.getRange(2, 2, n, 3).getValues();
+      const want = rows.map((r) => [r.name, r.sup || '—', r.actual || '—']);
+      if (JSON.stringify(names.map((x) => x.map(String))) !== JSON.stringify(want.map((x) => x.map(String)))) sh.getRange(2, 2, n, 3).setValues(want);
       // ومجموعُ الصفّ معادلةٌ تتبع صفَّها — تُعاد إن كُتب فوقها.
-      const sums = sh.getRange(2, 4, n, 1).getFormulas();
-      const wantSums = grid.slice(1, n + 1).map((r) => [r[3]]);
-      if (JSON.stringify(sums) !== JSON.stringify(wantSums)) sh.getRange(2, 4, n, 1).setFormulas(wantSums);
+      const sums = sh.getRange(2, FIXED, n, 1).getFormulas();
+      const wantSums = grid.slice(1, n + 1).map((r) => [r[FIXED - 1]]);
+      if (JSON.stringify(sums) !== JSON.stringify(wantSums)) sh.getRange(2, FIXED, n, 1).setFormulas(wantSums);
     }
   } else {
     sh.clear(); sh.clearConditionalFormatRules();
@@ -324,9 +330,10 @@ function renderMonth_(ss, p, mk, m, heads) {
     if (sh.getMaxRows() > grid.length + 1) sh.deleteRows(grid.length + 2, sh.getMaxRows() - grid.length - 1);
     sh.getRange(1, 1, grid.length, width).setNumberFormat('@').setValues(grid);
     // أرقامُ الأيّام أرقام (لا نصّ) كي تُجمَع وتُلوَّن
-    if (n) sh.getRange(2, 5, n + 1, days).setNumberFormat('0');
-    sh.getRange(2, 4, n + 1, 1).setNumberFormat('0');
+    if (n) sh.getRange(2, FIRST_DAY, n + 1, days).setNumberFormat('0');
+    sh.getRange(2, FIXED, n + 1, 1).setNumberFormat('0');
     styleMonth_(sh, n, days, width);
+    filterView_(ss, sh, n, width);
   }
   protectMonth_(sh, m, n, days, heads);
   // آخرُ ما رُسم — به يُعرف إن سحب أحدٌ الصفوف (readOrder_).
@@ -341,22 +348,45 @@ function styleMonth_(sh, n, days, width) {
   sh.getRange(n + 2, 1, 1, width).setBackground('#334155').setFontColor('#ffffff').setFontWeight('bold');
   if (n) {
     sh.getRange(2, 2, n, 1).setFontWeight('bold');
-    sh.getRange(2, 4, n, 1).setBackground('#eef2f7').setFontWeight('bold').setFontColor(HEAD);
+    sh.getRange(2, 4, n, 1).setFontColor('#475569');
+    sh.getRange(2, FIXED, n, 1).setBackground('#eef2f7').setFontWeight('bold').setFontColor(HEAD);
   }
   sh.setRowHeight(1, 36);
   sh.setRowHeights(2, n + 1, 30);
-  sh.setColumnWidth(1, 120); sh.setColumnWidth(2, 220); sh.setColumnWidth(3, 150); sh.setColumnWidth(4, 80);
-  sh.setColumnWidths(5, days, 46);
-  sh.setFrozenRows(1); sh.setFrozenColumns(4);
+  sh.setColumnWidth(1, 120); sh.setColumnWidth(2, 220); sh.setColumnWidth(3, 150); sh.setColumnWidth(4, 130); sh.setColumnWidth(FIXED, 80);
+  sh.setColumnWidths(FIRST_DAY, days, 46);
+  sh.setFrozenRows(1); sh.setFrozenColumns(FIXED);
   if (n) {
-    const range = sh.getRange(2, 5, n, days);
+    const range = sh.getRange(2, FIRST_DAY, n, days);
+    const c = `${columnLetter_(FIRST_DAY)}2`;
     const tgt = `INDIRECT("'${SETTINGS}'!B1")`;
     sh.setConditionalFormatRules([
-      SpreadsheetApp.newConditionalFormatRule().whenFormulaSatisfied(`=ISTEXT(E2)`).setBackground('#eceff3').setFontColor('#64748b').setRanges([range]).build(),
-      SpreadsheetApp.newConditionalFormatRule().whenFormulaSatisfied(`=AND(ISNUMBER(E2),E2>=${tgt})`).setBackground('#d9f2e3').setFontColor('#166534').setRanges([range]).build(),
-      SpreadsheetApp.newConditionalFormatRule().whenFormulaSatisfied(`=AND(ISNUMBER(E2),E2<${tgt})`).setBackground('#fce4e4').setFontColor('#991b1b').setRanges([range]).build(),
+      SpreadsheetApp.newConditionalFormatRule().whenFormulaSatisfied(`=ISTEXT(${c})`).setBackground('#eceff3').setFontColor('#64748b').setRanges([range]).build(),
+      SpreadsheetApp.newConditionalFormatRule().whenFormulaSatisfied(`=AND(ISNUMBER(${c}),${c}>=${tgt})`).setBackground('#d9f2e3').setFontColor('#166534').setRanges([range]).build(),
+      SpreadsheetApp.newConditionalFormatRule().whenFormulaSatisfied(`=AND(ISNUMBER(${c}),${c}<${tgt})`).setBackground('#fce4e4').setFontColor('#991b1b').setRanges([range]).build(),
     ]);
   }
+}
+
+/**
+ * «فلتر» محفوظ في كلّ شهر (صاحبُ الشركة، ٢٠٢٦/١٠/٢٥): Filter view — كلُّ واحدٍ
+ * يفلتر لنفسه (بيانات ← طرق عرض الفلتر ← «فلتر») ولا يتغيّر شيءٌ عند غيره، ويعمل
+ * والورقةُ محميّة. يُعاد إنشاؤه مع كلّ إعادة رسمٍ للشهر ليغطّي صفوفَه الجديدة
+ * (بلا صفّ الإجمالي). وإن تعذّر لا يمسّ الرسم.
+ */
+function filterView_(ss, sh, n, width) {
+  try {
+    const base = `https://sheets.googleapis.com/v4/spreadsheets/${ss.getId()}`;
+    const auth = { Authorization: `Bearer ${ScriptApp.getOAuthToken()}` };
+    const sheetId = sh.getSheetId();
+    const meta = JSON.parse(UrlFetchApp.fetch(`${base}?fields=sheets(properties.sheetId,filterViews(filterViewId,title))`, { headers: auth, muteHttpExceptions: true }).getContentText() || '{}');
+    const mine = (meta.sheets || []).find((x) => x.properties && x.properties.sheetId === sheetId);
+    const requests = ((mine && mine.filterViews) || []).filter((v) => v.title === FILTER_TITLE)
+      .map((v) => ({ deleteFilterView: { filterId: v.filterViewId } }));
+    requests.push({ addFilterView: { filter: { title: FILTER_TITLE, range: { sheetId, startRowIndex: 0, endRowIndex: n + 1, startColumnIndex: 0, endColumnIndex: width } } } });
+    const r = UrlFetchApp.fetch(`${base}:batchUpdate`, { method: 'post', contentType: 'application/json', headers: auth, payload: JSON.stringify({ requests }), muteHttpExceptions: true });
+    if (r.getResponseCode() !== 200) Logger.log(`فلتر ${sh.getName()}: ${r.getContentText().slice(0, 300)}`);
+  } catch (err) { Logger.log(`فلتر ${sh.getName()}: ${err}`); }
 }
 
 /**
@@ -369,7 +399,7 @@ function protectMonth_(sh, m, n, days, heads) {
   const prot = sh.protect().setDescription('من النظام — المشرفون: عددُ الأوردرات في خانات الأيّام · مسؤولو القسم: كلُّ الأيّام وترتيبُ المناديب');
   if (m.editable && n) {
     const open = [];
-    m.rows.forEach((r, i) => { if (r.editable) open.push(sh.getRange(i + 2, 5, 1, days)); });
+    m.rows.forEach((r, i) => { if (r.editable) open.push(sh.getRange(i + 2, FIRST_DAY, 1, days)); });
     if (open.length) prot.setUnprotectedRanges(open);
   }
   prot.removeEditors(prot.getEditors());

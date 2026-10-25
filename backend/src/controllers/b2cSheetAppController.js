@@ -137,8 +137,8 @@ async function monthStamps(project) {
   const by = new Map(agg.map((a) => [a._id, a]));
   const ord = await orderOf(project._id);
   const em = await headEmails();
-  // `L3`: الشهورُ القديمةُ بالحساب وبترتيب الشيت القديم — فتُعاد رسمُها كلُّها مرّة.
-  const tail = `L3.${ord?.updatedAt ? new Date(ord.updatedAt).getTime() : 0}.${em.at ? new Date(em.at).getTime() : 0}`;
+  // `L4`: عمودُ «إقامة السائق الفعليّ» (٢٠٢٦/١٠/٢٥) — فتُعاد رسمُ الشهور كلُّها مرّة.
+  const tail = `L4.${ord?.updatedAt ? new Date(ord.updatedAt).getTime() : 0}.${em.at ? new Date(em.at).getTime() : 0}`;
   const out = {};
   for (const mk of monthsOf('all')) {
     const a = by.get(mk);
@@ -161,9 +161,17 @@ async function buildLayout(project, months) {
 
   const lts = (await LightTransportEmployee.find({ $or: [{ staffKind: 'rep' }, { contractTypeAr: /يوزر/ }] })
     .populate('employee', 'employmentStatus')
-    .select('idNumber name projectAr supervisorName isActive workStatusAr employee hireDate history').lean())
+    .select('idNumber name projectAr supervisorName isActive workStatusAr employee hireDate history vehicle').lean())
     .filter((r) => !(r.employee && sets.archivedIds.has(String(r.employee._id))));
   const ltById = new Map(lts.map((l) => [String(l._id), l]));
+  // ── إقامةُ السائق الفعليّ — الراكبُ على مركبة المندوب (صاحبُ الشركة، ٢٠٢٦/١٠/٢٥) ──
+  // الحسابُ باسم رجلٍ وقد يركب المركبةَ غيرُه: «القائدُ الفعليّ» في سجلّ المركبات
+  // (VehicleMaster.actualDriver) هو من يُسأل عنه. عمودٌ للقراءة والنسخ في الشيت.
+  const VM = require('../models/VehicleMaster').VehicleMaster;
+  const vehIds = [...new Set(lts.map((l) => l.vehicle && String(l.vehicle)).filter(Boolean))];
+  const actualByVeh = new Map((vehIds.length ? await VM.find({ _id: { $in: vehIds } }).select('actualDriver').lean() : [])
+    .map((v) => [String(v._id), S(v.actualDriver && v.actualDriver.idNumber)]));
+  const actualOf = (l) => (l && l.vehicle ? actualByVeh.get(String(l.vehicle)) || '' : '') || '—';
   const nameKey = (v) => E.fold(v);
   const ltByName = new Map();
   for (const l of lts) { const k = nameKey(l.name); ltByName.set(k, ltByName.has(k) ? null : l); }
@@ -193,7 +201,7 @@ async function buildLayout(project, months) {
     const days = new Date(Date.UTC(y, m, 0)).getUTCDate();
     const rows = new Map();
     const rowFor = (key, base) => { if (!rows.has(key)) rows.set(key, { ...base, cells: {} }); return rows.get(key); };
-    const person = (l) => rowFor(`lt:${l._id}`, { lt: String(l._id), id: S(l.idNumber), name: S(l.name), sup: S(l.supervisorName), editable: true });
+    const person = (l) => rowFor(`lt:${l._id}`, { lt: String(l._id), id: S(l.idNumber), name: S(l.name), sup: S(l.supervisorName), actual: actualOf(l), editable: true });
     const inMonth = orders.filter((o) => o.dateKey.startsWith(mk));
 
     if (mk < SYNC_FROM) {
@@ -207,6 +215,7 @@ async function buildLayout(project, months) {
         const a = acc.get(String(o.rep)); if (!a) continue;
         const row = rowFor(`acc:${o.rep}`, {
           id: a.repId || '—', name: UNKNOWN_NAME.test(a.name) ? 'غير معروف — كان مكتوبًا «ترك العمل»' : a.name, sup: '',
+          actual: actualOf(a.lt && ltById.get(a.lt)),
           pos: legacyPos.get(`${mk}|${o.rep}`) ?? Infinity,
         });
         row.editable = false;
@@ -247,7 +256,7 @@ async function buildLayout(project, months) {
           row.cells[d] = (Number(row.cells[d]) || 0) + o.orders;
         } else if (String(o.project) === pid) {
           // حسابٌ قديمٌ بلا صاحبٍ في السجلّ — يُعرض ولا يُكتب فيه.
-          const row = rowFor(`acc:${o.rep}`, { id: '—', name: UNKNOWN_NAME.test(a.name) ? 'غير معروف — كان مكتوبًا «ترك العمل»' : a.name, sup: '', editable: false });
+          const row = rowFor(`acc:${o.rep}`, { id: '—', name: UNKNOWN_NAME.test(a.name) ? 'غير معروف — كان مكتوبًا «ترك العمل»' : a.name, sup: '', actual: '—', editable: false });
           row.cells[d] = (Number(row.cells[d]) || 0) + o.orders;
         }
       }

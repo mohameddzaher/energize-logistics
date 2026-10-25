@@ -146,19 +146,21 @@ async function ensureMaster(reg, doc) {
 async function ensureContract(masterId) {
   try {
     const C = REG.contracts.model();
-    if (await C.exists({ crmCompany: masterId })) return;
+    if (await C.exists({ crmCompany: masterId })) return false;
     const m = await REG.crm.model().findById(masterId).lean();
-    if (!m) return;
+    if (!m) return false;
     const key = require('../controllers/contractsController').nameKey(m.name);
-    if (!key) return;
+    if (!key) return false;
     const hit = await C.findOne({ nameKey: key }).select('_id crmCompany').lean();
-    if (hit) { if (!hit.crmCompany) await C.updateOne({ _id: hit._id }, { $set: { crmCompany: masterId } }); return; }
+    // اسمٌ يطابق صفَّ عقودٍ لأمٍّ أخرى (شركتا علاقاتٍ بالاسم نفسِه) — صفٌّ واحدٌ يكفيهما.
+    if (hit) { if (!hit.crmCompany) { await C.updateOne({ _id: hit._id }, { $set: { crmCompany: masterId } }); return true; } return false; }
     await C.collection.insertOne({
       name: S(m.name), nameKey: key, crmCompany: masterId, ...REG.contracts.write(REG.crm.read(m)),
       sector: '', customerType: '', energizeRep: '', customerSideContract: false, ourSideContract: false,
       documentsReceived: [], missingDocuments: [], attachments: [], createdByName: 'الربط الموحّد', createdAt: new Date(), updatedAt: new Date(),
     });
-  } catch (e) { if (e.code !== 11000) console.error('[customerHub] contract row:', e.message); }
+    return true;
+  } catch (e) { if (e.code !== 11000) console.error('[customerHub] contract row:', e.message); return false; }
 }
 
 /** كلُّ صفٍّ مرتبطٍ بهذه الأمّ في كلّ سجلّ (عدا الأمّ نفسِها). */
@@ -333,7 +335,7 @@ async function sweepUnlinked(limit = 500) {
   const C = REG.contracts.model();
   const linked = new Set((await C.find({ crmCompany: { $ne: null } }).select('crmCompany').lean()).map((x) => String(x.crmCompany)));
   for (const m of await REG.crm.model().find({}).select('_id').lean()) {
-    if (!linked.has(String(m._id))) { await ensureContract(m._id); n += 1; }
+    if (!linked.has(String(m._id)) && await ensureContract(m._id)) n += 1;
   }
   if (n) console.log(`[customerHub] sweep linked ${n}`);
   return n;

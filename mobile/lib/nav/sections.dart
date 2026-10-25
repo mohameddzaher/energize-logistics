@@ -85,6 +85,9 @@ import '../screens/assistant.dart';
 import '../screens/reports.dart';
 import '../screens/business_review.dart';
 import '../screens/portal.dart';
+import '../screens/api_docs.dart';
+import '../screens/fleet_driver_expenses.dart';
+import '../screens/fleet_assign.dart';
 
 /// NATIVE-ONLY navigation: a section appears here the day its screens are
 /// real Flutter screens talking to the API — nothing embedded, nothing
@@ -267,6 +270,10 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         // تقول ما هي، والأخرى كيف حالُها الآن.
         AppPage('حالة المركبات', 'Vehicle Health', Icons.monitor_heart_outlined, (c) => const FleetHealthScreen(), path: '/system/fleet/health'),
         AppPage('سجلّات السيارات', 'Vehicle Logs', Icons.assignment_outlined, (c) => const FleetVehicleLogsScreen(), path: '/system/fleet/vehicle-logs'),
+        AppPage('مصاريف السوّاق', 'Driver Expenses', Icons.account_balance_wallet_outlined, (c) => const FleetDriverExpensesScreen(), path: '/system/fleet/driver-expenses'),
+        // توزيعُ المشرفين — لمدير القسم ومن مُنح القسمَ تعديلًا (canAdminFleet في الويب).
+        if (const ['super_admin', 'admin', 'it_manager', 'operations_manager', 'fleet_manager'].contains(role) || auth.canEditSection('Fleet Management'))
+          AppPage('توزيع المشرفين', 'Assign Supervisors', Icons.manage_accounts_outlined, (c) => const FleetAssignScreen(), path: '/system/fleet/assign'),
         AppPage('العملاء', 'Customers', Icons.people_outline, (c) => ResourceScreen(config: fleetCustomersCfg), path: '/system/fleet/customers'),
         if (jpMember(role, 'fleet')) AppPage('خطّة العمل (JP)', 'JP', Icons.event_available_outlined, (c) => const JpScreen(section: 'fleet'), path: '/system/fleet/jp'),
         if (jpManager(role, 'fleet')) AppPage('لوحة JP', 'JP Dashboard', Icons.insights_outlined, (c) => const JpDashScreen(section: 'fleet'), path: '/system/fleet/jp-dashboard'),
@@ -648,13 +655,17 @@ List<AppSection> sectionsFor(AuthProvider auth) {
     ),
     AppSection(
       key: 'AdminTools', arTitle: 'الإدارة', enTitle: 'Admin', icon: Icons.admin_panel_settings_outlined,
-      roles: const ['super_admin', 'admin', 'it_manager'], managed: false,
+      // كالويب: أخصّائيُّ الـIT يرى المستخدمين والصلاحيّات وسجلَّ التدقيق والتوثيق.
+      roles: const ['super_admin', 'admin', 'it_manager', 'it_specialist'], managed: false,
       pages: [
         AppPage('المستخدمون', 'Users', Icons.group_outlined, (c) => const AdminUsersScreen()),
         AppPage('الصلاحيات', 'Permissions', Icons.lock_person_outlined, (c) => const PermissionsScreen()),
         AppPage('الفروع', 'Branches', Icons.store_mall_directory_outlined, (c) => ResourceScreen(config: branchesCfg)),
         AppPage('سجل التدقيق', 'Audit Log', Icons.fact_check_outlined, (c) => ResourceScreen(config: auditCfg)),
         AppPage('البيانات المرجعية', 'Reference Data', Icons.list_alt_outlined, (c) => const ReferenceDataScreen()),
+        // توثيقُ الـ API — السطحُ الداخليُّ يحرسه الخادمُ بـFULL_ACCESS_ROLES.
+        if (const ['super_admin', 'it_manager', 'it_specialist'].contains(role))
+          AppPage('توثيق الـ API', 'API Docs', Icons.menu_book_outlined, (c) => const ApiDocsScreen(), path: '/system/api-docs'),
       ],
     ),
     // بوابة العميل/المورد — outside partners. `client` is the external role, and

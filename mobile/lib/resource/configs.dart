@@ -11,6 +11,7 @@ import '../screens/collection_attachments.dart';
 import '../screens/collection_collect.dart';
 import '../ui/customs_contract_pricing.dart';
 import '../screens/fleet_customer_profile.dart';
+import '../screens/fleet_vehicle_analytics.dart';
 import '../screens/customer_registry_profile.dart';
 import '../screens/bd_opportunity_detail.dart';
 import '../screens/marketing_campaign_detail.dart';
@@ -145,6 +146,8 @@ final fleetDriversCfg = ResourceConfig(
 );
 
 final fleetVehiclesCfg = ResourceConfig(
+  // الضغطُ على السيارة يفتح تحليلَها (كالويب /system/fleet/vehicles/[id])؛ والتعديلُ بالضغط المطوَّل.
+  onOpen: (c, r) => Navigator.push(c, MaterialPageRoute(builder: (_) => FleetVehicleAnalyticsScreen(vehicleId: (r['_id'] ?? '').toString(), plate: (r['plate'] ?? '').toString()))),
   filterField: 'trailerType',
   arTitle: 'سيارات الأسطول', enTitle: 'Fleet Vehicles', icon: Icons.local_shipping_outlined,
   endpoint: '/api/fleet/vehicles', listKey: 'vehicles', liveEvent: 'fleet:vehicles',

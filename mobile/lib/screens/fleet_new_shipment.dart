@@ -9,18 +9,38 @@ import '../ui/widgets.dart';
 /// إنشاء حمولة — the same flow the web form runs: pick the customer (or add a
 /// new one inline), pick the vehicle from a live-availability list (carrying
 /// its drivers with it), route, dates, notes → POST /api/fleet/shipments.
+/// ومع `editId` هي شاشةُ التعديل نفسُها كالويب (`/system/fleet/new?id=`):
+/// تُملأ من GET /api/fleet/shipments/:id وتُحفظ بـ PUT.
 class FleetNewShipmentScreen extends StatefulWidget {
-  const FleetNewShipmentScreen({super.key});
+  final String? editId;
+  const FleetNewShipmentScreen({super.key, this.editId});
   @override
   State<FleetNewShipmentScreen> createState() => _FleetNewShipmentScreenState();
 }
+
+// حالاتُ الحمولة — نفس FLEET_STATUSES في الويب.
+const _statusOptions = [
+  ('requesting', 'قيد الطلب', 'Requesting'),
+  ('loading', 'جاري التحميل', 'Loading'),
+  ('uploaded', 'تم التحميل', 'Uploaded'),
+  ('on_way', 'في الطريق', 'On way'),
+  ('arrived', 'وصلت', 'Arrived'),
+  ('bond_sent', 'أُرسل السند', 'Bond sent'),
+  ('bond_received', 'استُلم السند', 'Bond received'),
+  ('late', 'متأخرة', 'Late'),
+  ('invoiced', 'تمت الفوترة', 'Invoiced'),
+  ('cancelled', 'ملغاة', 'Cancelled'),
+];
 
 const _cities = ['جدة', 'الرياض', 'الدمام', 'مكة', 'المدينة', 'ينبع', 'الطائف', 'الخبر', 'جازان', 'أبها', 'تبوك', 'حائل'];
 
 class _FleetNewShipmentScreenState extends State<FleetNewShipmentScreen> {
   List<Map<String, dynamic>> _customers = [];
   List<Map<String, dynamic>> _vehicles = [];
+  List<Map<String, dynamic>> _drivers = []; // كلّ سائقي القسم — كقائمة الويب
   bool _loading = true;
+  bool get _isEdit => (widget.editId ?? '').isNotEmpty;
+  String _status = 'requesting';
 
   Map<String, dynamic>? _customer;
   bool _newCustomer = false;
@@ -29,6 +49,7 @@ class _FleetNewShipmentScreenState extends State<FleetNewShipmentScreen> {
 
   Map<String, dynamic>? _vehicle;
   String _driverId = '';
+  String _secondDriverId = ''; // السائق الثاني (اختياري — للوصول الأسرع)
 
   final _fromCity = TextEditingController();
   final _toCity = TextEditingController();
@@ -127,7 +148,12 @@ class _FleetNewShipmentScreenState extends State<FleetNewShipmentScreen> {
         Api.instance.get('/api/lookups?type=fleet_payment_type&active=true').catchError((_) => <String, dynamic>{'items': []}),
         Api.instance.get('/api/lookups?type=fleet_load_type&active=true').catchError((_) => <String, dynamic>{'items': []}),
         Api.instance.get('/api/branches?active=true').catchError((_) => <String, dynamic>{'branches': []}),
+        Api.instance.get('/api/fleet/drivers').catchError((_) => <String, dynamic>{'drivers': []}),
       ]);
+      // التعديل: الحمولةُ نفسُها بعد القوائم، لتُطابَق عناصرُها عليها.
+      final ship = _isEdit
+          ? (await Api.instance.get('/api/fleet/shipments/${widget.editId}'))['shipment'] as Map<String, dynamic>?
+          : null;
       if (!mounted) return;
       setState(() {
         _customers = List<Map<String, dynamic>>.from(results[0]['customers'] ?? []);
@@ -136,6 +162,8 @@ class _FleetNewShipmentScreenState extends State<FleetNewShipmentScreen> {
         _paymentTypes = List<Map<String, dynamic>>.from(results[3]['items'] ?? []);
         _loadTypes = List<Map<String, dynamic>>.from(results[4]['items'] ?? []);
         _branches = List<Map<String, dynamic>>.from(results[5]['branches'] ?? []);
+        _drivers = List<Map<String, dynamic>>.from(results[6]['drivers'] ?? []);
+        if (ship != null) _prefill(ship);
         _loading = false;
       });
     } catch (e) {
@@ -143,6 +171,180 @@ class _FleetNewShipmentScreenState extends State<FleetNewShipmentScreen> {
       // بدل نموذج فارغ صامت.
       if (mounted) setState(() { _loading = false; _error = e.toString(); });
     }
+  }
+
+  String _idOf(dynamic v) => v is Map ? (v['_id'] ?? '').toString() : (v ?? '').toString();
+
+  // مفتاحُ قائمةٍ محفوظٌ على الحمولة → عنصرُه؛ وإن خرج من القائمة النشطة يبقى
+  // كما هو كي لا يُمحى عند الحفظ.
+  Map<String, dynamic>? _lkItem(List<Map<String, dynamic>> items, dynamic key) {
+    final k = (key ?? '').toString();
+    if (k.isEmpty) return null;
+    final hit = items.where((x) => (x['key'] ?? '').toString() == k);
+    return hit.isNotEmpty ? hit.first : {'key': k, 'nameAr': k, 'nameEn': k};
+  }
+
+  String _numText(dynamic v) {
+    if (v == null || v.toString().isEmpty) return '';
+    final n = num.tryParse(v.toString());
+    if (n == null) return v.toString();
+    return n == n.roundToDouble() ? n.round().toString() : n.toString();
+  }
+
+  /// يملأ النموذج من الحمولة المحفوظة — كل ما يملؤه الويب.
+  ///
+  /// ── عميلُ الحمولة المحمَّل ليس «اختيارًا» ──
+  /// نوعُ الدفع وفئةُ العميل يُقرآن كما حُفظا على الحمولة، ولا يُعادان إلى
+  /// افتراض العميل (كان ذلك يحفظ كاشًا ضريبيًّا بلا أن يلمسه أحد). افتراضُ
+  /// العميل يُطبَّق فقط حين يختار المستخدمُ عميلًا من القائمة.
+  void _prefill(Map<String, dynamic> o) {
+    _status = (o['status'] ?? 'requesting').toString();
+    _fromCity.text = (o['fromCity'] ?? '').toString();
+    _toCity.text = (o['toCity'] ?? '').toString();
+    // اليومُ كما يقرؤه الويب (toISOString().slice(0,10)) — تاريخُ غرينتش.
+    final ld = DateTime.tryParse((o['loadDate'] ?? '').toString())?.toUtc();
+    if (ld != null) _loadDate = DateTime(ld.year, ld.month, ld.day);
+    _expectedArrival = DateTime.tryParse((o['expectedArrival'] ?? '').toString())?.toLocal();
+    _notes.text = (o['notes'] ?? '').toString();
+    _rentTypeItem = _lkItem(_rentTypes, o['rentType']);
+    _paymentTypeItem = _lkItem(_paymentTypes, o['paymentType']);
+    _loadTypeItem = _lkItem(_loadTypes, o['loadType']);
+    _vehicleRent.text = _numText(o['price']);
+    _fullRent.text = _numText(o['fullRent']);
+    _customerType = (o['customerType'] ?? '').toString();
+    // المصروفُ المعروض يشمل بونصَ الجمعة أصلًا؛ والخادمُ يضيفه/يرفعه عند قلب العلَم.
+    _driverExpense.text = _numText(o['driverExpense']);
+    _fridayBonus = o['fridayBonus'] == true;
+    final br = (o['branch'] ?? '').toString();
+    _branch = br.isEmpty ? null : br;
+
+    final cid = _idOf(o['customer']);
+    if (cid.isNotEmpty) {
+      final hit = _customers.where((c) => (c['_id'] ?? '').toString() == cid);
+      _customer = hit.isNotEmpty
+          ? hit.first
+          : {'_id': cid, 'name': (o['customer'] is Map ? o['customer']['name'] : null) ?? o['customerName'] ?? ''};
+    }
+    final vid = _idOf(o['vehicle']);
+    if (vid.isNotEmpty) {
+      final hit = _vehicles.where((v) => (v['_id'] ?? '').toString() == vid);
+      _vehicle = hit.isNotEmpty
+          ? hit.first
+          : {'_id': vid, 'plate': (o['vehicle'] is Map ? o['vehicle']['plate'] : null) ?? o['vehiclePlate'] ?? ''};
+    }
+    // السائقان كما على الحمولة — ومن خرج من نطاق القائمة يُضاف إليها ليظهر اسمُه.
+    for (final key in ['driver', 'secondDriver']) {
+      final d = o[key];
+      final id = _idOf(d);
+      if (id.isEmpty) continue;
+      if (d is Map && !_drivers.any((x) => (x['_id'] ?? '').toString() == id)) {
+        _drivers.add(Map<String, dynamic>.from(d));
+      }
+      if (key == 'driver') { _driverId = id; } else { _secondDriverId = id; }
+    }
+  }
+
+  Map<String, dynamic>? _driverOf(String id) {
+    if (id.isEmpty) return null;
+    final hit = _drivers.where((d) => (d['_id'] ?? '').toString() == id);
+    if (hit.isNotEmpty) return hit.first;
+    final seated = List<Map<String, dynamic>>.from(_vehicle?['drivers'] ?? []).where((d) => (d['_id'] ?? '').toString() == id);
+    return seated.isNotEmpty ? seated.first : null;
+  }
+
+  Map<String, dynamic>? _vehicleOfDriver(Map<String, dynamic> d) {
+    final vid = _idOf(d['vehicle']);
+    if (vid.isEmpty) return null;
+    final hit = _vehicles.where((v) => (v['_id'] ?? '').toString() == vid);
+    if (hit.isNotEmpty) return hit.first;
+    return d['vehicle'] is Map ? Map<String, dynamic>.from(d['vehicle']) : null;
+  }
+
+  /// اختيارُ الشاحنة يُجلس سائقَيها في الخانتين — والرتبةُ من مقعدها المكتوب
+  /// (الأوّل/الثاني) لا من ترتيب الوصول، كـ seatsOf في الويب.
+  void _applyVehicle(Map<String, dynamic> v) {
+    _vehicle = v;
+    final ds = List<Map<String, dynamic>>.from(v['drivers'] ?? []);
+    int seatOf(Map<String, dynamic> d) => int.tryParse((d['seat'] ?? '').toString()) ?? 1;
+    final first = ds.where((d) => seatOf(d) == 1);
+    final second = ds.where((d) => d['seat'] != null && seatOf(d) == 2);
+    if (first.isNotEmpty) _driverId = (first.first['_id'] ?? '').toString();
+    _secondDriverId = second.isNotEmpty ? (second.first['_id'] ?? '').toString() : '';
+  }
+
+  // تنبيهُ النقل: سائقٌ على شاحنةٍ أخرى يُنقل إلى هذه عند الحفظ — يُقال قبلها.
+  String _moveHint(String id) {
+    if (id.isEmpty || _vehicle == null) return '';
+    final d = _driverOf(id);
+    if (d == null) return '';
+    final cur = _vehicleOfDriver(d);
+    final curId = cur == null ? '' : (cur['_id'] ?? '').toString();
+    if (cur != null && curId.isNotEmpty && curId != (_vehicle!['_id'] ?? '').toString()) {
+      return tr('سيُنقل ${d['name']} من السيارة ${cur['plate'] ?? ''} إلى ${_vehicle!['plate'] ?? ''} عند الحفظ.',
+          '${d['name']} moves from ${cur['plate'] ?? ''} to ${_vehicle!['plate'] ?? ''} on save.');
+    }
+    return '';
+  }
+
+  /// خانةُ سائق: قائمةُ كلّ السائقين (مع «— بدون —»)، شارةُ حالته، واتصال.
+  Widget _driverSlot(String label, String id, String otherId, void Function(String) onPick) {
+    final d = _driverOf(id);
+    final hint = _moveHint(id);
+    final pool = _drivers.isNotEmpty ? _drivers : List<Map<String, dynamic>>.from(_vehicle?['drivers'] ?? []);
+    final none = <String, dynamic>{'_id': '', 'name': tr('— بدون —', '— none —')};
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Row(children: [
+        Expanded(
+          child: Pressable(
+            onTap: () async {
+              final p = await _pickSheet<Map<String, dynamic>>(
+                title: label,
+                items: [none, ...pool.where((x) => (x['_id'] ?? '').toString() != otherId)],
+                label: (x) => (x['name'] ?? '').toString(),
+                hint: (x) {
+                  if ((x['_id'] ?? '').toString().isEmpty) return '';
+                  final cur = _vehicleOfDriver(x);
+                  return [
+                    cur != null ? tr('على ${cur['plate'] ?? ''}', 'on ${cur['plate'] ?? ''}') : tr('بدون سيارة', 'unassigned'),
+                    if (x['working'] != null) x['working'] == true ? tr('يعمل', 'working') : tr('لا يعمل', 'off'),
+                  ].join(' · ');
+                },
+              );
+              if (p != null) onPick((p['_id'] ?? '').toString());
+            },
+            child: InputDecorator(
+              decoration: InputDecoration(labelText: label, contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14)),
+              child: Row(children: [
+                Expanded(child: Text(d == null ? tr('— بدون —', '— none —') : (d['name'] ?? '').toString(),
+                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5, color: d == null ? T.inkFaint : T.ink))),
+                const Icon(Icons.expand_more, size: 18, color: T.inkFaint),
+              ]),
+            ),
+          ),
+        ),
+        // اتصال/واتساب على رقم السائق المختار مباشرة.
+        if (d != null) ContactButtons(phone: (d['phone'] ?? d['mobile'] ?? '').toString(), compact: true),
+      ]),
+      if (d != null && d['working'] != null) Padding(
+        padding: const EdgeInsets.only(top: 6),
+        child: Wrap(spacing: 6, runSpacing: 6, children: [
+          Chip2(d['working'] == true ? tr('يعمل', 'Working') : tr('لا يعمل', 'Off duty'), d['working'] == true ? T.success : T.danger),
+          if (d['onSponsorship'] != null)
+            Chip2(d['onSponsorship'] == true ? tr('على الكفالة', 'Sponsored') : tr('خارج الكفالة', 'Not sponsored'),
+                d['onSponsorship'] == true ? T.info : T.inkFaint),
+        ]),
+      ),
+      if (hint.isNotEmpty) Padding(
+        padding: const EdgeInsets.only(top: 6),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          decoration: BoxDecoration(color: T.warn.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: T.warn.withValues(alpha: 0.35))),
+          child: Text(hint, style: const TextStyle(fontSize: 12, color: T.warn, fontWeight: FontWeight.w600)),
+        ),
+      ),
+    ]);
   }
 
   /// سطر توافر السيارة — مطابق لسطر الويب: «متاحة — في جدة» / «عليها حمولة
@@ -242,31 +444,47 @@ class _FleetNewShipmentScreenState extends State<FleetNewShipmentScreen> {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('حدد مدينتي التحميل والتنزيل', 'Set from/to cities'))));
       return;
     }
+    if (_isEdit && _vehicle == null) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('اختر السيارة.', 'Pick the vehicle.'))));
+      return;
+    }
     setState(() => _busy = true);
+    final edit = _isEdit;
+    num? n(TextEditingController c) => c.text.trim().isEmpty ? null : (num.tryParse(c.text.trim()) ?? 0);
     try {
-      await Api.instance.post('/api/fleet/shipments', {
+      // التعديلُ يرسل كلَّ الحقول كالويب (الفارغُ يُفرِّغ)؛ الإنشاءُ ما امتلأ فقط.
+      final body = <String, dynamic>{
         if (_customer != null) 'customer': _customer!['_id'],
         if (_newCustomer)
           'newCustomer': {'name': _newCustomerName.text, 'phone': _newCustomerPhone.text},
         if (_vehicle != null) 'vehicle': _vehicle!['_id'],
-        if (_driverId.isNotEmpty) 'driver': _driverId,
+        if (edit || _driverId.isNotEmpty) 'driver': _driverId.isEmpty ? null : _driverId,
+        if (edit || _secondDriverId.isNotEmpty) 'secondDriver': _secondDriverId.isEmpty ? null : _secondDriverId,
+        'status': _status,
         'fromCity': _fromCity.text.trim(),
         'toCity': _toCity.text.trim(),
         // اليومُ وحدَه كما في الويب — وقتٌ محلّيٌّ بلا إزاحة يُقرأ في الخادم بتوقيت
         // غرينتش، فحمولةُ ١٠:٣٠ مساءً كانت تُسجَّل في اليوم التالي.
         'loadDate': '${_loadDate.year.toString().padLeft(4, '0')}-${_loadDate.month.toString().padLeft(2, '0')}-${_loadDate.day.toString().padLeft(2, '0')}',
-        if (_expectedArrival != null) 'expectedArrival': _expectedArrival!.toUtc().toIso8601String(),
-        if (_rentTypeItem != null) 'rentType': _rentTypeItem!['key'],
-        if (_paymentTypeItem != null) 'paymentType': _paymentTypeItem!['key'],
-        if (_loadTypeItem != null) 'loadType': _loadTypeItem!['key'],
-        if (_vehicleRent.text.trim().isNotEmpty) 'price': num.tryParse(_vehicleRent.text.trim()) ?? 0,
-        if (_fullRent.text.trim().isNotEmpty) 'fullRent': num.tryParse(_fullRent.text.trim()) ?? 0,
-        if (_customerType.isNotEmpty) 'customerType': _customerType,
-        if (_driverExpense.text.trim().isNotEmpty) 'driverExpense': num.tryParse(_driverExpense.text.trim()) ?? 0,
-        if (_fridayBonus) 'fridayBonus': true,
-        if (_branch != null && _branch!.isNotEmpty) 'branch': _branch,
+        if (edit || _expectedArrival != null) 'expectedArrival': _expectedArrival?.toUtc().toIso8601String(),
+        if (edit || _rentTypeItem != null) 'rentType': _rentTypeItem?['key'] ?? '',
+        if (edit || _paymentTypeItem != null) 'paymentType': _paymentTypeItem?['key'] ?? '',
+        if (edit || _loadTypeItem != null) 'loadType': _loadTypeItem?['key'] ?? '',
+        if (edit || n(_vehicleRent) != null) 'price': n(_vehicleRent) ?? 0,
+        if (edit || n(_fullRent) != null) 'fullRent': n(_fullRent) ?? 0,
+        if (edit || _customerType.isNotEmpty) 'customerType': _customerType,
+        // في التعديل: المصروفُ كما يظهر (يشمل البونص)، والعلَمُ كما هو — والخادمُ
+        // يضيف البونصَ أو يرفعه إن انقلب العلَم.
+        if (edit || n(_driverExpense) != null) 'driverExpense': n(_driverExpense) ?? 0,
+        if (edit || _fridayBonus) 'fridayBonus': _fridayBonus,
+        if (edit || (_branch != null && _branch!.isNotEmpty)) 'branch': _branch ?? '',
         'notes': _notes.text,
-      });
+      };
+      if (edit) {
+        await Api.instance.put('/api/fleet/shipments/${widget.editId}', body);
+      } else {
+        await Api.instance.post('/api/fleet/shipments', body);
+      }
       if (mounted) {
         Navigator.pop(context, true);
       }
@@ -307,9 +525,8 @@ class _FleetNewShipmentScreenState extends State<FleetNewShipmentScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final vehicleDrivers = List<Map<String, dynamic>>.from(_vehicle?['drivers'] ?? []);
     return AppScaffold(
-      title: Text(tr('إنشاء حمولة', 'New Shipment')),
+      title: Text(_isEdit ? tr('تعديل حمولة', 'Edit shipment') : tr('إنشاء حمولة', 'New Shipment')),
       body: _loading
           ? ListView(padding: const EdgeInsets.all(14), children: const [
               Shimmer(height: 58), SizedBox(height: 10), Shimmer(height: 58), SizedBox(height: 10), Shimmer(height: 58),
@@ -394,13 +611,7 @@ class _FleetNewShipmentScreenState extends State<FleetNewShipmentScreen> {
                       ].where((x) => x.isNotEmpty).join(' · '),
                       chip: _availability,
                     );
-                    if (v != null) {
-                      setState(() {
-                        _vehicle = v;
-                        final ds = List<Map<String, dynamic>>.from(v['drivers'] ?? []);
-                        _driverId = ds.isNotEmpty ? (ds.first['_id'] ?? '').toString() : '';
-                      });
-                    }
+                    if (v != null) setState(() => _applyVehicle(v));
                   },
                   child: AppCard(
                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
@@ -412,33 +623,21 @@ class _FleetNewShipmentScreenState extends State<FleetNewShipmentScreen> {
                             ? Text(tr('— اختر السيارة —', '— pick vehicle —'), style: const TextStyle(fontWeight: FontWeight.w700, color: T.inkFaint))
                             : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                                 Text(_vehicle!['plate'] ?? '', style: const TextStyle(fontWeight: FontWeight.w800)),
-                                Chip2(_availability(_vehicle!).$1, _availability(_vehicle!).$2),
+                                if (_vehicles.any((x) => x['_id'] == _vehicle!['_id']))
+                                  Chip2(_availability(_vehicle!).$1, _availability(_vehicle!).$2),
                               ]),
                       ),
                       Icon(Lang.instance.ar ? Icons.chevron_left : Icons.chevron_right, color: T.inkFaint),
                     ]),
                   ),
                 ),
-                if (vehicleDrivers.isNotEmpty) ...[
-                  const SizedBox(height: 8),
-                  Row(children: [
-                    Expanded(
-                      child: DropdownButtonFormField<String>(
-                        initialValue: _driverId.isEmpty ? null : _driverId,
-                        decoration: InputDecoration(labelText: tr('السائق', 'Driver')),
-                        items: vehicleDrivers
-                            .map((d) => DropdownMenuItem(value: (d['_id'] ?? '').toString(), child: Text((d['name'] ?? '').toString())))
-                            .toList(),
-                        onChanged: (v) => setState(() => _driverId = v ?? ''),
-                      ),
-                    ),
-                    // اتصال/واتساب على رقم السائق المختار مباشرة.
-                    Builder(builder: (_) {
-                      final d = vehicleDrivers.firstWhere((x) => (x['_id'] ?? '').toString() == _driverId, orElse: () => const {});
-                      return ContactButtons(phone: (d['phone'] ?? d['mobile'] ?? '').toString(), compact: true);
-                    }),
-                  ]),
-                ],
+                // السائقان — الأوّل والثاني (اختياري — للوصول الأسرع)، كخانتي الويب.
+                const SizedBox(height: 8),
+                _driverSlot(tr('السائق الأول', 'First driver'), _driverId, _secondDriverId,
+                    (id) => setState(() => _driverId = id)),
+                const SizedBox(height: 8),
+                _driverSlot(tr('السائق الثاني (اختياري — للوصول الأسرع)', 'Second driver (optional)'), _secondDriverId, _driverId,
+                    (id) => setState(() => _secondDriverId = id)),
                 const Divider(height: 24),
 
                 // ── خط السير والمواعيد ──
@@ -453,7 +652,10 @@ class _FleetNewShipmentScreenState extends State<FleetNewShipmentScreen> {
                   style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(48), alignment: AlignmentDirectional.centerStart),
                   label: Text('${tr('تاريخ التحميل', 'Load date')}: ${_loadDate.day}/${_loadDate.month}/${_loadDate.year}'),
                   onPressed: () async {
-                    final d = await showDatePicker(context: context, initialDate: _loadDate, firstDate: DateTime.now().subtract(const Duration(days: 7)), lastDate: DateTime.now().add(const Duration(days: 90)));
+                    // في التعديل قد يسبق التاريخُ المحفوظ نافذةَ الأيّام السبعة — لا ينكسر المنتقي.
+                    final min = DateTime.now().subtract(const Duration(days: 7));
+                    final first = _loadDate.isBefore(min) ? _loadDate : min;
+                    final d = await showDatePicker(context: context, initialDate: _loadDate, firstDate: first, lastDate: DateTime.now().add(const Duration(days: 90)));
                     if (d != null) setState(() => _loadDate = d);
                   },
                 ),
@@ -465,11 +667,23 @@ class _FleetNewShipmentScreenState extends State<FleetNewShipmentScreen> {
                       ? tr('الوصول المتوقع (اختياري)', 'Expected arrival (optional)')
                       : '${tr('الوصول المتوقع', 'ETA')}: ${_expectedArrival!.day}/${_expectedArrival!.month} ${_expectedArrival!.hour}:${_expectedArrival!.minute.toString().padLeft(2, '0')}'),
                   onPressed: () async {
-                    final d = await showDatePicker(context: context, initialDate: _expectedArrival ?? DateTime.now(), firstDate: DateTime.now(), lastDate: DateTime.now().add(const Duration(days: 30)));
+                    final today = DateTime.now();
+                    final init = _expectedArrival ?? today;
+                    final first = init.isBefore(today) ? init : today;
+                    final d = await showDatePicker(context: context, initialDate: init, firstDate: first, lastDate: today.add(const Duration(days: 30)));
                     if (d == null || !context.mounted) return;
                     final t = await showTimePicker(context: context, initialTime: TimeOfDay.fromDateTime(_expectedArrival ?? DateTime.now()));
                     setState(() => _expectedArrival = DateTime(d.year, d.month, d.day, t?.hour ?? 12, t?.minute ?? 0));
                   },
+                ),
+                const SizedBox(height: 10),
+                // الحالة — كقائمة الويب في «الحالة والمشرف».
+                DropdownButtonFormField<String>(
+                  key: ValueKey('status-$_status'),
+                  initialValue: _statusOptions.any((x) => x.$1 == _status) ? _status : null,
+                  decoration: InputDecoration(labelText: tr('الحالة', 'Status')),
+                  items: _statusOptions.map((x) => DropdownMenuItem(value: x.$1, child: Text(tr(x.$2, x.$3)))).toList(),
+                  onChanged: (v) => setState(() => _status = v ?? 'requesting'),
                 ),
                 const SizedBox(height: 16),
                 // ── الحمولة والتسعير ──
@@ -547,11 +761,11 @@ class _FleetNewShipmentScreenState extends State<FleetNewShipmentScreen> {
                 TextField(controller: _notes, maxLines: 2, decoration: InputDecoration(labelText: tr('ملاحظات', 'Notes'))),
                 const SizedBox(height: 16),
                 FilledButton.icon(
-                  icon: const Icon(Icons.add_task_outlined),
+                  icon: Icon(_isEdit ? Icons.check : Icons.add_task_outlined),
                   onPressed: _busy ? null : _submit,
                   label: _busy
                       ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                      : Text(tr('إنشاء الحمولة', 'Create shipment')),
+                      : Text(_isEdit ? tr('حفظ التعديلات', 'Save changes') : tr('إنشاء الحمولة', 'Create shipment')),
                 ),
                 const SizedBox(height: 24),
               ],

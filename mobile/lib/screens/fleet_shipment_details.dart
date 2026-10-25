@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:printing/printing.dart';
+import 'package:provider/provider.dart';
 import '../services/api.dart';
+import '../services/auth.dart';
 import '../services/lang.dart';
 import '../services/live.dart';
 import '../ui/app_scaffold.dart';
@@ -9,6 +11,7 @@ import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import '../ui/vehicle_month_log.dart';
 import 'jp.dart' show JpTaskPanel;
+import 'fleet_new_shipment.dart';
 
 /// تفاصيل الشحنة — the SAME detail view the web opens: full info, the status
 /// control, the follow-up form, and the complete event history (إنشاء /
@@ -34,6 +37,11 @@ const _statuses = {
   'cancelled': ('ملغاة', 'Cancelled', T.danger),
 };
 
+// أدوارُ القسم — نفس FLEET_EDIT_ROLES / FLEET_ADMIN_ROLES في الويب (lib/fleet.ts)
+// وفي routes/fleet.js: التعديلُ لـ EDIT، والحذفُ لـ ADMIN.
+const _fleetEditRoles = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_staff', 'moderator', 'fleet_manager', 'fleet_supervisor'];
+const _fleetAdminRoles = ['super_admin', 'admin', 'it_manager', 'operations_manager', 'fleet_manager'];
+
 const _eventMeta = {
   'created': ('أُنشئت الحمولة', 'Created', Icons.add_circle_outline, T.success),
   'status': ('تغيير حالة', 'Status change', Icons.swap_horiz_rounded, T.info),
@@ -57,7 +65,20 @@ class _FleetShipmentDetailsScreenState extends State<FleetShipmentDetailsScreen>
   }
   final _location = TextEditingController();
   final _note = TextEditingController();
+  // وقتُ المتابعة (الآن افتراضًا) ومتوقّعُ الوصول (اختياري) — كنموذج الويب.
+  DateTime _contactTime = DateTime.now();
+  DateTime? _fuArrival;
   bool _busy = false;
+
+  // canEditFleet / canAdminFleet: الدورُ أو صلاحيةُ «تعديل» على القسم.
+  bool get _editor {
+    final a = context.read<AuthProvider>();
+    return _fleetEditRoles.contains(a.role) || a.canEditSection('Fleet Management');
+  }
+  bool get _admin {
+    final a = context.read<AuthProvider>();
+    return _fleetAdminRoles.contains(a.role) || a.canEditSection('Fleet Management');
+  }
   bool _printing = false;
   late final void Function() _onLive;
 
@@ -145,16 +166,69 @@ class _FleetShipmentDetailsScreenState extends State<FleetShipmentDetailsScreen>
     setState(() => _busy = true);
     try {
       await Api.instance.post('/api/fleet/shipments/${widget.shipmentId}/followups', {
-        'currentLocation': _location.text,
-        'note': _note.text,
+        'contactTime': _contactTime.toUtc().toIso8601String(),
+        'currentLocation': _location.text.trim(),
+        'note': _note.text.trim(),
+        'expectedArrival': _fuArrival?.toUtc().toIso8601String(),
       });
       _location.clear();
       _note.clear();
+      if (mounted) setState(() { _contactTime = DateTime.now(); _fuArrival = null; });
       _load();
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
     } finally {
       if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  // منتقي تاريخٍ ووقت — للمتابعة.
+  Future<DateTime?> _pickDateTime(DateTime? initial, {required DateTime first, required DateTime last}) async {
+    final init = initial ?? DateTime.now();
+    final d = await showDatePicker(
+      context: context,
+      initialDate: init.isBefore(first) ? first : (init.isAfter(last) ? last : init),
+      firstDate: first,
+      lastDate: last,
+    );
+    if (d == null || !mounted) return null;
+    final t = await showTimePicker(context: context, initialTime: TimeOfDay.fromDateTime(init));
+    return DateTime(d.year, d.month, d.day, t?.hour ?? init.hour, t?.minute ?? init.minute);
+  }
+
+  String _dtLocal(DateTime d) => '${d.day}/${d.month} ${d.hour}:${d.minute.toString().padLeft(2, '0')}';
+
+  // تعديل الحمولة — نفس شاشة الإنشاء بمعرّفها، ويُعاد الجلبُ عند العودة.
+  Future<void> _edit() async {
+    final saved = await Navigator.push<bool>(context,
+        MaterialPageRoute(builder: (c) => FleetNewShipmentScreen(editId: widget.shipmentId)));
+    if (saved == true) _load();
+  }
+
+  // حذف الحمولة — تأكيدٌ ثم DELETE ثم الرجوع للقائمة (تتحدّث عبر fleet:updated).
+  Future<void> _delete(Map<String, dynamic> s) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: Text(tr('حذف الحمولة', 'Delete shipment')),
+        content: Text(tr('حذف الشحنة بوليصة رقم ${s['waybillNumber'] ?? ''} (${s['customerName'] ?? '—'})؟',
+            'Delete shipment, waybill ${s['waybillNumber'] ?? ''}?')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('إلغاء', 'Cancel'))),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: T.danger),
+            onPressed: () => Navigator.pop(c, true),
+            child: Text(tr('حذف', 'Delete')),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    try {
+      await Api.instance.delete('/api/fleet/shipments/${widget.shipmentId}');
+      if (mounted) Navigator.pop(context, true);
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
     }
   }
 
@@ -235,6 +309,18 @@ class _FleetShipmentDetailsScreenState extends State<FleetShipmentDetailsScreen>
                 : const Icon(Icons.print_outlined),
             tooltip: tr('طباعة / مشاركة', 'Print / share'),
             onPressed: _printing ? null : () => _print(s),
+          ),
+        if (s != null && _editor)
+          IconButton(
+            icon: const Icon(Icons.edit_outlined),
+            tooltip: tr('تعديل', 'Edit'),
+            onPressed: _edit,
+          ),
+        if (s != null && _admin)
+          IconButton(
+            icon: const Icon(Icons.delete_outline),
+            tooltip: tr('حذف', 'Delete'),
+            onPressed: () => _delete(s),
           ),
       ],
       body: _loading
@@ -322,13 +408,53 @@ class _FleetShipmentDetailsScreenState extends State<FleetShipmentDetailsScreen>
                         ),
                       ),
                       const SizedBox(height: 12),
-                      // تسجيل متابعة
-                      FadeSlideIn(
+                      // تسجيل متابعة — للمحرّرين فقط كالويب (والخادمُ يردّ غيرهم بـ403).
+                      if (_editor) FadeSlideIn(
                         delayMs: 80,
                         child: AppCard(
                           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                             Text(tr('تسجيل متابعة', 'Log a follow-up'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
                             const SizedBox(height: 10),
+                            Row(children: [
+                              Expanded(
+                                child: OutlinedButton.icon(
+                                  icon: const Icon(Icons.access_time, size: 18),
+                                  style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(46), alignment: AlignmentDirectional.centerStart),
+                                  label: Text('${tr('وقت المتابعة', 'Contact time')}: ${_dtLocal(_contactTime)}', style: const TextStyle(fontSize: 12.5)),
+                                  onPressed: () async {
+                                    final now = DateTime.now();
+                                    final v = await _pickDateTime(_contactTime,
+                                        first: now.subtract(const Duration(days: 30)), last: now.add(const Duration(days: 1)));
+                                    if (v != null) setState(() => _contactTime = v);
+                                  },
+                                ),
+                              ),
+                            ]),
+                            const SizedBox(height: 8),
+                            Row(children: [
+                              Expanded(
+                                child: OutlinedButton.icon(
+                                  icon: const Icon(Icons.schedule_outlined, size: 18),
+                                  style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(46), alignment: AlignmentDirectional.centerStart),
+                                  label: Text(_fuArrival == null
+                                      ? tr('متوقع الوصول (اختياري)', 'Expected arrival (optional)')
+                                      : '${tr('متوقع الوصول', 'ETA')}: ${_dtLocal(_fuArrival!)}', style: const TextStyle(fontSize: 12.5)),
+                                  onPressed: () async {
+                                    final now = DateTime.now();
+                                    final v = await _pickDateTime(_fuArrival,
+                                        first: now.subtract(const Duration(days: 1)), last: now.add(const Duration(days: 30)));
+                                    if (v != null) setState(() => _fuArrival = v);
+                                  },
+                                ),
+                              ),
+                              if (_fuArrival != null)
+                                IconButton(
+                                  icon: const Icon(Icons.close, size: 18),
+                                  tooltip: tr('مسح', 'Clear'),
+                                  onPressed: () => setState(() => _fuArrival = null),
+                                ),
+                            ]),
+                            const SizedBox(height: 8),
                             TextField(controller: _location, decoration: InputDecoration(labelText: tr('الموقع الحالي', 'Current location'))),
                             const SizedBox(height: 8),
                             TextField(controller: _note, decoration: InputDecoration(labelText: tr('ملاحظة المتابعة', 'Note'))),
@@ -348,7 +474,7 @@ class _FleetShipmentDetailsScreenState extends State<FleetShipmentDetailsScreen>
                           ]),
                         ),
                       ),
-                      const SizedBox(height: 12),
+                      if (_editor) const SizedBox(height: 12),
                       // ── سجلّ السيّارة الشهريّ ────────────────────────────
                       // أحداثُ هذه الشحنة أدناه تجيب «أين هي». وهذا يجيب
                       // السؤال الآخر: ماذا جرى لهذه السيّارة هذا الشهر —
@@ -360,7 +486,7 @@ class _FleetShipmentDetailsScreenState extends State<FleetShipmentDetailsScreen>
                           child: VehicleMonthLog(
                             vehicle: _vehiclePlate,
                             month: _shipmentMonth,
-                            canEdit: true,
+                            canEdit: _editor,
                             shipmentId: widget.shipmentId,
                           ),
                         ),

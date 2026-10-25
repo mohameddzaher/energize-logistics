@@ -280,12 +280,13 @@ class _OpsResourceScreenState extends State<OpsResourceScreen> {
     super.initState();
     _load();
     _onLive = () => _load(silent: true);
-    Live.instance.on('ops:${widget.cfg.key}', _onLive);
+    // الخادمُ يعلن `ops:<المورد>:changed` (opsController) — كان الاسمُ بلا اللاحقة فلا يتحدّث شيء.
+    Live.instance.on('ops:${widget.cfg.key}:changed', _onLive);
   }
 
   @override
   void dispose() {
-    Live.instance.off('ops:${widget.cfg.key}', _onLive);
+    Live.instance.off('ops:${widget.cfg.key}:changed', _onLive);
     super.dispose();
   }
 
@@ -943,11 +944,13 @@ class _OpsDashboardScreenState extends State<OpsDashboardScreen> {
     _load();
     _onLive = () => _load();
     Live.instance.on('ops:stats', _onLive);
+    Live.instance.on('ops:shipments:changed', _onLive);
   }
 
   @override
   void dispose() {
     Live.instance.off('ops:stats', _onLive);
+    Live.instance.off('ops:shipments:changed', _onLive);
     super.dispose();
   }
 

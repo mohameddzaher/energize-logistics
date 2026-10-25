@@ -704,6 +704,7 @@ ResourceConfig salesTargetsCfg({required bool canEdit}) => ResourceConfig(
 final branchesCfg = ResourceConfig(
   arTitle: 'الفروع', enTitle: 'Branches', icon: Icons.store_mall_directory_outlined,
   endpoint: '/api/branches', listKey: 'branches', liveEvent: 'branch:updated',
+  extraLiveEvents: const ['branch:created', 'branch:deleted'],
   searchFields: const ['name', 'code', 'city'],
   titleOf: (r) => _s(r, 'name'),
   subtitleOf: (r) => [_s(r, 'code'), _s(r, 'city')].where((x) => x.isNotEmpty).join(' · '),

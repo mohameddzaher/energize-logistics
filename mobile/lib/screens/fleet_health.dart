@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import '../services/api.dart';
 import '../services/lang.dart';
+import '../services/live.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
@@ -35,11 +36,17 @@ class _FleetHealthScreenState extends State<FleetHealthScreen> {
     _load();
     // الأرقامُ تتغيّر مع كلّ نبضةٍ من الجهاز، والشاشةُ تُترَك مفتوحة.
     _tick = Timer.periodic(const Duration(seconds: 30), (_) => _load(background: true));
+    // وما يتغيّر في النظام يظهر في اللحظة — كالويب.
+    for (final e in _events) { Live.instance.on(e, _onLive); }
   }
+
+  static const _events = ['ls2:updated', 'fleet:vehicles', 'fleet:drivers', 'vreg:updated', 'hr:employee'];
+  void _onLive([dynamic _]) => _load(background: true);
 
   @override
   void dispose() {
     _tick?.cancel();
+    for (final e in _events) { Live.instance.off(e, _onLive); }
     super.dispose();
   }
 

@@ -32,11 +32,14 @@ class _CrmCalendarScreenState extends State<CrmCalendarScreen> {
     _month = now.month;
     _load();
     _onLive = () => _load();
-    Live.instance.on('crm:updated', _onLive);
+    // الخادمُ يعلن `crm:activity` و`crm:task` (لا `crm:updated`).
+    Live.instance.on('crm:activity', _onLive);
+    Live.instance.on('crm:task', _onLive);
   }
 
   @override
-  void dispose() { Live.instance.off('crm:updated', _onLive); super.dispose(); }
+  void dispose() { Live.instance.off('crm:activity', _onLive);
+    Live.instance.off('crm:task', _onLive); super.dispose(); }
 
   String _iso(DateTime d) => '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 

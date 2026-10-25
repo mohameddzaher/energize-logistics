@@ -34,11 +34,13 @@ class _Ls2AlertsScreenState extends State<Ls2AlertsScreen> {
     _load();
     _onLive = () => _load();
     Live.instance.on('ls2:updated', _onLive);
+    Live.instance.on('ls2:alert', _onLive); // تنبيهٌ جديدٌ أو مُقَرّ
   }
 
   @override
   void dispose() {
     Live.instance.off('ls2:updated', _onLive);
+    Live.instance.off('ls2:alert', _onLive);
     super.dispose();
   }
 

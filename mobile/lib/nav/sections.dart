@@ -86,6 +86,7 @@ import '../screens/reports.dart';
 import '../screens/business_review.dart';
 import '../screens/portal.dart';
 import '../screens/api_docs.dart';
+import '../screens/vehicles_suite.dart';
 import '../screens/fleet_driver_expenses.dart';
 import '../screens/fleet_assign.dart';
 
@@ -197,6 +198,8 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         AppPage('العملاء', 'Customers', Icons.people_outline, (c) => ResourceScreen(config: customersCfg), path: '/system/operations/customers'),
         AppPage('العهدة اليومية', 'Cash Wallet', Icons.account_balance_wallet_outlined, (c) => const CashWalletScreen(), path: '/system/wallet'),
         AppPage('لوحة المحفظة', 'Wallet Dashboard', Icons.pie_chart_outline, (c) => const WalletDashboardScreen(), path: '/system/wallet-dashboard'),
+        AppPage('الشكاوى', 'Complaints', Icons.report_outlined, (c) => const SectionWorkScreen(section: 'operations', complaints: true), path: '/system/operations/complaints'),
+        AppPage('تقييم الأداء', 'KPIs', Icons.leaderboard_outlined, (c) => const TeamBoardScreen(section: 'Operations'), path: '/system/operations/kpis'),
         if (jpMember(role, 'operations')) AppPage('خطّة العمل (JP)', 'JP', Icons.event_available_outlined, (c) => const JpScreen(section: 'operations'), path: '/system/operations/jp'),
         if (jpManager(role, 'operations')) AppPage('لوحة JP', 'JP Dashboard', Icons.insights_outlined, (c) => const JpDashScreen(section: 'operations'), path: '/system/operations/jp-dashboard'),
         if (jpManager(role, 'operations') && role != 'super_admin') AppPage('خطّة الإدارة (Management JP)', 'Management JP', Icons.workspace_premium_outlined, (c) => const JpScreen(scope: 'management'), path: '/system/operations/management-jp'),
@@ -227,6 +230,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         if (jpManager(role, 'collections')) AppPage('لوحة JP', 'JP Dashboard', Icons.insights_outlined, (c) => const JpDashScreen(section: 'collections'), path: '/system/collections-dept/jp-dashboard'),
         if (jpManager(role, 'collections') && role != 'super_admin') AppPage('خطّة الإدارة (Management JP)', 'Management JP', Icons.workspace_premium_outlined, (c) => const JpScreen(scope: 'management'), path: '/system/collections-dept/management-jp'),
         AppPage('الشكاوى', 'Complaints', Icons.report_outlined, (c) => const SectionWorkScreen(section: 'collections', complaints: true), path: '/system/collections-dept/complaints'),
+        AppPage('تقييم الأداء', 'KPIs', Icons.leaderboard_outlined, (c) => const TeamBoardScreen(section: 'Collections'), path: '/system/collections-dept/kpis'),
       ],
     ),
     // اجتماعات مراجعة الأعمال — the managers/board forum. Broad `roles` because
@@ -248,6 +252,8 @@ List<AppSection> sectionsFor(AuthProvider auth) {
       roles: const [..._admins, 'administration_staff', 'bd_manager'],
       pages: [
         AppPage('لوحة المهام', 'Task Board', Icons.view_kanban_outlined, (c) => const TasksBoardScreen(), path: '/system/administration'),
+        AppPage('الشكاوى', 'Complaints', Icons.report_outlined, (c) => const SectionWorkScreen(section: 'administration', complaints: true), path: '/system/administration/complaints'),
+        AppPage('تقييم الأداء', 'KPIs', Icons.leaderboard_outlined, (c) => const TeamBoardScreen(section: 'Administration'), path: '/system/administration/kpis'),
         if (jpMember(role, 'administration')) AppPage('خطّة العمل (JP)', 'JP', Icons.event_available_outlined, (c) => const JpScreen(section: 'administration'), path: '/system/administration/jp'),
         if (jpManager(role, 'administration')) AppPage('لوحة JP', 'JP Dashboard', Icons.insights_outlined, (c) => const JpDashScreen(section: 'administration'), path: '/system/administration/jp-dashboard'),
         if (jpManager(role, 'administration') && role != 'super_admin') AppPage('خطّة الإدارة (Management JP)', 'Management JP', Icons.workspace_premium_outlined, (c) => const JpScreen(scope: 'management'), path: '/system/administration/management-jp'),
@@ -262,7 +268,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         AppPage('اللوحة الرئيسية', 'Board', Icons.grid_view_rounded, (c) => const FleetBoardScreen(), path: '/system/fleet/board'),
         // المتوقع للوصول — بطاقاتٌ تُضغَط، كما في الويب.
         AppPage('المتوقع للوصول', 'Expected arrivals', Icons.schedule_outlined, (c) => const FleetArrivalsScreen(), path: '/system/fleet/arrivals'),
-        AppPage('الشحنات والمتابعة', 'Shipments', Icons.inventory_2_outlined, (c) => const FleetShipmentsScreen(), path: '/system/fleet/board'),
+        AppPage('الشحنات والمتابعة', 'Shipments', Icons.inventory_2_outlined, (c) => const FleetShipmentsScreen(), path: '/system/fleet'),
         AppPage('السائقون', 'Drivers', Icons.badge_outlined, (c) => ResourceScreen(config: fleetDriversCfg), path: '/system/fleet/drivers'),
         AppPage('تقييم السائقين', 'Driver KPIs', Icons.speed_outlined, (c) => const FleetDriverKpisScreen(), path: '/system/fleet/driver-kpis'),
         AppPage('السيارات', 'Vehicles', Icons.local_shipping_outlined, (c) => ResourceScreen(config: fleetVehiclesCfg), path: '/system/fleet/vehicles'),
@@ -383,12 +389,14 @@ List<AppSection> sectionsFor(AuthProvider auth) {
       pages: [
         AppPage('اللوحة', 'Dashboard', Icons.dashboard_outlined, (c) => const Ls2DashboardScreen()),
         AppPage('المركبات والصيانة', 'Fleet & Maintenance', Icons.local_shipping_outlined, (c) => const Ls2VehiclesScreen(), path: '/system/ls2/maintenance'),
-        AppPage('الإصلاحات', 'Repairs', Icons.home_repair_service_outlined, (c) => ResourceScreen(config: ls2RepairsCfg), path: '/system/ls2/store'),
+        AppPage('الإصلاحات', 'Repairs', Icons.home_repair_service_outlined, (c) => ResourceScreen(config: ls2RepairsCfg), path: '/system/ls2/repairs'),
         AppPage('أصول الأسطول', 'Fleet Assets', Icons.tire_repair_outlined, (c) => const Ls2FleetAssetsScreen(), path: '/system/ls2/fleet-assets'),
         AppPage('مخزن النقل الثقيل', 'Store', Icons.inventory_2_outlined, (c) => const Ls2StoreScreen(), path: '/system/ls2/store'),
         if (_htOwners.contains(role)) AppPage('عهدة النقل الثقيل', 'Heavy Transport Custody', Icons.account_balance_wallet_outlined, (c) => const HtCustodyScreen(), path: '/system/ls2/custody'),
         // مَن تُشترى منه قطعُ الغيار — للمخزن الثقيل وحدَه.
         AppPage('الموردون', 'Suppliers', Icons.storefront_outlined, (c) => const Ls2SuppliersScreen(), path: '/system/ls2/suppliers'),
+        AppPage('الشكاوى', 'Complaints', Icons.report_outlined, (c) => const SectionWorkScreen(section: 'ls2', complaints: true), path: '/system/ls2/complaints'),
+        AppPage('تقييم الأداء', 'KPIs', Icons.leaderboard_outlined, (c) => const TeamBoardScreen(section: 'Location Solutions'), path: '/system/ls2/kpis'),
         AppPage('السائقون (تتبع)', 'Drivers', Icons.badge_outlined, (c) => const Ls2DriversScreen(), path: '/system/ls2/drivers'),
         AppPage('تقييم السواقين', 'Driver Performance', Icons.speed_outlined, (c) => const Ls2DriverPerformanceScreen(), path: '/system/ls2/driver-performance'),
         AppPage('الحرارة', 'Temperature', Icons.thermostat_outlined, (c) => const Ls2TemperatureScreen(), path: '/system/ls2/temperature'),
@@ -463,6 +471,10 @@ List<AppSection> sectionsFor(AuthProvider auth) {
       key: 'Vehicles', arTitle: 'المركبات والتفويضات', enTitle: 'Vehicles & Authorizations', icon: Icons.directions_car_outlined,
       roles: const [..._admins, 'hr_manager', 'hr_specialist', 'cfo', 'accounting_manager', 'accountant'],
       pages: [
+        // المركباتُ والتفويضاتُ والحوادث — الشاشاتُ مبنيّةٌ (vehicles_suite) ولم تكن في القائمة.
+        AppPage('لوحة المركبات', 'Vehicles Dashboard', Icons.dashboard_outlined, (c) => const SectionDashScreen(spec: vehiclesDashSpec), path: '/system/vehicles/dashboard'),
+        AppPage('المركبات والتفويضات', 'Vehicles', Icons.directions_car_filled_outlined, (c) => const VehiclesListScreen(), path: '/system/vehicles'),
+        AppPage('الحوادث', 'Accidents', Icons.car_crash_outlined, (c) => const AccidentsListScreen(), path: '/system/vehicles/accidents'),
         AppPage('تحليلات المركبات', 'Registry Analytics', Icons.insights_outlined, (c) => const VehicleRegistryDashboardScreen(), path: '/system/vehicles/registry/dashboard'),
         AppPage('سجل المركبات', 'Vehicle Registry', Icons.directions_car_outlined, (c) => const VehicleRegistryListScreen(), path: '/system/vehicles/registry'),
         // ── صفحةٌ لكل عائلةِ مستند، كما في الموقع ─────────────────────────
@@ -477,7 +489,9 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         AppPage('رخص السير', 'Vehicle Licences', Icons.description_outlined, (c) => VehicleDocumentsScreen(family: vehicleLicenceFamily), path: '/system/vehicles/registry/licenses'),
         AppPage('الفحص الدوري', 'Periodic Inspection', Icons.fact_check_outlined, (c) => VehicleDocumentsScreen(family: vehicleInspectionFamily), path: '/system/vehicles/registry/inspection'),
         AppPage('الانتهاءات والتجديد', 'Expiries & Renewals', Icons.event_available_outlined, (c) => const VehicleRegistryAlertsScreen(), path: '/system/vehicles/registry/expiring'),
-        AppPage('إعدادات التنبيهات', 'Alert Settings', Icons.settings_outlined, (c) => const VehicleRegistrySettingsScreen()),
+        AppPage('إعدادات التنبيهات', 'Alert Settings', Icons.settings_outlined, (c) => const VehicleRegistrySettingsScreen(), path: '/system/vehicles/settings'),
+        AppPage('الشكاوى', 'Complaints', Icons.report_outlined, (c) => const SectionWorkScreen(section: 'vehicles', complaints: true), path: '/system/vehicles/complaints'),
+        AppPage('تقييم الأداء', 'KPIs', Icons.leaderboard_outlined, (c) => const TeamBoardScreen(section: 'Vehicles'), path: '/system/vehicles/kpis'),
         if (jpMember(role, 'vehicles')) AppPage('خطّة العمل (JP)', 'JP', Icons.event_available_outlined, (c) => const JpScreen(section: 'vehicles'), path: '/system/vehicles/jp'),
         if (jpManager(role, 'vehicles')) AppPage('لوحة JP', 'JP Dashboard', Icons.insights_outlined, (c) => const JpDashScreen(section: 'vehicles'), path: '/system/vehicles/jp-dashboard'),
         if (jpManager(role, 'vehicles') && role != 'super_admin') AppPage('خطّة الإدارة (Management JP)', 'Management JP', Icons.workspace_premium_outlined, (c) => const JpScreen(scope: 'management'), path: '/system/vehicles/management-jp'),
@@ -549,6 +563,8 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         // السوّاق: سجلٌّ ثالثٌ في الصفحة نفسها على الويب (تبويب)، وشاشةٌ هنا.
         AppPage('السوّاق', 'Drivers', Icons.badge_outlined, (c) => ResourceScreen(config: shipmentOrdersDriversCfg), path: '/system/shipment-orders/fleet'),
         AppPage('إعدادات النموذج', 'Form Settings', Icons.tune_outlined, (c) => ResourceScreen(config: shipmentOrdersFieldsCfg), path: '/system/shipment-orders/settings'),
+        AppPage('الشكاوى', 'Complaints', Icons.report_outlined, (c) => const SectionWorkScreen(section: 'shipment-orders', complaints: true), path: '/system/shipment-orders/complaints'),
+        AppPage('تقييم الأداء', 'KPIs', Icons.leaderboard_outlined, (c) => const TeamBoardScreen(section: 'Shipment Orders'), path: '/system/shipment-orders/kpis'),
         if (jpMember(role, 'shipment-orders')) AppPage('خطّة العمل (JP)', 'JP', Icons.event_available_outlined, (c) => const JpScreen(section: 'shipment-orders'), path: '/system/shipment-orders/jp'),
         if (jpManager(role, 'shipment-orders')) AppPage('لوحة JP', 'JP Dashboard', Icons.insights_outlined, (c) => const JpDashScreen(section: 'shipment-orders'), path: '/system/shipment-orders/jp-dashboard'),
         if (jpManager(role, 'shipment-orders') && role != 'super_admin') AppPage('خطّة الإدارة (Management JP)', 'Management JP', Icons.workspace_premium_outlined, (c) => const JpScreen(scope: 'management'), path: '/system/shipment-orders/management-jp'),
@@ -565,6 +581,8 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         AppPage('التقرير اليومي', 'Daily Report', Icons.description_outlined, (c) => const RemoteReportScreen(), path: '/system/remote/report'),
         AppPage('المحادثات', 'Chat', Icons.chat_outlined, (c) => const RemoteChatEntryScreen(), path: '/system/remote/chat'),
         AppPage('الإعلانات', 'Announcements', Icons.campaign_outlined, (c) => const RemoteAnnouncementsScreen(), path: '/system/remote/announcements'),
+        AppPage('الشكاوى', 'Complaints', Icons.report_outlined, (c) => const SectionWorkScreen(section: 'remote', complaints: true), path: '/system/remote/complaints'),
+        AppPage('تقييم الأداء', 'KPIs', Icons.leaderboard_outlined, (c) => const TeamBoardScreen(section: 'Remote'), path: '/system/remote/kpis'),
         if (jpMember(role, 'remote')) AppPage('خطّة العمل (JP)', 'JP', Icons.event_available_outlined, (c) => const JpScreen(section: 'remote'), path: '/system/remote/jp'),
         if (jpManager(role, 'remote')) AppPage('لوحة JP', 'JP Dashboard', Icons.insights_outlined, (c) => const JpDashScreen(section: 'remote'), path: '/system/remote/jp-dashboard'),
         if (jpManager(role, 'remote') && role != 'super_admin') AppPage('خطّة الإدارة (Management JP)', 'Management JP', Icons.workspace_premium_outlined, (c) => const JpScreen(scope: 'management'), path: '/system/remote/management-jp'),
@@ -628,6 +646,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         AppPage('السكن', 'Housing', Icons.home_work_outlined, (c) => const LightTransportHousingScreen(), path: '/system/b2c/settings'),
         // حساباتُ تطبيق التوصيل — تبويبٌ في «إعدادات القسم» على الويب: «غير مرتبط» يُراجَع.
         AppPage('حسابات التطبيق', 'App accounts', Icons.sports_motorsports_outlined, (c) => ResourceScreen(config: b2cRepsCfg(canEdit: _ltOwners.contains(role))), path: '/system/b2c/settings'),
+        AppPage('الشكاوى', 'Complaints', Icons.report_outlined, (c) => const SectionWorkScreen(section: 'b2c', complaints: true), path: '/system/b2c/complaints'),
         AppPage('تقييم الأداء', 'KPIs', Icons.leaderboard_outlined, (c) => const TeamBoardScreen(section: 'B2C'), path: '/system/b2c/kpis'),
         if (jpMember(role, 'b2c')) AppPage('خطّة العمل (JP)', 'JP', Icons.event_available_outlined, (c) => const JpScreen(section: 'b2c'), path: '/system/b2c/jp'),
         if (jpManager(role, 'b2c')) AppPage('لوحة JP', 'JP Dashboard', Icons.insights_outlined, (c) => const JpDashScreen(section: 'b2c'), path: '/system/b2c/jp-dashboard'),

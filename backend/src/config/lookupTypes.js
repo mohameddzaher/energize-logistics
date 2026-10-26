@@ -575,6 +575,9 @@ const REGISTRY = [
       { key: 'sudair', nameEn: 'Sudair', nameAr: 'سدير' },
       { key: 'rabigh', nameEn: 'Rabigh', nameAr: 'رابغ' },
       { key: 'jazan', nameEn: 'Jazan', nameAr: 'جازان' },
+      // النقلُ الثقيل يُعامَل فرعًا كغيره (٢٠٢٦/١٠/٢٦) — وبدونه كانت محفظتُه تسدّد
+      // ولا يُكتب فرعُها في «الفرع المسدد». راجع utils/payingBranch.
+      { key: 'heavy_trucks', nameEn: 'Heavy Trucks', nameAr: 'النقل الثقيل' },
     ],
   },
   // ── وجهةُ الكشف النهائيّة ────────────────────────────────────────────────
@@ -596,6 +599,7 @@ const REGISTRY = [
       { key: 'yanbu', nameEn: 'Yanbu', nameAr: 'ينبع' },
       { key: 'rabigh', nameEn: 'Rabigh', nameAr: 'رابغ' },
       { key: 'sudair', nameEn: 'Sudair', nameAr: 'سدير' },
+      { key: 'heavy_trucks', nameEn: 'Heavy Trucks', nameAr: 'النقل الثقيل' },
     ],
   },
   // ── قوائمُ التخليص الجمركيّ ────────────────────────────────────────────────

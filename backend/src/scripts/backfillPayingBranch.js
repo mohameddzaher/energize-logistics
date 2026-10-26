@@ -39,14 +39,14 @@ const DRY = process.argv.includes('--dry');
   // سجلاتُ الفروع إنجليزيّةٌ والعمودُ عربيّ. فيُترجَم عبر القائمة المرجعيّة
   // نفسِها التي تُملأ منها الخانةُ حين تُختار بيد — وإلّا دخل «Jeddah» إلى
   // جانب «جده» فانقسم الفرعُ الواحد قيمتين في كلّ تقرير.
-  const { foldEn } = require('../utils/payingBranch');
+  // المطابقةُ نفسُها التي تكتب بها المحفظة (utils/payingBranch) — ومنها النقلُ الثقيل.
+  const { matchPayingBranch } = require('../utils/payingBranch');
   const Lookup = require('../models/Lookup');
-  const lookup = await Lookup.find({ type: 'workflow_paying_branch' }).select('nameEn nameAr').lean();
-  const arOf = new Map(lookup.map((r) => [foldEn(r.nameEn), r.nameAr]));
+  const lookup = await Lookup.find({ type: 'workflow_paying_branch', deleted: { $ne: true } }).select('key nameEn nameAr').lean();
   const branches = new Map();
   const unmapped = new Set();
   for (const b of await Branch.find({}).select('name').lean()) {
-    const ar = arOf.get(foldEn(b.name));
+    const ar = matchPayingBranch(b.name, lookup);
     if (ar) branches.set(String(b._id), ar);
     else unmapped.add(b.name);
   }

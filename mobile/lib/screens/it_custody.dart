@@ -30,7 +30,7 @@ const custodyTypes = {
   'laptop': ('لابتوب', 'Laptop'),
   'desktop': ('حاسب مكتبي', 'Desktop'),
   'phone': ('موبايل', 'Phone'),
-  'tablet': ('جهاز لوحي', 'Tablet'),
+  'tablet': ('تابلت', 'Tablet'),
   'monitor': ('شاشة', 'Monitor'),
   'keyboard': ('كيبورد', 'Keyboard'),
   'mouse': ('ماوس', 'Mouse'),
@@ -74,7 +74,8 @@ const custodyBuckets = <CustodyBucket>[
   // القديم keyboard_mouse يُقرأ في دلو الكيبورد بشارته ولا يُكتب.
   CustodyBucket('mice', 'ماوس', 'Mouse', 'mouse', ['mouse'], Icons.mouse_rounded),
   CustodyBucket('keyboards', 'كيبورد', 'Keyboard', 'keyboard', ['keyboard', 'keyboard_mouse'], Icons.keyboard_rounded),
-  CustodyBucket('phones', 'موبايلات', 'Phones', 'phone', ['phone', 'tablet'], Icons.smartphone_rounded),
+  CustodyBucket('phones', 'موبايلات', 'Phones', 'phone', ['phone'], Icons.smartphone_rounded),
+  CustodyBucket('tablets', 'تابلت', 'Tablets', 'tablet', ['tablet'], Icons.tablet_android_rounded),
   CustodyBucket('monitors', 'شاشات', 'Monitors', 'monitor', ['monitor'], Icons.monitor_rounded),
   CustodyBucket('other', 'أخرى', 'Other', 'other',
       ['laptop_bag', 'charger', 'cable', 'headset', 'printer', 'router', 'access_card', 'accessory', 'other'], Icons.inventory_2_rounded),

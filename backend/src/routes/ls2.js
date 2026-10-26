@@ -89,6 +89,7 @@ router.post('/assets/tires/:id/status', oid, ADMIN, assets.setTireStatus); // ن
 router.get('/store', store.listItems);
 router.get('/store/dashboard', store.dashboard);
 router.get('/store/movements', store.listMovements);
+router.get('/store/issue-reasons', store.issueReasons); // أسبابُ الصرف الأربعة
 router.get('/store/unknown-plates', store.unknownPlates); // لوحاتٌ على حركاتٍ لا مركبةَ لها في السجلّ
 router.post('/store', ADMIN, store.createItem);
 router.post('/store/bulk-create', ADMIN, store.createItemsBulk);   // فاتورةُ شراءٍ بعدّة أصناف

@@ -181,6 +181,7 @@ exports.getVehicleHistory = async (req, res) => {
     if (!key) return res.status(400).json({ message: 'Bad plate' });
 
     const { Ls2StoreMovement } = require('../models/Ls2Store');
+    const { issueReasonLabel } = require('../utils/storeIssueReasons');
     const InventoryIssue = require('../models/InventoryIssue');
     const Ls2Repair = require('../models/Ls2Repair');
     const Ls2ServiceLog = require('../models/Ls2ServiceLog');
@@ -213,7 +214,8 @@ exports.getVehicleHistory = async (req, res) => {
       rows.push({
         kind: 'part', date: m.createdAt, action: m.type === 'out' ? 'صرف' : 'وارد',
         title: m.itemName, detail: `${m.type === 'out' ? 'صادر' : 'وارد'} ${m.quantity}`,
-        by: m.performedByName, notes: [m.reason, m.reversed ? 'اتّرجع عنها' : ''].filter(Boolean).join(' · '),
+        by: m.performedByName, notes: [issueReasonLabel(m.issueReason), m.reason, m.reversed ? 'اتّرجع عنها' : ''].filter(Boolean).join(' · '),
+        issueReason: m.issueReason || '', issueReasonLabel: issueReasonLabel(m.issueReason),
         reversed: !!m.reversed, source: 'ls2-store', refId: m._id,
       });
     }

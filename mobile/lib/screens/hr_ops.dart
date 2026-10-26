@@ -18,7 +18,7 @@ import '../ui/search_field.dart';
 // ── مفرداتُ العهدة والمخزون — CUSTODY_TYPES/CONDITIONS (تُقرأ من المرجعيّات) ──
 const _fallbackTypes = [
   ('laptop', 'حاسب محمول', 'Laptop'), ('desktop', 'حاسب مكتبي', 'Desktop'), ('phone', 'هاتف', 'Phone'),
-  ('tablet', 'جهاز لوحي', 'Tablet'), ('sim', 'شريحة اتصال', 'SIM Card'), ('monitor', 'شاشة', 'Monitor'),
+  ('tablet', 'تابلت', 'Tablet'), ('sim', 'شريحة اتصال', 'SIM Card'), ('monitor', 'شاشة', 'Monitor'),
   ('keyboard', 'لوحة مفاتيح', 'Keyboard'), ('mouse', 'فأرة', 'Mouse'), ('headset', 'سماعة رأس', 'Headset'),
   ('printer', 'طابعة', 'Printer'), ('router', 'موجّه شبكة', 'Router'), ('charger', 'شاحن', 'Charger'),
   ('cable', 'كبل', 'Cable'), ('laptop_bag', 'حقيبة حاسب', 'Laptop Bag'), ('accessory', 'ملحق', 'Accessory'),

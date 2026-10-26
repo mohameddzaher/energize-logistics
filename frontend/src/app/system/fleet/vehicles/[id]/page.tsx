@@ -28,6 +28,7 @@ import {
 } from '@/lib/fleet';
 import { Car, ArrowLeft, Route, Users, Target, PackageSearch, Wrench, ExternalLink } from 'lucide-react';
 import ScrollX from '@/components/system/ScrollX';
+import { issueReasonLabel } from '@/lib/storeIssueReasons';
 
 const ORANGE = '#f37121';
 
@@ -286,7 +287,11 @@ function VehicleAnalyticsInner() {
                   <ul className="space-y-1 max-h-52 overflow-y-auto">
                     {d.tech.partsIssued.slice(0, 20).map((m) => (
                       <li key={m._id} className="flex items-center justify-between gap-2 text-[11.5px]">
-                        <span className="text-slate-600 truncate">{m.itemName}</span>
+                        <span className="text-slate-600 truncate">
+                          {m.itemName}
+                          {/* سببُ الصرف — صيانة دورية / حادث / وقائية / عطل على الطريق. */}
+                          {m.issueReason ? <span className="ms-1.5 rounded bg-orange-50 text-[#c2410c] font-semibold px-1.5 py-0.5 text-[10.5px]">{issueReasonLabel(m.issueReason, ar)}</span> : null}
+                        </span>
                         <span className="shrink-0 text-slate-400">×{m.quantity} · {fmtD(m.createdAt)}</span>
                       </li>
                     ))}

@@ -6,7 +6,7 @@
 // نفس العدّ تفترقان عند أول تعديل — فيقرأ المستخدم رقمين لشيء واحد ولا يعود
 // يثق في أيّهما. الحساب في الخادم، والعرض هنا، والشاشتان تقرآن من الاثنين.
 import { CUSTODY_BUCKETS, CUSTODY_STATUSES, CUSTODY_STATE_KEYS, custodyStatusLabel, Lang } from '@/lib/it';
-import { Laptop, Keyboard, Mouse, Smartphone, Monitor, Package, UserCheck, Boxes, AlertOctagon, BadgeDollarSign } from 'lucide-react';
+import { Laptop, Keyboard, Mouse, Smartphone, Tablet, Monitor, Package, UserCheck, Boxes, AlertOctagon, BadgeDollarSign } from 'lucide-react';
 
 export interface BucketCount { key: string; count: number }
 
@@ -15,6 +15,7 @@ const BUCKET_ICON: Record<string, React.ElementType> = {
   mice: Mouse,
   keyboards: Keyboard,
   phones: Smartphone,
+  tablets: Tablet,
   monitors: Monitor,
   other: Package,
 };
@@ -48,7 +49,7 @@ export function CustodyCards({
   const countOf = (k: string) => buckets.find((b) => b.key === k)?.count ?? 0;
 
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+    <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-7 gap-3">
       {CUSTODY_BUCKETS.map((b) => {
         const Icon = BUCKET_ICON[b.key] || Package;
         const on = active === b.key;

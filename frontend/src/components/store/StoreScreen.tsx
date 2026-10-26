@@ -46,6 +46,7 @@ import PeriodFilter from '@/components/system/PeriodFilter';
 import ManagedSelect from '@/components/system/ManagedSelect';
 import { useLatestRequest } from '@/hooks/useLatestRequest';
 import { useColumnFilters, ClearColumnFilters } from '@/components/useColumnFilters';
+import { ISSUE_REASONS, issueReasonLabel } from '@/lib/storeIssueReasons';
 
 /** موردٌ كما يردّه `/suppliers`. */
 export type Supplier = { _id: string; name: string; phone?: string; city?: string; taxNumber?: string; notes?: string; items?: number; purchases?: number; units?: number; total?: number; lastPurchase?: string };
@@ -75,7 +76,7 @@ type Item = { _id: string; supplier?: string | null; supplierName?: string; purc
 type Cat = { key: string; ar: string; count: number };
 type Movement = {
   _id: string; item: string; itemName: string; type: 'in' | 'out'; quantity: number;
-  vehiclePlate?: string; vehicleRegistryPlate?: string; reason?: string; balanceAfter: number; performedByName?: string; createdAt: string;
+  vehiclePlate?: string; vehicleRegistryPlate?: string; reason?: string; issueReason?: string; balanceAfter: number; performedByName?: string; createdAt: string;
   date?: string; supplierName?: string; unitPrice?: number | null; total?: number | null; unit?: string;
   // التراجع — السيرفر هو اللي بيقرر الحركة دي ينفع يترجع فيها ولا لأ، فالواجهة
   // ما تعيدش بناء القاعدة دي عندها.
@@ -269,7 +270,8 @@ export default function StoreScreen({ scope }: { scope: StoreScope }) {
     { header: ar ? 'سعر القطعة' : 'Unit price', key: 'unitPrice', transform: (v) => (v == null ? '' : v), width: 13 },
     { header: ar ? 'الإجمالي' : 'Total', key: 'total', transform: (v) => (v == null ? '' : v), width: 13 },
     { header: ar ? 'المركبة' : 'Vehicle', key: 'vehiclePlate', width: 14 },
-    { header: ar ? 'السبب' : 'Reason', key: 'reason', width: 30 },
+    { header: ar ? 'سبب الصرف' : 'Issue reason', key: 'issueReason', transform: (v) => issueReasonLabel(v, ar), width: 18 },
+    { header: ar ? 'ملاحظة' : 'Note', key: 'reason', width: 30 },
     { header: ar ? 'الرصيد بعدها' : 'Balance after', key: 'balanceAfter', width: 14 },
     { header: ar ? 'بواسطة' : 'By', key: 'performedByName', width: 20 },
   ];
@@ -522,6 +524,7 @@ function MovementsLog({ movements, ar, canEdit, onChanged, base, f, setF, suppli
                     {m.reversed && <span className="text-red-500">{ar ? 'مُلغاة' : 'reversed'}{m.reversedByName ? ` · ${m.reversedByName}` : ''}</span>}
                     {m.isReversal && <span className="text-amber-600">{ar ? 'حركة تراجع' : 'reversal entry'}</span>}
                     {m.reversed && m.reversalReason && <span className="block text-slate-400">{m.reversalReason}</span>}
+                    {m.issueReason ? <span className="inline-block rounded bg-orange-50 text-[#c2410c] font-semibold px-1.5 py-0.5 text-[11px]">{issueReasonLabel(m.issueReason, ar)}</span> : null}
                     {!m.reversed && !m.isReversal && m.reason ? <span className="text-slate-400">{m.reason}</span> : null}
                   </span>
                 </td>
@@ -630,6 +633,7 @@ function BulkOutModal({ items, plates, ar, kind = 'out', onClose, onDone, base, 
   const t = (a: string, e: string) => (ar ? a : e);
   const [plate, setPlate] = useState('');
   const [reason, setReason] = useState('');
+  const [issueReason, setIssueReason] = useState('');
   const [supplier, setSupplier] = useState('');
   const [date, setDate] = useState(todayYmd());
   const [qty, setQty] = useState<Record<string, string>>(
@@ -652,6 +656,7 @@ function BulkOutModal({ items, plates, ar, kind = 'out', onClose, onDone, base, 
         type: kind,
         lines: items.map((i) => ({ item: i._id, quantity: n(i._id), ...(isIn ? { unitPrice: Number(price[i._id]) } : {}) })),
         vehiclePlate: plate.trim(), reason: reason.trim(),
+        ...(isIn ? {} : { issueReason }),
         ...(isIn ? { date, ...(supplier ? supplierBody(supplier) : {}) } : {}),
       });
       notify(t(
@@ -700,7 +705,8 @@ function BulkOutModal({ items, plates, ar, kind = 'out', onClose, onDone, base, 
           <PlatePicker plates={plates} value={plate} onChange={setPlate} ar={ar}
             label={isIn ? t('واردة من مركبة (اختياري)', 'In from vehicle (optional)') : t('صادرة على مركبة', 'Out to vehicle')} />
           <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1">{t('ملاحظة / سبب', 'Reason')}</label>
+            {!isIn && <div className="mb-3"><IssueReasonPicker value={issueReason} onChange={setIssueReason} ar={ar} /></div>}
+            <label className="block text-xs font-semibold text-slate-700 mb-1">{isIn ? t('ملاحظة', 'Note') : t('ملاحظة (اختياري)', 'Note (optional)')}</label>
             <input value={reason} onChange={(e) => setReason(e.target.value)} className={inp} />
           </div>
         </div>
@@ -756,7 +762,7 @@ function BulkOutModal({ items, plates, ar, kind = 'out', onClose, onDone, base, 
               {t(`اكتب سعر القطعة الواحدة لـ ${unpriced.length} صنف`, `Enter the unit price for ${unpriced.length} item(s)`)}
             </p>
           )}
-          <button onClick={submit} disabled={busy || !items.length || short.length > 0 || unpriced.length > 0}
+          <button onClick={submit} disabled={busy || !items.length || short.length > 0 || unpriced.length > 0 || (!isIn && !issueReason)}
             className="w-full py-2.5 rounded-lg text-white text-sm font-semibold disabled:opacity-40"
             style={{ background: accent }}>
             {busy ? t('جارٍ التسجيل…', 'Recording…')
@@ -833,6 +839,31 @@ function PlatePicker({ plates, value, onChange, ar, label }: {
   );
 }
 
+// ── سببُ الصرف — اختيارٌ إجباريٌّ على كلّ صادر (٢٠٢٦/١٠/٢٦) ─────────────────
+// الأربعةُ نفسُها في الخادم (backend utils/storeIssueReasons) وفي التطبيق، ويظهر
+// السببُ في ملفّ المركبة مع القطعة. والملاحظةُ الحرّة صارت اختياريّةً بجانبه.
+function IssueReasonPicker({ value, onChange, ar }: { value: string; onChange: (v: string) => void; ar: boolean }) {
+  return (
+    <div>
+      <label className="block text-xs font-semibold text-slate-700 mb-1">
+        {ar ? 'سبب الصرف' : 'Issue reason'} <span className="text-rose-600">*</span>
+      </label>
+      <div className="grid grid-cols-2 gap-2" role="radiogroup">
+        {ISSUE_REASONS.map((r) => {
+          const on = value === r.key;
+          return (
+            <button key={r.key} type="button" role="radio" aria-checked={on} onClick={() => onChange(r.key)}
+              className={`min-h-[42px] px-2 rounded-lg border text-sm font-semibold transition-colors ${
+                on ? 'bg-[#f37121] border-[#f37121] text-white' : 'bg-white border-slate-200 text-slate-700 hover:border-slate-300'}`}>
+              {ar ? r.ar : r.en}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function MovementModal({ move, plates, ar, onClose, onDone, base, suppliers }: { suppliers: Supplier[]; move: { item: Item; type: 'in' | 'out' }; plates: PlateRow[]; ar: boolean; onClose: () => void; onDone: () => void; base: string }) {
   const { notify } = useDialog();
   const isIn = move.type === 'in';
@@ -841,6 +872,7 @@ function MovementModal({ move, plates, ar, onClose, onDone, base, suppliers }: {
   const [price, setPrice] = useState(move.item.unitPrice ? String(move.item.unitPrice) : '');
   const [plate, setPlate] = useState('');
   const [reason, setReason] = useState('');
+  const [issueReason, setIssueReason] = useState('');
   const [supplier, setSupplier] = useState(move.item.supplier || '');
   const [date, setDate] = useState(todayYmd());
   const [busy, setBusy] = useState(false);
@@ -848,8 +880,9 @@ function MovementModal({ move, plates, ar, onClose, onDone, base, suppliers }: {
     const q = Number(qty);
     if (!q || q <= 0) { notify(ar ? 'أدخل كمية صحيحة' : 'Enter a quantity', 'error'); return; }
     if (isIn && !(Number(price) > 0)) { notify(ar ? 'اكتب سعر القطعة الواحدة' : 'Enter the unit price', 'error'); return; }
+    if (!isIn && !issueReason) { notify(ar ? 'اختر سبب الصرف' : 'Choose the issue reason', 'error'); return; }
     setBusy(true);
-    try { await api.post(`${base}/${move.item._id}/movement`, { type: move.type, quantity: q, vehiclePlate: plate, reason, ...(isIn ? { unitPrice: Number(price), date, ...(supplier ? supplierBody(supplier) : {}) } : {}) }); notify(ar ? 'تم التسجيل' : 'Recorded', 'success'); onDone(); }
+    try { await api.post(`${base}/${move.item._id}/movement`, { type: move.type, quantity: q, vehiclePlate: plate, reason, ...(isIn ? {} : { issueReason }), ...(isIn ? { unitPrice: Number(price), date, ...(supplier ? supplierBody(supplier) : {}) } : {}) }); notify(ar ? 'تم التسجيل' : 'Recorded', 'success'); onDone(); }
     catch (e: any) { notify(e?.message || 'Failed', 'error'); } finally { setBusy(false); }
   };
   const inp = 'w-full px-3 py-2 rounded-lg border border-slate-200 text-sm';
@@ -886,9 +919,10 @@ function MovementModal({ move, plates, ar, onClose, onDone, base, suppliers }: {
           )}
           <PlatePicker plates={plates} value={plate} onChange={setPlate} ar={ar}
             label={isIn ? (ar ? 'واردة من مركبة (اختياري)' : 'In from vehicle (optional)') : (ar ? 'صادرة على مركبة' : 'Out to vehicle')} />
-          <div><label className="block text-xs font-semibold text-slate-600 mb-1">{ar ? 'ملاحظة / سبب' : 'Reason'}</label><input value={reason} onChange={(e) => setReason(e.target.value)} className={inp} /></div>
+          {!isIn && <IssueReasonPicker value={issueReason} onChange={setIssueReason} ar={ar} />}
+          <div><label className="block text-xs font-semibold text-slate-600 mb-1">{isIn ? (ar ? 'ملاحظة' : 'Note') : (ar ? 'ملاحظة (اختياري)' : 'Note (optional)')}</label><input value={reason} onChange={(e) => setReason(e.target.value)} className={inp} /></div>
         </div>
-        <button onClick={submit} disabled={busy} className="w-full mt-5 py-2.5 rounded-lg text-white text-sm font-semibold disabled:opacity-50" style={{ background: isIn ? '#059669' : '#f37121' }}>{ar ? 'تسجيل الحركة' : 'Record'}</button>
+        <button onClick={submit} disabled={busy || (!isIn && !issueReason)} className="w-full mt-5 py-2.5 rounded-lg text-white text-sm font-semibold disabled:opacity-50" style={{ background: isIn ? '#059669' : '#f37121' }}>{ar ? 'تسجيل الحركة' : 'Record'}</button>
       </div>
     </div>
   );

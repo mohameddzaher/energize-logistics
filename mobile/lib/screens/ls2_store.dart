@@ -536,7 +536,8 @@ class _Ls2StoreScreenState extends State<Ls2StoreScreen> {
     ExportCol('سعر القطعة', 'Unit price', (r) => r['unitPrice'] ?? ''),
     ExportCol('الإجمالي', 'Total', (r) => r['total'] ?? ''),
     ExportCol('المركبة', 'Vehicle', (r) => r['vehiclePlate'] ?? ''),
-    ExportCol('السبب', 'Reason', (r) => r['reason'] ?? ''),
+    ExportCol('سبب الصرف', 'Issue reason', (r) => storeIssueReasonLabel(r['issueReason'])),
+    ExportCol('ملاحظة', 'Note', (r) => r['reason'] ?? ''),
     ExportCol('الرصيد بعدها', 'Balance after', (r) => r['balanceAfter']),
     ExportCol('بواسطة', 'By', (r) => r['performedByName'] ?? ''),
   ];
@@ -941,6 +942,57 @@ Widget _errBox(String msg) => Container(
 // حركة وارد / صادر على صنفٍ واحد
 // ═════════════════════════════════════════════════════════════════════════════
 
+// ── سببُ الصرف — اختيارٌ إجباريٌّ على كلّ صادر (٢٠٢٦/١٠/٢٦) ─────────────────
+// الأربعةُ نفسُها في الخادم (utils/storeIssueReasons) وفي الموقع، ويظهر السببُ
+// في ملفّ المركبة مع القطعة. والملاحظةُ الحرّة صارت اختياريّةً بجانبه.
+const storeIssueReasons = [
+  ('periodic_maintenance', 'صيانة دورية', 'Periodic maintenance'),
+  ('accident', 'حادث', 'Accident'),
+  ('preventive_maintenance', 'صيانة وقائية', 'Preventive maintenance'),
+  ('roadside_breakdown', 'عطل على الطريق', 'Roadside breakdown'),
+];
+String storeIssueReasonLabel(dynamic key) {
+  for (final r in storeIssueReasons) { if (r.$1 == key) return tr(r.$2, r.$3); }
+  return '';
+}
+
+class _IssueReasonPicker extends StatelessWidget {
+  final String value;
+  final ValueChanged<String> onChanged;
+  const _IssueReasonPicker({required this.value, required this.onChanged});
+  @override
+  Widget build(BuildContext context) {
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text.rich(TextSpan(children: [
+        TextSpan(text: tr('سبب الصرف', 'Issue reason')),
+        const TextSpan(text: ' *', style: TextStyle(color: T.danger)),
+      ]), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5)),
+      const SizedBox(height: 6),
+      LayoutBuilder(builder: (c, box) {
+        final w = (box.maxWidth - 8) / 2;
+        return Wrap(spacing: 8, runSpacing: 8, children: [
+          for (final r in storeIssueReasons)
+            SizedBox(width: w, height: 46, child: Material(
+              color: value == r.$1 ? T.orange : Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10),
+                  side: BorderSide(color: value == r.$1 ? T.orange : T.line, width: 1.3)),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(10),
+                onTap: () => onChanged(r.$1),
+                child: Center(child: FittedBox(fit: BoxFit.scaleDown, child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 6),
+                  child: Text(tr(r.$2, r.$3), style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w800,
+                      color: value == r.$1 ? Colors.white : T.ink)),
+                ))),
+              ),
+            )),
+        ]);
+      }),
+    ]);
+  }
+}
+
+
 /// النموذجُ يحفظ بنفسه ويبقى مفتوحًا إن رُفض: شريطُ التنبيه يظهر خلف الورقة
 /// المفتوحة فلا يُرى، فيُكتب الخطأُ فيها.
 class _MovementSheet extends StatefulWidget {
@@ -967,6 +1019,7 @@ class _MovementSheetState extends State<_MovementSheet> {
   late String _supplier = _idOf(widget.item['supplier']);
   String _date = _todayYmd();
   String _plate = '';
+  String _issueReason = '';
   String? _priceErr;
   String? _err;
   bool _busy = false;
@@ -981,10 +1034,12 @@ class _MovementSheetState extends State<_MovementSheet> {
     final price = num.tryParse(_price.text.trim()) ?? 0;
     if (qty <= 0) { setState(() => _err = tr('أدخل كمية صحيحة', 'Enter a quantity')); return; }
     if (_isIn && price <= 0) { setState(() => _priceErr = tr('اكتب سعر القطعة الواحدة', 'Enter the price per piece')); return; }
+    if (!_isIn && _issueReason.isEmpty) { setState(() => _err = tr('اختر سبب الصرف', 'Choose the issue reason')); return; }
     setState(() { _busy = true; _err = null; });
     try {
       await Api.instance.post('${widget.base}/${widget.item['_id']}/movement', {
         'type': widget.type, 'quantity': qty, 'vehiclePlate': _plate.trim(), 'reason': _reason.text.trim(),
+        if (!_isIn) 'issueReason': _issueReason,
         if (_isIn) 'unitPrice': price,
         if (_isIn) 'date': _date,
         if (_isIn && _supplier.isNotEmpty) ..._supplierBody(_supplier),
@@ -1078,11 +1133,15 @@ class _MovementSheetState extends State<_MovementSheet> {
               ),
             ),
           const SizedBox(height: 10),
-          TextField(controller: _reason, decoration: InputDecoration(labelText: tr('ملاحظة / سبب', 'Reason'))),
+          if (!isIn) ...[
+            _IssueReasonPicker(value: _issueReason, onChanged: (v) => setState(() { _issueReason = v; _err = null; })),
+            const SizedBox(height: 10),
+          ],
+          TextField(controller: _reason, decoration: InputDecoration(labelText: isIn ? tr('ملاحظة', 'Note') : tr('ملاحظة (اختياري)', 'Note (optional)'))),
           const SizedBox(height: 14),
           SizedBox(width: double.infinity, child: FilledButton(
             style: FilledButton.styleFrom(backgroundColor: isIn ? T.success : T.orange),
-            onPressed: _busy ? null : _submit,
+            onPressed: _busy || (!isIn && _issueReason.isEmpty) ? null : _submit,
             child: Text(_busy ? tr('جارٍ التسجيل…', 'Recording…') : tr('تسجيل الحركة', 'Record')))),
         ]),
       ),
@@ -1116,6 +1175,7 @@ class _BulkMovementSheetState extends State<_BulkMovementSheet> {
   };
   final _reason = TextEditingController();
   String _plate = '';
+  String _issueReason = '';
   String _supplier = '';
   String _date = _todayYmd();
   bool _busy = false;
@@ -1134,6 +1194,7 @@ class _BulkMovementSheetState extends State<_BulkMovementSheet> {
   num _n(String id) { final v = num.tryParse(_qty[id]!.text.trim()) ?? 1; return v < 1 ? 1 : v; }
 
   Future<void> _submit() async {
+    if (!_isIn && _issueReason.isEmpty) { setState(() => _err = tr('اختر سبب الصرف', 'Choose the issue reason')); return; }
     setState(() { _busy = true; _err = null; _errors = {}; });
     try {
       final r = await Api.instance.post('${widget.base}/bulk-movement', {
@@ -1148,6 +1209,7 @@ class _BulkMovementSheetState extends State<_BulkMovementSheet> {
         ],
         'vehiclePlate': _plate.trim(),
         'reason': _reason.text.trim(),
+        if (!_isIn) 'issueReason': _issueReason,
         if (_isIn) 'date': _date,
         if (_isIn && _supplier.isNotEmpty) ..._supplierBody(_supplier),
       });
@@ -1216,7 +1278,11 @@ class _BulkMovementSheetState extends State<_BulkMovementSheet> {
                 ),
               ),
               const SizedBox(height: 10),
-              TextField(controller: _reason, decoration: InputDecoration(labelText: tr('ملاحظة / سبب', 'Reason'))),
+              if (!isIn) ...[
+                _IssueReasonPicker(value: _issueReason, onChanged: (v) => setState(() { _issueReason = v; _err = null; })),
+                const SizedBox(height: 10),
+              ],
+              TextField(controller: _reason, decoration: InputDecoration(labelText: isIn ? tr('ملاحظة', 'Note') : tr('ملاحظة (اختياري)', 'Note (optional)'))),
               const SizedBox(height: 12),
               Row(children: [
                 Expanded(child: Text(tr('الكمية لكل صنف', 'Quantity per item'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12.5))),
@@ -1276,7 +1342,7 @@ class _BulkMovementSheetState extends State<_BulkMovementSheet> {
           const SizedBox(height: 8),
           SizedBox(width: double.infinity, child: FilledButton(
             style: FilledButton.styleFrom(backgroundColor: accent),
-            onPressed: _busy || short.isNotEmpty || unpriced.isNotEmpty ? null : _submit,
+            onPressed: _busy || short.isNotEmpty || unpriced.isNotEmpty || (!isIn && _issueReason.isEmpty) ? null : _submit,
             child: Text(_busy ? tr('جارٍ التسجيل…', 'Recording…') : (isIn ? tr('تسجيل الوارد', 'Record receipt') : tr('تسجيل الصادر', 'Record issue'))),
           )),
         ]),
@@ -1706,6 +1772,7 @@ class _LogSheetState extends State<_LogSheet> {
               // ولوحتُها في سجلّ المركبات حين تختلف كتابتُها
               '${(m['vehicleRegistryPlate'] ?? '').toString().isNotEmpty && m['vehicleRegistryPlate'] != m['vehiclePlate'] ? ' (${m['vehicleRegistryPlate']})' : ''}',
           if ((m['performedByName'] ?? '').toString().isNotEmpty) m['performedByName'].toString(),
+          if (storeIssueReasonLabel(m['issueReason']).isNotEmpty) storeIssueReasonLabel(m['issueReason']),
           if ((m['reason'] ?? '').toString().isNotEmpty) m['reason'].toString(),
         ].join(' · '), style: const TextStyle(fontSize: 11)),
         if (reversed)

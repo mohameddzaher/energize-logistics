@@ -3023,7 +3023,10 @@ exports.getVehicleAnalytics = async (req, res) => {
         // مطابقة «21082».
         Ls2StoreMovement.find({ type: 'out', reversed: { $ne: true }, vehiclePlate: digitsRx })
           .sort({ createdAt: -1 }).limit(50)
-          .select('itemName quantity reason createdAt performedByName').lean().catch(() => []),
+          .select('itemName quantity reason issueReason createdAt performedByName').lean()
+          // وسببُ الصرف باسمه — «صيانة دورية / حادث …» يُقرأ في ملفّ المركبة.
+          .then((rows) => rows.map((m) => ({ ...m, issueReasonLabel: require('../utils/storeIssueReasons').issueReasonLabel(m.issueReason) })))
+          .catch(() => []),
       ]);
 
       tech = {

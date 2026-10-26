@@ -6,6 +6,11 @@ const logAudit = require('../utils/auditLogger');
 const { resolveLs2Plate, resolveLs2Plates } = require('../services/ls2VehicleLink');
 
 // المسحُ قبل الإعلان، وللقسم كلِّه: حركةُ مخزنٍ تُقرأ في لوحة القسم وملفّ المركبة أيضًا.
+const { ISSUE_REASON_KEYS, ISSUE_REASONS } = require('../utils/storeIssueReasons');
+// الصادرُ لا يُسجَّل بلا سببه — يُقرأ في ملفّ المركبة (utils/storeIssueReasons).
+const issueReasonOf = (body) => String(body?.issueReason || '').trim();
+const ISSUE_REASON_ERROR = { code: 'ISSUE_REASON_REQUIRED', message: 'اختر سبب الصرف: صيانة دورية، حادث، صيانة وقائية، أو عطل على الطريق' };
+exports.issueReasons = (req, res) => res.json({ reasons: ISSUE_REASONS });
 const emit = () => { require('../utils/ls2Touch').touchLs2({ store: true }); };
 
 /**
@@ -236,6 +241,8 @@ exports.addMovement = async (req, res) => {
     const qty = Math.abs(Number(req.body.quantity) || 0);
     if (!type) return res.status(400).json({ message: 'نوع الحركة غير صحيح' });
     if (qty <= 0) return res.status(400).json({ message: 'أدخل كمية صحيحة' });
+    const issueReason = type === 'out' ? issueReasonOf(req.body) : '';
+    if (type === 'out' && !ISSUE_REASON_KEYS.includes(issueReason)) return res.status(400).json(ISSUE_REASON_ERROR);
     if (type === 'out' && qty > item.quantity) {
       return res.status(400).json({ message: `الكمية المطلوبة (${qty}) أكبر من الرصيد المتاح (${item.quantity})` });
     }
@@ -259,7 +266,7 @@ exports.addMovement = async (req, res) => {
     const mv = await Ls2StoreMovement.create({
       unitPrice: price, ...(sup || {}), date,
       item: item._id, itemName: item.name, warehouse: item.warehouse || 'heavy', type, quantity: qty,
-      vehiclePlate, vehicleMaster, reason: (req.body.reason || '').trim(),
+      vehiclePlate, vehicleMaster, reason: (req.body.reason || '').trim(), issueReason,
       balanceAfter: item.quantity, performedBy: req.user?._id, performedByName: req.user ? `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim() : '',
     });
     emit();
@@ -313,6 +320,8 @@ exports.addBulkMovement = async (req, res) => {
     const fallback = Math.max(1, Number(req.body?.quantityEach) || 1);
     const vehiclePlate = (req.body?.vehiclePlate || '').trim();
     const reason = (req.body?.reason || '').trim();
+    const issueReason = type === 'out' ? issueReasonOf(req.body) : '';
+    if (type === 'out' && !ISSUE_REASON_KEYS.includes(issueReason)) return res.status(400).json(ISSUE_REASON_ERROR);
     const sup = type === 'in' ? await resolveSupplier(req, req.body?.supplier, req.body?.supplierName) : null;
     const date = dayOf(req.body?.date) || todayKey();
 
@@ -372,7 +381,7 @@ exports.addBulkMovement = async (req, res) => {
       movements.push({
         unitPrice: type === 'in' ? prices.get(id) : null, ...(sup || {}), date,
         item: it._id, itemName: it.name, warehouse: it.warehouse || 'heavy', type, quantity: qty,
-        vehiclePlate, vehicleMaster: vmFor[it.warehouse || 'heavy'] || null, reason, balanceAfter: it.quantity, ...actor(req),
+        vehiclePlate, vehicleMaster: vmFor[it.warehouse || 'heavy'] || null, reason, issueReason, balanceAfter: it.quantity, ...actor(req),
       });
     }
     const created = await Ls2StoreMovement.insertMany(movements);
@@ -477,6 +486,7 @@ exports.listMovements = async (req, res) => {
     const filter = { ...whFilter(whOf(req)) };
     if (req.query.item) filter.item = req.query.item;
     if (req.query.type) filter.type = req.query.type;
+    if (ISSUE_REASON_KEYS.includes(String(req.query.issueReason || ''))) filter.issueReason = req.query.issueReason;
     if (/^[0-9a-f]{24}$/i.test(String(req.query.supplier || ''))) filter.supplier = req.query.supplier;
     // اليومُ يومُ الحركة (`date`)، وما سُجِّل قبل الخانة يُقرأ من لحظة تسجيله.
     const from = dayOf(req.query.from); const to = dayOf(req.query.to);

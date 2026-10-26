@@ -54,6 +54,9 @@ const storeMovementSchema = new mongoose.Schema({
   // مركبتُها في سجلّ المركبات إن عُرفت — النصُّ يبقى كما كُتب (services/ls2VehicleLink).
   vehicleMaster: { type: mongoose.Schema.Types.ObjectId, ref: 'VehicleMaster', default: null, index: true },
   reason: { type: String, default: '' },
+  // سببُ الصرف — إجباريٌّ على كلّ صادرٍ جديد (utils/storeIssueReasons). فارغٌ في
+  // الوارد وفي الصادر القديم قبل الخانة.
+  issueReason: { type: String, enum: ['', ...require('../utils/storeIssueReasons').ISSUE_REASON_KEYS], default: '', index: true },
   balanceAfter: { type: Number, default: 0 },                 // الرصيد بعد الحركة
   performedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   performedByName: { type: String, default: '' },

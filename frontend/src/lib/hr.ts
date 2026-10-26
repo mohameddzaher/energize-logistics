@@ -318,7 +318,7 @@ export const ASSET_TYPES: { key: string; en: string; ar: string }[] = [
   { key: 'laptop', en: 'Laptop', ar: 'حاسب محمول' },
   { key: 'desktop', en: 'Desktop', ar: 'حاسب مكتبي' },
   { key: 'phone', en: 'Phone', ar: 'هاتف' },
-  { key: 'tablet', en: 'Tablet', ar: 'جهاز لوحي' },
+  { key: 'tablet', en: 'Tablet', ar: 'تابلت' },
   { key: 'sim', en: 'SIM Card', ar: 'شريحة اتصال' },
   { key: 'monitor', en: 'Monitor', ar: 'شاشة' },
   { key: 'keyboard', en: 'Keyboard', ar: 'لوحة مفاتيح' },

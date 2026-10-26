@@ -92,6 +92,7 @@ const lightStore = (handler) => (req, res) => {
 router.get('/store', lightStore(store.listItems));
 router.get('/store/dashboard', lightStore(store.dashboard));
 router.get('/store/movements', lightStore(store.listMovements));
+router.get('/store/issue-reasons', lightStore(store.issueReasons));
 router.post('/store', authorize(...EDIT), lightStore(store.createItem));
 router.post('/store/bulk-create', authorize(...EDIT), lightStore(store.createItemsBulk));
 router.get('/suppliers', lightStore(store.listSuppliers));

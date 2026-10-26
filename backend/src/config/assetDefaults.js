@@ -15,7 +15,7 @@ const TYPES = [
   { key: 'laptop', nameEn: 'Laptop', nameAr: 'حاسب محمول' },
   { key: 'desktop', nameEn: 'Desktop', nameAr: 'حاسب مكتبي' },
   { key: 'phone', nameEn: 'Phone', nameAr: 'هاتف' },
-  { key: 'tablet', nameEn: 'Tablet', nameAr: 'جهاز لوحي' },
+  { key: 'tablet', nameEn: 'Tablet', nameAr: 'تابلت' },
   { key: 'sim', nameEn: 'SIM Card', nameAr: 'شريحة اتصال' },
   { key: 'monitor', nameEn: 'Monitor', nameAr: 'شاشة' },
   { key: 'keyboard', nameEn: 'Keyboard', nameAr: 'لوحة مفاتيح' },

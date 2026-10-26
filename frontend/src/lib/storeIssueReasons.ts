@@ -1,0 +1,11 @@
+// سببُ الصرف من المخزن — نظيرُ backend/src/utils/storeIssueReasons.js حرفًا.
+export const ISSUE_REASONS: { key: string; ar: string; en: string }[] = [
+  { key: 'periodic_maintenance', ar: 'صيانة دورية', en: 'Periodic maintenance' },
+  { key: 'accident', ar: 'حادث', en: 'Accident' },
+  { key: 'preventive_maintenance', ar: 'صيانة وقائية', en: 'Preventive maintenance' },
+  { key: 'roadside_breakdown', ar: 'عطل على الطريق', en: 'Roadside breakdown' },
+];
+export const issueReasonLabel = (key: string | undefined, ar: boolean) => {
+  const r = ISSUE_REASONS.find((x) => x.key === key);
+  return r ? (ar ? r.ar : r.en) : '';
+};

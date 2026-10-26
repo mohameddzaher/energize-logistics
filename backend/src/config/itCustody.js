@@ -54,7 +54,17 @@ const BUCKETS = [
     nameAr: 'موبايلات',
     nameEn: 'Phones',
     canonicalType: 'phone',
-    types: ['phone', 'tablet'],
+    types: ['phone'],
+  },
+  // ── التابلت دلوٌ وحدَه (٢٠٢٦/١٠/٢٦: «زوّد خيار تابلت») ─────────────────────
+  // كان نوعًا مخبوءًا في دلو الموبايلات، ومن يضيف من الدلو يُكتب صنفُه «موبايل»
+  // — فلا طريقَ لتسجيل تابلت. صار دلوًا يُضاف منه، ويُعَدّ وحدَه.
+  {
+    key: 'tablets',
+    nameAr: 'تابلت',
+    nameEn: 'Tablets',
+    canonicalType: 'tablet',
+    types: ['tablet'],
   },
   {
     key: 'monitors',
@@ -113,7 +123,7 @@ const TYPE_NAME_AR = {
   laptop: 'لابتوب',
   desktop: 'حاسب مكتبي',
   phone: 'موبايل',
-  tablet: 'جهاز لوحي',
+  tablet: 'تابلت',
   monitor: 'شاشة',
   keyboard: 'كيبورد',
   mouse: 'ماوس',

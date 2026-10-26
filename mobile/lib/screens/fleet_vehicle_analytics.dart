@@ -10,6 +10,7 @@ import 'fleet_customer_profile.dart';
 import 'fleet_shipment_details.dart';
 import 'ls2_vehicle_detail.dart';
 import 'vehicle_registry.dart';
+import 'ls2_store.dart' show storeIssueReasonLabel;
 
 /// تحليل سيارةٍ واحدة عبر فترة — نفس شاشة الويب /system/fleet/vehicles/[id]:
 /// الفترة تُختار، وكل رقمٍ يخصّ هذه السيارة وحدها. والأرقام تُجمَّع في الخادم
@@ -602,7 +603,11 @@ class _FleetVehicleAnalyticsScreenState extends State<FleetVehicleAnalyticsScree
               style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: T.inkSoft)),
           const SizedBox(height: 4),
           for (final m in parts.take(20))
-            _kv((m['itemName'] ?? '').toString(), '×${m['quantity'] ?? ''} · ${_fmtD(m['createdAt'])}'),
+            // وسببُ الصرف بجوار القطعة: صيانة دورية / حادث / وقائية / عطل على الطريق.
+            _kv(
+              '${m['itemName'] ?? ''}${storeIssueReasonLabel(m['issueReason']).isNotEmpty ? ' — ${storeIssueReasonLabel(m['issueReason'])}' : ''}',
+              '×${m['quantity'] ?? ''} · ${_fmtD(m['createdAt'])}',
+            ),
         ],
         if (services.isNotEmpty) ...[
           const SizedBox(height: 10),

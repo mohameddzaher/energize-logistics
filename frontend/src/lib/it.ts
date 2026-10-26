@@ -214,7 +214,7 @@ export const CUSTODY_TYPES: Record<string, Style> = {
   laptop: { en: 'Laptop', ar: 'حاسب محمول', bg: 'bg-indigo-500/15', text: 'text-indigo-700' },
   desktop: { en: 'Desktop', ar: 'حاسب مكتبي', bg: 'bg-indigo-500/15', text: 'text-indigo-700' },
   phone: { en: 'Phone', ar: 'هاتف', bg: 'bg-teal-500/15', text: 'text-teal-700' },
-  tablet: { en: 'Tablet', ar: 'جهاز لوحي', bg: 'bg-teal-500/15', text: 'text-teal-700' },
+  tablet: { en: 'Tablet', ar: 'تابلت', bg: 'bg-teal-500/15', text: 'text-teal-700' },
   sim: { en: 'SIM Card', ar: 'شريحة اتصال', bg: 'bg-cyan-500/15', text: 'text-cyan-700' },
   monitor: { en: 'Monitor', ar: 'شاشة', bg: 'bg-sky-500/15', text: 'text-sky-700' },
   keyboard: { en: 'Keyboard', ar: 'لوحة مفاتيح', bg: 'bg-emerald-500/15', text: 'text-emerald-700' },
@@ -254,7 +254,8 @@ export const CUSTODY_BUCKETS: CustodyBucket[] = [
   // `keyboard_mouse` يُقرأ في دلو الكيبورد بشارته «ماوس وكيبورد» ولا يُكتب.
   { key: 'mice', ar: 'ماوس', en: 'Mouse', canonicalType: 'mouse', types: ['mouse'] },
   { key: 'keyboards', ar: 'كيبورد', en: 'Keyboard', canonicalType: 'keyboard', types: ['keyboard', 'keyboard_mouse'] },
-  { key: 'phones', ar: 'موبايلات', en: 'Phones', canonicalType: 'phone', types: ['phone', 'tablet'] },
+  { key: 'phones', ar: 'موبايلات', en: 'Phones', canonicalType: 'phone', types: ['phone'] },
+  { key: 'tablets', ar: 'تابلت', en: 'Tablets', canonicalType: 'tablet', types: ['tablet'] },
   { key: 'monitors', ar: 'شاشات', en: 'Monitors', canonicalType: 'monitor', types: ['monitor'] },
   { key: 'other', ar: 'أخرى', en: 'Other', canonicalType: 'other', types: ['laptop_bag', 'charger', 'cable', 'headset', 'printer', 'router', 'access_card', 'accessory', 'other'] },
 ];
@@ -274,7 +275,7 @@ export const bucketLabel = (key: string, lang: Lang) => {
 // backend/src/config/itCustody.js — الشاشة تعرض معاينة للاسم قبل الحفظ، وأي
 // اختلاف بين النسختين يجعل المعاينة تَعِد باسم غير الذي يُحفظ.
 export const TYPE_NAME_AR: Record<string, string> = {
-  laptop: 'لابتوب', desktop: 'حاسب مكتبي', phone: 'موبايل', tablet: 'جهاز لوحي',
+  laptop: 'لابتوب', desktop: 'حاسب مكتبي', phone: 'موبايل', tablet: 'تابلت',
   monitor: 'شاشة', keyboard: 'كيبورد', mouse: 'ماوس', keyboard_mouse: 'ماوس وكيبورد',
   headset: 'سماعة رأس', printer: 'طابعة', router: 'راوتر', charger: 'شاحن',
   cable: 'كابل', laptop_bag: 'شنطة لابتوب', accessory: 'ملحق',

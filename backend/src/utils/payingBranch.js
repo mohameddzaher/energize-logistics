@@ -36,10 +36,32 @@ async function arabicBranchName(branchId) {
   const b = await Branch.findById(branchId).select('name').lean();
   if (!b?.name) return '';
 
-  const rows = await Lookup.find({ type: 'workflow_paying_branch' }).select('nameEn nameAr').lean();
-  const key = foldEn(b.name);
-  const hit = rows.find((r) => foldEn(r.nameEn) === key);
+  const rows = await Lookup.find({ type: 'workflow_paying_branch', deleted: { $ne: true } }).select('key nameEn nameAr').lean();
+  return matchPayingBranch(b.name, rows);
+}
+
+/** يطوي الاسمَ العربيّ: التشكيل والتاء المربوطة والألف والمسافات. */
+const foldAr = (v) => String(v || '')
+  .replace(/[\u064B-\u0652\u0640]/g, '')
+  .replace(/[أإآ]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي')
+  .replace(/\s+/g, '');
+
+/**
+ * ── النقلُ الثقيل فرعٌ كغيره (٢٠٢٦/١٠/٢٦) ─────────────────────────────────
+ * «لما المحفظة بتتم كيوزر النقل الثقيل مبيتكتبش الفرع في الفرع المسدد». لم يكن
+ * في القائمة المرجعيّة نظيرٌ له، وسجلُّه قد يُكتب «Heavy Trucks» أو «Heavy
+ * Transport» أو بالعربيّة — فيُطابَق بأيٍّ منها إلى صفّ `heavy_trucks`.
+ */
+const isHeavy = (name) => /heavy/i.test(String(name || '')) || foldAr(name).includes('ثقيل');
+
+/** اسمُ الفرع (إنجليزيًّا أو عربيًّا) → الاسمُ العربيُّ في القائمة، أو ''. */
+function matchPayingBranch(branchName, rows) {
+  const key = foldEn(branchName);
+  const ar = foldAr(branchName);
+  const hit = (key && rows.find((r) => foldEn(r.nameEn) === key))
+    || (ar && rows.find((r) => foldAr(r.nameAr) === ar))
+    || (isHeavy(branchName) && rows.find((r) => r.key === 'heavy_trucks' || isHeavy(r.nameEn) || isHeavy(r.nameAr)));
   return hit?.nameAr || '';
 }
 
-module.exports = { arabicBranchName, foldEn };
+module.exports = { arabicBranchName, matchPayingBranch, foldEn, foldAr };

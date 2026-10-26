@@ -9,6 +9,7 @@ import '../services/live.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import '../ui/stat_grid.dart';
 import 'ops_analytics_panel.dart';
 import 'shipment_order_create.dart';
 import 'shipment_order_detail.dart';
@@ -137,9 +138,9 @@ class _ShipmentOrdersDashboardScreenState extends State<ShipmentOrdersDashboardS
             ErrorRetry(message: _error!, onRetry: _load)
           else ...[
             // ── اليومُ والشهر ──
-            GridView.count(
-              crossAxisCount: 2, shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
-              mainAxisSpacing: 8, crossAxisSpacing: 8, childAspectRatio: 1.55,
+            // الصفُّ يطول مع النصّ (الخطُّ الكبير) — النسبةُ الثابتة كانت تقصّه.
+            StatGrid(
+              spacing: 8, minColumns: 2, maxColumns: 4,
               children: [
                 _tile('${td['orders'] ?? 0}', tr('شحنات اليوم', 'Today'), sub: tr('اضغط لعرضها', 'tap to open'), color: T.orange,
                     onTap: () => _openList(from: _iso(DateTime.now()))),
@@ -195,9 +196,9 @@ class _ShipmentOrdersDashboardScreenState extends State<ShipmentOrdersDashboardS
             ],
             // ── السجلُّ الذي يُحمَّل منه ──
             const SizedBox(height: 10),
-            GridView.count(
-              crossAxisCount: 2, shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
-              mainAxisSpacing: 8, crossAxisSpacing: 8, childAspectRatio: 1.7,
+            // الصفُّ يطول مع النصّ (الخطُّ الكبير) — النسبةُ الثابتة كانت تقصّه.
+            StatGrid(
+              spacing: 8, minColumns: 2, maxColumns: 4,
               children: [
                 _tile('${fleet['suppliers'] ?? 0}', tr('مورّد', 'Suppliers'), onTap: _openFleet),
                 _tile('${fleet['vehicles'] ?? 0}', tr('شاحنة في السجلّ', 'Trucks on file'), onTap: _openFleet,

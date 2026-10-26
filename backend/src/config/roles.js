@@ -71,7 +71,14 @@ const SECTION_ROLES = [
 
   { section: 'Shipment Orders',
     manager: { key: 'shipment_orders_manager', ar: 'مدير طلبات الشحنات', en: 'Shipment Orders Manager' },
-    staff: [{ key: 'shipment_orders_staff', ar: 'موظف طلبات الشحنات', en: 'Shipment Orders Team' }] },
+    staff: [
+      { key: 'shipment_orders_staff', ar: 'موظف طلبات الشحنات', en: 'Shipment Orders Team' },
+      // «المتابعة» (صاحبُ الشركة، ٢٠٢٦/١٠/٢٦): يتابع الشحناتِ من الجوّال — يغيّر
+      // حالتَها بتفاصيلها ويتّصل ويكتب ملاحظة. شاشتُه الشحناتُ بطاقاتٍ أوّلًا.
+      { key: 'shipment_orders_followup', ar: 'المتابعة', en: 'Shipment Follow-up',
+        distinct: 'يتابع الشحناتِ القائمة: يغيّر حالتَها بتفاصيلها (سببُ الإلغاء، رفعُ السند)، '
+          + 'ويتّصل بالسائق ويكتب ملاحظةَ متابعة. وشاشتُه الشحناتُ بطاقاتٍ كبيرةً للجوّال أوّلًا.' },
+    ] },
 
   { section: 'Fleet Management',
     manager: { key: 'fleet_manager', ar: 'مدير الأسطول', en: 'Fleet Manager' },

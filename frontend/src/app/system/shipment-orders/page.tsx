@@ -12,7 +12,7 @@ import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { useDialog } from '@/components/system/DialogProvider';
 import { ColumnFilter } from '@/components/ColumnFilter';
-import { PackageSearch, Plus, Pencil, Eye, FileDown, Loader2, RefreshCw, X, Check } from 'lucide-react';
+import { PackageSearch, Plus, Pencil, Eye, FileDown, Loader2, RefreshCw, X, Check, MessageSquareText, SlidersHorizontal } from 'lucide-react';
 import {
   Spinner, PageHeader, SearchInput, PrimaryButton, StatCard, Select, ErrorNotice,
 } from '@/components/hr/HRKit';
@@ -26,6 +26,11 @@ import { useLatestRequest } from '@/hooks/useLatestRequest';
 import ScrollX from '@/components/system/ScrollX';
 import ManagedSelect from '@/components/system/ManagedSelect';
 import { paymentKindLabel } from '@/lib/paymentKind';
+import {
+  OrderCard, ViewSwitcher, ViewMode, VIEW_MODES, VIEW_PREF_KEY, VIEW_PREF_READ_KEY,
+  lastFollowUp, relTime, driverMessage,
+} from '@/components/shipment-orders/OrderViews';
+import NoteModal from '@/components/shipment-orders/NoteModal';
 
 
 // ── حالاتٌ لا تُقال بلا ورقة ────────────────────────────────────────────────
@@ -83,7 +88,7 @@ const EMPTY_OPTIONS: { value: string; count: number }[] = [];
  * ما يغيّره المستخدم.
  */
 function ShipmentOrdersInner() {
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
   const sp = useSearchParams();
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
@@ -112,6 +117,13 @@ function ShipmentOrdersInner() {
   const toggleStatus = (k: string) => {
     setStatuses((p) => (p.includes(k) ? p.filter((x) => x !== k) : [...p, k]));
     setPage(1);
+    revealList();
+  };
+  /** بطاقةٌ تُضغَط: تُفلتِر ثمّ تُنزِل إلى القائمة. */
+  const pickStatuses = (next: string[]) => { setStatuses(next); setPage(1); revealList(); };
+  const revealList = () => {
+    if (typeof window === 'undefined') return;
+    window.requestAnimationFrame(() => listRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
   };
   // ── الخاصّ بنا أم المنصّة؟ ────────────────────────────────────────────────
   // شحناتُ المنصّة تحمل رقمَ كشف تخريجٍ حقيقيًّا يُحاسَب عليه، وشحناتُنا —
@@ -168,6 +180,25 @@ function ShipmentOrdersInner() {
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkProgress, setBulkProgress] = useState('');
+
+  // ── طريقةُ العرض تُحفَظ في الحساب ────────────────────────────────────────
+  // تُقرأ من المستخدم (uiPrefs) فتتبعه على كلّ جهاز، وتُبدَّل فورًا وتُحفَظ في
+  // الخلفية. وبلا اختيارٍ محفوظ: «المتابعة» بطاقاتٌ (جوّالُه أوّلًا)، وغيرُه جدول.
+  const [viewLocal, setViewLocal] = useState<ViewMode | null>(null);
+  const savedView = String(user?.uiPrefs?.[VIEW_PREF_READ_KEY] || '') as ViewMode;
+  const view: ViewMode = viewLocal
+    ?? (VIEW_MODES.includes(savedView) ? savedView : (String(user?.role || '') === 'shipment_orders_followup' ? 'cards' : 'table'));
+  const changeView = (v: ViewMode) => {
+    if (v === view) return;
+    setViewLocal(v);
+    api.patch('/api/auth/me/prefs', { key: VIEW_PREF_KEY, value: v })
+      .then(() => { refreshUser().catch(() => {}); })
+      .catch(() => notify(ar ? 'تعذّر حفظ طريقة العرض في حسابك — ستبقى لهذه الجلسة.' : 'Could not save the view to your account — kept for this session.', 'error'));
+  };
+  // ملاحظةُ المتابعة السريعة — من البطاقة أو من الجدول.
+  const [noteFor, setNoteFor] = useState<ShipmentOrder | null>(null);
+  // البطاقةُ تُضغَط فيُنزَل إلى القائمة: «في الطريق» يُرى تحتها لا فوقَها.
+  const listRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     const t = setTimeout(() => { setDebounced(search); setPage(1); }, 300);
@@ -252,7 +283,7 @@ function ShipmentOrdersInner() {
       setError('');
     } catch (e: any) { setError(e?.message || 'Request failed'); }
     setLoading(false);
-  }, [debounced, statusFilter, sourceFilter, customerFilter, fromDate, toDate, page, colParams, guard]);
+  }, [debounced, statusFilter, sourceFilter, customerFilter, fromDate, toDate, noteFilter, page, colParams, guard]);
 
   useEffect(() => { load(); }, [load]);
   useSocket('shipmentOrders:updated', useCallback(() => load(), [load]));
@@ -271,6 +302,16 @@ function ShipmentOrdersInner() {
       load();
     } catch (e: any) { notify(e.message, 'error'); }
     setBusyId(null);
+  };
+
+  // الملاحظةُ تظهر في بطاقتها فورًا (السجلُّ كما ردّه الخادم)، ثمّ يُعاد التحميل —
+  // وبقيّةُ الشاشات تتحدّث بخبر shipmentOrders:updated الذي يُطلقه الخادم.
+  const onNoteSaved = (u: ShipmentOrder) => {
+    if (!u?._id) return;
+    const merge = (o: ShipmentOrder) => (o._id === u._id ? { ...o, statusLog: u.statusLog, status: u.status } : o);
+    setOrders((p) => p.map(merge));
+    setDetail((d) => (d ? merge(d) : d));
+    load();
   };
 
   // ── ولا يُمحى كشفٌ حدث ────────────────────────────────────────────────────
@@ -368,6 +409,23 @@ function ShipmentOrdersInner() {
     ...(hasActiveFilters ? [{ key: 'all', label: scope.all, resolve: () => fetchForExport(false) }] : []),
   ];
 
+  // ── على الجوّال: شريطُ الحالات يُمرَّر أفقيًّا، والفلاترُ الثانويّة خلف زرّ ──
+  // كانت أحدَ عشرَ مربّعًا وثلاثُ بطاقاتٍ تملأ الشاشةَ الأولى كلَّها، فلا تُرى
+  // شحنةٌ قبل تمريرٍ طويل. والحالةُ المختارةُ تُمرَّر إلى الظاهر من الشريط.
+  const [showFilters, setShowFilters] = useState(false);
+  const chipStripRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const strip = chipStripRef.current;
+    if (!strip || !statuses.length) return;
+    const chip = strip.querySelector<HTMLElement>(`[data-chip="${statuses[statuses.length - 1]}"]`);
+    if (!chip) return;
+    const cr = chip.getBoundingClientRect();
+    const sr = strip.getBoundingClientRect();
+    // بالفرق بين المستطيلين لا بـoffsetLeft — يصحّ في الاتّجاهين (RTL وLTR).
+    strip.scrollBy({ left: (cr.left - sr.left) - (sr.width - cr.width) / 2, behavior: 'smooth' });
+  }, [statuses]);
+  const secondaryActive = [noteFilter, sourceFilter, customerFilter, fromDate, toDate].filter(Boolean).length;
+
   if (loading) return <Spinner />;
 
   // المجموعتان تُكتبان مرّةً: البطاقةُ تعدُّ ما تفلتره هي نفسُها.
@@ -379,11 +437,11 @@ function ShipmentOrdersInner() {
   const isSet = (keys: string[]) => keys.length === statuses.length && keys.every((k) => statuses.includes(k));
 
   return (
-    <div className="space-y-6" dir={isRTL ? 'rtl' : 'ltr'}>
+    <div className="space-y-3 sm:space-y-6" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader
         icon={<PackageSearch className="w-5 h-5" />}
         title={ar ? 'طلبات الشحنات' : 'Shipment Orders'}
-        subtitle={ar ? 'إنشاء الشحنات ومتابعتها داخل نظامنا — قسم تجريبي مستقل' : 'Create and track shipments natively — standalone trial'}
+        subtitle={<span className="hidden sm:inline">{ar ? 'إنشاء الشحنات ومتابعتها داخل نظامنا — قسم تجريبي مستقل' : 'Create and track shipments natively — standalone trial'}</span>}
       >
         {picked.size > 0 && (
           <button type="button" onClick={downloadPicked} disabled={bulkBusy}
@@ -408,8 +466,29 @@ function ShipmentOrdersInner() {
           الرقمُ فوق الاسم يُقرأ من بعيد، والضغطُ ينتقي — وتنتقي أكثرَ من واحدة.
           والأعدادُ محسوبةٌ تحت بقيّة الفلاتر لا تحت الحالة، فمن ضغط «متأخرة»
           يظلّ يرى كم «في الطريق» ليضمّها. */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
-        <button type="button" onClick={() => { setStatuses([]); setPage(1); }}
+      {/* الجوّال: شريطٌ واحدٌ يُمرَّر أفقيًّا — الضغطُ نفسُه والتمييزُ نفسُه. */}
+      <div ref={chipStripRef} className="sm:hidden flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <button type="button" onClick={() => pickStatuses([])}
+          className={`shrink-0 inline-flex items-center gap-1.5 rounded-full px-3 min-h-[36px] text-xs font-semibold border whitespace-nowrap ${
+            statuses.length === 0 ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-700 border-slate-200'}`}>
+          {ar ? 'الكل' : 'All'}<span className="tabular-nums opacity-70">{total}</span>
+        </button>
+        {statusVocab.map((s) => {
+          const on = statuses.includes(s.key);
+          return (
+            <button key={s.key} data-chip={s.key} type="button" onClick={() => toggleStatus(s.key)}
+              className={`shrink-0 inline-flex items-center gap-1.5 rounded-full px-3 min-h-[36px] text-xs font-semibold border whitespace-nowrap ${
+                on ? 'text-white border-transparent' : 'bg-white text-slate-700 border-slate-200'}`}
+              style={on ? { background: s.color } : undefined}>
+              <span className="w-1.5 h-1.5 rounded-full" style={{ background: on ? '#fff' : s.color }} />
+              {vocabLabel(s, lang as Lang)}
+              <span className="tabular-nums opacity-70">{stats?.byStatus?.[s.key] ?? 0}</span>
+            </button>
+          );
+        })}
+      </div>
+      <div className="hidden sm:grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
+        <button type="button" onClick={() => pickStatuses([])}
           className={`text-start rounded-xl p-3 border transition-all ${statuses.length === 0 ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-700 border-slate-200 hover:border-slate-300'}`}>
           <p className="text-xl font-bold tabular-nums">{total}</p>
           <p className="text-[11px] mt-0.5">{ar ? 'كل الشحنات' : 'All shipments'}</p>
@@ -430,7 +509,7 @@ function ShipmentOrdersInner() {
         })}
       </div>
       {statuses.length > 0 && (
-        <div className="text-xs text-slate-500">
+        <div className="hidden sm:block text-xs text-slate-500">
           {ar ? 'محدد' : 'Selected'}: {statuses.length} · {ar ? 'إجمالي' : 'total'} {total}
           <button type="button" onClick={() => { setStatuses([]); setPage(1); }} className="ms-2 text-[#f37121] hover:underline">{ar ? 'مسح' : 'clear'}</button>
         </div>
@@ -440,17 +519,31 @@ function ShipmentOrdersInner() {
           «إجمالي البيع» و«هامش الربح» كانا فوق شاشةٍ يفتحها فريقُ التشغيل كلَّ
           يوم — رقمان ماليّان لا يُقرآن هنا ولا يُتصرَّف بهما، ومكانُهما صفحةُ
           التحليلات. */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+      {/* الجوّال: صفٌّ واحدٌ من ثلاث بطاقاتٍ صغيرة بلا أسطر تلميح. */}
+      <div className="sm:hidden grid grid-cols-3 gap-2">
+        {([
+          [ar ? 'الإجمالي' : 'Total', total, 'text-[#f37121]', statuses.length === 0, () => pickStatuses([])],
+          [ar ? 'قيد التنفيذ' : 'In flight', inFlight, 'text-blue-600', isSet(IN_FLIGHT_KEYS), () => pickStatuses(isSet(IN_FLIGHT_KEYS) ? [] : IN_FLIGHT_KEYS)],
+          [ar ? 'مكتملة' : 'Done', done, 'text-emerald-600', isSet(DONE_KEYS), () => pickStatuses(isSet(DONE_KEYS) ? [] : DONE_KEYS)],
+        ] as [string, number, string, boolean, () => void][]).map(([label, value, accent, on, click]) => (
+          <button key={label} type="button" onClick={click}
+            className={`min-w-0 text-start rounded-xl border bg-white px-2.5 py-2 ${on ? 'border-[#f37121] ring-1 ring-[#f37121]/40' : 'border-slate-200'}`}>
+            <p className="text-[11px] text-slate-500 truncate">{label}</p>
+            <p className={`text-base font-bold tabular-nums leading-tight ${accent}`}>{value}</p>
+          </button>
+        ))}
+      </div>
+      <div className="hidden sm:grid grid-cols-2 sm:grid-cols-3 gap-3">
         {/* والبطاقةُ تضغط بطاقاتِ الحالات تحتها: «قيد التنفيذ» ثلاثُ حالاتٍ
             مجموعة، و«وصلت/مكتملة» أربع — والفلترُ يقبل عدّةً أصلًا. */}
         <StatCard label={ar ? 'إجمالي الشحنات' : 'Total shipments'} value={total} accent="text-[#f37121]"
-          onClick={() => { setStatuses([]); setPage(1); }} active={statuses.length === 0}
+          onClick={() => pickStatuses([])} active={statuses.length === 0}
           hint={ar ? 'اضغط لعرض الكل' : 'tap to show all'} />
         <StatCard label={ar ? 'قيد التنفيذ' : 'In flight'} value={inFlight} accent="text-blue-600"
-          onClick={() => { setStatuses(isSet(IN_FLIGHT_KEYS) ? [] : IN_FLIGHT_KEYS); setPage(1); }}
+          onClick={() => pickStatuses(isSet(IN_FLIGHT_KEYS) ? [] : IN_FLIGHT_KEYS)}
           active={isSet(IN_FLIGHT_KEYS)} hint={ar ? 'اضغط لعرضها' : 'tap to filter'} />
         <StatCard label={ar ? 'وصلت / مكتملة' : 'Arrived / done'} value={done} accent="text-emerald-600"
-          onClick={() => { setStatuses(isSet(DONE_KEYS) ? [] : DONE_KEYS); setPage(1); }}
+          onClick={() => pickStatuses(isSet(DONE_KEYS) ? [] : DONE_KEYS)}
           active={isSet(DONE_KEYS)} hint={ar ? 'اضغط لعرضها' : 'tap to filter'} />
       </div>
 
@@ -459,6 +552,18 @@ function ShipmentOrdersInner() {
           <SearchInput value={search} onChange={setSearch}
             placeholder={ar ? 'بحث برقم البوليصة أو كشف التخريج أو العميل أو المورّد أو السائق أو المدينة…' : 'waybill, graduation no., customer, supplier, driver, city…'} />
         </div>
+        <div className="flex items-center gap-2 w-full sm:w-auto">
+          <ViewSwitcher value={view} onChange={changeView} ar={ar} />
+          {/* الجوّال: الفلاترُ الثانويّة خلف زرّ، وعددُ المفعَّل منها عليه. */}
+          <button type="button" onClick={() => setShowFilters((v) => !v)} aria-expanded={showFilters}
+            className={`sm:hidden ms-auto inline-flex items-center gap-1.5 min-h-[38px] px-3 rounded-lg border text-[13px] font-semibold ${
+              showFilters || secondaryActive ? 'border-[#f37121] text-[#f37121] bg-orange-50' : 'border-slate-200 text-slate-600 bg-white'}`}>
+            <SlidersHorizontal className="w-4 h-4" />
+            {ar ? 'فلاتر' : 'Filters'}
+            {secondaryActive > 0 && <span className="tabular-nums">{secondaryActive}</span>}
+          </button>
+        </div>
+        <div className={`${showFilters ? 'flex flex-wrap gap-3 items-center w-full' : 'hidden'} sm:contents`}>
         {/* ── مصدرُ الشحنة ─────────────────────────────────────────────────
             أزرارٌ لا قائمةٌ منسدلة: هذا سؤالٌ يُسأل في كلّ جلسة، وكلُّ زرٍّ
             يحمل عددَه تحت بقيّة الفلاتر — فيُعرف الحجمُ قبل الضغط. */}
@@ -504,8 +609,43 @@ function ShipmentOrdersInner() {
           <input type="date" value={toDate} onChange={(e) => { setToDate(e.target.value); setPage(1); }}
             className="px-3 py-2 rounded-lg border border-slate-200 bg-white text-sm text-slate-900" />
         </div>
+        </div>
       </div>
 
+      <div ref={listRef} className="scroll-mt-4 pt-1 sm:pt-0">
+      {view !== 'table' ? (
+        <>
+          {orders.length > 0 && (
+            <div className="flex items-center gap-2 mb-2 text-xs text-slate-500">
+              <label className="inline-flex items-center gap-2 min-h-[40px] px-2 rounded-lg hover:bg-slate-100 cursor-pointer">
+                <input type="checkbox" className="w-4 h-4 accent-[#f37121]"
+                  checked={picked.size > 0 && orders.every((o) => picked.has(o._id))}
+                  onChange={(e) => setPicked(e.target.checked ? new Set(orders.map((o) => o._id)) : new Set())} />
+                {ar ? 'تحديد الصفحة كلّها' : 'Select this page'}
+              </label>
+              <span className="ms-auto tabular-nums">{ar ? `${orders.length} من ${total}` : `${orders.length} of ${total}`}</span>
+            </div>
+          )}
+          {orders.length === 0 ? (
+            <div className="bg-white border border-slate-200 rounded-xl text-center text-slate-500 py-14 px-4 text-sm">
+              {ar ? 'لا توجد شحنات بهذا الفلتر.' : 'No shipments match this filter.'}
+            </div>
+          ) : (
+            <div className={view === 'grid'
+              ? 'grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3'
+              : 'grid grid-cols-1 lg:grid-cols-2 gap-4'}>
+              {orders.map((o) => (
+                <OrderCard key={o._id} order={o} compact={view === 'grid'} ar={ar} lang={lang as Lang}
+                  vocab={statusVocab} editor={editor} picked={picked.has(o._id)}
+                  busy={busyId === o._id} downloading={downloadingId === o._id}
+                  onTogglePick={togglePick} onOpen={setDetail} onFollowUp={openFollowUp}
+                  onNote={setNoteFor} onDownload={downloadWaybill}
+                  onEdit={(x) => router.push(`/system/shipment-orders/new?id=${x._id}`)} />
+              ))}
+            </div>
+          )}
+        </>
+      ) : (
       <ScrollX className="bg-white border border-slate-200 rounded-xl shadow-sm">
         <table className="w-full text-sm">
           <thead><tr className="bg-slate-900 border-b border-slate-200 text-slate-300">
@@ -535,7 +675,8 @@ function ShipmentOrdersInner() {
               [ar ? 'وقت الاستلام' : 'Pickup', null],
               [ar ? 'بيع / شراء' : 'Sell / buy', null],
               [ar ? 'الحالة' : 'Status', null],
-              [ar ? 'ملاحظة' : 'Note', null],
+              [ar ? 'ملاحظة البوليصة' : 'Waybill note', null],
+              [ar ? 'آخر متابعة' : 'Latest follow-up', null],
               [ar ? 'إجراءات' : 'Actions', null],
             ] as const).map(([h, col], i) => (
               <th key={i} className="text-start font-semibold px-4 py-3 whitespace-nowrap">
@@ -560,7 +701,7 @@ function ShipmentOrdersInner() {
           </tr></thead>
           <tbody>
             {orders.length === 0 ? (
-              <tr><td colSpan={13} className="text-center text-slate-500 py-14">
+              <tr><td colSpan={14} className="text-center text-slate-500 py-14">
                 {ar ? 'لا توجد شحنات بعد — ابدأ من زر «إنشاء شحنة».' : 'No shipments yet — start with “Create shipment”.'}
               </td></tr>
             ) : orders.map((o) => {
@@ -600,9 +741,7 @@ function ShipmentOrdersInner() {
                       ? <ContactButtons
                           phone={o.driverPhone}
                           size={15}
-                          messageText={ar
-                            ? `السلام عليكم، بخصوص البوليصة رقم ${(o as any).reference || o.waybillNumber}${o.fromCity ? ` (${o.fromCity} — ${o.toCity || ''})` : ''}`
-                            : `Hello, regarding waybill ${(o as any).reference || o.waybillNumber}${o.fromCity ? ` (${o.fromCity} — ${o.toCity || ''})` : ''}`}
+                          messageText={driverMessage(o, ar)}
                         />
                       : <span className="text-slate-300 text-xs">{ar ? 'لا رقم' : 'no phone'}</span>}
                   </td>
@@ -643,8 +782,28 @@ function ShipmentOrdersInner() {
                       ? <span className="block truncate text-[13px] text-slate-700" title={o.notes}>{o.notes}</span>
                       : <span className="text-slate-300">—</span>}
                   </td>
+                  {/* ── وآخرُ متابعة: ما قيل عن الشحنة آخرَ مرّة، ومَن قاله ومتى. */}
+                  <td className="px-4 py-3 max-w-[240px]">
+                    {(() => {
+                      const f = lastFollowUp(o);
+                      if (!f) return <span className="text-slate-300">—</span>;
+                      return (
+                        <span className="block" title={`${f.note}${f.byName ? ` — ${f.byName}` : ''}`}>
+                          <span className="block truncate text-[13px] text-slate-700">{f.note}</span>
+                          <span className="block truncate text-[11px] text-slate-400">{f.byName ? `${f.byName} · ` : ''}{relTime(f.at, ar)}</span>
+                        </span>
+                      );
+                    })()}
+                  </td>
                   <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center justify-end gap-1">
+                      {editor && (
+                        <button type="button" onClick={() => setNoteFor(o)}
+                          className="p-1.5 rounded-lg text-slate-500 hover:text-[#12325C] hover:bg-slate-100"
+                          title={ar ? 'ملاحظة متابعة' : 'Follow-up note'}>
+                          <MessageSquareText className="w-4 h-4" />
+                        </button>
+                      )}
                       <button type="button" onClick={() => downloadWaybill(o)} disabled={downloadingId === o._id}
                         className="p-1.5 rounded-lg text-slate-500 hover:text-[#f37121] hover:bg-slate-100 disabled:opacity-50"
                         title={ar ? 'تحميل البوليصة PDF' : 'Download waybill PDF'}>
@@ -673,6 +832,8 @@ function ShipmentOrdersInner() {
           </tbody>
         </table>
       </ScrollX>
+      )}
+      </div>
 
       {total > 25 && (
         <div className="flex items-center justify-end gap-2 text-sm">
@@ -829,6 +990,10 @@ function ShipmentOrdersInner() {
           الحالةُ تُنقَل، والملاحظةُ اختياريّة — تُكتب حين يكون للنقلة سبب
           («العميل أجّل التحميل»، «الشاحنة تعطّلت في الطريق») وتُترك حين لا
           يكون. والسجلُّ تحتها يقول من نقلها ومتى وبأيّ سبب. */}
+      {noteFor && (
+        <NoteModal order={noteFor} ar={ar} onClose={() => setNoteFor(null)} onSaved={onNoteSaved} />
+      )}
+
       {fu && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4" onClick={() => setFu(null)}>
           <div className="w-full max-w-lg bg-white rounded-2xl shadow-xl max-h-[88vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>

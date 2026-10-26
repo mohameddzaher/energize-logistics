@@ -360,6 +360,25 @@ exports.updateMyProfile = async (req, res) => {
   }
 };
 
+// PATCH /api/auth/me/prefs { key, value } — تفضيلُ عرضٍ واحد في حساب المستخدم.
+// المفتاحُ قصيرٌ بنقاط (شاشة.خيار) والقيمةُ نصٌّ قصير — لا يُخزَّن هنا غيرُ ذلك.
+const PREF_KEY = /^[A-Za-z][\w-]{0,40}(\.[A-Za-z][\w-]{0,40}){0,3}$/;
+exports.setMyPref = async (req, res) => {
+  try {
+    const key = String(req.body?.key || '');
+    const value = String(req.body?.value ?? '').slice(0, 80);
+    if (!PREF_KEY.test(key)) return res.status(400).json({ message: 'مفتاحٌ غير صالح' });
+    // النقطةُ في مفتاح Map تُكتب ‹:› — مونغو لا يقبل النقاط في مفاتيح الوثائق.
+    const field = `uiPrefs.${key.replace(/\./g, ':')}`;
+    await User.updateOne({ _id: req.user._id }, value ? { $set: { [field]: value } } : { $unset: { [field]: 1 } });
+    invalidateUserCache(req.user._id);
+    res.json({ ok: true, key, value });
+  } catch (error) {
+    console.error('setMyPref:', error);
+    res.status(500).json({ message: 'تعذّر حفظ التفضيل' });
+  }
+};
+
 exports.getMe = async (req, res) => {
   try {
     // Ensure staff logins (incl. the super admin / demo accounts) always have a
@@ -387,7 +406,7 @@ exports.getMe = async (req, res) => {
     // مصنوعًا أو ممنوحًا كلَّ شيءٍ يملكها. الحارسُ الحقيقيُّ في الخادم على أيّ حال.
     const { hasSuperAdminPowers } = require('../utils/permissions');
     const superAdminPowers = user ? await hasSuperAdminPowers(user.role) : false;
-    const out = user ? { ...user.toObject(), permissions, pageAccess, pagesGranted, homePage, superAdminPowers, ...(roleLabel ? { roleLabel } : {}) } : user;
+    const out = user ? { ...user.toObject({ flattenMaps: true }), permissions, pageAccess, pagesGranted, homePage, superAdminPowers, ...(roleLabel ? { roleLabel } : {}) } : user;
 
     res.json({ user: out });
   } catch (error) {

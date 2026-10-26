@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../services/api.dart';
+import '../services/auth.dart';
 import '../services/lang.dart';
 import '../services/live.dart';
 import '../ui/app_scaffold.dart';
@@ -9,6 +11,7 @@ import '../ui/contact.dart';
 import '../ui/export_sheet.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import 'shipment_order_card.dart';
 import 'shipment_order_create.dart';
 import 'shipment_order_detail.dart';
 import 'shipment_orders_common.dart';
@@ -65,9 +68,17 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
   List<SoStatus> _vocab = soBaseStatuses;
   late final void Function() _onLive = _load;
 
+  /// ── وضعُ العرض: «بطاقات» (الافتراضيّ على الجوّال) أو «قائمة» ─────────────
+  /// يُحفَظ في الحساب (`shipmentOrders.view`) فيبقى في كلّ زيارةٍ وجهاز؛ والويبُ
+  /// يكتب table/grid/cards — «table» هنا قائمة، وما سواها بطاقات.
+  static const _prefKey = 'shipmentOrders.view';
+  String _view = 'cards';
+  final _listKey = GlobalKey();
+
   @override
   void initState() {
     super.initState();
+    _view = context.read<AuthProvider>().pref(_prefKey) == 'table' ? 'list' : 'cards';
     _statuses.addAll(widget.initialStatuses);
     _from = widget.initialFrom;
     _load();
@@ -122,9 +133,53 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
     }
   }
 
-  void _refilter(VoidCallback change) {
+  /// [reveal]: بعد الضغط على بطاقة إحصاء تُجلَب القائمةُ تحتها مباشرةً إلى العين.
+  Future<void> _refilter(VoidCallback change, {bool reveal = false}) async {
     setState(() { change(); _page = 1; });
-    _load();
+    await _load();
+    if (!reveal || !mounted) return;
+    final c = _listKey.currentContext;
+    if (c != null && c.mounted) {
+      Scrollable.ensureVisible(c, duration: const Duration(milliseconds: 350), curve: Curves.easeOutCubic);
+    }
+  }
+
+  /// تفاؤليّ: يتبدّل فورًا ويُحفَظ في الخلفية؛ فإن فشل بقي لهذه الجلسة مع تنبيهٍ صغير.
+  Future<void> _setView(String v) async {
+    if (v == _view) return;
+    setState(() => _view = v);
+    final value = v == 'list' ? 'table' : 'cards';
+    final auth = context.read<AuthProvider>();
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await Api.instance.patch('/api/auth/me/prefs', {'key': _prefKey, 'value': value});
+      auth.setPref(_prefKey, value);
+    } catch (_) {
+      messenger.showSnackBar(SnackBar(content: Text(tr('تعذّر حفظ طريقة العرض — ستبقى لهذه الجلسة فقط', 'Could not save the view — kept for this session only'))));
+    }
+  }
+
+  /// ملاحظةٌ حُفظت: سجلُّ الحالات الجديد يُدمَج في صفّه فتتحدّث البطاقةُ فورًا
+  /// (والحدثُ الحيُّ يعيد تحميل القائمة بعدها عند الجميع).
+  void _applyNote(Map<String, dynamic> updated) {
+    final id = '${updated['_id'] ?? ''}';
+    if (id.isEmpty || updated['statusLog'] == null) { _load(); return; }
+    setState(() {
+      _rows = [
+        for (final r in _rows)
+          '${r['_id']}' == id ? {...r, 'statusLog': updated['statusLog']} : r,
+      ];
+    });
+  }
+
+  void _togglePick(Map<String, dynamic> r) {
+    final id = '${r['_id']}';
+    setState(() => _picked.containsKey(id) ? _picked.remove(id) : _picked[id] = r);
+  }
+
+  Future<void> _editOrder(Map<String, dynamic> r) async {
+    final saved = await Navigator.push<bool>(context, MaterialPageRoute(builder: (_) => ShipmentOrderCreateScreen(order: r)));
+    if (saved == true) _load();
   }
 
   int _byStatus(String k) => ((_stats?['byStatus'] as Map?)?[k] as num?)?.toInt() ?? 0;
@@ -212,22 +267,25 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
     _refilter(() { if (sel.isEmpty) { _colFilters.remove(field); } else { _colFilters[field] = sel; } });
   }
 
-  Widget _statusCard(String label, int n, Color color, bool on, VoidCallback onTap) => Padding(
+  Widget _statusCard(String label, int n, Color color, bool on, VoidCallback onTap, {VoidCallback? onLongPress}) => Padding(
         padding: const EdgeInsetsDirectional.only(end: 6),
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(12),
+          onLongPress: onLongPress,
+          borderRadius: BorderRadius.circular(20),
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            height: 34,
+            padding: const EdgeInsets.symmetric(horizontal: 11),
+            alignment: Alignment.center,
             decoration: BoxDecoration(
               color: on ? color : Colors.white,
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(20),
               border: Border.all(color: on ? color : T.line),
             ),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('$n', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: on ? Colors.white : T.ink)),
-              Text(label, style: TextStyle(fontSize: 11, color: on ? Colors.white : color, fontWeight: FontWeight.w700)),
-            ]),
+            child: Text.rich(TextSpan(children: [
+              TextSpan(text: label, style: TextStyle(color: on ? Colors.white : color)),
+              TextSpan(text: '  $n', style: TextStyle(color: on ? Colors.white : T.ink, fontWeight: FontWeight.w800)),
+            ]), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
           ),
         ),
       );
@@ -262,7 +320,6 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
   Widget build(BuildContext context) {
     final editor = canEditOrders(context);
     final pages = (_total / _pageSize).ceil();
-    final src = _stats?['bySource'] as Map?;
     return AppScaffold(
       title: Text(tr('طلبات الشحنات', 'Shipment Orders')),
       actions: [
@@ -297,97 +354,266 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
               label: Text(tr('إنشاء شحنة', 'Create shipment')),
             )
           : null,
-      body: _loading
-          ? ListView(padding: const EdgeInsets.all(14), children: const [Shimmer(height: 48), SizedBox(height: 10), Shimmer(), SizedBox(height: 10), Shimmer()])
-          : _error != null && _rows.isEmpty
-              ? ErrorRetry(message: _error!, onRetry: () { setState(() => _loading = true); _load(); })
-              : RefreshIndicator(
-                  onRefresh: _load,
-                  child: ListView(keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag, padding: const EdgeInsets.fromLTRB(14, 12, 14, 90), children: [
-                    // ── بطاقاتُ الحالات: هي الفلتر، وتنتقي أكثرَ من واحدة ──
-                    SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: [
-                      _statusCard(tr('كل الشحنات', 'All shipments'), _total, T.navy, _statuses.isEmpty, () => _refilter(_statuses.clear)),
-                      for (final s in _vocab)
-                        _statusCard(tr(s.$2, s.$3), _byStatus(s.$1), s.$4, _statuses.contains(s.$1),
-                            () => _refilter(() => _statuses.contains(s.$1) ? _statuses.remove(s.$1) : _statuses.add(s.$1))),
-                    ])),
-                    const SizedBox(height: 8),
-                    Row(children: [
-                      Expanded(child: _statusCard(tr('قيد التنفيذ', 'In flight'), _inFlight.fold(0, (a, k) => a + _byStatus(k)), T.info, _isSet(_inFlight),
-                          () => _refilter(() { final on = _isSet(_inFlight); _statuses.clear(); if (!on) _statuses.addAll(_inFlight); }))),
-                      Expanded(child: _statusCard(tr('وصلت / مكتملة', 'Arrived / done'), _done.fold(0, (a, k) => a + _byStatus(k)), T.success, _isSet(_done),
-                          () => _refilter(() { final on = _isSet(_done); _statuses.clear(); if (!on) _statuses.addAll(_done); }))),
-                    ]),
-                    const SizedBox(height: 10),
-                    SearchField(
-                      controller: _searchCtrl,
-                      onChanged: (v) {
-                        _debounce?.cancel();
-                        _debounce = Timer(const Duration(milliseconds: 350), () => _refilter(() => _q = v));
-                      },
-                      hint: tr('بحث برقم البوليصة أو كشف التخريج أو العميل أو المورّد أو السائق أو المدينة…', 'waybill, graduation no., customer, supplier, driver, city…'),
-                    ),
-                    const SizedBox(height: 8),
-                    SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: [
-                      _seg([('', tr('الكل', 'All'), null), ('yes', tr('لها ملاحظة', 'With note'), null), ('no', tr('بلا ملاحظة', 'No note'), null)],
-                          _note, (v) => _refilter(() => _note = v)),
-                      const SizedBox(width: 8),
-                      _seg([
-                        ('', tr('الكل', 'All'), (src?['total'] as num?)?.toInt()),
-                        ('system', tr('الخاص بنا', 'Ours'), (src?['system'] as num?)?.toInt()),
-                        ('platform', tr('المنصّة', 'Platform'), (src?['platform'] as num?)?.toInt()),
-                      ], _source, (v) => _refilter(() => _source = v)),
-                    ])),
-                    const SizedBox(height: 8),
-                    Wrap(spacing: 6, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
-                      DropdownButton<String>(
-                        value: _customers.any((c) => c['_id'] == _customer) ? _customer : '',
-                        underline: const SizedBox.shrink(),
-                        style: const TextStyle(fontSize: 12.5, color: T.ink, fontWeight: FontWeight.w700),
-                        items: [
-                          DropdownMenuItem(value: '', child: Text(tr('كل العملاء', 'All customers'))),
-                          for (final c in _customers)
-                            DropdownMenuItem(value: '${c['_id']}', child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 200), child: Text('${c['name'] ?? ''}', overflow: TextOverflow.ellipsis))),
-                        ],
-                        onChanged: (v) => _refilter(() => _customer = v ?? ''),
-                      ),
-                      ActionChip(avatar: const Icon(Icons.event, size: 16), label: Text(_from.isEmpty ? tr('من تاريخ', 'From') : _from), onPressed: () => _pickDate(true)),
-                      ActionChip(avatar: const Icon(Icons.event, size: 16), label: Text(_to.isEmpty ? tr('إلى تاريخ', 'To') : _to), onPressed: () => _pickDate(false)),
-                      if (_from.isNotEmpty || _to.isNotEmpty)
-                        IconButton(visualDensity: VisualDensity.compact, icon: const Icon(Icons.close, size: 18), onPressed: () => _refilter(() { _from = ''; _to = ''; })),
-                      ActionChip(
-                        avatar: const Icon(Icons.filter_alt_outlined, size: 16),
-                        label: Text('${tr('فلتر الأعمدة', 'Column filters')}${_colFilters.isEmpty ? '' : ' (${_colFilters.length})'}'),
-                        onPressed: _columnFilter,
-                      ),
-                      if (_colFilters.isNotEmpty)
-                        TextButton(onPressed: () => _refilter(_colFilters.clear), child: Text(tr('مسح فلاتر الأعمدة', 'Clear column filters'))),
-                    ]),
-                    if (_rows.isNotEmpty)
+      // خانةُ البحث ومبدِّلُ العرض مثبَّتان فوق — خارج تبديل التحميل/الخطأ، فلا
+      // تُعاد رسمُهما فارغتين (ui/search_field.dart).
+      body: Column(children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+          child: Row(children: [
+            Expanded(child: SearchField(
+              controller: _searchCtrl,
+              onChanged: (v) {
+                _debounce?.cancel();
+                _debounce = Timer(const Duration(milliseconds: 350), () => _refilter(() => _q = v));
+              },
+              hint: tr('بحث برقم البوليصة أو كشف التخريج أو العميل أو المورّد أو السائق أو المدينة…', 'waybill, graduation no., customer, supplier, driver, city…'),
+            )),
+            const SizedBox(width: 6),
+            _filtersButton(),
+            const SizedBox(width: 6),
+            _viewSwitch(),
+          ]),
+        ),
+        Expanded(child: _loading
+            ? ListView(padding: const EdgeInsets.all(14), children: const [Shimmer(height: 48), SizedBox(height: 10), Shimmer(), SizedBox(height: 10), Shimmer()])
+            : _error != null && _rows.isEmpty
+                ? ErrorRetry(message: _error!, onRetry: () { setState(() => _loading = true); _load(); })
+                : RefreshIndicator(
+                    onRefresh: _load,
+                    child: ListView(keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag, padding: const EdgeInsets.fromLTRB(12, 4, 12, 90), children: [
+                      // ── بطاقاتُ الإحصاء: الضغطُ يعرض تلك الشحناتِ وحدَها تحتها، والضغطُ ثانيةً يمسح ──
                       Row(children: [
-                        Checkbox(
-                          value: _rows.every((o) => _picked.containsKey('${o['_id']}')),
-                          onChanged: (v) => setState(() {
-                            if (v == true) { for (final o in _rows) { _picked['${o['_id']}'] = o; } } else { _picked.clear(); }
-                          }),
-                        ),
-                        Text(tr('تحديد الصفحة', 'Select page'), style: const TextStyle(fontSize: 12.5)),
-                        const Spacer(),
-                        if (_picked.isNotEmpty)
-                          Text(tr('محدد ${_picked.length}', '${_picked.length} selected'), style: const TextStyle(fontSize: 12, color: T.orange, fontWeight: FontWeight.w700)),
+                        Expanded(child: _kpiTile(tr('كل الشحنات', 'All'), _total, T.navy, _statuses.isEmpty,
+                            () => _refilter(_statuses.clear, reveal: true))),
+                        const SizedBox(width: 6),
+                        Expanded(child: _kpiTile(tr('قيد التنفيذ', 'In flight'), _inFlight.fold(0, (a, k) => a + _byStatus(k)), T.info, _isSet(_inFlight),
+                            () => _refilter(() { final on = _isSet(_inFlight); _statuses.clear(); if (!on) _statuses.addAll(_inFlight); }, reveal: true))),
+                        const SizedBox(width: 6),
+                        Expanded(child: _kpiTile(tr('وصلت / مكتملة', 'Done'), _done.fold(0, (a, k) => a + _byStatus(k)), T.success, _isSet(_done),
+                            () => _refilter(() { final on = _isSet(_done); _statuses.clear(); if (!on) _statuses.addAll(_done); }, reveal: true))),
                       ]),
-                    if (_rows.isEmpty)
-                      Padding(padding: const EdgeInsets.only(top: 40), child: EmptyState(icon: Icons.assignment_outlined, title: tr('لا توجد شحنات مطابقة', 'No matching shipments')))
-                    else
-                      for (final r in _rows) Padding(padding: const EdgeInsets.only(bottom: 8), child: _card(r, editor)),
-                    if (pages > 1)
-                      Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                        IconButton(onPressed: _page > 1 ? () { setState(() => _page--); _load(); } : null, icon: const Icon(Icons.chevron_right)),
-                        Text('$_page / $pages'),
-                        IconButton(onPressed: _page < pages ? () { setState(() => _page++); _load(); } : null, icon: const Icon(Icons.chevron_left)),
-                      ]),
-                  ]),
+                      const SizedBox(height: 6),
+                      // ── شريطُ الحالات: الضغطُ يعرضها وحدَها، والمطوَّلُ يضيفها إلى المنتقى ──
+                      SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: [
+                        for (final s in _vocab)
+                          _statusCard(tr(s.$2, s.$3), _byStatus(s.$1), s.$4, _statuses.contains(s.$1),
+                              () => _refilter(() {
+                                final only = _statuses.length == 1 && _statuses.contains(s.$1);
+                                _statuses.clear();
+                                if (!only) _statuses.add(s.$1);
+                              }, reveal: true),
+                              onLongPress: () => _refilter(() => _statuses.contains(s.$1) ? _statuses.remove(s.$1) : _statuses.add(s.$1))),
+                      ])),
+                      // مرسى «اعرض القائمة»: إليه تُمرَّر الشاشةُ بعد الضغط على بطاقة إحصاء.
+                      SizedBox(key: _listKey, height: 4),
+                      if (_rows.isNotEmpty)
+                        Row(children: [
+                          Checkbox(
+                            visualDensity: VisualDensity.compact,
+                            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            value: _rows.every((o) => _picked.containsKey('${o['_id']}')),
+                            onChanged: (v) => setState(() {
+                              if (v == true) { for (final o in _rows) { _picked['${o['_id']}'] = o; } } else { _picked.clear(); }
+                            }),
+                          ),
+                          Flexible(child: Text('${tr('تحديد الصفحة', 'Select page')} · ${tr('$_total شحنة', '$_total shipments')}', style: const TextStyle(fontSize: 12.5), overflow: TextOverflow.ellipsis)),
+                          const Spacer(),
+                          if (_picked.isNotEmpty)
+                            Text(tr('محدد ${_picked.length}', '${_picked.length} selected'), style: const TextStyle(fontSize: 12, color: T.orange, fontWeight: FontWeight.w700)),
+                        ]),
+                      if (_rows.isEmpty)
+                        Padding(padding: const EdgeInsets.only(top: 40), child: EmptyState(icon: Icons.assignment_outlined, title: tr('لا توجد شحنات مطابقة', 'No matching shipments')))
+                      else if (_view == 'cards')
+                        _bigCards(editor)
+                      else
+                        for (final r in _rows) Padding(padding: const EdgeInsets.only(bottom: 8), child: _card(r, editor)),
+                      if (pages > 1)
+                        Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                          IconButton(onPressed: _page > 1 ? () { setState(() => _page--); _load(); } : null, icon: const Icon(Icons.chevron_right)),
+                          Text('$_page / $pages'),
+                          IconButton(onPressed: _page < pages ? () { setState(() => _page++); _load(); } : null, icon: const Icon(Icons.chevron_left)),
+                        ]),
+                    ]),
+                  )),
+      ]),
+    );
+  }
+
+  /// «قائمة / بطاقات» — زرّان كبيران بجانب البحث.
+  Widget _viewSwitch() {
+    Widget b(String v, IconData icon, String tip) {
+      final on = _view == v;
+      return Tooltip(
+        message: tip,
+        child: InkWell(
+          onTap: () => _setView(v),
+          borderRadius: BorderRadius.circular(10),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
+            width: 40,
+            height: 44,
+            decoration: BoxDecoration(color: on ? T.navy : Colors.transparent, borderRadius: BorderRadius.circular(10)),
+            child: Icon(icon, size: 22, color: on ? Colors.white : T.inkFaint),
+          ),
+        ),
+      );
+    }
+    return Container(
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(color: T.line.withValues(alpha: 0.4), borderRadius: BorderRadius.circular(12)),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        b('cards', Icons.view_agenda_outlined, tr('بطاقات', 'Cards')),
+        b('list', Icons.view_list_rounded, tr('قائمة', 'List')),
+      ]),
+    );
+  }
+
+  /// بطاقاتٌ كبيرة: عمودٌ واحد على الجوّال، واثنان أو ثلاثة على اللوح (شبكة).
+  Widget _bigCards(bool editor) => LayoutBuilder(builder: (context, c) {
+        final cols = c.maxWidth >= 1000 ? 3 : c.maxWidth >= 680 ? 2 : 1;
+        const gap = 10.0;
+        final w = ((c.maxWidth - gap * (cols - 1)) / cols).floorToDouble();
+        return Wrap(spacing: gap, runSpacing: gap, children: [
+          for (final r in _rows)
+            SizedBox(
+              width: w,
+              child: ShipmentOrderBigCard(
+                key: ValueKey('${r['_id']}'),
+                order: r,
+                vocab: _vocab,
+                editor: editor,
+                selected: _picked.containsKey('${r['_id']}'),
+                onToggleSelect: () => _togglePick(r),
+                onOpen: () => _openDetail(r),
+                onChanged: _load,
+                onNoteSaved: _applyNote,
+                onEdit: () => _editOrder(r),
+              ),
+            ),
+        ]);
+      });
+
+  Widget _kpiTile(String label, int n, Color color, bool on, VoidCallback onTap) => InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+          decoration: BoxDecoration(
+            color: on ? color : T.card,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: on ? color : T.line),
+          ),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            FittedBox(fit: BoxFit.scaleDown, alignment: AlignmentDirectional.centerStart,
+                child: Text('$n', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: on ? Colors.white : T.ink, height: 1.15))),
+            Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 10.5, color: on ? Colors.white : color, fontWeight: FontWeight.w700)),
+          ]),
+        ),
+      );
+
+  /// كم فلترًا فاعلًا في اللوحة (الملاحظة، المصدر، العميل، التاريخان، الأعمدة).
+  int get _sheetFilterCount =>
+      (_note.isNotEmpty ? 1 : 0) + (_source.isNotEmpty ? 1 : 0) + (_customer.isNotEmpty ? 1 : 0) +
+      (_from.isNotEmpty ? 1 : 0) + (_to.isNotEmpty ? 1 : 0) + _colFilters.length;
+
+  /// زرُّ «فلاتر» — برتقاليٌّ بعدّاده متى كان فيها فلترٌ فاعل.
+  Widget _filtersButton() {
+    final n = _sheetFilterCount;
+    return Tooltip(
+      message: tr('فلاتر', 'Filters'),
+      child: InkWell(
+        onTap: _openFilters,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          height: 50,
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+          decoration: BoxDecoration(
+            color: n > 0 ? T.orange : T.card,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: n > 0 ? T.orange : T.line),
+          ),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Icon(Icons.tune_rounded, size: 21, color: n > 0 ? Colors.white : T.inkSoft),
+            if (n > 0) ...[
+              const SizedBox(width: 4),
+              Text('$n', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 13)),
+            ],
+          ]),
+        ),
+      ),
+    );
+  }
+
+  /// لوحةُ الفلاتر: كانت تتكدّس فوق القائمة وتدفع أوّلَ شحنةٍ تحت الشاشة.
+  Future<void> _openFilters() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetCtx) => StatefulBuilder(builder: (sheetCtx, setSheet) {
+        void apply(VoidCallback change) { _refilter(change); setSheet(() {}); }
+        final src = _stats?['bySource'] as Map?;
+        Widget title(String t) => Padding(padding: const EdgeInsets.only(top: 14, bottom: 6),
+            child: Text(t, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: T.inkSoft)));
+        return SafeArea(child: Padding(
+          padding: EdgeInsets.fromLTRB(16, 14, 16, MediaQuery.of(sheetCtx).viewInsets.bottom + 14),
+          child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Row(children: [
+              Expanded(child: Text(tr('فلاتر', 'Filters'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16))),
+              if (_sheetFilterCount > 0)
+                TextButton(
+                  onPressed: () => apply(() { _note = ''; _source = ''; _customer = ''; _from = ''; _to = ''; _colFilters.clear(); }),
+                  child: Text(tr('مسح الكل', 'Clear all')),
                 ),
+            ]),
+            title(tr('الملاحظة', 'Note')),
+            SingleChildScrollView(scrollDirection: Axis.horizontal, child: _seg(
+                [('', tr('الكل', 'All'), null), ('yes', tr('لها ملاحظة', 'With note'), null), ('no', tr('بلا ملاحظة', 'No note'), null)],
+                _note, (v) => apply(() => _note = v))),
+            title(tr('المصدر', 'Source')),
+            SingleChildScrollView(scrollDirection: Axis.horizontal, child: _seg([
+              ('', tr('الكل', 'All'), (src?['total'] as num?)?.toInt()),
+              ('system', tr('الخاص بنا', 'Ours'), (src?['system'] as num?)?.toInt()),
+              ('platform', tr('المنصّة', 'Platform'), (src?['platform'] as num?)?.toInt()),
+            ], _source, (v) => apply(() => _source = v))),
+            title(tr('العميل', 'Customer')),
+            DropdownButtonFormField<String>(
+              initialValue: _customers.any((c) => c['_id'] == _customer) ? _customer : '',
+              isExpanded: true,
+              items: [
+                DropdownMenuItem(value: '', child: Text(tr('كل العملاء', 'All customers'))),
+                for (final c in _customers)
+                  DropdownMenuItem(value: '${c['_id']}', child: Text('${c['name'] ?? ''}', overflow: TextOverflow.ellipsis)),
+              ],
+              onChanged: (v) => apply(() => _customer = v ?? ''),
+            ),
+            title(tr('التاريخ', 'Date')),
+            Wrap(spacing: 6, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
+              ActionChip(avatar: const Icon(Icons.event, size: 16), label: Text(_from.isEmpty ? tr('من تاريخ', 'From') : _from),
+                  onPressed: () async { await _pickDate(true); setSheet(() {}); }),
+              ActionChip(avatar: const Icon(Icons.event, size: 16), label: Text(_to.isEmpty ? tr('إلى تاريخ', 'To') : _to),
+                  onPressed: () async { await _pickDate(false); setSheet(() {}); }),
+              if (_from.isNotEmpty || _to.isNotEmpty)
+                IconButton(icon: const Icon(Icons.close, size: 18), onPressed: () => apply(() { _from = ''; _to = ''; })),
+            ]),
+            title(tr('الأعمدة', 'Columns')),
+            Wrap(spacing: 6, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
+              ActionChip(
+                avatar: const Icon(Icons.filter_alt_outlined, size: 16),
+                label: Text('${tr('فلتر الأعمدة', 'Column filters')}${_colFilters.isEmpty ? '' : ' (${_colFilters.length})'}'),
+                onPressed: () async { await _columnFilter(); setSheet(() {}); },
+              ),
+              if (_colFilters.isNotEmpty)
+                TextButton(onPressed: () => apply(_colFilters.clear), child: Text(tr('مسح فلاتر الأعمدة', 'Clear column filters'))),
+            ]),
+            const SizedBox(height: 16),
+            SizedBox(height: 48, child: FilledButton(
+              onPressed: () => Navigator.pop(sheetCtx),
+              child: Text(tr('عرض $_total شحنة', 'Show $_total shipments')),
+            )),
+          ])),
+        ));
+      }),
     );
   }
 
@@ -397,7 +623,7 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
     final logN = (r['statusLog'] as List?)?.length ?? 0;
     return Pressable(
       onTap: () => _openDetail(r),
-      onLongPress: () => setState(() => _picked.containsKey(id) ? _picked.remove(id) : _picked[id] = r),
+      onLongPress: () => _togglePick(r),
       child: AppCard(
         topAccent: st.$4,
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -429,7 +655,8 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
             Chip2('${soMoney(r['sellPrice'])} / ${soMoney(r['buyPrice'])}', T.success),
           ]),
           if ('${r['notes'] ?? ''}'.trim().isNotEmpty)
-            Padding(padding: const EdgeInsets.only(top: 4), child: Text('${r['notes']}', maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, color: T.inkSoft))),
+            Padding(padding: const EdgeInsets.only(top: 4), child: Text('${tr('ملاحظة البوليصة', 'Waybill note')}: ${r['notes']}', maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, color: T.inkSoft))),
+          SoLatestFollowUpLine(order: r),
           Row(children: [
             Expanded(child: Text('${r['driverName'] ?? ''}', style: const TextStyle(fontSize: 12.5))),
             ContactButtons(phone: '${r['driverPhone'] ?? ''}', size: 18, compact: true),
@@ -442,12 +669,19 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
             if (editor)
               IconButton(
                 visualDensity: VisualDensity.compact,
+                tooltip: tr('ملاحظة متابعة', 'Follow-up note'),
+                icon: const Icon(Icons.edit_note, size: 21, color: T.violet),
+                onPressed: () async {
+                  final u = await soQuickNote(context, r);
+                  if (u != null) _applyNote(u);
+                },
+              ),
+            if (editor)
+              IconButton(
+                visualDensity: VisualDensity.compact,
                 tooltip: tr('تعديل', 'Edit'),
                 icon: const Icon(Icons.edit_outlined, size: 19, color: T.info),
-                onPressed: () async {
-                  final saved = await Navigator.push<bool>(context, MaterialPageRoute(builder: (_) => ShipmentOrderCreateScreen(order: r)));
-                  if (saved == true) _load();
-                },
+                onPressed: () => _editOrder(r),
               ),
           ]),
         ]),

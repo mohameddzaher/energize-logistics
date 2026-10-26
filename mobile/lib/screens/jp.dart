@@ -46,7 +46,7 @@ const jpStaffRoles = <String, List<String>>{
   'operations': ['operations_staff', 'operations_trainee'],
   'collections': ['collections_staff', 'collections_trainee'],
   'ops': ['ops_platform_staff', 'ops_platform_trainee'],
-  'shipment-orders': ['shipment_orders_staff', 'shipment_orders_trainee'],
+  'shipment-orders': ['shipment_orders_staff', 'shipment_orders_followup', 'shipment_orders_trainee'],
   'fleet': ['fleet_supervisor', 'fleet_trainee'],
   'customs': ['customs_officer', 'customs_trainee'],
   'vehicles': ['vehicles_staff', 'vehicles_trainee'],

@@ -18,6 +18,10 @@ const userSchema = new mongoose.Schema(
     },
     firstName: { type: String, required: true, trim: true },
     lastName: { type: String, required: true, trim: true },
+    // ── تفضيلاتُ العرض في حساب المستخدم (٢٠٢٦/١٠/٢٦) ─────────────────────────
+    // «لو عدّل طريقة العرض تثبت عنده» — في الحساب لا في المتصفّح، فتتبعه من
+    // الجوّال إلى الموقع. مفتاحٌ ← قيمة: { 'shipmentOrders.view': 'cards' }.
+    uiPrefs: { type: Map, of: String, default: {} },
     role: {
       type: String,
       required: true,

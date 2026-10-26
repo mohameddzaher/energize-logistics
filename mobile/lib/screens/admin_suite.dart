@@ -59,6 +59,7 @@ const roleLabels = {
   'ops_platform_staff': ('موظف منصة التشغيل', 'Ops Platform Staff'),
   'shipment_orders_manager': ('مدير طلبات الشحنات', 'Shipment Orders Manager'),
   'shipment_orders_staff': ('موظف طلبات الشحنات', 'Shipment Orders Staff'),
+  'shipment_orders_followup': ('المتابعة', 'Shipment Follow-up'),
   'vehicles_manager': ('مدير المركبات', 'Vehicles Manager'),
   'vehicles_staff': ('موظف المركبات', 'Vehicles Staff'),
   'location_manager': ('مدير لوكيشن سوليوشن', 'Location Solutions Manager'),

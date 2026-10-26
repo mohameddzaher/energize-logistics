@@ -633,7 +633,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
     ),
     AppSection(
       key: 'Shipment Orders', arTitle: 'طلبات الشحنات', enTitle: 'Shipment Orders', icon: Icons.assignment_outlined,
-      roles: const [..._admins, 'operations_manager', 'operations_staff', 'moderator', 'shipment_orders_manager', 'shipment_orders_staff'],
+      roles: const [..._admins, 'operations_manager', 'operations_staff', 'moderator', 'shipment_orders_manager', 'shipment_orders_staff', 'shipment_orders_followup'],
       pages: [
         // لوحةُ القسم أوّلًا، كما في الويب: «كيف حالُه اليوم؟» قبل الجدول.
         AppPage('لوحة الشحنات', 'Dashboard', Icons.dashboard_outlined, (c) => const ShipmentOrdersDashboardScreen(), path: '/system/shipment-orders/dashboard'),

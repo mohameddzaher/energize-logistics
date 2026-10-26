@@ -133,6 +133,12 @@ export const SECTION_ROLES: SectionRoles[] = [
         "key": "shipment_orders_staff",
         "ar": "موظف طلبات الشحنات",
         "en": "Shipment Orders Team"
+      },
+      {
+        "key": "shipment_orders_followup",
+        "ar": "المتابعة",
+        "en": "Shipment Follow-up",
+        "distinct": "يتابع الشحناتِ القائمة: يغيّر حالتَها بتفاصيلها (سببُ الإلغاء، رفعُ السند)، ويتّصل بالسائق ويكتب ملاحظةَ متابعة. وشاشتُه الشحناتُ بطاقاتٍ كبيرةً للجوّال أوّلًا."
       }
     ],
     "trainee": {

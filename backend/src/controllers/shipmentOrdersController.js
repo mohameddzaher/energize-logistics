@@ -1132,6 +1132,30 @@ exports.updateCounter = async (req, res) => {
 // يزيد حالاتٍ من إعداداته وقد تلزم الورقةُ لغيرها غدًا.
 const REQUIRE_FILE = new Set(['bond_sent']);
 
+// POST /orders/:id/note { note } — ملاحظةُ متابعة بلا تغيير حالة (٢٠٢٦/١٠/٢٦).
+// «يقدر يكتب نوت بسهولة»: تُقيَّد في سجلّ الشحنة كأيّ متابعة (مَن، متى، ماذا)،
+// ولا تُرسَل إلى منصّة التشغيل — الحالةُ لم تتغيّر فلا شيءَ هناك يُكتب. وهي غيرُ
+// «ملاحظة الرحلة» (`notes`) التي تُطبَع في البوليصة.
+exports.addNote = async (req, res) => {
+  try {
+    const note = String(req.body?.note || '').trim().slice(0, 500);
+    if (!note) return res.status(400).json({ message: 'اكتب الملاحظة' });
+    const by = req.user._id;
+    const byName = `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim();
+    const cur = await ShipmentOrder.findById(req.params.id).select('status').lean();
+    if (!cur) return res.status(404).json({ message: 'Shipment order not found' });
+    // ‎$push ذرّيّ: لا يدهس متابعةً كُتبت في اللحظة نفسِها كما يفعل حفظُ الوثيقة كاملة.
+    const order = await ShipmentOrder.findByIdAndUpdate(req.params.id, {
+      $push: { statusLog: { from: cur.status, to: cur.status, note, at: new Date(), by, byName } },
+    }, { new: true });
+    announceOrderChange(order._id);
+    res.json({ order });
+  } catch (error) {
+    console.error('shipment order note:', error);
+    res.status(500).json({ message: 'تعذّر حفظ الملاحظة' });
+  }
+};
+
 exports.patchStatus = async (req, res) => {
   try {
     const { status } = req.body;

@@ -14,7 +14,8 @@ import '../ui/theme.dart';
 /// من الخادم، ونافذةُ المتابعة — نظيرُ lib/shipmentOrders.ts في الويب.
 
 /// الأدوارُ نفسُها في routes/shipmentOrders.js — أو منحةُ «تعديل» من مصفوفة الصلاحيات.
-const soEditRoles = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_staff', 'moderator'];
+const soEditRoles = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_staff', 'moderator',
+  'shipment_orders_manager', 'shipment_orders_staff', 'shipment_orders_followup'];
 const soAdminRoles = ['super_admin', 'admin', 'it_manager', 'operations_manager'];
 bool canEditOrders(BuildContext c) {
   final a = c.read<AuthProvider>();

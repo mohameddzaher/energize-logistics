@@ -10,7 +10,9 @@ const authorize = require('../middleware/rbac');
 
 // The shipment-orders trial section. Independent of /api/ops by design — see
 // the ShipmentOrder model header.
-const EDIT_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_staff', 'moderator'];
+const EDIT_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_staff', 'moderator',
+  // فريقُ القسم نفسُه — كان يعدّل بمنح القسم وحدَه؛ صار صريحًا، ومعه «المتابعة».
+  'shipment_orders_manager', 'shipment_orders_staff', 'shipment_orders_followup'];
 const ADMIN_ROLES = ['super_admin', 'admin', 'it_manager', 'operations_manager'];
 
 router.use(authenticate);
@@ -29,6 +31,7 @@ router.post('/orders', authorize(...EDIT_ROLES), so.createOrder);
 router.post('/orders/batch', authorize(...EDIT_ROLES), so.createOrdersBatch);
 router.put('/orders/:id', authorize(...EDIT_ROLES), so.updateOrder);
 router.patch('/orders/:id/status', authorize(...EDIT_ROLES), so.patchStatus); // inline from the list
+router.post('/orders/:id/note', authorize(...EDIT_ROLES), so.addNote); // ملاحظةُ متابعةٍ بلا تغيير حالة
 router.delete('/orders/:id', authorize(...ADMIN_ROLES), so.deleteOrder);
 
 // Customers (their price-per-route lists feed the create form)

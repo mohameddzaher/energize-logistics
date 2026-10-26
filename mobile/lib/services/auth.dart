@@ -47,6 +47,20 @@ class AuthProvider extends ChangeNotifier with WidgetsBindingObserver {
   List<String> get pagesGranted =>
       ((user?['pagesGranted'] as List?) ?? const []).map((e) => e.toString()).toList();
 
+  /// تفضيلاتُ العرض المحفوظة في الحساب (`uiPrefs`، والنقطةُ في المفتاح ‹:›).
+  String pref(String key) => '${(user?['uiPrefs'] as Map?)?[key.replaceAll('.', ':')] ?? ''}';
+
+  /// يحدّث نسخةَ الذاكرة بعد PATCH /api/auth/me/prefs — فلا تعود الشاشةُ للقديم.
+  void setPref(String key, String value) {
+    final u = user;
+    if (u == null) return;
+    final prefs = Map<String, dynamic>.from((u['uiPrefs'] as Map?) ?? const {});
+    final k = key.replaceAll('.', ':');
+    if (value.isEmpty) { prefs.remove(k); } else { prefs[k] = value; }
+    u['uiPrefs'] = prefs;
+    notifyListeners();
+  }
+
   bool isPageGranted(String? path) =>
       path != null && path.isNotEmpty && pagesGranted.contains(path);
 

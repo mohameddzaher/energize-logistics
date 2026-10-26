@@ -15,7 +15,7 @@ const vehicleDefaults = require('./vehicleDefaults');
 const BASE_WRITE_ROLES = ['super_admin', 'admin'];
 
 const FLEET_ROLES = ['fleet_manager', 'operations_manager', 'operations_staff'];
-const SO_ROLES = ['shipment_orders_manager', 'shipment_orders_staff', 'operations_manager', 'operations_staff'];
+const SO_ROLES = ['shipment_orders_manager', 'shipment_orders_staff', 'shipment_orders_followup', 'operations_manager', 'operations_staff'];
 const VEHICLE_ROLES = ['vehicles_manager', 'vehicles_staff', 'hr_manager', 'cfo', 'accounting_manager'];
 
 /**

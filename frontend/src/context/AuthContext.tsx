@@ -31,6 +31,9 @@ interface User {
   homePage?: string;
   // اسمُ الدور المصنوع بلغتيه — جدولُ الترجمة في الواجهة لا يعرف ما صُنع بعد بنائه.
   roleLabel?: { ar: string; en: string } | null;
+  // تفضيلاتُ العرض المحفوظة في الحساب (PATCH /api/auth/me/prefs) — النقطةُ في
+  // المفتاح تصل ‹:›، مثل `shipmentOrders:view`.
+  uiPrefs?: Record<string, string>;
 }
 
 interface AuthContextType {

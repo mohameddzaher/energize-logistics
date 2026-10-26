@@ -14,6 +14,7 @@ import '../ui/widgets.dart';
 import 'my_profile.dart';
 import 'admin_suite.dart' show NotificationsScreen;
 import 'portal.dart';
+import 'shipment_orders.dart';
 
 /// The app shell: burger drawer with EVERY section the signed-in user can
 /// open (same gating as the web sidebar), and an animated dashboard home.
@@ -45,6 +46,11 @@ class _HomeScreenState extends State<HomeScreen> {
     Live.instance.on('hr:leave', _loadStats);
     // النظرة الحية للقسم تُحدَّث على حدث القسم نفسه.
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      // «المتابعة» تبدأ يومَها من الشحنات نفسِها (نظيرُ roleRoutes في الويب) —
+      // والرئيسيّةُ تحتها، يرجع إليها بزرّ الرجوع.
+      if (context.read<AuthProvider>().role == 'shipment_orders_followup') {
+        Navigator.push(context, MaterialPageRoute(builder: (_) => const ShipmentOrdersScreen()));
+      }
       final i = homeInsightFor(context.read<AuthProvider>());
       if (i != null && i.liveEvent.isNotEmpty) Live.instance.on(i.liveEvent, _loadInsight);
     });

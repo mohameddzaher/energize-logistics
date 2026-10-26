@@ -16,6 +16,7 @@ export const ROLE_HOME_ROUTES: Record<string, string> = {
   mediago_account: '/system/b2c/mediago-complaints',
   shipment_orders_manager: '/system/shipment-orders',
   shipment_orders_staff: '/system/shipment-orders',
+  shipment_orders_followup: '/system/shipment-orders',
   ops_platform_manager: '/system/ops',
   ops_platform_staff: '/system/ops',
   collections_manager: '/system/collections-dept/dashboard',

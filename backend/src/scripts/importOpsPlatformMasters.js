@@ -139,18 +139,23 @@ const RESOURCES = {
     const mapped = rows.map(res.map).filter((r) => r.externalId && (r.name || r.plate));
     const skipped = rows.length - mapped.length;
 
-    const existing = await Model.find({}).lean();
+    // المدموجُ (`mergedInto`) لا يُطابَق — صاحبُه الباقي يحمل معرّفَه في `externalIds`.
+    const existing = (await Model.find({}).lean()).filter((e) => !e.mergedInto);
     const byExt = new Map(existing.filter((e) => e.externalId).map((e) => [String(e.externalId), e]));
+    const byAlias = new Map();
+    existing.forEach((e) => (e.externalIds || []).forEach((x) => byAlias.set(String(x), e)));
     // ومن أُنشئ عندنا يدويًّا قبل الاستيراد: يُطابَق بالاسم فلا يُكرَّر.
     const byName = new Map(existing.filter((e) => !e.externalId).map((e) => [n(e.name).toLowerCase(), e]));
 
     let create = 0; let update = 0;
     const plan = [];
     for (const m of mapped) {
-      const hit = byExt.get(m.externalId) || byName.get(n(m.name).toLowerCase());
+      const alias = !byExt.get(m.externalId) && byAlias.get(m.externalId);
+      const hit = byExt.get(m.externalId) || alias || byName.get(n(m.name).toLowerCase());
       if (!hit) { create += 1; plan.push({ create: true, data: m }); continue; }
       const copy = { ...hit };
-      const changed = merge(copy, m);
+      // سجلٌّ ثانٍ في المنصّة لمورّدٍ دُمج: يُكمّل بياناتِه ولا يغيّر معرّفَه الأساسيّ.
+      const changed = merge(copy, alias ? { ...m, externalId: undefined } : m);
       if (changed) { update += 1; plan.push({ _id: hit._id, data: copy }); }
     }
     console.log(`     يُنشأ ${create} · يُحدَّث ${update} · بلا معرّفٍ أو اسم ${skipped} · موجودٌ عندنا ${existing.length}`);

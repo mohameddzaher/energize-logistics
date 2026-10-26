@@ -35,6 +35,12 @@ const shipmentOrderSupplierSchema = new mongoose.Schema(
     agreedPriceStatement: { type: String, trim: true, default: '' },
     contractFile: { type: String, trim: true, default: '' },
 
+    // ── الدمج (٢٠٢٦/١٠/٢٦) ──────────────────────────────────────────────────
+    // مورّدٌ واحدٌ قد يكون له في منصّة الأوبريشن أكثرُ من سجلّ (تنشيط: سجلّان).
+    // فحين يُدمَج مورّدان يبقى معرّفُ الآخر هنا، فيجده الاستيرادُ بأيٍّ منهما ولا
+    // يُعيد إنشاءه. والمدموجُ يبقى معطَّلًا ومعه `mergedInto` — أثرٌ لا يُمحى.
+    externalIds: { type: [String], default: [], index: true },
+    mergedInto: { type: mongoose.Schema.Types.ObjectId, ref: 'ShipmentOrderSupplier', default: null },
     isActive: { type: Boolean, default: true },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   },

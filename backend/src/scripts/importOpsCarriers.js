@@ -135,8 +135,10 @@ const dateOnly = (v) => (v ? String(v).slice(0, 10) : '');
 
   const supByExt = new Map();
   const supByName = new Map();
-  for (const s of await ShipmentOrderSupplier.find({}).select('name externalId').lean()) {
+  // المدموجُ لا يُطابَق؛ والباقي يُطابَق بمعرّفه وبمعرّفات من دُمج فيه (`externalIds`).
+  for (const s of await ShipmentOrderSupplier.find({ mergedInto: null }).select('name externalId externalIds').lean()) {
     if (s.externalId) supByExt.set(s.externalId, s);
+    (s.externalIds || []).forEach((x) => { if (!supByExt.has(x)) supByExt.set(x, { ...s, alias: true }); });
     const k = nameKey(s.name);
     if (k && !supByName.has(k)) supByName.set(k, s);
   }
@@ -177,7 +179,9 @@ const dateOnly = (v) => (v ? String(v).slice(0, 10) : '');
       supOps.push({ insertOne: { document: fields } });
     } else {
       if (!existing.externalId) supLinked += 1; else supUpdated += 1;
-      supOps.push({ updateOne: { filter: { _id: existing._id }, update: { $set: fields } } });
+      // سجلٌّ ثانٍ في المنصّة لمورّدٍ دُمج: لا يكتب فوق اسمه ومعرّفه الأساسيّين.
+      const set = existing.alias ? (({ externalId, name: _n, isActive, ...rest }) => rest)(fields) : fields;
+      supOps.push({ updateOne: { filter: { _id: existing._id }, update: { $set: set } } });
     }
   }
   console.log(`\n١) الموردون: من المنصّة ${owners.length} → جديدٌ ${supNew} · رُبط بمعرّفه ${supLinked} · حُدِّث ${supUpdated}`);
@@ -188,8 +192,9 @@ const dateOnly = (v) => (v ? String(v).slice(0, 10) : '');
 
   // خريطةُ المعرّف الخارجيّ → معرّفُنا، تُعاد قراءتُها بعد الكتابة.
   const supIdByExt = new Map();
-  for (const s of await ShipmentOrderSupplier.find({ externalId: { $ne: '' } }).select('externalId').lean()) {
-    supIdByExt.set(s.externalId, s._id);
+  for (const s of await ShipmentOrderSupplier.find({ mergedInto: null }).select('externalId externalIds').lean()) {
+    if (s.externalId) supIdByExt.set(s.externalId, s._id);
+    (s.externalIds || []).forEach((x) => { if (!supIdByExt.has(x)) supIdByExt.set(x, s._id); });
   }
 
   // ════ ٢. المركبات ════════════════════════════════════════════════════════

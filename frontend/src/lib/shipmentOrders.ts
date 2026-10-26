@@ -236,5 +236,7 @@ export const CORE_FIELD_KEYS = new Set(['fromCity', 'toCity', 'sellPrice', 'pick
 import { canEditSection, roleOf, permsOf, type RoleOrUser } from './sections';
 export const SO_EDIT_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_staff', 'moderator'];
 export const SO_ADMIN_ROLES = ['super_admin', 'admin', 'it_manager', 'operations_manager'];
+/** دمجُ المورّدين بالدور وحده — نظيرُ authorize.strict في الخادم (لا يُتراجَع عنه). */
+export const canMergeSuppliers = (u: RoleOrUser) => [...SO_ADMIN_ROLES, 'shipment_orders_manager'].includes(roleOf(u));
 export const canEditOrders = (u: RoleOrUser) => SO_EDIT_ROLES.includes(roleOf(u)) || canEditSection(permsOf(u), 'Shipment Orders');
 export const canAdminOrders = (u: RoleOrUser) => SO_ADMIN_ROLES.includes(roleOf(u)) || canEditSection(permsOf(u), 'Shipment Orders');

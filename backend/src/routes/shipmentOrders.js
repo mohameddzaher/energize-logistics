@@ -68,6 +68,7 @@ router.get('/suppliers', so.listSuppliers);
 router.post('/suppliers', authorize(...EDIT_ROLES), so.createSupplier);
 router.put('/suppliers/:id', authorize(...EDIT_ROLES), so.updateSupplier);
 router.delete('/suppliers/:id', authorize(...ADMIN_ROLES), so.deleteSupplier);
+router.post('/suppliers/:id/merge', authorize.strict(...ADMIN_ROLES, 'shipment_orders_manager'), so.mergeSupplier); // دمجُ مورّدَين — بالدور وحده (strict): لا يُتراجَع عنه
 router.get('/vehicles', so.listVehicles);
 // أعدادُ السجلّ كاملةً — الترويسةُ لا تحسب من الصفحة الواصلة.
 router.get('/fleet-summary', so.fleetSummary);

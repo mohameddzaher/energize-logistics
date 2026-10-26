@@ -24,6 +24,7 @@ import '../screens/marketing_campaign_detail.dart';
 import '../screens/light_transport_add.dart';
 import '../screens/light_transport_profile.dart';
 import '../screens/hr_ops.dart' show hrStockAssign, HrAssetVocab;
+import '../screens/supplier_merge.dart' show openSupplierMerge;
 import 'resource.dart';
 
 /// Page definitions on the CRUD engine — each entry IS a full native page
@@ -1168,6 +1169,13 @@ final shipmentOrdersSuppliersCfg = ResourceConfig(
     // كم شاحنةً وكم سائقًا — الرقمان اللذان يُسألان عن المورّد قبل فتح ملفّه.
     ('${r['vehicleCount'] ?? 0} شاحنة', T.navy),
     ('${r['driverCount'] ?? 0} سائق', T.cyan),
+  ],
+  // دمجُ مورّدٍ مكرَّر في آخر (٢٠٢٦/١٠/٢٦) — للمديرين بالدور، والخادمُ يرفض غيرَهم.
+  rowActions: (r) => [
+    ResourceAction(
+      icon: Icons.merge_type, ar: 'دمج مع مورّد آخر', en: 'Merge with another supplier', color: T.orange,
+      run: (ctx, row) => openSupplierMerge(ctx, row),
+    ),
   ],
   fields: const [
     FieldSpec('name', 'اسم المورد', 'Name', required: true),

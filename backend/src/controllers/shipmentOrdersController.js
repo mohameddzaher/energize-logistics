@@ -1657,6 +1657,85 @@ exports.deleteSupplier = async (req, res) => {
   }
 };
 
+// ── دمجُ مورّدَين (٢٠٢٦/١٠/٢٦) ──────────────────────────────────────────────
+// «فيه اتنين مورد بنفس الاسم (تنشيط)… دول نفس الشخص، وحّدهم وضيف بياناتهم على
+// بعض». POST /suppliers/:id/merge { from } — يبقى `:id`، ويُدمَج فيه `from`:
+//   • كلُّ خانةٍ فارغةٍ في الباقي تُملأ من المدموج؛ وما اختلف في الاثنين يبقى
+//     للباقي ويُضاف الآخرُ إلى ملاحظاته — لا تضيع قيمة.
+//   • شحناتُه وشاحناتُه وسائقوه وحساباتُ بوّابته تُنقَل إلى الباقي.
+//   • معرّفُه في المنصّة يُحفَظ في `externalIds` الباقي، فلا يعيده الاستيراد.
+//   • المدموجُ يُعطَّل ويحمل `mergedInto` — ويُقيَّد الدمجُ في سجلّ التدقيق.
+const MERGE_FIELDS = ['type', 'phone', 'email', 'externalId', 'commercialRegister', 'taxCard', 'nationalAddress', 'bankName', 'iban',
+  'ownerName', 'ownerPhone', 'managerName', 'managerPhone', 'accountantName', 'accountantPhone', 'paymentTerms',
+  'agreedPriceStatement', 'contractFile'];
+const MERGE_LABELS = { phone: 'هاتف', email: 'بريد', commercialRegister: 'سجل تجاري', taxCard: 'بطاقة ضريبية', nationalAddress: 'عنوان وطني',
+  bankName: 'بنك', iban: 'آيبان', ownerName: 'المالك', ownerPhone: 'جوال المالك', managerName: 'المدير', managerPhone: 'جوال المدير',
+  accountantName: 'المحاسب', accountantPhone: 'جوال المحاسب', paymentTerms: 'شروط السداد', agreedPriceStatement: 'بيان الأسعار', contractFile: 'العقد' };
+
+exports.mergeSupplier = async (req, res) => {
+  try {
+    const fromId = String(req.body?.from || '');
+    if (!mongoose.Types.ObjectId.isValid(fromId) || fromId === String(req.params.id)) {
+      return res.status(400).json({ message: 'اختر المورّد الآخر المراد دمجه' });
+    }
+    const [keep, from] = await Promise.all([
+      ShipmentOrderSupplier.findById(req.params.id),
+      ShipmentOrderSupplier.findById(fromId),
+    ]);
+    if (!keep || !from) return res.status(404).json({ message: 'Supplier not found' });
+    if (from.mergedInto) return res.status(400).json({ message: 'هذا المورّد مدموجٌ من قبل' });
+
+    const before = keep.toObject();
+    const extraNotes = [];
+    for (const f of MERGE_FIELDS) {
+      const a = String(keep[f] ?? '').trim();
+      const b = String(from[f] ?? '').trim();
+      if (!b) continue;
+      if (!a) keep[f] = from[f];
+      else if (a !== b && f !== 'type' && f !== 'externalId') extraNotes.push(`${MERGE_LABELS[f] || f}: ${b}`);
+    }
+    const notes = [String(keep.notes || '').trim(), String(from.notes || '').trim(),
+      extraNotes.length ? `من المورّد المدموج «${from.name}» — ${extraNotes.join(' · ')}` : ''];
+    keep.notes = [...new Set(notes.filter(Boolean))].join('\n');
+    const ext = new Set([...(keep.externalIds || []), ...(from.externalIds || []), from.externalId, keep.externalId].map((x) => String(x || '').trim()).filter(Boolean));
+    ext.delete(String(keep.externalId || ''));
+    keep.externalIds = [...ext];
+    if (from.isActive !== false) keep.isActive = true;
+    await keep.save();
+
+    const ShipmentOrderVehicleM = require('../models/ShipmentOrderVehicle');
+    const ShipmentOrderDriverM = require('../models/ShipmentOrderDriver');
+    const User = require('../models/User');
+    const [orders, vehicles, drivers, partners] = await Promise.all([
+      ShipmentOrder.updateMany({ supplier: from._id }, { $set: { supplier: keep._id, supplierName: keep.name } }),
+      ShipmentOrderVehicleM.updateMany({ supplier: from._id }, { $set: { supplier: keep._id } }),
+      ShipmentOrderDriverM.updateMany({ supplier: from._id }, { $set: { supplier: keep._id } }),
+      User.updateMany({ 'partner.source': 'shipment_order_supplier', 'partner.refId': String(from._id) }, { $set: { 'partner.refId': String(keep._id) } }),
+    ]);
+    // والشحناتُ التي تحمل اسمَ المدموج نصًّا (من المنصّة) تحمل الاسمَ الباقي إن اختلفا.
+    if (String(from.name).trim() !== String(keep.name).trim()) {
+      await ShipmentOrder.updateMany({ supplierName: from.name }, { $set: { supplierName: keep.name } });
+    }
+    from.isActive = false;
+    from.mergedInto = keep._id;
+    // معرّفُه في المنصّة انتقل إلى `externalIds` الباقي — ويُخلى هنا كي لا يطابقه الاستيراد.
+    from.externalId = '';
+    await from.save();
+
+    const moved = { orders: orders.modifiedCount || 0, vehicles: vehicles.modifiedCount || 0, drivers: drivers.modifiedCount || 0, partners: partners.modifiedCount || 0 };
+    await logAudit({
+      user: req.user._id, action: 'merge_supplier', entity: 'ShipmentOrderSupplier', entityId: keep._id,
+      changes: { before: { keep: before, from: from.toObject() }, after: { keep: keep.toObject(), moved } }, ipAddress: req.ip,
+    });
+    emit('shipmentOrders:fleet', {});
+    announceOrderChange();
+    return res.json({ supplier: keep, moved });
+  } catch (error) {
+    console.error('merge supplier:', error);
+    return res.status(500).json({ message: 'تعذّر دمج المورّدين' });
+  }
+};
+
 exports.listVehicles = async (req, res) => {
   try {
     const { q } = req.query;

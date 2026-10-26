@@ -18,13 +18,14 @@ import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { useDialog } from '@/components/system/DialogProvider';
-import { Truck, Building2, User as UserIcon, Plus, Pencil, Trash2, Check, Loader2, IdCard } from 'lucide-react';
+import { Truck, Building2, User as UserIcon, Plus, Pencil, Trash2, Check, Loader2, IdCard, GitMerge } from 'lucide-react';
+import SupplierMergeModal, { supplierNameKey } from '@/components/shipment-orders/SupplierMergeModal';
 import {
   Spinner, PageHeader, SearchInput, PrimaryButton, Modal, Field, TextInput, TextArea,
   SearchableSelect, SmallBadge, Tabs, ErrorNotice,
 } from '@/components/hr/HRKit';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
-import { OrderSupplier, OrderVehicle, OrderDriver, FormField, optionLabel, canEditOrders, canAdminOrders, Lang } from '@/lib/shipmentOrders';
+import { OrderSupplier, OrderVehicle, OrderDriver, FormField, optionLabel, canEditOrders, canAdminOrders, canMergeSuppliers, Lang } from '@/lib/shipmentOrders';
 import { useLatestRequest } from '@/hooks/useLatestRequest';
 import { ContactButtons } from '@/components/crm/CrmKit';
 import ScrollX from '@/components/system/ScrollX';
@@ -79,6 +80,8 @@ export default function FleetPage() {
 
   const [supModal, setSupModal] = useState(false);
   const [editingSup, setEditingSup] = useState<OrderSupplier | null>(null);
+  // دمجُ مورّدَين مكرَّرين (٢٠٢٦/١٠/٢٦) — راجع SupplierMergeModal.
+  const [mergeFor, setMergeFor] = useState<OrderSupplier | null>(null);
   const [supForm, setSupForm] = useState<any>(EMPTY_SUPPLIER);
 
   const [vehModal, setVehModal] = useState(false);
@@ -258,6 +261,12 @@ export default function FleetPage() {
   // الخادمُ صفّى بالبحث والملكيّة — وتصفيةُ الواصل ثانيًا تحجب ما وجده.
   const shownVehicles = vehicles;
   const shownSuppliers = suppliers;
+  // الأسماءُ المكرَّرة بعد طيّ الحروف — تُعلَّم «مكرَّر» ويُفتح منها الدمج.
+  const dupKeys = (() => {
+    const n = new Map<string, number>();
+    suppliers.forEach((x) => { const k = supplierNameKey(x.name); n.set(k, (n.get(k) || 0) + 1); });
+    return new Set([...n].filter(([, c]) => c > 1).map(([k]) => k));
+  })();
 
   const vehicleCols: ExportColumn[] = [
     { header: ar ? 'اللوحة' : 'Plate', key: 'plate', width: 16 },
@@ -549,6 +558,15 @@ export default function FleetPage() {
                         title={ar ? 'افتح شاحناته وسوّاقه' : 'Open his trucks and drivers'}>
                         {s.name}
                       </button>
+                      {dupKeys.has(supplierNameKey(s.name)) && (
+                        canMergeSuppliers(user)
+                          ? <button type="button" onClick={() => setMergeFor(s)}
+                              className="shrink-0 inline-flex items-center gap-1 rounded-md bg-amber-100 text-amber-800 px-1.5 py-0.5 text-[11px] font-bold hover:bg-amber-200"
+                              title={ar ? 'نفس الاسم مسجَّل أكثر من مرّة — اضغط للدمج' : 'Same name recorded more than once — tap to merge'}>
+                              <GitMerge className="w-3 h-3" />{ar ? 'مكرَّر' : 'Duplicate'}
+                            </button>
+                          : <span className="shrink-0 rounded-md bg-amber-100 text-amber-800 px-1.5 py-0.5 text-[11px] font-bold">{ar ? 'مكرَّر' : 'Duplicate'}</span>
+                      )}
                     </div>
                   </td>
                   <td className="px-4 py-3">
@@ -599,6 +617,7 @@ export default function FleetPage() {
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-1">
                       {editor && <button type="button" onClick={() => { setEditingSup(s); setSupForm({ ...EMPTY_SUPPLIER, ...s }); setSupModal(true); }} className="p-1.5 rounded-lg text-slate-500 hover:text-[#f37121] hover:bg-slate-100" title={ar ? 'تعديل' : 'Edit'}><Pencil className="w-4 h-4" /></button>}
+                      {canMergeSuppliers(user) && <button type="button" onClick={() => setMergeFor(s)} className="p-1.5 rounded-lg text-slate-500 hover:text-[#f37121] hover:bg-slate-100" title={ar ? 'دمج مع مورّد آخر' : 'Merge with another supplier'}><GitMerge className="w-4 h-4" /></button>}
                       {canAdminOrders(user) && <button type="button" onClick={() => removeSupplier(s)} className="p-1.5 rounded-lg text-slate-500 hover:text-red-600 hover:bg-slate-100" title={ar ? 'إزالة' : 'Remove'}><Trash2 className="w-4 h-4" /></button>}
                     </div>
                   </td>
@@ -687,6 +706,11 @@ export default function FleetPage() {
             </tbody>
           </table>
         </ScrollX>
+      )}
+
+      {mergeFor && (
+        <SupplierMergeModal supplier={mergeFor} all={suppliers} ar={ar}
+          onClose={() => setMergeFor(null)} onDone={() => { setMergeFor(null); load(); }} />
       )}
 
       {/* Supplier modal */}

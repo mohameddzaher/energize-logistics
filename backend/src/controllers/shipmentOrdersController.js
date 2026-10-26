@@ -2107,7 +2107,8 @@ const SYSTEM_FIELDS = [
   // migratePaymentSubtypeField. فلا يُبذَران في قاعدةٍ جديدة؛ والقائمان يبقيان
   // مخفيَّين في الإعدادات لمن أراد إظهارهما.
   { key: 'paymentSubtype', labelAr: 'نوع الدفع', labelEn: 'Payment type', group: 'payment', inputType: 'cards', options: paymentSubtypeOptions(), order: 1 },
-  { key: 'branch', labelAr: 'الفرع', labelEn: 'Branch', group: 'payment', inputType: 'select', options: opts(['جدة', 'الرياض', 'الدمام', 'جازان']), order: 4 },
+  // الفرعُ في «الاستلام والتسليم» لا في المدفوعات (٢٠٢٦/١٠/٢٦) — راجع migrateBranchGroup.
+  { key: 'branch', labelAr: 'الفرع', labelEn: 'Branch', group: 'pickup_delivery', inputType: 'select', options: opts(['جدة', 'الرياض', 'الدمام', 'جازان']), order: 3 },
 ];
 
 /**
@@ -2166,6 +2167,19 @@ async function migratePriceRequired() {
   await marks.insertOne({ _id: id, at: new Date() });
 }
 
+/**
+ * ── الفرعُ ينتقل إلى «الاستلام والتسليم» (صاحبُ الشركة، ٢٠٢٦/١٠/٢٦) ────────
+ * هو فرعُ الحمولة لا فرعُ الدفع، فيُسأل عنه مع المدينتين. مجموعةُ الخانة في
+ * القاعدة تُضبط من الإعدادات، فيُنقَل مرّةً بعلامةٍ ولا يعيده الإقلاع.
+ */
+async function migrateBranchGroup() {
+  const marks = mongoose.connection.collection('migrations');
+  const id = 'so-branch-to-pickup-delivery-2026-10-26';
+  if (await marks.findOne({ _id: id })) return;
+  await ShipmentOrderField.updateOne({ key: 'branch' }, { $set: { group: 'pickup_delivery', order: 3 } });
+  await marks.insertOne({ _id: id, at: new Date() });
+}
+
 exports.ensureShipmentOrderDefaults = async () => {
   // Dropped by request — the addresses added typing, not information. Removing
   // them from the seed alone would leave the old rows; removing the rows alone
@@ -2186,6 +2200,7 @@ exports.ensureShipmentOrderDefaults = async () => {
 
   await migratePaymentSubtypeField();
   await migratePriceRequired();
+  await migrateBranchGroup();
 
   for (const f of SYSTEM_FIELDS) {
     // eslint-disable-next-line no-await-in-loop

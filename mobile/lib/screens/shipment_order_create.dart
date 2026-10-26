@@ -9,6 +9,7 @@ import '../ui/contact.dart';
 import '../ui/search_field.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import 'so_driver_picker.dart';
 
 /// إنشاء/تعديل طلب شحنة — نفس نموذج الويب: الحقول تُبنى من إعدادات النموذج
 /// (/fields)، اختيار العميل يسحب سعر المسار المتفق عليه وقيمه الافتراضية،
@@ -109,6 +110,18 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
   }
 
   /// كما في الويب: سوّاقُ الشاحنة أوّلًا، فإن لم يكن لها سائقٌ فسوّاقُ المورّد.
+  Future<void> _chooseDriver({bool startWithNew = false}) async {
+    final d = await pickShipmentDriver(context,
+        local: _drivers, supplierId: _supplier?['_id']?.toString(), vehicleId: _vehicle?['_id']?.toString(), startWithNew: startWithNew);
+    if (d == null || !mounted) return;
+    setState(() {
+      if (!_drivers.any((x) => x['_id'] == d['_id'])) _drivers = [d, ..._drivers];
+      _form['driverName'] = d['name'];
+      _ctrls.remove('driverName');
+      if ('${d['phone'] ?? ''}'.isNotEmpty) { _form['driverPhone'] = d['phone']; _ctrls.remove('driverPhone'); }
+    });
+  }
+
   Future<void> _loadDrivers() async {
     final vId = _vehicle?['_id'];
     final sId = _supplier?['_id'];
@@ -1008,26 +1021,21 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
                               onChanged: (v) => _form['driverName'] = v,
                               decoration: InputDecoration(
                                 labelText: tr('اسم السائق', 'Driver name'),
-                                // المسجَّلون اقتراحاتٌ لا حصر: من ليس في السجلّ يُكتب اسمُه.
-                                suffixIcon: _drivers.isEmpty ? null : IconButton(
-                                  icon: const Icon(Icons.arrow_drop_down_circle_outlined, size: 20),
-                                  tooltip: tr('السوّاق المسجَّلون', 'Registered drivers'),
-                                  onPressed: () async {
-                                    final d = await _pickSheet<Map<String, dynamic>>(tr('السوّاق', 'drivers'), _drivers, (d) => '${d['name'] ?? ''}', sub: (d) {
-                                      final exp = '${d['driverCardExpiry'] ?? ''}'.length >= 10 ? '${d['driverCardExpiry']}'.substring(0, 10) : '';
-                                      final over = exp.isNotEmpty && (DateTime.tryParse(exp)?.isBefore(DateTime.now()) ?? false);
-                                      return [d['phone'], d['residenceNumber'], d['nationality'],
-                                        if (exp.isNotEmpty) over ? tr('بطاقة التشغيل منتهية $exp', 'Driver card expired $exp') : tr('بطاقة التشغيل حتى $exp', 'Card valid to $exp'),
-                                      ].where((e) => '${e ?? ''}'.isNotEmpty).join(' · ');
-                                    });
-                                    if (d == null) return;
-                                    setState(() {
-                                      _form['driverName'] = d['name'];
-                                      _ctrls.remove('driverName');
-                                      if ('${d['phone'] ?? ''}'.isNotEmpty) { _form['driverPhone'] = d['phone']; _ctrls.remove('driverPhone'); }
-                                    });
-                                  },
-                                ),
+                                // المسجَّلون اقتراحاتٌ لا حصر: من ليس في السجلّ يُكتب اسمُه. والبحثُ
+                                // في السوّاق كلِّهم بالاسم والجوال والإقامة، و«سائق جديد» يسجّله
+                                // (٢٠٢٦/١٠/٢٦) — راجع so_driver_picker.
+                                suffixIcon: Row(mainAxisSize: MainAxisSize.min, children: [
+                                  IconButton(
+                                    icon: const Icon(Icons.person_search, size: 21),
+                                    tooltip: tr('بحث بالاسم أو الجوال أو الإقامة', 'Search name, phone or iqama'),
+                                    onPressed: () => _chooseDriver(),
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(Icons.person_add_alt_1, size: 21, color: T.orange),
+                                    tooltip: tr('سائق جديد', 'New driver'),
+                                    onPressed: () => _chooseDriver(startWithNew: true),
+                                  ),
+                                ]),
                               ),
                             ),
                           ),

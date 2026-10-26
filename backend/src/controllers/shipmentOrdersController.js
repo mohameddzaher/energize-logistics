@@ -1887,6 +1887,18 @@ exports.listDrivers = async (req, res) => {
     if (q && q.trim()) {
       Object.assign(filter, anyOf(q, ['name', 'phone', 'residenceNumber', 'driverCardNumber',
         'nationality', 'sponsorName', 'companyName', 'email', 'externalId']));
+      // ── والجوّالُ كيفما كُتب (٢٠٢٦/١٠/٢٦: «لما نكتب رقم السائق يطلع عادي») ─
+      // «0501234567» و«+966501234567» و«501234567» رقمٌ واحد: يُطابَق بلا الصفر
+      // ولا مفتاح الدولة، ولو كان المكتوبُ جزءًا منه.
+      const { westernDigits } = require('../utils/arabicSearch');
+      const t = westernDigits(String(q).trim());
+      if (/^[\d\s+()\-]+$/.test(t)) {
+        const bare = t.replace(/\D/g, '').replace(/^(00)?966/, '').replace(/^0/, '');
+        if (bare.length >= 4) {
+          const rxBare = new RegExp(bare.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+          filter.$or = [...filter.$or, { phone: rxBare }, { residenceNumber: rxBare }, { driverCardNumber: rxBare }];
+        }
+      }
     }
     // بسائقِ مورّدٍ بعينه، أو بسائقِ شاحنةٍ بعينها — السؤالان اللذان تُفتَح
     // لهما هذه القائمة من شاشةٍ أخرى.
@@ -1918,6 +1930,16 @@ exports.listDrivers = async (req, res) => {
 exports.createDriver = async (req, res) => {
   try {
     if (!req.body.name || !String(req.body.name).trim()) return res.status(400).json({ message: 'Driver name is required' });
+    // ── «سائق جديد» من شاشة إنشاء الشحنة (`reuse`) لا يكرّر سائقًا قائمًا ────
+    // مَن كتب جوّالًا أو إقامةً مسجَّلةً يُعاد إليه السائقُ القائم ليُختار، بدل
+    // سائقٍ ثانٍ بالرقم نفسِه تتوزّع عليهما شحناتُه.
+    if (req.body.reuse) {
+      const tail = String(req.body.phone || '').replace(/\D/g, '').slice(-9);
+      const iq = String(req.body.residenceNumber || '').trim();
+      const or = [...(tail.length === 9 ? [{ phone: new RegExp(`${tail}$`) }] : []), ...(iq ? [{ residenceNumber: iq }] : [])];
+      const existing = or.length ? await ShipmentOrderDriver.findOne({ isActive: { $ne: false }, $or: or }) : null;
+      if (existing) return res.json({ driver: existing, existed: true });
+    }
     const created = await ShipmentOrderDriver.create({ ...pick(req.body, DRIVER_EDITABLE), createdBy: req.user._id });
     await syncDriverEmployee(created._id);
     const driver = await ShipmentOrderDriver.findById(created._id);
@@ -2077,8 +2099,9 @@ const SYSTEM_FIELDS = [
   { key: 'pickupTime', labelAr: 'تاريخ الاستلام', labelEn: 'Pickup date', group: 'pricing_time', inputType: 'date', required: true, order: 1 },
   { key: 'startTime', labelAr: 'تاريخ البداية', labelEn: 'Start date', group: 'pricing_time', inputType: 'date', order: 2 },
   { key: 'arrivalTime', labelAr: 'تاريخ الوصول', labelEn: 'Arrival date', group: 'pricing_time', inputType: 'date', order: 3 },
-  { key: 'sellPrice', labelAr: 'سعر البيع', labelEn: 'Sell price', group: 'pricing_time', inputType: 'number', required: true, order: 4 },
-  { key: 'buyPrice', labelAr: 'سعر الشراء', labelEn: 'Buy price', group: 'pricing_time', inputType: 'number', order: 5 },
+  // سعرُ الشراء إجباريٌّ والبيعُ اختياريّ (٢٠٢٦/١٠/٢٦) — راجع migratePriceRequired.
+  { key: 'sellPrice', labelAr: 'سعر البيع', labelEn: 'Sell price', group: 'pricing_time', inputType: 'number', order: 4 },
+  { key: 'buyPrice', labelAr: 'سعر الشراء', labelEn: 'Buy price', group: 'pricing_time', inputType: 'number', required: true, order: 5 },
   // المدفوعات
   // «نوع الدفع» حلّ محلَّ «نوع تأجير السائق» و«طريقة الدفع» — راجع
   // migratePaymentSubtypeField. فلا يُبذَران في قاعدةٍ جديدة؛ والقائمان يبقيان
@@ -2127,6 +2150,22 @@ async function migratePaymentSubtypeField() {
   );
 }
 
+/**
+ * ── سعرُ الشراء إجباريّ، والبيعُ لا (صاحبُ الشركة، ٢٠٢٦/١٠/٢٦) ────────────
+ * الشراءُ يُعرَف عند الحجز — هو ما اتُّفق عليه مع المورّد — والبيعُ قد يُسعَّر
+ * بعدُ. والخانتان في القاعدة (`required`) تُضبطان من الإعدادات، والبذرُ لا يمسّ
+ * صفًّا قائمًا — فيُقلَب الضبطُ مرّةً واحدةً بعلامةٍ في `migrations`، ثمّ يبقى
+ * لمن يضبطه من الإعدادات ولا يعيده الإقلاع.
+ */
+async function migratePriceRequired() {
+  const marks = mongoose.connection.collection('migrations');
+  const id = 'so-buy-required-sell-optional-2026-10-26';
+  if (await marks.findOne({ _id: id })) return;
+  await ShipmentOrderField.updateOne({ key: 'sellPrice' }, { $set: { required: false } });
+  await ShipmentOrderField.updateOne({ key: 'buyPrice' }, { $set: { required: true } });
+  await marks.insertOne({ _id: id, at: new Date() });
+}
+
 exports.ensureShipmentOrderDefaults = async () => {
   // Dropped by request — the addresses added typing, not information. Removing
   // them from the seed alone would leave the old rows; removing the rows alone
@@ -2146,6 +2185,7 @@ exports.ensureShipmentOrderDefaults = async () => {
   );
 
   await migratePaymentSubtypeField();
+  await migratePriceRequired();
 
   for (const f of SYSTEM_FIELDS) {
     // eslint-disable-next-line no-await-in-loop

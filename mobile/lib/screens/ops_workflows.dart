@@ -605,9 +605,23 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
             if (!ok) return;
           }
           set(() { running = true; resultMsg = null; skipped = []; });
+          // ما حُفظ يظهر في اللحظة على الكشوف المحدَّدة — لا ينتظر إعادةَ القائمة (٢٠٢٦/١٠/٢٦).
+          final picked = _allMatching ? null : Set<String>.of(_sel);
           try {
             final r = await Api.instance.post('/api/workflows/bulk-update', {..._selectionPayload(), 'fields': fields});
             skipped = List<Map>.from((r['skipped'] as List?) ?? const []);
+            if (picked != null && mounted) {
+              final skippedNos = skipped.map((x) => '${x['reportNumber']}').toSet();
+              final shown = Map<String, dynamic>.from(fields);
+              final pt = '${shown['paymentType'] ?? ''}';
+              if (pt.isNotEmpty && pt != 'cash' && pt != 'tax') {
+                shown['paymentSubtype'] = pt;
+                shown['paymentType'] = pt == 'deferred_invoice' ? 'tax' : 'cash';
+              }
+              setState(() {
+                _rows = _rows.map((w) => picked.contains('${w['_id']}') && !skippedNos.contains('${w['reportNumber']}') ? {...w, ...shown} : w).toList();
+              });
+            }
             more = (((r['skippedCount'] ?? skipped.length) as num).toInt() - skipped.length).clamp(0, 1 << 30);
             resultMsg = '${r['message'] ?? ''}';
             if (skipped.isEmpty && c.mounted) {
@@ -618,6 +632,8 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
             resultMsg = opsErr(e);
           }
           if (mounted) _load(background: true);
+          // والعاملُ الآخرُ في الخادم يمسح ذاكرتَه خلال ثانية — إعادةٌ ثانيةٌ تلتقط ما فاته.
+          Future.delayed(const Duration(milliseconds: 1500), () { if (mounted) _load(background: true); });
           if (c.mounted) set(() => running = false);
         }
         return SafeArea(

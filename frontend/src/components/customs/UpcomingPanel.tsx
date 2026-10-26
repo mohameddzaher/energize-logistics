@@ -31,6 +31,8 @@ export const DOC_LABELS: Record<DocKey, [string, string]> = {
 export interface UpcomingItem {
   _id: string; refNumber?: string; blNumber?: string; customerName?: string; shippingAgent?: string;
   expectedDate?: string; containerCount?: number; branch?: string; documents?: Partial<Record<DocKey, boolean>>;
+  /** ملاحظاتُ المعاملة — تُكتب وتُعدَّل من النافذة نفسِها (٢٠٢٦/١٠/٢٦). */
+  notes?: string;
   daysLeft: number | null; overdue?: boolean; dueSoon?: boolean;
 }
 
@@ -109,6 +111,36 @@ function DateEditor({ value, disabled, saving, onSave, ar }: {
   );
 }
 
+/**
+ * ملاحظاتُ المعاملة القادمة (صاحبُ الشركة، ٢٠٢٦/١٠/٢٦): «يكون فيه نوت… تفاصيل
+ * يقدروا يكتبوا ويعدّلوا فيه». مسوّدةٌ لا تُرسَل إلّا بـ«حفظ» — كخانة التاريخ —
+ * وما تغيّر من خارجها (زميلٌ حفظ) يظهر ما لم تكن فيها كتابةٌ لم تُحفَظ.
+ */
+function NotesEditor({ value, disabled, saving, onSave, ar }: {
+  value: string; disabled?: boolean; saving?: boolean; onSave: (v: string) => void; ar: boolean;
+}) {
+  const [draft, setDraft] = useState(value);
+  const [seen, setSeen] = useState(value);
+  if (value !== seen) { if (draft === seen) setDraft(value); setSeen(value); }
+  const dirty = draft.trim() !== (value || '').trim();
+  return (
+    <div className="space-y-1.5">
+      <textarea value={draft} disabled={disabled} rows={2} maxLength={2000}
+        onChange={(e) => setDraft(e.target.value)}
+        placeholder={ar ? 'ملاحظات وتفاصيل المعاملة…' : 'Notes and details…'}
+        className="w-full px-3 py-2 rounded-lg bg-white border border-slate-200 text-[13px] text-slate-800 leading-relaxed resize-y disabled:opacity-60 focus:outline-none focus:border-[#f37121]" />
+      {dirty && !disabled && (
+        <div className="flex items-center gap-1.5">
+          <button type="button" onClick={() => onSave(draft.trim())} disabled={saving}
+            className="px-3 py-1.5 rounded-lg bg-slate-900 text-white text-[12px] font-semibold disabled:opacity-50">{ar ? 'حفظ الملاحظات' : 'Save notes'}</button>
+          <button type="button" onClick={() => setDraft(value)}
+            className="px-2 py-1.5 rounded-lg text-[12px] text-slate-500 hover:text-slate-900">{ar ? 'تراجع' : 'Undo'}</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function UpcomingPanel({ items, days, canEdit, canDelete, ar, onClose, onChanged, notify, confirm }: {
   items: UpcomingItem[]; days: number; canEdit: boolean; ar: boolean;
   /** من يحذف المعاملة — مديرُ القسم وموظّفُه، كما في جدول المعاملات. */
@@ -126,7 +158,7 @@ export default function UpcomingPanel({ items, days, canEdit, canDelete, ar, onC
   // كلِّه — فيضغط المستخدمُ ولا يرى شيئًا لثانيةٍ أو اثنتين، فيظنّها معلّقةً
   // ويضغط ثانيةً فتنقلب. فما ضُغط يُكتب على الشاشة فورًا (`local`)، ويُحفَظ في
   // الخلف؛ وإن رُدّ الحفظُ عادت العلامةُ كما كانت وقيل ذلك.
-  const [local, setLocal] = useState<Record<string, { documents?: Partial<Record<DocKey, boolean>>; expectedDate?: string; branch?: string }>>({});
+  const [local, setLocal] = useState<Record<string, { documents?: Partial<Record<DocKey, boolean>>; expectedDate?: string; branch?: string; notes?: string }>>({});
   const view = (x: UpcomingItem): UpcomingItem => {
     const o = local[x._id];
     return o ? {
@@ -157,8 +189,8 @@ export default function UpcomingPanel({ items, days, canEdit, canDelete, ar, onC
   };
 
   /** التاريخُ أو الفرع: يُكتب على الشاشة فورًا ويُحفَظ في صفّ المعاملة نفسِه. */
-  const save = async (x: UpcomingItem, body: { expectedDate?: string; branch?: string }) => {
-    const before = { expectedDate: x.expectedDate, branch: x.branch };
+  const save = async (x: UpcomingItem, body: { expectedDate?: string; branch?: string; notes?: string }) => {
+    const before = { expectedDate: x.expectedDate, branch: x.branch, notes: x.notes };
     setBusy(x._id);
     setLocal((m) => ({ ...m, [x._id]: { ...m[x._id], ...body } }));
     try {
@@ -270,6 +302,12 @@ export default function UpcomingPanel({ items, days, canEdit, canDelete, ar, onC
                 <div className="mt-2">
                   <DocChecklist value={x.documents} ar={ar} disabled={!canEdit}
                     onToggle={(k, on) => toggleDoc(x, k, on)} />
+                </div>
+
+                <div className="mt-3">
+                  <p className="text-[12px] font-semibold text-slate-500 mb-1">{t('ملاحظات', 'Notes')}</p>
+                  <NotesEditor value={x.notes || ''} disabled={!canEdit} saving={busy === x._id} ar={ar}
+                    onSave={(v) => save(x, { notes: v })} />
                 </div>
 
                 <div className="mt-3 flex flex-wrap items-center gap-2">

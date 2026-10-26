@@ -1025,6 +1025,28 @@ class _CustomsUpcomingScreenState extends State<CustomsUpcomingScreen> {
     }, tr('تعذّر الحفظ — عادت العلامةُ كما كانت', 'Not saved — the tick was restored'));
   }
 
+  Future<void> _editNotes(Map<String, dynamic> x, String current) async {
+    final ctl = TextEditingController(text: current);
+    final saved = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      builder: (c) => Padding(
+        padding: EdgeInsets.only(left: 16, right: 16, top: 16, bottom: MediaQuery.of(c).viewInsets.bottom + 16),
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Text(tr('ملاحظات المعاملة', 'Transaction notes'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+          const SizedBox(height: 10),
+          TextField(controller: ctl, autofocus: true, minLines: 3, maxLines: 8, maxLength: 2000,
+              decoration: InputDecoration(hintText: tr('ملاحظات وتفاصيل المعاملة…', 'Notes and details…'))),
+          const SizedBox(height: 6),
+          FilledButton(onPressed: () => Navigator.pop(c, ctl.text.trim()), child: Text(tr('حفظ الملاحظات', 'Save notes'))),
+        ]),
+      ),
+    );
+    ctl.dispose();
+    if (saved == null || saved == current.trim()) return;
+    await _save(x, 'notes', saved);
+  }
+
   Future<void> _save(Map<String, dynamic> x, String key, String value) async {
     final id = '${x['_id']}';
     final before = x[key];
@@ -1174,6 +1196,30 @@ class _CustomsUpcomingScreenState extends State<CustomsUpcomingScreen> {
                                 onSelected: widget.canEdit ? (on) => _toggleDoc(raw, k.$1, on) : null,
                               ),
                           ]),
+                          // ملاحظاتُ المعاملة القادمة — تُكتب وتُعدَّل من هنا (كالويب، ٢٠٢٦/١٠/٢٦).
+                          const SizedBox(height: 8),
+                          InkWell(
+                            borderRadius: BorderRadius.circular(10),
+                            onTap: !widget.canEdit ? null : () => _editNotes(raw, _s(x, 'notes')),
+                            child: Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                              decoration: BoxDecoration(border: Border.all(color: T.line), borderRadius: BorderRadius.circular(10)),
+                              child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                const Icon(Icons.sticky_note_2_outlined, size: 16, color: T.inkSoft),
+                                const SizedBox(width: 6),
+                                Expanded(
+                                  child: Text(
+                                    _s(x, 'notes').isEmpty
+                                        ? (widget.canEdit ? tr('إضافة ملاحظات وتفاصيل…', 'Add notes and details…') : tr('لا ملاحظات', 'No notes'))
+                                        : _s(x, 'notes'),
+                                    style: TextStyle(fontSize: 12.5, color: _s(x, 'notes').isEmpty ? T.inkFaint : T.ink, height: 1.4),
+                                  ),
+                                ),
+                                if (widget.canEdit) const Icon(Icons.edit_outlined, size: 15, color: T.inkFaint),
+                              ]),
+                            ),
+                          ),
                           const SizedBox(height: 8),
                           Row(children: [
                             if (widget.canEdit)

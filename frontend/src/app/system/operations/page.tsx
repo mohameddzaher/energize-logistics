@@ -427,7 +427,10 @@ export default function OperationsWorkflowPage() {
     if (customsMode) params.append('customs', customsMode);
     if (excludeCancelled) params.append('excludeCancelled', '1');
     for (const [field, vals] of Object.entries(colFilters)) {
-      vals.forEach((v) => params.append(`cf_${field}`, v));
+      // مجموعةٌ أو مصفوفةٌ أو نصٌّ — كلُّها تُقرأ؛ قيمةٌ بشكلٍ غير متوقَّع كانت ترمي
+      // داخلَ الطلب فيُبتلَع الخطأ ولا تُعاد القائمةُ أبدًا.
+      const list = vals instanceof Set || Array.isArray(vals) ? Array.from(vals as Iterable<string>) : (vals ? [String(vals)] : []);
+      list.forEach((v) => params.append(`cf_${field}`, v));
     }
     return params;
   }, [stageFilter, search, dateFrom, dateTo, showPendingOnly, customsMode, colFilters, excludeCancelled]);
@@ -876,15 +879,33 @@ export default function OperationsWorkflowPage() {
     const run = async () => {
       setBulkPaying(true); setBulkResult(null);
       try {
+        const picked = allMatching ? null : new Set(selectedIds);
         const r = await api.post<{ message: string; skipped?: { reportNumber: string; reason: string }[]; skippedCount?: number }>(
           '/api/workflows/bulk-update', { ...selectionPayload(), fields });
         const skipped = r.skipped || [];
         setBulkResult({ message: r.message, skipped, more: Math.max(0, (r.skippedCount || skipped.length) - skipped.length) });
+        // ── ما حُفظ يظهر في اللحظة (صاحبُ الشركة، ٢٠٢٦/١٠/٢٦) ───────────────
+        // «عملت سيليكت لخمسين كشف… مراجعة التشغيل مش بتسمع»: الخادمُ كتبها
+        // كلَّها، والصفحةُ لم تُعِد طلبَ القائمة فبقيت الخاناتُ القديمة. فلا تنتظر
+        // الشاشةُ إعادةَ الطلب: الصفوفُ المحدَّدةُ تأخذ ما حُفظ فورًا (والمتروكُ
+        // يبقى كما هو)، ثمّ يُعاد الطلبُ مرّتين لما يشتقّه الخادمُ.
+        if (picked) {
+          const skippedNos = new Set(skipped.map((x) => String(x.reportNumber)));
+          const shown: Record<string, any> = { ...fields };
+          if (shown.paymentType && !['cash', 'tax', ''].includes(String(shown.paymentType))) {
+            shown.paymentSubtype = shown.paymentType;
+            shown.paymentType = shown.paymentType === 'deferred_invoice' ? 'tax' : 'cash';
+          }
+          setWorkflows((prev) => prev.map((w) => (picked.has(w._id) && !skippedNos.has(String(w.reportNumber)) ? { ...w, ...shown } : w)));
+        }
+        notify(r.message || (lang === 'ar' ? 'تم الحفظ' : 'Saved'), skipped.length ? 'error' : 'success');
         if (!skipped.length) {
           setShowBulkPay(false); setSelectedIds(new Set()); setAllMatching(false);
           setBulkPay({ paymentDate: '', payingBranch: '', paymentType: '', finalReportDestination: '', documentNumber: '', sendingDate: '', branchDeliveryDate: '', deliveryDate: '', operationsReview: '' });
         }
         fetchWorkflows(true); fetchStats();
+        // والعاملُ الآخرُ في الخادم يمسح ذاكرتَه خلال ثانية — إعادةٌ ثانيةٌ تلتقط ما فاته.
+        setTimeout(() => { fetchWorkflows(true); fetchStats(); }, 1500);
       } catch (err: any) {
         // تغيّر العددُ بين التأكيد والتنفيذ (409): يُقال الجديدُ ويُحدَّث، ولا يُكتب شيء.
         setBulkResult({ message: err.message, skipped: [] });

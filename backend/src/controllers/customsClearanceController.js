@@ -1250,7 +1250,7 @@ exports.upcomingAlerts = async (req, res) => {
       upcoming: true,
       cancelled: { $ne: true },
       expectedDate: { $gt: '', $lte: until },
-    }).select('refNumber blNumber customerName shippingAgent port expectedDate containerCount branch')
+    }).select('refNumber blNumber customerName shippingAgent port expectedDate containerCount branch notes')
       .sort({ expectedDate: 1 }).lean();
 
     // ── والقادمةُ كلُّها في النافذة نفسِها ────────────────────────────────
@@ -1258,7 +1258,7 @@ exports.upcomingAlerts = async (req, res) => {
     // قادمةٍ — لا ما اقترب وحدَه — ومع كلٍّ منها كم بقي على موعدها وأوراقُها
     // الخمس، فتُعلَّم الأوراقُ ويُعدَّل التاريخُ من النافذة بلا فتح المعاملة.
     const all = await CustomsClearance.find({ upcoming: true, cancelled: { $ne: true } })
-      .select('refNumber blNumber customerName shippingAgent expectedDate containerCount branch documents')
+      .select('refNumber blNumber customerName shippingAgent expectedDate containerCount branch notes documents')
       .sort({ expectedDate: 1 }).lean();
     const t0 = startOfDay(today).getTime();
     const daysLeft = (d) => (d ? Math.round((startOfDay(d).getTime() - t0) / DAY_MS) : null);

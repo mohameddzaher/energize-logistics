@@ -2164,7 +2164,8 @@ async function migratePriceRequired() {
   if (await marks.findOne({ _id: id })) return;
   await ShipmentOrderField.updateOne({ key: 'sellPrice' }, { $set: { required: false } });
   await ShipmentOrderField.updateOne({ key: 'buyPrice' }, { $set: { required: true } });
-  await marks.insertOne({ _id: id, at: new Date() });
+  // upsert لا insert: العاملان يُقلعان معًا، والإدخالُ الثاني كان يرمي «مفتاحًا مكرَّرًا».
+  await marks.updateOne({ _id: id }, { $setOnInsert: { at: new Date() } }, { upsert: true });
 }
 
 /**
@@ -2177,7 +2178,8 @@ async function migrateBranchGroup() {
   const id = 'so-branch-to-pickup-delivery-2026-10-26';
   if (await marks.findOne({ _id: id })) return;
   await ShipmentOrderField.updateOne({ key: 'branch' }, { $set: { group: 'pickup_delivery', order: 3 } });
-  await marks.insertOne({ _id: id, at: new Date() });
+  // upsert لا insert: العاملان يُقلعان معًا، والإدخالُ الثاني كان يرمي «مفتاحًا مكرَّرًا».
+  await marks.updateOne({ _id: id }, { $setOnInsert: { at: new Date() } }, { upsert: true });
 }
 
 exports.ensureShipmentOrderDefaults = async () => {

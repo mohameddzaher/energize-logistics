@@ -66,7 +66,7 @@ export interface ShipmentOrder {
   // سجلُّ انتقالات الحالة: من أين إلى أين، ومتى، وبأيّ سبب، وبيد من.
   // «متى صارت في الطريق؟» و«من أخّرها؟» سؤالان يُسألان بعد أسبوع، ولا جوابَ
   // لهما إن حُفظت الحالةُ الأخيرةُ وحدَها.
-  statusLog?: { from?: string; to?: string; note?: string; at?: string; byName?: string }[];
+  statusLog?: { _id?: string; from?: string; to?: string; note?: string; at?: string; by?: string; byName?: string; fileUrl?: string; fileName?: string; editedAt?: string | null; editedByName?: string }[];
 }
 
 // Same keys and colours as the ops mirror so a status reads identically on

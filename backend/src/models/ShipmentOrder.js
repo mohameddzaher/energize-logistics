@@ -140,6 +140,9 @@ const shipmentOrderSchema = new mongoose.Schema(
       fileName: { type: String, default: '' },
       mimeType: { type: String, default: '' },
       size: { type: Number, default: 0 },
+      // ملاحظةُ المتابعة تُعدَّل (٢٠٢٦/١٠/٢٦) — ويبقى ظاهرًا أنّها عُدّلت ومَن عدّلها.
+      editedAt: { type: Date, default: null },
+      editedByName: { type: String, default: '' },
     }],
 
     // Values of user-added inputs from the form-settings page, keyed by the

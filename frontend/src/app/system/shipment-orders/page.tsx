@@ -28,7 +28,7 @@ import ManagedSelect from '@/components/system/ManagedSelect';
 import { paymentKindLabel } from '@/lib/paymentKind';
 import {
   OrderCard, ViewSwitcher, ViewMode, VIEW_MODES, VIEW_PREF_KEY, VIEW_PREF_READ_KEY,
-  lastFollowUp, relTime, driverMessage,
+  followUpNotes, relTime, driverMessage, orderRef,
 } from '@/components/shipment-orders/OrderViews';
 import NoteModal from '@/components/shipment-orders/NoteModal';
 
@@ -745,7 +745,8 @@ function ShipmentOrdersInner() {
                         />
                       : <span className="text-slate-300 text-xs">{ar ? 'لا رقم' : 'no phone'}</span>}
                   </td>
-                  <td className="px-4 py-3 text-slate-700">
+                  {/* نوعُ الشاحنة واللوحةُ لا ينكسران سطرين («تريلا» ثمّ «سطحة» تحتها). */}
+                  <td className="px-4 py-3 text-slate-700 whitespace-nowrap">
                     <span className="block">{o.truckType || '—'}</span>
                     {/* واللوحةُ تحتها: هي ما يُطابَق به في البوّابات والتقارير. */}
                     {(o as any).vehiclePlate
@@ -785,13 +786,19 @@ function ShipmentOrdersInner() {
                   {/* ── وآخرُ متابعة: ما قيل عن الشحنة آخرَ مرّة، ومَن قاله ومتى. */}
                   <td className="px-4 py-3 max-w-[240px]">
                     {(() => {
-                      const f = lastFollowUp(o);
+                      const all = followUpNotes(o);
+                      const f = all[0];
                       if (!f) return <span className="text-slate-300">—</span>;
+                      // تُفتح كلُّ الملاحظات من هنا — للتعديل والحذف والإضافة بعدها.
                       return (
-                        <span className="block" title={`${f.note}${f.byName ? ` — ${f.byName}` : ''}`}>
-                          <span className="block truncate text-[13px] text-slate-700">{f.note}</span>
-                          <span className="block truncate text-[11px] text-slate-400">{f.byName ? `${f.byName} · ` : ''}{relTime(f.at, ar)}</span>
-                        </span>
+                        <button type="button" onClick={(e) => { e.stopPropagation(); setNoteFor(o); }}
+                          className="block w-full text-start rounded-md hover:bg-sky-50 -mx-1 px-1" title={`${f.note}${f.byName ? ` — ${f.byName}` : ''}`}>
+                          <span className="block truncate text-[13px] text-slate-800">{f.note}</span>
+                          <span className="block truncate text-[11px] text-slate-500">
+                            {f.byName ? `${f.byName} · ` : ''}{relTime(f.at, ar)}
+                            {all.length > 1 ? <span className="text-sky-700 font-semibold"> · {ar ? `${all.length} ملاحظات` : `${all.length} notes`}</span> : null}
+                          </span>
+                        </button>
                       );
                     })()}
                   </td>
@@ -995,13 +1002,13 @@ function ShipmentOrdersInner() {
       )}
 
       {fu && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4" onClick={() => setFu(null)}>
-          <div className="w-full max-w-lg bg-white rounded-2xl shadow-xl max-h-[88vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-900/50 sm:p-4" onClick={() => setFu(null)}>
+          <div className="w-full sm:max-w-lg bg-white rounded-t-2xl sm:rounded-2xl shadow-xl max-h-[92vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between">
               <div className="min-w-0">
-                <p className="font-bold text-slate-900">{ar ? 'تسجيل متابعة' : 'Record a follow-up'}</p>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  {ar ? 'بوليصة' : 'Waybill'} <span className="font-mono font-bold">{fu.order.waybillNumber}</span>
+                <p className="text-lg font-bold text-slate-900">{ar ? 'تغيير الحالة' : 'Change status'}</p>
+                <p className="text-sm text-slate-500 mt-0.5">
+                  {ar ? 'بوليصة' : 'Waybill'} <span className="font-mono font-bold">{orderRef(fu.order)}</span>
                   {fu.order.customerName ? ` · ${fu.order.customerName}` : ''}
                   {fu.order.fromCity ? ` · ${fu.order.fromCity} → ${fu.order.toCity || ''}` : ''}
                 </p>
@@ -1013,14 +1020,14 @@ function ShipmentOrdersInner() {
 
             <div className="p-5 space-y-4">
               <div>
-                <label className="block text-sm font-semibold text-slate-800 mb-2">{ar ? 'الحالة' : 'Status'}</label>
+                <label className="block text-base font-bold text-slate-800 mb-2">{ar ? 'الحالة' : 'Status'}</label>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                   {statusVocab.map((s2) => {
                     const on = fu.status === s2.key;
                     return (
                       <button key={s2.key} type="button" onClick={() => setFu({ ...fu, status: s2.key })}
                         // المختارُ يُعرَف بلونه — والحلقةُ البرتقاليّة فوقه تزاحمه.
-                        className={`text-xs font-semibold rounded-lg px-2.5 py-2 border transition-colors ${
+                        className={`min-h-[48px] text-[15px] font-bold rounded-xl px-3 py-2.5 border-2 transition-colors ${
                           on ? 'text-white border-transparent' : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'}`}
                         style={on ? { background: s2.color } : undefined}>
                         {vocabLabel(s2, lang as Lang)}
@@ -1043,13 +1050,13 @@ function ShipmentOrdersInner() {
               )}
 
               <div>
-                <label className="block text-sm font-semibold text-slate-800 mb-1.5">
+                <label className="block text-base font-bold text-slate-800 mb-1.5">
                   {ar ? 'ملاحظة' : 'Note'}
                   <span className="text-slate-400 text-xs font-normal ms-1.5">{ar ? '(اختياري)' : '(optional)'}</span>
                 </label>
                 <textarea rows={2} value={fu.note} onChange={(e) => setFu({ ...fu, note: e.target.value })}
                   placeholder={ar ? 'سببُ النقلة إن كان لها سبب…' : 'Why it moved, if there is a reason…'}
-                  className="w-full px-3 py-2 rounded-lg bg-white border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
+                  className="w-full px-4 py-3 rounded-xl bg-white border border-slate-300 text-base focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
               </div>
 
               {/* المرفقُ يظهر حين تطلبه الحالة — ولا يُعرَض في غيرها فيُشغِل. */}
@@ -1088,7 +1095,7 @@ function ShipmentOrdersInner() {
                   <ul className="space-y-1.5 max-h-52 overflow-y-auto pe-1">
                     {[...fu.order.statusLog].reverse().map((h: any, i: number) => (
                       <li key={i} className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2">
-                        <div className="flex flex-wrap items-center gap-1.5 text-[11.5px]">
+                        <div className="flex flex-wrap items-center gap-1.5 text-[13px]">
                           {h.from ? <span className="text-slate-500">{statusLabel(h.from, lang as Lang)}</span> : null}
                           {h.from ? <span className="text-slate-400">→</span> : null}
                           <span className="font-semibold text-slate-900">{statusLabel(h.to, lang as Lang)}</span>
@@ -1096,7 +1103,7 @@ function ShipmentOrdersInner() {
                             {fmtDT(h.at, lang as Lang)}
                           </span>
                         </div>
-                        {h.note ? <p className="text-[12.5px] text-slate-700 mt-1">{h.note}</p> : null}
+                        {h.note ? <p className="text-sm text-slate-800 mt-1 whitespace-pre-wrap break-words">{h.note}</p> : null}
                         {/* المرفقُ يُقرأ من حيث قُيِّد — لا يُبحَث عنه في مكانٍ آخر. */}
                         {h.fileUrl ? (
                           <a href={h.fileUrl} target="_blank" rel="noreferrer"
@@ -1104,7 +1111,7 @@ function ShipmentOrdersInner() {
                             <FileDown className="w-3 h-3" />{h.fileName || (ar ? 'المرفق' : 'Attachment')}
                           </a>
                         ) : null}
-                        {h.byName ? <p className="text-[11px] text-slate-400 mt-0.5">{h.byName}</p> : null}
+                        {h.byName ? <p className="text-xs text-slate-500 mt-0.5">{h.byName}</p> : null}
                       </li>
                     ))}
                   </ul>
@@ -1113,11 +1120,11 @@ function ShipmentOrdersInner() {
             </div>
 
             <div className="px-5 py-4 border-t border-slate-200 flex items-center justify-end gap-2">
-              <button type="button" onClick={() => setFu(null)} className="px-4 py-2 text-slate-500 hover:text-slate-900 text-sm">
+              <button type="button" onClick={() => setFu(null)} className="min-h-[48px] px-5 text-slate-500 hover:text-slate-900 text-base">
                 {ar ? 'إلغاء' : 'Cancel'}
               </button>
               <button type="button" onClick={submitFollowUp} disabled={busyId === fu.order._id}
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#f37121] text-white text-sm font-medium hover:bg-[#e06010] disabled:opacity-60">
+                className="min-h-[48px] inline-flex items-center gap-1.5 px-6 rounded-xl bg-[#f37121] text-white text-base font-bold hover:bg-[#e06010] disabled:opacity-60">
                 {busyId === fu.order._id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
                 {ar ? 'حفظ المتابعة' : 'Save follow-up'}
               </button>

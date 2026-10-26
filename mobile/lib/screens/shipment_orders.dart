@@ -656,7 +656,11 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
           ]),
           if ('${r['notes'] ?? ''}'.trim().isNotEmpty)
             Padding(padding: const EdgeInsets.only(top: 4), child: Text('${tr('ملاحظة البوليصة', 'Waybill note')}: ${r['notes']}', maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, color: T.inkSoft))),
-          SoLatestFollowUpLine(order: r),
+          // تُفتح منها كلُّ الملاحظات — للقراءة والإضافة والتعديل والحذف.
+          SoLatestFollowUpLine(order: r, onTap: () async {
+            final u = await soQuickNote(context, r);
+            if (u != null) _applyNote(u);
+          }),
           Row(children: [
             Expanded(child: Text('${r['driverName'] ?? ''}', style: const TextStyle(fontSize: 12.5))),
             ContactButtons(phone: '${r['driverPhone'] ?? ''}', size: 18, compact: true),
@@ -669,7 +673,7 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
             if (editor)
               IconButton(
                 visualDensity: VisualDensity.compact,
-                tooltip: tr('ملاحظة متابعة', 'Follow-up note'),
+                tooltip: tr('ملاحظات المتابعة', 'Follow-up notes'),
                 icon: const Icon(Icons.edit_note, size: 21, color: T.violet),
                 onPressed: () async {
                   final u = await soQuickNote(context, r);

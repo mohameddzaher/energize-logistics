@@ -144,19 +144,19 @@ class SoStatusLog extends StatelessWidget {
       for (final h in items)
         Container(
           margin: const EdgeInsets.only(bottom: 6),
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(color: T.canvas, borderRadius: BorderRadius.circular(8), border: Border.all(color: T.line)),
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(color: T.canvas, borderRadius: BorderRadius.circular(10), border: Border.all(color: T.line)),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
               if ('${h['from'] ?? ''}'.isNotEmpty) ...[
-                Text(tr(soStatusOf(vocab, h['from']).$2, soStatusOf(vocab, h['from']).$3), style: const TextStyle(fontSize: 11.5, color: T.inkFaint)),
-                const Text(' ← ', style: TextStyle(fontSize: 11.5, color: T.inkFaint)),
+                Text(tr(soStatusOf(vocab, h['from']).$2, soStatusOf(vocab, h['from']).$3), style: const TextStyle(fontSize: 13, color: T.inkSoft)),
+                const Text(' ← ', style: TextStyle(fontSize: 13, color: T.inkSoft)),
               ],
-              Text(tr(soStatusOf(vocab, h['to']).$2, soStatusOf(vocab, h['to']).$3), style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800)),
+              Text(tr(soStatusOf(vocab, h['to']).$2, soStatusOf(vocab, h['to']).$3), style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800)),
               const Spacer(),
-              Text(soFmtDT(h['at']), style: const TextStyle(fontSize: 11, color: T.inkSoft)),
+              Text(soFmtDT(h['at']), style: const TextStyle(fontSize: 12, color: T.inkSoft)),
             ]),
-            if ('${h['note'] ?? ''}'.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 3), child: Text('${h['note']}', style: const TextStyle(fontSize: 12.5))),
+            if ('${h['note'] ?? ''}'.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 4), child: Text('${h['note']}', style: const TextStyle(fontSize: 14.5, height: 1.35))),
             if ('${h['fileUrl'] ?? ''}'.isNotEmpty)
               InkWell(
                 onTap: () => soOpenFile('${h['fileUrl']}'),
@@ -165,7 +165,7 @@ class SoStatusLog extends StatelessWidget {
                   Flexible(child: Text('${h['fileName'] ?? tr('المرفق', 'Attachment')}', style: const TextStyle(fontSize: 11.5, color: T.orange, fontWeight: FontWeight.w700))),
                 ])),
               ),
-            if ('${h['byName'] ?? ''}'.isNotEmpty) Text('${h['byName']}', style: const TextStyle(fontSize: 11, color: T.inkFaint)),
+            if ('${h['byName'] ?? ''}'.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 2), child: Text('${h['byName']}', style: const TextStyle(fontSize: 12.5, color: T.inkSoft))),
           ]),
         ),
     ]);
@@ -236,30 +236,38 @@ class _FollowUpSheetState extends State<_FollowUpSheet> {
     return SafeArea(child: Padding(
       padding: EdgeInsets.fromLTRB(16, 16, 16, MediaQuery.of(context).viewInsets.bottom + 16),
       child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Text(tr('تسجيل متابعة', 'Record a follow-up'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+        Text(tr('تغيير الحالة', 'Change status'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 19)),
         Text('${tr('بوليصة', 'Waybill')} ${soRef(o)}${'${o['customerName'] ?? ''}'.isNotEmpty ? ' · ${o['customerName']}' : ''}${'${o['fromCity'] ?? ''}'.isNotEmpty ? ' · ${o['fromCity']} → ${o['toCity'] ?? ''}' : ''}',
-            style: const TextStyle(fontSize: 12, color: T.inkFaint)),
-        const SizedBox(height: 12),
-        Text(tr('الحالة', 'Status'), style: const TextStyle(fontWeight: FontWeight.w700)),
-        const SizedBox(height: 6),
-        Wrap(spacing: 6, runSpacing: 6, children: [
-          for (final s in widget.vocab)
-            ChoiceChip(
-              selected: _status == s.$1,
-              onSelected: (_) => setState(() => _status = s.$1),
-              label: Text(tr(s.$2, s.$3)),
-              labelStyle: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: _status == s.$1 ? Colors.white : T.inkSoft),
-              selectedColor: s.$4,
-              showCheckmark: false,
-            ),
-        ]),
+            style: const TextStyle(fontSize: 13.5, color: T.inkSoft)),
+        const SizedBox(height: 14),
+        Text(tr('الحالة', 'Status'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+        const SizedBox(height: 8),
+        // أزرارٌ كبيرةٌ عمودين — تُقرأ وتُضغط بلا تكبير (٢٠٢٦/١٠/٢٦).
+        LayoutBuilder(builder: (c, box) {
+          final w = (box.maxWidth - 8) / 2;
+          return Wrap(spacing: 8, runSpacing: 8, children: [
+            for (final s in widget.vocab)
+              SizedBox(width: w, height: 50, child: Material(
+                color: _status == s.$1 ? s.$4 : Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12),
+                    side: BorderSide(color: _status == s.$1 ? s.$4 : T.line, width: 1.5)),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(12),
+                  onTap: () => setState(() => _status = s.$1),
+                  child: Center(child: Padding(padding: const EdgeInsets.symmetric(horizontal: 6), child: FittedBox(fit: BoxFit.scaleDown,
+                      child: Text(tr(s.$2, s.$3), style: TextStyle(fontSize: 15.5, fontWeight: FontWeight.w800,
+                          color: _status == s.$1 ? Colors.white : T.ink))))),
+                ),
+              )),
+          ]);
+        }),
         if (_status == 'cancelled' && o['status'] != 'cancelled') ...[
           const SizedBox(height: 12),
           LookupField(type: 'so_cancel_reason', controller: _reason, label: '${tr('سبب الإلغاء', 'Cancellation reason')} *',
               fallback: const ['إلغاء من السائق', 'إلغاء من العميل', 'إلغاء من المندوب']),
         ],
         const SizedBox(height: 12),
-        TextField(controller: _note, maxLines: 2, decoration: InputDecoration(
+        TextField(controller: _note, maxLines: 2, style: const TextStyle(fontSize: 16), decoration: InputDecoration(
           labelText: tr('ملاحظة (اختياري)', 'Note (optional)'),
           hintText: tr('سببُ النقلة إن كان لها سبب…', 'Why it moved, if there is a reason…'),
         )),
@@ -279,16 +287,16 @@ class _FollowUpSheetState extends State<_FollowUpSheet> {
         ],
         if (log.isNotEmpty) ...[
           const Divider(height: 24),
-          Text('${tr('السجل', 'History')} ${log.length}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: T.inkFaint)),
+          Text('${tr('السجل', 'History')} ${log.length}', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: T.inkSoft)),
           const SizedBox(height: 6),
           SoStatusLog(log: log, vocab: widget.vocab),
         ],
         const SizedBox(height: 12),
-        FilledButton.icon(
+        SizedBox(height: 52, child: FilledButton.icon(
           onPressed: _busy ? null : _save,
           icon: _busy ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.check),
-          label: Text(tr('حفظ المتابعة', 'Save follow-up')),
-        ),
+          label: Text(tr('حفظ', 'Save'), style: const TextStyle(fontSize: 16.5, fontWeight: FontWeight.w800)),
+        )),
       ])),
     ));
   }

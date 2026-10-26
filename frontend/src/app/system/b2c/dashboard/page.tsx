@@ -235,7 +235,7 @@ export default function B2CDashboardPage() {
   if (loading) return <Spinner />;
   if (!d || !d.board) return <div className="p-8 text-slate-500">{t('تعذّر تحميل اللوحة', 'Could not load the board')}</div>;
 
-  const B = d.board; const E = d.employees; const V = d.vehicles;
+  const B = d.board; const E: any = d.employees || {}; const V: any = d.vehicles || {};
   const includeEnded = String(f.status || '').split(',').includes('إنهاء خدمة');
   /** الناسُ خلف الرقم: فلاترُ اللوحة + ما يخصّ الرقم، وفي الخدمة وحدَهم. */
   const people = (extra: Record<string, string> = {}) =>

@@ -119,7 +119,7 @@ export function ReceivablesFilterBar({ filters, onChange, facets, ar, manager }:
     parties: (facets?.parties || []).map((o) => ({ value: o.value, count: o.count, label: o.label || o.value, hint: o.code || undefined })),
     pay: PAY_ORDER.map((k) => ({ value: k, label: paymentKindLabel(k, ar), count: facets?.pay.find((x) => x.value === k)?.count ?? 0 })),
     dueState: ['late', 'noterm', 'within'].map((k) => ({ value: k, label: t(...DUE_LABELS[k]), count: facets?.dueState.find((x) => x.value === k)?.count ?? 0 })),
-    issue: ['none', 'negotiating', 'legal'].map((k) => ({ value: k, label: t(...ISSUE_LABELS[k]), count: facets?.issue.find((x) => x.value === k)?.count ?? 0 })),
+    issue: ['none', 'negotiating', 'legal'].map((k) => ({ value: k, label: t(...ISSUE_LABELS[k]), count: facets?.issue?.find((x) => x.value === k)?.count ?? 0 })),
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [facets, ar]);
   const set = (k: FilterKey) => (v: string[]) => onChange({ ...filters, [k]: v });

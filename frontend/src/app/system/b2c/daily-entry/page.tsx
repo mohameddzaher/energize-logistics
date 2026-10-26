@@ -105,6 +105,7 @@ export default function B2COrderEntryPage() {
     try {
       const res = await api.get<Data>(`/api/b2c/entry${date ? `?date=${date}` : ''}`);
       if (!guard.isCurrent(mine)) return;
+      res.rows = Array.isArray(res?.rows) ? res.rows : []; // ردٌّ بلا صفوف لا يُسقط الصفحة
       setD(res);
       if (!date) setDate(res.date);
       setVals((old) => {

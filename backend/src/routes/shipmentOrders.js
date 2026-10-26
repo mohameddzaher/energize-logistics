@@ -32,6 +32,8 @@ router.post('/orders/batch', authorize(...EDIT_ROLES), so.createOrdersBatch);
 router.put('/orders/:id', authorize(...EDIT_ROLES), so.updateOrder);
 router.patch('/orders/:id/status', authorize(...EDIT_ROLES), so.patchStatus); // inline from the list
 router.post('/orders/:id/note', authorize(...EDIT_ROLES), so.addNote); // ملاحظةُ متابعةٍ بلا تغيير حالة
+router.put('/orders/:id/note/:logId', authorize(...EDIT_ROLES), so.editNote); // كاتبُها أو مديرُ القسم
+router.delete('/orders/:id/note/:logId', authorize(...EDIT_ROLES), so.deleteNote);
 router.delete('/orders/:id', authorize(...ADMIN_ROLES), so.deleteOrder);
 
 // Customers (their price-per-route lists feed the create form)

@@ -1,82 +1,182 @@
 'use client';
-// ── ملاحظةُ متابعة بلا تغيير حالة ──────────────────────────────────────────
+// ── ملاحظاتُ المتابعة: سجلٌّ يُضاف إليه ويُعدَّل ويُحذف ────────────────────────
 // «كلّمتُ السائق: يصل بعد ساعتين» — تُقيَّد في سجلّ الشحنة (مَن، متى، ماذا)
-// ولا تمسّ الحالة. وهي غيرُ «ملاحظة البوليصة» التي تُطبَع في الورقة.
+// ولا تمسّ الحالة، وهي غيرُ «ملاحظة البوليصة» التي تُطبَع في الورقة.
+// وتُعرَض كلُّها هنا لكلّ من يفتح الشحنة (٢٠٢٦/١٠/٢٦: «فتحت من اليوزر بتاعي مش
+// لاقي الملاحظة… ممكن أضيف بعدها أو أعدّلها أو أمسحها»). يعدّل الملاحظةَ ويمسحها
+// كاتبُها أو مديرُ القسم — والخادمُ يحرس القاعدةَ نفسَها.
 import { useState } from 'react';
-import { X, Check, Loader2 } from 'lucide-react';
+import { X, Check, Loader2, Pencil, Trash2, MessageSquareText } from 'lucide-react';
 import api from '@/lib/api';
+import { useAuth } from '@/context/AuthContext';
 import { useDialog } from '@/components/system/DialogProvider';
 import type { ShipmentOrder } from '@/lib/shipmentOrders';
-import { lastFollowUp, orderRef, relTime } from './OrderViews';
+import { fmtDT, Lang } from '@/lib/shipmentOrders';
+import { followUpNotes, orderRef, relTime } from './OrderViews';
+
+const NOTE_MANAGERS = new Set(['super_admin', 'admin', 'shipment_orders_manager', 'operations_manager']);
 
 export default function NoteModal({ order, ar, onClose, onSaved }: {
   order: ShipmentOrder;
   ar: boolean;
   onClose: () => void;
-  /** الشحنةُ كما ردّها الخادم بعد القيد — لتتحدّث البطاقةُ فورًا. */
+  /** الشحنةُ كما ردّها الخادم بعد كلّ تغيير — لتتحدّث البطاقةُ فورًا. */
   onSaved: (o: ShipmentOrder) => void;
 }) {
-  const { notify } = useDialog();
+  const { user } = useAuth();
+  const { notify, confirm } = useDialog();
+  const [cur, setCur] = useState<ShipmentOrder>(order);
   const [text, setText] = useState('');
-  const [busy, setBusy] = useState(false);
-  const prev = lastFollowUp(order);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [editing, setEditing] = useState<{ id: string; text: string } | null>(null);
+  const notes = followUpNotes(cur);
+  const lang: Lang = ar ? 'ar' : 'en';
+  const isManager = NOTE_MANAGERS.has(String(user?.role || ''));
 
-  const save = async () => {
+  const apply = (o: ShipmentOrder) => { setCur(o); onSaved(o); };
+
+  const add = async () => {
     const note = text.trim();
-    if (!note) { notify(ar ? 'اكتب الملاحظة.' : 'Write the note.', 'error'); return; }
-    setBusy(true);
+    if (!note) return;
+    setBusy('new');
     try {
-      const r = await api.post<{ order: ShipmentOrder }>(`/api/shipment-orders/orders/${order._id}/note`, { note });
-      onSaved(r.order);
-      notify(ar ? 'حُفظت الملاحظة.' : 'Note saved.', 'success');
-      onClose();
+      const r = await api.post<{ order: ShipmentOrder }>(`/api/shipment-orders/orders/${cur._id}/note`, { note });
+      apply(r.order);
+      setText('');
+      notify(ar ? 'أُضيفت الملاحظة.' : 'Note added.', 'success');
     } catch (e: any) {
       notify(e?.message || (ar ? 'تعذّر حفظ الملاحظة.' : 'Could not save the note.'), 'error');
     }
-    setBusy(false);
+    setBusy(null);
+  };
+
+  const saveEdit = async () => {
+    if (!editing || !editing.text.trim()) return;
+    setBusy(editing.id);
+    try {
+      const r = await api.put<{ order: ShipmentOrder }>(`/api/shipment-orders/orders/${cur._id}/note/${editing.id}`, { note: editing.text.trim() });
+      apply(r.order);
+      setEditing(null);
+      notify(ar ? 'عُدّلت الملاحظة.' : 'Note updated.', 'success');
+    } catch (e: any) {
+      notify(e?.message || (ar ? 'تعذّر التعديل.' : 'Could not update.'), 'error');
+    }
+    setBusy(null);
+  };
+
+  const remove = async (id: string) => {
+    const ok = await confirm(ar ? 'حذف هذه الملاحظة؟' : 'Delete this note?');
+    if (!ok) return;
+    setBusy(id);
+    try {
+      const r = await api.delete<{ order: ShipmentOrder }>(`/api/shipment-orders/orders/${cur._id}/note/${id}`);
+      apply(r.order);
+      notify(ar ? 'حُذفت الملاحظة.' : 'Note deleted.', 'success');
+    } catch (e: any) {
+      notify(e?.message || (ar ? 'تعذّر الحذف.' : 'Could not delete.'), 'error');
+    }
+    setBusy(null);
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-900/50 sm:p-4" onClick={onClose}>
-      <div className="w-full sm:max-w-md bg-white rounded-t-2xl sm:rounded-2xl shadow-xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+      <div className="w-full sm:max-w-lg bg-white rounded-t-2xl sm:rounded-2xl shadow-xl max-h-[92vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
         <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between gap-3">
           <div className="min-w-0">
-            <p className="font-bold text-slate-900">{ar ? 'ملاحظة متابعة' : 'Follow-up note'}</p>
-            <p className="text-xs text-slate-500 mt-0.5 break-words">
-              {ar ? 'بوليصة' : 'Waybill'} <span className="font-mono font-bold">{orderRef(order)}</span>
-              {order.customerName ? ` · ${order.customerName}` : ''}
+            <p className="text-lg font-bold text-slate-900">{ar ? 'ملاحظات المتابعة' : 'Follow-up notes'}</p>
+            <p className="text-sm text-slate-500 mt-0.5 break-words">
+              {ar ? 'بوليصة' : 'Waybill'} <span className="font-mono font-bold text-slate-700">{orderRef(cur)}</span>
+              {cur.customerName ? ` · ${cur.customerName}` : ''}
             </p>
           </div>
           <button type="button" onClick={onClose} aria-label={ar ? 'إغلاق' : 'Close'}
-            className="w-10 h-10 flex items-center justify-center rounded-lg text-slate-400 hover:text-slate-900 hover:bg-slate-100 shrink-0">
-            <X className="w-5 h-5" />
+            className="w-11 h-11 flex items-center justify-center rounded-xl text-slate-400 hover:text-slate-900 hover:bg-slate-100 shrink-0">
+            <X className="w-6 h-6" />
           </button>
         </div>
-        <div className="p-5 space-y-3">
-          {prev && (
-            <div className="rounded-xl bg-sky-50 border border-sky-200 px-3 py-2">
-              <p className="text-[11px] font-bold text-sky-700">
-                {ar ? 'آخر متابعة' : 'Latest follow-up'}
-                <span className="font-normal text-sky-600"> {prev.byName ? `· ${prev.byName} ` : ''}· {relTime(prev.at, ar)}</span>
-              </p>
-              <p className="text-[13px] text-sky-950 mt-0.5 whitespace-pre-wrap break-words">{prev.note}</p>
-            </div>
-          )}
-          <textarea rows={4} autoFocus value={text} maxLength={500} onChange={(e) => setText(e.target.value)}
-            placeholder={ar ? 'مثلًا: كلّمتُ السائق، يصل بعد ساعتين…' : 'e.g. Called the driver, arriving in two hours…'}
-            className="w-full px-3 py-2.5 rounded-xl bg-white border border-slate-200 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
-          <p className="text-[11px] text-slate-400">
-            {ar ? 'تُقيَّد في سجلّ الشحنة ولا تغيّر حالتها، ولا تُطبَع في البوليصة.' : 'Logged in the shipment history; does not change the status or print on the waybill.'}
-          </p>
+
+        <div className="p-5 space-y-3 overflow-y-auto">
+          {/* الإضافةُ أوّلًا: هي الفعلُ الأكثر. */}
+          <textarea rows={3} value={text} maxLength={500} onChange={(e) => setText(e.target.value)}
+            placeholder={ar ? 'اكتب ملاحظة جديدة… مثلًا: كلّمتُ السائق، يصل بعد ساعتين' : 'Write a new note… e.g. Called the driver, arriving in two hours'}
+            className="w-full px-4 py-3 rounded-xl bg-white border border-slate-300 text-base text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-xs text-slate-400">
+              {ar ? 'لا تغيّر الحالة ولا تُطبَع في البوليصة.' : 'Does not change the status or print on the waybill.'}
+            </p>
+            <button type="button" onClick={add} disabled={busy === 'new' || !text.trim()}
+              className="min-h-[44px] shrink-0 inline-flex items-center gap-1.5 px-5 rounded-xl bg-[#f37121] text-white text-base font-semibold hover:bg-[#e06010] disabled:opacity-50">
+              {busy === 'new' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+              {ar ? 'إضافة' : 'Add'}
+            </button>
+          </div>
+
+          <div className="pt-2 border-t border-slate-200">
+            <p className="text-sm font-bold text-slate-700 mb-2">
+              {ar ? 'كلّ الملاحظات' : 'All notes'} <span className="text-slate-400 font-normal">({notes.length})</span>
+            </p>
+            {!notes.length && (
+              <p className="text-sm text-slate-400 py-4 text-center">{ar ? 'لا ملاحظات بعد.' : 'No notes yet.'}</p>
+            )}
+            <ul className="space-y-2">
+              {notes.map((n) => {
+                const id = String(n._id || '');
+                const pureNote = n.from === n.to && !n.fileUrl;
+                const canEdit = !!id && pureNote && (isManager || (!!n.by && String(n.by) === String(user?._id)));
+                const isEditing = editing?.id === id;
+                return (
+                  <li key={id || n.at} className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="text-sm font-bold text-slate-800 break-words">{n.byName || (ar ? 'غير معروف' : 'Unknown')}</p>
+                        <p className="text-xs text-slate-500 mt-0.5">
+                          {fmtDT(n.at, lang)} · {relTime(n.at, ar)}
+                          {n.editedAt ? <span className="text-amber-600"> · {ar ? 'عُدّلت' : 'edited'}{n.editedByName ? ` (${n.editedByName})` : ''}</span> : null}
+                          {!pureNote ? <span className="text-slate-400"> · {ar ? 'مع تغيير الحالة' : 'with a status change'}</span> : null}
+                        </p>
+                      </div>
+                      {canEdit && !isEditing && (
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button type="button" onClick={() => setEditing({ id, text: n.note || '' })} aria-label={ar ? 'تعديل' : 'Edit'}
+                            className="w-10 h-10 flex items-center justify-center rounded-lg text-slate-500 hover:text-blue-600 hover:bg-white">
+                            <Pencil className="w-4 h-4" />
+                          </button>
+                          <button type="button" onClick={() => remove(id)} disabled={busy === id} aria-label={ar ? 'حذف' : 'Delete'}
+                            className="w-10 h-10 flex items-center justify-center rounded-lg text-slate-500 hover:text-red-600 hover:bg-white disabled:opacity-50">
+                            {busy === id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                    {isEditing ? (
+                      <div className="mt-2 space-y-2">
+                        <textarea rows={3} autoFocus value={editing.text} maxLength={500}
+                          onChange={(e) => setEditing({ id, text: e.target.value })}
+                          className="w-full px-3 py-2.5 rounded-xl bg-white border border-slate-300 text-base text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
+                        <div className="flex justify-end gap-2">
+                          <button type="button" onClick={() => setEditing(null)} className="min-h-[40px] px-4 text-sm text-slate-500 hover:text-slate-900">
+                            {ar ? 'إلغاء' : 'Cancel'}
+                          </button>
+                          <button type="button" onClick={saveEdit} disabled={busy === id || !editing.text.trim()}
+                            className="min-h-[40px] inline-flex items-center gap-1.5 px-4 rounded-xl bg-[#12325C] text-white text-sm font-semibold disabled:opacity-50">
+                            {busy === id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                            {ar ? 'حفظ التعديل' : 'Save'}
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="mt-2 text-base leading-relaxed text-slate-900 whitespace-pre-wrap break-words">{n.note}</p>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
         </div>
-        <div className="px-5 py-4 border-t border-slate-200 flex items-center justify-end gap-2">
-          <button type="button" onClick={onClose} className="min-h-[44px] px-4 text-slate-500 hover:text-slate-900 text-sm">
-            {ar ? 'إلغاء' : 'Cancel'}
-          </button>
-          <button type="button" onClick={save} disabled={busy || !text.trim()}
-            className="min-h-[44px] inline-flex items-center gap-1.5 px-5 rounded-xl bg-[#f37121] text-white text-sm font-semibold hover:bg-[#e06010] disabled:opacity-60">
-            {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-            {ar ? 'حفظ الملاحظة' : 'Save note'}
+
+        <div className="px-5 py-3 border-t border-slate-200 flex justify-end">
+          <button type="button" onClick={onClose} className="min-h-[44px] px-5 rounded-xl border border-slate-200 text-slate-700 text-base font-semibold hover:bg-slate-50">
+            <MessageSquareText className="w-4 h-4 inline me-1.5 -mt-0.5" />{ar ? 'تم' : 'Done'}
           </button>
         </div>
       </div>

@@ -1156,6 +1156,60 @@ exports.addNote = async (req, res) => {
   }
 };
 
+// ── تعديلُ ملاحظة المتابعة وحذفُها (٢٠٢٦/١٠/٢٦) ─────────────────────────────
+// «الملاحظة ممكن أضيف بعدها أو أعدّلها أو أمسحها». يُعدَّل قيدُ الملاحظة وحده
+// (`from === to` بلا مرفق) — قيدُ نقلةِ حالةٍ تاريخٌ لا يُعاد كتابتُه. ويعدّل
+// الملاحظةَ كاتبُها، أو مديرُ القسم.
+const NOTE_MANAGERS = new Set(['super_admin', 'admin', 'shipment_orders_manager', 'operations_manager']);
+const noteEntry = async (req, res) => {
+  if (!mongoose.Types.ObjectId.isValid(String(req.params.logId))) { res.status(400).json({ message: 'قيدٌ غير صالح' }); return null; }
+  const order = await ShipmentOrder.findById(req.params.id).select('statusLog').lean();
+  if (!order) { res.status(404).json({ message: 'Shipment order not found' }); return null; }
+  const e = (order.statusLog || []).find((x) => String(x._id) === String(req.params.logId));
+  if (!e) { res.status(404).json({ message: 'الملاحظة غير موجودة' }); return null; }
+  if (e.from !== e.to || e.fileUrl) { res.status(400).json({ message: 'هذا قيدُ تغييرِ حالة، لا ملاحظة — لا يُعدَّل.' }); return null; }
+  const mine = e.by && String(e.by) === String(req.user._id);
+  if (!mine && !NOTE_MANAGERS.has(req.user.role)) { res.status(403).json({ message: 'يعدّل الملاحظةَ كاتبُها أو مديرُ القسم.' }); return null; }
+  return e;
+};
+
+exports.editNote = async (req, res) => {
+  try {
+    const note = String(req.body?.note || '').trim().slice(0, 500);
+    if (!note) return res.status(400).json({ message: 'اكتب الملاحظة' });
+    const e = await noteEntry(req, res);
+    if (!e) return undefined;
+    const byName = `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim();
+    const order = await ShipmentOrder.findOneAndUpdate(
+      { _id: req.params.id, 'statusLog._id': e._id },
+      { $set: { 'statusLog.$.note': note, 'statusLog.$.editedAt': new Date(), 'statusLog.$.editedByName': byName } },
+      { new: true },
+    );
+    await logAudit({ user: req.user._id, action: 'edit_note', entity: 'ShipmentOrder', entityId: req.params.id,
+      changes: { before: { note: e.note }, after: { note } }, ipAddress: req.ip });
+    announceOrderChange(order._id);
+    return res.json({ order });
+  } catch (error) {
+    console.error('shipment order note edit:', error);
+    return res.status(500).json({ message: 'تعذّر تعديل الملاحظة' });
+  }
+};
+
+exports.deleteNote = async (req, res) => {
+  try {
+    const e = await noteEntry(req, res);
+    if (!e) return undefined;
+    const order = await ShipmentOrder.findByIdAndUpdate(req.params.id, { $pull: { statusLog: { _id: e._id } } }, { new: true });
+    await logAudit({ user: req.user._id, action: 'delete_note', entity: 'ShipmentOrder', entityId: req.params.id,
+      changes: { before: { note: e.note, byName: e.byName, at: e.at } }, ipAddress: req.ip });
+    announceOrderChange(order._id);
+    return res.json({ order });
+  } catch (error) {
+    console.error('shipment order note delete:', error);
+    return res.status(500).json({ message: 'تعذّر حذف الملاحظة' });
+  }
+};
+
 exports.patchStatus = async (req, res) => {
   try {
     const { status } = req.body;

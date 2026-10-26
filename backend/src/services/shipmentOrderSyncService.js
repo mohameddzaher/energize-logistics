@@ -148,15 +148,22 @@ async function upsertPlatformShipments(items) {
       .map((d) => String(d.externalId)),
   );
 
-  const ops = mapped.map((m) => ({
-    updateOne: {
+  const ops = mapped.map((m) => {
+    // ── ملاحظةُ الرحلة لا تُمحى بفراغ المنصّة (٢٠٢٦/١٠/٢٦) ──────────────────
+    // كانت كلُّ مزامنةٍ تكتب `notes` كما وردت — فارغةً في أغلب شحنات المنصّة —
+    // فتمحو ملاحظةً كتبها فريقُنا على الشحنة خلال دقائق: «كتب ملاحظة ومش لاقيها».
+    // الفارغُ يُكتب عند الإنشاء وحدَه؛ وما كتبته المنصّةُ فعلًا يُكتب كما كان.
+    const set = { ...m };
+    const onInsert = { createdAt: new Date() };
+    if (!String(set.notes || '').trim()) { delete set.notes; onInsert.notes = ''; }
+    return { updateOne: {
       filter: { externalId: m.externalId },
       // `$setOnInsert` على createdAt وحدَه: الشحنةُ المنقولة تحتفظ بتاريخ
       // إنشائها عندهم، ولا يُعاد كتابتُه في كلّ مزامنة فتبدو جديدةً كلَّ مرّة.
-      update: { $set: m, $setOnInsert: { createdAt: new Date() } },
+      update: { $set: set, $setOnInsert: onInsert },
       upsert: true,
-    },
-  }));
+    } };
+  });
   const r = await ShipmentOrder.bulkWrite(ops, { ordered: false });
   return {
     created: r.upsertedCount || 0,

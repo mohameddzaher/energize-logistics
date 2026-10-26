@@ -950,6 +950,7 @@ const storeIssueReasons = [
   ('accident', 'حادث', 'Accident'),
   ('preventive_maintenance', 'صيانة وقائية', 'Preventive maintenance'),
   ('roadside_breakdown', 'عطل على الطريق', 'Roadside breakdown'),
+  ('general_maintenance', 'صيانة عامة', 'General maintenance'),
 ];
 String storeIssueReasonLabel(dynamic key) {
   for (final r in storeIssueReasons) { if (r.$1 == key) return tr(r.$2, r.$3); }

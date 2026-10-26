@@ -7,6 +7,8 @@ const ISSUE_REASONS = [
   { key: 'accident', ar: 'حادث', en: 'Accident' },
   { key: 'preventive_maintenance', ar: 'صيانة وقائية', en: 'Preventive maintenance' },
   { key: 'roadside_breakdown', ar: 'عطل على الطريق', en: 'Roadside breakdown' },
+  // وأُضيفت «صيانة عامة» بطلب صاحب الشركة في اليوم نفسِه.
+  { key: 'general_maintenance', ar: 'صيانة عامة', en: 'General maintenance' },
 ];
 const ISSUE_REASON_KEYS = ISSUE_REASONS.map((r) => r.key);
 const issueReasonLabel = (key) => ISSUE_REASONS.find((r) => r.key === key)?.ar || '';

@@ -9,7 +9,7 @@ const { resolveLs2Plate, resolveLs2Plates } = require('../services/ls2VehicleLin
 const { ISSUE_REASON_KEYS, ISSUE_REASONS } = require('../utils/storeIssueReasons');
 // الصادرُ لا يُسجَّل بلا سببه — يُقرأ في ملفّ المركبة (utils/storeIssueReasons).
 const issueReasonOf = (body) => String(body?.issueReason || '').trim();
-const ISSUE_REASON_ERROR = { code: 'ISSUE_REASON_REQUIRED', message: 'اختر سبب الصرف: صيانة دورية، حادث، صيانة وقائية، أو عطل على الطريق' };
+const ISSUE_REASON_ERROR = { code: 'ISSUE_REASON_REQUIRED', message: 'اختر سبب الصرف: صيانة دورية، حادث، صيانة وقائية، عطل على الطريق، أو صيانة عامة' };
 exports.issueReasons = (req, res) => res.json({ reasons: ISSUE_REASONS });
 const emit = () => { require('../utils/ls2Touch').touchLs2({ store: true }); };
 

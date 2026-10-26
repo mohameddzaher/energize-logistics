@@ -572,14 +572,20 @@ class _B2cOrdersAnalysisScreenState extends State<B2cOrdersAnalysisScreen> {
 
   Widget _kpiHighlight(String title, String value, String sub, Color c, {VoidCallback? onTap}) => InkWell(
         onTap: onTap,
+        // حدٌّ رماديٌّ مستدير، وشريطُ اللون في البداية داخله — إذ لا تُقبَل
+        // زوايا مستديرةً لحدودٍ مختلفةِ الألوان (Flutter).
         child: Container(
+          clipBehavior: Clip.antiAlias,
+          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: T.line)),
+          child: Container(
           padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: BorderDirectional(start: BorderSide(color: c, width: 4), top: const BorderSide(color: T.line), bottom: const BorderSide(color: T.line), end: const BorderSide(color: T.line))),
+          decoration: BoxDecoration(border: BorderDirectional(start: BorderSide(color: c, width: 4))),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(title, style: const TextStyle(fontSize: 11, color: T.inkSoft)),
             Text(value, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
             if (sub.isNotEmpty) Text(sub, style: const TextStyle(fontSize: 11, color: T.inkFaint)),
           ]),
+          ),
         ),
       );
 

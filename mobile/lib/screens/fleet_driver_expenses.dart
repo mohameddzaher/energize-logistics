@@ -9,6 +9,7 @@ import '../services/live.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import '../ui/stat_grid.dart';
 import '../ui/vehicle_month_log.dart' show monthKeyNow;
 import '../ui/search_field.dart';
 
@@ -225,13 +226,8 @@ class _FleetDriverExpensesScreenState extends State<FleetDriverExpensesScreen> {
           const SizedBox(height: 10),
 
           // ── البطاقات: على المطابق كلِّه لا على المعروض ──
-          GridView.count(
-            crossAxisCount: 2,
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            mainAxisSpacing: 10,
-            crossAxisSpacing: 10,
-            childAspectRatio: 1.9,
+          StatGrid(
+            spacing: 10,
             children: [
               _Kpi(tr('عدد الحمولات', 'Loads'), '${loads.toInt()}', T.navy, Icons.calendar_month_outlined),
               _Kpi(tr('عدد السوّاق', 'Drivers'), '${_n(s['driverCount']).toInt()}', T.navy, Icons.people_outline),

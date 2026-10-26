@@ -8,6 +8,7 @@ import '../ui/app_scaffold.dart';
 import '../ui/export_sheet.dart';
 import '../ui/search_field.dart';
 import '../ui/theme.dart';
+import '../ui/stat_grid.dart';
 import '../ui/widgets.dart';
 import 'vehicle_documents.dart' show stateMetaOf;
 import 'vehicle_registry.dart' show fmtDate, daysText, canEditVehicles, VehicleRegistryDetailScreen;
@@ -273,10 +274,8 @@ class _VehicleExpiringScreenState extends State<VehicleExpiringScreen> {
                     ])),
                     const SizedBox(height: 10),
                     // كروت الحالات — الضغطُ يفلتر عليها.
-                    GridView.count(
-                      crossAxisCount: 3, shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
-                      childAspectRatio: 1.7, mainAxisSpacing: 8, crossAxisSpacing: 8,
-                      children: [
+                    Builder(builder: (context) {
+                      final tiles = <Widget>[
                         ..._states.map((k) {
                           final m = stateMetaOf(k);
                           final on = _state == k;
@@ -286,8 +285,8 @@ class _VehicleExpiringScreenState extends State<VehicleExpiringScreen> {
                               padding: const EdgeInsets.all(10),
                               decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12),
                                   border: Border.all(color: on ? T.orange : const Color(0xFFE2E8F0), width: on ? 2 : 1)),
-                              child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.center, children: [
-                                Text('${summary[k] ?? 0}', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: m.$2)),
+                              child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+                                FittedBox(fit: BoxFit.scaleDown, child: Text('${summary[k] ?? 0}', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: m.$2))),
                                 Text(m.$1, style: const TextStyle(fontSize: 11, color: T.inkFaint)),
                               ]),
                             ),
@@ -296,13 +295,15 @@ class _VehicleExpiringScreenState extends State<VehicleExpiringScreen> {
                         Container(
                           padding: const EdgeInsets.all(10),
                           decoration: BoxDecoration(color: const Color(0xFF0F172A), borderRadius: BorderRadius.circular(12)),
-                          child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.center, children: [
+                          child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
                             Text('${rows.length}', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: Colors.white)),
                             Text(tr('الإجمالي', 'Total'), style: const TextStyle(fontSize: 11, color: Color(0xFFCBD5E1))),
                           ]),
                         ),
-                      ],
-                    ),
+                      ];
+                      // صفوفٌ بارتفاعٍ واحد يكبر مع النصّ (بلا نسبةٍ ثابتة تقصّ المحتوى).
+                      return StatGrid(spacing: 8, minTileWidth: 96, minColumns: 3, maxColumns: 6, children: tiles);
+                    }),
                     const SizedBox(height: 8),
                     Wrap(children: byDoc.map((x) {
                       final k = (x['key'] ?? '').toString();

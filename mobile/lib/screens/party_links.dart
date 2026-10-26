@@ -114,16 +114,16 @@ class _PartyLinksScreenState extends State<PartyLinksScreen> {
                     const SizedBox(height: 10),
                     Row(children: [
                       Expanded(child: FilledButton.icon(
-                        style: FilledButton.styleFrom(backgroundColor: T.success),
+                        style: FilledButton.styleFrom(backgroundColor: T.success, padding: const EdgeInsets.symmetric(horizontal: 10)),
                         onPressed: busy ? null : () => _decide(r, 'linked'),
                         icon: const Icon(Icons.link, size: 18),
-                        label: Text(tr('نفس العميل — اربط', 'Same — link')),
+                        label: FittedBox(fit: BoxFit.scaleDown, child: Text(tr('نفس العميل — اربط', 'Same — link'), maxLines: 1)),
                       )),
                       const SizedBox(width: 8),
                       Expanded(child: OutlinedButton.icon(
                         onPressed: busy ? null : () => _decide(r, 'separate'),
                         icon: const Icon(Icons.call_split, size: 18),
-                        label: Text(tr('عميل مستقل', 'Separate')),
+                        label: FittedBox(fit: BoxFit.scaleDown, child: Text(tr('عميل مستقل', 'Separate'), maxLines: 1)),
                       )),
                     ]),
                   ],

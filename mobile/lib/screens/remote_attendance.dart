@@ -163,14 +163,14 @@ class _AttRow extends StatelessWidget {
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
             Expanded(
-              child: Text(showUser ? remoteUserName(r['user']) : (r['date'] ?? '—').toString(),
+              child: Text(showUser ? remoteUserName(r['user']) : _dmy(r['date']),
                   style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5)),
             ),
             Chip2(present ? tr('مكتمل', 'Complete') : tr('مفتوح', 'Open'), present ? T.success : T.warn),
           ]),
           const SizedBox(height: 6),
           Wrap(spacing: 6, runSpacing: 6, children: [
-            if (showUser) Chip2((r['date'] ?? '—').toString(), T.navy, icon: Icons.event),
+            if (showUser) Chip2(_dmy(r['date']), T.navy, icon: Icons.event),
             Chip2('${tr('حضور', 'In')}: ${fmtClock(r['checkIn'])}', T.success),
             Chip2('${tr('انصراف', 'Out')}: ${r['checkOut'] != null ? fmtClock(r['checkOut']) : '—'}', r['checkOut'] != null ? T.navy : T.inkFaint),
             Chip2(fmtDuration(r['durationMinutes']), T.info, icon: Icons.schedule_outlined),
@@ -280,4 +280,10 @@ class _StaffAttendanceState extends State<_StaffAttendance> {
       ),
     );
   }
+}
+
+/// «2027-09-13» → «13/9/2027» كبقيّة شاشات العمل عن بُعد.
+String _dmy(dynamic v) {
+  final d = v == null ? null : DateTime.tryParse('$v');
+  return d == null ? (v ?? '—').toString() : '${d.day}/${d.month}/${d.year}';
 }

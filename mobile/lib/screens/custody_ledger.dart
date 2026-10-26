@@ -293,12 +293,12 @@ class _CustodyLedgerScreenState extends State<CustodyLedgerScreen> {
         ),
       ]),
       const SizedBox(height: 10),
-      Row(children: [
+      Wrap(spacing: 10, runSpacing: 4, crossAxisAlignment: WrapCrossAlignment.center, alignment: WrapAlignment.spaceBetween, children: [
         Text('${tr('القيود', 'Entries')} (${entries.length})', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14.5)),
-        const Spacer(),
-        Text('${tr('وارد', 'In')} ${_money(shown['in'])}', style: const TextStyle(fontSize: 11.5, color: T.success, fontWeight: FontWeight.w700)),
-        const SizedBox(width: 10),
-        Text('${tr('صادر', 'Out')} ${_money(shown['out'])}', style: const TextStyle(fontSize: 11.5, color: T.danger, fontWeight: FontWeight.w700)),
+        Wrap(spacing: 10, children: [
+          Text('${tr('وارد', 'In')} ${_money(shown['in'])}', style: const TextStyle(fontSize: 11.5, color: T.success, fontWeight: FontWeight.w700)),
+          Text('${tr('صادر', 'Out')} ${_money(shown['out'])}', style: const TextStyle(fontSize: 11.5, color: T.danger, fontWeight: FontWeight.w700)),
+        ]),
       ]),
       const SizedBox(height: 8),
       if (entries.isEmpty) EmptyState(icon: Icons.receipt_long_outlined, title: tr('لا قيودَ في هذا العرض', 'No entries in this view')),
@@ -317,31 +317,38 @@ class _CustodyLedgerScreenState extends State<CustodyLedgerScreen> {
           padding: const EdgeInsets.only(bottom: 8),
           child: AppCard(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            child: Row(children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(10)),
-                child: Icon(isIn ? Icons.south_west : Icons.north_east, size: 17, color: color),
-              ),
-              const SizedBox(width: 10),
-              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(_party(e), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5)),
-                if ((e['detail'] ?? '').toString().isNotEmpty) Text(e['detail'].toString(), style: const TextStyle(fontSize: 11.5, color: T.inkSoft)),
-                Text(sub, style: const TextStyle(fontSize: 10.5, color: T.inkFaint)),
-                if (files.isNotEmpty) Padding(
-                  padding: const EdgeInsets.only(top: 4),
-                  child: Wrap(spacing: 4, runSpacing: 4, children: [
-                    for (final a in files) _FileChip(label: (a['title'] ?? a['fileName'] ?? '').toString(), onTap: () => _openFile(a['fileUrl'])),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(10)),
+                  child: Icon(isIn ? Icons.south_west : Icons.north_east, size: 17, color: color),
+                ),
+                const SizedBox(width: 10),
+                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(_party(e), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5)),
+                  if ((e['detail'] ?? '').toString().isNotEmpty) Text(e['detail'].toString(), style: const TextStyle(fontSize: 11.5, color: T.inkSoft)),
+                  Text(sub, style: const TextStyle(fontSize: 10.5, color: T.inkFaint)),
+                ])),
+                const SizedBox(width: 8),
+                Text('${isIn ? '+' : '−'}${_money(e['amount'])}', textDirection: TextDirection.ltr, style: TextStyle(fontWeight: FontWeight.w900, fontSize: 13.5, color: color)),
+              ]),
+              // المرفقاتُ وأزرارُ القيد في سطرٍ تحته: لا تُضيِّق النصَّ على الشاشات الصغيرة.
+              if (files.isNotEmpty || (canEdit && e['source'] != 'opening') || canDelete)
+                Padding(
+                  padding: const EdgeInsetsDirectional.only(start: 43, top: 4),
+                  child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+                    Expanded(child: Wrap(spacing: 4, runSpacing: 4, children: [
+                      for (final a in files) _FileChip(label: (a['title'] ?? a['fileName'] ?? '').toString(), onTap: () => _openFile(a['fileUrl'])),
+                    ])),
+                    if (canEdit && e['source'] != 'opening') IconButton(
+                      visualDensity: VisualDensity.compact, tooltip: tr('تعديل القيد', 'Edit entry'),
+                      icon: const Icon(Icons.edit_outlined, size: 18, color: T.inkFaint),
+                      onPressed: () => _open(isIn ? 'in' : 'out', entry: e),
+                    ),
+                    if (canDelete) IconButton(visualDensity: VisualDensity.compact, tooltip: tr('حذف القيد', 'Delete entry'), icon: const Icon(Icons.delete_outline, size: 18, color: T.inkFaint), onPressed: () => _delete(e)),
                   ]),
                 ),
-              ])),
-              Text('${isIn ? '+' : '−'}${_money(e['amount'])}', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 13.5, color: color)),
-              if (canEdit && e['source'] != 'opening') IconButton(
-                visualDensity: VisualDensity.compact, tooltip: tr('تعديل القيد', 'Edit entry'),
-                icon: const Icon(Icons.edit_outlined, size: 18, color: T.inkFaint),
-                onPressed: () => _open(isIn ? 'in' : 'out', entry: e),
-              ),
-              if (canDelete) IconButton(visualDensity: VisualDensity.compact, tooltip: tr('حذف القيد', 'Delete entry'), icon: const Icon(Icons.delete_outline, size: 18, color: T.inkFaint), onPressed: () => _delete(e)),
             ]),
           ),
         );
@@ -396,10 +403,10 @@ class _FileChip extends StatelessWidget {
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           Icon(Icons.attach_file, size: 12, color: color),
           const SizedBox(width: 3),
-          ConstrainedBox(
+          Flexible(child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 150),
             child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: color)),
-          ),
+          )),
           if (onRemove != null) ...[
             const SizedBox(width: 4),
             InkWell(onTap: onRemove, child: const Icon(Icons.close, size: 14, color: T.inkFaint)),

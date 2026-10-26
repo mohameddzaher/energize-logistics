@@ -741,7 +741,7 @@ class _CashWalletScreenState extends State<CashWalletScreen> {
           : null,
       body: RefreshIndicator(
         onRefresh: () => _load(spinner: false),
-        child: ListView(padding: const EdgeInsets.all(14), keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag, children: [
+        child: ListView(padding: EdgeInsets.fromLTRB(14, 14, 14, canAdd ? 96 : 14), keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag, children: [
           if (_canSelectBranch && _branches.isNotEmpty) ...[_branchPicker(), const SizedBox(height: 10)],
           _periodBar(),
           const SizedBox(height: 12),

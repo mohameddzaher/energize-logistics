@@ -611,7 +611,8 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
           ? ListView(padding: const EdgeInsets.all(14), children: const [Shimmer(height: 48), SizedBox(height: 10), Shimmer(), SizedBox(height: 10), Shimmer()])
           : _error != null
               ? ErrorRetry(message: _error!, onRetry: () { setState(() => _loading = true); _load(); })
-              : Column(children: [
+              // عرضٌ أقصى على الشاشات العريضة (آيباد) بدل التمدّد بكامل العرض.
+              : Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 760), child: Column(children: [
                   Padding(
                     padding: const EdgeInsets.fromLTRB(14, 12, 14, 4),
                     child: Row(children: [
@@ -725,11 +726,13 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
                       ),
                       const SizedBox(height: 8),
                       Row(children: [
-                        if (_dirty) Text(tr('تغييراتٌ غير محفوظة', 'Unsaved changes'), style: const TextStyle(color: T.warn, fontSize: 12)),
-                        const Spacer(),
+                        Expanded(child: _dirty
+                            ? Text(tr('تغييراتٌ غير محفوظة', 'Unsaved changes'), maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: T.warn, fontSize: 12))
+                            : const SizedBox()),
                         TextButton(onPressed: !_dirty || _saving ? null : _seed, child: Text(tr('تراجع', 'Reset'))),
                         FilledButton.icon(
-                          style: FilledButton.styleFrom(backgroundColor: T.orange),
+                          // الزرُّ في صفّ: عرضٌ أدنى محدود (الثيم يجعله بعرضٍ لانهائي).
+                          style: FilledButton.styleFrom(backgroundColor: T.orange, minimumSize: const Size(0, 44)),
                           onPressed: !_dirty || _saving ? null : _save,
                           icon: _saving ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.save_outlined, size: 18),
                           label: Text(_saving ? tr('جارٍ الحفظ…', 'Saving…') : tr('حفظ', 'Save')),
@@ -737,7 +740,7 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
                       ]),
                     ]),
                   )),
-                ]),
+                ]))),
     );
   }
 }

@@ -176,7 +176,7 @@ class _ProcRequestsScreenState extends State<ProcRequestsScreen> {
                           ? EmptyState(icon: Icons.request_quote_outlined, title: tr('لا توجد طلبات مطابقة', 'No matches'))
                           : ListView.separated(
                               keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-                              padding: const EdgeInsets.all(14),
+                              padding: const EdgeInsets.fromLTRB(14, 14, 14, 90), // زرُّ الإضافة لا يغطّي آخرَ بطاقة
                               itemCount: filtered.length,
                               separatorBuilder: (_, __) => const SizedBox(height: 8),
                               itemBuilder: (c, i) {
@@ -757,7 +757,7 @@ class _ProcOrdersScreenState extends State<ProcOrdersScreen> {
                           ? EmptyState(icon: Icons.shopping_cart_outlined, title: _q.trim().isNotEmpty ? tr('لا نتائج مطابقة للبحث', 'No matches') : tr('لا توجد أوامر شراء', 'No orders'))
                           : ListView.separated(
                               keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-                              padding: const EdgeInsets.all(14),
+                              padding: const EdgeInsets.fromLTRB(14, 14, 14, 90), // زرُّ الإضافة لا يغطّي آخرَ بطاقة
                               itemCount: filtered.length,
                               separatorBuilder: (_, __) => const SizedBox(height: 8),
                               itemBuilder: (c, i) {
@@ -1033,7 +1033,7 @@ class _ProcBillsScreenState extends State<ProcBillsScreen> {
                           ? EmptyState(icon: Icons.receipt_long_outlined, title: _q.trim().isNotEmpty ? tr('لا نتائج مطابقة للبحث', 'No matches') : tr('لا توجد فواتير', 'No bills'))
                           : ListView.separated(
                               keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-                              padding: const EdgeInsets.all(14),
+                              padding: const EdgeInsets.fromLTRB(14, 14, 14, 90), // زرُّ الإضافة لا يغطّي آخرَ بطاقة
                               itemCount: filtered.length,
                               separatorBuilder: (_, __) => const SizedBox(height: 8),
                               itemBuilder: (c, i) {
@@ -1051,10 +1051,12 @@ class _ProcBillsScreenState extends State<ProcBillsScreen> {
                                       const SizedBox(height: 4),
                                       Text(_vendorName(r['vendor']), style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
                                       const SizedBox(height: 6),
-                                      Row(children: [
+                                      // المبالغُ في سطرٍ يلتفّ، والأزرارُ في سطرها — لا شيءَ يفيض على الشاشات الضيّقة.
+                                      Wrap(spacing: 6, runSpacing: 4, children: [
                                         Chip2('${_money(r['total'])} ${tr('ر.س', 'SAR')}', T.info, icon: Icons.payments_outlined),
-                                        const SizedBox(width: 6),
                                         if (r['status'] != 'paid') Chip2('${tr('المتبقي', 'Due')}: ${_money(r['balance'])}', T.danger),
+                                      ]),
+                                      Row(children: [
                                         const Spacer(),
                                         if (r['status'] != 'paid')
                                           TextButton.icon(

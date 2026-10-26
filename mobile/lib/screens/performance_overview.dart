@@ -6,6 +6,7 @@ import '../ui/app_scaffold.dart';
 import '../ui/export_sheet.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import '../ui/stat_grid.dart';
 import '../ui/search_field.dart';
 import 'performance_evaluations.dart';
 
@@ -135,9 +136,8 @@ class _PerformanceOverviewScreenState extends State<PerformanceOverviewScreen> {
                       ]),
                     ),
                     const SizedBox(height: 10),
-                    GridView.count(
-                      crossAxisCount: 2, shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
-                      childAspectRatio: 1.7, mainAxisSpacing: 8, crossAxisSpacing: 8,
+                    StatGrid(
+                      spacing: 8,
                       children: [
                         _tile(tr('إجمالي الموظفين', 'Headcount'), '${totals['headcount'] ?? 0}', T.navy, Icons.groups_outlined),
                         _tile(tr('تم تقييمهم', 'Evaluated'), '${totals['evaluated'] ?? 0}', T.success, Icons.fact_check_outlined),

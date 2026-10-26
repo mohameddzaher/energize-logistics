@@ -6,6 +6,21 @@ import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 
+// أسماءٌ مقروءة للمفاتيح الخام (كما في نماذج الأنشطة والمهام).
+const _activityTypes = {
+  'call': ('مكالمة', 'Call'), 'meeting': ('اجتماع', 'Meeting'), 'email': ('بريد', 'Email'),
+  'visit': ('زيارة', 'Visit'), 'whatsapp': ('واتساب', 'WhatsApp'),
+};
+const _priorities = {
+  'low': ('منخفضة', 'Low'), 'medium': ('متوسطة', 'Medium'), 'high': ('عالية', 'High'), 'urgent': ('عاجلة', 'Urgent'),
+};
+String? _label(Map<String, (String, String)> m, dynamic k) {
+  final key = (k ?? '').toString();
+  if (key.isEmpty) return null;
+  final v = m[key];
+  return v == null ? key : tr(v.$1, v.$2);
+}
+
 /// تقويم العلاقات — أنشطة CRM ومهامها للشهر مجمّعة باليوم، مع تنقّل بين الشهور.
 /// مطابق لصفحة الويب /system/crm/calendar (/api/crm/calendar?from&to).
 class CrmCalendarScreen extends StatefulWidget {
@@ -78,15 +93,15 @@ class _CrmCalendarScreenState extends State<CrmCalendarScreen> {
     for (final a in _activities) {
       final dt = DateTime.tryParse((a['date'] ?? '').toString())?.toLocal();
       if (dt == null) continue;
-      events.add({'day': dt.day, 'dt': dt, 'kind': 'activity', 'title': (a['subject'] ?? a['type'] ?? 'نشاط').toString(),
-        'sub': [_name(a['company']), _name(a['contact']), (a['type'] ?? '').toString()].where((x) => x.isNotEmpty).join(' · '), 'color': T.info});
+      events.add({'day': dt.day, 'dt': dt, 'kind': 'activity', 'title': (a['subject'] ?? _label(_activityTypes, a['type']) ?? tr('نشاط', 'Activity')).toString(),
+        'sub': [_name(a['company']), _name(a['contact']), _label(_activityTypes, a['type']) ?? ''].where((x) => x.isNotEmpty).join(' · '), 'color': T.info});
     }
     for (final t in _tasks) {
       final dt = DateTime.tryParse((t['dueDate'] ?? '').toString())?.toLocal();
       if (dt == null) continue;
       final done = t['status'] == 'completed';
-      events.add({'day': dt.day, 'dt': dt, 'kind': 'task', 'title': (t['title'] ?? 'مهمة').toString(),
-        'sub': [_name(t['company']), _name(t['contact']), if ((t['priority'] ?? '').toString().isNotEmpty) 'أولوية ${t['priority']}'].where((x) => x.isNotEmpty).join(' · '),
+      events.add({'day': dt.day, 'dt': dt, 'kind': 'task', 'title': (t['title'] ?? tr('مهمة', 'Task')).toString(),
+        'sub': [_name(t['company']), _name(t['contact']), if ((t['priority'] ?? '').toString().isNotEmpty) '${tr('أولوية', 'Priority')} ${_label(_priorities, t['priority'])}'].where((x) => x.isNotEmpty).join(' · '),
         'color': done ? T.success : (t['priority'] == 'high' ? T.danger : T.warn), 'done': done});
     }
     events.sort((a, b) => (a['dt'] as DateTime).compareTo(b['dt'] as DateTime));

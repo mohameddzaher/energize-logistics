@@ -199,7 +199,7 @@ class _B2cDailyEntryScreenState extends State<B2cDailyEntryScreen> {
                 ),
               ])),
             ),
-          if (rows.isEmpty) EmptyState(icon: Icons.inbox_outlined, title: scope is List && scope.isEmpty ? tr('لم يُسنَد إليك مشروعٌ بعد', 'No project assigned yet') : tr('لا توجد نتائج مطابقة', 'No matches')),
+          if (rows.isEmpty) EmptyState(icon: Icons.inbox_outlined, title: scope is List && scope.isEmpty ? tr('لم يُسنَد إليك مشروعٌ بعد', 'No project assigned yet') : (needle.isEmpty && _project.isEmpty && all.isEmpty) ? tr('لا مناديبَ في هذا اليوم', 'No reps for this day') : tr('لا توجد نتائج مطابقة', 'No matches')),
         ]),
       ),
     );

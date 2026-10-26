@@ -5,6 +5,7 @@ import '../services/live.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import '../ui/stat_grid.dart';
 import 'fleet_customer_profile.dart';
 import '../ui/search_field.dart';
 
@@ -169,13 +170,8 @@ class _FleetAnalyticsScreenState extends State<FleetAnalyticsScreen> {
         ),
         const SizedBox(height: 12),
         // بطاقات المؤشرات
-        GridView.count(
-          crossAxisCount: 2,
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          childAspectRatio: 1.7,
-          mainAxisSpacing: 8,
-          crossAxisSpacing: 8,
+        StatGrid(
+          spacing: 8,
           children: [
             _tile(tr('إجمالي إيجار السيارات', 'Total vehicle rent'), _money(totals['totalIncome']), T.success, Icons.payments_outlined),
             _tile(tr('حصة قسم الفروع', 'Branch dept share'), _money(totals['branchShare']), T.warn, Icons.call_split_rounded),

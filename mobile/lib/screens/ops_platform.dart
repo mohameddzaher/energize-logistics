@@ -9,7 +9,8 @@ import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import '../ui/search_field.dart';
-import 'ops_common.dart' show opsLoc, opsMoney, opsYmd, opsDate;
+import '../ui/stat_grid.dart';
+import 'ops_common.dart' show opsLoc, opsMoney, opsYmd, opsDate, opsErr;
 import 'ops_platform_extra.dart';
 
 /// منصة العمليات (UPL) — المرآة الحية: لوحة، الشحنات (ops_platform_extra.dart)،
@@ -369,7 +370,7 @@ class _OpsResourceScreenState extends State<_OpsGenericResourceScreen> {
       // تعثُّرُ المنصّة لا يُفرغ ما يُعرض.
       setState(() {
         _loading = false;
-        if (_rows.isEmpty && !silent) { _error = e.toString(); } else { _stale = true; }
+        if (_rows.isEmpty && !silent) { _error = _opsErrText(e); } else { _stale = true; }
       });
     }
   }
@@ -844,7 +845,7 @@ class _OpsRefPickerState extends State<_OpsRefPicker> {
       if (!mounted || mine != _seq) return;
       setState(() { _rows = List<Map<String, dynamic>>.from((d['items'] ?? d['data'] ?? []) as List); _loading = false; _error = null; });
     } catch (e) {
-      if (mounted && mine == _seq) setState(() { _loading = false; _error = e.toString(); });
+      if (mounted && mine == _seq) setState(() { _loading = false; _error = _opsErrText(e); });
     }
   }
 
@@ -1100,13 +1101,8 @@ class _OpsDashboardScreenState extends State<OpsDashboardScreen> {
                 ),
                 const SizedBox(height: 10),
                 // ── بطاقاتُ الأعداد ────────────────────────────────────────
-                GridView.count(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  crossAxisCount: 3,
-                  mainAxisSpacing: 8,
-                  crossAxisSpacing: 8,
-                  childAspectRatio: 1.25,
+                StatGrid(
+                  spacing: 8, minTileWidth: 96, minColumns: 3, maxColumns: 6,
                   children: [
                     for (final c in _countCards)
                       Pressable(
@@ -1115,6 +1111,7 @@ class _OpsDashboardScreenState extends State<OpsDashboardScreen> {
                           padding: const EdgeInsets.all(10),
                           child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
                             Row(children: [Icon(c.$5, size: 18, color: c.$6), const Spacer(), const Icon(Icons.chevron_left, size: 16, color: T.line)]),
+                            const SizedBox(height: 6),
                             FittedBox(fit: BoxFit.scaleDown, alignment: AlignmentDirectional.centerStart,
                                 child: Text(counts[c.$1] == null ? '—' : opsMoney(num.tryParse('${counts[c.$1]}') ?? counts[c.$1]), style: TextStyle(fontSize: 19, fontWeight: FontWeight.w900, color: c.$6))),
                             Text(tr(c.$3, c.$4), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, color: T.inkSoft)),
@@ -1221,4 +1218,15 @@ class _OpsDashboardScreenState extends State<OpsDashboardScreen> {
             ),
     );
   }
+}
+
+/// رسالةُ خطأ المنصّة بلغة الواجهة: انقطاعُ الوصول إلى منصّة التشغيل يأتي من
+/// الخادم نصًّا تقنيًّا إنجليزيًّا («fetch failed»)، فيُقال للمستخدم بلغته.
+String _opsErrText(Object e) {
+  final m = opsErr(e);
+  final l = m.toLowerCase();
+  if (l.contains('fetch failed') || l.contains('econn') || l.contains('timed out') || l.contains('timeout') || l.contains('socket')) {
+    return tr('تعذّر الوصول إلى منصّة التشغيل — حاول مجدّدًا', 'Could not reach the operations platform — try again');
+  }
+  return m;
 }

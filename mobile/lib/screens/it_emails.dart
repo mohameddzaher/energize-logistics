@@ -249,9 +249,10 @@ class _ItEmailsScreenState extends State<ItEmailsScreen> {
                            'Password vault not configured — storing passwords is disabled.'),
                         style: const TextStyle(fontSize: 11, color: Color(0xFF991B1B))),
                     ),
-                  SizedBox(
-                    height: 72,
-                    child: ListView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.fromLTRB(8, 12, 8, 4), children: [
+                  // ارتفاعُ الشريط من محتواه — يكبر مع حجم الخط ولا يفيض.
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal, padding: const EdgeInsets.fromLTRB(8, 12, 8, 4),
+                    child: IntrinsicHeight(child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                       // «الإجمالي» يُرجع الكلّ، والبقيّةُ تفلتر بالضغط وتُلغى بالضغط ثانيةً.
                       _chip(tr('الإجمالي', 'Total'), 'total', _status.isEmpty && _type.isEmpty && _linked.isEmpty && _hasPassword.isEmpty,
                           () { _status = ''; _type = ''; _linked = ''; _hasPassword = ''; }),
@@ -259,7 +260,7 @@ class _ItEmailsScreenState extends State<ItEmailsScreen> {
                       _chip(tr('مربوط', 'Linked'), 'linked', _linked == 'yes', () => _linked = _linked == 'yes' ? '' : 'yes'),
                       _chip(tr('غير مربوط', 'Unlinked'), 'unlinked', _linked == 'no', () => _linked = _linked == 'no' ? '' : 'no'),
                       _chip(tr('بدون كلمة مرور', 'No password'), 'withoutPassword', _hasPassword == 'no', () => _hasPassword = _hasPassword == 'no' ? '' : 'no'),
-                    ]),
+                    ])),
                   ),
                   Padding(
                     padding: const EdgeInsets.fromLTRB(14, 4, 14, 0),

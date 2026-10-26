@@ -6,6 +6,7 @@ import '../ui/export_sheet.dart';
 import 'marketing_dashboard.dart' show MarketingRange, MarketingRangePicker, marketingThisMonth, marketingRangeQs;
 import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
+import '../ui/stat_grid.dart';
 import '../ui/widgets.dart';
 
 /// التقرير الدوري للتسويق — تجميع الأنشطة يوميًا/أسبوعيًا/شهريًا مع الملخص.
@@ -59,7 +60,8 @@ class _MarketingReportScreenState extends State<MarketingReportScreen> {
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
           Text(tr(ar, en), style: const TextStyle(fontSize: 10.5, color: T.inkSoft, fontWeight: FontWeight.w600)),
           const SizedBox(height: 2),
-          Text(_n(v), style: TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: color)),
+          FittedBox(fit: BoxFit.scaleDown, alignment: AlignmentDirectional.centerStart,
+              child: Text(_n(v), style: TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: color))),
         ]),
       );
 
@@ -92,16 +94,19 @@ class _MarketingReportScreenState extends State<MarketingReportScreen> {
           child: Row(children: [
             for (final p in [('daily', 'يومي', 'Daily'), ('weekly', 'أسبوعي', 'Weekly'), ('monthly', 'شهري', 'Monthly')])
               Padding(
-                padding: const EdgeInsets.only(left: 6),
-                child: ChoiceChip(
-                  selected: _period == p.$1,
-                  onSelected: (_) { setState(() { _period = p.$1; _loading = true; }); _load(); },
-                  label: Text(tr(p.$2, p.$3)),
-                  labelStyle: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: _period == p.$1 ? Colors.white : Colors.white70),
-                  selectedColor: T.orange,
-                  backgroundColor: Colors.white.withValues(alpha: 0.12),
-                  side: BorderSide.none,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                padding: const EdgeInsetsDirectional.only(end: 6),
+                // حبّةٌ مرسومة يدويًّا: ثيمُ ChoiceChip يفرض خلفيةً بيضاء على غير
+                // المحدَّدة فيختفي نصُّها الأبيض على شريط العنوان الداكن.
+                child: Pressable(
+                  onTap: () { setState(() { _period = p.$1; _loading = true; }); _load(); },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: _period == p.$1 ? T.orange : Colors.white.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(tr(p.$2, p.$3), style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: _period == p.$1 ? Colors.white : Colors.white70)),
+                  ),
                 ),
               ),
           ]),
@@ -124,9 +129,8 @@ class _MarketingReportScreenState extends State<MarketingReportScreen> {
                       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                         Text(tr('الإجمالي', 'Summary'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
                         const SizedBox(height: 10),
-                        GridView.count(
-                          crossAxisCount: 3, shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
-                          mainAxisSpacing: 8, crossAxisSpacing: 8, childAspectRatio: 1.9,
+                        StatGrid(
+                          spacing: 8, minTileWidth: 90, minColumns: 3, maxColumns: 9,
                           children: [
                             _metric('أنشطة', 'Activities', _summary['activities'], T.navy),
                             _metric('ظهور', 'Impressions', _summary['impressions'], T.info),

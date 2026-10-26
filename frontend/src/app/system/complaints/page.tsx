@@ -31,6 +31,7 @@ interface Complaint {
 
 const CATEGORIES = [
   { value: 'service', label: 'Service', labelAr: 'الخدمة' },
+  { value: 'vehicle', label: 'Vehicle', labelAr: 'المركبة' },
   { value: 'delivery', label: 'Delivery', labelAr: 'التوصيل' },
   { value: 'billing', label: 'Billing', labelAr: 'الفواتير' },
   { value: 'damage', label: 'Damage', labelAr: 'أضرار' },

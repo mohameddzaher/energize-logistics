@@ -89,8 +89,11 @@ String gregDay(dynamic v) {
 /// (سنة، شهر، يوم) هجريّة — أو null لما ليس تاريخًا أو خرج عن مدى الجدول.
 (int, int, int)? hijriParts(dynamic v) {
   final g = gregDay(v);
-  if (g.isEmpty) return null;
-  final day = DateTime.utc(int.parse(g.substring(0, 4)), int.parse(g.substring(5, 7)), int.parse(g.substring(8, 10)))
+  // تاريخٌ مكسور (سنةٌ بخمسة أرقام، نصٌّ لا تاريخ) يُعامَل «بلا تاريخ» — كان int.parse
+  // يرمي فتسقط الشاشةُ كلُّها (لوحة الموارد والماستر والانتهاءات).
+  final m = RegExp(r'^(\d{4})-(\d{2})-(\d{2})$').firstMatch(g);
+  if (m == null) return null;
+  final day = DateTime.utc(int.parse(m.group(1)!), int.parse(m.group(2)!), int.parse(m.group(3)!))
       .millisecondsSinceEpoch ~/ 86400000;
   final st = _monthStarts();
   if (day < st.first || day >= st.last) return null;

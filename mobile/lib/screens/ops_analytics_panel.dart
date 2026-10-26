@@ -4,6 +4,7 @@ import '../services/lang.dart';
 import '../services/live.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import '../ui/stat_grid.dart';
 
 /// لوحةُ مدير التشغيل — نظيرُ components/ops/OpsAnalytics في الويب.
 ///
@@ -80,14 +81,23 @@ class _OpsAnalyticsPanelState extends State<OpsAnalyticsPanel> {
     _set(k, '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}');
   }
 
+  // حدٌّ موحَّد اللون مع زوايا مستديرة، والشريطُ الملوَّن أعلاه طبقةٌ داخليّة —
+  // فـFlutter لا يرسم زوايا مستديرة على حدودٍ مختلفة الألوان.
   Widget _kpi(IconData icon, String label, String value, String sub, Color tone) => Container(
-        padding: const EdgeInsets.all(10),
-        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border(top: BorderSide(color: tone, width: 3), left: const BorderSide(color: T.line), right: const BorderSide(color: T.line), bottom: const BorderSide(color: T.line))),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [Icon(icon, size: 13, color: tone), const SizedBox(width: 4), Expanded(child: Text(label, style: const TextStyle(fontSize: 11, color: T.inkFaint), overflow: TextOverflow.ellipsis))]),
-          const SizedBox(height: 3),
-          Text(value, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
-          if (sub.isNotEmpty) Text(sub, style: const TextStyle(fontSize: 10.5, color: T.inkFaint)),
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: T.line)),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Container(height: 3, color: tone),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [Icon(icon, size: 13, color: tone), const SizedBox(width: 4), Expanded(child: Text(label, style: const TextStyle(fontSize: 11, color: T.inkFaint), overflow: TextOverflow.ellipsis))]),
+              const SizedBox(height: 3),
+              FittedBox(fit: BoxFit.scaleDown, alignment: AlignmentDirectional.centerStart,
+                  child: Text(value, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900))),
+              if (sub.isNotEmpty) Text(sub, style: const TextStyle(fontSize: 10.5, color: T.inkFaint)),
+            ]),
+          ),
         ]),
       );
 
@@ -251,9 +261,8 @@ class _OpsAnalyticsPanelState extends State<OpsAnalyticsPanel> {
         ])),
         const SizedBox(height: 10),
         // ① المال والرحلات
-        GridView.count(
-          crossAxisCount: 2, shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
-          mainAxisSpacing: 8, crossAxisSpacing: 8, childAspectRatio: 1.9,
+        StatGrid(
+          spacing: 8,
           children: [
             _kpi(Icons.account_balance_wallet_outlined, tr('إجمالي المبيعات', 'Total sales'), _short(t['sell']), tr('إجمالي الإيراد', 'Total revenue'), _navy),
             _kpi(Icons.shopping_cart_outlined, tr('إجمالي تكلفة الشراء', 'Total buying cost'), _short(t['buy']),

@@ -317,33 +317,33 @@ class _CollectionsLedgerScreenState extends State<CollectionsLedgerScreen> {
                             child: DropdownButtonFormField<String>(
                               initialValue: _dateField,
                               isDense: true,
+                              isExpanded: true,
                               decoration: InputDecoration(labelText: tr('الفترة محسوبة بـ', 'Period measured by'), isDense: true),
                               items: [for (final f in dateFields) DropdownMenuItem(value: f.$1, child: Text(f.$2, style: const TextStyle(fontSize: 13)))],
                               onChanged: (v) { setState(() => _dateField = v ?? 'invoiceDate'); if (_from.isNotEmpty || _to.isNotEmpty) _refilter(); },
                             ),
                           ),
-                          TextButton.icon(
+                          Flexible(child: TextButton.icon(
                             icon: const Icon(Icons.date_range_rounded, size: 18),
-                            label: Text(_from.isEmpty ? tr('الفترة', 'Period') : '$_from → $_to', style: const TextStyle(fontSize: 12)),
+                            label: Text(_from.isEmpty ? tr('الفترة', 'Period') : '$_from → $_to', maxLines: 2, style: const TextStyle(fontSize: 12)),
                             onPressed: () async {
                               final r = await showDateRangePicker(context: context, firstDate: DateTime(2018), lastDate: DateTime(DateTime.now().year + 1));
                               if (r == null) return;
                               setState(() { _from = _ymd(r.start); _to = _ymd(r.end); });
                               _refilter();
                             },
-                          ),
+                          )),
                           if (_from.isNotEmpty) IconButton(icon: const Icon(Icons.close, size: 18), onPressed: () { setState(() { _from = ''; _to = ''; }); _refilter(); }),
                         ]),
-                        Row(children: [
-                          Text(tr('الصفوف المحمَّلة:', 'Rows loaded:'), style: const TextStyle(fontSize: 12, color: T.inkSoft)),
-                          const SizedBox(width: 6),
+                        // Wrap لا Row: الرقائقُ تنزل لسطرٍ ثانٍ على الشاشات الضيّقة بدل أن تفيض.
+                        Wrap(spacing: 4, runSpacing: 2, crossAxisAlignment: WrapCrossAlignment.center, children: [
+                          Padding(
+                            padding: const EdgeInsetsDirectional.only(end: 2),
+                            child: Text(tr('الصفوف المحمَّلة:', 'Rows loaded:'), style: const TextStyle(fontSize: 12, color: T.inkSoft)),
+                          ),
                           for (final n in [50, 200, 1000, 5000])
-                            Padding(
-                              padding: const EdgeInsetsDirectional.only(end: 4),
-                              child: ChoiceChip(label: Text('$n'), selected: _size == n, visualDensity: VisualDensity.compact,
-                                  onSelected: (_) { setState(() => _size = n); _refilter(); }),
-                            ),
-                          const Spacer(),
+                            ChoiceChip(label: Text('$n'), selected: _size == n, visualDensity: VisualDensity.compact,
+                                onSelected: (_) { setState(() => _size = n); _refilter(); }),
                           if (_active)
                             IconButton(
                               tooltip: tr('مسح', 'Clear'),

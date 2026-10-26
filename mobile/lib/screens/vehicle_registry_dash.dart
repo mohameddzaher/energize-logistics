@@ -4,6 +4,7 @@ import '../services/lang.dart';
 import '../services/live.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
+import '../ui/stat_grid.dart';
 import '../ui/widgets.dart';
 import 'package:provider/provider.dart';
 import '../services/auth.dart';
@@ -86,10 +87,7 @@ class _VRDashState extends State<VehicleRegistryDashboardScreen> {
         }).toList()),
       ),
       const SizedBox(height: 12),
-      GridView.count(
-        crossAxisCount: 2, shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
-        childAspectRatio: 1.7, mainAxisSpacing: 8, crossAxisSpacing: 8,
-        children: [
+      _tileGrid([
           _tile(tr('إجمالي المركبات', 'Vehicles'), '${t['vehicles'] ?? 0}', T.orange, Icons.directions_car_outlined, onTap: () => _openList()),
           _tile(tr('مستندات منتهية', 'Expired docs'), '${t['expiredTotal'] ?? 0}', T.danger, Icons.event_busy_outlined, onTap: () => _openAlerts()),
           _tile(tr('قرب الانتهاء', 'Expiring'), '${t['expiringTotal'] ?? 0}', T.warn, Icons.hourglass_bottom_outlined, onTap: () => _openAlerts()),
@@ -100,8 +98,7 @@ class _VRDashState extends State<VehicleRegistryDashboardScreen> {
           _tile(tr('بدون بطاقة تشغيل', 'No op. card'), '${t['missingOperatingCard'] ?? 0}', T.warn, Icons.badge_outlined, onTap: () => _openList(filters: {'missingDoc': 'operatingCard'}, label: tr('بدون بطاقة تشغيل', 'No op. card'))),
           _tile(tr('عدد الماركات', 'Brands'), '${t['brands'] ?? 0}', T.violet, Icons.category_outlined, onTap: () => _openList()),
           _tile(tr('عدد المُلّاك', 'Owners'), '${t['owners'] ?? 0}', T.inkSoft, Icons.badge_outlined, onTap: () => _openList()),
-        ],
-      ),
+      ]),
       const SizedBox(height: 14),
       _section(tr('حالة المستندات حسب النوع', 'Document status by type')),
       ...docTypes.map((dt) {
@@ -183,6 +180,9 @@ class _VRDashState extends State<VehicleRegistryDashboardScreen> {
       MaterialPageRoute(builder: (_) => VehicleRegistryListScreen(filters: filters, filterLabel: label)));
   void _openAlerts() => Navigator.push(context, MaterialPageRoute(builder: (_) => const VehicleRegistryAlertsScreen()));
 
+  // كروتٌ بصفوفٍ متساوية الارتفاع تكبر مع النصّ (لا نسبةَ ثابتة تقصّ المحتوى).
+  Widget _tileGrid(List<Widget> tiles) => StatGrid(spacing: 8, minTileWidth: 140, minColumns: 2, maxColumns: 5, children: tiles);
+
   Widget _tile(String label, String value, Color color, IconData icon, {VoidCallback? onTap}) => Pressable(
         onTap: onTap,
         child: AppCard(
@@ -196,7 +196,7 @@ class _VRDashState extends State<VehicleRegistryDashboardScreen> {
             const SizedBox(height: 8),
             FittedBox(fit: BoxFit.scaleDown, alignment: AlignmentDirectional.centerStart, child: Text(value, style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: color, height: 1))),
             const SizedBox(height: 2),
-            Text(label, style: const TextStyle(fontSize: 10.5, color: T.inkSoft, fontWeight: FontWeight.w600)),
+            Text(label, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 10.5, color: T.inkSoft, fontWeight: FontWeight.w600)),
           ]),
         ),
       );

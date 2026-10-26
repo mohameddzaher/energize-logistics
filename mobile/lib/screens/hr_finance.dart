@@ -65,7 +65,12 @@ class _Tabs extends StatelessWidget {
           title: Text(title),
           appBarBottom: TabBar(
             isScrollable: true,
+            tabAlignment: TabAlignment.start,
+            // بلا لونٍ صريح يأخذ المحدَّدُ لونَ الثيم (كحليّ) فيختفي على الشريط الكحليّ.
+            labelColor: Colors.white,
+            unselectedLabelColor: Colors.white70,
             indicatorColor: T.orange,
+            indicatorWeight: 3,
             labelStyle: const TextStyle(fontWeight: FontWeight.w800),
             tabs: [for (final t in tabs) Tab(text: t)],
           ),

@@ -217,7 +217,7 @@ final fleetCustomersCfg = ResourceConfig(
     final income = (r['income'] ?? 0);
     final parts = <String>[
       if ((r['trips'] ?? 0) != 0) 'حمولات: $trips',
-      if (income != 0) 'الدخل: $income',
+      if (income != 0) 'الدخل: ${(income is num ? income : num.tryParse('$income') ?? 0).round().toString().replaceAllMapped(RegExp(r'(\d)(?=(\d{3})+$)'), (m) => '${m[1]},')}',
       _s(r, 'phone'),
     ];
     return parts.where((x) => x.isNotEmpty).join(' · ');

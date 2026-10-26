@@ -100,8 +100,9 @@ class _CreditAlertsScreenState extends State<CreditAlertsScreen> {
           padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(color: c.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(12), border: Border.all(color: c.withValues(alpha: 0.3))),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(label, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: c)),
-            Text('${value ?? 0}', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: c)),
+            Text(label, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: c)),
+            FittedBox(fit: BoxFit.scaleDown, alignment: AlignmentDirectional.centerStart,
+                child: Text('${value ?? 0}', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: c))),
             Text(sub, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 10, color: c.withValues(alpha: 0.7))),
           ]),
         ),
@@ -129,11 +130,11 @@ class _CreditAlertsScreenState extends State<CreditAlertsScreen> {
                       Text(tr('العملاء الذين يقتربون من حد الائتمان أو تجاوزوه', 'Customers approaching or exceeding credit limits'),
                           style: const TextStyle(fontSize: 12, color: T.inkSoft)),
                       const SizedBox(height: 10),
-                      Row(children: [
+                      IntrinsicHeight(child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                         _card(tr('تجاوز الحد', 'Over Limit'), _d?['exceeded'], tr('استخدام أكثر من 100%', 'Over 100% usage'), T.danger),
                         _card(tr('قرب الحد', 'Near Limit'), _d?['nearLimit'], tr('استخدام 80-100%', '80-100% usage'), T.warn),
                         _card(tr('إجمالي التنبيهات', 'Total Alerts'), _d?['total'], tr('استخدام ائتماني 70%+', '70%+ credit usage'), T.orange),
-                      ]),
+                      ])),
                       const SizedBox(height: 10),
                       SearchField(
                         controller: _searchCtl,

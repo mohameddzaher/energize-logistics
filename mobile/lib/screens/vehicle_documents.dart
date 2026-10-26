@@ -1283,12 +1283,13 @@ class _VehicleDocumentsScreenState extends State<VehicleDocumentsScreen> {
                           Text(tr('ينتهي خلال', 'Expiring within'), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
                           const SizedBox(width: 6),
                           SizedBox(
-                            width: 64,
+                            width: 72,
                             child: TextField(
                               controller: _withinCtl,
                               keyboardType: TextInputType.number,
                               textAlign: TextAlign.center,
-                              decoration: InputDecoration(isDense: true, hintText: tr('الكل', 'Any')),
+                              decoration: InputDecoration(isDense: true, hintText: tr('الكل', 'Any'),
+                                  contentPadding: const EdgeInsets.symmetric(horizontal: 6, vertical: 12)),
                               onChanged: (x) => setState(() => _within = x.trim()),
                             ),
                           ),
@@ -1368,7 +1369,8 @@ class _VehicleDocumentsScreenState extends State<VehicleDocumentsScreen> {
                           ? ListView(children: [const SizedBox(height: 80), EmptyState(icon: f.icon, title: tr('لا نتائج مطابقة', 'No matching rows'))])
                           : ListView.separated(
                               keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-                              padding: const EdgeInsets.all(14),
+                              // مسافةٌ سفليّة حتى لا يغطّي زرُّ الإضافة آخرَ بطاقة.
+                              padding: const EdgeInsets.fromLTRB(14, 14, 14, 90),
                               itemCount: rows.length,
                               separatorBuilder: (_, __) => const SizedBox(height: 8),
                               itemBuilder: (c, i) {
@@ -1386,10 +1388,10 @@ class _VehicleDocumentsScreenState extends State<VehicleDocumentsScreen> {
                                           value: _picked.contains(id),
                                           onChanged: (x) => setState(() => x == true ? _picked.add(id) : _picked.remove(id)),
                                         )),
-                                      Text(_s(v['plateNumber']), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
-                                      const Spacer(),
-                                      if (meta != null)
-                                        Chip2(st!['days'] == null ? meta.$1 : '${meta.$1} · ${daysText(st['days'])}', meta.$2),
+                                      Flexible(flex: 5, child: Text(_s(v['plateNumber']), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15))),
+                                      const SizedBox(width: 8),
+                                      Expanded(flex: 6, child: meta == null ? const SizedBox() : Align(alignment: AlignmentDirectional.centerEnd,
+                                          child: Chip2(st!['days'] == null ? meta.$1 : '${meta.$1} · ${daysText(st['days'])}', meta.$2))),
                                     ]),
                                     // ── ومَن هذه المركبة، لا رقمُها وحده ──────────────────────
                                     // اللوحةُ تقول أيُّ صفٍّ هذا ولا تقول أيُّ مركبةٍ هي، ومن

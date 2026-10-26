@@ -478,6 +478,20 @@ class _ResourceScreenState extends State<ResourceScreen> {
     );
   }
 
+  /// شارةٌ تحمل قيمةً خامًا («lead»، «visit») تُعرَض بنصّ خيارها في النموذج —
+  /// القيمةُ للخادم والنصُّ للقارئ. وما ليس خيارًا يبقى كما هو.
+  String _chipLabel(String v) {
+    for (final f in cfg.fields) {
+      for (final o in f.options ?? const <(String, String, String)>[]) {
+        if (o.$1 == v) return tr(o.$2, o.$3);
+      }
+    }
+    for (final o in cfg.filterOptions ?? const <(String, String, String)>[]) {
+      if (o.$1 == v) return tr(o.$2, o.$3);
+    }
+    return v;
+  }
+
   /// أعمدةُ التصدير: العنوانُ ثمّ حقولُ النموذج بأسمائها، والاختيارُ بنصّه لا بقيمته.
   List<ExportCol> _exportColumns() => [
         ExportCol(cfg.arTitle, cfg.enTitle, (r) => cfg.titleOf(r)),
@@ -642,14 +656,15 @@ class _ResourceScreenState extends State<ResourceScreen> {
                                                   maxLines: 1, overflow: TextOverflow.ellipsis),
                                             if (chips.any((c2) => c2.$1.isNotEmpty)) ...[
                                               const SizedBox(height: 4),
-                                              Wrap(spacing: 4, runSpacing: 4, children: chips.where((c2) => c2.$1.isNotEmpty).map((c2) => Chip2(c2.$1, c2.$2)).toList()),
+                                              Wrap(spacing: 4, runSpacing: 4, children: chips.where((c2) => c2.$1.isNotEmpty).map((c2) => Chip2(_chipLabel(c2.$1), c2.$2)).toList()),
                                             ],
                                           ]),
                                         ),
                                         if (cfg.rowActions != null)
                                           _rowActionsMenu(r)
                                         else if (cfg.canEdit)
-                                          Icon(Lang.instance.ar ? Icons.chevron_left : Icons.chevron_right, color: T.inkFaint),
+                                          // chevron_right ينقلب وحدَه في العربيّة؛ اختيارُ اليسار هناك كان يقلبه مرّتين.
+                                          const Icon(Icons.chevron_right, color: T.inkFaint),
                                       ]),
                                     ),
                                   ),

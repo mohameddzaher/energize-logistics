@@ -976,7 +976,7 @@ class _CustomsPaymentRequestsState extends State<_CustomsPaymentRequests> {
               const Spacer(),
               if (st != 'paid')
                 FilledButton.icon(
-                  style: FilledButton.styleFrom(backgroundColor: T.success, visualDensity: VisualDensity.compact),
+                  style: FilledButton.styleFrom(backgroundColor: T.success, visualDensity: VisualDensity.compact, minimumSize: const Size(0, 38)),
                   onPressed: () => _decide(r, 'paid'),
                   icon: const Icon(Icons.check, size: 16),
                   label: Text(tr('تم الدفع', 'Paid'), style: const TextStyle(fontSize: 12)),

@@ -329,7 +329,8 @@ class _OpsPrivateScreenState extends State<OpsPrivateScreen> {
               border: Border.all(color: on ? (key.isEmpty ? T.ink : color) : T.line, width: on ? 1.5 : 1),
             ),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(opsMoney(n), style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: on && key.isEmpty ? Colors.white : T.ink)),
+              FittedBox(fit: BoxFit.scaleDown, alignment: AlignmentDirectional.centerStart,
+                  child: Text(opsMoney(n), style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: on && key.isEmpty ? Colors.white : T.ink))),
               Row(children: [
                 if (key.isNotEmpty) Container(width: 6, height: 6, margin: const EdgeInsetsDirectional.only(end: 4), decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
                 Flexible(child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 10.5, color: on && key.isEmpty ? Colors.white : T.inkSoft))),
@@ -339,12 +340,13 @@ class _OpsPrivateScreenState extends State<OpsPrivateScreen> {
         ),
       );
     }
-    return SizedBox(
-      height: 62,
-      child: ListView(scrollDirection: Axis.horizontal, children: [
+    // ارتفاعُ الشريط يتبع محتواه (حجمُ خطّ النظام) — لا ارتفاعَ ثابتًا يقصّ البطاقات.
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: IntrinsicHeight(child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         card('', tr('الكل', 'All'), (_stats['statusTotal'] ?? 0) as num, T.ink),
         for (final e in opsAppStatuses.entries) card(e.key, tr(e.value.$1, e.value.$2), (by[e.key] ?? 0) as num, e.value.$3),
-      ]),
+      ])),
     );
   }
 

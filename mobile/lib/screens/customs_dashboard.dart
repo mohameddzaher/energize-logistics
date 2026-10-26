@@ -6,6 +6,7 @@ import '../services/live.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/export_sheet.dart';
 import '../ui/theme.dart';
+import '../ui/stat_grid.dart';
 import '../ui/widgets.dart';
 import 'customs_detail.dart';
 
@@ -352,7 +353,7 @@ class _CustomsDashboardScreenState extends State<CustomsDashboardScreen> {
             Row(children: [
               Icon(icon, size: 16, color: color),
               const SizedBox(width: 6),
-              Expanded(child: Text(label, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: T.inkSoft), maxLines: 1, overflow: TextOverflow.ellipsis)),
+              Expanded(child: Text(label, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: T.inkSoft), maxLines: 2, overflow: TextOverflow.ellipsis)),
             ]),
             const SizedBox(height: 6),
             Text('$value', style: TextStyle(fontSize: 21, fontWeight: FontWeight.w900, color: color == T.danger && value == 0 ? T.ink : color, height: 1)),
@@ -404,9 +405,7 @@ class _CustomsDashboardScreenState extends State<CustomsDashboardScreen> {
       if (_loading) const Padding(padding: EdgeInsets.only(top: 8), child: LinearProgressIndicator(minHeight: 2)),
       // ── حالة المعاملات ──
       _head(tr('حالة المعاملات', 'Transaction status')),
-      GridView.count(
-        crossAxisCount: 2, shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
-        crossAxisSpacing: 10, mainAxisSpacing: 10, childAspectRatio: 1.7,
+      StatGrid(
         children: [
           _card(tr('قادمة', 'Upcoming'), _i(n['upcoming']), T.info, Icons.schedule_outlined, (r) => r['bucket'] == 'upcoming',
               sub: _i(n['upcomingOverdue']) > 0 ? tr('${n['upcomingOverdue']} فات موعدُها', '${n['upcomingOverdue']} past due') : null),
@@ -420,9 +419,7 @@ class _CustomsDashboardScreenState extends State<CustomsDashboardScreen> {
       ),
       // ── ما يحتاج متابعة ──
       _head(tr('ما يحتاج متابعة', 'Needs follow-up')),
-      GridView.count(
-        crossAxisCount: 2, shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
-        crossAxisSpacing: 10, mainAxisSpacing: 10, childAspectRatio: 1.7,
+      StatGrid(
         children: [
           _card(tr('مفوترة بانتظار فاتورة النقل', 'Invoiced, awaiting transport invoice'), _i(n['awaitingTransportInvoice']), T.danger, Icons.error_outline,
               (r) => r['awaitingTransportInvoice'] == true),
@@ -446,9 +443,7 @@ class _CustomsDashboardScreenState extends State<CustomsDashboardScreen> {
       // من النقل فما بعده تُتابَع كلُّ حاويةٍ على حدة، فالعدُّ هنا بالوحدات لا
       // بالمعاملات — وكلُّ بطاقةٍ تفتح المعاملاتِ التي فيها من ذلك شيء.
       _head(tr('الحاويات والسيّارات في المعاملات المفتوحة', 'Containers & vehicles in open transactions')),
-      GridView.count(
-        crossAxisCount: 2, shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
-        crossAxisSpacing: 10, mainAxisSpacing: 10, childAspectRatio: 2.1,
+      StatGrid(
         children: [
           for (final x in [
             ('atPort', 'unitsAtPort', tr('ما زالت في الميناء', 'Still at the port'), T.navy, Icons.anchor_outlined),

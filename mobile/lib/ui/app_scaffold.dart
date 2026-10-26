@@ -28,29 +28,32 @@ class AppScaffold extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: title,
+        // العنوانُ الطويل بجوار أيقوناتٍ كثيرة يصغُر قليلًا ليُقرأ كاملًا بدل «التأمين الط…».
+        title: FittedBox(fit: BoxFit.scaleDown, alignment: AlignmentDirectional.centerStart, child: title),
         bottom: appBarBottom,
+        // زرُّ «كل الأقسام» في الشريط السفليّ («القائمة») وفي القائمة بحثُها — فلا
+        // يُكرَّران هنا: كانت أربعُ أيقوناتٍ للشاشة + اثنتان تقطع العنوان. وبحثُ
+        // التطبيق يبقى حيث للشاشة أيقونةٌ واحدةٌ أو لا شيء.
         actions: [
           ...?actions,
-          Builder(
-            builder: (c) => IconButton(
-              icon: const Icon(Icons.search_rounded),
-              tooltip: tr('بحث', 'Search'),
-              onPressed: () => showSearch(context: c, delegate: AppSearchDelegate(c.read<AuthProvider>())),
+          if ((actions?.length ?? 0) < 2)
+            Builder(
+              builder: (c) => IconButton(
+                icon: const Icon(Icons.search_rounded),
+                tooltip: tr('بحث', 'Search'),
+                onPressed: () => showSearch(context: c, delegate: AppSearchDelegate(c.read<AuthProvider>())),
+              ),
             ),
-          ),
-          Builder(
-            builder: (c) => IconButton(
-              icon: const Icon(Icons.menu_rounded),
-              tooltip: tr('كل الأقسام', 'All sections'),
-              onPressed: () => Scaffold.of(c).openEndDrawer(),
-            ),
-          ),
         ],
       ),
       endDrawer: const AppDrawer(),
       floatingActionButton: floatingActionButton,
-      body: body,
+      // على الآيباد: المحتوى في عمودٍ مريحٍ وسطَ الشاشة بدل أن يتمدّد على عرضها كلّه.
+      body: LayoutBuilder(
+        builder: (c, box) => box.maxWidth > 860
+            ? Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 820), child: body))
+            : body,
+      ),
       // شريط سفلي ثابت في كل الصفحات — الرئيسية/ملفي/الإشعارات/القائمة.
       bottomNavigationBar: const AppBottomNav(),
     );

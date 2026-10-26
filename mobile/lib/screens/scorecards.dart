@@ -288,7 +288,7 @@ class _Ls2DriverPerformanceScreenState extends State<Ls2DriverPerformanceScreen>
                   ),
                   Expanded(
                     child: rows.isEmpty && _q.trim().isNotEmpty
-                        ? EmptyState(icon: Icons.search_off_rounded, title: tr('لا نتائج مطابقة', 'No matches'))
+                        ? ListView(keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag, children: [EmptyState(icon: Icons.search_off_rounded, title: tr('لا نتائج مطابقة', 'No matches'))])
                         : RefreshIndicator(
                       onRefresh: _load,
                       child: ListView.builder(
@@ -550,7 +550,7 @@ class _FleetDriverKpisScreenState extends State<FleetDriverKpisScreen> {
                   ),
                   Expanded(
                     child: rows.isEmpty && _q.trim().isNotEmpty
-                        ? EmptyState(icon: Icons.search_off_rounded, title: tr('لا نتائج مطابقة', 'No matches'))
+                        ? ListView(keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag, children: [EmptyState(icon: Icons.search_off_rounded, title: tr('لا نتائج مطابقة', 'No matches'))])
                         : RefreshIndicator(
                       onRefresh: _load,
                       child: ListView.builder(
@@ -826,7 +826,7 @@ class _CrmKpisScreenState extends State<CrmKpisScreen> {
                   ),
                   Expanded(
                     child: rows.isEmpty && _q.trim().isNotEmpty
-                        ? EmptyState(icon: Icons.search_off_rounded, title: tr('لا نتائج مطابقة', 'No matches'))
+                        ? ListView(keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag, children: [EmptyState(icon: Icons.search_off_rounded, title: tr('لا نتائج مطابقة', 'No matches'))])
                         : RefreshIndicator(
                       onRefresh: _load,
                       child: ListView.builder(

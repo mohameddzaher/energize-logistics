@@ -3,7 +3,9 @@ const mongoose = require('mongoose');
 const complaintSchema = new mongoose.Schema({
   subject: { type: String, required: true, trim: true },
   description: { type: String, required: true, trim: true },
-  category: { type: String, enum: ['service', 'vehicle', 'staff', 'billing', 'other'], default: 'other' },
+  // التوصيلُ والأضرارُ والتأخير تعرضها الشاشتان (الموقع والجوّال) منذ البداية وكان
+  // الخادمُ يرفضها؛ صارت مقبولة، و«المركبة» تُعرَض فيهما (٢٠٢٦/١٠/٢٥).
+  category: { type: String, enum: ['service', 'vehicle', 'delivery', 'damage', 'delay', 'staff', 'billing', 'other'], default: 'other' },
   priority: { type: String, enum: ['low', 'medium', 'high', 'urgent'], default: 'medium' },
   status: { type: String, enum: ['open', 'in_progress', 'resolved', 'closed'], default: 'open' },
   customerName: { type: String, trim: true },

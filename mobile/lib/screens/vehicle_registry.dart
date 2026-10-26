@@ -327,15 +327,15 @@ class _VehicleRegistryListScreenState extends State<VehicleRegistryListScreen> {
                                     topAccent: statusColor(st),
                                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                                       Row(children: [
-                                        Text((v['plateNumber'] ?? '').toString(), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+                                        Flexible(flex: 5, child: Text((v['plateNumber'] ?? '').toString(), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15))),
                                         // النقطةُ تقول «هنا عمل» لمنصّة لوجستي — وتفصيلُه في الملفّ.
                                         if (gaps.isNotEmpty)
                                           Tooltip(
                                             message: tr('ينقصها لمنصّة لوجستي: ${gaps.join(' · ')}', 'Logisti gaps: ${gaps.join(' · ')}'),
                                             child: Container(margin: const EdgeInsetsDirectional.only(start: 6), width: 7, height: 7, decoration: const BoxDecoration(color: T.violet, shape: BoxShape.circle)),
                                           ),
-                                        const Spacer(),
-                                        Chip2(statusLabel(st) + (v['overallDays'] != null && st != 'valid' ? ' · ${daysText(v['overallDays'])}' : ''), statusColor(st)),
+                                        const SizedBox(width: 8),
+                                        Expanded(flex: 6, child: Align(alignment: AlignmentDirectional.centerEnd, child: Chip2(statusLabel(st) + (v['overallDays'] != null && st != 'valid' ? ' · ${daysText(v['overallDays'])}' : ''), statusColor(st)))),
                                         if (canEdit)
                                           IconButton(visualDensity: VisualDensity.compact, icon: const Icon(Icons.edit_outlined, size: 18, color: T.inkSoft),
                                               onPressed: () async { if (await showVehicleRegistryForm(context, v)) _load(); }),

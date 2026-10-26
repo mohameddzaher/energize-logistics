@@ -5,6 +5,7 @@ import '../services/live.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/export_sheet.dart';
 import '../ui/theme.dart';
+import '../ui/stat_grid.dart';
 import '../ui/widgets.dart';
 import 'it_common.dart';
 import 'it_custody.dart';
@@ -126,9 +127,8 @@ class _ItDashboardScreenState extends State<ItDashboardScreen> {
       ),
       const SizedBox(height: 12),
       // كلُّ بطاقةٍ تؤدّي إلى صفوفها.
-      GridView.count(
-        crossAxisCount: 3, shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
-        mainAxisSpacing: 8, crossAxisSpacing: 8, childAspectRatio: 1.05,
+      StatGrid(
+        spacing: 8, minTileWidth: 96, minColumns: 3, maxColumns: 6,
         children: [
           _stat(tr('بلاغات مفتوحة', 'Open tickets'), '${_num(t['openTickets'])}', T.warn, () => _go(const ItTicketsScreen(initialStatus: 'open'))),
           _stat(tr('قيد التنفيذ', 'In progress'), '${_num(t['inProgress'])}', T.info, () => _go(const ItTicketsScreen(initialStatus: 'in_progress'))),
@@ -144,31 +144,29 @@ class _ItDashboardScreenState extends State<ItDashboardScreen> {
         const SizedBox(width: 6),
         Text(tr('العهد', 'Custody'), style: const TextStyle(fontWeight: FontWeight.w800)),
         const SizedBox(width: 6),
-        Text(tr('${_num(c['total'])} صنف في السجل', '${_num(c['total'])} items on the register'), style: const TextStyle(fontSize: 11.5, color: T.inkFaint)),
-        const Spacer(),
+        Expanded(child: Text(tr('${_num(c['total'])} صنف في السجل', '${_num(c['total'])} items on the register'), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11.5, color: T.inkFaint))),
         TextButton(onPressed: () => _go(const ItCustodyScreen()), child: Text(tr('السجل الكامل', 'Full register'), style: const TextStyle(fontSize: 12))),
       ]),
-      SizedBox(
-        height: 78,
-        child: ListView.separated(
-          scrollDirection: Axis.horizontal,
-          itemCount: custodyBuckets.length,
-          separatorBuilder: (_, __) => const SizedBox(width: 8),
-          itemBuilder: (_, i) {
-            final b = custodyBuckets[i];
-            return Pressable(
+      // ارتفاعُ الشريط من محتواه — يكبر مع حجم الخط ولا يفيض.
+      SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: IntrinsicHeight(child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          for (final (i, b) in custodyBuckets.indexed) ...[
+            if (i > 0) const SizedBox(width: 8),
+            Pressable(
               onTap: () => _go(ItCustodyScreen(initialBucket: b.key)),
               child: Container(
                 width: 112, padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14), border: Border.all(color: T.line)),
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
                   Row(children: [Icon(b.icon, size: 15, color: T.inkFaint), const SizedBox(width: 5), Expanded(child: Text(b.label, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: T.inkSoft)))]),
+                  const SizedBox(height: 6),
                   Text('${bucketCounts[b.key] ?? 0}', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
                 ]),
               ),
-            );
-          },
-        ),
+            ),
+          ],
+        ])),
       ),
       const SizedBox(height: 8),
       Row(children: [
@@ -291,7 +289,8 @@ class _ItDashboardScreenState extends State<ItDashboardScreen> {
         child: AppCard(
           padding: const EdgeInsets.all(10),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-            Text(label, maxLines: 2, style: const TextStyle(fontSize: 10.5, color: T.inkSoft, fontWeight: FontWeight.w700)),
+            Text(label, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 10.5, color: T.inkSoft, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 4),
             FittedBox(fit: BoxFit.scaleDown, alignment: AlignmentDirectional.centerStart,
                 child: Text(value, style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: color))),
             if (onTap != null) Text(tr('اضغط لعرضها', 'tap to open'), style: const TextStyle(fontSize: 9.5, color: T.inkFaint)),

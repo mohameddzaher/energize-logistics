@@ -107,7 +107,7 @@ class _BusinessReviewScreenState extends State<BusinessReviewScreen> {
       child: AppScaffold(
         title: Text(tr('مراجعة الأعمال', 'Business Review')),
         appBarBottom: tabs.length > 1
-            ? TabBar(isScrollable: true, tabAlignment: TabAlignment.start, tabs: tabs.map((t) => Tab(text: t.$1)).toList())
+            ? TabBar(isScrollable: true, tabAlignment: TabAlignment.start, labelColor: Colors.white, unselectedLabelColor: Colors.white70, indicatorColor: T.orange, indicatorWeight: 3, tabs: tabs.map((t) => Tab(text: t.$1)).toList())
             : null,
         floatingActionButton: runner
             ? FloatingActionButton.extended(
@@ -202,34 +202,37 @@ class _MeetingsTabState extends State<_MeetingsTab> {
     _load();
   }
 
-  Widget _cards() => SizedBox(
-    height: 74,
-    child: ListView.separated(
-      scrollDirection: Axis.horizontal,
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 4),
-      itemCount: _buckets.length,
-      separatorBuilder: (_, __) => const SizedBox(width: 8),
-      itemBuilder: (c, i) {
-        final (key, ar, en, countKey, color) = _buckets[i];
-        final active = _bucket == key;
-        return Pressable(
-          onTap: () { setState(() { _bucket = key; _status = ''; _loading = true; }); _load(); },
-          child: Container(
-            width: 108,
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: active ? T.orange : T.line, width: active ? 1.6 : 1),
-            ),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.center, children: [
-              Text('${_counts[countKey] ?? 0}', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 21, color: color, height: 1)),
-              const SizedBox(height: 4),
-              Text(tr(ar, en), style: const TextStyle(fontSize: 11, color: T.inkSoft), maxLines: 1, overflow: TextOverflow.ellipsis),
-            ]),
-          ),
-        );
-      },
+  // ارتفاعٌ طبيعيّ (لا ثابت) — بخطّ Tajawal وتكبير النصّ كانت 74 تقصّ الرقم والعنوان.
+  Widget _cards() => SingleChildScrollView(
+    scrollDirection: Axis.horizontal,
+    padding: const EdgeInsets.fromLTRB(14, 12, 14, 4),
+    child: IntrinsicHeight(
+      child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        for (var i = 0; i < _buckets.length; i++) ...[
+          if (i > 0) const SizedBox(width: 8),
+          Builder(builder: (c) {
+            final (key, ar, en, countKey, color) = _buckets[i];
+            final active = _bucket == key;
+            return Pressable(
+              onTap: () { setState(() { _bucket = key; _status = ''; _loading = true; }); _load(); },
+              child: Container(
+                width: 108,
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: active ? T.orange : T.line, width: active ? 1.6 : 1),
+                ),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.center, children: [
+                  Text('${_counts[countKey] ?? 0}', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 21, color: color, height: 1.15)),
+                  const SizedBox(height: 4),
+                  Text(tr(ar, en), style: const TextStyle(fontSize: 11, color: T.inkSoft), maxLines: 1, overflow: TextOverflow.ellipsis),
+                ]),
+              ),
+            );
+          }),
+        ],
+      ]),
     ),
   );
 
@@ -252,9 +255,10 @@ class _MeetingsTabState extends State<_MeetingsTab> {
             if (sub.isNotEmpty) Text(sub, style: const TextStyle(fontSize: 10, color: T.inkFaint), maxLines: 1, overflow: TextOverflow.ellipsis),
           ]),
         );
-    return SizedBox(
-      height: 92,
-      child: ListView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.fromLTRB(14, 12, 14, 0), children: [
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 0),
+      child: IntrinsicHeight(child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         tile(tr('اجتماعاتي', 'My meetings'), '${mt['total'] ?? 0}', '${mt['upcoming'] ?? 0} ${tr('قادم', 'upcoming')} · ${mt['held'] ?? 0} ${tr('انعقد', 'held')}', const Color(0xFF6366F1), Icons.event_outlined),
         const SizedBox(width: 8),
         tile(tr('بنودي المفتوحة', 'My open actions'), '${ac['open'] ?? 0}', '${ac['done'] ?? 0} ${tr('منجز', 'completed')}', const Color(0xFF0EA5E9), Icons.checklist_rounded),
@@ -266,7 +270,7 @@ class _MeetingsTabState extends State<_MeetingsTab> {
         ov != null
             ? tile(tr('نسبة الإنجاز العامة', 'Company completion'), '${ov['completionRate'] ?? 0}%', '${ov['open'] ?? 0} ${tr('مفتوح', 'open')} · ${ov['overdue'] ?? 0} ${tr('متأخر', 'overdue')}', T.success, Icons.check_circle_outline)
             : tile(tr('أنجزتها', 'My completed'), '${ac['done'] ?? 0}', '', T.success, Icons.check_circle_outline),
-      ]),
+      ])),
     );
   }
 

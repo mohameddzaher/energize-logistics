@@ -346,9 +346,8 @@ class _ShipmentOrdersChatScreenState extends State<ShipmentOrdersChatScreen> {
           ])),
         ),
         const SizedBox(height: 8),
-        Row(children: [
+        Wrap(alignment: WrapAlignment.spaceBetween, crossAxisAlignment: WrapCrossAlignment.center, spacing: 8, runSpacing: 8, children: [
           _chip(tr('البدء من جديد', 'Start over'), _restart, icon: Icons.restart_alt),
-          const Spacer(),
           FilledButton.icon(
             onPressed: _saving ? null : _submit,
             icon: _saving ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.check),
@@ -459,7 +458,11 @@ class _ShipmentOrdersChatScreenState extends State<ShipmentOrdersChatScreen> {
                 width: double.infinity,
                 padding: EdgeInsets.fromLTRB(12, 10, 12, 10 + MediaQuery.of(context).padding.bottom),
                 decoration: const BoxDecoration(color: T.canvas, border: Border(top: BorderSide(color: T.line))),
-                child: _controls(),
+                // لوحةُ الإدخال لا تأكل المحادثة على الشاشات القصيرة — تُمرَّر داخلها.
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.35),
+                  child: SingleChildScrollView(child: _controls()),
+                ),
               ),
             ]),
     );

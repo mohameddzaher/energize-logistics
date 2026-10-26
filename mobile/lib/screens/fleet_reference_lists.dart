@@ -37,12 +37,13 @@ class _FleetReferenceListsState extends State<FleetReferenceLists> {
   @override
   Widget build(BuildContext context) {
     if (_types.isEmpty) return const SizedBox.shrink();
+    // Material شفّافٌ بين البطاقة وListTile — وإلّا اختفى أثرُ اللمس تحت لون البطاقة.
     return AppCard(
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      child: Material(type: MaterialType.transparency, child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Row(children: [
           const Icon(Icons.tune_rounded, color: T.orange, size: 20),
           const SizedBox(width: 6),
-          Text(tr('قوائم القسم المنسدلة', 'Section dropdown lists'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+          Expanded(child: Text(tr('قوائم القسم المنسدلة', 'Section dropdown lists'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15))),
         ]),
         const SizedBox(height: 6),
         for (final t in _types)
@@ -50,12 +51,11 @@ class _FleetReferenceListsState extends State<FleetReferenceLists> {
             dense: true, contentPadding: EdgeInsets.zero,
             leading: const Icon(Icons.list_alt_outlined, color: T.navy),
             title: Text(_name(t), style: const TextStyle(fontWeight: FontWeight.w700)),
-            subtitle: Text((t['type'] ?? '').toString(), style: const TextStyle(fontSize: 11, color: T.inkFaint)),
-            trailing: const Icon(Icons.chevron_left),
+            trailing: const Icon(Icons.chevron_right),
             onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => LookupValuesScreen(
                 type: (t['type'] ?? '').toString(), title: _name(t), canManage: t['canManage'] == true))),
           ),
-      ]),
+      ])),
     );
   }
 }

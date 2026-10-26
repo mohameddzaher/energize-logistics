@@ -159,7 +159,7 @@ class _ShipmentOrdersFleetScreenState extends State<ShipmentOrdersFleetScreen> {
                           const SizedBox(width: 10),
                           Expanded(child: Text(x.$1, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14))),
                           Text('${x.$2}', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18)),
-                          const Icon(Icons.chevron_left, color: T.inkFaint),
+                          const Icon(Icons.chevron_right, color: T.inkFaint),
                         ])),
                       )),
                     // ── الملكيّة: «أرِني ما لا أعرف مالكَه» ──

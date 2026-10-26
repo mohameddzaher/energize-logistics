@@ -237,7 +237,7 @@ class _OpsPeriodBarState extends State<OpsPeriodBar> {
   @override
   Widget build(BuildContext context) {
     final has = period.dates.$1 != null;
-    return Row(children: [
+    final chips = <Widget>[
       for (final m in OpsDateMode.values) ...[
         ChoiceChip(
           visualDensity: VisualDensity.compact,
@@ -254,22 +254,31 @@ class _OpsPeriodBarState extends State<OpsPeriodBar> {
         ),
         const SizedBox(width: 4),
       ],
-      Expanded(
-        child: OutlinedButton.icon(
-          style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8)),
-          onPressed: () => _pick(context),
-          icon: const Icon(Icons.calendar_month_outlined, size: 16),
-          label: Text(period.label, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11.5)),
-        ),
-      ),
-      if (has)
-        IconButton(
-          visualDensity: VisualDensity.compact,
-          tooltip: tr('مسح', 'Clear'),
-          onPressed: () { period.clear(); onChanged(); },
-          icon: const Icon(Icons.close, size: 18),
-        ),
-    ]);
+    ];
+    final button = OutlinedButton.icon(
+      style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8)),
+      onPressed: () => _pick(context),
+      icon: const Icon(Icons.calendar_month_outlined, size: 16),
+      label: Text(period.label, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11.5)),
+    );
+    final clear = has
+        ? IconButton(
+            visualDensity: VisualDensity.compact,
+            tooltip: tr('مسح', 'Clear'),
+            onPressed: () { period.clear(); onChanged(); },
+            icon: const Icon(Icons.close, size: 18),
+          )
+        : null;
+    // على الشاشات الضيّقة (أو بخطٍّ مكبَّر) يَنزل زرُّ التاريخ سطرًا تحت الأوضاع.
+    return LayoutBuilder(builder: (context, c) {
+      final narrow = c.maxWidth < 330 * MediaQuery.textScalerOf(context).scale(1);
+      if (!narrow) return Row(children: [...chips, Expanded(child: button), if (clear != null) clear]);
+      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
+        Row(children: chips),
+        const SizedBox(height: 4),
+        Row(children: [Expanded(child: button), if (clear != null) clear]),
+      ]);
+    });
   }
 }
 

@@ -102,10 +102,19 @@ class Chip2 extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
       decoration: BoxDecoration(color: color.withValues(alpha: 0.11), borderRadius: BorderRadius.circular(20)),
-      child: Row(mainAxisSize: MainAxisSize.min, children: [
-        if (icon != null) ...[Icon(icon, size: 12, color: color), const SizedBox(width: 3)],
-        Text(label, style: TextStyle(fontSize: 11.5, color: color, fontWeight: FontWeight.w700)),
-      ]),
+      // نصٌّ واحد (لا Row) حتى يُختصر بـ«…» إذا ضاق المكان بدل أن يفيض.
+      child: Text.rich(
+        TextSpan(children: [
+          if (icon != null) ...[
+            WidgetSpan(alignment: PlaceholderAlignment.middle, child: Icon(icon, size: 12, color: color)),
+            const WidgetSpan(child: SizedBox(width: 3)),
+          ],
+          TextSpan(text: label),
+        ]),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(fontSize: 11.5, color: color, fontWeight: FontWeight.w700),
+      ),
     );
   }
 }

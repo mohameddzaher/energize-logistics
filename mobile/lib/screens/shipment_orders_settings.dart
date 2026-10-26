@@ -86,7 +86,7 @@ class _ShipmentOrdersSettingsScreenState extends State<ShipmentOrdersSettingsScr
             Text(title, style: const TextStyle(fontWeight: FontWeight.w800)),
             Text(sub, style: const TextStyle(fontSize: 11.5, color: T.inkFaint)),
           ])),
-          const Icon(Icons.chevron_left, color: T.inkFaint),
+          const Icon(Icons.chevron_right, color: T.inkFaint),
         ]))),
       );
 

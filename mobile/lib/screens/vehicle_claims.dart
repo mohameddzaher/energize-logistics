@@ -14,6 +14,7 @@ import '../ui/file_upload.dart';
 import '../ui/lookup_field.dart';
 import '../ui/search_field.dart';
 import '../ui/theme.dart';
+import '../ui/stat_grid.dart';
 import '../ui/widgets.dart';
 import 'vehicle_registry.dart' show VehicleRegistryDetailScreen;
 
@@ -363,17 +364,14 @@ class _VehicleClaimsScreenState extends State<VehicleClaimsScreen> {
           border: Border.all(color: on ? T.orange : T.line, width: on ? 1.6 : 1),
         ),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(value, style: TextStyle(color: c, fontSize: 20, fontWeight: FontWeight.w900)),
+          FittedBox(fit: BoxFit.scaleDown, alignment: AlignmentDirectional.centerStart, child: Text(value, style: TextStyle(color: c, fontSize: 20, fontWeight: FontWeight.w900))),
           const SizedBox(height: 4),
           Text(label, style: const TextStyle(color: T.inkFaint, fontSize: 11)),
         ]),
       );
       return onTap == null ? body : InkWell(borderRadius: BorderRadius.circular(12), onTap: onTap, child: body);
     }
-    return GridView.count(
-      crossAxisCount: 2, shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
-      mainAxisSpacing: 8, crossAxisSpacing: 8, childAspectRatio: 2.2,
-      children: [
+    return _eqGrid([
         stat(tr('إجمالي الحوادث', 'Total'), '${t['total'] ?? 0}', T.ink,
             onTap: () { setState(() { _status = ''; _stale = false; }); _load(); }, on: _status.isEmpty && !_stale),
         stat(tr('مفتوحة', 'Open'), '${t['open'] ?? 0}', const Color(0xFFF59E0B),
@@ -383,8 +381,7 @@ class _VehicleClaimsScreenState extends State<VehicleClaimsScreen> {
         stat(tr('الفرق — المقفلة (ر.س)', 'Difference — closed (SAR)'), _money(t['gapSar']), T.danger),
         stat(tr('بدون رد من التأمين +٣٠ يوم', 'No insurer reply 30d+'), '${t['stale'] ?? 0}', const Color(0xFFEA580C),
             onTap: () { setState(() { _stale = !_stale; _status = ''; }); _load(); }, on: _stale),
-      ],
-    );
+    ]);
   }
 
   Widget _chip(String label, bool active, VoidCallback onTap, {VoidCallback? onClear}) => Padding(
@@ -1171,7 +1168,7 @@ class _VehicleClaimDetailScreenState extends State<VehicleClaimDetailScreen> {
     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Text(label, style: const TextStyle(color: T.inkFaint, fontSize: 11.5)),
       const SizedBox(height: 2),
-      Text(value, style: TextStyle(color: c, fontWeight: FontWeight.w900, fontSize: 18)),
+      FittedBox(fit: BoxFit.scaleDown, alignment: AlignmentDirectional.centerStart, child: Text(value, style: TextStyle(color: c, fontWeight: FontWeight.w900, fontSize: 18))),
     ]),
   );
 
@@ -1234,17 +1231,13 @@ class _VehicleClaimDetailScreenState extends State<VehicleClaimDetailScreen> {
           ),
           const SizedBox(height: 12),
           // السؤالُ المالي أوّلًا.
-          GridView.count(
-            crossAxisCount: 2, shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
-            mainAxisSpacing: 8, crossAxisSpacing: 8, childAspectRatio: 2.2,
-            children: [
+          _eqGrid([
               _kpi(tr('المقدَّر (ر.س)', 'Estimated (SAR)'), _money(est), T.ink),
               _kpi(tr('متوقع استرداده', 'Expected recovery'), _money(rec), const Color(0xFF047857)),
               _kpi(tr('الفرق', 'Difference'), gap == null ? tr('يُحسب عند الإقفال', 'On close') : _money(gap),
                   gap != null && gap > 0 ? T.danger : T.ink),
               _kpi(tr('المرفقات', 'Attachments'), '${atts.length}', T.ink),
-            ],
-          ),
+          ]),
           const SizedBox(height: 12),
           _section(tr('الواقعة', 'The incident'), Icons.warning_amber_rounded, T.danger, [
             _row(tr('التاريخ', 'Date'), _ymd(c['accidentDate']), mono: true),
@@ -1353,3 +1346,6 @@ class _VehicleClaimDetailScreenState extends State<VehicleClaimDetailScreen> {
     );
   }
 }
+
+// كروتٌ بصفوفٍ متساوية الارتفاع تكبر مع النصّ (بدل GridView بنسبةٍ ثابتة تقصّ المحتوى).
+Widget _eqGrid(List<Widget> tiles) => StatGrid(spacing: 8, minTileWidth: 150, minColumns: 2, maxColumns: tiles.length % 3 == 0 ? 3 : 4, children: tiles);

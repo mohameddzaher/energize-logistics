@@ -212,7 +212,7 @@ class _RemoteLeavesScreenState extends State<RemoteLeavesScreen> {
               : RefreshIndicator(
                   onRefresh: _load,
                   child: ListView.separated(
-                          padding: const EdgeInsets.all(14),
+                          padding: EdgeInsets.fromLTRB(14, 14, 14, staff ? 24 : 90),
                           itemCount: _rows.length + 1,
                           separatorBuilder: (_, __) => const SizedBox(height: 8),
                           itemBuilder: (c, i) {
@@ -270,7 +270,7 @@ class _RemoteLeavesScreenState extends State<RemoteLeavesScreen> {
                                       TextButton(onPressed: () => _review(r, 'rejected'), child: Text(tr('رفض', 'Reject'), style: const TextStyle(color: T.danger, fontWeight: FontWeight.w700, fontSize: 12.5))),
                                       const SizedBox(width: 4),
                                       FilledButton(
-                                        style: FilledButton.styleFrom(backgroundColor: T.success, padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6)),
+                                        style: FilledButton.styleFrom(backgroundColor: T.success, minimumSize: const Size(0, 36), padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6)),
                                         onPressed: () => _review(r, 'approved'),
                                         child: Text(tr('قبول', 'Approve'), style: const TextStyle(fontSize: 12.5)),
                                       ),
@@ -421,7 +421,7 @@ class _RemoteTasksScreenState extends State<RemoteTasksScreen> {
               : RefreshIndicator(
                   onRefresh: _load,
                   child: ListView.separated(
-                          padding: const EdgeInsets.all(14),
+                          padding: EdgeInsets.fromLTRB(14, 14, 14, staff ? 90 : 24),
                           itemCount: _rows.length + 1,
                           separatorBuilder: (_, __) => const SizedBox(height: 8),
                           itemBuilder: (c, i) {
@@ -578,6 +578,7 @@ class _RemoteReportScreenState extends State<RemoteReportScreen> {
                             Row(children: [
                               Expanded(child: Text(_saved, style: const TextStyle(color: T.success, fontSize: 12.5))),
                               FilledButton.icon(
+                                style: FilledButton.styleFrom(minimumSize: const Size(0, 44)),
                                 onPressed: _saving ? null : _submit,
                                 icon: _saving ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.send_rounded, size: 17),
                                 label: Text(tr('حفظ وإرسال', 'Save & submit')),
@@ -600,7 +601,7 @@ class _RemoteReportScreenState extends State<RemoteReportScreen> {
                           Row(children: [
                             if (staff) Expanded(child: Text(_userName(r['user']), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5))),
                             if (!staff) const Spacer(),
-                            Chip2((r['date'] ?? _d(r['createdAt'])).toString(), T.navy, icon: Icons.event),
+                            Chip2(_d(r['date'] ?? r['createdAt']), T.navy, icon: Icons.event),
                           ]),
                           const SizedBox(height: 5),
                           Text((r['body'] ?? '').toString(), style: const TextStyle(fontSize: 12.5)),
@@ -705,7 +706,7 @@ class _RemoteAnnouncementsScreenState extends State<RemoteAnnouncementsScreen> {
                   child: _rows.isEmpty
                       ? ListView(children: [const SizedBox(height: 80), EmptyState(icon: Icons.campaign_outlined, title: tr('لا توجد إعلانات', 'No announcements'))])
                       : ListView.separated(
-                          padding: const EdgeInsets.all(14),
+                          padding: EdgeInsets.fromLTRB(14, 14, 14, staff ? 90 : 24),
                           itemCount: _rows.length,
                           separatorBuilder: (_, __) => const SizedBox(height: 8),
                           itemBuilder: (c, i) {

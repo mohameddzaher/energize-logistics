@@ -10,6 +10,7 @@ import '../services/lang.dart';
 import '../services/live.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
+import '../ui/stat_grid.dart';
 import '../ui/widgets.dart';
 
 /// سجلُّ تفقّد بداية الدوام — المراجعة، لا التفقّد نفسُه.
@@ -343,7 +344,7 @@ class _B2cDutyRegisterScreenState extends State<B2cDutyRegisterScreen> {
   }
 
   Widget _filters() {
-    const inputStyle = TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700);
+    final inputStyle = Theme.of(context).textTheme.bodyMedium!.copyWith(fontSize: 12.5, fontWeight: FontWeight.w700, color: T.ink);
     return AppCard(
       padding: const EdgeInsets.all(12),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -352,6 +353,7 @@ class _B2cDutyRegisterScreenState extends State<B2cDutyRegisterScreen> {
             child: DropdownButtonFormField<String>(
               initialValue: _mode,
               isDense: true,
+              isExpanded: true,
               style: inputStyle,
               decoration: InputDecoration(labelText: tr('المدى', 'Period'), isDense: true),
               items: [
@@ -437,6 +439,7 @@ class _B2cDutyRegisterScreenState extends State<B2cDutyRegisterScreen> {
             child: DropdownButtonFormField<String>(
               initialValue: _supervisor,
               isDense: true,
+              isExpanded: true,
               style: inputStyle,
               decoration: InputDecoration(labelText: tr('المشرف', 'Supervisor'), isDense: true),
               items: [
@@ -455,12 +458,13 @@ class _B2cDutyRegisterScreenState extends State<B2cDutyRegisterScreen> {
             child: DropdownButtonFormField<String>(
               initialValue: _outcome,
               isDense: true,
+              isExpanded: true,
               style: inputStyle,
               decoration: InputDecoration(labelText: tr('الحالة', 'Outcome'), isDense: true),
               items: [
                 DropdownMenuItem(value: '', child: Text(tr('الكل', 'All'))),
                 for (final e in _outcomes.entries)
-                  DropdownMenuItem(value: e.key, child: Text(tr(e.value.$1, e.value.$2))),
+                  DropdownMenuItem(value: e.key, child: Text(tr(e.value.$1, e.value.$2), overflow: TextOverflow.ellipsis)),
               ],
               onChanged: (v) { setState(() { _outcome = v ?? ''; _pages = 1; }); _load(); },
             ),
@@ -593,9 +597,7 @@ class _B2cDutyRegisterScreenState extends State<B2cDutyRegisterScreen> {
                     children: [
                       _filters(),
                       const SizedBox(height: 12),
-                      GridView.count(
-                        crossAxisCount: 2, shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
-                        childAspectRatio: 1.55, mainAxisSpacing: 10, crossAxisSpacing: 10,
+                      StatGrid(
                         children: [
                           StatCard(
                             label: '${tr('نسبة الالتزام', 'Compliance')} %',

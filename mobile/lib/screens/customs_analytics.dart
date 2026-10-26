@@ -6,6 +6,7 @@ import '../ui/app_scaffold.dart';
 import '../ui/export_sheet.dart';
 import '../ui/hr_quick.dart';
 import '../ui/theme.dart';
+import '../ui/stat_grid.dart';
 import '../ui/widgets.dart';
 import 'customs_detail.dart' show customsStageLabel;
 
@@ -200,10 +201,7 @@ class _CustomsAnalyticsScreenState extends State<CustomsAnalyticsScreen> {
         ]),
       );
 
-  Widget _grid(List<Widget> children) => GridView.count(
-        crossAxisCount: 2, shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
-        crossAxisSpacing: 8, mainAxisSpacing: 8, childAspectRatio: 2.0, children: children,
-      );
+  Widget _grid(List<Widget> children) => StatGrid(spacing: 8, children: children);
 
   Widget _head(String s) => Padding(
       padding: const EdgeInsets.fromLTRB(2, 16, 2, 8),

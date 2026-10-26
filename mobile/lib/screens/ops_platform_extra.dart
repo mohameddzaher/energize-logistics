@@ -302,16 +302,17 @@ class _OpsShipmentsScreenState extends State<OpsShipmentsScreen> {
                       action: TextButton(onPressed: _loadCounts, child: Text(tr('إعادة المحاولة', 'Retry')))),
                 const SizedBox(height: 6),
                 // ── بطاقاتُ الحالة: تحديدٌ متعدّد ──────────────────────────────
-                SizedBox(
-                  height: 62,
-                  child: ListView(scrollDirection: Axis.horizontal, children: [
+                // يتمدّد ارتفاعُ الشريط مع حجم الخط بدل ارتفاعٍ ثابت يفيض.
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: IntrinsicHeight(child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                     _statusCard('', tr('الكل', 'All'), hasCounts ? opsMoney(_allCount) : (_countsState == 'loading' ? '…' : '—'), T.ink, _statuses.isEmpty, () { setState(_statuses.clear); _refilter(); }),
                     for (final e in opsAppStatuses.entries)
                       _statusCard(e.key, tr(e.value.$1, e.value.$2), hasCounts ? opsMoney(_counts[e.key] ?? 0) : (_countsState == 'loading' ? '…' : '—'), e.value.$3, _statuses.contains(e.key), () {
                         setState(() { if (!_statuses.remove(e.key)) _statuses.add(e.key); });
                         _refilter();
                       }),
-                  ]),
+                  ])),
                 ),
                 if (_statuses.isNotEmpty)
                   Row(children: [
@@ -335,7 +336,7 @@ class _OpsShipmentsScreenState extends State<OpsShipmentsScreen> {
                   Expanded(
                     child: SearchField(
                       controller: _searchCtl, dense: true,
-                      hint: tr(_searchFields.firstWhere((f) => f.$1 == _field).$2, _searchFields.firstWhere((f) => f.$1 == _field).$3),
+                      hint: '${tr('ابحث', 'Search')}: ${tr(_searchFields.firstWhere((f) => f.$1 == _field).$2, _searchFields.firstWhere((f) => f.$1 == _field).$3)}…',
                       onChanged: (v) {
                         _debounce?.cancel();
                         _debounce = Timer(const Duration(milliseconds: 350), () { if (mounted && v.trim() != _q) { _q = v.trim(); _refilter(); } });
@@ -788,12 +789,12 @@ class _OpsShipmentHistoryState extends State<OpsShipmentHistory> {
       );
     }
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      SizedBox(
-        height: 58,
-        child: ListView(scrollDirection: Axis.horizontal, children: [
+      SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: IntrinsicHeight(child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           card('', tr('إجمالي الشحنات', 'Total shipments'), _counts['all'] ?? 0, T.ink),
           for (final e in active) card(e.key, tr(e.value.$1, e.value.$2), _counts[e.key] ?? 0, e.value.$3),
-        ]),
+        ])),
       ),
       const SizedBox(height: 8),
       Row(children: [

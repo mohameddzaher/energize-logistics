@@ -7,6 +7,7 @@ import '../ui/export_sheet.dart';
 import '../ui/search_field.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import '../ui/stat_grid.dart';
 import 'wallet_branch.dart';
 import 'wallet_common.dart';
 
@@ -237,14 +238,9 @@ class _WalletDashboardScreenState extends State<WalletDashboardScreen> {
               ErrorRetry(message: _error!, onRetry: () => _load())
             else ...[
               // ── الميزانُ يُقرأ كسطر حساب: افتتاحيٌّ + تحصيلاتٌ − مصروفاتٌ − مشترياتٌ = ختاميّ.
-              GridView.count(
-                crossAxisCount: 2,
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                childAspectRatio: 1.7,
-                mainAxisSpacing: 8,
-                crossAxisSpacing: 8,
-                children: [
+              StatGrid(
+            spacing: 8,
+            children: [
                   _tile(tr('الرصيد الافتتاحي', 'Opening balance'), walletMoney(_sum('openingBalance')), _sum('openingBalance') >= 0 ? T.ink : T.danger, Icons.account_balance_wallet_outlined),
                   _tile(tr('إجمالي التحصيلات', 'Collections'), walletMoney(_sum('totalCollections')), T.success, Icons.payments_outlined),
                   _tile(tr('إجمالي المصروفات', 'Expenses'), walletMoney(_sum('totalExpenses')), T.danger, Icons.money_off_outlined),

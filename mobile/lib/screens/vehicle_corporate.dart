@@ -37,6 +37,8 @@ const _stateMeta = <String, (String, String, Color)>{
   'upcoming': ('قريب', 'Upcoming', Color(0xFF0EA5E9)),
   'missing': ('مطلوب — بلا تاريخ', 'Needed — no date', Color(0xFF94A3B8)),
   'not_applicable': ('غير مطلوب', 'Not applicable', Color(0xFF64748B)),
+  // وثيقةٌ أُنهيت بقرار — لا تُعرض كمفتاحٍ خام.
+  'ended': ('مُنهاة', 'Ended', Color(0xFF64748B)),
 };
 Color vStateColor(dynamic s) => _stateMeta[(s ?? 'valid').toString()]?.$3 ?? const Color(0xFF64748B);
 String vStateLabel(dynamic s) {

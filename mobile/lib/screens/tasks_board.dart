@@ -102,6 +102,9 @@ class _TasksBoardScreenState extends State<TasksBoardScreen> {
       child: AppScaffold(
         title: Text(tr('لوحة المهام', 'Task Board')),
         appBarBottom: TabBar(
+            // أربعةُ أعمدةٍ بأسمائها وأعدادها لا تتّسع لعرض الهاتف — تُمرَّر أفقيًّا بدل أن تُقصّ.
+            isScrollable: true,
+            tabAlignment: TabAlignment.start,
             indicatorColor: const Color(AppConfig.orange),
             labelColor: Colors.white,
             unselectedLabelColor: Colors.white60,

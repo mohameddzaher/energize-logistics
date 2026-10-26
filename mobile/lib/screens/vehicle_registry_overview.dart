@@ -414,13 +414,13 @@ class _VehicleRegistryOverviewScreenState extends State<VehicleRegistryOverviewS
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Row(children: [
             FilledButton.icon(
-              style: FilledButton.styleFrom(backgroundColor: nActive > 0 ? T.orange : T.navy),
+              style: FilledButton.styleFrom(backgroundColor: nActive > 0 ? T.orange : T.navy, minimumSize: const Size(0, 44)),
               onPressed: _openFilterSheet,
               icon: const Icon(Icons.tune, size: 18),
               label: Text(nActive > 0 ? '${tr('التصفية', 'Filter')} ($nActive)' : tr('التصفية', 'Filter')),
             ),
-            const Spacer(),
-            Text('${tr('المركبات المطابقة', 'Matching vehicles')}: $total', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: T.inkSoft)),
+            const SizedBox(width: 10),
+            Expanded(child: Text('${tr('المركبات المطابقة', 'Matching vehicles')}: $total', textAlign: TextAlign.end, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: T.inkSoft))),
           ]),
           if (nActive > 0) ...[
             const SizedBox(height: 6),

@@ -702,11 +702,12 @@ class _HrMasterGroupScreenState extends State<HrMasterGroupScreen> {
             return Padding(
               padding: const EdgeInsets.only(bottom: 6),
               child: AppCard(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(Lang.instance.ar ? '${f['ar']}' : '${f['en']}', style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800)),
-                  const SizedBox(height: 4),
-                  Wrap(spacing: 6, runSpacing: 6, children: [
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                // الاسمُ والأرقامُ في سطرٍ واحد — بطاقةٌ لكلّ حقلٍ بسطرين كانت تملأ الشاشة فراغًا.
+                child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+                  Expanded(child: Text(Lang.instance.ar ? '${f['ar']}' : '${f['en']}', style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800))),
+                  const SizedBox(width: 8),
+                  Flexible(child: Wrap(alignment: WrapAlignment.end, spacing: 6, runSpacing: 6, children: [
                     for (final k in chips)
                       ChoiceChip(
                         visualDensity: VisualDensity.compact,
@@ -718,7 +719,7 @@ class _HrMasterGroupScreenState extends State<HrMasterGroupScreen> {
                           _changed(() { _field = '${f['key']}'; _status = off ? '' : k; });
                         },
                       ),
-                  ]),
+                  ])),
                 ]),
               ),
             );

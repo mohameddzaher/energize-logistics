@@ -147,12 +147,14 @@ class _ApiDocsScreenState extends State<ApiDocsScreen> {
                         padding: const EdgeInsets.only(bottom: 8),
                         child: AppCard(
                           padding: EdgeInsets.zero,
-                          child: ExpansionTile(
+                          // Material شفّاف: ListTile داخل حاويةٍ ملوّنة يحتاج سطحًا خاصًّا يرسم عليه.
+                          child: Material(type: MaterialType.transparency, child: ExpansionTile(
+                            shape: const Border(), collapsedShape: const Border(),
                             initiallyExpanded: q.isNotEmpty,
                             title: Text(g, style: const TextStyle(fontWeight: FontWeight.w800)),
                             subtitle: Text('${_groupAr[g] ?? g} · ${byGroup[g]!.length}', style: const TextStyle(fontSize: 12, color: T.inkSoft)),
                             children: byGroup[g]!.map(_endpoint).toList(),
-                          ),
+                          )),
                         ),
                       ),
                   ]),

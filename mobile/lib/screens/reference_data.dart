@@ -6,6 +6,30 @@ import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import '../ui/search_field.dart';
 
+// أسماءُ الأقسام لعناوين المجموعات (MODULE_LABELS في الويب) — لا مفاتيحَ خام.
+const _moduleLabels = {
+  'procurement': ('المشتريات', 'Procurement'),
+  'crm': ('إدارة العملاء', 'CRM'),
+  'hr': ('الموارد البشرية', 'HR'),
+  'sales': ('المبيعات', 'Sales'),
+  'accounting': ('الإدارة المالية', 'Finance Management'),
+  'fleet': ('إدارة الأسطول', 'Fleet'),
+  'it': ('تقنية المعلومات', 'IT'),
+  'vehicles': ('المركبات', 'Vehicles'),
+  'assets': ('العهد والأصول', 'Assets'),
+  'b2c': ('النقل الخفيف', 'Light transport'),
+  'collections': ('التحصيل', 'Collections'),
+  'customs': ('التخليص الجمركي', 'Customs'),
+  'jp': ('خطّة العمل (JP)', 'Work plan (JP)'),
+  'ls2': ('لوكيشن سوليوشن', 'Location Solutions'),
+  'operations': ('التشغيل', 'Operations'),
+  'shipment_orders': ('طلبات الشحنات', 'Shipment orders'),
+};
+String _moduleLabel(String k) {
+  final m = _moduleLabels[k];
+  return m == null ? k : tr(m.$1, m.$2);
+}
+
 /// البيانات المرجعية — إدارة كل القوائم المنسدلة القابلة للتعديل في النظام.
 /// مطابقة لصفحة الويب /system/settings/reference-data: قائمة الأنواع مجمّعة
 /// حسب الوحدة، وكل نوع يُفتح على محرّر قيمه (إضافة/تعديل/حذف).
@@ -69,7 +93,7 @@ class _ReferenceDataScreenState extends State<ReferenceDataScreen> {
                             children: [
                               Padding(
                                 padding: const EdgeInsets.symmetric(vertical: 8),
-                                child: Text(g.key, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5, color: T.inkSoft)),
+                                child: Text(_moduleLabel(g.key), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5, color: T.inkSoft)),
                               ),
                               ...g.value.map((t) => Padding(
                                     padding: const EdgeInsets.only(bottom: 8),

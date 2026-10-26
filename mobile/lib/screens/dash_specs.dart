@@ -55,6 +55,27 @@ const _billLabels = {
   'paid': ('مدفوع', 'Paid', T.success),
 };
 
+// مراحلُ فرص تطوير الأعمال — كانت تظهر مفاتيحَ إنجليزيّة خامًا في العربيّة.
+const _bdStageLabels = {
+  'identified': ('محددة', 'Identified', T.info),
+  'researching': ('قيد البحث', 'Researching', T.cyan),
+  'qualified': ('مؤهلة', 'Qualified', T.violet),
+  'proposal': ('عرض', 'Proposal', T.warn),
+  'negotiation': ('تفاوض', 'Negotiation', T.orange),
+  'won': ('مكسوبة', 'Won', T.success),
+  'lost': ('خاسرة', 'Lost', T.danger),
+  'on_hold': ('معلّقة', 'On Hold', T.inkFaint),
+};
+
+// حالاتُ الشركة بأسمائها (كما في نموذج الشركة) لا مفاتيحها الخام.
+const _companyStatusLabels = {
+  'lead': ('عميل محتمل', 'Lead', T.inkSoft),
+  'prospect': ('مهتم', 'Prospect', T.info),
+  'active': ('نشط', 'Active', T.success),
+  'inactive': ('غير نشط', 'Inactive', T.warn),
+  'churned': ('منسحب', 'Churned', T.danger),
+};
+
 const _dealStageLabels = {
   'new': ('جديدة', 'New', T.info),
   'contacted': ('تم التواصل', 'Contacted', T.cyan),
@@ -100,7 +121,7 @@ final crmDashSpec = DashSpec(
     DashStat('مهام متأخرة', 'Overdue tasks', 'overdueTasks', Icons.warning_amber_outlined, T.danger),
   ],
   breakdowns: const [
-    DashBreakdown('الشركات حسب الحالة', 'Companies by status', 'companiesByStatus'),
+    DashBreakdown('الشركات حسب الحالة', 'Companies by status', 'companiesByStatus', labels: _companyStatusLabels),
     DashBreakdown('الصفقات حسب المرحلة', 'Deals by stage', 'dealsByStage', labels: _dealStageLabels),
   ],
   lists: [
@@ -143,7 +164,7 @@ final bdDashSpec = DashSpec(
     DashStat('مناقصات قريبة', 'Tenders due', 'totals.tendersDueSoon', Icons.gavel_outlined, T.orange),
   ],
   breakdowns: const [
-    DashBreakdown('قمع الفرص', 'Funnel', 'funnel', idKey: 'stage'),
+    DashBreakdown('قمع الفرص', 'Funnel', 'funnel', idKey: 'stage', labels: _bdStageLabels),
   ],
   lists: [
     DashList('أكبر الفرص', 'Top opportunities', 'topOpportunities', (r) => _s(r, 'title').isEmpty ? _s(r, 'name') : _s(r, 'title'),
@@ -573,8 +594,23 @@ const vehiclesDashSpec = DashSpec(
     DashStat('تفويضات تنتهي قريبًا', 'Expiring', 'totals.expiringAuthorizations', Icons.timelapse_outlined, T.orange),
   ],
   breakdowns: [
-    DashBreakdown('حسب الحالة', 'By status', 'byStatus'),
-    DashBreakdown('حسب النوع', 'By type', 'byType'),
+    // أسماءٌ مقروءة لا مفاتيحُ خام (authorized/out_of_service…).
+    DashBreakdown('حسب الحالة', 'By status', 'byStatus', labels: {
+      'available': ('متاحة', 'Available', T.inkFaint),
+      'authorized': ('مُفوَّضة', 'Authorized', T.success),
+      'parked': ('مركونة', 'Parked', T.warn),
+      'maintenance': ('صيانة', 'Maintenance', T.info),
+      'out_of_service': ('خارج الخدمة', 'Out of Service', T.danger),
+    }),
+    DashBreakdown('حسب النوع', 'By type', 'byType', labels: {
+      'car': ('سيارة', 'Car', T.navy),
+      'motorcycle': ('دراجة نارية', 'Motorcycle', T.navy),
+      'heavy_truck': ('نقل ثقيل', 'Heavy Truck', T.navy),
+      'trailer': ('مقطورة', 'Trailer', T.navy),
+      'van': ('فان', 'Van', T.navy),
+      'equipment': ('معدة', 'Equipment', T.navy),
+      'other': ('أخرى', 'Other', T.navy),
+    }),
   ],
 );
 
@@ -705,10 +741,17 @@ class _B2cProjectsTotalState extends State<B2cProjectsTotal> {
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 1),
                   child: Column(mainAxisAlignment: MainAxisAlignment.end, children: [
-                    Container(
-                      height: max > 0 ? 56 * (((x['totalOrders'] as num?) ?? 0) / max) : 0,
-                      decoration: const BoxDecoration(color: T.orange, borderRadius: BorderRadius.vertical(top: Radius.circular(3))),
-                    ),
+                    // العمودُ يأخذ ما بقي فوق رقم اليوم — فيكبر الخطّ ولا يفيض.
+                    Expanded(child: Align(
+                      alignment: Alignment.bottomCenter,
+                      child: FractionallySizedBox(
+                        widthFactor: 1,
+                        heightFactor: max > 0 ? (((x['totalOrders'] as num?) ?? 0) / max).toDouble().clamp(0.0, 1.0) : 0,
+                        child: Container(
+                          decoration: const BoxDecoration(color: T.orange, borderRadius: BorderRadius.vertical(top: Radius.circular(3))),
+                        ),
+                      ),
+                    )),
                     const SizedBox(height: 2),
                     Text('${int.parse('${x['dateKey']}'.substring(8, 10))}', style: const TextStyle(fontSize: 7, color: T.inkFaint)),
                   ]),

@@ -542,7 +542,8 @@ class _CollectionsInvoicesScreenState extends State<CollectionsInvoicesScreen> {
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(label, style: const TextStyle(fontSize: 11, color: T.inkFaint), maxLines: 1, overflow: TextOverflow.ellipsis),
             const SizedBox(height: 2),
-            Text(value, style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: color)),
+            FittedBox(fit: BoxFit.scaleDown, alignment: AlignmentDirectional.centerStart,
+                child: Text(value, style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: color))),
           ]),
         ),
       );
@@ -551,9 +552,10 @@ class _CollectionsInvoicesScreenState extends State<CollectionsInvoicesScreen> {
     final t = _totals;
     final none = t['noneCount'] ?? t['pendingCount'];
     final noneTax = t['none'] ?? t['pending'];
-    return SizedBox(
-      height: 64,
-      child: ListView(scrollDirection: Axis.horizontal, children: [
+    // شريطٌ أفقيّ بارتفاعٍ يتبع المحتوى (لا ارتفاعَ ثابتًا يقصّ الأرقام مع الخطّ الكبير).
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: IntrinsicHeight(child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         _stat(_cash ? tr('كشوف', 'Reports') : tr('فواتير', 'Invoices'), _m(_total), T.ink),
         if (_cash) ...[
           _stat(tr('المحصَّل', 'Collected'), _m(t['collected']), T.success),
@@ -567,7 +569,7 @@ class _CollectionsInvoicesScreenState extends State<CollectionsInvoicesScreen> {
           _stat(tr('لم تُحصَّل بعد', 'Not collected'), _m(noneTax), _num(noneTax) > 0 ? T.danger : T.inkFaint),
         ],
         _stat(tr('المتبقي', 'Balance due'), _m(t['remaining']), _num(t['remaining']) > 0 ? T.danger : T.inkFaint),
-      ]),
+      ])),
     );
   }
 

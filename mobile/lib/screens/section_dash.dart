@@ -296,7 +296,11 @@ class _SectionDashScreenState extends State<SectionDashScreen> {
       final s = n.toStringAsFixed(0).replaceAllMapped(RegExp(r'(\d)(?=(\d{3})+$)'), (m) => '${m[1]},');
       return '$s ${tr('ر.س', 'SAR')}';
     }
-    return n.toStringAsFixed(n.truncateToDouble() == n ? 0 : 1);
+    // فاصلُ الآلاف للأعداد كلّها لا للمال وحدَه: ١٢٤٥٠ تُقرأ 12,450.
+    final whole = n.truncateToDouble() == n;
+    final parts = n.toStringAsFixed(whole ? 0 : 1).split('.');
+    final head = parts[0].replaceAllMapped(RegExp(r'(\d)(?=(\d{3})+$)'), (m) => '${m[1]},');
+    return parts.length > 1 ? '$head.${parts[1]}' : head;
   }
 
   String _humanize(String k) =>

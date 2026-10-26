@@ -973,12 +973,11 @@ class _CollectionsCasesScreenState extends State<CollectionsCasesScreen> {
                                   IconButton(tooltip: tr('رفعُ الحالة', 'Clear'), icon: const Icon(Icons.block, size: 20),
                                       onPressed: _busy == '${p['key']}' ? null : () => _setIssue(p, 'none')),
                                 ],
-                                const Spacer(),
-                                TextButton.icon(
+                                Expanded(child: Align(alignment: AlignmentDirectional.centerEnd, child: TextButton.icon(
                                   onPressed: ((p['count'] as num?) ?? 0) > 0 ? () => _openReceivables(p) : null,
                                   icon: const Icon(Icons.open_in_new, size: 16),
-                                  label: Text(tr('تفاصيل المديونية', 'Receivables detail')),
-                                ),
+                                  label: Text(tr('تفاصيل المديونية', 'Receivables detail'), maxLines: 2, textAlign: TextAlign.center),
+                                ))),
                               ]),
                               if (_open == '${p['key']}') _miniRows(p),
                             ]),

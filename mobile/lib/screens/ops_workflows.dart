@@ -871,11 +871,12 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
     final contradictionOn = _pendingOnly && statusSel.length == 1 && statusSel.contains('bond_received');
     final colActive = _cf.keys.where((k) => !_barFields.any((b) => b.$1 == k)).length;
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      SizedBox(
-        height: 86,
-        child: ListView(
-          scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.fromLTRB(14, 10, 14, 0),
+      // ارتفاعُ الشريط يتبع محتواه (حجمُ خطّ النظام) — لا ارتفاعَ ثابتًا يقصّ البطاقات.
+      SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.fromLTRB(14, 10, 14, 0),
+        child: IntrinsicHeight(child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             _statCard(tr('سندات لم تصل', 'Pending bonds'), '${_stats['pendingInvoices'] ?? 0}', T.warn,
                 sub: tr('بلا تاريخ سداد · عدا الملغاة', 'no payment date · excludes cancelled'),
@@ -902,7 +903,7 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
                         : null,
                     onTap: () => _openCheck(k.$1, tr(k.$2, k.$3))),
           ],
-        ),
+        )),
       ),
       Padding(
         padding: const EdgeInsets.fromLTRB(14, 8, 14, 0),

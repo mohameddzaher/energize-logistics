@@ -85,6 +85,7 @@ class _PortalScreenState extends State<PortalScreen> {
   Map<String, dynamic>? _overview;
   bool _loading = true;
   String? _error;
+  bool _forbidden = false;
   // حيّةٌ كالويب: أيُّ حركةٍ على رحلةٍ تُعيد قراءةَ النظرة العامّة.
   late final void Function() _onLive = _load;
 
@@ -111,6 +112,9 @@ class _PortalScreenState extends State<PortalScreen> {
         _overview = Map<String, dynamic>.from(ov);
         _loading = false; _error = null;
       });
+    } on ApiException catch (e) {
+      // ٤٠٣ = حسابُ موظّفٍ لا شريك — جملةٌ مفهومة بلغة الواجهة لا رسالةُ الخادم الإنجليزيّة.
+      if (mounted) setState(() { _loading = false; _forbidden = e.status == 403; _error = e.message; });
     } catch (e) {
       if (mounted) setState(() { _loading = false; _error = e.toString(); });
     }
@@ -129,6 +133,14 @@ class _PortalScreenState extends State<PortalScreen> {
         body: ListView(padding: const EdgeInsets.all(14), children: const [
           Shimmer(height: 70), SizedBox(height: 12), Shimmer(), SizedBox(height: 10), Shimmer(),
         ]),
+      );
+    }
+    if (_error != null && _forbidden) {
+      return AppScaffold(
+        title: Text(tr('بوابتي', 'My Portal')),
+        body: EmptyState(icon: Icons.storefront_outlined,
+            title: tr('البوابة لحسابات العملاء والموردين', 'This portal is for customer and supplier accounts'),
+            subtitle: tr('حسابك حسابُ موظّف — بياناتُك في أقسام النظام.', 'Yours is a staff account — your data lives in the system sections.')),
       );
     }
     if (_error != null) {

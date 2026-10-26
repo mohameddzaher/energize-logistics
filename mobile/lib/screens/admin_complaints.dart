@@ -15,7 +15,7 @@ import '../ui/search_field.dart';
 /// حذف، فلاتر الحالة والتصنيف والأولويّة والبحث (على الخادم، ٢٠ في الصفحة)،
 /// تصدير، وحيّةٌ على complaint:created/updated/resolved/deleted.
 const _categories = [
-  ('service', 'الخدمة', 'Service'), ('delivery', 'التوصيل', 'Delivery'), ('billing', 'الفواتير', 'Billing'),
+  ('service', 'الخدمة', 'Service'), ('vehicle', 'المركبة', 'Vehicle'), ('delivery', 'التوصيل', 'Delivery'), ('billing', 'الفواتير', 'Billing'),
   ('damage', 'أضرار', 'Damage'), ('delay', 'تأخير', 'Delay'), ('staff', 'الموظفين', 'Staff'), ('other', 'أخرى', 'Other'),
 ];
 const _priorities = {

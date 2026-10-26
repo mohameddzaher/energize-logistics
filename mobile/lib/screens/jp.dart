@@ -11,6 +11,7 @@ import '../ui/file_upload.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import '../ui/search_field.dart';
+import '../ui/stat_grid.dart';
 import 'customs_detail.dart';
 
 /// خطّةُ العمل (JP) — نظيرُ `JpBoard` و`JpDashboard` في الموقع.
@@ -998,7 +999,8 @@ class _JpDashScreenState extends State<JpDashScreen> {
     child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.center, children: [
       Text(label, style: const TextStyle(fontSize: 11.5, color: T.inkSoft), maxLines: 1, overflow: TextOverflow.ellipsis),
       const SizedBox(height: 4),
-      Text(value, style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: c)),
+      FittedBox(fit: BoxFit.scaleDown, alignment: AlignmentDirectional.centerStart,
+          child: Text(value, style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: c))),
     ]),
   );
 
@@ -1047,9 +1049,8 @@ class _JpDashScreenState extends State<JpDashScreen> {
                     const SizedBox(height: 8),
                     _filters(d, management),
                     const SizedBox(height: 10),
-                    GridView.count(
-                      crossAxisCount: 3, shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
-                      crossAxisSpacing: 8, mainAxisSpacing: 8, childAspectRatio: 1.45,
+                    StatGrid(
+                      spacing: 8, minTileWidth: 100, minColumns: 3, maxColumns: 6,
                       children: [
                         _stat(tr('القائمة', 'Open'), '${t['open'] ?? 0}', T.ink),
                         _stat(tr('المتأخّرة', 'Late'), '${t['overdue'] ?? 0}', (t['overdue'] ?? 0) > 0 ? T.danger : T.ink),

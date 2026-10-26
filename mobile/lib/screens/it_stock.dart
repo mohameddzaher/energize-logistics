@@ -6,6 +6,7 @@ import '../ui/app_scaffold.dart';
 import '../ui/export_sheet.dart';
 import '../ui/search_field.dart';
 import '../ui/theme.dart';
+import '../ui/stat_grid.dart';
 import '../ui/widgets.dart';
 import 'it_common.dart';
 import 'it_custody.dart';
@@ -135,9 +136,8 @@ class _ItStockScreenState extends State<ItStockScreen> {
               : RefreshIndicator(
                   onRefresh: _load,
                   child: ListView(keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag, padding: const EdgeInsets.fromLTRB(14, 12, 14, 90), children: [
-                    GridView.count(
-                      crossAxisCount: 2, shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
-                      mainAxisSpacing: 8, crossAxisSpacing: 8, childAspectRatio: 1.9,
+                    StatGrid(
+                      spacing: 8,
                       children: [
                         StatCard(label: tr('إجمالي الوحدات', 'Total units'), value: totalUnits, color: T.orange, icon: Icons.inventory_2_outlined),
                         StatCard(label: tr('عدد الأصناف', 'Line items'), value: _items.length, color: T.navy, icon: Icons.list_alt),

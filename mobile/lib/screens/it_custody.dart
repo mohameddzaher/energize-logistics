@@ -341,15 +341,14 @@ class _ItCustodyScreenState extends State<ItCustodyScreen> {
                           _mini(tr('قيمة المعروض', 'Value shown'), fmtMoney(_shownValue), T.orange),
                         ]),
                       ),
-                      SizedBox(
-                        height: 84,
-                        child: ListView.separated(
-                          scrollDirection: Axis.horizontal,
-                          padding: const EdgeInsets.fromLTRB(14, 10, 14, 4),
-                          itemCount: custodyBuckets.length,
-                          separatorBuilder: (_, __) => const SizedBox(width: 8),
-                          itemBuilder: (c, i) {
-                            final b = custodyBuckets[i];
+                      // ارتفاعُ الشريط من محتواه — يكبر مع حجم الخط ولا يفيض.
+                      SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        padding: const EdgeInsets.fromLTRB(14, 10, 14, 4),
+                        child: IntrinsicHeight(child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                          for (final (i, b) in custodyBuckets.indexed) ...[
+                            if (i > 0) const SizedBox(width: 8),
+                            () {
                             final on = _bucket == b.key;
                             return Pressable(
                               onTap: () { setState(() { _bucket = on ? '' : b.key; _otherType = ''; }); _load(); },
@@ -368,12 +367,14 @@ class _ItCustodyScreenState extends State<ItCustodyScreen> {
                                     Expanded(child: Text(b.label, maxLines: 1, overflow: TextOverflow.ellipsis,
                                         style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: on ? T.orange : T.inkSoft))),
                                   ]),
+                                  const SizedBox(height: 6),
                                   Text('${countBucket(b.key)}', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: on ? T.orange : T.ink)),
                                 ]),
                               ),
                             );
-                          },
-                        ),
+                            }(),
+                          ],
+                        ])),
                       ),
                       if (_bucket == 'other' && otherKinds.isNotEmpty)
                         Padding(
@@ -434,8 +435,9 @@ class _ItCustodyScreenState extends State<ItCustodyScreen> {
                         ),
                     ])),
                     if (filtered.isEmpty)
-                      SliverToBoxAdapter(child: EmptyState(icon: Icons.devices_other_outlined,
-                          title: _anyFilter ? tr('لا توجد عهد مطابقة للفلتر الحالي.', 'Nothing matches the current filter.') : tr('لا توجد عهد مسجّلة.', 'No custody items found.')))
+                      // مسافةٌ تحتها حتى لا يغطّيها زرُّ «تسليم عهدة».
+                      SliverPadding(padding: const EdgeInsets.only(bottom: 90), sliver: SliverToBoxAdapter(child: EmptyState(icon: Icons.devices_other_outlined,
+                          title: _anyFilter ? tr('لا توجد عهد مطابقة للفلتر الحالي.', 'Nothing matches the current filter.') : tr('لا توجد عهد مسجّلة.', 'No custody items found.'))))
                     else
                       SliverPadding(
                         padding: const EdgeInsets.fromLTRB(14, 8, 14, 90),

@@ -358,8 +358,18 @@ export function SearchableSelect({
   useLayoutEffect(() => {
     if (!open) return;
     const place = () => {
-      const r = boxRef.current?.getBoundingClientRect();
-      if (!r) return;
+      const box = boxRef.current?.getBoundingClientRect();
+      if (!box) return;
+      // ── ولا يضيق اللوحُ بضيق الخانة (٢٠٢٦/١٠/٢٦) ─────────────────────────
+      // خانةٌ في نصف بطاقةٍ وبجانبها زرّ («السائق» و«سائق جديد») كانت تفتح لوحًا
+      // بعرضها: خانةُ البحث «ال أو رقم الإقامة» مقصوصةً والأسماءُ نصفُها. فاللوحُ
+      // ثلاثُمئةِ بكسلٍ على الأقلّ، يلتصق بحافّة الخانة من جهة اللغة (يمينُها
+      // عربيًّا)، ويُردّ إلى داخل الشاشة إن خرج منها.
+      const vw = window.innerWidth;
+      const width = Math.min(Math.max(box.width, 300), vw - 16);
+      const rtl = getComputedStyle(boxRef.current as Element).direction === 'rtl';
+      const left = Math.min(Math.max(8, rtl ? box.right - width : box.left), vw - width - 8);
+      const r = { left, width, top: box.top, bottom: box.bottom };
       // ولو ضاق ما تحته فُتح فوقه: قائمةٌ تخرج من أسفل الشاشة لا تُقرأ.
       const below = window.innerHeight - r.bottom;
       const H = 280;

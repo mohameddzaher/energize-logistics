@@ -920,7 +920,10 @@ function CreateShipmentInner() {
           قد يُخرج حمولتَنا على شاحنةِ غيرِه — ثمّ سائقُها وجوّالُه. */}
       {sectionCard(Truck, 2, ar ? 'مالك السيارة' : 'Truck owner', (
         <div className="space-y-4">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {/* البطاقةُ نصفُ الصفحة من xl — فخاناتُها عمودٌ واحدٌ هناك، وعمودان على
+              الشاشة العريضة جدًّا وحدَها؛ وإلّا صارت كلُّ خانةٍ ربعَ الشاشة
+              مقصوصةَ النصّ («يُملأ تلقائياً عند…»). */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2 gap-4">
             <div>
               <label className={labelCls}>{ar ? 'السيارة' : 'Vehicle'}</label>
               {/* شاحناتُ المورّد المختار وحدَها: قائمةٌ من ثلاثٍ يُختار منها،
@@ -983,7 +986,7 @@ function CreateShipmentInner() {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2 gap-4">
             <div>
               <label className={labelCls}>{ar ? 'السائق' : 'Driver'}</label>
               {/* صندوقٌ مركّب: المسجَّلون اقتراحاتٌ لا حصر (`allowCustom`)، فمن
@@ -1161,7 +1164,8 @@ function CreateShipmentInner() {
                 <button type="button" onClick={() => dropExtra(x.uid)}
                   className="text-xs font-semibold text-slate-400 hover:text-red-600">{ar ? 'إزالة' : 'Remove'}</button>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+              {/* أربعُ خاناتٍ في صفٍّ كانت تضيّق السائقَ وزرَّه حتى يُقصّ — فاثنتان. */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-[11px] font-semibold text-slate-600 mb-1">{ar ? 'المورّد' : 'Supplier'}</label>
                   <SearchableSelect

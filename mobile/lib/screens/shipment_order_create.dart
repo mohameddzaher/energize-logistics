@@ -1033,9 +1033,9 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
                           }),
                           const SizedBox(height: 8),
                         ],
-                        Row(children: [
-                          Expanded(
-                            child: TextField(
+                        // الاسمُ في سطرٍ كاملٍ والجوالُ تحته (٢٠٢٦/١٠/٢٦): كانا نصفَين في صفٍّ
+                        // واحد، وأيقونتا البحث و«سائق جديد» تأكلان نصفَ الاسم فيُقصّ.
+                        TextField(
                               controller: _ctrl('driverName'),
                               onChanged: (v) => _form['driverName'] = v,
                               decoration: InputDecoration(
@@ -1057,8 +1057,8 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
                                 ]),
                               ),
                             ),
-                          ),
-                          const SizedBox(width: 8),
+                        const SizedBox(height: 8),
+                        Row(children: [
                           Expanded(
                             // ── مفتاحُ الدولة يسارَ الأرقام في كلّ لغة ─────
                             // `PhoneSA` واحدٌ لكلّ جوّالٍ في التطبيق: الحقلُ

@@ -16,6 +16,8 @@ const validate = require('../middleware/validate');
 router.use(authenticate);
 // فلترُ «مسؤول البيانات» يقرأ مشترياتِ المحفظة — تُحمَّل قبل بناء الشرط. راجع utils/dataOwnerIndex.
 router.use(require('../utils/dataOwnerIndex').preload);
+// رقمُ إقامةٍ أو هيكلٍ في البحث → أصحابُه في السجلّات (utils/relatedPeopleSearch).
+router.use((req, res, next) => (req.method === 'GET' ? workflowController.primeRelatedSearch(req, res, next) : next()));
 
 // All workflow-related roles. Finance/collections staff (cfo, accounting_manager,
 // accountant) are included so they can open the operations page, see the

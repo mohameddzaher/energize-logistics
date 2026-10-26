@@ -23,6 +23,8 @@ const ROLES = [
 
 router.use(authenticate);
 router.use(require('../utils/dataOwnerIndex').preload);
+// البحثُ برقم إقامة السائق أو هيكل الشاحنة — كما في سير عمل التشغيل.
+router.use((req, res, next) => (req.method === 'GET' ? require('../controllers/workflowController').primeRelatedSearch(req, res, next) : next()));
 router.use(authorize(...ROLES));
 
 router.get('/', ctrl.list);

@@ -382,19 +382,40 @@ exports.listOrders = async (req, res) => {
       if (to) filter.createdAt.$lte = endOfDay(to);
     }
     if (q && q.trim()) {
-      const r = rx(q);
+      // ── البحثُ بكلّ ما يخصّ الشحنةَ وأصحابَها (٢٠٢٦/١٠/٢٦) ──────────────────
+      // «سيرش برقم إقامة السائق أو رقم أي حاجة تخص السائق أو الشحنة أو أي حد
+      // فيها». فالاسمُ يُطوى (جده/جدة، أ/ا)، والهاتفُ بآخر تسع خاناته كيفما كُتب،
+      // والرقمُ الطويلُ يُترجَم في السجلّات إلى أصحابه — إقامةُ السائق إلى اسمه
+      // وهاتفه، وهيكلُ الشاحنة إلى لوحتها، وهاتفُ العميل إلى العميل — فتُطابَق
+      // شحناتُهم (utils/relatedPeopleSearch).
+      const { arabicSearchRegex, westernDigits } = require('../utils/arabicSearch');
+      const term = westernDigits(String(q).trim());
+      const r = arabicSearchRegex(term);
       const or = [
         { customerName: r }, { driverName: r }, { driverPhone: r }, { fromCity: r }, { toCity: r },
         // واللوحةُ في خانتها كما في اسم المركبة: من كتب لوحةً يجدها بأيّهما.
         { vehicleName: r }, { vehiclePlate: r }, { supplierName: r }, { agentName: r }, { notes: r },
         { truckType: r }, { branch: r }, { reference: r },
+        { salesRepName: r }, { cargoType: r }, { addressFrom: r }, { addressTo: r }, { cancelReason: r },
+        { externalRef: r }, { 'statusLog.note': r }, { 'statusLog.byName': r },
       ];
       // A run of digits is almost always a waybill lookup — match it exactly,
       // not as a substring of prices. ويُبحَث برقم كشف التخريج أيضًا: هو الرقمُ
       // الذي يعرفه الفريقُ عن شحنات المنصّة.
-      const n = Number(String(q).trim());
+      const n = Number(term);
       if (Number.isFinite(n)) { or.push({ waybillNumber: n }); or.push({ graduationNumber: n }); }
-      filter.$or = or;
+      const bare = term.replace(/\D/g, '');
+      if (/^[\d\s+()\-]+$/.test(term) && bare.length >= 6) {
+        const tail = bare.slice(-9);
+        or.push({ driverPhone: new RegExp(`${tail}$`) });
+        const { relatedClauses } = require('../utils/relatedPeopleSearch');
+        or.push(...await relatedClauses(bare, { name: ['driverName'], phone: ['driverPhone'], plate: ['vehiclePlate', 'vehicleName'] }));
+        // وهاتفُ العميل في سجلّه لا في الشحنة.
+        const custIds = await ShipmentOrderCustomer.find({ phone: new RegExp(`${tail}$`) }).select('_id').limit(20).lean().catch(() => []);
+        if (custIds.length) or.push({ customer: { $in: custIds.map((c) => c._id) } });
+      }
+      // في `$and` لا `$or` مباشرةً: فلترُ «بلا ملاحظة» يكتب `$or` أيضًا، وكان البحثُ يمحوه.
+      filter.$and = [...(filter.$and || []), { $or: or }];
     }
 
     const statusFreeFilter = { ...filter };

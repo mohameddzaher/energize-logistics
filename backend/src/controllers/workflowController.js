@@ -953,6 +953,29 @@ const PENDING_PAYMENT = {
   ],
 };
 
+/**
+ * ── رقمٌ يخصّ أحدَ أصحاب الكشف ───────────────────────────────────────────
+ * يُستدعى قبل `buildWorkflowFilter` (وهي متزامنة): كلُّ رقمٍ من ستّ خاناتٍ فأكثر
+ * في البحث يُترجَم إلى أصحابه في السجلّات — إقامةُ سائقٍ إلى اسمه وهاتفه، وهيكلُ
+ * شاحنةٍ إلى لوحتها — ويُعلَّق على `req.query._related` خاصيّةً غيرَ معدودة
+ * فلا تظهر في أيّ نسخٍ أو تصدير للاستعلام.
+ */
+const RELATED_FIELDS = { name: ['driverName'], phone: ['driverPhone', 'userPhone', 'ownerPhone'], plate: ['carNumber', 'plateNumber'] };
+async function primeRelatedSearch(req, res, next) {
+  try {
+    const raw = String((req.query && (req.query.search || req.query.q)) || '');
+    const { westernDigits } = require('../utils/arabicSearch');
+    const nums = [...new Set(westernDigits(raw).split(/\s+/).map((t) => t.replace(/\D/g, '')).filter((d) => d.length >= 6))].slice(0, 3);
+    if (nums.length) {
+      const { relatedClauses } = require('../utils/relatedPeopleSearch');
+      const map = {};
+      for (const d of nums) map[d] = await relatedClauses(d, RELATED_FIELDS); // eslint-disable-line no-await-in-loop
+      Object.defineProperty(req.query, '_related', { value: map, enumerable: false, configurable: true });
+    }
+  } catch (e) { console.error('related search:', e.message); }
+  next();
+}
+
 function buildWorkflowFilter(query, skipField, allowMoney = true, allowSelling = true) {
   const {
     stage, search, dateFrom, dateTo, pendingOnly, invoiceGap, pendingKind,
@@ -1060,15 +1083,21 @@ function buildWorkflowFilter(query, skipField, allowMoney = true, allowSelling =
     const term = westernDigits(String(search).trim());
     const ID_EXACT = ['reportNumber', 'documentNumber', ...(allowMoney ? ['invoiceNumber'] : [])];
     // ورقمُ معاملة التخليص وبوليصتُها تُكتب كما هي فيُوجَد كشفُها.
-    const CODE_FIELDS = ['carNumber', 'plateNumber', 'customsLink.refNumber', 'customsLink.blNumber'];
-    const PHONE_FIELDS = ['driverPhone', 'userPhone'];
+    // ورقمُ الحمولة والمرجعُ ومرجعُ الفاتورة رموزٌ تُبحَث بجزئها (٢٠٢٦/١٠/٢٦: «رقم
+    // أي حاجة تخص الشحنة»).
+    const CODE_FIELDS = ['carNumber', 'plateNumber', 'customsLink.refNumber', 'customsLink.blNumber', 'loadNumber', 'reference', 'invoiceRef'];
+    const PHONE_FIELDS = ['driverPhone', 'userPhone', 'ownerPhone'];
     // والملاحظاتُ خارجَ البحث السريع عمدًا: نصٌّ حرٌّ يجعل كلمةً عابرةً فيه
     // تَجُرُّ كشوفًا لا علاقةَ لها بما يُسأل عنه. ولها فلترُ عمودها.
     const NAME_FIELDS = [
       'username', 'carOwner', 'driverName', 'branch', 'payingBranch',
       'fromLocation', 'toLocation', 'finalReportDestination',
       'truckType', 'truckSize', 'agentName', 'representativeName',
+      'ownerName', 'carName', 'product',
     ];
+    // إقامةُ السائق وهيكلُ الشاحنة ليسا في الكشف — تُرجِمهما primeRelatedSearch
+    // قبلُ إلى اسمه وهاتفه ولوحتها (utils/relatedPeopleSearch).
+    const related = (query && query._related) || {};
 
     const clauseFor = (tk) => {
       // «+966506793241» و«0506793241» و«506793241» رقمٌ واحد: تُنزع الزخرفةُ
@@ -1084,6 +1113,7 @@ function buildWorkflowFilter(query, skipField, allowMoney = true, allowSelling =
           ...ID_EXACT.map((f) => ({ [f]: bare })),
           ...CODE_FIELDS.map((f) => ({ [f]: rxBare })),
           ...(bare.length >= 6 ? PHONE_FIELDS.map((f) => ({ [f]: rxTail })) : []),
+          ...(related[bare] || []),
         ];
       }
       return [...NAME_FIELDS, ...CODE_FIELDS].map((f) => ({ [f]: rx }));
@@ -2878,6 +2908,7 @@ exports.getFieldPermissions = async (req, res) => {
 // لانفصل الجدولان عند أوّل تعديلٍ هنا: صفوفٌ في شاشةٍ ليست في الأخرى، ومجموعٌ
 // لا يساوي مجموعًا. فتُصدَّر الدالّةُ ويُقرأ الشرطُ من موضعٍ واحد.
 module.exports.buildWorkflowFilter = buildWorkflowFilter;
+module.exports.primeRelatedSearch = primeRelatedSearch;
 // وحجبُ أعمدة المال واحدٌ أيضًا: الصفحةُ الخاصّة تعرض أعمدةَ الكشف كلَّها،
 // ومَن لا يملك الفاتورةَ هنا لا يملكها هناك.
 module.exports.canSeeMoney = canSeeMoney;

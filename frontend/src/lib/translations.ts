@@ -1004,7 +1004,7 @@ const disputesPage = {
 const operationsPage = {
   en: {
     title: 'Operations Workflow', createNew: 'Create New', importExcel: 'Import Excel',
-    deleteSelected: 'Delete Selected', searchPlaceholder: 'Search by report #, client, car...',
+    deleteSelected: 'Delete Selected', searchPlaceholder: 'Report #, client, driver, iqama, phone, plate, chassis...',
     noWorkflows: 'No workflows found',
     reportNumber: 'Report #', reportDate: 'Report Date',
     fromLocation: 'From', toLocation: 'To', client: 'Client',
@@ -1102,7 +1102,7 @@ const operationsPage = {
   },
   ar: {
     title: 'سير عمل التشغيل', createNew: 'إنشاء جديد', importExcel: 'استيراد Excel',
-    deleteSelected: 'حذف المحدد', searchPlaceholder: 'بحث برقم الكشف، العميل، السيارة...',
+    deleteSelected: 'حذف المحدد', searchPlaceholder: 'بحث برقم الكشف، العميل، السائق، الإقامة، الجوال، اللوحة، الهيكل...',
     noWorkflows: 'لا توجد عمليات',
     reportNumber: 'رقم الكشف', reportDate: 'تاريخ الكشف',
     fromLocation: 'من', toLocation: 'إلى', client: 'العميل',

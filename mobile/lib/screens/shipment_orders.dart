@@ -366,7 +366,7 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
                 _debounce?.cancel();
                 _debounce = Timer(const Duration(milliseconds: 350), () => _refilter(() => _q = v));
               },
-              hint: tr('بحث برقم البوليصة أو كشف التخريج أو العميل أو المورّد أو السائق أو المدينة…', 'waybill, graduation no., customer, supplier, driver, city…'),
+              hint: tr('بحث برقم البوليصة، العميل، السائق، الإقامة، الجوال، اللوحة، الهيكل…', 'waybill, customer, driver, iqama, phone, plate, chassis…'),
             )),
             const SizedBox(width: 6),
             _filtersButton(),

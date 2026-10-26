@@ -925,7 +925,7 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
         padding: const EdgeInsets.fromLTRB(14, 8, 14, 0),
         child: SearchField(
           controller: _qCtrl, dense: true,
-          hint: tr('ابحث برقم الكشف أو المالك أو العميل…', 'Search report, owner or customer…'),
+          hint: tr('ابحث برقم الكشف، العميل، السائق، الإقامة، الجوال، اللوحة…', 'Report, customer, driver, iqama, phone, plate…'),
           onChanged: (v) {
             _debounce?.cancel();
             _debounce = Timer(const Duration(milliseconds: 350), () { if (!mounted) return; _q = v; _reload(); });

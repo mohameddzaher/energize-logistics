@@ -439,13 +439,32 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
       hint: tr('اللوحة أو السائق…', 'Plate or driver…'),
     );
     if (!mounted) return;
+    var dName = (veh?['defaultDriverName'] ?? '').toString();
+    var dPhone = (veh?['defaultDriverPhone'] ?? '').toString();
+    // ── والسائقُ كالشاحنة الأولى (٢٠٢٦/١٠/٢٦) ───────────────────────────────
+    // شاحنةٌ بلا سائقٍ مسجَّل تفتح خانةَ السائق نفسَها: بحثٌ بالاسم والجوال
+    // والإقامة، و«سائق جديد». ويُغلَق بلا اختيارٍ فيُضاف بلا سائق.
+    if (dName.isEmpty) {
+      final d = await pickShipmentDriver(context, local: const [], supplierId: sup['_id']?.toString(), vehicleId: veh?['_id']?.toString());
+      if (!mounted) return;
+      if (d != null) { dName = '${d['name'] ?? ''}'; dPhone = '${d['phone'] ?? ''}'; }
+    }
     setState(() => _extraTrucks.add({
           'supplier': sup,
           'vehicle': veh,
           'newPlate': '',
-          'driverName': (veh?['defaultDriverName'] ?? '').toString(),
-          'driverPhone': (veh?['defaultDriverPhone'] ?? '').toString(),
+          'driverName': dName,
+          'driverPhone': dPhone,
         }));
+  }
+
+  /// تغييرُ سائق شاحنةٍ إضافيّة — بالخانة نفسِها.
+  Future<void> _changeExtraDriver(int i) async {
+    final t = _extraTrucks[i];
+    final d = await pickShipmentDriver(context, local: const [],
+        supplierId: (t['supplier'] as Map?)?['_id']?.toString(), vehicleId: (t['vehicle'] as Map?)?['_id']?.toString());
+    if (d == null || !mounted) return;
+    setState(() { t['driverName'] = '${d['name'] ?? ''}'; t['driverPhone'] = '${d['phone'] ?? ''}'; });
   }
 
   Future<P?> _pickSheet<P>(String title, List<P> items, String Function(P) label, {String Function(P)? sub}) {
@@ -1114,6 +1133,13 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
                                    if ((_extraTrucks[i]['driverName'] ?? '').toString().isNotEmpty) _extraTrucks[i]['driverName'].toString()]
                                       .join(' · '),
                                   style: const TextStyle(fontSize: 12), overflow: TextOverflow.ellipsis)),
+                                IconButton(
+                                  visualDensity: VisualDensity.compact,
+                                  tooltip: tr('السائق', 'Driver'),
+                                  icon: Icon((_extraTrucks[i]['driverName'] ?? '').toString().isEmpty ? Icons.person_add_alt_1 : Icons.person_search,
+                                      size: 18, color: T.orange),
+                                  onPressed: () => _changeExtraDriver(i),
+                                ),
                                 IconButton(
                                   visualDensity: VisualDensity.compact,
                                   icon: const Icon(Icons.close, size: 16, color: T.inkFaint),

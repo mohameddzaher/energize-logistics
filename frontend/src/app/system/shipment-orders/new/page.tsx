@@ -26,6 +26,7 @@ import {
 import { useOrderStatuses } from '@/hooks/useOrderStatuses';
 import { useLatestRequest } from '@/hooks/useLatestRequest';
 import { useSocket } from '@/hooks/useSocket';
+import DriverPicker from '@/components/shipment-orders/DriverPicker';
 
 // Labels are the form's wayfinding — near-black and readable, not a whisper.
 const labelCls = 'block text-sm font-semibold text-slate-800 mb-1.5';
@@ -194,49 +195,6 @@ function CreateShipmentInner() {
     } catch { /* الخانةُ تبقى على ما كانت */ }
     finally { if (supGuard.isCurrent(mine)) setSupBusy(false); }
   }, [supGuard]);
-
-  // ── السائقُ: بحثٌ في السجلّ كلِّه، وتسجيلُ سائقٍ جديد (٢٠٢٦/١٠/٢٦) ──────────
-  // «عند السائق يكون فيه بحث برقم جوال السائق زي البحث بالاسم»، و«زر إضافة سائق
-  // زي المورّد». القائمةُ الفارغةُ سوّاقُ الشاحنة/المورّد المختار، والكتابةُ تبحث
-  // عند الخادم في السوّاق كلِّهم: بالاسم والجوال (كيفما كُتب) والإقامة.
-  const drvGuard = useLatestRequest();
-  const [drvQ, setDrvQ] = useState('');
-  const [drvHits, setDrvHits] = useState<OrderDriver[]>([]);
-  const [drvBusy, setDrvBusy] = useState(false);
-  const searchDrivers = useCallback(async (q: string) => {
-    setDrvQ(q);
-    if (!q) { setDrvHits([]); return; }
-    const mine = drvGuard.begin();
-    setDrvBusy(true);
-    try {
-      const d = await api.get<{ drivers: OrderDriver[] }>(`/api/shipment-orders/drivers?limit=40&q=${encodeURIComponent(q)}`);
-      if (drvGuard.isCurrent(mine)) setDrvHits(d.drivers || []);
-    } catch { /* تبقى القائمةُ كما كانت */ }
-    finally { if (drvGuard.isCurrent(mine)) setDrvBusy(false); }
-  }, [drvGuard]);
-  const [addingDriver, setAddingDriver] = useState(false);
-  const [drvForm, setDrvForm] = useState({ name: '', phone: '', residenceNumber: '' });
-  const [drvSaving, setDrvSaving] = useState(false);
-  const saveDriver = async () => {
-    const name = drvForm.name.trim();
-    if (!name) { notify(ar ? 'اكتب اسم السائق' : 'Enter the driver name', 'error'); return; }
-    setDrvSaving(true);
-    try {
-      const r = await api.post<{ driver: OrderDriver; existed?: boolean }>('/api/shipment-orders/drivers', {
-        name, phone: drvForm.phone.trim(), residenceNumber: drvForm.residenceNumber.trim(), reuse: true,
-        ...(supplierId ? { supplier: supplierId } : {}), ...(vehicleId ? { vehicle: vehicleId } : {}),
-      });
-      setDrivers((p) => [r.driver, ...p.filter((x) => x._id !== r.driver._id)]);
-      set('driverName', r.driver.name);
-      if (r.driver.phone) set('driverPhone', r.driver.phone);
-      setAddingDriver(false);
-      setDrvForm({ name: '', phone: '', residenceNumber: '' });
-      notify(r.existed
-        ? (ar ? `السائق مسجَّل من قبل «${r.driver.name}» — اخترناه` : `Already registered as “${r.driver.name}” — selected`)
-        : (ar ? `سُجِّل السائق «${r.driver.name}»` : `Driver “${r.driver.name}” registered`), 'success');
-    } catch (e: any) { notify(e?.message || (ar ? 'تعذّر تسجيل السائق' : 'Could not register the driver'), 'error'); }
-    setDrvSaving(false);
-  };
 
   // شاحناتُ المورّد المختار، أو بحثٌ في شاحنات الموردين كلِّها حين لا مورّد.
   // و`ownership=supplier` تُخرج أسطولَنا من القائمة: أسطولُنا يُدار في «إدارة
@@ -1032,65 +990,13 @@ function CreateShipmentInner() {
                   ليس في السجلّ يُكتب اسمُه ويمضي العمل. والكتابةُ تبحث عند الخادم
                   في السوّاق كلِّهم بالاسم والجوال والإقامة، واختيارُ المسجَّل يملأ
                   جوّالَه معه ويقول إن كانت بطاقةُ تشغيله منتهية. */}
-              {!addingDriver ? (
-                <div className="flex gap-2">
-                  <div className="flex-1 min-w-0">
-                    <SearchableSelect
-                      value={form.driverName || ''} allowCustom searchAfter={0}
-                      onSearch={searchDrivers} loading={drvBusy}
-                      customHint={(x) => (ar ? `استعمل «${x}» كما كُتب` : `Use “${x}” as typed`)}
-                      onChange={(x) => {
-                        const d = [...drvHits, ...drivers].find((y) => y.name === x);
-                        set('driverName', x);
-                        if (d?.phone) set('driverPhone', d.phone);
-                      }}
-                      placeholder={ar ? 'يُملأ تلقائياً عند اختيار السيارة' : 'Autofills from the vehicle'}
-                      searchPlaceholder={ar ? 'الاسم أو الجوال أو رقم الإقامة…' : 'Name, phone or iqama…'}
-                      emptyLabel={ar ? 'لا نتائج — اكتب الاسم أو سجّله كسائق جديد' : 'No matches — type the name or register a new driver'}
-                      options={(drvQ ? drvHits : drivers).map((d) => {
-                        const exp = (d.driverCardExpiry || '').slice(0, 10);
-                        const over = exp && new Date(`${exp}T00:00:00`).getTime() < Date.now();
-                        return {
-                          value: d.name,
-                          label: d.name,
-                          hint: [d.phone, d.residenceNumber, d.nationality].filter(Boolean).join(' · '),
-                          badge: exp
-                            ? (over ? (ar ? `بطاقة التشغيل منتهية ${exp}` : `Driver card expired ${exp}`)
-                              : (ar ? `بطاقة التشغيل حتى ${exp}` : `Card valid to ${exp}`))
-                            : undefined,
-                          tone: (exp ? (over ? 'busy' : 'ok') : undefined) as 'busy' | 'ok' | undefined,
-                        };
-                      })} />
-                  </div>
-                  <button type="button" onClick={() => { setAddingDriver(true); setDrvForm({ name: '', phone: '', residenceNumber: '' }); }}
-                    className="shrink-0 flex items-center gap-1.5 px-3 py-2.5 rounded-lg bg-[#f37121]/10 text-[#f37121] hover:bg-[#f37121]/20 text-sm font-semibold"
-                    title={ar ? 'تسجيل سائق جديد' : 'Register a new driver'}>
-                    <UserPlus className="w-4 h-4" /> <span className="hidden sm:inline">{ar ? 'سائق جديد' : 'New driver'}</span>
-                  </button>
-                </div>
-              ) : (
-                <div className="rounded-xl border border-[#f37121]/30 bg-[#f37121]/[0.04] p-3 space-y-2">
-                  <input value={drvForm.name} autoFocus onChange={(e) => setDrvForm((v) => ({ ...v, name: e.target.value }))}
-                    placeholder={ar ? 'اسم السائق *' : 'Driver name *'}
-                    className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-sm" />
-                  <PhoneSA value={drvForm.phone} onChange={(v) => setDrvForm((x) => ({ ...x, phone: v }))} />
-                  <input value={drvForm.residenceNumber} onChange={(e) => setDrvForm((v) => ({ ...v, residenceNumber: e.target.value }))}
-                    placeholder={ar ? 'رقم الإقامة / الهوية (اختياري)' : 'Iqama / ID number (optional)'} dir="ltr"
-                    className="w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-sm" />
-                  <p className="text-[11.5px] text-slate-500">
-                    {ar ? `يُسجَّل في صفحة السوّاق فورًا${supplierId ? ' على المورّد المختار' : ''} — ومن كان مسجَّلًا بنفس الجوال أو الإقامة يُختار بدل تكراره.`
-                      : `Registered on the drivers page at once${supplierId ? ' under the chosen supplier' : ''} — an existing driver with the same phone or iqama is picked instead.`}
-                  </p>
-                  <div className="flex justify-end gap-2">
-                    <button type="button" onClick={() => setAddingDriver(false)} className="px-3 py-2 text-sm text-slate-500 hover:text-slate-900">{ar ? 'إلغاء' : 'Cancel'}</button>
-                    <button type="button" onClick={saveDriver} disabled={drvSaving || !drvForm.name.trim()}
-                      className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#f37121] text-white text-sm font-semibold disabled:opacity-50">
-                      {drvSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-                      {ar ? 'حفظ السائق' : 'Save driver'}
-                    </button>
-                  </div>
-                </div>
-              )}
+              <DriverPicker ar={ar} value={form.driverName || ''} contextDrivers={drivers}
+                supplierId={supplierId || undefined} vehicleId={vehicleId || undefined}
+                onPick={(d) => {
+                  if (d.driver) setDrivers((p) => (p.some((x) => x._id === d.driver!._id) ? p : [d.driver!, ...p]));
+                  set('driverName', d.name);
+                  if (d.phone) set('driverPhone', d.phone);
+                }} />
             </div>
             <div>
               <label className={labelCls}>{ar ? 'جوال السائق' : 'Driver phone'}</label>
@@ -1267,7 +1173,10 @@ function CreateShipmentInner() {
                     }}
                     placeholder={ar ? 'اختر المورّد…' : 'Pick supplier…'}
                     searchPlaceholder={ar ? 'اسمه أو جوّاله…' : 'Name or phone…'}
-                    options={suppliers.map((sp) => ({ value: sp._id, label: sp.name }))} />
+                    options={suppliers.map((sp) => ({
+                      value: sp._id, label: sp.name,
+                      hint: [sp.type === 'freelancer' ? (ar ? 'فريلانسر' : 'Freelancer') : (ar ? 'شركة' : 'Company'), sp.phone].filter(Boolean).join(' · '),
+                    }))} />
                 </div>
                 <div>
                   <label className="block text-[11px] font-semibold text-slate-600 mb-1">{ar ? 'الشاحنة' : 'Truck'}</label>
@@ -1307,8 +1216,11 @@ function CreateShipmentInner() {
                 </div>
                 <div>
                   <label className="block text-[11px] font-semibold text-slate-600 mb-1">{ar ? 'السائق' : 'Driver'}</label>
-                  <input value={x.driverName} onChange={(e) => setExtra(x.uid, { driverName: e.target.value })}
-                    placeholder={ar ? 'يُملأ من الشاحنة' : 'from the truck'} className={`${inputCls} text-xs py-1.5`} />
+                  {/* الخانةُ نفسُها التي في الشاحنة الأولى: بحثٌ بالاسم والجوال والإقامة، و«سائق جديد». */}
+                  <DriverPicker ar={ar} compact value={x.driverName} contextDrivers={[]}
+                    supplierId={x.supplierId || undefined} vehicleId={x.vehicleId || undefined}
+                    placeholder={ar ? 'يُملأ من الشاحنة — أو ابحث' : 'from the truck — or search'}
+                    onPick={(d) => setExtra(x.uid, { driverName: d.name, ...(d.phone ? { driverPhone: d.phone } : {}) })} />
                 </div>
                 <div>
                   <label className="block text-[11px] font-semibold text-slate-600 mb-1">{ar ? 'جوّاله' : 'His phone'}</label>

@@ -471,6 +471,7 @@
     },
     "/system/shipment-orders": {
       "apis": [
+        "/api/auth/me/prefs",
         "/api/customer-hub/presence",
         "/api/customer-registry",
         "/api/customer-registry/options",

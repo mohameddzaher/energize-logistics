@@ -446,7 +446,7 @@ const GUIDE: Record<Endpoint['auth'], {
     icon: KeyRound,
     what: 'Read-only endpoints for systems outside the company — partners, automation tools, external dashboards. They return live fleet data (vehicles, positions, alerts, supervisor assignments). No user account is involved: the key itself is the credential, so treat it like a password.',
     steps: [
-      { title: 'Get the key', text: 'There is one partner key, set on the server as FLEET_API_KEY. Ask the system administrator / IT for it. Never send it in an open chat or email.' },
+      { title: 'Get the key', text: 'There is one partner key, kept on the server (FLEET_API_KEY). Administrators and the IT manager can reveal it right here — every reveal is recorded in the audit log. Hand it over privately, never in an open chat or email.' },
       { title: 'Send it with every request', text: 'Put it in the x-api-key header. (?key= in the URL also works for tools that cannot send headers, but it ends up in access logs.)' },
       { title: 'Try it', text: 'The health endpoint answers when the key is right:', code: (b) => `curl '${b}/api/fleet-api/health' \\\n  -H 'x-api-key: <YOUR_API_KEY>'` },
       { title: 'Hand the docs to the partner', text: 'Send them this link with their key — an interactive page where they can try every call themselves:', code: (b) => `${b}/api/docs?key=<YOUR_API_KEY>` },
@@ -478,7 +478,51 @@ const GUIDE: Record<Endpoint['auth'], {
   },
 };
 
-function AuthGuide({ kind, base, count, onClose }: { kind: Endpoint['auth']; base: string; count: number; onClose: () => void }) {
+/** Reveals the partner key for the people who hand it out (audited on the server). */
+function KeyReveal({ base }: { base: string }) {
+  const [state, setState] = useState<{ key: string; configured: boolean } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const [shown, setShown] = useState(false);
+  const reveal = async () => {
+    setBusy(true); setErr('');
+    try { setState(await api.get<{ key: string; configured: boolean }>('/api/docs/partner-key')); setShown(true); }
+    catch (e: any) { setErr(e?.message || 'Could not reveal the key'); }
+    setBusy(false);
+  };
+  if (!state) {
+    return (
+      <div className="mt-2">
+        <button type="button" onClick={reveal} disabled={busy}
+          className="inline-flex items-center gap-2 rounded-lg bg-violet-600 px-3 py-1.5 text-[12.5px] font-semibold text-white hover:bg-violet-700 disabled:opacity-60">
+          <KeyRound className="h-3.5 w-3.5" />{busy ? 'Revealing…' : 'Reveal the partner key'}
+        </button>
+        {err && <p className="mt-1.5 text-[12px] text-rose-600">{err}</p>}
+      </div>
+    );
+  }
+  if (!state.configured) {
+    return <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-[12.5px] text-amber-800">No partner key is set on the server yet (FLEET_API_KEY). Ask the developer to set one — the partner API answers 503 until then.</p>;
+  }
+  const link = `${base}/api/docs?key=${encodeURIComponent(state.key)}`;
+  return (
+    <div className="mt-2 space-y-1.5">
+      <div className="flex items-center justify-between gap-2 rounded-lg bg-violet-50 px-3 py-2 ring-1 ring-violet-200">
+        <code className="min-w-0 truncate font-mono text-[12.5px] text-violet-900">{shown ? state.key : '•'.repeat(Math.min(32, state.key.length))}</code>
+        <span className="flex shrink-0 items-center">
+          <button type="button" onClick={() => setShown((v) => !v)} className="rounded-md px-2 py-1 text-[11.5px] font-medium text-violet-700 hover:bg-violet-100">{shown ? 'Hide' : 'Show'}</button>
+          <CopyButton text={state.key} label="Copy key" />
+        </span>
+      </div>
+      <div className="flex items-center justify-between gap-2 rounded-lg bg-slate-50 px-3 py-2 ring-1 ring-slate-200">
+        <span className="min-w-0 truncate text-[12px] text-slate-600">Partner docs link with the key</span>
+        <CopyButton text={link} label="Copy link" />
+      </div>
+    </div>
+  );
+}
+
+function AuthGuide({ kind, base, count, onClose, canReveal }: { kind: Endpoint['auth']; base: string; count: number; onClose: () => void; canReveal: boolean }) {
   const g = GUIDE[kind];
   const Icon = g.icon;
   return (
@@ -501,6 +545,9 @@ function AuthGuide({ kind, base, count, onClose }: { kind: Endpoint['auth']; bas
               <p className="text-[13.5px] font-semibold text-slate-900">{st.title}</p>
             </div>
             <p className="mt-1.5 text-[12.5px] leading-relaxed text-slate-600">{st.text}</p>
+            {kind === 'apiKey' && i === 0 && (canReveal
+              ? <KeyReveal base={base} />
+              : <p className="mt-2 text-[12px] text-slate-500">Only administrators and the IT manager can reveal it — ask one of them.</p>)}
             {st.code && (
               <div className="mt-2 flex items-start justify-between gap-2 rounded-lg bg-[#0b1220] px-3 py-2">
                 <pre className="overflow-x-auto font-mono text-[11.5px] leading-relaxed text-slate-200">{st.code(base)}</pre>
@@ -555,6 +602,8 @@ export default function ApiDocsPage() {
   const { user } = useAuth();
   // role-only: the internal API map is for top roles and IT; the server enforces the same list.
   const allowed = !!user && DOCS_ROLES.includes(user.role);
+  // role-only: the server reveals the partner key to the same roles (routes/apiDocs KEY_ROLES).
+  const canRevealKey = !!user && ['super_admin', 'admin', 'it_manager'].includes(user.role);
   const [cat, setCat] = useState<Catalog | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
@@ -788,7 +837,7 @@ export default function ApiDocsPage() {
             </div>
 
             {/* ── Access: explained, not just filtered ── */}
-            {auth ? <AuthGuide kind={auth} base={cat.baseUrl} count={list.length} onClose={() => setAuth('')} />
+            {auth ? <AuthGuide kind={auth} base={cat.baseUrl} count={list.length} onClose={() => setAuth('')} canReveal={canRevealKey} />
               : !active && <AccessCards counts={authCounts} onPick={(k) => setAuth(k)} />}
 
             {/* ── Endpoints ── */}

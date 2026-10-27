@@ -2805,6 +2805,7 @@
         "/api/docs",
         "/api/docs/catalog.json",
         "/api/docs/internal.json",
+        "/api/docs/partner-key",
         "/api/docs/stats",
         "/api/x/:id"
       ],

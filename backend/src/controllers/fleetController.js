@@ -1,5 +1,5 @@
 const mongoose = require('mongoose');
-const { sendMongooseError } = require('../utils/mongooseError');
+const { describeMongooseError, sendMongooseError } = require('../utils/mongooseError');
 const { FleetVehicle, FleetDriver, FleetCustomer, FleetShipment, FleetEvent, FleetConfig } = require('../models/FleetModels');
 const { startOfDay, endOfDay, todayKey, dayKeyOf } = require('../utils/companyDay');
 const { emitToAll } = require('../websocket/socketManager');
@@ -521,7 +521,7 @@ exports.createShipment = async (req, res) => {
   } catch (error) {
     if (error.status === 400) return res.status(400).json({ message: error.message });
     console.error('Error creating fleet shipment:', error);
-    res.status(500).json({ message: 'Failed to create the shipment' });
+    sendMongooseError(res, error, 'Failed to create the shipment');
   }
 };
 
@@ -1966,7 +1966,7 @@ exports.assignVehicleSupervisorBulk = async (req, res) => {
     });
     res.json({ ok: true, modified: r.modifiedCount, supervisorName: supName });
   } catch (error) {
-    res.status(500).json({ message: 'Failed to assign vehicles' });
+    sendMongooseError(res, error, 'Failed to assign vehicles');
   }
 };
 

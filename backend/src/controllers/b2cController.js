@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { sendMongooseError, describeMongooseError } = require('../utils/mongooseError');
 const B2CProject = require('../models/B2CProject');
 const { parseMonth, parseYear } = require('../utils/period');
 const B2CRep = require('../models/B2CRep');
@@ -65,7 +66,7 @@ exports.getProjects = async (req, res) => {
     const projects = await B2CProject.find(filter).sort({ name: 1 });
     res.json({ projects });
   } catch (error) {
-    res.status(500).json({ message: error.message || 'Failed to load projects' });
+    sendMongooseError(res, error, 'Failed to load projects');
   }
 };
 
@@ -82,7 +83,7 @@ exports.createProject = async (req, res) => {
     res.status(201).json({ project });
   } catch (error) {
     if (error.code === 11000) return res.status(400).json({ message: 'Project name or code already exists' });
-    res.status(500).json({ message: error.message || 'Failed to create project' });
+    sendMongooseError(res, error, 'Failed to create project');
   }
 };
 
@@ -101,7 +102,7 @@ exports.updateProject = async (req, res) => {
     res.json({ project });
   } catch (error) {
     if (error.code === 11000) return res.status(400).json({ message: 'Project name or code already exists' });
-    res.status(500).json({ message: error.message || 'Failed to update project' });
+    sendMongooseError(res, error, 'Failed to update project');
   }
 };
 
@@ -115,7 +116,7 @@ exports.deleteProject = async (req, res) => {
     try { emitToAll('b2c:project:deleted', { projectId: project._id }); } catch (e) {}
     res.json({ message: 'Project deleted' });
   } catch (error) {
-    res.status(500).json({ message: error.message || 'Failed to delete project' });
+    sendMongooseError(res, error, 'Failed to delete project');
   }
 };
 
@@ -197,7 +198,7 @@ exports.getReps = async (req, res) => {
     cache.set(repsCacheKey, payload, B2C_LIST_TTL);
     res.json(payload);
   } catch (error) {
-    res.status(500).json({ message: error.message || 'Failed to load reps' });
+    sendMongooseError(res, error, 'Failed to load reps');
   }
 };
 
@@ -238,7 +239,7 @@ exports.createRep = async (req, res) => {
     cache.clear('b2c:');
     res.status(201).json({ rep: populated });
   } catch (error) {
-    res.status(500).json({ message: error.message || 'Failed to create rep' });
+    sendMongooseError(res, error, 'Failed to create rep');
   }
 };
 
@@ -264,7 +265,7 @@ exports.updateRep = async (req, res) => {
     try { emitToAll('b2c:rep:updated', { rep }); } catch (e) {}
     res.json({ rep });
   } catch (error) {
-    res.status(500).json({ message: error.message || 'Failed to update rep' });
+    sendMongooseError(res, error, 'Failed to update rep');
   }
 };
 
@@ -455,7 +456,7 @@ exports.bulkResolveReps = async (req, res) => {
     res.json({ resolved: result, createdCount: actuallyCreated });
   } catch (error) {
     console.error('Bulk resolve reps error:', error);
-    res.status(500).json({ message: error.message || 'Failed to resolve reps' });
+    sendMongooseError(res, error, 'Failed to resolve reps');
   }
 };
 
@@ -472,7 +473,7 @@ exports.deleteRep = async (req, res) => {
     try { emitToAll('b2c:rep:deleted', { repId: rep._id }); } catch (e) {}
     res.json({ message: 'Rep deleted' });
   } catch (error) {
-    res.status(500).json({ message: error.message || 'Failed to delete rep' });
+    sendMongooseError(res, error, 'Failed to delete rep');
   }
 };
 
@@ -539,7 +540,7 @@ exports.diagnoseSheetParse = async (req, res) => {
     });
   } catch (error) {
     console.error('[B2C diagnose-sheet] error:', error);
-    res.status(500).json({ message: error.message || 'Sheet diagnostic failed' });
+    sendMongooseError(res, error, 'Sheet diagnostic failed');
   }
 };
 
@@ -610,7 +611,7 @@ exports.getSystemDiagnostic = async (req, res) => {
       },
     });
   } catch (error) {
-    res.status(500).json({ message: error.message || 'Diagnostic failed' });
+    sendMongooseError(res, error, 'Diagnostic failed');
   }
 };
 
@@ -662,7 +663,7 @@ exports.diagnoseReps = async (req, res) => {
       reps: summarised,
     });
   } catch (error) {
-    res.status(500).json({ message: error.message || 'Diagnostics failed' });
+    sendMongooseError(res, error, 'Diagnostics failed');
   }
 };
 
@@ -679,7 +680,7 @@ exports.reconcileReps = async (req, res) => {
     res.json({ ok: true, ...result });
   } catch (error) {
     console.error('Reconcile reps error:', error);
-    res.status(500).json({ message: error.message || 'Failed to reconcile reps' });
+    sendMongooseError(res, error, 'Failed to reconcile reps');
   }
 };
 
@@ -741,7 +742,7 @@ exports.getDailyOrders = async (req, res) => {
     cache.set(key, body, 30000);
     res.json(body);
   } catch (error) {
-    res.status(500).json({ message: error.message || 'Failed to load daily orders' });
+    sendMongooseError(res, error, 'Failed to load daily orders');
   }
 };
 
@@ -803,7 +804,7 @@ exports.upsertDailyOrder = async (req, res) => {
     res.json({ order: entry });
   } catch (error) {
     if (error.code === 11000) return res.status(409).json({ message: 'Entry already exists for this rep on this date' });
-    res.status(500).json({ message: error.message || 'Failed to save daily order' });
+    sendMongooseError(res, error, 'Failed to save daily order');
   }
 };
 
@@ -957,7 +958,7 @@ exports.bulkUpsertDailyOrders = async (req, res) => {
       upload: uploadDoc,
     });
   } catch (error) {
-    res.status(500).json({ message: error.message || 'Bulk upsert failed' });
+    sendMongooseError(res, error, 'Bulk upsert failed');
   }
 };
 
@@ -969,7 +970,7 @@ exports.deleteDailyOrder = async (req, res) => {
     try { emitToAll('b2c:order:deleted', { id: order._id }); } catch (e) {}
     res.json({ message: 'Entry deleted' });
   } catch (error) {
-    res.status(500).json({ message: error.message || 'Failed to delete entry' });
+    sendMongooseError(res, error, 'Failed to delete entry');
   }
 };
 
@@ -1018,7 +1019,7 @@ exports.getDashboardSummary = async (req, res) => {
     res.json(payload);
   } catch (error) {
     console.error('Dashboard error:', error);
-    res.status(500).json({ message: error.message || 'Failed to load dashboard' });
+    sendMongooseError(res, error, 'Failed to load dashboard');
   }
 };
 
@@ -1461,7 +1462,7 @@ exports.getRepProfile = async (req, res) => {
     });
   } catch (error) {
     console.error('Rep profile error:', error);
-    res.status(500).json({ message: error.message || 'Failed to load profile' });
+    sendMongooseError(res, error, 'Failed to load profile');
   }
 };
 
@@ -1568,7 +1569,7 @@ exports.getRepEvaluations = async (req, res) => {
     res.json({ evaluations });
   } catch (error) {
     console.error('Rep evaluations error:', error);
-    res.status(500).json({ message: error.message || 'Failed to load evaluations' });
+    sendMongooseError(res, error, 'Failed to load evaluations');
   }
 };
 
@@ -1609,7 +1610,7 @@ exports.cleanupFakeReps = async (req, res) => {
     });
   } catch (error) {
     console.error('[B2C cleanup-fake-reps] error:', error);
-    res.status(500).json({ message: error.message || 'Cleanup failed' });
+    sendMongooseError(res, error, 'Cleanup failed');
   }
 };
 
@@ -1666,7 +1667,7 @@ exports.cleanupB2CData = async (req, res) => {
     });
   } catch (error) {
     console.error('B2C cleanup error:', error);
-    res.status(500).json({ message: error.message || 'Cleanup failed' });
+    sendMongooseError(res, error, 'Cleanup failed');
   }
 };
 
@@ -1694,7 +1695,7 @@ exports.getMonthsAvailable = async (req, res) => {
     res.json({ months });
   } catch (error) {
     console.error('Months available error:', error);
-    res.status(500).json({ message: error.message || 'Failed to load months' });
+    sendMongooseError(res, error, 'Failed to load months');
   }
 };
 
@@ -1784,7 +1785,7 @@ exports.getDayDetails = async (req, res) => {
     });
   } catch (error) {
     console.error('Day details error:', error);
-    res.status(500).json({ message: error.message || 'Failed to load day details' });
+    sendMongooseError(res, error, 'Failed to load day details');
   }
 };
 
@@ -1808,7 +1809,7 @@ exports.getSheetConfigs = async (req, res) => {
       .sort({ 'project.name': 1, 'branch.name': 1, createdAt: 1 });
     res.json({ configs });
   } catch (error) {
-    res.status(500).json({ message: error.message || 'Failed to load sheet configs' });
+    sendMongooseError(res, error, 'Failed to load sheet configs');
   }
 };
 
@@ -1898,7 +1899,7 @@ function testB2CWebhook() {
 
     res.json({ script, webhookUrl, secret: config.webhookSecret });
   } catch (error) {
-    res.status(500).json({ message: error.message || 'Failed to build setup script' });
+    sendMongooseError(res, error, 'Failed to build setup script');
   }
 };
 
@@ -1936,7 +1937,7 @@ exports.createSheetConfig = async (req, res) => {
     if (error.code === 11000) {
       return res.status(400).json({ message: 'A sheet config already exists for this project + branch combination' });
     }
-    res.status(500).json({ message: error.message || 'Failed to create sheet config' });
+    sendMongooseError(res, error, 'Failed to create sheet config');
   }
 };
 
@@ -1979,7 +1980,7 @@ exports.updateSheetConfig = async (req, res) => {
     if (error.code === 11000) {
       return res.status(400).json({ message: 'A sheet config already exists for this project + branch combination' });
     }
-    res.status(500).json({ message: error.message || 'Failed to update sheet config' });
+    sendMongooseError(res, error, 'Failed to update sheet config');
   }
 };
 
@@ -1989,7 +1990,7 @@ exports.deleteSheetConfig = async (req, res) => {
     if (!config) return res.status(404).json({ message: 'Sheet config not found' });
     res.json({ ok: true });
   } catch (error) {
-    res.status(500).json({ message: error.message || 'Failed to delete sheet config' });
+    sendMongooseError(res, error, 'Failed to delete sheet config');
   }
 };
 
@@ -2015,7 +2016,7 @@ exports.syncSheetNow = async (req, res) => {
         { $set: { lastSyncAt: new Date(), lastSyncStatus: 'error', lastSyncMessage: error.message || 'Sync failed' } }
       );
     } catch (_) {}
-    res.status(500).json({ message: error.message || 'Sync failed' });
+    sendMongooseError(res, error, 'Sync failed');
   }
 };
 
@@ -2029,6 +2030,6 @@ exports.getUploadHistory = async (req, res) => {
       .limit(50);
     res.json({ uploads });
   } catch (error) {
-    res.status(500).json({ message: error.message || 'Failed to load upload history' });
+    sendMongooseError(res, error, 'Failed to load upload history');
   }
 };

@@ -237,7 +237,7 @@ const MEETING_FIELDS = [
  * there — the attendance log is part of the meeting's history, not a checkbox.
  */ 
 async function buildAttendees(list, previous = [], actor = null) {
-  const ids = (list || []).map((a) => a.user || a._id || a).filter(Boolean);
+  const ids = (Array.isArray(list) ? list : []).map((a) => a.user || a._id || a).filter(Boolean);
   if (!ids.length) return [];
   const users = await User.find({ _id: { $in: ids } })
     .select('firstName lastName role linkedEmployee')
@@ -245,7 +245,7 @@ async function buildAttendees(list, previous = [], actor = null) {
   const byId = new Map(users.map((u) => [String(u._id), u]));
   const prevById = new Map((previous || []).map((p) => [String(p.user), p]));
 
-  return (list || []).map((a) => {
+  return (Array.isArray(list) ? list : []).map((a) => {
     const id = String(a.user || a._id || a);
     const u = byId.get(id);
     const prev = prevById.get(id);

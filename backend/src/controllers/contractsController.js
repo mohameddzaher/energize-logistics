@@ -1,4 +1,5 @@
 const { ContractVendor, VendorUtilisation, ContractProspect, DeptContract } = require('../models/ContractModels');
+const { sendMongooseError, describeMongooseError } = require('../utils/mongooseError');
 const { saveUploadFile, deleteStoredFile } = require('../utils/fileStore');
 const { emitToAll } = require('../websocket/socketManager');
 const cache = require('../utils/ttlCache');
@@ -47,7 +48,7 @@ exports.getDashboard = async (req, res) => {
     const body = await cache.wrapStale('contracts:dashboard', 60000, 15 * 60 * 1000, buildDashboard);
     res.json(body);
   } catch (e) {
-    res.status(500).json({ message: e.message });
+    sendMongooseError(res, e, e.message);
   }
 };
 
@@ -144,7 +145,7 @@ exports.listVendors = async (req, res) => {
       ContractVendor.find().select('-profileTables -attachments').sort({ name: 1 }).lean());
     res.json({ vendors: vendors.map((v) => ({ ...v, status: vendorStatus(v) })) });
   } catch (e) {
-    res.status(500).json({ message: e.message });
+    sendMongooseError(res, e, e.message);
   }
 };
 
@@ -172,7 +173,7 @@ exports.createVendor = async (req, res) => {
     emit();
     res.status(201).json({ vendor });
   } catch (e) {
-    res.status(500).json({ message: e.message });
+    sendMongooseError(res, e, e.message);
   }
 };
 
@@ -183,7 +184,7 @@ exports.getVendor = async (req, res) => {
     const utilisation = await require('../utils/liveVendorUtilisation').liveUtilisationRows({ nameKey: vendor.nameKey });
     res.json({ vendor: { ...vendor, status: vendorStatus(vendor) }, utilisation });
   } catch (e) {
-    res.status(500).json({ message: e.message });
+    sendMongooseError(res, e, e.message);
   }
 };
 
@@ -204,7 +205,7 @@ exports.updateVendor = async (req, res) => {
     emit();
     res.json({ vendor });
   } catch (e) {
-    res.status(500).json({ message: e.message });
+    sendMongooseError(res, e, e.message);
   }
 };
 
@@ -218,7 +219,7 @@ exports.deleteVendor = async (req, res) => {
     emit();
     res.json({ message: 'Deleted' });
   } catch (e) {
-    res.status(500).json({ message: e.message });
+    sendMongooseError(res, e, e.message);
   }
 };
 
@@ -249,7 +250,7 @@ const removeAttachment = (Model) => async (req, res) => {
     emit();
     res.json({ attachments: doc.attachments });
   } catch (e) {
-    res.status(500).json({ message: e.message });
+    sendMongooseError(res, e, e.message);
   }
 };
 exports.addVendorAttachment = addAttachment(ContractVendor, 'contracts');
@@ -272,7 +273,7 @@ exports.listUtilisation = async (req, res) => {
       VendorUtilisation.find(filter).sort({ year: 1, month: 1, orders: -1 }).lean());
     res.json({ rows });
   } catch (e) {
-    res.status(500).json({ message: e.message });
+    sendMongooseError(res, e, e.message);
   }
 };
 
@@ -307,7 +308,7 @@ exports.upsertUtilisation = async (req, res) => {
     emit();
     res.json({ row });
   } catch (e) {
-    res.status(500).json({ message: e.message });
+    sendMongooseError(res, e, e.message);
   }
 };
 
@@ -318,7 +319,7 @@ exports.deleteUtilisation = async (req, res) => {
     emit();
     res.json({ message: 'Deleted' });
   } catch (e) {
-    res.status(500).json({ message: e.message });
+    sendMongooseError(res, e, e.message);
   }
 };
 
@@ -440,7 +441,7 @@ exports.getAnalysis = async (req, res) => {
     cache.set(cacheKey, body, 15000);
     res.json(body);
   } catch (e) {
-    res.status(500).json({ message: e.message });
+    sendMongooseError(res, e, e.message);
   }
 };
 
@@ -452,7 +453,7 @@ exports.listProspects = async (req, res) => {
     const prospects = await ContractProspect.find().sort({ contactDate: -1, createdAt: -1 }).lean();
     res.json({ prospects });
   } catch (e) {
-    res.status(500).json({ message: e.message });
+    sendMongooseError(res, e, e.message);
   }
 };
 
@@ -466,7 +467,7 @@ exports.createProspect = async (req, res) => {
     emit();
     res.status(201).json({ prospect });
   } catch (e) {
-    res.status(500).json({ message: e.message });
+    sendMongooseError(res, e, e.message);
   }
 };
 
@@ -480,7 +481,7 @@ exports.updateProspect = async (req, res) => {
     emit();
     res.json({ prospect });
   } catch (e) {
-    res.status(500).json({ message: e.message });
+    sendMongooseError(res, e, e.message);
   }
 };
 
@@ -491,7 +492,7 @@ exports.deleteProspect = async (req, res) => {
     emit();
     res.json({ message: 'Deleted' });
   } catch (e) {
-    res.status(500).json({ message: e.message });
+    sendMongooseError(res, e, e.message);
   }
 };
 
@@ -517,7 +518,7 @@ exports.convertProspect = async (req, res) => {
     emit();
     res.json({ vendor, prospect: p });
   } catch (e) {
-    res.status(500).json({ message: e.message });
+    sendMongooseError(res, e, e.message);
   }
 };
 
@@ -531,7 +532,7 @@ exports.listDeptContracts = async (req, res) => {
     const contracts = await DeptContract.find(filter).sort({ contractDate: -1, createdAt: -1 }).lean();
     res.json({ contracts });
   } catch (e) {
-    res.status(500).json({ message: e.message });
+    sendMongooseError(res, e, e.message);
   }
 };
 
@@ -546,7 +547,7 @@ exports.createDeptContract = async (req, res) => {
     emit();
     res.status(201).json({ contract });
   } catch (e) {
-    res.status(500).json({ message: e.message });
+    sendMongooseError(res, e, e.message);
   }
 };
 
@@ -559,7 +560,7 @@ exports.updateDeptContract = async (req, res) => {
     emit();
     res.json({ contract });
   } catch (e) {
-    res.status(500).json({ message: e.message });
+    sendMongooseError(res, e, e.message);
   }
 };
 
@@ -571,7 +572,7 @@ exports.deleteDeptContract = async (req, res) => {
     emit();
     res.json({ message: 'Deleted' });
   } catch (e) {
-    res.status(500).json({ message: e.message });
+    sendMongooseError(res, e, e.message);
   }
 };
 
@@ -687,7 +688,7 @@ exports.listCustomers = async (req, res) => {
       }),
     });
   } catch (e) {
-    res.status(500).json({ message: e.message });
+    sendMongooseError(res, e, e.message);
   }
 };
 
@@ -719,7 +720,7 @@ exports.customerSuggestions = async (req, res) => {
       .slice(0, 200);
     res.json({ suggestions: rows });
   } catch (e) {
-    res.status(500).json({ message: e.message });
+    sendMongooseError(res, e, e.message);
   }
 };
 
@@ -746,7 +747,7 @@ exports.createCustomer = async (req, res) => {
     emit();
     res.status(201).json({ customer });
   } catch (e) {
-    res.status(500).json({ message: e.message });
+    sendMongooseError(res, e, e.message);
   }
 };
 
@@ -794,7 +795,7 @@ exports.getCustomer = async (req, res) => {
       monthly: Object.values(byMonth).sort((a, b) => a.month.localeCompare(b.month)),
     });
   } catch (e) {
-    res.status(500).json({ message: e.message });
+    sendMongooseError(res, e, e.message);
   }
 };
 
@@ -809,7 +810,7 @@ exports.updateCustomer = async (req, res) => {
     emit();
     res.json({ customer });
   } catch (e) {
-    res.status(500).json({ message: e.message });
+    sendMongooseError(res, e, e.message);
   }
 };
 
@@ -820,7 +821,7 @@ exports.deleteCustomer = async (req, res) => {
     emit();
     res.json({ message: 'حُذف العميل' });
   } catch (e) {
-    res.status(500).json({ message: e.message });
+    sendMongooseError(res, e, e.message);
   }
 };
 

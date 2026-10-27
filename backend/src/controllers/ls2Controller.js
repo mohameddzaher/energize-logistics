@@ -24,9 +24,12 @@ const { emitToAll } = require('../websocket/socketManager');
 const CACHE_TTL = 15000; // = دورة التحديث (poll) 15ث — البيانات لا تتغيّر أسرع من كده
 
 function fail(res, error, fallback) {
-  const status = error.status >= 400 && error.status < 600 ? error.status : 500;
-  if (status >= 500) console.error(`${fallback}:`, error.message);
-  res.status(status).json({ message: error.message || fallback });
+  // An explicit status wins; a rejected value or duplicate is the client's input
+  // (400 / 409 with the field), not a server error (QA write sweep).
+  if (error && error.status >= 400 && error.status < 600) return res.status(error.status).json({ message: error.message || fallback });
+  const d = require('../utils/mongooseError').describeMongooseError(error, fallback);
+  if (d.status >= 500) { console.error(`${fallback}:`, error && error.message); return res.status(500).json({ message: (error && error.message) || fallback }); }
+  return res.status(d.status).json({ message: d.message, fields: d.fields });
 }
 
 // Build the maintenance view the UI reads, straight from the mirrored Wialon

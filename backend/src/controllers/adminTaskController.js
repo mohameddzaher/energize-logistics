@@ -1,4 +1,5 @@
 const AdminTask = require('../models/AdminTask');
+const { sendMongooseError, describeMongooseError } = require('../utils/mongooseError');
 const User = require('../models/User');
 const { emitToAll } = require('../websocket/socketManager');
 
@@ -34,7 +35,7 @@ exports.listTasks = async (req, res) => {
     const tasks = await AdminTask.find().sort({ status: 1, order: 1, createdAt: -1 }).lean();
     res.json({ tasks });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    sendMongooseError(res, error, error.message);
   }
 };
 
@@ -56,7 +57,7 @@ exports.listAssignees = async (req, res) => {
       })),
     });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    sendMongooseError(res, error, error.message);
   }
 };
 
@@ -93,7 +94,7 @@ exports.createTask = async (req, res) => {
     emit();
     res.status(201).json({ task });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    sendMongooseError(res, error, error.message);
   }
 };
 
@@ -157,7 +158,7 @@ exports.updateTask = async (req, res) => {
     emit();
     res.json({ task });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    sendMongooseError(res, error, error.message);
   }
 };
 
@@ -175,7 +176,7 @@ exports.addComment = async (req, res) => {
     emit();
     res.status(201).json({ task });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    sendMongooseError(res, error, error.message);
   }
 };
 
@@ -186,6 +187,6 @@ exports.deleteTask = async (req, res) => {
     emit();
     res.json({ message: 'Task deleted' });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    sendMongooseError(res, error, error.message);
   }
 };

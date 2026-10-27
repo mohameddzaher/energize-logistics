@@ -9,6 +9,7 @@
  * normalized plate digits (plateKey), because Wialon plate strings vary.
  */
 const Ls2Flatbed = require('../models/Ls2Flatbed');
+const { sendMongooseError, describeMongooseError } = require('../utils/mongooseError');
 const Ls2Trailer = require('../models/Ls2Trailer');
 const Ls2TireAsset = require('../models/Ls2TireAsset');
 const Ls2AssetEvent = require('../models/Ls2AssetEvent');
@@ -156,7 +157,7 @@ exports.getOverview = async (req, res) => {
     }
     res.json(body);
   } catch (e) {
-    res.status(500).json({ message: e.message });
+    sendMongooseError(res, e, e.message);
   }
 };
 
@@ -249,7 +250,7 @@ exports.getVehicleHistory = async (req, res) => {
     const counts = rows.reduce((acc, r) => { acc[r.kind] = (acc[r.kind] || 0) + 1; return acc; }, {});
     res.json({ plate: req.params.plate, plateKey: key, counts, total: rows.length, rows: rows.slice(0, 800) });
   } catch (e) {
-    res.status(500).json({ message: e.message });
+    sendMongooseError(res, e, e.message);
   }
 };
 
@@ -266,7 +267,7 @@ exports.getVehicleAssets = async (req, res) => {
     ]);
     res.json({ flatbed, tires, trailer, events });
   } catch (e) {
-    res.status(500).json({ message: e.message });
+    sendMongooseError(res, e, e.message);
   }
 };
 
@@ -327,7 +328,7 @@ exports.createTire = async (req, res) => {
     });
     res.status(201).json({ tire });
   } catch (e) {
-    res.status(500).json({ message: e.message });
+    sendMongooseError(res, e, e.message);
   }
 };
 
@@ -345,7 +346,7 @@ exports.updateTire = async (req, res) => {
     });
     res.json({ tire });
   } catch (e) {
-    res.status(500).json({ message: e.message });
+    sendMongooseError(res, e, e.message);
   }
 };
 
@@ -660,7 +661,7 @@ exports.moveTire = async (req, res) => {
     await clearSensorNotice(from.key, toPlate ? plateKey(toPlate) : null);
     res.json({ tire, replacement, secondReplacement, chain: placed });
   } catch (e) {
-    res.status(500).json({ message: e.message });
+    sendMongooseError(res, e, e.message);
   }
 };
 
@@ -687,7 +688,7 @@ exports.tireRenewalResult = async (req, res) => {
     });
     res.json({ tire });
   } catch (e) {
-    res.status(500).json({ message: e.message });
+    sendMongooseError(res, e, e.message);
   }
 };
 
@@ -729,7 +730,7 @@ exports.retireTire = async (req, res) => {
     await clearSensorNotice(from.key);
     res.json({ tire });
   } catch (e) {
-    res.status(500).json({ message: e.message });
+    sendMongooseError(res, e, e.message);
   }
 };
 
@@ -779,7 +780,7 @@ exports.setTireStatus = async (req, res) => {
     if (from.key) await clearSensorNotice(from.key);
     res.json({ tire });
   } catch (e) {
-    res.status(500).json({ message: e.message });
+    sendMongooseError(res, e, e.message);
   }
 };
 
@@ -804,7 +805,7 @@ exports.createTrailer = async (req, res) => {
     await require('../services/ls2TireTrailers').resyncTireTrailers();
     res.status(201).json({ trailer });
   } catch (e) {
-    res.status(500).json({ message: e.message });
+    sendMongooseError(res, e, e.message);
   }
 };
 
@@ -971,7 +972,7 @@ exports.moveTrailer = async (req, res) => {
       displaced: occupant ? { trailerNumber: occupant.trailerNumber, to: displacedTo, tiresMoved: occupantMoved } : null,
     });
   } catch (e) {
-    res.status(500).json({ message: e.message });
+    sendMongooseError(res, e, e.message);
   }
 };
 
@@ -989,7 +990,7 @@ exports.createFlatbed = async (req, res) => {
     await logEvent(req, { entityType: 'flatbed', refId: flatbed._id, label: flatbed.plate, action: 'registered' });
     res.status(201).json({ flatbed });
   } catch (e) {
-    res.status(500).json({ message: e.message });
+    sendMongooseError(res, e, e.message);
   }
 };
 
@@ -1003,7 +1004,7 @@ exports.updateFlatbed = async (req, res) => {
     emitAssetsChanged(); // the one mutation here that doesn't log an event
     res.json({ flatbed });
   } catch (e) {
-    res.status(500).json({ message: e.message });
+    sendMongooseError(res, e, e.message);
   }
 };
 
@@ -1022,7 +1023,7 @@ exports.listEvents = async (req, res) => {
     const events = await Ls2AssetEvent.find(q).sort({ date: -1 }).limit(Math.min(Number(limit) || 300, 1000)).lean();
     res.json({ events });
   } catch (e) {
-    res.status(500).json({ message: e.message });
+    sendMongooseError(res, e, e.message);
   }
 };
 
@@ -1066,7 +1067,7 @@ exports.sensorCheck = async (req, res) => {
     rows.sort((a, b) => Number(a.match === true) - Number(b.match === true) || String(a.plate).localeCompare(String(b.plate)));
     res.json({ rows });
   } catch (e) {
-    res.status(500).json({ message: e.message });
+    sendMongooseError(res, e, e.message);
   }
 };
 
@@ -1172,7 +1173,7 @@ exports.importAssets = async (req, res) => {
     await require('../services/ls2TireTrailers').resyncTireTrailers();
     res.json({ ok: true, summary });
   } catch (e) {
-    res.status(500).json({ message: e.message });
+    sendMongooseError(res, e, e.message);
   }
 };
 
@@ -1364,7 +1365,7 @@ exports.getTireProfile = async (req, res) => {
     });
   } catch (e) {
     console.error('tire profile', e);
-    res.status(500).json({ message: e.message });
+    sendMongooseError(res, e, e.message);
   }
 };
 exports._planReplacementChain = planReplacementChain;

@@ -12,6 +12,7 @@
  * so the live preview, the saved record and the PDF can never disagree.
  */
 const Employee = require('../models/Employee');
+const { sendMongooseError, describeMongooseError } = require('../utils/mongooseError');
 const User = require('../models/User');
 const PerfTemplate = require('../models/PerfTemplate');
 const PerfEvaluation = require('../models/PerfEvaluation');
@@ -38,7 +39,13 @@ const canOverride = (role) => CONFIG_ROLES.includes(role);
 const isManagerRole = (role = '') =>
   isFull(role) || /(_manager|_head|_lead|^moderator$|^operations_manager$|^cfo$)/.test(role);
 
-const fail = (res, e, msg) => res.status(500).json({ message: msg || e.message });
+// A rejected value or a duplicate is the client's input: 400 / 409 with the field, not 500 (QA write sweep).
+const fail = (res, e, msg) => {
+  const d = describeMongooseError(e, msg);
+  if (d.status < 500) return res.status(d.status).json({ message: d.message, fields: d.fields });
+  console.error(msg || 'performance error:', e);
+  return res.status(500).json({ message: msg || (e && e.message) });
+};
 
 // ---- Period helpers --------------------------------------------------------
 // A stable key per period so one employee can't be graded twice for the same

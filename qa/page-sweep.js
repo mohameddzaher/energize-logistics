@@ -33,7 +33,7 @@ const FILTERS = process.env.QA_FILTERS !== '0';
 // Column-filter crashes do not depend on the role, so the deep pass (every
 // filter on every page) runs for these roles only; the rest visit every page.
 const DEEP = new Set((process.env.QA_DEEP_ROLES || 'super_admin').split(','));
-const TABS = Number(process.env.QA_TABS || 4);
+const TABS = Number(process.env.QA_TABS || 3); // ≤3: more tabs + VS Code on 16 GB got the editor killed (2026-10-27)
 const TOP = new Set(['super_admin', 'admin']);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const catalogue = JSON.parse(fs.readFileSync(path.join(ROOT, 'backend', 'src', 'config', 'pages.json'), 'utf8'));

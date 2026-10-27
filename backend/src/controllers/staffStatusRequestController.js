@@ -6,6 +6,7 @@
  * models/StaffStatusRequest.
  */
 const mongoose = require('mongoose');
+const { sendMongooseError, describeMongooseError } = require('../utils/mongooseError');
 const StaffStatusRequest = require('../models/StaffStatusRequest');
 const Employee = require('../models/Employee');
 const User = require('../models/User');
@@ -87,7 +88,7 @@ exports.create = async (req, res) => {
     res.status(201).json({ request: doc });
   } catch (e) {
     console.error('staffRequest create', e);
-    res.status(500).json({ message: 'تعذّر إرسال الطلب' });
+    sendMongooseError(res, e, 'تعذّر إرسال الطلب');
   }
 };
 

@@ -1,4 +1,5 @@
 const Complaint = require('../models/Complaint');
+const { sendMongooseError } = require('../utils/mongooseError');
 const { emitToAll } = require('../websocket/socketManager');
 const logAudit = require('../utils/auditLogger');
 
@@ -83,8 +84,8 @@ const createComplaint = async (req, res) => {
 
     res.status(201).json(populated);
   } catch (error) {
-    console.error('Error creating complaint:', error);
-    res.status(500).json({ message: 'Failed to create complaint' });
+    // Missing subject/description is the client's input: 400 with the field (QA write sweep).
+    sendMongooseError(res, error, 'Failed to create complaint');
   }
 };
 

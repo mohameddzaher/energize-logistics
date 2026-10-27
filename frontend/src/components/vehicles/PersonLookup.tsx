@@ -28,6 +28,9 @@ export interface FoundPerson {
   employmentStatus?: string;
   hireDate?: string | null;
   dateOfBirth?: string;
+  /** انتهاءُ الإقامة ورخصةِ القيادة — بالميلاديّ (YYYY-MM-DD). */
+  iqamaExpiry?: string;
+  licenseExpiry?: string;
   cardNumber?: string;
   cardExpiryDate?: string | null;
   transportTypeAr?: string;

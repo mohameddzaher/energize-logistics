@@ -2848,7 +2848,7 @@ exports.personLookup = async (req, res) => {
         ...NOT_ARCHIVED,
         $or: [{ firstName: rx }, { lastName: rx }, { arabicName: rx },
           ...(digits.length >= 4 ? [{ iqamaNumber: new RegExp(digits) }, { nationalId: new RegExp(digits) }] : [])],
-      }).select('firstName lastName arabicName iqamaNumber nationalId phone mobile employeeNumber jobTitle department employmentStatus hireDate dateOfBirth')
+      }).select('firstName lastName arabicName iqamaNumber nationalId phone mobile employeeNumber jobTitle department employmentStatus hireDate dateOfBirth iqamaExpiry iqamaExpiryHijri licenseExpiry')
         .limit(12).lean(),
       LightTransportEmployee.find({
         $or: [{ name: rx }, ...(digits.length >= 4 ? [{ idNumber: new RegExp(digits) }] : [])],
@@ -2878,6 +2878,10 @@ exports.personLookup = async (req, res) => {
         hireDate: e.hireDate || null,
         // تاريخُ الميلاد من ملفّه — يُعرَض تحت رقم الإقامة في التفويض وبطاقة السائق.
         dateOfBirth: e.dateOfBirth || '',
+        // وانتهاءُ إقامته ورخصةِ قيادته — بالميلاديّ (٢٠٢٦/١٠/٢٧). ومن سُجِّلت إقامتُه
+        // بالهجريّ وحده يُحوَّل له، فلا تُقرأ «غير مسجَّل» وهي مسجَّلة.
+        iqamaExpiry: e.iqamaExpiry || (e.iqamaExpiryHijri ? (require('../utils/hijri').fromHijriString(e.iqamaExpiryHijri) || '') : ''),
+        licenseExpiry: e.licenseExpiry || '',
         employeeId: String(e._id),
       }, 'hr');
     }

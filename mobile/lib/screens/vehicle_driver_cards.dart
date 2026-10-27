@@ -824,6 +824,16 @@ class _IdInfoState extends State<_IdInfo> {
         Text(_s(p['name']), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12.5)),
         Text('${tr('تاريخ الميلاد', 'Date of birth')}: ${dob.length >= 10 ? dob.substring(0, 10).split('-').reversed.join('/') : tr('غير مسجَّل', 'not recorded')}', style: const TextStyle(fontSize: 12)),
         Text('${tr('الجوال', 'Mobile')}: ${phone.isEmpty ? tr('غير مسجَّل', 'not recorded') : phone}', style: const TextStyle(fontSize: 12)),
+        // وانتهاءُ الإقامة ورخصةِ القيادة — بالميلاديّ، والمنتهيةُ بالأحمر (٢٠٢٦/١٠/٢٧).
+        for (final e in [('انتهاء الإقامة', 'Iqama expiry', _s(p['iqamaExpiry'])), ('انتهاء رخصة القيادة', 'Driving licence expiry', _s(p['licenseExpiry']))])
+          Builder(builder: (_) {
+            final d = e.$3.length >= 10 ? e.$3.substring(0, 10) : '';
+            final now = DateTime.now();
+            final today = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+            final expired = d.isNotEmpty && d.compareTo(today) < 0;
+            return Text('${tr(e.$1, e.$2)}: ${d.isEmpty ? tr('غير مسجَّل', 'not recorded') : d.split('-').reversed.join('/')}${expired ? tr(' (منتهية)', ' (expired)') : ''}',
+                style: TextStyle(fontSize: 12, color: expired ? T.danger : null, fontWeight: expired ? FontWeight.w700 : null));
+          }),
       ]),
     );
   }

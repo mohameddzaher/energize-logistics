@@ -9,7 +9,7 @@
  */
 import { useEffect, useState } from 'react';
 import api from '@/lib/api';
-import { Loader2, Cake, Phone, UserCheck } from 'lucide-react';
+import { Loader2, Cake, Phone, UserCheck, IdCard, CarFront } from 'lucide-react';
 import type { FoundPerson } from '@/components/vehicles/PersonLookup';
 
 const dmy = (v?: string | null) => (v ? String(v).slice(0, 10).split('-').reverse().join('/') : '');
@@ -53,6 +53,21 @@ export default function IqamaPersonInfo({ idNumber, ar, onFound }: {
       <p className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5">
         <span className="inline-flex items-center gap-1"><Cake className="h-3 w-3" />{t('تاريخ الميلاد', 'Date of birth')}: <b>{dmy(p.dateOfBirth) || t('غير مسجَّل', 'not recorded')}</b></span>
         <span className="inline-flex items-center gap-1"><Phone className="h-3 w-3" />{t('الجوال', 'Mobile')}: <b dir="ltr">{phone || t('غير مسجَّل', 'not recorded')}</b></span>
+      </p>
+      {/* وانتهاءُ الإقامة والرخصة — بالميلاديّ، ومنتهيةٌ تُلوَّن أحمر (٢٠٢٦/١٠/٢٧). */}
+      <p className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5">
+        {([
+          [IdCard, t('انتهاء الإقامة', 'Iqama expiry'), p.iqamaExpiry],
+          [CarFront, t('انتهاء رخصة القيادة', 'Driving licence expiry'), p.licenseExpiry],
+        ] as [any, string, string | undefined][]).map(([Icon, label, v]) => {
+          const d = String(v || '').slice(0, 10);
+          const expired = /^\d{4}-\d{2}-\d{2}$/.test(d) && d < new Date().toISOString().slice(0, 10);
+          return (
+            <span key={label} className="inline-flex items-center gap-1">
+              <Icon className="h-3 w-3" />{label}: <b className={expired ? 'text-red-600' : ''}>{dmy(d) || t('غير مسجَّل', 'not recorded')}{expired ? t(' (منتهية)', ' (expired)') : ''}</b>
+            </span>
+          );
+        })}
       </p>
     </div>
   );

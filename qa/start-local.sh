@@ -19,7 +19,8 @@ if ! nc -z 127.0.0.1 27099 2>/dev/null; then
   for i in $(seq 1 30); do nc -z 127.0.0.1 27099 && break; sleep 0.5; done
 fi
 
-pkill -f "QA_BACKEND=1" 2>/dev/null || true
+pkill -f "$ROOT/backend/src/server.js" 2>/dev/null || true
+for i in $(seq 1 20); do nc -z 127.0.0.1 5055 2>/dev/null || break; sleep 0.5; done
 DEAD=http://127.0.0.1:9
 ( cd "$QA/.data/cwd" && exec env -i PATH="$PATH" HOME="$HOME" QA_BACKEND=1 \
   PORT=5055 NODE_ENV=development \

@@ -1,0 +1,29 @@
+{
+  // Build output, test data and dependencies: VS Code must not watch or index
+  // them. A `next build` rewrites thousands of files in frontend/.next, and each
+  // one was a watcher event; together with other apps that ran the whole Mac out
+  // of file handles ("too many open files in system") and the editor restarted.
+  "files.watcherExclude": {
+    "**/node_modules/**": true,
+    "**/.git/objects/**": true,
+    "frontend/.next/**": true,
+    "frontend/.netlify/**": true,
+    "frontend/out/**": true,
+    "mobile/build/**": true,
+    "mobile/.dart_tool/**": true,
+    "mobile/ios/Pods/**": true,
+    "mobile/android/.gradle/**": true,
+    "qa/.data/**": true,
+    "qa/out/**": true,
+    "backend/uploads/**": true
+  },
+  "search.exclude": {
+    "frontend/.next": true,
+    "frontend/.netlify": true,
+    "mobile/build": true,
+    "mobile/.dart_tool": true,
+    "mobile/ios/Pods": true,
+    "qa/.data": true,
+    "qa/out": true
+  }
+}

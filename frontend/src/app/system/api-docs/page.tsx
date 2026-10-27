@@ -107,6 +107,23 @@ function snippets(e: Endpoint, base: string) {
   return { curl, js, py };
 }
 
+/**
+ * Opens the partner docs signed in.
+ *
+ * The session cookie belongs to the API host (api.energize-logistics.com), so the
+ * page must be opened there — on the site's own host the cookie is not sent and
+ * a super admin was asked for a key. The access token also lives 15 minutes:
+ * one authenticated call first lets the client refresh it. The tab is opened
+ * before the await so the browser does not block it as a pop-up.
+ */
+async function openPartnerDocs() {
+  const apiBase = process.env.NEXT_PUBLIC_API_URL || '';
+  const w = window.open('about:blank', '_blank');
+  try { await api.get('/api/docs/stats'); } catch { /* the page still asks for a key */ }
+  const url = `${apiBase}/api/docs`;
+  if (w) w.location.href = url; else window.open(url, '_blank');
+}
+
 // ── Extract formats ─────────────────────────────────────────────────────────
 function postmanOf(c: Catalog, list: Endpoint[]) {
   const byGroup = new Map<string, Endpoint[]>();
@@ -449,7 +466,7 @@ const GUIDE: Record<Endpoint['auth'], {
       { title: 'Get the key', text: 'There is one partner key, kept on the server (FLEET_API_KEY). Administrators and the IT manager can reveal it right here — every reveal is recorded in the audit log. Hand it over privately, never in an open chat or email.' },
       { title: 'Send it with every request', text: 'Put it in the x-api-key header. (?key= in the URL also works for tools that cannot send headers, but it ends up in access logs.)' },
       { title: 'Try it', text: 'The health endpoint answers when the key is right:', code: (b) => `curl '${b}/api/fleet-api/health' \\\n  -H 'x-api-key: <YOUR_API_KEY>'` },
-      { title: 'Hand the docs to the partner', text: 'Send them this link with their key — an interactive page where they can try every call themselves:', code: (b) => `${b}/api/docs?key=<YOUR_API_KEY>` },
+      { title: 'Hand the docs to the partner', text: 'Send them this link with their key — an interactive page where they can try every call themselves:', code: (b) => `${b}/api/docs#key=<YOUR_API_KEY>` },
     ],
     errors: ['401 INVALID_API_KEY — the key is missing or wrong', '503 API_KEY_NOT_CONFIGURED — no key is set on the server yet'],
   },
@@ -504,7 +521,8 @@ function KeyReveal({ base }: { base: string }) {
   if (!state.configured) {
     return <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-[12.5px] text-amber-800">No partner key is set on the server yet (FLEET_API_KEY). Ask the developer to set one — the partner API answers 503 until then.</p>;
   }
-  const link = `${base}/api/docs?key=${encodeURIComponent(state.key)}`;
+  // After # the key is never sent to the server, so it stays out of access logs.
+  const link = `${base}/api/docs#key=${encodeURIComponent(state.key)}`;
   return (
     <div className="mt-2 space-y-1.5">
       <div className="flex items-center justify-between gap-2 rounded-lg bg-violet-50 px-3 py-2 ring-1 ring-violet-200">
@@ -561,9 +579,9 @@ function AuthGuide({ kind, base, count, onClose, canReveal }: { kind: Endpoint['
         <span className="font-semibold text-slate-700">{count} endpoint{count === 1 ? '' : 's'} below</span>
         {g.errors.map((e) => <span key={e} className="inline-flex items-center gap-1"><Info className="h-3.5 w-3.5 text-slate-400" />{e}</span>)}
         {kind === 'apiKey' && (
-          <a href="/api/docs" target="_blank" rel="noreferrer" className="ml-auto inline-flex items-center gap-1 font-semibold text-[#f37121] hover:underline">
+          <button type="button" onClick={openPartnerDocs} className="ml-auto inline-flex items-center gap-1 font-semibold text-[#f37121] hover:underline">
             Open the partner docs<ArrowRight className="h-3.5 w-3.5" />
-          </a>
+          </button>
         )}
       </div>
     </div>
@@ -732,10 +750,10 @@ export default function ApiDocsPage() {
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <a href="/api/docs" target="_blank" rel="noreferrer"
+            <button type="button" onClick={openPartnerDocs}
               className="inline-flex items-center gap-2 rounded-xl bg-white/5 px-3 py-2 text-[13px] font-medium text-slate-200 ring-1 ring-white/10 hover:bg-white/10">
               <ExternalLink className="h-4 w-4" />Partner docs
-            </a>
+            </button>
             <button type="button" onClick={() => load(true)} title="Reload from the running code"
               className="inline-flex items-center gap-2 rounded-xl bg-white/5 px-3 py-2 text-[13px] font-medium text-slate-200 ring-1 ring-white/10 hover:bg-white/10">
               <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />Refresh

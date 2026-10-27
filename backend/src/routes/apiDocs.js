@@ -196,7 +196,11 @@ router.get('/', (req, res) => {
       var base = location.origin;
       document.getElementById('base').textContent = base;
       var params = new URLSearchParams(location.search);
-      var key = params.get('key') || sessionStorage.getItem('energize-partner-key') || '';
+      // The key may come after # (never sent to the server, so not in access logs),
+      // in ?key= (older links), or from this tab's earlier entry.
+      var hashKey = new URLSearchParams(location.hash.replace(/^#/, '')).get('key');
+      var key = hashKey || params.get('key') || sessionStorage.getItem('energize-partner-key') || '';
+      if (hashKey || params.get('key')) history.replaceState(null, '', location.pathname);
       var $ = function (id) { return document.getElementById(id); };
 
       function show(id, on) { $(id).classList.toggle('hidden', !on); }
@@ -231,8 +235,6 @@ router.get('/', (req, res) => {
         e.preventDefault();
         key = $('k').value.trim();
         if (!key) return;
-        // The key stays out of the address bar (and so out of history and access logs).
-        if (params.get('key')) history.replaceState(null, '', location.pathname);
         load();
       });
       load();

@@ -1,3 +1,4 @@
+import type { PersonDocs } from '@/components/system/PersonDocDate';
 // Shared types + vocabulary for the Shipment Orders trial section (طلبات
 // الشحنات) — shipments created natively instead of on the external UPL system.
 //
@@ -156,7 +157,7 @@ export interface OrderSupplier {
  * رقمَ إقامةٍ ولا بطاقةَ تشغيلٍ ولا تاريخَ انتهائها. ومنصّةُ الأوبريشن تحمل
  * لكلٍّ ملفَّه، فاستُورد السجلُّ منها.
  */
-export interface OrderDriver {
+export interface OrderDriver extends PersonDocs {
   _id: string;
   name: string;
   phone?: string;

@@ -2103,7 +2103,9 @@ exports.listDrivers = async (req, res) => {
             .lean(),
           ShipmentOrderDriver.countDocuments(filter),
         ]);
-        return { drivers: drivers.map(driverView).map(cleanDriver), total };
+        // وانتهاءُ إقامته ورخصةِ قيادته من ملفّه (utils/personDocDates).
+        const docs = await require('../utils/personDocDates').docDatesFor(drivers.map((d) => ({ idNumber: d.residenceNumber, employee: d.employee })));
+        return { drivers: drivers.map(driverView).map(cleanDriver).map((d, i) => ({ ...d, ...docs({ idNumber: drivers[i].residenceNumber, employee: drivers[i].employee }) })), total };
       },
     );
     res.json(out);

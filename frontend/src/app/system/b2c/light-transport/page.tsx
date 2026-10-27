@@ -25,6 +25,7 @@ import { useSocket } from '@/hooks/useSocket';
 import { useLatestRequest } from '@/hooks/useLatestRequest';
 import { Spinner, PageHeader, SearchInput, PrimaryButton, Modal, Field, TextInput, Select } from '@/components/hr/HRKit';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
+import { PersonDocDate, personDocExportColumns } from '@/components/system/PersonDocDate';
 import { useColumnFilters, ClearColumnFilters } from '@/components/useColumnFilters';
 import ManagedSelect from '@/components/system/ManagedSelect';
 import ScrollX from '@/components/system/ScrollX';
@@ -226,10 +227,12 @@ function LightTransportEmployeesInner() {
   const colFiltered = cf.apply(rows, getters);
   const totals = ltFacetedTotals(colFiltered, f);
 
-  const exportColumns: ExportColumn[] = LT_COLUMNS.map((c) => ({
-    header: ar ? c.ar : c.en, key: c.key, width: c.width || 16,
-    transform: (_: any, r: any) => c.get(r),
-  }));
+  // عمودا الإقامة والرخصة يُصدَّران تاريخًا وحالةً في عمودين لكلٍّ منهما.
+  const exportColumns: ExportColumn[] = LT_COLUMNS.flatMap((c): ExportColumn[] => (
+    c.key === 'iqamaExp' ? personDocExportColumns(ar).slice(0, 2)
+      : c.key === 'licenseExp' ? personDocExportColumns(ar).slice(2)
+        : [{ header: ar ? c.ar : c.en, key: c.key, width: c.width || 16, transform: (_: any, r: any) => c.get(r) }]
+  ));
   const scope = exportScopeLabels(ar);
   const exportOptions = (activeCount || cf.count)
     ? [
@@ -663,6 +666,8 @@ function LightTransportEmployeesInner() {
                           // ── والتاريخُ وحدَه لا يُقرأ ──────────────────────
                           // «١٤ / ١١ / ٢٠٢٦» لا تقول أقريبٌ هو أم مضى؛ فتُكتب
                           // معه حالتُه بعتبات قسم المركبات نفسِها.
+                          : c.key === 'iqamaExp' ? <PersonDocDate ar={ar} date={e.iqamaExpiry} state={e.iqamaState} />
+                          : c.key === 'licenseExp' ? <PersonDocDate ar={ar} date={e.licenseExpiry} state={e.licenseState} />
                           : (c.key === 'operatingCardExpiry' || c.key === 'inspectionExpiry')
                             ? <DocCell doc={c.key === 'operatingCardExpiry' ? e.operatingCard : e.inspection} text={v} ar={ar} />
                             : (v || <span className="text-slate-300">—</span>);

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../ui/person_docs.dart';
 import '../resource/configs.dart' show shipmentOrdersSuppliersCfg, shipmentOrdersVehiclesCfg, shipmentOrdersDriversCfg;
 import '../resource/resource.dart';
 import '../services/api.dart';
@@ -88,6 +89,10 @@ class _ShipmentOrdersFleetScreenState extends State<ShipmentOrdersFleetScreen> {
         ExportCol('الجوال', 'Phone', (r) => r['phone']),
         ExportCol('الجنسية', 'Nationality', (r) => r['nationality']),
         ExportCol('رقم الإقامة', 'Iqama', (r) => r['residenceNumber']),
+        ExportCol('انتهاء الإقامة', 'Iqama expiry', (r) => personDocDate(r, 'iqama')),
+        ExportCol('حالة الإقامة', 'Iqama status', (r) => personDocState(r, 'iqama')),
+        ExportCol('انتهاء رخصة القيادة', 'Licence expiry', (r) => personDocDate(r, 'license')),
+        ExportCol('حالة رخصة القيادة', 'Licence status', (r) => personDocState(r, 'license')),
         ExportCol('بطاقة التشغيل', 'Driver card', (r) => r['driverCardNumber']),
         ExportCol('انتهاء البطاقة', 'Card expiry', (r) => r['driverCardExpiry']),
         ExportCol('المورّد', 'Supplier', (r) => r['supplier'] is Map ? r['supplier']['name'] : ''),

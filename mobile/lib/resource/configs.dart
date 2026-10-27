@@ -3,6 +3,7 @@ import '../services/api.dart';
 import '../services/hijri.dart';
 import '../services/lang.dart';
 import '../ui/theme.dart';
+import '../ui/person_docs.dart';
 import '../screens/crm_company_profile.dart';
 import '../screens/contracts_vendor_profile.dart';
 import '../screens/contracts_customer_suggestions.dart';
@@ -78,6 +79,8 @@ final fleetDriversCfg = ResourceConfig(
   // اسمُ الزميل يُبحَث به أيضًا: من يكتب اسمَ سائقٍ يريد صفَّه وصفَّ من يشاركه
   // الشاحنة. والخادمُ يرسل `mate` مع كلّ صفّ، فالبحثُ المحليُّ يقرؤه بنقطة.
   searchFields: const ['name', 'phone', 'iqama', 'mate.name'],
+  // شرائحُ أعلى القائمة: الأسوأُ من انتهاء الإقامة ورخصة القيادة (كفلتر الموقع).
+  filterField: 'docsState', filterOptions: personDocStates,
   titleOf: (r) => _s(r, 'name'),
   subtitleOf: (r) => [_s(r, 'phone'), _s(r, 'iqama')].where((x) => x.isNotEmpty).join(' · '),
   chipsOf: (r) => [
@@ -95,6 +98,8 @@ final fleetDriversCfg = ResourceConfig(
       ('مع ${_s(r['mate'] as Map<String, dynamic>, 'name')}', T.violet)
     else if (r['vehicle'] is Map)
       (r['seat'] == 2 ? 'المقعد الأول شاغر' : 'المقعد الثاني شاغر', T.inkFaint),
+    // وانتهاءُ إقامته ورخصةِ قيادته من ملفّه في الموارد البشريّة.
+    ...personDocChips(r),
   ],
   // تبديل سريع لحالة العمل/الكفالة من قائمة الصف دون فتح النموذج.
   rowActions: (r) => [
@@ -1250,6 +1255,7 @@ final shipmentOrdersDriversCfg = ResourceConfig(
   endpoint: '/api/shipment-orders/drivers', listKey: 'drivers', liveEvent: 'shipmentOrders:fleet',
   searchFields: const ['name', 'phone', 'residenceNumber', 'driverCardNumber'],
   serverSearch: true,
+  filterField: 'docsState', filterOptions: personDocStates,
   titleOf: (r) => _s(r, 'name'),
   subtitleOf: (r) => [
     _s(r, 'phone'),
@@ -1281,6 +1287,7 @@ final shipmentOrdersDriversCfg = ResourceConfig(
     } else {
       out.add(('بلا بطاقة تشغيل', T.inkFaint));
     }
+    out.addAll(personDocChips(r));
     return out;
   },
   fields: [
@@ -2055,6 +2062,7 @@ ResourceConfig lightTransportCfg({required bool canAdd, bool canTransfer = false
       // الشاراتِ الأخرى على شاشةِ هاتف.
       if (_docBad(r['operatingCard'])) ('كارت التشغيل ${_docWord(r['operatingCard'])}', _docColor(r['operatingCard'])),
       if (_docBad(r['inspection'])) ('الفحص ${_docWord(r['inspection'])}', _docColor(r['inspection'])),
+      ...personDocChips(r),
     ];
   },
   fields: [

@@ -1,3 +1,4 @@
+import '../ui/person_docs.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/api.dart';
@@ -1590,6 +1591,9 @@ final vehicleAuthorizationFamily = DocFamily(
         _ => 'غير محدَّد',
       };
     }),
+    // وانتهاءُ إقامته ورخصةِ قيادته من ملفّه في الموارد البشريّة (٢٠٢٦/١٠/٢٧).
+    DocField('انتهاء الإقامة', 'Iqama expiry', (v) => _sub(v, 'personDocs').isEmpty ? '' : personDocValue(_sub(v, 'personDocs'), 'iqama').$1),
+    DocField('انتهاء رخصة القيادة', 'Licence expiry', (v) => _sub(v, 'personDocs').isEmpty ? '' : personDocValue(_sub(v, 'personDocs'), 'license').$1),
   ],
   searchIn: (v) => [
     _s(v['plateNumber']), _s(_sub(v, 'authorizedPerson')['name']),

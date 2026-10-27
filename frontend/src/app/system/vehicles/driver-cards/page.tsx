@@ -21,6 +21,7 @@ import { LEAD, LEAD_CELL } from '@/components/vehicles/stickyLead';
 import { flexNormalize } from '@/lib/flexMatch';
 import ScrollX from '@/components/system/ScrollX';
 import ManagedSelect from '@/components/system/ManagedSelect';
+import { PersonDocDate, docStateLabel, personDocExportColumns, type DocState } from '@/components/system/PersonDocDate';
 
 interface Card {
   /** يُشتقّ في الخادم: رقمٌ حقيقيٌّ في الخانة — لا كلمةٌ ولا فراغ. */
@@ -35,6 +36,8 @@ interface Card {
   employee?: { _id: string; employeeNumber?: string; arabicName?: string; firstName?: string; lastName?: string; employmentStatus?: string } | null;
   // الشيءان الآخران اللذان يخصّان السائق لا المركبة.
   fidelity?: { status?: '' | 'covered' | 'required'; policyNumber?: string; addedDate?: string; notes?: string };
+  // وانتهاءُ إقامته ورخصةِ قيادته — من ملفّه في الموارد البشريّة (utils/personDocDates).
+  iqamaExpiry?: string; licenseExpiry?: string; iqamaState?: DocState; licenseState?: DocState;
   authorizations?: { _id: string; source?: 'registry' | 'assignment'; vehicle: string | null; plateNumber: string; startDate?: string; expiryDate?: string; authorizationNumber?: string; registrationTypeAr?: string }[];
   // لوحاتٌ يسمّيها سجلُّ الإسناد الأقدمُ لهذا السائق وتخالف ورقةَ تفويضه.
   staleAssignments?: string[];
@@ -89,6 +92,8 @@ const COL_DEFS: [string, string, string][] = [
   ['daysLeft', 'المتبقي', 'Days left'],
   ['state', 'الحالة', 'State'],
   ['fidelity', 'خيانة الأمانة', 'Fidelity'],
+  ['iqamaExp', 'انتهاء الإقامة', 'Iqama expiry'],
+  ['licenseExp', 'انتهاء رخصة القيادة', 'Licence expiry'],
   ['auth', 'التفاويض', 'Authorisations'],
   ['employee', 'الموظف', 'Employee'],
 ];
@@ -104,6 +109,9 @@ const GETTERS: Record<string, (c: Card) => any> = {
   daysLeft: (c) => c.daysLeft,
   state: (c) => c.state,
   fidelity: (c) => c.fidelity?.status || '',
+  // يُفلتَر بالحالة (منتهية / خلال 30 يومًا / سارية / غير مسجَّلة) لا بالتاريخ.
+  iqamaExp: (c) => c.iqamaState || 'missing',
+  licenseExp: (c) => c.licenseState || 'missing',
   // اللوحاتُ المفوَّضة: يُفلتَر على اللوحة الواحدة لا على القائمة المجمَّعة —
   // فمن يبحث عن مركبةٍ بعينها يجدها ولو كان السائقُ يمسك اثنتين.
   auth: (c) => (c.authorizations || []).map((a) => a.plateNumber).filter(Boolean).join(' · '),
@@ -225,6 +233,7 @@ export default function DriverCardsPage() {
     { header: t('الأيام المتبقية', 'Days left'), key: 'daysLeft', width: 12 },
     { header: t('خيانة الأمانة', 'Fidelity insurance'), key: 'fidelity',
       transform: (v: any) => (ar ? FIDELITY[v?.status || ''].ar : FIDELITY[v?.status || ''].en), width: 14 },
+    ...personDocExportColumns(ar),
     { header: t('عدد التفاويض', 'Authorisations'), key: 'authorizations', transform: (v: any) => (v?.length || 0), width: 12 },
     { header: t('المركبات المفوَّضة', 'Authorised vehicles'), key: 'authorizations',
       transform: (v: any) => (v || []).map((a: any) => a.plateNumber).filter(Boolean).join(' · '), width: 30 },
@@ -345,7 +354,8 @@ export default function DriverCardsPage() {
                         key === 'vclass' ? (v: any) => (ar ? VCLASS[String(v)]?.ar : VCLASS[String(v)]?.en) || String(v)
                           : key === 'state' ? (v: any) => (STATE[String(v)] ? (ar ? STATE[String(v)].ar : STATE[String(v)].en) : String(v))
                             : key === 'fidelity' ? (v: any) => (ar ? FIDELITY[String(v)]?.ar : FIDELITY[String(v)]?.en) || String(v)
-                              : undefined)}
+                              : key === 'iqamaExp' || key === 'licenseExp' ? (v: any) => docStateLabel(v as DocState, ar)
+                                : undefined)}
                     </span>
                   </th>
                 ))}
@@ -395,6 +405,8 @@ export default function DriverCardsPage() {
                         {ar ? FIDELITY[c.fidelity?.status || ''].ar : FIDELITY[c.fidelity?.status || ''].en}
                       </span>
                     </td>
+                    <td className="px-3 py-2.5"><PersonDocDate ar={ar} date={c.iqamaExpiry} state={c.iqamaState} /></td>
+                    <td className="px-3 py-2.5"><PersonDocDate ar={ar} date={c.licenseExpiry} state={c.licenseState} /></td>
                     {/* اللوحاتُ تُفتَح: الصفُّ يجيب «ما بيده؟» ثمّ يوصل إليه. */}
                     <td className="px-3 py-2.5 text-xs">
                       {(c.authorizations || []).length === 0

@@ -1,3 +1,4 @@
+import type { PersonDocs } from '@/components/system/PersonDocDate';
 // إدارة الأسطول — types + vocabulary. Our own trucks: booking, drivers,
 // follow-up calls. Sibling of lib/shipmentOrders.ts (that section books
 // supplier trucks); the status vocabulary is the same on purpose.
@@ -86,7 +87,7 @@ export interface FleetDriverHr {
   department?: string; jobTitle?: string; onLeave?: boolean;
 }
 
-export interface FleetDriver {
+export interface FleetDriver extends PersonDocs {
   _id: string;
   name: string;
   phone?: string;

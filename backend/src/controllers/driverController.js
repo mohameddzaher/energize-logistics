@@ -31,7 +31,9 @@ exports.getDrivers = async (req, res) => {
       drivers = drivers.filter((d) => d.name.toLowerCase().includes(s));
     }
 
-    res.json({ drivers });
+    // وانتهاءُ إقامته ورخصةِ قيادته من ملفّه (utils/personDocDates).
+    const docs = await require('../utils/personDocDates').docDatesFor(drivers.map((d) => ({ idNumber: d.idNumber })));
+    res.json({ drivers: drivers.map((d) => ({ ...(d.toObject ? d.toObject() : d), ...docs({ idNumber: d.idNumber }) })) });
   } catch (error) {
     res.status(500).json({ message: 'Failed to load drivers' });
   }

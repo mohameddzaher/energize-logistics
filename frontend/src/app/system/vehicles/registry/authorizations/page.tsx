@@ -15,6 +15,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 import { useDialog } from '@/components/system/DialogProvider';
 import DocumentFamilyPage, { commonColumns, type DocColumn, type DocField } from '@/components/vehicles/DocumentFamilyPage';
+import { docStateLabel, type PersonDocs } from '@/components/system/PersonDocDate';
 import { fmtDate, canEditVehicles, type VReg } from '@/lib/vehicleRegistry';
 
 const COLUMNS: DocColumn[] = [
@@ -37,7 +38,21 @@ const COLUMNS: DocColumn[] = [
     get: (v) => (!v.driverCard ? ''
       : v.driverCard.fidelityStatus === 'covered' ? 'مشمول'
         : v.driverCard.fidelityStatus === 'required' ? 'مطلوب ضمُّه' : 'غير محدَّد') },
+  // وانتهاءُ إقامته ورخصةِ قيادته من ملفّه في الموارد البشريّة (٢٠٢٦/١٠/٢٧)،
+  // والحالةُ بجانب التاريخ ليُفلتَر بها: منتهية / تنتهي خلال 30 يومًا / غير مسجَّلة.
+  { key: 'iqamaExpiry', ar: 'انتهاء الإقامة', en: 'Iqama expiry', width: 18,
+    get: (v) => personDocCell((v as any).personDocs, 'iqama') },
+  { key: 'licenseExpiry', ar: 'انتهاء رخصة القيادة', en: 'Licence expiry', width: 18,
+    get: (v) => personDocCell((v as any).personDocs, 'license') },
 ];
+
+function personDocCell(d: PersonDocs | undefined, which: 'iqama' | 'license') {
+  if (!d) return '';
+  const date = which === 'iqama' ? d.iqamaExpiry : d.licenseExpiry;
+  const state = which === 'iqama' ? d.iqamaState : d.licenseState;
+  if (!date) return docStateLabel('missing', true);
+  return state === 'expired' || state === 'soon' ? `${date.slice(0, 10)} (${docStateLabel(state, true)})` : date.slice(0, 10);
+}
 
 // ورقةُ التفويض كاملةً: مَن، وبأيّ إقامة، وبأيّ رقم، ومن متى إلى متى. وناقصُها
 // لا يُقرأ: اسمٌ بلا رقمِ تفويضٍ ولا مدّة لا يُثبِت صفةَ السائق أمام أحد.

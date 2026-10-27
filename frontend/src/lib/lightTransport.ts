@@ -1,3 +1,4 @@
+import { docStateLabel, type PersonDocs } from '@/components/system/PersonDocDate';
 /**
  * النقلُ الخفيف — أنواعُه ونداءاتُه وأعمدةُ جدوله.
  *
@@ -9,7 +10,7 @@
 import api from '@/lib/api';
 import { FINANCE_FULL_ROLES } from '@/lib/financeAuthority';
 
-export interface LTEmployee {
+export interface LTEmployee extends PersonDocs {
   _id: string;
   idNumber: string;
   name: string;
@@ -492,6 +493,10 @@ export const LT_COLUMNS: LTCol[] = [
   // مَن على المركبة هنا هو قائدُها الفعليّ في سجلّ المركبات — يُكتب هناك تلقائيًّا.
   { key: 'name', ar: 'الاسم (القائد الفعلي)', en: 'Name (actual driver)', get: (e) => e.name, width: 30 },
   { key: 'idNumber', ar: 'رقم الهوية', en: 'ID number', get: (e) => e.idNumber, width: 14, mono: true },
+  // انتهاءُ الإقامة ورخصةِ القيادة من ملفّه في الموارد البشريّة (٢٠٢٦/١٠/٢٧).
+  // القيمةُ حالتُه — بها يُفلتَر العمود — والخليّةُ ترسم التاريخَ ملوَّنًا بها.
+  { key: 'iqamaExp', ar: 'انتهاء الإقامة', en: 'Iqama expiry', get: (e) => docStateLabel(e.iqamaState, true), width: 16 },
+  { key: 'licenseExp', ar: 'انتهاء رخصة القيادة', en: 'Licence expiry', get: (e) => docStateLabel(e.licenseState, true), width: 16 },
   { key: 'jobTitleAr', ar: 'الوظيفة', en: 'Job', get: (e) => e.jobTitleAr || '', width: 12 },
   { key: 'staffKind', ar: 'النوع', en: 'Kind', get: (e) => KIND_AR[e.staffKind || ''] || '', width: 10 },
   { key: 'projectAr', ar: 'المشروع', en: 'Project', get: (e) => e.projectAr || '', width: 14 },

@@ -744,8 +744,12 @@ exports.list = async (req, res) => {
       for (const r of riders) ltByVehicle.set(String(r.vehicle), r);
     }
 
+    // انتهاءُ إقامة المفوَّض ورخصةِ قيادته — من ملفّه (utils/personDocDates).
+    const personDocs = await require('../utils/personDocDates').docDatesFor(
+      vehicles.map((v) => ({ idNumber: v.authorizedPerson?.iqamaNumber })));
     const withStatus = vehicles.map((v) => {
       const row = decorate(v, cfg);
+      if (String(v.authorizedPerson?.iqamaNumber || '').trim()) row.personDocs = personDocs({ idNumber: v.authorizedPerson.iqamaNumber });
       const lt = ltByVehicle.get(String(v._id));
       if (lt) {
         row.ltCityAr = lt.cityAr || '';
@@ -3835,7 +3839,9 @@ exports.listDriverCards = async (req, res) => {
       const n = String(c.cardNumber || '').trim();
       return !!n && !NO_CARD.test(n);
     };
-    cards = cards.map((c) => ({ ...c, hasCard: hasCard(c), ...(cardEnded(ended, c) ? { ended: true } : {}) }));
+    // وانتهاءُ إقامته ورخصةِ قيادته من ملفّه في الموارد البشريّة (utils/personDocDates).
+    const docs = await require('../utils/personDocDates').docDatesFor(cards);
+    cards = cards.map((c) => ({ ...c, ...docs(c), hasCard: hasCard(c), ...(cardEnded(ended, c) ? { ended: true } : {}) }));
     // وتُفلتَر بعد الاشتقاق كما تُفلتَر الشريحة.
     if (q.has === 'yes') cards = cards.filter((c) => c.hasCard);
     if (q.has === 'no') cards = cards.filter((c) => !c.hasCard);

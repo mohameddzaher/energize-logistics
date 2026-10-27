@@ -854,6 +854,9 @@ exports.listDrivers = async (req, res) => {
         : null;
       d.seatMates = mates.length;
     }
+    // وانتهاءُ إقامته ورخصةِ قيادته من ملفّه (utils/personDocDates).
+    const docs = await require('../utils/personDocDates').docDatesFor(drivers.map((d) => ({ idNumber: d.iqama, employee: d.employee })));
+    for (const d of drivers) Object.assign(d, docs({ idNumber: d.iqama, employee: d.employee }));
     res.json({ drivers });
   } catch (error) {
     res.status(500).json({ message: 'Failed to load drivers' });

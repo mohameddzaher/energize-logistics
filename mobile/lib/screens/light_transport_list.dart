@@ -11,6 +11,7 @@ import '../ui/lookup_field.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import '../ui/search_field.dart';
+import '../ui/person_docs.dart';
 import 'b2c_column_filter.dart';
 import 'light_transport_add.dart';
 import 'light_transport_profile.dart';
@@ -73,6 +74,11 @@ final ltColumns = <ColDef>[
   ColDef('operatingCardNumber', 'رقم كارت التشغيل', 'Operating card no.', (e) => _s(_m(e['operatingCard']), 'number')),
   ColDef('operatingCardExpiry', 'انتهاء كارت التشغيل', 'Operating card expiry', (e) => _ymd(_m(e['operatingCard'])?['expiryDate'])),
   ColDef('inspectionExpiry', 'انتهاء الفحص', 'Inspection expiry', (e) => _ymd(_m(e['inspection'])?['expiryDate'])),
+  // انتهاءُ الإقامة ورخصةِ القيادة من ملفّه في الموارد البشريّة، وحالتُهما للفلترة.
+  ColDef('iqamaExpiry', 'انتهاء الإقامة', 'Iqama expiry', (e) => personDocDate(e, 'iqama')),
+  ColDef('iqamaState', 'حالة الإقامة', 'Iqama status', (e) => personDocState(e, 'iqama')),
+  ColDef('licenseExpiry', 'انتهاء رخصة القيادة', 'Licence expiry', (e) => personDocDate(e, 'license')),
+  ColDef('licenseState', 'حالة رخصة القيادة', 'Licence status', (e) => personDocState(e, 'license')),
   ColDef('hrLinked', 'ملفّ الموارد البشرية', 'HR file', (e) => e['hrLinked'] == true ? (_s(e, 'employeeNumber').isEmpty ? 'مربوط' : _s(e, 'employeeNumber')) : 'لا ملفّ'),
   ColDef('notesAr', 'ملاحظات', 'Notes', (e) => _s(e, 'notesAr')),
 ];
@@ -722,6 +728,7 @@ class _LightTransportListScreenState extends State<LightTransportListScreen> {
                   if (e['hrLinked'] == false) const Chip2('بلا ملفّ HR', T.warn),
                   if (card != null) Chip2(card, T.danger),
                   if (insp != null) Chip2(insp, T.danger),
+                  for (final c in personDocChips(e)) Chip2(c.$1, c.$2),
                 ]),
               ]),
             ),

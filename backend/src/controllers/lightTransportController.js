@@ -271,7 +271,9 @@ exports.listEmployees = async (req, res) => {
     await BOARD.markHrLeave(rows);
     await require('../utils/ltRental').markRentals(rows);
     const alerts = await docAlerts();
-    rows = rows.map((r) => decorate(r, alerts));
+    // وانتهاءُ إقامة المندوب ورخصةِ قيادته من ملفّه (utils/personDocDates).
+    const personDocs = await require('../utils/personDocDates').docDatesFor(rows);
+    rows = rows.map((r) => ({ ...decorate(r, alerts), ...personDocs(r) }));
     /**
      * ── وفلاترُ اللوحة تُطبَّق بمعناها في اللوحة ──────────────────────────────
      * الحالةُ والفئةُ ونوعُ الارتباط والسجلُّ والمندوبُ والمركبةُ والتفويض —

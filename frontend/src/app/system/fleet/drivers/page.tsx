@@ -19,6 +19,8 @@ import {
 import ExportMenu from '@/components/ls2/ExportMenu';
 import { FleetDriver, FleetVehicle, foldAr, canEditFleet, canAdminFleet } from '@/lib/fleet';
 import ScrollX from '@/components/system/ScrollX';
+import { useColumnFilters } from '@/hooks/useColumnFilters';
+import { PersonDocDate, docStateLabel, personDocExportColumns } from '@/components/system/PersonDocDate';
 
 const EMPTY = { name: '', phone: '', iqama: '', iban: '', nationality: '', working: true, onSponsorship: true, vehicle: '', notes: '' };
 
@@ -39,6 +41,7 @@ const DRIVER_COLUMNS = [
   { header: 'Employee no.', key: 'hr', transform: (v: any) => v?.employeeNumber || '', width: 12 },
   { header: 'Phone', key: 'phone', width: 16 },
   { header: 'Iqama', key: 'iqama', width: 16 },
+  ...personDocExportColumns(false),
   { header: 'IBAN', key: 'iban', width: 30 },
   { header: 'Nationality', key: 'nationality', width: 14 },
   { header: 'Vehicle', key: 'vehicle', transform: (v: any) => (v && typeof v === 'object' ? v.plate : ''), width: 16 },
@@ -262,6 +265,12 @@ export default function FleetDriversPage() {
     return [d.name, d.phone, d.iqama, vehPlate(d), mateOf(d)?.name, mateOf(d)?.phone]
       .some((v) => foldAr(String(v || '')).includes(s));
   });
+  // وانتهاءُ الإقامة ورخصةِ القيادة: قمعٌ على رأس عموديهما بالحالة لا بالتاريخ.
+  const cf = useColumnFilters<FleetDriver>({
+    iqamaExp: (d) => docStateLabel(d.iqamaState, ar),
+    licenseExp: (d) => docStateLabel(d.licenseState, ar),
+  }, filtered, ar ? 'ar' : 'en');
+  const shown = cf.apply(filtered);
 
   // صفوفُ التصدير تحمل الزميلَ منسوخًا — ExportMenu يقرأ مفاتيحَ الصفّ لا دوالَّ
   // الشاشة، فلولا النسخُ لخرج العمودُ فارغًا في الملفّ.
@@ -286,7 +295,7 @@ export default function FleetDriversPage() {
           : `${drivers.length} drivers · ${working} working · ${unassigned} unassigned · ${pairedTrucks} trucks with two drivers — move a driver between trucks right from the table`}>
         <ExportMenu lang={ar ? 'ar' : 'en'} fileName="fleet-drivers"
           options={[
-            { key: 'view', label: ar ? 'المعروض حسب الفلتر' : 'Filtered view', sheets: [{ name: 'Drivers', rows: withMate(filtered) as any[], columns: DRIVER_COLUMNS }] },
+            { key: 'view', label: ar ? 'المعروض حسب الفلتر' : 'Filtered view', sheets: [{ name: 'Drivers', rows: withMate(shown) as any[], columns: DRIVER_COLUMNS }] },
             { key: 'all', label: ar ? 'كل السائقين' : 'All drivers', sheets: [{ name: 'Drivers', rows: withMate(drivers) as any[], columns: DRIVER_COLUMNS }] },
           ]} />
         {editor && <PrimaryButton onClick={openCreate}><Plus className="w-4 h-4" /> {ar ? 'إضافة سائق' : 'Add driver'}</PrimaryButton>}
@@ -328,11 +337,13 @@ export default function FleetDriversPage() {
       </div>
 
       <ScrollX className="bg-white border border-slate-200 rounded-xl shadow-sm">
-        <table className="w-full text-sm">
+        <table className="w-full text-sm whitespace-nowrap">
           <thead><tr className="bg-slate-900 border-b border-slate-200 text-slate-300">
             <th className={th}>{ar ? 'الاسم' : 'Name'}</th>
             <th className={th}>{ar ? 'الجوال' : 'Phone'}</th>
             <th className={th}>{ar ? 'الإقامة' : 'Iqama'}</th>
+            <th className={th}>{cf.head('iqamaExp', ar ? 'انتهاء الإقامة' : 'Iqama expiry')}</th>
+            <th className={th}>{cf.head('licenseExp', ar ? 'انتهاء رخصة القيادة' : 'Licence expiry')}</th>
             <th className={th}>{ar ? 'الحالة' : 'Status'}</th>
             <th className={th}>{ar ? 'الكفالة' : 'Sponsorship'}</th>
             <th className={th}>{ar ? 'السيارة' : 'Vehicle'}</th>
@@ -341,7 +352,7 @@ export default function FleetDriversPage() {
             <th className={th}>{ar ? 'إجراءات' : 'Actions'}</th>
           </tr></thead>
           <tbody>
-            {filtered.map((d) => (
+            {shown.map((d) => (
               <tr key={d._id} className={`border-b border-slate-200/70 hover:bg-slate-50 ${rowBusy === d._id ? 'opacity-50' : ''}`}>
                 <td className="px-4 py-3 text-slate-900 font-semibold whitespace-nowrap">
                   {d.name}
@@ -352,6 +363,8 @@ export default function FleetDriversPage() {
                 </td>
                 <td className="px-4 py-3 text-slate-700 whitespace-nowrap" dir="ltr">{d.phone || '—'}</td>
                 <td className="px-4 py-3 text-slate-700 font-mono">{d.iqama || '—'}</td>
+                <td className="px-4 py-3"><PersonDocDate ar={ar} date={d.iqamaExpiry} state={d.iqamaState} /></td>
+                <td className="px-4 py-3"><PersonDocDate ar={ar} date={d.licenseExpiry} state={d.licenseState} /></td>
                 <td className="px-4 py-3">
                   {/* The badge itself is the toggle — one click flips يعمل/لا يعمل. */}
                   {/* ما تقوله الموارد البشريّة (إجازة/إيقاف/إنهاء خدمة) لا يُبدَّل من هنا. */}
@@ -456,8 +469,8 @@ export default function FleetDriversPage() {
                 </td>
               </tr>
             ))}
-            {filtered.length === 0 && (
-              <tr><td colSpan={9} className="text-center text-slate-500 py-12">
+            {shown.length === 0 && (
+              <tr><td colSpan={11} className="text-center text-slate-500 py-12">
                 {drivers.length === 0
                   ? (ar ? 'لا يوجد سائقون بعد.' : 'No drivers yet.')
                   : (ar ? 'لا نتائج مطابقة للبحث.' : 'No matches.')}

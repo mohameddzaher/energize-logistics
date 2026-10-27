@@ -1,3 +1,4 @@
+import '../ui/person_docs.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/api.dart';
@@ -71,7 +72,7 @@ class _VehicleDriverCardsScreenState extends State<VehicleDriverCardsScreen> {
   String _q = '';
   final _qc = TextEditingController();
   late String _fState = widget.initialState;
-  String _fReg = '', _fType = '', _fFid = '', _fClass = '', _fHas = '';
+  String _fReg = '', _fType = '', _fFid = '', _fClass = '', _fHas = '', _fIqama = '', _fLicense = '';
   int _seq = 0;
   late final void Function() _onLive;
 
@@ -129,6 +130,8 @@ class _VehicleDriverCardsScreenState extends State<VehicleDriverCardsScreen> {
       if (_fReg.isNotEmpty && _s(c['logisticRegister']) != _fReg) return false;
       if (_fType.isNotEmpty && _s(c['cardType']) != _fType) return false;
       if (_fFid.isNotEmpty && _s((c['fidelity'] as Map?)?['status']) != _fFid) return false;
+      if (_fIqama.isNotEmpty && _s(c['iqamaState']) != _fIqama) return false;
+      if (_fLicense.isNotEmpty && _s(c['licenseState']) != _fLicense) return false;
       if (n.isEmpty) return true;
       final emp = c['employee'] is Map ? c['employee'] as Map : const {};
       return [c['name'], c['idNumber'], c['cardNumber'], c['absherPhone'], c['logisticRegister'], c['cardType'], c['notes'],
@@ -137,7 +140,7 @@ class _VehicleDriverCardsScreenState extends State<VehicleDriverCardsScreen> {
     }).toList();
   }
 
-  int get _activeF => [_fState, _fReg, _fType, _fFid, _fHas, _fClass].where((x) => x.isNotEmpty).length;
+  int get _activeF => [_fState, _fReg, _fType, _fFid, _fHas, _fClass, _fIqama, _fLicense].where((x) => x.isNotEmpty).length;
 
   List<ExportCol> get _cols => [
         ExportCol('رقم الهوية', 'ID number', (r) => r['idNumber']),
@@ -151,6 +154,10 @@ class _VehicleDriverCardsScreenState extends State<VehicleDriverCardsScreen> {
         ExportCol('تاريخ الانتهاء', 'Expiry', (r) => r['expiryDate']),
         ExportCol('الأيام المتبقية', 'Days left', (r) => r['daysLeft']),
         ExportCol('خيانة الأمانة', 'Fidelity insurance', (r) { final f = _fid((r['fidelity'] as Map?)?['status']); return tr(f.$1, f.$2); }),
+        ExportCol('انتهاء الإقامة', 'Iqama expiry', (r) => personDocDate(r, 'iqama')),
+        ExportCol('حالة الإقامة', 'Iqama status', (r) => personDocState(r, 'iqama')),
+        ExportCol('انتهاء رخصة القيادة', 'Licence expiry', (r) => personDocDate(r, 'license')),
+        ExportCol('حالة رخصة القيادة', 'Licence status', (r) => personDocState(r, 'license')),
         ExportCol('عدد التفاويض', 'Authorisations', (r) => ((r['authorizations'] as List?) ?? []).length),
         ExportCol('المركبات المفوَّضة', 'Authorised vehicles', (r) => ((r['authorizations'] as List?) ?? []).map((a) => _s((a as Map)['plateNumber'])).where((x) => x.isNotEmpty).join(' · ')),
         ExportCol('ملاحظات', 'Notes', (r) => r['notes']),
@@ -283,6 +290,10 @@ class _VehicleDriverCardsScreenState extends State<VehicleDriverCardsScreen> {
         kv(tr('الانتهاء', 'Expiry'), Text(_s(c['expiryDate']).isEmpty ? '—' : _s(c['expiryDate']), style: v)),
         kv(tr('المتبقي', 'Days left'), Text(c['daysLeft'] == null ? '—' : '${c['daysLeft']}', style: v)),
         kv(tr('خيانة الأمانة', 'Fidelity'), Align(alignment: AlignmentDirectional.centerStart, child: Chip2(tr(fi.$1, fi.$2), fi.$3))),
+        // وانتهاءُ إقامته ورخصةِ قيادته — من ملفّه في الموارد البشريّة.
+        for (final (ar, en, which) in [('انتهاء الإقامة', 'Iqama expiry', 'iqama'), ('انتهاء رخصة القيادة', 'Licence expiry', 'license')])
+          kv(tr(ar, en), Align(alignment: AlignmentDirectional.centerStart,
+              child: Chip2(personDocValue(c, which).$1, personDocValue(c, which).$2))),
         // اللوحاتُ تُفتَح: الصفُّ يجيب «ما بيده؟» ثمّ يوصل إليه.
         kv(tr('التفاويض', 'Authorisations'), auths.isEmpty
             ? Text('—', style: v.copyWith(color: T.inkFaint))
@@ -361,9 +372,13 @@ class _VehicleDriverCardsScreenState extends State<VehicleDriverCardsScreen> {
                           [for (final o in _optClass) (_s(o['code']), tr(_s(o['ar']), _s(o['en'])))], (x) => _fClass = x),
                       _filterChip(tr('خيانة الأمانة', 'Fidelity insurance'), _fFid, tr('خيانة الأمانة — الكل', 'Fidelity — all'),
                           [('covered', tr('مشمول', 'Covered')), ('required', tr('مطلوب ضمُّه', 'Required'))], (x) => _fFid = x),
+                      _filterChip(tr('انتهاء الإقامة', 'Iqama expiry'), _fIqama, tr('الإقامة — الكل', 'Iqama — all'),
+                          [for (final o in personDocStates) (o.$1, tr(o.$2, o.$3))], (x) => _fIqama = x),
+                      _filterChip(tr('انتهاء رخصة القيادة', 'Licence expiry'), _fLicense, tr('رخصة القيادة — الكل', 'Licence — all'),
+                          [for (final o in personDocStates) (o.$1, tr(o.$2, o.$3))], (x) => _fLicense = x),
                       if (_activeF > 0 || _q.isNotEmpty)
                         TextButton.icon(
-                          onPressed: () => setState(() { _fState = ''; _fReg = ''; _fType = ''; _fFid = ''; _fClass = ''; _q = ''; _qc.clear(); }),
+                          onPressed: () => setState(() { _fState = ''; _fReg = ''; _fType = ''; _fFid = ''; _fClass = ''; _fIqama = ''; _fLicense = ''; _q = ''; _qc.clear(); }),
                           icon: const Icon(Icons.restart_alt, size: 16),
                           label: Text(tr('مسح', 'Clear')),
                         ),

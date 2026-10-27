@@ -29,6 +29,8 @@ import { OrderSupplier, OrderVehicle, OrderDriver, FormField, optionLabel, canEd
 import { useLatestRequest } from '@/hooks/useLatestRequest';
 import { ContactButtons } from '@/components/crm/CrmKit';
 import ScrollX from '@/components/system/ScrollX';
+import { useColumnFilters } from '@/hooks/useColumnFilters';
+import { PersonDocDate, docStateLabel, personDocExportColumns } from '@/components/system/PersonDocDate';
 
 const EMPTY_SUPPLIER = { name: '', type: 'company' as 'company' | 'freelancer', phone: '', email: '', notes: '' };
 const EMPTY_VEHICLE = {
@@ -297,6 +299,7 @@ export default function FleetPage() {
     { header: ar ? 'الجوال' : 'Phone', key: 'phone', width: 16 },
     { header: ar ? 'الجنسية' : 'Nationality', key: 'nationality', width: 16 },
     { header: ar ? 'رقم الإقامة' : 'Iqama', key: 'residenceNumber', width: 16 },
+    ...personDocExportColumns(ar),
     { header: ar ? 'بطاقة التشغيل' : 'Driver card', key: 'driverCardNumber', width: 16 },
     { header: ar ? 'انتهاء البطاقة' : 'Card expiry', key: 'driverCardExpiry', width: 14 },
     { header: ar ? 'المورّد' : 'Supplier', key: 'supplier', width: 28, transform: (v: any) => v?.name || '' },
@@ -315,6 +318,13 @@ export default function FleetPage() {
     if (days <= 30) return { cls: 'bg-amber-500/15 text-amber-700', label: ar ? `تنتهي بعد ${days} يوم` : `${days} days left` };
     return { cls: 'bg-emerald-500/15 text-emerald-700', label: x };
   };
+
+  // انتهاءُ الإقامة ورخصةِ القيادة: قمعٌ على رأس عموديهما بالحالة لا بالتاريخ.
+  const cf = useColumnFilters<OrderDriver>({
+    iqamaExp: (d) => docStateLabel(d.iqamaState, ar),
+    licenseExp: (d) => docStateLabel(d.licenseState, ar),
+  }, drivers, ar ? 'ar' : 'en');
+  const shownDrivers = cf.apply(drivers);
 
   if (loading) return <Spinner />;
 
@@ -335,7 +345,7 @@ export default function FleetPage() {
             tab === 'vehicles'
               ? { key: 'tab', label: exportScopeLabels(ar).shown, sheets: [{ name: ar ? 'المركبات' : 'Vehicles', rows: shownVehicles as any[], columns: vehicleCols }] }
               : tab === 'drivers'
-                ? { key: 'tab', label: exportScopeLabels(ar).shown, sheets: [{ name: ar ? 'السائقون' : 'Drivers', rows: drivers as any[], columns: driverCols }] }
+                ? { key: 'tab', label: exportScopeLabels(ar).shown, sheets: [{ name: ar ? 'السائقون' : 'Drivers', rows: shownDrivers as any[], columns: driverCols }] }
                 : { key: 'tab', label: exportScopeLabels(ar).shown, sheets: [{ name: ar ? 'الموردون' : 'Suppliers', rows: shownSuppliers as any[], columns: supplierCols }] },
             {
               // ── والتصديرُ الكامل يُجلَب عند طلبه ─────────────────────────
@@ -638,12 +648,14 @@ export default function FleetPage() {
           ومتى تنتهي، ومَن كفيلُه، وعلى أيّ شاحنةٍ هو ولأيّ مورّد. */}
       {tab === 'drivers' && (
         <ScrollX className="bg-white border border-slate-200 rounded-xl shadow-sm">
-          <table className="w-full text-sm">
+          <table className="w-full text-sm whitespace-nowrap">
             <thead><tr className="bg-slate-900 border-b border-slate-200 text-slate-300">
               <th className={th}>{ar ? 'السائق' : 'Driver'}</th>
               <th className={th}>{ar ? 'الجوال' : 'Phone'}</th>
               <th className={th}>{ar ? 'الجنسية' : 'Nationality'}</th>
               <th className={th}>{ar ? 'رقم الإقامة' : 'Iqama'}</th>
+              <th className={th}>{cf.head('iqamaExp', ar ? 'انتهاء الإقامة' : 'Iqama expiry')}</th>
+              <th className={th}>{cf.head('licenseExp', ar ? 'انتهاء رخصة القيادة' : 'Licence expiry')}</th>
               <th className={th}>{ar ? 'بطاقة التشغيل' : 'Driver card'}</th>
               <th className={th}>{ar ? 'انتهاؤها' : 'Expires'}</th>
               <th className={th}>{ar ? 'المورّد' : 'Supplier'}</th>
@@ -651,7 +663,7 @@ export default function FleetPage() {
               <th className={th}>{ar ? 'إجراءات' : 'Actions'}</th>
             </tr></thead>
             <tbody>
-              {drivers.map((d) => {
+              {shownDrivers.map((d) => {
                 const card = cardState(d);
                 const sup = typeof d.supplier === 'object' && d.supplier ? d.supplier : null;
                 const veh = typeof d.vehicle === 'object' && d.vehicle ? d.vehicle : null;
@@ -677,6 +689,8 @@ export default function FleetPage() {
                     </td>
                     <td className="px-4 py-3 text-slate-700">{d.nationality || '—'}</td>
                     <td className="px-4 py-3 font-mono text-slate-700">{d.residenceNumber || '—'}</td>
+                    <td className="px-4 py-3"><PersonDocDate ar={ar} date={d.iqamaExpiry} state={d.iqamaState} /></td>
+                    <td className="px-4 py-3"><PersonDocDate ar={ar} date={d.licenseExpiry} state={d.licenseState} /></td>
                     <td className="px-4 py-3 font-mono text-slate-700">{d.driverCardNumber || '—'}</td>
                     <td className="px-4 py-3 whitespace-nowrap">
                       {d.driverCardExpiry
@@ -698,7 +712,7 @@ export default function FleetPage() {
                   </tr>
                 );
               })}
-              {drivers.length === 0 && <tr><td colSpan={9} className="text-center text-slate-500 py-12">
+              {shownDrivers.length === 0 && <tr><td colSpan={11} className="text-center text-slate-500 py-12">
                 {search.trim()
                   ? (ar ? 'لا سائقَ يطابق البحث — جرّب رقم الإقامة.' : 'No driver matches — try the iqama number.')
                   : (ar ? 'لا سائقين بعد.' : 'No drivers yet.')}

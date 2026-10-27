@@ -12,6 +12,7 @@ import { fmt } from '@/utils/exportExcel';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import { useLanguage } from '@/context/LanguageContext';
 import { useColumnFilters } from '@/hooks/useColumnFilters';
+import { PersonDocDate, docStateLabel, personDocExportColumns } from '@/components/system/PersonDocDate';
 import { getDriversTranslations, getDriversExtraTranslations } from '@/lib/translations';
 
 interface Branch {
@@ -117,6 +118,7 @@ export default function DriversPage() {
     { header: 'Name', key: 'name', width: 20 },
     { header: 'Phone', key: 'phone', width: 16 },
     { header: 'ID Number', key: 'idNumber', width: 16 },
+    ...personDocExportColumns(lang === 'ar'),
     { header: 'Branch', key: 'branch.name', width: 16 },
     { header: 'Total Paid', key: 'totalPaid', transform: fmt.money, width: 14 },
     { header: 'Status', key: 'isActive', transform: (v: boolean) => v ? 'Active' : 'Inactive', width: 10 },
@@ -138,6 +140,9 @@ export default function DriversPage() {
     idNumber: (d) => d.idNumber || '',
     branch: (d) => d.branch?.name || '',
     status: (d) => (d.isActive ? T.active : T.inactive),
+    // يُفلتَر بالحالة لا بالتاريخ: منتهية / خلال 30 يومًا / سارية / غير مسجَّلة.
+    iqamaExp: (d) => docStateLabel(d.iqamaState, lang === 'ar'),
+    licenseExp: (d) => docStateLabel(d.licenseState, lang === 'ar'),
   }, filtered, lang === 'ar' ? 'ar' : 'en');
   const shown = cf.apply(filtered);
 
@@ -185,6 +190,8 @@ export default function DriversPage() {
               <th className="text-start text-slate-300 font-semibold px-4 py-3">{cf.head('name', T.name)}</th>
               <th className="text-start text-slate-300 font-semibold px-4 py-3">{cf.head('phone', T.phone)}</th>
               <th className="text-start text-slate-300 font-semibold px-4 py-3">{cf.head('idNumber', T.idNumber)}</th>
+              <th className="text-start text-slate-300 font-semibold px-4 py-3">{cf.head('iqamaExp', lang === 'ar' ? 'انتهاء الإقامة' : 'Iqama expiry')}</th>
+              <th className="text-start text-slate-300 font-semibold px-4 py-3">{cf.head('licenseExp', lang === 'ar' ? 'انتهاء رخصة القيادة' : 'Licence expiry')}</th>
               <th className="text-start text-slate-300 font-semibold px-4 py-3">{cf.head('branch', T.branch)}</th>
               <th className="text-start text-slate-300 font-semibold px-4 py-3">{T.totalPaid}</th>
               <th className="text-start text-slate-300 font-semibold px-4 py-3">{cf.head('status', T.status)}</th>
@@ -193,12 +200,14 @@ export default function DriversPage() {
           </thead>
           <tbody>
             {shown.length === 0 ? (
-              <tr><td colSpan={(canEdit || isSuperAdmin) ? 8 : 6} className="text-center text-slate-800 py-12">{T.noDrivers}</td></tr>
+              <tr><td colSpan={(canEdit || isSuperAdmin) ? 9 : 8} className="text-center text-slate-800 py-12">{T.noDrivers}</td></tr>
             ) : shown.map((d) => (
               <tr key={d._id} className="border-b border-slate-200/70 hover:bg-slate-100 transition-colors">
                 <td className="px-4 py-3 text-slate-900 font-medium">{d.name}</td>
                 <td className="px-4 py-3 text-slate-700">{d.phone || '—'}</td>
                 <td className="px-4 py-3 text-slate-700">{d.idNumber || '—'}</td>
+                <td className="px-4 py-3"><PersonDocDate ar={lang === 'ar'} date={d.iqamaExpiry} state={d.iqamaState} /></td>
+                <td className="px-4 py-3"><PersonDocDate ar={lang === 'ar'} date={d.licenseExpiry} state={d.licenseState} /></td>
                 <td className="px-4 py-3 text-slate-700">{d.branch?.name || '—'}</td>
                 <td className="px-4 py-3 text-slate-700">{(d.totalPaid || 0).toLocaleString()} {txx.sar}</td>
                 <td className="px-4 py-3">

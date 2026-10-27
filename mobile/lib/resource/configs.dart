@@ -1330,7 +1330,8 @@ ResourceConfig _collectionsPartyCfg({required bool customer}) => ResourceConfig(
       // الكودُ أوّلَ السطر: هو هويّةُ الحساب في المحاسبة وفي كلّ مراسلة، ومَن
       // يتولّاه أوّلُ ما يُسأل عنه حين يتأخّر.
       // المسؤولُ الفعليّ: ما لم يُسنَد فعلى مدير القسم — لا خانةَ فارغة.
-      subtitleOf: (r) => [_s(r, 'code'), _s(r, 'effectiveOfficer').isNotEmpty ? _s(r, 'effectiveOfficer') : _s(r, 'collectionOfficer'), _s(r, 'city'), _s(r, 'phone')]
+      // الكودُ من السجلّ، وإلّا من فواتير الدفتر (codeShown في الخادم).
+      subtitleOf: (r) => [_s(r, 'codeShown').isNotEmpty ? _s(r, 'codeShown') : _s(r, 'code'), _s(r, 'effectiveOfficer').isNotEmpty ? _s(r, 'effectiveOfficer') : _s(r, 'collectionOfficer'), _s(r, 'city'), _s(r, 'phone')]
           .where((x) => x.isNotEmpty)
           .join(' · '),
       chipsOf: (r) {

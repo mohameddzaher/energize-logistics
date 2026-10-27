@@ -207,6 +207,11 @@ async function ledgerMoneyByParty() {
         outstanding: { $sum: { $cond: [open, CollectionInvoice.remainingExpr, 0] } },
         openInvoices: { $sum: { $cond: [open, 1, 0] } },
         lastCollectedAt: { $max: '$collectionDate' },
+        // ── وكودُ الحساب كما في الدفتر ─────────────────────────────────────
+        // الكودُ مكتوبٌ على فواتير الدفتر، وسجلُّ العميل قد يكون بلا كود (بُني من
+        // أسماء كشوف التشغيل) — فيُقرأ من فواتيره (٢٠٢٦/١٠/٢٧).
+        codes: { $addToSet: '$partyCode' },
+        sheetCodes: { $addToSet: '$sheetCode' },
       } },
     ]);
     return new Map(rows.map((r) => [String(r._id), r]));
@@ -223,7 +228,7 @@ const withStats = (party, stats, money) => {
     lastReportAt: s.lastReportAt, lastSettledAt: s.lastSettledAt,
     nameVariants: (s.names || []).length > 1 ? s.names.map((n) => n.name) : [],
   };
-  if (!money) return base;
+  if (!money) return { ...base, codeShown: party.code || '' };
   const m = money.get(String(party._id)) || NO_MONEY;
   return {
     ...base,
@@ -234,6 +239,8 @@ const withStats = (party, stats, money) => {
     openInvoices: m.openInvoices,
     lastSettledAt: m.lastCollectedAt || null,
     moneySource: 'ledger',
+    // الكودُ المعروض: كودُ السجلّ، وإلّا كودُ الحساب من فواتير الدفتر.
+    codeShown: party.code || [...new Set([...(m.codes || []), ...(m.sheetCodes || [])].map((c) => String(c || '').trim()).filter(Boolean))].sort().join(' · '),
   };
 };
 
@@ -296,8 +303,10 @@ exports.listParties = async (req, res) => {
         //
         // وصفحةُ أعمار الديون كانت تبحث في الألقاب أصلًا؛ هذه وحدَها لم تكن.
         { aliases: rx }, { aliasKeys: rx },
-        // وكودُ الحساب هو ما يُنسَخ من الورقة كذلك.
+        // وكودُ الحساب هو ما يُنسَخ من الورقة كذلك — في السجلّ، أو على فواتير
+        // الدفتر حين يكون السجلُّ بلا كود (راجع codeShown).
         { code: rx },
+        { _id: { $in: await require('../models/CollectionInvoice').distinct('party', { party: { $ne: null }, $or: [{ partyCode: rx }, { sheetCode: rx }] }) } },
         { collectionOfficer: rx },
         { phone: rx }, { email: rx },
         { contactPerson: rx }, { contactPhone: rx },

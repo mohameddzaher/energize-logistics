@@ -279,9 +279,9 @@ export default function CasesPage() {
                     <td className="px-2 py-2.5 text-slate-400">
                       <ChevronDown className={`w-4 h-4 transition-transform ${open === p.key ? '' : (isRTL ? 'rotate-90' : '-rotate-90')}`} />
                     </td>
-                    <td className="px-3 py-2.5 max-w-[260px]">
+                    <td className="px-3 py-2.5 min-w-[240px] max-w-[340px] leading-snug">
                       <button type="button" onClick={(e) => { e.stopPropagation(); router.push(`/system/collections-dept/parties/${p.party}`); }}
-                        className="font-semibold text-slate-800 hover:text-[#f37121] hover:underline text-start truncate block max-w-full" title={p.name}>{p.name}</button>
+                        className="font-semibold text-slate-800 hover:text-[#f37121] hover:underline text-start block max-w-full" title={p.name}>{p.name}</button>
                       {p.code ? <span className="text-[10px] text-slate-400">{p.code}</span> : null}
                     </td>
                     <td className="px-3 py-2.5 whitespace-nowrap">

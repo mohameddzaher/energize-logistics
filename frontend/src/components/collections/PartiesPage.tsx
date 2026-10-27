@@ -237,13 +237,18 @@ export default function CollectionsPartiesPage({ kind }: { kind: PartyKind }) {
   );
 
   const allCols: Col[] = [
+    // ── الترتيب: ما يُعمَل به أوّلًا، وما تخلو منه أكثرُ الشركات في الآخر ──
+    // (صاحبُ الشركة، ٢٠٢٦/١٠/٢٧): السجلُّ التجاريُّ والرقمُ الضريبيُّ والآيبان
+    // وشروطُ السداد فارغةٌ لأغلب العملاء، فلا تتقدّم على ما يُبحث عنه.
     { header: t('الاسم', 'Name'), key: 'name', width: 32, cell: nameCell },
-    { header: t('التواصل', 'Contact'), key: 'phone', width: 22, cell: contactCell },
-    { header: t('مسؤول التواصل', 'Contact person'), key: 'contactPerson', width: 20 },
-    { header: t('الكود', 'Code'), key: 'code', width: 14 },
-    { header: t('موظف التحصيل', 'Officer'), key: 'effectiveOfficer', width: 16 },
-    { header: t('المدينة', 'City'), key: 'city', width: 14 },
-    { header: t('الحالة', 'Status'), key: 'status', width: 14 },
+    // ── والكودُ بجانب الاسم ─────────────────────────────────────────────
+    // هو ما يُنسَخ من الورقة ويُبحَث به. وسجلُّ العميل قد يكون بلا كود فيُقرأ
+    // من فواتير الدفتر (codeShown في الخادم).
+    { header: t('الكود', 'Code'), key: 'code', width: 16,
+      transform: (v: any, r: any) => r.codeShown || v || '',
+      cell: (p: any) => ((p.codeShown || p.code)
+        ? <span className="font-mono text-[12.5px] text-slate-700" dir="ltr">{p.codeShown || p.code}</span>
+        : <span className="text-slate-300">—</span>) },
     ...(kind === 'customer' ? [{
       header: t('نوع الدفع', 'Payment type'), key: 'paymentType', width: 14,
       transform: (v: any) => paymentTypeLabel(v, ar),
@@ -255,12 +260,10 @@ export default function CollectionsPartiesPage({ kind }: { kind: PartyKind }) {
         </span>
       ) : <span className="text-slate-400">—</span>),
     } as Col] : []),
+    { header: t('موظف التحصيل', 'Officer'), key: 'effectiveOfficer', width: 16 },
+    { header: t('الحالة', 'Status'), key: 'status', width: 14 },
     { header: t('التقييم', 'Grade'), key: 'grade', width: 10 },
     { header: t('مهلة السداد', 'Credit days'), key: 'creditDays', width: 12, align: 'end' },
-    { header: t('السجل التجاري', 'CR'), key: 'commercialRegister', width: 16 },
-    { header: t('الرقم الضريبي', 'Tax no.'), key: 'taxNumber', width: 18 },
-    ...(kind === 'supplier' ? [{ header: t('الآيبان', 'IBAN'), key: 'iban', width: 28 } as Col] : []),
-    { header: t('شروط السداد', 'Payment terms'), key: 'paymentTerms', width: 14 },
     // الملفُّ لا يخرج بما لا يُعرَض على الشاشة.
     ...(hideMoney ? [] : ([
       { header: t('كشوف', 'Reports'), key: 'reports', width: 10, align: 'end',
@@ -278,6 +281,13 @@ export default function CollectionsPartiesPage({ kind }: { kind: PartyKind }) {
         cell: (p: any) => <span className={`tabular-nums font-semibold ${p.outstanding > 0 ? 'text-red-600' : 'text-slate-400'}`}>{money(p.outstanding)}</span> },
     ] as Col[])),
     { header: t('آخر كشف', 'Last report'), key: 'lastReportAt', width: 14, transform: (v: any) => dt(v) },
+    { header: t('التواصل', 'Contact'), key: 'phone', width: 22, cell: contactCell },
+    { header: t('مسؤول التواصل', 'Contact person'), key: 'contactPerson', width: 20 },
+    { header: t('المدينة', 'City'), key: 'city', width: 14 },
+    { header: t('السجل التجاري', 'CR'), key: 'commercialRegister', width: 16 },
+    { header: t('الرقم الضريبي', 'Tax no.'), key: 'taxNumber', width: 18 },
+    ...(kind === 'supplier' ? [{ header: t('الآيبان', 'IBAN'), key: 'iban', width: 28 } as Col] : []),
+    { header: t('شروط السداد', 'Payment terms'), key: 'paymentTerms', width: 14 },
   ];
 
   const getters = Object.fromEntries(allCols.map((c) => [c.key,
@@ -295,9 +305,11 @@ export default function CollectionsPartiesPage({ kind }: { kind: PartyKind }) {
 
   const sums = serverTotals && !cf.count ? { reports: totals.reports, ...serverTotals } : totals;
 
-  const chooserCols: ChooserColumn[] = allCols.map((c, i) => ({ key: c.key, label: c.header, locked: i === 0 }));
+  // الاسمُ والكودُ ثابتان: الكودُ هو ما يُبحَث به، واختيارٌ محفوظٌ قديمٌ كان يُخفيه.
+  const ALWAYS = ['name', 'code'];
+  const chooserCols: ChooserColumn[] = allCols.map((c) => ({ key: c.key, label: c.header, locked: ALWAYS.includes(c.key) }));
   const { visible, setVisible } = useVisibleColumns(`collections:parties:${kind}:cols`, chooserCols);
-  const visibleCols = allCols.filter((c) => visible.includes(c.key));
+  const visibleCols = allCols.filter((c) => ALWAYS.includes(c.key) || visible.includes(c.key));
 
   // التصديرُ والطباعةُ يتبعان ما على الشاشة: الأعمدةُ المختارة، والصفوفُ
   // المحدَّدة إن حُدِّدت.
@@ -400,7 +412,7 @@ export default function CollectionsPartiesPage({ kind }: { kind: PartyKind }) {
           <SearchInput
             value={q}
             onChange={setQ}
-            placeholder={t('بحث بالاسم أو الجوال أو السجل التجاري أو الرقم الضريبي أو الآيبان…', 'name, phone, CR, tax number, IBAN…')}
+            placeholder={t('بحث بالاسم أو الكود أو الجوال أو السجل التجاري أو الرقم الضريبي…', 'name, code, phone, CR, tax number…')}
           />
         </div>
         <button
@@ -540,7 +552,8 @@ export default function CollectionsPartiesPage({ kind }: { kind: PartyKind }) {
                       })} />
                   </td>
                   {visibleCols.map((c) => (
-                    <td key={c.key} className={`px-3 py-2.5 ${c.align === 'end' ? 'text-end' : ''} ${c.key === 'name' ? '' : 'whitespace-nowrap'}`}>
+                    // الاسمُ يأخذ عرضًا يُقرأ فيه في سطرٍ أو اثنين، لا عمودًا ضيّقًا يتكسّر أسطرًا.
+                    <td key={c.key} className={`px-3 py-2.5 ${c.align === 'end' ? 'text-end' : ''} ${c.key === 'name' ? 'min-w-[260px] max-w-[360px] leading-snug' : 'whitespace-nowrap'}`}>
                       {c.cell ? c.cell(p) : (
                         <span className="text-slate-600">
                           {(c.transform ? c.transform((p as any)[c.key], p) : (p as any)[c.key]) || '—'}

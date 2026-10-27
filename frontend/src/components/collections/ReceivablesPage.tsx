@@ -304,11 +304,11 @@ export default function ReceivablesPage() {
     {
       key: 'customer', ar: 'العميل', en: 'Customer', sort: 'customer', filter: 'customer',
       cell: (r) => (
-        <span className="block max-w-[240px]">
+        <span className="block min-w-[220px] max-w-[320px] leading-snug">
           {r.party ? (
             <button type="button" onClick={(e) => { e.stopPropagation(); router.push(`/system/collections-dept/parties/${r.party}`); }}
-              className="text-slate-800 hover:text-[#f37121] hover:underline text-start truncate block max-w-full" title={r.partyName}>{r.partyName || '—'}</button>
-          ) : <span className="truncate block" title={r.partyName}>{r.partyName || '—'}</span>}
+              className="text-slate-800 hover:text-[#f37121] hover:underline text-start block max-w-full" title={r.partyName}>{r.partyName || '—'}</button>
+          ) : <span className="block" title={r.partyName}>{r.partyName || '—'}</span>}
           {r.partyCode ? <span className="text-[10px] text-slate-400">{r.partyCode}</span> : null}
         </span>
       ),

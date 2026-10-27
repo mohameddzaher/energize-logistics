@@ -926,7 +926,7 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
                         })} />
                     </td>
                     {cols.map((c) => (
-                      <td key={c.key} className={`px-3 py-2.5 ${c.align === 'end' ? 'text-end' : ''} ${c.key === 'route' || c.key === 'customer' ? '' : 'whitespace-nowrap'} ${c.key === 'collectionDetail' ? 'min-w-[150px]' : ''} ${c.align === 'center' ? 'text-center' : ''}`}
+                      <td key={c.key} className={`px-3 py-2.5 ${c.align === 'end' ? 'text-end' : ''} ${c.key === 'customer' ? 'min-w-[240px] max-w-[340px] leading-snug' : c.key === 'route' ? 'min-w-[200px] max-w-[300px] leading-snug' : 'whitespace-nowrap'} ${c.key === 'collectionDetail' ? 'min-w-[150px]' : ''} ${c.align === 'center' ? 'text-center' : ''}`}
                         onClick={c.key === 'attachments' ? (e) => e.stopPropagation() : undefined}>
                         {c.cell ? c.cell(r) : (
                           <span className="text-slate-600">

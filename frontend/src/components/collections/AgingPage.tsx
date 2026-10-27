@@ -323,7 +323,7 @@ export default function AgingPage({ kind }: { kind?: 'tax' | 'cash' }) {
                 <tr key={r._id} className="hover:bg-slate-50 cursor-pointer"
                   onClick={() => router.push(`/system/collections-dept/parties/${r._id}`)}>
                   <td className="px-3 py-2.5 text-sm font-mono text-slate-600 whitespace-nowrap">{r.code || '—'}</td>
-                  <td className="px-3 py-2.5 text-sm text-slate-900 font-medium max-w-[280px] truncate" title={r.name}>{r.name}</td>
+                  <td className="px-3 py-2.5 text-sm text-slate-900 font-medium min-w-[240px] max-w-[340px] leading-snug" title={r.name}>{r.name}</td>
                   <td className="px-3 py-2.5 text-sm text-slate-700 whitespace-nowrap"
                     title={r.officerIsDefault ? (ar ? 'غير مُسنَد — على مدير القسم' : 'Unassigned — falls to the dept. manager') : undefined}>
                     {r.effectiveOfficer || r.collectionOfficer || (ar ? 'مدير القسم' : 'Dept. manager')}

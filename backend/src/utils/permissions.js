@@ -194,11 +194,14 @@ const effectivePages = async (role) => {
     // تعرفه قائمةٌ ولا يُفتَح له إلّا ما أُشِّر عليه.
     out[p.key] = pageFollowsSection(p, sections, custom);
   }
-  // ── وصفحتا المحفظة لقسم التحصيل، عرضًا (config/walletViewOnly) ───────────────
-  // إلّا ما أغلقه صاحبُ النظام صراحةً من المصفوفة — فقرارُه بيده يبقى.
+  // ── وصفحتا المحفظة لقسم التحصيل، عرضًا دائمًا (config/walletViewOnly) ─────────
+  // كانت تُفتح «إلّا ما أُغلق صراحةً» — وحفظُ مصفوفة الصفحات يكتب كلَّ صفحةٍ في
+  // الدور، فصفحاتُ العمليّات كلُّها محفوظةٌ «مغلقة» لموظّف التحصيل، والمحفظةُ
+  // معها. فلم تظهر لحسام الحوفي (٢٠٢٦/١٠/٢٧). فتُفتح لهما دائمًا: هي عرضٌ فقط،
+  // والكتابةُ مردودةٌ عند البوّابة بالدور.
   const wv = require('../config/walletViewOnly');
   if (wv.isWalletViewOnly(role)) {
-    for (const k of wv.WALLET_VIEW_PAGES) if (!Object.prototype.hasOwnProperty.call(pages, k)) out[k] = true;
+    for (const k of wv.WALLET_VIEW_PAGES) out[k] = true;
   }
   return out;
 };

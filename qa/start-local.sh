@@ -15,14 +15,17 @@ mkdir -p "$QA/.data/db" "$QA/.data/cwd" "$QA/out"
 [ -f "$QA/.data/cwd/.env" ] && { echo "refusing: an .env exists in the QA cwd"; exit 1; }
 
 if ! nc -z 127.0.0.1 27099 2>/dev/null; then
-  mongod --dbpath "$QA/.data/db" --port 27099 --bind_ip 127.0.0.1 > "$QA/out/mongod.log" 2>&1 &
+  # Detached (nohup + disown): a process tied to the shell that started it is
+  # stopped when that shell ends — the QA database went down mid-run that way.
+  nohup mongod --dbpath "$QA/.data/db" --port 27099 --bind_ip 127.0.0.1 > "$QA/out/mongod.log" 2>&1 &
+  disown
   for i in $(seq 1 30); do nc -z 127.0.0.1 27099 && break; sleep 0.5; done
 fi
 
 pkill -f "$ROOT/backend/src/server.js" 2>/dev/null || true
 for i in $(seq 1 20); do nc -z 127.0.0.1 5055 2>/dev/null || break; sleep 0.5; done
 DEAD=http://127.0.0.1:9
-( cd "$QA/.data/cwd" && exec env -i PATH="$PATH" HOME="$HOME" QA_BACKEND=1 \
+( cd "$QA/.data/cwd" && exec nohup env -i PATH="$PATH" HOME="$HOME" QA_BACKEND=1 \
   PORT=5055 NODE_ENV=development \
   MONGODB_URI=mongodb://127.0.0.1:27099/qa MONGO_URI=mongodb://127.0.0.1:27099/qa DATABASE_URL=mongodb://127.0.0.1:27099/qa \
   NODE_APP_INSTANCE=1 MAIL_TRANSPORT=json MAIL_SMTP_HOST=127.0.0.1 MAIL_IMAP_HOST=127.0.0.1 \
@@ -33,11 +36,13 @@ DEAD=http://127.0.0.1:9
   KEEPALIVE_ENABLED=false KEEPALIVE_URL=$DEAD FRONTEND_URL=http://127.0.0.1:3055 RENDER_EXTERNAL_URL=$DEAD \
   COLLECTIONS_MAILBOX=qa@local.test COLLECTIONS_MANAGER_EMAIL=qa@local.test \
   node "$ROOT/backend/src/server.js" > "$QA/out/backend.log" 2>&1 ) &
+disown
 for i in $(seq 1 60); do curl -s -o /dev/null 127.0.0.1:5055/api/health && break; sleep 1; done
 
 if [ "${1:-}" != "--no-web" ]; then
   pkill -f "next dev -p 3055" 2>/dev/null || true
-  ( cd "$ROOT/frontend" && NEXT_PUBLIC_API_URL=http://127.0.0.1:5055 npx next dev -p 3055 > "$QA/out/web.log" 2>&1 ) &
+  ( cd "$ROOT/frontend" && NEXT_PUBLIC_API_URL=http://127.0.0.1:5055 nohup npx next dev -p 3055 > "$QA/out/web.log" 2>&1 ) &
+  disown
   for i in $(seq 1 90); do curl -s -o /dev/null 127.0.0.1:3055/login && break; sleep 2; done
 fi
 echo "QA stack up — api http://127.0.0.1:5055 · web http://127.0.0.1:3055 · db mongodb://127.0.0.1:27099/qa"

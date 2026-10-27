@@ -136,6 +136,8 @@ function ShipmentOrdersInner() {
   // ‏`dateBy=pickup`: المدى بيوم الاستلام لا بيوم التسجيل — هكذا تحسب اللوحة،
   // فرقمُها يفتح صفوفَه نفسَها (٢٠٢٦/١٠/٢٧). ويُمحى مع مسح المدى.
   const [dateBy] = useState(() => (sp?.get('dateBy') === 'pickup' ? 'pickup' : ''));
+  // ‏`customs=linked`: الشحناتُ المربوطةُ بمعاملة تخليص — من بطاقة اللوحة.
+  const [customsOnly, setCustomsOnly] = useState(() => sp?.get('customs') === 'linked');
   const [page, setPage] = useState(1);
 
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -266,13 +268,14 @@ function ShipmentOrdersInner() {
       if (fromDate) qs.set('from', fromDate);
       if (toDate) qs.set('to', toDate);
       if (dateBy && (fromDate || toDate)) qs.set('dateBy', dateBy);
+      if (customsOnly) qs.set('customs', 'linked');
       if (search.trim()) qs.set('search', search.trim());
       const d = await api.get<{ values: { value: string; count: number }[] }>(`/api/shipment-orders/orders/filter-options?${qs}`);
       if (colSeq.current[field] !== seq) return;   // ردٌّ سبقه أحدثُ منه
       setColOptions((p) => ({ ...p, [field]: d }));
     } catch { /* تُترَك القائمةُ كما هي */ }
     finally { if (colSeq.current[field] === seq) setColLoading((p) => ({ ...p, [field]: false })); }
-  }, [colParams, statusFilter, sourceFilter, customerFilter, fromDate, toDate, dateBy]);
+  }, [colParams, statusFilter, sourceFilter, customerFilter, fromDate, toDate, dateBy, customsOnly]);
 
   const load = useCallback(async () => {
     const mine = guard.begin();
@@ -286,6 +289,7 @@ function ShipmentOrdersInner() {
       if (fromDate) qs.set('from', fromDate);
       if (toDate) qs.set('to', toDate);
       if (dateBy && (fromDate || toDate)) qs.set('dateBy', dateBy);
+      if (customsOnly) qs.set('customs', 'linked');
       if (noteFilter) qs.set('note', noteFilter);
       const d = await api.get<{ orders: ShipmentOrder[]; total: number; stats: any }>(`/api/shipment-orders/orders?${qs}`);
       if (!guard.isCurrent(mine)) return;
@@ -295,7 +299,7 @@ function ShipmentOrdersInner() {
       setError('');
     } catch (e: any) { setError(e?.message || 'Request failed'); }
     setLoading(false);
-  }, [debounced, statusFilter, sourceFilter, customerFilter, fromDate, toDate, dateBy, noteFilter, page, colParams, guard]);
+  }, [debounced, statusFilter, sourceFilter, customerFilter, fromDate, toDate, dateBy, customsOnly, noteFilter, page, colParams, guard]);
 
   useEffect(() => { load(); }, [load]);
   useSocket('shipmentOrders:updated', useCallback(() => load(), [load]));
@@ -409,12 +413,13 @@ function ShipmentOrdersInner() {
       if (fromDate) qs.set('from', fromDate);
       if (toDate) qs.set('to', toDate);
       if (dateBy && (fromDate || toDate)) qs.set('dateBy', dateBy);
+      if (customsOnly) qs.set('customs', 'linked');
       if (noteFilter) qs.set('note', noteFilter);
     }
     const d = await api.get<{ orders: ShipmentOrder[]; total: number }>(`/api/shipment-orders/orders?${qs}`);
     return [{ name: 'Orders', rows: d.orders || [], columns: exportColumns }];
   };
-  const hasActiveFilters = !!(debounced.trim() || statusFilter || sourceFilter || customerFilter || fromDate || toDate);
+  const hasActiveFilters = !!(debounced.trim() || statusFilter || sourceFilter || customerFilter || fromDate || toDate || customsOnly);
   const scope = exportScopeLabels(ar);
   const exportOptions = [
     { key: 'page', label: scope.page, sheets: [{ name: 'Orders', rows: orders, columns: exportColumns }] },
@@ -616,11 +621,21 @@ function ShipmentOrdersInner() {
           </Select>
         </div>
         <div className="flex items-center gap-2 shrink-0">
+          {/* المدى بيوم الاستلام — كاللوحة والتحليلات (٢٠٢٦/١٠/٢٧). */}
+          <span className="text-[12px] font-semibold text-slate-500 whitespace-nowrap">{ar ? 'تاريخ الاستلام' : 'Pickup date'}</span>
           <input type="date" value={fromDate} onChange={(e) => { setFromDate(e.target.value); setPage(1); }}
+            title={ar ? 'من تاريخ الاستلام' : 'Pickup from'}
             className="px-3 py-2 rounded-lg border border-slate-200 bg-white text-sm text-slate-900" />
           <span className="text-slate-400 text-sm">→</span>
           <input type="date" value={toDate} onChange={(e) => { setToDate(e.target.value); setPage(1); }}
             className="px-3 py-2 rounded-lg border border-slate-200 bg-white text-sm text-slate-900" />
+          {customsOnly && (
+            <button type="button" onClick={() => { setCustomsOnly(false); setPage(1); }}
+              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full bg-cyan-50 border border-cyan-200 text-cyan-800 text-[12px] font-semibold hover:bg-cyan-100"
+              title={ar ? 'إزالة الفلتر' : 'Clear filter'}>
+              {ar ? 'المربوطة بالتخليص' : 'Linked to customs'} <X className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
         </div>
       </div>

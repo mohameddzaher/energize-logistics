@@ -17,7 +17,7 @@
  *   • وتحليلُ «تقرير الفروع» (شيت مدير التشغيل) باقٍ في آخرها، مُعنوَنًا بمصدره
  *     كي لا يُخلَط رقمُه برقم الشحنات.
  */
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, createContext, useContext } from 'react';
 import Link from 'next/link';
 import {
   ResponsiveContainer, ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, CartesianGrid,
@@ -31,7 +31,7 @@ import { Spinner, PageHeader, ErrorNotice } from '@/components/hr/HRKit';
 import OpsAnalytics from '@/components/ops/OpsAnalytics';
 import { statusLabel, vocabLabel, canEditOrders, type ShipmentOrder, type Lang } from '@/lib/shipmentOrders';
 import { useOrderStatuses } from '@/hooks/useOrderStatuses';
-import { canAccessSection, permsOf } from '@/lib/sections';
+import { canAccessSection, canAccessPage, permsOf } from '@/lib/sections';
 import {
   LayoutDashboard, PackagePlus, PackageSearch, Truck, Users, Store, TrendingUp, TrendingDown,
   AlertTriangle, ArrowUpRight, ArrowDownRight, Minus, Wallet, Receipt, PiggyBank, Percent, Ban,
@@ -92,6 +92,20 @@ function Delta({ cur, prev, goodWhenUp = true, ar }: { cur: number; prev: number
   );
 }
 
+// ── لا رابطَ إلى ما لا يُفتَح (٢٠٢٦/١٠/٢٧) ──────────────────────────────────
+// «لو اليوزر ملهوش أكسيس على قسم تاني هيفتحها إزاي؟». فكلُّ رابطٍ في اللوحة
+// يُسأل عنه: أيفتح المستخدمُ هذه الصفحة؟ (خريطةُ صفحاته من /auth/me). وما لا
+// يُفتَح يبقى رقمًا يُقرأ لا رابطًا يقود إلى «لا تملك صلاحية». والروابطُ كلُّها
+// داخل القسم نفسِه — ما كان يقود إلى التخليص صار يفتح الشحناتِ المربوطةَ هنا.
+const CanOpen = createContext<(href: string) => boolean>(() => true);
+
+function Go({ href, className, children, title }: { href?: string; className?: string; children: React.ReactNode; title?: string }) {
+  const can = useContext(CanOpen);
+  return href && can(href)
+    ? <Link href={href} className={className} title={title}>{children}</Link>
+    : <span className={className} title={title}>{children}</span>;
+}
+
 function Kpi({ icon: Icon, label, value, sub, href, tone = NAVY, deltaEl }: {
   icon: any; label: string; value: string; sub?: React.ReactNode; href?: string; tone?: string; deltaEl?: React.ReactNode;
 }) {
@@ -109,7 +123,8 @@ function Kpi({ icon: Icon, label, value, sub, href, tone = NAVY, deltaEl }: {
     </>
   );
   const cls = 'rounded-2xl border border-slate-200 bg-white p-4 shadow-sm';
-  return href
+  const can = useContext(CanOpen);
+  return href && can(href)
     ? <Link href={href} className={`${cls} block transition hover:border-[#f37121]/60 hover:shadow-md`}>{body}</Link>
     : <div className={cls}>{body}</div>;
 }
@@ -205,19 +220,21 @@ export default function ShipmentOrdersDashboardPage() {
   const periodLabel = PERIODS.find((p) => p[0] === period)!;
   const fmtDay = (ymd?: string) => (ymd ? ymd.split('-').reverse().join('/') : '');
 
+  const canOpen = (href: string) => canAccessPage((user as any)?.pageAccess, href.split('?')[0]);
   return (
+    <CanOpen.Provider value={canOpen}>
     <div className="space-y-5" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader icon={<LayoutDashboard className="w-5 h-5" />}
         title={t('لوحة طلبات الشحنات', 'Shipment Orders Dashboard')}
         subtitle={P ? t(`${fmtDay(P.from)} — ${fmtDay(P.to)} · مقارنةً بـ ${fmtDay(P.prevFrom)} — ${fmtDay(P.prevTo)}`,
           `${P.from} — ${P.to} · vs ${P.prevFrom} — ${P.prevTo}`) : ''}>
-        <Link href="/system/shipment-orders/new"
+        <Go href="/system/shipment-orders/new"
           className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[#f37121] text-white text-sm font-bold hover:bg-[#d9601a]">
           <PackagePlus className="w-4 h-4" /> {t('شحنة جديدة', 'New shipment')}
-        </Link>
-        <Link href={LIST} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm">
+        </Go>
+        <Go href={LIST} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm">
           <PackageSearch className="w-4 h-4" /> {t('كل الشحنات', 'All shipments')}
-        </Link>
+        </Go>
       </PageHeader>
 
       {/* ── الفترةُ وحالُ التحديث ──────────────────────────────────────────── */}
@@ -304,13 +321,13 @@ export default function ShipmentOrdersDashboardPage() {
                   <ul className="space-y-1">
                     {statusRows.map((s) => (
                       <li key={s.key}>
-                        <Link href={listHref(`status=${encodeURIComponent(s.key)}`)}
+                        <Go href={listHref(`status=${encodeURIComponent(s.key)}`)}
                           className="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-slate-50 text-[13px]">
                           <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: s.color }} />
                           <span className="flex-1 min-w-0 truncate text-slate-800 font-medium">{s.label}</span>
                           <span className="tabular-nums font-bold text-slate-900">{money(s.n)}</span>
                           <span className="tabular-nums text-slate-400 text-[11px] w-12 text-end">{s.pct}%</span>
-                        </Link>
+                        </Go>
                       </li>
                     ))}
                   </ul>
@@ -351,7 +368,7 @@ export default function ShipmentOrdersDashboardPage() {
                             r.rank === 1 ? 'bg-amber-100 text-amber-700' : r.rank <= 3 ? 'bg-slate-100 text-slate-700' : 'text-slate-400'}`}>{r.rank}</span>
                         </td>
                         <td className="py-2">
-                          <Link href={listHref(`col_salesRepName=${encodeURIComponent(r.name)}`)} className="font-semibold text-slate-900 hover:text-[#f37121]">{r.name}</Link>
+                          <Go href={listHref(`col_salesRepName=${encodeURIComponent(r.name)}`)} className="font-semibold text-slate-900 hover:text-[#f37121]">{r.name}</Go>
                         </td>
                         <td className="py-2">
                           <div className="flex items-center gap-2">
@@ -382,7 +399,7 @@ export default function ShipmentOrdersDashboardPage() {
               const max = Math.max(1, ...rows.slice(0, 6).map((r) => r.orders));
               return (
                 <Panel key={title} title={title} icon={Icon}
-                  action={<Link href={href} className="text-[12px] text-[#f37121] hover:underline">{t('الكل', 'all')}</Link>}>
+                  action={<Go href={href} className="text-[12px] text-[#f37121] hover:underline">{t('الكل', 'all')}</Go>}>
                   {rows.length === 0 ? (
                     <p className="text-xs text-slate-400 py-6 text-center">{t('لا بيانات في الفترة', 'nothing in this period')}</p>
                   ) : (
@@ -403,7 +420,7 @@ export default function ShipmentOrdersDashboardPage() {
                         return (
                           <li key={r.name}>
                             {col
-                              ? <Link href={listHref(`col_${col}=${encodeURIComponent(r.name)}`)} className="block rounded-lg -mx-1 px-1 py-0.5 hover:bg-slate-50">{row}</Link>
+                              ? <Go href={listHref(`col_${col}=${encodeURIComponent(r.name)}`)} className="block rounded-lg -mx-1 px-1 py-0.5 hover:bg-slate-50">{row}</Go>
                               : <div>{row}</div>}
                           </li>
                         );
@@ -424,7 +441,7 @@ export default function ShipmentOrdersDashboardPage() {
             <Kpi icon={Clock} label={t('متأخرة الآن', 'Late now')} value={money(P!.lateNow)}
               tone={P!.lateNow ? '#dc2626' : '#64748b'} href={`${LIST}?status=late`} sub={t('حالة «متأخرة» الآن', 'status «late» now')} />
             <Kpi icon={Ship} label={t('مربوطة بالتخليص', 'Linked to customs')} value={money(P!.customsLinked)}
-              tone="#0e7490" href="/system/customs" sub={t('بالبوليصة أو الحاوية', 'by B/L or container')} />
+              tone="#0e7490" href={listHref('customs=linked')} sub={t('بالبوليصة أو الحاوية — تُفتح هنا', 'by B/L or container')} />
             <Kpi icon={MessageSquareText} label={t('ملاحظات المتابعة', 'Follow-up notes')} value={money(P!.followUpNotes)}
               tone="#0369a1" href={LIST} sub={t(`على ${money(P!.followUpShipments)} شحنة`, `on ${money(P!.followUpShipments)} loads`)} />
             <Kpi icon={IdCard} label={t('بطاقات سائقين منتهية', 'Expired driver cards')} value={money(P!.driversExpired)}
@@ -447,14 +464,14 @@ export default function ShipmentOrdersDashboardPage() {
 
       {/* ── آخرُ ما سُجِّل ──────────────────────────────────────────────────── */}
       <Panel title={t('آخر الشحنات', 'Latest shipments')} icon={TrendingUp}
-        action={<Link href={LIST} className="text-[12px] text-[#f37121] hover:underline">{t('كل الشحنات', 'all')}</Link>}>
+        action={<Go href={LIST} className="text-[12px] text-[#f37121] hover:underline">{t('كل الشحنات', 'all')}</Go>}>
         <ul className="divide-y divide-slate-100 -my-2">
           {recent.length === 0 && <li className="py-8 text-center text-slate-400 text-sm">{t('لا شحنات بعد', 'nothing yet')}</li>}
           {recent.map((o) => {
             const sv = statusVocab.find((x) => x.key === o.status) || null;
             return (
               <li key={o._id}>
-                <Link href={`${LIST}?q=${encodeURIComponent(String((o as any).reference || o.waybillNumber || ''))}`}
+                <Go href={`${LIST}?q=${encodeURIComponent(String((o as any).reference || o.waybillNumber || ''))}`}
                   className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2.5 hover:bg-slate-50 rounded-lg px-1">
                   <span className="font-mono font-bold text-[#12325C] text-sm">{(o as any).reference || o.waybillNumber}</span>
                   <span className="text-[13px] text-slate-800 flex-1 min-w-0 truncate">{o.customerName || '—'}</span>
@@ -464,7 +481,7 @@ export default function ShipmentOrdersDashboardPage() {
                     style={{ background: `${sv?.color || '#94a3b8'}1f`, color: sv?.color || '#475569' }}>
                     {sv ? vocabLabel(sv, lang as Lang) : statusLabel(o.status, lang as Lang)}
                   </span>
-                </Link>
+                </Go>
               </li>
             );
           })}
@@ -487,5 +504,6 @@ export default function ShipmentOrdersDashboardPage() {
         )}
       </section>
     </div>
+    </CanOpen.Provider>
   );
 }

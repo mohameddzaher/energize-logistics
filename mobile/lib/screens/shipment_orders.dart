@@ -28,8 +28,10 @@ class ShipmentOrdersScreen extends StatefulWidget {
   final String initialTo;
   final bool byPickup;
   final Map<String, Set<String>> initialCols;
+  /// المربوطةُ بمعاملة تخليص وحدَها — من بطاقة اللوحة (يبقى في القسم نفسِه).
+  final bool customsLinked;
   const ShipmentOrdersScreen({super.key, this.initialStatuses = const [], this.initialFrom = '', this.initialTo = '',
-    this.byPickup = false, this.initialCols = const {}});
+    this.byPickup = false, this.initialCols = const {}, this.customsLinked = false});
   @override
   State<ShipmentOrdersScreen> createState() => _ShipmentOrdersScreenState();
 }
@@ -73,6 +75,7 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
   String _from = '';
   String _to = '';
   final Map<String, Set<String>> _colFilters = {};
+  bool _customsOnly = false;
   List<Map<String, dynamic>> _customers = [];
 
   // البوالصُ المعلَّمة → ملفٌّ واحدٌ من الخادم.
@@ -97,6 +100,7 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
     _from = widget.initialFrom;
     _to = widget.initialTo;
     widget.initialCols.forEach((k, v) => _colFilters[k] = {...v});
+    _customsOnly = widget.customsLinked;
     _load();
     loadSoStatuses().then((v) { if (mounted) setState(() => _vocab = v); });
     Api.instance.get('/api/shipment-orders/customers').then((d) {
@@ -130,6 +134,7 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
     if (_from.isNotEmpty) add('from', _from);
     if (_to.isNotEmpty) add('to', _to);
     if (widget.byPickup && (_from.isNotEmpty || _to.isNotEmpty)) add('dateBy', 'pickup');
+    if (_customsOnly) add('customs', 'linked');
     return p;
   }
 
@@ -376,6 +381,14 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
       // خانةُ البحث ومبدِّلُ العرض مثبَّتان فوق — خارج تبديل التحميل/الخطأ، فلا
       // تُعاد رسمُهما فارغتين (ui/search_field.dart).
       body: Column(children: [
+        if (_customsOnly)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+            child: Align(alignment: AlignmentDirectional.centerStart, child: InputChip(
+              label: Text(tr('المربوطة بالتخليص', 'Linked to customs'), style: const TextStyle(fontWeight: FontWeight.w700)),
+              onDeleted: () => _refilter(() => _customsOnly = false),
+            )),
+          ),
         Padding(
           padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
           child: Row(children: [

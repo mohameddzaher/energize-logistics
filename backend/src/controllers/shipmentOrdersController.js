@@ -417,12 +417,17 @@ exports.listOrders = async (req, res) => {
     // يقرأ تقريرًا يجب أن يعرف أهو عن عملٍ جرى أم عن تجربة.
     if (source === 'system' || source === 'platform') filter.source = source;
     // ملاحظةُ الرحلة: «أرِني ما كُتبت عليه ملاحظة» — تُطبَع في البوليصة فتُراجَع.
+    // المربوطةُ بمعاملة تخليص — بطاقةُ اللوحة تفتحها هنا، في القسم نفسِه.
+    if (req.query.customs === 'linked') filter['customsLink.clearance'] = { $type: 'objectId' };
     const note = String(req.query.note || '').trim();
     if (note === 'yes') filter.notes = { $nin: ['', null] };
     else if (note === 'no') filter.$or = [{ notes: '' }, { notes: null }, { notes: { $exists: false } }];
     if (from || to) {
-      // ‏`dateBy=pickup`: المدى بيوم الاستلام — كما تحسب اللوحة (٢٠٢٦/١٠/٢٧).
-      const dk = req.query.dateBy === 'pickup' ? 'pickupTime' : 'createdAt';
+      // ── المدى بيوم الاستلام، كاللوحة والتحليلات (٢٠٢٦/١٠/٢٧) ─────────────────
+      // كان بيوم التسجيل (`createdAt`) واللوحةُ بيوم الاستلام، فـ«هذا الشهر» رقمان
+      // لشيءٍ واحد. ويومُ التسجيل في شحنات المنصّة يومُ وصولها بالمزامنة لا يومُها.
+      // ‏`dateBy=created` يُبقي القديمَ لمن يطلبه صراحةً.
+      const dk = req.query.dateBy === 'created' ? 'createdAt' : 'pickupTime';
       filter[dk] = {};
       if (from) filter[dk].$gte = startOfDay(from);
       if (to) filter[dk].$lte = endOfDay(to);
@@ -542,7 +547,7 @@ exports.orderFilterOptions = async (req, res) => {
       if (keys.length === 1) [base.status] = keys; else if (keys.length) base.status = { $in: keys };
     }
     if (req.query.from || req.query.to) {
-      const dk = req.query.dateBy === 'pickup' ? 'pickupTime' : 'createdAt';
+      const dk = req.query.dateBy === 'created' ? 'createdAt' : 'pickupTime';
       base[dk] = {};
       if (req.query.from) base[dk].$gte = startOfDay(req.query.from);
       if (req.query.to) base[dk].$lte = endOfDay(req.query.to);
@@ -1125,15 +1130,20 @@ function dashRange(period) {
   const d = (ymd, n) => { const x = new Date(`${ymd}T12:00:00Z`); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10); };
   const span = (a, b) => Math.round((new Date(`${b}T12:00:00Z`) - new Date(`${a}T12:00:00Z`)) / 86400000) + 1;
   let from = today;
+  let to = today;
   if (period === '7d') from = d(today, -6);
   else if (period === '30d') from = d(today, -29);
-  else if (period === 'month') from = `${today.slice(0, 7)}-01`;
-  else if (period === 'year') from = `${today.slice(0, 4)}-01-01`;
-  const n = span(from, today);
+  else if (period === 'month') {
+    // «هذا الشهر» الشهرُ كلُّه — شحنةٌ موعدُها آخرَ الشهر من شحناته، كما في صفحة الشحنات.
+    from = `${today.slice(0, 7)}-01`;
+    const [y, m] = today.split('-').map(Number);
+    to = new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10);
+  } else if (period === 'year') { from = `${today.slice(0, 4)}-01-01`; to = `${today.slice(0, 4)}-12-31`; }
+  const n = span(from, to);
   // السابقةُ بطولها نفسِه — الشهرُ يُقارَن بالأيّام نفسِها من الشهر الماضي.
   const prevTo = d(from, -1);
   const prevFrom = d(prevTo, -(n - 1));
-  return { from, to: today, prevFrom, prevTo, days: n };
+  return { from, to, prevFrom, prevTo, days: n };
 }
 
 /** مجاميعُ خفيفةٌ لفترةٍ — للمقارنة وحدَها (لا تحتاج تفصيلَ analyticsOf). */
@@ -1228,14 +1238,14 @@ exports.getDashboard = async (req, res) => {
         ShipmentOrder.find({}).sort({ createdAt: -1 }).limit(8)
           .select('waybillNumber reference customerName fromCity toCity status vehiclePlate driverName pickupTime createdAt salesRepName sellPrice buyPrice')
           .lean(),
-        period === 'month' ? null : analyticsOf({ from: R.from, to: R.to }),
+        analyticsOf({ from: R.from, to: R.to }),
         dashTotals(R.prevFrom, R.prevTo),
         dashExtras(R.from, R.to),
       ]);
       return {
         // ‏`period`: ما تقرؤه اللوحةُ الجديدة (الويب والتطبيق). والباقي كما كان
         // لنُسَخ التطبيق التي لم تُحدَّث بعد.
-        period: { key: period, ...R, cur: cur || month, prev, ...extras },
+        period: { key: period, ...R, cur, prev, ...extras },
         month, today, fleet, recent,
         // مسطّحةٌ للهاتف: بطاقاتُه تقرأ مسارًا نصيًّا واحدًا لكلّ رقم.
         flat: {

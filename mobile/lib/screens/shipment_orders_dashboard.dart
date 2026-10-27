@@ -353,7 +353,10 @@ class _ShipmentOrdersDashboardScreenState extends State<ShipmentOrdersDashboardS
                   onTap: () => _openList(cols: {'buyPrice': {'__blank__'}})),
               _kpi(Icons.schedule, tr('متأخرة الآن', 'Late now'), soMoney(_n(p['lateNow'])), tone: _n(p['lateNow']) > 0 ? T.danger : T.inkFaint,
                   onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ShipmentOrdersScreen(initialStatuses: ['late'])))),
-              _kpi(Icons.directions_boat_outlined, tr('مربوطة بالتخليص', 'Linked to customs'), soMoney(_n(p['customsLinked'])), tone: const Color(0xFF0E7490)),
+              // تُفتح الشحناتُ المربوطةُ هنا، في القسم نفسِه — لا قسمُ التخليص.
+              _kpi(Icons.directions_boat_outlined, tr('مربوطة بالتخليص', 'Linked to customs'), soMoney(_n(p['customsLinked'])), tone: const Color(0xFF0E7490),
+                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ShipmentOrdersScreen(
+                    initialFrom: '${p['from'] ?? ''}', initialTo: '${p['to'] ?? ''}', byPickup: true, customsLinked: true)))),
               _kpi(Icons.forum_outlined, tr('ملاحظات المتابعة', 'Follow-up notes'), soMoney(_n(p['followUpNotes'])), tone: const Color(0xFF0369A1),
                   sub: tr('على ${p['followUpShipments'] ?? 0} شحنة', 'on ${p['followUpShipments'] ?? 0} loads')),
               _kpi(Icons.badge_outlined, tr('بطاقات سائقين منتهية', 'Expired driver cards'), soMoney(_n(p['driversExpired'])), tone: _n(p['driversExpired']) > 0 ? T.warn : T.inkFaint, onTap: _openFleet),

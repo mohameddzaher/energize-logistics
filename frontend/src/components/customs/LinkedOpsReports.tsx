@@ -240,6 +240,8 @@ export default function LinkedOpsReports({ clearanceId, ar }: { clearanceId: str
   const t = (a: string, e: string) => (ar ? a : e);
   const { user } = useAuth();
   const canOpenOps = user?.role === 'super_admin' || canAccessSection(user?.permissions, 'Operations');
+  // وطلبُ الشحن يُفتح لمن يفتح قسمَه — وإلّا يُقرأ رقمُه.
+  const canOpenShipments = user?.role === 'super_admin' || canAccessSection(user?.permissions, 'Shipment Orders');
   const [data, setData] = useState<Resp | null>(null);
   const [error, setError] = useState('');
   const [open, setOpen] = useState<Set<string>>(new Set());
@@ -403,7 +405,9 @@ export default function LinkedOpsReports({ clearanceId, ar }: { clearanceId: str
                 {data.shipmentOrders!.map((o) => (
                   <tr key={o._id} className="border-t border-slate-100 hover:bg-slate-50">
                     <td className="px-3 py-2 whitespace-nowrap">
-                      <Link href={`/system/shipment-orders?q=${encodeURIComponent(o.ref)}`} className="font-mono font-bold text-[#12325C] hover:text-[#f37121]">{o.ref || '—'}</Link>
+                      {canOpenShipments
+                        ? <Link href={`/system/shipment-orders?q=${encodeURIComponent(o.ref)}`} className="font-mono font-bold text-[#12325C] hover:text-[#f37121]">{o.ref || '—'}</Link>
+                        : <span className="font-mono font-bold text-[#12325C]">{o.ref || '—'}</span>}
                     </td>
                     <td className="px-3 py-2">{o.customerName || '—'}</td>
                     <td className="px-3 py-2 whitespace-nowrap">{o.fromCity || '—'} ← {o.toCity || '—'}</td>

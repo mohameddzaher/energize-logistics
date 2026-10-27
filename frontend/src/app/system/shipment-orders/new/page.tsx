@@ -27,6 +27,7 @@ import { useOrderStatuses } from '@/hooks/useOrderStatuses';
 import { useLatestRequest } from '@/hooks/useLatestRequest';
 import { useSocket } from '@/hooks/useSocket';
 import DriverPicker, { realVal } from '@/components/shipment-orders/DriverPicker';
+import { canAccessSection, permsOf } from '@/lib/sections';
 
 // Labels are the form's wayfinding — near-black and readable, not a whisper.
 const labelCls = 'block text-sm font-semibold text-slate-800 mb-1.5';
@@ -1054,7 +1055,10 @@ function CreateShipmentInner() {
                     {form.customsLink?.clearance ? (
                       <p className="col-span-full text-[12.5px] text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
                         {ar ? 'مربوطة بمعاملة التخليص ' : 'Linked to customs clearance '}
-                        <a href={`/system/customs/${form.customsLink.clearance}`} target="_blank" rel="noreferrer" className="font-bold underline">{form.customsLink.refNumber || '—'}</a>
+                        {/* رابطُ المعاملة لمن يفتح قسمَ التخليص وحدَه — وإلّا رقمُها يُقرأ. */}
+                        {((user as any)?.role === 'super_admin' || canAccessSection(permsOf(user as any), 'Customs'))
+                          ? <a href={`/system/customs/${form.customsLink.clearance}`} target="_blank" rel="noreferrer" className="font-bold underline">{form.customsLink.refNumber || '—'}</a>
+                          : <b>{form.customsLink.refNumber || '—'}</b>}
                         {form.customsLink.customerName ? ` · ${form.customsLink.customerName}` : ''}
                       </p>
                     ) : null}

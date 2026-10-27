@@ -262,7 +262,7 @@ const sectionForPath = (path) => {
  * من يُسحب منه قسمٌ يفقد هذه الصلاحيّة في الحال.
  */
 const hasSuperAdminPowers = async (role) => {
-  if (role === 'super_admin') return true;
+  if (require('../config/constants').isTopRole(role)) return true;
   if (!role) return false;
   const overrides = await getOverrides(role);
   return SECTION_KEYS.length > 0

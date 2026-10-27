@@ -31,7 +31,7 @@ const EXTRA_MANAGED = { cfo: ['Accounting'] };
 /** نطاقُ القارئ: `all` لمدير النظام، وإلّا الأقسامُ التي يديرها. */
 const scopeOf = async (user) => {
   const role = user?.role;
-  if (role === 'super_admin') return { all: true, sections: [] };
+  if (require('../config/constants').isTopRole(role)) return { all: true, sections: [] };
   const sections = SECTION_ROLES.filter((s) => s.manager.key === role).map((s) => s.section);
   return { all: false, sections: [...sections, ...(EXTRA_MANAGED[role] || [])] };
 };

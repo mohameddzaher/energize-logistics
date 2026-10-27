@@ -536,7 +536,7 @@ class _CustomsListScreenState extends State<CustomsListScreen> {
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
     // كالموقع: الأرباحُ للإدارة، والتعديلُ والحذفُ بالأدوار أو بمنح المصفوفة.
-    final seesMoney = ['super_admin', 'customs_manager'].contains(auth.role);
+    final seesMoney = ['super_admin', 'admin', 'customs_manager'].contains(auth.role);
     final canEdit = _editRoles.contains(auth.role) || auth.canEditSection('Customs');
     final canDelete = _deleteRoles.contains(auth.role) || auth.canEditSection('Customs');
     final shown = _filtered;

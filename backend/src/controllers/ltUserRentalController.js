@@ -11,7 +11,7 @@ const { todayKey } = require('../utils/companyDay');
 
 const S = (v) => String(v ?? '').trim();
 const who = (u) => [u?.firstName, u?.lastName].filter(Boolean).join(' ').trim();
-const DELETE_ROLES = ['super_admin', 'b2c_manager', 'b2c_deputy'];
+const DELETE_ROLES = ['super_admin', 'admin', 'b2c_manager', 'b2c_deputy'];
 const changed = () => {
   // الإبطالُ قبل الإعلان — utils/ltRental.announce يمسح ذاكرةَ القسم ثمّ يبثّ.
   require('../utils/ltRental').announce();

@@ -11,7 +11,7 @@ const CFG: CustodyConfig = {
   event: 'lt:custody',
   title: ['عهدة النقل الخفيف', 'Light transport custody'],
   // يطابق `CUSTODY_ROLES` في ltCustodyController: مديرُ القطاع ونائبُه ومديرُ النظام وأهلُ المال.
-  roles: ['super_admin', 'b2c_manager', 'b2c_deputy', 'cfo', 'accounting_manager', 'accountant'],
+  roles: ['super_admin', 'admin', 'b2c_manager', 'b2c_deputy', 'cfo', 'accounting_manager', 'accountant'],
   exportPrefix: 'light-custody',
   rep: ['مندوب', 'Rep'],
   repMissing: ['لا مندوبَ بهذا الرقم في الموارد البشريّة ولا في سجلّ النقل الخفيف.', 'No rep with this number in HR or the light-transport register.'],

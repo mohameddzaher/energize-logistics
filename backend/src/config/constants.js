@@ -1,6 +1,14 @@
 // Roles with unrestricted, super_admin-equivalent access to everything. The IT
 // department owns the whole system technically, so they are never gated.
-const FULL_ACCESS_ROLES = ['super_admin', 'it_manager', 'it_specialist'];
+//
+// ── والأدمن كالسوبر أدمن (صاحبُ الشركة، ٢٠٢٦/١٠/٢٧) ──────────────────────────
+// «كلّ حاجة تكون ظاهرة للسوبر أدمن والأدمن — ١٠٠٪ من السيستم ولهم الصلاحيّات
+// كاملة». فالأدمن هنا (الأقسامُ والصفحاتُ كلُّها)، و`TOP_ROLES` لكلّ فحصٍ كان
+// يسأل «أهو السوبر أدمن؟» بالاسم. ويبقى حسابُ السوبر أدمن نفسُه محميًّا من
+// التعديل (userController) ومن المصفوفة (permissionController).
+const FULL_ACCESS_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist'];
+const TOP_ROLES = ['super_admin', 'admin'];
+const isTopRole = (role) => TOP_ROLES.includes(String(role || ''));
 
 
 /**
@@ -57,6 +65,8 @@ module.exports = {
   ROLE_LABELS_EN,
   roleLabel,
   FULL_ACCESS_ROLES,
+  TOP_ROLES,
+  isTopRole,
   ROLES: {
     SUPER_ADMIN: 'super_admin',
     ADMIN: 'admin',

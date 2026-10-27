@@ -158,7 +158,7 @@ function tierPriceFor(tiers, trucks) {
  * العميل (الاسم والهاتف والتفضيلات) ولا يمسّ سعرًا. والسؤالُ هنا في موضعٍ واحدٍ
  * يقرؤه كلُّ بابٍ يصل إلى السعر.
  */
-const PRICE_EDITORS = ['super_admin', 'operations_manager'];
+const PRICE_EDITORS = ['super_admin', 'admin', 'operations_manager'];
 const canEditPrices = (role) => PRICE_EDITORS.includes(role);
 
 module.exports = {

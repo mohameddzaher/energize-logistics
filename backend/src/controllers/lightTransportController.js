@@ -1429,7 +1429,7 @@ const LT_VEHICLE_SELECT = 'serialNumber departmentAr cityAr plateNumber sectorAr
   + 'serviceStatusAr colorAr notesAr registrationTypeAr operatingCard.cardNumber operatingCard.expiryDate insurance.expiryDate '
   + 'vehicleLicense.expiryDate inspection.expiryDate';
 /** مَن يعدّل: مديرُ القطاع ونائبُه ومديرُ النظام (وأهلُ المال كما في كلّ ما يُفتَح لهم). */
-const LT_VEHICLE_EDIT = ['super_admin', 'b2c_manager', 'b2c_deputy', ...require('../config/financeAuthority').FINANCE_FULL_ROLES];
+const LT_VEHICLE_EDIT = ['super_admin', 'admin', 'b2c_manager', 'b2c_deputy', ...require('../config/financeAuthority').FINANCE_FULL_ROLES];
 exports.LT_VEHICLE_EDIT = LT_VEHICLE_EDIT;
 /** مَن يعدّل سجلَّ المركبات نفسَه (routes/vehicleRegistry EDIT) — وحدَه يغيّر اللوحة من هنا. */
 const REGISTRY_EDIT = ['super_admin', 'admin', 'vehicles_manager', 'vehicles_staff',

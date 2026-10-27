@@ -364,7 +364,7 @@ export default function OperationsWorkflowPage() {
 
   const role = user?.role || '';
   // أهلُ المال يملكون في هذه الصفحة ما يملكه مديرُ النظام — راجع lib/financeAuthority.
-  const full = role === 'super_admin' || FINANCE_FULL_ROLES.includes(role || '');
+  const full = ['super_admin', 'admin'].includes(role || '') || FINANCE_FULL_ROLES.includes(role || '');
   const canCreate = full || role === 'moderator';
   const canDelete = full;
 
@@ -614,14 +614,14 @@ export default function OperationsWorkflowPage() {
 
   const getTransitions = (wf: Workflow) => {
     const map: Record<string, { stage: string; label: string; roles: string[] }[]> = {
-      draft: [{ stage: 'submitted_to_ops', label: T.submitToOps, roles: ['moderator', 'super_admin', ...FINANCE_FULL_ROLES] }],
+      draft: [{ stage: 'submitted_to_ops', label: T.submitToOps, roles: ['moderator', 'super_admin', 'admin', ...FINANCE_FULL_ROLES] }],
       submitted_to_ops: [
-        { stage: 'ops_completed', label: T.markOpsComplete, roles: ['operations_manager', 'super_admin', ...FINANCE_FULL_ROLES] },
-        { stage: 'draft', label: T.returnToDraft, roles: ['operations_manager', 'super_admin', ...FINANCE_FULL_ROLES] },
+        { stage: 'ops_completed', label: T.markOpsComplete, roles: ['operations_manager', 'super_admin', 'admin', ...FINANCE_FULL_ROLES] },
+        { stage: 'draft', label: T.returnToDraft, roles: ['operations_manager', 'super_admin', 'admin', ...FINANCE_FULL_ROLES] },
       ],
       ops_completed: [
-        { stage: 'submitted_to_collections', label: T.submitToCollections, roles: ['operations_manager', 'super_admin', ...FINANCE_FULL_ROLES] },
-        { stage: 'submitted_to_ops', label: T.returnToOps, roles: ['operations_manager', 'super_admin', ...FINANCE_FULL_ROLES] },
+        { stage: 'submitted_to_collections', label: T.submitToCollections, roles: ['operations_manager', 'super_admin', 'admin', ...FINANCE_FULL_ROLES] },
+        { stage: 'submitted_to_ops', label: T.returnToOps, roles: ['operations_manager', 'super_admin', 'admin', ...FINANCE_FULL_ROLES] },
       ],
       submitted_to_collections: [
         { stage: 'completed', label: T.markComplete, roles: ['admin', 'employee', 'super_admin', ...FINANCE_FULL_ROLES] },

@@ -119,7 +119,7 @@ function LightTransportEmployeesInner() {
   // فهي لمدير القطاع ونائبه ومدير النظام وأهل المال — يطابق حارسَ المسار في
   // routes/lightTransport. ومعها مستنداتُه: اسمٌ لكلّ ملفّ، وقد تتعدّد.
   // role-only: إنشاءُ ملفٍّ في الموارد البشريّة لا يُفتَح بمنح القسم؛ الخادمُ يحرسه بـ`authorize.strict`.
-  const canAdd = ['super_admin', 'b2c_manager', 'b2c_deputy', 'cfo', 'accounting_manager', 'accountant'].includes(String(user?.role || ''));
+  const canAdd = ['super_admin', 'admin', 'b2c_manager', 'b2c_deputy', 'cfo', 'accounting_manager', 'accountant'].includes(String(user?.role || ''));
   const [docs, setDocs] = useState<NewDoc[]>([]);
   const [saving, setSaving] = useState(false);
 

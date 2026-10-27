@@ -61,7 +61,7 @@ const SECTION_KEY_OF = {
   collections: 'Collections',
 };
 
-const isSuper = (u) => u && u.role === 'super_admin';
+const isSuper = (u) => u && require('../config/constants').isTopRole(u.role);
 const sameId = (a, b) => a && b && String(a) === String(b);
 
 // The visibility clause applied to every read/scope. super_admin: everything in

@@ -80,7 +80,7 @@ const walletFutureMessage = () =>
  * العمليّات: هؤلاء يعملون في الدفتر يوميًّا، ومن يعمل فيه يوميًّا هو بالضبط من
  * يُحمى من الخطأ اليوميّ.
  */
-const mayWorkOutsideBook = (user) => !!user && user.role === 'super_admin';
+const mayWorkOutsideBook = (user) => !!user && require('./constants').isTopRole(user.role);
 
 module.exports = {
   WALLET_START_DATE,

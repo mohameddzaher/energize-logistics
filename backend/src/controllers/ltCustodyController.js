@@ -15,7 +15,7 @@ const { makeCustodyController } = require('./custodyLedgerController');
  * والمدير الماليّ). وتعديلُ قيدٍ مسجَّلٍ وحذفُه لمدير النظام وأهل المال وحدَهم.
  */
 const { FINANCE_FULL_ROLES } = require('../config/financeAuthority');
-const CUSTODY_ROLES = ['super_admin', 'b2c_manager', 'b2c_deputy', ...FINANCE_FULL_ROLES];
+const CUSTODY_ROLES = ['super_admin', 'admin', 'b2c_manager', 'b2c_deputy', ...FINANCE_FULL_ROLES];
 
 /**
  * المندوبُ برقم هويّته: من سجلّ النقل الخفيف أوّلًا (فيه الفري لانسر الذين لا

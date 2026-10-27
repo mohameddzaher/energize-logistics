@@ -19,7 +19,7 @@ import 'wallet_common.dart';
 // أهلُ المال يملكون في المحفظة ما يملكه مديرُ النظام — مرآةُ
 // backend/src/config/financeAuthority.js؛ والخادمُ هو الحارس.
 const _financeFullRoles = ['cfo', 'accounting_manager', 'accountant'];
-bool _financePowers(String role) => role == 'super_admin' || _financeFullRoles.contains(role);
+bool _financePowers(String role) => const ['super_admin', 'admin'].contains(role) || _financeFullRoles.contains(role);
 
 class CashWalletScreen extends StatefulWidget {
   const CashWalletScreen({super.key});

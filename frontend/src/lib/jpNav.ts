@@ -10,7 +10,8 @@ import { SECTION_ROLES } from '@/lib/roles';
 
 // من يدير القسمَ وليس دورُه دورَ مديره — مرآةُ `extraManagers` في config/jpSections.
 const EXTRA_MANAGERS: Record<string, string[]> = { Accounting: ['cfo'] };
-const TOP = ['super_admin'];
+// السوبر أدمن والأدمن يريان كلَّ شيء — مرآةُ TOP_ROLES في jpController.
+const TOP = ['super_admin', 'admin'];
 
 type U = { role?: string | null };
 const def = (section: string) => SECTION_ROLES.find((s) => s.section === section);

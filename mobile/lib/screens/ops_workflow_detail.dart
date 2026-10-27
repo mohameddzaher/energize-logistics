@@ -170,7 +170,7 @@ class _OpsWorkflowDetailScreenState extends State<OpsWorkflowDetailScreen> {
   }
 
   Future<void> _loadPerms() async {
-    if (_role == 'super_admin') {
+    if (const ['super_admin', 'admin'].contains(_role)) {
       setState(() { _myFields = null; _canLinkCustoms = true; });
       return;
     }
@@ -187,7 +187,7 @@ class _OpsWorkflowDetailScreenState extends State<OpsWorkflowDetailScreen> {
     }
   }
 
-  bool _canEditField(String k) => _role == 'super_admin' || _myFields == null || _myFields!.contains(k);
+  bool _canEditField(String k) => const ['super_admin', 'admin'].contains(_role) || _myFields == null || _myFields!.contains(k);
   bool _canEditGroup(List<(String, String, String, String)> fields) => fields.any((f) => _canEditField(f.$1));
 
   void _fillForm(Map<String, dynamic> w) {
@@ -274,7 +274,7 @@ class _OpsWorkflowDetailScreenState extends State<OpsWorkflowDetailScreen> {
   /// انتقالاتُ المراحل كما في صفحة الكشف على الويب («إرسال للتشغيل» أُزيل).
   List<(String, String, String)> get _transitions {
     final stage = (_w?['stage'] ?? 'draft').toString();
-    const opsRoles = ['operations_manager', 'super_admin'];
+    const opsRoles = ['operations_manager', 'super_admin', 'admin'];
     const colRoles = ['admin', 'employee', 'super_admin'];
     final map = <String, List<(String, String, String, List<String>)>>{
       'submitted_to_ops': [
@@ -410,7 +410,7 @@ class _OpsWorkflowDetailScreenState extends State<OpsWorkflowDetailScreen> {
           if (w != null && !_editing) IconButton(tooltip: tr('تصدير Excel', 'Export'), icon: const Icon(Icons.file_download_outlined), onPressed: _export),
           if (w != null && !_editing && !_lockedByOther)
             IconButton(tooltip: tr('تعديل', 'Edit'), icon: const Icon(Icons.edit_outlined), onPressed: _startEdit),
-          if (w != null && !_editing && !_lockedByOther && role == 'super_admin')
+          if (w != null && !_editing && !_lockedByOther && const ['super_admin', 'admin'].contains(role))
             IconButton(tooltip: tr('حذف الكشف', 'Delete report'), icon: const Icon(Icons.delete_outline), onPressed: _delete),
         ],
         body: w == null
@@ -483,7 +483,7 @@ class _OpsWorkflowDetailScreenState extends State<OpsWorkflowDetailScreen> {
                           const SizedBox(height: 8),
                           for (final f in s.$5)
                             // قيمةُ البيع لمن في قائمتها وحدَه — الخادمُ لا يرسلها لغيره.
-                            if (f.$1 != 'sellingValue' || role == 'super_admin' || (_myFields?.contains('sellingValue') ?? false))
+                            if (f.$1 != 'sellingValue' || const ['super_admin', 'admin'].contains(role) || (_myFields?.contains('sellingValue') ?? false))
                               Padding(padding: const EdgeInsets.only(bottom: 10), child: _fieldView(f)),
                         ]),
                       ),

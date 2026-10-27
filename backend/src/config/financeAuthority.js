@@ -19,7 +19,7 @@ const isFinanceFull = (role) => FINANCE_FULL_ROLES.includes(role);
 /** مديرُ النظام (أو من مُنح صلاحيّاتِه كاملةً)، أو أحدُ أهل المال. */
 const hasFinancePowers = async (role) => {
   if (!role) return false;
-  if (role === 'super_admin' || isFinanceFull(role)) return true;
+  if (require('./constants').isTopRole(role) || isFinanceFull(role)) return true;
   const { hasSuperAdminPowers } = require('../utils/permissions');
   return hasSuperAdminPowers(role);
 };

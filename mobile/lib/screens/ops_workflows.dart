@@ -138,7 +138,7 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
   late final void Function(dynamic) _onUnlockAll;
 
   String get _role => context.read<AuthProvider>().role;
-  bool get _full => _role == 'super_admin' || _financeFullRoles.contains(_role);
+  bool get _full => const ['super_admin', 'admin'].contains(_role) || _financeFullRoles.contains(_role);
   bool _has(String f) => _myFields?.contains(f) ?? false;
   bool get _canCreate => _full || _role == 'moderator';
   bool get _canDelete => _full;

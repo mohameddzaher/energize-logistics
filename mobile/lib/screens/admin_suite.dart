@@ -592,8 +592,8 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
   Widget build(BuildContext context) {
     final me = context.watch<AuthProvider>().role;
     // role-only كالويب: من يضبط المصفوفةَ لا يُمنَحها منها، وصنعُ الأنواع لمدير النظام.
-    final isSuper = const ['super_admin', 'it_manager', 'it_specialist'].contains(me);
-    final canMakeRoles = me == 'super_admin';
+    final isSuper = const ['super_admin', 'admin', 'it_manager', 'it_specialist'].contains(me);
+    final canMakeRoles = const ['super_admin', 'admin'].contains(me);
     final catalog = _catalog;
     final managed = _managed;
     final unmanaged = <String>{for (final p in catalog) if (!managed.contains(p['section'])) p['section'].toString()}.toList();
@@ -968,7 +968,7 @@ class _UserFormScreenState extends State<_UserFormScreen> {
   );
 
   Future<void> _pickRole() async {
-    final keys = roleKeys().where((r) => r != 'super_admin' || _role == 'super_admin').toList();
+    final keys = roleKeys().where((r) => r != 'super_admin' || const ['super_admin', 'admin'].contains(_role)).toList();
     final picked = await _search(
       title: tr('ابحث باسم الدور…', 'Search a role…'),
       fetch: (q) async => [for (final k in keys) if (q.isEmpty || _fold('$k ${roleLabel(k)}').contains(_fold(q))) {'_id': k}],

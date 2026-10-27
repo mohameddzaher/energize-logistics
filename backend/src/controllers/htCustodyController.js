@@ -13,7 +13,7 @@ const { makeCustodyController } = require('./custodyLedgerController');
 const { FINANCE_FULL_ROLES } = require('../config/financeAuthority');
 
 // مديرُ لوكيشن سوليوشن ومديرُ النظام وأهلُ المال — كمدير القطاع في الخفيف.
-const CUSTODY_ROLES = ['super_admin', 'location_manager', ...FINANCE_FULL_ROLES];
+const CUSTODY_ROLES = ['super_admin', 'admin', 'location_manager', ...FINANCE_FULL_ROLES];
 
 /** الموظّفُ برقم هويّته — بعمودَي الهويّة معًا (راجع identity-number-two-columns). */
 async function findRep(idNumber) {

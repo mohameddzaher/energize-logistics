@@ -24,7 +24,7 @@ interface Branch {
 export default function BranchesPage() {
   const { confirm } = useDialog();
   const { user } = useAuth();
-  const isSuperAdmin = user?.role === 'super_admin';
+  const isSuperAdmin = ['super_admin', 'admin'].includes(user?.role || '');
   const { lang } = useLanguage();
   const T = getBranchesTranslations(lang);
   const txx = getBranchesExtraTranslations(lang);

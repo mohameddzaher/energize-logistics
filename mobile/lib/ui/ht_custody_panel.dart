@@ -21,7 +21,7 @@ class HtCustodyPanel extends StatefulWidget {
 }
 
 // يطابق CUSTODY_ROLES في htCustodyController.
-const _roles = ['super_admin', 'location_manager', 'cfo', 'accounting_manager', 'accountant'];
+const _roles = ['super_admin', 'admin', 'location_manager', 'cfo', 'accounting_manager', 'accountant'];
 const _acc = {'cash': ('الكاش', 'Cash'), 'card': ('الكارت', 'Card'), 'workshop': ('الورشة', 'Workshop')};
 const _src = {
   'card': ('الكارت', 'Card'), 'workshop': ('الورشة', 'Workshop'), 'bank': ('البنك', 'Bank'),

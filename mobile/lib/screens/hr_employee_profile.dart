@@ -696,7 +696,7 @@ class _HrEmployeeProfileScreenState extends State<HrEmployeeProfileScreen> {
                     Text(tr('إعادة إلى النظام', 'Return to the system')),
                   ])),
                 // الحذفُ لمدير النظام وحدَه — والخادمُ يردّ غيرَه بـ٤٠٥.
-                if (context.read<AuthProvider>().role == 'super_admin')
+                if (const ['super_admin', 'admin'].contains(context.read<AuthProvider>().role))
                   PopupMenuItem(value: 'delete', child: Row(children: [
                     const Icon(Icons.delete_forever_outlined, size: 18, color: T.danger), const SizedBox(width: 10),
                     Text(tr('حذف السجلّ نهائيًّا', 'Delete record permanently'), style: const TextStyle(color: T.danger)),

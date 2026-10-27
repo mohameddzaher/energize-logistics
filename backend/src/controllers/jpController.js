@@ -28,7 +28,8 @@ const { emitToAll } = require('../websocket/socketManager');
 const logAudit = require('../utils/auditLogger');
 const { endedStaff, userEnded } = require('../utils/endedStaff');
 
-const TOP_ROLES = ['super_admin'];
+// السوبر أدمن والأدمن يريان السيستمَ كلَّه بصلاحيّاتٍ كاملة (صاحبُ الشركة، ٢٠٢٦/١٠/٢٧).
+const TOP_ROLES = ['super_admin', 'admin'];
 const sameId = (a, b) => !!a && !!b && String(a._id || a) === String(b._id || b);
 const nameOf = (u) => (u ? [u.firstName, u.lastName].filter(Boolean).join(' ').trim() || u.email || '' : '');
 const HOUR = 3600000;

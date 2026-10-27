@@ -150,7 +150,7 @@ exports.updateInvoice = async (req, res) => {
       return res.status(404).json({ message: 'Invoice not found' });
     }
 
-    if (invoice.isFrozen && req.user.role !== 'super_admin') {
+    if (invoice.isFrozen && !require('../config/constants').isTopRole(req.user.role)) {
       return res.status(403).json({ message: 'Invoice is frozen' });
     }
 

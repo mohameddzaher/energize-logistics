@@ -138,14 +138,14 @@ export default function WorkflowDetailPage() {
   const [canLinkCustoms, setCanLinkCustoms] = useState(false);
   useEffect(() => {
     if (!role) return;
-    if (role === 'super_admin') { setMyFields(null); setCanLinkCustoms(true); return; }
+    if (['super_admin', 'admin'].includes(role || '')) { setMyFields(null); setCanLinkCustoms(true); return; }
     let alive = true;
     api.get<{ roleAccess?: Record<string, string[]>; myFields?: string[]; canLinkCustoms?: boolean }>('/api/workflows/permissions')
       .then((d) => { if (alive) { setMyFields(new Set(d?.myFields || d?.roleAccess?.[role] || [])); setCanLinkCustoms(!!d?.canLinkCustoms); } })
       .catch(() => { if (alive) setMyFields(new Set()); });
     return () => { alive = false; };
   }, [role]);
-  const canEditField = (key: string) => role === 'super_admin' || myFields === null || myFields.has(key);
+  const canEditField = (key: string) =>['super_admin', 'admin'].includes(role || '') || myFields === null || myFields.has(key);
   const canEditGroup = (group: string) =>
     (SECTIONS.find((s) => s.group === group)?.fields || []).some((f) => canEditField(f.key));
 
@@ -286,12 +286,12 @@ export default function WorkflowDetailPage() {
       // إليها من عندنا. والزرُّ بقي من زمنٍ كانت تُنشأ فيه الكشوفُ هنا يدويًّا.
       draft: [],
       submitted_to_ops: [
-        { stage: 'ops_completed', label: T.markOpsComplete, roles: ['operations_manager', 'super_admin'] },
-        { stage: 'draft', label: T.returnToDraft, roles: ['operations_manager', 'super_admin'] },
+        { stage: 'ops_completed', label: T.markOpsComplete, roles: ['operations_manager', 'super_admin', 'admin'] },
+        { stage: 'draft', label: T.returnToDraft, roles: ['operations_manager', 'super_admin', 'admin'] },
       ],
       ops_completed: [
-        { stage: 'submitted_to_collections', label: T.submitToCollections, roles: ['operations_manager', 'super_admin'] },
-        { stage: 'submitted_to_ops', label: T.returnToOps, roles: ['operations_manager', 'super_admin'] },
+        { stage: 'submitted_to_collections', label: T.submitToCollections, roles: ['operations_manager', 'super_admin', 'admin'] },
+        { stage: 'submitted_to_ops', label: T.returnToOps, roles: ['operations_manager', 'super_admin', 'admin'] },
       ],
       submitted_to_collections: [
         { stage: 'completed', label: T.markComplete, roles: ['admin', 'employee', 'super_admin'] },
@@ -408,7 +408,7 @@ export default function WorkflowDetailPage() {
                 </button>
                 {/* الحذف للمدير الأعلى وحده: الكشف قيدٌ ماليّ يدخل في تقارير
                     التشغيل والتحصيل، وحذفُه ينقص رقمًا اطّلع عليه غيرُ واحد. */}
-                {role === 'super_admin' && (
+                {['super_admin', 'admin'].includes(role || '') && (
                   <button type="button" onClick={handleDeleteWorkflow}
                     title={lang === 'ar' ? 'حذف الكشف' : 'Delete report'}
                     className="p-2 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors">
@@ -469,7 +469,7 @@ export default function WorkflowDetailPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {/* قيمةُ البيع لمن في قائمتها وحدَه — الخادمُ لا يرسلها لغيره، فخانتُها
                     الفارغةُ كانت تُقرأ «لا سعر». راجع SELLING_ROLES في workflowController. */}
-                {section.fields.filter((f) => f.key !== 'sellingValue' || role === 'super_admin' || !!myFields?.has('sellingValue')).map((field) => {
+                {section.fields.filter((f) => f.key !== 'sellingValue' ||['super_admin', 'admin'].includes(role || '') || !!myFields?.has('sellingValue')).map((field) => {
                   const val = formData[field.key];
                   // حقلًا حقلًا: قد يُعدِّل المستخدمُ بعضَ مجموعةٍ لا كلَّها.
                   const editable = editing && canEditField(field.key);

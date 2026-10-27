@@ -44,7 +44,7 @@ const EXEC_ROLES = ['super_admin', 'admin'];
 
 // ومَن يُمضي ما تعطّل. وليست `FULL_ACCESS_ROLES`: تقنيةُ المعلومات تملك النظامَ
 // كلَّه لأنّها تُصلحه، لا لتوقّع على إجازة أحد.
-const OVERRIDE_ROLES = ['super_admin'];
+const OVERRIDE_ROLES = ['super_admin', 'admin'];
 
 /** أيملك هذا المستخدمُ البتَّ في هذه المحطّة على هذا الطلب؟ */
 function canActAt(stage, user, leave) {

@@ -140,7 +140,7 @@ class _HrEmployeesScreenState extends State<HrEmployeesScreen> {
 
   Widget _rowMenu(Map<String, dynamic> e) {
     final role = context.read<AuthProvider>().role;
-    final canEnd = (role == 'super_admin' || role == 'hr_manager') && e['employmentStatus'] != 'terminated';
+    final canEnd = (const ['super_admin', 'admin'].contains(role) || role == 'hr_manager') && e['employmentStatus'] != 'terminated';
     return PopupMenuButton<String>(
       icon: const Icon(Icons.more_vert, color: T.inkFaint, size: 20),
       onSelected: (v) {
@@ -152,7 +152,7 @@ class _HrEmployeesScreenState extends State<HrEmployeesScreen> {
         PopupMenuItem(value: 'edit', child: Row(children: [const Icon(Icons.edit_outlined, size: 18, color: T.navy), const SizedBox(width: 10), Text(tr('تعديل', 'Edit'))])),
         if (canEnd)
           PopupMenuItem(value: 'end', child: Row(children: [const Icon(Icons.person_remove_outlined, size: 18, color: T.warn), const SizedBox(width: 10), Text(tr('إنهاء الخدمة — من ملفّ الموظّف', 'End service — in the employee file'))])),
-        if (role == 'super_admin')
+        if (const ['super_admin', 'admin'].contains(role))
           PopupMenuItem(value: 'delete', child: Row(children: [const Icon(Icons.delete_forever_outlined, size: 18, color: T.danger), const SizedBox(width: 10), Text(tr('حذف السجلّ نهائيًّا (مدير النظام)', 'Delete permanently (system admin)'), style: const TextStyle(color: T.danger))])),
       ],
     );

@@ -10,7 +10,7 @@ import SignatureManager from '@/components/SignatureManager';
 export default function SettingsPage() {
   const { user, refreshUser } = useAuth();
   // role-only: إعداداتُ النظام لمديره.
-  const isSuperAdmin = ['super_admin', 'it_manager', 'it_specialist'].includes(user?.role || '');
+  const isSuperAdmin = ['super_admin', 'admin', 'it_manager', 'it_specialist'].includes(user?.role || '');
 
   const { lang } = useLanguage();
   const T = getSettingsTranslations(lang);

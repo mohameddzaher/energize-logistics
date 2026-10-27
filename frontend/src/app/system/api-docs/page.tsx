@@ -17,7 +17,7 @@ import { PageHeader, Spinner } from '@/components/hr/HRKit';
 import { BookOpen } from 'lucide-react';
 
 const SWAGGER = '5.17.14';
-const DOCS_ROLES = ['super_admin', 'it_manager', 'it_specialist'];
+const DOCS_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist'];
 
 function loadCss(href: string) {
   if (document.querySelector(`link[href="${href}"]`)) return;

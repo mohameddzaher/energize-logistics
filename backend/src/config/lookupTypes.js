@@ -851,7 +851,7 @@ const byType = (type) => REGISTRY.find((r) => r.type === type) || null;
 // Roles allowed to create/update/delete a given type.
 const writeRolesFor = (type) => {
   const entry = byType(type);
-  if (entry && entry.superOnly) return ['super_admin'];
+  if (entry && entry.superOnly) return ['super_admin', 'admin'];
   return [...BASE_WRITE_ROLES, ...((entry && entry.roles) || [])];
 };
 

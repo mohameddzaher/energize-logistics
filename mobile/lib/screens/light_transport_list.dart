@@ -511,7 +511,7 @@ class _LightTransportListScreenState extends State<LightTransportListScreen> {
     final auth = context.read<AuthProvider>();
     final role = auth.role;
     final canEdit = canEditLtUser(auth);
-    final canAdd = const ['super_admin', 'b2c_manager', 'b2c_deputy', 'cfo', 'accounting_manager', 'accountant'].contains(role);
+    final canAdd = const ['super_admin', 'admin', 'b2c_manager', 'b2c_deputy', 'cfo', 'accounting_manager', 'accountant'].contains(role);
     final canTransfer = ltTransferRoles.contains(role);
     final colFiltered = applyColumnFilters(_rows, ltColumns, _cf);
     final t = _faceted(colFiltered, _f);

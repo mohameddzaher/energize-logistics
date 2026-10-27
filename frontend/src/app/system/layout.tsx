@@ -270,8 +270,8 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/executive', label: lang === 'ar' ? 'النظرة التنفيذية' : 'Executive Overview', icon: <Crown className="w-5 h-5" />, roles: ['super_admin', 'admin'], section: 'Main' },
     // خطّةُ الإدارة العليا إلى مديري الأقسام — ولوحتُها لمدير النظام وحدَه.
     // (مديرُ القسم يجد خطّةَ الإدارة داخل قسمه.)
-    { href: '/system/management-jp', label: lang === 'ar' ? 'خطّة الإدارة (Management JP)' : 'Management JP', icon: <CalendarCheck className="w-5 h-5" />, roles: ['super_admin'], section: 'Main', visible: (u) => jpTop(u) },
-    { href: '/system/management-jp/dashboard', label: lang === 'ar' ? 'لوحة خطّة الإدارة' : 'Management JP Dashboard', icon: <BarChart3 className="w-5 h-5" />, roles: ['super_admin'], section: 'Main', visible: (u) => jpTop(u) },
+    { href: '/system/management-jp', label: lang === 'ar' ? 'خطّة الإدارة (Management JP)' : 'Management JP', icon: <CalendarCheck className="w-5 h-5" />, roles: ['super_admin', 'admin'], section: 'Main', visible: (u) => jpTop(u) },
+    { href: '/system/management-jp/dashboard', label: lang === 'ar' ? 'لوحة خطّة الإدارة' : 'Management JP Dashboard', icon: <BarChart3 className="w-5 h-5" />, roles: ['super_admin', 'admin'], section: 'Main', visible: (u) => jpTop(u) },
     // ── و«المتأخرات» أُزيلت ────────────────────────────────────────────────
     // صفحةٌ من قسم «العملاء والمالية» الذي حُذف. بقيت في القائمة الرئيسيّة
     // تقرأ `Invoice` و`Customer` — وكلتاهما فارغتان — ثمّ تغيّر شكلُ نقطتها
@@ -333,13 +333,13 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/collections-dept/suppliers', label: lang === 'ar' ? 'الموردين' : 'Suppliers', icon: <Truck className="w-5 h-5" />, roles: COLLECTIONS_NAV_ROLES, section: 'Collections' },
     // ── المحفظةُ عرضًا لقسم التحصيل (٢٠٢٦/١٠/٢٧) — صفحتا العمليّات نفسُهما،
     // تُفتحان هنا لأنّ قسمَ العمليّات مغلقٌ عليهما. راجع config/walletViewOnly.
-    { href: '/system/wallet', label: lang === 'ar' ? 'محفظة الفروع (عرض)' : 'Branch wallets (view)', icon: <Wallet className="w-5 h-5" />, roles: ['collections_manager', 'collections_staff'], section: 'Collections', restrict: true },
-    { href: '/system/wallet-dashboard', label: lang === 'ar' ? 'لوحة المحفظة (عرض)' : 'Wallet dashboard (view)', icon: <BarChart3 className="w-5 h-5" />, roles: ['collections_manager', 'collections_staff'], section: 'Collections', restrict: true },
+    { href: '/system/wallet', label: lang === 'ar' ? 'محفظة الفروع (عرض)' : 'Branch wallets (view)', icon: <Wallet className="w-5 h-5" />, roles: ['super_admin', 'admin', 'collections_manager', 'collections_staff'], section: 'Collections', restrict: true },
+    { href: '/system/wallet-dashboard', label: lang === 'ar' ? 'لوحة المحفظة (عرض)' : 'Wallet dashboard (view)', icon: <BarChart3 className="w-5 h-5" />, roles: ['super_admin', 'admin', 'collections_manager', 'collections_staff'], section: 'Collections', restrict: true },
     // ── وصفحةُ التشغيل من داخل قسمهم ──────────────────────────────────────
     // الكشفُ ورقةُ عملِ التحصيل: منه يُقرأ ما لنا وما علينا، وفيه تُكتب
     // الفاتورةُ وتاريخُ التحصيل. ووضعُ الرابط هنا يوفّر عليهم البحثَ عنه في
     // قسمٍ لا يملكونه.
-    { href: '/system/operations', label: lang === 'ar' ? 'سير عمل التشغيل' : 'Operations Workflow', icon: <ClipboardList className="w-5 h-5" />, roles: ['collections_manager', 'collections_staff'], section: 'Collections', restrict: true },
+    { href: '/system/operations', label: lang === 'ar' ? 'سير عمل التشغيل' : 'Operations Workflow', icon: <ClipboardList className="w-5 h-5" />, roles: ['super_admin', 'admin', 'collections_manager', 'collections_staff'], section: 'Collections', restrict: true },
     { href: '/system/collections-dept/jp', label: lang === 'ar' ? 'خطّة العمل (JP)' : 'JP', icon: <CalendarCheck className="w-5 h-5" />, roles: [], section: 'Collections', visible: (u) => jpMember(u, 'Collections') },
     { href: '/system/collections-dept/jp-dashboard', label: lang === 'ar' ? 'لوحة JP' : 'JP Dashboard', icon: <BarChart3 className="w-5 h-5" />, roles: [], section: 'Collections', visible: (u) => jpManager(u, 'Collections') },
     { href: '/system/collections-dept/management-jp', label: lang === 'ar' ? 'خطّة الإدارة (Management JP)' : 'Management JP', icon: <Crown className="w-5 h-5" />, roles: [], section: 'Collections', visible: (u) => jpManager(u, 'Collections') && !jpTop(u) },
@@ -415,7 +415,7 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     // لوحةُ القسم للفريق كلِّه: تشغيلٌ بلا أرقامٍ ماليّة. والتحليلاتُ (الأرباح)
     // لمدير النظام ومدير القسم وحدَهما — والخادمُ يحرسها بالقائمة نفسِها.
     { href: '/system/customs/dashboard', label: lang === 'ar' ? 'لوحة القسم' : 'Section Dashboard', icon: <LayoutDashboard className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'operations_manager', 'customs_manager', 'customs_officer'], section: 'Customs' },
-    { href: '/system/customs/analytics', label: lang === 'ar' ? 'تحليلات قسم التخليص' : 'Customs Analytics', icon: <BarChart3 className="w-5 h-5" />, roles: ['super_admin', 'customs_manager'], section: 'Customs', restrict: true },
+    { href: '/system/customs/analytics', label: lang === 'ar' ? 'تحليلات قسم التخليص' : 'Customs Analytics', icon: <BarChart3 className="w-5 h-5" />, roles: ['super_admin', 'admin', 'customs_manager'], section: 'Customs', restrict: true },
     { href: '/system/customs', label: L.customsClearance, icon: <Ship className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'operations_manager', 'customs_manager', 'customs_officer'], section: 'Customs' },
     // ── صفحاتُ التخليص ────────────────────────────────────────────────────
     // «دليل التخليص» أُخفي من التنقّل وبقي في الكود: الصفحةُ مكتوبةٌ وتعمل، ولو
@@ -467,7 +467,7 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/ls2/temperature', label: lang === 'ar' ? 'الحرارة' : 'Temperature', icon: <Thermometer className="w-5 h-5" />, roles: LS2_SECTION_ROLES, section: 'Location Solutions' },
     { href: '/system/ls2/maintenance', label: lang === 'ar' ? 'الصيانة' : 'Maintenance', icon: <Wrench className="w-5 h-5" />, roles: LS2_SECTION_ROLES, section: 'Location Solutions' },
     { href: '/system/ls2/fleet-assets', label: lang === 'ar' ? 'السطحات والكاوتشات' : 'Fleet Assets', icon: <Container className="w-5 h-5" />, roles: LS2_SECTION_ROLES, section: 'Location Solutions' },
-    { href: '/system/ls2/custody', label: lang === 'ar' ? 'عهدة النقل الثقيل' : 'Heavy Transport Custody', icon: <Wallet className="w-5 h-5" />, roles: ['super_admin', 'location_manager', 'cfo', 'accounting_manager', 'accountant'], section: 'Location Solutions' },
+    { href: '/system/ls2/custody', label: lang === 'ar' ? 'عهدة النقل الثقيل' : 'Heavy Transport Custody', icon: <Wallet className="w-5 h-5" />, roles: ['super_admin', 'admin', 'location_manager', 'cfo', 'accounting_manager', 'accountant'], section: 'Location Solutions' },
     { href: '/system/ls2/store', label: lang === 'ar' ? 'مخزن النقل الثقيل' : 'Store', icon: <Boxes className="w-5 h-5" />, roles: LS2_SECTION_ROLES, section: 'Location Solutions' },
     // مَن تُشترى منه قطعُ الغيار — ويُضاف كذلك من خانة «المورد» في استمارة الصنف.
     { href: '/system/ls2/suppliers', label: lang === 'ar' ? 'الموردون' : 'Suppliers', icon: <Truck className="w-5 h-5" />, roles: LS2_SECTION_ROLES, section: 'Location Solutions' },
@@ -483,10 +483,10 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     // people hunt across the sidebar for one truck's story.
     // ---- Performance (KPI evaluation) ----
     // لوحةُ القسم أوّلًا: «نظرةُ كلّ الأقسام» هي حالُ القسم، والتقييمُ عملٌ فيه.
-    { href: '/system/performance/overview', label: lang === 'ar' ? 'نظرة كل الأقسام' : 'All Departments', icon: <Crown className="w-5 h-5" />, roles: ['super_admin'], section: 'Performance' },
-    { href: '/system/performance', label: lang === 'ar' ? 'تقييم مديري الأقسام' : 'Evaluate Managers', icon: <Target className="w-5 h-5" />, roles: ['super_admin'], section: 'Performance' },
-    { href: '/system/performance/requests', label: lang === 'ar' ? 'طلبات تعديل التقييم' : 'Edit Requests', icon: <Inbox className="w-5 h-5" />, roles: ['super_admin'], section: 'Performance' },
-    { href: '/system/performance/settings', label: lang === 'ar' ? 'إعداد المؤشرات' : 'Configure KPIs', icon: <Settings className="w-5 h-5" />, roles: ['super_admin'], section: 'Performance' },
+    { href: '/system/performance/overview', label: lang === 'ar' ? 'نظرة كل الأقسام' : 'All Departments', icon: <Crown className="w-5 h-5" />, roles: ['super_admin', 'admin'], section: 'Performance' },
+    { href: '/system/performance', label: lang === 'ar' ? 'تقييم مديري الأقسام' : 'Evaluate Managers', icon: <Target className="w-5 h-5" />, roles: ['super_admin', 'admin'], section: 'Performance' },
+    { href: '/system/performance/requests', label: lang === 'ar' ? 'طلبات تعديل التقييم' : 'Edit Requests', icon: <Inbox className="w-5 h-5" />, roles: ['super_admin', 'admin'], section: 'Performance' },
+    { href: '/system/performance/settings', label: lang === 'ar' ? 'إعداد المؤشرات' : 'Configure KPIs', icon: <Settings className="w-5 h-5" />, roles: ['super_admin', 'admin'], section: 'Performance' },
     // ---- Marketing ----
     { href: '/system/marketing', label: lang === 'ar' ? 'لوحة التسويق' : 'Marketing Dashboard', icon: <Megaphone className="w-5 h-5" />, roles: MARKETING_ROLES, section: 'Marketing' },
     { href: '/system/marketing/campaigns', label: lang === 'ar' ? 'الحملات' : 'Campaigns', icon: <Target className="w-5 h-5" />, roles: MARKETING_ROLES, section: 'Marketing' },
@@ -587,9 +587,9 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/b2c/orders', label: L.b2cOrders, icon: <ClipboardList className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead'], section: 'B2C' },
     { href: '/system/b2c/projects', label: L.b2cProjects, icon: <Target className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead'], section: 'B2C' },
     // عهدةُ القسم: الكاش وكارت المشتريات والورشة — واردُ كلٍّ وصادرُه ورصيدُه.
-    { href: '/system/b2c/light-transport/custody', label: lang === 'ar' ? 'عهدة النقل الخفيف' : 'Light Transport Custody', icon: <Wallet className="w-5 h-5" />, roles: ['super_admin', 'b2c_manager', 'b2c_deputy', 'cfo', 'accounting_manager', 'accountant'], section: 'B2C' },
+    { href: '/system/b2c/light-transport/custody', label: lang === 'ar' ? 'عهدة النقل الخفيف' : 'Light Transport Custody', icon: <Wallet className="w-5 h-5" />, roles: ['super_admin', 'admin', 'b2c_manager', 'b2c_deputy', 'cfo', 'accounting_manager', 'accountant'], section: 'B2C' },
     // مركباتُ مشاريع القسم من سجلّ المركبات نفسِه: القائدُ الفعليّ والتفويض.
-    { href: '/system/b2c/vehicles', label: lang === 'ar' ? 'مركبات النقل الخفيف' : 'Light Transport Vehicles', icon: <Truck className="w-5 h-5" />, roles: ['super_admin', 'b2c_manager', 'b2c_deputy', 'cfo', 'accounting_manager', 'accountant'], section: 'B2C' },
+    { href: '/system/b2c/vehicles', label: lang === 'ar' ? 'مركبات النقل الخفيف' : 'Light Transport Vehicles', icon: <Truck className="w-5 h-5" />, roles: ['super_admin', 'admin', 'b2c_manager', 'b2c_deputy', 'cfo', 'accounting_manager', 'accountant'], section: 'B2C' },
     // ── ويُبلَّغ القسمُ الموارد البشريّة بما رآه في الميدان ─────────────────
     // المندوبُ يعود إلى العمل اليومَ ويبلغ الخبرُ الموارد البشريّة بعد أيّام،
     // فيبقى في النظام «منتهيًا» ولا يُصدَر له أمرُ تشغيل. ومشرفُ المناديب
@@ -742,18 +742,18 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/assistant', label: L.assistant, icon: <Bot className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'employee'], section: 'Tools' },
 
     // Admin (configuration & oversight — kept near the bottom)
-    { href: '/system/branches', label: L.branches, icon: <Building2 className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist'], section: 'Admin' },
+    { href: '/system/branches', label: L.branches, icon: <Building2 className="w-5 h-5" />, roles: ['super_admin', 'admin', 'it_manager', 'it_specialist'], section: 'Admin' },
     // ── القوائمُ المرجعيّة: لكلٍّ قوائمُه ────────────────────────────────────
     // كانت مقصورةً على قائمةِ أدوارٍ مكتوبةٍ باليد — يُنسى منها مديرُ الأسطول
     // ومديرُ المركبات وهما يملكان قوائمَ فعلًا — ومن دخلها رأى قوائمَ الأقسام
     // كلِّها. صار الخادمُ يردّ لكلّ دورٍ ما يملك تعديلَه وحدَه، فتُفتح للجميع
     // ولا يرى فيها أحدٌ ما ليس له. ومن لا قائمةَ له تقول له الصفحةُ ذلك.
     { href: '/system/settings/reference-data', label: lang === 'ar' ? 'القوائم المرجعية' : 'Reference Data', icon: <Tags className="w-5 h-5" />, roles: SELF_SERVICE_ROLES, visible: (u: any) => isInternal(u?.role), section: 'Admin' },
-    { href: '/system/users', label: L.users, icon: <UserCog className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist'], section: 'Admin' },
-    { href: '/system/permissions', label: lang === 'ar' ? 'الأدوار والصلاحيات' : 'Roles & Permissions', icon: <ShieldCheck className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist'], section: 'Admin' },
+    { href: '/system/users', label: L.users, icon: <UserCog className="w-5 h-5" />, roles: ['super_admin', 'admin', 'it_manager', 'it_specialist'], section: 'Admin' },
+    { href: '/system/permissions', label: lang === 'ar' ? 'الأدوار والصلاحيات' : 'Roles & Permissions', icon: <ShieldCheck className="w-5 h-5" />, roles: ['super_admin', 'admin', 'it_manager', 'it_specialist'], section: 'Admin' },
     { href: '/system/audit', label: L.auditLog, icon: <ClipboardList className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin'], section: 'Admin' },
     // توثيقُ الـ API — يُبنى من الكود لحظةَ فتحه؛ السطحُ الداخليُّ لمن يحرسه الخادمُ به (FULL_ACCESS_ROLES).
-    { href: '/system/api-docs', label: lang === 'ar' ? 'توثيق الـ API' : 'API Docs', icon: <BookOpen className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist'], section: 'Admin' },
+    { href: '/system/api-docs', label: lang === 'ar' ? 'توثيق الـ API' : 'API Docs', icon: <BookOpen className="w-5 h-5" />, roles: ['super_admin', 'admin', 'it_manager', 'it_specialist'], section: 'Admin' },
     { href: '/system/complaints', label: L.complaints, icon: <MessageSquare className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'operations_manager'], section: 'Admin' },
     // بوابة العميل / المورد. `portalService` gates a link on the partner ACTUALLY
     // having work of that kind — a customs-only customer never sees a shipments
@@ -807,7 +807,7 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
   // السحب — والخادمُ يقرّر ما يُعرَض لكلٍّ منهما (راجع notificationController.scopeOf).
   useSocket('notification:activity', useCallback(() => {
     const r = user?.role || '';
-    if (r === 'super_admin' || r === 'cfo' || /_manager$/.test(r)) fetchNotifications();
+    if (['super_admin', 'admin'].includes(r || '') || r === 'cfo' || /_manager$/.test(r)) fetchNotifications();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.role]));
 

@@ -126,7 +126,7 @@ exports.remove = async (req, res) => {
   try {
     const doc = await HrFormTemplate.findById(req.params.id);
     if (!doc) return res.status(404).json({ message: 'غير موجود' });
-    if (req.query.purge === '1' && req.user?.role === 'super_admin') {
+    if (req.query.purge === '1' && require('../config/constants').isTopRole(req.user?.role)) {
       await HrFormTemplate.deleteOne({ _id: doc._id });
       emit();
       return res.json({ message: 'حُذف' });

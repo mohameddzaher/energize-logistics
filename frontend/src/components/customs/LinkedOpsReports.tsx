@@ -239,9 +239,9 @@ function ReportDetail({ r, access, clearanceId, ar, canOpenOps, userId, onSaved 
 export default function LinkedOpsReports({ clearanceId, ar }: { clearanceId: string; ar: boolean }) {
   const t = (a: string, e: string) => (ar ? a : e);
   const { user } = useAuth();
-  const canOpenOps = user?.role === 'super_admin' || canAccessSection(user?.permissions, 'Operations');
+  const canOpenOps = ['super_admin', 'admin'].includes(user?.role || '') || canAccessSection(user?.permissions, 'Operations');
   // وطلبُ الشحن يُفتح لمن يفتح قسمَه — وإلّا يُقرأ رقمُه.
-  const canOpenShipments = user?.role === 'super_admin' || canAccessSection(user?.permissions, 'Shipment Orders');
+  const canOpenShipments = ['super_admin', 'admin'].includes(user?.role || '') || canAccessSection(user?.permissions, 'Shipment Orders');
   const [data, setData] = useState<Resp | null>(null);
   const [error, setError] = useState('');
   const [open, setOpen] = useState<Set<string>>(new Set());

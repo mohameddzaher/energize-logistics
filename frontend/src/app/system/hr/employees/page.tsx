@@ -334,7 +334,7 @@ export default function HREmployeesPage() {
                 <td {...pin.td(0, 'px-4 py-3', 'bg-white group-hover:bg-slate-100')} onClick={(ev) => ev.stopPropagation()}>
                   <div className="flex items-center gap-1">
                     <button type="button" onClick={() => openEdit(e)} className="p-1.5 rounded-lg text-slate-700 hover:text-[#f37121] hover:bg-slate-100" title={tx.edit}><Edit className="w-4 h-4" /></button>
-                    {(user?.role === 'super_admin' || user?.role === 'hr_manager') && e.employmentStatus !== 'terminated' && (
+                    {(['super_admin', 'admin'].includes(user?.role || '') || user?.role === 'hr_manager') && e.employmentStatus !== 'terminated' && (
                       <button type="button" onClick={() => openFileToEndService(e)}
                         className="p-1.5 rounded-lg text-slate-700 hover:text-amber-600 hover:bg-slate-100"
                         title={ar ? 'إنهاء الخدمة — من ملفّ الموظّف' : 'End service — in the employee file'}>
@@ -342,7 +342,7 @@ export default function HREmployeesPage() {
                       </button>
                     )}
                     {/* الحذفُ لمدير النظام وحدَه — والخادمُ يحرسه بدوره لا بمنح القسم. */}
-                    {user?.role === 'super_admin' && (
+                    {['super_admin', 'admin'].includes(user?.role || '') && (
                       <button type="button" onClick={() => removeForGood(e)}
                         className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50"
                         title={ar ? 'حذف السجلّ نهائيًّا (مدير النظام)' : 'Delete the record permanently (system admin)'}>

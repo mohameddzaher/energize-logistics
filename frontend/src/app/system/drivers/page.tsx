@@ -34,7 +34,7 @@ interface Driver {
 export default function DriversPage() {
   const { confirm } = useDialog();
   const { user } = useAuth();
-  const isSuperAdmin = user?.role === 'super_admin';
+  const isSuperAdmin = ['super_admin', 'admin'].includes(user?.role || '');
   // والمصفوفةُ تُحسب كما تُحسب القائمة: دورٌ مُنح «تعديل» في هذا القسم يعدّل
   // — وإلّا فُتحت الشاشةُ لدورٍ مصنوعٍ وامتنعت عنه أزرارُها (راجع فريق العمليات).
   const canEdit = ['super_admin', 'admin', 'operations_manager', 'operations_staff'].includes(user?.role || '')

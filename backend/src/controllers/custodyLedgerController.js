@@ -32,7 +32,7 @@ const who = (req) => [req.user.firstName, req.user.lastName].filter(Boolean).joi
  * تعديلُ قيدٍ مسجَّلٍ وحذفُه لمدير النظام وأهل المال وحدَهم: القيدُ مالٌ، ومن
  * يُدخِله لا يصحّحه بيده — يصحّحه من يُسأل عن الدفتر.
  */
-const canManage = (user) => user?.role === 'super_admin' || isFinanceFull(user?.role);
+const canManage = (user) => require('../config/constants').isTopRole(user?.role) || isFinanceFull(user?.role);
 
 const ACC_AR = { cash: 'الكاش', card: 'الكارت', workshop: 'الورشة' };
 // «opening» رصيدٌ افتتاحيّ: يُكتب بالسكربت مرّةً ولا يُختار من الشاشة.

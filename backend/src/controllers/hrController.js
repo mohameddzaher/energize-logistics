@@ -503,7 +503,7 @@ exports.deleteEmployee = async (req, res) => {
    * والحذفُ يُبقي أثرَه: السجلُّ كلُّه يُحفَظ في سجلّ المراجعة قبل محوه،
    * فيُعرَف مَن حذف مَن ومتى، ويُستعاد منه إن لزم.
    */
-  if (req.user.role !== 'super_admin') {
+  if (!require('../config/constants').isTopRole(req.user.role)) {
     return res.status(405).json({
       code: 'EMPLOYEE_DELETE_DISABLED',
       message: 'حذفُ الموظّف لمدير النظام وحدَه. مَن ترك العمل تُنهى خدمتُه '
@@ -2192,7 +2192,7 @@ const HR_MANAGED_TYPES = new Set(['sim']);
 // edit / return / delete actions belong to /system/it/custody, so they are
 // refused here. super_admin is exempt — it owns every section anyway.
 const denyItOwned = (req, res, asset) => {
-  if (asset.issuedBySection !== 'it' || req.user.role === 'super_admin') return false;
+  if (asset.issuedBySection !== 'it' || require('../config/constants').isTopRole(req.user.role)) return false;
   if (HR_MANAGED_TYPES.has(asset.type)) return false;
   res.status(403).json({ message: 'This is IT custody — view only. It is managed from the Software & IT section.' });
   return true;

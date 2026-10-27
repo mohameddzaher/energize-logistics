@@ -12,7 +12,7 @@ const CFG: CustodyConfig = {
   event: 'ht:custody',
   title: ['عهدة النقل الثقيل', 'Heavy transport custody'],
   // يطابق `CUSTODY_ROLES` في htCustodyController: مديرُ لوكيشن سوليوشن ومديرُ النظام وأهلُ المال.
-  roles: ['super_admin', 'location_manager', 'cfo', 'accounting_manager', 'accountant'],
+  roles: ['super_admin', 'admin', 'location_manager', 'cfo', 'accounting_manager', 'accountant'],
   exportPrefix: 'heavy-custody',
   rep: ['موظف', 'Employee'],
   repMissing: ['لا موظّفَ بهذا الرقم في الموارد البشريّة.', 'No employee with this number in HR.'],

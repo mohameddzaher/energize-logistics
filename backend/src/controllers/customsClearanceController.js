@@ -283,7 +283,7 @@ exports._search = { searchValuesOf, searchClearances, SEARCH_INDEX_FIELDS };
  * فمديرُ النظام ومديرُ القسم يريان الربحَ والهامش، وغيرُهما لا يصله الرقمُ
  * أصلًا — يُحذَف هنا في الخادم، لا يُخفى في الشاشة.
  */
-const MONEY_ROLES = ['super_admin', 'customs_manager'];
+const MONEY_ROLES = ['super_admin', 'admin', 'customs_manager'];
 const seesMoney = (req) => MONEY_ROLES.includes(req.user && req.user.role);
 // ربحُ المعاملة الواحدة: للإدارة، وللماليّة التي تراجعها من شاشتها.
 const PROFIT_ROLES = [...MONEY_ROLES, 'cfo', 'accounting_manager', 'accountant'];
@@ -2564,7 +2564,7 @@ exports.getDashboard = async (req, res) => {
     const { JpTask } = require('../models/JpModels');
     const { JP_SECTIONS } = require('../config/jpSections');
     const jp = JP_SECTIONS.customs;
-    const isManager = req.user.role === 'super_admin' || jp.managerRoles.includes(req.user.role);
+    const isManager = require('../config/constants').isTopRole(req.user.role) || jp.managerRoles.includes(req.user.role);
 
     const filter = {};
     for (const k of ['customerParty', 'agentParty', 'carrierParty']) {

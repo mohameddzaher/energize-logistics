@@ -13,7 +13,7 @@ import { SO_EDIT_ROLES, SO_ADMIN_ROLES } from './shipmentOrders';
 // السعر خارجَ هذه القاعدة: يقرّرها الخادمُ في `canEditTiers`.
 export const CUSTOMER_EDIT_ROLES = [...SO_EDIT_ROLES, 'sales_manager', 'sales_rep'];
 /** أسعارُ الوجهات (المتّفقُ عليه والشرائح) — لمدير العمليّات ومدير النظام وحدَهما؛ والخادمُ هو الحارس. */
-export const canEditRoutePrices = (u: RoleOrUser) => ['super_admin', 'operations_manager'].includes(roleOf(u));
+export const canEditRoutePrices = (u: RoleOrUser) => ['super_admin', 'admin', 'operations_manager'].includes(roleOf(u));
 export const canEditCustomers = (u: RoleOrUser) =>
   CUSTOMER_EDIT_ROLES.includes(roleOf(u)) || canEditSection(permsOf(u), 'Shipment Orders');
 /** الإزالةُ (إيقافُ العميل) — لقائمة الإدارة كما كانت. */

@@ -103,7 +103,7 @@ export default function CustomsPage() {
   const { user } = useAuth();
   const router = useRouter();
   // الأرباحُ لمدير النظام ومدير القسم وحدَهما — والخادمُ لا يرسلها لغيرهما.
-  const seesMoney = ['super_admin', 'customs_manager'].includes(user?.role || '');
+  const seesMoney = ['super_admin', 'admin', 'customs_manager'].includes(user?.role || '');
   const canEdit = ['super_admin', 'admin', 'operations_manager', 'customs_manager', 'customs_officer'].includes(user?.role || '') || canEditSection((user as any)?.permissions, 'Customs'); // matrix edit grants count too
   // الحذفُ لمدير القسم وموظّفه — يطابق حارسَ المسار في الخادم.
   const canDelete = ['super_admin', 'admin', 'customs_manager', 'customs_officer'].includes(user?.role || '') || canEditSection((user as any)?.permissions, 'Customs');

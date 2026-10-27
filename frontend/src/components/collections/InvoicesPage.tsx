@@ -476,6 +476,19 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
         count={r.attachments || 0} onCount={(n) => setAttachCount(rowKey(r), n)} />
     ),
   };
+  // ── الحالةُ الثلاثيّة بكلمةٍ ولون ───────────────────────────────────────
+  // قبل الأعمدة لا بعدها: فلترُ عمود «حالة التحصيل» يستدعي `stateLabel` من
+  // `transform` أثناءَ `cf.apply` — وكانت معرَّفةً بعده فتنهار الشاشةُ
+  // («Cannot access before initialization») لكلّ مَن فلتر بالحالة.
+  const stateLabel = (s: CollectionState | undefined) => (s === 'full'
+    ? t('تم تحصيلها بالكامل', 'Fully collected')
+    : s === 'partial' ? t('تم تحصيلها جزئيًّا', 'Partially collected') : t('لم تُحصَّل بعد', 'Not collected'));
+  const stateChip = (s: CollectionState | undefined) => (
+    <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold whitespace-nowrap ${
+      s === 'full' ? 'bg-emerald-50 text-emerald-700' : s === 'partial' ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-600'}`}>
+      {stateLabel(s)}
+    </span>
+  );
   const allCols: Col[] = isCash
     ? [
       { header: t('رقم كشف التخريج', 'Report no.'), key: 'reportNumber', width: 18, filter: 'reportNumber',
@@ -588,16 +601,6 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
     </span>
   );
 
-  // ── الحالةُ الثلاثيّة بكلمةٍ ولون ───────────────────────────────────────
-  const stateLabel = (s: CollectionState | undefined) => (s === 'full'
-    ? t('تم تحصيلها بالكامل', 'Fully collected')
-    : s === 'partial' ? t('تم تحصيلها جزئيًّا', 'Partially collected') : t('لم تُحصَّل بعد', 'Not collected'));
-  const stateChip = (s: CollectionState | undefined) => (
-    <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold whitespace-nowrap ${
-      s === 'full' ? 'bg-emerald-50 text-emerald-700' : s === 'partial' ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-600'}`}>
-      {stateLabel(s)}
-    </span>
-  );
   const remainingCell = (r: any) => (r.collectionState === 'full' || !Number(r.remaining)
     ? <span className="text-slate-300">—</span>
     : <span className={`tabular-nums font-semibold ${r.collectionState === 'partial' ? 'text-amber-700' : 'text-red-600'}`}>{money(r.remaining)}</span>);

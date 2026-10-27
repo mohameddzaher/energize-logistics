@@ -23,8 +23,12 @@ const customsSettingsSchema = new mongoose.Schema({
 customsSettingsSchema.statics.get = async function get() {
   const found = await this.findOne({ key: 'customs' }).lean();
   if (found) return found;
-  const created = await this.create({ key: 'customs' });
-  return created.toObject();
+  // Two first requests at the same moment both find nothing; the second create
+  // hits the unique key — it then reads what the first one wrote (found by QA).
+  try { return (await this.create({ key: 'customs' })).toObject(); } catch (e) {
+    if (e && e.code === 11000) return this.findOne({ key: 'customs' }).lean();
+    throw e;
+  }
 };
 
 module.exports = mongoose.model('CustomsSettings', customsSettingsSchema);

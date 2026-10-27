@@ -101,3 +101,7 @@ frontend/deno.lock
 
 # Original 4K artwork kept locally — the site ships the compressed snd-2026-*.jpg copies
 /frontend/public/images/SND-page-*.jpg
+
+# QA: throwaway local database and run output — never committed
+qa/.data/
+qa/out/

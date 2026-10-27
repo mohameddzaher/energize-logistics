@@ -22,7 +22,8 @@ const perfSettingsSchema = new mongoose.Schema({
 
 perfSettingsSchema.statics.getOrCreate = async function () {
   let doc = await this.findOne({ singleton: 'perf' });
-  if (!doc) doc = await this.create({ singleton: 'perf' });
+  // Concurrent first use: the losing create reads the winner's doc (found by QA).
+  if (!doc) { try { doc = await this.create({ singleton: 'perf' }); } catch (e) { if (e && e.code === 11000) doc = await this.findOne({ singleton: 'perf' }); else throw e; } }
   // Fill in anything a partial save left empty, so callers can rely on shape.
   if (!Array.isArray(doc.bands) || !doc.bands.length) doc.bands = DEFAULT_BANDS;
   if (!Array.isArray(doc.tiers) || !doc.tiers.length) doc.tiers = DEFAULT_TIERS;

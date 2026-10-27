@@ -67,7 +67,8 @@ async function migrateTemplateKeys(doc) {
 // Fetch (creating on first use) the singleton settings doc.
 ls2SettingsSchema.statics.getOrCreate = async function () {
   let doc = await this.findOne({ singleton: 'ls2' });
-  if (!doc) doc = await this.create({ singleton: 'ls2' });
+  // Concurrent first use: the losing create reads the winner's doc (found by QA).
+  if (!doc) { try { doc = await this.create({ singleton: 'ls2' }); } catch (e) { if (e && e.code === 11000) doc = await this.findOne({ singleton: 'ls2' }); else throw e; } }
   // Backfill any threshold/maintenance keys added after the doc was first seeded.
   const merged = { ...cfg.DEFAULT_THRESHOLDS, ...(doc.thresholds || {}) };
   const mergedM = { ...cfg.DEFAULT_MAINTENANCE, ...(doc.maintenance || {}) };

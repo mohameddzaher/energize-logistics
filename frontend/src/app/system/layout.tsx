@@ -331,6 +331,10 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/collections-dept/links', label: lang === 'ar' ? 'ربط الحسابات' : 'Account Linking', icon: <Link2 className="w-5 h-5" />, roles: ['super_admin', 'admin', 'it_manager', 'collections_manager'], section: 'Collections', restrict: true },
     { href: '/system/collections-dept/customers', label: lang === 'ar' ? 'العملاء' : 'Customers', icon: <Users className="w-5 h-5" />, roles: COLLECTIONS_NAV_ROLES, section: 'Collections' },
     { href: '/system/collections-dept/suppliers', label: lang === 'ar' ? 'الموردين' : 'Suppliers', icon: <Truck className="w-5 h-5" />, roles: COLLECTIONS_NAV_ROLES, section: 'Collections' },
+    // ── المحفظةُ عرضًا لقسم التحصيل (٢٠٢٦/١٠/٢٧) — صفحتا العمليّات نفسُهما،
+    // تُفتحان هنا لأنّ قسمَ العمليّات مغلقٌ عليهما. راجع config/walletViewOnly.
+    { href: '/system/wallet', label: lang === 'ar' ? 'محفظة الفروع (عرض)' : 'Branch wallets (view)', icon: <Wallet className="w-5 h-5" />, roles: ['collections_manager', 'collections_staff'], section: 'Collections', restrict: true },
+    { href: '/system/wallet-dashboard', label: lang === 'ar' ? 'لوحة المحفظة (عرض)' : 'Wallet dashboard (view)', icon: <BarChart3 className="w-5 h-5" />, roles: ['collections_manager', 'collections_staff'], section: 'Collections', restrict: true },
     // ── وصفحةُ التشغيل من داخل قسمهم ──────────────────────────────────────
     // الكشفُ ورقةُ عملِ التحصيل: منه يُقرأ ما لنا وما علينا، وفيه تُكتب
     // الفاتورةُ وتاريخُ التحصيل. ووضعُ الرابط هنا يوفّر عليهم البحثَ عنه في

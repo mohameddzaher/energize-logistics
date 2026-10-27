@@ -277,7 +277,13 @@ app.use('/api/branches', branchRoutes);
 app.use('/api/vendors', authenticate, sectionGate.stampSection('Operations', 'Procurement'), vendorRoutes);
 app.use('/api/drivers', authenticate, sectionGate.stampSection('Operations'), driverRoutes);
 app.use('/api/expense-categories', expenseCategoryRoutes);
-app.use('/api/wallet', authenticate, sectionGate('Operations'), walletRoutes);
+// وقسمُ التحصيل يقرأ المحفظةَ ولا يكتب فيها — config/walletViewOnly.
+const walletView = require('./config/walletViewOnly');
+const opsWalletGate = sectionGate('Operations');
+app.use('/api/wallet', authenticate,
+  (req, res, next) => (walletView.isWalletViewOnly(req.user && req.user.role)
+    ? walletView.walletViewOnlyGate(req, res, next) : opsWalletGate(req, res, next)),
+  walletRoutes);
 // قسمُ التحصيل. البادئةُ `-dept` تميّزها عن `/api/collections` (متابعاتُ
 // التحصيل تحت العملاء والمالية) — ومطابقةُ express تقف عند حدّ المقطع فلا
 // تلتقط إحداهما الأخرى.

@@ -194,6 +194,12 @@ const effectivePages = async (role) => {
     // تعرفه قائمةٌ ولا يُفتَح له إلّا ما أُشِّر عليه.
     out[p.key] = pageFollowsSection(p, sections, custom);
   }
+  // ── وصفحتا المحفظة لقسم التحصيل، عرضًا (config/walletViewOnly) ───────────────
+  // إلّا ما أغلقه صاحبُ النظام صراحةً من المصفوفة — فقرارُه بيده يبقى.
+  const wv = require('../config/walletViewOnly');
+  if (wv.isWalletViewOnly(role)) {
+    for (const k of wv.WALLET_VIEW_PAGES) if (!Object.prototype.hasOwnProperty.call(pages, k)) out[k] = true;
+  }
   return out;
 };
 

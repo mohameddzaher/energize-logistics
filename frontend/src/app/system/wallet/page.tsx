@@ -6,7 +6,7 @@ import MonthPicker from '@/components/system/MonthPicker';
 import { useDialog } from '@/components/system/DialogProvider';
 import { useAuth } from '@/context/AuthContext';
 import { canEditSection } from '@/lib/sections';
-import { canPickWalletBranch, WALLET_START_DATE } from '@/lib/wallet';
+import { canPickWalletBranch, WALLET_START_DATE, WALLET_VIEW_ONLY_ROLES } from '@/lib/wallet';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -125,7 +125,9 @@ export default function WalletPage() {
   // — وإلّا فُتحت الشاشةُ لدورٍ مصنوعٍ وامتنعت عنه أزرارُها (راجع فريق العمليات).
   const isManager = ['super_admin', 'admin', 'operations_manager', 'operations_staff', ...FINANCE_FULL_ROLES].includes(user?.role || '')
     || canEditSection((user as any)?.permissions, 'Operations');
-  const isReadOnly = user?.role === 'moderator';
+  // عرضٌ فقط: المشرف، وقسمُ التحصيل (يرى الفروعَ ويفلتر ويصدّر، ولا يسجّل شيئًا).
+  // role-only: الخادمُ يردّ كتابتَهم بالدور نفسِه مهما مُنحوا (config/walletViewOnly).
+  const isReadOnly = user?.role === 'moderator' || WALLET_VIEW_ONLY_ROLES.includes(user?.role || '');
   /**
    * ── مديرُ النظام وحدَه يعمل خارج نافذة الدفتر ────────────────────────────
    *

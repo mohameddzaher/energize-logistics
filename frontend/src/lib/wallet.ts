@@ -24,7 +24,15 @@ export const WALLET_DASHBOARD_ROLES = [
   'super_admin', 'admin', 'it_manager', 'it_specialist',
   'operations_manager', 'moderator',
   'cfo', 'accounting_manager', 'accountant',
+  'collections_manager', 'collections_staff',
 ];
+
+/**
+ * ── قسمُ التحصيل يرى المحفظة ولا يلمسها (٢٠٢٦/١٠/٢٧) ─────────────────────────
+ * مرآةُ `config/walletViewOnly` في الخادم — وهو الحارسُ الذي يردّ أيَّ كتابة.
+ * هنا تُخفى الأزرارُ فقط: لا تحصيلَ ولا مصروفَ ولا مشترياتٍ ولا إقفال.
+ */
+export const WALLET_VIEW_ONLY_ROLES = ['collections_manager', 'collections_staff'];
 
 /**
  * ── ومَن يُقفَل على فرعه ────────────────────────────────────────────────────

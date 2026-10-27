@@ -23,7 +23,9 @@
  *     فهي خريطةُ ما نملك. تُقرأ بحسابٍ إداريّ.
  */
 const { version } = require('../../package.json');
+const crypto = require('crypto');
 const { routeFields } = require('./apiFieldScan');
+const { routeSamples } = require('./apiSamples');
 
 /** ‏`/api/hr/employees/:id` → `/api/hr/employees/{id}` بصيغة OpenAPI. */
 const toOpenApiPath = (p) => p.replace(/:([A-Za-z0-9_]+)/g, '{$1}');
@@ -119,130 +121,164 @@ function walk(stack, prefix = '', inherited = {}) {
   return out;
 }
 
-/** مجموعاتُ المسارات: البادئةُ الأولى بعد `/api` هي القسم العمليّ. */
+/** Route groups: the first segment after `/api` is the business area. */
 const groupOf = (p) => {
   const m = /^\/api\/([^/]+)/.exec(p);
   return m ? m[1] : 'root';
 };
 
-/** وصفٌ عربيٌّ للمجموعات التي يُحتاج إلى شرحها — وما لا وصفَ له يُعرَض باسمه. */
-const GROUP_AR = {
-  'fleet-api': 'واجهةُ الأسطول للأتمتة — قراءةٌ بمفتاح، وهي الواجهةُ التي تُعطى للشركاء',
-  auth: 'تسجيلُ الدخول والجلسات',
-  users: 'المستخدمون والصلاحيّات',
-  hr: 'الموارد البشريّة',
-  crm: 'إدارةُ العلاقات',
-  fleet: 'إدارةُ الأسطول',
-  ls2: 'لوكيشن سوليوشن — التتبّع والصيانة',
-  'vehicle-registry': 'سجلُّ المركبات',
-  'shipment-orders': 'طلباتُ الشحنات',
-  'light-transport': 'النقلُ الخفيف',
-  b2c: 'مشروعُ B2C',
-  collections: 'التحصيل',
-  'collections-dept': 'قسمُ التحصيل',
-  finance: 'الإدارةُ الماليّة',
-  accounting: 'المحاسبة',
-  reports: 'مركزُ التقارير',
-  ops: 'مرآةُ منصّة الأوبريشن',
-  wallet: 'العهدةُ اليوميّة',
-  audit: 'سجلُّ المراجعة',
-  notifications: 'التنبيهات',
-  lookups: 'القوائمُ المرجعيّة',
-  portal: 'بوّابةُ الشركاء',
-  partners: 'حساباتُ الشركاء',
+/** Group descriptions (English only — the docs page is English). Unlisted groups show their name. */
+const GROUP_INFO = {
+  'fleet-api': 'Fleet automation API — key-authenticated, read-only. This is the surface given to partners.',
+  auth: 'Sign-in, sessions and tokens',
+  users: 'Users, roles and access',
+  permissions: 'Role × section permission matrix',
+  hr: 'Human resources — employees, contracts, leave, payroll',
+  crm: 'Customer relationship management',
+  'crm-vendors': 'Carrier / 3PL vendor register',
+  fleet: 'Fleet management — own trucks, drivers, loads',
+  ls2: 'Location Solutions — GPS tracking, telemetry and maintenance',
+  'vehicle-registry': 'Vehicle register — documents, authorisations, driver cards',
+  vehicles: 'Vehicles and authorisations',
+  'shipment-orders': 'Shipment orders — bookings, waybills, carrier drivers',
+  'light-transport': 'Light transport — riders, housing, custody',
+  b2c: 'B2C project',
+  collections: 'Collections',
+  'collections-dept': 'Collections department — invoices, ledger, aging, parties',
+  finance: 'Finance management',
+  accounting: 'Accounting',
+  reports: 'Report centre — branded PDFs',
+  ops: 'Operations platform mirror',
+  workflows: 'Operations workflow sheets',
+  wallet: 'Daily cash wallet',
+  customs: 'Customs clearance',
+  contracts: 'Contracts',
+  audit: 'Audit log',
+  notifications: 'Notifications',
+  lookups: 'Reference data lists',
+  portal: 'Partner portal',
+  partners: 'Partner accounts',
+  docs: 'This documentation',
+  jp: 'Work plans (JP)',
+  'section-work': 'Section tasks and complaints',
+  analytics: 'Analytics and executive overview',
+  it: 'IT — assets, emails, custody',
 };
 
-/** ردٌّ قياسيٌّ لكلّ مسار — الأخطاءُ موحَّدةٌ في النظام كلِّه. */
+/** Standard responses — errors are uniform across the system: `{ message }`. */
+const ERROR_EXAMPLE = (message) => ({ 'application/json': { example: { message } } });
 const RESPONSES = {
-  200: { description: 'نجح' },
-  400: { description: 'طلبٌ ناقصٌ أو غيرُ صالح' },
-  401: { description: 'غيرُ مُصادَق — لا جلسةَ ولا مفتاح' },
-  403: { description: 'لا صلاحيّةَ لهذا القسم أو لهذا الدور' },
-  404: { description: 'غيرُ موجود' },
-  500: { description: 'خطأٌ في الخادم' },
+  400: { description: 'Bad request — a required field is missing or invalid', content: ERROR_EXAMPLE('Required fields are missing') },
+  401: { description: 'Not authenticated — no session, token or key', content: ERROR_EXAMPLE('Not authenticated') },
+  403: { description: 'Forbidden — the section or role does not allow this', content: ERROR_EXAMPLE('Access denied') },
+  404: { description: 'Not found', content: ERROR_EXAMPLE('Not found') },
+  500: { description: 'Server error', content: ERROR_EXAMPLE('Server error') },
 };
+const ERRORS = Object.entries(RESPONSES).map(([status, r]) => ({ status: Number(status), description: r.description }));
 
-/**
- * بناءُ وثيقةِ OpenAPI من تطبيق إكسبرس.
- *
- * `scope: 'partner'` تقتصر على ما يُعطى لمن يتكامل معنا، و`'internal'` تشمل
- * السطحَ كلَّه.
- */
-function buildOpenApi(app, { scope = 'partner', baseUrl = 'https://api.energize-logistics.com' } = {}) {
+/** All mounted `/api` routes, unique by method + path, sorted. */
+function apiRoutes(app, scope) {
   const all = walk(app._router && app._router.stack);
   const seen = new Set();
-  const routes = all.filter((r) => {
+  return all.filter((r) => {
     if (!r.path.startsWith('/api')) return false;
     const key = `${r.method} ${r.path}`;
     if (seen.has(key)) return false;
     seen.add(key);
     return scope === 'internal' ? true : r.path.startsWith('/api/fleet-api');
   }).sort((a, b) => a.path.localeCompare(b.path) || a.method.localeCompare(b.method));
+}
 
+/** Everything known about one route, in plain English — shared by OpenAPI and the catalog. */
+function describe(r) {
+  const handler = r.stack && r.stack.length ? r.stack[r.stack.length - 1].handle : null;
+  const fields = routeFields(r.stack);
+  const sm = routeSamples({ method: r.method, path: r.path, handler, fields });
+  const params = pathParams(r.path).map((name) => ({
+    name, in: 'path', required: true, type: name === 'id' || /Id$/.test(name) ? 'objectId' : 'string',
+    description: name === 'id' || /Id$/.test(name) ? 'Record id (ObjectId)' : '',
+    example: name === 'id' || /Id$/.test(name) ? '6a96c6b71dabbd8fad1405e6' : name,
+  }));
+  const pathNames = new Set(params.map((x) => x.name));
+  const query = sm.query.filter((f) => !pathNames.has(f.name));
+  const auth = r.apiKey ? 'apiKey' : (r.auth || r.section || r.roles) ? 'user' : 'public';
+  const notes = [];
+  if (r.section) notes.push(`Requires access to the **${r.section}** section.`);
+  if (r.roles) notes.push(`Accepted roles: ${r.roles.join(', ')} — or anyone granted edit on the section in the permission matrix.`);
+  if (r.apiKey) notes.push('Authenticated with the `x-api-key` header.');
+  if (auth === 'public') notes.push('Open — no authentication.');
+  if (['POST', 'PUT', 'PATCH'].includes(r.method) && !fields.body.length && fields.wholeBody) {
+    notes.push('Accepts the record fields as sent (the handler does not list its fields).');
+  }
+  return {
+    id: `${r.method} ${r.path}`,
+    method: r.method,
+    path: r.path,
+    group: groupOf(r.path),
+    auth,
+    section: r.section || '',
+    roles: r.roles || [],
+    model: sm.model || '',
+    params,
+    query,
+    body: sm.body,
+    wholeBody: !!fields.wholeBody,
+    requestExample: sm.requestExample,
+    responseExample: sm.responseExample,
+    notes: notes.join(' '),
+  };
+}
+
+/** A short, stable fingerprint of the surface: changes with any route or field change. */
+function signatureOf(items) {
+  const h = crypto.createHash('sha1');
+  for (const d of items) h.update(`${d.id}|${d.auth}|${d.section}|${d.roles.join(',')}|${d.query.map((f) => f.name).join(',')}|${d.body.map((f) => f.name).join(',')}|${d.model}\n`);
+  return h.digest('hex').slice(0, 12);
+}
+
+/**
+ * The OpenAPI 3 document. `scope: 'partner'` keeps only what partners get;
+ * `'internal'` is the whole surface.
+ */
+function buildOpenApi(app, { scope = 'partner', baseUrl = 'https://api.energize-logistics.com' } = {}) {
+  const items = apiRoutes(app, scope).map(describe);
   const paths = {};
-  for (const r of routes) {
-    const key = toOpenApiPath(r.path);
+  for (const d of items) {
+    const key = toOpenApiPath(d.path);
     paths[key] = paths[key] || {};
-    const params = pathParams(r.path).map((name) => ({
-      name, in: 'path', required: true, schema: { type: 'string' },
-      description: name === 'id' ? 'معرّفُ السجلّ (ObjectId)' : undefined,
-    }));
-    // ── والحقولُ من الكود نفسِه: فلاترُ القائمة وما يُرسَل في الحفظ ────────────
-    // تُقرأ لحظةَ فتح الوثيقة (services/apiFieldScan) — حقلٌ يُضاف أو يُحذَف في
-    // المعالِج يظهر أو يختفي هنا بلا أن يكتبه أحد.
-    const fields = routeFields(r.stack);
-    const pathNames = new Set(params.map((x) => x.name));
-    for (const f of fields.query) {
-      if (pathNames.has(f.name)) continue;
-      params.push({ name: f.name, in: 'query', required: f.required, schema: { type: 'string' } });
-    }
-    const hasBody = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(r.method) && fields.body.length;
-    const security = [];
-    if (r.apiKey) security.push({ apiKey: [] });
-    if (r.auth || r.section || r.roles) { security.push({ bearer: [] }); security.push({ cookie: [] }); }
-
-    const notes = [];
-    if (r.section) notes.push(`يتطلّب صلاحيّةَ قسم **${r.section}**.`);
-    if (r.roles) notes.push(`الأدوارُ المقبولة: ${r.roles.join('، ')} — أو من مُنح القسمَ «تعديلًا» من مصفوفة الصلاحيّات.`);
-    if (r.apiKey) notes.push('يُفتَح بترويسة `x-api-key`.');
-    if (!security.length) notes.push('مفتوحٌ بلا مصادقة.');
-    const fieldsNow = routeFields(r.stack);
-    if (['POST', 'PUT', 'PATCH'].includes(r.method) && !fieldsNow.body.length && fieldsNow.wholeBody) {
-      notes.push('يأخذ الجسمَ كما جاء — حقولُ السجلّ نفسُها (لا قائمةَ حقولٍ مكتوبةً في المعالِج).');
-    }
-
-    paths[key][r.method.toLowerCase()] = {
-      tags: [groupOf(r.path)],
-      summary: `${r.method} ${key}`,
-      description: notes.join(' '),
-      ...(params.length ? { parameters: params } : {}),
+    const parameters = [
+      ...d.params.map((p) => ({ name: p.name, in: 'path', required: true, schema: { type: 'string' }, description: p.description || undefined, example: p.example })),
+      ...d.query.map((f) => ({ name: f.name, in: 'query', required: !!f.required, schema: { type: f.type === 'number' ? 'number' : f.type === 'boolean' ? 'boolean' : 'string' }, example: f.example })),
+    ];
+    const security = d.auth === 'apiKey' ? [{ apiKey: [] }] : d.auth === 'user' ? [{ bearer: [] }, { cookie: [] }] : [];
+    const writes = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(d.method);
+    const ok = { description: 'Success', ...(d.responseExample ? { content: { 'application/json': { example: d.responseExample } } } : {}) };
+    paths[key][d.method.toLowerCase()] = {
+      tags: [d.group],
+      summary: `${d.method} ${key}`,
+      description: [d.notes, d.model ? `Record model: \`${d.model}\`.` : ''].filter(Boolean).join(' '),
+      ...(parameters.length ? { parameters } : {}),
       ...(security.length ? { security } : {}),
-      ...(hasBody
-        ? {
-          requestBody: {
-            required: fields.body.some((f) => f.required),
-            content: {
-              'application/json': {
-                schema: {
-                  type: 'object',
-                  properties: Object.fromEntries(fields.body.map((f) => [f.name, {}])),
-                  ...(fields.body.some((f) => f.required) ? { required: fields.body.filter((f) => f.required).map((f) => f.name) } : {}),
-                },
+      ...(writes && d.body.length ? {
+        requestBody: {
+          required: d.body.some((f) => f.required),
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: Object.fromEntries(d.body.map((f) => [f.name, { type: f.type === 'objectId' || f.type === 'date' ? 'string' : f.type, ...(f.type === 'date' ? { format: 'date' } : {}) }])),
+                ...(d.body.some((f) => f.required) ? { required: d.body.filter((f) => f.required).map((f) => f.name) } : {}),
               },
+              example: d.requestExample,
             },
           },
-        }
-        : (['POST', 'PUT', 'PATCH'].includes(r.method)
-          ? { requestBody: { required: false, content: { 'application/json': { schema: { type: 'object' } } } } }
-          : {})),
-      responses: RESPONSES,
+        },
+      } : (['POST', 'PUT', 'PATCH'].includes(d.method) ? { requestBody: { required: false, content: { 'application/json': { schema: { type: 'object' } } } } } : {})),
+      responses: { 200: ok, ...RESPONSES },
+      ...(d.model ? { 'x-model': d.model } : {}),
     };
   }
-
-  const tags = [...new Set(routes.map((r) => groupOf(r.path)))]
-    .sort()
-    .map((name) => ({ name, description: GROUP_AR[name] || name }));
-
+  const tags = [...new Set(items.map((d) => d.group))].sort().map((name) => ({ name, description: GROUP_INFO[name] || name }));
   return {
     openapi: '3.0.3',
     info: {
@@ -250,44 +286,63 @@ function buildOpenApi(app, { scope = 'partner', baseUrl = 'https://api.energize-
       version,
       description: scope === 'partner'
         ? [
-          'واجهةُ قراءةٍ لأسطول إنرجايز اللوجستية — للأنظمة لا للبشر.',
+          'Read-only fleet API for Energize Logistics — built for systems, not people.',
           '',
-          '**المصادقة:** ترويسة `x-api-key` بالمفتاح الذي يُسلَّم لك. وتُقبل أيضًا في',
-          '`?key=` لأدواتِ الأتمتة التي لا ترسل ترويسات — لكنّها تُسجَّل في سجلّات',
-          'الوصول، فالترويسةُ هي الموصى بها.',
+          '**Authentication:** send the key you were given in the `x-api-key` header. `?key=` is also accepted for automation tools that cannot send headers, but it is written to access logs — the header is recommended.',
           '',
-          '**القراءةُ فقط:** لا كتابةَ في هذه الواجهة بحال. من يملك أن يغيّر شيئًا',
-          'يدخل النظامَ بحسابه.',
+          '**Read-only:** this API never writes. Changes are made by signing in to the system.',
           '',
-          '**عمرُ القراءة:** كلُّ مركبةٍ تحمل `ageSec` — ثوانيَ منذ آخر إشارة. قراءةٌ',
-          'عمرُها ساعةٌ ليست قراءةً حاليّة، فابنِ شرطَك عليه.',
+          '**Freshness:** every vehicle carries `ageSec` — seconds since its last signal. Base your conditions on it.',
           '',
-          `**الأساس:** \`${baseUrl}\``,
+          `**Base URL:** \`${baseUrl}\``,
         ].join('\n')
-        : 'سطحُ النظام الداخليُّ كلُّه — خريطةٌ لا تُعطى لخارج الشركة.',
+        : 'The whole internal surface of the system — generated from the running code. Not for distribution outside the company.',
       contact: { name: 'Energize Logistics', url: 'https://energize-logistics.com' },
+      'x-signature': signatureOf(items),
+      'x-generated-at': new Date().toISOString(),
     },
     servers: [{ url: baseUrl }],
     tags,
     components: {
       securitySchemes: {
-        apiKey: { type: 'apiKey', in: 'header', name: 'x-api-key', description: 'مفتاحُ التكامل — يُسلَّم لكلّ شريك على حدة.' },
-        bearer: { type: 'http', scheme: 'bearer', description: 'رمزُ دخولِ مستخدم — تستعمله تطبيقاتُنا (الهاتف).' },
-        cookie: { type: 'apiKey', in: 'cookie', name: 'token', description: 'جلسةُ المتصفّح — للموقع نفسِه.' },
+        apiKey: { type: 'apiKey', in: 'header', name: 'x-api-key', description: 'Integration key — issued per partner.' },
+        bearer: { type: 'http', scheme: 'bearer', description: 'User access token — used by our mobile app.' },
+        cookie: { type: 'apiKey', in: 'cookie', name: 'token', description: 'Browser session — used by the web app.' },
       },
     },
     paths,
   };
 }
 
-/** إحصاءٌ سريعٌ يُعرَض في الصفحة: كم مسارًا، وكم مجموعة. */
-function stats(app) {
-  const all = walk(app._router && app._router.stack).filter((r) => r.path.startsWith('/api'));
-  const groups = new Set(all.map((r) => groupOf(r.path)));
-  // وكم مسارًا قُرئت حقولُه — مقياسُ ما تغطّيه القراءةُ الآليّة.
-  let withFields = 0;
-  for (const r of all) { const f = routeFields(r.stack); if (f.query.length || f.body.length) withFields += 1; }
-  return { routes: all.length, groups: groups.size, partner: all.filter((r) => r.path.startsWith('/api/fleet-api')).length, withFields };
+/** The compact catalog the docs page renders — same facts as the OpenAPI document. */
+function buildCatalog(app, { baseUrl = 'https://api.energize-logistics.com' } = {}) {
+  const items = apiRoutes(app, 'internal').map(describe);
+  const counts = new Map();
+  for (const d of items) counts.set(d.group, (counts.get(d.group) || 0) + 1);
+  return {
+    title: 'Energize Logistics API',
+    version,
+    baseUrl,
+    generatedAt: new Date().toISOString(),
+    signature: signatureOf(items),
+    groups: [...counts.entries()].sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([name, count]) => ({ name, count, description: GROUP_INFO[name] || '' })),
+    errors: ERRORS,
+    endpoints: items,
+  };
 }
 
-module.exports = { buildOpenApi, stats, walk };
+/** Quick counters for the page header, plus the surface signature. */
+function stats(app) {
+  const items = apiRoutes(app, 'internal').map(describe);
+  return {
+    routes: items.length,
+    groups: new Set(items.map((d) => d.group)).size,
+    partner: items.filter((d) => d.path.startsWith('/api/fleet-api')).length,
+    withFields: items.filter((d) => d.query.length || d.body.length).length,
+    withModel: items.filter((d) => d.model).length,
+    signature: signatureOf(items),
+  };
+}
+
+module.exports = { buildOpenApi, buildCatalog, stats, walk };

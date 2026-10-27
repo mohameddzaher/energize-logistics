@@ -754,7 +754,7 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/permissions', label: lang === 'ar' ? 'الأدوار والصلاحيات' : 'Roles & Permissions', icon: <ShieldCheck className="w-5 h-5" />, roles: ['super_admin', 'admin', 'it_manager', 'it_specialist'], section: 'Admin' },
     { href: '/system/audit', label: L.auditLog, icon: <ClipboardList className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin'], section: 'Admin' },
     // توثيقُ الـ API — يُبنى من الكود لحظةَ فتحه؛ السطحُ الداخليُّ لمن يحرسه الخادمُ به (FULL_ACCESS_ROLES).
-    { href: '/system/api-docs', label: lang === 'ar' ? 'توثيق الـ API' : 'API Docs', icon: <BookOpen className="w-5 h-5" />, roles: ['super_admin', 'admin', 'it_manager', 'it_specialist'], section: 'Admin' },
+    { href: '/system/api-docs', label: 'API Reference', icon: <BookOpen className="w-5 h-5" />, roles: ['super_admin', 'admin', 'it_manager', 'it_specialist'], section: 'Admin' },
     { href: '/system/complaints', label: L.complaints, icon: <MessageSquare className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'operations_manager'], section: 'Admin' },
     // بوابة العميل / المورد. `portalService` gates a link on the partner ACTUALLY
     // having work of that kind — a customs-only customer never sees a shipments

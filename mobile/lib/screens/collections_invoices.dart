@@ -86,6 +86,8 @@ class CollectionsInvoicesScreen extends StatefulWidget {
 class _CollectionsInvoicesScreenState extends State<CollectionsInvoicesScreen> {
   bool get _cash => widget.kind == 'cash';
   List<Map<String, dynamic>> _rows = [];
+  // «بحثتُ عن الرقم فلم أجده»: أين هو — يردّه الخادمُ مع النتيجة الفارغة (locateNumber).
+  Map<String, dynamic>? _elsewhere;
   Map<String, dynamic> _totals = {};
   Map<String, dynamic> _stateCounts = {};
   int _total = 0, _pages = 1, _page = 1;
@@ -189,6 +191,7 @@ class _CollectionsInvoicesScreenState extends State<CollectionsInvoicesScreen> {
       if (!mounted || mine != _seq) return;
       setState(() {
         _rows = [for (final r in (d['invoices'] as List? ?? const [])) Map<String, dynamic>.from(r as Map)];
+        _elsewhere = d['elsewhere'] is Map ? Map<String, dynamic>.from(d['elsewhere'] as Map) : null;
         _totals = Map<String, dynamic>.from((d['totals'] as Map?) ?? const {});
         _stateCounts = Map<String, dynamic>.from((d['stateCounts'] as Map?) ?? const {});
         _total = _num(d['total']).toInt();
@@ -244,6 +247,48 @@ class _CollectionsInvoicesScreenState extends State<CollectionsInvoicesScreen> {
     } catch (e) {
       messenger.showSnackBar(SnackBar(content: Text(e is ApiException ? e.message : tr('تعذّر الحفظ', 'Could not save'))));
     }
+  }
+
+  /// الرقمُ موجودٌ لكن ليس في هذه الصفحة — أين هو، ولماذا، وبابٌ إليه.
+  Widget _elsewhereHint(Map<String, dynamic> e) {
+    final ledger = [for (final x in (e['ledger'] as List? ?? const [])) Map<String, dynamic>.from(x as Map)];
+    final sheets = [for (final x in (e['sheets'] as List? ?? const [])) Map<String, dynamic>.from(x as Map)];
+    final n = _s(e, 'number');
+    const why = {
+      'cancelled': ('الكشف ملغي', 'the report is cancelled'),
+      'tax': ('نوع الدفع على الكشف «ضريبي»', 'the report is marked tax'),
+      'noType': ('نوع الدفع على الكشف غير محدَّد', 'the report has no payment type'),
+      'noPaymentDate': ('لا تاريخ سداد على الكشف بعد', 'the report has no payment date yet'),
+      'notReviewed': ('لم يراجعه التشغيل بعد', 'operations has not reviewed it yet'),
+    };
+    return AppCard(
+      padding: const EdgeInsets.all(12),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(ledger.isEmpty && sheets.isEmpty
+            ? tr('الرقم $n غير موجود في دفتر التحصيل ولا في كشوف التشغيل.', '$n is in neither the collections book nor the operations reports.')
+            : tr('الرقم $n موجودٌ لكن ليس في هذه الصفحة:', '$n exists, but not on this page:'),
+            style: const TextStyle(fontWeight: FontWeight.w800)),
+        for (final l in ledger)
+          ListTile(
+            dense: true, contentPadding: EdgeInsets.zero,
+            title: Text('${_s(l, 'kind') == 'cash' ? tr('فاتورة نقديّة في دفتر التحصيل', 'Cash invoice in the collections book') : tr('فاتورة ضريبيّة في دفتر التحصيل', 'Tax invoice in the collections book')}'
+                '${_s(l, 'customer').isEmpty ? '' : ' — ${_s(l, 'customer')}'} · ${l['collected'] == true ? tr('محصَّلة', 'collected') : tr('لم تُحصَّل', 'open')}'),
+            trailing: Text(tr('افتحها', 'Open'), style: const TextStyle(color: T.orange, fontWeight: FontWeight.w700)),
+            onTap: () async {
+              await Navigator.push(context, MaterialPageRoute(builder: (_) => CollectionsTaxInvoiceScreen(invoiceNumber: _s(l, 'invoiceNumber'))));
+              _load(background: true);
+            },
+          ),
+        for (final w in sheets)
+          ListTile(
+            dense: true, contentPadding: EdgeInsets.zero,
+            title: Text('${tr('كشف تشغيل', 'Operations report')} ${_s(w, 'reportNumber')}${_s(w, 'customer').isEmpty ? '' : ' — ${_s(w, 'customer')}'}'
+                '${_cash && why[_s(w, 'why')] != null ? ' · ${tr('ليس في صفحة الكاش لأنّ', 'not on the cash page because')} ${tr(why[_s(w, 'why')]!.$1, why[_s(w, 'why')]!.$2)}' : ''}'),
+            trailing: Text(tr('افتح الكشف', 'Open'), style: const TextStyle(color: T.orange, fontWeight: FontWeight.w700)),
+            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => OpsWorkflowDetailScreen(id: _s(w, '_id')))),
+          ),
+      ]),
+    );
   }
 
   Future<void> _uncollect(Map<String, dynamic> r) async {
@@ -728,6 +773,7 @@ class _CollectionsInvoicesScreenState extends State<CollectionsInvoicesScreen> {
                         ]),
                         if (_rows.isEmpty)
                           EmptyState(icon: Icons.receipt_long_outlined, title: _activeCount > 0 || _q.isNotEmpty ? tr('لا نتائج للفلتر المحدد', 'No rows match the filters') : tr('لا نتائج', 'No results')),
+                        if (_rows.isEmpty && _elsewhere != null) _elsewhereHint(_elsewhere!),
                         for (final r in _rows) _row(r),
                         if (_pages > 1)
                           Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
@@ -838,6 +884,83 @@ class _CollectionsTaxInvoiceScreenState extends State<CollectionsTaxInvoiceScree
     }
   }
 
+  // ── تحصيلُ الفاتورة من صفحتها (٢٠٢٦/١٠/٢٧) — نظيرُ CollectionPanel في الموقع ──
+  // الفاتورةُ النقديّةُ في الدفتر بلا كشفٍ لا تظهر في قائمتَي الكاش والضريبيّ،
+  // فلا بابَ لتحصيلها غيرُ هذه الشاشة. والخادمُ يعرف أين يكتب برقمها.
+  Widget _collectionCard(Map<String, dynamic> c) {
+    final st = _s(c, 'collectionState');
+    final full = st == 'full';
+    final chip = full
+        ? (tr('محصَّلة بالكامل', 'Fully collected'), T.success)
+        : st == 'partial' ? (tr('محصَّلة جزئيًّا', 'Partly collected'), T.warn) : (tr('لم تُحصَّل', 'Not collected'), T.danger);
+    final row = {
+      ...c,
+      'invoiceNumber': widget.invoiceNumber,
+      'fullyCollected': full,
+      'remaining': c['remaining'],
+    };
+    return AppCard(
+      padding: const EdgeInsets.all(12),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Wrap(spacing: 6, runSpacing: 4, crossAxisAlignment: WrapCrossAlignment.center, children: [
+          Text(tr('التحصيل', 'Collection'), style: const TextStyle(fontWeight: FontWeight.w800)),
+          Chip2(chip.$1, chip.$2),
+          if (full && _s(c, 'collectionDate').isNotEmpty) Text('${tr('بتاريخ', 'on')} ${_dt(c['collectionDate'])}', style: const TextStyle(fontSize: 12, color: T.inkFaint)),
+        ]),
+        const SizedBox(height: 4),
+        Text('${tr('القيمة', 'Value')} ${_m(c['value'])} · ${tr('المحصَّل', 'Collected')} ${_m(c['collectedAmount'])}'
+            '${!full && _num(c['value']) > 0 ? ' · ${tr('الباقي', 'Remaining')} ${_m(c['remaining'])}' : ''}',
+            style: const TextStyle(fontSize: 12.5, color: T.inkSoft)),
+        if (_s(c, 'target') == 'cashLedger')
+          Text(tr('فاتورةٌ نقديّةٌ في دفتر التحصيل بلا كشف تشغيل', 'A cash book invoice with no operations report'),
+              style: const TextStyle(fontSize: 11.5, color: T.inkFaint)),
+        if (collectionsCanEdit) ...[
+          const SizedBox(height: 8),
+          Wrap(spacing: 8, runSpacing: 6, children: [
+            FilledButton.icon(
+              style: FilledButton.styleFrom(backgroundColor: T.success),
+              icon: const Icon(Icons.payments_outlined, size: 18),
+              label: Text(full ? tr('تعديل تاريخ التحصيل', 'Change date') : tr('تسجيل التحصيل', 'Record collection')),
+              onPressed: () async { if (await openCollectSheet(context, isCash: false, row: row)) _load(); },
+            ),
+            if (full || st == 'partial')
+              OutlinedButton(
+                style: OutlinedButton.styleFrom(foregroundColor: T.danger),
+                onPressed: _undo,
+                child: Text(tr('لم تُحصَّل', 'Not collected')),
+              ),
+          ]),
+        ],
+      ]),
+    );
+  }
+
+  Future<void> _undo() async {
+    final ctrl = TextEditingController();
+    final reason = await showDialog<String>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: Text(tr('لم تُحصَّل', 'Not collected')),
+        content: TextField(controller: ctrl, decoration: InputDecoration(labelText: tr('السبب (اختياري)', 'Reason (optional)'))),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c), child: Text(tr('تراجع', 'Back'))),
+          FilledButton(style: FilledButton.styleFrom(backgroundColor: T.danger), onPressed: () => Navigator.pop(c, ctrl.text.trim()),
+              child: Text(tr('تأكيد: لم تُحصَّل', 'Confirm: not collected'))),
+        ],
+      ),
+    );
+    ctrl.dispose();
+    if (reason == null || !mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final res = await Api.instance.post('/api/collections-dept/invoices/uncollect', {'invoiceNumber': widget.invoiceNumber, 'reason': reason});
+      messenger.showSnackBar(SnackBar(content: Text(res is Map && '${res['message'] ?? ''}'.isNotEmpty ? '${res['message']}' : tr('رُفع التحصيل', 'Collection undone'))));
+      _load();
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(e is ApiException ? e.message : tr('تعذّر الحفظ', 'Could not save'))));
+    }
+  }
+
   List<ExportCol> get _cols => [
         ExportCol('رقم الكشف', 'Report no.', (r) => r['reportNumber']),
         ExportCol('التاريخ', 'Date', (r) => _dt(r['reportDate'])),
@@ -868,7 +991,7 @@ class _CollectionsTaxInvoiceScreenState extends State<CollectionsTaxInvoiceScree
     final d = _d;
     final reports = [for (final r in (d?['reports'] as List? ?? const [])) Map<String, dynamic>.from(r as Map)];
     final t = (d?['totals'] as Map?) ?? const {};
-    final allCollected = _num(t['collectedReports']) == _num(t['reports']);
+    final allCollected = _num(t['reports']) > 0 && _num(t['collectedReports']) == _num(t['reports']);
     return AppScaffold(
       title: Text('${tr('فاتورة', 'Invoice')} ${widget.invoiceNumber}'),
       actions: [
@@ -905,6 +1028,10 @@ class _CollectionsTaxInvoiceScreenState extends State<CollectionsTaxInvoiceScree
                       const SizedBox(width: 6),
                       _stat(tr('المحصَّل منها', 'Collected'), '${t['collectedReports'] ?? 0} / ${t['reports'] ?? 0}', allCollected ? T.success : T.danger),
                     ]),
+                    if (d['collection'] is Map) ...[
+                      const SizedBox(height: 10),
+                      _collectionCard(Map<String, dynamic>.from(d['collection'] as Map)),
+                    ],
                     if (d['customs'] is List && (d['customs'] as List).isNotEmpty) ...[
                       const SizedBox(height: 10),
                       AppCard(

@@ -102,6 +102,8 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
   const isCash = kind === 'cash';
 
   const [rows, setRows] = useState<(CashRow | TaxRow)[]>([]);
+  // «بحثتُ عن الرقم فلم أجده»: أين هو ولماذا ليس هنا — يردّه الخادمُ مع النتيجة الفارغة.
+  const [elsewhere, setElsewhere] = useState<Elsewhere | null>(null);
   const [totals, setTotals] = useState<any>({});
   const [total, setTotal] = useState(0);
   const [pages, setPages] = useState(1);
@@ -202,6 +204,7 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
       const d = await api.get<any>(`/api/collections-dept/invoices/${kind}?${p.toString()}`);
       if (!guard.isCurrent(mine)) return;
       setRows(d.invoices || []);
+      setElsewhere(d.elsewhere || null);
       setTotals(d.totals || {});
       setStateCounts(d.stateCounts || {});
       setTotal(d.total || 0);
@@ -906,6 +909,7 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
               {shown.length === 0 ? (
                 <tr><td colSpan={cols.length + 2} className="px-4 py-12 text-center text-slate-400">
                   {colCount || cf.count ? t('لا نتائج للفلتر المحدد', 'No rows match the filters') : t('لا نتائج', 'No results')}
+                  {elsewhere && <ElsewhereHint e={elsewhere} isCash={isCash} ar={ar} go={(u) => router.push(u)} />}
                 </td></tr>
               ) : shown.map((r: any) => {
                 const k = rowKey(r);
@@ -1168,6 +1172,56 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
         )}
       </Modal>
       {sendParams && <SendStatementModal kind={kind} params={sendParams} ar={ar} onClose={() => setSendParams(null)} />}
+    </div>
+  );
+}
+
+// ── «الرقمُ موجودٌ في مكانٍ آخر» ──────────────────────────────────────────────
+// راجع locateNumber في الخادم. صفحةُ الكاش تقرأ الكشوفَ النقديّة المراجَعة،
+// وصفحةُ الضريبيّ فواتيرَ الدفتر الضريبيّة؛ وما خرج عنهما يُقال أين هو ببابٍ إليه.
+interface Elsewhere {
+  number: string;
+  ledger: { kind: 'tax' | 'cash'; invoiceNumber: string; customer: string; collected: boolean }[];
+  sheets: { _id: string; reportNumber: string; invoiceNumber: string; customer: string; paymentType: string; why: string }[];
+}
+
+function ElsewhereHint({ e, isCash, ar, go }: { e: Elsewhere; isCash: boolean; ar: boolean; go: (url: string) => void }) {
+  const t = (a: string, en: string) => (ar ? a : en);
+  if (!e.ledger.length && !e.sheets.length) {
+    return <p className="mt-2 text-xs">{t(`الرقم ${e.number} غير موجود في دفتر التحصيل ولا في كشوف التشغيل.`, `${e.number} is in neither the collections book nor the operations reports.`)}</p>;
+  }
+  const WHY: Record<string, [string, string]> = {
+    cancelled: ['الكشف ملغي', 'the report is cancelled'],
+    tax: ['نوع الدفع على الكشف «ضريبي»', 'the report is marked tax'],
+    noType: ['نوع الدفع على الكشف غير محدَّد', 'the report has no payment type'],
+    noPaymentDate: ['لا تاريخ سداد على الكشف بعد', 'the report has no payment date yet'],
+    notReviewed: ['لم يراجعه التشغيل بعد', 'operations has not reviewed it yet'],
+  };
+  const link = 'font-semibold text-[#f37121] hover:underline';
+  return (
+    <div className="mt-3 mx-auto max-w-xl text-start text-[12.5px] text-slate-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 space-y-1.5">
+      <p className="font-semibold text-slate-800">{t(`الرقم ${e.number} موجودٌ لكن ليس في هذه الصفحة:`, `${e.number} exists, but not on this page:`)}</p>
+      {e.ledger.map((l) => (
+        <p key={`l-${l.kind}-${l.invoiceNumber}`}>
+          {l.kind === 'cash'
+            ? t('فاتورة نقديّة في دفتر التحصيل', 'A cash invoice in the collections book')
+            : t('فاتورة ضريبيّة في دفتر التحصيل', 'A tax invoice in the collections book')}
+          {l.customer ? ` — ${l.customer}` : ''} · {l.collected ? t('محصَّلة', 'collected') : t('لم تُحصَّل', 'open')}
+          {l.kind === 'cash' && isCash && !e.sheets.some((w) => w.paymentType === 'cash') && (
+            <span className="text-slate-500">{t(' (لا كشفَ تشغيلٍ نقديًّا لها، وصفحةُ الكاش تعرض الكشوف)', ' (no cash operations report — this page lists reports)')}</span>
+          )}
+          {' '}<button type="button" className={link} onClick={() => go(`/system/collections-dept/invoices/tax/${encodeURIComponent(l.invoiceNumber)}`)}>
+            {t('افتحها وسجّل التحصيل', 'Open and collect')}
+          </button>
+        </p>
+      ))}
+      {e.sheets.map((w) => (
+        <p key={`s-${w._id}`}>
+          {t(`كشف تشغيل ${w.reportNumber}`, `Operations report ${w.reportNumber}`)}{w.customer ? ` — ${w.customer}` : ''}
+          {isCash && w.why && WHY[w.why] ? ` · ${t('ليس في صفحة الكاش لأنّ', 'not on the cash page because')} ${t(WHY[w.why][0], WHY[w.why][1])}` : ''}
+          {' '}<button type="button" className={link} onClick={() => go(`/system/operations/${w._id}`)}>{t('افتح الكشف', 'Open report')}</button>
+        </p>
+      ))}
     </div>
   );
 }

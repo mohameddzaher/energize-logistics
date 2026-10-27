@@ -10,7 +10,8 @@ import { useParams, useRouter } from 'next/navigation';
 import { useLanguage } from '@/context/LanguageContext';
 import { useDialog } from '@/components/system/DialogProvider';
 import api from '@/lib/api';
-import { money, dt } from '@/lib/collections';
+import { money, dt, canEditCollections } from '@/lib/collections';
+import { useAuth } from '@/context/AuthContext';
 import { useColumnFilters, ClearColumnFilters } from '@/components/useColumnFilters';
 import { Spinner, PageHeader } from '@/components/hr/HRKit';
 import ExportMenu from '@/components/ls2/ExportMenu';
@@ -42,6 +43,142 @@ interface Detail {
   /** معاملاتُ التخليص التي تخدمها كشوفُ الفاتورة، مجموعةً. */
   customs?: CustomsLinkView[];
   totals: { reports: number; net: number; vat: number; value: number; collectedReports: number };
+  /** حالةُ تحصيلها كما يقرؤها التحصيلُ نفسُه — راجع taxInvoiceDetail في الخادم. */
+  collection?: Collection | null;
+}
+interface Collection {
+  target: 'tax' | 'cash' | 'cashLedger'; value: number; collectedAmount: number;
+  collectionState: 'none' | 'partial' | 'full'; remaining: number; collectionDate: string | null;
+  payments: { _id: string; amount: number; date: string | null; byName?: string; note?: string; mode?: string }[];
+}
+
+const todayYmd = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Riyadh' });
+
+/**
+ * ── تحصيلُ الفاتورة من صفحتها (٢٠٢٦/١٠/٢٧) ────────────────────────────────
+ * الفاتورةُ النقديّةُ في الدفتر بلا كشفٍ عندنا لا تظهر في صفحة الكاش (تقرأ
+ * الكشوف) ولا في صفحة الضريبيّ (تقرأ الضريبيّ) — فلا بابَ لتحصيلها غيرُ هذه
+ * الصفحة، وكانت بلا زرّ: تبقى دَينًا على العميل وقد سدّد (الفاتورة 65994).
+ * فيُسجَّل التحصيلُ هنا بالرقم، والخادمُ يعرف أين يكتبه.
+ */
+function CollectionPanel({ invoiceNumber, c, canEdit, ar, onDone }: {
+  invoiceNumber: string; c: Collection; canEdit: boolean; ar: boolean; onDone: () => void;
+}) {
+  const t = (a: string, e: string) => (ar ? a : e);
+  const { notify, confirm, prompt } = useDialog();
+  const [mode, setMode] = useState<'full' | 'partial'>('full');
+  const [date, setDate] = useState(todayYmd());
+  const [amount, setAmount] = useState('');
+  const [note, setNote] = useState('');
+  const [busy, setBusy] = useState(false);
+  const full = c.collectionState === 'full';
+  // قيمةٌ غيرُ معروفة: يُكتب المقبوضُ كلُّه، ولا جزئيَّ فيه.
+  const needAmount = !(c.value > 0);
+
+  const collect = async () => {
+    const partial = mode === 'partial' && !full;
+    const a = Number(String(amount).replace(/,/g, ''));
+    if ((partial || (needAmount && !full)) && !(a > 0)) { notify(t('اكتب المبلغ المحصَّل رقمًا أكبر من صفر', 'Enter an amount greater than zero'), 'error'); return; }
+    if (!(await confirm({
+      title: t('تسجيل التحصيل', 'Record collection'),
+      message: partial
+        ? t(`دفعةٌ جزئيّة ${money(a)} على الفاتورة ${invoiceNumber} بتاريخ ${date}؟`, `Partial payment ${money(a)} on invoice ${invoiceNumber} dated ${date}?`)
+        : t(`تُسجَّل الفاتورة ${invoiceNumber} محصَّلةً بالكامل بتاريخ ${date}؟`, `Mark invoice ${invoiceNumber} fully collected on ${date}?`),
+    }))) return;
+    setBusy(true);
+    try {
+      const r = await api.post<{ message: string }>('/api/collections-dept/invoices/collect', {
+        invoiceNumber, mode: partial ? 'partial' : 'full', collectionDate: date, note,
+        ...(partial || needAmount ? { amount: a } : {}),
+      });
+      notify(r.message || t('سُجِّل التحصيل', 'Recorded'), 'success');
+      setAmount(''); setNote('');
+      onDone();
+    } catch (e: any) { notify(e?.message || t('تعذّر التسجيل', 'Could not record'), 'error'); }
+    setBusy(false);
+  };
+
+  const undo = async () => {
+    const reason = await prompt({
+      title: t('لم تُحصَّل', 'Not collected'),
+      message: t(`يُرفع التحصيلُ عن الفاتورة ${invoiceNumber} وتعود غيرَ محصَّلة. السبب (اختياريّ):`, `Undo the collection of invoice ${invoiceNumber}. Reason (optional):`),
+      confirmLabel: t('لم تُحصَّل', 'Not collected'),
+    });
+    if (reason === null) return;
+    setBusy(true);
+    try {
+      const r = await api.post<{ message: string }>('/api/collections-dept/invoices/uncollect', { invoiceNumber, reason });
+      notify(r.message || t('رُفع التحصيل', 'Undone'), 'success');
+      onDone();
+    } catch (e: any) { notify(e?.message || t('تعذّر الرجوع', 'Could not undo'), 'error'); }
+    setBusy(false);
+  };
+
+  const chip = full
+    ? ['bg-emerald-50 text-emerald-700', t('محصَّلة بالكامل', 'Fully collected')]
+    : c.collectionState === 'partial'
+      ? ['bg-amber-50 text-amber-700', t('محصَّلة جزئيًّا', 'Partly collected')]
+      : ['bg-red-50 text-red-600', t('لم تُحصَّل', 'Not collected')];
+
+  return (
+    <div className="bg-white border border-slate-200 rounded-xl shadow-sm px-4 py-3 space-y-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <p className="text-[13px] font-bold text-slate-900">{t('التحصيل', 'Collection')}</p>
+        <span className={`px-2 py-0.5 rounded-full text-[11.5px] font-semibold ${chip[0]}`}>{chip[1]}</span>
+        {full && c.collectionDate && <span className="text-xs text-slate-500">{t('بتاريخ', 'on')} {dt(c.collectionDate)}</span>}
+        <span className="text-xs text-slate-500 tabular-nums">
+          · {t('القيمة', 'Value')} {money(c.value)} · {t('المحصَّل', 'Collected')} {money(c.collectedAmount)}
+          {!full && c.value > 0 ? ` · ${t('الباقي', 'Remaining')} ${money(c.remaining)}` : ''}
+        </span>
+        {c.target === 'cashLedger' && (
+          <span className="text-[11px] text-slate-400">{t('— فاتورةٌ نقديّةٌ في دفتر التحصيل بلا كشف تشغيل', '— a cash book invoice with no operations report')}</span>
+        )}
+      </div>
+      {!!c.payments?.length && (
+        <ul className="text-xs text-slate-600 space-y-0.5">
+          {c.payments.map((p) => (
+            <li key={p._id} className="tabular-nums">{dt(p.date)} · {money(p.amount)}{p.byName ? ` · ${p.byName}` : ''}{p.note ? ` · ${p.note}` : ''}</li>
+          ))}
+        </ul>
+      )}
+      {canEdit && (
+        <div className="flex flex-wrap items-end gap-2">
+          {!full && !needAmount && (
+            <div className="inline-flex rounded-lg border border-slate-200 overflow-hidden text-xs">
+              {([['full', t('بالكامل', 'In full')], ['partial', t('جزئي', 'Partial')]] as const).map(([k, l]) => (
+                <button key={k} type="button" onClick={() => setMode(k)}
+                  className={`px-3 py-2 ${mode === k ? 'bg-[#f37121] text-white' : 'bg-white text-slate-600'}`}>{l}</button>
+              ))}
+            </div>
+          )}
+          <label className="text-xs text-slate-500">{t('تاريخ التحصيل', 'Collection date')}
+            <input type="date" value={date} onChange={(e) => setDate(e.target.value)}
+              className="block mt-1 px-2 py-1.5 rounded-lg border border-slate-200 text-sm text-slate-800" dir="ltr" />
+          </label>
+          {((mode === 'partial' && !full) || (needAmount && !full)) && (
+            <label className="text-xs text-slate-500">{t('المبلغ', 'Amount')}
+              <input inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)}
+                className="block mt-1 w-32 px-2 py-1.5 rounded-lg border border-slate-200 text-sm text-slate-800 tabular-nums" dir="ltr" />
+            </label>
+          )}
+          <label className="text-xs text-slate-500 flex-1 min-w-[160px]">{t('ملاحظة', 'Note')}
+            <input value={note} onChange={(e) => setNote(e.target.value)}
+              className="block mt-1 w-full px-2 py-1.5 rounded-lg border border-slate-200 text-sm text-slate-800" />
+          </label>
+          <button type="button" disabled={busy} onClick={collect}
+            className="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold disabled:opacity-50">
+            {full ? t('تعديل تاريخ التحصيل', 'Change collection date') : t('تسجيل التحصيل', 'Record collection')}
+          </button>
+          {(full || c.collectionState === 'partial') && (
+            <button type="button" disabled={busy} onClick={undo}
+              className="px-3 py-2 rounded-lg bg-white border border-red-200 text-red-600 hover:bg-red-50 text-sm font-semibold disabled:opacity-50">
+              {t('لم تُحصَّل', 'Not collected')}
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function TaxInvoiceDetailPage() {
@@ -52,6 +189,8 @@ export default function TaxInvoiceDetailPage() {
   const ar = lang === 'ar';
   const t = (a: string, e: string) => (ar ? a : e);
   const { notify } = useDialog();
+  const { user } = useAuth();
+  const canEdit = canEditCollections(user);
 
   const [data, setData] = useState<Detail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -147,7 +286,7 @@ export default function TaxInvoiceDetailPage() {
     { header: t('تاريخ التحصيل', 'Collected'), key: 'collectionDate', width: 14, transform: (v: any) => dt(v) },
   ];
 
-  const allCollected = data.totals.collectedReports === data.totals.reports;
+  const allCollected = data.totals.reports > 0 && data.totals.collectedReports === data.totals.reports;
 
   return (
     <div className="space-y-5 pb-10" dir={isRTL ? 'rtl' : 'ltr'}>
@@ -190,6 +329,10 @@ export default function TaxInvoiceDetailPage() {
           accent={allCollected ? 'text-emerald-600' : 'text-red-600'}
         />
       </div>
+
+      {data.collection && (
+        <CollectionPanel invoiceNumber={data.invoiceNumber} c={data.collection} canEdit={canEdit} ar={ar} onDone={load} />
+      )}
 
       {/* ── ومعاملاتُ التخليص التي تخدمها كشوفُها ──────────────────────────
           فاتورةُ نقلِ حاوياتٍ تُسأل عنها: لأيّ معاملةٍ وأيّ بوليصة؟ تُقال هنا. */}

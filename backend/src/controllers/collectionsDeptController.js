@@ -1402,6 +1402,52 @@ function cashScreenFilter(query) {
 }
 exports.cashScreenFilter = cashScreenFilter;
 
+/**
+ * ── «بحثتُ عن الرقم فلم أجده» — أين هو إذن؟ (٢٠٢٦/١٠/٢٧) ─────────────────────
+ *
+ * صفحةُ الكاش تقرأ كشوفَ التشغيل النقديّة المراجَعة، وصفحةُ الضريبيّ تقرأ فواتيرَ
+ * الدفتر الضريبيّة. فرقمٌ يقع خارج الاثنين — فاتورةٌ نقديّةٌ في الدفتر لا كشفَ
+ * لها، أو كشفٌ ضريبيٌّ على الشيت، أو كشفٌ لم يراجعه التشغيلُ بعد — يُبحَث عنه
+ * في الصفحتين فلا يظهر، فيُقرأ «غيرُ موجود» وهو موجود (الفاتورة 65994).
+ *
+ * فحين لا تجد الصفحةُ شيئًا يُقال أين الرقمُ ولماذا ليس هنا، ببابٍ إليه.
+ * لا يُحسب إلّا لبحثٍ برقمٍ كاملٍ عاد فارغًا — فلا يُثقل الصفحةَ في عملها.
+ */
+async function locateNumber(q) {
+  const n = String(q || '').trim();
+  if (!/^\d{3,}$/.test(n)) return null;
+  const CollectionInvoice = require('../models/CollectionInvoice');
+  const { isReviewed, underNewRule } = require('../utils/paymentType');
+  const [ledger, sheets] = await Promise.all([
+    CollectionInvoice.find({ invoiceNumber: n, unused: { $ne: true } })
+      .select('kind invoiceNumber partyName status collectionDate').limit(5).lean(),
+    OperationsWorkflow.find({ $or: [{ reportNumber: n }, { invoiceNumber: n }, { documentNumber: n }] })
+      .select('reportNumber invoiceNumber username paymentType paymentDate operationsReview accountingReview reportDate executionStatus collectedByWallet')
+      .limit(5).lean(),
+  ]);
+  if (!ledger.length && !sheets.length) return { number: n, ledger: [], sheets: [] };
+  const cancelled = NOT_CANCELLED.executionStatus.$nin;
+  return {
+    number: n,
+    ledger: ledger.map((i) => ({
+      kind: i.kind, invoiceNumber: i.invoiceNumber, customer: i.partyName || '',
+      collected: /collected/i.test(i.status || ''),
+    })),
+    sheets: sheets.map((w) => {
+      // لماذا ليس الكشفُ في صفحة الكاش — بشروطها نفسِها (cashScreenFilter).
+      let why = '';
+      if (cancelled.includes(w.executionStatus)) why = 'cancelled';
+      else if (w.paymentType !== 'cash') why = w.paymentType === 'tax' ? 'tax' : 'noType';
+      else if (!w.paymentDate) why = 'noPaymentDate';
+      else if (underNewRule(w) && !isReviewed(w) && !w.collectedByWallet) why = 'notReviewed';
+      return {
+        _id: w._id, reportNumber: w.reportNumber, invoiceNumber: w.invoiceNumber || '',
+        customer: w.username || '', paymentType: w.paymentType || '', why,
+      };
+    }),
+  };
+}
+
 exports.cashInvoices = async (req, res) => {
   try {
     // ── والكشفُ النقديُّ يُحصَّل سواءٌ عرفنا ما دفعناه فيه أم لا ────────────
@@ -1481,7 +1527,9 @@ exports.cashInvoices = async (req, res) => {
       attachmentCounts('cash', rows.map((w) => String(w._id))),
       customsLinks.linkedIndex(),
     ]);
+    const elsewhere = !rows.length && req.query.q && !req.allRows ? await locateNumber(req.query.q) : null;
     res.json({
+      elsewhere,
       invoices: rows.map((w) => ({
         _id: w._id,
         reportNumber: w.reportNumber,
@@ -1635,7 +1683,9 @@ exports.taxInvoices = async (req, res) => {
       customsLinks.linkedIndex(),
     ]);
 
+    const elsewhere = !rows.length && req.query.q && !req.allRows ? await locateNumber(req.query.q) : null;
     res.json({
+      elsewhere,
       invoices: rows.map((i) => {
         const rep = byNo.get(i.invoiceNumber);
         // ── والمحصَّلُ يُقرأ من الدفتر أوّلًا ────────────────────────────────
@@ -1735,10 +1785,26 @@ exports.taxInvoiceDetail = async (req, res) => {
     // جُمعت من كشوفها.
     const fromLedger = ledger && Number(ledger.total) > 0;
     const value = fromLedger ? r2(ledger.total) : sum('totalInvoice');
-    const net = fromLedger ? r2(ledger.total / 1.15) : sum('netInvoice');
-    const vat = fromLedger ? r2(ledger.total - ledger.total / 1.15) : sum('tax');
+    // والنقديُّ لا ضريبةَ فيه: قيمتُه صافيه كلُّه.
+    const cashBook = fromLedger && ledger.kind === 'cash';
+    const net = fromLedger ? (cashBook ? r2(ledger.total) : r2(ledger.total / 1.15)) : sum('netInvoice');
+    const vat = fromLedger ? (cashBook ? 0 : r2(ledger.total - ledger.total / 1.15)) : sum('tax');
     // عددُ متابعات كلّ كشف — سجلُّه الذي يكتبه التشغيلُ والتخليصُ والتحصيل.
     const fuCounts = await require('./workflowFollowUpController').countsFor(rows.map((r) => r._id));
+    // ── وحالةُ تحصيلها كما يقرؤها التحصيلُ نفسُه (loadTarget) ────────────────
+    // كي تُحصَّل الفاتورةُ من صفحتها — والنقديّةُ التي لا كشفَ لها لا بابَ لها
+    // غيرُ هذه الصفحة.
+    let collection = null;
+    try {
+      const tg = await loadTarget({ invoiceNumber: number });
+      const state = tg.full ? 'full' : (tg.collected > 0 ? 'partial' : 'none');
+      collection = {
+        target: tg.kind, value: tg.value, collectedAmount: tg.collected, collectionState: state,
+        remaining: tg.full ? 0 : r2(Math.max(0, tg.value - tg.collected)),
+        payments: (tg.payments || []).map((p) => (p.toObject ? p.toObject() : p)),
+        collectionDate: tg.doc.collectionDate || null,
+      };
+    } catch (_) { /* فاتورةٌ على الكشوف وحدَها — تُحصَّل من صفحة الفواتير */ }
 
     res.json({
       invoiceNumber: number,
@@ -1753,6 +1819,7 @@ exports.taxInvoiceDetail = async (req, res) => {
       comments: ledger?.comments || '',
       // من أين جاءت الفاتورة: من دفتر الشركة أم وُلدت من كشفٍ عندنا.
       inLedger: !!ledger,
+      collection,
       // كلُّ كشفٍ بمعاملته، والفاتورةُ بمعاملاتها مجموعةً — راجع services/customsOpsLink.
       reports: rows.map((r) => ({
         ...r, customsLink: undefined, customs: require('../services/customsOpsLink').linkView(r.customsLink),
@@ -2064,22 +2131,43 @@ async function loadTarget(body) {
   const id = body.id || (Array.isArray(body.ids) && body.ids.length === 1 ? body.ids[0] : null);
   if (invoiceNumber) {
     const inv = await CollectionInvoice.findOne({ kind: 'tax', invoiceNumber });
-    if (!inv) throw userError(404, 'لا فاتورة بهذا الرقم في دفتر التحصيل');
+    if (inv) {
+      return {
+        kind: 'tax', doc: inv, key: invoiceNumber, label: `الفاتورة ${invoiceNumber}`,
+        value: r2(inv.total), collected: r2(inv.collectedAmount), full: CollectionInvoice.isCollected(inv),
+        payments: inv.payments || [],
+      };
+    }
+    // ── والفاتورةُ النقديّةُ في الدفتر برقمها أيضًا (٢٠٢٦/١٠/٢٧) ──────────────
+    // صفُّ الشحنة النقديّة في الدفتر رقمُه رقمُ كشفها. وكان التحصيلُ بالرقم
+    // يقرأ الضريبيَّ وحدَه، فالفاتورةُ النقديّةُ التي تُفتَح من ملفّ العميل أو
+    // الأعمار تقول «لا فاتورة بهذا الرقم» عند تحصيلها — وتبقى دَينًا لا يُغلَق
+    // من أيّ شاشة (الفاتورة 65994). فإن كان كشفُها عندنا حُصِّل الكشفُ وتبعه
+    // الدفتر (syncCashLedger)، وإلّا حُصِّل صفُّ الدفتر نفسُه.
+    const cash = await CollectionInvoice.findOne({ kind: 'cash', invoiceNumber, unused: { $ne: true } });
+    if (!cash) throw userError(404, 'لا فاتورة بهذا الرقم في دفتر التحصيل');
+    // والكشفُ يُحصَّل بدلَها إن كان نقديًّا مثلَها — هو صفُّها في صفحة الكاش.
+    // أمّا كشفٌ ضريبيٌّ بالرقم نفسِه فتحت فاتورةٍ أخرى: لا يُمسّ، والدفترُ يُحصَّل
+    // بقيمته هو (والدفترُ هو المرجع — راجع collections-ledger).
+    const sheet = await OperationsWorkflow.findOne({ reportNumber: invoiceNumber, paymentType: 'cash', ...NOT_CANCELLED });
+    if (sheet) return cashSheetTarget(sheet);
     return {
-      kind: 'tax', doc: inv, key: invoiceNumber, label: `الفاتورة ${invoiceNumber}`,
-      value: r2(inv.total), collected: r2(inv.collectedAmount), full: CollectionInvoice.isCollected(inv),
-      payments: inv.payments || [],
+      kind: 'cashLedger', doc: cash, key: invoiceNumber, label: `الفاتورة ${invoiceNumber}`,
+      value: r2(cash.total), collected: r2(cash.collectedAmount), full: CollectionInvoice.isCollected(cash),
+      payments: cash.payments || [],
     };
   }
   if (!id || !mongoose.isValidObjectId(id)) throw userError(400, 'حدِّد فاتورةً واحدةً أو كشفًا واحدًا');
   const wf = await OperationsWorkflow.findById(id);
   if (!wf) throw userError(404, 'الكشف غير موجود');
-  return {
-    kind: 'cash', doc: wf, key: String(wf._id), label: `الكشف ${wf.reportNumber || ''}`,
-    value: r2(wf.sellingValue), collected: r2(wf.collectedAmount), full: cashIsCollected(wf),
-    payments: wf.collectionPayments || [],
-  };
+  return cashSheetTarget(wf);
 }
+
+const cashSheetTarget = (wf) => ({
+  kind: 'cash', doc: wf, key: String(wf._id), label: `الكشف ${wf.reportNumber || ''}`,
+  value: r2(wf.sellingValue), collected: r2(wf.collectedAmount), full: cashIsCollected(wf),
+  payments: wf.collectionPayments || [],
+});
 
 /**
  * يكتب حالةَ الهدف بعد أن تغيّرت دفعاتُه: المقبوضُ، والدفعات، واكتمالُه.
@@ -2107,6 +2195,12 @@ async function settleTarget(tg, { collected, payments, user, forceFull = false, 
         { $set: { collectionDate: when, collectedByWallet: false, lastModifiedBy: user._id } });
       await syncInvoiceLedger(tg.key, { collectionDate: when });
     }
+  } else if (tg.kind === 'cashLedger') {
+    // صفُّ دفترٍ بلا كشف: الحالةُ تُكتب عليه وحدَه، بلغتِه («Collected»).
+    const $set = { collectedAmount: r2(collected), payments };
+    if (full) Object.assign($set, { collectionDate: when, status: 'Collected' });
+    else if (tg.full) Object.assign($set, { collectionDate: null, status: '' });
+    await CollectionInvoice.updateOne({ _id: tg.doc._id }, { $set });
   } else {
     const $set = {
       collectedAmount: r2(collected), collectionPayments: payments,
@@ -2195,8 +2289,8 @@ async function recordPayment(req, res) {
     : `تحصيلٌ كامل على ${tg.label}${amount ? `: ${amount}` : ''}`;
   await logAudit({
     user: req.user._id, action: mode === 'partial' ? 'record_partial_collection' : 'record_collection',
-    entity: tg.kind === 'tax' ? 'CollectionInvoice' : 'OperationsWorkflow', entityId: tg.doc._id,
-    entityKey: tg.kind === 'tax' ? tg.key : tg.doc.reportNumber,
+    entity: tg.kind === 'cash' ? 'OperationsWorkflow' : 'CollectionInvoice', entityId: tg.doc._id,
+    entityKey: tg.kind === 'cash' ? tg.doc.reportNumber : tg.key,
     changes: {
       details,
       before: { collected: tg.collected, full: tg.full },
@@ -2260,8 +2354,8 @@ async function changePayment(req, res, remove) {
   afterCollectionWrite();
   await logAudit({
     user: req.user._id, action: remove ? 'remove_collection_payment' : 'update_collection_payment',
-    entity: tg.kind === 'tax' ? 'CollectionInvoice' : 'OperationsWorkflow', entityId: tg.doc._id,
-    entityKey: tg.kind === 'tax' ? tg.key : tg.doc.reportNumber,
+    entity: tg.kind === 'cash' ? 'OperationsWorkflow' : 'CollectionInvoice', entityId: tg.doc._id,
+    entityKey: tg.kind === 'cash' ? tg.doc.reportNumber : tg.key,
     changes: {
       details: `${remove ? 'رفعُ' : 'تعديلُ'} دفعةٍ على ${tg.label}${reason ? ` — ${reason}` : ''}`,
       before: { payment: before, collected: tg.collected, full: tg.full },
@@ -2354,13 +2448,39 @@ exports.recordCollection = async (req, res) => {
 exports.undoCollection = async (req, res) => {
   try {
     const reason = String(req.body.reason || '').trim();
-    const invoiceNumber = String(req.body.invoiceNumber || '').trim();
-    const ids = Array.isArray(req.body.ids) ? req.body.ids.filter((x) => mongoose.isValidObjectId(x)) : [];
+    let invoiceNumber = String(req.body.invoiceNumber || '').trim();
+    let ids = Array.isArray(req.body.ids) ? req.body.ids.filter((x) => mongoose.isValidObjectId(x)) : [];
     if (!invoiceNumber && !ids.length) return res.status(400).json({ message: 'حدِّد فاتورةً أو كشوفًا' });
+    const CollectionInvoice = require('../models/CollectionInvoice');
+
+    // ── والفاتورةُ النقديّةُ برقمها (راجع loadTarget) ─────────────────────────
+    // كشفُها عندنا ← يُرجَع عن تحصيل الكشف ويتبعه الدفتر. ولا كشفَ لها ← يُرفَع
+    // التحصيلُ عن صفّ الدفتر نفسِه.
+    if (invoiceNumber && !(await CollectionInvoice.exists({ kind: 'tax', invoiceNumber }))) {
+      const cash = await CollectionInvoice.findOne({ kind: 'cash', invoiceNumber, unused: { $ne: true } }).lean();
+      if (cash) {
+        const sheet = await OperationsWorkflow.findOne({ reportNumber: invoiceNumber, paymentType: 'cash', ...NOT_CANCELLED }).select('_id').lean();
+        if (sheet) { ids = [String(sheet._id)]; invoiceNumber = ''; } else {
+          const was = cash.collectionDate || Number(cash.collectedAmount) > 0 || CollectionInvoice.isCollected(cash);
+          if (!was) return res.status(400).json({ message: 'ليست مسجَّلةً محصَّلةً أصلًا — لا شيءَ يُرجَع عنه' });
+          await CollectionInvoice.updateOne({ _id: cash._id }, { $set: { collectedAmount: 0, payments: [], collectionDate: null, status: '' } });
+          afterCollectionWrite();
+          await logAudit({
+            user: req.user._id, action: 'undo_collection', entity: 'CollectionInvoice', entityId: cash._id, entityKey: invoiceNumber,
+            changes: {
+              details: `رجوعٌ عن تحصيل الفاتورة النقديّة ${invoiceNumber}${reason ? ` — ${reason}` : ''}`,
+              ledgerBefore: { status: cash.status, collectionDate: cash.collectionDate, collectedAmount: cash.collectedAmount, payments: cash.payments || [] },
+              reason,
+            },
+            ipAddress: req.ip,
+          });
+          return res.json({ updated: 1, message: `رُفع التحصيلُ عن الفاتورة ${invoiceNumber} — عادت غيرَ محصَّلة` });
+        }
+      }
+    }
     const filter = invoiceNumber ? { invoiceNumber, ...NOT_CANCELLED } : { _id: { $in: ids } };
 
     const before = await OperationsWorkflow.find(filter).select('reportNumber collectionDate collectedAmount collectionPayments').lean();
-    const CollectionInvoice = require('../models/CollectionInvoice');
     const ledgerBefore = invoiceNumber
       ? await CollectionInvoice.findOne({ invoiceNumber, kind: 'tax' }).select('status collectionDate collectedAmount payments').lean() : null;
     const wasCollected = before.some((w) => w.collectionDate || Number(w.collectedAmount) > 0)
@@ -2369,7 +2489,9 @@ exports.undoCollection = async (req, res) => {
     if (!wasCollected) return res.status(400).json({ message: 'ليست مسجَّلةً محصَّلةً أصلًا — لا شيءَ يُرجَع عنه' });
 
     // والدفعاتُ كلُّها معه: «لم تُحصَّل» تعني لا مقبوضَ فيها — لا جزئيّةً بقيت.
-    const r = await OperationsWorkflow.updateMany(filter, { $set: { collectionDate: null, collectedAmount: 0, collectionPayments: [], collectedByWallet: false, lastModifiedBy: req.user._id } });
+    // و`cashCollectionStatus` معها: الدفترُ النقديُّ المستورَدُ يقول «collected» بلا
+    // تاريخ، وبقاؤه يُبقي الكشفَ محصَّلًا بعد «لم تُحصَّل» (cashIsCollected).
+    const r = await OperationsWorkflow.updateMany(filter, { $set: { collectionDate: null, collectedAmount: 0, collectionPayments: [], collectedByWallet: false, cashCollectionStatus: '', lastModifiedBy: req.user._id } });
     if (invoiceNumber) await CollectionInvoice.updateOne({ invoiceNumber, kind: 'tax' }, { $set: { collectedAmount: 0, payments: [] } });
     await syncInvoiceLedger(invoiceNumber, { collectionDate: null });
     if (!invoiceNumber) await syncCashLedger(filter, { collectionDate: null });

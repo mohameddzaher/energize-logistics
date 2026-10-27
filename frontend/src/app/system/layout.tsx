@@ -41,7 +41,7 @@ import { isManagedSection, canAccessSection, canAccessPage } from '@/lib/section
 import { ALL_ROLES } from '@/lib/roles';
 import { jpMember, jpManager, jpTop } from '@/lib/jpNav';
 import { PERF_STAFF_ROLES } from '@/lib/performance';
-import { WALLET_ROLES, WALLET_DASHBOARD_ROLES } from '@/lib/wallet';
+import { WALLET_ROLES, WALLET_DASHBOARD_ROLES, WALLET_VIEW_ONLY_ROLES } from '@/lib/wallet';
 
 // Section-KPI pages render TeamBoard, which admits PERF_STAFF_ROLES only — a
 // nav entry offering the link to anyone else is a guaranteed dead-end screen.
@@ -333,8 +333,8 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/collections-dept/suppliers', label: lang === 'ar' ? 'الموردين' : 'Suppliers', icon: <Truck className="w-5 h-5" />, roles: COLLECTIONS_NAV_ROLES, section: 'Collections' },
     // ── المحفظةُ عرضًا لقسم التحصيل (٢٠٢٦/١٠/٢٧) — صفحتا العمليّات نفسُهما،
     // تُفتحان هنا لأنّ قسمَ العمليّات مغلقٌ عليهما. راجع config/walletViewOnly.
-    { href: '/system/wallet', label: lang === 'ar' ? 'محفظة الفروع (عرض)' : 'Branch wallets (view)', icon: <Wallet className="w-5 h-5" />, roles: ['super_admin', 'admin', 'collections_manager', 'collections_staff'], section: 'Collections', restrict: true },
-    { href: '/system/wallet-dashboard', label: lang === 'ar' ? 'لوحة المحفظة (عرض)' : 'Wallet dashboard (view)', icon: <BarChart3 className="w-5 h-5" />, roles: ['super_admin', 'admin', 'collections_manager', 'collections_staff'], section: 'Collections', restrict: true },
+    { href: '/system/wallet', label: lang === 'ar' ? 'محفظة الفروع (عرض)' : 'Branch wallets (view)', icon: <Wallet className="w-5 h-5" />, roles: ['super_admin', 'admin', ...WALLET_VIEW_ONLY_ROLES], section: 'Collections', restrict: true },
+    { href: '/system/wallet-dashboard', label: lang === 'ar' ? 'لوحة المحفظة (عرض)' : 'Wallet dashboard (view)', icon: <BarChart3 className="w-5 h-5" />, roles: ['super_admin', 'admin', ...WALLET_VIEW_ONLY_ROLES], section: 'Collections', restrict: true },
     // ── وصفحةُ التشغيل من داخل قسمهم ──────────────────────────────────────
     // الكشفُ ورقةُ عملِ التحصيل: منه يُقرأ ما لنا وما علينا، وفيه تُكتب
     // الفاتورةُ وتاريخُ التحصيل. ووضعُ الرابط هنا يوفّر عليهم البحثَ عنه في

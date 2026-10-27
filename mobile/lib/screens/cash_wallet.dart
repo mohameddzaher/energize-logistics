@@ -104,7 +104,7 @@ class _CashWalletScreenState extends State<CashWalletScreen> {
   bool get _isManager => const ['super_admin', 'admin', 'operations_manager', 'operations_staff', ..._financeFullRoles].contains(_role)
       || _auth.canEditSection('Operations');
   // عرضٌ فقط: المشرف، وقسمُ التحصيل (٢٠٢٦/١٠/٢٧) — والخادمُ يردّ كتابتَهم بالدور.
-  bool get _readOnly => const ['moderator', 'collections_manager', 'collections_staff'].contains(_role);
+  bool get _readOnly => const ['moderator', 'collections_manager', 'collections_staff', 'collections_trainee'].contains(_role);
   /// الكتابةُ في يومٍ أُقفل سلطةٌ ماليّة — role-only كما في الخادم (`mayWriteIntoClosedDay`).
   bool get _canWriteClosedDay => const ['super_admin', 'admin', 'operations_manager', ..._financeFullRoles].contains(_role) || _superPowers;
   bool get _canSelectBranch => _role.isNotEmpty && _role != 'operations_staff';

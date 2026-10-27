@@ -278,7 +278,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         AppPage('ربط الحسابات', 'Account links', Icons.link, (c) => const PartyLinksScreen(), path: '/system/collections-dept/links'),
         AppPage('سير عمل التشغيل', 'Operations Workflow', Icons.workspaces_outline, (c) => const OpsWorkflowsScreen(), path: '/system/operations'),
         // المحفظةُ عرضًا لقسم التحصيل (٢٠٢٦/١٠/٢٧) — راجع config/walletViewOnly في الخادم.
-        if (const ['super_admin', 'admin', 'collections_manager', 'collections_staff'].contains(role)) ...[
+        if (const ['super_admin', 'admin', 'collections_manager', 'collections_staff', 'collections_trainee'].contains(role)) ...[
           AppPage('محفظة الفروع (عرض)', 'Branch wallets (view)', Icons.account_balance_wallet_outlined, (c) => const CashWalletScreen(), path: '/system/wallet'),
           AppPage('لوحة المحفظة (عرض)', 'Wallet dashboard (view)', Icons.pie_chart_outline, (c) => const WalletDashboardScreen(), path: '/system/wallet-dashboard'),
         ],

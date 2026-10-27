@@ -9,7 +9,13 @@
  * وكلُّ نداءٍ كاتبٍ منهما يُردّ عند البوّابة قبل أن يصل مسارَه، مهما مُنحا
  * غيرَ ذلك في المصفوفة. والإخفاءُ في الشاشة (الويب والتطبيق) تابعٌ لا حارس.
  */
-const WALLET_VIEW_ONLY_ROLES = ['collections_manager', 'collections_staff'];
+// فريقُ التحصيل كلُّه — مديرُه وموظّفوه ومتدرّبُه — يُقرأ من هيكل الأدوار نفسِه
+// (config/roles) لا من قائمةٍ تُكتب هنا، فمن يدخل الفريقَ غدًا يدخلها (٢٠٢٦/١٠/٢٧:
+// «المفروض لكلّ تيم التحصيل»).
+const collections = require('./roles').SECTION_ROLES.find((x) => x.section === 'Collections');
+const WALLET_VIEW_ONLY_ROLES = collections
+  ? [collections.manager.key, ...collections.staff.map((r) => r.key), collections.trainee.key]
+  : ['collections_manager', 'collections_staff', 'collections_trainee'];
 const WALLET_VIEW_PAGES = ['/system/wallet', '/system/wallet-dashboard'];
 const READ = new Set(['GET', 'HEAD', 'OPTIONS']);
 

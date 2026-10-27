@@ -1230,10 +1230,16 @@ exports.getDashboard = async (req, res) => {
     // بناؤها يستغرق ثانيتَين ونصفًا (سبعةٌ وثلاثون ألفَ شحنةٍ تُجمَّع في
     // القاعدة). ومن يفتح القسمَ لا ينتظر: تُقدَّم قيمةُ آخرِ بناءٍ فورًا
     // ويُجدَّد في الخلف — راجع utils/ttlCache.wrapStale.
-    const out = await cache.wrapStale(`so:dashboard:${monthFrom}:${todayFrom}:${period}`, 60 * 1000, 10 * 60 * 1000, async () => {
+    // ── واللوحةُ الجديدةُ لا تحمل حسابَ القديمة (٢٠٢٦/١٠/٢٧) ───────────────────
+    // كلُّ فترةٍ كانت تبني معها تحليلَ الشهر واليوم (لنُسَخ التطبيق التي لا تُرسل
+    // فترة) — أربعةُ تحليلاتٍ كاملةٍ على عشرات الآلاف، خمسُ ثوانٍ لكلّ تبديلٍ يبقى
+    // فيها الرقمُ القديمُ على الشاشة فيُظَنّ أنّ الفلترَ لا يعمل. فمن أرسل فترةً
+    // يأخذ فترتَه وحدَها، والقديمُ يُبنى لمن لا يرسلها فقط.
+    const legacy = !req.query.period;
+    const out = await cache.wrapStale(`so:dashboard:${monthFrom}:${todayFrom}:${period}:${legacy ? 'l' : 'p'}`, 60 * 1000, 10 * 60 * 1000, async () => {
       const [month, today, fleet, recent, cur, prev, extras] = await Promise.all([
-        analyticsOf({ from: monthFrom }),
-        analyticsOf({ from: todayFrom }),
+        legacy ? analyticsOf({ from: monthFrom }) : null,
+        legacy ? analyticsOf({ from: todayFrom }) : null,
         registrySummary(),
         ShipmentOrder.find({}).sort({ createdAt: -1 }).limit(8)
           .select('waybillNumber reference customerName fromCity toCity status vehiclePlate driverName pickupTime createdAt salesRepName sellPrice buyPrice')
@@ -1248,7 +1254,7 @@ exports.getDashboard = async (req, res) => {
         period: { key: period, ...R, cur, prev, ...extras },
         month, today, fleet, recent,
         // مسطّحةٌ للهاتف: بطاقاتُه تقرأ مسارًا نصيًّا واحدًا لكلّ رقم.
-        flat: {
+        flat: !legacy ? undefined : {
           todayOrders: today.totals.orders,
           monthOrders: month.totals.orders,
           monthCancelled: month.totals.cancelled,

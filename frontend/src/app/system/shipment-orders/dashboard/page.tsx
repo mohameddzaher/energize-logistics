@@ -35,7 +35,7 @@ import { canAccessSection, canAccessPage, permsOf } from '@/lib/sections';
 import {
   LayoutDashboard, PackagePlus, PackageSearch, Truck, Users, Store, TrendingUp, TrendingDown,
   AlertTriangle, ArrowUpRight, ArrowDownRight, Minus, Wallet, Receipt, PiggyBank, Percent, Ban,
-  Ship, MessageSquareText, IdCard, Clock, ChevronDown, Activity, Award, Route as RouteIcon,
+  Loader2, Ship, MessageSquareText, IdCard, Clock, ChevronDown, Activity, Award, Route as RouteIcon,
 } from 'lucide-react';
 
 type Group = { name: string; orders: number; sell: number; margin: number; marginPct?: number | null };
@@ -213,6 +213,8 @@ export default function ShipmentOrdersDashboardPage() {
   }
   if (loading && !P) return <Spinner />;
 
+  // البياناتُ على الشاشة لفترةٍ غيرِ المختارة = الفترةُ الجديدةُ في الطريق.
+  const switching = !!P && P.key !== period;
   const T = P?.cur.totals;
   const V = P?.prev;
   const reps = P?.cur.salesRanking || [];
@@ -244,19 +246,33 @@ export default function ShipmentOrdersDashboardPage() {
             <button key={k} type="button" role="tab" aria-selected={period === k} onClick={() => pick(k)}
               className={`px-3.5 py-1.5 rounded-lg text-[13px] font-semibold transition-colors ${
                 period === k ? 'bg-white text-[#12325C] shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>
-              {t(a, e)}
+              <span className="inline-flex items-center gap-1.5">
+                {period === k && switching ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
+                {t(a, e)}
+              </span>
             </button>
           ))}
         </div>
         <span className="inline-flex items-center gap-1.5 text-[12px] text-slate-500">
+          {switching ? (
+            <span className="inline-flex items-center gap-1.5 font-semibold text-[#f37121]">
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />{t('جارٍ تحميل الفترة…', 'Loading the period…')}
+            </span>
+          ) : (
+            <>
           <span className="relative flex h-2 w-2"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-60" /><span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" /></span>
           {t('مباشر — يتحدّث وحده', 'Live — updates itself')}
           {updatedAt ? <span className="text-slate-400">· {updatedAt.toLocaleTimeString(ar ? 'ar-EG' : 'en-GB', { hour: '2-digit', minute: '2-digit' })}</span> : null}
+            </>
+          )}
         </span>
       </div>
 
       {error && <ErrorNotice error={error} lang={lang} onRetry={load} />}
 
+      {/* الأرقامُ المعروضةُ لفترةٍ غيرِ المختارة تُعتَّم حتى تصل فترتُها —
+          فلا يُقرأ رقمُ الشهر على أنّه رقمُ اليوم (٢٠٢٦/١٠/٢٧). */}
+      <div className={`space-y-5 transition-opacity ${switching ? 'opacity-40 pointer-events-none' : ''}`} aria-busy={switching}>
       {T && V && (
         <>
           {/* ── الأرقامُ الستّة — وكلٌّ بسهمه عن الفترة السابقة ───────────────── */}
@@ -503,6 +519,7 @@ export default function ShipmentOrdersDashboardPage() {
           </div>
         )}
       </section>
+      </div>
     </div>
     </CanOpen.Provider>
   );

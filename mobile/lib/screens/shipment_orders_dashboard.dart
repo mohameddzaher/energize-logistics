@@ -221,7 +221,14 @@ class _ShipmentOrdersDashboardScreenState extends State<ShipmentOrdersDashboardS
                 )),
             ]),
           ),
-          if (p['from'] != null)
+          // البياناتُ على الشاشة لفترةٍ غيرِ المختارة = الفترةُ الجديدةُ في الطريق (٢٠٢٦/١٠/٢٧).
+          if (_d != null && p['key'] != null && p['key'] != _period)
+            Padding(padding: const EdgeInsets.only(top: 6), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const LinearProgressIndicator(minHeight: 2),
+              const SizedBox(height: 4),
+              Text(tr('جارٍ تحميل الفترة…', 'Loading the period…'), style: const TextStyle(fontSize: 12, color: T.orange, fontWeight: FontWeight.w700)),
+            ]))
+          else if (p['from'] != null)
             Padding(padding: const EdgeInsets.only(top: 6), child: Row(children: [
               Container(width: 8, height: 8, decoration: const BoxDecoration(color: T.success, shape: BoxShape.circle)),
               const SizedBox(width: 6),

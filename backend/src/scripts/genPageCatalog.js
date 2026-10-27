@@ -66,6 +66,9 @@ for (const line of src.split('\n')) {
   else {
     const fromL = /label:\s*L\.(\w+)/.exec(line);
     if (fromL && L_LABELS[fromL[1]]) { [ar, en] = L_LABELS[fromL[1]]; }
+    // A label written once for both languages (`label: 'API Reference'`).
+    const plain = /label:\s*'([^']+)'/.exec(line);
+    if (!ar && plain) { ar = plain[1]; en = plain[1]; }
   }
   const key = href[1];
   // المسارُ الواحد قد يظهر مرّتين لقسمين (سير عمل التشغيل يظهر للتشغيل

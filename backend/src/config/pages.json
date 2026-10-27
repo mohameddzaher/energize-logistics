@@ -1912,8 +1912,8 @@
     {
       "key": "/system/api-docs",
       "section": "Admin",
-      "ar": "توثيق الـ API",
-      "en": "API Docs"
+      "ar": "API Reference",
+      "en": "API Reference"
     },
     {
       "key": "/system/complaints",

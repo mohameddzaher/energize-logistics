@@ -110,7 +110,7 @@ class _ApprovalsScreenState extends State<ApprovalsScreen> {
                   ? tr('ملاحظة (اختياري)', 'Note (optional)')
                   : tr('اكتب السبب — مطلوب', 'Write the reason — required'),
               hintText: decision == 'info'
-                  ? tr('مثال: عليه سلفة ٥٠٠ ريال تُسدَّد قبل السفر — أرفق الإيصال.', 'e.g. settle the 500 SAR advance first — attach the receipt.')
+                  ? tr('مثال: عليه سلفة 500 ريال تُسدَّد قبل السفر — أرفق الإيصال.', 'e.g. settle the 500 SAR advance first — attach the receipt.')
                   : null,
               hintMaxLines: 2,
             ),

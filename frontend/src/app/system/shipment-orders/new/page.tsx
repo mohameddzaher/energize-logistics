@@ -688,7 +688,7 @@ function CreateShipmentInner() {
   const sell = Number(form.sellPrice); const buy = Number(form.buyPrice);
   const hasDeal = Number.isFinite(sell) && sell > 0 && Number.isFinite(buy) && buy > 0;
   const dealMargin = hasDeal ? sell - buy : null;
-  const money = (n: number) => n.toLocaleString(ar ? 'ar-EG' : 'en-US', { maximumFractionDigits: 2 });
+  const money = (n: number) => n.toLocaleString(ar ? 'ar-EG-u-nu-latn' : 'en-US', { maximumFractionDigits: 2 });
 
   // A card carries its own state: the number turns into a tick when nothing in
   // it is still required, and into a red count when something is. The person
@@ -1172,7 +1172,7 @@ function CreateShipmentInner() {
 
           {/* الصفُّ الأوّلُ يُعرَض للعلم لا للتعديل: يُحرَّر في بطاقته أعلاه. */}
           <div className="rounded-xl bg-white border border-slate-200 px-3 py-2 text-xs text-slate-600 flex flex-wrap items-center gap-x-4 gap-y-1">
-            <span className="font-bold text-slate-900">{ar ? 'الشاحنة ١' : 'Truck 1'}</span>
+            <span className="font-bold text-slate-900">{ar ? 'الشاحنة 1' : 'Truck 1'}</span>
             <span>{suppliers.find((x) => x._id === supplierId)?.name || (ar ? 'بلا مورّد' : 'no supplier')}</span>
             <span className="font-mono">{vehicles.find((x) => x._id === vehicleId)?.plate || newPlate || (ar ? 'بلا شاحنة' : 'no truck')}</span>
             <span>{form.driverName || (ar ? 'بلا سائق' : 'no driver')}</span>

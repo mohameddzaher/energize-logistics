@@ -216,7 +216,7 @@ export const FIXED_KEYS = new Set([
 export const fmtDT = (v?: string | null, lang: Lang = 'ar') => {
   if (!v) return '—';
   try {
-    return new Date(v).toLocaleString(lang === 'ar' ? 'ar-SA' : 'en-GB', {
+    return new Date(v).toLocaleString(lang === 'ar' ? 'ar-SA-u-nu-latn' : 'en-GB', {
       dateStyle: 'medium', timeStyle: 'short',
     });
   } catch { return String(v); }

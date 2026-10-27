@@ -187,7 +187,7 @@ export default function PortalHomePage() {
         <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
           <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold inline-flex items-center gap-2 mb-4">
             <Clock className="w-4 h-4 text-[#f37121]" />
-            {tx('Last 12 months', 'آخر ١٢ شهرًا')}
+            {tx('Last 12 months', 'آخر 12 شهرًا')}
           </h3>
           <div className="flex items-end gap-1.5 h-32">
             {data.monthly.map((m) => (

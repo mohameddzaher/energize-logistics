@@ -83,5 +83,5 @@ export function sinceLabel(iso: string | Date | undefined, ar: boolean): string 
   if (h < 24) return ar ? `منذ ${h} س` : `${h}h ago`;
   const d = Math.floor(h / 24);
   if (d < 30) return ar ? `منذ ${d} ي` : `${d}d ago`;
-  return new Date(iso).toLocaleDateString(ar ? 'ar-EG' : 'en-GB');
+  return new Date(iso).toLocaleDateString(ar ? 'ar-EG-u-nu-latn' : 'en-GB');
 }

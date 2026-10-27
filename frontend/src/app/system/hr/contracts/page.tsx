@@ -476,7 +476,7 @@ export default function ContractsPage() {
               <b>{ar ? 'ترحيل رصيد الإجازات غير المستهلك' : 'Carry unused leave balance forward'}</b>
               <span className="block text-[11px] text-slate-500 mt-0.5">
                 {ar
-                  ? 'مَن أخذ ١٥ يومًا من ٣٠ يبدأ عامَه التالي بـ١٥ محفوظة، ويتراكم استحقاق السنة الجديدة فوقها.'
+                  ? 'مَن أخذ 15 يومًا من 30 يبدأ عامَه التالي بـ15 محفوظة، ويتراكم استحقاق السنة الجديدة فوقها.'
                   : 'Someone who used 15 of 30 starts the next year with 15 in hand, and the new year accrues on top.'}
               </span>
             </span>

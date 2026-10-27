@@ -96,7 +96,7 @@ export default function EmailTemplateEditor({ ar, canEdit }: { ar: boolean; canE
               <input type="file" accept="image/png,image/jpeg" hidden onChange={(e) => {
                 const f = e.target.files?.[0]; e.target.value = '';
                 if (!f) return;
-                if (f.size > 300 * 1024) { notify(t('الصورة أكبر من ٣٠٠ ك.ب — صغّرها', 'Image over 300 KB'), 'error'); return; }
+                if (f.size > 300 * 1024) { notify(t('الصورة أكبر من 300 ك.ب — صغّرها', 'Image over 300 KB'), 'error'); return; }
                 const r = new FileReader(); r.onload = () => { setSigImg(String(r.result)); setSigImgName(f.name); }; r.readAsDataURL(f);
               }} />
             </label>

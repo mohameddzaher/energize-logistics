@@ -130,7 +130,7 @@ class _B2cVehiclesScreenState extends State<B2cVehiclesScreen> {
       ('', tr('عدد المركبات', 'Vehicles'), sum['total'], T.orange),
       ('noAuthorization', tr('بلا تفويض', 'No authorization'), sum['noAuthorization'], T.inkSoft),
       ('expired', tr('تفويض منتهٍ', 'Authorization expired'), sum['expired'], T.danger),
-      ('expiringSoon', tr('ينتهي خلال ٣٠ يومًا', 'Expiring in 30 days'), sum['expiringSoon'], T.warn),
+      ('expiringSoon', tr('ينتهي خلال 30 يومًا', 'Expiring in 30 days'), sum['expiringSoon'], T.warn),
       ('noDriver', tr('بلا قائدٍ فعليّ', 'No actual driver'), sum['noDriver'], T.inkSoft),
       ('hold', tr('بانتظار التسليم', 'Awaiting hand-over'), sum['hold'], T.warn),
     ];

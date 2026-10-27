@@ -279,7 +279,7 @@ class _FollowUpSheetState extends State<_FollowUpSheet> {
             onPressed: () async {
               final f = await pickFileAsDataUrl();
               if (f == null) return;
-              if (f.sizeBytes > 20 * 1024 * 1024) return _say(tr('الملف أكبر من ٢٠ ميجابايت.', 'File larger than 20MB.'));
+              if (f.sizeBytes > 20 * 1024 * 1024) return _say(tr('الملف أكبر من 20 ميجابايت.', 'File larger than 20MB.'));
               setState(() => _file = f);
             },
           ),

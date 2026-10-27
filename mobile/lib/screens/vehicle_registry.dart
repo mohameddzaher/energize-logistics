@@ -818,7 +818,7 @@ class _VehicleFilesState extends State<_VehicleFiles> {
               onPressed: () async {
                 final f = await pickFileAsDataUrl();
                 if (f == null) return;
-                if (f.sizeBytes > 20 * 1024 * 1024) { if (c.mounted) ScaffoldMessenger.of(c).showSnackBar(SnackBar(content: Text(tr('الملفّ أكبر من ٢٠ ميغا', 'File is larger than 20MB')))); return; }
+                if (f.sizeBytes > 20 * 1024 * 1024) { if (c.mounted) ScaffoldMessenger.of(c).showSnackBar(SnackBar(content: Text(tr('الملفّ أكبر من 20 ميغا', 'File is larger than 20MB')))); return; }
                 setS(() { file = f; if (title.text.trim().isEmpty) title.text = f.fileName.replaceFirst(RegExp(r'\.[^.]+$'), ''); });
               },
             ),

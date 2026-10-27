@@ -174,7 +174,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
     ('this_quarter', 'هذا الربع', 'This quarter'),
     ('this_year', 'هذا العام', 'This year'),
     ('last_year', 'العام الماضي', 'Last year'),
-    ('last_12m', 'آخر ١٢ شهرًا', 'Last 12 months'),
+    ('last_12m', 'آخر 12 شهرًا', 'Last 12 months'),
     ('all', 'كل التاريخ', 'All time'),
   ];
 

@@ -62,8 +62,8 @@ interface FleetSummary { vehicles: number; suppliers: number; drivers: number; g
 type PeriodKey = 'today' | '7d' | 'month' | '30d' | 'year';
 
 const PERIODS: [PeriodKey, string, string][] = [
-  ['today', 'اليوم', 'Today'], ['7d', '٧ أيام', '7 days'], ['month', 'هذا الشهر', 'This month'],
-  ['30d', '٣٠ يومًا', '30 days'], ['year', 'هذه السنة', 'This year'],
+  ['today', 'اليوم', 'Today'], ['7d', '7 أيام', '7 days'], ['month', 'هذا الشهر', 'This month'],
+  ['30d', '30 يومًا', '30 days'], ['year', 'هذه السنة', 'This year'],
 ];
 const PREF_KEY = 'so-dash-period';
 const ORANGE = '#f37121';
@@ -184,7 +184,7 @@ export default function ShipmentOrdersDashboardPage() {
 
   const pick = (k: PeriodKey) => { setPeriod(k); try { localStorage.setItem(PREF_KEY, k); } catch { /* */ } };
 
-  const money = useCallback((n: number) => (Number(n) || 0).toLocaleString(ar ? 'ar-EG' : 'en-US', { maximumFractionDigits: 0 }), [ar]);
+  const money = useCallback((n: number) => (Number(n) || 0).toLocaleString(ar ? 'ar-EG-u-nu-latn' : 'en-US', { maximumFractionDigits: 0 }), [ar]);
   const short = useCallback((n: number) => {
     const v = Number(n) || 0; const a = Math.abs(v);
     if (a >= 1e6) return `${(v / 1e6).toFixed(1)}${ar ? ' م' : 'M'}`;
@@ -262,7 +262,7 @@ export default function ShipmentOrdersDashboardPage() {
             <>
           <span className="relative flex h-2 w-2"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-60" /><span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" /></span>
           {t('مباشر — يتحدّث وحده', 'Live — updates itself')}
-          {updatedAt ? <span className="text-slate-400">· {updatedAt.toLocaleTimeString(ar ? 'ar-EG' : 'en-GB', { hour: '2-digit', minute: '2-digit' })}</span> : null}
+          {updatedAt ? <span className="text-slate-400">· {updatedAt.toLocaleTimeString(ar ? 'ar-EG-u-nu-latn' : 'en-GB', { hour: '2-digit', minute: '2-digit' })}</span> : null}
             </>
           )}
         </span>

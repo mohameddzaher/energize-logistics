@@ -191,7 +191,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
         content: TextField(
           controller: pass,
           autofocus: true,
-          decoration: InputDecoration(labelText: tr('كلمة السر (٨ أحرف على الأقل)', 'Password (min 8)')),
+          decoration: InputDecoration(labelText: tr('كلمة السر (8 أحرف على الأقل)', 'Password (min 8)')),
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('إلغاء', 'Cancel'))),
@@ -201,7 +201,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
     );
     if (ok != true) return;
     if (pass.text.trim().length < 8) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('كلمة السر ٨ أحرف على الأقل', 'At least 8 characters'))));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('كلمة السر 8 أحرف على الأقل', 'At least 8 characters'))));
       return;
     }
     try {

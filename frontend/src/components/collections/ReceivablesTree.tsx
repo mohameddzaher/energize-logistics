@@ -61,11 +61,11 @@ const SUBTYPE_CARDS: { key: SubtypeKey; ar: string; en: string; tone: string; in
 
 /** الشرائحُ الخمس — بلا تداخل: الحدُّ الأعلى شامل، والأولى تضمّ عمرَ اليوم. */
 export const BANDS: { key: BandKey; ar: string; en: string }[] = [
-  { key: 'd1_15', ar: '١ – ١٥ يومًا', en: '1–15 days' },
-  { key: 'd16_30', ar: '١٦ – ٣٠ يومًا', en: '16–30 days' },
-  { key: 'd31_60', ar: '٣١ – ٦٠ يومًا', en: '31–60 days' },
-  { key: 'd61_90', ar: '٦١ – ٩٠ يومًا', en: '61–90 days' },
-  { key: 'd91_plus', ar: 'أكثر من ٩٠ يومًا', en: 'Over 90 days' },
+  { key: 'd1_15', ar: '1 – 15 يومًا', en: '1–15 days' },
+  { key: 'd16_30', ar: '16 – 30 يومًا', en: '16–30 days' },
+  { key: 'd31_60', ar: '31 – 60 يومًا', en: '31–60 days' },
+  { key: 'd61_90', ar: '61 – 90 يومًا', en: '61–90 days' },
+  { key: 'd91_plus', ar: 'أكثر من 90 يومًا', en: 'Over 90 days' },
 ];
 /** الخطورةُ على مدّة العميل N: طبيعيٌّ حتى N، ومتوسّطٌ حتى N+30، ومرتفعٌ بعدها. */
 export const RISKS: { key: Risk; ar: string; en: string; tone: string }[] = [

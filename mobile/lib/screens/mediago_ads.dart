@@ -373,7 +373,7 @@ class _MediaGoAdDetailScreenState extends State<MediaGoAdDetailScreen> {
           style: FilledButton.styleFrom(backgroundColor: T.orange),
           onPressed: _busy.isNotEmpty ? null : () => _shoot(url, want, 'camera'),
           icon: _busy == 'up' ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : Icon(want == 'video' ? Icons.videocam : Icons.photo_camera),
-          label: Text(want == 'video' ? tr('تصوير فيديو (≤١٥ ث)', 'Record video (≤15s)') : tr('تصوير صور', 'Take photos')),
+          label: Text(want == 'video' ? tr('تصوير فيديو (≤15 ث)', 'Record video (≤15s)') : tr('تصوير صور', 'Take photos')),
         ),
         OutlinedButton.icon(
           onPressed: _busy.isNotEmpty ? null : () => _shoot(url, want, 'gallery'),

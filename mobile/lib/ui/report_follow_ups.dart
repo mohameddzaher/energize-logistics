@@ -77,7 +77,7 @@ class _ReportFollowUpsViewState extends State<ReportFollowUpsView> {
     try {
       final f = await pickFileAsDataUrl();
       if (f == null || !mounted) return;
-      if (f.sizeBytes > _maxFile) { setState(() => _formError = tr('الملفُّ أكبرُ من ١٠ ميغا', 'The file is larger than 10 MB')); return; }
+      if (f.sizeBytes > _maxFile) { setState(() => _formError = tr('الملفُّ أكبرُ من 10 ميغا', 'The file is larger than 10 MB')); return; }
       setState(() { _file = f; _formError = null; });
     } catch (e) {
       if (mounted) setState(() => _formError = e.toString());

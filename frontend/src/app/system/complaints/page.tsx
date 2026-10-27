@@ -315,7 +315,7 @@ export default function ComplaintsPage() {
                       {c.customerPhone && (
                         <span className="flex items-center gap-1"><Phone className="w-3 h-3" /> {c.customerPhone}</span>
                       )}
-                      <span>{new Date(c.createdAt).toLocaleDateString(isAr ? 'ar-EG' : 'en-US')}</span>
+                      <span>{new Date(c.createdAt).toLocaleDateString(isAr ? 'ar-EG-u-nu-latn' : 'en-US')}</span>
                     </div>
                     {c.resolution && (
                       <div className="mt-2 bg-green-500/10 border border-green-500/20 rounded-lg px-3 py-2">
@@ -524,7 +524,7 @@ export default function ComplaintsPage() {
                     </div>
                     <div>
                       <p className="text-slate-500 text-xs">{tx.fieldDate}</p>
-                      <p className="text-slate-900 text-sm mt-0.5">{new Date(showViewModal.createdAt).toLocaleDateString(isAr ? 'ar-EG' : 'en-US')}</p>
+                      <p className="text-slate-900 text-sm mt-0.5">{new Date(showViewModal.createdAt).toLocaleDateString(isAr ? 'ar-EG-u-nu-latn' : 'en-US')}</p>
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-3">

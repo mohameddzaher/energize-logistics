@@ -176,7 +176,7 @@ export default function Ls2RepairsPage() {
                     </td>
                     <td className="px-4 py-3 text-slate-800">{repairCategoryLabel(r.category, lang as Lang)}</td>
                     <td className="px-4 py-3 text-center"><span className={`px-2 py-0.5 rounded-full text-xs font-medium ${sev.bg} ${sev.text}`}>{ar ? sev.ar : sev.en}</span></td>
-                    <td className="px-4 py-3 text-slate-800 whitespace-nowrap">{r.repairDate ? new Date(r.repairDate).toLocaleDateString(ar ? 'ar-EG' : 'en-GB') : '—'}</td>
+                    <td className="px-4 py-3 text-slate-800 whitespace-nowrap">{r.repairDate ? new Date(r.repairDate).toLocaleDateString(ar ? 'ar-EG-u-nu-latn' : 'en-GB') : '—'}</td>
                     <td className="px-4 py-3 text-end tabular-nums text-slate-800">{fmtKm(r.odometerKm)}</td>
                     <td className="px-4 py-3 text-end tabular-nums text-slate-800">{r.cost != null ? r.cost.toLocaleString() : '—'}</td>
                     <td className="px-4 py-3 text-slate-800">{r.workshop || '—'}</td>

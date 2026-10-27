@@ -459,7 +459,7 @@ export default function Ls2FleetAssetsPage() {
           options={[
             { key: 'tab', label: ar ? 'التبويب الحالي (بعد الفلتر)' : 'Current tab (filtered)', sheets: [currentTabExport()!] },
             {
-              key: 'all', label: ar ? 'كل الأصول (٣ شيتات)' : 'All assets (3 sheets)',
+              key: 'all', label: ar ? 'كل الأصول (3 شيتات)' : 'All assets (3 sheets)',
               sheets: [
                 { name: ar ? 'السطحات' : 'Flatbeds', rows: flatbeds, columns: flatbedCols },
                 { name: ar ? 'التيدرات' : 'Trailers', rows: trailers, columns: trailerCols },
@@ -867,7 +867,7 @@ export default function Ls2FleetAssetsPage() {
         <div className="space-y-3">
           <p className="text-xs text-slate-500">
             {ar
-              ? 'مقارنة بين المسجَّل في كشف الورشة (يوجد / لا يوجد حسّاس) وبين ما يصل فعليًا من Wialon. ترقيم Wialon (محور/إطار) يختلف عن ترقيم الورشة (١–١٤)، لذلك تتم المقارنة بالعدد مع عرض الترقيمين معًا للمطابقة اليدوية.'
+              ? 'مقارنة بين المسجَّل في كشف الورشة (يوجد / لا يوجد حسّاس) وبين ما يصل فعليًا من Wialon. ترقيم Wialon (محور/إطار) يختلف عن ترقيم الورشة (1–14)، لذلك تتم المقارنة بالعدد مع عرض الترقيمين معًا للمطابقة اليدوية.'
               : 'Registered sensor flags (workshop sheet) vs what Wialon actually reports. Wialon numbers tires by axle, the workshop by 1–14, so we compare counts and show both layouts.'}
           </p>
           <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">

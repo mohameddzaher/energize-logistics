@@ -67,7 +67,7 @@ function EmployeeAttendance({ ar }: { ar: boolean }) {
     <div className="max-w-xl mx-auto space-y-8 py-6">
       <div className="text-center">
         <h1 className="text-3xl font-bold text-slate-900">{tx.attendanceTitle}</h1>
-        <p className="text-slate-500 mt-1 text-lg">{new Date().toLocaleDateString(ar ? 'ar-EG' : 'en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}</p>
+        <p className="text-slate-500 mt-1 text-lg">{new Date().toLocaleDateString(ar ? 'ar-EG-u-nu-latn' : 'en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}</p>
       </div>
 
       {/* The big button */}

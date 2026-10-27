@@ -27,7 +27,7 @@ const TONE: Record<string, string> = {
 const PRESETS = [
   { key: 'month', ar: 'هذا الشهر', en: 'This month' },
   { key: 'lastMonth', ar: 'الشهر السابق', en: 'Last month' },
-  { key: 'quarter', ar: 'آخر ٣ شهور', en: 'Last 3 months' },
+  { key: 'quarter', ar: 'آخر 3 شهور', en: 'Last 3 months' },
   { key: 'year', ar: 'هذه السنة', en: 'This year' },
 ];
 

@@ -64,11 +64,11 @@ const _subtypes = [
   ('cash_ht', 'نقدي - HT', 'Cash – HT', Color(0xFF5EEAD4), false),
 ];
 const _bands = [
-  ('d1_15', '١ – ١٥ يومًا', '1–15 days'),
-  ('d16_30', '١٦ – ٣٠ يومًا', '16–30 days'),
-  ('d31_60', '٣١ – ٦٠ يومًا', '31–60 days'),
-  ('d61_90', '٦١ – ٩٠ يومًا', '61–90 days'),
-  ('d91_plus', 'أكثر من ٩٠ يومًا', 'Over 90 days'),
+  ('d1_15', '1 – 15 يومًا', '1–15 days'),
+  ('d16_30', '16 – 30 يومًا', '16–30 days'),
+  ('d31_60', '31 – 60 يومًا', '31–60 days'),
+  ('d61_90', '61 – 90 يومًا', '61–90 days'),
+  ('d91_plus', 'أكثر من 90 يومًا', 'Over 90 days'),
 ];
 const _risks = [('normal', 'طبيعي', 'Normal', T.success), ('medium', 'متوسط', 'Medium', T.warn), ('hard', 'مرتفع', 'Hard', T.danger)];
 

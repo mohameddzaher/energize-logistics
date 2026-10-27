@@ -64,5 +64,5 @@ export const daysLeftText = (n: number, ar: boolean): string => {
 export const fmtStamp = (v: string | null | undefined, ar: boolean): string => {
   if (!v) return '—';
   const d = new Date(v);
-  return Number.isNaN(d.getTime()) ? '—' : d.toLocaleString(ar ? 'ar-EG' : 'en-GB', { dateStyle: 'medium', timeStyle: 'short' });
+  return Number.isNaN(d.getTime()) ? '—' : d.toLocaleString(ar ? 'ar-EG-u-nu-latn' : 'en-GB', { dateStyle: 'medium', timeStyle: 'short' });
 };

@@ -315,7 +315,7 @@ class _ContractsListState extends State<_ContractsList> with AutomaticKeepAliveC
         value: carry,
         onChanged: (v) => setS(() => carry = v ?? true),
         title: Text(tr('ترحيل رصيد الإجازات غير المستهلك', 'Carry unused leave balance forward'), style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
-        subtitle: Text(tr('مَن أخذ ١٥ يومًا من ٣٠ يبدأ عامَه التالي بـ١٥ محفوظة.', 'Someone who used 15 of 30 starts the next year with 15 in hand.'), style: const TextStyle(fontSize: 11)),
+        subtitle: Text(tr('مَن أخذ 15 يومًا من 30 يبدأ عامَه التالي بـ15 محفوظة.', 'Someone who used 15 of 30 starts the next year with 15 in hand.'), style: const TextStyle(fontSize: 11)),
       ),
     ]));
     if (!ok) return;

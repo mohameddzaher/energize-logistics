@@ -219,7 +219,7 @@ export default function JpDashboard({ scope, section }: { scope: JpScope; sectio
           hint={t(`${T.noDeadline} بلا موعد`, `${T.noDeadline} without deadline`)} on={status === 'open'} onClick={() => pick('open')} />
         <Kpi icon={<AlertTriangle className="w-5 h-5" />} tone="bg-red-50 text-red-600" label={t('متأخّرة', 'Late')} value={String(T.overdue)}
           hint={t('فات موعدُها ولم تتمّ', 'Past deadline, not done')} on={status === 'overdue'} onClick={() => pick('overdue')} />
-        <Kpi icon={<Timer className="w-5 h-5" />} tone="bg-amber-50 text-amber-600" label={t('تستحقّ خلال ٢٤ ساعة', 'Due within 24h')} value={String(T.dueSoon)}
+        <Kpi icon={<Timer className="w-5 h-5" />} tone="bg-amber-50 text-amber-600" label={t('تستحقّ خلال 24 ساعة', 'Due within 24h')} value={String(T.dueSoon)}
           hint={t('قائمةٌ وموعدُها قريب', 'Open, deadline near')} on={status === 'soon'} onClick={() => pick('soon')} />
         <Kpi icon={<CheckCircle2 className="w-5 h-5" />} tone="bg-emerald-50 text-emerald-600" label={t('تمّت', 'Done')} value={String(T.done)}
           hint={t(`${T.onTime} في موعدها · ${T.late} بعده`, `${T.onTime} on time · ${T.late} late`)} on={status === 'done'} onClick={() => pick('done')} />
@@ -333,7 +333,7 @@ export default function JpDashboard({ scope, section }: { scope: JpScope; sectio
           ) : <p className="py-4 text-center text-sm text-slate-400">{t('لا مشروعات بعد', 'No projects yet')}</p>}
         </Panel>
 
-        <Panel title={t('آخر ١٤ يومًا', 'Last 14 days')} icon={<BarChart3 className="w-4 h-4" />}
+        <Panel title={t('آخر 14 يومًا', 'Last 14 days')} icon={<BarChart3 className="w-4 h-4" />}
           right={<span className="text-[11px] text-slate-400"><span className="inline-block w-2 h-2 rounded-sm bg-slate-300 me-1" />{t('أُسنِدت', 'assigned')}<span className="inline-block w-2 h-2 rounded-sm bg-emerald-500 ms-3 me-1" />{t('تمّت', 'done')}</span>}>
           <div className="flex items-end gap-1.5 h-40">
             {data.daily.map((d) => (
@@ -354,7 +354,7 @@ export default function JpDashboard({ scope, section }: { scope: JpScope; sectio
         <header className="flex flex-wrap items-center justify-between gap-2 px-5 py-3.5 border-b border-slate-100">
           <h2 className="flex items-center gap-2 text-[14px] font-bold text-slate-900">
             <span className="text-[#f37121]"><ListChecks className="w-4 h-4" /></span>
-            {status === 'overdue' ? t('المتأخّرة', 'Late') : status === 'soon' ? t('تستحقّ خلال ٢٤ ساعة', 'Due within 24h')
+            {status === 'overdue' ? t('المتأخّرة', 'Late') : status === 'soon' ? t('تستحقّ خلال 24 ساعة', 'Due within 24h')
               : status === 'done' ? t('التي تمّت', 'Done') : status === 'open' ? t('القائمة', 'Open') : t('كلُّ المهامّ', 'All tasks')}
             <span className="text-[12px] font-semibold text-slate-400 tabular-nums">({rows.length})</span>
           </h2>
@@ -394,7 +394,7 @@ export default function JpDashboard({ scope, section }: { scope: JpScope; sectio
                     <td className="px-3 py-2.5 whitespace-nowrap text-slate-500">{r.project || '—'}</td>
                     <td className={`px-3 py-2.5 text-[12.5px] ${TONE_CLASS[dl.tone]}`}>{dl.text}</td>
                     <td className="px-3 py-2.5"><span className={`px-2 py-0.5 rounded-full text-[11.5px] font-semibold ${b.cls}`}>{ar ? b.ar : b.en}</span></td>
-                    <td className="px-3 py-2.5 whitespace-nowrap text-slate-500 tabular-nums">{new Date(r.createdAt).toLocaleDateString(ar ? 'ar-EG' : 'en-GB', { day: 'numeric', month: 'short' })}</td>
+                    <td className="px-3 py-2.5 whitespace-nowrap text-slate-500 tabular-nums">{new Date(r.createdAt).toLocaleDateString(ar ? 'ar-EG-u-nu-latn' : 'en-GB', { day: 'numeric', month: 'short' })}</td>
                   </tr>
                 );
               })}

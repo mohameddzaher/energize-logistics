@@ -278,7 +278,7 @@ class _OverviewTab extends StatelessWidget {
 
         if (monthly.isNotEmpty) ...[
           const SizedBox(height: 16),
-          Text(tr('آخر ١٢ شهرًا', 'Last 12 months'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+          Text(tr('آخر 12 شهرًا', 'Last 12 months'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
           const SizedBox(height: 10),
           AppCard(
             child: SizedBox(

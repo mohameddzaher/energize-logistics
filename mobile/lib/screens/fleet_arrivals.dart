@@ -123,7 +123,7 @@ class _FleetArrivalsScreenState extends State<FleetArrivalsScreen> {
                     SingleChildScrollView(
                       scrollDirection: Axis.horizontal,
                       child: Row(children: [
-                        for (final p in const [('today', 'اليوم', 'Today'), ('tomorrow', 'غدًا', 'Tomorrow'), ('next_7', '٧ أيام', '7 days'), ('next_30', '٣٠ يومًا', '30 days'), ('all', 'الكل', 'All')])
+                        for (final p in const [('today', 'اليوم', 'Today'), ('tomorrow', 'غدًا', 'Tomorrow'), ('next_7', '7 أيام', '7 days'), ('next_30', '30 يومًا', '30 days'), ('all', 'الكل', 'All')])
                           Padding(
                             padding: const EdgeInsets.only(left: 6),
                             child: FilterChip(

@@ -69,7 +69,7 @@ export default function ClearanceAttachments({
     setBusy(true);
     const files: any[] = [];
     for (const f of Array.from(fl)) {
-      if (f.size > MAX_BYTES) { notify(t(`«${f.name}» أكبر من ٢٠ ميغا`, `“${f.name}” is larger than 20MB`), 'error'); continue; }
+      if (f.size > MAX_BYTES) { notify(t(`«${f.name}» أكبر من 20 ميغا`, `“${f.name}” is larger than 20MB`), 'error'); continue; }
       // eslint-disable-next-line no-await-in-loop
       const dataUrl = await new Promise<string>((res) => {
         const r = new FileReader();

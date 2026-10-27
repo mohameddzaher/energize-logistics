@@ -199,7 +199,7 @@ function AttachmentsBody({ kind, invKey, onCount }: { kind: AttachKind; invKey: 
         notify(t(`«${f.name}» نوعٌ غير مدعوم — صور وPDF وWord وExcel فقط`, `“${f.name}” is not supported — images, PDF, Word or Excel only`), 'error');
         continue;
       }
-      if (f.size > MAX_FILE) { notify(t(`«${f.name}» أكبر من ١٠ ميغا`, `“${f.name}” is larger than 10 MB`), 'error'); continue; }
+      if (f.size > MAX_FILE) { notify(t(`«${f.name}» أكبر من 10 ميغا`, `“${f.name}” is larger than 10 MB`), 'error'); continue; }
       ok.push(f);
     }
     if (!ok.length) { if (input.current) input.current.value = ''; return; }
@@ -279,7 +279,7 @@ function AttachmentsBody({ kind, invKey, onCount }: { kind: AttachKind; invKey: 
               : t('إرفاق ملف', 'Attach files')}
           </button>
           <p className="text-[11.5px] text-slate-400 mt-2">
-            {t('اختر ملفًّا أو أكثر أو اسحبها إلى هنا — صور وPDF وWord وExcel، حتى ١٠ ميغا للملف.',
+            {t('اختر ملفًّا أو أكثر أو اسحبها إلى هنا — صور وPDF وWord وExcel، حتى 10 ميغا للملف.',
                'Pick one or more files or drop them here — images, PDF, Word or Excel, up to 10 MB each.')}
           </p>
         </div>

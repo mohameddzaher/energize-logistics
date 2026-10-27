@@ -394,7 +394,7 @@ export default function LightTransportProfile() {
                       {(HISTORY_KIND[h.kind || ''] || { ar: h.kind, en: h.kind })[ar ? 'ar' : 'en']}
                     </span>
                     <span className="text-slate-400 text-[11.5px]">
-                      {h.at ? new Date(h.at).toLocaleString(ar ? 'ar-EG' : 'en-GB') : ''}
+                      {h.at ? new Date(h.at).toLocaleString(ar ? 'ar-EG-u-nu-latn' : 'en-GB') : ''}
                       {h.byName ? ` · ${h.byName}` : ''}
                     </span>
                   </div>

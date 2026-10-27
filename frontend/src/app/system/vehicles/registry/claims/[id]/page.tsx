@@ -325,7 +325,7 @@ export default function ClaimDetailPage() {
                   <div className="flex flex-wrap items-baseline gap-2">
                     <span className="text-slate-900 font-semibold text-[13px]">{auditActionLabel(a.action, lang)}</span>
                     <span className="text-slate-400 text-[11.5px]">
-                      {new Date(a.createdAt).toLocaleString(ar ? 'ar-EG' : 'en-GB')}
+                      {new Date(a.createdAt).toLocaleString(ar ? 'ar-EG-u-nu-latn' : 'en-GB')}
                       {a.userName ? ` · ${a.userName}` : ''}
                     </span>
                   </div>

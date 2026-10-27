@@ -217,7 +217,7 @@ export default function InvoiceCheckCards({ ar }: { ar: boolean }) {
                     </span>
                   ))}
                 </div>
-                {shown.length > 3000 && <p className="px-1 pt-2 text-[11px] text-slate-400">{t(`أوّل ٣٠٠٠ من ${shown.length} — الإكسل فيه الكلّ`, `First 3000 of ${shown.length} — the Excel file has all`)}</p>}
+                {shown.length > 3000 && <p className="px-1 pt-2 text-[11px] text-slate-400">{t(`أوّل 3000 من ${shown.length} — الإكسل فيه الكلّ`, `First 3000 of ${shown.length} — the Excel file has all`)}</p>}
               </div>
             ) : (
             <div className="max-h-[55vh] overflow-auto rounded-lg border border-slate-200 bg-white">
@@ -237,7 +237,7 @@ export default function InvoiceCheckCards({ ar }: { ar: boolean }) {
                   ))}
                 </tbody>
               </table>
-              {shown.length > 1000 && <p className="px-2 py-1 text-[11px] text-slate-400">{t(`أوّل ١٠٠٠ من ${shown.length} — الإكسل فيه الكلّ`, `First 1000 of ${shown.length} — the Excel file has all`)}</p>}
+              {shown.length > 1000 && <p className="px-2 py-1 text-[11px] text-slate-400">{t(`أوّل 1000 من ${shown.length} — الإكسل فيه الكلّ`, `First 1000 of ${shown.length} — the Excel file has all`)}</p>}
             </div>
             )
           )}

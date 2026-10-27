@@ -104,8 +104,8 @@ export function spanWords(ms: number, ar: boolean): string {
   return ar ? `${d} ي${hr ? ` و${hr} س` : ''}` : `${d}d${hr ? ` ${hr}h` : ''}`;
 }
 
-const clock = (d: Date, ar: boolean) => d.toLocaleTimeString(ar ? 'ar-EG' : 'en-GB', { hour: 'numeric', minute: '2-digit', hour12: true });
-const dayWord = (d: Date, ar: boolean) => d.toLocaleDateString(ar ? 'ar-EG' : 'en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+const clock = (d: Date, ar: boolean) => d.toLocaleTimeString(ar ? 'ar-EG-u-nu-latn' : 'en-GB', { hour: 'numeric', minute: '2-digit', hour12: true });
+const dayWord = (d: Date, ar: boolean) => d.toLocaleDateString(ar ? 'ar-EG-u-nu-latn' : 'en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
 
 /** سطرُ الموعد ولونُه. `now` يُمرَّر ليتحرّك العدُّ مع الساعة. */
 export function deadlineLine(t: Pick<JpTask, 'deadlineAt' | 'deadlineKind' | 'status' | 'doneAt'>, now: number, ar: boolean):

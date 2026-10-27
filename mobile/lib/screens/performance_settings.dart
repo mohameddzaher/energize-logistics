@@ -166,7 +166,7 @@ class _PerformanceSettingsScreenState extends State<PerformanceSettingsScreen> w
       builder: (c) => SafeArea(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           ListTile(title: Text(tr('التبويب الحالي', 'Current tab')), onTap: () => Navigator.pop(c, 'tab')),
-          ListTile(title: Text(tr('الكل (٥ شيتات)', 'All (5 sheets)')), onTap: () => Navigator.pop(c, 'all')),
+          ListTile(title: Text(tr('الكل (5 شيتات)', 'All (5 sheets)')), onTap: () => Navigator.pop(c, 'all')),
         ]),
       ),
     );
@@ -352,7 +352,7 @@ class _PerformanceSettingsScreenState extends State<PerformanceSettingsScreen> w
   Widget _bandsTab() {
     final bands = _bands;
     return ListView(padding: const EdgeInsets.all(14), children: [
-      Text(tr('النسبة المئوية = الدرجة المرجّحة × ٢٠. الشرائح دي بتحدد التقدير والبونص.', 'Percentage = weighted score × 20. These bands drive the rating and the bonus.'),
+      Text(tr('النسبة المئوية = الدرجة المرجّحة × 20. الشرائح دي بتحدد التقدير والبونص.', 'Percentage = weighted score × 20. These bands drive the rating and the bonus.'),
           style: const TextStyle(fontSize: 12, color: T.inkSoft)),
       const SizedBox(height: 10),
       for (var i = 0; i < bands.length; i++)
@@ -485,7 +485,7 @@ class _TemplateEditorState extends State<_TemplateEditor> {
     if ((t['nameAr'] ?? '').toString().trim().isEmpty) return _snack(tr('اسم النموذج مطلوب', 'Template name is required'));
     if ((t['department'] ?? '').toString().isEmpty) return _snack(tr('اختر القسم', 'Choose a department'));
     if ((total - 100).abs() >= 0.01) {
-      return _snack(tr('مجموع الأوزان لازم يساوي ١٠٠٪ (حالياً $total٪)', 'Weights must total 100% (currently $total%)'));
+      return _snack(tr('مجموع الأوزان لازم يساوي 100٪ (حالياً $total٪)', 'Weights must total 100% (currently $total%)'));
     }
     setState(() => _saving = true);
     try {

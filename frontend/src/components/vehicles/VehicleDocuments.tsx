@@ -55,7 +55,7 @@ export default function VehicleDocuments({ vehicleId, canEdit }: { vehicleId: st
   const pick = (f: File | null) => {
     if (!f) { setFile(null); return; }
     // عشرون ميغا هو حدُّ الخادم — يُقال هنا قبل الرفع لا بعده.
-    if (f.size > 20 * 1024 * 1024) { notify(t('الملفّ أكبر من ٢٠ ميغا', 'File is larger than 20MB'), 'error'); return; }
+    if (f.size > 20 * 1024 * 1024) { notify(t('الملفّ أكبر من 20 ميغا', 'File is larger than 20MB'), 'error'); return; }
     const r = new FileReader();
     r.onload = () => setFile({ dataUrl: String(r.result), name: f.name, size: f.size });
     r.readAsDataURL(f);
@@ -164,7 +164,7 @@ export default function VehicleDocuments({ vehicleId, canEdit }: { vehicleId: st
                     accept="image/*,.pdf,.doc,.docx,.xls,.xlsx"
                     className="w-full text-sm file:me-3 file:px-3 file:py-1.5 file:rounded-lg file:border-0 file:bg-slate-100 file:text-slate-700 file:font-semibold" />
                   {file && <p className="text-[11.5px] text-emerald-700 mt-1 font-semibold">{file.name} · {kb(file.size)}</p>}
-                  <p className="text-[11px] text-slate-400 mt-1">{t('صور، PDF، Word أو Excel — حتى ٢٠ ميغا', 'Images, PDF, Word or Excel — up to 20MB')}</p>
+                  <p className="text-[11px] text-slate-400 mt-1">{t('صور، PDF، Word أو Excel — حتى 20 ميغا', 'Images, PDF, Word or Excel — up to 20MB')}</p>
                 </div>
               )}
               <div>

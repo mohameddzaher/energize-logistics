@@ -182,7 +182,7 @@ class SettingsScreen extends StatelessWidget {
             const SizedBox(height: 12),
             TextField(controller: current, obscureText: true, decoration: InputDecoration(labelText: tr('كلمة المرور الحالية *', 'Current password *'))),
             const SizedBox(height: 10),
-            TextField(controller: next, obscureText: true, decoration: InputDecoration(labelText: tr('كلمة المرور الجديدة * (٨ أحرف على الأقل)', 'New password * (min 8)'))),
+            TextField(controller: next, obscureText: true, decoration: InputDecoration(labelText: tr('كلمة المرور الجديدة * (8 أحرف على الأقل)', 'New password * (min 8)'))),
             const SizedBox(height: 10),
             TextField(controller: confirm, obscureText: true, decoration: InputDecoration(labelText: tr('تأكيد كلمة المرور *', 'Confirm password *'))),
             const SizedBox(height: 14),

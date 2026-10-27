@@ -342,7 +342,7 @@ function AddEntry({
 
   const pick = useCallback((f: File | null) => {
     if (!f) return;
-    if (f.size > 20 * 1024 * 1024) { notify(t('الملفّ أكبر من ٢٠ ميجابايت', 'File larger than 20MB'), 'error'); return; }
+    if (f.size > 20 * 1024 * 1024) { notify(t('الملفّ أكبر من 20 ميجابايت', 'File larger than 20MB'), 'error'); return; }
     const r = new FileReader();
     r.onload = () => setFile({ dataUrl: String(r.result), fileName: f.name });
     r.readAsDataURL(f);

@@ -415,7 +415,7 @@ export default function StoreScreen({ scope }: { scope: StoreScope }) {
         <SelectionBar
           count={picked.size} ar={ar}
           label={ar ? `${picked.size} صنف محدَّد` : `${picked.size} selected`}
-          hint={ar ? 'الكمية الافتراضية ١ لكل صنف، وتُعدَّل لكل صنف على حدة'
+          hint={ar ? 'الكمية الافتراضية 1 لكل صنف، وتُعدَّل لكل صنف على حدة'
                    : 'Default is 1 each — set any item’s quantity separately'}
           actionLabel={ar ? `صادر (${picked.size})` : `Issue (${picked.size})`}
           onAction={() => setBulkKind('out')}
@@ -716,7 +716,7 @@ function BulkOutModal({ items, plates, ar, kind = 'out', onClose, onDone, base, 
             <p className="text-xs font-semibold text-slate-700">{t('الكمية لكل صنف', 'Quantity per item')}</p>
             <button onClick={() => setQty(Object.fromEntries(items.map((i) => [i._id, '1'])))}
               className="text-[11.5px] text-slate-600 hover:text-slate-900 underline">
-              {t('إرجاع الكل إلى ١', 'Reset all to 1')}
+              {t('إرجاع الكل إلى 1', 'Reset all to 1')}
             </button>
           </div>
           <div className="rounded-xl border border-slate-200 divide-y divide-slate-100">

@@ -33,7 +33,7 @@ export function printTable({ title, subtitle, columns, rows, ar, meta }: {
   const body = rows.map((r) =>
     `<tr>${columns.map((c) => `<td style="text-align:${c.align || 'start'}">${cell(r, c)}</td>`).join('')}</tr>`).join('');
 
-  const printed = new Date().toLocaleString(ar ? 'ar-EG' : 'en-GB');
+  const printed = new Date().toLocaleString(ar ? 'ar-EG-u-nu-latn' : 'en-GB');
   const html = `<!doctype html><html dir="${ar ? 'rtl' : 'ltr'}" lang="${ar ? 'ar' : 'en'}"><head>
 <meta charset="utf-8"><title>${esc(title)}</title>
 <style>

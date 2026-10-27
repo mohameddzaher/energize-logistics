@@ -426,7 +426,7 @@ export default function EvaluatePage() {
               </ResponsiveContainer>
               <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
                 <span className="text-3xl font-bold text-slate-900 tabular-nums leading-none">{pct(result.percentage)}</span>
-                <span className="text-xs text-slate-500 mt-1">{score5(result.weightedScore)} {ar ? 'من ٥' : '/ 5'}</span>
+                <span className="text-xs text-slate-500 mt-1">{score5(result.weightedScore)} {ar ? 'من 5' : '/ 5'}</span>
               </div>
             </div>
 
@@ -472,7 +472,7 @@ export default function EvaluatePage() {
                 <label className="block text-[11px] text-slate-500 mb-1">{ar ? 'الراتب الشهري (ريال) — اختياري' : 'Monthly salary (SAR) — optional'}</label>
                 <input
                   type="number" min={0} value={salary} onChange={(e) => setSalary(e.target.value)} readOnly={readOnly}
-                  placeholder={ar ? 'مثال: ٨٠٠٠' : 'e.g. 8000'}
+                  placeholder={ar ? 'مثال: 8000' : 'e.g. 8000'}
                   className="w-full border border-slate-200 rounded-lg px-3 py-1.5 text-sm tabular-nums focus:outline-none focus:border-[#f37121]"
                 />
                 {salary !== '' && result.bonusMultiplier != null && (

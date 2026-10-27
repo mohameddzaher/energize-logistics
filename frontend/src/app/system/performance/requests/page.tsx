@@ -33,7 +33,7 @@ interface RequestRow {
 }
 
 const fmtDate = (iso?: string | null, lang: Lang = 'ar') =>
-  !iso ? '—' : new Date(iso).toLocaleString(lang === 'ar' ? 'ar-EG' : 'en-GB',
+  !iso ? '—' : new Date(iso).toLocaleString(lang === 'ar' ? 'ar-EG-u-nu-latn' : 'en-GB',
     { year: 'numeric', month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit' });
 
 export default function PerformanceRequestsPage() {
@@ -140,10 +140,10 @@ export default function PerformanceRequestsPage() {
         <StatCard label={ar ? 'قيد المراجعة' : 'Pending'} value={String(pending.length)}
           onClick={() => setShow((v) => (v === 'pending' ? '' : 'pending'))} active={show === 'pending'}
           hint={ar ? 'اضغط لعرضها' : 'tap to filter'} />
-        <StatCard label={ar ? 'تمت الموافقة (آخر ٥٠)' : 'Approved (last 50)'} value={String(recent.filter((r) => r.editRequest.status === 'approved').length)}
+        <StatCard label={ar ? 'تمت الموافقة (آخر 50)' : 'Approved (last 50)'} value={String(recent.filter((r) => r.editRequest.status === 'approved').length)}
           onClick={() => setShow((v) => (v === 'approved' ? '' : 'approved'))} active={show === 'approved'}
           hint={ar ? 'اضغط لعرضها' : 'tap to filter'} />
-        <StatCard label={ar ? 'مرفوضة (آخر ٥٠)' : 'Rejected (last 50)'} value={String(recent.filter((r) => r.editRequest.status === 'rejected').length)}
+        <StatCard label={ar ? 'مرفوضة (آخر 50)' : 'Rejected (last 50)'} value={String(recent.filter((r) => r.editRequest.status === 'rejected').length)}
           onClick={() => setShow((v) => (v === 'rejected' ? '' : 'rejected'))} active={show === 'rejected'}
           hint={ar ? 'اضغط لعرضها' : 'tap to filter'} />
       </div>

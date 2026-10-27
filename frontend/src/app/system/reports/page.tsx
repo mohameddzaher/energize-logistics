@@ -259,7 +259,7 @@ function ReportsInner() {
             ))}
           </div>
           {options.length >= 500 && (
-            <p className="text-[10px] text-slate-400">{tx('Showing the first 500 — refine the search.', 'يعرض أول ٥٠٠ — استخدم البحث للتضييق.')}</p>
+            <p className="text-[10px] text-slate-400">{tx('Showing the first 500 — refine the search.', 'يعرض أول 500 — استخدم البحث للتضييق.')}</p>
           )}
 
           {selected && (

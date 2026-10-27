@@ -341,7 +341,7 @@ class _VRSettingsState extends State<VehicleRegistrySettingsScreen> {
         Container(
           padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(color: const Color(0xFFF8FAFC), borderRadius: BorderRadius.circular(10), border: Border.all(color: const Color(0xFFE2E8F0))),
-          child: Text(tr('القاعدة: حرج ≤ تحذير ≤ قريب. مثال: حرج ٧، تحذير ٣٠، قريب ٩٠.', 'Rule: critical ≤ warning ≤ soon. Example: 7, 30, 90.'), style: const TextStyle(fontSize: 12)),
+          child: Text(tr('القاعدة: حرج ≤ تحذير ≤ قريب. مثال: حرج 7، تحذير 30، قريب 90.', 'Rule: critical ≤ warning ≤ soon. Example: 7, 30, 90.'), style: const TextStyle(fontSize: 12)),
         ),
         const SizedBox(height: 10),
         ..._settingsDocs.map((d) {

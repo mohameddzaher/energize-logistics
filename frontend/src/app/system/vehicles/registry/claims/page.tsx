@@ -242,7 +242,7 @@ function ClaimsInner() {
         <Stat label={t('المبلغ المسترد (ر.س)', 'Recovered amount')} value={money(d?.totals.expectedRecoverySar)} c="#16a34a" />
         <Stat label={t('الفرق — المقفلة (ر.س)', 'Difference — closed (SAR)')} value={money(d?.totals.gapSar)} c="#dc2626" />
         {/* «نايمة» = مفتوحة وعدّى عليها ٣٠ يوم من غير أي رد من التأمين. */}
-        <Stat label={t('بدون رد من التأمين +٣٠ يوم', 'No insurer reply 30d+')} value={d?.totals.stale ?? 0} c="#ea580c"
+        <Stat label={t('بدون رد من التأمين +30 يوم', 'No insurer reply 30d+')} value={d?.totals.stale ?? 0} c="#ea580c"
           onClick={() => { setStale((v) => !v); setStatus(''); }} on={stale} />
       </div>
 
@@ -269,7 +269,7 @@ function ClaimsInner() {
         {stale && (
           <button onClick={() => setStale(false)}
             className="px-2.5 py-2 rounded-lg border border-[#f37121] text-[#d95f13] bg-orange-50 text-sm font-semibold">
-            {t('بدون رد +٣٠ يوم ✕', 'No reply 30d+ ✕')}
+            {t('بدون رد +30 يوم ✕', 'No reply 30d+ ✕')}
           </button>
         )}
         {/* ── وفلاترُ ما يُسأل عنه يوميًّا ───────────────────────────────────

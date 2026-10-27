@@ -278,7 +278,7 @@ export default function TeamBoard({ title, subtitle, department, section, showSc
               { header: ar ? 'الرقم الوظيفي' : 'Employee no.', key: 'employeeNumber', width: 14 },
               { header: ar ? 'النموذج' : 'Template', key: 'template', width: 22 },
               { header: ar ? 'الحالة' : 'Status', key: 'status', width: 14 },
-              { header: ar ? 'الدرجة (من ٥)' : 'Score /5', key: 'score', width: 12 },
+              { header: ar ? 'الدرجة (من 5)' : 'Score /5', key: 'score', width: 12 },
               { header: ar ? 'النسبة %' : 'Percentage', key: 'percentage', width: 12 },
               { header: ar ? 'الشريحة' : 'Band', key: 'band', width: 14 },
               { header: ar ? 'البونص (رواتب)' : 'Bonus (salaries)', key: 'bonus', width: 16 },
@@ -374,7 +374,7 @@ export default function TeamBoard({ title, subtitle, department, section, showSc
                       <div className="flex items-end justify-between">
                         <div>
                           <p className="text-2xl font-bold text-slate-900 tabular-nums leading-none">{pct(ev.percentage)}</p>
-                          <p className="text-[11px] text-slate-500 mt-0.5">{score5(ev.weightedScore)} {ar ? 'من ٥' : '/ 5'}</p>
+                          <p className="text-[11px] text-slate-500 mt-0.5">{score5(ev.weightedScore)} {ar ? 'من 5' : '/ 5'}</p>
                         </div>
                         <span className={`px-2 py-0.5 rounded-full text-[11px] font-medium ${st.bg} ${st.text}`}>
                           {bandLabel(band, lang as Lang)}

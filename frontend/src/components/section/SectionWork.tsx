@@ -39,7 +39,7 @@ const cfgFor = (kind: Kind) => kind === 'tasks'
       title: { en: 'Complaints', ar: 'الشكاوى' }, titleLabel: { en: 'Subject', ar: 'الموضوع' }, hasResolution: true };
 
 const personName = (p?: Assignee | null) => p ? `${p.firstName || ''} ${p.lastName || ''}`.trim() || '—' : '—';
-const fmtDate = (v?: string, lang: 'en' | 'ar' = 'en') => v ? new Date(v).toLocaleDateString(lang === 'ar' ? 'ar-EG' : 'en-GB', { year: 'numeric', month: 'short', day: '2-digit' }) : '';
+const fmtDate = (v?: string, lang: 'en' | 'ar' = 'en') => v ? new Date(v).toLocaleDateString(lang === 'ar' ? 'ar-EG-u-nu-latn' : 'en-GB', { year: 'numeric', month: 'short', day: '2-digit' }) : '';
 
 export default function SectionWork({ section, kind }: { section: string; kind: Kind }) {
   const { confirm, notify } = useDialog();

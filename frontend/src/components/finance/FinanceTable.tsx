@@ -66,7 +66,7 @@ export default function FinanceTable({ table, ar, fileName, onOpenRow }: { table
             <span className="ms-2 text-[11.5px] font-semibold text-slate-400 tabular-nums">({shown.length}{shown.length !== table.rows.length ? ` / ${table.rows.length}` : ''})</span>
           </h3>
           {table.noteAr && ar && <p className="text-[11.5px] text-slate-500 mt-0.5">{table.noteAr}</p>}
-          {table.capped && <p className="text-[11px] text-amber-700 mt-0.5">{ar ? 'تُعرض أحدث ٢٠٠٠ حركة — ضيّق الفترة لرؤية الباقي.' : 'Showing the latest 2,000 — narrow the period.'}</p>}
+          {table.capped && <p className="text-[11px] text-amber-700 mt-0.5">{ar ? 'تُعرض أحدث 2000 حركة — ضيّق الفترة لرؤية الباقي.' : 'Showing the latest 2,000 — narrow the period.'}</p>}
         </div>
         <div className="flex items-center gap-2">
           <ClearColumnFilters count={cf.count} onClear={cf.clear} ar={ar} />

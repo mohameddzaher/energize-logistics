@@ -466,7 +466,7 @@ export default function FilterPanel({
                       </div>
                       {nr.key.endsWith('Days') && (
                         <p className="text-[10.5px] text-slate-400 mt-2 max-w-sm">
-                          {t('السالب يعني ما مضى: «‎-٣٠ إلى ٣٠» تعني المنتهي منذ شهر وما ينتهي خلال شهر.',
+                          {t('السالب يعني ما مضى: «‎-30 إلى 30» تعني المنتهي منذ شهر وما ينتهي خلال شهر.',
                              'Negative means past: “-30 to 30” is expired within a month and expiring within a month.')}
                         </p>
                       )}

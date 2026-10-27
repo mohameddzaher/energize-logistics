@@ -107,12 +107,12 @@ export default function CollectionsTeamPage() {
     { header: ar ? 'عدد المحصَّل' : 'Invoices', key: 'collectedCount', width: 12 },
     { header: ar ? 'باقٍ' : 'Outstanding', key: 'openAmount', width: 16 },
     { header: ar ? 'متأخر' : 'Past due', key: 'overdueAmount', width: 16 },
-    { header: ar ? 'منه متقادم ٦٠ي+' : 'of which aged 60d+', key: 'agedOver60Amount', width: 18 },
+    { header: ar ? 'منه متقادم 60ي+' : 'of which aged 60d+', key: 'agedOver60Amount', width: 18 },
     { header: ar ? 'في المهلة' : 'Within terms (amount)', key: 'withinTermsAmount', width: 18 },
     // النسبُ تخرج أرقامًا لا نصوصًا: «٦٠٪» نصٌّ لا يُجمَع ولا يُرتَّب في إكسل.
     { header: ar ? 'نسبة التحصيل %' : 'Collection rate %', key: 'collectionRate', transform: (v: any) => (v == null ? '' : Math.round(v)), width: 16 },
     { header: ar ? 'في المهلة %' : 'Within terms %', key: 'withinTermsRate', transform: (v: any) => (v == null ? '' : Math.round(v)), width: 14 },
-    { header: ar ? 'متقادم ٦٠ي+ %' : 'Aged 60d+ %', key: 'agedOver60Rate', transform: (v: any) => (v == null ? '' : Math.round(v)), width: 14 },
+    { header: ar ? 'متقادم 60ي+ %' : 'Aged 60d+ %', key: 'agedOver60Rate', transform: (v: any) => (v == null ? '' : Math.round(v)), width: 14 },
     { header: ar ? 'متوسط أيام التحصيل' : 'Avg days to collect', key: 'avgDaysToCollect', width: 18 },
     { header: ar ? 'مهام منجزة' : 'Tasks done', key: 'tasksDone', width: 12 },
     { header: ar ? 'إجمالي المهام' : 'Tasks total', key: 'tasks', width: 12 },
@@ -193,8 +193,8 @@ export default function CollectionsTeamPage() {
               {TH('withinTermsRate', ar ? 'في المهلة' : 'Within terms', true,
                 ar ? 'كم من الرصيد المفتوح لم يحن موعدُ سداده بعد — كلّما ارتفع كانت المحفظة أنظف'
                    : 'Share of the open book still within terms')}
-              {TH('agedOver60Rate', ar ? 'متقادم ٦٠ي+' : 'Aged 60d+', true,
-                ar ? 'كم من المتأخّر جاوز ٦٠ يومًا بعد أجله — كلّما ارتفع كان الدَّين أقربَ إلى التعثّر'
+              {TH('agedOver60Rate', ar ? 'متقادم 60ي+' : 'Aged 60d+', true,
+                ar ? 'كم من المتأخّر جاوز 60 يومًا بعد أجله — كلّما ارتفع كان الدَّين أقربَ إلى التعثّر'
                    : 'Share of past-due money more than 60 days late')}
               {TH('avgDaysToCollect', ar ? 'متوسط أيام التحصيل' : 'Avg days', true)}
               {TH('tasks', ar ? 'المهام' : 'Tasks', true)}

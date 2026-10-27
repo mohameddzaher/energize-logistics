@@ -379,7 +379,7 @@ class _VehicleClaimsScreenState extends State<VehicleClaimsScreen> {
         stat(tr('مبلغ التقدير (ر.س)', 'Estimate amount (SAR)'), _money(t['estimatedSar']), const Color(0xFF0EA5E9)),
         stat(tr('المبلغ المسترد (ر.س)', 'Recovered amount'), _money(t['expectedRecoverySar']), const Color(0xFF16A34A)),
         stat(tr('الفرق — المقفلة (ر.س)', 'Difference — closed (SAR)'), _money(t['gapSar']), T.danger),
-        stat(tr('بدون رد من التأمين +٣٠ يوم', 'No insurer reply 30d+'), '${t['stale'] ?? 0}', const Color(0xFFEA580C),
+        stat(tr('بدون رد من التأمين +30 يوم', 'No insurer reply 30d+'), '${t['stale'] ?? 0}', const Color(0xFFEA580C),
             onTap: () { setState(() { _stale = !_stale; _status = ''; }); _load(); }, on: _stale),
     ]);
   }
@@ -417,7 +417,7 @@ class _VehicleClaimsScreenState extends State<VehicleClaimsScreen> {
           if (v != null) { setState(() => _status = v); _load(); }
         }, onClear: () { setState(() => _status = ''); _load(); }),
         if (_fault == 'ours') _chip(tr('الخطأ علينا', 'Our fault'), true, () {}, onClear: () => setState(() => _fault = '')),
-        if (_stale) _chip(tr('بدون رد +٣٠ يوم', 'No reply 30d+'), true, () {}, onClear: () => setState(() => _stale = false)),
+        if (_stale) _chip(tr('بدون رد +30 يوم', 'No reply 30d+'), true, () {}, onClear: () => setState(() => _stale = false)),
         _chip(_reportedVia.isEmpty ? tr('كل طرق الإبلاغ', 'All report channels') : _reportedVia, _reportedVia.isNotEmpty, () async {
           final v = await _choose(tr('تم الإبلاغ عبر', 'Reported via'),
               [('', tr('كل طرق الإبلاغ', 'All report channels')), for (final x in _distinct((r) => _s(r['reportedViaAr']))) (x, x)], _reportedVia);
@@ -639,7 +639,7 @@ class _ClaimFormScreenState extends State<_ClaimFormScreen> {
   // نظيرُ PersonLookup: الموارد البشريّة وسجلّ النقل الخفيف وبطاقات السائقين.
   Future<void> _findPerson() async {
     final term = _personQ.text.trim();
-    if (term.length < 3) { _snack(tr('اكتب ٣ أحرف على الأقل', 'Type at least 3 characters')); return; }
+    if (term.length < 3) { _snack(tr('اكتب 3 أحرف على الأقل', 'Type at least 3 characters')); return; }
     final mine = ++_personSeq;
     setState(() => _personBusy = true);
     List<Map<String, dynamic>> people = [];
@@ -923,7 +923,7 @@ class _ClaimAttachmentsState extends State<_ClaimAttachments> {
     if (picked.isEmpty) return;
     final files = <Map<String, String>>[];
     for (final f in picked) {
-      if (f.sizeBytes > _maxBytes) { _snack(tr('«${f.fileName}» أكبر من ٢٠ ميجابايت', '"${f.fileName}" exceeds 20 MB')); continue; }
+      if (f.sizeBytes > _maxBytes) { _snack(tr('«${f.fileName}» أكبر من 20 ميجابايت', '"${f.fileName}" exceeds 20 MB')); continue; }
       // الاسمُ المقترَح: اسمُ الملفّ بلا امتداده — يُصحّحه صاحبُه بعد الرفع.
       files.add({'dataUrl': f.dataUrl, 'fileName': f.fileName, 'title': f.fileName.replaceFirst(RegExp(r'\.[^.]+$'), '')});
     }

@@ -216,8 +216,8 @@ class _AdminAuditScreenState extends State<AdminAuditScreen> {
             Wrap(spacing: 6, runSpacing: 6, children: [
               ChoiceChip(label: Text(tr('اليوم', 'Today')), selected: _mode == 'day' && _day == _companyDay(), onSelected: (_) => upd(() { _mode = 'day'; _day = _companyDay(); })),
               ChoiceChip(label: Text(tr('أمس', 'Yesterday')), selected: _mode == 'day' && _day == _companyDay(1), onSelected: (_) => upd(() { _mode = 'day'; _day = _companyDay(1); })),
-              ChoiceChip(label: Text(tr('آخر ٧ أيام', 'Last 7 days')), selected: _mode == 'range' && _from == _companyDay(6) && _to == _companyDay(), onSelected: (_) => upd(() { _mode = 'range'; _from = _companyDay(6); _to = _companyDay(); })),
-              ChoiceChip(label: Text(tr('آخر ٣٠ يومًا', 'Last 30 days')), selected: _mode == 'range' && _from == _companyDay(29) && _to == _companyDay(), onSelected: (_) => upd(() { _mode = 'range'; _from = _companyDay(29); _to = _companyDay(); })),
+              ChoiceChip(label: Text(tr('آخر 7 أيام', 'Last 7 days')), selected: _mode == 'range' && _from == _companyDay(6) && _to == _companyDay(), onSelected: (_) => upd(() { _mode = 'range'; _from = _companyDay(6); _to = _companyDay(); })),
+              ChoiceChip(label: Text(tr('آخر 30 يومًا', 'Last 30 days')), selected: _mode == 'range' && _from == _companyDay(29) && _to == _companyDay(), onSelected: (_) => upd(() { _mode = 'range'; _from = _companyDay(29); _to = _companyDay(); })),
               ActionChip(avatar: const Icon(Icons.event, size: 16), label: Text(_mode == 'day' && _day.isNotEmpty ? _day : tr('يوم…', 'Day…')), onPressed: () async { await _pickDate(range: false); set(() {}); }),
               ActionChip(avatar: const Icon(Icons.date_range, size: 16), label: Text(_mode == 'range' && _from.isNotEmpty ? '$_from → $_to' : tr('فترة…', 'Range…')), onPressed: () async { await _pickDate(range: true); set(() {}); }),
               if (_day.isNotEmpty || _from.isNotEmpty) ActionChip(label: Text(tr('كل الوقت', 'All time')), onPressed: () => upd(() { _day = _from = _to = ''; })),

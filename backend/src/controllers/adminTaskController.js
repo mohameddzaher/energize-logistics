@@ -23,7 +23,7 @@ const emit = () => {
 const actorName = (req) => `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim() || req.user.email;
 
 const fmtDateAr = (d) => {
-  try { return new Date(d).toLocaleDateString('ar-EG', { day: 'numeric', month: 'long', year: 'numeric' }); }
+  try { return new Date(d).toLocaleDateString('ar-EG-u-nu-latn', { day: 'numeric', month: 'long', year: 'numeric' }); }
   catch (e) { return String(d); }
 };
 

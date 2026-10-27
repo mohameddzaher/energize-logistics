@@ -232,7 +232,7 @@ export default function StaffRequests({ side, section = 'B2C' }: { side: 'sectio
                   <p className="font-semibold text-slate-800 mt-1.5">{r.title || kindLabel(r.kind)}</p>
                   {r.body ? <p className="text-sm text-slate-600 whitespace-pre-wrap mt-0.5">{r.body}</p> : null}
                   <p className="text-[11px] text-slate-400 mt-1">
-                    {t('من', 'From')} {r.createdByName || '—'} · {new Date(r.createdAt).toLocaleString(ar ? 'ar-EG' : 'en-GB')}
+                    {t('من', 'From')} {r.createdByName || '—'} · {new Date(r.createdAt).toLocaleString(ar ? 'ar-EG-u-nu-latn' : 'en-GB')}
                     {/* والهجريُّ بعد الميلاديّ مباشرةً — قاعدةُ القسم (lib/hrDates). */}
                     {hijriDay(r.createdAt) ? ` · ${hijriLong(r.createdAt, ar)} ${t('هـ', 'AH')}` : ''}
                     {r.receivedByName ? ` · ${t('استلمها', 'received by')} ${r.receivedByName}` : ''}

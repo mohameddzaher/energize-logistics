@@ -422,7 +422,7 @@ export function fmtDateTime(iso?: string | null, lang: Lang = 'en'): string {
   if (!iso) return '—';
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '—';
-  return d.toLocaleString(lang === 'ar' ? 'ar-EG' : 'en-GB', { year: 'numeric', month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+  return d.toLocaleString(lang === 'ar' ? 'ar-EG-u-nu-latn' : 'en-GB', { year: 'numeric', month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit' });
 }
 // Human duration from seconds: "13d 19h", "2h 35m", "45m".
 export function fmtDuration(sec?: number | null, lang: Lang = 'en'): string {
@@ -441,7 +441,7 @@ export function fmtDate(iso?: string | null, lang: Lang = 'en'): string {
   if (!iso) return '—';
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '—';
-  return d.toLocaleDateString(lang === 'ar' ? 'ar-EG' : 'en-GB', { year: 'numeric', month: 'short', day: '2-digit' });
+  return d.toLocaleDateString(lang === 'ar' ? 'ar-EG-u-nu-latn' : 'en-GB', { year: 'numeric', month: 'short', day: '2-digit' });
 }
 
 // ---- Date-range presets for the period filters ----------------------------
@@ -468,8 +468,8 @@ export function rangePresets(lang: Lang): { key: string; label: string; range: (
   return [
     { key: 'mtd', label: ar ? 'الشهر الحالي' : 'This month', range: () => thisMonthToDate() },
     { key: 'prev', label: ar ? 'الشهر السابق' : 'Last month', range: () => monthRange(-1) },
-    { key: 'd7', label: ar ? 'آخر ٧ أيام' : 'Last 7 days', range: () => lastNDays(7) },
-    { key: 'd30', label: ar ? 'آخر ٣٠ يومًا' : 'Last 30 days', range: () => lastNDays(30) },
+    { key: 'd7', label: ar ? 'آخر 7 أيام' : 'Last 7 days', range: () => lastNDays(7) },
+    { key: 'd30', label: ar ? 'آخر 30 يومًا' : 'Last 30 days', range: () => lastNDays(30) },
     { key: 'prev2', label: ar ? 'قبل شهرين' : '2 months ago', range: () => monthRange(-2) },
   ];
 }
@@ -752,7 +752,7 @@ export function ls2Text(lang: Lang) {
     partialNote: t('vehicles have no reading before the start date — their first day is partial.', 'مركبة ليس لها قراءة قبل تاريخ البداية — يومها الأول جزئي.'),
     loadFuel: t('Load fuel data', 'تحميل بيانات الوقود'),
     loadingFuel: t('Loading fuel…', 'جارٍ تحميل الوقود…'),
-    fuelHeavyHint: t('CAN fuel is one Location Solutions report per truck (~2s each) — loaded on demand.', 'بيانات الوقود تقرير منفصل لكل عربية من لوكيشن سوليوشن (~٢ ثانية لكل واحدة) — تُحمّل عند الطلب.'),
+    fuelHeavyHint: t('CAN fuel is one Location Solutions report per truck (~2s each) — loaded on demand.', 'بيانات الوقود تقرير منفصل لكل عربية من لوكيشن سوليوشن (~2 ثانية لكل واحدة) — تُحمّل عند الطلب.'),
     notLoaded: t('n/a', 'غير متاح'),
     litres: t('L', 'لتر'),
     kmPerL: t('km/L', 'كم/لتر'),

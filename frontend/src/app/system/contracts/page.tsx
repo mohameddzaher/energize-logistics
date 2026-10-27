@@ -137,7 +137,7 @@ export default function ContractsDashboardPage() {
           { href: '/system/contracts/customers', icon: <Handshake className="w-5 h-5" />, ar: 'العملاء', en: 'Customers', hint: data.customers?.expiring ? (ar ? `${fmtN(data.customers.expiring)} عقدًا ينتهي أو انتهى` : `${fmtN(data.customers.expiring)} ending / ended`) : (ar ? `${fmtN(data.customers?.total || 0)} عميلًا` : `${fmtN(data.customers?.total || 0)} customers`) },
           { href: '/system/contracts/analysis', icon: <TrendingUp className="w-5 h-5" />, ar: 'تحليل التشغيل والترتيب', en: 'Utilisation & ranking', hint: lastUtil ? (ar ? `آخر شهر: ${monthLabel(`${lastUtil.year}-${String(lastUtil.month).padStart(2, '0')}`, ar)}` : `latest: ${lastUtil.year}-${lastUtil.month}`) : '—' },
           { href: '/system/contracts/prospects', icon: <PhoneCall className="w-5 h-5" />, ar: 'تنشيط الموردين الجدد', en: 'Prospect outreach', hint: ar ? `${fmtN(data.prospects.interested)} مهتم` : `${fmtN(data.prospects.interested)} interested` },
-          { href: '/system/contracts/agreements', icon: <ClipboardList className="w-5 h-5" />, ar: 'عقود الأقسام', en: 'Department contracts', hint: ar ? `${fmtN(data.deptContracts.expiringSoon)} تنتهي خلال ٦٠ يومًا` : `${fmtN(data.deptContracts.expiringSoon)} expiring in 60d` },
+          { href: '/system/contracts/agreements', icon: <ClipboardList className="w-5 h-5" />, ar: 'عقود الأقسام', en: 'Department contracts', hint: ar ? `${fmtN(data.deptContracts.expiringSoon)} تنتهي خلال 60 يومًا` : `${fmtN(data.deptContracts.expiringSoon)} expiring in 60d` },
         ].map((l) => (
           <Link key={l.href} href={l.href} className="bg-white border border-slate-200 rounded-xl shadow-sm p-4 hover:border-cyan-600 hover:shadow-md transition-all group">
             <div className="flex items-center gap-2 text-cyan-700">{l.icon}<span className="font-bold text-slate-800 text-sm group-hover:text-cyan-700">{ar ? l.ar : l.en}</span></div>
@@ -162,7 +162,7 @@ export default function ContractsDashboardPage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <Card title={ar ? 'أكبر ١٠ موردين موقّعين بعدد السيارات' : 'Top 10 signed vendors by fleet'} icon={<Truck className="w-4 h-4 text-cyan-700" />}>
+        <Card title={ar ? 'أكبر 10 موردين موقّعين بعدد السيارات' : 'Top 10 signed vendors by fleet'} icon={<Truck className="w-4 h-4 text-cyan-700" />}>
           <div className="space-y-1.5">
             {v.topByFleet.map((t, i) => (
               <Link key={t._id} href={`/system/contracts/vendors/${t._id}`} className="flex items-center gap-2 text-xs hover:bg-slate-50 rounded-lg px-2 py-1.5 group">

@@ -410,9 +410,9 @@ class _PerformanceEditRequestsScreenState extends State<PerformanceEditRequestsS
                     Row(children: [
                       _statCard('pending', tr('قيد المراجعة', 'Pending'), _pending.length, T.warn),
                       const SizedBox(width: 8),
-                      _statCard('approved', tr('تمت الموافقة (آخر ٥٠)', 'Approved (last 50)'), approved, T.success),
+                      _statCard('approved', tr('تمت الموافقة (آخر 50)', 'Approved (last 50)'), approved, T.success),
                       const SizedBox(width: 8),
-                      _statCard('rejected', tr('مرفوضة (آخر ٥٠)', 'Rejected (last 50)'), rejected, T.danger),
+                      _statCard('rejected', tr('مرفوضة (آخر 50)', 'Rejected (last 50)'), rejected, T.danger),
                     ]),
                     const SizedBox(height: 14),
                     if (_show == '' || _show == 'pending') ...[

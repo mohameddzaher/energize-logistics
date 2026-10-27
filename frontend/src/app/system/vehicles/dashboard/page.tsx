@@ -61,7 +61,7 @@ export default function VehiclesDashboardPage() {
   if (loading || !data) return <Spinner />;
 
   const t = data.totals;
-  const fmtSAR = (n: number) => `${(n || 0).toLocaleString(ar ? 'ar-EG' : 'en-US')} ${ar ? 'ر.س' : 'SAR'}`;
+  const fmtSAR = (n: number) => `${(n || 0).toLocaleString(ar ? 'ar-EG-u-nu-latn' : 'en-US')} ${ar ? 'ر.س' : 'SAR'}`;
 
   // Reusable clickable breakdown row.
   const Row = ({ href, label, count, badge }: { href: string; label: React.ReactNode; count: number; badge?: React.ReactNode }) => (

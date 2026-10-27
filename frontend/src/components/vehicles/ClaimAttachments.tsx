@@ -58,7 +58,7 @@ export default function ClaimAttachments({ claimId, attachments, canEdit, canMan
       const files: { dataUrl: string; fileName: string; title: string }[] = [];
       for (const f of Array.from(fl)) {
         if (f.size > MAX_BYTES) {
-          notify(t(`«${f.name}» أكبر من ٢٠ ميجابايت`, `"${f.name}" exceeds 20 MB`), 'error');
+          notify(t(`«${f.name}» أكبر من 20 ميجابايت`, `"${f.name}" exceeds 20 MB`), 'error');
           continue;
         }
         // eslint-disable-next-line no-await-in-loop

@@ -344,7 +344,7 @@ class FleetDriverKpisScreen extends StatefulWidget {
 
 // فتراتُ الأسطول بمفاتيح الخادم نفسِها (PeriodFilter في الويب).
 const _fleetPresets = [
-  ('today', 'اليوم', 'Today'), ('yesterday', 'أمس', 'Yesterday'), ('last_7', 'آخر ٧ أيام', 'Last 7 days'),
+  ('today', 'اليوم', 'Today'), ('yesterday', 'أمس', 'Yesterday'), ('last_7', 'آخر 7 أيام', 'Last 7 days'),
   ('this_month', 'هذا الشهر', 'This month'), ('last_month', 'الشهر الماضي', 'Last month'), ('all', 'كل الفترات', 'All time'),
 ];
 

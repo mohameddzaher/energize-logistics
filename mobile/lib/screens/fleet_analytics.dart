@@ -196,7 +196,7 @@ class _FleetAnalyticsScreenState extends State<FleetAnalyticsScreen> {
         const SizedBox(height: 14),
         // اتجاه الشهور (12 شهر) — أشرطة نسبية
         if (trend.isNotEmpty) ...[
-          _section(tr('اتجاه الدخل — ١٢ شهر', 'Income trend — 12 months')),
+          _section(tr('اتجاه الدخل — 12 شهر', 'Income trend — 12 months')),
           AppCard(child: _trendBars(trend)),
           const SizedBox(height: 14),
         ],
@@ -427,7 +427,7 @@ class _FleetAnalyticsScreenState extends State<FleetAnalyticsScreen> {
             ),
           )),
       if (_vehLoads?['truncated'] == true)
-        Text(tr('معروضٌ أوّل ٢٠٠ حمولة.', 'First 200 loads shown.'),
+        Text(tr('معروضٌ أوّل 200 حمولة.', 'First 200 loads shown.'),
             style: const TextStyle(fontSize: 10.5, color: T.inkFaint)),
     ]);
   }

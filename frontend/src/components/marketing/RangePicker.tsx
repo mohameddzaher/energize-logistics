@@ -19,10 +19,10 @@ export default function RangePicker({ value, onChange, lang }: { value: DateRang
       <span className="text-slate-400 text-sm">→</span>
       <input type="date" value={value.to} onChange={(e) => onChange({ ...value, to: e.target.value })} className={inputCls} aria-label={ar ? 'إلى تاريخ' : 'To date'} />
       <span className="w-px h-5 bg-slate-200 mx-1" />
-      {preset(ar ? '٧ أيام' : '7 days', lastNDays(7))}
-      {preset(ar ? '٣٠ يوم' : '30 days', lastNDays(30))}
+      {preset(ar ? '7 أيام' : '7 days', lastNDays(7))}
+      {preset(ar ? '30 يوم' : '30 days', lastNDays(30))}
       {preset(ar ? 'هذا الشهر' : 'This month', thisMonthToDate())}
-      {preset(ar ? '٩٠ يوم' : '90 days', lastNDays(90))}
+      {preset(ar ? '90 يوم' : '90 days', lastNDays(90))}
     </div>
   );
 }

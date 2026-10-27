@@ -141,7 +141,7 @@ export default function ItSystemsPage() {
         <StatCard label={ar ? 'متوقفة أو متعثرة' : 'Down / degraded'} value={down} accent={down ? 'text-red-600' : 'text-slate-900'}
           onClick={() => setStatusFilter((v) => (v === 'down,degraded' ? '' : 'down,degraded'))}
           active={statusFilter === 'down,degraded'} hint={ar ? 'اضغط لعرضها' : 'tap to filter'} />
-        <StatCard label={ar ? 'تجديدات خلال ٣٠ يوم' : 'Renewals ≤ 30d'} value={dueSoon} accent={dueSoon ? 'text-amber-600' : 'text-slate-900'} />
+        <StatCard label={ar ? 'تجديدات خلال 30 يوم' : 'Renewals ≤ 30d'} value={dueSoon} accent={dueSoon ? 'text-amber-600' : 'text-slate-900'} />
         <StatCard label={ar ? 'التكلفة السنوية' : 'Annualised cost'} value={fmtMoney(annualCost)} accent="text-[#f37121]" />
       </div>
 

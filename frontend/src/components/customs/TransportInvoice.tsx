@@ -36,7 +36,7 @@ export default function TransportInvoiceBanner({
 
   const pick = (f: File | null) => {
     if (!f) return;
-    if (f.size > 20 * 1024 * 1024) { notify(t('الملفّ أكبر من ٢٠ ميغابايت', 'File larger than 20MB'), 'error'); return; }
+    if (f.size > 20 * 1024 * 1024) { notify(t('الملفّ أكبر من 20 ميغابايت', 'File larger than 20MB'), 'error'); return; }
     const r = new FileReader();
     r.onload = () => send({ dataUrl: String(r.result), fileName: f.name, date: new Date().toISOString().slice(0, 10) });
     r.readAsDataURL(f);

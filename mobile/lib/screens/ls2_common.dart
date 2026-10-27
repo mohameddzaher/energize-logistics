@@ -168,8 +168,8 @@ class Ls2RangeBar extends StatelessWidget {
     return [
       ('mtd', 'الشهر الحالي', 'This month', ls2ThisMonthToDate),
       ('prev', 'الشهر السابق', 'Last month', () => month(-1)),
-      ('d7', 'آخر ٧ أيام', 'Last 7 days', () => lastN(7)),
-      ('d30', 'آخر ٣٠ يومًا', 'Last 30 days', () => lastN(30)),
+      ('d7', 'آخر 7 أيام', 'Last 7 days', () => lastN(7)),
+      ('d30', 'آخر 30 يومًا', 'Last 30 days', () => lastN(30)),
       ('prev2', 'قبل شهرين', '2 months ago', () => month(-2)),
     ];
   }

@@ -283,7 +283,7 @@ export default function CollectionsPlanPage() {
       ) : days.map((day) => (
         <div key={day} className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
           <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-slate-900">{new Date(day).toLocaleDateString(ar ? 'ar-EG' : 'en-GB', { weekday: 'long', day: 'numeric', month: 'short' })}</h3>
+            <h3 className="text-sm font-semibold text-slate-900">{new Date(day).toLocaleDateString(ar ? 'ar-EG-u-nu-latn' : 'en-GB', { weekday: 'long', day: 'numeric', month: 'short' })}</h3>
             <span className="text-xs text-slate-500">{byDay[day].length} {ar ? 'مهمة' : 'tasks'}</span>
           </div>
           <div className="divide-y divide-slate-100">

@@ -100,7 +100,7 @@ export function fmtDateTime(v?: string | null, lang: Lang = 'en'): string {
   if (!v) return '—';
   const d = new Date(v);
   if (isNaN(d.getTime())) return String(v);
-  return d.toLocaleString(lang === 'ar' ? 'ar-EG' : 'en-GB', {
+  return d.toLocaleString(lang === 'ar' ? 'ar-EG-u-nu-latn' : 'en-GB', {
     year: 'numeric', month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit',
   });
 }

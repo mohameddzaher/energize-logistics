@@ -398,7 +398,7 @@ export default function OpsAnalytics({ base, liveEvent }: { base: string; liveEv
 
       {/* ⑦ العملاء والموردون */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-        <Panel title={t('أعلى ١٠ عملاء', 'Top 10 clients')}
+        <Panel title={t('أعلى 10 عملاء', 'Top 10 clients')}
           hint={t(`${d.clients.count} عميلًا نشطًا · النسبة من رحلات العملاء`, `${d.clients.count} active · share of client trips`)}>
           <div className="space-y-1">
             {d.clients.top.map((c, i) => (
@@ -406,7 +406,7 @@ export default function OpsAnalytics({ base, liveEvent }: { base: string; liveEv
             ))}
           </div>
         </Panel>
-        <Panel title={t('أعلى ١٠ موردين', 'Top 10 vendors')}
+        <Panel title={t('أعلى 10 موردين', 'Top 10 vendors')}
           hint={t(`${d.vendors.count} موردًا · النسبة من رحلات الموردين`, `${d.vendors.count} vendors · share of vendor trips`)}>
           <div className="space-y-1">
             {d.vendors.top.map((v, i) => (

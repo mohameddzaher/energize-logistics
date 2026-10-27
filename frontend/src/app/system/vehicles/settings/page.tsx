@@ -144,7 +144,7 @@ export default function VehiclesSettingsPage() {
               يتغيّر ويقول «الإعدادات لا تعمل». فالقاعدةُ معروضة، والصفُّ
               المخالف يُعلَّم، والحفظُ يقف حتى يُصحَّح. */}
           <p className="text-[12px] text-slate-600 mb-3 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
-            {t('القاعدة: حرج ≤ تحذير ≤ قريب. مثال: حرج ٧، تحذير ٣٠، قريب ٩٠.',
+            {t('القاعدة: حرج ≤ تحذير ≤ قريب. مثال: حرج 7، تحذير 30، قريب 90.',
                'Rule: critical ≤ warning ≤ soon. Example: 7, 30, 90.')}
           </p>
           <ScrollX>

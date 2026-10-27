@@ -82,11 +82,11 @@ interface TaxRow {
  * في كلّ عمرٍ حقًّا — ومجموعُ الشرائح يزيد على الكلّ.
  */
 const AGE_BANDS: [string, string, string][] = [
-  ['0_15', 'حتى ١٥ يومًا', 'Up to 15 days'],
-  ['15_30', 'من ١٥ إلى ٣٠', '15 – 30 days'],
-  ['30_45', 'من ٣٠ إلى ٤٥', '30 – 45 days'],
-  ['45_60', 'من ٤٥ إلى ٦٠', '45 – 60 days'],
-  ['60_plus', 'أكثر من ٦٠', 'Over 60 days'],
+  ['0_15', 'حتى 15 يومًا', 'Up to 15 days'],
+  ['15_30', 'من 15 إلى 30', '15 – 30 days'],
+  ['30_45', 'من 30 إلى 45', '30 – 45 days'],
+  ['45_60', 'من 45 إلى 60', '45 – 60 days'],
+  ['60_plus', 'أكثر من 60', 'Over 60 days'],
 ];
 
 export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind }) {

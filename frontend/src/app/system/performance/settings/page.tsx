@@ -95,7 +95,7 @@ export default function PerformanceSettingsPage() {
     if (!editing) return;
     if (!editing.nameAr.trim()) return flash('err', ar ? 'اسم النموذج مطلوب' : 'Template name is required');
     if (!editing.department) return flash('err', ar ? 'اختر القسم' : 'Choose a department');
-    if (!weightsOk) return flash('err', ar ? `مجموع الأوزان لازم يساوي ١٠٠٪ (حالياً ${Math.round(editTotal * 100) / 100}٪)` : `Weights must total 100% (currently ${Math.round(editTotal * 100) / 100}%)`);
+    if (!weightsOk) return flash('err', ar ? `مجموع الأوزان لازم يساوي 100٪ (حالياً ${Math.round(editTotal * 100) / 100}٪)` : `Weights must total 100% (currently ${Math.round(editTotal * 100) / 100}%)`);
     setSaving(true);
     try {
       if (editing._id) await api.put(`/api/performance/templates/${editing._id}`, editing);
@@ -258,7 +258,7 @@ export default function PerformanceSettingsPage() {
         <ExportMenu fileName="performance-config" lang={lang as 'ar' | 'en'}
           options={[
             { key: 'tab', label: ar ? 'التبويب الحالي' : 'Current tab', sheets: tabSheets[tab] },
-            { key: 'all', label: `${scope.all} (${ar ? '٥ شيتات' : '5 sheets'})`, sheets: [templatesSheet, criteriaSheet, bandsSheet, tiersSheet, deptTierSheet] },
+            { key: 'all', label: `${scope.all} (${ar ? '5 شيتات' : '5 sheets'})`, sheets: [templatesSheet, criteriaSheet, bandsSheet, tiersSheet, deptTierSheet] },
           ]} />
         {tab !== 'templates' && (
           <button type="button" onClick={saveSettings} disabled={saving} className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#f37121] hover:bg-[#d95f13] text-white text-sm font-medium disabled:opacity-50">
@@ -377,7 +377,7 @@ export default function PerformanceSettingsPage() {
           <div className={`rounded-xl px-4 py-3 flex items-center justify-between ${weightsOk ? 'bg-emerald-50 border border-emerald-200' : 'bg-red-50 border border-red-200'}`}>
             <span className={`text-sm font-medium ${weightsOk ? 'text-emerald-700' : 'text-red-700'}`}>
               {ar ? 'مجموع الأوزان' : 'Total weight'}: <b className="tabular-nums">{Math.round(editTotal * 100) / 100}%</b>
-              {!weightsOk && <span className="ms-2">{ar ? '— لازم يساوي ١٠٠٪ قبل الحفظ' : '— must equal 100% before saving'}</span>}
+              {!weightsOk && <span className="ms-2">{ar ? '— لازم يساوي 100٪ قبل الحفظ' : '— must equal 100% before saving'}</span>}
             </span>
             <button type="button" onClick={() => setEditing({ ...editing, criteria: [...editing.criteria, blankCriterion(editing.criteria.length)] })}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-slate-200 hover:border-[#f37121] text-slate-700 text-xs font-medium">
@@ -452,7 +452,7 @@ export default function PerformanceSettingsPage() {
       {tab === 'bands' && (
         <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm space-y-3">
           <p className="text-sm text-slate-500">
-            {ar ? 'النسبة المئوية = الدرجة المرجّحة × ٢٠. الشرائح دي بتحدد التقدير والبونص.' : 'Percentage = weighted score × 20. These bands drive the rating and the bonus.'}
+            {ar ? 'النسبة المئوية = الدرجة المرجّحة × 20. الشرائح دي بتحدد التقدير والبونص.' : 'Percentage = weighted score × 20. These bands drive the rating and the bonus.'}
           </p>
           <ScrollX>
             <table className="w-full text-sm">

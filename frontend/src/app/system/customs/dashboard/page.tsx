@@ -496,9 +496,9 @@ export default function CustomsDashboardPage() {
                 <th className="px-2 py-1.5 text-center font-semibold">{t('معاملات مفتوحة أنشأها', 'Open (created)')}</th>
                 <th className="px-2 py-1.5 text-center font-semibold">{t('قادمة أنشأها', 'Upcoming (created)')}</th>
                 <th className="px-2 py-1.5 text-center font-semibold">{t('أغلقها هذا الشهر', 'Closed this month')}</th>
-                <th className="px-2 py-1.5 text-center font-semibold">{t('مراحل أنجزها (٣٠ يومًا)', 'Stages ticked (30d)')}</th>
-                <th className="px-2 py-1.5 text-center font-semibold">{t('طلبات صرف (٣٠ يومًا)', 'Payment requests (30d)')}</th>
-                <th className="px-2 py-1.5 text-center font-semibold">{t('ملاحظات (٣٠ يومًا)', 'Notes (30d)')}</th>
+                <th className="px-2 py-1.5 text-center font-semibold">{t('مراحل أنجزها (30 يومًا)', 'Stages ticked (30d)')}</th>
+                <th className="px-2 py-1.5 text-center font-semibold">{t('طلبات صرف (30 يومًا)', 'Payment requests (30d)')}</th>
+                <th className="px-2 py-1.5 text-center font-semibold">{t('ملاحظات (30 يومًا)', 'Notes (30d)')}</th>
                 <th className="px-2 py-1.5 text-center font-semibold">{t('مهامّه المفتوحة', 'Open tasks')}</th>
                 <th className="px-2 py-1.5 text-start font-semibold">{t('آخر نشاط', 'Last activity')}</th>
               </tr>

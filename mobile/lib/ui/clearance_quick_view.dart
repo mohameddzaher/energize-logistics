@@ -51,8 +51,8 @@ const _margin = [
 num _n(dynamic v) => v is num ? v : num.tryParse('${v ?? ''}') ?? 0;
 String _money(dynamic v) =>
     _n(v).toStringAsFixed(_n(v) % 1 == 0 ? 0 : 2).replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (m) => ',');
-String _arDigits(int n) =>
-    Lang.instance.ar ? '$n'.split('').map((d) => '٠١٢٣٤٥٦٧٨٩'[int.parse(d)]).join() : '$n';
+// الأرقامُ لاتينيّةٌ دائمًا، عربيّةً كانت الواجهةُ أو إنجليزيّة (صاحبُ الشركة، ٢٠٢٦/١٠/٢٧).
+String _arDigits(int n) => '$n';
 String _date(dynamic v) {
   final s = '${v ?? ''}';
   if (s.isEmpty) return '';

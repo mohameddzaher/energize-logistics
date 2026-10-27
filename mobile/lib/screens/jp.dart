@@ -1054,7 +1054,7 @@ class _JpDashScreenState extends State<JpDashScreen> {
                       children: [
                         _stat(tr('القائمة', 'Open'), '${t['open'] ?? 0}', T.ink),
                         _stat(tr('المتأخّرة', 'Late'), '${t['overdue'] ?? 0}', (t['overdue'] ?? 0) > 0 ? T.danger : T.ink),
-                        _stat(tr('خلال ٢٤ ساعة', 'Within 24h'), '${t['dueSoon'] ?? 0}', (t['dueSoon'] ?? 0) > 0 ? T.warn : T.ink),
+                        _stat(tr('خلال 24 ساعة', 'Within 24h'), '${t['dueSoon'] ?? 0}', (t['dueSoon'] ?? 0) > 0 ? T.warn : T.ink),
                         _stat(tr('التي تمّت', 'Done'), '${t['done'] ?? 0}', T.success),
                         _stat(tr('نسبة الإتمام', 'Completion'), _pct(t['completionRate']), T.ink),
                         _stat(tr('في موعدها', 'On time'), _pct(t['onTimeRate']), T.ink),
@@ -1090,7 +1090,7 @@ class _JpDashScreenState extends State<JpDashScreen> {
                     _head(tr('المتأخّرة', 'Late')),
                     if (overdue.isEmpty) Text(tr('لا شيء متأخّر', 'Nothing late'), style: const TextStyle(color: T.inkFaint)),
                     for (final r in overdue) line(r),
-                    _head(tr('تستحقّ خلال ٢٤ ساعة', 'Due within 24 hours')),
+                    _head(tr('تستحقّ خلال 24 ساعة', 'Due within 24 hours')),
                     if (soon.isEmpty) Text(tr('لا شيء يستحقّ قريبًا', 'Nothing due soon'), style: const TextStyle(color: T.inkFaint)),
                     for (final r in soon) line(r),
                   ].expand((w) => [w, if (w is AppCard) const SizedBox(height: 8)]).toList());

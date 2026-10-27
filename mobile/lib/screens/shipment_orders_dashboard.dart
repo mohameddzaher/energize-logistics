@@ -32,7 +32,7 @@ class ShipmentOrdersDashboardScreen extends StatefulWidget {
   State<ShipmentOrdersDashboardScreen> createState() => _ShipmentOrdersDashboardScreenState();
 }
 
-const _periods = [('today', 'اليوم', 'Today'), ('7d', '٧ أيام', '7 days'), ('month', 'الشهر', 'Month'), ('30d', '٣٠ يومًا', '30 days'), ('year', 'السنة', 'Year')];
+const _periods = [('today', 'اليوم', 'Today'), ('7d', '7 أيام', '7 days'), ('month', 'الشهر', 'Month'), ('30d', '30 يومًا', '30 days'), ('year', 'السنة', 'Year')];
 const _prefKey = 'shipmentOrders.dashPeriod';
 const _navy = Color(0xFF12325C);
 

@@ -126,7 +126,7 @@ export default function FleetHealthPage() {
     { header: t('الصيانة القادمة', 'Next service'), key: 'maintenance', width: 24, transform: (v: any) => v?.nextServiceName || '' },
     { header: t('تنبيهات مفتوحة', 'Open alerts'), key: 'alertCount', width: 16 },
     { header: t('آخر إشارة', 'Last signal'), key: 'lastMessageAt', width: 20,
-      transform: (v: any) => (v ? new Date(v).toLocaleString(ar ? 'ar-EG' : 'en-GB') : '') },
+      transform: (v: any) => (v ? new Date(v).toLocaleString(ar ? 'ar-EG-u-nu-latn' : 'en-GB') : '') },
   ];
 
   if (!canViewFleet(user)) return <div className="text-slate-500 p-8">{t('غير مصرّح', 'Not authorized')}</div>;
@@ -278,7 +278,7 @@ export default function FleetHealthPage() {
                             </p>
                             {r.lastMessageAt && (
                               <p className="text-[11.5px] text-slate-400 mt-1">
-                                {t('آخر إشارة', 'Last signal')}: {new Date(r.lastMessageAt).toLocaleString(ar ? 'ar-EG' : 'en-GB')}
+                                {t('آخر إشارة', 'Last signal')}: {new Date(r.lastMessageAt).toLocaleString(ar ? 'ar-EG-u-nu-latn' : 'en-GB')}
                               </p>
                             )}
                           </div>
@@ -303,7 +303,7 @@ export default function FleetHealthPage() {
                                       </div>
                                       {a.message && <p className="text-[12px] text-slate-600 mt-0.5">{a.message}</p>}
                                       <p className="text-[11px] text-slate-400 mt-0.5">
-                                        {t('منذ', 'since')} {new Date(a.firstSeenAt).toLocaleString(ar ? 'ar-EG' : 'en-GB')}
+                                        {t('منذ', 'since')} {new Date(a.firstSeenAt).toLocaleString(ar ? 'ar-EG-u-nu-latn' : 'en-GB')}
                                       </p>
                                     </div>
                                   );

@@ -78,7 +78,7 @@ export const PERIOD_PRESETS: { key: string; ar: string; en: string }[] = [
   { key: 'this_quarter', ar: 'هذا الربع', en: 'This quarter' },
   { key: 'this_year', ar: 'هذا العام', en: 'This year' },
   { key: 'last_year', ar: 'العام الماضي', en: 'Last year' },
-  { key: 'last_12m', ar: 'آخر ١٢ شهرًا', en: 'Last 12 months' },
+  { key: 'last_12m', ar: 'آخر 12 شهرًا', en: 'Last 12 months' },
   { key: 'all', ar: 'كل التاريخ', en: 'All time' },
 ];
 

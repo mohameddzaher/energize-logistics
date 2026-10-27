@@ -35,10 +35,10 @@ class MarketingRangePicker extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final presets = <(String, String, MarketingRange)>[
-      ('٧ أيام', '7 days', _lastN(7)),
-      ('٣٠ يوم', '30 days', _lastN(30)),
+      ('7 أيام', '7 days', _lastN(7)),
+      ('30 يوم', '30 days', _lastN(30)),
       ('هذا الشهر', 'This month', marketingThisMonth()),
-      ('٩٠ يوم', '90 days', _lastN(90)),
+      ('90 يوم', '90 days', _lastN(90)),
     ];
     bool same(MarketingRange a, MarketingRange b) => _iso(a.from) == _iso(b.from) && _iso(a.to) == _iso(b.to);
     return SizedBox(

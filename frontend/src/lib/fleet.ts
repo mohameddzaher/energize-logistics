@@ -226,7 +226,7 @@ export const FOLLOWUP_NOTES_AR = [
 export const fmtDT = (v?: string | null, lang: Lang = 'ar') => {
   if (!v) return '—';
   try {
-    return new Date(v).toLocaleString(lang === 'ar' ? 'ar-SA' : 'en-GB', { dateStyle: 'medium', timeStyle: 'short' });
+    return new Date(v).toLocaleString(lang === 'ar' ? 'ar-SA-u-nu-latn' : 'en-GB', { dateStyle: 'medium', timeStyle: 'short' });
   } catch { return String(v); }
 };
 

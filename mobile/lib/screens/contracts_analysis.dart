@@ -170,7 +170,7 @@ class _ContractsAnalysisScreenState extends State<ContractsAnalysisScreen> {
                       FadeSlideIn(
                         child: AppCard(
                           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                            Text(tr('إجمالي طلبات الفترة (آخر ٣ أشهر مسجلة)', 'Total orders — last 3 recorded months'),
+                            Text(tr('إجمالي طلبات الفترة (آخر 3 أشهر مسجلة)', 'Total orders — last 3 recorded months'),
                                 style: const TextStyle(fontSize: 12.5, color: T.inkSoft, fontWeight: FontWeight.w600)),
                             const SizedBox(height: 4),
                             Text((totals['orders'] ?? 0).round().toString(),
@@ -237,7 +237,7 @@ class _ContractsAnalysisScreenState extends State<ContractsAnalysisScreen> {
                             Row(children: [
                               const Icon(Icons.trending_down, size: 18, color: T.danger),
                               const SizedBox(width: 6),
-                              Expanded(child: Text(tr('طاقة مهدرة — موقّعون باستغلال أقل من ٥٪', 'Wasted capacity (<5% used)'), style: const TextStyle(fontWeight: FontWeight.w800))),
+                              Expanded(child: Text(tr('طاقة مهدرة — موقّعون باستغلال أقل من 5٪', 'Wasted capacity (<5% used)'), style: const TextStyle(fontWeight: FontWeight.w800))),
                             ]),
                             const SizedBox(height: 10),
                             if (wasted.isEmpty)

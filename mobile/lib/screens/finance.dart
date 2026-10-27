@@ -54,7 +54,7 @@ String _pad(int n) => n.toString().padLeft(2, '0');
 const _presets = <(String, String, String)>[
   ('month', 'هذا الشهر', 'This month'),
   ('lastMonth', 'الشهر السابق', 'Last month'),
-  ('quarter', 'آخر ٣ شهور', 'Last 3 months'),
+  ('quarter', 'آخر 3 شهور', 'Last 3 months'),
   ('year', 'هذه السنة', 'This year'),
 ];
 
@@ -469,7 +469,7 @@ class _FinTableCardState extends State<_FinTableCard> {
           if (Lang.instance.ar && '${t['noteAr'] ?? ''}'.isNotEmpty)
             Text('${t['noteAr']}', style: const TextStyle(fontSize: 11, color: T.inkFaint)),
           if (t['capped'] == true)
-            Text(tr('تُعرض أحدث ٢٠٠٠ حركة — ضيّق الفترة لرؤية الباقي.', 'Showing the latest 2,000 — narrow the period.'),
+            Text(tr('تُعرض أحدث 2000 حركة — ضيّق الفترة لرؤية الباقي.', 'Showing the latest 2,000 — narrow the period.'),
                 style: const TextStyle(fontSize: 11, color: T.warn)),
         ]),
         childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
@@ -774,7 +774,7 @@ class _CustomsPaymentRequestsState extends State<_CustomsPaymentRequests> {
                     // ٢٠ ميجا للملفّ كالموقع — وما زاد يُقال ولا يُرسَل.
                     final ok = got.where((f) => f.sizeBytes <= 20 * 1024 * 1024).toList();
                     if (ok.length < got.length && c.mounted) {
-                      ScaffoldMessenger.of(c).showSnackBar(SnackBar(content: Text(tr('ملفٌّ أكبر من ٢٠ ميجابايت لم يُرفق', 'A file over 20MB was skipped'))));
+                      ScaffoldMessenger.of(c).showSnackBar(SnackBar(content: Text(tr('ملفٌّ أكبر من 20 ميجابايت لم يُرفق', 'A file over 20MB was skipped'))));
                     }
                     setSheet(() => files.addAll(ok));
                   },
@@ -1066,7 +1066,7 @@ class _CustomsInvoiceRequestsState extends State<_CustomsInvoiceRequests> {
                   final f = await pickFileAsDataUrl();
                   if (f == null) return;
                   if (f.sizeBytes > 20 * 1024 * 1024) {
-                    if (c.mounted) ScaffoldMessenger.of(c).showSnackBar(SnackBar(content: Text(tr('الملفّ أكبر من ٢٠ ميجا', 'File over 20MB'))));
+                    if (c.mounted) ScaffoldMessenger.of(c).showSnackBar(SnackBar(content: Text(tr('الملفّ أكبر من 20 ميجا', 'File over 20MB'))));
                     return;
                   }
                   setSheet(() => inv = f);

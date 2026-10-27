@@ -242,7 +242,7 @@ class _EmailTemplateTabState extends State<_EmailTemplateTab> {
     final res = await FilePicker.platform.pickFiles(withData: true, type: FileType.custom, allowedExtensions: const ['png', 'jpg', 'jpeg']);
     final f = res?.files.single;
     if (f == null || f.bytes == null) return;
-    if (f.size > 300 * 1024) { _toast(tr('الصورة أكبر من ٣٠٠ ك.ب — صغّرها', 'Image over 300 KB'), err: true); return; }
+    if (f.size > 300 * 1024) { _toast(tr('الصورة أكبر من 300 ك.ب — صغّرها', 'Image over 300 KB'), err: true); return; }
     final ext = (f.extension ?? 'png').toLowerCase();
     final mime = ext == 'png' ? 'image/png' : 'image/jpeg';
     setState(() { _sigImg = 'data:$mime;base64,${base64Encode(f.bytes!)}'; _sigImgName = f.name; });

@@ -483,7 +483,7 @@ export default function Ls2MaintenancePage() {
                               </span>
                               {eta && w?.phase !== 'idle' && (
                                 <p className="text-[10px] text-slate-500">
-                                  {(ar ? 'متوقّع: ' : 'ETA: ') + eta.toLocaleString(ar ? 'ar-EG' : 'en-GB', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                                  {(ar ? 'متوقّع: ' : 'ETA: ') + eta.toLocaleString(ar ? 'ar-EG-u-nu-latn' : 'en-GB', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
                                 </p>
                               )}
                               {w?.waybillNumber ? (

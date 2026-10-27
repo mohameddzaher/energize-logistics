@@ -69,7 +69,7 @@ export default function CustomsInvoiceRequests({ ar, onOpen }: { ar: boolean; on
   };
   const pick = async (f?: File | null) => {
     if (!f) return;
-    if (f.size > MAX_UPLOAD) { notify(t('الملفّ أكبر من ٢٠ ميجا', 'File over 20MB'), 'error'); return; }
+    if (f.size > MAX_UPLOAD) { notify(t('الملفّ أكبر من 20 ميجا', 'File over 20MB'), 'error'); return; }
     const dataUrl: string = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result)); r.onerror = rej; r.readAsDataURL(f); });
     setFile({ dataUrl, fileName: f.name });
   };

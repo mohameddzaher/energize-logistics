@@ -222,7 +222,7 @@ class _Ls2FleetAssetsScreenState extends State<Ls2FleetAssetsScreen> {
     };
     await ls2ExportMenu(context, fileName: 'ls2-assets', options: [
       ('التبويب الحالي (بعد الفلتر)', 'Current tab (filtered)', [current]),
-      ('كل الأصول (٣ شيتات)', 'All assets (3 sheets)', [
+      ('كل الأصول (3 شيتات)', 'All assets (3 sheets)', [
         (tr('السطحات', 'Flatbeds'), _flatbedCols, flatbeds),
         (tr('التيدرات', 'Trailers'), _trailerCols, trailers),
         (tr('الكاوتشات', 'Tires'), _tireCols, _l(_d?['tires'])),

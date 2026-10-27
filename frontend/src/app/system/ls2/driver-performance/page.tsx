@@ -197,8 +197,8 @@ export default function Ls2DriverPerformancePage() {
             <KpiTile label={tx('Average score', 'متوسط التقييم')} value={data.summary.averageScore} accent="#22c55e" icon={<TrendingUp className="w-4 h-4" />} />
             {data.depth === 'deep' ? (
               <>
-                <KpiTile label={tx('Excellent', 'ممتاز')} value={data.summary.excellent ?? 0} accent="#16a34a" sub={tx('score ≥ 90', 'تقييم ≥ ٩٠')} icon={<PackageCheck className="w-4 h-4" />} />
-                <KpiTile label={tx('Needs improvement', 'يحتاج تحسين')} value={data.summary.weak ?? 0} accent="#ef4444" sub={tx('score < 45', 'تقييم < ٤٥')} icon={<Timer className="w-4 h-4" />} />
+                <KpiTile label={tx('Excellent', 'ممتاز')} value={data.summary.excellent ?? 0} accent="#16a34a" sub={tx('score ≥ 90', 'تقييم ≥ 90')} icon={<PackageCheck className="w-4 h-4" />} />
+                <KpiTile label={tx('Needs improvement', 'يحتاج تحسين')} value={data.summary.weak ?? 0} accent="#ef4444" sub={tx('score < 45', 'تقييم < 45')} icon={<Timer className="w-4 h-4" />} />
               </>
             ) : (
               <>

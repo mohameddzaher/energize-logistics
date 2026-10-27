@@ -1289,7 +1289,7 @@ class _BulkMovementSheetState extends State<_BulkMovementSheet> {
                 Expanded(child: Text(tr('الكمية لكل صنف', 'Quantity per item'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12.5))),
                 TextButton(
                   onPressed: () => setState(() { for (final c in _qty.values) { c.text = '1'; } }),
-                  child: Text(tr('إرجاع الكل إلى ١', 'Reset all to 1'), style: const TextStyle(fontSize: 12)),
+                  child: Text(tr('إرجاع الكل إلى 1', 'Reset all to 1'), style: const TextStyle(fontSize: 12)),
                 ),
               ]),
               for (final i in widget.items) () {

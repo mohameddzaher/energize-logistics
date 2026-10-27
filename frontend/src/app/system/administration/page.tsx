@@ -81,12 +81,12 @@ const defaultDue = (): string => {
 
 const fmtDT = (v?: string | null, ar = true) => {
   if (!v) return '—';
-  try { return new Date(v).toLocaleString(ar ? 'ar-EG' : 'en-GB', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }); }
+  try { return new Date(v).toLocaleString(ar ? 'ar-EG-u-nu-latn' : 'en-GB', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }); }
   catch { return String(v); }
 };
 const fmtFullDT = (v?: string | null, ar = true) => {
   if (!v) return '—';
-  try { return new Date(v).toLocaleString(ar ? 'ar-EG' : 'en-GB', { dateStyle: 'medium', timeStyle: 'short' }); }
+  try { return new Date(v).toLocaleString(ar ? 'ar-EG-u-nu-latn' : 'en-GB', { dateStyle: 'medium', timeStyle: 'short' }); }
   catch { return String(v); }
 };
 

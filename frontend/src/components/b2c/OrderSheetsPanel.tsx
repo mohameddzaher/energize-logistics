@@ -136,17 +136,17 @@ export default function OrderSheetsPanel({ open, onClose, ar }: { open: boolean;
             <li>{t('افتح script.google.com بحساب جوجل صاحب الفولدر ← مشروع جديد ← امسح ما فيه والصق السكربت ← احفظ.', 'Open script.google.com with the folder owner account → New project → paste → save.')}</li>
             <li>{t('اختر الدالّة setup واضغط «تشغيل» ← وافق على الأذونات. (إن توقّف لطول الوقت شغّله ثانيةً فيكمل.)', 'Pick setup and press Run → allow permissions (re-run if it times out; it resumes).')}</li>
           </ol>
-          <p>{t('يُنشئ ملفًّا لكلّ مشروع في الفولدر ويحدّثه كلَّ ٥ دقائق من النظام، ويرسل كلَّ رقمٍ يُكتب فيه إلى النظام فورًا، ويقفل كلَّ شيءٍ إلّا خانات الأيّام.',
+          <p>{t('يُنشئ ملفًّا لكلّ مشروع في الفولدر ويحدّثه كلَّ 5 دقائق من النظام، ويرسل كلَّ رقمٍ يُكتب فيه إلى النظام فورًا، ويقفل كلَّ شيءٍ إلّا خانات الأيّام.',
             'It creates one file per project, refreshes it every 5 minutes, sends each typed number instantly, and locks everything but the day cells.')}</p>
           <p className="mt-1.5 font-bold">{t('ما يستطيعه كلٌّ في الشيت', 'Who can do what in the sheet')}</p>
           <ul className="list-disc ps-5">
             <li>{t('المشرفون: عددُ الأوردرات في خانات الأيّام من أكتوبر 2026 فقط.', 'Supervisors: order counts in day cells from October 2026 only.')}</li>
             <li>{t('مسؤولو القسم (بريدُهم تحت): أيُّ يومٍ مضى من أيِّ شهر — والشهورُ القديمة لهم وحدَهم — ويصل التعديلُ النظامَ فورًا.', 'Section heads (emails below): any past day of any month — old months are theirs only — reaching the system instantly.')}</li>
-            <li>{t('المناديبُ مرتّبون بالمشرف ثمّ بالاسم في كلّ الشهور. والشهورُ قبل أكتوبر ٢٠٢٦ تُعرض كما كانت في الشيت القديم: صفٌّ لكلّ حساب باسمه هناك.', 'Reps are listed by supervisor then name. Months before Oct 2026 show exactly as in the old sheet: one row per account.')}</li>
+            <li>{t('المناديبُ مرتّبون بالمشرف ثمّ بالاسم في كلّ الشهور. والشهورُ قبل أكتوبر 2026 تُعرض كما كانت في الشيت القديم: صفٌّ لكلّ حساب باسمه هناك.', 'Reps are listed by supervisor then name. Months before Oct 2026 show exactly as in the old sheet: one row per account.')}</li>
             <li>{t('الأسماءُ وأرقامُ الإقامة والمشرفون والمشاريع من النظام وحدَه — ما يُكتب فوقها في الشيت يُعاد من النظام.', 'Names, IDs, supervisors and projects come from the system only — overwritten in the sheet.')}</li>
           </ul>
           <p className="mt-1.5 rounded-md bg-amber-100/70 px-2 py-1 text-amber-900">
-            {t('إصدار ٢٠٢٦/١٠/٢١: من ثبّت السكربت قبل هذا التاريخ يحمّله من جديد، ويلصقه مكانَ القديم في مشروع script.google.com نفسِه، ويحفظ، ثمّ يشغّل setup مرّةً.',
+            {t('إصدار 2026/10/21: من ثبّت السكربت قبل هذا التاريخ يحمّله من جديد، ويلصقه مكانَ القديم في مشروع script.google.com نفسِه، ويحفظ، ثمّ يشغّل setup مرّةً.',
               'Version 2026-10-21: if installed before, download again, replace the code in the same Apps Script project, save, and run setup once.')}
           </p>
           <button type="button" onClick={downloadScript}

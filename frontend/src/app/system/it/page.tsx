@@ -338,7 +338,7 @@ export default function ItDashboardPage() {
             {ar ? 'اشتراكات وتجديدات قريبة' : 'Renewals due soon'}
           </h3>
           {(t?.renewalsDueSoon || []).length === 0 ? (
-            <p className="text-sm text-slate-500">{ar ? 'لا توجد تجديدات خلال ٦٠ يوماً.' : 'Nothing due in the next 60 days.'}</p>
+            <p className="text-sm text-slate-500">{ar ? 'لا توجد تجديدات خلال 60 يوماً.' : 'Nothing due in the next 60 days.'}</p>
           ) : (
             <div className="space-y-2">
               {(t?.renewalsDueSoon || []).map((s) => {

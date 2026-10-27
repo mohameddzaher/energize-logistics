@@ -247,7 +247,7 @@ class _ItDashboardScreenState extends State<ItDashboardScreen> {
         ]),
       ),
       _card(tr('اشتراكات وتجديدات قريبة', 'Renewals due soon'), _list(t['renewalsDueSoon']).isEmpty
-          ? _empty(tr('لا توجد تجديدات خلال ٦٠ يوماً.', 'Nothing due in the next 60 days.'))
+          ? _empty(tr('لا توجد تجديدات خلال 60 يوماً.', 'Nothing due in the next 60 days.'))
           : Column(children: _list(t['renewalsDueSoon']).map((s) {
               final d = DateTime.tryParse('${s['renewalDate'] ?? ''}');
               final now = DateTime.now();

@@ -327,7 +327,7 @@ function HrMasterInner() {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
             <Big label={t('التراخيص والاشتراكات', 'Licences')} value={ops.summary.licensesTotal} c="#64748b"
               onClick={() => router.push('/system/hr/licenses')} />
-            <Big label={t('تراخيص تنتهي خلال ٦٠ يوم', 'Licences due 60d')} value={ops.summary.licensesExpiringCount} c="#f59e0b"
+            <Big label={t('تراخيص تنتهي خلال 60 يوم', 'Licences due 60d')} value={ops.summary.licensesExpiringCount} c="#f59e0b"
               onClick={() => router.push('/system/hr/licenses')} />
             <Big label={t('تراخيص منتهية', 'Licences expired')} value={ops.summary.licensesExpiredCount} c="#dc2626"
               onClick={() => router.push('/system/hr/licenses')} />
@@ -616,7 +616,7 @@ function FieldRow({ f, g, ar, t, onOpen }: { f: FieldCard; g: GroupCard; ar: boo
                   في لوحة الفلترة فوق. */}
               {(f.valuesTotal ?? 0) > 20 && (
                 <p className="text-[10px] text-slate-400 pt-0.5">
-                  {t(`أعلى ٢٠ من ${f.valuesTotal} — الباقي في لوحة الفلترة`,
+                  {t(`أعلى 20 من ${f.valuesTotal} — الباقي في لوحة الفلترة`,
                      `Top 20 of ${f.valuesTotal} — the rest is in the filter panel`)}
                 </p>
               )}

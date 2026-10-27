@@ -496,7 +496,7 @@ final collectionsDashSpec = DashSpec(
     DashStat('متوسط', 'Medium', 'tree.risk.medium.value', Icons.schedule_outlined, T.warn, money: true, drill: {'risk': 'medium'}),
     DashStat('مرتفع', 'Hard', 'tree.risk.hard.value', Icons.warning_amber_rounded, T.danger, money: true, drill: {'risk': 'hard'}),
     DashStat('آجل - فاتورة بلا مرفق', 'Deferred invoice, no file', 'attachments.missing.count', Icons.attach_file_rounded, T.orange, drill: {'attach': 'missing'}),
-    DashStat('عملاء بمدّة افتراضية ٣٠ يومًا', 'Customers on default 30-day term', 'defaultTerm.customers', Icons.event_note_outlined, T.navy, drill: {'term': 'default'}),
+    DashStat('عملاء بمدّة افتراضية 30 يومًا', 'Customers on default 30-day term', 'defaultTerm.customers', Icons.event_note_outlined, T.navy, drill: {'term': 'default'}),
     DashStat('فواتير مفتوحة', 'Open invoices', 'tree.all.count', Icons.pending_actions_outlined, T.warn, drill: {}),
   ],
   // كلُّ رقمٍ يفتح شاشةَ صفوفه كاملةً (لا ورقةً سفليّة) — كصفحة الموقع
@@ -527,11 +527,11 @@ class _CollectionsAgeTable extends StatelessWidget {
   const _CollectionsAgeTable(this.data, this.open);
 
   static const _bands = [
-    ('d1_15', '١ – ١٥ يومًا', '1–15 days'),
-    ('d16_30', '١٦ – ٣٠ يومًا', '16–30 days'),
-    ('d31_60', '٣١ – ٦٠ يومًا', '31–60 days'),
-    ('d61_90', '٦١ – ٩٠ يومًا', '61–90 days'),
-    ('d91_plus', 'أكثر من ٩٠', 'Over 90'),
+    ('d1_15', '1 – 15 يومًا', '1–15 days'),
+    ('d16_30', '16 – 30 يومًا', '16–30 days'),
+    ('d31_60', '31 – 60 يومًا', '31–60 days'),
+    ('d61_90', '61 – 90 يومًا', '61–90 days'),
+    ('d91_plus', 'أكثر من 90', 'Over 90'),
   ];
   static const _risks = [('normal', 'طبيعي', 'Normal', T.success), ('medium', 'متوسط', 'Medium', T.warn), ('hard', 'مرتفع', 'Hard', T.danger)];
 

@@ -79,7 +79,7 @@ export default function ReportFollowUps({ basePath, workflowId, ar, compact = fa
 
   const pick = (f: File | null) => {
     setFormError('');
-    if (f && f.size > MAX_FILE) { setFormError(t('الملفُّ أكبرُ من ١٠ ميغا', 'The file is larger than 10 MB')); return; }
+    if (f && f.size > MAX_FILE) { setFormError(t('الملفُّ أكبرُ من 10 ميغا', 'The file is larger than 10 MB')); return; }
     setFile(f);
   };
 

@@ -321,7 +321,7 @@ function VehicleAnalyticsInner() {
 
       {d.monthlyTrend.length > 0 && (
         <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <p className="font-bold text-slate-900 mb-3 text-sm">{ar ? 'أداء السيارة خلال آخر ١٢ شهرًا' : 'Last 12 months'}</p>
+          <p className="font-bold text-slate-900 mb-3 text-sm">{ar ? 'أداء السيارة خلال آخر 12 شهرًا' : 'Last 12 months'}</p>
           <ResponsiveContainer width="100%" height={250}>
             <ComposedChart data={d.monthlyTrend}>
               <CartesianGrid strokeDasharray="3 3" stroke="#eef2f7" />

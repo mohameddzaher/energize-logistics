@@ -129,7 +129,7 @@ class _VehicleRecordsScreenState extends State<VehicleRecordsScreen> {
     }
     return [
       ...all,
-      ('many', 'أكثر من ٥ مركبات', 'More than 5 vehicles', T.info, (x) => _n(x['vehicles']) > 5),
+      ('many', 'أكثر من 5 مركبات', 'More than 5 vehicles', T.info, (x) => _n(x['vehicles']) > 5),
       ('withExpired', 'عليها مركبات منتهية', 'Has expired vehicles', T.danger, (x) => _n(x['expired']) > 0),
       ('one', 'مركبة واحدة', 'Single vehicle', T.inkSoft, (x) => _n(x['vehicles']) == 1),
     ];

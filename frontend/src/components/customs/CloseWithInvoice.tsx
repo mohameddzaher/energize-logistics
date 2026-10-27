@@ -204,7 +204,7 @@ export default function CloseWithInvoice({
               <span className="tabular-nums">{money(preview.saleNet)}</span>
             </div>
             <div className="flex items-center justify-between text-[12px] text-slate-700">
-              <span>{t('ضريبة ١٥٪ على بنود البيع', '15% VAT on billed items')}</span>
+              <span>{t('ضريبة 15٪ على بنود البيع', '15% VAT on billed items')}</span>
               <span className="tabular-nums">{money(preview.vat)}</span>
             </div>
             <div className="flex items-center justify-between text-sm font-extrabold text-slate-900 border-t border-slate-300 pt-1.5">

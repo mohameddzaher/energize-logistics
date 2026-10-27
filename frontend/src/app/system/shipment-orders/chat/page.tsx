@@ -322,8 +322,8 @@ export default function ChatCreatePage() {
         if (v === undefined || v === '') return;
         const disp = ['select', 'cards'].includes(f.inputType)
           ? optionLabel(f.options.find((o) => o.key === v) || { key: v, ar: v, en: v }, lang as Lang)
-          : f.inputType === 'date' ? new Date(`${v}T12:00:00`).toLocaleDateString(ar ? 'ar-SA' : 'en-GB', { dateStyle: 'medium' })
-            : f.inputType === 'datetime' ? new Date(v).toLocaleString(ar ? 'ar-SA' : 'en-GB', { dateStyle: 'medium', timeStyle: 'short' }) : String(v);
+          : f.inputType === 'date' ? new Date(`${v}T12:00:00`).toLocaleDateString(ar ? 'ar-SA-u-nu-latn' : 'en-GB', { dateStyle: 'medium' })
+            : f.inputType === 'datetime' ? new Date(v).toLocaleString(ar ? 'ar-SA-u-nu-latn' : 'en-GB', { dateStyle: 'medium', timeStyle: 'short' }) : String(v);
         rows.push([fieldLabel(f, lang as Lang), disp]);
       });
       return (
@@ -380,9 +380,9 @@ export default function ChatCreatePage() {
     const sendTyped = () => {
       if (!draft.trim()) { if (!f.required) skip(f); return; }
       const disp = f.inputType === 'date'
-        ? new Date(`${draft}T12:00:00`).toLocaleDateString(ar ? 'ar-SA' : 'en-GB', { dateStyle: 'medium' })
+        ? new Date(`${draft}T12:00:00`).toLocaleDateString(ar ? 'ar-SA-u-nu-latn' : 'en-GB', { dateStyle: 'medium' })
         : f.inputType === 'datetime'
-          ? new Date(draft).toLocaleString(ar ? 'ar-SA' : 'en-GB', { dateStyle: 'medium', timeStyle: 'short' })
+          ? new Date(draft).toLocaleString(ar ? 'ar-SA-u-nu-latn' : 'en-GB', { dateStyle: 'medium', timeStyle: 'short' })
           : draft;
       answerField(f, draft, disp);
     };

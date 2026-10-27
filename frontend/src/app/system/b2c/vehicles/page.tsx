@@ -186,7 +186,7 @@ export default function B2cVehiclesPage() {
         {card('', t('عدد المركبات', 'Vehicles'), d.summary.total, 'text-[#f37121]')}
         {card('noAuthorization', t('بلا تفويض', 'No authorization'), d.summary.noAuthorization, 'text-slate-600')}
         {card('expired', t('تفويض منتهٍ', 'Authorization expired'), d.summary.expired, 'text-red-600')}
-        {card('expiringSoon', t('ينتهي خلال ٣٠ يومًا', 'Expiring in 30 days'), d.summary.expiringSoon, 'text-amber-600')}
+        {card('expiringSoon', t('ينتهي خلال 30 يومًا', 'Expiring in 30 days'), d.summary.expiringSoon, 'text-amber-600')}
         {card('noDriver', t('بلا قائدٍ فعليّ', 'No actual driver'), d.summary.noDriver, 'text-slate-600')}
         {card('hold', t('بانتظار التسليم', 'Awaiting hand-over'), d.summary.hold || 0, 'text-amber-700')}
       </div>

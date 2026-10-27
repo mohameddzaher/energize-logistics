@@ -1105,7 +1105,7 @@ function ShipmentOrdersInner() {
                     onChange={async (e) => {
                       const f = e.target.files?.[0];
                       if (!f) { setFuFile(null); return; }
-                      if (f.size > MAX_UPLOAD) { notify(ar ? 'الملف أكبر من ٢٠ ميجابايت.' : 'File larger than 20MB.', 'error'); e.target.value = ''; return; }
+                      if (f.size > MAX_UPLOAD) { notify(ar ? 'الملف أكبر من 20 ميجابايت.' : 'File larger than 20MB.', 'error'); e.target.value = ''; return; }
                       const dataUrl: string = await new Promise((resolve, reject) => {
                         const r = new FileReader();
                         r.onload = () => resolve(String(r.result || ''));

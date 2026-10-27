@@ -59,7 +59,7 @@ export const fmtDateTime = (iso?: string | null, ar = true) => {
   if (!iso) return '';
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '';
-  return d.toLocaleString(ar ? 'ar-EG' : 'en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Riyadh' });
+  return d.toLocaleString(ar ? 'ar-EG-u-nu-latn' : 'en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Riyadh' });
 };
 
 // ── حدودُ المرفقات — نفسُها في الخادم (mediagoComplaintController) ─────────

@@ -503,7 +503,7 @@ class _Ls2ReportsScreenState extends State<Ls2ReportsScreen> with SingleTickerPr
         ]),
         Padding(
           padding: const EdgeInsets.only(top: 4, bottom: 8),
-          child: Text(tr('الوقود تقريرٌ من لوكيشن سوليوشن لكل شاحنة (~٢ث) — يُحمَّل عند الطلب.', 'Fuel is a per-truck Location Solutions report (~2s each) — loaded on demand.'),
+          child: Text(tr('الوقود تقريرٌ من لوكيشن سوليوشن لكل شاحنة (~2ث) — يُحمَّل عند الطلب.', 'Fuel is a per-truck Location Solutions report (~2s each) — loaded on demand.'),
               style: const TextStyle(fontSize: 11, color: T.inkFaint)),
         ),
         if (rows.isEmpty)

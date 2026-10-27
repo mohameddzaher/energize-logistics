@@ -144,7 +144,7 @@ export default function AgreementsPage() {
     ...c,
     expiryFlag: c.status !== 'active' || !c.endDate ? ''
       : new Date(c.endDate) < new Date() ? (ar ? 'انتهى' : 'Ended')
-        : new Date(c.endDate) < soon ? (ar ? 'ينتهي خلال ٦٠ يومًا' : 'Ends within 60 days')
+        : new Date(c.endDate) < soon ? (ar ? 'ينتهي خلال 60 يومًا' : 'Ends within 60 days')
           : (ar ? 'ساري' : 'Running'),
   }));
 

@@ -539,7 +539,7 @@ class _CustomsDashboardScreenState extends State<CustomsDashboardScreen> {
         ]),
       ),
       // ── الفريق: ما على كلّ فردٍ الآن، وما فعله في ثلاثين يومًا ──
-      _head(tr('حركة الفريق (٣٠ يومًا)', 'Team activity (30 days)')),
+      _head(tr('حركة الفريق (30 يومًا)', 'Team activity (30 days)')),
       // لمسةُ فردٍ تجعل اللوحةَ كلَّها لما أنشأه هو — ولمسةٌ ثانيةٌ ترفع الفلتر.
       for (final m in team) ...[
         Pressable(

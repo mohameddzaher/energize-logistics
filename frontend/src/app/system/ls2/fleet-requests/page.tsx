@@ -84,7 +84,7 @@ export default function Ls2FleetRequestsPage() {
     setBusy('');
   };
 
-  const fmt = (v?: string | null) => (v ? new Date(v).toLocaleString(ar ? 'ar-EG' : 'en-GB', { dateStyle: 'short', timeStyle: 'short' }) : '—');
+  const fmt = (v?: string | null) => (v ? new Date(v).toLocaleString(ar ? 'ar-EG-u-nu-latn' : 'en-GB', { dateStyle: 'short', timeStyle: 'short' }) : '—');
   const tone = useMemo(() => ({
     pending: 'border-amber-300 bg-amber-50',
     approved: 'border-emerald-300 bg-emerald-50',

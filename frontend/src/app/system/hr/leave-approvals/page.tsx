@@ -197,7 +197,7 @@ export default function LeaveApprovalsPage() {
                 {ar ? 'ملاحظتك — مطلوبة مع الرفض ومع الاستفسار' : 'Your note — required when rejecting or asking'}
               </label>
               <TextArea rows={3} value={note} onChange={(e) => setNote(e.target.value)}
-                placeholder={ar ? 'مثال: عليه سلفة ٥٠٠ ريال تُسدَّد قبل السفر — أرفق الإيصال.' : 'e.g. A 500 SAR advance must be settled first — attach the receipt.'} />
+                placeholder={ar ? 'مثال: عليه سلفة 500 ريال تُسدَّد قبل السفر — أرفق الإيصال.' : 'e.g. A 500 SAR advance must be settled first — attach the receipt.'} />
             </div>
           </div>
         )}

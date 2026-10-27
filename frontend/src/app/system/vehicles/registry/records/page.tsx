@@ -117,7 +117,7 @@ export default function Page() {
       ]
       : [
         { key: '', label: t('الكل', 'All') },
-        { key: 'many', label: t('أكثر من ٥ مركبات', 'More than 5 vehicles'), tone: 'blue', test: (x: any) => (x.vehicles || 0) > 5 },
+        { key: 'many', label: t('أكثر من 5 مركبات', 'More than 5 vehicles'), tone: 'blue', test: (x: any) => (x.vehicles || 0) > 5 },
         { key: 'withExpired', label: t('عليها مركبات منتهية', 'Has expired vehicles'), tone: 'red', test: (x: any) => (x.expired || 0) > 0 },
         { key: 'one', label: t('مركبة واحدة', 'Single vehicle'), tone: 'slate', test: (x: any) => (x.vehicles || 0) === 1 },
       ];

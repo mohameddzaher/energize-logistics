@@ -41,7 +41,7 @@ export default function FilePicker({ files, onChange, max = 10, label }: {
     setBusy(true);
     const next: PickedFile[] = [];
     for (const f of Array.from(list).slice(0, room)) {
-      if (f.size > MAX_BYTES) { notify(t(`«${f.name}» أكبر من ٢٠ ميغا`, `“${f.name}” is larger than 20MB`), 'error'); continue; }
+      if (f.size > MAX_BYTES) { notify(t(`«${f.name}» أكبر من 20 ميغا`, `“${f.name}” is larger than 20MB`), 'error'); continue; }
       // eslint-disable-next-line no-await-in-loop
       const dataUrl = await new Promise<string>((res, rej) => {
         const r = new FileReader();

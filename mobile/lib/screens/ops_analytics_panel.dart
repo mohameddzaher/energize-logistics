@@ -356,11 +356,11 @@ class _OpsAnalyticsPanelState extends State<OpsAnalyticsPanel> {
               ], Icons.how_to_reg_outlined),
             ])),
         // ⑦ العملاء والموردون
-        _panel(tr('أعلى ١٠ عملاء', 'Top 10 clients'), hint: tr('${clients['count'] ?? 0} عميلًا نشطًا · النسبة من رحلات العملاء', '${clients['count'] ?? 0} active · share of client trips'),
+        _panel(tr('أعلى 10 عملاء', 'Top 10 clients'), hint: tr('${clients['count'] ?? 0} عميلًا نشطًا · النسبة من رحلات العملاء', '${clients['count'] ?? 0} active · share of client trips'),
             child: Column(children: [
               for (final (i, c) in List.from(clients['top'] ?? const []).indexed) _rank(i, '${c['name']}', _nf(c['achieved']), _num(c['tripShare']), _navy, extra: _short(c['sell'])),
             ])),
-        _panel(tr('أعلى ١٠ موردين', 'Top 10 vendors'), hint: tr('${vendors['count'] ?? 0} موردًا · النسبة من رحلات الموردين', '${vendors['count'] ?? 0} vendors · share of vendor trips'),
+        _panel(tr('أعلى 10 موردين', 'Top 10 vendors'), hint: tr('${vendors['count'] ?? 0} موردًا · النسبة من رحلات الموردين', '${vendors['count'] ?? 0} vendors · share of vendor trips'),
             child: Column(children: [
               for (final (i, v) in List.from(vendors['top'] ?? const []).indexed) _rank(i, '${v['name']}', _nf(v['achieved']), _num(v['tripShare']), T.violet, extra: _short(v['buy'])),
             ])),

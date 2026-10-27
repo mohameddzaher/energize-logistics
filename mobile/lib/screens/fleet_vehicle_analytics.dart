@@ -49,7 +49,7 @@ String _fmtD(dynamic v) {
 const _presets = [
   ('today', 'اليوم', 'Today'),
   ('yesterday', 'أمس', 'Yesterday'),
-  ('last_7', 'آخر ٧ أيام', 'Last 7 days'),
+  ('last_7', 'آخر 7 أيام', 'Last 7 days'),
   ('this_month', 'هذا الشهر', 'This month'),
   ('last_month', 'الشهر الماضي', 'Last month'),
   ('all', 'كل الفترات', 'All time'),
@@ -298,7 +298,7 @@ class _FleetVehicleAnalyticsScreenState extends State<FleetVehicleAnalyticsScree
         ],
 
         if (trend.isNotEmpty) ...[
-          _section(tr('أداء السيارة خلال آخر ١٢ شهرًا', 'Last 12 months')),
+          _section(tr('أداء السيارة خلال آخر 12 شهرًا', 'Last 12 months')),
           AppCard(child: _trendBars(trend)),
           const SizedBox(height: 14),
         ],

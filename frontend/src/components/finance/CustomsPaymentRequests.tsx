@@ -364,7 +364,7 @@ export default function CustomsPaymentRequests({ onOpen }: { onOpen: (clearanceI
                       const list = Array.from(e.target.files || []);
                       const out: { dataUrl: string; fileName: string }[] = [];
                       for (const f of list) {
-                        if (f.size > MAX_UPLOAD) { notify(ar ? `${f.name}: أكبر من ٢٠ ميجابايت` : `${f.name}: over 20MB`, 'error'); continue; }
+                        if (f.size > MAX_UPLOAD) { notify(ar ? `${f.name}: أكبر من 20 ميجابايت` : `${f.name}: over 20MB`, 'error'); continue; }
                         // eslint-disable-next-line no-await-in-loop
                         const dataUrl: string = await new Promise((res, rej) => {
                           const r = new FileReader();

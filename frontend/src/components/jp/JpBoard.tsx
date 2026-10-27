@@ -320,7 +320,7 @@ function TaskCard({ task, now, ar, busy, onDone, onReopen, onEdit, onDelete, onA
                   {comments.map((c) => (
                     <div key={c._id} className="text-[12.5px]">
                       <span className="font-semibold text-slate-800">{c.byName}</span>
-                      <span className="mx-1.5 text-[11px] text-slate-400">{new Date(c.at).toLocaleString(ar ? 'ar-EG' : 'en-GB', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}</span>
+                      <span className="mx-1.5 text-[11px] text-slate-400">{new Date(c.at).toLocaleString(ar ? 'ar-EG-u-nu-latn' : 'en-GB', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}</span>
                       <p className="text-slate-700 whitespace-pre-wrap">{c.text}</p>
                     </div>
                   ))}
@@ -707,7 +707,7 @@ function JpBoardInner({ scope, section }: { scope: JpScope; section?: string }) 
               {current.description && <p className="mt-1 text-[13px] text-slate-600 whitespace-pre-wrap">{current.description}</p>}
               <p className="mt-1.5 text-[12px] text-slate-500">
                 {current.createdByName ? t(`أنشأه ${current.createdByName}`, `Created by ${current.createdByName}`) : ''}
-                {current.endDate ? ` · ${t('ينتهي في', 'Ends')} ${new Date(current.endDate).toLocaleDateString(ar ? 'ar-EG' : 'en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}` : ''}
+                {current.endDate ? ` · ${t('ينتهي في', 'Ends')} ${new Date(current.endDate).toLocaleDateString(ar ? 'ar-EG-u-nu-latn' : 'en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}` : ''}
               </p>
             </div>
             {me.canManage && (

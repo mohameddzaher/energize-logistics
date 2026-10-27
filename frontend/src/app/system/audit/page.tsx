@@ -696,8 +696,8 @@ export default function AuditPage() {
                   {([
                     [ar ? 'اليوم' : 'Today', () => setQuickDay(0)],
                     [ar ? 'أمس' : 'Yesterday', () => setQuickDay(1)],
-                    [ar ? 'آخر ٧ أيام' : 'Last 7 days', () => setQuickRange(7)],
-                    [ar ? 'آخر ٣٠ يومًا' : 'Last 30 days', () => setQuickRange(30)],
+                    [ar ? 'آخر 7 أيام' : 'Last 7 days', () => setQuickRange(7)],
+                    [ar ? 'آخر 30 يومًا' : 'Last 30 days', () => setQuickRange(30)],
                     [ar ? 'كل الوقت' : 'All time', () => { setDay(''); setDateFrom(''); setDateTo(''); }],
                   ] as [string, () => void][]).map(([lbl, fn]) => (
                     <button key={lbl} type="button" onClick={fn}

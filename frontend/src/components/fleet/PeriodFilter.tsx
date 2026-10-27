@@ -21,12 +21,12 @@ type PresetDef = { key: string; ar: string; en: string; future?: boolean };
 export const PERIOD_PRESETS: PresetDef[] = [
   { key: 'today', ar: 'اليوم', en: 'Today' },
   { key: 'yesterday', ar: 'أمس', en: 'Yesterday' },
-  { key: 'last_7', ar: 'آخر ٧ أيام', en: 'Last 7 days' },
+  { key: 'last_7', ar: 'آخر 7 أيام', en: 'Last 7 days' },
   { key: 'this_month', ar: 'هذا الشهر', en: 'This month' },
   { key: 'last_month', ar: 'الشهر الماضي', en: 'Last month' },
   { key: 'tomorrow', ar: 'غدًا', en: 'Tomorrow', future: true },
-  { key: 'next_7', ar: 'الأيام ٧ القادمة', en: 'Next 7 days', future: true },
-  { key: 'next_30', ar: 'الـ٣٠ يومًا القادمة', en: 'Next 30 days', future: true },
+  { key: 'next_7', ar: 'الأيام 7 القادمة', en: 'Next 7 days', future: true },
+  { key: 'next_30', ar: 'الـ30 يومًا القادمة', en: 'Next 30 days', future: true },
   { key: 'all', ar: 'كل الفترات', en: 'All time' },
 ];
 
@@ -131,7 +131,7 @@ export function PeriodBanner({ period, lang = 'ar', count }: {
 }) {
   const ar = lang === 'ar';
   if (!period?.from) return null;
-  const d = (v?: string) => (v ? new Date(v).toLocaleDateString(ar ? 'ar-EG' : 'en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '');
+  const d = (v?: string) => (v ? new Date(v).toLocaleDateString(ar ? 'ar-EG-u-nu-latn' : 'en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '');
   // نهاية المدى حصرية في الخادم، فيُطرح منها يومٌ عند العرض وإلا بدا المدى
   // أطول بيومٍ ممّا يُحسب به فعلًا.
   const toShown = period.to ? new Date(new Date(period.to).getTime() - 1) : null;

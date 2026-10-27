@@ -164,8 +164,8 @@ Map<String, dynamic> _m(dynamic v) => v is Map ? Map<String, dynamic>.from(v) : 
 List<Map<String, dynamic>> _maps(dynamic v) =>
     v is List ? [for (final e in v) if (e is Map) Map<String, dynamic>.from(e)] : [];
 
-String _arDigits(int n) =>
-    Lang.instance.ar ? '$n'.split('').map((d) => '٠١٢٣٤٥٦٧٨٩'[int.parse(d)]).join() : '$n';
+// الأرقامُ لاتينيّةٌ دائمًا، عربيّةً كانت الواجهةُ أو إنجليزيّة (صاحبُ الشركة، ٢٠٢٦/١٠/٢٧).
+String _arDigits(int n) => '$n';
 
 class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
   Map<String, dynamic>? _c;

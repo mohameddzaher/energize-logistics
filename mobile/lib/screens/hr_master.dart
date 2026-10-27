@@ -325,7 +325,14 @@ class _HrMasterGroupScreenState extends State<HrMasterGroupScreen> {
       ExportCol('الاسم', 'Name', (r) => r['name'] ?? ''),
       ExportCol('رقم الهوية', 'ID number', (r) => r['iqamaNumber'] ?? ''),
       // السجلُّ التجاريُّ الذي عليه الموظّف — كالويب (٢٠٢٦/١٠/٢٧).
-      ExportCol('السجل', 'Commercial register', (r) { final v = '${r['registerNumber'] ?? ''}'.trim(); return v.isNotEmpty ? v : tr('بلا سجل', 'none'); }),
+      // بقاعدة الارتباط نفسِها (backend utils/hrEngagement) — كالويب.
+      ExportCol('السجل', 'Commercial register', (r) {
+        final v = '${r['registerNumber'] ?? ''}'.trim();
+        if (v.isEmpty) return tr('غير محدّد', 'Not specified');
+        if (RegExp(r'فري\s*لانس|فريلانس|freelanc', caseSensitive: false).hasMatch(v)) return tr('فريلانسر', 'Freelancer');
+        if (RegExp(r'تدريب|متدرب|trainee', caseSensitive: false).hasMatch(v)) return tr('متدرّب', 'Trainee');
+        return v;
+      }),
       ExportCol('القسم', 'Department', (r) => r['department'] ?? ''),
       if (_showWhyInactive) ...[
         ExportCol('حالة التوظيف', 'Employment', (r) { final m = _empMeta['${r['employmentStatus']}']; return m == null ? '${r['employmentStatus'] ?? '—'}' : tr(m.$1, m.$2); }),

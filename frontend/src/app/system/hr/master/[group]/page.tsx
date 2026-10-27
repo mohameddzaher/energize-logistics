@@ -215,9 +215,16 @@ function GroupInner() {
     { header: t('الاسم', 'Name'), key: 'name', width: 30 },
     { header: t('رقم الهوية', 'ID number'), key: 'iqamaNumber', width: 16 },
     // السجلُّ التجاريُّ الذي عليه الموظّف — «جنب اسمه ورقم إقامته» (٢٠٢٦/١٠/٢٧).
-    // والفارغُ يُقال: مَن ليس على سجلٍّ منّا (فريلانسر) يُقرأ كذلك لا خانةً بيضاء.
+    // بقاعدة الارتباط نفسِها (backend utils/hrEngagement): رقمُ سجلٍّ منّا يُكتب رقمُه،
+    // و«فري لانسر» بأيّ كتابةٍ «فريلانسر»، و«تدريب» «متدرّب»، والفارغُ «غير محدّد».
     { header: t('السجل', 'Commercial register'), key: 'registerNumber', width: 16,
-      transform: (v: any) => String(v || '').trim() || (ar ? 'بلا سجل' : 'none') },
+      transform: (v: any) => {
+        const r = String(v || '').trim();
+        if (!r) return ar ? 'غير محدّد' : 'Not specified';
+        if (/فري\s*لانس|فريلانس|freelanc/i.test(r)) return ar ? 'فريلانسر' : 'Freelancer';
+        if (/تدريب|متدرب|trainee/i.test(r)) return ar ? 'متدرّب' : 'Trainee';
+        return r;
+      } },
     { header: t('القسم', 'Department'), key: 'department', width: 18 },
     // والملفُّ يحمل ما تحمله الشاشة: من صدّر قائمةَ «ليس على رأس العمل» ليقرأها
     // في اجتماعٍ لا يجدها بلا سببها.

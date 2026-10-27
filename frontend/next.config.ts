@@ -1,7 +1,29 @@
 import path from 'node:path';
+import { execSync } from 'node:child_process';
+
+// ── رقمُ النسخة: يعرفه المتصفّحُ عن نفسه، ويعرفه الخادمُ عن الحاليّة ─────────
+// تبويبةٌ مفتوحةٌ قبل النشر تبقى على الشيفرة القديمة (ملفّاتُها تبقى على
+// الخادم)، فإصلاحٌ نُشر لا يصل مَن لم يُحدِّث صفحته — «بيقولي لسه». فيُكتب
+// الرقمُ في الحزمة نفسِها (NEXT_PUBLIC_BUILD_ID) وفي `.next/BUILD_ID`، ويقارن
+// المتصفّحُ رقمَه بما يقوله `/app-version` — راجع lib/appVersion.
+// ورقمٌ واحدٌ للبناء كلِّه: next.config يُقرأ في كلّ عاملٍ من عمّال البناء، فوقتٌ
+// يُحسب في كلٍّ منها يعطي الحزمةَ رقمًا والملفَّ رقمًا آخر — فتظنّ كلُّ تبويبةٍ
+// نفسَها قديمة. فالرقمُ هو الـcommit (النشرُ يرفض شجرةً غيرَ نظيفة)، ويُمرَّر
+// للعمّال في البيئة.
+function pickBuildId() {
+  if (process.env.BUILD_ID_OVERRIDE) return process.env.BUILD_ID_OVERRIDE;
+  let id = '';
+  try { id = execSync('git rev-parse --short=12 HEAD', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim(); } catch { /* لا git */ }
+  id = id || `b${Date.now().toString(36)}`;
+  process.env.BUILD_ID_OVERRIDE = id;
+  return id;
+}
+const BUILD_ID = pickBuildId();
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  generateBuildId: async () => BUILD_ID,
+  env: { NEXT_PUBLIC_BUILD_ID: BUILD_ID },
   // Pin the workspace root to THIS folder. A stray package-lock.json in the home
   // directory made Next infer the wrong root, which corrupts the dev webpack
   // chunk graph (stale chunks referencing modules that no longer exist).

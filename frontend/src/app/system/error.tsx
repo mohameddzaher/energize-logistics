@@ -23,6 +23,7 @@
  */
 import { useEffect, useState } from 'react';
 import { AlertTriangle, RefreshCw, ArrowRight } from 'lucide-react';
+import { isOutdated, reloadOnce } from '@/lib/appVersion';
 
 const RELOAD_KEY = 'chunk-reload-at';
 
@@ -42,6 +43,16 @@ export default function SystemError({ error, reset }: { error: Error & { digest?
     if (Date.now() - last < 60000) return;
     try { sessionStorage.setItem(RELOAD_KEY, String(Date.now())); } catch { /* لا يضرّ */ }
     window.location.reload();
+  }, [stale]);
+
+  // ── والعطبُ في نسخةٍ قديمة يُصلَح بالتحديث ─────────────────────────────
+  // تبويبةٌ فُتحت قبل نشر الإصلاح تبقى تشغّل الشيفرةَ القديمة (ملفّاتُها لم
+  // تُحذف فلا ChunkLoadError). فإن كان المنشورُ أحدثَ حُدِّثت الصفحةُ مرّةً —
+  // ويصل الإصلاحُ بلا أن يُطلب من أحدٍ شيء (٢٠٢٦/١٠/٢٧).
+  const [updating, setUpdating] = useState(false);
+  useEffect(() => {
+    if (stale) return;
+    isOutdated().then((o) => { if (o && reloadOnce()) setUpdating(true); });
   }, [stale]);
 
   // ويُبلَّغ الخادمُ ليُعرَف ما يقع فعلًا عند الناس — بلا انتظارٍ ولا تعطيل.
@@ -65,7 +76,7 @@ export default function SystemError({ error, reset }: { error: Error & { digest?
     } catch { /* التبليغُ لا يُسقط الشاشة */ }
   }, [error, stale]);
 
-  if (stale) {
+  if (stale || updating) {
     return (
       <div className="flex flex-col items-center justify-center py-24 text-center" dir="rtl">
         <RefreshCw className="w-8 h-8 text-[#f37121] animate-spin" />

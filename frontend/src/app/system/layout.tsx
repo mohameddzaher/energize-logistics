@@ -1,4 +1,5 @@
 'use client';
+import NewVersionWatcher from '@/components/system/NewVersionWatcher';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
@@ -1031,6 +1032,8 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     <DialogProvider>
     {/* صيغةُ خانات التاريخ واحدةٌ عند كلّ الناس — راجع رأس الملفّ. */}
     <DateFieldLocale />
+    {/* نسخةٌ جديدةٌ نُشرت والتبويبةُ مفتوحة — تُحدَّث (راجع lib/appVersion). */}
+    <NewVersionWatcher ar={lang === 'ar'} />
     <div className="min-h-screen bg-slate-100 flex" dir={isRTL ? 'rtl' : 'ltr'}>
       {/* شريطٌ رفيعٌ يقول «ضغطتُك وصلت» حتى تُرسَم الصفحة */}
       {pendingHref && (

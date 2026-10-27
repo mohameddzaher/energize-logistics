@@ -324,6 +324,8 @@ class _HrMasterGroupScreenState extends State<HrMasterGroupScreen> {
       ExportCol('الرقم الوظيفي', 'Employee no.', (r) => r['employeeNumber'] ?? ''),
       ExportCol('الاسم', 'Name', (r) => r['name'] ?? ''),
       ExportCol('رقم الهوية', 'ID number', (r) => r['iqamaNumber'] ?? ''),
+      // السجلُّ التجاريُّ الذي عليه الموظّف — كالويب (٢٠٢٦/١٠/٢٧).
+      ExportCol('السجل', 'Commercial register', (r) { final v = '${r['registerNumber'] ?? ''}'.trim(); return v.isNotEmpty ? v : tr('بلا سجل', 'none'); }),
       ExportCol('القسم', 'Department', (r) => r['department'] ?? ''),
       if (_showWhyInactive) ...[
         ExportCol('حالة التوظيف', 'Employment', (r) { final m = _empMeta['${r['employmentStatus']}']; return m == null ? '${r['employmentStatus'] ?? '—'}' : tr(m.$1, m.$2); }),

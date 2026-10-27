@@ -214,6 +214,10 @@ function GroupInner() {
     { header: t('الرقم الوظيفي', 'Employee no.'), key: 'employeeNumber', width: 14 },
     { header: t('الاسم', 'Name'), key: 'name', width: 30 },
     { header: t('رقم الهوية', 'ID number'), key: 'iqamaNumber', width: 16 },
+    // السجلُّ التجاريُّ الذي عليه الموظّف — «جنب اسمه ورقم إقامته» (٢٠٢٦/١٠/٢٧).
+    // والفارغُ يُقال: مَن ليس على سجلٍّ منّا (فريلانسر) يُقرأ كذلك لا خانةً بيضاء.
+    { header: t('السجل', 'Commercial register'), key: 'registerNumber', width: 16,
+      transform: (v: any) => String(v || '').trim() || (ar ? 'بلا سجل' : 'none') },
     { header: t('القسم', 'Department'), key: 'department', width: 18 },
     // والملفُّ يحمل ما تحمله الشاشة: من صدّر قائمةَ «ليس على رأس العمل» ليقرأها
     // في اجتماعٍ لا يجدها بلا سببها.

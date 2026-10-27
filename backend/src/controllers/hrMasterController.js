@@ -872,7 +872,7 @@ exports.records = async (req, res) => {
     // يعرض الموظف وبجانبه رقم هويته، وهو ما يبحث الناس به.
     const employees = await findEmployees(req.params.group === 'contract' ? { ...req.query, contractScope: '1' } : req.query,
       [...new Set(['employeeNumber', 'arabicName', 'firstName', 'lastName', 'iqamaNumber',
-        'department', 'branchName', 'project', 'employmentStatus', 'workStatusText', 'fieldStatus',
+        'department', 'branchName', 'project', 'employmentStatus', 'workStatusText', 'fieldStatus', 'registerNumber',
         ...DATE_FILTERABLE, ...storedFields(g).map((f) => f.key)])].join(' '));
 
     const field = req.query.field || '';
@@ -906,6 +906,8 @@ exports.records = async (req, res) => {
         employeeNumber: e.employeeNumber, name: e.arabicName || `${e.firstName || ''} ${e.lastName || ''}`.trim(),
         iqamaNumber: H.valueOf(e, 'iqamaNumber') || '',
         department: e.department, branchName: e.branchName, project: e.project,
+        // السجلُّ التجاريُّ الذي هو عليه — يُصدَّر بجانب اسمه وهويّته (٢٠٢٦/١٠/٢٧).
+        registerNumber: e.registerNumber || '',
         workStatusText: e.workStatusText, employmentStatus: e.employmentStatus,
         values, statuses,
         state: doc?.state || null, daysRemaining: doc?.days ?? null,

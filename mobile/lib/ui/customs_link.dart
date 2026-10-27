@@ -410,6 +410,7 @@ class _CustomsLinkedReportsState extends State<CustomsLinkedReports> {
   Widget build(BuildContext context) {
     final reports = List<Map<String, dynamic>>.from(_d?['reports'] ?? const []);
     final pending = List<Map<String, dynamic>>.from(_d?['pendingRefs'] ?? const []);
+    final shipments = List<Map<String, dynamic>>.from(_d?['shipmentOrders'] ?? const []);
     final s = (_d?['summary'] as Map?) ?? const {};
     return AppCard(
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -430,7 +431,7 @@ class _CustomsLinkedReportsState extends State<CustomsLinkedReports> {
         const SizedBox(height: 6),
         if (_error != null) Text(_error!, style: const TextStyle(fontSize: 12, color: T.danger))
         else if (_d == null) const LinearProgressIndicator(minHeight: 2)
-        else if (reports.isEmpty && pending.isEmpty)
+        else if (reports.isEmpty && pending.isEmpty && shipments.isEmpty)
           Text(tr('لا كشوفَ تشغيلٍ مرتبطة. يُربط الكشفُ حين يُكتب رقمُه في خانة نقل الحاوية بسيّارة الشركة، أو حين يكون «رقم السند» فيه رقمَ البوليصة.',
               'No linked reports yet.'), style: const TextStyle(fontSize: 12, color: T.inkSoft)),
         for (final r in reports)
@@ -485,6 +486,32 @@ class _CustomsLinkedReportsState extends State<CustomsLinkedReports> {
               style: const TextStyle(fontSize: 11.5, color: T.inkSoft),
             ),
           ),
+        // ── طلباتُ الشحن المربوطة (٢٠٢٦/١٠/٢٦) — بالبوليصة أو الحاوية أو رقمِها في خانة النقل.
+        if (shipments.isNotEmpty) ...[
+          const Divider(height: 20),
+          Text(tr('طلبات الشحن المرتبطة (${shipments.length})', 'Linked shipment orders (${shipments.length})'),
+              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
+          for (final o in shipments)
+            Container(
+              margin: const EdgeInsets.only(top: 6),
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(color: T.canvas, borderRadius: BorderRadius.circular(10)),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('${o['ref'] ?? '—'} · ${o['customerName'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
+                Text([
+                  '${o['fromCity'] ?? ''} ← ${o['toCity'] ?? ''}',
+                  '${o['driverName'] ?? ''}',
+                  '${o['vehiclePlate'] ?? ''}',
+                ].where((x) => x.trim().isNotEmpty && x.trim() != '←').join(' · '), style: const TextStyle(fontSize: 11.5, color: T.inkSoft)),
+                if ('${o['blNumber'] ?? ''}${o['containerNumber'] ?? ''}'.isNotEmpty)
+                  Text([o['blNumber'], o['containerNumber']].where((x) => '${x ?? ''}'.isNotEmpty).join(' · '),
+                      style: const TextStyle(fontSize: 11, fontFamily: 'monospace', color: T.ink)),
+                Text(o['via'] == 'move' ? tr('رقمها في خانة النقل', 'Its number in a transport entry')
+                    : o['via'] == 'bl' ? tr('بالبوليصة', 'By B/L') : o['via'] == 'container' ? tr('بالحاوية', 'By container') : '${o['via'] ?? ''}',
+                    style: const TextStyle(fontSize: 10.5, color: T.inkFaint)),
+              ]),
+            ),
+        ],
       ]),
     );
   }

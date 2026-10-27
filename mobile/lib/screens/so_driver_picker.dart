@@ -10,6 +10,12 @@ import '../ui/theme.dart';
 /// بلا كتابة: سوّاقُ الشاحنة/المورّد المختار. ومع الكتابة: بحثٌ عند الخادم في
 /// السوّاق كلِّهم بالاسم والجوال (كيفما كُتب) والإقامة. و«سائق جديد» يسجّله فورًا
 /// — ومن كان مسجَّلًا بنفس الجوال أو الإقامة يُختار بدل تكراره (`reuse`).
+/// «0» و«-» ليسا قيمة — السجلُّ المستورَد يحملهما حيث لا شيء (٢٠٢٦/١٠/٢٦).
+String soRealVal(dynamic v) {
+  final t = '${v ?? ''}'.trim();
+  return RegExp(r'^(0+|-+|null|nan|n/a)$', caseSensitive: false).hasMatch(t) ? '' : t;
+}
+
 Future<Map<String, dynamic>?> pickShipmentDriver(
   BuildContext context, {
   required List<Map<String, dynamic>> local,
@@ -72,7 +78,9 @@ class _DriverSheetState extends State<_DriverSheet> {
     } catch (_) { if (mounted && mine == _seq) setState(() => _loading = false); }
   }
 
-  Future<void> _save() async {
+  /// «موجودٌ بالفعل» تنبيهٌ لا اختيارٌ صامت: نختاره؟ والاسمُ وحدَه قد يكون شخصًا
+  /// آخر فيُسمَح بإضافته؛ أمّا الجوالُ والإقامةُ فرجلٌ واحد.
+  Future<void> _save({bool force = false}) async {
     final name = _name.text.trim();
     if (name.isEmpty) return;
     setState(() => _saving = true);
@@ -82,14 +90,33 @@ class _DriverSheetState extends State<_DriverSheet> {
         'phone': _phone.text.trim().isEmpty ? '' : saPhone(_phone.text),
         'residenceNumber': _iqama.text.trim(),
         'reuse': true,
+        if (force) 'force': true,
         if ((widget.supplierId ?? '').isNotEmpty) 'supplier': widget.supplierId,
         if ((widget.vehicleId ?? '').isNotEmpty) 'vehicle': widget.vehicleId,
       });
       final d = Map<String, dynamic>.from((r is Map ? r['driver'] : null) ?? {});
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(r is Map && r['existed'] == true
-          ? tr('السائق مسجَّل من قبل «${d['name']}» — اخترناه', 'Already registered as “${d['name']}” — selected')
-          : tr('سُجِّل السائق «${d['name']}»', 'Driver “${d['name']}” registered'))));
+      if (r is Map && r['existed'] == true) {
+        setState(() => _saving = false);
+        final by = r['matchedBy'] == 'phone' ? tr('بنفس رقم الجوال', 'with the same phone')
+            : r['matchedBy'] == 'iqama' ? tr('بنفس رقم الإقامة', 'with the same iqama') : tr('بنفس الاسم', 'with the same name');
+        final info = [soRealVal(d['phone']), soRealVal(d['residenceNumber'])].where((e) => e.isNotEmpty).join(' · ');
+        final byName = r['matchedBy'] == 'name';
+        final pick = await showDialog<bool>(context: context, builder: (c) => AlertDialog(
+          title: Text(tr('هذا السائق موجود بالفعل', 'This driver already exists')),
+          content: Text(tr('«${d['name']}» مسجَّل $by${info.isNotEmpty ? ' ($info)' : ''}. نختاره بدل إضافته مرّةً ثانية؟',
+              '“${d['name']}” is registered $by${info.isNotEmpty ? ' ($info)' : ''}. Pick him instead of adding him again?')),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(c, false), child: Text(byName ? tr('شخص آخر — أضفه', 'Different person — add') : tr('رجوع', 'Back'))),
+            FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(tr('اختيار الموجود', 'Pick existing'))),
+          ],
+        ));
+        if (!mounted) return;
+        if (pick == true) { Navigator.pop(context, d); return; }
+        if (pick == false && byName) await _save(force: true);
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('سُجِّل السائق «${d['name']}»', 'Driver “${d['name']}” registered'))));
       Navigator.pop(context, d);
     } catch (e) {
       if (!mounted) return;
@@ -99,11 +126,12 @@ class _DriverSheetState extends State<_DriverSheet> {
   }
 
   String _sub(Map<String, dynamic> d) {
-    final exp = '${d['driverCardExpiry'] ?? ''}'.length >= 10 ? '${d['driverCardExpiry']}'.substring(0, 10) : '';
+    final raw = '${d['driverCardExpiry'] ?? ''}';
+    final exp = RegExp(r'^\d{4}-\d{2}-\d{2}').hasMatch(raw) ? raw.substring(0, 10) : '';
     final over = exp.isNotEmpty && (DateTime.tryParse(exp)?.isBefore(DateTime.now()) ?? false);
-    return [d['phone'], d['residenceNumber'], d['nationality'],
+    return [soRealVal(d['phone']), soRealVal(d['residenceNumber']), soRealVal(d['nationality']),
       if (exp.isNotEmpty) over ? tr('بطاقة التشغيل منتهية $exp', 'Driver card expired $exp') : tr('بطاقة التشغيل حتى $exp', 'Card valid to $exp'),
-    ].where((e) => '${e ?? ''}'.isNotEmpty).join(' · ');
+    ].where((e) => e.isNotEmpty).join(' · ');
   }
 
   @override
@@ -162,7 +190,7 @@ class _DriverSheetState extends State<_DriverSheet> {
           TextButton(onPressed: () => setState(() => _adding = false), child: Text(tr('رجوع', 'Back'))),
           const Spacer(),
           FilledButton.icon(
-            onPressed: _saving || _name.text.trim().isEmpty ? null : _save,
+            onPressed: _saving || _name.text.trim().isEmpty ? null : () => _save(),
             icon: _saving ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.check),
             label: Text(tr('حفظ السائق', 'Save driver')),
           ),

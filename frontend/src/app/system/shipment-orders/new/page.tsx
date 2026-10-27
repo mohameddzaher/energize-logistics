@@ -26,7 +26,7 @@ import {
 import { useOrderStatuses } from '@/hooks/useOrderStatuses';
 import { useLatestRequest } from '@/hooks/useLatestRequest';
 import { useSocket } from '@/hooks/useSocket';
-import DriverPicker from '@/components/shipment-orders/DriverPicker';
+import DriverPicker, { realVal } from '@/components/shipment-orders/DriverPicker';
 
 // Labels are the form's wayfinding — near-black and readable, not a whisper.
 const labelCls = 'block text-sm font-semibold text-slate-800 mb-1.5';
@@ -39,6 +39,7 @@ const SYSTEM_KEYS = new Set([
   'truckLength', 'quantity', 'driverName', 'driverPhone', 'vehicleName',
   'pickupTime', 'startTime', 'arrivalTime', 'sellPrice', 'buyPrice',
   'paymentSubtype', 'driverRentType', 'paymentMethod', 'branch', 'notes',
+  'advanceAmount', 'blNumber', 'containerNumber',
 ]);
 
 const GROUP_ICONS: Record<FormField['group'], any> = {
@@ -295,8 +296,8 @@ function CreateShipmentInner() {
     if (sup && !supplierId) setSupplierId(String(sup));
     setForm((f) => ({
       ...f,
-      driverName: f.driverName || v.defaultDriverName || '',
-      driverPhone: f.driverPhone || v.defaultDriverPhone || '',
+      driverName: f.driverName || realVal(v.defaultDriverName),
+      driverPhone: f.driverPhone || realVal(v.defaultDriverPhone),
       truckType: f.truckType || v.truckType || '',
     }));
   };
@@ -484,7 +485,7 @@ function CreateShipmentInner() {
       ['pickupTime', 'startTime', 'arrivalTime'].forEach((k) => {
         payload[k] = form[k] ? new Date(`${form[k]}T12:00:00`).toISOString() : null;
       });
-      ['quantity', 'sellPrice', 'buyPrice'].forEach((k) => {
+      ['quantity', 'sellPrice', 'buyPrice', 'advanceAmount'].forEach((k) => {
         if (payload[k] === '' || payload[k] === undefined) payload[k] = null;
         else if (payload[k] != null) payload[k] = Number(payload[k]);
       });
@@ -648,20 +649,27 @@ function CreateShipmentInner() {
   const activeGroups = groups.filter((g) => fields.some((f) => f.group === g && !FIXED_KEYS.has(f.key)));
   const missingIn = (g: FormField['group']) =>
     fields.filter((f) => f.group === g && !FIXED_KEYS.has(f.key) && missingKeys.has(f.key)).length;
+  // ── «مكتمل» = لا مطلوبَ ناقص **وكُتب فيها شيء** (٢٠٢٦/١٠/٢٦) ───────────────
+  // كانت بطاقةٌ بلا خاناتٍ مطلوبة («المدفوعات») تُعلَّم أخضرَ من أوّل فتحة —
+  // قبل أن يُختار نوعُ الدفع — فيُقرأ الأخضرُ «تمّ» وهو لم يُلمس.
+  const hasVal = (v: any) => v != null && String(v).trim() !== '';
+  const filledIn = (g: FormField['group']) =>
+    fields.some((f) => f.group === g && !FIXED_KEYS.has(f.key) && hasVal(form[f.key]));
 
   const SEC = {
     customer: 'sec-customer', truck: 'sec-truck', status: 'sec-status',
     group: (g: string) => `sec-${g}`,
   };
   const steps = [
-    { id: SEC.customer, no: 1, title: ar ? 'العميل والمورّد' : 'Customer & supplier', missing: missingKeys.has('customer') ? 1 : 0 },
-    { id: SEC.truck, no: 2, title: ar ? 'مالك السيارة' : 'Truck owner', missing: 0 },
+    { id: SEC.customer, no: 1, title: ar ? 'العميل والمورّد' : 'Customer & supplier', missing: missingKeys.has('customer') ? 1 : 0, filled: !!customer || !!supplierId },
+    { id: SEC.truck, no: 2, title: ar ? 'مالك السيارة' : 'Truck owner', missing: 0, filled: !!vehicleId || hasVal(newPlate) || hasVal(form.driverName) },
     ...activeGroups.map((g, i) => ({
       id: SEC.group(g), no: i + 3,
       title: ar ? GROUP_LABELS[g].ar : GROUP_LABELS[g].en,
       missing: missingIn(g),
+      filled: filledIn(g),
     })),
-    { id: SEC.status, no: activeGroups.length + 3, title: ar ? 'الحالة والملاحظات' : 'Status & notes', missing: 0 },
+    { id: SEC.status, no: activeGroups.length + 3, title: ar ? 'الحالة والملاحظات' : 'Status & notes', missing: 0, filled: hasVal(form.status || 'requesting') },
   ];
   const jumpTo = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
@@ -684,10 +692,10 @@ function CreateShipmentInner() {
   // it is still required, and into a red count when something is. The person
   // filling a six-card form should never have to scroll to find out.
   const sectionCard = (icon: any, no: number, title: string, children: React.ReactNode,
-    opts?: { id?: string; missing?: number }) => {
+    opts?: { id?: string; missing?: number; filled?: boolean }) => {
     const Icon = icon;
     const missing = opts?.missing || 0;
-    const done = missing === 0;
+    const done = missing === 0 && opts?.filled !== false;
     return (
       // NO overflow-hidden here: SearchableSelect renders its panel absolutely
       // inside the card, and clipping it is exactly the "الدروب ليست مستخبية"
@@ -748,7 +756,7 @@ function CreateShipmentInner() {
       <div className="sticky top-0 z-20 -mx-1 px-1 py-2 bg-slate-50/90 backdrop-blur border-b border-slate-200/70">
         <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
           {steps.map((st) => {
-            const done = st.missing === 0;
+            const done = st.missing === 0 && st.filled;
             return (
               <button key={st.id} type="button" onClick={() => jumpTo(st.id)}
                 className={`shrink-0 flex items-center gap-2 ps-2 pe-3 py-1.5 rounded-full border text-xs font-semibold transition-all ${
@@ -821,24 +829,8 @@ function CreateShipmentInner() {
                   : 'Registered on the customers page at once — it does not wait for the shipment — and the route + price land on their profile on save.'}
             </p>
           )}
-          {customer && (customer.routes || []).length > 0 && (
-            <div>
-              <p className="text-xs font-semibold text-slate-500 mb-1.5">{ar ? 'مساراته المعتمدة — بضغطة واحدة يُملأ المسار والسعر:' : 'Known routes — one tap fills route and price:'}</p>
-              <div className="flex flex-wrap gap-2">
-                {/* الأحدثُ أوّلًا: آخرُ ما عُمل به هو أوّلُ ما يُبحَث عنه. */}
-                {[...customer.routes]
-                  .sort((a: any, b: any) => (new Date(b.at || 0).getTime() - new Date(a.at || 0).getTime()))
-                  .map((r, i) => (
-                    <button key={i} type="button"
-                      onClick={() => setForm((f) => ({ ...f, fromCity: r.fromCity, toCity: r.toCity, sellPrice: r.price ?? f.sellPrice }))}
-                      title={(r as any).at ? `${ar ? 'آخر سعر في' : 'last priced'} ${new Date((r as any).at).toLocaleDateString('en-GB')}` : undefined}
-                      className="px-3 py-1.5 rounded-full bg-slate-100 hover:bg-[#f37121]/10 hover:text-[#f37121] text-sm text-slate-700 font-medium transition-colors">
-                      {r.fromCity} ← {r.toCity} · <span className="font-bold">{r.price ?? '—'}</span>
-                    </button>
-                  ))}
-              </div>
-            </div>
-          )}
+          {/* «مساراته المعتمدة» رُفعت (٢٠٢٦/١٠/٢٦): الوجهاتُ تُكتب من خانتيهما
+              كما في كلّ شحنة — والأزرارُ فوقها كانت تكرارًا لا يُحتاج. */}
 
           {/* ── والمورّدُ تحتَه بنفس الشكل ────────────────────────────────────
               نفسُ السؤال ونفسُ الزرّ: قائمةٌ تُبحَث عند الخادم، و«مورّد جديد»
@@ -912,7 +904,7 @@ function CreateShipmentInner() {
             )}
           </div>
         </div>
-      ), { id: SEC.customer, missing: missingKeys.has('customer') ? 1 : 0 })}
+      ), { id: SEC.customer, missing: missingKeys.has('customer') ? 1 : 0, filled: !!customer || !!supplierId })}
 
       {/* ── ٢ ── مالك السيارة: الشاحنةُ ومن يملكها وسائقُها ────────────────
           المورّدُ طرفٌ في الصفقة وقد صار جوارَ العميل. وهنا الشاحنةُ نفسُها:
@@ -1016,7 +1008,7 @@ function CreateShipmentInner() {
             </div>
           </div>
         </div>
-      ), { id: SEC.truck })}
+      ), { id: SEC.truck, filled: !!vehicleId || hasVal(newPlate) || hasVal(form.driverName) })}
       </div>
 
       {/* 3..6 ── the config-driven groups */}
@@ -1042,8 +1034,37 @@ function CreateShipmentInner() {
                       className={inputCls} />
                   </div>
                 )}
+                {/* ── البوليصةُ والحاوية — مربوطتان بالتخليص (٢٠٢٦/١٠/٢٦) ────────
+                    اختياريّتان. تُكتبان هنا فتُربط الشحنةُ بمعاملة التخليص التي
+                    تحملهما (وكشفُ تشغيلها معها)، وتُكتب الشحنةُ في المعاملة فتُملآن
+                    هنا وحدَهما — راجع services/customsOpsLink. */}
+                {g === 'pickup_delivery' && (
+                  <div className="col-span-full grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className={labelCls}>{ar ? 'رقم البوليصة' : 'B/L number'} <span className="text-slate-400 font-normal text-xs">{ar ? '(اختياري)' : '(optional)'}</span></label>
+                      <input value={form.blNumber || ''} onChange={(e) => set('blNumber', e.target.value)} dir="ltr"
+                        placeholder="COSU6444523620" className={`${inputCls} font-mono`} />
+                    </div>
+                    <div>
+                      <label className={labelCls}>{ar ? 'رقم الحاوية' : 'Container number'} <span className="text-slate-400 font-normal text-xs">{ar ? '(اختياري)' : '(optional)'}</span></label>
+                      <input value={form.containerNumber || ''} onChange={(e) => set('containerNumber', e.target.value)} dir="ltr"
+                        placeholder="MRKU7016023" className={`${inputCls} font-mono`} />
+                    </div>
+                    {form.customsLink?.clearance ? (
+                      <p className="col-span-full text-[12.5px] text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
+                        {ar ? 'مربوطة بمعاملة التخليص ' : 'Linked to customs clearance '}
+                        <a href={`/system/customs/${form.customsLink.clearance}`} target="_blank" rel="noreferrer" className="font-bold underline">{form.customsLink.refNumber || '—'}</a>
+                        {form.customsLink.customerName ? ` · ${form.customsLink.customerName}` : ''}
+                      </p>
+                    ) : (
+                      <p className="col-span-full text-[11.5px] text-slate-500">
+                        {ar ? 'إن طابقت معاملةَ تخليص رُبطت بها الشحنةُ عند الحفظ، وظهرت في المعاملة.' : 'If they match a customs clearance, the shipment is linked to it on save and shows there.'}
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
-            ), { id: SEC.group(g), missing: missingIn(g) })}
+            ), { id: SEC.group(g), missing: missingIn(g), filled: filledIn(g) })}
           </div>
         );
       })}
@@ -1191,8 +1212,8 @@ function CreateShipmentInner() {
                       const veh = x.vehicles.find((y) => y._id === v);
                       setExtra(x.uid, {
                         vehicleId: v, vehicleLabel: veh?.plate || '', newPlate: '',
-                        driverName: x.driverName || veh?.defaultDriverName || '',
-                        driverPhone: x.driverPhone || veh?.defaultDriverPhone || '',
+                        driverName: x.driverName || realVal(veh?.defaultDriverName),
+                        driverPhone: x.driverPhone || realVal(veh?.defaultDriverPhone),
                       });
                     }}
                     placeholder={x.supplierId ? (ar ? 'اختر شاحنته…' : 'Pick his truck…') : (ar ? 'اختر المورّد أوّلًا' : 'Pick a supplier first')}

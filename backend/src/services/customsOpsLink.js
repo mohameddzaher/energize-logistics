@@ -237,6 +237,10 @@ async function syncClearance(clearanceId, opts = {}) {
     }
     if (refs.size) or.push({ reportNumber: { $in: [...refs] } });
     if (keys.size) or.push({ documentNumber: { $regex: [...keys].map(looseRx).join('|'), $options: 'i' } });
+    // وطلباتُ الشحن معها — راجع resolveShipments.
+    try { await resolveShipments(shipmentFilterFor(id, c, refs, keys), opts); } catch (e) { console.error('[customs-link] طلبات الشحن:', e.message); }
+  } else {
+    try { await resolveShipments({ 'customsLink.clearance': new mongoose.Types.ObjectId(id) }, opts); } catch (_) { /* */ }
   }
   return resolveReports({ $or: or }, opts);
 }
@@ -249,7 +253,138 @@ async function linkPendingMoveRefs(opts = {}) {
   const idx = await loadIndex();
   const nums = [...idx.byReport.keys()];
   if (!nums.length) return { changed: 0, reportNumbers: [], clearanceIds: [] };
+  try {
+    const n = nums.map(Number).filter((x) => Number.isFinite(x));
+    await resolveShipments({ 'customsLink.via': { $nin: ['move', 'manual'] }, $or: [{ reference: { $in: nums } }, ...(n.length ? [{ graduationNumber: { $in: n } }, { waybillNumber: { $in: n } }] : [])] }, opts);
+  } catch (e) { console.error('[customs-link] طلبات الشحن:', e.message); }
   return resolveReports({ reportNumber: { $in: nums }, 'customsLink.via': { $nin: ['move', 'manual'] } }, opts);
+}
+
+// ═══ ربطُ طلبات الشحن (٢٠٢٦/١٠/٢٦) ═══════════════════════════════════════════
+// صاحبُ الشركة: «رقم البوليصة ورقم الحاوية في إنشاء الشحنة… مربوطين بالتخليص؛ لو
+// اتعملت من هنا تسمع في التخليص، ولو اتعملت من التخليص تتربط معانا هنا». فطلبُ
+// الشحن يُربط بالأدلّة نفسِها التي يُربط بها كشفُ التشغيل:
+//   `move`      رقمُه (كشفُ التخريج أو البوليصةُ عندنا) مكتوبٌ في خانة نقل حاويةٍ
+//               في المعاملة.
+//   `bl`        «رقم البوليصة» في الشحنة بوليصةُ معاملةٍ واحدة.
+//   `container` «رقم الحاوية» في الشحنة حاويةٌ في معاملةٍ واحدة.
+// وحين يأتي الربطُ من المعاملة تُملأ خانتا الشحنة الفارغتان منها — فيرى مَن
+// يفتح الشحنة البوليصةَ وحاويتَها بلا أن يكتبهما.
+const refsOfShipment = (o) => [o.graduationNumber, o.waybillNumber, o.reference]
+  .map((x) => (x == null ? '' : String(x).trim())).filter(Boolean);
+
+function autoLinkForShipment(o, idx) {
+  const hits = new Map();
+  for (const r of refsOfShipment(o)) {
+    const per = idx.byReport.get(r);
+    if (per) for (const [id, units] of per) hits.set(id, new Set([...(hits.get(id) || []), ...units]));
+  }
+  if (hits.size === 1) { const [[id, units]] = [...hits.entries()]; return { id, via: 'move', containers: [...units] }; }
+  if (hits.size > 1) return null;
+  const ids = new Set();
+  for (const key of blKeysOf(o.blNumber)) for (const id of idx.byBl.get(key) || []) ids.add(id);
+  if (ids.size === 1) return { id: [...ids][0], via: 'bl', containers: o.containerNumber ? [String(o.containerNumber).trim()] : [] };
+  if (ids.size > 1) return null;
+  const uk = unitKeyOf(o.containerNumber);
+  const u = uk ? idx.byUnit.get(uk) : null;
+  if (u && u.ids.size === 1) return { id: [...u.ids][0], via: 'container', containers: [u.raw] };
+  return null;
+}
+
+function decideShipment(o, idx) {
+  const cur = o.customsLink || null;
+  const via = cur && cur.via;
+  const auto = autoLinkForShipment(o, idx);
+  if (via === 'manual') {
+    const id = idOf(cur.clearance);
+    if (!idx.meta.has(id)) return null;
+    const next = snapshot(idx, id, 'manual', cur.containers, { at: cur.at, byName: cur.byName });
+    return sameLink(cur, next) ? undefined : next;
+  }
+  if (via === 'unlinked' && !(auto && auto.via === 'move')) return undefined;
+  if (!auto) return via && AUTO_VIA.includes(via) ? null : undefined;
+  const next = snapshot(idx, auto.id, auto.via, auto.containers, { at: (cur && idOf(cur.clearance) === auto.id && cur.at) || new Date(), byName: '' });
+  return sameLink(cur, next) ? undefined : next;
+}
+
+const SHIPMENT_FIELDS = '_id graduationNumber waybillNumber reference blNumber containerNumber customsLink source externalId';
+
+/** يعيد حسابَ ربط طلبات شحنٍ بعينها، ويملأ بوليصتَها وحاويتَها الفارغتين من المعاملة. */
+async function resolveShipments(rowsOrFilter, { emit = true } = {}) {
+  const ShipmentOrder = require('../models/ShipmentOrder');
+  const rows = Array.isArray(rowsOrFilter)
+    ? rowsOrFilter
+    : await ShipmentOrder.find(rowsOrFilter).select(SHIPMENT_FIELDS).lean();
+  if (!rows.length) return { changed: 0, clearanceIds: [] };
+  const idx = await loadIndex();
+  const ops = []; const clearanceIds = new Set();
+  for (const o of rows) {
+    const next = decideShipment(o, idx);
+    const link = next === undefined ? o.customsLink : next;
+    const set = {};
+    if (next !== undefined) {
+      if (o.customsLink && o.customsLink.clearance) clearanceIds.add(idOf(o.customsLink.clearance));
+      if (next && next.clearance) clearanceIds.add(idOf(next.clearance));
+    }
+    // تُملأ الفارغتان من المعاملة المربوطة — ولا يُكتب فوق ما كتبه أحد.
+    if (link && link.clearance) {
+      if (!String(o.blNumber || '').trim() && link.blNumber) set.blNumber = link.blNumber;
+      if (!String(o.containerNumber || '').trim() && (link.containers || []).length === 1) set.containerNumber = link.containers[0];
+    }
+    if (next === undefined && !Object.keys(set).length) continue;
+    const update = {};
+    if (next !== undefined) { if (next) set.customsLink = next; else update.$unset = { customsLink: 1 }; }
+    if (Object.keys(set).length) update.$set = set;
+    ops.push({ updateOne: { filter: { _id: o._id }, update } });
+  }
+  if (ops.length) {
+    for (let i = 0; i < ops.length; i += 500) await ShipmentOrder.bulkWrite(ops.slice(i, i + 500), { ordered: false });
+    if (emit) {
+      try { cache.clear('so:'); } catch (_) { /* */ }
+      try {
+        const { emitToAll } = require('../websocket/socketManager');
+        emitToAll('shipmentOrders:updated', { customsLink: true });
+        if (clearanceIds.size) emitToAll('customs:opsLinks', { clearanceIds: [...clearanceIds], shipments: true });
+      } catch (_) { /* لا مقابس في السكربت */ }
+    }
+  }
+  return { changed: ops.length, clearanceIds: [...clearanceIds] };
+}
+
+/**
+ * طلبُ شحنٍ حُفظ: يُربط، وكشفُ تشغيله (لشحنات المنصّة) يأخذ البوليصةَ أو الحاويةَ
+ * «رقمَ سندٍ» إن كان فارغًا — فيُربط هو أيضًا من سير عمل التشغيل.
+ */
+async function afterShipmentSaved(orderId) {
+  const ShipmentOrder = require('../models/ShipmentOrder');
+  const o = await ShipmentOrder.findById(orderId).select(SHIPMENT_FIELDS).lean();
+  if (!o) return;
+  await resolveShipments([o]);
+  const doc = String(o.blNumber || '').trim() || String(o.containerNumber || '').trim();
+  if (o.source === 'platform' && o.externalId && doc) {
+    const OperationsWorkflow = require('../models/OperationsWorkflow');
+    const wf = await OperationsWorkflow.findOne({ externalId: String(o.externalId) }).select(REPORT_FIELDS).lean();
+    if (wf && !String(wf.documentNumber || '').trim()) {
+      await OperationsWorkflow.updateOne({ _id: wf._id }, { $set: { documentNumber: doc } });
+      await resolveReports([{ ...wf, documentNumber: doc }]);
+    }
+  }
+}
+
+/** شروطُ طلبات الشحن التي قد تمسّها معاملةٌ واحدة. */
+function shipmentFilterFor(id, c, refs, keys) {
+  const or = [{ 'customsLink.clearance': new mongoose.Types.ObjectId(id) }];
+  if (refs.size) {
+    const list = [...refs];
+    const nums = list.map(Number).filter((n) => Number.isFinite(n));
+    or.push({ reference: { $in: list } });
+    if (nums.length) { or.push({ graduationNumber: { $in: nums } }); or.push({ waybillNumber: { $in: nums } }); }
+  }
+  if (keys.size) {
+    const rx = { $regex: [...keys].map(looseRx).join('|'), $options: 'i' };
+    or.push({ blNumber: rx }); or.push({ containerNumber: rx });
+  }
+  return { $or: or };
 }
 
 // ── الطابور: حفظُ المعاملة لا ينتظر الربط ──────────────────────────────────
@@ -350,5 +485,6 @@ module.exports = {
   normKey, blKeysOf, unitKeyOf,
   loadIndex, autoLinkFor, decide, snapshot,
   resolveReports, syncClearance, linkPendingMoveRefs,
+  resolveShipments, afterShipmentSaved, autoLinkForShipment,
   queueClearance, flush, announce, linkView,
 };

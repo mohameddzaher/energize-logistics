@@ -16,6 +16,19 @@ import { useDialog } from '@/components/system/DialogProvider';
 import { useLatestRequest } from '@/hooks/useLatestRequest';
 import type { OrderDriver } from '@/lib/shipmentOrders';
 
+// ── «0» ليس قيمة (٢٠٢٦/١٠/٢٦: «لما يختارون السائق ما يبغون يظهر 0») ────────
+// سجلُّ السوّاق المستورَد يحمل «0» و«-» حيث لا قيمة — في الجوال والإقامة وتاريخ
+// بطاقة التشغيل. فكانت تُعرض «0» بجانب الاسم، و«بطاقة التشغيل حتى 0»، ويُملأ
+// جوالُ الشحنة «0». فالفارغُ المقنَّع يُعامَل فارغًا، والتاريخُ تاريخٌ أو لا شيء.
+export const realVal = (v: unknown) => {
+  const t = String(v ?? '').trim();
+  return /^(0+|-+|null|undefined|nan|n\/a)$/i.test(t) ? '' : t;
+};
+const realDate = (v: unknown) => {
+  const t = String(v ?? '').slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(t) ? t : '';
+};
+
 export default function DriverPicker({
   value, onPick, contextDrivers, supplierId, vehicleId, ar, compact, placeholder,
 }: {
@@ -50,21 +63,46 @@ export default function DriverPicker({
     finally { if (guard.isCurrent(mine)) setBusy(false); }
   }, [guard]);
 
-  const save = async () => {
+  // ── «موجودٌ بالفعل» تنبيهٌ لا اختيارٌ صامت (٢٠٢٦/١٠/٢٦) ────────────────────
+  // الخادمُ يردّ القائمَ إن طابق جوالًا أو إقامةً أو اسمًا مطويًّا. فيُسأل: نختاره؟
+  // والاسمُ وحدَه قد يكون شخصًا آخر («محمد» كثير) فيُسمَح بإضافته؛ أمّا الجوالُ
+  // والإقامةُ فرجلٌ واحدٌ لا يُسجَّل مرّتين.
+  const { confirm } = useDialog();
+  const save = async (force = false) => {
     const name = form.name.trim();
     if (!name) { notify(ar ? 'اكتب اسم السائق' : 'Enter the driver name', 'error'); return; }
     setSaving(true);
     try {
-      const r = await api.post<{ driver: OrderDriver; existed?: boolean }>('/api/shipment-orders/drivers', {
-        name, phone: form.phone.trim(), residenceNumber: form.residenceNumber.trim(), reuse: true,
+      const r = await api.post<{ driver: OrderDriver; existed?: boolean; matchedBy?: string }>('/api/shipment-orders/drivers', {
+        name, phone: form.phone.trim(), residenceNumber: form.residenceNumber.trim(), reuse: true, ...(force ? { force: true } : {}),
         ...(supplierId ? { supplier: supplierId } : {}), ...(vehicleId ? { vehicle: vehicleId } : {}),
       });
-      onPick({ name: r.driver.name, phone: r.driver.phone, driver: r.driver });
+      if (r.existed) {
+        setSaving(false);
+        const by = r.matchedBy === 'phone' ? (ar ? 'بنفس رقم الجوال' : 'with the same phone')
+          : r.matchedBy === 'iqama' ? (ar ? 'بنفس رقم الإقامة' : 'with the same iqama') : (ar ? 'بنفس الاسم' : 'with the same name');
+        const info = [realVal(r.driver.phone), realVal(r.driver.residenceNumber)].filter(Boolean).join(' · ');
+        const pick = await confirm({
+          title: ar ? 'هذا السائق موجود بالفعل' : 'This driver already exists',
+          message: ar
+            ? `«${r.driver.name}» مسجَّل ${by}${info ? ` (${info})` : ''}. نختاره بدل إضافته مرّةً ثانية؟`
+            : `“${r.driver.name}” is registered ${by}${info ? ` (${info})` : ''}. Pick him instead of adding him again?`,
+          confirmLabel: ar ? 'اختيار الموجود' : 'Pick existing',
+          cancelLabel: r.matchedBy === 'name' ? (ar ? 'شخص آخر — أضفه' : 'Different person — add') : (ar ? 'رجوع' : 'Back'),
+        });
+        if (pick) {
+          onPick({ name: r.driver.name, phone: realVal(r.driver.phone) || undefined, driver: r.driver });
+          setAdding(false);
+          setForm({ name: '', phone: '', residenceNumber: '' });
+        } else if (r.matchedBy === 'name') {
+          await save(true);
+        }
+        return;
+      }
+      onPick({ name: r.driver.name, phone: realVal(r.driver.phone) || undefined, driver: r.driver });
       setAdding(false);
       setForm({ name: '', phone: '', residenceNumber: '' });
-      notify(r.existed
-        ? (ar ? `السائق مسجَّل من قبل «${r.driver.name}» — اخترناه` : `Already registered as “${r.driver.name}” — selected`)
-        : (ar ? `سُجِّل السائق «${r.driver.name}»` : `Driver “${r.driver.name}” registered`), 'success');
+      notify(ar ? `سُجِّل السائق «${r.driver.name}»` : `Driver “${r.driver.name}” registered`, 'success');
     } catch (e: any) { notify(e?.message || (ar ? 'تعذّر تسجيل السائق' : 'Could not register the driver'), 'error'); }
     setSaving(false);
   };
@@ -85,7 +123,7 @@ export default function DriverPicker({
         </p>
         <div className="flex justify-end gap-2">
           <button type="button" onClick={() => setAdding(false)} className="px-3 py-2 text-sm text-slate-500 hover:text-slate-900">{ar ? 'إلغاء' : 'Cancel'}</button>
-          <button type="button" onClick={save} disabled={saving || !form.name.trim()}
+          <button type="button" onClick={() => save()} disabled={saving || !form.name.trim()}
             className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#f37121] text-white text-sm font-semibold disabled:opacity-50">
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
             {ar ? 'حفظ السائق' : 'Save driver'}
@@ -105,18 +143,18 @@ export default function DriverPicker({
           customHint={(x) => (ar ? `استعمل «${x}» كما كُتب` : `Use “${x}” as typed`)}
           onChange={(x) => {
             const d = [...hits, ...contextDrivers].find((y) => y.name === x);
-            onPick({ name: x, phone: d?.phone, driver: d });
+            onPick({ name: x, phone: realVal(d?.phone) || undefined, driver: d });
           }}
           placeholder={placeholder || (ar ? 'يُملأ تلقائياً عند اختيار السيارة' : 'Autofills from the vehicle')}
           searchPlaceholder={ar ? 'الاسم أو الجوال أو رقم الإقامة…' : 'Name, phone or iqama…'}
           emptyLabel={ar ? 'لا نتائج — اكتب الاسم أو سجّله كسائق جديد' : 'No matches — type the name or register a new driver'}
           options={list.map((d) => {
-            const exp = (d.driverCardExpiry || '').slice(0, 10);
+            const exp = realDate(d.driverCardExpiry);
             const over = exp && new Date(`${exp}T00:00:00`).getTime() < Date.now();
             return {
               value: d.name,
               label: d.name,
-              hint: [d.phone, d.residenceNumber, d.nationality].filter(Boolean).join(' · '),
+              hint: [d.phone, d.residenceNumber, d.nationality].map(realVal).filter(Boolean).join(' · ') || undefined,
               badge: exp
                 ? (over ? (ar ? `بطاقة التشغيل منتهية ${exp}` : `Driver card expired ${exp}`)
                   : (ar ? `بطاقة التشغيل حتى ${exp}` : `Card valid to ${exp}`))

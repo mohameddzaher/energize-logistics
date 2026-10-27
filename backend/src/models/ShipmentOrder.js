@@ -117,6 +117,29 @@ const shipmentOrderSchema = new mongoose.Schema(
     status: { type: String, default: 'requesting', trim: true, index: true },
     notes: { type: String, trim: true, default: '' },
 
+    // ── البوليصةُ والحاويةُ، وربطُها بمعاملة التخليص (٢٠٢٦/١٠/٢٦) ───────────
+    // اختياريّتان في «الاستلام والتسليم». ومنهما — أو من رقم الشحنة مكتوبًا في
+    // خانة نقل الحاوية في المعاملة — تُربط الشحنةُ بمعاملتها في الاتّجاهين:
+    // تُكتب هنا فتظهر هناك، وتُكتب هناك فتُملأ هنا. يكتب `customsLink`
+    // services/customsOpsLink وحدَه، بالشكل نفسِه الذي على كشف التشغيل.
+    // السلفةُ المدفوعةُ للسائق على هذه الشحنة — رقمٌ يُكتب في «الأسعار والتوقيت».
+    advanceAmount: { type: Number, default: null },
+    blNumber: { type: String, trim: true, default: '' },
+    containerNumber: { type: String, trim: true, default: '' },
+    customsLink: {
+      type: new mongoose.Schema({
+        clearance: { type: mongoose.Schema.Types.ObjectId, ref: 'CustomsClearance', default: null },
+        refNumber: { type: String, default: '' },
+        blNumber: { type: String, default: '' },
+        customerName: { type: String, default: '' },
+        containers: { type: [String], default: [] },
+        via: { type: String, enum: ['move', 'bl', 'container', 'manual', 'unlinked'], default: 'move' },
+        at: { type: Date, default: null },
+        byName: { type: String, default: '' },
+      }, { _id: false }),
+      default: undefined,
+    },
+
     // ── المتابعةُ هنا تغييرُ حالةٍ لا مكالمة ────────────────────────────────
     // في إدارة الأسطول السيّارةُ سيّارتُنا، فالمتابعةُ مكالمةٌ مع سائقنا: أين
     // أنت الآن. وهنا الشاحنةُ شاحنةُ مورّد، والذي يُتابَع هو **موضعُ الطلب من
@@ -156,6 +179,7 @@ const shipmentOrderSchema = new mongoose.Schema(
 
 shipmentOrderSchema.index({ createdAt: -1 });
 shipmentOrderSchema.index({ source: 1, createdAt: -1 });
+shipmentOrderSchema.index({ 'customsLink.clearance': 1 }, { partialFilterExpression: { 'customsLink.clearance': { $type: 'objectId' } } });
 
 shipmentOrderSchema.index({ fromCity: 1, toCity: 1 });
 

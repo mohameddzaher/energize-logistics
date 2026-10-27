@@ -215,7 +215,8 @@ function ShipmentOrdersInner() {
    * الصفوف الواصلة يعرض قيمَ هذه الصفحة وحدَها — ثلاثَ مدنٍ من أربعِمئة.
    * فالقيمُ تُطلَب من الخادم بعدّادها عند فتح القمع، والتصفيةُ تجري هناك.
    */
-  const COL_PREFIX = 'col.';
+  // ‏`col_` لا `col.`: الخادمُ يحذف المفاتيحَ ذاتَ النقطة (express-mongo-sanitize).
+  const COL_PREFIX = 'col_';
   const [colFilters, setColFilters] = useState<Record<string, Set<string>>>({});
   const [colOptions, setColOptions] = useState<Record<string, { values: { value: string; count: number }[] }>>({});
   const [colLoading, setColLoading] = useState<Record<string, boolean>>({});
@@ -656,7 +657,7 @@ function ShipmentOrdersInner() {
                 aria-label={ar ? 'تحديد الكل' : 'Select all'} />
             </th>
             {([
-              [ar ? 'رقم البوليصة' : 'Waybill', null],
+              [ar ? 'رقم البوليصة' : 'Waybill', 'reference'],
               [ar ? 'العميل' : 'Customer', 'customerName'],
               // ── «من» و«إلى» عمودان لا سهمٌ في عمود ─────────────────────────
               // «جدة ← الرياض» في خليّةٍ واحدة يُقرأ بالعينين لا بالعين، ويُخطئ
@@ -672,10 +673,13 @@ function ShipmentOrdersInner() {
               // بما يقرأ في العمود. فصار يسأل عن النوع، واللوحةُ تُكتب في
               // الخليّة تحته وتُبحَث من خانة البحث.
               [ar ? 'الشاحنة' : 'Truck', 'truckType'],
-              [ar ? 'وقت الاستلام' : 'Pickup', null],
-              [ar ? 'بيع / شراء' : 'Sell / buy', null],
-              [ar ? 'الحالة' : 'Status', null],
-              [ar ? 'ملاحظة البوليصة' : 'Waybill note', null],
+              // ── وكلُّ عمودٍ له قمعُه كإكسل (٢٠٢٦/١٠/٢٧) — التاريخُ بيومه والسعرُ
+              // بقيمته، و«بيع / شراء» صارا عمودين: الشراءُ أوّلًا كما في النموذج.
+              [ar ? 'وقت الاستلام' : 'Pickup', 'pickupDay'],
+              [ar ? 'سعر الشراء' : 'Buy', 'buyPrice'],
+              [ar ? 'سعر البيع' : 'Sell', 'sellPrice'],
+              [ar ? 'الحالة' : 'Status', 'status'],
+              [ar ? 'ملاحظة البوليصة' : 'Waybill note', 'notes'],
               [ar ? 'آخر متابعة' : 'Latest follow-up', null],
               [ar ? 'إجراءات' : 'Actions', null],
             ] as const).map(([h, col], i) => (
@@ -693,7 +697,10 @@ function ShipmentOrdersInner() {
                       options={colOptions[col]?.values || EMPTY_OPTIONS}
                       loading={!!colLoading[col]}
                       lang={ar ? 'ar' : 'en'}
-                      format={(v: any) => (v === '__blank__' ? (ar ? '(فارغ)' : '(blank)') : String(v ?? ''))} />
+                      format={(v: any) => (v === '__blank__' ? (ar ? '(فارغ)' : '(blank)')
+                        : col === 'status' ? (() => { const sv = statusVocab.find((x) => x.key === v); return sv ? vocabLabel(sv, lang as Lang) : statusLabel(String(v), lang as Lang); })()
+                          : col === 'pickupDay' ? String(v).split('-').reverse().join('/')
+                            : String(v ?? ''))} />
                   )}
                 </span>
               </th>
@@ -701,7 +708,7 @@ function ShipmentOrdersInner() {
           </tr></thead>
           <tbody>
             {orders.length === 0 ? (
-              <tr><td colSpan={14} className="text-center text-slate-500 py-14">
+              <tr><td colSpan={15} className="text-center text-slate-500 py-14">
                 {ar ? 'لا توجد شحنات بعد — ابدأ من زر «إنشاء شحنة».' : 'No shipments yet — start with “Create shipment”.'}
               </td></tr>
             ) : orders.map((o) => {
@@ -754,7 +761,8 @@ function ShipmentOrdersInner() {
                       : null}
                   </td>
                   <td className="px-4 py-3 text-slate-700 text-xs whitespace-nowrap">{fmtDT(o.pickupTime, lang as Lang)}</td>
-                  <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{money(o.sellPrice)} / {money(o.buyPrice)}</td>
+                  <td className="px-4 py-3 text-slate-700 whitespace-nowrap tabular-nums">{money(o.buyPrice)}</td>
+                  <td className="px-4 py-3 text-slate-700 whitespace-nowrap tabular-nums">{money(o.sellPrice)}</td>
                   {/* الحالةُ كلمتان («قيد الطلب») — وبلا `nowrap` تنكسر سطرين فيتباعد الصفّ. */}
                   <td className="px-4 py-3 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                     {/* ── المتابعةُ نقلةُ حالةٍ ومعها سببُها ──────────────────

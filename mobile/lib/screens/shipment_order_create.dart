@@ -22,6 +22,8 @@ const _systemKeys = {
   // «نوع الدفع» (paymentSubtype) حلّ محلَّ «نوع تأجير السائق» في النموذج —
   // خياراتُه الأربعةُ تصل من الخادم (/fields) بمفاتيح سير عمل التشغيل.
   'paymentSubtype', 'driverRentType', 'paymentMethod', 'branch', 'notes',
+  // البوليصةُ والحاويةُ (مربوطتان بالتخليص) والسلفة — ٢٠٢٦/١٠/٢٦.
+  'advanceAmount', 'blNumber', 'containerNumber',
 };
 
 const _fixedKeys = {'customer', 'waybillNumber', 'status', 'agentName', 'vehicleName', 'driverName', 'driverPhone'};
@@ -118,7 +120,7 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
       if (!_drivers.any((x) => x['_id'] == d['_id'])) _drivers = [d, ..._drivers];
       _form['driverName'] = d['name'];
       _ctrls.remove('driverName');
-      if ('${d['phone'] ?? ''}'.isNotEmpty) { _form['driverPhone'] = d['phone']; _ctrls.remove('driverPhone'); }
+      if (soRealVal(d['phone']).isNotEmpty) { _form['driverPhone'] = soRealVal(d['phone']); _ctrls.remove('driverPhone'); }
     });
   }
 
@@ -311,12 +313,12 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
           if (sp['_id'] == sup) _supplier = sp;
         }
       }
-      if ((v['defaultDriverName'] ?? '').toString().isNotEmpty) {
-        _form['driverName'] = v['defaultDriverName'];
+      if (soRealVal(v['defaultDriverName']).isNotEmpty) {
+        _form['driverName'] = soRealVal(v['defaultDriverName']);
         _ctrls.remove('driverName');
       }
-      if ((v['defaultDriverPhone'] ?? '').toString().isNotEmpty) {
-        _form['driverPhone'] = v['defaultDriverPhone'];
+      if (soRealVal(v['defaultDriverPhone']).isNotEmpty) {
+        _form['driverPhone'] = soRealVal(v['defaultDriverPhone']);
         _ctrls.remove('driverPhone');
       }
       if ((v['truckType'] ?? '').toString().isNotEmpty && (_form['truckType'] ?? '').toString().isEmpty) {
@@ -439,15 +441,15 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
       hint: tr('اللوحة أو السائق…', 'Plate or driver…'),
     );
     if (!mounted) return;
-    var dName = (veh?['defaultDriverName'] ?? '').toString();
-    var dPhone = (veh?['defaultDriverPhone'] ?? '').toString();
+    var dName = soRealVal(veh?['defaultDriverName']);
+    var dPhone = soRealVal(veh?['defaultDriverPhone']);
     // ── والسائقُ كالشاحنة الأولى (٢٠٢٦/١٠/٢٦) ───────────────────────────────
     // شاحنةٌ بلا سائقٍ مسجَّل تفتح خانةَ السائق نفسَها: بحثٌ بالاسم والجوال
     // والإقامة، و«سائق جديد». ويُغلَق بلا اختيارٍ فيُضاف بلا سائق.
     if (dName.isEmpty) {
       final d = await pickShipmentDriver(context, local: const [], supplierId: sup['_id']?.toString(), vehicleId: veh?['_id']?.toString());
       if (!mounted) return;
-      if (d != null) { dName = '${d['name'] ?? ''}'; dPhone = '${d['phone'] ?? ''}'; }
+      if (d != null) { dName = '${d['name'] ?? ''}'; dPhone = soRealVal(d['phone']); }
     }
     setState(() => _extraTrucks.add({
           'supplier': sup,
@@ -464,7 +466,7 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
     final d = await pickShipmentDriver(context, local: const [],
         supplierId: (t['supplier'] as Map?)?['_id']?.toString(), vehicleId: (t['vehicle'] as Map?)?['_id']?.toString());
     if (d == null || !mounted) return;
-    setState(() { t['driverName'] = '${d['name'] ?? ''}'; t['driverPhone'] = '${d['phone'] ?? ''}'; });
+    setState(() { t['driverName'] = '${d['name'] ?? ''}'; t['driverPhone'] = soRealVal(d['phone']); });
   }
 
   Future<P?> _pickSheet<P>(String title, List<P> items, String Function(P) label, {String Function(P)? sub}) {
@@ -1093,6 +1095,32 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
                             ]),
                             const SizedBox(height: 10),
                             ...gf.map((f) => Padding(padding: const EdgeInsets.only(bottom: 10), child: _fieldInput(f))),
+                            // ── البوليصةُ والحاوية — مربوطتان بالتخليص (٢٠٢٦/١٠/٢٦) ──
+                            // اختياريّتان: تُكتبان هنا فتُربط الشحنةُ بمعاملة التخليص التي
+                            // تحملهما، وتُكتب الشحنةُ في المعاملة فتُملآن هنا وحدَهما.
+                            if (g.$1 == 'pickup_delivery') ...[
+                              TextField(
+                                controller: _ctrl('blNumber'),
+                                textDirection: TextDirection.ltr,
+                                onChanged: (v) => _form['blNumber'] = v.trim(),
+                                decoration: InputDecoration(labelText: tr('رقم البوليصة (اختياري)', 'B/L number (optional)')),
+                              ),
+                              const SizedBox(height: 10),
+                              TextField(
+                                controller: _ctrl('containerNumber'),
+                                textDirection: TextDirection.ltr,
+                                onChanged: (v) => _form['containerNumber'] = v.trim(),
+                                decoration: InputDecoration(labelText: tr('رقم الحاوية (اختياري)', 'Container number (optional)')),
+                              ),
+                              const SizedBox(height: 6),
+                              if (_form['customsLink'] is Map && (_form['customsLink'] as Map)['clearance'] != null)
+                                Text(tr('مربوطة بمعاملة التخليص ${(_form['customsLink'] as Map)['refNumber'] ?? ''}',
+                                        'Linked to customs clearance ${(_form['customsLink'] as Map)['refNumber'] ?? ''}'),
+                                    style: const TextStyle(fontSize: 12.5, color: T.success, fontWeight: FontWeight.w700))
+                              else
+                                Text(tr('إن طابقت معاملةَ تخليص رُبطت بها الشحنةُ عند الحفظ.', 'If they match a customs clearance, the shipment is linked on save.'),
+                                    style: const TextStyle(fontSize: 11.5, color: T.inkFaint)),
+                            ],
                           ]),
                         ),
                       ),

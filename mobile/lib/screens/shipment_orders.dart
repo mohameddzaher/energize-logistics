@@ -36,6 +36,15 @@ const _colFields = [
   ('toCity', 'إلى', 'To'),
   ('driverName', 'السائق', 'Driver'),
   ('truckType', 'الشاحنة', 'Truck'),
+  // وبقيّةُ الأعمدة كالويب (٢٠٢٦/١٠/٢٧).
+  ('reference', 'رقم البوليصة', 'Waybill'),
+  ('status', 'الحالة', 'Status'),
+  ('pickupDay', 'يوم الاستلام', 'Pickup day'),
+  ('buyPrice', 'سعر الشراء', 'Buy price'),
+  ('sellPrice', 'سعر البيع', 'Sell price'),
+  ('supplierName', 'المورّد', 'Supplier'),
+  ('branch', 'الفرع', 'Branch'),
+  ('notes', 'ملاحظة البوليصة', 'Waybill note'),
 ];
 
 const _pageSize = 25;
@@ -104,7 +113,8 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
     _colFilters.forEach((k, set) {
       if (k == skipCol) return;
       // كلُّ قيمةٍ معاملٌ مكرَّر: اسمٌ فيه فاصلةٌ لا يصير اسمين.
-      for (final v in set) { add('col.$k', v); }
+      // ‏`col_` لا `col.`: الخادمُ يحذف المفاتيحَ ذاتَ النقطة (express-mongo-sanitize).
+      for (final v in set) { add('col_$k', v); }
     });
     if (withSearch && _q.trim().isNotEmpty) add('q', _q.trim());
     if (_statuses.isNotEmpty) add('status', _statuses.join(','));
@@ -256,6 +266,7 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
       builder: (c) => _ColumnValuesSheet(
         title: tr(_colFields.firstWhere((f) => f.$1 == field).$2, _colFields.firstWhere((f) => f.$1 == field).$3),
         initial: _colFilters[field] ?? {},
+        labelOf: field == 'status' ? (v) { final st = soStatusOf(_vocab, v); return tr(st.$2, st.$3); } : null,
         fetch: (search) async {
           final p = ['field=$field', ..._params(skipCol: field, withSearch: false), if (search.trim().isNotEmpty) 'search=${Uri.encodeQueryComponent(search.trim())}'];
           final d = await Api.instance.get('/api/shipment-orders/orders/filter-options?${p.join('&')}');
@@ -699,7 +710,8 @@ class _ColumnValuesSheet extends StatefulWidget {
   final String title;
   final Set<String> initial;
   final Future<List<Map<String, dynamic>>> Function(String search) fetch;
-  const _ColumnValuesSheet({required this.title, required this.initial, required this.fetch});
+  final String Function(String)? labelOf;
+  const _ColumnValuesSheet({required this.title, required this.initial, required this.fetch, this.labelOf});
   @override
   State<_ColumnValuesSheet> createState() => _ColumnValuesSheetState();
 }
@@ -747,7 +759,8 @@ class _ColumnValuesSheetState extends State<_ColumnValuesSheet> {
               dense: true,
               value: _sel.contains('${v['value']}'),
               onChanged: (on) => setState(() => on == true ? _sel.add('${v['value']}') : _sel.remove('${v['value']}')),
-              title: Text(v['value'] == '__blank__' ? tr('(فارغ)', '(blank)') : '${v['value'] ?? ''}'),
+              title: Text(v['value'] == '__blank__' ? tr('(فارغ)', '(blank)')
+                  : widget.labelOf != null ? widget.labelOf!('${v['value'] ?? ''}') : '${v['value'] ?? ''}'),
               secondary: Text('${v['count'] ?? ''}', style: const TextStyle(fontSize: 12, color: T.inkFaint)),
             ),
         ])),

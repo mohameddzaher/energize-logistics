@@ -36,6 +36,16 @@ const emit = (event, payload = {}) => { try { emitToAll(event, payload); } catch
  *
  * فالترتيبُ جزءٌ من الإصلاح: المحوُ قبل النداء، لا بعده.
  */
+// ربطُ الشحنة بمعاملة التخليص بعد حفظها — لا يؤخّر الردّ ولا يُفشله
+// (services/customsOpsLink.afterShipmentSaved).
+const linkCustomsSoon = (id) => {
+  if (!id) return;
+  setImmediate(() => {
+    require('../services/customsOpsLink').afterShipmentSaved(id)
+      .catch((e) => console.error('[shipment-orders] customs link:', e.message));
+  });
+};
+
 const announceOrderChange = (id) => {
   cache.clear('so:dashboard:');
   cache.clear('so:analytics:');
@@ -59,6 +69,8 @@ const ORDER_EDITABLE = [
   'pickupTime', 'startTime', 'arrivalTime', 'sellPrice', 'buyPrice',
   'paymentSubtype', 'driverRentType', 'paymentMethod', 'driverRentPrice', 'branch',
   'status', 'notes', 'customFields',
+  // البوليصةُ والحاويةُ (تُربطان بالتخليص) والسلفة — ٢٠٢٦/١٠/٢٦.
+  'blNumber', 'containerNumber', 'advanceAmount',
 ];
 
 /**
@@ -303,14 +315,30 @@ const ORDER_COLUMNS = {
   supplierName: 'supplierName',
   driverRentType: 'driverRentType',
   paymentMethod: 'paymentMethod',
+  // ── وبقيّةُ أعمدة الجدول (٢٠٢٦/١٠/٢٧: «الكولومز فيها فلاتر الإكسيل») ──────
+  reference: 'reference',
+  status: 'status',
+  notes: 'notes',
+  salesRepName: 'salesRepName',
+  cargoType: 'cargoType',
+  blNumber: 'blNumber',
+  containerNumber: 'containerNumber',
+  pickupDay: 'pickupTime',     // يومٌ لا لحظة — راجع COLUMN_KIND
+  buyPrice: 'buyPrice',
+  sellPrice: 'sellPrice',
 };
+// الأعمدةُ غيرُ النصّيّة: التاريخُ يُجمَّع بيومه في الرياض، والرقمُ بقيمته.
+const COLUMN_KIND = { pickupDay: 'day', buyPrice: 'number', sellPrice: 'number' };
+const RIYADH = 'Asia/Riyadh';
 
 /** `col.<key>=أ,ب` → `{ field: { $in: [...] } }`. والفارغُ يُطلَب بـ`__blank__`. */
 const columnFilters = (query, skipKey = null) => {
   const out = {};
   for (const [key, field] of Object.entries(ORDER_COLUMNS)) {
     if (key === skipKey) continue;
-    const raw = query[`col.${key}`];
+    // ‏`col_` لا `col.`: وسيطُ express-mongo-sanitize يحذف كلَّ مفتاحٍ فيه نقطة،
+    // فكانت فلاترُ الأعمدة لا تصل الخادمَ أصلًا (٢٠٢٦/١٠/٢٧). والقديمُ مقبولٌ لسكربت.
+    const raw = query[`col_${key}`] ?? query[`col.${key}`];
     if (!raw) continue;
     // القيمُ تصل معاملاتٍ مكرَّرة (مصفوفة). والنصُّ المفصولُ بفاصلة صيغةٌ قديمة
     // تبقى مقبولة لرابطٍ محفوظ — وهي التي كانت تقطع اسمًا فيه فاصلة.
@@ -318,6 +346,22 @@ const columnFilters = (query, skipKey = null) => {
       : (String(raw).includes('\u0000') ? String(raw).split('\u0000') : String(raw).split(','));
     const list = vals.filter((v) => normKey(v) !== '');
     if (!list.length) continue;
+    const kind = COLUMN_KIND[key];
+    if (kind) {
+      const blank = list.includes('__blank__');
+      const or = [];
+      if (kind === 'day') {
+        for (const d of list.filter((v) => /^\d{4}-\d{2}-\d{2}$/.test(v))) {
+          or.push({ [field]: { $gte: new Date(`${d}T00:00:00+03:00`), $lte: new Date(`${d}T23:59:59.999+03:00`) } });
+        }
+      } else {
+        const nums = list.map(Number).filter((n) => Number.isFinite(n));
+        if (nums.length) or.push({ [field]: { $in: nums } });
+      }
+      if (blank) or.push({ [field]: null });
+      if (or.length) out.$and = [...(out.$and || []), { $or: or }];
+      continue;
+    }
     // القيمةُ تُطابَق بنمطٍ يقبل فراغَها كلَّه، و«(فارغ)» تشمل الفراغَ وحدَه —
     // فما تعدّه القائمةُ هو ما يُرجعه الاختيار. راجع utils/colFilter.
     const c = textIn(field, list.map((v) => (v === '__blank__' ? '' : v)));
@@ -514,17 +558,22 @@ exports.orderFilterOptions = async (req, res) => {
     // استُعمل الاسمان واحدًا لفلتر أحدُهما بالآخر — وهو الاسمُ المستعمَل في
     // نظيرتها بقسم التحصيل، فلا يُسأل أحدٌ أيَّهما هنا.
     const search = String(req.query.search || '').trim();
+    const kind = COLUMN_KIND[key];
+    const groupKey = kind === 'day'
+      ? { $ifNull: [{ $dateToString: { format: '%Y-%m-%d', date: `$${field}`, timezone: RIYADH } }, ''] }
+      : { $ifNull: [`$${field}`, ''] };
     const pipeline = [
       { $match: base },
-      { $group: { _id: { $ifNull: [`$${field}`, ''] }, count: { $sum: 1 } } },
+      { $group: { _id: groupKey, count: { $sum: 1 } } },
     ];
-    if (search) pipeline.push({ $match: { _id: flexSpaceRegex(search) } });
-    pipeline.push({ $sort: { count: -1 } }, { $limit: 400 });
+    if (search) pipeline.push(kind === 'number' ? { $match: { $expr: { $regexMatch: { input: { $toString: '$_id' }, regex: search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') } } } } : { $match: { _id: flexSpaceRegex(search) } });
+    // التواريخُ أحدثُها أوّلًا والأرقامُ تصاعديّةً كما في إكسل؛ والنصُّ بكثرته.
+    pipeline.push(kind === 'day' ? { $sort: { _id: -1 } } : kind === 'number' ? { $sort: { _id: 1 } } : { $sort: { count: -1 } }, { $limit: 400 });
 
     const rows = await ShipmentOrder.aggregate(pipeline);
     // ما لا يفرّقه إلّا الفراغ سطرٌ واحد — والفراغُ وحدَه «(فارغ)».
-    const values = mergeOptions(rows.map((r) => ({ value: r._id, count: r.count })))
-      .sort((a, b) => b.count - a.count)
+    const values = (kind ? rows.map((r) => ({ value: r._id === '' || r._id == null ? '' : String(r._id), count: r.count }))
+      : mergeOptions(rows.map((r) => ({ value: r._id, count: r.count }))).sort((a, b) => b.count - a.count))
       .map((o) => ({ value: o.value === '' ? '__blank__' : o.value, count: o.count }));
     res.json({ field: key, values });
   } catch (error) {
@@ -591,6 +640,7 @@ async function createOneOrder(req, body) {
 
   const order = await ShipmentOrder.create(data);
   announceOrderChange(order._id);
+  linkCustomsSoon(order._id);
 
   await logAudit({
     user: req.user, action: 'create', entity: 'ShipmentOrder', entityId: order._id,
@@ -776,6 +826,7 @@ exports.updateOrder = async (req, res) => {
     Object.assign(order, data);
     await order.save();
     announceOrderChange(order._id);
+    linkCustomsSoon(order._id);
 
     // وصفُّ سير عمل التشغيل لهذه الشحنة يتبع في اللحظة نفسِها — هي شحنةٌ
     // واحدةٌ تُقرأ في شاشتين، فلا تُقرأ بحالتين. راجع syncShipmentsById.
@@ -1576,6 +1627,20 @@ const driverView = (d) => {
 };
 const EMPLOYEE_FIELDS = 'firstName lastName arabicName phone nationality iqamaNumber nationalId';
 
+// ── «0» و«-» ليسا قيمة (٢٠٢٦/١٠/٢٦) ─────────────────────────────────────────
+// السجلُّ المستورَد يحملهما حيث لا شيء — فكان يُعرض «0» جوالًا وإقامةً وتاريخَ
+// بطاقة، ويُملأ جوالُ الشحنة «0». يُفرَّغان في ما تقرؤه الشاشات (الويب والتطبيق)
+// ولا تُمسّ القاعدة.
+const blankish = (v) => /^(0+|-+|null|undefined|nan|n\/a)$/i.test(String(v ?? '').trim());
+const cleanFields = (o, keys) => {
+  if (!o) return o;
+  const out = { ...o };
+  for (const k of keys) if (blankish(out[k])) out[k] = '';
+  return out;
+};
+const cleanDriver = (d) => cleanFields(d, ['phone', 'residenceNumber', 'driverCardNumber', 'driverCardExpiry', 'nationality', 'sponsorName', 'companyName']);
+const cleanVehicle = (v) => cleanFields(v, ['defaultDriverName', 'defaultDriverPhone', 'operationCardNumber', 'operationCardExpiry']);
+
 exports.listSuppliers = async (req, res) => {
   try {
     const { q } = req.query;
@@ -1760,7 +1825,7 @@ exports.listVehicles = async (req, res) => {
           .lean(),
         ShipmentOrderVehicle.countDocuments(filter),
       ]);
-      return { vehicles: vehicles.map(vehicleView), total };
+      return { vehicles: vehicles.map(vehicleView).map(cleanVehicle), total };
     });
     res.json(out);
   } catch (error) {
@@ -1918,7 +1983,7 @@ exports.listDrivers = async (req, res) => {
             .lean(),
           ShipmentOrderDriver.countDocuments(filter),
         ]);
-        return { drivers: drivers.map(driverView), total };
+        return { drivers: drivers.map(driverView).map(cleanDriver), total };
       },
     );
     res.json(out);
@@ -1934,11 +1999,25 @@ exports.createDriver = async (req, res) => {
     // مَن كتب جوّالًا أو إقامةً مسجَّلةً يُعاد إليه السائقُ القائم ليُختار، بدل
     // سائقٍ ثانٍ بالرقم نفسِه تتوزّع عليهما شحناتُه.
     if (req.body.reuse) {
+      // ── وبالاسم أيضًا (٢٠٢٦/١٠/٢٦: «جرّب يضيف سوّاق مرّتين وانضاف مرّتين») ──
+      // كان يُعرف بالجوال أو الإقامة وحدَهما، فسائقٌ يُكتب اسمُه مرّتين بلا جوالٍ
+      // يُسجَّل مرّتين. فالاسمُ المطويُّ (جده/جدة، أحمد/احمد، المسافات) دليلٌ ثالث،
+      // ويُردّ القائمُ مع سبب المطابقة لتسأل الشاشةُ «موجودٌ بالفعل — نختاره؟».
       const tail = String(req.body.phone || '').replace(/\D/g, '').slice(-9);
       const iq = String(req.body.residenceNumber || '').trim();
-      const or = [...(tail.length === 9 ? [{ phone: new RegExp(`${tail}$`) }] : []), ...(iq ? [{ residenceNumber: iq }] : [])];
-      const existing = or.length ? await ShipmentOrderDriver.findOne({ isActive: { $ne: false }, $or: or }) : null;
-      if (existing) return res.json({ driver: existing, existed: true });
+      const live = { isActive: { $ne: false } };
+      let existing = null; let matchedBy = '';
+      if (tail.length === 9) { existing = await ShipmentOrderDriver.findOne({ ...live, phone: new RegExp(`${tail}$`) }); matchedBy = existing ? 'phone' : ''; }
+      if (!existing && iq) { existing = await ShipmentOrderDriver.findOne({ ...live, residenceNumber: iq }); matchedBy = existing ? 'iqama' : ''; }
+      if (!existing) {
+        const fold = (v) => String(v || '').replace(/[\u064B-\u0652\u0640]/g, '').replace(/[أإآ]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي')
+          .replace(/\s+/g, ' ').trim().toLowerCase();
+        const want = fold(req.body.name);
+        const near = await ShipmentOrderDriver.find({ ...live, name: require('../utils/arabicSearch').arabicSearchRegex(String(req.body.name).trim()) }).limit(30);
+        existing = near.find((d) => fold(d.name) === want) || null;
+        matchedBy = existing ? 'name' : '';
+      }
+      if (existing && !req.body.force) return res.json({ driver: existing, existed: true, matchedBy });
     }
     const created = await ShipmentOrderDriver.create({ ...pick(req.body, DRIVER_EDITABLE), createdBy: req.user._id });
     await syncDriverEmployee(created._id);
@@ -2100,8 +2179,11 @@ const SYSTEM_FIELDS = [
   { key: 'startTime', labelAr: 'تاريخ البداية', labelEn: 'Start date', group: 'pricing_time', inputType: 'date', order: 2 },
   { key: 'arrivalTime', labelAr: 'تاريخ الوصول', labelEn: 'Arrival date', group: 'pricing_time', inputType: 'date', order: 3 },
   // سعرُ الشراء إجباريٌّ والبيعُ اختياريّ (٢٠٢٦/١٠/٢٦) — راجع migratePriceRequired.
-  { key: 'sellPrice', labelAr: 'سعر البيع', labelEn: 'Sell price', group: 'pricing_time', inputType: 'number', order: 4 },
-  { key: 'buyPrice', labelAr: 'سعر الشراء', labelEn: 'Buy price', group: 'pricing_time', inputType: 'number', required: true, order: 5 },
+  // الشراءُ أوّلًا ثمّ البيع (٢٠٢٦/١٠/٢٦) — راجع migratePriceOrder.
+  { key: 'buyPrice', labelAr: 'سعر الشراء', labelEn: 'Buy price', group: 'pricing_time', inputType: 'number', required: true, order: 4 },
+  { key: 'sellPrice', labelAr: 'سعر البيع', labelEn: 'Sell price', group: 'pricing_time', inputType: 'number', order: 5 },
+  // السلفةُ للسائق — رقمٌ اختياريّ (٢٠٢٦/١٠/٢٦).
+  { key: 'advanceAmount', labelAr: 'السلفة', labelEn: 'Advance', group: 'pricing_time', inputType: 'number', order: 6 },
   // المدفوعات
   // «نوع الدفع» حلّ محلَّ «نوع تأجير السائق» و«طريقة الدفع» — راجع
   // migratePaymentSubtypeField. فلا يُبذَران في قاعدةٍ جديدة؛ والقائمان يبقيان
@@ -2173,6 +2255,16 @@ async function migratePriceRequired() {
  * هو فرعُ الحمولة لا فرعُ الدفع، فيُسأل عنه مع المدينتين. مجموعةُ الخانة في
  * القاعدة تُضبط من الإعدادات، فيُنقَل مرّةً بعلامةٍ ولا يعيده الإقلاع.
  */
+/** «سعر الشراء» قبل «سعر البيع» — مرّةً بعلامة، ثمّ لمن يرتّب من الإعدادات. */
+async function migratePriceOrder() {
+  const marks = mongoose.connection.collection('migrations');
+  const id = 'so-buy-before-sell-2026-10-26';
+  if (await marks.findOne({ _id: id })) return;
+  await ShipmentOrderField.updateOne({ key: 'buyPrice' }, { $set: { order: 4 } });
+  await ShipmentOrderField.updateOne({ key: 'sellPrice' }, { $set: { order: 5 } });
+  await marks.updateOne({ _id: id }, { $setOnInsert: { at: new Date() } }, { upsert: true });
+}
+
 async function migrateBranchGroup() {
   const marks = mongoose.connection.collection('migrations');
   const id = 'so-branch-to-pickup-delivery-2026-10-26';
@@ -2203,6 +2295,7 @@ exports.ensureShipmentOrderDefaults = async () => {
   await migratePaymentSubtypeField();
   await migratePriceRequired();
   await migrateBranchGroup();
+  await migratePriceOrder();
 
   for (const f of SYSTEM_FIELDS) {
     // eslint-disable-next-line no-await-in-loop

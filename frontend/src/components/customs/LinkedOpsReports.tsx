@@ -49,6 +49,9 @@ type Resp = {
   pendingRefs: { reportNumber: string; state: 'not_arrived' | 'linked_elsewhere'; otherRef?: string }[];
   summary: { total: number; collected: number; invoiced: number; cashPending: number; notInvoiced: number; selling?: number };
   access?: Access;
+  /** طلباتُ الشحن المربوطة بالمعاملة — بالبوليصة أو الحاوية أو رقمِها في خانة النقل. */
+  shipmentOrders?: { _id: string; ref: string; source: string; customerName: string; fromCity: string; toCity: string;
+    status: string; driverName: string; vehiclePlate: string; pickupTime: string | null; blNumber: string; containerNumber: string; via: string }[];
 };
 
 const BILLING: Record<Billing, [string, string, string]> = {
@@ -305,7 +308,7 @@ export default function LinkedOpsReports({ clearanceId, ar }: { clearanceId: str
 
       {error && <p className="px-5 py-4 text-sm text-red-600">{error}</p>}
       {!error && !data && <p className="px-5 py-4 text-sm text-slate-400">{t('جارٍ التحميل…', 'Loading…')}</p>}
-      {data && !data.reports.length && !data.pendingRefs.length && (
+      {data && !data.reports.length && !data.pendingRefs.length && !(data.shipmentOrders || []).length && (
         <p className="px-5 py-4 text-sm text-slate-500">
           {t('لا كشوفَ تشغيلٍ مرتبطة. يُربط الكشفُ حين يُكتب رقمُه في خانة نقل الحاوية بسيّارة الشركة، أو حين يكون «رقم السند» فيه رقمَ البوليصة.',
             'No linked reports. A report links when its number is written in a container transport entry, or when its document number is this B/L.')}
@@ -377,6 +380,45 @@ export default function LinkedOpsReports({ clearanceId, ar }: { clearanceId: str
                 : t(`ربطه التشغيلُ يدويًّا بالمعاملة ${p.otherRef || ''}.`, `Linked by hand to ${p.otherRef || 'another clearance'}.`)}
             </p>
           ))}
+        </div>
+      )}
+      {/* ── طلباتُ الشحن المربوطة (٢٠٢٦/١٠/٢٦) ──────────────────────────────
+          من «إنشاء شحنة»: بالبوليصة أو الحاوية، أو برقم الشحنة في خانة النقل هنا. */}
+      {data && (data.shipmentOrders || []).length > 0 && (
+        <div className="border-t border-slate-100">
+          <p className="px-5 pt-3 pb-1 text-xs font-bold text-slate-700">
+            {t(`طلبات الشحن المرتبطة (${data.shipmentOrders!.length})`, `Linked shipment orders (${data.shipmentOrders!.length})`)}
+          </p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="table-head">
+                <tr>
+                  {[t('البوليصة', 'Waybill'), t('العميل', 'Customer'), t('المسار', 'Route'), t('السائق / اللوحة', 'Driver / plate'),
+                    t('رقم البوليصة (B/L)', 'B/L'), t('الحاوية', 'Container'), t('الربط', 'Link')].map((h) => (
+                    <th key={h} className="px-3 py-2 text-start font-semibold whitespace-nowrap">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {data.shipmentOrders!.map((o) => (
+                  <tr key={o._id} className="border-t border-slate-100 hover:bg-slate-50">
+                    <td className="px-3 py-2 whitespace-nowrap">
+                      <Link href={`/system/shipment-orders?q=${encodeURIComponent(o.ref)}`} className="font-mono font-bold text-[#12325C] hover:text-[#f37121]">{o.ref || '—'}</Link>
+                    </td>
+                    <td className="px-3 py-2">{o.customerName || '—'}</td>
+                    <td className="px-3 py-2 whitespace-nowrap">{o.fromCity || '—'} ← {o.toCity || '—'}</td>
+                    <td className="px-3 py-2 whitespace-nowrap">{o.driverName || '—'}{o.vehiclePlate ? <span className="text-slate-400 text-xs"> · {o.vehiclePlate}</span> : null}</td>
+                    <td className="px-3 py-2 font-mono text-xs" dir="ltr">{o.blNumber || '—'}</td>
+                    <td className="px-3 py-2 font-mono text-xs" dir="ltr">{o.containerNumber || '—'}</td>
+                    <td className="px-3 py-2 text-xs text-slate-500 whitespace-nowrap">
+                      {o.via === 'move' ? t('رقمها في خانة النقل', 'Its number in a transport entry')
+                        : o.via === 'bl' ? t('بالبوليصة', 'By B/L') : o.via === 'container' ? t('بالحاوية', 'By container') : o.via}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </section>

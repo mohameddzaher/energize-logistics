@@ -2465,9 +2465,24 @@ exports.getOpsReports = async (req, res) => {
     });
 
     const count = (k) => reports.filter((r) => r.billing === k).length;
+    // ── وطلباتُ الشحن المربوطة (٢٠٢٦/١٠/٢٦) ──────────────────────────────────
+    // بالبوليصة أو الحاوية المكتوبتين في الشحنة، أو برقمها في خانة نقل الحاوية —
+    // services/customsOpsLink.resolveShipments. تُعرض للقراءة ويُفتح منها طلبُها.
+    const ShipmentOrder = require('../models/ShipmentOrder');
+    const shipmentOrders = (await ShipmentOrder.find({ 'customsLink.clearance': clearance._id })
+      .select('waybillNumber reference graduationNumber source customerName fromCity toCity status driverName vehiclePlate pickupTime blNumber containerNumber customsLink createdAt')
+      .sort({ createdAt: 1 }).lean())
+      .map((o) => ({
+        _id: String(o._id),
+        ref: String(o.reference || o.waybillNumber || ''),
+        source: o.source, customerName: o.customerName || '', fromCity: o.fromCity || '', toCity: o.toCity || '',
+        status: o.status, driverName: o.driverName || '', vehiclePlate: o.vehiclePlate || '', pickupTime: o.pickupTime || null,
+        blNumber: o.blNumber || '', containerNumber: o.containerNumber || '', via: (o.customsLink && o.customsLink.via) || '',
+      }));
     res.json({
       reports,
       pendingRefs,
+      shipmentOrders,
       summary: {
         total: reports.length,
         collected: count('collected'), invoiced: count('invoiced'),

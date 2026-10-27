@@ -24,6 +24,7 @@ interface Branch {
 export default function BranchesPage() {
   const { confirm } = useDialog();
   const { user } = useAuth();
+  // role-only: صلاحيّةُ السوبر أدمن والأدمن (config/constants TOP_ROLES) — لا منحُ قسم.
   const isSuperAdmin = ['super_admin', 'admin'].includes(user?.role || '');
   const { lang } = useLanguage();
   const T = getBranchesTranslations(lang);

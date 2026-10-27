@@ -34,6 +34,7 @@ interface Driver {
 export default function DriversPage() {
   const { confirm } = useDialog();
   const { user } = useAuth();
+  // role-only: صلاحيّةُ السوبر أدمن والأدمن (config/constants TOP_ROLES) — لا منحُ قسم.
   const isSuperAdmin = ['super_admin', 'admin'].includes(user?.role || '');
   // والمصفوفةُ تُحسب كما تُحسب القائمة: دورٌ مُنح «تعديل» في هذا القسم يعدّل
   // — وإلّا فُتحت الشاشةُ لدورٍ مصنوعٍ وامتنعت عنه أزرارُها (راجع فريق العمليات).

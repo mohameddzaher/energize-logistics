@@ -145,7 +145,8 @@ export default function WorkflowDetailPage() {
       .catch(() => { if (alive) setMyFields(new Set()); });
     return () => { alive = false; };
   }, [role]);
-  const canEditField = (key: string) =>['super_admin', 'admin'].includes(role || '') || myFields === null || myFields.has(key);
+  // role-only: صلاحيّةُ السوبر أدمن والأدمن (config/constants TOP_ROLES) — لا منحُ قسم.
+  const canEditField = (key: string) => ['super_admin', 'admin'].includes(role || '') || myFields === null || myFields.has(key);
   const canEditGroup = (group: string) =>
     (SECTIONS.find((s) => s.group === group)?.fields || []).some((f) => canEditField(f.key));
 

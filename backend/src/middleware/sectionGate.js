@@ -137,5 +137,29 @@ const stampSection = (...sectionKeys) => async (req, res, next) => {
   }
 };
 
+/**
+ * ── وما لا يُقرأ إلّا من القسم نفسِه ──────────────────────────────────────
+ *
+ * `sectionGate` يمرّر الدورَ الذي لا مصفوفةَ محفوظةً له وافتراضُه «لا شيء»
+ * (كي لا يُقفَل أحدٌ عن قراءةٍ مشتركة: قائمةُ المعاملات والأطراف يقرؤها التشغيلُ
+ * والتحصيلُ وخطّةُ العمل). وبهذا قرأ ثلاثةٌ وأربعون دورًا تسعيرَ عقود التخليص
+ * وفاتورتَه وبطاقةَ أطرافه بالـ API مباشرةً (فحصُ QA، ٢٠٢٦/١٠/٢٧) — وهي لا تُعرَض
+ * إلّا في صفحة المعاملة داخل القسم.
+ *
+ * فهذا يُركَّب على مسارٍ بعينه بعد `sectionGate`: يمرّ من خُتم له القسمُ (رؤيةً
+ * أو تعديلًا) ومديرو النظام، ويُردّ ما سواه — بلا سقوطٍ إلى قوائم الأدوار.
+ */
+const requireSectionAccess = (sectionKey) => {
+  const guard = (req, res, next) => {
+    if (!req.user) return res.status(401).json({ message: 'Authentication required' });
+    if (FULL_ACCESS_ROLES.includes(req.user.role)) return next();
+    if (req.sectionAccess === 'view' || req.sectionAccess === 'edit') return next();
+    return res.status(403).json({ message: 'No access to this section', code: 'SECTION_FORBIDDEN' });
+  };
+  guard.__section = (getSection(sectionKey) && getSection(sectionKey).key) || sectionKey;
+  return guard;
+};
+
 module.exports = sectionGate;
 module.exports.stampSection = stampSection;
+module.exports.requireSectionAccess = requireSectionAccess;

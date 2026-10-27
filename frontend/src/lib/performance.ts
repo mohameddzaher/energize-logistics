@@ -25,13 +25,14 @@ export type Lang = 'en' | 'ar';
 // و«_manager» ليست تسميةً جميلة: `config/roles.js` يوقف الخادمَ عند التحميل
 // إن خالفها دورٌ واحد — فالاشتقاقُ عليها آمنٌ كاشتقاق الخادم.
 export const PERF_STAFF_ROLES = [
-  'super_admin', 'admin', 'it_manager', 'it_specialist', 'moderator',
+  'super_admin', 'admin', 'it_manager', 'moderator',
   ...MANAGER_ROLES,
   // موظّفون يشاركون في التقييم بحكم عملهم لا بحكم إدارتهم.
   'hr_specialist', 'crm_team_lead', 'b2c_project_lead', 'cfo',
 ];
 // Full visibility across every department.
-export const PERF_FULL_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist'];
+// it_specialist removed (owner, 2026-10-27) — grades and bonuses are not for it.
+export const PERF_FULL_ROLES = ['super_admin', 'admin', 'it_manager'];
 // May edit the forms, weights, bands and bonus tiers. Deliberately just one role:
 // these are the company's compensation rules.
 export const PERF_CONFIG_ROLES = ['super_admin', 'admin'];

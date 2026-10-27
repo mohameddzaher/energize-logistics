@@ -8,6 +8,9 @@ router.param('attId', objectIdParam());
 const ctrl = require('../controllers/customsClearanceController');
 const authenticate = require('../middleware/auth');
 const authorize = require('../middleware/rbac');
+// Pricing, the invoice and the parties card are read only inside the Customs
+// section (QA sweep 2026-10-27) — see middleware/sectionGate requireSectionAccess.
+const customsOnly = require('../middleware/sectionGate').requireSectionAccess('Customs');
 
 const EDIT_ROLES = ['super_admin', 'admin', 'operations_manager', 'customs_manager', 'customs_officer'];
 
@@ -57,7 +60,7 @@ router.delete('/contracts/:id/files/:attId', authorize(...EDIT_ROLES), ctrl.dele
 
 router.get('/:id', ctrl.getClearance);
 // فاتورةُ معاملةٍ واحدةٍ محسوبةً من بنودها — راجع utils/customsInvoice.
-router.get('/:id/invoice', ctrl.getClearanceInvoice);
+router.get('/:id/invoice', customsOnly, ctrl.getClearanceInvoice);
 // كشوفُ التشغيل المرتبطة بالمعاملة، بحال فوترتها وتحصيلها — راجع services/customsOpsLink.
 router.get('/:id/ops-reports', ctrl.getOpsReports);
 // متابعاتُ الكشف المرتبط — مَن يرى المعاملةَ يرى كشوفَها ويكتب عليها متابعة، والحذفُ
@@ -80,7 +83,7 @@ router.delete('/:id', authorize('super_admin', 'admin', 'customs_manager', 'cust
 // إدخالٌ لكلّ مرّة: المرحلةُ نفسُها تُضاف مرّاتٍ (الرسومُ على دفعتين، الإرجاعُ
 // لحاويتين). والقائمةُ التي تُختار منها من إعدادات القسم.
 // أسعارُ عقد العميل: قراءتُها لشاشة المعاملة، و«تعبئة من العقد».
-router.get('/:id/contract-pricing', ctrl.getContractPricing);
+router.get('/:id/contract-pricing', customsOnly, ctrl.getContractPricing);
 router.post('/:id/apply-contract', authorize(...EDIT_ROLES), ctrl.applyContractPricing);
 router.post('/:id/payment-stages', authorize(...EDIT_ROLES), ctrl.addPaymentStage);
 router.put('/:id/payment-stages/:entryId', authorize(...EDIT_ROLES), ctrl.updatePaymentStage);
@@ -103,7 +106,7 @@ router.patch('/:id/invoice-request/decision', authorize(...FINANCE_ROLES), ctrl.
 router.post('/:id/notes', authorize(...EDIT_ROLES), ctrl.addNote);
 router.delete('/:id/notes/:noteId', authorize(...EDIT_ROLES), ctrl.deleteNote);
 
-router.get('/:id/parties-card', ctrl.getClearanceParties);   // العميل والوكيل والناقل ومرفقاتُهم
+router.get('/:id/parties-card', customsOnly, ctrl.getClearanceParties);   // العميل والوكيل والناقل ومرفقاتُهم
 router.post('/:id/attachments', authorize(...EDIT_ROLES), ctrl.addAttachments);
 router.put('/:id/attachments/:attId', authorize(...EDIT_ROLES), ctrl.updateAttachment);
 router.delete('/:id/attachments/:attId', authorize(...EDIT_ROLES), ctrl.deleteAttachment);

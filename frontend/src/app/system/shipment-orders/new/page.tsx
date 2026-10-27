@@ -607,7 +607,8 @@ function CreateShipmentInner() {
                 مدينةٌ أو نوعُ حمولةٍ جديد كان يوقف الاستمارة: يخرج المستخدم إلى
                 إعدادات القسم فيفقد ما كتبه. والمضافُ هنا يُكتب في الإعدادات
                 نفسِها ويظهر عند الجميع في اللحظة نفسِها (`so:fields`). */}
-            {addingFor === f._id ? (
+            {/* «الفرع» فروعُ الشركة — لا يُضاف إليها من هنا (`locked`). */}
+            {(f as any).locked ? null : addingFor === f._id ? (
               <div className="mt-1.5 flex items-center gap-1.5">
                 <input autoFocus value={newOption} onChange={(e) => setNewOption(e.target.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter') saveOption(f); if (e.key === 'Escape') setAddingFor(''); }}
@@ -1056,11 +1057,7 @@ function CreateShipmentInner() {
                         <a href={`/system/customs/${form.customsLink.clearance}`} target="_blank" rel="noreferrer" className="font-bold underline">{form.customsLink.refNumber || '—'}</a>
                         {form.customsLink.customerName ? ` · ${form.customsLink.customerName}` : ''}
                       </p>
-                    ) : (
-                      <p className="col-span-full text-[11.5px] text-slate-500">
-                        {ar ? 'إن طابقت معاملةَ تخليص رُبطت بها الشحنةُ عند الحفظ، وظهرت في المعاملة.' : 'If they match a customs clearance, the shipment is linked to it on save and shows there.'}
-                      </p>
-                    )}
+                    ) : null}
                   </div>
                 )}
               </div>

@@ -2159,12 +2159,32 @@ exports.deleteDriver = async (req, res) => {
 
 // ── Form fields (the settings page) ─────────────────────────────────────────
 
+/** فروعُ الشركة بالعربيّة كما تُكتب في الكشوف — من البيانات المرجعيّة، بترتيبها. */
+async function companyBranchOptions() {
+  return cache.wrap('so:branches', 60 * 1000, async () => {
+    const Lookup = require('../models/Lookup');
+    const rows = await Lookup.find({ type: 'workflow_paying_branch', deleted: { $ne: true }, isActive: { $ne: false } })
+      .sort({ order: 1, nameAr: 1 }).select('nameAr nameEn').lean();
+    return rows.filter((r) => String(r.nameAr || '').trim())
+      .map((r) => ({ key: r.nameAr.trim(), ar: r.nameAr.trim(), en: (r.nameEn || r.nameAr).trim() }));
+  });
+}
+
 exports.listFields = async (req, res) => {
   try {
     // ?all=1 → the settings page (inactive rows included); default → the form.
     // Tombstoned system fields are gone from BOTH views — see the model.
     const filter = req.query.all ? { deleted: { $ne: true } } : { active: true, deleted: { $ne: true } };
     const fields = await ShipmentOrderField.find(filter).sort({ group: 1, order: 1 }).lean();
+    // ── «الفرع» فروعُنا كلُّها، لا قائمةٌ تُكتب هنا (٢٠٢٦/١٠/٢٧) ────────────────
+    // «كارد الفرع المفروض يكون فيه فروعنا كلّهم، وملهوش إضافة فرع». فخياراتُه
+    // تُقرأ من قائمة فروع الشركة نفسِها — «الفروع» في البيانات المرجعيّة
+    // (workflow_paying_branch)، وهي فرعُ كشف التشغيل والسداد — ولا تُضاف من النموذج.
+    const branch = fields.find((f) => f.key === 'branch');
+    if (branch) {
+      branch.options = await companyBranchOptions();
+      branch.locked = true;
+    }
     res.json({ fields });
   } catch (error) {
     res.status(500).json({ message: 'Failed to load form fields' });
@@ -2213,6 +2233,7 @@ exports.updateField = async (req, res) => {
     if (field.isSystem) delete data.group;
     // «نوع الدفع» أربعةُ أنواعٍ بمفاتيح سير عمل التشغيل — خيارُه الخامسُ أو
     // اسمٌ معدَّلٌ يفصل الطلبَ عن الكشف. فيُضبط شكلُه وتسميتُه وإلزامُه، لا خياراتُه.
+    if (field.key === 'branch') delete data.options; // من فروع الشركة — راجع listFields
     if (field.key === 'paymentSubtype') {
       delete data.options;
       if (data.inputType && !['cards', 'select'].includes(data.inputType)) delete data.inputType;
@@ -2483,6 +2504,9 @@ exports.addFieldOption = async (req, res) => {
     }
     if (field.key === 'paymentSubtype') {
       return res.status(400).json({ message: 'أنواعُ الدفع أربعةٌ ثابتة — لا يُضاف إليها من هنا' });
+    }
+    if (field.key === 'branch') {
+      return res.status(400).json({ message: 'الفروعُ فروعُ الشركة — تُضاف من البيانات المرجعيّة («الفروع المسدِّدة»)، لا من هنا' });
     }
     const ar = String(req.body.ar || req.body.label || '').trim();
     if (!ar) return res.status(400).json({ message: 'اكتب الاسم' });

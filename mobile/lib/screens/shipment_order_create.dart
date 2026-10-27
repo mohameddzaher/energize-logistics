@@ -760,7 +760,8 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
           }
         }),
       ),
-        Align(
+        // «الفرع» فروعُ الشركة — لا يُضاف إليها من هنا (`locked`، ٢٠٢٦/١٠/٢٧).
+        if (f['locked'] != true) Align(
           alignment: AlignmentDirectional.centerStart,
           child: TextButton(
             style: TextButton.styleFrom(visualDensity: VisualDensity.compact, padding: const EdgeInsets.symmetric(horizontal: 4)),
@@ -1117,9 +1118,7 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
                                 Text(tr('مربوطة بمعاملة التخليص ${(_form['customsLink'] as Map)['refNumber'] ?? ''}',
                                         'Linked to customs clearance ${(_form['customsLink'] as Map)['refNumber'] ?? ''}'),
                                     style: const TextStyle(fontSize: 12.5, color: T.success, fontWeight: FontWeight.w700))
-                              else
-                                Text(tr('إن طابقت معاملةَ تخليص رُبطت بها الشحنةُ عند الحفظ.', 'If they match a customs clearance, the shipment is linked on save.'),
-                                    style: const TextStyle(fontSize: 11.5, color: T.inkFaint)),
+
                             ],
                           ]),
                         ),

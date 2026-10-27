@@ -237,6 +237,13 @@ export default function ShipmentFormFields({ embedded = false }: { embedded?: bo
         {/* ── «نوع الدفع» أربعةٌ ثابتة ──────────────────────────────────────
             مفاتيحُ سير عمل التشغيل بأعيانها؛ فتُعرَض ولا تُعدَّل، والخادمُ
             يتجاهل خياراتٍ تصله لهذا الحقل (updateField). */}
+        {/* «الفرع» فروعُ الشركة من البيانات المرجعيّة — تُعرَض ولا تُعدَّل هنا. */}
+        {hasOptions && form.key === 'branch' && (
+          <p className="mt-4 text-[12px] text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+            {ar ? 'خياراتُ «الفرع» هي فروعُ الشركة كلُّها، تُقرأ من البيانات المرجعيّة («الفروع المسدِّدة») — يُضاف الفرعُ أو يُعدَّل من هناك.'
+                : 'Branch options are all company branches, read from Reference Data («Paying branches») — add or edit a branch there.'}
+          </p>
+        )}
         {hasOptions && form.key === 'paymentSubtype' && (
           <div className="mt-4">
             <p className="mb-2 text-[12px] text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
@@ -251,7 +258,7 @@ export default function ShipmentFormFields({ embedded = false }: { embedded?: bo
           </div>
         )}
 
-        {hasOptions && form.key !== 'paymentSubtype' && (
+        {hasOptions && form.key !== 'paymentSubtype' && form.key !== 'branch' && (
           <div className="mt-4">
             {form.key === 'driverRentType' && (
               <p className="mb-2 text-[12px] text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">

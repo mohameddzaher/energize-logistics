@@ -73,7 +73,14 @@ export default function OrdersReport({ url }: { url: string }) {
     const p = new URLSearchParams({ report: '1' });
     if (to) { p.set('to', to); p.set('date', to); }
     if (from) p.set('from', from);
-    api.get<Report>(`${url}?${p}`).then(setD).catch(() => {});
+    // ── The report is for those the server gives it to ─────────────────────
+    // The server answers report=1 only for management (REPORT_ROLES and the
+    // entry head). Anyone else on the page gets the plain entry list, which has
+    // no cards, summary or projects, and the section crashed the whole page
+    // («حدث خطأ») for 7 roles (QA sweep, 2026-10-27). Not a report → not shown.
+    api.get<Report>(`${url}?${p}`)
+      .then((r: any) => setD(r && r.cards && Array.isArray(r.projects) && Array.isArray(r.rows) ? r : null))
+      .catch(() => {});
   }, [url, from, to]);
   useEffect(() => { load(); }, [load]);
   useSocket('b2c:order:upserted', load);

@@ -16,7 +16,7 @@ function requireApiKey(envVar, label) {
     const expected = process.env[envVar];
     if (!expected) {
       return res.status(503).json({
-        message: `${label} غير مفعَّل — لم يُضبَط ${envVar} على الخادم`,
+        message: `${label} is not enabled — ${envVar} is not set on the server`,
         code: 'API_KEY_NOT_CONFIGURED',
       });
     }
@@ -27,7 +27,7 @@ function requireApiKey(envVar, label) {
     const b = Buffer.from(String(expected));
     const equal = a.length === b.length && crypto.timingSafeEqual(a, b);
     if (!equal) {
-      return res.status(401).json({ message: 'مفتاح غير صالح', code: 'INVALID_API_KEY' });
+      return res.status(401).json({ message: 'Invalid or missing API key — send it in the x-api-key header', code: 'INVALID_API_KEY' });
     }
     req.apiClient = label;
     return next();

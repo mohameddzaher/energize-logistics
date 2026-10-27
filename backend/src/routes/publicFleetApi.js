@@ -21,7 +21,7 @@ const cache = require('../utils/ttlCache');
  *
  * المفتاح: ترويسة `x-api-key`. يُضبَط في `FLEET_API_KEY` على الخادم.
  */
-router.use(requireApiKey('FLEET_API_KEY', 'واجهة الأسطول للأتمتة'));
+router.use(requireApiKey('FLEET_API_KEY', 'Fleet automation API'));
 
 /** عمرُ القراءة بالثواني — الأتمتة تحتاج أن تعرف هل ما تقرؤه حديثٌ أم بائت. */
 const ageSec = (d) => (d ? Math.round((Date.now() - new Date(d).getTime()) / 1000) : null);

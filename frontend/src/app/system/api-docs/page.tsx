@@ -11,12 +11,12 @@
  * schema the handler uses. The page polls the surface signature every minute
  * and reloads the catalog when a route or field was added, changed or removed.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import api from '@/lib/api';
 import {
   BookOpen, Search, Download, RefreshCw, Copy, Check, ChevronDown, ChevronRight, Shield, KeyRound, Globe, Lock,
-  Database, Braces, Terminal, Layers, Zap, ExternalLink, FileJson, FileText, FileSpreadsheet, Package, X, Filter,
+  Database, Braces, Terminal, Layers, Zap, ExternalLink, FileJson, FileText, FileSpreadsheet, Package, X, Filter, Info, ArrowRight,
 } from 'lucide-react';
 
 // role-only: the server guards the catalog with the same list (routes/apiDocs DOCS_ROLES).
@@ -426,10 +426,126 @@ function ExtractMenu({ c, list }: { c: Catalog; list: Endpoint[] }) {
 
 function Stat({ label, value, icon, accent }: { label: string; value: string | number; icon: React.ReactNode; accent: string }) {
   return (
-    <div className="rounded-2xl bg-white/[0.06] p-4 ring-1 ring-white/10 backdrop-blur">
-      <div className={`flex h-8 w-8 items-center justify-center rounded-lg ${accent}`}>{icon}</div>
-      <p className="mt-3 text-2xl font-bold tabular-nums text-white">{value}</p>
-      <p className="text-[12px] text-slate-400">{label}</p>
+    <div className="inline-flex items-center gap-2.5 rounded-xl bg-white/[0.06] py-1.5 pl-1.5 pr-3.5 ring-1 ring-white/10">
+      <span className={`flex h-7 w-7 items-center justify-center rounded-lg ${accent}`}>{icon}</span>
+      <span className="text-[15px] font-bold tabular-nums text-white">{value}</span>
+      <span className="text-[12px] text-slate-400">{label}</span>
+    </div>
+  );
+}
+
+// ── Access guide: what each kind of access is, and exactly how to use it ────
+const GUIDE: Record<Endpoint['auth'], {
+  title: string; tone: string; icon: typeof Lock; what: string;
+  steps: { title: string; text: string; code?: (base: string) => string }[];
+  errors: string[];
+}> = {
+  apiKey: {
+    title: 'Partner API — authenticate with an API key',
+    tone: 'from-violet-600 to-indigo-600',
+    icon: KeyRound,
+    what: 'Read-only endpoints for systems outside the company — partners, automation tools, external dashboards. They return live fleet data (vehicles, positions, alerts, supervisor assignments). No user account is involved: the key itself is the credential, so treat it like a password.',
+    steps: [
+      { title: 'Get the key', text: 'There is one partner key, set on the server as FLEET_API_KEY. Ask the system administrator / IT for it. Never send it in an open chat or email.' },
+      { title: 'Send it with every request', text: 'Put it in the x-api-key header. (?key= in the URL also works for tools that cannot send headers, but it ends up in access logs.)' },
+      { title: 'Try it', text: 'The health endpoint answers when the key is right:', code: (b) => `curl '${b}/api/fleet-api/health' \\\n  -H 'x-api-key: <YOUR_API_KEY>'` },
+      { title: 'Hand the docs to the partner', text: 'Send them this link with their key — an interactive page where they can try every call themselves:', code: (b) => `${b}/api/docs?key=<YOUR_API_KEY>` },
+    ],
+    errors: ['401 INVALID_API_KEY — the key is missing or wrong', '503 API_KEY_NOT_CONFIGURED — no key is set on the server yet'],
+  },
+  user: {
+    title: 'Internal API — authenticate as a signed-in user',
+    tone: 'from-slate-800 to-slate-700',
+    icon: Lock,
+    what: 'Everything the web and mobile apps do. Access follows the user’s role and section permissions — exactly the same rules as the screens, so a user who cannot open a page cannot call its endpoints either.',
+    steps: [
+      { title: 'Sign in', text: 'Exchange an email and password for an access token:', code: (b) => `curl -X POST '${b}/api/auth/login' \\\n  -H 'Content-Type: application/json' \\\n  -d '{"email":"user@company.com","password":"••••••••"}'\n\n# → { "accessToken": "eyJ…", "refreshToken": "…", "user": { … } }` },
+      { title: 'Send the token', text: 'Add it to every request:', code: () => 'Authorization: Bearer <accessToken>' },
+      { title: 'Renew it', text: 'When a call answers 401, get a new access token with the refresh token (POST /api/auth/refresh) and repeat the call.' },
+      { title: 'Use a dedicated account', text: 'For an integration, create a separate user that has only the sections it needs — never reuse a person’s account.' },
+    ],
+    errors: ['401 — no token, or it expired', '403 — the user’s role or section does not allow this endpoint'],
+  },
+  public: {
+    title: 'Public endpoints — no credentials',
+    tone: 'from-amber-500 to-orange-500',
+    icon: Globe,
+    what: 'These answer anyone without a login or key — health checks, sign-in itself and a few deliberately public feeds. They expose nothing private.',
+    steps: [
+      { title: 'Call them directly', text: 'No header is needed:', code: (b) => `curl '${b}/api/health'` },
+    ],
+    errors: [],
+  },
+};
+
+function AuthGuide({ kind, base, count, onClose }: { kind: Endpoint['auth']; base: string; count: number; onClose: () => void }) {
+  const g = GUIDE[kind];
+  const Icon = g.icon;
+  return (
+    <div className="mb-6 overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-slate-200">
+      <div className={`flex items-start justify-between gap-3 bg-gradient-to-r ${g.tone} px-5 py-4 text-white`}>
+        <div className="flex items-start gap-3">
+          <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/15"><Icon className="h-5 w-5" /></span>
+          <div>
+            <p className="text-[15px] font-bold">{g.title}</p>
+            <p className="mt-1 max-w-3xl text-[13px] leading-relaxed text-white/80">{g.what}</p>
+          </div>
+        </div>
+        <button type="button" onClick={onClose} title="Show all endpoints" className="rounded-lg p-1.5 text-white/70 hover:bg-white/10 hover:text-white"><X className="h-4 w-4" /></button>
+      </div>
+      <ol className="grid gap-px bg-slate-100 md:grid-cols-2">
+        {g.steps.map((st, i) => (
+          <li key={st.title} className="bg-white p-4">
+            <div className="flex items-center gap-2">
+              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-900 text-[11px] font-bold text-white">{i + 1}</span>
+              <p className="text-[13.5px] font-semibold text-slate-900">{st.title}</p>
+            </div>
+            <p className="mt-1.5 text-[12.5px] leading-relaxed text-slate-600">{st.text}</p>
+            {st.code && (
+              <div className="mt-2 flex items-start justify-between gap-2 rounded-lg bg-[#0b1220] px-3 py-2">
+                <pre className="overflow-x-auto font-mono text-[11.5px] leading-relaxed text-slate-200">{st.code(base)}</pre>
+                <CopyButton text={st.code(base)} label="" dark />
+              </div>
+            )}
+          </li>
+        ))}
+      </ol>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-slate-100 px-5 py-3 text-[12px] text-slate-500">
+        <span className="font-semibold text-slate-700">{count} endpoint{count === 1 ? '' : 's'} below</span>
+        {g.errors.map((e) => <span key={e} className="inline-flex items-center gap-1"><Info className="h-3.5 w-3.5 text-slate-400" />{e}</span>)}
+        {kind === 'apiKey' && (
+          <a href="/api/docs" target="_blank" rel="noreferrer" className="ml-auto inline-flex items-center gap-1 font-semibold text-[#f37121] hover:underline">
+            Open the partner docs<ArrowRight className="h-3.5 w-3.5" />
+          </a>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** Three cards on top of the list: what each kind of access means — and a click filters to it. */
+function AccessCards({ counts, onPick }: { counts: Record<Endpoint['auth'], number>; onPick: (k: Endpoint['auth']) => void }) {
+  const items: [Endpoint['auth'], string, string][] = [
+    ['user', 'Signed-in user', 'Web & mobile apps — bearer token, role and section rules'],
+    ['apiKey', 'API key (partners)', 'External systems — read-only fleet data with x-api-key'],
+    ['public', 'Public', 'No credentials — health checks and sign-in'],
+  ];
+  return (
+    <div className="mb-6 grid gap-3 sm:grid-cols-3">
+      {items.map(([k, label, hint]) => {
+        const Icon = AUTH_ICON[k];
+        return (
+          <button key={k} type="button" onClick={() => onPick(k)}
+            className="group flex items-start gap-3 rounded-2xl bg-white p-4 text-left ring-1 ring-slate-200 transition hover:-translate-y-0.5 hover:shadow-md hover:ring-slate-300">
+            <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${k === 'apiKey' ? 'bg-violet-50 text-violet-600' : k === 'public' ? 'bg-amber-50 text-amber-600' : 'bg-slate-100 text-slate-600'}`}><Icon className="h-4 w-4" /></span>
+            <span className="min-w-0">
+              <span className="flex items-center gap-2 text-[13.5px] font-semibold text-slate-900">{label}<span className="rounded bg-slate-100 px-1.5 text-[11px] font-medium text-slate-500">{counts[k] || 0}</span></span>
+              <span className="mt-0.5 block text-[12px] leading-snug text-slate-500">{hint}</span>
+              <span className="mt-1.5 inline-flex items-center gap-1 text-[12px] font-semibold text-[#f37121] opacity-80 group-hover:opacity-100">How to use<ArrowRight className="h-3.5 w-3.5" /></span>
+            </span>
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -452,6 +568,18 @@ export default function ApiDocsPage() {
   const [onlyModel, setOnlyModel] = useState(false);
   const [open, setOpen] = useState<Set<string>>(new Set());
   const sigRef = useRef('');
+  // ── The page scrolls on its own ─────────────────────────────────────────
+  // The system <main> has overflow-x-auto, which makes it the sticky ancestor
+  // while the window does the scrolling — so nothing could stay fixed. The page
+  // takes the screen under the header and scrolls itself: the group sidebar and
+  // the filter bar stay put.
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [viewH, setViewH] = useState(0);
+  useLayoutEffect(() => {
+    const fit = () => { const el = rootRef.current; if (el) setViewH(Math.max(320, window.innerHeight - (el.getBoundingClientRect().top + window.scrollY))); };
+    fit(); window.addEventListener('resize', fit);
+    return () => window.removeEventListener('resize', fit);
+  }, [loading]);
 
   const load = useCallback(async (quiet = false) => {
     if (quiet) setRefreshing(true);
@@ -509,6 +637,12 @@ export default function ApiDocsPage() {
     return m;
   }, [cat]);
 
+  const authCounts = useMemo(() => {
+    const m = { user: 0, apiKey: 0, public: 0 } as Record<Endpoint['auth'], number>;
+    for (const e of cat?.endpoints || []) m[e.auth] += 1;
+    return m;
+  }, [cat]);
+
   const toggle = (id: string) => setOpen((prev) => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   const active = !!(q || group || methods.size || auth || onlyModel);
   const clear = () => { setQ(''); setGroup(''); setMethods(new Set()); setAuth(''); setOnlyModel(false); };
@@ -516,66 +650,59 @@ export default function ApiDocsPage() {
   if (!allowed) return <div className="p-8 text-slate-500" dir="ltr">Administration and IT only.</div>;
 
   return (
-    <div dir="ltr" lang="en" className="-mx-4 -mt-4 min-h-screen bg-slate-50 font-sans sm:-mx-6 lg:-mx-8">
-      {/* ── Hero ── */}
+    <div ref={rootRef} dir="ltr" lang="en" className="-m-4 overflow-y-auto overscroll-contain bg-slate-50 font-sans md:-m-6"
+      style={viewH ? { height: viewH } : undefined}>
+      {/* ── Hero (compact) ── */}
       {/* The hero does not clip (the Extract menu drops below it); only its decoration does. */}
-      <div className="relative z-30 bg-[#0b1220] px-4 pb-8 pt-8 sm:px-8">
+      <div className="relative z-30 bg-[#0b1220] px-4 py-5 sm:px-8">
         <div className="pointer-events-none absolute inset-0 overflow-hidden">
           <div className="absolute inset-0 opacity-[0.07]"
-            style={{ backgroundImage: 'linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px)', backgroundSize: '36px 36px' }} />
-          <div className="absolute -right-24 -top-24 h-80 w-80 rounded-full bg-[#f37121] opacity-20 blur-3xl" />
-          <div className="absolute -bottom-32 left-1/3 h-72 w-72 rounded-full bg-indigo-500 opacity-20 blur-3xl" />
+            style={{ backgroundImage: 'linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px)', backgroundSize: '32px 32px' }} />
+          <div className="absolute -right-20 -top-28 h-64 w-64 rounded-full bg-[#f37121] opacity-20 blur-3xl" />
+          <div className="absolute -bottom-40 left-1/3 h-56 w-56 rounded-full bg-indigo-500 opacity-20 blur-3xl" />
         </div>
-        <div className="relative">
-          <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="relative flex flex-wrap items-center justify-between gap-4">
+          <div className="flex min-w-0 items-center gap-3.5">
+            <span className="hidden h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[#f37121] to-[#f7a26b] shadow-lg shadow-orange-500/20 sm:flex">
+              <BookOpen className="h-5 w-5 text-white" />
+            </span>
             <div className="min-w-0">
-              <div className="flex items-center gap-2 text-[12px] font-semibold uppercase tracking-[0.18em] text-[#f7a26b]">
-                <BookOpen className="h-4 w-4" />Developer reference
-              </div>
-              <h1 className="mt-2 text-3xl font-bold tracking-tight text-white sm:text-4xl">Energize Logistics API</h1>
-              <p className="mt-2 max-w-2xl text-[14px] leading-relaxed text-slate-400">
-                Every endpoint of the platform, generated from the running code — routes, guards, fields and samples.
-                Add, change or remove anything in the system and it appears here automatically.
-              </p>
-              <div className="mt-4 flex flex-wrap items-center gap-2 text-[12px]">
-                <span className="inline-flex items-center gap-2 rounded-full bg-emerald-500/10 px-3 py-1 font-medium text-emerald-300 ring-1 ring-emerald-500/30">
-                  <span className="relative flex h-2 w-2"><span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60" /><span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-400" /></span>
-                  Live{checkedAt ? ` · checked ${checkedAt.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}` : ''}
+              <h1 className="text-xl font-bold tracking-tight text-white sm:text-2xl">Energize Logistics API</h1>
+              <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11.5px]">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-2 py-0.5 font-medium text-emerald-300 ring-1 ring-emerald-500/30">
+                  <span className="relative flex h-1.5 w-1.5"><span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60" /><span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-400" /></span>
+                  Live{checkedAt ? ` · ${checkedAt.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}` : ''}
                 </span>
-                {cat && <span className="rounded-full bg-white/5 px-3 py-1 font-mono text-slate-300 ring-1 ring-white/10">v{cat.version} · {cat.signature}</span>}
-                {cat && <span className="rounded-full bg-white/5 px-3 py-1 text-slate-300 ring-1 ring-white/10">Generated {timeOf(cat.generatedAt)}</span>}
+                {cat && <span className="rounded-full bg-white/5 px-2 py-0.5 font-mono text-slate-300 ring-1 ring-white/10">v{cat.version} · {cat.signature}</span>}
+                {cat && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-white/5 py-0.5 pl-2 pr-0.5 font-mono text-slate-300 ring-1 ring-white/10">
+                    {cat.baseUrl}<CopyButton text={cat.baseUrl} label="" dark />
+                  </span>
+                )}
               </div>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <a href="/api/docs" target="_blank" rel="noreferrer"
-                className="inline-flex items-center gap-2 rounded-xl bg-white/5 px-3.5 py-2.5 text-sm font-medium text-slate-200 ring-1 ring-white/10 hover:bg-white/10">
-                <ExternalLink className="h-4 w-4" />Partner docs
-              </a>
-              <button type="button" onClick={() => load(true)}
-                className="inline-flex items-center gap-2 rounded-xl bg-white/5 px-3.5 py-2.5 text-sm font-medium text-slate-200 ring-1 ring-white/10 hover:bg-white/10">
-                <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />Refresh
-              </button>
-              {cat && <ExtractMenu c={cat} list={list} />}
             </div>
           </div>
-
-          {cat && (
-            <>
-              <div className="mt-6 flex flex-wrap items-center gap-2 rounded-xl bg-white/[0.04] px-3 py-2 ring-1 ring-white/10">
-                <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Base URL</span>
-                <code className="font-mono text-[13px] text-slate-200">{cat.baseUrl}</code>
-                <CopyButton text={cat.baseUrl} dark />
-              </div>
-              <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-                <Stat label="Endpoints" value={cat.endpoints.length} icon={<Zap className="h-4 w-4 text-white" />} accent="bg-[#f37121]" />
-                <Stat label="Groups" value={cat.groups.length} icon={<Layers className="h-4 w-4 text-white" />} accent="bg-indigo-500" />
-                <Stat label="With documented fields" value={cat.endpoints.filter((e) => e.query.length || e.body.length).length} icon={<Braces className="h-4 w-4 text-white" />} accent="bg-sky-500" />
-                <Stat label="Linked to a data model" value={cat.endpoints.filter((e) => e.model).length} icon={<Database className="h-4 w-4 text-white" />} accent="bg-emerald-500" />
-                <Stat label="Partner (API key)" value={cat.endpoints.filter((e) => e.auth === 'apiKey').length} icon={<KeyRound className="h-4 w-4 text-white" />} accent="bg-violet-500" />
-              </div>
-            </>
-          )}
+          <div className="flex flex-wrap items-center gap-2">
+            <a href="/api/docs" target="_blank" rel="noreferrer"
+              className="inline-flex items-center gap-2 rounded-xl bg-white/5 px-3 py-2 text-[13px] font-medium text-slate-200 ring-1 ring-white/10 hover:bg-white/10">
+              <ExternalLink className="h-4 w-4" />Partner docs
+            </a>
+            <button type="button" onClick={() => load(true)} title="Reload from the running code"
+              className="inline-flex items-center gap-2 rounded-xl bg-white/5 px-3 py-2 text-[13px] font-medium text-slate-200 ring-1 ring-white/10 hover:bg-white/10">
+              <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />Refresh
+            </button>
+            {cat && <ExtractMenu c={cat} list={list} />}
+          </div>
         </div>
+        {cat && (
+          <div className="relative mt-4 flex flex-wrap gap-2">
+            <Stat label="endpoints" value={cat.endpoints.length} icon={<Zap className="h-3.5 w-3.5 text-white" />} accent="bg-[#f37121]" />
+            <Stat label="groups" value={cat.groups.length} icon={<Layers className="h-3.5 w-3.5 text-white" />} accent="bg-indigo-500" />
+            <Stat label="with documented fields" value={cat.endpoints.filter((e) => e.query.length || e.body.length).length} icon={<Braces className="h-3.5 w-3.5 text-white" />} accent="bg-sky-500" />
+            <Stat label="linked to a data model" value={cat.endpoints.filter((e) => e.model).length} icon={<Database className="h-3.5 w-3.5 text-white" />} accent="bg-emerald-500" />
+            <Stat label="partner (API key)" value={authCounts.apiKey} icon={<KeyRound className="h-3.5 w-3.5 text-white" />} accent="bg-violet-500" />
+          </div>
+        )}
       </div>
 
       {flash && (
@@ -596,10 +723,10 @@ export default function ApiDocsPage() {
           <button type="button" onClick={() => load()} className="mt-4 rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white">Try again</button>
         </div>
       ) : cat && (
-        <div className="flex gap-6 px-4 py-6 sm:px-8">
+        <div className="flex gap-6 px-4 pb-10 sm:px-8">
           {/* ── Sidebar: groups ── */}
-          <aside className="hidden w-64 shrink-0 lg:block">
-            <div className="sticky top-4 max-h-[calc(100vh-2rem)] overflow-y-auto rounded-2xl bg-white p-2 ring-1 ring-slate-200">
+          <aside className="sticky top-6 hidden w-64 shrink-0 self-start lg:block">
+            <div className="overflow-y-auto rounded-2xl bg-white p-2 ring-1 ring-slate-200" style={{ maxHeight: viewH ? viewH - 48 : undefined }}>
               <button type="button" onClick={() => setGroup('')}
                 className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-[13px] font-semibold ${!group ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-50'}`}>
                 All groups<span className={`rounded px-1.5 text-[11px] ${!group ? 'bg-white/20' : 'bg-slate-100 text-slate-500'}`}>{cat.endpoints.length}</span>
@@ -617,7 +744,7 @@ export default function ApiDocsPage() {
 
           <main className="min-w-0 flex-1">
             {/* ── Toolbar ── */}
-            <div className="sticky top-0 z-20 -mx-1 mb-5 space-y-3 rounded-2xl bg-slate-50/90 px-1 pb-3 pt-1 backdrop-blur">
+            <div className="sticky top-0 z-20 -mx-1 mb-5 space-y-3 bg-slate-50/95 px-1 pb-3 pt-6 backdrop-blur">
               <div className="flex flex-wrap items-center gap-2">
                 <div className="relative min-w-[220px] flex-1">
                   <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
@@ -659,6 +786,10 @@ export default function ApiDocsPage() {
                 {open.size > 0 && <button type="button" onClick={() => setOpen(new Set())} className="rounded-lg px-2 py-1 text-[12px] font-medium text-slate-500 hover:bg-slate-100">Collapse all</button>}
               </div>
             </div>
+
+            {/* ── Access: explained, not just filtered ── */}
+            {auth ? <AuthGuide kind={auth} base={cat.baseUrl} count={list.length} onClose={() => setAuth('')} />
+              : !active && <AccessCards counts={authCounts} onPick={(k) => setAuth(k)} />}
 
             {/* ── Endpoints ── */}
             {byGroup.length === 0 ? (

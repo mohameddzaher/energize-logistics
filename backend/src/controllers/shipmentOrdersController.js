@@ -421,9 +421,11 @@ exports.listOrders = async (req, res) => {
     if (note === 'yes') filter.notes = { $nin: ['', null] };
     else if (note === 'no') filter.$or = [{ notes: '' }, { notes: null }, { notes: { $exists: false } }];
     if (from || to) {
-      filter.createdAt = {};
-      if (from) filter.createdAt.$gte = startOfDay(from);
-      if (to) filter.createdAt.$lte = endOfDay(to);
+      // ‏`dateBy=pickup`: المدى بيوم الاستلام — كما تحسب اللوحة (٢٠٢٦/١٠/٢٧).
+      const dk = req.query.dateBy === 'pickup' ? 'pickupTime' : 'createdAt';
+      filter[dk] = {};
+      if (from) filter[dk].$gte = startOfDay(from);
+      if (to) filter[dk].$lte = endOfDay(to);
     }
     if (q && q.trim()) {
       // ── البحثُ بكلّ ما يخصّ الشحنةَ وأصحابَها (٢٠٢٦/١٠/٢٦) ──────────────────
@@ -540,9 +542,10 @@ exports.orderFilterOptions = async (req, res) => {
       if (keys.length === 1) [base.status] = keys; else if (keys.length) base.status = { $in: keys };
     }
     if (req.query.from || req.query.to) {
-      base.createdAt = {};
-      if (req.query.from) base.createdAt.$gte = startOfDay(req.query.from);
-      if (req.query.to) base.createdAt.$lte = endOfDay(req.query.to);
+      const dk = req.query.dateBy === 'pickup' ? 'pickupTime' : 'createdAt';
+      base[dk] = {};
+      if (req.query.from) base[dk].$gte = startOfDay(req.query.from);
+      if (req.query.to) base[dk].$lte = endOfDay(req.query.to);
     }
     if (req.query.source === 'system' || req.query.source === 'platform') base.source = req.query.source;
     // العميلُ يُطابَق كما يُطابَق في الجدول — بمرجعه أو باسمه المطويّ.
@@ -1111,27 +1114,128 @@ exports.getAnalytics = async (req, res) => {
  * نفسَه — فلا يختلف رقمٌ بين شاشةٍ وشاشة. والحسابُ هو حسابُ التحليلات نفسُه
  * (`analyticsOf`).
  */
+// ── فترةُ اللوحة (٢٠٢٦/١٠/٢٧) ──────────────────────────────────────────────
+// «اللوحة… أوتوماتيك وداينميك»: تُقرأ لفترةٍ يختارها الناظر — اليوم، سبعة
+// أيّام، الشهر، ثلاثون يومًا، السنة — وكلُّ رقمٍ يُقارَن بالفترة السابقة بطولها
+// نفسِه، فيُقرأ الصعودُ والهبوط لا الرقمُ وحدَه. والأيّامُ أيّامُ الرياض.
+const DASH_PERIODS = ['today', '7d', 'month', '30d', 'year'];
+function dashRange(period) {
+  const { todayKey } = require('../utils/companyDay');
+  const today = todayKey();
+  const d = (ymd, n) => { const x = new Date(`${ymd}T12:00:00Z`); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10); };
+  const span = (a, b) => Math.round((new Date(`${b}T12:00:00Z`) - new Date(`${a}T12:00:00Z`)) / 86400000) + 1;
+  let from = today;
+  if (period === '7d') from = d(today, -6);
+  else if (period === '30d') from = d(today, -29);
+  else if (period === 'month') from = `${today.slice(0, 7)}-01`;
+  else if (period === 'year') from = `${today.slice(0, 4)}-01-01`;
+  const n = span(from, today);
+  // السابقةُ بطولها نفسِه — الشهرُ يُقارَن بالأيّام نفسِها من الشهر الماضي.
+  const prevTo = d(from, -1);
+  const prevFrom = d(prevTo, -(n - 1));
+  return { from, to: today, prevFrom, prevTo, days: n };
+}
+
+/** مجاميعُ خفيفةٌ لفترةٍ — للمقارنة وحدَها (لا تحتاج تفصيلَ analyticsOf). */
+async function dashTotals(from, to) {
+  const match = { pickupTime: { $gte: startOfDay(from), $lte: endOfDay(to) } };
+  const live = { $ne: [{ $ifNull: ['$status', ''] }, 'cancelled'] };
+  const [r] = await ShipmentOrder.aggregate([
+    { $match: match },
+    { $group: {
+      _id: null, orders: { $sum: 1 }, live: { $sum: { $cond: [live, 1, 0] } },
+      sell: { $sum: { $cond: [live, { $ifNull: ['$sellPrice', 0] }, 0] } },
+      buy: { $sum: { $cond: [live, { $ifNull: ['$buyPrice', 0] }, 0] } },
+    } },
+  ]);
+  const t = r || { orders: 0, live: 0, sell: 0, buy: 0 };
+  const r2 = (v) => Math.round((Number(v) || 0) * 100) / 100;
+  return { orders: t.orders, live: t.live, cancelled: t.orders - t.live, sell: r2(t.sell), buy: r2(t.buy), margin: r2(t.sell - t.buy) };
+}
+
+/** ما يربط اللوحةَ ببقيّة الشركة في الفترة: يومًا بيوم، والسلف، والتخليص، والمتابعة. */
+async function dashExtras(from, to) {
+  const range = { $gte: startOfDay(from), $lte: endOfDay(to) };
+  const match = { pickupTime: range };
+  const live = { $ne: [{ $ifNull: ['$status', ''] }, 'cancelled'] };
+  const r2 = (v) => Math.round((Number(v) || 0) * 100) / 100;
+  const [byDay, sums, followUps, lateNow, driversExpired] = await Promise.all([
+    ShipmentOrder.aggregate([
+      { $match: match },
+      { $group: {
+        _id: { $dateToString: { format: '%Y-%m-%d', date: '$pickupTime', timezone: 'Asia/Riyadh' } },
+        orders: { $sum: 1 }, live: { $sum: { $cond: [live, 1, 0] } },
+        sell: { $sum: { $cond: [live, { $ifNull: ['$sellPrice', 0] }, 0] } },
+        buy: { $sum: { $cond: [live, { $ifNull: ['$buyPrice', 0] }, 0] } },
+      } },
+      { $sort: { _id: 1 } },
+    ]),
+    ShipmentOrder.aggregate([
+      { $match: match },
+      { $group: {
+        _id: null,
+        advances: { $sum: { $cond: [live, { $ifNull: ['$advanceAmount', 0] }, 0] } },
+        withAdvance: { $sum: { $cond: [{ $and: [live, { $gt: [{ $ifNull: ['$advanceAmount', 0] }, 0] }] }, 1, 0] } },
+        customsLinked: { $sum: { $cond: [{ $eq: [{ $type: '$customsLink.clearance' }, 'objectId'] }, 1, 0] } },
+        platform: { $sum: { $cond: [{ $eq: ['$source', 'platform'] }, 1, 0] } },
+        ours: { $sum: { $cond: [{ $ne: ['$source', 'platform'] }, 1, 0] } },
+        noSalesRep: { $sum: { $cond: [{ $and: [live, { $in: [{ $ifNull: ['$salesRepName', ''] }, ['']] }] }, 1, 0] } },
+      } },
+    ]),
+    // ملاحظاتُ المتابعة المكتوبةُ في الفترة (من قيود السجلّ ذات الملاحظة).
+    ShipmentOrder.aggregate([
+      { $match: { statusLog: { $elemMatch: { at: range, note: { $nin: ['', null] } } } } },
+      { $project: { n: { $size: { $filter: { input: '$statusLog', as: 'l', cond: { $and: [
+        { $gte: ['$$l.at', range.$gte] }, { $lte: ['$$l.at', range.$lte] }, { $gt: [{ $strLenCP: { $ifNull: ['$$l.note', ''] } }, 0] },
+      ] } } } } } },
+      { $group: { _id: null, notes: { $sum: '$n' }, shipments: { $sum: 1 } } },
+    ]),
+    // والمتأخّرةُ الآن — حالةٌ قائمةٌ لا فترة.
+    ShipmentOrder.countDocuments({ status: 'late' }),
+    ShipmentOrderDriver.countDocuments({ isActive: { $ne: false }, driverCardExpiry: { $regex: /^\d{4}-\d{2}-\d{2}/, $lt: require('../utils/companyDay').todayKey() } }),
+  ]);
+  const S = sums[0] || {};
+  const F = followUps[0] || {};
+  return {
+    byDay: byDay.map((x) => ({ day: x._id, orders: x.orders, live: x.live, cancelled: x.orders - x.live, sell: r2(x.sell), buy: r2(x.buy), margin: r2(x.sell - x.buy) })),
+    advances: r2(S.advances), withAdvance: S.withAdvance || 0,
+    customsLinked: S.customsLinked || 0,
+    platform: S.platform || 0, ours: S.ours || 0,
+    noSalesRep: S.noSalesRep || 0,
+    followUpNotes: F.notes || 0, followUpShipments: F.shipments || 0,
+    lateNow, driversExpired,
+  };
+}
+
 exports.getDashboard = async (req, res) => {
   try {
     const now = new Date();
     const iso = (d) => d.toISOString().slice(0, 10);
     const monthFrom = iso(new Date(now.getFullYear(), now.getMonth(), 1));
     const todayFrom = iso(now);
+    const period = DASH_PERIODS.includes(String(req.query.period)) ? String(req.query.period) : 'month';
+    const R = dashRange(period);
 
     // ── وتُقدَّم القديمةُ بينما تُجدَّد ─────────────────────────────────────
     // بناؤها يستغرق ثانيتَين ونصفًا (سبعةٌ وثلاثون ألفَ شحنةٍ تُجمَّع في
     // القاعدة). ومن يفتح القسمَ لا ينتظر: تُقدَّم قيمةُ آخرِ بناءٍ فورًا
     // ويُجدَّد في الخلف — راجع utils/ttlCache.wrapStale.
-    const out = await cache.wrapStale(`so:dashboard:${monthFrom}:${todayFrom}`, 60 * 1000, 10 * 60 * 1000, async () => {
-      const [month, today, fleet, recent] = await Promise.all([
+    const out = await cache.wrapStale(`so:dashboard:${monthFrom}:${todayFrom}:${period}`, 60 * 1000, 10 * 60 * 1000, async () => {
+      const [month, today, fleet, recent, cur, prev, extras] = await Promise.all([
         analyticsOf({ from: monthFrom }),
         analyticsOf({ from: todayFrom }),
         registrySummary(),
         ShipmentOrder.find({}).sort({ createdAt: -1 }).limit(8)
-          .select('waybillNumber reference customerName fromCity toCity status vehiclePlate driverName pickupTime createdAt')
+          .select('waybillNumber reference customerName fromCity toCity status vehiclePlate driverName pickupTime createdAt salesRepName sellPrice buyPrice')
           .lean(),
+        period === 'month' ? null : analyticsOf({ from: R.from, to: R.to }),
+        dashTotals(R.prevFrom, R.prevTo),
+        dashExtras(R.from, R.to),
       ]);
       return {
+        // ‏`period`: ما تقرؤه اللوحةُ الجديدة (الويب والتطبيق). والباقي كما كان
+        // لنُسَخ التطبيق التي لم تُحدَّث بعد.
+        period: { key: period, ...R, cur: cur || month, prev, ...extras },
         month, today, fleet, recent,
         // مسطّحةٌ للهاتف: بطاقاتُه تقرأ مسارًا نصيًّا واحدًا لكلّ رقم.
         flat: {

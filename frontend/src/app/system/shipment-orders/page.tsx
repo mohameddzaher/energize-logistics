@@ -133,6 +133,9 @@ function ShipmentOrdersInner() {
   const [customerFilter, setCustomerFilter] = useState(() => sp?.get('customer') || '');
   const [fromDate, setFromDate] = useState(() => sp?.get('from') || '');
   const [toDate, setToDate] = useState(() => sp?.get('to') || '');
+  // ‏`dateBy=pickup`: المدى بيوم الاستلام لا بيوم التسجيل — هكذا تحسب اللوحة،
+  // فرقمُها يفتح صفوفَه نفسَها (٢٠٢٦/١٠/٢٧). ويُمحى مع مسح المدى.
+  const [dateBy] = useState(() => (sp?.get('dateBy') === 'pickup' ? 'pickup' : ''));
   const [page, setPage] = useState(1);
 
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -217,7 +220,13 @@ function ShipmentOrdersInner() {
    */
   // ‏`col_` لا `col.`: الخادمُ يحذف المفاتيحَ ذاتَ النقطة (express-mongo-sanitize).
   const COL_PREFIX = 'col_';
-  const [colFilters, setColFilters] = useState<Record<string, Set<string>>>({});
+  // فلاترُ الأعمدة تُقرأ من العنوان أيضًا (`col_<العمود>`) — فرقمُ مندوبٍ أو عميلٍ
+  // في اللوحة يفتح شحناتِه هو (٢٠٢٦/١٠/٢٧).
+  const [colFilters, setColFilters] = useState<Record<string, Set<string>>>(() => {
+    const o: Record<string, Set<string>> = {};
+    sp?.forEach((v, k) => { if (k.startsWith('col_') && v) (o[k.slice(4)] ||= new Set()).add(v); });
+    return o;
+  });
   const [colOptions, setColOptions] = useState<Record<string, { values: { value: string; count: number }[] }>>({});
   const [colLoading, setColLoading] = useState<Record<string, boolean>>({});
   const colSeq = useRef<Record<string, number>>({});
@@ -256,13 +265,14 @@ function ShipmentOrdersInner() {
       if (customerFilter) qs.set('customer', customerFilter);
       if (fromDate) qs.set('from', fromDate);
       if (toDate) qs.set('to', toDate);
+      if (dateBy && (fromDate || toDate)) qs.set('dateBy', dateBy);
       if (search.trim()) qs.set('search', search.trim());
       const d = await api.get<{ values: { value: string; count: number }[] }>(`/api/shipment-orders/orders/filter-options?${qs}`);
       if (colSeq.current[field] !== seq) return;   // ردٌّ سبقه أحدثُ منه
       setColOptions((p) => ({ ...p, [field]: d }));
     } catch { /* تُترَك القائمةُ كما هي */ }
     finally { if (colSeq.current[field] === seq) setColLoading((p) => ({ ...p, [field]: false })); }
-  }, [colParams, statusFilter, sourceFilter, customerFilter, fromDate, toDate]);
+  }, [colParams, statusFilter, sourceFilter, customerFilter, fromDate, toDate, dateBy]);
 
   const load = useCallback(async () => {
     const mine = guard.begin();
@@ -275,6 +285,7 @@ function ShipmentOrdersInner() {
       if (customerFilter) qs.set('customer', customerFilter);
       if (fromDate) qs.set('from', fromDate);
       if (toDate) qs.set('to', toDate);
+      if (dateBy && (fromDate || toDate)) qs.set('dateBy', dateBy);
       if (noteFilter) qs.set('note', noteFilter);
       const d = await api.get<{ orders: ShipmentOrder[]; total: number; stats: any }>(`/api/shipment-orders/orders?${qs}`);
       if (!guard.isCurrent(mine)) return;
@@ -284,7 +295,7 @@ function ShipmentOrdersInner() {
       setError('');
     } catch (e: any) { setError(e?.message || 'Request failed'); }
     setLoading(false);
-  }, [debounced, statusFilter, sourceFilter, customerFilter, fromDate, toDate, noteFilter, page, colParams, guard]);
+  }, [debounced, statusFilter, sourceFilter, customerFilter, fromDate, toDate, dateBy, noteFilter, page, colParams, guard]);
 
   useEffect(() => { load(); }, [load]);
   useSocket('shipmentOrders:updated', useCallback(() => load(), [load]));
@@ -397,6 +408,7 @@ function ShipmentOrdersInner() {
       if (customerFilter) qs.set('customer', customerFilter);
       if (fromDate) qs.set('from', fromDate);
       if (toDate) qs.set('to', toDate);
+      if (dateBy && (fromDate || toDate)) qs.set('dateBy', dateBy);
       if (noteFilter) qs.set('note', noteFilter);
     }
     const d = await api.get<{ orders: ShipmentOrder[]; total: number }>(`/api/shipment-orders/orders?${qs}`);

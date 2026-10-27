@@ -24,7 +24,12 @@ class ShipmentOrdersScreen extends StatefulWidget {
   /// «١٤ متأخّرة» تُفتَح على المتأخّرة أنفسِها لا على الجدول كلِّه.
   final List<String> initialStatuses;
   final String initialFrom;
-  const ShipmentOrdersScreen({super.key, this.initialStatuses = const [], this.initialFrom = ''});
+  // من اللوحة (٢٠٢٦/١٠/٢٧): المدى بيوم الاستلام، وفلترُ عمود (مندوب، عميل، مورّد…).
+  final String initialTo;
+  final bool byPickup;
+  final Map<String, Set<String>> initialCols;
+  const ShipmentOrdersScreen({super.key, this.initialStatuses = const [], this.initialFrom = '', this.initialTo = '',
+    this.byPickup = false, this.initialCols = const {}});
   @override
   State<ShipmentOrdersScreen> createState() => _ShipmentOrdersScreenState();
 }
@@ -90,6 +95,8 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
     _view = context.read<AuthProvider>().pref(_prefKey) == 'table' ? 'list' : 'cards';
     _statuses.addAll(widget.initialStatuses);
     _from = widget.initialFrom;
+    _to = widget.initialTo;
+    widget.initialCols.forEach((k, v) => _colFilters[k] = {...v});
     _load();
     loadSoStatuses().then((v) { if (mounted) setState(() => _vocab = v); });
     Api.instance.get('/api/shipment-orders/customers').then((d) {
@@ -122,6 +129,7 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
     if (_customer.isNotEmpty) add('customer', _customer);
     if (_from.isNotEmpty) add('from', _from);
     if (_to.isNotEmpty) add('to', _to);
+    if (widget.byPickup && (_from.isNotEmpty || _to.isNotEmpty)) add('dateBy', 'pickup');
     return p;
   }
 

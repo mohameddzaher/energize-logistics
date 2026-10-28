@@ -57,7 +57,8 @@ export default function MasterCell({ id, f, raw, st, choices, ar, canEdit, onSav
   // الخانةُ مقفلة، لكنّ مَن يقرأ «لا يعمل» في الماستر يريد أن يُرجعه من مكانه:
   // زرُّ «إعادته للخدمة» هو إعادةُ التفعيل نفسُها (العقدُ يعود، ومن الأرشيف يعود
   // داخلَ النظام) — لا كتابةٌ في الخانة (صاحبُ الشركة، ٢٠٢٦/١٠/١٩).
-  const reinstatable = canEdit && f.key === 'workStatusText' && /^لا يعمل/.test(String(raw || ''));
+  // Leave statuses («لا يعمل — إجازة / لم يعد من الإجازة») are not a termination: no reinstate.
+  const reinstatable = canEdit && f.key === 'workStatusText' && /^لا يعمل/.test(String(raw || '')) && !/الإجازة|إجازة/.test(String(raw || ''));
   const reinstate = async () => {
     if (!(await confirm({ message: t('إعادة هذا الموظف إلى الخدمة؟ تصير حالته «يعمل» ويعود عقده كما كان.', 'Return this employee to service? Status becomes “working” and the contract is restored.'), confirmLabel: t('إعادته للخدمة', 'Reinstate') }))) return;
     setBusy(true);

@@ -62,6 +62,17 @@ const employeeSchema = new mongoose.Schema(
       enum: ['active', 'on_leave', 'suspended', 'terminated'],
       default: 'active',
     },
+    // Set when the leave sync (utils/leaveReturn) put the employee on leave, so
+    // only those are returned to work automatically — an "on leave" imported
+    // from a sheet without a leave record is left to HR.
+    leaveStatusSource: { type: String, default: '' },          // 'leave' | ''
+    leaveStatusLeave: { type: mongoose.Schema.Types.ObjectId, ref: 'LeaveRequest', default: null },
+    // Did not come back after the leave and it was not extended.
+    leaveViolation: {
+      leave: { type: mongoose.Schema.Types.ObjectId, ref: 'LeaveRequest', default: null },
+      since: { type: String, default: '' },
+      note: { type: String, default: '' },
+    },
     terminatedAt: { type: Date },
     terminationReason: { type: String, trim: true },
     /**

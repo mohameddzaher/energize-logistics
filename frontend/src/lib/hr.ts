@@ -152,6 +152,17 @@ export interface LeaveRequest {
   backdated?: boolean;
   recordedByName?: string;
   recordedAt?: string;
+  // Return from leave (see backend utils/leaveReturn).
+  plannedEndDate?: string;
+  returnState?: '' | 'returned' | 'no_show';
+  returnedOn?: string;
+  workStartsOn?: string;
+  returnCountsAsWork?: boolean;
+  returnAuto?: boolean;
+  returnRecordedByName?: string;
+  returnRecordedAt?: string;
+  extensions?: { fromEnd: string; toEnd: string; days: number; note?: string; byName?: string; at?: string }[];
+  noShow?: { since?: string; note?: string; byName?: string; at?: string };
 }
 
 export interface HRRequest {
@@ -264,12 +275,14 @@ export const REQUEST_STATUS: Record<string, { bg: string; text: string; en: stri
 };
 
 export const EMPLOYMENT_STATUS: Record<string, { bg: string; text: string; en: string; ar: string }> = {
-  // «حالة العمل»: يعمل أو لا يعمل — و«لا يعمل» هو إنهاءُ الخدمة بحالةٍ من ثلاث (workStatusText).
+  // Work status: on_leave is set and cleared by approved leaves (backend utils/leaveReturn).
   active: { bg: 'bg-green-500/20', text: 'text-green-700', en: 'Working', ar: 'يعمل' },
-  on_leave: { bg: 'bg-blue-500/20', text: 'text-blue-700', en: 'Working — on leave', ar: 'يعمل — إجازة' },
+  on_leave: { bg: 'bg-blue-500/20', text: 'text-blue-700', en: 'Not working — on leave', ar: 'لا يعمل — إجازة' },
   suspended: { bg: 'bg-amber-500/20', text: 'text-amber-700', en: 'Suspended (legacy)', ar: 'موقوف (قديم)' },
   terminated: { bg: 'bg-red-500/20', text: 'text-red-700', en: 'Not working', ar: 'لا يعمل' },
 };
+
+export const LEAVE_NO_SHOW_STATUS = { bg: 'bg-red-500/20', text: 'text-red-700', en: 'Not working — did not return from leave', ar: 'لا يعمل — لم يعد من الإجازة' };
 
 export const CONTRACT_STATUS: Record<string, { bg: string; text: string; en: string; ar: string }> = {
   active: { bg: 'bg-green-500/20', text: 'text-green-700', en: 'Active', ar: 'ساري' },

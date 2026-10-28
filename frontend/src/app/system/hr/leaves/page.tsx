@@ -18,6 +18,7 @@ import { downloadLeaveSheet } from '@/lib/leavePdf';
 import type { Signature } from '@/components/SignatureManager';
 import FilePicker, { AttachmentList, type PickedFile } from '@/components/system/FilePicker';
 import ScrollX from '@/components/system/ScrollX';
+import { LeaveReturnChip, LeaveReturnPanel } from '@/components/hr/LeaveReturn';
 
 const idOf = (e: any) => (e?.idType === 'national_id' ? (e?.nationalId || e?.iqamaNumber) : (e?.iqamaNumber || e?.nationalId)) || '—';
 const BG = 'bg-white group-hover:bg-slate-100';
@@ -194,6 +195,10 @@ export default function HRLeavesPage() {
   useSocket('hr:leave', useCallback(() => load(), [load]));
 
   const openReview = (l: LeaveRequest) => { setReview(l); setNote(''); setSignWith(''); setFiles([]); };
+  // Keep the open review in step with the reloaded list (return/extension/no-show).
+  useEffect(() => {
+    setReview((r) => (r ? (allLeaves.find((x) => x._id === r._id) || r) : r));
+  }, [allLeaves]);
 
   const decide = async (decision: 'approved' | 'rejected' | 'info') => {
     if (!review) return;
@@ -425,7 +430,8 @@ export default function HRLeavesPage() {
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-1.5 flex-wrap">
                       <Badge style={LEAVE_STATUS[l.status]} lang={lang} />
-                      {/* «طلبَ فوافقتُ» غيرُ «أخبرني فقيّدتُ» — والفرقُ يبقى مقروءًا. */}
+                      <LeaveReturnChip leave={l} ar={ar} />
+                      {/* Requested-and-approved vs recorded after the fact stays visible. */}
                       {(l as any).backdated && (
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-slate-200 text-slate-600"
                           title={(l as any).recordedByName ? `${ar ? 'قيّدها' : 'Recorded by'} ${(l as any).recordedByName}` : ''}>
@@ -521,6 +527,7 @@ export default function HRLeavesPage() {
                 <AttachmentList items={(review as any).attachments} />
               </div>
             )}
+            <LeaveReturnPanel leave={review} ar={ar} canAct={staff} onDone={load} />
             <LeaveThread leave={review} lang={ar ? 'ar' : 'en'} />
             {actionable(review) && (
               <div className="border-t border-slate-200 pt-3 space-y-3">

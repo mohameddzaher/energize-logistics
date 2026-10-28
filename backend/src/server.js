@@ -525,8 +525,10 @@ if (!DOCS_ONLY) connectDB().then(async () => {
     startLs2Poll();
     startLs2TripWarm();
     startBusinessReviewSweep();
-    // «انتظار نقل الكفالة»: تنبيهُ الموارد البشريّة مرّتين يوميًّا حتى الخروج من النظام.
+    // Pending sponsorship transfer: alert HR twice a day until the employee leaves the system.
     startHrTransferAlerts();
+    // Leave start/return flips the employee's work status on the day.
+    try { require('./utils/leaveReturn').startLeaveReturnSync(); } catch (e) { console.error('[leave-sync] start:', e.message); }
     // لوحاتُ مؤشّرات CRM تُحسب في الخلف، فلا ينتظرها من يفتحها — راجع warmKpis.
     try { require('./controllers/crmKpiController').startKpiWarm(); } catch (e) { /* */ }
     // ملفّاتُ التصدير تُحذف بعد يوم — لقطةٌ للحظتها لا أرشيف.

@@ -104,7 +104,8 @@ Future<bool> hrEditCell(BuildContext context, {
 }) async {
   final key = '${field['key']}';
   final label = Lang.instance.ar ? '${field['ar']}' : '${field['en']}';
-  if (key == 'workStatusText' && RegExp(r'^لا يعمل').hasMatch('${raw ?? ''}')) {
+  // Leave statuses are not a termination: no reinstate.
+  if (key == 'workStatusText' && RegExp(r'^لا يعمل').hasMatch('${raw ?? ''}') && !'${raw ?? ''}'.contains('إجازة')) {
     if (!await hrConfirm(context, tr('إعادة هذا الموظف إلى الخدمة؟ تصير حالته «يعمل» ويعود عقده كما كان.', 'Return this employee to service? Status becomes "working" and the contract is restored.'), ok: tr('إعادته للخدمة', 'Reinstate'))) return false;
     try {
       await Api.instance.post('/api/hr/employees/$employeeId/reactivate', {});

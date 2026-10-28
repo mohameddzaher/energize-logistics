@@ -19,7 +19,7 @@ import {
   isHRStaff, Employee, Contract, LeaveRequest, Asset, HRRequest, LeaveBalance,
   EmployeeDocument, EmployeeRenewal, AuditEntry,
   empName, userName, fmtDateTime, leaveTypeLabel, expiryBadge,
-  EMPLOYMENT_STATUS, CONTRACT_STATUS, contractBadge, contractRequired, LEAVE_STATUS, REQUEST_STATUS, assetTypeLabel, conditionLabel,
+  EMPLOYMENT_STATUS, LEAVE_NO_SHOW_STATUS, CONTRACT_STATUS, contractBadge, contractRequired, LEAVE_STATUS, REQUEST_STATUS, assetTypeLabel, conditionLabel,
   RENEWAL_TYPES, DOCUMENT_CATEGORIES, renewalTypeLabel, docCategoryLabel, auditActionLabel,
 } from '@/lib/hr';
 import {
@@ -30,6 +30,7 @@ import ExportMenu, { exportScopeLabels, type ExportColumn, type ExportSheet } fr
 import { EmployeeFormModal } from '@/components/hr/EmployeeFormModal';
 import ContractFormModal from '@/components/hr/ContractFormModal';
 import DatePair from '@/components/hr/DatePair';
+import { LeaveReturnChip, LeaveReturnPanel } from '@/components/hr/LeaveReturn';
 import { bothDates, bothDatesShort, gregCell, gregDay, hijriCell, pairLabels, exportDatePair } from '@/lib/hrDates';
 import { getHrEmployeesIdTranslations } from '@/lib/translations';
 import B2cOpBadge from '@/components/b2c/B2cOpBadge';
@@ -65,6 +66,7 @@ export default function EmployeeProfilePage() {
   const [data, setData] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState('overview');
+  const [returnLeaveId, setReturnLeaveId] = useState('');
   const [vehicleData, setVehicleData] = useState<{
     current: VehicleAuthorization | null;
     // كلُّ ما بيده الآن — من ورقة التفويض في سجلّ المركبات (المرجع).
@@ -402,7 +404,7 @@ export default function EmployeeProfilePage() {
         <div className="flex-1">
           <div className="flex items-center gap-3 flex-wrap">
             <h1 className="text-2xl font-bold text-slate-900">{empName(e, lang)}</h1>
-            <Badge style={EMPLOYMENT_STATUS[e.employmentStatus || 'active']} lang={lang} />
+            <Badge style={(e as any).leaveViolation?.since && e.employmentStatus !== 'terminated' ? LEAVE_NO_SHOW_STATUS : EMPLOYMENT_STATUS[e.employmentStatus || 'active']} lang={lang} />
             {/* حالتُه اليوم في قسم الأفراد — تُكتب هناك وتُرى هنا. */}
             <B2cOpBadge status={(e as any).b2cOpStatus} ar={lang === 'ar'} />
           </div>
@@ -536,6 +538,20 @@ export default function EmployeeProfilePage() {
       {/* مهامّ JP المربوطة بهذا الموظّف — تُضاف من هنا. */}
       {tab === 'overview' && <JpTaskPanel section="hr" kind="employee" refId={String(e._id)} ar={ar} />}
 
+      {(() => {
+        const rl = data.leaves.find((x) => x._id === returnLeaveId);
+        return (
+          <Modal open={!!rl} onClose={() => setReturnLeaveId('')} title={ar ? 'العودة من الإجازة' : 'Return from leave'}>
+            {rl && (
+              <div className="space-y-2 text-sm">
+                <p className="text-slate-900 font-semibold">{leaveTypeLabel(rl.leaveType, lang)} · {String(rl.startDate).slice(0, 10)} → {String(rl.endDate).slice(0, 10)} ({rl.days})</p>
+                <LeaveReturnPanel leave={rl} ar={ar} canAct={staff} onDone={load} />
+              </div>
+            )}
+          </Modal>
+        );
+      })()}
+
       <Modal open={sponsorOpen} onClose={() => setSponsorOpen(false)} title={ar ? 'تحويل على كفالتنا' : 'Move to our sponsorship'}
         footer={<PrimaryButton onClick={sponsor} disabled={!register || sponsoring}>{sponsoring ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}{ar ? 'تحويل' : 'Move'}</PrimaryButton>}>
         <p className="mb-3 text-sm text-slate-600">
@@ -596,7 +612,7 @@ export default function EmployeeProfilePage() {
         <DataCard empty={!data.leaves.length} emptyText={tx.noLeaves}>
           <table className="w-full text-sm">
             <thead><tr className="bg-slate-900 border-b border-slate-200 text-slate-300">
-              <Th>{tx.colType}</Th><DateThs label={L.from} ar={ar} /><DateThs label={L.to} ar={ar} /><Th>{tx.colDays}</Th><Th>{tx.colStatus}</Th><DateThs label={L.submitted} ar={ar} /><Th>{ar ? 'المرفقات' : 'Attachments'}</Th>
+              <Th>{tx.colType}</Th><DateThs label={L.from} ar={ar} /><DateThs label={L.to} ar={ar} /><Th>{tx.colDays}</Th><Th>{tx.colStatus}</Th><DateThs label={L.submitted} ar={ar} /><Th>{ar ? 'المرفقات' : 'Attachments'}</Th><Th>{''}</Th>
             </tr></thead>
             <tbody>{data.leaves.map((l) => {
               // مرفقاتُ الطلب ومرفقاتُ قراريه معًا: التقريرُ الطبّيّ وورقةُ
@@ -610,9 +626,21 @@ export default function EmployeeProfilePage() {
                 <Tr key={l._id}>
                   <Td className="text-slate-900">{leaveTypeLabel(l.leaveType, lang)}</Td>
                   <DateTds v={l.startDate} /><DateTds v={l.endDate} /><Td>{l.days}</Td>
-                  <Td><Badge style={LEAVE_STATUS[l.status]} lang={lang} /></Td>
+                  <Td>
+                    <div className="flex flex-col items-start gap-1">
+                      <Badge style={LEAVE_STATUS[l.status]} lang={lang} />
+                      <LeaveReturnChip leave={l} ar={ar} />
+                    </div>
+                  </Td>
                   <DateTds v={l.createdAt} />
                   <Td>{files.length ? <AttachmentLinks items={files} /> : <span className="text-slate-400">—</span>}</Td>
+                  <Td>
+                    {staff && l.status === 'approved' && (
+                      <button type="button" onClick={() => setReturnLeaveId(l._id)} className="text-xs font-semibold text-[#f37121] hover:underline whitespace-nowrap">
+                        {ar ? 'عودة / تمديد' : 'Return / extend'}
+                      </button>
+                    )}
+                  </Td>
                 </Tr>
               );
             })}</tbody>

@@ -62,6 +62,28 @@ const leaveRequestSchema = new mongoose.Schema(
     recordedByName: { type: String, default: '' },
     recordedAt: { type: Date },
 
+    // Return from leave (utils/leaveReturn). The end date and day count follow
+    // what actually happened, so the live balance refunds an early return and
+    // charges an extension without separate arithmetic.
+    plannedEndDate: { type: String, default: '' },              // end date as approved, before any change
+    returnState: { type: String, enum: ['', 'returned', 'no_show'], default: '', index: true },
+    returnedOn: { type: String, default: '' },                  // YYYY-MM-DD the employee came back
+    workStartsOn: { type: String, default: '' },                // first working day
+    returnCountsAsWork: { type: Boolean, default: false },      // the return day itself is a working day
+    returnAuto: { type: Boolean, default: false },              // recorded by the daily sync, not by HR
+    returnRecordedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    returnRecordedByName: { type: String, default: '' },
+    returnRecordedAt: { type: Date },
+    extensions: [{
+      fromEnd: String, toEnd: String, days: Number, note: { type: String, default: '' },
+      by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, byName: String, at: { type: Date, default: Date.now },
+    }],
+    noShow: {
+      since: { type: String, default: '' },                     // first day he should have been back
+      note: { type: String, default: '' },
+      by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, byName: String, at: Date,
+    },
+
     // ── سلسلةُ الموافقات أربعُ محطّات ────────────────────────────────────
     //
     // المديرُ المباشر ← الموارد البشريّة ← الحسابات ← الإدارة العليا. وكانت

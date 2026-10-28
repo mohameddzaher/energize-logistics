@@ -10,6 +10,7 @@ import '../ui/app_scaffold.dart';
 import '../ui/file_upload.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import '../ui/leave_return.dart';
 import '../ui/hr_quick.dart';
 import '../ui/report_button.dart';
 import '../ui/export_sheet.dart';
@@ -32,7 +33,7 @@ class HrEmployeeProfileScreen extends StatefulWidget {
 const _empStatus = {
   // «حالة العمل»: يعمل أو لا يعمل (= إنهاءُ الخدمة بحالةٍ من ثلاث) — كالموقع.
   'active': ('يعمل', 'Working', T.success),
-  'on_leave': ('يعمل — إجازة', 'Working — on leave', T.info),
+  'on_leave': ('لا يعمل — إجازة', 'Not working — on leave', T.info),
   'suspended': ('موقوف (قديم)', 'Suspended (legacy)', T.warn),
   'terminated': ('لا يعمل', 'Not working', T.danger),
 };
@@ -624,7 +625,8 @@ class _HrEmployeeProfileScreenState extends State<HrEmployeeProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final st = _empStatus[_emp['employmentStatus']] ?? _empStatus['active']!;
+    final noShow = (_emp['leaveViolation'] is Map && '${_emp['leaveViolation']['since'] ?? ''}'.isNotEmpty) && _emp['employmentStatus'] != 'terminated';
+    final st = noShow ? ('لا يعمل — لم يعد من الإجازة', 'Not working — did not return', T.danger) : (_empStatus[_emp['employmentStatus']] ?? _empStatus['active']!);
     final contracts = List<Map<String, dynamic>>.from(_d?['contracts'] ?? []);
     final leaves = List<Map<String, dynamic>>.from(_d?['leaves'] ?? []);
     final assets = List<Map<String, dynamic>>.from(_d?['assets'] ?? []);
@@ -839,6 +841,14 @@ class _HrEmployeeProfileScreenState extends State<HrEmployeeProfileScreen> {
                           const SizedBox(height: 4),
                           Text('${_date(l['startDate'])} ← ${_date(l['endDate'])} · ${l['days'] ?? '—'} ${tr('يوم', 'days')}',
                               style: const TextStyle(fontSize: 12.5, color: T.inkSoft)),
+                          if (l['status'] == 'approved') ...[
+                            const SizedBox(height: 6),
+                            Row(children: [
+                              Expanded(child: Align(alignment: AlignmentDirectional.centerStart, child: LeaveReturnChip(l))),
+                              if (_hrStaff)
+                                TextButton(onPressed: () => showLeaveReturnSheet(context, l, _load), child: Text(tr('عودة / تمديد', 'Return / extend'))),
+                            ]),
+                          ],
                         ]),
                       );
                     }),

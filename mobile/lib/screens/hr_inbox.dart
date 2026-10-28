@@ -6,6 +6,7 @@ import '../services/live.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/leave_chain.dart';
+import '../ui/leave_return.dart';
 import '../ui/widgets.dart';
 import '../ui/export_sheet.dart';
 import 'hr_leave_pdf.dart';
@@ -579,6 +580,16 @@ class _HrLeavesScreenState extends State<HrLeavesScreen> {
                                           style: const TextStyle(fontSize: 12.5, color: T.inkSoft)),
                                       const SizedBox(height: 6),
                                       LeaveChainBar(leave: l),
+                                      if (l['status'] == 'approved') ...[
+                                        const SizedBox(height: 6),
+                                        Row(children: [
+                                          Expanded(child: Align(alignment: AlignmentDirectional.centerStart, child: LeaveReturnChip(l))),
+                                          TextButton(
+                                            onPressed: () => showLeaveReturnSheet(context, l, _load),
+                                            child: Text(tr('عودة / تمديد', 'Return / extend')),
+                                          ),
+                                        ]),
+                                      ],
                                       if ((l['reason'] ?? '').toString().isNotEmpty)
                                         Text(l['reason'], style: const TextStyle(fontSize: 12, color: T.inkFaint)),
                                       if (actionable) ...[

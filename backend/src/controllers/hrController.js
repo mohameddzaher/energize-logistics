@@ -37,6 +37,10 @@ const denyNonStaff = (req, res) => {
   return false;
 };
 
+// Employee work status follows approved leaves (see utils/leaveReturn).
+const syncLeaveStatus = (employeeId) => require('../utils/leaveReturn').syncEmployee(employeeId)
+  .catch((e) => console.error('[leave-sync]', String(employeeId), e.message));
+
 const fullName = (u) => (u ? `${u.firstName || ''} ${u.lastName || ''}`.trim() : '');
 
 /**
@@ -1626,7 +1630,7 @@ exports.createBackdatedLeave = async (req, res) => {
       requester: emp.user || req.user._id,
       leaveType,
       leaveTypeCode: lt.code,
-      startDate, endDate, days,
+      startDate, endDate, days, plannedEndDate: endDate,
       reason: String(reason || '').trim(),
       attachments,
       status: 'approved',
@@ -1658,6 +1662,7 @@ exports.createBackdatedLeave = async (req, res) => {
       });
     }
 
+    await syncLeaveStatus(employee);
     const populated = await populateLeave(LeaveRequest.findById(leave._id)).lean();
     const after = await computeEmployeeBalance(employee);
     res.status(201).json({ leave: populated, balance: after.balance });
@@ -1719,6 +1724,8 @@ exports.updateLeave = async (req, res) => {
       leave.balanceSnapshot.remainingAfter = Math.round((leave.balanceSnapshot.remainingAfter + oldCut - newCut) * 100) / 100;
     }
 
+    // A correction redefines the plan, unless a return or extension already moved the end.
+    if (!leave.returnState && !(leave.extensions || []).length) leave.plannedEndDate = leave.endDate;
     await leave.save();
     await logAudit({
       user: req.user._id, action: 'update_leave', entity: 'LeaveRequest', entityId: leave._id,
@@ -1734,6 +1741,7 @@ exports.updateLeave = async (req, res) => {
     }
     if (leave.manager) { try { emitToUser(String(leave.manager), 'hr:leave', { id: String(leave._id) }); } catch (e) {} }
     try { emitToAll('hr:leave', { id: String(leave._id) }); } catch (e) {}
+    await syncLeaveStatus(leave.employee);
 
     const populated = await populateLeave(LeaveRequest.findById(leave._id)).select(NO_SIG).lean();
     res.json({ leave: populated });
@@ -1742,6 +1750,40 @@ exports.updateLeave = async (req, res) => {
     return sendMongooseError(res, error, 'تعذّر تعديل الإجازة');
   }
 };
+
+/**
+ * Return / extension / no-show on an approved leave (HR staff).
+ * Logic lives in utils/leaveReturn; the balance follows the corrected end date.
+ */
+const leaveReturnAction = (fn, action, pick) => async (req, res) => {
+  try {
+    if (denyNonStaff(req, res)) return;
+    const LR = require('../utils/leaveReturn');
+    const result = await LR[fn](req.params.id, pick(req.body || {}), req.user);
+    await logAudit({
+      user: req.user._id, action, entity: 'LeaveRequest', entityId: result.leave._id,
+      changes: { after: { ...pick(req.body || {}), endDate: result.leave.endDate, days: result.leave.days, returnState: result.leave.returnState } },
+      ipAddress: req.ip,
+    }).catch(() => {});
+    const populated = await populateLeave(LeaveRequest.findById(result.leave._id)).select(NO_SIG).lean();
+    const { balance } = await computeEmployeeBalance(result.leave.employee);
+    res.json({ ...result, leave: populated, balance });
+  } catch (error) {
+    if (error.status) return res.status(error.status).json({ message: error.message });
+    console.error(`${fn} error:`, error);
+    return sendMongooseError(res, error, 'تعذّر حفظ الإجراء');
+  }
+};
+
+// POST /leaves/:id/return { returnDate, startsSameDay, note }
+exports.recordLeaveReturn = leaveReturnAction('recordReturn', 'leave_return',
+  (b) => ({ returnDate: String(b.returnDate || ''), startsSameDay: b.startsSameDay === true, note: String(b.note || '').trim().slice(0, 500) }));
+// POST /leaves/:id/extend { newEndDate, note }
+exports.extendLeave = leaveReturnAction('extendLeave', 'leave_extend',
+  (b) => ({ newEndDate: String(b.newEndDate || ''), note: String(b.note || '').trim().slice(0, 500) }));
+// POST /leaves/:id/no-show { note }
+exports.markLeaveNoShow = leaveReturnAction('markNoShow', 'leave_no_show',
+  (b) => ({ note: String(b.note || '').trim().slice(0, 500) }));
 
 exports.deleteLeave = async (req, res) => {
   try {
@@ -1773,6 +1815,7 @@ exports.deleteLeave = async (req, res) => {
     }
     if (manager) { try { emitToUser(String(manager), 'hr:leave', {}); } catch (e) {} }
     try { emitToAll('hr:leave', {}); } catch (e) {}
+    await syncLeaveStatus(leave.employee);
     res.json({ message: 'حُذفت الإجازة' });
   } catch (error) {
     console.error('deleteLeave error:', error);
@@ -1882,6 +1925,10 @@ exports.decideLeave = async (req, res) => {
       else if (next === 'manager' && leave.manager) await notifyUser(leave.manager, { title: 'إجازة تنتظر موافقتك', message: `طلب إجازة (${period}) من أحد فريقك.`, ...ref });
     }
     if (leave.manager) { try { emitToUser(String(leave.manager), 'hr:leave', { id: String(leave._id) }); } catch (e) {} }
+    if (leave.status === 'approved') {
+      if (!leave.plannedEndDate) { leave.plannedEndDate = leave.endDate; await leave.save(); }
+      await syncLeaveStatus(leave.employee);
+    }
 
     const populated = await populateLeave(LeaveRequest.findById(leave._id)).lean();
     res.json({ leave: populated });

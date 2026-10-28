@@ -156,6 +156,9 @@ router.get('/leaves/:id', hr.getLeave); // single leave + signatures (for the PD
 // تصحيحُ السجلّ من الموارد البشريّة: تعديلُ التاريخ/النوع/السبب، أو حذفُ الإجازة.
 router.put('/leaves/:id', authorize(...STAFF), hr.updateLeave);
 router.delete('/leaves/:id', authorize(...STAFF), hr.deleteLeave);
+router.post('/leaves/:id/return', authorize(...STAFF), hr.recordLeaveReturn);
+router.post('/leaves/:id/extend', authorize(...STAFF), hr.extendLeave);
+router.post('/leaves/:id/no-show', authorize(...STAFF), hr.markLeaveNoShow);
 
 router.get('/requests', authorize(...STAFF), hr.listRequests);
 router.patch('/requests/:id/status', authorize(...STAFF), hr.updateRequestStatus);

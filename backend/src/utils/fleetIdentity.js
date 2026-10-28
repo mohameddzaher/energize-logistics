@@ -113,24 +113,19 @@ async function vehicleIdentity(fleetVehicle) {
   return row;
 }
 
-// ── السائق ──────────────────────────────────────────────────────────────────
-
 const HR_SELECT = 'firstName lastName arabicName phone nationality iban idType iqamaNumber nationalId '
-  + 'employmentStatus department jobTitle staffCategory employeeNumber';
+  + 'employmentStatus leaveViolation department jobTitle staffCategory employeeNumber';
 
 const hrName = (e) => S(e && (e.arabicName || `${e.firstName || ''} ${e.lastName || ''}`));
-/** رقمُ الهويّة بعمودَيه — راجع identity-number-two-columns. */
+/** ID number from either column (idType decides). */
 const hrIdNumber = (e) => (e ? S(e.idType === 'national_id' ? (e.nationalId || e.iqamaNumber) : (e.iqamaNumber || e.nationalId)) : '');
 
 /**
- * يُلحق بصفوف `FleetDriver` ما في ملفّ الموارد البشريّة لمن رُبط:
- *   · الاسمُ والجوالُ ورقمُ الهويّة والجنسيّةُ والإيبان — من الملفّ، والمخزَّنُ
- *     احتياطٌ إن كانت خانةُ الملفّ فارغة؛
- *   · وحالةُ العمل: مَن انتهت خدمتُه أو هو في إجازةٍ (حالةُ الملفّ، أو إجازةٌ
- *     معتمَدةٌ تشمل اليوم) أو موقوفٌ — لا يعمل، ومصدرُ ذلك الموارد البشريّة
- *     (`offSource: 'hr'`). والموارد البشريّة وحدَها تكتب حالةَ العمل، فلا يُكتب
- *     هذا على صفّ الأسطول: يُقرأ في كلّ طلب.
- * سؤالان للصفوف كلِّها، لا سؤالٌ لكلّ صفّ.
+ * Decorates `FleetDriver` rows with their linked HR file: identity fields from
+ * the file (stored values are the fallback), and work status. Terminated,
+ * suspended, on leave (status or an approved leave covering today) or a leave
+ * no-show means not working, with `offSource: 'hr'`. Read per request, never
+ * written to the fleet row: HR alone writes work status. Two queries for all rows.
  */
 async function decorateDrivers(rows) {
   const list = (rows || []).filter(Boolean);
@@ -160,6 +155,7 @@ async function decorateDrivers(rows) {
       department: e.department || '',
       jobTitle: e.jobTitle || '',
       onLeave: leave,
+      leaveNoShow: !!e.leaveViolation?.since,
     };
     d.hrLinked = true;
     d.employee = e._id;
@@ -168,11 +164,13 @@ async function decorateDrivers(rows) {
     d.iqama = hrIdNumber(e) || d.iqama || '';
     d.nationality = S(e.nationality) || d.nationality || '';
     d.iban = S(e.iban) || d.iban || '';
-    // حالةُ الملفّ تغلب حالةَ القسم حين تقول «لا يعمل»؛ وإلّا فما كتبه القسم.
+    // An HR "not working" overrides the section's status; otherwise the section's stands.
     if (status === 'terminated') {
       d.working = false; d.offReason = 'other'; d.offNote = 'انتهت خدمته في الموارد البشرية'; d.offSource = 'hr';
     } else if (status === 'suspended') {
       d.working = false; d.offReason = 'other'; d.offNote = 'موقوف في الموارد البشرية'; d.offSource = 'hr';
+    } else if (e.leaveViolation?.since) {
+      d.working = false; d.offReason = 'leave'; d.offNote = `لم يعد من الإجازة منذ ${e.leaveViolation.since} — مخالفة`; d.offSource = 'hr';
     } else if (leave) {
       d.working = false; d.offReason = 'leave'; d.offNote = d.offNote || 'إجازة معتمدة في الموارد البشرية'; d.offSource = 'hr';
     }

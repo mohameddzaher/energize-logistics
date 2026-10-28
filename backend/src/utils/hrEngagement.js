@@ -77,8 +77,14 @@ const TRANSFER_DAYS = 30;
 const WORKING = 'يعمل';
 const NOT_WORKING = 'لا يعمل';
 /** نصُّ «حالة العمل» كما يُكتب ويُعرَض — مشتقٌّ من الحالة لا يُكتب باليد. */
+const ON_LEAVE = `${NOT_WORKING} — إجازة`;
+const LEAVE_NO_SHOW = `${NOT_WORKING} — لم يعد من الإجازة`;
 function workStatusTextOf(e) {
-  if (e?.employmentStatus !== 'terminated') return e?.sisterCompany ? SISTER : WORKING;
+  if (e?.employmentStatus !== 'terminated') {
+    if (e?.leaveViolation?.since) return LEAVE_NO_SHOW;
+    if (e?.employmentStatus === 'on_leave') return ON_LEAVE;
+    return e?.sisterCompany ? SISTER : WORKING;
+  }
   const k = TERMINATION_KINDS[e?.terminationKind];
   return k ? `${NOT_WORKING} — ${k.ar}` : NOT_WORKING;
 }
@@ -86,7 +92,7 @@ function workStatusTextOf(e) {
 const archivesOnTermination = (e) => String(e?.systemStatus || '').trim() === SYSTEM_OUT || engagementOf(e) === 'freelance';
 
 module.exports = {
-  TERMINATION_KINDS, TRANSFER_DAYS, WORKING, NOT_WORKING, SISTER, workStatusTextOf, archivesOnTermination,
+  TERMINATION_KINDS, TRANSFER_DAYS, WORKING, NOT_WORKING, SISTER, ON_LEAVE, LEAVE_NO_SHOW, workStatusTextOf, archivesOnTermination,
   SYSTEM_OUT, SYSTEM_IN, engagementOf, contractRequired, isArchived,
   ARCHIVED, NOT_ARCHIVED, withoutArchived, ENGAGEMENT_MATCH,
 };

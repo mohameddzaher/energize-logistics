@@ -66,10 +66,14 @@ async function statusVocabulary({ includeInactive = false } = {}) {
     });
   });
 
-  // ثمّ ما زاده القسمُ من عنده.
+  // Then the section's own additions — skipping one named like a status already listed.
+  const fold = (v) => String(v || '').replace(/[أإآ]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي').replace(/\s+/g, ' ').trim();
+  const names = new Set(out.map((x) => fold(x.ar)));
   byKey.forEach((r) => {
     const active = r.isActive !== false;
     if (!active && !includeInactive) return;
+    if (names.has(fold(r.nameAr || r.key))) return;
+    names.add(fold(r.nameAr || r.key));
     out.push({
       key: r.key,
       ar: r.nameAr || r.key,

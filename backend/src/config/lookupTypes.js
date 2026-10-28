@@ -414,6 +414,10 @@ const REGISTRY = [
       { key: 'by_driver', nameEn: 'Cancelled by the driver', nameAr: 'إلغاء من السائق' },
       { key: 'by_customer', nameEn: 'Cancelled by the customer', nameAr: 'إلغاء من العميل' },
       { key: 'by_rep', nameEn: 'Cancelled by the representative', nameAr: 'إلغاء من المندوب' },
+      // Merged from a second registration of this type, which listed «إلغاء من العميل» twice.
+      { key: 'no_truck', nameEn: 'No truck available', nameAr: 'لا تتوفّر شاحنة' },
+      { key: 'price', nameEn: 'Price not agreed', nameAr: 'لم يُتّفق على السعر' },
+      { key: 'duplicate', nameEn: 'Duplicate order', nameAr: 'طلب مكرّر' },
     ],
   },
   {
@@ -440,20 +444,6 @@ const REGISTRY = [
       { key: 'cash', nameEn: 'Cash', nameAr: 'كاش' },
       { key: 'transfer', nameEn: 'Bank transfer', nameAr: 'تحويل بنكي' },
       { key: 'credit', nameEn: 'Credit', nameAr: 'آجل' },
-    ],
-  },
-  {
-    type: 'so_cancel_reason',
-    module: 'shipment_orders',
-    nameEn: 'Cancellation Reasons',
-    nameAr: 'أسباب الإلغاء',
-    roles: SO_ROLES,
-    storeLabel: true,
-    seed: [
-      { key: 'customer', nameEn: 'Cancelled by customer', nameAr: 'إلغاء من العميل' },
-      { key: 'no_truck', nameEn: 'No truck available', nameAr: 'لا تتوفّر شاحنة' },
-      { key: 'price', nameEn: 'Price not agreed', nameAr: 'لم يُتّفق على السعر' },
-      { key: 'duplicate', nameEn: 'Duplicate order', nameAr: 'طلب مكرّر' },
     ],
   },
   {
@@ -923,6 +913,9 @@ const REMOVED_DEFAULTS = [
   ['customs_payment_stage', 'containersReturned'],
   ['customs_payment_stage', 'returnInvoiceDate'],
   ['customs_payment_stage', 'transportInvoice'],
+  // so_cancel_reason was registered twice: 'customer' duplicated 'by_customer' («إلغاء من العميل»).
+  // Orders store the label, so retiring the key changes no saved shipment.
+  ['so_cancel_reason', 'customer'],
 ];
 const applyRemovedDefaults = async () => {
   const Lookup = require('../models/Lookup');

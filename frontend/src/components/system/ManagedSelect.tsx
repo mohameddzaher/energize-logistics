@@ -173,7 +173,9 @@ export default function ManagedSelect({
           // القيمةُ المحفوظةُ التي خرجت من القائمة تبقى خيارًا يتيمًا — حذفُها
           // من الشاشة يجعل الحقلَ يبدو فارغًا وهو ليس كذلك.
           ...(value && !hasValue ? [{ value, label: value }] : []),
-          ...items.map((i) => ({ value: optionValue(i), label: (ar ? i.nameAr : i.nameEn) || optionValue(i) })),
+          // One option per value: two lookup rows with the same label must not show twice.
+          ...items.filter((i, k) => items.findIndex((x) => optionValue(x) === optionValue(i)) === k)
+            .map((i) => ({ value: optionValue(i), label: (ar ? i.nameAr : i.nameEn) || optionValue(i) })),
         ]}
         // ── و«أخرى» تُكتب ولا تُمنَع ──────────────────────────────────────
         // القائمةُ حصرٌ لما يُكتب لا سجنٌ له: قسمٌ جديدٌ أو حالةٌ لم تُسجَّل بعد

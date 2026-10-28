@@ -203,6 +203,11 @@ const effectivePages = async (role) => {
   if (wv.isWalletViewOnly(role)) {
     for (const k of wv.WALLET_VIEW_PAGES) out[k] = true;
   }
+  // The portal is a partner account's only screen: a saved matrix can never close it.
+  // (Which tabs show is decided by the partner's services, see portalController.servicesFor.)
+  if (role === 'client') {
+    for (const p of PAGES) if (p.section === 'Portal') out[p.key] = true;
+  }
   return out;
 };
 

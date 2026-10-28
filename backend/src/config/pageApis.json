@@ -2113,6 +2113,16 @@
       ],
       "wildcard": false
     },
+    "/system/hr/leave-register": {
+      "apis": [
+        "/api/hr/employees-search",
+        "/api/hr/leave-register",
+        "/api/hr/leave-types",
+        "/api/hr/leaves",
+        "/api/hr/leaves/backdated"
+      ],
+      "wildcard": false
+    },
     "/system/hr/requests": {
       "apis": [
         "/api/hr/requests"

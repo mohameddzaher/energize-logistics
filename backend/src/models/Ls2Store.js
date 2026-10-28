@@ -17,6 +17,8 @@ const storeItemSchema = new mongoose.Schema({
   warehouse: { type: String, enum: ['heavy', 'light'], default: 'heavy', index: true },
   code: { type: String, default: '', trim: true, index: true },
   name: { type: String, required: true, trim: true, index: true },
+  // The same item's name on the supplier's invoice (it often differs from ours).
+  supplierItemName: { type: String, default: '', trim: true },
   category: { type: String, default: '', index: true },       // inferred_category
   groupAr: { type: String, default: 'قطع غيار' },              // المجموعة
   quantity: { type: Number, default: 0 },                      // الرصيد الحالي

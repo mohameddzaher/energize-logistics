@@ -57,6 +57,8 @@ const leaveRequestSchema = new mongoose.Schema(
     // لا يُوافَق عليه — لكنّها تُوسَم `backdated` ويُسجَّل من قيّدها ومتى.
     // فمن يقرأ السجلَّ بعدها يعرف أنّ هذه لم تُطلب بل قُيّدت.
     backdated: { type: Boolean, default: false, index: true },
+    // Recorded by HR from the leave register (no request; e.g. an employee without a login).
+    manual: { type: Boolean, default: false, index: true },
 
     recordedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     recordedByName: { type: String, default: '' },

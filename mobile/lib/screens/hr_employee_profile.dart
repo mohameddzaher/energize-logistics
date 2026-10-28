@@ -11,6 +11,7 @@ import '../ui/file_upload.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import '../ui/leave_return.dart';
+import '../ui/leave_record.dart';
 import '../ui/hr_quick.dart';
 import '../ui/report_button.dart';
 import '../ui/export_sheet.dart';
@@ -33,7 +34,7 @@ class HrEmployeeProfileScreen extends StatefulWidget {
 const _empStatus = {
   // «حالة العمل»: يعمل أو لا يعمل (= إنهاءُ الخدمة بحالةٍ من ثلاث) — كالموقع.
   'active': ('يعمل', 'Working', T.success),
-  'on_leave': ('لا يعمل — إجازة', 'Not working — on leave', T.info),
+  'on_leave': ('إجازة', 'On leave', T.info),
   'suspended': ('موقوف (قديم)', 'Suspended (legacy)', T.warn),
   'terminated': ('لا يعمل', 'Not working', T.danger),
 };
@@ -626,7 +627,7 @@ class _HrEmployeeProfileScreenState extends State<HrEmployeeProfileScreen> {
   @override
   Widget build(BuildContext context) {
     final noShow = (_emp['leaveViolation'] is Map && '${_emp['leaveViolation']['since'] ?? ''}'.isNotEmpty) && _emp['employmentStatus'] != 'terminated';
-    final st = noShow ? ('لا يعمل — لم يعد من الإجازة', 'Not working — did not return', T.danger) : (_empStatus[_emp['employmentStatus']] ?? _empStatus['active']!);
+    final st = noShow ? ('مخالفة — لم يعد من الإجازة', 'Violation — did not return', T.danger) : (_empStatus[_emp['employmentStatus'] == 'on_leave' && _emp['leaveStatusSource'] != 'leave' ? 'active' : _emp['employmentStatus']] ?? _empStatus['active']!);
     final contracts = List<Map<String, dynamic>>.from(_d?['contracts'] ?? []);
     final leaves = List<Map<String, dynamic>>.from(_d?['leaves'] ?? []);
     final assets = List<Map<String, dynamic>>.from(_d?['assets'] ?? []);
@@ -830,7 +831,20 @@ class _HrEmployeeProfileScreenState extends State<HrEmployeeProfileScreen> {
                       );
                     }),
                     // ── الإجازات ──
-                    _listTab(leaves, Icons.beach_access_outlined, tr('لا توجد إجازات', 'No leaves'), (l) {
+                    Column(children: [
+                      if (_hrStaff)
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(14, 10, 14, 0),
+                          child: SizedBox(
+                            width: double.infinity,
+                            child: OutlinedButton.icon(
+                              onPressed: () async { if (await showLeaveRecordSheet(context, employeeId: widget.employeeId)) _load(); },
+                              icon: const Icon(Icons.event_available_outlined, size: 18),
+                              label: Text(tr('تسجيل إجازة', 'Record a leave')),
+                            ),
+                          ),
+                        ),
+                      Expanded(child: _listTab(leaves, Icons.beach_access_outlined, tr('لا توجد إجازات', 'No leaves'), (l) {
                       final type = l['leaveType'] is Map ? (l['leaveType']['nameAr'] ?? l['leaveType']['nameEn'] ?? '') : '';
                       return AppCard(
                         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -851,7 +865,8 @@ class _HrEmployeeProfileScreenState extends State<HrEmployeeProfileScreen> {
                           ],
                         ]),
                       );
-                    }),
+                    })),
+                    ]),
                     // ── العهد ──
                     // والعهدةُ بالمال من دفتر النقل الثقيل فوق العهد العينيّة — حيّةً مع الدفتر.
                     Column(children: [

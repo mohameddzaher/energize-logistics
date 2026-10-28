@@ -77,12 +77,14 @@ const TRANSFER_DAYS = 30;
 const WORKING = 'يعمل';
 const NOT_WORKING = 'لا يعمل';
 /** نصُّ «حالة العمل» كما يُكتب ويُعرَض — مشتقٌّ من الحالة لا يُكتب باليد. */
-const ON_LEAVE = `${NOT_WORKING} — إجازة`;
-const LEAVE_NO_SHOW = `${NOT_WORKING} — لم يعد من الإجازة`;
+// «لا يعمل» means off the job (termination); leave is not that.
+const ON_LEAVE = 'إجازة';
+const LEAVE_NO_SHOW = 'مخالفة — لم يعد من الإجازة';
 function workStatusTextOf(e) {
   if (e?.employmentStatus !== 'terminated') {
     if (e?.leaveViolation?.since) return LEAVE_NO_SHOW;
-    if (e?.employmentStatus === 'on_leave') return ON_LEAVE;
+    // Only a leave recorded in the system shows as leave; an old imported "on_leave" reads as working.
+    if (e?.employmentStatus === 'on_leave' && e?.leaveStatusSource === 'leave') return ON_LEAVE;
     return e?.sisterCompany ? SISTER : WORKING;
   }
   const k = TERMINATION_KINDS[e?.terminationKind];

@@ -122,8 +122,8 @@ export function LeaveReturnPanel({ leave, ar, canAct, onDone }: { leave: LeaveRe
     const ok = await confirm({
       title: ar ? 'تسجيل مخالفة عدم العودة؟' : 'Record a no-show?',
       message: ar
-        ? `انتهت الإجازة في ${end}. يصبح الموظف «لا يعمل — لم يعد من الإجازة» من ${addDays(end, 1)} حتى تُسجَّل عودته أو تُمدَّد الإجازة.`
-        : `The leave ended on ${end}. The employee becomes "not working — did not return" from ${addDays(end, 1)} until a return or extension is recorded.`,
+        ? `انتهت الإجازة في ${end}. يصبح الموظف «مخالفة — لم يعد من الإجازة» من ${addDays(end, 1)} حتى تُسجَّل عودته أو تُمدَّد الإجازة.`
+        : `The leave ended on ${end}. The employee becomes "violation — did not return" from ${addDays(end, 1)} until a return or extension is recorded.`,
       confirmLabel: ar ? 'تسجيل المخالفة' : 'Record',
     });
     if (ok) send('no-show', { note }, ar ? 'سُجِّلت المخالفة' : 'No-show recorded');

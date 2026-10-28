@@ -142,7 +142,7 @@ const _marginItems = [
   ('yardToCustomerSelling', 'سعر النقل من الساحة إلى العميل', 'Price: yard → customer'),
   ('yardToCustomerNet', 'صافي النقل من الساحة إلى العميل', 'Yard-to-customer net'),
   ('yardPrice', 'سعر الساحة', 'Yard price'),
-  // Computed once the yard price is typed: yard fees (costs) − yard price.
+  // Computed once the yard price is typed: yard price − yard fees (costs).
   ('yardNet', 'صافي الساحة', 'Yard net'),
   ('storageNet', 'صافي التخزين', 'Storage net'),
   ('securityScan', 'فحص أمني', 'Security scan'),
@@ -1514,8 +1514,8 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
                       decoration: InputDecoration(labelText: label('yardPrice')),
                     ),
                   ),
-                  // Always computed: yard fees − yard price (a legacy row shows its stored net until a price is typed).
-                  computed('yardNet', yardPrice.text.trim().isNotEmpty ? _nz(costs, 'yardFees') - v(yardPrice) : _nz(revenue, 'yardNet')),
+                  // Always computed: yard price − yard fees (a legacy row shows its stored net until a price is typed).
+                  computed('yardNet', yardPrice.text.trim().isNotEmpty ? v(yardPrice) - _nz(costs, 'yardFees') : _nz(revenue, 'yardNet')),
                   for (final k in const ['storageNet', 'securityScan', 'labour']) input(k),
                   const SizedBox(height: 8),
                   SizedBox(

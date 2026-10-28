@@ -8,7 +8,7 @@ import { Briefcase } from 'lucide-react';
 import {
   Employee, Contract, LeaveRequest, Asset, LeaveBalance,
   empName, userName, leaveTypeLabel, expiryBadge,
-  EMPLOYMENT_STATUS, LEAVE_STATUS, assetTypeLabel,
+  EMPLOYMENT_STATUS, employmentBadge, LEAVE_STATUS, assetTypeLabel,
 } from '@/lib/hr';
 import { Spinner, PageHeader, Badge, SmallBadge, Tabs, StatCard, Pick } from '@/components/hr/HRKit';
 import { getHrMeTranslations } from '@/lib/translations';
@@ -108,7 +108,7 @@ export default function MyProfilePage() {
       <div className="bg-white border border-slate-200 rounded-xl p-6 flex items-center gap-4 shadow-sm">
         <div className="w-16 h-16 rounded-full bg-[#f37121]/20 flex items-center justify-center text-[#f37121] text-2xl font-bold">{empName(e).charAt(0)}</div>
         <div>
-          <div className="flex items-center gap-3 flex-wrap"><h1 className="text-2xl font-bold text-slate-900">{empName(e, lang)}</h1><Badge style={EMPLOYMENT_STATUS[e.employmentStatus || 'active']} lang={lang} /></div>
+          <div className="flex items-center gap-3 flex-wrap"><h1 className="text-2xl font-bold text-slate-900">{empName(e, lang)}</h1><Badge style={employmentBadge(e)} lang={lang} /></div>
           <p className="text-slate-500 text-sm mt-1">{e.jobTitle || '—'}</p>
         </div>
       </div>

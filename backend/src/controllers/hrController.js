@@ -230,7 +230,7 @@ exports.listEmployees = async (req, res) => {
       // بعد جلبها؛ الحقل غير المجلوب يبدو «بلا تاريخ» فيسقط من كل مدى بصمت.
       // ولذلك تُؤخَذ من مصدرها لا تُكتب هنا: كانت مكتوبةً بيدٍ، فكلُّ تاريخٍ
       // يُضاف إلى الفلترة يبقى ساقطًا هنا حتى يتذكّره أحد — وأثرُه صامت.
-      .select(['firstName lastName arabicName employeeNumber jobTitle department employmentStatus workStatusText terminationKind',
+      .select(['firstName lastName arabicName employeeNumber jobTitle department employmentStatus leaveStatusSource leaveViolation workStatusText terminationKind',
         'phone email iqamaNumber nationalId nationality photo workLocation branchName',
         'project branch directManager user createdAt createdVia b2cOpStatus',
         ...master._DATE_FILTERABLE].join(' '))
@@ -1337,7 +1337,7 @@ exports.deleteLeaveType = async (req, res) => {
 // ── Leave requests ───────────────────────────────────────────────────────────
 const NO_SIG = '-employeeSignature -managerDecision.signature -hrDecision.signature';
 const populateLeave = (q) => q
-  .populate('employee', 'firstName lastName arabicName iqamaNumber nationalId idType employeeNumber')
+  .populate('employee', 'firstName lastName arabicName iqamaNumber nationalId idType employeeNumber department')
   .populate('requester', 'firstName lastName email')
   .populate('manager', 'firstName lastName')
   .populate('leaveType', 'nameEn nameAr code color affectsBalance')
@@ -1389,6 +1389,79 @@ exports.listLeaves = async (req, res) => {
     res.json({ leaves });
   } catch (error) {
     res.status(500).json({ message: 'Failed to load leave requests' });
+  }
+};
+
+/**
+ * GET /api/hr/leave-register — every approved leave (from a request or recorded by HR),
+ * with its state today, source, who approved it and when, and the employee's live balance.
+ * Filters: employee, type, state, source, from, to (overlap), department, q.
+ */
+const LEAVE_STATES = ['upcoming', 'current', 'ended', 'returned', 'no_show'];
+const leaveStateOf = (l, today) => {
+  if (l.returnState === 'no_show') return 'no_show';
+  if (l.returnState === 'returned') return 'returned';
+  if (l.startDate > today) return 'upcoming';
+  if (l.endDate >= today) return 'current';
+  return 'ended';
+};
+const leaveSourceOf = (l) => (l.manual ? 'manual' : l.backdated ? 'backdated' : 'request');
+exports.leaveRegister = async (req, res) => {
+  try {
+    if (denyNonStaff(req, res)) return;
+    const q = req.query || {};
+    const filter = { status: 'approved' };
+    if (q.employee && mongoose.isValidObjectId(q.employee)) filter.employee = q.employee;
+    if (q.type && mongoose.isValidObjectId(q.type)) filter.leaveType = q.type;
+    if (q.from) filter.endDate = { $gte: String(q.from).slice(0, 10) };
+    if (q.to) filter.startDate = { $lte: String(q.to).slice(0, 10) };
+    if (q.source === 'manual') filter.manual = true;
+    if (q.source === 'backdated') filter.backdated = true;
+    if (q.source === 'request') { filter.manual = { $ne: true }; filter.backdated = { $ne: true }; }
+    if (q.department || q.q) {
+      const ef = { };
+      if (q.department) ef.department = String(q.department);
+      if (q.q) {
+        const rx = require('../utils/arabicSearch').arabicSearchRegex(String(q.q));
+        ef.$or = [{ arabicName: rx }, { firstName: rx }, { lastName: rx }, { employeeNumber: rx }, { iqamaNumber: rx }, { nationalId: rx }];
+      }
+      const ids = await Employee.find(ef).distinct('_id');
+      filter.employee = filter.employee ? (ids.some((x) => String(x) === String(filter.employee)) ? filter.employee : null) : { $in: ids };
+    }
+    const rows = await LeaveRequest.find(q.employee ? filter : await withoutArchivedRef(filter))
+      .populate('employee', 'firstName lastName arabicName employeeNumber iqamaNumber nationalId idType department jobTitle user')
+      .populate('leaveType', 'nameEn nameAr code color affectsBalance')
+      .populate('managerDecision.by hrDecision.by financeDecision.by executiveDecision.by', 'firstName lastName')
+      .select(NO_SIG)
+      .sort({ startDate: -1 }).limit(3000).lean();
+    const today = todayKey();
+    const nm = (u) => (u ? `${u.firstName || ''} ${u.lastName || ''}`.trim() : '');
+    let leaves = rows.map((l) => {
+      const final = l.executiveDecision?.at ? l.executiveDecision : l.financeDecision?.at ? l.financeDecision : l.hrDecision?.at ? l.hrDecision : l.managerDecision;
+      return {
+        ...l,
+        state: leaveStateOf(l, today),
+        source: leaveSourceOf(l),
+        approvedByName: l.recordedByName || nm(final?.by) || '',
+        approvedAt: l.recordedAt || final?.at || null,
+      };
+    });
+    if (q.state && LEAVE_STATES.includes(String(q.state))) leaves = leaves.filter((l) => l.state === q.state);
+    // Live balance per employee in the result (bounded, in small parallel batches).
+    const empIds = [...new Set(leaves.map((l) => String(l.employee?._id || '')).filter(Boolean))].slice(0, 400);
+    const balances = {};
+    for (let i = 0; i < empIds.length; i += 20) {
+      // eslint-disable-next-line no-await-in-loop
+      await Promise.all(empIds.slice(i, i + 20).map(async (id) => {
+        try { const { balance } = await computeEmployeeBalance(id); balances[id] = balance?.available ?? null; } catch (_) { balances[id] = null; }
+      }));
+    }
+    const counts = Object.fromEntries(LEAVE_STATES.map((k) => [k, 0]));
+    for (const l of leaves) counts[l.state] += 1;
+    res.json({ leaves, balances, counts, today });
+  } catch (error) {
+    console.error('leaveRegister error:', error);
+    res.status(500).json({ message: 'تعذّر تحميل سجل الإجازات' });
   }
 };
 
@@ -1623,7 +1696,9 @@ exports.createBackdatedLeave = async (req, res) => {
     // كان عليه الحال حين وقعت الإجازة لا بعدها.
     const { balance } = await computeEmployeeBalance(employee);
     const now = new Date();
-    const stamp = { by: req.user._id, at: now, decision: 'approved', note: String(req.body.note || 'قيدٌ بأثر رجعيّ').slice(0, 300), signature: '' };
+    // `mode: 'manual'` = a leave HR records from the register (past, current or future); otherwise back-dated.
+    const manual = req.body.mode === 'manual';
+    const stamp = { by: req.user._id, at: now, decision: 'approved', note: String(req.body.note || (manual ? 'تسجيل من الموارد البشرية' : 'قيدٌ بأثر رجعيّ')).slice(0, 300), signature: '' };
 
     const leave = await LeaveRequest.create({
       employee,
@@ -1636,7 +1711,8 @@ exports.createBackdatedLeave = async (req, res) => {
       status: 'approved',
       currentStage: 'done',
       hrDecision: stamp,
-      backdated: true,
+      backdated: !manual,
+      manual,
       recordedBy: req.user._id,
       recordedByName: fullName(req.user),
       recordedAt: now,
@@ -1650,7 +1726,7 @@ exports.createBackdatedLeave = async (req, res) => {
     });
 
     await logAudit({
-      user: req.user._id, action: 'record_backdated_leave', entity: 'LeaveRequest', entityId: leave._id,
+      user: req.user._id, action: manual ? 'record_manual_leave' : 'record_backdated_leave', entity: 'LeaveRequest', entityId: leave._id,
       changes: { after: { employee: emp.arabicName || `${emp.firstName || ''} ${emp.lastName || ''}`.trim(), startDate, endDate, days } },
       ipAddress: req.ip,
     });

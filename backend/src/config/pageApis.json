@@ -2072,7 +2072,10 @@
         "/api/hr/contracts",
         "/api/hr/documents",
         "/api/hr/employees",
+        "/api/hr/employees-search",
+        "/api/hr/leave-types",
         "/api/hr/leaves",
+        "/api/hr/leaves/backdated",
         "/api/hr/master/choices",
         "/api/hr/master/employees",
         "/api/hr/master/filters",
@@ -2105,10 +2108,8 @@
     "/system/hr/leaves": {
       "apis": [
         "/api/auth/signatures",
-        "/api/hr/employees-search",
         "/api/hr/leave-types",
-        "/api/hr/leaves",
-        "/api/hr/leaves/backdated"
+        "/api/hr/leaves"
       ],
       "wildcard": false
     },

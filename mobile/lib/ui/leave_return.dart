@@ -225,8 +225,8 @@ class _LeaveReturnSheetState extends State<_LeaveReturnSheet> {
           ],
           if (_mode == 'noshow') ...[
             const SizedBox(height: 12),
-            Text(tr('انتهت الإجازة في $_end ولم يعد ولم تُمدَّد. يصبح «لا يعمل — لم يعد من الإجازة» من ${_addDays(_end, 1)} حتى تُسجَّل عودته أو تُمدَّد.',
-                'The leave ended on $_end. The employee becomes "not working — did not return" from ${_addDays(_end, 1)} until a return or extension is recorded.'),
+            Text(tr('انتهت الإجازة في $_end ولم يعد ولم تُمدَّد. يصبح «مخالفة — لم يعد من الإجازة» من ${_addDays(_end, 1)} حتى تُسجَّل عودته أو تُمدَّد.',
+                'The leave ended on $_end. The employee becomes "violation — did not return" from ${_addDays(_end, 1)} until a return or extension is recorded.'),
                 style: const TextStyle(fontSize: 12.5, color: T.danger)),
             const SizedBox(height: 8),
             TextField(controller: _note, decoration: InputDecoration(labelText: tr('ملاحظة (اختياري)', 'Note (optional)'))),

@@ -26,7 +26,7 @@ class HrEmployeesScreen extends StatefulWidget {
 const _empStatus = {
   // «حالة العمل»: يعمل أو لا يعمل (= إنهاءُ الخدمة بحالةٍ من ثلاث) — كالموقع.
   'active': ('يعمل', 'Working', T.success),
-  'on_leave': ('لا يعمل — إجازة', 'Not working — on leave', T.info),
+  'on_leave': ('إجازة', 'On leave', T.info),
   'suspended': ('موقوف (قديم)', 'Suspended (legacy)', T.warn),
   'terminated': ('لا يعمل', 'Not working', T.danger),
 };
@@ -341,7 +341,8 @@ class _HrEmployeesScreenState extends State<HrEmployeesScreen> {
                               separatorBuilder: (_, __) => const SizedBox(height: 8),
                               itemBuilder: (c, i) {
                                 final e = _rows[i];
-                                final st = _empStatus[e['employmentStatus']] ?? _empStatus['active']!;
+                                // Leave only when a recorded leave set it; an old imported on_leave reads as working.
+                                final st = _empStatus[e['employmentStatus'] == 'on_leave' && e['leaveStatusSource'] != 'leave' ? 'active' : e['employmentStatus']] ?? _empStatus['active']!;
                                 return FadeSlideIn(
                                   delayMs: (i * 15).clamp(0, 150),
                                   child: Pressable(

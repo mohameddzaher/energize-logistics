@@ -19,6 +19,8 @@ export default function LightTransportStorePage() {
       base: '/api/light-transport/store',
       suppliersBase: '/api/light-transport/suppliers',
       titleAr: 'مخزن النقل الخفيف', titleEn: 'Light Transport Store',
+      // Owner's rules for this store: no prices, stock only via in/out, the supplier's item name.
+      noPrices: true, noInitialQty: true, supplierItemName: true,
       subtitleAr: 'قطع الغيار والمستلزمات — الرصيد والحركات', subtitleEn: 'Parts & supplies — stock & movements',
       /**
        * ── المركباتُ ومشاريعُها ──────────────────────────────────────────────

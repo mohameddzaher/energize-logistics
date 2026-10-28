@@ -1400,6 +1400,12 @@
       "en": "Leave Requests"
     },
     {
+      "key": "/system/hr/leave-register",
+      "section": "HR",
+      "ar": "الإجازات",
+      "en": "Leaves"
+    },
+    {
       "key": "/system/hr/requests",
       "section": "HR",
       "ar": "طلبات الموظفين",

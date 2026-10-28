@@ -24,6 +24,10 @@ import '../ui/search_field.dart';
 /// منفصلةٌ في القاعدة (`warehouse`)، فلا يُقرأ رصيدُ أحدهما في الآخر.
 ///
 /// فيُمرَّر `base` ولا تُنسَخ الشاشة — ونسخُها يعني شاشتين تفترقان أوّلَ إصلاح.
+/// The light-transport store keeps no prices, starts new items at zero (stock moves only
+/// via in/out) and records the supplier's own item name (owner's rules).
+bool _isLightStore(String base) => base.contains('/light-transport/');
+
 class Ls2StoreScreen extends StatefulWidget {
   final String base;
   final String titleAr;
@@ -314,7 +318,7 @@ class _Ls2StoreScreenState extends State<Ls2StoreScreen> {
                     child: Row(children: [
                       Expanded(child: _tile(tr('الأصناف', 'Items'), '${_totals['items'] ?? _items.length}', T.orange)),
                       const SizedBox(width: 6),
-                      Expanded(child: _tile(tr('القيمة', 'Value'), _money(_totals['totalValue']), T.success)),
+                      if (!_isLightStore(widget.base)) Expanded(child: _tile(tr('القيمة', 'Value'), _money(_totals['totalValue']), T.success)),
                       const SizedBox(width: 6),
                       Expanded(child: _tileTap(tr('منخفض', 'Low'), '${_totals['lowStock'] ?? 0}', T.warn, 'low')),
                       const SizedBox(width: 6),
@@ -407,6 +411,8 @@ class _Ls2StoreScreenState extends State<Ls2StoreScreen> {
                                         Expanded(child: Text((it['name'] ?? '').toString(), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14))),
                                         Chip2(_sLabel(st), _sColor(st)),
                                       ]),
+                                      if ('${it['supplierItemName'] ?? ''}'.isNotEmpty)
+                                        Text('${tr('عند المورد', 'Supplier name')}: ${it['supplierItemName']}', style: const TextStyle(fontSize: 11, color: T.inkSoft)),
                                       if ((it['categoryAr'] ?? it['category'] ?? '').toString().isNotEmpty || (it['compatibleModels'] as List?)?.isNotEmpty == true)
                                         Padding(padding: const EdgeInsets.only(top: 2), child: Text([it['categoryAr'] ?? it['category'], ...((it['compatibleModels'] as List?) ?? [])].where((x) => (x ?? '').toString().isNotEmpty).join(' · '), style: const TextStyle(fontSize: 11, color: T.inkFaint), maxLines: 1, overflow: TextOverflow.ellipsis)),
                                       if (bought.isNotEmpty)
@@ -415,7 +421,7 @@ class _Ls2StoreScreenState extends State<Ls2StoreScreen> {
                                       // العدد × سعر القطعة = الإجمالي
                                       Wrap(spacing: 14, runSpacing: 4, children: [
                                         _kv(tr('العدد', 'Qty'), '${it['quantity']} ${it['unit'] ?? ''}', T.ink),
-                                        _kv(tr('سعر القطعة', 'Unit price'), _money(it['unitPrice']), T.inkSoft),
+                                        if (!_isLightStore(widget.base)) _kv(tr('سعر القطعة', 'Unit price'), _money(it['unitPrice']), T.inkSoft),
                                         _kv(tr('الإجمالي', 'Total'), _money(it['value']), T.success),
                                       ]),
                                       if (canEdit) ...[
@@ -510,7 +516,7 @@ class _Ls2StoreScreenState extends State<Ls2StoreScreen> {
   }
 
   // ── التصدير: المعروض أو الكلّ أو سجلّ الحركات ──
-  static final _itemCols = <ExportCol>[
+  List<ExportCol> get _itemCols => <ExportCol>[
     ExportCol('الكود', 'Code', (r) => r['code'] ?? ''),
     ExportCol('الصنف', 'Item', (r) => r['name'] ?? ''),
     ExportCol('التصنيف', 'Category', (r) => r['categoryAr'] ?? r['category'] ?? ''),
@@ -519,13 +525,14 @@ class _Ls2StoreScreenState extends State<Ls2StoreScreen> {
     ExportCol('العدد', 'Qty', (r) => r['quantity']),
     ExportCol('الوحدة', 'Unit', (r) => r['unit'] ?? ''),
     ExportCol('الحد الأدنى', 'Min qty', (r) => r['minQuantity']),
-    ExportCol('سعر القطعة الواحدة', 'Unit price', (r) => r['unitPrice']),
-    ExportCol('الإجمالي (العدد × السعر)', 'Total (qty × price)', (r) => r['value']),
+    if (!_isLightStore(widget.base)) ExportCol('سعر القطعة الواحدة', 'Unit price', (r) => r['unitPrice']),
+    if (!_isLightStore(widget.base)) ExportCol('الإجمالي (العدد × السعر)', 'Total (qty × price)', (r) => r['value']),
+    if (_isLightStore(widget.base)) ExportCol('اسم الصنف عند المورد', 'Supplier item name', (r) => r['supplierItemName'] ?? ''),
     ExportCol('الحالة', 'Status', (r) { final m = _statusMeta[r['status']]; return m == null ? (r['status'] ?? '') : tr(m.$1, m.$2); }),
     ExportCol('الموديلات المتوافقة', 'Compatible models', (r) => ((r['compatibleModels'] as List?) ?? const []).join('، ')),
     ExportCol('ملاحظات', 'Notes', (r) => r['notes'] ?? ''),
   ];
-  static final _moveCols = <ExportCol>[
+  List<ExportCol> get _moveCols => <ExportCol>[
     ExportCol('التاريخ', 'Date', (r) => (r['date'] ?? '').toString().isEmpty ? '' : _dmy(r['date'])),
     ExportCol('سُجِّلت في', 'Recorded at', (r) => (r['createdAt'] ?? '').toString().replaceFirst('T', ' ').split('.').first),
     ExportCol('الصنف', 'Item', (r) => r['itemName'] ?? ''),
@@ -533,8 +540,8 @@ class _Ls2StoreScreenState extends State<Ls2StoreScreen> {
     ExportCol('الكمية', 'Qty', (r) => r['quantity']),
     ExportCol('الوحدة', 'Unit', (r) => r['unit'] ?? ''),
     ExportCol('المورد', 'Supplier', (r) => r['supplierName'] ?? ''),
-    ExportCol('سعر القطعة', 'Unit price', (r) => r['unitPrice'] ?? ''),
-    ExportCol('الإجمالي', 'Total', (r) => r['total'] ?? ''),
+    if (!_isLightStore(widget.base)) ExportCol('سعر القطعة', 'Unit price', (r) => r['unitPrice'] ?? ''),
+    if (!_isLightStore(widget.base)) ExportCol('الإجمالي', 'Total', (r) => r['total'] ?? ''),
     ExportCol('المركبة', 'Vehicle', (r) => r['vehiclePlate'] ?? ''),
     ExportCol('سبب الصرف', 'Issue reason', (r) => storeIssueReasonLabel(r['issueReason'])),
     ExportCol('ملاحظة', 'Note', (r) => r['reason'] ?? ''),
@@ -1034,14 +1041,14 @@ class _MovementSheetState extends State<_MovementSheet> {
     final qty = num.tryParse(_qty.text.trim()) ?? 0;
     final price = num.tryParse(_price.text.trim()) ?? 0;
     if (qty <= 0) { setState(() => _err = tr('أدخل كمية صحيحة', 'Enter a quantity')); return; }
-    if (_isIn && price <= 0) { setState(() => _priceErr = tr('اكتب سعر القطعة الواحدة', 'Enter the price per piece')); return; }
+    if (_isIn && !_isLightStore(widget.base) && price <= 0) { setState(() => _priceErr = tr('اكتب سعر القطعة الواحدة', 'Enter the price per piece')); return; }
     if (!_isIn && _issueReason.isEmpty) { setState(() => _err = tr('اختر سبب الصرف', 'Choose the issue reason')); return; }
     setState(() { _busy = true; _err = null; });
     try {
       await Api.instance.post('${widget.base}/${widget.item['_id']}/movement', {
         'type': widget.type, 'quantity': qty, 'vehiclePlate': _plate.trim(), 'reason': _reason.text.trim(),
         if (!_isIn) 'issueReason': _issueReason,
-        if (_isIn) 'unitPrice': price,
+        if (_isIn && !_isLightStore(widget.base)) 'unitPrice': price,
         if (_isIn) 'date': _date,
         if (_isIn && _supplier.isNotEmpty) ..._supplierBody(_supplier),
       });
@@ -1071,6 +1078,7 @@ class _MovementSheetState extends State<_MovementSheet> {
           TextField(controller: _qty, keyboardType: TextInputType.number, autofocus: true, onChanged: (_) => setState(() => _err = null), decoration: InputDecoration(labelText: tr('الكمية *', 'Quantity *'))),
           const SizedBox(height: 10),
           if (isIn) ...[
+            if (!_isLightStore(widget.base)) ...[
             TextField(
               controller: _price,
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -1083,6 +1091,7 @@ class _MovementSheetState extends State<_MovementSheet> {
                   style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: T.inkSoft)),
             ),
             const SizedBox(height: 10),
+            ],
             // ممّن اشتُري ومتى — اختياريّان، ويُسجَّلان على الحركة نفسِها.
             _SupplierField(suppliers: widget.suppliers, value: _supplier, fallbackName: (it['supplierName'] ?? '').toString(), onChanged: (v) => setState(() => _supplier = v)),
             const SizedBox(height: 10),
@@ -1205,7 +1214,7 @@ class _BulkMovementSheetState extends State<_BulkMovementSheet> {
             {
               'item': i['_id'],
               'quantity': _n((i['_id'] ?? '').toString()),
-              if (_isIn) 'unitPrice': num.tryParse(_price[(i['_id'] ?? '').toString()]!.text.trim()) ?? 0,
+              if (_isIn && !_isLightStore(widget.base)) 'unitPrice': num.tryParse(_price[(i['_id'] ?? '').toString()]!.text.trim()) ?? 0,
             },
         ],
         'vehiclePlate': _plate.trim(),
@@ -1243,7 +1252,7 @@ class _BulkMovementSheetState extends State<_BulkMovementSheet> {
     final isIn = _isIn;
     final accent = isIn ? T.success : T.orange;
     final short = isIn ? const [] : widget.items.where((i) => _numOf(i['quantity']) < _n((i['_id'] ?? '').toString())).toList();
-    final unpriced = isIn ? widget.items.where((i) => !((num.tryParse(_price[(i['_id'] ?? '').toString()]!.text.trim()) ?? 0) > 0)).toList() : const [];
+    final unpriced = isIn && !_isLightStore(widget.base) ? widget.items.where((i) => !((num.tryParse(_price[(i['_id'] ?? '').toString()]!.text.trim()) ?? 0) > 0)).toList() : const [];
     final totalQty = widget.items.fold<num>(0, (a, i) => a + _n((i['_id'] ?? '').toString()));
     return Padding(
       padding: EdgeInsets.fromLTRB(18, 16, 18, MediaQuery.of(context).viewInsets.bottom + 18),
@@ -1317,7 +1326,7 @@ class _BulkMovementSheetState extends State<_BulkMovementSheet> {
                         onChanged: (_) => setState(() {}),
                         decoration: InputDecoration(isDense: true, labelText: tr('الكمية', 'Qty')),
                       )),
-                      if (isIn) ...[
+                      if (isIn && !_isLightStore(widget.base)) ...[
                         const SizedBox(width: 8),
                         SizedBox(width: 100, child: TextField(
                           controller: _price[id], keyboardType: const TextInputType.numberWithOptions(decimal: true), textAlign: TextAlign.center,
@@ -1373,6 +1382,8 @@ class _ItemFormSheetState extends State<_ItemFormSheet> {
   final _qty = TextEditingController(text: '1');
   late final _unit = TextEditingController(text: widget.item?['unit']?.toString() ?? 'قطعة');
   late final _price = TextEditingController(text: widget.item?['unitPrice']?.toString() ?? '');
+  late final _supName = TextEditingController(text: (widget.item?['supplierItemName'] ?? '').toString());
+  bool get _light => _isLightStore(widget.base);
   late final _minQ = TextEditingController(text: widget.item?['minQuantity']?.toString() ?? '0');
   late final _notes = TextEditingController(text: widget.item?['notes']?.toString() ?? '');
   late String _supplier = _idOf(widget.item?['supplier']);
@@ -1389,14 +1400,14 @@ class _ItemFormSheetState extends State<_ItemFormSheet> {
 
   @override
   void dispose() {
-    for (final c in [_name, _cat, _code, _qty, _unit, _price, _minQ, _notes]) { c.dispose(); }
+    for (final c in [_name, _cat, _code, _qty, _unit, _price, _minQ, _notes, _supName]) { c.dispose(); }
     super.dispose();
   }
 
   Future<void> _save() async {
     if (_name.text.trim().isEmpty) { setState(() => _nameErr = tr('اسم الصنف مطلوب', 'Name required')); return; }
     // صنفٌ جديدٌ بلا سعرٍ يرفضه الخادم — فيُقال هنا والنموذجُ مفتوح.
-    if (_isNew && (num.tryParse(_price.text.trim()) ?? 0) <= 0) {
+    if (_isNew && !_light && (num.tryParse(_price.text.trim()) ?? 0) <= 0) {
       setState(() => _priceErr = tr('اكتب سعر القطعة الواحدة', 'Enter the price per piece'));
       return;
     }
@@ -1405,11 +1416,13 @@ class _ItemFormSheetState extends State<_ItemFormSheet> {
     // التعديل، فلا يُعرَض ولا يُرسَل.
     final body = <String, dynamic>{
       'name': _name.text.trim(), 'category': _cat.text.trim(), 'code': _code.text.trim(),
-      'unit': _unit.text.trim(), 'unitPrice': num.tryParse(_price.text.trim()) ?? 0,
+      'unit': _unit.text.trim(),
+      if (!_light) 'unitPrice': num.tryParse(_price.text.trim()) ?? 0,
+      if (_light) 'supplierItemName': _supName.text.trim(),
       'minQuantity': num.tryParse(_minQ.text.trim()) ?? 0, 'notes': _notes.text.trim(),
       'purchaseDate': _date,
       if (_supplier.isNotEmpty) ..._supplierBody(_supplier) else ...{'supplier': '', 'supplierName': ''},
-      if (_isNew) 'quantity': num.tryParse(_qty.text.trim()) ?? 0,
+      if (_isNew) 'quantity': _light ? 0 : (num.tryParse(_qty.text.trim()) ?? 0),
     };
     setState(() { _busy = true; _err = null; });
     try {
@@ -1432,6 +1445,10 @@ class _ItemFormSheetState extends State<_ItemFormSheet> {
         if (_err != null) _errBox(_err!),
         TextField(controller: _name, onChanged: (_) { if (_nameErr != null) setState(() => _nameErr = null); }, decoration: InputDecoration(labelText: tr('اسم الصنف *', 'Name *'), errorText: _nameErr)),
         const SizedBox(height: 10),
+        if (_light) ...[
+          TextField(controller: _supName, decoration: InputDecoration(labelText: tr('اسم الصنف عند المورد', 'Item name at the supplier'), hintText: tr('كما يُكتب في فاتورة المورد', 'As on the supplier invoice'))),
+          const SizedBox(height: 10),
+        ],
         Row(children: [
           Expanded(child: TextField(controller: _cat, decoration: InputDecoration(labelText: tr('التصنيف', 'Category')))),
           const SizedBox(width: 10),
@@ -1446,7 +1463,7 @@ class _ItemFormSheetState extends State<_ItemFormSheet> {
           Expanded(child: LookupField(type: 'ls2_store_unit', controller: _unit, label: tr('الوحدة', 'Unit'), fallback: const ['قطعة', 'لتر'])),
         ]),
         const SizedBox(height: 10),
-        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        if (!_light) Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
           if (_isNew) Expanded(flex: 2, child: TextField(controller: _qty, keyboardType: TextInputType.number, onChanged: (_) => setState(() {}), decoration: InputDecoration(labelText: tr('العدد', 'Quantity')))),
           if (_isNew) const SizedBox(width: 10),
           Expanded(flex: 3, child: TextField(
@@ -1455,7 +1472,7 @@ class _ItemFormSheetState extends State<_ItemFormSheet> {
             decoration: InputDecoration(labelText: tr('سعر القطعة الواحدة (ر.س) *', 'Price per piece (SAR) *'), errorText: _priceErr),
           )),
         ]),
-        if (_isNew && total > 0)
+        if (_isNew && !_light && total > 0)
           Container(
             width: double.infinity,
             margin: const EdgeInsets.only(top: 8),
@@ -1496,13 +1513,14 @@ class _NewRow {
   final code = TextEditingController();
   final qty = TextEditingController(text: '1');
   final price = TextEditingController();
+  final supName = TextEditingController();
   String unit = 'قطعة';
 
   /// السطرُ الفارغُ تمامًا لا يُرسَل: ثلاثةُ أسطرٍ تُفتَح جاهزةً ولا يُلزَم بملئها.
-  bool get filled => name.text.trim().isNotEmpty || price.text.trim().isNotEmpty || code.text.trim().isNotEmpty;
+  bool get filled => name.text.trim().isNotEmpty || price.text.trim().isNotEmpty || code.text.trim().isNotEmpty || supName.text.trim().isNotEmpty;
   num get total => (num.tryParse(qty.text.trim()) ?? 0) * (num.tryParse(price.text.trim()) ?? 0);
 
-  void dispose() { name.dispose(); cat.dispose(); code.dispose(); qty.dispose(); price.dispose(); }
+  void dispose() { name.dispose(); cat.dispose(); code.dispose(); qty.dispose(); price.dispose(); supName.dispose(); }
 }
 
 /// الموردُ ويومُ الشراء مرّةً في الأعلى، ولكلّ صنفٍ سطر. والخادمُ يقبل الدفعةَ
@@ -1553,8 +1571,9 @@ class _BulkCreateScreenState extends State<_BulkCreateScreen> {
         if (_supplier.isNotEmpty) ..._supplierBody(_supplier),
         'items': filled.map((x) => {
               'name': x.name.text.trim(), 'category': x.cat.text.trim(), 'code': x.code.text.trim(),
-              'quantity': num.tryParse(x.qty.text.trim()) ?? 0, 'unit': x.unit,
-              'unitPrice': num.tryParse(x.price.text.trim()) ?? 0,
+              'quantity': _isLightStore(widget.base) ? 0 : (num.tryParse(x.qty.text.trim()) ?? 0), 'unit': x.unit,
+              if (!_isLightStore(widget.base)) 'unitPrice': num.tryParse(x.price.text.trim()) ?? 0,
+              if (_isLightStore(widget.base)) 'supplierItemName': x.supName.text.trim(),
             }).toList(),
       });
       final count = r is Map && r['summary'] is Map ? _numOf(r['summary']['count']).toInt() : 0;
@@ -1592,7 +1611,7 @@ class _BulkCreateScreenState extends State<_BulkCreateScreen> {
         Row(children: [
           Text('${tr('صنف', 'Item')} ${i + 1}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: T.inkSoft)),
           const Spacer(),
-          Text('${tr('الإجمالي', 'Total')}: ${_money(r.total)}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: T.success)),
+          if (!_isLightStore(widget.base)) Text('${tr('الإجمالي', 'Total')}: ${_money(r.total)}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: T.success)),
           if (_rows.length > 1)
             IconButton(
               visualDensity: VisualDensity.compact,
@@ -1605,6 +1624,10 @@ class _BulkCreateScreenState extends State<_BulkCreateScreen> {
         ]),
         TextField(controller: r.name, onChanged: (_) => setState(() {}), decoration: InputDecoration(labelText: tr('اسم الصنف *', 'Name *'), isDense: true, errorText: err, errorMaxLines: 3)),
         const SizedBox(height: 8),
+        if (_isLightStore(widget.base)) ...[
+          TextField(controller: r.supName, onChanged: (_) => setState(() {}), decoration: InputDecoration(labelText: tr('اسم الصنف عند المورد', 'Supplier item name'), isDense: true)),
+          const SizedBox(height: 8),
+        ],
         Row(children: [
           Expanded(child: TextField(controller: r.cat, decoration: InputDecoration(labelText: tr('التصنيف', 'Category'), isDense: true))),
           const SizedBox(width: 8),
@@ -1612,8 +1635,10 @@ class _BulkCreateScreenState extends State<_BulkCreateScreen> {
         ]),
         const SizedBox(height: 8),
         Row(children: [
+          if (!_isLightStore(widget.base)) ...[
           Expanded(flex: 2, child: TextField(controller: r.qty, keyboardType: TextInputType.number, onChanged: (_) => setState(() {}), decoration: InputDecoration(labelText: tr('العدد', 'Qty'), isDense: true))),
           const SizedBox(width: 8),
+          ],
           Expanded(flex: 3, child: DropdownButtonFormField<String>(
             initialValue: r.unit,
             isExpanded: true,
@@ -1621,8 +1646,8 @@ class _BulkCreateScreenState extends State<_BulkCreateScreen> {
             items: {r.unit, ..._units}.map((u) => DropdownMenuItem(value: u, child: Text(u, overflow: TextOverflow.ellipsis))).toList(),
             onChanged: (v) => setState(() => r.unit = v ?? r.unit),
           )),
-          const SizedBox(width: 8),
-          Expanded(flex: 3, child: TextField(controller: r.price, keyboardType: const TextInputType.numberWithOptions(decimal: true), onChanged: (_) => setState(() {}), decoration: InputDecoration(labelText: tr('سعر القطعة *', 'Unit price *'), isDense: true))),
+          if (!_isLightStore(widget.base)) const SizedBox(width: 8),
+          if (!_isLightStore(widget.base)) Expanded(flex: 3, child: TextField(controller: r.price, keyboardType: const TextInputType.numberWithOptions(decimal: true), onChanged: (_) => setState(() {}), decoration: InputDecoration(labelText: tr('سعر القطعة *', 'Unit price *'), isDense: true))),
         ]),
       ]),
     );
@@ -1663,7 +1688,7 @@ class _BulkCreateScreenState extends State<_BulkCreateScreen> {
           child: Row(children: [
             Expanded(child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text('${filled.length} ${tr('صنف', 'items')}', style: const TextStyle(fontSize: 11.5, color: T.inkSoft, fontWeight: FontWeight.w600)),
-              Text('${tr('الإجمالي', 'Total')}: ${_money(total)} ${tr('ر.س', 'SAR')}', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: T.success)),
+              if (!_isLightStore(widget.base)) Text('${tr('الإجمالي', 'Total')}: ${_money(total)} ${tr('ر.س', 'SAR')}', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: T.success)),
             ])),
             FilledButton.icon(
               icon: const Icon(Icons.save_outlined, size: 18),
@@ -1762,8 +1787,8 @@ class _LogSheetState extends State<_LogSheet> {
         // الكمّيّةُ وسعرُ القطعة وإجماليُّ الحركة
         Text([
           '${isIn ? '+' : '−'}${m['quantity']}${unit.isEmpty ? '' : ' $unit'}',
-          if (m['unitPrice'] != null) '${tr('سعر القطعة', 'unit price')} ${_money(m['unitPrice'])}',
-          if (m['total'] != null) '${tr('الإجمالي', 'total')} ${_money(m['total'])} ${tr('ر.س', 'SAR')}',
+          if (m['unitPrice'] != null && !_isLightStore(widget.base)) '${tr('سعر القطعة', 'unit price')} ${_money(m['unitPrice'])}',
+          if (m['total'] != null && !_isLightStore(widget.base)) '${tr('الإجمالي', 'total')} ${_money(m['total'])} ${tr('ر.س', 'SAR')}',
         ].join(' · '), style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: reversed ? T.inkFaint : T.inkSoft)),
         // متى، وممّن، وعلى أيّ مركبة
         Text([
@@ -1811,7 +1836,7 @@ class _LogSheetState extends State<_LogSheet> {
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
             child: Row(children: [
               Expanded(child: Text('${tr('سجل الحركات', 'Movement log')} (${_movs.length})', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16))),
-              Text('${tr('قيمة الوارد', 'In value')}: ${_money(inValue)}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: T.success)),
+              if (!_isLightStore(widget.base)) Text('${tr('قيمة الوارد', 'In value')}: ${_money(inValue)}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: T.success)),
             ]),
           ),
           Padding(

@@ -19,7 +19,7 @@ import {
   isHRStaff, Employee, Contract, LeaveRequest, Asset, HRRequest, LeaveBalance,
   EmployeeDocument, EmployeeRenewal, AuditEntry,
   empName, userName, fmtDateTime, leaveTypeLabel, expiryBadge,
-  EMPLOYMENT_STATUS, LEAVE_NO_SHOW_STATUS, CONTRACT_STATUS, contractBadge, contractRequired, LEAVE_STATUS, REQUEST_STATUS, assetTypeLabel, conditionLabel,
+  EMPLOYMENT_STATUS, employmentBadge, CONTRACT_STATUS, contractBadge, contractRequired, LEAVE_STATUS, REQUEST_STATUS, assetTypeLabel, conditionLabel,
   RENEWAL_TYPES, DOCUMENT_CATEGORIES, renewalTypeLabel, docCategoryLabel, auditActionLabel,
 } from '@/lib/hr';
 import {
@@ -31,6 +31,7 @@ import { EmployeeFormModal } from '@/components/hr/EmployeeFormModal';
 import ContractFormModal from '@/components/hr/ContractFormModal';
 import DatePair from '@/components/hr/DatePair';
 import { LeaveReturnChip, LeaveReturnPanel } from '@/components/hr/LeaveReturn';
+import LeaveRecordModal from '@/components/hr/LeaveRecordModal';
 import { bothDates, bothDatesShort, gregCell, gregDay, hijriCell, pairLabels, exportDatePair } from '@/lib/hrDates';
 import { getHrEmployeesIdTranslations } from '@/lib/translations';
 import B2cOpBadge from '@/components/b2c/B2cOpBadge';
@@ -67,6 +68,7 @@ export default function EmployeeProfilePage() {
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState('overview');
   const [returnLeaveId, setReturnLeaveId] = useState('');
+  const [recordingLeave, setRecordingLeave] = useState(false);
   const [vehicleData, setVehicleData] = useState<{
     current: VehicleAuthorization | null;
     // كلُّ ما بيده الآن — من ورقة التفويض في سجلّ المركبات (المرجع).
@@ -404,7 +406,7 @@ export default function EmployeeProfilePage() {
         <div className="flex-1">
           <div className="flex items-center gap-3 flex-wrap">
             <h1 className="text-2xl font-bold text-slate-900">{empName(e, lang)}</h1>
-            <Badge style={(e as any).leaveViolation?.since && e.employmentStatus !== 'terminated' ? LEAVE_NO_SHOW_STATUS : EMPLOYMENT_STATUS[e.employmentStatus || 'active']} lang={lang} />
+            <Badge style={employmentBadge(e)} lang={lang} />
             {/* حالتُه اليوم في قسم الأفراد — تُكتب هناك وتُرى هنا. */}
             <B2cOpBadge status={(e as any).b2cOpStatus} ar={lang === 'ar'} />
           </div>
@@ -608,6 +610,18 @@ export default function EmployeeProfilePage() {
         </div>
       )}
 
+      {tab === 'leaves' && staff && (
+        <div className="flex flex-wrap justify-end gap-2">
+          <Link href={`/system/hr/leave-register`} className="inline-flex items-center gap-1.5 rounded-lg bg-slate-100 px-3 py-2 text-sm font-medium text-slate-700 hover:text-[#f37121]">
+            {ar ? 'سجل الإجازات' : 'Leave register'}
+          </Link>
+          <button type="button" onClick={() => setRecordingLeave(true)}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-[#f37121] px-3 py-2 text-sm font-medium text-white hover:bg-[#e06010]">
+            {ar ? 'تسجيل إجازة' : 'Record a leave'}
+          </button>
+        </div>
+      )}
+      <LeaveRecordModal open={recordingLeave} onClose={() => setRecordingLeave(false)} onSaved={load} ar={ar} employeeId={String(e._id)} />
       {tab === 'leaves' && (
         <DataCard empty={!data.leaves.length} emptyText={tx.noLeaves}>
           <table className="w-full text-sm">

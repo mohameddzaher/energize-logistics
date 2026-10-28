@@ -235,7 +235,7 @@ export default function CustomsDetailPage() {
   // فارغ) يبقى خانةً تُكتب كما كان — الخادمُ لا يمسّه حينئذٍ.
   const yardSellRaw = c.revenue?.transportToYardSelling;
   const yardSellSet = yardSellRaw !== null && yardSellRaw !== undefined && yardSellRaw !== '' && Number.isFinite(Number(yardSellRaw));
-  // Yard net = yard fees (costs) − yard price, once the price is typed; legacy rows keep a typed net.
+  // Yard net = yard price − yard fees (costs), once the price is typed; legacy rows keep their stored net.
   const yardPriceRaw = c.revenue?.yardPrice;
   const yardPriceSet = yardPriceRaw !== null && yardPriceRaw !== undefined && yardPriceRaw !== '' && Number.isFinite(Number(yardPriceRaw));
   const COMPUTED_REVENUE = new Set(['transportNet', 'yardToCustomerNet', 'yardNet', ...(yardSellSet ? ['transportToYardNet'] : [])]);
@@ -245,7 +245,7 @@ export default function CustomsDetailPage() {
     transportNet: ['السعر − تكلفة النقل', 'price − cost'],
     transportToYardNet: ['السعر − تكلفة النقل', 'price − cost'],
     yardToCustomerNet: ['السعر − تكلفة النقل', 'price − cost'],
-    yardNet: ['أجور الساحة − سعر الساحة', 'yard fees − yard price'],
+    yardNet: ['سعر الساحة − أجور الساحة', 'yard price − yard fees'],
   };
   const fieldOf = (k: string): [string, string, string] =>
     [...MARGIN_FIELDS, ...REVENUE_EXTRA].find(([x]) => x === k) || [k, k, k];
@@ -270,7 +270,7 @@ export default function CustomsDetailPage() {
     ? Math.round((n(yardSellRaw) - n(c.costs?.transportToYard)) * 100) / 100
     : n(c.revenue?.transportToYardNet);
   const yardNet = yardPriceSet
-    ? Math.round((n(c.costs?.yardFees) - n(yardPriceRaw)) * 100) / 100
+    ? Math.round((n(yardPriceRaw) - n(c.costs?.yardFees)) * 100) / 100
     : n(c.revenue?.yardNet);
   const revVal = (k: string) => (k === 'transportNet' ? transportNet
     : k === 'yardNet' ? yardNet

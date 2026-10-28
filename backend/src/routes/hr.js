@@ -150,6 +150,7 @@ router.get('/settings', authorize(...STAFF), hr.getHrSettings);
 router.put('/settings', authorize(...STAFF), hr.updateHrSettings);
 
 router.get('/leaves', authorize(...STAFF), hr.listLeaves);
+router.get('/leave-register', authorize(...STAFF), hr.leaveRegister);
 // تقييدُ إجازةٍ وقعت فعلًا — قبل المسار ذي المعامل وإلّا ابتلعه `/:id`.
 router.post('/leaves/backdated', authorize(...STAFF), hr.createBackdatedLeave);
 router.get('/leaves/:id', hr.getLeave); // single leave + signatures (for the PDF); access checked in controller

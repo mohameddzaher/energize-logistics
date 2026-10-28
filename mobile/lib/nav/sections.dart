@@ -26,6 +26,7 @@ import '../screens/section_work.dart';
 import '../screens/team_board.dart';
 import '../screens/remote_attendance.dart';
 import '../screens/hr_inbox.dart';
+import '../screens/hr_leave_register.dart';
 import '../screens/staff_requests.dart';
 import '../screens/hr_forms.dart';
 import '../screens/party_links.dart';
@@ -426,6 +427,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         // الأرشيف — مَن انتهت خدمتُه وخرج من النظام، والفريلانسرُ المنتهي. كالموقع.
         AppPage('الأرشيف', 'Archive', Icons.archive_outlined, (c) => const HrArchiveScreen(), path: '/system/hr/archive'),
         AppPage('طلبات الإجازات', 'Leave Requests', Icons.event_available_outlined, (c) => const HrLeavesScreen(), path: '/system/hr/leaves'),
+        AppPage('الإجازات', 'Leaves', Icons.event_note_outlined, (c) => const HrLeaveRegisterScreen(), path: '/system/hr/leave-register'),
         AppPage('طلبات الموظفين', 'Employee Requests', Icons.mark_email_unread_outlined, (c) => const HrRequestsScreen(), path: '/system/hr/requests'),
         // طلباتُ الأقسام — الجانبُ المستقبِل. راجع screens/staff_requests.dart.
         AppPage('طلبات الأقسام', 'Section Requests', Icons.move_to_inbox_outlined, (c) => const StaffRequestsScreen(side: 'hr'), path: '/system/hr/staff-requests'),

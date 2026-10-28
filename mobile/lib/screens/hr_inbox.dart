@@ -10,6 +10,7 @@ import '../ui/leave_return.dart';
 import '../ui/widgets.dart';
 import '../ui/export_sheet.dart';
 import 'hr_leave_pdf.dart';
+import 'hr_leave_register.dart';
 import '../ui/search_field.dart';
 
 /// HR — طلبات الإجازات (قرارات الموارد البشرية) وطلبات الموظفين (الرد وتغيير
@@ -28,6 +29,7 @@ class _HrLeavesScreenState extends State<HrLeavesScreen> {
   bool _loading = true;
   String? _error;
   String _status = '';
+  String _type = '';
   // بحثٌ بالموظّف أو مقدّم الطلب — كالموقع (يُصفّى المحمَّل).
   String _q = '';
   // تبديلُ الحالة يُعيد التحميلَ فتُهدَم الخانة — النصُّ في متحكِّمٍ يبقى مع الكلمة.
@@ -44,8 +46,9 @@ class _HrLeavesScreenState extends State<HrLeavesScreen> {
 
   List<Map<String, dynamic>> get _shown {
     final q = _q.trim().toLowerCase();
-    if (q.isEmpty) return _rows;
-    return _rows.where((l) => _empName(l).toLowerCase().contains(q) || _reqName(l).toLowerCase().contains(q)
+    final rows = _type.isEmpty ? _rows : _rows.where((l) => l['leaveType'] is Map && '${l['leaveType']['_id']}' == _type).toList();
+    if (q.isEmpty) return rows;
+    return rows.where((l) => _empName(l).toLowerCase().contains(q) || _reqName(l).toLowerCase().contains(q)
         || '${(l['employee'] as Map?)?['arabicName'] ?? ''}'.contains(q)).toList();
   }
 
@@ -175,183 +178,7 @@ class _HrLeavesScreenState extends State<HrLeavesScreen> {
     return d == null ? '—' : '${d.day}/${d.month}/${d.year}${hijriDay(v).isEmpty ? '' : ' · ${hijriDay(v)} ${tr('هـ', 'AH')}'}';
   }
 
-  /// يطوي همزاتِ العربيّة وتاءَها المربوطة كي لا يفشل البحثُ بفارق همزة.
-  static String _fold(String v) => v
-      .toLowerCase()
-      .replaceAll(RegExp('[أإآٱ]'), 'ا')
-      .replaceAll('ة', 'ه')
-      .replaceAll('ى', 'ي')
-      .replaceAll(RegExp('[ًٌٍَُِّْ]'), '');
-
-  /// تقييدُ إجازةٍ وقعت فعلًا.
-  ///
-  /// كثيرٌ من الإجازات تُؤخذ قبل النظام أو تُتّفق شفاهةً ثمّ تُقيَّد. وما لم
-  /// تُسجَّل بقي الموظّف في الورق مستحقًّا ثلاثين يومًا وقد أخذ اثنَي عشر.
-  /// تُقيَّد معتمَدةً وتُخصَم كأخواتها، وتُوسَم «قيد رجعيّ» باسم من قيّدها.
-  Future<void> _recordBackdated() async {
-    List<Map<String, dynamic>> emps = [];
-    List<Map<String, dynamic>> types = [];
-    try {
-      // القائمةُ الخفيفة لا المستندُ الكامل — سبعةُ حقولٍ تصل في لحظة.
-      // بشَرطةٍ لا بشَرطةٍ مائلة: `employees/search` يطابق `/employees/:id`
-      // فيردّه حارسُ المعرّفات «معرّفٌ غير صالح» — ولا تُفتَح الورقةُ أبدًا.
-      final a = await Api.instance.get('/api/hr/employees-search?limit=2000');
-      emps = List<Map<String, dynamic>>.from(((a as Map)['employees'] as List? ?? const []).map((e) => Map<String, dynamic>.from(e as Map)));
-      final b = await Api.instance.get('/api/hr/leave-types');
-      types = List<Map<String, dynamic>>.from(((b as Map)['leaveTypes'] as List? ?? const []).map((e) => Map<String, dynamic>.from(e as Map)));
-    } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
-      return;
-    }
-    if (!mounted) return;
-
-    String? empId;
-    String? typeId;
-    DateTime? start;
-    DateTime? end;
-    final reason = TextEditingController();
-    final search = TextEditingController();
-
-    int days() => (start == null || end == null || end!.isBefore(start!))
-        ? 0
-        : end!.difference(start!).inDays + 1;
-    String fmt(DateTime? d) => d == null ? '—' : '${d.day}/${d.month}/${d.year}';
-
-    final ok = await showModalBottomSheet<bool>(
-      context: context,
-      isScrollControlled: true,
-      builder: (c) => StatefulBuilder(
-        builder: (c, setSt) {
-          final q = search.text.trim().toLowerCase();
-          final shown = q.isEmpty
-              ? emps.take(60).toList()
-              // يُبحَث بالاسم والإقامة والرقم الوظيفي معًا، وتُطوى همزاتُ
-              // العربيّة فـ«احمد» تجد «أحمد».
-              : emps.where((e) => [e['arabicName'], e['firstName'], e['lastName'], e['employeeNumber'], e['iqamaNumber'], e['nationalId']]
-                  .any((v) => _fold((v ?? '').toString()).contains(_fold(q)))).take(60).toList();
-          return SafeArea(
-            child: Padding(
-              padding: EdgeInsets.fromLTRB(16, 16, 16, MediaQuery.of(c).viewInsets.bottom + 16),
-              child: SingleChildScrollView(
-                child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(tr('تسجيل إجازة وقعت فعلًا', 'Record a leave that already happened'),
-                      style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
-                  const SizedBox(height: 4),
-                  Text(
-                    tr('تُسجَّل معتمَدةً وتُخصَم من الرصيد — لا تمرّ بمديرٍ ولا بمهلة إخطار.',
-                       'Recorded as approved and deducted — no manager step, no notice rule.'),
-                    style: const TextStyle(fontSize: 11.5, color: T.inkFaint),
-                  ),
-                  const SizedBox(height: 12),
-                  SearchField(
-                    controller: search, dense: true,
-                    onChanged: (_) => setSt(() {}),
-                    hint: tr('ابحث عن الموظّف', 'Search employee'),
-                  ),
-                  const SizedBox(height: 8),
-                  DropdownButtonFormField<String>(
-                    initialValue: shown.any((e) => e['_id'] == empId) ? empId : null,
-                    isExpanded: true,
-                    decoration: InputDecoration(labelText: tr('الموظّف', 'Employee')),
-                    items: shown.map((e) {
-                      final nm = (e['arabicName'] ?? '${e['firstName'] ?? ''} ${e['lastName'] ?? ''}').toString().trim();
-                      final num = (e['employeeNumber'] ?? '').toString();
-                      return DropdownMenuItem(
-                        value: e['_id'] as String,
-                        child: Text(num.isEmpty ? nm : '$nm · #$num', overflow: TextOverflow.ellipsis),
-                      );
-                    }).toList(),
-                    onChanged: (v) => setSt(() => empId = v),
-                  ),
-                  const SizedBox(height: 10),
-                  DropdownButtonFormField<String>(
-                    initialValue: typeId,
-                    isExpanded: true,
-                    decoration: InputDecoration(labelText: tr('نوع الإجازة', 'Leave type')),
-                    // الخصمُ صفةُ النوع — يُقال في الاسم كي يُعرف قبل التسجيل.
-                    items: types.map((t) {
-                      final nm = tr('${t['nameAr']}', '${t['nameEn']}');
-                      final hint = t['affectsBalance'] == false
-                          ? tr(' — لا تُخصَم', ' — no deduction')
-                          : tr(' — تُخصَم من الرصيد', ' — deducted');
-                      return DropdownMenuItem(
-                        value: t['_id'] as String,
-                        child: Text('$nm$hint', overflow: TextOverflow.ellipsis),
-                      );
-                    }).toList(),
-                    onChanged: (v) => setSt(() => typeId = v),
-                  ),
-                  const SizedBox(height: 10),
-                  Row(children: [
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: () async {
-                          final d = await showDatePicker(context: c, initialDate: start ?? DateTime.now(),
-                              firstDate: DateTime(DateTime.now().year - 5), lastDate: DateTime.now());
-                          if (d != null) setSt(() => start = d);
-                        },
-                        child: Text('${tr('من', 'From')}: ${fmt(start)}${start == null ? '' : '\n${hijriHint(start, ar: Lang.instance.ar)}'}', textAlign: TextAlign.center),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: start == null ? null : () async {
-                          final d = await showDatePicker(context: c, initialDate: end ?? start!,
-                              firstDate: start!, lastDate: DateTime.now().add(const Duration(days: 365)));
-                          if (d != null) setSt(() => end = d);
-                        },
-                        child: Text('${tr('إلى', 'To')}: ${fmt(end)}${end == null ? '' : '\n${hijriHint(end, ar: Lang.instance.ar)}'}', textAlign: TextAlign.center),
-                      ),
-                    ),
-                  ]),
-                  if (days() > 0) ...[
-                    const SizedBox(height: 8),
-                    Text('${tr('المدّة', 'Duration')}: ${days()} ${tr('يوم', 'day(s)')}',
-                        style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5)),
-                  ],
-                  const SizedBox(height: 10),
-                  TextField(controller: reason, maxLines: 2, decoration: InputDecoration(labelText: tr('السبب / ملاحظة', 'Reason / note'))),
-                  const SizedBox(height: 12),
-                  SizedBox(
-                    width: double.infinity,
-                    child: FilledButton(
-                      onPressed: (empId == null || typeId == null || days() == 0) ? null : () => Navigator.pop(c, true),
-                      child: Text(tr('تسجيل', 'Record')),
-                    ),
-                  ),
-                ]),
-              ),
-            ),
-          );
-        },
-      ),
-    );
-    if (ok != true) return;
-    String iso(DateTime d) => '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
-    try {
-      final r = await Api.instance.post('/api/hr/leaves/backdated', {
-        'employee': empId,
-        'leaveType': typeId,
-        'startDate': iso(start!),
-        'endDate': iso(end!),
-        'reason': reason.text.trim(),
-      });
-      final bal = (r is Map) ? r['balance'] : null;
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
-          bal is Map
-            ? tr('سُجّلت — الرصيد المتبقّي ${bal['available']} يوم', 'Recorded — remaining balance ${bal['available']}')
-            : tr('سُجّلت', 'Recorded'),
-        )));
-      }
-      _load();
-    } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
-    }
-  }
-
-  /// تعديلُ إجازةٍ — تصحيحٌ للسجلّ: النوع والتاريخان والسبب، والحالة كما هي.
+  /// Edit a leave: a record correction (type, dates, reason); its status stays.
   Future<void> _edit(Map<String, dynamic> l) async {
     List<Map<String, dynamic>> types = [];
     try {
@@ -483,10 +310,11 @@ class _HrLeavesScreenState extends State<HrLeavesScreen> {
             PopupMenuItem(value: 'all', child: Text(tr('الكل', 'All'))),
           ],
         ),
+        // Recording a leave (incl. employees without a login) lives in the leave register.
         IconButton(
-          icon: const Icon(Icons.event_repeat_outlined),
-          tooltip: tr('تسجيل إجازة قديمة', 'Record a past leave'),
-          onPressed: _recordBackdated,
+          icon: const Icon(Icons.event_note_outlined),
+          tooltip: tr('سجل الإجازات', 'Leave register'),
+          onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const HrLeaveRegisterScreen())),
         ),
       ],
       body: _loading
@@ -500,6 +328,20 @@ class _HrLeavesScreenState extends State<HrLeavesScreen> {
                       controller: _searchCtl, dense: true,
                       onChanged: (v) => setState(() => _q = v),
                       hint: tr('ابحث باسم الموظف…', 'Search by employee…'),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(14, 8, 14, 0),
+                    child: DropdownButtonFormField<String>(
+                      initialValue: _type,
+                      isExpanded: true,
+                      decoration: InputDecoration(labelText: tr('نوع الإجازة', 'Leave type'), isDense: true),
+                      items: [
+                        DropdownMenuItem(value: '', child: Text(tr('كل الأنواع', 'All types'))),
+                        ...{for (final l in _rows) if (l['leaveType'] is Map) '${l['leaveType']['_id']}': tr('${l['leaveType']['nameAr'] ?? ''}', '${l['leaveType']['nameEn'] ?? ''}')}
+                            .entries.map((t) => DropdownMenuItem(value: t.key, child: Text(t.value, overflow: TextOverflow.ellipsis))),
+                      ],
+                      onChanged: (v) => setState(() => _type = v ?? ''),
                     ),
                   ),
                   Padding(

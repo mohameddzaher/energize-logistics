@@ -12,7 +12,7 @@
  * فالنطاقُ يُمرَّر: `base` مسارُ النقاط، و`plateSource` مصدرُ لوحات المركبات
  * التي يُصرَف عليها، و`canEditOf` حارسُ الصلاحيّة — فلكلّ قسمٍ حارسُه.
  */
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, createContext, useContext } from 'react';
 import { useLanguage } from '@/context/LanguageContext';
 import { useAuth } from '@/context/AuthContext';
 import { useSocket } from '@/hooks/useSocket';
@@ -72,7 +72,7 @@ function SupplierSelect({ suppliers, value, onChange, ar }: { suppliers: Supplie
 }
 const supplierBody = (v: string) => (/^[0-9a-f]{24}$/i.test(v) ? { supplier: v } : { supplier: '', supplierName: v });
 
-type Item = { _id: string; supplier?: string | null; supplierName?: string; purchaseDate?: string; createdAt?: string; code?: string; name: string; category?: string; categoryAr?: string; groupAr?: string; quantity: number; unit: string; unitPrice: number; minQuantity?: number; compatibleModels?: string[]; notes?: string; status: 'ok' | 'low' | 'out'; value: number };
+type Item = { _id: string; supplier?: string | null; supplierName?: string; supplierItemName?: string; purchaseDate?: string; createdAt?: string; code?: string; name: string; category?: string; categoryAr?: string; groupAr?: string; quantity: number; unit: string; unitPrice: number; minQuantity?: number; compatibleModels?: string[]; notes?: string; status: 'ok' | 'low' | 'out'; value: number };
 type Cat = { key: string; ar: string; count: number };
 type Movement = {
   _id: string; item: string; itemName: string; type: 'in' | 'out'; quantity: number;
@@ -127,9 +127,21 @@ export type StoreScope = {
    * المركبات. اختياريّ: يُعرض مع سجلّ الحركات حيث يُمرَّر.
    */
   unknownPlatesUrl?: string;
+  /** No unit prices or totals anywhere (light transport store). */
+  noPrices?: boolean;
+  /** New items start at zero; stock moves only through in/out movements. */
+  noInitialQty?: boolean;
+  /** Items carry the supplier's own name for them. */
+  supplierItemName?: boolean;
 };
 
+type StoreFlags = { noPrices: boolean; noInitialQty: boolean; supplierItemName: boolean };
+const StoreFlagsCtx = createContext<StoreFlags>({ noPrices: false, noInitialQty: false, supplierItemName: false });
+const useStoreFlags = () => useContext(StoreFlagsCtx);
+
 export default function StoreScreen({ scope }: { scope: StoreScope }) {
+  const flags = useMemo<StoreFlags>(() => ({ noPrices: !!scope.noPrices, noInitialQty: !!scope.noInitialQty, supplierItemName: !!scope.supplierItemName }), [scope.noPrices, scope.noInitialQty, scope.supplierItemName]);
+  const noPrices = flags.noPrices;
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
   const { user } = useAuth();
@@ -256,6 +268,7 @@ export default function StoreScreen({ scope }: { scope: StoreScope }) {
     { header: ar ? 'سعر القطعة الواحدة' : 'Unit price', key: 'unitPrice', width: 16 },
     { header: ar ? 'الإجمالي (العدد × السعر)' : 'Total (qty × price)', key: 'value', width: 20 },
     { header: ar ? 'الحالة' : 'Status', key: 'status', transform: (v) => (ar ? STATUS[v]?.ar : STATUS[v]?.en) || v, width: 12 },
+    ...(flags.supplierItemName ? [{ header: ar ? 'اسم الصنف عند المورد' : 'Supplier item name', key: 'supplierItemName', width: 28 }] : []),
     { header: ar ? 'الموديلات المتوافقة' : 'Compatible models', key: 'compatibleModels', transform: (v) => (v || []).join('، '), width: 30 },
     { header: ar ? 'ملاحظات' : 'Notes', key: 'notes', width: 30 },
   ];
@@ -275,11 +288,16 @@ export default function StoreScreen({ scope }: { scope: StoreScope }) {
     { header: ar ? 'الرصيد بعدها' : 'Balance after', key: 'balanceAfter', width: 14 },
     { header: ar ? 'بواسطة' : 'By', key: 'performedByName', width: 20 },
   ];
+  // Price columns are dropped where the store keeps no prices.
+  const PRICE_KEYS = new Set(['unitPrice', 'value', 'total']);
+  const itemColsShown = noPrices ? itemCols.filter((c) => !PRICE_KEYS.has(c.key)) : itemCols;
+  const movementColsShown = noPrices ? movementCols.filter((c) => !PRICE_KEYS.has(c.key)) : movementCols;
 
   if (!scope.canSee(user)) return <div className="text-slate-500 p-8">{ar ? 'غير مصرّح' : 'Not authorized'}</div>;
   if (loading && !items.length) return <Spinner />;
 
   return (
+    <StoreFlagsCtx.Provider value={flags}>
     <div className="space-y-4 w-full pb-10" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader icon={<Boxes className="w-5 h-5" />} title={ar ? scope.titleAr : scope.titleEn} subtitle={ar ? scope.subtitleAr : scope.subtitleEn}>
         <div className="flex items-center gap-2">
@@ -287,9 +305,9 @@ export default function StoreScreen({ scope }: { scope: StoreScope }) {
           <ExportMenu
             fileName={scope.fileName} lang={lang as Lang}
             options={[
-              { key: 'shown', label: ar ? 'المعروض حاليًا (بعد الفلتر)' : 'Current view (filtered)', sheets: [{ name: ar ? 'المخزن' : 'Store', rows: shown, columns: itemCols }] },
-              { key: 'all', label: ar ? 'كل الأصناف' : 'All items', sheets: [{ name: ar ? 'المخزن' : 'Store', rows: items, columns: itemCols }] },
-              { key: 'movements', label: ar ? 'سجل الحركات' : 'Movements log', sheets: [{ name: ar ? 'الحركات' : 'Movements', rows: movements, columns: movementCols }], disabled: !movements.length },
+              { key: 'shown', label: ar ? 'المعروض حاليًا (بعد الفلتر)' : 'Current view (filtered)', sheets: [{ name: ar ? 'المخزن' : 'Store', rows: shown, columns: itemColsShown }] },
+              { key: 'all', label: ar ? 'كل الأصناف' : 'All items', sheets: [{ name: ar ? 'المخزن' : 'Store', rows: items, columns: itemColsShown }] },
+              { key: 'movements', label: ar ? 'سجل الحركات' : 'Movements log', sheets: [{ name: ar ? 'الحركات' : 'Movements', rows: movements, columns: movementColsShown }], disabled: !movements.length },
             ]}
           />
           {canEdit && <button onClick={() => setAddNew(true)} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[#f37121] hover:bg-[#e5651a] text-white text-sm"><Plus className="w-4 h-4" /> {ar ? 'صنف جديد' : 'Add item'}</button>}
@@ -301,7 +319,7 @@ export default function StoreScreen({ scope }: { scope: StoreScope }) {
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3">
         <button onClick={() => setStatusF('')} className="text-start"><StatCard label={ar ? 'عدد الأصناف' : 'Items'} value={totals?.items ?? items.length} accent="text-[#f37121]" /></button>
         <StatCard label={ar ? 'إجمالي القطع' : 'Total units'} value={money(totals?.totalUnits)} />
-        <StatCard label={ar ? 'قيمة المخزون (ر.س)' : 'Stock value'} value={money(totals?.totalValue)} accent="text-emerald-600" />
+        {!noPrices && <StatCard label={ar ? 'قيمة المخزون (ر.س)' : 'Stock value'} value={money(totals?.totalValue)} accent="text-emerald-600" />}
         <button onClick={() => setStatusF(statusF === 'low' ? '' : 'low')} className="text-start"><StatCard label={ar ? 'منخفض' : 'Low stock'} value={totals?.lowStock ?? 0} accent="text-amber-600" /></button>
         <button onClick={() => setStatusF(statusF === 'out' ? '' : 'out')} className="text-start"><StatCard label={ar ? 'نافد' : 'Out of stock'} value={totals?.outOfStock ?? 0} accent="text-red-600" /></button>
       </div>
@@ -322,11 +340,11 @@ export default function StoreScreen({ scope }: { scope: StoreScope }) {
             <option value="">{ar ? 'كل التصنيفات' : 'All categories'}</option>
             {cats.map((c) => <option key={c.key} value={c.key}>{(ar ? c.ar : c.key)} ({c.count})</option>)}
           </select>
-          <div className="flex items-center gap-1">
+          {!noPrices && <div className="flex items-center gap-1">
             <input type="number" value={priceMin} onChange={(e) => setPriceMin(e.target.value)} placeholder={ar ? 'سعر من' : '≥'} className="w-20 px-2 py-2 rounded-lg border border-slate-200 text-sm" />
             <span className="text-slate-300">—</span>
             <input type="number" value={priceMax} onChange={(e) => setPriceMax(e.target.value)} placeholder={ar ? 'إلى' : '≤'} className="w-20 px-2 py-2 rounded-lg border border-slate-200 text-sm" />
-          </div>
+          </div>}
           <select value={supplierF} onChange={(e) => setSupplierF(e.target.value)} className="px-2.5 py-2 rounded-lg border border-slate-200 text-sm bg-white max-w-[190px]">
             <option value="">{ar ? 'كل الموردين' : 'All suppliers'}</option>
             {suppliers.map((x) => <option key={x._id} value={x._id}>{x.name}</option>)}
@@ -361,7 +379,7 @@ export default function StoreScreen({ scope }: { scope: StoreScope }) {
                       })} />
                   </th>
                 )}
-                {[ar ? 'الصنف' : 'Item', ar ? 'التصنيف' : 'Category', ar ? 'تاريخ الشراء' : 'Purchased', ar ? 'المورد' : 'Supplier', ar ? 'العدد' : 'Qty', ar ? 'سعر القطعة' : 'Unit price', ar ? 'الإجمالي' : 'Total', ar ? 'الحالة' : 'Status', ar ? 'حركة' : 'Move', ''].map((h) => <th key={h} className="px-3 py-2.5 text-start font-semibold whitespace-nowrap">{h}</th>)}
+                {[ar ? 'الصنف' : 'Item', ar ? 'التصنيف' : 'Category', ar ? 'تاريخ الشراء' : 'Purchased', ar ? 'المورد' : 'Supplier', ar ? 'العدد' : 'Qty', ...(noPrices ? [] : [ar ? 'سعر القطعة' : 'Unit price', ar ? 'الإجمالي' : 'Total']), ar ? 'الحالة' : 'Status', ar ? 'حركة' : 'Move', ''].map((h) => <th key={h} className="px-3 py-2.5 text-start font-semibold whitespace-nowrap">{h}</th>)}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -376,14 +394,15 @@ export default function StoreScreen({ scope }: { scope: StoreScope }) {
                   )}
                   <td className="px-3 py-2">
                     <p className="font-semibold text-slate-800">{it.name}</p>
+                    {it.supplierItemName && <p className="text-[11px] text-slate-500">{ar ? 'عند المورد: ' : 'Supplier name: '}{it.supplierItemName}</p>}
                     {(it.compatibleModels?.length || it.code) ? <p className="text-[11px] text-slate-400">{it.code}{it.compatibleModels?.length ? ` · ${it.compatibleModels.join('، ')}` : ''}</p> : null}
                   </td>
                   <td className="px-3 py-2 text-slate-500 whitespace-nowrap">{it.categoryAr || it.category || '—'}</td>
                   <td className="px-3 py-2 text-slate-500 whitespace-nowrap">{it.purchaseDate ? dmy(it.purchaseDate) : '—'}</td>
                   <td className="px-3 py-2 text-slate-600 whitespace-nowrap">{it.supplierName || '—'}</td>
                   <td className="px-3 py-2 font-bold text-slate-800">{it.quantity} <span className="text-[10px] font-normal text-slate-400">{it.unit}</span></td>
-                  <td className="px-3 py-2 text-slate-600 whitespace-nowrap">{money(it.unitPrice)}</td>
-                  <td className="px-3 py-2 text-emerald-700 font-semibold whitespace-nowrap">{money(it.value)}</td>
+                  {!noPrices && <td className="px-3 py-2 text-slate-600 whitespace-nowrap">{money(it.unitPrice)}</td>}
+                  {!noPrices && <td className="px-3 py-2 text-emerald-700 font-semibold whitespace-nowrap">{money(it.value)}</td>}
                   <td className="px-3 py-2"><span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${STATUS[it.status].cls}`}>{ar ? STATUS[it.status].ar : STATUS[it.status].en}</span></td>
                   <td className="px-3 py-2">
                     {canEdit && (
@@ -440,6 +459,7 @@ export default function StoreScreen({ scope }: { scope: StoreScope }) {
       {(addNew || editItem) && <ItemFormModal suppliers={suppliers} item={editItem} ar={ar} base={scope.base} onClose={() => { setAddNew(false); setEditItem(null); }} onSaved={() => { setAddNew(false); setEditItem(null); load(); loadSuppliers(); }} />}
       {addMany && <BulkCreateModal suppliers={suppliers} ar={ar} base={scope.base} onClose={() => setAddMany(false)} onSaved={() => { setAddMany(false); load(); loadSuppliers(); }} />}
     </div>
+    </StoreFlagsCtx.Provider>
   );
 }
 
@@ -473,11 +493,12 @@ function MovementsLog({ movements, ar, canEdit, onChanged, base, f, setF, suppli
   const live = rows.filter((m) => !m.reversed && !m.isReversal);
   const sum = (type: 'in' | 'out') => live.filter((m) => m.type === type).reduce((a, m) => a + (Number(m.total) || 0), 0);
 
+  const { noPrices } = useStoreFlags();
   return (
     <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
       <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-100 font-bold text-sm text-slate-800 flex items-center justify-between gap-2">
         <span>{ar ? 'سجل الحركات' : 'Movement log'} ({rows.length})
-          <span className="ms-3 text-[12px] font-semibold text-emerald-700">{ar ? 'قيمة الوارد' : 'In value'}: {money(sum('in'))}</span>
+          {!noPrices && <span className="ms-3 text-[12px] font-semibold text-emerald-700">{ar ? 'قيمة الوارد' : 'In value'}: {money(sum('in'))}</span>}
         </span>
         {canEdit && <span className="text-[11px] font-normal text-slate-400">{ar ? 'الحركة المسجّلة لا تُعدَّل — الغلط يتصحّح بتراجع مسجَّل باسمك' : 'A recorded movement is never edited — mistakes are reversed, on the record'}</span>}
       </div>
@@ -507,8 +528,8 @@ function MovementsLog({ movements, ar, canEdit, onChanged, base, f, setF, suppli
             {th('type', ar ? 'الحركة' : 'Type')}
             {th(null, ar ? 'الكمية' : 'Qty')}
             {th('supplier', ar ? 'المورد' : 'Supplier')}
-            {th(null, ar ? 'سعر القطعة' : 'Unit price')}
-            {th(null, ar ? 'الإجمالي' : 'Total')}
+            {!noPrices && th(null, ar ? 'سعر القطعة' : 'Unit price')}
+            {!noPrices && th(null, ar ? 'الإجمالي' : 'Total')}
             {th('vehicle', ar ? 'المركبة' : 'Vehicle')}
             {th(null, ar ? 'الرصيد بعدها' : 'Balance')}
             {th('by', ar ? 'بواسطة' : 'By')}
@@ -531,8 +552,8 @@ function MovementsLog({ movements, ar, canEdit, onChanged, base, f, setF, suppli
                 <td className="px-3 py-1.5"><span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${m.reversed ? 'bg-slate-200 text-slate-500' : m.type === 'in' ? 'bg-emerald-100 text-emerald-700' : 'bg-orange-100 text-[#f37121]'}`}>{m.type === 'in' ? (ar ? 'وارد' : 'In') : (ar ? 'صادر' : 'Out')}</span></td>
                 <td className={`px-3 py-1.5 font-bold whitespace-nowrap ${m.reversed ? 'line-through' : ''}`} style={{ color: m.reversed ? '#94a3b8' : m.type === 'in' ? '#059669' : '#f37121' }}>{m.type === 'in' ? '+' : '−'}{m.quantity} <span className="text-[10px] font-normal text-slate-400">{m.unit}</span></td>
                 <td className="px-3 py-1.5 text-slate-600 whitespace-nowrap">{m.supplierName || '—'}</td>
-                <td className="px-3 py-1.5 text-slate-600 whitespace-nowrap">{m.unitPrice != null ? money(m.unitPrice) : '—'}</td>
-                <td className="px-3 py-1.5 font-semibold text-emerald-700 whitespace-nowrap">{m.total != null ? money(m.total) : '—'}</td>
+                {!noPrices && <td className="px-3 py-1.5 text-slate-600 whitespace-nowrap">{m.unitPrice != null ? money(m.unitPrice) : '—'}</td>}
+                {!noPrices && <td className="px-3 py-1.5 font-semibold text-emerald-700 whitespace-nowrap">{m.total != null ? money(m.total) : '—'}</td>}
                 <td className="px-3 py-1.5 text-slate-500 whitespace-nowrap">
                   {m.vehiclePlate || '—'}
                   {/* ولوحتُها في سجلّ المركبات حين تختلف كتابتُها */}
@@ -645,7 +666,8 @@ function BulkOutModal({ items, plates, ar, kind = 'out', onClose, onDone, base, 
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const n = (id: string) => Math.max(1, Number(qty[id]) || 1);
-  const unpriced = isIn ? items.filter((i) => !(Number(price[i._id]) > 0)) : [];
+  const { noPrices } = useStoreFlags();
+  const unpriced = isIn && !noPrices ? items.filter((i) => !(Number(price[i._id]) > 0)) : [];
   const short = isIn ? [] : items.filter((i) => i.quantity < n(i._id));
   const totalQty = items.reduce((a, i) => a + n(i._id), 0);
 
@@ -654,7 +676,7 @@ function BulkOutModal({ items, plates, ar, kind = 'out', onClose, onDone, base, 
     try {
       const r = await api.post<any>(`${base}/bulk-movement`, {
         type: kind,
-        lines: items.map((i) => ({ item: i._id, quantity: n(i._id), ...(isIn ? { unitPrice: Number(price[i._id]) } : {}) })),
+        lines: items.map((i) => ({ item: i._id, quantity: n(i._id), ...(isIn && !noPrices ? { unitPrice: Number(price[i._id]) } : {}) })),
         vehiclePlate: plate.trim(), reason: reason.trim(),
         ...(isIn ? {} : { issueReason }),
         ...(isIn ? { date, ...(supplier ? supplierBody(supplier) : {}) } : {}),
@@ -734,7 +756,7 @@ function BulkOutModal({ items, plates, ar, kind = 'out', onClose, onDone, base, 
                     <input type="number" min={1} value={qty[i._id] ?? '1'}
                       onChange={(e) => setQty((q) => ({ ...q, [i._id]: e.target.value }))}
                       className="w-20 px-2 py-1 rounded-lg border border-slate-300 text-[13px] text-center tabular-nums" />
-                    {isIn && (
+                    {isIn && !noPrices && (
                       <input type="number" min={0} step="0.01" value={price[i._id] ?? ''} placeholder={t('سعر القطعة', 'Unit price')}
                         title={t('سعر القطعة الواحدة', 'Unit price')}
                         onChange={(e) => setPrice((p) => ({ ...p, [i._id]: e.target.value }))}
@@ -870,6 +892,7 @@ function MovementModal({ move, plates, ar, onClose, onDone, base, suppliers }: {
   const [qty, setQty] = useState('1');
   // سعرُ القطعة في هذا الوارد — يبدأ بسعر الصنف المسجَّل ويُصحَّح إن تغيّر.
   const [price, setPrice] = useState(move.item.unitPrice ? String(move.item.unitPrice) : '');
+  const { noPrices } = useStoreFlags();
   const [plate, setPlate] = useState('');
   const [reason, setReason] = useState('');
   const [issueReason, setIssueReason] = useState('');
@@ -879,10 +902,10 @@ function MovementModal({ move, plates, ar, onClose, onDone, base, suppliers }: {
   const submit = async () => {
     const q = Number(qty);
     if (!q || q <= 0) { notify(ar ? 'أدخل كمية صحيحة' : 'Enter a quantity', 'error'); return; }
-    if (isIn && !(Number(price) > 0)) { notify(ar ? 'اكتب سعر القطعة الواحدة' : 'Enter the unit price', 'error'); return; }
+    if (isIn && !noPrices && !(Number(price) > 0)) { notify(ar ? 'اكتب سعر القطعة الواحدة' : 'Enter the unit price', 'error'); return; }
     if (!isIn && !issueReason) { notify(ar ? 'اختر سبب الصرف' : 'Choose the issue reason', 'error'); return; }
     setBusy(true);
-    try { await api.post(`${base}/${move.item._id}/movement`, { type: move.type, quantity: q, vehiclePlate: plate, reason, ...(isIn ? {} : { issueReason }), ...(isIn ? { unitPrice: Number(price), date, ...(supplier ? supplierBody(supplier) : {}) } : {}) }); notify(ar ? 'تم التسجيل' : 'Recorded', 'success'); onDone(); }
+    try { await api.post(`${base}/${move.item._id}/movement`, { type: move.type, quantity: q, vehiclePlate: plate, reason, ...(isIn ? {} : { issueReason }), ...(isIn ? { ...(noPrices ? {} : { unitPrice: Number(price) }), date, ...(supplier ? supplierBody(supplier) : {}) } : {}) }); notify(ar ? 'تم التسجيل' : 'Recorded', 'success'); onDone(); }
     catch (e: any) { notify(e?.message || 'Failed', 'error'); } finally { setBusy(false); }
   };
   const inp = 'w-full px-3 py-2 rounded-lg border border-slate-200 text-sm';
@@ -896,7 +919,7 @@ function MovementModal({ move, plates, ar, onClose, onDone, base, suppliers }: {
         <p className="text-sm text-slate-500 mb-4">{move.item.name} · {ar ? 'الرصيد الحالي' : 'current'}: <b>{move.item.quantity}</b> {move.item.unit}</p>
         <div className="space-y-3">
           <div><label className="block text-xs font-semibold text-slate-600 mb-1">{ar ? 'الكمية' : 'Quantity'} *</label><input type="number" min={1} value={qty} onChange={(e) => setQty(e.target.value)} className={inp} autoFocus /></div>
-          {isIn && (
+          {isIn && !noPrices && (
             <div>
               <label className="block text-xs font-semibold text-slate-600 mb-1">{ar ? 'سعر القطعة الواحدة (ر.س)' : 'Unit price (SAR)'} *</label>
               <input type="number" min={0} step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} className={inp} />
@@ -937,16 +960,19 @@ function ItemFormModal({ item, ar, onClose, onSaved, base, suppliers }: { item: 
     ? { ...item, supplier: item.supplier || '', purchaseDate: item.purchaseDate || '' }
     : { name: '', category: '', quantity: 1, unit: 'قطعة', unitPrice: 0, minQuantity: 0, code: '', notes: '', supplier: '', purchaseDate: todayYmd() });
   const [busy, setBusy] = useState(false);
+  const { noPrices, noInitialQty, supplierItemName } = useStoreFlags();
   const set = (k: string, v: any) => setF((p: any) => ({ ...p, [k]: v }));
   const save = async () => {
     if (!f.name?.trim()) { notify(ar ? 'اسم الصنف مطلوب' : 'Name required', 'error'); return; }
-    if (!item && !(Number(f.unitPrice) > 0)) { notify(ar ? 'اكتب سعر القطعة الواحدة' : 'Enter the unit price', 'error'); return; }
+    if (!item && !noPrices && !(Number(f.unitPrice) > 0)) { notify(ar ? 'اكتب سعر القطعة الواحدة' : 'Enter the unit price', 'error'); return; }
     setBusy(true);
     try {
       const body = {
-        name: f.name, category: f.category, code: f.code, unit: f.unit, unitPrice: f.unitPrice, minQuantity: f.minQuantity, notes: f.notes,
+        name: f.name, category: f.category, code: f.code, unit: f.unit, minQuantity: f.minQuantity, notes: f.notes,
+        ...(noPrices ? {} : { unitPrice: f.unitPrice }),
+        ...(supplierItemName ? { supplierItemName: String(f.supplierItemName || '').trim() } : {}),
         purchaseDate: f.purchaseDate, ...(f.supplier ? supplierBody(String(f.supplier)) : { supplier: '', supplierName: '' }),
-        ...(item ? {} : { quantity: f.quantity }),
+        ...(item ? {} : { quantity: noInitialQty ? 0 : f.quantity }),
       };
       if (item) await api.put(`${base}/${item._id}`, body);
       else await api.post(base, body);
@@ -960,6 +986,9 @@ function ItemFormModal({ item, ar, onClose, onSaved, base, suppliers }: { item: 
         <div className="flex items-center justify-between mb-4"><h3 className="font-bold text-lg">{item ? (ar ? 'تعديل صنف' : 'Edit item') : (ar ? 'صنف جديد' : 'New item')}</h3><button onClick={onClose}><X className="w-5 h-5 text-slate-400" /></button></div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div className="md:col-span-2"><label className={formLabel}>{ar ? 'اسم الصنف' : 'Name'} *</label><input className={formInput} value={f.name} onChange={(e) => set('name', e.target.value)} autoFocus /></div>
+          {supplierItemName && (
+            <div className="md:col-span-2"><label className={formLabel}>{ar ? 'اسم الصنف عند المورد' : 'Item name at the supplier'}</label><input className={formInput} value={f.supplierItemName || ''} onChange={(e) => set('supplierItemName', e.target.value)} placeholder={ar ? 'كما يُكتب في فاتورة المورد' : 'As written on the supplier invoice'} /></div>
+          )}
           <div><label className={formLabel}>{ar ? 'التصنيف' : 'Category'}</label><input className={formInput} value={f.category || ''} onChange={(e) => set('category', e.target.value)} /></div>
           <div><label className={formLabel}>{ar ? 'الكود' : 'Code'}</label><input className={formInput} value={f.code || ''} onChange={(e) => set('code', e.target.value)} /></div>
           <div className="md:col-span-2">
@@ -968,10 +997,10 @@ function ItemFormModal({ item, ar, onClose, onSaved, base, suppliers }: { item: 
           </div>
           <div><label className={formLabel}>{ar ? 'تاريخ الشراء' : 'Purchase date'}</label><input type="date" className={formInput} value={f.purchaseDate || ''} onChange={(e) => set('purchaseDate', e.target.value)} /></div>
           <div><label className={formLabel}>{ar ? 'الوحدة' : 'Unit'}</label><ManagedSelect type="ls2_store_unit" storeLabel value={f.unit || ''} onChange={(v) => set('unit', v)} placeholder={ar ? 'قطعة / لتر…' : 'Piece / litre…'} /></div>
-          {!item && <div><label className={formLabel}>{ar ? 'العدد' : 'Quantity'}</label><input type="number" min={0} className={formInput} value={f.quantity} onChange={(e) => set('quantity', e.target.value === '' ? '' : Number(e.target.value))} /></div>}
-          <div><label className={formLabel}>{ar ? 'سعر القطعة الواحدة (ر.س) *' : 'Unit price (SAR) *'}</label><input type="number" min={0} step="0.01" className={formInput} value={f.unitPrice || ''} onChange={(e) => set('unitPrice', e.target.value === '' ? 0 : Number(e.target.value))} /></div>
+          {!item && !noInitialQty && <div><label className={formLabel}>{ar ? 'العدد' : 'Quantity'}</label><input type="number" min={0} className={formInput} value={f.quantity} onChange={(e) => set('quantity', e.target.value === '' ? '' : Number(e.target.value))} /></div>}
+          {!noPrices && <div><label className={formLabel}>{ar ? 'سعر القطعة الواحدة (ر.س) *' : 'Unit price (SAR) *'}</label><input type="number" min={0} step="0.01" className={formInput} value={f.unitPrice || ''} onChange={(e) => set('unitPrice', e.target.value === '' ? 0 : Number(e.target.value))} /></div>}
           <div><label className={formLabel}>{ar ? 'حد التنبيه (نقص)' : 'Min qty (low alert)'}</label><input type="number" className={formInput} value={f.minQuantity || 0} onChange={(e) => set('minQuantity', Number(e.target.value))} /></div>
-          {!item && total > 0 && <p className="md:col-span-2 rounded-lg bg-emerald-50 px-3 py-2 text-[13px] text-emerald-800">{ar ? 'الإجمالي' : 'Total'}: <b>{total.toLocaleString('en-US', { maximumFractionDigits: 2 })}</b> {ar ? 'ر.س' : 'SAR'}</p>}
+          {!item && !noPrices && total > 0 && <p className="md:col-span-2 rounded-lg bg-emerald-50 px-3 py-2 text-[13px] text-emerald-800">{ar ? 'الإجمالي' : 'Total'}: <b>{total.toLocaleString('en-US', { maximumFractionDigits: 2 })}</b> {ar ? 'ر.س' : 'SAR'}</p>}
           <div className="md:col-span-2"><label className={formLabel}>{ar ? 'ملاحظات' : 'Notes'}</label><textarea className={formInput} rows={2} value={f.notes || ''} onChange={(e) => set('notes', e.target.value)} /></div>
         </div>
         <div className="flex justify-end gap-2 mt-5"><button onClick={onClose} className="px-4 py-2 rounded-lg bg-slate-100 text-slate-600 text-sm">{ar ? 'إلغاء' : 'Cancel'}</button><button onClick={save} disabled={busy} className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#f37121] hover:bg-[#e5651a] text-white text-sm font-semibold disabled:opacity-50"><Save className="w-4 h-4" />{ar ? 'حفظ' : 'Save'}</button></div>
@@ -985,9 +1014,9 @@ function ItemFormModal({ item, ar, onClose, onSaved, base, suppliers }: { item: 
  * واحد: الموردُ ويومُ الشراء مرّةً فوقه، ولكلّ صنفٍ سطر. والخادمُ يقبل الدفعةَ
  * كلَّها أو يرفضها كلَّها بأرقام الأسطر الناقصة.
  */
-type NewRow = { id: number; name: string; category: string; code: string; quantity: string; unit: string; unitPrice: string };
+type NewRow = { id: number; name: string; supplierItemName: string; category: string; code: string; quantity: string; unit: string; unitPrice: string };
 let rowSeq = 1;
-const blankRow = (): NewRow => ({ id: rowSeq++, name: '', category: '', code: '', quantity: '1', unit: 'قطعة', unitPrice: '' });
+const blankRow = (): NewRow => ({ id: rowSeq++, name: '', supplierItemName: '', category: '', code: '', quantity: '1', unit: 'قطعة', unitPrice: '' });
 
 function BulkCreateModal({ ar, onClose, onSaved, base, suppliers }: { ar: boolean; onClose: () => void; onSaved: () => void; base: string; suppliers: Supplier[] }) {
   const { notify } = useDialog();
@@ -997,13 +1026,14 @@ function BulkCreateModal({ ar, onClose, onSaved, base, suppliers }: { ar: boolea
   const [errors, setErrors] = useState<Record<number, string>>({});
   const [busy, setBusy] = useState(false);
   const [units, setUnits] = useState<string[]>(['قطعة', 'لتر']);
+  const { noPrices, noInitialQty, supplierItemName } = useStoreFlags();
   useEffect(() => {
     api.get<{ items: { nameAr: string }[] }>('/api/lookups?type=ls2_store_unit&active=true')
       .then((d) => { const u = (d.items || []).map((x) => x.nameAr).filter(Boolean); if (u.length) setUnits(u); }).catch(() => {});
   }, []);
   const setRow = (id: number, k: keyof NewRow, v: string) => setRows((p) => p.map((r) => (r.id === id ? { ...r, [k]: v } : r)));
   // السطرُ الفارغُ تمامًا لا يُرسَل: ثلاثةُ أسطرٍ تُفتَح جاهزةً ولا يُلزَم بملئها.
-  const filled = rows.filter((r) => r.name.trim() || r.unitPrice || r.code.trim());
+  const filled = rows.filter((r) => r.name.trim() || r.unitPrice || r.code.trim() || r.supplierItemName.trim());
   const total = filled.reduce((a, r) => a + (Number(r.quantity) || 0) * (Number(r.unitPrice) || 0), 0);
 
   const save = async () => {
@@ -1012,7 +1042,12 @@ function BulkCreateModal({ ar, onClose, onSaved, base, suppliers }: { ar: boolea
     try {
       const r = await api.post<any>(`${base}/bulk-create`, {
         purchaseDate: date, ...(supplier ? supplierBody(supplier) : {}),
-        items: filled.map((x) => ({ name: x.name.trim(), category: x.category.trim(), code: x.code.trim(), quantity: Number(x.quantity) || 0, unit: x.unit, unitPrice: Number(x.unitPrice) || 0 })),
+        items: filled.map((x) => ({
+          name: x.name.trim(), category: x.category.trim(), code: x.code.trim(), unit: x.unit,
+          quantity: noInitialQty ? 0 : Number(x.quantity) || 0,
+          ...(noPrices ? {} : { unitPrice: Number(x.unitPrice) || 0 }),
+          ...(supplierItemName ? { supplierItemName: x.supplierItemName.trim() } : {}),
+        })),
       });
       notify(ar ? `أُضيف ${r?.summary?.count ?? filled.length} صنفًا` : `Added ${r?.summary?.count ?? filled.length} items`, 'success');
       onSaved();
@@ -1035,7 +1070,7 @@ function BulkCreateModal({ ar, onClose, onSaved, base, suppliers }: { ar: boolea
         <ScrollX className="mt-4">
           <table className="w-full min-w-[820px] text-sm">
             <thead><tr className="bg-slate-900 text-slate-300 text-xs">
-              {['#', ar ? 'اسم الصنف *' : 'Name *', ar ? 'التصنيف' : 'Category', ar ? 'الكود' : 'Code', ar ? 'العدد' : 'Qty', ar ? 'الوحدة' : 'Unit', ar ? 'سعر القطعة *' : 'Unit price *', ar ? 'الإجمالي' : 'Total', ''].map((h) => <th key={h} className="px-2 py-2 text-start font-semibold whitespace-nowrap">{h}</th>)}
+              {['#', ar ? 'اسم الصنف *' : 'Name *', ...(supplierItemName ? [ar ? 'اسم الصنف عند المورد' : 'Supplier item name'] : []), ar ? 'التصنيف' : 'Category', ar ? 'الكود' : 'Code', ...(noInitialQty ? [] : [ar ? 'العدد' : 'Qty']), ar ? 'الوحدة' : 'Unit', ...(noPrices ? [] : [ar ? 'سعر القطعة *' : 'Unit price *', ar ? 'الإجمالي' : 'Total']), ''].map((h) => <th key={h} className="px-2 py-2 text-start font-semibold whitespace-nowrap">{h}</th>)}
             </tr></thead>
             <tbody className="divide-y divide-slate-100">
               {rows.map((r, i) => (
@@ -1045,16 +1080,17 @@ function BulkCreateModal({ ar, onClose, onSaved, base, suppliers }: { ar: boolea
                     <input className={cell} value={r.name} onChange={(e) => setRow(r.id, 'name', e.target.value)} />
                     {errors[r.id] && <p className="mt-0.5 text-[11px] font-semibold text-red-600">{errors[r.id]}</p>}
                   </td>
+                  {supplierItemName && <td className="px-2 py-1.5 min-w-[12rem]"><input className={cell} value={r.supplierItemName} onChange={(e) => setRow(r.id, 'supplierItemName', e.target.value)} /></td>}
                   <td className="px-2 py-1.5"><input className={cell} value={r.category} onChange={(e) => setRow(r.id, 'category', e.target.value)} /></td>
                   <td className="px-2 py-1.5 w-28"><input className={cell} value={r.code} onChange={(e) => setRow(r.id, 'code', e.target.value)} /></td>
-                  <td className="px-2 py-1.5 w-20"><input type="number" min={0} className={cell} value={r.quantity} onChange={(e) => setRow(r.id, 'quantity', e.target.value)} /></td>
+                  {!noInitialQty && <td className="px-2 py-1.5 w-20"><input type="number" min={0} className={cell} value={r.quantity} onChange={(e) => setRow(r.id, 'quantity', e.target.value)} /></td>}
                   <td className="px-2 py-1.5 w-24">
                     <select className={cell} value={r.unit} onChange={(e) => setRow(r.id, 'unit', e.target.value)}>
                       {[...new Set([r.unit, ...units])].map((u) => <option key={u} value={u}>{u}</option>)}
                     </select>
                   </td>
-                  <td className="px-2 py-1.5 w-28"><input type="number" min={0} step="0.01" className={cell} value={r.unitPrice} onChange={(e) => setRow(r.id, 'unitPrice', e.target.value)} /></td>
-                  <td className="px-2 py-1.5 w-24 font-semibold text-emerald-700 tabular-nums">{((Number(r.quantity) || 0) * (Number(r.unitPrice) || 0)).toLocaleString('en-US', { maximumFractionDigits: 2 })}</td>
+                  {!noPrices && <td className="px-2 py-1.5 w-28"><input type="number" min={0} step="0.01" className={cell} value={r.unitPrice} onChange={(e) => setRow(r.id, 'unitPrice', e.target.value)} /></td>}
+                  {!noPrices && <td className="px-2 py-1.5 w-24 font-semibold text-emerald-700 tabular-nums">{((Number(r.quantity) || 0) * (Number(r.unitPrice) || 0)).toLocaleString('en-US', { maximumFractionDigits: 2 })}</td>}
                   <td className="px-2 py-1.5">{rows.length > 1 && <button type="button" onClick={() => setRows((p) => p.filter((x) => x.id !== r.id))} className="p-1 text-slate-300 hover:text-red-600"><Trash2 className="w-4 h-4" /></button>}</td>
                 </tr>
               ))}
@@ -1063,7 +1099,7 @@ function BulkCreateModal({ ar, onClose, onSaved, base, suppliers }: { ar: boolea
         </ScrollX>
         <div className="mt-3 flex flex-wrap items-center gap-3">
           <button type="button" onClick={() => setRows((p) => [...p, blankRow()])} className="inline-flex items-center gap-1 rounded-lg bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-200"><Plus className="w-4 h-4" />{ar ? 'سطر آخر' : 'Another row'}</button>
-          <span className="text-[13px] text-slate-600">{filled.length} {ar ? 'صنف' : 'items'} · {ar ? 'الإجمالي' : 'Total'}: <b className="text-emerald-700">{total.toLocaleString('en-US', { maximumFractionDigits: 2 })}</b></span>
+          <span className="text-[13px] text-slate-600">{filled.length} {ar ? 'صنف' : 'items'}{!noPrices && <> · {ar ? 'الإجمالي' : 'Total'}: <b className="text-emerald-700">{total.toLocaleString('en-US', { maximumFractionDigits: 2 })}</b></>}</span>
           <span className="ms-auto flex gap-2">
             <button onClick={onClose} className="px-4 py-2 rounded-lg bg-slate-100 text-slate-600 text-sm">{ar ? 'إلغاء' : 'Cancel'}</button>
             <button onClick={save} disabled={busy} className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#f37121] hover:bg-[#e5651a] text-white text-sm font-semibold disabled:opacity-50"><Save className="w-4 h-4" />{ar ? `حفظ (${filled.length})` : `Save (${filled.length})`}</button>

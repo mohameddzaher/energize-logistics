@@ -277,12 +277,19 @@ export const REQUEST_STATUS: Record<string, { bg: string; text: string; en: stri
 export const EMPLOYMENT_STATUS: Record<string, { bg: string; text: string; en: string; ar: string }> = {
   // Work status: on_leave is set and cleared by approved leaves (backend utils/leaveReturn).
   active: { bg: 'bg-green-500/20', text: 'text-green-700', en: 'Working', ar: 'يعمل' },
-  on_leave: { bg: 'bg-blue-500/20', text: 'text-blue-700', en: 'Not working — on leave', ar: 'لا يعمل — إجازة' },
+  on_leave: { bg: 'bg-blue-500/20', text: 'text-blue-700', en: 'On leave', ar: 'إجازة' },
   suspended: { bg: 'bg-amber-500/20', text: 'text-amber-700', en: 'Suspended (legacy)', ar: 'موقوف (قديم)' },
   terminated: { bg: 'bg-red-500/20', text: 'text-red-700', en: 'Not working', ar: 'لا يعمل' },
 };
 
-export const LEAVE_NO_SHOW_STATUS = { bg: 'bg-red-500/20', text: 'text-red-700', en: 'Not working — did not return from leave', ar: 'لا يعمل — لم يعد من الإجازة' };
+/** Badge for an employee: leave only when a recorded leave set it; an old imported "on_leave" reads as working. */
+export const employmentBadge = (e: any) => {
+  if (e?.leaveViolation?.since && e?.employmentStatus !== 'terminated') return LEAVE_NO_SHOW_STATUS;
+  const st = e?.employmentStatus === 'on_leave' && e?.leaveStatusSource !== 'leave' ? 'active' : (e?.employmentStatus || 'active');
+  return EMPLOYMENT_STATUS[st];
+};
+
+export const LEAVE_NO_SHOW_STATUS = { bg: 'bg-red-500/20', text: 'text-red-700', en: 'Violation — did not return from leave', ar: 'مخالفة — لم يعد من الإجازة' };
 
 export const CONTRACT_STATUS: Record<string, { bg: string; text: string; en: string; ar: string }> = {
   active: { bg: 'bg-green-500/20', text: 'text-green-700', en: 'Active', ar: 'ساري' },

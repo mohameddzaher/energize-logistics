@@ -6,7 +6,7 @@ import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { usePinnedColumns } from '@/components/hr/usePinnedColumns';
-import { CalendarCheck, Check, X, HelpCircle, FileDown, PenTool, CalendarPlus, History, RefreshCw, Pencil, Trash2 } from 'lucide-react';
+import { CalendarCheck, Check, X, HelpCircle, FileDown, PenTool, CalendarPlus, History, Pencil, Trash2 } from 'lucide-react';
 import { isHRStaff, LeaveRequest, LEAVE_STATUS, empName, userName, leaveTypeLabel } from '@/lib/hr';
 import DatePair from '@/components/hr/DatePair';
 import { bothDates, gregCell, hijriCell, pairLabels, exportDatePair } from '@/lib/hrDates';
@@ -19,6 +19,8 @@ import type { Signature } from '@/components/SignatureManager';
 import FilePicker, { AttachmentList, type PickedFile } from '@/components/system/FilePicker';
 import ScrollX from '@/components/system/ScrollX';
 import { LeaveReturnChip, LeaveReturnPanel } from '@/components/hr/LeaveReturn';
+import PeriodFilter from '@/components/system/PeriodFilter';
+import Link from 'next/link';
 
 const idOf = (e: any) => (e?.idType === 'national_id' ? (e?.nationalId || e?.iqamaNumber) : (e?.iqamaNumber || e?.nationalId)) || '—';
 const BG = 'bg-white group-hover:bg-slate-100';
@@ -37,25 +39,15 @@ export default function HRLeavesPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [typeFilter, setTypeFilter] = useState('');
+  const [deptFilter, setDeptFilter] = useState('');
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
   const [review, setReview] = useState<LeaveRequest | null>(null);
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
   // ورقةُ القرار: تقريرُ الطبيب المعتمد، أو خطابُ الرفض بسببه.
   const [files, setFiles] = useState<PickedFile[]>([]);
-  // ── تقييدُ إجازةٍ وقعت فعلًا ────────────────────────────────────────
-  // كثيرٌ من الإجازات تُؤخذ قبل النظام أو تُتّفق شفاهةً ثمّ تُقيَّد.
-  // وما لم تُسجَّل بقي الموظّف في الورق مستحقًّا ثلاثين يومًا وقد أخذ
-  // اثنَي عشر. تُقيَّد معتمَدةً وتُخصَم كأخواتها، وتُوسَم «قيد رجعيّ».
-  const [showBack, setShowBack] = useState(false);
-  const [backForm, setBackForm] = useState<any>({ employee: '', leaveType: '', startDate: '', endDate: '', reason: '' });
-  const [backFiles, setBackFiles] = useState<PickedFile[]>([]);
-  const [backSaving, setBackSaving] = useState(false);
-  const [employees, setEmployees] = useState<any[]>([]);
-  // ── و«جارٍ التحميل» لا تقال إلّا وهو جارٍ ──────────────────────────────────
-  // كان النداءُ يُبتلَع خطؤه (`.catch(() => {})`) فتبقى القائمةُ فارغةً
-  // و«جارٍ التحميلُ» معلّقةً إلى الأبد: يقرأ من يسجّل أنّ النظامَ بطيء، وهو
-  // في الحقيقة ردٌّ برفضٍ قبل ثانية. فتُقال الحالةُ كما هي، ويُعاد المحاولةُ.
-  const [empState, setEmpState] = useState<'loading' | 'ready' | 'error'>('loading');
   const [types, setTypes] = useState<any[]>([]);
   const [mySigs, setMySigs] = useState<Signature[]>([]);
   const [signWith, setSignWith] = useState('');
@@ -80,36 +72,6 @@ export default function HRLeavesPage() {
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => { api.get<{ signatures: Signature[] }>('/api/auth/signatures').then((r) => setMySigs(r.signatures || [])).catch(() => {}); }, []);
-  // تُجلب مرّةً واحدة عند أوّل فتحٍ للنموذج، لا مع كلّ زيارةٍ للصفحة.
-  const loadPickers = useCallback(async () => {
-    setEmpState('loading');
-    try {
-      // القائمةُ الخفيفة لا المستندُ الكامل: سبعةُ حقولٍ لأربع مئة موظّف تصل
-      // في لحظة، بينما المستندُ الكامل (خمسون حقلًا) كان يجمّد القائمةَ عند فتحها.
-      //
-      // والمسارُ `employees-search` بشَرطةٍ لا `employees/search`: الثاني يطابق
-      // `/employees/:id` فيردّه حارسُ المعرّفات «معرّفٌ غير صالح» — فكانت
-      // القائمةُ لا تأتي أبدًا ولا يظهر سببٌ.
-      const d = await api.get<{ employees: any[] }>('/api/hr/employees-search?limit=2000');
-      setEmployees(d.employees || []);
-      setEmpState('ready');
-    } catch (e: any) {
-      setEmpState('error');
-      notify(e?.message || (ar ? 'تعذّر تحميل قائمة الموظفين' : 'Could not load the employee list'), 'error');
-    }
-    try {
-      const d = await api.get<{ leaveTypes: any[] }>('/api/hr/leave-types');
-      setTypes(d.leaveTypes || []);
-    } catch (e: any) {
-      notify(e?.message || (ar ? 'تعذّر تحميل أنواع الإجازات' : 'Could not load the leave types'), 'error');
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ar]);
-
-  useEffect(() => {
-    if (!showBack || employees.length) return;
-    loadPickers();
-  }, [showBack, employees.length, loadPickers]);
   // نافذةُ التعديل تحتاج الأنواعَ وحدَها، لا قائمةَ الموظّفين.
   useEffect(() => {
     if (!editing || types.length) return;
@@ -164,34 +126,6 @@ export default function HRLeavesPage() {
     } catch (e: any) { notify(e?.message || (ar ? 'تعذّر الحذف' : 'Could not delete'), 'error'); }
   };
 
-  const days = (() => {
-    const { startDate, endDate } = backForm;
-    if (!startDate || !endDate || endDate < startDate) return 0;
-    return Math.round((new Date(endDate).getTime() - new Date(startDate).getTime()) / 86400000) + 1;
-  })();
-
-  const saveBackdated = async () => {
-    if (!backForm.employee || !backForm.leaveType || !backForm.startDate || !backForm.endDate) {
-      notify(ar ? 'اختر الموظّف ونوع الإجازة والتاريخين' : 'Pick the employee, the leave type and both dates', 'error');
-      return;
-    }
-    setBackSaving(true);
-    try {
-      const r = await api.post<any>('/api/hr/leaves/backdated', {
-        ...backForm,
-        files: backFiles.map((f) => ({ dataUrl: f.dataUrl, fileName: f.fileName, title: f.title })),
-      });
-      const b = r?.balance;
-      notify(ar
-        ? `سُجّلت ${days} يوم${b ? ` — الرصيد المتبقّي ${b.available} يوم` : ''}`
-        : `Recorded ${days} day(s)${b ? ` — remaining balance ${b.available}` : ''}`, 'success');
-      setShowBack(false);
-      setBackForm({ employee: '', leaveType: '', startDate: '', endDate: '', reason: '' });
-      setBackFiles([]);
-      load();
-    } catch (e: any) { notify(e?.message || (ar ? 'تعذّر التسجيل' : 'Could not record'), 'error'); }
-    setBackSaving(false);
-  };
   useSocket('hr:leave', useCallback(() => load(), [load]));
 
   const openReview = (l: LeaveRequest) => { setReview(l); setNote(''); setSignWith(''); setFiles([]); };
@@ -228,9 +162,17 @@ export default function HRLeavesPage() {
     setPdfBusy('');
   };
 
+  const leaveTypes = [...new Map(allLeaves.filter((l) => l.leaveType?._id).map((l) => [l.leaveType._id, l.leaveType])).values()];
+  const depts = [...new Set(allLeaves.map((l) => l.employee?.department).filter(Boolean))].sort() as string[];
   const filtered = leaves.filter((l) => {
+    if (typeFilter && l.leaveType?._id !== typeFilter) return false;
+    if (deptFilter && l.employee?.department !== deptFilter) return false;
+    if (from && String(l.endDate).slice(0, 10) < from) return false;
+    if (to && String(l.startDate).slice(0, 10) > to) return false;
     if (!search.trim()) return true;
-    return empName(l.employee).toLowerCase().includes(search.toLowerCase()) || userName(l.requester).toLowerCase().includes(search.toLowerCase());
+    const q = search.toLowerCase();
+    return empName(l.employee).toLowerCase().includes(q) || userName(l.requester).toLowerCase().includes(q)
+      || String(l.employee?.employeeNumber || '').includes(q);
   });
   // معلَّقٌ = واقفٌ عند إحدى المحطّات الأربع، أو مرتدٌّ إلى صاحبه للردّ.
   // كان الحسابُ محطّتين فقط، فما بلغ الحساباتِ أو الإدارةَ لم يُعدّ معلَّقًا وسقط
@@ -275,101 +217,30 @@ export default function HRLeavesPage() {
   return (
     <div className="space-y-6" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader icon={<CalendarCheck className="w-5 h-5" />} title={tx.pageTitle} subtitle={`${pendingCount} ${tx.pending}`}>
-        <button type="button" onClick={() => setShowBack(true)}
+        {/* Recording a leave (incl. for employees without a login) lives in the leave register. */}
+        <Link href="/system/hr/leave-register"
           className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[#f37121] text-white text-sm font-medium hover:bg-[#e06010] transition-colors">
-          <CalendarPlus className="w-4 h-4" /> {ar ? 'تسجيل إجازة قديمة' : 'Record a past leave'}
-        </button>
+          <CalendarPlus className="w-4 h-4" /> {ar ? 'سجل الإجازات وتسجيل إجازة' : 'Leave register & record a leave'}
+        </Link>
         <ExportMenu fileName="leaves" lang={ar ? 'ar' : 'en'} variant="subtle" label={tx.exportExcel} options={exportOptions} />
       </PageHeader>
 
-      <Modal open={showBack} onClose={() => setShowBack(false)}
-        title={ar ? 'تسجيل إجازة وقعت فعلًا' : 'Record a leave that already happened'}
-        footer={<>
-          <button type="button" onClick={() => setShowBack(false)} className="px-4 py-2 text-slate-500 hover:text-slate-900 text-sm">{ar ? 'إلغاء' : 'Cancel'}</button>
-          <PrimaryButton onClick={saveBackdated} disabled={backSaving || !days}>
-            {backSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />} {ar ? 'تسجيل' : 'Record'}
-          </PrimaryButton>
-        </>}>
-        <div className="space-y-3 text-sm">
-          <p className="text-slate-500 text-xs">
-            {ar
-              ? 'تُسجَّل معتمَدةً مباشرةً وتُخصَم من الرصيد — لا تمرّ بمديرٍ ولا بمهلة إخطار، فالماضي لا يُوافَق عليه. ويبقى في السجلّ أنّها قيدٌ رجعيّ باسم من قيّدها.'
-              : 'Recorded as approved and deducted from the balance — no manager step and no notice rule, since the past is not approved. The log keeps that it was back-dated and by whom.'}
-          </p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {/* ── يُبحَث لا يُتصفَّح ────────────────────────────────────────────
-                أربعُ مئةِ اسمٍ في قائمةٍ منسدلةٍ لا تُقرأ بالتمرير. والبحثُ
-                يشمل الاسمَ ورقمَ الإقامة والرقمَ الوظيفيّ معًا، ويطوي همزاتِ
-                العربيّة فـ«احمد» تجد «أحمد». */}
-            <div className="sm:col-span-2">
-              <label className="text-slate-500 text-xs mb-1 block">{ar ? 'الموظّف' : 'Employee'}</label>
-              <SearchableSelect
-                value={backForm.employee}
-                onChange={(v) => setBackForm((f: any) => ({ ...f, employee: v }))}
-                placeholder={ar ? '— اختر الموظّف —' : '— pick the employee —'}
-                searchPlaceholder={ar ? 'ابحث بالاسم أو الإقامة أو الرقم الوظيفي…' : 'name, ID or employee number…'}
-                emptyLabel={employees.length ? undefined : (empState === 'loading'
-                  ? (ar ? 'جارٍ التحميل…' : 'Loading…')
-                  : (ar ? 'لم تُحمَّل القائمة — اضغط «إعادة المحاولة» تحت' : 'The list did not load — press Retry below'))}
-                options={employees.map((e) => ({
-                  value: e._id,
-                  label: [
-                    (e.arabicName || `${e.firstName || ''} ${e.lastName || ''}`.trim()) || '—',
-                    e.employeeNumber ? `#${e.employeeNumber}` : '',
-                    e.iqamaNumber || e.nationalId || '',
-                  ].filter(Boolean).join(' · '),
-                }))}
-              />
-              {empState === 'error' && (
-                <button type="button" onClick={loadPickers}
-                  className="mt-1.5 inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-red-200 bg-red-50 text-red-700 text-xs font-medium hover:bg-red-100 transition-colors">
-                  <RefreshCw className="w-3.5 h-3.5" /> {ar ? 'إعادة المحاولة' : 'Retry'}
-                </button>
-              )}
-            </div>
-            <div className="sm:col-span-2">
-              <label className="text-slate-500 text-xs mb-1 block">{ar ? 'نوع الإجازة' : 'Leave type'}</label>
-              <SearchableSelect
-                value={backForm.leaveType}
-                onChange={(v) => setBackForm((f: any) => ({ ...f, leaveType: v }))}
-                placeholder={ar ? '— اختر نوع الإجازة —' : '— pick the leave type —'}
-                searchPlaceholder={ar ? 'ابحث…' : 'search…'}
-                // الخصمُ صفةُ النوع لا سؤالٌ يُطرح هنا — فيُقال في الاسم كي
-                // يعرف من يختار ما سيحدث للرصيد قبل أن يسجّل.
-                options={types.map((t) => ({
-                  value: t._id,
-                  label: `${ar ? t.nameAr : t.nameEn}${t.affectsBalance === false ? (ar ? ' — لا تُخصَم من الرصيد' : ' — no balance deduction') : (ar ? ' — تُخصَم من الرصيد' : ' — deducted from balance')}`,
-                }))}
-              />
-            </div>
-            {/* لكلّ تاريخٍ خانتان: الميلاديّةُ ثمّ الهجريّة — وما يُرسَل ميلاديٌّ وحدَه. */}
-            <DatePair label={FROM_LABEL} ar={ar} inputClassName="[color-scheme:light]"
-              value={backForm.startDate} onChange={(v) => setBackForm((f: any) => ({ ...f, startDate: v }))} />
-            <DatePair label={TO_LABEL} ar={ar} inputClassName="[color-scheme:light]" min={backForm.startDate || undefined}
-              value={backForm.endDate} onChange={(v) => setBackForm((f: any) => ({ ...f, endDate: v }))} />
-          </div>
-          {!!days && (
-            <p className="text-slate-900 text-sm font-semibold">
-              {ar ? `المدّة: ${days} يوم` : `Duration: ${days} day(s)`}
-            </p>
-          )}
-          <div>
-            <label className="text-slate-500 text-xs mb-1 block">{ar ? 'السبب / ملاحظة' : 'Reason / note'}</label>
-            <TextArea rows={2} value={backForm.reason} onChange={(e: any) => setBackForm((f: any) => ({ ...f, reason: e.target.value }))} />
-          </div>
-          <div>
-            <label className="text-slate-500 text-xs mb-1 block">{ar ? 'مرفقات (اختياري)' : 'Attachments (optional)'}</label>
-            <FilePicker files={backFiles} onChange={setBackFiles} max={5} />
-          </div>
-        </div>
-      </Modal>
 
-      <div className="flex flex-col sm:flex-row gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <div className="flex-1 min-w-[240px]"><SearchInput value={search} onChange={setSearch} placeholder={tx.searchPlaceholder} /></div>
         <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="w-full sm:w-44 shrink-0 px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm">
           <option value="">{tx.allStatuses}</option>
           {Object.entries(LEAVE_STATUS).map(([k, v]) => <option key={k} value={k}>{ar ? v.ar : v.en}</option>)}
         </select>
+        <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} aria-label={ar ? 'النوع' : 'Type'} className="w-full sm:w-44 shrink-0 px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm">
+          <option value="">{ar ? 'كل الأنواع' : 'All types'}</option>
+          {leaveTypes.map((t: any) => <option key={t._id} value={t._id}>{ar ? t.nameAr : t.nameEn}</option>)}
+        </select>
+        <select value={deptFilter} onChange={(e) => setDeptFilter(e.target.value)} aria-label={ar ? 'القسم' : 'Department'} className="w-full sm:w-44 shrink-0 px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm">
+          <option value="">{ar ? 'كل الأقسام' : 'All departments'}</option>
+          {depts.map((d) => <option key={d} value={d}>{d}</option>)}
+        </select>
+        <PeriodFilter from={from} to={to} onChange={(f, t2) => { setFrom(f); setTo(t2); }} ar={ar} />
       </div>
 
       <ScrollX className="bg-white border border-slate-200 rounded-xl shadow-sm">

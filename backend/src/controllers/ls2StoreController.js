@@ -32,7 +32,9 @@ const CATEGORY_AR = {
 };
 const catAr = (c) => CATEGORY_AR[c] || c || 'غير مصنّف';
 
-const ITEM_FIELDS = ['code', 'name', 'category', 'groupAr', 'quantity', 'unit', 'unitPrice', 'minQuantity', 'compatibleModels', 'notes'];
+const ITEM_FIELDS = ['code', 'name', 'supplierItemName', 'category', 'groupAr', 'quantity', 'unit', 'unitPrice', 'minQuantity', 'compatibleModels', 'notes'];
+// The light-transport store keeps no prices (owner's rule); only the heavy store requires one.
+const needsPrice = (req) => whOf(req) !== 'light';
 const pick = (body) => { const o = {}; ITEM_FIELDS.forEach((f) => { if (body[f] !== undefined) o[f] = body[f]; }); return o; };
 /** التعديلُ لا يكتب الرصيد: الرصيدُ يتغيّر بحركةٍ وحدَها. */
 const pickEdit = (body) => { const o = pick(body); delete o.quantity; return o; };
@@ -83,7 +85,7 @@ exports.listItems = async (req, res) => {
     if (from || to) filter.purchaseDate = { ...(from ? { $gte: from } : {}), ...(to ? { $lte: to } : { $ne: '' }) };
     if (req.query.q && req.query.q.trim()) {
       const rx = new RegExp(req.query.q.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
-      filter.$or = [{ name: rx }, { code: rx }, { category: rx }, { compatibleModels: rx }, { supplierName: rx }];
+      filter.$or = [{ name: rx }, { supplierItemName: rx }, { code: rx }, { category: rx }, { compatibleModels: rx }, { supplierName: rx }];
     }
     const items = (await Ls2StoreItem.find(filter).sort({ name: 1 }).limit(3000).lean())
       .map((it) => ({ ...it, categoryAr: catAr(it.category), status: statusOf(it), value: Math.round((Number(it.quantity) || 0) * (Number(it.unitPrice) || 0) * 100) / 100 }));
@@ -132,7 +134,7 @@ exports.createItem = async (req, res) => {
     // ── والقطعةُ تُضاف بسعرها ─────────────────────────────────────────────
     // صنفٌ بلا سعرٍ قيمتُه في المخزن صفر مهما كان رصيدُه — فيُجمَع المخزنُ كلُّه
     // برقمٍ أقلَّ ممّا فيه، ولا يُعرَف كم كلّفت القطعةُ حين تُصرَف على عربيّة.
-    if (!(Number(data.unitPrice) > 0)) return res.status(400).json({ message: 'اكتب سعر القطعة الواحدة', code: 'PRICE_REQUIRED' });
+    if (needsPrice(req) && !(Number(data.unitPrice) > 0)) return res.status(400).json({ message: 'اكتب سعر القطعة الواحدة', code: 'PRICE_REQUIRED' });
     const [it] = await createItems(req, [req.body]);
     emit();
     res.status(201).json({ item: it });
@@ -195,7 +197,7 @@ exports.createItemsBulk = async (req, res) => {
       if (!name) errors.push({ line, message: 'اسم الصنف مطلوب' });
       else if (seen.has(foldName(name))) errors.push({ line, message: `«${name}» مكرَّر في الجدول` });
       seen.add(foldName(name));
-      if (!(Number(b?.unitPrice) > 0)) errors.push({ line, message: 'اكتب سعر القطعة الواحدة' });
+      if (needsPrice(req) && !(Number(b?.unitPrice) > 0)) errors.push({ line, message: 'اكتب سعر القطعة الواحدة' });
       if (!(Number(b?.quantity) >= 0)) errors.push({ line, message: 'العدد غير صحيح' });
     });
     if (errors.length) return res.status(400).json({ message: 'رُفضت الدفعة — لم يُضَف أيّ صنف', errors });
@@ -251,8 +253,9 @@ exports.addMovement = async (req, res) => {
     if (type === 'in') {
       price = req.body.unitPrice !== undefined && req.body.unitPrice !== '' && req.body.unitPrice !== null
         ? Number(req.body.unitPrice) : Number(item.unitPrice);
-      if (!(price > 0)) return res.status(400).json({ message: `اكتب سعر القطعة الواحدة من «${item.name}»`, code: 'PRICE_REQUIRED' });
-      item.unitPrice = price;
+      if (item.warehouse === 'light') price = null;
+      else if (!(price > 0)) return res.status(400).json({ message: `اكتب سعر القطعة الواحدة من «${item.name}»`, code: 'PRICE_REQUIRED' });
+      else item.unitPrice = price;
     }
     // الواردُ من مورد: يُكتب على الحركة، ويصير آخرَ توريدٍ للصنف.
     const sup = type === 'in' ? await resolveSupplier(req, req.body.supplier, req.body.supplierName) : null;
@@ -354,7 +357,8 @@ exports.addBulkMovement = async (req, res) => {
       // الواردُ بسعر قطعته: المكتوبُ في السطر، أو سعرُ الصنف المسجَّل.
       if (type === 'in') {
         const p = prices.has(id) ? prices.get(id) : Number(it.unitPrice);
-        if (!(p > 0)) errors.push({ id, name: it.name, message: `${it.name}: اكتب سعر القطعة الواحدة` });
+        if (it.warehouse === 'light') prices.set(id, null);
+        else if (!(p > 0)) errors.push({ id, name: it.name, message: `${it.name}: اكتب سعر القطعة الواحدة` });
         else prices.set(id, p);
       }
     }
@@ -376,7 +380,7 @@ exports.addBulkMovement = async (req, res) => {
     for (const [id, qty] of wanted) {
       const it = found.get(id);
       it.quantity += type === 'in' ? qty : -qty;
-      if (type === 'in') { it.unitPrice = prices.get(id); if (sup) Object.assign(it, sup); it.purchaseDate = date; }
+      if (type === 'in') { if (it.warehouse !== 'light') it.unitPrice = prices.get(id); if (sup) Object.assign(it, sup); it.purchaseDate = date; }
       await it.save();
       movements.push({
         unitPrice: type === 'in' ? prices.get(id) : null, ...(sup || {}), date,

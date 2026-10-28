@@ -15,7 +15,7 @@ import api from '@/lib/api';
 import { usePinnedColumns } from '@/components/hr/usePinnedColumns';
 import { Users, Plus, Edit, UserMinus, RotateCcw, Trash2, UserPlus } from 'lucide-react';
 import {
-  isHRStaff, Employee, EMPLOYMENT_STATUS, empName,
+  isHRStaff, Employee, EMPLOYMENT_STATUS, employmentBadge, empName,
 } from '@/lib/hr';
 import {
   Spinner, PageHeader, SearchInput, PrimaryButton, Badge, Select,
@@ -369,7 +369,7 @@ export default function HREmployeesPage() {
                 <td className="px-4 py-3 whitespace-nowrap">
                   {(e as any).workStatusText === 'شركة شقيقة'
                     ? <Badge style={{ bg: 'bg-teal-500/20', text: 'text-teal-700', ar: 'شركة شقيقة', en: 'Sister company' }} lang={lang} />
-                    : <Badge style={EMPLOYMENT_STATUS[e.employmentStatus || 'active']} lang={lang} />}
+                    : <Badge style={employmentBadge(e)} lang={lang} />}
                   {/* حالةُ «لا يعمل» الثلاث: انتظار نقل الكفالة · شركة شقيقة · خروج نهائي. */}
                   {e.employmentStatus === 'terminated' && (e as any).workStatusText && String((e as any).workStatusText).includes('—') && (
                     <span className="block text-[10.5px] text-red-600 mt-0.5">{String((e as any).workStatusText).split('—')[1].trim()}</span>

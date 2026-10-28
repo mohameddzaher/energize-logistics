@@ -408,7 +408,7 @@ const customsClearanceSchema = new mongoose.Schema(
       yardTransportNet: { type: Number, default: 0 },    // صافي نقل الساحه (عمود مساعد، خارج الهامش)
       // Yard price (what the yard actually charges). Null on legacy rows: their typed yardNet stays.
       yardPrice: { type: Number, default: null },
-      yardNet: { type: Number, default: 0 },             // yard net = costs.yardFees − yardPrice (when the price is set)
+      yardNet: { type: Number, default: 0 },             // yard net = yardPrice − costs.yardFees (when the price is set)
       storageNet: { type: Number, default: 0 },          // صافى التخزين
       securityScan: { type: Number, default: 0 },        // فحص امنى
       labour: { type: Number, default: 0 },              // عمال
@@ -745,7 +745,7 @@ const MARGIN_KEYS = [
 ];
 
 // صوافي النقل المحسوبة — لا تُقبَل من الشاشة.
-// Yard net is derived too (yard fees − yard price); legacy rows keep their stored value until a price is typed.
+// Yard net is derived too (yard price − yard fees); legacy rows keep their stored value until a price is typed.
 const DERIVED_REVENUE = ['transportNet', 'yardToCustomerNet', 'yardNet'];
 
 /**
@@ -837,7 +837,7 @@ function recomputeTotals(doc) {
   }
   const yardPrice = doc.revenue.yardPrice;
   if (yardPrice !== null && yardPrice !== undefined && yardPrice !== '' && Number.isFinite(Number(yardPrice))) {
-    doc.revenue.yardNet = r2(n(doc.costs.yardFees) - n(yardPrice));
+    doc.revenue.yardNet = r2(n(yardPrice) - n(doc.costs.yardFees));
   }
   let total = 0;
   for (const k of COST_KEYS) total += n(doc.costs[k]);

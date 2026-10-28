@@ -118,7 +118,7 @@ async function syncEmployee(employeeId, { quiet = false } = {}) {
   if (!quiet) {
     const n = empName(emp);
     if (change === 'started' && covering) {
-      await announce(covering, emp, { title: `بدأت إجازة ${n}`, message: `من ${covering.startDate} إلى ${covering.endDate} — حالته الآن «لا يعمل — إجازة».` });
+      await announce(covering, emp, { title: `بدأت إجازة ${n}`, message: `من ${covering.startDate} إلى ${covering.endDate} — حالته الآن «إجازة».` });
     } else if (change === 'returned') {
       const last = endedLeave || await LeaveRequest.findOne({ employee: emp._id, status: 'approved', endDate: { $lt: today } }).sort({ endDate: -1 });
       if (last) await announce(last, emp, { title: `عاد ${n} من الإجازة`, message: `يباشر العمل من ${last.workStartsOn || addDays(last.endDate, 1)} — حالته الآن «يعمل».` });
@@ -127,6 +127,22 @@ async function syncEmployee(employeeId, { quiet = false } = {}) {
     }
   }
   return { employee: String(emp._id), change, before };
+}
+
+/** Rewrite stored status texts that no longer match the rule (e.g. after a label change). */
+async function repairStatusTexts() {
+  const ENG = require('./hrEngagement');
+  const rows = await Employee.find({
+    employmentStatus: { $ne: 'terminated' },
+    $or: [{ workStatusText: { $regex: 'إجازة' } }, { employmentStatus: 'on_leave' }, { 'leaveViolation.since': { $nin: ['', null] } }],
+  }).select('employmentStatus leaveStatusSource leaveViolation sisterCompany terminationKind workStatusText').lean();
+  const ops = [];
+  for (const e of rows) {
+    const want = ENG.workStatusTextOf(e);
+    if (want !== e.workStatusText) ops.push({ updateOne: { filter: { _id: e._id }, update: { $set: { workStatusText: want } } } });
+  }
+  if (ops.length) { await Employee.bulkWrite(ops); bustHrCaches(); emit('hr:employee', {}); }
+  return ops.length;
 }
 
 /** Sweep every employee whose status can change today. */
@@ -283,6 +299,9 @@ async function markNoShow(leaveId, { note = '' }, user) {
 let timer = null;
 function startLeaveReturnSync() {
   if (timer) return;
+  setTimeout(() => repairStatusTexts()
+    .then((n) => { if (n) console.log(`[leave-sync] repaired ${n} status text(s)`); })
+    .catch((e) => console.error('[leave-sync] repair', e.message)), 10 * 1000);
   const run = () => syncAll()
     .then((r) => { if (r.changes.length) console.log(`[leave-sync] ${r.changes.length} status change(s) of ${r.checked}`); })
     .catch((e) => console.error('[leave-sync]', e.message));
@@ -291,5 +310,5 @@ function startLeaveReturnSync() {
 }
 
 module.exports = {
-  syncEmployee, syncAll, recordReturn, extendLeave, markNoShow, startLeaveReturnSync, LeaveReturnError, addDays,
+  syncEmployee, syncAll, repairStatusTexts, recordReturn, extendLeave, markNoShow, startLeaveReturnSync, LeaveReturnError, addDays,
 };

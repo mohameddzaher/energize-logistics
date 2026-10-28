@@ -745,7 +745,8 @@ const MARGIN_KEYS = [
 ];
 
 // صوافي النقل المحسوبة — لا تُقبَل من الشاشة.
-const DERIVED_REVENUE = ['transportNet', 'yardToCustomerNet'];
+// Yard net is derived too (yard fees − yard price); legacy rows keep their stored value until a price is typed.
+const DERIVED_REVENUE = ['transportNet', 'yardToCustomerNet', 'yardNet'];
 
 /**
  * ── مرحلةُ السداد ← بندُ التكلفة ───────────────────────────────────────────

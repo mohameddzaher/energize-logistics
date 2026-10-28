@@ -238,7 +238,7 @@ export default function CustomsDetailPage() {
   // Yard net = yard fees (costs) − yard price, once the price is typed; legacy rows keep a typed net.
   const yardPriceRaw = c.revenue?.yardPrice;
   const yardPriceSet = yardPriceRaw !== null && yardPriceRaw !== undefined && yardPriceRaw !== '' && Number.isFinite(Number(yardPriceRaw));
-  const COMPUTED_REVENUE = new Set(['transportNet', 'yardToCustomerNet', ...(yardSellSet ? ['transportToYardNet'] : []), ...(yardPriceSet ? ['yardNet'] : [])]);
+  const COMPUTED_REVENUE = new Set(['transportNet', 'yardToCustomerNet', 'yardNet', ...(yardSellSet ? ['transportToYardNet'] : [])]);
   // خاناتٌ فراغُها معنًى («لم يُكتب السعرُ بعد») لا صفر.
   const NULLABLE_REVENUE = new Set(['transportToYardSelling', 'yardPrice']);
   const COMPUTED_HINT: Record<string, [string, string]> = {

@@ -1442,7 +1442,7 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
   /// وصافي النقل إلى الساحة كذلك متى كُتب سعرُه، وإلّا بقي يُكتب كما كان.
   Future<void> _editMargin(Map<String, dynamic> revenue, Map<String, dynamic> costs) async {
     String init(String k) => _nz(revenue, k) == 0 ? '' : _nz(revenue, k).toString();
-    const plain = ['clearanceFee', 'transportSelling', 'yardToCustomerSelling', 'yardNet', 'storageNet', 'securityScan', 'labour'];
+    const plain = ['clearanceFee', 'transportSelling', 'yardToCustomerSelling', 'storageNet', 'securityScan', 'labour'];
     final ctrls = {for (final k in [...plain, 'transportToYardNet']) k: TextEditingController(text: init(k))};
     // فارغٌ على المعاملات القديمة (null) — والفراغُ معنًى لا صفر.
     final yardSell = TextEditingController(text: revenue['transportToYardSelling'] == null ? '' : '${revenue['transportToYardSelling']}');
@@ -1514,10 +1514,8 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
                       decoration: InputDecoration(labelText: label('yardPrice')),
                     ),
                   ),
-                  if (yardPrice.text.trim().isNotEmpty)
-                    computed('yardNet', _nz(costs, 'yardFees') - v(yardPrice))
-                  else
-                    input('yardNet'),
+                  // Always computed: yard fees − yard price (a legacy row shows its stored net until a price is typed).
+                  computed('yardNet', yardPrice.text.trim().isNotEmpty ? _nz(costs, 'yardFees') - v(yardPrice) : _nz(revenue, 'yardNet')),
                   for (final k in const ['storageNet', 'securityScan', 'labour']) input(k),
                   const SizedBox(height: 8),
                   SizedBox(
@@ -1527,7 +1525,7 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
                         final sell = yardSell.text.trim();
                         final yp = yardPrice.text.trim();
                         final body = {'revenue': {
-                          for (final k in plain) if (k != 'yardNet' || yp.isEmpty) k: num.tryParse(ctrls[k]!.text.trim()) ?? 0,
+                          for (final k in plain) k: num.tryParse(ctrls[k]!.text.trim()) ?? 0,
                           'yardPrice': yp.isEmpty ? '' : (num.tryParse(yp) ?? ''),
                           // الفراغُ يُرسَل '' فيعود null في الخادم — «لم يُكتب السعر».
                           'transportToYardSelling': sell.isEmpty ? '' : (num.tryParse(sell) ?? ''),

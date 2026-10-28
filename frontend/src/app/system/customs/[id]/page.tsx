@@ -216,6 +216,7 @@ export default function CustomsDetailPage() {
     ['storageNet', 'صافي التخزين', 'Storage net'],
     ['securityScan', 'فحص أمنى', 'Security scan'],
     ['labour', 'عمال', 'Labour'],
+    ['transportDailies', 'يوميات نقل', 'Transport per-diems'],
     // يُحسب ولا يُكتب: سعرُ النقل من الساحة إلى العميل ناقصَ تكلفتِه.
     ['yardToCustomerNet', 'صافي النقل من الساحة إلى العميل', 'Yard-to-customer net'],
   ];
@@ -254,7 +255,7 @@ export default function CustomsDetailPage() {
     'transportSelling', 'transportNet',
     'transportToYardSelling', 'transportToYardNet',
     'yardToCustomerSelling', 'yardToCustomerNet',
-    'yardPrice', 'yardNet', 'storageNet', 'securityScan', 'labour', 'yardTransportNet',
+    'yardPrice', 'yardNet', 'storageNet', 'securityScan', 'labour', 'transportDailies', 'yardTransportNet',
   ].map(fieldOf);
 
   const n = (v: any) => (Number.isFinite(Number(v)) ? Number(v) : 0);

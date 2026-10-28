@@ -410,6 +410,7 @@ const customsClearanceSchema = new mongoose.Schema(
       yardPrice: { type: Number, default: null },
       yardNet: { type: Number, default: 0 },             // yard net = yardPrice − costs.yardFees (when the price is set)
       storageNet: { type: Number, default: 0 },          // صافى التخزين
+      transportDailies: { type: Number, default: 0 },    // transport per-diems charged to the customer (يوميات نقل)
       securityScan: { type: Number, default: 0 },        // فحص امنى
       labour: { type: Number, default: 0 },              // عمال
       totalInvoiced: { type: Number, default: 0 },       // اجمالى الفاتورة (محسوبة)
@@ -741,7 +742,7 @@ const COST_KEYS = [
 // النقلَ مرّتين. وكذلك yardTransportNet — عمودٌ مساعدٌ لا يدخل صيغةَ الربح.
 const MARGIN_KEYS = [
   'clearanceFee', 'labour', 'yardNet', 'storageNet',
-  'transportToYardNet', 'securityScan', 'transportNet', 'yardToCustomerNet',
+  'transportToYardNet', 'securityScan', 'transportNet', 'yardToCustomerNet', 'transportDailies',
 ];
 
 // صوافي النقل المحسوبة — لا تُقبَل من الشاشة.
@@ -897,6 +898,9 @@ customsClearanceSchema.pre('save', async function (next) {
         const m = String(last.refNumber).match(/(\d+)$/);
         if (m) n = parseInt(m[1], 10) + 1;
       }
+      // The latest-created row is not always the highest number: skip any number already taken.
+      // eslint-disable-next-line no-await-in-loop
+      while (await this.constructor.exists({ refNumber: 'CC-' + String(n).padStart(5, '0') })) n += 1;
       this.refNumber = 'CC-' + String(n).padStart(5, '0');
     } catch (e) {
       this.refNumber = 'CC-' + Date.now();

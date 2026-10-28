@@ -147,6 +147,7 @@ const _marginItems = [
   ('storageNet', 'صافي التخزين', 'Storage net'),
   ('securityScan', 'فحص أمني', 'Security scan'),
   ('labour', 'عمال', 'Labour'),
+  ('transportDailies', 'يوميات نقل', 'Transport per-diems'),
 ];
 
 /// مراحلُ السداد التي يُكتب مبلغُها في بند تكلفةٍ حين تؤكّد الماليّةُ الدفع
@@ -1442,7 +1443,7 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
   /// وصافي النقل إلى الساحة كذلك متى كُتب سعرُه، وإلّا بقي يُكتب كما كان.
   Future<void> _editMargin(Map<String, dynamic> revenue, Map<String, dynamic> costs) async {
     String init(String k) => _nz(revenue, k) == 0 ? '' : _nz(revenue, k).toString();
-    const plain = ['clearanceFee', 'transportSelling', 'yardToCustomerSelling', 'storageNet', 'securityScan', 'labour'];
+    const plain = ['clearanceFee', 'transportSelling', 'yardToCustomerSelling', 'storageNet', 'securityScan', 'labour', 'transportDailies'];
     final ctrls = {for (final k in [...plain, 'transportToYardNet']) k: TextEditingController(text: init(k))};
     // فارغٌ على المعاملات القديمة (null) — والفراغُ معنًى لا صفر.
     final yardSell = TextEditingController(text: revenue['transportToYardSelling'] == null ? '' : '${revenue['transportToYardSelling']}');
@@ -1516,7 +1517,7 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
                   ),
                   // Always computed: yard price − yard fees (a legacy row shows its stored net until a price is typed).
                   computed('yardNet', yardPrice.text.trim().isNotEmpty ? v(yardPrice) - _nz(costs, 'yardFees') : _nz(revenue, 'yardNet')),
-                  for (final k in const ['storageNet', 'securityScan', 'labour']) input(k),
+                  for (final k in const ['storageNet', 'securityScan', 'labour', 'transportDailies']) input(k),
                   const SizedBox(height: 8),
                   SizedBox(
                     width: double.infinity,

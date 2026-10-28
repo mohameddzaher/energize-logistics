@@ -2,8 +2,8 @@
  * Import the company's customs master spreadsheet into CustomsClearance.
  *
  *   cd backend
- *   node src/scripts/importCustomsMaster.js --dry     # preview, writes nothing
- *   node src/scripts/importCustomsMaster.js           # apply
+ *   node src/scripts/importCustomsMaster.js           # preview, writes nothing
+ *   node src/scripts/importCustomsMaster.js --apply   # write
  *
  * المصدر: src/seeds/data/customs-master-2026-08.xlsx — «ماستر التخليص الجديد».
  * ويُبدَّل بـ --file=<path>. ولم يعد يقرأ من data/masters: ذلك المجلّد حُذف،
@@ -46,11 +46,21 @@ const fs = require('fs');
 const path = require('path');
 const mongoose = require('mongoose');
 const CustomsClearance = require('../models/CustomsClearance');
-const { STAGES, recomputeTotals, COST_KEYS, MARGIN_KEYS } = require('../models/CustomsClearance');
+const { STAGES, recomputeTotals, COST_KEYS, MARGIN_KEYS, readStages, lockReason } = require('../models/CustomsClearance');
 
-const { readSheet, excelDate } = require('./lib/xlsxStream');
+// From October 2026 the customs team works on the system itself: those rows are never imported.
+const SYSTEM_FROM = { year: 2026, month: 10 };
+const fromSystemPeriod = (r) => r.periodYear > SYSTEM_FROM.year
+  || (r.periodYear === SYSTEM_FROM.year && r.periodMonth >= SYSTEM_FROM.month);
+// A record with work recorded on the system is never overwritten by the sheet.
+const workedOnSystem = (e) => (e.paymentStages || []).some((p) => Number(p && p.amount) > 0)
+  || (e.saleItems || []).length > 0 || !!(e.invoiceRequest && e.invoiceRequest.status) || !!e.saleInvoiceNumber;
+const CLOSED_BY = 'سجلّ سابق';
 
-const DRY = process.argv.includes('--dry');
+const { excelDate } = require('./lib/xlsxStream');
+
+// Writes only with an explicit --apply; anything else is a dry run.
+const DRY = !process.argv.includes('--apply');
 const fileArg = process.argv.find((a) => a.startsWith('--file='));
 const FILE = fileArg
   ? path.resolve(fileArg.slice(7))
@@ -73,37 +83,43 @@ const DATE_COLS = new Set([
   'سداد رسوم جمركية', 'سداد الموانى', 'سداد التفريغ', 'الارجاع',
 ]);
 
-const SHEET_XML = {
-  'التخليص': 'sheet1.xml',
-  'الحسابات': 'sheet2.xml',
-  'Sheet3': 'sheet4.xml',
-  'Sheet1': 'sheet5.xml',
-  'Sheet2': 'sheet6.xml',
-};
+const SHEETS = ['التخليص', 'الحسابات', 'Sheet3', 'Sheet2'];
 
-/** ورقةٌ واحدة -> مصفوفةُ كائنات مفاتيحُها عناوينُ الصفّ الأوّل (مُشذَّبة). */
-function sheetToObjects(file, xml) {
-  const rows = readSheet(file, 'xl/worksheets/' + xml);
+/**
+ * One sheet -> array of objects keyed by the trimmed header of row 1.
+ * Sheets are read by NAME: their order inside the file changes between versions
+ * of the master. A repeated header gets a ' #2' suffix (الحسابات has
+ * «اجور تفريغ الساحه» twice: the cost, then the price charged to the customer).
+ * Excel dates stay raw serials and are converted by excelDate (see xlsx-date-epoch-trap).
+ */
+function sheetToObjects(ws) {
+  const XLSX = require('xlsx');
+  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: '' });
   if (!rows.length) return [];
-  const header = {};
-  for (const [col, v] of Object.entries(rows[0].cells)) {
-    const name = String(v).trim();
-    if (name && !(name in header)) header[name] = col; else if (name) header[`${name} (${col})`] = col;
+  const header = [];
+  const seen = new Map();
+  for (const v of rows[0]) {
+    const name = String(v ?? '').trim();
+    if (!name) { header.push(''); continue; }
+    const n = (seen.get(name) || 0) + 1;
+    seen.set(name, n);
+    header.push(n === 1 ? name : `${name} #${n}`);
   }
   const out = [];
   for (const r of rows.slice(1)) {
     const obj = {};
     let any = false;
-    for (const [name, col] of Object.entries(header)) {
-      let v = r.cells[col];
-      if (v === undefined || v === null || String(v).trim() === '') continue;
+    header.forEach((name, i) => {
+      if (!name) return;
+      let v = r[i];
+      if (v === undefined || v === null || String(v).trim() === '') return;
       if (DATE_COLS.has(name) && /^\d+(\.\d+)?$/.test(String(v))) {
         const d = excelDate(v);
         v = d ? d.toISOString().slice(0, 10) : String(v);
       }
       obj[name] = v;
       any = true;
-    }
+    });
     if (any) out.push(obj);
   }
   return out;
@@ -111,10 +127,9 @@ function sheetToObjects(file, xml) {
 
 function readBook(file) {
   if (file.toLowerCase().endsWith('.json')) return JSON.parse(fs.readFileSync(file, 'utf8'));
+  const wb = require('xlsx').readFile(file);
   const book = {};
-  for (const [name, xml] of Object.entries(SHEET_XML)) {
-    try { book[name] = sheetToObjects(file, xml); } catch (e) { book[name] = []; }
-  }
+  for (const name of SHEETS) book[name] = wb.Sheets[name] ? sheetToObjects(wb.Sheets[name]) : [];
   return book;
 }
 
@@ -217,6 +232,8 @@ const COST_COLS = {
   'النقل الى الساحة': 'transportToYard',
   'حجز الموعد': 'appointmentBooking',
   'اجور الساحه': 'yardFees',
+  'اجور تفريغ الساحه': 'yardFees',
+  'تمديد الحاويات': 'extension',
   'ارضيات': 'demurrage',
   'اجور الكشف': 'inspection',
   'تمديد': 'extension',
@@ -239,9 +256,12 @@ const REVENUE_COLS = {
   'صافى النقل الى الساحة': 'transportToYardNet',
   'صافي نقل الساحه': 'yardTransportNet',
   'صافى الساحه': 'yardNet',
+  // The second «اجور تفريغ الساحه» in الحسابات sits among the revenue columns: what the customer pays.
+  'اجور تفريغ الساحه #2': 'yardPrice',
   'صافى التخزين': 'storageNet',
   'فحص امنى': 'securityScan',
   'عمال': 'labour',
+  'يوميات نقل': 'transportDailies',
 };
 
 /**
@@ -252,12 +272,23 @@ const REVENUE_COLS = {
 function readMoney(row, out, unparseable, sheet, bl, treatDoAsNumber) {
   for (const [col, key] of Object.entries(COST_COLS)) {
     if (!(col in row)) continue;
+    // In الحسابات this header sits among the revenue columns: the yard-transport price charged to the customer.
+    if (sheet === 'الحسابات' && col === 'النقل الى الساحة (بالضريبة)') {
+      const v = money(row[col]);
+      if (v !== null) out.revenue.transportToYardSelling = v;
+      continue;
+    }
     if (col === 'اذن التسليم' && treatDoAsNumber) continue;
     if (col === 'قيمة اذن التسليم' && !treatDoAsNumber) continue;
     if (isBlank(row[col])) continue;
     const v = money(row[col]);
     if (v === null) { unparseable.push({ sheet, bl, col, value: String(row[col]) }); continue; }
     out.costs[key] = v;
+  }
+  // «تمديد اذن التسليم» is a second extension charge: it adds to the container extension.
+  if ('تمديد اذن التسليم' in row && !isBlank(row['تمديد اذن التسليم'])) {
+    const v = money(row['تمديد اذن التسليم']);
+    if (v !== null) out.costs.extension = (out.costs.extension || 0) + v;
   }
   for (const [col, key] of Object.entries(REVENUE_COLS)) {
     if (!(col in row) || isBlank(row[col])) continue;
@@ -339,7 +370,8 @@ function mapMasterRow(row, unparseable) {
   }
 
   if (!isBlank(row['حالة الفاتورة'])) out.billing.invoiceStatus = str(row['حالة الفاتورة']);
-  if (!isBlank(row['رقم الفاتورة'])) out.billing.ourInvoiceNumber = str(row['رقم الفاتورة']);
+  // «0» in the invoice-number column means no invoice.
+  if (!isBlank(row['رقم الفاتورة']) && str(row['رقم الفاتورة']) !== '0') out.billing.ourInvoiceNumber = str(row['رقم الفاتورة']);
 
   readMoney(row, out, unparseable, 'التخليص', bl, true);
   return out;
@@ -350,14 +382,17 @@ function mapCostRow(row, sheet, unparseable) {
   const bl = str(row['رقم البوليصة']);
   const out = { costs: {}, revenue: {}, billing: {} };
   if (!isBlank(row['حالة الفاتورة'])) out.billing.invoiceStatus = str(row['حالة الفاتورة']);
-  if (!isBlank(row['رقم الفاتورة'])) out.billing.ourInvoiceNumber = str(row['رقم الفاتورة']);
+  // «0» in the invoice-number column means no invoice.
+  if (!isBlank(row['رقم الفاتورة']) && str(row['رقم الفاتورة']) !== '0') out.billing.ourInvoiceNumber = str(row['رقم الفاتورة']);
   readMoney(row, out, unparseable, sheet, bl, false);
   return out;
 }
 
 /** Highest unambiguously-implied stage for a التخليص row. See header comment. */
 function inferStage(row) {
-  if (!isBlank(row['رقم الفاتورة']) || !isBlank(row['حالة الفاتورة'])) return 'invoiced';
+  const invNo = str(row['رقم الفاتورة']);
+  const invStatus = str(row['حالة الفاتورة']);
+  if ((invNo && invNo !== '0') || (invStatus && !/^مل/.test(invStatus))) return 'invoiced';
   if (isDone(row['الارجاع'])) return 'containers_returned';
   if (isDone(row['سداد التفريغ'])) return 'unloading_fees_paid';
   if (isDone(row['سداد الموانى'])) return 'port_fees_paid';
@@ -420,6 +455,11 @@ async function main() {
     records.push(mapped);
   }
   console.log(`\nالتخليص: ${records.length} rows with a BL, ${skipped.length} skipped (no BL)`);
+  const systemRows = records.filter(fromSystemPeriod);
+  if (systemRows.length) {
+    console.log(`  October 2026 onward (worked on the system, not imported): ${systemRows.length} — ${systemRows.map((r) => r.__bl).slice(0, 10).join(', ')}`);
+    for (const r of systemRows) records.splice(records.indexOf(r), 1);
+  }
 
   // duplicate BLs inside the sheet
   const blCounts = new Map();
@@ -437,18 +477,33 @@ async function main() {
   }
 
   // ---- enrich: Sheet3 first, then الحسابات (accounting wins)
+  // Money comes from ONE source per row, as a whole set: الحسابات, else Sheet3, else التخليص.
+  // Merging field by field mixed a stale التخليص value into an accounting row.
+  // A BL repeated in both sheets (e.g. a cancelled declaration and the real one) is
+  // paired by order of appearance; otherwise one sheet row covers every row of the BL.
   const enrich = (rows, sheetName) => {
     let hit = 0, miss = 0;
     const missed = [];
+    const countIn = new Map();
+    for (const row of rows) { const b = str(row['رقم البوليصة']); if (b) countIn.set(b, (countIn.get(b) || 0) + 1); }
+    const seenIn = new Map();
     for (const row of rows) {
       const bl = str(row['رقم البوليصة']);
       if (!bl) continue;
       const targets = byBl.get(bl);
       if (!targets) { miss += 1; missed.push(bl); continue; }
       hit += 1;
+      const nth = seenIn.get(bl) || 0;
+      seenIn.set(bl, nth + 1);
       const partial = mapCostRow(row, sheetName, unparseable);
-      // Apply to every row sharing the BL — the money is per-BL, not per-row.
-      for (const t of targets) mergeInto(t, partial);
+      const paired = countIn.get(bl) === targets.length ? [targets[nth]] : targets;
+      for (const t of paired) {
+        if (Object.keys(partial.costs).length || Object.keys(partial.revenue).length) {
+          t.costs = {}; t.revenue = {};
+          t.__moneyFrom = sheetName;
+        }
+        mergeInto(t, partial);
+      }
     }
     const withBl = rows.filter((r) => str(r['رقم البوليصة'])).length;
     console.log(`${sheetName}: ${withBl}/${rows.length} rows have a BL — join hit ${hit}/${withBl} (${withBl ? Math.round((hit / withBl) * 100) : 0}%)${miss ? `, ${miss} unmatched: ${[...new Set(missed)].slice(0, 5).join(', ')}` : ''}`);
@@ -484,6 +539,23 @@ async function main() {
   }
   console.log(`Sheet2: ${s2rows} container rows across ${containersByBl.size} BLs (merged cells forward-filled) — join hit ${s2hit}/${containersByBl.size}`);
 
+  // Invoiced in the sheet (number or status) → closed and invoiced on the system.
+  // «مل» / «ملغي» as the invoice status means a cancelled row, not an invoice.
+  const cancelledRows = [];
+  for (const r of records) {
+    const status = str(r.billing && r.billing.invoiceStatus);
+    if (/^مل/.test(status) && !str(r.billing && r.billing.ourInvoiceNumber)) {
+      r.cancelled = true;
+      r.billing.invoiceStatus = 'ملغي';
+      cancelledRows.push(r.__bl);
+      r.__invoiced = false;
+      continue;
+    }
+    r.__invoiced = !!(str(r.billing && r.billing.ourInvoiceNumber) || status);
+  }
+  if (cancelledRows.length) console.log(`  cancelled in the sheet («ملغي»): ${cancelledRows.length} — ${cancelledRows.join(', ')}`);
+  console.log(`  invoiced in the sheet: ${records.filter((r) => r.__invoiced).length} · not invoiced: ${records.filter((r) => !r.__invoiced).length}`);
+
   // ---- derived totals
   for (const r of records) recomputeTotals(r);
 
@@ -508,6 +580,7 @@ async function main() {
       if (near(sc, t.costs.total)) okC += 1;
       else if (off.length < 6) off.push(`${bl}: مصروفات الشيت ${sc} ≠ المحسوب ${t.costs.total}`);
       if (near(sp, t.revenue.profit)) okP += 1;
+      else if (process.env.RECON_DEBUG && label.trim() === 'الحسابات') off.push(`${bl}: ربح الشيت ${sp} ≠ المحسوب ${t.revenue.profit} · ${JSON.stringify(t.revenue)}`);
       if (near(si, t.revenue.totalInvoiced)) okI += 1;
     }
     if (!n) return;
@@ -560,8 +633,15 @@ async function main() {
     const pool = existingByBl.get(r.__bl) || [];
     let match = pool.find((e) => !claimed.has(String(e._id)) && r.legacySerial !== undefined && e.legacySerial === r.legacySerial);
     if (!match) match = pool.find((e) => !claimed.has(String(e._id)));
-    if (match) { claimed.add(String(match._id)); r.__existing = match; toUpdate += 1; }
-    else toCreate += 1;
+    if (match) {
+      claimed.add(String(match._id));
+      if (workedOnSystem(match) || fromSystemPeriod(match)) { r.__skip = true; continue; }
+      r.__existing = match; toUpdate += 1;
+    } else toCreate += 1;
+  }
+  const kept = records.filter((r) => r.__skip);
+  if (kept.length) {
+    console.log(`  worked on the system — left untouched: ${kept.length} — ${kept.map((r) => r.__bl).slice(0, 15).join(', ')}`);
   }
 
   console.log(`\n--- database diff ---`);
@@ -577,8 +657,26 @@ async function main() {
 
   // ---- write
   let created = 0, updated = 0, stageAdvanced = 0, failed = 0;
+  // Closing an invoiced row: every applicable stage done, closed at the end of its month.
+  const closeInvoiced = (doc) => {
+    const { route: known } = readStages(doc);
+    const route = known || 'customer';
+    doc.stagesDone = STAGES.filter((k) => !lockReason(k, route, doc.cargoType));
+    doc.transportRoute = route;
+    doc.pipelineVersion = 2;
+    doc.stage = 'invoiced';
+    if (!doc.isCompleted) {
+      doc.isCompleted = true;
+      doc.completedAt = doc.periodYear && doc.periodMonth
+        ? new Date(Date.UTC(doc.periodYear, doc.periodMonth, 0, 9, 0, 0)) : new Date();
+      doc.completedBy = null;
+      doc.completedByName = CLOSED_BY;
+    }
+  };
+  let closed = 0;
   for (const r of records) {
-    const { __bl, __stage, __existing, ...data } = r;
+    const { __bl, __stage, __existing, __skip, __invoiced, ...data } = r;
+    if (__skip) continue;
     try {
       if (__existing) {
         const doc = await CustomsClearance.findById(__existing._id);
@@ -596,6 +694,7 @@ async function main() {
         for (const k of MARGIN_KEYS) base.revenue[k] = 0;
         base.revenue.transportSelling = 0;
         base.revenue.yardTransportNet = 0;
+        base.revenue.yardPrice = null;
         const merged = recomputeTotals(mergeInto(base, data));
         for (const [k, v] of Object.entries(merged)) {
           if (k === '_id' || k === '__v' || k === 'refNumber' || k === 'createdAt' || k === 'updatedAt') continue;
@@ -606,11 +705,14 @@ async function main() {
           const to = STAGES.indexOf(__stage);
           if (to > from) { doc.stage = __stage; stageAdvanced += 1; }
         }
+        if (__invoiced) { const was = doc.isCompleted; closeInvoiced(doc); if (!was) closed += 1; }
         await doc.save();
         updated += 1;
       } else {
         if (__stage) data.stage = __stage;
-        await CustomsClearance.create(data);
+        const doc = new CustomsClearance(data);
+        if (__invoiced) { closeInvoiced(doc); closed += 1; }
+        await doc.save();
         created += 1;
       }
     } catch (e) {
@@ -622,6 +724,7 @@ async function main() {
   console.log(`\n--- write results ---`);
   console.log(`  created: ${created}`);
   console.log(`  updated: ${updated}  (stage advanced on ${stageAdvanced})`);
+  console.log(`  closed as invoiced: ${closed}`);
   console.log(`  failed:  ${failed}`);
 
   const after = await CustomsClearance.aggregate([
@@ -637,8 +740,11 @@ async function main() {
   await mongoose.disconnect();
 }
 
-main().catch(async (e) => {
-  console.error(e);
-  try { await mongoose.disconnect(); } catch (_) {}
-  process.exit(1);
-});
+// Runs only when invoked directly, never on require().
+if (require.main === module) {
+  main().catch(async (e) => {
+    console.error(e);
+    try { await mongoose.disconnect(); } catch (_) {}
+    process.exit(1);
+  });
+}

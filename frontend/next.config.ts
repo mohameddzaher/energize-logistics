@@ -22,6 +22,9 @@ const BUILD_ID = pickBuildId();
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // QA builds into its own folder (NEXT_DIST_DIR=.next-qa) so a deploy and a
+  // local test never overwrite each other's build — qa/README.md.
+  distDir: process.env.NEXT_DIST_DIR || '.next',
   generateBuildId: async () => BUILD_ID,
   env: { NEXT_PUBLIC_BUILD_ID: BUILD_ID },
   // Pin the workspace root to THIS folder. A stray package-lock.json in the home

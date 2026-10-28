@@ -46,9 +46,28 @@ async function pool(items, n, fn) {
   await Promise.all(Array.from({ length: n }, async () => { while (i < items.length) { const k = i++; await fn(items[k], k); } }));
 }
 
+// ── Nothing leaves this machine ─────────────────────────────────────────────
+// A production web build (it calls api.energize-logistics.com) once sat on the
+// QA port. Every page is now fenced: requests to anything but the local stack
+// (and public CDNs for fonts/libraries) are aborted and counted.
+const LOCAL = /^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?\//;
+const PUBLIC_CDN = /^https:\/\/(fonts\.googleapis\.com|fonts\.gstatic\.com|cdnjs\.cloudflare\.com|cdn\.jsdelivr\.net)\//;
+let blockedExternal = 0;
+async function fence(page) {
+  await page.setRequestInterception(true);
+  page.on('request', (r) => {
+    const u = r.url();
+    if (LOCAL.test(u) || PUBLIC_CDN.test(u) || u.startsWith('data:') || u.startsWith('blob:')) return r.continue();
+    blockedExternal += 1;
+    if (/energize-logistics\.com/.test(u)) { console.error(`QA GUARD: blocked a request to ${u.split('?')[0]} — the QA web is not a local build`); }
+    return r.abort();
+  });
+}
+
 async function signIn(browser, role) {
   const ctx = await browser.createBrowserContext();
   const p = await ctx.newPage();
+  await fence(p);
   await p.goto(`${WEB}/login`, { waitUntil: 'networkidle2', timeout: 60000 });
   await p.type('input[type=email]', `qa-${role}@local.test`);
   await p.type('input[type=password]', PASSWORD);
@@ -83,7 +102,7 @@ async function signIn(browser, role) {
 
 async function visit(ctx, url, { filters }) {
   let p;
-  try { p = await ctx.newPage(); } catch (e) { return { url, finalUrl: url, crashed: false, filterCrash: '', errors: [`browser: ${e.message.slice(0, 120)}`], api5xx: [], filtersTried: 0, shot: '', browserLost: true }; }
+  try { p = await ctx.newPage(); await fence(p); } catch (e) { return { url, finalUrl: url, crashed: false, filterCrash: '', errors: [`browser: ${e.message.slice(0, 120)}`], api5xx: [], filtersTried: 0, shot: '', browserLost: true }; }
   await p.setViewport({ width: 1440, height: 900 });
   const errs = []; const api5xx = [];
   p.on('pageerror', (e) => errs.push(String(e.message).slice(0, 200)));
@@ -123,6 +142,18 @@ async function visit(ctx, url, { filters }) {
 (async () => {
   const { ALL_ROLES } = require(path.join(ROOT, 'backend', 'src', 'config', 'roles'));
   const roles = process.env.QA_ROLES ? process.env.QA_ROLES.split(',') : [...new Set(['super_admin', 'admin', ...ALL_ROLES])];
+  // Preflight: the web on the QA port must be a LOCAL build (its JS calls 127.0.0.1:5055).
+  {
+    const html = await (await fetch(`${WEB}/login`)).text();
+    const chunks = [...html.matchAll(/src="(\/_next\/static\/chunks\/[^"]+\.js)"/g)].map((m) => m[1]);
+    let local = false; let prod = false;
+    for (const c of chunks) {
+      const js = await (await fetch(WEB + c)).text();
+      if (/127\.0\.0\.1:5055|localhost:5055/.test(js)) local = true;
+      if (/api\.energize-logistics\.com/.test(js)) prod = true;
+    }
+    if (prod || !local) { console.error('QA GUARD: the web on the QA port is not a local build (it would call production). Build it with NEXT_PUBLIC_API_URL=http://127.0.0.1:5055 — see qa/README.md.'); process.exit(2); }
+  }
   const launch = () => puppeteer.launch({ headless: 'new', protocolTimeout: 120000, args: ['--disable-dev-shm-usage'] });
   let browser = await launch();
   const results = [];
@@ -135,7 +166,9 @@ async function visit(ctx, url, { filters }) {
     try { signed = await signIn(browser, role); } catch (e) { results.push({ role, signIn: false, error: e.message.slice(0, 160) }); console.log(`${role.padEnd(26)} sign-in ERROR ${e.message.slice(0, 80)}`); continue; }
     const { ctx, ok, menu } = signed;
     if (!ok) { results.push({ role, signIn: false }); console.log(`${role.padEnd(26)} sign-in FAILED`); await ctx.close(); continue; }
-    const pages = role === 'super_admin' ? [...new Set([...ALL_PAGES, ...menu])] : menu;
+    // QA_URLS_FILE: a fixed list of links (e.g. detail pages from qa/detail-urls.js) instead of the menu.
+    const fixed = process.env.QA_URLS_FILE ? fs.readFileSync(process.env.QA_URLS_FILE, 'utf8').split('\n').map((x) => x.trim()).filter(Boolean) : null;
+    const pages = fixed || (role === 'super_admin' ? [...new Set([...ALL_PAGES, ...menu])] : menu);
     const visits = [];
     // Deep pass (filters) for the top role; others: every page, filters too unless disabled.
     await pool(pages, TABS, async (u) => {
@@ -147,7 +180,7 @@ async function visit(ctx, url, { filters }) {
     if (!TOP.has(role)) {
       const outside = ALL_PAGES.filter((u) => !menu.includes(u) && !/\/system\/?$|dashboard$|\/jp$|profile|notifications|settings\/me/.test(u));
       for (const u of [outside[3], outside[Math.floor(outside.length / 2)], outside[outside.length - 4]].filter(Boolean)) {
-        let p; try { p = await ctx.newPage(); } catch { break; }
+        let p; try { p = await ctx.newPage(); await fence(p); } catch { break; }
         const seenApi = [];
         p.on('response', (r) => { if (r.url().includes('/api/') && r.status() === 200 && r.request().method() === 'GET') seenApi.push(r.url().replace(/^https?:\/\/[^/]+/, '')); });
         await p.goto(WEB + u, { waitUntil: 'networkidle2', timeout: 45000 }).catch(() => {});
@@ -166,6 +199,6 @@ async function visit(ctx, url, { filters }) {
     fs.writeFileSync(path.join(OUT, 'page-sweep.json'), JSON.stringify({ at: new Date().toISOString(), web: WEB, results }, null, 1));
   }
   await browser.close();
-  console.log('written qa/out/page-sweep.json');
+  console.log(`written qa/out/page-sweep.json · external requests blocked: ${blockedExternal}`);
   process.exit(0);
 })().catch((e) => { console.error('page sweep failed:', e); process.exit(1); });

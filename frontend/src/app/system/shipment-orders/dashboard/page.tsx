@@ -1,26 +1,16 @@
 'use client';
 /**
- * لوحة طلبات الشحنات — أوّلُ صفحةِ القسم.
+ * Shipment Orders dashboard.
  *
- * ── أُعيد بناؤها (٢٠٢٦/١٠/٢٧) ────────────────────────────────────────────────
- * صاحبُ الشركة: «كارداتها محتاجة تتعدّل والديزاين يكون بروفيشنال أكتر،
- * أوتوماتيك وداينميك، ومربوطة بالكامل مع كلّ حاجة في الشركة»، و«أداء مناديب
- * التشغيل مربوط بوقت إنشاء الشحنة — بالدروب ليست بتاعة مندوب التشغيل».
- *
- *   • فترةٌ يختارها الناظر (اليوم، ٧ أيّام، الشهر، ٣٠ يومًا، السنة)، وكلُّ رقمٍ
- *     يُقارَن بالفترة السابقة بطولها — سهمٌ وصعودٌ أو هبوط.
- *   • تتحدّث وحدَها: مع كلّ شحنةٍ تُنشأ أو تُعدَّل (المقبس)، وكلَّ دقيقةٍ احتياطًا.
- *   • أداءُ مناديب التشغيل من الشحنات نفسِها — «السيلز التشغيلي» المختارُ عند
- *     الإنشاء (`salesRanking`) — لا من شيت الفروع.
- *   • وكلُّ رقمٍ يفتح صفوفَه: الجدولُ بفلتره في العنوان (الحالة، المندوب،
- *     العميل، المورّد، المدى بيوم الاستلام)، ومعاملاتُ التخليص، والسوّاق.
- *   • وتحليلُ «تقرير الفروع» (شيت مدير التشغيل) باقٍ في آخرها، مُعنوَنًا بمصدره
- *     كي لا يُخلَط رقمُه برقم الشحنات.
+ * One period (today / 7 days / month / 30 days / year), every number compared
+ * with the previous period of the same length. Live: refreshes on section
+ * events and every minute. Links only render when the viewer can open the target.
  */
 import { useState, useEffect, useCallback, useMemo, createContext, useContext } from 'react';
 import Link from 'next/link';
 import {
   ResponsiveContainer, ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, CartesianGrid,
+  AreaChart, Area, PieChart, Pie, Cell, BarChart,
 } from 'recharts';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
@@ -30,15 +20,18 @@ import api from '@/lib/api';
 import { Spinner, PageHeader, ErrorNotice } from '@/components/hr/HRKit';
 import OpsAnalytics from '@/components/ops/OpsAnalytics';
 import { statusLabel, vocabLabel, canEditOrders, type ShipmentOrder, type Lang } from '@/lib/shipmentOrders';
+import { PAYMENT_SUBTYPES, type PaymentSubtype } from '@/lib/paymentKind';
 import { useOrderStatuses } from '@/hooks/useOrderStatuses';
 import { canAccessSection, canAccessPage, permsOf } from '@/lib/sections';
 import {
   LayoutDashboard, PackagePlus, PackageSearch, Truck, Users, Store, TrendingUp, TrendingDown,
-  AlertTriangle, ArrowUpRight, ArrowDownRight, Minus, Wallet, Receipt, PiggyBank, Percent, Ban,
-  Loader2, Ship, MessageSquareText, IdCard, Clock, ChevronDown, Activity, Award, Route as RouteIcon,
+  AlertTriangle, ArrowUpRight, ArrowDownRight, Minus, Wallet, Receipt, PiggyBank, Ban,
+  Loader2, Ship, MessageSquareText, IdCard, Clock, ChevronDown, ChevronLeft, ChevronRight, Activity, Award,
+  Route as RouteIcon, BarChart3, CalendarDays, Timer, CreditCard, Building2, Target, CheckCircle2, Layers,
 } from 'lucide-react';
 
 type Group = { name: string; orders: number; sell: number; margin: number; marginPct?: number | null };
+type KeyRow = { key: string; orders: number; sell: number; margin: number };
 interface Analytics {
   totals: {
     orders: number; live: number; cancelled: number; cancelRate: number;
@@ -50,6 +43,13 @@ interface Analytics {
   cancelReasons?: { reason: string; count: number; pct: number }[];
   salesRanking?: { rank: number; name: string; shipments: number; live: number; cancelled: number; cancelRate: number; sell: number; margin: number }[];
 }
+interface Insights {
+  marginBuckets: { key: string; n: number }[];
+  byWeekday: { day: number; orders: number; margin: number }[];
+  byPayment: KeyRow[]; byTruckType: KeyRow[]; byBranch: KeyRow[];
+  duration: { trips: number; avgHours: number | null; buckets: { key: string; n: number }[] };
+  concentration: { customers: number; top5Share: number | null };
+}
 interface Period {
   key: PeriodKey; from: string; to: string; prevFrom: string; prevTo: string; days: number;
   cur: Analytics;
@@ -57,6 +57,7 @@ interface Period {
   byDay: { day: string; orders: number; live: number; cancelled: number; sell: number; buy: number; margin: number }[];
   advances: number; withAdvance: number; customsLinked: number; platform: number; ours: number; noSalesRep: number;
   followUpNotes: number; followUpShipments: number; lateNow: number; driversExpired: number;
+  insights?: Insights;
 }
 interface FleetSummary { vehicles: number; suppliers: number; drivers: number; gaps?: { unknown: number } }
 type PeriodKey = 'today' | '7d' | 'month' | '30d' | 'year';
@@ -68,9 +69,17 @@ const PERIODS: [PeriodKey, string, string][] = [
 const PREF_KEY = 'so-dash-period';
 const ORANGE = '#f37121';
 const NAVY = '#12325C';
+const GREEN = '#059669';
+const RED = '#dc2626';
 const LIST = '/system/shipment-orders';
+const WEEKDAYS: [string, string][] = [['الأحد', 'Sun'], ['الاثنين', 'Mon'], ['الثلاثاء', 'Tue'], ['الأربعاء', 'Wed'], ['الخميس', 'Thu'], ['الجمعة', 'Fri'], ['السبت', 'Sat']];
+const MARGIN_BUCKETS: Record<string, [string, string, string]> = {
+  loss: ['خسارة', 'Loss', '#dc2626'], '0-10': ['0–10%', '0–10%', '#f59e0b'], '10-20': ['10–20%', '10–20%', '#84cc16'],
+  '20-30': ['20–30%', '20–30%', '#10b981'], '30+': ['+30%', '30%+', '#047857'],
+};
+const PIE_COLORS = [NAVY, ORANGE, '#0e7490', '#7c3aed', '#64748b', '#be123c'];
 
-/** التغيُّرُ عن الفترة السابقة — نسبةً، أو «جديد» حين لا شيءَ قبلَه. */
+/** Change against the previous period, as a percentage (null = nothing before). */
 function delta(cur: number, prev: number): { pct: number | null; dir: 'up' | 'down' | 'flat' } {
   if (!prev && !cur) return { pct: 0, dir: 'flat' };
   if (!prev) return { pct: null, dir: 'up' };
@@ -92,11 +101,7 @@ function Delta({ cur, prev, goodWhenUp = true, ar }: { cur: number; prev: number
   );
 }
 
-// ── لا رابطَ إلى ما لا يُفتَح (٢٠٢٦/١٠/٢٧) ──────────────────────────────────
-// «لو اليوزر ملهوش أكسيس على قسم تاني هيفتحها إزاي؟». فكلُّ رابطٍ في اللوحة
-// يُسأل عنه: أيفتح المستخدمُ هذه الصفحة؟ (خريطةُ صفحاته من /auth/me). وما لا
-// يُفتَح يبقى رقمًا يُقرأ لا رابطًا يقود إلى «لا تملك صلاحية». والروابطُ كلُّها
-// داخل القسم نفسِه — ما كان يقود إلى التخليص صار يفتح الشحناتِ المربوطةَ هنا.
+// Links render only when the viewer can open the target page.
 const CanOpen = createContext<(href: string) => boolean>(() => true);
 
 function Go({ href, className, children, title }: { href?: string; className?: string; children: React.ReactNode; title?: string }) {
@@ -106,41 +111,110 @@ function Go({ href, className, children, title }: { href?: string; className?: s
     : <span className={className} title={title}>{children}</span>;
 }
 
-function Kpi({ icon: Icon, label, value, sub, href, tone = NAVY, deltaEl }: {
-  icon: any; label: string; value: string; sub?: React.ReactNode; href?: string; tone?: string; deltaEl?: React.ReactNode;
+/** Headline figure with its trend line and the change against the previous period. */
+function HeroCard({ label, value, unit, sub, tone, icon: Icon, deltaEl, spark, href }: {
+  label: string; value: string; unit?: string; sub?: React.ReactNode; tone: string; icon: any;
+  deltaEl?: React.ReactNode; spark: number[]; href?: string;
 }) {
+  const data = spark.map((v, i) => ({ i, v }));
+  const id = `g${tone.replace('#', '')}`;
   const body = (
     <>
+      <div className="absolute inset-x-0 top-0 h-1" style={{ background: tone }} />
       <div className="flex items-center gap-2">
-        <span className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{ background: `${tone}14`, color: tone }}>
+        <span className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: `${tone}14`, color: tone }}>
           <Icon className="w-[18px] h-[18px]" />
         </span>
-        <p className="text-[13px] font-semibold text-slate-600 leading-tight flex-1 min-w-0">{label}</p>
+        <span className="text-[13px] font-semibold text-slate-600 flex-1">{label}</span>
         {deltaEl}
       </div>
-      <p className="mt-3 text-[26px] leading-none font-extrabold tabular-nums tracking-tight" style={{ color: tone }}>{value}</p>
-      {sub ? <p className="mt-2 text-[12px] text-slate-500 leading-snug">{sub}</p> : null}
+      <div className="mt-3 flex items-baseline gap-1.5">
+        <span className="text-[30px] leading-none font-extrabold tabular-nums tracking-tight text-slate-900">{value}</span>
+        {unit && <span className="text-[12px] font-semibold text-slate-400">{unit}</span>}
+      </div>
+      {sub ? <p className="mt-1.5 text-[12px] text-slate-500">{sub}</p> : null}
+      <div className="h-12 -mx-4 -mb-4 mt-2" dir="ltr">
+        {data.length > 1 && (
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={data} margin={{ top: 4, right: 0, left: 0, bottom: 0 }}>
+              <defs>
+                <linearGradient id={id} x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor={tone} stopOpacity={0.28} />
+                  <stop offset="100%" stopColor={tone} stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <Area type="monotone" dataKey="v" stroke={tone} strokeWidth={2} fill={`url(#${id})`} isAnimationActive={false} />
+            </AreaChart>
+          </ResponsiveContainer>
+        )}
+      </div>
     </>
   );
-  const cls = 'rounded-2xl border border-slate-200 bg-white p-4 shadow-sm';
+  const cls = 'relative overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-sm';
   const can = useContext(CanOpen);
   return href && can(href)
-    ? <Link href={href} className={`${cls} block transition hover:border-[#f37121]/60 hover:shadow-md`}>{body}</Link>
+    ? <Link href={href} className={`${cls} block transition hover:shadow-md hover:border-slate-300`}>{body}</Link>
     : <div className={cls}>{body}</div>;
 }
 
-function Panel({ title, icon: Icon, action, children, className = '' }: {
-  title: string; icon: any; action?: React.ReactNode; children: React.ReactNode; className?: string;
+/** Small ratio tile for the second row. */
+function Ratio({ label, value, hint, tone = NAVY, href }: { label: string; value: string; hint?: string; tone?: string; href?: string }) {
+  const can = useContext(CanOpen);
+  const body = (
+    <>
+      <p className="text-[12px] font-semibold text-slate-500">{label}</p>
+      <p className="mt-1 text-[20px] font-extrabold tabular-nums leading-tight" style={{ color: tone }}>{value}</p>
+      {hint ? <p className="text-[11.5px] text-slate-400 mt-0.5 truncate" title={hint}>{hint}</p> : null}
+    </>
+  );
+  const cls = 'rounded-xl bg-white border border-slate-200 px-4 py-3';
+  return href && can(href) ? <Link href={href} className={`${cls} block hover:border-slate-300 hover:shadow-sm transition`}>{body}</Link> : <div className={cls}>{body}</div>;
+}
+
+function Panel({ title, subtitle, icon: Icon, action, children, className = '' }: {
+  title: string; subtitle?: string; icon: any; action?: React.ReactNode; children: React.ReactNode; className?: string;
 }) {
   return (
-    <section className={`rounded-2xl border border-slate-200 bg-white shadow-sm ${className}`}>
-      <header className="flex items-center gap-2 px-4 py-3 border-b border-slate-100">
-        <Icon className="w-4 h-4 text-[#f37121]" />
-        <h3 className="font-bold text-slate-900 text-[14px]">{title}</h3>
-        <div className="ms-auto">{action}</div>
+    <section className={`rounded-2xl border border-slate-200 bg-white shadow-sm flex flex-col ${className}`}>
+      <header className="flex items-start gap-2.5 px-4 py-3 border-b border-slate-100">
+        <span className="mt-0.5 w-7 h-7 rounded-lg bg-[#f37121]/10 text-[#f37121] flex items-center justify-center shrink-0"><Icon className="w-4 h-4" /></span>
+        <div className="min-w-0">
+          <h3 className="font-bold text-slate-900 text-[14px] leading-tight">{title}</h3>
+          {subtitle ? <p className="text-[11.5px] text-slate-500 mt-0.5">{subtitle}</p> : null}
+        </div>
+        <div className="ms-auto shrink-0">{action}</div>
       </header>
-      <div className="p-4">{children}</div>
+      <div className="p-4 flex-1">{children}</div>
     </section>
+  );
+}
+
+/** Horizontal bars for a ranked list (name, count, money). */
+function Bars({ rows, money, short, ar, color = NAVY, hrefOf }: {
+  rows: { name: string; orders: number; margin: number; sell?: number }[];
+  money: (n: number) => string; short: (n: number) => string; ar: boolean; color?: string; hrefOf?: (name: string) => string | undefined;
+}) {
+  if (!rows.length) return <p className="text-xs text-slate-400 py-8 text-center">{ar ? 'لا بيانات في الفترة' : 'nothing in this period'}</p>;
+  const max = Math.max(1, ...rows.map((r) => r.orders));
+  return (
+    <ul className="space-y-2.5">
+      {rows.map((r) => {
+        const row = (
+          <>
+            <div className="flex items-center gap-2 text-[13px]">
+              <span className="flex-1 min-w-0 truncate text-slate-800 font-medium" title={r.name}>{r.name || '—'}</span>
+              <span className="tabular-nums text-slate-500 text-[12px]">{money(r.orders)}</span>
+              <span className={`tabular-nums font-bold w-20 text-end ${r.margin >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{short(r.margin)}</span>
+            </div>
+            <div className="h-1.5 rounded-full bg-slate-100 mt-1 overflow-hidden">
+              <div className="h-full rounded-full" style={{ width: `${(r.orders / max) * 100}%`, background: color, opacity: 0.8 }} />
+            </div>
+          </>
+        );
+        const href = hrefOf?.(r.name);
+        return <li key={r.name}>{href ? <Go href={href} className="block rounded-lg -mx-1 px-1 py-0.5 hover:bg-slate-50">{row}</Go> : <div>{row}</div>}</li>;
+      })}
+    </ul>
   );
 }
 
@@ -162,6 +236,7 @@ export default function ShipmentOrdersDashboardPage() {
   const [error, setError] = useState('');
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
   const [showBranch, setShowBranch] = useState(false);
+  const [rankTab, setRankTab] = useState<'customers' | 'suppliers' | 'routes'>('customers');
 
   const load = useCallback(async () => {
     const mine = guard.begin();
@@ -175,14 +250,13 @@ export default function ShipmentOrdersDashboardPage() {
     if (guard.isCurrent(mine)) setLoading(false);
   }, [period, guard]);
   useEffect(() => { load(); }, [load]);
-  // تتحدّث وحدَها: مع كلّ تغييرٍ في القسم، وكلَّ دقيقةٍ احتياطًا (ما يتغيّر في
-  // التخليص أو السجلّ لا يبثّ على قناة القسم دائمًا).
+  // Live: section events, plus a one-minute fallback for changes made elsewhere.
   useSocket('shipmentOrders:updated', useCallback(() => load(), [load]));
   useSocket('shipmentOrders:fleet', useCallback(() => load(), [load]));
   useSocket('customs:opsLinks', useCallback(() => load(), [load]));
   useEffect(() => { const id = setInterval(() => load(), 60000); return () => clearInterval(id); }, [load]);
 
-  const pick = (k: PeriodKey) => { setPeriod(k); try { localStorage.setItem(PREF_KEY, k); } catch { /* */ } };
+  const pick = (k: PeriodKey) => { setPeriod(k); try { localStorage.setItem(PREF_KEY, k); } catch { /* storage unavailable */ } };
 
   const money = useCallback((n: number) => (Number(n) || 0).toLocaleString(ar ? 'ar-EG-u-nu-latn' : 'en-US', { maximumFractionDigits: 0 }), [ar]);
   const short = useCallback((n: number) => {
@@ -213,16 +287,46 @@ export default function ShipmentOrdersDashboardPage() {
   }
   if (loading && !P) return <Spinner />;
 
-  // البياناتُ على الشاشة لفترةٍ غيرِ المختارة = الفترةُ الجديدةُ في الطريق.
+  // Figures on screen belong to the previous period while the new one loads.
   const switching = !!P && P.key !== period;
   const T = P?.cur.totals;
   const V = P?.prev;
+  const I = P?.insights;
   const reps = P?.cur.salesRanking || [];
   const repMax = Math.max(1, ...reps.map((r) => r.live));
   const periodLabel = PERIODS.find((p) => p[0] === period)!;
   const fmtDay = (ymd?: string) => (ymd ? ymd.split('-').reverse().join('/') : '');
-
   const canOpen = (href: string) => canAccessPage((user as any)?.pageAccess, href.split('?')[0]);
+  const series = (k: 'sell' | 'buy' | 'margin' | 'orders') => (P?.byDay || []).map((d) => d[k]);
+  const Chevron = isRTL ? ChevronLeft : ChevronRight;
+
+  // Items that need someone to act, worst first. Zero counts are shown as "all clear".
+  const attention = P && T ? [
+    { icon: TrendingDown, label: t('بيعٌ أقل من الشراء', 'Sold below cost'), n: T.losing, tone: RED, href: '/system/shipment-orders/analytics' },
+    { icon: Clock, label: t('متأخرة الآن', 'Late now'), n: P.lateNow, tone: RED, href: `${LIST}?status=late` },
+    { icon: AlertTriangle, label: t('بلا سعر — خارج حساب الربح', 'No price — outside the margin'), n: T.missingPrice, tone: '#d97706', href: listHref('col_buyPrice=__blank__') },
+    { icon: IdCard, label: t('بطاقات سائقين منتهية', 'Expired driver cards'), n: P.driversExpired, tone: '#d97706', href: '/system/shipment-orders/fleet' },
+    { icon: Users, label: t('شحنات بلا مندوب تشغيل', 'Shipments with no ops rep'), n: P.noSalesRep, tone: '#d97706', href: listHref() },
+  ].sort((a, b) => (b.n > 0 ? 1 : 0) - (a.n > 0 ? 1 : 0)) : [];
+
+  const rankRows: Record<typeof rankTab, { rows: Group[]; col: string; all: string }> = {
+    customers: { rows: P?.cur.byCustomer || [], col: 'customerName', all: '/system/shipment-orders/customers' },
+    suppliers: { rows: P?.cur.bySupplier || [], col: 'supplierName', all: '/system/shipment-orders/fleet' },
+    routes: { rows: P?.cur.byRoute || [], col: '', all: '/system/shipment-orders/analytics' },
+  };
+  const rank = rankRows[rankTab];
+
+  const bucketTotal = (I?.marginBuckets || []).reduce((a, b) => a + b.n, 0);
+  const paymentData = (I?.byPayment || []).map((r, i) => ({
+    name: PAYMENT_SUBTYPES[r.key as PaymentSubtype] ? (ar ? PAYMENT_SUBTYPES[r.key as PaymentSubtype].ar : PAYMENT_SUBTYPES[r.key as PaymentSubtype].en) : (r.key || t('غير محدد', 'Not set')),
+    value: r.orders, margin: r.margin, color: PIE_COLORS[i % PIE_COLORS.length],
+  }));
+  const weekdayData = WEEKDAYS.map(([a, e], i) => {
+    const d = (I?.byWeekday || []).find((x) => x.day === i + 1);
+    return { label: ar ? a : e, orders: d?.orders || 0, margin: d?.margin || 0 };
+  });
+  const busiest = weekdayData.reduce((best, d) => (d.orders > best.orders ? d : best), weekdayData[0]);
+
   return (
     <CanOpen.Provider value={canOpen}>
     <div className="space-y-5" dir={isRTL ? 'rtl' : 'ltr'}>
@@ -239,13 +343,13 @@ export default function ShipmentOrdersDashboardPage() {
         </Go>
       </PageHeader>
 
-      {/* ── الفترةُ وحالُ التحديث ──────────────────────────────────────────── */}
+      {/* Period picker and live status */}
       <div className="flex flex-wrap items-center gap-3">
-        <div className="inline-flex rounded-xl bg-slate-100 p-1 gap-1" role="tablist">
+        <div className="inline-flex rounded-xl bg-white border border-slate-200 p-1 gap-1 shadow-sm" role="tablist">
           {PERIODS.map(([k, a, e]) => (
             <button key={k} type="button" role="tab" aria-selected={period === k} onClick={() => pick(k)}
               className={`px-3.5 py-1.5 rounded-lg text-[13px] font-semibold transition-colors ${
-                period === k ? 'bg-white text-[#12325C] shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>
+                period === k ? 'bg-[#12325C] text-white shadow-sm' : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'}`}>
               <span className="inline-flex items-center gap-1.5">
                 {period === k && switching ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
                 {t(a, e)}
@@ -260,9 +364,9 @@ export default function ShipmentOrdersDashboardPage() {
             </span>
           ) : (
             <>
-          <span className="relative flex h-2 w-2"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-60" /><span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" /></span>
-          {t('مباشر — يتحدّث وحده', 'Live — updates itself')}
-          {updatedAt ? <span className="text-slate-400">· {updatedAt.toLocaleTimeString(ar ? 'ar-EG-u-nu-latn' : 'en-GB', { hour: '2-digit', minute: '2-digit' })}</span> : null}
+              <span className="relative flex h-2 w-2"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-60" /><span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" /></span>
+              {t('مباشر — يتحدّث وحده', 'Live — updates itself')}
+              {updatedAt ? <span className="text-slate-400">· {updatedAt.toLocaleTimeString(ar ? 'ar-EG-u-nu-latn' : 'en-GB', { hour: '2-digit', minute: '2-digit' })}</span> : null}
             </>
           )}
         </span>
@@ -270,38 +374,43 @@ export default function ShipmentOrdersDashboardPage() {
 
       {error && <ErrorNotice error={error} lang={lang} onRetry={load} />}
 
-      {/* الأرقامُ المعروضةُ لفترةٍ غيرِ المختارة تُعتَّم حتى تصل فترتُها —
-          فلا يُقرأ رقمُ الشهر على أنّه رقمُ اليوم (٢٠٢٦/١٠/٢٧). */}
       <div className={`space-y-5 transition-opacity ${switching ? 'opacity-40 pointer-events-none' : ''}`} aria-busy={switching}>
-      {T && V && (
+      {T && V && P && (
         <>
-          {/* ── الأرقامُ الستّة — وكلٌّ بسهمه عن الفترة السابقة ───────────────── */}
-          <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
-            <Kpi icon={PackageSearch} label={t('الشحنات', 'Shipments')} value={money(T.orders)} tone={NAVY}
-              href={listHref()} deltaEl={<Delta ar={ar} cur={T.orders} prev={V.orders} />}
-              sub={t(`${money(T.live)} منفَّذة · ${money(T.cancelled)} ملغاة`, `${money(T.live)} live · ${money(T.cancelled)} cancelled`)} />
-            <Kpi icon={Receipt} label={t('الإيرادات', 'Revenue')} value={short(T.sell)} tone={ORANGE}
-              deltaEl={<Delta ar={ar} cur={T.sell} prev={V.sell} />} sub={t(`متوسط الشحنة ${money(T.avgSell)} ر.س`, `avg ${money(T.avgSell)} SAR / load`)} />
-            <Kpi icon={Wallet} label={t('التكلفة', 'Cost')} value={short(T.buy)} tone="#475569"
-              deltaEl={<Delta ar={ar} cur={T.buy} prev={V.buy} goodWhenUp={false} />} sub={t('أسعار الشراء من الموردين', 'buy prices from suppliers')} />
-            <Kpi icon={PiggyBank} label={t('الربح', 'Margin')} value={short(T.margin)} tone={T.margin >= 0 ? '#059669' : '#dc2626'}
-              deltaEl={<Delta ar={ar} cur={T.margin} prev={V.margin} />}
+          {/* Headline figures */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+            <HeroCard icon={Receipt} label={t('الإيرادات', 'Revenue')} value={short(T.sell)} unit={t('ر.س', 'SAR')} tone={ORANGE}
+              deltaEl={<Delta ar={ar} cur={T.sell} prev={V.sell} />} spark={series('sell')}
+              sub={t(`متوسط الشحنة ${money(T.avgSell)} ر.س`, `avg ${money(T.avgSell)} SAR / load`)} />
+            <HeroCard icon={Wallet} label={t('التكلفة', 'Cost')} value={short(T.buy)} unit={t('ر.س', 'SAR')} tone="#475569"
+              deltaEl={<Delta ar={ar} cur={T.buy} prev={V.buy} goodWhenUp={false} />} spark={series('buy')}
+              sub={t('أسعار الشراء من الموردين', 'buy prices from suppliers')} />
+            <HeroCard icon={PiggyBank} label={t('الربح', 'Margin')} value={short(T.margin)} unit={t('ر.س', 'SAR')} tone={T.margin >= 0 ? GREEN : RED}
+              deltaEl={<Delta ar={ar} cur={T.margin} prev={V.margin} />} spark={series('margin')}
               sub={t(`هامش ${T.marginPct}% · ${money(T.avgMargin)} للشحنة`, `${T.marginPct}% · ${money(T.avgMargin)} / load`)} />
-            <Kpi icon={Ban} label={t('نسبة الإلغاء', 'Cancel rate')} value={`${T.cancelRate}%`} tone={T.cancelRate > 15 ? '#dc2626' : '#475569'}
-              href={listHref('status=cancelled')}
-              deltaEl={<Delta ar={ar} cur={T.cancelled} prev={V.cancelled} goodWhenUp={false} />}
-              sub={(P?.cur.cancelReasons || [])[0] ? t(`أكثر سبب: ${P!.cur.cancelReasons![0].reason}`, `top reason: ${P!.cur.cancelReasons![0].reason}`) : t('لا إلغاء', 'none')} />
-            <Kpi icon={Percent} label={t('السلف للسائقين', 'Driver advances')} value={short(P!.advances)} tone="#7c3aed"
-              sub={t(`على ${money(P!.withAdvance)} شحنة`, `on ${money(P!.withAdvance)} loads`)} />
+            <HeroCard icon={PackageSearch} label={t('الشحنات', 'Shipments')} value={money(T.orders)} tone={NAVY} href={listHref()}
+              deltaEl={<Delta ar={ar} cur={T.orders} prev={V.orders} />} spark={series('orders')}
+              sub={t(`${money(T.live)} منفَّذة · ${money(T.cancelled)} ملغاة`, `${money(T.live)} live · ${money(T.cancelled)} cancelled`)} />
           </div>
 
-          {/* ── الاتّجاهُ يومًا بيوم: الشحناتُ أعمدةً والربحُ خطًّا ─────────────── */}
+          {/* Operating ratios */}
+          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
+            <Ratio label={t('هامش الربح', 'Margin %')} value={`${T.marginPct}%`} tone={T.marginPct >= 0 ? GREEN : RED} hint={t('الربح ÷ الإيرادات', 'margin ÷ revenue')} />
+            <Ratio label={t('ربح الشحنة', 'Margin per load')} value={money(T.avgMargin)} tone={T.avgMargin >= 0 ? GREEN : RED} hint={t('متوسط الشحنة المنفَّذة', 'average live load')} />
+            <Ratio label={t('نسبة الإلغاء', 'Cancel rate')} value={`${T.cancelRate}%`} tone={T.cancelRate > 15 ? RED : '#475569'} href={listHref('status=cancelled')}
+              hint={(P.cur.cancelReasons || [])[0] ? t(`أكثر سبب: ${P.cur.cancelReasons![0].reason}`, `top: ${P.cur.cancelReasons![0].reason}`) : t('لا إلغاء', 'none')} />
+            <Ratio label={t('السلف للسائقين', 'Driver advances')} value={short(P.advances)} tone="#7c3aed" hint={t(`على ${money(P.withAdvance)} شحنة`, `on ${money(P.withAdvance)} loads`)} />
+            <Ratio label={t('عملاء نشطون', 'Active customers')} value={money(T.customers)} href="/system/shipment-orders/customers" hint={t(`${money(T.routes)} مسار`, `${money(T.routes)} routes`)} />
+            <Ratio label={t('مربوطة بالتخليص', 'Linked to customs')} value={money(P.customsLinked)} tone="#0e7490" href={listHref('customs=linked')} hint={t('بالبوليصة أو الحاوية', 'by B/L or container')} />
+          </div>
+
+          {/* Trend and status */}
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-3">
             <Panel title={t(`الشحنات والربح — ${periodLabel[1]}`, `Shipments & margin — ${periodLabel[2]}`)} icon={Activity} className="xl:col-span-2">
               {chartData.length === 0 ? (
                 <p className="text-sm text-slate-400 py-16 text-center">{t('لا شحنات في هذه الفترة', 'No shipments in this period')}</p>
               ) : (
-                <div className="h-64" dir="ltr">
+                <div className="h-72" dir="ltr">
                   <ResponsiveContainer width="100%" height="100%">
                     <ComposedChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#eef2f7" vertical={false} />
@@ -325,7 +434,6 @@ export default function ShipmentOrdersDashboardPage() {
               </div>
             </Panel>
 
-            {/* ── أين تقف الشحنات — شريطٌ واحدٌ وأسطرٌ تُفتَح ───────────────── */}
             <Panel title={t('أين تقف الشحنات', 'Where shipments stand')} icon={Truck}>
               {statusRows.length === 0 ? (
                 <p className="text-sm text-slate-400 py-10 text-center">{t('لا شيء', 'Nothing')}</p>
@@ -352,15 +460,55 @@ export default function ShipmentOrdersDashboardPage() {
             </Panel>
           </div>
 
-          {/* ── أداءُ مناديب التشغيل — من «السيلز التشغيلي» عند إنشاء الشحنة ────── */}
+          {/* Needs attention + rankings */}
+          <div className="grid grid-cols-1 xl:grid-cols-3 gap-3">
+            <Panel title={t('يحتاج تصرّفًا', 'Needs attention')} subtitle={t('الأهمّ أولًا — اضغط لتفتح القائمة', 'most urgent first — click to open the list')} icon={AlertTriangle}>
+              <ul className="space-y-1.5">
+                {attention.map((a) => {
+                  const Icon = a.icon;
+                  const ok = !a.n;
+                  return (
+                    <li key={a.label}>
+                      <Go href={a.href} className={`flex items-center gap-3 rounded-xl px-3 py-2.5 border transition ${ok ? 'border-slate-100 bg-slate-50/60' : 'border-slate-200 hover:border-slate-300 hover:shadow-sm bg-white'}`}>
+                        <span className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+                          style={{ background: ok ? '#ecfdf5' : `${a.tone}14`, color: ok ? GREEN : a.tone }}>
+                          {ok ? <CheckCircle2 className="w-4 h-4" /> : <Icon className="w-4 h-4" />}
+                        </span>
+                        <span className={`flex-1 min-w-0 text-[13px] ${ok ? 'text-slate-500' : 'text-slate-800 font-semibold'}`}>{a.label}</span>
+                        <span className="tabular-nums font-extrabold text-[15px]" style={{ color: ok ? '#94a3b8' : a.tone }}>{money(a.n)}</span>
+                        {!ok && <Chevron className="w-4 h-4 text-slate-300" />}
+                      </Go>
+                    </li>
+                  );
+                })}
+              </ul>
+            </Panel>
+
+            <Panel className="xl:col-span-2" title={t('من يحمل العمل', 'Who carries the business')} subtitle={t('عدد الشحنات والربح في الفترة', 'shipments and margin in the period')} icon={Award}
+              action={(
+                <div className="inline-flex rounded-lg bg-slate-100 p-0.5 text-[12px]">
+                  {([['customers', 'العملاء', 'Customers', Users], ['suppliers', 'الموردون', 'Suppliers', Store], ['routes', 'المسارات', 'Routes', RouteIcon]] as const).map(([k, a, e, Icon]) => (
+                    <button key={k} type="button" onClick={() => setRankTab(k)}
+                      className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md font-semibold ${rankTab === k ? 'bg-white text-[#12325C] shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>
+                      <Icon className="w-3.5 h-3.5" />{t(a, e)}
+                    </button>
+                  ))}
+                </div>
+              )}>
+              <Bars rows={rank.rows.slice(0, 8)} money={money} short={short} ar={ar} color={rankTab === 'routes' ? '#0e7490' : NAVY}
+                hrefOf={rank.col ? (n) => listHref(`col_${rank.col}=${encodeURIComponent(n)}`) : undefined} />
+              <div className="mt-3 text-end">
+                <Go href={rank.all} className="text-[12px] font-semibold text-[#f37121] hover:underline">{t('عرض الكل', 'View all')}</Go>
+              </div>
+            </Panel>
+          </div>
+
+          {/* Operations reps */}
           <Panel title={t('أداء مناديب التشغيل', 'Operations reps performance')} icon={Award}
-            action={P!.noSalesRep > 0 ? (
-              <span className="text-[11.5px] text-amber-700 font-semibold">{t(`${money(P!.noSalesRep)} شحنة بلا مندوب`, `${money(P!.noSalesRep)} with no rep`)}</span>
+            subtitle={t('من «السيلز التشغيلي» المختار عند إنشاء كلّ شحنة — اضغط اسمًا لترى شحناته', 'From the operational sales chosen on each shipment — click a name to see their shipments')}
+            action={P.noSalesRep > 0 ? (
+              <span className="text-[11.5px] text-amber-700 font-semibold">{t(`${money(P.noSalesRep)} شحنة بلا مندوب`, `${money(P.noSalesRep)} with no rep`)}</span>
             ) : null}>
-            <p className="text-[12px] text-slate-500 -mt-1 mb-3">
-              {t('من «السيلز التشغيلي — من جاء بهذه الحمولة» المختار عند إنشاء كلّ شحنة. اضغط اسمًا لترى شحناته.',
-                'From the «operational sales» chosen when each shipment is created. Click a name to see their shipments.')}
-            </p>
             {reps.length === 0 ? (
               <p className="text-sm text-slate-400 py-8 text-center">{t('لا شحنات مسجَّلٌ عليها مندوب في هذه الفترة', 'No shipments with a rep in this period')}</p>
             ) : (
@@ -405,80 +553,190 @@ export default function ShipmentOrdersDashboardPage() {
             )}
           </Panel>
 
-          {/* ── من يحمل العمل: العملاء والموردون والمسارات ─────────────────────── */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
-            {([
-              [t('أكبر العملاء', 'Top customers'), Users, P!.cur.byCustomer, 'customerName', '/system/shipment-orders/customers'],
-              [t('أكبر الموردين', 'Top suppliers'), Store, P!.cur.bySupplier, 'supplierName', '/system/shipment-orders/fleet'],
-              [t('أكثر المسارات', 'Top routes'), RouteIcon, P!.cur.byRoute, '', '/system/shipment-orders/analytics'],
-            ] as [string, any, Group[], string, string][]).map(([title, Icon, rows, col, href]) => {
-              const max = Math.max(1, ...rows.slice(0, 6).map((r) => r.orders));
-              return (
-                <Panel key={title} title={title} icon={Icon}
-                  action={<Go href={href} className="text-[12px] text-[#f37121] hover:underline">{t('الكل', 'all')}</Go>}>
-                  {rows.length === 0 ? (
-                    <p className="text-xs text-slate-400 py-6 text-center">{t('لا بيانات في الفترة', 'nothing in this period')}</p>
-                  ) : (
-                    <ul className="space-y-2.5">
-                      {rows.slice(0, 6).map((r) => {
-                        const row = (
-                          <>
-                            <div className="flex items-center gap-2 text-[13px]">
-                              <span className="flex-1 min-w-0 truncate text-slate-800 font-medium" title={r.name}>{r.name}</span>
-                              <span className="tabular-nums text-slate-500 text-[12px]">{money(r.orders)}</span>
-                              <span className={`tabular-nums font-bold w-20 text-end ${r.margin >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{short(r.margin)}</span>
-                            </div>
-                            <div className="h-1.5 rounded-full bg-slate-100 mt-1 overflow-hidden">
-                              <div className="h-full rounded-full bg-[#12325C]/70" style={{ width: `${(r.orders / max) * 100}%` }} />
-                            </div>
-                          </>
-                        );
-                        return (
-                          <li key={r.name}>
-                            {col
-                              ? <Go href={listHref(`col_${col}=${encodeURIComponent(r.name)}`)} className="block rounded-lg -mx-1 px-1 py-0.5 hover:bg-slate-50">{row}</Go>
-                              : <div>{row}</div>}
-                          </li>
-                        );
-                      })}
-                    </ul>
+          {/* Shipment analytics */}
+          {I && (
+            <>
+              <div className="flex items-center gap-2 pt-2">
+                <BarChart3 className="w-5 h-5 text-[#12325C]" />
+                <h2 className="text-[17px] font-extrabold text-slate-900">{t('تحليلات الشحنات', 'Shipment analytics')}</h2>
+                <span className="text-[12px] text-slate-500">— {t(periodLabel[1], periodLabel[2])}</span>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-3">
+                <Panel title={t('توزيع هامش الربح', 'Margin distribution')} subtitle={t('كم شحنة في كل شريحة ربح', 'how many loads fall in each margin band')} icon={Layers}>
+                  {bucketTotal === 0 ? <p className="text-xs text-slate-400 py-8 text-center">{t('لا شحنات مسعَّرة', 'no priced loads')}</p> : (
+                    <>
+                      <div className="flex h-4 rounded-full overflow-hidden bg-slate-100 mb-4">
+                        {I.marginBuckets.map((b) => (
+                          <div key={b.key} style={{ width: `${(b.n / bucketTotal) * 100}%`, background: MARGIN_BUCKETS[b.key]?.[2] || '#94a3b8' }} title={`${b.key}: ${b.n}`} />
+                        ))}
+                      </div>
+                      <ul className="space-y-1.5 text-[13px]">
+                        {Object.entries(MARGIN_BUCKETS).map(([k, [a, e, c]]) => {
+                          const n = I.marginBuckets.find((b) => b.key === k)?.n || 0;
+                          return (
+                            <li key={k} className="flex items-center gap-2">
+                              <span className="w-2.5 h-2.5 rounded-sm" style={{ background: c }} />
+                              <span className="flex-1 text-slate-700">{t(a, e)}</span>
+                              <span className="tabular-nums font-bold text-slate-900">{money(n)}</span>
+                              <span className="tabular-nums text-[11px] text-slate-400 w-12 text-end">{Math.round((n / bucketTotal) * 100)}%</span>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </>
                   )}
                 </Panel>
-              );
-            })}
-          </div>
 
-          {/* ── مربوطةٌ بالشركة: ما يحتاج تصرّفًا وما يمرّ بأقسامٍ أخرى ─────────── */}
+                <Panel title={t('نوع الدفع', 'Payment type')} subtitle={t('الشحنات المنفَّذة حسب طريقة التحصيل', 'live loads by how they are collected')} icon={CreditCard}>
+                  {paymentData.length === 0 ? <p className="text-xs text-slate-400 py-8 text-center">{t('لا بيانات', 'no data')}</p> : (
+                    <div className="flex items-center gap-4">
+                      <div className="w-32 h-32 shrink-0" dir="ltr">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <PieChart>
+                            <Pie data={paymentData} dataKey="value" innerRadius={38} outerRadius={60} paddingAngle={2} isAnimationActive={false}>
+                              {paymentData.map((d) => <Cell key={d.name} fill={d.color} />)}
+                            </Pie>
+                            <Tooltip formatter={(v: any, _k: any, p: any) => [money(v), p?.payload?.name]} />
+                          </PieChart>
+                        </ResponsiveContainer>
+                      </div>
+                      <ul className="flex-1 min-w-0 space-y-1.5 text-[13px]">
+                        {paymentData.map((d) => (
+                          <li key={d.name} className="flex items-center gap-2">
+                            <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: d.color }} />
+                            <span className="flex-1 min-w-0 truncate text-slate-700">{d.name}</span>
+                            <span className="tabular-nums font-bold text-slate-900">{money(d.value)}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </Panel>
+
+                <Panel title={t('تركّز العملاء', 'Customer concentration')} subtitle={t('حصة أكبر 5 عملاء من الإيرادات', 'share of revenue from the top 5 customers')} icon={Target}>
+                  {I.concentration.top5Share == null ? <p className="text-xs text-slate-400 py-8 text-center">{t('لا إيرادات', 'no revenue')}</p> : (
+                    <div>
+                      <div className="flex items-baseline gap-2">
+                        <span className="text-[34px] font-extrabold tabular-nums leading-none" style={{ color: I.concentration.top5Share > 60 ? '#d97706' : NAVY }}>{Math.round(I.concentration.top5Share)}%</span>
+                        <span className="text-[12px] text-slate-500">{t(`من ${money(I.concentration.customers)} عميل`, `of ${money(I.concentration.customers)} customers`)}</span>
+                      </div>
+                      <div className="mt-3 h-2.5 rounded-full bg-slate-100 overflow-hidden">
+                        <div className="h-full rounded-full" style={{ width: `${Math.min(100, I.concentration.top5Share)}%`, background: I.concentration.top5Share > 60 ? '#d97706' : NAVY }} />
+                      </div>
+                      <p className="mt-3 text-[12px] text-slate-500 leading-relaxed">
+                        {I.concentration.top5Share > 60
+                          ? t('الإيرادات معتمدة على عدد قليل من العملاء — خسارة عميل واحد تؤثر بقوة.', 'Revenue depends on a few customers — losing one would hurt.')
+                          : t('الإيرادات موزّعة على قاعدة عملاء جيدة.', 'Revenue is well spread across customers.')}
+                      </p>
+                    </div>
+                  )}
+                </Panel>
+
+                <Panel title={t('أيام الأسبوع', 'Days of the week')}
+                  subtitle={busiest && busiest.orders ? t(`الأكثر حركة: ${busiest.label}`, `busiest: ${busiest.label}`) : t('توزيع الشحنات على الأيام', 'loads by weekday')} icon={CalendarDays}>
+                  <div className="h-40" dir="ltr">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={weekdayData} margin={{ top: 4, right: 4, left: -18, bottom: 0 }}>
+                        <XAxis dataKey="label" tick={{ fontSize: 10.5, fill: '#64748b' }} tickLine={false} axisLine={false} interval={0} />
+                        <YAxis tick={{ fontSize: 10.5, fill: '#64748b' }} tickLine={false} axisLine={false} allowDecimals={false} />
+                        <Tooltip formatter={(v: any) => [money(v), t('شحنات', 'Loads')]} />
+                        <Bar dataKey="orders" radius={[4, 4, 0, 0]} isAnimationActive={false}>
+                          {weekdayData.map((d) => <Cell key={d.label} fill={d === busiest && d.orders ? ORANGE : NAVY} fillOpacity={d === busiest && d.orders ? 1 : 0.75} />)}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </Panel>
+
+                <Panel title={t('مدة الرحلة', 'Trip duration')} subtitle={t('من التحميل إلى الوصول', 'from pickup to arrival')} icon={Timer}>
+                  {!I.duration.trips ? <p className="text-xs text-slate-400 py-8 text-center">{t('لا رحلات مكتملة التواريخ', 'no trips with both dates')}</p> : (
+                    <>
+                      <div className="flex items-baseline gap-2 mb-3">
+                        <span className="text-[30px] font-extrabold tabular-nums leading-none text-[#12325C]">
+                          {I.duration.avgHours != null && I.duration.avgHours >= 48 ? (I.duration.avgHours / 24).toFixed(1) : Math.round(I.duration.avgHours || 0)}
+                        </span>
+                        <span className="text-[12px] font-semibold text-slate-500">
+                          {I.duration.avgHours != null && I.duration.avgHours >= 48 ? t('يوم في المتوسط', 'days on average') : t('ساعة في المتوسط', 'hours on average')}
+                        </span>
+                      </div>
+                      <ul className="space-y-1.5 text-[13px]">
+                        {I.duration.buckets.map((b) => (
+                          <li key={b.key} className="flex items-center gap-2">
+                            <span className="w-14 text-slate-600 tabular-nums" dir="ltr">{b.key}</span>
+                            <div className="flex-1 h-2 rounded-full bg-slate-100 overflow-hidden">
+                              <div className="h-full rounded-full bg-[#0e7490]" style={{ width: `${(b.n / I.duration.trips) * 100}%` }} />
+                            </div>
+                            <span className="tabular-nums font-bold text-slate-900 w-10 text-end">{money(b.n)}</span>
+                          </li>
+                        ))}
+                      </ul>
+                      <p className="mt-2 text-[11px] text-slate-400">{t(`من ${money(I.duration.trips)} رحلة لها تاريخ تحميل ووصول`, `from ${money(I.duration.trips)} trips with both dates`)}</p>
+                    </>
+                  )}
+                </Panel>
+
+                <Panel title={t('أنواع الشاحنات', 'Truck types')} subtitle={t('الشحنات والربح لكل نوع', 'loads and margin by type')} icon={Truck}>
+                  <Bars rows={I.byTruckType.map((r) => ({ name: r.key || t('غير محدد', 'Not set'), orders: r.orders, margin: r.margin }))}
+                    money={money} short={short} ar={ar} color="#7c3aed" />
+                </Panel>
+
+                <Panel className="lg:col-span-2 xl:col-span-3" title={t('الفروع', 'Branches')} subtitle={t('الشحنات والإيرادات والربح لكل فرع', 'loads, revenue and margin per branch')} icon={Building2}>
+                  {I.byBranch.length === 0 ? <p className="text-xs text-slate-400 py-6 text-center">{t('لا بيانات', 'no data')}</p> : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-[13px]">
+                        <thead>
+                          <tr className="text-slate-500 text-[12px] border-b border-slate-100">
+                            <th className="text-start font-semibold py-2">{t('الفرع', 'Branch')}</th>
+                            <th className="text-start font-semibold py-2 min-w-[160px]">{t('الشحنات', 'Loads')}</th>
+                            <th className="text-end font-semibold py-2">{t('الإيرادات', 'Revenue')}</th>
+                            <th className="text-end font-semibold py-2">{t('الربح', 'Margin')}</th>
+                            <th className="text-end font-semibold py-2">{t('الهامش', 'Margin %')}</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {I.byBranch.map((b) => {
+                            const max = Math.max(1, ...I.byBranch.map((x) => x.orders));
+                            const pct = b.sell > 0 ? Math.round((b.margin / b.sell) * 1000) / 10 : null;
+                            return (
+                              <tr key={b.key || '—'} className="border-b border-slate-50 hover:bg-slate-50">
+                                <td className="py-2 font-semibold text-slate-800">{b.key || t('غير محدد', 'Not set')}</td>
+                                <td className="py-2">
+                                  <div className="flex items-center gap-2">
+                                    <div className="flex-1 h-2 rounded-full bg-slate-100 overflow-hidden"><div className="h-full rounded-full bg-[#12325C]/75" style={{ width: `${(b.orders / max) * 100}%` }} /></div>
+                                    <span className="tabular-nums font-bold w-10 text-end">{money(b.orders)}</span>
+                                  </div>
+                                </td>
+                                <td className="py-2 text-end tabular-nums text-slate-700">{money(b.sell)}</td>
+                                <td className={`py-2 text-end tabular-nums font-semibold ${b.margin >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{money(b.margin)}</td>
+                                <td className="py-2 text-end tabular-nums text-slate-600">{pct == null ? '—' : `${pct}%`}</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </Panel>
+              </div>
+            </>
+          )}
+
+          {/* Register and sources */}
           <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
-            <Kpi icon={TrendingDown} label={t('بيعٌ أقل من الشراء', 'Sold below cost')} value={money(T.losing)}
-              tone={T.losing ? '#dc2626' : '#64748b'} href="/system/shipment-orders/analytics" sub={t('تُراجَع في التحليلات', 'review in analytics')} />
-            <Kpi icon={AlertTriangle} label={t('بلا سعر', 'No price')} value={money(T.missingPrice)}
-              tone={T.missingPrice ? '#d97706' : '#64748b'} href={listHref('col_buyPrice=__blank__')} sub={t('خارج حساب الربح', 'out of the margin')} />
-            <Kpi icon={Clock} label={t('متأخرة الآن', 'Late now')} value={money(P!.lateNow)}
-              tone={P!.lateNow ? '#dc2626' : '#64748b'} href={`${LIST}?status=late`} sub={t('حالة «متأخرة» الآن', 'status «late» now')} />
-            <Kpi icon={Ship} label={t('مربوطة بالتخليص', 'Linked to customs')} value={money(P!.customsLinked)}
-              tone="#0e7490" href={listHref('customs=linked')} sub={t('بالبوليصة أو الحاوية — تُفتح هنا', 'by B/L or container')} />
-            <Kpi icon={MessageSquareText} label={t('ملاحظات المتابعة', 'Follow-up notes')} value={money(P!.followUpNotes)}
-              tone="#0369a1" href={LIST} sub={t(`على ${money(P!.followUpShipments)} شحنة`, `on ${money(P!.followUpShipments)} loads`)} />
-            <Kpi icon={IdCard} label={t('بطاقات سائقين منتهية', 'Expired driver cards')} value={money(P!.driversExpired)}
-              tone={P!.driversExpired ? '#d97706' : '#64748b'} href="/system/shipment-orders/fleet" sub={t('في سجلّ السوّاق', 'in the drivers register')} />
-          </div>
-
-          {/* ── السجلُّ والمصدر ────────────────────────────────────────────────── */}
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-            <Kpi icon={Store} label={t('الموردون', 'Suppliers')} value={money(fleet?.suppliers ?? 0)} href="/system/shipment-orders/fleet" />
-            <Kpi icon={Truck} label={t('شاحنات في السجل', 'Trucks on file')} value={money(fleet?.vehicles ?? 0)} href="/system/shipment-orders/fleet"
-              sub={fleet?.gaps?.unknown ? t(`${money(fleet.gaps.unknown)} مجهولة المالك`, `${money(fleet.gaps.unknown)} owner unknown`) : undefined} />
-            <Kpi icon={Users} label={t('السوّاق', 'Drivers')} value={money(fleet?.drivers ?? 0)} href="/system/shipment-orders/fleet" />
-            <Kpi icon={Users} label={t('عملاء نشطون', 'Active customers')} value={money(T.customers)} href="/system/shipment-orders/customers"
-              sub={t(`${money(T.routes)} مسار`, `${money(T.routes)} routes`)} />
-            <Kpi icon={PackageSearch} label={t('الخاص بنا / المنصّة', 'Ours / platform')} value={`${money(P!.ours)} / ${money(P!.platform)}`}
-              href={listHref('source=system')} sub={t('مصدر الشحنات في الفترة', 'source of the period\'s loads')} />
+            <Ratio label={t('الموردون', 'Suppliers')} value={money(fleet?.suppliers ?? 0)} href="/system/shipment-orders/fleet" />
+            <Ratio label={t('شاحنات في السجل', 'Trucks on file')} value={money(fleet?.vehicles ?? 0)} href="/system/shipment-orders/fleet"
+              hint={fleet?.gaps?.unknown ? t(`${money(fleet.gaps.unknown)} مجهولة المالك`, `${money(fleet.gaps.unknown)} owner unknown`) : undefined} />
+            <Ratio label={t('السوّاق', 'Drivers')} value={money(fleet?.drivers ?? 0)} href="/system/shipment-orders/fleet" />
+            <Ratio label={t('الخاص بنا / المنصّة', 'Ours / platform')} value={`${money(P.ours)} / ${money(P.platform)}`} href={listHref('source=system')} />
+            <Ratio label={t('ملاحظات المتابعة', 'Follow-up notes')} value={money(P.followUpNotes)} tone="#0369a1" href={LIST}
+              hint={t(`على ${money(P.followUpShipments)} شحنة`, `on ${money(P.followUpShipments)} loads`)} />
+            <Ratio label={t('عملاء في الفترة', 'Customers served')} value={money(T.customers)} href="/system/shipment-orders/customers" />
           </div>
         </>
       )}
 
-      {/* ── آخرُ ما سُجِّل ──────────────────────────────────────────────────── */}
+      {/* Latest shipments */}
       <Panel title={t('آخر الشحنات', 'Latest shipments')} icon={TrendingUp}
         action={<Go href={LIST} className="text-[12px] text-[#f37121] hover:underline">{t('كل الشحنات', 'all')}</Go>}>
         <ul className="divide-y divide-slate-100 -my-2">
@@ -504,7 +762,7 @@ export default function ShipmentOrdersDashboardPage() {
         </ul>
       </Panel>
 
-      {/* ── تحليلُ تقرير الفروع (شيت مدير التشغيل) — مصدرٌ آخر، يُفتَح عند الطلب ── */}
+      {/* Branch report analysis (from the branch sheet, opened on demand) */}
       <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
         <button type="button" onClick={() => setShowBranch((v) => !v)}
           className="w-full flex items-center gap-2 px-4 py-3 text-start">

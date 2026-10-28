@@ -12,6 +12,7 @@ import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import '../ui/stat_grid.dart';
 import 'ops_analytics_panel.dart';
+import '../ui/ops_report_detail.dart' show opsPaymentChoices;
 import 'shipment_order_create.dart';
 import 'shipment_order_detail.dart';
 import 'shipment_orders.dart';
@@ -35,6 +36,7 @@ class ShipmentOrdersDashboardScreen extends StatefulWidget {
 const _periods = [('today', 'اليوم', 'Today'), ('7d', '7 أيام', '7 days'), ('month', 'الشهر', 'Month'), ('30d', '30 يومًا', '30 days'), ('year', 'السنة', 'Year')];
 const _prefKey = 'shipmentOrders.dashPeriod';
 const _navy = Color(0xFF12325C);
+const _orange = Color(0xFFF37121);
 
 class _ShipmentOrdersDashboardScreenState extends State<ShipmentOrdersDashboardScreen> {
   Map<String, dynamic>? _d;
@@ -154,6 +156,120 @@ class _ShipmentOrdersDashboardScreenState extends State<ShipmentOrdersDashboardS
           if (sub != null) Padding(padding: const EdgeInsets.only(top: 4), child: Text(sub, style: const TextStyle(fontSize: 11.5, color: T.inkFaint))),
         ])),
       );
+
+  /// One labelled bar: name, proportional bar, count and optional trailing value.
+  Widget _bar(String label, num n, num max, Color color, {String? trailing, Color? trailingColor}) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Row(children: [
+          SizedBox(width: 92, child: Text(label, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600), overflow: TextOverflow.ellipsis)),
+          Expanded(child: ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: LinearProgressIndicator(value: max > 0 ? (n / max).clamp(0, 1).toDouble() : 0, minHeight: 7,
+                backgroundColor: const Color(0xFFF1F5F9), valueColor: AlwaysStoppedAnimation(color)),
+          )),
+          const SizedBox(width: 8),
+          Text('$n', style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800)),
+          if (trailing != null) ...[
+            const SizedBox(width: 8),
+            SizedBox(width: 56, child: Text(trailing, textAlign: TextAlign.end,
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: trailingColor ?? T.inkSoft))),
+          ],
+        ]),
+      );
+
+  /// Shipment analytics for the period (server: period.insights).
+  List<Widget> _insights(Map<String, dynamic> p) {
+    final ins = Map<String, dynamic>.from(p['insights'] ?? {});
+    if (ins.isEmpty) return const [];
+    List<Map<String, dynamic>> rows(String k) => [for (final x in (ins[k] as List? ?? const [])) Map<String, dynamic>.from(x as Map)];
+    const bucketDefs = [
+      ('loss', 'خسارة', 'Loss', Color(0xFFDC2626)), ('0-10', '0–10%', '0–10%', Color(0xFFF59E0B)),
+      ('10-20', '10–20%', '10–20%', Color(0xFF84CC16)), ('20-30', '20–30%', '20–30%', Color(0xFF10B981)), ('30+', '+30%', '30%+', Color(0xFF047857)),
+    ];
+    final buckets = rows('marginBuckets');
+    final bucketMax = buckets.fold<num>(0, (a, b) => _n(b['n']) > a ? _n(b['n']) : a);
+    final payments = rows('byPayment');
+    final payMax = payments.fold<num>(0, (a, b) => _n(b['orders']) > a ? _n(b['orders']) : a);
+    String payLabel(String k) {
+      for (final c in opsPaymentChoices) { if (c.$1 == k) return tr(c.$2, c.$3); }
+      return k.isEmpty ? tr('غير محدد', 'Not set') : k;
+    }
+    const days = [('الأحد', 'Sun'), ('الاثنين', 'Mon'), ('الثلاثاء', 'Tue'), ('الأربعاء', 'Wed'), ('الخميس', 'Thu'), ('الجمعة', 'Fri'), ('السبت', 'Sat')];
+    final week = rows('byWeekday');
+    final weekMax = week.fold<num>(0, (a, b) => _n(b['orders']) > a ? _n(b['orders']) : a);
+    final dur = Map<String, dynamic>.from(ins['duration'] ?? {});
+    final durTrips = _n(dur['trips']);
+    final avgH = dur['avgHours'] == null ? null : _n(dur['avgHours']);
+    final conc = Map<String, dynamic>.from(ins['concentration'] ?? {});
+    final share = conc['top5Share'] == null ? null : _n(conc['top5Share']);
+    final trucks = rows('byTruckType');
+    final truckMax = trucks.fold<num>(0, (a, b) => _n(b['orders']) > a ? _n(b['orders']) : a);
+    final branches = rows('byBranch');
+    final branchMax = branches.fold<num>(0, (a, b) => _n(b['orders']) > a ? _n(b['orders']) : a);
+    Widget empty(String ar, String en) => Padding(padding: const EdgeInsets.all(8),
+        child: Text(tr(ar, en), textAlign: TextAlign.center, style: const TextStyle(color: T.inkFaint)));
+    return [
+      Padding(
+        padding: const EdgeInsets.only(top: 16, bottom: 2),
+        child: Row(children: [
+          const Icon(Icons.bar_chart_rounded, color: _navy),
+          const SizedBox(width: 6),
+          Text(tr('تحليلات الشحنات', 'Shipment analytics'), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900)),
+        ]),
+      ),
+      _section(tr('توزيع هامش الربح', 'Margin distribution'), Icons.layers_outlined, [
+        if (buckets.isEmpty) empty('لا شحنات مسعَّرة', 'no priced loads'),
+        for (final b in bucketDefs)
+          if (buckets.isNotEmpty)
+            _bar(tr(b.$2, b.$3), _n(buckets.firstWhere((x) => x['key'] == b.$1, orElse: () => const {'n': 0})['n']), bucketMax, b.$4),
+      ]),
+      _section(tr('نوع الدفع', 'Payment type'), Icons.credit_card_outlined, [
+        if (payments.isEmpty) empty('لا بيانات', 'no data'),
+        for (final r in payments) _bar(payLabel('${r['key'] ?? ''}'), _n(r['orders']), payMax, _navy),
+      ]),
+      _section(tr('تركّز العملاء', 'Customer concentration'), Icons.track_changes_outlined, [
+        if (share == null) empty('لا إيرادات', 'no revenue')
+        else ...[
+          Text('${share.round()}%', style: TextStyle(fontSize: 30, fontWeight: FontWeight.w900, color: share > 60 ? T.warn : _navy)),
+          Text(tr('من الإيرادات عند أكبر 5 عملاء (من ${conc['customers'] ?? 0} عميل)', 'of revenue from the top 5 customers (of ${conc['customers'] ?? 0})'),
+              style: const TextStyle(fontSize: 12, color: T.inkSoft)),
+          const SizedBox(height: 4),
+          Text(share > 60
+              ? tr('الإيرادات معتمدة على عدد قليل من العملاء.', 'Revenue depends on a few customers.')
+              : tr('الإيرادات موزّعة على قاعدة عملاء جيدة.', 'Revenue is well spread.'),
+              style: const TextStyle(fontSize: 12, color: T.inkFaint)),
+        ],
+      ]),
+      _section(tr('أيام الأسبوع', 'Days of the week'), Icons.calendar_month_outlined, [
+        for (var i = 0; i < 7; i++)
+          _bar(tr(days[i].$1, days[i].$2),
+              _n(week.firstWhere((x) => _n(x['day']) == i + 1, orElse: () => const {'orders': 0})['orders']), weekMax, _orange),
+      ]),
+      _section(tr('مدة الرحلة', 'Trip duration'), Icons.timer_outlined, [
+        if (durTrips == 0) empty('لا رحلات مكتملة التواريخ', 'no trips with both dates')
+        else ...[
+          Text(avgH != null && avgH >= 48 ? tr('${(avgH / 24).toStringAsFixed(1)} يوم في المتوسط', '${(avgH / 24).toStringAsFixed(1)} days on average')
+              : tr('${(avgH ?? 0).round()} ساعة في المتوسط', '${(avgH ?? 0).round()} hours on average'),
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: _navy)),
+          const SizedBox(height: 6),
+          for (final b in [for (final x in (dur['buckets'] as List? ?? const [])) Map<String, dynamic>.from(x as Map)])
+            _bar('${b['key']}', _n(b['n']), durTrips, const Color(0xFF0E7490)),
+        ],
+      ]),
+      _section(tr('أنواع الشاحنات', 'Truck types'), Icons.local_shipping_outlined, [
+        if (trucks.isEmpty) empty('لا بيانات', 'no data'),
+        for (final r in trucks)
+          _bar('${r['key'] ?? ''}'.isEmpty ? tr('غير محدد', 'Not set') : '${r['key']}', _n(r['orders']), truckMax, const Color(0xFF7C3AED),
+              trailing: _short(_n(r['margin'])), trailingColor: _n(r['margin']) >= 0 ? T.success : T.danger),
+      ]),
+      _section(tr('الفروع', 'Branches'), Icons.apartment_outlined, [
+        if (branches.isEmpty) empty('لا بيانات', 'no data'),
+        for (final r in branches)
+          _bar('${r['key'] ?? ''}'.isEmpty ? tr('غير محدد', 'Not set') : '${r['key']}', _n(r['orders']), branchMax, _navy,
+              trailing: _short(_n(r['margin'])), trailingColor: _n(r['margin']) >= 0 ? T.success : T.danger),
+      ]),
+    ];
+  }
 
   Widget _section(String title, IconData icon, List<Widget> children, {Widget? action}) => Padding(
         padding: const EdgeInsets.only(top: 12),
@@ -373,8 +489,10 @@ class _ShipmentOrdersDashboardScreenState extends State<ShipmentOrdersDashboardS
               _kpi(Icons.people_alt_outlined, tr('عملاء نشطون', 'Active customers'), soMoney(_n(t['customers'])), onTap: _openCustomers,
                   sub: tr('${t['routes']} مسار', '${t['routes']} routes')),
             ]),
+            ..._insights(p),
           ],
-          // ── آخرُ ما سُجِّل ──
+          // Latest shipments
+
           _section(tr('آخر الشحنات', 'Latest shipments'), Icons.history, [
             if (recent.isEmpty) Padding(padding: const EdgeInsets.all(12), child: Text(tr('لا شحنات بعد', 'nothing yet'), textAlign: TextAlign.center, style: const TextStyle(color: T.inkFaint))),
             // Material شفّاف: ListTile داخل بطاقةٍ ملوّنة يحتاج سطحًا يرسم عليه أثرَ الضغط.

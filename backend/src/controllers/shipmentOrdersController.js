@@ -1246,6 +1246,83 @@ async function dashExtras(from, to) {
   };
 }
 
+/**
+ * Deeper analytics for the dashboard period, in one aggregation.
+ * Money is counted on live (non-cancelled) shipments only.
+ */
+async function dashInsights(from, to) {
+  const match = { pickupTime: { $gte: startOfDay(from), $lte: endOfDay(to) } };
+  const live = { $ne: [{ $ifNull: ['$status', ''] }, 'cancelled'] };
+  const sell = { $ifNull: ['$sellPrice', 0] };
+  const buy = { $ifNull: ['$buyPrice', 0] };
+  const r2 = (v) => Math.round((Number(v) || 0) * 100) / 100;
+  const groupBy = (key, limit) => [
+    { $match: { $expr: live } },
+    { $group: { _id: { $ifNull: [key, ''] }, orders: { $sum: 1 }, sell: { $sum: sell }, margin: { $sum: { $subtract: [sell, buy] } } } },
+    { $sort: { orders: -1 } },
+    ...(limit ? [{ $limit: limit }] : []),
+  ];
+  const [f] = await ShipmentOrder.aggregate([
+    { $match: match },
+    { $facet: {
+      // Margin as a share of the selling price, per shipment that has a price.
+      marginBuckets: [
+        { $match: { $expr: { $and: [live, { $gt: [sell, 0] }] } } },
+        { $project: { pct: { $multiply: [{ $divide: [{ $subtract: [sell, buy] }, sell] }, 100] } } },
+        { $bucket: { groupBy: '$pct', boundaries: [-1e9, 0, 10, 20, 30, 1e9], default: 'other', output: { n: { $sum: 1 } } } },
+      ],
+      byWeekday: [
+        { $match: { $expr: live } },
+        { $group: {
+          _id: { $dayOfWeek: { date: '$pickupTime', timezone: 'Asia/Riyadh' } },
+          orders: { $sum: 1 }, margin: { $sum: { $subtract: [sell, buy] } },
+        } },
+        { $sort: { _id: 1 } },
+      ],
+      byPayment: groupBy('$paymentSubtype'),
+      byTruckType: groupBy('$truckType', 8),
+      byBranch: groupBy('$branch', 10),
+      // Pickup → arrival, for trips that have both and a sane duration (< 30 days).
+      duration: [
+        { $match: { $expr: { $and: [live, { $gt: ['$arrivalTime', '$pickupTime'] }] }, arrivalTime: { $ne: null } } },
+        { $project: { h: { $divide: [{ $subtract: ['$arrivalTime', '$pickupTime'] }, 3600000] } } },
+        { $match: { h: { $lt: 720 } } },
+        { $bucket: { groupBy: '$h', boundaries: [0, 12, 24, 48, 96, 720], default: 'other', output: { n: { $sum: 1 }, h: { $sum: '$h' } } } },
+      ],
+      byCustomer: [
+        { $match: { $expr: live } },
+        { $group: { _id: '$customerName', sell: { $sum: sell } } },
+        { $sort: { sell: -1 } },
+      ],
+    } },
+  ]);
+  const F = f || {};
+  const bucketLabel = { '-1000000000': 'loss', 0: '0-10', 10: '10-20', 20: '20-30', 30: '30+' };
+  const totalSell = (F.byCustomer || []).reduce((a, c) => a + (c.sell || 0), 0);
+  const top5 = (F.byCustomer || []).slice(0, 5).reduce((a, c) => a + (c.sell || 0), 0);
+  const durRows = (F.duration || []).filter((b) => b._id !== 'other');
+  const durN = durRows.reduce((a, b) => a + b.n, 0);
+  const durLabel = { 0: '<12h', 12: '12-24h', 24: '1-2d', 48: '2-4d', 96: '4d+' };
+  const rows = (list) => (list || []).map((x) => ({ key: x._id || '', orders: x.orders, sell: r2(x.sell), margin: r2(x.margin) }));
+  return {
+    marginBuckets: (F.marginBuckets || []).filter((b) => b._id !== 'other').map((b) => ({ key: bucketLabel[b._id] || String(b._id), n: b.n })),
+    // $dayOfWeek: 1 = Sunday … 7 = Saturday.
+    byWeekday: (F.byWeekday || []).map((d) => ({ day: d._id, orders: d.orders, margin: r2(d.margin) })),
+    byPayment: rows(F.byPayment),
+    byTruckType: rows(F.byTruckType),
+    byBranch: rows(F.byBranch),
+    duration: {
+      trips: durN,
+      avgHours: durN ? r2(durRows.reduce((a, b) => a + b.h, 0) / durN) : null,
+      buckets: durRows.map((b) => ({ key: durLabel[b._id] || String(b._id), n: b.n })),
+    },
+    concentration: {
+      customers: (F.byCustomer || []).length,
+      top5Share: totalSell > 0 ? r2((top5 / totalSell) * 100) : null,
+    },
+  };
+}
+
 exports.getDashboard = async (req, res) => {
   try {
     const now = new Date();
@@ -1266,7 +1343,7 @@ exports.getDashboard = async (req, res) => {
     // يأخذ فترتَه وحدَها، والقديمُ يُبنى لمن لا يرسلها فقط.
     const legacy = !req.query.period;
     const out = await cache.wrapStale(`so:dashboard:${monthFrom}:${todayFrom}:${period}:${legacy ? 'l' : 'p'}`, 60 * 1000, 10 * 60 * 1000, async () => {
-      const [month, today, fleet, recent, cur, prev, extras] = await Promise.all([
+      const [month, today, fleet, recent, cur, prev, extras, insights] = await Promise.all([
         legacy ? analyticsOf({ from: monthFrom }) : null,
         legacy ? analyticsOf({ from: todayFrom }) : null,
         registrySummary(),
@@ -1276,13 +1353,14 @@ exports.getDashboard = async (req, res) => {
         analyticsOf({ from: R.from, to: R.to }),
         dashTotals(R.prevFrom, R.prevTo),
         dashExtras(R.from, R.to),
+        dashInsights(R.from, R.to),
       ]);
       return {
-        // ‏`period`: ما تقرؤه اللوحةُ الجديدة (الويب والتطبيق). والباقي كما كان
-        // لنُسَخ التطبيق التي لم تُحدَّث بعد.
-        period: { key: period, ...R, cur, prev, ...extras },
+        // `period` is what the dashboard reads (web and app); the rest serves
+        // older app versions.
+        period: { key: period, ...R, cur, prev, ...extras, insights },
         month, today, fleet, recent,
-        // مسطّحةٌ للهاتف: بطاقاتُه تقرأ مسارًا نصيًّا واحدًا لكلّ رقم.
+        // Flat values for older mobile cards (one path per number).
         flat: !legacy ? undefined : {
           todayOrders: today.totals.orders,
           monthOrders: month.totals.orders,

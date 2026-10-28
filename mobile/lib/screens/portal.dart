@@ -7,6 +7,7 @@ import '../ui/export_sheet.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import 'portal_customer.dart';
+import 'customer_requests.dart';
 import '../ui/search_field.dart';
 import 'customs_detail.dart' show customsStageLabel;
 import 'package:printing/printing.dart';
@@ -162,6 +163,7 @@ class _PortalScreenState extends State<PortalScreen> {
         (tr('شحناتي', 'My shipments'), const CustomerShipmentsTab()),
         if (_services.contains('customs')) (tr('التخليص', 'Customs'), const _CustomsTab()),
         if (_services.contains('invoices')) (tr('الفواتير', 'Invoices'), const CustomerInvoicesTab()),
+        (tr('طلباتي', 'My requests'), const PortalRequestsTab()),
       ],
     ];
 

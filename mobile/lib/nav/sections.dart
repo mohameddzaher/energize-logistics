@@ -27,6 +27,7 @@ import '../screens/team_board.dart';
 import '../screens/remote_attendance.dart';
 import '../screens/hr_inbox.dart';
 import '../screens/hr_leave_register.dart';
+import '../screens/customer_requests.dart';
 import '../screens/staff_requests.dart';
 import '../screens/hr_forms.dart';
 import '../screens/party_links.dart';
@@ -249,6 +250,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         // توحيدُ نوع الدفع لكلّ عميل — بأدوار الويب (layout.tsx)؛ والكتابةُ تُفحص في الشاشة.
         if (const ['super_admin', 'it_manager', 'it_specialist', 'admin', 'employee', 'operations_manager', 'operations_staff', 'moderator', 'cfo', 'accounting_manager', 'accountant', 'collections_manager', 'collections_staff'].contains(role))
           AppPage('أنواع الدفع', 'Payment Types', Icons.payments_outlined, (c) => const OpsPaymentTypesScreen(), path: '/system/operations/payment-types'),
+        AppPage('التواصل مع العملاء', 'Customer Communication', Icons.forum_outlined, (c) => const CustomerRequestsScreen(), path: '/system/operations/customer-requests'),
         AppPage('الشكاوى', 'Complaints', Icons.report_outlined, (c) => const SectionWorkScreen(section: 'operations', complaints: true), path: '/system/operations/complaints'),
         AppPage('تقييم الأداء', 'KPIs', Icons.leaderboard_outlined, (c) => const TeamBoardScreen(section: 'Operations'), path: '/system/operations/kpis'),
         if (jpMember(role, 'operations')) AppPage('خطّة العمل (JP)', 'JP', Icons.event_available_outlined, (c) => const JpScreen(section: 'operations'), path: '/system/operations/jp'),

@@ -16,6 +16,7 @@ import {
   PackagePlus, ArrowRight, Check, Loader2, X, UserPlus, Truck,
   MapPin, Package, Clock3, Wallet, User as UserIcon, Building2,
   TrendingUp, TrendingDown, AlertCircle,
+  Lock,
 } from 'lucide-react';
 import { Spinner, PageHeader, Select, SearchableSelect, PrimaryButton, PhoneSA } from '@/components/hr/HRKit';
 import { ContactButtons } from '@/components/crm/CrmKit';
@@ -66,6 +67,16 @@ function CreateShipmentInner() {
   const router = useRouter();
   const params = useSearchParams();
   const editId = params?.get('id') || null;
+  // ── الفلوسُ بعد الحفظ لمن يسمح له الخادم (صاحبُ الشركة، ٢٠٢٦/١٠/٢٨) ───────
+  // عند الإنشاء يكتبها مَن ينشئ الشحنة؛ وفي التعديل تُقفَل لغير مديري النظام
+  // ومدير التشغيل. والقائمةُ من الخادم (MONEY_EDIT_ROLES) — لا تُكرَّر هنا.
+  const [moneyEdit, setMoneyEdit] = useState<{ fields: string[]; canEdit: boolean }>({ fields: [], canEdit: true });
+  useEffect(() => {
+    api.get<{ fields: string[]; canEdit: boolean }>('/api/shipment-orders/money-editors')
+      .then((d) => setMoneyEdit({ fields: d.fields || [], canEdit: !!d.canEdit }))
+      .catch(() => {});
+  }, []);
+  const moneyLocked = (key: string) => !!editId && !moneyEdit.canEdit && moneyEdit.fields.includes(key);
   const { notify } = useDialog();
 
   const [fields, setFields] = useState<FormField[]>([]);
@@ -558,6 +569,18 @@ function CreateShipmentInner() {
     // ── طريقةُ الدفع تُقرأ ولا تُختار ──────────────────────────────────────
     // تتبع «نوع تأجير السائق»: راجعةٌ ⇒ آجل، وقدامٌ ⇒ كاش. فتُعرَض بما ترتّب
     // ومعها سببُه، ولا تُترك خانةً يُختار فيها ما يناقض النوع.
+    if (moneyLocked(f.key)) {
+      return (
+        <div key={f._id}>
+          <label className={labelCls}>{label}</label>
+          <div className={`${inputCls} flex items-center justify-between bg-slate-50 cursor-not-allowed`}
+            title={ar ? 'تعديل الأسعار بعد الحفظ لمدير النظام والإدارة ومدير التشغيل فقط' : 'Only system admins and the operations manager can change prices after saving'}>
+            <span className={v !== '' && v != null ? 'font-semibold text-slate-800 tabular-nums' : 'text-slate-400'}>{v !== '' && v != null ? Number(v).toLocaleString('en-US') : '—'}</span>
+            <span className="inline-flex items-center gap-1 text-[11px] text-slate-400"><Lock className="w-3 h-3" />{ar ? 'مقفول' : 'locked'}</span>
+          </div>
+        </div>
+      );
+    }
     if (f.key === 'paymentMethod') {
       const opt = (f.options || []).find((o) => o.key === v);
       return (

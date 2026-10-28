@@ -284,12 +284,23 @@ class _VehicleCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Plate, trailer type and status share one line. On a 320-wide phone or
+            // with large text they did not fit (overflow 7–18 px, QA layout test),
+            // so the trailer type gives way first, then the plate.
             Row(children: [
-              Text(card['plate'] ?? '', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+              Flexible(
+                child: Text(card['plate'] ?? '', maxLines: 1, overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+              ),
               const SizedBox(width: 8),
               if ((card['trailerType'] ?? '').toString().isNotEmpty)
-                Text(card['trailerType'], style: const TextStyle(fontSize: 12, color: T.inkSoft)),
-              const Spacer(),
+                Expanded(
+                  child: Text(card['trailerType'], maxLines: 1, overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 12, color: T.inkSoft)),
+                )
+              else
+                const Spacer(),
+              const SizedBox(width: 6),
               Chip2(tr(st.$1, st.$2), st.$3),
             ]),
             if (trip != null) ...[

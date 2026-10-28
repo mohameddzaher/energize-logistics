@@ -62,6 +62,17 @@ const rx = (s) => new RegExp(String(s).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\
 
 const fullName = (u) => (u ? `${u.firstName || ''} ${u.lastName || ''}`.trim() : '');
 
+// ── مَن يعدّل الفلوسَ بعد إنشاء الشحنة (صاحبُ الشركة، ٢٠٢٦/١٠/٢٨) ────────────
+// سعرُ البيع والشراء والسلفةُ وأجرةُ السائق تُكتب عند الإنشاء ممّن ينشئ الشحنة،
+// ثمّ لا يغيّرها إلّا مديرو النظام ومديرُ التشغيل. ودورٌ آخرُ سيُضاف هنا حين
+// يُطلب — سطرٌ واحد، والشاشتان (الموقع والهاتف) تقرآن القائمةَ نفسَها من
+// /api/shipment-orders/money-editors.
+const MONEY_FIELDS = ['sellPrice', 'buyPrice', 'advanceAmount', 'driverRentPrice'];
+const MONEY_EDIT_ROLES = ['super_admin', 'admin', 'operations_manager'];
+const canEditMoney = (user) => !!user && MONEY_EDIT_ROLES.includes(user.role);
+exports.MONEY_FIELDS = MONEY_FIELDS;
+exports.MONEY_EDIT_ROLES = MONEY_EDIT_ROLES;
+
 const ORDER_EDITABLE = [
   'fromCity', 'toCity', 'addressFrom', 'addressTo',
   'truckType', 'cargoType', 'truckLength', 'quantity',
@@ -794,12 +805,30 @@ exports.getOrder = async (req, res) => {
   }
 };
 
+/** مَن يعدّل الفلوسَ بعد الحفظ — تقرؤه شاشتا الإنشاء/التعديل (الموقع والهاتف). */
+exports.moneyEditors = (req, res) => res.json({ fields: MONEY_FIELDS, roles: MONEY_EDIT_ROLES, canEdit: canEditMoney(req.user) });
+
 exports.updateOrder = async (req, res) => {
   try {
     const order = await ShipmentOrder.findById(req.params.id);
     if (!order) return res.status(404).json({ message: 'Shipment order not found' });
 
     const data = pick(req.body, ORDER_EDITABLE);
+
+    // ── الفلوسُ بعد الإنشاء لمن في MONEY_EDIT_ROLES وحدَه ───────────────────
+    // النموذجُ يرسل كلَّ حقوله، فلا يُرفَض إلّا ما تغيّر فعلًا: قيمةٌ تساوي
+    // المحفوظ (أو فراغٌ يساوي فراغًا) تمرّ.
+    if (!canEditMoney(req.user)) {
+      const num = (v) => (v === '' || v === null || v === undefined ? null : Number(v));
+      const changed = MONEY_FIELDS.filter((f) => f in data && num(data[f]) !== num(order[f]));
+      if (changed.length) {
+        return res.status(403).json({
+          message: 'أسعارُ الشحنة (البيع والشراء والسلفة وأجرة السائق) لا يعدّلها بعد الحفظ إلّا مديرُ النظام والإدارة ومديرُ التشغيل',
+          code: 'MONEY_LOCKED', fields: changed,
+        });
+      }
+      for (const f of MONEY_FIELDS) delete data[f];
+    }
     try { applyPaymentSubtype(data); } catch (e) { return res.status(400).json({ message: e.message }); }
 
     // An edit can introduce a first-time customer or a fresh truck exactly like

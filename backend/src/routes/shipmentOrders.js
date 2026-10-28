@@ -29,6 +29,7 @@ router.post('/orders', authorize(...EDIT_ROLES), so.createOrder);
 // الحمولةُ الواحدة على عدّةِ شاحنات — كلُّ شاحنةٍ طلبٌ مستقلٌّ برقم بوليصته.
 // تُسجَّل قبل `/orders/:id` كي لا يبتلعها المسارُ ذو المعامل.
 router.post('/orders/batch', authorize(...EDIT_ROLES), so.createOrdersBatch);
+router.get('/money-editors', so.moneyEditors);
 router.put('/orders/:id', authorize(...EDIT_ROLES), so.updateOrder);
 router.patch('/orders/:id/status', authorize(...EDIT_ROLES), so.patchStatus); // inline from the list
 router.post('/orders/:id/note', authorize(...EDIT_ROLES), so.addNote); // ملاحظةُ متابعةٍ بلا تغيير حالة

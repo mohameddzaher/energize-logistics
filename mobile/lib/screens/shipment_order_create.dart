@@ -84,6 +84,22 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
   final Set<String> _missing = {};
 
   bool get _editing => widget.order != null;
+  // ── الفلوسُ بعد الحفظ لمن يسمح له الخادم (صاحبُ الشركة، ٢٠٢٦/١٠/٢٨) ───────
+  // عند الإنشاء يكتبها مَن ينشئ الشحنة؛ وفي التعديل تُقفَل لغير مديري النظام
+  // ومدير التشغيل. القائمةُ من الخادم (/money-editors) — نظيرُ الموقع.
+  List<String> _moneyFields = const [];
+  bool _canEditMoney = true;
+  bool _moneyLocked(String k) => _editing && !_canEditMoney && _moneyFields.contains(k);
+  Future<void> _loadMoneyEditors() async {
+    try {
+      final d = await Api.instance.get('/api/shipment-orders/money-editors');
+      if (!mounted || d is! Map) return;
+      setState(() {
+        _moneyFields = [for (final x in (d['fields'] as List? ?? const [])) '$x'];
+        _canEditMoney = d['canEdit'] == true;
+      });
+    } catch (_) {}
+  }
 
   // ── وخيارٌ يضيفه زميلٌ يظهر هنا بلا إعادة فتح (`shipmentOrders:fields`) ──
   late final void Function() _onFields = _reloadFields;
@@ -95,6 +111,7 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
   void initState() {
     super.initState();
     _load().then((_) => _loadDrivers());
+    _loadMoneyEditors();
     Live.instance.on('shipmentOrders:fields', _onFields);
   }
 
@@ -717,6 +734,16 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
       enabledBorder: miss ? OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: T.danger)) : null,
     );
     final type = (f['inputType'] ?? 'text').toString();
+
+    if (_moneyLocked(k)) {
+      final v = _form[k];
+      final n = v == null || '$v'.isEmpty ? null : num.tryParse('$v');
+      return InputDecorator(
+        decoration: InputDecoration(labelText: label, suffixIcon: const Icon(Icons.lock_outline, size: 18), helperText: tr('التعديل لمدير النظام والإدارة ومدير التشغيل فقط', 'Only admins and the operations manager can change it')),
+        child: Text(n == null ? '—' : (n == n.roundToDouble() ? n.toInt().toString() : n.toStringAsFixed(2)),
+            style: const TextStyle(fontWeight: FontWeight.w700, color: T.ink)),
+      );
+    }
 
     // ── طريقةُ الدفع تُقرأ ولا تُختار ────────────────────────────────────────
     // تتبع «نوع تأجير السائق»: راجعةٌ ⇒ آجل، وقدامٌ ⇒ كاش — والقاعدةُ على

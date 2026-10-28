@@ -132,8 +132,19 @@ const ROLE_FIELD_ACCESS = {
   it_manager: ALL_FIELDS,
   it_specialist: ALL_FIELDS,
 };
+// ── وسعرُ الشراء لمن يرى سعرَ البيع وحدَه (صاحبُ الشركة، ٢٠٢٦/١٠/٢٨) ────────
+// «اللي بيظهرله سعر البيع يقدر يعدّل في الاتنين، وغيرهم لا». فمَن ليس في
+// SELLING_ROLES لا يكتب `purchaseValue` (يراه ولا يعدّله) — في الخريطة هنا،
+// وفي حقول الأدوار المصنوعة (fieldsForRole)، والشاشةُ تقرأ الخريطةَ نفسَها.
+const PURCHASE_FIELDS = ['purchaseValue'];
+for (const [r, f] of Object.entries(ROLE_FIELD_ACCESS)) {
+  if (!SELLING_ROLES.includes(r)) ROLE_FIELD_ACCESS[r] = f.filter((x) => !PURCHASE_FIELDS.includes(x));
+}
 // الخريطةُ والقائمةُ تقولان شيئًا واحدًا — يُفحص عند التحميل كي لا تفترقا.
 for (const [r, f] of Object.entries(ROLE_FIELD_ACCESS)) {
+  if (PURCHASE_FIELDS.some((x) => f.includes(x)) && !SELLING_ROLES.includes(r)) {
+    throw new Error(`[workflow] سعرُ الشراء: ${r} يكتبه وليس في SELLING_ROLES`);
+  }
   if (f.includes('sellingValue') !== SELLING_ROLES.includes(r)) {
     throw new Error(`[workflow] قيمةُ البيع: ${r} في الخريطة غيرُه في SELLING_ROLES`);
   }
@@ -185,6 +196,8 @@ const fieldsForRole = async (role) => {
       // وقيمةُ البيع لا تُورَّث: قائمتُها أدوارٌ بأسمائها (SELLING_ROLES)، والدورُ
       // المصنوعُ لا يراها في القائمة فلا يكتبها.
       for (const f of SELLING_FIELDS) out.delete(f);
+      // وسعرُ الشراء معها: لا يكتبه إلّا مَن يرى سعرَ البيع (PURCHASE_FIELDS).
+      for (const f of PURCHASE_FIELDS) out.delete(f);
       return [...out];
     } catch (e) {
       // تعذّرُ القراءة لا يفتح شيئًا: بلا حقولٍ حتى يُعرف الجواب.

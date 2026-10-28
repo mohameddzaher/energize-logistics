@@ -486,6 +486,7 @@
         "/api/shipment-orders/customers",
         "/api/shipment-orders/drivers",
         "/api/shipment-orders/fields",
+        "/api/shipment-orders/money-editors",
         "/api/shipment-orders/orders",
         "/api/shipment-orders/orders/batch",
         "/api/shipment-orders/orders/filter-options",

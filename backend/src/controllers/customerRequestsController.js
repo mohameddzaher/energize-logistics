@@ -183,7 +183,8 @@ exports.mailboxes = async (req, res) => {
   try {
     const CompanyEmail = require('../models/CompanyEmail');
     const rows = await CompanyEmail.find({ passwordEnc: { $nin: [null, ''] } }).select('email displayName').sort({ email: 1 }).lean();
-    const preferred = S(process.env.CUSTOMER_REQUESTS_MAILBOX).toLowerCase();
+    // Replies to customers go out from operation@ unless configured otherwise (owner's choice).
+    const preferred = (S(process.env.CUSTOMER_REQUESTS_MAILBOX) || 'operation@energize-logistics.com').toLowerCase();
     res.json({ mailboxes: rows.map((m) => ({ email: m.email, name: m.displayName || '' })), preferred });
   } catch (e) { res.status(500).json({ message: 'تعذّر تحميل صناديق البريد' }); }
 };

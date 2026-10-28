@@ -42,7 +42,7 @@ const _barFields = [
   ('carOwner', 'مالك السيارة', 'Car owner', false),
   ('truckType', 'نوع الشاحنة', 'Truck type', false),
   ('payingBranch', 'الفرع المسدِّد', 'Paying branch', false),
-  ('invoiceState', 'رقم الفاتورة', 'Invoice number', true),
+  ('invoiceState', 'رقم الفاتورة', 'Invoice number', false),
   ('customsRef', 'التخليص', 'Customs', false),
 ];
 
@@ -64,8 +64,8 @@ const _colFields = [
   ('documentNumber', 'رقم السند', 'Voucher no.', false),
   ('sendingDate', 'تاريخ الإرسال', 'Sending date', false),
   ('branchDeliveryDate', 'تاريخ التسليم للفرع', 'Delivered to branch', false),
-  ('accountingReview', 'مراجعة المحاسبة', 'Accounting review', true),
-  ('invoiceNumber', 'رقم الفاتورة', 'Invoice #', true),
+  ('accountingReview', 'مراجعة المحاسبة', 'Accounting review', false),
+  ('invoiceNumber', 'رقم الفاتورة', 'Invoice #', false),
   ('netInvoice', 'صافي الفاتورة', 'Net invoice', true),
   ('tax', 'الضريبة', 'Tax', true),
   ('totalInvoice', 'إجمالي الفاتورة', 'Total invoice', true),
@@ -79,7 +79,7 @@ const _dateFields = {'reportDate', 'paymentDate', 'sendingDate', 'branchDelivery
 const _numFields = {'purchaseValue', 'sellingValue', 'netInvoice', 'tax', 'totalInvoice', 'paymentAmount', 'collectedAmount'};
 
 /// أعمدةُ تصدير الصفحة — مكتوبةٌ لا مشتقّة، وأعمدةُ المال تُحذف لمن لا يملكها.
-const _moneyExportKeys = {'accountingReview', 'invoiceNumber', 'netInvoice', 'tax', 'totalInvoice', 'invoiceDate', 'invoiceNotes', 'collectionDate'};
+const _moneyExportKeys = {'netInvoice', 'tax', 'totalInvoice', 'invoiceDate', 'invoiceNotes', 'collectionDate'};
 const _exportCols = [
   ('reportNumber', 'رقم الطلب', 'Report #'), ('reportDate', 'تاريخ الطلب', 'Report date'), ('fromLocation', 'من', 'From'),
   ('toLocation', 'إلى', 'To'), ('branch', 'الفرع', 'Branch'), ('carOwner', 'مالك السيارة', 'Car owner'),
@@ -142,10 +142,13 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
   bool _has(String f) => _myFields?.contains(f) ?? false;
   bool get _canCreate => _full || _role == 'moderator';
   bool get _canDelete => _full;
-  bool get _canViewFinancials => _full || _has('invoiceNumber') || _has('totalInvoice');
+  // Invoice amounts (net invoice onward): the server decides who sees them.
+  bool _seesAmounts = false;
+  bool _seesSelling = false;
+  bool get _canViewFinancials => _full || _seesAmounts;
   bool get _canEditOpsReview => _full || _has('operationsReview');
   bool get _canEditAccReview => _full || _has('accountingReview');
-  bool get _canSeeSelling => _has('sellingValue');
+  bool get _canSeeSelling => _has('sellingValue') || _seesSelling;
   bool _owns(String f) => _myFields == null || _full || _myFields!.contains(f);
 
   @override
@@ -203,8 +206,11 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
     Api.instance.get('/api/workflows/permissions').then((d) {
       if (!mounted) return;
       final list = (d is Map ? (d['myFields'] ?? (d['roleAccess'] is Map ? d['roleAccess'][_role] : null)) : null) as List?;
+      final view = d is Map && d['view'] is Map ? d['view'] as Map : const {};
       setState(() {
         _myFields = Set<String>.from((list ?? const []).map((e) => '$e'));
+        _seesAmounts = view['amounts'] == true;
+        _seesSelling = view['selling'] == true;
       });
     }).catchError((_) { if (mounted) setState(() => _myFields = <String>{}); });
   }
@@ -1052,8 +1058,8 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
                     if (_canSeeSelling && w['sellingValue'] != null && w['sellingValue'] != 0) Chip2('${tr('بيع', 'sell')} ${opsMoney(w['sellingValue'])}', T.success),
                     if ((w['paymentDate'] ?? '').toString().isNotEmpty) Chip2('${tr('سداد', 'paid')} ${opsDate(w['paymentDate'])}', T.violet, icon: Icons.event_available),
                     if ((w['operationsReview'] ?? '').toString().isNotEmpty) Chip2(tr('مراجعة التشغيل ✓', 'Ops ✓'), T.warn),
-                    if (_canViewFinancials && (w['accountingReview'] ?? '').toString().isNotEmpty) Chip2(tr('مراجعة المحاسبة ✓', 'Acc ✓'), T.violet),
-                    if (_canViewFinancials && (w['invoiceNumber'] ?? '').toString().isNotEmpty) Chip2('${tr('فاتورة', 'inv')} ${w['invoiceNumber']}', T.success),
+                    if ((w['accountingReview'] ?? '').toString().isNotEmpty) Chip2(tr('مراجعة المحاسبة ✓', 'Acc ✓'), T.violet),
+                    if ((w['invoiceNumber'] ?? '').toString().isNotEmpty) Chip2('${tr('فاتورة', 'inv')} ${w['invoiceNumber']}', T.success),
                     if (customsIdOf(w['customsLink']).isNotEmpty) CustomsLinkChip(w['customsLink'], compact: true),
                   ]),
                 ]),

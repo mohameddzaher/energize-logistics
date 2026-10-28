@@ -12,7 +12,9 @@ const authorize = require('../middleware/rbac');
 // the ShipmentOrder model header.
 const EDIT_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_staff', 'moderator',
   // فريقُ القسم نفسُه — كان يعدّل بمنح القسم وحدَه؛ صار صريحًا، ومعه «المتابعة».
-  'shipment_orders_manager', 'shipment_orders_staff', 'shipment_orders_followup'];
+  'shipment_orders_manager', 'shipment_orders_staff', 'shipment_orders_followup',
+  // The data team creates and corrects shipments too.
+  ...require('../config/roles').DATA_ROLES];
 const ADMIN_ROLES = ['super_admin', 'admin', 'it_manager', 'operations_manager'];
 
 router.use(authenticate);

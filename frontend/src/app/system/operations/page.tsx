@@ -130,8 +130,7 @@ const NUM_FIELDS = new Set(['purchaseValue', 'sellingValue', 'netInvoice', 'tax'
 // في القائمة يُخرج ثمانيةَ أعمدةٍ فارغةٍ بعناوينها — وعمودٌ فارغٌ بعنوانٍ
 // يُقرأ «لا فاتورة لهذا الكشف»، وهو غيرُ «لا تُعرض لك».
 const MONEY_EXPORT_KEYS = new Set([
-  'accountingReview', 'invoiceNumber', 'netInvoice', 'tax', 'totalInvoice',
-  'invoiceDate', 'invoiceNotes', 'collectionDate',
+  'netInvoice', 'tax', 'totalInvoice', 'invoiceDate', 'invoiceNotes', 'collectionDate',
 ]);
 const EXPORT_COLUMNS = [
   { header: 'رقم الطلب', key: 'reportNumber', width: 14 },
@@ -187,7 +186,7 @@ const BAR_FIELDS: (FilterBarField & { money?: boolean })[] = [
   { key: 'carOwner', ar: 'مالك السيارة', en: 'Car owner' },
   { key: 'truckType', ar: 'نوع الشاحنة', en: 'Truck type' },
   { key: 'payingBranch', ar: 'الفرع المسدِّد', en: 'Paying branch' },
-  { key: 'invoiceState', ar: 'رقم الفاتورة', en: 'Invoice number', money: true },
+  { key: 'invoiceState', ar: 'رقم الفاتورة', en: 'Invoice number' },
   // معاملةُ التخليص: أرقامُ المعاملات، و«(فارغ)» = غيرُ مرتبط.
   { key: 'customsRef', ar: 'التخليص', en: 'Customs' },
 ];
@@ -380,14 +379,16 @@ export default function OperationsWorkflowPage() {
   // يفلتر بها الخادمُ ما يُحفظ. فلا يظهر عمودٌ لا يملكه أحد، ولا يُخفى عمودٌ
   // يكتب فيه — وأيُّ دورٍ جديدٍ يأخذ حقولَه من أوّل يومٍ بلا سطرٍ يُضاف هنا.
   const [myFields, setMyFields] = useState<Set<string> | null>(null);
+  // What this reader may see (server-decided), independent of what it may write.
+  const [view, setView] = useState<{ amounts?: boolean; selling?: boolean }>({});
   useEffect(() => {
     if (!role) return;
     let alive = true;
     // `myFields` حقولُ هذا القارئ كما حسبها الخادم — وهي وحدَها التي تعرف
     // الدورَ المصنوعَ من شاشة الصلاحيّات (لا مفتاحَ له في `roleAccess`).
     // و`roleAccess` تبقى احتياطًا لنسخةِ خادمٍ أقدم.
-    api.get<{ roleAccess: Record<string, string[]>; myFields?: string[] }>('/api/workflows/permissions')
-      .then((d) => { if (alive) setMyFields(new Set(d?.myFields || d?.roleAccess?.[role] || [])); })
+    api.get<{ roleAccess: Record<string, string[]>; myFields?: string[]; view?: { amounts?: boolean; selling?: boolean } }>('/api/workflows/permissions')
+      .then((d) => { if (alive) { setMyFields(new Set(d?.myFields || d?.roleAccess?.[role] || [])); setView(d?.view || {}); } })
       // تعذّرُ القراءة لا يفتح شيئًا: مجموعةٌ فارغةٌ تعني «لا حقول» فتبقى
       // الأعمدةُ الماليّةُ مخفيّةً حتى يُعرف الجواب.
       .catch(() => { if (alive) setMyFields(new Set()); });
@@ -395,15 +396,14 @@ export default function OperationsWorkflowPage() {
   }, [role]);
   const has = (f: string) => !!myFields?.has(f);
 
-  // الأعمدةُ الماليّة (رقمُ الفاتورة وصافيها وضريبتها وإجماليها وتواريخُها):
-  // تُعرض لمن يملك الكتابةَ فيها. و`super_admin` يرى كلَّ شيءٍ دائمًا.
-  const canViewFinancials = full || has('invoiceNumber') || has('totalInvoice');
+  // Invoice amounts (net invoice onward): finance, collections and top roles only — the server decides.
+  const canViewFinancials = full || !!view.amounts;
   const canEditAccountingReview = full || has('accountingReview');
   const canEditOperationsReview = full || has('operationsReview');
   // ── قيمةُ البيع: لمن في قائمتها وحدَه ─────────────────────────────────────
   // الخادمُ لا يرسلها لغيرهم أصلًا ولا يقبل كتابتَها منهم؛ والعمودُ يُخفى معها
   // كي لا يُقرأ فراغُه «لا سعرَ لهذا الكشف».
-  const canSeeSelling = has('sellingValue');
+  const canSeeSelling = has('sellingValue') || !!view.selling;
 
   // Aggregates over the WHOLE matching dataset (all ~27k rows, not one page).
   const [stats, setStats] = useState<{
@@ -1654,9 +1654,9 @@ export default function OperationsWorkflowPage() {
                 {ColHead('branchDeliveryDate', T.thBranchDeliveryDate, 'text-purple-300')}
                 {/* مراجعةُ الحسابات إقرارُ المحاسبة، فمكانُها مع أعمدة المال لا مع
                     تسجيل السداد — ومَن لا يراها لا تصله من الخادم أصلًا. */}
-                {canViewFinancials && ColHead('accountingReview', T.thAccountingReview, 'text-purple-300')}
+                {ColHead('accountingReview', T.thAccountingReview, 'text-purple-300')}
                 {/* Collections — financial columns, finance/owner roles only */}
-                {canViewFinancials && ColHead('invoiceNumber', T.thInvoiceNumber, 'text-green-400')}
+                {ColHead('invoiceNumber', T.thInvoiceNumber, 'text-green-400')}
                 {canViewFinancials && ColHead('netInvoice', T.thNetInvoice, 'text-green-400')}
                 {canViewFinancials && ColHead('tax', T.thTax, 'text-green-400')}
                 {canViewFinancials && ColHead('totalInvoice', T.thTotalInvoice, 'text-green-400')}
@@ -2015,9 +2015,9 @@ export default function OperationsWorkflowPage() {
                         </td>
                         {dateCell('sendingDate', 'text-purple-700')}
                         {dateCell('branchDeliveryDate', 'text-purple-700')}
-                        {canViewFinancials && accountingReviewCell()}
-                        {/* Collections — financial, finance/owner roles only */}
-                        {canViewFinancials && textCell('invoiceNumber', 'text-green-700')}
+                        {accountingReviewCell()}
+                        {textCell('invoiceNumber', 'text-green-700')}
+                        {/* Invoice amounts — finance, collections and top roles only */}
                         {canViewFinancials && numCell('netInvoice', 'text-green-700')}
                         {canViewFinancials && numCell('tax', 'text-green-700')}
                         {canViewFinancials && numCell('totalInvoice', 'text-green-700')}

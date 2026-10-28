@@ -88,6 +88,7 @@ const STAGE_CONFIG: Record<string, { label: string; color: string; bg: string }>
 
 // الحقولُ بمجموعاتها في lib/workflowFields — تقرؤها صفحةُ معاملة التخليص أيضًا.
 const SECTIONS = WORKFLOW_SECTIONS;
+const AMOUNT_KEYS = new Set(['netInvoice', 'tax', 'totalInvoice', 'invoiceDate', 'invoiceNotes', 'collectedAmount', 'collectionDate']);
 
 /**
  * ── ما يحقُّ لهذا المستخدمِ تعديلُه يقولُه الخادم ───────────────────────────
@@ -136,12 +137,14 @@ export default function WorkflowDetailPage() {
   const [myFields, setMyFields] = useState<Set<string> | null>(null);
   // ربطُ الكشف بمعاملة تخليص — يقوله الخادم (canLinkCustoms) ويفحصه ثانيةً عند الحفظ.
   const [canLinkCustoms, setCanLinkCustoms] = useState(false);
+  // Invoice amounts (net invoice onward) are hidden unless the server says this reader sees them.
+  const [seesAmounts, setSeesAmounts] = useState(false);
   useEffect(() => {
     if (!role) return;
-    if (['super_admin', 'admin'].includes(role || '')) { setMyFields(null); setCanLinkCustoms(true); return; }
+    if (['super_admin', 'admin'].includes(role || '')) { setMyFields(null); setCanLinkCustoms(true); setSeesAmounts(true); return; }
     let alive = true;
-    api.get<{ roleAccess?: Record<string, string[]>; myFields?: string[]; canLinkCustoms?: boolean }>('/api/workflows/permissions')
-      .then((d) => { if (alive) { setMyFields(new Set(d?.myFields || d?.roleAccess?.[role] || [])); setCanLinkCustoms(!!d?.canLinkCustoms); } })
+    api.get<{ roleAccess?: Record<string, string[]>; myFields?: string[]; canLinkCustoms?: boolean; view?: { amounts?: boolean } }>('/api/workflows/permissions')
+      .then((d) => { if (alive) { setMyFields(new Set(d?.myFields || d?.roleAccess?.[role] || [])); setCanLinkCustoms(!!d?.canLinkCustoms); setSeesAmounts(!!d?.view?.amounts); } })
       .catch(() => { if (alive) setMyFields(new Set()); });
     return () => { alive = false; };
   }, [role]);
@@ -470,7 +473,8 @@ export default function WorkflowDetailPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {/* قيمةُ البيع لمن في قائمتها وحدَه — الخادمُ لا يرسلها لغيره، فخانتُها
                     الفارغةُ كانت تُقرأ «لا سعر». راجع SELLING_ROLES في workflowController. */}
-                {section.fields.filter((f) => f.key !== 'sellingValue' ||['super_admin', 'admin'].includes(role || '') || !!myFields?.has('sellingValue')).map((field) => {
+                {section.fields.filter((f) => (f.key !== 'sellingValue' || ['super_admin', 'admin'].includes(role || '') || !!myFields?.has('sellingValue'))
+                  && (seesAmounts || !AMOUNT_KEYS.has(f.key))).map((field) => {
                   const val = formData[field.key];
                   // حقلًا حقلًا: قد يُعدِّل المستخدمُ بعضَ مجموعةٍ لا كلَّها.
                   const editable = editing && canEditField(field.key);

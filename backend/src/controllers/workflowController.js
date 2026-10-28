@@ -77,8 +77,14 @@ const OPS_FIELDS = [
   ...FIELD_GROUPS.application, ...FIELD_GROUPS.operations,
   ...FIELD_GROUPS.manual_moderator,
 ];
-// أعمدةُ المال: الفاتورةُ والتحصيلُ ومراجعةُ الحسابات.
+// Money columns: invoice, collection and accounting review.
 const MONEY_FIELDS = [...FIELD_GROUPS.collections, ...FIELD_GROUPS.accounting];
+// From the net invoice onward: seen (and written) only by finance, collections and top roles.
+// Invoice number and accounting review stay visible to every workflow reader.
+const AMOUNT_FIELDS = ['netInvoice', 'tax', 'totalInvoice', 'invoiceDate', 'invoiceNotes', 'collectedAmount', 'collectionDate'];
+const MONEY_VIEW_ROLES = [
+  'super_admin', 'admin', 'cfo', 'accounting_manager', 'accountant', 'collections_manager', 'collections_staff',
+];
 // الكشفُ كلُّه — لمن لا حاجزَ عليه (عدا قيمة البيع: لها قائمتُها أدناه).
 const ALL_FIELDS = [...OPS_FIELDS, ...MONEY_FIELDS];
 const SELLING_FIELDS = FIELD_GROUPS.selling;
@@ -140,10 +146,17 @@ const PURCHASE_FIELDS = ['purchaseValue'];
 for (const [r, f] of Object.entries(ROLE_FIELD_ACCESS)) {
   if (!SELLING_ROLES.includes(r)) ROLE_FIELD_ACCESS[r] = f.filter((x) => !PURCHASE_FIELDS.includes(x));
 }
+// Invoice amounts are written only by the roles that may see them.
+for (const [r, f] of Object.entries(ROLE_FIELD_ACCESS)) {
+  if (!MONEY_VIEW_ROLES.includes(r)) ROLE_FIELD_ACCESS[r] = ROLE_FIELD_ACCESS[r].filter((x) => !AMOUNT_FIELDS.includes(x));
+}
 // الخريطةُ والقائمةُ تقولان شيئًا واحدًا — يُفحص عند التحميل كي لا تفترقا.
 for (const [r, f] of Object.entries(ROLE_FIELD_ACCESS)) {
   if (PURCHASE_FIELDS.some((x) => f.includes(x)) && !SELLING_ROLES.includes(r)) {
     throw new Error(`[workflow] سعرُ الشراء: ${r} يكتبه وليس في SELLING_ROLES`);
+  }
+  if (AMOUNT_FIELDS.some((x) => f.includes(x)) && !MONEY_VIEW_ROLES.includes(r)) {
+    throw new Error(`[workflow] invoice amounts: ${r} writes them but is not in MONEY_VIEW_ROLES`);
   }
   if (f.includes('sellingValue') !== SELLING_ROLES.includes(r)) {
     throw new Error(`[workflow] قيمةُ البيع: ${r} في الخريطة غيرُه في SELLING_ROLES`);
@@ -198,6 +211,7 @@ const fieldsForRole = async (role) => {
       for (const f of SELLING_FIELDS) out.delete(f);
       // وسعرُ الشراء معها: لا يكتبه إلّا مَن يرى سعرَ البيع (PURCHASE_FIELDS).
       for (const f of PURCHASE_FIELDS) out.delete(f);
+      for (const f of AMOUNT_FIELDS) out.delete(f);
       return [...out];
     } catch (e) {
       // تعذّرُ القراءة لا يفتح شيئًا: بلا حقولٍ حتى يُعرف الجواب.
@@ -207,16 +221,14 @@ const fieldsForRole = async (role) => {
   });
 };
 
-const canSeeMoney = (role) => {
-  const f = ROLE_FIELD_ACCESS[role] || [];
-  return MONEY_FIELDS.some((x) => f.includes(x));
-};
+/** May this role see invoice amounts (net invoice onward)? A named list, like SELLING_ROLES. */
+const canSeeMoney = (role) => MONEY_VIEW_ROLES.includes(role);
 
 /** يُزيل أعمدةَ المال من مستندٍ (أو مصفوفةٍ منها) لمن لا يملكها. */
 const stripMoney = (doc) => {
   if (!doc) return doc;
   const plain = typeof doc.toObject === 'function' ? doc.toObject() : { ...doc };
-  for (const f of MONEY_FIELDS) delete plain[f];
+  for (const f of AMOUNT_FIELDS) delete plain[f];
   return plain;
 };
 const stripMoneyFor = (role, docs) => {
@@ -766,7 +778,7 @@ function columnFilters(query, skipField, allowMoney = true, allowSelling = true)
     if (!FILTERABLE_COLUMNS.has(field) || field === skipField) continue;
     // والفلترةُ على عمودٍ محجوب تكشفه بالاستنتاج: «أرِني ما إجمالي فاتورته
     // كذا» جوابٌ عن قيمةٍ لا تُعرض. تُسقَط لمن لا يملكها.
-    if ((MONEY_FIELDS.includes(field) || field === 'invoiceState') && !allowMoney) continue;
+    if (AMOUNT_FIELDS.includes(field) && !allowMoney) continue;
     // وقيمةُ البيع كذلك لمن ليس في قائمتها.
     if (SELLING_FIELDS.includes(field) && !allowSelling) continue;
     const raw = Array.isArray(query[key]) ? query[key] : [query[key]];
@@ -1278,7 +1290,7 @@ exports.filterOptions = async (req, res) => {
     }
     // وقائمةُ قيمِ عمودٍ محجوبٍ تعرضه قيمةً قيمة: «اجمالى الفاتوره» تُقرأ من
     // قائمتها كما تُقرأ من الجدول. فتُمنع لمن لا يملكه.
-    if ((MONEY_FIELDS.includes(field) || field === 'invoiceState') && !canSeeMoney(req.user.role)) {
+    if (AMOUNT_FIELDS.includes(field) && !canSeeMoney(req.user.role)) {
       return res.status(403).json({ message: 'Insufficient permissions' });
     }
     if (SELLING_FIELDS.includes(field) && !canSeeSelling(req.user.role)) {
@@ -2611,7 +2623,7 @@ async function buildWorkflowWorkbook(filter, money, selling = true) {
       ['طريقة الدفع', (w) => PAYMENT_AR[w.paymentMethod] || w.paymentMethod || ''],
       ['العميل', (w) => w.username || ''],
       ['هاتف العميل', (w) => w.userPhone || ''],
-      ['قيمة الشراء', (w) => w.purchaseValue || 0, 'money'],
+      ['قيمة الشراء', (w) => w.purchaseValue || 0],
       ['قيمة البيع', (w) => w.sellingValue || 0, 'selling'],
       ['السائق', (w) => w.driverName || ''],
       ['نوع الشاحنة', (w) => w.truckType || ''],
@@ -2630,8 +2642,8 @@ async function buildWorkflowWorkbook(filter, money, selling = true) {
       ['تاريخ الإرسال', (w) => d(w.sendingDate)],
       ['تاريخ التسليم للفرع', (w) => d(w.branchDeliveryDate)],
       ['تاريخ التسليم للعميل', (w) => d(w.deliveryDate)],
-      ['مراجعة المحاسبة', (w) => yes(w.accountingReview), 'money'],
-      ['رقم الفاتورة', (w) => w.invoiceNumber || '', 'money'],
+      ['مراجعة المحاسبة', (w) => yes(w.accountingReview)],
+      ['رقم الفاتورة', (w) => w.invoiceNumber || ''],
       ['صافي الفاتورة', (w) => w.netInvoice || 0, 'money'],
       ['الضريبة', (w) => w.tax || 0, 'money'],
       ['إجمالي الفاتورة', (w) => w.totalInvoice || 0, 'money'],
@@ -2911,6 +2923,8 @@ exports.getFieldPermissions = async (req, res) => {
     groups: FIELD_GROUPS,
     roleAccess: ROLE_FIELD_ACCESS,
     myFields: await fieldsForRole(req.user.role),
+    // What this reader may see, independent of what it may write.
+    view: { amounts: canSeeMoney(req.user.role), selling: canSeeSelling(req.user.role) },
     // زرُّ «ربط بمعاملة تخليص» يُعرض لمن يملكه — والخادمُ يفحصه ثانيةً.
     canLinkCustoms: await canLinkCustoms(req.user.role),
   });
@@ -2925,6 +2939,8 @@ module.exports.primeRelatedSearch = primeRelatedSearch;
 // وحجبُ أعمدة المال واحدٌ أيضًا: الصفحةُ الخاصّة تعرض أعمدةَ الكشف كلَّها،
 // ومَن لا يملك الفاتورةَ هنا لا يملكها هناك.
 module.exports.canSeeMoney = canSeeMoney;
+module.exports.AMOUNT_FIELDS = AMOUNT_FIELDS;
+module.exports.MONEY_VIEW_ROLES = MONEY_VIEW_ROLES;
 module.exports.fieldsForRole = fieldsForRole;
 module.exports.stripMoneyFor = stripMoneyFor;
 module.exports.canSeeSelling = canSeeSelling;

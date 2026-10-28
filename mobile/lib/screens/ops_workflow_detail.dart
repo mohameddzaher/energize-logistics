@@ -104,6 +104,9 @@ class _OpsWorkflowDetailScreenState extends State<OpsWorkflowDetailScreen> {
   bool _transitioning = false;
   /// `null` = لم تصل القائمة بعد (أو مديرُ النظام: كلُّ شيء).
   Set<String>? _myFields;
+  // Invoice amounts (net invoice onward) are shown only when the server says so.
+  bool _seesAmounts = false;
+  static const _amountKeys = {'netInvoice', 'tax', 'totalInvoice', 'invoiceDate', 'invoiceNotes', 'collectedAmount', 'collectionDate'};
   bool _canLinkCustoms = false;
   final Map<String, TextEditingController> _ctrl = {};
   String _ptype = '';
@@ -171,7 +174,7 @@ class _OpsWorkflowDetailScreenState extends State<OpsWorkflowDetailScreen> {
 
   Future<void> _loadPerms() async {
     if (const ['super_admin', 'admin'].contains(_role)) {
-      setState(() { _myFields = null; _canLinkCustoms = true; });
+      setState(() { _myFields = null; _canLinkCustoms = true; _seesAmounts = true; });
       return;
     }
     try {
@@ -181,6 +184,7 @@ class _OpsWorkflowDetailScreenState extends State<OpsWorkflowDetailScreen> {
       setState(() {
         _myFields = Set<String>.from((list ?? const []).map((e) => '$e'));
         _canLinkCustoms = d is Map && d['canLinkCustoms'] == true;
+        _seesAmounts = d is Map && d['view'] is Map && d['view']['amounts'] == true;
       });
     } catch (_) {
       if (mounted) setState(() => _myFields = <String>{});
@@ -483,7 +487,8 @@ class _OpsWorkflowDetailScreenState extends State<OpsWorkflowDetailScreen> {
                           const SizedBox(height: 8),
                           for (final f in s.$5)
                             // قيمةُ البيع لمن في قائمتها وحدَه — الخادمُ لا يرسلها لغيره.
-                            if (f.$1 != 'sellingValue' || const ['super_admin', 'admin'].contains(role) || (_myFields?.contains('sellingValue') ?? false))
+                            if ((f.$1 != 'sellingValue' || const ['super_admin', 'admin'].contains(role) || (_myFields?.contains('sellingValue') ?? false))
+                                && (_seesAmounts || !_amountKeys.contains(f.$1)))
                               Padding(padding: const EdgeInsets.only(bottom: 10), child: _fieldView(f)),
                         ]),
                       ),

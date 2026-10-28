@@ -43,21 +43,24 @@ const allWorkflowRoles = [
   'moderator', 'cfo', 'accounting_manager', 'accountant',
   'collections_manager', 'collections_staff',
 ];
+// Readers: the data team and shipment follow-up open every manifest in full
+// (minus what the controller strips: selling price, invoice amounts).
+const readWorkflowRoles = [...allWorkflowRoles, ...require('../config/roles').DATA_ROLES, 'shipment_orders_followup'];
 
 // List & export
-router.get('/export', authorize(...allWorkflowRoles), workflowController.exportWorkflows);
-router.get('/permissions', authorize(...allWorkflowRoles), workflowController.getFieldPermissions);
-router.get('/stats', authorize(...allWorkflowRoles), workflowController.getWorkflowStats);
+router.get('/export', authorize(...readWorkflowRoles), workflowController.exportWorkflows);
+router.get('/permissions', authorize(...readWorkflowRoles), workflowController.getFieldPermissions);
+router.get('/stats', authorize(...readWorkflowRoles), workflowController.getWorkflowStats);
 // قيم فلتر عمودٍ واحد — تُحسب في القاعدة. لا بدّ أن تسبق `/:id` وإلا قُرئت
 // «filters» على أنها معرّف سجلّ فردّ الخادم 404 على كل فتحةٍ للقائمة.
-router.get('/filters', authorize(...allWorkflowRoles), workflowController.filterOptions);
+router.get('/filters', authorize(...readWorkflowRoles), workflowController.filterOptions);
 // فحوصُ الفواتير الأربع (ناقصٌ في التسلسل · كشفٌ غير موجود · فرقُ قيمة · اسمُ عميل) —
 // قبل `/:id` أيضًا. والمالُ يُفحص داخل المتحكّم (canSeeMoney).
-router.get('/invoice-checks', authorize(...allWorkflowRoles), workflowController.invoiceChecks);
-router.get('/invoice-checks/:kind', authorize(...allWorkflowRoles), workflowController.invoiceCheckList);
+router.get('/invoice-checks', authorize(...readWorkflowRoles), workflowController.invoiceChecks);
+router.get('/invoice-checks/:kind', authorize(...readWorkflowRoles), workflowController.invoiceCheckList);
 // ── ربطُ الكشف بمعاملة تخليص ─────────────────────────────────────────────────
 // البحثُ قبل `/:id`. وصلاحيّةُ الربط تُفحص داخل المتحكّم (canLinkCustoms).
-router.get('/customs-search', authorize(...allWorkflowRoles), workflowController.customsSearch);
+router.get('/customs-search', authorize(...readWorkflowRoles), workflowController.customsSearch);
 router.put('/:id/customs-link', authorize(...allWorkflowRoles), workflowController.setCustomsLink);
 router.delete('/:id/customs-link', authorize(...allWorkflowRoles), workflowController.clearCustomsLink);
 
@@ -66,12 +69,12 @@ router.delete('/:id/customs-link', authorize(...allWorkflowRoles), workflowContr
 // صفةِ عميلٍ يغيّر أين تُفوتَر كشوفُه كلُّها. ولا بدّ أن تسبق `/:id`.
 const paymentTypes = require('../controllers/paymentTypesController');
 const PT_WRITE = ['super_admin', 'admin', 'operations_manager', 'moderator', 'cfo', 'accounting_manager', 'collections_manager'];
-router.get('/payment-types', authorize(...allWorkflowRoles), paymentTypes.list);
+router.get('/payment-types', authorize(...readWorkflowRoles), paymentTypes.list);
 router.put('/payment-types/:id', authorize(...PT_WRITE), paymentTypes.update);
 router.post('/payment-types/apply', authorize(...PT_WRITE), paymentTypes.applyAll);
 // توحيدُ كشوف عميلٍ على صفته — نقضُ دليلٍ قائم، فيُطلَب صراحةً لعميلٍ بعينه.
 router.post('/payment-types/:id/unify', authorize(...PT_WRITE), paymentTypes.unifyCustomer);
-router.get('/', authorize(...allWorkflowRoles), workflowController.getWorkflows);
+router.get('/', authorize(...readWorkflowRoles), workflowController.getWorkflows);
 
 // Bulk delete
 router.post('/bulk-delete', authorize('super_admin', ...FINANCE_FULL_ROLES), workflowController.bulkDelete);
@@ -92,9 +95,9 @@ router.post(
 );
 
 // Pending invoices by customer (must be before /:id)
-router.get('/pending-by-customer/:customerId', authorize(...allWorkflowRoles), workflowController.getPendingByCustomer);
+router.get('/pending-by-customer/:customerId', authorize(...readWorkflowRoles), workflowController.getPendingByCustomer);
 
-router.get('/:id', authorize(...allWorkflowRoles), workflowController.getWorkflow);
+router.get('/:id', authorize(...readWorkflowRoles), workflowController.getWorkflow);
 
 // ── متابعاتُ الكشف ───────────────────────────────────────────────────────────
 // مَن يفتح الكشفَ يكتب عليه متابعة؛ والحذفُ لصاحبها أو للإدارة (داخل المتحكّم).
@@ -102,7 +105,7 @@ router.get('/:id', authorize(...allWorkflowRoles), workflowController.getWorkflo
 // controllers/workflowFollowUpController.
 router.param('fuId', objectIdParam());
 const followUps = require('../controllers/workflowFollowUpController').operations;
-router.get('/:id/follow-ups', authorize(...allWorkflowRoles), followUps.list);
+router.get('/:id/follow-ups', authorize(...readWorkflowRoles), followUps.list);
 router.post('/:id/follow-ups', authorize(...allWorkflowRoles), followUps.create);
 router.delete('/:id/follow-ups/:fuId', authorize(...allWorkflowRoles), followUps.remove);
 

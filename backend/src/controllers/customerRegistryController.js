@@ -22,7 +22,7 @@ const ShipmentOrder = require('../models/ShipmentOrder');
 const { fold } = require('../models/CollectionsParty');
 const { routeKey } = require('../utils/customerRoutes');
 const cache = require('../utils/ttlCache');
-const { canSeeMoney } = require('./workflowController');
+const { canSeeSelling } = require('./workflowController');
 
 const TTL = 60 * 1000;
 const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
@@ -163,8 +163,8 @@ exports.list = async (req, res) => {
         },
       };
     });
-    // الشراءُ مالٌ: يُحجَب عمّن لا يراه في سير العمل — بالقاعدة نفسِها.
-    if (!canSeeMoney(req.user.role)) {
+    // Purchase totals follow the selling-price list (the pricing view of a customer).
+    if (!canSeeSelling(req.user.role)) {
       return res.json({
         customers: body.customers.map(({ purchaseTotal, ...r }) => r),
         summary: { ...body.summary, purchaseTotal: undefined },
@@ -188,7 +188,7 @@ exports.profile = async (req, res) => {
     const c = await ShipmentOrderCustomer.findById(req.params.id).lean();
     if (!c) return res.status(404).json({ message: 'العميل غير موجود' });
     const key = fold(c.name);
-    const money = canSeeMoney(req.user.role);
+    const money = canSeeSelling(req.user.role);
     const page = Math.max(1, Number(req.query.page) || 1);
     const limit = Math.min(200, Math.max(1, Number(req.query.limit) || 50));
 

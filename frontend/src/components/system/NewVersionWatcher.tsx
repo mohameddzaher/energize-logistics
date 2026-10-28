@@ -1,37 +1,48 @@
 'use client';
 /**
- * يراقب نشرَ نسخةٍ جديدة والتبويبةُ مفتوحة — راجع lib/appVersion.
- * عند العودة إلى التبويبة وكلَّ خمس دقائق يسأل الخادم؛ فإن كانت أحدث ظهر شريطٌ
- * صغير «نسخة جديدة — تحديث»، وتُحدَّث الصفحةُ تلقائيًّا عند أوّل انتقالٍ بين
- * الصفحات (لحظةٌ لا يضيع فيها ما يُكتب في نموذج).
+ * Notices a newer build while the tab is open: checks on returning to the tab
+ * and every 5 minutes. A newer build must be seen twice (20 s apart) before the
+ * bar shows, so a deploy in progress does not flicker it. The page then reloads
+ * on the next navigation — once per build (lib/appVersion).
  */
 import { useEffect, useRef, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { RefreshCw } from 'lucide-react';
-import { isOutdated } from '@/lib/appVersion';
+import { newerBuild, reloadOnceFor } from '@/lib/appVersion';
+
+const CONFIRM_MS = 20000;
 
 export default function NewVersionWatcher({ ar }: { ar: boolean }) {
-  const [outdated, setOutdated] = useState(false);
+  const [target, setTarget] = useState('');
   const pathname = usePathname();
   const first = useRef(true);
 
   useEffect(() => {
     let alive = true;
-    const check = () => { isOutdated().then((o) => { if (alive && o) setOutdated(true); }); };
+    let pending: ReturnType<typeof setTimeout> | null = null;
+    const check = async () => {
+      const id = await newerBuild();
+      if (!alive || !id || pending) return;
+      pending = setTimeout(async () => {
+        pending = null;
+        const again = await newerBuild();
+        if (alive && again && again === id) setTarget(id);
+      }, CONFIRM_MS);
+    };
     const onVis = () => { if (document.visibilityState === 'visible') check(); };
     check();
     const t = setInterval(check, 5 * 60 * 1000);
     document.addEventListener('visibilitychange', onVis);
-    return () => { alive = false; clearInterval(t); document.removeEventListener('visibilitychange', onVis); };
+    return () => { alive = false; clearInterval(t); if (pending) clearTimeout(pending); document.removeEventListener('visibilitychange', onVis); };
   }, []);
 
-  // الانتقالُ بين الصفحات لحظةٌ آمنة: يُحمَّل الجديدُ بدل القديم.
+  // Navigation is a safe moment to load the new build (no form is lost).
   useEffect(() => {
     if (first.current) { first.current = false; return; }
-    if (outdated) window.location.reload();
-  }, [pathname, outdated]);
+    if (target) reloadOnceFor(target);
+  }, [pathname, target]);
 
-  if (!outdated) return null;
+  if (!target) return null;
   return (
     <div className="fixed bottom-4 inset-x-0 z-[60] flex justify-center pointer-events-none" dir={ar ? 'rtl' : 'ltr'}>
       <div className="pointer-events-auto flex items-center gap-3 bg-slate-900 text-white text-sm rounded-xl shadow-lg px-4 py-2.5">

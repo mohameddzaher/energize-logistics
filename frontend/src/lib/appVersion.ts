@@ -1,32 +1,44 @@
 /**
- * ── هل الصفحةُ المفتوحةُ أقدمُ من المنشور؟ (٢٠٢٦/١٠/٢٧) ──────────────────────
- * بعد كلّ نشرٍ تبقى التبويباتُ المفتوحةُ على الشيفرة القديمة، لأنّ ملفّاتها
- * القديمة تبقى على الخادم فلا يقع ChunkLoadError يُعيد تحميلَها. فإصلاحٌ نُشر
- * لا يصل مَن فتح الصفحةَ قبله: ياسر وزملاؤه في التحصيل رأوا «حدث خطأ» بعد
- * نشر إصلاحه، من ملفٍّ قديم.
- *
- * فالحزمةُ تحمل رقمَها (next.config → NEXT_PUBLIC_BUILD_ID)، والخادمُ يقول
- * رقمَ المنشور (`/app-version`). والفرقُ بينهما يعني: حدِّث.
+ * Detects that a newer build is live while this tab still runs an older one.
+ * The bundle carries its build id (next.config → NEXT_PUBLIC_BUILD_ID); the
+ * server reports the build it is running (/app-version).
  */
 const MINE = process.env.NEXT_PUBLIC_BUILD_ID || '';
 
-export async function isOutdated(): Promise<boolean> {
-  if (!MINE || typeof window === 'undefined') return false;
+/** The live build id when it differs from this tab's, otherwise ''. */
+export async function newerBuild(): Promise<string> {
+  if (!MINE || typeof window === 'undefined') return '';
   try {
     const r = await fetch('/app-version', { cache: 'no-store' });
-    if (!r.ok) return false;
+    if (!r.ok) return '';
     const { id } = await r.json();
-    return !!id && id !== MINE;
-  } catch { return false; }
+    return id && id !== MINE ? String(id) : '';
+  } catch { return ''; }
 }
 
-const RELOAD_KEY = 'version-reload-at';
-/** إعادةُ تحميلٍ واحدةٌ في الدقيقة على الأكثر — فلا تدور الصفحةُ في حلقة. */
-export function reloadOnce(): boolean {
-  let last = 0;
-  try { last = Number(sessionStorage.getItem(RELOAD_KEY) || 0); } catch { /* لا تخزين */ }
-  if (Date.now() - last < 60000) return false;
-  try { sessionStorage.setItem(RELOAD_KEY, String(Date.now())); } catch { /* لا يضرّ */ }
+export async function isOutdated(): Promise<boolean> {
+  return !!(await newerBuild());
+}
+
+const RELOADED_FOR = 'version-reloaded-for';
+
+/**
+ * Reload at most once per new build. If the reload still lands on an old build
+ * (a deploy in progress), the tab does not reload again for that same build —
+ * which is what turned a deploy into a reload loop.
+ */
+export function reloadOnceFor(buildId: string): boolean {
+  if (!buildId) return false;
+  try {
+    if (sessionStorage.getItem(RELOADED_FOR) === buildId) return false;
+    sessionStorage.setItem(RELOADED_FOR, buildId);
+  } catch { return false; }
   window.location.reload();
   return true;
+}
+
+/** Used by the error screen: one silent reload when a newer build is live. */
+export async function reloadIfNewer(): Promise<boolean> {
+  const id = await newerBuild();
+  return id ? reloadOnceFor(id) : false;
 }

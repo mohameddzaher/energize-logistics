@@ -23,7 +23,7 @@
  */
 import { useEffect, useState } from 'react';
 import { AlertTriangle, RefreshCw, ArrowRight } from 'lucide-react';
-import { isOutdated, reloadOnce } from '@/lib/appVersion';
+import { reloadIfNewer } from '@/lib/appVersion';
 
 const RELOAD_KEY = 'chunk-reload-at';
 
@@ -52,7 +52,7 @@ export default function SystemError({ error, reset }: { error: Error & { digest?
   const [updating, setUpdating] = useState(false);
   useEffect(() => {
     if (stale) return;
-    isOutdated().then((o) => { if (o && reloadOnce()) setUpdating(true); });
+    reloadIfNewer().then((r) => { if (r) setUpdating(true); });
   }, [stale]);
 
   // ويُبلَّغ الخادمُ ليُعرَف ما يقع فعلًا عند الناس — بلا انتظارٍ ولا تعطيل.

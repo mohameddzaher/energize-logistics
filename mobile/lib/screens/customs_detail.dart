@@ -141,6 +141,8 @@ const _marginItems = [
   ('transportToYardNet', 'صافي النقل إلى الساحة', 'Transport-to-yard net'),
   ('yardToCustomerSelling', 'سعر النقل من الساحة إلى العميل', 'Price: yard → customer'),
   ('yardToCustomerNet', 'صافي النقل من الساحة إلى العميل', 'Yard-to-customer net'),
+  ('yardPrice', 'سعر الساحة', 'Yard price'),
+  // Computed once the yard price is typed: yard fees (costs) − yard price.
   ('yardNet', 'صافي الساحة', 'Yard net'),
   ('storageNet', 'صافي التخزين', 'Storage net'),
   ('securityScan', 'فحص أمني', 'Security scan'),
@@ -399,6 +401,22 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
     final r = await _send(() => Api.instance
         .post('/api/customs-clearance/${widget.clearanceId}/transport-invoice', {'notRequired': true}));
     if (r != null && _m(r)['closed'] == true) _say(tr('أُنهيت المعاملة', 'Transaction closed'));
+  }
+
+  /// Closing needs no invoice: the file becomes "closed, not invoiced" and can be invoiced later.
+  Future<void> _close() async {
+    final ok = await _confirm(
+      tr('إغلاق المعاملة', 'Close transaction'),
+      tr('ستصبح «مغلقة غير مفوترة» حتى يُرسَل طلبُ الفوترة منها وتفوترها الإدارةُ الماليّة.',
+          'It becomes "closed, not invoiced" until an invoice request is sent and Finance invoices it.'),
+      action: tr('إغلاق', 'Close'),
+      danger: false,
+    );
+    if (!ok) return;
+    await _send(
+      () => Api.instance.patch('/api/customs-clearance/${widget.clearanceId}/complete', {'completed': true}),
+      ok: tr('أُغلقت المعاملة', 'Transaction closed'),
+    );
   }
 
   Future<void> _reopen() async {
@@ -681,6 +699,17 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
                           label: Text(tr('إعادة الفتح', 'Reopen')),
                         ),
                       ),
+                    if (!completed && !cancelled && c['upcoming'] != true) ...[
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          onPressed: _saving ? null : _close,
+                          icon: const Icon(Icons.lock_outline, size: 16),
+                          label: Text(tr('إغلاق المعاملة', 'Close transaction')),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                    ],
                     if (invoiceNo.isEmpty && (closedNotInvoiced || (!completed && !cancelled && c['upcoming'] != true)))
                       SizedBox(
                         width: double.infinity,
@@ -1417,6 +1446,8 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
     final ctrls = {for (final k in [...plain, 'transportToYardNet']) k: TextEditingController(text: init(k))};
     // فارغٌ على المعاملات القديمة (null) — والفراغُ معنًى لا صفر.
     final yardSell = TextEditingController(text: revenue['transportToYardSelling'] == null ? '' : '${revenue['transportToYardSelling']}');
+    // Yard price: empty on legacy rows, where the typed yard net stays.
+    final yardPrice = TextEditingController(text: revenue['yardPrice'] == null ? '' : '${revenue['yardPrice']}');
     String label(String k) {
       final it = _marginItems.firstWhere((x) => x.$1 == k);
       return tr(it.$2, it.$3);
@@ -1475,15 +1506,29 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
                     input('transportToYardNet'),
                   input('yardToCustomerSelling', onChanged: refresh),
                   computed('yardToCustomerNet', v(ctrls['yardToCustomerSelling']!) - _nz(costs, 'transportYardToCustomer')),
-                  for (final k in const ['yardNet', 'storageNet', 'securityScan', 'labour']) input(k),
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: TextField(
+                      controller: yardPrice, keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      onChanged: (_) => refresh(),
+                      decoration: InputDecoration(labelText: label('yardPrice')),
+                    ),
+                  ),
+                  if (yardPrice.text.trim().isNotEmpty)
+                    computed('yardNet', _nz(costs, 'yardFees') - v(yardPrice))
+                  else
+                    input('yardNet'),
+                  for (final k in const ['storageNet', 'securityScan', 'labour']) input(k),
                   const SizedBox(height: 8),
                   SizedBox(
                     width: double.infinity,
                     child: FilledButton(
                       onPressed: () {
                         final sell = yardSell.text.trim();
+                        final yp = yardPrice.text.trim();
                         final body = {'revenue': {
-                          for (final k in plain) k: num.tryParse(ctrls[k]!.text.trim()) ?? 0,
+                          for (final k in plain) if (k != 'yardNet' || yp.isEmpty) k: num.tryParse(ctrls[k]!.text.trim()) ?? 0,
+                          'yardPrice': yp.isEmpty ? '' : (num.tryParse(yp) ?? ''),
                           // الفراغُ يُرسَل '' فيعود null في الخادم — «لم يُكتب السعر».
                           'transportToYardSelling': sell.isEmpty ? '' : (num.tryParse(sell) ?? ''),
                           if (sell.isEmpty) 'transportToYardNet': num.tryParse(ctrls['transportToYardNet']!.text.trim()) ?? 0,

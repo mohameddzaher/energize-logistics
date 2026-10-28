@@ -51,6 +51,7 @@ const MARGIN: [string, string, string][] = [
   ['transportToYardNet', 'صافي النقل إلى الساحة', 'Transport-to-yard net'],
   ['yardToCustomerSelling', 'سعر النقل من الساحة إلى العميل', 'Price: yard → customer'],
   ['yardToCustomerNet', 'صافي النقل من الساحة إلى العميل', 'Yard-to-customer net'],
+  ['yardPrice', 'سعر الساحة', 'Yard price'],
   ['yardNet', 'صافي الساحة', 'Yard net'],
   ['storageNet', 'صافي التخزين', 'Storage net'],
   ['securityScan', 'فحص أمني', 'Security scan'],

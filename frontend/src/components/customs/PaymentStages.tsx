@@ -128,7 +128,9 @@ export default function PaymentStages({
     try {
       const d = await api.patch<any>(`/api/customs-clearance/${clearanceId}/complete`, { completed: value });
       onChanged(d.clearance);
-      notify(value ? t('أُنهيت المعاملة', 'Transaction closed') : t('أُعيد فتحُ المعاملة', 'Reopened'), 'success');
+      notify(value
+        ? (invoiceNumber ? t('أُغلقت المعاملة', 'Transaction closed') : t('أُغلقت المعاملة — مغلقة غير مفوترة', 'Closed — not invoiced'))
+        : t('أُعيد فتحُ المعاملة', 'Reopened'), 'success');
     } catch (e: any) { notify(e?.message || t('تعذّر الحفظ', 'Failed'), 'error'); }
     setBusy('');
   };
@@ -306,12 +308,19 @@ export default function PaymentStages({
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-sm font-semibold text-slate-700">{t('فاتورة العميل', 'Customer invoice')}</span>
             <span className="text-[11px] text-slate-500">
-              {t('تصدر بلا انتظار فاتورة النقل — وتُنهى المعاملةُ حين تُرفَق.', 'Issued without waiting for the transport invoice — the transaction closes once it is attached.')}
+              {t('يمكن إغلاقُ المعاملة الآن (مغلقة غير مفوترة) وطلبُ فوترتها منها لاحقًا.', 'Close it now (closed, not invoiced) and request invoicing from it later.')}
             </span>
             {canEdit && (
+              <button type="button" onClick={() => setComplete(true)} disabled={busy === 'complete'}
+                className="ms-auto inline-flex items-center gap-1.5 rounded-lg bg-slate-800 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">
+                {busy === 'complete' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Lock className="h-3.5 w-3.5" />}
+                {t('إغلاق المعاملة', 'Close transaction')}
+              </button>
+            )}
+            {canEdit && (
               <button type="button" onClick={onIssueInvoice}
-                className="ms-auto inline-flex items-center gap-1.5 rounded-lg bg-[#f37121] px-4 py-2 text-xs font-bold text-white">
-                <Receipt className="h-3.5 w-3.5" />{t('إصدار الفاتورة', 'Issue invoice')}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-[#f37121] px-4 py-2 text-xs font-bold text-white">
+                <Receipt className="h-3.5 w-3.5" />{t('طلب فوترة', 'Request invoicing')}
               </button>
             )}
           </div>

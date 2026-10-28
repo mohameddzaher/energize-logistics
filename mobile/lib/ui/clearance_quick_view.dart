@@ -44,7 +44,7 @@ const _margin = [
   ('transportToYardNet', 'صافي النقل إلى الساحة', 'Yard transport net'),
   ('yardToCustomerSelling', 'سعر النقل من الساحة إلى العميل', 'Price: yard → customer'),
   ('yardToCustomerNet', 'صافي النقل من الساحة إلى العميل', 'Yard-to-customer net'),
-  ('yardNet', 'صافي الساحة', 'Yard net'), ('storageNet', 'صافي التخزين', 'Storage net'),
+  ('yardPrice', 'سعر الساحة', 'Yard price'), ('yardNet', 'صافي الساحة', 'Yard net'), ('storageNet', 'صافي التخزين', 'Storage net'),
   ('securityScan', 'فحص أمني', 'Security scan'), ('labour', 'عمال', 'Labour'),
 ];
 

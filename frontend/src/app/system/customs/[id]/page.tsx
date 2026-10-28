@@ -226,6 +226,7 @@ export default function CustomsDetailPage() {
     ['transportToYardSelling', 'سعر النقل من الميناء إلى الساحة', 'Price: port → yard'],
     ['yardToCustomerSelling', 'سعر النقل من الساحة إلى العميل', 'Price: yard → customer'],
     ['yardTransportNet', 'صافي نقل الساحة', 'Yard transport net'],
+    ['yardPrice', 'سعر الساحة', 'Yard price'],
   ];
   // ── وترتيبُ القراءة: السعرُ ثمّ صافيه ──────────────────────────────────────
   // «سعر النقل» يُكتب و«صافي النقل» يُقرأ تحته محسوبًا، فيرى الموظّفُ أثرَ ما
@@ -234,13 +235,17 @@ export default function CustomsDetailPage() {
   // فارغ) يبقى خانةً تُكتب كما كان — الخادمُ لا يمسّه حينئذٍ.
   const yardSellRaw = c.revenue?.transportToYardSelling;
   const yardSellSet = yardSellRaw !== null && yardSellRaw !== undefined && yardSellRaw !== '' && Number.isFinite(Number(yardSellRaw));
-  const COMPUTED_REVENUE = new Set(['transportNet', 'yardToCustomerNet', ...(yardSellSet ? ['transportToYardNet'] : [])]);
+  // Yard net = yard fees (costs) − yard price, once the price is typed; legacy rows keep a typed net.
+  const yardPriceRaw = c.revenue?.yardPrice;
+  const yardPriceSet = yardPriceRaw !== null && yardPriceRaw !== undefined && yardPriceRaw !== '' && Number.isFinite(Number(yardPriceRaw));
+  const COMPUTED_REVENUE = new Set(['transportNet', 'yardToCustomerNet', ...(yardSellSet ? ['transportToYardNet'] : []), ...(yardPriceSet ? ['yardNet'] : [])]);
   // خاناتٌ فراغُها معنًى («لم يُكتب السعرُ بعد») لا صفر.
-  const NULLABLE_REVENUE = new Set(['transportToYardSelling']);
+  const NULLABLE_REVENUE = new Set(['transportToYardSelling', 'yardPrice']);
   const COMPUTED_HINT: Record<string, [string, string]> = {
     transportNet: ['السعر − تكلفة النقل', 'price − cost'],
     transportToYardNet: ['السعر − تكلفة النقل', 'price − cost'],
     yardToCustomerNet: ['السعر − تكلفة النقل', 'price − cost'],
+    yardNet: ['أجور الساحة − سعر الساحة', 'yard fees − yard price'],
   };
   const fieldOf = (k: string): [string, string, string] =>
     [...MARGIN_FIELDS, ...REVENUE_EXTRA].find(([x]) => x === k) || [k, k, k];
@@ -249,7 +254,7 @@ export default function CustomsDetailPage() {
     'transportSelling', 'transportNet',
     'transportToYardSelling', 'transportToYardNet',
     'yardToCustomerSelling', 'yardToCustomerNet',
-    'yardNet', 'storageNet', 'securityScan', 'labour', 'yardTransportNet',
+    'yardPrice', 'yardNet', 'storageNet', 'securityScan', 'labour', 'yardTransportNet',
   ].map(fieldOf);
 
   const n = (v: any) => (Number.isFinite(Number(v)) ? Number(v) : 0);
@@ -264,7 +269,11 @@ export default function CustomsDetailPage() {
   const transportToYardNet = yardSellSet
     ? Math.round((n(yardSellRaw) - n(c.costs?.transportToYard)) * 100) / 100
     : n(c.revenue?.transportToYardNet);
+  const yardNet = yardPriceSet
+    ? Math.round((n(c.costs?.yardFees) - n(yardPriceRaw)) * 100) / 100
+    : n(c.revenue?.yardNet);
   const revVal = (k: string) => (k === 'transportNet' ? transportNet
+    : k === 'yardNet' ? yardNet
     : k === 'yardToCustomerNet' ? yardToCustomerNet
     : k === 'transportToYardNet' ? transportToYardNet
     : n(c.revenue?.[k]));
@@ -391,6 +400,20 @@ export default function CustomsDetailPage() {
       : `Move ${c?.blNumber || c?.refNumber || ''} back to upcoming? It leaves the current list and its counts.`))) return;
     await patch({ upcoming: true } as any);
     notify(ar ? 'عادت إلى المعاملات القادمة' : 'Back in upcoming', 'success');
+  };
+
+  // Closing needs no invoice: it becomes "closed, not invoiced" and can be invoiced from here later.
+  const closeClearance = async () => {
+    if (!(await confirm(ar
+      ? `إغلاقُ المعاملة ${c?.blNumber || c?.refNumber || ''}؟ ستصبح «مغلقة غير مفوترة» حتى يُرسَل طلبُ الفوترة منها وتفوترها الإدارةُ الماليّة.`
+      : `Close ${c?.blNumber || c?.refNumber || ''}? It becomes "closed, not invoiced" until an invoice request is sent and Finance invoices it.`))) return;
+    setClosing(true);
+    try {
+      const d = await api.patch<any>(`/api/customs-clearance/${params?.id}/complete`, { completed: true });
+      setC(d.clearance);
+      notify(ar ? 'أُغلقت المعاملة — مغلقة غير مفوترة' : 'Closed — not invoiced', 'success');
+    } catch (e: any) { notify(e?.message || (ar ? 'تعذّر الإغلاق' : 'Failed'), 'error'); }
+    setClosing(false);
   };
 
   const reopen = async () => {
@@ -609,13 +632,21 @@ export default function CustomsDetailPage() {
                   </button>
                 </>
               )
-              : !invoiceNumber && (
+              : (
+                <>
+                <button type="button" onClick={closeClearance} disabled={closing}
+                  className="flex items-center gap-1.5 rounded-lg bg-slate-800 px-3 py-2 text-sm font-bold text-white transition-colors hover:bg-slate-700 disabled:opacity-60">
+                  {closing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Lock className="w-4 h-4" />} {ar ? 'إغلاق المعاملة' : 'Close transaction'}
+                </button>
+                {!invoiceNumber && (
                 <button type="button" onClick={() => setInvoiceOpen(true)}
                   className={`flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-bold transition-colors ${invoiceNumber
                     ? 'bg-slate-100 text-slate-700 hover:text-[#f37121]' : 'bg-[#f37121] text-white hover:bg-[#e06010]'}`}>
                   <Receipt className="w-4 h-4" />
                   {ireq?.status === 'pending' ? (ar ? 'تعديل طلب الفوترة' : 'Edit invoice request') : (ar ? 'طلب فوترة' : 'Request invoicing')}
                 </button>
+                )}
+                </>
               )
           )}
           {canEdit && (

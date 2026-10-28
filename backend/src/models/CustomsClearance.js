@@ -406,7 +406,9 @@ const customsClearanceSchema = new mongoose.Schema(
       yardToCustomerSelling: { type: Number, default: 0 },  // سعر النقل من الساحة إلى العميل
       yardToCustomerNet: { type: Number, default: 0 },      // صافيه (محسوب)
       yardTransportNet: { type: Number, default: 0 },    // صافي نقل الساحه (عمود مساعد، خارج الهامش)
-      yardNet: { type: Number, default: 0 },             // صافى الساحه
+      // Yard price (what the yard actually charges). Null on legacy rows: their typed yardNet stays.
+      yardPrice: { type: Number, default: null },
+      yardNet: { type: Number, default: 0 },             // yard net = costs.yardFees − yardPrice (when the price is set)
       storageNet: { type: Number, default: 0 },          // صافى التخزين
       securityScan: { type: Number, default: 0 },        // فحص امنى
       labour: { type: Number, default: 0 },              // عمال
@@ -831,6 +833,10 @@ function recomputeTotals(doc) {
   const yardSell = doc.revenue.transportToYardSelling;
   if (yardSell !== null && yardSell !== undefined && yardSell !== '' && Number.isFinite(Number(yardSell))) {
     doc.revenue.transportToYardNet = r2(n(yardSell) - n(doc.costs.transportToYard));
+  }
+  const yardPrice = doc.revenue.yardPrice;
+  if (yardPrice !== null && yardPrice !== undefined && yardPrice !== '' && Number.isFinite(Number(yardPrice))) {
+    doc.revenue.yardNet = r2(n(doc.costs.yardFees) - n(yardPrice));
   }
   let total = 0;
   for (const k of COST_KEYS) total += n(doc.costs[k]);

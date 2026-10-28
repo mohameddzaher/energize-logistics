@@ -46,13 +46,13 @@ const NESTED = {
   // `transportNet`: صارت فرقَ سعرِ النقل عن سعر المورد (recomputeTotals)،
   // فقبولُها من الشاشة يفتح بابَ رقمٍ يخالف بنودَه.
   revenue: [...MARGIN_KEYS.filter((k) => !DERIVED_REVENUE.includes(k)), 'transportSelling', 'yardTransportNet',
-    'transportToYardSelling', 'yardToCustomerSelling'],
+    'transportToYardSelling', 'yardToCustomerSelling', 'yardPrice'],
   billing: ['invoiceStatus', 'ourInvoiceNumber', 'invoicedAt'],
 };
 
 const NUMERIC_NESTED = new Set(['costs', 'revenue']);
 // خاناتٌ فراغُها معنًى لا صفر: «لم يُكتب السعرُ بعد» (راجع recomputeTotals).
-const NULLABLE_NESTED = new Set(['revenue.transportToYardSelling']);
+const NULLABLE_NESTED = new Set(['revenue.transportToYardSelling', 'revenue.yardPrice']);
 
 /**
  * Build an update payload from a request body.
@@ -2159,9 +2159,9 @@ exports.receiveTransportInvoice = async (req, res) => {
 };
 
 /**
- * PATCH /:id/complete — إعادةُ الفتح، أو الإنهاءُ بيدٍ لمعاملةٍ اكتملت شروطُها.
- * (الإنهاءُ يقع وحدَه عند اجتماع الفاتورة وفاتورة النقل — راجع settleClosure؛
- *  وهذا لما أُعيد فتحُه ثمّ أُريد إنهاؤه ثانيةً.)
+ * PATCH /:id/complete — close or reopen ({ completed: false }).
+ * Closing needs no invoice: a closed file without one is "closed, not invoiced",
+ * and its invoice request can be sent from inside it later (issueInvoice).
  */
 exports.completeClearance = async (req, res) => {
   try {
@@ -2178,9 +2178,9 @@ exports.completeClearance = async (req, res) => {
       clearance.completedBy = null;
       clearance.completedByName = '';
     } else {
-      if (!invoiceSent(clearance)) {
-        return res.status(400).json({ message: 'أرسِل طلبَ الفوترة ببنوده الثلاثة أوّلًا — به تُغلَق المعاملة.', code: 'NOT_INVOICED' });
-      }
+      if (clearance.cancelled) return res.status(400).json({ message: 'المعاملةُ ملغاة — لا تُغلَق' });
+      if (clearance.upcoming) return res.status(400).json({ message: 'معاملةٌ قادمةٌ لم تبدأ — حوِّلها إلى جاريةٍ أوّلًا' });
+      if (clearance.isCompleted) return res.json({ clearance });
       clearance.isCompleted = true;
       clearance.completedAt = new Date();
       clearance.completedBy = req.user._id;

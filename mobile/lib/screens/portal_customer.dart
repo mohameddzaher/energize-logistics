@@ -67,8 +67,7 @@ class CustomerOverviewTab extends StatelessWidget {
                 _hero(tr('هذا الشهر', 'This month'), _n0(thisM),
                     sub: delta == null ? '${tr('الشهر الماضي', 'Last month')} ${_n0(lastM)}' : '${delta >= 0 ? '+' : ''}$delta% ${tr('عن الشهر الماضي', 'vs last month')}'),
                 _hero(tr('الوجهات', 'Destinations'), _n0(t['destinations']), sub: '${_n0(t['routes'])} ${tr('مسارًا', 'routes')}'),
-                _hero(tr('الفواتير', 'Invoices'), _n0(t['invoices']),
-                    sub: (t['outstandingCount'] ?? 0) == 0 ? tr('كلها مسدّدة', 'All settled') : '${_n0(t['outstandingCount'])} ${tr('غير مسدّدة', 'unpaid')}'),
+                _hero(tr('الفواتير', 'Invoices'), _n0(t['invoices'])),
               ],
             ),
           ]),
@@ -259,17 +258,15 @@ class _InvoiceCard extends StatelessWidget {
   const _InvoiceCard(this.i);
   @override
   Widget build(BuildContext context) {
-    final paid = i['paid'] == true;
-    return AppCard(child: Row(children: [
-      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+    // No money in the customer portal: number, date, shipments, route.
+    return AppCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Row(children: [
         Text('${i['number']}', style: const TextStyle(fontWeight: FontWeight.w900, color: T.navy)),
-        Text('${_dmy(i['date'])} · ${i['shipments'] ?? 0} ${tr('شحنة', 'shipments')}', style: const TextStyle(fontSize: 12, color: T.inkSoft)),
-      ])),
-      Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-        Text('${_n0(i['total'])} ${tr('ر.س', 'SAR')}', style: const TextStyle(fontWeight: FontWeight.w900)),
-        const SizedBox(height: 4),
-        Chip2(paid ? tr('مسدّدة', 'Paid') : tr('غير مسدّدة', 'Unpaid'), paid ? T.success : T.warn),
+        const Spacer(),
+        Text(_dmy(i['date']), style: const TextStyle(fontSize: 12, color: T.inkSoft)),
       ]),
+      const SizedBox(height: 4),
+      Text('${i['shipments'] ?? 0} ${tr('شحنة', 'shipments')}${'${i['routes'] ?? ''}'.isEmpty ? '' : ' · ${i['routes']}'}', style: const TextStyle(fontSize: 12, color: T.inkSoft)),
     ]));
   }
 }
@@ -285,7 +282,6 @@ class _CustomerInvoicesTabState extends State<CustomerInvoicesTab> {
   Map<String, dynamic> _totals = {};
   bool _loading = true;
   String? _error;
-  String _state = '';
 
   @override
   void initState() {
@@ -311,25 +307,20 @@ class _CustomerInvoicesTabState extends State<CustomerInvoicesTab> {
   Widget build(BuildContext context) {
     if (_loading) return const Center(child: CircularProgressIndicator());
     if (_error != null) return ErrorRetry(message: _error!, onRetry: _load);
-    final list = _rows.where((r) => _state.isEmpty || (_state == 'paid' ? r['paid'] == true : r['paid'] != true)).toList();
-    Widget stat(String k, String label, String value, String sub, Color c) => Expanded(child: Pressable(
-          onTap: () => setState(() => _state = _state == k ? '' : k),
-          child: AppCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(label, style: const TextStyle(fontSize: 11.5, color: T.inkSoft)),
-            Text(value, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: c)),
-            Text(sub, style: const TextStyle(fontSize: 10.5, color: T.inkFaint)),
-          ])),
-        ));
+    final list = _rows;
     return RefreshIndicator(
       onRefresh: _load,
       child: ListView(padding: const EdgeInsets.all(14), children: [
-        Row(children: [
-          stat('', tr('الكل', 'All'), _n0(_totals['total']), '${_totals['count'] ?? 0} ${tr('فاتورة', 'inv.')}', T.ink),
-          const SizedBox(width: 8),
-          stat('paid', tr('مسدّدة', 'Paid'), _n0(_totals['paid']), '${_totals['paidCount'] ?? 0} ${tr('فاتورة', 'inv.')}', T.success),
-          const SizedBox(width: 8),
-          stat('open', tr('غير مسدّدة', 'Unpaid'), _n0(_totals['open']), '${_totals['openCount'] ?? 0} ${tr('فاتورة', 'inv.')}', T.warn),
-        ]),
+        AppCard(child: Row(children: [
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(tr('الفواتير', 'Invoices'), style: const TextStyle(fontSize: 11.5, color: T.inkSoft)),
+            Text(_n0(_totals['count']), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
+          ])),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(tr('شحنات مفوترة', 'Shipments invoiced'), style: const TextStyle(fontSize: 11.5, color: T.inkSoft)),
+            Text(_n0(_totals['shipments']), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
+          ])),
+        ])),
         const SizedBox(height: 12),
         if (list.isEmpty) EmptyState(icon: Icons.receipt_long_outlined, title: tr('لا توجد فواتير', 'No invoices')),
         for (final i in list) Padding(padding: const EdgeInsets.only(bottom: 8), child: _InvoiceCard(i)),

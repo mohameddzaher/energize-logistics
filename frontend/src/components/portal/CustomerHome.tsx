@@ -5,14 +5,14 @@
  */
 import { useRouter } from 'next/navigation';
 import { Truck, MapPin, FileText, Ship, ArrowUpRight, TrendingUp, TrendingDown, Receipt, Route, Container } from 'lucide-react';
-import { money, customsStageText } from '@/lib/portal';
+import { customsStageText } from '@/lib/portal';
 
 export interface PortalShipment {
   id: string; kind: 'platform' | 'orders' | 'heavy'; number: string; date: string;
   from: string; to: string; truck: string; plate: string; driver: string; cargo?: string; waybill?: boolean;
 }
 export interface PortalInvoice {
-  number: string; date: string; shipments: number; net: number; tax: number; total: number; paid: boolean; collectedOn?: string; routes?: string;
+  number: string; date: string; shipments: number; routes?: string;
 }
 export interface CustomerOverview {
   name: string;
@@ -57,8 +57,7 @@ export default function CustomerHome({ data, ar }: { data: CustomerOverview; ar:
               </span>
             )} />
           <HeroStat label={tx('Destinations', 'الوجهات')} value={n0(t.destinations)} sub={tx(`${n0(t.routes)} routes`, `${n0(t.routes)} مسارًا`)} />
-          <HeroStat label={tx('Invoices', 'الفواتير')} value={n0(t.invoices)}
-            sub={t.outstandingCount ? tx(`${n0(t.outstandingCount)} unpaid`, `${n0(t.outstandingCount)} غير مسدّدة`) : tx('All settled', 'كلها مسدّدة')} />
+          <HeroStat label={tx('Invoices', 'الفواتير')} value={n0(t.invoices)} />
         </div>
       </section>
 
@@ -147,11 +146,7 @@ export default function CustomerHome({ data, ar }: { data: CustomerOverview; ar:
               </button>
             )}
           </div>
-          <div className="mb-4 grid grid-cols-3 gap-3">
-            <MiniStat label={tx('Invoices', 'عدد الفواتير')} value={n0(t.invoices)} />
-            <MiniStat label={tx('Invoiced (SAR)', 'إجمالي المفوتر (ر.س)')} value={money(t.invoicedTotal)} />
-            <MiniStat label={tx('Unpaid (SAR)', 'غير المسدّد (ر.س)')} value={money(t.outstandingTotal)} tone={t.outstandingTotal ? 'warn' : 'ok'} />
-          </div>
+
           {data.recent.invoices.length === 0 ? <p className="text-sm text-slate-400">{tx('No invoices yet', 'لا توجد فواتير بعد')}</p> : (
             <ul className="divide-y divide-slate-100">
               {data.recent.invoices.map((i) => (
@@ -160,10 +155,7 @@ export default function CustomerHome({ data, ar }: { data: CustomerOverview; ar:
                     <p className="font-semibold text-slate-900"><FileText className="me-1 inline h-3.5 w-3.5 text-slate-400" />{i.number}</p>
                     <p className="text-[12px] text-slate-500">{dmy(i.date)} · {i.shipments} {tx('shipments', 'شحنة')}</p>
                   </div>
-                  <div className="text-end">
-                    <p className="font-bold tabular-nums text-slate-900">{money(i.total)}</p>
-                    <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${i.paid ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>{i.paid ? tx('Paid', 'مسدّدة') : tx('Unpaid', 'غير مسدّدة')}</span>
-                  </div>
+                  <span className="shrink-0 text-[12px] text-slate-500">{i.routes}</span>
                 </li>
               ))}
             </ul>

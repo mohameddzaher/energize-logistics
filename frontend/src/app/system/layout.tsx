@@ -157,7 +157,9 @@ export default function SystemLayout({ children }: { children: React.ReactNode }
 
 function SystemLayoutInner({ children }: { children: React.ReactNode }) {
   const { user, loading, logout, isAuthenticated, refreshUser } = useAuth();
-  const { lang, toggleLang, isRTL } = useLanguage();
+  const { lang, toggleLang, isRTL, applyAccountLang } = useLanguage();
+  // Partner accounts open in their own language (English unless they chose Arabic).
+  useEffect(() => { if (user?.role) applyAccountLang(user.role); }, [user?.role, applyAccountLang]);
   const L = getLayoutTranslations(lang);
   const router = useRouter();
   const pathname = usePathname() || '';
@@ -309,6 +311,7 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/operations/jp', label: lang === 'ar' ? 'خطّة العمل (JP)' : 'JP', icon: <CalendarCheck className="w-5 h-5" />, roles: [], section: 'Operations', visible: (u) => jpMember(u, 'Operations') },
     { href: '/system/operations/jp-dashboard', label: lang === 'ar' ? 'لوحة JP' : 'JP Dashboard', icon: <BarChart3 className="w-5 h-5" />, roles: [], section: 'Operations', visible: (u) => jpManager(u, 'Operations') },
     { href: '/system/operations/management-jp', label: lang === 'ar' ? 'خطّة الإدارة (Management JP)' : 'Management JP', icon: <Crown className="w-5 h-5" />, roles: [], section: 'Operations', visible: (u) => jpManager(u, 'Operations') && !jpTop(u) },
+    { href: '/system/operations/customer-requests', label: lang === 'ar' ? 'التواصل مع العملاء' : 'Customer Communication', icon: <MessageSquare className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'operations_manager', 'operations_staff', 'moderator'], section: 'Operations' },
     { href: '/system/operations/complaints', label: lang === 'ar' ? 'الشكاوى' : 'Complaints', icon: <MessageSquare className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'employee', 'operations_manager', 'operations_staff', 'moderator'], section: 'Operations' },
     { href: '/system/operations/kpis', label: lang === 'ar' ? 'تقييم الأداء' : 'KPIs', icon: <Target className="w-5 h-5" />, roles: kpiRoles(['super_admin', 'it_manager', 'it_specialist', 'admin', 'employee', 'operations_manager', 'operations_staff', 'moderator']), section: 'Operations', restrict: true },
     // ── قسمُ التحصيل ──────────────────────────────────────────────────────
@@ -763,6 +766,7 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/portal', label: L.overview, icon: <LayoutDashboard className="w-5 h-5" />, roles: ['client'], section: 'Portal' },
     { href: '/system/portal/shipments', label: lang === 'ar' ? 'شحناتي' : 'My Shipments', icon: <Truck className="w-5 h-5" />, roles: ['client'], section: 'Portal', portalService: ['shipments', 'operations', 'heavy_transport', 'shipment_orders'] },
     { href: '/system/portal/customs', label: lang === 'ar' ? 'معاملات التخليص' : 'Customs Files', icon: <Ship className="w-5 h-5" />, roles: ['client'], section: 'Portal', portalService: ['customs'] },
+    { href: '/system/portal/requests', label: lang === 'ar' ? 'طلباتي' : 'My Requests', icon: <MessageSquare className="w-5 h-5" />, roles: ['client'], section: 'Portal' },
     { href: '/system/portal/invoices', label: L.myInvoices, icon: <FileText className="w-5 h-5" />, roles: ['client'], section: 'Portal', portalService: ['finance', 'invoices'] },
     { href: '/system/portal/payments', label: L.myPayments, icon: <CreditCard className="w-5 h-5" />, roles: ['client'], section: 'Portal', portalService: ['finance'] },
   ];

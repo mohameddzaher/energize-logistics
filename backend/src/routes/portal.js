@@ -22,5 +22,12 @@ router.get('/waybill/:type/:id', portal.waybill);            // بوليصة PDF
 router.get('/customs', portal.customs);
 router.get('/finance', portal.finance);
 router.get('/invoices', portal.invoices);
+// Requests the customer sends us (answered in «التواصل مع العملاء»).
+const requests = require('../controllers/customerRequestsController');
+router.get('/requests', requests.myList);
+router.get('/requests/options', requests.myOptions);
+router.post('/requests', requests.create);
+router.get('/requests/:id', requests.myOne);
+router.post('/requests/:id/reply', requests.myReply);
 
 module.exports = router;

@@ -162,6 +162,13 @@
       ],
       "wildcard": false
     },
+    "/system/operations/customer-requests": {
+      "apis": [
+        "/api/customer-requests",
+        "/api/customer-requests/mailboxes"
+      ],
+      "wildcard": false
+    },
     "/system/operations/complaints": {
       "apis": [
         "/api/section-work",
@@ -2847,6 +2854,13 @@
     "/system/portal/customs": {
       "apis": [
         "/api/portal/customs"
+      ],
+      "wildcard": false
+    },
+    "/system/portal/requests": {
+      "apis": [
+        "/api/portal/requests",
+        "/api/portal/requests/options"
       ],
       "wildcard": false
     },

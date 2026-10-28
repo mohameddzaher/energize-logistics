@@ -270,6 +270,8 @@ app.use('/api/workflows', authenticate, sectionGate('Operations'), workflowRoute
 // بطريق سير العمل — فيُحرَس كما يُحرَس `/api/workflows`، ولا يكسب أحدٌ من هذه
 // الصفحة ما لا يملكه هناك. (وصلاحيّةُ العمود نفسِه تُفحص في setSellingValue.)
 app.use('/api/operations-private', authenticate, sectionGate('Operations'), require('./routes/operationsPrivate'));
+// Customer requests from the portal, answered by Operations («التواصل مع العملاء»).
+app.use('/api/customer-requests', authenticate, sectionGate('Operations'), require('./routes/customerRequests'));
 app.use('/api/branches', branchRoutes);
 // سجلّان يكتب فيهما أكثرُ من قسم — يُختَم لهما منحُ الصلاحيّة ولا يُرفض أحد
 // (راجع stampSection): فالدورُ المصنوعُ الممنوحُ «تعديل التشغيل» يحفظ فيهما،

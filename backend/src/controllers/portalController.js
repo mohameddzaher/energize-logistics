@@ -184,14 +184,14 @@ async function platformTripsFor(identity) {
   if (!names.length) return [];
   const OperationsWorkflow = require('../models/OperationsWorkflow');
   const rows = await OperationsWorkflow.find({ username: { $in: names } })
-    .select('reportNumber reportDate username fromLocation toLocation applicationStatus executionStatus plateNumber carNumber driverName truckType truckSize loadType branch deliveryDate branchDeliveryDate documentNumber createdAt invoiceNumber invoiceDate netInvoice tax totalInvoice collectedAmount collectionDate')
+    .select('reportNumber reportDate username fromLocation toLocation applicationStatus executionStatus plateNumber carNumber driverName truckType truckSize loadType branch deliveryDate branchDeliveryDate documentNumber createdAt invoiceNumber invoiceDate')
     .sort({ reportDate: -1, createdAt: -1 }).limit(FLEET_LIMIT).lean();
   return rows.map((r) => ({
     _id: r._id, waybillNumber: r.reportNumber, customerName: r.username, fromCity: r.fromLocation, toCity: r.toLocation,
     status: r.applicationStatus, vehiclePlate: r.plateNumber || r.carNumber, driverName: r.driverName, truckType: r.truckType,
     truckSize: r.truckSize, branch: r.branch, loadDate: r.reportDate, deliveredAt: r.deliveryDate || r.branchDeliveryDate,
     documentNumber: r.documentNumber, createdAt: r.createdAt, loadType: r.loadType, executionStatus: r.executionStatus,
-    invoice: { number: r.invoiceNumber, date: r.invoiceDate, net: r.netInvoice, tax: r.tax, total: r.totalInvoice, collected: r.collectedAmount, collectedOn: r.collectionDate },
+    invoice: { number: r.invoiceNumber, date: r.invoiceDate },
   }));
 }
 
@@ -297,7 +297,10 @@ function myShipments(data) {
   ].sort((a, b) => String(b.date).localeCompare(String(a.date)));
 }
 
-/** The customer's invoices: one row per invoice number on his manifests (no placeholders like «no inv»). */
+/**
+ * The customer's invoices: one row per invoice number on his manifests (no placeholders like «no inv»).
+ * No money at all reaches the customer — no amounts, VAT or paid state (owner's rule).
+ */
 function myInvoices(data) {
   const { NO_INVOICE_RX } = require('../utils/paymentType');
   const by = new Map();
@@ -305,27 +308,17 @@ function myInvoices(data) {
     const inv = r.invoice || {};
     const no = String(inv.number || '').trim();
     if (!no || NO_INVOICE_RX.test(no) || isCancelled(r.status)) continue;
-    const cur = by.get(no) || { number: no, date: '', shipments: 0, net: 0, tax: 0, total: 0, collected: 0, collectedOn: '', from: new Set(), to: new Set() };
+    const cur = by.get(no) || { number: no, date: '', shipments: 0, from: new Set(), to: new Set() };
     cur.shipments += 1;
-    cur.net += Number(inv.net) || 0;
-    cur.tax += Number(inv.tax) || 0;
-    cur.total += Number(inv.total) || 0;
-    cur.collected += Number(inv.collected) || 0;
     if (inv.date && (!cur.date || ymd(inv.date) > cur.date)) cur.date = ymd(inv.date);
-    if (inv.collectedOn && ymd(inv.collectedOn) > cur.collectedOn) cur.collectedOn = ymd(inv.collectedOn);
     if (r.fromCity) cur.from.add(r.fromCity);
     if (r.toCity) cur.to.add(r.toCity);
     by.set(no, cur);
   }
-  const r2 = (n) => Math.round(n * 100) / 100;
-  return [...by.values()].map((i) => {
-    const total = r2(i.total || i.net + i.tax);
-    const paid = total > 0 && i.collected >= total - 1;
-    return {
-      number: i.number, date: i.date, shipments: i.shipments, net: r2(i.net), tax: r2(i.tax), total,
-      paid, collectedOn: paid ? i.collectedOn : '', routes: `${[...i.from].slice(0, 2).join('، ')} ← ${[...i.to].slice(0, 2).join('، ')}`,
-    };
-  }).sort((a, b) => String(b.date).localeCompare(String(a.date)));
+  return [...by.values()].map((i) => ({
+    number: i.number, date: i.date, shipments: i.shipments,
+    routes: `${[...i.from].slice(0, 2).join('، ')} ← ${[...i.to].slice(0, 2).join('، ')}`,
+  })).sort((a, b) => String(b.date).localeCompare(String(a.date)));
 }
 
 /** Everything, once — the overview and every tab read from this. */
@@ -434,7 +427,6 @@ exports.overview = async (req, res) => {
       for (const x of list) { const k = keyOf(x); if (k) m.set(k, (m.get(k) || 0) + 1); }
       return [...m.entries()].sort((a, b) => b[1] - a[1]).slice(0, n).map(([label, count]) => ({ label, count }));
     };
-    const outstanding = invoices.filter((x) => !x.paid);
 
     res.json({
       kind: 'customer',
@@ -450,9 +442,6 @@ exports.overview = async (req, res) => {
         customsFiles: activeCustoms.length,
         containers: activeCustoms.reduce((a, c) => a + (Number(c.containerCount) || 0), 0),
         invoices: invoices.length,
-        invoicedTotal: r0(invoices.reduce((a, x) => a + x.total, 0)),
-        outstandingCount: outstanding.length,
-        outstandingTotal: r0(outstanding.reduce((a, x) => a + x.total, 0)),
       },
       topRoutes: top(shipments, (x) => (x.from || x.to ? `${x.from || '—'} ← ${x.to || '—'}` : ''), 6),
       trucks: top(shipments, (x) => x.truck, 5),
@@ -653,16 +642,7 @@ exports.invoices = async (req, res) => {
     const identity = await resolveIdentity(partner);
     if (identity.kind === 'vendor') return res.json({ items: [], totals: {} });
     const items = myInvoices(await loadAll(identity));
-    const sum = (list) => r0(list.reduce((a, x) => a + x.total, 0));
-    res.json({
-      items,
-      totals: {
-        count: items.length, total: sum(items),
-        paidCount: items.filter((x) => x.paid).length, paid: sum(items.filter((x) => x.paid)),
-        openCount: items.filter((x) => !x.paid).length, open: sum(items.filter((x) => !x.paid)),
-        shipments: items.reduce((a, x) => a + x.shipments, 0),
-      },
-    });
+    res.json({ items, totals: { count: items.length, shipments: items.reduce((a, x) => a + x.shipments, 0) } });
   } catch (error) {
     console.error('portal invoices error:', error);
     res.status(500).json({ message: 'تعذّر تحميل الفواتير' });
@@ -713,5 +693,13 @@ exports.finance = async (req, res) => {
   }
 };
 
+/** Numbers a customer request can refer to: his own invoices and shipments. */
+module.exports.referenceOptions = async (identity) => {
+  const data = await loadAll(identity);
+  return {
+    invoices: myInvoices(data).map((i) => ({ value: i.number, label: `${i.number} · ${i.date}` })),
+    shipments: myShipments(data).slice(0, 1500).map((x) => ({ value: x.number, label: `#${x.number} · ${x.date} · ${x.from} ← ${x.to}` })).filter((x) => x.value),
+  };
+};
 module.exports.partnerOf = partnerOf;
 module.exports.resolveIdentity = resolveIdentity;

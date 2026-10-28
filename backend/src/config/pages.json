@@ -92,6 +92,12 @@
       "en": "Management JP"
     },
     {
+      "key": "/system/operations/customer-requests",
+      "section": "Operations",
+      "ar": "التواصل مع العملاء",
+      "en": "Customer Communication"
+    },
+    {
       "key": "/system/operations/complaints",
       "section": "Operations",
       "ar": "الشكاوى",
@@ -1944,6 +1950,12 @@
       "section": "Portal",
       "ar": "معاملات التخليص",
       "en": "Customs Files"
+    },
+    {
+      "key": "/system/portal/requests",
+      "section": "Portal",
+      "ar": "طلباتي",
+      "en": "My Requests"
     },
     {
       "key": "/system/portal/invoices",

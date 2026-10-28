@@ -1,5 +1,6 @@
 import 'package:flutter/widgets.dart';
 import 'api.dart';
+import 'lang.dart';
 import 'live.dart';
 
 /// Session state: who is signed in, their role and section permissions —
@@ -83,6 +84,7 @@ class AuthProvider extends ChangeNotifier with WidgetsBindingObserver {
       }
     }
     loading = false;
+    if (user != null) await Lang.instance.useAccount(role);
     notifyListeners();
   }
 
@@ -117,6 +119,7 @@ class AuthProvider extends ChangeNotifier with WidgetsBindingObserver {
     }
     await Api.instance.saveTokens(access: access, refresh: refresh);
     user = d['user'] as Map<String, dynamic>?;
+    await Lang.instance.useAccount(role);
     notifyListeners();
   }
 
@@ -126,6 +129,7 @@ class AuthProvider extends ChangeNotifier with WidgetsBindingObserver {
     } catch (_) {/* signing out locally regardless */}
     await Api.instance.clearTokens();
     user = null;
+    await Lang.instance.useAccount('');
     notifyListeners();
   }
 }

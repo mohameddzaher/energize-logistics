@@ -1,9 +1,9 @@
 /**
- * طلباتُ الأقسام إلى الموارد البشريّة — إرسالٌ وجوابٌ ملزَم.
+ * Staff requests from sections to HR.
  *
- * القسمُ يرى الميدانَ فيقول ما رآه؛ والموارد البشريّة تستلم ثمّ تنفّذ أو ترفض
- * **بسببٍ مكتوب**. وقد يكون الجوابُ جزئيًّا، فلكلّ اسمٍ قرارُه. راجع
- * models/StaffStatusRequest.
+ * A section reports what it sees; HR receives it, then completes or rejects it
+ * (a rejection needs a written reason). Decisions can be per employee.
+ * See models/StaffStatusRequest.
  */
 const mongoose = require('mongoose');
 const { sendMongooseError, describeMongooseError } = require('../utils/mongooseError');
@@ -15,14 +15,14 @@ const { emitToAll } = require('../websocket/socketManager');
 const logAudit = require('../utils/auditLogger');
 
 const S = (v) => (v == null ? '' : String(v).trim());
-const emit = () => { try { emitToAll('staff-requests:changed', {}); } catch (e) { /* الحدثُ زيادة */ } };
+const emit = () => { try { emitToAll('staff-requests:changed', {}); } catch (e) { /* best effort */ } };
 
 const HR_ROLES = ['hr_manager', 'hr_specialist'];
 const isHr = (u) => HR_ROLES.includes(u?.role)
   || ['super_admin', 'admin', 'it_manager', 'it_specialist'].includes(u?.role)
   || ['view', 'edit'].includes(u?.permissions?.HR);
 
-/** رقمٌ متسلسلٌ يُقال في المحادثة: «الطلب ٣٤». */
+/** Next human-readable request number. */
 const nextNumber = async () => {
   const last = await StaffStatusRequest.findOne({}).sort({ number: -1 }).select('number').lean();
   return (last?.number || 1000) + 1;
@@ -36,10 +36,7 @@ exports.create = async (req, res) => {
     const body = S(b.body);
     if (!title && !body) return res.status(400).json({ message: 'اكتب الطلب' });
 
-    // ── والأسماءُ اختياريّة ───────────────────────────────────────────────
-    // «المناديب الذين في سكن جدة عادوا» طلبٌ مفهوم، وإجبارُ المرسِل على
-    // تسمية كلِّ واحدٍ يجعله لا يرسل. فمن سمّى يُفتَح له الاسمُ في الطرف
-    // الآخر، ومن لم يسمِّ يُقرأ نصُّه.
+    // Named employees are optional: a free-text request is valid on its own.
     const ids = (Array.isArray(b.employees) ? b.employees : [])
       .map((e) => (typeof e === 'string' ? { employee: e } : e))
       .filter((e) => e && mongoose.isValidObjectId(S(e.employee)));
@@ -67,7 +64,7 @@ exports.create = async (req, res) => {
       createdByName: [req.user?.firstName, req.user?.lastName].filter(Boolean).join(' ').trim(),
     });
 
-    // ويُبلَّغ من يعمل عليه: الموارد البشريّة بالدور، لا بقائمة أسماءٍ تشيخ.
+    // Notify HR by role (not a fixed list of users).
     try {
       const hr = await User.find({ role: { $in: HR_ROLES }, isActive: { $ne: false } }).select('_id').lean();
       await Promise.all(hr.map((u) => createNotification({
@@ -78,7 +75,7 @@ exports.create = async (req, res) => {
         relatedEntity: 'StaffStatusRequest',
         relatedEntityId: doc._id,
       }).catch(() => {})));
-    } catch (e) { /* التبليغُ زيادةٌ لا شرط */ }
+    } catch (e) { /* notifications are best effort */ }
 
     await logAudit({
       user: req.user?._id, action: 'create', entity: 'StaffStatusRequest', entityId: doc._id,
@@ -95,8 +92,7 @@ exports.create = async (req, res) => {
 /**
  * GET /api/staff-requests?status=&section=&mine=1
  *
- * الموارد البشريّة ترى الكلَّ، والقسمُ يرى طلباتَ قسمِه. ومن ليس من هذين لا
- * يرى إلّا ما أرسله هو — الطلبُ قد يحمل أسماءَ أشخاصٍ وحالاتِهم.
+ * HR sees everything; others see their section's requests and their own.
  */
 exports.list = async (req, res) => {
   try {
@@ -110,11 +106,8 @@ exports.list = async (req, res) => {
     if (req.query.mine === '1') f.createdBy = req.user?._id;
 
     const requests = await StaffStatusRequest.find(f).sort({ createdAt: -1 }).limit(500).lean();
-    // ── والعدّادُ على ما يراه السائلُ نفسُه، بلا فلتر الحالة ──────────────────
-    // كان يُعَدّ على الطلبات كلِّها في الشركة: شارةُ «المفتوحة» عند القسم تقول
-    // عددَ مفتوحات الأقسام كلِّها، وضغطُها يفتح طلباتِ قسمه وحده — رقمٌ يقول غيرَ
-    // ما يفتحه، ويُخبر بما لا يحقّ له أن يراه. فيُعَدّ بقاعدة الرؤية نفسِها،
-    // وبلا الحالة كي لا يتغيّر عددُ «المفتوحة» حين يُفتح تبويبُ «المنتهية».
+    // Counts use the same visibility filter, without the status filter,
+    // so the tab badges stay stable across tabs.
     const { status: _ownFacet, ...countF } = f;
     const counts = await StaffStatusRequest.aggregate([
       { $match: countF },
@@ -131,7 +124,7 @@ exports.list = async (req, res) => {
 };
 
 /**
- * PATCH /api/staff-requests/:id — جوابُ الموارد البشريّة.
+ * PATCH /api/staff-requests/:id — HR decision.
  * { status: 'received'|'done'|'rejected', decisionNote }
  */
 exports.decide = async (req, res) => {
@@ -144,8 +137,7 @@ exports.decide = async (req, res) => {
       return res.status(400).json({ message: 'حالةٌ غير معروفة' });
     }
     const note = S(req.body?.decisionNote);
-    // ── والرفضُ لا يصحّ بلا سبب ───────────────────────────────────────────
-    // رفضٌ صامتٌ يُعاد إرسالُه غدًا كما هو، فيدور الطلبُ بين قسمين بلا نهاية.
+    // A rejection must carry a reason.
     if (status === 'rejected' && !note) {
       return res.status(400).json({ message: 'الرفضُ يحتاج سببًا مكتوبًا' });
     }
@@ -158,8 +150,7 @@ exports.decide = async (req, res) => {
     }
     if (status === 'done' || status === 'rejected') {
       doc.decidedBy = req.user?._id; doc.decidedByName = who; doc.decidedAt = new Date();
-      // وما لم يُقرَّر في اسمٍ بعينه يتبع قرارَ الطلب — فلا يبقى اسمٌ معلَّقًا
-      // في طلبٍ أُغلِق، ويُقرأ الطلبُ وحالتُه واحدة.
+      // Undecided employees inherit the request's decision.
       doc.subjects.forEach((s) => {
         if (s.decision === 'pending') {
           s.decision = status === 'done' ? 'done' : 'rejected';
@@ -181,7 +172,7 @@ exports.decide = async (req, res) => {
           relatedEntityId: doc._id,
         });
       }
-    } catch (e) { /* التبليغُ زيادة */ }
+    } catch (e) { /* notifications are best effort */ }
 
     await logAudit({
       user: req.user?._id, action: 'update', entity: 'StaffStatusRequest', entityId: doc._id,
@@ -195,8 +186,7 @@ exports.decide = async (req, res) => {
 };
 
 /**
- * PATCH /api/staff-requests/:id/subjects/:sid — قرارٌ في اسمٍ واحد.
- * عشرةُ مناديبَ في طلبٍ واحد: سبعةٌ عادوا وثلاثةٌ عندهم مشكلة.
+ * PATCH /api/staff-requests/:id/subjects/:sid — decision for one employee.
  */
 exports.decideSubject = async (req, res) => {
   try {
@@ -217,8 +207,8 @@ exports.decideSubject = async (req, res) => {
     s.decisionNote = note;
     s.decidedAt = decision === 'pending' ? null : new Date();
 
-    // وحالةُ الطلب تُشتقّ من أسمائه: ما دام فيه اسمٌ معلَّقٌ فالطلبُ مستلَمٌ لا
-    // منتهٍ؛ وإن قُرِّر الكلُّ فهو منتهٍ — مرفوضٌ إن رُفض كلُّه.
+    // Request status is derived from its employees: any pending → received;
+    // all decided → done, or rejected if every one was rejected.
     if (doc.subjects.length) {
       const pending = doc.subjects.filter((x) => x.decision === 'pending').length;
       const rejected = doc.subjects.filter((x) => x.decision === 'rejected').length;

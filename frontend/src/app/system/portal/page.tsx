@@ -16,6 +16,7 @@ import {
   CheckCircle2, Clock, ArrowRight, ClipboardList,
 } from 'lucide-react';
 import { KpiTile } from '@/components/system/Scorecard';
+import CustomerHome from '@/components/portal/CustomerHome';
 import {
   statusText, statusColor, customsStageText, money, fmtDate, type Lang, type PortalService,
 } from '@/lib/portal';
@@ -73,6 +74,8 @@ export default function PortalHomePage() {
   }
   if (error || !data) return <p className="text-slate-500">{error || tx('No data', 'لا توجد بيانات')}</p>;
 
+  // Customers get their own view: one shipment list, invoices, no statuses.
+  if (data.kind !== 'vendor') return <CustomerHome data={data as any} ar={ar} />;
   const t = data.totals;
   const isVendor = data.kind === 'vendor';
   const maxMonth = Math.max(1, ...data.monthly.map((m) => m.count));

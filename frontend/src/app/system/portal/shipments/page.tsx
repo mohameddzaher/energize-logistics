@@ -13,6 +13,7 @@ import { Truck, Package, Search, MapPin, ClipboardList } from 'lucide-react';
 import { statusText, statusColor, money, fmtDate, type Lang, type PortalService } from '@/lib/portal';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import ScrollX from '@/components/system/ScrollX';
+import CustomerShipments from '@/components/portal/CustomerShipments';
 
 type TripType = 'heavy' | 'orders' | 'vendor' | 'platform';
 
@@ -237,10 +238,21 @@ function ShipmentsInner() {
   );
 }
 
+// Customers get the single list; suppliers keep their loads view.
+function PortalShipmentsSwitch() {
+  const { lang } = useLanguage();
+  const [kind, setKind] = useState<'customer' | 'vendor' | null>(null);
+  useEffect(() => {
+    api.get<{ kind: 'customer' | 'vendor' }>('/api/portal/me').then((m) => setKind(m.kind)).catch(() => setKind('customer'));
+  }, []);
+  if (!kind) return <div className="h-64 flex items-center justify-center"><div className="w-8 h-8 border-2 border-[#f37121] border-t-transparent rounded-full animate-spin" /></div>;
+  return kind === 'vendor' ? <ShipmentsInner /> : <CustomerShipments ar={lang === 'ar'} />;
+}
+
 export default function PortalShipmentsPage() {
   return (
     <Suspense fallback={<div className="h-64 flex items-center justify-center"><div className="w-8 h-8 border-2 border-[#f37121] border-t-transparent rounded-full animate-spin" /></div>}>
-      <ShipmentsInner />
+      <PortalShipmentsSwitch />
     </Suspense>
   );
 }

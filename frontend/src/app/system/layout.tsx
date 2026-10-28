@@ -761,9 +761,9 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     // having work of that kind — a customs-only customer never sees a shipments
     // tab, and a supplier never sees invoices. Links without it always show.
     { href: '/system/portal', label: L.overview, icon: <LayoutDashboard className="w-5 h-5" />, roles: ['client'], section: 'Portal' },
-    { href: '/system/portal/shipments', label: lang === 'ar' ? 'شحناتي' : 'My Shipments', icon: <Truck className="w-5 h-5" />, roles: ['client'], section: 'Portal', portalService: ['operations', 'heavy_transport', 'shipment_orders'] },
+    { href: '/system/portal/shipments', label: lang === 'ar' ? 'شحناتي' : 'My Shipments', icon: <Truck className="w-5 h-5" />, roles: ['client'], section: 'Portal', portalService: ['shipments', 'operations', 'heavy_transport', 'shipment_orders'] },
     { href: '/system/portal/customs', label: lang === 'ar' ? 'معاملات التخليص' : 'Customs Files', icon: <Ship className="w-5 h-5" />, roles: ['client'], section: 'Portal', portalService: ['customs'] },
-    { href: '/system/portal/invoices', label: L.myInvoices, icon: <FileText className="w-5 h-5" />, roles: ['client'], section: 'Portal', portalService: ['finance'] },
+    { href: '/system/portal/invoices', label: L.myInvoices, icon: <FileText className="w-5 h-5" />, roles: ['client'], section: 'Portal', portalService: ['finance', 'invoices'] },
     { href: '/system/portal/payments', label: L.myPayments, icon: <CreditCard className="w-5 h-5" />, roles: ['client'], section: 'Portal', portalService: ['finance'] },
   ];
 

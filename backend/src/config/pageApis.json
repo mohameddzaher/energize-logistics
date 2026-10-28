@@ -2852,9 +2852,9 @@
     },
     "/system/portal/invoices": {
       "apis": [
-        "/api/analytics/portal/dashboard",
         "/api/invoices",
-        "/api/payments"
+        "/api/payments",
+        "/api/portal/invoices"
       ],
       "wildcard": false
     },

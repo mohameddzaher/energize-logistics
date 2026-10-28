@@ -21,5 +21,6 @@ router.get('/shipments/:type/:id', portal.shipmentDetail);
 router.get('/waybill/:type/:id', portal.waybill);            // بوليصة PDF
 router.get('/customs', portal.customs);
 router.get('/finance', portal.finance);
+router.get('/invoices', portal.invoices);
 
 module.exports = router;

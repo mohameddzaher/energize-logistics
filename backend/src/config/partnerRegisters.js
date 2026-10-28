@@ -21,6 +21,8 @@
 
 // The services a portal account can surface. Each maps to a portal tab.
 const SERVICES = {
+  shipments: { ar: 'الشحنات', en: 'Shipments' },
+  invoices: { ar: 'الفواتير', en: 'Invoices' },
   heavy_transport: { ar: 'النقل الثقيل', en: 'Heavy transport' },
   shipment_orders: { ar: 'طلبات الشحن', en: 'Shipment orders' },
   customs: { ar: 'التخليص الجمركي', en: 'Customs clearance' },

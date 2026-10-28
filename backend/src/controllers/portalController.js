@@ -169,7 +169,7 @@ async function fleetShipmentsFor(identity) {
 
 async function shipmentOrdersFor(identity) {
   const rows = await ShipmentOrder.find({ customerName: { $nin: [null, ''] } })
-    .select('waybillNumber customerName fromCity toCity addressFrom addressTo truckType cargoType truckLength quantity driverName driverPhone vehicleName agentName pickupTime startTime arrivalTime status branch notes createdAt')
+    .select('waybillNumber reference source graduationNumber customerName fromCity toCity addressFrom addressTo truckType cargoType truckLength quantity driverName driverPhone vehicleName agentName pickupTime startTime arrivalTime status branch notes createdAt')
     .sort({ createdAt: -1 })
     .limit(FLEET_LIMIT)
     .lean();
@@ -184,13 +184,14 @@ async function platformTripsFor(identity) {
   if (!names.length) return [];
   const OperationsWorkflow = require('../models/OperationsWorkflow');
   const rows = await OperationsWorkflow.find({ username: { $in: names } })
-    .select('reportNumber reportDate username fromLocation toLocation applicationStatus plateNumber carNumber driverName truckType truckSize branch deliveryDate branchDeliveryDate documentNumber createdAt')
+    .select('reportNumber reportDate username fromLocation toLocation applicationStatus executionStatus plateNumber carNumber driverName truckType truckSize loadType branch deliveryDate branchDeliveryDate documentNumber createdAt invoiceNumber invoiceDate netInvoice tax totalInvoice collectedAmount collectionDate')
     .sort({ reportDate: -1, createdAt: -1 }).limit(FLEET_LIMIT).lean();
   return rows.map((r) => ({
     _id: r._id, waybillNumber: r.reportNumber, customerName: r.username, fromCity: r.fromLocation, toCity: r.toLocation,
     status: r.applicationStatus, vehiclePlate: r.plateNumber || r.carNumber, driverName: r.driverName, truckType: r.truckType,
     truckSize: r.truckSize, branch: r.branch, loadDate: r.reportDate, deliveredAt: r.deliveryDate || r.branchDeliveryDate,
-    documentNumber: r.documentNumber, createdAt: r.createdAt,
+    documentNumber: r.documentNumber, createdAt: r.createdAt, loadType: r.loadType, executionStatus: r.executionStatus,
+    invoice: { number: r.invoiceNumber, date: r.invoiceDate, net: r.netInvoice, tax: r.tax, total: r.totalInvoice, collected: r.collectedAmount, collectedOn: r.collectionDate },
   }));
 }
 
@@ -250,8 +251,89 @@ async function vendorLoadsFor(identity) {
     .sort({ createdAt: -1 }).limit(FLEET_LIMIT).lean();
 }
 
+// ── One shipment list for the customer ─────────────────────────────────────
+// The customer used to see «رحلات النقل» (platform manifests) and «طلبات الشحن»
+// (our shipment orders) as two lists — and an order pulled from the platform is
+// the SAME manifest, so it showed twice. Now: one list, duplicates dropped,
+// cancelled requests left out, and only what concerns the customer — no status,
+// driver phone, quantity, branch, expected arrival or delivery date (those are
+// operations' working data, owner's rule 2026-10-28).
+const CANCELLED_RX = /^(cancel+ed|ملغ[يىا]ة?|ملغاة)$/i;
+const isCancelled = (status) => CANCELLED_RX.test(String(status || '').trim());
+const ymd = (d) => (d ? new Date(d).toISOString().slice(0, 10) : '');
+
+function publicRow(kind, r) {
+  if (kind === 'platform') {
+    return {
+      id: String(r._id), kind, number: r.waybillNumber ? String(r.waybillNumber) : '', date: ymd(r.loadDate || r.createdAt),
+      from: r.fromCity || '', to: r.toCity || '', truck: [r.truckType, r.truckSize].filter(Boolean).join(' · '),
+      plate: r.vehiclePlate || '', driver: r.driverName || '', cargo: r.loadType || '',
+    };
+  }
+  if (kind === 'orders') {
+    return {
+      id: String(r._id), kind, number: r.reference || (r.waybillNumber != null ? String(r.waybillNumber) : ''), date: ymd(r.pickupTime || r.createdAt),
+      from: r.fromCity || r.addressFrom || '', to: r.toCity || r.addressTo || '', truck: [r.truckType, r.truckLength].filter(Boolean).join(' · '),
+      plate: r.vehicleName || '', driver: r.driverName || '', cargo: r.cargoType || '',
+    };
+  }
+  return {
+    id: String(r._id), kind: 'heavy', number: r.waybillNumber != null ? String(r.waybillNumber) : '', date: ymd(r.loadDate || r.createdAt),
+    from: r.fromCity || '', to: r.toCity || '', truck: r.trailerType || '',
+    plate: r.vehiclePlate || '', driver: r.driverName || '', cargo: r.loadType || '', waybill: true,
+  };
+}
+
+function myShipments(data) {
+  const platform = (data.platform || []).filter((r) => !isCancelled(r.status) && !isCancelled(r.executionStatus));
+  const platformNos = new Set(platform.map((r) => String(r.waybillNumber || '')).filter(Boolean));
+  const orders = (data.orders || []).filter((r) => !isCancelled(r.status)
+    && !(r.source === 'platform' && r.graduationNumber != null && platformNos.has(String(r.graduationNumber))));
+  const fleet = (data.fleet || []).filter((r) => !isCancelled(r.status));
+  return [
+    ...platform.map((r) => publicRow('platform', r)),
+    ...orders.map((r) => publicRow('orders', r)),
+    ...fleet.map((r) => publicRow('heavy', r)),
+  ].sort((a, b) => String(b.date).localeCompare(String(a.date)));
+}
+
+/** The customer's invoices: one row per invoice number on his manifests (no placeholders like «no inv»). */
+function myInvoices(data) {
+  const { NO_INVOICE_RX } = require('../utils/paymentType');
+  const by = new Map();
+  for (const r of data.platform || []) {
+    const inv = r.invoice || {};
+    const no = String(inv.number || '').trim();
+    if (!no || NO_INVOICE_RX.test(no) || isCancelled(r.status)) continue;
+    const cur = by.get(no) || { number: no, date: '', shipments: 0, net: 0, tax: 0, total: 0, collected: 0, collectedOn: '', from: new Set(), to: new Set() };
+    cur.shipments += 1;
+    cur.net += Number(inv.net) || 0;
+    cur.tax += Number(inv.tax) || 0;
+    cur.total += Number(inv.total) || 0;
+    cur.collected += Number(inv.collected) || 0;
+    if (inv.date && (!cur.date || ymd(inv.date) > cur.date)) cur.date = ymd(inv.date);
+    if (inv.collectedOn && ymd(inv.collectedOn) > cur.collectedOn) cur.collectedOn = ymd(inv.collectedOn);
+    if (r.fromCity) cur.from.add(r.fromCity);
+    if (r.toCity) cur.to.add(r.toCity);
+    by.set(no, cur);
+  }
+  const r2 = (n) => Math.round(n * 100) / 100;
+  return [...by.values()].map((i) => {
+    const total = r2(i.total || i.net + i.tax);
+    const paid = total > 0 && i.collected >= total - 1;
+    return {
+      number: i.number, date: i.date, shipments: i.shipments, net: r2(i.net), tax: r2(i.tax), total,
+      paid, collectedOn: paid ? i.collectedOn : '', routes: `${[...i.from].slice(0, 2).join('، ')} ← ${[...i.to].slice(0, 2).join('، ')}`,
+    };
+  }).sort((a, b) => String(b.date).localeCompare(String(a.date)));
+}
+
 /** Everything, once — the overview and every tab read from this. */
+// Every portal page reads the same lists: kept 30 s per partner.
 async function loadAll(identity) {
+  return cache.wrap(`portal:data:${identity.source}:${identity.refId}`, 30 * 1000, () => loadAllFresh(identity));
+}
+async function loadAllFresh(identity) {
   if (identity.kind === 'vendor') {
     const loads = await vendorLoadsFor(identity);
     return { fleet: [], orders: [], customs: [], invoices: [], payments: [], vendorLoads: loads };
@@ -274,6 +356,8 @@ function servicesFor(identity, data) {
     add('shipment_orders', data.vendorLoads.length);
     return out;
   }
+  add('shipments', myShipments(data).length);
+  add('invoices', myInvoices(data).length);
   add('operations', (data.platform || []).length);
   add('heavy_transport', data.fleet.length);
   add('shipment_orders', data.orders.length);
@@ -338,12 +422,19 @@ exports.overview = async (req, res) => {
       });
     }
 
-    const activeFleet = data.fleet.filter((s) => s.status !== 'cancelled');
-    const activeOrders = data.orders.filter((s) => s.status !== 'cancelled');
+    const shipments = myShipments(data);
+    const invoices = myInvoices(data);
     const activeCustoms = data.customs.filter((c) => !c.cancelled);
-    const inTransit = [...activeFleet, ...activeOrders].filter((s) => ['loading', 'uploaded', 'on_way'].includes(s.status));
-    const delivered = [...activeFleet, ...activeOrders].filter((s) => ['arrived', 'bond_sent', 'bond_received', 'invoiced'].includes(s.status));
-    const activePlatform = (data.platform || []);
+    const monthKey = (d) => String(d || '').slice(0, 7);
+    const now = new Date();
+    const thisMonth = now.toISOString().slice(0, 7);
+    const prev = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 15)).toISOString().slice(0, 7);
+    const top = (list, keyOf, n) => {
+      const m = new Map();
+      for (const x of list) { const k = keyOf(x); if (k) m.set(k, (m.get(k) || 0) + 1); }
+      return [...m.entries()].sort((a, b) => b[1] - a[1]).slice(0, n).map(([label, count]) => ({ label, count }));
+    };
+    const outstanding = invoices.filter((x) => !x.paid);
 
     res.json({
       kind: 'customer',
@@ -351,28 +442,22 @@ exports.overview = async (req, res) => {
       profile: identity.profile,
       services,
       totals: {
-        shipments: activeFleet.length + activeOrders.length + activePlatform.length,
-        platformTrips: activePlatform.length,
-        heavyTransport: activeFleet.length,
-        shipmentOrders: activeOrders.length,
+        shipments: shipments.length,
+        thisMonth: shipments.filter((x) => monthKey(x.date) === thisMonth).length,
+        lastMonth: shipments.filter((x) => monthKey(x.date) === prev).length,
+        routes: new Set(shipments.map((x) => `${x.from}→${x.to}`)).size,
+        destinations: new Set(shipments.map((x) => x.to).filter(Boolean)).size,
         customsFiles: activeCustoms.length,
-        containers: activeCustoms.reduce((s, c) => s + (Number(c.containerCount) || 0), 0),
-        inTransit: inTransit.length,
-        delivered: delivered.length,
+        containers: activeCustoms.reduce((a, c) => a + (Number(c.containerCount) || 0), 0),
+        invoices: invoices.length,
+        invoicedTotal: r0(invoices.reduce((a, x) => a + x.total, 0)),
+        outstandingCount: outstanding.length,
+        outstandingTotal: r0(outstanding.reduce((a, x) => a + x.total, 0)),
       },
-      recent: {
-        platformTrips: activePlatform.slice(0, 8),
-        heavyTransport: activeFleet.slice(0, 8),
-        shipmentOrders: activeOrders.slice(0, 8),
-        customs: activeCustoms.slice(0, 8),
-      },
-      inTransit: inTransit.slice(0, 20),
-      // عددُ الرحلات شهرًا بشهر — بلا قيمة.
-      monthly: monthlySeries(
-        [...activeFleet.map((s) => ({ at: s.loadDate || s.createdAt })), ...activeOrders.map((s) => ({ at: s.createdAt })),
-          ...activePlatform.map((s) => ({ at: s.loadDate || s.createdAt }))],
-        (x) => x.at, () => 0
-      ),
+      topRoutes: top(shipments, (x) => (x.from || x.to ? `${x.from || '—'} ← ${x.to || '—'}` : ''), 6),
+      trucks: top(shipments, (x) => x.truck, 5),
+      recent: { shipments: shipments.slice(0, 8), invoices: invoices.slice(0, 5), customs: activeCustoms.slice(0, 5) },
+      monthly: monthlySeries(shipments, (x) => x.date, () => 0),
     });
   } catch (error) {
     console.error('portal overview error:', error);
@@ -413,7 +498,16 @@ exports.shipments = async (req, res) => {
     const partner = partnerOf(req);
     if (!partner) return res.status(403).json({ message: 'هذا الحساب غير مرتبط بعميل أو مورد' });
     const identity = await resolveIdentity(partner);
-    const type = req.query.type || (identity.kind === 'vendor' ? 'vendor' : 'heavy');
+    const type = req.query.type || (identity.kind === 'vendor' ? 'vendor' : 'all');
+
+    if (type === 'all' && identity.kind !== 'vendor') {
+      let items = myShipments(await loadAll(identity));
+      if (req.query.q) {
+        const q = String(req.query.q).toLowerCase();
+        items = items.filter((x) => `${x.number} ${x.from} ${x.to} ${x.driver} ${x.plate} ${x.truck}`.toLowerCase().includes(q));
+      }
+      return res.json({ type, total: items.length, items });
+    }
 
     let items = [];
     if (type === 'vendor') items = await vendorLoadsFor(identity);
@@ -451,19 +545,12 @@ exports.shipmentDetail = async (req, res) => {
       const all = await fleetShipmentsFor(identity);
       const found = all.find((s) => String(s._id) === String(id));
       if (!found) return res.status(404).json({ message: 'الشحنة غير موجودة' });
-      const events = await FleetEvent.find({ shipment: found._id, type: { $in: ['created', 'status', 'followup'] } })
+      const events = await FleetEvent.find({ shipment: found._id, type: 'followup' })
         .select('type data createdAt').sort({ createdAt: -1 }).limit(200).lean();
       return res.json({
-        type, shipment: found,
-        // The customer sees WHERE the truck was and WHEN — not who wrote it.
-        timeline: events.map((e) => ({
-          type: e.type,
-          at: e.createdAt,
-          status: e.data?.to || null,
-          location: e.data?.currentLocation || '',
-          note: e.type === 'followup' ? (e.data?.note || '') : '',
-          expectedArrival: e.data?.expectedArrival || null,
-        })),
+        type, shipment: publicRow('heavy', found),
+        // Where the truck was and when — no status, no author.
+        timeline: events.filter((e) => e.data?.currentLocation).map((e) => ({ at: e.createdAt, location: e.data.currentLocation })),
         waybillUrl: `/api/portal/waybill/heavy/${found._id}`,
       });
     }
@@ -471,13 +558,13 @@ exports.shipmentDetail = async (req, res) => {
       const all = await platformTripsFor(identity);
       const found = all.find((s) => String(s._id) === String(id));
       if (!found) return res.status(404).json({ message: 'الرحلة غير موجودة' });
-      return res.json({ type, shipment: found, timeline: [], waybillUrl: null });
+      return res.json({ type, shipment: publicRow('platform', found), timeline: [], waybillUrl: null });
     }
     if (type === 'orders' || type === 'vendor') {
       const all = type === 'vendor' ? await vendorLoadsFor(identity) : await shipmentOrdersFor(identity);
       const found = all.find((s) => String(s._id) === String(id));
       if (!found) return res.status(404).json({ message: 'الشحنة غير موجودة' });
-      return res.json({ type, shipment: found, timeline: [], waybillUrl: null });
+      return res.json({ type, shipment: type === 'vendor' ? found : publicRow('orders', found), timeline: [], waybillUrl: null });
     }
     res.status(400).json({ message: 'نوع غير معروف' });
   } catch (error) {
@@ -555,6 +642,30 @@ exports.customs = async (req, res) => {
   } catch (error) {
     console.error('portal customs error:', error);
     res.status(500).json({ message: 'تعذّر تحميل معاملات التخليص' });
+  }
+};
+
+/** GET /api/portal/invoices — the customer's own invoices (from his manifests). */
+exports.invoices = async (req, res) => {
+  try {
+    const partner = partnerOf(req);
+    if (!partner) return res.status(403).json({ message: 'هذا الحساب غير مرتبط بعميل أو مورد' });
+    const identity = await resolveIdentity(partner);
+    if (identity.kind === 'vendor') return res.json({ items: [], totals: {} });
+    const items = myInvoices(await loadAll(identity));
+    const sum = (list) => r0(list.reduce((a, x) => a + x.total, 0));
+    res.json({
+      items,
+      totals: {
+        count: items.length, total: sum(items),
+        paidCount: items.filter((x) => x.paid).length, paid: sum(items.filter((x) => x.paid)),
+        openCount: items.filter((x) => !x.paid).length, open: sum(items.filter((x) => !x.paid)),
+        shipments: items.reduce((a, x) => a + x.shipments, 0),
+      },
+    });
+  } catch (error) {
+    console.error('portal invoices error:', error);
+    res.status(500).json({ message: 'تعذّر تحميل الفواتير' });
   }
 };
 

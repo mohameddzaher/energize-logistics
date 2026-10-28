@@ -1,29 +1,26 @@
 'use client';
-// بوابة العميل — تفاصيل الشحنة كاملة.
-//
-// «يشوف تفاصيله كلها كاملة» — everything about one load: the route, the truck,
-// the driver, and the follow-up story (where the truck was and when), plus the
-// بوليصة PDF for heavy-transport loads.
-//
-// What is NOT here is deliberate: no money at all for a customer (2026-10-24 —
-// «يشوف رحلاته من غير أسعار»), no internal notes. A supplier still sees what
-// we owe them for the load they carried.
+/**
+ * Portal — one shipment. A customer sees what concerns him only: number, date,
+ * route, truck, plate, driver, cargo, where the truck was reported, and the
+ * waybill PDF for our own trucks. No status or operations data (owner's rule).
+ * A supplier still sees the amount owed for the load he carried.
+ */
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import api from '@/lib/api';
 import { useLanguage } from '@/context/LanguageContext';
 import { useSocket } from '@/hooks/useSocket';
-import {
-  ArrowRight, FileDown, MapPin, Truck, User, Calendar, Package, Clock, Loader2,
-} from 'lucide-react';
-import { statusText, statusColor, money, fmtDate, fmtDateTime, type Lang } from '@/lib/portal';
+import { ArrowRight, FileDown, MapPin, Truck, User, Calendar, Package, Loader2, Hash } from 'lucide-react';
+import { money, fmtDateTime } from '@/lib/portal';
 
 interface Detail {
   type: string;
   shipment: any;
-  timeline: { type: string; at: string; status: string | null; location: string; note: string; expectedArrival: string | null }[];
+  timeline: { at: string; location: string }[];
   waybillUrl: string | null;
 }
+
+const dmy = (d?: string) => (d ? `${String(d).slice(8, 10)}/${String(d).slice(5, 7)}/${String(d).slice(0, 4)}` : '—');
 
 export default function PortalShipmentDetailPage() {
   const params = useParams();
@@ -44,11 +41,10 @@ export default function PortalShipmentDetailPage() {
       setError('');
       setData(await api.get<Detail>(`/api/portal/shipments/${type}/${id}`));
     } catch (e: any) {
-      setError(e?.message || tx('Shipment not found', 'الشحنة غير موجودة'));
+      setError(e?.message || (ar ? 'الشحنة غير موجودة' : 'Shipment not found'));
     }
     setLoading(false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [type, id, lang]);
+  }, [type, id, ar]);
   useEffect(() => { load(); }, [load]);
   useSocket('fleet:updated', load);
 
@@ -60,7 +56,7 @@ export default function PortalShipmentDetailPage() {
       const url = URL.createObjectURL(blob);
       window.open(url, '_blank');
       setTimeout(() => URL.revokeObjectURL(url), 60000);
-    } catch { /* the button simply does nothing rather than breaking the page */ }
+    } catch { /* the button does nothing rather than breaking the page */ }
     setPdfBusy(false);
   };
 
@@ -69,137 +65,83 @@ export default function PortalShipmentDetailPage() {
   }
   if (error || !data) return <p className="text-slate-500">{error}</p>;
 
-  const s = data.shipment;
-  // المبلغ للمورد وحده (مستحقُّه عن الحمولة) — العميل لا يرى أي مبلغ.
   const isVendor = type === 'vendor';
-  const isPlatform = type === 'platform';
+  const raw = data.shipment || {};
+  // Customers receive the public shape; a supplier's load comes raw.
+  const s = isVendor ? {
+    number: raw.reference || raw.waybillNumber, date: String(raw.pickupTime || raw.createdAt || '').slice(0, 10),
+    from: raw.fromCity, to: raw.toCity, truck: raw.truckType, plate: raw.vehicleName, driver: raw.driverName, cargo: raw.cargoType,
+  } : raw;
 
-  const rows: [string, any][] = [
-    [isPlatform ? tx('Report number', 'رقم الكشف') : tx('Waybill number', 'رقم البوليصة'), `#${s.waybillNumber}`],
-    [tx('Status', 'الحالة'), statusText(s.status, lang as Lang)],
-    [isPlatform ? tx('Report date', 'تاريخ الكشف') : tx('Load date', 'تاريخ التحميل'), fmtDate(s.loadDate || s.pickupTime || s.createdAt)],
-    [tx('From', 'من'), s.fromCity || '—'],
-    [tx('To', 'إلى'), s.toCity || '—'],
-    [tx('Pickup address', 'عنوان الاستلام'), s.addressFrom || '—'],
-    [tx('Delivery address', 'عنوان التسليم'), s.addressTo || '—'],
-    [tx('Cargo type', 'نوع الحمولة'), s.loadType || s.cargoType || '—'],
-    [tx('Truck type', 'نوع المركبة'), s.trailerType || s.truckType || '—'],
-    ...(isPlatform ? [
-      [tx('Truck size', 'حجم المركبة'), s.truckSize || '—'] as [string, any],
-      [tx('Document number', 'رقم المستند'), s.documentNumber || '—'] as [string, any],
-      [tx('Delivered at', 'تاريخ التسليم'), s.deliveredAt ? fmtDate(s.deliveredAt) : '—'] as [string, any],
-    ] : []),
-    [tx('Truck', 'المركبة'), s.vehiclePlate || s.vehicleName || '—'],
-    [tx('Driver', 'السائق'), s.driverName || '—'],
-    [tx('Driver phone', 'جوال السائق'), s.driverPhone || '—'],
-    [tx('Quantity', 'الكمية'), s.quantity ?? '—'],
-    [tx('Branch', 'الفرع'), s.branch || '—'],
-    ...(isVendor ? [[tx('Amount', 'المبلغ'), money(s.buyPrice)] as [string, any]] : []),
-    [tx('Expected arrival', 'الوصول المتوقع'), s.expectedArrival ? fmtDateTime(s.expectedArrival) : (s.arrivalTime ? fmtDateTime(s.arrivalTime) : '—')],
+  const facts: [React.ReactNode, string, string][] = [
+    [<Hash key="n" className="w-4 h-4" />, tx('Shipment no.', 'رقم الشحنة'), s.number ? `#${s.number}` : '—'],
+    [<Calendar key="d" className="w-4 h-4" />, tx('Date', 'التاريخ'), dmy(s.date)],
+    [<Truck key="t" className="w-4 h-4" />, tx('Truck', 'الشاحنة'), s.truck || '—'],
+    [<Truck key="p" className="w-4 h-4" />, tx('Plate', 'اللوحة'), s.plate || '—'],
+    [<User key="r" className="w-4 h-4" />, tx('Driver', 'السائق'), s.driver || '—'],
+    [<Package key="c" className="w-4 h-4" />, tx('Cargo', 'نوع الحمولة'), s.cargo || '—'],
+    ...(isVendor ? [[<Package key="a" className="w-4 h-4" />, tx('Amount', 'المبلغ'), money(raw.buyPrice)] as [React.ReactNode, string, string]] : []),
   ];
 
   return (
     <div className="space-y-5">
-      <button type="button" onClick={() => router.push(`/system/portal/shipments?type=${type}`)} className="inline-flex items-center gap-1.5 text-slate-500 text-sm hover:text-slate-900">
-        <ArrowRight className="w-4 h-4 rtl:rotate-0 ltr:rotate-180" />
+      <button type="button" onClick={() => router.push('/system/portal/shipments')} className="inline-flex items-center gap-1.5 text-slate-500 text-sm hover:text-slate-900">
+        <ArrowRight className="w-4 h-4 ltr:rotate-180" />
         {tx('Back to shipments', 'رجوع للشحنات')}
       </button>
 
-      <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-        <div className="flex flex-wrap items-start justify-between gap-3">
+      <section className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#0b1f3a] via-[#12325c] to-[#1d4a80] p-6 text-white shadow-lg">
+        <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-2xl font-bold text-slate-900">#{s.waybillNumber}</h1>
-              <span className="text-xs font-medium px-2.5 py-1 rounded-full" style={{ backgroundColor: `${statusColor(s.status)}1f`, color: statusColor(s.status) }}>
-                {statusText(s.status, lang as Lang)}
-              </span>
-            </div>
-            <p className="text-slate-500 text-sm mt-1.5 inline-flex items-center gap-1.5">
-              <MapPin className="w-4 h-4 text-[#f37121]" />
-              {s.fromCity || '—'} ← {s.toCity || '—'}
-            </p>
+            <p className="text-[12px] text-white/60">{tx('Shipment', 'شحنة')}</p>
+            <h1 className="text-3xl font-bold">#{s.number || '—'}</h1>
+            <p className="mt-1 text-sm text-white/70">{dmy(s.date)}</p>
           </div>
           {data.waybillUrl && (
-            <button
-              type="button"
-              onClick={downloadWaybill}
-              disabled={pdfBusy}
-              className="inline-flex items-center gap-1.5 bg-[#f37121] text-white text-sm font-medium rounded-lg px-3.5 py-2 disabled:opacity-60"
-            >
+            <button type="button" onClick={downloadWaybill} disabled={pdfBusy}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-[#f37121] px-4 py-2 text-sm font-semibold text-white hover:bg-[#e06010] disabled:opacity-60">
               {pdfBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileDown className="w-4 h-4" />}
-              {tx('Download waybill (PDF)', 'تحميل البوليصة (PDF)')}
+              {tx('Waybill (PDF)', 'البوليصة (PDF)')}
             </button>
           )}
         </div>
-
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-5">
-          <Fact icon={<Truck className="w-4 h-4" />} label={tx('Truck', 'المركبة')} value={s.vehiclePlate || s.vehicleName || '—'} />
-          <Fact icon={<User className="w-4 h-4" />} label={tx('Driver', 'السائق')} value={s.driverName || '—'} />
-          <Fact icon={<Calendar className="w-4 h-4" />} label={tx('Load date', 'تاريخ التحميل')} value={fmtDate(s.loadDate || s.pickupTime || s.createdAt)} />
-          {isVendor
-            ? <Fact icon={<Package className="w-4 h-4" />} label={tx('Amount', 'المبلغ')} value={money(s.buyPrice)} />
-            : <Fact icon={<Package className="w-4 h-4" />} label={tx('Truck type', 'نوع المركبة')} value={s.trailerType || s.truckType || '—'} />}
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-        <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-          <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold inline-block mb-3">{tx('Full details', 'كل التفاصيل')}</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2">
-            {rows.map(([k, v]) => (
-              <div key={k} className="border-b border-slate-100 pb-1.5">
-                <p className="text-slate-400 text-[11px] uppercase tracking-wide">{k}</p>
-                <p className="text-slate-800 text-sm break-words">{v === null || v === undefined || v === '' ? '—' : String(v)}</p>
-              </div>
-            ))}
+        {/* Route: from → to, each on its own */}
+        <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto_1fr] sm:items-center">
+          <div className="rounded-xl bg-white/10 p-4 ring-1 ring-white/15">
+            <p className="text-[12px] text-white/60">{tx('From', 'من')}</p>
+            <p className="mt-0.5 text-lg font-bold">{s.from || '—'}</p>
           </div>
-          {s.notes && (
-            <div className="mt-3">
-              <p className="text-slate-400 text-[11px] uppercase tracking-wide mb-1">{tx('Notes', 'ملاحظات')}</p>
-              <p className="text-slate-800 text-sm bg-slate-50 rounded-lg p-3 whitespace-pre-wrap">{s.notes}</p>
-            </div>
-          )}
+          <MapPin className="mx-auto h-5 w-5 text-[#f37121]" />
+          <div className="rounded-xl bg-white/10 p-4 ring-1 ring-white/15">
+            <p className="text-[12px] text-white/60">{tx('To', 'إلى')}</p>
+            <p className="mt-0.5 text-lg font-bold">{s.to || '—'}</p>
+          </div>
         </div>
+      </section>
 
-        <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-          <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold inline-flex items-center gap-2 mb-3">
-            <Clock className="w-4 h-4 text-[#f37121]" />
-            {tx('Tracking history', 'سجل التتبّع')}
-          </h3>
-          {data.timeline.length ? (
-            <ol className="relative border-s border-slate-200 ms-2 space-y-4">
-              {data.timeline.map((e, i) => (
-                <li key={i} className="ms-4">
-                  <span
-                    className="absolute -start-1.5 w-3 h-3 rounded-full border-2 border-white"
-                    style={{ backgroundColor: e.status ? statusColor(e.status) : '#cbd5e1' }}
-                  />
-                  <p className="text-slate-900 text-sm font-medium">
-                    {e.status ? statusText(e.status, lang as Lang)
-                      : e.type === 'followup' ? tx('Follow-up', 'متابعة')
-                        : tx('Created', 'تم الإنشاء')}
-                  </p>
-                  {e.location && <p className="text-slate-600 text-xs mt-0.5 inline-flex items-center gap-1"><MapPin className="w-3 h-3" />{e.location}</p>}
-                  {e.note && <p className="text-slate-500 text-xs mt-0.5">{e.note}</p>}
-                  {e.expectedArrival && <p className="text-slate-400 text-[11px] mt-0.5">{tx('Expected arrival', 'الوصول المتوقع')}: {fmtDateTime(e.expectedArrival)}</p>}
-                  <p className="text-slate-400 text-[11px] mt-0.5">{fmtDateTime(e.at)}</p>
-                </li>
-              ))}
-            </ol>
-          ) : (
-            <p className="text-slate-400 text-sm">{tx('No tracking updates recorded for this shipment yet.', 'لا توجد تحديثات تتبّع مسجّلة لهذه الشحنة بعد.')}</p>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
+      <section className="grid grid-cols-2 gap-3 md:grid-cols-3">
+        {facts.map(([icon, label, value]) => (
+          <div key={label} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <p className="inline-flex items-center gap-1.5 text-[12px] text-slate-500">{icon}{label}</p>
+            <p className="mt-1 truncate text-base font-bold text-slate-900">{value}</p>
+          </div>
+        ))}
+      </section>
 
-function Fact({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
-  return (
-    <div className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
-      <p className="text-slate-400 text-[10px] uppercase tracking-wide inline-flex items-center gap-1">{icon}{label}</p>
-      <p className="text-slate-900 text-sm font-semibold mt-0.5 truncate">{value}</p>
+      {data.timeline?.length > 0 && (
+        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <h2 className="mb-3 font-bold text-slate-900">{tx('Truck location updates', 'مواقع الشاحنة المسجّلة')}</h2>
+          <ol className="relative ms-2 space-y-4 border-s border-slate-200">
+            {data.timeline.map((e, i) => (
+              <li key={i} className="ms-4">
+                <span className="absolute -start-1.5 h-3 w-3 rounded-full border-2 border-white bg-[#f37121]" />
+                <p className="inline-flex items-center gap-1 text-sm font-medium text-slate-900"><MapPin className="h-3.5 w-3.5" />{e.location}</p>
+                <p className="mt-0.5 text-[11px] text-slate-400">{fmtDateTime(e.at)}</p>
+              </li>
+            ))}
+          </ol>
+        </section>
+      )}
     </div>
   );
 }

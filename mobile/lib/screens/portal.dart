@@ -6,6 +6,7 @@ import '../ui/app_scaffold.dart';
 import '../ui/export_sheet.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
+import 'portal_customer.dart';
 import '../ui/search_field.dart';
 import 'customs_detail.dart' show customsStageLabel;
 import 'package:printing/printing.dart';
@@ -152,16 +153,15 @@ class _PortalScreenState extends State<PortalScreen> {
 
     // Tabs are the services the partner has — never a fixed list.
     final tabs = <(String, Widget)>[
-      (tr('نظرة عامة', 'Overview'), _OverviewTab(overview: _overview!, isVendor: _isVendor, onRefresh: _load)),
-      if (_isVendor)
-        (tr('حمولاتي', 'My loads'), const _ShipmentsTab(type: 'vendor'))
-      else ...[
-        // «منصة الأوبريشن» اسمٌ داخلي — العميل يراها «رحلات النقل».
-        if (_services.contains('operations')) (tr('رحلات النقل', 'Transport trips'), const _ShipmentsTab(type: 'platform')),
-        if (_services.contains('heavy_transport')) (tr('النقل الثقيل', 'Heavy transport'), const _ShipmentsTab(type: 'heavy')),
-        if (_services.contains('shipment_orders')) (tr('طلبات الشحن', 'Shipment orders'), const _ShipmentsTab(type: 'orders')),
+      if (_isVendor) ...[
+        (tr('نظرة عامة', 'Overview'), _OverviewTab(overview: _overview!, isVendor: true, onRefresh: _load)),
+        (tr('حمولاتي', 'My loads'), const _ShipmentsTab(type: 'vendor')),
+      ] else ...[
+        // Customers: one shipment list (no statuses), invoices, customs when they have any.
+        (tr('نظرة عامة', 'Overview'), Builder(builder: (c) => CustomerOverviewTab(overview: _overview!, onRefresh: _load, goTo: (i) => DefaultTabController.of(c).animateTo(i)))),
+        (tr('شحناتي', 'My shipments'), const CustomerShipmentsTab()),
         if (_services.contains('customs')) (tr('التخليص', 'Customs'), const _CustomsTab()),
-        if (_services.contains('finance')) (tr('الفواتير', 'Invoices'), const _FinanceTab()),
+        if (_services.contains('invoices')) (tr('الفواتير', 'Invoices'), const CustomerInvoicesTab()),
       ],
     ];
 

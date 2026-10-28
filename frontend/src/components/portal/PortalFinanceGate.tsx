@@ -20,7 +20,7 @@ export default function PortalFinanceGate({ children }: { children: React.ReactN
   useEffect(() => {
     let alive = true;
     api.get<{ services?: { key: string }[] }>('/api/portal/me')
-      .then((m) => { if (alive) setAllowed((m.services || []).some((s) => s.key === 'finance')); })
+      .then((m) => { if (alive) setAllowed((m.services || []).some((s) => s.key === 'finance' || s.key === 'invoices')); })
       .catch(() => { if (alive) setAllowed(false); });
     return () => { alive = false; };
   }, []);

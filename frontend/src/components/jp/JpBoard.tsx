@@ -674,9 +674,19 @@ function JpBoardInner({ scope, section }: { scope: JpScope; section?: string }) 
             className="lg:w-60 px-3 py-3 rounded-xl bg-white border border-slate-200 text-sm text-slate-800">
             <option value="">{whoLabel}</option>
             {!me.canManage && !teamOptions.some((m) => m._id === me.me) && <option value={me.me}>{t('لنفسي', 'Myself')}</option>}
-            {teamOptions.map((m) => (
-              <option key={m._id} value={m._id}>{m._id === me.me ? t(`${m.name} (أنا)`, `${m.name} (me)`) : `${m.name} — ${ar ? m.roleAr : m.roleEn}`}</option>
-            ))}
+            {/* A top role sees the section's members first, then everyone else (e.g. the IT team are super_admins). */}
+            <optgroup label={t('فريق القسم', 'Section team')}>
+              {teamOptions.filter((m) => m.inSection !== false).map((m) => (
+                <option key={m._id} value={m._id}>{m._id === me.me ? t(`${m.name} (أنا)`, `${m.name} (me)`) : `${m.name} — ${ar ? m.roleAr : m.roleEn}`}</option>
+              ))}
+            </optgroup>
+            {teamOptions.some((m) => m.inSection === false) && (
+              <optgroup label={t('موظفون آخرون', 'Other employees')}>
+                {teamOptions.filter((m) => m.inSection === false).map((m) => (
+                  <option key={m._id} value={m._id}>{m._id === me.me ? t(`${m.name} (أنا)`, `${m.name} (me)`) : `${m.name} — ${ar ? m.roleAr : m.roleEn}`}</option>
+                ))}
+              </optgroup>
+            )}
           </select>
           <PrimaryButton onClick={add} disabled={saving}>
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
@@ -870,7 +880,7 @@ function JpBoardInner({ scope, section }: { scope: JpScope; section?: string }) 
           </Field>
           <Field label={t('إلى مَن', 'For whom')}>
             <Select value={editDraft.assignedTo} onChange={(e) => patchEdit({ assignedTo: e.target.value })}>
-              {teamOptions.map((m) => <option key={m._id} value={m._id}>{m.name}</option>)}
+              {teamOptions.map((m) => <option key={m._id} value={m._id}>{m.name}{m.inSection === false ? ` — ${ar ? m.roleAr : m.roleEn}` : ''}</option>)}
               {!teamOptions.some((m) => m._id === editDraft.assignedTo) && <option value={editDraft.assignedTo}>{editing?.assignedToName}</option>}
             </Select>
           </Field>

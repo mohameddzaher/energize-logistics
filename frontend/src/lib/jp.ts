@@ -7,7 +7,7 @@
 export type JpScope = 'section' | 'management';
 export type JpAction = '' | 'call' | 'whatsapp' | 'visit' | 'email' | 'meeting' | 'other';
 
-export interface JpMember { _id: string; name: string; role: string; roleAr: string; roleEn: string; isManager?: boolean }
+export interface JpMember { _id: string; name: string; role: string; roleAr: string; roleEn: string; isManager?: boolean; /** In the section's own roles (a top role may also pick anyone else). */ inSection?: boolean }
 export interface JpAttachment { _id: string; fileUrl: string; fileName: string; phase: 'brief' | 'done'; uploadedByName?: string; uploadedBy?: string }
 export interface JpProject {
   _id: string; name: string; description?: string; status: 'active' | 'closed';

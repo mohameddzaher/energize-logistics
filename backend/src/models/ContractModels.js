@@ -188,6 +188,8 @@ deptContractSchema.index({ department: 1, status: 1 });
 
 // ── العميلُ واحدٌ في كلّ الأقسام — رابطُه إلى شركة العلاقات الأمّ (services/customerHub) ──
 contractCustomerSchema.add({ crmCompany: { type: mongoose.Schema.Types.ObjectId, ref: 'CrmCompany', default: null, index: true } });
+// Copy of the master's customer code (utils/customerCode).
+contractCustomerSchema.add({ customerCode: require('../utils/customerCode').codeField() });
 require('../services/customerHub').attach(contractCustomerSchema, 'contracts');
 module.exports = {
   ContractVendor: mongoose.models.ContractVendor || mongoose.model('ContractVendor', contractVendorSchema),

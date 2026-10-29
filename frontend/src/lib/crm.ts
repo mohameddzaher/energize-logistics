@@ -16,6 +16,8 @@ const pick = (lang: Lang, en: string, ar: string) => (lang === 'ar' ? ar : en);
 
 // ── Types (mirror the backend models) ────────────────────────────────────────
 export interface CrmCompany {
+  /** The customer's code — its identity in every section. */
+  customerCode?: string;
   _id: string;
   name: string; arabicName?: string;
   status: 'lead' | 'prospect' | 'active' | 'inactive' | 'churned';

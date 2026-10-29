@@ -22,6 +22,7 @@ import ScrollX from '@/components/system/ScrollX';
 import { useColumnFilters } from '@/hooks/useColumnFilters';
 
 const EMPTY = {
+  customerCode: '',
   name: '', arabicName: '', status: 'lead', type: 'customer', rating: 0, score: 0,
   industry: '', size: '', website: '', phone: '', whatsapp: '', email: '',
   address: '', city: '', country: '', source: '', tags: '', owner: '', linkedCustomer: '', notes: '',
@@ -140,6 +141,7 @@ export default function CrmCompaniesPage() {
   };
 
   const exportColumns: ExportColumn[] = [
+    { header: 'Customer code', key: 'customerCode', width: 14 },
     { header: 'Name', key: 'name', width: 26 },
     { header: 'Arabic Name', key: 'arabicName', width: 22 },
     { header: 'Status', key: 'status', width: 12 },
@@ -172,6 +174,7 @@ export default function CrmCompaniesPage() {
    * فيعمل مع فلاتر القسم لا ضدَّها. راجع hooks/useColumnFilters.
    */
   const cf = useColumnFilters<any>({
+    code: (c) => c.customerCode || '',
     name: (c) => companyName(c, lang),
     status: (c) => { const m: any = (COMPANY_STATUS_STYLE as any)[c.status]; return m ? (ar ? m.ar : m.en) : String(c.status || ''); },
     rating: (c) => String(c.rating || 0),
@@ -208,6 +211,7 @@ export default function CrmCompaniesPage() {
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-slate-900 border-b border-slate-200 text-start">
+              <th className="px-4 py-3 text-slate-300 font-semibold whitespace-nowrap">{cf.head('code', ar ? 'كود العميل' : 'Code')}</th>
               <th className="px-4 py-3 text-slate-300 font-semibold">{cf.head('name', T.name)}</th>
               <th className="px-4 py-3 text-slate-300 font-semibold">{cf.head('status', T.status)}</th>
               <th className="px-4 py-3 text-slate-300 font-semibold">{cf.head('rating', T.rating)}</th>
@@ -219,9 +223,10 @@ export default function CrmCompaniesPage() {
           </thead>
           <tbody className="divide-y divide-slate-200">
             {shown.length === 0 ? (
-              <tr><td colSpan={7} className="px-4 py-10 text-center text-slate-800">{T.noResults}</td></tr>
+              <tr><td colSpan={8} className="px-4 py-10 text-center text-slate-800">{T.noResults}</td></tr>
             ) : shown.map((c) => (
               <tr key={c._id} className="hover:bg-slate-100">
+                <td className="px-4 py-3 font-mono font-bold text-[#12325c] whitespace-nowrap" dir="ltr">{c.customerCode || '—'}</td>
                 <td className="px-4 py-3">
                   <button onClick={() => router.push(`/system/crm/companies/${c._id}`)} className="text-slate-900 font-medium hover:text-[#f37121]">{companyName(c, lang)}</button>
                   {c.city && <div className="text-slate-700 text-xs">{c.city}</div>}
@@ -251,6 +256,7 @@ export default function CrmCompaniesPage() {
           <PrimaryButton onClick={save} disabled={saving}>{saving ? T.saving : T.save}</PrimaryButton>
         </>}>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <Field label={ar ? 'كود العميل' : 'Customer code'}><TextInput value={form.customerCode || ''} dir="ltr" placeholder={ar ? 'الكود يميّز العميل في كل الأقسام' : 'Identifies the customer in every section'} onChange={(e) => setForm({ ...form, customerCode: e.target.value })} /></Field>
           <Field label={T.name}><TextInput value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
           <Field label={T.arabicName}><TextInput value={form.arabicName} onChange={(e) => setForm({ ...form, arabicName: e.target.value })} dir="rtl" /></Field>
           <Field label={T.status}><Select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}>

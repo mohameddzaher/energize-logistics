@@ -995,7 +995,7 @@ exports.listParties = async (req, res) => {
     if (q) {
       const rx = partyRx(q);
       // يُبحَث بالاسم وبكلّ رقمٍ في الملفّ — «أيّ اسمٍ أو أيّ رقم».
-      filter.$or = [{ name: rx }, { email: rx }, { phone: rx }, { contactPerson: rx },
+      filter.$or = [{ customerCode: rx }, { name: rx }, { email: rx }, { phone: rx }, { contactPerson: rx },
         { commercialRegister: rx }, { taxNumber: rx }, { city: rx }];
       // `deep=1` (صفحةُ الأطراف): ويُوجَد الطرفُ بما في معاملاته كذلك — رقمِ حاويةٍ
       // أو بوليصةٍ أو بيان. ولا يُطلب في قوائم الاختيار: هناك يُكتب الاسم.

@@ -105,6 +105,7 @@ function shapeRow(c, sheets, orders) {
   const lastRoute = routes.reduce((a, b) => ((a?.at || 0) > (b?.at || 0) ? a : b), null);
   const out = {
     _id: String(c._id),
+    customerCode: c.customerCode || '',
     name: c.name,
     isActive: c.isActive !== false,
     routesCount: routes.length,
@@ -140,7 +141,7 @@ exports.list = async (req, res) => {
   try {
     const body = await cache.wrapStale('so:registry:customers:full', TTL, 15 * 60 * 1000, async () => {
       const [customers, sheets, orders] = await Promise.all([
-        ShipmentOrderCustomer.find({}).select('name phone email routes defaults isActive').lean(),
+        ShipmentOrderCustomer.find({}).select('customerCode name phone email routes defaults isActive').lean(),
         sheetTotals(),
         orderTotals(),
       ]);
@@ -279,7 +280,7 @@ exports.profile = async (req, res) => {
 
         return {
           customer: {
-            _id: String(c._id), name: c.name, phone: c.phone || '', email: c.email || '',
+            _id: String(c._id), customerCode: c.customerCode || '', name: c.name, phone: c.phone || '', email: c.email || '',
             notes: c.notes || '', isActive: c.isActive !== false,
             defaults: c.defaults || {},
             routes: (c.routes || []).map((r) => ({

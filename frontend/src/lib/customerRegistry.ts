@@ -29,6 +29,7 @@ export const canRemoveCustomers = (u: RoleOrUser) =>
  */
 export interface RegistryRow {
   _id: string;
+  customerCode?: string;
   name: string;
   phone?: string;
   email?: string;
@@ -163,6 +164,7 @@ export type RegistryCol = {
 };
 
 export const REGISTRY_COLS: RegistryCol[] = [
+  { key: 'customerCode', ar: 'كود العميل', en: 'Code', width: 12 },
   { key: 'name', ar: 'العميل', en: 'Customer', width: 28 },
   { key: 'phone', ar: 'الجوال', en: 'Phone', width: 16 },
   { key: 'email', ar: 'البريد', en: 'Email', width: 24 },

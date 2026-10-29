@@ -82,6 +82,8 @@ crmCompanySchema.post(/^find.*[UD]/, bustCompaniesList);
 // فلا تكتب مزامنتُها فوق ما عُدِّل عندنا.
 crmCompanySchema.add({
   nameKey: { type: String, index: true, default: '' },
+  // The customer's code — its identity in every section (utils/customerCode). Unique when set.
+  customerCode: require('../utils/customerCode').codeField({ index: false }),
   emails: { type: [String], default: [] },
   contactPerson: { type: String, trim: true, default: '' },
   taxNumber: { type: String, trim: true, default: '' },
@@ -95,6 +97,7 @@ crmCompanySchema.pre('findOneAndUpdate', function keyNameUpd(next) {
   if (name) { this.set({ nameKey: crmFold(name) }); }
   next();
 });
+crmCompanySchema.index({ customerCode: 1 }, { unique: true, partialFilterExpression: { customerCode: { $type: 'string', $gt: '' } } });
 require('../services/customerHub').attach(crmCompanySchema, 'crm');
 
 module.exports = mongoose.model('CrmCompany', crmCompanySchema);

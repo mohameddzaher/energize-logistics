@@ -131,6 +131,8 @@ const fleetCustomerSchema = new mongoose.Schema({
   // في قسمه — فلا يجمعهما إلّا الاسم المطبَّع، ولذلك يُخزَّن المفتاح ويُفهرَس.
   crmCompany: { type: mongoose.Schema.Types.ObjectId, ref: 'CrmCompany', default: null, index: true },
   nameKey: { type: String, trim: true, default: '', index: true },
+  // Copy of the master's customer code (utils/customerCode).
+  customerCode: require('../utils/customerCode').codeField(),
   routes: [{
     fromCity: { type: String, trim: true, default: '' },
     toCity: { type: String, trim: true, default: '' },

@@ -214,8 +214,9 @@ final fleetCustomersCfg = ResourceConfig(
   arTitle: 'عملاء الأسطول', enTitle: 'Fleet Customers', icon: Icons.people_outline,
   endpoint: '/api/fleet/customers', listKey: 'customers', liveEvent: 'fleet:customers',
   extraLiveEvents: const ['fleet:updated', 'customers:changed'],
-  searchFields: const ['name', 'phone', 'email', 'taxNumber'],
-  titleOf: (r) => _s(r, 'name'),
+  searchFields: const ['customerCode', 'name', 'phone', 'email', 'taxNumber'],
+  // The code first: it identifies the customer in every section.
+  titleOf: (r) => _s(r, 'customerCode').isEmpty ? _s(r, 'name') : '${_s(r, 'customerCode')} · ${_s(r, 'name')}',
   // السطر الثاني يحمل أرقامه لا بيانات تواصله وحدها: مئتا عميلٍ في قائمةٍ
   // بلا أرقام جردٌ يُمرَّر لا سجلٌّ يُقرأ منه من الأكثر تعاملًا.
   subtitleOf: (r) {
@@ -262,8 +263,9 @@ final fleetCustomersArchivedCfg = ResourceConfig(
   arTitle: 'العملاء المؤرشفون', enTitle: 'Archived Customers', icon: Icons.archive_outlined,
   endpoint: '/api/fleet/customers', listKey: 'customers', liveEvent: 'fleet:customers',
   listQuery: 'state=${Uri.encodeQueryComponent('معطَّل')}',
-  searchFields: const ['name', 'phone', 'email', 'taxNumber'],
-  titleOf: (r) => _s(r, 'name'),
+  searchFields: const ['customerCode', 'name', 'phone', 'email', 'taxNumber'],
+  // The code first: it identifies the customer in every section.
+  titleOf: (r) => _s(r, 'customerCode').isEmpty ? _s(r, 'name') : '${_s(r, 'customerCode')} · ${_s(r, 'name')}',
   subtitleOf: (r) => [if ((r['trips'] ?? 0) != 0) 'حمولات: ${r['trips']}', _s(r, 'phone')].where((x) => x.isNotEmpty).join(' · '),
   chipsOf: (r) => [('معطَّل', T.inkFaint)],
   canCreate: false, canEdit: false, canDelete: false,
@@ -440,10 +442,12 @@ final crmCompaniesCfg = ResourceConfig(
   onOpen: (c, r) => Navigator.push(c, MaterialPageRoute(builder: (_) => CrmCompanyProfileScreen(companyId: (r['_id'] ?? '').toString(), name: (r['name'] ?? '').toString()))),
   arTitle: 'الشركات', enTitle: 'Companies', icon: Icons.apartment_outlined,
   endpoint: '/api/crm/companies', listKey: 'companies', liveEvent: 'crm:company',
-  searchFields: const ['name', 'arabicName', 'phone', 'email', 'city', 'industry'],
+  searchFields: const ['customerCode', 'name', 'arabicName', 'phone', 'email', 'city', 'industry'],
   titleOf: (r) => _s(r, 'arabicName').isNotEmpty ? _s(r, 'arabicName') : _s(r, 'name'),
   subtitleOf: (r) => [_s(r, 'industry'), _s(r, 'city')].where((x) => x.isNotEmpty).join(' · '),
   chipsOf: (r) => [
+    // The customer's code identifies it in every section.
+    if (_s(r, 'customerCode').isNotEmpty) (_s(r, 'customerCode'), T.navy),
     if (_s(r, 'status').isNotEmpty) (_s(r, 'status'), T.cyan),
     if (r['rating'] != null && r['rating'] != 0) ('★ ${r['rating']}', T.warn),
   ],
@@ -452,6 +456,7 @@ final crmCompaniesCfg = ResourceConfig(
     const ResourceAction(icon: Icons.star_outline_rounded, ar: 'التقييم', en: 'Rate', color: T.warn, run: crmRateCompany),
   ],
   fields: const [
+    FieldSpec('customerCode', 'كود العميل', 'Customer code'),
     FieldSpec('name', 'اسم الشركة', 'Company name', required: true),
     FieldSpec('arabicName', 'الاسم العربي', 'Arabic name'),
     FieldSpec('status', 'الحالة', 'Status', type: FieldType.select, options: [
@@ -1129,9 +1134,9 @@ ResourceConfig customersRegisterCfg({required bool canEdit, required bool canDel
   rowActions: (r) => const [
     ResourceAction(icon: Icons.key_outlined, ar: 'حساب البوابة', en: 'Portal login', color: T.orange, run: openCustomerPortalLogin),
   ],
-  searchFields: const ['name', 'phone', 'email', 'branch'],
+  searchFields: const ['customerCode', 'name', 'phone', 'email', 'branch'],
   sortFields: const [('sheets', 'الكشوف', 'Sheets'), ('routesCount', 'المسارات', 'Routes')],
-  titleOf: (r) => _s(r, 'name'),
+  titleOf: (r) => _s(r, 'customerCode').isEmpty ? _s(r, 'name') : '${_s(r, 'customerCode')} · ${_s(r, 'name')}',
   // السطرُ الثاني يحمل أرقامَه: ٦٧٠ عميلًا بلا أرقامٍ جردٌ يُمرَّر لا سجلٌّ يُقرأ.
   subtitleOf: (r) {
     final parts = <String>[

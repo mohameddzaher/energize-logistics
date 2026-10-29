@@ -156,6 +156,7 @@ export default function CrmCompanyDetailPage() {
             <div className="w-12 h-12 rounded-lg bg-[#f37121]/20 flex items-center justify-center text-[#f37121]"><Building2 className="w-6 h-6" /></div>
             <div>
               <h1 className="text-2xl font-bold text-slate-900">{companyName(company, lang)}</h1>
+              {company.customerCode && <span className="rounded-md bg-[#12325c] px-2 py-0.5 font-mono text-[12px] font-bold text-white" dir="ltr" title={lang === 'ar' ? 'كود العميل' : 'Customer code'}>{company.customerCode}</span>}
               <div className="flex items-center flex-wrap gap-2 mt-1">
                 <Badge style={COMPANY_STATUS_STYLE[company.status]} lang={lang} />
                 <span className="text-slate-500 text-sm">{optLabel(opts?.COMPANY_TYPES, company.type, lang)}</span>

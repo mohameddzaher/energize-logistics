@@ -66,7 +66,8 @@ const collectionsPartySchema = new mongoose.Schema({
   //
   // وسياقتُه من الواقع: الضريبيُّ رقمٌ من سلسلة `1104xxxx`، والنقديُّ `C####`.
   // فمَن أُضيف جديدًا يأخذ التاليَ في سلسلة نوعِه من نفسِه.
-  code: { type: String, trim: true, default: '' },
+  // Account code = the customer's code (utils/customerCode), kept in step with the master by customerHub.
+  code: { type: String, trim: true, default: '', set: (v) => require('../utils/customerCode').normCode(v) },
 
   // ── وأسماؤه الأخرى ────────────────────────────────────────────────────────
   // اسمُ الحساب في المحاسبة غيرُ الاسم الذي يُكتب في كشف التشغيل: «شركة صليهم

@@ -23,7 +23,8 @@
 const mongoose = require('mongoose');
 
 /** حقولُ بطاقة التواصل — مشتركةٌ بين السجلّات كلِّها. */
-const CARD = ['emails', 'phone', 'contactPerson', 'taxNumber', 'commercialRegister', 'address', 'city'];
+// `code` is the customer's code (utils/customerCode): master `customerCode`, collections `code`.
+const CARD = ['emails', 'phone', 'contactPerson', 'taxNumber', 'commercialRegister', 'address', 'city', 'code'];
 
 const S = (v) => String(v == null ? '' : v).trim();
 const { normalizeEmails } = require('../utils/partyEmails');
@@ -37,36 +38,36 @@ const REG = {
   crm: {
     model: () => require('../models/CrmCompany'), base: {}, master: true,
     ar: 'إدارة العلاقات', href: (id) => `/system/crm/companies/${id}`,
-    read: (d) => ({ emails: normalizeEmails([...(d.emails || []), d.email || '']), phone: S(d.phone), contactPerson: S(d.contactPerson), taxNumber: S(d.taxNumber), commercialRegister: S(d.commercialRegister), address: S(d.address), city: S(d.city) }),
-    write: (c) => ({ emails: c.emails, email: c.emails[0] || '', phone: c.phone, contactPerson: c.contactPerson, taxNumber: c.taxNumber, commercialRegister: c.commercialRegister, address: c.address, city: c.city }),
+    read: (d) => ({ emails: normalizeEmails([...(d.emails || []), d.email || '']), phone: S(d.phone), contactPerson: S(d.contactPerson), taxNumber: S(d.taxNumber), commercialRegister: S(d.commercialRegister), address: S(d.address), city: S(d.city), code: S(d.customerCode) }),
+    write: (c) => ({ emails: c.emails, email: c.emails[0] || '', phone: c.phone, contactPerson: c.contactPerson, taxNumber: c.taxNumber, commercialRegister: c.commercialRegister, address: c.address, city: c.city, customerCode: c.code || '' }),
   },
   collections: {
     model: () => require('../models/CollectionsParty'), base: { kind: 'customer' },
     ar: 'التحصيل', href: (id) => `/system/collections-dept/parties/${id}`,
-    read: (d) => ({ emails: normalizeEmails([...(d.emails || []), d.email || '']), phone: S(d.phone), contactPerson: S(d.contactPerson), taxNumber: S(d.taxNumber), commercialRegister: S(d.commercialRegister), address: S(d.address), city: S(d.city) }),
-    write: (c) => ({ emails: c.emails, email: c.emails[0] || '', phone: c.phone, contactPerson: c.contactPerson, taxNumber: c.taxNumber, commercialRegister: c.commercialRegister, address: c.address, city: c.city }),
+    read: (d) => ({ emails: normalizeEmails([...(d.emails || []), d.email || '']), phone: S(d.phone), contactPerson: S(d.contactPerson), taxNumber: S(d.taxNumber), commercialRegister: S(d.commercialRegister), address: S(d.address), city: S(d.city), code: S(d.code) }),
+    write: (c) => ({ emails: c.emails, email: c.emails[0] || '', phone: c.phone, contactPerson: c.contactPerson, taxNumber: c.taxNumber, commercialRegister: c.commercialRegister, address: c.address, city: c.city, code: c.code || '' }),
   },
   shipment: {
     model: () => require('../models/ShipmentOrderCustomer'), base: {}, single: true,
     ar: 'طلبات الشحنات والعمليات والمبيعات', href: (id) => `/system/shipment-orders/customers/${id}`,
-    read: (d) => ({ emails: normalizeEmails([d.email || '']), phone: S(d.phone), address: S(d.address), city: S(d.city) }),
-    write: (c) => ({ email: c.emails[0] || '', phone: c.phone, address: c.address, city: c.city }),
+    read: (d) => ({ emails: normalizeEmails([d.email || '']), phone: S(d.phone), address: S(d.address), city: S(d.city), code: S(d.customerCode) }),
+    write: (c) => ({ email: c.emails[0] || '', phone: c.phone, address: c.address, city: c.city, customerCode: c.code || '' }),
   },
   fleet: {
     model: () => require('../models/FleetModels').FleetCustomer, base: {}, single: true,
     ar: 'إدارة الأسطول', href: (id) => `/system/fleet/customers/${id}`,
-    read: (d) => ({ emails: normalizeEmails([d.email || '']), phone: S(d.phone), taxNumber: S(d.taxNumber), address: S(d.address) }),
-    write: (c) => ({ email: c.emails[0] || '', phone: c.phone, taxNumber: c.taxNumber, address: c.address }),
+    read: (d) => ({ emails: normalizeEmails([d.email || '']), phone: S(d.phone), taxNumber: S(d.taxNumber), address: S(d.address), code: S(d.customerCode) }),
+    write: (c) => ({ email: c.emails[0] || '', phone: c.phone, taxNumber: c.taxNumber, address: c.address, customerCode: c.code || '' }),
   },
   customs: {
     model: () => require('../models/CustomsParty'), base: { kind: 'customer' }, single: true,
     ar: 'التخليص الجمركي', href: (id) => `/system/customs/parties/${id}`,
-    read: (d) => ({ emails: normalizeEmails([d.email || '']), phone: S(d.phone), contactPerson: S(d.contactPerson), taxNumber: S(d.taxNumber), commercialRegister: S(d.commercialRegister), address: S(d.address), city: S(d.city) }),
+    read: (d) => ({ emails: normalizeEmails([d.email || '']), phone: S(d.phone), contactPerson: S(d.contactPerson), taxNumber: S(d.taxNumber), commercialRegister: S(d.commercialRegister), address: S(d.address), city: S(d.city), code: S(d.customerCode) }),
     // جهةُ الاتّصال الأولى مرآةُ الحقول المسطّحة في التخليص (mirrorContacts) — تُكتب معها
     // وإلّا أعادت أوّلُ حفظةٍ القديم.
     write: (c, d) => ({
       email: c.emails[0] || '', phone: c.phone, contactPerson: c.contactPerson, taxNumber: c.taxNumber,
-      commercialRegister: c.commercialRegister, address: c.address, city: c.city,
+      commercialRegister: c.commercialRegister, address: c.address, city: c.city, customerCode: c.code || '',
       ...(d && Array.isArray(d.contacts) && d.contacts.length
         ? { 'contacts.0.email': c.emails[0] || '', 'contacts.0.phone': c.phone, 'contacts.0.name': c.contactPerson || (d.contacts[0] && d.contacts[0].name) || '' }
         : {}),
@@ -75,8 +76,8 @@ const REG = {
   contracts: {
     model: () => require('../models/ContractModels').ContractCustomer, base: {}, single: true,
     ar: 'إدارة العقود', href: () => '/system/contracts/customers',
-    read: (d) => ({ emails: normalizeEmails([d.email || '']), phone: S(d.phone), contactPerson: S(d.contactPerson), taxNumber: S(d.taxNumber), commercialRegister: S(d.crNumber), address: S(d.headquarters) }),
-    write: (c) => ({ email: c.emails[0] || '', phone: c.phone, contactPerson: c.contactPerson, taxNumber: c.taxNumber, crNumber: c.commercialRegister, headquarters: c.address }),
+    read: (d) => ({ emails: normalizeEmails([d.email || '']), phone: S(d.phone), contactPerson: S(d.contactPerson), taxNumber: S(d.taxNumber), commercialRegister: S(d.crNumber), address: S(d.headquarters), code: S(d.customerCode) }),
+    write: (c) => ({ email: c.emails[0] || '', phone: c.phone, contactPerson: c.contactPerson, taxNumber: c.taxNumber, crNumber: c.commercialRegister, headquarters: c.address, customerCode: c.code || '' }),
   },
 };
 const REG_KEYS = Object.keys(REG);
@@ -116,8 +117,11 @@ async function ensureMaster(reg, doc) {
   if (doc.crmCompany) return doc.crmCompany;
   const Crm = REG.crm.model();
   const key = foldName(doc.name);
-  if (!key) return null;
-  let master = await Crm.findOne({ nameKey: key }).select('_id').lean();
+  // The code identifies the customer: a row carrying one joins the master with that code.
+  const code = S(R.read(doc).code);
+  let master = code ? await Crm.findOne({ customerCode: code }).select('_id').lean() : null;
+  if (!key && !master) return null;
+  if (!master) master = await Crm.findOne({ nameKey: key }).select('_id').lean();
   if (!master) {
     // سجلٌّ آخر بالاسم نفسِه مربوطٌ قبلًا؟ فأمُّه أمُّ هذا.
     for (const other of REG_KEYS.filter((k) => k !== 'crm' && k !== reg)) {
@@ -175,26 +179,36 @@ async function linkedRows(masterId) {
 }
 
 /** يكتب بطاقةً في الأمّ ويوزّعها على المرتبطين — حقولًا بعينها، وما عدا `except`. */
-async function fanOut(masterId, card, fields, except = null, origin = '') {
+async function fanOut(masterId, card, fieldsIn, except = null, origin = '') {
+  let fields = fieldsIn;
   const Crm = REG.crm.model();
   const pick = (w) => {
     const out = {};
     for (const [k, v] of Object.entries(w)) {
       const base = k.startsWith('contacts.0.') ? (k.endsWith('email') ? 'emails' : k.endsWith('phone') ? 'phone' : 'contactPerson') : k;
-      const f = base === 'email' ? 'emails' : base === 'crNumber' ? 'commercialRegister' : base === 'headquarters' ? 'address' : base;
+      const f = base === 'email' ? 'emails' : base === 'crNumber' ? 'commercialRegister' : base === 'headquarters' ? 'address' : base === 'customerCode' ? 'code' : base;
       if (fields.includes(f)) out[k] = v;
     }
     return out;
   };
   const mset = pick(REG.crm.write(card));
-  if (Object.keys(mset).length) await Crm.updateOne({ _id: masterId }, { $set: { ...mset, updatedAt: new Date() } });
+  if (Object.keys(mset).length) {
+    // A code already held by another customer is refused (unique): the rest of the card still goes through.
+    try { await Crm.updateOne({ _id: masterId }, { $set: { ...mset, updatedAt: new Date() } }); }
+    catch (e) {
+      if (e.code !== 11000 || !('customerCode' in mset)) throw e;
+      console.error('[customerHub] code taken:', mset.customerCode);
+      delete mset.customerCode; fields = fields.filter((f) => f !== 'code');
+      if (Object.keys(mset).length) await Crm.updateOne({ _id: masterId }, { $set: { ...mset, updatedAt: new Date() } });
+    }
+  }
   let n = 0;
   for (const { reg, doc } of await linkedRows(masterId)) {
     if (except && except.reg === reg && String(except.id) === String(doc._id)) continue;
     const set = pick(REG[reg].write(card, doc));
     if (!Object.keys(set).length) continue;
-    await REG[reg].model().updateOne({ _id: doc._id }, { $set: set });
-    n += 1;
+    try { await REG[reg].model().updateOne({ _id: doc._id }, { $set: set }); n += 1; }
+    catch (e) { console.error(`[customerHub] fan-out ${reg} ${doc._id}:`, e.message); }
   }
   // المنصّةُ (UPL) تعرف بريدَ عميلها وهاتفَه — يُكتب فيها ما عُدِّل عندنا.
   if (origin !== 'platform' && (fields.includes('emails') || fields.includes('phone'))) pushToPlatform(masterId, card).catch(() => {});
@@ -248,7 +262,7 @@ async function onChange(reg, before, after, origin = '') {
       if (Object.keys(fillDoc).length) {
         const set = {}; const w = R.write({ ...card }, after);
         for (const [k, v] of Object.entries(w)) {
-          const f = k === 'email' ? 'emails' : k === 'crNumber' ? 'commercialRegister' : k === 'headquarters' ? 'address' : k.startsWith('contacts.0.') ? null : k;
+          const f = k === 'email' ? 'emails' : k === 'crNumber' ? 'commercialRegister' : k === 'headquarters' ? 'address' : k === 'customerCode' ? 'code' : k.startsWith('contacts.0.') ? null : k;
           if (f && fillDoc[f] !== undefined) set[k] = v;
         }
         if (Object.keys(set).length) await R.model().updateOne({ _id: after._id }, { $set: set });
@@ -272,7 +286,7 @@ async function onChange(reg, before, after, origin = '') {
  * يقرأ الصفَّ قبل التعديل حين يمسّ التعديلُ البطاقة، ويُطلق التوزيعَ بعد الردّ
  * (setImmediate) فلا يتأخّر حفظُ الشاشة.
  */
-const WATCH = [...CARD, 'email', 'crNumber', 'headquarters', 'contacts'];
+const WATCH = [...CARD, 'email', 'crNumber', 'headquarters', 'contacts', 'customerCode'];
 function attach(schema, reg) {
   schema.pre('save', async function rememberBefore() {
     this.$locals.hubNew = this.isNew;
@@ -347,4 +361,23 @@ function startSweep() {
   setInterval(run, 60 * 60 * 1000).unref();
 }
 
-module.exports = { sweepUnlinked, startSweep, CARD, REG, REG_KEYS, attach, onChange, ensureMaster, ensureContract, fanOut, presence, linkedRows, foldName, cardDiff };
+/**
+ * Give a master customer its code and copy it to every linked record.
+ * Refuses a code another customer already holds. Returns { ok, reason?, rows }.
+ */
+async function setMasterCode(masterId, rawCode) {
+  const { normCode } = require('../utils/customerCode');
+  const code = normCode(rawCode);
+  const Crm = REG.crm.model();
+  const master = await Crm.findById(masterId).lean();
+  if (!master) return { ok: false, reason: 'master_missing' };
+  if (code) {
+    const other = await Crm.findOne({ customerCode: code, _id: { $ne: master._id } }).select('name').lean();
+    if (other) return { ok: false, reason: 'code_taken', by: other.name };
+  }
+  const rows = await fanOut(master._id, { ...REG.crm.read(master), code }, ['code']);
+  emitChanged({ master: String(master._id), origin: 'code', fields: ['code'] });
+  return { ok: true, rows };
+}
+
+module.exports = { setMasterCode, sweepUnlinked, startSweep, CARD, REG, REG_KEYS, attach, onChange, ensureMaster, ensureContract, fanOut, presence, linkedRows, foldName, cardDiff };

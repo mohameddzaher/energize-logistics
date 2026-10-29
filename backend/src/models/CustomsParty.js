@@ -83,6 +83,8 @@ customsPartySchema.index({ kind: 1, nameKey: 1 }, { unique: true });
 
 // ── العميلُ واحدٌ في كلّ الأقسام — رابطُه إلى شركة العلاقات الأمّ (services/customerHub) ──
 customsPartySchema.add({ crmCompany: { type: mongoose.Schema.Types.ObjectId, ref: 'CrmCompany', default: null, index: true } });
+// Copy of the master's customer code (utils/customerCode).
+customsPartySchema.add({ customerCode: require('../utils/customerCode').codeField() });
 require('../services/customerHub').attach(customsPartySchema, 'customs');
 module.exports = mongoose.models.CustomsParty || mongoose.model('CustomsParty', customsPartySchema);
 module.exports.fold = fold;

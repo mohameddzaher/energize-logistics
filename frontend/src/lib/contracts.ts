@@ -75,6 +75,7 @@ export type Lang = 'en' | 'ar';
 // الطرفُ الآخر من كلّ صفقة. الصفُّ يحمل ما يخصّ العقدَ وحدَه، وما عداه (حجمُه
 // معنا، وما بقي عليه، وعقودُه المرفوعة) يُقرأ من مصدره في كلّ نداء ولا يُنسَخ.
 export interface ContractCustomer {
+  customerCode?: string;
   _id: string;
   name: string;
   nameKey: string;

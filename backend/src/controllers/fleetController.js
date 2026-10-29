@@ -1466,7 +1466,7 @@ function applyCustomerFilters(rows, query) {
   }
   const q = nameKey(query.search || '');
   if (q) {
-    out = out.filter((c) => [c.name, c.phone, c.email, c.taxNumber, c.crm?.name, c.crm?.arabicName]
+    out = out.filter((c) => [c.customerCode, c.name, c.phone, c.email, c.taxNumber, c.crm?.name, c.crm?.arabicName]
       .some((v) => nameKey(String(v || '')).includes(q)));
   }
   return out;

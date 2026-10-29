@@ -122,6 +122,7 @@ export interface FleetDriver extends PersonDocs {
 }
 
 export interface FleetCustomer {
+  customerCode?: string;
   _id: string;
   name: string;
   phone?: string;

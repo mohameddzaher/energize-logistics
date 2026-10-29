@@ -147,7 +147,7 @@ function ContractCustomersInner() {
   const shown = useMemo(() => {
     const f = foldAr(q.trim());
     return customers.filter((c) => {
-      if (f && !foldAr(`${c.name} ${c.contactPerson || ''} ${c.energizeRep || ''} ${c.headquarters || ''}`).includes(f)) return false;
+      if (f && !foldAr(`${c.customerCode || ''} ${c.name} ${c.contactPerson || ''} ${c.energizeRep || ''} ${c.headquarters || ''}`).includes(f)) return false;
       if (statusFilter === 'expiring') return c.expiry === 'due' || c.expiry === 'expired';
       if (statusFilter) return c.status === statusFilter;
       return true;
@@ -262,7 +262,7 @@ function ContractCustomersInner() {
               return (
                 <tr key={c._id} className="border-b border-slate-200/70 hover:bg-slate-50">
                   <td className="px-4 py-3">
-                    <p className="font-bold text-slate-900">{c.name}</p>
+                    <p className="font-bold text-slate-900">{c.customerCode && <span className="me-1.5 rounded bg-[#12325c] px-1.5 py-0.5 font-mono text-[11px] text-white" dir="ltr">{c.customerCode}</span>}{c.name}</p>
                     <p className="text-[11.5px] text-slate-500">
                       {[c.sector, c.headquarters, c.energizeRep].filter(Boolean).join(' · ') || '—'}
                     </p>

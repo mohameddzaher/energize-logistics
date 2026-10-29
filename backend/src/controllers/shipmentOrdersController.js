@@ -1662,7 +1662,7 @@ const anyOf = (q, fields) => {
 // التطبيق — نموذجُ التعديل يرسل الحقولَ القابلة للتعديل وحدها. والحفظُ آمنٌ
 // لأنّ خطّافاتِ النماذج الثلاثة تمسح `so:registry:` مع كلّ كتابة.
 const REGISTRY_TTL = 2 * 60 * 1000;
-const CUSTOMER_LIST_FIELDS = 'name phone email notes routes defaults';
+const CUSTOMER_LIST_FIELDS = 'customerCode name phone email notes routes defaults';
 // وأوراقُه المالية تُقرأ من الصفّ: السجلُّ التجاريُّ والآيبانُ ومديرُه برقمه
 // هي ما يُطلَب عند أوّل دفعةٍ له، وكانت تُفتَح لها بطاقةٌ لكلّ مورّد.
 const SUPPLIER_LIST_FIELDS = 'name type phone email notes commercialRegister taxCard iban bankName managerName managerPhone paymentTerms';
@@ -1689,7 +1689,7 @@ exports.listCustomers = async (req, res) => {
   try {
     const { q } = req.query;
     const filter = { isActive: { $ne: false } };
-    if (q && q.trim()) Object.assign(filter, anyOf(q, ['name', 'phone', 'email', 'city', 'address', 'externalId']));
+    if (q && q.trim()) Object.assign(filter, anyOf(q, ['customerCode', 'name', 'phone', 'email', 'city', 'address', 'externalId']));
     const out = await cache.wrap(registryKey('customers', req), REGISTRY_TTL, async () => {
       const [customers, total] = await Promise.all([
         ShipmentOrderCustomer.find(filter)

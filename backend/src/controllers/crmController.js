@@ -242,8 +242,15 @@ exports.getDashboard = async (req, res) => {
 const COMPANY_FIELDS = [
   'name', 'arabicName', 'status', 'type', 'rating', 'score', 'industry', 'size',
   'website', 'phone', 'whatsapp', 'email', 'address', 'city', 'country',
-  'source', 'tags', 'owner', 'linkedCustomer', 'notes',
+  'source', 'tags', 'owner', 'linkedCustomer', 'notes', 'customerCode',
 ];
+
+/** A code another customer already holds is refused with a clear message (codes are unique). */
+async function codeTaken(code, selfId) {
+  const c = require('../utils/customerCode').normCode(code);
+  if (!c) return null;
+  return CrmCompany.findOne({ customerCode: c, ...(selfId ? { _id: { $ne: selfId } } : {}) }).select('name').lean();
+}
 
 exports.listCompanies = async (req, res) => {
   try {
@@ -257,7 +264,7 @@ exports.listCompanies = async (req, res) => {
     if (tag) filter.tags = tag;
     if (q && q.trim()) {
       const rx = new RegExp(q.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
-      filter.$or = [{ name: rx }, { arabicName: rx }, { email: rx }, { phone: rx }, { city: rx }, { industry: rx }];
+      filter.$or = [{ customerCode: require('../utils/customerCode').normCode(q) }, { name: rx }, { arabicName: rx }, { email: rx }, { phone: rx }, { city: rx }, { industry: rx }];
     }
     const runQuery = () => Promise.all([
       popCompany(CrmCompany.find(filter)).sort({ updatedAt: -1 }).limit(2000).lean(),
@@ -307,6 +314,8 @@ exports.createCompany = async (req, res) => {
     if (!req.body.name || !req.body.name.trim()) return res.status(400).json({ message: 'Company name is required' });
     const data = { createdBy: req.user._id };
     COMPANY_FIELDS.forEach((f) => { if (req.body[f] !== undefined) data[f] = req.body[f]; });
+    const taken = await codeTaken(data.customerCode);
+    if (taken) return res.status(409).json({ message: `الكود ${data.customerCode} مستخدم للعميل «${taken.name}»`, code: 'CODE_TAKEN' });
     if (!data.owner) data.owner = req.user._id;
     const company = await CrmCompany.create(data);
     await emitCrm('crm:company', { id: String(company._id) });
@@ -325,6 +334,10 @@ exports.updateCompany = async (req, res) => {
     if (badId(id, res)) return;
     const company = await CrmCompany.findById(id);
     if (!company) return res.status(404).json({ message: 'Company not found' });
+    if (req.body.customerCode !== undefined) {
+      const taken = await codeTaken(req.body.customerCode, company._id);
+      if (taken) return res.status(409).json({ message: `الكود ${req.body.customerCode} مستخدم للعميل «${taken.name}»`, code: 'CODE_TAKEN' });
+    }
     applyFields(company, req.body, COMPANY_FIELDS);
     await company.save();
     await emitCrm('crm:company', { id: String(id) });

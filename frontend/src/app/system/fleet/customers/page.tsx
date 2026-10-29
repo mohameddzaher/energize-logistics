@@ -287,7 +287,7 @@ export default function FleetCustomersPage() {
                 <tr key={c._id} onClick={() => router.push(`/system/fleet/customers/${c._id}`)}
                   className={`cursor-pointer hover:bg-orange-50/40 ${c.isActive === false ? 'opacity-55' : ''}`}>
                   <td className="px-3 py-2.5">
-                    <p className="font-bold text-slate-900">{c.name}</p>
+                    <p className="font-bold text-slate-900">{c.customerCode && <span className="me-1.5 rounded bg-[#12325c] px-1.5 py-0.5 font-mono text-[11px] text-white" dir="ltr">{c.customerCode}</span>}{c.name}</p>
                     <div className="flex items-center gap-1.5 mt-0.5">
                       {c.isActive === false && <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-200 text-slate-600">{t('معطَّل', 'Disabled')}</span>}
                       {!!c.openTrips && <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">{t(`${c.openTrips} جارية`, `${c.openTrips} open`)}</span>}

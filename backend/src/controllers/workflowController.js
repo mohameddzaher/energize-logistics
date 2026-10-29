@@ -979,6 +979,23 @@ const PENDING_PAYMENT = {
 };
 
 /**
+ * Bonds not arrived **as of** a past moment: not cancelled, and no payment date
+ * or a payment date after that moment — so a bond that arrived later still counts
+ * as pending back then (owner, 2026-10-29: «كأني رجعت بالزمن»).
+ */
+const pendingAsOfMatch = (asOf) => ({
+  $and: [
+    { $or: [{ paymentDate: null }, { paymentDate: { $exists: false } }, { paymentDate: { $gt: asOf } }] },
+    { applicationStatus: { $nin: CANCELLED } },
+  ],
+});
+/** The moment «as of» is read at: the end of the period's last day, or now without one. */
+const pendingAsOfDate = (query) => {
+  const to = query && query.dateTo;
+  return to ? endOfDay(to) : new Date();
+};
+
+/**
  * ── رقمٌ يخصّ أحدَ أصحاب الكشف ───────────────────────────────────────────
  * يُستدعى قبل `buildWorkflowFilter` (وهي متزامنة): كلُّ رقمٍ من ستّ خاناتٍ فأكثر
  * في البحث يُترجَم إلى أصحابه في السجلّات — إقامةُ سائقٍ إلى اسمه وهاتفه، وهيكلُ
@@ -1003,7 +1020,7 @@ async function primeRelatedSearch(req, res, next) {
 
 function buildWorkflowFilter(query, skipField, allowMoney = true, allowSelling = true) {
   const {
-    stage, search, dateFrom, dateTo, pendingOnly, invoiceGap, pendingKind,
+    stage, search, dateFrom, dateTo, pendingOnly, invoiceGap, pendingKind, pendingAsOf,
   } = query || {};
   const filter = {};
 
@@ -1056,6 +1073,7 @@ function buildWorkflowFilter(query, skipField, allowMoney = true, allowSelling =
     if (pendingKind === 'cash') filter.$and.push({ paymentType: 'cash' });
     else if (pendingKind === 'tax') filter.$and.push({ paymentType: { $ne: 'cash' } });
   }
+  if (pendingAsOf === 'true') filter.$and = [...(filter.$and || []), pendingAsOfMatch(pendingAsOfDate(query))];
   if (stage) filter.stage = stage;
   // ── الفترة تُقاس بتاريخ الكشف لا بلحظة إدخاله ─────────────────────────────
   //
@@ -1214,7 +1232,11 @@ exports.getWorkflowStats = async (req, res) => {
       { $match: pendingMatch },
       { $group: { _id: { $ifNull: ['$paymentType', ''] }, n: { $sum: 1 } } },
     ]);
-    const [total, pendingRows, pendingBondReceived, agg, stages] = await Promise.all([
+    // Bonds pending as of the end of the filtered period (counted on the same filter, minus «pendingOnly»).
+    const asOf = pendingAsOfDate(req.query);
+    const asOfBase = buildWorkflowFilter({ ...req.query, pendingOnly: '', pendingAsOf: '' }, undefined, canSeeMoney(req.user.role), canSeeSelling(req.user.role));
+    const asOfMatch = { ...asOfBase, $and: [...(asOfBase.$and || []), pendingAsOfMatch(asOf)] };
+    const [total, pendingRows, pendingBondReceived, agg, stages, pendingAsOfCount] = await Promise.all([
       OperationsWorkflow.countDocuments(filter),
       PENDING_SPLIT,
       OperationsWorkflow.countDocuments(bondReceivedPending),
@@ -1228,6 +1250,7 @@ exports.getWorkflowStats = async (req, res) => {
         { $match: filter },
         { $group: { _id: '$stage', count: { $sum: 1 } } },
       ]),
+      OperationsWorkflow.countDocuments(asOfMatch),
     ]);
 
     // ── وأعدادُ حالة الأبلكيشن ───────────────────────────────────────────────
@@ -1260,6 +1283,8 @@ exports.getWorkflowStats = async (req, res) => {
       pendingTax,
       pendingUntyped,
       pendingBondReceived,
+      pendingAsOf: pendingAsOfCount,
+      pendingAsOfDate: asOf,
       sumPurchaseValue: agg[0]?.sumPurchaseValue || 0,
       byStage: stages.reduce((acc, r) => { acc[r._id || 'draft'] = r.count; return acc; }, {}),
       byStatus,

@@ -18,7 +18,7 @@ import ManagedSelect from '@/components/system/ManagedSelect';
 import { useSocket } from '@/hooks/useSocket';
 import { useLatestRequest } from '@/hooks/useLatestRequest';
 import {
-  ClipboardList, Plus, Search, Filter, FilterX, Edit, Trash2, ArrowRight, Loader2, X, FileSpreadsheet, AlertCircle, CheckSquare, Check, Receipt, AlertTriangle, Ban } from 'lucide-react';
+  ClipboardList, Plus, Search, Filter, FilterX, Edit, Trash2, ArrowRight, Loader2, X, FileSpreadsheet, AlertCircle, CheckSquare, Check, Receipt, AlertTriangle, Ban, History as HistoryIcon } from 'lucide-react';
 import ScrollX from '@/components/system/ScrollX';
 import InvoiceImportButton from '@/components/operations/InvoiceImportButton';
 import WorkflowFilterBar, { type FilterBarField } from '@/components/operations/WorkflowFilterBar';
@@ -277,6 +277,8 @@ export default function OperationsWorkflowPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [showPendingOnly, setShowPendingOnly] = useState(false);
+  // Bonds not arrived as of the end of the filtered period (even if they arrived later).
+  const [showPendingAsOf, setShowPendingAsOf] = useState(false);
   // ── التخليص: الكلّ / المرتبطة / غيرُ المرتبطة / معاملةٌ بعينها ────────────
   // `customs` في الرابط: صفحةُ المعاملة تفتح الجدولَ على كشوفها (`?customs=<معرّفها>`).
   const [customsMode, setCustomsMode] = useState('');
@@ -408,9 +410,9 @@ export default function OperationsWorkflowPage() {
   // Aggregates over the WHOLE matching dataset (all ~27k rows, not one page).
   const [stats, setStats] = useState<{
     total: number; pendingInvoices: number;
-    pendingBondReceived: number; sumPurchaseValue: number;
+    pendingBondReceived: number; sumPurchaseValue: number; pendingAsOf: number; pendingAsOfDate: string;
     byStage: Record<string, number>; byStatus: Record<string, number>; statusTotal: number;
-  }>({ total: 0, pendingInvoices: 0, pendingBondReceived: 0, sumPurchaseValue: 0, byStage: {}, byStatus: {}, statusTotal: 0 });
+  }>({ total: 0, pendingInvoices: 0, pendingBondReceived: 0, sumPurchaseValue: 0, pendingAsOf: 0, pendingAsOfDate: '', byStage: {}, byStatus: {}, statusTotal: 0 });
 
   // كل ما يفهمه الخادم من فلترة في مكانٍ واحد: يقرؤه الجدولُ والإحصاءاتُ وقوائمُ
   // القيم والتصدير، فلا يفلتر أحدها على شرطٍ ويعرض الآخر نتيجة شرطٍ غيره.
@@ -424,6 +426,7 @@ export default function OperationsWorkflowPage() {
     if (dateFrom) params.append('dateFrom', dateFrom);
     if (dateTo) params.append('dateTo', dateTo);
     if (showPendingOnly) params.append('pendingOnly', 'true');
+    if (showPendingAsOf) params.append('pendingAsOf', 'true');
     if (customsMode) params.append('customs', customsMode);
     if (excludeCancelled) params.append('excludeCancelled', '1');
     for (const [field, vals] of Object.entries(colFilters)) {
@@ -433,7 +436,7 @@ export default function OperationsWorkflowPage() {
       list.forEach((v) => params.append(`cf_${field}`, v));
     }
     return params;
-  }, [stageFilter, search, dateFrom, dateTo, showPendingOnly, customsMode, colFilters, excludeCancelled]);
+  }, [stageFilter, search, dateFrom, dateTo, showPendingOnly, showPendingAsOf, customsMode, colFilters, excludeCancelled]);
 
   // ── ولا يكتب ردٌّ قديمٌ فوق ردٍّ أحدث ────────────────────────────────────
   //
@@ -507,6 +510,8 @@ export default function OperationsWorkflowPage() {
         total: data.total || 0,
         pendingInvoices: data.pendingInvoices || 0,
         pendingBondReceived: data.pendingBondReceived || 0,
+        pendingAsOf: data.pendingAsOf || 0,
+        pendingAsOfDate: data.pendingAsOfDate || '',
         sumPurchaseValue: data.sumPurchaseValue || 0,
         byStage: data.byStage || {},
         byStatus: data.byStatus || {},
@@ -548,7 +553,7 @@ export default function OperationsWorkflowPage() {
 
   // اختيارُ الصفوف يُلغى مع كل تغيّر في الفلاتر أو الصفحة: الصفوف المؤشَّرة لم تعد
   // معروضة، وحذفٌ جماعيّ يقع على صفوفٍ لا يراها المستخدم.
-  useEffect(() => { setSelectedIds(new Set()); setAllMatching(false); }, [stageFilter, search, page, dateFrom, dateTo, showPendingOnly, customsMode, colFilters]);
+  useEffect(() => { setSelectedIds(new Set()); setAllMatching(false); }, [stageFilter, search, page, dateFrom, dateTo, showPendingOnly, showPendingAsOf, customsMode, colFilters]);
 
   const setColFilter = (field: string, set: Set<string>) => {
     // الفلترة تُغيّر عدد الصفحات كلّه، والبقاءُ على الصفحة السابعة بعد فلترٍ نتيجته
@@ -1367,7 +1372,7 @@ export default function OperationsWorkflowPage() {
         {/* Pending Invoices — over ALL matching rows (click to filter) */}
         <button
           type="button"
-          onClick={() => { setShowPendingOnly(!showPendingOnly); setPage(1); }}
+          onClick={() => { setShowPendingOnly(!showPendingOnly); setShowPendingAsOf(false); setPage(1); }}
           className={`${CARD} ${showPendingOnly && !(statusSel.has('bond_received') && statusSel.size === 1) ? CARD_ON : ''}`}
         >
           {/* ── الرقمُ يقول قاعدتَه ──────────────────────────────────────────
@@ -1379,6 +1384,25 @@ export default function OperationsWorkflowPage() {
             <span className={CARD_LABEL}><span className="inline-block h-1.5 w-1.5 rounded-full bg-amber-500" />{lang === 'ar' ? 'سندات لم تصل' : 'Pending Bonds'}</span>
             <span className={CARD_SUB}>
               {lang === 'ar' ? 'بلا تاريخ سداد · عدا الملغاة' : 'no payment date · excludes cancelled'}
+            </span>
+          </div>
+        </button>
+
+        {/* Bonds not arrived AS OF the end of the filtered period — even if they arrived later. */}
+        <button
+          type="button"
+          onClick={() => { const on = !showPendingAsOf; setShowPendingAsOf(on); if (on) setShowPendingOnly(false); setPage(1); if (on) setTimeout(() => tableRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60); }}
+          title={lang === 'ar' ? 'الكشوف التي لم يصل سندُها حتى نهاية الفترة المفلترة — ولو وصل بعدها' : 'Bonds not arrived by the end of the filtered period — even if they arrived later'}
+          className={`${CARD} !border-violet-200 !bg-violet-50/60 ${showPendingAsOf ? '!border-violet-600 ring-1 ring-violet-600' : ''}`}
+        >
+          <HistoryIcon className="h-4 w-4 shrink-0 text-violet-500" />
+          <div className="flex flex-col items-start">
+            <span className={`${CARD_NUM} !text-violet-800`}>{stats.pendingAsOf.toLocaleString('en-US')}</span>
+            <span className={CARD_LABEL}><span className="inline-block h-1.5 w-1.5 rounded-full bg-violet-500" />{lang === 'ar' ? 'سندات لم تصل وقتها' : 'Bonds pending at the time'}</span>
+            <span className={CARD_SUB}>
+              {lang === 'ar'
+                ? `حتى ${stats.pendingAsOfDate ? new Date(stats.pendingAsOfDate).toLocaleDateString('en-GB', { timeZone: 'Asia/Riyadh' }) : 'الآن'}${dateTo ? '' : ' — اختر فترة لتعود بالزمن'}`
+                : `as of ${stats.pendingAsOfDate ? new Date(stats.pendingAsOfDate).toLocaleDateString('en-GB', { timeZone: 'Asia/Riyadh' }) : 'now'}${dateTo ? '' : ' — pick a period to go back in time'}`}
             </span>
           </div>
         </button>
@@ -1423,11 +1447,12 @@ export default function OperationsWorkflowPage() {
           <div className="flex flex-col items-start">
             <span className={CARD_NUM}>{filteredRowsCount.toLocaleString('en-US')}</span>
             <span className={CARD_LABEL}><span className="inline-block h-1.5 w-1.5 rounded-full bg-slate-400" />{lang === 'ar' ? 'عدد الصفوف (حسب الفلتر)' : 'Rows (filtered)'}</span>
-            {(statusSel.size > 0 || showPendingOnly) && (
+            {(statusSel.size > 0 || showPendingOnly || showPendingAsOf) && (
               <span className={CARD_SUB}>
                 {[
                   statusSel.size ? trStatus([...statusSel][0]) : '',
                   showPendingOnly ? (lang === 'ar' ? 'سندات لم تصل' : 'pending bonds') : '',
+                  showPendingAsOf ? (lang === 'ar' ? 'سندات لم تصل وقتها' : 'pending at the time') : '',
                 ].filter(Boolean).join(' · ')}
               </span>
             )}

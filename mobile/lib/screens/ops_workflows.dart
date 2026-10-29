@@ -114,6 +114,8 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
   Timer? _debounce;
   final Map<String, Set<String>> _cf = {};
   bool _pendingOnly = false;
+  // Bonds not arrived as of the end of the filtered period (even if they arrived later).
+  bool _pendingAsOf = false;
   bool _excludeCancelled = false;
   String _customs = '';
   final OpsPeriod _period = OpsPeriod();
@@ -239,6 +241,7 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
       if (from != null) ('dateFrom', from),
       if (to != null) ('dateTo', to),
       if (_pendingOnly) ('pendingOnly', 'true'),
+      if (_pendingAsOf) ('pendingAsOf', 'true'),
       if (_customs.isNotEmpty) ('customs', _customs),
       if (_excludeCancelled) ('excludeCancelled', '1'),
       for (final e in _cf.entries)
@@ -903,7 +906,15 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
             _statCard(tr('سندات لم تصل', 'Pending bonds'), '${_stats['pendingInvoices'] ?? 0}', T.warn,
                 sub: tr('بلا تاريخ سداد · عدا الملغاة', 'no payment date · excludes cancelled'),
                 active: _pendingOnly && !contradictionOn,
-                onTap: () { _pendingOnly = !_pendingOnly; _reload(); }),
+                onTap: () { _pendingOnly = !_pendingOnly; _pendingAsOf = false; _reload(); }),
+            _statCard(tr('سندات لم تصل وقتها', 'Bonds pending at the time'), '${_stats['pendingAsOf'] ?? 0}', T.violet,
+                sub: () {
+                  final d = DateTime.tryParse('${_stats['pendingAsOfDate'] ?? ''}')?.toUtc().add(const Duration(hours: 3));
+                  final ds = d == null ? tr('الآن', 'now') : '${d.day}/${d.month}/${d.year}';
+                  return tr('حتى $ds — ولو وصل بعدها', 'as of $ds — even if it arrived later');
+                }(),
+                active: _pendingAsOf,
+                onTap: () { _pendingAsOf = !_pendingAsOf; if (_pendingAsOf) _pendingOnly = false; _reload(); }),
             // التناقض: سندٌ لم يصل وحالتُه «استُلم السند».
             _statCard(tr('سند لم يصل وحالته «استُلم السند»', 'Pending bond, status says received'), '$pbr', pbr > 0 ? T.danger : T.line,
                 sub: tr('تاريخُ السداد ناقص أو الحالة خطأ', 'missing payment date or wrong status'),

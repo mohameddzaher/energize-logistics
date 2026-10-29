@@ -344,8 +344,8 @@ class _CustomsDashboardScreenState extends State<CustomsDashboardScreen> {
     );
   }
 
-  Widget _card(String label, int value, Color color, IconData icon, bool Function(Map<String, dynamic>) test, {String? sub}) => Pressable(
-        onTap: () => _showRows(label, test),
+  Widget _card(String label, int value, Color color, IconData icon, bool Function(Map<String, dynamic>) test, {String? sub, VoidCallback? onTap}) => Pressable(
+        onTap: onTap ?? () => _showRows(label, test),
         child: AppCard(
           topAccent: color == T.danger && value > 0 ? T.danger : null,
           padding: const EdgeInsets.all(12),
@@ -364,6 +364,39 @@ class _CustomsDashboardScreenState extends State<CustomsDashboardScreen> {
           ]),
         ),
       );
+
+  void _showActiveCustomers(List<Map<String, dynamic>> list) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (c) => DraggableScrollableSheet(
+        expand: false, initialChildSize: 0.7, maxChildSize: 0.95,
+        builder: (c2, scroll) => Column(children: [
+          Padding(padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+              child: Text('${tr('عملاء نعمل معهم الآن', 'Active customers')} (${list.length})', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15))),
+          Expanded(child: ListView.separated(
+            controller: scroll,
+            padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
+            itemCount: list.length,
+            separatorBuilder: (_, __) => const Divider(height: 1),
+            itemBuilder: (_, i) {
+              final cu = list[i];
+              return ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: Text('${cu['name'] ?? '—'}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5)),
+                subtitle: Text(tr('مفتوحة ${_i(cu['open'])}${_i(cu['upcoming']) > 0 ? ' · قادمة ${_i(cu['upcoming'])}' : ''}', 'Open ${_i(cu['open'])}${_i(cu['upcoming']) > 0 ? ' · upcoming ${_i(cu['upcoming'])}' : ''}')),
+                trailing: const Icon(Icons.chevron_left),
+                onTap: () {
+                  Navigator.pop(c);
+                  _showRows('${cu['name'] ?? ''}', (r) => r['bucket'] != 'cancelled' && '${r['customerParty'] ?? r['customerName'] ?? '—'}' == '${cu['key']}');
+                },
+              );
+            },
+          )),
+        ]),
+      ),
+    );
+  }
 
   Widget _head(String s) => Padding(
       padding: const EdgeInsets.fromLTRB(2, 18, 2, 8),
@@ -414,7 +447,9 @@ class _CustomsDashboardScreenState extends State<CustomsDashboardScreen> {
           _card(tr('مغلقة', 'Closed'), _i(n['closed']), T.success, Icons.task_alt_outlined, (r) => r['bucket'] == 'closed',
               sub: tr('${_i(n['closedInvoiced'])} مفوترة · ${_i(n['closedNotInvoiced'])} لم تُفوتَر', '${_i(n['closedInvoiced'])} invoiced · ${_i(n['closedNotInvoiced'])} not invoiced')),
           _card(tr('عملاء نعمل معهم الآن', 'Active customers'), _i(n['activeCustomers']), T.violet, Icons.people_outline, (r) => r['bucket'] == 'open',
-              sub: tr('من ${_i(n['customers'])} عميلًا', 'of ${_i(n['customers'])} customers')),
+              sub: tr('من ${_i(n['customers'])} عميلًا', 'of ${_i(n['customers'])} customers'),
+              // Lists the customers themselves (by name), not their transactions.
+              onTap: () => _showActiveCustomers(_maps(d['byCustomer']).where((c) => _i(c['open']) > 0).toList())),
         ],
       ),
       // ── ما يحتاج متابعة ──

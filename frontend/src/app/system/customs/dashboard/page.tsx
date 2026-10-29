@@ -111,6 +111,9 @@ export default function CustomsDashboardPage() {
   const [search, setSearch] = useState('');
   const searchHits = useCustomsSearch(search, d);
   const tableRef = useRef<HTMLDivElement>(null);
+  // «Active customers» card: lists those customers by name in the by-customer panel.
+  const custRef = useRef<HTMLDivElement>(null);
+  const [activeOnly, setActiveOnly] = useState(false);
   const { begin, isCurrent } = useLatestRequest();
 
   const set = (k: string, v: string) => setF((p) => ({ ...p, [k]: v }));
@@ -164,7 +167,16 @@ export default function CustomsDashboardPage() {
   };
   const rows = cf.apply(base, getters);
   const active = Object.values(f).filter(Boolean).length;
-  const pick = (v: string) => { setView(v); setStage(''); tableRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); };
+  // A second click on the selected card clears it (back to all transactions).
+  const pick = (v: string) => {
+    if (view === v && !stage) { setView('all'); return; }
+    setView(v); setStage(''); tableRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+  const toggleActiveCustomers = () => {
+    const next = !activeOnly;
+    setActiveOnly(next);
+    if (next) setTimeout(() => custRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0);
+  };
   const customerName = f.customerParty ? (opts.customers || []).find((o) => o.value === f.customerParty)?.label : '';
 
   const VIEW_TITLE: Record<string, [string, string]> = {
@@ -269,9 +281,9 @@ export default function CustomsDashboardPage() {
           <Tile on={view === 'closed'} onClick={() => pick('closed')} icon={<Lock className="h-5 w-5" />} tone="green"
             label={t('معاملات مغلقة', 'Closed')} value={C.closed}
             hint={t(`${C.closedInvoiced || 0} مفوترة · ${C.closedNotInvoiced || 0} لم تُفوتَر · ${C.closedThisMonth} هذا الشهر`, `${C.closedInvoiced || 0} invoiced · ${C.closedNotInvoiced || 0} not · ${C.closedThisMonth} this month`)} />
-          <Tile on={view === 'all'} onClick={() => pick('all')} icon={<Users className="h-5 w-5" />} tone="slate"
+          <Tile on={activeOnly} onClick={toggleActiveCustomers} icon={<Users className="h-5 w-5" />} tone="slate"
             label={t('عملاء نعمل معهم الآن', 'Active customers')} value={C.activeCustomers}
-            hint={t(`من ${C.customers} عميلًا — اضغط لكلّ المعاملات`, `of ${C.customers} — click for all transactions`)} />
+            hint={t(`من ${C.customers} عميلًا — اضغط لترى أسماءهم`, `of ${C.customers} — click to see who`)} />
         </div>
         {/* المغلقةُ قسمان لا يُخلَطان: فُوترت فانتهت، أو أُغلقت وفاتورتُها لم تصدر بعد. */}
         <div className="mt-3 grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -453,8 +465,14 @@ export default function CustomsDashboardPage() {
           )}
         </Panel>
 
-        <Panel title={t('المعاملاتُ حسب العميل', 'Transactions by customer')}
+        <div ref={custRef} className={`scroll-mt-4 rounded-2xl ${activeOnly ? 'ring-2 ring-[#f37121]' : ''}`}>
+        <Panel title={activeOnly ? t(`عملاء نعمل معهم الآن (${d.byCustomer.filter((c) => c.open > 0).length})`, `Active customers (${d.byCustomer.filter((c) => c.open > 0).length})`) : t('المعاملاتُ حسب العميل', 'Transactions by customer')}
           hint={t('اضغط عميلًا لتُحصَر اللوحةُ كلُّها فيه', 'Click a customer to narrow the whole dashboard to them')}>
+          {activeOnly && (
+            <button type="button" onClick={() => setActiveOnly(false)} className="mb-2 inline-flex items-center gap-1 rounded-full bg-[#f37121]/10 px-2.5 py-1 text-[12px] font-semibold text-[#b4471a]">
+              {t('عرض كل العملاء', 'Show all customers')} ✕
+            </button>
+          )}
           {d.byCustomer.length === 0 ? <Empty text={t('لا بيانات.', 'No data.')} /> : (
             <div className="max-h-[22rem] overflow-auto">
               <table className="w-full text-[13px]">
@@ -468,7 +486,7 @@ export default function CustomsDashboardPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {d.byCustomer.map((c) => (
+                  {(activeOnly ? d.byCustomer.filter((c) => c.open > 0) : d.byCustomer).map((c) => (
                     <tr key={c.key} onClick={() => { if (c.party) { set('customerParty', String(c.party)); setView('all'); setStage(''); window.scrollTo({ top: 0, behavior: 'smooth' }); } }}
                       className={c.party ? 'cursor-pointer hover:bg-slate-50' : ''}>
                       <td className="max-w-[14rem] truncate py-2 font-semibold text-slate-800">{c.name}</td>
@@ -483,6 +501,7 @@ export default function CustomsDashboardPage() {
             </div>
           )}
         </Panel>
+        </div>
       </div>
 
       {/* ══ ٥ · الفريق ══════════════════════════════════════════════════════ */}

@@ -49,6 +49,8 @@ router.delete('/custody/:id', authorize(...EDIT_ROLES), it.deleteCustody);
 // Movements. Each one moves the Asset and appends to its AssetEvent trail.
 // The two GETs must sit above nothing else — they are distinct paths, but
 // /custody/:id/history has to be declared before any broader /custody/:id use.
+// The whole movement log, searchable (declared before /custody/:id paths).
+router.get('/custody/events', it.custodyEvents);
 router.get('/custody/:id/history', it.custodyHistory);
 router.get('/custody/by-employee/:employeeId', it.custodyByEmployee);
 router.post('/custody/:id/transfer', authorize(...EDIT_ROLES), it.transferCustody);

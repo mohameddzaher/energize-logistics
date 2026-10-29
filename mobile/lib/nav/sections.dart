@@ -35,6 +35,7 @@ import '../screens/ls2_alerts.dart';
 import '../screens/ls2_fleet_requests.dart';
 import '../screens/shipment_orders.dart';
 import '../screens/it_custody.dart';
+import '../screens/it_custody_log.dart';
 import '../screens/it_emails.dart';
 import '../screens/procurement.dart';
 import '../screens/section_dash.dart';
@@ -620,6 +621,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         AppPage('التذاكر والمشكلات', 'Tickets', Icons.confirmation_number_outlined, (c) => const ItTicketsScreen(), path: '/system/it/tickets'),
         AppPage('المشاكل المتكررة', 'Recurring', Icons.repeat_rounded, (c) => const ItRecurringScreen(), path: '/system/it/recurring'),
         AppPage('عهد الأجهزة', 'Custody', Icons.devices_other_outlined, (c) => const ItCustodyScreen(), path: '/system/it/custody'),
+        AppPage('سجل حركة العهد', 'Custody Log', Icons.history, (c) => const ItCustodyLogScreen(), path: '/system/it/custody-log'),
         AppPage('الأنظمة والخدمات', 'Systems', Icons.dns_outlined, (c) => ResourceScreen(config: itSystemsCfg), path: '/system/it/systems'),
         AppPage('بريد الشركة', 'Company Email', Icons.mail_outline, (c) => const ItEmailsScreen(), path: '/system/it/emails'),
         AppPage('مستودع الأجهزة', 'IT Stock', Icons.inventory_outlined, (c) => const ItStockScreen(), path: '/system/it/stock'),

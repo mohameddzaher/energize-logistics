@@ -545,6 +545,7 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/it/tickets', label: lang === 'ar' ? 'التذاكر والمشكلات' : 'Tickets', icon: <LifeBuoy className="w-5 h-5" />, roles: IT_ROLES, section: 'Software & IT' },
     { href: '/system/it/recurring', label: lang === 'ar' ? 'المشكلات المتكررة' : 'Recurring Problems', icon: <RefreshCw className="w-5 h-5" />, roles: IT_ROLES, section: 'Software & IT' },
     { href: '/system/it/custody', label: lang === 'ar' ? 'العهد والأجهزة' : 'IT Custody', icon: <Laptop className="w-5 h-5" />, roles: IT_ROLES, section: 'Software & IT' },
+    { href: '/system/it/custody-log', label: lang === 'ar' ? 'سجل حركة العهد' : 'Custody Log', icon: <ClipboardList className="w-5 h-5" />, roles: IT_ROLES, section: 'Software & IT' },
     { href: '/system/it/stock', label: lang === 'ar' ? 'المستودع' : 'IT Stock', icon: <Boxes className="w-5 h-5" />, roles: IT_ROLES, section: 'Software & IT' },
     { href: '/system/it/systems', label: lang === 'ar' ? 'الأنظمة والخدمات' : 'Systems & Services', icon: <Server className="w-5 h-5" />, roles: IT_ROLES, section: 'Software & IT' },
     { href: '/system/it/emails', label: lang === 'ar' ? 'بريد الشركة' : 'Company Email', icon: <Mail className="w-5 h-5" />, roles: IT_ROLES, section: 'Software & IT' },

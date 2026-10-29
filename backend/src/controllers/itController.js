@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const ItTicket = require('../models/ItTicket');
 const { sendMongooseError, stripEmpty } = require('../utils/mongooseError');
 const ItSystem = require('../models/ItSystem');
@@ -1054,6 +1055,53 @@ exports.custodyByEmployee = async (req, res) => {
     res.json({ assigned, history });
   } catch (error) {
     res.status(500).json({ message: 'Failed to load the employee custody record' });
+  }
+};
+
+/**
+ * GET /api/it/custody/events — every custody movement in one searchable log.
+ * Filters: from, to (YYYY-MM-DD, the day it happened), action, by (the user who
+ * recorded it), employee (giver or receiver), q (item name/serial, people, notes).
+ * Also returns the filter options (actions in use, people who recorded movements).
+ */
+exports.custodyEvents = async (req, res) => {
+  try {
+    const q = req.query || {};
+    const f = { section: { $ne: 'hr' } };
+    const ymd = (v) => (/^\d{4}-\d{2}-\d{2}$/.test(String(v || '')) ? String(v) : '');
+    if (ymd(q.from) || ymd(q.to)) f.date = { ...(ymd(q.from) ? { $gte: ymd(q.from) } : {}), ...(ymd(q.to) ? { $lte: ymd(q.to) } : {}) };
+    if (q.action) f.action = { $in: String(q.action).split(',').filter(Boolean) };
+    if (mongoose.isValidObjectId(q.by)) f.by = q.by;
+    if (mongoose.isValidObjectId(q.employee)) f.$or = [{ fromEmployee: q.employee }, { toEmployee: q.employee }];
+    const rows = await AssetEvent.find(f)
+      .populate('asset', 'name type serialNumber brand model category')
+      .populate('fromEmployee toEmployee', EMP_FIELDS)
+      .sort({ date: -1, createdAt: -1 })
+      .limit(Math.min(Number(q.limit) || 3000, 10000))
+      .lean();
+    const empName = (e) => (e ? (e.arabicName || [e.firstName, e.lastName].filter(Boolean).join(' ')) : '');
+    let events = rows.map((e) => ({
+      _id: e._id, date: e.date || (e.createdAt ? new Date(e.createdAt).toISOString().slice(0, 10) : ''), at: e.createdAt,
+      action: e.action, condition: e.condition || '', notes: e.notes || '', price: e.price || 0, cost: e.cost || 0, buyerName: e.buyerName || '',
+      asset: e.asset ? { _id: e.asset._id, name: e.asset.name, serialNumber: e.asset.serialNumber || '', type: e.asset.type || '', category: e.asset.category || '' } : null,
+      from: e.fromEmployee ? { _id: e.fromEmployee._id, name: empName(e.fromEmployee), employeeNumber: e.fromEmployee.employeeNumber || '' } : null,
+      to: e.toEmployee ? { _id: e.toEmployee._id, name: empName(e.toEmployee), employeeNumber: e.toEmployee.employeeNumber || '' } : null,
+      by: e.by ? String(e.by) : '', byName: e.byName || '',
+    }));
+    if (q.q && String(q.q).trim()) {
+      const fold = (v) => String(v || '').toLowerCase().replace(/[أإآ]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي');
+      const t = fold(String(q.q).trim());
+      events = events.filter((e) => fold([e.asset?.name, e.asset?.serialNumber, e.from?.name, e.from?.employeeNumber, e.to?.name, e.to?.employeeNumber, e.byName, e.notes, e.buyerName].join(' ')).includes(t));
+    }
+    // Filter options from the whole log (not the filtered page).
+    const [actions, doers] = await Promise.all([
+      AssetEvent.distinct('action', { section: { $ne: 'hr' } }),
+      AssetEvent.aggregate([{ $match: { section: { $ne: 'hr' }, by: { $ne: null } } }, { $group: { _id: '$by', name: { $last: '$byName' }, n: { $sum: 1 } } }, { $sort: { n: -1 } }]),
+    ]);
+    res.json({ events, total: events.length, actions, doers: doers.map((d) => ({ _id: String(d._id), name: d.name || '—', count: d.n })) });
+  } catch (error) {
+    console.error('custodyEvents error:', error);
+    res.status(500).json({ message: 'Failed to load the custody log' });
   }
 };
 

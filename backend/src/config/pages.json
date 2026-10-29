@@ -1028,6 +1028,12 @@
       "en": "IT Custody"
     },
     {
+      "key": "/system/it/custody-log",
+      "section": "Software & IT",
+      "ar": "سجل حركة العهد",
+      "en": "Custody Log"
+    },
+    {
       "key": "/system/it/stock",
       "section": "Software & IT",
       "ar": "المستودع",

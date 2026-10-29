@@ -1605,6 +1605,12 @@
       ],
       "wildcard": false
     },
+    "/system/it/custody-log": {
+      "apis": [
+        "/api/it/custody/events"
+      ],
+      "wildcard": false
+    },
     "/system/it/stock": {
       "apis": [
         "/api/it/employees",

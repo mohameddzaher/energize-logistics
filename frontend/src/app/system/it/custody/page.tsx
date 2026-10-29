@@ -1,4 +1,5 @@
 'use client';
+import Link from 'next/link';
 import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useDialog } from '@/components/system/DialogProvider';
@@ -18,6 +19,7 @@ import {
   canViewIt, CustodyItem, StockItem, EmployeeRef, CustodyCounts, CustodyListResponse,
   CUSTODY_TYPES, CUSTODY_STATUSES, CUSTODY_BUCKETS, OTHER_BUCKET_TYPES, bucketOf,
   custodyStatusLabel, deriveAssetName, empName, fmtDate, fmtMoney, today, idOf,
+  CUSTODY_ACTION_LABEL,
 } from '@/lib/it';
 import { CustodyCards, CustodyStateButtons } from '@/components/it/CustodyOverview';
 import ScrollX from '@/components/system/ScrollX';
@@ -30,23 +32,8 @@ const EMPTY = {
   specs: '', condition: 'good', value: 0, assignedDate: '', notes: '',
 };
 
-// Bilingual names for the AssetEvent actions, used by the history timeline.
-const ACTION_LABEL: Record<string, { en: string; ar: string }> = {
-  added_to_store: { en: 'Added to store', ar: 'أُضيف إلى المستودع' },
-  assigned: { en: 'Handed to employee', ar: 'سُلّم إلى موظف' },
-  transferred: { en: 'Transferred', ar: 'نُقل إلى موظف آخر' },
-  returned: { en: 'Returned to store', ar: 'أُعيد إلى المستودع' },
-  damaged: { en: 'Reported damaged', ar: 'أُبلغ عن تلفه' },
-  lost: { en: 'Reported lost', ar: 'أُبلغ عن فقده' },
-  // «retired» لم تعد تُكتب: «تالف» صارت إجراءً واحداً يكتب damaged/lost. تبقى
-  // هنا لأن في السجل حركاتٍ قديمة كُتبت بها، وحذفُ الاسم يجعلها تُقرأ رمزاً.
-  retired: { en: 'Recorded faulty', ar: 'سُجّل كتالف' },
-  updated: { en: 'Details updated', ar: 'عُدّلت بياناته' },
-  // البيعُ حدثٌ بذاته: بلا سطرٍ له يظهر في السجلّ بمفتاحه الخامّ «sold».
-  sold: { en: 'Sold', ar: 'بيع' },
-  // إرجاعُ المُباع: البيعُ يبقى في السجلّ وهذا بعده — رجع إلى المخزن ورُدّ ثمنُه.
-  sale_returned: { en: 'Sale returned to store', ar: 'أُرجع المبيع إلى المخزن' },
-};
+// Bilingual names for the AssetEvent actions live in lib/it (shared with the custody log).
+const ACTION_LABEL = CUSTODY_ACTION_LABEL;
 
 export default function ItCustodyPage() {
   const { confirm, notify } = useDialog();
@@ -443,6 +430,9 @@ export default function ItCustodyPage() {
         title={ar ? 'عهد تقنية المعلومات' : 'IT Custody'}
         subtitle={ar ? `${register.assigned} عهدة بحوزة الموظفين` : `${register.assigned} items currently assigned`}
       >
+        <Link href="/system/it/custody-log" className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm transition-colors">
+          <History className="w-4 h-4" /> {ar ? 'سجل حركة العهد' : 'Custody log'}
+        </Link>
         <ExportMenu fileName="it-custody" lang={ar ? 'ar' : 'en'} variant="subtle" options={exportOptions} />
         <button type="button" onClick={openHandover} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm transition-colors">
           <ClipboardCheck className="w-4 h-4" /> {ar ? 'استلام عهدة موظف' : 'Receive from employee'}

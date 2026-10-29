@@ -545,3 +545,21 @@ export const exportCompanyEmailsWithPasswords = (q: Record<string, string> = {})
     `/api/it/emails/export${qs ? `?${qs}` : ''}`
   );
 };
+
+// Bilingual names for the AssetEvent actions, used by the history timeline.
+export const CUSTODY_ACTION_LABEL: Record<string, { en: string; ar: string }> = {
+  added_to_store: { en: 'Added to store', ar: 'أُضيف إلى المستودع' },
+  assigned: { en: 'Handed to employee', ar: 'سُلّم إلى موظف' },
+  transferred: { en: 'Transferred', ar: 'نُقل إلى موظف آخر' },
+  returned: { en: 'Returned to store', ar: 'أُعيد إلى المستودع' },
+  damaged: { en: 'Reported damaged', ar: 'أُبلغ عن تلفه' },
+  lost: { en: 'Reported lost', ar: 'أُبلغ عن فقده' },
+  // «retired» لم تعد تُكتب: «تالف» صارت إجراءً واحداً يكتب damaged/lost. تبقى
+  // هنا لأن في السجل حركاتٍ قديمة كُتبت بها، وحذفُ الاسم يجعلها تُقرأ رمزاً.
+  retired: { en: 'Recorded faulty', ar: 'سُجّل كتالف' },
+  updated: { en: 'Details updated', ar: 'عُدّلت بياناته' },
+  // البيعُ حدثٌ بذاته: بلا سطرٍ له يظهر في السجلّ بمفتاحه الخامّ «sold».
+  sold: { en: 'Sold', ar: 'بيع' },
+  // إرجاعُ المُباع: البيعُ يبقى في السجلّ وهذا بعده — رجع إلى المخزن ورُدّ ثمنُه.
+  sale_returned: { en: 'Sale returned to store', ar: 'أُرجع المبيع إلى المخزن' },
+};

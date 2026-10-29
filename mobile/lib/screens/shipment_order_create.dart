@@ -187,6 +187,48 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
   }
 
   /// خيارٌ جديد في قائمةٍ — يُحفَظ في تعريف الحقل (إعدادات القسم) ويُختار فورًا.
+  /// A searchable sheet over a field's options; returns the chosen key.
+  Future<String?> _searchOption(String label, List<Map<String, dynamic>> options, String current) async {
+    final ctl = TextEditingController();
+    final fold = (String v) => v.toLowerCase().replaceAll(RegExp('[أإآ]'), 'ا').replaceAll('ة', 'ه').replaceAll('ى', 'ي');
+    final picked = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      builder: (c) => StatefulBuilder(builder: (c, setSt) {
+        final q = fold(ctl.text.trim());
+        final list = options.where((o) => q.isEmpty || fold('${o['ar'] ?? ''} ${o['en'] ?? ''} ${o['key'] ?? ''}').contains(q)).toList();
+        return Padding(
+          padding: EdgeInsets.only(bottom: MediaQuery.of(c).viewInsets.bottom),
+          child: SizedBox(
+            height: MediaQuery.of(c).size.height * 0.8,
+            child: Column(children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(14, 14, 14, 6),
+                child: TextField(controller: ctl, autofocus: true, onChanged: (_) => setSt(() {}),
+                    decoration: InputDecoration(prefixIcon: const Icon(Icons.search), hintText: tr('ابحث في $label…', 'Search $label…'), isDense: true, border: const OutlineInputBorder())),
+              ),
+              Expanded(child: ListView.builder(
+                itemCount: list.length,
+                itemBuilder: (_, i) {
+                  final o = list[i];
+                  final key = '${o['key'] ?? ''}';
+                  return ListTile(
+                    dense: true,
+                    selected: key == current,
+                    title: Text(tr('${o['ar'] ?? key}', '${o['en'] ?? o['ar'] ?? key}')),
+                    onTap: () => Navigator.pop(c, key),
+                  );
+                },
+              )),
+            ]),
+          ),
+        );
+      }),
+    );
+    ctl.dispose();
+    return picked;
+  }
+
   Future<void> _addOption(Map<String, dynamic> f, String label) async {
     final c = TextEditingController();
     final v = await showDialog<String>(context: context, builder: (dc) => AlertDialog(
@@ -225,7 +267,7 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
     try {
       final results = await Future.wait([
         Api.instance.get('/api/shipment-orders/fields'),
-        Api.instance.get('/api/shipment-orders/customers').catchError((_) => <String, dynamic>{}),
+        Api.instance.get('/api/shipment-orders/customers?picker=1').catchError((_) => <String, dynamic>{}),
         // ── ولا تُحمَّل القائمتان كلَّهما ──────────────────────────────────
         // في السجلّ ثلاثةَ عشرَ ألفَ شاحنةٍ وثلاثةُ آلاف مورّد، وكان يُطلَب
         // الكلُّ فيصل حدُّ الخادم (ألفٌ) ثمّ يُبحَث في الواصل — فمن اختار
@@ -767,6 +809,27 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
       final options = List<Map<String, dynamic>>.from(f['options'] ?? []);
       final current = (_form[k] ?? '').toString();
       // ── وما ليس في القائمة يُضاف من مكانه (كالويب) — يُكتب في الإعدادات نفسِها.
+      // Long lists (e.g. the From / To cities) open a searchable sheet instead of a dropdown.
+      if (options.length > 15) {
+        final cur = options.firstWhere((o) => o['key'] == current, orElse: () => const {});
+        return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          InkWell(
+            onTap: () async {
+              final v = await _searchOption(label, options, current);
+              if (v == null) return;
+              setState(() {
+                _form[k] = v;
+                if (k == 'fromCity' || k == 'toCity') _applyRoutePrice();
+              });
+            },
+            child: InputDecorator(
+              decoration: deco.copyWith(suffixIcon: const Icon(Icons.search)),
+              child: Text(cur.isEmpty ? (current.isEmpty ? tr('اختر', 'Choose') : current) : tr('${cur['ar'] ?? cur['key']}', '${cur['en'] ?? cur['ar'] ?? cur['key']}'),
+                  overflow: TextOverflow.ellipsis, style: TextStyle(color: current.isEmpty ? T.inkFaint : T.ink)),
+            ),
+          ),
+        ]);
+      }
       return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [DropdownButtonFormField<String>(
         initialValue: options.any((o) => o['key'] == current) ? current : null,
         isExpanded: true,

@@ -139,7 +139,7 @@ function CreateShipmentInner() {
       try {
         const [f, c, sp] = await Promise.all([
           api.get<{ fields: FormField[] }>('/api/shipment-orders/fields'),
-          api.get<{ customers: OrderCustomer[] }>('/api/shipment-orders/customers'),
+          api.get<{ customers: OrderCustomer[] }>('/api/shipment-orders/customers?picker=1'),
           api.get<{ suppliers: OrderSupplier[]; total: number }>('/api/shipment-orders/suppliers?limit=60'),
         ]);
         setFields(f.fields || []);

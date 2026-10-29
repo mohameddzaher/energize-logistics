@@ -1392,7 +1392,7 @@ export default function OperationsWorkflowPage() {
         {/* Bonds not arrived AS OF the end of the filtered period — even if they arrived later. */}
         <button
           type="button"
-          onClick={() => { const on = !showPendingAsOf; setShowPendingAsOf(on); if (on) setShowPendingOnly(false); setPage(1); if (on) setTimeout(() => tableRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60); }}
+          onClick={() => { const on = !showPendingAsOf; setShowPendingAsOf(on); if (on) setShowPendingOnly(false); setPage(1); }}
           title={lang === 'ar' ? 'الكشوف التي لم يصل سندُها حتى نهاية الفترة المفلترة — ولو وصل بعدها' : 'Bonds not arrived by the end of the filtered period — even if they arrived later'}
           className={`${CARD} !border-violet-200 !bg-violet-50/60 ${showPendingAsOf ? '!border-violet-600 ring-1 ring-violet-600' : ''}`}
         >

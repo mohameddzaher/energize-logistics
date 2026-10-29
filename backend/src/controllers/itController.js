@@ -558,6 +558,8 @@ exports.listCustody = async (req, res) => {
     const runQuery = () => Asset.find(base)
       .populate('employee', EMP_FIELDS)
       .populate('assignedBy', 'firstName lastName')
+      // Who recorded the return (set from the acting user on every return path).
+      .populate('returnedTo', 'firstName lastName')
       .sort({ createdAt: -1 })
       .limit(2000)
       .lean();

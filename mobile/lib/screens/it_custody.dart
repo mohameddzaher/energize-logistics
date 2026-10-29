@@ -499,6 +499,8 @@ class _ItCustodyScreenState extends State<ItCustodyScreen> {
             if (assigned && r['assignedDate'] != null) Chip2(itDate(r['assignedDate']), T.inkFaint, icon: Icons.event_outlined),
             if (r['status'] == 'in_stock') Chip2(tr('المستودع', 'In store'), T.info, icon: Icons.inventory_2_outlined),
             if (r['status'] == 'returned') Chip2('${tr('تالف', 'Faulty')} ${r['returnedDate'] != null ? itDate(r['returnedDate']) : ''}', T.danger),
+            // Who recorded the return.
+            if (r['status'] == 'returned' && r['returnedTo'] is Map) Chip2('${tr('سجّله', 'By')} ${'${r['returnedTo']['firstName'] ?? ''} ${r['returnedTo']['lastName'] ?? ''}'.trim()}', T.inkSoft, icon: Icons.person_pin_outlined),
             // المُباعُ يقول ثمنَه في الوسم.
             if (r['status'] == 'sold') Chip2('${tr('مُباع', 'Sold')}${r['soldPrice'] is num && r['soldPrice'] > 0 ? ' · ${fmtMoney(r['soldPrice'])}' : ''}', T.violet, icon: Icons.sell_outlined),
           ]),

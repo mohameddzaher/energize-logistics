@@ -419,6 +419,7 @@ export default function ItCustodyPage() {
     { header: ar ? 'انتهاء العقد' : 'Contract expiry', key: 'telecom', transform: (v: any) => v?.expiryDate || '', width: 14 },
     { header: ar ? 'المفوَّض لدى المزوّد' : 'Authorised with provider', key: 'telecom', transform: (v: any) => v?.authorizedName || '', width: 26 },
     { header: 'Returned', key: 'returnedDate', width: 14 },
+    { header: 'Returned by', key: 'returnedTo', transform: (v: any) => (v && typeof v === 'object' ? [v.firstName, v.lastName].filter(Boolean).join(' ') : ''), width: 20 },
   ];
   // الفلترة كلّها على الخادم بلا ترقيم، فما في الذاكرة هو نتيجة الفلتر كاملةً —
   // أمّا «الكلّ» فلا سبيل إليه إلّا بنداءٍ ثانٍ بلا معاملات، وبدونه كان على من
@@ -551,7 +552,7 @@ export default function ItCustodyPage() {
                   <SmallBadge
                     bg={CUSTODY_STATUSES[a.status]?.bg || 'bg-slate-500/15'}
                     text={CUSTODY_STATUSES[a.status]?.text || 'text-slate-700'}
-                    label={a.status === 'returned' ? `${custodyStatusLabel(a.status, lang)} ${fmtDate(a.returnedDate)}`
+                    label={a.status === 'returned' ? `${custodyStatusLabel(a.status, lang)} ${fmtDate(a.returnedDate)}${a.returnedTo && typeof a.returnedTo === 'object' ? ` · ${lang === 'ar' ? 'سجّله' : 'by'} ${[a.returnedTo.firstName, a.returnedTo.lastName].filter(Boolean).join(' ')}` : ''}`
                       // المُباعُ يقول ثمنَه في الوسم: «مُباع» وحدَها تترك السؤال قائمًا.
                       : a.status === 'sold' ? `${custodyStatusLabel(a.status, lang)}${a.soldPrice ? ` · ${a.soldPrice.toLocaleString()}` : ''}`
                       : custodyStatusLabel(a.status, lang)}

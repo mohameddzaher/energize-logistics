@@ -28,7 +28,7 @@ import {
 import { LinkChips, LinkPicker } from '@/components/jp/JpLinks';
 import ManagedSelect from '@/components/system/ManagedSelect';
 import ReferenceDataManager from '@/components/system/ReferenceDataManager';
-import { Spinner, PageHeader, Modal, Field, TextInput, TextArea, Select, PrimaryButton } from '@/components/hr/HRKit';
+import { Spinner, PageHeader, Modal, Field, TextInput, TextArea, Select, PrimaryButton, SearchableSelect } from '@/components/hr/HRKit';
 import {
   CalendarCheck, ListChecks, Plus, Check, Paperclip, Trash2, Pencil, FolderKanban, Clock, ChevronDown,
   Phone, MessageCircle, MapPin, Mail, Users, MoreHorizontal, X, Send, CornerDownLeft, Loader2, MessageSquare, ArrowRight, ArrowLeft,
@@ -596,6 +596,19 @@ function JpBoardInner({ scope, section }: { scope: JpScope; section?: string }) 
   };
 
   const teamOptions = useMemo(() => (me ? me.team : []), [me]);
+  // Assignee choices for the searchable picker: the section's team first, then other employees.
+  const assigneeOptions = useMemo(() => {
+    if (!me) return [];
+    const opt = (m: typeof teamOptions[number]) => ({
+      value: m._id,
+      label: m._id === me.me ? (ar ? `${m.name} (أنا)` : `${m.name} (me)`) : m.name,
+      hint: ar ? m.roleAr : m.roleEn,
+      badge: m.inSection === false ? (ar ? 'خارج القسم' : 'Other') : (ar ? 'القسم' : 'Team'),
+      tone: (m.inSection === false ? 'info' : 'ok') as 'info' | 'ok',
+    });
+    const self = !me.canManage && !teamOptions.some((m) => m._id === me.me) ? [{ value: me.me, label: ar ? 'لنفسي' : 'Myself' }] : [];
+    return [...self, ...teamOptions.filter((m) => m.inSection !== false).map(opt), ...teamOptions.filter((m) => m.inSection === false).map(opt)];
+  }, [me, teamOptions, ar]);
 
   if (denied) {
     return <div className="py-20 text-center text-slate-500 text-sm" dir={isRTL ? 'rtl' : 'ltr'}>{denied}</div>;
@@ -670,24 +683,12 @@ function JpBoardInner({ scope, section }: { scope: JpScope; section?: string }) 
               placeholder={me.canManage ? t('ما المهمّة؟ اكتبها واضغط Enter', 'What is the task? Type and press Enter') : t('ما الطلب؟ اكتبه واضغط Enter', 'What is the request? Type and press Enter')}
               className="flex-1 px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 text-[15px] text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
           )}
-          <select value={draft.assignedTo} onChange={(e) => patchDraft({ assignedTo: e.target.value })} aria-label={whoLabel}
-            className="lg:w-60 px-3 py-3 rounded-xl bg-white border border-slate-200 text-sm text-slate-800">
-            <option value="">{whoLabel}</option>
-            {!me.canManage && !teamOptions.some((m) => m._id === me.me) && <option value={me.me}>{t('لنفسي', 'Myself')}</option>}
-            {/* A top role sees the section's members first, then everyone else (e.g. the IT team are super_admins). */}
-            <optgroup label={t('فريق القسم', 'Section team')}>
-              {teamOptions.filter((m) => m.inSection !== false).map((m) => (
-                <option key={m._id} value={m._id}>{m._id === me.me ? t(`${m.name} (أنا)`, `${m.name} (me)`) : `${m.name} — ${ar ? m.roleAr : m.roleEn}`}</option>
-              ))}
-            </optgroup>
-            {teamOptions.some((m) => m.inSection === false) && (
-              <optgroup label={t('موظفون آخرون', 'Other employees')}>
-                {teamOptions.filter((m) => m.inSection === false).map((m) => (
-                  <option key={m._id} value={m._id}>{m._id === me.me ? t(`${m.name} (أنا)`, `${m.name} (me)`) : `${m.name} — ${ar ? m.roleAr : m.roleEn}`}</option>
-                ))}
-              </optgroup>
-            )}
-          </select>
+          {/* Searchable: a top role picks from every employee, the section's team first (badge «القسم»). */}
+          <div className="lg:w-72">
+            <SearchableSelect value={draft.assignedTo} onChange={(v) => patchDraft({ assignedTo: v })}
+              placeholder={whoLabel} searchPlaceholder={t('ابحث بالاسم أو الدور…', 'Search name or role…')} searchAfter={0}
+              options={assigneeOptions} />
+          </div>
           <PrimaryButton onClick={add} disabled={saving}>
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
             {me.canManage ? t('إسناد', 'Assign') : t('إرسال', 'Send')}
@@ -805,11 +806,11 @@ function JpBoardInner({ scope, section }: { scope: JpScope; section?: string }) 
         <Chip on={status === 'done'} onClick={() => setStatus('done')}>{t('التي تمّت', 'Done')}</Chip>
         <Chip on={status === ''} onClick={() => setStatus('')}>{t('الكلّ', 'All')}</Chip>
         {me.canManage && (box === 'all' || !!current) && (
-          <select value={assignee} onChange={(e) => setAssignee(e.target.value)} aria-label={t('الموظّف', 'Person')}
-            className="ms-auto px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-[12.5px] text-slate-700">
-            <option value="">{management ? t('كلُّ المديرين', 'All managers') : t('كلُّ الموظّفين', 'Everyone')}</option>
-            {teamOptions.map((m) => <option key={m._id} value={m._id}>{m.name}</option>)}
-          </select>
+          <div className="ms-auto w-56">
+            <SearchableSelect value={assignee} onChange={setAssignee} searchAfter={0}
+              searchPlaceholder={t('ابحث بالاسم…', 'Search name…')}
+              options={[{ value: '', label: management ? t('كلُّ المديرين', 'All managers') : t('كلُّ الموظّفين', 'Everyone') }, ...assigneeOptions]} />
+          </div>
         )}
       </div>
 
@@ -879,10 +880,10 @@ function JpBoardInner({ scope, section }: { scope: JpScope; section?: string }) 
               : <TextInput value={editDraft.title} onChange={(e) => patchEdit({ title: e.target.value })} />}
           </Field>
           <Field label={t('إلى مَن', 'For whom')}>
-            <Select value={editDraft.assignedTo} onChange={(e) => patchEdit({ assignedTo: e.target.value })}>
-              {teamOptions.map((m) => <option key={m._id} value={m._id}>{m.name}{m.inSection === false ? ` — ${ar ? m.roleAr : m.roleEn}` : ''}</option>)}
-              {!teamOptions.some((m) => m._id === editDraft.assignedTo) && <option value={editDraft.assignedTo}>{editing?.assignedToName}</option>}
-            </Select>
+            <SearchableSelect value={editDraft.assignedTo} onChange={(v) => patchEdit({ assignedTo: v })} searchAfter={0}
+              searchPlaceholder={t('ابحث بالاسم أو الدور…', 'Search name or role…')}
+              options={[...assigneeOptions,
+                ...(!teamOptions.some((m) => m._id === editDraft.assignedTo) && editDraft.assignedTo ? [{ value: editDraft.assignedTo, label: editing?.assignedToName || '—' }] : [])]} />
           </Field>
         </div>
         <Field label={editing?.deadlineKind === 'hours' ? t('الموعد — اتركه كما هو أو اختر جديدًا', 'Deadline — leave as is or pick a new one') : t('الموعد', 'Deadline')}>

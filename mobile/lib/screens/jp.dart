@@ -762,15 +762,16 @@ class _JpFormState extends State<_JpForm> {
         ]),
         Padding(padding: const EdgeInsets.only(top: 3), child: Text(tr('الوقت المتوقّع (اختياري)', 'Expected time (optional)'), style: const TextStyle(fontSize: 11, color: T.inkFaint))),
         const SizedBox(height: 10),
-        DropdownButtonFormField<String>(
-          initialValue: _assignee.isEmpty ? null : _assignee, isExpanded: true,
-          decoration: InputDecoration(labelText: _canManage ? tr('إلى مَن؟', 'For whom?') : tr('لي أو لزميل', 'Me or a colleague'), border: const OutlineInputBorder()),
-          items: [
-            if (!team.any((m) => m['_id'] == meId) && !_canManage) DropdownMenuItem(value: meId, child: Text(tr('لنفسي', 'Myself'))),
-            for (final m in team) DropdownMenuItem(value: m['_id'].toString(), child: Text(m['_id'] == meId ? '${m['name']} (${tr('أنا', 'me')})' : '${m['name']} — ${tr((m['roleAr'] ?? '').toString(), (m['roleEn'] ?? '').toString())}', overflow: TextOverflow.ellipsis)),
-            if (_assignee.isNotEmpty && _assignee != meId && !team.any((m) => m['_id'] == _assignee)) DropdownMenuItem(value: _assignee, child: Text((widget.task?['assignedToName'] ?? '').toString())),
+        // Searchable: a top role picks from every employee, the section's team first.
+        JpPersonField(
+          label: _canManage ? tr('إلى مَن؟', 'For whom?') : tr('لي أو لزميل', 'Me or a colleague'),
+          value: _assignee,
+          people: [
+            if (!team.any((m) => m['_id'] == meId) && !_canManage) {'_id': meId, 'name': tr('لنفسي', 'Myself'), 'inSection': true},
+            for (final m in team) {...m, if (m['_id'] == meId) 'name': '${m['name']} (${tr('أنا', 'me')})'},
+            if (_assignee.isNotEmpty && _assignee != meId && !team.any((m) => m['_id'] == _assignee)) {'_id': _assignee, 'name': (widget.task?['assignedToName'] ?? '').toString()},
           ],
-          onChanged: (v) => setState(() => _assignee = v ?? ''),
+          onChanged: (v) => setState(() => _assignee = v),
         ),
         const SizedBox(height: 12),
         Text(tr('الموعد (اختياري)', 'Deadline (optional)'), style: const TextStyle(fontSize: 12, color: T.inkSoft)),
@@ -1037,14 +1038,14 @@ class _JpDashScreenState extends State<JpDashScreen> {
                     _dailyCard(),
                     const SizedBox(height: 12),
                     // اللوحةُ كلُّها لموظّفٍ بعينه — كما في الموقع.
-                    DropdownButtonFormField<String>(
-                      initialValue: team.any((m) => m['_id'] == _assignee) ? _assignee : '', isExpanded: true,
-                      decoration: InputDecoration(isDense: true, labelText: management ? tr('المدير', 'Manager') : tr('الموظّف', 'Employee'), border: const OutlineInputBorder()),
-                      items: [
-                        DropdownMenuItem(value: '', child: Text(management ? tr('كلُّ المديرين', 'All managers') : tr('كلُّ الموظّفين', 'All employees'))),
-                        for (final m in team) DropdownMenuItem(value: m['_id'].toString(), child: Text((m['name'] ?? '').toString(), overflow: TextOverflow.ellipsis)),
+                    JpPersonField(
+                      label: management ? tr('المدير', 'Manager') : tr('الموظّف', 'Employee'),
+                      value: team.any((m) => m['_id'] == _assignee) ? _assignee : '',
+                      people: [
+                        {'_id': '', 'name': management ? tr('كلُّ المديرين', 'All managers') : tr('كلُّ الموظّفين', 'All employees'), 'inSection': true},
+                        ...team,
                       ],
-                      onChanged: (v) { setState(() => _assignee = v ?? ''); _load(); },
+                      onChanged: (v) { setState(() => _assignee = v); _load(); },
                     ),
                     const SizedBox(height: 8),
                     _filters(d, management),
@@ -1284,6 +1285,73 @@ class _LinkSearchState extends State<_LinkSearch> {
                           ),
                         )),
         ]),
+      ),
+    );
+  }
+}
+
+
+/// A person field that opens a searchable list (name or role); the section's team first.
+class JpPersonField extends StatelessWidget {
+  final String label;
+  final String value;
+  final List<Map<String, dynamic>> people;
+  final ValueChanged<String> onChanged;
+  const JpPersonField({super.key, required this.label, required this.value, required this.people, required this.onChanged});
+
+  String _role(Map<String, dynamic> m) => tr('${m['roleAr'] ?? ''}', '${m['roleEn'] ?? ''}');
+
+  Future<void> _open(BuildContext context) async {
+    final ctl = TextEditingController();
+    final picked = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      builder: (c) => StatefulBuilder(builder: (c, setSt) {
+        final q = ctl.text.trim().toLowerCase();
+        final list = people.where((m) => q.isEmpty || '${m['name']} ${_role(m)}'.toLowerCase().contains(q)).toList()
+          ..sort((a, b) => (b['inSection'] == false ? 0 : 1) - (a['inSection'] == false ? 0 : 1));
+        return Padding(
+          padding: EdgeInsets.only(bottom: MediaQuery.of(c).viewInsets.bottom),
+          child: SizedBox(
+            height: MediaQuery.of(c).size.height * 0.75,
+            child: Column(children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(14, 14, 14, 6),
+                child: TextField(controller: ctl, autofocus: true, onChanged: (_) => setSt(() {}),
+                    decoration: InputDecoration(prefixIcon: const Icon(Icons.search), hintText: tr('ابحث بالاسم أو الدور…', 'Search name or role…'), border: const OutlineInputBorder(), isDense: true)),
+              ),
+              Expanded(child: ListView.builder(
+                itemCount: list.length,
+                itemBuilder: (_, i) {
+                  final m = list[i];
+                  final id = '${m['_id'] ?? ''}';
+                  return ListTile(
+                    dense: true,
+                    selected: id == value,
+                    title: Text('${m['name'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.w700)),
+                    subtitle: _role(m).isEmpty ? null : Text(_role(m)),
+                    trailing: m['inSection'] == false ? Chip2(tr('خارج القسم', 'Other'), T.info) : null,
+                    onTap: () => Navigator.pop(c, id),
+                  );
+                },
+              )),
+            ]),
+          ),
+        );
+      }),
+    );
+    ctl.dispose();
+    if (picked != null) onChanged(picked);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cur = people.firstWhere((m) => '${m['_id']}' == value, orElse: () => const {});
+    return InkWell(
+      onTap: () => _open(context),
+      child: InputDecorator(
+        decoration: InputDecoration(labelText: label, border: const OutlineInputBorder(), isDense: true, suffixIcon: const Icon(Icons.search)),
+        child: Text(cur.isEmpty ? '—' : '${cur['name'] ?? ''}', overflow: TextOverflow.ellipsis),
       ),
     );
   }

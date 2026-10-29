@@ -989,6 +989,16 @@ const pendingAsOfMatch = (asOf) => ({
     { applicationStatus: { $nin: CANCELLED } },
   ],
 });
+/**
+ * A single picked day means «everything up to that day»: the as-of view then covers
+ * manifests from the start of 2026 to that day (owner, 2026-10-29). A range keeps its start.
+ */
+const AS_OF_START = '2026-01-01';
+const asOfQuery = (query) => {
+  const q = { ...(query || {}) };
+  if (q.dateTo && (!q.dateFrom || q.dateFrom === q.dateTo)) q.dateFrom = AS_OF_START;
+  return q;
+};
 /** The moment «as of» is read at: the end of the period's last day, or now without one. */
 const pendingAsOfDate = (query) => {
   const to = query && query.dateTo;
@@ -1018,7 +1028,9 @@ async function primeRelatedSearch(req, res, next) {
   next();
 }
 
-function buildWorkflowFilter(query, skipField, allowMoney = true, allowSelling = true) {
+function buildWorkflowFilter(queryIn, skipField, allowMoney = true, allowSelling = true) {
+  // The as-of view widens a single day back to the start of the year (see asOfQuery).
+  const query = queryIn && queryIn.pendingAsOf === 'true' ? asOfQuery(queryIn) : queryIn;
   const {
     stage, search, dateFrom, dateTo, pendingOnly, invoiceGap, pendingKind, pendingAsOf,
   } = query || {};
@@ -1234,7 +1246,7 @@ exports.getWorkflowStats = async (req, res) => {
     ]);
     // Bonds pending as of the end of the filtered period (counted on the same filter, minus «pendingOnly»).
     const asOf = pendingAsOfDate(req.query);
-    const asOfBase = buildWorkflowFilter({ ...req.query, pendingOnly: '', pendingAsOf: '' }, undefined, canSeeMoney(req.user.role), canSeeSelling(req.user.role));
+    const asOfBase = buildWorkflowFilter(asOfQuery({ ...req.query, pendingOnly: '', pendingAsOf: '' }), undefined, canSeeMoney(req.user.role), canSeeSelling(req.user.role));
     const asOfMatch = { ...asOfBase, $and: [...(asOfBase.$and || []), pendingAsOfMatch(asOf)] };
     const [total, pendingRows, pendingBondReceived, agg, stages, pendingAsOfCount] = await Promise.all([
       OperationsWorkflow.countDocuments(filter),
@@ -1285,6 +1297,7 @@ exports.getWorkflowStats = async (req, res) => {
       pendingBondReceived,
       pendingAsOf: pendingAsOfCount,
       pendingAsOfDate: asOf,
+      pendingAsOfFrom: asOfQuery(req.query).dateFrom || '',
       sumPurchaseValue: agg[0]?.sumPurchaseValue || 0,
       byStage: stages.reduce((acc, r) => { acc[r._id || 'draft'] = r.count; return acc; }, {}),
       byStatus,

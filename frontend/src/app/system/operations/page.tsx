@@ -410,9 +410,9 @@ export default function OperationsWorkflowPage() {
   // Aggregates over the WHOLE matching dataset (all ~27k rows, not one page).
   const [stats, setStats] = useState<{
     total: number; pendingInvoices: number;
-    pendingBondReceived: number; sumPurchaseValue: number; pendingAsOf: number; pendingAsOfDate: string;
+    pendingBondReceived: number; sumPurchaseValue: number; pendingAsOf: number; pendingAsOfDate: string; pendingAsOfFrom: string;
     byStage: Record<string, number>; byStatus: Record<string, number>; statusTotal: number;
-  }>({ total: 0, pendingInvoices: 0, pendingBondReceived: 0, sumPurchaseValue: 0, pendingAsOf: 0, pendingAsOfDate: '', byStage: {}, byStatus: {}, statusTotal: 0 });
+  }>({ total: 0, pendingInvoices: 0, pendingBondReceived: 0, sumPurchaseValue: 0, pendingAsOf: 0, pendingAsOfDate: '', pendingAsOfFrom: '', byStage: {}, byStatus: {}, statusTotal: 0 });
 
   // كل ما يفهمه الخادم من فلترة في مكانٍ واحد: يقرؤه الجدولُ والإحصاءاتُ وقوائمُ
   // القيم والتصدير، فلا يفلتر أحدها على شرطٍ ويعرض الآخر نتيجة شرطٍ غيره.
@@ -512,6 +512,7 @@ export default function OperationsWorkflowPage() {
         pendingBondReceived: data.pendingBondReceived || 0,
         pendingAsOf: data.pendingAsOf || 0,
         pendingAsOfDate: data.pendingAsOfDate || '',
+        pendingAsOfFrom: data.pendingAsOfFrom || '',
         sumPurchaseValue: data.sumPurchaseValue || 0,
         byStage: data.byStage || {},
         byStatus: data.byStatus || {},
@@ -1401,8 +1402,8 @@ export default function OperationsWorkflowPage() {
             <span className={CARD_LABEL}><span className="inline-block h-1.5 w-1.5 rounded-full bg-violet-500" />{lang === 'ar' ? 'سندات لم تصل وقتها' : 'Bonds pending at the time'}</span>
             <span className={CARD_SUB}>
               {lang === 'ar'
-                ? `حتى ${stats.pendingAsOfDate ? new Date(stats.pendingAsOfDate).toLocaleDateString('en-GB', { timeZone: 'Asia/Riyadh' }) : 'الآن'}${dateTo ? '' : ' — اختر فترة لتعود بالزمن'}`
-                : `as of ${stats.pendingAsOfDate ? new Date(stats.pendingAsOfDate).toLocaleDateString('en-GB', { timeZone: 'Asia/Riyadh' }) : 'now'}${dateTo ? '' : ' — pick a period to go back in time'}`}
+                ? `${stats.pendingAsOfFrom ? `من ${stats.pendingAsOfFrom.split('-').reverse().join('/')} ` : ''}حتى ${stats.pendingAsOfDate ? new Date(stats.pendingAsOfDate).toLocaleDateString('en-GB', { timeZone: 'Asia/Riyadh' }) : 'الآن'}${dateTo ? '' : ' — اختر يومًا لتعود بالزمن'}`
+                : `${stats.pendingAsOfFrom ? `from ${stats.pendingAsOfFrom.split('-').reverse().join('/')} ` : ''}to ${stats.pendingAsOfDate ? new Date(stats.pendingAsOfDate).toLocaleDateString('en-GB', { timeZone: 'Asia/Riyadh' }) : 'now'}${dateTo ? '' : ' — pick a day to go back in time'}`}
             </span>
           </div>
         </button>

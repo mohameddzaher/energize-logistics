@@ -911,7 +911,9 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
                 sub: () {
                   final d = DateTime.tryParse('${_stats['pendingAsOfDate'] ?? ''}')?.toUtc().add(const Duration(hours: 3));
                   final ds = d == null ? tr('الآن', 'now') : '${d.day}/${d.month}/${d.year}';
-                  return tr('حتى $ds — ولو وصل بعدها', 'as of $ds — even if it arrived later');
+                  final f = '${_stats['pendingAsOfFrom'] ?? ''}';
+                  final fs = f.length == 10 ? f.split('-').reversed.join('/') : '';
+                  return tr('${fs.isEmpty ? '' : 'من $fs '}حتى $ds', '${fs.isEmpty ? '' : 'from $fs '}to $ds');
                 }(),
                 active: _pendingAsOf,
                 onTap: () { _pendingAsOf = !_pendingAsOf; if (_pendingAsOf) _pendingOnly = false; _reload(); }),

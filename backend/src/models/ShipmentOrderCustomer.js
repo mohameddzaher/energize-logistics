@@ -11,6 +11,8 @@ const mongoose = require('mongoose');
 const shipmentOrderCustomerSchema = new mongoose.Schema(
   {
     name: { type: String, required: true, trim: true },
+    // Set when a person renames the customer, so the new-shipment picker shows it even if not on the approved list.
+    nameManual: { type: Boolean, default: false },
     phone: { type: String, trim: true, default: '' },
     email: { type: String, trim: true, default: '' },
     notes: { type: String, trim: true, default: '' },

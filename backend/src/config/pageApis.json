@@ -62,6 +62,7 @@
         "/api/workflows/bulk-delete",
         "/api/workflows/bulk-import",
         "/api/workflows/bulk-update",
+        "/api/workflows/customer-names",
         "/api/workflows/customs-search",
         "/api/workflows/export",
         "/api/workflows/filters",

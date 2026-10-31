@@ -1693,14 +1693,16 @@ exports.listCustomers = async (req, res) => {
     // `picker=1` (the new-shipment form): only the correct customer names (config/approvedCustomers)
     // and customers created in the system — not raw platform accounts like «acc…».
     const picker = String(req.query.picker || '') === '1';
-    const out = await cache.wrap(registryKey('customers', req, picker ? 'picker' : ''), REGISTRY_TTL, async () => {
-      if (picker) {
-        const fold = require('../models/CollectionsParty').fold;
-        const approved = new Set(require('../config/approvedCustomers').map((n) => fold(n)));
-        const rows = await ShipmentOrderCustomer.find(filter).select(`${CUSTOMER_LIST_FIELDS} externalId`).sort({ name: 1 }).limit(5000).lean();
-        const customers = rows.filter((c) => approved.has(fold(c.name)) || !c.externalId).map(({ externalId, ...c }) => c);
-        return { customers, total: customers.length };
-      }
+    // The picker is read fresh: the cache is per worker, and an edit on the customers page must show at once.
+    if (picker) {
+      const fold = require('../models/CollectionsParty').fold;
+      const approved = new Set(require('../config/approvedCustomers').map((n) => fold(n)));
+      const rows = await ShipmentOrderCustomer.find(filter).select(`${CUSTOMER_LIST_FIELDS} externalId nameManual`).sort({ name: 1 }).limit(5000).lean();
+      const customers = rows.filter((c) => approved.has(fold(c.name)) || !c.externalId || c.nameManual)
+        .map(({ externalId, nameManual, ...c }) => c);
+      return res.json({ customers, total: customers.length });
+    }
+    const out = await cache.wrap(registryKey('customers', req), REGISTRY_TTL, async () => {
       const [customers, total] = await Promise.all([
         ShipmentOrderCustomer.find(filter)
           .select(CUSTOMER_LIST_FIELDS)
@@ -1758,6 +1760,7 @@ exports.updateCustomer = async (req, res) => {
           ? { ...rest, tiers: old.tiers, tiersAt: old.tiersAt, tiersBy: old.tiersBy } : rest;
       });
     }
+    if (data.name !== undefined && String(data.name).trim() !== customer.name) data.nameManual = true;
     Object.assign(customer, data);
     await customer.save();
     // Orders show the snapshot name; keep future reads coherent after a rename.
@@ -1886,7 +1889,8 @@ exports.listSuppliers = async (req, res) => {
       Object.assign(filter, anyOf(q, ['name', 'phone', 'email', 'ownerName', 'ownerPhone',
         'managerName', 'managerPhone', 'accountantName', 'commercialRegister', 'iban', 'externalId']));
     }
-    const out = await cache.wrap(registryKey('suppliers', req), REGISTRY_TTL, async () => {
+    // `fresh=1` (the new-shipment form) skips the per-worker cache so a supplier edit shows at once.
+    const build = async () => {
       // How many trucks each one runs — the number the team actually asks for.
       // والثلاثةُ مستقلّة فتُطلب معًا: ثلاث رحلاتٍ إلى العنقود في زمن واحدة.
       // كم شاحنةً وكم سائقًا لكلٍّ — الرقمان اللذان يُسألان عن المورّد قبل
@@ -1919,7 +1923,8 @@ exports.listSuppliers = async (req, res) => {
         })),
         total,
       };
-    });
+    };
+    const out = String(req.query.fresh || '') === '1' ? await build() : await cache.wrap(registryKey('suppliers', req), REGISTRY_TTL, build);
     res.json(out);
   } catch (error) {
     res.status(500).json({ message: 'Failed to load suppliers' });

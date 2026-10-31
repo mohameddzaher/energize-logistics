@@ -6,7 +6,7 @@
 // paid. Picking the customer autofills their defaults and route price; picking
 // the truck autofills its regular driver; a truck we have never seen registers
 // itself (and its 3PL supplier) as a side effect.
-import { useState, useEffect, useMemo, useCallback, Suspense } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
@@ -140,7 +140,7 @@ function CreateShipmentInner() {
         const [f, c, sp] = await Promise.all([
           api.get<{ fields: FormField[] }>('/api/shipment-orders/fields'),
           api.get<{ customers: OrderCustomer[] }>('/api/shipment-orders/customers?picker=1'),
-          api.get<{ suppliers: OrderSupplier[]; total: number }>('/api/shipment-orders/suppliers?limit=60'),
+          api.get<{ suppliers: OrderSupplier[]; total: number }>('/api/shipment-orders/suppliers?limit=60&fresh=1'),
         ]);
         setFields(f.fields || []);
         setCustomers(c.customers || []);
@@ -195,19 +195,30 @@ function CreateShipmentInner() {
    */
   const supGuard = useLatestRequest();
   const vehGuard = useLatestRequest();
+  const supQuery = useRef('');
 
   const searchSuppliers = useCallback(async (q: string) => {
+    supQuery.current = q;
     const mine = supGuard.begin();
     setSupBusy(true);
     try {
       const d = await api.get<{ suppliers: OrderSupplier[]; total: number }>(
-        `/api/shipment-orders/suppliers?limit=60${q ? `&q=${encodeURIComponent(q)}` : ''}`);
+        `/api/shipment-orders/suppliers?limit=60&fresh=1${q ? `&q=${encodeURIComponent(q)}` : ''}`);
       if (!supGuard.isCurrent(mine)) return;
       setSuppliers(d.suppliers || []);
       setSupTotal(d.total || 0);
     } catch { /* الخانةُ تبقى على ما كانت */ }
     finally { if (supGuard.isCurrent(mine)) setSupBusy(false); }
   }, [supGuard]);
+
+  // An edit on the customers or suppliers page reaches the open form at once.
+  const reloadCustomers = useCallback(() => {
+    api.get<{ customers: OrderCustomer[] }>('/api/shipment-orders/customers?picker=1')
+      .then((c) => setCustomers(c.customers || [])).catch(() => {});
+  }, []);
+  useSocket('shipmentOrders:customers', reloadCustomers);
+  useSocket('customers:changed', reloadCustomers);
+  useSocket('shipmentOrders:fleet', useCallback(() => { searchSuppliers(supQuery.current); }, [searchSuppliers]));
 
   // شاحناتُ المورّد المختار، أو بحثٌ في شاحنات الموردين كلِّها حين لا مورّد.
   // و`ownership=supplier` تُخرج أسطولَنا من القائمة: أسطولُنا يُدار في «إدارة

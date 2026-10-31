@@ -103,6 +103,8 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
 
   // ── وخيارٌ يضيفه زميلٌ يظهر هنا بلا إعادة فتح (`shipmentOrders:fields`) ──
   late final void Function() _onFields = _reloadFields;
+  // An edit on the customers or suppliers page reaches the open form at once.
+  late final void Function() _onRegisters = _reloadRegisters;
   // سوّاقُ الشاحنة المختارة، فإن لم يُسجَّل لها سائقٌ فسوّاقُ مورّدها.
   List<Map<String, dynamic>> _drivers = [];
   bool _savingCustomer = false;
@@ -113,12 +115,32 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
     _load().then((_) => _loadDrivers());
     _loadMoneyEditors();
     Live.instance.on('shipmentOrders:fields', _onFields);
+    for (final e in const ['shipmentOrders:customers', 'customers:changed', 'shipmentOrders:fleet']) {
+      Live.instance.on(e, _onRegisters);
+    }
   }
 
   @override
   void dispose() {
     Live.instance.off('shipmentOrders:fields', _onFields);
+    for (final e in const ['shipmentOrders:customers', 'customers:changed', 'shipmentOrders:fleet']) {
+      Live.instance.off(e, _onRegisters);
+    }
     super.dispose();
+  }
+
+  Future<void> _reloadRegisters() async {
+    try {
+      final r = await Future.wait([
+        Api.instance.get('/api/shipment-orders/customers?picker=1'),
+        Api.instance.get('/api/shipment-orders/suppliers?limit=60&fresh=1'),
+      ]);
+      if (!mounted) return;
+      setState(() {
+        _customers = List<Map<String, dynamic>>.from(r[0]['customers'] ?? []);
+        _suppliers = List<Map<String, dynamic>>.from(r[1]['suppliers'] ?? []);
+      });
+    } catch (_) {}
   }
 
   Future<void> _reloadFields() async {
@@ -190,7 +212,7 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
   /// A searchable sheet over a field's options; returns the chosen key.
   Future<String?> _searchOption(String label, List<Map<String, dynamic>> options, String current) async {
     final ctl = TextEditingController();
-    final fold = (String v) => v.toLowerCase().replaceAll(RegExp('[أإآ]'), 'ا').replaceAll('ة', 'ه').replaceAll('ى', 'ي');
+    String fold(String v) => v.toLowerCase().replaceAll(RegExp('[أإآ]'), 'ا').replaceAll('ة', 'ه').replaceAll('ى', 'ي');
     final picked = await showModalBottomSheet<String>(
       context: context,
       isScrollControlled: true,
@@ -274,7 +296,7 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
         // مورّدًا لم تكن شاحناتُه في الألف رأى قائمةً فارغة. فصار البحثُ عند
         // الخادم، وشاحناتُ المورّد تُطلَب بمعرّفه.
         Api.instance.get('/api/shipment-orders/vehicles?limit=80&ownership=supplier').catchError((_) => <String, dynamic>{}),
-        Api.instance.get('/api/shipment-orders/suppliers?limit=60').catchError((_) => <String, dynamic>{}),
+        Api.instance.get('/api/shipment-orders/suppliers?limit=60&fresh=1').catchError((_) => <String, dynamic>{}),
       ]);
       if (!mounted) return;
       setState(() {
@@ -476,7 +498,7 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
     final sup = await _pickRemote(
       tr('الموردين', 'suppliers'),
       (q) async {
-        final d = await Api.instance.get('/api/shipment-orders/suppliers?limit=60${q.isEmpty ? '' : '&q=${Uri.encodeQueryComponent(q)}'}');
+        final d = await Api.instance.get('/api/shipment-orders/suppliers?limit=60&fresh=1${q.isEmpty ? '' : '&q=${Uri.encodeQueryComponent(q)}'}');
         return List<Map<String, dynamic>>.from(d['suppliers'] ?? []);
       },
       (x) => (x['name'] ?? '').toString(),
@@ -1011,7 +1033,7 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
                                   tr('الموردين', 'suppliers'),
                                   (q) async {
                                     final d = await Api.instance.get(
-                                        '/api/shipment-orders/suppliers?limit=60${q.isEmpty ? '' : '&q=${Uri.encodeQueryComponent(q)}'}');
+                                        '/api/shipment-orders/suppliers?limit=60&fresh=1${q.isEmpty ? '' : '&q=${Uri.encodeQueryComponent(q)}'}');
                                     return List<Map<String, dynamic>>.from(d['suppliers'] ?? []);
                                   },
                                   (x) => (x['name'] ?? '').toString(),

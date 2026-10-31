@@ -16,10 +16,10 @@ const index = () => {
   return byKey;
 };
 
-/** Customers added or renamed by a person on the customers page count as approved too. */
+/** Whatever is on the customers page is approved. */
 const registerNames = async () => {
   const rows = await require('../models/ShipmentOrderCustomer')
-    .find({ isActive: { $ne: false }, $or: [{ externalId: { $in: [null, ''] } }, { nameManual: true }] })
+    .find({ isActive: { $ne: false } })
     .select('name').lean();
   return rows.map((r) => r.name).filter(Boolean);
 };

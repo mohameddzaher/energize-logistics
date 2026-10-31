@@ -1691,16 +1691,10 @@ exports.listCustomers = async (req, res) => {
     const { q } = req.query;
     const filter = { isActive: { $ne: false } };
     if (q && q.trim()) Object.assign(filter, anyOf(q, ['customerCode', 'name', 'phone', 'email', 'city', 'address', 'externalId']));
-    // `picker=1` (the new-shipment form): only the correct customer names (config/approvedCustomers)
-    // and customers created in the system — not raw platform accounts like «acc…».
-    const picker = String(req.query.picker || '') === '1';
-    // The picker is read fresh: the cache is per worker, and an edit on the customers page must show at once.
-    if (picker) {
-      const fold = require('../models/CollectionsParty').fold;
-      const approved = new Set(require('../config/approvedCustomers').map((n) => fold(n)));
-      const rows = await ShipmentOrderCustomer.find(filter).select(`${CUSTOMER_LIST_FIELDS} externalId nameManual`).sort({ name: 1 }).limit(5000).lean();
-      const customers = rows.filter((c) => approved.has(fold(c.name)) || !c.externalId || c.nameManual)
-        .map(({ externalId, nameManual, ...c }) => c);
+    // The new-shipment picker is the customers page: every active row, read fresh
+    // because the cache is per worker and an edit there must show at once.
+    if (String(req.query.picker || '') === '1') {
+      const customers = await ShipmentOrderCustomer.find(filter).select(CUSTOMER_LIST_FIELDS).sort({ name: 1 }).limit(5000).lean();
       return res.json({ customers, total: customers.length });
     }
     const out = await cache.wrap(registryKey('customers', req), REGISTRY_TTL, async () => {

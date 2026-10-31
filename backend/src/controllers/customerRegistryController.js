@@ -141,7 +141,7 @@ exports.list = async (req, res) => {
   try {
     const body = await cache.wrapStale('so:registry:customers:full', TTL, 15 * 60 * 1000, async () => {
       const [customers, sheets, orders] = await Promise.all([
-        ShipmentOrderCustomer.find({}).select('customerCode name phone email routes defaults isActive').lean(),
+        ShipmentOrderCustomer.find({ isActive: { $ne: false } }).select('customerCode name phone email routes defaults isActive').lean(),
         sheetTotals(),
         orderTotals(),
       ]);

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../ui/ops_customer_field.dart';
 import 'package:provider/provider.dart';
 import '../services/api.dart';
 import '../services/auth.dart';
@@ -370,6 +371,7 @@ class _OpsWorkflowDetailScreenState extends State<OpsWorkflowDetailScreen> {
     }
     if (editable) {
       final ctrl = _ctrl[f.$1]!;
+      if (f.$1 == 'username') return OpsCustomerField(controller: ctrl, label: label);
       if (f.$4 == 'date') {
         return TextField(
           controller: ctrl,

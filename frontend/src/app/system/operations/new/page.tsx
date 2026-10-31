@@ -9,6 +9,7 @@ import { ArrowLeft, Upload, Plus, Loader2, FileSpreadsheet, Trash2, CheckCircle2
 import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
 import * as XLSX from 'xlsx';
 import ScrollX from '@/components/system/ScrollX';
+import CustomerNamePicker from '@/components/operations/CustomerNamePicker';
 
 // ── Field Definitions ──
 interface FieldDef {
@@ -338,6 +339,9 @@ export default function NewOperationsPage() {
                       <label className="block text-slate-500 text-xs mb-1.5">
                         {field.label} <span className="text-slate-600">({field.labelEn})</span>
                       </label>
+                      {field.key === 'username' ? (
+                        <CustomerNamePicker value={formData.username || ''} ar={ar} disabled={!canEdit} onChange={(v) => updateField('username', v)} />
+                      ) : (
                       <input
                         type={field.type || 'text'}
                         value={formData[field.key] || ''}
@@ -350,6 +354,7 @@ export default function NewOperationsPage() {
                         }`}
                         placeholder={canEdit ? field.label : '\u2014'}
                       />
+                      )}
                     </div>
                   ))}
                 </div>

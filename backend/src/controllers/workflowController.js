@@ -1505,6 +1505,11 @@ exports.getWorkflow = async (req, res) => {
 exports.createWorkflow = async (req, res) => {
   try {
     const filteredBody = filterFieldsByRole(req.body, req.user.role, await fieldsForRole(req.user.role));
+    if (filteredBody.username !== undefined) {
+      const chk = require('../utils/approvedCustomerName').checkCustomerName(filteredBody.username, '');
+      if (chk.error) return res.status(400).json({ code: 'CUSTOMER_NOT_APPROVED', message: chk.error });
+      filteredBody.username = chk.value;
+    }
     // نوعُ الدفع يقرّر شكلَ الكشف من لحظة إنشائه، لا بعد أوّل تعديل.
     await fillPaymentTypeFromCustomer(filteredBody, {});
     applyBillingRules(filteredBody, {});
@@ -1720,6 +1725,11 @@ async function setSellingValue(id, raw, user, { ip, note } = {}) {
 }
 exports.setSellingValue = setSellingValue;
 
+/** GET /customer-names — the approved customer names for the «العميل» picker. */
+exports.customerNames = (req, res) => {
+  res.json({ names: require('../utils/approvedCustomerName').approvedNames() });
+};
+
 exports.updateWorkflow = async (req, res) => {
   try {
     const workflow = await OperationsWorkflow.findById(req.params.id);
@@ -1752,6 +1762,12 @@ exports.updateWorkflow = async (req, res) => {
         fields: rejected,
         message: `صلاحيّتك لا تسمح بتعديل: ${rejected.join('، ')} — لم يُحفظ شيء.`,
       });
+    }
+
+    if (filteredBody.username !== undefined) {
+      const chk = require('../utils/approvedCustomerName').checkCustomerName(filteredBody.username, workflow.username);
+      if (chk.error) return res.status(400).json({ code: 'CUSTOMER_NOT_APPROVED', message: chk.error });
+      filteredBody.username = chk.value;
     }
 
     stampInvoiceDate(filteredBody, workflow);
@@ -2356,6 +2372,11 @@ exports.bulkUpdate = async (req, res) => {
     if (Object.prototype.hasOwnProperty.call(patch, 'sellingValue')) {
       delete patch.sellingValue;
       refused.push('sellingValue');
+    }
+    if (patch.username !== undefined) {
+      const chk = require('../utils/approvedCustomerName').checkCustomerName(patch.username, '');
+      if (chk.error) return res.status(400).json({ code: 'CUSTOMER_NOT_APPROVED', message: chk.error });
+      patch.username = chk.value;
     }
     const keys = Object.keys(patch);
     if (!keys.length) {

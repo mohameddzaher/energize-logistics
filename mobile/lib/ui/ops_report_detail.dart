@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'ops_customer_field.dart';
 import '../services/api.dart';
 import '../services/lang.dart';
 import 'theme.dart';
@@ -272,7 +273,9 @@ class _EditSheetState extends State<_EditSheet> {
                               child: Text((_val[f.$1] ?? '').isEmpty ? '—' : _val[f.$1]!),
                             ),
                           )
-                        : TextField(
+                        : f.$1 == 'username'
+                            ? OpsCustomerField(controller: _ctl[f.$1]!, label: tr(f.$2, f.$3))
+                            : TextField(
                             controller: _ctl[f.$1],
                             keyboardType: f.$4 == 'number' ? const TextInputType.numberWithOptions(decimal: true) : TextInputType.text,
                             decoration: InputDecoration(labelText: tr(f.$2, f.$3)),

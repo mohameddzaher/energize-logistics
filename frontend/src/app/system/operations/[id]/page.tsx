@@ -18,6 +18,7 @@ import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/l
 import WorkflowCustomsPanel from '@/components/operations/WorkflowCustomsPanel';
 import ReportFollowUps from '@/components/operations/ReportFollowUps';
 import { WORKFLOW_SECTIONS } from '@/lib/workflowFields';
+import CustomerNamePicker from '@/components/operations/CustomerNamePicker';
 
 interface Workflow {
   _id: string;
@@ -492,6 +493,8 @@ export default function WorkflowDetailPage() {
                           {(val === 'cash' || val === 'tax') && <option value={val} disabled>{paymentKindLabel(val, lang === 'ar')}</option>}
                           {PAYMENT_CHOICES.map((k) => <option key={k} value={k}>{paymentKindLabel(k, lang === 'ar')}</option>)}
                         </select>
+                      ) : editable && field.key === 'username' ? (
+                        <CustomerNamePicker value={val || ''} ar={lang === 'ar'} onChange={(v) => setFormData({ ...formData, username: v })} />
                       ) : editable ? (
                         <input
                           type={field.type || 'text'}

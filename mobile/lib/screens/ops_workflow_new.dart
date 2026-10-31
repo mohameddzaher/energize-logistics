@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:archive/archive.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import '../ui/ops_customer_field.dart';
 import 'package:provider/provider.dart';
 import '../services/api.dart';
 import '../services/auth.dart';
@@ -385,7 +386,9 @@ class _OpsWorkflowNewScreenState extends State<OpsWorkflowNewScreen> {
                     for (final f in s.$5)
                       Padding(
                         padding: const EdgeInsets.only(bottom: 8),
-                        child: TextField(
+                        child: f.$1 == 'username'
+                            ? OpsCustomerField(controller: _c(f.$1), label: '${f.$2} (${f.$3})', enabled: editable.contains(s.$1))
+                            : TextField(
                           controller: _c(f.$1),
                           enabled: editable.contains(s.$1),
                           readOnly: f.$4 == 'date',

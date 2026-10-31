@@ -61,6 +61,7 @@ router.get('/invoice-checks/:kind', authorize(...readWorkflowRoles), workflowCon
 // ── ربطُ الكشف بمعاملة تخليص ─────────────────────────────────────────────────
 // البحثُ قبل `/:id`. وصلاحيّةُ الربط تُفحص داخل المتحكّم (canLinkCustoms).
 router.get('/customs-search', authorize(...readWorkflowRoles), workflowController.customsSearch);
+router.get('/customer-names', authorize(...readWorkflowRoles), workflowController.customerNames);
 router.put('/:id/customs-link', authorize(...allWorkflowRoles), workflowController.setCustomsLink);
 router.delete('/:id/customs-link', authorize(...allWorkflowRoles), workflowController.clearCustomsLink);
 

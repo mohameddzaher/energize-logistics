@@ -23,6 +23,7 @@ import ScrollX from '@/components/system/ScrollX';
 import InvoiceImportButton from '@/components/operations/InvoiceImportButton';
 import WorkflowFilterBar, { type FilterBarField } from '@/components/operations/WorkflowFilterBar';
 import InvoiceCheckCards from '@/components/operations/InvoiceCheckCards';
+import CustomerNamePicker from '@/components/operations/CustomerNamePicker';
 import CustomsLinkBadge, { type CustomsLinkView } from '@/components/customs/CustomsLinkBadge';
 
 interface Workflow {
@@ -1994,7 +1995,12 @@ export default function OperationsWorkflowPage() {
                         {textCell('carOwner', 'text-slate-900')}
                         {textCell('carNumber')}
                         {statusCell()}
-                        {textCell('username')}
+                        {isEditing && owns('username') ? (
+                          <td className="px-3 py-2.5 text-sm min-w-[14rem]" onClick={(e) => e.stopPropagation()}>
+                            <CustomerNamePicker value={(editData as any).username || ''} ar={lang === 'ar'}
+                              onChange={(v) => setEditData(prev => ({ ...prev, username: v }))} />
+                          </td>
+                        ) : textCell('username')}
                         {textCell('userPhone')}
                         {numCell('purchaseValue')}
                         {/* تُكتب في منصّة التشغيل أوّلًا ثمّ هنا — راجع pushSellingValue. */}

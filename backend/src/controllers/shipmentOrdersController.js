@@ -1741,7 +1741,23 @@ exports.createCustomer = async (req, res) => {
     // أسعارُ الوجهات لمدير العمليّات ومدير النظام وحدَهما — راجع customerRoutes.canEditPrices.
     if (!require('../utils/customerRoutes').canEditPrices(req.user.role)) delete data.routes;
     data.createdBy = req.user._id;
-    const customer = await ShipmentOrderCustomer.create(data);
+    // One row per name: a removed customer comes back with its history instead of a twin.
+    const { fold } = require('../models/CollectionsParty');
+    const key = fold(req.body.name);
+    const same = (await ShipmentOrderCustomer.find({}).select('name isActive').lean()).filter((c) => fold(c.name) === key);
+    if (same.some((c) => c.isActive !== false)) {
+      return res.status(409).json({ code: 'CUSTOMER_EXISTS', message: `العميل «${String(req.body.name).trim()}» موجود بالفعل` });
+    }
+    let customer;
+    if (same.length) {
+      customer = await ShipmentOrderCustomer.findById(same[0]._id);
+      const { createdBy, ...fields } = data;
+      customer.set({ ...fields, isActive: true, nameManual: true, hiddenReason: undefined });
+      await customer.save();
+    } else {
+      customer = await ShipmentOrderCustomer.create(data);
+    }
+    await logAudit({ user: req.user, action: 'create', entity: 'ShipmentOrderCustomer', entityId: customer._id, changes: { name: customer.name, restored: !!same.length }, ipAddress: req.ip });
     emit('shipmentOrders:customers', {});
     res.status(201).json({ customer });
   } catch (error) {
@@ -1789,10 +1805,11 @@ exports.deleteCustomer = async (req, res) => {
   try {
     // Soft — their orders keep the snapshot name either way, but keeping the
     // row means the trial's data can be resurrected while it is still a trial.
-    const customer = await ShipmentOrderCustomer.findByIdAndUpdate(
-      req.params.id, { isActive: false }, { new: true },
-    );
+    const customer = await ShipmentOrderCustomer.findById(req.params.id);
     if (!customer) return res.status(404).json({ message: 'Customer not found' });
+    customer.isActive = false;
+    await customer.save();
+    await logAudit({ user: req.user, action: 'delete', entity: 'ShipmentOrderCustomer', entityId: customer._id, changes: { name: customer.name }, ipAddress: req.ip });
     emit('shipmentOrders:customers', {});
     res.json({ message: 'Customer removed' });
   } catch (error) {

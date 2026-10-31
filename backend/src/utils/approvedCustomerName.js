@@ -1,32 +1,13 @@
 /**
- * The owner's corrected customer names (config/approvedCustomers) plus the customers page
- * are the only values a person may put in a customer-name field. Platform sync and imports are not gated.
+ * The customers page is the only source of customer names a person may enter.
+ * Platform sync and imports are not gated.
  */
 const fold = (s) => require('../models/CollectionsParty').fold(String(s || ''));
 
-let byKey = null;
-const index = () => {
-  if (!byKey) {
-    byKey = new Map();
-    for (const n of require('../config/approvedCustomers')) {
-      const k = fold(n);
-      if (k && !byKey.has(k)) byKey.set(k, n);
-    }
-  }
-  return byKey;
-};
-
-/** Whatever is on the customers page is approved. */
-const registerNames = async () => {
-  const rows = await require('../models/ShipmentOrderCustomer')
-    .find({ isActive: { $ne: false } })
-    .select('name').lean();
-  return rows.map((r) => r.name).filter(Boolean);
-};
-
 const allNames = async () => {
-  const map = new Map(index());
-  for (const n of await registerNames()) { const k = fold(n); if (k && !map.has(k)) map.set(k, n); }
+  const rows = await require('../models/ShipmentOrderCustomer').find({ isActive: { $ne: false } }).select('name').lean();
+  const map = new Map();
+  for (const { name } of rows) { const k = fold(name); if (k && !map.has(k)) map.set(k, name); }
   return map;
 };
 

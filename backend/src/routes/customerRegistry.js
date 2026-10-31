@@ -26,7 +26,8 @@ const authorize = require('../middleware/rbac');
 // لمدير العمليّات ومدير النظام وحدَهما (customerRoutes.canEditPrices).
 const EDIT_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_staff', 'moderator', 'sales_manager', 'sales_rep',
   'shipment_orders_manager', 'shipment_orders_staff', 'shipment_orders_followup', ...require('../config/roles').DATA_ROLES];
-const ADMIN_ROLES = ['super_admin', 'admin', 'it_manager', 'operations_manager'];
+// Removing only hides the customer and adding the name again restores it, so the team can do it.
+const REMOVE_ROLES = EDIT_ROLES.filter((r) => r !== 'sales_rep');
 
 router.use(authenticate);
 // ── ومن مُنح «تعديلَ طلبات الشحنات» يكتب هنا كما يكتب هناك ─────────────────
@@ -44,6 +45,6 @@ router.get('/:id', ctrl.profile);
 router.put('/:id', authorize(...EDIT_ROLES), so.updateCustomer);
 // شرائحُ السعر بعدد السيارات — الحارسُ في المتحكِّم: مديرُ العمليّات ومديرُ النظام وحدَهما.
 router.put('/:id/route-tiers', ctrl.setRouteTiers);
-router.delete('/:id', authorize(...ADMIN_ROLES), so.deleteCustomer);
+router.delete('/:id', authorize(...REMOVE_ROLES), so.deleteCustomer);
 
 module.exports = router;

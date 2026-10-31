@@ -16,9 +16,9 @@ export const CUSTOMER_EDIT_ROLES = [...SO_EDIT_ROLES, 'sales_manager', 'sales_re
 export const canEditRoutePrices = (u: RoleOrUser) => ['super_admin', 'admin', 'operations_manager'].includes(roleOf(u));
 export const canEditCustomers = (u: RoleOrUser) =>
   CUSTOMER_EDIT_ROLES.includes(roleOf(u)) || canEditSection(permsOf(u), 'Shipment Orders');
-/** الإزالةُ (إيقافُ العميل) — لقائمة الإدارة كما كانت. */
+/** Removing hides the customer, and re-adding the name restores it. */
 export const canRemoveCustomers = (u: RoleOrUser) =>
-  SO_ADMIN_ROLES.includes(roleOf(u)) || canEditSection(permsOf(u), 'Shipment Orders');
+  (roleOf(u) !== 'sales_rep' && CUSTOMER_EDIT_ROLES.includes(roleOf(u))) || canEditSection(permsOf(u), 'Shipment Orders');
 
 /**
  * صفُّ السجلّ.

@@ -71,6 +71,8 @@ const shipmentOrderCustomerSchema = new mongoose.Schema(
     },
 
     isActive: { type: Boolean, default: true },
+    // Why the row is hidden, when a cleanup rather than a person hid it.
+    hiddenReason: { type: String, default: undefined },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   },
   { timestamps: true }

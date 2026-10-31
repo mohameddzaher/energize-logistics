@@ -502,7 +502,7 @@ class _OpsWorkflowDetailScreenState extends State<OpsWorkflowDetailScreen> {
                     child: Wrap(spacing: 18, runSpacing: 10, children: [
                       _meta(tr('أنشأه', 'Created by'), _personName(w['createdBy']).isNotEmpty
                           ? _personName(w['createdBy'])
-                          : ((w['externalSource'] ?? '').toString().isNotEmpty ? tr('منصّة التشغيل (تلقائيًّا)', 'Operations platform (automatic)') : '-')),
+                          : ((w['externalSource'] ?? '').toString().isNotEmpty ? tr('النظام', 'System') : '-')),
                       _meta(tr('تاريخ الإنشاء', 'Created at'), opsDate(w['createdAt'])),
                       _meta(tr('آخر تعديل بواسطة', 'Last modified by'), _personName(w['lastModifiedBy']).isEmpty ? '-' : _personName(w['lastModifiedBy'])),
                       _meta(tr('آخر تحديث', 'Updated at'), opsDate(w['updatedAt'])),

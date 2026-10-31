@@ -22,7 +22,7 @@ const { walletRecorderMap } = require('./walletPayment');
 const { normKey, textMatcher, BLANK_VALUES } = require('./colFilter');
 
 const MAX_AGE_MS = 30 * 1000;
-const OPS_LABEL = 'منقول من منصّة الأوبريشن';
+const OPS_LABEL = 'النظام';
 
 /** النصُّ المعروض لكشفٍ لا اسمَ عليه ولا مشترياتِ محفظة — بحسب مصدره. */
 const importLabel = (externalSource) => {

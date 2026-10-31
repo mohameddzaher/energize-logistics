@@ -18,6 +18,7 @@ router.post('/webhook', ops.webhook);
 
 router.use(authenticate);
 router.use(authorize(...OPS_PLATFORM_STAFF_ROLES));
+router.use(ops.archiveMode);
 
 // Dashboard (combined stats + charts)
 router.get('/dashboard', ops.getDashboard);

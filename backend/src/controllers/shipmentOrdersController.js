@@ -868,7 +868,8 @@ exports.updateOrder = async (req, res) => {
 
     // وصفُّ سير عمل التشغيل لهذه الشحنة يتبع في اللحظة نفسِها — هي شحنةٌ
     // واحدةٌ تُقرأ في شاشتين، فلا تُقرأ بحالتين. راجع syncShipmentsById.
-    if (order.source === 'platform' && order.externalId) {
+    require('../services/shipmentOrderWorkflowLink').mirrorPlatformSoon(order._id, Object.keys(data));
+    if (order.source === 'platform' && order.externalId && require('../services/uplClient').isConfigured()) {
       setImmediate(() => {
         require('../services/opsWorkflowSyncService')
           .syncShipmentsById([String(order.externalId)])
@@ -1559,7 +1560,7 @@ exports.patchStatus = async (req, res) => {
     // فتُكتب حيث تُقرأ: المنصّةُ أوّلًا، فإن رفضت لم يتغيّر عندنا شيءٌ ويُقال
     // السبب. والمفاتيحُ واحدةٌ في الطرفين (راجع STATUS في
     // services/shipmentOrderSyncService)، فلا ترجمةَ بينهما.
-    if (order.source === 'platform' && order.externalId) {
+    if (order.source === 'platform' && order.externalId && require('../services/uplClient').isConfigured()) {
       const CORE = ['requesting', 'loading', 'uploaded', 'on_way', 'arrived',
         'bond_sent', 'bond_received', 'late', 'invoiced', 'cancelled'];
       if (!CORE.includes(status)) {
@@ -1590,6 +1591,7 @@ exports.patchStatus = async (req, res) => {
     });
     await order.save();
     announceOrderChange(order._id);
+    require('../services/shipmentOrderWorkflowLink').mirrorPlatformSoon(order._id, ['status']);
     // Tell whoever created the order its status moved — unless they moved it.
     if (order.createdBy && String(order.createdBy) !== String(req.user._id)) {
       try {

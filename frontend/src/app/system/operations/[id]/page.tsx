@@ -536,7 +536,7 @@ export default function WorkflowDetailPage() {
               {workflow.createdBy
                 ? `${workflow.createdBy.firstName} ${workflow.createdBy.lastName}`
                 : ((workflow as any).externalSource
-                  ? (lang === 'ar' ? 'منصّة التشغيل (تلقائيًّا)' : 'Operations platform (automatic)')
+                  ? (lang === 'ar' ? 'النظام' : 'System')
                   : '-')}
             </p>
           </div>

@@ -188,11 +188,61 @@ async function pullWorkflow(wfOrId, actor) {
   return { changed: true };
 }
 
-const quietly = (fn, id, actor) => setImmediate(() => {
-  fn(id, actor).catch((e) => console.error('[so-link]', e.message));
+/**
+ * Rows that came from the platform keep their own spellings on each side (plate,
+ * payment method, driver), so only the fields an edit actually touched are copied.
+ * Runs only once the link is off; until then the platform sync carries them.
+ */
+const ORDER_TO_ROW = {
+  fromCity: ['fromLocation'], toCity: ['toLocation'], branch: ['branch'], customerName: ['username'],
+  supplierName: ['carOwner', 'ownerName'], vehiclePlate: ['carNumber', 'plateNumber'], vehicleName: ['carName'],
+  driverName: ['driverName'], driverPhone: ['driverPhone'], truckType: ['truckType'], truckLength: ['truckSize'],
+  cargoType: ['loadType'], quantity: ['quantity'], status: ['applicationStatus', 'executionStatus'],
+  driverRentPrice: ['driverCost'], buyPrice: ['purchaseValue'], sellPrice: ['sellingValue'], pickupTime: ['reportDate', 'loadingTime'],
+};
+const ROW_TO_ORDER = Object.fromEntries(Object.entries(ORDER_TO_ROW).flatMap(([o, cols]) => cols.map((c) => [c, o])));
+const linkOff = () => !require('./uplClient').isConfigured();
+
+async function mirrorPlatformOrder(orderOrId, keys = []) {
+  if (!linkOff()) return null;
+  const o = orderOrId?.createdAt ? orderOrId : await ShipmentOrder.findById(orderOrId).lean();
+  if (!o || o.source !== 'platform' || !o.externalId) return null;
+  const wf = await OperationsWorkflow.findOne({ externalSource: 'ops_upl', externalId: String(o.externalId) }).lean();
+  if (!wf) return null;
+  const row = rowOf(o);
+  const wanted = Object.fromEntries(keys.flatMap((k) => ORDER_TO_ROW[k] || []).map((c) => [c, row[c]]));
+  const diff = changes(wf, wanted);
+  if (!Object.keys(diff).length) return { changed: false };
+  await OperationsWorkflow.updateOne({ _id: wf._id }, { $set: diff });
+  announceWorkflow();
+  return { changed: true };
+}
+
+async function pullPlatformRow(id, keys = []) {
+  if (!linkOff()) return null;
+  const w = await OperationsWorkflow.findById(id).lean();
+  if (w?.externalSource !== 'ops_upl' || !w.externalId) return null;
+  const o = await ShipmentOrder.findOne({ source: 'platform', externalId: String(w.externalId) }).lean();
+  if (!o) return null;
+  const all = { ...orderOf(w), status: str(w.applicationStatus) };
+  const wanted = Object.fromEntries(keys.map((c) => ROW_TO_ORDER[c]).filter((k) => k && k in all).map((k) => [k, all[k]]));
+  const diff = changes(o, wanted);
+  if (!Object.keys(diff).length) return { changed: false };
+  await ShipmentOrder.updateOne({ _id: o._id }, { $set: diff });
+  announceOrders();
+  return { changed: true };
+}
+
+const run = (fn, ...args) => setImmediate(() => {
+  fn(...args).catch((e) => console.error('[so-link]', e.message));
 });
-const mirrorSoon = (id) => { if (id) quietly(mirrorOrder, id); };
-const pullSoon = (id, actor) => { if (id) quietly(pullWorkflow, id, actor); };
+const mirrorSoon = (id) => { if (id) run(mirrorOrder, id); };
+const mirrorPlatformSoon = (id, keys) => { if (id) run(mirrorPlatformOrder, id, keys); };
+const pullSoon = (id, actor, keys) => {
+  if (!id) return;
+  run(pullWorkflow, id, actor);
+  run(pullPlatformRow, id, keys);
+};
 
 /** One pass over everything touched since `since`; the later side of each pair wins. */
 async function reconcile(since) {
@@ -225,4 +275,6 @@ function startShipmentOrderLink() {
   }, TICK_MS);
 }
 
-module.exports = { mirrorOrder, pullWorkflow, mirrorSoon, pullSoon, reconcile, startShipmentOrderLink };
+module.exports = {
+  mirrorOrder, pullWorkflow, mirrorPlatformOrder, pullPlatformRow, mirrorSoon, mirrorPlatformSoon, pullSoon, reconcile, startShipmentOrderLink,
+};

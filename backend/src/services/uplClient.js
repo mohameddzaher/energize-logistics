@@ -21,7 +21,9 @@ const PASSWORD = process.env.UPL_ADMIN_PASSWORD || '';
 let tokenCache = { token: null, exp: 0 };
 let loginInFlight = null;
 
-const isConfigured = () => Boolean(BASE && API_KEY && EMAIL && PASSWORD);
+// UPL_DISABLED switches the link off without removing it: jobs stop, screens read
+// OpsArchive, and clearing the flag brings it back.
+const isConfigured = () => !process.env.UPL_DISABLED && Boolean(BASE && API_KEY && EMAIL && PASSWORD);
 
 /** Decode the `exp` (epoch seconds) claim out of a JWT without verifying it. */
 function jwtExp(token) {

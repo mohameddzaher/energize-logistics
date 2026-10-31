@@ -1606,6 +1606,7 @@ async function pushSellingValue(workflow, value) {
   if (!PUSH_SELLING_TO_PLATFORM) return { platform: false, held: true };
   if (workflow.externalSource !== 'ops_upl' || !workflow.externalId) return { platform: false };
   const upl = require('../services/uplClient');
+  if (!upl.isConfigured()) return { platform: false };
   const shipmentId = String(workflow.externalId);
   await upl.patch(`/admin/shipments/${encodeURIComponent(shipmentId)}`, { form: { selling_price: value } });
   return { platform: true, shipmentId };
@@ -1718,7 +1719,7 @@ async function setSellingValue(id, raw, user, { ip, note } = {}) {
   bustFilterCache();
   announceSellingValue(workflow, prep.push);
   try { emitPerRole('workflow:updated', (r) => stripRowFor(r, workflow)); } catch (e) { console.error('WebSocket emit error:', e); }
-  require('../services/shipmentOrderWorkflowLink').pullSoon(workflow._id, user);
+  require('../services/shipmentOrderWorkflowLink').pullSoon(workflow._id, user, ['sellingValue']);
   return {
     status: 200,
     body: { workflow: stripRowFor(user.role, workflow), sellingPlatform: !!(prep.push && prep.push.platform) },
@@ -1954,7 +1955,7 @@ exports.updateWorkflow = async (req, res) => {
     // خطوةً (راجع announce-before-invalidate).
     if (sellingChanged) invalidateSellingReaders();
     try { emitPerRole('workflow:updated', (r) => stripRowFor(r, populated)); } catch (e) { console.error('WebSocket emit error:', e); }
-    require('../services/shipmentOrderWorkflowLink').pullSoon(workflow._id, req.user);
+    require('../services/shipmentOrderWorkflowLink').pullSoon(workflow._id, req.user, Object.keys(filteredBody));
     // `emitPerRole` لا يعبر إلى العامل الآخر — فخبرُ التحصيل يُبثّ للجميع.
     if (gateMoved) {
       try { emitToAll('collections:changed', { source: 'workflow', field: kindMoved ? 'paymentType' : 'gate', reportNumber: workflow.reportNumber }); } catch (e) { /* */ }
@@ -2212,14 +2213,16 @@ const UPL_STATUSES = [
  *
  * وتُرجع ما استقرّ، أو `null` إن لم يكن الكشفُ من المنصّة أصلًا.
  */
-/** Same move for a row owned by a shipment created here: no platform to ask. `null` otherwise. */
+/** Same move where no platform answers: a row owned by a shipment created here, or any row once the link is off. `null` otherwise. */
 async function setLocalStatus(workflow, status, actor) {
-  const row = await OperationsWorkflow.findById(workflow._id).select('shipmentOrder applicationStatus').lean();
-  if (!row?.shipmentOrder) return null;
+  const row = await OperationsWorkflow.findById(workflow._id).select('shipmentOrder applicationStatus externalSource').lean();
+  const linkOff = !require('../services/uplClient').isConfigured();
+  if (!row?.shipmentOrder && !(linkOff && row?.externalSource === 'ops_upl')) return null;
   const before = String(row.applicationStatus || '');
   if (before === status) return { applicationStatus: status, unchanged: true };
   await OperationsWorkflow.updateOne({ _id: workflow._id }, { $set: { applicationStatus: status, executionStatus: status } });
-  await require('../services/shipmentOrderWorkflowLink').pullWorkflow(workflow._id, actor);
+  const link = require('../services/shipmentOrderWorkflowLink');
+  await (row.shipmentOrder ? link.pullWorkflow(workflow._id, actor) : link.pullPlatformRow(workflow._id, ['applicationStatus']));
   bustFilterCache();
   try { emitToAll('workflow:bulkImported', { source: 'shipment_orders', live: true, write: true }); } catch (e) { /* */ }
   if (actor) {
@@ -2236,7 +2239,9 @@ async function setLocalStatus(workflow, status, actor) {
 
 async function pushApplicationStatus(workflow, status, actor) {
   if (!UPL_STATUSES.includes(status)) throw new Error(`حالةٌ غير معروفة: ${status}`);
-  if (workflow.externalSource !== 'ops_upl' || !workflow.externalId) return setLocalStatus(workflow, status, actor);
+  if (workflow.externalSource !== 'ops_upl' || !workflow.externalId || !require('../services/uplClient').isConfigured()) {
+    return setLocalStatus(workflow, status, actor);
+  }
   if (String(workflow.applicationStatus || '') === status) return { applicationStatus: status, unchanged: true };
 
   const before = String(workflow.applicationStatus || '');
@@ -2285,8 +2290,9 @@ exports.updateApplicationStatus = async (req, res) => {
     if (isLocked(workflow, req.user._id)) {
       return res.status(423).json({ message: `الكشف مفتوحٌ لدى ${workflow.lockedByName || 'مستخدمٍ آخر'}` });
     }
-    if (workflow.shipmentOrder) {
+    if (workflow.shipmentOrder || !require('../services/uplClient').isConfigured()) {
       const row = await setLocalStatus(workflow, status, req.user);
+      if (!row) return res.status(400).json({ message: 'هذا الكشف لا حالةَ طلبٍ له تُغيَّر.' });
       return res.json(row.unchanged ? { _id: workflow._id, applicationStatus: status, unchanged: true } : stripRowFor(req.user.role, row));
     }
     if (workflow.externalSource !== 'ops_upl' || !workflow.externalId) {
@@ -2520,7 +2526,7 @@ exports.bulkUpdate = async (req, res) => {
       cache.clear('wf:');
       {
         const link = require('../services/shipmentOrderWorkflowLink');
-        perRow.forEach((t) => link.pullSoon(t._id, req.user));
+        perRow.forEach((t) => link.pullSoon(t._id, req.user, Object.keys(t.patch)));
       }
       // «رقم السند» كُتب جماعيًّا — يُعاد ربطُ كشوفه بالتخليص (بوليصةٌ أو حاوية).
       if (keys.includes('documentNumber')) {

@@ -53,6 +53,52 @@ function broadcast(resource, action, payload = {}) {
   try { emitToAll(`ops:${resource}:changed`, { resource, action, ...payload, at: Date.now() }); } catch (e) {}
 }
 
+// ---- Link switched off -----------------------------------------------------
+
+/** With the link off this section reads what was archived and accepts no writes. */
+exports.archiveMode = async (req, res, next) => {
+  if (upl.isConfigured()) return next();
+  if (req.method !== 'GET') {
+    return res.status(409).json({ code: 'PLATFORM_OFF', message: 'الربط بالمنصة متوقف — البيانات هنا أرشيف للقراءة، والتعديل من أقسام النظام.' });
+  }
+  const OpsArchive = require('../models/OpsArchive');
+  try {
+    const parts = req.path.split('/').filter(Boolean);
+    if (parts[0] === 'dashboard') return res.json({ home: null, stats: null, charts: null, upstreamUnavailable: true });
+    if (parts[0] === 'shipments' && parts[1] === 'timeline') {
+      const row = await OpsArchive.findOne({ resource: 'shipment-timelines', externalId: parts[2] }).lean();
+      return res.json(row?.data?.timeline ?? []);
+    }
+    req.params.resource = parts[0];
+    if (parts[1]) {
+      const row = await OpsArchive.findOne({ resource: parts[0], externalId: parts[1] }).lean();
+      return row ? res.json(stripShipmentSelling(req, row.data)) : res.status(404).json({ message: 'غير موجود في الأرشيف' });
+    }
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(100, parseInt(req.query.limit, 10) || 25);
+    const filter = { resource: parts[0] };
+    const q = String(req.query.search || req.query.q || '').trim();
+    if (q) filter.searchText = { $regex: q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' };
+    if (req.query.status) filter.status = { $in: [].concat(req.query.status).map(String) };
+    if (req.query.date_from || req.query.date_to) {
+      filter.externalCreatedAt = {};
+      if (req.query.date_from) filter.externalCreatedAt.$gte = new Date(req.query.date_from);
+      if (req.query.date_to) filter.externalCreatedAt.$lte = new Date(endOfDay(req.query.date_to));
+    }
+    const [rows, total] = await Promise.all([
+      OpsArchive.find(filter).sort({ externalCreatedAt: -1, externalId: -1 }).skip((page - 1) * limit).limit(limit).select('data').lean(),
+      OpsArchive.countDocuments(filter),
+    ]);
+    const totalPages = Math.ceil(total / limit);
+    return res.json(stripShipmentSelling(req, {
+      items: rows.map((r) => r.data),
+      meta: { total, totalItems: total, currentPage: page, totalPages, limit, hasNextPage: page < totalPages },
+    }));
+  } catch (error) {
+    return fail(res, error, 'Failed to read the archive');
+  }
+};
+
 // ---- Dashboard ------------------------------------------------------------
 
 // Combined operations dashboard: header stats, full report stats, and the

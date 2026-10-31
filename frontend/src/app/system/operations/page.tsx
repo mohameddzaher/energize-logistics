@@ -367,6 +367,7 @@ export default function OperationsWorkflowPage() {
   // أهلُ المال يملكون في هذه الصفحة ما يملكه مديرُ النظام — راجع lib/financeAuthority.
   const full = ['super_admin', 'admin'].includes(role || '') || FINANCE_FULL_ROLES.includes(role || '');
   const canCreate = full || role === 'moderator';
+  // role-only: the owner limited shipment deletion to these three; a section grant does not extend it.
   const canDelete = ['super_admin', 'admin', 'operations_manager'].includes(role);
 
   // ── مَن يرى ماذا: يُسأل الخادمُ ولا يُخمَّن ───────────────────────────────

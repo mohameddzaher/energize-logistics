@@ -2157,12 +2157,7 @@ exports.deleteWorkflow = async (req, res) => {
       });
     }
 
-    // The row belongs to a shipment, and a shipment is cancelled, never deleted.
-    if (workflow.shipmentOrder) {
-      return res.status(405).json({ code: 'DELETE_DISABLED', message: 'الكشف لا يُحذف — غيّر حالته إلى «ملغاة» ليبقى سجلّه.' });
-    }
-
-    await OperationsWorkflow.findByIdAndDelete(req.params.id);
+    await require('../services/shipmentOrderWorkflowLink').deleteShipments({ rows: [workflow] });
 
     await logAudit({
       user: req.user._id,
@@ -2634,18 +2629,13 @@ exports.bulkDelete = async (req, res) => {
     }
 
     // Check for locked workflows
-    const workflows = await OperationsWorkflow.find({ _id: { $in: ids } }).select('lockedBy lockedAt lockedByName shipmentOrder').lean();
-    if (workflows.some((w) => w.shipmentOrder)) {
-      return res.status(405).json({ code: 'DELETE_DISABLED', message: 'كشوف الشحنات لا تُحذف — غيّر حالتها إلى «ملغاة» ليبقى سجلّها.' });
-    }
+    const workflows = await OperationsWorkflow.find({ _id: { $in: ids } }).select('lockedBy lockedAt lockedByName shipmentOrder externalSource externalId').lean();
     const lockedIds = workflows.filter((w) => isLocked(w, req.user._id)).map((w) => w._id.toString());
     if (lockedIds.length > 0) {
       return res.status(423).json({ message: `${lockedIds.length} workflow(s) are locked and cannot be deleted` });
     }
 
-    for (let i = 0; i < ids.length; i += 5000) {
-      await OperationsWorkflow.deleteMany({ _id: { $in: ids.slice(i, i + 5000) } });
-    }
+    await require('../services/shipmentOrderWorkflowLink').deleteShipments({ rows: workflows });
 
     await logAudit({
       user: req.user._id,

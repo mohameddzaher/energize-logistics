@@ -36,12 +36,12 @@ const opsWorkflowSections = [
     ('executionStatus', 'حالة التنفيذ', 'Execution Status', ''),
     ('applicationStatus', 'الحالة', 'Status', ''),
     ('driverRentalType', 'نوع تأجير السائق', 'Driver Rental Type', ''),
-    ('username', 'اسم المستخدم', 'Username', ''),
+    ('username', 'اسم العميل', 'Customer name', ''),
     ('paymentMethod', 'طريقة الدفع', 'Payment Method', ''),
     ('purchaseValue', 'سعر الشراء', 'Purchase Value', 'number'),
     ('sellingValue', 'سعر البيع', 'Selling Value', 'number'),
     ('reference', 'رقم المرجع', 'Reference', ''),
-    ('userPhone', 'هاتف المستخدم', 'User Phone', ''),
+    ('userPhone', 'هاتف العميل', 'Customer phone', ''),
     ('driverName', 'اسم السائق', 'Driver Name', ''),
     ('driverPhone', 'هاتف السائق', 'Driver Phone', ''),
     ('carName', 'اسم السيارة', 'Car Name', ''),
@@ -312,7 +312,6 @@ class _OpsWorkflowDetailScreenState extends State<OpsWorkflowDetailScreen> {
     }
   }
 
-  /// الحذف للمدير الأعلى وحده — بتأكيدٍ يذكر رقم الكشف.
   Future<void> _delete() async {
     final ok = await opsConfirm(context,
         tr('حذف الكشف ${_w?['reportNumber'] ?? ''} نهائيًّا؟ يختفي من تقارير التشغيل والتحصيل.',
@@ -416,7 +415,7 @@ class _OpsWorkflowDetailScreenState extends State<OpsWorkflowDetailScreen> {
           if (w != null && !_editing) IconButton(tooltip: tr('تصدير Excel', 'Export'), icon: const Icon(Icons.file_download_outlined), onPressed: _export),
           if (w != null && !_editing && !_lockedByOther)
             IconButton(tooltip: tr('تعديل', 'Edit'), icon: const Icon(Icons.edit_outlined), onPressed: _startEdit),
-          if (w != null && !_editing && !_lockedByOther && const ['super_admin', 'admin'].contains(role))
+          if (w != null && !_editing && !_lockedByOther && const ['super_admin', 'admin', 'operations_manager'].contains(role))
             IconButton(tooltip: tr('حذف الكشف', 'Delete report'), icon: const Icon(Icons.delete_outline), onPressed: _delete),
         ],
         body: w == null

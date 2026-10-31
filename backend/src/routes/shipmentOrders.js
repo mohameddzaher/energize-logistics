@@ -37,7 +37,7 @@ router.patch('/orders/:id/status', authorize(...EDIT_ROLES), so.patchStatus); //
 router.post('/orders/:id/note', authorize(...EDIT_ROLES), so.addNote); // ملاحظةُ متابعةٍ بلا تغيير حالة
 router.put('/orders/:id/note/:logId', authorize(...EDIT_ROLES), so.editNote); // كاتبُها أو مديرُ القسم
 router.delete('/orders/:id/note/:logId', authorize(...EDIT_ROLES), so.deleteNote);
-router.delete('/orders/:id', authorize(...ADMIN_ROLES), so.deleteOrder);
+router.delete('/orders/:id', authorize.strict(...require('../services/shipmentOrderWorkflowLink').SHIPMENT_DELETE_ROLES), so.deleteOrder);
 
 // Customers (their price-per-route lists feed the create form)
 // تحليلاتُ القسم — قبل `/orders/:id` كي لا يبتلعها المسارُ ذو المعامل.

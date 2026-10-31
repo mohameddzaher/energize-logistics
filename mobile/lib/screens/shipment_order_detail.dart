@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../services/api.dart';
+import '../services/auth.dart';
 import '../services/lang.dart';
 import '../services/live.dart';
 import '../ui/app_scaffold.dart';
@@ -66,6 +68,24 @@ class _ShipmentOrderDetailScreenState extends State<ShipmentOrderDetailScreen> {
     );
   }
 
+  Future<void> _delete() async {
+    final no = soRef(_o);
+    final ok = await showDialog<bool>(context: context, builder: (c) => AlertDialog(
+      content: Text(tr('حذف الشحنة $no نهائيًّا من صفحة الشحنات وسير عمل التشغيل؟', 'Delete shipment $no from Shipments and the workflow?')),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('إلغاء', 'Cancel'))),
+        TextButton(onPressed: () => Navigator.pop(c, true), child: Text(tr('حذف', 'Delete'))),
+      ],
+    ));
+    if (ok != true) return;
+    try {
+      await Api.instance.delete('/api/shipment-orders/orders/${_o['_id']}');
+      if (mounted) Navigator.pop(context, true);
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final d = _o;
@@ -87,6 +107,12 @@ class _ShipmentOrderDetailScreenState extends State<ShipmentOrderDetailScreen> {
             if (mounted) setState(() => _printing = false);
           },
         ),
+        if (const ['super_admin', 'admin', 'operations_manager'].contains(context.read<AuthProvider>().role))
+          IconButton(
+            tooltip: tr('حذف الشحنة', 'Delete shipment'),
+            icon: const Icon(Icons.delete_outline),
+            onPressed: _delete,
+          ),
         if (editor)
           IconButton(
             tooltip: tr('تعديل', 'Edit'),

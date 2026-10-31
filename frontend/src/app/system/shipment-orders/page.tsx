@@ -12,14 +12,14 @@ import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { useDialog } from '@/components/system/DialogProvider';
 import { ColumnFilter } from '@/components/ColumnFilter';
-import { PackageSearch, Plus, Pencil, Eye, FileDown, Loader2, RefreshCw, X, Check, MessageSquareText, SlidersHorizontal } from 'lucide-react';
+import { PackageSearch, Plus, Pencil, Eye, FileDown, Loader2, RefreshCw, X, Check, MessageSquareText, SlidersHorizontal, Trash2 } from 'lucide-react';
 import {
   Spinner, PageHeader, SearchInput, PrimaryButton, StatCard, Select, ErrorNotice,
 } from '@/components/hr/HRKit';
 import ExportMenu, { exportScopeLabels, type ExportColumn } from '@/components/ls2/ExportMenu';
 import {
   ShipmentOrder, OrderCustomer, orderStatus, statusLabel,
-  fmtDT, money, canEditOrders, canAdminOrders, Lang, vocabLabel,
+  fmtDT, money, canEditOrders, canAdminOrders, canDeleteShipments, Lang, vocabLabel,
 } from '@/lib/shipmentOrders';
 import { useOrderStatuses } from '@/hooks/useOrderStatuses';
 import { useLatestRequest } from '@/hooks/useLatestRequest';
@@ -899,6 +899,19 @@ function ShipmentOrdersInner() {
                     <button type="button" onClick={() => router.push(`/system/shipment-orders/new?id=${d._id}`)}
                       className="p-1.5 rounded-lg text-slate-500 hover:text-blue-600 hover:bg-slate-100" title={ar ? 'تعديل' : 'Edit'}>
                       <Pencil className="w-5 h-5" />
+                    </button>
+                  )}
+                  {canDeleteShipments(user) && (
+                    <button type="button" title={ar ? 'حذف الشحنة' : 'Delete shipment'}
+                      onClick={async () => {
+                        const no = (d as any).reference || d.waybillNumber;
+                        if (!window.confirm(ar ? `حذف الشحنة ${no} نهائيًا من صفحة الشحنات وسير عمل التشغيل؟` : `Delete shipment ${no} from Shipments and the workflow?`)) return;
+                        await api.delete(`/api/shipment-orders/orders/${d._id}`);
+                        setDetail(null);
+                        load();
+                      }}
+                      className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50">
+                      <Trash2 className="w-5 h-5" />
                     </button>
                   )}
                   <button type="button" onClick={() => setDetail(null)} className="p-1.5 rounded-lg text-slate-400 hover:text-slate-900 hover:bg-slate-100">

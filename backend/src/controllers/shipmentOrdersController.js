@@ -1645,14 +1645,19 @@ exports.listStatuses = async (req, res) => {
 };
 
 exports.deleteOrder = async (req, res) => {
-  // ── ولا تُمحى بوليصةٌ صدرت ────────────────────────────────────────────────
-  // الرقمُ أُعطي للعميل والسائق، والصفُّ يحمل سجلَّ حالاته ومرفقاتِه. ومحوُه
-  // يُخفي الواقعةَ ويقطع تسلسلَ الأرقام — والإلغاءُ حالةٌ لا حذف: تبقى مقروءةً
-  // ومفلترةً ومحسوبةً، ويُعرَف من ألغاها ومتى ولماذا.
-  return res.status(405).json({
-    code: 'DELETE_DISABLED',
-    message: 'البوليصة لا تُحذف — غيّر حالتها إلى «ملغاة» ليبقى سجلُّها.',
-  });
+  try {
+    const order = await ShipmentOrder.findById(req.params.id).lean();
+    if (!order) return res.status(404).json({ message: 'Shipment order not found' });
+    const done = await require('../services/shipmentOrderWorkflowLink').deleteShipments({ orders: [order] });
+    await logAudit({
+      user: req.user, action: 'delete', entity: 'ShipmentOrder', entityId: order._id,
+      changes: { reference: order.reference, customerName: order.customerName, ...done }, ipAddress: req.ip,
+    });
+    announceOrderChange();
+    res.json({ deleted: true });
+  } catch (error) {
+    return sendMongooseError(res, error, 'Failed to delete the shipment');
+  }
 };
 
 // ── Customers ───────────────────────────────────────────────────────────────

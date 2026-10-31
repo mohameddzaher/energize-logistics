@@ -411,9 +411,7 @@ export default function WorkflowDetailPage() {
                 <button type="button" onClick={handleStartEdit} className="px-4 py-2 rounded-lg bg-slate-100 text-slate-700 text-sm hover:bg-slate-200 transition-colors flex items-center gap-2">
                   <Edit className="w-4 h-4" /> {T.edit}
                 </button>
-                {/* الحذف للمدير الأعلى وحده: الكشف قيدٌ ماليّ يدخل في تقارير
-                    التشغيل والتحصيل، وحذفُه ينقص رقمًا اطّلع عليه غيرُ واحد. */}
-                {['super_admin', 'admin'].includes(role || '') && (
+                {['super_admin', 'admin', 'operations_manager'].includes(role || '') && (
                   <button type="button" onClick={handleDeleteWorkflow}
                     title={lang === 'ar' ? 'حذف الكشف' : 'Delete report'}
                     className="p-2 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors">

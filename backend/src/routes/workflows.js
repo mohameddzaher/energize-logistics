@@ -1,4 +1,5 @@
 const express = require('express');
+const { SHIPMENT_DELETE_ROLES } = require('../services/shipmentOrderWorkflowLink');
 const { body } = require('express-validator');
 const router = express.Router();
 
@@ -78,7 +79,7 @@ router.post('/payment-types/:id/unify', authorize(...PT_WRITE), paymentTypes.uni
 router.get('/', authorize(...readWorkflowRoles), workflowController.getWorkflows);
 
 // Bulk delete
-router.post('/bulk-delete', authorize.strict('super_admin', 'admin'), workflowController.bulkDelete);
+router.post('/bulk-delete', authorize.strict(...SHIPMENT_DELETE_ROLES), workflowController.bulkDelete);
 // ── تحديثٌ جماعيّ ──────────────────────────────────────────────────────────
 // مفتوحٌ لكلّ من يعدّل صفًّا واحدًا: الصلاحيّةُ تُفحص على مستوى **الحقل** داخل
 // النقطة نفسِها، فلا يكسب أحدٌ بالجملة ما لا يملكه بالمفرد.
@@ -142,6 +143,6 @@ router.post('/:id/lock', authorize(...allWorkflowRoles), workflowController.lock
 router.post('/:id/unlock', authorize(...allWorkflowRoles), workflowController.unlockWorkflow);
 
 // Delete (super_admin only)
-router.delete('/:id', authorize('super_admin', ...FINANCE_FULL_ROLES), workflowController.deleteWorkflow);
+router.delete('/:id', authorize.strict(...SHIPMENT_DELETE_ROLES), workflowController.deleteWorkflow);
 
 module.exports = router;

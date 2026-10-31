@@ -15,6 +15,8 @@ const { derivePaymentTypeFor, isSubtype, subtypeFamily, subtypeAfterAuto } = req
 const { termsOfSubtype } = require('../utils/shipmentOrderPayment');
 
 const TICK_MS = 15000;
+// One shipment is one record, so these three alone delete it, from either screen.
+const SHIPMENT_DELETE_ROLES = ['super_admin', 'admin', 'operations_manager'];
 const WF_READERS = ['wf:', 'collections-dept:', 'cdr:', 'colledger:', 'opsprivate:', 'ops:'];
 const METHOD = { 'نقدي': 'cash', 'آجل': 'late' };
 
@@ -233,6 +235,31 @@ async function pullPlatformRow(id, keys = []) {
   return { changed: true };
 }
 
+/**
+ * Deletes shipments from both screens. `rows` are workflow rows, `orders` shipments;
+ * each is resolved to its other half. Copies land in deletedrecords (utils/keepDeleted)
+ * and the manifest number is never issued again.
+ */
+async function deleteShipments({ rows = [], orders = [] }) {
+  const orderIds = new Set(orders.map((o) => String(o._id)));
+  const rowIds = new Set(rows.map((w) => String(w._id)));
+  const refs = rows.map((w) => w.shipmentOrder).filter(Boolean);
+  const ext = rows.filter((w) => w.externalSource === 'ops_upl' && w.externalId).map((w) => String(w.externalId));
+  (await ShipmentOrder.find({ $or: [{ _id: { $in: refs } }, { source: 'platform', externalId: { $in: ext } }] }).select('_id').lean())
+    .forEach((o) => orderIds.add(String(o._id)));
+  const oIds = orders.map((o) => o._id);
+  const oExt = orders.filter((o) => o.source === 'platform' && o.externalId).map((o) => String(o.externalId));
+  (await OperationsWorkflow.find({ $or: [{ shipmentOrder: { $in: oIds } }, { externalSource: 'ops_upl', externalId: { $in: oExt } }] }).select('_id').lean())
+    .forEach((w) => rowIds.add(String(w._id)));
+  const rowList = [...rowIds]; const orderList = [...orderIds];
+  for (let i = 0; i < rowList.length; i += 5000) await OperationsWorkflow.deleteMany({ _id: { $in: rowList.slice(i, i + 5000) } });
+  for (let i = 0; i < orderList.length; i += 5000) await ShipmentOrder.deleteMany({ _id: { $in: orderList.slice(i, i + 5000) } });
+  announceWorkflow();
+  announceOrders();
+  for (const _id of rowList.slice(0, 500)) { try { emitToAll('workflow:deleted', { _id }); } catch (_) { /* */ } }
+  return { rows: rowList.length, orders: orderList.length };
+}
+
 const run = (fn, ...args) => setImmediate(() => {
   fn(...args).catch((e) => console.error('[so-link]', e.message));
 });
@@ -276,5 +303,5 @@ function startShipmentOrderLink() {
 }
 
 module.exports = {
-  mirrorOrder, pullWorkflow, mirrorPlatformOrder, pullPlatformRow, mirrorSoon, mirrorPlatformSoon, pullSoon, reconcile, startShipmentOrderLink,
+  SHIPMENT_DELETE_ROLES, deleteShipments, mirrorOrder, pullWorkflow, mirrorPlatformOrder, pullPlatformRow, mirrorSoon, mirrorPlatformSoon, pullSoon, reconcile, startShipmentOrderLink,
 };

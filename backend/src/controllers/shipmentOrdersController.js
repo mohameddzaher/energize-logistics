@@ -602,6 +602,26 @@ exports.orderFilterOptions = async (req, res) => {
 };
 
 /**
+ * Records the route on the customer. Two people booking the same customer at once
+ * collide on the document version, so it re-reads and retries; a price that still
+ * misses is not worth failing a shipment for.
+ */
+async function learnRoute(customerId, route) {
+  const { applyRoute } = require('../utils/customerRoutes');
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    try {
+      const fresh = await ShipmentOrderCustomer.findById(customerId);
+      if (!fresh || applyRoute(fresh, route) === 'skipped') return;
+      await fresh.save();
+      return;
+    } catch (e) {
+      if (e.name !== 'VersionError') throw e;
+    }
+  }
+  console.warn('[shipment-orders] route not recorded, busy customer:', String(customerId));
+}
+
+/**
  * إنشاءُ طلبٍ واحد — جسدُ العمل، تنادِيه الشاشةُ ويناديه الإنشاءُ المتعدّد.
  *
  * ── ولماذا دالّةٌ لا معالجُ مسارٍ وحدَه ─────────────────────────────────────
@@ -628,15 +648,13 @@ async function createOneOrder(req, body) {
         // المقترَحُ سعرَ أوّل شحنةٍ في تاريخ العميل. والمطلوبُ دائمًا آخرُ ما
         // عُمل به. راجع utils/customerRoutes — والمدنُ تُطابَق مطويّةً فلا
         // يصير «جده» مسارًا ثانيًا لـ«جدة».
-      const { applyRoute } = require('../utils/customerRoutes');
-      const r = applyRoute(c, {
+      await learnRoute(c._id, {
         fromCity: data.fromCity,
         toCity: data.toCity,
         price: data.sellPrice,
         at: data.pickupTime || new Date(),
         source: 'order',
       });
-      if (r !== 'skipped') await c.save();
     }
   }
 

@@ -391,7 +391,10 @@ async function branchScope(req) {
   const { SHIPMENT_BRANCH_ROLES } = require('../config/shipmentBranchRoles');
   if (!SHIPMENT_BRANCH_ROLES.includes(req.user?.role)) return null;
   const u = await require('../models/User').findById(req.user._id).select('shipmentBranches').lean();
-  return u?.shipmentBranches?.length ? { branch: { $in: u.shipmentBranches } } : null;
+  if (!u?.shipmentBranches?.length) return null;
+  // The branch list writes «جده», shipments from the platform «جدة».
+  const spellings = u.shipmentBranches.flatMap((b) => [b, b.replace(/ه$/, 'ة'), b.replace(/ة$/, 'ه')]);
+  return { branch: { $in: [...new Set(spellings)] } };
 }
 
 exports.listOrders = async (req, res) => {

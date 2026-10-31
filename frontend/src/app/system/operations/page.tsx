@@ -20,6 +20,7 @@ import { useLatestRequest } from '@/hooks/useLatestRequest';
 import {
   ClipboardList, Plus, Search, Filter, FilterX, Edit, Trash2, ArrowRight, Loader2, X, FileSpreadsheet, AlertCircle, CheckSquare, Check, Receipt, AlertTriangle, Ban, History as HistoryIcon } from 'lucide-react';
 import ScrollX from '@/components/system/ScrollX';
+import TablePager, { readPageSize, savePageSize } from '@/components/system/TablePager';
 import InvoiceImportButton from '@/components/operations/InvoiceImportButton';
 import WorkflowFilterBar, { type FilterBarField } from '@/components/operations/WorkflowFilterBar';
 import InvoiceCheckCards from '@/components/operations/InvoiceCheckCards';
@@ -232,10 +233,8 @@ export default function OperationsWorkflowPage() {
   });
   // عددُ الصفوف في الصفحة يختاره المستخدم ويُحفَظ له (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢).
   // والخادمُ لا يقبل أكثرَ من ٥٠٠ — صفحةٌ أكبرُ تثقل الجدولَ ولا يقرؤها أحد.
-  const [pageSize, setPageSize] = useState<number>(() => {
-    try { const v = Number(localStorage.getItem('ops:pageSize')); return [25, 50, 100, 200, 500].includes(v) ? v : 50; } catch { return 50; }
-  });
-  const changePageSize = (n: number) => { setPageSize(n); setPage(1); try { localStorage.setItem('ops:pageSize', String(n)); } catch { /* */ } };
+  const [pageSize, setPageSize] = useState<number>(() => readPageSize('ops:pageSize'));
+  const changePageSize = (n: number) => { setPageSize(n); setPage(1); savePageSize('ops:pageSize', n); };
   const [stageFilter, setStageFilter] = useState('');
   const [search, setSearch] = useState('');
   const [searchInput, setSearchInput] = useState('');
@@ -1612,6 +1611,10 @@ export default function OperationsWorkflowPage() {
             العمل. أسوأُ ما يقع حين يُضغط صفٌّ أثناء التحديث أن يُعاد رسمُه —
             وذلك أهونُ ألفَ مرّةٍ من شاشةٍ لا تستجيب. فالشريطُ وحدَه يقول
             «جارٍ»، والجدولُ يبقى حيًّا. */}
+        {total > 0 && (
+          <TablePager className="px-4 py-2.5 border-b border-slate-200" page={page} pageSize={pageSize} total={total} ar={lang === 'ar'}
+            onPage={setPage} onPageSize={changePageSize} note={hasColFilters ? (lang === 'ar' ? 'مُفلتر' : 'filtered') : undefined} />
+        )}
         <ScrollX aria-busy={searching}>
           <div ref={tableRef} className="scroll-mt-4" />
           <table className="w-full min-w-[3200px]">
@@ -2071,19 +2074,7 @@ export default function OperationsWorkflowPage() {
             صفًّا مهما بلغ عدد المطابق، فلا يُرسم في التبويب جدولٌ بعشرات الآلاف من
             الصفوف يجمّده. */}
         {total > 0 && (
-          <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-t border-slate-200">
-            <span className="text-slate-500 text-sm">{T.showing} {(page - 1) * pageSize + 1}-{Math.min(page * pageSize, total)} {T.of} {total}{hasColFilters ? ` (${lang === 'ar' ? 'مُفلتر' : 'filtered'})` : ''}</span>
-            <div className="flex items-center gap-2">
-              <label className="flex items-center gap-1.5 text-sm text-slate-500">
-                {lang === 'ar' ? 'صفوف في الصفحة' : 'Rows per page'}
-                <select value={pageSize} onChange={(e) => changePageSize(Number(e.target.value))} className="rounded border border-slate-200 bg-white px-2 py-1 text-sm text-slate-700">
-                  {[25, 50, 100, 200, 500].map((n) => <option key={n} value={n}>{n}</option>)}
-                </select>
-              </label>
-              <button type="button" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1} className="px-3 py-1 rounded bg-slate-100 text-slate-700 text-sm disabled:opacity-50">{T.previous}</button>
-              <button type="button" onClick={() => setPage((p) => p + 1)} disabled={page * pageSize >= total} className="px-3 py-1 rounded bg-slate-100 text-slate-700 text-sm disabled:opacity-50">{T.next}</button>
-            </div>
-          </div>
+          <TablePager compact className="px-4 py-2.5 border-t border-slate-200" page={page} pageSize={pageSize} total={total} ar={lang === 'ar'} onPage={setPage} />
         )}
       </div>
 

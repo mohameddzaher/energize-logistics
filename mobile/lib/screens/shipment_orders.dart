@@ -12,6 +12,7 @@ import '../ui/export_sheet.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import 'shipment_order_card.dart';
+import '../ui/list_pager.dart';
 import 'shipment_order_create.dart';
 import 'shipment_order_detail.dart';
 import 'shipment_orders_common.dart';
@@ -54,13 +55,12 @@ const _colFields = [
   ('notes', 'ملاحظة البوليصة', 'Waybill note'),
 ];
 
-const _pageSize = 25;
-
 class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
   List<Map<String, dynamic>> _rows = [];
   Map<String, dynamic>? _stats;
   int _total = 0;
   int _page = 1;
+  int _pageSize = 50;
   bool _loading = true;
   String? _error;
   int _seq = 0; // لا يكتب ردٌّ قديمٌ فوق أحدث
@@ -340,6 +340,8 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
     _load();
   }
 
+  void _goPage(int p) { setState(() => _page = p); _load(); }
+
   @override
   Widget build(BuildContext context) {
     final editor = canEditOrders(context);
@@ -438,6 +440,9 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
                       ])),
                       // مرسى «اعرض القائمة»: إليه تُمرَّر الشاشةُ بعد الضغط على بطاقة إحصاء.
                       SizedBox(key: _listKey, height: 4),
+                      if (_total > 0)
+                        ListPager(page: _page, pages: pages, pageSize: _pageSize, total: _total, onPage: _goPage,
+                            onPageSize: (n) { setState(() { _pageSize = n; _page = 1; }); _load(); }),
                       if (_rows.isNotEmpty)
                         Row(children: [
                           Checkbox(
@@ -459,12 +464,7 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
                         _bigCards(editor)
                       else
                         for (final r in _rows) Padding(padding: const EdgeInsets.only(bottom: 8), child: _card(r, editor)),
-                      if (pages > 1)
-                        Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                          IconButton(onPressed: _page > 1 ? () { setState(() => _page--); _load(); } : null, icon: const Icon(Icons.chevron_right)),
-                          Text('$_page / $pages'),
-                          IconButton(onPressed: _page < pages ? () { setState(() => _page++); _load(); } : null, icon: const Icon(Icons.chevron_left)),
-                        ]),
+                      if (pages > 1) ListPager(compact: true, page: _page, pages: pages, pageSize: _pageSize, total: _total, onPage: _goPage),
                     ]),
                   )),
       ]),

@@ -24,6 +24,7 @@ import {
 import { useOrderStatuses } from '@/hooks/useOrderStatuses';
 import { useLatestRequest } from '@/hooks/useLatestRequest';
 import ScrollX from '@/components/system/ScrollX';
+import TablePager, { readPageSize, savePageSize } from '@/components/system/TablePager';
 import ManagedSelect from '@/components/system/ManagedSelect';
 import { paymentKindLabel } from '@/lib/paymentKind';
 import {
@@ -139,6 +140,8 @@ function ShipmentOrdersInner() {
   // ‏`customs=linked`: الشحناتُ المربوطةُ بمعاملة تخليص — من بطاقة اللوحة.
   const [customsOnly, setCustomsOnly] = useState(() => sp?.get('customs') === 'linked');
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<number>(() => readPageSize('so:pageSize'));
+  const changePageSize = (n: number) => { setPageSize(n); setPage(1); savePageSize('so:pageSize', n); };
 
   const [busyId, setBusyId] = useState<string | null>(null);
 
@@ -280,7 +283,7 @@ function ShipmentOrdersInner() {
   const load = useCallback(async () => {
     const mine = guard.begin();
     try {
-      const qs = new URLSearchParams({ page: String(page), limit: '25' });
+      const qs = new URLSearchParams({ page: String(page), limit: String(pageSize) });
       colParams(qs);
       if (debounced.trim()) qs.set('q', debounced.trim());
       if (statusFilter) qs.set('status', statusFilter);
@@ -299,7 +302,7 @@ function ShipmentOrdersInner() {
       setError('');
     } catch (e: any) { setError(e?.message || 'Request failed'); }
     setLoading(false);
-  }, [debounced, statusFilter, sourceFilter, customerFilter, fromDate, toDate, dateBy, customsOnly, noteFilter, page, colParams, guard]);
+  }, [debounced, statusFilter, sourceFilter, customerFilter, fromDate, toDate, dateBy, customsOnly, noteFilter, page, pageSize, colParams, guard]);
 
   useEffect(() => { load(); }, [load]);
   useSocket('shipmentOrders:updated', useCallback(() => load(), [load]));
@@ -641,6 +644,10 @@ function ShipmentOrdersInner() {
       </div>
 
       <div ref={listRef} className="scroll-mt-4 pt-1 sm:pt-0">
+      {total > 0 && (
+        <TablePager className="mb-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 shadow-sm"
+          page={page} pageSize={pageSize} total={total} ar={ar} onPage={setPage} onPageSize={changePageSize} />
+      )}
       {view !== 'table' ? (
         <>
           {orders.length > 0 && (
@@ -651,7 +658,6 @@ function ShipmentOrdersInner() {
                   onChange={(e) => setPicked(e.target.checked ? new Set(orders.map((o) => o._id)) : new Set())} />
                 {ar ? 'تحديد الصفحة كلّها' : 'Select this page'}
               </label>
-              <span className="ms-auto tabular-nums">{ar ? `${orders.length} من ${total}` : `${orders.length} of ${total}`}</span>
             </div>
           )}
           {orders.length === 0 ? (
@@ -877,15 +883,7 @@ function ShipmentOrdersInner() {
       )}
       </div>
 
-      {total > 25 && (
-        <div className="flex items-center justify-end gap-2 text-sm">
-          <button type="button" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1}
-            className="px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-slate-600 disabled:opacity-50">{ar ? 'السابق' : 'Prev'}</button>
-          <span className="text-slate-500">{page} / {Math.ceil(total / 25)}</span>
-          <button type="button" onClick={() => setPage((p) => Math.min(Math.ceil(total / 25), p + 1))} disabled={page >= Math.ceil(total / 25)}
-            className="px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-slate-600 disabled:opacity-50">{ar ? 'التالي' : 'Next'}</button>
-        </div>
-      )}
+      {total > pageSize && <TablePager compact page={page} pageSize={pageSize} total={total} ar={ar} onPage={setPage} />}
 
       {/* ── نافذةُ التفاصيل ──────────────────────────────────────────────────
           الجدولُ يعرض ما يسعه، والحمولةُ فيها أربعون حقلًا: المدنُ والعناوينُ

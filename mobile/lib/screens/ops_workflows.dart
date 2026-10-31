@@ -13,6 +13,7 @@ import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import '../ui/search_field.dart';
 import 'ops_common.dart';
+import '../ui/list_pager.dart';
 import 'ops_workflow_detail.dart';
 import 'ops_workflow_new.dart';
 
@@ -537,6 +538,8 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
         _allMatching = false;
         if (!_sel.remove(id)) _sel.add(id);
       });
+
+  void _goPage(int p) { setState(() { _page = p; _sel.clear(); _allMatching = false; }); _load(); }
 
   void _toggleSelectPage() => setState(() {
         final ids = _rows.map((r) => '${r['_id']}').toList();
@@ -1117,6 +1120,12 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
                     children: [
                       _header(),
                       if (_refreshing) const Padding(padding: EdgeInsets.fromLTRB(14, 6, 14, 0), child: LinearProgressIndicator(minHeight: 2)),
+                      if (_total > 0)
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(14, 6, 14, 0),
+                          child: ListPager(page: _page, pages: _pages, pageSize: _pageSize, total: _total, onPage: _goPage,
+                              onPageSize: (n) { _pageSize = n; _reload(); }),
+                        ),
                       const SizedBox(height: 8),
                       if (_rows.isEmpty)
                         EmptyState(
@@ -1126,26 +1135,8 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
                       else
                         for (var i = 0; i < _rows.length; i++)
                           Padding(padding: const EdgeInsets.fromLTRB(14, 0, 14, 8), child: _rowCard(_rows[i], i)),
-                      if (_total > 0)
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 14),
-                          child: Row(children: [
-                            Expanded(
-                              child: Text(tr('${(_page - 1) * _pageSize + 1}-${(_page * _pageSize).clamp(0, _total)} من $_total', '${(_page - 1) * _pageSize + 1}-${(_page * _pageSize).clamp(0, _total)} of $_total'),
-                                  style: const TextStyle(fontSize: 11.5, color: T.inkSoft)),
-                            ),
-                            PopupMenuButton<int>(
-                              tooltip: tr('صفوف في الصفحة', 'Rows per page'),
-                              initialValue: _pageSize,
-                              onSelected: (n) { _pageSize = n; _reload(); },
-                              itemBuilder: (_) => [for (final n in const [25, 50, 100, 200, 500]) PopupMenuItem(value: n, child: Text('$n'))],
-                              child: Padding(padding: const EdgeInsets.all(6), child: Text('$_pageSize ▾', style: const TextStyle(fontWeight: FontWeight.w700))),
-                            ),
-                            IconButton(onPressed: _page > 1 ? () { setState(() { _page--; _sel.clear(); _allMatching = false; }); _load(); } : null, icon: Icon(Lang.instance.ar ? Icons.chevron_right : Icons.chevron_left)),
-                            Text('$_page / $_pages', style: const TextStyle(fontWeight: FontWeight.w800)),
-                            IconButton(onPressed: _page < _pages ? () { setState(() { _page++; _sel.clear(); _allMatching = false; }); _load(); } : null, icon: Icon(Lang.instance.ar ? Icons.chevron_left : Icons.chevron_right)),
-                          ]),
-                        ),
+                      if (_total > _pageSize)
+                        Padding(padding: const EdgeInsets.symmetric(horizontal: 14), child: ListPager(compact: true, page: _page, pages: _pages, pageSize: _pageSize, total: _total, onPage: _goPage)),
                     ],
                   ),
                 ),

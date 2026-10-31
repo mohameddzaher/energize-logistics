@@ -101,6 +101,7 @@ import '../screens/shipment_orders_chat.dart';
 import '../screens/shipment_orders_analytics.dart';
 import '../screens/shipment_orders_fleet.dart';
 import '../screens/shipment_orders_settings.dart';
+import '../screens/shipment_branch_access.dart';
 import '../screens/customs_list.dart';
 import '../screens/customs_analytics.dart';
 import '../screens/customs_settings.dart';
@@ -661,6 +662,8 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         AppPage('الشاحنات', 'Vehicles', Icons.local_shipping_outlined, (c) => ResourceScreen(config: shipmentOrdersVehiclesCfg), path: '/system/shipment-orders/fleet'),
         // السوّاق: سجلٌّ ثالثٌ في الصفحة نفسها على الويب (تبويب)، وشاشةٌ هنا.
         AppPage('السوّاق', 'Drivers', Icons.badge_outlined, (c) => ResourceScreen(config: shipmentOrdersDriversCfg), path: '/system/shipment-orders/fleet'),
+        if (const ['super_admin', 'admin', 'operations_manager'].contains(role))
+          AppPage('الصلاحيات', 'Permissions', Icons.verified_user_outlined, (c) => const ShipmentBranchAccessScreen(), path: '/system/shipment-orders/permissions'),
         if (const ['super_admin', 'admin', 'it_manager', 'operations_manager', 'shipment_orders_manager'].contains(role) || auth.canEditSection('Shipment Orders'))
           AppPage('إعدادات القسم', 'Section Settings', Icons.tune_outlined, (c) => const ShipmentOrdersSettingsScreen(), path: '/system/shipment-orders/settings'),
         AppPage('الشكاوى', 'Complaints', Icons.report_outlined, (c) => const SectionWorkScreen(section: 'shipment-orders', complaints: true), path: '/system/shipment-orders/complaints'),

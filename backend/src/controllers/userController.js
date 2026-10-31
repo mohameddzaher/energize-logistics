@@ -47,6 +47,16 @@ const syncEmployeeLink = async (employeeId, userId) => {
   }
 };
 
+/** Branch limits from the user form: only their editors set them, only on roles that have them. */
+const branchesFrom = (req, role) => {
+  const { SHIPMENT_BRANCH_ROLES, BRANCH_ACCESS_EDITORS } = require('../config/shipmentBranchRoles');
+  if (!Array.isArray(req.body.shipmentBranches) || !BRANCH_ACCESS_EDITORS.includes(req.user.role)) return undefined;
+  return SHIPMENT_BRANCH_ROLES.includes(role) ? [...new Set(req.body.shipmentBranches.map((b) => String(b).trim()).filter(Boolean))] : [];
+};
+const announceBranchAccess = () => {
+  try { emitToAll('shipmentOrders:branchAccess', {}); emitToAll('shipmentOrders:updated', {}); } catch (e) {}
+};
+
 exports.getUsers = async (req, res) => {
   try {
     const { role, isActive, search, branch, accountType } = req.query;
@@ -202,6 +212,7 @@ exports.createUser = async (req, res) => {
       branch: branch || undefined,
       assignedProjects: Array.isArray(assignedProjects) ? assignedProjects : [],
       assignedBranches: Array.isArray(assignedBranches) ? assignedBranches : [],
+      shipmentBranches: branchesFrom(req, role),
       manager: resolvedManager,
       remoteAccess: role === 'remote_employee' && Array.isArray(remoteAccess) ? remoteAccess : [],
       linkedEmployee: linkedEmployee || undefined,
@@ -324,6 +335,8 @@ exports.updateUser = async (req, res) => {
     if (branch !== undefined) user.branch = branch || null;
     if (assignedProjects !== undefined) user.assignedProjects = Array.isArray(assignedProjects) ? assignedProjects : [];
     if (assignedBranches !== undefined) user.assignedBranches = Array.isArray(assignedBranches) ? assignedBranches : [];
+    const nextBranches = branchesFrom(req, user.role);
+    if (nextBranches) { user.shipmentBranches = nextBranches; announceBranchAccess(); }
     if (manager !== undefined) user.manager = manager || null;
     if (remoteAccess !== undefined) {
       user.remoteAccess = (role === 'remote_employee' || user.role === 'remote_employee') && Array.isArray(remoteAccess) ? remoteAccess : [];

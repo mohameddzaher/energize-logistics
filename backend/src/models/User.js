@@ -88,6 +88,9 @@ const userSchema = new mongoose.Schema(
     // فروع إضافية يعمل عليها هذا الحساب — و`branch` أعلاه هو فرعه المنسوب.
     // موجودة من قبل، ويقابلها `branches` على سجلّ الموظف: هذه صلاحية وصول
     // الحساب، وتلك واقعُ عمل الشخص. قد يتطابقان وقد لا — ولذلك لم تُدمجا.
+    // Branches this user sees on the Shipments page (roles in config/shipmentBranchRoles).
+    // Empty means no limit has been set yet.
+    shipmentBranches: { type: [String], default: undefined },
     assignedBranches: [
       { type: mongoose.Schema.Types.ObjectId, ref: 'Branch' },
     ],

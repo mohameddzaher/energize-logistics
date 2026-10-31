@@ -332,6 +332,12 @@
       "en": "Analytics"
     },
     {
+      "key": "/system/shipment-orders/permissions",
+      "section": "Shipment Orders",
+      "ar": "الصلاحيات",
+      "en": "Permissions"
+    },
+    {
       "key": "/system/shipment-orders/settings",
       "section": "Shipment Orders",
       "ar": "إعدادات القسم",

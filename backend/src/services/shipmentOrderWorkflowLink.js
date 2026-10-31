@@ -260,6 +260,12 @@ async function deleteShipments({ rows = [], orders = [] }) {
   return { rows: rowList.length, orders: orderList.length };
 }
 
+/** A rename rewrote names on both screens outside this link. */
+function announceRename() {
+  announceWorkflow();
+  announceOrders();
+}
+
 const run = (fn, ...args) => setImmediate(() => {
   fn(...args).catch((e) => console.error('[so-link]', e.message));
 });
@@ -303,5 +309,5 @@ function startShipmentOrderLink() {
 }
 
 module.exports = {
-  SHIPMENT_DELETE_ROLES, deleteShipments, mirrorOrder, pullWorkflow, mirrorPlatformOrder, pullPlatformRow, mirrorSoon, mirrorPlatformSoon, pullSoon, reconcile, startShipmentOrderLink,
+  SHIPMENT_DELETE_ROLES, deleteShipments, announceRename, mirrorOrder, pullWorkflow, mirrorPlatformOrder, pullPlatformRow, mirrorSoon, mirrorPlatformSoon, pullSoon, reconcile, startShipmentOrderLink,
 };

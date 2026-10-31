@@ -542,6 +542,12 @@
       ],
       "wildcard": false
     },
+    "/system/shipment-orders/permissions": {
+      "apis": [
+        "/api/shipment-orders/branch-access"
+      ],
+      "wildcard": false
+    },
     "/system/shipment-orders/settings": {
       "apis": [
         "/api/lookups/types",
@@ -2807,6 +2813,7 @@
         "/api/customers",
         "/api/hr/employees-search",
         "/api/partners",
+        "/api/shipment-orders/branch-access",
         "/api/users",
         "/api/users/roles",
         "/api/users/suggest-manager"

@@ -381,6 +381,7 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     // كانت «إعدادات النموذج» صفحةً وحدَها، وبقيّةُ ما يُضبط لا موضعَ له:
     // ترقيمُ البوالص، وقوائمُ القسم، ودورةُ الحالات. صارت صفحةً واحدة.
     { href: '/system/shipment-orders/analytics', label: lang === 'ar' ? 'التحليلات' : 'Analytics', icon: <BarChart3 className="w-5 h-5" />, roles: SO_ROLES, section: 'Shipment Orders' },
+    { href: '/system/shipment-orders/permissions', label: lang === 'ar' ? 'الصلاحيات' : 'Permissions', icon: <ShieldCheck className="w-5 h-5" />, roles: ['super_admin', 'admin', 'operations_manager'], section: 'Shipment Orders' },
     { href: '/system/shipment-orders/settings', label: lang === 'ar' ? 'إعدادات القسم' : 'Section Settings', icon: <SlidersHorizontal className="w-5 h-5" />, roles: ['super_admin', 'admin', 'it_manager', 'operations_manager', 'shipment_orders_manager'], section: 'Shipment Orders' },
     { href: '/system/shipment-orders/jp', label: lang === 'ar' ? 'خطّة العمل (JP)' : 'JP', icon: <CalendarCheck className="w-5 h-5" />, roles: [], section: 'Shipment Orders', visible: (u) => jpMember(u, 'Shipment Orders') },
     { href: '/system/shipment-orders/jp-dashboard', label: lang === 'ar' ? 'لوحة JP' : 'JP Dashboard', icon: <BarChart3 className="w-5 h-5" />, roles: [], section: 'Shipment Orders', visible: (u) => jpManager(u, 'Shipment Orders') },

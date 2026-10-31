@@ -382,6 +382,18 @@ const columnFilters = (query, skipKey = null) => {
   return out;
 };
 
+/**
+ * The branches this user may see on the Shipments page, as a query, or null.
+ * Read from the database each time: the auth cache is per worker and a change on
+ * the permissions page must apply at once.
+ */
+async function branchScope(req) {
+  const { SHIPMENT_BRANCH_ROLES } = require('../config/shipmentBranchRoles');
+  if (!SHIPMENT_BRANCH_ROLES.includes(req.user?.role)) return null;
+  const u = await require('../models/User').findById(req.user._id).select('shipmentBranches').lean();
+  return u?.shipmentBranches?.length ? { branch: { $in: u.shipmentBranches } } : null;
+}
+
 exports.listOrders = async (req, res) => {
   try {
     const { q, status, customer, supplier, source, branch, from, to, page = 1, limit = 25 } = req.query;
@@ -481,6 +493,9 @@ exports.listOrders = async (req, res) => {
       filter.$and = [...(filter.$and || []), { $or: or }];
     }
 
+    // Beside, not over, any branch the user filtered by.
+    const scope = await branchScope(req);
+    if (scope) filter.$and = [...(filter.$and || []), scope];
     const statusFreeFilter = { ...filter };
     delete statusFreeFilter.status;
 
@@ -554,6 +569,8 @@ exports.orderFilterOptions = async (req, res) => {
 
     // فلاترُ بقيّةِ الأعمدة وحدَها — فما يُعرَض يقدر أن يُنتقى.
     const base = { ...columnFilters(req.query, key) };
+    const scope = await branchScope(req);
+    if (scope) base.$and = [...(base.$and || []), scope];
     if (req.query.status) {
       const keys = String(req.query.status).split(',').map((x) => x.trim()).filter(Boolean);
       if (keys.length === 1) [base.status] = keys; else if (keys.length) base.status = { $in: keys };
@@ -1795,10 +1812,16 @@ exports.updateCustomer = async (req, res) => {
       });
     }
     if (data.name !== undefined && String(data.name).trim() !== customer.name) data.nameManual = true;
+    const oldName = customer.name;
     Object.assign(customer, data);
     await customer.save();
     // Orders show the snapshot name; keep future reads coherent after a rename.
     await ShipmentOrder.updateMany({ customer: customer._id }, { customerName: customer.name });
+    // The name also keys the workflow, collections and shipments without a customer ref.
+    if (customer.name !== oldName) {
+      await require('../utils/renameOpsCustomer').renameOpsCustomer(oldName, customer.name);
+      require('../services/shipmentOrderWorkflowLink').announceRename();
+    }
     emit('shipmentOrders:customers', {});
     res.json({ customer });
   } catch (error) {
@@ -1979,8 +2002,17 @@ exports.createSupplier = async (req, res) => {
 
 exports.updateSupplier = async (req, res) => {
   try {
+    const before = await ShipmentOrderSupplier.findById(req.params.id).select('name').lean();
     const supplier = await ShipmentOrderSupplier.findByIdAndUpdate(req.params.id, pick(req.body, SUPPLIER_EDITABLE), { new: true });
     if (!supplier) return res.status(404).json({ message: 'Supplier not found' });
+    if (before.name !== supplier.name) {
+      // Shipments and workflow rows hold the name as a snapshot.
+      await ShipmentOrder.updateMany({ $or: [{ supplier: supplier._id }, { supplierName: before.name }] }, { supplierName: supplier.name });
+      const Workflow = require('../models/OperationsWorkflow');
+      await Workflow.updateMany({ carOwner: before.name }, { carOwner: supplier.name });
+      await Workflow.updateMany({ ownerName: before.name }, { ownerName: supplier.name });
+      require('../services/shipmentOrderWorkflowLink').announceRename();
+    }
     emit('shipmentOrders:fleet', {});
     res.json({ supplier });
   } catch (error) {
@@ -2344,6 +2376,47 @@ async function companyBranchOptions() {
       .map((r) => ({ key: r.nameAr.trim(), ar: r.nameAr.trim(), en: (r.nameEn || r.nameAr).trim() }));
   });
 }
+
+const roleNames = () => require('../config/roles').LABELS_AR;
+
+/** GET /branch-access — the people limited by branch and what each one has. */
+exports.getBranchAccess = async (req, res) => {
+  try {
+    const { SHIPMENT_BRANCH_ROLES } = require('../config/shipmentBranchRoles');
+    const users = await require('../models/User').find({ role: { $in: SHIPMENT_BRANCH_ROLES }, isActive: { $ne: false } })
+      .select('firstName lastName role email shipmentBranches').sort({ firstName: 1 }).lean();
+    res.json({
+      branches: await companyBranchOptions(),
+      users: users.map((u) => ({
+        _id: u._id, name: fullName(u), email: u.email, role: u.role, roleAr: roleNames()[u.role] || u.role, branches: u.shipmentBranches || [],
+      })),
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'تعذّر تحميل صلاحيات الفروع' });
+  }
+};
+
+/** PUT /branch-access/:id { branches } — same field as the user form, so both always agree. */
+exports.setBranchAccess = async (req, res) => {
+  try {
+    const { SHIPMENT_BRANCH_ROLES } = require('../config/shipmentBranchRoles');
+    const User = require('../models/User');
+    const target = await User.findById(req.params.id);
+    if (!target || !SHIPMENT_BRANCH_ROLES.includes(target.role)) return res.status(404).json({ message: 'المستخدم غير موجود' });
+    const known = new Set((await companyBranchOptions()).map((b) => b.key));
+    const asked = [...new Set((Array.isArray(req.body.branches) ? req.body.branches : []).map((b) => String(b).trim()))];
+    const unknown = asked.filter((b) => !known.has(b));
+    if (unknown.length) return res.status(400).json({ message: `فرع غير معروف: ${unknown.join('، ')}` });
+    const before = target.shipmentBranches || [];
+    await User.updateOne({ _id: target._id }, { $set: { shipmentBranches: asked } });
+    await logAudit({ user: req.user, action: 'update', entity: 'User', entityId: target._id, changes: { before: { shipmentBranches: before }, after: { shipmentBranches: asked } }, ipAddress: req.ip });
+    emit('shipmentOrders:branchAccess', {});
+    emit('shipmentOrders:updated', {});
+    res.json({ branches: asked });
+  } catch (error) {
+    return sendMongooseError(res, error, 'تعذّر حفظ صلاحيات الفروع');
+  }
+};
 
 exports.listFields = async (req, res) => {
   try {

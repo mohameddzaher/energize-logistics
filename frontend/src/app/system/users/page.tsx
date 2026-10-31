@@ -34,6 +34,7 @@ interface UserRecord {
   assignedCustomers?: { _id: string; companyName: string }[];
   assignedProjects?: { _id: string; name: string; code?: string }[];
   assignedBranches?: { _id: string; name: string; code?: string; city?: string }[];
+  shipmentBranches?: string[];
   manager?: { _id: string; firstName: string; lastName: string; email: string; role: string };
   linkedEmployee?: { _id: string; firstName: string; lastName: string; employeeNumber?: string; iqamaNumber?: string; jobTitle?: string };
   // Staff vs outside partner. Accounts created before this field existed have
@@ -125,6 +126,8 @@ const statusDot: Record<string, string> = {
   inactive: 'bg-slate-300',
 };
 
+const SHIPMENT_BRANCH_ROLES = ['data_entry', 'data_analyst', 'shipment_orders_followup'];
+
 export default function UsersPage() {
   const { user: currentUser } = useAuth();
   const { lang } = useLanguage();
@@ -146,6 +149,7 @@ export default function UsersPage() {
   // Create/Edit form
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [branches, setBranches] = useState<BranchOpt[]>([]);
+  const [shipBranches, setShipBranches] = useState<{ key: string; ar: string; en: string }[]>([]);
   const [b2cProjects, setB2cProjects] = useState<B2CProject[]>([]);
   const [b2cHeads, setB2cHeads] = useState<ManagerOpt[]>([]);
   const [remoteManagers, setRemoteManagers] = useState<ManagerOpt[]>([]);
@@ -160,6 +164,7 @@ export default function UsersPage() {
     branch: '',
     assignedProjects: [] as string[],
     assignedBranches: [] as string[],
+    shipmentBranches: [] as string[],
     manager: '',
     remoteAccess: [] as string[],
     linkedEmployee: '',
@@ -261,6 +266,10 @@ export default function UsersPage() {
 
   const fetchBranches = async () => {
     try {
+      // role-only: same editors as the permissions page.
+      if (['super_admin', 'admin', 'operations_manager'].includes(currentUser?.role || '')) {
+        api.get<any>('/api/shipment-orders/branch-access').then((d) => setShipBranches(d.branches || [])).catch(() => {});
+      }
       const data = await api.get<any>('/api/branches?active=true');
       setBranches(data.branches || []);
     } catch {
@@ -307,7 +316,7 @@ export default function UsersPage() {
 
   // CREATE
   const openCreateModal = async () => {
-    setFormData({ email: '', password: '', firstName: '', lastName: '', role: 'employee', linkedCustomer: '', assignedCustomers: [], branch: '', assignedProjects: [], assignedBranches: [], manager: '', remoteAccess: REMOTE_PAGE_OPTIONS.map((p) => p.key), linkedEmployee: '', accountType: 'employee', partnerSource: '', partnerRefId: '' });
+    setFormData({ email: '', password: '', firstName: '', lastName: '', role: 'employee', linkedCustomer: '', assignedCustomers: [], branch: '', assignedProjects: [], assignedBranches: [], shipmentBranches: [], manager: '', remoteAccess: REMOTE_PAGE_OPTIONS.map((p) => p.key), linkedEmployee: '', accountType: 'employee', partnerSource: '', partnerRefId: '' });
     setPartnerLabel(''); setPartnerQuery(''); setPartners([]);
     setEmpSearch(''); setEmpResults([]); setLinkedEmployeeLabel('');
     setFormError('');
@@ -342,6 +351,7 @@ export default function UsersPage() {
       if (formData.role === 'client' && formData.linkedCustomer) {
         payload.linkedCustomer = formData.linkedCustomer;
       }
+      if (SHIPMENT_BRANCH_ROLES.includes(formData.role)) payload.shipmentBranches = formData.shipmentBranches;
       if (formData.role === 'employee') {
         if (formData.assignedCustomers.length > 0) payload.assignedCustomers = formData.assignedCustomers;
       }
@@ -387,6 +397,7 @@ export default function UsersPage() {
       branch: u.branch?._id || '',
       assignedProjects: u.assignedProjects?.map((p: any) => typeof p === 'string' ? p : p._id) || [],
       assignedBranches: u.assignedBranches?.map((b: any) => typeof b === 'string' ? b : b._id) || [],
+      shipmentBranches: u.shipmentBranches || [],
       manager: u.manager?._id || '',
       remoteAccess: u.remoteAccess && u.remoteAccess.length ? u.remoteAccess : REMOTE_PAGE_OPTIONS.map((p) => p.key),
       linkedEmployee: u.linkedEmployee?._id || '',
@@ -435,6 +446,7 @@ export default function UsersPage() {
         payload.assignedCustomers = formData.assignedCustomers;
       }
       payload.branch = formData.branch || null;
+      if (SHIPMENT_BRANCH_ROLES.includes(formData.role)) payload.shipmentBranches = formData.shipmentBranches;
       if (formData.role === 'b2c_project_lead' || formData.role === 'b2c_manager') {
         payload.assignedProjects = formData.assignedProjects;
         payload.assignedBranches = formData.assignedBranches;
@@ -1159,6 +1171,26 @@ export default function UsersPage() {
       )}
 
       {/* Remote-employee-specific: manager + which pages they can access */}
+      {SHIPMENT_BRANCH_ROLES.includes(formData.role) && shipBranches.length > 0 && (
+        <div>
+          <label className="block text-slate-700 text-sm font-medium mb-1.5">
+            {lang === 'ar' ? 'فروع صفحة الشحنات' : 'Shipments page branches'}
+            <span className="text-slate-500 text-xs font-normal ms-2">{lang === 'ar' ? '(بدون اختيار = كل الفروع)' : '(none = all branches)'}</span>
+          </label>
+          <div className="flex flex-wrap gap-2">
+            {shipBranches.map((b) => {
+              const on = formData.shipmentBranches.includes(b.key);
+              return (
+                <button key={b.key} type="button" aria-pressed={on}
+                  onClick={() => setFormData((prev) => ({ ...prev, shipmentBranches: on ? prev.shipmentBranches.filter((k) => k !== b.key) : [...prev.shipmentBranches, b.key] }))}
+                  className={`px-3 py-1.5 rounded-lg text-sm font-semibold border ${on ? 'bg-[#f37121] border-[#f37121] text-white' : 'bg-white border-slate-300 text-slate-700'}`}>
+                  {lang === 'ar' ? b.ar : b.en}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
       {formData.role === 'remote_employee' && (
         <>
           <div>

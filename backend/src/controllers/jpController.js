@@ -61,9 +61,11 @@ function who(req, src = {}) {
  * Who can be assigned in this scope.
  * `wide`: a top role (super_admin/admin) planning a section may assign anyone active —
  * e.g. the IT team are super_admins, so the section's role list does not contain them.
+ * `assign`: the list for assigning a task, where top roles are always selectable.
+ * Without it the result is the team as counted on dashboards and for hand-down.
  * The section's own members come first, flagged `inSection`.
  */
-async function teamOf(w, { wide = false } = {}) {
+async function teamOf(w, { wide = false, assign = false } = {}) {
   const base = { isActive: { $ne: false } };
   const [users, ended] = await Promise.all([
     User.find(base).select('firstName lastName role email').lean(),
@@ -71,12 +73,12 @@ async function teamOf(w, { wide = false } = {}) {
   ]);
   const { isExternalRole } = require('../config/scopedRoles');
   const inSection = (u) => (w.scope === 'management'
-    // مديرو الأقسام — ولا يدخل مديرُ النظام قائمةَ من يُسنَد إليهم.
     ? isManagerRole(u.role) && !TOP_ROLES.includes(u.role)
     : w.def.memberRoles.includes(u.role));
-  const pick = wide && w.scope === 'section' ? (u) => !isExternalRole(u.role) : inSection;
-  // من أنهت الموارد البشريّة خدمتَه ليس من الفريق ولو بقي حسابُه مفعّلًا: لا يُسنَد
-  // إليه ولا يُعدّ في اللوحة. ومهامُّه القديمة تبقى — تُعدّ باسمه «سابقًا» هناك.
+  const scoped = wide && w.scope === 'section' ? (u) => !isExternalRole(u.role) : inSection;
+  const pick = (u) => scoped(u) || (assign && TOP_ROLES.includes(u.role));
+  // Ended staff are off the team even with a live account; their old tasks stay
+  // and count under their name as former on the dashboard.
   return users.filter((u) => pick(u) && !userEnded(ended, u)).map((u) => ({
     _id: u._id,
     name: nameOf(u),
@@ -245,7 +247,7 @@ exports.me = async (req, res) => {
     if (!w) return res.status(404).json({ message: 'قسمٌ غير معروف' });
     if (!w.isMember) return res.status(403).json({ message: 'خطّةُ العمل لفريق القسم ومديره', code: 'JP_NOT_MEMBER' });
     const [team, projects] = await Promise.all([
-      teamOf(w, { wide: w.top }),
+      teamOf(w, { wide: w.top, assign: true }),
       JpProject.find({ scope: w.scope, section: w.section }).sort({ status: 1, createdAt: -1 }).lean(),
     ]);
     res.json({
@@ -367,7 +369,7 @@ exports.createTask = async (req, res) => {
 
     const title = String(req.body.title || '').trim();
     if (!title) throw bad('اكتب ما المطلوب');
-    const team = await teamOf(w, { wide: w.top });
+    const team = await teamOf(w, { wide: w.top, assign: true });
     const assignedTo = req.body.assignedTo || (w.top ? null : req.user._id);
     // الإسنادُ داخل الفريق وحدَه — لا يُسنَد إلى موظّفِ قسمٍ آخر من هذه الخطّة.
     if (!assignedTo || !(team.some((m) => sameId(m._id, assignedTo)) || sameId(assignedTo, req.user._id))) {
@@ -443,7 +445,7 @@ exports.updateTask = async (req, res) => {
     }
     let reassigned = false;
     if (b.assignedTo !== undefined && !sameId(b.assignedTo, t.assignedTo)) {
-      const team = await teamOf(w, { wide: w.top });
+      const team = await teamOf(w, { wide: w.top, assign: true });
       if (!(team.some((m) => sameId(m._id, b.assignedTo)) || sameId(b.assignedTo, req.user._id))) throw bad('اختر من يُسنَد إليه من فريق القسم');
       t.assignedTo = b.assignedTo; reassigned = true;
     }
@@ -617,7 +619,7 @@ exports.daily = async (req, res) => {
       from, to, rows,
       people: [...people.values()].map((p) => ({ ...p, minutes: Math.round(p.minutes * 10) / 10 })).sort((a, b) => b.minutes - a.minutes),
       titles: [...titles.entries()].map(([title, minutes]) => ({ title, minutes: Math.round(minutes * 10) / 10 })).sort((a, b) => b.minutes - a.minutes),
-      team: w.canManage ? await teamOf(w, { wide: w.top }) : [],
+      team: w.canManage ? await teamOf(w, { wide: w.top, assign: true }) : [],
     });
   } catch (e) { fail(res, e, 'تعذّر تحميل اليوميّة'); }
 };
@@ -884,7 +886,7 @@ exports.dashboard = async (req, res) => {
     const blank = () => ({ assigned: 0, open: 0, done: 0, overdue: 0, onTime: 0, late: 0, requestsMade: 0, hoursSum: 0, hoursN: 0 });
     const members = new Map(team.map((m) => [String(m._id), { ...m, ...blank() }]));
     // Active, not-ended accounts: an assignee outside the section's roles still counts as a member.
-    const activeIds = new Set((await teamOf(w, { wide: true })).map((m) => String(m._id)));
+    const activeIds = new Set((await teamOf(w, { wide: true, assign: true })).map((m) => String(m._id)));
     const totals = { total: 0, tasks: 0, requests: 0, open: 0, done: 0, overdue: 0, onTime: 0, late: 0, noDeadline: 0, withFiles: 0, dueSoon: 0 };
     const byAction = {}; const byProject = new Map();
     const dayKey = (d) => new Date(new Date(d).getTime() + 3 * HOUR).toISOString().slice(0, 10);

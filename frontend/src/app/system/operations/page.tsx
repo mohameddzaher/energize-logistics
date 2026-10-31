@@ -1611,10 +1611,6 @@ export default function OperationsWorkflowPage() {
             العمل. أسوأُ ما يقع حين يُضغط صفٌّ أثناء التحديث أن يُعاد رسمُه —
             وذلك أهونُ ألفَ مرّةٍ من شاشةٍ لا تستجيب. فالشريطُ وحدَه يقول
             «جارٍ»، والجدولُ يبقى حيًّا. */}
-        {total > 0 && (
-          <TablePager className="px-4 py-2.5 border-b border-slate-200" page={page} pageSize={pageSize} total={total} ar={lang === 'ar'}
-            onPage={setPage} onPageSize={changePageSize} note={hasColFilters ? (lang === 'ar' ? 'مُفلتر' : 'filtered') : undefined} />
-        )}
         <ScrollX aria-busy={searching}>
           <div ref={tableRef} className="scroll-mt-4" />
           <table className="w-full min-w-[3200px]">
@@ -2074,7 +2070,8 @@ export default function OperationsWorkflowPage() {
             صفًّا مهما بلغ عدد المطابق، فلا يُرسم في التبويب جدولٌ بعشرات الآلاف من
             الصفوف يجمّده. */}
         {total > 0 && (
-          <TablePager compact className="px-4 py-2.5 border-t border-slate-200" page={page} pageSize={pageSize} total={total} ar={lang === 'ar'} onPage={setPage} />
+          <TablePager className="px-4 py-2.5 border-t border-slate-200" page={page} pageSize={pageSize} total={total} ar={lang === 'ar'}
+            onPage={setPage} onPageSize={changePageSize} note={hasColFilters ? (lang === 'ar' ? 'مُفلتر' : 'filtered') : undefined} />
         )}
       </div>
 

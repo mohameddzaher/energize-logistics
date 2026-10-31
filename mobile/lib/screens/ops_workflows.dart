@@ -1120,12 +1120,6 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
                     children: [
                       _header(),
                       if (_refreshing) const Padding(padding: EdgeInsets.fromLTRB(14, 6, 14, 0), child: LinearProgressIndicator(minHeight: 2)),
-                      if (_total > 0)
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(14, 6, 14, 0),
-                          child: ListPager(page: _page, pages: _pages, pageSize: _pageSize, total: _total, onPage: _goPage,
-                              onPageSize: (n) { _pageSize = n; _reload(); }),
-                        ),
                       const SizedBox(height: 8),
                       if (_rows.isEmpty)
                         EmptyState(
@@ -1135,8 +1129,12 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
                       else
                         for (var i = 0; i < _rows.length; i++)
                           Padding(padding: const EdgeInsets.fromLTRB(14, 0, 14, 8), child: _rowCard(_rows[i], i)),
-                      if (_total > _pageSize)
-                        Padding(padding: const EdgeInsets.symmetric(horizontal: 14), child: ListPager(compact: true, page: _page, pages: _pages, pageSize: _pageSize, total: _total, onPage: _goPage)),
+                      if (_total > 0)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 14),
+                          child: ListPager(page: _page, pages: _pages, pageSize: _pageSize, total: _total, onPage: _goPage,
+                              onPageSize: (n) { _pageSize = n; _reload(); }),
+                        ),
                     ],
                   ),
                 ),

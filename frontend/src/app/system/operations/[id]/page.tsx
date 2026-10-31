@@ -19,6 +19,7 @@ import WorkflowCustomsPanel from '@/components/operations/WorkflowCustomsPanel';
 import ReportFollowUps from '@/components/operations/ReportFollowUps';
 import { WORKFLOW_SECTIONS } from '@/lib/workflowFields';
 import CustomerNamePicker from '@/components/operations/CustomerNamePicker';
+import ManagedSelect from '@/components/system/ManagedSelect';
 
 interface Workflow {
   _id: string;
@@ -493,6 +494,10 @@ export default function WorkflowDetailPage() {
                         </select>
                       ) : editable && field.key === 'username' ? (
                         <CustomerNamePicker value={val || ''} ar={lang === 'ar'} onChange={(v) => setFormData({ ...formData, username: v })} />
+                      ) : editable && (field.key === 'branch' || field.key === 'payingBranch') ? (
+                        <ManagedSelect type="workflow_paying_branch" storeLabel noAdd value={val || ''}
+                          onChange={(v) => setFormData({ ...formData, [field.key]: v })}
+                          placeholder={lang === 'ar' ? 'اختر الفرع' : 'Pick branch'} />
                       ) : editable ? (
                         <input
                           type={field.type || 'text'}

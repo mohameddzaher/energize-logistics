@@ -558,7 +558,7 @@ const REGISTRY = [
     roles: ['operations_manager', 'operations_staff', 'moderator', 'cfo', 'accounting_manager', 'accountant'],
     storeLabel: true,
     seed: [
-      { key: 'jeddah', nameEn: 'Jeddah', nameAr: 'جده' },
+      { key: 'jeddah', nameEn: 'Jeddah', nameAr: 'جدة' },
       { key: 'riyadh', nameEn: 'Riyadh', nameAr: 'الرياض' },
       { key: 'dammam', nameEn: 'Dammam', nameAr: 'الدمام' },
       { key: 'yanbu', nameEn: 'Yanbu', nameAr: 'ينبع' },
@@ -582,7 +582,7 @@ const REGISTRY = [
     roles: ['operations_manager', 'operations_staff', 'moderator', 'cfo', 'accounting_manager', 'accountant'],
     storeLabel: true,
     seed: [
-      { key: 'jeddah', nameEn: 'Jeddah', nameAr: 'جده' },
+      { key: 'jeddah', nameEn: 'Jeddah', nameAr: 'جدة' },
       { key: 'dammam', nameEn: 'Dammam', nameAr: 'الدمام' },
       { key: 'riyadh', nameEn: 'Riyadh', nameAr: 'الرياض' },
       { key: 'jazan', nameEn: 'Jazan', nameAr: 'جازان' },

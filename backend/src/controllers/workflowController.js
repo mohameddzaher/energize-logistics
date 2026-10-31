@@ -1505,6 +1505,8 @@ exports.getWorkflow = async (req, res) => {
 exports.createWorkflow = async (req, res) => {
   try {
     const filteredBody = filterFieldsByRole(req.body, req.user.role, await fieldsForRole(req.user.role));
+    const newBranchError = await require('../utils/branchList').applyBranchList(filteredBody);
+    if (newBranchError) return res.status(400).json({ message: newBranchError });
     if (filteredBody.username !== undefined) {
       const chk = await require('../utils/approvedCustomerName').checkCustomerName(filteredBody.username, '');
       if (chk.error) return res.status(400).json({ code: 'CUSTOMER_NOT_APPROVED', message: chk.error });
@@ -1751,6 +1753,8 @@ exports.updateWorkflow = async (req, res) => {
     }
 
     const filteredBody = filterFieldsByRole(req.body, req.user.role, await fieldsForRole(req.user.role));
+    const branchError = await require('../utils/branchList').applyBranchList(filteredBody, workflow);
+    if (branchError) return res.status(400).json({ message: branchError });
 
     // ── مبلغُ السداد من المحفظة لا يُكتب هنا ─────────────────────────────────
     // كشفٌ له مشترياتٌ في المحفظة: مبلغُه ما كتبه موظّفُ العهدة. وكان فتحُ
@@ -2401,6 +2405,8 @@ exports.bulkUpdate = async (req, res) => {
     if (!allMatching && ids.length > IDS_CAP) return res.status(400).json({ message: `الحدُّ الأقصى ${IDS_CAP} كشفًا في المرّة — أو اختر «كلّ نتائج الفلتر».` });
 
     const patch = filterFieldsByRole(req.body.fields || {}, req.user.role, await fieldsForRole(req.user.role));
+    const bulkBranchError = await require('../utils/branchList').applyBranchList(patch);
+    if (bulkBranchError) return res.status(400).json({ message: bulkBranchError });
     // والقواعدُ نفسُها في الجملة: لا يكسب أحدٌ بالتحديد ما لا يملكه بالمفرد.
     // (وتُعاد لكلّ صفٍّ على حدة أدناه، لأنّ نوعَ الدفع يختلف من كشفٍ لآخر.)
     const refused = patch.__rejected || [];

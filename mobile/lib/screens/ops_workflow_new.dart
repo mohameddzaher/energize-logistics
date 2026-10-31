@@ -9,6 +9,7 @@ import '../services/auth.dart';
 import '../services/lang.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/export_sheet.dart';
+import '../ui/lookup_field.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import 'ops_common.dart';
@@ -388,7 +389,9 @@ class _OpsWorkflowNewScreenState extends State<OpsWorkflowNewScreen> {
                         padding: const EdgeInsets.only(bottom: 8),
                         child: f.$1 == 'username'
                             ? OpsCustomerField(controller: _c(f.$1), label: '${f.$2} (${f.$3})', enabled: editable.contains(s.$1))
-                            : TextField(
+                            : (f.$1 == 'branch' || f.$1 == 'payingBranch') && editable.contains(s.$1)
+                                ? LookupField(type: 'workflow_paying_branch', controller: _c(f.$1), label: '${f.$2} (${f.$3})', noAdd: true)
+                                : TextField(
                           controller: _c(f.$1),
                           enabled: editable.contains(s.$1),
                           readOnly: f.$4 == 'date',

@@ -10,6 +10,7 @@ import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
 import * as XLSX from 'xlsx';
 import ScrollX from '@/components/system/ScrollX';
 import CustomerNamePicker from '@/components/operations/CustomerNamePicker';
+import ManagedSelect from '@/components/system/ManagedSelect';
 
 // ── Field Definitions ──
 interface FieldDef {
@@ -341,6 +342,9 @@ export default function NewOperationsPage() {
                       </label>
                       {field.key === 'username' ? (
                         <CustomerNamePicker value={formData.username || ''} ar={ar} disabled={!canEdit} onChange={(v) => updateField('username', v)} />
+                      ) : (field.key === 'branch' || field.key === 'payingBranch') && canEdit ? (
+                        <ManagedSelect type="workflow_paying_branch" storeLabel noAdd value={formData[field.key] || ''}
+                          onChange={(v) => updateField(field.key, v)} placeholder={ar ? 'اختر الفرع' : 'Pick branch'} />
                       ) : (
                       <input
                         type={field.type || 'text'}

@@ -392,9 +392,10 @@ async function branchScope(req) {
   if (!SHIPMENT_BRANCH_ROLES.includes(req.user?.role)) return null;
   const u = await require('../models/User').findById(req.user._id).select('shipmentBranches').lean();
   if (!u?.shipmentBranches?.length) return null;
-  // The branch list writes «جده», shipments from the platform «جدة».
-  const spellings = u.shipmentBranches.flatMap((b) => [b, b.replace(/ه$/, 'ة'), b.replace(/ة$/, 'ه')]);
-  return { branch: { $in: [...new Set(spellings)] } };
+  // Every branch open means no limit, so shipments without a branch show too.
+  const all = await companyBranchOptions();
+  if (all.every((b) => u.shipmentBranches.includes(b.key))) return null;
+  return { branch: { $in: u.shipmentBranches } };
 }
 
 exports.listOrders = async (req, res) => {
@@ -655,6 +656,8 @@ async function createOneOrder(req, body) {
   const inner = { ...req, body };
   const data = pick(body, ORDER_EDITABLE);
   applyPaymentSubtype(data);
+  const branchError = await require('../utils/branchList').applyBranchList(data);
+  if (branchError) { const e = new Error(branchError); e.status = 400; throw e; }
 
   await resolveInlineCustomer(inner, data);
 
@@ -869,6 +872,8 @@ exports.updateOrder = async (req, res) => {
       for (const f of MONEY_FIELDS) delete data[f];
     }
     try { applyPaymentSubtype(data); } catch (e) { return res.status(400).json({ message: e.message }); }
+    const branchError = await require('../utils/branchList').applyBranchList(data, order);
+    if (branchError) return res.status(400).json({ message: branchError });
 
     // An edit can introduce a first-time customer or a fresh truck exactly like
     // the create form — the same inline registration applies.

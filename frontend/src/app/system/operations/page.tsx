@@ -1794,7 +1794,7 @@ export default function OperationsWorkflowPage() {
                       const spanCls = (field: keyof Workflow, color: string) =>
                         `${color} ${!isEditing && !SYSTEM_FIELDS.has(field as string) && !locked && owns(field) ? editableClass : ''}`;
                       // حقول كشف التخريج المسحوبة من النظام الخارجي غير قابلة للتعديل
-                      const systemPulledFields = new Set(['fromLocation', 'toLocation', 'purchaseValue', 'branch', 'carOwner', 'carNumber', 'ownerType']);
+                      const systemPulledFields = new Set(['fromLocation', 'toLocation', 'purchaseValue', 'carOwner', 'carNumber', 'ownerType']);
                       const textCell = (field: keyof Workflow, color = 'text-slate-700') => {
                         const isSystemPulled = (systemPulledFields.has(field as string) && wf.reportNumber) || !owns(field);
                         return (
@@ -1991,7 +1991,7 @@ export default function OperationsWorkflowPage() {
                         {dateCell('reportDate')}
                         {textCell('fromLocation')}
                         {textCell('toLocation')}
-                        {textCell('branch')}
+                        {lookupCell('branch', 'workflow_paying_branch')}
                         {textCell('carOwner', 'text-slate-900')}
                         {textCell('carNumber')}
                         {statusCell()}

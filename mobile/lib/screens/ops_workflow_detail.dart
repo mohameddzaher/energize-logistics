@@ -8,6 +8,7 @@ import '../services/live.dart';
 import '../ui/app_scaffold.dart';
 import '../ui/customs_link.dart';
 import '../ui/export_sheet.dart';
+import '../ui/lookup_field.dart';
 import '../ui/report_follow_ups.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
@@ -371,6 +372,7 @@ class _OpsWorkflowDetailScreenState extends State<OpsWorkflowDetailScreen> {
     if (editable) {
       final ctrl = _ctrl[f.$1]!;
       if (f.$1 == 'username') return OpsCustomerField(controller: ctrl, label: label);
+      if (f.$1 == 'branch' || f.$1 == 'payingBranch') return LookupField(type: 'workflow_paying_branch', controller: ctrl, label: label, noAdd: true);
       if (f.$4 == 'date') {
         return TextField(
           controller: ctrl,

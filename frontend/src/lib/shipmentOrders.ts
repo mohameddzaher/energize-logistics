@@ -235,7 +235,9 @@ export const CORE_FIELD_KEYS = new Set(['fromCity', 'toCity', 'sellPrice', 'pick
 // on its admin-listed routes, so the UI must too or granted roles see dead
 // screens). Pass the USER, not the role string: only the user carries grants.
 import { canEditSection, roleOf, permsOf, type RoleOrUser } from './sections';
-export const SO_EDIT_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_staff', 'moderator'];
+// Mirrors EDIT_ROLES in backend/src/routes/shipmentOrders.js: the section team and data roles create shipments, customers and suppliers.
+export const SO_EDIT_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_staff', 'moderator',
+  'shipment_orders_manager', 'shipment_orders_staff', 'shipment_orders_followup', 'data_manager', 'data_analyst', 'data_entry'];
 export const SO_ADMIN_ROLES = ['super_admin', 'admin', 'it_manager', 'operations_manager'];
 /** دمجُ المورّدين بالدور وحده — نظيرُ authorize.strict في الخادم (لا يُتراجَع عنه). */
 export const canMergeSuppliers = (u: RoleOrUser) => [...SO_ADMIN_ROLES, 'shipment_orders_manager'].includes(roleOf(u));

@@ -1506,7 +1506,7 @@ exports.createWorkflow = async (req, res) => {
   try {
     const filteredBody = filterFieldsByRole(req.body, req.user.role, await fieldsForRole(req.user.role));
     if (filteredBody.username !== undefined) {
-      const chk = require('../utils/approvedCustomerName').checkCustomerName(filteredBody.username, '');
+      const chk = await require('../utils/approvedCustomerName').checkCustomerName(filteredBody.username, '');
       if (chk.error) return res.status(400).json({ code: 'CUSTOMER_NOT_APPROVED', message: chk.error });
       filteredBody.username = chk.value;
     }
@@ -1726,8 +1726,12 @@ async function setSellingValue(id, raw, user, { ip, note } = {}) {
 exports.setSellingValue = setSellingValue;
 
 /** GET /customer-names — the approved customer names for the «العميل» picker. */
-exports.customerNames = (req, res) => {
-  res.json({ names: require('../utils/approvedCustomerName').approvedNames() });
+exports.customerNames = async (req, res) => {
+  try {
+    res.json({ names: await require('../utils/approvedCustomerName').approvedNames() });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to load customer names' });
+  }
 };
 
 exports.updateWorkflow = async (req, res) => {
@@ -1765,7 +1769,7 @@ exports.updateWorkflow = async (req, res) => {
     }
 
     if (filteredBody.username !== undefined) {
-      const chk = require('../utils/approvedCustomerName').checkCustomerName(filteredBody.username, workflow.username);
+      const chk = await require('../utils/approvedCustomerName').checkCustomerName(filteredBody.username, workflow.username);
       if (chk.error) return res.status(400).json({ code: 'CUSTOMER_NOT_APPROVED', message: chk.error });
       filteredBody.username = chk.value;
     }
@@ -2374,7 +2378,7 @@ exports.bulkUpdate = async (req, res) => {
       refused.push('sellingValue');
     }
     if (patch.username !== undefined) {
-      const chk = require('../utils/approvedCustomerName').checkCustomerName(patch.username, '');
+      const chk = await require('../utils/approvedCustomerName').checkCustomerName(patch.username, '');
       if (chk.error) return res.status(400).json({ code: 'CUSTOMER_NOT_APPROVED', message: chk.error });
       patch.username = chk.value;
     }

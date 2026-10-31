@@ -24,7 +24,8 @@ const authorize = require('../middleware/rbac');
 // العميل) يبقى لقائمة الإدارة، وشرائحُ السعر لحارسها في المتحكِّم.
 // والمندوبُ يعدّل بياناتِ العميل كذلك — والأسعارُ ليست منها: يحرسها المتحكِّم
 // لمدير العمليّات ومدير النظام وحدَهما (customerRoutes.canEditPrices).
-const EDIT_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_staff', 'moderator', 'sales_manager', 'sales_rep'];
+const EDIT_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_staff', 'moderator', 'sales_manager', 'sales_rep',
+  'shipment_orders_manager', 'shipment_orders_staff', 'shipment_orders_followup', ...require('../config/roles').DATA_ROLES];
 const ADMIN_ROLES = ['super_admin', 'admin', 'it_manager', 'operations_manager'];
 
 router.use(authenticate);

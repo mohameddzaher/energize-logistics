@@ -1118,7 +1118,8 @@ ResourceConfig b2cRepsCfg({required bool canEdit}) => ResourceConfig(
 // على `/api/customer-registry`: كانت الكتابةُ على نقطة طلبات الشحنات المحروسةِ
 // بقسمها، فمن يفتح السجلَّ من قسمٍ آخر يُردّ ٤٠٣ عند أوّل حفظ. ومن يعدّل ومن
 // يزيل يقرّرهما الدورُ كما على الويب (`canEditCustomers`): تُمرَّران من القائمة.
-const customerEditRoles = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_staff', 'moderator', 'sales_manager', 'sales_rep'];
+const customerEditRoles = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_staff', 'moderator', 'sales_manager', 'sales_rep',
+  'shipment_orders_manager', 'shipment_orders_staff', 'shipment_orders_followup', 'data_manager', 'data_analyst', 'data_entry'];
 const customerRemoveRoles = ['super_admin', 'admin', 'it_manager', 'operations_manager'];
 
 ResourceConfig customersRegisterCfg({required bool canEdit, required bool canDelete}) => ResourceConfig(

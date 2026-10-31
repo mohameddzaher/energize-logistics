@@ -1,6 +1,6 @@
 /**
- * The owner's corrected customer names (config/approvedCustomers) as the only values
- * a person may type into a customer-name field. Platform sync and imports are not gated.
+ * The owner's corrected customer names (config/approvedCustomers) plus the customers page
+ * are the only values a person may put in a customer-name field. Platform sync and imports are not gated.
  */
 const fold = (s) => require('../models/CollectionsParty').fold(String(s || ''));
 
@@ -16,17 +16,31 @@ const index = () => {
   return byKey;
 };
 
+/** Customers added or renamed by a person on the customers page count as approved too. */
+const registerNames = async () => {
+  const rows = await require('../models/ShipmentOrderCustomer')
+    .find({ isActive: { $ne: false }, $or: [{ externalId: { $in: [null, ''] } }, { nameManual: true }] })
+    .select('name').lean();
+  return rows.map((r) => r.name).filter(Boolean);
+};
+
+const allNames = async () => {
+  const map = new Map(index());
+  for (const n of await registerNames()) { const k = fold(n); if (k && !map.has(k)) map.set(k, n); }
+  return map;
+};
+
 /** Sorted list for pickers. */
-const approvedNames = () => [...index().values()].sort((a, b) => a.localeCompare(b, 'ar'));
+const approvedNames = async () => [...(await allNames()).values()].sort((a, b) => a.localeCompare(b, 'ar'));
 
 /**
  * Validate a typed name against the current value. Returns { value } (approved spelling)
  * or { error }. An unchanged value passes so old rows can still be saved.
  */
-const checkCustomerName = (next, current) => {
+const checkCustomerName = async (next, current) => {
   const v = String(next ?? '').trim();
   if (!v || fold(v) === fold(current)) return { value: v || next };
-  const hit = index().get(fold(v));
+  const hit = (await allNames()).get(fold(v));
   return hit ? { value: hit } : { error: `«${v}» ليس من أسماء العملاء المعتمدة — اختر الاسم من القائمة.` };
 };
 

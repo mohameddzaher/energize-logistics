@@ -5,10 +5,10 @@ import 'hr_quick.dart';
 
 /// «العميل» in the operations workflow: picked from the approved customer names, never typed.
 /// Mirrors web CustomerNamePicker; the server refuses other names (CUSTOMER_NOT_APPROVED).
-Future<List<String>>? _names;
-Future<List<String>> _loadNames() => _names ??= Api.instance.get('/api/workflows/customer-names')
+// Read on every open, so a customer added a moment ago is listed.
+Future<List<String>> _loadNames() => Api.instance.get('/api/workflows/customer-names')
     .then((d) => List<String>.from(((d as Map)['names'] as List? ?? const []).map((e) => '$e')))
-    .catchError((_) { _names = null; return <String>[]; });
+    .catchError((_) => <String>[]);
 
 class OpsCustomerField extends StatefulWidget {
   final TextEditingController controller;

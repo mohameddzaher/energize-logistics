@@ -15,7 +15,7 @@ import '../ui/theme.dart';
 
 /// الأدوارُ نفسُها في routes/shipmentOrders.js — أو منحةُ «تعديل» من مصفوفة الصلاحيات.
 const soEditRoles = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_staff', 'moderator',
-  'shipment_orders_manager', 'shipment_orders_staff', 'shipment_orders_followup'];
+  'shipment_orders_manager', 'shipment_orders_staff', 'shipment_orders_followup', 'data_manager', 'data_analyst', 'data_entry'];
 const soAdminRoles = ['super_admin', 'admin', 'it_manager', 'operations_manager'];
 bool canEditOrders(BuildContext c) {
   final a = c.read<AuthProvider>();

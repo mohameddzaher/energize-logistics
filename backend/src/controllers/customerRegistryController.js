@@ -64,7 +64,7 @@ async function sheetTotals() {
  */
 async function orderTotals() {
   const rows = await ShipmentOrder.aggregate([
-    { $match: { source: { $ne: 'platform' } } },
+    { $match: { source: { $ne: 'platform' }, graduationNumber: null } },
     { $group: { _id: '$customerName', orders: { $sum: 1 }, last: { $max: '$createdAt' } } },
   ]).allowDiskUse(true);
   const by = new Map();

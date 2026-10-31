@@ -380,7 +380,16 @@ async function upsertShipments(ships, { force = false } = {}) {
   const CHUNK = 500;
   const writes = ops.filter(Boolean);
   for (let i = 0; i < writes.length; i += CHUNK) {
-    const res = await OperationsWorkflow.bulkWrite(writes.slice(i, i + CHUNK), { ordered: false });
+    let res;
+    try {
+      res = await OperationsWorkflow.bulkWrite(writes.slice(i, i + CHUNK), { ordered: false });
+    } catch (e) {
+      // A platform number that our own series already issued must not stop the
+      // rest of the sync; the row stays out and the log names it.
+      if (e.code !== 11000) throw e;
+      console.error('[ops-sync] manifest number already issued here:', e.message);
+      res = e.result || {};
+    }
     created += res.upsertedCount || 0;
     updated += res.modifiedCount || 0;
   }

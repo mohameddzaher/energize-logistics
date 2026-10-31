@@ -1820,7 +1820,7 @@ export default function OperationsWorkflowPage() {
                       // مزامنة. فتُختار من قائمةٍ، وتُكتب في المنصّة نفسِها
                       // (راجع changeApplicationStatus) فتراها الشاشتان معًا.
                       const statusCell = () => {
-                        const fromPlatform = (wf as any).externalSource === 'ops_upl';
+                        const fromPlatform = (wf as any).externalSource === 'ops_upl' || !!(wf as any).shipmentOrder;
                         const canSet = owns('applicationStatus') && fromPlatform && !locked;
                         const busy = statusSaving === wf._id;
                         const st = SHIPMENT_STATUSES.find((s) => s.key === wf.applicationStatus);

@@ -361,9 +361,10 @@ async function afterShipmentSaved(orderId) {
   if (!o) return;
   await resolveShipments([o]);
   const doc = String(o.blNumber || '').trim() || String(o.containerNumber || '').trim();
-  if (o.source === 'platform' && o.externalId && doc) {
+  if (doc) {
     const OperationsWorkflow = require('../models/OperationsWorkflow');
-    const wf = await OperationsWorkflow.findOne({ externalId: String(o.externalId) }).select(REPORT_FIELDS).lean();
+    const wf = await OperationsWorkflow.findOne(o.source === 'platform' && o.externalId
+      ? { externalId: String(o.externalId) } : { shipmentOrder: o._id }).select(REPORT_FIELDS).lean();
     if (wf && !String(wf.documentNumber || '').trim()) {
       await OperationsWorkflow.updateOne({ _id: wf._id }, { $set: { documentNumber: doc } });
       await resolveReports([{ ...wf, documentNumber: doc }]);

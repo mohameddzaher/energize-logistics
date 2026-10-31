@@ -50,6 +50,7 @@ const announceOrderChange = (id) => {
   cache.clear('so:dashboard:');
   cache.clear('so:analytics:');
   emit('shipmentOrders:updated', id ? { id: String(id) } : {});
+  if (id) require('../services/shipmentOrderWorkflowLink').mirrorSoon(id);
 };
 
 const pick = (body, fields) => {
@@ -1397,8 +1398,7 @@ const Counter = require('mongoose').models.ShipmentOrderCounter
 exports.getCounter = async (req, res) => {
   try {
     const c = await Counter.findById('waybill').lean();
-    const seq = c ? c.seq : 499;
-    const next = Math.max(seq + 1, 500);
+    const next = (c ? c.seq : 0) + 1;
     res.json({ next, start: next });
   } catch (error) {
     res.status(500).json({ message: 'Failed to read the waybill counter' });
@@ -1410,8 +1410,7 @@ exports.updateCounter = async (req, res) => {
     const start = Number(req.body.start);
     if (!Number.isFinite(start)) return res.status(400).json({ message: 'رقم غير صالح' });
     const c = await Counter.findById('waybill').lean();
-    const seq = c ? c.seq : 499;
-    const next = Math.max(seq + 1, 500);
+    const next = (c ? c.seq : 0) + 1;
     if (start < next) {
       return res.status(400).json({ message: `لا يقلّ عن ${next} — الأرقام التي صُرفت لا تُعاد` });
     }

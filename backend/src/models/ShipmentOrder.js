@@ -1,36 +1,21 @@
 const mongoose = require('mongoose');
 
-// One shipment created NATIVELY in our system — the trial replacement for
-// creating shipments on the external UPL operations platform.
-//
-// Deliberately independent of the Operations Platform section: no upl ids, no sync,
-// no shared collections. The section is an experiment; if it proves out, the
-// team moves its work here and the integration becomes the thing that gets
-// retired — not the other way around.
+// One shipment: created here (`source: 'system'`) or copied from the operations
+// platform. Both carry a manifest number and have a row in the operations workflow.
 const routeStop = { type: String, trim: true, default: '' };
 
 const shipmentOrderSchema = new mongoose.Schema(
   {
-    // رقم البوليصة — the waybill number. What the dispatch flow used to call
-    // كشف التخريج; the correct commercial name is بوليصة, so that is the name
-    // here. Auto-issued from a counter that starts at 500 (matching where the
-    // old manual numbering left off) and never reused, even after deletes.
+    // Waybill number, equal to the manifest number on shipments created here.
+    // Issued from a counter and never reused, even after deletes.
     waybillNumber: { type: Number, unique: true, sparse: true, index: true },
 
-    // ── من أين جاءت هذه الشحنة؟ ─────────────────────────────────────────────
-    // شحناتُ المنصّة تحمل «رقم كشف التخريج» وهو رقمُها الرسميّ الذي يُحاسَب
-    // عليه، وشحناتُنا تحمل رقمَ بوليصتنا. ولو اختلطا في خانةٍ واحدة صار الرقمُ
-    // الواحد لشحنتين — إحداهما تجريبيّةٌ عندنا والأخرى حقيقيّةٌ عندهم.
-    //
-    // فالمرجعُ المعروض يحمل حرفًا يسبقه حين يكون من عندنا («E-500»)، ورقمَ
-    // كشف التخريج عاريًا حين يكون منهم («86039»). يُقرأ الفرقُ بالعين قبل
-    // الفلتر، ويُفلتَر عليه بـ`source`.
     source: { type: String, enum: ['system', 'platform'], default: 'system', index: true },
-    /** رقمُ كشف التخريج كما تعطيه المنصّة — للشحنات المنقولة وحدَها. */
+    /** Manifest number, one series across platform and system shipments. */
     graduationNumber: { type: Number, default: null, index: true },
     /** معرّفُ المنصّة: به تُطابَق إعادةُ المزامنة فلا تُكرِّر. */
     externalId: { type: String, trim: true, default: '', index: true },
-    /** الرقمُ المعروض: «E-500» لنا، و«86039» لهم. */
+    /** The number as shown: the manifest number. */
     reference: { type: String, trim: true, default: '', index: true },
 
     // ── الاستلام والتسليم ──────────────────────────────────────────────────
@@ -189,42 +174,28 @@ const counterSchema = new mongoose.Schema({ _id: String, seq: Number });
 const Counter = mongoose.models.ShipmentOrderCounter
   || mongoose.model('ShipmentOrderCounter', counterSchema);
 
-/**
- * الحرفُ الذي يسبق أرقامَنا.
- *
- * المنصّةُ تُرقّم كشوفَ التخريج بأرقامٍ عارية، ونحن نُنشئ شحناتٍ في نظامنا —
- * تجريبيّةً اليوم وحقيقيّةً غدًا. وبغير علامةٍ فارقة يصير الرقمُ ٥٠٠ لشحنتين.
- * فيُسبَق رقمُنا بحرف، ويبقى ترقيمُهم كما هو فيكملون عليه حين ينتقلون.
- */
-const SYSTEM_PREFIX = process.env.SO_PREFIX || 'E';
-
-shipmentOrderSchema.pre('save', function (next) {
-  // المرجعُ يُشتقّ دائمًا ولا يُدخَل: خانةٌ يكتبها إنسانٌ تفترق عن مصدرها.
-  if (this.source === 'platform') this.reference = this.graduationNumber != null ? String(this.graduationNumber) : '';
-  else if (this.waybillNumber != null) this.reference = `${SYSTEM_PREFIX}-${this.waybillNumber}`;
-  next();
-});
-
 shipmentOrderSchema.pre('save', async function (next) {
-  // شحنةُ المنصّة لها رقمُها منها — لا يُصرف لها رقمٌ من عدّادنا.
   if (this.source === 'platform') return next();
   if (this.isNew && this.waybillNumber == null) {
     try {
-      const c = await Counter.findOneAndUpdate(
-        { _id: 'waybill' },
-        // First issue lands on 500 — the requested starting point.
-        { $inc: { seq: 1 } },
-        { new: true, upsert: true, setDefaultsOnInsert: true },
-      );
-      if (c.seq < 500) {
-        c.seq = 500;
-        await c.save();
-      }
+      // Continues the platform's manifest series. The platform can still issue
+      // numbers until it is switched off, so the counter never trails its highest.
+      const top = await this.constructor.findOne({ source: 'platform', graduationNumber: { $ne: null } })
+        .sort({ graduationNumber: -1 }).select('graduationNumber').lean();
+      if (top) await Counter.updateOne({ _id: 'waybill' }, { $max: { seq: top.graduationNumber } }, { upsert: true });
+      const c = await Counter.findOneAndUpdate({ _id: 'waybill' }, { $inc: { seq: 1 } }, { new: true, upsert: true });
       this.waybillNumber = c.seq;
+      this.graduationNumber = c.seq;
     } catch (e) {
       return next(e);
     }
   }
+  next();
+});
+
+shipmentOrderSchema.pre('save', function (next) {
+  // Derived, never typed: the shown reference is the manifest number.
+  this.reference = this.graduationNumber != null ? String(this.graduationNumber) : '';
   next();
 });
 

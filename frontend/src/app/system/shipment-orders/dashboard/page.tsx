@@ -728,7 +728,6 @@ export default function ShipmentOrdersDashboardPage() {
             <Ratio label={t('شاحنات في السجل', 'Trucks on file')} value={money(fleet?.vehicles ?? 0)} href="/system/shipment-orders/fleet"
               hint={fleet?.gaps?.unknown ? t(`${money(fleet.gaps.unknown)} مجهولة المالك`, `${money(fleet.gaps.unknown)} owner unknown`) : undefined} />
             <Ratio label={t('السوّاق', 'Drivers')} value={money(fleet?.drivers ?? 0)} href="/system/shipment-orders/fleet" />
-            <Ratio label={t('الخاص بنا / المنصّة', 'Ours / platform')} value={`${money(P.ours)} / ${money(P.platform)}`} href={listHref('source=system')} />
             <Ratio label={t('ملاحظات المتابعة', 'Follow-up notes')} value={money(P.followUpNotes)} tone="#0369a1" href={LIST}
               hint={t(`على ${money(P.followUpShipments)} شحنة`, `on ${money(P.followUpShipments)} loads`)} />
             <Ratio label={t('عملاء في الفترة', 'Customers served')} value={money(T.customers)} href="/system/shipment-orders/customers" />

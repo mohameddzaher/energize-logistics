@@ -99,7 +99,7 @@ function ShipmentOrdersInner() {
 
   const [orders, setOrders] = useState<ShipmentOrder[]>([]);
   const [customers, setCustomers] = useState<OrderCustomer[]>([]);
-  const [stats, setStats] = useState<{ byStatus: Record<string, number>; sellTotal: number; buyTotal: number; bySource?: { system: number; platform: number; total: number } } | null>(null);
+  const [stats, setStats] = useState<{ byStatus: Record<string, number>; sellTotal: number; buyTotal: number } | null>(null);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -130,7 +130,6 @@ function ShipmentOrdersInner() {
   // شحناتُ المنصّة تحمل رقمَ كشف تخريجٍ حقيقيًّا يُحاسَب عليه، وشحناتُنا —
   // تجريبيّةً اليوم — يسبق رقمَها حرف. ومن يقرأ تقريرًا يجب أن يعرف أهو عن
   // عملٍ جرى أم عن تجربة.
-  const [sourceFilter, setSourceFilter] = useState(() => sp?.get('source') || '');
   const [customerFilter, setCustomerFilter] = useState(() => sp?.get('customer') || '');
   const [fromDate, setFromDate] = useState(() => sp?.get('from') || '');
   const [toDate, setToDate] = useState(() => sp?.get('to') || '');
@@ -266,7 +265,6 @@ function ShipmentOrdersInner() {
       // «إلى» ما وصلت إليه شحناتُ جدة فقط — وهذا ما يفعله إكسل.
       colParams(qs, field);
       if (statusFilter) qs.set('status', statusFilter);
-      if (sourceFilter) qs.set('source', sourceFilter);
       if (customerFilter) qs.set('customer', customerFilter);
       if (fromDate) qs.set('from', fromDate);
       if (toDate) qs.set('to', toDate);
@@ -278,7 +276,7 @@ function ShipmentOrdersInner() {
       setColOptions((p) => ({ ...p, [field]: d }));
     } catch { /* تُترَك القائمةُ كما هي */ }
     finally { if (colSeq.current[field] === seq) setColLoading((p) => ({ ...p, [field]: false })); }
-  }, [colParams, statusFilter, sourceFilter, customerFilter, fromDate, toDate, dateBy, customsOnly]);
+  }, [colParams, statusFilter, customerFilter, fromDate, toDate, dateBy, customsOnly]);
 
   const load = useCallback(async () => {
     const mine = guard.begin();
@@ -287,7 +285,6 @@ function ShipmentOrdersInner() {
       colParams(qs);
       if (debounced.trim()) qs.set('q', debounced.trim());
       if (statusFilter) qs.set('status', statusFilter);
-      if (sourceFilter) qs.set('source', sourceFilter);
       if (customerFilter) qs.set('customer', customerFilter);
       if (fromDate) qs.set('from', fromDate);
       if (toDate) qs.set('to', toDate);
@@ -302,7 +299,7 @@ function ShipmentOrdersInner() {
       setError('');
     } catch (e: any) { setError(e?.message || 'Request failed'); }
     setLoading(false);
-  }, [debounced, statusFilter, sourceFilter, customerFilter, fromDate, toDate, dateBy, customsOnly, noteFilter, page, pageSize, colParams, guard]);
+  }, [debounced, statusFilter, customerFilter, fromDate, toDate, dateBy, customsOnly, noteFilter, page, pageSize, colParams, guard]);
 
   useEffect(() => { load(); }, [load]);
   useSocket('shipmentOrders:updated', useCallback(() => load(), [load]));
@@ -384,7 +381,6 @@ function ShipmentOrdersInner() {
   // والفرعَ — الملفُّ يُفتح خارج النظام ويُقرأ وحدَه.
   const exportColumns: ExportColumn[] = [
     { header: 'Reference', key: 'reference', width: 12, transform: (v: any, r: any) => v || r?.waybillNumber || '' },
-    { header: 'Source', key: 'source', width: 10, transform: (v: any) => (v === 'platform' ? 'platform' : 'ours') },
     { header: 'Customer', key: 'customerName', width: 26 },
     { header: 'Supplier', key: 'supplierName', width: 26 },
     { header: 'From', key: 'fromCity', width: 14 },
@@ -411,7 +407,6 @@ function ShipmentOrdersInner() {
       colParams(qs);
       if (debounced.trim()) qs.set('q', debounced.trim());
       if (statusFilter) qs.set('status', statusFilter);
-      if (sourceFilter) qs.set('source', sourceFilter);
       if (customerFilter) qs.set('customer', customerFilter);
       if (fromDate) qs.set('from', fromDate);
       if (toDate) qs.set('to', toDate);
@@ -422,7 +417,7 @@ function ShipmentOrdersInner() {
     const d = await api.get<{ orders: ShipmentOrder[]; total: number }>(`/api/shipment-orders/orders?${qs}`);
     return [{ name: 'Orders', rows: d.orders || [], columns: exportColumns }];
   };
-  const hasActiveFilters = !!(debounced.trim() || statusFilter || sourceFilter || customerFilter || fromDate || toDate || customsOnly);
+  const hasActiveFilters = !!(debounced.trim() || statusFilter || customerFilter || fromDate || toDate || customsOnly);
   const scope = exportScopeLabels(ar);
   const exportOptions = [
     { key: 'page', label: scope.page, sheets: [{ name: 'Orders', rows: orders, columns: exportColumns }] },
@@ -445,7 +440,7 @@ function ShipmentOrdersInner() {
     // بالفرق بين المستطيلين لا بـoffsetLeft — يصحّ في الاتّجاهين (RTL وLTR).
     strip.scrollBy({ left: (cr.left - sr.left) - (sr.width - cr.width) / 2, behavior: 'smooth' });
   }, [statuses]);
-  const secondaryActive = [noteFilter, sourceFilter, customerFilter, fromDate, toDate].filter(Boolean).length;
+  const secondaryActive = [noteFilter, customerFilter, fromDate, toDate].filter(Boolean).length;
 
   if (loading) return <Spinner />;
 
@@ -591,32 +586,6 @@ function ShipmentOrdersInner() {
         {/* ── وفلترُ الملاحظة ──────────────────────────────────────────────
             «أرِني ما كُتبت عليه ملاحظة» سؤالٌ يُسأل قبل الطباعة: البوليصةُ
             تحمل الملاحظة، فيُراجَع ما سيُطبَع فيها. */}
-        <div className="inline-flex rounded-lg bg-slate-100 p-1 gap-1 shrink-0">
-          {([
-            ['', ar ? 'الكل' : 'All'],
-            ['yes', ar ? 'لها ملاحظة' : 'With note'],
-            ['no', ar ? 'بلا ملاحظة' : 'No note'],
-          ] as [string, string][]).map(([k, label]) => (
-            <button key={k || 'all-note'} type="button" onClick={() => setNoteFilter(k)}
-              className={`px-3 py-1.5 rounded-md text-[13px] font-semibold transition-colors ${noteFilter === k ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>
-              {label}
-            </button>
-          ))}
-        </div>
-        <div className="inline-flex rounded-lg bg-slate-100 p-1 gap-1 shrink-0">
-          {([
-            ['', ar ? 'الكل' : 'All', stats?.bySource?.total],
-            ['system', ar ? 'الخاص بنا' : 'Ours', stats?.bySource?.system],
-            ['platform', ar ? 'المنصّة' : 'Platform', stats?.bySource?.platform],
-          ] as [string, string, number | undefined][]).map(([k, label, count]) => (
-            <button key={k || 'all'} type="button" onClick={() => { setSourceFilter(k); setPage(1); }}
-              className={`px-3 py-1.5 rounded-md text-xs font-semibold whitespace-nowrap transition-colors ${
-                sourceFilter === k ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>
-              {label}
-              {count != null && <span className="ms-1 text-slate-400 tabular-nums">{count}</span>}
-            </button>
-          ))}
-        </div>
         <div className="w-56 grow sm:grow-0">
           <Select value={customerFilter} onChange={(e) => { setCustomerFilter(e.target.value); setPage(1); }}>
             <option value="">{ar ? 'كل العملاء' : 'All customers'}</option>
@@ -759,13 +728,8 @@ function ShipmentOrdersInner() {
                       checked={picked.has(o._id)} onChange={() => togglePick(o._id)}
                       aria-label={String(o.waybillNumber)} />
                   </td>
-                  {/* المرجعُ لا الرقمُ الخام: «E-500» لنا و«86039» لهم — يُقرأ
-                      الفرقُ بالعين قبل أن يُفلتَر. */}
                   <td className="px-4 py-3 text-slate-900 font-bold font-mono whitespace-nowrap">
                     {(o as any).reference || o.waybillNumber}
-                    {(o as any).source === 'platform' && (
-                      <span className="ms-1.5 text-[10px] font-normal text-slate-400">{ar ? 'منصّة' : 'platform'}</span>
-                    )}
                   </td>
                   <td className="px-4 py-3 text-slate-900 font-medium max-w-[220px] truncate" title={o.customerName}>{o.customerName || '—'}</td>
                   <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{o.fromCity || '—'}</td>
@@ -970,7 +934,6 @@ function ShipmentOrdersInner() {
                   <Row k={ar ? 'الاسم' : 'Name'} v={d.customerName} />
                   <Row k={ar ? 'الجوال' : 'Phone'} v={cust?.phone} />
                   <Row k={ar ? 'الفرع' : 'Branch'} v={d.branch} />
-                  <Row k={ar ? 'المصدر' : 'Source'} v={(d as any).source === 'platform' ? (ar ? 'منصّة التشغيل' : 'Operations platform') : (ar ? 'النظام' : 'System')} />
                   <Row k={ar ? 'أنشأها' : 'Created by'} v={typeof d.createdBy === 'object' && d.createdBy ? `${d.createdBy.firstName || ''} ${d.createdBy.lastName || ''}`.trim() : ''} />
                   <Row k={ar ? 'تاريخ الإنشاء' : 'Created at'} v={fmtDT(d.createdAt, lang as Lang)} />
                 </Group>

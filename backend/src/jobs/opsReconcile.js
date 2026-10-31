@@ -62,7 +62,8 @@ async function reconcileOnce({ log = true, apply = true } = {}) {
     const OperationsWorkflow = require('../models/OperationsWorkflow');
     const ShipmentOrder = require('../models/ShipmentOrder');
 
-    const wf = await OperationsWorkflow.find({}).select('reportNumber').lean();
+    // Platform rows only: a row created on our system is on no platform page.
+    const wf = await OperationsWorkflow.find({ externalSource: 'ops_upl' }).select('reportNumber').lean();
     const gone = wf.filter((d) => !nums.has(String(d.reportNumber).trim())).map((d) => d._id);
     // شحناتُنا (`source: 'system'`) لا معرّفَ خارجيًّا لها ولا تُمسّ أبدًا.
     const so = await ShipmentOrder.find({ source: 'platform' }).select('externalId').lean();

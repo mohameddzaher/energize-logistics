@@ -288,7 +288,7 @@ function myShipments(data) {
   const platform = (data.platform || []).filter((r) => !isCancelled(r.status) && !isCancelled(r.executionStatus));
   const platformNos = new Set(platform.map((r) => String(r.waybillNumber || '')).filter(Boolean));
   const orders = (data.orders || []).filter((r) => !isCancelled(r.status)
-    && !(r.source === 'platform' && r.graduationNumber != null && platformNos.has(String(r.graduationNumber))));
+    && !(r.graduationNumber != null && platformNos.has(String(r.graduationNumber))));
   const fleet = (data.fleet || []).filter((r) => !isCancelled(r.status));
   return [
     ...platform.map((r) => publicRow('platform', r)),

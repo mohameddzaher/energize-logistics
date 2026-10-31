@@ -153,6 +153,8 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
   bool get _canEditAccReview => _full || _has('accountingReview');
   bool get _canSeeSelling => _has('sellingValue') || _seesSelling;
   bool _owns(String f) => _myFields == null || _full || _myFields!.contains(f);
+  // Platform rows and rows owned by a shipment created here both have a status to change.
+  bool _hasStatus(Map w) => (w['externalSource'] ?? '') == 'ops_upl' || (w['shipmentOrder'] ?? '').toString().isNotEmpty;
 
   @override
   void initState() {
@@ -451,7 +453,7 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
 
   /// حالةُ الطلب — تُكتب في منصّة التشغيل أوّلًا ثمّ تعود (لا تفاؤل هنا).
   Future<void> _changeAppStatus(Map<String, dynamic> w) async {
-    if ((w['externalSource'] ?? '') != 'ops_upl') {
+    if (!_hasStatus(w)) {
       opsSnack(context, tr('كشفٌ ليس من منصّة التشغيل', 'Not a platform shipment'));
       return;
     }
@@ -497,7 +499,7 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
       if (!locked) (Icons.edit_outlined, tr('تعديل', 'Edit'), T.navy, () => _openDetail(w, edit: true)),
       if (!locked && _owns('paymentType')) (Icons.swap_horiz_rounded, tr('تغيير نوع الدفع', 'Change payment type'), T.violet, () => _editPaymentType(w)),
       if (!locked && _canSeeSelling) (Icons.sell_outlined, tr('تعديل قيمة البيع', 'Edit selling value'), T.success, () => _editSelling(w)),
-      if (!locked && (w['externalSource'] ?? '') == 'ops_upl' && _owns('applicationStatus'))
+      if (!locked && _hasStatus(w) && _owns('applicationStatus'))
         (Icons.flag_outlined, tr('تغيير حالة الطلب', 'Change status'), T.info, () => _changeAppStatus(w)),
       if (!locked && _canEditOpsReview)
         (Icons.fact_check_outlined, (w['operationsReview'] ?? '').toString().isNotEmpty ? tr('إزالة مراجعة التشغيل', 'Clear ops review') : tr('تمّت مراجعة التشغيل', 'Mark ops reviewed'), T.warn, () => _toggleReview(w, 'operationsReview')),
@@ -1067,7 +1069,7 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
                         onTap: () => _changeAppStatus(w),
                         child: _statusSaving.contains(id)
                             ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                            : Chip2(tr(appSt.$1, appSt.$2), appSt.$3, icon: (w['externalSource'] ?? '') == 'ops_upl' ? Icons.unfold_more : null),
+                            : Chip2(tr(appSt.$1, appSt.$2), appSt.$3, icon: _hasStatus(w) ? Icons.unfold_more : null),
                       ),
                     if (ptype.isNotEmpty) Chip2(ptype, T.violet),
                     if (w['purchaseValue'] != null && w['purchaseValue'] != 0) Chip2('${tr('شراء', 'buy')} ${opsMoney(w['purchaseValue'])}', T.inkSoft),

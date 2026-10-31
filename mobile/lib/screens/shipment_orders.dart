@@ -69,7 +69,6 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
   String _q = '';
   Timer? _debounce;
   final Set<String> _statuses = {};
-  String _source = '';
   String _note = '';
   String _customer = '';
   String _from = '';
@@ -129,7 +128,6 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
     });
     if (withSearch && _q.trim().isNotEmpty) add('q', _q.trim());
     if (_statuses.isNotEmpty) add('status', _statuses.join(','));
-    if (_source.isNotEmpty) add('source', _source);
     if (_customer.isNotEmpty) add('customer', _customer);
     if (_from.isNotEmpty) add('from', _from);
     if (_to.isNotEmpty) add('to', _to);
@@ -210,7 +208,6 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
   // ── الملفُّ يحمل ما يحمله الجدول (أعمدةُ تصدير الويب) ──────────────────────
   List<ExportCol> get _exportCols => [
         ExportCol('المرجع', 'Reference', (r) => soRef(r)),
-        ExportCol('المصدر', 'Source', (r) => r['source'] == 'platform' ? 'platform' : 'ours'),
         ExportCol('العميل', 'Customer', (r) => r['customerName']),
         ExportCol('المورّد', 'Supplier', (r) => r['supplierName']),
         ExportCol('من', 'From', (r) => r['fromCity']),
@@ -229,7 +226,7 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
         ExportCol('ملاحظة', 'Note', (r) => r['notes']),
       ];
 
-  bool get _hasFilters => _q.trim().isNotEmpty || _statuses.isNotEmpty || _source.isNotEmpty || _customer.isNotEmpty || _from.isNotEmpty || _to.isNotEmpty;
+  bool get _hasFilters => _q.trim().isNotEmpty || _statuses.isNotEmpty || _customer.isNotEmpty || _from.isNotEmpty || _to.isNotEmpty;
 
   /// الصفحةُ الظاهرة، أو المطابِق كلُّه، أو الكلّ — كلُّ نطاقٍ يُجلَب من الخادم بحدّه.
   Future<void> _export(String scope) async {
@@ -546,7 +543,7 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
 
   /// كم فلترًا فاعلًا في اللوحة (الملاحظة، المصدر، العميل، التاريخان، الأعمدة).
   int get _sheetFilterCount =>
-      (_note.isNotEmpty ? 1 : 0) + (_source.isNotEmpty ? 1 : 0) + (_customer.isNotEmpty ? 1 : 0) +
+      (_note.isNotEmpty ? 1 : 0) + (_customer.isNotEmpty ? 1 : 0) +
       (_from.isNotEmpty ? 1 : 0) + (_to.isNotEmpty ? 1 : 0) + _colFilters.length;
 
   /// زرُّ «فلاتر» — برتقاليٌّ بعدّاده متى كان فيها فلترٌ فاعل.
@@ -584,7 +581,6 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
       isScrollControlled: true,
       builder: (sheetCtx) => StatefulBuilder(builder: (sheetCtx, setSheet) {
         void apply(VoidCallback change) { _refilter(change); setSheet(() {}); }
-        final src = _stats?['bySource'] as Map?;
         Widget title(String t) => Padding(padding: const EdgeInsets.only(top: 14, bottom: 6),
             child: Text(t, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: T.inkSoft)));
         return SafeArea(child: Padding(
@@ -594,7 +590,7 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
               Expanded(child: Text(tr('فلاتر', 'Filters'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16))),
               if (_sheetFilterCount > 0)
                 TextButton(
-                  onPressed: () => apply(() { _note = ''; _source = ''; _customer = ''; _from = ''; _to = ''; _colFilters.clear(); }),
+                  onPressed: () => apply(() { _note = ''; _customer = ''; _from = ''; _to = ''; _colFilters.clear(); }),
                   child: Text(tr('مسح الكل', 'Clear all')),
                 ),
             ]),
@@ -602,12 +598,6 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
             SingleChildScrollView(scrollDirection: Axis.horizontal, child: _seg(
                 [('', tr('الكل', 'All'), null), ('yes', tr('لها ملاحظة', 'With note'), null), ('no', tr('بلا ملاحظة', 'No note'), null)],
                 _note, (v) => apply(() => _note = v))),
-            title(tr('المصدر', 'Source')),
-            SingleChildScrollView(scrollDirection: Axis.horizontal, child: _seg([
-              ('', tr('الكل', 'All'), (src?['total'] as num?)?.toInt()),
-              ('system', tr('الخاص بنا', 'Ours'), (src?['system'] as num?)?.toInt()),
-              ('platform', tr('المنصّة', 'Platform'), (src?['platform'] as num?)?.toInt()),
-            ], _source, (v) => apply(() => _source = v))),
             title(tr('العميل', 'Customer')),
             DropdownButtonFormField<String>(
               initialValue: _customers.any((c) => c['_id'] == _customer) ? _customer : '',
@@ -666,10 +656,6 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
             )),
             const SizedBox(width: 6),
             Text(soRef(r), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14, fontFamily: 'monospace')),
-            if (r['source'] == 'platform') ...[
-              const SizedBox(width: 5),
-              Text(tr('منصّة', 'platform'), style: const TextStyle(fontSize: 10, color: T.inkFaint)),
-            ],
             const Spacer(),
             InkWell(
               onTap: editor ? () async { if (await soFollowUp(context, r, _vocab)) _load(); } : null,

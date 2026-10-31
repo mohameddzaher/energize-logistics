@@ -32,7 +32,7 @@ class _ShipmentOrdersAnalyticsScreenState extends State<ShipmentOrdersAnalyticsS
   bool _loading = true;
   String? _error;
   int _seq = 0;
-  String _from = '', _to = '', _status = '', _source = '', _q = '';
+  String _from = '', _to = '', _status = '', _q = '';
   String _tab = 'byCustomer';
   Timer? _debounce;
   final _searchCtrl = TextEditingController();
@@ -62,7 +62,6 @@ class _ShipmentOrdersAnalyticsScreenState extends State<ShipmentOrdersAnalyticsS
       if (_to.isNotEmpty) 'to=$_to',
       if (_status.isNotEmpty) 'status=$_status',
       if (_q.trim().isNotEmpty) 'q=${Uri.encodeQueryComponent(_q.trim())}',
-      if (_source.isNotEmpty) 'source=$_source',
     ];
     try {
       final d = await Api.instance.get('/api/shipment-orders/analytics?${p.join('&')}');
@@ -165,17 +164,6 @@ class _ShipmentOrdersAnalyticsScreenState extends State<ShipmentOrdersAnalyticsS
                         ),
                       ]),
                       const SizedBox(height: 6),
-                      SegmentedButton<String>(
-                        showSelectedIcon: false,
-                        segments: [
-                          ButtonSegment(value: '', label: Text(tr('الإجمالي', 'Total'))),
-                          ButtonSegment(value: 'system', label: Text(tr('الخاصّ بنا', 'Ours'))),
-                          ButtonSegment(value: 'platform', label: Text(tr('المنصّة', 'Platform'))),
-                        ],
-                        selected: {_source},
-                        onSelectionChanged: (v) => _refilter(() => _source = v.first),
-                      ),
-                      const SizedBox(height: 6),
                       Row(children: [
                         Expanded(child: SearchField(
                           controller: _searchCtrl,
@@ -185,7 +173,7 @@ class _ShipmentOrdersAnalyticsScreenState extends State<ShipmentOrdersAnalyticsS
                         IconButton(
                           tooltip: tr('مسح', 'Reset'),
                           icon: const Icon(Icons.restart_alt),
-                          onPressed: () { _debounce?.cancel(); _searchCtrl.clear(); _refilter(() { _from = ''; _to = ''; _status = ''; _q = ''; _source = ''; }); },
+                          onPressed: () { _debounce?.cancel(); _searchCtrl.clear(); _refilter(() { _from = ''; _to = ''; _status = ''; _q = ''; }); },
                         ),
                       ]),
                     ])),

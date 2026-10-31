@@ -531,6 +531,10 @@ if (!DOCS_ONLY) connectDB().then(async () => {
     startHrTransferAlerts();
     // Leave start/return flips the employee's work status on the day.
     try { require('./utils/leaveReturn').startLeaveReturnSync(); } catch (e) { console.error('[leave-sync] start:', e.message); }
+    // Customs nets are always derived now; legacy rows get a price that keeps their typed net.
+    require('./models/CustomsClearance').backfillDerivedPrices()
+      .then((k) => { if (k) console.log(`[customs] backfilled ${k} price(s) for derived nets`); })
+      .catch((e) => console.error('[customs] price backfill:', e.message));
     // لوحاتُ مؤشّرات CRM تُحسب في الخلف، فلا ينتظرها من يفتحها — راجع warmKpis.
     try { require('./controllers/crmKpiController').startKpiWarm(); } catch (e) { /* */ }
     // ملفّاتُ التصدير تُحذف بعد يوم — لقطةٌ للحظتها لا أرشيف.

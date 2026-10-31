@@ -663,7 +663,7 @@ const REGISTRY = [
      */
     ['customs_sale_item', 'بنود فاتورة العميل', 'Customer Invoice Items', [
       { key: 'transportInvoice', nameAr: 'فاتورة النقل', nameEn: 'Transport invoice' },
-      { key: 'dutyPaid', nameAr: 'الرسوم الجمركية', nameEn: 'Customs duty' },
+      { key: 'dutyPaid', nameAr: 'التخليص الجمركي', nameEn: 'Customs clearance' },
       { key: 'appointmentBooking', nameAr: 'حجز الموعد', nameEn: 'Appointment booking' },
     ]],
     ['customs_city', 'مدن التخليص', 'Customs Cities', [
@@ -939,11 +939,13 @@ const DEFAULT_RENAMES = [
   ['customs_payment_stage', 'portFeesPaid', 'سداد الموانى', 'سداد أجور الموانئ'],
   ['customs_payment_stage', 'unloadingFeesPaid', 'سداد التفريغ', 'سداد أجور التفريغ'],
   ['customs_payment_stage', 'containersReturned', 'الإرجاع', 'إرجاع الحاويات'],
+  // The invoice line is our clearance service, billed on its own — not the duty we pay.
+  ['customs_sale_item', 'dutyPaid', 'الرسوم الجمركية', 'التخليص الجمركي', 'Customs clearance'],
 ];
 const applyDefaultRenames = async () => {
   const Lookup = require('../models/Lookup');
-  for (const [type, key, from, to] of DEFAULT_RENAMES) {
-    const r = await Lookup.updateOne({ type, key, nameAr: from }, { $set: { nameAr: to } });
+  for (const [type, key, from, to, toEn] of DEFAULT_RENAMES) {
+    const r = await Lookup.updateOne({ type, key, nameAr: from }, { $set: { nameAr: to, ...(toEn ? { nameEn: toEn } : {}) } });
     if (r.modifiedCount) {
       await require('../services/customsLookupSync').lookupRenamed({ type, key, from, to }).catch(() => {});
     }

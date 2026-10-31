@@ -229,18 +229,12 @@ export default function CustomsDetailPage() {
     ['yardTransportNet', 'صافي نقل الساحة', 'Yard transport net'],
     ['yardPrice', 'سعر الساحة', 'Yard price'],
   ];
-  // ── وترتيبُ القراءة: السعرُ ثمّ صافيه ──────────────────────────────────────
-  // «سعر النقل» يُكتب و«صافي النقل» يُقرأ تحته محسوبًا، فيرى الموظّفُ أثرَ ما
-  // كتبه في اللحظة. والحقولُ المحسوبةُ لا تُفتَح للكتابة أصلًا.
-  // و«صافي النقل إلى الساحة» محسوبٌ متى كُتب سعرُه؛ وفي المعاملات القديمة (سعرٌ
-  // فارغ) يبقى خانةً تُكتب كما كان — الخادمُ لا يمسّه حينئذٍ.
+  // Each price is followed by its net, shown read-only.
+  // Every net is derived (price − cost); an empty price counts as 0.
   const yardSellRaw = c.revenue?.transportToYardSelling;
-  const yardSellSet = yardSellRaw !== null && yardSellRaw !== undefined && yardSellRaw !== '' && Number.isFinite(Number(yardSellRaw));
-  // Yard net = yard price − yard fees (costs), once the price is typed; legacy rows keep their stored net.
   const yardPriceRaw = c.revenue?.yardPrice;
-  const yardPriceSet = yardPriceRaw !== null && yardPriceRaw !== undefined && yardPriceRaw !== '' && Number.isFinite(Number(yardPriceRaw));
-  const COMPUTED_REVENUE = new Set(['transportNet', 'yardToCustomerNet', 'yardNet', ...(yardSellSet ? ['transportToYardNet'] : [])]);
-  // خاناتٌ فراغُها معنًى («لم يُكتب السعرُ بعد») لا صفر.
+  const COMPUTED_REVENUE = new Set(['transportNet', 'yardToCustomerNet', 'yardNet', 'transportToYardNet']);
+  // Empty means 'no price yet', not 0.
   const NULLABLE_REVENUE = new Set(['transportToYardSelling', 'yardPrice']);
   const COMPUTED_HINT: Record<string, [string, string]> = {
     transportNet: ['السعر − تكلفة النقل', 'price − cost'],
@@ -267,12 +261,8 @@ export default function CustomsDetailPage() {
   // مرآتُها لتُقرأ في اللحظة قبل الحفظ.
   const transportNet = Math.round((n(c.revenue?.transportSelling) - n(c.costs?.transport)) * 100) / 100;
   const yardToCustomerNet = Math.round((n(c.revenue?.yardToCustomerSelling) - n(c.costs?.transportYardToCustomer)) * 100) / 100;
-  const transportToYardNet = yardSellSet
-    ? Math.round((n(yardSellRaw) - n(c.costs?.transportToYard)) * 100) / 100
-    : n(c.revenue?.transportToYardNet);
-  const yardNet = yardPriceSet
-    ? Math.round((n(yardPriceRaw) - n(c.costs?.yardFees)) * 100) / 100
-    : n(c.revenue?.yardNet);
+  const transportToYardNet = Math.round((n(yardSellRaw) - n(c.costs?.transportToYard)) * 100) / 100;
+  const yardNet = Math.round((n(yardPriceRaw) - n(c.costs?.yardFees)) * 100) / 100;
   const revVal = (k: string) => (k === 'transportNet' ? transportNet
     : k === 'yardNet' ? yardNet
     : k === 'yardToCustomerNet' ? yardToCustomerNet

@@ -46,7 +46,9 @@ const fs = require('fs');
 const path = require('path');
 const mongoose = require('mongoose');
 const CustomsClearance = require('../models/CustomsClearance');
-const { STAGES, recomputeTotals, COST_KEYS, MARGIN_KEYS, readStages, lockReason } = require('../models/CustomsClearance');
+const { STAGES, recomputeTotals: recomputeRaw, seedPricesFromNets, COST_KEYS, MARGIN_KEYS, readStages, lockReason } = require('../models/CustomsClearance');
+// The sheet gives nets, not prices: seed the price so the derived net equals the sheet's.
+const recomputeTotals = (r) => recomputeRaw(seedPricesFromNets(r));
 
 // From October 2026 the customs team works on the system itself: those rows are never imported.
 const SYSTEM_FROM = { year: 2026, month: 10 };

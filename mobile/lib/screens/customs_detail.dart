@@ -1438,16 +1438,13 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
     );
   }
 
-  /// بنودُ الإيراد التي تُكتب بيد. والصوافي المحسوبة ليست منها: صافي النقل
-  /// = سعرُه ناقصَ تكلفته، يحسبه الخادمُ ولا يقبله من أحد (راجع recomputeTotals)؛
-  /// وصافي النقل إلى الساحة كذلك متى كُتب سعرُه، وإلّا بقي يُكتب كما كان.
+  /// Typed revenue lines. Every net (price − cost) is derived by the server (recomputeTotals) and shown read-only.
   Future<void> _editMargin(Map<String, dynamic> revenue, Map<String, dynamic> costs) async {
     String init(String k) => _nz(revenue, k) == 0 ? '' : _nz(revenue, k).toString();
     const plain = ['clearanceFee', 'transportSelling', 'yardToCustomerSelling', 'storageNet', 'securityScan', 'labour', 'transportDailies'];
-    final ctrls = {for (final k in [...plain, 'transportToYardNet']) k: TextEditingController(text: init(k))};
-    // فارغٌ على المعاملات القديمة (null) — والفراغُ معنًى لا صفر.
+    final ctrls = {for (final k in plain) k: TextEditingController(text: init(k))};
+    // Empty means 'no price yet' (null), and counts as 0 in the net.
     final yardSell = TextEditingController(text: revenue['transportToYardSelling'] == null ? '' : '${revenue['transportToYardSelling']}');
-    // Yard price: empty on legacy rows, where the typed yard net stays.
     final yardPrice = TextEditingController(text: revenue['yardPrice'] == null ? '' : '${revenue['yardPrice']}');
     String label(String k) {
       final it = _marginItems.firstWhere((x) => x.$1 == k);
@@ -1478,7 +1475,6 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
       builder: (c) => StatefulBuilder(
         builder: (c, setSt) {
           void refresh() => setSt(() {});
-          final yardSet = yardSell.text.trim().isNotEmpty;
           return SafeArea(
             child: Padding(
               padding: EdgeInsets.fromLTRB(16, 16, 16, MediaQuery.of(c).viewInsets.bottom + 16),
@@ -1501,10 +1497,7 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
                       decoration: InputDecoration(labelText: label('transportToYardSelling')),
                     ),
                   ),
-                  if (yardSet)
-                    computed('transportToYardNet', v(yardSell) - _nz(costs, 'transportToYard'))
-                  else
-                    input('transportToYardNet'),
+                  computed('transportToYardNet', v(yardSell) - _nz(costs, 'transportToYard')),
                   input('yardToCustomerSelling', onChanged: refresh),
                   computed('yardToCustomerNet', v(ctrls['yardToCustomerSelling']!) - _nz(costs, 'transportYardToCustomer')),
                   Padding(
@@ -1515,8 +1508,7 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
                       decoration: InputDecoration(labelText: label('yardPrice')),
                     ),
                   ),
-                  // Always computed: yard price − yard fees (a legacy row shows its stored net until a price is typed).
-                  computed('yardNet', yardPrice.text.trim().isNotEmpty ? v(yardPrice) - _nz(costs, 'yardFees') : _nz(revenue, 'yardNet')),
+                  computed('yardNet', v(yardPrice) - _nz(costs, 'yardFees')),
                   for (final k in const ['storageNet', 'securityScan', 'labour', 'transportDailies']) input(k),
                   const SizedBox(height: 8),
                   SizedBox(
@@ -1528,9 +1520,8 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
                         final body = {'revenue': {
                           for (final k in plain) k: num.tryParse(ctrls[k]!.text.trim()) ?? 0,
                           'yardPrice': yp.isEmpty ? '' : (num.tryParse(yp) ?? ''),
-                          // الفراغُ يُرسَل '' فيعود null في الخادم — «لم يُكتب السعر».
+                          // '' is stored as null by the server.
                           'transportToYardSelling': sell.isEmpty ? '' : (num.tryParse(sell) ?? ''),
-                          if (sell.isEmpty) 'transportToYardNet': num.tryParse(ctrls['transportToYardNet']!.text.trim()) ?? 0,
                         }};
                         Navigator.pop(c);
                         _patch(body, tr('حُفظت البنود', 'Lines saved'));
@@ -2025,8 +2016,8 @@ class _InvoiceSheetState extends State<_InvoiceSheet> {
           child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(tr('طلب فوترة من الإدارة الماليّة', 'Request invoicing from Finance'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
             const SizedBox(height: 4),
-            Text(tr('اكتب سعرَ كلّ بندٍ يدخل الفاتورة، وأرفِق ورقتَه إن وُجدت. ما تُرك سعرُه فارغًا لا يدخلها.',
-                    'Enter the price of each line on the invoice and attach its paper if any. Lines left empty are left out.'),
+            Text(tr('هذه البنودُ الثلاثةُ مستقلّةٌ عن أيّ خانةٍ في المعاملة: اكتب سعرَ كلٍّ منها، وعليها وحدها تُحسَب ضريبة 15%.',
+                    'These three lines stand alone — no link to any field in the transaction. Enter each price; the 15% VAT applies to them only.'),
                 style: const TextStyle(fontSize: 11.5, color: T.inkFaint)),
             const SizedBox(height: 12),
             for (final d in widget.defs) ...[

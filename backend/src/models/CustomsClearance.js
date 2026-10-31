@@ -745,9 +745,8 @@ const MARGIN_KEYS = [
   'transportToYardNet', 'securityScan', 'transportNet', 'yardToCustomerNet', 'transportDailies',
 ];
 
-// صوافي النقل المحسوبة — لا تُقبَل من الشاشة.
-// Yard net is derived too (yard price − yard fees); legacy rows keep their stored value until a price is typed.
-const DERIVED_REVENUE = ['transportNet', 'yardToCustomerNet', 'yardNet'];
+// Derived nets (price − cost) — never accepted from the client.
+const DERIVED_REVENUE = ['transportNet', 'yardToCustomerNet', 'yardNet', 'transportToYardNet'];
 
 /**
  * ── مرحلةُ السداد ← بندُ التكلفة ───────────────────────────────────────────
@@ -781,18 +780,21 @@ const TRANSPORT_STAGE_KEYS = ['transportInvoice', 'transportPortToCustomer', 'tr
  * فيه قطّ: المعاملاتُ القديمة كُتبت تكاليفُها بيدٍ ومراحلُها بلا مبالغ، فتصفيرُها
  * محوٌ لما كُتب. يُعيد قائمةَ البنود التي تغيّرت.
  */
+// Stages that carry no money (emails, retired steps). Any other stage key without
+// its own cost line — e.g. one added later from section settings — lands in extraFees.
+const NON_COST_STAGES = new Set(['doInvoiceEmailed', 'doLinkEmailed', 'containersReturned', 'returnInvoiceDate', 'transportInvoice']);
+const costFieldOf = (key) => STAGE_COST[key] || (key && !NON_COST_STAGES.has(key) ? 'extraFees' : null);
+
 function applyPaidCosts(doc, onlyKeys, force = false) {
   if (!doc) return [];
   if (!doc.costs) doc.costs = {};
-  const fields = new Set(
-    (onlyKeys || Object.keys(STAGE_COST)).map((k) => STAGE_COST[k]).filter(Boolean)
-  );
+  const stageKeys = [...new Set([...Object.keys(STAGE_COST), ...(doc.paymentStages || []).map((p) => p && p.key).filter(Boolean)])];
+  const fields = new Set((onlyKeys || stageKeys).map(costFieldOf).filter(Boolean));
   const changed = [];
   for (const field of fields) {
-    const keys = Object.keys(STAGE_COST).filter((k) => STAGE_COST[k] === field);
-    const rows = (doc.paymentStages || []).filter((p) => p && keys.includes(p.key) && p.payStatus === 'paid'
+    const rows = (doc.paymentStages || []).filter((p) => p && costFieldOf(p.key) === field && p.payStatus === 'paid'
       && p.amount !== null && p.amount !== undefined && p.amount !== '' && Number.isFinite(Number(p.amount)));
-    // `force`: إدخالٌ مدفوعٌ أُلغي دفعُه أو حُذف — فالبندُ يتبع ما بقي ولو صفرًا.
+    // A field no paid stage ever wrote keeps its typed value; `force` (a payment undone/deleted) follows what is left.
     if (!rows.length && !force) continue;
     const sum = r2(rows.reduce((a, p) => a + Number(p.amount), 0));
     if (n(doc.costs[field]) !== sum) { doc.costs[field] = sum; changed.push(field); }
@@ -832,14 +834,9 @@ function recomputeTotals(doc) {
   doc.revenue.transportNet = r2(n(doc.revenue.transportSelling) - n(doc.costs.transport));
   // والجزآن الآخران على القاعدة نفسِها: سعرُ العميل ناقصَ ما ندفعه.
   doc.revenue.yardToCustomerNet = r2(n(doc.revenue.yardToCustomerSelling) - n(doc.costs.transportYardToCustomer));
-  const yardSell = doc.revenue.transportToYardSelling;
-  if (yardSell !== null && yardSell !== undefined && yardSell !== '' && Number.isFinite(Number(yardSell))) {
-    doc.revenue.transportToYardNet = r2(n(yardSell) - n(doc.costs.transportToYard));
-  }
-  const yardPrice = doc.revenue.yardPrice;
-  if (yardPrice !== null && yardPrice !== undefined && yardPrice !== '' && Number.isFinite(Number(yardPrice))) {
-    doc.revenue.yardNet = r2(n(yardPrice) - n(doc.costs.yardFees));
-  }
+  // An empty price counts as 0, so clearing it moves the net too (legacy rows got their price backfilled).
+  doc.revenue.transportToYardNet = r2(n(doc.revenue.transportToYardSelling) - n(doc.costs.transportToYard));
+  doc.revenue.yardNet = r2(n(doc.revenue.yardPrice) - n(doc.costs.yardFees));
   let total = 0;
   for (const k of COST_KEYS) total += n(doc.costs[k]);
   total = r2(total);
@@ -946,3 +943,33 @@ module.exports.STAGE_COST = STAGE_COST;
 module.exports.TRANSPORT_STAGE_KEYS = TRANSPORT_STAGE_KEYS;
 module.exports.DERIVED_REVENUE = DERIVED_REVENUE;
 module.exports.applyPaidCosts = applyPaidCosts;
+module.exports.costFieldOf = costFieldOf;
+
+// For sources that give a net but no price (the master sheet): price = net + cost, so recomputeTotals keeps the net.
+module.exports.seedPricesFromNets = function seedPricesFromNets(doc) {
+  if (!doc || !doc.revenue) return doc;
+  const blank = (v) => v === null || v === undefined || v === '' || !Number.isFinite(Number(v));
+  for (const [price, net, cost] of [['yardPrice', 'yardNet', 'yardFees'], ['transportToYardSelling', 'transportToYardNet', 'transportToYard']]) {
+    const c = n(doc.costs && doc.costs[cost]);
+    if (blank(doc.revenue[price]) && (n(doc.revenue[net]) || c)) doc.revenue[price] = r2(n(doc.revenue[net]) + c);
+  }
+  return doc;
+};
+
+/**
+ * Legacy rows stored a typed net with no price. Give them price = net + cost so the
+ * now-always-derived net keeps its value. Idempotent: only rows still missing a price.
+ */
+module.exports.backfillDerivedPrices = async function backfillDerivedPrices() {
+  const coll = mongoose.model('CustomsClearance').collection;
+  const pairs = [['yardPrice', 'yardNet', 'yardFees'], ['transportToYardSelling', 'transportToYardNet', 'transportToYard']];
+  let total = 0;
+  for (const [price, net, cost] of pairs) {
+    const r = await coll.updateMany(
+      { [`revenue.${price}`]: null, $or: [{ [`revenue.${net}`]: { $nin: [0, null] } }, { [`costs.${cost}`]: { $nin: [0, null] } }] },
+      [{ $set: { [`revenue.${price}`]: { $round: [{ $add: [{ $ifNull: [`$revenue.${net}`, 0] }, { $ifNull: [`$costs.${cost}`, 0] }] }, 2] } } }],
+    );
+    total += r.modifiedCount || 0;
+  }
+  return total;
+};

@@ -4,7 +4,7 @@ const {
   recomputeTotals, COST_KEYS, MARGIN_KEYS, pipelineOf, readStages, readUnits, lockReason, hasTransportInvoice,
   UNIT_STAGES, PORT_LEGS,
   syncUnits, TRANSPORT_LEGS, CARGO_TYPES, VEHICLE_KINDS,
-  STAGE_COST, TRANSPORT_STAGE_KEYS, DERIVED_REVENUE, applyPaidCosts,
+  STAGE_COST, TRANSPORT_STAGE_KEYS, DERIVED_REVENUE, applyPaidCosts, costFieldOf,
 } = require('../models/CustomsClearance');
 const contractPricing = require('../utils/customsContractPricing');
 const cache = require('../utils/ttlCache');
@@ -1463,7 +1463,7 @@ exports.decidePaymentStage = async (req, res) => {
     if (stored.length) entry.proofFiles = [...(entry.proofFiles || []), ...stored];
 
     // «تمّ الدفع» يكتب المبلغَ في بنده من التكاليف — راجع STAGE_COST.
-    if (STAGE_COST[entry.key]) applyPaidCosts(clearance, [entry.key], wasPaid || decision === 'paid');
+    if (costFieldOf(entry.key)) applyPaidCosts(clearance, [entry.key], wasPaid || decision === 'paid');
 
     // وإثباتُ الدفع يُوجَد مع ورق المعاملة كذلك — حيث يبحث عنه من لا يعرف
     // من أيّ مرحلةٍ جاء (نفسُ قاعدة مرفق الإدخال).
@@ -1655,7 +1655,7 @@ exports.updatePaymentStage = async (req, res) => {
       }
       entry.amount = a;
       // مبلغُ مرحلةٍ مدفوعةٍ تغيّر؟ فبندُها في التكاليف يتبعه.
-      if (STAGE_COST[entry.key] && entry.payStatus === 'paid') applyPaidCosts(clearance, [entry.key], true);
+      if (costFieldOf(entry.key) && entry.payStatus === 'paid') applyPaidCosts(clearance, [entry.key], true);
     }
     if (req.body.note !== undefined) entry.note = String(req.body.note).trim().slice(0, 500);
 
@@ -1703,7 +1703,7 @@ exports.deletePaymentStage = async (req, res) => {
     if (!entry) return res.status(404).json({ message: 'الإدخال غير موجود' });
     const label = entry.label;
     const urls = [entry.fileUrl, ...(entry.proofFiles || []).map((f) => f.fileUrl)].filter(Boolean);
-    const paidKey = entry.payStatus === 'paid' && STAGE_COST[entry.key] ? entry.key : '';
+    const paidKey = entry.payStatus === 'paid' && costFieldOf(entry.key) ? entry.key : '';
     entry.deleteOne();
     // حُذف ما دُفع؟ فبندُه في التكاليف يعود إلى مجموع ما بقي مدفوعًا.
     if (paidKey) applyPaidCosts(clearance, [paidKey], true);

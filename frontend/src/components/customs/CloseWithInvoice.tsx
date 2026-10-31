@@ -136,35 +136,25 @@ export default function CloseWithInvoice({
 
         <div className="p-5 space-y-4 overflow-auto">
           <p className="text-[12px] text-slate-500">
-            {t('مراحلُ السداد هي ما دفعناه. واكتب هنا ما نفوتره للعميل — والفرقُ بينهما هو ربحُ البند.',
-               'The payment stages are what we paid. Enter here what we bill the customer — the difference is the margin.')}
+            {t('هذه البنودُ الثلاثةُ مستقلّةٌ عن أيّ خانةٍ في المعاملة: اكتب سعرَ كلٍّ منها، وعليها وحدها تُحسَب ضريبة 15%.',
+               'These three lines stand alone — no link to any field in the transaction. Enter each price; the 15% VAT applies to them only.')}
           </p>
 
           <div className="space-y-2">
             {defs.map((d) => {
-              const cost = (stages || []).filter((p) => p.key === d.key && Number.isFinite(Number(p.amount)))
-                .reduce((a, p) => a + Number(p.amount), 0);
               const r = rows[d.key] || { amount: '', note: '' };
-              const margin = r.amount !== '' && Number.isFinite(Number(r.amount)) ? Number(r.amount) - cost : null;
               return (
                 <div key={d.key} className="rounded-xl border border-slate-200 p-3">
                   <div className="flex flex-wrap items-end gap-2">
                     <div className="min-w-[9rem] flex-1">
                       <p className="text-[13px] font-semibold text-slate-800">{ar ? d.nameAr : d.nameEn}</p>
-                      <p className="text-[11px] text-slate-400">
-                        {cost ? t(`سدّدناه: ${money(cost)}`, `we paid: ${money(cost)}`) : t('لم يُسجَّل سدادٌ له', 'nothing paid for it yet')}
-                      </p>
+                      <p className="text-[11px] text-slate-400">{t('+ ضريبة 15%', '+ 15% VAT')}</p>
                     </div>
                     <label className="block">
                       <span className="mb-1 block text-[10.5px] font-semibold text-slate-500">{t('سعر البيع', 'Selling price')}</span>
                       <input type="number" value={r.amount} onChange={(e) => set(d.key, { amount: e.target.value })}
                         className="w-28 rounded-lg border border-slate-200 px-2 py-1.5 text-sm text-end" />
                     </label>
-                    {margin != null && (
-                      <span className={`text-[11px] font-semibold ${margin >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
-                        {t('الفرق', 'margin')} {money(margin)}
-                      </span>
-                    )}
                     <label className="block flex-1 min-w-[8rem]">
                       <span className="mb-1 block text-[10.5px] font-semibold text-slate-500">{t('ملاحظة', 'Note')}</span>
                       <input value={r.note} onChange={(e) => set(d.key, { note: e.target.value })}

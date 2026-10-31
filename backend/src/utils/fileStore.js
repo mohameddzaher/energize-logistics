@@ -74,14 +74,17 @@ const saveUploadFile = (dataUrl, subdir, originalName = '', opts = {}) => {
 
 const saveEmployeeFile = (dataUrl, originalName = '') => saveUploadFile(dataUrl, 'employees', originalName);
 
-// Best-effort delete of a stored file given its public /api/uploads/... url.
+// Moves a stored file to uploads/_trash instead of removing it, so a delete can be undone.
 const deleteStoredFile = (fileUrl) => {
   try {
     if (!fileUrl || !fileUrl.startsWith('/api/uploads/')) return;
     const abs = path.join(UPLOAD_ROOT, fileUrl.replace('/api/uploads/', ''));
     // Guard against path traversal — must stay inside the upload root.
     if (!abs.startsWith(UPLOAD_ROOT)) return;
-    if (fs.existsSync(abs)) fs.unlinkSync(abs);
+    if (!fs.existsSync(abs) || abs.startsWith(path.join(UPLOAD_ROOT, '_trash'))) return;
+    const trash = path.join(UPLOAD_ROOT, '_trash');
+    fs.mkdirSync(trash, { recursive: true });
+    fs.renameSync(abs, path.join(trash, `${Date.now()}-${fileUrl.replace('/api/uploads/', '').replace(/[\\/]/g, '__')}`));
   } catch (e) { /* ignore */ }
 };
 

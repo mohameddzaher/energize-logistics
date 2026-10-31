@@ -394,8 +394,8 @@ async function upsertShipments(ships, { force = false } = {}) {
     updated += res.modifiedCount || 0;
   }
   if (deletedIds.length) {
-    const r = await OperationsWorkflow.deleteMany({ externalSource: SOURCE, externalId: { $in: deletedIds } });
-    removed = r.deletedCount || 0;
+    // Deleted over there stays here: our row carries work the platform never saw.
+    console.log(`[ops-sync] deleted on the platform, kept here: ${deletedIds.join(',')}`);
   }
   // المزامنة تُدخل حالاتٍ وفروعًا جديدة، وقوائم قيم الفلتر مخزَّنة مؤقّتًا؛ فبغير
   // إبطالها يفلتر المستخدم على قائمةٍ تسبق آخر مزامنة فلا يرى الكشوف الجديدة.

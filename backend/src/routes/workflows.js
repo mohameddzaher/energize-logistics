@@ -78,7 +78,7 @@ router.post('/payment-types/:id/unify', authorize(...PT_WRITE), paymentTypes.uni
 router.get('/', authorize(...readWorkflowRoles), workflowController.getWorkflows);
 
 // Bulk delete
-router.post('/bulk-delete', authorize('super_admin', ...FINANCE_FULL_ROLES), workflowController.bulkDelete);
+router.post('/bulk-delete', authorize.strict('super_admin', 'admin'), workflowController.bulkDelete);
 // ── تحديثٌ جماعيّ ──────────────────────────────────────────────────────────
 // مفتوحٌ لكلّ من يعدّل صفًّا واحدًا: الصلاحيّةُ تُفحص على مستوى **الحقل** داخل
 // النقطة نفسِها، فلا يكسب أحدٌ بالجملة ما لا يملكه بالمفرد.

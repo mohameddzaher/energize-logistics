@@ -1796,6 +1796,7 @@ exports.getUserWalletRange = async (req, res) => {
 // that were previously sourced from wallet collections / payments.
 exports.resetAllWallets = async (req, res) => {
   try {
+    if (process.env.ALLOW_DATA_WIPE !== 'yes') return res.status(403).json({ code: 'WIPE_DISABLED', message: 'تصفير المحافظ مقفول.' });
     const allTransactions = await WalletTransaction.find({}).lean();
 
     // ── ولا أثرَ ماليًّا يُعكَس خارج المحفظة ──────────────────────────────

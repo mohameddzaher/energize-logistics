@@ -1,4 +1,6 @@
 require('dotenv').config();
+// Before any model compiles, so every schema gets it.
+require('mongoose').plugin(require('./utils/keepDeleted'));
 const express = require('express');
 const path = require('path');
 const http = require('http');

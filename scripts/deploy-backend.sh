@@ -205,7 +205,7 @@ rollback() {
   # not a hypothetical: it is how this script took production down on its first
   # run, turning a single failed health check into a real outage. A rollback must
   # never be able to do more damage than the deploy it is undoing.
-  if ! "${SSH[@]}" "rsync -a --delete --exclude node_modules --exclude .env --exclude uploads $RELEASES/$prev/ $APP_DIR/"; then
+  if ! "${SSH[@]}" "rsync -a --delete --exclude node_modules --exclude .env --exclude uploads --exclude backups $RELEASES/$prev/ $APP_DIR/"; then
     bad "could not restore the files — the running process is untouched, fix by hand"; exit 1
   fi
   # Dependencies only need reinstalling if the restored package.json disagrees
@@ -295,14 +295,14 @@ good "all backend files parse"
 # ── Back up the running release, then ship ──────────────────────────────────
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 say "Backing up the running release → $RELEASES/$STAMP"
-"${SSH[@]}" "mkdir -p $RELEASES/$STAMP && rsync -a --exclude node_modules --exclude .env --exclude uploads $APP_DIR/ $RELEASES/$STAMP/"
+"${SSH[@]}" "mkdir -p $RELEASES/$STAMP && rsync -a --exclude node_modules --exclude .env --exclude uploads --exclude backups $APP_DIR/ $RELEASES/$STAMP/"
 good "saved"
 
 say "Shipping"
 # --exclude .env and --exclude uploads are NOT optional: --delete would take the
 # server's environment file and every uploaded HR/contract document with it.
 rsync -az --delete -e "ssh -i $VPS_KEY -o ConnectTimeout=15" \
-  --exclude node_modules --exclude .git --exclude .env --exclude uploads --exclude '*.log' \
+  --exclude node_modules --exclude .git --exclude .env --exclude uploads --exclude backups --exclude '*.log' \
   backend/ "$VPS_HOST:$APP_DIR/"
 good "files in place"
 

@@ -31,10 +31,10 @@ const CONFIRM_PHRASE = 'امسح كل البيانات نهائيًا';
  */
 const clearData = async (req, res) => {
   try {
+    if (process.env.ALLOW_DATA_WIPE !== 'yes') return res.status(403).json({ code: 'WIPE_DISABLED', message: 'مسح البيانات الشامل مقفول.' });
     if (String(req.body?.confirm || '').trim() !== CONFIRM_PHRASE) {
       return res.status(400).json({
-        message: `عمليةٌ لا رجعة فيها. أرسل confirm بالعبارة: «${CONFIRM_PHRASE}»`,
-        required: CONFIRM_PHRASE,
+        message: 'عمليةٌ لا رجعة فيها — عبارة التأكيد غير صحيحة.',
       });
     }
 

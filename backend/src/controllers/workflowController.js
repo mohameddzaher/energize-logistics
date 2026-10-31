@@ -2634,7 +2634,10 @@ exports.bulkDelete = async (req, res) => {
     }
 
     // Check for locked workflows
-    const workflows = await OperationsWorkflow.find({ _id: { $in: ids } }).select('lockedBy lockedAt lockedByName').lean();
+    const workflows = await OperationsWorkflow.find({ _id: { $in: ids } }).select('lockedBy lockedAt lockedByName shipmentOrder').lean();
+    if (workflows.some((w) => w.shipmentOrder)) {
+      return res.status(405).json({ code: 'DELETE_DISABLED', message: 'كشوف الشحنات لا تُحذف — غيّر حالتها إلى «ملغاة» ليبقى سجلّها.' });
+    }
     const lockedIds = workflows.filter((w) => isLocked(w, req.user._id)).map((w) => w._id.toString());
     if (lockedIds.length > 0) {
       return res.status(423).json({ message: `${lockedIds.length} workflow(s) are locked and cannot be deleted` });

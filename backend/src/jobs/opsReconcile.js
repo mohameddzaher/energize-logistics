@@ -50,7 +50,9 @@ async function sweepPlatform() {
   return { nums, ids, seen, total };
 }
 
-async function reconcileOnce({ log = true, apply = true } = {}) {
+// Reports only unless a caller passes `apply`: absence from the platform never
+// deletes our data on its own.
+async function reconcileOnce({ log = true, apply = false } = {}) {
   if (running) return { skipped: 'already-running' };
   if (!upl.isConfigured()) return { skipped: 'upl-not-configured' };
   running = true;

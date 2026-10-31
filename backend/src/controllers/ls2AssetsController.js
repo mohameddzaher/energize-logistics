@@ -293,6 +293,18 @@ async function nextTireNumber() {
   for (const r of rows) { const n = Number(String(r.tireNumber).trim()); if (Number.isSafeInteger(n) && n > max) max = n; }
   return String(max + 1);
 }
+
+// Slots are not unique in the schema: a transfer passes through a shared slot
+// mid-swap, so every write that seats a tire has to check here.
+async function slotHolders(key, positions, exceptIds = []) {
+  const wanted = [...new Set(positions.filter((p) => p != null && p !== '').map(Number))];
+  if (!key || !wanted.length) return [];
+  return Ls2TireAsset.find({ status: 'mounted', plateKey: key, positionNumber: { $in: wanted }, _id: { $nin: exceptIds } })
+    .select('serial tireNumber positionNumber').lean();
+}
+const slotClashMessage = (plate, held) => `الموقع مشغول على ${plate}: ${held
+  .map((t) => `إطار ${t.positionNumber} (${t.serial})`).join('، ')} — انقل الفردة دي الأول`;
+
 exports.nextTireNumber = async (req, res) => {
   try { res.json({ tireNumber: await nextTireNumber() }); }
   catch (e) { res.status(500).json({ message: 'تعذّر توليد رقم الفردة' }); }
@@ -308,6 +320,8 @@ exports.createTire = async (req, res) => {
     // A freshly registered unmounted tire is what a purchase just delivered —
     // grade 'new' unless the workshop says otherwise; a tire registered already
     // on a truck is ordinary 'used'.
+    const held = await slotHolders(key, [positionNumber]);
+    if (held.length) return res.status(409).json({ code: 'SLOT_OCCUPIED', message: slotClashMessage(plate, held) });
     const grade = ['new', 'used'].includes(condition) ? condition : (key ? 'used' : 'new');
     const tireNumber = String(sentNumber || '').trim() || await nextTireNumber();
     const tire = await Ls2TireAsset.create({
@@ -826,36 +840,27 @@ exports.createTrailer = async (req, res) => {
 //
 // body: { toPlate | null, displacedTo: 'standing'|'swap', reason, notes, date }
 
-/** ينقل كاوتش تيدر معيّن للوحة جديدة (أو يفضّيها لو التيدر وقف)، ويسجّل كل فردة. */
 /**
- * فِرَدُ التيدر — تُجمَع **قبل** أن يتحرّك أيُّ تيدر.
- *
- * ── لماذا قبل ─────────────────────────────────────────────────────────────
- * رقمُ التيدر على الفردة يُشتقّ عند حفظها من «أيُّ تيدرٍ على هذه العربيّة الآن»
- * (deriveTrailer في models/Ls2TireAsset). وفي التبديل كان التيدرُ المُزاح يُركَّب
- * على العربيّة الأولى وفِرَدُه تُحفَظ هناك **والتيدرُ الأوّل لم يغادرها بعد** —
- * فتيدران على لوحةٍ واحدة، والفِرَدُ تأخذ رقمَ أيّهما صادف، فتُجمَع بعدها مع
- * فِرَد التيدر الأوّل وتمشي معه. النتيجة: كاوتشُ التيدرين كلُّه على عربيّةٍ
- * واحدة، والعربيّةُ الأخرى بلا كاوتش (بلاغُ الورشة ٢٠٢٦/١٠/١٧).
- *
- * ── ومن موضعها لا من رقمها وحده ─────────────────────────────────────────
- * فردةٌ في قسم التيدر على عربيّة التيدر هي على التيدر، ولو خلا رقمُه منها
- * (سُجّلت قبل تسجيل التيدر). كانت تُترَك على العربيّة القديمة.
+ * A trailer's tires, collected BEFORE any trailer moves: the tire pre-save derives
+ * trailerNumber from whichever trailer is on the plate, so two trailers sharing a
+ * plate mid-swap would mix their tires.
+ * Matched by number, or by being in the trailer section of its plate with no number.
+ * Always within the trailer section: a spare on another truck never travels with it.
  */
 async function trailerTires(trailer) {
   const or = [{ trailerNumber: trailer.trailerNumber }];
   if (trailer.currentPlateKey) {
-    or.push({ plateKey: trailer.currentPlateKey, section: { $regex: 'تيدر|تريل' }, trailerNumber: { $in: [null, ''] } });
+    or.push({ plateKey: trailer.currentPlateKey, trailerNumber: { $in: [null, ''] } });
   }
-  return Ls2TireAsset.find({ status: 'mounted', $or: or });
+  return Ls2TireAsset.find({ status: 'mounted', section: { $regex: 'تيدر|تريل' }, $or: or });
 }
 
-/** ينقل فِرَداً جُمعت مسبقًا (`trailerTires`) إلى حيث صار تيدرُها. يُنادى بعد تركيب التيدرات كلِّها. */
+/** Moves tires collected by `trailerTires` to their trailer's new place. Call after all trailers are seated. */
 async function carryTrailerTires(req, trailer, tires, toPlate, toKey, when, odometerKm, reason) {
   for (const ti of tires) {
     const from = { plate: ti.plate, key: ti.plateKey, pos: posLabel(ti) };
     if (String(from.key || '') === String(toKey || '')) continue;
-    // والرقمُ يُكتب صراحةً: فردةٌ تمشي مع تيدرٍ يصير واقفًا لا عربيّةَ لها يشتقّ منها.
+    // Written explicitly: a standing trailer has no plate to derive the number from.
     ti.set({ plate: toPlate || null, plateKey: toKey || null, trailerNumber: trailer.trailerNumber });
     await ti.save();
     await logEvent(req, {
@@ -921,10 +926,21 @@ exports.moveTrailer = async (req, res) => {
 
     const live = toKey ? await vehicleByKey(toKey) : null;
     let moved = 0; let occupantMoved = 0;
-    // فِرَدُ كلِّ تيدرٍ تُعرَف وهو في مكانه — قبل أيِّ حركة. راجع `trailerTires`.
     const ownTires = await trailerTires(trailer);
     const occupantTires = occupant ? await trailerTires(occupant) : [];
     const occDest = occupant && displacedTo === 'swap' ? { plate: from.plate, key: from.key } : { plate: null, key: null };
+
+    // Refuse before anything moves: a tire that stays behind would end up
+    // sharing a slot with the one arriving.
+    const leaving = [...ownTires, ...occupantTires].map((t) => t._id);
+    const heldTo = await slotHolders(toKey, ownTires.map((t) => t.positionNumber), leaving);
+    const heldFrom = await slotHolders(occDest.key, occupantTires.map((t) => t.positionNumber), leaving);
+    if (heldTo.length || heldFrom.length) {
+      return res.status(409).json({
+        code: 'SLOT_OCCUPIED',
+        message: slotClashMessage(heldTo.length ? toPlate : occDest.plate, heldTo.length ? heldTo : heldFrom),
+      });
+    }
 
     // ① نفضّي العربية القديمة من التيدر ده
     if (from.key) await Ls2Flatbed.updateOne({ plateKey: from.key }, { currentTrailerNumber: null });
@@ -1081,7 +1097,7 @@ exports.sensorCheck = async (req, res) => {
 exports.importAssets = async (req, res) => {
   try {
     const { vehicles = [], flatbeds = [] } = req.body || {};
-    const summary = { flatbeds: 0, trailers: 0, tiresNew: 0, tiresMoved: 0, tiresUnchanged: 0 };
+    const summary = { flatbeds: 0, trailers: 0, tiresNew: 0, tiresMoved: 0, tiresUnchanged: 0, slotConflicts: [] };
 
     for (const f of flatbeds) {
       if (!f?.plate) continue;
@@ -1127,10 +1143,22 @@ exports.importAssets = async (req, res) => {
         }
         await Ls2Flatbed.updateOne({ plateKey: key }, { currentTrailerNumber: tn });
       }
-      // Tires.
+      // Tires. A slot held by a tire this sheet also lists is free: that tire moves too.
+      const listed = (v.tires || []).map((t) => String(t.serial || '').trim()).filter(Boolean);
+      const claimed = new Map();
       for (const t of v.tires || []) {
         const serial = String(t.serial || '').trim();
         if (!serial) continue;
+        const pos = t.position_number ?? null;
+        const holder = pos != null
+          ? (await Ls2TireAsset.findOne({ status: 'mounted', plateKey: key, positionNumber: pos, serial: { $nin: listed } }).select('serial').lean())?.serial
+            || (claimed.has(Number(pos)) && claimed.get(Number(pos)) !== serial ? claimed.get(Number(pos)) : null)
+          : null;
+        if (holder) {
+          summary.slotConflicts.push({ plate, serial, positionNumber: pos, heldBy: holder });
+          continue;
+        }
+        if (pos != null) claimed.set(Number(pos), serial);
         const sensor = t.sensor === 'يوجد' ? 'yes' : t.sensor === 'لايوجد' || t.sensor === 'لا يوجد' ? 'no' : 'unknown';
         // الاستبن فيتشر مستقل: نستنتجه من القسم (الاستبن) أو علَم صريح في الصف.
         const isSpare = /استبن/.test(String(t.section || '')) || t.is_spare === true;

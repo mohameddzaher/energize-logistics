@@ -339,6 +339,20 @@ employeeSchema.pre('save', function clearSatisfiedStatuses(next) {
  */
 // أيُّ حفظٍ لملفٍّ قائمٍ هو يدُ الموارد البشريّة عليه (قسمُ الأفراد يكتب في سجلّه
 // هو، لا هنا) — فيُرفَع التنبيه. راجع `hrPending`.
+// Work status text is derived from the status; a blank one read as «not set» in filters.
+employeeSchema.pre('save', function deriveWorkStatusText(next) {
+  if (this.isHrRecord === false) return next();
+  const want = require('../utils/hrEngagement').workStatusTextOf(this);
+  if (this.workStatusText !== want) this.workStatusText = want;
+  next();
+});
+
+// The manager is chosen by account; every screen shows the name HR holds for that person.
+employeeSchema.pre('save', async function followDirectManager() {
+  if (!this.isModified('directManager')) return;
+  this.directManagerName = await require('../utils/hrManagerName').managerNameOf(this.directManager);
+});
+
 employeeSchema.pre('save', function clearHrPending(next) {
   if (!this.isNew && this.hrPending && this.modifiedPaths().some((p) => p !== 'hrPending' && p !== 'updatedAt')) this.hrPending = false;
   next();

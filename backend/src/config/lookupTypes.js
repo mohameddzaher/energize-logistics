@@ -279,6 +279,8 @@ const REGISTRY = [
       { key: 'heavy_transport', nameEn: 'Heavy Transport', nameAr: 'النقل الثقيل' },
       { key: 'customer_service', nameEn: 'Customer Service', nameAr: 'خدمة عملاء' },
       { key: 'branches', nameEn: 'Branches', nameAr: 'الفروع' },
+      { key: 'saudization', nameEn: 'Saudization', nameAr: 'التوطين' },
+      { key: 'training', nameEn: 'Training', nameAr: 'التدريب' },
     ],
   },
   // ── وبقيّةُ خانات ملفّ الموظّف ذاتِ الاختيارات المحدودة ────────────────────

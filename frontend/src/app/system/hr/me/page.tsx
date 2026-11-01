@@ -66,7 +66,7 @@ export default function MyProfilePage() {
     [tx.nationalId, e.nationalId],
     // سطرُ التفاصيل يحمل التقويمين معًا، الميلاديَّ أوّلًا (lib/hrDates).
     [tx.hireDate, bothDates(e.hireDate, ar, '')],
-    [tx.manager, userName(e.directManager)],
+    [tx.manager, e.directManagerName || userName(e.directManager)],
     [tx.phone, e.phone],
     [tx.email, e.email],
   ];

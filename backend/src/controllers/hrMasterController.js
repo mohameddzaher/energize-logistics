@@ -151,7 +151,9 @@ const ENG_EXPR = {
   s: { $regexMatch: { input: { $ifNull: ['$registerNumber', ''] }, regex: ENG.ENGAGEMENT_MATCH.sponsored.registerNumber.$regex } },
   f: { $regexMatch: { input: { $ifNull: ['$registerNumber', ''] }, regex: ENG.ENGAGEMENT_MATCH.freelance.registerNumber.$regex, options: 'i' } },
 };
-const LOCKED_FIELDS = new Set(['workStatusText', 'systemStatus', 'employmentStatus']);
+// directManagerName follows the manager chosen in the employee form (models/Employee).
+const FV = require('../utils/hrFilterValue');
+const LOCKED_FIELDS = new Set(['workStatusText', 'systemStatus', 'employmentStatus', 'directManagerName']);
 const CONTRACT_SCOPE = { $nor: [ENG.ENGAGEMENT_MATCH.freelance, ENG.ENGAGEMENT_MATCH.trainee] };
 function splitExprs(exprs) {
   const out = {};
@@ -228,7 +230,15 @@ function buildFilter(q) {
     // تقول «جدة ٤٠» يُرجع اختيارُها ما كُتب بلا مسافةٍ وحدَه. فالقيمةُ نمطٌ يقبل
     // فراغَها كلَّه، و«—» تشمل الفراغَ وحدَه — راجع utils/colFilter.
     const c = textIn(k, vals.map((x) => (x === '—' ? '' : x)));
-    if (c) f[k] = c[k];
+    const statusPath = `fieldStatus.${H.statusKeyOf(k)}`;
+    const answers = FV.ANSWER_CODES.filter((code) => vals.includes(H.STATUS_LABELS[code].ar));
+    // «Not set» leaves out what cannot be set, and an answer also matches a blank marked with it.
+    if (vals.includes('—')) {
+      f.$and.push({ $or: [{ [statusPath]: { $nin: FV.ANSWER_CODES } }, { [k]: { $nin: [null, ''] } }] });
+      if (k === 'staffCategory') f.$and.push({ department: { $in: FV.CATEGORY_DEPARTMENTS } });
+    }
+    if (c && answers.length) f.$and.push({ $or: [{ [k]: c[k] }, { [statusPath]: { $in: answers } }] });
+    else if (c) f[k] = c[k];
   }
   // الحقول المنطقية باسمها الحقيقيّ، كما ترسلها لوحة الفلترة.
   for (const field of BOOL_FILTERABLE) {
@@ -547,9 +557,10 @@ exports.filterOptions = async (req, res) => {
       const counts = new Map();
       for (const r of rows) {
         const raw = r[key];
+        if (!FV.applies(r, key)) continue;
         const v = raw === true ? 'نعم'
           : isBool ? 'لا'
-            : (raw === false ? 'لا' : (normKey(Array.isArray(raw) ? raw.join(', ') : raw) || '—'));
+            : (raw === false ? 'لا' : (normKey(Array.isArray(raw) ? raw.join(', ') : raw) || FV.answerOf(r, key) || '—'));
         counts.set(v, (counts.get(v) || 0) + 1);
       }
       return [...counts.entries()].map(([value, count]) => ({ value, count })).sort((a, b) => b.count - a.count);
@@ -567,13 +578,13 @@ exports.filterOptions = async (req, res) => {
     const passive = defs.filter((d) => !isActive(d.key));
 
     const shared = passive.length
-      ? await findEmployees(req.query, [...new Set([...passive.map((d) => d.key), ...DATE_FILTERABLE])].join(' '))
+      ? await findEmployees(req.query, [...new Set([...passive.map((d) => d.key), ...DATE_FILTERABLE, 'department', 'fieldStatus'])].join(' '))
       : [];
 
     const perActive = await Promise.all(active.map(async (d) => {
       const others = { ...req.query };
       delete others[d.key]; delete others[`${d.key}From`]; delete others[`${d.key}To`];
-      return [d.key, await findEmployees(others, [...new Set([d.key, ...DATE_FILTERABLE])].join(' '))];
+      return [d.key, await findEmployees(others, [...new Set([d.key, ...DATE_FILTERABLE, 'department', 'fieldStatus'])].join(' '))];
     }));
     const byActive = new Map(perActive);
 
@@ -1294,7 +1305,7 @@ exports.employeeFields = async (req, res) => {
     const seen = new Set();
     const groups = H.GROUPS.filter((g) => !g.virtual).map((g) => ({
       key: g.key, ar: g.ar, en: g.en, icon: g.icon,
-      fields: g.fields.filter((f) => !seen.has(f.key) && seen.add(f.key)).map((f) => {
+      fields: g.fields.filter((f) => !seen.has(f.key) && seen.add(f.key) && FV.applies(emp, f.key)).map((f) => {
         const base = f.type === 'hijri' ? f.of : f.key;
         const raw = f.type === 'hijri' ? (H.valueOf(emp, base) ? toHijri(H.valueOf(emp, base)) : null) : (H.valueOf(emp, f.key) ?? null);
         return {

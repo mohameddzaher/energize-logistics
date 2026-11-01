@@ -1188,7 +1188,7 @@ function profileRows(e: Employee, tx: ReturnType<typeof getHrEmployeesIdTranslat
     [tx.hireDate, ...D(e.hireDate)],
     [tx.actualWorkStartDate, ...D(e.actualWorkStartDate)],
     [tx.workLocation, e.workLocation],
-    [tx.directManager, userName(e.directManager)],
+    [tx.directManager, e.directManagerName || userName(e.directManager)],
     [tx.phone, e.phone],
     [tx.email, e.email],
     [tx.address, e.address],

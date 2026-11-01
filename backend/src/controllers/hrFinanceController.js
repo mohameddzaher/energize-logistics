@@ -116,6 +116,7 @@ const DOCS = [
 const HORIZON = 20;
 const WINDOWS = [20, 15, 10, 5];
 /** الفلاترُ السريعةُ نفسُها التي في رأس لوحة الموارد البشريّة (HrQuickFilters). */
+const FV = require('../utils/hrFilterValue');
 const QUICK_KEYS = ['department', 'staffCategory', 'registerNumber', 'branchName', 'workStatusText', 'project', 'nationality', 'iqamaProfession'];
 
 const YMD = /^(\d{4})-(\d{2})-(\d{2})/;
@@ -183,7 +184,7 @@ async function universe() {
         expiryDate: exp, daysLeft, expired: daysLeft < 0,
         department: S(e.department), staffCategory: S(e.staffCategory), project: S(e.project),
         nationality: S(e.nationality), branchName: S(e.branchName), registerNumber: S(e.registerNumber),
-        workStatusText: S(e.workStatusText), iqamaProfession: S(e.iqamaProfession),
+        workStatusText: S(e.workStatusText), iqamaProfession: S(e.iqamaProfession) || FV.answerOf(e, 'iqamaProfession'),
         paid: false, payment: null,
         _emp: e,
       });
@@ -226,7 +227,7 @@ function readQuery(q) {
   };
 }
 
-const quickVal = (r, k) => normKey(r[k]) || '—';
+const quickVal = (r, k) => (FV.applies(r, k) ? normKey(r[k]) || '—' : null);
 const inWindow = (r, w) => (w === 'expired' ? r.daysLeft < 0 : r.daysLeft >= 0 && r.daysLeft <= Number(w));
 
 /** يمرّ الصفُّ بكلّ الفلاتر عدا `skip` (اسمُ مجموعةٍ أو `cf:<عمود>` أو `quick:<حقل>`). */
@@ -251,7 +252,7 @@ function passes(r, f, skip = '') {
 
 const tally = (rows, valueOf) => {
   const m = new Map();
-  for (const r of rows) { const v = valueOf(r); m.set(v, (m.get(v) || 0) + 1); }
+  for (const r of rows) { const v = valueOf(r); if (v !== null) m.set(v, (m.get(v) || 0) + 1); }
   return [...m.entries()].map(([value, count]) => ({ value, count }))
     .sort((a, b) => b.count - a.count || String(a.value).localeCompare(String(b.value), 'ar'));
 };

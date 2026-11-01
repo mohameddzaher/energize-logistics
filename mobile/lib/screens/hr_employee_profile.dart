@@ -787,7 +787,7 @@ class _HrEmployeeProfileScreenState extends State<HrEmployeeProfileScreen> {
                               _info(tr('الفرع', 'Branch'), (_emp['branch'] as Map<String, dynamic>?)?['name']),
                               _info(tr('تاريخ التعيين', 'Hire date'), _date(_emp['hireDate'])),
                               _info(tr('المدير المباشر', 'Manager'),
-                                  _emp['directManager'] is Map
+                                  (_emp['directManagerName'] ?? '').toString().isNotEmpty ? _emp['directManagerName'] : _emp['directManager'] is Map
                                       ? '${_emp['directManager']['firstName'] ?? ''} ${_emp['directManager']['lastName'] ?? ''}'.trim()
                                       : null),
                             ]),

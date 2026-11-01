@@ -693,6 +693,26 @@ exports.orderFilterOptions = async (req, res) => {
 };
 
 /**
+ * Waybill details typed on the shipment form go to their registers, so the suppliers
+ * page and every waybill read the same values. A driver linked to HR keeps HR's data.
+ */
+async function saveWaybillDetails(order, details) {
+  if (!details || typeof details !== 'object') return;
+  const clean = (v) => String(v ?? '').trim();
+  const brand = clean(details.vehicleBrand); const color = clean(details.vehicleColor);
+  const nationality = clean(details.driverNationality); const residenceNumber = clean(details.driverIqama);
+  if (order.vehicle && (brand || color)) {
+    await ShipmentOrderVehicle.updateOne({ _id: order.vehicle }, { $set: { ...(brand ? { brand } : {}), ...(color ? { color } : {}) } });
+  }
+  const name = clean(order.driverName);
+  if (name && (nationality || residenceNumber)) {
+    const set = { ...(nationality ? { nationality } : {}), ...(residenceNumber ? { residenceNumber } : {}) };
+    await ShipmentOrderDriver.updateOne({ name, employee: null }, { $set: set });
+  }
+  cache.clear('so:registry:');
+}
+
+/**
  * Records the route on the customer. Two people booking the same customer at once
  * collide on the document version, so it re-reads and retries; a price that still
  * misses is not worth failing a shipment for.
@@ -770,6 +790,7 @@ async function createOneOrder(req, body) {
   data.createdBy = req.user._id;
 
   const order = await ShipmentOrder.create(data);
+  await saveWaybillDetails(order, body.waybillDetails);
   announceOrderChange(order._id);
   linkCustomsSoon(order._id);
 
@@ -858,7 +879,7 @@ exports.createOrdersBatch = async (req, res) => {
 
     // الحقولُ المشتركة: كلُّ ما في الجسد عدا ما يخصّ الشاحنةَ وسائقَها.
     // A B/L and a container belong to one truck, so they are per truck too.
-    const TRUCK_FIELDS = ['vehicle', 'newVehicle', 'supplier', 'supplierChoice', 'driverName', 'driverPhone', 'blNumber', 'containerNumber'];
+    const TRUCK_FIELDS = ['vehicle', 'newVehicle', 'supplier', 'supplierChoice', 'driverName', 'driverPhone', 'blNumber', 'containerNumber', 'waybillDetails'];
     const shared = { ...req.body };
     delete shared.trucks;
     TRUCK_FIELDS.forEach((f) => delete shared[f]);
@@ -908,7 +929,7 @@ exports.getOrder = async (req, res) => {
   try {
     const order = await ShipmentOrder.findById(req.params.id)
       .populate('customer', 'name phone')
-      .populate('vehicle', 'plate name truckType supplier ownership defaultDriverName defaultDriverPhone')
+      .populate('vehicle', 'plate name brand color truckType supplier ownership defaultDriverName defaultDriverPhone')
       .populate('supplier', 'name type phone')
       .lean();
     if (!order) return res.status(404).json({ message: 'Shipment order not found' });
@@ -977,6 +998,7 @@ exports.updateOrder = async (req, res) => {
 
     Object.assign(order, data);
     await order.save();
+    await saveWaybillDetails(order, req.body.waybillDetails);
     announceOrderChange(order._id);
     linkCustomsSoon(order._id);
 

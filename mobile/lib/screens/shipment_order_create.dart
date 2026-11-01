@@ -112,7 +112,15 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
   @override
   void initState() {
     super.initState();
-    _load().then((_) => _loadDrivers());
+    _load().then((_) {
+      _loadDrivers();
+      // Editing: show what the waybill will print.
+      final v = widget.order?['vehicle'];
+      if (v is Map && mounted) {
+        setState(() { _form['vehicleBrand'] = soRealVal(v['brand']); _form['vehicleColor'] = soRealVal(v['color']); });
+      }
+      _fillDriverDetails();
+    });
     _loadMoneyEditors();
     Live.instance.on('shipmentOrders:fields', _onFields);
     for (final e in const ['shipmentOrders:customers', 'customers:changed', 'shipmentOrders:fleet']) {
@@ -161,6 +169,24 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
       _ctrls.remove('driverName');
       if (soRealVal(d['phone']).isNotEmpty) { _form['driverPhone'] = soRealVal(d['phone']); _ctrls.remove('driverPhone'); }
     });
+    _fillDriverDetails();
+  }
+
+  /// Fills what the waybill prints from the chosen driver's record.
+  Future<void> _fillDriverDetails() async {
+    final name = (_form['driverName'] ?? '').toString().trim();
+    if (name.isEmpty) return;
+    try {
+      final r = await Api.instance.get('/api/shipment-orders/drivers?q=${Uri.encodeQueryComponent(name)}&limit=10');
+      final hit = List<Map<String, dynamic>>.from(r['drivers'] ?? []).where((x) => '${x['name'] ?? ''}'.trim() == name).firstOrNull;
+      if (hit == null || !mounted) return;
+      setState(() {
+        _form['driverNationality'] = soRealVal(hit['nationality']);
+        _form['driverIqama'] = soRealVal(hit['residenceNumber']);
+        _ctrls.remove('driverNationality');
+        _ctrls.remove('driverIqama');
+      });
+    } catch (_) { /* the boxes stay as typed */ }
   }
 
   Future<void> _loadDrivers() async {
@@ -408,7 +434,12 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
         _form['truckType'] = v['truckType'];
         _ctrls.remove('truckType');
       }
+      _form['vehicleBrand'] = soRealVal(v['brand']);
+      _form['vehicleColor'] = soRealVal(v['color']);
+      _ctrls.remove('vehicleBrand');
+      _ctrls.remove('vehicleColor');
     });
+    _fillDriverDetails();
   }
 
   /// ── وقائمةٌ لا تُحمَّل كلُّها: البحثُ يُرسَل إلى الخادم ─────────────────────
@@ -742,6 +773,8 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
     for (final k in ['blNumber', 'containerNumber']) {
       payload[k] = (_form[k] ?? '').toString().trim();
     }
+    final details = {for (final k in ['driverNationality', 'driverIqama', 'vehicleBrand', 'vehicleColor']) k: (_form[k] ?? '').toString().trim()};
+    payload['waybillDetails'] = details;
     if (_customer != null) payload['customer'] = _customer!['_id'];
     if (_salesRep != null) payload['salesRep'] = _salesRep!['value'];
     if (_newCustomer && _ncName.text.trim().isNotEmpty) {
@@ -770,6 +803,7 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
         // أُنشئ وحدَه ثمّ أُرسلت البقيّةُ لحُفظ الأوّلُ ورُفضت الثانيةُ ولا
         // يعرف الموظّفُ أين وقف.
         final body = Map<String, dynamic>.from(payload)
+          ..remove('waybillDetails')
           ..remove('vehicle')
           ..remove('newVehicle')
           ..remove('supplierChoice');
@@ -783,6 +817,7 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
             if ((_form['driverPhone'] ?? '').toString().isNotEmpty) 'driverPhone': _form['driverPhone'],
             'blNumber': (_form['blNumber'] ?? '').toString().trim(),
             'containerNumber': (_form['containerNumber'] ?? '').toString().trim(),
+            'waybillDetails': details,
           },
           ..._extraTrucks.map((t) => {
                 if (t['vehicle'] != null) 'vehicle': (t['vehicle'] as Map)['_id'],
@@ -1252,6 +1287,14 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
                                 onChanged: (v) => _form['containerNumber'] = v.trim(),
                                 decoration: InputDecoration(labelText: tr('رقم الحاوية (اختياري)', 'Container number (optional)')),
                               ),
+                              for (final d in [('driverNationality', 'جنسية السائق', 'Driver nationality'), ('driverIqama', 'رقم إقامة السائق', 'Driver iqama no.'), ('vehicleBrand', 'ماركة الشاحنة', 'Truck brand'), ('vehicleColor', 'لون الشاحنة', 'Truck colour')]) ...[
+                                const SizedBox(height: 10),
+                                TextField(
+                                  controller: _ctrl(d.$1),
+                                  onChanged: (v) => _form[d.$1] = v.trim(),
+                                  decoration: InputDecoration(labelText: tr(d.$2, d.$3)),
+                                ),
+                              ],
                               const SizedBox(height: 6),
                               if (_form['customsLink'] is Map && (_form['customsLink'] as Map)['clearance'] != null)
                                 Text(tr('مربوطة بمعاملة التخليص ${(_form['customsLink'] as Map)['refNumber'] ?? ''}',

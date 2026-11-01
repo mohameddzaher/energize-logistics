@@ -374,6 +374,25 @@ function CreateShipmentInner() {
    * مستقلًّا** برقم بوليصته من العدّاد نفسِه — لا طلبٌ أبٌ ولا رابطٌ بينها، إذ
    * كلُّ شاحنةٍ تمضي وحدَها وتصل وحدَها وتُحاسَب وحدَها.
    */
+  // What the waybill prints beyond the form: filled from the choice, editable here.
+  const [details, setDetails] = useState({ driverNationality: '', driverIqama: '', vehicleBrand: '', vehicleColor: '' });
+  useEffect(() => {
+    const v = vehicles.find((x) => x._id === vehicleId) as any;
+    setDetails((d) => ({ ...d, vehicleBrand: v?.brand || '', vehicleColor: v?.color || '' }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vehicleId]);
+  useEffect(() => {
+    const name = String(form.driverName || '').trim();
+    if (!name) { setDetails((d) => ({ ...d, driverNationality: '', driverIqama: '' })); return undefined; }
+    const t = setTimeout(() => {
+      api.get<{ drivers: any[] }>(`/api/shipment-orders/drivers?q=${encodeURIComponent(name)}&limit=10`).then((r) => {
+        const hit = (r.drivers || []).find((x) => String(x.name || '').trim() === name);
+        if (hit) setDetails((d) => ({ ...d, driverNationality: hit.nationality || '', driverIqama: hit.residenceNumber || '' }));
+      }).catch(() => {});
+    }, 350);
+    return () => clearTimeout(t);
+  }, [form.driverName]);
+
   type ExtraTruck = {
     uid: string;
     supplierId: string; supplierName: string;
@@ -489,6 +508,7 @@ function CreateShipmentInner() {
       // These two are fixed boxes on the form, not configured fields, so the loop above misses them.
       payload.blNumber = String(form.blNumber || '').trim();
       payload.containerNumber = String(form.containerNumber || '').trim();
+      payload.waybillDetails = details;
       payload.status = form.status || 'requesting';
       payload.driverName = form.driverName || '';
       payload.driverPhone = form.driverPhone || '';
@@ -536,9 +556,10 @@ function CreateShipmentInner() {
           plateLabel: plate.trim() || undefined,
         });
         const body = { ...payload };
+        delete body.waybillDetails;
         delete body.vehicle; delete body.newVehicle; delete body.supplierChoice;
         body.trucks = [
-          truckOf(supplierId, vehicleId, newPlate, form.driverName || '', form.driverPhone || '', form.blNumber, form.containerNumber),
+          { ...truckOf(supplierId, vehicleId, newPlate, form.driverName || '', form.driverPhone || '', form.blNumber, form.containerNumber), waybillDetails: details },
           ...extras.map((x) => truckOf(x.supplierId, x.vehicleId, x.newPlate, x.driverName, x.driverPhone, x.blNumber, x.containerNumber)),
         ];
         const d = await api.post<{ waybills: number[]; created: number; failed: any[] }>(
@@ -1053,6 +1074,24 @@ function CreateShipmentInner() {
           </div>
         </div>
       ), { id: SEC.truck, filled: !!vehicleId || hasVal(newPlate) || hasVal(form.driverName) })}
+      </div>
+
+      <div className="bg-white border border-slate-200 rounded-xl p-5">
+        <p className="font-bold text-slate-900 mb-1">{ar ? 'بيانات البوليصة' : 'Waybill details'}</p>
+        <p className="text-xs text-slate-500 mb-3">{ar ? 'تُملأ من السائق والشاحنة المختارين، وما تعدّله هنا يُحفظ في سجلّهما ويظهر في البوليصة.' : 'Filled from the chosen driver and truck. Edits save to their records and print on the waybill.'}</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {([
+            ['driverNationality', ar ? 'جنسية السائق' : 'Driver nationality'],
+            ['driverIqama', ar ? 'رقم إقامة السائق' : 'Driver iqama no.'],
+            ['vehicleBrand', ar ? 'ماركة الشاحنة' : 'Truck brand'],
+            ['vehicleColor', ar ? 'لون الشاحنة' : 'Truck colour'],
+          ] as const).map(([k, label]) => (
+            <div key={k}>
+              <label className={labelCls}>{label}</label>
+              <input value={details[k]} onChange={(e) => setDetails((d) => ({ ...d, [k]: e.target.value }))} className={inputCls} />
+            </div>
+          ))}
+        </div>
       </div>
 
       {/* 3..6 ── the config-driven groups */}

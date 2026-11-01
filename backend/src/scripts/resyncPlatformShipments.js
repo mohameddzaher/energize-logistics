@@ -1,8 +1,8 @@
 /* eslint-disable no-console */
 // Brings shipments that came from the platform back in line with it. Reads the
-// platform only, whatever UPL_DISABLED says, and leaves the link off. Rows someone
-// edited here after the cutover keep our version. Customer names are left alone,
-// they hold the approved spelling. Old values are saved first. Dry run unless --apply.
+// platform only, whatever UPL_DISABLED says, and leaves the link off. A status moved
+// here after the cutover stays, and rows edited here keep their other fields. Customer
+// names are left alone, they hold the approved spelling. Old values are saved first. Dry run unless --apply.
 //   node src/scripts/resyncPlatformShipments.js [--apply] [--since=2026-10-31T20:17:00Z]
 require('dotenv').config({ path: require('path').join(__dirname, '../../.env') });
 delete process.env.UPL_DISABLED;
@@ -44,12 +44,14 @@ async function main() {
     const m = mapShipment(s);
     const o = orders.get(m.externalId);
     const w = rows.get(m.externalId);
-    const touched = (o?.statusLog || []).some((l) => new Date(l.at) > SINCE) || (w?.updatedAt && new Date(w.updatedAt) > SINCE);
-    if (touched) { keptOurs += 1; continue; }
+    const movedHere = (o?.statusLog || []).some((l) => new Date(l.at) > SINCE);
+    if (movedHere) { keptOurs += 1; continue; }
+    // A row edited here keeps its fields but still follows the platform's status.
+    const statusOnly = w?.updatedAt && new Date(w.updatedAt) > SINCE;
     if (o) {
       const set = {};
       for (const [k, v] of Object.entries(m)) {
-        if (SKIP.has(k) || v === undefined) continue;
+        if (SKIP.has(k) || v === undefined || (statusOnly && k !== 'status')) continue;
         if (k === 'notes' && !String(v || '').trim()) continue;
         if (!same(o[k], v)) { set[k] = v; fieldCount[k] = (fieldCount[k] || 0) + 1; }
       }

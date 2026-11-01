@@ -258,7 +258,7 @@ export default function CustomersRegister({ basePath }: { basePath: string }) {
             </span>
           </p>
           <div className="flex items-center gap-2 flex-wrap flex-1 min-w-0">
-            <div className="relative grow min-w-[240px] max-w-xl">
+            <div className="relative grow min-w-[240px] max-w-xl" data-search-box>
               <Search className="w-4 h-4 text-slate-400 absolute top-1/2 -translate-y-1/2 start-3" />
               <input value={q} onChange={(e) => setQ(e.target.value)}
                 placeholder={ar ? 'بحث بالاسم أو الكود أو الجوال أو الفرع…' : 'Search name, code, phone, branch…'}

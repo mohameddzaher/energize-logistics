@@ -615,7 +615,7 @@ function ShipmentOrdersInner() {
       <div className="flex flex-wrap gap-3 items-center">
         <div className="flex-1 min-w-[240px]">
           <SearchInput value={search} onChange={setSearch}
-            placeholder={ar ? 'بحث برقم البوليصة، العميل، السائق، الإقامة، الجوال، اللوحة، الهيكل، المدينة…' : 'waybill, customer, driver, iqama, phone, plate, chassis, city…'} />
+            placeholder={ar ? 'بحث برقم أمر النقل، العميل، السائق، الإقامة، الجوال، اللوحة، الهيكل، المدينة…' : 'waybill, customer, driver, iqama, phone, plate, chassis, city…'} />
         </div>
         <div className="flex items-center gap-2 w-full sm:w-auto">
           <ViewSwitcher value={view} onChange={changeView} ar={ar} />
@@ -642,7 +642,7 @@ function ShipmentOrdersInner() {
             {customers.map((c) => <option key={c._id} value={c._id}>{c.name}</option>)}
           </Select>
         </div>
-        <div className="w-full flex flex-wrap gap-2 order-last">
+        <div className="w-full flex flex-wrap gap-2">
           {([
             [ar ? 'الفرع' : 'Branch', 'branch'], [ar ? 'من' : 'From', 'fromCity'], [ar ? 'إلى' : 'To', 'toCity'],
             [ar ? 'العميل' : 'Customer', 'customerName'], [ar ? 'المورد' : 'Supplier', 'supplierName'],

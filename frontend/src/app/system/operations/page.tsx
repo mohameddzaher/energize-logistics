@@ -1520,7 +1520,7 @@ export default function OperationsWorkflowPage() {
             كان كلٌّ منها صفًّا وحدَه فطالت الصفحةُ قبل الجدول؛ فصارت صفًّا يلتفّ
             على الشاشة الضيّقة. */}
         <div className="flex flex-wrap items-center gap-2">
-          <div className="relative min-w-[220px] flex-1 basis-[260px] max-w-xl">
+          <div className="relative min-w-[220px] flex-1 basis-[260px] max-w-xl" data-search-box>
             {/* ── والمكبّرُ لا يُبدَّل بدوّارة ──────────────────────────────
                 كانت الأيقونةُ تصير دوّارةً عند كلّ تحديث، فترفرف الخانةُ وتفقد
                 علامتَها. وهي تكذب فوق ذلك: `searching` ترتفع مع تغيير الصفحة

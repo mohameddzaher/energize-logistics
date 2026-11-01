@@ -196,3 +196,11 @@ input[type="week"] {
 [data-dash] .divide-slate-200 > :not([hidden]) ~ :not([hidden]) { border-color: #94a3b8; } /* → slate-400 */
 [data-dash] .border-slate-100 { border-color: #cbd5e1; }
 [data-dash] .border-slate-200 { border-color: #cbd5e1; }
+
+/* The search box is always the last row of a filter bar, right above the table. */
+.flex-wrap > [data-search-box],
+.flex-wrap > :has(> [data-search-box]) {
+  order: 99;
+  flex: 1 1 100%;
+  max-width: none;
+}

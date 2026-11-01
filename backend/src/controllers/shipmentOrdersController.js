@@ -417,6 +417,24 @@ async function branchScope(req) {
   return { branch: { $in: u.shipmentBranches } };
 }
 
+/** Marks each listed shipment's truck owner as company, freelancer or our fleet. */
+async function attachOwnerKind(orders) {
+  const ids = [...new Set(orders.map((o) => o.supplier && String(o.supplier._id || o.supplier)).filter(Boolean))];
+  const names = [...new Set(orders.map((o) => String(o.supplierName || '').trim()).filter(Boolean))];
+  const rows = ids.length || names.length
+    ? await ShipmentOrderSupplier.find({ $or: [{ _id: { $in: ids } }, { name: { $in: names } }] }).select('name type').lean() : [];
+  const byId = new Map(rows.map((r) => [String(r._id), r]));
+  const byName = new Map(rows.map((r) => [String(r.name).trim(), r]));
+  for (const o of orders) {
+    const hit = (o.supplier && byId.get(String(o.supplier._id || o.supplier))) || byName.get(String(o.supplierName || '').trim());
+    if (hit) { o.ownerKind = hit.type || 'company'; if (!o.supplierName) o.supplierName = hit.name; }
+  }
+  const noOwner = orders.filter((o) => !o.ownerKind && o.vehicle).map((o) => o.vehicle);
+  if (!noOwner.length) return;
+  const ours = new Set((await ShipmentOrderVehicle.find({ _id: { $in: noOwner }, ownership: 'ours' }).select('_id').lean()).map((v) => String(v._id)));
+  for (const o of orders) if (!o.ownerKind && o.vehicle && ours.has(String(o.vehicle))) o.ownerKind = 'ours';
+}
+
 exports.listOrders = async (req, res) => {
   try {
     const { q, status, customer, supplier, source, branch, from, to, page = 1, limit = 25 } = req.query;
@@ -567,6 +585,8 @@ exports.listOrders = async (req, res) => {
         $group: { _id: null, sell: { $sum: '$sellPrice' }, buy: { $sum: '$buyPrice' } },
       }]),
     ]);
+
+    await attachOwnerKind(orders);
 
     const byStatus = {};
     statusAgg.forEach((r) => { byStatus[r._id] = r.n; });

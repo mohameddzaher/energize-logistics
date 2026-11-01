@@ -685,6 +685,8 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
             if ('${r['vehiclePlate'] ?? ''}'.isNotEmpty) Chip2('${r['vehiclePlate']}', T.inkSoft),
             if ('${r['pickupTime'] ?? ''}'.isNotEmpty) Chip2(soFmtDT(r['pickupTime']), T.inkFaint, icon: Icons.schedule),
             Chip2('${soMoney(r['sellPrice'])} / ${soMoney(r['buyPrice'])}', T.success),
+            if ('${r['supplierName'] ?? ''}'.isNotEmpty)
+              Chip2('${r['ownerKind'] == 'freelancer' ? tr('فريلانسر', 'Freelancer') : r['ownerKind'] == 'ours' ? tr('أسطولنا', 'Our fleet') : tr('شركة', 'Company')}: ${r['supplierName']}', T.navy),
           ]),
           if ('${r['notes'] ?? ''}'.trim().isNotEmpty)
             Padding(padding: const EdgeInsets.only(top: 4), child: Text('${tr('ملاحظة البوليصة', 'Waybill note')}: ${r['notes']}', maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, color: T.inkSoft))),

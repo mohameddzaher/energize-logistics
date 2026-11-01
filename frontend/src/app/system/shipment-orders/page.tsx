@@ -2,7 +2,7 @@
 // طلبات الشحنات — the trial section's main list. Everything the team needs to
 // run the day happens HERE, without opening each order: search by بوليصة or
 // customer, flip a status inline, download the بوليصة PDF per row.
-import { useState, useEffect, useCallback, useRef, Suspense } from 'react';
+import { useState, useEffect, useCallback, useRef, Suspense, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { ContactButtons } from '@/components/crm/CrmKit';
@@ -12,6 +12,7 @@ import { useSocket } from '@/hooks/useSocket';
 import api from '@/lib/api';
 import { useDialog } from '@/components/system/DialogProvider';
 import { ColumnFilter } from '@/components/ColumnFilter';
+import ColumnChooser, { useVisibleColumns } from '@/components/system/ColumnChooser';
 import { PackageSearch, Plus, Pencil, Eye, FileDown, Loader2, RefreshCw, X, Check, MessageSquareText, SlidersHorizontal, Trash2 } from 'lucide-react';
 import {
   Spinner, PageHeader, SearchInput, PrimaryButton, StatCard, Select, ErrorNotice,
@@ -28,7 +29,7 @@ import TablePager, { readPageSize, savePageSize } from '@/components/system/Tabl
 import ManagedSelect from '@/components/system/ManagedSelect';
 import { paymentKindLabel } from '@/lib/paymentKind';
 import {
-  OrderCard, ViewSwitcher, ViewMode, VIEW_MODES, VIEW_PREF_KEY, VIEW_PREF_READ_KEY,
+  OrderCard, ownerKindLabel, ViewSwitcher, ViewMode, VIEW_MODES, VIEW_PREF_KEY, VIEW_PREF_READ_KEY,
   followUpNotes, relTime, driverMessage, orderRef,
 } from '@/components/shipment-orders/OrderViews';
 import NoteModal from '@/components/shipment-orders/NoteModal';
@@ -374,6 +375,35 @@ function ShipmentOrdersInner() {
     setBulkProgress('');
   };
 
+  // Columns the viewer chose, kept in this browser until changed. Waybill number and
+  // actions always stay.
+  const HEADS: readonly (readonly [string, string | null, string])[] = [
+    [ar ? 'رقم البوليصة' : 'Waybill', 'reference', 'reference'],
+    [ar ? 'العميل' : 'Customer', 'customerName', 'customerName'],
+    [ar ? 'من' : 'From', 'fromCity', 'fromCity'],
+    [ar ? 'إلى' : 'To', 'toCity', 'toCity'],
+    [ar ? 'الفرع' : 'Branch', 'branch', 'branch'],
+    [ar ? 'السائق' : 'Driver', 'driverName', 'driverName'],
+    [ar ? 'تواصل' : 'Contact', null, 'contact'],
+    [ar ? 'مالك السيارة' : 'Truck owner', 'supplierName', 'owner'],
+    [ar ? 'نوع الشاحنة' : 'Truck type', 'truckType', 'truck'],
+    [ar ? 'رقم الشاحنة' : 'Truck no.', 'plate', 'plate'],
+    [ar ? 'نوع الحمولة' : 'Cargo', 'cargoType', 'cargo'],
+    [ar ? 'نوع الدفع' : 'Payment', 'paymentSubtype', 'payment'],
+    [ar ? 'السيلز' : 'Sales rep', 'salesRepName', 'sales'],
+    [ar ? 'وقت الاستلام' : 'Pickup', 'pickupDay', 'pickup'],
+    [ar ? 'سعر الشراء' : 'Buy', 'buyPrice', 'buy'],
+    [ar ? 'سعر البيع' : 'Sell', 'sellPrice', 'sell'],
+    [ar ? 'الحالة' : 'Status', 'status', 'status'],
+    [ar ? 'ملاحظة البوليصة' : 'Waybill note', 'notes', 'notes'],
+    [ar ? 'آخر متابعة' : 'Latest follow-up', null, 'followup'],
+    [ar ? 'إجراءات' : 'Actions', null, 'actions'],
+  ];
+  const chooserCols = useMemo(() => HEADS.map(([label, , key]) => ({ key, label, locked: key === 'reference' || key === 'actions' })),
+    [ar]); // eslint-disable-line react-hooks/exhaustive-deps
+  const { visible, setVisible, isOn: on } = useVisibleColumns('so:shipments:columns', chooserCols);
+  const shownHeads = HEADS.filter(([, , key]) => key === 'reference' || key === 'actions' || on(key));
+
   const togglePick = (id: string) =>
     setPicked((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
@@ -570,6 +600,7 @@ function ShipmentOrdersInner() {
         </div>
         <div className="flex items-center gap-2 w-full sm:w-auto">
           <ViewSwitcher value={view} onChange={changeView} ar={ar} />
+          {view === 'table' && <ColumnChooser columns={chooserCols} visible={visible} onChange={setVisible} ar={ar} />}
           {/* الجوّال: الفلاترُ الثانويّة خلف زرّ، وعددُ المفعَّل منها عليه. */}
           <button type="button" onClick={() => setShowFilters((v) => !v)} aria-expanded={showFilters}
             className={`sm:hidden ms-auto inline-flex items-center gap-1.5 min-h-[38px] px-3 rounded-lg border text-[13px] font-semibold ${
@@ -692,45 +723,14 @@ function ShipmentOrdersInner() {
       <ScrollX className="bg-white border border-slate-200 rounded-xl shadow-sm">
         <table className="w-full text-sm [&_tbody_td]:text-[14px] [&_tbody_td]:font-medium [&_tbody_td]:text-slate-900">
           <thead><tr className="bg-slate-900 border-b border-slate-200 text-slate-300">
-            <th className="px-3 py-3">
+            <th className="px-3 py-3 w-[44px] sticky start-0 z-10 bg-slate-900">
               <input type="checkbox" className="w-4 h-4 accent-[#f37121]"
                 checked={picked.size > 0 && orders.every((o) => picked.has(o._id))}
                 onChange={(e) => setPicked(e.target.checked ? new Set(orders.map((o) => o._id)) : new Set())}
                 aria-label={ar ? 'تحديد الكل' : 'Select all'} />
             </th>
-            {([
-              [ar ? 'رقم البوليصة' : 'Waybill', 'reference'],
-              [ar ? 'العميل' : 'Customer', 'customerName'],
-              // ── «من» و«إلى» عمودان لا سهمٌ في عمود ─────────────────────────
-              // «جدة ← الرياض» في خليّةٍ واحدة يُقرأ بالعينين لا بالعين، ويُخطئ
-              // في العربيّة خاصّةً: السهمُ يشير إلى اليسار والنصُّ يجري إلى
-              // اليمين، فيُقرأ عكسَه. وعمودان يُفرَزان ويُفلتَران ويُصدَّران.
-              [ar ? 'من' : 'From', 'fromCity'],
-              [ar ? 'إلى' : 'To', 'toCity'],
-              [ar ? 'الفرع' : 'Branch', 'branch'],
-              [ar ? 'السائق' : 'Driver', 'driverName'],
-              [ar ? 'تواصل' : 'Contact', null],
-              // ── والقمعُ يسأل عمّا يُعرَض في العمود ──────────────────────────
-              // العمودُ يكتب **نوعَ** الشاحنة («تريلا»، «دينا»)، وكان قمعُه
-              // يفتح قائمةَ **اللوحات** — فمن ضغطه وجد أرقامًا لا علاقةَ لها
-              // بما يقرأ في العمود. فصار يسأل عن النوع، واللوحةُ تُكتب في
-              // الخليّة تحته وتُبحَث من خانة البحث.
-              [ar ? 'الشاحنة' : 'Truck', 'truckType'],
-              [ar ? 'المورد' : 'Supplier', 'supplierName'],
-              [ar ? 'نوع الحمولة' : 'Cargo', 'cargoType'],
-              [ar ? 'نوع الدفع' : 'Payment', 'paymentSubtype'],
-              [ar ? 'السيلز' : 'Sales rep', 'salesRepName'],
-              // ── وكلُّ عمودٍ له قمعُه كإكسل (٢٠٢٦/١٠/٢٧) — التاريخُ بيومه والسعرُ
-              // بقيمته، و«بيع / شراء» صارا عمودين: الشراءُ أوّلًا كما في النموذج.
-              [ar ? 'وقت الاستلام' : 'Pickup', 'pickupDay'],
-              [ar ? 'سعر الشراء' : 'Buy', 'buyPrice'],
-              [ar ? 'سعر البيع' : 'Sell', 'sellPrice'],
-              [ar ? 'الحالة' : 'Status', 'status'],
-              [ar ? 'ملاحظة البوليصة' : 'Waybill note', 'notes'],
-              [ar ? 'آخر متابعة' : 'Latest follow-up', null],
-              [ar ? 'إجراءات' : 'Actions', null],
-            ] as const).map(([h, col], i) => (
-              <th key={i} className="text-start font-semibold px-4 py-3 whitespace-nowrap">
+            {shownHeads.map(([h, col], i) => (
+              <th key={i} className={`text-start font-semibold px-4 py-3 whitespace-nowrap ${i === 0 ? 'sticky start-[44px] z-10 bg-slate-900' : ''}`}>
                 <span className="inline-flex items-center">
                   {h}
                   {/* القمعُ يُفتَح فيُطلَب عمودُه وحدَه — لا الأعمدةُ العشرة. */}
@@ -756,7 +756,7 @@ function ShipmentOrdersInner() {
           </tr></thead>
           <tbody>
             {orders.length === 0 ? (
-              <tr><td colSpan={20} className="text-center text-slate-500 py-14">
+              <tr><td colSpan={shownHeads.length + 1} className="text-center text-slate-500 py-14">
                 {ar ? 'لا توجد شحنات بعد — ابدأ من زر «إنشاء شحنة».' : 'No shipments yet — start with “Create shipment”.'}
               </td></tr>
             ) : orders.map((o) => {
@@ -769,24 +769,30 @@ function ShipmentOrdersInner() {
               return (
                 <tr key={o._id} onClick={() => setDetail(o)}
                   className="border-b border-slate-200/70 hover:bg-slate-50 cursor-pointer">
-                  <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
+                  <td className="px-3 py-3 w-[44px] sticky start-0 z-10 bg-white" onClick={(e) => e.stopPropagation()}>
                     <input type="checkbox" className="w-4 h-4 accent-[#f37121]"
                       checked={picked.has(o._id)} onChange={() => togglePick(o._id)}
                       aria-label={String(o.waybillNumber)} />
                   </td>
-                  <td className="px-4 py-3 text-slate-900 font-bold font-mono whitespace-nowrap">
+                  <td className="px-4 py-3 text-slate-900 font-bold font-mono whitespace-nowrap sticky start-[44px] z-10 bg-white shadow-[inset_-1px_0_0_#e2e8f0]">
                     {(o as any).reference || o.waybillNumber}
                   </td>
+                  {on('customerName') && (
                   <td className="px-4 py-3 text-slate-900 font-medium max-w-[220px] truncate" title={o.customerName}>{o.customerName || '—'}</td>
+                  )}
+                  {on('fromCity') && (
                   <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{o.fromCity || '—'}</td>
+                  )}
+                  {on('toCity') && (
                   <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{o.toCity || '—'}</td>
+                  )}
+                  {on('branch') && (
                   <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{o.branch || '—'}</td>
+                  )}
+                  {on('driverName') && (
                   <td className="px-4 py-3 text-slate-700 max-w-[170px] truncate" title={o.driverName || ''}>{o.driverName || '—'}</td>
-                  {/* ── عمودُ التواصل ────────────────────────────────────────
-                      فريقُ التشغيل يتّصل بالسائق عشرَ مرّاتٍ في اليوم: كان
-                      يفتح الحمولةَ لينسخ الرقمَ ثمّ يفتح واتساب ويلصقه. ضغطةٌ
-                      واحدة تفتح المحادثةَ على رقمه، وأخرى تتّصل به — ورسالةٌ
-                      جاهزةٌ تحمل رقمَ البوليصة فلا يُسأل «أيّ حمولة؟». */}
+                  )}
+                  {on('contact') && (
                   <td className="px-4 py-3">
                     {(o.driverPhone || '').trim()
                       ? <ContactButtons
@@ -796,22 +802,38 @@ function ShipmentOrdersInner() {
                         />
                       : <span className="text-slate-300 text-xs">{ar ? 'لا رقم' : 'no phone'}</span>}
                   </td>
-                  {/* نوعُ الشاحنة واللوحةُ لا ينكسران سطرين («تريلا» ثمّ «سطحة» تحتها). */}
-                  <td className="px-4 py-3 text-slate-700 whitespace-nowrap">
-                    <span className="block">{o.truckType || '—'}</span>
-                    {/* واللوحةُ تحتها: هي ما يُطابَق به في البوّابات والتقارير. */}
-                    {(o as any).vehiclePlate
-                      ? <span className="block text-[11px] text-slate-400 font-mono" dir="ltr">{(o as any).vehiclePlate}</span>
-                      : null}
+                  )}
+                  {on('owner') && (
+                  <td className="px-4 py-3 text-slate-700 max-w-[220px] truncate" title={(o as any).supplierName || ''}>
+                    {(o as any).supplierName || '—'}
+                    {ownerKindLabel((o as any).ownerKind, ar) && <span className="ms-1.5 text-[11px] font-semibold text-slate-500">({ownerKindLabel((o as any).ownerKind, ar)})</span>}
                   </td>
-                  <td className="px-4 py-3 text-slate-700 max-w-[180px] truncate" title={(o as any).supplierName || ''}>{(o as any).supplierName || '—'}</td>
+                  )}
+                  {on('truck') && (
+                  <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{o.truckType || '—'}</td>
+                  )}
+                  {on('plate') && (
+                  <td className="px-4 py-3 text-slate-700 whitespace-nowrap font-mono" dir="ltr">{(o as any).vehiclePlate || '—'}</td>
+                  )}
+                  {on('cargo') && (
                   <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{o.cargoType || '—'}</td>
+                  )}
+                  {on('payment') && (
                   <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{paymentKindLabel((o as any).paymentSubtype, ar) || (o as any).paymentMethod || '—'}</td>
+                  )}
+                  {on('sales') && (
                   <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{(o as any).salesRepName || '—'}</td>
+                  )}
+                  {on('pickup') && (
                   <td className="px-4 py-3 text-slate-700 text-xs whitespace-nowrap">{fmtDT(o.pickupTime, lang as Lang)}</td>
+                  )}
+                  {on('buy') && (
                   <td className="px-4 py-3 text-slate-700 whitespace-nowrap tabular-nums">{money(o.buyPrice)}</td>
+                  )}
+                  {on('sell') && (
                   <td className="px-4 py-3 text-slate-700 whitespace-nowrap tabular-nums">{money(o.sellPrice)}</td>
-                  {/* الحالةُ كلمتان («قيد الطلب») — وبلا `nowrap` تنكسر سطرين فيتباعد الصفّ. */}
+                  )}
+                  {on('status') && (
                   <td className="px-4 py-3 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                     {/* ── المتابعةُ نقلةُ حالةٍ ومعها سببُها ──────────────────
                         القائمةُ المنسدلة تنقل الحالةَ بلا أن تسأل «لماذا»، ثمّ
@@ -831,15 +853,15 @@ function ShipmentOrdersInner() {
                       <span className={`text-xs font-medium rounded-full px-2.5 py-1 ${st ? `${st.bg} ${st.text}` : 'bg-slate-100 text-slate-700'}`} style={pillStyle}>{pillLabel}</span>
                     )}
                   </td>
-                  {/* ── ملاحظةُ الرحلة ───────────────────────────────────────
-                      تُكتب مع المدن وتُطبَع في البوليصة، فتُقرأ هنا بلا فتح
-                      الحمولة — ويُفلتَر بها أعلى الجدول. */}
+                  )}
+                  {on('notes') && (
                   <td className="px-4 py-3 max-w-[220px]">
                     {(o.notes || '').trim()
                       ? <span className="block truncate text-[13px] text-slate-700" title={o.notes}>{o.notes}</span>
                       : <span className="text-slate-300">—</span>}
                   </td>
-                  {/* ── وآخرُ متابعة: ما قيل عن الشحنة آخرَ مرّة، ومَن قاله ومتى. */}
+                  )}
+                  {on('followup') && (
                   <td className="px-4 py-3 max-w-[240px]">
                     {(() => {
                       const all = followUpNotes(o);
@@ -858,6 +880,7 @@ function ShipmentOrdersInner() {
                       );
                     })()}
                   </td>
+                  )}
                   <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center justify-end gap-1">
                       {editor && (

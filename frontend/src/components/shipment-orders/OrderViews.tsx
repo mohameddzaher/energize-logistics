@@ -97,6 +97,10 @@ function InfoRow({ label, children, compact }: { label: string; children: React.
   );
 }
 
+/** Who owns the truck, as a word: company, freelancer or our fleet. */
+export const ownerKindLabel = (k: unknown, ar: boolean) => (
+  { company: ar ? 'شركة' : 'Company', freelancer: ar ? 'فريلانسر' : 'Freelancer', ours: ar ? 'أسطولنا' : 'Our fleet' } as Record<string, string>)[String(k || '')] || '';
+
 export interface OrderCardProps {
   order: ShipmentOrder;
   compact?: boolean;
@@ -209,6 +213,11 @@ export function OrderCard({
               <span className="tabular-nums">{money(o.sellPrice)} / {money(o.buyPrice)}</span>
             </InfoRow>
           )}
+          {(o as any).supplierName || (o as any).ownerKind ? (
+            <InfoRow compact={compact} label={ar ? 'مالك السيارة' : 'Truck owner'}>
+              {[ownerKindLabel((o as any).ownerKind, ar), (o as any).supplierName].filter(Boolean).join(' — ')}
+            </InfoRow>
+          ) : null}
         </dl>
 
         {tripNote && (

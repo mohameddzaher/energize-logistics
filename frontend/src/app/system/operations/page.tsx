@@ -287,6 +287,16 @@ export default function OperationsWorkflowPage() {
   const searchInputRef = useRef<HTMLInputElement>(null);
   // الجدولُ يُنزَل إليه من بطاقة العدد: «أرِني هذه الصفوف» لا «كم هي».
   const tableRef = useRef<HTMLDivElement>(null);
+  // The actions column changes width with its row icons, so the pinned column reads it live.
+  const pinObserver = useRef<ResizeObserver | null>(null);
+  const measurePinOffset = useCallback((th: HTMLTableCellElement | null) => {
+    pinObserver.current?.disconnect();
+    if (!th) return;
+    const apply = () => th.closest('table')?.style.setProperty('--wf-pin', `${th.offsetWidth}px`);
+    apply();
+    pinObserver.current = new ResizeObserver(apply);
+    pinObserver.current.observe(th);
+  }, []);
   const [transitioningId, setTransitioningId] = useState<string | null>(null);
   const initialLoadDone = useRef(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -1128,8 +1138,9 @@ export default function OperationsWorkflowPage() {
     return undefined;
   };
 
-  const ColHead = (field: keyof Workflow, label: string, color = 'text-slate-300') => (
-    <th className="px-3 py-3 text-start text-xs font-semibold whitespace-nowrap">
+  const ColHead = (field: keyof Workflow, label: string, color = 'text-slate-300', pinned = false) => (
+    <th className={`px-3 py-3 text-start text-xs font-semibold whitespace-nowrap ${pinned ? 'sticky z-20 bg-slate-900' : ''}`}
+      style={pinned ? { insetInlineStart: 'var(--wf-pin, 0px)' } : undefined}>
       <span className={`inline-flex items-center ${color}`}>
         {label}
         <ColumnFilter
@@ -1666,7 +1677,7 @@ export default function OperationsWorkflowPage() {
           <table className="w-full min-w-[3200px]">
             <thead>
               <tr className="bg-slate-900 border-b border-slate-200">
-                <th className="px-3 py-3 sticky start-0 bg-slate-900 z-10 w-20">
+                <th ref={measurePinOffset} className="px-3 py-3 sticky start-0 bg-slate-900 z-10 w-20">
                   <div className="flex items-center gap-2">
                     <input
                       type="checkbox"
@@ -1679,7 +1690,7 @@ export default function OperationsWorkflowPage() {
                   </div>
                 </th>
                 {/* Application Details */}
-                {ColHead('reportNumber', T.thReportNumber)}
+                {ColHead('reportNumber', T.thReportNumber, 'text-slate-300', true)}
                 {ColHead('reportDate', T.thReportDate)}
                 {ColHead('fromLocation', T.thFrom)}
                 {ColHead('toLocation', T.thTo)}
@@ -1847,7 +1858,9 @@ export default function OperationsWorkflowPage() {
                       const textCell = (field: keyof Workflow, color = 'text-slate-700') => {
                         const isSystemPulled = (systemPulledFields.has(field as string) && wf.reportNumber) || !owns(field);
                         return (
-                          <td className="px-3 py-2.5 text-sm whitespace-nowrap" onClick={isSystemPulled ? (e) => e.stopPropagation() : cellClick(field)}
+                          <td className={`px-3 py-2.5 text-sm whitespace-nowrap ${field === 'reportNumber' ? 'sticky z-10 bg-white border-e border-slate-200' : ''}`}
+                            style={field === 'reportNumber' ? { insetInlineStart: 'var(--wf-pin, 0px)' } : undefined}
+                            onClick={isSystemPulled ? (e) => e.stopPropagation() : cellClick(field)}
                             title={!owns(field) ? noPermMsg : isSystemPulled ? 'البيانات المسحوبة من النظام لا تُعدّل' : undefined}>
                             {isEditing && !isSystemPulled ? <input type="text" autoFocus={focusField === field} title={field} className={ic} value={(editData as any)[field] || ''} onChange={(e) => setEditData(prev => ({...prev, [field]: e.target.value}))} /> : <span className={`${spanCls(field, color)}${isSystemPulled && wf.reportNumber ? ' opacity-60' : ''}`}>{(wf as any)[field] || '-'}</span>}
                           </td>

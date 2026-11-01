@@ -29,6 +29,8 @@ const same = (cur, v) => {
 };
 const changes = (doc, wanted) => Object.fromEntries(Object.entries(wanted).filter(([k, v]) => !same(doc?.[k], v)));
 
+const FLEET_OWNER = 'شركة تنشيط';
+
 /** Workflow columns as a fleet load writes them. Fleet trucks are ours, so no purchase side. */
 function rowOfFleet(f) {
   const when = f.loadDate || f.createdAt;
@@ -39,6 +41,8 @@ function rowOfFleet(f) {
     toLocation: str(f.toCity),
     branch: 'النقل الثقيل',
     username: str(f.customerName),
+    carOwner: FLEET_OWNER,
+    ownerName: FLEET_OWNER,
     carNumber: str(f.vehiclePlate),
     plateNumber: str(f.vehiclePlate),
     carName: str(f.vehiclePlate),

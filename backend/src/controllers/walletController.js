@@ -150,7 +150,7 @@ const getOrCreateWallet = async (branchId, date) => {
  * ولا يُكتب فوق ما كُتب بيد: `$set` على الفارغ وحدَه. مَن صحّح مبلغًا أو فرعًا
  * في سير عمل التشغيل قصدًا لا تعود العهدةُ فتدهسه.
  */
-async function fillReportFromWallet({ workflow, amount, date, branchId, documentNumber }) {
+async function fillReportFromWallet({ workflow, amount, date, branchId, documentNumber, role }) {
   const OperationsWorkflow = require('../models/OperationsWorkflow');
   const patch = {};
   if (!workflow.paymentAmount && amount > 0) patch.paymentAmount = amount;
@@ -178,8 +178,8 @@ async function fillReportFromWallet({ workflow, amount, date, branchId, document
     // اسمُ الفرع لا معرّفُه، وبالعربيّة كما يكتبه الموظّف — لا `Branch.name`
     // الإنجليزيّ. التفصيلُ في `utils/payingBranch.js`.
     try {
-      const { arabicBranchName } = require('../utils/payingBranch');
-      const name = await arabicBranchName(branchId);
+      const { payingBranchOf } = require('../utils/payingBranch');
+      const name = await payingBranchOf({ branchId, role, workflow });
       if (name) patch.payingBranch = name;
     } catch (e) { console.error('wallet→report branch lookup:', e.message); }
   }
@@ -604,6 +604,7 @@ exports.addTransaction = async (req, res) => {
         documentNumber: purchaseReceiptNumber,
         // فرعُ العهدة التي خرج منها المال — لا فرعُ الحساب الذي سجّله.
         branchId: wallet.branch || transaction.branch || req.user.branch,
+        role: req.user.role,
       });
       // والمبلغُ يُكتب ولو كانت الخانةُ مملوءة — المحفظةُ هي المرجع.
       try { await require('../utils/walletPayment').syncSheetPayment(purchaseWorkflow.reportNumber); } catch (e) { console.error('wallet→sheet payment sync (create):', e.message); }
@@ -639,6 +640,7 @@ exports.addTransaction = async (req, res) => {
           // ولكلّ كشفٍ سندُه هو، لا سندٌ واحدٌ يُنسَخ على الحزمة.
           documentNumber: pairs.find((x) => x.reportNumber === String(wf.reportNumber).trim())?.documentNumber,
           branchId: wallet.branch || transaction.branch || req.user.branch,
+          role: req.user.role,
         });
       }
     }
@@ -1136,8 +1138,19 @@ exports.updateTransaction = async (req, res) => {
       try {
         const OperationsWorkflow = require('../models/OperationsWorkflow');
         const wfNow = await OperationsWorkflow.findOne({ reportNumber: flexSpaceRegex(transaction.purchaseDeliveryStatementNumber) })
-          .select('externalSource externalId applicationStatus reportNumber');
+          .select('externalSource externalId applicationStatus reportNumber paymentAmount paymentDate documentNumber payingBranch fleetShipment branch');
         if (wfNow) {
+          // An entry pointed at a sheet by editing fills it like a new one. The recorder's
+          // role counts here, not the role of whoever made the edit.
+          const recorder = await require('../models/User').findById(transaction.user).select('role').lean();
+          await fillReportFromWallet({
+            workflow: wfNow,
+            amount: transaction.amount,
+            date: transaction.date,
+            documentNumber: transaction.purchaseReceiptNumber,
+            branchId: wallet?.branch || transaction.branch,
+            role: recorder?.role,
+          });
           const { pushApplicationStatus } = require('./workflowController');
           await pushApplicationStatus(wfNow, 'bond_received', req.user);
         }

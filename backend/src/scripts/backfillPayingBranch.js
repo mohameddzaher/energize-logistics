@@ -40,15 +40,14 @@ const DRY = process.argv.includes('--dry');
   // نفسِها التي تُملأ منها الخانةُ حين تُختار بيد — وإلّا دخل «Jeddah» إلى
   // جانب «جده» فانقسم الفرعُ الواحد قيمتين في كلّ تقرير.
   // المطابقةُ نفسُها التي تكتب بها المحفظة (utils/payingBranch) — ومنها النقلُ الثقيل.
-  const { matchPayingBranch } = require('../utils/payingBranch');
+  const { matchPayingBranch, resolvePayingBranch } = require('../utils/payingBranch');
   const Lookup = require('../models/Lookup');
   const lookup = await Lookup.find({ type: 'workflow_paying_branch', deleted: { $ne: true } }).select('key nameEn nameAr').lean();
   const branches = new Map();
   const unmapped = new Set();
   for (const b of await Branch.find({}).select('name').lean()) {
-    const ar = matchPayingBranch(b.name, lookup);
-    if (ar) branches.set(String(b._id), ar);
-    else unmapped.add(b.name);
+    branches.set(String(b._id), b.name);
+    if (!matchPayingBranch(b.name, lookup)) unmapped.add(b.name);
   }
   if (unmapped.size) console.log(`فروعٌ لا نظيرَ لها في القائمة المرجعيّة (تُترك فارغةً): ${[...unmapped].join('، ')}`);
 
@@ -58,12 +57,21 @@ const DRY = process.argv.includes('--dry');
       { purchaseDeliveryStatementNumber: { $nin: [null, ''] } },
       { receivedDocNumber: { $nin: [null, ''] } },
     ],
-  }).select('purchaseDeliveryStatementNumber receivedDocNumber wallet branch date').lean();
+  }).select('purchaseDeliveryStatementNumber receivedDocNumber wallet branch date user').lean();
   console.log(`حركاتُ عهدةٍ تحمل رقمَ كشف: ${txs.length}`);
 
   const walletIds = [...new Set(txs.map((t) => String(t.wallet)).filter(Boolean))];
   const wallets = new Map((await DailyWallet.find({ _id: { $in: walletIds } }).select('branch').lean())
     .map((w) => [String(w._id), String(w.branch)]));
+
+  const User = require('../models/User');
+  const roles = new Map((await User.find({ _id: { $in: [...new Set(txs.map((t) => String(t.user)).filter(Boolean))] } })
+    .select('role').lean()).map((u) => [String(u._id), u.role]));
+  const allNums = [...new Set(txs.map((t) => String(t.purchaseDeliveryStatementNumber || t.receivedDocNumber || '').trim()).filter(Boolean))];
+  const sheetOf = new Map();
+  for (let i = 0; i < allNums.length; i += 1000) {
+    for (const s of await OW.find({ reportNumber: { $in: allNums.slice(i, i + 1000) } }).select('reportNumber fleetShipment branch').lean()) sheetOf.set(s.reportNumber, s);
+  }
 
   // رقمُ الكشف ← اسمُ الفرع. وأحدثُ حركةٍ تفوز حين تعدّدت.
   const branchOf = new Map();
@@ -72,7 +80,7 @@ const DRY = process.argv.includes('--dry');
     const no = String(t.purchaseDeliveryStatementNumber || t.receivedDocNumber || '').trim();
     if (!no) continue;
     const bid = wallets.get(String(t.wallet)) || (t.branch && String(t.branch));
-    const name = bid && branches.get(bid);
+    const name = resolvePayingBranch({ branchName: bid && branches.get(bid), role: roles.get(String(t.user)), workflow: sheetOf.get(no) }, lookup);
     if (!name) { noBranch += 1; continue; }
     branchOf.set(no, name);
   }
@@ -110,6 +118,11 @@ const DRY = process.argv.includes('--dry');
     }
     console.log(`\n✓ كُتب الفرعُ على ${done} كشفًا`);
   }
+
+  // Fleet rows mirrored before the owner column existed: the periodic pass reads recent edits only.
+  const ownerless = { fleetShipment: { $type: 'objectId' }, $or: [{ carOwner: '' }, { carOwner: null }, { carOwner: { $exists: false } }] };
+  console.log(`\nصفوفُ أسطولٍ بلا مالك: ${await OW.countDocuments(ownerless)}`);
+  if (!DRY) await OW.updateMany(ownerless, { $set: { carOwner: 'شركة تنشيط', ownerName: 'شركة تنشيط' } });
 
   const gap = await OW.countDocuments({
     paymentDate: { $ne: null },

@@ -52,7 +52,8 @@ const foldAr = (v) => String(v || '')
  * في القائمة المرجعيّة نظيرٌ له، وسجلُّه قد يُكتب «Heavy Trucks» أو «Heavy
  * Transport» أو بالعربيّة — فيُطابَق بأيٍّ منها إلى صفّ `heavy_trucks`.
  */
-const isHeavy = (name) => /heavy/i.test(String(name || '')) || foldAr(name).includes('ثقيل');
+const isHeavy = (name) => /heavy|fleet/i.test(String(name || ''))
+  || foldAr(name).includes('ثقيل') || foldAr(name).includes('اسطول');
 
 /** اسمُ الفرع (إنجليزيًّا أو عربيًّا) → الاسمُ العربيُّ في القائمة، أو ''. */
 function matchPayingBranch(branchName, rows) {
@@ -64,4 +65,27 @@ function matchPayingBranch(branchName, rows) {
   return hit?.nameAr || '';
 }
 
-module.exports = { arabicBranchName, matchPayingBranch, foldEn, foldAr };
+// Who pays for heavy transport: their purchases belong to that branch whichever wallet they used.
+const HEAVY_RECORDER_ROLES = ['fleet_manager', 'fleet_supervisor', 'location_manager'];
+
+/**
+ * Paying branch of one purchase. The recorder's section decides first, then the wallet's
+ * branch; a fleet row catches a wallet whose branch record has no match in the list.
+ */
+function resolvePayingBranch({ branchName, role, workflow }, rows) {
+  const heavy = () => matchPayingBranch('Heavy Trucks', rows);
+  if (HEAVY_RECORDER_ROLES.includes(role)) return heavy();
+  return matchPayingBranch(branchName, rows)
+    || (workflow?.fleetShipment || isHeavy(workflow?.branch) ? heavy() : '');
+}
+
+/** Same as `resolvePayingBranch`, reading the branch name and the list from the database. */
+async function payingBranchOf({ branchId, role, workflow }) {
+  const Branch = require('../models/Branch');
+  const Lookup = require('../models/Lookup');
+  const b = branchId ? await Branch.findById(branchId).select('name').lean() : null;
+  const rows = await Lookup.find({ type: 'workflow_paying_branch', deleted: { $ne: true } }).select('key nameEn nameAr').lean();
+  return resolvePayingBranch({ branchName: b?.name, role, workflow }, rows);
+}
+
+module.exports = { arabicBranchName, matchPayingBranch, resolvePayingBranch, payingBranchOf, foldEn, foldAr };

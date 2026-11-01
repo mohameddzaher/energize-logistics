@@ -882,6 +882,8 @@ const bustFilterCache = () => { try { cache.clear('wf:'); } catch (e) {} };
 const LIST_FIELDS = [
   'reportNumber', 'reportDate', 'fromLocation', 'toLocation', 'branch',
   'carOwner', 'carNumber', 'ownerType', 'executionStatus', 'applicationStatus',
+  // Read only by the page's Excel export.
+  'ownerName', 'ownerPhone', 'carName',
   'paymentMethod', 'username', 'userPhone', 'taxIndicator',
   'purchaseValue', 'sellingValue', 'loadingTime', 'driverRentalType', 'reference',
   'driverName', 'driverPhone', 'truckType', 'truckSize', 'loadType', 'quantity',
@@ -2737,8 +2739,10 @@ async function buildWorkflowWorkbook(filter, money, selling = true) {
       ['من', (w) => w.fromLocation || ''],
       ['إلى', (w) => w.toLocation || ''],
       ['الفرع', (w) => w.branch || ''],
-      ['مالك السيارة', (w) => w.carOwner || ''],
+      ['مالك السيارة', (w) => w.carOwner || w.ownerName || ''],
+      ['جوال المالك', (w) => w.ownerPhone || ''],
       ['رقم السيارة', (w) => w.carNumber || ''],
+      ['اسم السيارة', (w) => w.carName || ''],
       ['نوع الملكية', (w) => w.ownerType || ''],
       ['حالة التنفيذ', (w) => st(w.executionStatus)],
       ['حالة الشحنة', (w) => st(w.applicationStatus)],
@@ -2748,12 +2752,17 @@ async function buildWorkflowWorkbook(filter, money, selling = true) {
       ['قيمة الشراء', (w) => w.purchaseValue || 0],
       ['قيمة البيع', (w) => w.sellingValue || 0, 'selling'],
       ['السائق', (w) => w.driverName || ''],
+      ['جوال السائق', (w) => w.driverPhone || ''],
       ['نوع الشاحنة', (w) => w.truckType || ''],
       ['حجم الشاحنة', (w) => w.truckSize || ''],
+      ['نوع الحمولة', (w) => w.loadType || ''],
+      ['الكمية', (w) => w.quantity || ''],
       ['المندوب', (w) => w.representativeName || ''],
       ['مراجعة العمليات', (w) => yes(w.operationsReview)],
       ['تاريخ السداد', (w) => d(w.paymentDate)],
+      ['مسؤول البيانات', (w) => w.paymentDateByName || ''],
       ['فرع السداد', (w) => w.payingBranch || ''],
+      ['مبلغ السداد', (w) => w.paymentAmount || 0],
       // الستُّ كما تُعرَض في الخانة — راجع paymentKindLabel.
       ['نوع الدفع', (w) => paymentKindLabel(w)],
       ['وجهة أمر النقل النهائية', (w) => w.finalReportDestination || ''],
@@ -2770,6 +2779,7 @@ async function buildWorkflowWorkbook(filter, money, selling = true) {
       ['الضريبة', (w) => w.tax || 0, 'money'],
       ['إجمالي الفاتورة', (w) => w.totalInvoice || 0, 'money'],
       ['تاريخ الفاتورة', (w) => d(w.invoiceDate), 'money'],
+      ['مبلغ التحصيل', (w) => w.collectedAmount || 0, 'money'],
       ['تاريخ التحصيل', (w) => d(w.collectionDate), 'money'],
       ['المرحلة', (w) => STAGE_AR[w.stage] || w.stage || ''],
     ];
@@ -2790,6 +2800,8 @@ async function buildWorkflowWorkbook(filter, money, selling = true) {
       'paymentType', 'paymentSubtype', 'finalReportDestination', 'documentNumber', 'sendingDate', 'branchDeliveryDate',
       'deliveryDate', 'accountingReview', 'invoiceNumber', 'netInvoice', 'tax',
       'totalInvoice', 'invoiceDate', 'collectionDate', 'stage', 'customsLink',
+      'ownerName', 'ownerPhone', 'carName', 'driverPhone', 'loadType', 'quantity',
+      'paymentDateByName', 'paymentAmount', 'collectedAmount',
     ].join(' ');
 
     // ── والصفوفُ تُقرأ تدفّقًا لا دفعةً واحدة ──────────────────────────────
@@ -2802,9 +2814,19 @@ async function buildWorkflowWorkbook(filter, money, selling = true) {
     // وإيابًا هو الغالبُ هنا لا قراءةُ القرص.
     const cursor = OperationsWorkflow.find(filter).select(FIELDS)
       .sort({ createdAt: -1 }).lean().cursor({ batchSize: 5000 });
+    const unnamed = [];
     for (let w = await cursor.next(); w != null; w = await cursor.next()) {
       aoa.push(cols.map(([, get]) => get(w)));
+      if (!w.paymentDateByName) unnamed.push({ row: aoa.length - 1, rn: w.reportNumber });
     }
+    // Same order as the screen: whoever wrote the date, then the wallet recorder.
+    const ownerCol = headers.indexOf('مسؤول البيانات');
+    const { walletRecorderMap } = require('../utils/walletPayment');
+    const recorders = new Map();
+    for (let i = 0; i < unnamed.length; i += 5000) {
+      for (const [k, v] of await walletRecorderMap(unnamed.slice(i, i + 5000).map((u) => u.rn))) recorders.set(k, v);
+    }
+    for (const u of unnamed) aoa[u.row][ownerCol] = recorders.get(String(u.rn || '').trim()) || '';
 
     // `compression` يصغّر الملفَّ إلى نحو خُمسه — وهو فرقُ ثوانٍ على الشبكة.
     // والكتابةُ في خيطٍ عامل: وإلّا توقّف هذا العاملُ عن خدمة الجميع طوالَها

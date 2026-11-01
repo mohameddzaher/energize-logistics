@@ -132,7 +132,7 @@ const NUM_FIELDS = new Set(['purchaseValue', 'sellingValue', 'netInvoice', 'tax'
 // في القائمة يُخرج ثمانيةَ أعمدةٍ فارغةٍ بعناوينها — وعمودٌ فارغٌ بعنوانٍ
 // يُقرأ «لا فاتورة لهذا الكشف»، وهو غيرُ «لا تُعرض لك».
 const MONEY_EXPORT_KEYS = new Set([
-  'netInvoice', 'tax', 'totalInvoice', 'invoiceDate', 'invoiceNotes', 'collectionDate',
+  'netInvoice', 'tax', 'totalInvoice', 'invoiceDate', 'invoiceNotes', 'collectedAmount', 'collectionDate',
 ]);
 const EXPORT_COLUMNS = [
   { header: 'رقم الطلب', key: 'reportNumber', width: 14 },
@@ -141,20 +141,26 @@ const EXPORT_COLUMNS = [
   { header: 'إلى', key: 'toLocation', width: 14 },
   { header: 'الفرع', key: 'branch', width: 14 },
   { header: 'مالك السيارة', key: 'carOwner', width: 22 },
+  { header: 'جوال المالك', key: 'ownerPhone', width: 14 },
   { header: 'رقم السيارة', key: 'carNumber', width: 14 },
+  { header: 'اسم السيارة', key: 'carName', width: 16 },
   { header: 'حالة الشحنة', key: 'applicationStatus', width: 16 },
   { header: 'العميل', key: 'username', width: 20 },
   { header: 'هاتف العميل', key: 'userPhone', width: 14 },
   { header: 'قيمة الشراء', key: 'purchaseValue', width: 12 },
   { header: 'قيمة البيع', key: 'sellingValue', width: 12 },
   { header: 'السائق', key: 'driverName', width: 20 },
+  { header: 'جوال السائق', key: 'driverPhone', width: 14 },
   { header: 'نوع الشاحنة', key: 'truckType', width: 14 },
   { header: 'حجم الشاحنة', key: 'truckSize', width: 12 },
+  { header: 'نوع الحمولة', key: 'loadType', width: 14 },
+  { header: 'الكمية', key: 'quantity', width: 10 },
   { header: 'المندوب', key: 'representativeName', width: 18 },
   { header: 'مراجعة العمليات', key: 'operationsReview', width: 14 },
   { header: 'تاريخ السداد', key: 'paymentDate', width: 12 },
   { header: 'مسؤول البيانات', key: 'dataOwnerShown', width: 22 },
   { header: 'فرع السداد', key: 'payingBranch', width: 14 },
+  { header: 'مبلغ السداد', key: 'paymentAmount', width: 12 },
   { header: 'نوع الدفع', key: 'paymentType', width: 14 },
   { header: 'وجهة أمر النقل النهائية', key: 'finalReportDestination', width: 18 },
   { header: 'رقم المستند', key: 'documentNumber', width: 14 },
@@ -169,6 +175,7 @@ const EXPORT_COLUMNS = [
   { header: 'الضريبة', key: 'tax', width: 10 },
   { header: 'إجمالي الفاتورة', key: 'totalInvoice', width: 14 },
   { header: 'تاريخ الفاتورة', key: 'invoiceDate', width: 12 },
+  { header: 'مبلغ التحصيل', key: 'collectedAmount', width: 12 },
   { header: 'تاريخ التحصيل', key: 'collectionDate', width: 12 },
 ];
 
@@ -989,6 +996,7 @@ export default function OperationsWorkflowPage() {
    */
   const exportRow = (w: Workflow) => ({
     ...w,
+    carOwner: w.carOwner || (w as any).ownerName || '',
     reportDate: formatDate(w.reportDate),
     paymentDate: formatDate(w.paymentDate),
     dataOwnerShown: (w as any).dataOwnerShown || w.paymentDateByName || '',

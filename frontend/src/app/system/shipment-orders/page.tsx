@@ -30,7 +30,7 @@ import ManagedSelect from '@/components/system/ManagedSelect';
 import { paymentKindLabel } from '@/lib/paymentKind';
 import {
   OrderCard, ownerKindLabel, ViewSwitcher, ViewMode, VIEW_MODES, VIEW_PREF_KEY, VIEW_PREF_READ_KEY,
-  followUpNotes, relTime, driverMessage, orderRef,
+  followUpNotes, relTime, orderRef,
 } from '@/components/shipment-orders/OrderViews';
 import NoteModal from '@/components/shipment-orders/NoteModal';
 
@@ -822,7 +822,6 @@ function ShipmentOrdersInner() {
                       ? <ContactButtons
                           phone={o.driverPhone}
                           size={15}
-                          messageText={driverMessage(o, ar)}
                         />
                       : <span className="text-slate-300 text-xs">{ar ? 'لا رقم' : 'no phone'}</span>}
                   </td>

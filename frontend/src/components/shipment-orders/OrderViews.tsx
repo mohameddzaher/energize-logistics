@@ -46,11 +46,6 @@ export function relTime(iso: string | undefined, ar: boolean): string {
 
 export const orderRef = (o: ShipmentOrder) => String((o as any).reference || o.waybillNumber || '');
 
-/** الرسالةُ الجاهزة للسائق — نفسُها في الجدول والبطاقة. */
-export const driverMessage = (o: ShipmentOrder, ar: boolean) => (ar
-  ? `السلام عليكم، بخصوص أمر النقل رقم ${orderRef(o)}${o.fromCity ? ` (${o.fromCity} — ${o.toCity || ''})` : ''}`
-  : `Hello, regarding waybill ${orderRef(o)}${o.fromCity ? ` (${o.fromCity} — ${o.toCity || ''})` : ''}`);
-
 /** شارةُ الحالة: لونُ الحالة المعروفة، أو لونُ ما زاده القسمُ من إعداداته. */
 export function statusPill(o: ShipmentOrder, vocab: StatusVocab[], lang: Lang): { className: string; style?: CSSProperties; label: string } {
   const st = orderStatus(o.status);
@@ -139,7 +134,7 @@ export function OrderCard({
   const fu = notes[0] || null;
   const tripNote = String(o.notes || '').trim();
   const phone = String(o.driverPhone || '').trim();
-  const wa = phone ? waLink(phone, driverMessage(o, ar)) : null;
+  const wa = phone ? waLink(phone) : null;
   const tel = phone ? telLink(phone) : null;
   const plate = String((o as any).vehiclePlate || '').trim();
   const pad = compact ? 'px-3' : 'px-4 sm:px-5';

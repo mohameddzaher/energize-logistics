@@ -195,7 +195,13 @@ const SECTION_FIELD_SOURCE = {
 const FIELDS_TTL = 60 * 1000;
 const fieldsCache = require('../utils/ttlCache');
 
+// Every data and follow-up user moves a shipment's status here, whatever their branch.
+const STATUS_ROLES = [...require('../config/roles').DATA_ROLES, 'shipment_orders_followup'];
 const fieldsForRole = async (role) => {
+  const fields = await baseFieldsForRole(role);
+  return STATUS_ROLES.includes(role) && !fields.includes('applicationStatus') ? [...fields, 'applicationStatus'] : fields;
+};
+const baseFieldsForRole = async (role) => {
   if (ROLE_FIELD_ACCESS[role]) return ROLE_FIELD_ACCESS[role];
   return fieldsCache.wrap(`wf:fields:${role}`, FIELDS_TTL, async () => {
     try {

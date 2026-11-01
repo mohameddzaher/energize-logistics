@@ -103,6 +103,7 @@ function ShipmentOrdersInner() {
 
   const [orders, setOrders] = useState<ShipmentOrder[]>([]);
   const [customers, setCustomers] = useState<OrderCustomer[]>([]);
+  const [otherBranches, setOtherBranches] = useState<string[]>([]);
   const [stats, setStats] = useState<{ byStatus: Record<string, number>; sellTotal: number; buyTotal: number } | null>(null);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -305,6 +306,7 @@ function ShipmentOrdersInner() {
       setOrders(d.orders || []);
       setTotal(d.total || 0);
       setStats(d.stats || null);
+      setOtherBranches((d as any).otherBranches || []);
       setError('');
     } catch (e: any) { setError(e?.message || 'Request failed'); }
     setLoading(false);
@@ -774,7 +776,9 @@ function ShipmentOrdersInner() {
           <tbody>
             {orders.length === 0 ? (
               <tr><td colSpan={shownHeads.length + 1} className="text-center text-slate-500 py-14">
-                {ar ? 'لا توجد شحنات بعد — ابدأ من زر «إنشاء شحنة».' : 'No shipments yet — start with “Create shipment”.'}
+                {otherBranches.length
+                  ? (ar ? `موجودة في فرع غير مفتوح لك: ${otherBranches.join('، ')}` : `Found in a branch not open to you: ${otherBranches.join(', ')}`)
+                  : (ar ? 'لا توجد شحنات بعد — ابدأ من زر «إنشاء شحنة».' : 'No shipments yet — start with “Create shipment”.')}
               </td></tr>
             ) : orders.map((o) => {
               const st = orderStatus(o.status);

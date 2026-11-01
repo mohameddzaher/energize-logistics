@@ -97,6 +97,8 @@ function InfoRow({ label, children, compact }: { label: string; children: React.
   );
 }
 
+import { paymentKindLabel } from '@/lib/paymentKind';
+
 /** Who owns the truck, as a word: company, freelancer or our fleet. */
 export const ownerKindLabel = (k: unknown, ar: boolean) => (
   { company: ar ? 'شركة' : 'Company', freelancer: ar ? 'فريلانسر' : 'Freelancer', ours: ar ? 'أسطولنا' : 'Our fleet' } as Record<string, string>)[String(k || '')] || '';
@@ -207,7 +209,11 @@ export function OrderCard({
           <InfoRow compact={compact} label={ar ? 'الاستلام' : 'Pickup'}>
             {o.pickupTime ? fmtDT(o.pickupTime, lang) : '—'}
           </InfoRow>
-          {o.cargoType ? <InfoRow compact={compact} label={ar ? 'الحمولة' : 'Cargo'}>{o.cargoType}</InfoRow> : null}
+          {paymentKindLabel((o as any).paymentSubtype, ar) || (o as any).paymentMethod ? (
+            <InfoRow compact={compact} label={ar ? 'نوع الدفع' : 'Payment'}>
+              {paymentKindLabel((o as any).paymentSubtype, ar) || (o as any).paymentMethod}
+            </InfoRow>
+          ) : null}
           {(o.sellPrice != null || o.buyPrice != null) && (
             <InfoRow compact={compact} label={ar ? 'بيع / شراء' : 'Sell / buy'}>
               <span className="tabular-nums">{money(o.sellPrice)} / {money(o.buyPrice)}</span>

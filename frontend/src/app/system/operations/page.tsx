@@ -223,6 +223,8 @@ export default function OperationsWorkflowPage() {
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   // «باستثناء الملغاة» يثبت حتى يُلغى، ويُحفَظ للمستخدم (٢٠٢٦/١٠/٢٢).
+  // Which section's rows to show; both by default.
+  const [origin, setOrigin] = useState('');
   const [excludeCancelled, setExcludeCancelled] = useState<boolean>(() => {
     try { return localStorage.getItem('ops:excludeCancelled') === '1'; } catch { return false; }
   });
@@ -430,6 +432,7 @@ export default function OperationsWorkflowPage() {
     if (showPendingAsOf) params.append('pendingAsOf', 'true');
     if (customsMode) params.append('customs', customsMode);
     if (excludeCancelled) params.append('excludeCancelled', '1');
+    if (origin) params.append('origin', origin);
     for (const [field, vals] of Object.entries(colFilters)) {
       // مجموعةٌ أو مصفوفةٌ أو نصٌّ — كلُّها تُقرأ؛ قيمةٌ بشكلٍ غير متوقَّع كانت ترمي
       // داخلَ الطلب فيُبتلَع الخطأ ولا تُعاد القائمةُ أبدًا.
@@ -437,7 +440,7 @@ export default function OperationsWorkflowPage() {
       list.forEach((v) => params.append(`cf_${field}`, v));
     }
     return params;
-  }, [stageFilter, search, dateFrom, dateTo, showPendingOnly, showPendingAsOf, customsMode, colFilters, excludeCancelled]);
+  }, [origin, stageFilter, search, dateFrom, dateTo, showPendingOnly, showPendingAsOf, customsMode, colFilters, excludeCancelled]);
 
   // ── ولا يكتب ردٌّ قديمٌ فوق ردٍّ أحدث ────────────────────────────────────
   //
@@ -1543,7 +1546,13 @@ export default function OperationsWorkflowPage() {
               </button>
             )}
           </div>
-          <button type="button" onClick={toggleExcludeCancelled}
+          <select value={origin} onChange={(e) => { setOrigin(e.target.value); setPage(1); }} title={lang === 'ar' ? 'المصدر' : 'Source'}
+          className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700">
+          <option value="">{lang === 'ar' ? 'الشحنات والحمولات' : 'Shipments and loads'}</option>
+          <option value="orders">{lang === 'ar' ? 'شحنات طلبات الشحنات' : 'Shipment orders'}</option>
+          <option value="fleet">{lang === 'ar' ? 'حمولات إدارة الأسطول' : 'Fleet loads'}</option>
+        </select>
+        <button type="button" onClick={toggleExcludeCancelled}
           title={lang === 'ar' ? 'يبقى مفعّلًا حتى تلغيه — الأرقامُ والجدولُ والتصديرُ بلا الملغاة' : 'Stays on until you turn it off'}
           className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold ${excludeCancelled ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}>
           {excludeCancelled ? <Check className="h-3.5 w-3.5" /> : <Ban className="h-3.5 w-3.5" />}
@@ -1821,7 +1830,7 @@ export default function OperationsWorkflowPage() {
                       // مزامنة. فتُختار من قائمةٍ، وتُكتب في المنصّة نفسِها
                       // (راجع changeApplicationStatus) فتراها الشاشتان معًا.
                       const statusCell = () => {
-                        const fromPlatform = (wf as any).externalSource === 'ops_upl' || !!(wf as any).shipmentOrder;
+                        const fromPlatform = (wf as any).externalSource === 'ops_upl' || !!(wf as any).shipmentOrder || !!(wf as any).fleetShipment;
                         const canSet = owns('applicationStatus') && fromPlatform && !locked;
                         const busy = statusSaving === wf._id;
                         const st = SHIPMENT_STATUSES.find((s) => s.key === wf.applicationStatus);

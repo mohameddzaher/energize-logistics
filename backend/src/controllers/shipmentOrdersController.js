@@ -589,6 +589,12 @@ exports.listOrders = async (req, res) => {
     ]);
 
     await attachOwnerKind(orders);
+    // A search that finds nothing because of the branch limit says so.
+    let otherBranches = [];
+    if (scope && !total && q && q.trim()) {
+      const open = { ...filter, $and: (filter.$and || []).filter((c) => c !== scope) };
+      otherBranches = (await ShipmentOrder.distinct('branch', open)).filter(Boolean).slice(0, 5);
+    }
 
     const byStatus = {};
     statusAgg.forEach((r) => { byStatus[r._id] = r.n; });
@@ -608,6 +614,7 @@ exports.listOrders = async (req, res) => {
       bySource,
       orders,
       total,
+      otherBranches,
       stats: {
         byStatus,
         sellTotal: priceAgg[0]?.sell || 0,

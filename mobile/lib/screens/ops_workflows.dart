@@ -118,6 +118,8 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
   // Bonds not arrived as of the end of the filtered period (even if they arrived later).
   bool _pendingAsOf = false;
   bool _excludeCancelled = false;
+  // Which section's rows to show; both by default.
+  String _origin = '';
   String _customs = '';
   final OpsPeriod _period = OpsPeriod();
   /// حقولُ هذا الدور كما يحسبها الخادم — `null` حتى يصل الجواب.
@@ -154,7 +156,7 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
   bool get _canSeeSelling => _has('sellingValue') || _seesSelling;
   bool _owns(String f) => _myFields == null || _full || _myFields!.contains(f);
   // Platform rows and rows owned by a shipment created here both have a status to change.
-  bool _hasStatus(Map w) => (w['externalSource'] ?? '') == 'ops_upl' || (w['shipmentOrder'] ?? '').toString().isNotEmpty;
+  bool _hasStatus(Map w) => (w['externalSource'] ?? '') == 'ops_upl' || (w['shipmentOrder'] ?? '').toString().isNotEmpty || (w['fleetShipment'] ?? '').toString().isNotEmpty;
 
   @override
   void initState() {
@@ -247,6 +249,7 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
       if (_pendingAsOf) ('pendingAsOf', 'true'),
       if (_customs.isNotEmpty) ('customs', _customs),
       if (_excludeCancelled) ('excludeCancelled', '1'),
+      if (_origin.isNotEmpty) ('origin', _origin),
       for (final e in _cf.entries)
         if (e.key != skip)
           for (final v in e.value) ('cf_${e.key}', v),
@@ -965,6 +968,8 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
         child: SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           child: Row(children: [
+            _chip(tr('طلبات الشحنات', 'Shipment orders'), _origin == 'orders', () { _origin = _origin == 'orders' ? '' : 'orders'; _reload(); }),
+            _chip(tr('إدارة الأسطول', 'Fleet'), _origin == 'fleet', () { _origin = _origin == 'fleet' ? '' : 'fleet'; _reload(); }),
             _chip(tr('باستثناء الملغاة', 'Excluding cancelled'), _excludeCancelled, () { _excludeCancelled = !_excludeCancelled; _reload(); }, icon: Icons.block),
             for (final f in _barFields)
               if (!f.$4 || _canViewFinancials)

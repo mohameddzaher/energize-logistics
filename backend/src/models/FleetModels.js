@@ -242,15 +242,15 @@ const FleetCounter = mongoose.models.FleetCounter || mongoose.model('FleetCounte
 fleetShipmentSchema.pre('save', async function (next) {
   if (this.isNew && this.waybillNumber == null) {
     try {
-      const c = await FleetCounter.findOneAndUpdate(
-        { _id: 'waybill' }, { $inc: { seq: 1 } },
-        { new: true, upsert: true, setDefaultsOnInsert: true },
-      );
-      if (c.seq < 100001) { c.seq = 100001; await c.save(); }
-      this.waybillNumber = c.seq;
+      this.waybillNumber = await require('../utils/transportOrderNumber').nextTransportNumber();
     } catch (e) { return next(e); }
   }
   next();
+});
+
+// Every saved load has its row in the operations workflow.
+fleetShipmentSchema.post('save', (doc) => {
+  require('../services/shipmentOrderWorkflowLink').mirrorFleetSoon(doc._id);
 });
 
 // ── Events: the append-only story of each shipment ──────────────────────────

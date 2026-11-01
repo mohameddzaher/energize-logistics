@@ -888,7 +888,7 @@ const LIST_FIELDS = [
   'branchDeliveryDate', 'deliveryDate',
   'accountingReview', 'invoiceNumber', 'netInvoice', 'tax', 'totalInvoice',
   'invoiceDate', 'invoiceNotes', 'collectedAmount', 'collectionDate',
-  'stage', 'lockedBy', 'lockedByName', 'lockedAt', 'externalSource', 'shipmentOrder', 'createdAt',
+  'stage', 'lockedBy', 'lockedByName', 'lockedAt', 'externalSource', 'shipmentOrder', 'fleetShipment', 'createdAt',
   // معاملةُ التخليص المرتبطة — نسخةٌ صغيرة (رقمٌ وبوليصةٌ وحاويات). راجع services/customsOpsLink.
   'customsLink',
 ].join(' ');
@@ -1035,6 +1035,10 @@ function buildWorkflowFilter(queryIn, skipField, allowMoney = true, allowSelling
     stage, search, dateFrom, dateTo, pendingOnly, invoiceGap, pendingKind, pendingAsOf,
   } = query || {};
   const filter = {};
+  // Which section a row comes from; the default shows both.
+  const origin = String((query && query.origin) || '');
+  if (origin === 'fleet') filter.fleetShipment = { $type: 'objectId' };
+  if (origin === 'orders') filter.fleetShipment = { $in: [null] };
 
   // ── «مرتبطٌ بالتخليص» / «غيرُ مرتبط» / معاملةٌ بعينها ───────────────────
   // شريطُ الفلترة فوق الجدول وزرُّ «كشوف التشغيل» في صفحة المعاملة يقولانها
@@ -2214,14 +2218,14 @@ const UPL_STATUSES = [
  */
 /** Same move where no platform answers: a row owned by a shipment created here, or any row once the link is off. `null` otherwise. */
 async function setLocalStatus(workflow, status, actor) {
-  const row = await OperationsWorkflow.findById(workflow._id).select('shipmentOrder applicationStatus externalSource').lean();
+  const row = await OperationsWorkflow.findById(workflow._id).select('shipmentOrder fleetShipment applicationStatus externalSource').lean();
   const linkOff = !require('../services/uplClient').isConfigured();
-  if (!row?.shipmentOrder && !(linkOff && row?.externalSource === 'ops_upl')) return null;
+  if (!row?.shipmentOrder && !row?.fleetShipment && !(linkOff && row?.externalSource === 'ops_upl')) return null;
   const before = String(row.applicationStatus || '');
   if (before === status) return { applicationStatus: status, unchanged: true };
   await OperationsWorkflow.updateOne({ _id: workflow._id }, { $set: { applicationStatus: status, executionStatus: status } });
   const link = require('../services/shipmentOrderWorkflowLink');
-  await (row.shipmentOrder ? link.pullWorkflow(workflow._id, actor) : link.pullPlatformRow(workflow._id, ['applicationStatus']));
+  await (row.shipmentOrder || row.fleetShipment ? link.pullWorkflow(workflow._id, actor) : link.pullPlatformRow(workflow._id, ['applicationStatus']));
   bustFilterCache();
   try { emitToAll('workflow:bulkImported', { source: 'shipment_orders', live: true, write: true }); } catch (e) { /* */ }
   if (actor) {
@@ -2284,12 +2288,12 @@ exports.updateApplicationStatus = async (req, res) => {
     }
 
     const workflow = await OperationsWorkflow.findById(req.params.id)
-      .select('externalSource externalId shipmentOrder applicationStatus reportNumber lockedBy lockedByName lockedAt');
+      .select('externalSource externalId shipmentOrder fleetShipment applicationStatus reportNumber lockedBy lockedByName lockedAt');
     if (!workflow) return res.status(404).json({ message: 'Workflow not found' });
     if (isLocked(workflow, req.user._id)) {
       return res.status(423).json({ message: `أمر النقل مفتوحٌ لدى ${workflow.lockedByName || 'مستخدمٍ آخر'}` });
     }
-    if (workflow.shipmentOrder || !require('../services/uplClient').isConfigured()) {
+    if (workflow.shipmentOrder || workflow.fleetShipment || !require('../services/uplClient').isConfigured()) {
       const row = await setLocalStatus(workflow, status, req.user);
       if (!row) return res.status(400).json({ message: 'هذا أمر النقل لا حالةَ طلبٍ له تُغيَّر.' });
       return res.json(row.unchanged ? { _id: workflow._id, applicationStatus: status, unchanged: true } : stripRowFor(req.user.role, row));
@@ -2635,7 +2639,7 @@ exports.bulkDelete = async (req, res) => {
     }
 
     // Check for locked workflows
-    const workflows = await OperationsWorkflow.find({ _id: { $in: ids } }).select('lockedBy lockedAt lockedByName shipmentOrder externalSource externalId').lean();
+    const workflows = await OperationsWorkflow.find({ _id: { $in: ids } }).select('lockedBy lockedAt lockedByName shipmentOrder fleetShipment externalSource externalId').lean();
     const lockedIds = workflows.filter((w) => isLocked(w, req.user._id)).map((w) => w._id.toString());
     if (lockedIds.length > 0) {
       return res.status(423).json({ message: `${lockedIds.length} workflow(s) are locked and cannot be deleted` });

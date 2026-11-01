@@ -29,6 +29,37 @@ const same = (cur, v) => {
 };
 const changes = (doc, wanted) => Object.fromEntries(Object.entries(wanted).filter(([k, v]) => !same(doc?.[k], v)));
 
+/** Workflow columns as a fleet load writes them. Fleet trucks are ours, so no purchase side. */
+function rowOfFleet(f) {
+  const when = f.loadDate || f.createdAt;
+  return {
+    reportDate: when,
+    loadingTime: when ? new Date(when).toISOString() : '',
+    fromLocation: str(f.fromCity),
+    toLocation: str(f.toCity),
+    branch: 'النقل الثقيل',
+    username: str(f.customerName),
+    carNumber: str(f.vehiclePlate),
+    plateNumber: str(f.vehiclePlate),
+    carName: str(f.vehiclePlate),
+    driverName: str(f.driverName),
+    driverPhone: str(f.driverPhone),
+    truckType: str(f.trailerType),
+    loadType: str(f.loadType),
+    representativeName: str(f.supervisorName),
+    applicationStatus: str(f.status),
+    executionStatus: str(f.status),
+    paymentMethod: str(f.paymentType) === 'cash' ? 'cash' : 'late',
+    driverRentalType: str(f.rentType),
+    driverCost: num(f.driverExpense),
+    sellingValue: num(f.price),
+  };
+}
+
+const fleetPayment = (f) => (str(f.paymentType) === 'cash'
+  ? { paymentType: 'cash', paymentSubtype: 'cash_ht', paymentTypeSource: 'manual' }
+  : str(f.paymentType) === 'tax' ? { paymentType: 'tax', paymentSubtype: 'deferred_invoice', paymentTypeSource: 'manual' } : {});
+
 /** Workflow columns as this shipment writes them. */
 function rowOf(o) {
   const when = o.pickupTime || o.createdAt;
@@ -154,9 +185,58 @@ async function mirrorOrder(orderOrId) {
   return { changed: true, created: true };
 }
 
+const fleetModel = () => require('../models/FleetModels').FleetShipment;
+function announceFleet() {
+  try { cache.clear('fleet:'); } catch (_) { /* */ }
+  try { emitToAll('fleet:updated', { source: 'workflow' }); } catch (_) { /* */ }
+}
+
+/** Fleet load → workflow row. Creates the row on the first call. */
+async function mirrorFleet(loadOrId) {
+  const f = loadOrId?.createdAt ? loadOrId : await fleetModel().findById(loadOrId).lean();
+  if (!f || f.waybillNumber == null) return null;
+  const wf = await OperationsWorkflow.findOne({ fleetShipment: f._id }).lean();
+  const wanted = { ...rowOfFleet(f), ...fleetPayment(f) };
+  if (wf) {
+    const diff = changes(wf, wanted);
+    if (!Object.keys(diff).length) return { changed: false };
+    await OperationsWorkflow.updateOne({ _id: wf._id }, { $set: diff });
+    announceWorkflow();
+    return { changed: true };
+  }
+  try {
+    await OperationsWorkflow.create({
+      ...wanted, fleetShipment: f._id, reportNumber: String(f.waybillNumber), stage: 'draft', ownerType: 'operation', createdBy: f.createdBy,
+    });
+  } catch (e) {
+    if (e.code === 11000) return { changed: false };
+    throw e;
+  }
+  announceWorkflow();
+  return { changed: true, created: true };
+}
+
+/** Workflow row → fleet load. */
+async function pullFleet(w) {
+  const load = await fleetModel().findById(w.fleetShipment).lean();
+  if (!load) return null;
+  const wanted = {
+    fromCity: str(w.fromLocation), toCity: str(w.toLocation), customerName: str(w.username), vehiclePlate: str(w.plateNumber),
+    driverName: str(w.driverName), driverPhone: str(w.driverPhone), trailerType: str(w.truckType), loadType: str(w.loadType),
+    price: num(w.sellingValue), driverExpense: num(w.driverCost), status: str(w.applicationStatus) || load.status,
+  };
+  if (w.reportDate) wanted.loadDate = w.reportDate;
+  const diff = changes(load, wanted);
+  if (!Object.keys(diff).length) return { changed: false };
+  await fleetModel().updateOne({ _id: load._id }, { $set: diff });
+  announceFleet();
+  return { changed: true };
+}
+
 /** Workflow row → shipment. A status change is logged on the shipment like any other. */
 async function pullWorkflow(wfOrId, actor) {
   const w = wfOrId?.createdAt ? wfOrId : await OperationsWorkflow.findById(wfOrId).lean();
+  if (w?.fleetShipment) return pullFleet(w);
   if (!w?.shipmentOrder) return null;
   const o = await ShipmentOrder.findById(w.shipmentOrder).lean();
   if (!o) return null;
@@ -247,6 +327,8 @@ async function deleteShipments({ rows = [], orders = [] }) {
   const orderIds = new Set(orders.map((o) => String(o._id)));
   const rowIds = new Set(rows.map((w) => String(w._id)));
   const refs = rows.map((w) => w.shipmentOrder).filter(Boolean);
+  const loads = rows.map((w) => w.fleetShipment).filter(Boolean);
+  if (loads.length) await fleetModel().deleteMany({ _id: { $in: loads } });
   const ext = rows.filter((w) => w.externalSource === 'ops_upl' && w.externalId).map((w) => String(w.externalId));
   (await ShipmentOrder.find({ $or: [{ _id: { $in: refs } }, { source: 'platform', externalId: { $in: ext } }] }).select('_id').lean())
     .forEach((o) => orderIds.add(String(o._id)));
@@ -273,6 +355,7 @@ const run = (fn, ...args) => setImmediate(() => {
   fn(...args).catch((e) => console.error('[so-link]', e.message));
 });
 const mirrorSoon = (id) => { if (id) run(mirrorOrder, id); };
+const mirrorFleetSoon = (id) => { if (id) run(mirrorFleet, id); };
 const mirrorPlatformSoon = (id, keys) => { if (id) run(mirrorPlatformOrder, id, keys); };
 const pullSoon = (id, actor, keys) => {
   if (!id) return;
@@ -295,6 +378,17 @@ async function reconcile(since) {
     else await mirrorOrder(o);
   }
   for (const w of rows) if (!orderIds.has(String(w.shipmentOrder))) await pullWorkflow(w);
+
+  const loads = await fleetModel().find({ updatedAt: { $gt: since } }).lean();
+  const fleetRows = await OperationsWorkflow.find({ fleetShipment: { $type: 'objectId' }, updatedAt: { $gt: since } }).lean();
+  const rowBy = new Map(fleetRows.map((w) => [String(w.fleetShipment), w]));
+  const loadIds = new Set(loads.map((f) => String(f._id)));
+  for (const f of loads) {
+    const w = rowBy.get(String(f._id)) || await OperationsWorkflow.findOne({ fleetShipment: f._id }).lean();
+    if (w && new Date(w.updatedAt) > new Date(f.updatedAt)) await pullFleet(w);
+    else await mirrorFleet(f);
+  }
+  for (const w of fleetRows) if (!loadIds.has(String(w.fleetShipment))) await pullFleet(w);
 }
 
 const BEFORE_ARRIVAL = ['requesting', 'loading', 'uploaded', 'on_way'];
@@ -333,7 +427,8 @@ function startShipmentOrderLink() {
     lateTimer = setInterval(() => { markLateArrivals().catch((e) => console.error('[so-link] late:', e.message)); }, 5 * 60 * 1000);
   }
   if (timer) return;
-  let since = new Date(Date.now() - 24 * 3600 * 1000);
+  // The first pass reaches back far enough to bring in loads made before the link.
+  let since = new Date(0);
   let running = false;
   timer = setInterval(async () => {
     if (running) return;
@@ -345,5 +440,5 @@ function startShipmentOrderLink() {
 }
 
 module.exports = {
-  SHIPMENT_DELETE_ROLES, deleteShipments, announceRename, markLateArrivals, mirrorOrder, pullWorkflow, mirrorPlatformOrder, pullPlatformRow, mirrorSoon, mirrorPlatformSoon, pullSoon, reconcile, startShipmentOrderLink,
+  SHIPMENT_DELETE_ROLES, deleteShipments, announceRename, markLateArrivals, mirrorFleet, mirrorFleetSoon, mirrorOrder, pullWorkflow, mirrorPlatformOrder, pullPlatformRow, mirrorSoon, mirrorPlatformSoon, pullSoon, reconcile, startShipmentOrderLink,
 };

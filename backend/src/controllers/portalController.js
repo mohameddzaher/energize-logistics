@@ -285,7 +285,9 @@ function publicRow(kind, r) {
 }
 
 function myShipments(data) {
-  const platform = (data.platform || []).filter((r) => !isCancelled(r.status) && !isCancelled(r.executionStatus));
+  // A fleet load is also a workflow row; it shows once, as the fleet load with its document.
+  const fleetNos = new Set((data.fleet || []).map((r) => String(r.waybillNumber || '')));
+  const platform = (data.platform || []).filter((r) => !isCancelled(r.status) && !isCancelled(r.executionStatus) && !fleetNos.has(String(r.waybillNumber || '')));
   const platformNos = new Set(platform.map((r) => String(r.waybillNumber || '')).filter(Boolean));
   const orders = (data.orders || []).filter((r) => !isCancelled(r.status)
     && !(r.graduationNumber != null && platformNos.has(String(r.graduationNumber))));

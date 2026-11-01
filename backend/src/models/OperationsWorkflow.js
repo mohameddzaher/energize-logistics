@@ -237,6 +237,8 @@ const operationsWorkflowSchema = new mongoose.Schema(
     externalSource: { type: String, trim: true },
     // The shipment created on our system that owns this row (services/shipmentOrderWorkflowLink).
     shipmentOrder: { type: mongoose.Schema.Types.ObjectId, ref: 'ShipmentOrder', default: undefined },
+    // Same for a load created in Fleet Management.
+    fleetShipment: { type: mongoose.Schema.Types.ObjectId, default: undefined },
     externalId: { type: String, trim: true },
     lastSyncedAt: { type: Date },
     // ── وختمُ المنصّة، لا ختمُنا ───────────────────────────────────────────
@@ -314,6 +316,7 @@ operationsWorkflowSchema.pre('save', async function (next) {
 // الفهرسُ يجيبه كاملًا من نفسه بلا فتح صفّ: الحالةُ والمصدرُ وما يُقرأ منهما.
 operationsWorkflowSchema.index({ applicationStatus: 1, externalSource: 1, externalId: 1, externalUpdatedAt: 1 });
 operationsWorkflowSchema.index({ stage: 1 });
+operationsWorkflowSchema.index({ fleetShipment: 1, updatedAt: -1 }, { unique: true, partialFilterExpression: { fleetShipment: { $type: 'objectId' } } });
 operationsWorkflowSchema.index({ shipmentOrder: 1, updatedAt: -1 }, { unique: true, partialFilterExpression: { shipmentOrder: { $type: 'objectId' } } });
 operationsWorkflowSchema.index({ branch: 1 });
 operationsWorkflowSchema.index({ carOwner: 1 });

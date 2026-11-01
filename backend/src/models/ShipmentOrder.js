@@ -180,14 +180,9 @@ shipmentOrderSchema.pre('save', async function (next) {
   if (this.source === 'platform') return next();
   if (this.isNew && this.waybillNumber == null) {
     try {
-      // Continues the platform's manifest series. The platform can still issue
-      // numbers until it is switched off, so the counter never trails its highest.
-      const top = await this.constructor.findOne({ source: 'platform', graduationNumber: { $ne: null } })
-        .sort({ graduationNumber: -1 }).select('graduationNumber').lean();
-      if (top) await Counter.updateOne({ _id: 'waybill' }, { $max: { seq: top.graduationNumber } }, { upsert: true });
-      const c = await Counter.findOneAndUpdate({ _id: 'waybill' }, { $inc: { seq: 1 } }, { new: true, upsert: true });
-      this.waybillNumber = c.seq;
-      this.graduationNumber = c.seq;
+      const seq = await require('../utils/transportOrderNumber').nextTransportNumber();
+      this.waybillNumber = seq;
+      this.graduationNumber = seq;
     } catch (e) {
       return next(e);
     }

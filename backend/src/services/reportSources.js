@@ -792,7 +792,8 @@ async function partyFinanceBlocks(kind, key, displayName, from, to, t) {
   const inPeriod = { $or: [{ reportDate: { $gte: from, $lte: to } }, { reportDate: null, createdAt: { $gte: from, $lte: to } }] };
   const [sheets, openAll, invoices] = await Promise.all([
     sheetNames.length
-      ? OperationsWorkflow.find({ [field]: { $in: sheetNames }, ...SHEET_NOT_CANCELLED, ...inPeriod })
+      // Fleet loads are reported from the fleet block; their workflow rows would count them twice.
+      ? OperationsWorkflow.find({ [field]: { $in: sheetNames }, fleetShipment: null, ...SHEET_NOT_CANCELLED, ...inPeriod })
         .select(`${valueF} ${closedF} paymentType`).lean()
       : [],
     // المتبقّي اليوم لا يُحصر في الفترة: دَينٌ من العام الماضي دَينٌ اليوم.

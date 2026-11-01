@@ -57,6 +57,7 @@ export interface Employee {
   driverCardNumber?: string; driverCardType?: string; driverCardStatus?: string; driverCardExpiry?: string;
   workCard?: string; ajeerStatus?: string; ajeerExpiry?: string;
   user?: { _id: string; firstName: string; lastName: string; email: string; role: string } | string;
+  directManagerName?: string;
   directManager?: { _id: string; firstName: string; lastName: string; email?: string } | string;
   notes?: string; createdAt?: string;
 }

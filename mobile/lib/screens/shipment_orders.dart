@@ -61,6 +61,9 @@ const _colFields = [
 ];
 
 class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
+  // '' = pickup date; 'activity' = created or moved in the period.
+  String _dateBy = '';
+  String _riyadhDay(int back) => DateTime.now().toUtc().add(const Duration(hours: 3)).subtract(Duration(days: back)).toIso8601String().substring(0, 10);
   List<Map<String, dynamic>> _rows = [];
   Map<String, dynamic>? _stats;
   int _total = 0;
@@ -136,7 +139,7 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
     if (_customer.isNotEmpty) add('customer', _customer);
     if (_from.isNotEmpty) add('from', _from);
     if (_to.isNotEmpty) add('to', _to);
-    if (widget.byPickup && (_from.isNotEmpty || _to.isNotEmpty)) add('dateBy', 'pickup');
+    if (_dateBy.isNotEmpty && (_from.isNotEmpty || _to.isNotEmpty)) { add('dateBy', _dateBy); } else if (widget.byPickup && (_from.isNotEmpty || _to.isNotEmpty)) { add('dateBy', 'pickup'); }
     if (_customsOnly) add('customs', 'linked');
     return p;
   }
@@ -598,6 +601,12 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
                   onPressed: () => apply(() { _note = ''; _customer = ''; _from = ''; _to = ''; _colFilters.clear(); }),
                   child: Text(tr('مسح الكل', 'Clear all')),
                 ),
+            ]),
+            title(tr('الفترة', 'Period')),
+            Wrap(spacing: 6, children: [
+              for (final p in [(tr('اليوم', 'Today'), 0, 0), (tr('أمس', 'Yesterday'), 1, 1), (tr('آخر 7 أيام', '7 days'), 6, 0)])
+                OutlinedButton(onPressed: () => apply(() { _dateBy = 'activity'; _from = _riyadhDay(p.$2); _to = _riyadhDay(p.$3); }), child: Text(p.$1)),
+              if (_dateBy.isNotEmpty) TextButton(onPressed: () => apply(() { _dateBy = ''; _from = ''; _to = ''; }), child: Text(tr('إلغاء الفترة', 'Clear period'))),
             ]),
             title(tr('الملاحظة', 'Note')),
             SingleChildScrollView(scrollDirection: Axis.horizontal, child: _seg(

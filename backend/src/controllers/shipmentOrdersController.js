@@ -269,14 +269,15 @@ exports.getWaybillsPdf = async (req, res) => {
     // الشاحنات وسجلّ السوّاق. فتُقرأ منهما بنداءين لا بنداءٍ لكلّ بوليصة.
     const plateKeyOf = (v) => require('../utils/plateKey').registryPlateKey(v);
     const plates = [...new Set(orders.map((o) => plateKeyOf(o.vehiclePlate)).filter(Boolean))];
+    const refs = orders.map((o) => o.vehicle).filter(Boolean);
     const names = [...new Set(orders.map((o) => String(o.driverName || '').trim()).filter(Boolean))];
     const [vehRows, drvRows] = await Promise.all([
       // والشاحناتُ تُطلَب بمفتاحها لا بسحبِ السجلّ كلِّه: كان هذا يقرأ ثلاثةَ
       // عشرَ ألفًا ونصفًا ليُرشِّح منها ثلاثًا، في ورقةٍ تُطبَع كلَّ يوم ويكبر
       // سجلُّها كلَّ أسبوع. راجع `plateKey` في models/ShipmentOrderVehicle.
-      plates.length
-        ? ShipmentOrderVehicle.find({ plateKey: { $in: plates } })
-          .select('plate plateKey brand color truckType vehicleMaster').populate('vehicleMaster', VEHICLE_MASTER_FIELDS).lean()
+      plates.length || refs.length
+        ? ShipmentOrderVehicle.find({ $or: [{ plateKey: { $in: plates } }, { _id: { $in: refs } }] })
+          .select('_id plate plateKey brand color truckType vehicleMaster').populate('vehicleMaster', VEHICLE_MASTER_FIELDS).lean()
           .then((rows) => rows.map(vehicleView))
         : [],
       names.length
@@ -287,6 +288,7 @@ exports.getWaybillsPdf = async (req, res) => {
         : [],
     ]);
     // A plate can be registered twice; the row that holds the details wins.
+    const vehById = new Map(vehRows.map((v) => [String(v._id), v]));
     const vehByPlate = new Map();
     for (const v of vehRows) {
       const k = v.plateKey || plateKeyOf(v.plate);
@@ -297,8 +299,16 @@ exports.getWaybillsPdf = async (req, res) => {
 
     const pdf = await renderWaybillsPdf(orders.map((o) => {
       const row = rowFromOrder(o);
-      const v = vehByPlate.get(plateKeyOf(o.vehiclePlate));
-      if (v) { row.carBrand = v.brand || ''; row.carColor = v.color || ''; row.carType = row.carType || v.truckType || ''; }
+      // The chosen truck's live record, so an edit on the suppliers page prints here.
+      const own = o.vehicle ? vehById.get(String(o.vehicle)) : null;
+      const v = own || vehByPlate.get(plateKeyOf(o.vehiclePlate));
+      const twin = vehByPlate.get(plateKeyOf(own?.plate || o.vehiclePlate));
+      if (v) {
+        row.plateNumber = v.plate || row.plateNumber;
+        row.carBrand = v.brand || twin?.brand || '';
+        row.carColor = v.color || twin?.color || '';
+        row.carType = v.truckType || row.carType || twin?.truckType || '';
+      }
       const d = drvByName.get(String(o.driverName || '').trim());
       if (d) { row.driverIqama = d.residenceNumber || ''; row.driverNationality = d.nationality || ''; row.driverPhone = row.driverPhone || d.phone || ''; }
       return row;
@@ -414,10 +424,14 @@ exports.listOrders = async (req, res) => {
     // ── الحالةُ قد تكون أكثرَ من واحدة ────────────────────────────────────
     // البطاقاتُ فوق الجدول تُنتقى بالتراكم: «أرِني المتأخّرةَ وما في الطريق
     // معًا». فتصل مفصولةً بفاصلة.
-    if (status) {
-      const keys = String(status).split(',').map((x) => x.trim()).filter(Boolean);
-      if (keys.length === 1) [filter.status] = keys;
-      else if (keys.length > 1) filter.status = { $in: keys };
+    const byActivity = req.query.dateBy === 'activity' && (from || to);
+    const range = {};
+    if (from) range.$gte = startOfDay(from);
+    if (to) range.$lte = endOfDay(to);
+    const statusKeys = String(status || '').split(',').map((x) => x.trim()).filter(Boolean);
+    if (!byActivity) {
+      if (statusKeys.length === 1) [filter.status] = statusKeys;
+      else if (statusKeys.length > 1) filter.status = { $in: statusKeys };
     }
     // ── والعميلُ يُطابَق بمرجعه أو باسمه ──────────────────────────────────
     //
@@ -459,7 +473,17 @@ exports.listOrders = async (req, res) => {
     const note = String(req.query.note || '').trim();
     if (note === 'yes') filter.notes = { $nin: ['', null] };
     else if (note === 'no') filter.$or = [{ notes: '' }, { notes: null }, { notes: { $exists: false } }];
-    if (from || to) {
+    // «Today» asks what happened today, so it reads the status log: a shipment created
+    // or moved in the period, and a status card counts moves into that status.
+    if (byActivity) {
+      filter.$and = [...(filter.$and || []), { $or: [{ createdAt: range }, { statusLog: { $elemMatch: { at: range } } }] }];
+      if (statusKeys.length) {
+        filter.$and.push({ $or: [
+          { statusLog: { $elemMatch: { to: { $in: statusKeys }, at: range } } },
+          { createdAt: range, status: { $in: statusKeys }, statusLog: { $not: { $elemMatch: { at: range } } } },
+        ] });
+      }
+    } else if (from || to) {
       // ── المدى بيوم الاستلام، كاللوحة والتحليلات (٢٠٢٦/١٠/٢٧) ─────────────────
       // كان بيوم التسجيل (`createdAt`) واللوحةُ بيوم الاستلام، فـ«هذا الشهر» رقمان
       // لشيءٍ واحد. ويومُ التسجيل في شحنات المنصّة يومُ وصولها بالمزامنة لا يومُها.
@@ -511,6 +535,8 @@ exports.listOrders = async (req, res) => {
     if (scope) filter.$and = [...(filter.$and || []), scope];
     const statusFreeFilter = { ...filter };
     delete statusFreeFilter.status;
+    // In activity mode the status condition sits in $and; the cards count without it.
+    if (byActivity && statusKeys.length) statusFreeFilter.$and = filter.$and.filter((c) => !c.$or?.[0]?.statusLog?.$elemMatch?.to);
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
     const [orders, total, statusAgg, priceAgg] = await Promise.all([
@@ -528,7 +554,15 @@ exports.listOrders = async (req, res) => {
       // من ضغط «متأخرة» يريد أن يرى كم «في الطريق» في المدّة نفسِها ليضمّها —
       // وعدُّها تحت الحالة المختارة يُصفّر كلَّ بطاقةٍ سواها، فيبدو أنّ لا شيءَ
       // هناك.
-      ShipmentOrder.aggregate([{ $match: statusFreeFilter }, { $group: { _id: '$status', n: { $sum: 1 } } }]),
+      ShipmentOrder.aggregate(byActivity ? [
+        { $match: statusFreeFilter },
+        { $project: { status: 1, createdAt: 1, moves: { $filter: { input: { $ifNull: ['$statusLog', []] }, as: 'l', cond: { $and: [
+          ...(range.$gte ? [{ $gte: ['$$l.at', range.$gte] }] : []), ...(range.$lte ? [{ $lte: ['$$l.at', range.$lte] }] : []),
+        ] } } } } },
+        { $project: { keys: { $cond: [{ $gt: [{ $size: '$moves' }, 0] }, { $setUnion: ['$moves.to', []] }, ['$status']] } } },
+        { $unwind: '$keys' },
+        { $group: { _id: '$keys', n: { $sum: 1 } } },
+      ] : [{ $match: statusFreeFilter }, { $group: { _id: '$status', n: { $sum: 1 } } }]),
       ShipmentOrder.aggregate([{ $match: filter }, {
         $group: { _id: null, sell: { $sum: '$sellPrice' }, buy: { $sum: '$buyPrice' } },
       }]),
@@ -589,10 +623,15 @@ exports.orderFilterOptions = async (req, res) => {
       if (keys.length === 1) [base.status] = keys; else if (keys.length) base.status = { $in: keys };
     }
     if (req.query.from || req.query.to) {
-      const dk = req.query.dateBy === 'created' ? 'createdAt' : 'pickupTime';
-      base[dk] = {};
-      if (req.query.from) base[dk].$gte = startOfDay(req.query.from);
-      if (req.query.to) base[dk].$lte = endOfDay(req.query.to);
+      if (req.query.dateBy === 'activity') {
+        const span = { ...(req.query.from ? { $gte: startOfDay(req.query.from) } : {}), ...(req.query.to ? { $lte: endOfDay(req.query.to) } : {}) };
+        base.$and = [...(base.$and || []), { $or: [{ createdAt: span }, { statusLog: { $elemMatch: { at: span } } }] }];
+      } else {
+        const dk = req.query.dateBy === 'created' ? 'createdAt' : 'pickupTime';
+        base[dk] = {};
+        if (req.query.from) base[dk].$gte = startOfDay(req.query.from);
+        if (req.query.to) base[dk].$lte = endOfDay(req.query.to);
+      }
     }
     if (req.query.source === 'system' || req.query.source === 'platform') base.source = req.query.source;
     // العميلُ يُطابَق كما يُطابَق في الجدول — بمرجعه أو باسمه المطويّ.
@@ -1715,6 +1754,12 @@ const anyOf = (q, fields) => {
   return { $and: words.map((w) => ({ $or: fields.map((f) => ({ [f]: flexSpaceRegex(w) })) })) };
 };
 
+/** The same vehicle query narrowed to the plate field. */
+const plateScope = (filter, q) => {
+  const { $or, $and, ...rest } = filter;
+  return { ...rest, ...anyOf(q, ['plate']) };
+};
+
 // ── القوائمُ الثلاث: الحقولُ التي تُقرأ فقط، ومحفوظةٌ دقيقتين ─────────────────
 // العنقودُ يسلّم نحو ٧٠ ك.ب في الثانية، فثمنُ القائمة حجمُها لا حسابُها: ٥٠٠
 // عميلٍ كاملين ٣١٥ ك.ب ≈ ٤٫٥ ثانية، و١٠٠٠ شاحنةٍ ٤٦٣ ك.ب ≈ ٥ ثوانٍ. وحقولُ
@@ -2143,16 +2188,20 @@ exports.listVehicles = async (req, res) => {
     const out = await cache.wrap(
       registryKey('vehicles', req, `${req.query.supplier || ''}:${req.query.ownership || ''}`),
       REGISTRY_TTL, async () => {
-      const [vehicles, total] = await Promise.all([
-        ShipmentOrderVehicle.find(filter)
-          .select(VEHICLE_LIST_FIELDS)
-          .populate('supplier', 'name type')
-          .populate('vehicleMaster', VEHICLE_MASTER_FIELDS)
-          .sort({ plate: 1 })
-          .limit(askedLimit(req.query.limit, 1000, 5000))
-          .lean(),
-        ShipmentOrderVehicle.countDocuments(filter),
-      ]);
+      const limit = askedLimit(req.query.limit, 1000, 5000);
+      const read = (where, max) => ShipmentOrderVehicle.find(where)
+        .select(VEHICLE_LIST_FIELDS)
+        .populate('supplier', 'name type')
+        .populate('vehicleMaster', VEHICLE_MASTER_FIELDS)
+        .sort({ plate: 1 })
+        .limit(max)
+        .lean();
+      // A truck found by its plate comes first; a match on a phone or card number follows.
+      const byPlate = q && q.trim() ? await read(plateScope(filter, q), limit) : [];
+      const seen = new Set(byPlate.map((v) => String(v._id)));
+      const rest = (await read(filter, limit)).filter((v) => !seen.has(String(v._id)));
+      const total = await ShipmentOrderVehicle.countDocuments(filter);
+      const vehicles = [...byPlate, ...rest].slice(0, limit);
       return { vehicles: vehicles.map(vehicleView).map(cleanVehicle), total };
     });
     res.json(out);
@@ -2242,6 +2291,8 @@ exports.updateVehicle = async (req, res) => {
     const updated = await ShipmentOrderVehicle.findByIdAndUpdate(req.params.id, coherentOwnership(pick(req.body, VEHICLE_EDITABLE)), { new: true });
     if (!updated) return res.status(404).json({ message: 'Vehicle not found' });
     await syncVehicleMaster(updated._id);
+    // Shipments hold the plate as a snapshot; those on this truck follow an edit.
+    await ShipmentOrder.updateMany({ vehicle: updated._id, vehiclePlate: { $ne: updated.plate } }, { vehiclePlate: updated.plate });
     const vehicle = await ShipmentOrderVehicle.findById(updated._id);
     emit('shipmentOrders:fleet', {});
     res.json({ vehicle });

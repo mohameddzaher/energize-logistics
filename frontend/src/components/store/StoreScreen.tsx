@@ -120,6 +120,8 @@ export type StoreScope = {
   /** حارسا القسم: من يرى الشاشة، ومن يكتب فيها. */
   canSee: (user: any) => boolean;
   canEdit: (user: any) => boolean;
+  /** Who may add items, when narrower than who may edit. */
+  canAdd?: (user: any) => boolean;
   /** اسمُ ملفّ التصدير. */
   fileName: string;
   /**
@@ -152,6 +154,7 @@ export default function StoreScreen({ scope }: { scope: StoreScope }) {
   // already honours (rbac lets a section grant through). The old list silently
   // broke that promise: the section opened, the actions stayed hidden.
   const canEdit = scope.canEdit(user);
+  const canAdd = scope.canAdd ? scope.canAdd(user) : canEdit;
 
   const [items, setItems] = useState<Item[]>([]);
   const [totals, setTotals] = useState<any>(null);
@@ -310,8 +313,8 @@ export default function StoreScreen({ scope }: { scope: StoreScope }) {
               { key: 'movements', label: ar ? 'سجل الحركات' : 'Movements log', sheets: [{ name: ar ? 'الحركات' : 'Movements', rows: movements, columns: movementColsShown }], disabled: !movements.length },
             ]}
           />
-          {canEdit && <button onClick={() => setAddNew(true)} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[#f37121] hover:bg-[#e5651a] text-white text-sm"><Plus className="w-4 h-4" /> {ar ? 'صنف جديد' : 'Add item'}</button>}
-          {canEdit && <button onClick={() => setAddMany(true)} title={ar ? 'فاتورةُ شراءٍ واحدةٌ فيها عدّةُ أصناف' : 'One purchase with several items'} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[#12325c] hover:bg-[#0d2646] text-white text-sm"><ListPlus className="w-4 h-4" /> {ar ? 'إضافة عدّة أصناف' : 'Add several items'}</button>}
+          {canAdd && <button onClick={() => setAddNew(true)} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[#f37121] hover:bg-[#e5651a] text-white text-sm"><Plus className="w-4 h-4" /> {ar ? 'صنف جديد' : 'Add item'}</button>}
+          {canAdd && <button onClick={() => setAddMany(true)} title={ar ? 'فاتورةُ شراءٍ واحدةٌ فيها عدّةُ أصناف' : 'One purchase with several items'} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[#12325c] hover:bg-[#0d2646] text-white text-sm"><ListPlus className="w-4 h-4" /> {ar ? 'إضافة عدّة أصناف' : 'Add several items'}</button>}
         </div>
       </PageHeader>
 

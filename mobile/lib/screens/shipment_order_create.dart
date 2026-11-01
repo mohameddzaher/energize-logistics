@@ -511,7 +511,7 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
       tr('شاحنات المورّد', 'his trucks'),
       (q) async {
         final d = await Api.instance.get(
-            '/api/shipment-orders/vehicles?limit=80&supplier=${sup['_id']}${q.isEmpty ? '' : '&q=${Uri.encodeQueryComponent(q)}'}');
+            '/api/shipment-orders/vehicles?limit=80${q.isEmpty ? '&supplier=${sup['_id']}' : ''}${q.isEmpty ? '' : '&q=${Uri.encodeQueryComponent(q)}'}');
         return List<Map<String, dynamic>>.from(d['vehicles'] ?? []);
       },
       (v) => (v['plate'] ?? '').toString(),
@@ -1090,7 +1090,7 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
                                 tr('الشاحنات', 'vehicles'),
                                 (q) async {
                                   final qs = StringBuffer('limit=80');
-                                  if (sid != null) qs.write('&supplier=$sid');
+                                  if (sid != null && q.isEmpty) qs.write('&supplier=$sid');
                                   if (q.isNotEmpty) qs.write('&q=${Uri.encodeQueryComponent(q)}');
                                   final d = await Api.instance.get('/api/shipment-orders/vehicles?$qs');
                                   return List<Map<String, dynamic>>.from(d['vehicles'] ?? []);

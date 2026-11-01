@@ -230,7 +230,10 @@ async function pullPlatformRow(id, keys = []) {
   const wanted = Object.fromEntries(keys.map((c) => ROW_TO_ORDER[c]).filter((k) => k && k in all).map((k) => [k, all[k]]));
   const diff = changes(o, wanted);
   if (!Object.keys(diff).length) return { changed: false };
-  await ShipmentOrder.updateOne({ _id: o._id }, { $set: diff });
+  const update = { $set: diff };
+  // Keeps «how many arrived today» true for these rows too.
+  if (diff.status) update.$push = { statusLog: { from: o.status, to: diff.status, note: 'من سير عمل التشغيل', at: new Date(), byName: '' } };
+  await ShipmentOrder.updateOne({ _id: o._id }, update);
   announceOrders();
   return { changed: true };
 }

@@ -285,14 +285,16 @@ export function SearchableSelect({
     // البحثُ البعيدُ صفّى عند الخادم — وتصفيةُ الواصلِ ثانيًا تحجب ما وجده
     // (الخادمُ يبحث في اللوحةِ والسائقِ وبطاقةِ التشغيل، والطيُّ هنا يرى
     // الاسمَ وحدَه فيُسقط الصفَّ الذي طابق برقمِه).
-    if (!s || onSearch) return options;
+    if (!s) return options;
+    // While the server looks, the previous list must not pose as the answer.
+    if (onSearch) return loading ? [] : options;
     // Every space-separated word must appear somewhere, so "ahmed 2570" works.
     const words = s.split(/\s+/);
     return options.filter((o) => {
       const hay = fold(`${o.label} ${o.hint || ''} ${o.badge || ''}`);
       return words.every((w) => hay.includes(w));
     });
-  }, [options, q]);
+  }, [options, q, loading, onSearch]);
 
   // سطرُ «استعمل ما كتبتَ» يتصدّر القائمةَ حين يُسمَح بغير المعروف — وإلّا
   // فكتابةُ مدينةٍ جديدةٍ لا تنتهي إلى شيء.

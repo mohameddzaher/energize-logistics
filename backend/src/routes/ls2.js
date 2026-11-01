@@ -26,7 +26,11 @@ const { LS2_STAFF_ROLES, LS2_ADMIN_ROLES } = require('../config/constants');
 const ADMIN = authorize(...LS2_ADMIN_ROLES);
 
 router.use(authenticate);
-router.use(authorize(...LS2_STAFF_ROLES));
+// Finance adds store items, so it reaches the store screens and nothing else here.
+const STORE_FINANCE = ['accountant', 'accounting_manager', 'cfo'];
+const staffOnly = authorize(...LS2_STAFF_ROLES);
+router.use((req, res, next) => (
+  STORE_FINANCE.includes(req.user?.role) && /^\/(store|suppliers|vehicles)(\/|$)/.test(req.path) ? next() : staffOnly(req, res, next)));
 
 router.get('/dashboard', ls2.getDashboard);
 router.get('/settings', ls2.getSettings);
@@ -91,8 +95,10 @@ router.get('/store/dashboard', store.dashboard);
 router.get('/store/movements', store.listMovements);
 router.get('/store/issue-reasons', store.issueReasons); // أسبابُ الصرف الأربعة
 router.get('/store/unknown-plates', store.unknownPlates); // لوحاتٌ على حركاتٍ لا مركبةَ لها في السجلّ
-router.post('/store', ADMIN, store.createItem);
-router.post('/store/bulk-create', ADMIN, store.createItemsBulk);   // فاتورةُ شراءٍ بعدّة أصناف
+// Adding items is for finance and the vehicles manager; section grants do not extend it.
+const STORE_ADD = authorize.strict('super_admin', 'admin', 'accountant', 'accounting_manager', 'cfo', 'vehicles_manager');
+router.post('/store', STORE_ADD, store.createItem);
+router.post('/store/bulk-create', STORE_ADD, store.createItemsBulk);   // فاتورةُ شراءٍ بعدّة أصناف
 // الموردون — مَن تُشترى منه القطع. قبل /store/:id كي لا تُلتقَط كمعرّف.
 router.get('/suppliers', store.listSuppliers);
 router.post('/suppliers', ADMIN, store.createSupplier);

@@ -52,10 +52,9 @@ const { withPage, getFontCss } = require('./pdfBrowser');
  * `FleetConfig` — لا تُكتب في شاشةٍ وتُقرأ هنا بافتراضٍ.
  */
 const CONTACT_PHONES = [
-  '0566515766',
   '0544714240',
   '0540665851',
-  '0547338714',
+  '0566372891',
 ];
 
 const esc = (s) => String(s ?? '')

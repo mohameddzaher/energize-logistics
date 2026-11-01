@@ -135,7 +135,12 @@ function ShipmentOrdersInner() {
   const [toDate, setToDate] = useState(() => sp?.get('to') || '');
   // ‏`dateBy=pickup`: المدى بيوم الاستلام لا بيوم التسجيل — هكذا تحسب اللوحة،
   // فرقمُها يفتح صفوفَه نفسَها (٢٠٢٦/١٠/٢٧). ويُمحى مع مسح المدى.
-  const [dateBy] = useState(() => (sp?.get('dateBy') === 'pickup' ? 'pickup' : ''));
+  const [dateBy, setDateBy] = useState(() => (['pickup', 'created', 'activity'].includes(sp?.get('dateBy') || '') ? sp!.get('dateBy')! : 'pickup'));
+  // Quick periods ask what happened in them: created, or moved to a status.
+  const riyadhDay = (back = 0) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Riyadh' }).format(new Date(Date.now() - back * 86400000));
+  const setPeriod = (from: string, to: string) => { setDateBy('activity'); setFromDate(from); setToDate(to); setPage(1); };
+  const today = riyadhDay();
+  const monthStart = `${today.slice(0, 8)}01`;
   // ‏`customs=linked`: الشحناتُ المربوطةُ بمعاملة تخليص — من بطاقة اللوحة.
   const [customsOnly, setCustomsOnly] = useState(() => sp?.get('customs') === 'linked');
   const [page, setPage] = useState(1);
@@ -596,26 +601,42 @@ function ShipmentOrdersInner() {
             [ar ? 'نوع الدفع' : 'Payment', 'paymentSubtype'], [ar ? 'السيلز' : 'Sales rep', 'salesRepName'],
             [ar ? 'المندوب' : 'Agent', 'agentName'],
           ] as const).map(([label, col]) => {
-            const on = !!colFilters[col]?.size;
             return (
-              <span key={col} className={`inline-flex items-center gap-0.5 ps-3 pe-1 py-1 rounded-lg border text-[13px] font-semibold ${
-                on ? 'border-[#f37121] bg-orange-50 text-[#f37121]' : 'border-slate-200 bg-white text-slate-700'}`}>
-                {label}
-                <ColumnFilter field={col} selected={colFilters[col] || EMPTY_SET}
-                  onChange={(set) => setColFilter(col, set)} onOpen={() => fetchColOptions(col)}
-                  onQuery={(query) => fetchColOptions(col, query)} options={colOptions[col]?.values || EMPTY_OPTIONS}
-                  loading={!!colLoading[col]} lang={ar ? 'ar' : 'en'}
-                  format={(v: any) => (v === '__blank__' ? (ar ? '(فارغ)' : '(blank)')
-                    : col === 'paymentSubtype' ? (paymentKindLabel(v, ar) || String(v ?? '')) : String(v ?? ''))} />
-              </span>
+              <ColumnFilter key={col} label={label} field={col} selected={colFilters[col] || EMPTY_SET}
+                onChange={(set) => setColFilter(col, set)} onOpen={() => fetchColOptions(col)}
+                onQuery={(query) => fetchColOptions(col, query)} options={colOptions[col]?.values || EMPTY_OPTIONS}
+                loading={!!colLoading[col]} lang={ar ? 'ar' : 'en'}
+                format={(v: any) => (v === '__blank__' ? (ar ? '(فارغ)' : '(blank)')
+                  : col === 'paymentSubtype' ? (paymentKindLabel(v, ar) || String(v ?? '')) : String(v ?? ''))} />
             );
           })}
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          {/* المدى بيوم الاستلام — كاللوحة والتحليلات (٢٠٢٦/١٠/٢٧). */}
-          <span className="text-[12px] font-semibold text-slate-500 whitespace-nowrap">{ar ? 'تاريخ الاستلام' : 'Pickup date'}</span>
+          <div className="inline-flex rounded-lg border border-slate-200 bg-white p-0.5">
+            {([
+              [ar ? 'اليوم' : 'Today', today, today],
+              [ar ? 'أمس' : 'Yesterday', riyadhDay(1), riyadhDay(1)],
+              [ar ? 'آخر 7 أيام' : '7 days', riyadhDay(6), today],
+              [ar ? 'هذا الشهر' : 'This month', monthStart, today],
+            ] as const).map(([label, f, t]) => {
+              const on = dateBy === 'activity' && fromDate === f && toDate === t;
+              return (
+                <button key={label} type="button" aria-pressed={on}
+                  onClick={() => (on ? setPeriod('', '') : setPeriod(f, t))}
+                  className={`px-3 py-1.5 rounded-md text-[13px] font-semibold whitespace-nowrap ${on ? 'bg-[#f37121] text-white' : 'text-slate-700 hover:bg-slate-100'}`}>
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+          <select value={dateBy} onChange={(e) => { setDateBy(e.target.value); setPage(1); }} title={ar ? 'نوع التاريخ' : 'Date basis'}
+            className="px-2 py-2 rounded-lg border border-slate-200 bg-white text-sm text-slate-900">
+            <option value="activity">{ar ? 'حركة الشحنة' : 'Activity'}</option>
+            <option value="pickup">{ar ? 'تاريخ الاستلام' : 'Pickup date'}</option>
+            <option value="created">{ar ? 'تاريخ الإنشاء' : 'Created date'}</option>
+          </select>
           <input type="date" value={fromDate} onChange={(e) => { setFromDate(e.target.value); setPage(1); }}
-            title={ar ? 'من تاريخ الاستلام' : 'Pickup from'}
+            title={ar ? 'من تاريخ' : 'From'}
             className="px-3 py-2 rounded-lg border border-slate-200 bg-white text-sm text-slate-900" />
           <span className="text-slate-400 text-sm">→</span>
           <input type="date" value={toDate} onChange={(e) => { setToDate(e.target.value); setPage(1); }}

@@ -230,7 +230,8 @@ function CreateShipmentInner() {
       const qs = new URLSearchParams({ limit: '80' });
       // بلا مورّدٍ: كلُّ ما ليس من أسطولنا — شاحناتُ الموردين ومَن لم يُعرَف
       // مالكُه. وقصرُها على المعروفِ مالكُه يحجب أكثرَ السجلّ عن الاختيار.
-      if (sup) qs.set('supplier', sup);
+      // Search covers every truck, ours included; the list narrows to the supplier otherwise.
+      if (sup && !q) qs.set('supplier', sup);
       if (q) qs.set('q', q);
       const d = await api.get<{ vehicles: OrderVehicle[]; total: number }>(`/api/shipment-orders/vehicles?${qs}`);
       if (!vehGuard.isCurrent(mine)) return;
@@ -396,7 +397,7 @@ function CreateShipmentInner() {
     setExtra(uid, { busy: true });
     try {
       const qs = new URLSearchParams({ limit: '80' });
-      if (supplierId) qs.set('supplier', supplierId);
+      if (supplierId && !q) qs.set('supplier', supplierId);
       if (q) qs.set('q', q);
       const d = await api.get<{ vehicles: OrderVehicle[] }>(`/api/shipment-orders/vehicles?${qs}`);
       setExtra(uid, { vehicles: d.vehicles || [], busy: false });

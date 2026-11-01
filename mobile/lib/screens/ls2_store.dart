@@ -26,6 +26,8 @@ import '../ui/search_field.dart';
 /// فيُمرَّر `base` ولا تُنسَخ الشاشة — ونسخُها يعني شاشتين تفترقان أوّلَ إصلاح.
 /// The light-transport store keeps no prices, starts new items at zero (stock moves only
 /// via in/out) and records the supplier's own item name (owner's rules).
+const _storeAddRoles = ['super_admin', 'admin', 'accountant', 'accounting_manager', 'cfo', 'vehicles_manager'];
+
 bool _isLightStore(String base) => base.contains('/light-transport/');
 
 class Ls2StoreScreen extends StatefulWidget {
@@ -288,13 +290,15 @@ class _Ls2StoreScreenState extends State<Ls2StoreScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final canEdit = _canEditStore(context.watch<AuthProvider>());
+    final auth = context.watch<AuthProvider>();
+    final canEdit = _canEditStore(auth);
+    final canAdd = _isLightStore(widget.base) ? canEdit : _storeAddRoles.contains(auth.role);
     final items = _items.where((i) => (_statusF.isEmpty || i['status'] == _statusF) && (_catF.isEmpty || i['category'] == _catF)).toList();
     return AppScaffold(
       title: Text(tr(widget.titleAr, widget.titleEn)),
       actions: [
         // فاتورةُ شراءٍ واحدةٌ فيها عدّةُ أصناف — تُكتب في نموذجٍ واحد.
-        if (canEdit) IconButton(icon: const Icon(Icons.playlist_add), tooltip: tr('إضافة عدّة أصناف', 'Add several items'), onPressed: _openBulkCreate),
+        if (canAdd) IconButton(icon: const Icon(Icons.playlist_add), tooltip: tr('إضافة عدّة أصناف', 'Add several items'), onPressed: _openBulkCreate),
         IconButton(icon: const Icon(Icons.history), tooltip: tr('سجل الحركات', 'Movements'), onPressed: _openLog),
         // نفسُ تصدير الموقع: المعروض (بعد الفلتر) أو كلُّ الأصناف.
         IconButton(
@@ -303,7 +307,7 @@ class _Ls2StoreScreenState extends State<Ls2StoreScreen> {
           onPressed: () => _exportMenu(items),
         ),
       ],
-      floatingActionButton: !canEdit ? null : FloatingActionButton.extended(
+      floatingActionButton: !canAdd ? null : FloatingActionButton.extended(
         backgroundColor: const Color(0xFF12325C), foregroundColor: Colors.white,
         icon: const Icon(Icons.add), label: Text(tr('صنف', 'Item')), onPressed: () => _openItemForm(null),
       ),

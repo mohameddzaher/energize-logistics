@@ -1,7 +1,7 @@
 'use client';
 import { useState, useRef, useEffect, useMemo, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Filter, Loader2 } from 'lucide-react';
+import { ChevronDown, Filter, Loader2 } from 'lucide-react';
 import { colKey } from '@/lib/colKey';
 
 export type ColumnFilterOption = { value: string; count?: number };
@@ -17,7 +17,7 @@ export type ColumnFilterOption = { value: string; count?: number };
 //     يجمّد التبويب.
 //   • `rows` — الاشتقاق من الصفوف المحمَّلة، ويبقى للجداول التي تُحمَّل كاملةً في
 //     المتصفح أصلًا فلا ينقصها شيء.
-export function ColumnFilter({ rows, field, valueOf, selected, onChange, onOpen, lang, format, options, loading, truncated, onQuery }: {
+export function ColumnFilter({ rows, field, valueOf, selected, onChange, onOpen, lang, format, options, loading, truncated, onQuery, label }: {
   rows?: any[];
   field: string;
   /**
@@ -38,6 +38,8 @@ export function ColumnFilter({ rows, field, valueOf, selected, onChange, onOpen,
   loading?: boolean;
   truncated?: boolean;
   onQuery?: (q: string) => void;
+  /** Shows a labelled dropdown button instead of the small header funnel. */
+  label?: string;
 }) {
   const ar = lang === 'ar';
   const [open, setOpen] = useState(false);
@@ -220,7 +222,15 @@ export function ColumnFilter({ rows, field, valueOf, selected, onChange, onOpen,
           يقول كم قيمةً أُشّرت. فصار إطارًا برتقاليًّا بأرضيّةٍ خفيفةٍ والقمعُ
           برتقاليٌّ فيه، ومعه العددُ رقمًا حين يزيد على واحد. الحالةُ تُقرأ،
           والشكلُ يبقى زرًّا. */}
-      <button
+      {label ? (
+        <button type="button" onClick={() => { const next = !open; setOpen(next); if (next) onOpen?.(); }} aria-expanded={open}
+          className={`inline-flex items-center gap-1.5 min-h-[36px] px-3 rounded-lg border text-[13px] font-semibold transition-colors ${
+            active ? 'border-[#f37121] bg-orange-50 text-[#f37121]' : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'}`}>
+          {label}
+          {active && <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-[#f37121] text-white text-[11px] leading-[18px] text-center tabular-nums">{selected.size}</span>}
+          <ChevronDown className={`w-4 h-4 transition-transform ${open ? 'rotate-180' : ''}`} />
+        </button>
+      ) : (<button
         type="button"
         onClick={() => { const next = !open; setOpen(next); if (next) onOpen?.(); }}
         className={`ms-1.5 inline-flex items-center justify-center gap-0.5 h-5 min-w-5 px-1 rounded-md border transition-colors align-middle ${
@@ -239,7 +249,7 @@ export function ColumnFilter({ rows, field, valueOf, selected, onChange, onOpen,
         {active && selected.size > 1 && (
           <span className="text-[10px] font-bold leading-none tabular-nums">{selected.size}</span>
         )}
-      </button>
+      </button>)}
       {open && typeof document !== 'undefined' && createPortal(panel, document.body)}
     </span>
   );

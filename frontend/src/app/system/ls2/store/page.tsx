@@ -10,6 +10,8 @@ import { useAuth } from '@/context/AuthContext';
 import StoreScreen from '@/components/store/StoreScreen';
 import { isLs2Staff, isLs2Admin } from '@/lib/ls2';
 
+const STORE_ADD_ROLES = ['super_admin', 'admin', 'accountant', 'accounting_manager', 'cfo', 'vehicles_manager'];
+
 export default function Ls2StorePage() {
   useAuth();
   return (
@@ -33,7 +35,9 @@ export default function Ls2StorePage() {
         })),
       },
       unknownPlatesUrl: '/api/ls2/store/unknown-plates',
-      canSee: isLs2Staff, canEdit: isLs2Admin,
+      canSee: (u: any) => isLs2Staff(u) || STORE_ADD_ROLES.includes(u?.role), canEdit: isLs2Admin,
+      // role-only: the owner limited adding items to these roles.
+      canAdd: (u: any) => STORE_ADD_ROLES.includes(u?.role),
       fileName: 'ls2-store',
     }} />
   );

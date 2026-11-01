@@ -543,6 +543,25 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
         }));
   }
 
+  /// A B/L and a container belong to one truck, so each extra truck has its own.
+  Future<void> _extraDocs(int i) async {
+    final t = _extraTrucks[i];
+    final bl = TextEditingController(text: '${t['blNumber'] ?? ''}');
+    final cn = TextEditingController(text: '${t['containerNumber'] ?? ''}');
+    final ok = await showDialog<bool>(context: context, builder: (c) => AlertDialog(
+      title: Text(tr('رقم البوليصة والحاوية', 'B/L and container')),
+      content: Column(mainAxisSize: MainAxisSize.min, children: [
+        TextField(controller: bl, decoration: InputDecoration(labelText: tr('رقم البوليصة (اختياري)', 'B/L number (optional)'))),
+        TextField(controller: cn, decoration: InputDecoration(labelText: tr('رقم الحاوية (اختياري)', 'Container number (optional)'))),
+      ]),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('إلغاء', 'Cancel'))),
+        TextButton(onPressed: () => Navigator.pop(c, true), child: Text(tr('حفظ', 'Save'))),
+      ],
+    ));
+    if (ok == true && mounted) setState(() { t['blNumber'] = bl.text.trim(); t['containerNumber'] = cn.text.trim(); });
+  }
+
   /// تغييرُ سائق شاحنةٍ إضافيّة — بالخانة نفسِها.
   Future<void> _changeExtraDriver(int i) async {
     final t = _extraTrucks[i];
@@ -719,6 +738,10 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
         payload['customFields'][k] = v;
       }
     }
+    // Fixed boxes on the form, not configured fields, so the loop above misses them.
+    for (final k in ['blNumber', 'containerNumber']) {
+      payload[k] = (_form[k] ?? '').toString().trim();
+    }
     if (_customer != null) payload['customer'] = _customer!['_id'];
     if (_salesRep != null) payload['salesRep'] = _salesRep!['value'];
     if (_newCustomer && _ncName.text.trim().isNotEmpty) {
@@ -758,6 +781,8 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
             if (_supplier != null) 'supplierChoice': _supplier!['_id'],
             if ((_form['driverName'] ?? '').toString().isNotEmpty) 'driverName': _form['driverName'],
             if ((_form['driverPhone'] ?? '').toString().isNotEmpty) 'driverPhone': _form['driverPhone'],
+            'blNumber': (_form['blNumber'] ?? '').toString().trim(),
+            'containerNumber': (_form['containerNumber'] ?? '').toString().trim(),
           },
           ..._extraTrucks.map((t) => {
                 if (t['vehicle'] != null) 'vehicle': (t['vehicle'] as Map)['_id'],
@@ -766,6 +791,8 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
                 if (t['supplier'] != null) 'supplierChoice': (t['supplier'] as Map)['_id'],
                 if ((t['driverName'] ?? '').toString().isNotEmpty) 'driverName': t['driverName'],
                 if ((t['driverPhone'] ?? '').toString().isNotEmpty) 'driverPhone': t['driverPhone'],
+                'blNumber': (t['blNumber'] ?? '').toString().trim(),
+                'containerNumber': (t['containerNumber'] ?? '').toString().trim(),
               }),
         ];
         final d = await Api.instance.post('/api/shipment-orders/orders/batch', body);
@@ -1278,6 +1305,12 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
                                   icon: Icon((_extraTrucks[i]['driverName'] ?? '').toString().isEmpty ? Icons.person_add_alt_1 : Icons.person_search,
                                       size: 18, color: T.orange),
                                   onPressed: () => _changeExtraDriver(i),
+                                ),
+                                IconButton(
+                                  visualDensity: VisualDensity.compact,
+                                  tooltip: tr('رقم البوليصة والحاوية', 'B/L and container'),
+                                  icon: Icon(Icons.description_outlined, size: 18, color: ('${_extraTrucks[i]['blNumber'] ?? ''}${_extraTrucks[i]['containerNumber'] ?? ''}').isEmpty ? T.inkFaint : T.orange),
+                                  onPressed: () => _extraDocs(i),
                                 ),
                                 IconButton(
                                   visualDensity: VisualDensity.compact,

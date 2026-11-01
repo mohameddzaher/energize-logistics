@@ -857,7 +857,8 @@ exports.createOrdersBatch = async (req, res) => {
     if (trucks.length > 25) return res.status(400).json({ message: 'الحدُّ الأقصى خمسٌ وعشرون شاحنةً في المرّة' });
 
     // الحقولُ المشتركة: كلُّ ما في الجسد عدا ما يخصّ الشاحنةَ وسائقَها.
-    const TRUCK_FIELDS = ['vehicle', 'newVehicle', 'supplier', 'supplierChoice', 'driverName', 'driverPhone'];
+    // A B/L and a container belong to one truck, so they are per truck too.
+    const TRUCK_FIELDS = ['vehicle', 'newVehicle', 'supplier', 'supplierChoice', 'driverName', 'driverPhone', 'blNumber', 'containerNumber'];
     const shared = { ...req.body };
     delete shared.trucks;
     TRUCK_FIELDS.forEach((f) => delete shared[f]);

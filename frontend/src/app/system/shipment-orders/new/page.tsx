@@ -380,13 +380,14 @@ function CreateShipmentInner() {
     vehicleId: string; vehicleLabel: string;
     newPlate: string;
     driverName: string; driverPhone: string;
+    blNumber: string; containerNumber: string;
     vehicles: OrderVehicle[]; busy: boolean;
   };
   const [extras, setExtras] = useState<ExtraTruck[]>([]);
   const addExtra = () => setExtras((p) => [...p, {
     uid: `x${Date.now()}${p.length}`,
     supplierId: '', supplierName: '', vehicleId: '', vehicleLabel: '',
-    newPlate: '', driverName: '', driverPhone: '', vehicles: [], busy: false,
+    newPlate: '', driverName: '', driverPhone: '', blNumber: '', containerNumber: '', vehicles: [], busy: false,
   }]);
   const setExtra = (uid: string, patch: Partial<ExtraTruck>) =>
     setExtras((p) => p.map((x) => (x.uid === uid ? { ...x, ...patch } : x)));
@@ -485,6 +486,9 @@ function CreateShipmentInner() {
         else payload.customFields[f.key] = v;
       });
       payload.notes = form.notes || '';
+      // These two are fixed boxes on the form, not configured fields, so the loop above misses them.
+      payload.blNumber = String(form.blNumber || '').trim();
+      payload.containerNumber = String(form.containerNumber || '').trim();
       payload.status = form.status || 'requesting';
       payload.driverName = form.driverName || '';
       payload.driverPhone = form.driverPhone || '';
@@ -521,7 +525,9 @@ function CreateShipmentInner() {
         // الصفُّ الأوّلُ شاحنةٌ كالبقيّة، فيُرسَل معها في القائمة نفسِها —
         // ولو أُنشئ وحدَه ثمّ أُرسلت البقيّةُ لصار الأوّلُ قد حُفظ بينما
         // الثانيةُ تُرفَض، والموظّفُ لا يعرف أين وقف.
-        const truckOf = (sup: string, veh: string, plate: string, dn: string, dp: string) => ({
+        const truckOf = (sup: string, veh: string, plate: string, dn: string, dp: string, bl: string, cn: string) => ({
+          blNumber: String(bl || '').trim(),
+          containerNumber: String(cn || '').trim(),
           ...(veh ? { vehicle: veh } : {}),
           ...(!veh && plate.trim() ? { newVehicle: { plate: plate.trim(), name: '', supplierId: sup || null, newSupplier: null } } : {}),
           ...(sup ? { supplierChoice: sup } : {}),
@@ -532,8 +538,8 @@ function CreateShipmentInner() {
         const body = { ...payload };
         delete body.vehicle; delete body.newVehicle; delete body.supplierChoice;
         body.trucks = [
-          truckOf(supplierId, vehicleId, newPlate, form.driverName || '', form.driverPhone || ''),
-          ...extras.map((x) => truckOf(x.supplierId, x.vehicleId, x.newPlate, x.driverName, x.driverPhone)),
+          truckOf(supplierId, vehicleId, newPlate, form.driverName || '', form.driverPhone || '', form.blNumber, form.containerNumber),
+          ...extras.map((x) => truckOf(x.supplierId, x.vehicleId, x.newPlate, x.driverName, x.driverPhone, x.blNumber, x.containerNumber)),
         ];
         const d = await api.post<{ waybills: number[]; created: number; failed: any[] }>(
           '/api/shipment-orders/orders/batch', body);
@@ -1288,6 +1294,14 @@ function CreateShipmentInner() {
                   <label className="block text-[11px] font-semibold text-slate-600 mb-1">{ar ? 'جوّاله' : 'His phone'}</label>
                   {/* نفسُ صندوق الجوّال المشترك: مفتاحُه يسارًا وتسعُ خاناتٍ لا أكثر. */}
                   <PhoneSA compact value={x.driverPhone} onChange={(v) => setExtra(x.uid, { driverPhone: v })} />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">{ar ? 'رقم البوليصة (اختياري)' : 'B/L number (optional)'}</label>
+                  <input value={x.blNumber} onChange={(e) => setExtra(x.uid, { blNumber: e.target.value })} dir="ltr" className={`${inputCls} font-mono`} />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">{ar ? 'رقم الحاوية (اختياري)' : 'Container number (optional)'}</label>
+                  <input value={x.containerNumber} onChange={(e) => setExtra(x.uid, { containerNumber: e.target.value })} dir="ltr" className={`${inputCls} font-mono`} />
                 </div>
               </div>
             </div>

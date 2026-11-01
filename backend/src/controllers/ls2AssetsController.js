@@ -318,6 +318,28 @@ async function slotHolders(key, positions, exceptIds = []) {
 const slotClashMessage = (plate, held) => `الموقع مشغول على ${plate}: ${held
   .map((t) => `إطار ${t.positionNumber} (${t.serial})`).join('، ')} — انقل الفردة دي الأول`;
 
+const isSlotClash = (e) => e?.code === 11000 && !!e.keyPattern?.positionNumber;
+const SLOT_TAKEN = 'الموقع اتشغل حالًا بفردة تانية — حدّث الصفحة واختر موقع تاني';
+function sendTireError(res, e) {
+  if (isSlotClash(e)) return res.status(409).json({ code: 'SLOT_OCCUPIED', message: SLOT_TAKEN });
+  return sendMongooseError(res, e, e.message);
+}
+
+// Tires trading slots would break the one-tire-per-slot index mid-way, so they
+// give up their slot first. Each must be saved with `markModified('positionNumber')`
+// because its loaded doc still holds the old number. The returned undo puts back
+// whatever was not placed.
+async function parkTires(tires) {
+  const parked = tires.filter((t) => t.positionNumber != null).map((t) => ({ _id: t._id, positionNumber: t.positionNumber }));
+  if (parked.length) await Ls2TireAsset.updateMany({ _id: { $in: parked.map((t) => t._id) } }, { $set: { positionNumber: null } });
+  return async () => {
+    for (const t of parked) {
+      await Ls2TireAsset.updateOne({ _id: t._id, positionNumber: null }, { $set: { positionNumber: t.positionNumber } })
+        .catch((e) => console.error(`[ls2] tire ${t._id} lost its slot:`, e.message));
+    }
+  };
+}
+
 exports.nextTireNumber = async (req, res) => {
   try { res.json({ tireNumber: await nextTireNumber() }); }
   catch (e) { res.status(500).json({ message: 'تعذّر توليد رقم الفردة' }); }
@@ -355,7 +377,7 @@ exports.createTire = async (req, res) => {
     });
     res.status(201).json({ tire });
   } catch (e) {
-    sendMongooseError(res, e, e.message);
+    sendTireError(res, e);
   }
 };
 
@@ -584,12 +606,18 @@ exports.moveTire = async (req, res) => {
       // وسم الاستبن يتبع الموقع: كل فردة ترث كونها استبن من الموقع الذي تنتقل إليه.
       const xWasSpare = tire.isSpare, yWasSpare = y.isSpare;
       const [liveA, liveB] = [await vehicleByKey(vacated.plateKey), await vehicleByKey(ySlot.plateKey)];
-      // Y → موقع X (العربية A)
-      y.set({ status: 'mounted', plate: vacated.plate, plateKey: vacated.plateKey, positionNumber: vacated.positionNumber, positionLabel: vacated.positionLabel, section: vacated.section, isSpare: xWasSpare });
-      await y.save();
-      // X → موقع Y (العربية B)
-      tire.set({ status: 'mounted', plate: ySlot.plate, plateKey: ySlot.plateKey, positionNumber: ySlot.positionNumber, positionLabel: ySlot.positionLabel, section: ySlot.section, isSpare: yWasSpare });
-      await tire.save();
+      const unpark = await parkTires([y]);
+      try {
+        // X takes Y's slot first, then Y takes the one X just left.
+        tire.set({ status: 'mounted', plate: ySlot.plate, plateKey: ySlot.plateKey, positionNumber: ySlot.positionNumber, positionLabel: ySlot.positionLabel, section: ySlot.section, isSpare: yWasSpare });
+        await tire.save();
+        y.set({ status: 'mounted', plate: vacated.plate, plateKey: vacated.plateKey, positionNumber: vacated.positionNumber, positionLabel: vacated.positionLabel, section: vacated.section, isSpare: xWasSpare });
+        y.markModified('positionNumber');
+        await y.save();
+      } catch (err) {
+        await unpark();
+        throw err;
+      }
       await logEvent(req, {
         entityType: 'tire', refId: y._id, label: y.serial, action: 'transferred',
         fromPlate: ySlot.plate, fromPlateKey: ySlot.plateKey, fromPosition: yPos,
@@ -691,7 +719,7 @@ exports.moveTire = async (req, res) => {
       try {
         placed.push(await mountSpareTire(req, step.id, step.slot, when, reason));
       } catch (err) {
-        return res.status(400).json({ message: err.message, tire, placed, partial: true });
+        return res.status(isSlotClash(err) ? 409 : 400).json({ message: isSlotClash(err) ? SLOT_TAKEN : err.message, tire, placed, partial: true });
       }
     }
     const replacement = placed[0] || null;
@@ -699,7 +727,7 @@ exports.moveTire = async (req, res) => {
     await clearSensorNotice(from.key, toPlate ? plateKey(toPlate) : null);
     res.json({ tire, replacement, secondReplacement, chain: placed });
   } catch (e) {
-    sendMongooseError(res, e, e.message);
+    sendTireError(res, e);
   }
 };
 
@@ -891,6 +919,7 @@ async function carryTrailerTires(req, trailer, tires, toPlate, toKey, when, odom
     if (String(from.key || '') === String(toKey || '')) continue;
     // Written explicitly: a standing trailer has no plate to derive the number from.
     ti.set({ plate: toPlate || null, plateKey: toKey || null, trailerNumber: trailer.trailerNumber });
+    ti.markModified('positionNumber');
     await ti.save();
     await logEvent(req, {
       entityType: 'tire', refId: ti._id, label: ti.serial, action: 'transferred',
@@ -1000,12 +1029,19 @@ exports.moveTrailer = async (req, res) => {
     });
 
     // ④ والكاوتش بعد أن استقرّ كلُّ تيدرٍ في مكانه — كلُّ فردةٍ مع تيدرها.
-    if (occupant) {
-      const occLive = occDest.key ? await vehicleByKey(occDest.key) : null;
-      occupantMoved = await carryTrailerTires(req, occupant, occupantTires, occDest.plate, occDest.key, when,
-        occLive?.odometerKm, reason || `مشيت مع التيدر ${occupant.trailerNumber}`);
+    // In a swap each set lands on slots the other still holds.
+    const unpark = await parkTires(occupant && occDest.key ? ownTires.filter((t) => String(t.plateKey || '') !== String(toKey || '')) : []);
+    try {
+      if (occupant) {
+        const occLive = occDest.key ? await vehicleByKey(occDest.key) : null;
+        occupantMoved = await carryTrailerTires(req, occupant, occupantTires, occDest.plate, occDest.key, when,
+          occLive?.odometerKm, reason || `مشيت مع التيدر ${occupant.trailerNumber}`);
+      }
+      moved = await carryTrailerTires(req, trailer, ownTires, toPlate, toKey, when, live?.odometerKm, reason);
+    } catch (err) {
+      await unpark();
+      throw err;
     }
-    moved = await carryTrailerTires(req, trailer, ownTires, toPlate, toKey, when, live?.odometerKm, reason);
 
     // التيدرُ تحرّك: رقمُه على فِرَد العربيّتين يتبع ما صار — راجع services/ls2TireTrailers.
     await require('../services/ls2TireTrailers').resyncTireTrailers();
@@ -1017,7 +1053,7 @@ exports.moveTrailer = async (req, res) => {
       displaced: occupant ? { trailerNumber: occupant.trailerNumber, to: displacedTo, tiresMoved: occupantMoved } : null,
     });
   } catch (e) {
-    sendMongooseError(res, e, e.message);
+    sendTireError(res, e);
   }
 };
 
@@ -1211,6 +1247,11 @@ exports.importAssets = async (req, res) => {
       // Tires. A slot held by a tire this sheet also lists is free: that tire moves too.
       const listed = (v.tires || []).map((t) => String(t.serial || '').trim()).filter(Boolean);
       const claimed = new Map();
+      // A sheet may rotate tires on the truck; those give up their slots first.
+      const sheetPos = new Map((v.tires || []).map((t) => [String(t.serial || '').trim(), t.position_number ?? null]));
+      const rotating = (await Ls2TireAsset.find({ status: 'mounted', plateKey: key, serial: { $in: listed } }))
+        .filter((t) => Number(sheetPos.get(t.serial)) !== t.positionNumber);
+      const unparkSheet = await parkTires(rotating);
       for (const t of v.tires || []) {
         const serial = String(t.serial || '').trim();
         if (!serial) continue;
@@ -1259,6 +1300,7 @@ exports.importAssets = async (req, res) => {
           summary.tiresUnchanged++;
         }
       }
+      await unparkSheet();   // rows skipped as slot conflicts keep their old slot
       // A fresh workshop sheet for this truck is exactly the review the
       // tire_sensor_change notice was waiting for.
       await clearSensorNotice(key);
@@ -1266,7 +1308,7 @@ exports.importAssets = async (req, res) => {
     await require('../services/ls2TireTrailers').resyncTireTrailers();
     res.json({ ok: true, summary });
   } catch (e) {
-    sendMongooseError(res, e, e.message);
+    sendTireError(res, e);
   }
 };
 

@@ -68,6 +68,13 @@ const ls2TireAssetSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 ls2TireAssetSchema.index({ plateKey: 1, positionNumber: 1 });
+// Two tires can never hold one slot, even when two requests race across workers.
+// Tires on a standing trailer have no plate and stay outside it.
+ls2TireAssetSchema.index({ plateKey: 1, positionNumber: 1 }, {
+  name: 'one_tire_per_slot',
+  unique: true,
+  partialFilterExpression: { status: 'mounted', plateKey: { $type: 'string' }, positionNumber: { $type: 'number' } },
+});
 
 // `isSpare` and `section` must never disagree: the section text comes from the
 // workshop sheet, the flag is what every screen filters and counts on. They

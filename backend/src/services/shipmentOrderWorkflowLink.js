@@ -158,12 +158,13 @@ async function mirrorOrder(orderOrId) {
   const wanted = rowOf(o);
   Object.assign(wanted, await paymentColumns(o, wf, wanted.reportDate));
   const doc = str(o.blNumber) || str(o.containerNumber);
-  if (doc && !str(wf?.documentNumber)) wanted.documentNumber = doc;
+  wanted.documentNumber = doc;
 
   if (wf) {
     const diff = changes(wf, wanted);
     if (!Object.keys(diff).length) return { changed: false };
     await OperationsWorkflow.updateOne({ _id: wf._id }, { $set: diff });
+    if ('documentNumber' in diff) await require('./customsOpsLink').resolveReports({ _id: wf._id }).catch((e) => console.error('[so-link] customs:', e.message));
     announceWorkflow();
     return { changed: true };
   }
@@ -176,6 +177,8 @@ async function mirrorOrder(orderOrId) {
     if (e.code === 11000) return { changed: false };
     throw e;
   }
+  // The row may be born after the shipment's own customs pass, so it links here too.
+  if (doc) await require('./customsOpsLink').resolveReports({ shipmentOrder: o._id }).catch((e) => console.error('[so-link] customs:', e.message));
   const { ensureCollectionsParty } = require('../utils/ensureCollectionsParty');
   await ensureCollectionsParty(o.customerName, { paymentType: wanted.paymentType || '', source: 'operations_workflow' })
     .catch((e) => console.error('[so-link] collections party:', e.message));

@@ -86,7 +86,10 @@ async function loadIndex() {
     const add = (m, k, id) => { if (!m.has(k)) m.set(k, new Set()); m.get(k).add(id); };
     for (const c of rows) {
       const id = String(c._id);
-      meta.set(id, { refNumber: c.refNumber || '', blNumber: c.blNumber || '', customerName: c.customerName || '' });
+      meta.set(id, {
+        refNumber: c.refNumber || '', blNumber: c.blNumber || '', customerName: c.customerName || '',
+        units: (c.containers || []).map((u) => String(u.containerNumber || '').trim()).filter(Boolean),
+      });
       if (c.cancelled) continue;
       for (const k of blKeysOf(c.blNumber)) add(byBl, k, id);
       for (const u of c.containers || []) {
@@ -329,7 +332,9 @@ async function resolveShipments(rowsOrFilter, { emit = true } = {}) {
     // تُملأ الفارغتان من المعاملة المربوطة — ولا يُكتب فوق ما كتبه أحد.
     if (link && link.clearance) {
       if (!String(o.blNumber || '').trim() && link.blNumber) set.blNumber = link.blNumber;
-      if (!String(o.containerNumber || '').trim() && (link.containers || []).length === 1) set.containerNumber = link.containers[0];
+      // A clearance with one container names it even when the link came by B/L.
+      const units = (link.containers || []).length ? link.containers : (idx.meta.get(idOf(link.clearance))?.units || []);
+      if (!String(o.containerNumber || '').trim() && units.length === 1) set.containerNumber = units[0];
     }
     if (next === undefined && !Object.keys(set).length) continue;
     const update = {};
@@ -361,14 +366,15 @@ async function afterShipmentSaved(orderId) {
   if (!o) return;
   await resolveShipments([o]);
   const doc = String(o.blNumber || '').trim() || String(o.containerNumber || '').trim();
-  if (doc) {
+  const native = !(o.source === 'platform' && o.externalId);
+  if (doc || native) {
     const OperationsWorkflow = require('../models/OperationsWorkflow');
-    const wf = await OperationsWorkflow.findOne(o.source === 'platform' && o.externalId
-      ? { externalId: String(o.externalId) } : { shipmentOrder: o._id }).select(REPORT_FIELDS).lean();
-    if (wf && !String(wf.documentNumber || '').trim()) {
-      await OperationsWorkflow.updateOne({ _id: wf._id }, { $set: { documentNumber: doc } });
-      await resolveReports([{ ...wf, documentNumber: doc }]);
-    }
+    const wf = await OperationsWorkflow.findOne(native ? { shipmentOrder: o._id } : { externalId: String(o.externalId) }).select(REPORT_FIELDS).lean();
+    // A shipment made here owns the number, so its row follows an edit or a clear.
+    const stale = wf && (native ? String(wf.documentNumber || '').trim() !== doc : !String(wf.documentNumber || '').trim());
+    if (stale) await OperationsWorkflow.updateOne({ _id: wf._id }, { $set: { documentNumber: doc } });
+    // Always for a shipment made here: its link can lag the number the mirror already wrote.
+    if (stale || (wf && native)) await resolveReports([{ ...wf, documentNumber: stale ? doc : wf.documentNumber }]);
   }
 }
 

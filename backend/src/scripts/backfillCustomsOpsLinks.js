@@ -33,6 +33,12 @@ const mongoose = require('mongoose');
       { customsLink: { $exists: true } },
     ],
   };
+  // Shipments first: their fill reaches the rows, and resolveShipments has no dry run.
+  if (apply) {
+    const shipments = await link.resolveShipments({ $or: [{ blNumber: { $nin: ['', null] } }, { containerNumber: { $nin: ['', null] } }, { customsLink: { $exists: true } }] }, { emit: false });
+    console.log(`shipments changed: ${shipments.changed}`);
+  }
+  filter.$or.push({ shipmentOrder: { $type: 'objectId' } });
   const res = await link.resolveReports(filter, { dryRun: !apply, emit: false });
 
   const byVia = {}; const clearances = new Set(); let unlink = 0;

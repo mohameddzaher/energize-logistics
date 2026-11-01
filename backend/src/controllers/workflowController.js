@@ -1054,7 +1054,10 @@ function buildWorkflowFilter(queryIn, skipField, allowMoney = true, allowSelling
   // ── «باستثناء الملغاة» (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢) ───────────────────────
   // زرٌّ يثبت حتى يُلغى: الأرقامُ والجدولُ والتصديرُ كلُّها بلا الكشوف الملغاة.
   if (String((query && query.excludeCancelled) || '') === '1') {
-    filter.$and = [...(filter.$and || []), { applicationStatus: { $nin: CANCELLED } }];
+    // A number typed in search is a request for that one row, cancelled or not.
+    const asked = require('../utils/arabicSearch').westernDigits(String((query && query.search) || '').trim());
+    const exact = asked && !/\s/.test(asked) ? [{ reportNumber: asked }, { documentNumber: asked }] : [];
+    filter.$and = [...(filter.$and || []), { $or: [{ applicationStatus: { $nin: CANCELLED } }, ...exact] }];
   }
   const customs = String((query && query.customs) || '');
   if (customs === 'linked') filter.$and = [...(filter.$and || []), LINKED];
@@ -1152,7 +1155,7 @@ function buildWorkflowFilter(queryIn, skipField, allowMoney = true, allowSelling
     // ورقمُ معاملة التخليص وبوليصتُها تُكتب كما هي فيُوجَد كشفُها.
     // ورقمُ الحمولة والمرجعُ ومرجعُ الفاتورة رموزٌ تُبحَث بجزئها (٢٠٢٦/١٠/٢٦: «رقم
     // أي حاجة تخص الشحنة»).
-    const CODE_FIELDS = ['carNumber', 'plateNumber', 'customsLink.refNumber', 'customsLink.blNumber', 'loadNumber', 'reference', 'invoiceRef'];
+    const CODE_FIELDS = ['carNumber', 'plateNumber', 'customsLink.refNumber', 'customsLink.blNumber', 'customsLink.containers', 'loadNumber', 'reference', 'invoiceRef'];
     const PHONE_FIELDS = ['driverPhone', 'userPhone', 'ownerPhone'];
     // والملاحظاتُ خارجَ البحث السريع عمدًا: نصٌّ حرٌّ يجعل كلمةً عابرةً فيه
     // تَجُرُّ كشوفًا لا علاقةَ لها بما يُسأل عنه. ولها فلترُ عمودها.
@@ -2770,6 +2773,7 @@ async function buildWorkflowWorkbook(filter, money, selling = true) {
       // معاملةُ التخليص المرتبطة وبوليصتُها — راجع services/customsOpsLink.
       ['معاملة التخليص', (w) => (w.customsLink && w.customsLink.clearance ? w.customsLink.refNumber || '' : '')],
       ['البوليصة', (w) => (w.customsLink && w.customsLink.clearance ? w.customsLink.blNumber || '' : '')],
+      ['الحاويات', (w) => (w.customsLink && w.customsLink.clearance ? (w.customsLink.containers || []).join('، ') : '')],
       ['تاريخ الإرسال', (w) => d(w.sendingDate)],
       ['تاريخ التسليم للفرع', (w) => d(w.branchDeliveryDate)],
       ['تاريخ التسليم للعميل', (w) => d(w.deliveryDate)],
@@ -3430,6 +3434,13 @@ exports.customsSearch = async (req, res) => {
 };
 
 async function afterLinkWrite(req, wf, link, kind) {
+  // One shipment, one link: the Shipments screen hears a link made here, and its empty
+  // B/L and container fill from the clearance.
+  if (wf.shipmentOrder) {
+    const row = await OperationsWorkflow.findById(wf._id).select('customsLink').lean();
+    await require('../models/ShipmentOrder').updateOne({ _id: wf.shipmentOrder }, { $set: { customsLink: row.customsLink } });
+    await link.afterShipmentSaved(wf.shipmentOrder).catch((e) => console.error('customs link → shipment:', e.message));
+  }
   const populated = await OperationsWorkflow.findById(wf._id)
     .populate('createdBy', 'firstName lastName')
     .populate('lastModifiedBy', 'firstName lastName')
@@ -3453,7 +3464,7 @@ exports.setCustomsLink = async (req, res) => {
     const CustomsClearance = require('../models/CustomsClearance');
     const c = await CustomsClearance.findById(id).select('refNumber blNumber customerName containers.containerNumber cancelled').lean();
     if (!c || c.cancelled) return res.status(404).json({ message: 'معاملةُ التخليص غيرُ موجودة' });
-    const wf = await OperationsWorkflow.findById(req.params.id).select('reportNumber customsLink').lean();
+    const wf = await OperationsWorkflow.findById(req.params.id).select('reportNumber customsLink shipmentOrder').lean();
     if (!wf) return res.status(404).json({ message: 'أمر النقل غير موجود' });
     const known = new Set((c.containers || []).map((u) => String(u.containerNumber || '').trim()).filter(Boolean));
     const containers = (Array.isArray(req.body.containers) ? req.body.containers : [])
@@ -3482,7 +3493,7 @@ exports.setCustomsLink = async (req, res) => {
 exports.clearCustomsLink = async (req, res) => {
   try {
     if (!(await canLinkCustoms(req.user.role))) return res.status(403).json({ message: 'صلاحيّتك لا تسمح بفكّ ربط أمر النقل' });
-    const wf = await OperationsWorkflow.findById(req.params.id).select('reportNumber customsLink').lean();
+    const wf = await OperationsWorkflow.findById(req.params.id).select('reportNumber customsLink shipmentOrder').lean();
     if (!wf) return res.status(404).json({ message: 'أمر النقل غير موجود' });
     const cur = wf.customsLink || {};
     if (!cur.clearance) return res.status(400).json({ message: 'الكشفُ غيرُ مرتبطٍ بمعاملة تخليص' });

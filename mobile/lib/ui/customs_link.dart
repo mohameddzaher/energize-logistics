@@ -107,7 +107,11 @@ class WorkflowCustomsSection extends StatelessWidget {
         ]),
         const SizedBox(height: 8),
         if (!linked)
-          Text(tr('الكشفُ غيرُ مرتبطٍ بمعاملة تخليص.', 'Not linked to a customs clearance.'), style: const TextStyle(fontSize: 12, color: T.inkSoft))
+          Text(
+            '${workflow['documentNumber'] ?? ''}'.trim().isNotEmpty
+                ? '${tr('رقم البوليصة أو الحاوية على أمر النقل', 'B/L or container on this transport order')}: ${'${workflow['documentNumber']}'.trim()} — ${tr('لا توجد معاملة تخليص بهذا الرقم. راجِع الرقم أو اربطه يدويًّا.', 'no customs clearance has this number. Check it or link by hand.')}'
+                : tr('لا يوجد رقم بوليصة أو حاوية على أمر النقل، ولا ربط بمعاملة تخليص.', 'No B/L or container on this transport order, and no customs clearance linked.'),
+            style: const TextStyle(fontSize: 12, color: T.inkSoft))
         else ...[
           Align(alignment: AlignmentDirectional.centerStart, child: CustomsLinkChip(m, compact: true)),
           const SizedBox(height: 6),

@@ -27,6 +27,7 @@ import { useLatestRequest } from '@/hooks/useLatestRequest';
 import ScrollX from '@/components/system/ScrollX';
 import TablePager, { readPageSize, savePageSize } from '@/components/system/TablePager';
 import ManagedSelect from '@/components/system/ManagedSelect';
+import CustomsLinkBadge from '@/components/customs/CustomsLinkBadge';
 import { paymentKindLabel } from '@/lib/paymentKind';
 import {
   OrderCard, ownerKindLabel, ViewSwitcher, ViewMode, VIEW_MODES, VIEW_PREF_KEY, VIEW_PREF_READ_KEY,
@@ -1094,6 +1095,19 @@ function ShipmentOrdersInner() {
                   <Row k={ar ? 'اللوحة' : 'Plate'} v={(d as any).vehiclePlate} />
                   <Row k={ar ? 'الوسيط' : 'Agent'} v={d.agentName} />
                 </Group>
+
+                {((d as any).blNumber || (d as any).containerNumber || (d as any).customsLink?.clearance) && (
+                  <Group title={ar ? 'التخليص الجمركي' : 'Customs'}>
+                    <Row k={ar ? 'رقم البوليصة' : 'B/L number'} v={(d as any).blNumber} />
+                    <Row k={ar ? 'رقم الحاوية' : 'Container number'} v={(d as any).containerNumber} />
+                    <div className="flex gap-3 py-1.5 border-b border-slate-100 last:border-0">
+                      <span className="w-40 shrink-0 text-xs text-slate-500">{ar ? 'معاملة التخليص' : 'Clearance'}</span>
+                      {(d as any).customsLink?.clearance
+                        ? <CustomsLinkBadge link={(d as any).customsLink} ar={ar} />
+                        : <span className="text-sm text-amber-700">{ar ? 'لا توجد معاملة بهذا الرقم' : 'No clearance has this number'}</span>}
+                    </div>
+                  </Group>
+                )}
 
                 <Group title={ar ? 'العميل' : 'Customer'}>
                   <Row k={ar ? 'الاسم' : 'Name'} v={d.customerName} />

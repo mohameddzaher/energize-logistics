@@ -445,6 +445,7 @@ export default function WorkflowDetailPage() {
       {!editing && (
         <WorkflowCustomsPanel
           workflowId={workflow._id}
+          documentNumber={(workflow as any).documentNumber}
           link={(workflow as any).customsLink}
           ar={lang === 'ar'}
           canLink={canLinkCustoms}

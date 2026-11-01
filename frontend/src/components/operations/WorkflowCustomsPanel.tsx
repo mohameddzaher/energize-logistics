@@ -19,8 +19,9 @@ type Hit = {
   containerCount: number; containers: string[]; isCompleted: boolean; upcoming: boolean;
 };
 
-export default function WorkflowCustomsPanel({ workflowId, link, ar, canLink, onSaved }: {
+export default function WorkflowCustomsPanel({ workflowId, documentNumber, link, ar, canLink, onSaved }: {
   workflowId: string;
+  documentNumber?: string;
   link?: (CustomsLinkView & { at?: string; byName?: string }) | null;
   ar: boolean;
   canLink: boolean;
@@ -145,7 +146,15 @@ export default function WorkflowCustomsPanel({ workflowId, link, ar, canLink, on
             )}
           </div>
         ) : !picking && (
-          <p className="text-sm text-slate-500">{t('الكشفُ غيرُ مرتبطٍ بمعاملة تخليص.', 'This report is not linked to a customs clearance.')}</p>
+          documentNumber?.trim() ? (
+            <p className="text-sm text-amber-700">
+              {t('رقم البوليصة أو الحاوية على أمر النقل: ', 'B/L or container on this transport order: ')}
+              <span className="font-mono font-semibold" dir="ltr">{documentNumber.trim()}</span>
+              {t(' — لا توجد معاملة تخليص بهذا الرقم. راجِع الرقم أو اربطه يدويًّا.', ' — no customs clearance has this number. Check it or link by hand.')}
+            </p>
+          ) : (
+            <p className="text-sm text-slate-500">{t('لا يوجد رقم بوليصة أو حاوية على أمر النقل، ولا ربط بمعاملة تخليص.', 'No B/L or container on this transport order, and no customs clearance linked.')}</p>
+          )
         )}
 
         {picking && (

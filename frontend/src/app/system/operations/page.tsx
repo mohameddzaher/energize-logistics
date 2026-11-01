@@ -1,6 +1,6 @@
 'use client';
 import { FINANCE_FULL_ROLES } from '@/lib/financeAuthority';
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import MonthPicker from '@/components/system/MonthPicker';
 import { useRouter } from 'next/navigation';
 import { ColumnFilter, type ColumnFilterOption } from '@/components/ColumnFilter';
@@ -13,6 +13,7 @@ import api from '@/lib/api';
 import { PAYMENT_CHOICES, paymentFamily, paymentKindLabel, paymentKindOf } from '@/lib/paymentKind';
 import { startBackgroundExport, type ExportJob } from '@/lib/backgroundExport';
 import ExportMenu from '@/components/ls2/ExportMenu';
+import ColumnChooser, { useVisibleColumns, type ChooserColumn } from '@/components/system/ColumnChooser';
 import DateRangeFilter, { DateField } from '@/components/system/DateRangeFilter';
 import ManagedSelect from '@/components/system/ManagedSelect';
 import { useSocket } from '@/hooks/useSocket';
@@ -166,6 +167,7 @@ const EXPORT_COLUMNS = [
   { header: 'رقم المستند', key: 'documentNumber', width: 14 },
   { header: 'معاملة التخليص', key: 'customsRef', width: 14 },
   { header: 'البوليصة', key: 'customsBl', width: 18 },
+  { header: 'الحاويات', key: 'customsContainers', width: 22 },
   { header: 'تاريخ الإرسال', key: 'sendingDate', width: 12 },
   { header: 'تاريخ التسليم للفرع', key: 'branchDeliveryDate', width: 14 },
   { header: 'تاريخ التسليم للعميل', key: 'deliveryDate', width: 14 },
@@ -432,6 +434,31 @@ export default function OperationsWorkflowPage() {
   // الخادمُ لا يرسلها لغيرهم أصلًا ولا يقبل كتابتَها منهم؛ والعمودُ يُخفى معها
   // كي لا يُقرأ فراغُه «لا سعرَ لهذا الكشف».
   const canSeeSelling = has('sellingValue') || !!view.selling;
+
+  // Columns a role may not see never reach the chooser, so it cannot offer them.
+  const chooserColumns = useMemo<ChooserColumn[]>(() => {
+    const ar = lang === 'ar';
+    return [
+      { key: 'reportNumber', label: T.thReportNumber, locked: true },
+      { key: 'reportDate', label: T.thReportDate }, { key: 'fromLocation', label: T.thFrom }, { key: 'toLocation', label: T.thTo },
+      { key: 'branch', label: T.thBranch }, { key: 'carOwner', label: T.thCarOwner }, { key: 'carNumber', label: T.thCarNumber },
+      { key: 'applicationStatus', label: T.thApplication }, { key: 'username', label: T.thUsername }, { key: 'userPhone', label: T.thUserPhone },
+      { key: 'purchaseValue', label: T.thPurchaseValue },
+      ...(canSeeSelling ? [{ key: 'sellingValue', label: T.thSellingValue }] : []),
+      { key: 'driverName', label: T.thDriverName }, { key: 'truckType', label: T.thTruckType }, { key: 'truckSize', label: T.thTruckSize },
+      { key: 'representativeName', label: T.thRepresentative }, { key: 'operationsReview', label: T.thOpsReview },
+      { key: 'paymentDate', label: T.thPaymentDate }, { key: 'dataOwnerShown', label: ar ? 'مسؤول البيانات' : 'Data owner' },
+      { key: 'payingBranch', label: T.thPayingBranch }, { key: 'paymentAmount', label: T.thPaymentAmount }, { key: 'paymentType', label: T.thPaymentType },
+      { key: 'finalReportDestination', label: ar ? 'وجهة أمر النقل النهائية' : 'Final destination' }, { key: 'documentNumber', label: T.thDocNumber },
+      { key: 'customsRef', label: ar ? 'التخليص' : 'Customs' }, { key: 'sendingDate', label: T.thSendingDate },
+      { key: 'branchDeliveryDate', label: T.thBranchDeliveryDate }, { key: 'accountingReview', label: T.thAccountingReview },
+      { key: 'invoiceNumber', label: T.thInvoiceNumber },
+      ...(canViewFinancials ? [{ key: 'netInvoice', label: T.thNetInvoice }, { key: 'tax', label: T.thTax }, { key: 'totalInvoice', label: T.thTotalInvoice }, { key: 'invoiceDate', label: T.thInvoiceDate }] : []),
+      { key: 'deliveryDate', label: T.thDeliveryDate },
+      ...(canViewFinancials ? [{ key: 'collectedAmount', label: T.thCollectedAmount }, { key: 'collectionDate', label: T.thCollectionDate }] : []),
+    ];
+  }, [T, lang, canSeeSelling, canViewFinancials]);
+  const { visible: visibleCols, setVisible: setVisibleCols, isOn: colOn } = useVisibleColumns('ops:workflowColumns', chooserColumns);
 
   // Aggregates over the WHOLE matching dataset (all ~27k rows, not one page).
   const [stats, setStats] = useState<{
@@ -1017,6 +1044,7 @@ export default function OperationsWorkflowPage() {
     collectionDate: formatDate(w.collectionDate),
     customsRef: w.customsLink?.clearance ? w.customsLink.refNumber || '' : '',
     customsBl: w.customsLink?.clearance ? w.customsLink.blNumber || '' : '',
+    customsContainers: w.customsLink?.clearance ? (w.customsLink.containers || []).join('، ') : '',
     executionStatus: trStatus(w.executionStatus),
     applicationStatus: trStatus(w.applicationStatus),
     paymentMethod: trPayment(w.paymentMethod),
@@ -1138,7 +1166,7 @@ export default function OperationsWorkflowPage() {
     return undefined;
   };
 
-  const ColHead = (field: keyof Workflow, label: string, color = 'text-slate-300', pinned = false) => (
+  const ColHead = (field: keyof Workflow, label: string, color = 'text-slate-300', pinned = false) => (!colOn(field as string) ? null : (
     <th className={`px-3 py-3 text-start text-xs font-semibold whitespace-nowrap ${pinned ? 'sticky z-20 bg-slate-900' : ''}`}
       style={pinned ? { insetInlineStart: 'var(--wf-pin, 0px)' } : undefined}>
       <span className={`inline-flex items-center ${color}`}>
@@ -1157,7 +1185,7 @@ export default function OperationsWorkflowPage() {
         />
       </span>
     </th>
-  );
+  ));
 
   /**
    * ── «تحديد كلّ النتائج» — النمطُ المعروف ─────────────────────────────────
@@ -1359,6 +1387,7 @@ export default function OperationsWorkflowPage() {
               التصدير فيها كأنّها نظامٌ آخر.
               وثلاثة نطاقات لا واحد، وعددُ كلٍّ بجانبه: تفلتر فيبقى مئتا صفّ
               وتعرض الشاشة خمسين، فتصديرُ «المعروض» يعطيك خُمس ما طلبتَ. */}
+          <ColumnChooser columns={chooserColumns} visible={visibleCols} onChange={setVisibleCols} ar={lang === 'ar'} />
           <ExportMenu
             fileName="operations"
             lang={lang === 'ar' ? 'ar' : 'en'}
@@ -1674,7 +1703,7 @@ export default function OperationsWorkflowPage() {
             «جارٍ»، والجدولُ يبقى حيًّا. */}
         <ScrollX aria-busy={searching}>
           <div ref={tableRef} className="scroll-mt-4" />
-          <table className="w-full min-w-[3200px]">
+          <table className="w-full" style={{ minWidth: Math.max(960, visibleCols.length * 80) }}>
             <thead>
               <tr className="bg-slate-900 border-b border-slate-200">
                 <th ref={measurePinOffset} className="px-3 py-3 sticky start-0 bg-slate-900 z-10 w-20">
@@ -1703,7 +1732,7 @@ export default function OperationsWorkflowPage() {
                 {ColHead('username', T.thUsername)}
                 {ColHead('userPhone', T.thUserPhone)}
                 {ColHead('purchaseValue', T.thPurchaseValue)}
-                {canSeeSelling && ColHead('sellingValue', T.thSellingValue)}
+                {ColHead('sellingValue', T.thSellingValue)}
                 {ColHead('driverName', T.thDriverName)}
                 {ColHead('truckType', T.thTruckType)}
                 {ColHead('truckSize', T.thTruckSize)}
@@ -1744,16 +1773,16 @@ export default function OperationsWorkflowPage() {
                 {ColHead('accountingReview', T.thAccountingReview, 'text-purple-300')}
                 {/* Collections — financial columns, finance/owner roles only */}
                 {ColHead('invoiceNumber', T.thInvoiceNumber, 'text-green-400')}
-                {canViewFinancials && ColHead('netInvoice', T.thNetInvoice, 'text-green-400')}
-                {canViewFinancials && ColHead('tax', T.thTax, 'text-green-400')}
-                {canViewFinancials && ColHead('totalInvoice', T.thTotalInvoice, 'text-green-400')}
-                {canViewFinancials && ColHead('invoiceDate', T.thInvoiceDate, 'text-green-400')}
+                {ColHead('netInvoice', T.thNetInvoice, 'text-green-400')}
+                {ColHead('tax', T.thTax, 'text-green-400')}
+                {ColHead('totalInvoice', T.thTotalInvoice, 'text-green-400')}
+                {ColHead('invoiceDate', T.thInvoiceDate, 'text-green-400')}
                 {/* ── وتاريخُ التسليم قبل تاريخ التحصيل ──────────────────────
                     كان بين تواريخ الإرسال، وهو آخرُ ما يُنتظر قبل التحصيل —
                     وصفحةُ الفواتير الضريبيّة تقرؤه بجانبه. فالعينُ تجدهما معًا. */}
                 {ColHead('deliveryDate', T.thDeliveryDate, 'text-green-400')}
-                {canViewFinancials && ColHead('collectedAmount', T.thCollectedAmount, 'text-green-400')}
-                {canViewFinancials && ColHead('collectionDate', T.thCollectionDate, 'text-green-400')}
+                {ColHead('collectedAmount', T.thCollectedAmount, 'text-green-400')}
+                {ColHead('collectionDate', T.thCollectionDate, 'text-green-400')}
                 {/* ── عمودان حُذفا: «المرحلة» و«قفل» ──────────────────────────
                     «المرحلة» حالةٌ يحسبها النظامُ من الصفّ نفسِه (أيَّ خاناتٍ
                     مُلئت) — تُقرأ في سير العمل فلا تُقرّر شيئًا: مَن يعمل هنا
@@ -2050,32 +2079,32 @@ export default function OperationsWorkflowPage() {
                       return (<>
                         {/* Application Details */}
                         {textCell('reportNumber', 'text-[#f37121] font-medium')}
-                        {dateCell('reportDate')}
-                        {textCell('fromLocation')}
-                        {textCell('toLocation')}
-                        {lookupCell('branch', 'workflow_paying_branch')}
-                        {textCell('carOwner', 'text-slate-900')}
-                        {textCell('carNumber')}
-                        {statusCell()}
-                        {isEditing && owns('username') ? (
+                        {colOn('reportDate') && dateCell('reportDate')}
+                        {colOn('fromLocation') && textCell('fromLocation')}
+                        {colOn('toLocation') && textCell('toLocation')}
+                        {colOn('branch') && lookupCell('branch', 'workflow_paying_branch')}
+                        {colOn('carOwner') && textCell('carOwner', 'text-slate-900')}
+                        {colOn('carNumber') && textCell('carNumber')}
+                        {colOn('applicationStatus') && statusCell()}
+                        {!colOn('username') ? null : isEditing && owns('username') ? (
                           <td className="px-3 py-2.5 text-sm min-w-[14rem]" onClick={(e) => e.stopPropagation()}>
                             <CustomerNamePicker value={(editData as any).username || ''} ar={lang === 'ar'}
                               onChange={(v) => setEditData(prev => ({ ...prev, username: v }))} />
                           </td>
                         ) : textCell('username')}
-                        {textCell('userPhone')}
-                        {numCell('purchaseValue')}
+                        {colOn('userPhone') && textCell('userPhone')}
+                        {colOn('purchaseValue') && numCell('purchaseValue')}
                         {/* تُكتب في منصّة التشغيل أوّلًا ثمّ هنا — راجع pushSellingValue. */}
-                        {canSeeSelling && numCell('sellingValue', 'text-emerald-700')}
-                        {textCell('driverName')}
-                        {textCell('truckType')}
-                        {textCell('truckSize')}
-                        {textCell('representativeName')}
+                        {colOn('sellingValue') && numCell('sellingValue', 'text-emerald-700')}
+                        {colOn('driverName') && textCell('driverName')}
+                        {colOn('truckType') && textCell('truckType')}
+                        {colOn('truckSize') && textCell('truckSize')}
+                        {colOn('representativeName') && textCell('representativeName')}
                         {/* Operations Review */}
-                        {operationsReviewCell()}
+                        {colOn('operationsReview') && operationsReviewCell()}
                         {/* Manual Moderator */}
-                        {dateCell('paymentDate', 'text-purple-700')}
-                        {(() => {
+                        {colOn('paymentDate') && dateCell('paymentDate', 'text-purple-700')}
+                        {colOn('dataOwnerShown') && (() => {
                           const owner = (wf as any).dataOwnerShown || (wf as any).paymentDateByName || '';
                           const from = (wf as any).dataOwnerFrom || '';
                           const at = (wf as any).paymentDateAt;
@@ -2095,30 +2124,37 @@ export default function OperationsWorkflowPage() {
                             </td>
                           );
                         })()}
-                        {lookupCell('payingBranch', 'workflow_paying_branch', 'text-purple-700')}
-                        {numCell('paymentAmount', 'text-purple-700')}
-                        {paymentTypeCell()}
+                        {colOn('payingBranch') && lookupCell('payingBranch', 'workflow_paying_branch', 'text-purple-700')}
+                        {colOn('paymentAmount') && numCell('paymentAmount', 'text-purple-700')}
+                        {colOn('paymentType') && paymentTypeCell()}
                         {/* ما بعده يُقفَل على الكشف النقديّ — والقفلُ يقول سببَه
                             عند المرور عليه، فلا يُقرأ عطلًا. */}
-                        {lookupCell('finalReportDestination', 'workflow_final_destination', 'text-purple-700')}
-                        {textCell('documentNumber', 'text-purple-700')}
-                        <td className="px-3 py-2.5 text-sm whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                          {wf.customsLink?.clearance
-                            ? <CustomsLinkBadge link={wf.customsLink} ar={lang === 'ar'} />
-                            : <span className="text-slate-300">-</span>}
-                        </td>
-                        {dateCell('sendingDate', 'text-purple-700')}
-                        {dateCell('branchDeliveryDate', 'text-purple-700')}
-                        {accountingReviewCell()}
-                        {textCell('invoiceNumber', 'text-green-700')}
+                        {colOn('finalReportDestination') && lookupCell('finalReportDestination', 'workflow_final_destination', 'text-purple-700')}
+                        {colOn('documentNumber') && textCell('documentNumber', 'text-purple-700')}
+                        {colOn('customsRef') && (
+                          <td className="px-3 py-2.5 text-sm whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                            {wf.customsLink?.clearance ? (
+                              <>
+                                <CustomsLinkBadge link={wf.customsLink} ar={lang === 'ar'} />
+                                {!!wf.customsLink.containers?.length && (
+                                  <div className="mt-0.5 text-[11px] text-slate-500" dir="ltr">{wf.customsLink.containers.join(' · ')}</div>
+                                )}
+                              </>
+                            ) : <span className="text-slate-300">-</span>}
+                          </td>
+                        )}
+                        {colOn('sendingDate') && dateCell('sendingDate', 'text-purple-700')}
+                        {colOn('branchDeliveryDate') && dateCell('branchDeliveryDate', 'text-purple-700')}
+                        {colOn('accountingReview') && accountingReviewCell()}
+                        {colOn('invoiceNumber') && textCell('invoiceNumber', 'text-green-700')}
                         {/* Invoice amounts — finance, collections and top roles only */}
-                        {canViewFinancials && numCell('netInvoice', 'text-green-700')}
-                        {canViewFinancials && numCell('tax', 'text-green-700')}
-                        {canViewFinancials && numCell('totalInvoice', 'text-green-700')}
-                        {canViewFinancials && dateCell('invoiceDate', 'text-green-700')}
-                        {dateCell('deliveryDate', 'text-green-700')}
-                        {canViewFinancials && numCell('collectedAmount', 'text-green-700')}
-                        {canViewFinancials && dateCell('collectionDate', 'text-green-700')}
+                        {colOn('netInvoice') && numCell('netInvoice', 'text-green-700')}
+                        {colOn('tax') && numCell('tax', 'text-green-700')}
+                        {colOn('totalInvoice') && numCell('totalInvoice', 'text-green-700')}
+                        {colOn('invoiceDate') && dateCell('invoiceDate', 'text-green-700')}
+                        {colOn('deliveryDate') && dateCell('deliveryDate', 'text-green-700')}
+                        {colOn('collectedAmount') && numCell('collectedAmount', 'text-green-700')}
+                        {colOn('collectionDate') && dateCell('collectionDate', 'text-green-700')}
                       </>);
                     })()}
 

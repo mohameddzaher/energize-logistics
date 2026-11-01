@@ -297,8 +297,41 @@ async function reconcile(since) {
   for (const w of rows) if (!orderIds.has(String(w.shipmentOrder))) await pullWorkflow(w);
 }
 
+const BEFORE_ARRIVAL = ['requesting', 'loading', 'uploaded', 'on_way'];
+const LATE_FROM = new Date('2026-11-01T00:00:00+03:00');
+const riyadhDay = (d) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Riyadh' }).format(new Date(d));
+
+/**
+ * At noon on its arrival date, a shipment that has not arrived turns late. Runs once
+ * per arrival date, so a person can move it back, and a new date counts again.
+ * Older shipments keep the status they came from the platform with.
+ */
+async function markLateArrivals(now = new Date()) {
+  const rows = await ShipmentOrder.find({ status: { $in: BEFORE_ARRIVAL }, arrivalTime: { $gte: LATE_FROM, $lte: new Date(now.getTime() + 864e5) } })
+    .select('status arrivalTime source lateForDay').lean();
+  let moved = 0;
+  for (const o of rows) {
+    const day = riyadhDay(o.arrivalTime);
+    if (o.lateForDay === day || now < new Date(`${day}T12:00:00+03:00`)) continue;
+    const r = await ShipmentOrder.updateOne({ _id: o._id, status: o.status }, {
+      $set: { status: 'late', lateForDay: day },
+      $push: { statusLog: { from: o.status, to: 'late', note: 'تأخرت تلقائيًا: جاء وقت الوصول ولم تصل', at: now, byName: 'النظام' } },
+    });
+    if (r.modifiedCount) {
+      moved += 1;
+      await (o.source === 'platform' ? mirrorPlatformOrder(o._id, ['status']) : mirrorOrder(o._id));
+    }
+  }
+  if (moved) announceOrders();
+  return moved;
+}
+
+let lateTimer = null;
 let timer = null;
 function startShipmentOrderLink() {
+  if (!lateTimer) {
+    lateTimer = setInterval(() => { markLateArrivals().catch((e) => console.error('[so-link] late:', e.message)); }, 5 * 60 * 1000);
+  }
   if (timer) return;
   let since = new Date(Date.now() - 24 * 3600 * 1000);
   let running = false;
@@ -312,5 +345,5 @@ function startShipmentOrderLink() {
 }
 
 module.exports = {
-  SHIPMENT_DELETE_ROLES, deleteShipments, announceRename, mirrorOrder, pullWorkflow, mirrorPlatformOrder, pullPlatformRow, mirrorSoon, mirrorPlatformSoon, pullSoon, reconcile, startShipmentOrderLink,
+  SHIPMENT_DELETE_ROLES, deleteShipments, announceRename, markLateArrivals, mirrorOrder, pullWorkflow, mirrorPlatformOrder, pullPlatformRow, mirrorSoon, mirrorPlatformSoon, pullSoon, reconcile, startShipmentOrderLink,
 };

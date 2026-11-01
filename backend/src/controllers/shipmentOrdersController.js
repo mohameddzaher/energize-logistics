@@ -342,6 +342,8 @@ const ORDER_COLUMNS = {
   branch: 'branch',
   supplierName: 'supplierName',
   plate: 'vehiclePlate',
+  truckLength: 'truckLength',
+  containerNumber: 'containerNumber',
   paymentSubtype: 'paymentSubtype',
   agentName: 'agentName',
   driverRentType: 'driverRentType',

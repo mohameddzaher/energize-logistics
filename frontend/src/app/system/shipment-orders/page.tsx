@@ -70,6 +70,9 @@ const fmtDate = (v?: string | null) => {
 // إلى تلك ولم تصل هذه.
 
 // بوليصة-501-اسم العميل-22-7-2026
+const DEFAULT_COLS = ['reference', 'customerName', 'pickup', 'fromCity', 'toCity', 'branch', 'driverName', 'contact', 'status', 'owner', 'truck', 'plate', 'cargo', 'payment', 'sales', 'buy', 'sell', 'notes', 'followup', 'actions'];
+const dayOf = (d: unknown) => (d ? new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Riyadh' }).format(new Date(String(d))) : '—');
+
 const waybillFileName = (o: ShipmentOrder) => {
   const ref = (o as any).reference || o.waybillNumber || '';
   const parts = [o.customerName || 'عميل', (o as any).vehiclePlate, ref].filter(Boolean);
@@ -380,28 +383,42 @@ function ShipmentOrdersInner() {
   const HEADS: readonly (readonly [string, string | null, string])[] = [
     [ar ? 'رقم البوليصة' : 'Waybill', 'reference', 'reference'],
     [ar ? 'العميل' : 'Customer', 'customerName', 'customerName'],
+    [ar ? 'تاريخ الاستلام' : 'Pickup date', 'pickupDay', 'pickup'],
     [ar ? 'من' : 'From', 'fromCity', 'fromCity'],
     [ar ? 'إلى' : 'To', 'toCity', 'toCity'],
     [ar ? 'الفرع' : 'Branch', 'branch', 'branch'],
     [ar ? 'السائق' : 'Driver', 'driverName', 'driverName'],
     [ar ? 'تواصل' : 'Contact', null, 'contact'],
+    [ar ? 'الحالة' : 'Status', 'status', 'status'],
     [ar ? 'مالك السيارة' : 'Truck owner', 'supplierName', 'owner'],
     [ar ? 'نوع الشاحنة' : 'Truck type', 'truckType', 'truck'],
     [ar ? 'رقم الشاحنة' : 'Truck no.', 'plate', 'plate'],
+    [ar ? 'طول الشاحنة' : 'Truck length', 'truckLength', 'length'],
     [ar ? 'نوع الحمولة' : 'Cargo', 'cargoType', 'cargo'],
+    [ar ? 'الكمية' : 'Quantity', null, 'quantity'],
     [ar ? 'نوع الدفع' : 'Payment', 'paymentSubtype', 'payment'],
     [ar ? 'السيلز' : 'Sales rep', 'salesRepName', 'sales'],
-    [ar ? 'وقت الاستلام' : 'Pickup', 'pickupDay', 'pickup'],
+    [ar ? 'المندوب' : 'Agent', 'agentName', 'agent'],
     [ar ? 'سعر الشراء' : 'Buy', 'buyPrice', 'buy'],
     [ar ? 'سعر البيع' : 'Sell', 'sellPrice', 'sell'],
-    [ar ? 'الحالة' : 'Status', 'status', 'status'],
+    [ar ? 'الهامش' : 'Margin', null, 'margin'],
+    [ar ? 'السلفة' : 'Advance', null, 'advance'],
+    [ar ? 'أجرة السائق' : 'Driver rent', null, 'rent'],
+    [ar ? 'بوليصة الشحن (B/L)' : 'B/L no.', 'blNumber', 'bl'],
+    [ar ? 'رقم الحاوية' : 'Container no.', 'containerNumber', 'container'],
+    [ar ? 'وقت الانطلاق' : 'Start date', null, 'start'],
+    [ar ? 'وقت الوصول' : 'Arrival date', null, 'arrival'],
+    [ar ? 'جوال السائق' : 'Driver phone', null, 'phone'],
+    [ar ? 'عنوان التحميل' : 'Pickup address', null, 'addrFrom'],
+    [ar ? 'عنوان التسليم' : 'Delivery address', null, 'addrTo'],
     [ar ? 'ملاحظة البوليصة' : 'Waybill note', 'notes', 'notes'],
     [ar ? 'آخر متابعة' : 'Latest follow-up', null, 'followup'],
+    [ar ? 'تاريخ الإنشاء' : 'Created', null, 'created'],
     [ar ? 'إجراءات' : 'Actions', null, 'actions'],
   ];
   const chooserCols = useMemo(() => HEADS.map(([label, , key]) => ({ key, label, locked: key === 'reference' || key === 'actions' })),
     [ar]); // eslint-disable-line react-hooks/exhaustive-deps
-  const { visible, setVisible, isOn: on } = useVisibleColumns('so:shipments:columns', chooserCols);
+  const { visible, setVisible, isOn: on } = useVisibleColumns('so:shipments:columns', chooserCols, { defaults: DEFAULT_COLS });
   const shownHeads = HEADS.filter(([, , key]) => key === 'reference' || key === 'actions' || on(key));
 
   const togglePick = (id: string) =>
@@ -730,7 +747,7 @@ function ShipmentOrdersInner() {
                 aria-label={ar ? 'تحديد الكل' : 'Select all'} />
             </th>
             {shownHeads.map(([h, col], i) => (
-              <th key={i} className={`text-start font-semibold px-4 py-3 whitespace-nowrap ${i === 0 ? 'sticky start-[44px] z-10 bg-slate-900' : ''}`}>
+              <th key={i} className={`font-semibold px-4 py-3 whitespace-nowrap ${i === 0 ? 'text-center sticky start-[44px] z-10 bg-slate-900' : 'text-start'}`}>
                 <span className="inline-flex items-center">
                   {h}
                   {/* القمعُ يُفتَح فيُطلَب عمودُه وحدَه — لا الأعمدةُ العشرة. */}
@@ -774,11 +791,14 @@ function ShipmentOrdersInner() {
                       checked={picked.has(o._id)} onChange={() => togglePick(o._id)}
                       aria-label={String(o.waybillNumber)} />
                   </td>
-                  <td className="px-4 py-3 text-slate-900 font-bold font-mono whitespace-nowrap sticky start-[44px] z-10 bg-white shadow-[inset_-1px_0_0_#e2e8f0]">
+                  <td className="px-4 py-3 text-center text-slate-900 !font-extrabold !text-[15px] tabular-nums whitespace-nowrap sticky start-[44px] z-10 bg-white shadow-[inset_-1px_0_0_#e2e8f0]">
                     {(o as any).reference || o.waybillNumber}
                   </td>
                   {on('customerName') && (
                   <td className="px-4 py-3 text-slate-900 font-medium max-w-[220px] truncate" title={o.customerName}>{o.customerName || '—'}</td>
+                  )}
+                  {on('pickup') && (
+                  <td className="px-4 py-3 text-slate-700 whitespace-nowrap tabular-nums">{dayOf(o.pickupTime)}</td>
                   )}
                   {on('fromCity') && (
                   <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{o.fromCity || '—'}</td>
@@ -803,36 +823,6 @@ function ShipmentOrdersInner() {
                       : <span className="text-slate-300 text-xs">{ar ? 'لا رقم' : 'no phone'}</span>}
                   </td>
                   )}
-                  {on('owner') && (
-                  <td className="px-4 py-3 text-slate-700 max-w-[220px] truncate" title={(o as any).supplierName || ''}>
-                    {(o as any).supplierName || '—'}
-                    {ownerKindLabel((o as any).ownerKind, ar) && <span className="ms-1.5 text-[11px] font-semibold text-slate-500">({ownerKindLabel((o as any).ownerKind, ar)})</span>}
-                  </td>
-                  )}
-                  {on('truck') && (
-                  <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{o.truckType || '—'}</td>
-                  )}
-                  {on('plate') && (
-                  <td className="px-4 py-3 text-slate-700 whitespace-nowrap font-mono" dir="ltr">{(o as any).vehiclePlate || '—'}</td>
-                  )}
-                  {on('cargo') && (
-                  <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{o.cargoType || '—'}</td>
-                  )}
-                  {on('payment') && (
-                  <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{paymentKindLabel((o as any).paymentSubtype, ar) || (o as any).paymentMethod || '—'}</td>
-                  )}
-                  {on('sales') && (
-                  <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{(o as any).salesRepName || '—'}</td>
-                  )}
-                  {on('pickup') && (
-                  <td className="px-4 py-3 text-slate-700 text-xs whitespace-nowrap">{fmtDT(o.pickupTime, lang as Lang)}</td>
-                  )}
-                  {on('buy') && (
-                  <td className="px-4 py-3 text-slate-700 whitespace-nowrap tabular-nums">{money(o.buyPrice)}</td>
-                  )}
-                  {on('sell') && (
-                  <td className="px-4 py-3 text-slate-700 whitespace-nowrap tabular-nums">{money(o.sellPrice)}</td>
-                  )}
                   {on('status') && (
                   <td className="px-4 py-3 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                     {/* ── المتابعةُ نقلةُ حالةٍ ومعها سببُها ──────────────────
@@ -853,6 +843,72 @@ function ShipmentOrdersInner() {
                       <span className={`text-xs font-medium rounded-full px-2.5 py-1 ${st ? `${st.bg} ${st.text}` : 'bg-slate-100 text-slate-700'}`} style={pillStyle}>{pillLabel}</span>
                     )}
                   </td>
+                  )}
+                  {on('owner') && (
+                  <td className="px-4 py-3 text-slate-700 max-w-[220px] truncate" title={(o as any).supplierName || ''}>
+                    {(o as any).supplierName || '—'}
+                    {ownerKindLabel((o as any).ownerKind, ar) && <span className="ms-1.5 text-[11px] font-semibold text-slate-500">({ownerKindLabel((o as any).ownerKind, ar)})</span>}
+                  </td>
+                  )}
+                  {on('truck') && (
+                  <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{o.truckType || '—'}</td>
+                  )}
+                  {on('plate') && (
+                  <td className="px-4 py-3 text-slate-700 whitespace-nowrap font-mono" dir="ltr">{(o as any).vehiclePlate || '—'}</td>
+                  )}
+                  {on('length') && (
+                  <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{o.truckLength || '—'}</td>
+                  )}
+                  {on('cargo') && (
+                  <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{o.cargoType || '—'}</td>
+                  )}
+                  {on('quantity') && (
+                  <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{o.quantity ?? '—'}</td>
+                  )}
+                  {on('payment') && (
+                  <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{paymentKindLabel((o as any).paymentSubtype, ar) || (o as any).paymentMethod || '—'}</td>
+                  )}
+                  {on('sales') && (
+                  <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{(o as any).salesRepName || '—'}</td>
+                  )}
+                  {on('agent') && (
+                  <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{o.agentName || '—'}</td>
+                  )}
+                  {on('buy') && (
+                  <td className="px-4 py-3 text-slate-700 whitespace-nowrap tabular-nums">{money(o.buyPrice)}</td>
+                  )}
+                  {on('sell') && (
+                  <td className="px-4 py-3 text-slate-700 whitespace-nowrap tabular-nums">{money(o.sellPrice)}</td>
+                  )}
+                  {on('margin') && (
+                  <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{money((Number(o.sellPrice) || 0) - (Number(o.buyPrice) || 0))}</td>
+                  )}
+                  {on('advance') && (
+                  <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{money((o as any).advanceAmount)}</td>
+                  )}
+                  {on('rent') && (
+                  <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{money((o as any).driverRentPrice)}</td>
+                  )}
+                  {on('bl') && (
+                  <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{(o as any).blNumber || '—'}</td>
+                  )}
+                  {on('container') && (
+                  <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{(o as any).containerNumber || '—'}</td>
+                  )}
+                  {on('start') && (
+                  <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{dayOf((o as any).startTime)}</td>
+                  )}
+                  {on('arrival') && (
+                  <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{dayOf((o as any).arrivalTime)}</td>
+                  )}
+                  {on('phone') && (
+                  <td className="px-4 py-3 text-slate-700 whitespace-nowrap"><bdi dir="ltr">{o.driverPhone || '—'}</bdi></td>
+                  )}
+                  {on('addrFrom') && (
+                  <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{(o as any).addressFrom || '—'}</td>
+                  )}
+                  {on('addrTo') && (
+                  <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{(o as any).addressTo || '—'}</td>
                   )}
                   {on('notes') && (
                   <td className="px-4 py-3 max-w-[220px]">
@@ -880,6 +936,9 @@ function ShipmentOrdersInner() {
                       );
                     })()}
                   </td>
+                  )}
+                  {on('created') && (
+                  <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{dayOf((o as any).createdAt)}</td>
                   )}
                   <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center justify-end gap-1">

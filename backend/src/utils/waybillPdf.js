@@ -210,6 +210,8 @@ ${getFontCss()}
       <div class="row"><span class="ar-label">العنوان من</span><span class="value">${valOrBlank(row.fromLocation)}</span><span class="en-label">From</span></div>
       <div class="row"><span class="ar-label">إلى</span><span class="value">${valOrBlank(row.toLocation)}</span><span class="en-label">To</span></div>
       <div class="row"><span class="ar-label">نوع السيارة</span><span class="value">${valOrBlank(row.carType)}</span><span class="en-label">Vehicle Type</span></div>
+      ${row.blNumber ? `<div class="row"><span class="ar-label">رقم البوليصة</span><span class="value">${esc(row.blNumber)}</span><span class="en-label">B/L No.</span></div>` : ''}
+      ${row.containerNumber ? `<div class="row"><span class="ar-label">رقم الحاوية</span><span class="value">${esc(row.containerNumber)}</span><span class="en-label">Container No.</span></div>` : ''}
     </div>
     <div class="section">
       <div class="section-head"><span class="ar">بيانات السائق</span><span class="en">Driver Details</span></div>
@@ -394,6 +396,7 @@ function rowFromOrder(o, opts = {}) {
     rentalType: chosen ? (is3pl ? 'نقدي 3PL (إيجار قدام)' : subtypeLabel(o.paymentSubtype)) : (o.driverRentType || ''),
     sellPriceWords: is3pl ? amountInArabic(o.sellPrice) : '',
     carBrand: '', carColor: '',
+    blNumber: o.blNumber || '', containerNumber: o.containerNumber || '',
     carType: o.truckType || '', plateNumber: o.vehiclePlate || o.vehicleName || '',
     driverAdvance: o.driverRentPrice != null ? String(o.driverRentPrice) : '',
     driverPhone: o.driverPhone || '', driverIqama: '', driverNationality: '',

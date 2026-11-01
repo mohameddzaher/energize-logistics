@@ -100,6 +100,8 @@ const shipmentOrderSchema = new mongoose.Schema(
     // (`utils/shipmentOrderStatuses`)، وهي التي تعرف المكتوبَ في الشيفرة
     // والمُضافَ من الإعدادات معًا.
     status: { type: String, default: 'requesting', trim: true, index: true },
+    // Arrival date this shipment was already turned late for, so it happens once.
+    lateForDay: { type: String, default: '' },
     notes: { type: String, trim: true, default: '' },
 
     // ── البوليصةُ والحاويةُ، وربطُها بمعاملة التخليص (٢٠٢٦/١٠/٢٦) ───────────

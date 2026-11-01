@@ -199,7 +199,11 @@ input[type="week"] {
 
 /* The search box is always the last row of a filter bar, right above the table. */
 .flex-wrap > [data-search-box],
-.flex-wrap > :has(> [data-search-box]) {
+.flex-wrap > :has(> [data-search-box]),
+.flex-wrap > input[placeholder*="بحث"],
+.flex-wrap > input[placeholder*="earch"],
+.flex-wrap > :has(> input[placeholder*="بحث"]),
+.flex-wrap > :has(> input[placeholder*="earch"]) {
   order: 99;
   flex: 1 1 100%;
   max-width: none;

@@ -215,7 +215,7 @@ export default function Ls2FleetAssetsPage() {
     setLoading(false);
   }, []);
   const loadEvents = useCallback(async () => {
-    try { const res = await api.get<{ events: AssetEvent[] }>('/api/ls2/assets/events?limit=500'); setEvents(res.events || []); } catch { /* keep */ }
+    try { const res = await api.get<{ events: AssetEvent[] }>('/api/ls2/assets/events?limit=20000'); setEvents(res.events || []); } catch { /* keep */ }
   }, []);
   const loadSensors = useCallback(async () => {
     try { const res = await api.get<{ rows: SensorRow[] }>('/api/ls2/assets/sensor-check'); setSensorRows(res.rows || []); } catch { /* keep */ }
@@ -224,7 +224,8 @@ export default function Ls2FleetAssetsPage() {
   useEffect(() => { if (tab === 'history') loadEvents(); if (tab === 'sensors') loadSensors(); }, [tab, loadEvents, loadSensors]);
   // أي حركة على الأصول (تركيب/إنزال/تبديل/بيع…) — من هذه الشاشة أو أي مستخدم آخر —
   // تصل فورًا وتلقائيًا عبر السوكت، فتُحدَّث القوائم والسجل والسينسورات بلا تحديث يدوي.
-  useSocket('ls2:updated', useCallback(() => {
+  useSocket('ls2:updated', useCallback((p: any) => {
+    if (p?.vehicles !== undefined) return;   // the telemetry poller's pulse, not an asset change
     load();
     setRefreshKey((k) => k + 1);   // والشيت المفتوح كمان
     if (tab === 'history') loadEvents();
@@ -352,13 +353,20 @@ export default function Ls2FleetAssetsPage() {
   ];
   const eventCols: ExportColumn[] = [
     { header: ar ? 'التاريخ' : 'Date', key: 'date', transform: (v) => (v ? new Date(v).toLocaleString('en-GB') : ''), width: 16 },
-    { header: ar ? 'النوع' : 'Entity', key: 'entityType', transform: (v) => (ENTITY_LABELS[v] ? (ar ? ENTITY_LABELS[v].ar : ENTITY_LABELS[v].en) : v), width: 11 },
+    { header: ar ? 'نوع الأصل' : 'Entity', key: 'entityType', transform: (v) => (ENTITY_LABELS[v] ? (ar ? ENTITY_LABELS[v].ar : ENTITY_LABELS[v].en) : v), width: 11 },
     { header: ar ? 'الأصل' : 'Asset', key: 'label', width: 14 },
+    { header: ar ? 'رقم الكاوتش' : 'Tire no.', key: 'tireNumber', width: 10 },
+    { header: ar ? 'النوع' : 'Type', key: 'tireType', width: 12 },
+    { header: ar ? 'المقاس' : 'Size', key: 'tireSize', width: 12 },
+    { header: ar ? 'السينسور' : 'Sensor', key: 'tireSensor', transform: (v) => (v === 'yes' ? (ar ? 'يوجد' : 'Yes') : v === 'no' ? (ar ? 'لا يوجد' : 'No') : ''), width: 10 },
     { header: ar ? 'الحركة' : 'Action', key: 'action', transform: (v) => (ACTION_LABELS[v] ? (ar ? ACTION_LABELS[v].ar : ACTION_LABELS[v].en) : v), width: 9 },
     { header: ar ? 'من' : 'From', key: 'fromPlate', transform: (v, r) => [v, r.fromPosition].filter(Boolean).join(' · '), width: 22 },
     { header: ar ? 'إلى' : 'To', key: 'toPlate', transform: (v, r) => [v, r.toPosition].filter(Boolean).join(' · '), width: 22 },
+    { header: ar ? 'الحالة بعد الحركة' : 'State after move', key: ar ? 'stateAfterAr' : 'stateAfterEn', width: 14 },
+    { header: ar ? 'نسبة الحالة %' : 'Condition %', key: 'percentAfter', transform: (v) => (v == null ? '' : `${v}%`), width: 10 },
     { header: ar ? 'العداد (كم)' : 'Odometer', key: 'odometerKm', transform: (v) => v ?? '', width: 11 },
     { header: ar ? 'السبب' : 'Reason', key: 'reason', width: 24 },
+    { header: ar ? 'ملاحظات' : 'Notes', key: 'notes', width: 24 },
     { header: ar ? 'بواسطة' : 'By', key: 'performedByName', width: 16 },
   ];
   const sensorCols: ExportColumn[] = [
@@ -840,7 +848,7 @@ export default function Ls2FleetAssetsPage() {
                 </tr>
               </thead>
               <tbody>
-                {fEvents.map((e) => {
+                {fEvents.slice(0, 500).map((e) => {
                   const act = ACTION_LABELS[e.action] || ACTION_LABELS.updated;
                   const ent = ENTITY_LABELS[e.entityType] || { en: e.entityType, ar: e.entityType };
                   return (

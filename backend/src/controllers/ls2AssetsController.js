@@ -68,13 +68,26 @@ async function clearSensorNotice(...keys) {
 }
 
 const ENTITY_AR = { tire: 'كاوتش', trailer: 'تيدر', flatbed: 'سطحة' };
+async function tireSnapshot(data) {
+  if (data.entityType !== 'tire') return {};
+  const t = await Ls2TireAsset.findById(data.refId).select('status condition conditionPercent').lean();
+  return t ? { stateAfter: tireState(t), percentAfter: t.conditionPercent ?? null } : {};
+}
+
 async function logEvent(req, data) {
-  emitAssetsChanged(); // every logged movement is a change some open screen shows
-  const ev = await Ls2AssetEvent.create({
-    ...data,
-    performedBy: req.user?._id || null,
-    performedByName: req.user ? `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim() : '',
-  });
+  let ev;
+  try {
+    ev = await Ls2AssetEvent.create({
+      ...data,
+      ...await tireSnapshot(data),
+      performedBy: req.user?._id || null,
+      performedByName: req.user ? `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim() : '',
+    });
+  } finally {
+    // After the write, so a screen reloading on the announcement sees this row; the asset
+    // itself has already changed, so a failed log row must still announce.
+    emitAssetsChanged();
+  }
   // ── وحركةُ الأصل تُقيَّد في سجلّ المراجعة أيضًا ─────────────────────────
   // `Ls2AssetEvent` تاريخُ الأصل نفسِه، يُقرأ في ملفّه. وسجلُّ المراجعة سؤالٌ
   // آخر: «ماذا فعل فلانٌ في القسم هذا الشهر؟» — وكان يجيب «لا شيء» لمن ركّب
@@ -350,8 +363,12 @@ exports.createTire = async (req, res) => {
 exports.updateTire = async (req, res) => {
   try {
     const allowed = ['tireNumber', 'type', 'size', 'sensor', 'notes', 'serial', 'positionLabel', 'isSpare'];
+    const current = await Ls2TireAsset.findById(req.params.id);
+    if (!current) return res.status(404).json({ message: 'Not found' });
+    // The edit form sends every field; only real changes reach the log.
     const patch = {};
-    for (const k of allowed) if (req.body[k] !== undefined) patch[k] = req.body[k];
+    for (const k of allowed) if (req.body[k] !== undefined && String(req.body[k]) !== String(current[k] ?? '')) patch[k] = req.body[k];
+    if (!Object.keys(patch).length) return res.json({ tire: current, unchanged: true });
     const tire = await Ls2TireAsset.findByIdAndUpdate(req.params.id, patch, { new: true });
     if (!tire) return res.status(404).json({ message: 'Not found' });
     await logEvent(req, {
@@ -497,6 +514,8 @@ async function planReplacementChain({ movedTire, vacated, chainIds, excludeIds =
   return { steps };
 }
 
+const chainHasReplacement = (b) => !!(b.replacementTireId || b.secondReplacementTireId || b.chain?.length);
+
 exports.moveTire = async (req, res) => {
   try {
     const tire = await Ls2TireAsset.findById(req.params.id);
@@ -512,6 +531,11 @@ exports.moveTire = async (req, res) => {
     }
     if (replacementTireId && String(replacementTireId) === String(tire._id)) {
       return res.status(400).json({ message: 'الفردة البديلة هي نفسها الفردة المُنزَلة' });
+    }
+    // A repeated request (double tap, retry) already took effect: log nothing twice.
+    if (vacated && toPlate && !chainHasReplacement(req.body) && plateKey(toPlate) === vacated.plateKey
+        && String(positionNumber) === String(vacated.positionNumber)) {
+      return res.json({ tire, unchanged: true });
     }
 
     // ── قاعدة الشغل: الموقع ما بيفضلش فاضي — ولا في آخر السلسلة ──────────────
@@ -730,6 +754,7 @@ exports.retireTire = async (req, res) => {
     const tire = await Ls2TireAsset.findById(req.params.id);
     if (!tire) return res.status(404).json({ message: 'Not found' });
     const kind = ['damaged', 'scrap', 'sold'].includes(req.body?.kind) ? req.body.kind : 'retired';
+    if (tire.status === kind) return res.json({ tire, unchanged: true });
     const blocked = blockEmptySlot(tire, req.body?.replacementTireId);
     if (blocked) return res.status(400).json(blocked);
     const from = { plate: tire.plate, key: tire.plateKey, pos: posLabel(tire) };
@@ -771,6 +796,10 @@ exports.setTireStatus = async (req, res) => {
     }
     if (!['spare', 'under_renewal', 'at_factory', 'scrap', 'damaged', 'retired', 'sold', 'in_repair'].includes(status)) {
       return res.status(400).json({ message: 'حالة غير صالحة' });
+    }
+    const samePct = req.body.conditionPercent == null || req.body.conditionPercent === '' || Number(req.body.conditionPercent) === tire.conditionPercent;
+    if (status === tire.status && samePct && (!req.body.condition || req.body.condition === tire.condition)) {
+      return res.json({ tire, unchanged: true });
     }
     const blocked = blockEmptySlot(tire, req.body?.replacementTireId);
     if (blocked) return res.status(400).json(blocked);
@@ -1025,6 +1054,42 @@ exports.updateFlatbed = async (req, res) => {
 };
 
 // ---- History ---------------------------------------------------------------
+const ACTION_STATE = { mounted: 'mounted', transferred: 'mounted', scrapped: 'scrap', retired: 'scrap', damaged: 'damaged', sold: 'sold', to_repair: 'under_renewal' };
+const SHELF_ACTIONS = new Set(['removed', 'to_store', 'from_repair', 'renewed', 'registered']);
+
+// Rows logged before the snapshot existed: the action says where the tire went,
+// and the shelf grade is read from the tire.
+function pastState(e, tire) {
+  if (e.stateAfter) return e.stateAfter;
+  if (e.action === 'to_repair' && /at_factory\s*$/.test(String(e.notes).split('·')[0].trim())) return 'at_factory';
+  if (ACTION_STATE[e.action]) return ACTION_STATE[e.action];
+  if (!tire) return '';
+  if (SHELF_ACTIONS.has(e.action)) return tire.condition === 'new' ? 'new' : 'used';
+  return tireState(tire);
+}
+
+function pastPercent(e, tire) {
+  if (e.stateAfter) return e.percentAfter ?? null;   // snapshot row: blank means none was recorded yet
+  const noted = String(e.notes || '').match(/الحالة\s*(\d+)%/);
+  return noted ? Number(noted[1]) : (tire?.conditionPercent ?? null);
+}
+
+async function withTireDetails(events) {
+  const ids = [...new Set(events.filter((e) => e.entityType === 'tire').map((e) => String(e.refId)))];
+  const tires = await Ls2TireAsset.find({ _id: { $in: ids } }).select('tireNumber type size sensor status condition conditionPercent').lean();
+  const byId = new Map(tires.map((t) => [String(t._id), t]));
+  return events.map((e) => {
+    if (e.entityType !== 'tire') return e;
+    const tire = byId.get(String(e.refId));
+    const key = pastState(e, tire);
+    const st = TIRE_STATES.find((x) => x.key === key);
+    return {
+      ...e, tireNumber: tire?.tireNumber || '', tireType: tire?.type || '', tireSize: tire?.size || '', tireSensor: tire?.sensor || '',
+      stateAfter: key, stateAfterAr: st?.ar || '', stateAfterEn: st?.en || '', percentAfter: pastPercent(e, tire),
+    };
+  });
+}
+
 // GET /assets/events?plate=&entityType=&refId=&limit=
 exports.listEvents = async (req, res) => {
   try {
@@ -1036,8 +1101,8 @@ exports.listEvents = async (req, res) => {
       const key = plateKey(plate);
       q.$or = [{ fromPlateKey: key }, { toPlateKey: key }];
     }
-    const events = await Ls2AssetEvent.find(q).sort({ date: -1 }).limit(Math.min(Number(limit) || 300, 1000)).lean();
-    res.json({ events });
+    const events = await Ls2AssetEvent.find(q).sort({ date: -1 }).limit(Math.min(Number(limit) || 300, 20000)).lean();
+    res.json({ events: await withTireDetails(events) });
   } catch (e) {
     sendMongooseError(res, e, e.message);
   }

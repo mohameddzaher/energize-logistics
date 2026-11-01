@@ -360,6 +360,7 @@ exports.listShipments = async (req, res) => {
     if (supervisor) base.push({ supervisor: _oid(supervisor) });
     if (customer) base.push({ customer: _oid(customer) });
     if (vehicle) base.push({ vehicle: _oid(vehicle) });
+    if (req.query.excludeCancelled === '1') base.push({ status: { $ne: 'cancelled' } });
     const scope = await supervisorVehicleIds(req);
     if (scope) base.push({ vehicle: { $in: scope } });
     // مدى التاريخ: يُطلَب باسم الفترة (اليوم/أمس/هذا الشهر…) أو بمدى صريح، ولا

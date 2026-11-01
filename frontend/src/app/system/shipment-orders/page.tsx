@@ -13,7 +13,7 @@ import api from '@/lib/api';
 import { useDialog } from '@/components/system/DialogProvider';
 import { ColumnFilter } from '@/components/ColumnFilter';
 import ColumnChooser, { useVisibleColumns } from '@/components/system/ColumnChooser';
-import { PackageSearch, Plus, Pencil, Eye, FileDown, Loader2, RefreshCw, X, Check, MessageSquareText, SlidersHorizontal, Trash2 } from 'lucide-react';
+import { Ban, PackageSearch, Plus, Pencil, Eye, FileDown, Loader2, RefreshCw, X, Check, MessageSquareText, SlidersHorizontal, Trash2 } from 'lucide-react';
 import {
   Spinner, PageHeader, SearchInput, PrimaryButton, StatCard, Select, ErrorNotice,
 } from '@/components/hr/HRKit';
@@ -120,6 +120,15 @@ function ShipmentOrdersInner() {
   const [noteFilter, setNoteFilter] = useState('');
   const statusVocab = useOrderStatuses();
   const statusFilter = statuses.join(',');
+  const [excludeCancelled, setExcludeCancelled] = useState<boolean>(() => {
+    try { return localStorage.getItem('shipments:excludeCancelled') === '1'; } catch { return false; }
+  });
+  const toggleExcludeCancelled = () => {
+    const next = !excludeCancelled;
+    try { localStorage.setItem('shipments:excludeCancelled', next ? '1' : '0'); } catch { /* */ }
+    setExcludeCancelled(next);
+    setPage(1);
+  };
   const toggleStatus = (k: string) => {
     setStatuses((p) => (p.includes(k) ? p.filter((x) => x !== k) : [...p, k]));
     setPage(1);
@@ -247,6 +256,7 @@ function ShipmentOrdersInner() {
 
   /** معاملاتُ الصفحة الحاليّة — تُستعمل للجدول وللقائمة وللتصدير معًا. */
   const colParams = useCallback((into: URLSearchParams, skip?: string) => {
+    if (excludeCancelled) into.set('excludeCancelled', '1');
     Object.entries(colFilters).forEach(([k, set]) => {
       if (!set.size || k === skip) return;
       // كلُّ قيمةٍ معاملٌ مكرَّر لا مفصولةً بفاصلة: اسمُ عميلٍ فيه فاصلةٌ كان يصير
@@ -254,7 +264,7 @@ function ShipmentOrdersInner() {
       into.delete(`${COL_PREFIX}${k}`);
       set.forEach((v) => into.append(`${COL_PREFIX}${k}`, v));
     });
-  }, [colFilters]);
+  }, [colFilters, excludeCancelled]);
 
   const setColFilter = useCallback((key: string, sel: Set<string>) => {
     setColFilters((prev) => {
@@ -679,6 +689,12 @@ function ShipmentOrdersInner() {
               );
             })}
           </div>
+          <button type="button" onClick={toggleExcludeCancelled} aria-pressed={excludeCancelled}
+            title={ar ? 'يبقى مفعّلًا حتى تلغيه — الأرقام والجدول والتصدير بلا الملغاة' : 'Stays on until you turn it off'}
+            className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-semibold whitespace-nowrap ${excludeCancelled ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}>
+            {excludeCancelled ? <Check className="h-3.5 w-3.5" /> : <Ban className="h-3.5 w-3.5" />}
+            {ar ? 'باستثناء الملغاة' : 'Excluding cancelled'}
+          </button>
           <select value={dateBy} onChange={(e) => { setDateBy(e.target.value); setPage(1); }} title={ar ? 'نوع التاريخ' : 'Date basis'}
             className="px-2 py-2 rounded-lg border border-slate-200 bg-white text-sm text-slate-900">
             <option value="activity">{ar ? 'حركة الشحنة' : 'Activity'}</option>

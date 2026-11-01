@@ -47,6 +47,7 @@ class _FleetShipmentsScreenState extends State<FleetShipmentsScreen> {
   // تبديلُ الحالة يُعيد التحميلَ فتُهدَم الخانة — النصُّ في متحكِّمٍ يبقى مع الكلمة.
   final _searchCtl = TextEditingController();
   String _status = '';
+  bool _excludeCancelled = false;
   late final void Function() _onLive;
   /// المعلَّمُ: المعرّف → الصفُّ نفسُه، فيبقى معروفًا ولو غاب عن الشاشة.
   final Map<String, Map<String, dynamic>> _picked = {};
@@ -76,7 +77,7 @@ class _FleetShipmentsScreenState extends State<FleetShipmentsScreen> {
 
   Future<void> _load() async {
     try {
-      final qs = _status.isEmpty ? '' : '&status=$_status';
+      final qs = '${_status.isEmpty ? '' : '&status=$_status'}${_excludeCancelled ? '&excludeCancelled=1' : ''}';
       final results = await Future.wait([
         Api.instance.get('/api/fleet/shipments?limit=100$qs'),
         if (_loadTypes.isEmpty)
@@ -175,7 +176,16 @@ class _FleetShipmentsScreenState extends State<FleetShipmentsScreen> {
                     child: SingleChildScrollView(
                       scrollDirection: Axis.horizontal,
                       child: Row(
-                        children: _statuses.entries.map((e) {
+                        children: [
+                          FilterChip(
+                            selected: _excludeCancelled,
+                            onSelected: (_) {
+                              setState(() { _excludeCancelled = !_excludeCancelled; _loading = true; });
+                              _load();
+                            },
+                            label: Text(tr('باستثناء الملغاة', 'Excluding cancelled'), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                          ),
+                          ..._statuses.entries.map((e) {
                           final selected = _status == e.key;
                           return Padding(
                             padding: const EdgeInsets.only(left: 6),
@@ -194,7 +204,8 @@ class _FleetShipmentsScreenState extends State<FleetShipmentsScreen> {
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                             ),
                           );
-                        }).toList(),
+                        }),
+                        ],
                       ),
                     ),
                   ),

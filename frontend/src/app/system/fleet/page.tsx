@@ -13,7 +13,7 @@ import { useSocket } from '@/hooks/useSocket';
 import { useLatestRequest } from '@/hooks/useLatestRequest';
 import api from '@/lib/api';
 import { useDialog } from '@/components/system/DialogProvider';
-import { Truck, Plus, Pencil, Trash2, FileDown, Loader2, PhoneCall, Printer, X, CheckSquare } from 'lucide-react';
+import { Ban, Check, Truck, Plus, Pencil, Trash2, FileDown, Loader2, PhoneCall, Printer, X, CheckSquare } from 'lucide-react';
 import {
   Spinner, PageHeader, SearchInput, PrimaryButton, StatCard, Select, ErrorNotice,
 } from '@/components/hr/HRKit';
@@ -106,6 +106,15 @@ function FleetShipmentsInner() {
   const [supervisorFilter, setSupervisorFilter] = useState(() => sp?.get('supervisor') || '');
   const [period, setPeriod] = useState<Period>(() => periodFromParams(sp));
   const [page, setPage] = useState(1);
+  const [excludeCancelled, setExcludeCancelled] = useState<boolean>(() => {
+    try { return localStorage.getItem('fleet:excludeCancelled') === '1'; } catch { return false; }
+  });
+  const toggleExcludeCancelled = () => {
+    const next = !excludeCancelled;
+    try { localStorage.setItem('fleet:excludeCancelled', next ? '1' : '0'); } catch { /* */ }
+    setExcludeCancelled(next);
+    setPage(1);
+  };
 
   const [busyId, setBusyId] = useState<string | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
@@ -136,11 +145,12 @@ function FleetShipmentsInner() {
     const p: Record<string, string> = { ...periodParams(period) };
     if (debounced.trim()) p.q = debounced.trim();
     if (statusFilter) p.status = statusFilter;
+    if (excludeCancelled) p.excludeCancelled = '1';
     if (cityFilter) p.toCity = cityFilter;
     if (customerFilter) p.customer = customerFilter;
     if (supervisorFilter) p.supervisor = supervisorFilter;
     return p;
-  }, [debounced, statusFilter, cityFilter, customerFilter, supervisorFilter, period]);
+  }, [debounced, statusFilter, excludeCancelled, cityFilter, customerFilter, supervisorFilter, period]);
 
   const guard = useLatestRequest(); // ردٌّ قديمٌ (فلترٌ سابق) لا يكتب فوق الأحدث
   const load = useCallback(async () => {
@@ -407,6 +417,12 @@ function FleetShipmentsInner() {
             {FLEET_STATUSES.map((s) => <option key={s.key} value={s.key}>{ar ? s.ar : s.en}</option>)}
           </Select>
         </div>
+        <button type="button" onClick={toggleExcludeCancelled} aria-pressed={excludeCancelled}
+            title={ar ? 'يبقى مفعّلًا حتى تلغيه — الأرقام والجدول والتصدير بلا الملغاة' : 'Stays on until you turn it off'}
+            className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-semibold whitespace-nowrap ${excludeCancelled ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}>
+            {excludeCancelled ? <Check className="h-3.5 w-3.5" /> : <Ban className="h-3.5 w-3.5" />}
+            {ar ? 'باستثناء الملغاة' : 'Excluding cancelled'}
+          </button>
         <div className="w-48 grow sm:grow-0">
           <Select value={supervisorFilter} onChange={(e) => { setSupervisorFilter(e.target.value); setPage(1); }}>
             <option value="">{ar ? 'كل المشرفين' : 'All supervisors'}</option>

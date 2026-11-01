@@ -27,6 +27,9 @@ const ls2AssetEventSchema = new mongoose.Schema({
   toPosition: { type: String, default: '' },
   date: { type: Date, default: Date.now, index: true },
   odometerKm: { type: Number, default: null },   // odometer of the receiving vehicle, if known
+  // The tire as it stood right after this event; later edits must not rewrite history.
+  stateAfter: { type: String, default: '' },
+  percentAfter: { type: Number, default: null },
   reason: { type: String, default: '' },         // سبب النقل/الإزالة
   notes: { type: String, default: '' },
   performedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },

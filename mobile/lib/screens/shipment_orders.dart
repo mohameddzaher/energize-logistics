@@ -83,6 +83,7 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
   String _to = '';
   final Map<String, Set<String>> _colFilters = {};
   bool _customsOnly = false;
+  bool _excludeCancelled = false;
   List<Map<String, dynamic>> _customers = [];
 
   // البوالصُ المعلَّمة → ملفٌّ واحدٌ من الخادم.
@@ -141,6 +142,7 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
     if (_to.isNotEmpty) add('to', _to);
     if (_dateBy.isNotEmpty && (_from.isNotEmpty || _to.isNotEmpty)) { add('dateBy', _dateBy); } else if (widget.byPickup && (_from.isNotEmpty || _to.isNotEmpty)) { add('dateBy', 'pickup'); }
     if (_customsOnly) add('customs', 'linked');
+    if (_excludeCancelled) add('excludeCancelled', '1');
     return p;
   }
 
@@ -388,6 +390,17 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
       // خانةُ البحث ومبدِّلُ العرض مثبَّتان فوق — خارج تبديل التحميل/الخطأ، فلا
       // تُعاد رسمُهما فارغتين (ui/search_field.dart).
       body: Column(children: [
+        Padding(
+          padding: const EdgeInsetsDirectional.only(start: 14, top: 6),
+          child: Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: FilterChip(
+              selected: _excludeCancelled,
+              onSelected: (_) => _refilter(() => _excludeCancelled = !_excludeCancelled),
+              label: Text(tr('باستثناء الملغاة', 'Excluding cancelled'), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+            ),
+          ),
+        ),
         if (_customsOnly)
           Padding(
             padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),

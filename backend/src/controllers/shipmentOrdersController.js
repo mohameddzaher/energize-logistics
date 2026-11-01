@@ -449,6 +449,8 @@ exports.listOrders = async (req, res) => {
     if (from) range.$gte = startOfDay(from);
     if (to) range.$lte = endOfDay(to);
     const statusKeys = String(status || '').split(',').map((x) => x.trim()).filter(Boolean);
+    // Kept in $and so the status cards obey it too; they ignore filter.status.
+    if (req.query.excludeCancelled === '1') filter.$and = [...(filter.$and || []), { status: { $ne: 'cancelled' } }];
     if (!byActivity) {
       if (statusKeys.length === 1) [filter.status] = statusKeys;
       else if (statusKeys.length > 1) filter.status = { $in: statusKeys };
@@ -647,6 +649,7 @@ exports.orderFilterOptions = async (req, res) => {
     const base = { ...columnFilters(req.query, key) };
     const scope = await branchScope(req);
     if (scope) base.$and = [...(base.$and || []), scope];
+    if (req.query.excludeCancelled === '1') base.$and = [...(base.$and || []), { status: { $ne: 'cancelled' } }];
     if (req.query.status) {
       const keys = String(req.query.status).split(',').map((x) => x.trim()).filter(Boolean);
       if (keys.length === 1) [base.status] = keys; else if (keys.length) base.status = { $in: keys };

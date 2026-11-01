@@ -935,7 +935,11 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
                   if (!contradictionOn) _toggleStatus('bond_received');
                   _reload();
                 }),
-            _statCard(tr('عدد الصفوف (حسب الفلتر)', 'Rows (filtered)'), '${_stats['total'] ?? _total}', T.inkFaint),
+            _statCard(tr('أوامر النقل (حسب الفلتر)', 'Transport orders (filtered)'), '${_stats['total'] ?? _total}', T.inkFaint),
+            _statCard(tr('طلبات الشحنات', 'Shipment orders'), '${_stats['byOrigin']?['orders'] ?? 0}', T.inkFaint, active: _origin == 'orders',
+                onTap: () { _origin = _origin == 'orders' ? '' : 'orders'; _reload(); }),
+            _statCard(tr('إدارة الأسطول', 'Fleet management'), '${_stats['byOrigin']?['fleet'] ?? 0}', T.inkFaint, active: _origin == 'fleet',
+                onTap: () { _origin = _origin == 'fleet' ? '' : 'fleet'; _reload(); }),
             if (_full || _has('purchaseValue'))
               _statCard(tr('مجموع قيمة الشراء (حسب الفلتر)', 'Total purchase value (filtered)'), opsMoney(_stats['sumPurchaseValue'] ?? 0), T.inkFaint),
             if (_checks != null && _canViewFinancials)

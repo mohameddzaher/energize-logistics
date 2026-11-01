@@ -1298,8 +1298,15 @@ exports.getWorkflowStats = async (req, res) => {
       else { pendingTax += r.n; if (r._id !== 'tax') pendingUntyped += r.n; }
     }
     const pendingInvoices = pendingCash + pendingTax;
+    // Ignores the origin filter so both sections stay visible once one of them is picked.
+    const anyOrigin = buildWorkflowFilter({ ...req.query, origin: '' }, undefined, canSeeMoney(req.user.role), canSeeSelling(req.user.role));
+    const [allOrigins, fleetCount] = await Promise.all([
+      OperationsWorkflow.countDocuments(anyOrigin),
+      OperationsWorkflow.countDocuments({ $and: [anyOrigin, { fleetShipment: { $type: 'objectId' } }] }),
+    ]);
     res.json({
       total,
+      byOrigin: { orders: allOrigins - fleetCount, fleet: fleetCount },
       pendingInvoices,
       pendingCash,
       pendingTax,

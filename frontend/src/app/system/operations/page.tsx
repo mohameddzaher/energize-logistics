@@ -415,7 +415,8 @@ export default function OperationsWorkflowPage() {
     total: number; pendingInvoices: number;
     pendingBondReceived: number; sumPurchaseValue: number; pendingAsOf: number; pendingAsOfDate: string; pendingAsOfFrom: string;
     byStage: Record<string, number>; byStatus: Record<string, number>; statusTotal: number;
-  }>({ total: 0, pendingInvoices: 0, pendingBondReceived: 0, sumPurchaseValue: 0, pendingAsOf: 0, pendingAsOfDate: '', pendingAsOfFrom: '', byStage: {}, byStatus: {}, statusTotal: 0 });
+    byOrigin: { orders: number; fleet: number };
+  }>({ byOrigin: { orders: 0, fleet: 0 }, total: 0, pendingInvoices: 0, pendingBondReceived: 0, sumPurchaseValue: 0, pendingAsOf: 0, pendingAsOfDate: '', pendingAsOfFrom: '', byStage: {}, byStatus: {}, statusTotal: 0 });
 
   // كل ما يفهمه الخادم من فلترة في مكانٍ واحد: يقرؤه الجدولُ والإحصاءاتُ وقوائمُ
   // القيم والتصدير، فلا يفلتر أحدها على شرطٍ ويعرض الآخر نتيجة شرطٍ غيره.
@@ -512,6 +513,7 @@ export default function OperationsWorkflowPage() {
       if (!statsGuard.isCurrent(mine)) return;   // سبقَه أحدثُ منه — يُهمَل
       setStats({
         total: data.total || 0,
+        byOrigin: { orders: data.byOrigin?.orders || 0, fleet: data.byOrigin?.fleet || 0 },
         pendingInvoices: data.pendingInvoices || 0,
         pendingBondReceived: data.pendingBondReceived || 0,
         pendingAsOf: data.pendingAsOf || 0,
@@ -1441,7 +1443,7 @@ export default function OperationsWorkflowPage() {
           </div>
         </button>
 
-        {/* ── وعددُ الناتج بابٌ لا خبرٌ ── الضغطةُ تنزل إلى الجدول حيث هي. */}
+        {/* Clicking scrolls down to the rows it counts. */}
         <button
           type="button"
           onClick={() => tableRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
@@ -1451,7 +1453,7 @@ export default function OperationsWorkflowPage() {
           <ClipboardList className="h-4 w-4 shrink-0 text-slate-400" />
           <div className="flex flex-col items-start">
             <span className={CARD_NUM}>{filteredRowsCount.toLocaleString('en-US')}</span>
-            <span className={CARD_LABEL}><span className="inline-block h-1.5 w-1.5 rounded-full bg-slate-400" />{lang === 'ar' ? 'عدد الصفوف (حسب الفلتر)' : 'Rows (filtered)'}</span>
+            <span className={CARD_LABEL}><span className="inline-block h-1.5 w-1.5 rounded-full bg-slate-400" />{lang === 'ar' ? 'أوامر النقل (حسب الفلتر)' : 'Transport orders (filtered)'}</span>
             {(statusSel.size > 0 || showPendingOnly || showPendingAsOf) && (
               <span className={CARD_SUB}>
                 {[
@@ -1463,6 +1465,26 @@ export default function OperationsWorkflowPage() {
             )}
           </div>
         </button>
+
+        {/* Both sections keep their count while one is selected; a second click clears it. */}
+        {([
+          ['orders', lang === 'ar' ? 'طلبات الشحنات' : 'Shipment orders', stats.byOrigin.orders],
+          ['fleet', lang === 'ar' ? 'إدارة الأسطول' : 'Fleet management', stats.byOrigin.fleet],
+        ] as const).map(([key, label, count]) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => { setOrigin(origin === key ? '' : key); setPage(1); }}
+            title={lang === 'ar' ? 'اعرض هذا القسم فقط' : 'Show this section only'}
+            className={`${CARD} ${origin === key ? 'ring-2 ring-slate-400' : ''}`}
+          >
+            <ClipboardList className="h-4 w-4 shrink-0 text-slate-400" />
+            <div className="flex flex-col items-start">
+              <span className={CARD_NUM}>{count.toLocaleString('en-US')}</span>
+              <span className={CARD_LABEL}><span className="inline-block h-1.5 w-1.5 rounded-full bg-slate-400" />{label}</span>
+            </div>
+          </button>
+        ))}
 
         {/* ── مجموعُ قيمة الشراء — لمن يملك الحقلَ نفسَه (`purchaseValue`). */}
         {(full || has('purchaseValue')) && (

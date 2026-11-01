@@ -237,7 +237,22 @@ class _OpsPeriodBarState extends State<OpsPeriodBar> {
   @override
   Widget build(BuildContext context) {
     final has = period.dates.$1 != null;
+    // Riyadh's day, whatever the phone's zone.
+    final now = DateTime.now().toUtc().add(const Duration(hours: 3));
+    final today = DateTime(now.year, now.month, now.day);
+    final isToday = period.mode == OpsDateMode.day && period.day != null && opsYmd(period.day!) == opsYmd(today);
     final chips = <Widget>[
+      ChoiceChip(
+        visualDensity: VisualDensity.compact,
+        label: Text(tr('اليوم', 'Today')),
+        selected: isToday,
+        onSelected: (_) {
+          period.clear();
+          if (!isToday) { period.mode = OpsDateMode.day; period.day = today; }
+          onChanged();
+        },
+      ),
+      const SizedBox(width: 4),
       for (final m in OpsDateMode.values) ...[
         ChoiceChip(
           visualDensity: VisualDensity.compact,

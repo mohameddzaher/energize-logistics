@@ -264,6 +264,12 @@ export default function OperationsWorkflowPage() {
     setDayKey(d);
     setDateFrom(d); setDateTo(d); setPage(1);
   };
+  const riyadhToday = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Riyadh' }).format(new Date());
+  const isToday = dateMode === 'day' && !!dayKey && dayKey === riyadhToday();
+  const toggleToday = () => {
+    if (isToday) { setDayKey(''); setDateFrom(''); setDateTo(''); setPage(1); return; }
+    setDateMode('day'); setMonthKey(''); applyDay(riyadhToday());
+  };
   const switchMode = (m: DateMode) => {
     setDateMode(m);
     // تبديلُ الوضع يمسح ما اختاره الوضعُ السابق: بقاؤه يعني فلترًا لا يراه أحد.
@@ -1601,6 +1607,10 @@ export default function OperationsWorkflowPage() {
           <div className="flex flex-wrap items-center gap-2">
             {/* المدى الزمنيّ: يُفتح تقويمُه بالضغط، و«إلى» الفارغة تعني «حتى اليوم». */}
             {/* الوضعُ ثمّ منتقيه — والمُختارُ يُترجَم إلى مدًى يفهمه الخادم. */}
+            <button type="button" aria-pressed={isToday} onClick={toggleToday}
+              className={`px-3 py-2 rounded-lg border text-sm font-semibold whitespace-nowrap shrink-0 ${isToday ? 'border-[#f37121] bg-[#f37121] text-white' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'}`}>
+              {lang === 'ar' ? 'اليوم' : 'Today'}
+            </button>
             <div className="flex items-center rounded-lg border border-slate-200 overflow-hidden shrink-0">
               {([['day', 'يوم', 'Day'], ['month', 'شهر', 'Month'], ['range', 'مدى', 'Range']] as const).map(([k, arL, enL]) => (
                 <button key={k} type="button" onClick={() => switchMode(k)}

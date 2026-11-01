@@ -211,6 +211,19 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
+  // Number boxes change on the mouse wheel and arrow keys, which silently turned a
+  // typed 1600 into 1598. The value should only ever be what was typed.
+  useEffect(() => {
+    const isNumberBox = (el: Element | null) => el instanceof HTMLInputElement && el.type === 'number';
+    const onWheel = () => { if (isNumberBox(document.activeElement)) (document.activeElement as HTMLElement).blur(); };
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && isNumberBox(e.target as Element)) e.preventDefault();
+    };
+    document.addEventListener('wheel', onWheel, { passive: true });
+    document.addEventListener('keydown', onKey);
+    return () => { document.removeEventListener('wheel', onWheel); document.removeEventListener('keydown', onKey); };
+  }, []);
+
   useEffect(() => {
     if (!loading && !isAuthenticated) {
       router.push(`/login?returnTo=${pathname}`);

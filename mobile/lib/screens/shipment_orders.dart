@@ -52,6 +52,11 @@ const _colFields = [
   ('sellPrice', 'سعر البيع', 'Sell price'),
   ('supplierName', 'المورّد', 'Supplier'),
   ('branch', 'الفرع', 'Branch'),
+  ('plate', 'اللوحة', 'Plate'),
+  ('cargoType', 'نوع الحمولة', 'Cargo'),
+  ('paymentSubtype', 'نوع الدفع', 'Payment'),
+  ('salesRepName', 'السيلز', 'Sales rep'),
+  ('agentName', 'المندوب', 'Agent'),
   ('notes', 'ملاحظة البوليصة', 'Waybill note'),
 ];
 
@@ -664,7 +669,7 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
           ]),
           const SizedBox(height: 4),
           Text('${r['customerName'] ?? '—'}', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
-          Text('${tr('من', 'From')} ${r['fromCity'] ?? '—'}  ·  ${tr('إلى', 'To')} ${r['toCity'] ?? '—'}', style: const TextStyle(fontSize: 12.5, color: T.inkSoft)),
+          Text('${tr('من', 'From')} ${r['fromCity'] ?? '—'}  ·  ${tr('إلى', 'To')} ${r['toCity'] ?? '—'}  ·  ${tr('الفرع', 'Branch')} ${r['branch'] ?? '—'}', style: const TextStyle(fontSize: 12.5, color: T.inkSoft)),
           const SizedBox(height: 4),
           Wrap(spacing: 6, runSpacing: 4, children: [
             if ('${r['truckType'] ?? ''}'.isNotEmpty) Chip2('${r['truckType']}', T.navy, icon: Icons.local_shipping_outlined),

@@ -286,7 +286,13 @@ exports.getWaybillsPdf = async (req, res) => {
           .then((rows) => rows.map((d) => ({ ...driverView(d), name: d.name })))
         : [],
     ]);
-    const vehByPlate = new Map(vehRows.map((v) => [v.plateKey || plateKeyOf(v.plate), v]));
+    // A plate can be registered twice; the row that holds the details wins.
+    const vehByPlate = new Map();
+    for (const v of vehRows) {
+      const k = v.plateKey || plateKeyOf(v.plate);
+      const had = vehByPlate.get(k);
+      vehByPlate.set(k, { ...v, brand: v.brand || had?.brand || '', color: v.color || had?.color || '', truckType: v.truckType || had?.truckType || '' });
+    }
     const drvByName = new Map(drvRows.map((d) => [d.name.trim(), d]));
 
     const pdf = await renderWaybillsPdf(orders.map((o) => {
@@ -325,6 +331,9 @@ const ORDER_COLUMNS = {
   truckType: 'truckType',
   branch: 'branch',
   supplierName: 'supplierName',
+  plate: 'vehiclePlate',
+  paymentSubtype: 'paymentSubtype',
+  agentName: 'agentName',
   driverRentType: 'driverRentType',
   paymentMethod: 'paymentMethod',
   // ── وبقيّةُ أعمدة الجدول (٢٠٢٦/١٠/٢٧: «الكولومز فيها فلاتر الإكسيل») ──────
@@ -1699,9 +1708,11 @@ const askedLimit = (v, def, max) => {
 // `rx` تهرّب الرموزَ وتبحث حرفيًّا: من نسخ اللوحةَ من أبشر بمسافتين، أو كتب
 // «احمد» وهي مخزّنةٌ «أحمد»، خرجت له شاشةٌ فارغةٌ عن صفٍّ موجود. و`flexSpaceRegex`
 // هي قاعدةُ البحث في بقيّة الأقسام — فتُستعمَل هنا كما تُستعمَل هناك.
+// Every word must match somewhere, in any order: «vxa 5744» finds plate «5744 VXA».
 const anyOf = (q, fields) => {
-  const re = flexSpaceRegex(q);
-  return { $or: fields.map((f) => ({ [f]: re })) };
+  const words = String(q).trim().split(/\s+/).filter(Boolean);
+  if (words.length < 2) return { $or: fields.map((f) => ({ [f]: flexSpaceRegex(q) })) };
+  return { $and: words.map((w) => ({ $or: fields.map((f) => ({ [f]: flexSpaceRegex(w) })) })) };
 };
 
 // ── القوائمُ الثلاث: الحقولُ التي تُقرأ فقط، ومحفوظةٌ دقيقتين ─────────────────

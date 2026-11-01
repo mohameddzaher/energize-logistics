@@ -227,6 +227,7 @@ ${getFontCss()}
     </div>
     <div class="section fare-section">
       <div class="section-head"><span class="ar">الأجرة</span><span class="en">Fare</span></div>
+      ${row.paymentLabel ? `<div class="fare-row"><span class="ar-label">نوع الدفع</span><span class="value">${esc(row.paymentLabel)}</span><span class="en-label">Payment</span></div>` : ''}
       <div class="fare-row"><span class="ar-label">إيجار</span><span class="value">${valOrBlank(row.rentalType)}</span><span class="en-label">Rental</span></div>
       ${row.sellPrice ? `<div class="fare-row"><span class="ar-label">قيمة النقل</span><span class="value">${esc(row.sellPrice)}</span><span class="en-label">Freight</span></div>` : ''}
     </div>
@@ -355,6 +356,13 @@ async function renderWaybillsPdf(rows) {
  * والقاعدةُ تُقرأ من خيار «نوع تأجير السائق» نفسِه (paymentMethod عليه)، لا
  * من كلمةٍ مكتوبةٍ في الشيفرة — فأيُّ نوعٍ يُضاف في الإعدادات يعمل بلا تعديل.
  */
+/** Payment type as printed: the chosen type, else what the shipment's terms say. */
+function paymentLabelOf(o) {
+  const { subtypeLabel } = require('./shipmentOrderPayment');
+  const method = String(o.paymentMethod || '').trim();
+  return subtypeLabel(o.paymentSubtype) || ({ cash: 'نقدي', late: 'آجل' }[method] || method);
+}
+
 function rowFromOrder(o, opts = {}) {
   const d = o.pickupTime || o.startTime || o.createdAt || new Date();
   const dt = new Date(d);
@@ -375,6 +383,7 @@ function rowFromOrder(o, opts = {}) {
   return {
     notes: o.notes || '',
     sellPrice: cash && o.sellPrice != null && o.sellPrice !== '' ? String(o.sellPrice) : '',
+    paymentLabel: paymentLabelOf(o),
     rentalType: o.driverRentType || '', carBrand: '', carColor: '',
     carType: o.truckType || '', plateNumber: o.vehiclePlate || o.vehicleName || '',
     driverAdvance: o.driverRentPrice != null ? String(o.driverRentPrice) : '',

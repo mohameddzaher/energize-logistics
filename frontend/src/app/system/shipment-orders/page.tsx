@@ -70,9 +70,9 @@ const fmtDate = (v?: string | null) => {
 
 // بوليصة-501-اسم العميل-22-7-2026
 const waybillFileName = (o: ShipmentOrder) => {
-  const d = new Date(o.pickupTime || o.createdAt || Date.now());
   const ref = (o as any).reference || o.waybillNumber || '';
-  return `بوليصة-${ref}-${o.customerName || 'عميل'}-${d.getDate()}-${d.getMonth() + 1}-${d.getFullYear()}`;
+  const parts = [o.customerName || 'عميل', (o as any).vehiclePlate, ref].filter(Boolean);
+  return parts.join(' - ').replace(/[\\/:*?"<>|]/g, ' ');
 };
 
 /** ثابتان لئلّا يُبنَيا في كلّ رسمةٍ فتُعاد لوحةُ الفلتر بلا سبب. */
@@ -350,24 +350,19 @@ function ShipmentOrdersInner() {
     setDownloadingId(null);
   };
 
-  // ── والبوالصُ الكثيرةُ تُطلَب مرّةً وتُبنى في الخادم ──────────────────────
-  //
-  // كانت تُرسَم في المتصفّح واحدةً واحدة بـ`html2canvas`: يُركَّب الجدولُ في
-  // الصفحة ويُرسَّم بمقياسٍ عالٍ ثمّ يُنزَع، مرّةً لكلّ كشف. والترسيمُ على
-  // الخيط الرئيسيّ، فثلاثون كشفًا تعني ثلاثين تجمّدًا تبدو كإعادة تحميلٍ
-  // متكرّرة.
-  //
-  // والخادمُ يرسم البوليصةَ الواحدة أصلًا بالملفّ نفسِه حرفًا بحرف. فصار
-  // الجماعيُّ نداءً واحدًا يردّ **ملفًّا واحدًا** فيه صفحةٌ لكلّ بوليصة: لا
-  // تجمّد، ولا ثلاثون ملفًّا يُفكّ ضغطُها، ويُطبَع دفعةً واحدة.
+  // Each waybill is its own file: the team sends them one by one.
   const downloadPicked = async () => {
     const rows = orders.filter((o) => picked.has(o._id));
     if (!rows.length) return;
     setBulkBusy(true);
-    setBulkProgress(ar ? `يجهّز ${rows.length}…` : `preparing ${rows.length}…`);
     try {
-      const blob = await api.postBlob('/api/shipment-orders/orders/waybills.pdf', { ids: rows.map((o) => o._id) });
-      downloadBlob(blob, `بوليصات-الشحن-${rows.length}.pdf`);
+      for (let i = 0; i < rows.length; i += 1) {
+        setBulkProgress(`${i + 1}/${rows.length}`);
+        const blob = await api.postBlob('/api/shipment-orders/orders/waybills.pdf', { ids: [rows[i]._id] });
+        downloadBlob(blob, `${waybillFileName(rows[i])}.pdf`);
+        // Browsers drop downloads that fire in the same instant.
+        await new Promise((r) => setTimeout(r, 350));
+      }
       setPicked(new Set());
     } catch (e: any) { notify(e?.message || 'PDF failed', 'error'); }
     setBulkBusy(false);
@@ -592,6 +587,30 @@ function ShipmentOrdersInner() {
             {customers.map((c) => <option key={c._id} value={c._id}>{c.name}</option>)}
           </Select>
         </div>
+        <div className="w-full flex flex-wrap gap-2 order-last">
+          {([
+            [ar ? 'الفرع' : 'Branch', 'branch'], [ar ? 'من' : 'From', 'fromCity'], [ar ? 'إلى' : 'To', 'toCity'],
+            [ar ? 'العميل' : 'Customer', 'customerName'], [ar ? 'المورد' : 'Supplier', 'supplierName'],
+            [ar ? 'السائق' : 'Driver', 'driverName'], [ar ? 'اللوحة' : 'Plate', 'plate'],
+            [ar ? 'نوع الشاحنة' : 'Truck type', 'truckType'], [ar ? 'نوع الحمولة' : 'Cargo', 'cargoType'],
+            [ar ? 'نوع الدفع' : 'Payment', 'paymentSubtype'], [ar ? 'السيلز' : 'Sales rep', 'salesRepName'],
+            [ar ? 'المندوب' : 'Agent', 'agentName'],
+          ] as const).map(([label, col]) => {
+            const on = !!colFilters[col]?.size;
+            return (
+              <span key={col} className={`inline-flex items-center gap-0.5 ps-3 pe-1 py-1 rounded-lg border text-[13px] font-semibold ${
+                on ? 'border-[#f37121] bg-orange-50 text-[#f37121]' : 'border-slate-200 bg-white text-slate-700'}`}>
+                {label}
+                <ColumnFilter field={col} selected={colFilters[col] || EMPTY_SET}
+                  onChange={(set) => setColFilter(col, set)} onOpen={() => fetchColOptions(col)}
+                  onQuery={(query) => fetchColOptions(col, query)} options={colOptions[col]?.values || EMPTY_OPTIONS}
+                  loading={!!colLoading[col]} lang={ar ? 'ar' : 'en'}
+                  format={(v: any) => (v === '__blank__' ? (ar ? '(فارغ)' : '(blank)')
+                    : col === 'paymentSubtype' ? (paymentKindLabel(v, ar) || String(v ?? '')) : String(v ?? ''))} />
+              </span>
+            );
+          })}
+        </div>
         <div className="flex items-center gap-2 shrink-0">
           {/* المدى بيوم الاستلام — كاللوحة والتحليلات (٢٠٢٦/١٠/٢٧). */}
           <span className="text-[12px] font-semibold text-slate-500 whitespace-nowrap">{ar ? 'تاريخ الاستلام' : 'Pickup date'}</span>
@@ -667,6 +686,7 @@ function ShipmentOrdersInner() {
               // اليمين، فيُقرأ عكسَه. وعمودان يُفرَزان ويُفلتَران ويُصدَّران.
               [ar ? 'من' : 'From', 'fromCity'],
               [ar ? 'إلى' : 'To', 'toCity'],
+              [ar ? 'الفرع' : 'Branch', 'branch'],
               [ar ? 'السائق' : 'Driver', 'driverName'],
               [ar ? 'تواصل' : 'Contact', null],
               // ── والقمعُ يسأل عمّا يُعرَض في العمود ──────────────────────────
@@ -675,6 +695,10 @@ function ShipmentOrdersInner() {
               // بما يقرأ في العمود. فصار يسأل عن النوع، واللوحةُ تُكتب في
               // الخليّة تحته وتُبحَث من خانة البحث.
               [ar ? 'الشاحنة' : 'Truck', 'truckType'],
+              [ar ? 'المورد' : 'Supplier', 'supplierName'],
+              [ar ? 'نوع الحمولة' : 'Cargo', 'cargoType'],
+              [ar ? 'نوع الدفع' : 'Payment', 'paymentSubtype'],
+              [ar ? 'السيلز' : 'Sales rep', 'salesRepName'],
               // ── وكلُّ عمودٍ له قمعُه كإكسل (٢٠٢٦/١٠/٢٧) — التاريخُ بيومه والسعرُ
               // بقيمته، و«بيع / شراء» صارا عمودين: الشراءُ أوّلًا كما في النموذج.
               [ar ? 'وقت الاستلام' : 'Pickup', 'pickupDay'],
@@ -702,7 +726,8 @@ function ShipmentOrdersInner() {
                       format={(v: any) => (v === '__blank__' ? (ar ? '(فارغ)' : '(blank)')
                         : col === 'status' ? (() => { const sv = statusVocab.find((x) => x.key === v); return sv ? vocabLabel(sv, lang as Lang) : statusLabel(String(v), lang as Lang); })()
                           : col === 'pickupDay' ? String(v).split('-').reverse().join('/')
-                            : String(v ?? ''))} />
+                            : col === 'paymentSubtype' ? (paymentKindLabel(v, ar) || String(v ?? ''))
+                              : String(v ?? ''))} />
                   )}
                 </span>
               </th>
@@ -710,7 +735,7 @@ function ShipmentOrdersInner() {
           </tr></thead>
           <tbody>
             {orders.length === 0 ? (
-              <tr><td colSpan={15} className="text-center text-slate-500 py-14">
+              <tr><td colSpan={20} className="text-center text-slate-500 py-14">
                 {ar ? 'لا توجد شحنات بعد — ابدأ من زر «إنشاء شحنة».' : 'No shipments yet — start with “Create shipment”.'}
               </td></tr>
             ) : orders.map((o) => {
@@ -734,6 +759,7 @@ function ShipmentOrdersInner() {
                   <td className="px-4 py-3 text-slate-900 font-medium max-w-[220px] truncate" title={o.customerName}>{o.customerName || '—'}</td>
                   <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{o.fromCity || '—'}</td>
                   <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{o.toCity || '—'}</td>
+                  <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{o.branch || '—'}</td>
                   <td className="px-4 py-3 text-slate-700 max-w-[170px] truncate" title={o.driverName || ''}>{o.driverName || '—'}</td>
                   {/* ── عمودُ التواصل ────────────────────────────────────────
                       فريقُ التشغيل يتّصل بالسائق عشرَ مرّاتٍ في اليوم: كان
@@ -757,6 +783,10 @@ function ShipmentOrdersInner() {
                       ? <span className="block text-[11px] text-slate-400 font-mono" dir="ltr">{(o as any).vehiclePlate}</span>
                       : null}
                   </td>
+                  <td className="px-4 py-3 text-slate-700 max-w-[180px] truncate" title={(o as any).supplierName || ''}>{(o as any).supplierName || '—'}</td>
+                  <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{o.cargoType || '—'}</td>
+                  <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{paymentKindLabel((o as any).paymentSubtype, ar) || (o as any).paymentMethod || '—'}</td>
+                  <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{(o as any).salesRepName || '—'}</td>
                   <td className="px-4 py-3 text-slate-700 text-xs whitespace-nowrap">{fmtDT(o.pickupTime, lang as Lang)}</td>
                   <td className="px-4 py-3 text-slate-700 whitespace-nowrap tabular-nums">{money(o.buyPrice)}</td>
                   <td className="px-4 py-3 text-slate-700 whitespace-nowrap tabular-nums">{money(o.sellPrice)}</td>

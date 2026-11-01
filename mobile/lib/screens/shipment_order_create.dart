@@ -368,7 +368,9 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
     final to = (_form['toCity'] ?? '').toString();
     if (from.isEmpty || to.isEmpty) return;
     for (final r in List<Map<String, dynamic>>.from(c['routes'] ?? [])) {
-      if (r['fromCity'] == from && r['toCity'] == to && r['price'] != null) {
+      // A price already typed stays; the route only fills an empty box.
+      final typed = (_ctrls['sellPrice']?.text ?? '${_form['sellPrice'] ?? ''}').trim();
+      if (typed.isEmpty && r['fromCity'] == from && r['toCity'] == to && r['price'] != null) {
         _form['sellPrice'] = r['price'];
         _ctrls.remove('sellPrice');
       }
@@ -1082,15 +1084,13 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
                           OutlinedButton.icon(
                             style: OutlinedButton.styleFrom(alignment: AlignmentDirectional.centerStart, minimumSize: const Size(double.infinity, 46)),
                             onPressed: () async {
-                              // شاحناتُ المورّد المختار تُطلَب بمعرّفه، وبلا
-                              // مورّدٍ يُبحَث في كلّ ما ليس من أسطولنا:
-                              // أسطولُنا يُدار في «إدارة الأسطول» لا هنا.
+                              // The chosen supplier's trucks, or every truck including our own fleet.
                               final sid = _supplier?['_id'];
                               final v = await _pickRemote(
                                 tr('الشاحنات', 'vehicles'),
                                 (q) async {
                                   final qs = StringBuffer('limit=80');
-                                  if (sid != null) { qs.write('&supplier=$sid'); } else { qs.write('&ownership=not_ours'); }
+                                  if (sid != null) qs.write('&supplier=$sid');
                                   if (q.isNotEmpty) qs.write('&q=${Uri.encodeQueryComponent(q)}');
                                   final d = await Api.instance.get('/api/shipment-orders/vehicles?$qs');
                                   return List<Map<String, dynamic>>.from(d['vehicles'] ?? []);

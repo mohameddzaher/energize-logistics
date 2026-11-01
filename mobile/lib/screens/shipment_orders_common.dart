@@ -104,10 +104,11 @@ String soPaymentKindLabel(dynamic k) {
 }
 
 /// بوليصة-501-اسم العميل-22-7-2026 — كاسم الملفّ في الويب.
+/// Customer + plate + manifest number, as the team files them.
 String soWaybillFileName(Map o) {
-  final d = DateTime.tryParse('${o['pickupTime'] ?? o['createdAt'] ?? ''}')?.toLocal() ?? DateTime.now();
   final c = '${o['customerName'] ?? ''}'.isEmpty ? 'عميل' : '${o['customerName']}';
-  return 'بوليصة-${soRef(o)}-$c-${d.day}-${d.month}-${d.year}';
+  final plate = '${o['vehiclePlate'] ?? ''}';
+  return [c, if (plate.isNotEmpty) plate, soRef(o)].join(' - ').replaceAll(RegExp(r'[\\/:*?"<>|]'), ' ');
 }
 
 /// البوليصةُ تُرسَم في الخادم — واحدةً أو كثيرة — فالورقةُ واحدةٌ مهما كان زرُّها.
@@ -116,11 +117,10 @@ Future<void> soPrintWaybills(BuildContext context, List<Map<String, dynamic>> or
   if (orders.isEmpty) return;
   final messenger = ScaffoldMessenger.of(context);
   try {
-    for (var i = 0; i < orders.length; i += 100) {
-      final part = orders.sublist(i, i + 100 > orders.length ? orders.length : i + 100);
-      final bytes = await Api.instance.postBytes('/api/shipment-orders/orders/waybills.pdf', {'ids': part.map((o) => o['_id']).toList()});
-      final name = part.length == 1 ? soWaybillFileName(part.first) : 'بوليصات-الشحن-${part.length}';
-      await Printing.layoutPdf(onLayout: (_) async => bytes, name: name);
+    // One file per waybill.
+    for (final o in orders) {
+      final bytes = await Api.instance.postBytes('/api/shipment-orders/orders/waybills.pdf', {'ids': [o['_id']]});
+      await Printing.layoutPdf(onLayout: (_) async => bytes, name: soWaybillFileName(o));
     }
   } catch (e) {
     messenger.showSnackBar(SnackBar(content: Text(e is ApiException ? e.message : tr('تعذّر توليد البوليصة', 'PDF failed'))));

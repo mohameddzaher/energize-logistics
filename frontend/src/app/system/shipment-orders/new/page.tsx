@@ -230,7 +230,7 @@ function CreateShipmentInner() {
       const qs = new URLSearchParams({ limit: '80' });
       // بلا مورّدٍ: كلُّ ما ليس من أسطولنا — شاحناتُ الموردين ومَن لم يُعرَف
       // مالكُه. وقصرُها على المعروفِ مالكُه يحجب أكثرَ السجلّ عن الاختيار.
-      if (sup) qs.set('supplier', sup); else qs.set('ownership', 'not_ours');
+      if (sup) qs.set('supplier', sup);
       if (q) qs.set('q', q);
       const d = await api.get<{ vehicles: OrderVehicle[]; total: number }>(`/api/shipment-orders/vehicles?${qs}`);
       if (!vehGuard.isCurrent(mine)) return;
@@ -298,7 +298,8 @@ function CreateShipmentInner() {
       (['truckType', 'cargoType', 'paymentMethod', 'driverRentType', 'branch'] as const)
         .forEach((k) => { if (!next[k] && d[k]) next[k] = d[k]; });
       const route = findRoute(c, next.fromCity, next.toCity);
-      if (route?.price != null) next.sellPrice = route.price;
+      // A price already typed stays; the route only fills an empty box.
+      if (route?.price != null && (next.sellPrice == null || next.sellPrice === '')) next.sellPrice = route.price;
       return next;
     });
   };
@@ -395,7 +396,7 @@ function CreateShipmentInner() {
     setExtra(uid, { busy: true });
     try {
       const qs = new URLSearchParams({ limit: '80' });
-      if (supplierId) qs.set('supplier', supplierId); else qs.set('ownership', 'not_ours');
+      if (supplierId) qs.set('supplier', supplierId);
       if (q) qs.set('q', q);
       const d = await api.get<{ vehicles: OrderVehicle[] }>(`/api/shipment-orders/vehicles?${qs}`);
       setExtra(uid, { vehicles: d.vehicles || [], busy: false });

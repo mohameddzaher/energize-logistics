@@ -1,12 +1,14 @@
 import '../styles/globals.css'
 import type { Metadata, Viewport } from 'next'
-import { Inter } from 'next/font/google'
+import { Inter, IBM_Plex_Sans_Arabic } from 'next/font/google'
 import Header from '../components/Header'
 import Footer from '../components/Footer'
 import FloatingButtons from '../components/FloatingButtons'
 import { AuthProvider } from '@/context/AuthContext'
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter', display: 'swap' })
+// The one Arabic typeface: Inter has no Arabic letters, so they fell to the device font.
+const arabic = IBM_Plex_Sans_Arabic({ subsets: ['arabic'], weight: ['400', '500', '600', '700'], variable: '--font-arabic', display: 'swap' })
 
 export const metadata: Metadata = {
   metadataBase: new URL('https://energize-global.com'),
@@ -236,7 +238,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         />
       </head>
 
-      <body className={`${inter.variable} antialiased bg-gray-800 text-gray-900 h-full overflow-x-hidden`}>
+      <body className={`${inter.variable} ${arabic.variable} antialiased bg-gray-800 text-gray-900 h-full overflow-x-hidden`}>
         <AuthProvider>
           <div className="flex flex-col min-h-screen w-full">
             <Header />

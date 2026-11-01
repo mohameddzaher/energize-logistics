@@ -153,7 +153,7 @@ async function universe() {
   const { _buildFilter } = require('./hrMasterController');
   const match = { $and: [_buildFilter({ employment: 'current' }), { idType: { $ne: 'national_id' } }] };
   const select = ['employeeNumber', 'arabicName', 'firstName', 'lastName', 'idType', 'iqamaNumber', 'nationalId', 'employmentStatus',
-    'nationality', 'fieldStatus', ...QUICK_KEYS, ...DOCS.map((d) => d.field), ...H.READ_DEPS].join(' ');
+    'nationality', 'fieldStatus', ...FV.STATUS_DEPS.split(' '), ...QUICK_KEYS, ...DOCS.map((d) => d.field), ...H.READ_DEPS].join(' ');
   const [emps, ended] = await Promise.all([
     Employee.find(match).select(select).lean(),
     endedStaff().catch(() => null),
@@ -184,7 +184,7 @@ async function universe() {
         expiryDate: exp, daysLeft, expired: daysLeft < 0,
         department: S(e.department), staffCategory: S(e.staffCategory), project: S(e.project),
         nationality: S(e.nationality), branchName: S(e.branchName), registerNumber: S(e.registerNumber),
-        workStatusText: S(e.workStatusText), iqamaProfession: S(e.iqamaProfession) || FV.answerOf(e, 'iqamaProfession'),
+        workStatusText: S(e.workStatusText) || FV.derivedOf(e, 'workStatusText'), iqamaProfession: S(e.iqamaProfession) || FV.answerOf(e, 'iqamaProfession'),
         paid: false, payment: null,
         _emp: e,
       });

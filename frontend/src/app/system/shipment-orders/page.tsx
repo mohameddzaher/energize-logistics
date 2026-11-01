@@ -690,7 +690,7 @@ function ShipmentOrdersInner() {
         </>
       ) : (
       <ScrollX className="bg-white border border-slate-200 rounded-xl shadow-sm">
-        <table className="w-full text-sm">
+        <table className="w-full text-sm [&_tbody_td]:text-[14px] [&_tbody_td]:font-medium [&_tbody_td]:text-slate-900">
           <thead><tr className="bg-slate-900 border-b border-slate-200 text-slate-300">
             <th className="px-3 py-3">
               <input type="checkbox" className="w-4 h-4 accent-[#f37121]"

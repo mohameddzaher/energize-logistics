@@ -154,6 +154,7 @@ ${getFontCss()}
   .row .blank { display: inline-block; width: 60%; border-bottom: 1px dotted #bbb; height: 0.7em; vertical-align: middle; }
   .fare-section .fare-row { display: grid; grid-template-columns: 105px 1fr 115px; align-items: baseline; gap: 12px; padding: 3.5px 2px 2px; }
   .fare-section .fare-row .ar-label { font-size: 13px; font-weight: 700; color: #2a2a2a; text-align: right; }
+  .amount-words { font-size: 11.5px; font-weight: 700; }
   .fare-section .fare-row .value { font-size: 16.2px; font-weight: 800; color: #1a1a1a; text-align: center; }
   .fare-section .fare-row .en-label { font-size: 10.6px; font-weight: 700; color: #2a2a2a; text-align: left; direction: ltr; letter-spacing: 0.3px; }
   /* ── الإقرارُ في ذيل الورقة نفسِها ────────────────────────────────────────
@@ -228,7 +229,7 @@ ${getFontCss()}
       <div class="section-head"><span class="ar">الأجرة</span><span class="en">Fare</span></div>
       ${row.paymentLabel ? `<div class="fare-row"><span class="ar-label">نوع الدفع</span><span class="value">${esc(row.paymentLabel)}</span><span class="en-label">Payment</span></div>` : ''}
       <div class="fare-row"><span class="ar-label">إيجار</span><span class="value">${valOrBlank(row.rentalType)}</span><span class="en-label">Rental</span></div>
-      ${row.sellPrice ? `<div class="fare-row"><span class="ar-label">قيمة النقل</span><span class="value">${esc(row.sellPrice)}</span><span class="en-label">Freight</span></div>` : ''}
+      ${row.sellPrice ? `<div class="fare-row"><span class="ar-label">قيمة النقل</span><span class="value">${esc(row.sellPrice)}${row.sellPriceWords ? ` <span class="amount-words">(${esc(row.sellPriceWords)})</span>` : ''}</span><span class="en-label">Freight</span></div>` : ''}
     </div>
     ${row.notes ? `<div class="section">
       <div class="section-head"><span class="ar">ملاحظات</span><span class="en">Notes</span></div>
@@ -379,11 +380,20 @@ function rowFromOrder(o, opts = {}) {
     : bySubtype !== null
       ? bySubtype
       : CASH.includes(String(o.paymentMethod || '').trim()) || FRONT.includes(String(o.driverRentType || '').trim());
+  // A chosen payment type decides the fare box: only cash 3PL prints the price, in
+  // figures and in words. Shipments with no type keep the older rule.
+  const { subtypeLabel } = require('./shipmentOrderPayment');
+  const { amountInArabic } = require('./arabicAmount');
+  const chosen = !!subtypeLabel(o.paymentSubtype);
+  const is3pl = o.paymentSubtype === 'cash_3pl';
+  const showPrice = chosen ? is3pl : cash;
   return {
     notes: o.notes || '',
-    sellPrice: cash && o.sellPrice != null && o.sellPrice !== '' ? String(o.sellPrice) : '',
-    paymentLabel: paymentLabelOf(o),
-    rentalType: o.driverRentType || '', carBrand: '', carColor: '',
+    sellPrice: showPrice && o.sellPrice != null && o.sellPrice !== '' ? Number(o.sellPrice).toLocaleString('en-US') : '',
+    paymentLabel: chosen ? '' : paymentLabelOf(o),
+    rentalType: chosen ? (is3pl ? 'نقدي 3PL (إيجار قدام)' : subtypeLabel(o.paymentSubtype)) : (o.driverRentType || ''),
+    sellPriceWords: is3pl ? amountInArabic(o.sellPrice) : '',
+    carBrand: '', carColor: '',
     carType: o.truckType || '', plateNumber: o.vehiclePlate || o.vehicleName || '',
     driverAdvance: o.driverRentPrice != null ? String(o.driverRentPrice) : '',
     driverPhone: o.driverPhone || '', driverIqama: '', driverNationality: '',

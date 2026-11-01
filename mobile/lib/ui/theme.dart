@@ -39,13 +39,13 @@ class T {
       scaffoldBackgroundColor: canvas,
     );
     return base.copyWith(
-      textTheme: GoogleFonts.tajawalTextTheme(base.textTheme).apply(bodyColor: ink, displayColor: ink),
+      textTheme: GoogleFonts.ibmPlexSansArabicTextTheme(base.textTheme).apply(bodyColor: ink, displayColor: ink),
       appBarTheme: AppBarTheme(
         backgroundColor: navy,
         foregroundColor: Colors.white,
         centerTitle: true,
         elevation: 0,
-        titleTextStyle: GoogleFonts.tajawal(fontSize: 18, fontWeight: FontWeight.w700, color: Colors.white),
+        titleTextStyle: GoogleFonts.ibmPlexSansArabic(fontSize: 18, fontWeight: FontWeight.w700, color: Colors.white),
       ),
       // خلفية كحلي + نص أبيض دايمًا — بدون foregroundColor كانت الأزرار الـ tonal
       // (زي «تأكيد الاطلاع») بتاخد نص غامق على خلفية كحلي فيختفي.
@@ -58,7 +58,7 @@ class T {
           disabledForegroundColor: Colors.white.withValues(alpha: 0.8),
           minimumSize: const Size.fromHeight(50),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-          textStyle: GoogleFonts.tajawal(fontSize: 16, fontWeight: FontWeight.w700),
+          textStyle: GoogleFonts.ibmPlexSansArabic(fontSize: 16, fontWeight: FontWeight.w700),
         ),
       ),
       inputDecorationTheme: InputDecorationTheme(
@@ -68,7 +68,7 @@ class T {
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: line)),
         enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: line)),
         focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: navy, width: 1.6)),
-        labelStyle: GoogleFonts.tajawal(color: inkSoft),
+        labelStyle: GoogleFonts.ibmPlexSansArabic(color: inkSoft),
       ),
       // مقبض سحب + حواف مدوّرة لكل الشيتات → المستخدم يقدر يقفلها بسهولة.
       bottomSheetTheme: const BottomSheetThemeData(

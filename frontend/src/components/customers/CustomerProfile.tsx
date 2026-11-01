@@ -70,7 +70,7 @@ const SHEET_COLS: { key: string; ar: string; en: string; date?: boolean; num?: b
   { key: 'carOwner', ar: 'المالك', en: 'Owner' },
   { key: 'carNumber', ar: 'المركبة', en: 'Vehicle' },
   { key: 'driverName', ar: 'السائق', en: 'Driver' },
-  { key: 'applicationStatus', ar: 'حالة الطلب', en: 'Application' },
+  { key: 'applicationStatus', ar: 'حالة الشحنة', en: 'Application' },
   { key: 'executionStatus', ar: 'حالة التنفيذ', en: 'Execution' },
   { key: 'paymentMethod', ar: 'طريقة الدفع', en: 'Payment' },
   { key: 'purchaseValue', ar: 'قيمة الشراء', en: 'Purchase', num: true, money: true },

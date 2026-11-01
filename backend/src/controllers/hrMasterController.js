@@ -230,6 +230,10 @@ function buildFilter(q) {
     // تقول «جدة ٤٠» يُرجع اختيارُها ما كُتب بلا مسافةٍ وحدَه. فالقيمةُ نمطٌ يقبل
     // فراغَها كلَّه، و«—» تشمل الفراغَ وحدَه — راجع utils/colFilter.
     const c = textIn(k, vals.map((x) => (x === '—' ? '' : x)));
+    if (k === 'workStatusText') {
+      const blanks = vals.map(FV.blankStatusMatch).filter(Boolean);
+      if (c && blanks.length) { f.$and.push({ $or: [{ [k]: c[k] }, ...blanks] }); continue; }
+    }
     const statusPath = `fieldStatus.${H.statusKeyOf(k)}`;
     const answers = FV.ANSWER_CODES.filter((code) => vals.includes(H.STATUS_LABELS[code].ar));
     // «Not set» leaves out what cannot be set, and an answer also matches a blank marked with it.
@@ -560,7 +564,7 @@ exports.filterOptions = async (req, res) => {
         if (!FV.applies(r, key)) continue;
         const v = raw === true ? 'نعم'
           : isBool ? 'لا'
-            : (raw === false ? 'لا' : (normKey(Array.isArray(raw) ? raw.join(', ') : raw) || FV.answerOf(r, key) || '—'));
+            : (raw === false ? 'لا' : (normKey(Array.isArray(raw) ? raw.join(', ') : raw) || FV.derivedOf(r, key) || FV.answerOf(r, key) || '—'));
         counts.set(v, (counts.get(v) || 0) + 1);
       }
       return [...counts.entries()].map(([value, count]) => ({ value, count })).sort((a, b) => b.count - a.count);
@@ -578,13 +582,13 @@ exports.filterOptions = async (req, res) => {
     const passive = defs.filter((d) => !isActive(d.key));
 
     const shared = passive.length
-      ? await findEmployees(req.query, [...new Set([...passive.map((d) => d.key), ...DATE_FILTERABLE, 'department', 'fieldStatus'])].join(' '))
+      ? await findEmployees(req.query, [...new Set([...passive.map((d) => d.key), ...DATE_FILTERABLE, 'department', 'fieldStatus', ...FV.STATUS_DEPS.split(' ')])].join(' '))
       : [];
 
     const perActive = await Promise.all(active.map(async (d) => {
       const others = { ...req.query };
       delete others[d.key]; delete others[`${d.key}From`]; delete others[`${d.key}To`];
-      return [d.key, await findEmployees(others, [...new Set([d.key, ...DATE_FILTERABLE, 'department', 'fieldStatus'])].join(' '))];
+      return [d.key, await findEmployees(others, [...new Set([d.key, ...DATE_FILTERABLE, 'department', 'fieldStatus', ...FV.STATUS_DEPS.split(' ')])].join(' '))];
     }));
     const byActive = new Map(perActive);
 

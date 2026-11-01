@@ -1799,7 +1799,7 @@ exports.updateWorkflow = async (req, res) => {
       if (statusAfter !== 'bond_received') {
         return res.status(400).json({
           code: 'BOND_NOT_RECEIVED',
-          message: 'لا يُسجَّل تاريخ السداد إلا بعد أن تصبح حالة الطلب «استُلم السند».'
+          message: 'لا يُسجَّل تاريخ السداد إلا بعد أن تصبح حالة الشحنة «استُلم السند».'
             + ' السداد إقرارٌ بوصول المال، ولا يصل قبل استلام السند.',
           applicationStatus: statusAfter || null,
         });
@@ -2280,7 +2280,7 @@ exports.updateApplicationStatus = async (req, res) => {
     // ومَن يملك عمودَ الحالة في الجدول هو مَن يملك تغييرَها — الخريطةُ نفسُها.
     const allowed = await fieldsForRole(req.user.role);
     if (!allowed.includes('applicationStatus')) {
-      return res.status(403).json({ message: 'صلاحيّتك لا تسمح بتغيير حالة الطلب.' });
+      return res.status(403).json({ message: 'صلاحيّتك لا تسمح بتغيير حالة الشحنة.' });
     }
 
     const workflow = await OperationsWorkflow.findById(req.params.id)
@@ -2336,7 +2336,7 @@ exports.updateApplicationStatus = async (req, res) => {
   } catch (error) {
     const status = error.status && error.status >= 400 && error.status < 600 ? error.status : 500;
     if (status >= 500) console.error('updateApplicationStatus:', error.message);
-    res.status(status).json({ message: error.message || 'تعذّر تغيير حالة الطلب في منصّة التشغيل' });
+    res.status(status).json({ message: error.message || 'تعذّر تغيير حالة الشحنة في منصّة التشغيل' });
   }
 };
 
@@ -2724,7 +2724,7 @@ async function buildWorkflowWorkbook(filter, money, selling = true) {
       ['رقم السيارة', (w) => w.carNumber || ''],
       ['نوع الملكية', (w) => w.ownerType || ''],
       ['حالة التنفيذ', (w) => st(w.executionStatus)],
-      ['حالة الطلب', (w) => st(w.applicationStatus)],
+      ['حالة الشحنة', (w) => st(w.applicationStatus)],
       ['طريقة الدفع', (w) => PAYMENT_AR[w.paymentMethod] || w.paymentMethod || ''],
       ['العميل', (w) => w.username || ''],
       ['هاتف العميل', (w) => w.userPhone || ''],

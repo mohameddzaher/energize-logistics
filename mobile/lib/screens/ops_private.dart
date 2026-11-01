@@ -33,7 +33,7 @@ const _filterCols = [
   ('reportNumber', 'رقم الكشف', 'Report #', false), ('reportDate', 'تاريخ الكشف', 'Report date', false),
   ('fromLocation', 'من', 'From', false), ('toLocation', 'إلى', 'To', false), ('branch', 'الفرع', 'Branch', false),
   ('carOwner', 'مالك السيارة', 'Car owner', false), ('carNumber', 'رقم السيارة', 'Car #', false), ('ownerType', 'نوع المالك', 'Owner type', false),
-  ('executionStatus', 'حالة التنفيذ', 'Execution', false), ('applicationStatus', 'حالة الطلب', 'Status', false), ('paymentMethod', 'طريقة الدفع', 'Payment method', false),
+  ('executionStatus', 'حالة التنفيذ', 'Execution', false), ('applicationStatus', 'حالة الشحنة', 'Status', false), ('paymentMethod', 'طريقة الدفع', 'Payment method', false),
   ('username', 'العميل', 'Customer', false), ('userPhone', 'هاتف العميل', 'Customer phone', false), ('taxIndicator', 'ض / غ ض', 'Tax indicator', false),
   ('purchaseValue', 'قيمة الشراء', 'Purchase value', false), ('sellingValue', 'قيمة البيع', 'Selling value', false),
   ('driverName', 'السائق', 'Driver', false), ('truckType', 'نوع الشاحنة', 'Truck type', false), ('truckSize', 'حجم الشاحنة', 'Truck size', false),

@@ -8,7 +8,7 @@ module.exports = {
   theme: {
     extend: {
       fontFamily: {
-      sans: ['Tajawal', 'Noto Sans Arabic', 'system-ui', 'sans-serif'],
+      sans: ['var(--font-inter)', 'var(--font-arabic)', 'system-ui', 'sans-serif'],
       serif: ['Merriweather', 'serif'],
       mono: ['Fira Code', 'monospace'],
     },

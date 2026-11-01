@@ -275,7 +275,7 @@ const WORKFLOW_FIELDS = {
   truckSize: ['حجم الشاحنة', 'Truck size'], loadType: ['نوع الحمولة', 'Load type'],
   loadingTime: ['وقت التحميل', 'Loading time'], quantity: ['الكمية', 'Quantity'],
   goodsValue: ['قيمة البضائع', 'Goods value'], reference: ['رقم المرجع', 'Reference'],
-  country: ['الدولة', 'Country'], applicationStatus: ['حالة الطلب', 'Request status'],
+  country: ['الدولة', 'Country'], applicationStatus: ['حالة الشحنة', 'Request status'],
   executionStatus: ['حالة التنفيذ', 'Execution status'], paymentMethod: ['طريقة الدفع', 'Payment method'],
   purchaseValue: ['قيمة الشراء', 'Purchase value'], sellingValue: ['قيمة البيع', 'Selling value'],
   driverCost: ['تكلفة السائق', 'Driver cost'], payingBranch: ['فرع السداد', 'Paying branch'],

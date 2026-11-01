@@ -25,4 +25,22 @@ const answerOf = (row, key) => {
   return ANSWER_CODES.includes(code) ? H.STATUS_LABELS[code].ar : '';
 };
 
-module.exports = { CATEGORY_DEPARTMENTS, ANSWER_CODES, ANSWER_LABELS, applies, answerOf };
+// Work status is derived, so a stored blank still has an answer: what the profile shows.
+const STATUS_DEPS = 'employmentStatus terminationKind sisterCompany leaveViolation leaveStatusSource';
+const BLANK_TEXT = { workStatusText: { $in: [null, ''] } };
+
+/** The value a filter shows for a field, derived where the profile derives it. */
+const derivedOf = (row, key) => (key === 'workStatusText' ? require('./hrEngagement').workStatusTextOf(row) : '');
+
+/** Rows with no stored status text that the profile would show as `text`. */
+function blankStatusMatch(text) {
+  const { WORKING, SISTER, NOT_WORKING } = require('./hrEngagement');
+  if (text === WORKING) return { ...BLANK_TEXT, employmentStatus: { $ne: 'terminated' }, sisterCompany: { $ne: true } };
+  if (text === SISTER) return { ...BLANK_TEXT, employmentStatus: { $ne: 'terminated' }, sisterCompany: true };
+  if (text === NOT_WORKING) return { ...BLANK_TEXT, employmentStatus: 'terminated' };
+  return null;
+}
+
+module.exports = {
+  CATEGORY_DEPARTMENTS, ANSWER_CODES, ANSWER_LABELS, STATUS_DEPS, applies, answerOf, derivedOf, blankStatusMatch,
+};

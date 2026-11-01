@@ -142,7 +142,7 @@ const EXPORT_COLUMNS = [
   { header: 'الفرع', key: 'branch', width: 14 },
   { header: 'مالك السيارة', key: 'carOwner', width: 22 },
   { header: 'رقم السيارة', key: 'carNumber', width: 14 },
-  { header: 'حالة الطلب', key: 'applicationStatus', width: 16 },
+  { header: 'حالة الشحنة', key: 'applicationStatus', width: 16 },
   { header: 'العميل', key: 'username', width: 20 },
   { header: 'هاتف العميل', key: 'userPhone', width: 14 },
   { header: 'قيمة الشراء', key: 'purchaseValue', width: 12 },
@@ -182,7 +182,7 @@ const BAR_FIELDS: (FilterBarField & { money?: boolean })[] = [
   { key: 'fromLocation', ar: 'من', en: 'From' },
   { key: 'toLocation', ar: 'إلى', en: 'To' },
   { key: 'paymentType', ar: 'نوع الدفع', en: 'Payment type' },
-  { key: 'applicationStatus', ar: 'حالة الطلب', en: 'Status' },
+  { key: 'applicationStatus', ar: 'حالة الشحنة', en: 'Status' },
   { key: 'driverName', ar: 'السائق', en: 'Driver' },
   { key: 'carNumber', ar: 'رقم السيارة', en: 'Vehicle' },
   { key: 'carOwner', ar: 'مالك السيارة', en: 'Car owner' },
@@ -202,7 +202,7 @@ export default function OperationsWorkflowPage() {
   // الرسالة نصٌّ واحد يُستعمل في التلميح وفي التنبيه — فلا يقول أحدهما شيئًا
   // ويقول الآخر غيره.
   const gateMsg = lang === 'ar'
-    ? 'لا يُسجَّل تاريخ السداد إلا بعد أن تصبح حالة الطلب «استُلم السند». السداد إقرارٌ بوصول المال، ولا يصل قبل استلام السند — وتسجيله قبله يجعل التقارير المالية تَعُدُّ مبلغًا لم يُقبَض.'
+    ? 'لا يُسجَّل تاريخ السداد إلا بعد أن تصبح حالة الشحنة «استُلم السند». السداد إقرارٌ بوصول المال، ولا يصل قبل استلام السند — وتسجيله قبله يجعل التقارير المالية تَعُدُّ مبلغًا لم يُقبَض.'
     : 'The payment date can only be recorded once the application status is “Bond received”. Recording it earlier makes the financial reports count money that has not arrived.';
   const notifyGate = () => notify(gateMsg, 'error');
   // Translate raw UPL status/payment values for DISPLAY only (stored raw, so new
@@ -349,7 +349,7 @@ export default function OperationsWorkflowPage() {
   const [colFilters, setColFilters] = useState<Record<string, Set<string>>>({});
   // قيم كل عمود كما يحسبها الخادم، مع عدد صفوف كل قيمة.
   //
-  // كانت تُشتقّ من الصفوف المحمَّلة — وهي خمسون صفًّا — فتعرض «حالة الابلكيشن» ثلاثَ
+  // كانت تُشتقّ من الصفوف المحمَّلة — وهي خمسون صفًّا — فتعرض «حالة الشحنة» ثلاثَ
   // حالاتٍ من تسع؛ ثم عولج ذلك بتنزيل الجدول كلّه عند أول فلتر فصار فتحُ القائمة
   // ينقل عشرات الآلاف من الصفوف ويجمّد التبويب. الحساب صار في القاعدة.
   const [colOptions, setColOptions] = useState<Record<string, { values: ColumnFilterOption[]; truncated: boolean }>>({});
@@ -1049,7 +1049,7 @@ export default function OperationsWorkflowPage() {
   // الخمسين صفًّا المعروضة. حسابُها من الصفوف المحمَّلة كان يجعلها تقول «٥٠» مهما
   // كان في القاعدة، أو يُلزمنا بتنزيل الجدول كلّه لتصحّ.
   /**
-   * ── بطاقاتُ حالة الأبلكيشن ───────────────────────────────────────────────
+   * ── بطاقاتُ حالة الشحنة ───────────────────────────────────────────────
    *
    * كانت في صفحة شحنات المنصّة وحدَها، وهي السؤالُ الأوّل هنا أيضًا: كم في
    * الطريق؟ وكم وصلت ولم يصل سندُها؟ وكان مكانَها اختصارٌ إلى تلك الصفحة —
@@ -1172,7 +1172,7 @@ export default function OperationsWorkflowPage() {
 
       {/* ── بطاقاتُ الحالات الإحدى عشرة أُزيلت (صاحبُ الشركة، ٢٠٢٦/١٠/٢١) ──────
           «الكل · قيد الطلب · … · ملغاة» صارت قيمًا في شريط الفلترة تحت البحث
-          («حالة الطلب»)، بعددها بجانب كلٍّ منها — والسطرُ الواحد يتّسع للعميل
+          («حالة الشحنة»)، بعددها بجانب كلٍّ منها — والسطرُ الواحد يتّسع للعميل
           والفرع والمسار ونوع الدفع معها بدل أحد عشر مربّعًا لعمودٍ واحد. */}
 
       {/* Header */}
@@ -1421,7 +1421,7 @@ export default function OperationsWorkflowPage() {
             if (!on) setTimeout(() => tableRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60);
           }}
           title={lang === 'ar'
-            ? 'صفّي على: سندات لم تصل + حالة الطلب «استُلم السند»'
+            ? 'صفّي على: سندات لم تصل + حالة الشحنة «استُلم السند»'
             : 'Filter: pending bonds whose status says the bond was received'}
           className={`${CARD} ${showPendingOnly && statusSel.has('bond_received') && statusSel.size === 1 ? CARD_ON : ''}`}
         >
@@ -1638,7 +1638,7 @@ export default function OperationsWorkflowPage() {
                 {ColHead('carOwner', T.thCarOwner)}
                 {ColHead('carNumber', T.thCarNumber)}
                 {/* «نوع الملكية» و«حالة التنفيذ» و«طريقة الدفع» و«ض / غ ض» أُزيلت (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢):
-                    تصل من المنصّة ولا يُعمَل بها هنا — بدائلُها «نوع الدفع» و«حالة الطلب». */}
+                    تصل من المنصّة ولا يُعمَل بها هنا — بدائلُها «نوع الدفع» و«حالة الشحنة». */}
                 {ColHead('applicationStatus', T.thApplication)}
                 {ColHead('username', T.thUsername)}
                 {ColHead('userPhone', T.thUserPhone)}
@@ -1697,7 +1697,7 @@ export default function OperationsWorkflowPage() {
                 {/* ── عمودان حُذفا: «المرحلة» و«قفل» ──────────────────────────
                     «المرحلة» حالةٌ يحسبها النظامُ من الصفّ نفسِه (أيَّ خاناتٍ
                     مُلئت) — تُقرأ في سير العمل فلا تُقرّر شيئًا: مَن يعمل هنا
-                    يتابع «حالة الطلب» و«تاريخ السداد»، لا مرحلةً مشتقّة.
+                    يتابع «حالة الشحنة» و«تاريخ السداد»، لا مرحلةً مشتقّة.
                     و«قفل» أيقونةٌ تقول إن كان الصفُّ مفتوحًا عند زميلٍ الآن؛
                     والقفلُ نفسُه لم يُلغَ — هو يمنع التحريرَ المتزامن ويُقال
                     لمن يحاول حينها — لكنّ عمودًا كاملًا في جدولٍ بأربعين

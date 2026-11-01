@@ -37,7 +37,7 @@ const _barFields = [
   ('fromLocation', 'من', 'From', false),
   ('toLocation', 'إلى', 'To', false),
   ('paymentType', 'نوع الدفع', 'Payment type', false),
-  ('applicationStatus', 'حالة الطلب', 'Status', false),
+  ('applicationStatus', 'حالة الشحنة', 'Status', false),
   ('driverName', 'السائق', 'Driver', false),
   ('carNumber', 'رقم السيارة', 'Vehicle', false),
   ('carOwner', 'مالك السيارة', 'Car owner', false),
@@ -84,7 +84,7 @@ const _moneyExportKeys = {'netInvoice', 'tax', 'totalInvoice', 'invoiceDate', 'i
 const _exportCols = [
   ('reportNumber', 'رقم الطلب', 'Report #'), ('reportDate', 'تاريخ الطلب', 'Report date'), ('fromLocation', 'من', 'From'),
   ('toLocation', 'إلى', 'To'), ('branch', 'الفرع', 'Branch'), ('carOwner', 'مالك السيارة', 'Car owner'),
-  ('carNumber', 'رقم السيارة', 'Car #'), ('applicationStatus', 'حالة الطلب', 'Status'), ('username', 'العميل', 'Customer'),
+  ('carNumber', 'رقم السيارة', 'Car #'), ('applicationStatus', 'حالة الشحنة', 'Status'), ('username', 'العميل', 'Customer'),
   ('userPhone', 'هاتف العميل', 'Customer phone'), ('purchaseValue', 'قيمة الشراء', 'Purchase value'), ('sellingValue', 'قيمة البيع', 'Selling value'),
   ('driverName', 'السائق', 'Driver'), ('truckType', 'نوع الشاحنة', 'Truck type'), ('truckSize', 'حجم الشاحنة', 'Truck size'),
   ('representativeName', 'المندوب', 'Representative'), ('operationsReview', 'مراجعة العمليات', 'Ops review'), ('paymentDate', 'تاريخ السداد', 'Payment date'),
@@ -467,7 +467,7 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
         child: ListView(shrinkWrap: true, children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(18, 14, 18, 6),
-            child: Text(tr('تغيير حالة الطلب', 'Change application status'), style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
+            child: Text(tr('تغيير حالة الشحنة', 'Change application status'), style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
           ),
           for (final e in opsAppStatuses.entries)
             ListTile(
@@ -500,7 +500,7 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
       if (!locked && _owns('paymentType')) (Icons.swap_horiz_rounded, tr('تغيير نوع الدفع', 'Change payment type'), T.violet, () => _editPaymentType(w)),
       if (!locked && _canSeeSelling) (Icons.sell_outlined, tr('تعديل قيمة البيع', 'Edit selling value'), T.success, () => _editSelling(w)),
       if (!locked && _hasStatus(w) && _owns('applicationStatus'))
-        (Icons.flag_outlined, tr('تغيير حالة الطلب', 'Change status'), T.info, () => _changeAppStatus(w)),
+        (Icons.flag_outlined, tr('تغيير حالة الشحنة', 'Change status'), T.info, () => _changeAppStatus(w)),
       if (!locked && _canEditOpsReview)
         (Icons.fact_check_outlined, (w['operationsReview'] ?? '').toString().isNotEmpty ? tr('إزالة مراجعة التشغيل', 'Clear ops review') : tr('تمّت مراجعة التشغيل', 'Mark ops reviewed'), T.warn, () => _toggleReview(w, 'operationsReview')),
       if (!locked && _canViewFinancials && _canEditAccReview)

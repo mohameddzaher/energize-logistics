@@ -132,9 +132,13 @@ export default function CustomersRegister({ basePath }: { basePath: string }) {
   const sliced = useMemo(() => rows.filter((r) => kpiMatches(kpi, r)), [rows, kpi]);
 
   const searched = useMemo(() => {
-    const s = foldAr(q);
-    if (!s) return sliced;
-    return sliced.filter((r) => cols.some((c) => foldAr(cellOf(r, c, ar)).includes(s)));
+    const words = foldAr(q).split(/\s+/).filter(Boolean);
+    if (!words.length) return sliced;
+    // Every word in any column, in any order.
+    return sliced.filter((r) => {
+      const hay = cols.map((c) => foldAr(cellOf(r, c, ar))).join(' ');
+      return words.every((w) => hay.includes(w));
+    });
   }, [sliced, q, cols, ar]);
 
   const filtered = useMemo(() => cf.apply(searched, getters), [cf, searched, getters]);
@@ -253,7 +257,13 @@ export default function CustomersRegister({ basePath }: { basePath: string }) {
               ({shown.length.toLocaleString('en-US')}{shown.length !== rows.length ? ` / ${rows.length.toLocaleString('en-US')}` : ''})
             </span>
           </p>
-          <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-2 flex-wrap flex-1 min-w-0">
+            <div className="relative grow min-w-[240px] max-w-xl">
+              <Search className="w-4 h-4 text-slate-400 absolute top-1/2 -translate-y-1/2 start-3" />
+              <input value={q} onChange={(e) => setQ(e.target.value)}
+                placeholder={ar ? 'بحث بالاسم أو الكود أو الجوال أو الفرع…' : 'Search name, code, phone, branch…'}
+                className="w-full ps-9 pe-3 py-2 rounded-lg border border-slate-200 bg-white text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#f37121]/40" />
+            </div>
             {kpi !== 'all' && (
               <button type="button" onClick={() => setKpi('all')}
                 className="px-3 py-2 rounded-lg bg-slate-100 text-slate-600 text-sm font-semibold hover:bg-slate-200">
@@ -261,12 +271,6 @@ export default function CustomersRegister({ basePath }: { basePath: string }) {
               </button>
             )}
             <ClearColumnFilters count={cf.count} onClear={cf.clear} ar={ar} />
-            <div className="relative">
-              <Search className="w-3.5 h-3.5 text-slate-400 absolute top-1/2 -translate-y-1/2 start-2.5" />
-              <input value={q} onChange={(e) => setQ(e.target.value)}
-                placeholder={ar ? 'بحث بالاسم أو الجوال أو الفرع…' : 'Search name, phone, branch…'}
-                className="w-56 ps-8 pe-2 py-1.5 rounded-lg border border-slate-200 bg-white text-[12.5px] focus:outline-none focus:border-[#f37121]" />
-            </div>
             <ExportMenu fileName="customers" lang={ar ? 'ar' : 'en'}
               options={[
                 { key: 'page', label: scope.page, sheets: [{ name: sheetName, rows: pageRows, columns: exportCols }] },

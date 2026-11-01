@@ -85,7 +85,7 @@ export function unitsOf(n: Node | undefined, ar: boolean) {
   const cash = n?.cash || 0;
   const parts: string[] = [];
   if (tax || !cash) parts.push(`${num(tax)} ${t('فاتورة', 'invoices')}`);
-  if (cash) parts.push(`${num(cash)} ${t('كشف تخريج', 'reports')}`);
+  if (cash) parts.push(`${num(cash)} ${t('أمر نقل', 'reports')}`);
   return parts.join(' · ');
 }
 
@@ -117,7 +117,7 @@ export default function ReceivablesTree({
             <p className="mt-1.5 text-[11.5px] text-slate-400 tabular-nums">
               {num(tree.byKind.tax.count)} {t('فاتورة', 'invoices')}
               <span className="text-slate-300"> · </span>
-              {num(tree.byKind.cash.count)} {t('كشف تخريج', 'reports')}
+              {num(tree.byKind.cash.count)} {t('أمر نقل', 'reports')}
               {tree.all.customers != null && <><span className="text-slate-300"> · </span>{customers(tree.all)}</>}
             </p>
           </button>
@@ -129,7 +129,7 @@ export default function ReceivablesTree({
           <div className="mt-3 grid grid-cols-2 border-t border-slate-100 divide-x divide-slate-100 rtl:divide-x-reverse">
             {([
               ['tax', t('فواتير', 'Invoices'), '#475569', t('المديونية الضريبية', 'Tax receivables'), t('فاتورة', 'invoices')],
-              ['cash', t('كاش', 'Cash'), '#14b8a6', t('المديونية الكاش', 'Cash receivables'), t('كشف تخريج', 'reports')],
+              ['cash', t('كاش', 'Cash'), '#14b8a6', t('المديونية الكاش', 'Cash receivables'), t('أمر نقل', 'reports')],
             ] as const).map(([k, label, tone, title, unit]) => {
               const n = tree.byKind[k];
               const share = pct(n, tree.all);
@@ -164,7 +164,7 @@ export default function ReceivablesTree({
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
           {SUBTYPE_CARDS.map((c) => {
             const n = tree.subtypes?.[c.key] || { total: EMPTY, due: EMPTY, notDue: EMPTY };
-            const unit = c.invoice ? t('فاتورة', 'invoices') : t('كشف تخريج', 'reports');
+            const unit = c.invoice ? t('فاتورة', 'invoices') : t('أمر نقل', 'reports');
             const label = t(c.ar, c.en);
             const half = (k: 'due' | 'notdue', node: Node, title: string) => (
               <button type="button" onClick={() => onOpen({ subtype: c.key, due: k }, `${label} — ${title}`)}

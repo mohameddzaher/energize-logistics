@@ -114,13 +114,13 @@ class _FleetShipmentsScreenState extends State<FleetShipmentsScreen> {
       for (var i = 0; i < ids.length; i += 60) {
         final part = ids.sublist(i, i + 60 > ids.length ? ids.length : i + 60);
         final bytes = await Api.instance.postBytes('/api/fleet/shipments/waybills.pdf', {'ids': part});
-        await Printing.layoutPdf(onLayout: (_) async => bytes, name: 'بوليصات-الشحن-${part.length}');
+        await Printing.layoutPdf(onLayout: (_) async => bytes, name: 'أوامر نقل-الشحن-${part.length}');
       }
       if (mounted) setState(() => _picked.clear());
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(e is ApiException ? e.message : tr('تعذّر توليد البوالص', 'Could not generate the waybills')),
+          content: Text(e is ApiException ? e.message : tr('تعذّر توليد أوامر النقل', 'Could not generate the waybills')),
         ));
       }
     } finally {
@@ -167,7 +167,7 @@ class _FleetShipmentsScreenState extends State<FleetShipmentsScreen> {
                     child: SearchField(
                       controller: _searchCtl,
                       onChanged: (v) => setState(() => _q = v),
-                      hint: tr('ابحث برقم البوليصة أو العميل أو اللوحة…', 'Search waybill, customer, plate…'),
+                      hint: tr('ابحث برقم أمر النقل أو العميل أو اللوحة…', 'Search waybill, customer, plate…'),
                     ),
                   ),
                   Padding(
@@ -212,7 +212,7 @@ class _FleetShipmentsScreenState extends State<FleetShipmentsScreen> {
                       child: Row(children: [
                         Expanded(
                           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                            Text(tr('${_picked.length} بوليصة محدَّدة', '${_picked.length} selected'),
+                            Text(tr('${_picked.length} أمر نقل محدَّدة', '${_picked.length} selected'),
                                 style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
                             if (_pickedOffScreen(filtered) > 0)
                               Text(
@@ -264,7 +264,7 @@ class _FleetShipmentsScreenState extends State<FleetShipmentsScreen> {
                                           Icon(picked ? Icons.check_box : Icons.check_box_outline_blank,
                                               size: 18, color: picked ? T.orange : Colors.black26),
                                           const SizedBox(width: 6),
-                                          Text('${tr('بوليصة', 'WB')} ${s['waybillNumber'] ?? ''}',
+                                          Text('${tr('أمر نقل', 'WB')} ${s['waybillNumber'] ?? ''}',
                                               style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
                                           const Spacer(),
                                           Chip2(tr(st.$1, st.$2), st.$3),

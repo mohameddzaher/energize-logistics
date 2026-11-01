@@ -89,14 +89,14 @@ async function build(user) {
     {
       key: 'operations', ar: 'التشغيل', en: 'Operations', color: 'orange', href: '/system/operations',
       kpis: [
-        kpi('كشوف هذا الشهر', 'Sheets this month', sheetsMonth, { trend, href: '/system/operations' }),
-        kpi('كشوف الشهر الماضي', 'Sheets last month', sheetsLast),
-        kpi('كشوف بلا فاتورة', 'Sheets awaiting invoice', wfStats?.pendingInvoices, { tone: 'warn', href: '/system/operations' }),
+        kpi('أوامر نقل هذا الشهر', 'Sheets this month', sheetsMonth, { trend, href: '/system/operations' }),
+        kpi('أوامر نقل الشهر الماضي', 'Sheets last month', sheetsLast),
+        kpi('أوامر نقل بلا فاتورة', 'Sheets awaiting invoice', wfStats?.pendingInvoices, { tone: 'warn', href: '/system/operations' }),
         money('تحصيلات المحافظ اليوم', 'Wallet collections today', branches.reduce((a, b) => a + (b.totalCollections || 0), 0), { tone: 'good', href: '/system/wallet-dashboard' }),
         money('مشتريات المحافظ اليوم', 'Wallet purchases today', branches.reduce((a, b) => a + (b.totalPurchases || 0), 0), { href: '/system/wallet-dashboard' }),
         money('أرصدة المحافظ', 'Wallet balances', branches.reduce((a, b) => a + (b.closingBalance || 0), 0), { tone: 'auto', href: '/system/wallet-dashboard' }),
       ],
-      chart: { kind: 'bar', ar: 'كشوف الشهر حسب الفرع', data: (sheetsByBranch || []).map((b) => ({ name: String(b._id || '—').trim(), value: b.n })) },
+      chart: { kind: 'bar', ar: 'أوامر نقل الشهر حسب الفرع', data: (sheetsByBranch || []).map((b) => ({ name: String(b._id || '—').trim(), value: b.n })) },
     },
     {
       key: 'collections', ar: 'التحصيل', en: 'Collections', color: 'indigo', href: '/system/collections-dept/dashboard',

@@ -638,7 +638,7 @@ exports.deleteParty = async (req, res) => {
       try { emitToAll('collections:party', { id: party._id, kind: party.kind }); } catch (_) {}
       return res.json({
         deactivated: true,
-        message: `«${party.name}» له ${s.reports} كشفًا — عُطِّل بدل حذفه حتى لا ينقطع تاريخُه`,
+        message: `«${party.name}» له ${s.reports} أمر نقل — عُطِّل بدل حذفه حتى لا ينقطع تاريخُه`,
       });
     }
 
@@ -1813,7 +1813,7 @@ exports.taxInvoiceDetail = async (req, res) => {
         payments: (tg.payments || []).map((p) => (p.toObject ? p.toObject() : p)),
         collectionDate: tg.doc.collectionDate || null,
       };
-    } catch (_) { /* فاتورةٌ على الكشوف وحدَها — تُحصَّل من صفحة الفواتير */ }
+    } catch (_) { /* فاتورةٌ على أوامر النقل وحدَها — تُحصَّل من صفحة الفواتير */ }
 
     res.json({
       invoiceNumber: number,
@@ -2003,7 +2003,7 @@ exports.recordDelivery = async (req, res) => {
     }
     const invoiceNumber = String(req.body.invoiceNumber || '').trim();
     const ids = Array.isArray(req.body.ids) ? req.body.ids.filter((x) => mongoose.isValidObjectId(x)) : [];
-    if (!invoiceNumber && !ids.length) return res.status(400).json({ message: 'حدِّد فاتورةً أو كشوفًا' });
+    if (!invoiceNumber && !ids.length) return res.status(400).json({ message: 'حدِّد فاتورةً أو أوامر نقل' });
 
     const filter = invoiceNumber ? { invoiceNumber, ...NOT_CANCELLED } : { _id: { $in: ids } };
     const when = new Date(deliveryDate);
@@ -2024,8 +2024,8 @@ exports.recordDelivery = async (req, res) => {
     res.json({
       updated: r.modifiedCount || 0,
       message: invoiceNumber
-        ? `سُجِّل تسليمُ الفاتورة ${invoiceNumber} للعميل على ${r.modifiedCount} كشفًا`
-        : `سُجِّل التسليم للعميل على ${r.modifiedCount} كشفًا`,
+        ? `سُجِّل تسليمُ الفاتورة ${invoiceNumber} للعميل على ${r.modifiedCount} أمر نقل`
+        : `سُجِّل التسليم للعميل على ${r.modifiedCount} أمر نقل`,
     });
   } catch (e) { sendMongooseError(res, e, 'تعذّر تسجيل التسليم'); }
 };
@@ -2043,7 +2043,7 @@ exports.recordDelivery = async (req, res) => {
 exports.setCollectionDetail = async (req, res) => {
   try {
     const ids = Array.isArray(req.body.ids) ? req.body.ids.filter((x) => mongoose.isValidObjectId(x)) : [];
-    if (!ids.length) return res.status(400).json({ message: 'حدِّد كشفًا واحدًا على الأقل' });
+    if (!ids.length) return res.status(400).json({ message: 'حدِّد أمر نقل واحدًا على الأقل' });
     const detail = String(req.body.detail || '').trim();
 
     const r = await OperationsWorkflow.updateMany(
@@ -2080,7 +2080,7 @@ exports.updateCashInvoice = async (req, res) => {
   try {
     if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ message: 'معرّفٌ غير صالح' });
     const wf = await OperationsWorkflow.findById(req.params.id);
-    if (!wf) return res.status(404).json({ message: 'الكشف غير موجود' });
+    if (!wf) return res.status(404).json({ message: 'أمر النقل غير موجود' });
 
     const $set = { lastModifiedBy: req.user._id };
     const has = (k) => Object.prototype.hasOwnProperty.call(req.body, k);
@@ -2166,14 +2166,14 @@ async function loadTarget(body) {
       payments: cash.payments || [],
     };
   }
-  if (!id || !mongoose.isValidObjectId(id)) throw userError(400, 'حدِّد فاتورةً واحدةً أو كشفًا واحدًا');
+  if (!id || !mongoose.isValidObjectId(id)) throw userError(400, 'حدِّد فاتورةً واحدةً أو أمر نقل واحدًا');
   const wf = await OperationsWorkflow.findById(id);
-  if (!wf) throw userError(404, 'الكشف غير موجود');
+  if (!wf) throw userError(404, 'أمر النقل غير موجود');
   return cashSheetTarget(wf);
 }
 
 const cashSheetTarget = (wf) => ({
-  kind: 'cash', doc: wf, key: String(wf._id), label: `الكشف ${wf.reportNumber || ''}`,
+  kind: 'cash', doc: wf, key: String(wf._id), label: `أمر النقل ${wf.reportNumber || ''}`,
   value: r2(wf.sellingValue), collected: r2(wf.collectedAmount), full: cashIsCollected(wf),
   payments: wf.collectionPayments || [],
 });
@@ -2259,7 +2259,7 @@ async function recordPayment(req, res) {
   if (mode === 'partial') {
     if (tg.full) return res.status(400).json({ message: `${tg.label} محصَّلةٌ بالكامل — لا دفعةَ جزئيّةَ بعد الاكتمال` });
     if (!(tg.value > 0)) {
-      return res.status(400).json({ message: 'لا قيمةَ مسجَّلةً لهذا الكشف — سجّل التحصيلَ كاملًا بالمبلغ المقبوض', fields: { amount: 'لا قيمة' } });
+      return res.status(400).json({ message: 'لا قيمةَ مسجَّلةً لهذا أمر النقل — سجّل التحصيلَ كاملًا بالمبلغ المقبوض', fields: { amount: 'لا قيمة' } });
     }
     amount = Number(req.body.amount);
     if (!Number.isFinite(amount) || amount <= 0) {
@@ -2285,7 +2285,7 @@ async function recordPayment(req, res) {
     // كاشٌ بلا قيمةٍ معروفة (أو فاتورةٌ بقيمةٍ صفرٍ أو سالبة): يكتمل بما كُتب.
     amount = Number(req.body.amount ?? req.body.collectedAmount);
     if (tg.kind === 'cash' && !(Number.isFinite(amount) && amount > 0)) {
-      return res.status(400).json({ message: 'مبلغ التحصيل مطلوب — لا قيمةَ مسجَّلةً لهذا الكشف', fields: { amount: 'مطلوب' } });
+      return res.status(400).json({ message: 'مبلغ التحصيل مطلوب — لا قيمةَ مسجَّلةً لهذا أمر النقل', fields: { amount: 'مطلوب' } });
     }
     amount = Number.isFinite(amount) && amount > 0 ? r2(amount) : 0;
     if (amount > 0) payments.push(entry(amount, 'full'));
@@ -2397,7 +2397,7 @@ exports.removePayment = async (req, res) => {
 exports.bulkCollect = async (req, res) => {
   const items = Array.isArray(req.body?.items) ? req.body.items.slice(0, 300) : [];
   const { collectionDate, note } = req.body || {};
-  if (!items.length) return res.status(400).json({ message: 'حدِّد فاتورةً أو كشفًا' });
+  if (!items.length) return res.status(400).json({ message: 'حدِّد فاتورةً أو أمر نقل' });
   if (!collectionDate) return res.status(400).json({ message: 'تاريخ التحصيل مطلوب', fields: { collectionDate: 'مطلوب' } });
   let done = 0; const failed = [];
   for (const item of items) {
@@ -2429,7 +2429,7 @@ exports.recordCollection = async (req, res) => {
     const invoiceNumber = String(req.body.invoiceNumber || '').trim();
     const ids = Array.isArray(req.body.ids) ? req.body.ids.filter((x) => mongoose.isValidObjectId(x)) : [];
     if (!invoiceNumber && !ids.length) {
-      return res.status(400).json({ message: 'حدِّد فاتورةً أو كشوفًا' });
+      return res.status(400).json({ message: 'حدِّد فاتورةً أو أوامر نقل' });
     }
 
     const filter = invoiceNumber
@@ -2462,8 +2462,8 @@ exports.recordCollection = async (req, res) => {
     res.json({
       updated: r.modifiedCount || 0,
       message: invoiceNumber
-        ? `سُجِّل التحصيل على ${r.modifiedCount} كشفًا تحت الفاتورة ${invoiceNumber}`
-        : `سُجِّل التحصيل على ${r.modifiedCount} كشفًا`,
+        ? `سُجِّل التحصيل على ${r.modifiedCount} أمر نقل تحت الفاتورة ${invoiceNumber}`
+        : `سُجِّل التحصيل على ${r.modifiedCount} أمر نقل`,
     });
   } catch (e) { sendMongooseError(res, e, 'تعذّر تسجيل التحصيل'); }
 };
@@ -2484,7 +2484,7 @@ exports.undoCollection = async (req, res) => {
     const reason = String(req.body.reason || '').trim();
     let invoiceNumber = String(req.body.invoiceNumber || '').trim();
     let ids = Array.isArray(req.body.ids) ? req.body.ids.filter((x) => mongoose.isValidObjectId(x)) : [];
-    if (!invoiceNumber && !ids.length) return res.status(400).json({ message: 'حدِّد فاتورةً أو كشوفًا' });
+    if (!invoiceNumber && !ids.length) return res.status(400).json({ message: 'حدِّد فاتورةً أو أوامر نقل' });
     const CollectionInvoice = require('../models/CollectionInvoice');
 
     // ── والفاتورةُ النقديّةُ برقمها (راجع loadTarget) ─────────────────────────
@@ -2537,7 +2537,7 @@ exports.undoCollection = async (req, res) => {
       user: req.user._id, action: 'undo_collection', entity: 'OperationsWorkflow',
       entityId: ids.length === 1 ? ids[0] : null, entityKey: invoiceNumber || undefined,
       changes: {
-        details: `رجوعٌ عن تحصيل ${invoiceNumber ? `الفاتورة ${invoiceNumber}` : `${before.length} كشفًا`} — ${reason}`,
+        details: `رجوعٌ عن تحصيل ${invoiceNumber ? `الفاتورة ${invoiceNumber}` : `${before.length} أمر نقل`} — ${reason}`,
         before: before.map((w) => ({ reportNumber: w.reportNumber, collectionDate: w.collectionDate, collectedAmount: w.collectedAmount, payments: w.collectionPayments || [] })),
         ledgerBefore, reason,
       },
@@ -2549,7 +2549,7 @@ exports.undoCollection = async (req, res) => {
       updated: r.modifiedCount || 0,
       message: invoiceNumber
         ? `رُفع التحصيلُ عن الفاتورة ${invoiceNumber} — عادت غيرَ محصَّلة`
-        : `رُفع التحصيلُ عن ${r.modifiedCount} كشفًا — عادت غيرَ محصَّلة`,
+        : `رُفع التحصيلُ عن ${r.modifiedCount} أمر نقل — عادت غيرَ محصَّلة`,
     });
   } catch (e) { sendMongooseError(res, e, 'تعذّر الرجوع عن التحصيل'); }
 };

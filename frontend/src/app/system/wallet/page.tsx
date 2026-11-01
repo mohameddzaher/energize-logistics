@@ -439,10 +439,10 @@ export default function WalletPage() {
   const blockReason: string | null = canSubmitTx ? null : (() => {
     const t = (a: string, e: string) => (lang === 'ar' ? a : e);
     if (txType === 'tax_invoice') {
-      return t('اكتب رقم كشف تخريج واحدًا على الأقل', 'Enter at least one dispatch report number');
+      return t('اكتب رقم أمر نقل واحدًا على الأقل', 'Enter at least one dispatch report number');
     }
     if (txType === 'purchase') {
-      if (!purchaseReportFound) return t('ابحث عن رقم كشف التخريج أوّلًا — الزرّ لا يعمل حتى يظهر الكشف', 'Search for the dispatch report first — the button stays off until it is found');
+      if (!purchaseReportFound) return t('ابحث عن رقم أمر النقل أوّلًا — الزرّ لا يعمل حتى يظهر أمر النقل', 'Search for the dispatch report first — the button stays off until it is found');
       if (purchaseAlready) {
         // ── والعهدةُ التي دُفع منها أهمُّ من اسم الدافع ─────────────────────
         // الدفعُ من عهدة فرعٍ غير فرع الكشف هو الغالب — ثلثا العمليّات. فمن
@@ -452,7 +452,7 @@ export default function WalletPage() {
         const who = purchaseAlready.by ? t(` بواسطة ${purchaseAlready.by}`, ` by ${purchaseAlready.by}`) : '';
         const when = purchaseAlready.date ? t(` يوم ${purchaseAlready.date}`, ` on ${purchaseAlready.date}`) : '';
         return t(
-          `هذا الكشف مدفوعٌ بالفعل: ${Number(purchaseAlready.amount || 0).toLocaleString()} ريال${where}${who}${when}. لا يُدفَع الكشف مرّتين — راجعه مع الفرع الذي دفعه إن كان هناك خطأ.`,
+          `هذا أمر النقل مدفوعٌ بالفعل: ${Number(purchaseAlready.amount || 0).toLocaleString()} ريال${where}${who}${when}. لا يُدفَع أمر النقل مرّتين — راجعه مع الفرع الذي دفعه إن كان هناك خطأ.`,
           `This report is already paid: ${Number(purchaseAlready.amount || 0).toLocaleString()} SAR${where}${who}${when}. A report is not paid twice — take it up with the branch that paid it if this is wrong.`);
       }
       // ── وحالةُ السند لم تعد مانعًا ────────────────────────────────────
@@ -507,7 +507,7 @@ export default function WalletPage() {
         allPairs.push({ reportNumber: pendingReport, documentNumber: String(txForm.receivedDocSand || '').trim() });
       }
       if (txType === 'tax_invoice' && !allPairs.length) {
-        setTxError(lang === 'ar' ? 'اكتب رقم كشف تخريج واحدًا على الأقل' : 'Enter at least one dispatch report number');
+        setTxError(lang === 'ar' ? 'اكتب رقم أمر نقل واحدًا على الأقل' : 'Enter at least one dispatch report number');
         setSubmitting(false);
         return;
       }
@@ -559,7 +559,7 @@ export default function WalletPage() {
       // وقد خُتم منها خمسة.
       if (res?.unknownReports?.length) {
         setTxError(lang === 'ar'
-          ? `حُفظ القيد — ولم نجد كشوفًا بهذه الأرقام: ${res.unknownReports.join('، ')}`
+          ? `حُفظ القيد — ولم نجد أوامر نقل بهذه الأرقام: ${res.unknownReports.join('، ')}`
           : `Saved — but no reports found for: ${res.unknownReports.join(', ')}`);
         setTxForm(EMPTY_TX_FORM);
         fetchWallet(false);
@@ -740,7 +740,7 @@ export default function WalletPage() {
       const data = await api.get<any>(`/api/wallet/lookup-report?reportNumber=${encodeURIComponent(q)}`);
       setTxForm((f) => ({ ...f, deliveryStatementNumber: data.reportNumber }));
       setCollectionReportFound(true);
-      setCollectionReportMsg(ar ? 'الكشف موجود ✓' : 'Report found ✓');
+      setCollectionReportMsg(ar ? 'أمر النقل موجود ✓' : 'Report found ✓');
     } catch (err: any) {
       setCollectionReportFound(false);
       setCollectionReportMsg(err.message || txx.reportNotFound);
@@ -859,10 +859,10 @@ export default function WalletPage() {
   };
   const copyDayReports = async (sep: string) => {
     const nums = dayReportNumbers();
-    if (!nums.length) { notify(ar ? 'لا كشوفَ في المعروض' : 'No report numbers in view', 'error'); return; }
+    if (!nums.length) { notify(ar ? 'لا أوامر نقل في المعروض' : 'No report numbers in view', 'error'); return; }
     try {
       await navigator.clipboard.writeText(nums.join(sep));
-      notify(ar ? `نُسِخ ${nums.length} كشفًا` : `Copied ${nums.length} report numbers`, 'success');
+      notify(ar ? `نُسِخ ${nums.length} أمر نقل` : `Copied ${nums.length} report numbers`, 'success');
     } catch {
       // متصفّحٌ يمنع الحافظةَ بلا تفاعلٍ مباشر: يُعرَض النصُّ لِيُنسَخ بيد.
       window.prompt(ar ? 'انسخ الأرقام:' : 'Copy the numbers:', nums.join(sep));
@@ -939,7 +939,7 @@ export default function WalletPage() {
     // يُزاح ما بعده ويُطوَّل الملفُّ ويُسأل عنه كلَّ مرّة.
     //
     // والعميلُ و«البيان» صارا عمودين في الأعلى بجانب ما يخصّهما، فلا يُعادان.
-    { header: ar ? 'كشوف الفاتورة الضريبيّة' : 'Received reports', key: 'receivedReportNumbers', transform: (v: any, row: any) => ((v?.length ? v : [row?.receivedDocNumber]).filter(Boolean).join(' , ')), width: 24 },
+    { header: ar ? 'أوامر نقل الفاتورة الضريبيّة' : 'Received reports', key: 'receivedReportNumbers', transform: (v: any, row: any) => ((v?.length ? v : [row?.receivedDocNumber]).filter(Boolean).join(' , ')), width: 24 },
     { header: ar ? 'مرجع' : 'Reference', key: 'reference', width: 15 },
     { header: ar ? 'مُعلَّمة' : 'Flagged', key: 'isFlagged', transform: fmt.yesNo, width: 10 },
   ];
@@ -1271,15 +1271,15 @@ export default function WalletPage() {
             <Receipt className="w-4 h-4 text-[#f37121]" />
             {L.transactions} ({shownTx.length}{shownTx.length !== transactions.length ? ` / ${transactions.length}` : ''})
             {/* ── وكشوفُ المعروض تُنسَخ بضغطة ──────────────────────────────
-                «عايز آخد كشوف التخريج بتاعة يوم معيّن كلهم مع بعض» — تُجمَع
-                من الصفوف المعروضة (فإن فُلترت بالفرع أو بالسائق جاءت كشوفُ
+                «عايز آخد أوامر النقل بتاعة يوم معيّن كلهم مع بعض» — تُجمَع
+                من الصفوف المعروضة (فإن فُلترت بالفرع أو بالسائق جاءت أوامر نقل
                 ذلك الفلتر وحدَها)، مرتَّبةً وبلا تكرار. */}
             <span className="ms-auto flex items-center gap-1.5">
               <button type="button" onClick={() => copyDayReports('\n')}
-                title={ar ? 'نسخ كشوف التخريج المعروضة — كلٌّ في سطر (للصقها في إكسل)' : 'Copy the shown report numbers — one per line'}
+                title={ar ? 'نسخ أوامر النقل المعروضة — كلٌّ في سطر (للصقها في إكسل)' : 'Copy the shown report numbers — one per line'}
                 className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white text-[11.5px] font-semibold">
                 <ClipboardCopy className="w-3.5 h-3.5" />
-                {ar ? `نسخ الكشوف (${dayReportNumbers().length})` : `Copy reports (${dayReportNumbers().length})`}
+                {ar ? `نسخ أوامر النقل (${dayReportNumbers().length})` : `Copy reports (${dayReportNumbers().length})`}
               </button>
               <button type="button" onClick={() => copyDayReports(', ')}
                 title={ar ? 'نسخها مفصولةً بفواصل' : 'Copy comma-separated'}
@@ -1314,9 +1314,9 @@ export default function WalletPage() {
                 <th className="text-start text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{cf.head('report', L.deliveryStatementNumber)}</th>
                 {/* ── ورقمُ السند عمودٌ بجانب كشفه ──────────────────────────
                     كان مدفونًا في عمود «التفاصيل» مع سائقٍ ووصفٍ وعميل، فمن
-                    أراد أن يعرف أيَّ سندٍ كُتب لأيّ كشفِ تخريجٍ قرأ فقرةً في
+                    أراد أن يعرف أيَّ سندٍ كُتب لأيّ أمر نقلٍ قرأ فقرةً في
                     كلّ صفّ وجمعها بعينه. وهو رقمٌ يُطابَق كما تُطابَق الأرقام —
-                    فله عمودُه بجانب الكشف الذي يخصّه، ويُفرَز ويُفلتَر ويخرج
+                    فله عمودُه بجانب أمر النقل الذي يخصّه، ويُفرَز ويُفلتَر ويخرج
                     خانةً مستقلّةً في ملفّ إكسل. */}
                 <th className="text-start text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{cf.head('receipt', L.receipt)}</th>
                 {/* ── والسائقُ عمودٌ كما صار رقمُ السند ────────────────────────
@@ -1664,27 +1664,27 @@ export default function WalletPage() {
                   <>
                     <div className="rounded-lg bg-slate-100 border border-slate-200 p-3 text-[12.5px] text-slate-600">
                       {lang === 'ar'
-                        ? 'تسجيلُ استلام — تقول به إنّ كشوف هذه الفواتير صارت بيدك. لا مبلغَ فيه، ولا يدخل رصيدَ العهدة ولا إقفالَ اليوم.'
+                        ? 'تسجيلُ استلام — تقول به إنّ أوامر نقل هذه الفواتير صارت بيدك. لا مبلغَ فيه، ولا يدخل رصيدَ العهدة ولا إقفالَ اليوم.'
                         : 'A receipt record — it says these reports are now in your hands. No amount, and it does not touch the wallet balance or the day’s close.'}
                     </div>
                     {/* ── أرقامُ الكشوف، حزمةً ──────────────────────────────
-                        المندوبُ يأتي بسبعةٍ فيسجّلها دفعةً. وقيدٌ لكلّ كشفٍ
+                        المندوبُ يأتي بسبعةٍ فيسجّلها دفعةً. وقيدٌ لكلّ أمر نقل
                         يعني تكرارَ التاريخ والفرع سبعَ مرّات، ومَن يملّ يترك
                         الباقيَ بلا تسجيل. */}
                     <div>
                       <label className="text-slate-500 text-xs mb-1 block">
-                        {lang === 'ar' ? 'أرقام كشوف التخريج' : 'Dispatch report numbers'} *
+                        {lang === 'ar' ? 'أرقام أوامر النقل' : 'Dispatch report numbers'} *
                       </label>
                       {/* ── ولكلّ كشفٍ سندُه ────────────────────────────────
                           يُكتبان معًا فيُحفظان زوجًا، ويصل السندُ عمودَه في
                           سير عمل التشغيل. وسندٌ واحدٌ يُنسَخ على الحزمة كلِّها
-                          كان سيُنسَب سندَ كشفٍ إلى ستّةٍ غيره. */}
+                          كان سيُنسَب سندَ أمر نقل إلى ستّةٍ غيره. */}
                       <div className="flex gap-2">
                         <input type="text" value={txForm.receivedDocNumber}
                           onChange={(e) => setTxForm((f) => ({ ...f, receivedDocNumber: e.target.value }))}
                           onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addReceivedReport(); } }}
                           className="flex-1 px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
-                          placeholder={lang === 'ar' ? 'رقم الكشف' : 'report number'} />
+                          placeholder={lang === 'ar' ? 'رقم أمر النقل' : 'report number'} />
                         <input type="text" value={txForm.receivedDocSand}
                           onChange={(e) => setTxForm((f) => ({ ...f, receivedDocSand: e.target.value }))}
                           onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addReceivedReport(); } }}
@@ -1712,8 +1712,8 @@ export default function WalletPage() {
                       )}
                       <p className="text-[11px] text-slate-400 mt-1.5">
                         {txForm.receivedReports.length > 0
-                          ? (lang === 'ar' ? `${txForm.receivedReports.length} كشفًا في هذا القيد` : `${txForm.receivedReports.length} reports in this record`)
-                          : (lang === 'ar' ? 'يمكنك إضافة أكثر من كشف في القيد الواحد — ولكل كشف رقم سنده' : 'Add more than one report — each with its own voucher number')}
+                          ? (lang === 'ar' ? `${txForm.receivedReports.length} أمر نقل في هذا القيد` : `${txForm.receivedReports.length} reports in this record`)
+                          : (lang === 'ar' ? 'يمكنك إضافة أكثر من أمر نقل في القيد الواحد — ولكل أمر نقل رقم سنده' : 'Add more than one report — each with its own voucher number')}
                       </p>
                     </div>
                   </>
@@ -1763,7 +1763,7 @@ export default function WalletPage() {
                       {purchaseAlready && (
                         <div className="mt-2 rounded-lg bg-red-50 border border-red-200 px-3 py-2">
                           <p className="text-[12.5px] font-bold text-red-800">
-                            {lang === 'ar' ? 'هذا الكشف سُجِّلت له مشترياتٌ من قبل' : 'This report already has a purchase'}
+                            {lang === 'ar' ? 'هذا أمر النقل سُجِّلت له مشترياتٌ من قبل' : 'This report already has a purchase'}
                           </p>
                           {/* والعهدةُ التي دُفع منها: ثلثا المشتريات تُدفَع من عهدة
                               فرعٍ غير فرع الكشف، فاسمُ الدافع وحدَه لا يقول أين ذهب المال. */}
@@ -1778,7 +1778,7 @@ export default function WalletPage() {
                                 + `${purchaseAlready.by ? ` by ${purchaseAlready.by}` : ''}`}
                           </p>
                           <p className="text-[11px] text-red-600 mt-1">
-                            {lang === 'ar' ? 'الكشف الواحد لا يُشترى مرّتين.' : 'A report cannot be purchased twice.'}
+                            {lang === 'ar' ? 'أمر النقل الواحد لا يُشترى مرّتين.' : 'A report cannot be purchased twice.'}
                           </p>
                         </div>
                       )}
@@ -1797,7 +1797,7 @@ export default function WalletPage() {
                     <div>
                       <label className="text-slate-500 text-xs mb-1 block">{L.driverName}</label>
                       {/* يأتي من كشف التخريج، فلا يُعدَّل: بيانات الكشف مرتبطة برقمه،
-                          وتعديلها هنا يجعل السجل يقول شيئًا والكشف يقول غيره — ولا
+                          وتعديلها هنا يجعل السجل يقول شيئًا وأمر النقل يقول غيره — ولا
                           أحد يعرف أيّهما الصحيح بعد شهر. */}
                       <input type="text" value={txForm.purchaseDriverName}
                         name="purchaseDriverName"
@@ -1818,7 +1818,7 @@ export default function WalletPage() {
                           والصوابُ أن تصل هذه، لا أن تُستنسَخ. */}
                       <label className="text-slate-500 text-xs mb-1 block">
                         {L.receiptNumber}
-                        <span className="text-slate-400 ms-1">{lang === 'ar' ? '— يُكتب في الكشف تلقائيًّا' : '— written onto the report'}</span>
+                        <span className="text-slate-400 ms-1">{lang === 'ar' ? '— يُكتب في أمر النقل تلقائيًّا' : '— written onto the report'}</span>
                       </label>
                       <input type="text" value={txForm.purchaseReceiptNumber}
                         name="purchaseReceiptNumber"
@@ -1845,7 +1845,7 @@ export default function WalletPage() {
                     {purchaseReportFound && (
                       <p className="text-[11.5px] text-slate-600 sm:col-span-2">
                         {lang === 'ar'
-                          ? 'اسم السائق والفرع مأخوذان من كشف التخريج ولا يُعدَّلان — إن كانا خطأً فالتصحيح في الكشف نفسه.'
+                          ? 'اسم السائق والفرع مأخوذان من أمر النقل ولا يُعدَّلان — إن كانا خطأً فالتصحيح في أمر النقل نفسه.'
                           : 'Driver and branch come from the dispatch sheet and cannot be edited — correct them on the sheet itself.'}
                       </p>
                     )}

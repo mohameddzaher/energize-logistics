@@ -93,21 +93,21 @@ export default function PaymentTypesPage() {
       setRows((prev) => prev.map((x) => (x._id === row._id ? { ...x, paymentType } : x)));
       notify(
         r.changed
-          ? t(`حُفظ — وسرى على ${r.changed} كشفًا بلا نوع`, `Saved — applied to ${r.changed} reports`)
+          ? t(`حُفظ — وسرى على ${r.changed} أمر نقل بلا نوع`, `Saved — applied to ${r.changed} reports`)
           : t('حُفظ', 'Saved'),
         'success',
       );
 
       if (r.remaining > 0) {
         const goAll = await confirm(t(
-          `ولهذا العميل ${r.remaining} كشفًا بنوعٍ مخالفٍ لصفته الجديدة. أحوّلها كلَّها؟\n\nالتحويل يغيّر أين تُفوتَر هذه الكشوف وأين تُحصَّل — وما اختاره موظّفٌ بيده لا يُمسّ على كلّ حال.`,
+          `ولهذا العميل ${r.remaining} أمر نقل بنوعٍ مخالفٍ لصفته الجديدة. أحوّلها كلَّها؟\n\nالتحويل يغيّر أين تُفوتَر هذه أوامر النقل وأين تُحصَّل — وما اختاره موظّفٌ بيده لا يُمسّ على كلّ حال.`,
           `${r.remaining} of this customer's reports carry a different type. Convert them all?\n\nThis changes where those reports are invoiced and collected. Types chosen by hand are never touched.`,
         ));
         if (goAll) {
           const all = await api.put<{ changed: number; skippedManual: number }>(
             `/api/workflows/payment-types/${row._id}`, { paymentType, onlyEmpty: false },
           );
-          notify(t(`حُوِّل ${all.changed} كشفًا${all.skippedManual ? ` · وتُرك ${all.skippedManual} باختيارٍ يدويّ` : ''}`,
+          notify(t(`حُوِّل ${all.changed} أمر نقل${all.skippedManual ? ` · وتُرك ${all.skippedManual} باختيارٍ يدويّ` : ''}`,
                    `Converted ${all.changed} reports${all.skippedManual ? ` · ${all.skippedManual} left as hand-picked` : ''}`), 'success');
         }
       }
@@ -126,13 +126,13 @@ export default function PaymentTypesPage() {
     if (!row.conflicts) return;
     const to = row.paymentType === 'cash' ? t('كاش', 'cash') : t('ضريبي', 'tax');
     if (!(await confirm(t(
-      `توحيد ${row.conflicts} كشفًا لـ«${row.name}» على «${to}»؟\n\nهذه كشوفٌ نوعُها مكتوبٌ من شيت المتابعة ويخالف صفة العميل. التوحيد يغيّر أين تُفوتَر وأين تُحصَّل، ولا يمسّ ما اختير باليد ولا ما صدرت له فاتورة.`,
+      `توحيد ${row.conflicts} أمر نقل لـ«${row.name}» على «${to}»؟\n\nهذه أوامر نقل نوعُها مكتوبٌ من شيت المتابعة ويخالف صفة العميل. التوحيد يغيّر أين تُفوتَر وأين تُحصَّل، ولا يمسّ ما اختير باليد ولا ما صدرت له فاتورة.`,
       `Unify ${row.conflicts} reports of “${row.name}” to ${to}?\n\nTheir type came from the follow-up sheet and differs from the customer. This changes where they are invoiced and collected. Hand-picked types and already-invoiced reports are untouched.`,
     )))) return;
     setUnifying(row._id);
     try {
       const r = await api.post<{ changed: number; message?: string }>(`/api/workflows/payment-types/${row._id}/unify`, {});
-      notify(r?.message || t(`وُحِّد ${r.changed} كشفًا`, `Unified ${r.changed} reports`), 'success');
+      notify(r?.message || t(`وُحِّد ${r.changed} أمر نقل`, `Unified ${r.changed} reports`), 'success');
       load();
     } catch (e: any) { notify(e?.message || t('تعذّر التوحيد', 'Could not unify'), 'error'); }
     setUnifying(null);
@@ -145,15 +145,15 @@ export default function PaymentTypesPage() {
       const p = await api.post<{ wouldChange: number; skippedManual: number; unknown: number; moves: Record<string, number> }>(
         '/api/workflows/payment-types/apply', { preview: true, onlyEmpty: true },
       );
-      if (!p.wouldChange) { notify(t('لا كشفَ بلا نوعٍ يمكن ملؤه', 'Nothing to fill'), 'info'); setApplying(false); return; }
+      if (!p.wouldChange) { notify(t('لا أمر نقل بلا نوعٍ يمكن ملؤه', 'Nothing to fill'), 'info'); setApplying(false); return; }
       const detail = Object.entries(p.moves || {}).map(([k, v]) => `${k}: ${v}`).join('\n');
       const go = await confirm(
-        t(`سيُملأ نوعُ الدفع على ${p.wouldChange} كشفًا بلا نوع.\n\n${detail}\n\nولن يُمَسّ كشفٌ اختار موظّفٌ نوعَه بيده.`,
+        t(`سيُملأ نوعُ الدفع على ${p.wouldChange} أمر نقل بلا نوع.\n\n${detail}\n\nولن يُمَسّ أمر نقل اختار موظّفٌ نوعَه بيده.`,
           `${p.wouldChange} reports will be filled.\n\n${detail}`),
       );
       if (!go) { setApplying(false); return; }
       const r = await api.post<{ changed: number }>('/api/workflows/payment-types/apply', { onlyEmpty: true });
-      notify(t(`مُلئ ${r.changed} كشفًا`, `${r.changed} reports filled`), 'success');
+      notify(t(`مُلئ ${r.changed} أمر نقل`, `${r.changed} reports filled`), 'success');
       load();
     } catch (e: any) { notify(e?.message || t('تعذّر التطبيق', 'Could not apply'), 'error'); }
     setApplying(false);
@@ -165,7 +165,7 @@ export default function PaymentTypesPage() {
     { header: t('نوع الدفع', 'Payment type'), key: 'paymentType', width: 14,
       transform: (v: any) => (v === 'cash' ? t('كاش', 'Cash') : v === 'tax' ? t('ضريبي', 'Tax') : t('بلا نوع', 'Not set')) },
     { header: t('الإدارة', 'Department'), key: 'department', width: 16 },
-    { header: t('عدد الكشوف', 'Reports'), key: 'reports', width: 12 },
+    { header: t('عدد أوامر النقل', 'Reports'), key: 'reports', width: 12 },
     { header: t('منها كاش', 'Cash reports'), key: 'cashReports', width: 12 },
     { header: t('منها ضريبي', 'Tax reports'), key: 'taxReports', width: 12 },
     { header: t('مخالف لصفته', 'Conflicting'), key: 'conflicts', width: 14 },
@@ -195,7 +195,7 @@ export default function PaymentTypesPage() {
           <button type="button" onClick={applyAll} disabled={applying}
             className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[#12325c] hover:bg-[#0d2544] text-white text-sm font-semibold disabled:opacity-50">
             {applying ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wand2 className="w-4 h-4" />}
-            {t('ملء الكشوف بلا نوع', 'Fill untyped reports')}
+            {t('ملء أوامر النقل بلا نوع', 'Fill untyped reports')}
           </button>
         )}
       </PageHeader>
@@ -205,7 +205,7 @@ export default function PaymentTypesPage() {
           وإلّا بدا النظامُ يخالف ما كُتب فيه. */}
       <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-[12.5px] text-slate-600 leading-relaxed">
         <span className="font-semibold text-slate-800">{t('كيف يُقرَّر نوعُ الكشف؟', 'How a report gets its type')}</span>{' '}
-        {t('اختيارُ الموظّف على الكشف يغلب كلَّ شيء. فإن لم يُختَر: متى قالت منصّةُ التشغيل إنّ طريقة دفع الحمولة «كاش» فهي نقديّة ولو كان العميلُ ضريبيًّا — وهو الاستثناء الوحيد. وما عدا ذلك يأخذ صفةَ العميل من هذه الصفحة.',
+        {t('اختيارُ الموظّف على أمر النقل يغلب كلَّ شيء. فإن لم يُختَر: متى قالت منصّةُ التشغيل إنّ طريقة دفع الحمولة «كاش» فهي نقديّة ولو كان العميلُ ضريبيًّا — وهو الاستثناء الوحيد. وما عدا ذلك يأخذ صفةَ العميل من هذه الصفحة.',
            "A choice made on the report wins. Otherwise: if the platform says the load is paid cash it is cash even for a taxed customer — the only exception. Everything else takes the customer's type from this page.")}
       </div>
 
@@ -215,17 +215,17 @@ export default function PaymentTypesPage() {
         <Chip k="tax" label={t('ضريبي', 'Tax')} n={totals.tax} tone="text-sky-700" />
         <Chip k="none" label={t('بلا نوع', 'Not set')} n={totals.none} tone="text-amber-700" />
         {/* ── والمخالفُ يُعرَض ليُحلّ ────────────────────────────────────────
-            كشوفٌ نوعُها غيرُ صفة عميلها. لا تُقلَب وحدَها: نوعُها المكتوب جاء من
+            أوامر نقل نوعُها غيرُ صفة عميلها. لا تُقلَب وحدَها: نوعُها المكتوب جاء من
             عمود «ض / غ ض» في شيت المتابعة، وهو قولُ التشغيل عن تلك الحمولة
             بعينها — نقضُه قرارٌ يُتّخذ لعميلٍ بعينه بعد أن يُرى عددُه. */}
         {!!totals.conflictCustomers && (
           <Chip k="conflict"
-            label={t(`مخالف لصفته · ${totals.conflictReports.toLocaleString()} كشفًا`,
+            label={t(`مخالف لصفته · ${totals.conflictReports.toLocaleString()} أمر نقل`,
                      `Conflicting · ${totals.conflictReports.toLocaleString()} reports`)}
             n={totals.conflictCustomers} tone="text-red-700" />
         )}
         <span className="text-xs text-slate-400 ms-auto tabular-nums">
-          {t(`${shown.length} من ${totals.customers} عميلًا · ${totals.reports.toLocaleString()} كشفًا`,
+          {t(`${shown.length} من ${totals.customers} عميلًا · ${totals.reports.toLocaleString()} أمر نقل`,
              `${shown.length} of ${totals.customers} customers`)}
         </span>
       </div>
@@ -279,7 +279,7 @@ export default function PaymentTypesPage() {
                         عددُ كشوفه التي نوعُها غيرُ صفته — تُحلّ من زرّ «توحيد». */}
                     {r.conflicts > 0 && (
                       <span className="ms-2 text-[11px] font-semibold text-red-600"
-                        title={t('كشوفٌ نوعُها يخالف صفةَ هذا العميل', "Reports whose type differs from this customer's")}>
+                        title={t('أوامر نقل نوعُها يخالف صفةَ هذا العميل', "Reports whose type differs from this customer's")}>
                         {t(`مخالف: ${r.conflicts}`, `differs: ${r.conflicts}`)}
                       </span>
                     )}
@@ -307,7 +307,7 @@ export default function PaymentTypesPage() {
 
       <p className="text-[12px] text-slate-400 flex items-start gap-1.5 leading-relaxed">
         <HelpCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-        {t('تغييرُ صفةِ عميلٍ هنا يملأ كشوفَه التي لا نوعَ لها، ولا يمسّ كشفًا اختار موظّفٌ نوعَه بيده — تلك واقعةٌ على حمولةٍ بعينها، وهذه صفةٌ عامّة.',
+        {t('تغييرُ صفةِ عميلٍ هنا يملأ كشوفَه التي لا نوعَ لها، ولا يمسّ أمر نقل اختار موظّفٌ نوعَه بيده — تلك واقعةٌ على حمولةٍ بعينها، وهذه صفةٌ عامّة.',
            "Changing a customer's type fills their untyped reports and never touches a report someone typed by hand.")}
       </p>
     </div>

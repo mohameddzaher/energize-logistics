@@ -140,7 +140,7 @@ export const kindWords = (kind: PartyKind, ar: boolean) =>
       totalLabel: ar ? 'إجمالي المشتريات' : 'Total purchased',
       settledLabel: ar ? 'المسدَّد' : 'Paid',
       dueLabel: ar ? 'المستحق عليه' : 'Payable',
-      openLabel: ar ? 'كشوف لم تُسدَّد' : 'Unpaid reports',
+      openLabel: ar ? 'أوامر نقل لم تُسدَّد' : 'Unpaid reports',
       newOne: ar ? 'مورد جديد' : 'New supplier',
     };
 

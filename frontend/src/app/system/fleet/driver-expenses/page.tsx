@@ -129,7 +129,7 @@ export default function DriverExpensesPage() {
   };
 
   const cols: ExportColumn[] = [
-    { header: t('رقم الكشف', 'Waybill'), key: 'waybillNumber', width: 12 },
+    { header: t('رقم أمر النقل', 'Transport order'), key: 'waybillNumber', width: 12 },
     { header: t('رقم السيارة', 'Vehicle'), key: 'vehiclePlate', width: 14 },
     { header: t('تاريخ بداية الحمولة', 'Load date'), key: 'loadDate', width: 16, transform: (v: any) => dt(v) },
     { header: t('السائق', 'Driver'), key: 'driverName', width: 22 },
@@ -238,7 +238,7 @@ export default function DriverExpensesPage() {
         <div className="relative">
           <Search className="pointer-events-none absolute top-1/2 -translate-y-1/2 start-2.5 h-4 w-4 text-slate-400" />
           <input value={search} onChange={(e) => setSearch(e.target.value)} className={`${inp} ps-8 w-56`}
-            placeholder={t('كشف أو سائق أو لوحة…', 'Waybill, driver or plate…')} />
+            placeholder={t('أمر نقل أو سائق أو لوحة…', 'Transport order, driver or plate…')} />
         </div>
 
         {canPay && !!picked.size && (
@@ -276,7 +276,7 @@ export default function DriverExpensesPage() {
                       aria-label={t('تحديد الكل', 'Select all')} />
                   </th>
                 )}
-                {[t('رقم الكشف', 'Waybill'), t('رقم السيارة', 'Vehicle'), t('تاريخ بداية الحمولة', 'Load date'),
+                {[t('رقم أمر النقل', 'Transport order'), t('رقم السيارة', 'Vehicle'), t('تاريخ بداية الحمولة', 'Load date'),
                   t('السائق', 'Driver'), t('السائق الثاني', 'Second driver'), t('رقم الإيبان', 'IBAN'),
                   t('المصروف الفعلي', 'Actual expense'), t('حالة الدفع', 'Payment status')].map((h) => (
                   <th key={h} className="px-3 py-2.5 text-start font-semibold whitespace-nowrap">{h}</th>

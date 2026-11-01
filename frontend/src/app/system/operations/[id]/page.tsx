@@ -237,7 +237,7 @@ export default function WorkflowDetailPage() {
   const handleDeleteWorkflow = async () => {
     if (!workflow) return;
     if (!window.confirm(lang === 'ar'
-      ? `حذف الكشف ${workflow.reportNumber} نهائيًّا؟ يختفي من تقارير التشغيل والتحصيل.`
+      ? `حذف أمر النقل ${workflow.reportNumber} نهائيًّا؟ يختفي من تقارير التشغيل والتحصيل.`
       : `Permanently delete report ${workflow.reportNumber}? It leaves the operations and collections reports.`)) return;
     try {
       await api.delete(`/api/workflows/${workflow._id}`);
@@ -414,7 +414,7 @@ export default function WorkflowDetailPage() {
                 </button>
                 {['super_admin', 'admin', 'operations_manager'].includes(role || '') && (
                   <button type="button" onClick={handleDeleteWorkflow}
-                    title={lang === 'ar' ? 'حذف الكشف' : 'Delete report'}
+                    title={lang === 'ar' ? 'حذف أمر النقل' : 'Delete report'}
                     className="p-2 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors">
                     <Trash2 className="w-4 h-4" />
                   </button>
@@ -531,8 +531,8 @@ export default function WorkflowDetailPage() {
           <div>
             <p className="text-slate-500 text-xs">{T.createdBy}</p>
             {/* ── ولا يُنسَب المنقولُ إلى إنسان ──────────────────────────────
-                كانت المزامنةُ تختم كلَّ كشفٍ تنشئه باسم أوّلِ سوبر أدمنَ تجده
-                في القاعدة، فقرأ أربعةٌ وثلاثون ألفَ كشفٍ «أنشأتها فتون» وهي
+                كانت المزامنةُ تختم كلَّ أمر نقل تنشئه باسم أوّلِ سوبر أدمنَ تجده
+                في القاعدة، فقرأ أربعةٌ وثلاثون ألفَ أمر نقل «أنشأتها فتون» وهي
                 لم تفتح واحدًا منها. والمنقولُ لا مُنشئَ له عندنا — ومصدرُه
                 يُقال بدل أن تُترك الخانةُ فارغةً بلا تفسير. */}
             <p className="text-slate-700 mt-0.5">

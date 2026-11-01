@@ -266,7 +266,7 @@ export default function CollectionsPartiesPage({ kind }: { kind: PartyKind }) {
     { header: t('مهلة السداد', 'Credit days'), key: 'creditDays', width: 12, align: 'end' },
     // الملفُّ لا يخرج بما لا يُعرَض على الشاشة.
     ...(hideMoney ? [] : ([
-      { header: t('كشوف', 'Reports'), key: 'reports', width: 10, align: 'end',
+      { header: t('أوامر نقل', 'Reports'), key: 'reports', width: 10, align: 'end',
         cell: (p: any) => (
           <span className="tabular-nums">
             {money(p.reports)}
@@ -280,7 +280,7 @@ export default function CollectionsPartiesPage({ kind }: { kind: PartyKind }) {
       { header: W.dueLabel, key: 'outstanding', width: 16, align: 'end',
         cell: (p: any) => <span className={`tabular-nums font-semibold ${p.outstanding > 0 ? 'text-red-600' : 'text-slate-400'}`}>{money(p.outstanding)}</span> },
     ] as Col[])),
-    { header: t('آخر كشف', 'Last report'), key: 'lastReportAt', width: 14, transform: (v: any) => dt(v) },
+    { header: t('آخر أمر نقل', 'Last report'), key: 'lastReportAt', width: 14, transform: (v: any) => dt(v) },
     { header: t('التواصل', 'Contact'), key: 'phone', width: 22, cell: contactCell },
     { header: t('مسؤول التواصل', 'Contact person'), key: 'contactPerson', width: 20 },
     { header: t('المدينة', 'City'), key: 'city', width: 14 },
@@ -401,7 +401,7 @@ export default function CollectionsPartiesPage({ kind }: { kind: PartyKind }) {
 
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
         <Stat label={W.title} value={money(total)} />
-        <Stat label={t('كشوف', 'Reports')} value={money(totals.reports)} />
+        <Stat label={t('أوامر نقل', 'Reports')} value={money(totals.reports)} />
         {!hideMoney && <Stat label={W.totalLabel} value={money(sums.total)} />}
         {!hideMoney && <Stat label={W.settledLabel} value={money(sums.settled)} accent="text-emerald-600" />}
         {!hideMoney && <Stat label={W.dueLabel} value={money(sums.outstanding)} accent={sums.outstanding > 0 ? 'text-red-600' : 'text-slate-900'} />}
@@ -624,8 +624,8 @@ export default function CollectionsPartiesPage({ kind }: { kind: PartyKind }) {
             </Field>
             {/* ── نوعُ الحساب لا نوعُ الشحنة ────────────────────────────────
                 يقول في أيّ دفترٍ يجلس الحساب، ومنه يُولَّد كودُه: النقديُّ
-                `C####` والضريبيُّ `1104####`. ولا يقرّر نوعَ دفعِ كشفٍ بعينه —
-                ذاك يُكتب على الكشف في سير عمل التشغيل، لأنّ العميلَ الواحد
+                `C####` والضريبيُّ `1104####`. ولا يقرّر نوعَ دفعِ أمر نقل بعينه —
+                ذاك يُكتب على أمر النقل في سير عمل التشغيل، لأنّ العميلَ الواحد
                 يحاسب كاشًا في حمولةٍ وضريبيًّا في أخرى. */}
             {kind === 'customer' && (
               <Field label={t('نوع الحساب', 'Account type')}>

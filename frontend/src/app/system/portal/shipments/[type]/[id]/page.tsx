@@ -101,7 +101,7 @@ export default function PortalShipmentDetailPage() {
             <button type="button" onClick={downloadWaybill} disabled={pdfBusy}
               className="inline-flex items-center gap-1.5 rounded-lg bg-[#f37121] px-4 py-2 text-sm font-semibold text-white hover:bg-[#e06010] disabled:opacity-60">
               {pdfBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileDown className="w-4 h-4" />}
-              {tx('Waybill (PDF)', 'البوليصة (PDF)')}
+              {tx('Transport order (PDF)', 'أمر النقل (PDF)')}
             </button>
           )}
         </div>

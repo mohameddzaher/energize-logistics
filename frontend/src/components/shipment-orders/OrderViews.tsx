@@ -48,7 +48,7 @@ export const orderRef = (o: ShipmentOrder) => String((o as any).reference || o.w
 
 /** الرسالةُ الجاهزة للسائق — نفسُها في الجدول والبطاقة. */
 export const driverMessage = (o: ShipmentOrder, ar: boolean) => (ar
-  ? `السلام عليكم، بخصوص البوليصة رقم ${orderRef(o)}${o.fromCity ? ` (${o.fromCity} — ${o.toCity || ''})` : ''}`
+  ? `السلام عليكم، بخصوص أمر النقل رقم ${orderRef(o)}${o.fromCity ? ` (${o.fromCity} — ${o.toCity || ''})` : ''}`
   : `Hello, regarding waybill ${orderRef(o)}${o.fromCity ? ` (${o.fromCity} — ${o.toCity || ''})` : ''}`);
 
 /** شارةُ الحالة: لونُ الحالة المعروفة، أو لونُ ما زاده القسمُ من إعداداته. */
@@ -223,7 +223,7 @@ export function OrderCard({
         {tripNote && (
           <div className="rounded-xl bg-amber-50 border border-amber-200 px-3.5 py-2.5">
             <p className={`font-bold text-amber-700 flex items-center gap-1.5 ${compact ? 'text-[11px]' : 'text-[13px]'}`}>
-              <StickyNote className="w-4 h-4" />{ar ? 'ملاحظة البوليصة' : 'Waybill note'}
+              <StickyNote className="w-4 h-4" />{ar ? 'ملاحظة أمر النقل' : 'Transport order note'}
             </p>
             <p className={`text-amber-950 mt-1 break-words whitespace-pre-wrap ${compact ? 'text-xs line-clamp-3' : 'text-[15px] leading-relaxed'}`}>{tripNote}</p>
           </div>
@@ -275,7 +275,7 @@ export function OrderCard({
           <button type="button" onClick={() => onDownload(o)} disabled={downloading}
             className={`inline-flex items-center justify-center gap-1.5 rounded-xl bg-white border border-slate-200 text-slate-700 font-semibold hover:text-[#f37121] disabled:opacity-50 ${smallBtn}`}>
             {downloading ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileDown className="w-4 h-4" />}
-            {ar ? 'البوليصة' : 'Waybill'}
+            {ar ? 'أمر النقل' : 'Transport order'}
           </button>
           {editor && !compact && (
             <button type="button" onClick={() => onEdit(o)}

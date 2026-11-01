@@ -426,7 +426,7 @@ class _FleetVehicleAnalyticsScreenState extends State<FleetVehicleAnalyticsScree
               child: InkWell(
                 onTap: () => _open(FleetShipmentDetailsScreen(shipmentId: (trip['_id'] ?? '').toString())),
                 child: Text(
-                  '${tr('بوليصة', 'WB')} ${trip['waybillNumber'] ?? ''} → ${trip['toCity'] ?? '—'}'
+                  '${tr('أمر نقل', 'WB')} ${trip['waybillNumber'] ?? ''} → ${trip['toCity'] ?? '—'}'
                   '${trip['expectedArrival'] != null ? ' · ${tr('متوقع', 'ETA')} ${_fmtDT(trip['expectedArrival'])}' : ''}',
                   style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: T.orange),
                 ),
@@ -755,7 +755,7 @@ class _FleetVehicleAnalyticsScreenState extends State<FleetVehicleAnalyticsScree
           padding: const EdgeInsets.all(12),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
-              Text('${tr('بوليصة', 'WB')} ${s['waybillNumber'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5)),
+              Text('${tr('أمر نقل', 'WB')} ${s['waybillNumber'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5)),
               const SizedBox(width: 8),
               Text(_fmtD(s['loadDate'] ?? s['createdAt']), style: const TextStyle(fontSize: 11, color: T.inkFaint)),
               const Spacer(),

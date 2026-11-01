@@ -162,7 +162,7 @@ function Inner() {
         <div className="flex-1 min-w-[14rem]">
           <label className="block text-xs font-semibold text-slate-600 mb-1">{t('بحث', 'Search')}</label>
           <SearchInput value={q} onChange={setQ}
-            placeholder={t('عميل، مورّد، مدينة، سائق، بوليصة…', 'customer, supplier, city, driver, waybill…')} />
+            placeholder={t('عميل، مورّد، مدينة، سائق، أمر نقل…', 'customer, supplier, city, driver, waybill…')} />
         </div>
         <button type="button" onClick={reset}
           className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium">
@@ -328,7 +328,7 @@ function Inner() {
       </div>
 
       {/* ── الشحنات الخاسرة ─────────────────────────────────────────────────
-          بيعٌ أقلُّ من شراء: ليست رقمًا في متوسّط، بل بوليصةٌ باسمها يُسأل عنها. */}
+          بيعٌ أقلُّ من شراء: ليست رقمًا في متوسّط، بل أمر نقل باسمها يُسأل عنها. */}
       {!!d.losing.length && (
         <div className="rounded-2xl border border-red-200 bg-white shadow-sm overflow-hidden">
           <div className="px-4 py-3 bg-red-50 border-b border-red-100 flex items-center gap-2">
@@ -339,7 +339,7 @@ function Inner() {
           <ScrollX>
             <table className="w-full text-sm min-w-[720px]">
               <thead className="table-head">
-                <tr>{[t('البوليصة', 'Waybill'), t('العميل', 'Customer'), t('المورّد', 'Supplier'), t('من', 'From'), t('إلى', 'To'), t('البيع', 'Sell'), t('الشراء', 'Buy'), t('الفرق', 'Spread')]
+                <tr>{[t('أمر النقل', 'Transport order'), t('العميل', 'Customer'), t('المورّد', 'Supplier'), t('من', 'From'), t('إلى', 'To'), t('البيع', 'Sell'), t('الشراء', 'Buy'), t('الفرق', 'Spread')]
                   .map((h) => <th key={h} className="px-3 py-2 text-start font-semibold whitespace-nowrap">{h}</th>)}</tr>
               </thead>
               <tbody className="divide-y divide-slate-100">

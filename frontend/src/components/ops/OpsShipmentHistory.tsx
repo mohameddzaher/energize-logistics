@@ -20,7 +20,7 @@ const driverName = (s: Row, lang: 'en' | 'ar') => locName(s?.driver?.admin?.name
 
 const SEARCH_FIELDS = [
   { value: '', en: 'Anything', ar: 'الكل' },
-  { value: 'graduation', en: 'Graduation #', ar: 'كشف التخريج' },
+  { value: 'graduation', en: 'Graduation #', ar: 'أمر النقل' },
   { value: 'reference', en: 'Reference #', ar: 'رقم المرجع' },
   { value: 'driver_name', en: 'Driver name', ar: 'اسم السائق' },
   { value: 'driver_phone', en: 'Driver phone', ar: 'هاتف السائق' },
@@ -138,7 +138,7 @@ export default function OpsShipmentHistory({ filterKey, filterValue }: { filterK
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-slate-900 text-slate-300">
-              {[lang === 'ar' ? 'كشف التخريج' : 'Statement #', lang === 'ar' ? 'الحالة' : 'Status', lang === 'ar' ? 'من' : 'From', lang === 'ar' ? 'إلى' : 'To', filterKey === 'driver_id' ? (lang === 'ar' ? 'العميل' : 'Customer') : (lang === 'ar' ? 'السائق' : 'Driver'), lang === 'ar' ? 'البيع' : 'Selling', lang === 'ar' ? 'التاريخ' : 'Date'].map((h) => <th key={h} className="text-start font-semibold px-3 py-3 whitespace-nowrap">{h}</th>)}
+              {[lang === 'ar' ? 'أمر النقل' : 'Statement #', lang === 'ar' ? 'الحالة' : 'Status', lang === 'ar' ? 'من' : 'From', lang === 'ar' ? 'إلى' : 'To', filterKey === 'driver_id' ? (lang === 'ar' ? 'العميل' : 'Customer') : (lang === 'ar' ? 'السائق' : 'Driver'), lang === 'ar' ? 'البيع' : 'Selling', lang === 'ar' ? 'التاريخ' : 'Date'].map((h) => <th key={h} className="text-start font-semibold px-3 py-3 whitespace-nowrap">{h}</th>)}
             </tr>
           </thead>
           <tbody>
@@ -172,7 +172,7 @@ export default function OpsShipmentHistory({ filterKey, filterValue }: { filterK
         </div>
       )}
 
-      <Modal open={!!detail} onClose={() => setDetail(null)} wide title={`${lang === 'ar' ? 'شحنة · كشف' : 'Shipment · Statement'} ${detail?.graduation_statement_num ?? ''}`}>
+      <Modal open={!!detail} onClose={() => setDetail(null)} wide title={`${lang === 'ar' ? 'شحنة · أمر نقل' : 'Shipment · Statement'} ${detail?.graduation_statement_num ?? ''}`}>
         {detail && (
           <div className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-x-6 gap-y-2.5">

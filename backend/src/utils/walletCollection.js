@@ -162,8 +162,8 @@ async function applyPlans(items, { user = null, reason = '' } = {}) {
 
   for (const { wf, plan: p, wallet } of todo) {
     const details = p.action === 'undo'
-      ? `${AR.undo} عن الكشف ${wf.reportNumber}${reason ? ` — ${reason}` : ''}`
-      : `${AR[p.action]} على الكشف النقديّ ${wf.reportNumber}: ${wallet.amount} ريال بتاريخ ${wallet.date}`
+      ? `${AR.undo} عن أمر النقل ${wf.reportNumber}${reason ? ` — ${reason}` : ''}`
+      : `${AR[p.action]} على أمر النقل النقديّ ${wf.reportNumber}: ${wallet.amount} ريال بتاريخ ${wallet.date}`
         + `${wallet.count > 1 ? ` (مجموعُ ${wallet.count} قيود)` : ''}${reason ? ` — ${reason}` : ''}`;
     // eslint-disable-next-line no-await-in-loop
     await logAudit({

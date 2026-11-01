@@ -191,7 +191,7 @@ export default function FleetPage() {
     if (!vehForm.plate.trim()) return;
     // البوليصةُ تطبع الماركةَ واللون، فالخانتان تُطلبان هنا لا تُترَكان للورقة.
     if (!String(vehForm.brand || '').trim() || !String(vehForm.color || '').trim()) {
-      notify(ar ? 'الماركة واللون مطلوبان — يُطبعان في البوليصة.' : 'Brand and colour are required — they print on the waybill.', 'error');
+      notify(ar ? 'الماركة واللون مطلوبان — يُطبعان في أمر النقل.' : 'Brand and colour are required — they print on the waybill.', 'error');
       return;
     }
     setSaving(true);
@@ -416,7 +416,7 @@ export default function FleetPage() {
           )}
           {gaps.noBrand > 0 && (
             <span className="text-xs text-amber-800">
-              {ar ? `· ${gaps.noBrand} بلا ماركة أو لون — تُطبَع فارغةً في البوليصة`
+              {ar ? `· ${gaps.noBrand} بلا ماركة أو لون — تُطبَع فارغةً في أمر النقل`
                   : `· ${gaps.noBrand} with no brand or colour — they print blank on the waybill`}
             </span>
           )}
@@ -820,7 +820,7 @@ export default function FleetPage() {
           <Field label={ar ? 'رقم اللوحة *' : 'Plate *'}><TextInput value={vehForm.plate} onChange={(e) => setVehForm((f: any) => ({ ...f, plate: e.target.value }))} /></Field>
           <Field label={ar ? 'الوصف' : 'Description'}><TextInput value={vehForm.name} onChange={(e) => setVehForm((f: any) => ({ ...f, name: e.target.value }))} /></Field>
           {/* ── الماركةُ واللونُ مطلوبان ────────────────────────────────────
-              البوليصةُ فيها «بيانات السيارة»: اللوحةُ والماركةُ واللون. وكانت
+              أمر النقل فيها «بيانات السيارة»: اللوحةُ والماركةُ واللون. وكانت
               الخانتان تُطبَعان فارغتين في كلّ ورقةٍ تخرج مع سائقٍ ويُتحقَّق منها
               في البوّابات — لأنّ السجلَّ لم يكن يسأل عنهما أصلًا. */}
           <Field label={ar ? 'الماركة *' : 'Brand *'}>

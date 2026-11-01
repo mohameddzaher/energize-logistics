@@ -310,7 +310,7 @@ class _VehicleCard extends StatelessWidget {
                 const SizedBox(width: 4),
                 Expanded(
                   child: Text(
-                    '${tr('بوليصة', 'Waybill')} ${trip['waybillNumber']} — ${trip['fromCity'] ?? ''} ← ${trip['toCity'] ?? ''}'
+                    '${tr('أمر نقل', 'Transport order')} ${trip['waybillNumber']} — ${trip['fromCity'] ?? ''} ← ${trip['toCity'] ?? ''}'
                     '${(trip['customerName'] ?? '').toString().isNotEmpty ? ' · ${trip['customerName']}' : ''}',
                     style: const TextStyle(fontSize: 13, color: T.ink, fontWeight: FontWeight.w600),
                     overflow: TextOverflow.ellipsis,

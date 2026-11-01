@@ -85,7 +85,7 @@ export default function NoteModal({ order, ar, onClose, onSaved }: {
           <div className="min-w-0">
             <p className="text-lg font-bold text-slate-900">{ar ? 'ملاحظات المتابعة' : 'Follow-up notes'}</p>
             <p className="text-sm text-slate-500 mt-0.5 break-words">
-              {ar ? 'بوليصة' : 'Waybill'} <span className="font-mono font-bold text-slate-700">{orderRef(cur)}</span>
+              {ar ? 'أمر نقل' : 'Transport order'} <span className="font-mono font-bold text-slate-700">{orderRef(cur)}</span>
               {cur.customerName ? ` · ${cur.customerName}` : ''}
             </p>
           </div>
@@ -102,7 +102,7 @@ export default function NoteModal({ order, ar, onClose, onSaved }: {
             className="w-full px-4 py-3 rounded-xl bg-white border border-slate-300 text-base text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
           <div className="flex items-center justify-between gap-2">
             <p className="text-xs text-slate-400">
-              {ar ? 'لا تغيّر الحالة ولا تُطبَع في البوليصة.' : 'Does not change the status or print on the waybill.'}
+              {ar ? 'لا تغيّر الحالة ولا تُطبَع في أمر النقل.' : 'Does not change the status or print on the waybill.'}
             </p>
             <button type="button" onClick={add} disabled={busy === 'new' || !text.trim()}
               className="min-h-[44px] shrink-0 inline-flex items-center gap-1.5 px-5 rounded-xl bg-[#f37121] text-white text-base font-semibold hover:bg-[#e06010] disabled:opacity-50">

@@ -20,7 +20,7 @@ const LABELS = {
   directManager: 'المدير المباشر', contractType: 'نوع العقد', salary: 'الراتب',
   phone: 'الجوال', email: 'البريد الإلكتروني', passportNumber: 'رقم الجواز',
   plateNumber: 'رقم اللوحة', name: 'الاسم', idNumber: 'رقم الهوية',
-  refNumber: 'الرقم المرجعي', reportNumber: 'رقم الكشف', date: 'التاريخ',
+  refNumber: 'الرقم المرجعي', reportNumber: 'رقم أمر النقل', date: 'التاريخ',
 };
 const label = (p) => LABELS[p] || LABELS[String(p).split('.').pop()] || p;
 

@@ -27,7 +27,7 @@ const BOARD_COLUMNS = [
   { header: 'Supervisor', key: 'supervisorName', width: 20 },
   { header: 'State', key: 'state', width: 12 },
   { header: 'Drivers', key: 'drivers', transform: (v: any) => (v || []).map((d: any) => d.name).join(' + '), width: 26 },
-  { header: 'Waybill', key: 'trip', transform: (v: any) => v?.waybillNumber ?? '', width: 10 },
+  { header: 'Transport order', key: 'trip', transform: (v: any) => v?.waybillNumber ?? '', width: 10 },
   { header: 'Customer', key: 'trip', transform: (v: any) => v?.customerName || '', width: 24 },
   { header: 'From', key: 'trip', transform: (v: any) => v?.fromCity || '', width: 14 },
   { header: 'To', key: 'trip', transform: (v: any) => v?.toCity || '', width: 14 },
@@ -292,7 +292,7 @@ export default function FleetBoardPage() {
                       <p className="flex items-center gap-1.5 font-medium">
                         <MapPin className="w-3.5 h-3.5 text-slate-500 shrink-0" />
                         {c.trip.fromCity || '—'} ← <b>{c.trip.toCity || '—'}</b>
-                        <span className="text-slate-500 font-normal">· {ar ? 'بوليصة' : 'WB'} {c.trip.waybillNumber}</span>
+                        <span className="text-slate-500 font-normal">· {ar ? 'أمر نقل' : 'WB'} {c.trip.waybillNumber}</span>
                       </p>
                       <p className="text-slate-600 truncate">{c.trip.customerName || '—'} · {c.trip.driverName || (c.drivers[0]?.name ?? '—')}</p>
                       {c.trip.expectedArrival && (

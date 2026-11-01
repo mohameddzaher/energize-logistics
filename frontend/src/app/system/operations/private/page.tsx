@@ -347,7 +347,7 @@ export default function OperationsPrivatePage() {
     { key: 'payingBranch', label: T.thPayingBranch, tone: 'text-purple-300' },
     { key: 'paymentAmount', label: T.thPaymentAmount, kind: 'num', tone: 'text-purple-300' },
     { key: 'paymentType', label: T.thPaymentType, kind: 'ptype', tone: 'text-purple-300' },
-    { key: 'finalReportDestination', label: ar ? 'وجهة الكشف النهائية' : 'Final destination', tone: 'text-purple-300' },
+    { key: 'finalReportDestination', label: ar ? 'وجهة أمر النقل النهائية' : 'Final destination', tone: 'text-purple-300' },
     { key: 'documentNumber', label: T.thDocNumber, tone: 'text-purple-300' },
     { key: 'sendingDate', label: T.thSendingDate, kind: 'date', tone: 'text-purple-300' },
     { key: 'branchDeliveryDate', label: T.thBranchDeliveryDate, kind: 'date', tone: 'text-purple-300' },
@@ -481,7 +481,7 @@ export default function OperationsPrivatePage() {
       <PageHeader icon={<Lock className="w-5 h-5 text-[#f37121]" />}
         title={ar ? 'التشغيل — خاصّ' : 'Operations — private'}
         subtitle={ar
-          ? 'نفس كشوف سير عمل التشغيل، بقيمة البيع وربحها — القيمةُ نفسُها التي في سير العمل، وتعديلُها هنا يُكتب هناك وفي منصّة التشغيل'
+          ? 'نفس أوامر نقل سير عمل التشغيل، بقيمة البيع وربحها — القيمةُ نفسُها التي في سير العمل، وتعديلُها هنا يُكتب هناك وفي منصّة التشغيل'
           : 'The same operations sheets with selling value and profit — the very value in the workflow; editing it here writes there and to the platform'}>
         <ExportMenu lang={ar ? 'ar' : 'en'} fileName="operations-private" variant="subtle"
           options={[
@@ -493,7 +493,7 @@ export default function OperationsPrivatePage() {
 
       {/* ── بطاقاتُ حالة الشحنة ────────────────────────────────────────────────
           لم تكن هنا: الصفحةُ تعرض المالَ وحدَه، ومن أراد «ما هو في الطريق
-          الآن» فتح قائمةَ العمود. وهي الكشوفُ نفسُها التي في «سير عمل
+          الآن» فتح قائمةَ العمود. وهي أوامر النقل نفسُها التي في «سير عمل
           التشغيل»، فلها بطاقاتُها نفسُها — والأعدادُ من الخادم على الفلتر كلِّه
           لا على الصفحة المعروضة.
 
@@ -532,7 +532,7 @@ export default function OperationsPrivatePage() {
 
       {/* ── ولوحةُ التحليل تُفتَح من هنا ──────────────────────────────────────
           هي اللوحةُ التي يعمل بها مديرُ التشغيل (ورقتُه في إكسل) — وموضعُها
-          هذه الصفحةُ لأنّها الصفحةُ التي فيها ربحُ كلّ كشف. وتُطوى
+          هذه الصفحةُ لأنّها الصفحةُ التي فيها ربحُ كلّ أمر نقل. وتُطوى
           افتراضًا: من يفتح الصفحةَ يفتحها للجدول عادةً، فلا تُؤخَّر بحسابٍ
           لا يطلبه. راجع components/ops/OpsAnalytics. */}
       <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
@@ -562,7 +562,7 @@ export default function OperationsPrivatePage() {
           </div>
           <p className="mt-2 text-2xl font-bold tabular-nums text-emerald-700">{stats ? money(stats.sumSelling) : '…'}</p>
           <p className="mt-1 text-[11px] text-slate-500">
-            {stats ? (ar ? `على ${stats.priced.toLocaleString()} كشفًا مسعَّرًا` : `over ${stats.priced.toLocaleString()} priced sheets`) : ''}
+            {stats ? (ar ? `على ${stats.priced.toLocaleString()} أمر نقل مسعَّرًا` : `over ${stats.priced.toLocaleString()} priced sheets`) : ''}
           </p>
         </div>
         <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -670,7 +670,7 @@ export default function OperationsPrivatePage() {
             </button>
           )}
           <span className="ms-auto text-xs text-slate-500 tabular-nums">
-            {ar ? `${total.toLocaleString()} كشفًا حسب الفلتر` : `${total.toLocaleString()} sheets match`}
+            {ar ? `${total.toLocaleString()} أمر نقل حسب الفلتر` : `${total.toLocaleString()} sheets match`}
           </span>
         </div>
       </div>
@@ -691,7 +691,7 @@ export default function OperationsPrivatePage() {
             <tbody className="divide-y divide-slate-200">
               {rows.length === 0 && (
                 <tr><td colSpan={colCount} className="py-14 text-center text-slate-500">
-                  {hasColFilters || priced || pendingOnly ? (ar ? 'لا نتائج للفلتر المحدد' : 'No rows match the filters') : (ar ? 'لا كشوف.' : 'No sheets.')}
+                  {hasColFilters || priced || pendingOnly ? (ar ? 'لا نتائج للفلتر المحدد' : 'No rows match the filters') : (ar ? 'لا أوامر نقل.' : 'No sheets.')}
                 </td></tr>
               )}
               {rows.map((r) => (
@@ -753,7 +753,7 @@ export default function OperationsPrivatePage() {
 
         <div className="flex items-center justify-between px-4 py-3 border-t border-slate-200">
           <p className="text-xs text-slate-500">
-            {ar ? `${total.toLocaleString()} كشفًا · صفحة ${page} من ${pages}` : `${total.toLocaleString()} sheets · page ${page} of ${pages}`}
+            {ar ? `${total.toLocaleString()} أمر نقل · صفحة ${page} من ${pages}` : `${total.toLocaleString()} sheets · page ${page} of ${pages}`}
           </p>
           <div className="flex items-center gap-1">
             <button type="button" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}

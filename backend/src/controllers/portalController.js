@@ -608,7 +608,7 @@ exports.waybill = async (req, res) => {
     res.send(pdf);
   } catch (error) {
     console.error('portal waybill error:', error.message);
-    res.status(500).json({ message: 'تعذّر توليد البوليصة' });
+    res.status(500).json({ message: 'تعذّر توليد أمر النقل' });
   }
 };
 

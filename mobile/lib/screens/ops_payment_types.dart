@@ -106,18 +106,18 @@ class _OpsPaymentTypesScreenState extends State<OpsPaymentTypesScreen> {
       if (!mounted) return;
       setState(() => row['paymentType'] = type);
       final changed = ((r['changed'] ?? 0) as num).toInt();
-      opsSnack(context, changed > 0 ? tr('حُفظ — وسرى على $changed كشفًا بلا نوع', 'Saved — applied to $changed reports') : tr('حُفظ', 'Saved'));
+      opsSnack(context, changed > 0 ? tr('حُفظ — وسرى على $changed أمر نقل بلا نوع', 'Saved — applied to $changed reports') : tr('حُفظ', 'Saved'));
       final remaining = ((r['remaining'] ?? 0) as num).toInt();
       if (remaining > 0) {
         final goAll = await opsConfirm(context, tr(
-          'ولهذا العميل $remaining كشفًا بنوعٍ مخالفٍ لصفته الجديدة. أحوّلها كلَّها؟\n\nالتحويل يغيّر أين تُفوتَر هذه الكشوف وأين تُحصَّل — وما اختاره موظّفٌ بيده لا يُمسّ على كلّ حال.',
+          'ولهذا العميل $remaining أمر نقل بنوعٍ مخالفٍ لصفته الجديدة. أحوّلها كلَّها؟\n\nالتحويل يغيّر أين تُفوتَر هذه أوامر النقل وأين تُحصَّل — وما اختاره موظّفٌ بيده لا يُمسّ على كلّ حال.',
           "$remaining of this customer's reports carry a different type. Convert them all?\n\nThis changes where those reports are invoiced and collected. Types chosen by hand are never touched.",
         ));
         if (goAll) {
           final all = await Api.instance.put('/api/workflows/payment-types/${row['_id']}', {'paymentType': type, 'onlyEmpty': false});
           final sk = ((all['skippedManual'] ?? 0) as num).toInt();
           if (mounted) {
-            opsSnack(context, tr('حُوِّل ${all['changed'] ?? 0} كشفًا${sk > 0 ? ' · وتُرك $sk باختيارٍ يدويّ' : ''}',
+            opsSnack(context, tr('حُوِّل ${all['changed'] ?? 0} أمر نقل${sk > 0 ? ' · وتُرك $sk باختيارٍ يدويّ' : ''}',
                 'Converted ${all['changed'] ?? 0} reports${sk > 0 ? ' · $sk left as hand-picked' : ''}'));
           }
         }
@@ -135,14 +135,14 @@ class _OpsPaymentTypesScreenState extends State<OpsPaymentTypesScreen> {
     if (n == 0) return;
     final to = row['paymentType'] == 'cash' ? tr('كاش', 'cash') : tr('ضريبي', 'tax');
     final ok = await opsConfirm(context, tr(
-      'توحيد $n كشفًا لـ«${row['name']}» على «$to»؟\n\nهذه كشوفٌ نوعُها مكتوبٌ من شيت المتابعة ويخالف صفة العميل. التوحيد يغيّر أين تُفوتَر وأين تُحصَّل، ولا يمسّ ما اختير باليد ولا ما صدرت له فاتورة.',
+      'توحيد $n أمر نقل لـ«${row['name']}» على «$to»؟\n\nهذه أوامر نقل نوعُها مكتوبٌ من شيت المتابعة ويخالف صفة العميل. التوحيد يغيّر أين تُفوتَر وأين تُحصَّل، ولا يمسّ ما اختير باليد ولا ما صدرت له فاتورة.',
       'Unify $n reports of “${row['name']}” to $to?\n\nTheir type came from the follow-up sheet and differs from the customer. This changes where they are invoiced and collected. Hand-picked types and already-invoiced reports are untouched.',
     ));
     if (!ok) return;
     setState(() => _unifying = '${row['_id']}');
     try {
       final r = await Api.instance.post('/api/workflows/payment-types/${row['_id']}/unify', {});
-      if (mounted) opsSnack(context, (r['message'] ?? tr('وُحِّد ${r['changed'] ?? 0} كشفًا', 'Unified ${r['changed'] ?? 0} reports')).toString());
+      if (mounted) opsSnack(context, (r['message'] ?? tr('وُحِّد ${r['changed'] ?? 0} أمر نقل', 'Unified ${r['changed'] ?? 0} reports')).toString());
       _load();
     } catch (e) {
       if (mounted) opsSnack(context, opsErr(e), error: true);
@@ -158,12 +158,12 @@ class _OpsPaymentTypesScreenState extends State<OpsPaymentTypesScreen> {
       final p = await Api.instance.post('/api/workflows/payment-types/apply', {'preview': true, 'onlyEmpty': true});
       final would = ((p['wouldChange'] ?? 0) as num).toInt();
       if (!mounted) return;
-      if (would == 0) { opsSnack(context, tr('لا كشفَ بلا نوعٍ يمكن ملؤه', 'Nothing to fill')); return; }
+      if (would == 0) { opsSnack(context, tr('لا أمر نقل بلا نوعٍ يمكن ملؤه', 'Nothing to fill')); return; }
       final detail = ((p['moves'] as Map?) ?? const {}).entries.map((e) => '${e.key}: ${e.value}').join('\n');
-      final go = await opsConfirm(context, tr('سيُملأ نوعُ الدفع على $would كشفًا بلا نوع.\n\n$detail\n\nولن يُمَسّ كشفٌ اختار موظّفٌ نوعَه بيده.', '$would reports will be filled.\n\n$detail'));
+      final go = await opsConfirm(context, tr('سيُملأ نوعُ الدفع على $would أمر نقل بلا نوع.\n\n$detail\n\nولن يُمَسّ أمر نقل اختار موظّفٌ نوعَه بيده.', '$would reports will be filled.\n\n$detail'));
       if (!go) return;
       final r = await Api.instance.post('/api/workflows/payment-types/apply', {'onlyEmpty': true});
-      if (mounted) opsSnack(context, tr('مُلئ ${r['changed'] ?? 0} كشفًا', '${r['changed'] ?? 0} reports filled'));
+      if (mounted) opsSnack(context, tr('مُلئ ${r['changed'] ?? 0} أمر نقل', '${r['changed'] ?? 0} reports filled'));
       _load();
     } catch (e) {
       if (mounted) opsSnack(context, opsErr(e), error: true);
@@ -198,7 +198,7 @@ class _OpsPaymentTypesScreenState extends State<OpsPaymentTypesScreen> {
       ExportCol('العميل', 'Customer', (r) => r['name'] ?? ''),
       ExportCol('نوع الدفع', 'Payment type', (r) => _typeLabel('${r['paymentType'] ?? ''}')),
       ExportCol('الإدارة', 'Department', (r) => r['department'] ?? ''),
-      ExportCol('عدد الكشوف', 'Reports', (r) => r['reports'] ?? 0),
+      ExportCol('عدد أوامر النقل', 'Reports', (r) => r['reports'] ?? 0),
       ExportCol('منها كاش', 'Cash reports', (r) => r['cashReports'] ?? 0),
       ExportCol('منها ضريبي', 'Tax reports', (r) => r['taxReports'] ?? 0),
       ExportCol('مخالف لصفته', 'Conflicting', (r) => r['conflicts'] ?? 0),
@@ -210,7 +210,7 @@ class _OpsPaymentTypesScreenState extends State<OpsPaymentTypesScreen> {
         ExportButton(fileName: 'payment-types', sheetName: tr('أنواع الدفع', 'Payment types'), columns: cols, rows: () => _shown),
         if (canWrite)
           IconButton(
-            tooltip: tr('ملء الكشوف بلا نوع', 'Fill untyped reports'),
+            tooltip: tr('ملء أوامر النقل بلا نوع', 'Fill untyped reports'),
             onPressed: _applying ? null : _applyAll,
             icon: _applying ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.auto_fix_high),
           ),
@@ -228,7 +228,7 @@ class _OpsPaymentTypesScreenState extends State<OpsPaymentTypesScreen> {
                       decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: T.line)),
                       child: Text.rich(TextSpan(children: [
                         TextSpan(text: '${tr('كيف يُقرَّر نوعُ الكشف؟', 'How a report gets its type')} ', style: const TextStyle(fontWeight: FontWeight.w800)),
-                        TextSpan(text: tr('اختيارُ الموظّف على الكشف يغلب كلَّ شيء. فإن لم يُختَر: متى قالت منصّةُ التشغيل إنّ طريقة دفع الحمولة «كاش» فهي نقديّة ولو كان العميلُ ضريبيًّا — وهو الاستثناء الوحيد. وما عدا ذلك يأخذ صفةَ العميل من هذه الصفحة.',
+                        TextSpan(text: tr('اختيارُ الموظّف على أمر النقل يغلب كلَّ شيء. فإن لم يُختَر: متى قالت منصّةُ التشغيل إنّ طريقة دفع الحمولة «كاش» فهي نقديّة ولو كان العميلُ ضريبيًّا — وهو الاستثناء الوحيد. وما عدا ذلك يأخذ صفةَ العميل من هذه الصفحة.',
                             "A choice made on the report wins. Otherwise: if the platform says the load is paid cash it is cash even for a taxed customer — the only exception. Everything else takes the customer's type from this page.")),
                       ]), style: const TextStyle(fontSize: 11.5, color: T.inkSoft, height: 1.5)),
                     ),
@@ -242,13 +242,13 @@ class _OpsPaymentTypesScreenState extends State<OpsPaymentTypesScreen> {
                         _chip('tax', tr('ضريبي', 'Tax'), (_totals['tax'] ?? 0) as num, T.info),
                         _chip('none', tr('بلا نوع', 'Not set'), (_totals['none'] ?? 0) as num, T.warn),
                         if (((_totals['conflictCustomers'] ?? 0) as num) > 0)
-                          _chip('conflict', tr('مخالف لصفته · ${_totals['conflictReports'] ?? 0} كشفًا', 'Conflicting · ${_totals['conflictReports'] ?? 0} reports'),
+                          _chip('conflict', tr('مخالف لصفته · ${_totals['conflictReports'] ?? 0} أمر نقل', 'Conflicting · ${_totals['conflictReports'] ?? 0} reports'),
                               (_totals['conflictCustomers'] ?? 0) as num, T.danger),
                       ]),
                     ),
                     Padding(
                       padding: const EdgeInsets.symmetric(vertical: 6),
-                      child: Text(tr('${shown.length} من ${_totals['customers'] ?? 0} عميلًا · ${opsMoney(_totals['reports'] ?? 0)} كشفًا', '${shown.length} of ${_totals['customers'] ?? 0} customers'),
+                      child: Text(tr('${shown.length} من ${_totals['customers'] ?? 0} عميلًا · ${opsMoney(_totals['reports'] ?? 0)} أمر نقل', '${shown.length} of ${_totals['customers'] ?? 0} customers'),
                           style: const TextStyle(fontSize: 11, color: T.inkFaint)),
                     ),
                     if (shown.isEmpty) EmptyState(icon: Icons.payments_outlined, title: tr('لا عملاءَ مطابقين', 'No matching customers')),
@@ -304,7 +304,7 @@ class _OpsPaymentTypesScreenState extends State<OpsPaymentTypesScreen> {
                         ),
                       ),
                     const SizedBox(height: 6),
-                    Text(tr('تغييرُ صفةِ عميلٍ هنا يملأ كشوفَه التي لا نوعَ لها، ولا يمسّ كشفًا اختار موظّفٌ نوعَه بيده — تلك واقعةٌ على حمولةٍ بعينها، وهذه صفةٌ عامّة.',
+                    Text(tr('تغييرُ صفةِ عميلٍ هنا يملأ كشوفَه التي لا نوعَ لها، ولا يمسّ أمر نقل اختار موظّفٌ نوعَه بيده — تلك واقعةٌ على حمولةٍ بعينها، وهذه صفةٌ عامّة.',
                         "Changing a customer's type fills their untyped reports and never touches a report someone typed by hand."),
                         style: const TextStyle(fontSize: 11, color: T.inkFaint)),
                   ]),

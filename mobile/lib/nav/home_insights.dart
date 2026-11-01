@@ -105,7 +105,7 @@ const _customs = HomeInsight('نظرة التخليص', 'Customs snapshot', '/ap
 ]);
 
 const _executive = HomeInsight('النظرة التنفيذية', 'Executive snapshot', '/api/analytics/executive', 'executive:changed', [
-  HomeKpi('كشوف الشهر', 'Sheets (month)', 'headline.sheetsMonth', Icons.workspaces_outline, T.navy),
+  HomeKpi('أوامر نقل الشهر', 'Sheets (month)', 'headline.sheetsMonth', Icons.workspaces_outline, T.navy),
   HomeKpi('المستحق على العملاء', 'Receivable', 'headline.receivable', Icons.request_quote_outlined, T.warn, money: true),
   HomeKpi('المحصَّل هذا الشهر', 'Collected (month)', 'headline.collectedMonth', Icons.payments_outlined, T.success, money: true),
 ]);

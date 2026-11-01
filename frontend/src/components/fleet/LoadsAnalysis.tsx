@@ -108,7 +108,7 @@ export default function LoadsAnalysis({ active = true }: { active?: boolean }) {
   }, [params, active]);
 
   const loadCols = [
-    { header: 'Waybill', key: 'waybillNumber', width: 10 },
+    { header: 'Transport order', key: 'waybillNumber', width: 10 },
     { header: 'Load date', key: 'loadDate', transform: (v: any, r: any) => fmtD(v || r.createdAt), width: 13 },
     { header: 'Customer', key: 'customerName', width: 24 },
     { header: 'Customer type', key: 'customerType', transform: (v: any) => (v === 'heavy' ? 'Heavy' : v === 'branch' ? 'Branch' : ''), width: 13 },
@@ -188,7 +188,7 @@ export default function LoadsAnalysis({ active = true }: { active?: boolean }) {
           options={[
             { key: 'view', label: ar ? 'حسب الفلتر الحالي (كل الأوراق)' : 'Current filter (all sheets)', sheets },
             { key: 'loads', label: ar ? 'جدول الحمولات فقط' : 'Loads table only', sheets: sheets.slice(0, 1) },
-            { key: 'expenses', label: ar ? 'كشف مصروف السائقين' : 'Driver expense sheet', sheets: sheets.slice(1, 2) },
+            { key: 'expenses', label: ar ? 'أمر نقل مصروف السائقين' : 'Driver expense sheet', sheets: sheets.slice(1, 2) },
           ]} />
       </PageHeader>
 
@@ -198,7 +198,7 @@ export default function LoadsAnalysis({ active = true }: { active?: boolean }) {
         <PeriodFilter value={period} onChange={setPeriod} lang={ar ? 'ar' : 'en'} />
         <div className="flex flex-wrap gap-3 items-center">
           <div className="flex-1 min-w-[220px]">
-            <SearchInput value={q} onChange={setQ} placeholder={ar ? 'بحث ببوليصة أو عميل أو سائق أو لوحة…' : 'waybill / customer / driver / plate…'} />
+            <SearchInput value={q} onChange={setQ} placeholder={ar ? 'بحث بأمر نقل أو عميل أو سائق أو لوحة…' : 'waybill / customer / driver / plate…'} />
           </div>
           <div className="w-48 grow sm:grow-0">
             <Select value={supervisor} onChange={(e) => setSupervisor(e.target.value)}>
@@ -316,7 +316,7 @@ export default function LoadsAnalysis({ active = true }: { active?: boolean }) {
             <ScrollX>
               <table className="w-full text-sm">
                 <thead><tr className="bg-slate-900 border-b border-slate-200 text-slate-300">
-                  {[ar ? 'البوليصة' : 'Waybill', ar ? 'التاريخ' : 'Date', ar ? 'العميل' : 'Customer', ar ? 'المشرف' : 'Supervisor',
+                  {[ar ? 'أمر النقل' : 'Transport order', ar ? 'التاريخ' : 'Date', ar ? 'العميل' : 'Customer', ar ? 'المشرف' : 'Supervisor',
                     ar ? 'اللوحة' : 'Plate', ar ? 'السائق' : 'Driver', ar ? 'من' : 'From', ar ? 'إلى' : 'To', ar ? 'نوع الحمولة' : 'Load type',
                     ar ? 'الإيجار' : 'Rent', ar ? 'مصروف السائق' : 'Driver expense', ar ? 'الحالة' : 'Status',
                   ].map((h, i) => <th key={i} className={th}>{h}</th>)}

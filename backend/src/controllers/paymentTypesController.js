@@ -273,7 +273,7 @@ exports.unifyCustomer = async (req, res) => {
     try { require('../websocket/socketManager').emitToAll('workflow:updated', { bulk: true, paymentType: true }); } catch (_) {}
     try { require('../websocket/socketManager').emitToAll('collections:changed', { source: 'payment-types' }); } catch (_) {}
 
-    res.json({ changed, type, message: `وُحِّد ${changed} كشفًا على «${type === 'cash' ? 'كاش' : 'ضريبي'}»` });
+    res.json({ changed, type, message: `وُحِّد ${changed} أمر نقل على «${type === 'cash' ? 'كاش' : 'ضريبي'}»` });
   } catch (e) {
     res.status(500).json({ message: 'تعذّر توحيد كشوف العميل', error: e.message });
   }

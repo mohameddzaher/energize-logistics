@@ -75,7 +75,7 @@ export default function CollectionsSettingsPage() {
             {
               href: '/system/operations', Icon: ClipboardList,
               ar: 'سير عمل التشغيل', en: 'Operations workflow',
-              dAr: 'الكشوفُ نفسُها — منها تُقرأ الأرقام، وفيها تُكتب الفاتورةُ وتاريخُ التحصيل.',
+              dAr: 'أوامر النقل نفسُها — منها تُقرأ الأرقام، وفيها تُكتب الفاتورةُ وتاريخُ التحصيل.',
               dEn: 'The reports themselves — the source of every figure here.',
             },
           ].map((c) => (

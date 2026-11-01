@@ -399,7 +399,7 @@ export default function BranchWalletDashboardPage() {
                 <th className="text-start text-slate-300 font-semibold px-4 py-3">{T.customerVendor}</th>
                 <th className="text-start text-slate-300 font-semibold px-4 py-3">{T.amount}</th>
                 <th className="text-start text-slate-300 font-semibold px-4 py-3">{T.reference}</th>
-                <th className="text-start text-slate-300 font-semibold px-4 py-3">{lang === 'ar' ? 'رقم كشف التخريج' : 'DS #'}</th>
+                <th className="text-start text-slate-300 font-semibold px-4 py-3">{lang === 'ar' ? 'رقم أمر النقل' : 'DS #'}</th>
                 <th className="text-start text-slate-300 font-semibold px-4 py-3">{T.client}</th>
                 <th className="text-start text-slate-300 font-semibold px-4 py-3">{T.from}</th>
                 <th className="text-start text-slate-300 font-semibold px-4 py-3">{T.to2}</th>

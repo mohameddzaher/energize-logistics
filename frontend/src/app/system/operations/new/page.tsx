@@ -60,7 +60,7 @@ const OPS_FIELDS: FieldDef[] = [
 const MOD_FIELDS: FieldDef[] = [
   { key: 'paymentDate', label: 'تاريخ السداد', labelEn: 'Payment Date', type: 'date' },
   { key: 'payingBranch', label: 'الفرع المسدد', labelEn: 'Paying Branch' },
-  { key: 'finalReportDestination', label: 'وجهه الكشف النهائي', labelEn: 'Final Report Destination' },
+  { key: 'finalReportDestination', label: 'وجهه أمر النقل النهائي', labelEn: 'Final Report Destination' },
   { key: 'documentNumber', label: 'رقم السند', labelEn: 'Document Number' },
   { key: 'sendingDate', label: 'تاريخ الارسال', labelEn: 'Sending Date', type: 'date' },
   { key: 'deliveryDate', label: 'تاريخ التسليم', labelEn: 'Delivery Date', type: 'date' },

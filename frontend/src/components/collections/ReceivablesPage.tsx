@@ -289,12 +289,12 @@ export default function ReceivablesPage() {
 
   const cols: Col[] = [
     {
-      key: 'number', ar: reportsMode ? 'الكشف' : 'الفاتورة / الكشف', en: reportsMode ? 'Report' : 'Invoice / report', sort: 'number',
+      key: 'number', ar: reportsMode ? 'أمر النقل' : 'الفاتورة / أمر النقل', en: reportsMode ? 'Report' : 'Invoice / report', sort: 'number',
       cell: (r) => (
         <span className="whitespace-nowrap">
           <button type="button" onClick={(e) => { e.stopPropagation(); openRow(r); }}
             className="font-semibold text-[#f37121] hover:underline">{r.invoiceNumber || '—'}</button>
-          <span className="block text-[10px] text-slate-400">{r.source === 'workflow' || r.kind === 'cash' ? t('كشف تخريج', 'exit report') : t('فاتورة', 'invoice')}</span>
+          <span className="block text-[10px] text-slate-400">{r.source === 'workflow' || r.kind === 'cash' ? t('أمر نقل', 'exit report') : t('فاتورة', 'invoice')}</span>
           {/* ومعاملةُ التخليص إن كانت كشوفُه نقلًا لحاوياتها. */}
           {r.customs && r.customs.length ? <span className="mt-0.5 block"><CustomsLinkBadges links={r.customs} ar={ar} /></span> : null}
         </span>
@@ -534,7 +534,7 @@ export default function ReceivablesPage() {
       {/* المجاميعُ على النتيجة كلِّها — وهي رقمُ البطاقة ما دامت القموعُ والبحثُ فارغة */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {[
-          [t('العدد', 'Count'), data ? (reportsMode ? `${money(data.total)} ${t('كشف تخريج', 'reports')}` : unitsOf({ count: data.total, value: data.value, tax: data.taxCount, cash: data.cashCount }, ar)) : '—'],
+          [t('العدد', 'Count'), data ? (reportsMode ? `${money(data.total)} ${t('أمر نقل', 'reports')}` : unitsOf({ count: data.total, value: data.value, tax: data.taxCount, cash: data.cashCount }, ar)) : '—'],
           [t('القيمة', 'Value'), data ? money(data.value) : '—'],
           [t('المحصَّل منها', 'Collected'), data ? money(data.collected) : '—'],
           [t('المتبقّي', 'Remaining'), data ? money(data.remaining) : '—'],
@@ -550,7 +550,7 @@ export default function ReceivablesPage() {
         <div className="relative flex-1 min-w-[220px] max-w-md">
           <Search className="w-4 h-4 text-slate-400 absolute top-1/2 -translate-y-1/2 start-3" />
           <input value={q} onChange={(e) => setQ(e.target.value)}
-            placeholder={t('ابحث برقم الفاتورة أو الكشف أو العميل أو الكود…', 'Search number, customer or code…')}
+            placeholder={t('ابحث برقم الفاتورة أو أمر النقل أو العميل أو الكود…', 'Search number, customer or code…')}
             className="w-full ps-9 pe-3 py-2 rounded-lg border border-slate-200 bg-white text-sm focus:outline-none focus:border-[#f37121]" />
         </div>
         {colCount > 0 && (

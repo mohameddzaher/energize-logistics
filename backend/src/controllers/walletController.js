@@ -396,7 +396,7 @@ exports.addTransaction = async (req, res) => {
     }
     const receivedReports = pairs.map((x) => x.reportNumber);
     if (type === 'tax_invoice' && !receivedReports.length) {
-      return res.status(400).json({ message: 'اكتب رقم كشف تخريج واحدًا على الأقلّ.' });
+      return res.status(400).json({ message: 'اكتب رقم أمر نقل واحدًا على الأقلّ.' });
     }
 
     // الحركةُ تُقيَّد على محفظة فرعٍ بعينه. والفرعُ من الطلب إن أُرسل — المدير
@@ -481,7 +481,7 @@ exports.addTransaction = async (req, res) => {
       const rn = String(purchaseDeliveryStatementNumber || '').trim();
       if (!rn) {
         return res.status(400).json({
-          message: 'اكتب رقم كشف التخريج — لا تُقيَّد مشترياتٌ بلا كشف',
+          message: 'اكتب رقم أمر النقل — لا تُقيَّد مشترياتٌ بلا أمر نقل',
           fields: { purchaseDeliveryStatementNumber: 'مطلوب' },
         });
       }
@@ -489,7 +489,7 @@ exports.addTransaction = async (req, res) => {
       purchaseWorkflow = await OperationsWorkflow.findOne({ reportNumber: flexSpaceRegex(rn) });
       if (!purchaseWorkflow) {
         return res.status(404).json({
-          message: `لا يوجد كشف تخريج بالرقم «${rn}». ابحث عن الرقم أوّلًا فتظهر بياناته، ثمّ سجّل الشراء.`,
+          message: `لا يوجد أمر نقل بالرقم «${rn}». ابحث عن الرقم أوّلًا فتظهر بياناته، ثمّ سجّل الشراء.`,
           fields: { purchaseDeliveryStatementNumber: 'غير موجود' },
         });
       }
@@ -512,9 +512,9 @@ exports.addTransaction = async (req, res) => {
       if (prior) {
         const who = prior.user ? `${prior.user.firstName || ''} ${prior.user.lastName || ''}`.trim() : '';
         return res.status(409).json({
-          message: `الكشف ${purchaseWorkflow.reportNumber} سُجِّلت له مشترياتٌ من قبل`
+          message: `أمر النقل ${purchaseWorkflow.reportNumber} سُجِّلت له مشترياتٌ من قبل`
             + ` — ${prior.amount} ريال بتاريخ ${prior.date}${who ? ` بواسطة ${who}` : ''}.`
-            + ' الكشف الواحد لا يُشترى مرّتين.',
+            + ' أمر النقل الواحد لا يُشترى مرّتين.',
           fields: { purchaseDeliveryStatementNumber: 'مكرَّر' },
           existing: { id: String(prior._id), amount: prior.amount, date: prior.date, by: who },
         });
@@ -532,7 +532,7 @@ exports.addTransaction = async (req, res) => {
     // يُقرأ بها في اللوحة: مَن دفع، وعلى أيّ كشف، وكم كان المسجَّل.
     if (purchaseMismatch) {
       riskFlags.push(
-        `سعرُ الشراء مختلف — الكشف ${purchaseMismatch.reportNumber}: المسجَّل ${purchaseMismatch.expected}`
+        `سعرُ الشراء مختلف — أمر النقل ${purchaseMismatch.reportNumber}: المسجَّل ${purchaseMismatch.expected}`
         + ` والمدفوع ${purchaseMismatch.paid} (فرق ${purchaseMismatch.difference})`,
       );
     }
@@ -705,7 +705,7 @@ exports.addTransaction = async (req, res) => {
       wallet: updatedWallet,
       ...(unknownReports.length ? {
         unknownReports,
-        message: `حُفظ القيد. ولم نجد عندنا كشوفًا بهذه الأرقام: ${unknownReports.join('، ')}`,
+        message: `حُفظ القيد. ولم نجد عندنا أوامر نقل بهذه الأرقام: ${unknownReports.join('، ')}`,
       } : {}),
       ...(type === 'tax_invoice' ? { matchedReports: receivedWorkflows.map((w) => w.reportNumber) } : {}),
     });
@@ -1037,7 +1037,7 @@ exports.updateTransaction = async (req, res) => {
       const rn = String(purchaseDeliveryStatementNumber || '').trim();
       if (!rn) {
         return res.status(400).json({
-          message: 'اكتب رقم كشف التخريج — لا تُقيَّد مشترياتٌ بلا كشف',
+          message: 'اكتب رقم أمر النقل — لا تُقيَّد مشترياتٌ بلا أمر نقل',
           fields: { purchaseDeliveryStatementNumber: 'مطلوب' },
         });
       }
@@ -1045,7 +1045,7 @@ exports.updateTransaction = async (req, res) => {
       const wf = await OperationsWorkflow.findOne({ reportNumber: flexSpaceRegex(rn) });
       if (!wf) {
         return res.status(404).json({
-          message: `لا يوجد كشف تخريج بالرقم «${rn}». ابحث عن الرقم أوّلًا فتظهر بياناته، ثمّ احفظ.`,
+          message: `لا يوجد أمر نقل بالرقم «${rn}». ابحث عن الرقم أوّلًا فتظهر بياناته، ثمّ احفظ.`,
           fields: { purchaseDeliveryStatementNumber: 'غير موجود' },
         });
       }
@@ -1060,9 +1060,9 @@ exports.updateTransaction = async (req, res) => {
       if (prior) {
         const who = prior.user ? `${prior.user.firstName || ''} ${prior.user.lastName || ''}`.trim() : '';
         return res.status(409).json({
-          message: `الكشف ${wf.reportNumber} سُجِّلت له مشترياتٌ من قبل`
+          message: `أمر النقل ${wf.reportNumber} سُجِّلت له مشترياتٌ من قبل`
             + ` — ${prior.amount} ريال بتاريخ ${prior.date}${who ? ` بواسطة ${who}` : ''}.`
-            + ' الكشف الواحد لا يُشترى مرّتين.',
+            + ' أمر النقل الواحد لا يُشترى مرّتين.',
           fields: { purchaseDeliveryStatementNumber: 'مكرَّر' },
           existing: { id: String(prior._id), amount: prior.amount, date: prior.date, by: who },
         });

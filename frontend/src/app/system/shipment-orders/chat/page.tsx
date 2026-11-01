@@ -226,7 +226,7 @@ export default function ChatCreatePage() {
       });
       const d = await api.post<{ order: any }>('/api/shipment-orders/orders', payload);
       setDone({ waybill: d.order.waybillNumber });
-      say('bot', ar ? `تم إنشاء الشحنة 🎉 برقم بوليصة ${d.order.waybillNumber}` : `Done! 🎉 Waybill ${d.order.waybillNumber}`);
+      say('bot', ar ? `تم إنشاء الشحنة 🎉 برقم أمر نقل ${d.order.waybillNumber}` : `Done! 🎉 Waybill ${d.order.waybillNumber}`);
     } catch (e: any) { notify(e.message, 'error'); }
     setSaving(false);
   };

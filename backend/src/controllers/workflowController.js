@@ -1695,7 +1695,7 @@ async function setSellingValue(id, raw, user, { ip, note } = {}) {
     };
   }
   const workflow = await OperationsWorkflow.findById(id);
-  if (!workflow) return { status: 404, body: { message: 'الكشف غير موجود' } };
+  if (!workflow) return { status: 404, body: { message: 'أمر النقل غير موجود' } };
   if (isLocked(workflow, user._id)) {
     return { status: 423, body: { message: `This record is currently being edited by ${workflow.lockedByName || 'another user'}` } };
   }
@@ -1844,7 +1844,7 @@ exports.updateWorkflow = async (req, res) => {
       return res.status(400).json({
         code: 'CASH_INVOICE_LOCKED',
         fields: billing.blocked,
-        message: 'الكشف نقديّ: لا فاتورة له ولا سند — الأعمدة المقفولة لا تُكتب.'
+        message: 'أمر النقل نقديّ: لا فاتورة له ولا سند — الأعمدة المقفولة لا تُكتب.'
           + ` (${billing.blocked.join('، ')})`,
       });
     }
@@ -1908,7 +1908,7 @@ exports.updateWorkflow = async (req, res) => {
     if (String(before.paymentType || '') !== String(workflow.paymentType || '')
       || String(before.reportNumber || '') !== String(workflow.reportNumber || '')) {
       await require('../utils/walletCollection')
-        .syncWalletCollection([workflow.reportNumber, before.reportNumber], { user: req.user, reason: 'تغيّر نوع الكشف' })
+        .syncWalletCollection([workflow.reportNumber, before.reportNumber], { user: req.user, reason: 'تغيّر نوع أمر النقل' })
         .catch((e) => console.error('wallet cash-collection (workflow update):', e.message));
     }
 
@@ -2287,16 +2287,16 @@ exports.updateApplicationStatus = async (req, res) => {
       .select('externalSource externalId shipmentOrder applicationStatus reportNumber lockedBy lockedByName lockedAt');
     if (!workflow) return res.status(404).json({ message: 'Workflow not found' });
     if (isLocked(workflow, req.user._id)) {
-      return res.status(423).json({ message: `الكشف مفتوحٌ لدى ${workflow.lockedByName || 'مستخدمٍ آخر'}` });
+      return res.status(423).json({ message: `أمر النقل مفتوحٌ لدى ${workflow.lockedByName || 'مستخدمٍ آخر'}` });
     }
     if (workflow.shipmentOrder || !require('../services/uplClient').isConfigured()) {
       const row = await setLocalStatus(workflow, status, req.user);
-      if (!row) return res.status(400).json({ message: 'هذا الكشف لا حالةَ طلبٍ له تُغيَّر.' });
+      if (!row) return res.status(400).json({ message: 'هذا أمر النقل لا حالةَ طلبٍ له تُغيَّر.' });
       return res.json(row.unchanged ? { _id: workflow._id, applicationStatus: status, unchanged: true } : stripRowFor(req.user.role, row));
     }
     if (workflow.externalSource !== 'ops_upl' || !workflow.externalId) {
       return res.status(400).json({
-        message: 'هذا الكشف ليس من منصّة التشغيل — لا حالةَ طلبٍ له تُغيَّر.',
+        message: 'هذا أمر النقل ليس من منصّة التشغيل — لا حالةَ طلبٍ له تُغيَّر.',
       });
     }
     if (String(workflow.applicationStatus || '') === status) {
@@ -2374,7 +2374,7 @@ async function idsForAllMatching(body, role) {
   const filter = buildWorkflowFilter(q, undefined, canSeeMoney(role), canSeeSelling(role));
   const found = await OperationsWorkflow.find(filter).select('_id').limit(ALL_MATCHING_CAP + 1).lean();
   if (found.length > ALL_MATCHING_CAP) {
-    return { error: { status: 400, body: { message: `نتائجُ الفلتر أكثرُ من ${ALL_MATCHING_CAP.toLocaleString('en-US')} كشف — ضيِّق الفلتر ثمّ أعِد.` } } };
+    return { error: { status: 400, body: { message: `نتائجُ الفلتر أكثرُ من ${ALL_MATCHING_CAP.toLocaleString('en-US')} أمر نقل — ضيِّق الفلتر ثمّ أعِد.` } } };
   }
   const expected = Number(body.expectedCount);
   if (Number.isFinite(expected) && expected >= 0 && found.length > expected) {
@@ -2401,8 +2401,8 @@ exports.bulkUpdate = async (req, res) => {
       if (r.error) return res.status(r.error.status).json(r.error.body);
       ids = r.ids;
     }
-    if (!ids.length) return res.status(400).json({ message: 'لم تُحدَّد أيُّ كشوف.' });
-    if (!allMatching && ids.length > IDS_CAP) return res.status(400).json({ message: `الحدُّ الأقصى ${IDS_CAP} كشفًا في المرّة — أو اختر «كلّ نتائج الفلتر».` });
+    if (!ids.length) return res.status(400).json({ message: 'لم تُحدَّد أيُّ أوامر نقل.' });
+    if (!allMatching && ids.length > IDS_CAP) return res.status(400).json({ message: `الحدُّ الأقصى ${IDS_CAP} أمر نقل في المرّة — أو اختر «كلّ نتائج الفلتر».` });
 
     const patch = filterFieldsByRole(req.body.fields || {}, req.user.role, await fieldsForRole(req.user.role));
     const bulkBranchError = await require('../utils/branchList').applyBranchList(patch);
@@ -2481,11 +2481,11 @@ exports.bulkUpdate = async (req, res) => {
       stampInvoiceDate(rowPatch, r);
       const own = applyBillingRules(rowPatch, r);
       if (own.blocked.includes('invoiceNumber')) {
-        skipped.push({ reportNumber: r.reportNumber, reason: 'كشف نقديّ — ليس له رقم فاتورة' });
+        skipped.push({ reportNumber: r.reportNumber, reason: 'أمر نقل نقديّ — ليس له رقم فاتورة' });
         continue;
       }
       if (own.blocked.length && !Object.keys(own.patch).length) {
-        skipped.push({ reportNumber: r.reportNumber, reason: 'كشف نقديّ — لا فاتورة له' });
+        skipped.push({ reportNumber: r.reportNumber, reason: 'أمر نقل نقديّ — لا فاتورة له' });
         continue;
       }
       // تاريخُ التحصيل أو مبلغُه كُتب بيدٍ في الدفعة — الكشفُ لم يعد للمحفظة.
@@ -2563,10 +2563,10 @@ exports.bulkUpdate = async (req, res) => {
         // ومطابقةُ المحفظة كشفًا كشفًا رحلتان لكلّ كشف؛ فإن كثرت الكشوفُ طوبقت
         // القيودُ كلُّها مرّةً (وهي أقلُّ بكثير) في الخلف — النتيجةُ نفسُها.
         if (retyped.length > 300) {
-          require('../utils/walletCollection').resyncAllWalletCollections({ user: req.user, reason: 'تغيّر نوع الكشف' })
+          require('../utils/walletCollection').resyncAllWalletCollections({ user: req.user, reason: 'تغيّر نوع أمر النقل' })
             .catch((e) => console.error('wallet cash-collection (workflow bulk, all):', e.message));
         } else if (retyped.length) {
-          await require('../utils/walletCollection').syncWalletCollection(retyped, { user: req.user, reason: 'تغيّر نوع الكشف' })
+          await require('../utils/walletCollection').syncWalletCollection(retyped, { user: req.user, reason: 'تغيّر نوع أمر النقل' })
             .catch((e) => console.error('wallet cash-collection (workflow bulk):', e.message));
         }
       }
@@ -2588,9 +2588,9 @@ exports.bulkUpdate = async (req, res) => {
       // ولا إلى ماذا حين يُسأل «غيّرتُه فلم يتغيّر». فتُكتب الأرقامُ والقيمُ معه.
       logAudit({
         user: req.user, action: 'bulk_update', entity: 'OperationsWorkflow',
-        details: `${updated} كشفًا · ${keys.join('، ')}`, ip: req.ip,
+        details: `${updated} أمر نقل · ${keys.join('، ')}`, ip: req.ip,
         changes: {
-          details: `${updated} كشفًا · ${keys.join('، ')}`,
+          details: `${updated} أمر نقل · ${keys.join('، ')}`,
           fields: Object.fromEntries(keys.map((k) => [k, patch[k]])),
           reports: perRow.slice(0, 2000).map((t) => t.reportNumber),
           skipped: skipped.slice(0, 500),
@@ -2608,7 +2608,7 @@ exports.bulkUpdate = async (req, res) => {
       refusedFields: refused.length ? refused : undefined,
       message: skipped.length
         ? `حُفظ ${updated} من ${ids.length} — و${skipped.length} لم يُحفظ.`
-        : `حُفظ ${updated} كشفًا.`,
+        : `حُفظ ${updated} أمر نقل.`,
     });
   } catch (e) {
     console.error('bulkUpdate error:', e);
@@ -2631,7 +2631,7 @@ exports.bulkDelete = async (req, res) => {
       return res.status(400).json({ message: 'ids must be a non-empty array' });
     }
     if (!allMatching && ids.length > IDS_CAP) {
-      return res.status(400).json({ message: `الحدُّ الأقصى ${IDS_CAP} كشفًا في المرّة — أو اختر «كلّ نتائج الفلتر».` });
+      return res.status(400).json({ message: `الحدُّ الأقصى ${IDS_CAP} أمر نقل في المرّة — أو اختر «كلّ نتائج الفلتر».` });
     }
 
     // Check for locked workflows
@@ -2739,7 +2739,7 @@ async function buildWorkflowWorkbook(filter, money, selling = true) {
       ['فرع السداد', (w) => w.payingBranch || ''],
       // الستُّ كما تُعرَض في الخانة — راجع paymentKindLabel.
       ['نوع الدفع', (w) => paymentKindLabel(w)],
-      ['وجهة الكشف النهائية', (w) => w.finalReportDestination || ''],
+      ['وجهة أمر النقل النهائية', (w) => w.finalReportDestination || ''],
       ['رقم المستند', (w) => w.documentNumber || ''],
       // معاملةُ التخليص المرتبطة وبوليصتُها — راجع services/customsOpsLink.
       ['معاملة التخليص', (w) => (w.customsLink && w.customsLink.clearance ? w.customsLink.refNumber || '' : '')],
@@ -3327,7 +3327,7 @@ exports.importInvoices = async (req, res) => {
       }
       const retyped = touched('paymentType').map((p) => p.reportNumber);
       if (retyped.length) {
-        await require('../utils/walletCollection').syncWalletCollection(retyped, { user: req.user, reason: 'تغيّر نوع الكشف' }).catch(() => {});
+        await require('../utils/walletCollection').syncWalletCollection(retyped, { user: req.user, reason: 'تغيّر نوع أمر النقل' }).catch(() => {});
         invalidateCollectionsReaders();
         try { emitToAll('collections:changed', { source: 'workflow', field: 'paymentType', bulk: true }); } catch (_) { /* */ }
       }
@@ -3336,7 +3336,7 @@ exports.importInvoices = async (req, res) => {
     try { emitToAll('workflow:bulkImported', { importInvoices: true, updated }); } catch (_) { /* */ }
     logAudit({
       user: req.user, action: 'import_invoices', entity: 'OperationsWorkflow',
-      details: `رفع بيانات فواتير: ${updated} كشفًا من ${byReport.size} في الملفّ (${notFound.length} غير موجود، ${skipped.length} لم يُكتب)`, ip: req.ip,
+      details: `رفع بيانات فواتير: ${updated} أمر نقل من ${byReport.size} في الملفّ (${notFound.length} غير موجود، ${skipped.length} لم يُكتب)`, ip: req.ip,
     });
     return res.json({ preview: false, updated, savedLines, ...summary, checks });
   } catch (e) {
@@ -3415,7 +3415,7 @@ exports.setCustomsLink = async (req, res) => {
     const c = await CustomsClearance.findById(id).select('refNumber blNumber customerName containers.containerNumber cancelled').lean();
     if (!c || c.cancelled) return res.status(404).json({ message: 'معاملةُ التخليص غيرُ موجودة' });
     const wf = await OperationsWorkflow.findById(req.params.id).select('reportNumber customsLink').lean();
-    if (!wf) return res.status(404).json({ message: 'الكشف غير موجود' });
+    if (!wf) return res.status(404).json({ message: 'أمر النقل غير موجود' });
     const known = new Set((c.containers || []).map((u) => String(u.containerNumber || '').trim()).filter(Boolean));
     const containers = (Array.isArray(req.body.containers) ? req.body.containers : [])
       .map((x) => String(x || '').trim()).filter((x) => known.has(x));
@@ -3442,9 +3442,9 @@ exports.setCustomsLink = async (req, res) => {
  */
 exports.clearCustomsLink = async (req, res) => {
   try {
-    if (!(await canLinkCustoms(req.user.role))) return res.status(403).json({ message: 'صلاحيّتك لا تسمح بفكّ ربط الكشف' });
+    if (!(await canLinkCustoms(req.user.role))) return res.status(403).json({ message: 'صلاحيّتك لا تسمح بفكّ ربط أمر النقل' });
     const wf = await OperationsWorkflow.findById(req.params.id).select('reportNumber customsLink').lean();
-    if (!wf) return res.status(404).json({ message: 'الكشف غير موجود' });
+    if (!wf) return res.status(404).json({ message: 'أمر النقل غير موجود' });
     const cur = wf.customsLink || {};
     if (!cur.clearance) return res.status(400).json({ message: 'الكشفُ غيرُ مرتبطٍ بمعاملة تخليص' });
     if (cur.via === 'move') {

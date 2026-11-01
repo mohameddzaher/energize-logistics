@@ -78,7 +78,7 @@ String _units(Map<String, dynamic> n) {
   final tax = n['tax'] is num ? n['tax'] as num : (cash != 0 ? 0 : _num(n['count']));
   return [
     if (tax != 0 || cash == 0) '${_m(tax)} ${tr('فاتورة', 'invoices')}',
-    if (cash != 0) '${_m(cash)} ${tr('كشف تخريج', 'reports')}',
+    if (cash != 0) '${_m(cash)} ${tr('أمر نقل', 'reports')}',
   ].join(' · ');
 }
 
@@ -297,7 +297,7 @@ class _CollectionsDashboardScreenState extends State<CollectionsDashboardScreen>
             Text(tr('كلُّ ما لنا — غيرُ محصَّل', 'All outstanding'), style: const TextStyle(fontSize: 12, color: T.inkFaint)),
             const SizedBox(height: 4),
             Text(_m(allV), style: const TextStyle(fontSize: 30, fontWeight: FontWeight.w900)),
-            Text('${_m(tax['count'])} ${tr('فاتورة', 'invoices')} · ${_m(cash['count'])} ${tr('كشف تخريج', 'reports')}${all['customers'] != null ? ' · ${_customers(all)}' : ''}',
+            Text('${_m(tax['count'])} ${tr('فاتورة', 'invoices')} · ${_m(cash['count'])} ${tr('أمر نقل', 'reports')}${all['customers'] != null ? ' · ${_customers(all)}' : ''}',
                 style: const TextStyle(fontSize: 11.5, color: T.inkFaint)),
           ])),
         ),
@@ -313,7 +313,7 @@ class _CollectionsDashboardScreenState extends State<CollectionsDashboardScreen>
         Row(children: [
           Expanded(child: _cell(tr('فواتير', 'Invoices'), tax, '${_m(tax['count'])} ${tr('فاتورة', 'invoices')} · ${(share(tax) * 100).toStringAsFixed(1)}%',
               () => _open(tr('المديونية الضريبية', 'Tax receivables'), {'kind': 'tax'}), dot: const Color(0xFF475569))),
-          Expanded(child: _cell(tr('كاش', 'Cash'), cash, '${_m(cash['count'])} ${tr('كشف تخريج', 'reports')} · ${(share(cash) * 100).toStringAsFixed(1)}%',
+          Expanded(child: _cell(tr('كاش', 'Cash'), cash, '${_m(cash['count'])} ${tr('أمر نقل', 'reports')} · ${(share(cash) * 100).toStringAsFixed(1)}%',
               () => _open(tr('المديونية الكاش', 'Cash receivables'), {'kind': 'cash'}), dot: const Color(0xFF14B8A6))),
         ]),
       ])),
@@ -326,7 +326,7 @@ class _CollectionsDashboardScreenState extends State<CollectionsDashboardScreen>
       for (final s in _subtypes) Builder(builder: (_) {
         final n = _map(subtypes[s.$1]);
         final total = _map(n['total']);
-        final unit = s.$5 ? tr('فاتورة', 'invoices') : tr('كشف تخريج', 'reports');
+        final unit = s.$5 ? tr('فاتورة', 'invoices') : tr('أمر نقل', 'reports');
         final label = tr(s.$2, s.$3);
         return Padding(
           padding: const EdgeInsets.only(bottom: 8),
@@ -711,7 +711,7 @@ class _DefaultTermSheetState extends State<_DefaultTermSheet> {
                             onPressed: () => widget.onOpenInvoices(p),
                             child: Text([
                               if (_num(p['tax']) > 0) '${p['tax']} ${tr('فاتورة', 'inv')}',
-                              if (_num(p['cash']) > 0) '${p['cash']} ${tr('كشف', 'rep')}',
+                              if (_num(p['cash']) > 0) '${p['cash']} ${tr('أمر نقل', 'rep')}',
                             ].join(' · '), style: const TextStyle(fontSize: 12)),
                           ),
                           const Spacer(),

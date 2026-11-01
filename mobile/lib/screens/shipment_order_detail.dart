@@ -96,10 +96,10 @@ class _ShipmentOrderDetailScreenState extends State<ShipmentOrderDetailScreen> {
     final custom = d['customFields'] is Map ? Map<String, dynamic>.from(d['customFields']) : <String, dynamic>{};
     final log = List.from(d['statusLog'] ?? const []);
     return AppScaffold(
-      title: Text('${tr('بوليصة', 'Waybill')} ${soRef(d)}'),
+      title: Text('${tr('أمر نقل', 'Transport order')} ${soRef(d)}'),
       actions: [
         IconButton(
-          tooltip: tr('تحميل البوليصة PDF', 'Download waybill PDF'),
+          tooltip: tr('تحميل أمر النقل PDF', 'Download transport order PDF'),
           icon: _printing ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.picture_as_pdf_outlined),
           onPressed: _printing ? null : () async {
             setState(() => _printing = true);

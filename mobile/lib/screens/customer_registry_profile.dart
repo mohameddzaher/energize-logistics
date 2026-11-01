@@ -103,7 +103,7 @@ class _CustomerRegistryProfileScreenState extends State<CustomerRegistryProfileS
             const SizedBox(height: 4),
             Text('${route['from'] ?? ''} ← ${route['to'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.w700)),
             const SizedBox(height: 4),
-            Text(tr('السعرُ للسيارة الواحدة، بحسب عدد السيارات التي يطلبها العميل على المسار. اترك «إلى» فارغةً في آخر شريحةٍ لتعني «فما فوق». و«التشغيل — خاصّ» يكتب للكشف أعلى سعرٍ هنا.',
+            Text(tr('السعرُ للسيارة الواحدة، بحسب عدد السيارات التي يطلبها العميل على المسار. اترك «إلى» فارغةً في آخر شريحةٍ لتعني «فما فوق». و«التشغيل — خاصّ» يكتب للأمر نقل أعلى سعرٍ هنا.',
                 'Price per truck, by how many trucks the customer orders on the route. Leave “to” empty on the last tier for “and above”. Operations — private applies the highest price.'),
                 style: const TextStyle(fontSize: 12, color: T.inkSoft)),
             const SizedBox(height: 12),
@@ -187,7 +187,7 @@ class _CustomerRegistryProfileScreenState extends State<CustomerRegistryProfileS
                         mainAxisSpacing: 8,
                         crossAxisSpacing: 8,
                         children: [
-                          _tile(tr('الرحلات (كشوف)', 'Trips (sheets)'), '${a['sheets'] ?? 0}', T.orange, Icons.route_outlined),
+                          _tile(tr('الرحلات (أوامر نقل)', 'Trips (sheets)'), '${a['sheets'] ?? 0}', T.orange, Icons.route_outlined),
                           if (money) _tile(tr('قيمة الشراء', 'Purchase total'), _money(a['purchaseTotal']), T.violet, Icons.payments_outlined),
                           if (money) _tile(tr('متوسّط الرحلة', 'Avg per trip'), _money(a['avgPerSheet']), T.navy, Icons.trending_up_rounded),
                           _tile(tr('مسارات متّفق عليها', 'Agreed routes'), '${a['routesCount'] ?? 0}', T.info, Icons.alt_route_outlined),

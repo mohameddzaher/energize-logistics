@@ -75,7 +75,7 @@ function VehicleAnalyticsInner() {
   }, [params, router, id]);
 
   const shipCols = [
-    { header: 'Waybill', key: 'waybillNumber', width: 10 },
+    { header: 'Transport order', key: 'waybillNumber', width: 10 },
     { header: 'Load date', key: 'loadDate', transform: (v: any, r: any) => fmtD(v || r.createdAt), width: 13 },
     { header: 'Customer', key: 'customerName', width: 24 },
     { header: 'From', key: 'fromCity', width: 13 },
@@ -187,7 +187,7 @@ function VehicleAnalyticsInner() {
           <span className="text-slate-500 text-xs">{ar ? 'الآن:' : 'Now:'}</span>
           {v.currentTrip ? (
             <Link href={`/system/fleet/${v.currentTrip._id}`} className="text-[#f37121] hover:underline font-medium">
-              {ar ? 'بوليصة' : 'WB'} {v.currentTrip.waybillNumber} → {v.currentTrip.toCity || '—'}
+              {ar ? 'أمر نقل' : 'WB'} {v.currentTrip.waybillNumber} → {v.currentTrip.toCity || '—'}
               {v.currentTrip.expectedArrival ? ` · ${ar ? 'متوقع' : 'ETA'} ${fmtDT(v.currentTrip.expectedArrival, lang as Lang)}` : ''}
             </Link>
           ) : <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 text-[11px] font-semibold">{ar ? 'فاضية — بدون حمولة' : 'Idle — no load'}</span>}
@@ -393,7 +393,7 @@ function VehicleAnalyticsInner() {
         <ScrollX>
           <table className="w-full text-sm">
             <thead><tr className="bg-slate-900 border-b border-slate-200 text-slate-300">
-              {[ar ? 'البوليصة' : 'Waybill', ar ? 'التاريخ' : 'Date', ar ? 'العميل' : 'Customer', ar ? 'المسار' : 'Route',
+              {[ar ? 'أمر النقل' : 'Transport order', ar ? 'التاريخ' : 'Date', ar ? 'العميل' : 'Customer', ar ? 'المسار' : 'Route',
                 ar ? 'السائق' : 'Driver', ar ? 'نوع الحمولة' : 'Load type', ar ? 'الإيجار' : 'Rent',
                 ar ? 'مصروف السائق' : 'Driver expense', ar ? 'الحالة' : 'Status',
               ].map((h, i) => <th key={i} className={th}>{h}</th>)}

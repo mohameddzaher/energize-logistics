@@ -113,7 +113,7 @@ export default function ReportFollowUps({ basePath, workflowId, ar, compact = fa
     <>
       <div className="flex flex-col gap-2">
         <textarea value={text} onChange={(e) => setText(e.target.value)} rows={2} maxLength={2000}
-          placeholder={t('اكتب متابعةً على هذا الكشف…', 'Write a follow-up on this report…')}
+          placeholder={t('اكتب متابعةً على هذا أمر النقل…', 'Write a follow-up on this report…')}
           className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#f37121]/40" />
         <div className="flex flex-wrap items-center gap-2">
           <input ref={fileRef} type="file" accept={ACCEPT} className="hidden" onChange={(e) => pick(e.target.files?.[0] || null)} title={t('مرفق', 'Attachment')} />
@@ -135,7 +135,7 @@ export default function ReportFollowUps({ basePath, workflowId, ar, compact = fa
 
       {error && <p className="mt-3 text-xs text-red-600">{error}</p>}
       {!error && rows === null && <p className="mt-3 text-xs text-slate-400">{t('جارٍ التحميل…', 'Loading…')}</p>}
-      {rows && rows.length === 0 && <p className="mt-3 text-xs text-slate-500">{t('لا متابعاتٍ على هذا الكشف بعد.', 'No follow-ups on this report yet.')}</p>}
+      {rows && rows.length === 0 && <p className="mt-3 text-xs text-slate-500">{t('لا متابعاتٍ على هذا أمر النقل بعد.', 'No follow-ups on this report yet.')}</p>}
       {rows && rows.length > 0 && (
         <ul className="mt-3 space-y-2">
           {rows.map((f) => (
@@ -170,7 +170,7 @@ export default function ReportFollowUps({ basePath, workflowId, ar, compact = fa
   return (
     <section className="bg-white border border-slate-200 rounded-2xl shadow-sm p-5">
       <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-900">
-        <MessageSquareText className="w-4 h-4 text-slate-500" /> {t('متابعات الكشف', 'Report follow-ups')}
+        <MessageSquareText className="w-4 h-4 text-slate-500" /> {t('متابعات أمر النقل', 'Report follow-ups')}
         {rows ? <span className="font-normal text-slate-400">({rows.length})</span> : null}
       </h2>
       {body}

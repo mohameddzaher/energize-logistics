@@ -828,7 +828,7 @@ async function partyFinanceBlocks(kind, key, displayName, from, to, t) {
   blocks.push({
     kind: 'stats',
     items: [
-      { label: t('كشوف الفترة', 'Sheets in period'), value: num(sheets.length) },
+      { label: t('أوامر نقل الفترة', 'Sheets in period'), value: num(sheets.length) },
       { label: isCust ? t('قيمة البيع', 'Selling value') : t('قيمة الشراء', 'Purchase value'), value: money(value), accent: true },
       { label: isCust ? t('المحصَّل منها', 'Collected') : t('المسدَّد منها', 'Paid'), value: money(closed) },
       { label: t('المتبقي منها', 'Still open'), value: money(value - closed) },
@@ -1217,10 +1217,10 @@ async function buildCustomerReport(id, query, lang) {
     }
 
     if (cashP.length) {
-      blocks.push({ kind: 'section', text: t('الكشوف النقدية في الفترة', 'Cash reports in period') });
+      blocks.push({ kind: 'section', text: t('أوامر النقل النقدية في الفترة', 'Cash reports in period') });
       blocks.push({
         kind: 'table',
-        head: [t('رقم الكشف', 'Report'), t('تاريخ السداد', 'Paid on'), t('المسار', 'Route'), t('القيمة', 'Value'), t('المحصَّل', 'Collected'), t('تاريخ التحصيل', 'Collected on')],
+        head: [t('رقم أمر النقل', 'Report'), t('تاريخ السداد', 'Paid on'), t('المسار', 'Route'), t('القيمة', 'Value'), t('المحصَّل', 'Collected'), t('تاريخ التحصيل', 'Collected on')],
         align: ['start', 'start', 'start', 'end', 'end', 'start'],
         rows: cashP
           .sort((a, b) => new Date(b.paymentDate || b.reportDate || 0) - new Date(a.paymentDate || a.reportDate || 0))
@@ -2369,7 +2369,7 @@ async function buildShipmentReport(id, query, lang) {
       // ورقمُ البوليصة: شحناتُنا تُرقَّم من ٥٠٠، وشحناتُ المنصّة رقمُها رقمُ
       // كشف تخريجها — وهو الذي يعرفه الفريقُ عنها ويُسأل به.
       [t('رقم البوليصة', 'Waybill no.'), o.waybillNumber || o.reference || o.graduationNumber],
-      [t('رقم كشف التخريج', 'Graduation no.'), o.graduationNumber],
+      [t('رقم أمر النقل', 'Graduation no.'), o.graduationNumber],
       [t('العميل', 'Customer'), o.customerName || cust?.name],
       [t('جوال العميل', 'Customer phone'), cust?.phone],
       [t('من', 'From'), o.fromCity],

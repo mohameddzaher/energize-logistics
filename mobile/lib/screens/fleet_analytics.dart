@@ -410,7 +410,7 @@ class _FleetAnalyticsScreenState extends State<FleetAnalyticsScreen> {
               ),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Row(children: [
-                  Text('${tr('بوليصة', 'WB')} ${r['waybillNumber'] ?? ''}',
+                  Text('${tr('أمر نقل', 'WB')} ${r['waybillNumber'] ?? ''}',
                       style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12.5)),
                   const Spacer(),
                   Text(_money(r['price']), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12.5, color: T.success)),

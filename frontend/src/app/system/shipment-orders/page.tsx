@@ -381,7 +381,7 @@ function ShipmentOrdersInner() {
   // Columns the viewer chose, kept in this browser until changed. Waybill number and
   // actions always stay.
   const HEADS: readonly (readonly [string, string | null, string])[] = [
-    [ar ? 'رقم البوليصة' : 'Waybill', 'reference', 'reference'],
+    [ar ? 'أمر النقل' : 'Transport order', 'reference', 'reference'],
     [ar ? 'العميل' : 'Customer', 'customerName', 'customerName'],
     [ar ? 'تاريخ الاستلام' : 'Pickup date', 'pickupDay', 'pickup'],
     [ar ? 'من' : 'From', 'fromCity', 'fromCity'],
@@ -404,14 +404,14 @@ function ShipmentOrdersInner() {
     [ar ? 'الهامش' : 'Margin', null, 'margin'],
     [ar ? 'السلفة' : 'Advance', null, 'advance'],
     [ar ? 'أجرة السائق' : 'Driver rent', null, 'rent'],
-    [ar ? 'بوليصة الشحن (B/L)' : 'B/L no.', 'blNumber', 'bl'],
+    [ar ? 'رقم البوليصة' : 'B/L no.', 'blNumber', 'bl'],
     [ar ? 'رقم الحاوية' : 'Container no.', 'containerNumber', 'container'],
     [ar ? 'وقت الانطلاق' : 'Start date', null, 'start'],
     [ar ? 'وقت الوصول' : 'Arrival date', null, 'arrival'],
     [ar ? 'جوال السائق' : 'Driver phone', null, 'phone'],
     [ar ? 'عنوان التحميل' : 'Pickup address', null, 'addrFrom'],
     [ar ? 'عنوان التسليم' : 'Delivery address', null, 'addrTo'],
-    [ar ? 'ملاحظة البوليصة' : 'Waybill note', 'notes', 'notes'],
+    [ar ? 'ملاحظة أمر النقل' : 'Transport order note', 'notes', 'notes'],
     [ar ? 'آخر متابعة' : 'Latest follow-up', null, 'followup'],
     [ar ? 'تاريخ الإنشاء' : 'Created', null, 'created'],
     [ar ? 'إجراءات' : 'Actions', null, 'actions'],
@@ -512,7 +512,7 @@ function ShipmentOrdersInner() {
             {bulkBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileDown className="w-4 h-4" />}
             {bulkBusy
               ? (ar ? `جارٍ التجهيز ${bulkProgress}…` : `Generating ${bulkProgress}…`)
-              : (ar ? `تحميل ${picked.size} بوليصة` : `Download ${picked.size} waybills`)}
+              : (ar ? `تحميل ${picked.size} أمر نقل` : `Download ${picked.size} waybills`)}
           </button>
         )}
         <ExportMenu fileName="shipment-orders" lang={ar ? 'ar' : 'en'} variant="subtle" options={exportOptions} />
@@ -632,7 +632,7 @@ function ShipmentOrdersInner() {
             أزرارٌ لا قائمةٌ منسدلة: هذا سؤالٌ يُسأل في كلّ جلسة، وكلُّ زرٍّ
             يحمل عددَه تحت بقيّة الفلاتر — فيُعرف الحجمُ قبل الضغط. */}
         {/* ── وفلترُ الملاحظة ──────────────────────────────────────────────
-            «أرِني ما كُتبت عليه ملاحظة» سؤالٌ يُسأل قبل الطباعة: البوليصةُ
+            «أرِني ما كُتبت عليه ملاحظة» سؤالٌ يُسأل قبل الطباعة: أمر النقل
             تحمل الملاحظة، فيُراجَع ما سيُطبَع فيها. */}
         <div className="w-56 grow sm:grow-0">
           <Select value={customerFilter} onChange={(e) => { setCustomerFilter(e.target.value); setPage(1); }}>
@@ -951,7 +951,7 @@ function ShipmentOrdersInner() {
                       )}
                       <button type="button" onClick={() => downloadWaybill(o)} disabled={downloadingId === o._id}
                         className="p-1.5 rounded-lg text-slate-500 hover:text-[#f37121] hover:bg-slate-100 disabled:opacity-50"
-                        title={ar ? 'تحميل البوليصة PDF' : 'Download waybill PDF'}>
+                        title={ar ? 'تحميل أمر النقل PDF' : 'Download transport order PDF'}>
                         {downloadingId === o._id ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileDown className="w-4 h-4" />}
                       </button>
                       {editor && (
@@ -1014,7 +1014,7 @@ function ShipmentOrdersInner() {
               <div className="px-5 py-4 border-b border-slate-200 bg-white rounded-t-2xl flex items-center justify-between sticky top-0 z-10">
                 <div className="min-w-0">
                   <p className="font-bold text-slate-900 flex items-center gap-2">
-                    {ar ? 'بوليصة' : 'Waybill'} <span className="font-mono">{(d as any).reference || d.waybillNumber}</span>
+                    {ar ? 'أمر نقل' : 'Transport order'} <span className="font-mono">{(d as any).reference || d.waybillNumber}</span>
                     <span className={`text-[11px] font-semibold rounded-full px-2 py-0.5 ${st2 ? `${st2.bg} ${st2.text}` : 'bg-slate-100 text-slate-700'}`}
                       style={st2 ? undefined : (sv2 ? { background: `${sv2.color}1a`, color: sv2.color } : undefined)}>
                       {sv2 ? vocabLabel(sv2, lang as Lang) : statusLabel(d.status, lang as Lang)}
@@ -1025,7 +1025,7 @@ function ShipmentOrdersInner() {
                 <div className="flex items-center gap-1 shrink-0">
                   <button type="button" onClick={() => downloadWaybill(d)} disabled={downloadingId === d._id}
                     className="p-1.5 rounded-lg text-slate-500 hover:text-[#f37121] hover:bg-slate-100 disabled:opacity-50"
-                    title={ar ? 'تحميل البوليصة PDF' : 'Download waybill PDF'}>
+                    title={ar ? 'تحميل أمر النقل PDF' : 'Download transport order PDF'}>
                     {downloadingId === d._id ? <Loader2 className="w-5 h-5 animate-spin" /> : <FileDown className="w-5 h-5" />}
                   </button>
                   {editor && (
@@ -1150,7 +1150,7 @@ function ShipmentOrdersInner() {
               <div className="min-w-0">
                 <p className="text-lg font-bold text-slate-900">{ar ? 'تغيير الحالة' : 'Change status'}</p>
                 <p className="text-sm text-slate-500 mt-0.5">
-                  {ar ? 'بوليصة' : 'Waybill'} <span className="font-mono font-bold">{orderRef(fu.order)}</span>
+                  {ar ? 'أمر نقل' : 'Transport order'} <span className="font-mono font-bold">{orderRef(fu.order)}</span>
                   {fu.order.customerName ? ` · ${fu.order.customerName}` : ''}
                   {fu.order.fromCity ? ` · ${fu.order.fromCity} → ${fu.order.toCity || ''}` : ''}
                 </p>

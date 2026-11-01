@@ -50,7 +50,7 @@ const COUNT_KEYS = ['count', 'changed', 'updated', 'reps', 'vehicles', 'exported
 
 /** ما يُعرَف به السجلُّ، بالترتيب — وبادئتُه حين لا يكفي الرقمُ وحدَه. */
 const SUBJECT_KEYS = [
-  ['reportNumber', 'كشف', 'Report'], ['refNumber', 'معاملة', 'Ref'], ['waybillNumber', 'بوليصة', 'Waybill'],
+  ['reportNumber', 'أمر نقل', 'Report'], ['refNumber', 'معاملة', 'Ref'], ['waybillNumber', 'بوليصة', 'Waybill'],
   ['order', 'أمر', 'Order'], ['claimId', 'حادث', 'Claim'], ['plateNumber', 'لوحة', 'Plate'],
   ['plate', 'لوحة', 'Plate'], ['arabicName', '', ''], ['name', '', ''], ['englishName', '', ''],
   ['rep', '', ''], ['employee', '', ''], ['driver', '', ''], ['email', '', ''], ['policy', 'وثيقة', 'Policy'],

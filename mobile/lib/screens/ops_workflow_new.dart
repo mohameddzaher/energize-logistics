@@ -24,7 +24,7 @@ import 'ops_common.dart';
 typedef _F = (String, String, String, String, List<String>);
 
 const List<_F> _appFields = [
-  ('reportNumber', 'رقم كشف التخريج', 'Report Number', '', ['رقم الكشف', 'رقم كشف الفئه', 'رقم كشف الفته']),
+  ('reportNumber', 'رقم أمر النقل', 'Report Number', '', ['رقم أمر النقل', 'رقم كشف الفئه', 'رقم أمر نقل الفته']),
   ('loadingTime', 'وقت التحميل', 'Loading Time', '', []),
   ('fromLocation', 'عنوان الشحن', 'Shipping Address', '', ['من', 'From']),
   ('toLocation', 'عنوان الوصول', 'Arrival Address', '', ['الي', 'To']),
@@ -57,7 +57,7 @@ const List<_F> _opsFields = [('operationsReview', 'مراجعه التشغيل',
 const List<_F> _modFields = [
   ('paymentDate', 'تاريخ السداد', 'Payment Date', 'date', []),
   ('payingBranch', 'الفرع المسدد', 'Paying Branch', '', []),
-  ('finalReportDestination', 'وجهه الكشف النهائي', 'Final Report Destination', '', []),
+  ('finalReportDestination', 'وجهه أمر النقل النهائي', 'Final Report Destination', '', []),
   ('documentNumber', 'رقم السند', 'Document Number', '', []),
   ('sendingDate', 'تاريخ الارسال', 'Sending Date', 'date', []),
   ('deliveryDate', 'تاريخ التسليم', 'Delivery Date', 'date', []),

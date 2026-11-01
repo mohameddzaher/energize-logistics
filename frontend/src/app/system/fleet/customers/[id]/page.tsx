@@ -38,7 +38,7 @@ const money = (n: number) => (Number(n) || 0).toLocaleString('en-US');
 
 const TRIPS_SHEET = 'Trips';
 const exportColumns: ExportColumn[] = [
-  { header: 'Waybill', key: 'waybillNumber' }, { header: 'From', key: 'fromCity' }, { header: 'To', key: 'toCity' },
+  { header: 'Transport order', key: 'waybillNumber' }, { header: 'From', key: 'fromCity' }, { header: 'To', key: 'toCity' },
   { header: 'Plate', key: 'vehiclePlate' }, { header: 'Driver', key: 'driverName' },
   { header: 'Load type', key: 'loadType' }, { header: 'Price', key: 'price' },
   { header: 'Status', key: 'status', transform: (v) => fleetStatusLabel(v, 'en') },
@@ -296,7 +296,7 @@ export default function FleetCustomerProfilePage() {
         <ScrollX>
           <table className="w-full text-sm">
             <thead className="table-head">
-              <tr>{[ar ? 'البوليصة' : 'Waybill', ar ? 'المسار' : 'Route', ar ? 'اللوحة' : 'Plate', ar ? 'السائق' : 'Driver', ar ? 'النوع' : 'Load', ar ? 'السعر' : 'Price', ar ? 'التاريخ' : 'Date', ar ? 'الحالة' : 'Status'].map((h) => <th key={h} className="px-3 py-2 text-start font-semibold whitespace-nowrap">{h}</th>)}</tr>
+              <tr>{[ar ? 'أمر النقل' : 'Transport order', ar ? 'المسار' : 'Route', ar ? 'اللوحة' : 'Plate', ar ? 'السائق' : 'Driver', ar ? 'النوع' : 'Load', ar ? 'السعر' : 'Price', ar ? 'التاريخ' : 'Date', ar ? 'الحالة' : 'Status'].map((h) => <th key={h} className="px-3 py-2 text-start font-semibold whitespace-nowrap">{h}</th>)}</tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {data.shipments.map((s) => (

@@ -233,7 +233,7 @@ class _ShipmentOrdersChatScreenState extends State<ShipmentOrdersChatScreen> {
       if (!mounted) return;
       setState(() {
         _doneWaybill = wb;
-        _say(true, tr('تم إنشاء الشحنة 🎉 برقم بوليصة $wb', 'Done! 🎉 Waybill $wb'));
+        _say(true, tr('تم إنشاء الشحنة 🎉 برقم أمر نقل $wb', 'Done! 🎉 Waybill $wb'));
       });
       _scrollDown();
     } catch (e) {

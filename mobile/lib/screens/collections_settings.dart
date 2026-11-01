@@ -117,7 +117,7 @@ class _RegistersTab extends StatelessWidget {
         'مَن نسدّد لهم: الآيبانُ والسجلُّ التجاريُّ ومحاسبُ المورّد وما بقي عليه.', 'Who we pay: IBAN, CR, their accountant, and what is still owed.',
         () => ResourceScreen(config: collectionsSuppliersCfg)),
       (Icons.assignment_outlined, 'سير عمل التشغيل', 'Operations workflow',
-        'الكشوفُ نفسُها — منها تُقرأ الأرقام، وفيها تُكتب الفاتورةُ وتاريخُ التحصيل.', 'The reports themselves — the source of every figure here.',
+        'أوامر النقل نفسُها — منها تُقرأ الأرقام، وفيها تُكتب الفاتورةُ وتاريخُ التحصيل.', 'The reports themselves — the source of every figure here.',
         () => const OpsWorkflowsScreen()),
     ];
     return ListView(padding: const EdgeInsets.all(14), children: [

@@ -580,7 +580,7 @@ const REGISTRY = [
     type: 'workflow_final_destination',
     module: 'operations',
     nameEn: 'Final Report Destinations',
-    nameAr: 'وجهات الكشف النهائية',
+    nameAr: 'وجهات أمر النقل النهائية',
     roles: ['operations_manager', 'operations_staff', 'moderator', 'cfo', 'accounting_manager', 'accountant'],
     storeLabel: true,
     seed: [
@@ -650,7 +650,7 @@ const REGISTRY = [
       { key: 'transportPortToYard', nameAr: 'فاتورة النقل من الميناء إلى الساحة', nameEn: 'Transport: port → yard' },
       { key: 'transportYardToCustomer', nameAr: 'فاتورة النقل من الساحة إلى العميل', nameEn: 'Transport: yard → customer' },
       { key: 'appointmentBooking', nameAr: 'حجز الموعد', nameEn: 'Appointment booking' },
-      { key: 'inspection', nameAr: 'أجور الكشف', nameEn: 'Inspection fees' },
+      { key: 'inspection', nameAr: 'أجور أمر النقل', nameEn: 'Inspection fees' },
       { key: 'exitPermit', nameAr: 'تصريح الخروج (الأرضيات)', nameEn: 'Exit permit (demurrage)' },
       { key: 'consolidator', nameAr: 'الدامج', nameEn: 'Consolidator' },
       { key: 'commissions', nameAr: 'عمولات', nameEn: 'Commissions' },

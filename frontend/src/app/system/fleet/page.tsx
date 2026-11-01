@@ -53,7 +53,7 @@ const toSheetRow = (s: FleetShipment): DispatchSheetRow => ({
 // أعمدة تصدير الحمولات — معرَّفة مرة واحدة لأن الصفحة تصدّر مرّتين: الصفحة
 // المعروضة، وكل ما يطابق الفلتر مجلوبًا من الخادم. تعريفان يفترقان يومًا ما.
 const SHIPMENT_COLUMNS = [
-  { header: 'Waybill', key: 'waybillNumber', width: 10 },
+  { header: 'Transport order', key: 'waybillNumber', width: 10 },
   { header: 'Customer', key: 'customerName', width: 26 },
   { header: 'From', key: 'fromCity', width: 14 },
   { header: 'To', key: 'toCity', width: 14 },
@@ -74,7 +74,7 @@ const SHIPMENT_COLUMNS = [
 // بوليصة-100001-اسم العميل-22-7-2026
 const waybillFileName = (s: FleetShipment) => {
   const d = new Date(s.loadDate || s.createdAt || Date.now());
-  return `بوليصة-${s.waybillNumber}-${s.customerName || 'عميل'}-${d.getDate()}-${d.getMonth() + 1}-${d.getFullYear()}`;
+  return `أمر نقل-${s.waybillNumber}-${s.customerName || 'عميل'}-${d.getDate()}-${d.getMonth() + 1}-${d.getFullYear()}`;
 };
 
 function FleetShipmentsInner() {
@@ -189,7 +189,7 @@ function FleetShipmentsInner() {
 
   const remove = async (s: FleetShipment) => {
     if (!(await confirm(ar
-      ? `حذف الشحنة بوليصة رقم ${s.waybillNumber} (${s.customerName || '—'})؟`
+      ? `حذف الشحنة أمر نقل رقم ${s.waybillNumber} (${s.customerName || '—'})؟`
       : `Delete shipment, waybill ${s.waybillNumber}?`))) return;
     try { await api.delete(`/api/fleet/shipments/${s._id}`); load(); }
     catch (e: any) { notify(e.message, 'error'); }
@@ -248,7 +248,7 @@ function FleetShipmentsInner() {
       const blobs = await buildPickedPdfs();
       const gen = await import('@/lib/dispatchSheetGenerator');
       blobs.forEach((b, i) => gen.triggerDownload(
-        b, blobs.length > 1 ? `بوليصات-الشحن-${picked.size}-جزء-${i + 1}.pdf` : `بوليصات-الشحن-${picked.size}.pdf`));
+        b, blobs.length > 1 ? `أوامر نقل-الشحن-${picked.size}-جزء-${i + 1}.pdf` : `أوامر نقل-الشحن-${picked.size}.pdf`));
       setPicked(new Map());
       setShowPicked(false);
     } catch (e: any) { notify(e?.message || 'PDF failed', 'error'); }
@@ -321,7 +321,7 @@ function FleetShipmentsInner() {
       <PageHeader
         icon={<Truck className="w-5 h-5" />}
         title={ar ? 'حمولات الأسطول' : 'Fleet shipments'}
-        subtitle={ar ? 'سياراتنا فقط — الحجز والمتابعة والبوليصات' : 'Our own trucks — booking, follow-ups and waybills'}
+        subtitle={ar ? 'سياراتنا فقط — الحجز والمتابعة وأوامر النقل' : 'Our own trucks — booking, follow-ups and waybills'}
       >
         {picked.size > 0 && (
           <>
@@ -330,7 +330,7 @@ function FleetShipmentsInner() {
               {bulkBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileDown className="w-4 h-4" />}
               {bulkBusy
                 ? (ar ? `جارٍ التجهيز ${bulkProgress}…` : `Generating ${bulkProgress}…`)
-                : (ar ? `تحميل ${picked.size} بوليصة` : `Download ${picked.size} waybills`)}
+                : (ar ? `تحميل ${picked.size} أمر نقل` : `Download ${picked.size} waybills`)}
             </button>
             <button type="button" onClick={printPicked} disabled={bulkBusy}
               className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-sm font-semibold disabled:opacity-60">
@@ -399,7 +399,7 @@ function FleetShipmentsInner() {
       <div className="flex flex-wrap gap-3 items-center">
         <div className="flex-1 min-w-[240px] basis-72">
           <SearchInput value={search} onChange={setSearch}
-            placeholder={ar ? 'بحث برقم البوليصة أو العميل أو السائق أو اللوحة…' : 'Search waybill, customer, driver, plate…'} />
+            placeholder={ar ? 'بحث برقم أمر النقل أو العميل أو السائق أو اللوحة…' : 'Search waybill, customer, driver, plate…'} />
         </div>
         <div className="w-40 grow sm:grow-0">
           <Select value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}>
@@ -431,14 +431,14 @@ function FleetShipmentsInner() {
 
       {/* ── شريطُ المعلَّم ─────────────────────────────────────────────────
           التعليمُ يعبر البحثَ والترقيم، فيلزم أن يُرى: عددُه، وكم منه غائبٌ
-          عن الشاشة الآن، وقائمتُه بأرقام البوالص لمن يريد التحقّق أو رفعَ
+          عن الشاشة الآن، وقائمتُه بأرقام أوامر النقل لمن يريد التحقّق أو رفعَ
           واحدةٍ بعينها. وبغير هذا الشريط يظنّ من بحث أنّ تعليمَه ضاع. */}
       {picked.size > 0 && (
         <div className="rounded-xl border-2 border-[#f37121]/40 bg-orange-50 p-3 space-y-2">
           <div className="flex flex-wrap items-center gap-2">
             <CheckSquare className="w-4 h-4 text-[#f37121]" />
             <span className="text-sm font-bold text-slate-900">
-              {ar ? `${picked.size} بوليصة محدَّدة` : `${picked.size} waybills selected`}
+              {ar ? `${picked.size} أمر نقل محدَّدة` : `${picked.size} waybills selected`}
             </span>
             {pickedOffScreen > 0 && (
               <span className="px-2 py-0.5 rounded-full bg-white border border-orange-200 text-[11.5px] font-semibold text-orange-700">
@@ -486,7 +486,7 @@ function FleetShipmentsInner() {
                 aria-label={ar ? 'تحديد كل المعروض' : 'Select everything shown'} />
             </th>
             {[
-              ar ? 'رقم البوليصة' : 'Waybill',
+              ar ? 'رقم أمر النقل' : 'Transport order',
               ar ? 'العميل' : 'Customer',
               // «من» و«إلى» عمودان: السهمُ في العربيّة يشير يسارًا والنصُّ يجري
               // يمينًا فيُقرأ عكسَه، وعمودان يُفرَزان ويُفلتَران ويُصدَّران.
@@ -575,12 +575,12 @@ function FleetShipmentsInner() {
                     <div className="flex items-center justify-end gap-1">
                       <button type="button" onClick={() => downloadOne(s)} disabled={downloadingId === s._id}
                         className="p-1.5 rounded-lg text-slate-500 hover:text-[#f37121] hover:bg-slate-100 disabled:opacity-50"
-                        title={ar ? 'تحميل البوليصة' : 'Download waybill'}>
+                        title={ar ? 'تحميل أمر النقل' : 'Download transport order'}>
                         {downloadingId === s._id ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileDown className="w-4 h-4" />}
                       </button>
                       <button type="button" onClick={() => printOne(s)} disabled={downloadingId === s._id}
                         className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-100 disabled:opacity-50"
-                        title={ar ? 'طباعة البوليصة' : 'Print waybill'}>
+                        title={ar ? 'طباعة أمر النقل' : 'Print waybill'}>
                         <Printer className="w-4 h-4" />
                       </button>
                       {editor && (

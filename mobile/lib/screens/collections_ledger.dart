@@ -140,7 +140,7 @@ class _CollectionsLedgerScreenState extends State<CollectionsLedgerScreen> {
         ExportCol('مهلة السداد', 'Terms', (r) => r['creditDays']),
         ExportCol('الاستحقاق', 'Due', (r) => _dt(r['dueDate'])),
         ExportCol('الحالة', 'Status', (r) => r['status']),
-        ExportCol('كشوف التشغيل', 'Reports', (r) => (r['reportNumbers'] as List? ?? const []).join(', ')),
+        ExportCol('أوامر النقل', 'Reports', (r) => (r['reportNumbers'] as List? ?? const []).join(', ')),
         ExportCol('ملاحظات', 'Comments', (r) => r['comments']),
       ];
 
@@ -242,7 +242,7 @@ class _CollectionsLedgerScreenState extends State<CollectionsLedgerScreen> {
               if (_num(r['creditDays']) > 0) Chip2('${tr('مهلة', 'Terms')} ${r['creditDays']}', T.navy),
               if (r['daysToDue'] != null) Chip2(_dueWords(r['daysToDue']), overdue ? T.danger : T.inkSoft),
               if ((r['reportNumbers'] as List? ?? const []).isNotEmpty)
-                Chip2('${(r['reportNumbers'] as List).length} ${tr('كشف', 'reports')}', T.navy, icon: Icons.link),
+                Chip2('${(r['reportNumbers'] as List).length} ${tr('أمر نقل', 'reports')}', T.navy, icon: Icons.link),
             ]),
             if (_s(r, 'comments').isNotEmpty) Padding(
               padding: const EdgeInsets.only(top: 4),

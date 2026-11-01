@@ -136,7 +136,7 @@ export default function LedgerInvoicesPage() {
           {r.status || (ar ? 'مفتوحة' : 'Open')}
         </span>
       ) },
-    { header: ar ? 'كشوف التشغيل' : 'Reports', key: 'reportNumbers', width: 22,
+    { header: ar ? 'أوامر النقل' : 'Reports', key: 'reportNumbers', width: 22,
       transform: (v: any) => (v || []).join(', '),
       cell: (r) => (r.reportNumbers?.length
         ? <span className="inline-flex items-center gap-1 text-xs text-slate-500" title={r.reportNumbers.join(', ')}><Link2 className="w-3 h-3" />{r.reportNumbers.length}</span>

@@ -87,7 +87,7 @@ function ArrivalsInner() {
   }, [urlParams, router]);
 
   const shipCols = [
-    { header: 'Waybill', key: 'waybillNumber', width: 10 },
+    { header: 'Transport order', key: 'waybillNumber', width: 10 },
     { header: 'Plate', key: 'vehiclePlate', width: 14 },
     { header: 'Driver', key: 'driverName', width: 18 },
     { header: 'Customer', key: 'customerName', width: 24 },
@@ -114,7 +114,7 @@ function ArrivalsInner() {
     { header: 'Plate', key: 'plate', width: 14 },
     { header: 'Trailer', key: 'trailerType', width: 14 },
     { header: 'Supervisor', key: 'supervisorName', width: 18 },
-    { header: 'Waybill', key: 'trip', transform: (v: any) => v?.waybillNumber ?? '', width: 10 },
+    { header: 'Transport order', key: 'trip', transform: (v: any) => v?.waybillNumber ?? '', width: 10 },
     { header: 'Customer', key: 'trip', transform: (v: any) => v?.customerName || '', width: 24 },
     { header: 'From', key: 'trip', transform: (v: any) => v?.fromCity || '', width: 14 },
     { header: 'To', key: 'trip', transform: (v: any) => v?.toCity || '', width: 14 },
@@ -174,7 +174,7 @@ function ArrivalsInner() {
   const shipHead = (
     <tr className="bg-slate-900 border-b border-slate-200 text-slate-300">
       {[
-        ar ? 'البوليصة' : 'Waybill', ar ? 'اللوحة' : 'Plate', ar ? 'السائقون' : 'Drivers',
+        ar ? 'أمر النقل' : 'Transport order', ar ? 'اللوحة' : 'Plate', ar ? 'السائقون' : 'Drivers',
         ar ? 'العميل' : 'Customer', ar ? 'المسار' : 'Route', ar ? 'تاريخ التحميل' : 'Load date',
         ar ? 'الوصول المتوقع' : 'Expected arrival', ar ? 'الحالة' : 'Status',
         ar ? 'المشرف' : 'Supervisor', ar ? 'آخر تواصل' : 'Last contact', ar ? 'الإيجار' : 'Rent',
@@ -366,7 +366,7 @@ function ArrivalsInner() {
             <table className="w-full text-sm">
               <thead><tr className="bg-slate-900 border-b border-slate-200 text-slate-300">
                 {[ar ? 'اللوحة' : 'Plate', ar ? 'نوع التيدر' : 'Trailer', ar ? 'المشرف' : 'Supervisor',
-                  ar ? 'البوليصة' : 'Waybill', ar ? 'العميل' : 'Customer', ar ? 'المسار' : 'Route',
+                  ar ? 'أمر النقل' : 'Transport order', ar ? 'العميل' : 'Customer', ar ? 'المسار' : 'Route',
                   ar ? 'الحالة' : 'Status', ar ? 'الوصول المتوقع' : 'ETA',
                 ].map((h, i) => <th key={i} className={th}>{h}</th>)}
               </tr></thead>

@@ -104,7 +104,7 @@ function ShipmentsInner() {
   }, [services, kind]);
 
   const exportColumns: ExportColumn[] = [
-    { header: isPlatform ? tx('Report #', 'رقم الكشف') : tx('Waybill #', 'رقم البوليصة'), key: 'waybillNumber', width: 14 },
+    { header: isPlatform ? tx('Report #', 'رقم أمر النقل') : tx('Transport order #', 'رقم أمر النقل'), key: 'waybillNumber', width: 14 },
     { header: tx('Date', 'التاريخ'), key: 'loadDate', transform: (v: any, r: any) => fmtDate(v || r.createdAt), width: 14 },
     { header: tx('From', 'من'), key: 'fromCity', width: 16 },
     { header: tx('To', 'إلى'), key: 'toCity', width: 16 },
@@ -184,7 +184,7 @@ function ShipmentsInner() {
         <input
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder={tx('Search waybill, city, driver…', 'ابحث برقم البوليصة أو المدينة أو السائق…')}
+          placeholder={tx('Search waybill, city, driver…', 'ابحث برقم أمر النقل أو المدينة أو السائق…')}
           className="w-full ps-9 pe-3 py-2 rounded-lg border border-slate-200 text-sm text-slate-800 focus:outline-none focus:border-[#f37121]"
         />
       </div>
@@ -194,7 +194,7 @@ function ShipmentsInner() {
           <table className="w-full min-w-[820px]">
             <thead>
               <tr className="bg-slate-900">
-                <th className="px-4 py-2 text-start text-[11px] text-slate-300 uppercase">{isPlatform ? tx('Report #', 'رقم الكشف') : tx('Waybill', 'البوليصة')}</th>
+                <th className="px-4 py-2 text-start text-[11px] text-slate-300 uppercase">{isPlatform ? tx('Report #', 'رقم أمر النقل') : tx('Transport order', 'أمر النقل')}</th>
                 <th className="px-4 py-2 text-start text-[11px] text-slate-300 uppercase">{tx('Date', 'التاريخ')}</th>
                 <th className="px-4 py-2 text-start text-[11px] text-slate-300 uppercase">{tx('Route', 'المسار')}</th>
                 <th className="px-4 py-2 text-start text-[11px] text-slate-300 uppercase">{tx('Truck', 'المركبة')}</th>

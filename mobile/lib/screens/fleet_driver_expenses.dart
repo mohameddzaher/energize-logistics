@@ -306,7 +306,7 @@ class _FleetDriverExpensesScreenState extends State<FleetDriverExpensesScreen> {
               SearchField(
                 controller: _searchCtrl, dense: true,
                 onChanged: _onSearch,
-                hint: tr('كشف أو سائق أو لوحة…', 'Waybill, driver or plate…'),
+                hint: tr('أمر نقل أو سائق أو لوحة…', 'Transport order, driver or plate…'),
               ),
             ]),
           ),

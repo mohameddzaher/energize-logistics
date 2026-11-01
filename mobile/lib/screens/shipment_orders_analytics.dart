@@ -167,7 +167,7 @@ class _ShipmentOrdersAnalyticsScreenState extends State<ShipmentOrdersAnalyticsS
                       Row(children: [
                         Expanded(child: SearchField(
                           controller: _searchCtrl,
-                          hint: tr('عميل، مورّد، مدينة، سائق، بوليصة…', 'customer, supplier, city, driver, waybill…'),
+                          hint: tr('عميل، مورّد، مدينة، سائق، أمر نقل…', 'customer, supplier, city, driver, waybill…'),
                           onChanged: (v) { _debounce?.cancel(); _debounce = Timer(const Duration(milliseconds: 350), () => _refilter(() => _q = v)); },
                         )),
                         IconButton(

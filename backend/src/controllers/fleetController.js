@@ -506,7 +506,7 @@ exports.createShipment = async (req, res) => {
           recipient: shipment.supervisor,
           type: 'shipment_update',
           title: 'شحنة جديدة',
-          message: `بوليصة ${shipment.waybillNumber} — ${shipment.fromCity || ''} ← ${shipment.toCity || ''}`,
+          message: `أمر نقل ${shipment.waybillNumber} — ${shipment.fromCity || ''} ← ${shipment.toCity || ''}`,
           relatedEntity: 'FleetShipment',
           relatedEntityId: shipment._id,
         });
@@ -613,7 +613,7 @@ async function notifyStatus(req, shipment, from) {
       recipient: shipment.supervisor,
       type: 'status_changed',
       title: 'تغيّرت حالة الشحنة',
-      message: `بوليصة ${shipment.waybillNumber} — ${from} → ${shipment.status}`,
+      message: `أمر نقل ${shipment.waybillNumber} — ${from} → ${shipment.status}`,
       relatedEntity: 'FleetShipment',
       relatedEntityId: shipment._id,
     });
@@ -674,7 +674,7 @@ exports.getWaybillsPdf = async (req, res) => {
     const ids = Array.isArray(req.body?.ids) ? req.body.ids.filter(Boolean) : [];
     if (!ids.length) return res.status(400).json({ message: 'اختر شحنةً واحدةً على الأقلّ' });
     // حدٌّ أعلى: كلُّ بوليصةٍ ترسيمٌ في متصفّحٍ بلا واجهة، ومئتان تعني دقائق.
-    if (ids.length > 100) return res.status(400).json({ message: 'الحدُّ الأقصى مئةُ بوليصةٍ في المرّة' });
+    if (ids.length > 100) return res.status(400).json({ message: 'الحدُّ الأقصى مئةُ أمر نقل في المرّة' });
 
     const { renderWaybillsPdf, rowFromShipment } = require('../utils/waybillPdf');
     const shipments = await FleetShipment.find({ _id: { $in: ids } })
@@ -703,7 +703,7 @@ exports.getWaybillsPdf = async (req, res) => {
     res.setHeader('Content-Disposition', `attachment; filename="waybills-${shipments.length}.pdf"`);
     res.send(pdf);
   } catch (error) {
-    res.status(500).json({ message: 'تعذّر إصدارُ البوالص', error: error.message });
+    res.status(500).json({ message: 'تعذّر إصدارُ أوامر النقل', error: error.message });
   }
 };
 
@@ -744,7 +744,7 @@ exports.getWaybillPdf = async (req, res) => {
     res.send(pdf);
   } catch (error) {
     console.error('waybill pdf error:', error.message);
-    res.status(500).json({ message: 'تعذّر توليد البوليصة' });
+    res.status(500).json({ message: 'تعذّر توليد أمر النقل' });
   }
 };
 
@@ -3455,7 +3455,7 @@ exports.createVehicleLog = async (req, res) => {
         // الحمولة المربوطة يجب أن تكون على هذه السيّارة — وإلّا صار القيدُ
         // معلَّقًا على شحنةٍ لا علاقة لها بها، وهو أسوأ من ألّا يُربط.
         if (String(shipment.vehicle) !== String(vehicle._id)) {
-          return res.status(400).json({ message: 'هذه البوليصة ليست على هذه السيارة' });
+          return res.status(400).json({ message: 'هذه أمر النقل ليست على هذه السيارة' });
         }
         waybillNumber = shipment.waybillNumber;
       }

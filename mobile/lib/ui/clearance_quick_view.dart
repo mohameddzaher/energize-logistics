@@ -27,7 +27,7 @@ Future<void> showClearanceQuickView(BuildContext context, String id) {
 const _costs = [
   ('deliveryOrder', 'قيمة إذن التسليم', 'Delivery order'), ('customsDuty', 'الرسوم الجمركية', 'Customs duty'),
   ('portFees', 'أجور الموانى', 'Port fees'), ('unloadingFees', 'أجور التفريغ', 'Unloading fees'),
-  ('inspection', 'أجور الكشف', 'Inspection'), ('transport', 'النقل من الميناء إلى العميل', 'Transport: port → customer'),
+  ('inspection', 'أجور أمر النقل', 'Inspection'), ('transport', 'النقل من الميناء إلى العميل', 'Transport: port → customer'),
   ('transportToYard', 'النقل من الميناء إلى الساحة', 'Transport: port → yard'),
   ('transportYardToCustomer', 'النقل من الساحة إلى العميل', 'Transport: yard → customer'),
   ('appointmentBooking', 'حجز الموعد', 'Appointment'),

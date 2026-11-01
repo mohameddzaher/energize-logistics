@@ -1136,7 +1136,7 @@ ResourceConfig customersRegisterCfg({required bool canEdit, required bool canDel
     ResourceAction(icon: Icons.key_outlined, ar: 'حساب البوابة', en: 'Portal login', color: T.orange, run: openCustomerPortalLogin),
   ],
   searchFields: const ['customerCode', 'name', 'phone', 'email', 'branch'],
-  sortFields: const [('sheets', 'الكشوف', 'Sheets'), ('routesCount', 'المسارات', 'Routes')],
+  sortFields: const [('sheets', 'أوامر النقل', 'Sheets'), ('routesCount', 'المسارات', 'Routes')],
   titleOf: (r) => _s(r, 'customerCode').isEmpty ? _s(r, 'name') : '${_s(r, 'customerCode')} · ${_s(r, 'name')}',
   // السطرُ الثاني يحمل أرقامَه: ٦٧٠ عميلًا بلا أرقامٍ جردٌ يُمرَّر لا سجلٌّ يُقرأ.
   subtitleOf: (r) {
@@ -1392,7 +1392,7 @@ ResourceConfig _collectionsPartyCfg({required bool customer}) => ResourceConfig(
       ],
       sortFields: const [
         ('outstanding', 'المستحق', 'Outstanding'),
-        ('reports', 'عدد الكشوف', 'Reports'),
+        ('reports', 'عدد أوامر النقل', 'Reports'),
       ],
       // ── الصفُّ يفتح ملفَّ الطرف (والتحرير من القلم) — كاسمه في الموقع ─────
       onOpen: (ctx, r) => Navigator.push(ctx, MaterialPageRoute(builder: (_) => CollectionsPartyScreen(id: _s(r, '_id')))),
@@ -1555,7 +1555,7 @@ bool collectionsCanEditAmount = false;
 /// الفاتورةُ الضريبيّةُ تُعرَف برقمها، والكشفُ النقديُّ بمعرّفه في سير العمل.
 ResourceAction _uncollectAction(Map<String, dynamic> Function(Map<String, dynamic>) target) => ResourceAction(
       icon: Icons.undo_rounded, ar: 'لم تُحصَّل', en: 'Not collected', color: T.danger,
-      confirmAr: 'يُمحى تاريخُ التحصيل ومبلغُه من الكشوف ومن سير عمل التشغيل وتعود غيرَ محصَّلة — يُقيَّد باسمك وسببك.',
+      confirmAr: 'يُمحى تاريخُ التحصيل ومبلغُه من أوامر النقل ومن سير عمل التشغيل وتعود غيرَ محصَّلة — يُقيَّد باسمك وسببك.',
       confirmEn: 'The collection date and amount are cleared from the reports and the operations workflow, and it returns to not collected — recorded under your name and reason.',
       reasonKey: 'reason', reasonAr: 'سبب الرجوع عن التحصيل', reasonEn: 'Reason for undoing the collection', reasonOptional: true,
       request: (r) => ('POST', '/api/collections-dept/invoices/uncollect', target(r)),
@@ -1572,7 +1572,7 @@ final collectionsTaxInvoicesCfg = ResourceConfig(
   subtitleOf: (r) => [_s(r, 'customer'), '${_n(r['value'])} ر.س'].where((x) => x.isNotEmpty).join(' · '),
   chipsOf: (r) => [
     // عددُ الكشوفات: الفاتورةُ الواحدة قد تضمّ أكثرَ من كشف.
-    ('${r['reports'] ?? 0} كشف', T.navy),
+    ('${r['reports'] ?? 0} أمر نقل', T.navy),
     // معاملاتُ التخليص التي تخدمها كشوفُ الفاتورة.
     if (_customsChip(r['customs'] is List ? r['customs'] as List : const []) != null) _customsChip(r['customs'] as List)!,
     if (r['ageDays'] != null) ('${r['ageDays']} يوم', _ageColor(r['ageDays'])),

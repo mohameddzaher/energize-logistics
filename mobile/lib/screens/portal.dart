@@ -28,8 +28,8 @@ const _statusLabels = <String, (String, String, Color)>{
   'uploaded': ('تم التحميل', 'Loaded', Color(0xFF6366F1)),
   'on_way': ('في الطريق', 'On the way', Color(0xFFF59E0B)),
   'arrived': ('وصلت', 'Arrived', Color(0xFF16A34A)),
-  'bond_sent': ('أُرسلت البوليصة', 'Waybill sent', Color(0xFF22C55E)),
-  'bond_received': ('استُلمت البوليصة', 'Waybill received', Color(0xFF22C55E)),
+  'bond_sent': ('أُرسلت أمر النقل', 'Waybill sent', Color(0xFF22C55E)),
+  'bond_received': ('استُلمت أمر النقل', 'Waybill received', Color(0xFF22C55E)),
   'late': ('متأخرة', 'Late', Color(0xFFEF4444)),
   'invoiced': ('تمت الفوترة', 'Invoiced', Color(0xFF0F766E)),
   'cancelled': ('ملغاة', 'Cancelled', Color(0xFF64748B)),
@@ -343,7 +343,7 @@ class _ShipmentsTabState extends State<_ShipmentsTab> {
 
   // أعمدةُ تصدير الويب — والمبلغُ للمورّد وحدَه: العميلُ لا يرى سعرًا.
   List<ExportCol> get _exportCols => [
-        ExportCol(_isPlatform ? 'رقم الكشف' : 'رقم البوليصة', _isPlatform ? 'Report #' : 'Waybill #', (r) => r['waybillNumber']),
+        ExportCol(_isPlatform ? 'رقم أمر النقل' : 'رقم أمر النقل', _isPlatform ? 'Report #' : 'Waybill #', (r) => r['waybillNumber']),
         ExportCol('التاريخ', 'Date', (r) => _date(r['loadDate'] ?? r['createdAt'])),
         ExportCol('من', 'From', (r) => r['fromCity']),
         ExportCol('إلى', 'To', (r) => r['toCity']),
@@ -413,13 +413,13 @@ class _ShipmentsTabState extends State<_ShipmentsTab> {
                   } catch (e) {
                     if (c.mounted) {
                       ScaffoldMessenger.of(c).showSnackBar(SnackBar(
-                        content: Text(e is ApiException ? e.message : tr('تعذّر توليد البوليصة', 'Could not generate the waybill')),
+                        content: Text(e is ApiException ? e.message : tr('تعذّر توليد أمر النقل', 'Could not generate the waybill')),
                       ));
                     }
                   }
                 },
                 icon: const Icon(Icons.picture_as_pdf_outlined, size: 18),
-                label: Text(tr('البوليصة (PDF)', 'Waybill (PDF)')),
+                label: Text(tr('أمر النقل (PDF)', 'Waybill (PDF)')),
               ),
             ],
             const SizedBox(height: 16),
@@ -467,8 +467,8 @@ class _ShipmentsTabState extends State<_ShipmentsTab> {
 
   // المبلغ للمورد وحده (مستحقُّه عن الحمولة) — العميل لا يرى أيّ مبلغ.
   List<(String, String)> _rowsFor(Map<String, dynamic> s) => [
-        if (_isPlatform) (tr('رقم الكشف', 'Report number'), '#${s['waybillNumber'] ?? '—'}'),
-        (_isPlatform ? tr('تاريخ الكشف', 'Report date') : tr('تاريخ التحميل', 'Load date'), _date(s['loadDate'] ?? s['pickupTime'] ?? s['createdAt'])),
+        if (_isPlatform) (tr('رقم أمر النقل', 'Report number'), '#${s['waybillNumber'] ?? '—'}'),
+        (_isPlatform ? tr('تاريخ أمر النقل', 'Report date') : tr('تاريخ التحميل', 'Load date'), _date(s['loadDate'] ?? s['pickupTime'] ?? s['createdAt'])),
         (tr('نوع الحمولة', 'Cargo type'), (s['loadType'] ?? s['cargoType'] ?? '—').toString()),
         (tr('نوع المركبة', 'Truck type'), (s['trailerType'] ?? s['truckType'] ?? '—').toString()),
         if (_isPlatform) ...[
@@ -515,7 +515,7 @@ class _ShipmentsTabState extends State<_ShipmentsTab> {
         child: Row(children: [
           Expanded(child: SearchField(
             controller: _searchCtl,
-            hint: tr('ابحث برقم البوليصة أو المدينة…', 'Search waybill or city…'),
+            hint: tr('ابحث برقم أمر النقل أو المدينة…', 'Search waybill or city…'),
             suffixText: '${rows.length}',
             onChanged: (v) => setState(() => _q = v),
           )),

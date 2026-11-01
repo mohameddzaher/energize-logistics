@@ -30,7 +30,7 @@ const _roles = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operatio
 
 /// الأعمدةُ التي يقبل الخادمُ الفلترةَ عليها — (المفتاح، العربيّ، الإنجليزيّ، مالٌ؟).
 const _filterCols = [
-  ('reportNumber', 'رقم الكشف', 'Report #', false), ('reportDate', 'تاريخ الكشف', 'Report date', false),
+  ('reportNumber', 'رقم أمر النقل', 'Report #', false), ('reportDate', 'تاريخ أمر النقل', 'Report date', false),
   ('fromLocation', 'من', 'From', false), ('toLocation', 'إلى', 'To', false), ('branch', 'الفرع', 'Branch', false),
   ('carOwner', 'مالك السيارة', 'Car owner', false), ('carNumber', 'رقم السيارة', 'Car #', false), ('ownerType', 'نوع المالك', 'Owner type', false),
   ('executionStatus', 'حالة التنفيذ', 'Execution', false), ('applicationStatus', 'حالة الشحنة', 'Status', false), ('paymentMethod', 'طريقة الدفع', 'Payment method', false),
@@ -40,7 +40,7 @@ const _filterCols = [
   ('representativeName', 'المندوب', 'Representative', false), ('operationsReview', 'مراجعة التشغيل', 'Ops review', false),
   ('paymentDate', 'تاريخ السداد', 'Payment date', false), ('paymentDateByName', 'مسؤول البيانات', 'Data owner', false), ('payingBranch', 'الفرع المسدِّد', 'Paying branch', false),
   ('paymentAmount', 'مبلغ السداد', 'Payment amount', false), ('paymentType', 'نوع الدفع', 'Payment type', false),
-  ('finalReportDestination', 'وجهة الكشف النهائية', 'Final destination', false), ('documentNumber', 'رقم السند', 'Document #', false),
+  ('finalReportDestination', 'وجهة أمر النقل النهائية', 'Final destination', false), ('documentNumber', 'رقم السند', 'Document #', false),
   ('sendingDate', 'تاريخ الإرسال', 'Sending date', false), ('branchDeliveryDate', 'تاريخ التسليم للفرع', 'Delivered to branch', false),
   ('accountingReview', 'مراجعة المحاسبة', 'Accounting review', true), ('invoiceNumber', 'رقم الفاتورة', 'Invoice #', true),
   ('netInvoice', 'صافي الفاتورة', 'Net invoice', true), ('tax', 'الضريبة', 'Tax', true), ('totalInvoice', 'إجمالي الفاتورة', 'Total invoice', true),
@@ -363,7 +363,7 @@ class _OpsPrivateScreenState extends State<OpsPrivateScreen> {
       const SizedBox(height: 8),
       Row(children: [
         _kpi(tr('إجمالي البيع', 'Selling total'), has ? opsMoney(s['sumSelling']) : '…',
-            tr('على $priced كشفًا مسعَّرًا', 'over $priced priced sheets'), T.success, Icons.payments_outlined),
+            tr('على $priced أمر نقل مسعَّرًا', 'over $priced priced sheets'), T.success, Icons.payments_outlined),
         const SizedBox(width: 8),
         _kpi(tr('إجمالي الشراء', 'Purchase total'), has ? opsMoney(s['sumPurchaseAll']) : '…',
             tr('المسعَّر ${opsMoney(s['sumPurchase'])} · غير المسعَّر ${opsMoney(s['sumPurchaseUnpriced'])}', 'priced ${opsMoney(s['sumPurchase'])} · unpriced ${opsMoney(s['sumPurchaseUnpriced'])}'),
@@ -383,7 +383,7 @@ class _OpsPrivateScreenState extends State<OpsPrivateScreen> {
       const SizedBox(height: 10),
       SearchField(
         controller: _searchCtl, dense: true,
-        hint: tr('كشف أو عميل أو مدينة…', 'Sheet, customer or city…'),
+        hint: tr('أمر نقل أو عميل أو مدينة…', 'Sheet, customer or city…'),
         onChanged: (v) {
           _debounce?.cancel();
           _debounce = Timer(const Duration(milliseconds: 350), () { if (!mounted) return; _q = v; _reload(); });
@@ -428,7 +428,7 @@ class _OpsPrivateScreenState extends State<OpsPrivateScreen> {
         ]),
       Align(
         alignment: AlignmentDirectional.centerEnd,
-        child: Text(tr('$_total كشفًا حسب الفلتر', '$_total sheets match'), style: const TextStyle(fontSize: 11.5, color: T.inkSoft, fontWeight: FontWeight.w700)),
+        child: Text(tr('$_total أمر نقل حسب الفلتر', '$_total sheets match'), style: const TextStyle(fontSize: 11.5, color: T.inkSoft, fontWeight: FontWeight.w700)),
       ),
     ]);
   }
@@ -501,7 +501,7 @@ class _OpsPrivateScreenState extends State<OpsPrivateScreen> {
                       const SizedBox(height: 10),
                       if (_loading) const LinearProgressIndicator(minHeight: 2),
                       if (_rows.isEmpty)
-                        EmptyState(icon: Icons.lock_outline, title: _cf.isNotEmpty || _priced.isNotEmpty || _pendingOnly || _q.trim().isNotEmpty ? tr('لا نتائج للفلتر المحدد', 'No rows match the filters') : tr('لا كشوف', 'No sheets'))
+                        EmptyState(icon: Icons.lock_outline, title: _cf.isNotEmpty || _priced.isNotEmpty || _pendingOnly || _q.trim().isNotEmpty ? tr('لا نتائج للفلتر المحدد', 'No rows match the filters') : tr('لا أوامر نقل', 'No sheets'))
                       else
                         for (final w in _rows) ...[_rowCard(w), const SizedBox(height: 8)],
                       if (_pages > 1)

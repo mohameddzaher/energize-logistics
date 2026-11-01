@@ -156,7 +156,7 @@ const EXPORT_COLUMNS = [
   { header: 'مسؤول البيانات', key: 'dataOwnerShown', width: 22 },
   { header: 'فرع السداد', key: 'payingBranch', width: 14 },
   { header: 'نوع الدفع', key: 'paymentType', width: 14 },
-  { header: 'وجهة الكشف النهائية', key: 'finalReportDestination', width: 18 },
+  { header: 'وجهة أمر النقل النهائية', key: 'finalReportDestination', width: 18 },
   { header: 'رقم المستند', key: 'documentNumber', width: 14 },
   { header: 'معاملة التخليص', key: 'customsRef', width: 14 },
   { header: 'البوليصة', key: 'customsBl', width: 18 },
@@ -688,7 +688,7 @@ export default function OperationsWorkflowPage() {
     setConfirmModal({
       message: allMatching
         ? (lang === 'ar'
-          ? `سيُحذف ${n.toLocaleString('en-US')} كشفًا — كلُّ نتائج الفلتر الحاليّ في كلّ الصفحات، لا الصفحةُ المعروضة وحدَها. لا يمكن التراجع. متابعة؟`
+          ? `سيُحذف ${n.toLocaleString('en-US')} أمر نقل — كلُّ نتائج الفلتر الحاليّ في كلّ الصفحات، لا الصفحةُ المعروضة وحدَها. لا يمكن التراجع. متابعة؟`
           : `This deletes ${n.toLocaleString('en-US')} reports — every result of the current filter across all pages. This cannot be undone. Continue?`)
         : T.deleteBulkConfirm.replace('{count}', String(n)),
       onConfirm: async () => {
@@ -737,7 +737,7 @@ export default function OperationsWorkflowPage() {
       if (r && typeof (r as any).sellingPlatform === 'boolean') {
         notify((r as any).sellingPlatform
           ? (lang === 'ar' ? 'حُفظت قيمة البيع هنا وفي منصّة التشغيل' : 'Selling value saved here and on the platform')
-          : (lang === 'ar' ? 'حُفظت قيمة البيع — الكشف ليس من منصّة التشغيل' : 'Selling value saved — not a platform shipment'), 'success');
+          : (lang === 'ar' ? 'حُفظت قيمة البيع — أمر النقل ليس من منصّة التشغيل' : 'Selling value saved — not a platform shipment'), 'success');
       }
       // ── ولا يُغلق الردُّ صفًّا فُتح بعده (٢٠٢٦/١٠/٢٤) ──────────────────────
       // كان ردُّ حفظ الصفّ (أ) يُغلق وضعَ التعديل كلَّه ولو وصل والموظّفةُ قد
@@ -926,7 +926,7 @@ export default function OperationsWorkflowPage() {
       const names = Object.keys(fields).length;
       setConfirmModal({
         message: lang === 'ar'
-          ? `سيُطبَّق التعديل (${names} ${names === 1 ? 'عمود' : 'أعمدة'}) على ${total.toLocaleString('en-US')} كشفًا — كلُّ نتائج الفلتر الحاليّ في كلّ الصفحات. متابعة؟`
+          ? `سيُطبَّق التعديل (${names} ${names === 1 ? 'عمود' : 'أعمدة'}) على ${total.toLocaleString('en-US')} أمر نقل — كلُّ نتائج الفلتر الحاليّ في كلّ الصفحات. متابعة؟`
           : `Apply this change (${names} field${names === 1 ? '' : 's'}) to ${total.toLocaleString('en-US')} reports — every result of the current filter. Continue?`,
         onConfirm: () => { setConfirmModal(null); run(); },
       });
@@ -1242,7 +1242,7 @@ export default function OperationsWorkflowPage() {
                         وأين يستقرّ الملفُّ بعدها. وكان الثاني يُكتب صفًّا صفًّا
                         بعد أن يُكتب الأوّلُ للخمسين دفعةً. */}
                     <div>
-                      <label className="block text-xs font-semibold text-slate-600 mb-1">{lang === 'ar' ? 'وجهة الكشف النهائية' : 'Final destination'}</label>
+                      <label className="block text-xs font-semibold text-slate-600 mb-1">{lang === 'ar' ? 'وجهة أمر النقل النهائية' : 'Final destination'}</label>
                       <ManagedSelect type="workflow_final_destination" storeLabel noAdd value={bulkPay.finalReportDestination}
                         onChange={(v) => setBulkPay((p) => ({ ...p, finalReportDestination: v }))}
                         placeholder={lang === 'ar' ? 'اختر الوجهة' : 'Pick destination'} />
@@ -1291,7 +1291,7 @@ export default function OperationsWorkflowPage() {
                         منه تبدأ مهلةُ السداد لكلّ عميلٍ بمدّته، فهو واقعةٌ
                         تُسجَّل لفاتورةٍ بعينها يوم تصل صاحبَها — يكتبها قسمُ
                         التحصيل من زرّ «تسليم» في صفحة الفواتير. وكتابتُه على
-                        خمسين كشفًا بتاريخٍ واحد تجعل خمسين مهلةً تبدأ في يومٍ
+                        خمسين أمر نقل بتاريخٍ واحد تجعل خمسين مهلةً تبدأ في يومٍ
                         لم يستلم فيه أحد. */}
                   </div>
                   {bulkResult && (
@@ -1394,7 +1394,7 @@ export default function OperationsWorkflowPage() {
         <button
           type="button"
           onClick={() => { const on = !showPendingAsOf; setShowPendingAsOf(on); if (on) setShowPendingOnly(false); setPage(1); }}
-          title={lang === 'ar' ? 'الكشوف التي لم يصل سندُها حتى نهاية الفترة المفلترة — ولو وصل بعدها' : 'Bonds not arrived by the end of the filtered period — even if they arrived later'}
+          title={lang === 'ar' ? 'أوامر النقل التي لم يصل سندُها حتى نهاية الفترة المفلترة — ولو وصل بعدها' : 'Bonds not arrived by the end of the filtered period — even if they arrived later'}
           className={`${CARD} !border-violet-200 !bg-violet-50/60 ${showPendingAsOf ? '!border-violet-600 ring-1 ring-violet-600' : ''}`}
         >
           <HistoryIcon className="h-4 w-4 shrink-0 text-violet-500" />
@@ -1503,7 +1503,7 @@ export default function OperationsWorkflowPage() {
         />
         {/* ── مِصفاةُ المراحل أُزيلت ────────────────────────────────────────
             «مسودة / مرسل للتشغيل / التشغيل مكتمل / للتحصيلات / مكتمل» مراحلُ
-            صُمّمت حين كانت الكشوفُ تُنشأ عندنا وتتنقّل بين أقسامنا. وهي تصل
+            صُمّمت حين كانت أوامر النقل تُنشأ عندنا وتتنقّل بين أقسامنا. وهي تصل
             الآن من منصّة التشغيل وقد جرت هناك، فيبقى الجميعُ في «مسودة» أبدًا:
             خمسةُ أزرارٍ أربعةٌ منها فارغةٌ دائمًا. والحالةُ الحقيقيّةُ عمودٌ في
             الجدول له مِصفاتُه. */}
@@ -1563,7 +1563,7 @@ export default function OperationsWorkflowPage() {
               <button type="button" onClick={() => { setCustomsMode(''); setPage(1); }}
                 className="inline-flex items-center gap-1 rounded-md bg-sky-50 px-2.5 py-1 text-sky-800 hover:bg-sky-100"
                 title={lang === 'ar' ? 'إزالة' : 'Clear'}>
-                {lang === 'ar' ? 'كشوف معاملةٍ محدّدة' : 'One clearance'} <X className="w-3 h-3" />
+                {lang === 'ar' ? 'أوامر نقل معاملةٍ محدّدة' : 'One clearance'} <X className="w-3 h-3" />
               </button>
             )}
           </div>
@@ -1669,13 +1669,13 @@ export default function OperationsWorkflowPage() {
                 {ColHead('paymentType', T.thPaymentType, 'text-purple-300')}
                 {/* وجهةُ الكشف النهائيّة — الفرعُ الذي يستقرّ عنده الملفّ في
                     آخره. سؤالٌ غيرُ «مَن سدّد»: قد يُسدَّد في فرعٍ ويستقرّ في غيره. */}
-                {ColHead('finalReportDestination', lang === 'ar' ? 'وجهة الكشف النهائية' : 'Final destination', 'text-purple-300')}
+                {ColHead('finalReportDestination', lang === 'ar' ? 'وجهة أمر النقل النهائية' : 'Final destination', 'text-purple-300')}
                 {ColHead('documentNumber', T.thDocNumber, 'text-purple-300')}
                 {/* معاملةُ التخليص التي يخدمها الكشف — رقمُها · البوليصة · الحاويات. */}
                 {ColHead('customsRef', lang === 'ar' ? 'التخليص' : 'Customs', 'text-sky-300')}
                 {ColHead('sendingDate', T.thSendingDate, 'text-purple-300')}
                 {/* ── تسليمان لا تسليمٌ واحد ────────────────────────────────
-                    هذا تسليمُ الكشف إلى الفرع — عملُ التشغيل، ويأتي من شيت
+                    هذا تسليمُ أمر النقل إلى الفرع — عملُ التشغيل، ويأتي من شيت
                     المتابعة. وتسليمُ الفاتورة إلى العميل عمودٌ آخرُ عند أعمدة
                     التحصيل، ومنه وحدَه تبدأ مهلةُ السداد المتّفق عليها. */}
                 {ColHead('branchDeliveryDate', T.thBranchDeliveryDate, 'text-purple-300')}
@@ -1828,7 +1828,7 @@ export default function OperationsWorkflowPage() {
                         return (
                           <td className="px-3 py-2.5 text-sm whitespace-nowrap" onClick={(e) => e.stopPropagation()}
                             title={!owns('applicationStatus') ? noPermMsg
-                              : !fromPlatform ? (lang === 'ar' ? 'كشفٌ ليس من منصّة التشغيل' : 'Not a platform shipment')
+                              : !fromPlatform ? (lang === 'ar' ? 'أمر نقل ليس من منصّة التشغيل' : 'Not a platform shipment')
                                 : (lang === 'ar' ? 'يُكتب في منصّة التشغيل مباشرة' : 'Writes straight to the operations platform')}>
                             {canSet ? (
                               <select
@@ -1929,7 +1929,7 @@ export default function OperationsWorkflowPage() {
                         <td className="px-3 py-2.5 text-sm whitespace-nowrap min-w-[120px]" onClick={cellClick('paymentType')}
                           title={!owns('paymentType') ? noPermMsg
                             : (lang === 'ar'
-                              ? 'يُكتب لكل كشف على حدة — العميل قد يحاسب كاشًا في حمولة وضريبيًّا في أخرى'
+                              ? 'يُكتب لكل أمر نقل على حدة — العميل قد يحاسب كاشًا في حمولة وضريبيًّا في أخرى'
                               : 'Set per report — a customer may settle one load in cash and another by invoice')}>
                           {isEditing && owns('paymentType') ? (() => {
                             // الأربعةُ تُختار؛ و«ضريبي»/«كاش» القائمُ يُرى في القائمة ولا يُختار.

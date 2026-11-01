@@ -217,7 +217,7 @@ class _CollectionsPartyScreenState extends State<CollectionsPartyScreen> {
     final totalLabel = customer ? tr('إجمالي المفوتَر', 'Total invoiced') : tr('إجمالي المشتريات', 'Total purchased');
     final settledLabel = customer ? tr('المحصَّل', 'Collected') : tr('المسدَّد', 'Paid');
     final dueLabel = customer ? tr('المستحق لنا', 'Receivable') : tr('المستحق عليه', 'Payable');
-    final openLabel = customer ? tr('فواتير لم تُحصَّل', 'Open invoices') : tr('كشوف لم تُسدَّد', 'Unpaid reports');
+    final openLabel = customer ? tr('فواتير لم تُحصَّل', 'Open invoices') : tr('أوامر نقل لم تُسدَّد', 'Unpaid reports');
     final openCount = customer ? _num(p['openInvoices']) : _num(p['openReports']);
     final valueKey = customer ? 'sellingValue' : 'purchaseValue';
     final closedKey = customer ? 'collectionDate' : 'paymentDate';
@@ -235,7 +235,7 @@ class _CollectionsPartyScreenState extends State<CollectionsPartyScreen> {
     final maxMonth = monthly.fold<num>(1, (a, r) => [a, _num(r['total']), _num(r['settled']), _num(r['outstanding'])].reduce((x, y) => x > y ? x : y));
 
     final reportCols = [
-      ExportCol('رقم الكشف', 'Report no.', (r) => r['reportNumber']),
+      ExportCol('رقم أمر النقل', 'Report no.', (r) => r['reportNumber']),
       ExportCol('التاريخ', 'Date', (r) => _dt(r['reportDate'])),
       ExportCol('من', 'From', (r) => r['fromLocation']),
       ExportCol('إلى', 'To', (r) => r['toLocation']),
@@ -268,7 +268,7 @@ class _CollectionsPartyScreenState extends State<CollectionsPartyScreen> {
           tooltip: tr('تصدير Excel', 'Export to Excel'),
           icon: const Icon(Icons.file_download_outlined),
           onPressed: () => exportExcel(context, fileName: 'collections-${_s(p, 'name')}', sheets: [
-            (tr('الكشوف', 'Reports'), reportCols, reports),
+            (tr('أوامر النقل', 'Reports'), reportCols, reports),
             if (shownInv.isNotEmpty) (tr('الفواتير', 'Invoices'), invCols, shownInv),
           ]),
         ),
@@ -307,7 +307,7 @@ class _CollectionsPartyScreenState extends State<CollectionsPartyScreen> {
           SizedBox(
             height: 66,
             child: ListView(scrollDirection: Axis.horizontal, children: [
-              _stat(tr('كشوف', 'Reports'), _m(p['reports'])),
+              _stat(tr('أوامر نقل', 'Reports'), _m(p['reports'])),
               _stat(totalLabel, _m(p['total'])),
               _stat(settledLabel, _m(p['settled']), T.success),
               _stat(dueLabel, _m(p['outstanding']), _num(p['outstanding']) > 0 ? T.danger : T.inkFaint),
@@ -346,13 +346,13 @@ class _CollectionsPartyScreenState extends State<CollectionsPartyScreen> {
             _kv(tr('مهلة السداد (من تاريخ التسليم)', 'Credit days (from delivery)'), _num(p['creditDays']) > 0 ? tr('${p['creditDays']} يومًا', '${p['creditDays']} days') : ''),
             _kv(tr('شروط السداد', 'Payment terms'), p['paymentTerms']),
             _kv(tr('حد الائتمان', 'Credit limit'), _num(p['creditLimit']) > 0 ? _m(p['creditLimit']) : ''),
-            _kv(tr('آخر كشف', 'Last report'), _s(p, 'lastReportAt').isEmpty ? '' : _dt(p['lastReportAt'])),
+            _kv(tr('آخر أمر نقل', 'Last report'), _s(p, 'lastReportAt').isEmpty ? '' : _dt(p['lastReportAt'])),
             _kv(customer ? tr('آخر تحصيل', 'Last collected') : tr('آخر سداد', 'Last paid'), _s(p, 'lastSettledAt').isEmpty ? '' : _dt(p['lastSettledAt'])),
             _kv(tr('المتابعة القادمة', 'Next follow-up'), _s(p, 'nextFollowUpAt').isEmpty ? '' : _dt(p['nextFollowUpAt'])),
             _kv(tr('ملاحظات', 'Notes'), p['notes']),
           ]),
           if (p['nameVariants'] is List && (p['nameVariants'] as List).length > 1)
-            _section(tr('صيغ الاسم في الكشوف', 'Name spellings in the reports'), [
+            _section(tr('صيغ الاسم في أوامر النقل', 'Name spellings in the reports'), [
               for (final n in p['nameVariants'] as List) Text('· $n', style: const TextStyle(fontSize: 12, color: T.inkSoft)),
               Text(tr('كلُّها مجموعةٌ في هذا الملف', 'All merged into this profile'), style: const TextStyle(fontSize: 11, color: T.inkFaint)),
             ]),
@@ -425,7 +425,7 @@ class _CollectionsPartyScreenState extends State<CollectionsPartyScreen> {
                   ]),
                 ),
               if (invoices.length < _num(mt['count']))
-                Text(tr('تُعرض أحدث ${invoices.length} من ${mt['count']} — والكشف الكامل في PDF كشف الحساب.',
+                Text(tr('تُعرض أحدث ${invoices.length} من ${mt['count']} — وأمر النقل الكامل في PDF كشف الحساب.',
                         'Showing the latest ${invoices.length} of ${mt['count']} — the full list is in the statement PDF.'),
                     style: const TextStyle(fontSize: 11, color: T.inkFaint)),
             ]),
@@ -491,10 +491,10 @@ class _CollectionsPartyScreenState extends State<CollectionsPartyScreen> {
             padding: const EdgeInsets.all(12),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Row(children: [
-                Expanded(child: Text(tr('الكشوف (${_m(d['reportsTotal'])})', 'Reports (${_m(d['reportsTotal'])})'), style: const TextStyle(fontWeight: FontWeight.w800))),
+                Expanded(child: Text(tr('أوامر النقل (${_m(d['reportsTotal'])})', 'Reports (${_m(d['reportsTotal'])})'), style: const TextStyle(fontWeight: FontWeight.w800))),
                 Text(tr('الملغاة مستثناة', 'Cancelled excluded'), style: const TextStyle(fontSize: 11, color: T.inkFaint)),
               ]),
-              if (reports.isEmpty) Padding(padding: const EdgeInsets.all(12), child: Text(tr('لا كشوف', 'No reports'), style: const TextStyle(color: T.inkFaint))),
+              if (reports.isEmpty) Padding(padding: const EdgeInsets.all(12), child: Text(tr('لا أوامر نقل', 'No reports'), style: const TextStyle(color: T.inkFaint))),
               for (final r in reports)
                 Padding(
                   padding: const EdgeInsets.only(top: 8),

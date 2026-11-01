@@ -295,7 +295,7 @@ exports.update = async (req, res) => {
       try {
         const { renameOpsCustomer } = require('../utils/renameOpsCustomer');
         const r = await renameOpsCustomer(before, String(req.body.name).trim());
-        if (r) console.log(`[ops] عميلٌ أُعيدت تسميتُه: «${r.from}» ← «${r.to}» · كشوف: ${r.sheets}${r.merged ? ' · دُمج مع طرفٍ قائم' : ''}`);
+        if (r) console.log(`[ops] عميلٌ أُعيدت تسميتُه: «${r.from}» ← «${r.to}» · أوامر نقل: ${r.sheets}${r.merged ? ' · دُمج مع طرفٍ قائم' : ''}`);
       } catch (e) { console.error('[ops] rename → collections:', e.message); }
     }
     // ── وما عُدِّل في عميل المنصّة يصل كلَّ أقسامه في اللحظة (services/customerHub) ──

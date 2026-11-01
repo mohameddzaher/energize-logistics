@@ -18,8 +18,8 @@ export const WORKFLOW_SECTIONS: WorkflowSection[] = [
   {
     title: 'Application Details', titleAr: 'بيانات الطلب', group: 'application', color: 'border-cyan-600', headerColor: 'text-cyan-700',
     fields: [
-      { key: 'reportNumber', label: 'رقم كشف التخريج', labelEn: 'Report Number' },
-      { key: 'reportDate', label: 'تاريخ الكشف', labelEn: 'Report Date', type: 'date' },
+      { key: 'reportNumber', label: 'رقم أمر النقل', labelEn: 'Report Number' },
+      { key: 'reportDate', label: 'تاريخ أمر النقل', labelEn: 'Report Date', type: 'date' },
       { key: 'loadingTime', label: 'وقت التحميل', labelEn: 'Loading Time' },
       { key: 'fromLocation', label: 'عنوان الشحن', labelEn: 'Shipping Address' },
       { key: 'toLocation', label: 'عنوان الوصول', labelEn: 'Arrival Address' },
@@ -62,7 +62,7 @@ export const WORKFLOW_SECTIONS: WorkflowSection[] = [
       { key: 'payingBranch', label: 'الفرع المسدد', labelEn: 'Paying Branch' },
       // الستُّ تُعرَض والأربعةُ تُختار — راجع lib/paymentKind.
       { key: 'paymentType', label: 'نوع الدفع', labelEn: 'Payment Type', type: 'ptype' },
-      { key: 'finalReportDestination', label: 'وجهه الكشف النهائي', labelEn: 'Final Report Dest.' },
+      { key: 'finalReportDestination', label: 'وجهه أمر النقل النهائي', labelEn: 'Final Report Dest.' },
       { key: 'documentNumber', label: 'رقم السند', labelEn: 'Document Number' },
       { key: 'sendingDate', label: 'تاريخ الارسال', labelEn: 'Sending Date', type: 'date' },
       { key: 'deliveryDate', label: 'تاريخ التسليم', labelEn: 'Delivery Date', type: 'date' },

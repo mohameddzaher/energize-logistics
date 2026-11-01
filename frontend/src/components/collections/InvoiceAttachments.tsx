@@ -133,7 +133,7 @@ export function AttachmentsModal({ kind, invKey, label, open, onClose, onCount }
   const ar = lang === 'ar';
   return (
     <Modal open={open} onClose={onClose}
-      title={ar ? `مرفقات ${kind === 'cash' ? 'الكشف' : 'الفاتورة'} ${label}` : `Attachments — ${label}`}>
+      title={ar ? `مرفقات ${kind === 'cash' ? 'أمر النقل' : 'الفاتورة'} ${label}` : `Attachments — ${label}`}>
       <AttachmentsBody kind={kind} invKey={invKey} onCount={onCount} />
     </Modal>
   );

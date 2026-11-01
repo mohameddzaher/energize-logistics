@@ -16,8 +16,8 @@ typedef OpsField = (String key, String ar, String en, String type);
 
 const List<(String, String, List<OpsField>)> opsReportSections = [
   ('بيانات الطلب', 'Application details', [
-    ('reportNumber', 'رقم كشف التخريج', 'Report number', ''),
-    ('reportDate', 'تاريخ الكشف', 'Report date', 'date'),
+    ('reportNumber', 'رقم أمر النقل', 'Report number', ''),
+    ('reportDate', 'تاريخ أمر النقل', 'Report date', 'date'),
     ('loadingTime', 'وقت التحميل', 'Loading time', ''),
     ('fromLocation', 'عنوان الشحن', 'Shipping address', ''),
     ('toLocation', 'عنوان الوصول', 'Arrival address', ''),
@@ -53,7 +53,7 @@ const List<(String, String, List<OpsField>)> opsReportSections = [
     ('paymentDate', 'تاريخ السداد', 'Payment date', 'date'),
     ('payingBranch', 'الفرع المسدد', 'Paying branch', ''),
     ('paymentType', 'نوع الدفع', 'Payment type', 'ptype'),
-    ('finalReportDestination', 'وجهه الكشف النهائي', 'Final report destination', ''),
+    ('finalReportDestination', 'وجهه أمر النقل النهائي', 'Final report destination', ''),
     ('documentNumber', 'رقم السند', 'Document number', ''),
     ('sendingDate', 'تاريخ الارسال', 'Sending date', 'date'),
     ('deliveryDate', 'تاريخ التسليم', 'Delivery date', 'date'),
@@ -244,7 +244,7 @@ class _EditSheetState extends State<_EditSheet> {
     return Padding(
       padding: EdgeInsets.only(left: 16, right: 16, top: 16, bottom: MediaQuery.of(context).viewInsets.bottom + 12),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Text('${tr('تعديل الكشف', 'Edit report')} ${widget.detail['reportNumber'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+        Text('${tr('تعديل أمر النقل', 'Edit report')} ${widget.detail['reportNumber'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
         const SizedBox(height: 4),
         Text(tr('تظهر هنا الحقولُ التي تملك تعديلَها وحدَها.', 'Only the fields you may edit are shown.'), style: const TextStyle(fontSize: 11.5, color: T.inkSoft)),
         const SizedBox(height: 8),

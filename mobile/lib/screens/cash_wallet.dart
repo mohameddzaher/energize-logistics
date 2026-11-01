@@ -322,12 +322,12 @@ class _CashWalletScreenState extends State<CashWalletScreen> {
                 const SizedBox(height: 12),
                 f(amount, 'المبلغ (ريال) *', 'Amount (SAR) *', number: true),
                 if (type == 'collection') ...[
-                  f(ds, 'رقم كشف التخريج', 'Delivery statement #'),
+                  f(ds, 'رقم أمر النقل', 'Delivery statement #'),
                   f(desc, 'البيان', 'Description'),
                 ],
                 if (type == 'expense') f(itemName, 'الصنف / الوصف', 'Item / description'),
                 if (type == 'purchase') ...[
-                  f(pds, 'رقم كشف التخريج', 'Delivery statement #'),
+                  f(pds, 'رقم أمر النقل', 'Delivery statement #'),
                   f(pDriver, 'اسم السائق', 'Driver name'),
                   f(pReceipt, 'رقم السند', 'Receipt number'),
                   Padding(
@@ -479,11 +479,11 @@ class _CashWalletScreenState extends State<CashWalletScreen> {
   Future<void> _copyReports(List<Map<String, dynamic>> txs) async {
     final nums = _reportNumbers(txs);
     if (nums.isEmpty) {
-      _snack(tr('لا كشوفَ في المعروض', 'No report numbers in view'));
+      _snack(tr('لا أوامر نقل في المعروض', 'No report numbers in view'));
       return;
     }
     await Clipboard.setData(ClipboardData(text: nums.join('\n')));
-    _snack('${tr('نُسِخ', 'Copied')} ${nums.length} ${tr('كشفًا', 'reports')}');
+    _snack('${tr('نُسِخ', 'Copied')} ${nums.length} ${tr('أمر نقل', 'reports')}');
   }
 
   Future<void> _closeDay() async {
@@ -562,20 +562,20 @@ class _CashWalletScreenState extends State<CashWalletScreen> {
         ExportCol('البيان', 'Statement', (r) => _statementOf(r)),
         ExportCol('العميل', 'Customer', (r) => _customerOf(r)),
         ExportCol('من الشركة', 'From company', (r) => r['collectionSource'] == 'company' ? tr('نعم', 'Yes') : ''),
-        ExportCol('رقم كشف التخريج', 'Delivery statement #', (r) => '${r['deliveryStatementNumber'] ?? ''}'.isNotEmpty ? '${r['deliveryStatementNumber']}' : '${r['purchaseDeliveryStatementNumber'] ?? ''}'),
+        ExportCol('رقم أمر النقل', 'Delivery statement #', (r) => '${r['deliveryStatementNumber'] ?? ''}'.isNotEmpty ? '${r['deliveryStatementNumber']}' : '${r['purchaseDeliveryStatementNumber'] ?? ''}'),
         ExportCol('السند', 'Receipt', (r) => '${r['purchaseReceiptNumber'] ?? ''}'),
         ExportCol('السائق', 'Driver', (r) => _driverOf(r)),
         ExportCol('الفرع', 'Branch', (r) => '${r['purchaseBranch'] ?? ''}'.isNotEmpty ? '${r['purchaseBranch']}' : _op(r, 'branch')),
-        ExportCol('العميل (الكشف)', 'Client', (r) => _op(r, 'client')),
+        ExportCol('العميل (أمر النقل)', 'Client', (r) => _op(r, 'client')),
         ExportCol('من', 'From', (r) => _op(r, 'from')),
         ExportCol('إلى', 'To', (r) => _op(r, 'to')),
         ExportCol('نوع السيارة', 'Car type', (r) => _op(r, 'carType')),
         ExportCol('الطول', 'Length', (r) => _op(r, 'length')),
         ExportCol('رقم السيارة', 'Car number', (r) => _op(r, 'carNumber')),
-        ExportCol('تاريخ الكشف', 'Report date', (r) => r['operationDetails'] is Map ? walletDateGb(r['operationDetails']['reportDate']) : ''),
+        ExportCol('تاريخ أمر النقل', 'Report date', (r) => r['operationDetails'] is Map ? walletDateGb(r['operationDetails']['reportDate']) : ''),
         ExportCol('ملاحظات', 'Notes', (r) => '${r['notes'] ?? ''}'),
         ExportCol('سجّلها', 'Recorded by', (r) => walletUserName(r['user'])),
-        ExportCol('كشوف الفاتورة الضريبيّة', 'Received reports', (r) {
+        ExportCol('أوامر نقل الفاتورة الضريبيّة', 'Received reports', (r) {
           final l = (r['receivedReportNumbers'] as List?) ?? const [];
           return (l.isNotEmpty ? l : [r['receivedDocNumber']]).where((x) => '${x ?? ''}'.isNotEmpty).join(' , ');
         }),
@@ -766,7 +766,7 @@ class _CashWalletScreenState extends State<CashWalletScreen> {
                 TextButton.icon(
                   onPressed: () => _copyReports(shown),
                   icon: const Icon(Icons.copy_all_outlined, size: 16),
-                  label: Text('${tr('نسخ الكشوف', 'Copy reports')} (${_reportNumbers(shown).length})',
+                  label: Text('${tr('نسخ أوامر النقل', 'Copy reports')} (${_reportNumbers(shown).length})',
                       style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700)),
                 ),
             ]),
@@ -1018,7 +1018,7 @@ class _TxFormState extends State<_TxForm> {
     setState(() { _collMsg = ''; _collFound = false; });
     try {
       final d = await Api.instance.get('/api/wallet/lookup-report?reportNumber=${Uri.encodeQueryComponent(q)}');
-      setState(() { _ds.text = '${d['reportNumber'] ?? q}'; _collFound = true; _collMsg = tr('الكشف موجود ✓', 'Report found ✓'); });
+      setState(() { _ds.text = '${d['reportNumber'] ?? q}'; _collFound = true; _collMsg = tr('أمر النقل موجود ✓', 'Report found ✓'); });
     } catch (e) {
       setState(() { _collFound = false; _collMsg = e.toString(); });
     }
@@ -1096,7 +1096,7 @@ class _TxFormState extends State<_TxForm> {
       if (!mounted) return;
       if (unknown != null && unknown.isNotEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
-            tr('حُفظ القيد — ولم نجد كشوفًا بهذه الأرقام: ', 'Saved — but no reports found for: ') + unknown.join('، '))));
+            tr('حُفظ القيد — ولم نجد أوامر نقل بهذه الأرقام: ', 'Saved — but no reports found for: ') + unknown.join('، '))));
       }
       Navigator.pop(context, true);
     } catch (e) {
@@ -1140,13 +1140,13 @@ class _TxFormState extends State<_TxForm> {
             ]),
             const SizedBox(height: 12),
             if (type == 'purchase') ...[
-              _field(_pSearch, 'رقم كشف التخريج *', 'Delivery statement # *', onSubmit: _lookupPurchase,
+              _field(_pSearch, 'رقم أمر النقل *', 'Delivery statement # *', onSubmit: _lookupPurchase,
                   suffix: IconButton(icon: const Icon(Icons.search), onPressed: _lookupPurchase)),
               if (_pBond != null && !_pBond!.$1)
                 _msg(tr('لا تُسجَّل مشتريات قبل استلام السند — ${_pBond!.$2.isEmpty ? 'الحالة غير محدَّدة' : 'حالتُه الآن: ${_statusAr[_pBond!.$2] ?? _pBond!.$2}'}',
                         'No purchase before the bond is received — current status: ${_pBond!.$2.isEmpty ? 'unknown' : _pBond!.$2}'), false),
               if (_pAlready != null)
-                _msg(tr('سُجّلت مشترياتٌ لهذا الكشف من قبل: ${walletMoney(_pAlready!['amount'])} ريال بتاريخ ${_pAlready!['date'] ?? ''}'
+                _msg(tr('سُجّلت مشترياتٌ لهذا أمر النقل من قبل: ${walletMoney(_pAlready!['amount'])} ريال بتاريخ ${_pAlready!['date'] ?? ''}'
                         '${'${_pAlready!['branch'] ?? ''}'.isNotEmpty ? ' — من عهدة ${_pAlready!['branch']}' : ''}'
                         '${'${_pAlready!['by'] ?? ''}'.isNotEmpty ? ' — بواسطة ${_pAlready!['by']}' : ''}'
                         '${'${_pAlready!['receipt'] ?? ''}'.isNotEmpty ? ' — سند ${_pAlready!['receipt']}' : ''}',
@@ -1189,7 +1189,7 @@ class _TxFormState extends State<_TxForm> {
               ),
               const SizedBox(height: 10),
               if (_source == 'client') ...[
-                _field(_ds, 'رقم كشف التخريج *', 'Delivery statement # *', onSubmit: _lookupCollection,
+                _field(_ds, 'رقم أمر النقل *', 'Delivery statement # *', onSubmit: _lookupCollection,
                     suffix: IconButton(icon: const Icon(Icons.search), onPressed: _lookupCollection)),
                 if (_collMsg.isNotEmpty) _msg(_collMsg, _collFound),
               ] else
@@ -1198,12 +1198,12 @@ class _TxFormState extends State<_TxForm> {
             if (type == 'expense') _field(_item, 'البيان *', 'Description *'),
             if (type == 'purchase') ...[
               _field(_pDriver, 'اسم السائق', 'Driver name', readOnly: _pFound),
-              _field(_pReceipt, 'رقم السند — يُكتب في الكشف تلقائيًّا', 'Receipt number — written onto the report'),
+              _field(_pReceipt, 'رقم السند — يُكتب في أمر النقل تلقائيًّا', 'Receipt number — written onto the report'),
               _field(_pBranch, 'الفرع', 'Branch', readOnly: _pFound),
               if (_pFound)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 10),
-                  child: Text(tr('اسم السائق والفرع مأخوذان من كشف التخريج ولا يُعدَّلان — إن كانا خطأً فالتصحيح في الكشف نفسه.',
+                  child: Text(tr('اسم السائق والفرع مأخوذان من أمر النقل ولا يُعدَّلان — إن كانا خطأً فالتصحيح في أمر النقل نفسه.',
                       'Driver and branch come from the dispatch sheet and cannot be edited — correct them on the sheet itself.'),
                       style: const TextStyle(fontSize: 11, color: T.inkSoft)),
                 ),
@@ -1214,13 +1214,13 @@ class _TxFormState extends State<_TxForm> {
                 margin: const EdgeInsets.only(bottom: 10),
                 decoration: BoxDecoration(color: T.inkFaint.withValues(alpha: .08), borderRadius: BorderRadius.circular(8)),
                 child: Text(
-                  tr('تسجيلُ استلام — تقول به إنّ كشوف هذه الفواتير صارت بيدك. لا مبلغَ فيه، ولا يدخل رصيدَ العهدة ولا إقفالَ اليوم.',
+                  tr('تسجيلُ استلام — تقول به إنّ أوامر نقل هذه الفواتير صارت بيدك. لا مبلغَ فيه، ولا يدخل رصيدَ العهدة ولا إقفالَ اليوم.',
                      'A receipt record — these reports are now in your hands. No amount, and it does not touch the wallet balance or the day’s close.'),
                   style: const TextStyle(fontSize: 11.5, color: T.inkSoft)),
               ),
               // ولكلّ كشفٍ سندُه — يُكتبان معًا فيُحفظان زوجًا.
               Row(children: [
-                Expanded(child: _field(_rReport, 'رقم الكشف', 'Report number', onSubmit: _addReceived)),
+                Expanded(child: _field(_rReport, 'رقم أمر النقل', 'Report number', onSubmit: _addReceived)),
                 const SizedBox(width: 6),
                 Expanded(child: _field(_rSand, 'رقم السند (اختياري)', 'Voucher no (optional)', onSubmit: _addReceived)),
                 const SizedBox(width: 6),
@@ -1234,8 +1234,8 @@ class _TxFormState extends State<_TxForm> {
               Padding(
                 padding: const EdgeInsets.only(top: 4, bottom: 10),
                 child: Text(_received.isNotEmpty
-                    ? tr('${_received.length} كشفًا في هذا القيد', '${_received.length} reports in this record')
-                    : tr('يمكنك إضافة أكثر من كشف في القيد الواحد — ولكل كشف رقم سنده', 'Add more than one report — each with its own voucher number'),
+                    ? tr('${_received.length} أمر نقل في هذا القيد', '${_received.length} reports in this record')
+                    : tr('يمكنك إضافة أكثر من أمر نقل في القيد الواحد — ولكل أمر نقل رقم سنده', 'Add more than one report — each with its own voucher number'),
                     style: const TextStyle(fontSize: 11, color: T.inkFaint)),
               ),
             ],

@@ -172,7 +172,7 @@ async function resolveRefs(logs) {
 const SUBJECT_SOURCES = {
   Employee: ['Employee', 'arabicName firstName lastName', (d) => d.arabicName || fullName(d)],
   User: ['User', 'firstName lastName email', (d) => fullName(d) || d.email],
-  OperationsWorkflow: ['OperationsWorkflow', 'reportNumber', (d) => (d.reportNumber ? `كشف ${d.reportNumber}` : '')],
+  OperationsWorkflow: ['OperationsWorkflow', 'reportNumber', (d) => (d.reportNumber ? `أمر نقل ${d.reportNumber}` : '')],
   VehicleMaster: ['VehicleMaster', 'plateNumber', (d) => (d.plateNumber ? `لوحة ${d.plateNumber}` : '')],
   CustomsClearance: ['CustomsClearance', 'refNumber', (d) => (d.refNumber ? `معاملة ${d.refNumber}` : '')],
   CollectionsParty: ['CollectionsParty', 'name', (d) => d.name],

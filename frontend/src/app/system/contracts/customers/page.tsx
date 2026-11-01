@@ -335,7 +335,7 @@ function ContractCustomersInner() {
         title={t('عملاء يشحنون معنا ولا سجل لهم', 'Customers shipping with us, not registered')}
         footer={<button type="button" onClick={() => setSuggestOpen(false)} className="px-4 py-2 text-slate-500 text-sm">{t('إغلاق', 'Close')}</button>}>
         <p className="text-[12.5px] text-slate-500 mb-3 leading-relaxed">
-          {t('مأخوذون من كشوف التشغيل ومرتّبون بعدد شحناتهم — الأكبر أوّلًا. تُضيفه بضغطة ثم تكمل بيانات عقده.',
+          {t('مأخوذون من أوامر النقل ومرتّبون بعدد شحناتهم — الأكبر أوّلًا. تُضيفه بضغطة ثم تكمل بيانات عقده.',
              'Taken from the operations reports, largest first. One tap registers them; fill their contract after.')}
         </p>
         <div className="mb-3">

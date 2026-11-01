@@ -50,7 +50,7 @@ const KPIS: { key: KpiKey; ar: string; en: string; accent?: string; money?: bool
   { key: 'withRoutes', ar: 'لهم مسارات', en: 'With routes', accent: 'text-blue-600' },
   { key: 'withoutRoutes', ar: 'بلا مسارات', en: 'Without routes', accent: 'text-amber-600' },
   { key: 'unpriced', ar: 'مسارات بلا سعر', en: 'Routes missing a price', accent: 'text-red-600' },
-  { key: 'sheets', ar: 'إجمالي الكشوف', en: 'Total sheets', accent: 'text-[#f37121]' },
+  { key: 'sheets', ar: 'إجمالي أوامر النقل', en: 'Total sheets', accent: 'text-[#f37121]' },
   { key: 'purchase', ar: 'إجمالي الشراء', en: 'Total purchase', accent: 'text-violet-600', money: true },
 ];
 

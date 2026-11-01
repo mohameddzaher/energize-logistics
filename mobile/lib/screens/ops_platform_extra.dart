@@ -70,7 +70,7 @@ String _relName(dynamic v) => v is Map ? opsLoc(v['name']) : '';
 /// حقولُ البحث في الشحنات — البحثُ العامّ ضبابيّ، والرقمان الفريدان يُطابَقان حرفيًّا.
 const _searchFields = [
   ('', 'الكل', 'Anything'),
-  ('graduation', 'رقم كشف التخريج', 'Graduation statement #'),
+  ('graduation', 'رقم أمر النقل', 'Graduation statement #'),
   ('reference', 'رقم المرجع', 'Reference #'),
   ('driver_name', 'اسم السائق', 'Driver name'),
   ('driver_phone', 'هاتف السائق', 'Driver phone'),
@@ -241,7 +241,7 @@ class _OpsShipmentsScreenState extends State<OpsShipmentsScreen> {
   }
 
   List<ExportCol> get _exportCols => [
-        ExportCol('كشف التخريج', 'Statement #', (r) => r['graduation_statement_num'] ?? ''),
+        ExportCol('أمر النقل', 'Statement #', (r) => r['graduation_statement_num'] ?? ''),
         ExportCol('رقم المرجع', 'Reference #', (r) => r['reference_num'] ?? ''),
         ExportCol('الحالة', 'Status', (r) => opsStatusLabel(r['status'])),
         ExportCol('من', 'From', (r) => r['address_from'] ?? ''),
@@ -549,7 +549,7 @@ class _ShipmentDetailState extends State<_ShipmentDetail> {
         initialChildSize: 0.9,
         maxChildSize: 0.95,
         builder: (c, scroll) => ListView(controller: scroll, padding: const EdgeInsets.fromLTRB(16, 14, 16, 30), children: [
-          Text('${tr('شحنة · كشف', 'Shipment · Statement')} ${d['graduation_statement_num'] ?? ''}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+          Text('${tr('شحنة · أمر نقل', 'Shipment · Statement')} ${d['graduation_statement_num'] ?? ''}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
           if (admin) ...[
             const SizedBox(height: 10),
             Container(
@@ -574,7 +574,7 @@ class _ShipmentDetailState extends State<_ShipmentDetail> {
             ),
           ],
           _section(tr('بيانات الشحنة', 'Shipment'), [
-            (tr('رقم كشف التخريج', 'Statement #'), '${d['graduation_statement_num'] ?? ''}'),
+            (tr('رقم أمر النقل', 'Statement #'), '${d['graduation_statement_num'] ?? ''}'),
             (tr('رقم المرجع', 'Reference #'), '${d['reference_num'] ?? ''}'),
             (tr('الحالة', 'Status'), opsStatusLabel(d['status'])),
             (tr('نوع المُنشئ', 'Creator type'), '${d['creator_type'] ?? ''}'),
@@ -680,7 +680,7 @@ class _ShipmentDetailState extends State<_ShipmentDetail> {
 // سجلُّ شحنات عميلٍ أو سائق — نظيرُ OpsShipmentHistory
 // ═══════════════════════════════════════════════════════════════════════════
 const _histSearch = [
-  ('', 'الكل', 'Anything'), ('graduation', 'كشف التخريج', 'Graduation #'), ('reference', 'رقم المرجع', 'Reference #'),
+  ('', 'الكل', 'Anything'), ('graduation', 'أمر النقل', 'Graduation #'), ('reference', 'رقم المرجع', 'Reference #'),
   ('driver_name', 'اسم السائق', 'Driver name'), ('driver_phone', 'هاتف السائق', 'Driver phone'),
   ('car_number', 'رقم السيارة', 'Car number'), ('user_name', 'اسم العميل', 'Customer name'),
 ];

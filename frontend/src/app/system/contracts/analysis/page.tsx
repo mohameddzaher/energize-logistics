@@ -265,7 +265,7 @@ export default function ContractsAnalysisPage() {
             utils/liveVendorUtilisation. فزرُّ «إدخال أرقام شهر» رُفع: رقمٌ يُكتب
             هنا لا يُقرأ في شيء، وبقاؤه يوهم أنّه يُحسب. */}
         <span className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-50 text-emerald-700 text-xs font-semibold">
-          <span className="w-2 h-2 rounded-full bg-emerald-500" />{ar ? 'مباشر من كشوف التشغيل' : 'Live from operations'}
+          <span className="w-2 h-2 rounded-full bg-emerald-500" />{ar ? 'مباشر من أوامر النقل' : 'Live from operations'}
         </span>
       </PageHeader>
 

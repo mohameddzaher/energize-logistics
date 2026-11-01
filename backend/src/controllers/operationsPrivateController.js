@@ -370,7 +370,7 @@ async function buildPrivateWorkbook(shaped, money) {
       ['فرع السداد', (w) => w.payingBranch || ''],
       ['مبلغ السداد', (w) => num(w.paymentAmount)],
       ['نوع الدفع', (w) => require('../utils/paymentType').paymentKindLabel(w)],
-      ['وجهة الكشف النهائية', (w) => w.finalReportDestination || ''],
+      ['وجهة أمر النقل النهائية', (w) => w.finalReportDestination || ''],
       ['رقم المستند', (w) => w.documentNumber || ''],
       ['تاريخ الإرسال', (w) => d(w.sendingDate)],
       ['تاريخ التسليم للفرع', (w) => d(w.branchDeliveryDate)],

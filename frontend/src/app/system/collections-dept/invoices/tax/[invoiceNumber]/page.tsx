@@ -131,7 +131,7 @@ function CollectionPanel({ invoiceNumber, c, canEdit, ar, onDone }: {
           {!full && c.value > 0 ? ` · ${t('الباقي', 'Remaining')} ${money(c.remaining)}` : ''}
         </span>
         {c.target === 'cashLedger' && (
-          <span className="text-[11px] text-slate-400">{t('— فاتورةٌ نقديّةٌ في دفتر التحصيل بلا كشف تشغيل', '— a cash book invoice with no operations report')}</span>
+          <span className="text-[11px] text-slate-400">{t('— فاتورةٌ نقديّةٌ في دفتر التحصيل بلا أمر نقل', '— a cash book invoice with no operations report')}</span>
         )}
       </div>
       {!!c.payments?.length && (
@@ -272,7 +272,7 @@ export default function TaxInvoiceDetailPage() {
   );
 
   const cols = [
-    { header: t('رقم الكشف', 'Report no.'), key: 'reportNumber', width: 16 },
+    { header: t('رقم أمر النقل', 'Report no.'), key: 'reportNumber', width: 16 },
     { header: t('التاريخ', 'Date'), key: 'reportDate', width: 14, transform: (v: any) => dt(v) },
     { header: t('من', 'From'), key: 'fromLocation', width: 16 },
     { header: t('إلى', 'To'), key: 'toLocation', width: 16 },
@@ -315,11 +315,11 @@ export default function TaxInvoiceDetailPage() {
         </button>
         <ExportMenu fileName={`invoice-${data.invoiceNumber}`} lang={ar ? 'ar' : 'en'}
           // بعد قمع الأعمدة لا قبله — راجع shown.
-          options={[{ key: 'shown', label: t('كشوف الفاتورة', 'Invoice reports'), sheets: [{ name: t('الكشوف', 'Reports'), rows: shown as any, columns: cols }] }]} />
+          options={[{ key: 'shown', label: t('أوامر نقل الفاتورة', 'Invoice reports'), sheets: [{ name: t('أوامر النقل', 'Reports'), rows: shown as any, columns: cols }] }]} />
       </PageHeader>
 
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-        <Stat label={t('عدد الكشوفات', 'Reports')} value={money(data.totals.reports)} />
+        <Stat label={t('عدد أوامر النقل', 'Reports')} value={money(data.totals.reports)} />
         <Stat label={t('صافي الفواتير', 'Net')} value={money(data.totals.net)} />
         <Stat label={t('الضريبة', 'VAT')} value={money(data.totals.vat)} />
         <Stat label={t('القيمة', 'Value')} value={money(data.totals.value)} accent="text-slate-900" />
@@ -344,7 +344,7 @@ export default function TaxInvoiceDetailPage() {
               <div key={c.clearanceId} className="flex flex-wrap items-center gap-2 text-xs text-slate-600">
                 <CustomsLinkBadge link={c} ar={ar} />
                 {c.customerName && <span>{c.customerName}</span>}
-                <span className="text-slate-400">· {t(`${c.reports || 1} من الكشوف`, `${c.reports || 1} report(s)`)}</span>
+                <span className="text-slate-400">· {t(`${c.reports || 1} من أوامر النقل`, `${c.reports || 1} report(s)`)}</span>
               </div>
             ))}
           </div>
@@ -353,14 +353,14 @@ export default function TaxInvoiceDetailPage() {
 
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
         <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between gap-2">
-          <p className="text-[13px] font-bold text-slate-900">{t('كشوف هذه الفاتورة', 'Reports under this invoice')}</p>
+          <p className="text-[13px] font-bold text-slate-900">{t('أوامر نقل هذه الفاتورة', 'Reports under this invoice')}</p>
           <ClearColumnFilters count={cf.count} onClear={cf.clear} ar={ar} />
         </div>
         <ScrollX>
           <table className="w-full text-sm">
             <thead className="table-head">
               <tr>
-                {[['reportNumber', t('رقم الكشف', 'Report')], ['reportDate', t('التاريخ', 'Date')],
+                {[['reportNumber', t('رقم أمر النقل', 'Report')], ['reportDate', t('التاريخ', 'Date')],
                   ['route', t('المسار', 'Route')], ['branch', t('الفرع', 'Branch')],
                   ['carNumber', t('السيارة', 'Vehicle')], ['customs', t('التخليص', 'Customs')], ['netInvoice', t('الصافي', 'Net')],
                   ['tax', t('الضريبة', 'VAT')], ['totalInvoice', t('الإجمالي', 'Total')],
@@ -374,15 +374,15 @@ export default function TaxInvoiceDetailPage() {
             </thead>
             <tbody>
               {/* ── ولا كشوفَ حالٌ طبيعيّة ────────────────────────────────
-                  أكثرُ فواتير الدفتر أقدمُ من النظام، فلا كشوفَ لها عندنا.
+                  أكثرُ فواتير الدفتر أقدمُ من النظام، فلا أوامر نقل لها عندنا.
                   تُقال الحالُ ولا تُترك الصفحةُ فارغةً كأنّ شيئًا فُقد. */}
               {!shown.length && (
                 <tr>
                   <td colSpan={12} className="px-4 py-8 text-center text-sm text-slate-500">
                     {data.inLedger
-                      ? t('فاتورةٌ من دفتر التحصيل، لا كشوفَ تشغيلٍ مرتبطةً بها.',
+                      ? t('فاتورةٌ من دفتر التحصيل، لا أوامر نقلٍ مرتبطةً بها.',
                           'A ledger invoice with no linked operations reports.')
-                      : t('لا كشوفَ تحت هذه الفاتورة.', 'No reports under this invoice.')}
+                      : t('لا أوامر نقل تحت هذه الفاتورة.', 'No reports under this invoice.')}
                   </td>
                 </tr>
               )}
@@ -418,7 +418,7 @@ export default function TaxInvoiceDetailPage() {
                 {openFu === r._id && (
                   <tr className="border-b border-slate-200 bg-slate-50/70">
                     <td colSpan={12} className="px-4 py-3">
-                      <p className="mb-2 text-xs font-semibold text-slate-700">{t(`متابعات الكشف ${r.reportNumber || ''}`, `Follow-ups — ${r.reportNumber || ''}`)}</p>
+                      <p className="mb-2 text-xs font-semibold text-slate-700">{t(`متابعات أمر النقل ${r.reportNumber || ''}`, `Follow-ups — ${r.reportNumber || ''}`)}</p>
                       <ReportFollowUps compact ar={ar} workflowId={r._id}
                         basePath={`/api/collections-dept/reports/${r._id}/follow-ups`} />
                     </td>

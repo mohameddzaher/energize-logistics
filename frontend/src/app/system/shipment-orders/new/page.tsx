@@ -566,13 +566,13 @@ function CreateShipmentInner() {
           '/api/shipment-orders/orders/batch', body);
         const nums = (d.waybills || []).join('، ');
         notify(ar
-          ? `أُنشئت ${d.created} شحنة — بوالص ${nums}${d.failed?.length ? ` · تعذّرت ${d.failed.length}` : ''}`
+          ? `أُنشئت ${d.created} شحنة — أوامر نقل ${nums}${d.failed?.length ? ` · تعذّرت ${d.failed.length}` : ''}`
           : `${d.created} shipments created — waybills ${nums}${d.failed?.length ? ` · ${d.failed.length} failed` : ''}`,
           d.failed?.length ? 'error' : 'success');
         if (d.failed?.length) { setSaving(false); return; }   // يبقى النموذجُ ليُعاد ما سقط
       } else {
         const d = await api.post<{ order: any }>('/api/shipment-orders/orders', payload);
-        notify(ar ? `تم إنشاء الشحنة — رقم البوليصة ${d.order.waybillNumber}` : `Created — waybill ${d.order.waybillNumber}`, 'success');
+        notify(ar ? `تم إنشاء الشحنة — رقم أمر النقل ${d.order.waybillNumber}` : `Created — waybill ${d.order.waybillNumber}`, 'success');
       }
       router.push('/system/shipment-orders');
     } catch (e: any) { notify(e.message, 'error'); }
@@ -1077,8 +1077,8 @@ function CreateShipmentInner() {
       </div>
 
       <div className="bg-white border border-slate-200 rounded-xl p-5">
-        <p className="font-bold text-slate-900 mb-1">{ar ? 'بيانات البوليصة' : 'Waybill details'}</p>
-        <p className="text-xs text-slate-500 mb-3">{ar ? 'تُملأ من السائق والشاحنة المختارين، وما تعدّله هنا يُحفظ في سجلّهما ويظهر في البوليصة.' : 'Filled from the chosen driver and truck. Edits save to their records and print on the waybill.'}</p>
+        <p className="font-bold text-slate-900 mb-1">{ar ? 'بيانات أمر النقل' : 'Transport order details'}</p>
+        <p className="text-xs text-slate-500 mb-3">{ar ? 'تُملأ من السائق والشاحنة المختارين، وما تعدّله هنا يُحفظ في سجلّهما ويظهر في أمر النقل.' : 'Filled from the chosen driver and truck. Edits save to their records and print on the waybill.'}</p>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {([
             ['driverNationality', ar ? 'جنسية السائق' : 'Driver nationality'],
@@ -1107,19 +1107,19 @@ function CreateShipmentInner() {
                 {gf.map(renderField)}
                 {/* ── ملاحظةُ الرحلة مع مدنها ────────────────────────────────
                     مكانُها حيث تُكتب: «التحميل من البوابة الثانية» تُقال مع
-                    العنوان لا في آخر الاستمارة. وتُطبَع في البوليصة إن كُتبت،
+                    العنوان لا في آخر الاستمارة. وتُطبَع في أمر النقل إن كُتبت،
                     وتظهر عمودًا في الجدول ويُفلتَر بها. */}
                 {g === 'pickup_delivery' && (
                   <div className="col-span-full">
                     <label className={labelCls}>{ar ? 'ملاحظة الرحلة' : 'Trip note'}</label>
                     <input value={form.notes || ''} onChange={(e) => set('notes', e.target.value)}
-                      placeholder={ar ? 'تظهر في كشف التخريج (البوليصة) إن كُتبت' : 'Printed on the waybill when written'}
+                      placeholder={ar ? 'تظهر في أمر النقل (أمر النقل) إن كُتبت' : 'Printed on the waybill when written'}
                       className={inputCls} />
                   </div>
                 )}
                 {/* ── البوليصةُ والحاوية — مربوطتان بالتخليص (٢٠٢٦/١٠/٢٦) ────────
                     اختياريّتان. تُكتبان هنا فتُربط الشحنةُ بمعاملة التخليص التي
-                    تحملهما (وكشفُ تشغيلها معها)، وتُكتب الشحنةُ في المعاملة فتُملآن
+                    تحملهما (وأمر نقلها معها)، وتُكتب الشحنةُ في المعاملة فتُملآن
                     هنا وحدَهما — راجع services/customsOpsLink. */}
                 {g === 'pickup_delivery' && (
                   <div className="col-span-full grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1152,7 +1152,7 @@ function CreateShipmentInner() {
       })}
 
       {/* الملاحظاتُ رُفعت من هنا إلى بطاقة «من/إلى»: هي ملاحظةُ الرحلة، وتُطبَع
-          في البوليصة. راجع notes في بطاقة المدن. */}
+          في أمر النقل. راجع notes في بطاقة المدن. */}
       {sectionCard(Check, activeGroups.length + 3, ar ? 'الحالة' : 'Status', (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
@@ -1246,7 +1246,7 @@ function CreateShipmentInner() {
               {ar ? `الحمولة على ${extras.length + 1} شاحنات` : `This load on ${extras.length + 1} trucks`}
             </h3>
             <span className="text-xs text-slate-500">
-              {ar ? 'كلُّ شاحنةٍ شحنةٌ مستقلّةٌ برقم بوليصة خاصّ بها — نفس بقيّة البيانات'
+              {ar ? 'كلُّ شاحنةٍ شحنةٌ مستقلّةٌ برقم أمر نقل خاصّ بها — نفس بقيّة البيانات'
                   : 'each truck becomes its own shipment with its own waybill — everything else identical'}
             </span>
           </div>

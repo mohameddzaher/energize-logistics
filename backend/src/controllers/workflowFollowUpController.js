@@ -80,22 +80,22 @@ const WF_FIELDS = '_id reportNumber invoiceNumber customsLink';
 const SCOPES = {
   operations: async (req) => {
     const wf = await OperationsWorkflow.findById(req.params.id).select(WF_FIELDS).lean();
-    if (!wf) throw fail(404, 'الكشف غير موجود');
+    if (!wf) throw fail(404, 'أمر النقل غير موجود');
     return wf;
   },
   // بابُ التخليص يرى ما رُبط بمعاملته وحدَه.
   customs: async (req) => {
     const { reportId, id } = req.params;
-    if (!mongoose.isValidObjectId(reportId)) throw fail(400, 'معرّفُ الكشف غير صالح');
+    if (!mongoose.isValidObjectId(reportId)) throw fail(400, 'معرّفُ أمر النقل غير صالح');
     const wf = await OperationsWorkflow.findOne({ _id: reportId, 'customsLink.clearance': id }).select(WF_FIELDS).lean();
-    if (!wf) throw fail(404, 'الكشفُ غيرُ مرتبطٍ بهذه المعاملة');
+    if (!wf) throw fail(404, 'أمر النقل غيرُ مرتبطٍ بهذه المعاملة');
     return wf;
   },
   collections: async (req) => {
     const { reportId } = req.params;
-    if (!mongoose.isValidObjectId(reportId)) throw fail(400, 'معرّفُ الكشف غير صالح');
+    if (!mongoose.isValidObjectId(reportId)) throw fail(400, 'معرّفُ أمر النقل غير صالح');
     const wf = await OperationsWorkflow.findById(reportId).select(WF_FIELDS).lean();
-    if (!wf) throw fail(404, 'الكشف غير موجود');
+    if (!wf) throw fail(404, 'أمر النقل غير موجود');
     return wf;
   },
 };

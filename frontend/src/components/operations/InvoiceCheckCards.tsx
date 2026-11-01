@@ -90,23 +90,23 @@ export default function InvoiceCheckCards({ ar }: { ar: boolean }) {
       k: 'gaps', n: g.count, icon: Hash, tone: 'violet',
       title: t('فواتير لم تُفوتَر', 'Missing invoice numbers'),
       sub: g.start != null
-        ? `${t('أرقامٌ بلا كشف بين', 'numbers with no report between')} ${g.start} ${t('و', 'and')} ${g.end}`
+        ? `${t('أرقامٌ بلا أمر نقل بين', 'numbers with no report between')} ${g.start} ${t('و', 'and')} ${g.end}`
         : t('لا أرقام فواتير بعد', 'No invoice numbers yet'),
     },
     {
       k: 'missing-reports', n: sum.missingReports.count, icon: FileX2, tone: 'amber',
-      title: t('فواتير بكشوفات غير موجودة', 'Invoices citing missing reports'),
+      title: t('فواتير بأوامر نقل غير موجودة', 'Invoices citing missing reports'),
       sub: t('من أوراق المبيعات المرفوعة', 'from uploaded sales sheets'),
     },
     {
       k: 'value-diffs', n: sum.valueDiffs.count, icon: Scale, tone: 'rose',
       title: t('فرق قيمة الفاتورة', 'Invoice value differences'),
-      sub: sum.valueDiffs.count ? `${t('مجموع الفروق', 'total gap')} ${money(sum.valueDiffs.sumAbs)}` : t('الورقة = مجموع الكشوف', 'sheet = reports total'),
+      sub: sum.valueDiffs.count ? `${t('مجموع الفروق', 'total gap')} ${money(sum.valueDiffs.sumAbs)}` : t('الورقة = مجموع أوامر النقل', 'sheet = reports total'),
     },
     {
       k: 'name-mismatches', n: sum.nameMismatches.count, icon: UserX, tone: 'sky',
       title: t('عدم تطابق اسم العميل', 'Customer name mismatch'),
-      sub: t('عميل الورقة ≠ عميل الكشف', 'sheet customer ≠ report customer'),
+      sub: t('عميل الورقة ≠ عميل أمر النقل', 'sheet customer ≠ report customer'),
     },
   ];
   // ── ألوانٌ هادئة: بطاقةٌ بيضاء ورقمٌ بالحبر، والنبرةُ نقطةٌ صغيرة لا خلفيّة ──
@@ -121,7 +121,7 @@ export default function InvoiceCheckCards({ ar }: { ar: boolean }) {
     ],
     'missing-reports': [
       { key: 'invoiceNumber', ar: 'رقم الفاتورة', en: 'Invoice #' },
-      { key: 'reportNumber', ar: 'رقم الكشف (في الورقة)', en: 'Report # (sheet)' },
+      { key: 'reportNumber', ar: 'رقم أمر النقل (في الورقة)', en: 'Report # (sheet)' },
       { key: 'customerName', ar: 'العميل (في الورقة)', en: 'Customer (sheet)' },
       { key: 'total', ar: 'القيمة', en: 'Value', kind: 'money' },
       { key: 'uploadedAt', ar: 'تاريخ الرفع', en: 'Uploaded', kind: 'date' },
@@ -131,16 +131,16 @@ export default function InvoiceCheckCards({ ar }: { ar: boolean }) {
       { key: 'invoiceNumber', ar: 'رقم الفاتورة', en: 'Invoice #' },
       { key: 'customerName', ar: 'العميل (في الورقة)', en: 'Customer (sheet)' },
       { key: 'uploadedValue', ar: 'القيمة المرفوعة', en: 'Uploaded value', kind: 'money' },
-      { key: 'reportsValue', ar: 'قيمة الكشوف', en: 'Reports value', kind: 'money' },
+      { key: 'reportsValue', ar: 'قيمة أوامر النقل', en: 'Reports value', kind: 'money' },
       { key: 'difference', ar: 'الفرق', en: 'Difference', kind: 'money' },
       { key: 'uploadedLines', ar: 'أسطر الورقة', en: 'Sheet lines' },
-      { key: 'reportsCount', ar: 'كشوف الفاتورة', en: 'Reports' },
+      { key: 'reportsCount', ar: 'أوامر نقل الفاتورة', en: 'Reports' },
     ],
     'name-mismatches': [
       { key: 'invoiceNumber', ar: 'رقم الفاتورة', en: 'Invoice #' },
-      { key: 'reportNumber', ar: 'رقم الكشف', en: 'Report #' },
+      { key: 'reportNumber', ar: 'رقم أمر النقل', en: 'Report #' },
       { key: 'uploadedCustomer', ar: 'العميل في الورقة', en: 'Customer (sheet)' },
-      { key: 'workflowCustomer', ar: 'العميل في الكشف', en: 'Customer (report)' },
+      { key: 'workflowCustomer', ar: 'العميل في أمر النقل', en: 'Customer (report)' },
       { key: 'uploadedAt', ar: 'تاريخ الرفع', en: 'Uploaded', kind: 'date' },
     ],
   };
@@ -179,7 +179,7 @@ export default function InvoiceCheckCards({ ar }: { ar: boolean }) {
           {open === 'gaps' && (
             <p className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-[12.5px] leading-6 text-violet-900">
               {t(
-                `كلُّ رقمٍ بين بداية التسلسل (${g.start ?? '—'}${g.startSource === 'env' ? '، مثبَّتة من الإعدادات' : ''}) وأعلى رقمٍ مكتوبٍ على كشف (${g.end ?? '—'}) لا يحمله أيُّ كشف. ما يعرفه دفترُ التحصيل عن الرقم مكتوبٌ بجانبه ولا يُخفى.`,
+                `كلُّ رقمٍ بين بداية التسلسل (${g.start ?? '—'}${g.startSource === 'env' ? '، مثبَّتة من الإعدادات' : ''}) وأعلى رقمٍ مكتوبٍ على أمر نقل (${g.end ?? '—'}) لا يحمله أيُّ أمر نقل. ما يعرفه دفترُ التحصيل عن الرقم مكتوبٌ بجانبه ولا يُخفى.`,
                 `Every number between the sequence start (${g.start ?? '—'}) and the highest invoice on a report (${g.end ?? '—'}) that no report carries. What the collections ledger knows is shown beside it.`,
               )}
               {!!g.outliers?.length && <><br />{t('أرقامٌ شاذّة خارج التسلسل (لم تُحسب حدودًا): ', 'Outliers outside the sequence (not used as bounds): ')}{g.outliers.slice(0, 20).join('، ')}</>}
@@ -188,7 +188,7 @@ export default function InvoiceCheckCards({ ar }: { ar: boolean }) {
           )}
           {open === 'value-diffs' && (
             <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-[12.5px] leading-6 text-rose-900">
-              {t('القيمةُ المرفوعة = مجموع «المجموع الصافي» لأسطر الفاتورة في أوراق المبيعات. وقيمةُ الكشوف = مجموع «إجمالي الفاتورة» للكشوف الضريبيّة غير الملغاة التي تحمل الرقم — ما يجمعه دفترُ التحصيل نفسُه. الفرقُ أقلُّ من ريالٍ لا يُعَدّ.',
+              {t('القيمةُ المرفوعة = مجموع «المجموع الصافي» لأسطر الفاتورة في أوراق المبيعات. وقيمةُ أوامر النقل = مجموع «إجمالي الفاتورة» للأوامر نقل الضريبيّة غير الملغاة التي تحمل الرقم — ما يجمعه دفترُ التحصيل نفسُه. الفرقُ أقلُّ من ريالٍ لا يُعَدّ.',
                 'Uploaded value = sum of the sheet lines’ totals. Reports value = sum of the invoice total on non-cancelled tax reports carrying that number (what the collections ledger sums). Differences under 1 SAR are ignored.')}
             </p>
           )}

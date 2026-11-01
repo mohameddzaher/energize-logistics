@@ -25,8 +25,8 @@ import 'ops_common.dart';
 /// النوع: '' نصّ · 'date' · 'number' · 'ptype' نوعُ الدفع.
 const opsWorkflowSections = [
   ('application', 'بيانات الطلب', 'Application Details', T.cyan, [
-    ('reportNumber', 'رقم كشف التخريج', 'Report Number', ''),
-    ('reportDate', 'تاريخ الكشف', 'Report Date', 'date'),
+    ('reportNumber', 'رقم أمر النقل', 'Report Number', ''),
+    ('reportDate', 'تاريخ أمر النقل', 'Report Date', 'date'),
     ('loadingTime', 'وقت التحميل', 'Loading Time', ''),
     ('fromLocation', 'عنوان الشحن', 'Shipping Address', ''),
     ('toLocation', 'عنوان الوصول', 'Arrival Address', ''),
@@ -62,7 +62,7 @@ const opsWorkflowSections = [
     ('paymentDate', 'تاريخ السداد', 'Payment Date', 'date'),
     ('payingBranch', 'الفرع المسدد', 'Paying Branch', ''),
     ('paymentType', 'نوع الدفع', 'Payment Type', 'ptype'),
-    ('finalReportDestination', 'وجهه الكشف النهائي', 'Final Report Dest.', ''),
+    ('finalReportDestination', 'وجهه أمر النقل النهائي', 'Final Report Dest.', ''),
     ('documentNumber', 'رقم السند', 'Document Number', ''),
     ('sendingDate', 'تاريخ الارسال', 'Sending Date', 'date'),
     ('deliveryDate', 'تاريخ التسليم', 'Delivery Date', 'date'),
@@ -315,7 +315,7 @@ class _OpsWorkflowDetailScreenState extends State<OpsWorkflowDetailScreen> {
 
   Future<void> _delete() async {
     final ok = await opsConfirm(context,
-        tr('حذف الكشف ${_w?['reportNumber'] ?? ''} نهائيًّا؟ يختفي من تقارير التشغيل والتحصيل.',
+        tr('حذف أمر النقل ${_w?['reportNumber'] ?? ''} نهائيًّا؟ يختفي من تقارير التشغيل والتحصيل.',
             'Permanently delete report ${_w?['reportNumber'] ?? ''}? It leaves the operations and collections reports.'),
         danger: true);
     if (!ok) return;
@@ -343,7 +343,7 @@ class _OpsWorkflowDetailScreenState extends State<OpsWorkflowDetailScreen> {
             }
           }),
     ];
-    exportExcel(context, fileName: 'operation-${w['reportNumber'] ?? w['_id']}', sheets: [(tr('تفاصيل الكشف', 'Workflow details'), cols, [w])]);
+    exportExcel(context, fileName: 'operation-${w['reportNumber'] ?? w['_id']}', sheets: [(tr('تفاصيل أمر النقل', 'Workflow details'), cols, [w])]);
   }
 
   String _personName(dynamic p) {
@@ -412,18 +412,18 @@ class _OpsWorkflowDetailScreenState extends State<OpsWorkflowDetailScreen> {
       canPop: !_editing,
       onPopInvokedWithResult: (didPop, _) { if (!didPop && _editing) _cancelEdit(); },
       child: AppScaffold(
-        title: Text(w == null ? tr('الكشف', 'Report') : '${w['reportNumber'] ?? ''}'),
+        title: Text(w == null ? tr('أمر النقل', 'Report') : '${w['reportNumber'] ?? ''}'),
         actions: [
           if (w != null && !_editing) IconButton(tooltip: tr('تصدير Excel', 'Export'), icon: const Icon(Icons.file_download_outlined), onPressed: _export),
           if (w != null && !_editing && !_lockedByOther)
             IconButton(tooltip: tr('تعديل', 'Edit'), icon: const Icon(Icons.edit_outlined), onPressed: _startEdit),
           if (w != null && !_editing && !_lockedByOther && const ['super_admin', 'admin', 'operations_manager'].contains(role))
-            IconButton(tooltip: tr('حذف الكشف', 'Delete report'), icon: const Icon(Icons.delete_outline), onPressed: _delete),
+            IconButton(tooltip: tr('حذف أمر النقل', 'Delete report'), icon: const Icon(Icons.delete_outline), onPressed: _delete),
         ],
         body: w == null
             ? (_loading
                 ? ListView(padding: const EdgeInsets.all(14), children: const [Shimmer(height: 80), SizedBox(height: 10), Shimmer(height: 200)])
-                : ErrorRetry(message: _error ?? tr('الكشف غير موجود', 'Report not found'), onRetry: () { setState(() => _loading = true); _load(); }))
+                : ErrorRetry(message: _error ?? tr('أمر النقل غير موجود', 'Report not found'), onRetry: () { setState(() => _loading = true); _load(); }))
             : RefreshIndicator(
                 onRefresh: _load,
                 child: ListView(padding: const EdgeInsets.fromLTRB(14, 14, 14, 100), children: [
@@ -470,7 +470,7 @@ class _OpsWorkflowDetailScreenState extends State<OpsWorkflowDetailScreen> {
                         opsSnack(context, tr('حُفظ الربط', 'Link saved'));
                       },
                     ),
-                    Text(tr('متابعات الكشف', 'Report follow-ups'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
+                    Text(tr('متابعات أمر النقل', 'Report follow-ups'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
                     const SizedBox(height: 6),
                     ReportFollowUpsView(workflowId: widget.id, basePath: '/api/workflows/${widget.id}/follow-ups'),
                     const SizedBox(height: 10),

@@ -88,7 +88,7 @@ function pledgeHTML(row) {
   return `<div class="pledge">
     <div class="head"><span>إقرار السائق</span><span class="ur-t">ڈرائیور کا اقرار نامہ</span></div>
     <div class="cols">
-      <p>أقرّ أنا السائق/ ${n} هوية رقم (${i}) بأنني تسلّمت الحمولة الموضّحة بهذه البوليصة بحالة سليمة، وأتحمّل المسؤولية الكاملة عنها من الاستلام وحتى التسليم. كما تمّ تفويضي من المالك قانونًا بالتوقيع على كافة المستندات التشغيلية، والاتفاق وإتمام التسويات المالية المتعلقة بالحمولة نيابةً عنه. وألتزم بكافة الأنظمة المرورية، وأتحمّل كامل المسؤولية عن أيّ أضرار أو مخالفات تترتّب على تقصيري أو مخالفتي لأنظمة المملكة العربية السعودية.</p>
+      <p>أقرّ أنا السائق/ ${n} هوية رقم (${i}) بأنني تسلّمت الحمولة الموضّحة بهذه أمر النقل بحالة سليمة، وأتحمّل المسؤولية الكاملة عنها من الاستلام وحتى التسليم. كما تمّ تفويضي من المالك قانونًا بالتوقيع على كافة المستندات التشغيلية، والاتفاق وإتمام التسويات المالية المتعلقة بالحمولة نيابةً عنه. وألتزم بكافة الأنظمة المرورية، وأتحمّل كامل المسؤولية عن أيّ أضرار أو مخالفات تترتّب على تقصيري أو مخالفتي لأنظمة المملكة العربية السعودية.</p>
       <p class="ur">میں ڈرائیور/ ${n} شناختی نمبر (${i}) اقرار کرتا ہوں کہ میں نے اس بلٹی میں درج مال درست حالت میں وصول کیا ہے، اور وصولی سے حوالگی تک اس کی مکمل ذمہ داری قبول کرتا ہوں۔ نیز مجھے مالک کی طرف سے قانونی طور پر اختیار حاصل ہے کہ میں تمام آپریشنل دستاویزات پر دستخط کروں اور مال سے متعلق معاہدہ اور مالی تصفیہ اُس کی جانب سے مکمل کروں۔ میں تمام ٹریفک قوانین کی پابندی کا عہد کرتا ہوں، اور اپنی کوتاہی یا مملکتِ سعودی عرب کے قوانین کی خلاف ورزی سے پیدا ہونے والے کسی بھی نقصان یا جرمانے کی مکمل ذمہ داری قبول کرتا ہوں۔</p>
     </div>
     <div class="sign">
@@ -111,7 +111,7 @@ ${getFontCss()}
   html, body { font-family: 'Tajawal', 'Noto Sans Arabic', system-ui, sans-serif; direction: rtl; color: #1a1a1a; background: transparent; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
   .sheet { width: 210mm; height: 297mm; position: relative; background: transparent; overflow: hidden; }
   /* ── الورقةُ واحدة، فالمقاساتُ محسوبة ────────────────────────────────────
-     البوليصةُ تُسلَّم بيدٍ وتُطبَع بالمئات، فصفحةٌ ثانيةٌ لها ثمنٌ يوميّ. وقد
+     أمر النقل تُسلَّم بيدٍ وتُطبَع بالمئات، فصفحةٌ ثانيةٌ لها ثمنٌ يوميّ. وقد
      زادها الإقرار، فضُغط المستندُ كلُّه بدل أن يُقسَم: الخطوطُ أصغرُ بقدرٍ
      يبقى مقروءًا، والتذييلُ المطبوعُ في الورق يشغل نحوَ أربعةٍ وعشرين
      مليمترًا لا ستّين — فالصندوقُ يمتدّ إلى ٤٤مم من أسفلَ بأمان.
@@ -158,7 +158,7 @@ ${getFontCss()}
   .fare-section .fare-row .value { font-size: 16.2px; font-weight: 800; color: #1a1a1a; text-align: center; }
   .fare-section .fare-row .en-label { font-size: 10.6px; font-weight: 700; color: #2a2a2a; text-align: left; direction: ltr; letter-spacing: 0.3px; }
   /* ── الإقرارُ في ذيل الورقة نفسِها ────────────────────────────────────────
-     صفحةٌ ثانيةٌ لكلّ بوليصةٍ تعني ضعفَ الورق يوميًّا، فبقي في ورقته: عمودان
+     صفحةٌ ثانيةٌ لكلّ أمر نقل تعني ضعفَ الورق يوميًّا، فبقي في ورقته: عمودان
      متجاوران (العربيُّ والأرديّ) بخطٍّ صغيرٍ يبقى مقروءًا، وخانتا توقيعٍ
      وتاريخٍ تحتهما. */
   .pledge { margin-top: 4px; border: 1px solid #e0d2c2; border-radius: 4px; padding: 4px 7px 5px; }
@@ -193,8 +193,8 @@ ${getFontCss()}
   </div>
   <div class="content">
     <div class="title-block">
-      <div class="doc-title">بوليصة شحن</div>
-      <div class="doc-subtitle">نقل بري<span class="en">· Land Transport Waybill</span></div>
+      <div class="doc-title">أمر نقل</div>
+      <div class="doc-subtitle">نقل بري<span class="en">· Transport Order</span></div>
       <div class="title-accent"></div>
     </div>
     <div class="meta-row">
@@ -203,7 +203,7 @@ ${getFontCss()}
       <div class="meta-box customer"><span class="lbl-ar">العميل</span><span class="lbl-en">Customer</span><span class="val">${valOrBlank(row.customerName)}</span></div>
       <div class="meta-box"><span class="lbl-ar">الفرع</span><span class="lbl-en">Branch</span><span class="val">${valOrBlank(row.branch)}</span></div>
       <div class="meta-box"><span class="lbl-ar">التاريخ</span><span class="lbl-en">Date</span><span class="val">${valOrBlank(row.date)}</span></div>
-      <div class="meta-box"><span class="lbl-ar">رقم البوليصة</span><span class="lbl-en">Bill No.</span><span class="val">${valOrBlank(row.dispatchNumber)}</span></div>
+      <div class="meta-box"><span class="lbl-ar">رقم أمر النقل</span><span class="lbl-en">Order No.</span><span class="val">${valOrBlank(row.dispatchNumber)}</span></div>
     </div>
     <div class="section">
       <div class="section-head"><span class="ar">بيانات الرحلة</span><span class="en">Trip Details</span></div>

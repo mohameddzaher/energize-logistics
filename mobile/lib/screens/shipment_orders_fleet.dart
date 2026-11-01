@@ -187,7 +187,7 @@ class _ShipmentOrdersFleetScreenState extends State<ShipmentOrdersFleetScreen> {
                         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                           Text(tr('ينقص السجلَّ:', 'The register is missing:'), style: const TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF92400E))),
                           if (_n(gaps['unknown']) > 0) Text(tr('${gaps['unknown']} شاحنة بلا مورّد', '${gaps['unknown']} trucks with no supplier'), style: const TextStyle(fontSize: 12.5, color: Color(0xFF92400E))),
-                          if (_n(gaps['noBrand']) > 0) Text(tr('${gaps['noBrand']} بلا ماركة أو لون — تُطبَع فارغةً في البوليصة', '${gaps['noBrand']} with no brand or colour — they print blank on the waybill'), style: const TextStyle(fontSize: 12.5, color: Color(0xFF92400E))),
+                          if (_n(gaps['noBrand']) > 0) Text(tr('${gaps['noBrand']} بلا ماركة أو لون — تُطبَع فارغةً في أمر النقل', '${gaps['noBrand']} with no brand or colour — they print blank on the waybill'), style: const TextStyle(fontSize: 12.5, color: Color(0xFF92400E))),
                           if (_n(gaps['supNoVehicle']) > 0) Text(tr('${gaps['supNoVehicle']} مورّدًا بلا شاحنة', '${gaps['supNoVehicle']} suppliers with no truck'), style: const TextStyle(fontSize: 12.5, color: Color(0xFF92400E))),
                         ]),
                       ),

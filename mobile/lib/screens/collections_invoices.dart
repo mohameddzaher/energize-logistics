@@ -284,17 +284,17 @@ class _CollectionsInvoicesScreenState extends State<CollectionsInvoicesScreen> {
     final sheets = [for (final x in (e['sheets'] as List? ?? const [])) Map<String, dynamic>.from(x as Map)];
     final n = _s(e, 'number');
     const why = {
-      'cancelled': ('الكشف ملغي', 'the report is cancelled'),
-      'tax': ('نوع الدفع على الكشف «ضريبي»', 'the report is marked tax'),
-      'noType': ('نوع الدفع على الكشف غير محدَّد', 'the report has no payment type'),
-      'noPaymentDate': ('لا تاريخ سداد على الكشف بعد', 'the report has no payment date yet'),
+      'cancelled': ('أمر النقل ملغي', 'the report is cancelled'),
+      'tax': ('نوع الدفع على أمر النقل «ضريبي»', 'the report is marked tax'),
+      'noType': ('نوع الدفع على أمر النقل غير محدَّد', 'the report has no payment type'),
+      'noPaymentDate': ('لا تاريخ سداد على أمر النقل بعد', 'the report has no payment date yet'),
       'notReviewed': ('لم يراجعه التشغيل بعد', 'operations has not reviewed it yet'),
     };
     return AppCard(
       padding: const EdgeInsets.all(12),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text(ledger.isEmpty && sheets.isEmpty
-            ? tr('الرقم $n غير موجود في دفتر التحصيل ولا في كشوف التشغيل.', '$n is in neither the collections book nor the operations reports.')
+            ? tr('الرقم $n غير موجود في دفتر التحصيل ولا في أوامر النقل.', '$n is in neither the collections book nor the operations reports.')
             : tr('الرقم $n موجودٌ لكن ليس في هذه الصفحة:', '$n exists, but not on this page:'),
             style: const TextStyle(fontWeight: FontWeight.w800)),
         for (final l in ledger)
@@ -311,9 +311,9 @@ class _CollectionsInvoicesScreenState extends State<CollectionsInvoicesScreen> {
         for (final w in sheets)
           ListTile(
             dense: true, contentPadding: EdgeInsets.zero,
-            title: Text('${tr('كشف تشغيل', 'Operations report')} ${_s(w, 'reportNumber')}${_s(w, 'customer').isEmpty ? '' : ' — ${_s(w, 'customer')}'}'
+            title: Text('${tr('أمر نقل', 'Operations report')} ${_s(w, 'reportNumber')}${_s(w, 'customer').isEmpty ? '' : ' — ${_s(w, 'customer')}'}'
                 '${_cash && why[_s(w, 'why')] != null ? ' · ${tr('ليس في صفحة الكاش لأنّ', 'not on the cash page because')} ${tr(why[_s(w, 'why')]!.$1, why[_s(w, 'why')]!.$2)}' : ''}'),
-            trailing: Text(tr('افتح الكشف', 'Open'), style: const TextStyle(color: T.orange, fontWeight: FontWeight.w700)),
+            trailing: Text(tr('افتح أمر النقل', 'Open'), style: const TextStyle(color: T.orange, fontWeight: FontWeight.w700)),
             onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => OpsWorkflowDetailScreen(id: _s(w, '_id')))),
           ),
       ]),
@@ -331,7 +331,7 @@ class _CollectionsInvoicesScreenState extends State<CollectionsInvoicesScreen> {
             _s(r, 'collectionState') == 'partial'
                 ? tr('مسجَّلٌ عليها تحصيلٌ جزئيّ. «لم تُحصَّل» ترفع الدفعات كلَّها — ولرفع دفعةٍ واحدةٍ استعمل «رفع» بجانبها في نافذة التحصيل.',
                     'Partly collected. “Not collected” removes every payment — to remove one, use “Remove” in the collect sheet.')
-                : tr('يُمحى تاريخُ التحصيل ومبلغُه من الكشوف (ومن سير عمل التشغيل) وتعود في دفتر التحصيل غيرَ محصَّلة. يُقيَّد ذلك باسمك (وسببك إن كتبته).',
+                : tr('يُمحى تاريخُ التحصيل ومبلغُه من أوامر النقل (ومن سير عمل التشغيل) وتعود في دفتر التحصيل غيرَ محصَّلة. يُقيَّد ذلك باسمك (وسببك إن كتبته).',
                     'The collection date and amount are cleared and it returns to not collected — recorded under your name.'),
             style: const TextStyle(fontSize: 13),
           ),
@@ -431,7 +431,7 @@ class _CollectionsInvoicesScreenState extends State<CollectionsInvoicesScreen> {
           ListTile(title: Text(label, style: const TextStyle(fontWeight: FontWeight.w800)), subtitle: Text(_s(r, 'customer'))),
           if (!_cash) ListTile(leading: const Icon(Icons.open_in_new_rounded), title: Text(tr('فتح الفاتورة', 'Open invoice')), onTap: () => Navigator.pop(c, 'open')),
           if (_cash && _s(r, '_id').isNotEmpty)
-            ListTile(leading: const Icon(Icons.description_outlined), title: Text(tr('فتح الكشف', 'Open report')), onTap: () => Navigator.pop(c, 'report')),
+            ListTile(leading: const Icon(Icons.description_outlined), title: Text(tr('فتح أمر النقل', 'Open report')), onTap: () => Navigator.pop(c, 'report')),
           if (_s(r, 'partyId').isNotEmpty)
             ListTile(leading: const Icon(Icons.person_outline), title: Text(tr('ملفّ العميل', 'Customer file')), onTap: () => Navigator.pop(c, 'party')),
           if (collectionsCanEdit)
@@ -471,7 +471,7 @@ class _CollectionsInvoicesScreenState extends State<CollectionsInvoicesScreen> {
   // ── أعمدةُ التصدير — أعمدةُ الموقع بالترتيب والقيم نفسِها ─────────────────
   List<ExportCol> get _cols => _cash
       ? [
-          ExportCol('رقم كشف التخريج', 'Report no.', (r) => r['reportNumber']),
+          ExportCol('رقم أمر النقل', 'Report no.', (r) => r['reportNumber']),
           ExportCol('العميل', 'Customer', (r) => r['customer']),
           ExportCol('المسار', 'Route', (r) => r['route']),
           ExportCol('التخليص', 'Customs', (r) {
@@ -481,7 +481,7 @@ class _CollectionsInvoicesScreenState extends State<CollectionsInvoicesScreen> {
           ExportCol('تاريخ السداد', 'Paid on', (r) => _dt(r['paymentDate'])),
           ExportCol('الفرع المسدد', 'Paying branch', (r) => r['payingBranch']),
           ExportCol('العمر (يوم)', 'Age (days)', (r) => r['ageDays']),
-          ExportCol('قيمة الكشف', 'Value', (r) => r['value']),
+          ExportCol('قيمة أمر النقل', 'Value', (r) => r['value']),
           ExportCol('مبلغ التحصيل', 'Collected', (r) => r['collectedAmount']),
           ExportCol('المتبقي', 'Balance', (r) => r['remaining']),
           ExportCol('حالة التحصيل', 'Collection status', (r) => _stateLabel(_s(r, 'collectionState'))),
@@ -495,7 +495,7 @@ class _CollectionsInvoicesScreenState extends State<CollectionsInvoicesScreen> {
           ExportCol('رقم الفاتورة', 'Invoice no.', (r) => r['invoiceNumber']),
           ExportCol('العميل', 'Customer', (r) => r['customer']),
           ExportCol('كود الحساب', 'Account code', (r) => r['partyCode']),
-          ExportCol('عدد الكشوفات', 'Reports', (r) => r['reports']),
+          ExportCol('عدد أوامر النقل', 'Reports', (r) => r['reports']),
           ExportCol('التخليص', 'Customs', (r) => (r['customs'] is List)
               ? (r['customs'] as List).map((x) => x is Map ? '${x['refNumber'] ?? ''}' : '').where((x) => x.isNotEmpty).join('، ') : ''),
           ExportCol('القيمة', 'Value', (r) => r['value']),
@@ -630,7 +630,7 @@ class _CollectionsInvoicesScreenState extends State<CollectionsInvoicesScreen> {
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: IntrinsicHeight(child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        _stat(_cash ? tr('كشوف', 'Reports') : tr('فواتير', 'Invoices'), _m(_total), T.ink),
+        _stat(_cash ? tr('أوامر نقل', 'Reports') : tr('فواتير', 'Invoices'), _m(_total), T.ink),
         if (_cash) ...[
           _stat(tr('المحصَّل', 'Collected'), _m(t['collected']), T.success),
           _stat(tr('محصَّلة بالكامل', 'Fully collected'), _m(t['collectedCount']), T.success),
@@ -694,7 +694,7 @@ class _CollectionsInvoicesScreenState extends State<CollectionsInvoicesScreen> {
                     if (r['ageDays'] != null) Chip2('${r['ageDays']} ${tr('يوم', 'd')}', _ageColor(r['ageDays'])),
                     if (_num(r['collectedAmount']) > 0) Chip2('${tr('محصَّل', 'Collected')} ${_m(r['collectedAmount'])}', T.success),
                     if (st != 'full' && remaining > 0) Chip2('${tr('باقٍ', 'Balance')} ${_m(remaining)}', st == 'partial' ? T.warn : T.danger),
-                    if (!_cash) Chip2('${r['reports'] ?? 0} ${tr('كشف', 'reports')}'
+                    if (!_cash) Chip2('${r['reports'] ?? 0} ${tr('أمر نقل', 'reports')}'
                         '${_num(r['reports']) > _num(r['collectedReports']) && _num(r['collectedReports']) > 0 ? ' (${r['collectedReports']} ${tr('محصَّل', 'collected')})' : ''}', T.navy),
                     if (_s(r, 'deliveryDate').isEmpty) Chip2(tr('لم تُسلَّم', 'Not delivered'), T.warn)
                     else Chip2('${tr('سُلِّمت', 'Delivered')} ${_dt(r['deliveryDate'])}', T.info),
@@ -771,7 +771,7 @@ class _CollectionsInvoicesScreenState extends State<CollectionsInvoicesScreen> {
                             child: SearchField(
                               controller: _search,
                               dense: true,
-                              hint: _cash ? tr('رقم الكشف أو العميل أو السند…', 'report no., customer, voucher…') : tr('رقم الفاتورة أو العميل…', 'invoice no., customer…'),
+                              hint: _cash ? tr('رقم أمر النقل أو العميل أو السند…', 'report no., customer, voucher…') : tr('رقم الفاتورة أو العميل…', 'invoice no., customer…'),
                               onChanged: (v) {
                                 _deb?.cancel();
                                 _deb = Timer(const Duration(milliseconds: 350), () { _q = v.trim(); _refilter(); });
@@ -942,7 +942,7 @@ class _CollectionsTaxInvoiceScreenState extends State<CollectionsTaxInvoiceScree
             '${!full && _num(c['value']) > 0 ? ' · ${tr('الباقي', 'Remaining')} ${_m(c['remaining'])}' : ''}',
             style: const TextStyle(fontSize: 12.5, color: T.inkSoft)),
         if (_s(c, 'target') == 'cashLedger')
-          Text(tr('فاتورةٌ نقديّةٌ في دفتر التحصيل بلا كشف تشغيل', 'A cash book invoice with no operations report'),
+          Text(tr('فاتورةٌ نقديّةٌ في دفتر التحصيل بلا أمر نقل', 'A cash book invoice with no operations report'),
               style: const TextStyle(fontSize: 11.5, color: T.inkFaint)),
         if (collectionsCanEdit) ...[
           const SizedBox(height: 8),
@@ -992,7 +992,7 @@ class _CollectionsTaxInvoiceScreenState extends State<CollectionsTaxInvoiceScree
   }
 
   List<ExportCol> get _cols => [
-        ExportCol('رقم الكشف', 'Report no.', (r) => r['reportNumber']),
+        ExportCol('رقم أمر النقل', 'Report no.', (r) => r['reportNumber']),
         ExportCol('التاريخ', 'Date', (r) => _dt(r['reportDate'])),
         ExportCol('من', 'From', (r) => r['fromLocation']),
         ExportCol('إلى', 'To', (r) => r['toLocation']),
@@ -1026,7 +1026,7 @@ class _CollectionsTaxInvoiceScreenState extends State<CollectionsTaxInvoiceScree
       title: Text('${tr('فاتورة', 'Invoice')} ${widget.invoiceNumber}'),
       actions: [
         if (reports.isNotEmpty)
-          ExportButton(fileName: 'invoice-${widget.invoiceNumber}', sheetName: tr('الكشوف', 'Reports'), columns: _cols, rows: () => reports),
+          ExportButton(fileName: 'invoice-${widget.invoiceNumber}', sheetName: tr('أوامر النقل', 'Reports'), columns: _cols, rows: () => reports),
       ],
       body: d == null && _error == null
           ? const Center(child: CircularProgressIndicator())
@@ -1046,7 +1046,7 @@ class _CollectionsTaxInvoiceScreenState extends State<CollectionsTaxInvoiceScree
                     ]),
                     const SizedBox(height: 10),
                     Row(children: [
-                      _stat(tr('عدد الكشوفات', 'Reports'), _m(t['reports'])),
+                      _stat(tr('عدد أوامر النقل', 'Reports'), _m(t['reports'])),
                       const SizedBox(width: 6),
                       _stat(tr('صافي الفواتير', 'Net'), _m(t['net'])),
                       const SizedBox(width: 6),
@@ -1075,19 +1075,19 @@ class _CollectionsTaxInvoiceScreenState extends State<CollectionsTaxInvoiceScree
                               child: Wrap(spacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
                                 CustomsLinkChip(c),
                                 if ('${c['customerName'] ?? ''}'.isNotEmpty) Text('${c['customerName']}', style: const TextStyle(fontSize: 12)),
-                                Text(tr('· ${c['reports'] ?? 1} من الكشوف', '· ${c['reports'] ?? 1} report(s)'), style: const TextStyle(fontSize: 12, color: T.inkFaint)),
+                                Text(tr('· ${c['reports'] ?? 1} من أوامر النقل', '· ${c['reports'] ?? 1} report(s)'), style: const TextStyle(fontSize: 12, color: T.inkFaint)),
                               ]),
                             ),
                         ]),
                       ),
                     ],
                     const SizedBox(height: 12),
-                    Text(tr('كشوف هذه الفاتورة', 'Reports under this invoice'), style: const TextStyle(fontWeight: FontWeight.w800)),
+                    Text(tr('أوامر نقل هذه الفاتورة', 'Reports under this invoice'), style: const TextStyle(fontWeight: FontWeight.w800)),
                     const SizedBox(height: 6),
                     if (reports.isEmpty)
                       AppCard(child: Text(d['inLedger'] == true
-                          ? tr('فاتورةٌ من دفتر التحصيل، لا كشوفَ تشغيلٍ مرتبطةً بها.', 'A ledger invoice with no linked operations reports.')
-                          : tr('لا كشوفَ تحت هذه الفاتورة.', 'No reports under this invoice.'), style: const TextStyle(color: T.inkSoft))),
+                          ? tr('فاتورةٌ من دفتر التحصيل، لا أوامر نقلٍ مرتبطةً بها.', 'A ledger invoice with no linked operations reports.')
+                          : tr('لا أوامر نقل تحت هذه الفاتورة.', 'No reports under this invoice.'), style: const TextStyle(color: T.inkSoft))),
                     for (final r in reports)
                       Padding(
                         padding: const EdgeInsets.only(bottom: 8),
@@ -1123,7 +1123,7 @@ class _CollectionsTaxInvoiceScreenState extends State<CollectionsTaxInvoiceScree
                             ]),
                             if (_openFu == _s(r, '_id')) ...[
                               const Divider(),
-                              Text(tr('متابعات الكشف ${_s(r, 'reportNumber')}', 'Follow-ups — ${_s(r, 'reportNumber')}'),
+                              Text(tr('متابعات أمر النقل ${_s(r, 'reportNumber')}', 'Follow-ups — ${_s(r, 'reportNumber')}'),
                                   style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
                               ReportFollowUpsView(basePath: '/api/collections-dept/reports/${_s(r, '_id')}/follow-ups', workflowId: _s(r, '_id')),
                             ],

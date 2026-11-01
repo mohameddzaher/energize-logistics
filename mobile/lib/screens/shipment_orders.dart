@@ -45,7 +45,7 @@ const _colFields = [
   ('driverName', 'السائق', 'Driver'),
   ('truckType', 'الشاحنة', 'Truck'),
   // وبقيّةُ الأعمدة كالويب (٢٠٢٦/١٠/٢٧).
-  ('reference', 'رقم البوليصة', 'Waybill'),
+  ('reference', 'رقم أمر النقل', 'Transport order'),
   ('status', 'الحالة', 'Status'),
   ('pickupDay', 'يوم الاستلام', 'Pickup day'),
   ('buyPrice', 'سعر الشراء', 'Buy price'),
@@ -57,7 +57,7 @@ const _colFields = [
   ('paymentSubtype', 'نوع الدفع', 'Payment'),
   ('salesRepName', 'السيلز', 'Sales rep'),
   ('agentName', 'المندوب', 'Agent'),
-  ('notes', 'ملاحظة البوليصة', 'Waybill note'),
+  ('notes', 'ملاحظة أمر النقل', 'Transport order note'),
 ];
 
 class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
@@ -689,7 +689,7 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
               Chip2('${r['ownerKind'] == 'freelancer' ? tr('فريلانسر', 'Freelancer') : r['ownerKind'] == 'ours' ? tr('أسطولنا', 'Our fleet') : tr('شركة', 'Company')}: ${r['supplierName']}', T.navy),
           ]),
           if ('${r['notes'] ?? ''}'.trim().isNotEmpty)
-            Padding(padding: const EdgeInsets.only(top: 4), child: Text('${tr('ملاحظة البوليصة', 'Waybill note')}: ${r['notes']}', maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, color: T.inkSoft))),
+            Padding(padding: const EdgeInsets.only(top: 4), child: Text('${tr('ملاحظة أمر النقل', 'Transport order note')}: ${r['notes']}', maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, color: T.inkSoft))),
           // تُفتح منها كلُّ الملاحظات — للقراءة والإضافة والتعديل والحذف.
           SoLatestFollowUpLine(order: r, onTap: () async {
             final u = await soQuickNote(context, r);
@@ -700,7 +700,7 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
             ContactButtons(phone: '${r['driverPhone'] ?? ''}', size: 18, compact: true),
             IconButton(
               visualDensity: VisualDensity.compact,
-              tooltip: tr('تحميل البوليصة PDF', 'Download waybill PDF'),
+              tooltip: tr('تحميل أمر النقل PDF', 'Download transport order PDF'),
               icon: const Icon(Icons.picture_as_pdf_outlined, size: 19, color: T.orange),
               onPressed: () => soPrintWaybills(context, [r]),
             ),

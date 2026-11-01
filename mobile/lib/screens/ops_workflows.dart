@@ -50,8 +50,8 @@ const _barFields = [
 /// بقيّةُ أعمدة الجدول — لكلٍّ فلترُه على رأسه في الويب (ColHead).
 /// (المفتاح، العربيّ، الإنجليزيّ، مالٌ؟)
 const _colFields = [
-  ('reportNumber', 'رقم الكشف', 'Report #', false),
-  ('reportDate', 'تاريخ الكشف', 'Report date', false),
+  ('reportNumber', 'رقم أمر النقل', 'Report #', false),
+  ('reportDate', 'تاريخ أمر النقل', 'Report date', false),
   ('userPhone', 'هاتف العميل', 'Customer phone', false),
   ('purchaseValue', 'قيمة الشراء', 'Purchase value', false),
   ('sellingValue', 'قيمة البيع', 'Selling value', false),
@@ -61,7 +61,7 @@ const _colFields = [
   ('paymentDate', 'تاريخ السداد', 'Payment date', false),
   ('dataOwnerShown', 'مسؤول البيانات', 'Data owner', false),
   ('paymentAmount', 'مبلغ السداد', 'Payment amount', false),
-  ('finalReportDestination', 'وجهة الكشف النهائية', 'Final destination', false),
+  ('finalReportDestination', 'وجهة أمر النقل النهائية', 'Final destination', false),
   ('documentNumber', 'رقم السند', 'Voucher no.', false),
   ('sendingDate', 'تاريخ الإرسال', 'Sending date', false),
   ('branchDeliveryDate', 'تاريخ التسليم للفرع', 'Delivered to branch', false),
@@ -99,7 +99,7 @@ const _exportCols = [
 /// بطاقاتُ فحص الفواتير الأربع — نفسُ بطاقات الويب (InvoiceCheckCards).
 const _checkKinds = [
   ('gaps', 'فواتير لم تُفوتَر', 'Missing invoice numbers', T.violet),
-  ('missing-reports', 'فواتير بكشوفات غير موجودة', 'Invoices citing missing reports', T.warn),
+  ('missing-reports', 'فواتير بأوامر نقل غير موجودة', 'Invoices citing missing reports', T.warn),
   ('value-diffs', 'فرق قيمة الفاتورة', 'Invoice value differences', T.danger),
   ('name-mismatches', 'عدم تطابق اسم العميل', 'Customer name mismatch', T.info),
 ];
@@ -396,7 +396,7 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
       } else if (row is Map && row['sellingPlatform'] is bool) {
         opsSnack(context, row['sellingPlatform'] == true
             ? tr('حُفظت قيمة البيع هنا وفي منصّة التشغيل', 'Selling value saved here and on the platform')
-            : tr('حُفظت قيمة البيع — الكشف ليس من منصّة التشغيل', 'Selling value saved — not a platform shipment'));
+            : tr('حُفظت قيمة البيع — أمر النقل ليس من منصّة التشغيل', 'Selling value saved — not a platform shipment'));
       } else if (okMsg != null) {
         opsSnack(context, okMsg);
       }
@@ -454,7 +454,7 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
   /// حالةُ الطلب — تُكتب في منصّة التشغيل أوّلًا ثمّ تعود (لا تفاؤل هنا).
   Future<void> _changeAppStatus(Map<String, dynamic> w) async {
     if (!_hasStatus(w)) {
-      opsSnack(context, tr('كشفٌ ليس من منصّة التشغيل', 'Not a platform shipment'));
+      opsSnack(context, tr('أمر نقل ليس من منصّة التشغيل', 'Not a platform shipment'));
       return;
     }
     if (!_owns('applicationStatus')) { opsSnack(context, tr('صلاحيّتك لا تسمح بتعديل هذا العمود', 'Your role cannot edit this column')); return; }
@@ -495,7 +495,7 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
   Future<void> _rowMenu(Map<String, dynamic> w) async {
     final locked = _lockedByOther(w);
     final actions = <(IconData, String, Color, Future<void> Function())>[
-      (Icons.open_in_new, tr('فتح الكشف', 'Open report'), T.navy, () => _openDetail(w)),
+      (Icons.open_in_new, tr('فتح أمر النقل', 'Open report'), T.navy, () => _openDetail(w)),
       if (!locked) (Icons.edit_outlined, tr('تعديل', 'Edit'), T.navy, () => _openDetail(w, edit: true)),
       if (!locked && _owns('paymentType')) (Icons.swap_horiz_rounded, tr('تغيير نوع الدفع', 'Change payment type'), T.violet, () => _editPaymentType(w)),
       if (!locked && _canSeeSelling) (Icons.sell_outlined, tr('تعديل قيمة البيع', 'Edit selling value'), T.success, () => _editSelling(w)),
@@ -513,7 +513,7 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(18, 14, 18, 4),
-            child: Text('${tr('كشف', 'Report')} ${w['reportNumber'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+            child: Text('${tr('أمر نقل', 'Report')} ${w['reportNumber'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
           ),
           if (locked)
             Text(tr('يحرّره الآن ${w['lockedByName'] ?? ''}', 'Being edited by ${w['lockedByName'] ?? ''}'), style: const TextStyle(fontSize: 12, color: T.danger)),
@@ -553,7 +553,7 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
     final n = _selectedCount;
     if (n == 0) return;
     final msg = _allMatching
-        ? tr('سيُحذف $n كشفًا — كلُّ نتائج الفلتر الحاليّ في كلّ الصفحات، لا الصفحةُ المعروضة وحدَها. لا يمكن التراجع. متابعة؟',
+        ? tr('سيُحذف $n أمر نقل — كلُّ نتائج الفلتر الحاليّ في كلّ الصفحات، لا الصفحةُ المعروضة وحدَها. لا يمكن التراجع. متابعة؟',
             'This deletes $n reports — every result of the current filter across all pages. This cannot be undone. Continue?')
         : tr('حذف $n طلبًا محدّدًا؟ لا يمكن التراجع.', 'Delete $n selected requests? This cannot be undone.');
     if (!await opsConfirm(context, msg, danger: true)) return;
@@ -614,7 +614,7 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
           if (fields.isEmpty) return;
           if (_allMatching) {
             final n = fields.length;
-            final ok = await opsConfirm(c, tr('سيُطبَّق التعديل ($n ${n == 1 ? 'عمود' : 'أعمدة'}) على $_total كشفًا — كلُّ نتائج الفلتر الحاليّ في كلّ الصفحات. متابعة؟',
+            final ok = await opsConfirm(c, tr('سيُطبَّق التعديل ($n ${n == 1 ? 'عمود' : 'أعمدة'}) على $_total أمر نقل — كلُّ نتائج الفلتر الحاليّ في كلّ الصفحات. متابعة؟',
                 'Apply this change ($n field${n == 1 ? '' : 's'}) to $_total reports — every result of the current filter. Continue?'));
             if (!ok) return;
           }
@@ -686,7 +686,7 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
                     onChanged: (v) => set(() => ptype = v ?? ''),
                   ),
                 ),
-                Padding(padding: const EdgeInsets.only(bottom: 8), child: LookupField(type: 'workflow_final_destination', controller: dest, label: tr('وجهة الكشف النهائية', 'Final destination'), noAdd: true)),
+                Padding(padding: const EdgeInsets.only(bottom: 8), child: LookupField(type: 'workflow_final_destination', controller: dest, label: tr('وجهة أمر النقل النهائية', 'Final destination'), noAdd: true)),
                 Padding(
                   padding: const EdgeInsets.only(bottom: 8),
                   child: TextField(controller: doc, decoration: InputDecoration(labelText: tr('رقم السند', 'Voucher no.'), hintText: tr('اختياري', 'Optional'), isDense: true)),
@@ -811,11 +811,11 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
             case 'gaps':
               return '${r['invoiceNumber']}';
             case 'missing-reports':
-              return '${tr('فاتورة', 'Invoice')} ${r['invoiceNumber']} — ${tr('كشف', 'report')} ${r['reportNumber']}${(r['customerName'] ?? '').toString().isNotEmpty ? ' · ${r['customerName']}' : ''}';
+              return '${tr('فاتورة', 'Invoice')} ${r['invoiceNumber']} — ${tr('أمر نقل', 'report')} ${r['reportNumber']}${(r['customerName'] ?? '').toString().isNotEmpty ? ' · ${r['customerName']}' : ''}';
             case 'value-diffs':
-              return '${tr('فاتورة', 'Invoice')} ${r['invoiceNumber']}: ${tr('الورقة', 'sheet')} ${opsMoney(r['uploadedValue'])} · ${tr('الكشوف', 'reports')} ${opsMoney(r['reportsValue'])} · ${tr('الفرق', 'diff')} ${opsMoney(r['difference'])}';
+              return '${tr('فاتورة', 'Invoice')} ${r['invoiceNumber']}: ${tr('الورقة', 'sheet')} ${opsMoney(r['uploadedValue'])} · ${tr('أوامر النقل', 'reports')} ${opsMoney(r['reportsValue'])} · ${tr('الفرق', 'diff')} ${opsMoney(r['difference'])}';
             default:
-              return '${tr('كشف', 'Report')} ${r['reportNumber']} (${r['invoiceNumber']}): «${r['uploadedCustomer']}» ≠ «${r['workflowCustomer']}»';
+              return '${tr('أمر نقل', 'Report')} ${r['reportNumber']} (${r['invoiceNumber']}): «${r['uploadedCustomer']}» ≠ «${r['workflowCustomer']}»';
           }
         }
         return SafeArea(
@@ -980,7 +980,7 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
               _chip(tr(m.$2, m.$3), _customs == m.$1, () { _customs = _customs == m.$1 ? '' : m.$1; _reload(); },
                   icon: m.$1 == 'linked' ? Icons.directions_boat_outlined : Icons.link_off),
             if (_customs.isNotEmpty && _customs != 'linked' && _customs != 'unlinked')
-              _chip(tr('كشوف معاملةٍ محدّدة ✕', 'One clearance ✕'), true, () { _customs = ''; _reload(); }),
+              _chip(tr('أوامر نقل معاملةٍ محدّدة ✕', 'One clearance ✕'), true, () { _customs = ''; _reload(); }),
             if (_cf.isNotEmpty)
               TextButton(onPressed: () { _cf.clear(); _reload(); }, child: Text(tr('مسح الفلاتر (${_cf.length})', 'Clear filters (${_cf.length})'))),
           ]),
@@ -1126,7 +1126,7 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
                       if (_rows.isEmpty)
                         EmptyState(
                           icon: Icons.workspaces_outline,
-                          title: _pendingOnly ? tr('لا توجد فواتير معلقة', 'No pending invoices') : (_cf.isNotEmpty || _q.trim().isNotEmpty ? tr('لا نتائج للفلتر المحدد', 'No rows match the filters') : tr('لا توجد كشوف', 'No sheets')),
+                          title: _pendingOnly ? tr('لا توجد فواتير معلقة', 'No pending invoices') : (_cf.isNotEmpty || _q.trim().isNotEmpty ? tr('لا نتائج للفلتر المحدد', 'No rows match the filters') : tr('لا توجد أوامر نقل', 'No sheets')),
                         )
                       else
                         for (var i = 0; i < _rows.length; i++)

@@ -337,7 +337,7 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
 
   const openBulkDeliver = () => {
     setDelivering(isCash
-      ? { label: t(`${selectedRows.length} كشف`, `${selectedRows.length} sheets`), ids: selectedRows.map((r: any) => r._id) }
+      ? { label: t(`${selectedRows.length} أمر نقل`, `${selectedRows.length} sheets`), ids: selectedRows.map((r: any) => r._id) }
       : { label: t(`${selectedRows.length} فاتورة`, `${selectedRows.length} invoices`), numbers: selectedRows.map((r: any) => r.invoiceNumber) });
     setDeliveryDate(new Date().toISOString().slice(0, 10));
   };
@@ -537,7 +537,7 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
   );
   const allCols: Col[] = isCash
     ? [
-      { header: t('رقم كشف التخريج', 'Report no.'), key: 'reportNumber', width: 18, filter: 'reportNumber',
+      { header: t('رقم أمر النقل', 'Report no.'), key: 'reportNumber', width: 18, filter: 'reportNumber',
         cell: (r) => (
           <button type="button" onClick={(e) => { e.stopPropagation(); router.push(`/system/operations/${r._id}`); }}
             className="font-semibold text-[#f37121] hover:underline">{r.reportNumber || '—'}</button>
@@ -550,7 +550,7 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
       { header: t('تاريخ السداد', 'Paid on'), key: 'paymentDate', width: 14, type: 'date', filter: 'paymentDate', transform: (v: any) => dt(v) },
       { header: t('الفرع المسدد', 'Paying branch'), key: 'payingBranch', width: 14, filter: 'payingBranch' },
       { header: t('العمر (يوم)', 'Age (days)'), key: 'ageDays', width: 12, align: 'end', cell: (r) => ageChip(r.ageDays) },
-      { header: t('قيمة الكشف', 'Value'), key: 'value', width: 14, type: 'number', align: 'end',
+      { header: t('قيمة أمر النقل', 'Value'), key: 'value', width: 14, type: 'number', align: 'end',
         cell: (r) => <span className="tabular-nums font-semibold text-slate-900">{r.value ? money(r.value) : '—'}</span> },
       { header: t('مبلغ التحصيل', 'Collected'), key: 'collectedAmount', width: 14, type: 'number', align: 'end',
         cell: (r) => <span className="tabular-nums font-semibold text-emerald-700">{r.collectedAmount ? money(r.collectedAmount) : '—'}</span> },
@@ -575,7 +575,7 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
         ) },
       { header: t('العميل', 'Customer'), key: 'customer', width: 30, filter: 'partyName', cell: (r) => customerCell(r) },
       { header: t('كود الحساب', 'Account code'), key: 'partyCode', width: 14, filter: 'partyCode' },
-      { header: t('عدد الكشوفات', 'Reports'), key: 'reports', width: 12, align: 'end', cell: (r) => reportsCell(r) },
+      { header: t('عدد أوامر النقل', 'Reports'), key: 'reports', width: 12, align: 'end', cell: (r) => reportsCell(r) },
       { header: t('التخليص', 'Customs'), key: 'customs', width: 16,
         transform: (v: any) => (Array.isArray(v) ? v.map((x: any) => x.refNumber).filter(Boolean).join('، ') : ''),
         cell: (r) => (r.customs && r.customs.length ? <CustomsLinkBadges links={r.customs} ar={ar} /> : <span className="text-slate-300">—</span>) },
@@ -634,7 +634,7 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
         <span className="text-[11px] text-amber-600 ms-1">({r.collectedReports} {t('محصَّل', 'collected')})</span>
       )}
     </span>
-  ) : <span className="text-[11px] text-slate-400">{t('لا كشوف', 'no reports')}</span>);
+  ) : <span className="text-[11px] text-slate-400">{t('لا أوامر نقل', 'no reports')}</span>);
 
   const collectedCell = (r: any) => (
     <span className={r.collectionDate || r.collectedNoDate ? 'text-emerald-700' : r.collectionState === 'partial' ? 'text-amber-600' : 'text-red-500'}>
@@ -704,7 +704,7 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
       const load = Promise.race([
         api.getBlob(statementPath()),
         new Promise<never>((_, rej) => setTimeout(() => rej(new Error(t(
-          'استغرق إعداد الكشف وقتًا أطول من المعتاد — ضيّق الفلتر (عميل أو فترة) وأعد المحاولة، أو استخدم تصدير Excel.',
+          'استغرق إعداد أمر النقل وقتًا أطول من المعتاد — ضيّق الفلتر (عميل أو فترة) وأعد المحاولة، أو استخدم تصدير Excel.',
           'The statement took too long — narrow the filter (customer or period) and try again, or use the Excel export.'))), 100000)),
       ]);
       await (mode === 'print' ? printPdf(load, fileName, ar) : openPdf(load, fileName, ar));
@@ -739,8 +739,8 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
         icon={<Icon className="w-6 h-6 text-[#f37121]" />}
         title={title}
         subtitle={isCash
-          ? t('كشوفٌ نقديّة اكتمل سدادُها — تُحصَّل في يومها', 'Cash reports already paid out — collect same-day')
-          : t('الفاتورةُ هي الوحدة، وقد تضمّ أكثر من كشف', 'The invoice is the unit — it may cover several reports')}
+          ? t('أوامر نقل نقديّة اكتمل سدادُها — تُحصَّل في يومها', 'Cash reports already paid out — collect same-day')
+          : t('الفاتورةُ هي الوحدة، وقد تضمّ أكثر من أمر نقل', 'The invoice is the unit — it may cover several reports')}
       >
         <ClearColumnFilters count={cf.count} onClear={cf.clear} ar={ar} />
         <ColumnChooser columns={chooserCols} visible={visible} onChange={setVisible} ar={ar} />
@@ -750,7 +750,7 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
             ? t('كشف حساب PDF للصفوف المحدَّدة — بالأعمدة المختارة', 'Statement PDF of the selected rows — chosen columns')
             : t('كشف حساب PDF لنتيجة الفلتر كاملةً (كل الصفحات) مع البطاقات — بالأعمدة المختارة', 'Statement PDF of the whole filtered result (every page) with the cards — chosen columns')}>
           {stBusy === 'open' ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
-          {stBusy === 'open' ? t('جارٍ إعداد الكشف…', 'Preparing…') : t('كشف حساب PDF', 'Statement PDF')}
+          {stBusy === 'open' ? t('جارٍ إعداد أمر النقل…', 'Preparing…') : t('كشف حساب PDF', 'Statement PDF')}
         </button>
         {canEdit && (
           <button type="button" onClick={() => setSendParams(statementParams())}
@@ -800,7 +800,7 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-        <Stat label={isCash ? t('كشوف', 'Reports') : t('فواتير', 'Invoices')} value={money(total)} />
+        <Stat label={isCash ? t('أوامر نقل', 'Reports') : t('فواتير', 'Invoices')} value={money(total)} />
         {isCash ? (
           <>
             <Stat label={t('المحصَّل', 'Collected')} value={money(totals.collected)} accent="text-emerald-600" />
@@ -824,7 +824,7 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
         <div className="flex-1 min-w-[220px]">
           <SearchInput value={q} onChange={setQ}
             placeholder={isCash
-              ? t('بحث برقم الكشف أو العميل أو السند…', 'report no., customer, voucher…')
+              ? t('بحث برقم أمر النقل أو العميل أو السند…', 'report no., customer, voucher…')
               : t('بحث برقم الفاتورة أو العميل…', 'invoice no., customer…')} />
         </div>
         <button type="button" onClick={() => setShowFilters((p) => !p)}
@@ -1059,7 +1059,7 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
           <TextInput type="date" value={deliveryDate} onChange={(e) => setDeliveryDate(e.target.value)} />
         </Field>
         <p className="text-xs text-slate-500 mt-2 leading-relaxed">
-          {t('يوم استلام العميل للفاتورة — ومنه تبدأ مهلة السداد المتّفق عليها معه. يُكتب على كشوف الفاتورة في سير عمل التشغيل وفي دفتر التحصيل معًا، وهو غير «تاريخ التسليم للفرع» الذي يسجّله التشغيل.',
+          {t('يوم استلام العميل للفاتورة — ومنه تبدأ مهلة السداد المتّفق عليها معه. يُكتب على أوامر نقل الفاتورة في سير عمل التشغيل وفي دفتر التحصيل معًا، وهو غير «تاريخ التسليم للفرع» الذي يسجّله التشغيل.',
              'The day the customer received the invoice — the agreed credit term starts here. Written to the invoice\u2019s reports and the collections ledger together, and distinct from the branch delivery operations records.')}
         </p>
       </Modal>
@@ -1167,7 +1167,7 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
         )}
         {!collecting?.ids && (
           <p className="text-[12px] text-slate-500 mt-3">
-            {t('عند اكتمال التحصيل يُسجَّل التاريخ على كشوف هذه الفاتورة كلِّها — تحصيلُها تحصيلٌ لما فيها.',
+            {t('عند اكتمال التحصيل يُسجَّل التاريخ على أوامر نقل هذه الفاتورة كلِّها — تحصيلُها تحصيلٌ لما فيها.',
               'Once fully collected, the date is written to every report under this invoice.')}
           </p>
         )}
@@ -1238,7 +1238,7 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
                 <TextInput value={undoReason} onChange={(e) => setUndoReason(e.target.value)}
                   placeholder={t('مثال: الشيك رُدّ · سُجِّل على فاتورةٍ أخرى خطأً', 'e.g. cheque bounced · recorded on the wrong invoice')} />
                 <p className="text-[11.5px] text-red-700/80">
-                  {t('يُمحى تاريخُ التحصيل ومبلغُه من الكشوف (ومن سير عمل التشغيل) وتعود في دفتر التحصيل غيرَ محصَّلة. يُقيَّد ذلك باسمك (وسببك إن كتبته).',
+                  {t('يُمحى تاريخُ التحصيل ومبلغُه من أوامر النقل (ومن سير عمل التشغيل) وتعود في دفتر التحصيل غيرَ محصَّلة. يُقيَّد ذلك باسمك (وسببك إن كتبته).',
                      'The collection date and amount are cleared from the reports (and the operations workflow) and the ledger shows it as not collected. Recorded under your name with the reason.')}
                 </p>
                 <div className="flex justify-end gap-2">
@@ -1270,13 +1270,13 @@ interface Elsewhere {
 function ElsewhereHint({ e, isCash, ar, go }: { e: Elsewhere; isCash: boolean; ar: boolean; go: (url: string) => void }) {
   const t = (a: string, en: string) => (ar ? a : en);
   if (!e.ledger.length && !e.sheets.length) {
-    return <p className="mt-2 text-xs">{t(`الرقم ${e.number} غير موجود في دفتر التحصيل ولا في كشوف التشغيل.`, `${e.number} is in neither the collections book nor the operations reports.`)}</p>;
+    return <p className="mt-2 text-xs">{t(`الرقم ${e.number} غير موجود في دفتر التحصيل ولا في أوامر النقل.`, `${e.number} is in neither the collections book nor the operations reports.`)}</p>;
   }
   const WHY: Record<string, [string, string]> = {
-    cancelled: ['الكشف ملغي', 'the report is cancelled'],
-    tax: ['نوع الدفع على الكشف «ضريبي»', 'the report is marked tax'],
-    noType: ['نوع الدفع على الكشف غير محدَّد', 'the report has no payment type'],
-    noPaymentDate: ['لا تاريخ سداد على الكشف بعد', 'the report has no payment date yet'],
+    cancelled: ['أمر النقل ملغي', 'the report is cancelled'],
+    tax: ['نوع الدفع على أمر النقل «ضريبي»', 'the report is marked tax'],
+    noType: ['نوع الدفع على أمر النقل غير محدَّد', 'the report has no payment type'],
+    noPaymentDate: ['لا تاريخ سداد على أمر النقل بعد', 'the report has no payment date yet'],
     notReviewed: ['لم يراجعه التشغيل بعد', 'operations has not reviewed it yet'],
   };
   const link = 'font-semibold text-[#f37121] hover:underline';
@@ -1290,7 +1290,7 @@ function ElsewhereHint({ e, isCash, ar, go }: { e: Elsewhere; isCash: boolean; a
             : t('فاتورة ضريبيّة في دفتر التحصيل', 'A tax invoice in the collections book')}
           {l.customer ? ` — ${l.customer}` : ''} · {l.collected ? t('محصَّلة', 'collected') : t('لم تُحصَّل', 'open')}
           {l.kind === 'cash' && isCash && !e.sheets.some((w) => w.paymentType === 'cash') && (
-            <span className="text-slate-500">{t(' (لا كشفَ تشغيلٍ نقديًّا لها، وصفحةُ الكاش تعرض الكشوف)', ' (no cash operations report — this page lists reports)')}</span>
+            <span className="text-slate-500">{t(' (لا أمر نقلٍ نقديًّا لها، وصفحةُ الكاش تعرض أوامر النقل)', ' (no cash operations report — this page lists reports)')}</span>
           )}
           {' '}<button type="button" className={link} onClick={() => go(`/system/collections-dept/invoices/tax/${encodeURIComponent(l.invoiceNumber)}`)}>
             {t('افتحها وسجّل التحصيل', 'Open and collect')}
@@ -1299,9 +1299,9 @@ function ElsewhereHint({ e, isCash, ar, go }: { e: Elsewhere; isCash: boolean; a
       ))}
       {e.sheets.map((w) => (
         <p key={`s-${w._id}`}>
-          {t(`كشف تشغيل ${w.reportNumber}`, `Operations report ${w.reportNumber}`)}{w.customer ? ` — ${w.customer}` : ''}
+          {t(`أمر نقل ${w.reportNumber}`, `Operations report ${w.reportNumber}`)}{w.customer ? ` — ${w.customer}` : ''}
           {isCash && w.why && WHY[w.why] ? ` · ${t('ليس في صفحة الكاش لأنّ', 'not on the cash page because')} ${t(WHY[w.why][0], WHY[w.why][1])}` : ''}
-          {' '}<button type="button" className={link} onClick={() => go(`/system/operations/${w._id}`)}>{t('افتح الكشف', 'Open report')}</button>
+          {' '}<button type="button" className={link} onClick={() => go(`/system/operations/${w._id}`)}>{t('افتح أمر النقل', 'Open report')}</button>
         </p>
       ))}
     </div>

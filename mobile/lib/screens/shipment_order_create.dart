@@ -835,7 +835,7 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
         final failedN = (d['failed'] as List? ?? const []).length;
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text(tr('أُنشئت ${d['created']} شحنة — بوالص $nums${failedN > 0 ? ' · تعذّرت $failedN' : ''}',
+            content: Text(tr('أُنشئت ${d['created']} شحنة — أوامر نقل $nums${failedN > 0 ? ' · تعذّرت $failedN' : ''}',
                 '${d['created']} created — waybills $nums${failedN > 0 ? ' · $failedN failed' : ''}')),
           ));
         }
@@ -1319,7 +1319,7 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
                           Text(tr('الحمولة على ${_extraTrucks.length + 1} شاحنات', 'This load on ${_extraTrucks.length + 1} trucks'),
                               style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
                           const SizedBox(height: 2),
-                          Text(tr('كلُّ شاحنةٍ شحنةٌ مستقلّةٌ برقم بوليصةٍ خاصّ — نفسُ بقيّة البيانات',
+                          Text(tr('كلُّ شاحنةٍ شحنةٌ مستقلّةٌ برقم أمر نقل خاصّ — نفسُ بقيّة البيانات',
                                   'each truck becomes its own shipment with its own waybill'),
                               style: const TextStyle(fontSize: 11, color: T.inkFaint)),
                           const Divider(height: 18),

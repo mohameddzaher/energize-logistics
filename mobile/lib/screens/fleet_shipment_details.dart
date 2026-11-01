@@ -211,7 +211,7 @@ class _FleetShipmentDetailsScreenState extends State<FleetShipmentDetailsScreen>
       context: context,
       builder: (c) => AlertDialog(
         title: Text(tr('حذف الحمولة', 'Delete shipment')),
-        content: Text(tr('حذف الشحنة بوليصة رقم ${s['waybillNumber'] ?? ''} (${s['customerName'] ?? '—'})؟',
+        content: Text(tr('حذف الشحنة أمر نقل رقم ${s['waybillNumber'] ?? ''} (${s['customerName'] ?? '—'})؟',
             'Delete shipment, waybill ${s['waybillNumber'] ?? ''}?')),
         actions: [
           TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('إلغاء', 'Cancel'))),
@@ -248,12 +248,12 @@ class _FleetShipmentDetailsScreenState extends State<FleetShipmentDetailsScreen>
       final bytes = await Api.instance.getBytes('/api/fleet/shipments/$id/waybill.pdf?lang=${Lang.instance.ar ? 'ar' : 'en'}');
       await Printing.layoutPdf(
         onLayout: (_) async => bytes,
-        name: 'بوليصة-${s['waybillNumber'] ?? id}',
+        name: 'أمر نقل-${s['waybillNumber'] ?? id}',
       );
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e is ApiException ? e.message : tr('تعذّر توليد البوليصة', 'Could not generate the waybill'))),
+          SnackBar(content: Text(e is ApiException ? e.message : tr('تعذّر توليد أمر النقل', 'Could not generate the waybill'))),
         );
       }
     } finally {
@@ -265,7 +265,7 @@ class _FleetShipmentDetailsScreenState extends State<FleetShipmentDetailsScreen>
     final data = e['data'] as Map<String, dynamic>? ?? {};
     switch (e['type']) {
       case 'created':
-        return tr('بوليصة رقم ${data['waybillNumber'] ?? ''}', 'Waybill ${data['waybillNumber'] ?? ''}');
+        return tr('أمر نقل رقم ${data['waybillNumber'] ?? ''}', 'Transport order ${data['waybillNumber'] ?? ''}');
       case 'status':
         final st = _statuses[data['to'] ?? data['status']];
         return st != null ? tr('إلى «${st.$1}»', 'To "${st.$2}"') : (data['to'] ?? '').toString();
@@ -300,7 +300,7 @@ class _FleetShipmentDetailsScreenState extends State<FleetShipmentDetailsScreen>
     final s = _shipment;
     final st = s != null ? (_statuses[s['status']] ?? ('—', '—', T.inkFaint)) : ('—', '—', T.inkFaint);
     return AppScaffold(
-      title: Text(s != null ? '${tr('بوليصة', 'Waybill')} ${s['waybillNumber'] ?? ''}' : tr('تفاصيل الشحنة', 'Shipment')),
+      title: Text(s != null ? '${tr('أمر نقل', 'Transport order')} ${s['waybillNumber'] ?? ''}' : tr('تفاصيل الشحنة', 'Shipment')),
       actions: [
         if (s != null)
           IconButton(

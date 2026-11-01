@@ -130,7 +130,7 @@ async function operations(p, user) {
     paid: sum(byBranch, 'paid'), collected: sum(byBranch, 'collected'), sheets: sum(byBranch, 'sheets'),
   };
   const sheetCols = [
-    col('sheets', 'الكشوف', 'Sheets', 'number'),
+    col('sheets', 'أوامر النقل', 'Sheets', 'number'),
     col('selling', 'قيمة البيع', 'Selling', 'money'),
     col('purchase', 'قيمة الشراء', 'Purchase', 'money'),
     col('margin', 'الهامش', 'Margin', 'money'),
@@ -146,12 +146,12 @@ async function operations(p, user) {
       card('walletExpenses', 'مصروفات المحافظ', 'Wallet expenses', sum(branches, 'totalExpenses'), { tone: 'bad', href: '/system/wallet-dashboard' }),
       card('walletPurchases', 'مشتريات المحافظ', 'Wallet purchases', sum(branches, 'totalPurchases'), { tone: 'warn', href: '/system/wallet-dashboard' }),
       card('walletClosing', 'رصيد المحافظ الختامي', 'Wallets closing balance', sum(branches, 'closingBalance'), { href: '/system/wallet-dashboard' }),
-      card('selling', 'قيمة البيع (الكشوف)', 'Selling value (sheets)', tot.selling, { tone: 'good', href: '/system/operations' }),
-      card('purchase', 'قيمة الشراء (الكشوف)', 'Purchase value (sheets)', tot.purchase, { tone: 'bad', href: '/system/operations' }),
+      card('selling', 'قيمة البيع (أوامر النقل)', 'Selling value (sheets)', tot.selling, { tone: 'good', href: '/system/operations' }),
+      card('purchase', 'قيمة الشراء (أوامر النقل)', 'Purchase value (sheets)', tot.purchase, { tone: 'bad', href: '/system/operations' }),
       card('margin', 'هامش التشغيل', 'Operating margin', tot.selling - tot.purchase, { tone: tot.selling - tot.purchase >= 0 ? 'good' : 'bad' }),
-      card('losing', 'كشوف شراؤها أكبر من بيعها', 'Sheets bought above selling', losing.length, { format: 'number', tone: losing.length ? 'warn' : 'neutral' }),
+      card('losing', 'أوامر نقل شراؤها أكبر من بيعها', 'Sheets bought above selling', losing.length, { format: 'number', tone: losing.length ? 'warn' : 'neutral' }),
       card('vat', 'ضريبة القيمة المضافة', 'VAT', tot.vat),
-      card('sheets', 'كشوف الفترة', 'Sheets', tot.sheets, { format: 'number', href: '/system/operations' }),
+      card('sheets', 'أوامر نقل الفترة', 'Sheets', tot.sheets, { format: 'number', href: '/system/operations' }),
     ],
     tables: [
       {
@@ -176,12 +176,12 @@ async function operations(p, user) {
         rows: expenseCats.map((x) => ({ name: x.name, n: x.n, amount: round(x.amount) })),
       },
       {
-        key: 'sheetsByBranch', ar: 'الكشوف حسب الفرع', en: 'Sheets by branch',
+        key: 'sheetsByBranch', ar: 'أوامر النقل حسب الفرع', en: 'Sheets by branch',
         columns: [col('name', 'الفرع', 'Branch'), ...sheetCols],
         rows: byBranch.map((r) => sheetRow(r, r._id || '—')),
       },
       {
-        key: 'sheetsByType', ar: 'الكشوف حسب نوع الدفع', en: 'Sheets by payment type',
+        key: 'sheetsByType', ar: 'أوامر النقل حسب نوع الدفع', en: 'Sheets by payment type',
         columns: [col('name', 'النوع', 'Type'), ...sheetCols],
         rows: byType.map((r) => sheetRow(r, PT[r._id] || r._id || 'غير محدد')),
       },
@@ -196,9 +196,9 @@ async function operations(p, user) {
         rows: bySupplier.map((r) => sheetRow(r, r._id || '—')),
       },
       {
-        key: 'losing', ar: 'كشوف قيمة شرائها أكبر من بيعها', en: 'Sheets bought above their selling value',
+        key: 'losing', ar: 'أوامر نقل قيمة شرائها أكبر من بيعها', en: 'Sheets bought above their selling value',
         noteAr: 'راجعها أولًا: أغلبها خطأ في إدخال قيمة الشراء، وهي التي تقلب هامش التشغيل.',
-        columns: [col('report', 'رقم الكشف', 'Sheet'), col('date', 'التاريخ', 'Date', 'date'), col('branch', 'الفرع', 'Branch'), col('customer', 'العميل', 'Customer'), col('supplier', 'المورد', 'Supplier'), col('selling', 'البيع', 'Selling', 'money'), col('purchase', 'الشراء', 'Purchase', 'money'), col('loss', 'الفرق', 'Loss', 'money')],
+        columns: [col('report', 'رقم أمر النقل', 'Sheet'), col('date', 'التاريخ', 'Date', 'date'), col('branch', 'الفرع', 'Branch'), col('customer', 'العميل', 'Customer'), col('supplier', 'المورد', 'Supplier'), col('selling', 'البيع', 'Selling', 'money'), col('purchase', 'الشراء', 'Purchase', 'money'), col('loss', 'الفرق', 'Loss', 'money')],
         rows: losing.map((w) => ({ report: w.reportNumber, date: w.reportDate, branch: w.branch, customer: w.username, supplier: w.carOwner, selling: round(w.sellingValue), purchase: round(w.purchaseValue), loss: round((w.sellingValue || 0) - (w.purchaseValue || 0)) })).sort((a, b) => a.loss - b.loss),
       },
       {
@@ -206,7 +206,7 @@ async function operations(p, user) {
         columns: [
           col('date', 'التاريخ', 'Date', 'date'), col('branch', 'الفرع', 'Branch'), col('type', 'النوع', 'Type'),
           col('amount', 'المبلغ', 'Amount', 'money'), col('category', 'التصنيف', 'Category'),
-          col('driver', 'السائق', 'Driver'), col('vendor', 'المورد', 'Vendor'), col('statement', 'رقم الكشف', 'Sheet no.'),
+          col('driver', 'السائق', 'Driver'), col('vendor', 'المورد', 'Vendor'), col('statement', 'رقم أمر النقل', 'Sheet no.'),
           col('details', 'البيان', 'Details'),
         ],
         rows: txns.map((x) => ({
@@ -219,7 +219,7 @@ async function operations(p, user) {
       },
     ],
     notes: [
-      { ar: 'قيمة البيع في الكشوف تُحدَّث من منصّة التشغيل، وقد تختلف عمّا فُوتر فعلًا — الفواتير في «ماليات التحصيل».', en: 'Sheet selling value syncs from the ops platform and may differ from what was invoiced.' },
+      { ar: 'قيمة البيع في أوامر النقل تُحدَّث من منصّة التشغيل، وقد تختلف عمّا فُوتر فعلًا — الفواتير في «ماليات التحصيل».', en: 'Sheet selling value syncs from the ops platform and may differ from what was invoiced.' },
     ],
   };
 }
@@ -244,9 +244,9 @@ async function collections(p, user) {
       card('overdue', 'المتأخّر عن أجله', 'Overdue', perf?.totals?.overdueAmount, { tone: 'bad' }),
       card('aged60', 'متقادم أكثر من 60 يوم', 'Aged over 60 days', perf?.totals?.agedOver60Amount, { tone: 'bad' }),
       card('creditLimit', 'مجموع حدود الائتمان', 'Total credit limits', aging?.totals?.creditLimit),
-      card('custTotal', 'قيمة كشوف العملاء في الفترة', 'Customer sheets in period', c.total, { href: '/system/collections-dept/dashboard' }),
-      card('custOutstanding', 'غير المحصَّل من كشوف الفترة', 'Uncollected sheets (period)', c.outstanding, { tone: 'warn' }),
-      card('suppOutstanding', 'المستحق للموردين (كشوف الفترة)', 'Payable to suppliers (period)', s.outstanding, { tone: 'warn' }),
+      card('custTotal', 'قيمة أوامر نقل العملاء في الفترة', 'Customer sheets in period', c.total, { href: '/system/collections-dept/dashboard' }),
+      card('custOutstanding', 'غير المحصَّل من أوامر نقل الفترة', 'Uncollected sheets (period)', c.outstanding, { tone: 'warn' }),
+      card('suppOutstanding', 'المستحق للموردين (أوامر نقل الفترة)', 'Payable to suppliers (period)', s.outstanding, { tone: 'warn' }),
     ],
     tables: [
       {
@@ -280,23 +280,23 @@ async function collections(p, user) {
         })),
       },
       {
-        key: 'byBranch', ar: 'المستحق حسب الفرع (كشوف الفترة)', en: 'By branch (period sheets)',
-        columns: [col('branch', 'الفرع', 'Branch'), col('reports', 'الكشوف', 'Sheets', 'number'), col('receivable', 'على العملاء', 'Receivable', 'money'), col('payable', 'للموردين', 'Payable', 'money')],
+        key: 'byBranch', ar: 'المستحق حسب الفرع (أوامر نقل الفترة)', en: 'By branch (period sheets)',
+        columns: [col('branch', 'الفرع', 'Branch'), col('reports', 'أوامر النقل', 'Sheets', 'number'), col('receivable', 'على العملاء', 'Receivable', 'money'), col('payable', 'للموردين', 'Payable', 'money')],
         rows: (dash?.byBranch || []).map((r) => ({ branch: r.branch || '—', reports: r.reports, receivable: round(r.receivable), payable: round(r.payable) })),
       },
       {
-        key: 'monthly', ar: 'كشوف العملاء شهرًا بشهر', en: 'Customer sheets by month',
+        key: 'monthly', ar: 'أوامر نقل العملاء شهرًا بشهر', en: 'Customer sheets by month',
         columns: [col('month', 'الشهر', 'Month'), col('total', 'القيمة', 'Value', 'money'), col('settled', 'المحصَّل', 'Collected', 'money'), col('outstanding', 'المتبقي', 'Open', 'money')],
         rows: (dash?.monthly || []).map((r) => ({ month: r.month, total: round(r.total), settled: round(r.settled), outstanding: round(r.outstanding) })),
       },
       {
         key: 'topSuppliers', ar: 'أكبر المستحقات للموردين', en: 'Largest supplier balances',
-        columns: [col('name', 'المورد', 'Supplier'), col('reports', 'الكشوف', 'Sheets', 'number'), col('outstanding', 'المستحق', 'Outstanding', 'money')],
+        columns: [col('name', 'المورد', 'Supplier'), col('reports', 'أوامر النقل', 'Sheets', 'number'), col('outstanding', 'المستحق', 'Outstanding', 'money')],
         rows: (s.top || []).map((r) => ({ name: r.name, reports: r.reports, outstanding: round(r.outstanding) })),
       },
     ],
     notes: [
-      { ar: 'دفتر الأعمار (الفواتير) وكشوف التشغيل مصدران منفصلان: الأول ما فوتره المحاسب، والثاني قيمة الكشوف المنفَّذة. لا يُجمعان.', en: 'The aging ledger (invoices) and operations sheets are separate sources and are not added together.' },
+      { ar: 'دفتر الأعمار (الفواتير) وأوامر النقل مصدران منفصلان: الأول ما فوتره المحاسب، والثاني قيمة أوامر النقل المنفَّذة. لا يُجمعان.', en: 'The aging ledger (invoices) and operations sheets are separate sources and are not added together.' },
     ],
   };
 }
@@ -448,7 +448,7 @@ async function customs(p, user) {
     deliveryOrder: 'إذن التسليم', customsDuty: 'الرسوم الجمركية', portFees: 'رسوم الميناء', unloadingFees: 'التفريغ',
     transport: 'النقل من الميناء إلى العميل', transportToYard: 'النقل من الميناء إلى الساحة',
     transportYardToCustomer: 'النقل من الساحة إلى العميل', labourExpenses: 'مصاريف عمال', appointmentBooking: 'حجز المواعيد', yardFees: 'رسوم الساحة',
-    demurrage: 'الأرضيات/التأخير', inspection: 'الكشف', extension: 'التمديد', consolidator: 'المجمِّع',
+    demurrage: 'الأرضيات/التأخير', inspection: 'أمر النقل', extension: 'التمديد', consolidator: 'المجمِّع',
     commissions: 'العمولات', extraFees: 'أجور إضافية', storage: 'التخزين', exitPermit: 'إذن الخروج',
   };
   // البنودُ من مراحل السداد نفسِها (بأسمائها)، والمعاملاتُ المستوردةُ بلا مبالغَ في مراحلها من بنود تكاليفها.

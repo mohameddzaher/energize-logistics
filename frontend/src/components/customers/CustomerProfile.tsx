@@ -62,7 +62,7 @@ const runCell = (r: RunRoute, key: string, ar: boolean): string => {
 };
 
 const SHEET_COLS: { key: string; ar: string; en: string; date?: boolean; num?: boolean; money?: boolean }[] = [
-  { key: 'reportNumber', ar: 'رقم الكشف', en: 'Report #' },
+  { key: 'reportNumber', ar: 'رقم أمر النقل', en: 'Report #' },
   { key: 'reportDate', ar: 'التاريخ', en: 'Date', date: true },
   { key: 'fromLocation', ar: 'من', en: 'From' },
   { key: 'toLocation', ar: 'إلى', en: 'To' },
@@ -125,7 +125,7 @@ function TierEditor({ customerId, route, ar, onClose, onSaved }: {
       )}>
       <p className="text-[14px] font-bold text-slate-900">{route.from} ← {route.to}</p>
       <p className="text-[12.5px] text-slate-500">
-        {ar ? 'السعرُ للسيارة الواحدة، بحسب عدد السيارات التي يطلبها العميل على هذا المسار. اترك «إلى» فارغةً في آخر شريحةٍ لتعني «فما فوق». و«التشغيل — خاصّ» يكتب للكشف أعلى سعرٍ هنا (الكشفُ سيارةٌ واحدة ولا يُعرَف منه العدد)، ويُعدَّل هناك بيده.'
+        {ar ? 'السعرُ للسيارة الواحدة، بحسب عدد السيارات التي يطلبها العميل على هذا المسار. اترك «إلى» فارغةً في آخر شريحةٍ لتعني «فما فوق». و«التشغيل — خاصّ» يكتب للأمر نقل أعلى سعرٍ هنا (أمر النقل سيارةٌ واحدة ولا يُعرَف منه العدد)، ويُعدَّل هناك بيده.'
           : 'Price per truck, by how many trucks the customer orders on this route. Leave “to” empty on the last tier for “and above”. Operations — private applies the highest price here to each sheet (a sheet is one truck, the count is unknown) and it can be corrected there.'}
       </p>
       <div className="space-y-2">
@@ -269,7 +269,7 @@ export default function CustomerProfile({ id, basePath }: { id: string; basePath
       <CustomerPresence reg="shipment" id={String(c._id)} ar={ar} onChanged={load} />
 
       <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3">
-        <StatCard label={ar ? 'الرحلات (كشوف)' : 'Trips (sheets)'} value={a.sheets.toLocaleString('en-US')} accent="text-[#f37121]" />
+        <StatCard label={ar ? 'الرحلات (أوامر نقل)' : 'Trips (sheets)'} value={a.sheets.toLocaleString('en-US')} accent="text-[#f37121]" />
         {money && <StatCard label={ar ? 'قيمة الشراء' : 'Purchase total'} value={fmtNum(a.purchaseTotal)} accent="text-violet-600" />}
         {money && <StatCard label={ar ? 'متوسّط الرحلة' : 'Avg per trip'} value={fmtNum(a.avgPerSheet)} />}
         <StatCard label={ar ? 'المسارات المتّفق عليها' : 'Agreed routes'} value={a.routesCount.toLocaleString('en-US')} accent="text-blue-600" />

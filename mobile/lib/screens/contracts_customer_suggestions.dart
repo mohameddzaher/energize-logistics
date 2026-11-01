@@ -123,7 +123,7 @@ class _CreateSheetState extends State<_CreateSheet> {
                   Padding(
                     padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
                     child: Text(
-                      tr('عملاء يشحنون معنا ولا سجل لهم — مأخوذون من كشوف التشغيل ومرتّبون بعدد شحناتهم. تُضيفه بضغطة ثم تكمل بيانات عقده.',
+                      tr('عملاء يشحنون معنا ولا سجل لهم — مأخوذون من أوامر النقل ومرتّبون بعدد شحناتهم. تُضيفه بضغطة ثم تكمل بيانات عقده.',
                          'Customers shipping with us, not registered — from the operations reports, largest first. One tap registers them; fill their contract after.'),
                       style: const TextStyle(fontSize: 12, color: T.inkSoft),
                     ),

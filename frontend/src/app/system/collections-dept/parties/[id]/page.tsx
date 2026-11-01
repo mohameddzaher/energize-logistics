@@ -239,7 +239,7 @@ export default function PartyProfilePage() {
   };
 
   const reportCols = [
-    { header: t('رقم الكشف', 'Report no.'), key: 'reportNumber', width: 16 },
+    { header: t('رقم أمر النقل', 'Report no.'), key: 'reportNumber', width: 16 },
     { header: t('التاريخ', 'Date'), key: 'reportDate', width: 14, transform: (v: any) => dt(v) },
     { header: t('من', 'From'), key: 'fromLocation', width: 16 },
     { header: t('إلى', 'To'), key: 'toLocation', width: 16 },
@@ -294,9 +294,9 @@ export default function PartyProfilePage() {
           lang={ar ? 'ar' : 'en'}
           options={[{
             key: 'shown',
-            label: t('كشوف هذه الصفحة', 'Reports on this page'),
+            label: t('أوامر نقل هذه الصفحة', 'Reports on this page'),
             // بعد قمع الأعمدة لا قبله — راجع repShown.
-            sheets: [{ name: t('الكشوف', 'Reports'), rows: repShown, columns: reportCols }],
+            sheets: [{ name: t('أوامر النقل', 'Reports'), rows: repShown, columns: reportCols }],
           }]}
         />
       </PageHeader>
@@ -308,7 +308,7 @@ export default function PartyProfilePage() {
       )}
 
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-        <Stat label={t('كشوف', 'Reports')} value={money(p.reports)} />
+        <Stat label={t('أوامر نقل', 'Reports')} value={money(p.reports)} />
         <Stat label={W.totalLabel} value={money(p.total)} />
         <Stat label={W.settledLabel} value={money(p.settled)} accent="text-emerald-600" />
         <Stat label={W.dueLabel} value={money(p.outstanding)} accent={p.outstanding > 0 ? 'text-red-600' : 'text-slate-400'} />
@@ -373,8 +373,8 @@ export default function PartyProfilePage() {
             <div className="space-y-1.5">
               {/* ── نوعُ الحساب، لا قاعدةٌ على شحناته ────────────────────────
                   يقول في أيّ دفترٍ يجلس الحساب ومنه يُولَّد كودُه. ولا يقرّر
-                  نوعَ دفعِ كشفٍ بعينه: العميلُ الواحد يقول في حمولةٍ «كاش»
-                  وفي أخرى «افتحوا فاتورة»، وذلك يُكتب على الكشف نفسِه. */}
+                  نوعَ دفعِ أمر نقل بعينه: العميلُ الواحد يقول في حمولةٍ «كاش»
+                  وفي أخرى «افتحوا فاتورة»، وذلك يُكتب على أمر النقل نفسِه. */}
               {kind === 'customer' && (
                 <Row label={t('نوع الحساب', 'Account type')} value={paymentTypeLabel(p.paymentType, ar)} />
               )}
@@ -384,7 +384,7 @@ export default function PartyProfilePage() {
                 value={p.creditDays ? (ar ? `${p.creditDays} يومًا` : `${p.creditDays} days`) : ''} />
               <Row label={t('شروط السداد', 'Payment terms')} value={p.paymentTerms} />
               <Row label={t('حد الائتمان', 'Credit limit')} value={p.creditLimit ? money(p.creditLimit) : ''} />
-              <Row label={t('آخر كشف', 'Last report')} value={p.lastReportAt ? dt(p.lastReportAt) : ''} />
+              <Row label={t('آخر أمر نقل', 'Last report')} value={p.lastReportAt ? dt(p.lastReportAt) : ''} />
               <Row label={kind === 'customer' ? t('آخر تحصيل', 'Last collected') : t('آخر سداد', 'Last paid')} value={p.lastSettledAt ? dt(p.lastSettledAt) : ''} />
               <Row label={t('المتابعة القادمة', 'Next follow-up')} value={p.nextFollowUpAt ? dt(p.nextFollowUpAt) : ''} />
               <Row label={t('ملاحظات', 'Notes')} value={p.notes} />
@@ -395,7 +395,7 @@ export default function PartyProfilePage() {
               الصيغةَ الأخرى في مكانٍ آخر يظنّها طرفًا ثانيًا. */}
           {p.nameVariants && p.nameVariants.length > 1 && (
             <div>
-              <p className="text-[13px] font-bold text-slate-900 mb-2">{t('صيغ الاسم في الكشوف', 'Name spellings in the reports')}</p>
+              <p className="text-[13px] font-bold text-slate-900 mb-2">{t('صيغ الاسم في أوامر النقل', 'Name spellings in the reports')}</p>
               <ul className="text-[12px] text-slate-500 space-y-0.5">
                 {p.nameVariants.map((n) => <li key={n}>· {n}</li>)}
               </ul>
@@ -428,8 +428,8 @@ export default function PartyProfilePage() {
       {/* ── متابعاتُ التحصيل ────────────────────────────────────────────────
           الوعدُ بالسداد بندٌ له موعدٌ يُسأل عنه، لا سطرٌ يُدفن في ملاحظة. */}
       {/* ── فواتيرُه ومديونيّتُه ─────────────────────────────────────────────
-          كان الملفُّ يعرض كشوفَ التشغيل ويحسب منها ماله وما عليه. ودفترُ
-          التحصيل يقول إنّ ستّةً في المئة من فواتيره لها كشفٌ عندنا — فأربعةٌ
+          كان الملفُّ يعرض أوامر النقل ويحسب منها ماله وما عليه. ودفترُ
+          التحصيل يقول إنّ ستّةً في المئة من فواتيره لها أمر نقل عندنا — فأربعةٌ
           وتسعون في المئة من مال العميل لم تكن تظهر في ملفّه. وهذا هو المال. */}
       {!!data.money && data.money.totals.count > 0 && (
         <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
@@ -508,7 +508,7 @@ export default function PartyProfilePage() {
           </ScrollX>
           {data.money.invoices.length < data.money.totals.count && (
             <p className="px-4 py-2 text-[11px] text-slate-400 border-t border-slate-100">
-              {t(`تُعرض أحدث ${data.money.invoices.length} من ${data.money.totals.count} — والكشف الكامل في PDF كشف الحساب.`,
+              {t(`تُعرض أحدث ${data.money.invoices.length} من ${data.money.totals.count} — وأمر النقل الكامل في PDF كشف الحساب.`,
                  `Showing the latest ${data.money.invoices.length} of ${data.money.totals.count} — the full list is in the statement PDF.`)}
             </p>
           )}
@@ -607,7 +607,7 @@ export default function PartyProfilePage() {
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
         <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
           <p className="text-[13px] font-bold text-slate-900">
-            {t(`الكشوف (${money(data.reportsTotal)})`, `Reports (${money(data.reportsTotal)})`)}
+            {t(`أوامر النقل (${money(data.reportsTotal)})`, `Reports (${money(data.reportsTotal)})`)}
           </p>
           <div className="flex items-center gap-2">
             <ClearColumnFilters count={repCf.count} onClear={repCf.clear} ar={ar} />
@@ -618,7 +618,7 @@ export default function PartyProfilePage() {
           <table className="w-full text-sm">
             <thead className="table-head">
               <tr>
-                {[['reportNumber', t('رقم الكشف', 'Report')], ['reportDate', t('التاريخ', 'Date')],
+                {[['reportNumber', t('رقم أمر النقل', 'Report')], ['reportDate', t('التاريخ', 'Date')],
                   ['route', t('المسار', 'Route')], ['branch', t('الفرع', 'Branch')],
                   ['value', kind === 'customer' ? t('قيمة البيع', 'Selling') : t('قيمة الشراء', 'Purchase')],
                   ['invoiceNumber', t('رقم الفاتورة', 'Invoice')],
@@ -632,7 +632,7 @@ export default function PartyProfilePage() {
             </thead>
             <tbody>
               {repShown.length === 0 ? (
-                <tr><td colSpan={8} className="px-3 py-10 text-center text-slate-400">{t('لا كشوف', 'No reports')}</td></tr>
+                <tr><td colSpan={8} className="px-3 py-10 text-center text-slate-400">{t('لا أوامر نقل', 'No reports')}</td></tr>
               ) : repShown.map((r) => {
                 const closed = (r as any)[closedKey];
                 return (

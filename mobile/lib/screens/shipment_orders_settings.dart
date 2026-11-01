@@ -104,7 +104,7 @@ class _ShipmentOrdersSettingsScreenState extends State<ShipmentOrdersSettingsScr
           for (final t in const [
             ('form', Icons.tune, 'نموذج الإنشاء', 'Create form'),
             ('lists', Icons.sell_outlined, 'قوائم القسم', 'Section lists'),
-            ('numbering', Icons.tag, 'ترقيم البوالص', 'Waybill numbering'),
+            ('numbering', Icons.tag, 'ترقيم أوامر النقل', 'Transport order numbering'),
             ('statuses', Icons.checklist, 'حالات الشحنة', 'Shipment statuses'),
           ])
             Padding(padding: const EdgeInsetsDirectional.only(end: 6), child: ChoiceChip(
@@ -137,10 +137,10 @@ class _ShipmentOrdersSettingsScreenState extends State<ShipmentOrdersSettingsScr
         ],
         if (_tab == 'numbering')
           AppCard(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            Text(tr('ترقيم البوالص', 'Waybill numbering'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+            Text(tr('ترقيم أوامر النقل', 'Transport order numbering'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
             const SizedBox(height: 6),
             // الرقمُ لا يُنقَص ولا يُعاد: بوليصتان بالرقم نفسِه في يدين.
-            Text(tr('رقمُ البوليصة يُكتب على ورقٍ يُسلَّم للسائق ويُحاسَب عليه، فلا يُعاد رقمٌ صُرف. يمكن تقديمُ العدّاد إلى رقمٍ أكبر، ولا يمكن إرجاعُه.',
+            Text(tr('رقمُ أمر النقل يُكتب على ورقٍ يُسلَّم للسائق ويُحاسَب عليه، فلا يُعاد رقمٌ صُرف. يمكن تقديمُ العدّاد إلى رقمٍ أكبر، ولا يمكن إرجاعُه.',
                 'The waybill number goes on paper handed to a driver and is accounted for, so a used number is never reissued. The counter may be moved forward, never back.'),
                 style: const TextStyle(fontSize: 12.5, color: T.inkSoft)),
             const SizedBox(height: 12),

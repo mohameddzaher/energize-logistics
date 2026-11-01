@@ -29,7 +29,7 @@ type Row = Record<string, any>;
 // to the EXACT field client-side to avoid cross-field collisions.
 const SEARCH_FIELDS = [
   { value: '', en: 'Anything', ar: 'الكل' },
-  { value: 'graduation', en: 'Graduation statement #', ar: 'رقم كشف التخريج' },
+  { value: 'graduation', en: 'Graduation statement #', ar: 'رقم أمر النقل' },
   { value: 'reference', en: 'Reference #', ar: 'رقم المرجع' },
   { value: 'driver_name', en: 'Driver name', ar: 'اسم السائق' },
   { value: 'driver_phone', en: 'Driver phone', ar: 'هاتف السائق' },
@@ -205,7 +205,7 @@ export default function OpsShipmentsPage() {
   // الأعمدة نفسها المعروضة في الجدول، مع رقم المرجع وهاتف السائق ومالك السيارة
   // لأنّ من يراجع كشفًا خارج الشاشة يحتاج ما يتّصل به ويطابق عليه.
   const SHIPMENT_COLUMNS: ExportColumn[] = [
-    { header: lang === 'ar' ? 'كشف التخريج' : 'Statement #', key: 'graduation_statement_num', width: 16 },
+    { header: lang === 'ar' ? 'أمر النقل' : 'Statement #', key: 'graduation_statement_num', width: 16 },
     { header: lang === 'ar' ? 'رقم المرجع' : 'Reference #', key: 'reference_num', width: 16 },
     { header: lang === 'ar' ? 'الحالة' : 'Status', key: 'status', width: 16, transform: (v) => { const st = statusStyle(v); return st ? (lang === 'ar' ? st.ar : st.en) : (v || '—'); } },
     { header: lang === 'ar' ? 'من' : 'From', key: 'address_from', width: 26 },
@@ -347,7 +347,7 @@ export default function OpsShipmentsPage() {
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-slate-900 text-slate-300">
-              {[lang === 'ar' ? 'كشف التخريج' : 'Statement #', lang === 'ar' ? 'الحالة' : 'Status', lang === 'ar' ? 'من' : 'From', lang === 'ar' ? 'إلى' : 'To', lang === 'ar' ? 'السائق' : 'Driver', lang === 'ar' ? 'رقم السيارة' : 'Car #', lang === 'ar' ? 'العميل' : 'Customer', lang === 'ar' ? 'الفرع' : 'Branch', lang === 'ar' ? 'البيع' : 'Selling', lang === 'ar' ? 'الدفع' : 'Pay', lang === 'ar' ? 'الإنشاء' : 'Created'].map((h) => <th key={h} className="text-start font-semibold px-3 py-3 whitespace-nowrap">{h}</th>)}
+              {[lang === 'ar' ? 'أمر النقل' : 'Statement #', lang === 'ar' ? 'الحالة' : 'Status', lang === 'ar' ? 'من' : 'From', lang === 'ar' ? 'إلى' : 'To', lang === 'ar' ? 'السائق' : 'Driver', lang === 'ar' ? 'رقم السيارة' : 'Car #', lang === 'ar' ? 'العميل' : 'Customer', lang === 'ar' ? 'الفرع' : 'Branch', lang === 'ar' ? 'البيع' : 'Selling', lang === 'ar' ? 'الدفع' : 'Pay', lang === 'ar' ? 'الإنشاء' : 'Created'].map((h) => <th key={h} className="text-start font-semibold px-3 py-3 whitespace-nowrap">{h}</th>)}
             </tr>
           </thead>
           <tbody>
@@ -386,7 +386,7 @@ export default function OpsShipmentsPage() {
       )}
 
       {/* Comprehensive detail */}
-      <Modal open={!!detail} onClose={() => setDetail(null)} wide title={`${lang === 'ar' ? 'شحنة · كشف' : 'Shipment · Statement'} ${detail?.graduation_statement_num ?? ''}`}>
+      <Modal open={!!detail} onClose={() => setDetail(null)} wide title={`${lang === 'ar' ? 'شحنة · أمر نقل' : 'Shipment · Statement'} ${detail?.graduation_statement_num ?? ''}`}>
         {detail && (
           <div className="space-y-5">
             {admin && (
@@ -403,7 +403,7 @@ export default function OpsShipmentsPage() {
             )}
 
             <Section title={lang === 'ar' ? 'بيانات الشحنة' : 'Shipment'}>
-              <Info label={lang === 'ar' ? 'رقم كشف التخريج' : 'Statement #'}><b>{detail.graduation_statement_num ?? '—'}</b></Info>
+              <Info label={lang === 'ar' ? 'رقم أمر النقل' : 'Statement #'}><b>{detail.graduation_statement_num ?? '—'}</b></Info>
               <Info label={lang === 'ar' ? 'رقم المرجع' : 'Reference #'}>{detail.reference_num ?? '—'}</Info>
               <Info label={lang === 'ar' ? 'الحالة' : 'Status'}>{(() => { const st = statusStyle(detail.status); return st ? <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${st.bg} ${st.text}`}>{lang === 'ar' ? st.ar : st.en}</span> : detail.status; })()}</Info>
               <Info label={lang === 'ar' ? 'نوع المُنشئ' : 'Creator type'}>{detail.creator_type || '—'}</Info>

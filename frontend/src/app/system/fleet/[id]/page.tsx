@@ -111,7 +111,7 @@ function FleetShipmentDetailsInner() {
       const blob = await api.getBlob(`/api/fleet/shipments/${shipment._id}/waybill.pdf?lang=${ar ? 'ar' : 'en'}`);
       const gen = await import('@/lib/dispatchSheetGenerator');
       const d = new Date(shipment.loadDate || shipment.createdAt || Date.now());
-      gen.triggerDownload(blob, `بوليصة-${shipment.waybillNumber}-${shipment.customerName || 'عميل'}-${d.getDate()}-${d.getMonth() + 1}-${d.getFullYear()}.pdf`);
+      gen.triggerDownload(blob, `أمر نقل-${shipment.waybillNumber}-${shipment.customerName || 'عميل'}-${d.getDate()}-${d.getMonth() + 1}-${d.getFullYear()}.pdf`);
     } catch (e: any) { notify(e?.message || 'PDF failed', 'error'); }
     setDownloading(false);
   };
@@ -153,7 +153,7 @@ function FleetShipmentDetailsInner() {
   return (
     <div className="space-y-5 w-full" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader icon={<Truck className="w-5 h-5" />}
-        title={`${ar ? 'بوليصة رقم' : 'Waybill'} ${shipment.waybillNumber}`}
+        title={`${ar ? 'أمر نقل رقم' : 'Transport order'} ${shipment.waybillNumber}`}
         subtitle={shipment.customerName || ''}>
         <span className={`px-3 py-1.5 rounded-full text-sm font-semibold ${st?.bg} ${st?.text}`}>
           {fleetStatusLabel(shipment.status, lang as Lang)}
@@ -161,7 +161,7 @@ function FleetShipmentDetailsInner() {
         <button type="button" onClick={downloadWaybill} disabled={downloading}
           className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm disabled:opacity-60">
           {downloading ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileDown className="w-4 h-4" />}
-          {ar ? 'تحميل البوليصة' : 'Waybill PDF'}
+          {ar ? 'تحميل أمر النقل' : 'Transport order PDF'}
         </button>
         {editor && (
           <button type="button" onClick={() => router.push(`/system/fleet/new?id=${shipment._id}`)}

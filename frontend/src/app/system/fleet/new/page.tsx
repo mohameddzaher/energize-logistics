@@ -232,7 +232,7 @@ function CreateFleetShipmentInner() {
       if (editId) await api.put(`/api/fleet/shipments/${editId}`, payload);
       else {
         const d = await api.post<{ shipment: any }>('/api/fleet/shipments', payload);
-        notify(ar ? `تم إنشاء الحمولة — رقم البوليصة ${d.shipment.waybillNumber}` : `Created — waybill ${d.shipment.waybillNumber}`, 'success');
+        notify(ar ? `تم إنشاء الحمولة — رقم أمر النقل ${d.shipment.waybillNumber}` : `Created — waybill ${d.shipment.waybillNumber}`, 'success');
       }
       router.push('/system/fleet');
     } catch (e: any) {
@@ -375,10 +375,10 @@ function CreateFleetShipmentInner() {
               <div className={`rounded-lg border px-3 py-2.5 text-xs font-medium ${vehicle.atDestination ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-amber-200 bg-amber-50 text-amber-800'}`}>
                 {vehicle.atDestination
                   ? (ar
-                    ? `هذه السيارة وصلت نطاق ${vehicle.trip.toCity} (بوليصة ${vehicle.trip.waybillNumber}) — يُفترض أنها تُفرِّغ الآن وستتاح قريبًا.`
+                    ? `هذه السيارة وصلت نطاق ${vehicle.trip.toCity} (أمر نقل ${vehicle.trip.waybillNumber}) — يُفترض أنها تُفرِّغ الآن وستتاح قريبًا.`
                     : `This truck reached ${vehicle.trip.toCity} (WB ${vehicle.trip.waybillNumber}) — presumably unloading, free soon.`)
                   : (ar
-                    ? `انتبه: هذه السيارة عليها حمولة نشطة إلى ${vehicle.trip.toCity || '—'} (بوليصة ${vehicle.trip.waybillNumber})${vehicle.trip.expectedArrival ? ` — الوصول المتوقع ${fmtDT(vehicle.trip.expectedArrival, lang as Lang)}` : ''}.`
+                    ? `انتبه: هذه السيارة عليها حمولة نشطة إلى ${vehicle.trip.toCity || '—'} (أمر نقل ${vehicle.trip.waybillNumber})${vehicle.trip.expectedArrival ? ` — الوصول المتوقع ${fmtDT(vehicle.trip.expectedArrival, lang as Lang)}` : ''}.`
                     : `Heads-up: this truck is carrying an active load to ${vehicle.trip.toCity || '—'} (WB ${vehicle.trip.waybillNumber})${vehicle.trip.expectedArrival ? ` — ETA ${fmtDT(vehicle.trip.expectedArrival, lang as Lang)}` : ''}.`)}
               </div>
             )}

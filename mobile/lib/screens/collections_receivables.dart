@@ -294,7 +294,7 @@ class _CollectionsReceivablesScreenState extends State<CollectionsReceivablesScr
       child: Column(children: [
         Text([
           if (tax > 0 || cash == 0) '${_money(tax)} ${tr('فاتورة', 'invoices')}',
-          if (cash > 0) '${_money(cash)} ${tr('كشف تخريج', 'reports')}',
+          if (cash > 0) '${_money(cash)} ${tr('أمر نقل', 'reports')}',
           '${_money(t['customers'])} ${tr('عميل', 'customers')}',
         ].join(' · '), style: const TextStyle(fontSize: 12, color: T.inkSoft)),
         const SizedBox(height: 8),
@@ -327,7 +327,7 @@ class _CollectionsReceivablesScreenState extends State<CollectionsReceivablesScr
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
               Expanded(
-                child: Text('${r['invoiceNumber'] ?? '—'}  ·  ${isReport ? tr('كشف تخريج', 'report') : tr('فاتورة', 'invoice')}',
+                child: Text('${r['invoiceNumber'] ?? '—'}  ·  ${isReport ? tr('أمر نقل', 'report') : tr('فاتورة', 'invoice')}',
                     style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5)),
               ),
               Text(_money(r['remaining'] ?? r['total']), style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 14.5)),
@@ -393,7 +393,7 @@ class _CollectionsReceivablesScreenState extends State<CollectionsReceivablesScr
             SearchField(
               controller: _search,
               dense: true,
-              hint: tr('رقم الفاتورة أو الكشف أو العميل…', 'Number, customer or code…'),
+              hint: tr('رقم الفاتورة أو أمر النقل أو العميل…', 'Number, customer or code…'),
               onChanged: (v) {
                 _searchDeb?.cancel();
                 _searchDeb = Timer(const Duration(milliseconds: 350), () { if (!mounted || v.trim() == _q) return; _q = v.trim(); _load(); });
@@ -505,7 +505,7 @@ class _ReceivableDetailScreenState extends State<_ReceivableDetailScreen> {
             Text('${r['partyName'] ?? '—'}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
             if ('${r['partyCode'] ?? ''}'.isNotEmpty) Text('${r['partyCode']}', style: const TextStyle(fontSize: 12, color: T.inkFaint)),
             const Divider(height: 18),
-            kv(tr('النوع', 'Type'), isWf || r['kind'] == 'cash' ? tr('كشف تخريج', 'Exit report') : tr('فاتورة', 'Invoice')),
+            kv(tr('النوع', 'Type'), isWf || r['kind'] == 'cash' ? tr('أمر نقل', 'Exit report') : tr('فاتورة', 'Invoice')),
             kv(tr('نوع الدفع', 'Payment type'), _lbl(_payLabels, '${r['payKind'] ?? ''}')),
             kv(tr('مسؤول التحصيل', 'Collector'), '${r['officer'] ?? '—'}${r['officerIsDefault'] == true ? ' (${tr('مدير القسم — غير مُسنَد', 'manager — unassigned')})' : ''}'),
             kv(isWf ? tr('تاريخ السداد', 'Payment date') : tr('تاريخ الإصدار', 'Issue date'), _date(r['invoiceDate'])),
@@ -563,7 +563,7 @@ class _ReceivableDetailScreenState extends State<_ReceivableDetailScreen> {
           const SizedBox(height: 10),
           AppCard(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('${tr('كشوف الفاتورة', 'Invoice reports')} (${reports.length})', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+              Text('${tr('أوامر نقل الفاتورة', 'Invoice reports')} (${reports.length})', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
               const SizedBox(height: 6),
               for (final x in reports)
                 InkWell(
@@ -575,7 +575,7 @@ class _ReceivableDetailScreenState extends State<_ReceivableDetailScreen> {
                     builder: (_) => FractionallySizedBox(
                       heightFactor: 0.8,
                       child: ListView(padding: const EdgeInsets.all(16), children: [
-                        Text('${tr('متابعات الكشف', 'Report follow-ups')} ${x['reportNumber'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+                        Text('${tr('متابعات أمر النقل', 'Report follow-ups')} ${x['reportNumber'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
                         const SizedBox(height: 10),
                         ReportFollowUpsView(workflowId: '${x['_id']}', basePath: '/api/collections-dept/reports/${x['_id']}/follow-ups'),
                       ]),

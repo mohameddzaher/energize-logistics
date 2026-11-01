@@ -145,7 +145,7 @@ class _NoteSheetState extends State<_NoteSheet> {
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(tr('ملاحظات المتابعة', 'Follow-up notes'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
               const SizedBox(height: 2),
-              Text('${tr('بوليصة', 'Waybill')} ${soRef(o)}${'${o['customerName'] ?? ''}'.isNotEmpty ? ' · ${o['customerName']}' : ''}',
+              Text('${tr('أمر نقل', 'Transport order')} ${soRef(o)}${'${o['customerName'] ?? ''}'.isNotEmpty ? ' · ${o['customerName']}' : ''}',
                   style: const TextStyle(fontSize: 13.5, color: T.inkSoft)),
             ])),
             IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context, _changed)),
@@ -166,7 +166,7 @@ class _NoteSheetState extends State<_NoteSheet> {
             label: Text(tr('إضافة ملاحظة', 'Add note'), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
           )),
           const SizedBox(height: 6),
-          Text(tr('لا تغيّر الحالة ولا تُطبع في البوليصة.', 'Does not change the status or print on the waybill.'),
+          Text(tr('لا تغيّر الحالة ولا تُطبع في أمر النقل.', 'Does not change the status or print on the waybill.'),
               style: const TextStyle(fontSize: 12, color: T.inkFaint)),
           const Divider(height: 24),
           Text('${tr('كلّ الملاحظات', 'All notes')} (${notes.length})', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
@@ -419,7 +419,7 @@ class ShipmentOrderBigCard extends StatelessWidget {
               _line(Icons.payments_outlined, tr('بيع / شراء', 'Sell / Buy'), '${soMoney(o['sellPrice'])} / ${soMoney(o['buyPrice'])}'),
             // ── الملاحظتان، كلٌّ باسمها ──
             if (tripNote.isNotEmpty)
-              _noteBox(Icons.description_outlined, tr('ملاحظة البوليصة', 'Waybill note'), tripNote, T.inkSoft),
+              _noteBox(Icons.description_outlined, tr('ملاحظة أمر النقل', 'Transport order note'), tripNote, T.inkSoft),
             if (f != null)
               GestureDetector(
                 onTap: openNotes,
@@ -455,7 +455,7 @@ class ShipmentOrderBigCard extends StatelessWidget {
               const SizedBox(width: 8),
               _iconBtn(Icons.chat, const Color(0xFF25D366), tr('واتساب', 'WhatsApp'), phone.isEmpty ? null : () => whatsappNumber(phone)),
               const SizedBox(width: 8),
-              _iconBtn(Icons.picture_as_pdf_outlined, T.orange, tr('البوليصة', 'Waybill'), () => soPrintWaybills(context, [o])),
+              _iconBtn(Icons.picture_as_pdf_outlined, T.orange, tr('أمر النقل', 'Transport order'), () => soPrintWaybills(context, [o])),
               if (editor && onEdit != null) ...[
                 const SizedBox(width: 8),
                 _iconBtn(Icons.edit_outlined, T.navy, tr('تعديل', 'Edit'), onEdit),

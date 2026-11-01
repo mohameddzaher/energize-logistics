@@ -123,7 +123,7 @@ Future<void> soPrintWaybills(BuildContext context, List<Map<String, dynamic>> or
       await Printing.layoutPdf(onLayout: (_) async => bytes, name: soWaybillFileName(o));
     }
   } catch (e) {
-    messenger.showSnackBar(SnackBar(content: Text(e is ApiException ? e.message : tr('تعذّر توليد البوليصة', 'PDF failed'))));
+    messenger.showSnackBar(SnackBar(content: Text(e is ApiException ? e.message : tr('تعذّر توليد أمر النقل', 'PDF failed'))));
   }
 }
 
@@ -237,7 +237,7 @@ class _FollowUpSheetState extends State<_FollowUpSheet> {
       padding: EdgeInsets.fromLTRB(16, 16, 16, MediaQuery.of(context).viewInsets.bottom + 16),
       child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Text(tr('تغيير الحالة', 'Change status'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 19)),
-        Text('${tr('بوليصة', 'Waybill')} ${soRef(o)}${'${o['customerName'] ?? ''}'.isNotEmpty ? ' · ${o['customerName']}' : ''}${'${o['fromCity'] ?? ''}'.isNotEmpty ? ' · ${o['fromCity']} → ${o['toCity'] ?? ''}' : ''}',
+        Text('${tr('أمر نقل', 'Transport order')} ${soRef(o)}${'${o['customerName'] ?? ''}'.isNotEmpty ? ' · ${o['customerName']}' : ''}${'${o['fromCity'] ?? ''}'.isNotEmpty ? ' · ${o['fromCity']} → ${o['toCity'] ?? ''}' : ''}',
             style: const TextStyle(fontSize: 13.5, color: T.inkSoft)),
         const SizedBox(height: 14),
         Text(tr('الحالة', 'Status'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),

@@ -80,7 +80,7 @@ router.post(
         ...(Array.isArray(req.body.receivedReportNumbers) ? req.body.receivedReportNumbers : []),
         req.body.receivedDocNumber,
       ].map((x) => String(x ?? '').trim()).filter(Boolean);
-      if (!list.length) throw new Error('اكتب رقم كشف تخريج واحدًا على الأقلّ');
+      if (!list.length) throw new Error('اكتب رقم أمر نقل واحدًا على الأقلّ');
       return true;
     }),
   ],

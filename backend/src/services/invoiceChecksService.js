@@ -131,7 +131,7 @@ async function computeGaps() {
     let note = ''; let noteAr = '';
     if (l && l.unused) { note = 'reserved'; noteAr = 'محجوز في دفتر التحصيل — لم يُستعمل'; reserved += 1; }
     else if (l && /cancel|ملغ/i.test(l.status || '')) { note = 'cancelled'; noteAr = 'ملغاة في دفتر التحصيل'; cancelled += 1; }
-    else if (l) { note = 'ledger'; noteAr = 'صادرة في دفتر التحصيل ولا كشفَ عليها'; inLedger += 1; }
+    else if (l) { note = 'ledger'; noteAr = 'صادرة في دفتر التحصيل ولا أمر نقل عليها'; inLedger += 1; }
     else if (u) { note = 'uploaded'; noteAr = 'في ورقة المبيعات المرفوعة — كشوفها غير موجودة'; inUpload += 1; }
     return {
       invoiceNumber: k, note, noteAr,

@@ -63,7 +63,7 @@ export default function ShipmentOrdersSettingsPage() {
   const TABS: [Tab, any, string, string][] = [
     ['form', SlidersHorizontal, 'نموذج الإنشاء', 'Create form'],
     ['lists', Tags, 'قوائم القسم', 'Section lists'],
-    ['numbering', Hash, 'ترقيم البوالص', 'Waybill numbering'],
+    ['numbering', Hash, 'ترقيم أوامر النقل', 'Transport order numbering'],
     ['statuses', ListChecks, 'حالات الشحنة', 'Shipment statuses'],
   ];
 
@@ -72,7 +72,7 @@ export default function ShipmentOrdersSettingsPage() {
       <PageHeader
         icon={<Settings className="w-6 h-6 text-[#f37121]" />}
         title={t('إعدادات القسم', 'Section settings')}
-        subtitle={t('نموذجُ الإنشاء وقوائمُه وترقيمُ البوالص وحالاتُ الشحنة — كلُّها من هنا', 'The create form, its lists, waybill numbering and shipment statuses — all from here')}
+        subtitle={t('نموذجُ الإنشاء وقوائمُه وترقيمُ أوامر النقل وحالاتُ الشحنة — كلُّها من هنا', 'The create form, its lists, waybill numbering and shipment statuses — all from here')}
       />
 
       <div className="bg-white border border-slate-200 rounded-xl p-1.5 shadow-sm inline-flex flex-wrap gap-1 w-full sm:w-auto">
@@ -128,13 +128,13 @@ export default function ShipmentOrdersSettingsPage() {
       {tab === 'numbering' && (
         <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm max-w-xl">
           <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-3 flex items-center gap-2">
-            <Hash className="w-4 h-4 text-[#f37121]" /> {t('ترقيم البوالص', 'Waybill numbering')}
+            <Hash className="w-4 h-4 text-[#f37121]" /> {t('ترقيم أوامر النقل', 'Transport order numbering')}
           </h3>
           {/* ── الرقمُ لا يُنقَص ولا يُعاد ──────────────────────────────────────
-              رقمُ البوليصة يُكتب على ورقٍ يُسلَّم للسائق ويُحاسَب عليه. وتكرارُه
+              رقمُ أمر النقل يُكتب على ورقٍ يُسلَّم للسائق ويُحاسَب عليه. وتكرارُه
               يعني بوليصتين بالرقم نفسِه في يدين — فلا يُقبَل إلّا التقديم. */}
           <p className="text-sm text-slate-500 mb-4">
-            {t('رقمُ البوليصة يُكتب على ورقٍ يُسلَّم للسائق ويُحاسَب عليه، فلا يُعاد رقمٌ صُرف. يمكن تقديمُ العدّاد إلى رقمٍ أكبر، ولا يمكن إرجاعُه.',
+            {t('رقمُ أمر النقل يُكتب على ورقٍ يُسلَّم للسائق ويُحاسَب عليه، فلا يُعاد رقمٌ صُرف. يمكن تقديمُ العدّاد إلى رقمٍ أكبر، ولا يمكن إرجاعُه.',
                'The waybill number goes on paper handed to a driver and is accounted for, so a used number is never reissued. The counter may be moved forward, never back.')}
           </p>
           <div className="grid grid-cols-2 gap-4">

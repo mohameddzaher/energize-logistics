@@ -176,7 +176,7 @@ export const REGISTRY_COLS: RegistryCol[] = [
   { key: 'avgPrice', ar: 'متوسّط السعر', en: 'Avg price', num: true },
   { key: 'maxPrice', ar: 'أعلى سعر', en: 'Max price', num: true },
   { key: 'lastPriceAt', ar: 'آخر تسعير', en: 'Last priced', date: true },
-  { key: 'sheets', ar: 'الكشوف', en: 'Sheets', num: true },
+  { key: 'sheets', ar: 'أوامر النقل', en: 'Sheets', num: true },
   { key: 'purchaseTotal', ar: 'قيمة الشراء', en: 'Purchase total', num: true, money: true, width: 16 },
   { key: 'firstSheetAt', ar: 'أوّل عمل', en: 'First work', date: true },
   { key: 'lastSheetAt', ar: 'آخر عمل', en: 'Last work', date: true },

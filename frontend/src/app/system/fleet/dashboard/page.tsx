@@ -89,7 +89,7 @@ function VehicleLoads({ state, plate, ar, lang }: { state?: VehLoads; plate: str
       <ScrollX>
         <table className="w-full text-[12px]">
           <thead className="bg-slate-100 text-slate-600">
-            <tr>{[ar ? 'البوليصة' : 'Waybill', ar ? 'التاريخ' : 'Date', ar ? 'العميل' : 'Customer', ar ? 'من' : 'From', ar ? 'إلى' : 'To',
+            <tr>{[ar ? 'أمر النقل' : 'Transport order', ar ? 'التاريخ' : 'Date', ar ? 'العميل' : 'Customer', ar ? 'من' : 'From', ar ? 'إلى' : 'To',
               ar ? 'السائق' : 'Driver', ar ? 'نوع الحمولة' : 'Load type', ar ? 'السعر' : 'Price', ar ? 'مصروف السائق' : 'Driver expense',
               ar ? 'الحالة' : 'Status'].map((h) => <th key={h} className={th}>{h}</th>)}</tr>
           </thead>
@@ -486,7 +486,7 @@ function FleetAnalyticsInner({ active = true }: { active?: boolean }) {
                 </p>
                 {/* المقياسُ يُقال مع الرقم: بغيره يُقرأ الرقمُ على غير وجهه. */}
                 <p className="text-[11.5px] text-slate-500 mt-0.5">
-                  {ar ? 'اضغط صفَّ سيّارةٍ لترى حمولاتها كلَّها بالبوليصة والعميل ومن/إلى والسعر.' : 'Click a row to see that truck’s loads — waybill, customer, route and price.'}
+                  {ar ? 'اضغط صفَّ سيّارةٍ لترى حمولاتها كلَّها بأمر النقل والعميل ومن/إلى والسعر.' : 'Click a row to see that truck’s loads — waybill, customer, route and price.'}
                 </p>
                 <p className="text-[11.5px] text-slate-500 mt-0.5">
                   {data.totals.targetBasis === 'net'

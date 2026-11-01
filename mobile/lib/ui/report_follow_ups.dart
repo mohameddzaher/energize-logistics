@@ -141,7 +141,7 @@ class _ReportFollowUpsViewState extends State<ReportFollowUpsView> {
         maxLines: 4,
         maxLength: 2000,
         decoration: InputDecoration(
-          hintText: tr('اكتب متابعةً على هذا الكشف…', 'Write a follow-up on this report…'),
+          hintText: tr('اكتب متابعةً على هذا أمر النقل…', 'Write a follow-up on this report…'),
           counterText: '',
           isDense: true,
         ),
@@ -171,7 +171,7 @@ class _ReportFollowUpsViewState extends State<ReportFollowUpsView> {
       else if (rows == null)
         const LinearProgressIndicator(minHeight: 2)
       else if (rows.isEmpty)
-        Text(tr('لا متابعاتٍ على هذا الكشف بعد.', 'No follow-ups on this report yet.'), style: const TextStyle(fontSize: 12, color: T.inkSoft))
+        Text(tr('لا متابعاتٍ على هذا أمر النقل بعد.', 'No follow-ups on this report yet.'), style: const TextStyle(fontSize: 12, color: T.inkSoft))
       else
         for (final f in rows)
           Container(

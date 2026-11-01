@@ -252,7 +252,7 @@ exports.getWaybillsPdf = async (req, res) => {
   try {
     const ids = Array.isArray(req.body?.ids) ? req.body.ids.filter(Boolean) : [];
     if (!ids.length) return res.status(400).json({ message: 'اختر طلبًا واحدًا على الأقلّ' });
-    if (ids.length > 100) return res.status(400).json({ message: 'الحدُّ الأقصى مئةُ بوليصةٍ في المرّة' });
+    if (ids.length > 100) return res.status(400).json({ message: 'الحدُّ الأقصى مئةُ أمر نقل في المرّة' });
 
     const { renderWaybillsPdf, rowFromOrder } = require('../utils/waybillPdf');
     const ShipmentOrder = require('../models/ShipmentOrder');
@@ -317,7 +317,7 @@ exports.getWaybillsPdf = async (req, res) => {
     res.setHeader('Content-Disposition', `attachment; filename="waybills-${orders.length}.pdf"`);
     res.send(pdf);
   } catch (error) {
-    res.status(500).json({ message: 'تعذّر إصدارُ البوالص', error: error.message });
+    res.status(500).json({ message: 'تعذّر إصدارُ أوامر النقل', error: error.message });
   }
 };
 
@@ -1735,7 +1735,7 @@ exports.patchStatus = async (req, res) => {
           recipient: order.createdBy,
           type: 'status_changed',
           title: 'تغيّرت حالة الطلب',
-          message: `بوليصة ${order.waybillNumber} — ${order.status}${note ? ` · ${note}` : ''}`,
+          message: `أمر نقل ${order.waybillNumber} — ${order.status}${note ? ` · ${note}` : ''}`,
           relatedEntity: 'ShipmentOrder',
           relatedEntityId: order._id,
         });

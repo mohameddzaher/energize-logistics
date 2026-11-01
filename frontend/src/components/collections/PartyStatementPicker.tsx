@@ -99,14 +99,14 @@ export default function PartyStatementPicker({ partyName, defaultKind, ar, onClo
           {rows === null ? (
             <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-slate-400" /></div>
           ) : !all.length ? (
-            <p className="py-8 text-center text-sm text-slate-500">{t('لا فواتير بهذا الاختيار — يمكن الإرسال وسيقول الكشفُ ذلك.', 'No invoices for this choice.')}</p>
+            <p className="py-8 text-center text-sm text-slate-500">{t('لا فواتير بهذا الاختيار — يمكن الإرسال وسيقول أمر النقل ذلك.', 'No invoices for this choice.')}</p>
           ) : (
             <table className="w-full text-[13px]">
               <thead className="sticky top-0 bg-slate-50 text-[12px] text-slate-600">
                 <tr>
                   <th className="px-3 py-2 text-start"><input type="checkbox" checked={allOn}
                     onChange={() => setPicked(allOn ? new Set() : new Set(all.map(keyOf)))} /></th>
-                  <th className="px-3 py-2 text-start">{kind === 'cash' ? t('رقم الكشف', 'Report') : t('رقم الفاتورة', 'Invoice')}</th>
+                  <th className="px-3 py-2 text-start">{kind === 'cash' ? t('رقم أمر النقل', 'Report') : t('رقم الفاتورة', 'Invoice')}</th>
                   <th className="px-3 py-2 text-start">{t('التاريخ', 'Date')}</th>
                   <th className="px-3 py-2 text-end">{t('القيمة', 'Value')}</th>
                   <th className="px-3 py-2 text-end">{t('المتبقّي', 'Due')}</th>

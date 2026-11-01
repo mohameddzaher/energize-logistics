@@ -94,7 +94,7 @@ export default function DefaultTermList({
                     <th className="text-start font-semibold px-3 py-2.5">{t('العميل', 'Customer')}</th>
                     <th className="text-start font-semibold px-3 py-2.5">{t('مسؤول التحصيل', 'Officer')}</th>
                     <th className="text-end font-semibold px-3 py-2.5">{t('المديونية', 'Outstanding')}</th>
-                    <th className="text-end font-semibold px-3 py-2.5">{t('فواتير / كشوف', 'Invoices / reports')}</th>
+                    <th className="text-end font-semibold px-3 py-2.5">{t('فواتير / أوامر نقل', 'Invoices / reports')}</th>
                     <th className="text-start font-semibold px-3 py-2.5">{t('مدّة السداد (يوم)', 'Term (days)')}</th>
                   </tr>
                 </thead>
@@ -112,7 +112,7 @@ export default function DefaultTermList({
                       <td className="px-3 py-2 text-end tabular-nums font-semibold">{money(p.value)}</td>
                       <td className="px-3 py-2 text-end tabular-nums text-slate-600">
                         <button type="button" onClick={() => onOpenInvoices?.(p)} className="hover:text-[#f37121] hover:underline">
-                          {p.tax ? `${p.tax} ${t('فاتورة', 'inv')}` : ''}{p.tax && p.cash ? ' · ' : ''}{p.cash ? `${p.cash} ${t('كشف', 'rep')}` : ''}
+                          {p.tax ? `${p.tax} ${t('فاتورة', 'inv')}` : ''}{p.tax && p.cash ? ' · ' : ''}{p.cash ? `${p.cash} ${t('أمر نقل', 'rep')}` : ''}
                         </button>
                       </td>
                       <td className="px-3 py-2 whitespace-nowrap">

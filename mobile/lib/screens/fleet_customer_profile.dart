@@ -153,7 +153,7 @@ class _FleetCustomerProfileScreenState extends State<FleetCustomerProfileScreen>
             fileName: 'customer-${c['name'] ?? ''}',
             sheetName: 'Trips',
             columns: [
-              ExportCol('البوليصة', 'Waybill', (s) => s['waybillNumber']),
+              ExportCol('أمر النقل', 'Transport order', (s) => s['waybillNumber']),
               ExportCol('من', 'From', (s) => s['fromCity']),
               ExportCol('إلى', 'To', (s) => s['toCity']),
               ExportCol('اللوحة', 'Plate', (s) => s['vehiclePlate']),
@@ -311,7 +311,7 @@ class _FleetCustomerProfileScreenState extends State<FleetCustomerProfileScreen>
                               child: AppCard(
                                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                                   Row(children: [
-                                    Text('${tr('بوليصة', 'WB')} ${s['waybillNumber'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.w800)),
+                                    Text('${tr('أمر نقل', 'WB')} ${s['waybillNumber'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.w800)),
                                     const Spacer(),
                                     if ((num.tryParse((s['price'] ?? '').toString()) ?? 0) > 0)
                                       Text(_money(s['price']), style: const TextStyle(fontWeight: FontWeight.w800, color: T.success)),

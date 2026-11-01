@@ -192,7 +192,7 @@ class _FleetArrivalsScreenState extends State<FleetArrivalsScreen> {
                         topAccent: T.orange,
                         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                           Row(children: [
-                            Text('${tr('بوليصة', 'WB')} ${s['waybillNumber']}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+                            Text('${tr('أمر نقل', 'WB')} ${s['waybillNumber']}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
                             const Spacer(),
                             Text((s['vehiclePlate'] ?? '').toString(), style: const TextStyle(fontSize: 12, color: T.inkSoft)),
                           ]),
@@ -211,7 +211,7 @@ class _FleetArrivalsScreenState extends State<FleetArrivalsScreen> {
                       padding: const EdgeInsets.only(bottom: 8),
                       child: AppCard(
                         topAccent: T.warn,
-                        child: Text('${tr('بوليصة', 'WB')} ${s['waybillNumber']} · ${s['customerName'] ?? ''} · ${s['fromCity'] ?? ''} ← ${s['toCity'] ?? ''}',
+                        child: Text('${tr('أمر نقل', 'WB')} ${s['waybillNumber']} · ${s['customerName'] ?? ''} · ${s['fromCity'] ?? ''} ← ${s['toCity'] ?? ''}',
                             style: const TextStyle(fontSize: 12.5)),
                       ),
                     )),
@@ -244,7 +244,7 @@ class _FleetArrivalsScreenState extends State<FleetArrivalsScreen> {
                             Row(children: [
                               Text((v['plate'] ?? '').toString(), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
                               const Spacer(),
-                              if (t['waybillNumber'] != null) Text('${tr('بوليصة', 'WB')} ${t['waybillNumber']}', style: const TextStyle(fontSize: 12, color: T.inkSoft)),
+                              if (t['waybillNumber'] != null) Text('${tr('أمر نقل', 'WB')} ${t['waybillNumber']}', style: const TextStyle(fontSize: 12, color: T.inkSoft)),
                             ]),
                             if (t.isNotEmpty) ...[
                               const SizedBox(height: 4),

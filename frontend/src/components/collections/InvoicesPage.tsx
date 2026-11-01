@@ -162,7 +162,9 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
   // الفاتورةُ تُرسَل وتُستلَم ويُوقَّع عليها، ومن يومئذٍ تُعَدُّ المدّةُ المتّفق
   // عليها. وكانت الشاشةُ تسجّل التحصيل وحدَه، فيبقى «متى وصلت العميل؟» بلا
   // جوابٍ إلّا في ورقةٍ خارج النظام — وهو أوّلُ ما يُسأل عند كلّ مطالبة.
-  const [delivering, setDelivering] = useState<{ label: string; invoiceNumber?: string; ids?: string[] } | null>(null);
+  const [delivering, setDelivering] = useState<{ label: string; invoiceNumber?: string; ids?: string[]; numbers?: string[] } | null>(null);
+  // Several selected rows collected in full, one date for all.
+  const [bulkCollect, setBulkCollect] = useState<{ rows: any[]; total: number } | null>(null);
   const [deliveryDate, setDeliveryDate] = useState('');
   const [collectForm, setCollectForm] = useState({ collectionDate: '', collectedAmount: '' });
   const [saving, setSaving] = useState(false);
@@ -294,12 +296,23 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
     if (!deliveryDate) { notify(t('تاريخ التسليم للعميل مطلوب', 'Customer delivery date required'), 'error'); return; }
     setSaving(true);
     try {
-      const r = await api.post<{ message: string }>('/api/collections-dept/invoices/deliver', {
-        invoiceNumber: delivering?.invoiceNumber,
-        ids: delivering?.ids,
-        deliveryDate,
-      });
-      notify(r?.message || t('سُجِّل التسليم', 'Delivery recorded'));
+      let message = '';
+      if (delivering?.numbers) {
+        // Tax invoices are written by number, one at a time.
+        for (const invoiceNumber of delivering.numbers) {
+          await api.post('/api/collections-dept/invoices/deliver', { invoiceNumber, deliveryDate });
+        }
+        message = t(`سُجِّل تسليم ${delivering.numbers.length} فاتورة`, `${delivering.numbers.length} invoices delivered`);
+      } else {
+        const r = await api.post<{ message: string }>('/api/collections-dept/invoices/deliver', {
+          invoiceNumber: delivering?.invoiceNumber,
+          ids: delivering?.ids,
+          deliveryDate,
+        });
+        message = r?.message || '';
+      }
+      notify(message || t('سُجِّل التسليم', 'Delivery recorded'));
+      if ((delivering?.ids?.length || 0) > 1 || delivering?.numbers) setSelected(new Set());
       setDelivering(null);
       load();
     } catch (e: any) { notify(e?.message || t('تعذّر الحفظ', 'Could not save'), 'error'); }
@@ -320,6 +333,39 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
       notify(e?.message || t('تعذّر الحفظ', 'Could not save'), 'error');
     }
     setDetailSaving(null);
+  };
+
+  const openBulkDeliver = () => {
+    setDelivering(isCash
+      ? { label: t(`${selectedRows.length} كشف`, `${selectedRows.length} sheets`), ids: selectedRows.map((r: any) => r._id) }
+      : { label: t(`${selectedRows.length} فاتورة`, `${selectedRows.length} invoices`), numbers: selectedRows.map((r: any) => r.invoiceNumber) });
+    setDeliveryDate(new Date().toISOString().slice(0, 10));
+  };
+  const openBulkCollect = () => {
+    const open = selectedRows.filter((r: any) => r.collectionState !== 'full');
+    if (!open.length) { notify(t('كل المحدَّد محصَّل بالفعل', 'Everything selected is already collected'), 'error'); return; }
+    const remaining = (r: any) => (r.remaining != null ? Number(r.remaining) : Math.max(0, Number(r.value || 0) - Number(r.collectedAmount || 0)));
+    setBulkCollect({ rows: open, total: open.reduce((a: number, r: any) => a + remaining(r), 0) });
+    setCollectForm({ collectionDate: new Date().toISOString().slice(0, 10), collectedAmount: '' });
+    setCollectNote('');
+  };
+  const saveBulkCollect = async () => {
+    if (!bulkCollect) return;
+    if (!collectForm.collectionDate) { notify(t('تاريخ التحصيل مطلوب', 'Collection date required'), 'error'); return; }
+    setSaving(true);
+    try {
+      const r = await api.post<{ message: string; failed: { label: string; message: string }[] }>('/api/collections-dept/invoices/collect-bulk', {
+        items: bulkCollect.rows.map((x: any) => (isCash ? { id: x._id, label: x.reportNumber } : { invoiceNumber: x.invoiceNumber, label: x.invoiceNumber })),
+        collectionDate: collectForm.collectionDate,
+        note: collectNote.trim(),
+      });
+      const first = r.failed?.[0];
+      notify(first ? `${r.message} — ${first.label}: ${first.message}` : r.message, first ? 'error' : undefined);
+      setBulkCollect(null);
+      setSelected(new Set());
+      load();
+    } catch (e: any) { notify(e?.message || t('تعذّر الحفظ', 'Could not save'), 'error'); }
+    setSaving(false);
   };
 
   const saveCollect = async () => {
@@ -855,6 +901,18 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
               </button>
             </span>
           )}
+          {selected.size > 0 && canEdit && (
+            <>
+              <button type="button" onClick={openBulkDeliver}
+                className="px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 hover:bg-slate-50 text-[13px] font-semibold">
+                {t(`تسليم المحدَّد (${selectedRows.length})`, `Deliver selected (${selectedRows.length})`)}
+              </button>
+              <button type="button" onClick={openBulkCollect}
+                className="px-3 py-1.5 rounded-lg bg-[#f37121] text-white hover:bg-[#e0651a] text-[13px] font-semibold">
+                {t(`تحصيل المحدَّد بالكامل (${selectedRows.length})`, `Collect selected in full (${selectedRows.length})`)}
+              </button>
+            </>
+          )}
           {colCount > 0 && (
             <button type="button" onClick={clearColFilters}
               className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-slate-100 text-slate-600 hover:text-slate-900 text-xs font-medium">
@@ -1003,6 +1061,27 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
         <p className="text-xs text-slate-500 mt-2 leading-relaxed">
           {t('يوم استلام العميل للفاتورة — ومنه تبدأ مهلة السداد المتّفق عليها معه. يُكتب على كشوف الفاتورة في سير عمل التشغيل وفي دفتر التحصيل معًا، وهو غير «تاريخ التسليم للفرع» الذي يسجّله التشغيل.',
              'The day the customer received the invoice — the agreed credit term starts here. Written to the invoice\u2019s reports and the collections ledger together, and distinct from the branch delivery operations records.')}
+        </p>
+      </Modal>
+
+      <Modal
+        open={!!bulkCollect}
+        onClose={() => setBulkCollect(null)}
+        title={t(`تحصيل ${bulkCollect?.rows.length || 0} بالكامل`, `Collect ${bulkCollect?.rows.length || 0} in full`)}
+        footer={<>
+          <button type="button" onClick={() => setBulkCollect(null)} className="px-4 py-2 text-slate-500 text-sm">{t('إلغاء', 'Cancel')}</button>
+          <PrimaryButton onClick={saveBulkCollect} disabled={saving}>{saving ? <Loader2 className="w-4 h-4 animate-spin" /> : null}{t('تحصيل', 'Collect')}</PrimaryButton>
+        </>}>
+        <p className="text-sm text-slate-700 mb-3">{t(`إجمالي الباقي: ${money(bulkCollect?.total || 0)}`, `Total balance: ${money(bulkCollect?.total || 0)}`)}</p>
+        <Field label={t('تاريخ التحصيل', 'Collection date')}>
+          <TextInput type="date" value={collectForm.collectionDate} onChange={(e) => setCollectForm((f) => ({ ...f, collectionDate: e.target.value }))} />
+        </Field>
+        <Field label={t('ملاحظة (اختياري)', 'Note (optional)')}>
+          <TextInput value={collectNote} onChange={(e) => setCollectNote(e.target.value)} />
+        </Field>
+        <p className="text-xs text-slate-500 mt-2 leading-relaxed">
+          {t('كل واحدة تُحصَّل بباقيها كاملًا في هذا التاريخ. والمحصَّل بالفعل لا يُعاد، وما لا قيمة له يُذكر لك لتحصيله منفردًا.',
+             'Each is collected for its full balance on this date. Collected rows are skipped, and a row with no value is named so you can collect it alone.')}
         </p>
       </Modal>
 

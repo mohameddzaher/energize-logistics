@@ -213,6 +213,35 @@ class _CollectionsInvoicesScreenState extends State<CollectionsInvoicesScreen> {
         ('lang', Lang.instance.ar ? 'ar' : 'en'),
       ];
 
+  /// Collects the selected rows in full on one date; a row that fails is named.
+  Future<void> _collectMany(List<Map<String, dynamic>> rows) async {
+    final open = rows.where((r) => _s(r, 'collectionState') != 'full').toList();
+    final messenger = ScaffoldMessenger.of(context);
+    if (open.isEmpty) {
+      messenger.showSnackBar(SnackBar(content: Text(tr('كل المحدَّد محصَّل بالفعل', 'Everything selected is already collected'))));
+      return;
+    }
+    final d = await showDatePicker(
+      context: context,
+      helpText: tr('تحصيل ${open.length} بالكامل', 'Collect ${open.length} in full'),
+      initialDate: DateTime.now(), firstDate: DateTime(2020), lastDate: DateTime.now().add(const Duration(days: 365)),
+    );
+    if (d == null || !mounted) return;
+    try {
+      final r = await Api.instance.post('/api/collections-dept/invoices/collect-bulk', {
+        'items': [for (final x in open) _cash ? {'id': _s(x, '_id'), 'label': _s(x, 'reportNumber')} : {'invoiceNumber': _s(x, 'invoiceNumber'), 'label': _s(x, 'invoiceNumber')}],
+        'collectionDate': d.toIso8601String().substring(0, 10),
+      });
+      final failed = r is Map ? List.from(r['failed'] ?? const []) : const [];
+      final msg = r is Map ? '${r['message'] ?? ''}' : '';
+      messenger.showSnackBar(SnackBar(content: Text(failed.isEmpty ? msg : '$msg — ${failed.first['label']}: ${failed.first['message']}')));
+      setState(() => _selected.clear());
+      _load();
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text('$e')));
+    }
+  }
+
   // ── التسليمُ خطوةٌ قبل التحصيل — ومنه تُعَدُّ المهلة ──────────────────────
   Future<void> _deliver(List<Map<String, dynamic>> rows) async {
     if (rows.isEmpty) return;
@@ -766,6 +795,7 @@ class _CollectionsInvoicesScreenState extends State<CollectionsInvoicesScreen> {
                               style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
                           const Spacer(),
                           if (_selected.isNotEmpty && collectionsCanEdit)
+                            TextButton.icon(onPressed: () => _collectMany(selRows), icon: const Icon(Icons.payments_outlined, size: 18), label: Text(tr('تحصيل بالكامل', 'Collect in full'))),
                             TextButton.icon(onPressed: () => _deliver(selRows), icon: const Icon(Icons.local_shipping_outlined, size: 18),
                                 label: Text(tr('تسليم المحدَّد', 'Deliver selected'))),
                           if (_selected.isNotEmpty)

@@ -91,6 +91,7 @@ router.get('/invoices/tax', authorize(...READ_ROLES), ctrl.taxInvoices);
 // الرقمُ قد يحمل شرطاتٍ ومسافات — يُلتقط كما هو.
 router.get('/invoices/tax/:invoiceNumber', authorize(...READ_ROLES), ctrl.taxInvoiceDetail);
 router.post('/invoices/collect', authorize(...EDIT_ROLES), ctrl.recordCollection);
+router.post('/invoices/collect-bulk', authorize(...EDIT_ROLES), ctrl.bulkCollect);
 // تصحيحُ قيمة فاتورةٍ ضريبيّة (ويجوز بالسالب) — وتُقفَل على ما كُتب.
 //
 // ── وبابُه أضيقُ من القسم، ولا يفتحه منح ─────────────────────────────────

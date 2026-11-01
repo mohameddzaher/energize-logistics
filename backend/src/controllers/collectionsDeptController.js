@@ -2388,6 +2388,31 @@ exports.removePayment = async (req, res) => {
   }
 };
 
+/**
+ * POST /invoices/collect-bulk { items: [{ id } | { invoiceNumber }], collectionDate, note }
+ * Collects each selected row in full through the same path as one row, so the
+ * ledger, the workflow and the audit log stay identical. A row that cannot be
+ * collected is reported by name and does not stop the rest.
+ */
+exports.bulkCollect = async (req, res) => {
+  const items = Array.isArray(req.body?.items) ? req.body.items.slice(0, 300) : [];
+  const { collectionDate, note } = req.body || {};
+  if (!items.length) return res.status(400).json({ message: 'حدِّد فاتورةً أو كشفًا' });
+  if (!collectionDate) return res.status(400).json({ message: 'تاريخ التحصيل مطلوب', fields: { collectionDate: 'مطلوب' } });
+  let done = 0; const failed = [];
+  for (const item of items) {
+    const label = item.label || item.invoiceNumber || item.id;
+    const reply = { code: 200, status(c) { this.code = c; return this; }, json(b) { this.body = b; return this; } };
+    const body = { id: item.id, invoiceNumber: item.invoiceNumber, mode: 'full', collectionDate, note: note || '' };
+    try {
+      await recordPayment({ body, user: req.user, ip: req.ip }, reply);
+      if (reply.code < 400) done += 1; else failed.push({ label, message: reply.body?.message || 'تعذّر التحصيل' });
+    } catch (e) { failed.push({ label, message: e.message || 'تعذّر التحصيل' }); }
+  }
+  const message = failed.length ? `حُصِّل ${done} وتعذّر ${failed.length}` : `سُجِّل تحصيل ${done} بالكامل`;
+  res.json({ done, failed, message });
+};
+
 exports.recordCollection = async (req, res) => {
   if (req.body && (req.body.mode === 'full' || req.body.mode === 'partial')) {
     try { return await recordPayment(req, res); } catch (e) {

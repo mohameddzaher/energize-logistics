@@ -1,18 +1,8 @@
 /**
- * seedSalesWorkflowPage — تُفتح صفحةُ «سير عمل التشغيل» للمبيعات (لقيمة البيع).
- *
- *   node src/scripts/seedSalesWorkflowPage.js          يعرض فقط
- *   node src/scripts/seedSalesWorkflowPage.js --apply  يكتب
- *
- * صاحبُ الشركة (٢٠٢٦/١٠/٢١): فريقُ المبيعات يرى «قيمة البيع» في سير العمل ويكتبها.
- * والصفحةُ في قسم «العمليات»، والمبيعاتُ ممنوعةٌ منه افتراضًا — فيردّ حارسُ
- * الصفحات (`pageGate`) كلَّ نداءٍ لـ`/api/workflows` بـ٤٠٣ ولو فتح المسارُ لها.
- *
- * ولا يُمنح القسمُ كلُّه: «العمليات» يحمل المحفظةَ (`/api/wallet`) أيضًا، و`authorize`
- * يمرّر كلَّ مَن خُتم له القسم — فمنحُه يفتح العهدةَ للمبيعات. فتُؤشَّر الصفحةُ
- * وحدَها (تأشيرةٌ صريحة)، وحقولُها تحرسها `ROLE_FIELD_ACCESS`: قيمةُ البيع وحدَها.
- *
- * ولا يكتب فوق قرارٍ في صفحة الصلاحيّات: إن كانت الصفحةُ مكتوبةً للدور تُترك.
+ * seedSalesWorkflowPage: opens the operations workflow page to sales (for the selling value). Usage: node src/scripts/seedSalesWorkflowPage.js [--apply] (shows only by default). Sales sees and writes 'selling
+ * value' in the workflow. The page belongs to the operations section, which sales is denied by default, so the page guard (`pageGate`) rejects every `/api/workflows` call with 403 even if the route is open. The
+ * whole section is not granted: operations also carries the wallet (`/api/wallet`) and `authorize` passes anyone stamped for the section, so granting it would open custody to sales. Only the page is ticked (explicit
+ * grant), and its fields are guarded by `ROLE_FIELD_ACCESS`: selling value only. A decision on the permissions page is not overwritten: if the page is already written for the role it is left.
  */
 require('dotenv').config({ path: require('path').join(__dirname, '..', '..', '.env'), quiet: true });
 const mongoose = require('mongoose');

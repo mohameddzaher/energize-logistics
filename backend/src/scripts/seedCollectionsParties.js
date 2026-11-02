@@ -1,23 +1,8 @@
 /**
- * seedCollectionsParties — يبني سجلَّي العملاء والموردين لقسم التحصيل من
- * البيانات الموجودة في النظام فعلًا، لا من ملفٍّ يُستورَد.
- *
- *   node src/scripts/seedCollectionsParties.js            تنفيذ
- *   node src/scripts/seedCollectionsParties.js --dry      يقول ماذا سيفعل ولا يكتب
- *
- * ── من أين ─────────────────────────────────────────────────────────────────
- * الأصلُ كشوفُ سير عمل التشغيل: منها يُعرَف مَن نتعامل معه فعلًا وكم له وكم
- * عليه. ثمّ تُثرى السجلّاتُ من بقيّة سجلّات الشركة — أرقامُ التواصل والسجلُّ
- * التجاريّ والآيبان لا وجودَ لها في الكشف، وهي ما يحتاجه من يلاحق فاتورة.
- *
- * ── والتكرار يُطوى قبل الكتابة ─────────────────────────────────────────────
- * الاسمُ الواحدُ يُكتب في كلّ سجلٍّ بصيغة: همزةٌ هنا وتاءٌ مربوطةٌ هناك، و«چ»
- * مكانَ «ج». ولو كُتب كلٌّ منها صفًّا لصار أكبرُ موردٍ عندنا أربعةَ موردين، وهو
- * العطلُ نفسُه الذي كان يقسم «شركة تنشيط للخدمات اللوجستية» صفّين في التحليلات.
- *
- * ── ولا يُدهَس ما صُحِّح على الشاشة ────────────────────────────────────────
- * السكربتُ يملأ الفارغَ ولا يكتب فوق قيمةٍ قائمة. فمَن صحّح رقمَ جوّالٍ بيده
- * يجده كما تركه بعد إعادة التشغيل — وإعادتُه مرّةً أخرى لا تغيّر شيئًا.
+ * seedCollectionsParties: build the customer and vendor registers for the collections section from data already in the system, not from an imported file. Usage: node src/scripts/seedCollectionsParties.js [--dry] Source: operations workflow
+ * statements tell who we actually deal with and what is owed each way. Registers are then enriched from other company records (contact numbers, commercial registration, IBAN), which statements lack and which anyone chasing an invoice needs.
+ * Duplicates are folded before writing: one name is written in many forms (hamza here, taa marbuta there, a different letter variant), and writing each as a row would split our largest vendor into four, the same fault that split one logistics
+ * company into two rows in analytics. Screen corrections are not overwritten: the script fills blanks and never overwrites an existing value, so a hand-corrected phone survives reruns and rerunning changes nothing.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -28,27 +13,24 @@ const DRY = process.argv.includes('--dry');
 
 const s = (v) => String(v == null ? '' : v).trim();
 
-// بريدٌ مولَّدٌ آليًّا ليس بريدًا: `driver_…@temp.local` و`user_350@migrated.upl.com`
-// عناوينُ اخترعتها المنصّةُ لتمرّ من التحقّق، ولا أحدَ يقرؤها. تخزينُها في سجلّ
-// تحصيلٍ يعني أن يُرسَل إليها طلبُ سدادٍ يومًا. غيابُ القيمة ليس قيمة.
+// Auto-generated email is not an email: addresses like `driver_...@temp.local` and `user_350@migrated.upl.com` were invented by the platform to pass validation and nobody reads them. Storing them in a collections record could send a payment request there. A missing value is not a value.
 const PLACEHOLDER_EMAIL = /@(temp\.local|migrated\.upl\.com|example\.com|test\.com)$/i;
 const cleanEmail = (v) => {
   const e = s(v).toLowerCase();
   return !e || PLACEHOLDER_EMAIL.test(e) ? '' : e;
 };
 
-// الاسمُ الذي لا يُميّز طرفًا لا يصير سجلًّا: «-» و«غير معروف» و«null» وصفوفُ
-// الاختبار. وتحتها ثلاثةُ أحرفٍ لا يُبنى عليها ملفُّ عميل.
+// A name that does not distinguish a party does not become a record: placeholders such as '-', 'unknown', 'null' and test rows. Under three characters is too short to build a customer file on.
 const JUNK = new Set(['-', '—', 'na', 'n/a', 'null', 'undefined', 'غير معروف', 'بدون', 'test', 'لا يوجد']);
 const usableName = (v) => {
   const n = s(v);
   if (!n || n.length < 3) return false;
   if (JUNK.has(n.toLowerCase())) return false;
-  if (/^__.*__/.test(n)) return false; // صفوفُ فحوصِ CRUD
+  if (/^__.*__/.test(n)) return false; // CRUD test rows
   return true;
 };
 
-/** سجلٌّ واحدٌ في الخريطة، يُملأ فارغُه ولا يُكتب فوق مملوئه. */
+/** One record in the map: blanks are filled, existing values are never overwritten. */
 function upsertLocal(map, name, patch, source) {
   if (!usableName(name)) return;
   const key = fold(name);
@@ -73,9 +55,8 @@ async function build(db) {
   const suppliers = new Map();
   const W = db.collection('operationsworkflows');
 
-  // ── ١ · الكشوف: مَن نتعامل معه فعلًا ────────────────────────────────────
-  // الوزنُ عددُ الكشوف، وهو ما يجعل الاسمَ المعروضَ أكثرَ الكتابتين ورودًا لا
-  // أوّلَها صدفةً.
+  // 1. Statements: who we actually deal with
+  // The weight is the statement count, so the displayed name is the most frequent spelling, not the first by chance.
   const custRows = await W.aggregate([
     { $match: { username: { $nin: [null, ''] } } },
     { $group: { _id: '$username', n: { $sum: 1 }, phone: { $last: '$userPhone' } } },
@@ -88,7 +69,7 @@ async function build(db) {
   ]).toArray();
   for (const r of suppRows) upsertLocal(suppliers, r._id, { phone: r.phone, __weight: r.n }, 'operations_workflow');
 
-  // ── ٢ · عملاءُ طلبات الشحنات والأسطول وإدارة العلاقات ────────────────────
+  // 2. Customers from shipment orders, fleet and CRM
   for (const r of await db.collection('shipmentordercustomers').find({}).toArray()) {
     upsertLocal(customers, r.name, { phone: r.phone, email: cleanEmail(r.email), partyType: r.customerType === 'individual' ? '' : '' }, 'shipment_orders');
   }
@@ -99,9 +80,8 @@ async function build(db) {
     upsertLocal(customers, r.name, { phone: r.phone || r.whatsapp, email: cleanEmail(r.email) }, 'crm');
   }
 
-  // ── ٣ · الموردون: المنصّةُ تحمل الهويّةَ التجاريّة والحسابَ البنكيّ ───────
-  // وهي ما يحتاجه مَن يسدّد: التحويلُ يحتاج آيبان، والفاتورةُ تحتاج رقمًا
-  // ضريبيًّا، ومناقشةُ سندٍ تحتاج محاسبَ المورّد لا مالكَه.
+  // 3. Vendors: the platform holds the commercial identity and bank account
+  // These are what a payer needs: a transfer needs an IBAN, an invoice needs a tax number, and discussing a voucher needs the vendor's accountant, not its owner.
   for (const r of await db.collection('shipmentordersuppliers').find({}).toArray()) {
     upsertLocal(suppliers, r.name, {
       phone: r.phone || r.ownerPhone,
@@ -139,16 +119,12 @@ async function build(db) {
   return { customers, suppliers };
 }
 
-/** الاسمُ المعروض: أكثرُ الكتابتين ورودًا. */
+/** Displayed name: the most frequent of the spellings. */
 const bestName = (names) => [...names.entries()].sort((a, b) => b[1] - a[1])[0][0];
 
 /**
- * الكتابةُ رحلةٌ واحدة، لا رحلةً لكلّ صفّ.
- *
- * أربعةُ آلافِ `findById` ثمّ `save` هي ثمانيةُ آلافِ ذهابٍ وإيابٍ إلى عنقودٍ
- * زمنُ ردّه تسعون جزءًا من الألف — أي عشرَ دقائقَ من الانتظار لعملٍ حجمُه
- * ميغابايت. تُقرأ الصفوفُ القائمةُ مرّةً، ويُحسب الفرقُ في العقدة، ولا يُكتب
- * إلّا ما تغيّر — دفعةً واحدة.
+ * Write in one round trip, not one per row.
+ * Four thousand `findById` plus `save` calls are eight thousand round trips to a cluster with 90 ms latency, ten minutes of waiting for megabytes of work. Existing rows are read once, the diff is computed in the node, and only what changed is written, in one batch.
  */
 async function writeKind(kind, map) {
   const existing = await CollectionsParty.find({ kind }).lean();
@@ -168,7 +144,7 @@ async function writeKind(kind, map) {
       created += 1;
       continue;
     }
-    // ما يُملأ: الفارغُ وحدَه — فمَن صحّح قيمةً بيده يجدها كما تركها.
+    // Only blanks are filled, so a hand-corrected value stays as it was.
     const $set = {};
     for (const [k, v] of Object.entries(e.data)) {
       if (cur[k] === undefined || cur[k] === '' || cur[k] === null) $set[k] = v;
@@ -182,7 +158,7 @@ async function writeKind(kind, map) {
 
   if (!DRY) {
     if (toInsert.length) {
-      // `insertMany` يتخطّى pre('save')، فالمفتاحُ المطويُّ محسوبٌ فوق يدًا.
+      // `insertMany` skips pre('save'), so the folded key is computed by hand above.
       for (let i = 0; i < toInsert.length; i += 500) {
         await CollectionsParty.insertMany(toInsert.slice(i, i + 500), { ordered: false });
       }
@@ -209,7 +185,7 @@ async function writeKind(kind, map) {
   console.log(line('العملاء', c));
   console.log(line('الموردون', v));
 
-  // كم منهم له كشوفٌ فعلًا — الرقمُ الذي يقول هل السجلُّ حيٌّ أم دفترُ عناوين.
+  // How many have statements: tells whether the register is alive or just an address book.
   const W = db.collection('operationsworkflows');
   const withReports = async (field) => {
     const rows = await W.aggregate([{ $match: { [field]: { $nin: [null, ''] } } }, { $group: { _id: `$${field}` } }]).toArray();

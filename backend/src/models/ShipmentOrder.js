@@ -13,18 +13,18 @@ const shipmentOrderSchema = new mongoose.Schema(
     source: { type: String, enum: ['system', 'platform'], default: 'system', index: true },
     /** Manifest number, one series across platform and system shipments. */
     graduationNumber: { type: Number, default: null, index: true },
-    /** معرّفُ المنصّة: به تُطابَق إعادةُ المزامنة فلا تُكرِّر. */
+    /** Platform id, used to match on re-sync so rows are not duplicated. */
     externalId: { type: String, trim: true, default: '', index: true },
     /** The number as shown: the manifest number. */
     reference: { type: String, trim: true, default: '', index: true },
 
-    // ── الاستلام والتسليم ──────────────────────────────────────────────────
+    // Pickup and delivery
     fromCity: routeStop,
     toCity: routeStop,
     addressFrom: routeStop,
     addressTo: routeStop,
 
-    // ── تفاصيل الشحنة ─────────────────────────────────────────────────────
+    // Shipment details
     truckType: { type: String, trim: true, default: '' },
     cargoType: { type: String, trim: true, default: '' },
     truckLength: { type: String, trim: true, default: '' },
@@ -37,79 +37,57 @@ const shipmentOrderSchema = new mongoose.Schema(
 
     driverName: { type: String, trim: true, default: '' },
     driverPhone: { type: String, trim: true, default: '' },
-    vehicleName: { type: String, trim: true, default: '' }, // snapshot: السيارة / رقم اللوحة
+    vehicleName: { type: String, trim: true, default: '' }, // Snapshot: vehicle / plate number
     vehiclePlate: { type: String, trim: true, default: '', index: true },
-    // رقمُ المرجع عند المنصّة — يُحفظ كما هو ولا يُخلط برقم البوليصة عندنا.
+    // Platform reference number, stored as is and not confused with our waybill number.
     externalRef: { type: String, trim: true, default: '' },
     // Refs behind the snapshots — ours when supplier is null, a 3PL's otherwise.
     vehicle: { type: mongoose.Schema.Types.ObjectId, ref: 'ShipmentOrderVehicle', default: null },
     supplier: { type: mongoose.Schema.Types.ObjectId, ref: 'ShipmentOrderSupplier', default: null, index: true },
-    // ── لقطةُ اسم المورّد ─────────────────────────────────────────────────
-    // كانت الخانةُ غائبةً عن المخطّط، فكلُّ اسمِ مورّدٍ كُتب فيها سقط صامتًا
-    // (mongoose يتجاهل ما لا يعرف): ثلاثةٌ وثلاثون ألفَ شحنةٍ بلا مورّد،
-    // والتحليلاتُ تقول «موردون: صفر» وهي محقّةٌ فيما تقرأ.
-    //
-    // ولقطةٌ لا مرجعٌ وحدَه: البوليصةُ تُقرأ بعد سنة، ومورّدُ المنصّة قد لا
-    // يكون في سجلّنا أصلًا — فالاسمُ يبقى ولو لم يوجد الصفّ.
+    // Supplier name snapshot.
+    // The field was missing from the schema, so every supplier name written to it was silently dropped (mongoose ignores unknown fields), leaving tens of thousands of shipments without a supplier and analytics reporting zero suppliers.
+    // A snapshot, not just a reference: the waybill is read a year later and the platform's supplier may not be in our registry; the name stays even if the row is missing.
     supplierName: { type: String, trim: true, default: '', index: true },
 
-    // المندوب — whoever created the order, stamped from their account, never
-    // typed by hand.
+    // Rep: whoever created the order, stamped from their account, never typed by hand.
     agentName: { type: String, trim: true, default: '' },
 
-    // ── السيلز التشغيليّ (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢) ─────────────────────────
-    // مَن جاء بهذه الحمولة إلى الشركة — من فريق المبيعات أو العمليّات. واسمُه
-    // لقطةٌ كي يبقى في التحليلات ولو غادر.
+    // Operations salesperson: who brought this load to the company, from sales or operations. The name is a snapshot so it stays in analytics even if the person leaves.
     salesRep: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null, index: true },
     salesRepName: { type: String, trim: true, default: '', index: true },
 
-    // ── سببُ الإلغاء — لا تُلغى شحنةٌ بلا سبب (٢٠٢٦/١٠/٢٢) ───────────────────
-    // من قائمة «أسباب الإلغاء» في إعدادات القسم (so_cancel_reason)، بنصّها.
+    // Cancellation reason: a shipment is never cancelled without one. Taken from the cancellation reasons list in section settings (so_cancel_reason), stored as text.
     cancelReason: { type: String, trim: true, default: '', index: true },
 
-    // ── الأسعار والتوقيت ──────────────────────────────────────────────────
+    // Prices and timing
     pickupTime: { type: Date, default: null },
     startTime: { type: Date, default: null },
     arrivalTime: { type: Date, default: null },
     sellPrice: { type: Number, default: null },
     buyPrice: { type: Number, default: null },
 
-    // ── المدفوعات ─────────────────────────────────────────────────────────
-    // «نوع الدفع» — أحدُ الأنواع الأربعة بمفاتيح سير عمل التشغيل
-    // (deferred_cash | deferred_invoice | cash_3pl | cash_ht). حلّ في نموذج
-    // الإنشاء محلَّ «نوع تأجير السائق» (٢٠٢٦/١٠/٢١)، و`paymentMethod` يُشتقّ
-    // منه في الخادم — راجع utils/shipmentOrderPayment.
+    // Payments
+    // Payment type: one of four types using the operations workflow keys (deferred_cash | deferred_invoice | cash_3pl | cash_ht). It replaced driver rental type in the create form, and `paymentMethod` is derived from it on the server; see utils/shipmentOrderPayment.
     paymentSubtype: {
       type: String, trim: true, default: '',
       enum: ['', ...require('../utils/paymentType').SUBTYPE_KEYS],
     },
-    // نوعُ تأجير السائق: لم يعد يُسأل في النموذج. يبقى لما سُجِّل قبله، ولما
-    // تنقله المنصّة (`driver_rental_type`)، ويُطبَع في خانة «إيجار» بالبوليصة.
+    // Driver rental type: no longer asked in the form. Kept for rows recorded before, for what the platform sends (`driver_rental_type`), and printed in the rent box of the waybill.
     driverRentType: { type: String, trim: true, default: '' },
     paymentMethod: { type: String, trim: true, default: '' },
     driverRentPrice: { type: Number, default: null },
     branch: { type: String, trim: true, default: '' },
 
-    // Same lifecycle keys as the ops mirror, so the team reads one vocabulary
-    // across both — but stored here, owned here.
-    //
-    // ── ولا `enum` هنا ────────────────────────────────────────────────────
-    // القسمُ يملك أن يزيد حالةً من إعداداته، و`enum` مكتوبةٌ في المخطَّط تجعل
-    // الحالةَ المُضافة تُرفَض عند الحفظ بعد أن ظهرت في الشاشة — فيبدو الإعدادُ
-    // كاذبًا. فالتحقّقُ في المتحكّم مقابل المفردات الحيّة
-    // (`utils/shipmentOrderStatuses`)، وهي التي تعرف المكتوبَ في الشيفرة
-    // والمُضافَ من الإعدادات معًا.
+    // Same lifecycle keys as the ops mirror, so the team reads one vocabulary across both, but stored and owned here.
+    // No `enum`: the section can add a status from its settings, and an `enum` in the schema would reject the added status on save after it appeared on screen. Validation is in the controller against the live vocabulary (`utils/shipmentOrderStatuses`), which knows both coded and configured statuses.
     status: { type: String, default: 'requesting', trim: true, index: true },
     // Arrival date this shipment was already turned late for, so it happens once.
     lateForDay: { type: String, default: '' },
     notes: { type: String, trim: true, default: '' },
 
-    // ── البوليصةُ والحاويةُ، وربطُها بمعاملة التخليص (٢٠٢٦/١٠/٢٦) ───────────
-    // اختياريّتان في «الاستلام والتسليم». ومنهما — أو من رقم الشحنة مكتوبًا في
-    // خانة نقل الحاوية في المعاملة — تُربط الشحنةُ بمعاملتها في الاتّجاهين:
-    // تُكتب هنا فتظهر هناك، وتُكتب هناك فتُملأ هنا. يكتب `customsLink`
-    // services/customsOpsLink وحدَه، بالشكل نفسِه الذي على كشف التشغيل.
-    // السلفةُ المدفوعةُ للسائق على هذه الشحنة — رقمٌ يُكتب في «الأسعار والتوقيت».
+    // Waybill and container, and the link to the customs transaction.
+    // Optional in pickup and delivery. From these, or from the shipment number written in the container transport field of the transaction, the shipment is linked to its transaction in both directions: written here it appears there and vice versa. `customsLink` is written only by services/customsOpsLink, in the same shape as on the operations report.
+    // Advance paid to the driver on this shipment: a number entered under prices and timing.
     advanceAmount: { type: Number, default: null },
     blNumber: { type: String, trim: true, default: '' },
     containerNumber: { type: String, trim: true, default: '' },
@@ -127,18 +105,10 @@ const shipmentOrderSchema = new mongoose.Schema(
       default: undefined,
     },
 
-    // ── المتابعةُ هنا تغييرُ حالةٍ لا مكالمة ────────────────────────────────
-    // في إدارة الأسطول السيّارةُ سيّارتُنا، فالمتابعةُ مكالمةٌ مع سائقنا: أين
-    // أنت الآن. وهنا الشاحنةُ شاحنةُ مورّد، والذي يُتابَع هو **موضعُ الطلب من
-    // دورته**: طُلب، حُمِّل، في الطريق، وصل، أُرسل السند. فالمتابعةُ نقلةُ
-    // حالةٍ ومعها سببُها إن كان له سبب.
-    //
-    // ويُقيَّد كلُّ انتقال: «متى صارت في الطريق؟» و«من أخّرها؟» سؤالان يُسألان
-    // بعد أسبوع، ولا جوابَ لهما إن حُفظت الحالةُ الأخيرةُ وحدَها.
-    //
-    // ── والنقلةُ قد تحمل ورقتَها ────────────────────────────────────────────
-    // «أُرسل السند» قولٌ عن ورقةٍ أُرسلت، فالورقةُ تُرفَق مع النقلة نفسِها لا
-    // في مكانٍ آخر يُبحَث عنه لاحقًا (راجع REQUIRE_FILE في المتحكّم).
+    // Follow-up here is a status change, not a call.
+    // In fleet management the vehicle is ours, so follow-up is a call to our driver. Here the truck is a supplier's, and what is tracked is the order's position in its cycle: ordered, loaded, in transit, arrived, voucher sent. Follow-up is a status transition with its reason if any.
+    // Every transition is recorded because "when did it go in transit" and "who delayed it" are asked a week later and cannot be answered from the last status alone.
+    // A transition may carry its paper: "voucher sent" claims a sent document, so it is attached to the transition itself (see REQUIRE_FILE in the controller).
     statusLog: [{
       from: { type: String, default: '' },
       to: { type: String, default: '' },
@@ -150,7 +120,7 @@ const shipmentOrderSchema = new mongoose.Schema(
       fileName: { type: String, default: '' },
       mimeType: { type: String, default: '' },
       size: { type: Number, default: 0 },
-      // ملاحظةُ المتابعة تُعدَّل (٢٠٢٦/١٠/٢٦) — ويبقى ظاهرًا أنّها عُدّلت ومَن عدّلها.
+      // The follow-up note can be edited, and it stays visible that it was edited and by whom.
       editedAt: { type: Date, default: null },
       editedByName: { type: String, default: '' },
     }],

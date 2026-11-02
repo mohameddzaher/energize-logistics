@@ -1,8 +1,4 @@
-/**
- * يعيد اشتقاقَ ما يُشتقّ من كلّ مركبة (plateKey، missingItems) من حالها الآن
- * في السجلّ — لا من الشيت — ثمّ يعيد عدَّ حوادثها. تشغيلٌ تجريبيّ افتراضًا؛
- * `--apply` للكتابة. راجع deriveVehicle في models/VehicleMaster.
- */
+/** Re-derives per-vehicle derived fields (plateKey, missingItems) from the registry's current state, not the sheet, then recounts its accidents. Dry run by default; `--apply` writes. See deriveVehicle in models/VehicleMaster. */
 require('dotenv').config();
 const mongoose = require('mongoose');
 const { VehicleMaster } = require('../models/VehicleMaster');

@@ -51,7 +51,7 @@ async function syncIdentity() {
     },
   }));
   if (ops.length) await Ls2Vehicle.bulkWrite(ops, { ordered: false });
-  // ثمّ كلُّ وحدةٍ وسطحتُها إلى مركبتها في سجلّ المركبات — راجع services/ls2VehicleLink.
+  // Then each unit and its flatbed are linked to their vehicle in the vehicle registry; see services/ls2VehicleLink.
   try {
     const link = await require('./ls2VehicleLink').linkLs2Fleet();
     if (link.unitsChanged || link.flatbedsChanged) require('../utils/ls2Touch').touchLs2({ registryLink: true });

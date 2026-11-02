@@ -1,17 +1,7 @@
 /**
- * auditSectionRoleAccess — مدير كل قسم وموظفه بيوصلوا لـ API قسمهم فعلاً؟
- *
- *   node src/scripts/auditSectionRoleAccess.js                      النص الأول
- *   node src/scripts/auditSectionRoleAccess.js --b                  النص التاني
- *   node src/scripts/auditSectionRoleAccess.js --base http://…      بيئة تانية
- *
- * بيعمل مستخدم مؤقت لكل دور وبيجرّب endpoint حقيقي من قسمه. المهم إن الرد
- * **مش 401/403** — الحالة الفعلية (200 أو حتى 404 لو الداتا فاضية) مش مهمة.
- *
- * ليه نصّين؟ حدّ تسجيل الدخول ٣٠ محاولة/١٥ دقيقة والفحص محتاج ٤٢. شغّل النص
- * الأول، أعد تشغيل الـ API (العدّاد في الذاكرة)، وبعدين النص التاني.
- *
- * بيمسح مستخدميه (zz-nr-*) في الآخر ولا بيلمس حساب حقيقي.
+ * auditSectionRoleAccess: checks that each section's manager and staff roles can reach their section API.
+ * Usage: node src/scripts/auditSectionRoleAccess.js [--b for second half] [--base URL]. Temp users zz-nr-* are created per role and deleted at the end.
+ * Split in two halves because the login limit is 30 attempts per 15 minutes and the audit needs 42; restart the API between halves (counter is in memory). Pass means not 401/403.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -29,7 +19,7 @@ async function get(p,ck){const r=await fetch(`${BASE}${p}`,{headers:{Cookie:ck}}
   const R=require('../config/roles');
   await User.deleteMany({email:{$regex:'^zz-nr'}});
 
-  // كل قسم: بنعمل مدير وموظف وبنشوف الاتنين بيوصلوا لـ API قسمهم فعلاً.
+  // For each section, create a manager and a staff user and check both reach the section API.
   const API_OF = {
     'Operations':'/api/wallet/daily','Customs':'/api/customs-clearance','Vehicles':'/api/vehicle-registry',
     'Location Solutions':'/api/ls2/store','Marketing':'/api/marketing/dashboard','Business Development':'/api/business-development/dashboard',

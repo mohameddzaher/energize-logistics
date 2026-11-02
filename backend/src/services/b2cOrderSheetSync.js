@@ -1,21 +1,7 @@
 /**
- * شيتاتُ الأوردرات ← «مدخلات الأوردرات» — كلَّ دقيقة.
- *
- * لكلّ مشروعٍ ملفُّ جوجل شيت (models/B2COrderSheet)، فيه ورقةٌ لكلّ شهر: رقمُ
- * الإقامة، واسمُ المندوب، والمشرف، ثمّ عمودٌ لكلّ يوم. يُنزَّل الملفُّ بالرابط
- * العامّ ويُقرأ، ويُكتب في النظام **ما تغيّر** فيه منذ القراءة السابقة:
- *
- *   · خانةٌ كُتب فيها رقمٌ أو عُدِّل ← الرقمُ يُكتب للمندوب في ذلك اليوم.
- *   · خانةٌ مُسحت ← يُمسح الرقمُ من النظام.
- *   · خانةٌ لم تتغيّر ← لا يُلمَس شيء — ولو عُدِّل اليومُ نفسُه على النظام بعدها.
- *
- * فآخرُ تعديلٍ هو المعتمد، أينما كان (اختيارُ صاحب الشركة، ٢٠٢٦/١٠/٢٠). وما
- * تغيّر يُعرَف بلقطةٍ لآخر ما قُرئ من كلّ خانة (B2COrderSheetCell).
- *
- * ── وحمايتان من مسحٍ لم يُقصد ─────────────────────────────────────────────
- * ورقةُ شهرٍ حُذفت أو غُيِّر اسمُها لا تُقرأ مسحًا لشهرها، وصفُّ مندوبٍ حُذف
- * من الورقة لا يُقرأ مسحًا لأيّامه: المسحُ لا يقع إلّا على خانةٍ فارغةٍ في صفٍّ
- * موجودٍ في ورقةٍ قُرئت.
+ * Order sheets to order entries, every minute.
+ * Each project has a Google Sheet (models/B2COrderSheet) with a tab per month; only cells changed since the last read (snapshot B2COrderSheetCell) are written: a new or edited number is written, a cleared cell clears it, and an unchanged cell is untouched. The latest edit wins wherever made.
+ * Clearing happens only for an empty cell in an existing row of a tab that was read; deleted or renamed tabs and deleted rep rows are never read as clearing.
  */
 const XLSX = require('xlsx');
 const mongoose = require('mongoose');
@@ -27,16 +13,13 @@ const toLatin = (s) => String(s ?? '').replace(AR_DIGITS, (c) => String('٠١٢�
 const foldAr = (s) => String(s || '').replace(/[أإآٱ]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي').replace(/\s+/g, ' ').trim();
 const idKey = (v) => toLatin(v).replace(/\s+/g, '').toUpperCase();
 const pad = (n) => String(n).padStart(2, '0');
-// ── الشهورُ التي تُقرأ ───────────────────────────────────────────────────────
-// الشهورُ قبل أكتوبر ٢٠٢٦ في الملفّ للرجوع إليها: نُقلت من الشيتات القديمة
-// بأسماء المناديب وحساباتِهم القديمة (أكثرُها بلا رقم إقامة)، فقراءتُها تكتب
-// الرقمَ نفسَه على حسابٍ ثانٍ ويُعَدّ مرّتين. والنظامُ يُدخَل فيه من أكتوبر.
+// Months that are read. Months before October 2026 are in the file for reference: they were moved from the old sheets under old rep names and accounts (mostly without a residence number), so reading them would write the same number on a second account and count it twice. The system takes entry from October.
 const SYNC_FROM = '2026-10';
-// صفُّ الإجماليّات في أسفل كلّ ورقة — ليس مندوبًا.
+// Totals row at the bottom of each tab, not a rep.
 const TOTAL_ROW = /اجمال|إجمال|total/i;
 const riyadhToday = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Riyadh' }).format(new Date());
 
-/** معرّفُ الملف من رابطه أو كما هو. */
+/** File id from its link, or as is. */
 const sheetIdOf = (v) => {
   const s = String(v || '').trim();
   const m = s.match(/\/d\/([a-zA-Z0-9_-]{20,})/) || s.match(/[?&]id=([a-zA-Z0-9_-]{20,})/);
@@ -44,7 +27,7 @@ const sheetIdOf = (v) => {
   return /^[a-zA-Z0-9_-]{20,}$/.test(s) ? s : '';
 };
 
-/** يُنزَّل الملفّ: جوجل شيت أوّلًا، ثمّ ملفُّ إكسل مرفوعٌ كما هو. */
+/** Download the file: Google Sheet first, then an uploaded Excel file as is. */
 async function download(sheetId) {
   const urls = [
     `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=xlsx`,
@@ -63,7 +46,7 @@ async function download(sheetId) {
   throw new Error(last || 'تعذّر تنزيل الملف');
 }
 
-/** شهرُ الورقة من اسمها: «أكتوبر 2026» أو «2026-10» أو «10-2026». */
+/** Tab month from its name: a month name with year, 2026-10 or 10-2026. */
 function monthOfTab(name) {
   const s = foldAr(toLatin(name));
   let m = s.match(/(\d{4})\s*[-/._]\s*(\d{1,2})/);
@@ -76,7 +59,7 @@ function monthOfTab(name) {
   return null;
 }
 
-/** تاريخُ عمود اليوم من رأسه: تاريخٌ أو «01/10/2026» أو «1/10» — وإلّا موضعُه. */
+/** Date of a day column from its header: a date, 01/10/2026 or 1/10, otherwise its position. */
 function dayOfHeader(v, y, m, col) {
   const days = new Date(Date.UTC(y, m, 0)).getUTCDate();
   if (typeof v === 'number' && v > 30000) {
@@ -89,12 +72,12 @@ function dayOfHeader(v, y, m, col) {
   const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
   if (iso && Number(iso[1]) === y && Number(iso[2]) === m) return Number(iso[3]);
   if (/^\d{1,2}$/.test(s) && Number(s) >= 1 && Number(s) <= days) return Number(s);
-  // الموضعُ احتياطًا: العمودُ الرابع هو اليومُ الأوّل.
+  // Position as a fallback: the fourth column is day one.
   const d = col - 2;
   return d >= 1 && d <= days && !s ? d : null;
 }
 
-/** قيمةُ خانة: رقمٌ صحيحٌ ≥ ٠، أو null للفارغة، أو undefined لنصٍّ لا يُفهم (لا يُلمَس). */
+/** Cell value: an integer >= 0, null for empty, or undefined for text that cannot be parsed (left untouched). */
 function cellValue(v) {
   if (v === null || v === undefined) return null;
   if (typeof v === 'number') return Number.isInteger(v) && v >= 0 && v <= 2000 ? v : undefined;
@@ -104,7 +87,7 @@ function cellValue(v) {
   return undefined;
 }
 
-/** يقرأ الملفَّ إلى خانات: [{ id, month: 'YYYY-MM', dateKey, value }] + الصفوفُ والشهورُ المقروءة. */
+/** Reads the file into cells: [{ id, month: 'YYYY-MM', dateKey, value }] plus the rows and months that were read. */
 function parseWorkbook(buf, today) {
   const wb = XLSX.read(buf, { type: 'buffer', cellDates: false });
   const cells = []; const rowsSeen = new Set(); const monthsRead = new Set();
@@ -114,8 +97,8 @@ function parseWorkbook(buf, today) {
     if (!ym) continue;
     const [y, m] = ym;
     const month = `${y}-${pad(m)}`;
-    if (month > nowMonth) continue; // شهرٌ لم يأتِ — لا شيءَ فيه يُقرأ
-    if (month < SYNC_FROM) continue; // شهرٌ للرجوع إليه — راجع SYNC_FROM
+    if (month > nowMonth) continue; // Month not yet arrived: nothing in it is read
+    if (month < SYNC_FROM) continue; // Reference-only month; see SYNC_FROM
     const aoa = XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, raw: true, defval: null, blankrows: false });
     if (aoa.length < 2) continue;
     const header = aoa[0] || [];
@@ -141,7 +124,7 @@ function parseWorkbook(buf, today) {
   return { cells, rowsSeen, monthsRead };
 }
 
-/** مزامنةُ شيتٍ واحد. يُرجع عددَ ما تغيّر في النظام. */
+/** Syncs one sheet. Returns the number of changes made in the system. */
 async function syncSheet(sheet) {
   const { B2COrderSheetCell } = require('../models/B2COrderSheet');
   const B2CDailyOrder = require('../models/B2CDailyOrder');
@@ -152,7 +135,7 @@ async function syncSheet(sheet) {
   const buf = await download(sheet.sheetId);
   const { cells, rowsSeen, monthsRead } = parseWorkbook(buf, today);
 
-  // المندوبُ برقم إقامته — مَن في سجلّ النقل الخفيف أيًّا كان مشروعُه اليوم.
+  // Rep by residence number: anyone in the light-transport register, whatever their project today.
   const lts = await LightTransportEmployee.find({ idNumber: { $nin: [null, ''] } })
     .select('idNumber name projectAr cityAr phone supervisorUser history').lean();
   const byId = new Map(lts.map((l) => [idKey(l.idNumber), l]));
@@ -171,11 +154,11 @@ async function syncSheet(sheet) {
     seenKeys.add(key);
     const prev = snapOf.get(key);
     const prevVal = prev ? prev.value : null;
-    if (prevVal === c.value) continue;           // لم يتغيّر في الشيت
-    if (!prev && c.value === null) continue;     // فارغٌ كان وما زال
+    if (prevVal === c.value) continue;           // Unchanged in the sheet
+    if (!prev && c.value === null) continue;     // Was empty and still is
     changes.push({ lt, dateKey: c.dateKey, value: c.value });
   }
-  // لقطاتٌ لخاناتٍ صارت فارغةً تمامًا (حُذفت الخانة) في صفٍّ وورقةٍ مقروءَين ← مسح.
+  // Snapshots of cells that became fully empty (the cell was deleted) in a row and tab that were read: clear.
   const ltById = new Map(lts.map((l) => [String(l._id), l]));
   for (const s of snaps) {
     const key = `${s.lt}|${s.dateKey}`;
@@ -186,10 +169,7 @@ async function syncSheet(sheet) {
     changes.push({ lt, dateKey: s.dateKey, value: null });
   }
 
-  // يُكتب كما يكتب السكربتُ لحظةَ التعديل (b2cSheetAppController.edit) تمامًا:
-  // على مشروع الشيت، ويومُ الرجل في مشروعٍ آخر لا يُكتب، ورقمُ اليوم واحدٌ للرجل
-  // (حساباتُه الأخرى تُمحى ذلك اليوم). كان هنا مشروعُ الرجل اليوم بلا فحصٍ ولا محو،
-  // فاختلف ما يكتبه الطريقان لليوم نفسِه.
+  // Written exactly as the script does at edit time (b2cSheetAppController.edit): onto the sheet's project; a rep's day in another project is not written; and the day's number is single per rep (his other accounts are cleared for that day). This used to use the rep's current project with no check or clearing, so the two paths wrote different values for the same day.
   const P = await E.projects();
   const proj = P.of(sheet.projectAr);
   let written = 0;

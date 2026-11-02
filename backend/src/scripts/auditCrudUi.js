@@ -1,15 +1,8 @@
 /* eslint-disable no-console */
 /**
- * auditCrudUi — أيُّ شاشةٍ تعرض سجلًّا ولا تعطي زرّ إنشاءٍ أو تعديلٍ أو حذف؟
- *
- *   node src/scripts/auditCrudUi.js
- *
- * الفحص الأخُ (auditCrudCoverage) يقرأ الخادم؛ وهذا يقرأ الواجهة. والفرق
- * جوهريّ: مسارٌ موجودٌ في الـAPI ولا زرَّ له في الشاشة غيرُ موجودٍ عمليًّا —
- * والمستخدم يشتكي ممّا لا يراه لا ممّا لا يوجد.
- *
- * ويُستبعد ما هو لوحةٌ أو تقريرٌ بطبعه: شاشةُ تحليلاتٍ بلا زرّ إنشاء صحيحةٌ لا
- * ناقصة.
+ * Finds screens that show a record but offer no create, edit or delete button.
+ * The sibling auditCrudCoverage reads the server; this reads the UI. An API route with no button is effectively missing.
+ * Dashboards and reports are excluded: an analytics screen without a create button is correct.
  */
 const fs = require('fs');
 const path = require('path');
@@ -33,13 +26,11 @@ for (const f of pages) {
   if (READ_ONLY_PAGE.test(rel)) continue;
   const src = fs.readFileSync(f, 'utf8');
 
-  // الشاشة تعرض سجلًّا؟ إن لم تقرأ قائمةً فليست شاشةَ سجلّ.
+  // A screen shows a record only if it reads a list.
   const reads = /api\.get\s*(<[^>]*>)?\s*\(/.test(src);
   if (!reads) continue;
 
-  // ما تفعله الشاشةُ نفسها، وما تفعله المكوّنات المشتركة التي تستوردها.
-  // شاشةٌ تستعمل DocumentFamilyPage لها CRUD كامل وإن لم تكتب سطرًا واحدًا،
-  // وعدُّها ناقصةً يُغرق التقرير بما لا عمل فيه.
+  // Counts what the screen does itself plus what the shared components it imports do. A screen using DocumentFamilyPage has full CRUD without a line of its own; counting it as incomplete floods the report.
   const own = src;
   const imported = [...src.matchAll(/from '@\/components\/([^']+)'/g)].map((m) => m[1]);
   let all = own;
@@ -50,14 +41,13 @@ for (const f of pages) {
     }
   }
 
-  // `api.post<{shipment:any}>(…)` — النوع العامّ بين الاسم والقوس، وإغفالُه
-  // كان يُظهر شاشةَ إنشاءٍ كاملةً على أنّها بلا إنشاء.
+  // Handles api.post<{shipment:any}>(...): the generic type sits between the name and the parenthesis; missing it showed a full create screen as having no create.
   const has = (verb) => new RegExp(`api\\.${verb}\\s*(<[^>]*>)?\\s*\\(`).test(all);
   const create = has('post');
   const update = has('put') || has('patch');
   const del = has('delete');
   const isDetail = /\[[^\]]+\]$/.test(rel);
-  // صفحةُ قائمةٍ يكون إنشاؤها في شاشةٍ مستقلّة (`/new`) ليست ناقصة.
+  // A list page whose create lives on a separate screen (/new) is not incomplete.
   const hasNewPage = fs.existsSync(path.join(ROOT, rel, 'new', 'page.tsx'));
 
   const missing = [];

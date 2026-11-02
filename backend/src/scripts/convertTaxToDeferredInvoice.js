@@ -1,29 +1,7 @@
 /**
- * convertTaxToDeferredInvoice — «ضريبي» بلا نوعٍ يصير «آجل - فاتورة».
- *
- *   node src/scripts/convertTaxToDeferredInvoice.js           تجربة (لا كتابة)
- *   node src/scripts/convertTaxToDeferredInvoice.js --apply   تنفيذ
- *
- * ── العلّة ──────────────────────────────────────────────────────────────────
- * قرارُ صاحب الشركة (٢٠٢٦/١٠/٢١): «ضريبي» و«آجل - فاتورة» شيءٌ واحد. والأنواعُ
- * الأربعة حلّت محلَّ «ضريبي»/«كاش» في الاختيار، فبقيت الكشوفُ القائمةُ على
- * «ضريبي» بلا نوع — قيمةٌ سابعةٌ في العمود والفلتر لا تُختار بعد اليوم.
- *
- * فيُكتب لكلّ كشفٍ عائلتُه `tax` ونوعُه فارغ: `paymentSubtype = 'deferred_invoice'`.
- * العائلةُ لا تتغيّر، فلا تتحرّك أيُّ قاعدةٍ تسأل `paymentType` (الفوترة، شاشتا
- * التحصيل، المحفظة، البطاقات).
- *
- * ── وما لا يُلمَس ───────────────────────────────────────────────────────────
- * `paymentTypeSource` يبقى كما هو: المشتقُّ يبقى مشتقًّا فتظلّ المزامنةُ وصفحةُ
- * «أنواع الدفع» تعيدان اشتقاقَه — وانتقالٌ آليٌّ داخلَ العائلة نفسِها يُبقي
- * النوعَ (راجع subtypeAfterAuto). والكشفُ يبقى يُعدَّل كأيّ كشف.
- *
- * ويُعاد تشغيلُه بلا ضرر: الشرطُ «ضريبيٌّ بلا نوع»، وما كُتب لا يطابقه ثانية.
- *
- * ── والذاكرةُ المؤقّتة ──────────────────────────────────────────────────────
- * السكربتُ عمليّةٌ منفصلة لا ذاكرةَ لها؛ يكتب أختامَ الإبطال في القاعدة
- * (ttlCache.clearShared) فيمسح العاملان ذاكرتَهما في الحال. ولو تعذّر ذلك
- * فالمهلةُ تنقضي وحدَها، أو `pm2 reload`.
+ * convertTaxToDeferredInvoice: statements marked tax with no subtype become deferred invoice. Dry run by default; --apply writes.
+ * The family stays tax and only paymentSubtype = 'deferred_invoice' is set, so rules keyed on paymentType do not move; paymentTypeSource is left so derivation stays derived.
+ * Safe to rerun. It writes invalidation stamps (ttlCache.clearShared) so both workers clear their caches.
  */
 require('dotenv').config({ quiet: true });
 const mongoose = require('mongoose');
@@ -35,7 +13,7 @@ const FILTER = {
   $or: [{ paymentSubtype: { $exists: false } }, { paymentSubtype: null }, { paymentSubtype: '' }],
 };
 
-// مَن يقرأ نوعَ الدفع ويحفظ ما قرأ — سير العمل وقسمُ التحصيل والصفحةُ الخاصّة.
+// Readers and writers of payment type: the workflow, the collections section and its dedicated page.
 const CACHE_PREFIXES = ['wf:', 'wfparty:', 'collections-dept:', 'cdr:', 'colledger:', 'opsprivate:'];
 
 async function run({ apply = APPLY, log = console.log } = {}) {

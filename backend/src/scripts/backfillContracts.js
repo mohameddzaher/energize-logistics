@@ -1,22 +1,14 @@
 /**
- * backfillContracts — عقدٌ مكتوبٌ في سجلّ الموظّف بلا مستندِ عقد.
- *
- *   node src/scripts/backfillContracts.js          تجربة
- *   node src/scripts/backfillContracts.js --yes    تنفيذ
- *
- * ── العلّة ────────────────────────────────────────────────────────────────
- * للعقد مصدران: حقولٌ على سجلّ الموظّف (`contractStartDate`/`contractEndDate`)
- * ومجموعةٌ مستقلّة (`Contract`). وصفحةُ الملفّ تقرأ المجموعة، فموظّفٌ عقدُه
- * مكتوبٌ في سجلّه وحدَه يفتح ملفَّه فلا يجد عقدًا — وهو «ساري» في سجلّه.
- *
- * أربعةٌ كذلك، أحدُهم ساري. يُنشأ لكلٍّ منهم مستندُ عقدٍ من سجلّه، فيتّفق
- * المصدران ويظهر العقدُ حيث يُبحَث عنه.
+ * backfillContracts: contract written on the employee record with no contract document.
+ * Usage: node src/scripts/backfillContracts.js (dry run) | --yes
+ * Cause: a contract has two sources, fields on the employee (contractStartDate/contractEndDate) and the separate Contract collection. The profile page reads the collection, so an employee whose contract is only on his record opens his file and sees no contract, though he is active on his record.
+ * Four such employees, one active. A contract document is created from each record so both sources agree.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
 const YES = process.argv.includes('--yes');
 
-// نصُّ الحالة في السجلّ ← حالةُ المستند.
+// Status text on the record -> document status.
 const STATUS = {
   'ساري': 'active',
   'غير ساري': 'expired',
@@ -52,7 +44,7 @@ const STATUS = {
       annualLeaveDays: Number(e.annualLeaveDays) || 21,
       employeeNameAr: e.arabicName || '',
       iqamaNumber: e.iqamaNumber || e.nationalId || '',
-      // مصدرُ المستند يُقال: وُلد من سجلّ الموظّف لا من إدخالٍ في صفحة العقود.
+      // State the document's origin: it was born from the employee record, not entered on the contracts page.
       notes: 'أُنشئ من بيانات العقد في سجلّ الموظّف (backfillContracts)',
       _num: e.employeeNumber, _name: e.arabicName,
     });

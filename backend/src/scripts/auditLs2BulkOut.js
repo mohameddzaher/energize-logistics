@@ -1,17 +1,9 @@
 /* eslint-disable no-console */
 /**
- * auditLs2BulkOut — صادر لأكتر من صنف مرة واحدة من مخزن النقل الثقيل.
- *
- *   node src/scripts/auditLs2BulkOut.js --base https://api.energize-logistics.com
- *
- * الطلب: «أعمل سيليكت لأكتر من صنف، وأقول الصادر ده على أنهي عربية، ويتسجّل على
- * كل اللي عملتله سيليكت» — وقطعة واحدة من كل صنف.
- *
- * أهم حاجة بيتأكد منها: **الرفض ما يسيبش المخزن نصّه متصرّف**. لو صنف واحد
- * رصيده صفر، مفيش صنف واحد ينقص. وإن الحركات بتدخل نفس السجل بنفس الشكل بتاع
- * الصادر المفرد — عشان المراجع ما يفرّقش بينهم ويقدر يتراجع عن أي واحدة.
- *
- * بيشتغل على أصناف بيعملها ويمسحها.
+ * Issues several items at once from the heavy transport store.
+ * Request: select several items, name the vehicle, and it is recorded on each, one piece of each item.
+ * Key check: rejection must not leave the store half-processed. If one item has zero balance, no item decreases. Movements enter the same log in the same shape as a single issue, so the reviewer cannot tell them apart and can reverse any one.
+ * Works on items it creates and deletes.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -64,7 +56,7 @@ const ok = (l, c, x = '') => { console.log(`  ${c ? '✓' : '✗ FAIL'}  ${l}${x
     const Z = await Ls2StoreItem.create({ name: 'zz-ls2b-خالص', quantity: 0, unit: 'قطعة' });
     ok('٤ أصناف اختبار (١٠ · ٤ · ١ · ٠)', true);
 
-    // ═══ ① صادر لتلات أصناف — قطعة من كل واحد ═════════════════════════════
+    // 1. Issue three items, one piece of each
     console.log('\n── صادر لتلات أصناف مرة واحدة ──');
     const r1 = await post('/api/ls2/store/bulk-out', {
       items: [A._id, B._id, C._id], vehiclePlate: '5010', reason: 'تيست',
@@ -75,7 +67,7 @@ const ok = (l, c, x = '') => { console.log(`  ${c ? '✓' : '✗ FAIL'}  ${l}${x
     ok(`قطعة واحدة نزلت من كل صنف (${await qty(A._id)}/${await qty(B._id)}/${await qty(C._id)})`,
       (await qty(A._id)) === 9 && (await qty(B._id)) === 3 && (await qty(C._id)) === 0);
 
-    // الحركات في نفس السجل وبنفس الشكل
+    // Movements are in the same log and the same shape.
     const mvs = await Ls2StoreMovement.find({ itemName: { $regex: '^zz-ls2b' } }).lean();
     ok('٣ حركات اتكتبت في نفس السجل', mvs.length === 3);
     ok('كلها صادر على نفس العربية وبنفس السبب',
@@ -83,11 +75,11 @@ const ok = (l, c, x = '') => { console.log(`  ${c ? '✓' : '✗ FAIL'}  ${l}${x
     ok('وكل واحدة معاها الرصيد بعدها واسم اللي عملها',
       mvs.every((m) => typeof m.balanceAfter === 'number' && m.performedByName));
 
-    // ولسه ينفع يتراجع عن أي واحدة زي الصادر المفرد
+    // Any one can still be reversed like a single issue.
     const rev = await post(`/api/ls2/store/movements/${mvs[0]._id}/reverse`, { reason: 'تيست تراجع' });
     ok('التراجع عن حركة منهم شغّال', rev.status === 200 || rev.status === 201, `HTTP ${rev.status}`);
 
-    // ═══ ② الرفض الكامل ═══════════════════════════════════════════════════
+    // 2. Full rejection
     console.log('\n── صنف واحد رصيده مش كافي ⇒ الكل يترفض ──');
     const before = { a: await qty(A._id), b: await qty(B._id), z: await qty(Z._id) };
     const r2 = await post('/api/ls2/store/bulk-out', {
@@ -100,7 +92,7 @@ const ok = (l, c, x = '') => { console.log(`  ${c ? '✓' : '✗ FAIL'}  ${l}${x
     ok(`ومفيش صنف نقص (${await qty(A._id)}/${await qty(B._id)}/${await qty(Z._id)})`,
       (await qty(A._id)) === before.a && (await qty(B._id)) === before.b && (await qty(Z._id)) === before.z);
 
-    // ═══ ③ الكمية من كل صنف ═══════════════════════════════════════════════
+    // 3. Quantity per item
     console.log('\n── كمية أكبر من واحد ──');
     const a0 = await qty(A._id);
     const r3 = await post('/api/ls2/store/bulk-out', { items: [A._id], quantityEach: 3, vehiclePlate: '5012' });
@@ -109,18 +101,18 @@ const ok = (l, c, x = '') => { console.log(`  ${c ? '✓' : '✗ FAIL'}  ${l}${x
     const r4 = await post('/api/ls2/store/bulk-out', { items: [A._id, B._id], quantityEach: 99 });
     ok('كمية أكبر من رصيد أي صنف ⇒ مرفوض', r4.status === 400, `HTTP ${r4.status}`);
 
-    // ═══ ④ التحقق ═════════════════════════════════════════════════════════
+    // 4. Validation
     console.log('\n── التحقق ──');
     ok('من غير أصناف ⇒ مرفوض', (await post('/api/ls2/store/bulk-out', { items: [] })).status === 400);
     ok('صنف مش موجود ⇒ مرفوض',
       (await post('/api/ls2/store/bulk-out', { items: [new mongoose.Types.ObjectId()] })).status === 400);
-    // نفس الصنف متكرّر في الاختيار = مرة واحدة (Set)
+    // The same item repeated in the selection counts once (Set).
     const b0 = await qty(B._id);
     const r5 = await post('/api/ls2/store/bulk-out', { items: [B._id, B._id, B._id] });
     ok('الصنف المتكرّر في الاختيار بيتحسب مرة واحدة', r5.status === 201 && (await qty(B._id)) === b0 - 1,
       `${b0} → ${await qty(B._id)}`);
 
-    // ═══ ⑤ كمية مختلفة لكل صنف ═══════════════════════════════════════════
+    // 5. Different quantity per item
     console.log('\n── كمية مختلفة لكل صنف ──');
     const before5 = { a: await qty(A._id), b: await qty(B._id), c: await qty(C._id) };
     await Ls2StoreItem.updateOne({ _id: B._id }, { $set: { quantity: 9 } });
@@ -140,7 +132,7 @@ const ok = (l, c, x = '') => { console.log(`  ${c ? '✓' : '✗ FAIL'}  ${l}${x
     ok(`الملخّص: ${mixed.body?.summary?.items} صنف · ${mixed.body?.summary?.totalQty} قطعة`,
       mixed.body?.summary?.items === 3 && mixed.body?.summary?.totalQty === 7);
 
-    // ═══ ⑥ الوارد بنفس المسار ═════════════════════════════════════════════
+    // 6. Receipts through the same path
     console.log('\n── وارد جماعي بكميات مختلفة ──');
     const b6 = { b: await qty(B._id), z: await qty(Z._id) };
     const inMv = await post('/api/ls2/store/bulk-movement', {
@@ -155,13 +147,13 @@ const ok = (l, c, x = '') => { console.log(`  ${c ? '✓' : '✗ FAIL'}  ${l}${x
     ok('واتسجّلت كحركات وارد في نفس السجل', inMvs.length === 2 && inMvs.every((m) => m.reason === 'توريد'),
       `${inMvs.length} حركة`);
 
-    // كمية غلط ⇒ الكل يترفض
+    // A wrong quantity rejects everything.
     const badQ = await post('/api/ls2/store/bulk-movement', {
       type: 'out', lines: [{ item: A._id, quantity: 1 }, { item: B._id, quantity: 0 }],
     });
     ok('كمية صفر في سطر ⇒ الكل يترفض', badQ.status === 400, `HTTP ${badQ.status}`);
 
-    // ═══ ⑦ الصادر المفرد ما اتكسرش ════════════════════════════════════════
+    // 7. Single issue still works
     console.log('\n── الصادر المفرد ──');
     const a1 = await qty(A._id);
     const single = await post(`/api/ls2/store/${A._id}/movement`, { type: 'out', quantity: 2, vehiclePlate: '5013' });

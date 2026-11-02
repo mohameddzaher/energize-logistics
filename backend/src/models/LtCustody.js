@@ -1,23 +1,7 @@
 /**
- * عهدةُ النقل الخفيف — ثلاثةُ حسابات: الكاش، وكارت المشتريات، والورشة.
- *
- * كلُّ قيدٍ واردٌ أو صادرٌ على حسابٍ واحد، ورصيدُ الحساب مجموعُ وارده ناقصَ صادره —
- * يُحسَب عند القراءة ولا يُخزَّن، فلا يختلف رقمٌ عن قيوده.
- *
- * ── من أين يأتي الوارد ──────────────────────────────────────────────────────
- *   الكاش    ← الكارت · الورشة · البنك · مندوب (يردّ مالًا: برقم إقامته كالصادر)
- *   الكارت   ← البنك
- *   الورشة   ← الصيانة
- *
- * ── وإلى أين يذهب الصادر ────────────────────────────────────────────────────
- *   متحمِّل: مندوبٌ (برقم إقامته — وبياناتُه تُقرأ من الموارد البشريّة وتُلقَط
- *   هنا) أو الشركة (ويُكتب البيان: ماء، كهرباء، صيانة…).
- *   والكارتُ والورشةُ يصرفان إلى الكاش أيضًا.
- *
- * ── والتحويلُ قيدان بضغطة ──────────────────────────────────────────────────
- * «من الكارت إلى الكاش» صادرٌ على الكارت وواردٌ على الكاش بالمبلغ نفسِه. يُكتبان
- * معًا ويحملان `transferId` واحدًا — فلا يُسجَّل طرفٌ ويُنسى الآخر، ولا يُحذَف
- * أحدُهما ويبقى أخوه فيختلّ الرصيدان.
+ * Light transport custody: three accounts (cash, purchases card, workshop). Every entry is in or out on one account; the balance is ins minus outs, computed on read and never stored.
+ * Inbound sources: cash from card, workshop, bank or a rep; card from bank; workshop from maintenance. Outbound goes to a rep (by residence number, data captured from HR) or the company (with a statement); card and workshop can also pay out to cash.
+ * A transfer is two entries sharing one `transferId`, written together so neither side is recorded or deleted alone.
  */
 const mongoose = require('mongoose');
 const { ACCOUNTS, IN_SOURCES, TO_CASH, buildCustodySchema } = require('./custodyLedger');

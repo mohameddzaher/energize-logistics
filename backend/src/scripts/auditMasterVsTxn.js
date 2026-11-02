@@ -6,7 +6,7 @@ const fold = (s) => String(s || '').toLowerCase()
   .replace(/[أإآٱ]/g, 'ا').replace(/[ىئ]/g, 'ي').replace(/[ةه]/g, 'ه').replace(/ؤ/g, 'و')
   .replace(/[ً-ْـ]/g, '').replace(/[()\-_.,]/g, ' ').replace(/\s+/g, ' ').trim();
 
-// أوراقُ الهويّة: الحسابُ وصاحبُه ومسؤولُه.  |  أوراقُ الحركة: فواتيرُ وشحنات.
+// Identity sheets: account, owner, manager. Transaction sheets: invoices and shipments.
 const MASTER = [['Aging', 4, 0, 1], ['Aging Shipment', 4, 0, 1], ['JP', 6, 0, 1]];
 const TXN = [['Daily Invoice Report', 5, 0, 1], ['Shipment Report', 4, 0, 2]];
 const wb = XLSX.readFile(FILE);
@@ -35,7 +35,7 @@ clash.forEach(([code, m]) => {
   console.log(`  ${code}:`);
   [...m.values()].forEach((v) => console.log(`     «${v.name}»  [${[...v.sheets].join(', ')}]`));
 });
-// أسماءٌ تظهر في الحركة ولا تُعرَف في الهويّة لنفس الكود
+// Names that appear in transactions but are not known in the identity sheets for the same code.
 let mism = 0;
 for (const [code, tm] of txn) {
   const mm = master.get(code); if (!mm) continue;

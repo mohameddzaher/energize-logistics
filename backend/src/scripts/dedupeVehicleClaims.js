@@ -1,18 +1,9 @@
 /* eslint-disable no-console */
 /**
- * dedupeVehicleClaims — الواقعة الواحدة سجلٌّ واحد.
- *
- *   node src/scripts/dedupeVehicleClaims.js --dry
- *   node src/scripts/dedupeVehicleClaims.js --yes
- *
- * ملفّا المركبات المتتاليان رقّما الحوادث بصيغتين: ACC-001 في الأول و ACC-0001
- * في الثاني. فصارت الواقعة الواحدة سجلَّين، والعدّاد يقول ٤٩ حادثًا وهي ٢٥.
- *
- * المطابقة **برقم الحادث** (رقم نجم) لا بالمعرّف: هو الرقم الرسمي للواقعة،
- * ولا يتغيّر بتغيّر ترقيم الملفات.
- *
- * والقديم يُطوى لا يُحذف: قد يكون أحدهم فتح مطالبةً عليه أو أشار إليه، والمسح
- * يقطع ذلك ولا يمكن استرجاعه. الطيّ يخرجه من العدّادات ويُبقي أثره.
+ * dedupeVehicleClaims: one incident is one record.
+ * --dry previews, --yes applies.
+ * Two vehicle files numbered incidents as ACC-001 and ACC-0001, doubling the count.
+ * Matching is by the official incident number, which survives renumbering. The old record is folded, not deleted, since claims may reference it and deletion is irreversible; folding removes it from counters but keeps its trace.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -26,7 +17,7 @@ const S = (v) => String(v ?? '').trim();
   const { VehicleMaster } = require('../models/VehicleMaster');
 
   const all = await VehicleClaim.find({ isActive: true }).lean();
-  // الأحدث = الذي صيغته ACC-0000 (أربعة أرقام) — ملف ٢٣ أغسطس.
+  // Newer record is the one in ACC-0000 format (four digits).
   const isNew = (c) => /^ACC-\d{4}$/.test(String(c.claimId || ''));
 
   const byNumber = new Map();
@@ -53,11 +44,7 @@ const S = (v) => String(v ?? '').trim();
       + `   ${f.keep.vehiclePlate || f.keep.incidentSubjectAr || ''}`);
   }
 
-  // ── ما لا رقمَ له ─────────────────────────────────────────────────────────
-  // الواقعة بلا رقم نجم (مطالبة بضاعة مثلًا) لا تُطابَق بالرقم. نطابقها بالمبلغ
-  // المقدَّر مع التاريخ — وهما معًا نادرا التكرار — ثم **نُدمج** لا نطوي: الملف
-  // الجديد فقد الموضوع واسم شركة التأمين، والقديم يحملهما. الطيّ وحده كان
-  // سيضيّعهما.
+  // Incidents without an incident number (for example a goods claim) cannot match by number. Match by estimated amount plus date, which rarely collide together, then merge rather than fold: the newer record lacks the subject and insurer name that the older one holds.
   const noNumber = all.filter((c) => !String(c.accidentNumber || '').trim());
   const merges = [];
   const byAmount = new Map();
@@ -71,7 +58,7 @@ const S = (v) => String(v ?? '').trim();
     const keep = group.find(isNew) || group[0];
     for (const c of group) {
       if (String(c._id) === String(keep._id)) continue;
-      // ما يحمله القديم وينقص الجديد ينتقل إليه قبل الطيّ.
+      // Fields the old record has and the new one lacks are copied over before folding.
       const fill = {};
       if (!S(keep.incidentSubjectAr) && S(c.incidentSubjectAr)) fill.incidentSubjectAr = c.incidentSubjectAr;
       if (!S(keep.claim?.insurerAr) && S(c.claim?.insurerAr)) fill['claim.insurerAr'] = c.claim.insurerAr;
@@ -112,7 +99,7 @@ const S = (v) => String(v ?? '').trim();
         },
       });
     }
-    // عدّاد حوادث المركبة يُعاد حسابه بعد الطيّ
+    // The vehicle's incident counter is recomputed after folding.
     await VehicleMaster.updateMany({}, { $set: { accidentCount: 0 } });
     const keys = [...new Set((await VehicleClaim.find({ isActive: true }).select('vehiclePlateKey').lean())
       .map((c) => c.vehiclePlateKey).filter(Boolean))];

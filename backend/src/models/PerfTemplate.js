@@ -1,12 +1,6 @@
 /**
- * PerfTemplate — one department's (or one job-family's) evaluation form: the
- * list of criteria (مؤشرات), each with its weight, its description, its data
- * source and its 1..5 wording.
- *
- * A department can have SEVERAL templates, because the same department grades
- * different jobs differently — e.g. النقل الثقيل runs التشغيل / خدمة العملاء /
- * المتابعة as three separate forms, each summing to 100% on its own.
- *
+ * PerfTemplate: one department's (or job family's) evaluation form: the criteria, each with weight, description, data source and 1..5 wording.
+ * A department can have SEVERAL templates because it grades different jobs differently (e.g. heavy transport has separate operations, customer service and follow-up forms, each summing to 100%).
  * Only super-admin may create or edit these (enforced in the routes).
  */
 const mongoose = require('mongoose');
@@ -15,7 +9,7 @@ const { DEFAULT_SCALE } = require('../config/performanceConfig');
 const scalePointSchema = new mongoose.Schema({
   score: { type: Number, required: true, min: 1, max: 5 },
   label: { type: String, default: '' },      // English wording
-  labelAr: { type: String, default: '' },    // Arabic wording ("بلا غرامات")
+  labelAr: { type: String, default: '' },    // Arabic wording of the level, e.g. no fines
 }, { _id: false });
 
 const criterionSchema = new mongoose.Schema({
@@ -27,7 +21,7 @@ const criterionSchema = new mongoose.Schema({
   titleAr: { type: String, required: true, trim: true },
   description: { type: String, default: '' },
   descriptionAr: { type: String, default: '' },
-  dataSource: { type: String, default: '' },   // "مصدر البيانات" — where the evidence comes from
+  dataSource: { type: String, default: '' },   // Data source: where the evidence comes from
   dataSourceAr: { type: String, default: '' },
   weight: { type: Number, required: true, min: 0, max: 100 }, // percent of this form
   scale: { type: [scalePointSchema], default: () => DEFAULT_SCALE.map((s) => ({ score: s.score, label: s.en, labelAr: s.ar })) },

@@ -1,22 +1,7 @@
 /**
- * linkCustomerHub — يربط كلَّ عميلٍ في كلّ قسمٍ بشركة العلاقات الأمّ، مرّةً واحدة
- * (صاحبُ الشركة، ٢٠٢٦/١٠/٢٤). وما يأتي بعده يربطه services/customerHub وحدَه.
- *
- *   node src/scripts/linkCustomerHub.js            ← تجربة: أرقامٌ وتعارضات، بلا كتابة
- *   node src/scripts/linkCustomerHub.js --apply
- *
- * القاعدة:
- *   · المجموعةُ = الاسمُ المطويّ (CollectionsParty.fold) — وصيغُ اسم طرف التحصيل
- *     البديلة (aliasKeys) تُلحق بمجموعته، واسمُ العلاقات العربيُّ كذلك.
- *   · الأمُّ: شركةُ علاقاتٍ في المجموعة (من المنصّة أوّلًا، ثمّ أكملُها بيانات)؛
- *     وإن لم تكن تُنشأ — فالعلاقاتُ فيها كلُّ العملاء. وأيُّ شركة علاقاتٍ ثانيةٍ
- *     بالاسم نفسِه تُذكر للمراجعة ولا تُدمج.
- *   · البطاقة: البريدُ مجموعُ ما في المجموعة كلِّها؛ وكلُّ حقلٍ آخر أوّلُ قيمةٍ
- *     موجودة (العلاقات ← التحصيل ← الشحنات ← التخليص ← الأسطول ← العقود).
- *   · لا يُكتب فوق قيمةٍ موجودة: يُملأ الفارغُ وحدَه، وما اختلف يُذكر تعارضًا.
- *   · ولكلّ أمٍّ صفٌّ في «إدارة العقود» — يُنشأ إن لم يكن.
- *
- * يُعاد تشغيلُه بلا ضرر.
+ * Links every customer in every section to the parent relations company, once; later links are handled by services/customerHub.
+ * Usage: node src/scripts/linkCustomerHub.js [--apply] (dry run by default).
+ * Group = folded name plus collection aliases and the Arabic relations name. Parent = the relations company in the group, created if absent; a second same-name company is reported, not merged. Emails are unioned, other fields take the first existing value, existing values are never overwritten (differences reported as conflicts), and each parent gets a contracts row. Safe to rerun.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -33,7 +18,7 @@ const S = (v) => String(v == null ? '' : v).trim();
   const contractKey = require('../controllers/contractsController').nameKey;
   const ORDER = ['crm', 'collections', 'shipment', 'customs', 'fleet', 'contracts'];
 
-  // ── القراءة ─────────────────────────────────────────────────────────────
+  // Read phase.
   const rows = {};
   for (const reg of ORDER) {
     rows[reg] = await REG[reg].model().collection.find(REG[reg].base).toArray();
@@ -50,7 +35,7 @@ const S = (v) => String(v == null ? '' : v).trim();
       keyOfDoc.set(String(d._id), key);
     }
   }
-  // صيغُ التحصيل البديلة: مجموعةُ الصيغة تُضمّ إلى مجموعة الطرف.
+  // Alternate collection spellings: the alias group joins the party's group.
   for (const d of rows.collections) {
     const main = keyOfDoc.get(String(d._id));
     for (const ak of d.aliasKeys || []) {
@@ -63,7 +48,7 @@ const S = (v) => String(v == null ? '' : v).trim();
   }
   const uniq = [...new Set(groups.values())];
 
-  // ── الخطّة ─────────────────────────────────────────────────────────────
+  // Plan phase.
   const stats = { groups: uniq.length, newCrm: 0, newContracts: 0, linked: {}, filled: {}, conflicts: 0, crmDupGroups: 0 };
   ORDER.forEach((r) => { stats.linked[r] = 0; stats.filled[r] = 0; });
   const conflicts = []; const crmDups = [];
@@ -76,7 +61,7 @@ const S = (v) => String(v == null ? '' : v).trim();
       || CARD.filter((f) => !empty(REG.crm.read(b.doc)[f])).length - CARD.filter((f) => !empty(REG.crm.read(a.doc)[f])).length);
     if (crms.length > 1) { stats.crmDupGroups += 1; crmDups.push({ name: crms[0].doc.name, ids: crms.map((x) => String(x.doc._id)) }); }
 
-    // البطاقة: البريدُ مجموعٌ، والباقي أوّلُ موجود.
+    // Card: emails are unioned, other fields take the first existing value.
     const card = { emails: [] };
     for (const reg of ORDER) {
       for (const r of g.recs.filter((x) => x.reg === reg)) {
@@ -105,13 +90,13 @@ const S = (v) => String(v == null ? '' : v).trim();
         });
       }
     } else if (APPLY) {
-      // الأمُّ: مفتاحُ الاسم، والفارغُ من بطاقتها، والبريدُ مجموعًا.
+      // Parent: name key, empty fields of its card, emails unioned.
       const mc = REG.crm.read(master); const set = { nameKey: g.key };
       for (const f of CARD) if (f === 'emails' ? card.emails.length > mc.emails.length : (empty(mc[f]) && !empty(card[f]))) Object.assign(set, f === 'emails' ? { emails: card.emails, email: mc.emails[0] || card.emails[0] || '' } : { [f]: card[f] });
       await crm.updateOne({ _id: master._id }, { $set: set });
     }
 
-    // كلُّ صفٍّ في المجموعة: رابطٌ، وما ينقصه من البطاقة.
+    // Every row in the group gets the link and whatever the card lacks.
     for (const { reg, doc } of g.recs) {
       if (reg === 'crm') continue;
       const R = REG[reg]; const cur = R.read(doc);
@@ -130,7 +115,7 @@ const S = (v) => String(v == null ? '' : v).trim();
       if (APPLY && Object.keys(set).length) await R.model().collection.updateOne({ _id: doc._id }, { $set: set });
     }
 
-    // و«إدارة العقود» فيها كلُّ العملاء.
+    // The contracts section holds all customers.
     if (!g.recs.some((r) => r.reg === 'contracts')) {
       const ck = contractKey(master.name);
       const exists = ck ? await REG.contracts.model().collection.findOne({ nameKey: ck }) : true;

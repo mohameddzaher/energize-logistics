@@ -1,11 +1,8 @@
-/**
- * /api/b2c-wallet — custody (عهدة) wallets for B2C project managers.
- * Separate route file + path so it can't interfere with the existing B2C module.
- */
+/** /api/b2c-wallet: custody wallets for B2C project managers. Separate route file and path so it cannot interfere with the existing B2C module. */
 const express = require('express');
 const router = express.Router();
 
-// معرّفٌ مشوَّهٌ في الرابط = لا سجلّ، لا عطلٌ في الخادم — راجع utils/idParam.
+// A malformed id in the URL means no record, not a server error; see utils/idParam.
 const { objectIdParam } = require('../utils/idParam');
 router.param('id', objectIdParam());
 router.param('managerId', objectIdParam());
@@ -16,7 +13,7 @@ const c = require('../controllers/b2cWalletController');
 const ALL = ['super_admin', 'admin', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead'];
 
 router.use(authenticate);
-// العهدةُ لمديري المشاريع — ومشرفُ المناديب لا عهدةَ له هنا.
+// Custody is for project managers; the rep supervisor has none here.
 router.use((req, res, next) => (require('../middleware/b2cGuards').isRepSupervisor(req.user)
   ? res.status(403).json({ message: 'عهد المشاريع لمديري المشاريع ومدير القطاع فقط' })
   : next()));

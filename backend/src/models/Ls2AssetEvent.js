@@ -1,9 +1,6 @@
 /**
- * Ls2AssetEvent — سجل حركة الأصول: the append-only history behind the tire &
- * trailer registry. One row = one thing that happened to one asset (registered,
- * mounted, removed, transferred, retired, edited), with where it came from and
- * where it went. Vehicle profiles, tire profiles and trailer profiles all read
- * their timelines from here — nothing is ever rewritten.
+ * Ls2AssetEvent: append-only history of tire and trailer assets. One row per event (registered, mounted, removed, transferred, retired, edited) with origin and destination.
+ * Vehicle, tire and trailer profiles read their timelines from here; rows are never rewritten.
  */
 const mongoose = require('mongoose');
 
@@ -13,15 +10,13 @@ const ls2AssetEventSchema = new mongoose.Schema({
   label: { type: String, default: '' },     // serial for tires, trailer number for trailers
   action: {
     type: String,
-    // `to_store` رجوعُ الفردة إلى الرفّ بأمرٍ مباشر — كان يُرسَل ولا يوجد في
-    // القائمة، فيُحفظ تغييرُ الحالة ثم يسقط تسجيلُ الحدث ويعود الردّ خطأً:
-    // الفردة تنتقل والشاشة تقول «فشل»، فيُعاد النقل مرّةً بعد مرّة.
+    // `to_store`: a tire returned to the shelf by direct order. It was missing from the list, so the status change saved but the event failed and the response errored, causing repeated transfers.
     enum: ['registered', 'mounted', 'removed', 'transferred', 'retired', 'updated', 'to_repair', 'from_repair', 'to_store', 'renewed', 'scrapped', 'damaged', 'sold'],
     required: true,
   },
   fromPlate: { type: String, default: null },
   fromPlateKey: { type: String, default: null, index: true },
-  fromPosition: { type: String, default: '' },   // human label ("اطار 3 خارجي يمين — المحور الخلفي")
+  fromPosition: { type: String, default: '' },   // Human label, e.g. outer right tire 3, rear axle
   toPlate: { type: String, default: null },
   toPlateKey: { type: String, default: null, index: true },
   toPosition: { type: String, default: '' },
@@ -30,7 +25,7 @@ const ls2AssetEventSchema = new mongoose.Schema({
   // The tire as it stood right after this event; later edits must not rewrite history.
   stateAfter: { type: String, default: '' },
   percentAfter: { type: Number, default: null },
-  reason: { type: String, default: '' },         // سبب النقل/الإزالة
+  reason: { type: String, default: '' },         // Reason for the transfer/removal
   notes: { type: String, default: '' },
   performedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   performedByName: { type: String, default: '' },

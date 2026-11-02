@@ -1,13 +1,8 @@
 /**
- * auditBillingFlow — دورةُ الفوترة والتحصيل، مفحوصةً حيّةً من طرفها إلى طرفها.
- *
- *   node src/scripts/auditBillingFlow.js
- *
- * لا يفحص أنّ الكودَ يُحمَّل: يمرّ بالمسار الذي يمرّ به الموظّف — يختار كاشًا
- * فيقفل ما يجب أن يُقفَل، ويكتب صافيَ فاتورةٍ فتُشتقّ ضريبتُها، ويحصّل فاتورةً
- * فيها كشوفٌ فيصلها التاريخُ كلَّها — ثمّ يسأل القاعدةَ هل جرى ما قيل إنّه جرى.
- *
- * لا يترك أثرًا: كشوفُه تُنشأ وتُحذف، وما يمسّه من صفوفٍ حقيقيّةٍ يُعاد كما كان.
+ * auditBillingFlow: the billing and collections cycle, tested live end to end.
+ * node src/scripts/auditBillingFlow.js
+ * It does not check that the code loads: it follows the path an employee takes, choosing cash so what must lock locks, writing an invoice net so its tax is derived, collecting an invoice with manifests so the date reaches all of them, then asks the database whether what was said to happen happened.
+ * Leaves no trace: its manifests are created and deleted, and real rows it touches are restored.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -15,9 +10,7 @@ const mongoose = require('mongoose');
 const argv = process.argv.slice(2);
 const iB = argv.indexOf('--base');
 const BASE = (iB >= 0 && argv[iB + 1] ? argv[iB + 1] : process.env.BASE || 'http://localhost:5599').replace(/\/$/, '');
-// المصدرُ يتبع الخادمَ الذي نفحصه لا ملفَّ البيئة المحلّيّ: حارسُ CSRF يقبل
-// مصادرَ البرودكشن وحدها، فإرسالُ `localhost` إليه يردّ ٤٠٣ على كلّ POST — وهو
-// ما يبدو عطبًا في الميزة وهو عطبٌ في الفحص.
+// The origin follows the server being tested, not the local env file: the CSRF guard accepts only production origins, so sending `localhost` gets 403 on every POST, which looks like a feature fault but is a fault in the check.
 const ORIGIN = /api\.energize-logistics\.com/.test(BASE)
   ? 'https://energize-logistics.com'
   : (process.env.FRONTEND_URL?.split(',')[0].trim() || 'http://localhost:3000');
@@ -49,10 +42,7 @@ const call = async (method, path, ck, body) => {
   const User = require('../models/User');
   const OperationsWorkflow = require('../models/OperationsWorkflow');
 
-  // ── ولا يعتمد الفحصُ على حساب إنسان ────────────────────────────────────
-  // كان يدخل بحسابٍ يعمل به موظّفٌ حقيقيّ وكلمةِ مروره. فلمّا غيّرها — وهو
-  // حقُّه — سقط الفحصُ كلُّه بسببٍ لا علاقةَ له بما يفحص، فقُرئ كأنّ القسمَ
-  // تعطّل. وأسوأُ منه أنّ محاولاتِ الدخول تتكرّر على حسابٍ يعمل به إنسان.
+  // The check does not depend on a person's account. It used to sign in with an account a real employee works with, and his password; when he changed it (his right) the whole check failed for a reason unrelated to what it tests and read as if the section broke. Worse, login attempts repeated on an account a person uses.
   const su = await User.findOne({ role: 'super_admin', isActive: true }).select('email').lean();
   await User.deleteMany({ email: /^zz-bill/ });
   const mgrUser = await User.create({
@@ -62,9 +52,8 @@ const call = async (method, path, ck, body) => {
   const admin = await login(mgrUser.email, 'Passenergize1!');
   ok('دخول مدير التحصيل', admin.status === 200, `${admin.status}`);
 
-  // السوبر أدمن يملك كلَّ الحقول — به تُنشأ كشوفُ الفحص.
-  // المحفظةُ تُقيَّد على فرع، فحسابُ الفحص يأخذ فرعًا حقيقيًّا وإلّا رُدَّت
-  // حركاتُه بـ«لا يوجد فرع» — وهو شرطٌ صحيحٌ لا عيبٌ يُلتَفّ عليه.
+  // The super admin owns all fields, so the check manifests are created with it.
+  // The wallet is restricted to a branch, so the check account takes a real branch, otherwise its entries are rejected with no-branch, which is a correct rule, not a flaw to work around.
   const Branch = require('../models/Branch');
   const branch = await Branch.findOne({}).select('_id name').lean();
   const opUser = await User.create({
@@ -84,7 +73,7 @@ const call = async (method, path, ck, body) => {
   };
 
   try {
-    // ── ١ · اشتقاقُ الضريبة والإجماليّ ───────────────────────────────────
+    // 1. Tax and total derivation.
     head('الضريبة والإجمالي يُشتقّان من الصافي');
     const tax1 = await mk({ paymentType: 'tax', sellingValue: 1000 });
     ok('كشفٌ ضريبيّ يُنشأ', tax1.status === 201, `${tax1.status}`);
@@ -95,13 +84,13 @@ const call = async (method, path, ck, body) => {
     ok('صافي ١٠٠٠ ← ضريبة ١٥٠', db1.tax === 150, `الضريبة=${db1.tax}`);
     ok('وإجمالي ١١٥٠', db1.totalInvoice === 1150, `الإجمالي=${db1.totalInvoice}`);
 
-    // ولا يُكتب فوقهما بيد: الرقمُ المشتقُّ يُعاد اشتقاقُه.
+    // They are not overwritten by hand: a derived number is derived again.
     await call('PUT', `/api/workflows/${id1}`, op.ck, { netInvoice: 2000, tax: 999, totalInvoice: 999 });
     const db1b = await OperationsWorkflow.findById(id1).select('tax totalInvoice').lean();
     ok('الكتابةُ اليدويّة فوق المشتقّ لا تثبت', db1b.tax === 300 && db1b.totalInvoice === 2300,
       `الضريبة=${db1b.tax} الإجمالي=${db1b.totalInvoice}`);
 
-    // ── ٢ · الكاش يُقفل أعمدةَ الفاتورة ──────────────────────────────────
+    // 2. Cash locks the invoice columns.
     head('الكاش يُقفل ما لا يُفوتَر');
     const cash1 = await mk({ paymentType: 'cash', sellingValue: 500, netInvoice: 400, documentNumber: 'ZZ-1' });
     const cid = cash1.json?._id;
@@ -113,18 +102,16 @@ const call = async (method, path, ck, body) => {
       `سند=${dbc.documentNumber}`);
     ok('وتواريخُ الإرسال والتسليم والفاتورة فارغة', !dbc.sendingDate && !dbc.deliveryDate && !dbc.invoiceDate);
 
-    // نوعٌ نقديٌّ مختارٌ مع رقم فاتورةٍ في التعديل نفسِه — تناقضٌ يُرفض. (أمّا الرقمُ
-    // وحدَه فيجعل الكشفَ «آجل - فاتورة» — يُفحص على كشفٍ آخر أدناه.)
+    // A cash type chosen together with an invoice number in the same edit is a contradiction and is rejected. (The number alone makes the manifest deferred-with-invoice; checked on another manifest below.)
     const blocked = await call('PUT', `/api/workflows/${cid}`, op.ck, { paymentType: 'cash_3pl', invoiceNumber: 'ZZ-INV', netInvoice: 900 });
     const dbc2 = await OperationsWorkflow.findById(cid).select('invoiceNumber netInvoice').lean();
     ok('نوعٌ نقديٌّ مع رقم فاتورة يُرفض باسمه',
       blocked.status === 400 && blocked.json?.code === 'CASH_INVOICE_NUMBER', `${blocked.status}`);
-    // المقفولُ يُقرأ صفرًا كما طُلب («يتكتب جواهم رقم صفر») — والمهمّ أنّ ما
-    // كتبه المستخدمُ لم يمرّ: لا «ZZ-INV» ولا ٩٠٠.
+    // The locked columns read zero as requested; what matters is that what the user wrote did not go through: neither 'ZZ-INV' nor 900.
     ok('ولم يمرّ ما كتبه المستخدم', dbc2.invoiceNumber === '0' && dbc2.netInvoice === 0,
       `فاتورة=${dbc2.invoiceNumber} صافي=${dbc2.netInvoice}`);
 
-    // ورقمُ فاتورةٍ وحدَه على كشفٍ نقديّ يجعله «آجل - فاتورة» ويُقبل (صاحبُ الشركة، ٢٠٢٦/١٠/٢٥).
+    // An invoice number alone on a cash manifest makes it deferred-with-invoice and is accepted.
     const cash2 = await mk({ paymentType: 'cash_3pl', sellingValue: 500 });
     const turned = await call('PUT', `/api/workflows/${cash2.json?._id}`, op.ck, { invoiceNumber: 'ZZ-INV-2' });
     const dbt = await OperationsWorkflow.findById(cash2.json?._id).select('paymentType paymentSubtype invoiceNumber').lean();
@@ -132,13 +119,13 @@ const call = async (method, path, ck, body) => {
       turned.status === 200 && dbt.paymentType === 'tax' && dbt.paymentSubtype === 'deferred_invoice' && dbt.invoiceNumber === 'ZZ-INV-2',
       `${turned.status} · ${dbt.paymentType}/${dbt.paymentSubtype} · ${dbt.invoiceNumber}`);
 
-    // والتحصيلُ يبقى مفتوحًا على النقديّ — وهو عملُ القسم فيه.
+    // Collection stays open on cash, which is the section's work on it.
     const openOnCash = await call('PUT', `/api/workflows/${cid}`, op.ck, { accountingReview: 'تم', collectedAmount: 480 });
     const dbc3 = await OperationsWorkflow.findById(cid).select('accountingReview collectedAmount').lean();
     ok('مراجعةُ الحسابات ومبلغُ التحصيل مفتوحان', openOnCash.status === 200 && dbc3.collectedAmount === 480,
       `${openOnCash.status} · مبلغ=${dbc3.collectedAmount}`);
 
-    // ── ٣ · صفحةُ فواتير الكاش ───────────────────────────────────────────
+    // 3. Cash invoices page.
     head('صفحة فواتير الكاش');
     await OperationsWorkflow.updateOne({ _id: cid }, {
       $set: { paymentDate: new Date(), payingBranch: 'جده', paymentAmount: 450, collectedAmount: 0, collectionDate: null },
@@ -149,7 +136,7 @@ const call = async (method, path, ck, body) => {
     ok('ومعه العميلُ والفرعُ وتاريخُ السداد', !!row?.customer && row?.payingBranch === 'جده' && !!row?.paymentDate);
     ok('ولا يُعرَض مبلغُ السداد', row && !('paymentAmount' in row), Object.keys(row || {}).join(', ').slice(0, 60));
 
-    // ── ٤ · الفاتورةُ الضريبيّة تجمع كشوفًا ───────────────────────────────
+    // 4. A tax invoice groups manifests.
     head('الفاتورة الواحدة تضمّ كشوفًا');
     const invNo = `ZZ-INV-${stamp}`;
     const t2 = await mk({ paymentType: 'tax', sellingValue: 700 });
@@ -165,14 +152,14 @@ const call = async (method, path, ck, body) => {
     const inv = (taxPage.json?.invoices || []).find((x) => x.invoiceNumber === invNo);
     ok('تظهر صفًّا واحدًا لا ثلاثة', !!inv && taxPage.json.total === 1, `${taxPage.json?.total} صفًّا`);
     ok('وعددُ كشوفها ثلاثة', inv?.reports === 3, `${inv?.reports}`);
-    // ٢٣٠٠ (المعدَّل) + صفرٌ للاثنين اللذين لم يُفوتَرا صافيًا بعد
+    // 2300 (the edited one) plus zero for the two not yet invoiced with a net.
     ok('وقيمتُها مجموعُ إجماليّات كشوفها', inv?.value === 2300, `${inv?.value}`);
 
     const detail = await call('GET', `/api/collections-dept/invoices/tax/${encodeURIComponent(invNo)}`, admin.ck);
     ok('وتُفتح بتفاصيل كشوفها', detail.status === 200 && detail.json?.reports?.length === 3,
       `${detail.json?.reports?.length} كشوف`);
 
-    // ── ٥ · التحصيل يصل الكشوفَ كلَّها ───────────────────────────────────
+    // 5. Collection reaches all the manifests.
     head('تحصيل الفاتورة يصل كشوفَها كلَّها');
     const collected = await call('POST', '/api/collections-dept/invoices/collect', admin.ck, {
       invoiceNumber: invNo, collectionDate: new Date().toISOString(),
@@ -183,7 +170,7 @@ const call = async (method, path, ck, body) => {
     const after = await call('GET', `/api/collections-dept/invoices/tax?q=${invNo}`, admin.ck);
     ok('وتُقرأ محصَّلةً تمامًا', after.json?.invoices?.[0]?.fullyCollected === true);
 
-    // ── ٦ · شرائحُ العمر لا تتداخل ───────────────────────────────────────
+    // 6. Aging buckets do not overlap.
     head('شرائح العمر لا تتداخل');
     const bands = ['0_15', '15_30', '30_45', '45_60', '60_plus'];
     const counts = {};
@@ -196,7 +183,7 @@ const call = async (method, path, ck, body) => {
     ok('مجموعُ الشرائح = الكلّ', sum === all.json?.total,
       `${bands.map((b) => `${b}=${counts[b]}`).join(' · ')} → ${sum} مقابل ${all.json?.total}`);
 
-    // ── ٧ · المحفظة: فاتورةٌ ضريبيّة خارج الرصيد ─────────────────────────
+    // 7. Wallet: a tax invoice is outside the balance.
     head('المحفظة');
     const before = await call('GET', '/api/wallet/daily', op.ck);
     const closingBefore = before.json?.wallet?.closingBalance ?? 0;
@@ -211,7 +198,7 @@ const call = async (method, path, ck, body) => {
     ok('ورقمُ المستند محفوظ', ti.json?.transaction?.receivedDocNumber === invNo, ti.json?.transaction?.receivedDocNumber);
     if (ti.json?.transaction?._id) await call('DELETE', `/api/wallet/transactions/${ti.json.transaction._id}`, op.ck);
 
-    // ── ٨ · مشترياتٌ تملأ الكشفَ وتُعلَّم عند الاختلاف ────────────────────
+    // 8. Purchases fill the manifest and are flagged on a difference.
     head('المشتريات تملأ الكشف');
     const target = await mk({ paymentType: 'tax', purchaseValue: 1000, sellingValue: 1500 });
     const tid = target.json?._id;
@@ -223,11 +210,7 @@ const call = async (method, path, ck, body) => {
     const dbT = await OperationsWorkflow.findById(tid).select('paymentAmount paymentDate').lean();
     ok('ومبلغُها يصل «مبلغ السداد»', dbT.paymentAmount === 1000, `${dbT.paymentAmount}`);
     ok('وتاريخُها يصل «تاريخ السداد»', !!dbT.paymentDate);
-    // ── والمقصودُ علامةُ فرق السعر وحدَها ──────────────────────────────────
-    // كان الشرطُ «بلا أيّ علامة»، والعهدةُ تعلّم أشياءَ أخرى صحيحة: مبلغًا
-    // كبيرًا، أو قيدًا خارجَ ساعات العمل. فكان الفحصُ ينجح نهارًا ويسقط ليلًا —
-    // وهو يقيس الساعةَ لا الكود. فيُسأل عمّا يعنيه: هل عُلِّم فرقُ سعرٍ وهو
-    // مطابق؟
+    // The target is the price-difference flag alone. The condition used to be no flag at all, but custody flags other legitimate things (a large amount, an entry outside working hours), so the check passed by day and failed at night, measuring the clock instead of the code. So it asks what it means: was a price difference flagged while the price matches?
     ok('وبلا علامةِ فرقِ سعرٍ ما دام مطابقًا',
       !/سعرُ الشراء مختلف/.test(buy.json?.transaction?.flagReason || ''),
       buy.json?.transaction?.flagReason || '(بلا علامات)');
@@ -261,9 +244,7 @@ const call = async (method, path, ck, body) => {
     ok('والتواريخُ كذلك', !freed.deliveryDate && !freed.sendingDate);
     ok('ووجهةُ الكشف', !freed.finalReportDestination, JSON.stringify(freed.finalReportDestination));
 
-    // ── ولا يمسح الفكُّ إلّا ما وضعه القفل ────────────────────────────────
-    // ما يُكتب بعد الفكّ — والكشفُ ليس نقديًّا — لا يمسّه شيء. (وما كُتب قبل
-    // اختيار «كاش» يُصفَّر باختياره نفسِه، وذلك مقصودٌ: النقديُّ لا فاتورةَ له.)
+    // Unlocking clears only what the lock put there. What is written after unlocking, when the manifest is not cash, is not touched. (What was written before choosing cash is zeroed by choosing it, which is intended: cash has no invoice.)
     await call('PUT', `/api/workflows/${back.json._id}`, op.ck, { documentNumber: 'ZZ-حقيقي' });
     await call('PUT', `/api/workflows/${back.json._id}`, op.ck, { paymentType: 'tax' });
     const kept = await OperationsWorkflow.findById(back.json._id).select('documentNumber').lean();
@@ -274,7 +255,7 @@ const call = async (method, path, ck, body) => {
     const rej = await call('PUT', `/api/workflows/${camt.json._id}`, op.ck, { collectedAmount: 500 });
     const c1 = await OperationsWorkflow.findById(camt.json._id).select('collectedAmount').lean();
     ok('يُرفَض على الضريبيّ', !c1.collectedAmount, `${c1.collectedAmount}`);
-    // ويُقال بصريح العبارة، لا يُبتلَع ويُقال «حُفِظ».
+    // Say it explicitly; do not swallow it and report saved.
     ok('ويُقال إنّه رُفض لا يُبتلَع',
       rej.status === 400 && /collectedAmount/.test(JSON.stringify(rej.json?.fields || [])),
       `${rej.status} ${JSON.stringify(rej.json?.fields)}`);

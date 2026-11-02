@@ -1,27 +1,7 @@
 /**
- * unmakeLoginEmployees — حساباتُ دخولٍ صارت موظّفين، وليست كذلك.
- *
- *   node src/scripts/unmakeLoginEmployees.js            تجربة
- *   node src/scripts/unmakeLoginEmployees.js --yes      تنفيذ
- *
- * ── العلّة ──────────────────────────────────────────────────────────────────
- * إنشاءُ حسابِ دخولٍ يُنشئ معه ملفَّ خدمةٍ ذاتيّةٍ ليطلب صاحبُه إجازةً ويرى ملفَّه
- * (`utils/ensureSelfEmployee`) — وهو مُعلَّمٌ `isHrRecord: false` فلا يُعَدُّ
- * موظّفًا ولا يظهر في قائمةٍ. هذا صحيح.
- *
- * والخطأ أنّ سجلَّين من هذه الظلال حملا العَلَمَ `true`، فظهرا في الموارد
- * البشريّة موظّفَين كاملَين بأرقامٍ وظيفيّةٍ وأقسامٍ ومهن — وليسا في ماستر
- * الموظّفين (`inCurrentMaster: false`)، أي أنّ الموارد البشريّة لم تسجّلهما قطّ.
- * وصاحبُ الشركة عرفهما فورًا: «مش موظفين حقيقيين».
- *
- * ── ولماذا لا يُحذَف الصفّ ─────────────────────────────────────────────────
- * لأنّ حسابَ الدخول قائمٌ ويعمل، وملفُّ الخدمة الذاتيّة هو ما يجعل صاحبَه يطلب
- * إجازةً ويوقّع. فيُعاد العَلَمُ إلى `false`: يخرج من كلّ قائمةٍ وعدّادٍ في
- * الموارد البشريّة، ويبقى دخولُه وخدمتُه الذاتيّةُ كما هي.
- *
- * والقاعدةُ التي تُميّزه: ليس في الماستر، وله حسابُ دخول، ولم تُدخِله الموارد
- * البشريّة من شاشتها. ورقمُه الوظيفيُّ وحدَه ليس دليلًا — وهذا بالضبط ما ضلّل
- * `repairEmployeeVisibility` فأعادهما إلى الظهور.
+ * Login accounts that became employees but are not.
+ * Usage: node src/scripts/unmakeLoginEmployees.js (preview) | --yes (apply)
+ * Creating a login also creates a self-service file (utils/ensureSelfEmployee) so the user can request leave; it is flagged isHrRecord: false and is not counted as an employee. Two such shadow records had the flag true and appeared in HR as full employees, though they are not in the employee master (inCurrentMaster: false). The row is not deleted because the login and self-service still work; the flag is set back to false so they leave every HR list and counter. Rule: not in the master, has a login, and HR did not enter them from its screen. An employee number alone is not evidence, which misled repairEmployeeVisibility into restoring them.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -46,8 +26,7 @@ const NUMBERS = process.argv.includes('--numbers')
     console.log(`${e.employeeNumber} · ${name}`);
     console.log(`   في الماستر: ${e.inCurrentMaster ? 'نعم' : 'لا'} · القسم: ${e.department || '—'} · الحالة: ${e.employmentStatus}`);
     console.log(`   حسابُ الدخول: ${u ? `${u.email} (${u.role}) — يبقى كما هو` : 'لا يوجد'}`);
-    // ── ولا يُلمَس سجلٌّ في الماستر ──────────────────────────────────────────
-    // الماستر هو مصدرُ الموظّفين. ومن كان فيه فهو موظّفٌ مهما بدا غيرَ ذلك.
+    // Records in the master are never touched: the master is the source of employees, and anyone in it is an employee regardless of appearance.
     if (e.inCurrentMaster) console.log('   ⚠︎ هذا في الماستر — لن يُمسّ.');
   }
 

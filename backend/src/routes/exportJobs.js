@@ -1,15 +1,14 @@
 const express = require('express');
 const router = express.Router();
 
-// معرّفٌ مشوَّهٌ = لا سجلّ، لا عطلٌ في الخادم — راجع utils/idParam.
+// A malformed id means no record, not a server error; see utils/idParam.
 const { objectIdParam } = require('../utils/idParam');
 router.param('id', objectIdParam());
 
 const ctrl = require('../controllers/exportJobsController');
 const authenticate = require('../middleware/auth');
 
-// التصديرُ الكبيرُ يُطلَب من أكثرَ من قسم، فلا يُنسَب إلى قسمٍ واحد: كلُّ طلبٍ
-// محجوزٌ على صاحبه (يقرأ ملفَّه وحدَه) وبُني بدوره هو — راجع exportJobsController.
+// Large exports are requested from several sections, so they belong to none: each request is locked to its owner (reads only its own file) and built with that user's own permissions; see exportJobsController.
 router.use(authenticate);
 router.get('/jobs', ctrl.list);
 router.post('/jobs', ctrl.create);

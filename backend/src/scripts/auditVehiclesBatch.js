@@ -1,16 +1,7 @@
 /**
- * auditVehiclesBatch — شريحةُ بترو اب وإخلاءُ الطرف، على البرودكشن.
- *
- *   node src/scripts/auditVehiclesBatch.js --base https://api.energize-logistics.com
- *
- * ── ما يُثبَت ─────────────────────────────────────────────────────────────
- * أنّ المركبات التي لا شريحةَ لها تُوجَد فعلًا (وهي التي كانت تختفي من قائمة
- * الإضافة)، وأنّ نزعَ الشريحة يُقيَّد ولا يُفرِّغ خانةً صامتًا، وأنّ حاملَ الشريحة
- * لا تُنهى خدمتُه حتى تُنزَع — ولو كانت المركبةُ ملكه.
- *
- * ولا يُترَك أثر: الشريحةُ تُنزَع من مركبةٍ حقيقيّةٍ ثمّ تُعاد بنفس رقمها وحالتها
- * عبر الواجهة نفسِها، وسجلُّ الفعلين يبقى — وهو الصواب: نزعٌ جرى فعلًا وإعادةٌ
- * جرت فعلًا.
+ * auditVehiclesBatch: Petro App chip and party release on production.
+ * Proves that vehicles without a chip really exist (they used to vanish from the add list), that removing a chip is recorded instead of silently blanking a field, and that a chip holder's service is not ended until the chip is removed, even if the vehicle is theirs.
+ * Leaves no trace: the chip is removed from a real vehicle and restored with the same number and status through the same API; the log of both actions stays, which is correct since both really happened.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -51,8 +42,8 @@ const head = (t) => console.log(`\n── ${t} ${'─'.repeat(Math.max(0, 56 - t
     head('المركباتُ بلا شريحة');
     const total = await VehicleMaster.countDocuments();
     const noCard = await VehicleMaster.countDocuments({ $or: [{ 'fuelCard.cardNumber': '' }, { 'fuelCard.cardNumber': null }, { 'fuelCard.cardNumber': { $exists: false } }] });
-    // ── وهذه هي التي كانت تختفي ────────────────────────────────────────────
-    // مكتوبٌ عندها حالةُ شريحةٍ ولا شريحةَ لها، فكانت تُحسَب «عليها شريحة».
+    // These are the ones that used to vanish
+    // They have a chip status but no chip, so they were counted as having a chip.
     const statusNoCard = await VehicleMaster.countDocuments({
       'fuelCard.statusAr': { $nin: ['', null] },
       $or: [{ 'fuelCard.cardNumber': '' }, { 'fuelCard.cardNumber': null }, { 'fuelCard.cardNumber': { $exists: false } }],
@@ -95,7 +86,7 @@ const head = (t) => console.log(`\n── ${t} ${'─'.repeat(Math.max(0, 56 - t
     ok('ولا تُنزَع مرّتين', again.status === 409, again.body?.message || String(again.status));
 
     head('إخلاءُ الطرف');
-    // موظّفٌ يحمل شريحةً فعلًا — يُبحَث عنه بالإقامة المكتوبة على المركبة.
+    // An employee actually holding a chip, found by the residence number written on the vehicle.
     const Employee = require('../models/Employee');
     const holderVehicle = await VehicleMaster.findOne({
       'fuelCard.cardNumber': { $nin: ['', null] },
@@ -138,7 +129,7 @@ const head = (t) => console.log(`\n── ${t} ${'─'.repeat(Math.max(0, 56 - t
           limitSar: restore.limitSar, note: 'إعادةُ ما نزعه الفحص',
         }),
       });
-      // سقفُ الصرف يُعاد كما كان: `assign` لا تمسّه إن لم يُرسَل.
+      // Restore the spending cap: assign does not touch it when not sent.
       if (restore.limitStatus) {
         await VehicleMaster.updateOne({ _id: restore.id }, { $set: { 'fuelCard.limitStatus': restore.limitStatus } });
       }

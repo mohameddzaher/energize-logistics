@@ -1,35 +1,8 @@
 /**
- * سعرُ البيع الحقيقيّ من تقرير الفروع — إلى «التشغيل — خاصّ» وإلى ملفّات العملاء.
- *
- * ── العلّة ──────────────────────────────────────────────────────────────────
- * منصّةُ التشغيل تكتب في كلّ كشفٍ سعرَ بيعٍ يساوي سعرَ الشراء، فليس عندنا في
- * النظام رقمٌ واحدٌ صحيحٌ لما نأخذه من العميل. وتقريرُ الفروع (ورقةُ `Data`)
- * يحمله منذ أوّل السنة: صفٌّ لكلّ يومٍ وعميلٍ ومسارٍ بسعر بيعه وشرائه.
- *
- * ── والربطُ بالتاريخ لا برقم الكشف ─────────────────────────────────────────
- * الورقةُ لا تحمل رقمَ كشف. فالهويّةُ المركَّبة: **اليومُ + العميلُ + المسارُ +
- * سعرُ الشراء**. وسعرُ الشراء هو الشاهد: إن اتّفق مع كشفٍ في اليوم نفسِه لنفس
- * العميل على المسار نفسِه فهو هو — واحتمالُ الخطأ بعد أربعة شروطٍ ضئيل.
- *
- * وصفُّ الورقة قد يقابل كشوفًا عدّة (العميلُ طلب خمسَ عربات، وعندنا كشفٌ لكلّ
- * عربة): السعرُ سعرُ **العربة الواحدة** — `اجمالي البيع` هو المضروب في العدد —
- * فيُكتب كما هو على كلّ كشفٍ مطابق. وهذا هو المقصود.
- *
- * ── ولا يُخمَّن مال ────────────────────────────────────────────────────────
- * اليومُ والعميلُ والمسارُ نفسُه بسعرين مختلفين في الورقة = التباسٌ لا يُحسَم
- * آليًّا، فيُترَك ويُقال. وما لم يُطابَق يُكتب في ملفٍّ بسببه.
- *
- * وتُكتب في موضعين:
- *   • `PrivateSellingPrice` — سعرُ الكشف في التقرير الخاصّ (لا يراه أحدٌ خارجنا).
- *   • مسارُ العميل في `ShipmentOrderCustomer.routes` — والأحدثُ يغلب، فيرثه
- *     كلُّ ما يُنشأ بعدُ (راجع utils/customerRoutes).
- *
- * ⚠ منذ ٢٠٢٦/١٠/٢١ لا تقرأ صفحةُ «التشغيل — خاصّ» `PrivateSellingPrice`: قيمةُ
- *   البيع عمودُ الكشف وحدَه. فما يكتبه هذا السكربتُ هناك لا يظهر حتى يُنسخ إلى
- *   الكشوف بـ scripts/reconcilePrivateSellingPrices.js --apply.
- *
- * تجربةٌ افتراضًا؛ `--apply` للكتابة.
- *   node src/scripts/importBranchesSellingPrices.js [path.xlsx] [--apply]
+ * Real selling price from the branches report, into the private operations page and customer files.
+ * Matched by day + customer + route + purchase price (the sheet has no statement number); the price is per single vehicle. Conflicting prices for one key are left and reported; money is never guessed.
+ * Written to PrivateSellingPrice and ShipmentOrderCustomer.routes (latest wins, see utils/customerRoutes). The private page no longer reads PrivateSellingPrice, so copy with scripts/reconcilePrivateSellingPrices.js --apply.
+ * Usage: node src/scripts/importBranchesSellingPrices.js [path.xlsx] [--apply]
  */
 require('dotenv').config({ quiet: true });
 const path = require('path');
@@ -42,7 +15,7 @@ const OUT = path.join(ROOT, 'مراجعة أسعار البيع من تقرير 
 
 const S = (v) => String(v ?? '').trim();
 const num = (v) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
-// التواريخُ أرقامٌ تسلسليّة — `cellDates` تُسقط يومًا على هذا الجهاز.
+// Dates are serial numbers; cellDates drops a day on this machine.
 const serialToISO = (n) => {
   const x = Number(n);
   if (!Number.isFinite(x) || x <= 0) return null;
@@ -61,12 +34,12 @@ const serialToISO = (n) => {
   const ShipmentOrderCustomer = require('../models/ShipmentOrderCustomer');
   const { routeKey, applyRoute } = require('../utils/customerRoutes');
 
-  // ── ١ · الورقة ────────────────────────────────────────────────────────────
+  // 1 - the sheet
   const wb = XLSX.readFile(file, { cellDates: false });
   const raw = XLSX.utils.sheet_to_json(wb.Sheets.Data, {
     header: 1, defval: null, blankrows: false, raw: true,
   });
-  // الصفُّ الأوّل أرقامٌ مجمّعة، والثاني هو العناوين.
+  // The first row is aggregated numbers and the second is the headers.
   const head = raw.findIndex((r) => (r || []).some((c) => S(c) === 'اسم العميل'));
   const H = {};
   (raw[head] || []).forEach((c, i) => { H[S(c)] = i; });
@@ -82,23 +55,17 @@ const serialToISO = (n) => {
     qty: num(col(r, 'عدد الطلبات ') ?? col(r, 'عدد الطلبات')),
   })).filter((x) => x.date && x.customer && x.sell > 0);
 
-  // ── ٢ · الاسمُ المعتمَد ───────────────────────────────────────────────────
-  // أسماءُ الورقة مختصرةٌ وقديمة؛ وسجلُّ التحصيل يحمل لكلّ عميلٍ اسمَه المعتمَد
-  // وصيغَه السابقة (راجع utils/renameOpsCustomer). فيُردّ الاسمُ إليه.
+  // 2 - the approved name.
+  // Sheet names are short and old; the collections register holds each customer's approved name and former forms (see utils/renameOpsCustomer), so the name is mapped back to it.
   const parties = await CollectionsParty.find({ kind: 'customer' }).select('name nameKey aliasKeys').lean();
   const canon = {};
   for (const p of parties) {
     for (const k of [p.nameKey || fold(p.name), ...(p.aliasKeys || [])]) if (k && !canon[k]) canon[k] = p.name;
   }
 
-  // ── والاسمُ المختصر يُردّ إلى صاحبه إن كان واحدًا لا أكثر ────────────────
-  // الورقةُ تكتب «شركه كانو» و«مصنع الراجحي»، والكشوفُ تحمل «شركة كانو لخدمات
-  // مراكز الشحن المحدودة» و«مصنع الراجحي للمياه». والمطابقةُ التامّة تتركها
-  // كلَّها — ألفان وثمانُمئةٍ وثلاثةٌ وستّون صفًّا بلا عميل.
-  //
-  // فيُبحَث عن اسمٍ في الكشوف يحتوي اسمَ الورقة (أو العكس). **وإن وُجد اسمان
-  // فأكثر فلا يُخمَّن**: اسمٌ يحتمل عميلين يحتمل أن يُكتب سعرُ أحدهما على
-  // حمولة الآخر، وهو مالٌ لا يُخمَّن.
+  // A short name maps back to its owner only if there is exactly one.
+  // The sheet writes short names while statements carry the full legal names, so exact matching leaves 2863 rows without a customer.
+  // So search for a statement name containing the sheet name (or the reverse). If two or more are found, do not guess: a name that could be two customers could write one's price onto the other's load, and money is not guessed.
   const wfNames = [...new Set((await OperationsWorkflow.distinct('username')).map(S).filter(Boolean))];
   const resolveName = (raw) => {
     const k = fold(raw);
@@ -110,7 +77,7 @@ const serialToISO = (n) => {
     return hits.length === 1 ? hits[0] : null;
   };
 
-  // ── ٣ · كشوفُ المدّة مرّةً واحدة ──────────────────────────────────────────
+  // 3 - the period's statements, once
   const days = [...new Set(sheetRows.map((r) => r.date))].sort();
   const wfs = await OperationsWorkflow.find({
     reportDate: { $gte: new Date(`${days[0]}T00:00:00.000Z`), $lte: new Date(`${days[days.length - 1]}T23:59:59.999Z`) },
@@ -124,8 +91,8 @@ const serialToISO = (n) => {
     byDayCust.get(k).push(w);
   }
 
-  // ── ٤ · الالتباس يُحسَم قبل الكتابة ───────────────────────────────────────
-  // اليومُ والعميلُ والمسارُ نفسُه بسعرين: لا يُكتب شيءٌ ويُقال.
+  // 4 - ambiguity is resolved before writing.
+  // The same day, customer and route with two prices: write nothing and report.
   const groups = new Map();
   for (const r of sheetRows) {
     const name = resolveName(r.customer) || r.customer;
@@ -146,8 +113,8 @@ const serialToISO = (n) => {
     return near(a, b) && near(c, d);
   };
 
-  const priceByWorkflow = new Map();   // معرّفُ الكشف ← { price, row }
-  const routeLearn = new Map();        // عميل|مسار ← { name, from, to, price, at }
+  const priceByWorkflow = new Map();   // statement id to { price, row }
+  const routeLearn = new Map();        // customer|route to { name, from, to, price, at }
   const unmatched = [];
   const ambiguous = [];
   let matchedGroups = 0;
@@ -171,17 +138,14 @@ const serialToISO = (n) => {
     }
     matchedGroups += 1;
     for (const w of hits) {
-      // ── وكشفٌ يتنازعه سعران لا يُسعَّر ──────────────────────────────────
-      // مجموعتان من الورقة قد تصلان إلى الكشف نفسِه (اليومُ والعميلُ وسعرُ
-      // الشراء واحد، والمسارُ مكتوبٌ بصيغتين متقاربتين). فلو كُتب الأخيرُ
-      // منهما صامتًا لصار رقمُ المال رهنَ ترتيب الصفوف في الملفّ. فيُعلَّم
-      // ويُنزَع بعد المرور كلِّه، ويُقال في ورقة المراجعة.
+      // A statement contested by two prices is not priced.
+      // Two sheet groups can reach the same statement (same day, customer and purchase price, with the route spelled two close ways). Writing the later one silently would make the money figure depend on row order, so it is flagged, removed after the whole pass, and reported in the review sheet.
       const id = String(w._id);
       const prev = priceByWorkflow.get(id);
       if (prev && prev.price !== g.sell) { prev.conflict = true; prev.other = g.sell; continue; }
       priceByWorkflow.set(id, { price: g.sell, reportNumber: w.reportNumber, group: g });
     }
-    // ── والمسارُ يُتعلَّم بسعر يومه ─────────────────────────────────────────
+    // A route is learned at that day's price.
     const rk = `${fold(g.name)}|${routeKey(g.from, g.to)}`;
     const prev = routeLearn.get(rk);
     if (!prev || prev.at < g.date) {
@@ -189,13 +153,9 @@ const serialToISO = (n) => {
     }
   }
 
-  // ── ممرٌّ ثانٍ: المسارُ يُكتب في الورقة مدينةً وفي الكشف عنوانًا ──────────
-  // «جدة ← رابغ» في الورقة، و«ص 2 ← الخمره» في الكشف: المسارُ واحدٌ والكتابةُ
-  // اثنتان، فلا تُطابِقهما مقارنةُ نصّ. ويقع أيضًا أن يُكتب الاتّجاهُ معكوسًا.
-  //
-  // فما بقي بلا مطابقةٍ يُسأل مرّةً أخرى بلا شرط المسار — **بشرطين يمنعان
-  // الخلط**: أن تكون هذه المجموعةَ الوحيدةَ المتبقّية لذلك اليوم والعميل وسعر
-  // الشراء (فلا سعرَ آخرَ ينازعها)، وألّا يكون الكشفُ قد سُعِّر في الممرّ الأوّل.
+  // Second pass: the route is a city pair in the sheet but an address in the statement.
+  // The sheet says one city to another while the statement says an address to another place: same route, two writings, so text comparison fails; the direction is sometimes reversed too.
+  // What remains unmatched is asked again without the route condition, under two conditions that prevent mixing: it is the only remaining group for that day, customer and purchase price (no other price contests it), and the statement was not priced in the first pass.
   const stillOpen = new Map();
   for (const u of unmatched) {
     const k = `${u.date}|${fold(u.name)}|${u.buy}`;
@@ -205,7 +165,7 @@ const serialToISO = (n) => {
   let secondPass = 0;
   const rescued = new Set();
   for (const [k, list] of stillOpen) {
-    if (list.length !== 1) continue;            // سعران يتنازعان اليومَ نفسَه
+    if (list.length !== 1) continue;            // Two prices contest the same day
     const g = list[0];
     const cands = (byDayCust.get(`${g.date}|${fold(g.name)}`) || [])
       .filter((w) => Math.abs(num(w.purchaseValue) - g.buy) < 0.5)
@@ -220,7 +180,7 @@ const serialToISO = (n) => {
   }
   const stillUnmatched = unmatched.filter((u) => !rescued.has(`${u.date}|${fold(u.name)}|${u.buy}`));
 
-  // الكشوفُ المتنازَعُ عليها تُنزَع من الكتابة وتُعرَض.
+  // Contested statements are removed from the write and listed.
   const conflicts = [];
   for (const [id, v] of [...priceByWorkflow]) {
     if (!v.conflict) continue;
@@ -247,7 +207,7 @@ const serialToISO = (n) => {
     applied: apply,
   });
 
-  // ── ٥ · ورقةُ المراجعة: ما لم يُكتب ولماذا ────────────────────────────────
+  // 5 - review sheet: what was not written and why
   const book = XLSX.utils.book_new();
   const add = (name, rows, cols) => {
     const ws = XLSX.utils.json_to_sheet(rows.length ? rows : [{ 'لا صفوف': '' }]);
@@ -278,7 +238,7 @@ const serialToISO = (n) => {
 
   if (!apply) { console.log('\n— تجربةٌ فقط —'); process.exit(0); }
 
-  // ── ٦ · الكتابة ───────────────────────────────────────────────────────────
+  // 6 - writing
   const ops = [...priceByWorkflow.entries()].map(([id, v]) => ({
     updateOne: {
       filter: { workflow: new mongoose.Types.ObjectId(id) },
@@ -294,7 +254,7 @@ const serialToISO = (n) => {
   }
   console.log(`✓ سُعِّر ${ops.length} كشفًا.`);
 
-  // والمسارات — عميلًا عميلًا، فالأحدثُ يغلب داخل كلّ ملفّ.
+  // and the routes, customer by customer; the latest wins within each file.
   const byCustomer = new Map();
   for (const r of routeLearn.values()) {
     const k = fold(r.name);

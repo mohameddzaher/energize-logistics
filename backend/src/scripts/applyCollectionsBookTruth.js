@@ -1,27 +1,8 @@
 /**
- * applyCollectionsBookTruth — دفترُ التحصيل هو الأصحّ، فيُكتب منه.
- *
- *   node --max-old-space-size=8192 src/scripts/applyCollectionsBookTruth.js --dry
- *
- * ── القرار ────────────────────────────────────────────────────────────────
- * قال صاحبُ الشركة: «الفايل بتاع التحصيل زي ما فيه الداتا خده هو الأصحّ»،
- * و«لو دي بالذات فواتير كاش فالسعرُ في شيت التحصيل هو الأصحّ».
- *
- * فورقةُ «Shipment Report» — وهي دفترُ الكشوف النقديّة — تُكتب على كشوفنا في
- * موضعين:
- *
- *   ① نوعُ الدفع: ما عدّته الورقةُ نقديًّا يصير نقديًّا. اثنان وأربعون كشفًا
- *     كانت عندنا ضريبيّةً أو بلا نوع، وأربعون منها لم يمسّها إنسانٌ قطّ —
- *     نوعُها جاء من افتراضٍ على مستوى العميل، وهو الافتراضُ الذي لا يصحّ:
- *     العميلُ الواحد كاشٌ في حمولةٍ وضريبيٌّ في أخرى.
- *
- *   ② قيمةُ البيع: `sellingValue` عندنا من منصّة التشغيل، و«Invoice Total» في
- *     الدفتر ما فُوتِر به فعلًا. وللكشف النقديّ الدفترُ هو المرجع.
- *
- * ── وما لا يُكتب ──────────────────────────────────────────────────────────
- * لا يُمَسّ كشفٌ ليس في الورقة، ولا يُغيَّر تاريخُ تحصيلٍ ولا سدادٍ — تلك مطابقةٌ
- * سلفًا صفرَ اختلاف. والقيمةُ القديمة تُطبَع كلُّها قبل الكتابة وتُقيَّد في سجلّ
- * المراجعة، فما كُتب يُعرَف ويُراجَع.
+ * applyCollectionsBookTruth: the collections book is the more accurate source, so it is written from.
+ * node --max-old-space-size=8192 src/scripts/applyCollectionsBookTruth.js --dry
+ * Decision: the collections file's data is taken as the correct one, and for cash invoices the price in the collections sheet is the right one.
+ * The 'Shipment Report' sheet, the cash manifests book, is written onto our manifests in two places: (1) Payment type: what the sheet counts as cash becomes cash. Forty-two manifests were tax or untyped, forty of them never touched by a person; their type came from a customer-level default, which is wrong because one customer is cash on one load and tax on another. (2) Selling value: our `sellingValue` comes from the operations platform, and 'Invoice Total' in the book is what was actually invoiced. For a cash manifest the book is the reference. Not written: a manifest not in the sheet is untouched, and no collection or payment date is changed (already matching with zero difference). All old values are printed before writing and recorded in the audit log, so what was written is known and reviewable.
  */
 require('dotenv').config();
 const path = require('path');
@@ -85,7 +66,7 @@ const money = (n) => Math.round((Number(n) || 0) * 100) / 100;
   }
   console.log(`   ${DRY ? 'سيتغيّر' : 'تغيّر'}: ${valOps.length} كشفًا${valOps.length > 15 ? ' (عُرض منها ١٥)' : ''} · صافي الفرق ${money(gap).toLocaleString()} ر.س\n`);
 
-  // ③ حالةُ التحصيل كما قالها الدفتر — ولا يُخترَع تاريخ.
+  // (3) Collection status as stated by the book; no date is invented.
   console.log('③ حالةُ التحصيل من عمود «Status» في الدفتر:');
   const statOps = []; let noDate = 0;
   for (const w of ours) {

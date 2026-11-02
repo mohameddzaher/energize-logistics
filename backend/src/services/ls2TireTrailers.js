@@ -1,13 +1,7 @@
 /**
- * رقمُ التيدر على كلّ فردةٍ — يُعاد اشتقاقُه من موضعها.
- *
- * القاعدةُ في `models/Ls2TireAsset` (deriveTrailer) وتُطبَّق عند كلّ حفظٍ لفردة.
- * لكنّ التيدرَ نفسَه يتحرّك أيضًا (نقلٌ، استيرادٌ يضعه على عربيّةٍ أخرى) —
- * فتبقى فِرَدُ العربيّتين على رقمٍ لم يعد صحيحًا حتى تُحفَظ كلٌّ منها. فهذه
- * تمرّ على المركَّب كلِّه مرّةً وتصحّح ما اختلف: تُنادى بعد كلّ حركةِ تيدر،
- * ويُصلَح بها ما تراكم قبلها (scripts/repairLs2TireTrailers).
- *
- * تردّ ما غيّرته — ولا تكتب مع `dryRun`.
+ * The trailer number on each tire, re-derived from its position.
+ * The rule is in `models/Ls2TireAsset` (deriveTrailer) and applies on every tire save. But the trailer itself also moves (transfer, import placing it on another truck), leaving both trucks' tires on a number no longer correct until each is saved. This pass walks all fitted tires once and corrects the differences: called after every trailer movement, and it repairs earlier accumulation (scripts/repairLs2TireTrailers).
+ * Returns what it changed and writes nothing with `dryRun`.
  */
 const Ls2TireAsset = require('../models/Ls2TireAsset');
 const Ls2Trailer = require('../models/Ls2Trailer');
@@ -29,8 +23,7 @@ async function resyncTireTrailers({ dryRun = false } = {}) {
     if (t.status !== 'mounted' || !TRAILER_SECTION.test(String(t.section || ''))) want = null;
     else if (t.plateKey) want = onPlate.get(String(t.plateKey)) || null;
     else {
-      // واقفةٌ مع تيدرها: يبقى رقمُه ما دام التيدرُ نفسُه واقفًا. فإن كان مركّبًا
-      // على عربيّةٍ فهي لم تمشِ معه — يُرفَع الرقمُ فتظهر «بلا موضع» ولا تُخفى.
+      // Stored with its trailer: the number stays while the trailer itself is stored. If it is fitted to a truck, the tire did not move with it, so the number is cleared and the tire shows as "no position" instead of being hidden.
       const tr = cur ? known.get(String(cur)) : null;
       want = tr && !tr.currentPlateKey ? cur : null;
     }

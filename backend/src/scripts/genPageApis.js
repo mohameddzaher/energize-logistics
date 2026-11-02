@@ -1,30 +1,7 @@
 /**
- * genPageApis — أيُّ نقاط الـ API تنادِيها كلُّ صفحة.
- *
- *   node src/scripts/genPageApis.js
- *   node src/scripts/genPageApis.js --check
- *
- * ── لماذا يلزم هذا الملفّ ────────────────────────────────────────────────────
- * صلاحيّةُ الصفحة كانت تُخفي الشاشةَ ولا تحرس البيانات: مَن يعرف المسارَ يكتبه،
- * ومَن يعرف نقطةَ الـ API ينادِيها. وقيلَ ذلك في الشاشة صراحةً — وقولُ العيب لا
- * يُصلحه.
- *
- * والمانعُ التقنيّ كان حقيقيًّا: الصفحةُ الواحدة تنادي عشرَ نقاط، والنقطةُ
- * الواحدة تخدم خمسَ صفحات، فلا انطباقَ بينهما. والجوابُ ليس تركَ الحراسة، بل
- * **بناءُ الخريطة**: أيُّ الصفحات تنادي هذه النقطة؟ فإن كانت كلُّها مغلقةً على
- * هذا الدور فالنقطةُ مغلقةٌ عليه — بلا حاجةٍ إلى تصديق ما يقوله المتصفّح عن
- * نفسه.
- *
- * ── وتُقرأ من الشيفرة لا تُكتب باليد ──────────────────────────────────────────
- * خريطةٌ تُكتب يدويًّا لمئتين وستٍّ وستّين صفحةً تشيخ في أوّل أسبوع، وشيخوختُها
- * صامتة: نقطةٌ تُنسى فتُغلَق في وجه من يملكها. فتُستخرَج من الشيفرة نفسِها:
- * تُقرأ صفحةُ كلّ مسار، وتُتبَع وارداتُها المحلّيّة، وتُجمَع نداءاتُ `/api/…`
- * منها كلِّها.
- *
- * ── والشكُّ يوسِّع ولا يضيّق ──────────────────────────────────────────────────
- * ما لا يُقرأ ساكنًا — `` `${base}/x` `` — يجعل الصفحةَ «مفتوحةً على قسمها
- * كلِّه»، فلا يُغلَق بابٌ بسبب سطرٍ لم نفهمه. المنعُ لا يقع إلّا حين نكون على
- * يقين.
+ * genPageApis: which API endpoints each page calls. --check verifies without writing.
+ * A page permission hid the screen but did not guard data. The map is built from the code (each route's page, its local imports, its /api/ calls) since a hand-written one goes stale silently; an endpoint is closed to a role only if every page calling it is closed to it.
+ * Doubt widens, never narrows: anything not statically readable opens the page to its whole section.
  */
 const fs = require('fs');
 const path = require('path');
@@ -40,12 +17,12 @@ const { SECTIONS } = require('../config/sections');
 
 const read = (f) => { try { return fs.readFileSync(f, 'utf8'); } catch { return ''; } };
 
-/** يحوّل واردًا إلى مسار ملفٍّ حقيقيّ — `@/x` أو `./x` أو `../x`. */
+/** Resolves an import to a real file path (@/x, ./x or ../x). */
 function resolveImport(spec, fromFile) {
   let base;
   if (spec.startsWith('@/')) base = path.join(SRC, spec.slice(2));
   else if (spec.startsWith('.')) base = path.resolve(path.dirname(fromFile), spec);
-  else return null; // حزمةٌ خارجيّة
+  else return null; // External package
   const tries = ['.tsx', '.ts', '/index.tsx', '/index.ts', ''];
   for (const t of tries) {
     const p = base + t;
@@ -55,29 +32,23 @@ function resolveImport(spec, fromFile) {
 }
 
 /**
- * الأسماءُ المستوردة من كلّ ملفّ في الشجرة.
- *
- * ── ولماذا الأسماءُ لا الملفّات ─────────────────────────────────────────────
- * صفحةٌ تستورد `money` من `lib/vehicleRegistry` لا تنادي كلَّ نقطةٍ في ذلك
- * الملفّ. وأخذُ الملفّ كلِّه يجعل كلَّ صفحةٍ في القسم تنادي كلَّ شيءٍ فيه — فلا
- * يبقى لإغلاق صفحةٍ أثرٌ على أيّ نقطة، وتصير الحراسةُ اسمًا بلا معنى.
- *
- * فتُقيَّد ملفّاتُ `lib/` بما استُورد منها بالاسم. والمكوّناتُ والخطّافات تُؤخَذ
- * كاملةً: من استوردها استوردَ سلوكَها كلَّه.
+ * Names imported from each file in the tree.
+ * Names, not files: a page importing money from lib/vehicleRegistry does not call every endpoint in that file. Taking the whole file makes every page in a section call everything, so closing a page would affect no endpoint and the guard would mean nothing.
+ * lib/ files are limited to the names imported; components and hooks are taken whole, since importing them imports all their behavior.
  */
 function fileClosure(entry) {
-  const seen = new Map(); // ملفّ → مجموعةُ الأسماء المستوردة منه (أو null = كلُّه)
+  const seen = new Map(); // file to the set of names imported from it (null means the whole file)
   const stack = [[entry, null]];
   while (stack.length) {
     const [f, names] = stack.pop();
     if (!f) continue;
     const prev = seen.get(f);
-    if (prev === null) { /* مأخوذٌ كاملًا بالفعل */ }
+    if (prev === null) { /* Already taken whole */ }
     else if (names === null) seen.set(f, null);
     else {
       const merged = new Set(prev || []);
       names.forEach((n) => merged.add(n));
-      if (prev && [...merged].length === prev.size) continue; // لا جديد
+      if (prev && [...merged].length === prev.size) continue; // Nothing new
       seen.set(f, merged);
     }
     if (prev !== undefined && prev === null) continue;
@@ -87,7 +58,7 @@ function fileClosure(entry) {
       const clause = m[1];
       const r = resolveImport(m[2], f);
       if (!r) continue;
-      // `import { a, b as c }` → أسماء؛ و`import X` أو `* as X` → الملفُّ كلُّه.
+      // import { a, b as c } gives names; import X or * as X gives the whole file.
       const braced = clause.match(/\{([^}]*)\}/);
       const hasDefaultOrStar = /^[^{]*[A-Za-z_$]/.test(clause.split('{')[0].trim()) || clause.includes('* as');
       const named = braced
@@ -108,9 +79,8 @@ function fileClosure(entry) {
 }
 
 /**
- * نصُّ الأسماء المطلوبة من ملفّ `lib` — وما هو خارج أيِّ تصدير.
- *
- * ما هو خارج التصديرات يُنفَّذ عند الاستيراد، فيُؤخَذ دائمًا.
+ * Source text of the names requested from a lib file, plus whatever sits outside any export.
+ * Code outside exports runs on import, so it is always taken.
  */
 function scopedSource(file, names) {
   const src = read(file);
@@ -135,18 +105,15 @@ function scopedSource(file, names) {
 }
 
 /**
- * نقاطُ الـ API في نصّ ملفّ.
- *
- * تُقتطع عند أوّل ما لا يُعرَف ساكنًا: `?` أو `${` أو نهاية النصّ. فـ
- * `` `/api/vehicle-registry/${id}` `` تُقرأ `/api/vehicle-registry` — وهي
- * البادئةُ الصحيحة، إذ الحارسُ يطابق بالبادئة.
+ * API endpoints in a file's text.
+ * Cut at the first part not statically known: ?, ${ or end of text. A template ending in an id variable reads as the endpoint base, which is the correct prefix because the guard matches by prefix.
  */
 function apisIn(src) {
   const out = new Set();
   let wildcard = false;
   for (const m of src.matchAll(/['"`]\/api\/([^'"`]*)/g)) {
     const rest = m[1];
-    // `/api/${x}` — لا تُعرَف الوجهة: تُوسَّع الصفحةُ إلى قسمها.
+    // An API call whose destination is a variable is unknown: the page is widened to its section.
     if (rest.startsWith('$')) { wildcard = true; continue; }
     const cut = rest.split(/[?#]/)[0].split('${')[0];
     const clean = cut.replace(/\/+$/, '');
@@ -156,9 +123,8 @@ function apisIn(src) {
   return { apis: [...out], wildcard };
 }
 
-// ── نقاطٌ يناديها الإطارُ نفسُه، لا صفحةٌ بعينها ────────────────────────────
-// الشريطُ الجانبيُّ والترويسةُ يعملان في كلّ شاشة: الدخول، وإشعاراتٌ، وقوائمُ
-// مرجعيّة تُقرأ في كلّ استمارة. إغلاقُها بإغلاق صفحةٍ يوقف النظام كلَّه.
+// Endpoints the frame itself calls, not any specific page.
+// The sidebar and header run on every screen: login, notifications and reference lists read in every form. Closing them by closing one page would stop the whole system.
 const SHELL_ENTRIES = [
   path.join(APP, 'layout.tsx'),
   path.join(SRC, 'context', 'AuthContext.tsx'),
@@ -166,10 +132,8 @@ const SHELL_ENTRIES = [
 ];
 
 function build() {
-  // ── الإطارُ ملفّاتُه هو، لا ما تستورده ────────────────────────────────────
-  // الشريطُ الجانبيُّ يستورد `lib/businessReview` و`lib/fleet` ليقرّر مَن يرى
-  // أيَّ رابط. وأخذُ شجرتِه كلِّها كان يجعل نقاطَ مراجعةِ الأعمال والأسطول
-  // «نقاطَ إطار» — مفتوحةً للجميع بلا حارس.
+  // The frame counts only its own files, not everything it imports.
+  // The sidebar imports lib/businessReview and lib/fleet to decide who sees which link. Taking its whole tree made business-review and fleet endpoints frame endpoints, open to everyone without a guard.
   const shell = new Set(['/api/auth', '/api/notifications', '/api/lookups', '/api/uploads', '/api/portal/me']);
   for (const e of SHELL_ENTRIES) {
     apisIn(read(e)).apis.forEach((a) => shell.add(a));
@@ -179,17 +143,10 @@ function build() {
   const pages = {};
   let unresolved = 0;
 
-  // ── والشاشةُ التي تُفتَح بزرٍّ صفحةٌ كذلك ─────────────────────────────────
-  // القائمةُ الجانبيّة لا تذكر إلّا ما يُنقَر فيها، بينما «إنشاء شحنة»
-  // (`/system/fleet/new`) و«تفاصيل مركبة» (`[id]`) شاشاتٌ كاملةٌ تُفتَح من داخل
-  // صفحتها بزرّ. فنداءاتُها لم تكن منسوبةً إلى أيّ صفحة — ونقطةٌ لا تنسبها
-  // الخريطةُ إلى صفحةٍ يملكها الدورُ تُردّ ٤٠٣.
-  //
-  // وقد وقع: مشرفُ الأسطول يفتح «إنشاء شحنة» فتخرج قائمةُ الفروع فارغةً، لأنّ
-  // `/api/branches` منسوبٌ إلى صفحاتٍ لا يملكها — وصفحتُه هي التي تنادِيه.
-  //
-  // فتُضمّ الشاشاتُ الفرعيّةُ إلى صفحتها الأمّ: كلُّ `page.tsx` تحت مجلّدها
-  // وليست هي نفسُها صفحةً في الدليل. ومَن فتح الأمَّ فتح ما يُفتَح منها.
+  // A screen opened by a button is a page too.
+  // The sidebar lists only clickable entries, but create-shipment and vehicle details are full screens opened from inside their page by a button. Their calls were attributed to no page, and an endpoint the map attributes to no page the role owns returns 403.
+  // This happened: a fleet supervisor opening create-shipment got an empty branch list, because the branches endpoint was attributed to pages he does not own while his own page calls it.
+  // So sub-screens join their parent page: every page.tsx under its folder that is not itself a catalogue page. Whoever opens the parent opens what opens from it.
   const pageKeys = new Set(PAGES.map((x) => x.key));
   const subPages = (dir) => {
     const out = [];
@@ -200,7 +157,7 @@ function build() {
         if (!e.isDirectory()) continue;
         const childRel = `${rel}/${e.name}`;
         const childFile = path.join(d, e.name, 'page.tsx');
-        // شاشةٌ لها مدخلُها في الدليل تُحسَب على نفسها لا على أمّها.
+        // A screen with its own catalogue entry counts for itself, not its parent.
         if (!pageKeys.has(`/system${childRel}`) && fs.existsSync(childFile)) out.push(childFile);
         walk(path.join(d, e.name), childRel);
       }
@@ -209,20 +166,17 @@ function build() {
     return out;
   };
 
-  // ── وشاشةٌ تُفتَح من صفحةٍ ليست تحت مجلّدها ─────────────────────────────
-  // ملفُّ العميل/المورّد (`collections-dept/parties/[id]`) يُفتَح من صفحتَي
-  // «العملاء» و«الموردين»، ومجلّدُه ليس تحت أيٍّ منهما — فلا يضمّه `subPages`.
-  // فكانت نداءاتُه (ومنها مرفقاتُ الفواتير) تُردّ ٤٠٣ لدورٍ لا يملك غيرَهما.
+  // A screen opened from a page that is not above its folder.
+  // The customer/supplier file (collections-dept/parties/[id]) opens from the customers and suppliers pages, but its folder is under neither, so subPages does not include it. Its calls (including invoice attachments) returned 403 for a role owning only those two pages.
   const OPENED_FROM = {
     '/system/collections-dept/customers': ['collections-dept/parties'],
     '/system/collections-dept/suppliers': ['collections-dept/parties'],
-    // «تفاصيلُ المديونيّة» شاشةٌ فرعيّةٌ للّوحة (`dashboard/receivables`)، وتُفتَح
-    // أيضًا من «القضايا» — فمَن يملك القضايا وحدَها يقرأ صفوفَها ولا يُردّ ٤٠٣.
+    // Receivables details is a sub-screen of the dashboard (dashboard/receivables) and also opens from the cases page, so a role owning only cases can read its rows without a 403.
     '/system/collections-dept/cases': ['collections-dept/dashboard'],
   };
 
   for (const p of PAGES) {
-    // مسارُ الصفحة → ملفُّها. المسارُ ذو المعامل (`[id]`) يقابله مجلَّدٌ باسمه.
+    // Page path to its file. A parametrized path (such as [id]) maps to the folder with that name.
     const rel = p.key.replace(/^\/system\/?/, '');
     const file = path.join(APP, rel, 'page.tsx');
     if (!fs.existsSync(file)) { pages[p.key] = { apis: [], wildcard: true }; unresolved += 1; continue; }
@@ -237,9 +191,9 @@ function build() {
         if (got.wildcard) wildcard = true;
       }
     }
-    // ما هو من الإطار لا يُنسَب إلى الصفحة: وإلّا صارت كلُّ صفحةٍ تفتح كلَّ شيء.
+    // Frame endpoints are not attributed to the page, otherwise every page would open everything.
     const own = [...apis].filter((a) => !shell.has(a));
-    // الشكُّ يوسِّع: نداءٌ لم يُقرأ ساكنًا يفتح للصفحة بادئاتِ قسمها.
+    // Doubt widens: a call not statically readable opens the page to its section's prefixes.
     if (wildcard) (sectionPrefixes[p.section] || []).forEach((x) => own.push(x));
     pages[p.key] = { apis: [...new Set(own)].sort(), wildcard };
   }

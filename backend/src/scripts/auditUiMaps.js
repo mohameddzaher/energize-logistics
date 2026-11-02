@@ -1,13 +1,7 @@
 /**
- * جداولُ العرض في الواجهة مقابل ما تحمله قاعدةُ البيانات فعلًا.
- *
- * قراءةُ لونٍ من مفتاحٍ ناقصٍ — `MAP[x].color` و`MAP[x]` غيرُ موجود — لا تُخلي
- * خانةً بل تُسقط الشاشةَ كلَّها: «Application error: a client-side exception».
- * وهو ما وقع في ملفّ المركبة: الخادمُ يبعث سبعَ حالاتِ مستنداتٍ والجدولُ يعرف
- * خمسًا، فأربعٌ وسبعون مركبةً من ثلاثٍ وثلاثين وثلاثِ مئة لا تفتح صفحتُها.
- *
- * والمفاتيحُ تُقرأ من ملفّات الواجهة نفسِها لا تُنسَخ هنا — قائمةٌ منسوخةٌ تشيخ
- * بصمت، فيمرّ الفحصُ ويسقط المستخدم.
+ * Frontend display tables versus what the database actually holds.
+ * Reading .color from a missing key (MAP[x] undefined) does not blank a cell, it crashes the whole screen ("Application error: a client-side exception"). This happened on the vehicle file: the server sent seven document states and the table knew five, so 74 of 333 vehicles could not open their page.
+ * Keys are read from the frontend files, not copied here, because a copied list ages silently.
  */
 require('dotenv').config();
 const fs = require('fs');
@@ -16,18 +10,12 @@ const mongoose = require('mongoose');
 
 const FE = path.join(__dirname, '../../../frontend/src');
 
-/**
- * مفاتيحُ كائنٍ ثابتٍ في ملفّ TS — بقراءةِ الأقواس لا بالمسافات البادئة.
- * (أوّلُ محاولةٍ عدّت المسافاتِ فأسقطت كلَّ مفتاحٍ سبقه تعليق، فقال الفحصُ إنّ
- * الجدولَ يجهل مفاتيحَه هو.)
- */
+/** Top-level keys of a constant object in a TS file, found by reading brackets rather than indentation. (A first attempt counted indentation and dropped any key preceded by a comment, so the check claimed the table did not know its own keys.) */
 function keysOf(file, mapName) {
   const src = fs.readFileSync(path.join(FE, file), 'utf8');
   const at = src.search(new RegExp(`(?:^|\\n)\\s*(?:export\\s+)?const\\s+${mapName}\\b`));
   if (at < 0) return null;
-  // بعد علامة الإسناد لا بعد الاسم: التسميةُ نوعٌ فيه أقواسٌ أيضًا
-  // (`Record<string, { ar: string }>`)، وأوّلُ قوسٍ بعد الاسم قوسُ النوع لا
-  // قوسُ الكائن — فكان الفحصُ يقرأ حقولَ النوع ويقول إنّ الجدولَ يجهل مفاتيحَه.
+  // Start after the assignment sign, not after the name: the type annotation also contains brackets (Record<string, { ar: string }>), and the first bracket after the name belongs to the type, which made the check read type fields.
   const eq = src.indexOf('=', at);
   const open = src.indexOf('{', eq < 0 ? at : eq);
   if (open < 0) return null;
@@ -36,7 +24,7 @@ function keysOf(file, mapName) {
   let depth = 0; let i = open;
   for (; i < src.length; i += 1) {
     const c = src[i];
-    // تُقفَز التعليقاتُ والنصوصُ حتى لا يُقرأ قوسٌ داخلها بنيةً.
+    // Skip comments and strings so brackets inside them are not read as structure.
     if (c === '/' && src[i + 1] === '/') { i = src.indexOf('\n', i); if (i < 0) break; continue; }
     if (c === '/' && src[i + 1] === '*') { i = src.indexOf('*/', i) + 1; continue; }
     if (c === "'" || c === '"' || c === '`') {
@@ -46,7 +34,7 @@ function keysOf(file, mapName) {
     }
     if (c === '{') { depth += 1; continue; }
     if (c === '}') { depth -= 1; if (depth === 0) break; continue; }
-    // مفتاحٌ في المستوى الأوّل وحدَه
+    // First-level keys only
     if (depth === 1) {
       const m = /^['"]?([A-Za-z_][A-Za-z0-9_]*)['"]?\s*:/.exec(src.slice(i));
       if (m && !/[A-Za-z0-9_'"]/.test(src[i - 1] || '')) { keys.push(m[1]); i += m[0].length - 1; }
@@ -56,9 +44,7 @@ function keysOf(file, mapName) {
 }
 
 const CHECKS = [
-  // ولهاتين مفرداتان لا واحدة: `docStatus` في المتحكّم يترجم `not_applicable`
-  // إلى `not_required` و`missing` إلى `none` قبل أن يبعثهما، فملفُّ المركبة
-  // يقرأ المترجَم وصفحاتُ العائلات تقرأ الخام. وخلطُهما يُظهر عطبًا لا وجودَ له.
+  // These two have two vocabularies: docStatus in the controller maps not_applicable to not_required and missing to none before sending, so the vehicle file reads the mapped values and the family pages read the raw ones. Mixing them shows a nonexistent defect.
   ['ملفّ المركبة — حالة المستند', 'lib/vehicleRegistry.ts', 'STATUS_META', null, null, 'vehicleStatesMapped'],
   ['عائلات المستندات', 'lib/vehicleRegistry.ts', 'STATE_META', null, null, 'vehicleStatesRaw'],
   ['ماستر الموارد — الحالة', 'lib/hrMaster.ts', 'STATUS_META', 'employees', 'fieldStatus.iqamaNumberStatus', null],
@@ -80,7 +66,7 @@ const CHECKS = [
   await mongoose.connect(process.env.MONGODB_URI, { serverSelectionTimeoutMS: 60000 });
   const db = mongoose.connection.db;
 
-  // حالاتُ مستندات المركبات تُشتقّ ولا تُخزَّن، فتُحسب كما يحسبها الخادم.
+  // Vehicle document states are derived, not stored, so compute them as the server does.
   let vehicleStates = null;
   const vehicleStatesFn = async () => {
     if (vehicleStates) return vehicleStates;

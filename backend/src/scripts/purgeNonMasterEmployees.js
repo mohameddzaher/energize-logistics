@@ -1,22 +1,8 @@
 /**
- * تنقيةُ سجلّ الموظفين — لا يبقى إلّا من في الماستر والشيتات الأربعة عشر.
- *
- *   node src/scripts/purgeNonMasterEmployees.js          # تقرير
- *   node src/scripts/purgeNonMasterEmployees.js --yes    # تنفيذ
- *   node src/scripts/purgeNonMasterEmployees.js --yes --with-data   # يحذف حتى ما عليه بيانات
- *
- * ── المرجع ──────────────────────────────────────────────────────────────────
- * `master of hr.xlsx` (٣٧٨ موظّفًا) ومعه ثلاثةَ عشرَ شيتًا تفصيليًّا. كلُّ رقم
- * هويّةٍ يظهر في أيٍّ منها = موظّفٌ حقيقيّ. وما عداه بقايا استيراداتٍ قديمة
- * حُذف مصدرُها.
- *
- * ── وما لا يُحذف بلا إذن ────────────────────────────────────────────────────
- * السجلُّ الذي عليه عهدةُ شركةٍ أو عقدٌ أو مستند: حذفُه يترك العهدةَ معلّقةً
- * بلا صاحب، فلا يُعرف عند مَن الجهاز. والسجلُّ الذي يشير إليه حسابُ دخول:
- * حذفُه يُعطّل الخدمةَ الذاتيّة لصاحبه. كلاهما يُقال ولا يُمَسّ إلّا بـ
- * `--with-data` — أي بقرارٍ صريح.
- *
- * وكلُّ ما يُحذف يُكتب أوّلًا في backups/ كاملًا، فالتراجعُ ممكن.
+ * Cleans the employee register so only people in the master and the fourteen sheets remain.
+ * Usage: node src/scripts/purgeNonMasterEmployees.js [--yes] [--with-data]
+ * Reference: master of hr.xlsx plus the detail sheets; any identity number appearing in them is a real employee, others are leftovers of old imports.
+ * Records with company custody, a contract or a document, or referenced by a login account, are reported and untouched unless --with-data (an explicit decision), since deleting leaves custody ownerless or breaks self-service. Everything deleted is first written in full to backups/ so rollback is possible.
  */
 require('dotenv').config({ path: require('path').join(__dirname, '../../.env') });
 const fs = require('fs');
@@ -28,23 +14,14 @@ const { readSheet } = require('./lib/xlsxStream');
 const APPLY = process.argv.includes('--yes');
 const WITH_DATA = process.argv.includes('--with-data');
 const DIR = path.join(__dirname, '../seeds/data/hr-2026-08');
-// ── ما يُعلَّق على الموظّف ─────────────────────────────────────────────────
-// القائمةُ ناقصةٌ = حذفٌ صامتٌ لما لا يُفحَص. حُذف سبعةُ موظّفين لأنّ التفاويضَ
-// لم تكن فيها، وكلٌّ منهم يحمل **تفويضَ قيادةٍ ساريًا** على مركبةِ شركة —
-// فبقيت المركبةُ مفوَّضةً لمن لا وجودَ له. القائمةُ تُراجَع مع كلّ نموذجٍ جديد
-// يشير إلى Employee، ويمسكها `auditDataIntegrity`.
+// What references an employee. An incomplete list silently deletes what is not checked: seven employees were deleted because authorizations were missing, each holding an active driving authorization on a company vehicle. Review it with every new model that points to Employee; auditDataIntegrity checks it.
 const OWNED = [['إجازات', 'LeaveRequest'], ['طلبات', 'HRRequest'], ['عقود', 'Contract'],
   ['عهد', 'Asset'], ['مستندات', 'EmployeeDocument'], ['تجديدات', 'EmployeeRenewal'],
   ['تفاويض', 'VehicleAuthorization'], ['حوادث', 'VehicleAccident']];
 
 /**
- * كلُّ رقم هويّةٍ في الماستر أو في أيّ شيتٍ تفصيليّ.
- *
- * الماستر يُقرأ عمودُه الثاني **كما هو**، لا بنمطٍ يفترض عشرةَ أرقامٍ تبدأ
- * بواحدٍ أو اثنين: في الملفّ هويّاتٌ لا تشبه ذلك — «١١١» لزهرة، و«٢٢٢» لعمّ
- * رجب، وواحدةٌ تبدأ بأربعة. والنمطُ الذي يرفضها يجعل ثلاثةَ موظّفين حقيقيّين
- * يبدون دخلاء فيُحذفون. أمّا الشيتات التفصيليّة فتُمسح بالنمط لأنّها تحمل
- * أرقامًا أخرى كثيرة (جوازات وسجلّات) لا تُخلط بالهويّات.
+ * Every identity number in the master or any detail sheet.
+ * The master's second column is read as is, not by a pattern assuming ten digits starting with 1 or 2: the file has identities like short or unusual numbers, and a strict pattern would make real employees look foreign and get deleted. Detail sheets are scanned by pattern because they hold many other numbers (passports, registers) not to be confused with identities.
  */
 function authoritativeIds() {
   const ids = new Set();
@@ -124,7 +101,7 @@ function authoritativeIds() {
   const dir = path.join(__dirname, '../../backups', `employee-purge-${stamp}`);
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(dir, 'employees.json'), JSON.stringify(toDelete.map((r) => r.e), null, 1));
-  // وما تعلّق بهم، كي لا يضيع أثرُه لو احتيج للتراجع.
+  // Plus what references them, so their traces are kept in case of rollback.
   const owned = {};
   for (const [ar, M] of OWNED) {
     // eslint-disable-next-line no-await-in-loop

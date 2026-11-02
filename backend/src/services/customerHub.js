@@ -1,28 +1,10 @@
 /**
- * customerHub — العميلُ واحدٌ في كلّ أقسام الشركة (صاحبُ الشركة، ٢٠٢٦/١٠/٢٤).
- *
- * كان للعميل الواحد ثمانيةُ سجلّاتٍ لا يعرف أحدُها الآخر: بريدٌ يُصحَّح في التحصيل
- * يبقى قديمًا في طلبات الشحنات والأسطول والعلاقات والعقود. والمطلوب:
- *   · عملاءُ النقل (العمليّات، التحصيل، المنصّة، طلبات الشحنات، الأسطول، المبيعات)
- *     بياناتٌ واحدة؛ والتخليصُ له عملاؤه — وكلُّهم في «إدارة العلاقات» و«إدارة العقود».
- *   · ما يُعدَّل في عميلٍ من أيّ شاشةٍ يصل كلَّ سجلٍّ له في اللحظة.
- *
- * التصميم: **شركةُ العلاقات (CrmCompany) هي السجلُّ الأمّ** — فيها كلُّ العملاء.
- * وكلُّ سجلٍّ في قسمٍ آخر يحمل `crmCompany` رابطًا ثابتًا إليها (لا مطابقةَ أسماءٍ
- * في كلّ قراءة). و«بطاقةُ التواصل» (CARD) تعيش في الأمّ وتُنسَخ إلى كلّ مرتبط:
- *
- *   تعديلٌ في أيّ سجلّ ─▶ يُكتب في الأمّ ─▶ يُنسَخ إلى بقيّة المرتبطين ─▶ customers:changed
- *
- * والالتقاطُ في النموذج لا في الشاشات (attach): كلُّ حفظٍ (`save`) وكلُّ تعديلٍ
- * (`findOneAndUpdate`) على أيّ سجلٍّ يمرّ هنا — فشاشةٌ جديدةٌ تُضاف غدًا لا تُنسى.
- * والنسخُ نفسُه بـ`updateOne` (لا خطّافَ له) فلا يدور على نفسه.
- *
- * الاسمُ لا يُنسَخ هنا: له مسارُه (utils/renameOpsCustomer) لأنّه مفتاحُ كشوفٍ
- * وفواتيرَ مكتوبةٍ به. والبطاقةُ وحدَها تُنسَخ.
+ * customerHub: one customer across all sections. The CRM company (CrmCompany) is the parent record; every other section's record links to it via `crmCompany`, and the contact card is written to the parent then copied to all linked records.
+ * Hooks live in the model (save, findOneAndUpdate), so new screens are covered; the copy uses updateOne (no hook) so it cannot loop. The name is not copied here: it has its own path (utils/renameOpsCustomer).
  */
 const mongoose = require('mongoose');
 
-/** حقولُ بطاقة التواصل — مشتركةٌ بين السجلّات كلِّها. */
+/** Contact-card fields shared across all registers. */
 // `code` is the customer's code (utils/customerCode): master `customerCode`, collections `code`.
 const CARD = ['emails', 'phone', 'contactPerson', 'taxNumber', 'commercialRegister', 'address', 'city', 'code'];
 
@@ -30,10 +12,7 @@ const S = (v) => String(v == null ? '' : v).trim();
 const { normalizeEmails } = require('../utils/partyEmails');
 const foldName = (s) => require('../models/CollectionsParty').fold(String(s || ''));
 
-/**
- * السجلّات — كيف تُقرأ بطاقتُها من صفٍّ وكيف تُكتب إليه.
- * `single`: سجلٌّ لا يحمل إلّا بريدًا واحدًا (يُكتب أوّلُ القائمة).
- */
+/** Registers: how each reads its card from a row and writes it back. `single` means the record holds one email only (first in the list is written). */
 const REG = {
   crm: {
     model: () => require('../models/CrmCompany'), base: {}, master: true,
@@ -63,8 +42,7 @@ const REG = {
     model: () => require('../models/CustomsParty'), base: { kind: 'customer' }, single: true,
     ar: 'التخليص الجمركي', href: (id) => `/system/customs/parties/${id}`,
     read: (d) => ({ emails: normalizeEmails([d.email || '']), phone: S(d.phone), contactPerson: S(d.contactPerson), taxNumber: S(d.taxNumber), commercialRegister: S(d.commercialRegister), address: S(d.address), city: S(d.city), code: S(d.customerCode) }),
-    // جهةُ الاتّصال الأولى مرآةُ الحقول المسطّحة في التخليص (mirrorContacts) — تُكتب معها
-    // وإلّا أعادت أوّلُ حفظةٍ القديم.
+    // The first contact mirrors the flat customs fields (mirrorContacts); write both or the first save restores the old value.
     write: (c, d) => ({
       email: c.emails[0] || '', phone: c.phone, contactPerson: c.contactPerson, taxNumber: c.taxNumber,
       commercialRegister: c.commercialRegister, address: c.address, city: c.city, customerCode: c.code || '',
@@ -82,7 +60,7 @@ const REG = {
 };
 const REG_KEYS = Object.keys(REG);
 
-/** ما تغيّر في البطاقة بين قراءتين. */
+/** What changed in the card between two reads. */
 function cardDiff(a, b) {
   const out = [];
   for (const f of CARD) {
@@ -93,13 +71,13 @@ function cardDiff(a, b) {
   return out;
 }
 
-/** البطاقةُ الجديدة للأمّ بعد تعديلٍ في سجلّ `reg`. */
+/** New card for the parent after an edit on a `reg` record. */
 function mergeCard(master, before, after, changed, reg) {
   const card = { ...master };
   for (const f of changed) {
     if (f !== 'emails') { card[f] = after[f] ?? ''; continue; }
     if (!REG[reg].single) { card.emails = after.emails || []; continue; }
-    // سجلٌّ ببريدٍ واحد: يُستبدل ما كان فيه، وتبقى عناوينُ الأمّ الأخرى.
+    // Single-email record: replaces its own email, other parent addresses stay.
     const oldE = (before.emails || [])[0]; const newE = (after.emails || [])[0];
     card.emails = normalizeEmails([newE || '', ...(master.emails || []).filter((e) => e !== oldE && e !== newE)]);
   }
@@ -108,10 +86,7 @@ function mergeCard(master, before, after, changed, reg) {
 
 const emitChanged = (payload) => { try { require('../websocket/socketManager').emitToAll('customers:changed', payload); } catch (_) { /* */ } };
 
-/**
- * الأمُّ لهذا الصفّ: رابطُه إن وُجد، وإلّا شركةُ علاقاتٍ بالاسم نفسِه، وإلّا تُنشأ.
- * ويُكتب الرابطُ في الصفّ. (لا يُستدعى للأمّ نفسِها.)
- */
+/** Parent for this row: its link if set, else a CRM company with the same name, else create one. The link is written to the row. (Not called for the parent itself.) */
 async function ensureMaster(reg, doc) {
   const R = REG[reg];
   if (doc.crmCompany) return doc.crmCompany;
@@ -123,7 +98,7 @@ async function ensureMaster(reg, doc) {
   if (!key && !master) return null;
   if (!master) master = await Crm.findOne({ nameKey: key }).select('_id').lean();
   if (!master) {
-    // سجلٌّ آخر بالاسم نفسِه مربوطٌ قبلًا؟ فأمُّه أمُّ هذا.
+    // Another record with the same name is already linked, so its parent is this one's parent.
     for (const other of REG_KEYS.filter((k) => k !== 'crm' && k !== reg)) {
       const M = REG[other].model();
       const hit = await M.findOne({ ...REG[other].base, crmCompany: { $ne: null }, name: doc.name }).select('crmCompany').lean().catch(() => null);
@@ -143,10 +118,7 @@ async function ensureMaster(reg, doc) {
   return master._id;
 }
 
-/**
- * «إدارة العقود» فيها كلُّ العملاء: لكلّ أمٍّ صفُّ عقود — يُنشأ أوّلَ ما تُعرف الأمّ.
- * (مفتاحُ العقود يطوي «ال» فقد يلتقي اسمان؛ حينها يُربط القائمُ ولا يُكرَّر.)
- */
+/** Contracts has a row per parent, created when the parent is first known. The contracts key folds the Arabic definite article, so two names can collide; then the existing row is linked, not duplicated. */
 async function ensureContract(masterId) {
   try {
     const C = REG.contracts.model();
@@ -156,7 +128,7 @@ async function ensureContract(masterId) {
     const key = require('../controllers/contractsController').nameKey(m.name);
     if (!key) return false;
     const hit = await C.findOne({ nameKey: key }).select('_id crmCompany').lean();
-    // اسمٌ يطابق صفَّ عقودٍ لأمٍّ أخرى (شركتا علاقاتٍ بالاسم نفسِه) — صفٌّ واحدٌ يكفيهما.
+    // Name matches a contracts row of another parent (two CRM companies with the same name); one row serves both.
     if (hit) { if (!hit.crmCompany) { await C.updateOne({ _id: hit._id }, { $set: { crmCompany: masterId } }); return true; } return false; }
     await C.collection.insertOne({
       name: S(m.name), nameKey: key, crmCompany: masterId, ...REG.contracts.write(REG.crm.read(m)),
@@ -167,7 +139,7 @@ async function ensureContract(masterId) {
   } catch (e) { if (e.code !== 11000) console.error('[customerHub] contract row:', e.message); return false; }
 }
 
-/** كلُّ صفٍّ مرتبطٍ بهذه الأمّ في كلّ سجلّ (عدا الأمّ نفسِها). */
+/** Every row linked to this parent in every register, except the parent itself. */
 async function linkedRows(masterId) {
   const out = [];
   for (const reg of REG_KEYS.filter((k) => k !== 'crm')) {
@@ -178,7 +150,7 @@ async function linkedRows(masterId) {
   return out;
 }
 
-/** يكتب بطاقةً في الأمّ ويوزّعها على المرتبطين — حقولًا بعينها، وما عدا `except`. */
+/** Writes a card to the parent and distributes it to linked records: the given fields, or all except `except`. */
 async function fanOut(masterId, card, fieldsIn, except = null, origin = '') {
   let fields = fieldsIn;
   const Crm = REG.crm.model();
@@ -210,7 +182,7 @@ async function fanOut(masterId, card, fieldsIn, except = null, origin = '') {
     try { await REG[reg].model().updateOne({ _id: doc._id }, { $set: set }); n += 1; }
     catch (e) { console.error(`[customerHub] fan-out ${reg} ${doc._id}:`, e.message); }
   }
-  // المنصّةُ (UPL) تعرف بريدَ عميلها وهاتفَه — يُكتب فيها ما عُدِّل عندنا.
+  // The platform (UPL) knows the customer's email and phone, so local edits are written back to it.
   if (origin !== 'platform' && (fields.includes('emails') || fields.includes('phone'))) pushToPlatform(masterId, card).catch(() => {});
   return n;
 }
@@ -229,8 +201,8 @@ async function pushToPlatform(masterId, card) {
 }
 
 /**
- * التقاطُ تعديلٍ على صفٍّ في سجلّ `reg` — قبل وبعد.
- * @param origin 'platform' حين جاء من المنصّة (فلا يُردّ إليها)
+ * Captures an edit on a `reg` record, before and after.
+ * @param origin 'platform' when the change came from the platform (so it is not echoed back)
  */
 async function onChange(reg, before, after, origin = '') {
   try {
@@ -238,7 +210,7 @@ async function onChange(reg, before, after, origin = '') {
     const R = REG[reg];
     if (R.base.kind && after.kind !== R.base.kind) return;
     const isNew = !before;
-    // شركةُ علاقاتٍ جديدة: لا مرتبطين لها بعد — يكفي الإعلان (ولا تُردّ إلى المنصّة).
+    // New CRM company: no linked records yet, so only announce (and do not echo to the platform).
     if (isNew && R.master) { await ensureContract(after._id); emitChanged({ master: String(after._id), origin: reg, created: true }); return; }
     const masterId = R.master ? after._id : await ensureMaster(reg, after);
     if (!masterId) return;
@@ -249,7 +221,7 @@ async function onChange(reg, before, after, origin = '') {
     const aCard = R.read(after);
 
     if (isNew && !R.master) {
-      // صفٌّ جديد: يأخذ من الأمّ ما ينقصه، ويعطيها ما ينقصها.
+      // New row: takes missing fields from the parent and gives it the ones the parent lacks.
       const fillDoc = {}; const fillMaster = {};
       for (const f of CARD) {
         if (aCard[f] === undefined) continue;
@@ -281,11 +253,7 @@ async function onChange(reg, before, after, origin = '') {
   }
 }
 
-/**
- * يُركَّب على مخطّط كلّ سجلّ: `save` (إنشاءٌ أو حفظ) و`findOneAndUpdate` (تعديل).
- * يقرأ الصفَّ قبل التعديل حين يمسّ التعديلُ البطاقة، ويُطلق التوزيعَ بعد الردّ
- * (setImmediate) فلا يتأخّر حفظُ الشاشة.
- */
+/** Attached to each register schema: `save` (create or save) and `findOneAndUpdate` (edit). Reads the pre-edit row when the edit touches the card, and fires distribution after the response (setImmediate) so the screen save is not delayed. */
 const WATCH = [...CARD, 'email', 'crNumber', 'headquarters', 'contacts', 'customerCode'];
 function attach(schema, reg) {
   schema.pre('save', async function rememberBefore() {
@@ -319,7 +287,7 @@ function attach(schema, reg) {
   });
 }
 
-/** أين يوجد هذا العميل — لكلّ ملفّ عميلٍ رقائقُ «نفس العميل في: …». */
+/** Where this customer exists; each customer file shows "same customer in" chips. */
 async function presence(reg, id) {
   if (!REG[reg] || !mongoose.isValidObjectId(id)) return null;
   const d = await REG[reg].model().findById(id).select('crmCompany name').lean();
@@ -334,10 +302,7 @@ async function presence(reg, id) {
   return { master: String(masterId), places };
 }
 
-/**
- * كنسٌ كلَّ ساعة: صفوفٌ تُنشأ بكتابةٍ مباشرة (مزامناتٌ بـ`updateOne`/`bulkWrite`)
- * لا تمرّ بخطّافات النموذج — فتُربط هنا كأنّها جديدة (onChange بلا «قبل»).
- */
+/** Hourly sweep: rows created by direct writes (updateOne/bulkWrite syncs) bypass model hooks, so they are linked here as if new (onChange with no "before"). */
 async function sweepUnlinked(limit = 500) {
   let n = 0;
   for (const reg of REG_KEYS.filter((k) => k !== 'crm')) {
@@ -345,7 +310,7 @@ async function sweepUnlinked(limit = 500) {
     const rows = await R.model().find({ ...R.base, $or: [{ crmCompany: null }, { crmCompany: { $exists: false } }] }).limit(limit).lean().catch(() => []);
     for (const d of rows) { if (!S(d.name)) continue; await onChange(reg, null, d); n += 1; }
   }
-  // وكلُّ شركة علاقاتٍ لها صفُّ عقود.
+  // Every CRM company also has a contracts row.
   const C = REG.contracts.model();
   const linked = new Set((await C.find({ crmCompany: { $ne: null } }).select('crmCompany').lean()).map((x) => String(x.crmCompany)));
   for (const m of await REG.crm.model().find({}).select('_id').lean()) {
@@ -356,7 +321,7 @@ async function sweepUnlinked(limit = 500) {
 }
 function startSweep() {
   const run = () => sweepUnlinked().catch((e) => console.error('[customerHub] sweep:', e.message));
-  // نصفُ ساعةٍ بعد الإقلاع: الربطُ الأوّل يجريه السكربت (linkCustomerHub) بقاعدته الكاملة.
+  // Runs half an hour after boot; the first linking is done by the linkCustomerHub script with its full rules.
   setTimeout(run, 30 * 60 * 1000);
   setInterval(run, 60 * 60 * 1000).unref();
 }

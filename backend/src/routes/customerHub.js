@@ -1,7 +1,4 @@
-/**
- * /api/customer-hub — أين يوجد هذا العميل في أقسام الشركة (services/customerHub).
- * يقرؤه كلُّ ملفّ عميلٍ ليعرض «نفس العميل في: …» بروابطها. قراءةٌ فقط لموظّفي الشركة.
- */
+/** /api/customer-hub: where this customer exists across company sections (services/customerHub). Each customer file reads it to show "same customer in: ..." with links. Read-only for company staff. */
 const express = require('express');
 const authenticate = require('../middleware/auth');
 const hub = require('../services/customerHub');

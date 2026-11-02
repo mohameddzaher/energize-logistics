@@ -1,16 +1,8 @@
 /* eslint-disable no-console */
 /**
- * auditVehiclesRole — دور مدير/موظف المركبات: بيدخل فعلاً، وبيشوف قسمه كامل،
- * وما بيوصلش لأقسام غيره.
- *
- *   node src/scripts/auditVehiclesRole.js --base https://api.energize-logistics.com
- *
- * السؤال اللي بيرد عليه: «عملت الدور، طيب هو شغّال؟». الدور اللي موجود في
- * ملف الإعدادات ومش واصل للـAPI بيبقى مالوش لازمة، والدور اللي واصل لكل حاجة
- * بيبقى خطر. الاتنين بيتفحصوا هنا على الحساب الحقيقي مش على حساب تجريبي.
- *
- * الدخول بيتعمل بالحساب الحقيقي (mohamed.abdeulaal@energize.com) عشان نتأكد إن
- * كلمة السر المتخزّنة شغّالة فعلًا — ده أكتر حاجة بتقع لما الحساب يتعمل بسكربت.
+ * auditVehiclesRole: vehicles manager/staff roles actually log in, see the whole section, and cannot reach other sections.
+ * Answers "the role exists, but does it work?": a role in config that does not reach the API is useless, and one that reaches everything is dangerous. Both are checked on the real account, not a test one.
+ * Login uses the real account (mohamed.abdeulaal@energize.com) to confirm the stored password works, which often fails when an account is created by script.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -46,7 +38,7 @@ async function login(email, password) {
   };
 }
 
-// كل صفحة في قسم المركبات والاندبوينت اللي بيغذّيها.
+// Each vehicles section page and the endpoint that feeds it.
 const VEHICLE_PAGES = [
   ['/system/vehicles/registry/overview', '/api/vehicle-registry/overview'],
   ['/system/vehicles/registry', '/api/vehicle-registry/'],
@@ -54,13 +46,13 @@ const VEHICLE_PAGES = [
   ['/system/vehicles/registry/claims', '/api/vehicle-registry/claims'],
   ['/system/vehicles/registry/corporate', '/api/vehicle-registry/corporate-policies'],
   ['/system/vehicles/registry/dashboard', '/api/vehicle-registry/dashboard'],
-  // الشاشة اندمجت في «الانتهاءات والتجديد»، والاندبوينت باقٍ لتطبيق الجوّال — فيُختبر بلا صفحة.
+  // The screen was merged into Expiries and Renewal; the endpoint stays for the mobile app, so it is tested without a page.
   ['(تطبيق الجوّال — التنبيهات)', '/api/vehicle-registry/alerts'],
   ['/system/vehicles/registry/settings', '/api/vehicle-registry/settings'],
   ['(التفاويض)', '/api/vehicles/authorizations'],
 ];
 
-// أقسام تانية — مالوش دعوة بيها.
+// Other sections, not relevant here.
 const OTHER_SECTIONS = [
   ['الموارد البشرية', '/api/hr/employees'],
   ['المحاسبة', '/api/accounting/accounts'],
@@ -73,7 +65,7 @@ const OTHER_SECTIONS = [
   const User = require('../models/User');
   const R = require('../config/roles');
 
-  // ═══ ١) الدور نفسه معرَّف صح ═══════════════════════════════════════════════
+  // 1) The role itself is defined correctly
   console.log('── تعريف الدور ──');
   const roles = R.rolesOfSection('Vehicles');
   ok('قسم المركبات له مدير وموظف', roles.length >= 2 && roles.includes('vehicles_manager') && roles.includes('vehicles_staff'),
@@ -85,7 +77,7 @@ const OTHER_SECTIONS = [
     `${R.LABELS_AR.vehicles_manager} / ${R.LABELS_AR.vehicles_staff}`);
   ok('الدور معرَّفٌ في config/roles', require('../config/roles').ALL_ROLES.includes('vehicles_manager'));
 
-  // ═══ ٢) الحساب الحقيقي ═════════════════════════════════════════════════════
+  // 2) The real account
   console.log('\n── الحساب ──');
   const u = await User.findOne({ email: OWNER.email }).lean();
   ok('الحساب موجود', !!u, u ? '' : 'مش موجود');
@@ -101,15 +93,15 @@ const OTHER_SECTIONS = [
   ok('الجلسة بترجّع نفس الدور', (lr.body?.user?.role || lr.body?.role) === 'vehicles_manager',
     lr.body?.user?.role || lr.body?.role || '?');
 
-  // ═══ ٣) قسمه كامل واصل له ══════════════════════════════════════════════════
+  // 3) The whole section is reachable
   console.log('\n── كل صفحة في قسم المركبات ──');
   for (const [page, ep] of VEHICLE_PAGES) {
     const r = await req('GET', ep, ck);
     ok(`${page.padEnd(42)} ${ep}`, r.status === 200, `HTTP ${r.status}`);
   }
 
-  // ═══ ٤) ومعاه الكتابة، مش القراءة بس ═══════════════════════════════════════
-  // «القسم كامل بكل الأكشنز لكل المفتوح له القسم» — فالمدير لازم يقدر يكتب.
+  // 4) Write access, not just read
+  // The section is full access with all actions for everyone who has it open, so the manager must be able to write.
   console.log('\n── الكتابة (القسم مفتوح بالكامل، مش قراءة بس) ──');
   const VM = require('../models/VehicleMaster');
   const VehicleMaster = VM.VehicleMaster || VM;
@@ -121,14 +113,14 @@ const OTHER_SECTIONS = [
     await VehicleMaster.updateOne({ _id: one._id }, { $set: { notes: before } });
   } else ok('مفيش مركبة للتجربة', false);
 
-  // ═══ ٥) وما بيوصلش لأقسام غيره ═════════════════════════════════════════════
+  // 5) Other sections are not reachable
   console.log('\n── أقسام تانية: مقفولة ──');
   for (const [label, ep] of OTHER_SECTIONS) {
     const r = await req('GET', ep, ck);
     ok(`${label.padEnd(18)} ${ep.padEnd(30)} مرفوض`, r.status === 403 || r.status === 401, `HTTP ${r.status}`);
   }
 
-  // ═══ ٦) والمتكرّرة في كل قسم شغّالة له ══════════════════════════════════════
+  // 6) The cross-section shared pages work for them
   console.log('\n── المهام والشكاوى ──');
   for (const [label, ep] of [['مهامي', '/api/section-work/tasks?section=vehicles'],
     ['الشكاوى', '/api/section-work/complaints?section=vehicles']]) {
@@ -136,9 +128,8 @@ const OTHER_SECTIONS = [
     ok(`${label.padEnd(10)} ${ep}`, r.status === 200, `HTTP ${r.status}`);
   }
 
-  // ═══ ٧) دور الموظف — نفس القسم، وبيوصله كامل برضه ═══════════════════════
-  // «القسم كامل بكل الأكشنز لكل المفتوح له القسم» — الفرق بين المدير والموظف
-  // في نطاق الرؤية، مش في الأزرار. فالموظف لازم يفتح نفس الصفحات.
+  // 7) Staff role: same section, full access too
+  // Manager and staff differ in visibility scope, not in buttons, so staff must open the same pages.
   console.log('\n── دور موظف القسم (vehicles_staff) ──');
   await User.deleteMany({ email: { $regex: '^zz-vehstaff' } });
   const st = await User.create({

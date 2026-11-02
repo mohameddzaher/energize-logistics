@@ -1,18 +1,9 @@
 /* eslint-disable no-console */
 /**
- * cleanVehicleReferenceData — يوحّد صيغَ القيم في حقول المركبات ذات الاختيارات.
- *
- *   node src/scripts/cleanVehicleReferenceData.js --dry
- *   node src/scripts/cleanVehicleReferenceData.js --yes
- *
- * الحقل الحرّ يُكتب بألف صيغة: «مرسيدس» و«MercedesBenz» و«MERCEDES» ثلاثةُ صفوف
- * لشيءٍ واحد. فتصير في الفلتر ثلاثةَ خيارات، وفي التحليل ثلاثَ ماركات، ولا يعرف
- * أحدٌ أنّ عددها واحد. وهذا السكربت يوحّدها على القيمة المعتمدة في
- * config/vehicleDefaults.js، ثم يُبلّغ عمّا بقي خارج القائمة كي يُقرَّر فيه.
- *
- * ولا يخترع شيئًا: المطابقة بالاسم بعد تطبيعٍ خفيف (حروف صغيرة، بلا فراغات ولا
- * شرطات)، أو بجدول مرادفاتٍ مكتوبٍ بالاسم أدناه. وما لم يُطابق يُترك ويُعلَن —
- * تخمينُ ما لا يُعرَف أسوأ من تركه.
+ * cleanVehicleReferenceData: unify value spellings in the vehicle fields that have choice lists.
+ * Usage: node src/scripts/cleanVehicleReferenceData.js --dry | --yes
+ * A free-text field is written a thousand ways: three Arabic and Latin spellings of Mercedes make three filter options and three brands in analytics, with no one seeing they are one. This unifies them to the approved value in config/vehicleDefaults.js, then reports what remains outside the list for a decision.
+ * Invents nothing: matching is by name after light normalization (lowercase, no spaces or dashes), or by a synonym table written out below. Unmatched values are left and reported, since guessing is worse than leaving.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -21,7 +12,7 @@ const V = require('../config/vehicleDefaults');
 const DRY = process.argv.includes('--dry');
 const YES = process.argv.includes('--yes');
 
-/** الحقلُ ← قائمتُه المعتمدة. */
+/** Field -> its approved list. */
 const FIELDS = [
   ['insurance.coverageTypeAr', V.coverageTypes, 'نوع التغطية'],
   ['insurance.companyAr', V.insuranceCompanies, 'شركة التأمين'],
@@ -43,10 +34,7 @@ const FIELDS = [
   ['authorizedPerson.jobTitleAr', V.jobTitles, 'وظيفة المفوَّض'],
 ];
 
-/**
- * مرادفاتٌ لا يمسكها التطبيع وحده — الاسم اللاتينيّ للماركة العربيّة وعكسُه.
- * تُكتب بالاسم لا تُخمَّن: «MG» ليست «ام جي» بالتطبيع، لكنّها هي بالمعرفة.
- */
+/** Synonyms normalization alone does not catch: the Latin name of an Arabic brand and the reverse. Written explicitly, not guessed: "MG" is not its Arabic spelling by normalization, but it is by knowledge. */
 const SYNONYMS = {
   brandAr: {
     mercedesbenz: 'مرسيدس', mercedes: 'مرسيدس', 'mercedes-benz': 'مرسيدس',
@@ -59,18 +47,14 @@ const SYNONYMS = {
 };
 
 /**
- * قيمٌ تُفرَّغ لا تُوحَّد: حالةٌ كُتبت في خانةِ شيءٍ آخر.
- *
- * «مسروق» في خانة وظيفة المفوَّض ليست وظيفة — والمركبات الأربع عشرة كلُّها
- * حالةُ تشغيلها «مسروقة» في موضعها الصحيح، فالكلمة هنا تكرارٌ في المكان الخطأ
- * يُفسد قائمةَ الوظائف ويجعل الفلتر يعرض «مسروق» وظيفةً. وتفريغُها لا يُضيع
- * معلومةً: ما تقوله مكتوبٌ في حقله.
+ * Values that are emptied, not unified: a status written in the field of something else.
+ * "Stolen" in the authorized person's job field is not a job; the fourteen vehicles all have operating status stolen in its proper place, so the word here is a duplicate in the wrong place that pollutes the job list and makes the filter show "stolen" as a job. Emptying it loses nothing, since what it says is written in its own field.
  */
 const CLEAR_VALUES = {
   'authorizedPerson.jobTitleAr': ['مسروق', 'مسروقة'],
 };
 
-/** تطبيعٌ خفيف: حروفٌ صغيرة، بلا فراغاتٍ ولا شرطاتٍ ولا تشكيل. */
+/** Light normalization: lowercase, no spaces, dashes or diacritics. */
 const norm = (s) => String(s || '')
   .replace(/[أإآ]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه')
   .replace(/[\s\-_/]/g, '')

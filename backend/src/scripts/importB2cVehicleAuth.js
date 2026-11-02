@@ -1,17 +1,8 @@
 /**
- * أعمدةُ شيت مركبات النقل الخفيف التي لم تُستورَد: جوالُ المفوَّض والقائدُ الفعليّ.
- *
- * ── لماذا ─────────────────────────────────────────────────────────────────
- * الشيتُ يحمل ثلاثةَ عشرَ عمودًا، واستُورد منها التفويضُ (اسمًا ورقمًا ومدّةً)
- * والمشروعُ والمدينة. وبقي ثلاثةٌ لا موضعَ لها في السجلّ فسقطت:
- *   · **جوال المفوَّض** — أوّلُ ما يُطلَب حين يقع شيءٌ في الطريق.
- *   · **اسمُ القائد الفعليّ وهويّتُه** — والمفوَّضُ ليس دائمًا الراكب؛ ورقةُ
- *     التفويض تقول مَن يحقُّ له أن يقود، والواقعُ يقول مَن يقود.
- *
- * والقيمُ الغائبةُ تُكتب في الشيت كلامًا («غير مفوض»، «غير مستخدم») لا فراغًا —
- * فتُقرأ على أنّها غياب، ولا تُخزَّن نصًّا يُقرأ بعد شهرٍ كأنّه اسمُ رجل.
- *
- * الاستعمال:  node src/scripts/importB2cVehicleAuth.js [--apply]
+ * Import the light-transport vehicles sheet columns that were not imported: authorized person's mobile and the actual driver.
+ * The sheet has thirteen columns; authorization (name, number, period), project and city were imported. Three had no place in the register and were dropped: the authorized person's mobile (first thing needed when something happens on the road), and the actual driver's name and ID (the authorized person is not always the rider; the paper says who may drive, reality says who does).
+ * Absent values are written as words in the sheet (not authorized, not used), not blank, so they are read as absence and not stored as text that later looks like a person's name.
+ * Usage: node src/scripts/importB2cVehicleAuth.js [--apply]
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -24,14 +15,14 @@ const { VehicleMaster } = require(`${ROOT}/models/VehicleMaster`);
 const APPLY = process.argv.includes('--apply');
 const FILE = path.join(__dirname, '../../../b2c files/المركبات تحديث 27-سبتمبر 2026 (1).xlsx');
 
-/** علاماتُ الغياب في الشيت — تُقرأ فراغًا لا قيمة. */
+/** Absence markers in the sheet, read as empty rather than as values. */
 const ABSENT = ['غير مفوض', 'غير مستخدم', 'لا يوجد', 'غير متوفر', '-', '—', 'غير مفوضة'];
 const real = (v) => {
   const s = String(v ?? '').trim().replace(/\s+/g, ' ');
   if (!s) return '';
   return ABSENT.some((a) => s === a || s.startsWith(a)) ? '' : s;
 };
-/** مفتاحُ اللوحة: الأرقامُ وحروفٌ مرتَّبة — نفسُ الطيّ المستعمل في القسم. */
+/** Plate key: the digits and the letters in sorted order, the same folding used in the section. */
 const plateKey = (v) => {
   const s = String(v || '');
   const digits = (s.match(/\d/g) || []).join('');
@@ -80,7 +71,7 @@ const plateKey = (v) => {
   for (const p of plan) await VehicleMaster.updateOne({ _id: p.id }, { $set: p.set });
   console.log(`\nكُتب ${plan.length} صفًّا.`);
 
-  // والمفوَّضُ غيرُ الراكب — كم مركبةً؟ رقمٌ يُسأل عنه.
+  // The authorized person differs from the rider: how many vehicles? A number people ask about.
   const all = await VehicleMaster.find({ 'actualDriver.idNumber': { $nin: ['', null] } })
     .select('plateNumber authorizedPerson actualDriver').lean();
   const diff = all.filter((v) => String(v.actualDriver.idNumber) !== String(v.authorizedPerson?.iqamaNumber || ''));

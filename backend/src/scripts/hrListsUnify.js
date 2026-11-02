@@ -1,17 +1,7 @@
 /**
- * hrListsUnify — الجنسيّةُ والمدينةُ والمشروعُ قوائمُ مغلقة (صاحبُ الشركة، ٢٠٢٦/١٠/١٩).
- *
- *   node src/scripts/hrListsUnify.js            ← عرضٌ فقط
- *   node src/scripts/hrListsUnify.js --apply
- *
- * ١. المدينة (`branchName` و`workLocation`): صورُ الكتابة إلى اسمٍ واحد —
- *    Jeddah/جده ← جدة · مكه/مكة/Makkah ← مكة المكرمة. وما بقي يُضاف إلى القائمة.
- * ٢. الجنسيّة: ما في الملفّات وليس في القائمة يُضاف إليها (لا يُغيَّر في الملفّ).
- * ٣. المشروع: صورُ الكتابة إلى اسمٍ واحد (هنقرستيشن ← هنجرستيشن، «كيتا جده» ← كيتا…).
- *    ثمّ موظّفُ B2C: مشروعُه من سجلّه هناك. وإن كان سجلُّه بلا مشروعٍ وفي ملفّه
- *    مشروعٌ من مشاريع B2C، كُتب في سجلّه أوّلًا — فلا يضيع ما عُرف.
- *    وبقيّةُ المشاريع تصير قائمةَ `hr_project`.
- * ولكلّ موظّفٍ تغيّر فيه شيءٌ سطرٌ في سجلّه بما كان وما صار.
+ * hrListsUnify: nationality, city and project become closed lists. Shows only; --apply writes.
+ * City (branchName, workLocation) and project: spelling variants fold to one name; leftovers are added to the lists. Nationality: values missing from the list are added, files unchanged.
+ * B2C employees take their project from their B2C record (written there first if missing); each changed employee gets a history entry.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -81,7 +71,7 @@ async function ensureRows(type, names) {
       });
     }
   }
-  // ما سيبقى في الملفّات بعد التوحيد — منه تُبنى القوائم.
+  // What remains in the files after unification; the lists are built from it.
   const after = emps.map((e) => {
     const o = ops.find((x) => String(x.updateOne.filter._id) === String(e._id));
     return { ...e, ...(o ? o.updateOne.update.$set : {}) };

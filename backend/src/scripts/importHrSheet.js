@@ -1,17 +1,8 @@
 /**
- * Import the HR sheet (employees + their current vehicle authorizations).
- *
- * Usage:
- *   1. Save the FULL sheet JSON (the { "employees": [ ... ] } object the user
- *      provides) to a file, e.g. backend/src/scripts/hr-sheet.json
- *   2. From the backend folder run:
- *        node src/scripts/importHrSheet.js src/scripts/hr-sheet.json
- *      Add --dry to preview without writing:
- *        node src/scripts/importHrSheet.js src/scripts/hr-sheet.json --dry
- *
- * It is idempotent: employees are upserted by iqama (then employee number), and
- * a vehicle + its active authorization are created/kept in sync from the
- * "المركبه" column. Re-running updates rather than duplicates.
+ * Import the HR sheet (employees and their current vehicle authorizations).
+ * Usage: save the full sheet JSON (an object with an employees array) to a file such as backend/src/scripts/hr-sheet.json, then run from the backend folder:
+ * node src/scripts/importHrSheet.js src/scripts/hr-sheet.json
+ * Add --dry to preview without writing. Idempotent: employees are upserted by iqama (then employee number), and a vehicle plus its active authorization are created or kept in sync from the vehicle column. Re-running updates rather than duplicates.
  */
 require('dotenv').config();
 const fs = require('fs');
@@ -191,8 +182,7 @@ async function run() {
           vehicle: veh._id, employee: emp._id,
           startDate: fields.hireDate || new Date().toISOString().slice(0, 10),
           authorizationType: 'تفويض قيادة',
-          // لا عبارةَ «مستورد من الشيت»: الاستيرادُ بدايةٌ فقط والنظامُ هو المرجع
-          // بعده، والعبارةُ كانت تُقرأ في ملفّ الموظّف كأنّها صفةٌ للتفويض.
+          // No imported-from-sheet note: the import is only a starting point and the system is the reference afterward; the note read on the employee file as if it described the authorization.
         });
         await Vehicle.findByIdAndUpdate(veh._id, { currentAuthorization: auth._id, currentEmployee: emp._id, status: 'authorized' });
         auths++;

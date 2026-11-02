@@ -1,23 +1,8 @@
 /**
- * دمجُ سجلَّي الموظّف الواحد، وكنسُ سجلّات الاختبار.
- *
- *   node src/scripts/mergeDuplicateEmployees.js            # تقريرٌ بلا كتابة
- *   node src/scripts/mergeDuplicateEmployees.js --write    # ينفّذ
- *
- * ── لماذا دمجٌ لا حذف ───────────────────────────────────────────────────────
- * الموظّفُ لا يُحذَف (راجع `deleteEmployee`: البابُ مسدود). لكنّ **سجلَّين
- * لإنسانٍ واحد** ليسا إنسانين: هما قيدٌ تكرّر. وإبقاؤهما أسوأُ من الحذف —
- * مستنداتُه موزّعةٌ على نسختين، فمن يفتح إحداهما يرى نصفَ ملفّه ويظنّه كلَّه،
- * وإنهاءُ الخدمة يقع على واحدةٍ فيبقى الآخرُ «على رأس العمل».
- *
- * فالدمجُ: تُنقَل كلُّ إشارةٍ من النسخة الزائدة إلى المُبقاة (مستندات، عقود،
- * إجازات، طلبات، عهد، بطاقةُ سائق، سجلُّ النقل الخفيف، حسابُ الدخول، تفاويضُ
- * المركبات، ومَن يتبعه إداريًّا)، ثمّ تُملأ من الزائدة كلُّ خانةٍ فارغةٍ في
- * المُبقاة — فلا تضيع معلومة — ثمّ تُزال الزائدةُ وحدَها.
- *
- * ── وما لا يُدمَج تلقائيًّا ─────────────────────────────────────────────────
- * اسمان متطابقان برقمَي هويّةٍ **مختلفين** ليسا تكرارًا يُحسَم بسكربت: قد يكون
- * شخصين، أو شخصًا عاد بإقامةٍ جديدة. يُذكَر في التقرير ويُترك لصاحب القرار.
+ * Merges the two records of one employee and sweeps test records.
+ * Usage: node src/scripts/mergeDuplicateEmployees.js [--write]
+ * Employees are never deleted (see deleteEmployee), but two records for one person are a duplicate entry: documents split across them and ending service hits only one. So every reference moves from the extra record to the kept one, empty fields are filled from the extra, then only the extra is removed.
+ * Same name with different identity numbers is not auto-merged (maybe two people or a returning one); it is reported for a decision.
  */
 require('dotenv').config({ quiet: true });
 const mongoose = require('mongoose');
@@ -25,7 +10,7 @@ const mongoose = require('mongoose');
 const WRITE = process.argv.includes('--write');
 const S = (v) => String(v == null ? '' : v).trim();
 
-/** كلُّ ما يشير إلى موظّف: المجموعةُ والحقل. */
+/** Everything that references an employee: collection and field. */
 const REFS = [
   ['employeedocuments', 'employee'], ['employeerenewals', 'employee'],
   ['contracts', 'employee'], ['leaverequests', 'employee'], ['hrrequests', 'employee'],
@@ -44,10 +29,7 @@ const REFS = [
 
   const all = await Employee.find({}).lean();
 
-  // ── ① سجلّات الاختبار ────────────────────────────────────────────────────
-  // تُنشَأ تلقائيًّا مع كلّ مستخدمٍ يُصنَع للفحص، ويبقى هيكلُها بعد حذف المستخدم.
-  // لا هويّةَ لها ولا مستندَ ولا عقد — وبريدُها `example.invalid` وهو نطاقٌ
-  // محجوزٌ لا يُسجَّل، فلا يُشبهه بريدُ موظّفٍ حقيقيّ.
+  // Test records: created automatically with each user made for testing and left behind after the user is deleted. They have no identity, document or contract, and use example.invalid, a reserved unregistrable domain no real email resembles.
   const litter = all.filter((e) => /@example\.invalid$/i.test(S(e.email)));
   const litterWithData = [];
   for (const e of litter) {
@@ -62,12 +44,11 @@ const REFS = [
   console.log('  عددُها:', litter.length, '· ما لها إشاراتٌ (لن تُمَسّ):', litterWithData.length);
   litter.slice(0, 12).forEach((e) => console.log('   ', S(e.email)));
 
-  // ── ② التكرارُ الحقيقيّ: رقمُ هويّةٍ واحدٌ وسجلّان ───────────────────────
+  // Real duplicates: one identity number, two records.
   const byId = new Map();
   for (const e of all) {
     if (/@example\.invalid$/i.test(S(e.email))) continue;
-    // الرقمُ قد يُكتب في الخانتين للسجلّ الواحد (راجع identity-number-two-columns)،
-    // فيُجمَع بالمعرّف كي لا يُعَدّ السجلُّ الواحدُ تكرارًا لنفسه.
+    // The number may be written in both columns of one record (see identity-number-two-columns), so group by id to avoid counting a record as a duplicate of itself.
     for (const id of new Set([S(e.nationalId), S(e.iqamaNumber)].filter(Boolean))) {
       if (!byId.has(id)) byId.set(id, new Map());
       byId.get(id).set(String(e._id), e);
@@ -93,11 +74,7 @@ const REFS = [
     const rows = [...map.values()];
     const enriched = [];
     for (const r of rows) enriched.push({ r, refs: await refsOf(r._id), n: filled(r) });
-    /**
-     * أيُّهما يُبقى؟ **مَن هو على رأس العمل** أوّلًا — هو الحاضرُ الذي تُبنى عليه
-     * الإجازاتُ والرواتبُ والعهد، وإبقاءُ المنتهيةِ خدمتُه يجعل الرجلَ يُقرأ
-     * مفصولًا وهو يعمل. ثمّ الأغنى بياناتٍ عند التساوي.
-     */
+    /** Which one to keep: the active employee first, since leave, salary and custody build on it and keeping the ended one would read a working person as terminated. Ties go to the record with more data. */
     enriched.sort((a, b) => {
       const act = (x) => (x.r.employmentStatus === 'active' ? 1 : 0);
       if (act(a) !== act(b)) return act(b) - act(a);
@@ -111,7 +88,7 @@ const REFS = [
     for (const d of drop) console.log(`   يُدمَج: ${String(d.r._id).slice(-6)} [${d.r.employmentStatus}] خانات ${d.n} · ${JSON.stringify(d.refs)}`);
   }
 
-  // ── ③ اسمٌ واحدٌ برقمَي هويّةٍ مختلفين — لا يُحسَم بسكربت ────────────────
+  // Same name with two different identity numbers: not decided by a script.
   const fold = (v) => S(v).replace(/[أإآٱ]/g, 'ا').replace(/ة/g, 'ه').replace(/[ىئ]/g, 'ي').replace(/\s+/g, ' ');
   const byName = {};
   for (const e of all) {
@@ -131,7 +108,7 @@ const REFS = [
 
   if (!WRITE) { console.log('\n(تقريرٌ فقط — أضِف --write للتنفيذ)'); process.exit(0); }
 
-  // ── التنفيذ ──────────────────────────────────────────────────────────────
+  // Execution.
   let moved = 0; let merged = 0; let swept = 0;
   for (const { keep, drop } of plans) {
     for (const d of drop) {
@@ -140,7 +117,7 @@ const REFS = [
         const r = await db.collection(coll).updateMany({ [field]: d.r._id }, { $set: { [field]: keep.r._id } });
         moved += r.modifiedCount;
       }
-      // ما في الزائدة ولا نظيرَ له في المُبقاة يُنقَل — فلا تضيع معلومة.
+      // Whatever the extra record has that the kept one lacks is carried over, so no information is lost.
       const $set = {};
       for (const [k, v] of Object.entries(d.r)) {
         if (['_id', '__v', 'createdAt', 'updatedAt', 'employmentStatus'].includes(k)) continue;

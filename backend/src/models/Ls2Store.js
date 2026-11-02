@@ -1,18 +1,11 @@
 const mongoose = require('mongoose');
 
-// ── مخزن النقل الثقيل (قطع الغيار) ──────────────────────────────────────────────
-// صنف واحد لكل مادة: الاسم، التصنيف، الرصيد الحالي، الوحدة، سعر القطعة. الرصيد
-// يتغيّر عبر حركات (وارد/صادر) المسجّلة في Ls2StoreMovement.
+// Heavy transport store (spare parts)
+// One item per material: name, category, current balance, unit, unit price. The balance changes through in/out movements recorded in Ls2StoreMovement.
 const storeItemSchema = new mongoose.Schema({
   /**
-   * ── مخزنان لا مخزنٌ واحد ─────────────────────────────────────────────────
-   *
-   * للنقل الثقيل مخزنُه، وللنقل الخفيف مخزنُه: الأصنافُ مختلفةٌ (رأسُ موتورٍ
-   * ودرّاجاتٌ هنا، فلاترُ تريلاتٍ هناك)، والرصيدان لا يُجمعان في رقمٍ واحد.
-   *
-   * وهو حقلٌ على الصنف لا نموذجٌ ثانٍ: آليّةُ المخزن واحدةٌ — وارد وصادر، حركةٌ
-   * لا تُعدَّل بل تُعكَس، رصيدٌ بعد كلّ حركة، وعتبةُ نقص. ونسخُها لمخزنٍ ثانٍ
-   * يعني قاعدتين تفترقان أوّلَ تعديلٍ يُجرى على إحداهما.
+   * Two stores, not one: heavy and light transport have different items and their balances must not be summed.
+   * A field on the item rather than a second model, so the movement rules (in/out, reversal not edit, balance after each movement, shortage threshold) stay in one place.
    */
   warehouse: { type: String, enum: ['heavy', 'light'], default: 'heavy', index: true },
   code: { type: String, default: '', trim: true, index: true },
@@ -20,65 +13,59 @@ const storeItemSchema = new mongoose.Schema({
   // The same item's name on the supplier's invoice (it often differs from ours).
   supplierItemName: { type: String, default: '', trim: true },
   category: { type: String, default: '', index: true },       // inferred_category
-  groupAr: { type: String, default: 'قطع غيار' },              // المجموعة
-  quantity: { type: Number, default: 0 },                      // الرصيد الحالي
-  unit: { type: String, default: 'قطعة' },                     // الوحدة
-  unitPrice: { type: Number, default: 0 },                     // السعر للقطعة (ر.س)
-  minQuantity: { type: Number, default: 0 },                   // عتبة النقص (تنبيه عند/تحتها)
-  // ── من أين اشتُري ومتى ───────────────────────────────────────────────────
-  // آخرُ توريدٍ للصنف: موردُه ويومُ شرائه. والتفصيلُ لكلّ توريدٍ في حركته.
+  groupAr: { type: String, default: 'قطع غيار' },              // Group
+  quantity: { type: Number, default: 0 },                      // Current balance
+  unit: { type: String, default: 'قطعة' },                     // Unit
+  unitPrice: { type: Number, default: 0 },                     // Unit price (SAR)
+  minQuantity: { type: Number, default: 0 },                   // Shortage threshold (alert at or below)
+  // Last purchase of the item: its supplier and purchase day. Per-purchase detail lives in the movement.
   supplier: { type: mongoose.Schema.Types.ObjectId, ref: 'Ls2Supplier', default: null, index: true },
-  supplierName: { type: String, default: '' },                 // لقطةُ الاسم
+  supplierName: { type: String, default: '' },                 // Name snapshot
   purchaseDate: { type: String, default: '', index: true },    // YYYY-MM-DD
   compatibleModels: { type: [String], default: [] },
   notes: { type: String, default: '' },
   isActive: { type: Boolean, default: true, index: true },
 }, { timestamps: true });
 
-// ── حركة مخزنية (وارد/صادر) ─────────────────────────────────────────────────────
-// وارد: دخل للمخزن (اختياريًا وارد من عربية معيّنة نزلت منها القطعة).
-// صادر: صُرف من المخزن على عربية (vehiclePlate).
+// Store movement (in/out)
+// In: enters the store (optionally from a specific vehicle the part came off).
+// Out: issued to a vehicle (vehiclePlate).
 const storeMovementSchema = new mongoose.Schema({
-  /** مخزنُ الحركة — يُنسَخ من الصنف وقتَ تسجيلها فلا يُقرأ سجلُّ مخزنٍ في آخر. */
+  /** Store of the movement, copied from the item at record time so another store's register is never read. */
   warehouse: { type: String, enum: ['heavy', 'light'], default: 'heavy', index: true },
   item: { type: mongoose.Schema.Types.ObjectId, ref: 'Ls2StoreItem', required: true, index: true },
-  itemName: { type: String, default: '' },                    // لقطة الاسم
+  itemName: { type: String, default: '' },                    // Name snapshot
   type: { type: String, enum: ['in', 'out'], required: true, index: true },
   quantity: { type: Number, required: true },
-  // سعرُ القطعة الواحدة في هذا الوارد — به يُعرَف بكم دخلت، ومنه يُحدَّث سعرُ الصنف.
+  // Unit price of this inbound; records the purchase cost and updates the item price.
   unitPrice: { type: Number, default: null },
-  // الواردُ من مورد: مَن ويومَ الشراء. و`date` يومُ الحركة كما يُفلتَر به السجلّ
-  // (يومُ الشراء للوارد، ويومُ التسجيل لغيره) — لا لحظةُ الإدخال في النظام.
+  // Supplier inbound: who and the purchase day. `date` is the movement day used by log filters (purchase day for inbound, record day otherwise), not the system entry time.
   supplier: { type: mongoose.Schema.Types.ObjectId, ref: 'Ls2Supplier', default: null, index: true },
   supplierName: { type: String, default: '' },
   date: { type: String, default: '', index: true },           // YYYY-MM-DD
-  vehiclePlate: { type: String, default: '' },                // صادر على / وارد من (اختياري)
-  // مركبتُها في سجلّ المركبات إن عُرفت — النصُّ يبقى كما كُتب (services/ls2VehicleLink).
+  vehiclePlate: { type: String, default: '' },                // Issued to / received from (optional)
+  // Its vehicle in the vehicle register if known; the text stays as typed (services/ls2VehicleLink).
   vehicleMaster: { type: mongoose.Schema.Types.ObjectId, ref: 'VehicleMaster', default: null, index: true },
   reason: { type: String, default: '' },
-  // سببُ الصرف — إجباريٌّ على كلّ صادرٍ جديد (utils/storeIssueReasons). فارغٌ في
-  // الوارد وفي الصادر القديم قبل الخانة.
+  // Issue reason, required on every new outbound (utils/storeIssueReasons). Empty for inbound and for old outbound rows predating the field.
   issueReason: { type: String, enum: ['', ...require('../utils/storeIssueReasons').ISSUE_REASON_KEYS], default: '', index: true },
-  balanceAfter: { type: Number, default: 0 },                 // الرصيد بعد الحركة
+  balanceAfter: { type: Number, default: 0 },                 // Balance after the movement
   performedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   performedByName: { type: String, default: '' },
 
-  // ── التراجع ───────────────────────────────────────────────────────────────
-  // الحركة المسجّلة لا تُعدَّل ولا تُمسح — قرار الإدارة المالية. الغلط بيتصحّح
-  // بحركة معاكسة مربوطة بالأصلية، والاتنين يفضلوا ظاهرين في السجل باسم اللي
-  // عملهم وتاريخهم. مفيش أي مسار في الـ API بيغيّر كمية أو نوع حركة اتسجّلت.
-  reversed: { type: Boolean, default: false, index: true },   // اتّرجع عنها
+  // Reversal
+  // A recorded movement is never edited or deleted (finance decision). Mistakes are fixed by an opposite movement linked to the original; both stay visible with who and when. No API path changes a recorded movement's quantity or type.
+  reversed: { type: Boolean, default: false, index: true },   // Reversed
   reversedAt: { type: Date, default: null },
   reversedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   reversedByName: { type: String, default: '' },
-  reversalReason: { type: String, default: '' },              // إجباري وقت التراجع
-  reversalOf: { type: mongoose.Schema.Types.ObjectId, ref: 'Ls2StoreMovement', default: null, index: true }, // ديه الحركة المعاكسة لِـ
+  reversalReason: { type: String, default: '' },              // Required when reversing
+  reversalOf: { type: mongoose.Schema.Types.ObjectId, ref: 'Ls2StoreMovement', default: null, index: true }, // This is the opposite movement of
 }, { timestamps: true });
 storeMovementSchema.index({ createdAt: -1 });
 
-// ── الموردون ───────────────────────────────────────────────────────────────────
-// مَن تُشترى منه قطعُ الغيار. لكلّ مخزنٍ موردوه (`warehouse`)، والاسمُ لا يتكرّر
-// داخل المخزن الواحد بعد طيّ الهمزات والمسافات (`nameKey`).
+// Suppliers
+// Who spare parts are bought from. Each store has its own suppliers (`warehouse`); a name is unique within one store after folding hamza and spaces (`nameKey`).
 const supplierSchema = new mongoose.Schema({
   warehouse: { type: String, enum: ['heavy', 'light'], default: 'heavy', index: true },
   name: { type: String, required: true, trim: true },

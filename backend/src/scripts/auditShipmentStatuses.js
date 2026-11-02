@@ -1,13 +1,7 @@
 /**
- * auditShipmentStatuses — حالاتُ الشحنة على البرودكشن.
- *
- *   node src/scripts/auditShipmentStatuses.js --base https://api.energize-logistics.com
- *
- * يفحص أنّ المفردات تُقرأ، وأنّ الفلترَ يقبل أكثرَ من حالة، وأنّ أعدادَ البطاقات
- * لا تنهار حين تُنتقى واحدة (وهو العطبُ الذي يجعل الانتقاءَ المتراكم بلا معنى)،
- * وأنّ التسميةَ المضبوطةَ من الإعدادات تصل، وأنّ ما ليس حالةً يُرفَض.
- *
- * ولا يمسّ شحنةً: الحالةُ تُقرأ ولا تُكتب، والتسميةُ تُعدَّل ثمّ تُعاد.
+ * auditShipmentStatuses: shipment statuses on production.
+ * Checks the vocabulary is readable, the filter accepts several statuses, card counts do not collapse when one is picked, a configured label reaches the client, and non-statuses are rejected.
+ * Read-only for shipments; the label is edited and then restored.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -58,14 +52,12 @@ const head = (t) => console.log(`\n── ${t} ${'─'.repeat(Math.max(0, 56 - t
     ok('حالةٌ واحدة', one.status === 200, `${one.body?.total ?? '—'}`);
     ok('حالتان معًا', two.status === 200 && (two.body?.total || 0) >= (one.body?.total || 0),
       `${one.body?.total ?? 0} → ${two.body?.total ?? 0}`);
-    // ── البطاقاتُ لا تنهار عند الانتقاء ──────────────────────────────────
-    // هذا هو العطبُ الذي يجعل الانتقاءَ المتراكم بلا معنى: تُضغَط «في الطريق»
-    // فتصير كلُّ بطاقةٍ سواها صفرًا، فلا يُعرف ما الذي يمكن ضمُّه.
+    // Cards must not collapse on selection
+    // If picking "on the way" zeroes every other card, accumulated multi-select is meaningless because you cannot tell what can be added.
     const others = Object.entries(one.body?.stats?.byStatus || {}).filter(([k]) => k !== 'on_way');
     ok('بطاقاتُ البقيّة تبقى معدودة', others.some(([, n]) => n > 0),
       others.slice(0, 4).map(([k, n]) => `${k}:${n}`).join(' · '));
-    // والمقارنةُ بالمفاتيح مرتَّبةً: ترتيبُ `$group` غيرُ مضمون، فمقارنةُ النصّ
-    // تُخرج فشلًا كاذبًا على أعدادٍ متطابقة.
+    // Compare keys in sorted order: $group order is not guaranteed, so comparing raw text gives a false failure on identical counts.
     const norm = (o) => Object.entries(o || {}).sort(([a2], [b2]) => a2.localeCompare(b2)).map(([k, n]) => `${k}:${n}`).join(',');
     ok('وهي نفسُها بلا فلتر', norm(one.body?.stats?.byStatus) === norm(all.body?.stats?.byStatus),
       norm(one.body?.stats?.byStatus).slice(0, 70));
@@ -80,7 +72,7 @@ const head = (t) => console.log(`\n── ${t} ${'─'.repeat(Math.max(0, 56 - t
         method: 'PUT', body: JSON.stringify({ nameAr: 'في الطريق (فحص)', nameEn: row.nameEn, color: row.color, isActive: true }),
       });
       ok('تُعدَّل من الواجهة', upd.status === 200, String(upd.status));
-      // ستُّ قراءات: البرودكشن عاملان.
+      // Six reads: production runs two workers.
       const reads = [];
       for (let i = 0; i < 6; i += 1) {
         const r = await api('/api/shipment-orders/statuses');

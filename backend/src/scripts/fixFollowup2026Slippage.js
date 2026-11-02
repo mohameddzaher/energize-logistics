@@ -1,29 +1,8 @@
 /**
- * إصلاحُ ما كتبه استيرادُ شيت المتابعة ٢٠٢٦ بقارئٍ معطوب.
- *
- *   node src/scripts/fixFollowup2026Slippage.js --dry
- *   node src/scripts/fixFollowup2026Slippage.js --yes
- *
- * ── ما الذي حدث ─────────────────────────────────────────────────────────────
- * قارئُ xlsx كان يطابق الخليّةَ بنمطٍ إغلاقُه اختياريّ. والخليّةُ الفارغة في
- * إكسل تُكتب مغلقةً على نفسها (<c r="I2" s="212"/>)، فكان النمطُ اللاهثُ
- * يتجاوزها ويلتقط قيمةَ الخليّة التي بعدها وينسبُها إليها — ثمّ يبتلع تلك
- * الخليّة فلا تُقرأ. أي أنّ كلَّ فراغٍ في الصفّ يزحف بما بعده عمودًا واحدًا.
- *
- * فدخلت في القاعدة قيمٌ في خاناتٍ ليست لها: تاريخٌ في خانة مال، رقمٌ في خانة
- * فرع. والحرّاس التي كُتبت وقتَها لصدّ «انزلاق أعمدة الشيت» كانت في الحقيقة
- * تصدُّ عطبَ القارئ.
- *
- * ── كيف يُصلَح ──────────────────────────────────────────────────────────────
- * لا يُعاد الاستيرادُ فوق القديم: المستورِد يملأ الفارغَ وحدَه، والخاناتُ لم
- * تعد فارغة. ولا يُتراجَع تراجعًا أعمى: بعضُ ما كُتب كان صحيحًا.
- *
- * فيُقرأ الملفُّ مرّتين — بالقارئ المعطوب وبالسليم — ويُقارَن:
- *   • القيمةُ في القاعدة ≠ ما كتبه المعطوب  → عدّلها إنسانٌ بعدها، تُترك.
- *   • السليمُ يعطي قيمةً مختلفة              → تُصحَّح.
- *   • السليمُ لا يعطي شيئًا                  → تُعاد إلى ما قبل الاستيراد.
- *
- * ولا يُمسّ إلّا ما ورد في ملفّ التراجع، أي ما كتبه ذلك الاستيراد بعينه.
+ * Repair what the 2026 follow-up sheet import wrote with a broken reader.
+ * --dry previews, --yes applies.
+ * The xlsx reader matched cells with a pattern whose closing was optional. Empty cells are self-closed in Excel (<c r="I2" s="212"/>), so the greedy pattern skipped them and took the next cell's value, shifting everything after each empty cell one column. Values landed in wrong fields (a date in a money field, a number in a branch field), and guards written then were really blocking the reader bug.
+ * Re-importing would not work (importer fills empties only) and blind rollback would undo correct values, so the file is read with the broken and the correct reader and compared: DB value differs from what the broken reader wrote means a human edited it, leave; correct reader gives a different value, fix; correct reader gives nothing, restore to pre-import. Only rows in the rollback file are touched.
  */
 require('dotenv').config({ path: require('path').join(__dirname, '../../.env') });
 const fs = require('fs');
@@ -48,7 +27,7 @@ const UNDO = undoArg
       .map((f) => path.join(__dirname, '../../backups', f))
       .pop());
 
-// ── القارئ المعطوب، محفوظًا هنا حرفًا بحرف كي يُعاد إنتاج ما كُتب بالضبط ────
+// The broken reader, kept verbatim so exactly what was written can be reproduced.
 function sharedStringsRaw(file) {
   let xml = '';
   try { xml = execSync(`unzip -p ${JSON.stringify(file)} xl/sharedStrings.xml`, { maxBuffer: MAXBUF }).toString('utf8'); }
@@ -71,7 +50,7 @@ function readSheetBuggy(file, sheetXmlPath) {
   const rre = /<row[^>]*r="(\d+)"[^>]*>([\s\S]*?)<\/row>/g; let r;
   while ((r = rre.exec(xml))) {
     const cells = {};
-    const cre = /<c r="([A-Z]+)\d+"([^>]*)\/?>(?:([\s\S]*?)<\/c>)?/g; let c;   // ← النمط المعطوب
+    const cre = /<c r="([A-Z]+)\d+"([^>]*)\/?>(?:([\s\S]*?)<\/c>)?/g; let c;   // the broken pattern
     while ((c = cre.exec(r[2]))) {
       const col = c[1]; const attrs = c[2] || ''; const inner = c[3] || '';
       const t = (attrs.match(/t="([^"]+)"/) || [])[1];
@@ -86,7 +65,7 @@ function readSheetBuggy(file, sheetXmlPath) {
   return rows;
 }
 
-// ── نفسُ خريطة المستورِد وقواعدِه ────────────────────────────────────────────
+// Same field map and rules as the importer.
 const COL = {
   B: 'reportNumber', C: 'reportDate', D: 'fromLocation', E: 'toLocation', F: 'branch',
   G: 'carOwner', H: 'carNumber', I: 'ownerType', J: 'executionStatus', K: 'applicationStatus',
@@ -103,7 +82,7 @@ const INVOICE_MONEY = new Set(['netInvoice', 'tax', 'totalInvoice']);
 const BRANCHY = new Set(['payingBranch', 'finalReportDestination', 'branch']);
 const looksLikeDate = (n) => n >= 44000 && n <= 48000;
 
-/** الحرّاسُ كما كانت وقتَ ذلك الاستيراد — لإعادة إنتاج ما كُتب بالضبط. */
+/** The guards as they were at the time of that import, to reproduce what was written. */
 function normalizeOld(key, v) {
   if (key === 'accountingReview') return undefined;
   if (key === 'operationsReview') {
@@ -116,7 +95,7 @@ function normalizeOld(key, v) {
   return v;
 }
 
-/** الحرّاسُ الحاليّة. */
+/** The current guards. */
 function normalizeNew(key, v) {
   if (key === 'accountingReview' && /^\d+(\.\d+)?$/.test(v)) return undefined;
   if (key === 'operationsReview') {
@@ -209,8 +188,8 @@ const show = (v) => (v == null ? '∅' : v instanceof Date ? v.toISOString().sli
       const cur = doc[field];
       const wrote = b[field];
       const right = f[field];
-      if (!same(cur, wrote)) { stats.humanEdited += 1; continue; }   // مسَّها إنسانٌ بعدها
-      if (same(cur, right)) { stats.alreadyRight += 1; continue; }   // المعطوب صادف الصواب
+      if (!same(cur, wrote)) { stats.humanEdited += 1; continue; }   // Touched by a human afterwards
+      if (same(cur, right)) { stats.alreadyRight += 1; continue; }   // The broken reader happened to be right
       if (right === undefined) { set[field] = u.before[field] ?? null; stats.revert += 1; }
       else { set[field] = right; stats.correct += 1; }
       byField[field] = (byField[field] || 0) + 1;

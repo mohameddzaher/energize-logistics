@@ -18,7 +18,7 @@ const authenticate = require('./middleware/auth');
 const sectionGate = require('./middleware/sectionGate');
 const { initializeSocket } = require('./websocket/socketManager');
 const { startWalletAutoCloseJob } = require('./jobs/walletAutoClose');
-// مزامنةُ شيتات جوجل للأوردرات أُلغيت (٢٠٢٦/١٠/١٩) — الأوردراتُ تُكتب على النظام (b2cEntryController).
+// Google Sheets order sync was removed; orders are now entered in the system (b2cEntryController).
 const { startOpsPoll } = require('./jobs/opsPoll');
 const { startOpsReconcile } = require('./jobs/opsReconcile');
 const { startOpsCustomerSync } = require('./services/opsCustomerSyncService');
@@ -75,14 +75,12 @@ const businessDevelopmentRoutes = require('./routes/businessDevelopment');
 const itRoutes = require('./routes/it');
 const adminTaskRoutes = require('./routes/adminTasks');
 const contractsRoutes = require('./routes/contracts');
-// حسابات العملاء والموردين + بوابتهم — partner account provisioning (staff side)
-// and the partner-facing portal (client side).
+// Customer and vendor accounts and their portal: partner account provisioning (staff side) and the partner-facing portal (client side).
 const partnerRoutes = require('./routes/partners');
 const portalRoutes = require('./routes/portal');
-// مركز التقارير — cross-section PDF reports (vehicle, driver, customer, vendor,
-// employee, department). Deliberately not section-gated; see routes/reports.js.
+// Reports center: cross-section PDF reports (vehicle, driver, customer, vendor, employee, department). Deliberately not section-gated; see routes/reports.js.
 const reportRoutes = require('./routes/reports');
-// اجتماعات مراجعة الأعمال — the managers/board forum + its action register.
+// Business review meetings: the managers/board forum and its action register.
 const businessReviewRoutes = require('./routes/businessReview');
 
 // Safety net: never let a single bad request/promise take down the whole
@@ -119,10 +117,7 @@ const { isAllowedOrigin } = require('./config/cors');
 
 app.use(cors({
   origin: (origin, callback) => {
-    // يُرفَض بلا استثناء. رميُ خطأٍ هنا كان ينتهي في معالِج الأخطاء العامّ
-    // فيخرج **٥٠٠** — كأنّ الخادم تعطّل، لا كأنّه ردّ طلبًا لا يقبله. والفرق
-    // ليس شكليًّا: ٥٠٠ تُقرأ عطلًا فيُعاد الطلب ويُفتَح لها بلاغ، وتُخفي أن
-    // السبب أصلٌ غير مسموح. الرفضُ الصريح يأتي من csrfGuard تحت برسالته.
+    // Rejected without exception. Throwing here would reach the global error handler and return 500, which reads as a server fault, gets retried and reported, and hides that the origin is simply not allowed. The explicit rejection comes from csrfGuard below with its own message.
     callback(null, isAllowedOrigin(origin));
   },
   credentials: true,
@@ -132,37 +127,28 @@ app.use(cors({
 // Body parsing. Limit is generous because employee documents are uploaded as
 // base64 data URLs in JSON (no multer dependency) — see utils/fileStore.js.
 app.use(express.json({ limit: '25mb' }));
-// `urlencoded` مرفوع عن قصد: هذا الخادم لا يستقبل إلا JSON، ووجودُ محلّل
-// الاستمارات كان يجعل استمارةً في أيّ موقعٍ آخر طلبًا «بسيطًا» يصل المعالِج بلا
-// فحصٍ مسبق — وهو نصفُ ثغرة تزوير الطلبات. النصف الآخر يردّه csrfGuard تحت.
+// urlencoded is intentionally removed: this server accepts only JSON. A form parser would let a form on any other site send a simple request that reaches the handler without preflight, half of a request-forgery hole; csrfGuard below closes the other half.
 app.use(cookieParser());
 
-// ── التعقيم بعد المحلِّلات لا قبلها ──────────────────────────────────────────
-// كان يعمل قبل `express.json()`، وهو يتخطّى ما ليس موجودًا — و`req.body` وقتها
-// غير موجود أصلًا. فكان جسمُ الطلب يمرّ بلا تعقيم منذ اليوم الأوّل، وكذلك
-// الكوكيز. الآن يعمل بعدهما فيرى ما جاء ليفحصه.
+// Sanitizing runs after the body parsers, not before. It used to run before express.json() and skips what does not exist, and req.body did not exist yet, so bodies and cookies passed unsanitized. Now it runs after them and sees what it inspects.
 app.use(mongoSanitize());
 
-// ردّ ما جاء من أصلٍ غريب على كل ما يغيّر حالة — قبل أن يبلغ أيّ مسار.
+// Reject anything from a foreign origin on every state-changing request, before it reaches any route.
 app.use(csrfGuard);
 
-// شبكةُ أمان سجلّ المراجعة: كلُّ كتابةٍ ناجحةٍ في قسمٍ تُقيَّد ولو نسيها متحكّمُها.
+// Audit safety net: every successful write in a section is recorded even if its controller forgot.
 app.use(require('./middleware/auditTrail'));
 
-// Static serving of uploaded files (employee documents). Mounted under
-// /api/uploads so the frontend's /api/* proxy forwards it (same-origin). Placed
-// BEFORE the rate limiter so viewing files doesn't consume the API quota.
-// Filenames are random and unguessable; the app is internal (behind login).
-// أخطاءُ المتصفّح تصل إلينا بلا تسجيل دخول — راجع routes/clientErrors.
+// Static serving of uploaded files (employee documents), mounted under /api/uploads so the frontend proxy forwards it same-origin.
+// Placed before the rate limiter so viewing files does not use the API quota. Filenames are random; the app is internal.
+// Browser errors arrive without a login; see routes/clientErrors.
 app.use('/api/client-errors', require('./routes/clientErrors'));
-// ── والملفُّ يُنزَّل باسمٍ يُقرأ ───────────────────────────────────────────────
-// الاسمُ على القرص عشوائيٌّ عمدًا. والمتصفّحُ يسمّيه بخاصّيّة `download`، أمّا
-// التطبيقُ فيفتح الرابطَ كما هو — فيطلب الاسمَ في `?dl=` ويُجاب به هنا.
+// Files download under a readable name. The on-disk name is random on purpose. Browsers name it via the download attribute, but the mobile app opens the link as is, so it requests the name in ?dl= and gets it here.
 app.use('/api/uploads', (req, res, next) => {
   const dl = typeof req.query.dl === 'string' ? req.query.dl.replace(/[\\/:*?"<>|\r\n]+/g, ' ').trim().slice(0, 180) : '';
   if (dl) {
     const ascii = dl.replace(/[^\x20-\x7E]+/g, '_').replace(/"/g, '');
-    // اسمٌ مبتورٌ في منتصف رمزٍ مركَّب يُسقط الترميز — فيُنزَّل الملفُّ باسمه اللاتينيّ.
+    // A name truncated in the middle of a composite character breaks encoding, so the file downloads under its Latin name.
     let star = '';
     try { star = `; filename*=UTF-8''${encodeURIComponent(dl)}`; } catch (_) { /* */ }
     res.setHeader('Content-Disposition', `attachment; filename="${ascii}"${star}`);
@@ -170,13 +156,8 @@ app.use('/api/uploads', (req, res, next) => {
   next();
 });
 app.use('/api/uploads', express.static(path.join(__dirname, '..', 'uploads')));
-// ── توثيقُ الـ API ──────────────────────────────────────────────────────────
-// يُبنى من الراوتر نفسِه لحظةَ الطلب، فلا يستطيع أن يبعد عمّا رُكِّب فعلًا:
-// مسارٌ يُضاف يظهر فيه، ومسارٌ يُحذَف يختفي منه. راجع `services/apiDocs`.
-//
-// ويُركَّب قبل `pageGate`: تلك تحرس نداءاتِ الشاشات بخريطةِ الصفحات، وهذه
-// وثيقةٌ تُقرأ — يفتحها شريكٌ بمفتاحه ولا صفحةَ له في نظامنا. وحراستُها في
-// الراوتر نفسِه: مفتاحٌ للشركاء، وحسابٌ إداريٌّ للسطح الداخليّ.
+// API documentation, built from the router itself at request time so it cannot drift from what is mounted: an added route appears, a removed one disappears. See services/apiDocs.
+// Mounted before pageGate: pageGate guards screen calls via the page map, while this is a document read by partners with their key and no page in our system. It is guarded in its own router: a key for partners, an admin account for the internal surface.
 app.use('/api/docs', require('./routes/apiDocs'));
 
 // Logging
@@ -184,22 +165,14 @@ if (process.env.NODE_ENV !== 'production') {
   app.use(morgan('dev'));
 }
 
-// ── سجلّ الطلبات البطيئة ─────────────────────────────────────────────────────
-//
-// «السيستم بطيء» جملةٌ لا يُعمَل بها: أيّ صفحة؟ أيّ نداء؟ كم مللي ثانية؟ بدون
-// رقمٍ حقيقيّ يصير التحسين تخمينًا — وقد حسّنّا من قبل ما لم يكن بطيئًا أصلًا،
-// وكسرنا في الطريق ما كان يعمل.
-//
-// هذا يطبع سطرًا واحدًا لكل طلبٍ تجاوز العتبة، في الإنتاج وفي التطوير معًا،
-// فتُقرأ من `pm2 logs` أبطأُ النداءات بأسمائها وأزمنتها.
+// Slow request log. Without real numbers, performance work is guesswork. Prints one line per request over the threshold, in production and development, so the slowest calls with names and times can be read from pm2 logs.
 const SLOW_MS = Number(process.env.SLOW_REQUEST_MS || 1000);
 app.use((req, res, next) => {
   const started = process.hrtime.bigint();
   res.on('finish', () => {
     const ms = Number(process.hrtime.bigint() - started) / 1e6;
     if (ms < SLOW_MS) return;
-    // المسار بلا معرّفات: /api/hr/employees/:id لا سطرًا لكل موظف، وإلا صار
-    // السجلّ ضجيجًا لا يُقرأ منه نمط.
+    // Path without ids (/api/hr/employees/:id, not one line per employee), otherwise the log is noise with no readable pattern.
     const route = req.originalUrl.split('?')[0]
       .replace(/\/[0-9a-f]{24}(?=\/|$)/gi, '/:id')
       .replace(/\/\d+(?=\/|$)/g, '/:n');
@@ -209,25 +182,16 @@ app.use((req, res, next) => {
 });
 
 // Rate limiting
-// ── ذاكرةُ العاملَين تتزامن قبل خدمة الطلب ───────────────────────────────────
-// البرودكشن عاملان ولكلٍّ ذاكرتُه، فإبطالٌ في أحدهما لا يبلغ الآخر. يُقرأ ختمُ
-// الإبطال المشترك مرّةً في الثانية على الأكثر — طلبٌ واحدٌ كلَّ ثانيةٍ ينتظر
-// استعلامًا صغيرًا، وبقيّتُها تقارن رقمًا. راجع utils/ttlCache.
+// Cache sync between the two workers before serving a request. Production runs two workers, each with its own cache, so an invalidation in one does not reach the other. The shared invalidation stamp is read at most once per second: one request per second waits on a small query, the rest compare a number. See utils/ttlCache.
 app.use('/api/', async (req, res, next) => {
-  try { await require('./utils/ttlCache').syncIfDue(); } catch (_) { /* الذاكرةُ تحسينٌ لا شرط */ }
+  try { await require('./utils/ttlCache').syncIfDue(); } catch (_) { /* The cache is an optimization, not a requirement. */ }
   next();
 });
 
 app.use('/api/', generalLimiter);
 
-// ── حارسُ الصفحات ───────────────────────────────────────────────────────────
-// صلاحيّةُ الصفحة تحرس البيانات لا الشاشةَ وحدَها: إن كانت كلُّ الصفحات التي
-// تنادي هذه النقطة مغلقةً على هذا الدور، رُدَّت ٤٠٣. يُركَّب هنا — قبل حرّاس
-// الأقسام — لأنّه يشمل المسارات كلَّها، ويقرأ صاحبَ الطلب بنفسه بلا أن يردّ على
-// الأبواب العامّة. راجع middleware/pageGate.
-// ── وسياجُ الأدوار المحصورة قبله ────────────────────────────────────────────
-// حسابُ شريكٍ يرى شاشةً واحدة (Media Go) لا يصل إلّا نقاطَ تلك الشاشة —
-// قائمةُ سماحٍ لا منع. راجع config/scopedRoles و middleware/scopedRoleFence.
+// Page guard. Page permission guards the data, not just the screen: if every page calling this endpoint is closed to the role, it returns 403. Mounted before the section guards because it covers all routes and reads the requester itself without answering public routes. See middleware/pageGate.
+// Scoped-role fence before it: a partner account that sees a single screen (Media Go) reaches only that screen's endpoints, as an allow-list rather than a block-list. See config/scopedRoles and middleware/scopedRoleFence.
 app.use('/api/', require('./middleware/scopedRoleFence'));
 app.use('/api/', require('./middleware/pageGate'));
 
@@ -239,78 +203,59 @@ app.use('/api/', require('./middleware/pageGate'));
 // prefixes (auth, users, analytics, notifications, tasks, ...) stay ungated.
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
-// ── ما بقي من «العملاء والمالية» بعد حذف القسم ────────────────────────────
-// القسمُ زال بصفحاته وأدواره ومدخله في مصفوفة الصلاحيّات، وبقيت هذه النقاطُ
-// لأنّ لها قارئًا حقيقيًّا بعده:
-//   · الفواتيرُ والمدفوعات — بوّابةُ العميل تقرأ منها (وكلٌّ من `getInvoices`
-//     و`getPayments` يقصر الردَّ على صفوف صاحب الحساب حين يكون `client`)،
-//     وسيرُ عمل التشغيل والمحفظةُ ما زالا يُنشئان فيها.
-//   · ومتابعاتُ التحصيل انتقلت كلُّها إلى قسم التحصيل — لا تُقيَّد على عميلٍ
-//     من ورك فلو زال بل على طرفٍ يعرفه القسم.
-// وحارسُ القسم نُزع عنها: قسمٌ لا وجود له لا يحرس شيئًا.
+// What remains of the removed customers-and-finance section. The section, its pages, roles and permission-matrix entry are gone; these endpoints stay because they still have a real reader:
+// - Invoices and payments: the customer portal reads them (getInvoices and getPayments limit the response to the account owner's rows for a client), and the operations workflow and wallet still create entries in them.
+// - Collections follow-ups moved entirely to the collections section, recorded against a party, not a customer from the removed workflow.
+// The section guard was removed from them since a nonexistent section guards nothing.
 app.use('/api/invoices', authenticate, require('./middleware/denyExternal'), invoiceRoutes);
 app.use('/api/payments', authenticate, require('./middleware/denyExternal'), paymentRoutes);
 app.use('/api/customers', customerRoutes);
-// ── واجهة الأسطول للأتمتة ────────────────────────────────────────────────────
-// خارج `authenticate` لأنها تُصادَق بمفتاح لا بجلسة، وخارج `csrfGuard` لأن
-// الحارس يتخطّى ما لا كوكي جلسة فيه أصلًا. للقراءة وحدها.
+// Fleet API for automation. Outside authenticate because it uses a key, not a session, and outside csrfGuard because that guard skips requests with no session cookie. Read-only.
 app.use('/api/fleet-api', require('./routes/publicFleetApi'));
 
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/nav-badges', require('./routes/navBadges'));
-// طلباتُ الأقسام إلى الموارد البشريّة — حراستُها في المتحكّم، راجع رأسَ الملفّ.
+// Section requests to HR: guarded in the controller, see the file header.
 app.use('/api/staff-requests', require('./routes/staffRequests'));
 app.use('/api/audit', auditRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/assistant', assistantRoutes);
 app.use('/api/workflows', authenticate, sectionGate('Operations'), workflowRoutes);
-// «التشغيل — خاصّ»: الكشوفُ نفسُها بسعر بيعنا — قسمُ التشغيل نفسُه، وصلاحيّةٌ
-// أضيق داخلَه (راجع routes/operationsPrivate).
-// ── وحارسُ القسم على القراءة والكتابة معًا ─────────────────────────────────
-// كانت الكتابةُ هنا بلا حارس القسم لأنّ السعرَ كان عمودًا خاصًّا بالصفحة
-// (`PrivateSellingPrice`). وصار السعرُ عمودَ الكشف نفسَه (`sellingValue`) يُكتب
-// بطريق سير العمل — فيُحرَس كما يُحرَس `/api/workflows`، ولا يكسب أحدٌ من هذه
-// الصفحة ما لا يملكه هناك. (وصلاحيّةُ العمود نفسِه تُفحص في setSellingValue.)
+// Operations private: the same statements at our selling price, part of the operations section with a narrower permission inside it (see routes/operationsPrivate).
+// Section guard on both read and write. Writes used to be unguarded because the price was a page-specific column (PrivateSellingPrice); it is now the statement's own column (sellingValue) written via the workflow path, so it is guarded like /api/workflows and nobody gains here what they lack there. The column permission itself is checked in setSellingValue.
 app.use('/api/operations-private', authenticate, sectionGate('Operations'), require('./routes/operationsPrivate'));
-// Customer requests from the portal, answered by Operations («التواصل مع العملاء»).
+// Customer requests from the portal, answered by Operations (the customer communication page).
 app.use('/api/customer-requests', authenticate, sectionGate('Operations'), require('./routes/customerRequests'));
 app.use('/api/branches', branchRoutes);
-// سجلّان يكتب فيهما أكثرُ من قسم — يُختَم لهما منحُ الصلاحيّة ولا يُرفض أحد
-// (راجع stampSection): فالدورُ المصنوعُ الممنوحُ «تعديل التشغيل» يحفظ فيهما،
-// والمشترياتُ تبقى على وصولها كما كانت.
+// Two registers written by more than one section: they are stamped with the permission grant and nobody is rejected (see stampSection), so a custom role granted operations edit can save in them, and purchases keep their previous access.
 app.use('/api/vendors', authenticate, sectionGate.stampSection('Operations', 'Procurement'), vendorRoutes);
 app.use('/api/drivers', authenticate, sectionGate.stampSection('Operations'), driverRoutes);
 app.use('/api/expense-categories', expenseCategoryRoutes);
-// وقسمُ التحصيل يقرأ المحفظةَ ولا يكتب فيها — config/walletViewOnly.
+// Collections reads the wallet but does not write to it: config/walletViewOnly.
 const walletView = require('./config/walletViewOnly');
 const opsWalletGate = sectionGate('Operations');
 app.use('/api/wallet', authenticate,
   (req, res, next) => (walletView.isWalletViewOnly(req.user && req.user.role)
     ? walletView.walletViewOnlyGate(req, res, next) : opsWalletGate(req, res, next)),
   walletRoutes);
-// قسمُ التحصيل. البادئةُ `-dept` تميّزها عن `/api/collections` (متابعاتُ
-// التحصيل تحت العملاء والمالية) — ومطابقةُ express تقف عند حدّ المقطع فلا
-// تلتقط إحداهما الأخرى.
+// Collections department. The -dept suffix distinguishes it from /api/collections (collection follow-ups under customers and finance); express matching stops at the segment boundary so neither captures the other.
 app.use('/api/collections-dept', authenticate, sectionGate('Collections'), collectionsDeptRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/complaints', complaintRoutes);
-// ── شكاوى Media Go — قبل موجّه القسم ─────────────────────────────────────────
-// نقاطُ القسم يحرسها حارسُ «الأفراد» كعادتها. وحسابُ Media Go لا قسمَ له
-// (config/scopedRoles)، فيمرّ إلى قائمة أدوار المسار وحدَها — والسياجُ قبلها
-// قد حصره في هذه البادئة.
+// Media Go complaints, before the section router. Section endpoints are guarded by the staff guard as usual; the Media Go account has no section (config/scopedRoles), so it passes to the route's role list alone, after the fence has restricted it to this prefix.
 {
   const b2cGate = sectionGate('B2C');
   const { isScopedRole } = require('./config/scopedRoles');
   app.use('/api/b2c/mediago-complaints', authenticate,
     (req, res, next) => (isScopedRole(req.user.role) ? next() : b2cGate(req, res, next)),
     require('./routes/mediagoComplaints'));
-  // المحتوى الإعلانيّ — صفحةٌ ثانيةٌ مشتركةٌ مع Media Go بالحارس نفسِه (٢٠٢٦/١٠/٢٢).
+  // Advertising content: a second page shared with Media Go under the same guard.
   app.use('/api/b2c/mediago-ads', authenticate,
     (req, res, next) => (isScopedRole(req.user.role) ? next() : b2cGate(req, res, next)),
     require('./routes/mediagoAds'));
 }
 app.use('/api/b2c', authenticate, sectionGate('B2C'), b2cRoutes);
-// النقلُ الخفيف: موظّفوه وسكنُهم وأوامرُ تشغيلهم — قسمُ B2C نفسُه يحرسه.
+// Light transport: its employees, housing and operating orders, guarded by the B2C section itself.
 app.use('/api/light-transport', authenticate, sectionGate('B2C'), lightTransportRoutes);
 app.use('/api/remote', authenticate, sectionGate('Remote'), remoteRoutes);
 app.use('/api/hr', authenticate, sectionGate('HR'), hrRoutes);
@@ -334,16 +279,13 @@ app.use('/api/section-work', sectionWorkRoutes);
 app.use('/api/jp', require('./routes/jp'));
 app.use('/api/b2c-wallet', authenticate, sectionGate('B2C'), b2cWalletRoutes);
 app.use('/api/crm-vendors', authenticate, sectionGate('CRM'), crmVendorRoutes);
-// عهدةُ النقل الثقيل قبل موجّه القسم: ذاك يحصر نقاطه في أدوار القسم، والعهدةُ لأهل المال أيضًا.
+// Heavy transport custody before the section router: that router limits its endpoints to section roles, and custody is also for finance roles.
 app.use('/api/ls2/custody', authenticate, sectionGate('Location Solutions'), require('./routes/htCustody'));
 app.use('/api/ls2', authenticate, sectionGate('Location Solutions'), ls2Routes);
 app.use('/api/shipment-orders', authenticate, sectionGate('Shipment Orders'), shipmentOrderRoutes);
-// ── سجلُّ العملاء يُقرأ من ثلاثة أقسام ──────────────────────────────────────
-// الشاشةُ نفسُها في «طلبات الشحنات» و«التشغيل» و«المبيعات»، فلا تُنسَب إلى قسمٍ
-// واحد: بوّابةُ الصفحات (pageGate) تفتحها لمن يملك إحدى الصفحات الثلاث،
-// والتعديلُ بحارس الأدوار في المسار نفسِه (routes/customerRegistry).
+// The customer register is read from three sections. The same screen appears in shipment orders, operations and sales, so it belongs to no single section: pageGate opens it to anyone with one of the three pages, and editing is guarded by the route's role list (routes/customerRegistry).
 app.use('/api/customer-registry', authenticate, require('./routes/customerRegistry'));
-// التصديرُ الكبيرُ يُبنى في الخلفيّة ويصل صاحبَه بإشعار — راجع exportJobsController.
+// Large exports are built in the background and delivered to the requester by notification; see exportJobsController.
 app.use('/api/exports', authenticate, require('./routes/exportJobs'));
 app.use('/api/fleet', authenticate, sectionGate('Fleet Management'), fleetRoutes);
 // No sectionGate: every performance handler scopes itself (a manager only ever
@@ -358,7 +300,7 @@ app.use('/api/contracts', authenticate, sectionGate('Contracts'), contractsRoute
 // Not section-gated: /api/partners is used from every section's customer profile
 // page, and /api/portal belongs to outside partners who have no section at all.
 app.use('/api/partners', partnerRoutes);
-// العميلُ واحدٌ في كلّ الأقسام — أين يوجد (services/customerHub).
+// One customer across all sections: where it exists (services/customerHub).
 app.use('/api/customer-hub', require('./routes/customerHub'));
 app.use('/api/portal', portalRoutes);
 app.use('/api/reports', reportRoutes);
@@ -369,10 +311,7 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-// ── الهدفُ اليوميُّ لمشروع B2C — نصًّا، لشيتات الأوردرات ─────────────────────
-// ملفُّ جوجل شيت لكلّ مشروع يقرأ هدفَه من هنا (IMPORTDATA) فتتلوّن خاناتُ الأيّام
-// أخضرَ أو أحمرَ على الهدف المكتوب في «المشاريع» — ويتبعه إن تغيّر. رقمٌ واحدٌ
-// لا سرَّ فيه، فلا مصادقة (جوجل لا يحمل توكنًا). راجع services/b2cOrderSheetSync.
+// Daily target of a B2C project as plain text, for the order sheets. Each project's Google Sheet reads its target from here (IMPORTDATA), so day cells color green or red against the target set in the projects page and follow it when it changes. A single non-secret number, so no authentication (Google sends no token). See services/b2cOrderSheetSync.
 app.get('/api/public/b2c-target', async (req, res) => {
   try {
     const E = require('./utils/b2cEntry');
@@ -382,7 +321,7 @@ app.get('/api/public/b2c-target', async (req, res) => {
   } catch (e) { res.type('text/plain').send('0'); }
 });
 
-// شيتاتُ الأوردرات التي يديرها سكربتُ جوجل — بسرٍّ مشترك. راجع b2cSheetAppController.
+// Order sheets managed by a Google script, with a shared secret. See b2cSheetAppController.
 {
   const sheetsApp = require('./controllers/b2cSheetAppController');
   app.get('/api/public/b2c-sheets/layout', sheetsApp.layout);
@@ -435,37 +374,25 @@ const autoSeedAdmin = async () => {
 // queries until the pool is ready, so DB-backed routes just wait sub-second
 // while /api/health stays up the whole time.
 /**
- * ── وتُحمَّل الخريطةُ بلا تشغيلِ خادم ───────────────────────────────────────
- *
- * فحصُ توثيق الـ API (`scripts/checkApiDocs`) يحتاج الراوترَ كما يُركَّب هنا
- * بالضبط — ونسخُ تركيبِه في ملفٍّ آخر يعني خريطتين تفترقان. فيُستورَد هذا
- * الملفُّ نفسُه، و`API_DOCS_ONLY` تمنعه من فتحِ منفذٍ أو وصلِ قاعدةٍ أو تشغيل
- * المهامّ الدوريّة: الهدفُ شجرةُ المسارات لا خادمٌ يعمل.
+ * The route map can be loaded without starting a server.
+ * The API docs check (scripts/checkApiDocs) needs the router exactly as mounted here, and copying the mounting elsewhere would create two maps that drift apart. So this file is imported itself, and API_DOCS_ONLY stops it from opening a port, connecting a database or starting the periodic jobs: the goal is the route tree, not a running server.
  */
 const DOCS_ONLY = process.env.API_DOCS_ONLY === '1';
 
 if (!DOCS_ONLY) server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
   console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
-  // ── ولا يُطفأ القديمُ قبل أن يسمع الجديد ──────────────────────────────────
-  // pm2 في وضع العنقود يستبدل نسخةً بنسخة. وبلا هذه الإشارة يعدّها جاهزةً
-  // بمجرّد إطلاقها — قبل أن تفتح منفذَها — فيقتل القديمةَ وتبقى ثوانٍ لا أحدَ
-  // فيها يسمع على المنفذ، فيردّ nginx ٥٠٢ على كلّ طلبٍ وقتَ النشر (قيس: عشرون
-  // من عشرين سقطت أثناء نشرة). والإشارةُ تُرسَل حين يصير الاستقبالُ ممكنًا
-  // فعلًا، فالنشرُ لا يُسقط طلبًا. راجع `wait_ready` في ecosystem.config.js.
+  // The old instance is not stopped before the new one listens. pm2 in cluster mode replaces one instance at a time; without this signal it treats an instance as ready as soon as it is launched, before it opens its port, then kills the old one, leaving seconds with nobody listening so nginx returns 502 during deploys. The signal is sent once accepting is actually possible, so deploys drop no requests. See wait_ready in ecosystem.config.js.
   if (typeof process.send === 'function') process.send('ready');
 });
 
-// ── والقديمُ يُنهي ما بدأه قبل أن يغلق ──────────────────────────────────────
-// pm2 يرسل SIGINT للنسخة القديمة عند النشر. وبلا معالجٍ تموت في الحال ومعها
-// الطلباتُ التي كانت في يدها — قيس: طلبٌ من ثمانين سقط أثناء نشرة. فتتوقّف
-// عن قبول الجديد وتُنهي ما عندها ثمّ تخرج، ولا يرى المستخدمُ انقطاعًا.
+// The old instance finishes its work before closing. pm2 sends SIGINT to the old instance on deploy; without a handler it dies immediately with its in-flight requests. It stops accepting new ones, finishes current ones, then exits, so users see no interruption.
 let closing = false;
 const shutdown = () => {
   if (closing) return;
   closing = true;
   server.close(() => process.exit(0));
-  // وحدٌّ أعلى: لو بقيت وصلةٌ مفتوحة (websocket) لا نعلّق النشرَ إلى الأبد.
+  // Upper bound: if a connection stays open (websocket), the deploy is not held forever.
   setTimeout(() => process.exit(0), 4000).unref();
 };
 process.on('SIGINT', shutdown);
@@ -488,8 +415,7 @@ if (!DOCS_ONLY) connectDB().then(async () => {
   await ensureShipmentOrderDefaults();
   const { ensureFleetDefaults } = require('./controllers/fleetController');
   await ensureFleetDefaults();
-  // العقدُ الذي انقضت مدّتُه يصير «منتهي» وحدَه — عند الإقلاع ثمّ كلَّ ساعة.
-  // راجع utils/contractStatus.expireLapsedContracts (آمنٌ أن يعمل في العاملَين).
+  // A contract whose term has lapsed becomes expired by itself, at startup and then hourly. See utils/contractStatus.expireLapsedContracts (safe to run in both workers).
   {
     const { expireLapsedContracts } = require('./utils/contractStatus');
     const run = () => expireLapsedContracts().then((n) => { if (n) console.log(`[contracts] ${n} lapsed → expired`); }).catch((e) => console.error('[contracts] expire:', e.message));
@@ -497,35 +423,26 @@ if (!DOCS_ONLY) connectDB().then(async () => {
     setInterval(run, 60 * 60 * 1000).unref();
   }
 
-  // ── المهامّ المجدولة تعمل في نسخةٍ واحدة ────────────────────────────────────
-  //
-  // النشرُ كان يقطع الخدمة: نسخةٌ واحدة في fork_mode، فـ`pm2 restart` يقتلها
-  // قبل أن تقوم البديلة، فيردّ nginx ٥٠٢ على كل طلبٍ في تلك الثواني. والعلاج
-  // نسختان تتناوبان الإعادة — لكنّ هذه المهامّ التسع لا تحتمل التكرار: النبض
-  // يسحب مرّتين ويرفع التنبيه مرّتين، وإقفال المحفظة الآليّ يقع مرّتين على اليوم
-  // نفسه. فتُحصَر في النسخة الأولى وحدها.
-  //
-  // `NODE_APP_INSTANCE` تضبطه pm2 في وضع العنقود؛ وغيابُه يعني نسخةً واحدة
-  // (تشغيلٌ يدويّ أو fork_mode) فتعمل المهامّ كما كانت.
+  // Scheduled jobs run in a single instance.
+  // Deploys used to cut service: one instance in fork_mode, so pm2 restart killed it before the replacement was up and nginx returned 502. The fix is two instances reloading in turn, but these nine jobs cannot run twice: the pulse would pull and raise the alert twice, and the automatic wallet close would hit the same day twice. So they are restricted to the first instance.
+  // NODE_APP_INSTANCE is set by pm2 in cluster mode; when absent (manual run or fork_mode) there is one instance and the jobs run as before.
   const instance = process.env.NODE_APP_INSTANCE;
   const runsJobs = instance === undefined || instance === '0';
   if (runsJobs) {
     startWalletAutoCloseJob();
     startOpsPoll();
-    // والاستطلاعُ يرى ما أُضيف وعُدِّل؛ وما حُذف حذفًا نهائيًّا لا يعود في أيّ
-    // صفحةٍ فلا يراه أحد. فتُطابَق القائمتان مرّةً في اليوم.
+    // Polling sees what was added or changed, but permanently deleted records never come back on any page and nobody sees them, so the two lists are reconciled once a day.
     startOpsReconcile();
-    // لوحةُ فلاتر المركبات تُحسب مرّةً بعد الإقلاع، فلا يدفع أوّلُ من يضغط
-    // «فلتر» ثمنَ الاتّصال البارد وقراءةِ الصفوف معًا.
+    // The vehicle filters panel is computed once after startup, so the first user to click filter does not pay for a cold connection and row reads together.
     setTimeout(() => {
       try { require('./controllers/vehicleRegistryController').warmFilters(); } catch (e) {}
     }, 45 * 1000);
     startOpsCustomerSync();
     startOpsWorkflowSync();
     require('./services/shipmentOrderWorkflowLink').startShipmentOrderLink();
-    // مركباتُ النقل الخفيف: المنتهي لا يبقى راكبًا، والمفوَّضُ بلا مركبةٍ يُسنَد إليه — كلَّ ساعة.
+    // Light-transport vehicles: an expired one stops being ridden, and an authorized person without a vehicle is assigned one. Hourly.
     try { require('./utils/ltVehicleRelease').startHourly(); } catch (e) { console.error('[lt-release] start:', e.message); }
-    // شيتاتُ أوردرات B2C (جوجل شيت لكلّ مشروع) — كلَّ دقيقة. راجع services/b2cOrderSheetSync.
+    // B2C order sheets (one Google Sheet per project), every minute. See services/b2cOrderSheetSync.
     try { require('./services/b2cOrderSheetSync').startB2cOrderSheetSync(); } catch (e) { console.error('[b2c-sheets] start:', e.message); }
     startLs2Poll();
     startLs2TripWarm();
@@ -538,15 +455,15 @@ if (!DOCS_ONLY) connectDB().then(async () => {
     require('./models/CustomsClearance').backfillDerivedPrices()
       .then((k) => { if (k) console.log(`[customs] backfilled ${k} price(s) for derived nets`); })
       .catch((e) => console.error('[customs] price backfill:', e.message));
-    // لوحاتُ مؤشّرات CRM تُحسب في الخلف، فلا ينتظرها من يفتحها — راجع warmKpis.
+    // CRM KPI boards are computed in the background so the first opener does not wait. See warmKpis.
     try { require('./controllers/crmKpiController').startKpiWarm(); } catch (e) { /* */ }
-    // ملفّاتُ التصدير تُحذف بعد يوم — لقطةٌ للحظتها لا أرشيف.
+    // Export files are deleted after one day: a snapshot of its moment, not an archive.
     try { require('./controllers/exportJobsController').startExportCleanup(); } catch (e) { /* */ }
-    // وسجلُّ التفقّد (B2C) وصورُه تُمسح بعد أربعة عشر يومًا — راجع jobs/b2cDutyPurge.
+    // B2C duty-check records and their photos are purged after fourteen days. See jobs/b2cDutyPurge.
     try { require('./jobs/b2cDutyPurge').startB2cDutyPurge(); } catch (e) { console.error('[duty-purge] start:', e.message); }
-    // والعميلُ الذي أُنشئ بكتابةٍ مباشرة يُربط بعميله الأمّ كلَّ ساعة (services/customerHub).
+    // A customer created by a direct write is linked to its parent customer hourly (services/customerHub).
     try { require('./services/customerHub').startSweep(); } catch (e) { console.error('[customerHub] start:', e.message); }
-    // وما قطعه النشرُ من تصديرٍ يُستأنف، فلا يبقى طلبٌ «جاريًا» بلا نهاية.
+    // Exports interrupted by a deploy are resumed, so no request stays in progress forever.
     try { require('./controllers/exportJobsController').resumeInterrupted(); } catch (e) { /* */ }
     startKeepAlive();
     console.log('DB ready — scheduled jobs started');

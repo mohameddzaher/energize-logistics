@@ -1,22 +1,8 @@
 /**
- * purgeFutureWalletDays — يحذف يوميّاتِ العهدة التي لم يأتِ يومُها بعد.
- *
- *   node src/scripts/purgeFutureWalletDays.js --dry
- *   node src/scripts/purgeFutureWalletDays.js --apply
- *
- * ── من أين تأتي يوميّةٌ في المستقبل ─────────────────────────────────────────
- * من بابين: إقفالُ اليوم يجهّز يوميّةَ الغد بالرصيد المنقول — وهذا صحيحٌ في
- * ذاته وسيعود غدًا؛ ومن فتح الشاشةَ على تاريخٍ بعيد فأنشأته `getOrCreateWallet`
- * لمجرّد الطلب. الثاني هو العطب، وقد أُغلق بابُه في `config/walletStart`.
- *
- * وأثرُ الصفِّ الزائد ليس صفًّا زائدًا وحده: عرضُ الشهر يعدّ اليوميّات، فيقول
- * «١٣ يومًا» في الثاني عشر من الشهر — ورقمٌ يناقض التقويمَ على الشاشة يجعل
- * كلَّ رقمٍ بجانبه موضعَ شكّ.
- *
- * ── ولا يُحذَف إلّا الفارغُ المفتوح ─────────────────────────────────────────
- * يوميّةٌ في المستقبل عليها حركةٌ أو مبلغٌ أو أُقفلت ليست صفًّا تلقائيًّا: هي
- * شيءٌ فعله إنسانٌ بقصد، ولو بتاريخٍ خاطئ. حذفُها صامتًا يمحو عملَه ويترك
- * الرصيدَ ناقصًا بلا أثر. فتُطبَع وتُترَك لصاحبها.
+ * Deletes wallet days whose date has not arrived.
+ * Usage: node src/scripts/purgeFutureWalletDays.js --dry | --apply
+ * Future days come from day closing preparing tomorrow with the carried balance (correct, and returns tomorrow), and from opening the screen on a far date, where getOrCreateWallet created one on request; that is the defect and is closed in config/walletStart. An extra row skews the month view's day count against the calendar.
+ * Only empty open days are deleted; a future day with an entry, amount or closing was a deliberate human action, so it is printed and left.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -30,8 +16,7 @@ const { lastWritableDay } = require('../config/walletStart');
   const WalletTransaction = require('../models/WalletTransaction');
   require('../models/Branch');
 
-  // ويومُ الغدِ ليس هدفًا: إقفالُ اليوم يجهّزه بالرصيد المنقول، والقيدُ بعد
-  // منتصف الليل يقع فيه بحقّ. الهدفُ ما بعده — أيّامٌ لا عملَ فيها بحال.
+  // Tomorrow is not a target: day closing prepares it with the carried balance, and an after-midnight entry legitimately lands there. The target is days after it, which never have work.
   const T = lastWritableDay();
   const future = await DailyWallet.find({ date: { $gt: T } }).populate('branch', 'name').sort({ date: 1 });
   console.log(`\n  آخرُ يومٍ مسموح ${T}${APPLY ? '' : '   — تجربة، بلا حذف —'}\n`);
@@ -57,7 +42,7 @@ const { lastWritableDay } = require('../config/walletStart');
   if (APPLY && empty.length) {
     await DailyWallet.deleteMany({ _id: { $in: empty.map((x) => x.w._id) } });
     console.log(`\n  ✔ حُذفت ${empty.length} يوميّة.`);
-    try { require('../websocket/socketManager').emitToAll('wallet:updated', {}); } catch (_) { /* خارج الخادم */ }
+    try { require('../websocket/socketManager').emitToAll('wallet:updated', {}); } catch (_) { /* Outside the server. */ }
   } else if (!APPLY) {
     console.log('\n  لم يُحذَف شيء. أضف --apply للتنفيذ.');
   }

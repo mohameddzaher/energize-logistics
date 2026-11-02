@@ -1,21 +1,8 @@
 /* eslint-disable no-console */
 /**
- * setWalletOpeningBalance — ضبط الرصيد الافتتاحي لمحفظة موظّف في يومٍ بعينه.
- *
- *   node src/scripts/setWalletOpeningBalance.js --email wael@energize.com --amount 13340 --dry
- *   node src/scripts/setWalletOpeningBalance.js --email wael@energize.com --amount 13340 --yes
- *   … [--date 2026-08-23]   الافتراضي: اليوم
- *
- * ── لماذا سكربت لا تعديلٌ مباشر ─────────────────────────────────────────────
- * الرصيد الافتتاحي رقمٌ ماليّ: يُبنى عليه رصيد اليوم، ورصيد اليوم يصير افتتاحيَّ
- * الغد. تعديله بيدٍ في قاعدة البيانات يترك سطرًا لا أحد يعرف من كتبه ولا لماذا.
- * هنا يُكتب مرةً واحدة، ويُسجَّل في سجلّ التدقيق باسم منفّذه وسببه، ويُعاد حساب
- * رصيد الإقفال فورًا.
- *
- * ── وما لا يفعله ────────────────────────────────────────────────────────────
- * لا يمسّ حركات اليوم (تحصيل/مصروف/مشتريات) — رصيد الإقفال يُحسب منها ومن
- * الافتتاحي، لا يُكتب. ولا يعدّل أيامًا سابقة: لو كان لليوم السابق محفظة، فرصيد
- * إقفاله هو الافتتاحيُّ الطبيعي، وتجاوزُه قرارٌ يُعلَن لا يُدسّ.
+ * Sets an employee wallet's opening balance on a given day.
+ * Usage: node src/scripts/setWalletOpeningBalance.js --email <email> --amount <n> (--dry | --yes) [--date YYYY-MM-DD] (default: today)
+ * The opening balance feeds the day's balance and the next day's opening, so it is written once, audited with executor and reason, and the closing is recomputed. Day movements and earlier days are left alone; overriding the previous day's closing must be an explicit decision.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -30,9 +17,7 @@ const EMAIL = arg('email');
 const AMOUNT = Number(arg('amount'));
 const DATE = arg('date') || new Date().toISOString().slice(0, 10);
 const REASON = arg('reason') || 'ضبط الرصيد الافتتاحي بطلب الإدارة';
-// سجلّ التدقيق يشترط منفِّذًا — والحقيقة أنّ التنفيذ تمّ بسكربت صيانة. تُنسَب
-// العملية لحساب المسؤول المذكور، ويُكتب في السبب أنها بسكربت، فلا يبدو أحدٌ
-// كأنه ضغط زرًّا لم يضغطه.
+// The audit log requires an actor but this is a maintenance script. The action is attributed to the named admin account and the reason states it came from a script.
 const AS = arg('as') || 'mohamedzaher.dev@gmail.com';
 
 (async () => {
@@ -58,7 +43,7 @@ const AS = arg('as') || 'mohamedzaher.dev@gmail.com';
   console.log(`الفرع:    ${branch?.nameAr || branch?.name || branchId}`);
   console.log(`التاريخ:  ${DATE}\n`);
 
-  // اليوم السابق — رصيد إقفاله هو الافتتاحيُّ الطبيعي، فنُظهر الفرق صراحةً.
+  // Previous day: its closing balance is the natural opening, so the difference is shown explicitly.
   const prev = await DailyWallet.findOne({ user: user._id, date: { $lt: DATE } }).sort({ date: -1 }).lean();
   if (prev) {
     console.log(`آخر محفظة سابقة: ${prev.date} · رصيد إقفالها ${prev.closingBalance}`);
@@ -70,7 +55,7 @@ const AS = arg('as') || 'mohamedzaher.dev@gmail.com';
   let wallet = await DailyWallet.findOne({ user: user._id, date: DATE });
   const before = wallet ? wallet.openingBalance : null;
 
-  // حركات اليوم — رصيد الإقفال يُحسب منها لا يُكتب.
+  // Day movements: the closing balance is computed from them, not written.
   const txs = await WalletTransaction.find({ user: user._id, date: DATE, isDeleted: { $ne: true } }).lean();
   const sumOf = (t) => txs.filter((x) => x.type === t).reduce((s, x) => s + (Number(x.amount) || 0), 0);
   const collections = sumOf('collection');

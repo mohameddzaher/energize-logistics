@@ -3,41 +3,27 @@ const { SHIPMENT_DELETE_ROLES } = require('../services/shipmentOrderWorkflowLink
 const { body } = require('express-validator');
 const router = express.Router();
 
-// معرّفٌ مشوَّهٌ في الرابط = لا سجلّ، لا عطلٌ في الخادم — راجع utils/idParam.
+// A malformed id in the URL means no record (404), not a server error; see utils/idParam.
 const { objectIdParam } = require('../utils/idParam');
 router.param('id', objectIdParam());
 router.param('customerId', objectIdParam());
 const workflowController = require('../controllers/workflowController');
 const authenticate = require('../middleware/auth');
 const authorize = require('../middleware/rbac');
-// أهلُ المال يملكون في هذه الصفحة ما يملكه مديرُ النظام — راجع config/financeAuthority.
+// Finance roles have on this page what the system admin has; see config/financeAuthority.
 const { FINANCE_FULL_ROLES } = require('../config/financeAuthority');
 const validate = require('../middleware/validate');
 
 router.use(authenticate);
-// فلترُ «مسؤول البيانات» يقرأ مشترياتِ المحفظة — تُحمَّل قبل بناء الشرط. راجع utils/dataOwnerIndex.
+// The data-owner filter reads wallet purchases, loaded before the condition is built. See utils/dataOwnerIndex.
 router.use(require('../utils/dataOwnerIndex').preload);
-// رقمُ إقامةٍ أو هيكلٍ في البحث → أصحابُه في السجلّات (utils/relatedPeopleSearch).
+// An iqama number or chassis in the search maps to its owners in the registers (utils/relatedPeopleSearch).
 router.use((req, res, next) => (req.method === 'GET' ? workflowController.primeRelatedSearch(req, res, next) : next()));
 
-// All workflow-related roles. Finance/collections staff (cfo, accounting_manager,
-// accountant) are included so they can open the operations page, see the
-// financial columns, and tick the accounting-review checkbox.
-//
-// ── وقسمُ التحصيل معهم ────────────────────────────────────────────────────
-// الكشفُ هو ورقةُ عملِ التحصيل: منه يُقرأ ما لنا وما علينا، وفيه تُكتب الفاتورةُ
-// وتاريخُ التحصيل. ومنعُه من الصفحة كان يعني أن يُملي أرقامَه على قسمٍ آخر
-// ليكتبها له. وصلاحيّةُ الحقل تُفحص داخل المتحكّم، فدخولُ الصفحة لا يمنح شيئًا
-// بذاته — والأدوارُ هنا هي مَن يصل إلى النقطة أصلًا.
-//
-// ── وتقنيةُ المعلومات كانت خارجَها ────────────────────────────────────────
-// الشريطُ الجانبيّ يعرض صفحةَ التشغيل لمدير تقنية المعلومات ولأخصائيّه، وكلُّ
-// نداءٍ فيها يردّ ٤٠٣ — رابطٌ ميّتٌ منذ كُتب. والدوران في `FULL_ACCESS_ROLES`
-// أي بلا حاجزٍ في كلّ قسمٍ آخر؛ وهذا المسارُ بلا `sectionGate` فلا يشملهما
-// المنحُ الديناميّ الذي يفتحه لهما في غيره.
-//
-// والمبيعاتُ خرجت منهم: دخلتها لقيمة البيع وحدَها، ثمّ قُصرت القيمةُ على
-// المال والتحصيل والتشغيل (صاحبُ الشركة، ٢٠٢٦/١٠/٢١). راجع SELLING_ROLES.
+// All workflow-related roles. Finance/collections staff (cfo, accounting_manager, accountant) are included so they can open the operations page, see the financial columns, and tick the accounting-review checkbox.
+// Collections is included: the manifest is the collections work sheet, read for what is owed to and by us, and where the invoice and collection date are written. Blocking it meant dictating numbers to another department to type. Field permission is checked inside the controller, so page access grants nothing by itself; the roles here only decide who reaches the endpoint.
+// IT was outside: the sidebar shows the operations page to the IT manager and specialist but every call returned 403, a dead link. Both roles are in `FULL_ACCESS_ROLES` (no barrier elsewhere), but this route has no `sectionGate`, so the dynamic grant that opens other routes for them does not cover it.
+// Sales was removed: it entered for the selling value alone, then the value was limited to finance, collections and operations. See SELLING_ROLES.
 const allWorkflowRoles = [
   'super_admin', 'admin', 'it_manager', 'it_specialist',
   'employee', 'operations_manager', 'operations_staff',
@@ -52,39 +38,32 @@ const readWorkflowRoles = [...allWorkflowRoles, ...require('../config/roles').DA
 router.get('/export', authorize(...readWorkflowRoles), workflowController.exportWorkflows);
 router.get('/permissions', authorize(...readWorkflowRoles), workflowController.getFieldPermissions);
 router.get('/stats', authorize(...readWorkflowRoles), workflowController.getWorkflowStats);
-// قيم فلتر عمودٍ واحد — تُحسب في القاعدة. لا بدّ أن تسبق `/:id` وإلا قُرئت
-// «filters» على أنها معرّف سجلّ فردّ الخادم 404 على كل فتحةٍ للقائمة.
+// Values for one column filter, computed in the database. Must come before `/:id`, otherwise 'filters' is read as a record id and the server returns 404 on every list open.
 router.get('/filters', authorize(...readWorkflowRoles), workflowController.filterOptions);
-// فحوصُ الفواتير الأربع (ناقصٌ في التسلسل · كشفٌ غير موجود · فرقُ قيمة · اسمُ عميل) —
-// قبل `/:id` أيضًا. والمالُ يُفحص داخل المتحكّم (canSeeMoney).
+// The four invoice checks (gap in the sequence, missing manifest, value difference, customer name), also before `/:id`. Money is checked inside the controller (canSeeMoney).
 router.get('/invoice-checks', authorize(...readWorkflowRoles), workflowController.invoiceChecks);
 router.get('/invoice-checks/:kind', authorize(...readWorkflowRoles), workflowController.invoiceCheckList);
-// ── ربطُ الكشف بمعاملة تخليص ─────────────────────────────────────────────────
-// البحثُ قبل `/:id`. وصلاحيّةُ الربط تُفحص داخل المتحكّم (canLinkCustoms).
+// Linking a manifest to a customs transaction. Search is before `/:id`. Link permission is checked inside the controller (canLinkCustoms).
 router.get('/customs-search', authorize(...readWorkflowRoles), workflowController.customsSearch);
 router.get('/customer-names', authorize(...readWorkflowRoles), workflowController.customerNames);
 router.put('/:id/customs-link', authorize(...allWorkflowRoles), workflowController.setCustomsLink);
 router.delete('/:id/customs-link', authorize(...allWorkflowRoles), workflowController.clearCustomsLink);
 
-// ── أنواعُ الدفع ────────────────────────────────────────────────────────────
-// صفةُ العميل تُقرأ لمن يفتح صفحةَ التشغيل، ولا تُكتب إلّا لمن يديرها: قلبُ
-// صفةِ عميلٍ يغيّر أين تُفوتَر كشوفُه كلُّها. ولا بدّ أن تسبق `/:id`.
+// Payment types. A customer's type is readable by whoever opens the operations page but writable only by whoever manages it: flipping a customer's type changes where all his manifests are invoiced. Must come before `/:id`.
 const paymentTypes = require('../controllers/paymentTypesController');
 const PT_WRITE = ['super_admin', 'admin', 'operations_manager', 'moderator', 'cfo', 'accounting_manager', 'collections_manager'];
 router.get('/payment-types', authorize(...readWorkflowRoles), paymentTypes.list);
 router.put('/payment-types/:id', authorize(...PT_WRITE), paymentTypes.update);
 router.post('/payment-types/apply', authorize(...PT_WRITE), paymentTypes.applyAll);
-// توحيدُ كشوف عميلٍ على صفته — نقضُ دليلٍ قائم، فيُطلَب صراحةً لعميلٍ بعينه.
+// Unify a customer's manifests to his type: it overrides an existing per-manifest value, so it is requested explicitly for one customer.
 router.post('/payment-types/:id/unify', authorize(...PT_WRITE), paymentTypes.unifyCustomer);
 router.get('/', authorize(...readWorkflowRoles), workflowController.getWorkflows);
 
 // Bulk delete
 router.post('/bulk-delete', authorize.strict(...SHIPMENT_DELETE_ROLES), workflowController.bulkDelete);
-// ── تحديثٌ جماعيّ ──────────────────────────────────────────────────────────
-// مفتوحٌ لكلّ من يعدّل صفًّا واحدًا: الصلاحيّةُ تُفحص على مستوى **الحقل** داخل
-// النقطة نفسِها، فلا يكسب أحدٌ بالجملة ما لا يملكه بالمفرد.
+// Bulk update. Open to anyone who edits a single row: permission is checked at the field level inside the endpoint, so nobody gains in bulk what they lack singly.
 router.post('/bulk-update', authorize(...allWorkflowRoles), workflowController.bulkUpdate);
-// رفعُ بيانات الفواتير من إكسل (امر الشحن ← الكشف) — معاينةٌ ثمّ كتابة. راجع importInvoices.
+// Upload invoice data from Excel (shipping order to manifest): preview then write. See importInvoices.
 router.post('/import-invoices', authorize(...allWorkflowRoles), workflowController.importInvoices);
 
 // Bulk import (must be before /:id routes)
@@ -101,10 +80,7 @@ router.get('/pending-by-customer/:customerId', authorize(...readWorkflowRoles), 
 
 router.get('/:id', authorize(...readWorkflowRoles), workflowController.getWorkflow);
 
-// ── متابعاتُ الكشف ───────────────────────────────────────────────────────────
-// مَن يفتح الكشفَ يكتب عليه متابعة؛ والحذفُ لصاحبها أو للإدارة (داخل المتحكّم).
-// والسجلُّ نفسُه يُقرأ من صفحة معاملة التخليص ومن فاتورة التحصيل — راجع
-// controllers/workflowFollowUpController.
+// Manifest follow-ups. Whoever opens the manifest may write a follow-up on it; deletion is for its author or management (inside the controller). The log is read from the customs transaction page and the collections invoice; see controllers/workflowFollowUpController.
 router.param('fuId', objectIdParam());
 const followUps = require('../controllers/workflowFollowUpController').operations;
 router.get('/:id/follow-ups', authorize(...readWorkflowRoles), followUps.list);
@@ -126,7 +102,7 @@ router.post(
 // Update (field-level permissions handled in controller)
 router.put('/:id', authorize(...allWorkflowRoles), workflowController.updateWorkflow);
 
-// حالةُ الطلب — تُكتب في منصّة التشغيل ثمّ تعود إلينا (راجع الدالّة).
+// Order status: written in the operations platform, then comes back to us (see the function).
 router.patch('/:id/application-status', authorize(...readWorkflowRoles), workflowController.updateApplicationStatus);
 
 // Stage transitions

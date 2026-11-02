@@ -1,14 +1,9 @@
 /* eslint-disable no-console */
 /**
- * cleanHrStatusWords — «غير مطلوب» و«لايوجد» قرارٌ لا قيمة.
- *
- *   node src/scripts/cleanHrStatusWords.js           (عرضٌ فقط)
- *   node src/scripts/cleanHrStatusWords.js --apply   (يكتب)
- *
- * الاستيرادُ كتب الكلمتين في خانة القيمة نفسِها (رقمُ الرخصة، نوعُ بطاقة التشغيل)،
- * فعُدّتا «مملوءتين» وظهرتا رقمًا. ومكانُهما عَلَمُ الحالة (`fieldStatus.<key>Status`)
- * الذي تقرؤه اللوحةُ والماستر (راجع statusOf). فيُنقل القرارُ إلى عَلَمه وتُفرَّغ القيمة.
- * ويُفرَّغ «اسم الكفيل» حين يكون رقمَ السجلّ التجاريّ نفسَه المكتوبَ في خانته — تكرارٌ لا اسم.
+ * cleanHrStatusWords: "not required" and "none" are decisions, not values.
+ * Usage: node src/scripts/cleanHrStatusWords.js (dry run) | --apply
+ * The import wrote both words into the value field itself (license number, operating card type), so they counted as filled and showed as a number. They belong in the status flag (fieldStatus.<key>Status) that the dashboard and master read (see statusOf): the decision moves to its flag and the value is emptied.
+ * The sponsor name is also emptied when it equals the commercial registration number written in its field: a duplicate, not a name.
  */
 require('dotenv').config({ quiet: true });
 const mongoose = require('mongoose');

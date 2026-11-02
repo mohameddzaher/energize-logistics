@@ -1,23 +1,15 @@
 const mongoose = require('mongoose');
 
-/**
- * سجل الحوادث والمطالبات التأمينية — مصدره شيت Accidents في ماستر المركبات.
- *
- * ⚠️ ده **مش** `VehicleAccident`. الموديل التاني بيسجّل الحادث من ناحية التشغيل
- * (أي سائق، بأي تفويض، وقع له إيه) وبيتربط بالموظف والتفويض. الموديل ده بيتابع
- * الحادث من ناحية **المطالبة التأمينية**: نسبة الخطأ، رقم نجم، شركة التأمين،
- * المبلغ المقدَّر، المتوقع استرداده، والفجوة بينهم — وده اللي صاحب الشركة بيسأل
- * عنه: «فلوسنا فين؟». الاتنين ممكن يوصفوا نفس الواقعة من زاويتين مختلفتين.
- */
+/** Accident and insurance-claim register, sourced from the Accidents sheet of the vehicles master. Distinct from `VehicleAccident`, which records the operational side (driver, authorization); this tracks the claim: fault share, Najm number, insurer, estimated vs expected recovery and the gap. */
 const vehicleClaimSchema = new mongoose.Schema({
   claimId: { type: String, required: true, unique: true, trim: true, index: true }, // ACC-001
   sourceRow: Number,
 
-  // الواقعة ممكن تكون على مركبة أو على حاجة تانية (مخزن مثلاً) — الفلاج بيفرّق.
+  // The incident may involve a vehicle or something else (e.g. a warehouse); the flag tells which.
   isVehicleIncident: { type: Boolean, default: true, index: true },
   incidentSubjectAr: { type: String, default: '' },
   vehiclePlate: { type: String, default: '', index: true },
-  vehiclePlateKey: { type: String, default: '', index: true }, // للربط بعد توحيد الهمزات
+  vehiclePlateKey: { type: String, default: '', index: true }, // Normalized (hamza-folded) key used for linking.
   vehicle: { type: mongoose.Schema.Types.ObjectId, ref: 'VehicleMaster', default: null, index: true },
   vehicleSectorAr: { type: String, default: '', index: true },
   vehicleTypeAr: { type: String, default: '' },
@@ -25,24 +17,15 @@ const vehicleClaimSchema = new mongoose.Schema({
   vehicleBrandAr: { type: String, default: '' },
   ownerRegistrationAr: { type: String, default: '' },
 
-  // الطرف الآخر
-  /**
-   * ── ومَن كان يقود مركبتَنا ──────────────────────────────────────────────
-   * السجلُّ كان يحمل الطرفَ الآخرَ وحدَه، ولا يقول مَن كان خلف المقود عندنا.
-   * وهو أوّلُ ما يُسأل عنه: تُقيَّد المخالفةُ على السائق، ويُخصَم منه، ويُسأل
-   * عن روايته، وتُراجَع رخصتُه. وكان الجوابُ يُبحَث عنه في التفويض وفي جدول
-   * الإسناد وفي ذاكرة المشرف — وثلاثتُها قد تختلف.
-   *
-   * ويُقترَح تلقائيًّا من مفوَّض المركبة أو قائدها الفعليّ في قسم النقل الخفيف
-   * (راجع `suggestDriver`)، ويُصحَّح باليد: المفوَّضُ ليس دائمًا الراكب.
-   */
+  // Other party.
+  /** Who was driving our vehicle. Suggested automatically from the vehicle's authorized person or actual light-transport driver (see `suggestDriver`) and corrected by hand, since the authorized person is not always the driver. */
   driverNameAr: { type: String, default: '' },
   driverIdNumber: { type: String, default: '', index: true },
 
   counterpartyNameAr: { type: String, default: '' },
   counterpartyNationalId: { type: String, default: '' },
 
-  // نسبة الخطأ: 0 = الطرف الآخر غلطان، 100 = إحنا. بتحدد نتوقع نسترد كام.
+  // Fault share: 0 = other party at fault, 100 = us. Determines the expected recovery.
   faultRatio: { type: Number, default: null },
   faultPercent: { type: Number, default: null, index: true },
 
@@ -55,24 +38,17 @@ const vehicleClaimSchema = new mongoose.Schema({
   claim: {
     insurerAr: { type: String, default: '', index: true },
     claimNumber: { type: String, default: '' },
-    claimNumberStatus: { type: String, default: '' },   // none = لسه مفتحش مطالبة
+    claimNumberStatus: { type: String, default: '' },   // none = no claim opened yet.
     notesAr: { type: String, default: '' },
     lastNoteDate: { type: Date, default: null },
     lastInsurerUpdateDate: { type: Date, default: null, index: true },
     estimatedAmountSar: { type: Number, default: null },
     expectedRecoverySar: { type: Number, default: null },
-    // الفرق بين المقدَّر والمتوقع استرداده — الخسارة الصافية المتوقعة.
+    // Estimated minus expected recovery: the expected net loss.
     recoveryGapSar: { type: Number, default: null },
   },
 
-  // ── وردودُ شركة التأمين كثيرة، لا واحد ────────────────────────────────
-  //
-  // كان الردُّ خانةَ ملاحظاتٍ واحدة (`claim.notesAr`) يُكتَب فوقها في كلّ
-  // مرّة. وشركةُ التأمين تردّ مرّاتٍ على المطالبة الواحدة: تطلب مستندًا، ثمّ
-  // تقدّر، ثمّ تعرض مبلغًا. فكتابةُ الردّ الجديد فوق القديم تمحو تاريخَ
-  // المفاوضة — وهو ما يُحتَجّ به عند الخلاف.
-  //
-  // فصارت سجلًّا يُضاف إليه ولا يُمحى، ويُقرأ الأحدثُ أوّلًا.
+  // Insurer responses form an append-only log, newest first, so replies never overwrite the negotiation history needed in a dispute.
   insurerReplies: [{
     at: { type: Date, default: Date.now },
     text: { type: String, trim: true, default: '' },
@@ -81,21 +57,11 @@ const vehicleClaimSchema = new mongoose.Schema({
     byName: { type: String, trim: true, default: '' },
   }],
 
-  // نصُّ الحالة — لم يعد يُخزَّن ولا يُقرأ: الحالةُ تُشتقُّ من `statusCode`
-  // وتُعرَض بلغة الشاشة. أُبقي الحقلُ لبيانات قديمة ولا يُكتَب فيه.
+  // Legacy status text, no longer written or read; status derives from `statusCode`.
   statusAr: { type: String, default: '' },
   statusCode: { type: String, default: '', index: true }, // pending / closed / …
 
-  /**
-   * ── مرفقاتُ المطالبة ──────────────────────────────────────────────────────
-   * المطالبةُ ورقٌ قبل أن تكون رقمًا: تقريرُ نجم، وصورُ الضرر، وعرضُ الورشة،
-   * وخطابُ الشركة. وكانت تُدار بالأرقام وحدَها — التقديرُ والمتحصَّلُ والفارق —
-   * وأمّا الورقُ الذي تُبنى عليه هذه الأرقام فيبقى في بريدٍ أو هاتفٍ عند مَن
-   * تابعها، فإن سُئلت عن الحجّة بعد سنةٍ لم تجدها.
-   *
-   * ولكلّ مرفقٍ اسمٌ يكتبه صاحبُه: «تقرير نجم» و«عرض الورشة» و«خطاب الرفض» لا
-   * `IMG_20260114.jpg` ثلاثَ مرّات. والاسمُ هو ما يُقرأ في القائمة.
-   */
+  /** Claim attachments (Najm report, damage photos, workshop quote, insurer letter), each with a user-written title shown in the list. */
   attachments: [{
     title: { type: String, trim: true, default: '' },
     fileUrl: { type: String, required: true },
@@ -109,24 +75,14 @@ const vehicleClaimSchema = new mongoose.Schema({
 
   isActive: { type: Boolean, default: true, index: true },
 
-  /**
-   * ── ومَن سجّلها ومَن آخِرُ من مسّها ────────────────────────────────────────
-   * «أنا سجّلتُ حادثًا ولا أجده» سؤالٌ وقع فعلًا، ولم يكن في الصفّ ما يجيب عنه:
-   * لا صاحبَ له ولا آخِرَ كاتب. فالسجلُّ الماليُّ يُراجَع، ومن يُراجعه يسأل أوّلًا
-   * عمّن كتب.
-   */
+  /** Who created the claim and who last touched it, for auditing the financial record. */
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   createdByName: { type: String, trim: true, default: '' },
   lastModifiedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   lastModifiedByName: { type: String, trim: true, default: '' },
 }, { timestamps: true });
 
-/**
- * ── الحادثُ يحمل مرجعَ مركبته لا لوحتَها وحدَها ─────────────────────────────
- * اثنان وثلاثون حادثًا كانت لوحاتُها في سجلّ المركبات ولا مرجعَ لها، فلم تظهر في
- * ملفّ المركبة. فيُحَلّ المرجعُ عند الإنشاء وعند تغيير اللوحة بالمفتاح الموحَّد
- * (utils/vehicleRef — عربيّةً أو لاتينيّة)، ما لم يُختَر المرجعُ صراحةً.
- */
+/** The accident carries its vehicle reference, not just the plate. The reference is resolved on create and on plate change via the unified key (utils/vehicleRef, Arabic or Latin) unless set explicitly. */
 vehicleClaimSchema.pre('save', async function () {
   const plate = String(this.vehiclePlate || '').trim();
   const plateTouched = this.isNew || this.isModified('vehiclePlate');
@@ -138,7 +94,7 @@ vehicleClaimSchema.pre('save', async function () {
   try {
     const hit = await require('../utils/vehicleRef').resolve(plate, '_id plateKey');
     if (hit) { this.vehicle = hit._id; if (hit.plateKey) this.vehiclePlateKey = hit.plateKey; } else if (!this.isNew) this.vehicle = null;
-  } catch (_) { /* الربطُ لا يُسقط الحفظ */ }
+  } catch (_) { /* Linking never fails the save. */ }
 });
 
 vehicleClaimSchema.index({ accidentDate: -1 });

@@ -1,9 +1,7 @@
 /**
- * systemAudit — فحصُ النظام كلِّه: هل كلُّ شيءٍ يعمل، ومربوطٌ بما بعده؟
- *
- *   node src/scripts/systemAudit.js
- *
- * لا يكتب شيئًا. يقرأ ويشغّل ويقارن، ويعدّ ما وجده.
+ * Whole-system audit: is everything working and linked to what follows.
+ * Usage: node src/scripts/systemAudit.js
+ * Writes nothing; it reads, runs, compares and counts findings.
  */
 process.env.AUDIT_SUPPRESS = '1';
 require('dotenv').config();
@@ -21,7 +19,7 @@ const bad = (area, msg, detail) => problems.push({ level: 'bad', area, msg, deta
   P('  فحصُ النظام');
   P('='.repeat(78));
 
-  // ── ١ · كلُّ الملفّات تُحمَّل ───────────────────────────────────────────────
+  // 1. All files load
   const dirs = ['models', 'controllers', 'services', 'routes', 'jobs', 'utils', 'middleware', 'config'];
   let loaded = 0;
   for (const d of dirs) {
@@ -36,8 +34,7 @@ const bad = (area, msg, detail) => problems.push({ level: 'bad', area, msg, deta
 
   await mongoose.connect(process.env.MONGODB_URI);
 
-  // ── ٢ · المراجعُ المعلّقة ─────────────────────────────────────────────────
-  // حقلٌ يشير إلى مستندٍ لم يعد موجودًا: الشاشةُ تعرض فراغًا ولا تقول لماذا.
+  // 2. Dangling references: a field pointing to a document that no longer exists shows blank in the UI with no explanation.
   P('\n  ٢ · المراجعُ المعلّقة (حقلٌ يشير إلى مستندٍ محذوف)');
   const refChecks = [];
   for (const name of mongoose.modelNames()) {
@@ -45,7 +42,7 @@ const bad = (area, msg, detail) => problems.push({ level: 'bad', area, msg, deta
     for (const [pathName, def] of Object.entries(M.schema.paths)) {
       const ref = def.options && def.options.ref;
       if (!ref || !mongoose.modelNames().includes(ref)) continue;
-      if (pathName.includes('.')) continue; // المتداخلةُ تُفحص بعينةٍ لا بجملة
+      if (pathName.includes('.')) continue; // Nested references are checked by sampling, not exhaustively.
       refChecks.push({ model: name, path: pathName, ref });
     }
   }
@@ -71,8 +68,7 @@ const bad = (area, msg, detail) => problems.push({ level: 'bad', area, msg, deta
   }
   P(`     فُحص ${refChecks.length} مرجعًا · معلّق: ${danglingTotal}`);
 
-  // ── ٣ · القوائمُ المرجعيّةُ التي تطلبها الشاشات ─────────────────────────────
-  // `<ManagedSelect type="x">` بنوعٍ غيرِ مسجَّلٍ يعرض قائمةً فارغةً أبدًا.
+  // 3. Reference lists requested by screens: a ManagedSelect with an unregistered type always shows an empty list.
   P('\n  ٣ · القوائم المرجعية');
   const { REGISTRY } = require('../config/lookupTypes');
   const known = new Set(REGISTRY.map((r) => r.type));
@@ -103,7 +99,7 @@ const bad = (area, msg, detail) => problems.push({ level: 'bad', area, msg, deta
   if (empty.length) warn('قوائم', 'قوائمُ مسجَّلةٌ لا قيمةَ فيها', empty.join(', '));
   P(`     مسجَّلة ${REGISTRY.size || REGISTRY.length} · تطلبها الشاشات ${used.size} · غير مسجَّل ${unknownTypes.length} · فارغة ${empty.length}`);
 
-  // ── ٤ · تشغيلُ نقاط القراءة بكلّ دور ───────────────────────────────────────
+  // 4. Run read endpoints for every role
   P('\n  ٤ · نقاطُ القراءة');
   const { testUser } = require('./lib/testUser');
   const { ALL_ROLES } = require('../config/roles');
@@ -157,7 +153,7 @@ const bad = (area, msg, detail) => problems.push({ level: 'bad', area, msg, deta
   }
   P(`     شُغّلت ${ran} نقطة`);
 
-  // ── ٥ · اتّساقُ الأرقام بين الشاشات ────────────────────────────────────────
+  // 5. Number consistency across screens
   P('\n  ٥ · اتّساقُ الأرقام');
   const W = mongoose.model('OperationsWorkflow');
   const wf = require('../controllers/workflowController');
@@ -180,7 +176,7 @@ const bad = (area, msg, detail) => problems.push({ level: 'bad', area, msg, deta
   if (unlinkedCards) warn('اتّساق', 'بطاقاتُ سائقين بلا موظّف', String(unlinkedCards));
   else P(`     بطاقاتُ السائقين كلُّها مربوطةٌ بموظّفين`);
 
-  // ── ٦ · تكرارُ ما يجب أن يكون فريدًا ───────────────────────────────────────
+  // 6. Duplicates of values that must be unique
   P('\n  ٦ · التكرار');
   const dupChecks = [
     ['Employee', 'iqamaNumber'], ['Employee', 'employeeNumber'],
@@ -199,9 +195,7 @@ const bad = (area, msg, detail) => problems.push({ level: 'bad', area, msg, deta
   }
   P(`     فُحص ${dupChecks.length} حقلًا`);
 
-  // ── ٧ · الحقولُ التي تُكتب ولا تُخزَّن ──────────────────────────────────────
-  // حقلٌ في `EDITABLE` وليس في المخطّط يُسقَط صامتًا — وهو العطلُ الذي أضاع
-  // ثلاثةً وثلاثين ألفَ اسمِ مورّد.
+  // 7. Fields written but not stored: a field in EDITABLE but missing from the schema is silently dropped.
   P('\n  ٧ · حقولٌ تُقبَل ولا تُخزَّن');
   const editableChecks = [
     ['customsClearanceController', 'EDITABLE', 'CustomsClearance'],
@@ -217,7 +211,7 @@ const bad = (area, msg, detail) => problems.push({ level: 'bad', area, msg, deta
     else P(`     ${model}: كلُّ الحقول المقبولة مخزَّنة (${fields.length})`);
   }
 
-  // ── ٨ · التوقيت ───────────────────────────────────────────────────────────
+  // 8. Timing
   P('\n  ٨ · التوقيت');
   const { todayKey, startOfDay } = require('../utils/companyDay');
   const tk = todayKey();
@@ -239,7 +233,7 @@ const bad = (area, msg, detail) => problems.push({ level: 'bad', area, msg, deta
   if (leftoverUtc.length) warn('توقيت', 'مِصفاةُ مدًى ما زالت تبني حدَّها بغرينتش', [...new Set(leftoverUtc)].join(', '));
   else P('     لا مِصفاةَ مدًى تبني حدَّها بغرينتش');
 
-  // ── التقرير ───────────────────────────────────────────────────────────────
+  // Report
   P('\n' + '='.repeat(78));
   const bads = problems.filter((p) => p.level === 'bad');
   const warns = problems.filter((p) => p.level === 'warn');

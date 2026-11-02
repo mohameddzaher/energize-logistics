@@ -1,14 +1,7 @@
 /**
- * auditVehicleRegistry — قسم المركبات: النظرة الشاملة، الانتهاءات، والتجديد.
- *
- *   node src/scripts/auditVehicleRegistry.js
- *   node src/scripts/auditVehicleRegistry.js --base http://127.0.0.1:5001
- *
- * أهم حاجة بيتأكد منها: فلتر «هينتهي خلال كام يوم» بيرجّع **بالظبط** اللي جوّه
- * المدة — لو رجّع صف برّه المدة، الرقم اللي صاحب الشركة بيخطّط عليه بيبقى كذب.
- * وكمان إن «غير مطلوب» ما بتظهرش كأنها نقص، وإن التجديد بيتقيّد بالقديم والجديد.
- *
- * بيرجّع أي بيانات غيّرها لأصلها وبيمسح مستخدميه (zz-vh-*).
+ * auditVehicleRegistry: vehicles section overview, expiries, and renewal.
+ * Key check: the "expires within N days" filter returns exactly what is inside the window; a row outside it makes the number the owner plans on wrong. Also that "not required" is not shown as missing, and that renewal records both old and new values.
+ * Restores any data it changed and deletes its users (zz-vh-*).
  */
 require('dotenv').config();
 const mongoose=require('mongoose');
@@ -69,7 +62,7 @@ async function login(e){const r=await fetch(`${BASE}/api/auth/login`,{method:'PO
   ok('تجديد لتاريخ فات مرفوض',past.status===400,past.body?.message);
   const badDoc=await req('POST',`/api/vehicle-registry/${veh._id}/renew`,ck,{document:'nope',newExpiry:future});
   ok('مستند غير معروف مرفوض',badDoc.status===400,badDoc.body?.message);
-  // رجّع البيانات زي ما كانت
+  // Restore the data as it was
   await VehicleMaster.updateOne({_id:veh._id},{$set:{'insurance.expiryDate':before},$pull:{renewals:{reference:'POL-ZZ-1'}}});
 
   console.log('\n── الحوادث ووثائق الشركة ──');

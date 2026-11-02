@@ -1,4 +1,4 @@
-/** يمرّ على بحثِ كلّ صفحةٍ في التحصيل بصيغِ الاسم المختلفة. لا يكتب شيئًا. */
+/** Goes through each collections page's search with different name spellings. Writes nothing. */
 require('dotenv').config();
 const mongoose = require('mongoose');
 (async () => {
@@ -14,7 +14,7 @@ const mongoose = require('mongoose');
   const count = (b) => (b.invoices || b.parties || b.rows || []).length;
   const total = (b) => b.total ?? '—';
 
-  // صيغتان لاسمٍ واحد: كما هو، وبأشباه الحروف (ة→ه، ي→ى)
+  // Two forms of one name: as is, and with look-alike letters (ta marbuta to ha, ya to alif maqsura).
   const variants = (s) => [s, s.replace(/ة/g, 'ه').replace(/ي/g, 'ى')];
 
   const pages = [

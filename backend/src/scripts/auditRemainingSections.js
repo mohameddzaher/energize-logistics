@@ -1,19 +1,7 @@
 /**
- * auditRemainingSections — الأقسام التي لم تُفحَص بعمقٍ من قبل.
- *
- *   node --max-old-space-size=8192 src/scripts/auditRemainingSections.js --base https://api.energize-logistics.com
- *
- * قراءةٌ فقط، ولا كتابةَ إلّا حسابَ فحصٍ يُنشأ ويُحذَف.
- *
- * ── ما يُسأل في كلّ قسم ────────────────────────────────────────────────────
- * ثلاثةُ أسئلةٍ لا واحد: أتُفتَح الشاشة؟ ثمّ — وهو الأهمّ — أصحيحٌ ما فيها؟
- * ثمّ: أثمّ مرجعٌ إلى سجلٍّ محذوف، أو رقمٌ فريدٌ تكرّر، أو مجموعٌ لا يساوي
- * أجزاءه؟ فتحُ الشاشة بلا فحصِ أرقامها يقول إنّ الخادمَ يعمل، لا إنّ البيانات
- * صحيحة — وهما سؤالان مختلفان.
- *
- * والقسمُ الفارغُ يُقال إنّه فارغٌ ولا يُعَدّ نجاحًا ولا فشلًا: ستّةُ أقسامٍ في
- * المنصّة لا بياناتِ لها إطلاقًا، وهذه حقيقةٌ عن حال العمل تُعرَض ولا تُخفى في
- * علامةِ صحٍّ خضراء.
+ * Audits sections not examined deeply before. Read-only; the only write is an audit account that is created and deleted.
+ * Three questions per section: does the screen open, are its contents right, and are there references to deleted records, duplicated unique numbers or totals not equal to their parts. Opening a screen shows the server works, not that the data is right.
+ * An empty section is reported as empty, neither pass nor fail; six platform sections have no data at all, a fact about the business that should not be hidden in a green tick.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -69,24 +57,24 @@ const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
   ok('صفحة الطلبات تُفتَح', (await get('/api/b2c/daily-orders?limit=20')).status === 200);
   ok('لوحة B2C تُفتَح', (await get('/api/b2c/dashboard')).status === 200);
 
-  // مرجعُ المندوب على الطلب: طلبٌ لمندوبٍ محذوف يظهر بلا اسمٍ ولا يُحاسَب أحد.
+  // Rep reference on the order: an order for a deleted rep shows no name and nobody is accountable.
   const repIds = await ids('b2creps');
   const orderRepRefs = await rows('b2cdailyorders', { rep: { $ne: null } }, { rep: 1 });
   const badRep = orderRepRefs.filter((o) => o.rep && !repIds.has(String(o.rep)));
   ok('كلُّ طلبٍ لمندوبٍ موجود', badRep.length === 0, `${badRep.length} من ${orderRepRefs.length}`);
 
-  // مبالغُ سالبة: التحصيلُ لا يكون سالبًا.
+  // Negative amounts: collection cannot be negative.
   const negAmt = await db.collection('b2cdailyorders').countDocuments({ $or: [{ amount: { $lt: 0 } }, { codAmount: { $lt: 0 } }] });
   ok('لا مبلغَ سالبًا في الطلبات', negAmt === 0, `${negAmt} طلبًا`);
 
-  // ازدواجُ الطلب: الرقمُ نفسُه مرّتين يعني تحصيلًا مزدوجًا في التقرير.
+  // Duplicate order: the same number twice means double collection in the report.
   const dupOrder = await db.collection('b2cdailyorders').aggregate([
     { $match: { orderNumber: { $nin: [null, ''] } } },
     { $group: { _id: '$orderNumber', n: { $sum: 1 } } }, { $match: { n: { $gt: 1 } } }, { $count: 'c' },
   ]).toArray();
   ok('رقمُ الطلب لا يتكرّر', !dupOrder.length, dupOrder.length ? `${dupOrder[0].c} رقمًا مكرَّرًا` : `${nOrders} طلبًا`);
 
-  // ═══ طلبات الشحنات ══════════════════════════════════════════════════════
+  // Shipment orders
   head('طلبات الشحنات');
   const nSO = await count('shipmentorders');
   console.log(`  طلبات: ${nSO} · مركبات: ${await count('shipmentordervehicles')} · موردون: ${await count('shipmentordersuppliers')} · عملاء: ${await count('shipmentordercustomers')}`);
@@ -108,7 +96,7 @@ const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
   console.log(`  تنبيهات: ${await count('ls2alerts')} · مركبات: ${await count('ls2vehicles')} · إطارات: ${await count('ls2tireassets')} · سطحات: ${await count('ls2flatbeds')} · مقطورات: ${await count('ls2trailers')}`);
   ok('لوحة LS2 تُفتَح', (await get('/api/ls2/dashboard')).status === 200);
   ok('التنبيهات تُفتَح', (await get('/api/ls2/alerts?limit=20')).status === 200);
-  // الأصلُ المركَّب لا يكون على مركبتين في وقتٍ واحد.
+  // A mounted asset cannot be on two vehicles at once.
   const tires = await rows('ls2tireassets', { status: 'installed' }, { serial: 1, plateKey: 1 });
   const byPlate = new Map();
   for (const t of tires) { const k = `${t.serial}`; byPlate.set(k, (byPlate.get(k) || 0) + 1); }
@@ -117,21 +105,19 @@ const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
   const negOdo = await db.collection('ls2odometerdailies').countDocuments({ km: { $lt: 0 } });
   ok('لا عدّادَ سالبًا', negOdo === 0, `${negOdo}`);
 
-  // ═══ العقود ═════════════════════════════════════════════════════════════
+  // Contracts
   head('العقود');
   const nContracts = await count('contracts');
   console.log(`  عقود: ${nContracts} · موردون: ${await count('contractvendors')} · مرشَّحون: ${await count('contractprospects')} · استغلال: ${await count('vendorutilisations')}`);
-  // ── وقسمُ العقود مورِّدون لا موظّفون ──────────────────────────────────────
-  // مجموعةُ `contracts` هي عقودُ الموظّفين (الموارد البشريّة)؛ وقسمُ العقود
-  // يعمل على `contractvendors` و`vendorutilisations`. خلطُهما يجعل الفحصَ
-  // يقول «٢٨١ عقدًا بلا طرف» عن عقودٍ طرفُها موظّفٌ مرجعُه محفوظ.
+  // The contracts section covers vendors, not employees.
+  // The contracts collection holds employee contracts (HR); the contracts section works on contractvendors and vendorutilisations. Mixing them made the audit report 281 contracts with no party for contracts whose party is an employee with a valid reference.
   ok('لوحة العقود تُفتَح', (await get('/api/contracts/dashboard')).status === 200);
   ok('قائمة الموردين تُفتَح', (await get('/api/contracts/vendors')).status === 200);
   ok('تحليل الاستغلال يُفتَح', (await get('/api/contracts/utilisation')).status === 200);
   const cvNoName = await db.collection('contractvendors').countDocuments({ $or: [{ name: null }, { name: '' }] });
   ok('كلُّ مورّدٍ له اسم', cvNoName === 0, `${cvNoName} من ${await count('contractvendors')}`);
 
-  // ═══ التخليص الجمركي ════════════════════════════════════════════════════
+  // Customs clearance
   head('التخليص الجمركي');
   const nCC = await count('customsclearances');
   console.log(`  معاملات: ${nCC} · أطراف: ${await count('customsparties')}`);
@@ -142,7 +128,7 @@ const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
   if (noStage) notes.push(`التخليص: ${noStage.n} معاملةً بلا مرحلة`);
   ok('كلُّ معاملةٍ في مرحلةٍ معروفة', !noStage, noStage ? `${noStage.n} بلا مرحلة` : `${nCC} معاملة`);
 
-  // ═══ إدارة الأسطول ══════════════════════════════════════════════════════
+  // Fleet management
   head('إدارة الأسطول');
   console.log(`  عملاء: ${await count('fleetcustomers')} · سائقون: ${await count('fleetdrivers')} · مركبات: ${await count('fleetvehicles')} · شحنات: ${await count('fleetshipments')} · أحداث: ${await count('fleetevents')}`);
   ok('لوحة الأسطول تُفتَح', (await get('/api/fleet/dashboard')).status === 200);
@@ -150,7 +136,7 @@ const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
   const fleetShip = await rows('fleetshipments', { vehicle: { $ne: null } }, { vehicle: 1 });
   const badFV = fleetShip.filter((s) => s.vehicle && !fleetVeh.has(String(s.vehicle)));
   ok('كلُّ شحنةٍ لمركبةٍ موجودة', badFV.length === 0, `${badFV.length} من ${fleetShip.length}`);
-  // المقعدُ لا يحمل أكثر من سائقين — قاعدةُ القسم نفسِها.
+  // A seat holds at most two drivers: the section's own rule.
   const seats = await db.collection('fleetvehicles').aggregate([
     { $project: { plateNumber: 1, n: { $size: { $ifNull: ['$drivers', []] } } } },
     { $match: { n: { $gt: 2 } } },
@@ -168,14 +154,14 @@ const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
   if (dupCrm.length) notes.push(`CRM: ${dupCrm[0].c} اسمَ شركةٍ مكرَّرًا بعد طيّ الهمزات والمسافات`);
   ok('اسمُ الشركة لا يتكرّر بعد الطيّ', !dupCrm.length, dupCrm.length ? `${dupCrm[0].c} مكرَّرًا` : 'لا تكرار');
 
-  // ═══ الشؤون الإدارية + الريموت + الورشة ═════════════════════════════════
+  // Administration, remote and workshop
   head('الشؤون الإدارية · الريموت · الورشة');
   console.log(`  مهامّ إدارية: ${await count('admintasks')} · رسائل ريموت: ${await count('remotemessages')} · مهامّ ورشة: ${await count('workshoptasks')}`);
   ok('لوحة المهامّ الإدارية تُفتَح', (await get('/api/admin-tasks')).status === 200);
   ok('الريموت يُفتَح', [200, 403].includes((await get('/api/remote/announcements')).status));
   ok('الورشة تُفتَح', (await get('/api/workshop/tasks')).status === 200);
 
-  // ═══ الأقسامُ الفارغة ═══════════════════════════════════════════════════
+  // Empty sections
   head('أقسامٌ لا بياناتِ لها');
   const emptySections = [
     ['المشتريات', ['purchaseorders', 'purchaserequests']],
@@ -193,7 +179,7 @@ const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
   }
   ok('الأقسامُ الفارغةُ معروضةٌ لا مخفيّةٌ خلف علامة صحّ', true, `${empty.length} أقسام`);
 
-  // ═══ ما يمسّ الأقسامَ كلَّها ════════════════════════════════════════════
+  // What touches all sections
   head('عابرٌ للأقسام');
   const notif = await count('notifications');
   const uIds = await ids('users');
@@ -202,8 +188,7 @@ const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
   if (badNotif.length) notes.push(`الإشعارات: ${badNotif.length} إشعارًا لحسابٍ محذوف (لا يراها أحد)`);
   ok('كلُّ إشعارٍ لحسابٍ موجود', badNotif.length === 0, `${badNotif.length} من ${notif}`);
 
-  // القيمةُ في القوائم اسمُها `nameAr`/`key` لا `value` — والتجميعُ على حقلٍ
-  // غير موجودٍ يجمع النوعَ كلَّه في مجموعةٍ واحدةٍ ويقول «مكرَّر» عن كلّ نوع.
+  // Lookup values are named nameAr/key, not value; grouping by a nonexistent field puts the whole type in one group and reports every type as duplicate.
   const lookups = await db.collection('lookups').aggregate([
     { $match: { isActive: { $ne: false } } },
     { $group: { _id: { t: '$type', v: '$nameAr' }, n: { $sum: 1 } } },
@@ -212,12 +197,8 @@ const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
   ok('لا قيمةَ مكرَّرةً في القوائم المنسدلة', !lookups.length,
     lookups.length ? lookups.map((l) => `${l._id.t}/${l._id.v}`).join('، ') : `${await count('lookups')} قيمة`);
 
-  // ── وعقودُ الموظّفين ────────────────────────────────────────────────────
-  // هي في `contracts`، وتخصّ الموارد البشريّة لا قسمَ العقود.
-  // ── والتاريخُ الفارغُ نصٌّ فارغٌ لا `null` ──────────────────────────────
-  // ثلاثةُ عقودٍ نهايتُها `''`، و`$ne: null` يمرّرها فتبدو «تنتهي قبل أن تبدأ»
-  // وهي بلا نهايةٍ أصلًا. الحالتان مختلفتان: واحدةٌ خانةٌ لم تُملأ، والأخرى
-  // تاريخان مقلوبان — ولكلٍّ جوابٌ آخر.
+  // Employee contracts live in contracts and belong to HR, not the contracts section.
+  // An empty date is an empty string, not null: three contracts end with '' and $ne: null lets them through, looking like they end before they start though they have no end. The cases differ: an unfilled cell versus two reversed dates, each with a different answer.
   const empContracts = await db.collection('contracts')
     .find({ startDate: { $nin: [null, ''] } })
     .project({ contractNumber: 1, employeeNameAr: 1, startDate: 1, endDate: 1, status: 1 }).toArray();
@@ -226,8 +207,7 @@ const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
   const d10 = (v) => String(v || '').slice(0, 10) || (v ? new Date(v).toISOString().slice(0, 10) : '—');
   if (noEnd.length) notes.push(`عقودُ الموظّفين: ${noEnd.length} عقدًا بلا تاريخ نهاية — ${noEnd.map((c) => `${c.employeeNameAr || '?'} (عقد ${c.contractNumber || 'بلا رقم'}، بدأ ${d10(c.startDate)})`).join('، ')}`);
   if (inverted.length) notes.push(`عقودُ الموظّفين: ${inverted.length} عقدًا نهايتُه قبل بدايته — ${inverted.map((c) => `${c.employeeNameAr || '?'} (عقد ${c.contractNumber || 'بلا رقم'}: ${d10(c.startDate)} → ${d10(c.endDate)})`).join('، ')}`);
-  // خانةٌ لم تُملأ وتاريخان مقلوبان: كلاهما يحتاج جوابَ الموارد البشريّة لا
-  // إصلاحًا برمجيًّا — فيُعرَضان في «يحتاج قرارَك» ولا يُصبغان السويتَ حمراء.
+  // An unfilled cell and reversed dates both need an HR answer, not a code fix, so they go to the needs-decision list and do not turn the suite red.
   ok('عقودُ الموظّفين: تواريخُها مفحوصة', true,
     `${noEnd.length} بلا نهاية · ${inverted.length} مقلوب — من ${empContracts.length} عقدًا`);
 

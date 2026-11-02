@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 
-// معرّفٌ مشوَّهٌ في الرابط = لا سجلّ، لا عطلٌ في الخادم — راجع utils/idParam.
+// A malformed id in the URL means no record (404), not a server error; see utils/idParam.
 const { objectIdParam } = require('../utils/idParam');
 router.param('id', objectIdParam({ status: 400 }));
 
@@ -9,79 +9,69 @@ const c = require('../controllers/lightTransportController');
 const o = require('../controllers/lightTransportOrderController');
 const authorize = require('../middleware/rbac');
 
-// authenticate + sectionGate('B2C') مطبَّقان عند التركيب في server.js.
-// أدوارُ القسم أوّلًا، ومن مُنح القسمَ من مصفوفة الصلاحيّات يمرّ بـ`authorize`
-// نفسِها (هي تقرأ `req.sectionAccess`) — راجع middleware/sectionGate.
+// authenticate + sectionGate('B2C') are applied at mount time in server.js.
+// Section roles first; users granted the section via the permissions matrix pass the same `authorize` (it reads `req.sectionAccess`); see middleware/sectionGate.
 const EDIT = ['super_admin', 'admin', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead', 'it_manager', ...require('../config/financeAuthority').FINANCE_FULL_ROLES];
 
-// لوحةُ القسم — نداءٌ واحدٌ يحسب الموظّفين والمركبات والسكن معًا.
+// Section dashboard: one call computes staff, vehicles and housing together.
 router.get('/overview', c.overview);
-// حساباتُ الإشراف في القسم — يُبنى منها حقلُ «المشرف» في الويب والهاتف.
+// Supervision accounts in the section; the supervisor field on web and mobile is built from them.
 router.get('/supervisors', c.supervisors);
 router.get('/employees', c.listEmployees);
 router.get('/employees/:id', c.getEmployee);
-// أوردراتُه موزّعةً على مشاريعه شهرًا شهرًا — لملفّه (b2cEntryController.repOrders).
+// A rep's orders split by project, month by month, for his profile (b2cEntryController.repOrders).
 router.get('/employees/:id/orders', require('../controllers/b2cEntryController').repOrders);
-// إضافةُ موظّفٍ تُنشئ ملفَّه في الموارد البشريّة — فهي لمدير القطاع ونائبه ومدير
-// النظام (وأهل المال)، لا لكلّ مَن مُنح القسم.
+// Adding an employee creates his HR file, so it is limited to the sector manager, deputy, system admin and finance roles, not everyone granted the section.
 router.post('/employees', authorize.strict('super_admin', 'b2c_manager', 'b2c_deputy', ...require('../config/financeAuthority').FINANCE_FULL_ROLES), c.createEmployee);
-// مركباتُ مشاريع القسم — نافذةٌ على سجلّ المركبات نفسِه (راجع المتحكِّم).
+// Section project vehicles: a window onto the vehicle registry itself (see the controller).
 router.get('/vehicles', c.listVehicles);
-// منسدلةُ الأشخاص (القائد الفعلي والمفوَّض) — موظّفو القسم أوّلًا ثمّ الموارد البشريّة.
+// People dropdown (actual leader and authorized person): section staff first, then HR.
 router.get('/people', c.people);
 router.put('/vehicles/:id', authorize.strict(...c.LT_VEHICLE_EDIT), c.updateVehicle);
 router.put('/employees/:id', authorize(...EDIT), c.updateEmployee);
-// «نقل مشروع» — الطريقُ الوحيدُ لتغيير مشروع المندوب، ويحسم المتحكّمُ مَن يملكه
-// (نائب مدير القطاع، مدير القسم، السوبر أدمن، الأدمن — utils/b2cEntry.canTransfer).
+// Project transfer is the only way to change a rep's project; the controller decides who may (utils/b2cEntry.canTransfer).
 router.post('/employees/:id/transfer-project', authorize(...EDIT), require('../controllers/b2cEntryController').transferProject);
-// لا حذفَ لموظّف — يُعطَّل السجلّ ويبقى أثرُه، كقاعدة الموارد البشريّة.
+// No employee deletion: the record is deactivated and its trail kept, as in HR.
 router.post('/employees/:id/deactivate', authorize(...EDIT), c.deactivateEmployee);
-// إسنادُ مشرفٍ تشغيليٍّ أو مشرفِ تفقّدٍ لعدّة موظّفين دفعةً واحدة.
+// Assign an operations supervisor or a duty-check supervisor to several employees at once.
 router.post('/employees/assign-supervisors', authorize(...EDIT), c.assignSupervisors);
 
-// ── عهدةُ النقل الخفيف: الكاش وكارت المشتريات والورشة ──────────────────────
-// قيودُ واردٍ وصادر، والتحويلُ بين حسابين قيدان بضغطة — راجع models/LtCustody.
+// Light-transport custody: cash, purchase card and workshop.
+// In/out entries; a transfer between two accounts is two entries in one click; see models/LtCustody.
 const custody = require('../controllers/ltCustodyController');
-// قائمتُها وحدَها تقرّر (`strict`): منحُ القسم يفتح القسمَ لمديري المشاريع ومشرفيه،
-// والعهدةُ مالٌ لا تُفتَح إلّا لمدير القطاع ونائبه ومدير النظام وأهل المال.
+// Only this list decides (`strict`): a section grant opens the section to project managers and supervisors, but custody is money and opens only to the sector manager, deputy, system admin and finance roles.
 const CUSTODY = authorize.strict(...custody.CUSTODY_ROLES);
 router.get('/custody', CUSTODY, custody.list);
 router.get('/custody/rep', CUSTODY, custody.lookupRep);
 router.post('/custody', CUSTODY, custody.create);
-router.put('/custody/:id', CUSTODY, custody.update);      // والمتحكِّمُ يحصره في مدير النظام وأهل المال
+router.put('/custody/:id', CUSTODY, custody.update);      // The controller restricts this to the system admin and finance roles.
 router.delete('/custody/:id', CUSTODY, custody.remove);
 
-// ── تأجيرُ اليوزرات — يُعَدّ في «إجمالي المناديب» في لوحة القسم ──────────────
+// User rental: counted in total reps on the section dashboard.
 const rentals = require('../controllers/ltUserRentalController');
 router.get('/user-rentals', rentals.list);
 router.post('/user-rentals', authorize(...EDIT), rentals.create);
 router.put('/user-rentals/:id', authorize(...EDIT), rentals.update);
 router.post('/user-rentals/:id/end', authorize(...EDIT), rentals.end);
-router.delete('/user-rentals/:id', authorize(...EDIT), rentals.remove);   // والمتحكِّمُ يحصره في الإدارة
+router.delete('/user-rentals/:id', authorize(...EDIT), rentals.remove);   // The controller restricts this to management.
 
 router.get('/housing', c.listHousing);
 router.post('/housing', authorize(...EDIT), c.saveHousing);
 router.put('/housing/:id', authorize(...EDIT), c.saveHousing);
 router.delete('/housing/:id', authorize(...EDIT), c.deleteHousing);
 
-// أوامرُ التشغيل — وخياراتُها تُبنى في الخادم لا في المتصفّح.
+// Operating orders: their options are built on the server, not in the browser.
 router.get('/orders/options', o.orderOptions);
 router.get('/orders', o.listOrders);
 router.post('/orders', authorize(...EDIT), o.createOrder);
 router.post('/orders/:id/end', authorize(...EDIT), o.endOrder);
-// نقلُ تفويضِ مركبةٍ وحدَه — بلا أمرِ تشغيلٍ جديد. راجع `moveAuthorization`.
+// Move a vehicle authorization on its own, without a new operating order; see `moveAuthorization`.
 router.post('/authorization/move', authorize(...EDIT), o.moveAuthorization);
 
 /**
- * ── مخزنُ النقل الخفيف ──────────────────────────────────────────────────────
- *
- * آليّةُ المخزن مكتوبةٌ مرّةً في `ls2StoreController` — وارد وصادر، حركةٌ لا
- * تُعدَّل بل تُعكَس، رصيدٌ بعد كلّ حركة، وعتبةُ نقص. ولهذا القسم مخزنُه
- * بأصنافه (رأسُ موتورٍ وجوانٌ ودرّاجات)، فيُنادى الكونترولرُ نفسُه بنطاق
- * `warehouse=light` بدل نسخِ مخزنٍ ثانٍ يفترق عن الأوّل أوّلَ تعديل.
- *
- * والنطاقُ يُفرَض هنا لا يُترَك للواجهة: الصفحةُ تنادي `/api/light-transport/
- * store` فلا تستطيع — ولو بخطأ — أن تقرأ مخزنَ النقل الثقيل أو تكتب فيه.
+ * Light-transport store.
+ * The store mechanics live once in `ls2StoreController`: in/out entries, movements reversed rather than edited, balance after each movement, and a low-stock threshold. This section has its own store of items (engine head, gasket, bikes), so the same controller is called with `warehouse=light` instead of copying a second store that would drift.
+ * The scope is enforced here, not left to the UI: the page calls the light-transport store route, so it cannot read or write the heavy-transport store even by mistake.
  */
 const store = require('../controllers/ls2StoreController');
 const lightStore = (handler) => (req, res) => {

@@ -1,25 +1,8 @@
 /**
- * backfillPayingBranch — الفرعُ المسدِّد لما سُدِّد من العهدة ولم يُكتب فرعُه.
- *
- *   node src/scripts/backfillPayingBranch.js --dry
- *   node src/scripts/backfillPayingBranch.js
- *
- * ── العلّة ──────────────────────────────────────────────────────────────────
- * تسجيلُ مشترياتٍ برقم كشفٍ يملأ الكشفَ من نفسِه: المبلغُ والتاريخُ والفرع.
- * وكان الفرعُ يُقرأ من حساب الموظّف — وسبعةٌ وثلاثون من اثنين وخمسين حسابًا
- * نشطًا بلا فرعٍ عليه. فيمتلئ التاريخُ والمبلغُ ويبقى الفرعُ فارغًا بلا خطأ.
- *
- * وسكربتُ الربط الأوّل لم يكتب الفرعَ أصلًا: `paymentAmount` و`paymentDate`
- * وحدَهما.
- *
- * فبقيت كشوفٌ لها تاريخُ سدادٍ من العهدة ولا فرعَ لها — والتقاريرُ التي تُقرأ
- * بالفرع تُسقطها كلَّها.
- *
- * ── والمصدر ────────────────────────────────────────────────────────────────
- * العهدةُ نفسُها: كلُّ محفظةٍ تعرف فرعَها (مئةٌ وواحدٌ وأربعون، ولا واحدةَ بلا
- * فرع). والمالُ خرج من عهدة فرعٍ بعينه — فذلك هو الفرعُ الذي سدّد.
- *
- * ولا يُكتب فوق فرعٍ مكتوب: مَن صحّحه بيده يجده كما تركه.
+ * backfillPayingBranch: the paying branch for manifests paid from custody whose branch was not written.
+ * Usage: node src/scripts/backfillPayingBranch.js --dry | (no flag to write)
+ * The branch was read from the employee account, which often has none, so date and amount filled but branch stayed empty. Source now: the custody wallet, which always knows its branch.
+ * An existing branch is never overwritten.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -35,11 +18,9 @@ const DRY = process.argv.includes('--dry');
 
   console.log(DRY ? '── تجربة، بلا كتابة ──\n' : '── تنفيذ ──\n');
 
-  // ── والاسمُ عربيٌّ كما في العمود ──────────────────────────────────────
-  // سجلاتُ الفروع إنجليزيّةٌ والعمودُ عربيّ. فيُترجَم عبر القائمة المرجعيّة
-  // نفسِها التي تُملأ منها الخانةُ حين تُختار بيد — وإلّا دخل «Jeddah» إلى
-  // جانب «جده» فانقسم الفرعُ الواحد قيمتين في كلّ تقرير.
-  // المطابقةُ نفسُها التي تكتب بها المحفظة (utils/payingBranch) — ومنها النقلُ الثقيل.
+  // The name is Arabic as in the column
+  // Branch records are English and the column is Arabic. It is translated through the same reference list used when the field is picked by hand; otherwise "Jeddah" would sit beside its Arabic name and split one branch into two values in every report.
+  // Same matching the wallet writes with (utils/payingBranch), including heavy transport.
   const { matchPayingBranch, resolvePayingBranch } = require('../utils/payingBranch');
   const Lookup = require('../models/Lookup');
   const lookup = await Lookup.find({ type: 'workflow_paying_branch', deleted: { $ne: true } }).select('key nameEn nameAr').lean();
@@ -73,7 +54,7 @@ const DRY = process.argv.includes('--dry');
     for (const s of await OW.find({ reportNumber: { $in: allNums.slice(i, i + 1000) } }).select('reportNumber fleetShipment branch').lean()) sheetOf.set(s.reportNumber, s);
   }
 
-  // رقمُ الكشف ← اسمُ الفرع. وأحدثُ حركةٍ تفوز حين تعدّدت.
+  // Manifest number -> branch name; the latest movement wins when there are several.
   const branchOf = new Map();
   let noBranch = 0;
   for (const t of txs.sort((a, b) => String(a.date).localeCompare(String(b.date)))) {

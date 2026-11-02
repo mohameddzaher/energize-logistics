@@ -1,4 +1,4 @@
-/** يبني الفهارسَ الجديدة على الإنتاج ويقيسُ الأثر. لا يمسّ بيانات. */
+/** Builds the new indexes on production and measures the effect. Touches no data. */
 require('dotenv').config();
 const mongoose = require('mongoose');
 (async () => {

@@ -1,45 +1,8 @@
 /**
- * Import the company's customs master spreadsheet into CustomsClearance.
- *
- *   cd backend
- *   node src/scripts/importCustomsMaster.js           # preview, writes nothing
- *   node src/scripts/importCustomsMaster.js --apply   # write
- *
- * المصدر: src/seeds/data/customs-master-2026-08.xlsx — «ماستر التخليص الجديد».
- * ويُبدَّل بـ --file=<path>. ولم يعد يقرأ من data/masters: ذلك المجلّد حُذف،
- * وكان يحقن في النظام بياناتٍ لا أصلَ لها في أيّ شيتٍ رسميّ.
- *
- * Sheets
- *   التخليص  (358 rows, 251 with a BL) — the operational master; base records.
- *   الحسابات (93 rows)  — per-BL P&L, most authoritative for money.
- *   Sheet3   (163 rows) — costing variant; the only source of الرسوم الجمركية + تخزين.
- *   Sheet2   (41 rows)  — container grain; merged BL cells are forward-filled.
- *   UI_AI_dashboard     — a rendered mock-up. NOT imported.
- *
- * Matching:  رقم البوليصة (blNumber) is the key. Existing records are updated in
- * place, unknown BLs are inserted, nothing is ever deleted. Where the sheet
- * itself repeats a BL (one case: MEDUWA259425) the rows are disambiguated by
- * مسلسل (legacySerial) so both survive and re-runs stay idempotent.
- *
- * Precedence for enrichment (later wins, but only for non-empty values):
- *   التخليص  ->  Sheet3  ->  الحسابات
- *
- * Blank-guard: an empty / '#N/A' / '-' cell never overwrites an existing
- * non-empty value, in the sheet merge or against the database.
- *
- * ---------------------------------------------------------------------------
- * Stage inference rules (only applied where the data is unambiguous; otherwise
- * the record keeps whatever stage it already has / the model default):
- *   رقم الفاتورة or حالة الفاتورة non-empty ..... 'invoiced'
- *   الارجاع == 'تم' ............................. 'containers_returned'
- *   سداد التفريغ == 'تم' ........................ 'unloading_fees_paid'
- *   سداد الموانى == 'تم' ........................ 'port_fees_paid'
- *   ميل ربط اذن التسليم == 'تم' ................. 'do_linked'
- *   سداد فاتورة اذن التسليم == 'تم' ............. 'do_requested'
- *   سداد رسوم جمركية == 'تم' .................... 'declaration_paid'
- * The highest matching stage wins. A stage is never moved BACKWARDS on an
- * existing record — the sheet is a snapshot, the ERP may be further along.
- * ---------------------------------------------------------------------------
+ * Imports the company's customs master spreadsheet (src/seeds/data/customs-master-2026-08.xlsx, override with --file=<path>) into CustomsClearance; preview by default, --apply writes.
+ * Sheets: Clearance (base records), Accounts (per-BL P&L, authoritative for money), Sheet3 (costing; only source of customs fees + storage), Sheet2 (container grain, merged BL cells forward-filled). UI_AI_dashboard is a mock-up and is not imported.
+ * The BL number is the key: existing records are updated in place, unknown BLs inserted, nothing deleted; a BL repeated in the sheet (MEDUWA259425) is disambiguated by legacySerial. Enrichment order: Clearance -> Sheet3 -> Accounts, non-empty values only; a blank, #N/A or - cell never overwrites existing data.
+ * Stage is inferred from the highest unambiguous done marker (invoice, returns, unloading, port, DO link, DO payment, customs payment) and never moves backwards.
  */
 require('dotenv').config({ path: require('path').join(__dirname, '../../.env') });
 const fs = require('fs');
@@ -68,16 +31,9 @@ const FILE = fileArg
   ? path.resolve(fileArg.slice(7))
   : path.join(__dirname, '../seeds/data/customs-master-2026-08.xlsx');
 
-// ---------------------------------------------------------------------------
-// قراءةُ الماستر من xlsx مباشرةً — لا تصديرَ وسيطًا إلى JSON. الوسيطُ خطوةٌ
-// يدويّةٌ تُنسى، فيُستورد ملفُّ الشهر الماضي ويُظنُّ أنّه الجديد.
-//
-// وتحويلُ التواريخ هنا لا في المُطابِق: إكسل يخزّن التاريخَ رقمًا تسلسليًّا،
-// وفي هذا الماستر تختلط الأرقامُ في عمودٍ واحد — «تاريخ استلام الورق» يحمل
-// رقمَ بيانٍ في ١١٤ صفًّا، و«موعد التفريغ» يحمل رقمَ حاويةٍ من اثنَي عشر رقمًا.
-// فلا يُقبل رقمٌ تاريخًا إلّا إن وقع في نطاقٍ معقول (excelDate يرفض ما عداه)،
-// وما رُفض يبقى نصَّه كما هو فيتولّاه dateStr ثمّ يُهمَل.
-// ---------------------------------------------------------------------------
+// The master is read from xlsx directly with no intermediate JSON export, which is a manual step that gets forgotten and imports last month's file.
+// Date conversion happens here, not in the matcher: Excel stores dates as serials and this master mixes numbers in one column (the paper-receipt date column holds a declaration number in 114 rows; the unloading-appointment column holds a 12-digit container number).
+// So a number is accepted as a date only in a sane range (excelDate rejects the rest); a rejected value stays as text for dateStr, then is dropped.
 
 const DATE_COLS = new Set([
   'تاريخ استلام الورق', 'تاريخ البيان', 'موعد التفريغ', 'اخر موعد ارجاع',
@@ -89,9 +45,7 @@ const SHEETS = ['التخليص', 'الحسابات', 'Sheet3', 'Sheet2'];
 
 /**
  * One sheet -> array of objects keyed by the trimmed header of row 1.
- * Sheets are read by NAME: their order inside the file changes between versions
- * of the master. A repeated header gets a ' #2' suffix (الحسابات has
- * «اجور تفريغ الساحه» twice: the cost, then the price charged to the customer).
+ * Sheets are read by NAME because their order changes between versions of the master. A repeated header gets a ' #2' suffix (the Accounts sheet has the yard unloading fee column twice: the cost, then the price charged to the customer).
  * Excel dates stay raw serials and are converted by excelDate (see xlsx-date-epoch-trap).
  */
 function sheetToObjects(ws) {
@@ -224,7 +178,7 @@ function branchOf(city) {
 // sheet column -> costs.<key>
 const COST_COLS = {
   'قيمة اذن التسليم': 'deliveryOrder',
-  'اذن التسليم': 'deliveryOrder',            // الحسابات/Sheet3 only — see note below
+  'اذن التسليم': 'deliveryOrder',            // Accounts/Sheet3 only, see note below
   'الرسوم الجمركية': 'customsDuty',
   'اجور الموانى': 'portFees',
   'اجور التفريغ': 'unloadingFees',
@@ -248,8 +202,7 @@ const COST_COLS = {
 };
 
 // sheet column -> revenue.<key>
-// بنودُ الهامش. `اجمالى الفاتورة` غائبٌ عمدًا: عمودُه في الماستر صيغةٌ
-// (= المصروفات + الهامش)، فيُشتقّ لا يُقرأ.
+// Margin items. The invoice total column is deliberately absent: in the master it is a formula (expenses + margin), so it is derived, not read.
 const REVENUE_COLS = {
   'اجور التخليص': 'clearanceFee',
   'سعر بيع النقل': 'transportSelling',
@@ -258,7 +211,7 @@ const REVENUE_COLS = {
   'صافى النقل الى الساحة': 'transportToYardNet',
   'صافي نقل الساحه': 'yardTransportNet',
   'صافى الساحه': 'yardNet',
-  // The second «اجور تفريغ الساحه» in الحسابات sits among the revenue columns: what the customer pays.
+  // The second yard unloading fee column in Accounts sits among the revenue columns: what the customer pays.
   'اجور تفريغ الساحه #2': 'yardPrice',
   'صافى التخزين': 'storageNet',
   'فحص امنى': 'securityScan',
@@ -266,15 +219,11 @@ const REVENUE_COLS = {
   'يوميات نقل': 'transportDailies',
 };
 
-/**
- * In the التخليص sheet "اذن التسليم" holds the six-digit DO reference number,
- * while "قيمة اذن التسليم" holds its cost. In الحسابات / Sheet3 there is no
- * separate value column and "اذن التسليم" IS the cost. Handled per-sheet.
- */
+/** In the Clearance sheet the DO column holds the six-digit DO reference number, while the DO value column holds its cost. In Accounts / Sheet3 there is no separate value column and the DO column IS the cost. Handled per sheet. */
 function readMoney(row, out, unparseable, sheet, bl, treatDoAsNumber) {
   for (const [col, key] of Object.entries(COST_COLS)) {
     if (!(col in row)) continue;
-    // In الحسابات this header sits among the revenue columns: the yard-transport price charged to the customer.
+    // In Accounts this header sits among the revenue columns: the yard-transport price charged to the customer.
     if (sheet === 'الحسابات' && col === 'النقل الى الساحة (بالضريبة)') {
       const v = money(row[col]);
       if (v !== null) out.revenue.transportToYardSelling = v;
@@ -287,7 +236,7 @@ function readMoney(row, out, unparseable, sheet, bl, treatDoAsNumber) {
     if (v === null) { unparseable.push({ sheet, bl, col, value: String(row[col]) }); continue; }
     out.costs[key] = v;
   }
-  // «تمديد اذن التسليم» is a second extension charge: it adds to the container extension.
+  // The DO extension column is a second extension charge: it adds to the container extension.
   if ('تمديد اذن التسليم' in row && !isBlank(row['تمديد اذن التسليم'])) {
     const v = money(row['تمديد اذن التسليم']);
     if (v !== null) out.costs.extension = (out.costs.extension || 0) + v;
@@ -300,7 +249,7 @@ function readMoney(row, out, unparseable, sheet, bl, treatDoAsNumber) {
   }
 }
 
-/** Map one التخليص row to a partial CustomsClearance. */
+/** Map one Clearance row to a partial CustomsClearance. */
 function mapMasterRow(row, unparseable) {
   const bl = str(row['رقم البوليصة']);
   const out = { costs: {}, revenue: {}, billing: {}, stageDates: {}, stageDone: {} };
@@ -325,8 +274,7 @@ function mapMasterRow(row, unparseable) {
 
   if (!isBlank(row['رقم البيان'])) out.declarationNumber = str(row['رقم البيان']);
   if (!isBlank(row['البند الجمركى'])) out.hsCode = str(row['البند الجمركى']);
-  // رقمُ إذن التسليم عشرةُ أرقامٍ أو ستّة. و«٣٥» في هذه الخانة انزلاقٌ من عمود
-  // أيّام السماح المجاور (٢٣ صفًّا)، و«٠» تعني لا إذنَ بعد — كلاهما ليس رقمًا.
+  // A DO number has ten digits or six. A value like 35 here is a slip from the adjacent grace-days column (23 rows) and 0 means no DO yet; neither is a number.
   if (!isBlank(row['اذن التسليم'])) {
     const doRaw = str(row['اذن التسليم']);
     const doNum = num(doRaw);
@@ -335,8 +283,8 @@ function mapMasterRow(row, unparseable) {
   if (!isBlank(row['مكان التفريغ'])) out.unloadingLocation = str(row['مكان التفريغ']);
   if (!isBlank(row['ملاحظات'])) out.notes = str(row['ملاحظات']);
 
-  // «اخر موعد ارجاع»: أكثرُ الصفوف تكتب فيه عددَ أيّام السماح (٣٥) لا تاريخًا.
-  // الرقمُ يُخزَّن أيّامًا، والتاريخُ يُخزَّن موعدًا، ولا يُخلط أحدُهما بالآخر.
+  // Last return date: most rows hold a count of grace days (35), not a date.
+  // A number is stored as days and a date as a deadline; the two are never mixed.
   if (!isBlank(row['اخر موعد ارجاع'])) {
     const raw = row['اخر موعد ارجاع'];
     const d = dateStr(raw);
@@ -351,10 +299,10 @@ function mapMasterRow(row, unparseable) {
   if (decl) out.declarationDate = decl;
   const papers = dateStr(row['تاريخ استلام الورق']);
   if (papers) out.papersReceivedDate = papers;
-  // موعد التفريغ is sometimes a date, sometimes just 'تم' — keep it verbatim.
+  // The unloading appointment is sometimes a date, sometimes just the done marker; keep it verbatim.
   if (!isBlank(row['موعد التفريغ'])) out.unloadingAppointment = dateStr(row['موعد التفريغ']) || str(row['موعد التفريغ']);
 
-  // Milestones: 'تم' -> stageDone flag, a real date -> stageDates.
+  // Milestones: the done marker -> stageDone flag, a real date -> stageDates.
   const MILESTONES = {
     'ميل فاتورة اذن التسليم': 'doInvoiceEmailed',
     'سداد فاتورة اذن التسليم': 'doInvoicePaid',
@@ -379,7 +327,7 @@ function mapMasterRow(row, unparseable) {
   return out;
 }
 
-/** Map an الحسابات / Sheet3 row (enrichment only). */
+/** Map an Accounts / Sheet3 row (enrichment only). */
 function mapCostRow(row, sheet, unparseable) {
   const bl = str(row['رقم البوليصة']);
   const out = { costs: {}, revenue: {}, billing: {} };
@@ -390,7 +338,7 @@ function mapCostRow(row, sheet, unparseable) {
   return out;
 }
 
-/** Highest unambiguously-implied stage for a التخليص row. See header comment. */
+/** Highest unambiguously-implied stage for a Clearance row. See header comment. */
 function inferStage(row) {
   const invNo = str(row['رقم الفاتورة']);
   const invStatus = str(row['حالة الفاتورة']);
@@ -446,7 +394,7 @@ async function main() {
   console.log(`  Sheet2         ${sheet2.length}`);
   console.log(`  UI_AI_dashboard ${(book['UI_AI_dashboard'] || []).length}  (spec only — not imported)`);
 
-  // ---- build the base records from التخليص
+  // Build the base records from the Clearance sheet
   const records = [];
   for (const row of master) {
     const bl = str(row['رقم البوليصة']);
@@ -478,11 +426,9 @@ async function main() {
     byBl.get(r.__bl).push(r);
   }
 
-  // ---- enrich: Sheet3 first, then الحسابات (accounting wins)
-  // Money comes from ONE source per row, as a whole set: الحسابات, else Sheet3, else التخليص.
-  // Merging field by field mixed a stale التخليص value into an accounting row.
-  // A BL repeated in both sheets (e.g. a cancelled declaration and the real one) is
-  // paired by order of appearance; otherwise one sheet row covers every row of the BL.
+  // Enrich: Sheet3 first, then Accounts (accounting wins).
+  // Money comes from ONE source per row, as a whole set: Accounts, else Sheet3, else Clearance. Merging field by field mixed a stale Clearance value into an accounting row.
+  // A BL repeated in both sheets (e.g. a cancelled declaration and the real one) is paired by order of appearance; otherwise one sheet row covers every row of the BL.
   const enrich = (rows, sheetName) => {
     let hit = 0, miss = 0;
     const missed = [];
@@ -541,8 +487,8 @@ async function main() {
   }
   console.log(`Sheet2: ${s2rows} container rows across ${containersByBl.size} BLs (merged cells forward-filled) — join hit ${s2hit}/${containersByBl.size}`);
 
-  // Invoiced in the sheet (number or status) → closed and invoiced on the system.
-  // «مل» / «ملغي» as the invoice status means a cancelled row, not an invoice.
+  // Invoiced in the sheet (number or status) -> closed and invoiced on the system.
+  // A cancelled marker as the invoice status means a cancelled row, not an invoice.
   const cancelledRows = [];
   for (const r of records) {
     const status = str(r.billing && r.billing.invoiceStatus);
@@ -561,10 +507,8 @@ async function main() {
   // ---- derived totals
   for (const r of records) recomputeTotals(r);
 
-  // ---- مطابقةُ الحساب بأعمدة الماستر نفسِها ------------------------------
-  // الماستر يحمل ثلاثةَ أعمدةٍ محسوبةٍ بصِيَغ إكسل: اجمالى المصروفات، اجمالى
-  // الربح، اجمالى الفاتورة. لا تُستورد — تُشتقّ عندنا — لكنّها الحَكَم: لو
-  // خالف اشتقاقُنا صيغتَهم فالخريطةُ غلط لا الشيت.
+  // Account check against the master's own columns.
+  // The master has three Excel-formula columns: total expenses, total profit, total invoice. They are not imported (derived here) but act as the referee: if our derivation disagrees with their formula, the mapping is wrong, not the sheet.
   const round2 = (x) => Math.round(x * 100) / 100;
   const sum = (fn) => round2(records.reduce((a, r) => a + (Number(fn(r)) || 0), 0));
 
@@ -683,12 +627,9 @@ async function main() {
       if (__existing) {
         const doc = await CustomsClearance.findById(__existing._id);
         if (!doc) { failed += 1; continue; }
-        // Blank-guard: mergeInto skips blank strings, and the mapper only ever
-        // emits non-blank values, so nothing here can clear existing data.
-        // الشيت هو مرجعُ المال. وmergeInto لا يمسح — لو بقيت قيمةٌ قديمة في
-        // خانةٍ أفرغها الشيت لظلّت تُجمَع إلى الأبد. ولأنّ أرقامَ الاستيراد
-        // السابق قُرئت بقارئٍ كان ينزلق عمودًا عند كلّ خليّةٍ فارغة، تُصفَّر
-        // خاناتُ المال كلُّها قبل الدمج ثمّ تُملأ من الشيت.
+        // Blank-guard: mergeInto skips blank strings, and the mapper only ever emits non-blank values, so nothing here can clear existing data.
+        // The sheet is the money reference, and mergeInto never clears, so a stale value in a cell the sheet emptied would be summed forever.
+        // Also, earlier imports were read by a reader that shifted a column at every empty cell, so all money fields are zeroed before the merge and then filled from the sheet.
         const base = doc.toObject();
         base.costs = base.costs || {};
         base.revenue = base.revenue || {};

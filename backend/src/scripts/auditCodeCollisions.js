@@ -31,7 +31,7 @@ const SHEETS = [['Aging',4,0,1],['Aging Shipment',4,0,1],['Daily Invoice Report'
     [...m.values()].forEach((v) => console.log(`     «${v.name}»  [${[...v.sheets].join(', ')}]`));
   });
 
-  // وأسماءٌ عندنا فيها كلماتٌ إنجليزيّةٌ محشورةٌ وسط العربيّ
+  // Our names that have English words mixed into the Arabic.
   const P = require('../models/CollectionsParty');
   const all = await P.find({}).select('name code kind').lean();
   const bad = all.filter((p) => /[؀-ۿ]/.test(p.name) && /[A-Za-z]{3,}/.test(p.name));

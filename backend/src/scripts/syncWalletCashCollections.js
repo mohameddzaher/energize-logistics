@@ -1,17 +1,7 @@
 /**
- * syncWalletCashCollections — تحصيلاتُ المحفظة السابقة تصل كشوفَها النقديّة.
- *
- *   node src/scripts/syncWalletCashCollections.js            # تجربة، بلا كتابة
- *   node src/scripts/syncWalletCashCollections.js --apply    # تنفيذ
- *
- * ── لماذا ───────────────────────────────────────────────────────────────────
- * القاعدةُ الجديدة (utils/walletCollection) تعمل من الآن: قيدُ تحصيلٍ في المحفظة
- * على كشفٍ نقديٍّ يجعله «محصَّلًا» في فواتير الكاش. وما سُجِّل قبلها بقي كما هو:
- * ستّةٌ وثلاثون قيدًا على كشوفٍ نقديّة ولا واحدٌ منها محصَّل في شاشة التحصيل.
- *
- * والسكربتُ هو المطابقةُ نفسُها التي تجري بعد كلّ تغيّرٍ في النوع — لا قاعدةٌ
- * ثانية: ما يكتبه هنا هو ما كانت المحفظةُ ستكتبه لو كانت القاعدةُ يومَ القيد.
- * فهو يُعاد بلا ضرر: ما طابق لا يُكتب، وما كتبه القسمُ بيده لا يُمسّ.
+ * Past wallet collections reach their cash statements.
+ * Usage: node src/scripts/syncWalletCashCollections.js [--apply] (preview by default)
+ * The rule in utils/walletCollection marks a statement collected in the cash invoices when a wallet collection entry exists on a cash statement, but entries made before the rule stayed uncollected. This script is the same reconciliation run after any type change, not a second rule, and is safe to rerun: matching rows are not written and manually written values are untouched.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -26,7 +16,7 @@ const AR = {
   await mongoose.connect(process.env.MONGODB_URI, { serverSelectionTimeoutMS: 30000 });
   const { resyncAllWalletCollections } = require('../utils/walletCollection');
 
-  // مَن يُنسَب إليه التنفيذُ في سجلّ المراجعة: النظام صراحةً (bySystem).
+  // Who the action is attributed to in the audit trail: the system explicitly (bySystem).
   const s = await resyncAllWalletCollections({ apply: APPLY, regexFallback: true, reason: 'تعبئة التحصيلات السابقة (سكربت)' });
 
   console.log(APPLY ? '── تنفيذ ──\n' : '── تجربة، بلا كتابة ──\n');

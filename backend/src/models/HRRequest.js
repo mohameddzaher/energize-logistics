@@ -7,15 +7,7 @@ const threadMessageSchema = new mongoose.Schema(
   {
     sender: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     body: { type: String, trim: true },
-    // ── الرابط لا يكفي، والملفّ هو المطلوب ─────────────────────────────────
-    // كانت الموارد البشرية تردّ برابطٍ إلى ملفٍّ على درايف أو واتساب: يعيش خارج
-    // النظام، ويُحذف أو تُسحب صلاحيتُه فيبقى في السجلّ سطرٌ يقول «أُرسلت الشهادة»
-    // ورابطٌ لا يفتح. والمرفق يعيش مع الطلب: يُنسخ معه احتياطيًّا، ويبقى مقروءًا
-    // بعد سنة.
-    //
-    // والرابط يبقى مقبولًا — بعضُ ما يُشارَك رابطٌ بطبعه — لكنّه لم يعد الخيار
-    // الوحيد. وأكثرُ من ملفٍّ في الرسالة الواحدة: الشهادةُ ووجهُ الإقامة ورقةٌ
-    // واحدة في ذهن من يطلبها.
+    // A link is not enough; the file is the goal. HR used to reply with a Drive or WhatsApp link that lives outside the system and can be deleted or revoked, leaving a record that says the certificate was sent and a dead link. The attachment lives with the request, is backed up with it and stays readable. A link is still accepted since some things are links by nature, and one message can carry several files.
     link: { type: String, trim: true },
     attachments: [{
       title: { type: String, trim: true },

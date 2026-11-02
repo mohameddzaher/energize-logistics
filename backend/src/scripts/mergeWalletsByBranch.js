@@ -1,18 +1,7 @@
 /**
- * mergeWalletsByBranch — المحفظةُ تصير للفرع لا للموظّف.
- *
- *   node src/scripts/mergeWalletsByBranch.js [--yes]
- *
- * ── لماذا الدمجُ لا الحذف ───────────────────────────────────────────────────
- * لكلّ موظّفٍ كانت يوميّتُه، والفرعُ الواحد فيه أكثرُ من موظّف. فنقدُ الفرع
- * موزَّعٌ على محافظَ لا تُقرأ إلّا بجمعها. والدمجُ يجمعها كما كانت تُجمع في
- * التقرير: الحركاتُ كلُّها تُنقَل إلى يوميّةٍ واحدةٍ للفرع في ذلك اليوم،
- * والمجاميعُ تُعاد من الحركات لا تُنسَخ.
- *
- * ── وسلسلةُ الأرصدة تُعاد بناؤها ────────────────────────────────────────────
- * الافتتاحيُّ ختاميُّ اليوم السابق. وبعد الدمج يختلف كلُّ يومٍ عمّا كان، فلا
- * يصحّ نقلُ الأرصدة كما هي: تُعاد من أوّل يومٍ للفرع إلى آخره، فيبقى الرقمُ
- * الأخيرُ هو ما تعرضه اللوحةُ اليوم بالضبط.
+ * Makes wallets per branch instead of per employee.
+ * Usage: node src/scripts/mergeWalletsByBranch.js [--yes]
+ * Each employee had a daily wallet, so branch cash was split across wallets only readable by summing. The merge moves all entries into one branch daily record per day and recomputes totals from entries rather than copying them. The balance chain is rebuilt from the branch's first day to the last (opening equals previous closing), so the final number matches the dashboard.
  */
 require('dotenv').config();
 const fs = require('fs');
@@ -34,7 +23,7 @@ const n = (v) => Number(v) || 0;
   const wallets = await DailyWallet.find({}).sort({ date: 1 }).lean();
   const branches = new Map((await Branch.find({}).select('name').lean()).map((b) => [String(b._id), b.name]));
 
-  // فرع|يوم → اليوميّات التي ستُدمج
+  // Branch and day to the daily records to be merged.
   const groups = new Map();
   for (const w of wallets) {
     const k = `${String(w.branch)}|${w.date}`;
@@ -65,10 +54,10 @@ const n = (v) => Number(v) || 0;
   }, null, 1));
   console.log(`\n  نسخةٌ محفوظة: ${path.relative(process.cwd(), backup)}`);
 
-  // ── ١ · الدمج ─────────────────────────────────────────────────────────────
+  // 1. Merge.
   let removed = 0; let moved = 0;
   for (const [, g] of groups) {
-    // الباقيةُ أقدمُها: هي التي أُنشئت أوّلًا لذلك اليوم.
+    // The survivor is the oldest: it was created first for that day.
     g.sort((a, b) => String(a._id).localeCompare(String(b._id)));
     const keep = g[0]; const drop = g.slice(1);
     if (drop.length) {
@@ -77,12 +66,9 @@ const n = (v) => Number(v) || 0;
         { $set: { wallet: keep._id } },
       );
       moved += r.modifiedCount || 0;
-      // ما أُقفل في أيٍّ منها يبقى مقفلًا: الإقفالُ إقرارٌ لا يُلغى بالدمج.
+      // Anything closed in any of them stays closed; closing is an acknowledgment the merge must not undo.
       const anyClosed = g.some((w) => w.isClosed);
-      // ── والافتتاحيُّ مجموعُ افتتاحيّاتها لا واحدًا منها ────────────────────
-      // نقدُ الفرع في صباح اليوم هو ما في أيدي موظّفيه مجتمعين. وأخذُ افتتاحيِّ
-      // أوّلِ محفظةٍ وحدَه يُسقِط ما في يد الباقين. ويهمُّ هذا في أوّل يومٍ
-      // للفرع خاصّةً — فهو رأسُ السلسلة، وما بعده يُشتقّ منه.
+      // Opening is the sum of the openings, not one of them. Branch cash in the morning is what all employees hold; taking only the first wallet drops the rest. Matters most on the branch's first day, the chain head.
       await DailyWallet.updateOne({ _id: keep._id }, {
         $set: {
           isClosed: anyClosed,
@@ -99,7 +85,7 @@ const n = (v) => Number(v) || 0;
   }
   console.log(`  دُمج: ${removed} يوميّةً · نُقل ${moved} حركة`);
 
-  // ── ٢ · إعادةُ المجاميع والسلسلة لكلّ فرع ─────────────────────────────────
+  // 2. Recompute totals and the chain per branch.
   for (const bId of new Set(wallets.map((w) => String(w.branch)))) {
     const days = await DailyWallet.find({ branch: bId }).sort({ date: 1 });
     let prev = null;
@@ -108,7 +94,7 @@ const n = (v) => Number(v) || 0;
       d.totalCollections = tx.filter((t) => t.type === 'collection').reduce((s, t) => s + n(t.amount), 0);
       d.totalExpenses = tx.filter((t) => t.type === 'expense').reduce((s, t) => s + n(t.amount), 0);
       d.totalPurchases = tx.filter((t) => t.type === 'purchase').reduce((s, t) => s + n(t.amount), 0);
-      // أوّلُ يومٍ للفرع يحتفظ بافتتاحيّه — هو رأسُ السلسلة ولا سابقَ له.
+      // The branch's first day keeps its own opening: it is the chain head with no predecessor.
       if (prev !== null) d.openingBalance = prev;
       d.closingBalance = n(d.openingBalance) + d.totalCollections - d.totalExpenses - d.totalPurchases;
       await d.save();

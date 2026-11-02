@@ -1,6 +1,6 @@
 /* eslint-disable no-console */
-// استيراد جرد مخزن النقل الثقيل (heavy_transport_warehouse.json) — يمسح ويُدخل.
-//   node src/scripts/importLs2Store.js
+// Import of the heavy transport store stocktake (heavy_transport_warehouse.json); wipes and reloads.
+// Run: node src/scripts/importLs2Store.js
 require('dotenv').config();
 const path = require('path');
 const mongoose = require('mongoose');

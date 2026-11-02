@@ -1,17 +1,8 @@
 /* eslint-disable no-console */
 /**
- * migrateTireStates — يفصل «تحت التجديد» عن «في المصنع» ويُعيد الدرجة وصفًا.
- *
- *   node src/scripts/migrateTireStates.js --dry
- *   node src/scripts/migrateTireStates.js --yes
- *
- * كان المكان على محورين: الحالة `in_repair` والدرجة `at_factory` تصفان موضعًا
- * واحدًا، وكانت الشاشة تسمّيه «في المصنع» — وهو في الحقيقة «تحت التجديد»:
- * الفردة نزلت وتقرّر تجديدها وهي في عهدة الورشة، لم تخرج إلى المصنع بعد.
- *
- * فتُنقل الستّ والثلاثون إلى `under_renewal` باسمها الصحيح، وتُفرَّغ خانة
- * «في المصنع» لتبدأ من الصفر بمعناها الحقيقيّ. والدرجة تعود وصفًا للفردة:
- * جديدةٌ أو مستعملة، لا ثالث.
+ * Separates under-renewal from at-factory and makes grade a description again.
+ * Usage: node src/scripts/migrateTireStates.js --dry | --yes
+ * Place was on two axes (status in_repair and grade at_factory) describing one position, shown as at the factory though the tire was in the workshop's custody awaiting renewal. So those tires move to under_renewal, at-factory is emptied to restart with its true meaning, and grade returns to new or used.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -21,7 +12,7 @@ const YES = process.argv.includes('--yes');
 
 (async () => {
   await mongoose.connect(process.env.MONGODB_URI);
-  // يُقرأ بالسائق مباشرةً: النموذج صار enum جديدًا، فالقيم القديمة لا تمرّ منه.
+  // Read through the driver: the model is now a new enum and old values would not pass it.
   const col = mongoose.connection.collection('ls2tireassets');
 
   const inRepair = await col.countDocuments({ status: 'in_repair' });

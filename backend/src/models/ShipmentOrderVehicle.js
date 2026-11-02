@@ -8,73 +8,48 @@ const mongoose = require('mongoose');
 const shipmentOrderVehicleSchema = new mongoose.Schema(
   {
     plate: { type: String, required: true, trim: true ,
-      // صيغةُ اللوحة واحدةٌ في النظام كلِّه — راجع `formatPlate`.
+      // Plate format is the same across the system; see `formatPlate`.
       set: (v) => require('../utils/plateKey').formatPlate(v),
     },
-    name: { type: String, trim: true, default: '' },        // e.g. "مرسيدس أكتروس أبيض"
+    name: { type: String, trim: true, default: '' },        // e.g. white Mercedes Actros
     truckType: { type: String, trim: true, default: '' },   // same vocabulary as the form field
     /**
-     * ── الماركةُ واللونُ: البوليصةُ تسألهما ─────────────────────────────────
-     *
-     * البوليصةُ فيها «بيانات السيارة»: اللوحةُ والماركةُ واللون. وسجلُّ شاحنات
-     * الناقلين لم يكن يحمل الاثنين الأخيرين، فكانت الخانتان تُطبَعان فارغتين
-     * في كلّ ورقةٍ تخرج مع سائق — وهي أوراقٌ تُسلَّم في البوّابات ويُتحقَّق
-     * منها. فصارتا حقلين يُسألان عند تسجيل الشاحنة.
+     * Make and color: the waybill asks for them.
+     * The waybill has vehicle data (plate, make, color). The carrier truck register lacked the last two, so both boxes printed empty on every paper that goes out with a driver, papers handed over at gates and checked. They are now fields asked when a truck is registered.
      */
     brand: { type: String, trim: true, default: '' },
     color: { type: String, trim: true, default: '' },
     supplier: { type: mongoose.Schema.Types.ObjectId, ref: 'ShipmentOrderSupplier', default: null, index: true },
 
     /**
-     * ── لمن هذه الشاحنة — صريحًا لا بالغياب ────────────────────────────────
-     *
-     * كان المعنى: «لا مورّدَ لها» = من أسطولنا. ثمّ استُوردت ثلاثةَ عشرَ ألفًا من
-     * شاحنات الناقلين من تاريخ الطلبات، وجاءت كلُّها بلا مرجع مورّد — فقُرئت
-     * كأنّها أسطولُنا، وقال العدّادُ «١٣١٠١ من أسطولنا» وأسطولُنا ثمانٍ وخمسون.
-     * والغيابُ لا يصلح أن يكون خبرًا: هو «لا أعلم» لا «ملكُنا».
-     *
-     *   supplier  — شاحنةُ ناقلٍ، ومرجعُه في `supplier`
-     *   ours      — من أسطولنا (تُطابق سجلَّ مركباتنا بلوحتها)
-     *   unknown   — جاءت من تاريخ الطلبات ولم يُعرَف مالكُها بعد
-     *
-     * وقسمُ طلبات الشحنات عن حمولاتٍ تُسنَد إلى ناقلين؛ أسطولُنا يُدار في «إدارة
-     * الأسطول». فما كان `ours` هنا لا يُعرَض في قائمة اختيار شاحنات الموردين.
+     * Whose truck this is, explicitly and not by absence (no supplier used to mean ours, which wrongly counted imported carrier trucks as our fleet).
+     * supplier: a carrier's truck, referenced in `supplier`; ours: our fleet, matches our vehicle register by plate; unknown: from order history, owner not yet known.
+     * Our fleet is managed in fleet management, so `ours` is not shown in the supplier truck picker.
      */
     ownership: {
       type: String, enum: ['supplier', 'ours', 'unknown'], default: 'unknown', index: true,
     },
     /**
-     * ── وشاحنتُنا مرجعٌ إلى سجلّ المركبات لا نسخة ───────────────────────────
-     * قاعدةُ صاحب الشركة: «المركبةُ سجلٌّ واحد». فما كان `ours` يُحلّ بلوحته إلى
-     * `VehicleMaster` (utils/vehicleRef — المفتاحُ الموحَّد عربيّ↔لاتينيّ)، وتُقرأ
-     * لوحتُه وماركتُه ولونُه وسنةُ صنعه من هناك: تعديلُها في السجلّ يظهر هنا.
-     * وشاحناتُ الموردين لا مرجعَ لها — ليست في سجلّنا.
+     * Our truck is a reference to the vehicle register, not a copy.
+     * Company rule: a vehicle is one record. An `ours` truck resolves by plate to `VehicleMaster` (utils/vehicleRef, the unified Arabic/Latin key), and its plate, make, color and year are read from there, so register edits show here. Supplier trucks have no reference since they are not in our register.
      */
     vehicleMaster: { type: mongoose.Schema.Types.ObjectId, ref: 'VehicleMaster', default: null, index: true },
     defaultDriverName: { type: String, trim: true, default: '' },
     defaultDriverPhone: { type: String, trim: true, default: '' },
     notes: { type: String, trim: true, default: '' },
 
-    // بياناتُ المركبة كما تحملها منصّةُ الأوبريشن.
+    // Vehicle data as carried by the operations platform.
     externalId: { type: String, trim: true, default: '', index: true },
     modelYear: { type: String, trim: true, default: '' },
     recordNumber: { type: String, trim: true, default: '' },
-    // بطاقةُ التشغيل وانتهاؤها: مركبةٌ بطاقتُها منتهيةٌ لا تُحمَّل — يُوقفها
-    // الطريقُ لا نحن، فمعرفةُ التاريخ قبل الإسناد توفّر حمولةً متعطّلة.
+    // Operating card and its expiry: a vehicle with an expired card is not loaded. The road stops it, not us, so knowing the date before assignment saves a stalled load.
     operationCardNumber: { type: String, trim: true, default: '' },
     operationCardExpiry: { type: String, trim: true, default: '' },
     insuranceDetails: { type: String, trim: true, default: '' },
 
-    // ── اللوحةُ بمفتاحها، لا بصيغتها ────────────────────────────────────────
-    // `plate` تُخزَّن بصيغةِ العرض (`formatPlate`)، واللوحةُ الواحدة تُكتب في
-    // الطلب بصيغةٍ أخرى: همزةٌ مختلفة، أرقامٌ عربيّة، مسافةٌ زائدة. فالمقارنةُ
-    // تجري على مفتاحٍ مجرَّد (`registryPlateKey`)، وهو لم يكن مخزَّنًا — فكان
-    // طريقُ البوليصة يسحب **كلَّ** الشاحنات (ثلاثةَ عشرَ ألفًا ونصفًا) ليجد
-    // ثلاثًا، ويُرشِّح بالجافاسكربت. ويكبر مع كلّ شاحنةٍ تُضاف، في ورقةٍ تُطبَع
-    // كلَّ يوم.
-    //
-    // فيُشتقُّ المفتاحُ عند الحفظ ويُفهرَس، كما في `VehicleMaster` و
-    // `Ls2TireAsset` — ويصير النداءُ `$in` على فهرس.
+    // Plate by key, not by format.
+    // `plate` is stored in display format (`formatPlate`), but one plate is written in orders in other forms: different hamza, Arabic digits, extra spaces. Comparison runs on a stripped key (`registryPlateKey`) that was not stored, so the waybill path pulled ALL trucks (about 13,500) to find three and filtered in JavaScript, growing with every truck on a paper printed daily.
+    // The key is derived on save and indexed, as in `VehicleMaster` and `Ls2TireAsset`, so the call becomes an indexed `$in`.
     plateKey: { type: String, default: '', index: true },
 
     isActive: { type: Boolean, default: true },
@@ -85,10 +60,8 @@ const shipmentOrderVehicleSchema = new mongoose.Schema(
 
 shipmentOrderVehicleSchema.index({ plate: 1 });
 
-// ── ويُشتقُّ عند كلّ حفظ، لا في الاستيراد وحدَه ──────────────────────────────
-// شاحنةٌ تُضاف من الشاشة بلا مفتاحٍ لا تُوجَد حين تُطبَع بوليصتُها، ولا شيءَ
-// يقول لماذا: الخاناتُ تخرج فارغةً وحسب. و`updateOne`/`findOneAndUpdate`
-// تُغطَّى كذلك، فتعديلُ اللوحة من أيّ طريقٍ يُعيد اشتقاقَه.
+// Derived on every save, not only on import.
+// A truck added from the screen without a key is not found when its waybill prints and nothing says why: the boxes just come out empty. `updateOne`/`findOneAndUpdate` are covered too, so a plate edit from any path re-derives the key.
 const deriveKey = (plate) => {
   try { return require('../utils/plateKey').registryPlateKey(plate) || ''; } catch (_) { return ''; }
 };
@@ -112,10 +85,8 @@ for (const op of ['findOneAndUpdate', 'updateOne', 'updateMany']) {
   });
 }
 
-// ── قوائمُ «طلبات الشحنات» المحفوظة تُمسَح مع كلّ كتابة ─────────────────────
-// قائمتا الموردين والشاحنات تُحفظان دقيقتين (so:registry) لأنّ قراءتهما من
-// العنقود بطيئة. والمورّدُ يظهر داخل قائمة الشاحنات، وعددُ شاحناته في قائمته،
-// فأيُّ كتابةٍ على أحدهما — من أيّ شاشةٍ أو سكربت — تمسح البادئةَ كلَّها.
+// Saved shipment-order lists are cleared on every write.
+// The suppliers and trucks lists are cached for two minutes (so:registry) because reading them from the cluster is slow. A supplier appears inside the trucks list and its truck count in its own list, so any write to either, from any screen or script, clears the whole prefix.
 const clearRegistry = () => {
   try { require('../utils/ttlCache').clear('so:registry:'); } catch (_) { /* */ }
 };

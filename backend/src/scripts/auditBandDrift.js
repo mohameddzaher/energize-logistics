@@ -7,7 +7,7 @@ const mongoose = require('mongoose');
   const startOfToday = () => { const d = new Date(); d.setUTCHours(0, 0, 0, 0); return d; };
   const today = startOfToday();
 
-  // هل لتواريخ الكشوف وقتٌ في اليوم؟ وهل لفواتير الدفتر؟
+  // Do manifest dates have a time of day? Do ledger invoices?
   const w = await OperationsWorkflow.find({ paymentType: 'cash', reportDate: { $ne: null } })
     .select('reportNumber reportDate').limit(5).lean();
   console.log('تواريخُ كشوفٍ نقديّة:');
@@ -16,7 +16,7 @@ const mongoose = require('mongoose');
   console.log('تواريخُ فواتيرِ الدفتر:');
   inv.forEach((x) => console.log(`   ${x.invoiceNumber}: ${x.invoiceDate.toISOString()}`));
 
-  // الطريقتان على صفٍّ له وقت
+  // Both methods on a row that has a time.
   const withTime = await OperationsWorkflow.findOne({
     paymentType: 'cash', reportDate: { $ne: null },
     $expr: { $ne: [{ $dateToString: { date: '$reportDate', format: '%H:%M:%S' } }, '00:00:00'] },

@@ -1,4 +1,4 @@
-/** مراحلُ السداد: تتكرّر، تحمل مرفقًا، وتحرس الإقفال. */
+/** Payment stages: they repeat, carry an attachment and guard closing. */
 require('dotenv').config();
 const mongoose = require('mongoose');
 (async () => {
@@ -58,7 +58,7 @@ const mongoose = require('mongoose');
   const c4 = await call(ctrl.completeClearance, { params: { id }, body: { completed: false } });
   console.log(`    إعادةُ الفتح → ${c4.code} · مقفولة=${c4.body?.clearance?.isCompleted} ${c4.body?.clearance?.isCompleted === false ? '✓' : '✗'}`);
 
-  // ── التنظيف ─────────────────────────────────────────────────────────────
+  // Cleanup
   const fresh = await CustomsClearance.findById(id);
   const added = (fresh.paymentStages || []).slice(before);
   added.forEach((p) => { if (p.fileUrl) { try { deleteStoredFile(p.fileUrl); } catch (e) {} } });

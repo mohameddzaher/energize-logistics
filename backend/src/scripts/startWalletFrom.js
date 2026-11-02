@@ -1,28 +1,8 @@
 /**
- * startWalletFrom — يجعل دفترَ العهدة يبدأ من يومٍ بعينه، وما قبله لا وجودَ له.
- *
- *   node src/scripts/startWalletFrom.js --dry
- *   node src/scripts/startWalletFrom.js --apply
- *   node src/scripts/startWalletFrom.js --apply --date 2026-09-01
- *
- * ── ما يفعله ────────────────────────────────────────────────────────────────
- * ① يحفظ نسخةً كاملةً ممّا سيُحذَف في ملفّ JSON قبل أن يمسّ شيئًا.
- * ② يحذف كلَّ حركةٍ وكلَّ يوميّةٍ قبل يوم البداية، في الفروع كلِّها.
- * ③ يطبع ما بقي: أوّلُ يومٍ لكلّ فرع ورصيدُه الافتتاحيّ.
- *
- * ── ولماذا النسخةُ الاحتياطيّة أوّلًا ──────────────────────────────────────
- * الحذفُ هنا يمسّ ألفَيْ حركةٍ ومئةً وثلاثين يوميّةً في بياناتٍ حقيقيّة، ولا
- * تراجعَ عنه في القاعدة. والملفُّ ليس رفاهيّةً: هو الجوابُ الوحيد لسؤالٍ
- * يُسأل بعد شهر — «كم كان مصروفُ جدّة في أغسطس؟» — بعد أن صار الدفترُ لا يعرف
- * أغسطس.
- *
- * ── ولماذا لا يُمَسّ الرصيدُ الافتتاحيُّ ليوم البداية ──────────────────────
- * هو رقمٌ مُقَرٌّ لا محسوب: «ما كان في الخزنة ذلك الصباح». حذفُ ما قبله لا
- * يغيّره، وتصحيحُه فعلٌ آخرُ له سكربتُه — `setWalletOpening.js` — لأنّه يجرّ
- * وراءه إعادةَ حساب كلِّ يومٍ بعده.
- *
- * والمنعُ الدائمُ ليس هنا: هو في `config/walletStart.js` الذي يردّ كلَّ قراءةٍ
- * وكتابةٍ قبل البداية. هذا السكربتُ ينظّف ما مضى مرّةً، وذاك يمنع عودتَه.
+ * Starts the custody ledger from a given day; everything earlier is removed.
+ * Usage: node src/scripts/startWalletFrom.js (--dry | --apply) [--date 2026-09-01]
+ * Steps: 1) save a full JSON backup of what will be deleted, 2) delete all movements and daily records before the start day in all branches, 3) print the first day and opening balance per branch.
+ * The backup comes first because the delete is irreversible in the database and the file is the only answer to later questions about earlier months. The start day's opening balance is a declared figure, not computed, and is left alone; correcting it is setWalletOpening.js. The permanent block is config/walletStart.js, which rejects reads and writes before the start.
  */
 require('dotenv').config();
 const fs = require('fs');
@@ -59,7 +39,7 @@ const CUT = arg('date', WALLET_START_DATE);
     const oldest = w.map((x) => x.date).sort()[0] || t.map((x) => x.date).sort()[0];
     console.log('  ' + b.name.padEnd(16) + String(w.length).padStart(16) + String(t.length).padStart(15) + `   ${oldest}`);
   }
-  // حركةٌ تشير إلى فرعٍ محذوف تبقى مرئيّةً في العدّ ولا تظهر في أيّ سطرٍ أعلاه.
+  // A movement pointing at a deleted branch stays visible in the count but appears in no line above.
   const stray = txs.filter((x) => !byId.has(String(x.branch))).length
     + wallets.filter((x) => !byId.has(String(x.branch))).length;
   if (stray) console.log(`  (و${stray} سجلًّا على فرعٍ لم يعد موجودًا — تُحذَف معها)`);
@@ -72,7 +52,7 @@ const CUT = arg('date', WALLET_START_DATE);
     return;
   }
 
-  // ① النسخةُ الاحتياطيّة — قبل أيّ حذف، وباسمٍ يقول متى أُخذت وممّ.
+  // 1. Backup before any delete, named with when and from what it was taken.
   const dir = path.join(__dirname, '..', '..', 'backups');
   const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
   const file = path.join(dir, `wallet-before-${CUT}-${stamp}.json`);
@@ -88,14 +68,14 @@ const CUT = arg('date', WALLET_START_DATE);
     console.log(`\n  ستُحفَظ نسخةٌ احتياطيّة في backups/ قبل الحذف.`);
   }
 
-  // ② الحذف
+  // 2. Delete
   if (APPLY) {
     const dt = await WalletTransaction.deleteMany({ date: { $lt: CUT } });
     const dw = await DailyWallet.deleteMany({ date: { $lt: CUT } });
     console.log(`  ✔ حُذفت ${dt.deletedCount} حركةً و${dw.deletedCount} يوميّة.`);
   }
 
-  // ③ ما بقي
+  // 3. What remains
   console.log('\n  أوّلُ يومٍ بعد التنظيف:\n');
   console.log('  الفرع'.padEnd(18) + 'أوّلُ يوم'.padStart(14) + 'الافتتاحيّ'.padStart(16) + 'الأيّام'.padStart(9));
   console.log('  ' + '─'.repeat(60));
@@ -109,7 +89,7 @@ const CUT = arg('date', WALLET_START_DATE);
   if (APPLY) {
     try {
       require('../websocket/socketManager').emitToAll('wallet:updated', {});
-    } catch (_) { /* السكربت يعمل خارج الخادم غالبًا */ }
+    } catch (_) { /* Usually runs outside the server */ }
   } else {
     console.log('\n  لم يُحذَف شيء. أضف --apply للتنفيذ.');
   }

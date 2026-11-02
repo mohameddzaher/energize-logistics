@@ -1,19 +1,9 @@
 /* eslint-disable no-console */
 /**
- * auditBulkIssue — الصرف المجمّع من مخزن الورشة.
- *
- *   node src/scripts/auditBulkIssue.js --base https://api.energize-logistics.com
- *
- * أهم حاجة بيتأكد منها: **الرفض ما يسيبش المخزن نصّه متصرّف**. لو سطر واحد
- * رصيده مش كافي، لازم العملية كلها ترفض ومفيش صنف واحد ينقص. الصرف اللي نصّه
- * عدّى أسوأ من اللي اترفض كله — أمين المخزن مش هيبقى عارف أنهي سطر نزل، فيعيد
- * الصرف ويطلع بدل مرتين.
- *
- * وبيتأكد إن الصنف المتكرّر في أكتر من سطر بيتجمّع قبل التحقق: تلات أسطر × ٢
- * من نفس الصنف لازم تتقاس على ٦، مش كل سطر لوحده على ٢ والرصيد ٤ — وإلا
- * الرصيد بيبقى سالب.
- *
- * بيشتغل على **أصناف بيعملها ويمسحها**، عمره ما يلمس صنف شغّال.
+ * auditBulkIssue: bulk issue from the workshop store.
+ * node src/scripts/auditBulkIssue.js --base https://api.energize-logistics.com
+ * Main check: a rejection must not leave the store half applied. If one line lacks balance the whole operation must reject and no item decrease. A half-passed issue is worse than a fully rejected one: the storekeeper cannot tell which line went out, so he repeats the issue and it goes out twice.
+ * It also checks that an item repeated across lines is totalled before validation: three lines of 2 for the same item are measured against 6, not each against 2 with a balance of 4, otherwise the balance goes negative. It works on items it creates and deletes, and never touches a working item.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -61,7 +51,7 @@ const ok = (l, c, x = '') => { console.log(`  ${c ? '✓' : '✗ FAIL'}  ${l}${x
   const qtyOf = async (id) => (await InventoryItem.findById(id).select('quantity underRenewalQty').lean());
 
   try {
-    // ثلاثة أصناف اختبار برصيد معروف
+    // Three test items with a known balance.
     const mk = (name, q) => InventoryItem.create({
       name, code: name, quantity: q, unit: 'قطعة', isActive: true,
       approvalStatus: 'approved', category: 'zz-test',
@@ -71,7 +61,7 @@ const ok = (l, c, x = '') => { console.log(`  ${c ? '✓' : '✗ FAIL'}  ${l}${x
     const C = await mk('zz-bulk-طقم', 3);
     ok('اتعملت ٣ أصناف اختبار (١٠ · ٥ · ٣)', !!(A && B && C));
 
-    // ═══ ١) صرف عادي بأكتر من سطر ═════════════════════════════════════════
+    // 1) Normal issue with several lines.
     console.log('\n── صرف ٣ أسطر مرة واحدة ──');
     const r1 = await post('/api/workshop/inventory/issue-bulk', {
       vehicleNumber: '5010', date: new Date().toISOString().slice(0, 10),
@@ -90,15 +80,15 @@ const ok = (l, c, x = '') => { console.log(`  ${c ? '✓' : '✗ FAIL'}  ${l}${x
     ok('«تحت التجديد» اتسجّلت على الصنف', (c1.underRenewalQty || 0) === 1, `${c1.underRenewalQty}`);
     ok('٣ سجلات صرف اتكتبت', (await InventoryIssue.countDocuments({ itemName: { $regex: '^zz-bulk' } })) === 3);
 
-    // ═══ ٢) الرفض الكامل — الحاجة الأهم ═══════════════════════════════════
+    // 2) Full rejection, the most important case.
     console.log('\n── سطر واحد غلط ⇒ العملية كلها ترفض ──');
     const before = { a: (await qtyOf(A._id)).quantity, b: (await qtyOf(B._id)).quantity, c: (await qtyOf(C._id)).quantity };
     const r2 = await post('/api/workshop/inventory/issue-bulk', {
       vehicleNumber: '5011',
       lines: [
-        { item: A._id, quantity: 2, replacedFate: 'none' },      // سليم
-        { item: B._id, quantity: 999, replacedFate: 'none' },    // أكبر من الرصيد
-        { item: C._id, quantity: 1, replacedFate: 'none' },      // سليم
+        { item: A._id, quantity: 2, replacedFate: 'none' },      // Valid.
+        { item: B._id, quantity: 999, replacedFate: 'none' },    // More than the balance.
+        { item: C._id, quantity: 1, replacedFate: 'none' },      // Valid.
       ],
     });
     ok('اترفضت', r2.status === 400, `HTTP ${r2.status}`);
@@ -109,28 +99,28 @@ const ok = (l, c, x = '') => { console.log(`  ${c ? '✓' : '✗ FAIL'}  ${l}${x
       after.a === before.a && after.b === before.b && after.c === before.c,
       `كان ${before.a}/${before.b}/${before.c}`);
 
-    // ═══ ٣) نفس الصنف في أكتر من سطر بيتجمّع ══════════════════════════════
+    // 3) Same item on several lines is totalled.
     console.log('\n── صنف متكرّر: المجموع هو اللي بيتقاس ──');
-    const b = (await qtyOf(B._id)).quantity;   // ٣
+    const b = (await qtyOf(B._id)).quantity;   // 3.
     const r3 = await post('/api/workshop/inventory/issue-bulk', {
       lines: [
         { item: B._id, quantity: 2, replacedFate: 'none' },
-        { item: B._id, quantity: 2, replacedFate: 'none' },   // المجموع ٤ والرصيد ٣
+        { item: B._id, quantity: 2, replacedFate: 'none' },   // Total 4 against balance 3.
       ],
     });
     ok(`رصيد ${b} وسطرين × ٢ ⇒ مرفوض`, r3.status === 400, `HTTP ${r3.status}`);
     ok('والرصيد ما اتغيّرش', (await qtyOf(B._id)).quantity === b);
-    // وبمجموع مقبول بيعدّي
+    // With an acceptable total it passes.
     const r4 = await post('/api/workshop/inventory/issue-bulk', {
       lines: [
         { item: B._id, quantity: 1, replacedFate: 'none' },
-        { item: B._id, quantity: 2, replacedFate: 'none' },   // المجموع ٣ = الرصيد
+        { item: B._id, quantity: 2, replacedFate: 'none' },   // Total 3 equals the balance.
       ],
     });
     ok('وبمجموع = الرصيد بيعدّي', r4.status === 201, `HTTP ${r4.status} ${r4.body?.message || ''}`);
     ok('والرصيد بقى صفر', (await qtyOf(B._id)).quantity === 0);
 
-    // ═══ ٤) التحقق من المدخلات ════════════════════════════════════════════
+    // 4) Input validation.
     console.log('\n── التحقق ──');
     const noFate = await post('/api/workshop/inventory/issue-bulk', {
       lines: [{ item: A._id, quantity: 1 }],
@@ -147,7 +137,7 @@ const ok = (l, c, x = '') => { console.log(`  ${c ? '✓' : '✗ FAIL'}  ${l}${x
     });
     ok('كمية صفر ⇒ مرفوض', zero.status === 400);
 
-    // ═══ ٥) الصرف المفرد لسه شغّال زي ما هو ═══════════════════════════════
+    // 5) Single issue still works unchanged.
     console.log('\n── الصرف المفرد ما اتكسرش ──');
     const a = (await qtyOf(A._id)).quantity;
     const single = await post(`/api/workshop/inventory/${A._id}/issue`, {

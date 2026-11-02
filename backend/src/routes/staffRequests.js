@@ -1,13 +1,7 @@
 /**
- * طلباتُ الأقسام إلى الموارد البشريّة.
- *
- * ── ولماذا مسارٌ خارجَ `/api/hr` ───────────────────────────────────────────
- * الطرفان قسمان: المرسِلُ من قسمه (الأفراد، النقلُ الخفيف…) والمستقبِلُ من
- * الموارد البشريّة. ولو عاش تحت `/api/hr` لحرسه `sectionGate('HR')` فما استطاع
- * مشرفُ المناديب أن يرسل طلبًا — وهو صاحبُ الطلب أصلًا.
- *
- * فالحراسةُ في المتحكّم: الإرسالُ لمن سجّل دخولَه، والقراءةُ محدودةٌ بقسم
- * القارئ أو بما أرسله، والجوابُ للموارد البشريّة وحدَها.
+ * Section requests to HR.
+ * Why a route outside `/api/hr`: both sides are sections, the sender from its own section (individuals, light transport) and the receiver from HR. Under `/api/hr` it would be guarded by `sectionGate('HR')` and the reps' supervisor, who owns the request, could not send one.
+ * So the guard is in the controller: sending is for any signed-in user, reading is limited to the reader's section or what he sent, and answering is for HR alone.
  */
 const express = require('express');
 const router = express.Router();

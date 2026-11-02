@@ -1,20 +1,11 @@
-/**
- * auditContractRenewal — التجديدُ يُبقي العقدَ عقدًا.
- *
- *   node src/scripts/auditContractRenewal.js
- *
- * يجدّد عقدًا حقيقيًّا عبر النقطة نفسِها التي تناديها الشاشة، ثمّ يقرأ العقدَ
- * الناتج حقلًا حقلًا. لا يترك أثرًا: ما يُنشأ يُحذف والعقدُ الأصل يُعاد كما كان.
- */
+/** Renews a real contract through the same endpoint the screen calls, then reads the resulting contract field by field. Leaves no trace: created records are deleted and the original contract is restored. */
 require('dotenv').config();
 const mongoose = require('mongoose');
 
 const argv = process.argv.slice(2);
 const iB = argv.indexOf('--base');
 const BASE = (iB >= 0 && argv[iB + 1] ? argv[iB + 1] : process.env.BASE || 'http://localhost:5599').replace(/\/$/, '');
-// المصدرُ يتبع الخادمَ الذي نفحصه لا ملفَّ البيئة المحلّيّ: حارسُ CSRF يقبل
-// مصادرَ البرودكشن وحدها، فإرسالُ `localhost` إليه يردّ ٤٠٣ على كلّ POST — وهو
-// ما يبدو عطبًا في الميزة وهو عطبٌ في الفحص.
+// Origin follows the server under test, not the local env file: the CSRF guard accepts only production origins, so sending localhost gets 403 on every POST, which looks like a feature bug but is an audit bug.
 const ORIGIN = /api\.energize-logistics\.com/.test(BASE)
   ? 'https://energize-logistics.com'
   : (process.env.FRONTEND_URL?.split(',')[0].trim() || 'http://localhost:3000');
@@ -66,7 +57,7 @@ const head = (s) => console.log(`\n── ${s} ${'─'.repeat(Math.max(0, 60 - s
     ok('وأُنشئ عقدٌ يليه', !!fresh);
 
     if (fresh) {
-      // ── ما كان يضيع كلَّه ────────────────────────────────────────────────
+      // Everything that used to be lost.
       for (const [k, want] of [
         ['basicSalary', 5500], ['allowances', 900], ['type', 'unlimited'],
         ['durationMonths', 24], ['probationMonths', 6], ['probationText', 'غير مطلوب'],

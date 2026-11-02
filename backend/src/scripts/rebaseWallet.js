@@ -1,16 +1,8 @@
 /**
- * rebaseWallet — بدايةٌ جديدةٌ لمحفظةِ مستخدمٍ من يومٍ بعينه.
- *
- *   node src/scripts/rebaseWallet.js --user <id> --from 2026-08-31 --opening 1580 [--yes]
- *
- * تُزال يوميّاتُ ما قبل اليوم المطلوب وحركاتُها، ويُثبَّت رصيدُ ذلك اليوم
- * الافتتاحيُّ رقمًا يدويًّا، ثمّ تُعاد سلسلةُ الأرصدة إلى الأمام بالقاعدة نفسِها
- * التي يستعملها القسم: الختاميُّ = الافتتاحيُّ + التحصيلات − المصروفات −
- * المشتريات، وافتتاحيُّ الغدِ ختاميُّ اليوم.
- *
- * ولماذا سكربتٌ لا تعديلٌ مباشر: اليوميّاتُ سلسلةٌ لا أرقامٌ مستقلّة، فتغييرُ
- * رقمٍ واحدٍ بلا إعادةِ بناءِ ما بعده يترك المحفظةَ تقول رقمين مختلفين لليوم
- * نفسِه. والنسخةُ تُحفظ قبل المسّ لأنّ الممسوحَ هنا مالٌ لا صفوف.
+ * Restarts a user's wallet from a given day.
+ * Usage: node src/scripts/rebaseWallet.js --user <id> --from 2026-08-31 --opening 1580 [--yes]
+ * Removes earlier daily records and their entries, fixes that day's opening as a manual number, then rebuilds the chain forward: closing = opening + collections - expenses - purchases, and the next opening is the day's closing.
+ * A script, not a direct edit, because days form a chain: changing one number without rebuilding later days gives two figures for one day. A backup is saved first since what is wiped is money, not rows.
  */
 require('dotenv').config();
 const fs = require('fs');
@@ -73,7 +65,7 @@ const OPENING = Number(arg('opening'));
   start.closingBalance = newClosing;
   await start.save();
 
-  // السلسلةُ إلى الأمام بالقاعدة نفسِها التي يستعملها القسم.
+  // Chain forward by the same rule the section uses.
   let p = newClosing;
   for (const d of await DailyWallet.find({ user: USER, date: { $gt: FROM } }).sort({ date: 1 })) {
     d.openingBalance = p;

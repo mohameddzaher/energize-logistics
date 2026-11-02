@@ -1,22 +1,8 @@
 /**
- * probeProduction — قياسٌ للبرودكشن بلا لمسِ بياناته.
- *
- *   node src/scripts/probeProduction.js --base https://api.energize-logistics.com
- *
- * ── ما يفعله ───────────────────────────────────────────────────────────────
- * يقرأ الشاشاتِ الثقيلة كما يقرؤها الموظّفون — قراءةً فقط، ولا كتابةَ إلّا حسابَ
- * فحصٍ يُنشئه ويحذفه — ويقيس: زمنَ الاستجابة عند الوسيط وعند ٩٥٪، والأخطاء،
- * وثباتَ الجواب عبر العاملَين، وما يحدث حين يفتحها عشرون موظّفًا في الثانية
- * نفسِها.
- *
- * ── لماذا ٩٥٪ لا المتوسّط ──────────────────────────────────────────────────
- * المتوسّطُ يخفي الطرف: عشرُ قراءاتٍ في ٢٠٠ ملّي وواحدةٌ في ثمانِ ثوانٍ متوسّطُها
- * ثمانمئة — رقمٌ يبدو مقبولًا، والموظّفُ الذي وقعت عليه الثامنة يقول «النظام
- * واقف». الطرفُ هو ما يُشتكى منه.
- *
- * ── وثباتُ الجواب ─────────────────────────────────────────────────────────
- * البرودكشن عاملان ولكلٍّ ذاكرتُه، فيُقرأ كلُّ مسارٍ ستَّ مرّاتٍ ويُقارَن العدد:
- * اختلافُه بين قراءتين متتاليتين يعني ذاكرتين تفترقان — وهو عطبٌ رأيناه.
+ * Measures production without touching its data.
+ * Usage: node src/scripts/probeProduction.js --base https://api.energize-logistics.com
+ * Reads the heavy screens as employees do (read-only, except a test account it creates and deletes) and measures median and 95th percentile latency, errors, answer consistency across the two workers, and behavior when twenty employees open them in the same second.
+ * P95 not the mean, since the mean hides the tail that users complain about. Consistency: production has two workers with separate caches, so each path is read six times and the count compared; a difference between consecutive reads means diverging caches.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -36,10 +22,10 @@ const ok = (label, cond, note = '') => {
 const head = (t) => console.log(`\n── ${t} ${'─'.repeat(Math.max(0, 56 - t.length))}`);
 const pct = (arr, p) => { const a = [...arr].sort((x, y) => x - y); return a[Math.min(a.length - 1, Math.floor(a.length * p))]; };
 
-// الشاشاتُ الثقيلة — ماليّةٌ في معظمها، وهي التي لا يُحتمل أن تسقط.
+// Heavy screens, mostly financial, which must not fail.
 const PAGES = [
   ['سير عمل التشغيل', '/api/workflows?page=1&limit=50'],
-  // `filters` تحتاج اسمَ العمود — بلا اسمٍ تردّ ٤٠٠ وهو صواب.
+  // `filters` needs the column name; without it the endpoint returns 400, which is correct.
   ['فلاتر التشغيل', '/api/workflows/filters?field=payingBranch'],
   ['إحصاءات التشغيل', '/api/workflows/stats'],
   ['فواتير ضريبيّة', '/api/collections-dept/invoices/tax?page=1&limit=50'],
@@ -48,7 +34,7 @@ const PAGES = [
   ['دفتر الفواتير', '/api/collections-dept/ledger/invoices?page=1&limit=50'],
   ['تنبيهات الائتمان', '/api/collections-dept/ledger/alerts'],
   ['لوحة التحصيل', '/api/collections-dept/dashboard'],
-  // العهدةُ للفرع، فحسابُ الفحص بلا فرعٍ يجب أن يُسأل عن الفرع — يُمرَّر صراحةً.
+  // Custody is per branch, so the test account has no branch and the branch must be passed explicitly.
   ['المحفظة اليوميّة', `/api/wallet/daily?date=${new Date().toISOString().slice(0, 10)}&branchId=__BRANCH__`],
   ['لوحة المحافظ', '/api/wallet/dashboard'],
   ['سجل المركبات', '/api/vehicle-registry?limit=50'],
@@ -59,10 +45,7 @@ const PAGES = [
   ['تحليلات', '/api/analytics/dashboard'],
   ['المركبات (القسم)', '/api/vehicles?limit=50'],
   ['الإشعارات', '/api/notifications?limit=20'],
-  // ── وبقيّةُ الأقسام ────────────────────────────────────────────────────────
-  // أُضيفت بعد أن فُحصت بياناتُها: الشاشةُ التي تُقرأ صحيحةً وتُفتَح ببطءٍ لم
-  // تُفحَص كاملةً. وهذه أثقلُها بيانًا — B2C خمسةٌ وأربعون ألفَ طلب، وطلباتُ
-  // الشحنات أربعةٌ وثلاثون ألفًا، وتنبيهاتُ LS2 ستّةٌ وخمسون ألفًا.
+  // Remaining sections, added because a screen that reads correctly can still open slowly. These have the most data: B2C orders, shipment orders and LS2 alerts.
   ['B2C — الطلبات', '/api/b2c/daily-orders?limit=50'],
   ['B2C — اللوحة', '/api/b2c/dashboard'],
   ['طلبات الشحنات', '/api/shipment-orders/orders?limit=50'],
@@ -73,7 +56,7 @@ const PAGES = [
   ['التخليص الجمركي', '/api/customs-clearance?limit=50'],
   ['إدارة الأسطول', '/api/fleet/dashboard'],
   ['CRM — الشركات', '/api/crm/companies?limit=50'],
-  // ── ماليّاتُ التخليص وطلباتُ صرفه — كانت سبعَ ثوانٍ لكلّ فتحة ────────────
+  // Customs finance and its payment requests, previously slow on every open.
   ['طلبات صرف التخليص', '/api/customs-clearance/payment-requests?status=pending'],
   ['طلبات الصرف — المدفوعة', '/api/customs-clearance/payment-requests?status=paid&legacy=1'],
   ['ماليات التخليص', `/api/finance/departments/customs?from=${new Date().toISOString().slice(0, 8)}01&to=${new Date().toISOString().slice(0, 10)}`],
@@ -95,7 +78,7 @@ const PAGES = [
   console.log(`الخادم: ${BASE}\nالدخول: ${lr.status}`);
   if (lr.status !== 200) { await User.deleteMany({ email: /^zz-probe/ }); process.exit(1); }
 
-  // فرعٌ حقيقيٌّ لقراءة العهدة — قراءةً فقط.
+  // A real branch for reading custody, read-only.
   const Branch = require('../models/Branch');
   const branch = await Branch.findOne({}).select('_id').lean();
   const withBranch = (p) => p.replace('__BRANCH__', String(branch?._id || ''));
@@ -111,7 +94,7 @@ const PAGES = [
     } catch (e) { return { ms: Date.now() - t, status: 0, err: e.message }; }
   };
 
-  // ── ① كلُّ شاشةٍ تُفتَح، وكم تأخذ ─────────────────────────────────────────
+  // 1. Every screen opens, and how long it takes.
   head('كلُّ شاشةٍ تُفتَح — وكم تأخذ');
   const slow = []; const broken = [];
   for (const [name, path] of PAGES) {
@@ -128,7 +111,7 @@ const PAGES = [
   ok('كلُّ الشاشات تُجيب ٢٠٠', broken.length === 0, broken.join('، ') || `${PAGES.length} شاشة`);
   ok('ولا شاشةَ تتجاوز ثانيتين عند ٩٥٪', slow.length === 0, slow.join('، ') || 'الكلّ دون ثانيتين');
 
-  // ── ② ثباتُ الجواب عبر العاملَين ─────────────────────────────────────────
+  // 2. Answer consistency across the two workers.
   head('ثباتُ الجواب — العاملان يقولان الشيءَ نفسَه');
   const unstable = []; const drifting = [];
   for (const [name, path] of PAGES) {
@@ -139,11 +122,7 @@ const PAGES = [
       counts.push(j.total ?? j.count ?? (Array.isArray(j.rows) ? j.rows.length : null)
         ?? (Array.isArray(j.vehicles) ? j.vehicles.length : null) ?? (Array.isArray(j.invoices) ? j.invoices.length : null) ?? -1);
     }
-    // ── والاختلافُ نوعان ────────────────────────────────────────────────────
-    // ذاكرتان تفترقان تُعطيان تناوبًا: أ ب أ ب أ ب — أوّلُ مرّةٍ ظهر هذا العطبُ
-    // كان ٤٣ و٤٢ اثنتَي عشرةَ مرّةً بلا استثناء. أمّا البياناتُ الحيّة (تنبيهاتُ
-    // التتبّع تُضاف وتُغلَق كلَّ دقائق) فتتحرّك في اتّجاهٍ واحدٍ ولا تعود.
-    // فاشتراطُ ثباتِ العدد يجعل الشاشةَ الحيّةَ تفشل أبدًا بلا عطب.
+    // Two kinds of difference. Two diverging caches alternate (A B A B A B), as the earlier failure showed. Live data (tracking alerts added and closed every few minutes) moves in one direction and does not return. Requiring a stable count would make live screens fail forever without any fault.
     const alternating = counts.length >= 4
       && new Set(counts).size === 2
       && counts.every((c, i) => i < 2 || c === counts[i - 2])
@@ -154,7 +133,7 @@ const PAGES = [
   ok('لا شاشةَ تتناوب بين عاملَين', unstable.length === 0, unstable.join(' · ') || `${PAGES.length} شاشة`);
   if (drifting.length) console.log(`  · بياناتٌ حيّةٌ تتحرّك أثناء القراءة (طبيعيّ): ${drifting.join(' · ')}`);
 
-  // ── ③ عشرون موظّفًا في الثانية نفسِها ────────────────────────────────────
+  // 3. Twenty employees in the same second.
   head('الضغط — عشرون طلبًا متزامنًا على الشاشات الماليّة');
   const heavy = PAGES.filter(([n]) => /تشغيل|فواتير|أعمار|محفظة|تحصيل|دفتر|B2C|شحنات|LS2/.test(n));
   for (const [name, path] of heavy) {

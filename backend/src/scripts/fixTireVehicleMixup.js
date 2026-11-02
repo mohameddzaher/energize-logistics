@@ -1,34 +1,8 @@
 /* eslint-disable no-console */
 /**
- * fixTireVehicleMixup — ست فردات مسجّلة على العربية الغلط.
- *
- *   node src/scripts/fixTireVehicleMixup.js --dry
- *   node src/scripts/fixTireVehicleMixup.js --yes
- *
- * ── المشكلة ────────────────────────────────────────────────────────────────
- * ملف «2 trucks.json» فيه ٦ سيريالات مكتوبة **مرتين**: مرة على ٧٣٦٤ ومرة على
- * ٥٩١٦، في نفس المواقع (٧، ٨، ٩، ١٠، ١٢، ١٣). فردة واحدة ما تكونش على عربيتين،
- * فواحد من الصفّين غلط.
- *
- * ── الدليل: نمرة الإطار، مش السيريال ───────────────────────────────────────
- * الورشة بتلزق على كل فردة نمرة، والنمر بتتصرف على العربية الواحدة **متتالية**
- * وقت الجرد. فالبلوك بيقول الفردة بتاعة مين:
- *
- *   ٧٣٦٤  بلوكه ٨٦–٩٩، والناقص منه:  ٩٢ ٩٣ ٩٤ ٩٥ ٩٧ ٩٨
- *   ٥٩١٦  بلوكه ٤٦٨–٤٨١، والناقص منه: ٤٧٤ ٤٧٥ ٤٧٦ ٤٧٧ ٤٧٩ ٤٨٠
- *
- * والست فردات القاعدة دلوقتي على ٧٣٦٤ نمرها ٤٧٤ ٤٧٥ ٤٧٦ ٤٧٧ ٤٧٩ ٤٨٠ — يعني
- * من بلوك ٥٩١٦ بالظبط، وبتسدّ فراغه بالظبط. الفجوتين متكاملتين، وده مش صدفة.
- *
- * يبقى: الفردات دي على **٥٩١٦**، واتسجّلت غلط على ٧٣٦٤ في استيراد ١٩ يوليو.
- *
- * ── اللي السكربت بيعمله ────────────────────────────────────────────────────
- * بينقلها لـ ٥٩١٦ بحركة `transferred` مسجّلة بالسبب — مش بيعدّل السطر القديم.
- * السجل بيفضل موجود إن العربيتين كانوا كده، والتصحيح بيتقرا في التاريخ.
- *
- * بعده: ٥٩١٦ تبقى ١٤/١٤، و٧٣٦٤ تبقى ٨/١٤ — وده **الحقيقة**، مش تراجع. الست
- * فردات بتوعها (نمر ٩٢ ٩٣ ٩٤ ٩٥ ٩٧ ٩٨) سيرياﻻتها مش معروفة أصلاً: الشيت نسخ
- * فيها سيريالات ٥٩١٦ بدل ما يكتب سيرياﻻتها. محتاجة الورشة تروح تقراها.
+ * fixTireVehicleMixup: six tires registered on the wrong vehicle. --dry previews, --yes applies.
+ * 2 trucks.json lists six serials under both 7364 and 5916. The tire numbers decide: the workshop numbers tires consecutively per truck; 5916's block 468-481 is missing exactly 474 475 476 477 479 480, the numbers on the six tires now on 7364.
+ * They are moved to 5916 with a recorded transferred movement, leaving the old row. Result: 5916 is 14/14, 7364 is 8/14; the other six tires on 7364 (numbers 92 93 94 95 97 98) have unknown serials and need the workshop.
  */
 require('dotenv').config();
 const path = require('path');
@@ -46,7 +20,7 @@ const DRY = !process.argv.includes('--yes');
   const file = path.join(__dirname, '..', 'data', 'masters', '2 trucks.json');
   const rows = JSON.parse(fs.readFileSync(file, 'utf8'));
 
-  // ① السيريالات المكتوبة مرتين في الملف
+  // 1) serials written twice in the file
   const bySerial = new Map();
   for (const r of rows) {
     if (!bySerial.has(r.serial)) bySerial.set(r.serial, []);
@@ -56,7 +30,7 @@ const DRY = !process.argv.includes('--yes');
   console.log(`الملف: ${rows.length} صف · ${bySerial.size} سيريال · ${conflicts.length} سيريال مكتوب أكتر من مرة${DRY ? '   (تجربة)' : ''}\n`);
   if (!conflicts.length) { console.log('مفيش تعارض — استعمل importTireInventory عادي.'); process.exit(0); }
 
-  // ② بلوك نمر الإطارات لكل عربية: أوسع مدى متصل بين نمر العربية دي في الملف
+  // 2) each truck's tire-number block: the widest contiguous range of that truck's numbers in the file
   const plates = [...new Set(rows.map((r) => r.vehicle_plate))];
   const blocks = new Map();
   for (const p of plates) {
@@ -66,7 +40,7 @@ const DRY = !process.argv.includes('--yes');
   console.log('بلوك نمر الإطارات لكل عربية (من الملف):');
   for (const [p, b] of blocks) console.log(`     ${String(p).padEnd(14)} ${b.min}–${b.max}`);
 
-  // ③ لكل تعارض: مين صاحب الفردة؟ اللي نمرتها المسجّلة في السيستم من بلوكه.
+  // 3) for each conflict, the owner is the truck whose block contains the number registered in the system
   const moves = []; const unresolved = [];
   for (const [serial, dupRows] of conflicts) {
     const live = await Ls2TireAsset.findOne({ serial }).lean();
@@ -80,7 +54,7 @@ const DRY = !process.argv.includes('--yes');
     const target = dupRows.find((r) => r.vehicle_plate === owner);
     if (!target) { unresolved.push(`${serial}: البلوك بيقول ${owner} بس مفيش صف ليها`); continue; }
     const currentKey = plateKey(live.plate || '');
-    if (currentKey === plateKey(owner)) continue;   // مظبوطة أصلاً
+    if (currentKey === plateKey(owner)) continue;   // Already correct
     moves.push({ serial, live, target, owner, tag });
   }
 
@@ -124,7 +98,7 @@ const DRY = !process.argv.includes('--yes');
     console.log(`\n✓ اتنقلت ${moves.length} فردة، وكل واحدة معاها سبب في السجل`);
   }
 
-  // ④ الوضع بعد التصحيح + اللي لسه ناقص
+  // 4) state after the fix and what is still missing
   const FULL = 14;
   console.log('\nالوضع:');
   for (const p of plates) {

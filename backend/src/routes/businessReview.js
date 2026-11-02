@@ -1,18 +1,12 @@
 /**
- * /api/business-review — اجتماعات مراجعة الأعمال.
- *
- * Every logged-in staff member may reach this router, because the LAST two
- * routes (`/my-tasks`) belong to ordinary employees receiving delegated work.
- * Everything above them checks its own tier inside the controller — a manager's
- * board, the minutes, the follow-up register.
- *
- * Route order matters: the literal paths (`/meetings/actions`, `/my-actions`)
- * are declared before `/meetings/:id`, or "actions" would be read as a meeting id.
+ * /api/business-review: business review meetings.
+ * Every logged-in staff member may reach this router because the last routes (`/my-tasks`) belong to ordinary employees receiving delegated work; everything above checks its own tier in the controller (manager board, minutes, follow-up register).
+ * Route order matters: literal paths (`/meetings/actions`, `/my-actions`) are declared before `/meetings/:id`, or "actions" would be read as a meeting id.
  */
 const express = require('express');
 const router = express.Router();
 
-// معرّفٌ مشوَّهٌ في الرابط = لا سجلّ، لا عطلٌ في الخادم — راجع utils/idParam.
+// A malformed id in the URL means no record, not a server error; see utils/idParam.
 const { objectIdParam } = require('../utils/idParam');
 router.param('id', objectIdParam());
 router.param('assignmentId', objectIdParam());
@@ -44,7 +38,7 @@ router.get('/meetings', br.listMeetings);
 router.post('/meetings', br.createMeeting);
 router.get('/meetings/:id', br.getMeeting);
 router.put('/meetings/:id', br.updateMeeting);
-// الإقفال مساره لوحده لأنه بيتأكد إن كل شغل الاجتماع خلص قبل ما يقول «اكتمل».
+// Closing has its own route because it checks that all meeting work is done before marking it complete.
 router.post('/meetings/:id/complete', br.completeMeeting);
 router.post('/meetings/:id/reopen', br.reopenMeeting);
 router.put('/meetings/:id/minutes', br.saveMinutes);

@@ -1,23 +1,7 @@
 /**
- * auditPerfDepartments — أقسامُ الموظّفين كما يقرؤها تقييمُ الأداء، وما يحتاج قرارًا.
- *
- *   node src/scripts/auditPerfDepartments.js            ← تقريرٌ فقط، لا يكتب شيئًا
- *   node src/scripts/auditPerfDepartments.js --apply    ← يوحّد صورَ الكتابة وحدَها
- *
- * ── ما يعرضه ────────────────────────────────────────────────────────────────
- * ١. كلُّ نصٍّ مكتوبٍ في خانة «القسم»، والقسمُ المعتمد الذي يُقرأ به
- *    (config/performanceDepartments)، وصفحةُ القسم التي يُقيَّم منها.
- * ٢. ما ليس في قائمة الأقسام المعتمدة (البيانات المرجعيّة ← الأقسام): يُضاف
- *    إليها، أو يُنقَل موظّفوه إلى قسمٍ منها — وهذا قرارُ الموارد البشريّة.
- * ٣. أقسامٌ لا تملكها صفحةُ قسم: يقيّم موظّفيها مديرُ النظام وحدَه.
- * ٤. من قسمُه في ملفّه غيرُ قسم مديره المباشر: لا يقيّمه مديرُه المباشر بل مديرُ
- *    قسمه. فإمّا القسمُ خطأ أو المديرُ المباشر.
- *
- * ── ما يكتبه `--apply` ──────────────────────────────────────────────────────
- * صورَ الكتابة فقط: نصٌّ يطابق اسمَ قسمٍ معتمدٍ بعد طيّ الهمزات و«ال» وكلمة
- * «إدارة» («تخليص جمركي» ← «التخليص الجمركي») يُكتب بالاسم المعتمد. ولا يدمج
- * قسمين: «B2C» و«ادارة B2C» يُقرآن «النقل الخفيف» في التقييم ويبقيان في الملفّات
- * كما هما — دمجُهما يمحو الفرقَ بين المندوب والإداريّ، وليس لسكربتٍ أن يقرّره.
+ * Employee departments as the performance rating reads them. No flag: report only. --apply: unifies spellings only, rewriting text that matches an approved department after folding hamza, the article and the word for department.
+ * Reports unapproved texts, departments with no page and employees whose department differs from their manager's.
+ * It never merges two departments (B2C vs B2C administration): that is an HR decision.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -44,7 +28,7 @@ const APPLY = process.argv.includes('--apply');
   const owner = D.sectionOwners(index, employees, roleOf);
   const nameOf = (e) => e.arabicName || `${e.firstName || ''} ${e.lastName || ''}`.trim();
 
-  // ── ١. النصوصُ المكتوبة ─────────────────────────────────────────────────
+  // 1. Written texts
   const byText = new Map();
   for (const e of employees) {
     const raw = e.department == null ? '' : String(e.department);
@@ -59,7 +43,7 @@ const APPLY = process.argv.includes('--apply');
       + `${t.dept.known ? '' : '  [ليس في القائمة]'}  ·  ${sec ? `صفحة ${sectionLabel(sec, 'ar')}` : 'لا صفحةَ قسم'}`);
   }
 
-  // ── ٢ و٣ ────────────────────────────────────────────────────────────────
+  // 2 and 3
   const unknown = texts.filter((t) => !t.dept.known && !t.dept.none);
   console.log(`\n٢. ليست في قائمة الأقسام المعتمدة (${unknown.length}): ${unknown.map((t) => `«${t.raw}» ${t.count}`).join(' · ') || '—'}`);
   const empty = texts.filter((t) => t.dept.none).reduce((s, t) => s + t.count, 0);
@@ -68,7 +52,7 @@ const APPLY = process.argv.includes('--apply');
   for (const e of employees) if (!owner.has(e.dept.key)) orphan.set(e.dept.label, (orphan.get(e.dept.label) || 0) + 1);
   console.log(`\n٣. أقسامٌ لا تملكها صفحةُ قسم (يقيّمها مديرُ النظام): ${[...orphan].map(([k, v]) => `${k} ${v}`).join(' · ') || '—'}`);
 
-  // ── ٤. القسمُ يخالف المديرَ المباشر ──────────────────────────────────────
+  // 4. Department differs from direct manager
   const conflicts = [];
   for (const e of employees) {
     const bossSection = D.sectionOfManagerRole(roleOf.get(String(e.directManager || '')));
@@ -83,7 +67,7 @@ const APPLY = process.argv.includes('--apply');
       + ` · مديرُه المباشر ${userName.get(boss) || boss} (${LABELS_AR[roleOf.get(boss)] || roleOf.get(boss)})`);
   }
 
-  // ── توحيدُ صور الكتابة ──────────────────────────────────────────────────
+  // Unify spellings
   const spelling = texts.filter((t) => t.dept.known && t.raw !== t.dept.label
     && D.deptFold(t.raw) === D.deptFold(t.dept.label));
   console.log(`\nصورُ كتابةٍ تُوحَّد (${spelling.length}):`);

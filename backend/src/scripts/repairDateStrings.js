@@ -1,15 +1,7 @@
 /**
- * repairDateStrings — تواريخُ كُتبت بصيغة `Date.toString()` بدل ISO.
- *
- *   node src/scripts/repairDateStrings.js          تجربة
- *   node src/scripts/repairDateStrings.js --yes    تنفيذ
- *
- * «Fri Jul 24 2026 03:00:00 GMT+0300 (Arabian Standard Time)» نصٌّ يقرؤه
- * جافاسكربت ولا تقرؤه القاعدة — فأيُّ حسابٍ يجري في القاعدة (وهو ما صارت
- * اللوحةُ تفعله لتسرع) يعُدُّ صاحبَه «بلا تاريخ». وهو تاريخٌ مكتوبٌ فعلًا.
- *
- * وصيغةُ `toString` تحمل اسمَ المنطقة بلغة الجهاز الذي كتبها — تتغيّر بتغيّر
- * الخادم. فتُوحَّد إلى «YYYY-MM-DD» كبقيّة الحقل.
+ * repairDateStrings: dates written as `Date.toString()` instead of ISO.
+ * Usage: node src/scripts/repairDateStrings.js [--yes] (dry run by default).
+ * JavaScript can parse that text but the database cannot, so any DB-side computation treats the row as having no date. The format also carries a timezone name in the writing machine's language, which varies by server. They are normalized to YYYY-MM-DD like the rest of the field.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -29,7 +21,7 @@ const YES = process.argv.includes('--yes');
   for (const f of fields) {
     const path = Employee.schema.paths[f];
     if (!path || path.instance !== 'String') continue;
-    // ما لا يبدأ برقم: ليس ISO.
+    // Anything not starting with a digit is not ISO.
     const rows = await Employee.find({ [f]: { $type: 'string', $ne: '', $not: /^\d/ } })
       .select(`employeeNumber ${f}`).lean();
     if (!rows.length) continue;

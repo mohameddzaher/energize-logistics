@@ -1,20 +1,7 @@
 /**
- * closeImportedSettledCustoms — يُغلق ما استُورد من الماستر وهو منتهٍ.
- *
- *   node src/scripts/closeImportedSettledCustoms.js            ← تجربة، بلا كتابة
- *   node src/scripts/closeImportedSettledCustoms.js --apply
- *
- * المعاملاتُ التي دخلت النظامَ من شيت الماستر لم يُضغَط عليها «إنهاء» قطّ —
- * الزرُّ لم يكن موجودًا يومَ انتهت. فتظهر كلُّها «مفتوحة» في لوحة القسم، ومنها
- * ما سُدِّد وأُقفل دفترُه قبل شهور.
- *
- * والمنتهي منها يُعرَف من الماستر نفسِه: حالةُ فاتورته «خالص» — فُوترت وسُدِّدت.
- * فيُغلَق: مستورَدٌ (له `legacySerial`)، ليس قادمًا ولا ملغًى ولا مغلقًا، وحالةُ
- * فاتورته «خالص». ويُؤرَّخ إغلاقُه بآخر يومٍ من شهره في الماستر — لا باليوم،
- * كي لا يُعَدّ مئتا إغلاقٍ قديمٍ في «أُغلقت هذا الشهر». وباسم «سجلّ سابق» لا
- * باسم موظّف. وما لم يكن «خالصًا» يبقى مفتوحًا: فيه عملٌ أو مالٌ لم ينتهِ.
- *
- * يُعاد تشغيلُه بلا ضرر: لا يمسّ ما أُغلق.
+ * closeImportedSettledCustoms: closes imported master-sheet transactions that are already finished.
+ * Dry run by default; --apply writes.
+ * Imported rows were never closed because the finish button did not exist then; those whose invoice status is settled are closed, dated to the last day of their master month, under a legacy-record name. Unsettled ones stay open. Safe to rerun.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -44,7 +31,7 @@ const BY = 'سجلّ سابق';
   console.log(`  وتبقى مفتوحةً: ${open - rows.length}`);
   if (!APPLY) { console.log('  — تجربة، بلا كتابة. أضف --apply للتنفيذ.\n'); await mongoose.disconnect(); return; }
 
-  // آخرُ يومٍ من شهر المعاملة في الماستر، ظهرًا بتوقيت الرياض؛ وما لا شهرَ له فبتاريخ إدخاله.
+  // Last day of the transaction's master month at noon Riyadh time; rows without a month use their entry date.
   const closedAt = (r) => (r.periodYear && r.periodMonth
     ? new Date(Date.UTC(r.periodYear, r.periodMonth, 0, 9, 0, 0))
     : new Date(r.createdAt));

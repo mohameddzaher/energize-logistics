@@ -1,12 +1,6 @@
 /**
- * auditCollectionsSheetVsDb — الشيتُ هو المرجع، والقاعدةُ تُقاس عليه.
- *
- * لا يكتب شيئًا. يقرأ ورقتَي «Daily Invoice Report» و«Aging» ويقارنهما
- * بمجموعتَي CollectionInvoice و CollectionsParty: كم فاتورةً في الورقة، وكم
- * منها عندنا، وما الذي يختلف في التواريخ والحالة والمبلغ ومسؤول التحصيل.
- *
- * والتواريخُ تُقرأ أرقامًا خامًّا (مسلسلَ إكسل) لا كائناتِ تاريخ: قراءتُها
- * تواريخَ تُنقص يومًا على هذا الجهاز — راجع xlsx-date-epoch-trap.
+ * Read-only audit of the Daily Invoice Report and Aging sheets against CollectionInvoice and CollectionsParty: invoice counts, dates, status, amount and collector.
+ * Dates are read as raw Excel serials; reading them as Date objects loses a day on this machine.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -14,7 +8,7 @@ const XLSX = require('xlsx');
 const path = require('path');
 
 const FILE = path.join(__dirname, '../../../collection files/Financial Collections    9-2026.xlsx');
-// مسلسلُ إكسل ← تاريخ (نظام 1900، مع خطأ الكبيسة المعروف).
+// Excel serial to Date (1900 system, including the known leap-year bug).
 const serialToDate = (n) => {
   const v = Number(n);
   if (!Number.isFinite(v) || v <= 0) return null;
@@ -29,7 +23,7 @@ const ymd = (d) => (d ? d.toISOString().slice(0, 10) : '');
 
   const wb = XLSX.readFile(FILE);
 
-  // ── ١) الفواتير ──────────────────────────────────────────────────────────
+  // 1) Invoices
   const inv = XLSX.utils.sheet_to_json(wb.Sheets['Daily Invoice Report'], { header: 1, defval: '', blankrows: false });
   const H = inv[5].map((h) => String(h).trim());
   const col = (name) => H.findIndex((h) => h.toLowerCase() === name.toLowerCase());
@@ -82,12 +76,12 @@ const ymd = (d) => (d ? d.toISOString().slice(0, 10) : '');
   diffCollection.slice(0, 8).forEach(({ s, d }) => console.log(`      «${s.no}» ورقة=${ymd(s.collectionDate) || '—'} قاعدة=${ymd(d.collectionDate ? new Date(d.collectionDate) : null) || '—'}`));
   console.log(`   ≠ مبلغٌ مختلف: ${diffTotal.length}`);
 
-  // فاتورةٌ بعينها سأل عنها
+  // A specific invoice that was asked about.
   const t = sheetRows.find((x) => x.no === '11855');
   console.log(`\n   الفاتورة 11855 في الورقة: ${t ? `نعم — ${t.name} · ${t.total} · فوترة ${ymd(t.invoiceDate)} · تسليم ${ymd(t.deliveryDate) || '—'} · تحصيل ${ymd(t.collectionDate) || '—'}` : 'لا'}`);
   console.log(`   وفي القاعدة: ${byNo.has('11855') ? 'نعم' : 'لا'}`);
 
-  // ── ٢) مسؤولو التحصيل ────────────────────────────────────────────────────
+  // 2) Collectors
   const ag = XLSX.utils.sheet_to_json(wb.Sheets['Aging'], { header: 1, defval: '', blankrows: false });
   const AH = ag[4].map((h) => String(h).trim());
   const aCode = AH.indexOf('Code'), aName = AH.indexOf('Account name'), aOff = AH.indexOf('Collection Officer');

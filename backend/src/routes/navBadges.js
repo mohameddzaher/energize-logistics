@@ -1,8 +1,7 @@
 /**
- * GET /api/nav-badges — أرقامٌ بجانب أسماء الصفحات في الشريط الجانبيّ (٢٠٢٦/١٠/٢٢).
- * { '/system/finance/customs': n } — ما ينتظر الإدارةَ الماليّة في التخليص: طلباتُ
- * صرفٍ وطلباتُ فوترةٍ معلّقة. يقلّ كلّما أُجيب طلب، ويختفي حين لا يبقى شيء.
- * كلُّ صفحةٍ تُضاف هنا بشرط من يراها؛ والواجهةُ تعيد السحبَ مع أحداث أقسامها.
+ * GET /api/nav-badges: counts shown next to page names in the sidebar.
+ * { '/system/finance/customs': n } is what awaits finance in customs clearance: pending payment and invoicing requests. It drops as requests are answered and disappears at zero.
+ * Each page is added here with a condition on who sees it; the UI refetches on its section's events.
  */
 const express = require('express');
 const router = express.Router();

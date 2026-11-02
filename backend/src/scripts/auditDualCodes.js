@@ -13,7 +13,7 @@ for (const [sheet, h, cCode, cName, cOut, cOff] of [['Aging', 4, 0, 1, 10, 2], [
     console.log(`«${sheet}» ${code} | ${String(r[cName] ?? '').trim()} | مسؤول=${String(r[cOff] ?? '').trim() || '—'} | مستحق=${cOut != null ? (r[cOut] || 0) : '—'}`);
   }
 }
-// وكم فاتورةً لكلّ كود في ورقة الفواتير
+// How many invoices per code in the invoices sheet.
 const inv = XLSX.utils.sheet_to_json(wb.Sheets['Daily Invoice Report'], { header: 1, defval: '', blankrows: false });
 const tally = {};
 for (let i = 6; i < inv.length; i += 1) {

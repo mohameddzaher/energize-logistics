@@ -1,38 +1,6 @@
 /**
- * importCollectionsBook — دفترُ التحصيل كلُّه، من ملفٍّ واحدٍ إلى القاعدة.
- *
- *   node --max-old-space-size=8192 src/scripts/importCollectionsBook.js --dry
- *   node --max-old-space-size=8192 src/scripts/importCollectionsBook.js --apply
- *   node --max-old-space-size=8192 src/scripts/importCollectionsBook.js --apply --file "اسم آخر.xlsx"
- *
- * ── لماذا سكربتٌ واحدٌ محلَّ ثلاثة ──────────────────────────────────────────
- * كان الدفترُ يدخل على ثلاث مرّات: الحساباتُ في سكربت، والفواتيرُ في آخر،
- * وورقةُ الشحنات النقديّة لا تدخل أصلًا. ومن يشغّل واحدًا وينسى الآخر يترك
- * القاعدةَ نصفَ محدَّثة: حساباتٌ من ملفٍّ وفواتيرُ من ملفٍّ قبله. والملفُّ
- * يُحدَّث كاملًا فيدخل كاملًا.
- *
- * ── الأوراقُ الخمس وما فيها ────────────────────────────────────────────────
- *   Aging                 حساباتٌ ضريبيّة — أعمارُ الدين وحدودُ الائتمان
- *   Aging Shipment        حساباتٌ نقديّة
- *   Daily Invoice Report  فواتيرُ الحساب الضريبيّ
- *   Shipment Report       شحناتُ الحساب النقديّ — دفترُ فواتيره
- *   JP                    خطّةُ الزيارات وما تمّ منها
- *
- * وورقةُ الشحنات كانت تُترك. وهي دفترُ النقديّ كلُّه: أحدَ عشرَ ألفًا وثمانمئةٍ
- * وتسعةٌ وسبعون شحنةً بمبالغها وتواريخ تحصيلها. فبقي النقديُّ في النظام
- * حساباتٍ بلا فواتير — أرصدةٌ تُقرأ ولا يُعرَف ممّ تكوّنت.
- *
- * ── وما يُمسح وما لا يُمسح ─────────────────────────────────────────────────
- * يُمسح ما مصدرُه الدفتر وحدَه: الفواتيرُ والمهامُّ واقتراحاتُ الربط، وخاناتُ
- * الدفتر على الأطراف (الكود والموظّف والحدّ والأعمار).
- *
- * ولا تُمسح الأطرافُ نفسُها. في السجلّ أربعةُ آلافٍ وثلاثمئةٍ وعشرون طرفًا،
- * منها مئةٌ وخمسةٌ وتسعون من الدفتر — والباقي سجلُّ عملاء الشركة الذي تقرؤه
- * إدارةُ العلاقات وطلباتُ الشحنات والعقودُ والأسطول. حذفُه لأجل إعادة استيراد
- * دفترٍ يهدم أربعةَ أقسامٍ لا شأنَ لها بالدفتر.
- *
- * فالطرفُ الذي أنشأه الدفترُ ولم يعد فيه يُعطَّل ولا يُحذَف: قد تكون عليه
- * فواتيرُ قديمةٌ أو إحالاتٌ من قسمٍ آخر، والتعطيلُ يخرجه من القوائم ويبقي أثره.
+ * Imports the whole collections book from a single file; one script so a partial run cannot leave the DB half updated.
+ * Only book-sourced data is wiped; parties are never deleted, a party that left the book is deactivated.
  */
 require('dotenv').config();
 const fs = require('fs');
@@ -51,12 +19,7 @@ const FILE = path.join(__dirname, '../../..', 'collection files', BOOK);
 const XLS_EPOCH = Date.UTC(1899, 11, 30);
 const S = (v) => (v == null ? '' : String(v).trim());
 const N = (v) => { const n = Number(String(v ?? '').replace(/[^\d.\-]/g, '')); return Number.isFinite(n) ? n : 0; };
-/**
- * التاريخُ يُقرأ رقمًا تسلسليًّا لا نصًّا.
- *
- * قراءتُه بـ`cellDates` تُنقص يومًا على هذا الجهاز — راجع ملاحظةَ فخِّ تقويم
- * إكسل. فالملفُّ يُقرأ خامًا ويُحوَّل الرقمُ هنا بالمنطقة الصفريّة.
- */
+/** Dates are read as raw serial numbers, not text: cellDates loses a day on this machine (see the Excel epoch trap). */
 const D = (v) => {
   if (typeof v === 'number' && Number.isFinite(v) && v > 1) return new Date(XLS_EPOCH + Math.round(v * 86400000));
   const s = S(v);
@@ -66,9 +29,9 @@ const D = (v) => {
 };
 const splitList = (v) => S(v).split(/[/,؛;+&]|\s+و\s+/).map((x) => x.trim()).filter(Boolean);
 
-/** صفُّ مجموعٍ في الورقة ليس عميلًا — ولو أُنشئ لحمل مديونيّةَ الجميع. */
+/** A totals row in the sheet is not a customer; creating it would carry everyone's debt. */
 const TOTALS_ROW = /^\s*(?:الإجمالي|الاجمالي|المجموع|total|grand\s*total)\s*$/i;
-/** ما يعني «لا فاتورة» ليس رقمَ فاتورة. */
+/** Placeholder values meaning no invoice are not invoice numbers. */
 const NO_INVOICE = /^\s*(?:no\s*inv(?:oice)?|noinv|no-inv|none|n\/a|na|-|—|0|بدون(?:\s*فاتورة)?|لا\s*يوجد|لا\s*توجد|غير\s*مفوتر(?:ة)?)\s*$/i;
 
 (async () => {
@@ -79,7 +42,7 @@ const NO_INVOICE = /^\s*(?:no\s*inv(?:oice)?|noinv|no-inv|none|n\/a|na|-|—|0|�
   const CollectionTask = require('../models/CollectionTask');
   const { fold } = CollectionsParty;
   let PartyLinkSuggestion = null;
-  try { PartyLinkSuggestion = require('../models/PartyLinkSuggestion'); } catch (_) { /* اختياريّ */ }
+  try { PartyLinkSuggestion = require('../models/PartyLinkSuggestion'); } catch (_) { /* optional */ }
 
   const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
   console.log(`\n  الملفّ: ${BOOK}${APPLY ? '' : '\n  — تجربة، بلا كتابة —'}\n`);
@@ -90,15 +53,8 @@ const NO_INVOICE = /^\s*(?:no\s*inv(?:oice)?|noinv|no-inv|none|n\/a|na|-|—|0|�
     : []);
   const body = (n, headerRow) => raw(n).slice(headerRow + 1);
 
-  // ── والأعمدةُ تُقرأ بأسمائها لا بمواضعها ─────────────────────────────────
-  //
-  // ورقةُ الفواتير حُذف منها عمودُ «Exit Date» بين ملفّ سبتمبر وملفّ أكتوبر،
-  // فانزاح كلُّ ما بعده خانةً: قُرئت «Supervisor Comments» تاريخَ خروجٍ (فضاعت)
-  // وقُرئ «Days TTL» ملاحظةً — ٩٣٦٤ فاتورةً ملاحظتُها رقمٌ مثل «46301».
-  // وكان الرأسُ يُفترَض في صفٍّ بعينه فيُتخطّى أوّلُ صفّ بياناتٍ بعده.
-  //
-  // فيُبحَث عن صفّ الرأس («Code») ويُقرأ كلُّ عمودٍ باسمه؛ والعمودُ الغائبُ
-  // يُقرأ فارغًا ويُقال، لا يُؤخَذ جارُه مكانَه.
+  // Columns are read by header name, not position: a dropped column shifts everything after it.
+  // Find the header row (Code); a missing column reads empty instead of borrowing its neighbour.
   const table = (n) => {
     const rows = raw(n);
     const h = rows.findIndex((r) => r && S(r[0]).toLowerCase() === 'code');
@@ -112,22 +68,17 @@ const NO_INVOICE = /^\s*(?:no\s*inv(?:oice)?|noinv|no-inv|none|n\/a|na|-|—|0|�
   };
   const at = (r, i) => (i >= 0 ? r[i] : null);
 
-  // ═══ ١ · الحسابات ═══════════════════════════════════════════════════════
-  // Aging          0 Code 1 Name 2 Officer 3 HO 4 Grade 5 Sales 6 Dept 7 limit
-  //                8 Status 9 CreditDays 10 Outstanding 11..20 أعمار 21 Contracts
-  //                22 Reconciliation 23 ReconDate 24 Comments
-  // Aging Shipment 0 Code 1 Name 2 Officer 3 HO 4 Grade 5 Sales 6 Dept 7 Status
-  //                8 CreditDays 9 Outstanding 10 15+ 11 15- 12 Contracts
-  //                13 Reconciliation 14 ReconDate 15 Comments
+  // Step 1: accounts. Column layout per sheet:
+  // Aging: 0 Code 1 Name 2 Officer 3 HO 4 Grade 5 Sales 6 Dept 7 limit 8 Status 9 CreditDays 10 Outstanding 11..20 ages 21 Contracts 22 Reconciliation 23 ReconDate 24 Comments
+  // Aging Shipment: 0 Code 1 Name 2 Officer 3 HO 4 Grade 5 Sales 6 Dept 7 Status 8 CreditDays 9 Outstanding 10 15+ 11 15- 12 Contracts 13 Reconciliation 14 ReconDate 15 Comments
   const accounts = new Map();
   const nameless = [];
   const addAccount = (a) => {
     if (!a.code) return;
-    // كودٌ بلا اسمٍ لا يُهمَل ولا يُخترَع له اسم — يُطابَق بالكود، واسمُه يأتي
-    // من دفتر الفواتير حيث هو مكتوبٌ على فواتيره.
+    // A code without a name is kept and matched by code; its name comes from the invoice book where it is written on its invoices.
     if (!a.name) { nameless.push(a.code); a.codeOnly = true; }
     const prev = accounts.get(a.code);
-    // الحسابُ في الورقتين: تُجمَع أرصدتُه ولا تُكتب إحداهما فوق الأخرى.
+    // An account in both sheets: balances are summed, one does not overwrite the other.
     if (prev) { prev.ledger.outstanding += a.ledger.outstanding; return; }
     accounts.set(a.code, a);
   };
@@ -156,7 +107,7 @@ const NO_INVOICE = /^\s*(?:no\s*inv(?:oice)?|noinv|no-inv|none|n\/a|na|-|—|0|�
       },
     });
   }
-  // JP يزيد المنطقة.
+  // JP adds the region.
   for (const r of body('JP', 6)) {
     const a = accounts.get(S(r[0])); if (a && !a.region) a.region = S(r[9]);
   }
@@ -166,15 +117,12 @@ const NO_INVOICE = /^\s*(?:no\s*inv(?:oice)?|noinv|no-inv|none|n\/a|na|-|—|0|�
   console.log(`  ① الحسابات        ${accounts.size}  (ضريبي ${tax} · نقدي ${cash})`);
   if (nameless.length) console.log(`     أكوادٌ بلا اسمٍ في الورقة: ${nameless.join('، ')}`);
 
-  // ═══ ٢ · الفواتير ═══════════════════════════════════════════════════════
-  // Daily Invoice Report 0 Code 1 Name 2 InvoiceNo 3 Total 4 InvoiceDate 5 Days
-  //                      6 DeliveryDate 7 DaysD 8 CollectionDate 9 Status
-  //                      10 ExitDate 11 Comments 12 DaysTTL
+  // Step 2: invoices. Daily Invoice Report columns: 0 Code 1 Name 2 InvoiceNo 3 Total 4 InvoiceDate 5 Days 6 DeliveryDate 7 DaysD 8 CollectionDate 9 Status 10 ExitDate 11 Comments 12 DaysTTL
   const invoices = [];
   let skippedNoInv = 0; let skippedTotals = 0;
   const dirSheet = table('Daily Invoice Report');
   const DC = {
-    // عمودُ الرقم سُمّي «Invoice No» ثمّ «Column2» — وهو الثالثُ في الحالين.
+    // The number column was named Invoice No, then Column2; it is the third in both cases.
     num: Math.max(dirSheet.col('invoice no', 'column2'), 2),
     total: dirSheet.col('total outstanding'), invoiceDate: dirSheet.col('invoice date'),
     deliveryDate: dirSheet.col('delivery date'), collectionDate: dirSheet.col('collection date'),
@@ -216,12 +164,8 @@ const NO_INVOICE = /^\s*(?:no\s*inv(?:oice)?|noinv|no-inv|none|n\/a|na|-|—|0|�
   console.log(`  ② الفواتير        ${invoices.length}  (ضريبي ${nTax} · نقدي ${nCash})`);
   console.log(`     صفوفٌ بلا رقم فاتورة: ${skippedNoInv + shipSkipped} · صفوفُ مجاميع: ${skippedTotals}`);
 
-  // ═══ ٣ · خطّةُ الزيارات ═════════════════════════════════════════════════
-  // JP: 0 Code … والأيّامُ أعمدةٌ متكرّرةٌ بعد العمود العاشر. تُقرأ كما تُقرأ
-  // الورقة: لكلّ عميلٍ عمودٌ لكلّ يوم.
-  // ── وخطّةُ الزيارات تُقرأ لتُكتب، لا لتُعَدّ ─────────────────────────────
-  // كان هنا عدٌّ يُطبَع ثمّ يُنسى، والمسحُ أدناه يمحو `CollectionTask` — فكانت
-  // كلُّ إعادةِ استيرادٍ تمحو تاريخَ الزيارات ولا تُعيده. راجع utils/journeyPlan.
+  // Step 3: visit plan. JP: 0 Code ...; day columns repeat after column 10, one column per customer per day.
+  // The plan is read to be written, not just counted: the wipe below clears CollectionTask, so a re-import would otherwise lose visit history. See utils/journeyPlan.
   const { parseJourneyPlan } = require('../utils/journeyPlan');
   const jp = parseJourneyPlan(raw('JP'));
   const jpCollected = jp.tasks.reduce((a, t) => a + (t.collected || 0), 0);
@@ -232,7 +176,7 @@ const NO_INVOICE = /^\s*(?:no\s*inv(?:oice)?|noinv|no-inv|none|n\/a|na|-|—|0|�
     await mongoose.disconnect(); return;
   }
 
-  // ═══ ٤ · النسخةُ الاحتياطيّة قبل أيّ مسح ════════════════════════════════
+  // Step 4: backup before any wipe
   const dir = path.join(__dirname, '..', '..', 'backups');
   fs.mkdirSync(dir, { recursive: true });
   const backup = path.join(dir, `collections-before-reimport-${stamp}.json`);
@@ -245,12 +189,11 @@ const NO_INVOICE = /^\s*(?:no\s*inv(?:oice)?|noinv|no-inv|none|n\/a|na|-|—|0|�
   }));
   console.log(`\n  ✔ نسخةٌ احتياطيّة: ${backup}`);
 
-  // ═══ ٥ · المسح — ما مصدرُه الدفترُ وحدَه ════════════════════════════════
+  // Step 5: wipe only data that originates from the book
   const delInv = await CollectionInvoice.deleteMany({});
   const delTask = await CollectionTask.deleteMany({});
   const delSug = PartyLinkSuggestion ? await PartyLinkSuggestion.deleteMany({}) : { deletedCount: 0 };
-  // وخاناتُ الدفتر تُفرَّغ من الأطراف كلِّها: ما لا يعود في الملفّ الجديد لا
-  // يبقى منه أثرٌ قديمٌ يُقرأ على أنّه حاليّ.
+  // Book fields are cleared on all parties so stale values from an older file are not read as current.
   const cleared = await CollectionsParty.updateMany({}, {
     $set: {
       collectionOfficer: '', hoLocation: '', grade: '', salesManagers: [],
@@ -258,28 +201,10 @@ const NO_INVOICE = /^\s*(?:no\s*inv(?:oice)?|noinv|no-inv|none|n\/a|na|-|—|0|�
     },
   });
 
-  // ── والكودُ يُفرَّغ وحدَه، ولمن لم يعد له كودٌ في الملفّ ───────────────────
-  //
-  // تفريغُه من الجميع دفعةً واحدةً يصطدم بفهرسٍ فريدٍ على (النوع + الاسم +
-  // الكود): طرفان بالاسم نفسِه — أحدُهما بكودٍ والآخرُ بلا — يصيران بعد
-  // التفريغ صفَّين متطابقين، فتُردّ العمليّةُ كلُّها ولا يُكتب شيء.
-  //
-  // والمقصودُ أضيقُ من ذلك أصلًا: كودٌ قديمٌ لم يعد في الملفّ الجديد. فيُفرَّغ
-  // هو وحدَه، صفًّا صفًّا. وما تعذّر تفريغُه لوجود شبيهٍ بلا كود فذاك تكرارٌ في
-  // السجلّ لا شأنَ للدفتر به — يُعطَّل الطرفُ القديم ويُقال.
-  // ── أوّلًا: الشركةُ الواحدةُ مسجَّلةٌ مرّتين ────────────────────────────────
-  //
-  // خمسُ شركاتٍ في السجلّ لكلٍّ منها نسختان: نسخةٌ أنشأتها العمليّاتُ من كشفٍ
-  // أو طلبِ شحن — عليها إحالاتٌ من أربعة أقسام — ونسخةٌ أنشأها استيرادُ الدفتر
-  // السابق بكودها. والاسمان واحدٌ بعد الطيّ («شركة مجال البيئة» و«شركه مجال
-  // البيئه»)، فهما شركةٌ واحدة لا شركتان.
-  //
-  // وبقاؤهما يمنع كلَّ شيء: الفهرسُ الفريد على (النوع + الاسم المطويّ + الكود)
-  // يردّ تفريغَ كود إحداهما لأنّها تصير نسخةً من الأخرى، فيقف الاستيراد.
-  //
-  // فتُدمَجان: تبقى نسخةُ العمليّات لأنّها المشارُ إليها، ويُنقَل إليها اسمُ
-  // الدفتر اسمًا بديلًا (فيجدها من يبحث بأيّ الرسمين)، وتُحذَف نسخةُ الدفتر —
-  // وهي لا يشير إليها شيءٌ إلّا فواتيرُ أُعيد بناؤها في هذا التشغيل نفسِه.
+  // Codes are cleared only for parties whose code is no longer in the file, one row at a time.
+  // Clearing all at once hits the unique index on (type + name + code) when a coded and an uncoded party share a name, and the whole operation rolls back.
+  // If a duplicate without a code blocks it, the old party is deactivated and reported.
+  // First, merge companies registered twice: the operations copy (referenced by four sections) is kept, the book name becomes an alias, and the book copy is deleted since only invoices rebuilt in this run reference it.
   const dupGroups = await CollectionsParty.aggregate([
     { $group: { _id: { kind: '$kind', nameKey: '$nameKey' }, n: { $sum: 1 }, docs: { $push: { id: '$_id', code: '$code', name: '$name', source: '$source' } } } },
     { $match: { n: { $gt: 1 } } },
@@ -299,9 +224,7 @@ const NO_INVOICE = /^\s*(?:no\s*inv(?:oice)?|noinv|no-inv|none|n\/a|na|-|—|0|�
   }
   if (merged) console.log(`  ✔ نسخٌ مكرّرةٌ دُمجت: ${merged}`);
 
-  // وتُفرَّغ الأكوادُ كلُّها لا الزائلةُ وحدَها: الملفُّ الجديد قد ينقل كودًا
-  // من حسابٍ إلى آخر، فلو بقي على صاحبه القديم ارتطم الإسنادُ بالفهرس الفريد
-  // ووقف الاستيرادُ في منتصفه.
+  // All codes are cleared, not just the vanished ones: the new file may move a code between accounts, and a stale holder would hit the unique index and stop the import midway.
   const stale = await CollectionsParty.find({ code: { $gt: '' } }).select('code name kind nameKey').lean();
   let dropped = 0; const stuck = [];
   for (const p of stale) {
@@ -310,16 +233,9 @@ const NO_INVOICE = /^\s*(?:no\s*inv(?:oice)?|noinv|no-inv|none|n\/a|na|-|—|0|�
       dropped += 1;
     } catch (e) {
       if (!e || e.code !== 11000) throw e;
-      // ── تكرارٌ في السجلّ لا في الدفتر ──────────────────────────────────
-      // طرفان بالاسم نفسِه: هذا بكودٍ من دفتر المحاسبة، وذاك بلا كودٍ أنشأه
-      // قسمٌ آخر من كشفٍ أو طلبِ شحن. وتفريغُ الكود يجعلهما صفَّين متطابقين
-      // فيردّهما الفهرس.
-      //
-      // والذي يبقى هو صاحبُ الكود: هو المعروفُ في دفتر الحسابات وعليه
-      // المديونيّة. والنسخةُ التي لا كودَ لها تُعطَّل — لا تُحذَف، فقد تكون
-      // مشارًا إليها من عقدٍ أو كشف.
-      // بعد الدمج أعلاه لا ينبغي أن يقع هذا. فإن وقع فهو تكرارٌ من نوعٍ آخر
-      // لم يُتوقَّع — يُقال باسمه ولا يُمَسّ، ويقف الاستيرادُ عنده لا يخمّن.
+      // Registry duplicate, not a book duplicate: one party has a code from the accounting book, the other has no code and was created by another section.
+      // The coded one is kept (it holds the debt); the uncoded one is deactivated, not deleted, since a contract or report may reference it.
+      // After the merge above this should not happen; if it does, report it by name and stop instead of guessing.
       stuck.push(`${p.code} ${p.name} — تعذّر تفريغُ كوده (تكرارٌ لم يُدمَج)`);
     }
   }
@@ -331,20 +247,11 @@ const NO_INVOICE = /^\s*(?:no\s*inv(?:oice)?|noinv|no-inv|none|n\/a|na|-|—|0|�
     for (const x of stuck) console.log(`      ${x}`);
   }
 
-  // ═══ ٦ · الحسابات تدخل ══════════════════════════════════════════════════
-  // المطابقةُ بالكود أوّلًا ثمّ بالاسم المطويّ. ولا يُخترَع ربطٌ بالتشابه هنا:
-  // الملفُّ الجديد يحمل الأكواد التي رُبطت في الاستيراد السابق، فما طابق طابق
-  // وما لم يطابق يُنشأ بكوده — والربطُ بالتشابه قرارُ مديرِ التحصيل من شاشته.
+  // Step 6: accounts are written. Match by code first, then by folded name; no similarity-based linking here, that is a collections-manager decision made in the UI.
   const ours = await CollectionsParty.find({ kind: 'customer' }).select('name nameKey aliasKeys code').lean();
-  // ── والمفتاحُ الواحد قد يكون لصفّين ─────────────────────────────────────
-  // في السجلّ أزواجٌ لشركةٍ واحدة يطويهما `fold` إلى مفتاحٍ واحد: «شركة افاق
-  // النماء» بكودٍ من دفتر المحاسبة، و«شركه افاق النماء» بلا كودٍ أنشأها قسمٌ
-  // آخر. وكانت الخريطةُ تحفظ أوّلَ ما وجدت، فيُسنَد الكودُ إلى التوأم الخالي
-  // بينما التوأمُ الآخر لا يزال يحمله (تفريغُه يرتطم بالفهرس فيُترَك) —
-  // فيصير صفّان بنفس (النوع، الاسم المطويّ، الكود) ويردّهما الفهرسُ الفريد،
-  // **فيقف الاستيرادُ وقد مُسحت الفواتيرُ كلُّها**. وقع ذلك فعلًا.
-  //
-  // فتُحفَظ المرشّحاتُ كلُّها، ويُقدَّم عليهنّ من يحمل هذا الكودَ أصلًا.
+  // One key can map to two rows: fold collapses pairs like a coded and an uncoded variant of the same company.
+  // Keeping only the first candidate could assign the code to the empty twin while the other still holds it, breaking the unique index after the invoices were wiped.
+  // So keep all candidates and prefer the one that already holds this code.
   const byKey = new Map();
   for (const p of ours) {
     for (const k of [p.nameKey || fold(p.name), ...(p.aliasKeys || [])]) {
@@ -369,8 +276,7 @@ const NO_INVOICE = /^\s*(?:no\s*inv(?:oice)?|noinv|no-inv|none|n\/a|na|-|—|0|�
       creditLimit: a.limit || 0, creditDays: a.creditDays || 0, ledger,
       ...(a.status ? { status: a.status } : {}),
     };
-    // صاحبُ الكود أوّلًا — هو المعروفُ في دفتر الحسابات وعليه المديونيّة؛
-    // ثمّ من يطابق اسمَه ولا كودَ له؛ ثمّ أيُّ مطابقٍ لم يُطالَب به.
+    // Order of preference: the code holder, then a name match without a code, then any unclaimed match.
     const cands = a.codeOnly ? [] : (byKey.get(fold(a.name)) || []);
     const free = (p) => p && !claimed.has(String(p._id));
     const holder = holderOfCode.get(String(a.code));
@@ -378,10 +284,8 @@ const NO_INVOICE = /^\s*(?:no\s*inv(?:oice)?|noinv|no-inv|none|n\/a|na|-|—|0|�
       || cands.find((p) => free(p) && !p.code)
       || cands.find((p) => free(p))
       || null;
-    // ── وحسابٌ واحدٌ لا يُوقِف الدفترَ كلَّه ───────────────────────────────
-    // كان كلُّ كتابةٍ ترفع خطأَها فيقف الاستيراد — وقد مُسحت الفواتيرُ قبله،
-    // فتبقى القاعدةُ بلا دفترٍ أصلًا. ووقع ذلك مرّةً. فما تعذّر يُسمّى ويمضي
-    // الباقي، ويُقال في آخر التشغيل من لم يدخل ولماذا.
+    // One failing account must not stop the whole book: invoices are already wiped, so aborting leaves no book at all.
+    // Failures are named, the rest continue, and the end of the run reports who was not imported and why.
     try {
       if (match) {
         claimed.add(String(match._id));
@@ -407,8 +311,7 @@ const NO_INVOICE = /^\s*(?:no\s*inv(?:oice)?|noinv|no-inv|none|n\/a|na|-|—|0|�
     for (const x of failedAccounts) console.log(`      ${x}`);
   }
 
-  // ═══ ٧ · الفواتير تدخل ══════════════════════════════════════════════════
-  // ــ والحسابُ الذي تعرفه الفواتيرُ ولا تعرفه ورقةُ الأعمار يُنشأ هنا ــــــ
+  // Step 7: invoices. An account known to the invoices but not to the aging sheet is created here.
   const { nextPartyCode } = require('../utils/partyCode');
   const byName2 = new Map();
   for (const p of await CollectionsParty.find({ kind: 'customer' }).select('name nameKey aliasKeys code').lean()) {
@@ -433,8 +336,7 @@ const NO_INVOICE = /^\s*(?:no\s*inv(?:oice)?|noinv|no-inv|none|n\/a|na|-|—|0|�
   }
   if (extraParties) console.log(`  ✔ حساباتٌ عرفتها الفواتيرُ ولم تعرفها ورقةُ الأعمار: ${extraParties}`);
 
-  // رقمٌ في التسلسل بلا حسابٍ ولا مبلغٍ ولا تاريخ — يدخل ويُعلَّم. راجع
-  // models/CollectionInvoice.unused.
+  // A sequence number with no account, amount or date is imported and flagged. See models/CollectionInvoice.unused.
   for (const inv of invoices) {
     inv.unused = !inv.partyName && !inv.total && !inv.invoiceDate && !inv.deliveryDate && !inv.collectionDate;
   }
@@ -458,8 +360,7 @@ const NO_INVOICE = /^\s*(?:no\s*inv(?:oice)?|noinv|no-inv|none|n\/a|na|-|—|0|�
   }
   console.log(`  ✔ فواتير كُتبت: ${wrote}`);
 
-  // ═══ ٧ب · خطّةُ الزيارات تعود ═══════════════════════════════════════════
-  // المفتاحُ (عميل × يوم × نوعُ الطلب) كما في فهرس النموذج.
+  // Step 7b: visit plan restored. Key is (customer x day x request type), matching the model index.
   const jpByCode = new Map();
   for (const p of await CollectionsParty.find({ kind: 'customer' }).select('code name nameKey aliasKeys').lean()) {
     if (p.code) jpByCode.set(String(p.code).trim(), p);
@@ -481,9 +382,7 @@ const NO_INVOICE = /^\s*(?:no\s*inv(?:oice)?|noinv|no-inv|none|n\/a|na|-|—|0|�
   }
   console.log(`  ✔ مهامُّ زيارةٍ كُتبت: ${taskWrote}`);
 
-  // ═══ ٧ج · وكشوفُ التشغيل تعود تحت فواتيرها ══════════════════════════════
-  // الورقةُ لا تعرف كشوفَنا، فتُكتب `reportNumbers` فارغةً فوق ما كان. تُعاد
-  // من كشوف التشغيل نفسِها — راجع scripts/linkInvoiceReports.
+  // Step 7c: operations reports relinked under their invoices. The sheet does not know our reports, so reportNumbers would be written empty; rebuild them from the operations reports. See scripts/linkInvoiceReports.
   const { invoiceNumberKey } = require('../utils/invoiceNumberKey');
   const OperationsWorkflow = require('../models/OperationsWorkflow');
   const invByKey = new Map();
@@ -514,7 +413,7 @@ const NO_INVOICE = /^\s*(?:no\s*inv(?:oice)?|noinv|no-inv|none|n\/a|na|-|—|0|�
   }
   console.log(`  ✔ فواتيرُ رُبطت بكشوفها: ${rnWrote} (بمجموع ${[...wantRn.values()].reduce((a, s) => a + s.size, 0)} كشفًا)`);
 
-  // ═══ ٨ · التحقّق — لا صفَّ ضاع ═════════════════════════════════════════
+  // Step 8: verification, no row lost
   const dbTax = await CollectionInvoice.countDocuments({ kind: 'tax' });
   const dbCash = await CollectionInvoice.countDocuments({ kind: 'cash' });
   const dbParties = await CollectionsParty.countDocuments({ code: { $gt: '' } });
@@ -528,7 +427,7 @@ const NO_INVOICE = /^\s*(?:no\s*inv(?:oice)?|noinv|no-inv|none|n\/a|na|-|—|0|�
   console.log('\n  ── التحقّق ──');
   line('فواتير ضريبيّة', nTax, dbTax);
   line('فواتير نقديّة', nCash, dbCash);
-  // والفواتيرُ قد تعرف حسابًا لا تعرفه ورقةُ الأعمار — فيُضاف إلى المتوقَّع.
+  // Invoices may reference an account missing from the aging sheet, so add it to the expected set.
   line('حساباتٌ بكود', accounts.size + extraParties, dbParties);
   console.log(`  ${Math.abs(sumSheet - sumDb) < 1 ? '✔' : '✘'} ${'مجموع المبالغ'.padEnd(26)} الورقة ${sumSheet.toFixed(2)}  القاعدة ${sumDb.toFixed(2)}`);
   const dbUnused = await CollectionInvoice.countDocuments({ unused: true });

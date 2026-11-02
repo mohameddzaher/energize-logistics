@@ -1,15 +1,7 @@
 /**
- * auditStoreMovements — حركات مخزن النقل الثقيل: التراجع، والقاعدة اللي بيقوم
- * عليها.
- *
- *   node src/scripts/auditStoreMovements.js
- *   node src/scripts/auditStoreMovements.js --base http://127.0.0.1:5001
- *
- * القاعدة (قرار الإدارة المالية): الحركة اللي اتسجّلت لا تُعدَّل ولا تُمسح. مفيش
- * PUT/PATCH/DELETE على الحركات — السكربت ده بيتأكد إنهم كلهم مرفوضين، وإن
- * التراجع بيمشي بحركة معاكسة بسبب إجباري، وإن الرصيد مبيبقاش سالب أبدًا.
- *
- * بيمسح كل ما أنشأه (zz-*) في الآخر ولا بيلمس بيانات حقيقية.
+ * auditStoreMovements: heavy transport store movements, reversal, and the rule behind it.
+ * Rule (finance decision): a recorded movement is never edited or deleted. All PUT/PATCH/DELETE on movements must be rejected, a reversal is an opposite movement with a mandatory reason, and the balance never goes negative.
+ * Everything it creates (zz-*) is deleted at the end; no real data is touched.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');

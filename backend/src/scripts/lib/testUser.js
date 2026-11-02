@@ -1,15 +1,6 @@
 /**
- * مستخدمٌ اصطناعيّ لسكربتات الفحص.
- *
- * ── لماذا لا يُؤخذ حسابٌ حقيقيّ ─────────────────────────────────────────────
- * كانت السكربتاتُ تفعل `User.findOne({ role: 'super_admin' })` لتملأ `req.user`
- * الذي يحتاجه المتحكّم. والنتيجةُ أنّ كلَّ ما يفعله السكربتُ يُقيَّد في سجلّ
- * المراجعة باسم ذلك الإنسان: مئتان واثنان من إنشاء حساباتِ اختبارٍ وحذفِها
- * نُسبت إلى موظّفةٍ لم تفتح الشاشة، فسأل صاحبُ الشركة عنها بحقّ.
- *
- * فهذا مستخدمٌ لا وجودَ له في القاعدة: له معرّفٌ صالحٌ يرضي `populate`، ودورٌ
- * يُمرّره من الحرّاس، ولا سجلَّ يُنسب إليه. ومعه `AUDIT_SUPPRESS` فلا يُكتب
- * قيدُ مراجعةٍ أصلًا.
+ * Synthetic user for check scripts.
+ * Using a real account attributed every script action in the audit log to a real person. This user has a valid id for populate and a role that passes guards, no stored record, and AUDIT_SUPPRESS so no audit entry is written.
  */
 const mongoose = require('mongoose');
 

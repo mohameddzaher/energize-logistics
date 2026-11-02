@@ -1,31 +1,8 @@
 /**
- * importFollowUpSheet — شيتُ المتابعة يُفرَّغ في الكشوف، لا بجانبها.
- *
- *   node --max-old-space-size=8192 src/scripts/importFollowUpSheet.js --dry
- *   node --max-old-space-size=8192 src/scripts/importFollowUpSheet.js
- *
- * المصدر: «operation files/اخر تحديث شيت المتابعه 2026.xlsx»، ورقةُ «2026» —
- * تسعةٌ وعشرون ألفَ صفٍّ بثلاثين عمودًا، فيها ما لم يصل نظامَنا قطّ: تواريخُ
- * التحصيل، وملاحظاتُ الفواتير، وصوافيها وضرائبها، وتواريخُ الإرسال والتسليم.
- *
- * ── والمطابقةُ برقم الكشف ─────────────────────────────────────────────────
- * رقمُ الكشف هو الهويّة: يُكتب في الشيت ويُكتب عندنا، ولا يتكرّر. فلا يُبتكر
- * صفٌّ من الشيت ولا يُنشأ كشفٌ لا وجودَ له في المنصّة — يُملأ الموجودُ ويُعَدّ
- * المفقود.
- *
- * ── ولا يُكتب فوق ما كُتب ─────────────────────────────────────────────────
- * القاعدةُ الوحيدةُ الآمنة: يُملأ الفارغُ فقط. ما في نظامنا كتبه موظّفٌ فيه بعد
- * أن صار النظامُ هو مكانَ العمل، والشيتُ صورةٌ من يوم ٣٠ أغسطس. فالجديدُ لا
- * يُدهَس بالقديم — ويُعَدّ الخلافُ ويُعرَض ليُنظر فيه، لا يُطبَّق بصمت.
- *
- * ── والتاريخُ يُقرأ رقمًا لا كائنًا ────────────────────────────────────────
- * إكسل يخزّن التاريخَ رقمًا: أيّامًا منذ ٣٠ ديسمبر ١٨٩٩. ومكتبةُ القراءة تحوّله
- * إلى كائنٍ **بتوقيت الجهاز**، ومبدؤها سنةَ ١٨٩٩ حيث الرياضُ على ٣:٠٠:٥٢ لا على
- * ٣:٠٠ — فيخرج «٨ يناير» ٢٠٢٦-٠١-٠٧T٢٠:٥٩:٠٨Z، ومَن قرأ يومَه بغرينتش وجده
- * السابعَ. يومٌ كاملٌ ضائعٌ في كلّ تاريخٍ في الملفّ.
- *
- * فيُقرأ الرقمُ نفسُه ويُحسب منه اليومُ بغرينتش مباشرةً: لا توقيتَ جهازٍ في
- * الطريق، فلا فرقَ بين مَن يشغّله في الرياض ومَن يشغّله في لندن.
+ * importFollowUpSheet: loads the follow-up sheet into the manifests, not beside them.
+ * Source is the 2026 sheet (about 29k rows, 30 columns) with fields the system never received: collection dates, invoice notes, nets and taxes, send and delivery dates.
+ * Matching is by manifest number, the unique identity; no manifest is invented, existing ones are filled and missing ones counted.
+ * Fill empty fields only: the system holds staff edits and the sheet is a snapshot from 30 Aug; differences are counted and shown, not applied. Dates are read as raw serials and converted in UTC. The reader library builds a local-time Date from the 1899 epoch, whose Riyadh offset (+3:00:52) loses a day on every date.
  */
 require('dotenv').config();
 const path = require('path');
@@ -33,39 +10,32 @@ const XLSX = require('xlsx');
 const mongoose = require('mongoose');
 
 const DRY = process.argv.includes('--dry');
-// الملفُّ يُمرَّر: تصل نسخةٌ أحدث كلَّ بضعة أسابيع، وتثبيتُ اسمٍ في السكربت
-// يعني تعديلَه في كلّ مرّة — أو استيرادَ نسخةٍ قديمةٍ ولا يُلاحَظ.
+// The file path is passed as an argument: a newer copy arrives every few weeks, and a hardcoded name would need editing each time or silently import a stale copy.
 const FILE = process.argv.find((a) => a.endsWith('.xlsx'))
   || path.join(__dirname, '..', '..', '..', 'operation files', 'شيت المتابعه 2026 بتاريخ 3 سبتمبر 2026.xlsx');
 const SHEET = '2026';
 const HEADER_ROW = 4;
 
-// العمودُ في الشيت ← الحقلُ عندنا. الترتيبُ ترتيبُ الشيت نفسِه.
+// Sheet column to our field, in sheet order.
 const COLUMNS = [
   ['reportNumber', 'text'], ['reportDate', 'date'], ['fromLocation', 'text'], ['toLocation', 'text'],
   ['branch', 'text'], ['carOwner', 'text'], ['carNumber', 'text'], ['ownerType', 'text'],
   ['executionStatus', 'text'], ['applicationStatus', 'text'], ['paymentMethod', 'text'], ['username', 'text'],
   ['taxIndicator', 'text'], ['purchaseValue', 'num'], ['sellingValue', 'num'], ['operationsReview', 'text'],
   ['paymentDate', 'date'], ['payingBranch', 'text'], ['finalReportDestination', 'text'], ['documentNumber', 'text'],
-  // ── وعمودُ «تاريخ التسليم» في الشيت هو تسليمُ **الفرع** ──────────────────
-  // موضعُه بين «تاريخ الإرسال» و«مراجعة الحسابات» وقبل أعمدة الفاتورة كلِّها،
-  // وهو عملُ التشغيل. أمّا تسليمُ الفاتورة إلى العميل — الذي منه تبدأ مهلةُ
-  // السداد — فيكتبه قسمُ التحصيل في `deliveryDate` ولا يأتي من هذا الملفّ.
+  // The sheet's delivery date is the branch delivery (operations work), placed before the invoice columns. Delivery of the invoice to the customer, which starts the payment term, is written by collections into deliveryDate and does not come from this file.
   ['sendingDate', 'date'], ['branchDeliveryDate', 'date'], ['accountingReview', 'text'], ['invoiceNumber', 'text'],
   ['netInvoice', 'num'], ['tax', 'num'], ['totalInvoice', 'num'], ['invoiceDate', 'date'],
   ['invoiceNotes', 'text'], ['collectionDate', 'date'],
 ];
 
-// ── ما لا يُستورَد ─────────────────────────────────────────────────────────
-// أعمدةُ المنصّة تُسحب منها حيّةً كلَّ دقيقة؛ ونسخةُ الشيت منها صورةٌ قديمة.
-// فلو مُلئ فارغٌ منها من الشيت لصار الصفُّ نصفَه من المنصّة ونصفَه من ورقةٍ
-// عمرُها شهر، ولا يُعرف بعدها أيُّهما يُقرأ.
+// Not imported: platform columns are pulled live every minute and the sheet copy is an old snapshot. Filling gaps from it would mix two sources in one row with no way to tell which to trust.
 const SKIP = new Set(['reportNumber', 'reportDate', 'fromLocation', 'toLocation', 'branch',
   'carOwner', 'carNumber', 'ownerType', 'executionStatus', 'applicationStatus', 'paymentMethod', 'username']);
 
-/** مبدأُ تأريخ إكسل — ٣٠ ديسمبر ١٨٩٩ بغرينتش. */
+/** Excel date epoch: 1899-12-30 UTC. */
 const XLS_EPOCH = Date.UTC(1899, 11, 30);
-/** اليومُ كما كتبه إكسل، منتصفَ ليلِه بغرينتش، بلا مرورٍ بتوقيت الجهاز. */
+/** The day as Excel wrote it, at UTC midnight, without going through device time. */
 const readDate = (v) => {
   if (v == null || v === '') return null;
   if (typeof v === 'number') {
@@ -79,7 +49,7 @@ const readDate = (v) => {
   }
   const s = String(v).trim();
   if (!s) return null;
-  // «١٨/٠١/٢٠٢٦» و«1/1/26» — اليومُ أوّلًا كما تكتبه الورقة.
+  // Day-first formats as written on the sheet, e.g. 18/01/2026 and 1/1/26.
   const m = s.match(/^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{2,4})$/);
   if (m) {
     let [, d, mo, y] = m.map(Number);
@@ -97,42 +67,28 @@ const readNum = (v) => {
 };
 const readText = (v) => {
   if (v == null) return null;
-  if (v instanceof Date) return null;               // تاريخٌ في خانةٍ نصّيّة — يُترك
+  if (v instanceof Date) return null;               // Date in a text cell: skipped
   const s = typeof v === 'number' ? String(v) : String(v).trim();
   if (s === '') return null;
-  // ── ولا يُنقَل النائبُ عن الفراغ من ورقةٍ إلى قاعدة ────────────────────
-  // «no inv» في الورقة تعني «لا فاتورة»، لا أنّها قيمةٌ تُكتب. ولمّا صار
-  // النائبُ يُقرأ فراغًا عندنا، كادت الورقةُ تكتبه فوق ألفٍ وتسعمئة كشفٍ
-  // يحملونه أصلًا — كتابةٌ لا تغيّر شيئًا وتُحسب ألفًا وتسعمئة تعديل.
+  // A placeholder for blank is not copied from sheet to database. The no-invoice placeholder means no invoice; since it now reads as blank here, the sheet would have overwritten it on about 1,900 manifests, a no-op counted as 1,900 edits.
   return PLACEHOLDER.test(s) ? null : s;
 };
 const READ = { text: readText, num: readNum, date: readDate };
 
-// ── والنائبُ عن الفراغ فراغ ───────────────────────────────────────────────
-// «no inv» و«بدون» و«—» ليست أرقامَ فواتير — هي طريقةُ الموظّف في قول «لا
-// فاتورةَ لهذا الكشف». وكانت تُعَدّ قيمةً مكتوبةً فتمنع الشيتَ من كتابة الرقم
-// الحقيقيّ فوقها: كشفان يحملان «no inv» والشيتُ يعرف لهما الفاتورة ١٠٩١٨.
-//
-// فالنائبُ عن الفراغ يُعامَل فراغًا: يُملأ ولا يُحسب خلافًا.
+// A blank placeholder is blank. Values such as no-invoice, none or a dash are the employee's way of saying there is no invoice, not invoice numbers. Counting them as written would stop the sheet from writing the real number over them.
+// So placeholders are treated as blank: filled, and not counted as a difference.
 const PLACEHOLDER = /^\s*(?:no\s*inv(?:oice)?|noinv|no-inv|none|n\/a|na|-|—|بدون(?:\s*فاتورة)?|لا\s*يوجد|لا\s*توجد|غير\s*مفوتر(?:ة)?)\s*$/i;
 const isEmpty = (v) => v == null || v === ''
   || (typeof v === 'string' && (v.trim() === '' || PLACEHOLDER.test(v)));
 
-// ── «ض / غ ض» تُغذّي نوعَ الدفع، ولا تحكم عليه ─────────────────────────────
-//
-// عمودُ الشيت يقول عن الحمولة أضريبيّةٌ هي أم لا، وهو أفضلُ ما نملك لثلاثين
-// ألفَ كشفٍ لا نوعَ دفعٍ لها عندنا أصلًا. لكنّه لا يحكم: «العميل ممكن في حمولات
-// يقولنا هحاسبكوا عليها كاش وساعات ضريبي» — فالنوعُ قرارٌ يُتَّخذ على الكشف
-// نفسِه ويُحفَظ تاريخُه معه.
-//
-// فالقاعدةُ هي قاعدةُ هذا الملفّ كلِّه: يُملأ الفارغُ ولا يُدهَس المكتوب. ما
-// اختاره موظّفٌ في الشاشة يبقى، وما لم يُختَر بعدُ يأخذ جوابَ الورقة.
+// The tax column feeds the payment type but does not decide it. It is the best source for about 30k manifests that have no type, but a customer may pay some loads cash and others tax, so the type is a per-manifest decision with its own history.
+// Same rule as this file: fill empty, never overwrite. Staff choices stay and unset ones take the sheet's answer.
 const readPaymentType = (v) => {
   const s = String(v == null ? '' : v).trim().toLowerCase();
   if (!s) return null;
   if (/^(cash|كاش|نقد|غ\s*ض|غير\s*ضريب)/.test(s)) return 'cash';
   if (/^(tax|ضريب|ض)$|ضريب/.test(s)) return 'tax';
-  return null;      // صياغةٌ لم نرَها — تُترك ولا تُخمَّن
+  return null;      // Unrecognised wording: skipped, not guessed.
 };
 const sameDay = (a, b) => a && b && new Date(a).toISOString().slice(0, 10) === new Date(b).toISOString().slice(0, 10);
 
@@ -141,13 +97,13 @@ const sameDay = (a, b) => a && b && new Date(a).toISOString().slice(0, 10) === n
   const OW = require('../models/OperationsWorkflow');
 
   console.log(DRY ? '── تجربة، بلا كتابة ──\n' : '── تنفيذ ──\n');
-  // `cellDates: false` — تبقى التواريخُ أرقامًا كما هي في الملفّ، فتُقرأ بغرينتش.
+  // cellDates is false so dates stay serial numbers and are read in UTC.
   const wb = XLSX.readFile(FILE, { cellDates: false, raw: true });
   const raw = XLSX.utils.sheet_to_json(wb.Sheets[SHEET], { header: 1, defval: null, blankrows: false, raw: true });
   const rows = raw.slice(HEADER_ROW + 1);
   console.log(`صفوفُ الورقة «${SHEET}»: ${rows.length}`);
 
-  // ── الشيتُ يُقرأ أوّلًا، ويُطوى على رقم الكشف ────────────────────────────
+  // Read the sheet first and fold it by manifest number.
   const bySheet = new Map();
   let noNumber = 0; let dupes = 0;
   for (const r of rows) {
@@ -158,22 +114,20 @@ const sameDay = (a, b) => a && b && new Date(a).toISOString().slice(0, 10) === n
       if (SKIP.has(field)) return;
       const v = READ[kind](r[i]);
       if (v !== null) vals[field] = v;
-      // ونوعُ الدفع يُشتقّ من العمود نفسِه، فيُملأ به ما لا نوعَ له عندنا.
+      // Payment type is derived from the same column and fills manifests that have none.
       if (field === 'taxIndicator') {
         const pt = readPaymentType(r[i]);
         if (pt) vals.paymentType = pt;
       }
     });
     if (bySheet.has(no)) dupes += 1;
-    bySheet.set(no, vals);               // الأحدثُ في الورقة يفوز
+    bySheet.set(no, vals);               // Latest row in the sheet wins
   }
   console.log(`  بلا رقم كشفٍ صالح: ${noNumber}`);
   console.log(`  أرقامٌ مكرّرة (يُؤخذ آخرُها): ${dupes}`);
   console.log(`  أرقامٌ فريدة: ${bySheet.size}\n`);
 
-  // ── ثمّ كشوفُنا، على دفعات ─────────────────────────────────────────────
-  // ثلاثون ألفَ رقمٍ في `$in` واحدة تقطع الاتّصالَ بالعنقود المشترك قبل أن
-  // يردّ. فتُسأل على دفعاتٍ صغيرةٍ يمرّ كلٌّ منها على فهرس «رقم الكشف».
+  // Then our manifests, in batches: tens of thousands of numbers in one $in drop the connection to the shared cluster, so query small batches that use the manifest number index.
   const FIELDS = [...COLUMNS.map(([f]) => f).filter((f) => !SKIP.has(f)), 'paymentType'];
   const SELECT = ['reportNumber', ...FIELDS].join(' ');
   const keys = [...bySheet.keys()];

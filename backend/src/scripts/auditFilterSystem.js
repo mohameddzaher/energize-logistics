@@ -1,26 +1,7 @@
 /* eslint-disable no-console */
 /**
- * auditFilterSystem — كل رقم في لوحتَي الموارد البشرية والمركبات يفتح ما يقوله.
- *
- *   node src/scripts/auditFilterSystem.js --base https://api.energize-logistics.com
- *
- * ثلاثة أسئلة، وكلها تُسأل على البيانات الحقيقية لا على الشيفرة:
- *
- *   ١) هل شريحةُ التحليل التي تقول «٦٤» تفتح ٦٤ صفًّا؟ الشريحة تحمل معها فلترها،
- *      فيُطبَّق هذا الفلتر ويُعدّ الناتج ويُقارَن. الرقم الذي يفتح غير ما يقول
- *      أسوأ من رقم غير قابل للضغط.
- *
- *   ٢) هل تغطّي شرائح المستند كل الصفوف مرةً واحدة؟ مجموعها يجب أن يساوي
- *      الإجمالي تمامًا: أقلّ منه يعني صفوفًا لا تظهر في أي شريحة، وأكثر منه يعني
- *      صفًّا يُعدّ مرتين — وكلاهما يجعل اللوحة تكذب بهدوء.
- *
- *   ٣) هل تتقلّص قيم الفلاتر مع بعضها؟ بعد اختيار فرع يجب أن تصير أعداد
- *      الجنسيات أعدادها **في ذلك الفرع**، وإلا اختار المستخدم قيمةً عددها ٤٠
- *      فوجد ٣ فظنّ الشاشة معطوبة.
- *
- * وأخيرًا: النظرة الشاملة والجدول الذي تفتحه لا بدّ أن يتّفقا على نفس العدد،
- * تحت كل شكل من أشكال الفلترة — قيمة واحدة، وقيم متعدّدة، وحقول مجتمعة، ومدى
- * تاريخي، والخانة الفارغة.
+ * Checks that every dashboard number in HR and vehicles opens exactly that many rows, on real data.
+ * Slices must cover all rows once (sum equals total), filter values must narrow each other, and the overview must match the opened table under every filter form.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -52,7 +33,7 @@ const qsOf = (o) => new URLSearchParams(o).toString();
   const get = async (p) => (await (await fetch(`${BASE}${p}`, { headers: { Cookie: ck } })).json());
 
   try {
-    // ══ الموارد البشرية ═══════════════════════════════════════════════════════
+    // HR
     console.log('\n══ الموارد البشرية ══');
     const hov = await get('/api/hr/master/overview');
     const hTotal = hov.totals.filtered;
@@ -103,8 +84,7 @@ const qsOf = (o) => new URLSearchParams(o).toString();
     ok(`أعداد الجنسيات تُحسب بعد فلتر الفرع (${natAll} ← ${natIn})`, natIn < natAll && natIn === br.values[0].count);
     ok('الفرع نفسه يظل يعرض كل فروعه ليمكن إضافة فرع ثانٍ',
       hf2.filters.find((x) => x.key === 'branchName').values.length === br.values.length);
-    // كل حقل يُحسب بكل الفلاتر إلا نفسه: قيمه محسوبة على ما تبقّى، وقيمته
-    // المختارة تبقى ظاهرةً لترفعها وبقيّة قيمه ظاهرةً لتضيفها إليها.
+    // Each field is counted with all filters except itself: its values reflect the rest, its selected value stays visible to clear and its other values stay visible to add.
     const cross = await get(`/api/hr/master/filters?${qsOf({ nationality: two[0], gender: 'male' })}`);
     const males = (await get('/api/hr/master/overview?gender=male')).totals.filtered;
     const egy = (await get(`/api/hr/master/overview?${qsOf({ nationality: two[0] })}`)).totals.filtered;
@@ -120,14 +100,9 @@ const qsOf = (o) => new URLSearchParams(o).toString();
     ok('«على رأس العمل» و«الموظفون» لا يتحرّكان مع الفلتر',
       (await get(`/api/hr/master/overview?${qsOf({ nationality: two[0] })}`)).totals.employees === hov.totals.employees);
 
-    // «مطلوب» على اللوحة = علامات «مطلوب» في القاعدة، لا أقل.
-    //
-    // هذا الفحص موجود لأن مشروعًا جزئيًّا أُضيف لتسريع الاستعلام حذف حقل
-    // `fieldStatus`، فقرأت اللوحة كل خانة «مملوءة أو لا شيء» وأعلنت أن لا عمل
-    // ينتظر — وفي القاعدة آلاف الخانات تنتظر. لوحةٌ تقول صفرًا وهي لا تعرف
-    // أسوأ من لوحةٍ لا تُحمَّل.
-    // العلامة على خانةٍ فيها قيمة أثرٌ قديم من قبل أن تُملأ، فلا تُعدّ عملًا
-    // ينتظر — تُحصى وتُطبع، ولا تدخل في المقارنة.
+    // The required count on the dashboard equals the required flags in the database, not fewer.
+    // Exists because a partial projection added for query speed dropped the fieldStatus field, so the dashboard read every cell as filled and reported no pending work while thousands were pending. A dashboard saying zero without knowing is worse than one that does not load.
+    // A flag on a filled cell is a stale trace from before it was filled; it is counted and printed but excluded from the comparison.
     const rowsFs = await Employee.find({ isHrRecord: { $ne: false }, inCurrentMaster: true }).lean();
     let dbRequired = 0; let staleFlags = 0;
     for (const r of rowsFs) {
@@ -146,7 +121,7 @@ const qsOf = (o) => new URLSearchParams(o).toString();
     ok('وكل مجموعة تقول مجموع حقولها',
       hov.groups.every((g) => g.required === g.fields.reduce((n, f) => n + f.counts.required, 0)));
 
-    // ══ المركبات ══════════════════════════════════════════════════════════════
+    // Vehicles
     console.log('\n══ المركبات ══');
     const vov = await get('/api/vehicle-registry/overview');
     const vTotal = vov.totals.vehicles;

@@ -11,18 +11,18 @@ const mongoose = require('mongoose');
   const byStatus = await Contract.aggregate([{ $group: { _id: '$status', n: { $sum: 1 } } }, { $sort: { n: -1 } }]);
   console.log('الحالات:', byStatus.map((x) => `${x._id}=${x.n}`).join(' · '));
 
-  // عقودٌ مربوطةٌ بموظّفٍ لا وجودَ له
+  // Contracts linked to a nonexistent employee.
   const ids = await Contract.distinct('employee', { employee: { $ne: null } });
   const exist = new Set((await Employee.find({ _id: { $in: ids } }).select('_id').lean()).map((e) => String(e._id)));
   const orphan = ids.filter((i) => !exist.has(String(i)));
   console.log(`موظّفون مربوطون في العقود: ${ids.length} · منهم غيرُ موجود: ${orphan.length}`);
 
-  // كم موظّفًا له عقدٌ ساري؟ ومقابلَه ما تقوله صفحةُ الموظّفين
+  // Employees with an active contract, versus what the employees page reports.
   const activeC = await Contract.countDocuments({ status: 'active' });
   const empsWithActive = (await Contract.distinct('employee', { status: 'active', employee: { $ne: null } })).length;
   console.log(`عقودٌ سارية: ${activeC} · موظّفون لهم عقدٌ ساري: ${empsWithActive}`);
 
-  // الموظّفون الذين يقول سجلُّهم إنّ لهم عقدًا لكن لا عقدَ مربوط
+  // Employees whose record says they have a contract but none is linked.
   const withEnd = await Employee.countDocuments({ contractEndDate: { $nin: [null, ''] } });
   console.log(`موظّفون لهم تاريخُ نهاية عقدٍ في سجلّهم: ${withEnd}`);
   const linked = new Set(ids.map(String));

@@ -1,20 +1,7 @@
 /**
- * importHrExtraFiles — الملفّاتُ الستّة الإضافيّة لقسم الموارد البشريّة.
- *
- *   node src/scripts/importHrExtraFiles.js         # فحصٌ فقط
- *   node src/scripts/importHrExtraFiles.js --yes   # تنفيذ
- *
- * ── الأولويّة ───────────────────────────────────────────────────────────────
- * الشيتاتُ التفصيليّةُ أصحُّ من الماستر. وهذه الستّةُ منها، فما فيها يعلو على ما
- * جاء من الماستر — وذلك بالضبط ما تفعله `--overwrite`… لا. بل تفعله دائمًا:
- * هذه الملفّاتُ هي المرجع، والقيمةُ الموجودةُ عندنا إن خالفتها فمصدرُها الماستر
- * وهو الأضعف. أمّا الخانةُ الفارغةُ في الشيت فلا تمحو ما عندنا: غيابُ القيمة
- * ليس قيمةً.
- *
- * ── والمفتاحُ رقمُ الهويّة ──────────────────────────────────────────────────
- * كلُّ الملفّات مفتاحُها «رقم الهوية»، وهو عندنا `iqamaNumber` للمقيم
- * و`nationalId` للسعوديّ. البحثُ بأحدهما وحدَه كان يُسقِط السعوديّين — فيُبحث
- * بالاثنين.
+ * importHrExtraFiles: the six extra HR files.
+ * The detailed sheets outrank the master, so a differing value we hold came from the weaker master. An empty sheet cell never erases ours: absence is not a value.
+ * The key is the ID number, stored as iqamaNumber for residents and nationalId for Saudis; search both or Saudis are dropped.
  */
 require('dotenv').config();
 const fs = require('fs');
@@ -28,17 +15,11 @@ const DIR = path.join(__dirname, '../../../final hr data/extra hr files');
 
 const n = (v) => (v === null || v === undefined ? '' : String(v).trim());
 
-// ── «غير مطلوب» ليست قيمة ───────────────────────────────────────────────────
-// عمودُ الشهادة الصحّيّة يكتب «غير مطلوب» لمن لا تلزمه شهادة — ٢٩٣ موظّفًا.
-// وتخزينُها في خانة **رقم** الشهادة يجعل الرقمَ نصًّا لا يُقرأ ولا يُبحث به،
-// ويجعل الشاشة تعرض «غير مطلوب» حيث يُنتظر رقم. الغيابُ يُكتب غيابًا.
+// The not-required label is not a value. The health certificate column uses it for employees who need no certificate; storing it in the number field makes the number unsearchable text. Absence is written as absence.
 const NOT_REQUIRED = ['غير مطلوب', 'غير مطلوبة', 'لا يوجد', 'لايوجد', '-', '—'];
 const val = (v) => { const s = n(v); return NOT_REQUIRED.includes(s) ? '' : s; };
 
-// ── رقمُ كارت السائق ────────────────────────────────────────────────────────
-// يصل من الشيت عددًا عشريًّا («11.005889059999999») لأنّ إكسل خزّنه رقمًا لا
-// نصًّا، فأضاف ضجيجَ الفاصلة العائمة. يُزال الضجيجُ ولا تُخترَع صيغةٌ أخرى:
-// ما في الشيت هو ما يُحفَظ، نظيفًا.
+// Driver card number arrives as a float with floating-point noise because Excel stored a number, not text. Strip the noise and keep the clean sheet value, no other format.
 const cardNumber = (v) => {
   const s = n(v);
   if (!s) return '';
@@ -46,13 +27,12 @@ const cardNumber = (v) => {
   if (!Number.isFinite(num) || !/^\d+\.\d{6,}$/.test(s)) return s;
   return String(Number(num.toFixed(8)));
 };
-/** تاريخُ إكسل (رقمٌ تسلسليّ أو نصّ) → 'YYYY-MM-DD'. */
+/** Excel date (serial or text) to 'YYYY-MM-DD'. */
 const hijri = [];
 const ymd = (v, ctx) => {
   const s = n(v);
   if (!s || NOT_REQUIRED.includes(s)) return '';
-  // تاريخٌ هجريّ («1449-02-02») لا يُخزَّن في خانةِ تاريخٍ ميلاديّ: تحويلُه
-  // تخمينٌ، وإقحامُه كما هو يجعله سنةَ ١٤٤٩ الميلاديّة. يُترَك ويُبلَّغ عنه.
+  // A Hijri date string is not stored in a Gregorian date field: converting is a guess and storing it raw reads as year 1449 AD. It is skipped and reported.
   if (/^1[34]\d{2}[-/]/.test(s)) { hijri.push(ctx ? `${ctx}: ${s}` : s); return ''; }
   const num = Number(s);
   if (Number.isFinite(num) && num > 1000 && num < 80000) {
@@ -62,7 +42,7 @@ const ymd = (v, ctx) => {
   return Number.isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 10);
 };
 
-/** يقرأ الورقةَ الأولى ويعيد صفوفًا مفاتيحُها عناوينُ الأعمدة. */
+/** Reads the first sheet and returns rows keyed by column header. */
 function readRows(file) {
   const sheets = require('child_process')
     .execSync(`unzip -Z1 ${JSON.stringify(file)} "xl/worksheets/sheet*.xml"`).toString().trim().split('\n');
@@ -78,7 +58,7 @@ function readRows(file) {
   }).filter((o) => n(o['رقم الهوية']));
 }
 
-// اسمُ الملفّ → كيف تُقرأ أعمدتُه إلى حقول الموظّف.
+// File name to how its columns map to employee fields.
 const FILES = [
   ['تاريخ الميلاد للموظفيين', (r) => ({ dateOfBirth: ymd(r['تاريخ الميلاد']) })],
   ['ملف التأمين الطبي', (r) => ({
@@ -106,7 +86,7 @@ const FILES = [
   })],
 ];
 
-// الحقولُ التي تُخزَّن تواريخَ حقيقيّةً لا نصًّا.
+// Fields stored as real dates, not text.
 const DATE_TYPED = new Set(['healthCertExpiry']);
 
 (async () => {
@@ -140,7 +120,7 @@ const DATE_TYPED = new Set(['healthCertExpiry']);
       const vals = mapper(r);
       const cur = patches.get(String(emp._id)) || {};
       for (const [k, v] of Object.entries(vals)) {
-        // الخانةُ الفارغةُ لا تمحو ما عندنا: غيابُ القيمة ليس قيمة.
+        // An empty cell never erases what we hold: absence is not a value.
         if (v === '' || v === null || v === undefined) continue;
         cur[k] = DATE_TYPED.has(k) ? new Date(`${v}T00:00:00.000Z`) : v;
         fields += 1;

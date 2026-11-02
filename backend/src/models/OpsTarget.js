@@ -1,21 +1,15 @@
 const mongoose = require('mongoose');
 
 /**
- * أهدافُ التشغيل — رحلاتٌ ومبيعاتٌ في السنة.
- *
- * كانت في ورقة إكسل («Annual Target Trips 36000 · Annual Revenue Target
- * 90,000,000») يكتبها مديرُ التشغيل في خانةٍ ويقرأها الرسمُ. وفي النظام لا
- * تُكتب في الشيفرة: هدفٌ يُغيَّر في اجتماعٍ لا يحتاج نشرةً.
- *
- * وهدفُ الفترة يُشتقّ ولا يُكتب: السنويُّ موزَّعًا على أيّامها (راجع
- * utils/opsAnalytics) — فأيُّ مدًى يُختار يأتي بهدفه. و`override` لمن أراد
- * رقمًا بعينه لشهرٍ بعينه.
+ * Operations targets: trips and sales per year.
+ * Previously a spreadsheet cell written by the operations manager; now data in the system, since a target changed in a meeting needs no release.
+ * A period's target is derived, not written: the annual figure spread over its days (see utils/opsAnalytics), so any chosen range gets its target. `override` fixes a specific figure for a specific month.
  */
 const opsTargetSchema = new mongoose.Schema({
   key: { type: String, default: 'ops', unique: true },
   annualTrips: { type: Number, default: 36000 },
   annualRevenue: { type: Number, default: 90000000 },
-  // أهدافٌ تُكتب بعينها لشهرٍ («YYYY-MM») — تسبق الاشتقاق.
+  // Targets written explicitly for a month (YYYY-MM); they take precedence over the derivation.
   overrides: [{
     month: { type: String, trim: true, default: '' },
     trips: { type: Number, default: null },

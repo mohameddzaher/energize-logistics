@@ -1,25 +1,9 @@
 /* eslint-disable no-console */
 /**
- * نقلُ شحنات منصّة الأوبريشن إلى قسم طلبات الشحنات — وإبقاؤها متزامنة.
- *
- *   node src/scripts/importOpsShipments.js --dry
- *   node src/scripts/importOpsShipments.js --yes            # الجديدُ والمعدَّل
- *   node src/scripts/importOpsShipments.js --yes --full     # من أوّل صفحة
- *
- * ── نسخٌ لا مرآة ────────────────────────────────────────────────────────────
- * قسمُ «منصّة الأوبريشن» يقرأ من نظامٍ خارجيّ لحظةً بلحظة: إن انقطع انقطع
- * القسم، ولا تُحلَّل بياناتُه ولا تُفلتَر إلّا بما يسمح به. فتُنسخ الشحناتُ
- * إلى نظامنا لتصير عندنا: تُحلَّل وتُفلتَر وتُصدَّر، ونعمل عليها إن توقّفت
- * المنصّة يومًا.
- *
- * ── ورقمُ كشف التخريج يبقى رقمَهم ──────────────────────────────────────────
- * لا يُعاد ترقيمُ ما نُقل: يبقى رقمُ كشف التخريج كما هو، فيكمل الفريقُ عليه
- * حين ينتقل إلى نظامنا. وشحناتُنا تُرقَّم من عدّادنا ويسبقها حرف («E-500»)،
- * فلا يلتبس رقمٌ برقم ولو تصادف العددان.
- *
- * ── والمزامنةُ تُعيد المعدَّل ولا تُكرِّر ──────────────────────────────────
- * المطابقةُ بمعرّف المنصّة. والتشغيلُ المعتاد يقف عند أوّل صفحةٍ لا جديدَ فيها
- * (مرتّبةً بآخر تعديل)، فالمزامنةُ اليوميّة ثوانٍ لا ساعة. و`--full` يمسح الكلّ.
+ * Move operations platform shipments into shipment orders and keep them in sync.
+ * Usage: --dry; --yes (new and modified); --yes --full (from the first page).
+ * A copy, not a mirror: the operations platform section reads an external system live and stops when it does, and its data cannot be analyzed or filtered beyond what it allows. Shipments are copied so they can be analyzed, filtered and exported, and worked on if the platform stops.
+ * The dispatch sheet number stays theirs, not renumbered, so the team can continue on it. Our own shipments are numbered from our counter with a letter prefix (E-500), so two numbers never clash even if the digits coincide. Sync updates changed rows and never duplicates: matching is by platform id. A normal run stops at the first page with nothing new (sorted by last modified), so the daily sync takes seconds; --full scans everything.
  */
 require('dotenv').config({ path: require('path').join(__dirname, '../../.env') });
 const mongoose = require('mongoose');
@@ -33,12 +17,8 @@ const num = (v) => { const x = Number(v); return Number.isFinite(x) ? x : null; 
 const date = (v) => { if (!v) return null; const d = new Date(v); return Number.isNaN(d.getTime()) ? null : d; };
 const label = (v) => (v && typeof v === 'object' ? n(v.ar) || n(v.en) : n(v));
 
-/** حالاتُ المنصّة ← حالاتنا. المفاتيحُ نفسُها عمدًا، وما شذّ يُردّ إلى أقربه. */
-// ── مطابقةٌ واحدة ────────────────────────────────────────────────────────────
-// كانت هنا نسخةٌ ثانيةٌ من `mapShipment`. فحين صُحِّح حقلٌ في خدمة المزامنة بقي
-// خطأً هنا، فاختلف ما يصل بالاستطلاع عمّا يصل بالنقل الكامل. المصدرُ واحد الآن،
-// ويُضاف إليه تاريخُ الإنشاء الأصليّ وحدَه — النقلُ الكامل يحفظه، والاستطلاعُ
-// اللحظيُّ لا يحتاجه.
+/** Platform statuses to ours; the keys are intentionally the same and anything odd is mapped to the closest. */
+// One mapping. A second copy of mapShipment used to live here, so a field fixed in the sync service stayed wrong here and polling and the full transfer disagreed. The source is now single, with only the original creation date added, which the full transfer keeps and live polling does not need.
 const { mapShipment: mapCore } = require('../services/shipmentOrderSyncService');
 const mapShipment = (x) => ({ ...mapCore(x), createdAt: date(x.created_at) || new Date() });
 
@@ -61,7 +41,7 @@ const mapShipment = (x) => ({ ...mapCore(x), createdAt: date(x.created_at) || ne
   let quietPages = 0;
   for (;;) {
     // eslint-disable-next-line no-await-in-loop
-    // (`sort` مُهمَلٌ في المنصّة — تردّ دائمًا بترتيب الإنشاء؛ راجع jobs/opsPoll.)
+    // The platform ignores sort and always returns creation order; see jobs/opsPoll.
     const r = await upl.get('/admin/shipments', { query: { limit: 100, page } });
     const d = (r && r.data) || {};
     const items = d.items || [];
@@ -87,8 +67,7 @@ const mapShipment = (x) => ({ ...mapCore(x), createdAt: date(x.created_at) || ne
     }
     process.stdout.write(`\r  صفحة ${page} · مقروء ${seen}${total ? '/' + total : ''} · جديد ${created} · محدَّث ${updated}      `);
 
-    // التشغيلُ المعتاد يقف بعد صفحتين بلا جديد — المرتَّبُ بآخر تعديلٍ يضع
-    // الجديدَ أوّلًا، فما بعده مقروءٌ من قبل.
+    // A normal run stops after two pages with nothing new: sorted by last modified, new items come first and the rest was already read.
     if (!FULL && quietPages >= 2) { console.log('\n  (وقفَ عند صفحتين بلا جديد — أضف --full لمسح الكلّ)'); break; }
     if (!d.meta || !d.meta.hasNextPage) break;
     page += 1;

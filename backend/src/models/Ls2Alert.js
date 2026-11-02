@@ -40,16 +40,9 @@ const ls2AlertSchema = new mongoose.Schema({
 ls2AlertSchema.index({ unitId: 1, type: 1, key: 1, status: 1 });
 ls2AlertSchema.index({ status: 1, severity: 1, lastSeenAt: -1 });
 
-// ── وترتيبُ شاشةِ التنبيهات ──────────────────────────────────────────────────
-// `listAlerts` ترتّب بـ`{ status: 1, firstSeenAt: -1 }`، ولا فهرسَ يعطي هذا
-// الترتيب: فهرسُ `status` وحدَه يجد المطابقَ ثمّ يُرتَّب في الذاكرة، وحين
-// يختار المستخدمُ «الكلّ» يسقط الفلترُ فيُمسَح ما في المجموعة كلِّه — خمسةٌ
-// وسبعون ألفَ تنبيهٍ اليوم، مئةٌ وثلاثةٌ وسبعون جزءًا من الثانية.
-//
-// والبطءُ أهونُ ما فيه: الترتيبُ في الذاكرة بلا فهرسٍ محدودٌ باثنين وثلاثين
-// ميجابايت في MongoDB، وهذه المجموعةُ تكبر بكلّ دورةِ استطلاعٍ للأسطول. فيومًا
-// لن تبطؤَ الشاشة — بل **تردّ خطأً**. والفهرسُ يخدم الحالتين: يجد `open` بلا
-// ترتيبٍ لاحق، ويخدم «الكلّ» ترتيبًا من الفهرس نفسِه بلا مسح.
+// Index for the alerts screen sort `{ status: 1, firstSeenAt: -1 }`. Without it the sort runs in memory
+// (capped at 32 MB in MongoDB) and the "all" filter scans the whole growing collection, which would eventually error.
+// This index serves both the open filter and the "all" case.
 ls2AlertSchema.index({ status: 1, firstSeenAt: -1 });
 
 module.exports = mongoose.models.Ls2Alert || mongoose.model('Ls2Alert', ls2AlertSchema);

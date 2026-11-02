@@ -1,13 +1,7 @@
 /**
- * auditEmployeeExit — لا يخرج موظّفٌ وبيده شيءٌ للشركة.
- *
- *   node src/scripts/auditEmployeeExit.js
- *
- * ── ما يفحصه ───────────────────────────────────────────────────────────────
- * حُذف سجلُّ موظّفٍ وبيده أجهزة، فاختفى هو وبقيت عهدتُه مسجَّلةً على اسمٍ لا
- * وجودَ له — تظهر في سجلّ تقنية المعلومات بخانةٍ فارغة. هذا الفحصُ يمنع عودتَه.
- *
- * لا يترك أثرًا: ما يُنشئه يُحذف.
+ * Ensures no employee leaves while holding company property.
+ * A deleted employee record left their devices assigned to a nonexistent name, shown in the IT register with a blank cell. This check prevents that recurring.
+ * Leaves no trace: created records are deleted.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -15,9 +9,7 @@ const mongoose = require('mongoose');
 const argv = process.argv.slice(2);
 const iB = argv.indexOf('--base');
 const BASE = (iB >= 0 && argv[iB + 1] ? argv[iB + 1] : process.env.BASE || 'http://localhost:5599').replace(/\/$/, '');
-// المصدرُ يتبع الخادمَ الذي نفحصه لا ملفَّ البيئة المحلّيّ: حارسُ CSRF يقبل
-// مصادرَ البرودكشن وحدها، فإرسالُ `localhost` إليه يردّ ٤٠٣ على كلّ POST — وهو
-// ما يبدو عطبًا في الميزة وهو عطبٌ في الفحص.
+// Origin follows the server under test, not the local env file: the CSRF guard accepts only production origins, so sending localhost gets 403 on every POST, which looks like a feature bug but is an audit bug.
 const ORIGIN = /api\.energize-logistics\.com/.test(BASE)
   ? 'https://energize-logistics.com'
   : (process.env.FRONTEND_URL?.split(',')[0].trim() || 'http://localhost:3000');
@@ -79,8 +71,7 @@ const head = (s) => console.log(`\n── ${s} ${'─'.repeat(Math.max(0, 60 - s
       const del2 = await call('DELETE', `/api/hr/employees/${e2._id}`, hrCk);
       ok('يُمنع الحذف بالتفويض وحدَه', del2.status === 400, `${del2.status}`);
       ok('ويُسمّى التفويضُ في السبب', (del2.j?.authorizations || 0) === 1, `${del2.j?.authorizations}`);
-      // ── والقاعدةُ نفسُها تحرس إنهاءَ الخدمة ─────────────────────────────
-      // كان الإنهاءُ يفحص العهدةَ وحدَها، فيُمنع الحذفُ ويُسمح الإنهاء.
+      // The same rule also guards ending service. Termination used to check custody only, so deletion was blocked while termination was allowed.
       ok('ولا يُقترَح ردٌّ آليٌّ ما دام التفويضُ قائمًا', del2.j?.canAutoReturnAssets === false);
       await VehicleAuthorization.updateOne({ _id: au._id }, { $set: { status: 'revoked' } });
       const del2b = await call('DELETE', `/api/hr/employees/${e2._id}`, hrCk);

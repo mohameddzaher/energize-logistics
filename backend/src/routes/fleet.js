@@ -1,42 +1,38 @@
 const express = require('express');
 const router = express.Router();
 
-// معرّفٌ مشوَّهٌ في الرابط = لا سجلّ، لا عطلٌ في الخادم — راجع utils/idParam.
+// A malformed id in the URL means no record, not a server error; see utils/idParam.
 const { objectIdParam } = require('../utils/idParam');
 router.param('id', objectIdParam());
 const fleet = require('../controllers/fleetController');
 const authenticate = require('../middleware/auth');
 const authorize = require('../middleware/rbac');
 
-// إدارة الأسطول — our own trucks. fleet_manager runs the section;
-// fleet_supervisor works his ASSIGNED trucks only (scoped in the controller).
+// Fleet management: our own trucks. fleet_manager runs the section; fleet_supervisor works only his assigned trucks (scoped in the controller).
 const EDIT_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_staff', 'moderator', 'fleet_manager', 'fleet_supervisor'];
 const ADMIN_ROLES = ['super_admin', 'admin', 'it_manager', 'operations_manager', 'fleet_manager'];
 
 router.use(authenticate);
 
-// اللوحة الرئيسية — every truck as a card, grouped by supervisor, with the
-// automatic late/arrived/moving state and the maintenance flags.
+// Main board: every truck as a card, grouped by supervisor, with the automatic late/arrived/moving state and the maintenance flags.
 router.get('/board', fleet.getBoard);
 // Assignment: who the supervisors are, and moving a truck between them.
 router.get('/supervisors', fleet.listSupervisors);
 router.patch('/vehicles/:id/supervisor', authorize(...ADMIN_ROLES), fleet.assignVehicleSupervisor);
 router.post('/vehicles/assign-supervisor-bulk', authorize(...ADMIN_ROLES), fleet.assignVehicleSupervisorBulk);
-// مقعدا الشاحنة: السائقُ الأوّل والثاني في نداءٍ واحد — المشرفُ يسندهما من
-// صفّ الشاحنة لا من صفحة السائقين، فالسؤالُ عنده «مَن على هذه الشاحنة؟».
+// The truck's two seats: first and second driver in one call. The supervisor assigns them from the truck row, not the drivers page, since his question is who is on this truck.
 router.patch('/vehicles/:id/drivers', authorize(...EDIT_ROLES), fleet.setVehicleDrivers);
 
-// ── طلباتُ الصيانة: الأسطولُ يطلب، ولوكيشن سوليوشن يقرّر ────────────────────
-// القرارُ ليس هنا: من يملك الصيانةَ هو من يأذن بتأجيلها — راجع routes/ls2.
+// Maintenance requests: fleet asks and Location Solutions decides. The decision is not here because whoever owns maintenance authorizes its postponement; see routes/ls2.
 const fleetRequests = require('../controllers/fleetRequestController');
 router.get('/requests', fleetRequests.list);
 router.post('/requests', authorize(...EDIT_ROLES), fleetRequests.create);
 
-// Shipments (الحمولات)
+// Shipments (loads)
 router.get('/shipments', fleet.listShipments);
 router.post('/shipments', authorize(...EDIT_ROLES), fleet.createShipment);
-router.get('/shipments/:id/waybill.pdf', fleet.getWaybillPdf); // البوليصة PDF — نفس ملف الويب
-// بوالصُ عدّةِ شحناتٍ في ملفٍّ واحد — بدل ترسيمِ كلِّ واحدةٍ في المتصفّح.
+router.get('/shipments/:id/waybill.pdf', fleet.getWaybillPdf); // Waybill PDF, same file as the web.
+// Waybills for several shipments in one file, instead of rendering each in the browser.
 router.post('/shipments/waybills.pdf', fleet.getWaybillsPdf);
 router.get('/shipments/:id', fleet.getShipment); // details + the full event log
 router.put('/shipments/:id', authorize(...EDIT_ROLES), fleet.updateShipment);
@@ -46,34 +42,29 @@ router.delete('/shipments/:id', authorize(...ADMIN_ROLES), fleet.deleteShipment)
 
 // Drivers — assignment changes route through the two-seat rule in the controller
 router.get('/drivers', fleet.listDrivers);
-// «ربط بموظف»: مرشّحو الموارد البشريّة للسائق، وربطُه بملفّه أو فكُّه.
+// "Link to employee": HR candidates for the driver, and linking or unlinking his file.
 router.get('/drivers/hr-candidates', authorize(...EDIT_ROLES), fleet.driverHrCandidates);
 router.patch('/drivers/:id/employee', authorize(...EDIT_ROLES), fleet.setDriverEmployee);
 router.post('/drivers', authorize(...EDIT_ROLES), fleet.createDriver);
 router.put('/drivers/:id', authorize(...EDIT_ROLES), fleet.updateDriver);
 router.delete('/drivers/:id', authorize(...ADMIN_ROLES), fleet.deleteDriver);
 
-// المتوقع للوصول + السيارات الفاضية — الجدولان يخرجان من نداءٍ واحد لأنهما
-// وجهان لقرارٍ واحد: ما الذي يصل، وبأيّ سيارةٍ نغطّي ما لم يصل.
+// Expected arrivals and empty trucks come from one call because they are two faces of one decision: what is arriving, and which truck covers what did not.
 router.get('/arrivals', fleet.getArrivals);
-// تحليل الحمولات عبر فترة — بمصروف كل حمولة ومجموع مصروف كل سائق.
+// Load analysis over a period, with each load's expenses and each driver's expense total.
 router.get('/loads-analysis', fleet.getLoadsAnalysis);
 
-// Vehicles
-// ── حالةُ المركبات ────────────────────────────────────────────────────────
-// أرقامُ شاحناتنا الحيّة في قسمها: الكاوتشُ وحرارتُه وحرارةُ الماء والصيانةُ
-// والتنبيهات. تُقرأ من `Ls2Vehicle` نفسِه — مصدرٌ واحدٌ لا نسخة.
+// Vehicles.
+// Vehicle status: live figures of our trucks in their section (tyres and their temperature, coolant temperature, maintenance, alerts), read from `Ls2Vehicle` itself: one source, no copy.
 router.get('/health', fleet.getFleetHealth);
-// ── مصاريف السوّاق ─────────────────────────────────────────────────────────
-// القراءةُ لكلّ من يفتح القسم؛ وتعليمُ السداد فعلٌ ماليٌّ فيقتصر على الحسابات
-// والإدارة — مشرفُ الأسطول يرى المستحقَّ ولا يقرّر أنّه صُرِف.
+// Driver expenses. Reading is for anyone who opens the section; marking paid is a financial act, limited to accounts and administration. The fleet supervisor sees what is due but does not decide it was paid.
 const EXPENSE_PAY_ROLES = ['super_admin', 'admin', 'it_manager', 'cfo', 'accounting_manager', 'accountant', 'fleet_manager', 'operations_manager'];
 router.get('/driver-expenses', fleet.getDriverExpenses);
 // strict: the section 'edit' a supervisor holds is not the right to mark money paid.
 router.patch('/driver-expenses/paid', authorize.strict(...EXPENSE_PAY_ROLES), fleet.setDriverExpensePaid);
 
 router.get('/vehicles', fleet.listVehicles);
-// تحليل سيارةٍ بعينها عبر فترة — محصورٌ بمشرفها (يُتحقَّق داخل المتحكّم).
+// Analysis of one truck over a period, limited to its supervisor (checked in the controller).
 router.get('/vehicles/:id/analytics', fleet.getVehicleAnalytics);
 router.post('/vehicles', authorize(...EDIT_ROLES), fleet.createVehicle);
 router.put('/vehicles/:id', authorize(...EDIT_ROLES), fleet.updateVehicle);
@@ -82,7 +73,7 @@ router.delete('/vehicles/:id', authorize(...ADMIN_ROLES), fleet.deleteVehicle);
 // Customers
 router.get('/customers', fleet.listCustomers);
 router.get('/customers/filters', fleet.customerFilterOptions);
-router.get('/customers/:id/profile', fleet.getCustomerProfile); // العميل + سجل رحلاته الكامل
+router.get('/customers/:id/profile', fleet.getCustomerProfile); // Customer and his full trip history.
 router.post('/customers', authorize(...EDIT_ROLES), fleet.createCustomer);
 router.put('/customers/:id', authorize(...EDIT_ROLES), fleet.updateCustomer);
 router.delete('/customers/:id', authorize(...ADMIN_ROLES), fleet.deleteCustomer);
@@ -91,15 +82,11 @@ router.post('/customers/:id/restore', authorize(...ADMIN_ROLES), fleet.restoreCu
 // Dashboard + rich analytics
 router.get('/dashboard', fleet.getDashboard);
 router.get('/analytics', fleet.getAnalytics);
-// تقييم أداء السائقين — the business-side driver scorecard (loads, income,
-// on-time arrival, follow-up discipline). Telemetry-side scoring lives in
-// /api/ls2/drivers/performance.
+// Driver performance rating: the business-side driver scorecard (loads, income, on-time arrival, follow-up discipline). Telemetry-side scoring lives in /api/ls2/drivers/performance.
 router.get('/driver-kpis', fleet.getDriverKpis); // ?from&to | ?month=YYYY-MM
 
-// Section settings (Friday bonus amount, default monthly target)
-// ── سجلّات السيارات ─────────────────────────────────────────────────────────
-// السجلّ الشهريّ للسيّارة: ما جرى لها في الشهر كلِّه، لا ما جرى لشحنةٍ واحدة.
-// المسار الثابت قبل ذي المعامل، وإلّا ابتلعه `/:id`.
+// Section settings (Friday bonus amount, default monthly target).
+// Vehicle logs: a vehicle's monthly log covers its whole month, not one shipment. The static route comes before the parameterized one, or `/:id` would swallow it.
 router.get('/vehicle-logs/summary', fleet.getVehicleLogsSummary);
 router.get('/vehicle-logs', fleet.getVehicleLog);
 router.post('/vehicle-logs', authorize(...EDIT_ROLES), fleet.createVehicleLog);

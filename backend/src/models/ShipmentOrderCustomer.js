@@ -17,40 +17,25 @@ const shipmentOrderCustomerSchema = new mongoose.Schema(
     email: { type: String, trim: true, default: '' },
     notes: { type: String, trim: true, default: '' },
 
-    // بياناتُ العميل كما تحملها منصّةُ الأوبريشن.
+    // Customer data as carried by the operations platform.
     externalId: { type: String, trim: true, default: '', index: true },
-    // فردٌ أم شركة: الفاتورةُ تختلف، والسعرُ يختلف.
+    // Individual or company: invoicing and price differ.
     customerType: { type: String, trim: true, default: '' },
     address: { type: String, trim: true, default: '' },
     city: { type: String, trim: true, default: '' },
 
-    // The agreed price list: "من جدة للرياض بكذا". Picking this customer plus a
-    // from/to on the create form pulls the matching price automatically; a NEW
-    // route priced on the form is appended here, so the profile learns as the
-    // work happens instead of someone maintaining it by hand.
-    // ── والسعرُ أحدثُ ما اتُّفق عليه ────────────────────────────────────────
-    // المسارُ الواحد يتكرّر خمسين مرّةً في السنة بأسعارٍ تتغيّر. فلا يُحفظ له
-    // صفٌّ لكلّ مرّة — صفٌّ واحدٌ يحمل **آخرَ** سعرٍ عُمل به، ومعه تاريخُه
-    // ومصدرُه: من أين جاء هذا الرقم (شحنةٌ أُنشئت، أو تقريرُ الفروع، أو يدُ
-    // موظّف)، ومتى. والأحدثُ يغلب الأقدمَ مهما كان مصدرُه.
-    //
-    // و`at` تاريخُ **العمل** لا تاريخُ الكتابة: صفٌّ يُستورَد اليوم عن شحنةٍ
-    // في مارس لا يُسقِط سعرًا اتُّفق عليه في أغسطس.
+    // The agreed price list per route, e.g. from Jeddah to Riyadh for X. Picking this customer plus a from/to on the create form pulls the matching price automatically; a NEW route priced on the form is appended here, so the profile learns as work happens.
+    // The price is the latest agreed. A route repeats many times a year at changing prices, so one row holds the LATEST price with its date and source (a created shipment, the branches report, or a user's hand), and the newest wins regardless of source.
+    // `at` is the date of the WORK, not the write date: a row imported today for a March shipment does not override a price agreed in August.
     routes: [{
       fromCity: { type: String, trim: true, default: '' },
       toCity: { type: String, trim: true, default: '' },
       price: { type: Number, default: null },
       at: { type: Date, default: null },
       source: { type: String, trim: true, default: '' }, // order | platform | sheet | manual | private
-      hits: { type: Number, default: 1 },                 // كم مرّةً رأينا هذا المسار
-      // ── والسعرُ قد يتبع عددَ السيارات ────────────────────────────────────
-      // «من سيارةٍ إلى خمسٍ السعرُ ٢٢٠٠ للسيارة، ومن ستٍّ إلى عشرٍ ٢٤٠٠».
-      // فالمسارُ يحمل شرائحَه: من عددٍ إلى عدد (و`maxTrucks` الفارغُ = فما
-      // فوق) بسعرٍ **للسيارة الواحدة**. والعددُ سياراتُ العميل على هذا المسار
-      // في الطلب. يكتبها مديرُ العمليّات أو مديرُ النظام وحدَهما
-      // (customerRegistryController.setRouteTiers). و«التشغيل — خاصّ» يكتب
-      // للكشف **أعلى** شريحةٍ في مساره: الكشفُ سيارةٌ واحدة ولا يُعرَف منه كم
-      // طلب العميل. ومسارٌ بلا شرائحَ يبقى على سعره الواحد كما كان.
+      hits: { type: Number, default: 1 },                 // How many times this route has been seen
+      // The price may depend on the number of trucks, e.g. one to five at 2200 each, six to ten at 2400.
+      // The route holds its tiers: from a count to a count (empty `maxTrucks` = and above) at a price PER TRUCK, where the count is the customer's trucks on this route in the order. Written only by the operations manager or system admin (customerRegistryController.setRouteTiers). The private operations page writes the HIGHEST tier of its route to the report, since a report is one truck and the ordered count is unknown. A route without tiers keeps its single price.
       tiers: [{
         _id: false,
         minTrucks: { type: Number, required: true },
@@ -80,11 +65,8 @@ const shipmentOrderCustomerSchema = new mongoose.Schema(
 
 shipmentOrderCustomerSchema.index({ name: 1 });
 
-// ── فهرسُ أسعار المسارات يُمسَح مع كلّ كتابة ─────────────────────────────────
-// «التشغيل — خاصّ» يحفظ فهرسَ (عميل|مسار ← سعر) دقيقةً بدل قراءة ٦٦٨ عميلًا في
-// كلّ نداء. فأيُّ كتابةٍ على عميلٍ — حفظٌ أو تحديثٌ أو حذف، من أيّ شاشة — تمسحه
-// هنا في موضعٍ واحد، فلا يُنسى مسارُ كتابةٍ فيبقى سعرٌ قديم.
-// وقائمةُ العملاء في «طلبات الشحنات» محفوظةٌ كذلك (so:registry) — تُمسَح معه.
+// The route price index is cleared on every write.
+// The private operations page caches a (customer|route -> price) index for a minute instead of reading all customers on each call. Any write to a customer (save, update or delete, from any screen) clears it here in one place so no write path leaves a stale price. The customer list in shipment orders (so:registry) is cached too and cleared with it.
 const clearRouteIndex = () => {
   try {
     const cache = require('../utils/ttlCache');
@@ -96,7 +78,7 @@ for (const op of ['save', 'findOneAndUpdate', 'updateOne', 'updateMany', 'insert
   shipmentOrderCustomerSchema.post(op, clearRouteIndex);
 }
 
-// ── العميلُ واحدٌ في كلّ الأقسام — رابطُه إلى شركة العلاقات الأمّ (services/customerHub) ──
+// One customer across all sections: link to the parent relations company (services/customerHub)
 shipmentOrderCustomerSchema.add({ crmCompany: { type: mongoose.Schema.Types.ObjectId, ref: 'CrmCompany', default: null, index: true } });
 // Copy of the master's customer code (utils/customerCode).
 shipmentOrderCustomerSchema.add({ customerCode: require('../utils/customerCode').codeField() });

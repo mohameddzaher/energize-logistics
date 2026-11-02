@@ -1,18 +1,8 @@
 /**
- * auditDriverLinkage — بطاقةُ السائق وتفاويضُه وخيانةُ أمانته شيءٌ واحد.
- *
- *   node src/scripts/auditDriverLinkage.js --base https://api.energize-logistics.com
- *
- * ── ما يفحصه ───────────────────────────────────────────────────────────────
- * ثلاثةُ أشياء تخصّ السائقَ نفسَه لا المركبة، وكانت في ثلاث شاشات لا يجمعها
- * اسمُه: بطاقتُه، وما هو مفوَّضٌ عليه، وهل تغطّيه وثيقةُ خيانة الأمانة.
- * يفحص هذا أنّ الثلاثة تُقرأ من الطرفين، وأنّ الأرقام تطابق الشيت والقاعدة.
- *
- * ويفحص معها ما جاء في الدفعة نفسها: الوثيقتين المكرَّرتين، وجهةَ الإبلاغ بعد
- * توحيدها، والبحثَ المتسامح مع المسافات، ورقمَ الهويّة في ماستر الموارد
- * البشريّة.
- *
- * لا يترك أثرًا: الحسابُ الذي يُنشئه يُحذف.
+ * Checks that a driver's card, his authorizations and his fidelity insurance are one thing.
+ * These three concern the driver, not the vehicle, and lived on three screens not joined by his name. Verifies all three read from both ends and numbers match the sheet and database.
+ * Also checks the duplicate documents, the reporting destination after unification, whitespace-tolerant search and the identity number in the HR master.
+ * Leaves no trace: the account it creates is deleted.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -20,9 +10,7 @@ const mongoose = require('mongoose');
 const argv = process.argv.slice(2);
 const iB = argv.indexOf('--base');
 const BASE = (iB >= 0 && argv[iB + 1] ? argv[iB + 1] : process.env.BASE || 'http://localhost:5599').replace(/\/$/, '');
-// المصدرُ يتبع الخادمَ الذي نفحصه لا ملفَّ البيئة المحلّيّ: حارسُ CSRF يقبل
-// مصادرَ البرودكشن وحدها، فإرسالُ `localhost` إليه يردّ ٤٠٣ على كلّ POST —
-// وهو ما يبدو عطبًا في الميزة وهو عطبٌ في الفحص.
+// Origin follows the server under test, not the local env file: the CSRF guard accepts only production origins, so sending localhost gets 403 on every POST, which looks like a feature bug but is an audit bug.
 const ORIGIN = /api\.energize-logistics\.com/.test(BASE)
   ? 'https://energize-logistics.com'
   : (process.env.FRONTEND_URL?.split(',')[0].trim() || 'http://localhost:3000');
@@ -62,7 +50,7 @@ const head = (s) => console.log(`\n── ${s} ${'─'.repeat(Math.max(0, 62 - s
     const hrCk = await login(hr.email);
     ok('دخول مدير المركبات ومدير الموارد البشريّة', !!ck && !!hrCk);
 
-    // ── بطاقات السائقين ─────────────────────────────────────────────────────
+    // Driver cards
     head('بطاقات السائقين — خيانة الأمانة');
     const dc = await get('/api/vehicle-registry/driver-cards', ck);
     ok('الصفحة تُحمَّل', dc.status === 200, `HTTP ${dc.status}`);
@@ -76,7 +64,7 @@ const head = (s) => console.log(`\n── ${s} ${'─'.repeat(Math.max(0, 62 - s
     ok('المطلوب ضمُّهم يطابقون العدّاد', tot.fidelityRequired === req, `${tot.fidelityRequired} / ${req}`);
     ok('المجموع = مشمول + مطلوب + بلا جواب',
       cov + req + (tot.fidelityUnknown || 0) === cards.length, `${cov}+${req}+${tot.fidelityUnknown} = ${cards.length}`);
-    // والشيتُ هو المرجع: ستّون مشمولًا وواحدٌ مطلوب.
+    // The sheet is the reference: sixty covered and one required.
     ok('الأرقام كما في شيت «بطاقات سائقين وخيانة الأمانة»', cov === 60 && req === 1, `مشمول ${cov} · مطلوب ${req}`);
 
     head('بطاقات السائقين — التفاويض');
@@ -84,13 +72,13 @@ const head = (s) => console.log(`\n── ${s} ${'─'.repeat(Math.max(0, 62 - s
     ok('التفاويض تُقرأ من ناحية السائق', withAuth.length > 0, `${withAuth.length} سائقًا`);
     ok('كلُّ تفويضٍ يحمل لوحةً ومصدرًا',
       withAuth.every((c) => c.authorizations.every((a) => a.plateNumber && ['registry', 'assignment'].includes(a.source))));
-    // ورقةُ السجلّ تفوز على سجلّ الإسناد ولا يُعرَضان معًا لسائقٍ واحد.
+    // The register sheet wins over the assignment log; both are never shown for one driver.
     const mixed = withAuth.filter((c) => new Set(c.authorizations.map((a) => a.source)).size > 1);
     ok('لا يُخلَط المصدران على سائقٍ واحد', mixed.length === 0, `${mixed.length}`);
     const flagged = cards.filter((c) => (c.staleAssignments || []).length);
     ok('الخلافُ مع السجلّ الأقدم معروضٌ لا مبتلَع', flagged.length > 0, `${flagged.length} صفًّا مُعلَّمًا`);
 
-    // كلُّ تفويضٍ من السجلّ يوافق ما في قاعدة البيانات لصاحب رقم الإقامة نفسِه.
+    // Every authorization in the log matches the database for the holder of the same residence number.
     let mismatched = 0;
     for (const c of cards.filter((x) => x.authorizations?.some((a) => a.source === 'registry'))) {
       const inDb = await VehicleMaster.countDocuments({ 'authorizedPerson.iqamaNumber': String(c.idNumber).trim() });
@@ -119,7 +107,7 @@ const head = (s) => console.log(`\n── ${s} ${'─'.repeat(Math.max(0, 62 - s
     const expiringSoon = carded.filter((v) => ['expired', 'critical'].includes(v.driverCard.state));
     console.log(`      · مركباتٌ مفوَّضةٌ لسائقٍ بطاقتُه منتهيةٌ أو تنتهي خلال شهر: ${expiringSoon.length}`);
 
-    // ── وثائق الشركة ────────────────────────────────────────────────────────
+    // Company documents
     head('وثائق تأمين الشركة — بلا مكرَّر');
     const cp = await get('/api/vehicle-registry/corporate-policies', ck);
     const pol = cp.j?.policies || [];
@@ -131,7 +119,7 @@ const head = (s) => console.log(`\n── ${s} ${'─'.repeat(Math.max(0, 62 - s
     ok('عددُ الوثائق النشطة يطابق القاعدة',
       pol.length === await CorporatePolicy.countDocuments({ isActive: true }), `${pol.length}`);
 
-    // ── الحوادث ─────────────────────────────────────────────────────────────
+    // Accidents
     head('الحوادث — جهةُ الإبلاغ والملاحظات');
     const cl = await get('/api/vehicle-registry/claims', ck);
     const claims = cl.j?.claims || [];
@@ -149,7 +137,7 @@ const head = (s) => console.log(`\n── ${s} ${'─'.repeat(Math.max(0, 62 - s
     ok('مسمّى قائد المركبة قائمةٌ تُدار', titles.includes('سائق نقل ثقيل') && titles.includes('مندوب توصيل') && titles.includes('موظف'),
       titles.join(' · '));
 
-    // ── البحث المتسامح ──────────────────────────────────────────────────────
+    // Tolerant search
     head('البحث باللوحة لا يبالي بالمسافات');
     const sample = vs.find((v) => /\s/.test(String(v.plateNumber || '')));
     if (!sample) ok('وُجدت لوحةٌ بمسافة', false);
@@ -163,7 +151,7 @@ const head = (s) => console.log(`\n── ${s} ${'─'.repeat(Math.max(0, 62 - s
       }
     }
 
-    // ── التجديد الجماعيّ للورقة المشتركة ────────────────────────────────────
+    // Bulk renewal of the shared sheet
     head('تجديد وثيقة كاملة');
     const post = async (p, body, ckk) => {
       const r = await fetch(`${BASE}${p}`, {
@@ -179,7 +167,7 @@ const head = (s) => console.log(`\n── ${s} ${'─'.repeat(Math.max(0, 62 - s
     const sharedDocs = docs.filter((d) => d.sharedNumber).map((d) => d.key);
     ok('التأمين وحدَه ورقةٌ مشتركة', sharedDocs.length === 1 && sharedDocs[0] === 'insurance', sharedDocs.join(' · ') || '—');
 
-    // الوثيقةُ الأكبر: كم مركبةً تحتها؟
+    // The largest document: how many vehicles are under it?
     const byPolicy = new Map();
     for (const v of vs) {
       const n = String(v.insurance?.policyNumber || '').trim();
@@ -190,7 +178,7 @@ const head = (s) => console.log(`\n── ${s} ${'─'.repeat(Math.max(0, 62 - s
     ok('العدد يطابق القاعدة',
       !!biggest && await VehicleMaster.countDocuments({ 'insurance.policyNumber': biggest[0] }) === biggest[1]);
 
-    // ولا يُجدَّد جماعةً ما ورقتُه لكلّ مركبة — ولا برقمٍ مجهول ولا بتاريخٍ ماضٍ.
+    // A document with a per-vehicle sheet is not bulk-renewed, nor with an unknown number or a past date.
     const nextYear = new Date(Date.now() + 400 * 86400000).toISOString().slice(0, 10);
     const r1 = await post('/api/vehicle-registry/renew-shared',
       { document: 'operatingCard', number: 'x', newExpiry: nextYear }, ck);
@@ -231,7 +219,7 @@ const head = (s) => console.log(`\n── ${s} ${'─'.repeat(Math.max(0, 62 - s
     });
     ok('الأيّامُ بعده تحمل ختاميَّ ما قبلها', broken.length === 0, broken.map((w) => w.date).join(' · '));
 
-    // ── وثائق الشركة بعد إعادة التصميم ──────────────────────────────────────
+    // Company documents after the redesign
     head('وثيقة خيانة الأمانة — مَن تغطّيهم وبكم');
     const cp2 = await get('/api/vehicle-registry/corporate-policies', ck);
     const fid = (cp2.j?.policies || []).find((p) => /خيانة/.test(p.scopeAr || ''));
@@ -247,7 +235,7 @@ const head = (s) => console.log(`\n── ${s} ${'─'.repeat(Math.max(0, 62 - s
     ok('الإجماليُّ المكتوبُ سابقًا أُزيل', fid?.premiumSar == null, String(fid?.premiumSar));
     ok('ومَن ينقصه الضمُّ معروضٌ بالاسم', Array.isArray(fid?.drivers?.pending), `${fid?.drivers?.pending?.length}`);
 
-    // الضمُّ والإخراج يكتبان في بطاقة السائق — تُجرَّب ثمّ تُعاد.
+    // Adding and removing write to the driver card, so they are tried and then reverted.
     const target = fid?.drivers?.pending?.[0] || fid?.drivers?.covered?.[0];
     if (target) {
       const wasCovered = (fid.drivers.covered || []).some((d) => d._id === target._id);
@@ -270,13 +258,13 @@ const head = (s) => console.log(`\n── ${s} ${'─'.repeat(Math.max(0, 62 - s
       stateAr('critical') === 'قارب على الانتهاء' && stateAr('warning') === 'قارب على الانتهاء' && stateAr('upcoming') === 'قارب على الانتهاء',
       [stateAr('critical'), stateAr('warning'), stateAr('upcoming')].join(' · '));
     ok('«منتهي» و«ساري» كما هما', stateAr('expired') === 'منتهي' && stateAr('valid') === 'ساري');
-    // والخادمُ يقبل الاسمَ المعروض في الفلتر
+    // The server accepts the display name used in the filter.
     const due = await get('/api/vehicle-registry/expiring?state=due&includeExpired=0&withinDays=', ck);
     ok('فلترُ «قارب على الانتهاء» يعمل على الخادم', due.status === 200 && Array.isArray(due.j?.rows), `HTTP ${due.status} · ${due.j?.rows?.length} صفًّا`);
     ok('ولا يُرجع منتهيًا ولا ساريًا',
       (due.j?.rows || []).every((r) => ['critical', 'warning', 'upcoming'].includes(r.state)));
 
-    // ── الموارد البشريّة ────────────────────────────────────────────────────
+    // Human resources
     head('ماستر الموارد البشريّة — رقم الهويّة');
     const idg = await get('/api/hr/master/records/identity?limit=1000', hrCk);
     ok('صفحة الهويّة تُحمَّل', idg.status === 200, `HTTP ${idg.status}`);

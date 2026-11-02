@@ -1,13 +1,7 @@
 /**
- * repairHijriDates — تواريخُ هجريّةٌ خُزّنت كأنّها ميلاديّة.
- *
- *   node src/scripts/repairHijriDates.js          تجربة
- *   node src/scripts/repairHijriDates.js --yes    تنفيذ
- *
- * «1449-01-09» كُتب في خانة تاريخٍ فصار سنةَ ١٤٤٩ **ميلاديّة** — قبل ستّمئة
- * عام — فتقول الشاشةُ «متأخّر ٢١٠٩٨٧ يومًا» عن شهادةٍ لم يحن أجلُها. ويُعرَف
- * المعطوبُ بيقين: تاريخُ عملٍ قبل ١٩٠٠ ليس تاريخًا، وسنةُ ١٤٤٩ هجريّةً تقع
- * في ٢٠٢٧ — بجانب السليمة في الحقل نفسِه (٢٠٢٧-٠٦-٢٨).
+ * repairHijriDates: Hijri dates stored as if Gregorian.
+ * Usage: node src/scripts/repairHijriDates.js [--yes] (dry run by default).
+ * A value like '1449-01-09' in a date field becomes Gregorian year 1449, so the screen reports a huge overdue count for a certificate not yet due. Damage is certain to identify: a working date before 1900 is not a date, and Hijri 1449 falls in 2027, next to valid values in the same field.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -15,7 +9,7 @@ const { parseHijri, toHijri } = require('../utils/hijri');
 
 const YES = process.argv.includes('--yes');
 const LOW = new Date('1900-01-01');
-// حقولُ التاريخ التي قد تحمل هجريًّا مكتوبًا خطأً.
+// Date fields that may hold a mistakenly written Hijri date.
 const FIELDS = ['healthCertExpiry', 'iqamaExpiry', 'passportExpiry', 'licenseExpiry', 'contractEnd', 'iqamaIssueDate'];
 
 (async () => {
@@ -33,7 +27,7 @@ const FIELDS = ['healthCertExpiry', 'iqamaExpiry', 'passportExpiry', 'licenseExp
     const plan = [];
     for (const r of rows) {
       const iso = new Date(r[f]).toISOString().slice(0, 10);
-      const g = parseHijri(iso);                    // يُقرأ ما كُتب على أنّه هجريّ
+      const g = parseHijri(iso);                    // Interpret the stored value as Hijri
       if (!g) { console.log(`   ✗ ${r.employeeNumber} ${iso} — تعذّر التحويل`); continue; }
       plan.push({ id: r._id, from: iso, to: g });
     }

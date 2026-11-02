@@ -1,12 +1,9 @@
 const mongoose = require('mongoose');
 
-// A leave request follows a two-step approval chain:
-//   pending_manager → pending_hr → approved   (or rejected/cancelled anywhere)
+// A leave request follows an approval chain:
+// pending_manager, pending_hr, approved (or rejected/cancelled anywhere)
 // If the requester has no direct manager, it starts at pending_hr directly.
-// ── المرفق ───────────────────────────────────────────────────────────────────
-// الإجازة المرضيّة تُطلب بتقرير، والاستثنائيّة بورقةٍ تُبرّرها. وكانت تُرسَل
-// على الواتساب فتضيع، ثمّ يُسأل بعد شهرين «أين تقرير فلان؟» فلا يُوجد. يعيش
-// المرفقُ مع الطلب نفسِه: يُنسخ معه احتياطيًّا، ويبقى يُحمَّل من ملفّ الموظّف.
+// Attachment: sick leave needs a report and exceptional leave a justifying paper. Sent over WhatsApp they got lost and could not be found months later. The attachment lives with the request, is backed up with it and stays downloadable from the employee file.
 const attachmentSchema = new mongoose.Schema({
   title: { type: String, trim: true, default: '' },
   fileUrl: { type: String, required: true },
@@ -26,7 +23,7 @@ const decisionSchema = new mongoose.Schema(
     note: { type: String, trim: true },
     // Optional signature (base64 PNG) the approver applied when deciding.
     signature: { type: String, default: '' },
-    // ورقةُ المدير أو الموارد البشريّة حين يكون للقرار سند.
+    // Manager or HR paper when the decision has a basis.
     attachments: [attachmentSchema],
   },
   { _id: false }
@@ -45,17 +42,11 @@ const leaveRequestSchema = new mongoose.Schema(
     endDate: { type: String, required: true }, // YYYY-MM-DD
     days: { type: Number, required: true },
     reason: { type: String, trim: true },
-    // مرفقاتُ مقدّم الطلب: التقرير الطبّيّ، ورقةُ الظرف الطارئ، وما إليها.
+    // Requester attachments: medical report, emergency paper and similar.
     attachments: [attachmentSchema],
 
-    // ── إجازةٌ وقعت ثمّ سُجّلت ────────────────────────────────────────────
-    // كثيرٌ من الإجازات تُؤخذ قبل أن يوجد النظام، أو تُتّفق شفاهةً ثمّ تُقيَّد.
-    // ولا سبيلَ إلى رصيدٍ صحيحٍ إن لم تُسجَّل: يبقى الموظّف في الورق مستحقًّا
-    // ثلاثين يومًا وقد أخذ اثنَي عشر.
-    //
-    // فتُسجَّل معتمَدةً من أوّلها — لا تمرّ بمديرٍ ولا بمهلة إخطارٍ، فالماضي
-    // لا يُوافَق عليه — لكنّها تُوسَم `backdated` ويُسجَّل من قيّدها ومتى.
-    // فمن يقرأ السجلَّ بعدها يعرف أنّ هذه لم تُطلب بل قُيّدت.
+    // Leave that happened and is recorded afterwards. Many leaves were taken before the system existed or agreed verbally, and balances cannot be right unless recorded; otherwise the employee is owed thirty days on paper after taking twelve.
+    // Recorded as approved from the start, skipping the manager and the notice period (the past is not approved), but marked `backdated` with who recorded it and when, so a reader knows it was recorded, not requested.
     backdated: { type: Boolean, default: false, index: true },
     // Recorded by HR from the leave register (no request; e.g. an employee without a login).
     manual: { type: Boolean, default: false, index: true },
@@ -86,15 +77,8 @@ const leaveRequestSchema = new mongoose.Schema(
       by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, byName: String, at: Date,
     },
 
-    // ── سلسلةُ الموافقات أربعُ محطّات ────────────────────────────────────
-    //
-    // المديرُ المباشر ← الموارد البشريّة ← الحسابات ← الإدارة العليا. وكانت
-    // محطّتين، فما يخصّ المالَ (سلفةٌ على الموظّف، أو مستحقّاتٌ قبل السفر) لم
-    // يكن يمرّ على الحسابات أصلًا، والإدارةُ العليا تعلم بالسفر بعد وقوعه.
-    //
-    // و«طلبُ إيضاح» ليس رفضًا: قد تقول الحساباتُ «عليه مبلغٌ يُسدَّد أوّلًا»
-    // فيردّ الموظّفُ أو يعدّل طلبَه. وحين يردّ تعود السلسلةُ من أوّلها —
-    // لأنّ الطلبَ الذي وافق عليه المديرُ لم يعد هو الطلبَ نفسَه.
+    // The approval chain has four stages: direct manager, HR, accounts, senior management. It was two stages, so money matters (an advance on the employee, or dues before travel) never reached accounts and senior management learned of travel after it happened.
+    // An ask for clarification is not a rejection: accounts may say a sum must be settled first and the employee replies or amends. When he replies the chain restarts from the beginning, since the request the manager approved is no longer the same request.
     status: {
       type: String,
       enum: [
@@ -114,17 +98,15 @@ const leaveRequestSchema = new mongoose.Schema(
     financeDecision: decisionSchema,
     executiveDecision: decisionSchema,
 
-    // ── ما دار بين الطالب والمراجعين ────────────────────────────────────
-    // سؤالٌ يُطرح وردٌّ يُكتب — يبقيان على الطلب فيُقرأ بعد شهرٍ لماذا تأخّر
-    // وبم أُجيب. ولا يُمحى شيءٌ منهما.
+    // What passed between the requester and reviewers: a question asked and a reply written stay on the request, so why it was delayed and what was answered is readable later. Nothing is erased.
     thread: [{
       at: { type: Date, default: Date.now },
       kind: { type: String, enum: ['question', 'reply'], required: true },
-      stage: { type: String, default: '' },        // مَن سأل: hr / finance / …
+      stage: { type: String, default: '' },        // Who asked: hr / finance / ...
       by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
       byName: { type: String, default: '' },
       text: { type: String, trim: true, default: '' },
-      // مرفقٌ يرسله الموظّف مع ردّه (base64) — إيصالُ سدادٍ مثلًا.
+      // Attachment the employee sends with his reply (base64), for example a payment receipt.
       attachment: { type: String, default: '' },
       attachmentName: { type: String, default: '' },
     }],
@@ -140,11 +122,7 @@ const leaveRequestSchema = new mongoose.Schema(
       remainingAfter: Number,
     },
 
-    // Advance-notice policy snapshot (سياسة الإخطار المسبق). `daysAhead` is how
-    // many days before the start date this was actually filed; `requiredDays` is
-    // what the leave type demanded. A request that fails the rule is rejected at
-    // creation UNLESS HR overrode it — then `overridden` records who and why, so
-    // the exception is visible on the request forever.
+    // Advance-notice policy snapshot. `daysAhead` is how many days before the start date this was actually filed; `requiredDays` is what the leave type demanded. A request failing the rule is rejected at creation unless HR overrode it, in which case `overridden` records who and why, so the exception stays visible on the request.
     advanceNotice: {
       required: { type: Boolean, default: false },
       requiredDays: { type: Number, default: 0 },

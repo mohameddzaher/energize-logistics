@@ -1,12 +1,8 @@
 /**
- * applyCashInvoiceRule — ما دُفع هو ما يُفوتَر، للكشوف النقديّة القائمة.
- *
- *   node src/scripts/applyCashInvoiceRule.js          تجربة
- *   node src/scripts/applyCashInvoiceRule.js --yes    تنفيذ
- *
- * القاعدةُ الجديدة: مبلغُ السداد يذهب إلى صافي الفاتورة وإلى إجماليها،
- * والضريبةُ صفر — لا ضريبةَ على نقد. وهذه الكشوفُ صُفِّرت بالقفل القديم، فتُملأ
- * بما دُفع. ولا يُمَسّ كشفٌ كُتب فيه صافٍ بيدٍ (غيرُ صفر).
+ * applyCashInvoiceRule: for existing cash manifests, what was paid is what is invoiced.
+ * node src/scripts/applyCashInvoiceRule.js          dry run
+ * node src/scripts/applyCashInvoiceRule.js --yes    apply
+ * New rule: the payment amount goes to the invoice net and total, and tax is zero (no tax on cash). These manifests were zeroed by the old lock, so they are filled with what was paid. A manifest with a hand-written non-zero net is not touched.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -19,7 +15,7 @@ const YES = process.argv.includes('--yes');
   const rows = await OperationsWorkflow.find({
     paymentType: 'cash',
     paymentAmount: { $gt: 0 },
-    // ما لم يُكتب فيه صافٍ بيد — الصفرُ أثرُ القفل لا قصدُ إنسان.
+    // Only those where no net was written by hand: zero is the lock's trace, not a person's intent.
     $or: [{ netInvoice: 0 }, { netInvoice: null }, { netInvoice: { $exists: false } }],
   }).select('reportNumber username paymentAmount netInvoice tax totalInvoice').lean();
 

@@ -1,23 +1,8 @@
 /**
- * إرجاعُ شاحنات الناقلين التي أُوقفت بغير حقّ.
- *
- * ── ما حدث ─────────────────────────────────────────────────────────────────
- * استيرادُ الناقلين من منصّة الأوبريشن نسخ حالةَ المنصّة كما هي
- * (`active` و`deleted_at`)، فأُوقفت سبعُمئةٍ وأربعٌ وخمسون شاحنة. ثمّ قيست:
- *
- *   • سبعُمئةٍ وأربعون منها حملت لنا ألفين ومئتين وتسعًا وستّين شحنة.
- *   • خمسُمئةٍ وأربعٌ وعشرون منها عملت في آخر ستّة أشهر.
- *   • وبعضُها حمل في اليوم نفسِه الذي أُوقفت فيه.
- *
- * فحالةُ المنصّة ليست خبرًا عن وجود الشاحنة: تُعلَّم فيها المركبةُ محذوفةً
- * لأسبابها هي، والشاحنةُ تسير وتُحمَّل عندنا.
- *
- * ── وما يبقى موقوفًا ───────────────────────────────────────────────────────
- * واحدٌ وخمسون صفًّا لها نسخةٌ أخرى نشطةٌ بنفس اللوحة: هذه صفوفٌ مكرّرةٌ
- * وإيقافُها صوابٌ — لوحةٌ واحدةٌ في صفّين تعني سجلَّين لشاحنةٍ واحدة، ولكلٍّ
- * سائقُه وتاريخُه، ولا يعرف أحدٌ أيُّهما الشاحنة.
- *
- * الاستعمال:  node src/scripts/restoreCarrierVehicles.js [--apply]
+ * Restore carrier trucks that were wrongly deactivated.
+ * The carriers import from the operations platform copied the platform's state (`active`, `deleted_at`) and deactivated 754 trucks. Checking showed most of them carried our shipments, many worked in the last six months, and some carried on the day they were deactivated. The platform status is not a fact about the truck's existence: the platform marks vehicles deleted for its own reasons while the truck keeps running for us.
+ * Stays deactivated: 51 rows that have another active copy with the same plate. Those are duplicates (one plate in two rows means two records for one truck, each with its own driver and history).
+ * Usage: node src/scripts/restoreCarrierVehicles.js [--apply]
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -51,8 +36,7 @@ const APPLY = process.argv.includes('--apply');
     (twinAlive ? keepOff : restore).push(v);
   }
 
-  // وكم منها عمل لنا فعلًا — تُقاس باللوحة لا بالمرجع: طلباتُنا تحمل اللوحةَ
-  // لقطةً، ومرجعُ الشاحنة لم يكن يُكتب فيها قبل هذا الأسبوع.
+  // How many actually worked for us, measured by plate and not by reference: our orders carry the plate as a snapshot, and the truck reference was not written into them before this week.
   const worked = await ShipmentOrder.aggregate([
     { $match: { vehiclePlate: { $nin: ['', null] } } },
     { $group: { _id: '$vehiclePlate', n: { $sum: 1 }, last: { $max: '$createdAt' } } },

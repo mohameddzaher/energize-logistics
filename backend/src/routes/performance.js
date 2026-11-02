@@ -1,15 +1,11 @@
 /**
- * /api/performance — تقييم الأداء (KPI evaluations).
- *
- * Reads are open to any authenticated staff member, but every handler scopes the
- * data to the caller's team. The grading RULES (templates, weights, bands, bonus
- * tiers) are super-admin only — enforced inside the controller so the check
- * lives next to the thing it protects.
+ * /api/performance: KPI evaluations.
+ * Reads are open to any authenticated staff member, but every handler scopes the data to the caller's team. The grading RULES (templates, weights, bands, bonus tiers) are super-admin only, enforced inside the controller so the check lives next to what it protects.
  */
 const express = require('express');
 const router = express.Router();
 
-// معرّفٌ مشوَّهٌ في الرابط = لا سجلّ، لا عطلٌ في الخادم — راجع utils/idParam.
+// A malformed id in the URL means no record (404), not a server error; see utils/idParam.
 const { objectIdParam } = require('../utils/idParam');
 router.param('id', objectIdParam());
 router.param('employeeId', objectIdParam());

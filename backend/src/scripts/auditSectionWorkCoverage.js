@@ -1,18 +1,9 @@
 /* eslint-disable no-console */
 /**
- * auditSectionWorkCoverage — «مهامي» و«الشكاوى» موجودين في كل قسم له موظفين.
- *
- *   node src/scripts/auditSectionWorkCoverage.js --base https://api.energize-logistics.com
- *
- * الحاجة اللي بيمنعها: قسم يتعمل وينسوا يضيفوه لقايمة الأقسام اللي ليها مهام
- * وشكاوى، فمدير القسم يدخل يلاقي قسمه ناقص صفحتين موجودين عند كل زميل له —
- * وده اللي حصل فعلاً مع المركبات، والـAPI كان بيرد 400 من غير ما حد ياخد باله.
- *
- * الفحص بيمشي على **الأقسام نفسها** من config/sections.js، مش على قايمة مكتوبة
- * بالإيد هنا — عشان أي قسم جديد يتضاف يتفحص لوحده.
- *
- * مراجعة الأعمال مستثناة عن قصد: مالهاش أدوار خاصة بيها (منتدى بين مديري
- * الأقسام)، و«مهامي» عندها معناها بنود الاجتماعات من مجموعة تانية خالص.
+ * auditSectionWorkCoverage: every section with staff has the My Tasks and Complaints pages.
+ * Prevents a new section being left out of the tasks/complaints section list, which made its manager miss two pages (the API answered 400 silently).
+ * Iterates the sections in config/sections.js rather than a hand-written list, so new sections are checked automatically.
+ * Business review is excluded on purpose: it is a managers' forum with no roles of its own, and its My Tasks means meeting items from another collection.
  */
 require('dotenv').config();
 const fs = require('fs');
@@ -26,7 +17,7 @@ const BASE = (iB >= 0 && argv[iB + 1] ? argv[iB + 1] : process.env.BASE || 'http
 let pass = 0; let fail = 0;
 const ok = (l, c, x = '') => { console.log(`  ${c ? '✓' : '✗ FAIL'}  ${l}${x ? '   — ' + x : ''}`); c ? pass++ : fail++; };
 
-// مفتاح القسم في الإعدادات → مفتاح section-work ومسار صفحاته.
+// Section key in config -> section-work key and its page path.
 const MAP = {
   Operations: ['operations', 'operations'],
   Collections: ['collections', 'collections-dept'],
@@ -50,7 +41,7 @@ const MAP = {
   Accounting: ['accounting', 'accounting'],
   Procurement: ['procurement', 'procurement'],
 };
-// منتدى، مش قسم بموظفين — شوف الشرح فوق.
+// Forum, not a staff section; see the note above.
 const EXEMPT = new Set(['Business Review']);
 
 (async () => {
@@ -100,7 +91,7 @@ const EXEMPT = new Set(['Business Review']);
       ok(`${sec.key.padEnd(22)} (${key})`, problems.length === 0, problems.join(' | '));
     }
 
-    // القسم اللي مش في القايمة لازم يترفض — مش يعدّي بصمت
+    // A section missing from the list must be rejected, not pass silently.
     const bad = await fetch(`${BASE}/api/section-work/tasks?section=zz-not-a-section`, { headers: { Cookie: ck } });
     console.log('');
     ok('قسم مش معروف بيترفض', bad.status === 400, `HTTP ${bad.status}`);

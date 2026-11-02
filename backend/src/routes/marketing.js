@@ -1,20 +1,18 @@
 /**
- * /api/marketing — the Marketing section (قسم التسويق).
- * Reads are open to any authenticated staff member (the dashboard and the
- * weekly report are things managers across the company ask to see); writes are
- * limited to the marketing team and the admin/IT tier.
+ * /api/marketing: the Marketing section.
+ * Reads are open to any authenticated staff member (the dashboard and weekly report are things managers across the company ask to see); writes are limited to the marketing team and the admin/IT tier.
  */
 const express = require('express');
 const router = express.Router();
 
-// معرّفٌ مشوَّهٌ في الرابط = لا سجلّ، لا عطلٌ في الخادم — راجع utils/idParam.
+// A malformed id in the URL means no record (404), not a server error; see utils/idParam.
 const { objectIdParam } = require('../utils/idParam');
 router.param('id', objectIdParam());
 const ctrl = require('../controllers/marketingController');
 const authenticate = require('../middleware/auth');
 const authorize = require('../middleware/rbac');
 
-const EDIT_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'marketing_manager', 'marketing_specialist', 'bd_manager']; // bd_manager يدير القسمين
+const EDIT_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'marketing_manager', 'marketing_specialist', 'bd_manager']; // bd_manager manages both sections.
 
 router.use(authenticate);
 

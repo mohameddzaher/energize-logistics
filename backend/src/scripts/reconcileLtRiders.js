@@ -1,20 +1,8 @@
 /**
- * reconcileLtRiders — «القائد الفعلي» على المركبة يطابق راكبَها من سجلّ القسم.
- *
- * ── لماذا (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢) ───────────────────────────────────────
- * «مركبات بلا راكب» في لوحة B2C فتحت مركباتٍ عليها أسماءٌ في «اسم القائد الفعلي».
- * فالراكبُ صار تعريفًا واحدًا (utils/ltRider): صفُّ «موظفي النقل الخفيف» المربوطُ
- * بالمركبة، و`VehicleMaster.actualDriver` مرآتُه. وهذا السكربت يُصلح ما بقي من
- * نصوصٍ قديمةٍ على المركبات:
- *   ١) نصٌّ ليس اسمًا («غيرمستخدم»، «لا يوجد»، «-») على مركبةٍ بلا راكب ← يُمسَح.
- *   ٢) مرآةٌ تخالف راكبَ المركبة الفعليّ ← تُكتب باسمه وهويّته.
- *   ٣) اسمٌ لموظّفٍ نشطٍ في القسم بلا مركبة، والمركبةُ بلا راكبٍ آخر ← يُربط بها
- *      (بأمر تشغيلٍ كأيّ ربط — utils/ltRider.setRider) فتتبعه المرآة.
- *   ٤) اسمٌ لموظّفٍ يركب مركبةً أخرى، أو منتهي الخدمة بلا مركبة ← تُمسَح المرآةُ القديمة.
- *   ٥) اسمٌ لا يطابق أحدًا في سجلّ القسم ← يُذكَر في التقرير ولا يُمَسّ.
- *
- *   node src/scripts/reconcileLtRiders.js            # عرضٌ فقط (لا يكتب)
- *   node src/scripts/reconcileLtRiders.js --apply    # يكتب
+ * reconcileLtRiders: make the vehicle's actual driver match its rider from the department register. The rider has one definition (utils/ltRider): the light-transport staff row linked to the vehicle; `VehicleMaster.actualDriver`
+ * mirrors it. This fixes stale text left on vehicles: 1) non-name placeholder text on a vehicle with no rider is cleared. 2) a mirror that disagrees with the real rider is rewritten with the rider's name and identity.
+ * 3) an active department employee with no vehicle, whose named vehicle has no other rider, is linked via utils/ltRider.setRider. 4) a name belonging to an employee riding another vehicle, or an ended employee with
+ * no vehicle, has the old mirror cleared. 5) a name matching nobody in the register is reported and left untouched. Usage: node src/scripts/reconcileLtRiders.js [--apply] (dry run by default).
  */
 const path = require('path');
 require('dotenv').config({ path: process.env.ENV_FILE || path.join(__dirname, '../../.env') });
@@ -40,7 +28,7 @@ async function main() {
   for (const l of lts) if (l.vehicle) { const k = String(l.vehicle); if (!onVehicle.has(k)) onVehicle.set(k, []); onVehicle.get(k).push(l); }
   const byId = new Map(lts.map((l) => [VP.idKey(l.idNumber), l]));
   const byName = new Map();
-  for (const l of lts) { const k = PR.foldName(l.name); byName.set(k, byName.has(k) ? null : l); } // null = اسمٌ مكرَّر
+  for (const l of lts) { const k = PR.foldName(l.name); byName.set(k, byName.has(k) ? null : l); } // null = duplicate name
 
   const vms = await VehicleMaster.find({}).select('plateNumber actualDriver isActive').lean();
   const out = { placeholder: [], mirrorFixed: [], linked: [], staleCleared: [], unmatched: [], ambiguous: [] };
@@ -50,7 +38,7 @@ async function main() {
   for (const v of vms) {
     const name = S(v.actualDriver?.name); const id = VP.idKey(v.actualDriver?.idNumber);
     const here = onVehicle.get(String(v._id)) || [];
-    const rider = here.find((l) => !ended(l)) || here[0] || null; // الراكب، وإلّا صاحبُ «بانتظار التسليم»
+    const rider = here.find((l) => !ended(l)) || here[0] || null; // the rider, otherwise the holder awaiting handover
     const row = { plate: v.plateNumber, mirror: [name, id].filter(Boolean).join(' · ') || '—' };
     if (rider) {
       if (name !== S(rider.name) || id !== VP.idKey(rider.idNumber)) {
@@ -60,7 +48,7 @@ async function main() {
       continue;
     }
     if (!name && !id) continue;
-    // و«غيرمستخدم» يُكتب في خانة الهويّة أيضًا — رقمٌ بلا أرقامٍ ليس هويّة.
+    // The placeholder text is also written to the identity field: a number without digits is not an identity.
     if (VP.isPlaceholder(name) && (!/\d/.test(id) || VP.isPlaceholder(id))) { out.placeholder.push(row); await clear(v); continue; }
     const k = PR.foldName(name);
     const l = (id && byId.get(id)) || (byName.has(k) ? byName.get(k) : undefined);

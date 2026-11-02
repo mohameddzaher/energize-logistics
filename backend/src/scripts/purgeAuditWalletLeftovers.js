@@ -1,38 +1,23 @@
 /**
- * purgeAuditWalletLeftovers — ما تركه الفحصُ في عهدةِ فرعٍ حقيقيّ.
- *
- *   node src/scripts/purgeAuditWalletLeftovers.js --dry
- *
- * ── الواقعة ────────────────────────────────────────────────────────────────
- * سويتُ `auditWalletToCollections` تُنشئ حسابَها وكشوفَها وتحذفها، لكنّها كانت
- * تترك حركاتِ العهدة التي قيّدتها: مشترياتٍ بثمانمئةٍ وتحصيلاتٍ بألفٍ وثمانمئة
- * في محفظة فرع الرياض الحقيقيّة، تتراكم مع كلّ تشغيل. أربعٌ وأربعون حركةً
- * بثمانيةَ عشرَ ألفًا وأربعمئة ريال من مالٍ لا وجودَ له في دفترٍ يُقرأ.
- *
- * ── وكيف تُعرَف ────────────────────────────────────────────────────────────
- * صاحبُها حسابٌ لم يعد موجودًا: السويت تحذف حسابَها في النهاية، فتبقى حركاتُها
- * بمرجعٍ لا يُقابله مستخدم. وهذا وحدَه لا يكفي — قد يُحذف حسابُ موظّفٍ حقيقيّ
- * وتبقى حركاتُه، وهي حركاتٌ صحيحةٌ يجب ألّا تُمَسّ. فيُشترط معه أثرُ السويت
- * نفسِها: مبالغُها المعروفة وأرقامُ كشوفها ونصوصُها.
- *
- * وتُعاد بعدها مجاميعُ اليوم من حركاته الباقية، وإلّا بقي الرصيدُ محسوبًا على
- * مالٍ حُذف.
+ * Purges what the audit left in a real branch's custody.
+ * Usage: node src/scripts/purgeAuditWalletLeftovers.js --dry
+ * The auditWalletToCollections suite created and deleted its account and statements but left the custody entries it recorded in the real Riyadh branch wallet, piling up per run.
+ * Identified by an owner account that no longer exists plus the suite's own traces (known amounts, statement numbers, texts), since a deleted real employee's entries must not be touched. Day totals are then recomputed from remaining entries.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
 
 const DRY = process.argv.includes('--dry');
 
-/** أثرُ السويت: ما تكتبه هي ولا يكتبه موظّف. */
+/** The suite's trace: what it writes and an employee does not. */
 const isAuditRow = (t) => {
   if (String(t.itemName || '') === 'zz') return true;
   const rpt = String(t.purchaseDeliveryStatementNumber || t.deliveryStatementNumber || '');
   if (/^RPT-\d+$/.test(rpt) || /^ZZ/i.test(rpt)) return true;
   if (/^ZZ-SAND/i.test(String(t.purchaseReceiptNumber || ''))) return true;
-  // تحصيلاتُ السويت: ألفٌ وثمانمئةٍ بلا وصفٍ ولا عميلٍ ولا كشف.
+  // The suite's collections: a fixed amount with no description, customer or statement.
   if (t.type === 'collection' && t.amount === 1800 && !t.description && !t.customer && !rpt) return true;
-  // قيدُ استلام فاتورةٍ ضريبيّة: إمّا بلا كشوفٍ ولا مالٍ أصلًا، وإمّا يحمل
-  // أرقامَ السويت نفسِها (RPT-0000x و«zz-لا-وجود-له»).
+  // A tax invoice receipt entry: either no reports and no money at all, or carrying the suite's own numbers (RPT-0000x and a nonexistent marker).
   if (t.type === 'tax_invoice') {
     const list = (t.receivedReportNumbers || []).map(String);
     if (!t.amount && !list.length && !t.receivedDocNumber) return true;
@@ -52,7 +37,7 @@ const isAuditRow = (t) => {
   console.log(DRY ? '— تجربة، بلا حذف —\n' : '');
   const users = new Set((await User.find({}).select('_id').lean()).map((u) => String(u._id)));
   const all = await WalletTransaction.find({}).lean();
-  // الشرطان معًا: صاحبُها غيرُ موجود **و** عليها أثرُ السويت.
+  // Both conditions: the owner is missing and the suite's trace is present.
   const doomed = all.filter((t) => t.user && !users.has(String(t.user)) && isAuditRow(t));
   const orphanOnly = all.filter((t) => t.user && !users.has(String(t.user)) && !isAuditRow(t));
 
@@ -77,7 +62,7 @@ const isAuditRow = (t) => {
     await WalletTransaction.deleteMany({ _id: { $in: doomed.map((t) => t._id) } });
     console.log(`\n✓ حُذفت ${doomed.length} حركة`);
 
-    // ── وتُعاد المجاميعُ من الحركات الباقية ────────────────────────────────
+    // Recompute totals from the remaining entries.
     for (const k of byWallet.keys()) {
       const [b, d] = k.split('|');
       const w = await DailyWallet.findOne({ branch: b, date: d });
@@ -88,7 +73,7 @@ const isAuditRow = (t) => {
       w.totalExpenses = sum('expense');
       w.totalPurchases = sum('purchase');
       const closing = Math.round((w.openingBalance + w.totalCollections - w.totalExpenses - w.totalPurchases) * 100) / 100;
-      // الفرقُ المعدود واقعةٌ تبقى؛ والنقدُ المعدود ينتقل مع الختاميّ إن كان مساويًا له.
+      // A counted difference is a real event and stays; counted cash moves with the closing balance when equal to it.
       if (w.actualCash != null && Math.round(w.actualCash * 100) === Math.round(w.closingBalance * 100)) {
         w.actualCash = closing; w.cashDifference = 0;
       }

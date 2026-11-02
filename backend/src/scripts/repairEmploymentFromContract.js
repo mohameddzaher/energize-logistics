@@ -1,21 +1,8 @@
 /**
- * repairEmploymentFromContract — العقدُ السارِي يعني موظّفًا على رأس العمل.
- *
- *   node src/scripts/repairEmploymentFromContract.js --dry
- *   node src/scripts/repairEmploymentFromContract.js --yes
- *
- * ── القاعدة ────────────────────────────────────────────────────────────────
- * الخدمةُ لا تنتهي بأن يُكتب في ورقةٍ أنّها انتهت — تنتهي بإنهاءٍ يُجرى، ويُقفَل
- * معه العقد. فما دام للموظّف عقدٌ ساري المفعول فهو على رأس العمل.
- *
- * ── ما وقع ─────────────────────────────────────────────────────────────────
- * أربعون موظّفًا حالتُهم «منتهي» وعقودُهم «ساري». والملفّان مصدرُهما مختلف:
- * الحالةُ من ماستر الموارد البشريّة، والعقدُ من ملفّ العقود — وملفُّ العقود
- * يقول «ساري» في الأربعين كلِّهم. فالتعارضُ حقيقيّ، والعقدُ أرجح: هو المستندُ
- * الذي يُوقَّع ويُودَع، والحالةُ خانةٌ تُكتب بيدٍ في كشف.
- *
- * ولا يُقلَب العكس: مَن لا عقدَ ساريًا له لا يُنهى بهذا السكربت — قد يكون
- * عقدُه ينتظر التجديدَ لا أنّ خدمتَه انتهت. يُسمَّون ويُترك القرارُ لأهله.
+ * repairEmploymentFromContract: an active contract means an employee in service. Usage: node src/scripts/repairEmploymentFromContract.js [--dry|--yes] Rule: service ends through a
+ * performed termination that closes the contract, not by a note in a sheet. While an employee has an active contract he is in service. Status comes from the HR master and the contract
+ * from the contracts file, which disagree for some employees. The contract wins: it is the signed, filed document, while status is a hand-written cell. The reverse is not applied:
+ * an employee without an active contract is not ended by this script, since the contract may be awaiting renewal. They are listed and the decision is left to their owners.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -43,7 +30,7 @@ const DRY = !process.argv.includes('--yes');
     console.log(`   ${nm.padEnd(34)} رقم ${String(e.employeeNumber || '—').padEnd(9)} عقد ${c.startDate}→${c.endDate}  ${c.contractNumber || ''}`);
   }
 
-  // ── والعكسُ يُسمَّى ولا يُنفَّذ ───────────────────────────────────────────
+  // The reverse is listed, not applied
   const active = await Employee.find({ employmentStatus: 'active', isHrRecord: { $ne: false } }).select('_id arabicName firstName lastName').lean();
   const anyLive = new Set((await Contract.find({ employee: { $in: active.map((e) => e._id) }, status: 'active' }).select('employee').lean()).map((c) => String(c.employee)));
   const hasContract = new Set((await Contract.find({ employee: { $in: active.map((e) => e._id) } }).select('employee').lean()).map((c) => String(c.employee)));

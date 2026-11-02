@@ -1,19 +1,8 @@
 /**
- * خطّةُ العمل (JP) — المهامُّ والمشروعاتُ التي يُدار بها عملُ القسم اليوميّ.
- *
- * ── نطاقان بنموذجٍ واحد ────────────────────────────────────────────────────
- *   section     داخل القسم: المديرُ يُسند إلى موظّفيه.
- *   management  بين الإدارة العليا ومديري الأقسام: المعنى نفسُه درجةً أعلى.
- * فالقواعدُ واحدةٌ والشاشةُ واحدة، ويختلف من هو «المدير» ومن هم «الفريق».
- *
- * ── مهمّةٌ وطلب ────────────────────────────────────────────────────────────
- * ما يُسنده المديرُ **مهمّة**. وما يكتبه الموظّفُ لنفسه أو لزميله **طلب**: هو
- * ليس تكليفًا من صاحب صلاحيّة، ويُعَدّ ويُقرأ على حدة. والنوعُ يحدّده الخادمُ
- * ممّن كتب، لا يُرسَل من الشاشة.
- *
- * ── والموعدُ اختياريٌّ، بيومٍ أو بساعات ────────────────────────────────────
- * «سلِّمها يوم كذا» أو «أمامك ساعتان». ويُخزَّن في الحالين لحظةً واحدة
- * (`deadlineAt`) يُقاس عليها التأخّر، ومعها كيف قيل الموعد ليُعرَض كما قيل.
+ * Work plan (JP): tasks and projects that run a department's daily work.
+ * Two scopes, one model: `section` (inside the department, the manager assigns to staff) and `management` (senior management to department managers). Same rules and screen; only who is manager and who is team differ.
+ * Task vs request: what a manager assigns is a task; what an employee writes for himself or a colleague is a request, not an assignment by an authority, counted and read separately. The server decides the kind from the author; the screen cannot send it.
+ * Deadline is optional, as a day or as hours; stored as one instant (`deadlineAt`) lateness is measured on, plus how it was stated so it displays as stated.
  */
 const mongoose = require('mongoose');
 
@@ -22,7 +11,7 @@ const attachmentSchema = new mongoose.Schema({
   fileName: { type: String, default: '' },
   mimeType: { type: String, default: '' },
   size: { type: Number, default: 0 },
-  // مرفقُ التكليف (ممّن أسند) أم مرفقُ الإتمام (ممّن نفّذ).
+  // Assignment attachment (from the assigner) or completion attachment (from the executor).
   phase: { type: String, enum: ['brief', 'done'], default: 'brief' },
   uploadedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   uploadedByName: { type: String, default: '' },
@@ -30,7 +19,7 @@ const attachmentSchema = new mongoose.Schema({
 });
 
 const SCOPES = ['section', 'management'];
-// طريقةُ التواصل حين تكون المهمّةُ «كلِّم فلانًا».
+// Contact method when the task is to contact someone.
 const ACTIONS = ['', 'call', 'whatsapp', 'visit', 'email', 'meeting', 'other'];
 
 const jpProjectSchema = new mongoose.Schema({
@@ -42,7 +31,7 @@ const jpProjectSchema = new mongoose.Schema({
   endDate: { type: Date, default: null },
   status: { type: String, enum: ['active', 'closed'], default: 'active' },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  // مشروعُ قسمٍ وُلِد من مشروعٍ أسندته الإدارةُ العليا إلى مديره — راجع parentTask.
+  // A department project born from a project that senior management assigned to its manager; see parentTask.
   parentProject: { type: mongoose.Schema.Types.ObjectId, ref: 'JpProject', default: null },
 }, { timestamps: true });
 jpProjectSchema.index({ scope: 1, section: 1, status: 1 });
@@ -56,7 +45,7 @@ const jpTaskSchema = new mongoose.Schema({
   title: { type: String, required: true, trim: true, maxlength: 200 },
   details: { type: String, trim: true, default: '', maxlength: 4000 },
   action: { type: String, enum: ACTIONS, default: '' },
-  // مع من يكون التواصل — اسمٌ أو رقم، كما يكتبه المدير.
+  // Who to contact: a name or number, as the manager writes it.
   contact: { type: String, trim: true, default: '', maxlength: 200 },
 
   // Empty for an HR employee with no login: `assignedEmployee` and `assigneeName` name them.
@@ -69,7 +58,7 @@ const jpTaskSchema = new mongoose.Schema({
   deadlineHours: { type: Number, default: null },
   deadlineAt: { type: Date, default: null },
 
-  // الإتمامُ اختياريّ: المهمّةُ تبقى مفتوحةً حتى يقول صاحبُها إنّها تمّت.
+  // Completion is optional: the task stays open until its owner says it is done.
   status: { type: String, enum: ['open', 'done'], default: 'open' },
   doneAt: { type: Date, default: null },
   doneBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
@@ -77,36 +66,20 @@ const jpTaskSchema = new mongoose.Schema({
 
   attachments: [attachmentSchema],
 
-  /**
-   * ── يومُ العمل والوقتُ المتوقّع ─────────────────────────────────────────
-   * «اجتماعٌ يومَ الأحد، ساعةٌ ونصف». اليومُ هو اليومُ الذي تُعَدّ فيه المهمّةُ
-   * في يوميّة الفريق (منتصفُ ليله بتوقيت الرياض)، والوقتُ بالدقائق. وكلاهما
-   * اختياريّ: مهمّةٌ بلا يومٍ تُعَدّ في يوم إنشائها.
-   */
+  /** Work day and expected time. The day is the one the task counts in on the team's daily view (midnight Riyadh time); time is in minutes. Both optional: a task without a day counts on its creation day. */
   workDate: { type: Date, default: null },
   expectedMinutes: { type: Number, default: null, min: 0 },
 
-  /**
-   * ── أين وصل العمل ───────────────────────────────────────────────────────
-   * `status` يبقى كما كان: مفتوحةٌ أو تمّت. وما دامت مفتوحةً فهي واحدةٌ من
-   * ثلاث: لم تبدأ، جاريةٌ (المؤقّتُ يعمل)، متوقّفة. وجاريةٌ تعني مؤقّتًا يعمل
-   * دائمًا — فلا تُقال «جارية» بلا وقتٍ يُحسَب.
-   */
+  /** Progress. `status` stays open or done. While open it is one of three: not started, running (timer on), paused. Running always means a timer is counting, never without time being measured. */
   progress: { type: String, enum: ['todo', 'doing', 'paused'], default: 'todo' },
   timerStartedAt: { type: Date, default: null },
 
-  /**
-   * ── الوقتُ الفعليّ ──────────────────────────────────────────────────────
-   * كلُّ فترةِ عملٍ سطر: من بدأ إلى أن أوقف (`timer`)، أو تصحيحٌ يكتبه المديرُ
-   * بدقائقَ تُزاد أو تُنقَص في يومٍ بعينه (`adjust`). واليوميّةُ تقسم الفترةَ
-   * على أيّامها، فعملٌ عبر منتصف الليل يُعَدّ في يوميه.
-   * `spentMinutes` مجموعُ السطور كلِّها — يُعاد حسابُه مع كلّ حفظ.
-   */
+  /** Actual time. Each work period is a row: from start to stop (`timer`), or a manager correction of minutes added or subtracted on a given day (`adjust`). The daily view splits a period across its days, so work past midnight counts in both. `spentMinutes` is the sum of all rows, recomputed on every save. */
   timeLog: [{
     kind: { type: String, enum: ['timer', 'adjust'], required: true },
     start: { type: Date, default: null },
     end: { type: Date, default: null },
-    day: { type: String, default: '' },          // YYYY-MM-DD — للتصحيح وحدَه
+    day: { type: String, default: '' },          // YYYY-MM-DD, for adjustments only.
     minutes: { type: Number, required: true },
     note: { type: String, trim: true, default: '', maxlength: 500 },
     by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
@@ -115,9 +88,7 @@ const jpTaskSchema = new mongoose.Schema({
   }],
   spentMinutes: { type: Number, default: 0 },
 
-  // ── تعليقات ──────────────────────────────────────────────────────────────
-  // سؤالٌ عن المهمّة أو خبرٌ عنها يُكتب عليها، لا في محادثةٍ خارج النظام.
-  // يكتبه من أُسنِدت إليه ومن أسندها ومديرُ القسم.
+  // Comments: a question or news about the task is written on it, not in a chat outside the system. Written by the assignee, the assigner and the department manager.
   comments: [{
     by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     byName: { type: String, default: '' },
@@ -125,14 +96,7 @@ const jpTaskSchema = new mongoose.Schema({
     at: { type: Date, default: Date.now },
   }],
 
-  /**
-   * ── بماذا تتعلّق المهمّة ────────────────────────────────────────────────
-   * «تابِع فاتورةَ النقل» لا تُفهَم إلّا بمعاملتها، و«كلِّم العميل» بعميلها.
-   * فتُربَط المهمّةُ بما تخصّه — معاملةٍ أو عميلٍ أو وكيلِ شحنٍ أو ناقل —
-   * فتُفتَح منه وتُقرأ فيه. والأنواعُ المسموحةُ لكلّ قسمٍ في
-   * controllers/jpController (LINK_KINDS)؛ والاسمُ يُلقَط وقتَ الربط ليُعرَض
-   * بلا قراءةٍ ثانية.
-   */
+  /** What the task relates to. A follow-up task on a transport invoice only makes sense with its transaction, and contact the customer with its customer. So a task links to what it concerns (transaction, customer, shipping agent or carrier), opens from it and is read there. Allowed kinds per department are in controllers/jpController (LINK_KINDS); the name is captured at link time to display without another read. */
   links: [{
     _id: false,
     kind: { type: String, required: true },
@@ -140,10 +104,7 @@ const jpTaskSchema = new mongoose.Schema({
     label: { type: String, trim: true, default: '' },
   }],
 
-  // ── مهمّةٌ نزلت من الإدارة العليا ────────────────────────────────────────
-  // مديرُ القسم يُسند ما كُلِّف به إلى أحد موظّفيه: فتُنشأ مهمّةُ قسمٍ عاديّةٌ
-  // باسمه هو، وهذا الرابطُ يصلها بأصلها. **ولا يخرج إلى الموظّف أبدًا** — هو
-  // يرى مهمّةً من مديره لا غير؛ والرابطُ للمدير وللإدارة ليعرفا أين وصلت.
+  // A task handed down from senior management: the department manager assigns what he was given to one of his staff, which creates a normal department task in his own name, and this link ties it to its origin. It is never exposed to the employee, who sees only a task from his manager; the link is for the manager and management to see its progress.
   parentTask: { type: mongoose.Schema.Types.ObjectId, ref: 'JpTask', default: null, index: true },
 }, { timestamps: true });
 jpTaskSchema.index({ scope: 1, section: 1, status: 1, deadlineAt: 1 });
@@ -154,7 +115,7 @@ jpTaskSchema.index({ 'links.ref': 1 });
 jpTaskSchema.index({ scope: 1, section: 1, workDate: 1 });
 jpTaskSchema.index({ assignedTo: 1, timerStartedAt: 1 });
 
-// المجموعُ يتبع السطور — لا يُكتب باليد فيختلف عنها.
+// Total follows the rows; not typed by hand, or it would differ from them.
 jpTaskSchema.pre('save', function sumTime(next) {
   if (this.isModified('timeLog')) {
     this.spentMinutes = Math.max(0, Math.round((this.timeLog || []).reduce((s, x) => s + (Number(x.minutes) || 0), 0) * 10) / 10);

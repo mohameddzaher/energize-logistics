@@ -1,25 +1,8 @@
 /**
- * importHrNewEdits — تحديثُ الموارد البشريّة من ملفّات «new edits».
- *
- *   node src/scripts/importHrNewEdits.js            تجربة، بلا كتابة
- *   node src/scripts/importHrNewEdits.js --yes      تنفيذ
- *
- * ── أربعةُ ملفّات، ومفتاحٌ واحد ──────────────────────────────────────────────
- *   الإقامات        → تاريخ الإصدار والانتهاء والهجريّ والمهنة في الإقامة
- *   بطاقات السائقين → توفّرُها ورقمُها وتاريخُ انتهائها
- *   الجوازات        → رقمُ الجواز وتاريخُ انتهائه
- *   العقود          → حالتُه ومهنتُه ورقمُه ومدّتُه والإجازةُ والتجربةُ والسجلّ
- *
- * والمطابقةُ برقم الهويّة وحدَه: الأسماءُ تُكتب بصورٍ، والرقمُ لا. ومَن لا يُطابَق
- * يُعرَض ولا يُخترَع له سجلّ — إنشاءُ موظّفٍ من ملفِّ تحديثٍ يصنع موظّفين وهميّين.
- *
- * ── و«غير مطلوب» ليست خانةً فارغة ────────────────────────────────────────────
- * هي قرارٌ إداريٌّ ألّا نجمع هذا الحقلَ لهذا الموظّف — سائقٌ سعوديٌّ لا إقامةَ له،
- * وعاملٌ لا يُطلَب جوازُه. وعدُّها نقصًا يجعل شاشةَ النواقص تطالب بما لا يُطلَب،
- * فيُهمَل الرقمُ كلُّه. تُكتب `not_required` في `fieldStatus` فتخرج من العدّ
- * وتُقرأ على الشاشة «غير مطلوب».
- *
- * و«مطلوب» عكسُها: الحقلُ مطلوبٌ وناقصٌ فعلًا، فيُعَدّ.
+ * importHrNewEdits: HR update from the new-edits files.
+ * Usage: --yes applies; without it, a dry run.
+ * Four files, one key: residencies (issue, expiry, Hijri date, profession), driver cards (availability, number, expiry), passports (number, expiry) and contracts (status, profession, number, duration, leave, probation, record).
+ * Matching is by ID number only, since names vary and numbers do not. Unmatched rows are listed, never created, because creating employees from an update file makes phantom staff. The not-required label is an administrative decision not to collect the field, not an empty cell. Counting it as missing would make the gaps screen demand it. It is stored as not_required in fieldStatus, excluded from counts and shown as not required. The required label is the opposite: genuinely missing, so counted.
  */
 require('dotenv').config();
 const path = require('path');
@@ -30,9 +13,7 @@ const H = require('../config/hrFields');
 const YES = process.argv.includes('--yes');
 const DIR = path.join(__dirname, '..', '..', '..', 'final hr data', 'new edits');
 
-// ── قراءةُ إكسل ─────────────────────────────────────────────────────────────
-// التواريخُ تُقرأ أرقامًا خامًا لا كائناتِ تاريخ: `cellDates` يبني التاريخَ
-// بتوقيت الجهاز على مبدأ ١٨٩٩، فيسقط يومٌ من كلّ تاريخ. راجع xlsx-date-epoch-trap.
+// Excel reading: dates are read as raw serials, not Date objects. cellDates builds the date in device time on the 1899 epoch and loses a day per date. See xlsx-date-epoch-trap.
 const EXCEL_EPOCH = Date.UTC(1899, 11, 30);
 const DAY = 86400000;
 const AR_DIGITS = (s) => String(s).replace(/[٠-٩]/g, (d) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d));
@@ -54,7 +35,7 @@ const D = (v) => {
 const iso = (d) => (d ? new Date(d).toISOString().slice(0, 10) : '');
 const idKey = (v) => AR_DIGITS(S(v)).replace(/[\s\-_ـ.]/g, '');
 
-/** سببُ غياب القيمة، أو '' إن كانت الخانة تحمل قيمةً حقيقية. */
+/** Reason the value is absent, or '' if the cell holds a real value. */
 const sentinel = (raw) => {
   const t = S(raw).replace(/ـ/g, '');
   if (t === '' || t === '0' || t === '-' || t === '—' || t === '_') return 'required';
@@ -70,8 +51,7 @@ const sheet = (file, range) => {
   return XLSX.utils.sheet_to_json(ws, { defval: '', raw: true, ...(range != null ? { range } : {}) });
 };
 
-// ── الملفّات وأعمدتُها ───────────────────────────────────────────────────────
-// كلُّ سطرٍ: عمودُ الملفّ → حقلُ الموظّف، ونوعُه.
+// Files and their columns: each line is file column, employee field, and type.
 const FILES = [
   {
     file: 'الاقامات بعد المراجعة .xlsx', label: 'الإقامات', idCol: 'رقم الهوية',
@@ -117,7 +97,7 @@ const FILES = [
 
   console.log(YES ? '── تنفيذ ──\n' : '── تجربة، بلا كتابة ──\n');
 
-  // فهرسُ الموظّفين بالهويّة — الإقامةُ والهويّةُ الوطنيّةُ كلتاهما مفتاح.
+  // Employee index by ID: iqama and national ID are both keys.
   const emps = await Employee.find({ isHrRecord: { $ne: false } })
     .select('firstName lastName arabicName employeeNumber iqamaNumber nationalId fieldStatus '
       + FILES.flatMap((f) => f.map.map((m) => m[1])).join(' ')).lean();
@@ -149,14 +129,14 @@ const FILES = [
         const statusKey = H.statusKeyOf(field);
 
         if (mark) {
-          // «غير مطلوب» أو «مطلوب» أو «لا يوجد» — حالةٌ لا قيمة.
+          // Not-required, required or none: a status, not a value.
           const cur = emp.fieldStatus?.[statusKey];
           if (String(cur ?? '') !== mark) bucket.$set[`fieldStatus.${statusKey}`] = mark;
           if (mark === 'not_required') nr += 1; else rq += 1;
           continue;
         }
 
-        // قيمةٌ حقيقيّة: تُكتب، وتُرفَع عنها أيُّ حالةِ نقصٍ سابقة.
+        // A real value is written and any earlier missing status is cleared.
         let value;
         if (kind === 'date') { const d = D(raw); if (!d) continue; value = d; }
         else if (kind === 'number') { const n = N(raw); if (n === null) continue; value = n; }
@@ -186,10 +166,7 @@ const FILES = [
     if (missedRows.length > 12) console.log(`   … و${missedRows.length - 12} غيرها`);
   }
 
-  // ── والعقدُ سجلٌّ قائمٌ بذاته، لا مرآةٌ على الموظّف ────────────────────────
-  // رصيدُ الإجازات يُحسب من **بداية العقد النشط وأيّامه** لا من حقول الموظّف
-  // (راجع utils/leaveBalance). فتحديثُ المرآة وحدَها يترك الرصيدَ على أرقامٍ
-  // قديمة — يُقرأ في الملفّ رقمٌ جديدٌ ويُحسب الرصيدُ بالقديم.
+  // The contract is its own record, not a mirror of the employee. Leave balance is computed from the active contract's start and days (see utils/leaveBalance), so updating only the mirror would leave the balance on stale numbers.
   const Contract = require('../models/Contract');
   const contractFile = FILES.find((f) => f.label === 'العقود');
   const cRows = sheet(contractFile.file, contractFile.range);

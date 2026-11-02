@@ -1,19 +1,7 @@
 /**
- * auditRoleStructure — الهيكل الوظيفي: كل قسم له مدير وموظف، وكل واحد فاتح قسمه.
- *
- *   node src/scripts/auditRoleStructure.js
- *
- * بيتأكد من:
- *   ١. كل قسم (عدا مراجعة الأعمال) له دور مدير ودور موظف على الأقل.
- *   ٢. كل دور مدير بينتهي بـ `_manager`، ومفيش دور موظف بينتهي بيها — القاعدة
- *      دي هي اللي businessReview بيعرف بيها مين يقعد مع الإدارة.
- *   ٣. المدير والموظف الاتنين ليهم **صلاحية كاملة** على قسمهم.
- *   ٤. كل دور له اسم عربي وإنجليزي، ومفيش اسم مكرّر بين دورين (اسمين متطابقين
- *      في قائمة اختيار = المستخدم مش هيعرف يفرّق).
- *   ٥. مفيش مستخدم حقيقي على دور مش في القائمة المعتمدة.
- *   ٦. مفيش مفتاح قديم فاضل في قاعدة البيانات.
- *
- * read-only تمامًا.
+ * Audits the role structure: every section has a manager and a staff role, and each has full access to its section.
+ * Checks: 1) every section except business review has at least a manager role and a staff role. 2) manager roles end in _manager and no staff role does; businessReview uses this rule to know who sits with management. 3) manager and staff both have full permission on their section. 4) every role has an Arabic and an English name, with no duplicate names between roles (identical names in a picker cannot be told apart). 5) no real user holds a role outside the approved list. 6) no old key remains in the database.
+ * Fully read-only.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -81,7 +69,7 @@ const ok = (l, c, x = '') => { console.log(`  ${c ? G + '✓' + O : R + '✗ FAI
   for (const s of stale) if (await User.countDocuments({ role: s })) left.push(s);
   ok('مفيش مفاتيح قديمة فاضلة', left.length === 0, left.join(', ') || '—');
 
-  // ── الجدول ─────────────────────────────────────────────────────────────────
+  // Table
   console.log(`\n${'─'.repeat(104)}`);
   console.log(`${'القسم'.padEnd(24)}${'المدير'.padEnd(30)}الموظف`);
   console.log('─'.repeat(104));

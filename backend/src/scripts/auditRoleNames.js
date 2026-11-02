@@ -1,20 +1,9 @@
 /* eslint-disable no-console */
 /**
- * auditRoleNames — أيُّ اسمِ دورٍ في الشيفرة لا وجود له في سجلّ الأدوار؟
- *
- *   node src/scripts/auditRoleNames.js
- *
- * ── العطب الذي يكشفه ────────────────────────────────────────────────────────
- * الأدوار تُعاد تسميتها مع الوقت — `b2c_head` صار `b2c_manager` — والاسم القديم
- * يبقى في موضعٍ أو موضعين لم يُبحث فيهما. والشيفرة لا تشتكي: السلسلة صحيحةٌ
- * نحوًا، والاستعلام يعمل، ويعود فارغًا. فتفتح الشاشة فتقول «لا يوجد» وأنت
- * تنظر إلى الشخص في قائمة المستخدمين.
- *
- * ولا يمسكه المترجم ولا `tsc`: هي سلسلةٌ نصّية تُقارَن بسلسلة. فالوحيد الذي
- * يمسكه فحصٌ يقارن كلَّ اسمٍ يُكتب في الشيفرة بالسجلّ الواحد للأدوار.
- *
- * ويستثني ما ليس دورًا: قيمٌ لحقولٍ أخرى تشبه الأدوار في الشكل (حالات، أنواع).
- * فالمرشَّح هو ما يُشبه اسم دورٍ **ولا يوجد** في السجلّ ولا في قائمة الاستثناء.
+ * Finds role names in the code that are missing from the role registry.
+ * Roles get renamed over time (b2c_head became b2c_manager) and the old name survives in a spot nobody searched. Nothing complains: the string is valid, the query runs and returns empty, so the screen says none exist while the person is in the user list.
+ * Neither the compiler nor tsc catches it: it is a string compared with a string. Only a check comparing every name in the code with the single role registry does.
+ * It excludes non-roles shaped like roles (statuses, types): a candidate is something that looks like a role name and is absent from both the registry and the exclusion list.
  */
 const fs = require('fs');
 const path = require('path');
@@ -28,14 +17,8 @@ const ROOTS = [
 const SKIP_DIR = /node_modules|\.next|build|dist|\.git/;
 
 /**
- * ── لا يُفتَّش عن شكلٍ، بل عن موضع ────────────────────────────────────────────
- * البحث عمّا «يُشبه اسم دور» يلتقط كلَّ سلسلةٍ فيها شرطةٌ سفليّة — حالاتِ
- * الكاوتش وأسماءَ الحقول — فيصير التقريرُ ضجيجًا يُهمَل، وفحصٌ يُهمَل أسوأ من
- * لا فحص.
- *
- * فالمقروء هو **مواضع استعمال الأدوار** وحدها: ما يُمرَّر إلى `authorize(`،
- * وما يُقارَن بـ`role ===`، وما يُرسَل في `role=` أو `role:`، وما يُدرج في
- * قوائم `roles: [...]`. وما خرج عن هذه المواضع ليس دورًا مهما أشبهه.
+ * It does not search by shape but by position.
+ * Searching for anything that looks like a role name catches every string with an underscore (tyre states, field names), so the report becomes ignored noise. Only role usage sites are read: arguments to authorize(, comparisons with role ===, values sent as role= or role:, and entries in roles: [...] lists. Anything outside these is not a role however similar.
  */
 const CONTEXTS = [
   // authorize('a', 'b', …)   ·   roles: ['a', 'b']   ·   ROLES = ['a']
@@ -52,10 +35,10 @@ const CONTEXTS = [
 
 const STRINGS = /'([a-z][a-z0-9_]*)'/g;
 
-/** كلماتٌ تقع في مواضع الأدوار وليست أدوارًا: أنواعُ حسابٍ خارجيّ وقيمٌ عامّة. */
+/** Words in role positions that are not roles: external account types and generic values. */
 const NOT_ROLES = new Set([
   'client', 'customer', 'vendor', 'partner', 'all', 'any', 'none', 'system',
-  // أدوارُ رسائل المحادثة في شاشة المساعد — تُكتب `role: 'user'` وليست أدوارَ دخول.
+  // Chat message roles in the assistant screen are written role: 'user'; they are not login roles.
   'user', 'assistant',
 ]);
 
@@ -68,12 +51,12 @@ const walk = (dir) => {
     const full = path.join(dir, e.name);
     if (e.isDirectory()) { if (!SKIP_DIR.test(e.name)) walk(full); continue; }
     if (!/\.(js|ts|tsx|dart)$/.test(e.name)) continue;
-    // ملفُّ الأدوار نفسُه هو المرجع، وسكربتات الفحص تذكر الأسماء لتفحصها.
+    // The roles file itself is the reference, and audit scripts mention names in order to check them.
     if (/config\/roles\.js$|auditRoleNames\.js$/.test(full)) continue;
     const lines = fs.readFileSync(full, 'utf8').split('\n');
     const rel = path.relative(path.join(__dirname, '../../..'), full);
     lines.forEach((ln, i) => {
-      if (/^\s*(\/\/|\*|#)/.test(ln)) return;               // تعليقٌ لا شيفرة
+      if (/^\s*(\/\/|\*|#)/.test(ln)) return;               // Comment, not code.
       for (const ctx of CONTEXTS) {
         ctx.rx.lastIndex = 0;
         let m;
@@ -96,7 +79,7 @@ const walk = (dir) => {
 };
 ROOTS.forEach(walk);
 
-/** أقربُ دورٍ حقيقيّ بالاسم — يُقترح كي يُعرف البديل بلا بحث. */
+/** Closest real role by name, suggested so the replacement is known without searching. */
 const closest = (name) => {
   const parts = name.split('_');
   return ALL_ROLES

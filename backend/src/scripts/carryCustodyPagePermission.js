@@ -1,11 +1,7 @@
 /**
- * صفحةُ «العهدة» في قسم الأفراد حلّت محلَّها «عهدة النقل الخفيف» بمسارٍ جديد.
- * وقرارُ الصفحة محفوظٌ بمسارها: فالدورُ الذي فُتحت له القديمةُ أو أُغلقت يُكتب
- * له القرارُ نفسُه على الجديدة — وإلّا فتحها الغيابُ لمن أُغلقت عنه، وغابت عن
- * الدور المصنوع الذي لا يرث شيئًا.
- *
- *   node src/scripts/carryCustodyPagePermission.js           ← عرضٌ فقط
- *   node src/scripts/carryCustodyPagePermission.js --apply   ← يكتب
+ * Carry the page permission over from the old custody page in the personnel section to the new light transport custody page under its new path.
+ * The decision is kept by path: a role for which the old page was opened or closed gets the same decision on the new one; otherwise absence would open it for roles it was closed to, and miss custom roles that inherit nothing.
+ * Usage: node src/scripts/carryCustodyPagePermission.js (dry run) | --apply
  */
 require('dotenv').config();
 const mongoose = require('mongoose');

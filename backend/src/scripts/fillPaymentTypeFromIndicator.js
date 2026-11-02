@@ -1,30 +1,21 @@
 /**
- * fillPaymentTypeFromIndicator — «ض / غ ض» تُغذّي نوعَ الدفع أينما كان مصدرُها.
- *
- *   node src/scripts/fillPaymentTypeFromIndicator.js --dry
- *
- * ── لماذا سكربتٌ منفصلٌ عن الاستيراد ────────────────────────────────────────
- * الاستيرادُ يملأ نوعَ الدفع من عمود «ض / غ ض» في الشيت الذي يقرؤه. لكنّ في
- * القاعدة كشوفًا وصلها العمودُ من استيرادٍ أقدم ولم تصلها هذه القاعدة، لأنّ
- * الشيتَ الأحدث لا يحوي صفوفَها. فبقيت بلا نوعِ دفعٍ ومعها الجوابُ مكتوبٌ في
- * حقلها نفسِه — واثنا عشر كشفًا منها في دفتر التحصيل النقديّ يعدُّها نقديّةً.
- *
- * فالقاعدةُ تُطبَّق على الحقل لا على الورقة: أينما وُجد العمودُ ولا نوعَ للكشف،
- * يُقرأ منه. والمكتوبُ باليد لا يُدهَس — النوعُ قرارٌ يُتَّخذ على الكشف نفسِه،
- * فالعميلُ الواحد كاشٌ في حمولةٍ وضريبيٌّ في أخرى.
+ * fillPaymentTypeFromIndicator: the tax / non-tax indicator column feeds payment type wherever it came from.
+ * --dry previews.
+ * Import fills payment type from that column of the sheet it reads, but some statements got the column from an older import and their rows are absent from the newer sheet, so they have no payment type; twelve of them are counted as cash in the cash collections ledger.
+ * The rule applies to the field, not the sheet: where the column exists and no type is set, read it. Hand-entered types are never overwritten, since type is per statement (one customer can be cash on one load and tax on another).
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
 
 const DRY = process.argv.includes('--dry');
 
-/** الصياغاتُ التي رأيناها في الملفّات، وما يُحتمل منها. */
+/** Spellings seen in the files and what each can mean. */
 const readType = (v) => {
   const s = String(v == null ? '' : v).trim().toLowerCase();
   if (!s) return null;
   if (/^(cash|كاش|نقد|غ\s*ض|غير\s*ضريب)/.test(s)) return 'cash';
   if (/ضريب|^tax$|^ض$/.test(s)) return 'tax';
-  return null;                       // صياغةٌ لم نرَها — تُترك ولا تُخمَّن
+  return null;                       // Unseen spelling: leave it, do not guess.
 };
 
 (async () => {

@@ -1,16 +1,7 @@
 /**
- * ربطُ كشوف التشغيل القائمة بمعاملات التخليص — مرّةً، بالأدلّة القويّة وحدها.
- *
- * الأدلّةُ هي نفسُها التي يستعملها النظامُ بعد اليوم (services/customsOpsLink):
- *   move       رقمُ الكشف مكتوبٌ في خانة نقلٍ أو إرجاعٍ بسيّارة الشركة في المعاملة؛
- *   bl         «رقم السند» في الكشف = بوليصةُ معاملةٍ واحدة (بالبادئة أو بدونها، ٨ خاناتٍ فأكثر)؛
- *   container  «رقم السند» = رقمُ حاويةٍ مسجّلةٍ في معاملةٍ واحدة.
- * ولا تخمين: بوليصةٌ تحملها معاملتان، أو كشفٌ تذكره معاملتان، لا يُربط.
- * وما ربطه أو فكّه موظّفٌ بيده لا يُمسّ.
- *
- * تجربةٌ افتراضًا (تقرأ ولا تكتب)؛ `--apply` للكتابة. `--list` يطبع كلَّ ربط.
- *   node src/scripts/backfillCustomsOpsLinks.js [--apply] [--list]
- *   ENV_FILE=/path/to/.env لقاعدةٍ غيرِ التي في backend/.env.
+ * Link existing operations manifests to customs transactions, once, using strong evidence only (same as services/customsOpsLink): manifest number in a company-car move field, document number equal to one transaction's bill of lading, or to one container.
+ * No guessing: ambiguous matches are not linked and links set or cleared by a person are not touched.
+ * node src/scripts/backfillCustomsOpsLinks.js [--apply] [--list]; ENV_FILE=/path/to/.env targets another database.
  */
 const path = require('path');
 require('dotenv').config({ path: process.env.ENV_FILE || path.join(__dirname, '../../.env'), quiet: true });
@@ -19,13 +10,13 @@ const mongoose = require('mongoose');
 (async () => {
   const apply = process.argv.includes('--apply');
   const list = process.argv.includes('--list');
-  // التجربةُ لا تكتب شيئًا — ولا فهرسًا: النموذجُ يحمل فهرسًا جديدًا يُبنى عند الإقلاع.
+  // The dry run writes nothing, not even an index: the model carries a new index that is built at startup.
   if (!apply) mongoose.set('autoIndex', false);
   await mongoose.connect(process.env.MONGODB_URI, apply ? {} : { autoIndex: false, autoCreate: false });
   const link = require('../services/customsOpsLink');
   const idx = await link.loadIndex();
 
-  // المرشّحون: مَن ذكرته معاملةٌ برقمه، ومَن عليه «رقم سند»، ومَن هو مربوطٌ الآن.
+  // Candidates: manifests cited by a transaction by number, those with a document number, and those currently linked.
   const filter = {
     $or: [
       { reportNumber: { $in: [...idx.byReport.keys()] } },
@@ -55,7 +46,7 @@ const mongoose = require('mongoose');
     }
   }
   if (apply && res.changed) {
-    // الشاشاتُ في العاملَين تقرأ من ذاكرتها — يُمسح ما يقرأ الربطَ قبل الإغلاق.
+    // Screens in both workers read from their cache, so clear what reads the link before closing.
     const cache = require('../utils/ttlCache');
     for (const p of ['wf:', 'collections-dept:', 'cdr:', 'colledger:', 'customslink:']) await cache.clearShared(p).catch(() => {});
   }

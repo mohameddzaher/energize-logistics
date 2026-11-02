@@ -1,14 +1,8 @@
 /**
- * يوحّد خاناتِ العقد في ملفّ الموظّف (البداية، النهاية، رقم قوى) مع عقده الحاكم.
- * راجع utils/contractStatus: العقدُ هو المصدر، والخاناتُ صورةٌ منه.
- *
- * ما لا يعرفه العقدُ ويعرفه الملفّ لا يضيع: عقدٌ سارٍ محدَّدُ المدّة بلا نهايةٍ
- * مكتوبة، أو بلا رقم، يُملأ من الملفّ أوّلًا — ثمّ تُكتب الصورة.
- *
- * وهو نفسُه فحصُ السلامة: بلا `--apply` يعدّ الفروق ويخرج بـ1 إن وُجدت.
- *
- *   node src/scripts/repairContractMirror.js           ← عرضٌ فقط
- *   node src/scripts/repairContractMirror.js --apply
+ * Aligns the contract fields on the employee file (start, end, Qiwa number) with the governing contract. See utils/contractStatus: the
+ * contract is the source and the fields are a copy of it. Nothing the file knows and the contract lacks is lost: an active fixed-term
+ * contract with no end date or number is filled from the file first, then the copy is written. Also serves as the integrity check: without
+ * `--apply` it counts differences and exits 1 if any exist. Usage: node src/scripts/repairContractMirror.js [--apply]
  */
 require('dotenv').config();
 const mongoose = require('mongoose');

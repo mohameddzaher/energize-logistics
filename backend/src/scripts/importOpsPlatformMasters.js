@@ -1,24 +1,9 @@
 /* eslint-disable no-console */
 /**
- * استيرادُ سجلّات منصّة الأوبريشن إلى قسم طلبات الشحنات.
- *
- *   node src/scripts/importOpsPlatformMasters.js --dry
- *   node src/scripts/importOpsPlatformMasters.js --yes
- *   node src/scripts/importOpsPlatformMasters.js --yes --only=suppliers,customers
- *
- * ── لماذا نسخٌ لا مرآة ─────────────────────────────────────────────────────
- * قسمُ «منصّة الأوبريشن» مرآةٌ حيّةٌ لنظامٍ خارجيّ: يُقرأ منه ولا يُكتب فيه،
- * وإن انقطع انقطع القسم. وقسمُ «طلبات الشحنات» نظامُنا نحن — يُنشئ الحمولةَ
- * ويطبع بوليصتَها ويحاسب عليها. فالسجلّاتُ تُنسخ إليه لتكون عندنا: عملاءُ
- * وموردون ومركباتٌ نعمل عليهم من غير أن نسأل نظامًا آخر.
- *
- * ── والمعرّفُ الخارجيّ هو المفتاح ──────────────────────────────────────────
- * الأسماءُ تتكرّر («محمد» ثلاثون مرّة) والهواتفُ تتغيّر. فيُخزَّن `externalId`
- * ويُطابَق به: إعادةُ التشغيل تُحدِّث ولا تُكرِّر، ولو أُعيد الاستيرادُ عشرين
- * مرّة بقي العدد كما هو.
- *
- * ولا يُدهَس ما كُتب عندنا: الحقلُ الفارغُ يُملأ، والمملوءُ يبقى إلّا مع
- * `--overwrite`. من صحّح رقمَ مورّدٍ على شاشتنا لا يُعاد إليه الخطأ.
+ * Import of operations platform registers into shipment orders.
+ * Usage: --dry, --yes, and --yes --only=suppliers,customers.
+ * A copy, not a mirror: the operations platform section is a live mirror of an external system, read-only, and it stops when the platform does. Shipment orders is our own system (creates the load, prints the waybill, bills), so the registers are copied in: customers, suppliers and vehicles we work on without asking another system.
+ * The external id is the key, since names repeat and phones change. It is stored as externalId and matched on, so re-running updates and never duplicates. What we wrote is not overwritten: empty fields are filled and populated ones stay unless --overwrite, so a supplier number corrected on our screen is not reverted.
  */
 require('dotenv').config({ path: require('path').join(__dirname, '../../.env') });
 const mongoose = require('mongoose');
@@ -30,10 +15,10 @@ const onlyArg = process.argv.find((a) => a.startsWith('--only='));
 const ONLY = onlyArg ? onlyArg.slice(7).split(',').map((x) => x.trim()) : null;
 
 const n = (v) => (v === null || v === undefined ? '' : String(v).trim());
-/** اسمٌ قد يأتي نصًّا أو كائنَ ترجمة {ar,en}. */
+/** A name that may be text or a translation object {ar,en}. */
 const label = (v) => (v && typeof v === 'object' ? n(v.ar) || n(v.en) : n(v));
 
-/** يسحب كلَّ الصفحات. المنصّةُ تسقف الصفحةَ بمئة، فالحدُّ يُطلب صراحةً. */
+/** Pulls all pages. The platform caps a page at 100, so the limit is requested explicitly. */
 async function fetchAll(path, onPage) {
   let page = 1; let total = null; const out = [];
   for (;;) {
@@ -50,7 +35,7 @@ async function fetchAll(path, onPage) {
   return out;
 }
 
-/** يكتب سجلًّا واحدًا: يُملأ الفارغُ، ولا يُكتب فوق المملوء إلّا بأمر. */
+/** Writes one record: fills empty fields and overwrites populated ones only on request. */
 function merge(doc, src) {
   let changed = 0;
   for (const [k, v] of Object.entries(src)) {
@@ -139,12 +124,12 @@ const RESOURCES = {
     const mapped = rows.map(res.map).filter((r) => r.externalId && (r.name || r.plate));
     const skipped = rows.length - mapped.length;
 
-    // المدموجُ (`mergedInto`) لا يُطابَق — صاحبُه الباقي يحمل معرّفَه في `externalIds`.
+    // Merged records (mergedInto) are not matched; the surviving record holds their id in externalIds.
     const existing = (await Model.find({}).lean()).filter((e) => !e.mergedInto);
     const byExt = new Map(existing.filter((e) => e.externalId).map((e) => [String(e.externalId), e]));
     const byAlias = new Map();
     existing.forEach((e) => (e.externalIds || []).forEach((x) => byAlias.set(String(x), e)));
-    // ومن أُنشئ عندنا يدويًّا قبل الاستيراد: يُطابَق بالاسم فلا يُكرَّر.
+    // Records created by hand before the import are matched by name so they are not duplicated.
     const byName = new Map(existing.filter((e) => !e.externalId).map((e) => [n(e.name).toLowerCase(), e]));
 
     let create = 0; let update = 0;
@@ -154,7 +139,7 @@ const RESOURCES = {
       const hit = byExt.get(m.externalId) || alias || byName.get(n(m.name).toLowerCase());
       if (!hit) { create += 1; plan.push({ create: true, data: m }); continue; }
       const copy = { ...hit };
-      // سجلٌّ ثانٍ في المنصّة لمورّدٍ دُمج: يُكمّل بياناتِه ولا يغيّر معرّفَه الأساسيّ.
+      // A second platform record for a merged supplier: completes its data without changing the primary id.
       const changed = merge(copy, alias ? { ...m, externalId: undefined } : m);
       if (changed) { update += 1; plan.push({ _id: hit._id, data: copy }); }
     }

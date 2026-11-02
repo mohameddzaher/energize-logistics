@@ -1,44 +1,22 @@
 /**
- * ── سجلٌّ قديمٌ — لا يُكتب فيه ولا يُقرأ منه بعد ٢٠٢٦/١٠/٢١ ─────────────────
- * صارت قيمةُ البيع عمودًا واحدًا: `OperationsWorkflow.sellingValue` تكتبه
- * الصفحتان بطريقٍ واحد (راجع operationsPrivateController). وما بقي هنا
- * يُطابَق مع الكشوف بـ scripts/reconcilePrivateSellingPrices.js (تجربةٌ أوّلًا،
- * و`--apply` ينسخه إلى الكشف). وما يلي تاريخُ الجدول كما كُتب.
- *
- * سعرُ البيع الحقيقيّ — عندنا وحدَنا.
- *
- * ── العلّة ──────────────────────────────────────────────────────────────────
- * الكشفُ يأتي من منصّة التشغيل وفيه «سعرُ بيع» يساوي سعرَ الشراء: فريقُ
- * العمليّات هناك لا يعرف ما نأخذه من العميل ولا يجوز أن يعرفه. فالرقمُ الذي
- * تقرؤه إدارتُنا في سير عمل التشغيل ليس بيعَنا — هو شراؤنا مكتوبًا مرّتين.
- *
- * وتصحيحُه في الكشف نفسِه ممنوعٌ من جهتين: المزامنةُ تكتب قيمةَ المنصّة فوقه
- * في كلّ مرور، **وأيُّ تعديلٍ عندنا قد يُدفَع إليها** — فيرى فريقُ منصّةٍ
- * ليست لنا هامشَنا على كلّ حمولة.
- *
- * فالسعرُ الحقيقيّ يُحفَظ هنا: جدولٌ صغيرٌ لا تقرؤه المزامنةُ ولا يُرسَل إلى
- * أحد، مفتاحُه الكشفُ نفسُه. وصفحةُ «التشغيل — خاصّ» تعرض كشوفَ التشغيل كما
- * هي وتستبدل عمودَ البيع بهذا. لا نسخةَ ثانيةً من الكشوف: صفٌّ لرقمٍ واحد.
- *
- * ── ومن أين يأتي الرقم ──────────────────────────────────────────────────────
- *   • تقريرُ الفروع (استيرادٌ لمرّة) — سعرُ البيع الحقيقيّ لما مضى.
- *   • ملفُّ العميل: سعرُ مساره الأحدث، يُطبَّق على كلّ كشفٍ جديدٍ تلقائيًّا.
- *   • ويدُ الموظّف في الصفحة — وهي الأحدث، وتُعلّم ملفَّ العميل بدورها.
+ * LEGACY: no longer written or read. The selling value is now the single column `OperationsWorkflow.sellingValue` (see operationsPrivateController); leftover rows are matched with scripts/reconcilePrivateSellingPrices.js (dry run first, `--apply` copies to the report).
+ * The platform's report carries a selling price equal to purchase price, and sync would overwrite an edit and might push it back, exposing our margin; so the real price lived in this table, keyed by report, never read by sync.
+ * Sources: branches report (one-time import), customer file route price (latest), and a user's edit (newest).
  */
 const mongoose = require('mongoose');
 
 const privateSellingPriceSchema = new mongoose.Schema({
-  // الكشفُ في سير عمل التشغيل. المفتاحُ الحقيقيُّ للصفّ.
+  // The report in the operations workflow; the row's real key.
   workflow: {
     type: mongoose.Schema.Types.ObjectId, ref: 'OperationsWorkflow', required: true, unique: true, index: true,
   },
-  // ورقمُه مكتوبٌ كذلك: يُبحَث به ويُقرأ في التصدير بلا ربطٍ ثانٍ.
+  // The report number is stored too, for search and export without another join.
   reportNumber: { type: String, trim: true, default: '', index: true },
 
   sellingValue: { type: Number, default: 0 },
-  // من أين جاء هذا الرقم: sheet | route | manual
+  // Where this number came from: sheet | route | manual
   source: { type: String, trim: true, default: '' },
-  // ملاحظةُ من عدّله — «اتُّفق مع العميل على كذا».
+  // Note from whoever edited it, e.g. agreed with the customer on a price.
   note: { type: String, trim: true, default: '' },
 
   updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },

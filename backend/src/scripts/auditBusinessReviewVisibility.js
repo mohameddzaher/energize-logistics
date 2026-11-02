@@ -1,17 +1,8 @@
 /**
- * auditBusinessReviewVisibility — هل قسم «مراجعة الأعمال» ظاهر لكل يوزر، وكل
- * واحد بيشوف إيه بالظبط؟
- *
- *   node src/scripts/auditBusinessReviewVisibility.js
- *
- * بيشتغل على القاعدة نفسها (مش على HTTP) عشان يغطي **كل** دور في enum بتاع
- * User و**كل** مستخدم حقيقي موجود فعلاً — مش عيّنة. بيطبع مصفوفة بتقول لكل دور:
- *   • القسم ظاهر في الشريط الجانبي؟ (effectivePermissions)
- *   • بيشوف أنهي روابط؟ (نفس قاعدة isBrRunner/isBrParticipant في الواجهة)
- *   • فيه override محفوظ من صفحة الصلاحيات بيقفله؟
- *
- * بيرمي خطأ لو أي دور اتقفل عليه القسم — لأن المطلوب صراحةً إن القسم يوصل
- * لكل الموظفين، كل واحد بحدّه. read-only تمامًا: مش بيكتب أي حاجة.
+ * auditBusinessReviewVisibility: is the business review section visible to every user, and what exactly does each see?
+ * node src/scripts/auditBusinessReviewVisibility.js
+ * Runs against the database itself (not HTTP) to cover every role in the User enum and every real existing user, not a sample. Prints a matrix per role:
+ * - is the section visible in the sidebar (effectivePermissions)   - which links it sees (same isBrRunner/isBrParticipant rule as the UI)   - is a saved override from the permissions page locking it Throws if any role is locked out, since the requirement is that the section reaches all employees, each within his limits. Strictly read-only: writes nothing.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -27,7 +18,7 @@ const GREEN = '\x1b[32m'; const RED = '\x1b[31m'; const DIM = '\x1b[2m'; const O
 
   const SECTION = 'Business Review';
 
-  // نفس القواعد اللي الواجهة بتقرر بيها الروابط (frontend/src/lib/businessReview.ts).
+  // Same rules the UI uses to decide links (frontend/src/lib/businessReview.ts).
   const isRunner = (role) => brCfg.isExecutive({ role }) || brCfg.isSecretary({ role });
   const isParticipant = (role) => brCfg.isParticipant({ role });
 
@@ -37,7 +28,7 @@ const GREEN = '\x1b[32m'; const RED = '\x1b[31m'; const DIM = '\x1b[2m'; const O
     if (isParticipant(role)) links.push('اجتماعات المراجعة');
     if (isRunner(role)) links.push('سجل البنود');
     if (isParticipant(role)) links.push('البنود المسندة إليّ');
-    links.push('مهامي من الاجتماعات'); // كل موظف بيشوف شغله هو
+    links.push('مهامي من الاجتماعات'); // Each employee sees his own work.
     return links;
   };
 
@@ -64,7 +55,7 @@ const GREEN = '\x1b[32m'; const RED = '\x1b[31m'; const DIM = '\x1b[2m'; const O
     );
   }
 
-  // ── المستخدمون الحقيقيون ───────────────────────────────────────────────────
+  // Real users.
   console.log(`\n${'─'.repeat(100)}\nالمستخدمون الحقيقيون على هذه القاعدة:\n`);
   const users = await User.find({ isActive: { $ne: false } }).select('firstName lastName email role').sort({ role: 1 }).lean();
   const byTier = { board: [], secretariat: [], managers: [], staff: [], partners: [] };

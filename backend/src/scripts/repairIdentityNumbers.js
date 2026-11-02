@@ -1,16 +1,8 @@
 /**
- * repairIdentityNumbers — رقمُ هويّة السعوديّ يُنسَخ إلى العمود الذي يُقرأ.
- *
- *   node src/scripts/repairIdentityNumbers.js --dry
- *   node src/scripts/repairIdentityNumbers.js
- *
- * السببُ مشروحٌ عند `mirrorNationalId` في models/Employee: الرقمُ مكتوبٌ في
- * `nationalId` والشاشاتُ تقرأ `iqamaNumber`، فيظهر الموظّفُ «بلا رقم هويّة»
- * ويُعَدّ نقصًا في قائمة عمل الموارد البشريّة. الخطّافُ يمنعها من الآن، وهذا
- * يُصلح المكتوبَ قبله.
- *
- * ولا يُكتب فوق قيمةٍ مخالفة: صفٌّ عمودُه مملوءٌ برقمٍ آخرَ يُعرَض ولا يُمَسّ —
- * رقمان مختلفان لشخصٍ واحد سؤالٌ لبشرٍ لا لسكربت.
+ * repairIdentityNumbers: copy a Saudi national ID into the column that is read.
+ * Usage: node src/scripts/repairIdentityNumbers.js [--dry]
+ * See `mirrorNationalId` in models/Employee: the number was written to `nationalId` but screens read `iqamaNumber`, so the employee showed as having no identity number and counted as a gap in HR's worklist. The hook prevents it from now on; this fixes earlier data.
+ * A differing existing value is never overwritten: a row whose column holds another number is shown and left alone, since two numbers for one person is a question for a human.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');

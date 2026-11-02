@@ -1,11 +1,7 @@
 /**
- * syncWalletPayments — يطابق «مبلغ السداد» على كلّ كشفٍ له مشترياتٌ في المحفظة.
- *
- *   node src/scripts/syncWalletPayments.js          يعرض الفروق فقط
- *   node src/scripts/syncWalletPayments.js --apply  يكتبها
- *
- * لماذا: كانت المحفظةُ تملأ الخانةَ مرّةً إن كانت فارغة، فمسحها حفظُ الكشف من
- * سير عمل التشغيل أو بقيت على مبلغٍ قبل تعديل العهدة. راجع utils/walletPayment.
+ * Aligns the payment amount on every statement that has wallet purchases.
+ * Usage: node src/scripts/syncWalletPayments.js (shows differences) [--apply] (writes them)
+ * Why: the wallet filled the field only once when empty, so a save from the operations workflow wiped it or it kept an amount from before a custody edit. See utils/walletPayment.
  */
 require('dotenv').config({ path: require('path').join(__dirname, '..', '..', '.env'), quiet: true });
 const mongoose = require('mongoose');

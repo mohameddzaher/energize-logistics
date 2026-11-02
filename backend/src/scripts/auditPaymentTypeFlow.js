@@ -1,17 +1,7 @@
 /**
- * auditPaymentTypeFlow — أنّ نوعَ الدفع يُكتب وحدَه، وأنّ الكشف يصل التحصيل.
- *
- *   node src/scripts/auditPaymentTypeFlow.js --base http://localhost:5199
- *
- * ── ما يُثبَت ───────────────────────────────────────────────────────────────
- *   • كشفٌ يُنشأ لعميلٍ كاشٍ يُولَد نوعُه «كاش» بلا أن يلمسه أحد.
- *   • وكشفُ عميلٍ ضريبيّ يُولَد «ضريبيًّا» — إلّا أن تقول المنصّةُ عن هذه
- *     الحمولة إنّها نقديّة، فهي الاستثناءُ الوحيد.
- *   • وكتابةُ تاريخ سدادٍ على كشفٍ قديمٍ بلا نوعٍ تملؤه في اللحظة نفسِها.
- *   • ثمّ يظهر الكشفُ النقديُّ في شاشة فواتير الكاش فعلًا.
- *   • ولا يُبدَّل نوعٌ اختاره موظّفٌ بيده.
- *
- * ولا يُترَك أثر: كشوفُ الفحص تُنشأ وتُحذَف، ولا يُمسّ كشفٌ حقيقيّ.
+ * Checks that payment type is written automatically and the statement reaches collections.
+ * Proves: a statement for a cash customer is born cash untouched; a tax customer's is born tax, unless the platform marks the load as cash (the only exception); writing a payment date on an old untyped statement fills the type at once; the cash statement then appears on the cash-invoices screen; and a type chosen by hand is never changed.
+ * Leaves no trace: test statements are created and deleted, no real statement is touched.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -102,7 +92,7 @@ const head = (t) => console.log(`\n── ${t} ${'─'.repeat(Math.max(0, 56 - t
     ok('ويُملأ نوعُه في اللحظة نفسِها', oldDoc?.paymentType === 'cash', `${oldDoc?.paymentType || 'فارغ'} · ${oldDoc?.paymentTypeSource || '—'}`);
 
     head('ثمّ يصل التحصيل');
-    // شاشةُ فواتير الكاش تقرأ الكشوفَ النقديّة ذاتَ تاريخ السداد.
+    // The cash-invoices screen reads cash statements with a payment date.
     const inv = await api(`/api/collections-dept/invoices/cash?q=${TAG}4&limit=20`);
     const found = (inv.body?.invoices || []).some((r) => r.reportNumber === `${TAG}4`);
     ok('يظهر في فواتير الكاش', found, `${inv.body?.total ?? 0} صفًّا في النتيجة`);

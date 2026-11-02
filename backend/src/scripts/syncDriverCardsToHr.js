@@ -1,9 +1,6 @@
 /**
- * syncDriverCardsToHr — يطابق لقطةَ بطاقة السائق على ملفّ كلّ موظّف مع سجلّ
- * بطاقات السائقين في المركبات (المرجع). راجع utils/driverCardSync.
- *
- *   node src/scripts/syncDriverCardsToHr.js          يعرض الفروق
- *   node src/scripts/syncDriverCardsToHr.js --apply  يكتبها
+ * Aligns the driver-card snapshot on each employee file with the vehicles driver-card register (the reference). See utils/driverCardSync.
+ * Usage: node src/scripts/syncDriverCardsToHr.js (shows differences) [--apply] (writes them)
  */
 require('dotenv').config({ path: require('path').join(__dirname, '..', '..', '.env'), quiet: true });
 const mongoose = require('mongoose');

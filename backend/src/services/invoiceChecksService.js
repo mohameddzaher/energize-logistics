@@ -1,16 +1,8 @@
 /**
- * ═══════════════════════════════════════════════════════════════════════════
- *  فحوصُ الفواتير في سير عمل التشغيل — أربعُ بطاقاتٍ حيّة
- * ═══════════════════════════════════════════════════════════════════════════
- *
- *  ١) «فواتير لم تُفوتَر» — أرقامٌ ناقصةٌ في تسلسل الفواتير الضريبيّة.
- *  ٢) «فواتير بكشوفات غير موجودة» — سطرٌ في ورقة المبيعات يذكر كشفًا لا يوجد.
- *  ٣) «فرق قيمة الفاتورة» — ما تقوله الورقةُ عن الفاتورة غيرُ مجموع كشوفها.
- *  ٤) «عدم تطابق اسم العميل» — العميلُ في الورقة غيرُ عميل الكشف.
- *
- * الأربعةُ تُحسب من القاعدة لحظةَ السؤال (وتُحفظ ثلاثين ثانيةً تحت `wf:` التي
- * تمسحها كلُّ كتابةٍ على الكشوف وكلُّ مزامنة) — فكشفٌ يُصحَّح يسقط من البطاقة
- * بلا رفعٍ جديد، وفاتورةٌ تُكتب اليومَ برقمٍ أعلى تمدّ التسلسلَ في الحال.
+ * Invoice checks in the operations workflow: four live cards.
+ * 1) invoices not issued: gaps in the tax invoice sequence.
+ * 2) invoices with missing reports: a sales-sheet line names a report that does not exist.
+ * 3) invoice amount difference: the sheet's invoice value differs from the sum of its reports.  4) customer name mismatch: the sheet's customer differs from the report's customer. All are computed from the DB at request time and cached for 30 seconds under `wf:`, which every report write and sync clears, so a corrected report drops off the card and a higher invoice number extends the sequence immediately.
  */
 const OperationsWorkflow = require('../models/OperationsWorkflow');
 const InvoiceUploadLine = require('../models/InvoiceUploadLine');
@@ -21,28 +13,17 @@ const cache = require('../utils/ttlCache');
 const CACHE_KEY = 'wf:invchecks';
 const CACHE_TTL = 30 * 1000;
 
-// ── متى يكون الرقمُ «شاذًّا» لا بدايةً ولا نهاية ──────────────────────────────
-// رقمٌ يبعد عن جيرانه أكثرَ من ألفٍ ليس من التسلسل: خطأُ كتابة («120184» بدل
-// «12184») أو فاتورةٌ من دفترٍ آخر. ولو أُخذ حدًّا لصار كلُّ ما بينه وبين
-// التسلسل «ناقصًا» — آلافُ أرقامٍ لا وجودَ لها. فيُقال باسمه في قائمةٍ وحدَه.
+// When a number is an outlier, not a start or end. A number more than 1000 from its neighbours is not part of the sequence: a typo ("120184" for "12184") or an invoice from another book. Taking it as a bound would make everything between it and the sequence "missing", thousands of nonexistent numbers, so it is listed on its own.
 const OUTLIER_GAP = 1000;
-// سقفُ ما تُرجعه القائمة — تسلسلٌ مكسورٌ بالكامل لا يُرسَل مئةَ ألف سطر.
+// Cap on list size; a fully broken sequence must not return a hundred thousand lines.
 const MAX_GAPS = 20000;
-// فرقُ القيمة الذي يُعدّ فرقًا: ريالٌ واحد — كسورُ تقريب الضريبة (١٥٪ على كلّ
-// سطرٍ أو على المجموع) لا تُحسب خلافًا.
+// Smallest value difference that counts: one riyal. Tax rounding fractions (15% per line or on the total) are not disputes.
 const VALUE_TOLERANCE = 1;
 
 const CANCELLED_EXEC = ['ملغي', 'ملغى', 'ملغاة', 'cancelled', 'canceled', 'Cancelled'];
 const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
-/**
- * الأرقامُ التي يحملها نصُّ رقم الفاتورة.
- *
- * الخانةُ تحمل رقمًا واحدًا في الغالب، وأحيانًا أكثر («12184 / 12185»). فما كان
- * أرقامًا وفواصلَ وحدَها عُدّت أرقامُه كلُّها موجودة؛ وما فيه حروفٌ («INV-12184»)
- * لا يُخمَّن: يُعَدّ «غيرَ رقميّ» ويُقال عددُه. والبدائلُ («no inv»، «بدون»)
- * ليست أرقامًا أصلًا — `hasTaxInvoice`.
- */
+/** The numbers carried by an invoice-number text. The cell usually holds one number, sometimes several ("12184 / 12185"). Digits and separators only: all its numbers count as present. With letters ("INV-12184") it is not guessed; it is counted as non-numeric. Placeholders ("no inv", "none") are not numbers at all; see `hasTaxInvoice`. */
 function numbersIn(raw) {
   const s = westernDigits(String(raw == null ? '' : raw)).trim();
   if (!hasTaxInvoice({ invoiceNumber: s })) return { kind: 'none', nums: [] };
@@ -52,18 +33,10 @@ function numbersIn(raw) {
 }
 
 /**
- * ── أين يبدأ التسلسل وأين ينتهي ──────────────────────────────────────────────
- *
- * النهايةُ أعلى رقمٍ مكتوبٍ على كشف — حيّةٌ، تتحرّك مع كلّ فاتورةٍ تُكتب.
- * والبدايةُ أدنى رقمٍ في **الكتلة الرئيسيّة**: الأرقامُ تُقسَم حيث يفصل بين
- * رقمين متجاورين أكثرُ من `OUTLIER_GAP`، وتُؤخذ أكبرُ الكتل عددًا. فرقمٌ شاذٌّ
- * في أوّلها أو آخرها لا يصنع آلافَ «ناقصٍ» وهميّة — ويُعرض في قائمته.
- *
- * ولماذا لا يبدأ من أوّل دفتر التحصيل: الدفترُ فيه تسعةُ آلاف فاتورةٍ من قبل
- * النظام، أكثرُها لكشوفٍ لم تدخل سيرَ العمل قطّ. والبدءُ منه يجعل البطاقةَ
- * تقول «آلافُ الفواتير لم تُفوتَر» عن فواتيرَ صدرت وحُصّلت قبل أن يوجد الجدول.
- *
- * و`WF_INVOICE_SEQ_START` في البيئة يثبّت البدايةَ إن قرّرها المحاسب.
+ * Where the sequence starts and ends.
+ * The end is the highest number written on a report, live as invoices are written. The start is the lowest number in the main cluster: numbers are split wherever adjacent ones are more than `OUTLIER_GAP` apart, and the largest cluster by count is used. So an outlier at either end does not create thousands of phantom gaps, and it is listed separately.
+ * It does not start at the beginning of the collections ledger, which holds nine thousand pre-system invoices, mostly for reports never in the workflow; that would report thousands of "not issued" for invoices issued and collected before the table existed.
+ * `WF_INVOICE_SEQ_START` in the environment pins the start if the accountant decides it.
  */
 function sequenceBounds(sorted) {
   if (!sorted.length) return null;
@@ -74,7 +47,7 @@ function sequenceBounds(sorted) {
     cur.push(sorted[i]);
   }
   clusters.push(cur);
-  // أكبرُها عددًا، وعند التساوي الأحدثُ (الأعلى).
+  // The largest by count; on a tie, the latest (highest).
   const main = clusters.reduce((a, b) => (b.length > a.length || (b.length === a.length && b[b.length - 1] > a[a.length - 1]) ? b : a));
   const envStart = Number(process.env.WF_INVOICE_SEQ_START);
   const useEnv = Number.isSafeInteger(envStart) && envStart > 0 && envStart <= main[main.length - 1];
@@ -84,7 +57,7 @@ function sequenceBounds(sorted) {
   return { start, end, startSource: useEnv ? 'env' : 'data', outliers };
 }
 
-/** «فواتير لم تُفوتَر»: كلُّ رقمٍ بين البداية وأعلى رقمٍ لا يحمله كشف. */
+/** Invoices not issued: every number between the start and the highest that no report carries. */
 async function computeGaps() {
   const raw = await OperationsWorkflow.distinct('invoiceNumber');
   const present = new Set();
@@ -101,10 +74,7 @@ async function computeGaps() {
   const nums = [];
   for (let n = b.start; n <= b.end && nums.length < MAX_GAPS; n++) if (!present.has(n)) nums.push(n);
 
-  // ── وما يعرفه دفترُ التحصيل عن كلّ رقمٍ ناقص ───────────────────────────────
-  // لا يُخفى رقمٌ لأنّ الدفتر يعرفه: يُكتب بجانبه ما يعرفه — محجوزٌ لم يُستعمل،
-  // أو ملغاة، أو فاتورةٌ صادرةٌ في الدفتر لا كشفَ عليها هنا. ومعها ما في أوراق
-  // المبيعات المرفوعة: رقمٌ في الورقة كشوفُه غيرُ موجودة.
+  // What the collections ledger knows about each missing number. A number is not hidden because the ledger knows it; its status is shown beside it: reserved and unused, cancelled, or an invoice issued in the ledger with no report here. Plus uploaded sales sheets: a number in the sheet whose reports do not exist.
   const strs = nums.map(String);
   const CollectionInvoice = require('../models/CollectionInvoice');
   const [ledger, uploaded] = await Promise.all([
@@ -119,7 +89,7 @@ async function computeGaps() {
   for (const l of ledger) {
     const k = String(l.invoiceNumber).trim();
     const prev = led.get(k);
-    // رقمٌ واحدٌ قد يكون له في الدفتر أكثرُ من صفّ (حسابان) — الأوضحُ يغلب.
+    // One number may have several ledger rows (two accounts); the clearest wins.
     if (!prev || (prev.unused && !l.unused)) led.set(k, l);
   }
   const up = new Map(uploaded.map((u) => [String(u._id), u]));
@@ -151,18 +121,10 @@ async function computeGaps() {
   };
 }
 
-/**
- * ── مفتاحُ مقارنة الأسماء ───────────────────────────────────────────────────
- * يُطوى ما لا يُرى فرقًا: المسافاتُ كلُّها (الصلبةُ والمكرّرةُ والطرفيّة)
- * وعلاماتُ الاتّجاه والعرضِ الصفريّ، والهمزاتُ والتاءُ المربوطة والياء، والتشكيل
- * والأرقامُ الهنديّة — `searchKey`. وما بقي بعده فرقٌ حقيقيّ.
- */
+/** Name comparison key. Folds what is not a visible difference: all spaces (hard, doubled, edge), direction and zero-width marks, Arabic hamza/ta marbuta/ya variants, diacritics and Indic digits (`searchKey`). What remains is a real difference. */
 const nameCmpKey = (s) => searchKey(String(s || '').replace(/[​-‏‪-‮⁠-⁯﻿]/g, ''));
 
-/**
- * وأسماءُ الطرف الواحد في التحصيل (`aliases`) اسمٌ واحد: عميلٌ غيّر اسمَه في
- * المنصّة يبقى اسمُه القديم صيغةً له، والورقةُ قد تكتب أيَّهما.
- */
+/** A collections party's names (`aliases`) count as one name: a customer renamed on the platform keeps its old name as an alias, and the sheet may use either. */
 async function partyKeyIndex() {
   return cache.wrap('wf:invchecks:parties', 5 * 60 * 1000, async () => {
     const CollectionsParty = require('../models/CollectionsParty');
@@ -179,11 +141,9 @@ async function partyKeyIndex() {
 }
 
 /**
- * الفحوصُ الثلاثةُ على أسطر ورقة المبيعات.
- *
- * @param {object[]} lines    أسطرٌ {invoiceNumber, reportNumber, total, net, tax, customerName, …}
- * @param {Map}      overlay  (للمعاينة) رقمُ الكشف ← ما سيُكتب عليه، فتُقرأ الكشوفُ
- *                            كما ستكون بعد التطبيق لا كما هي الآن.
+ * The three checks over the sales sheet lines.
+ * @param {object[]} lines    lines {invoiceNumber, reportNumber, total, net, tax, customerName, ...}
+ * @param {Map}      overlay  (preview) report number -> what will be written to it, so reports are read as they will be after applying, not as they are now.
  */
 async function checkLines(lines, overlay = null) {
   const real = lines.filter((l) => hasTaxInvoice({ invoiceNumber: l.invoiceNumber }) && String(l.reportNumber || '').trim());
@@ -206,17 +166,13 @@ async function checkLines(lines, overlay = null) {
   const repMap = new Map();
   for (const w of rows.values()) repMap.set(String(w.reportNumber || '').trim(), w);
 
-  // ٢) كشفٌ غير موجود.
+  // 2) report does not exist.
   const missingReports = real.filter((l) => !repMap.has(String(l.reportNumber).trim())).map((l) => ({
     invoiceNumber: l.invoiceNumber, reportNumber: l.reportNumber, customerName: l.customerName || '',
     total: l.total ?? null, uploadedAt: l.uploadedAt || null, uploadedByName: l.uploadedByName || '', fileName: l.fileName || '',
   }));
 
-  // ٣) فرقُ القيمة — بمجموع ما يجمعه دفترُ التحصيل نفسُه للفاتورة (`syncOpsInvoices`):
-  // إجماليُّ الكشوف الضريبيّة غيرِ الملغاة التي تحمل الرقم. والإجماليُّ صافٍ +
-  // ١٥٪ تشتقّه `applyBillingRules`، فهو ما يُقارَن بـ«المجموع الصافي» في الورقة.
-  // وسطرٌ كشفُه غيرُ موجودٍ لا يدخل هنا: فرقُه مفسَّرٌ في بطاقته («كشوفات غير
-  // موجودة»)، وعدُّه هنا أيضًا يجعل الخطأَ الواحد بطاقتين.
+  // 3) value difference, against the same sum the collections ledger computes per invoice (`syncOpsInvoices`): total of the non-cancelled tax reports carrying the number. The total is net plus 15%, derived by `applyBillingRules`, and is compared with the sheet's net total. A line whose report does not exist is excluded: its difference is explained on its own card, and counting it here would make one error two cards.
   const upByInv = new Map();
   for (const l of real) {
     if (!repMap.has(String(l.reportNumber).trim())) continue;
@@ -249,14 +205,14 @@ async function checkLines(lines, overlay = null) {
   }
   valueDiffs.sort((a, b) => Math.abs(b.difference) - Math.abs(a.difference));
 
-  // ٤) اسمُ العميل.
+  // 4) customer name.
   const nameMismatches = [];
   for (const l of real) {
     const w = repMap.get(String(l.reportNumber).trim());
     if (!w) continue;
     const a = nameCmpKey(l.customerName); const b = nameCmpKey(w.username);
     if (!a || !b || a === b) continue;
-    if (parties[a] && parties[a] === parties[b]) continue;   // صيغتان لطرفٍ واحد
+    if (parties[a] && parties[a] === parties[b]) continue;   // Two spellings of one party
     nameMismatches.push({
       invoiceNumber: l.invoiceNumber, reportNumber: l.reportNumber,
       uploadedCustomer: l.customerName, workflowCustomer: w.username || '',
@@ -266,7 +222,7 @@ async function checkLines(lines, overlay = null) {
   return { missingReports, valueDiffs, nameMismatches };
 }
 
-/** البطاقاتُ الأربع وقوائمُها — حسابٌ واحدٌ مخزَّنٌ ثلاثين ثانية. */
+/** The four cards and their lists: one computation cached for 30 seconds. */
 async function computeAll() {
   return cache.wrap(CACHE_KEY, CACHE_TTL, async () => {
     const [gaps, lines, last] = await Promise.all([
@@ -300,13 +256,7 @@ async function list(kind) {
   return KINDS[kind](a);
 }
 
-/**
- * حفظُ أسطر الورقة بعد التطبيق.
- *
- * السطرُ (فاتورة، كشف) يُكتب فوق نظيره من ورقةٍ سابقة. وكشفٌ صار في الورقة
- * الأحدث على فاتورةٍ أخرى تُحذف أسطرُه القديمةُ على غيرها — وإلّا بقي يُحسب في
- * قيمة فاتورته القديمة فيصنع فرقًا لا وجودَ له.
- */
+/** Saves the sheet lines after applying. A line (invoice, report) overwrites its counterpart from an earlier sheet. A report that moved to another invoice in the newest sheet has its old lines on others deleted, or it would still count in its old invoice's value and create a phantom difference. */
 async function persistLines(lines, meta) {
   const real = lines.filter((l) => hasTaxInvoice({ invoiceNumber: l.invoiceNumber }) && String(l.reportNumber || '').trim());
   if (!real.length) return 0;

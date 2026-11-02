@@ -1,4 +1,4 @@
-/** المشرفُ يرى الكلَّ ولا يكتب إلّا في سياراته. */
+/** A supervisor sees everything but writes only on his own vehicles. */
 require('dotenv').config();
 const mongoose = require('mongoose');
 (async () => {

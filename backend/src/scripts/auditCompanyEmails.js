@@ -1,18 +1,7 @@
 /**
- * auditCompanyEmails — سجل بريد الشركة: الفصل عن حسابات السيستم، وتخزين
- * كلمات المرور.
- *
- *   node src/scripts/auditCompanyEmails.js
- *   node src/scripts/auditCompanyEmails.js --base http://127.0.0.1:5001
- *
- * الحاجات اللي بيتأكد منها:
- *   • كلمة المرور مش بترجع أبدًا مع القائمة ولا مع الإنشاء/التعديل.
- *   • مخزّنة مشفّرة في مونجو — مش نص صريح.
- *   • الكشف مسار مستقل، بيتسجّل، ومقفول على أدوار تقنية المعلومات.
- *   • تغيير باسوورد بريد الشركة **ما بيمسّش** دخول الموظف على السيستم، والعكس.
- *   • الربط بموظف اختياري وبيتربط بعدين.
- *
- * بيمسح كل ما أنشأه (zz-*) في الآخر ولا بيلمس بيانات حقيقية.
+ * Audits the company email register: separation from system accounts and password storage.
+ * Checks: passwords never returned by list/create/update; stored encrypted; reveal is a separate, logged, IT-only path; changing a mailbox password never affects the employee's system login and vice versa; employee link is optional and can be added later.
+ * Cleans up everything it created (zz-*) and touches no real data.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -82,12 +71,12 @@ async function login(e, pw = 'Test@12345') {
   ok('واتكتب في سجل التدقيق', !!trail);
 
   console.log('\n── ده مش حساب دخول السيستم ──');
-  // نفس الشخص ليه حساب سيستم وكلمة مروره غير كلمة مرور البريد تمامًا.
+  // The same person has a system account whose password differs completely from the mailbox password.
   const sysLogin = await login(emp.email);
   ok('حساب السيستم لسه شغال بكلمته', sysLogin.status === 200);
   const asMailbox = await login(emp.email, MAILBOX_PW);
   ok('وكلمة مرور البريد مش بتفتح السيستم', asMailbox.status === 401, `http ${asMailbox.status}`);
-  // وتغيير كلمة مرور البريد ما بيلمسش المستخدم.
+  // Changing the mailbox password must not touch the user.
   const userBefore = await User.findById(emp._id).select('+password').lean();
   await req('PUT', `/api/it/emails/${ID}`, C.it, { password: 'Changed#2026!' });
   const userAfter = await User.findById(emp._id).select('+password').lean();
@@ -112,8 +101,7 @@ async function login(e, pw = 'Test@12345') {
   const mine = (exp.body?.rows || []).find((r) => r.email.startsWith('zz-test.person'));
   ok('كلمة المرور الحقيقية في الملف', mine?.password === 'Changed#2026!', mine?.password);
   ok('مفيش أعمدة النوع/الحالة في التصدير', mine && !('mailboxType' in mine) && !('status' in mine), Object.keys(mine || {}).join(', '));
-  // الخاصية اللي بتهم فعلاً: اللي بيتصدّر هو اللي كان معروض. لو الفلتر اتجاهل،
-  // حد بيصدّر صف واحد كان هياخد كل كلمات المرور — ولذلك المقارنة بالقائمة نفسها.
+  // Key property: what is exported is what was displayed. If the filter were ignored, a one-row export would leak every password, so the comparison is against the list itself.
   const listSame = await req('GET', '/api/it/emails?q=zz-', C.it);
   ok('التصدير بيحترم نفس فلتر الشاشة',
     exp.body?.exported === (listSame.body?.emails || []).length,

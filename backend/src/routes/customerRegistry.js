@@ -1,49 +1,35 @@
 const express = require('express');
 const router = express.Router();
 
-// معرّفٌ مشوَّهٌ في الرابط = لا سجلّ، لا عطلٌ في الخادم — راجع utils/idParam.
+// A malformed id in the URL means no record, not a server error; see utils/idParam.
 const { objectIdParam } = require('../utils/idParam');
 router.param('id', objectIdParam());
 
 const ctrl = require('../controllers/customerRegistryController');
 const authenticate = require('../middleware/auth');
 
-// سجلُّ العملاء يُقرأ من أقسام «طلبات الشحنات» و«التشغيل» و«المبيعات» معًا —
-// الشاشةُ واحدةٌ في المواضع الثلاثة، فالقراءةُ واحدةٌ كذلك.
-// ── والكتابةُ تمرّ من هنا أيضًا ─────────────────────────────────────────────
-// نقاطُ «طلبات الشحنات» محروسةٌ بقسمها، فمن يفتح السجلَّ من قسم التشغيل كان
-// يُردّ ٤٠٣ عند أوّل تعديل — الصفحةُ تُفتح والزرُّ لا يعمل (راجع
-// page-api-map-subscreens). فتُعاد النقاطُ نفسُها هنا بحارس الأدوار وحدَه،
-// وتنفّذها متحكّماتُ طلبات الشحنات ذاتُها — سجلٌّ واحدٌ لا اثنان.
+// The customer registry is read from shipment orders, operations and sales alike; one screen in three places, so one read.
+// Writes go through here too. Shipment-order endpoints are guarded by their own section, so opening the registry from operations returned 403 on the first edit: the page opened and the button failed (see page-api-map-subscreens). The same endpoints are re-exposed here with role guard only and executed by the same shipment-order controllers: one registry, not two.
 const so = require('../controllers/shipmentOrdersController');
 const authorize = require('../middleware/rbac');
-// ── ومديرُ المبيعات يعدّل ────────────────────────────────────────────────────
-// السجلُّ صار يُفتح من قسم المبيعات أيضًا (ثلاثةُ أبوابٍ على سجلٍّ واحد)،
-// والسعرُ المتّفقُ عليه مع العميل عملُ المبيعات قبل غيرها. فمديرُ المبيعات
-// يضيف ويعدّل كمدير العمليّات؛ والمندوبُ يقرأ ولا يكتب، والحذفُ (إيقافُ
-// العميل) يبقى لقائمة الإدارة، وشرائحُ السعر لحارسها في المتحكِّم.
-// والمندوبُ يعدّل بياناتِ العميل كذلك — والأسعارُ ليست منها: يحرسها المتحكِّم
-// لمدير العمليّات ومدير النظام وحدَهما (customerRoutes.canEditPrices).
+// The sales manager edits. The registry is also opened from sales (three entry points to one registry) and the agreed customer price is sales work first, so the sales manager adds and edits like the operations manager; the rep reads but does not write, delete (customer deactivation) stays with the admin list, and price tiers are guarded in the controller. Reps edit customer data too, but prices are guarded in the controller for the operations manager and system admin only (customerRoutes.canEditPrices).
 const EDIT_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_staff', 'moderator', 'sales_manager', 'sales_rep',
   'shipment_orders_manager', 'shipment_orders_staff', 'shipment_orders_followup', ...require('../config/roles').DATA_ROLES];
 // Removing only hides the customer and adding the name again restores it, so the team can do it.
 const REMOVE_ROLES = EDIT_ROLES.filter((r) => r !== 'sales_rep');
 
 router.use(authenticate);
-// ── ومن مُنح «تعديلَ طلبات الشحنات» يكتب هنا كما يكتب هناك ─────────────────
-// الشاشةُ تُظهر أزرارَ التعديل لمن مُنح القسمَ من المصفوفة (`canEditCustomers`)،
-// وهذا المسارُ بلا حارس قسمٍ فلا يُختَم عليه شيء: يظهر الزرُّ ويُردّ الحفظُ ٤٠٣.
-// فيُختَم المنحُ هنا — يمنح ولا يمنع (راجع stampSection).
+// Whoever is granted edit on shipment orders writes here as there. The screen shows edit buttons to users granted the section from the matrix (`canEditCustomers`) and this route has no section guard, so nothing was stamped and saves returned 403. The grant is stamped here; it grants and never restricts (see stampSection).
 router.use(require('../middleware/sectionGate').stampSection('Shipment Orders'));
 router.get('/', ctrl.list);
-// قوائمُ الخيارات (المدن وحقولُ النموذج) — يقرؤها مربّعُ التعديل في القسمين.
+// Option lists (cities and form fields), read by the edit dialog in both sections.
 router.get('/options', so.listFields);
-// القائمةُ بمساراتها كاملةً — يقرؤها تصديرُ الأسعار ومربّعُ التعديل.
+// The list with its full routes; read by the price export and the edit dialog.
 router.get('/full', so.listCustomers);
 router.post('/', authorize(...EDIT_ROLES), so.createCustomer);
 router.get('/:id', ctrl.profile);
 router.put('/:id', authorize(...EDIT_ROLES), so.updateCustomer);
-// شرائحُ السعر بعدد السيارات — الحارسُ في المتحكِّم: مديرُ العمليّات ومديرُ النظام وحدَهما.
+// Price tiers by vehicle count. Guarded in the controller: operations manager and system admin only.
 router.put('/:id/route-tiers', ctrl.setRouteTiers);
 router.delete('/:id', authorize(...REMOVE_ROLES), so.deleteCustomer);
 

@@ -1,12 +1,6 @@
 /**
- * recomputeClaimDifference — «الفرق» في الحوادث يُحسب للمقفلة وحدَها.
- *
- *   node src/scripts/recomputeClaimDifference.js           يقول ولا يكتب
- *   node src/scripts/recomputeClaimDifference.js --apply   ينفّذ
- *
- * كان «الفجوة» يُحسب لكلّ مطالبةٍ من أوّل يوم. صار «الفرق» ويُحسب عند الإقفال
- * (راجع claimDifference في vehicleRegistryController): المفتوحةُ تُفرَّغ،
- * والمقفلةُ يُعاد حسابُها.
+ * recomputeClaimDifference: the claim 'difference' is computed for closed claims only.
+ * Usage: node src/scripts/recomputeClaimDifference.js [--apply] (dry run by default). Open claims are cleared, closed ones recomputed (see claimDifference in vehicleRegistryController).
  */
 require('dotenv').config();
 const mongoose = require('mongoose');

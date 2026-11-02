@@ -1,23 +1,7 @@
 /**
- * تاريخُ العودة في الإجازات المستورَدة يعود كما كُتب في الورقة (+يوم).
- *
- * ── ما جرى ──────────────────────────────────────────────────────────────────
- * ورقةُ الإجازات تكتب «المدّة بالأيام» = العودة − الذهاب: أي أنّها لا تعدّ يومَ
- * العودة. وحسابُنا شاملُ الطرفين، فنُقص يومٌ من تاريخ العودة عند الاستيراد
- * لتتساوى المدّتان — وبذلك اختلف التاريخُ المحفوظُ عن التاريخ المكتوب بيومٍ
- * واحد.
- *
- * وقرارُ صاحب القسم أن يبقى التاريخُ كما أرسله: الورقةُ هي المرجعُ الذي
- * يُقارَن به، وتاريخٌ مختلفٌ بيومٍ يُقرأ خطأً كلَّ مرّةٍ تُراجَع. فيُعاد اليومُ
- * إلى تاريخ العودة، وتتبعه المدّةُ (+١) — لا العكس.
- *
- * ولا يُمسّ إلّا ما استُورد من تلك الورقة (`reason` يحمل وسمَ الاستيراد):
- * إجازةٌ سجّلها موظّفُ الموارد البشريّة بيده تاريخُها ما كتبه، ولا شأنَ لهذا به.
- *
- * الاستعمال:
- *   node src/scripts/shiftImportedLeaveReturn.js            # عرضٌ فقط
- *   node src/scripts/shiftImportedLeaveReturn.js --apply
- *   node src/scripts/shiftImportedLeaveReturn.js --undo --apply   # للرجوع
+ * Restores the return date of imported leaves to the sheet value (+1 day).
+ * The sheet's duration is return minus departure, so it excludes the return day, while our count is inclusive. Import had subtracted a day from the return date; the sheet is the comparison reference, so the date is restored and the duration follows (+1). Only rows imported from that sheet (reason carries the import tag) are touched, not leaves HR entered by hand.
+ * Usage: node src/scripts/shiftImportedLeaveReturn.js [--apply] [--undo --apply]; previews without --apply.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -32,7 +16,7 @@ const UNDO = process.argv.includes('--undo');
 const STEP = UNDO ? -1 : 1;
 const IMPORT_TAG = 'مستورَدة من ملفّ إجازات الموظفين';
 
-/** «YYYY-MM-DD» + أيّام → «YYYY-MM-DD». حسابٌ بالتقويم لا بنصّ. */
+/** YYYY-MM-DD plus days gives YYYY-MM-DD, using calendar arithmetic rather than string handling. */
 const shift = (ymd, days) => {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(ymd || ''));
   if (!m) return null;
@@ -61,10 +45,8 @@ const shift = (ymd, days) => {
   const sample = plan.slice(0, 5);
   sample.forEach(({ r, nextEnd, nextDays }) => console.log(`      ${r.startDate} → ${r.endDate} (${r.days} يومًا)  ⇒  ${r.startDate} → ${nextEnd} (${nextDays} يومًا)`));
 
-  // ── وما يتداخل بعد الإزاحة يُقال قبلها ──────────────────────────────────
-  // إضافةُ يومٍ تُرجع التلاصقَ الذي كان: سنويّةٌ تنتهي يومَ بدء إجازة العيد.
-  // والنظامُ يمنع إجازتين على يومٍ واحد (لا يُخصَم يومٌ مرّتين)، وهذه صفوفٌ
-  // قائمةٌ لا طلباتٌ جديدة — فلا يمنعها شيء، لكنّها تُحسَب يومين في الرصيد.
+  // Overlaps created by the shift are reported before applying.
+  // Adding a day restores adjacency, e.g. an annual leave ending the day a holiday leave starts. The system blocks two leaves on one day, but these are existing rows, not new requests, so nothing blocks them; they would count two days in the balance.
   const byEmp = new Map();
   for (const { r, nextEnd } of plan) {
     const k = String(r.employee);

@@ -1,25 +1,8 @@
 /**
- * repairOrphanAuthorizations — تفاويضُ أُلغيت بالمسح ولم تُغلَق في ملفّ الموظّف.
- *
- *   node src/scripts/repairOrphanAuthorizations.js --dry
- *   node src/scripts/repairOrphanAuthorizations.js --apply
- *
- * ── ما جرى ──────────────────────────────────────────────────────────────────
- * التفويضُ مسجَّلٌ في سجلَّين: ورقةٌ على المركبة (`VehicleMaster.authorizedPerson`)
- * وإسنادٌ يربط المركبةَ بالموظّف (`VehicleAuthorization`) يقرؤه ملفُّه في الموارد
- * البشريّة. ولم يكن في صفحة التفاويض زرٌّ اسمُه «إلغاء التفويض» — كان فيها
- * «مسح بيانات المستند». فمن أراد الإلغاءَ ضغطه: فُرِّغت الورقةُ وبقي الإسناد.
- *
- * فبقي أصحابُها «مفوَّضين على سيّارة» في ملفّاتهم وليسوا كذلك. وهو شرطٌ في
- * إخلاء الطرف، فلا يُخلى طرفُ الواحد منهم حتى يُكتشَف الأمرُ بيد.
- *
- * ── وما يُصلَح هنا وما لا يُصلَح ────────────────────────────────────────────
- * يُصلَح المقطوعُ وحدَه: إسنادٌ نشطٌ ومركبتُه في السجلّ وورقتُها **فارغة**. ذاك
- * إلغاءٌ وقع ولم يكتمل، وإتمامُه ليس قرارًا.
- *
- * ولا يُمَسّ ما اختلف فيه الاسمان (ثلاثةٌ وسبعون) ولا ما لا مركبةَ له في السجلّ
- * (تسعةٌ وأربعون): الأوّلُ قد يكون تحويلًا لم يُسجَّل، والثاني مركبةٌ خرجت من
- * الأسطول أو لوحةٌ كُتبت بصيغتين. وكلاهما يحتاج من يقرؤه، لا سكربتًا يخمّن.
+ * repairOrphanAuthorizations: authorizations cancelled by wiping that were never closed on the employee file. Usage: node src/scripts/repairOrphanAuthorizations.js [--dry|--apply] An authorization lives in two registers: the paper on the vehicle (`VehicleMaster.authorizedPerson`)
+ * and an assignment linking vehicle to employee (`VehicleAuthorization`), which the HR file reads. The authorizations page had no 'cancel authorization' button, only 'clear document data'. Cancelling that way emptied the paper and left the assignment,
+ * so people still appear authorized on a car, which blocks their clearance. Only the severed case is fixed: an active assignment whose vehicle is in the registry and whose paper is empty. That is a cancellation that happened and did not finish; completing
+ * it is not a decision. Not touched: rows where the two names differ (may be an unrecorded transfer) and rows whose vehicle is not in the registry (left the fleet, or a plate written two ways). Those need a human.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -75,8 +58,7 @@ const S = (v) => (v == null ? '' : String(v).trim());
     const r = await VehicleAuthorization.updateMany({ _id: { $in: ids } }, {
       $set: {
         status: 'revoked', endDate: today, endReason: 'revoked',
-        // السببُ يُكتب صراحةً: من يقرأ السجلَّ بعد سنةٍ يعرف أنّ الإغلاق تصحيحٌ
-        // لإلغاءٍ وقع من قبل، لا إلغاءٌ جديدٌ وقع اليوم.
+        // The reason is written explicitly so a later reader knows the closure corrects an earlier cancellation rather than being a new one.
         revokedReason: 'إغلاقُ إسنادٍ بقي مفتوحًا بعد إلغاءِ التفويض من سجلّ المركبات',
       },
     });

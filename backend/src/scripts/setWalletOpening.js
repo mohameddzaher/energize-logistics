@@ -1,36 +1,8 @@
 /**
- * setWalletOpening — يُصحَّح رصيدٌ افتتاحيٌّ واحد، وتتبعه الأيّامُ كلُّها.
- *
- *   node src/scripts/setWalletOpening.js --branch Riyadh --date 2026-09-01 --amount 9580.96 [--dry]
- *
- * ── ولماذا سكربتٌ لا تعديلٌ بالإيد ─────────────────────────────────────────
- * الرصيدُ الافتتاحيّ ليس خانةً قائمةً بذاتها: ختاميُّ اليوم هو افتتاحيُّ الذي
- * بعده. فتصحيحُ يومٍ واحدٍ في القاعدة يترك الأيّامَ التالية محسوبةً على رقمٍ
- * لم يعد موجودًا — دفترٌ كلُّ سطرٍ فيه صحيحٌ وحدَه وخاطئٌ في مجموعه، وهو أسوأ
- * من رقمٍ خاطئٍ ظاهر.
- *
- * فيُكتب الرقمُ مرّةً ويُعاد الحسابُ إلى آخر يوم: الحركاتُ لا تُمَسّ، وإنّما
- * يُعاد جمعُها فوق الافتتاحيّ الجديد.
- *
- * ── والنقدُ المعدودُ لا يتحرّك ──────────────────────────────────────────────
- *
- * على اليوم المقفول رقمان: **المعدود** وهو ما وجده الموظّف في الدرج بيده،
- * و**الختاميّ** وهو ما يقول الدفترُ إنّه ينبغي أن يكون. والفرقُ بينهما محسوبٌ
- * منهما: الختاميّ ناقص المعدود.
- *
- * وتصحيحُ رصيدٍ افتتاحيٍّ يحرّك الختاميَّ لكلّ يومٍ بعده. فأيُّ الرقمين يتبعه؟
- * كان السكربتُ يثبّت **الفرق** ويحرّك المعدود — فيوم عُدَّ درجُه فوُجد فيه
- * أربعةٌ وثلاثون ألفًا، ثمّ صُحّح افتتاحيُّ الشهر بعشرة آلاف، يُكتب معدودُه
- * أربعةً وأربعين ألفًا. وأحدٌ لم يعدّ أربعةً وأربعين ألفًا. تصحيحُ دفترٍ لا
- * يغيّر ما كان في الدرج.
- *
- * فالمعدودُ يثبت — هو الواقعةُ الماديّة الوحيدة في السطر — ويُعاد اشتقاقُ
- * الفرق من الختاميّ الجديد. وهو نفسُ ما يفعله `syncCashCount` في المتحكّم عند
- * كلّ تغيّرٍ في الختاميّ؛ ولو بقي السكربتُ على الاتّجاه المعاكس لأعطى اليومُ
- * الواحد رقمًا حين تُضاف إليه حركة ورقمًا آخر حين يُصحَّح افتتاحيُّه.
- *
- * واليومُ الذي لم يُعَدّ نقدُه (`actualCash == null`) لا يُمَسّ: لا معدودَ فيه
- * ولا فرق.
+ * Corrects one opening balance and recomputes every later day.
+ * Usage: node src/scripts/setWalletOpening.js --branch Riyadh --date 2026-09-01 --amount 9580.96 [--dry]
+ * A day's closing is the next day's opening, so fixing one day alone leaves later days built on a stale number. Movements stay untouched and are re-summed over the new opening.
+ * The counted cash is a physical fact and stays fixed; the difference is re-derived from the new closing (same as syncCashCount in the controller). Days with actualCash == null are skipped.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -73,9 +45,8 @@ const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
   for (const w of days) {
     const moves = r2((w.totalCollections || 0) - (w.totalExpenses || 0) - (w.totalPurchases || 0));
     const closing = r2(opening + moves);
-    // المعدودُ ثابت، والفرقُ يُعاد اشتقاقُه من الختاميّ الجديد — راجع الترويسة.
-    // والإشارةُ اصطلاحُ الخادم: الختاميّ ناقص المعدود، موجبٌ عجزٌ وسالبٌ زيادة،
-    // كما يكتبه `closeDay` وكما تقرؤه الشاشة.
+    // Counted cash stays fixed; the difference is re-derived from the new closing (see header).
+    // Sign follows the server convention (closing minus counted: positive is a shortage, negative a surplus), as closeDay writes it.
     const counted = w.actualCash == null ? null : r2(w.actualCash);
     const oldDiff = counted == null ? null : r2((w.closingBalance || 0) - counted);
     const newDiff = counted == null ? null : r2(closing - counted);
@@ -87,7 +58,7 @@ const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
     if (!DRY) {
       w.openingBalance = opening;
       w.closingBalance = closing;
-      // `actualCash` لا يُكتب: واقعةٌ ماديّة لا يحرّكها تصحيحُ دفتر.
+      // actualCash is not written: it is a physical fact that a ledger correction does not move.
       if (counted != null) w.cashDifference = newDiff;
       await w.save();
     }
@@ -99,7 +70,7 @@ const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
     try {
       const { emitToAll } = require('../websocket/socketManager');
       emitToAll('wallet:updated', { branch: String(branch._id) });
-    } catch (_) { /* السكربت يعمل خارج الخادم غالبًا */ }
+    } catch (_) { /* Usually runs outside the server */ }
   }
   await mongoose.disconnect();
 })().catch((e) => { console.error(e); process.exit(1); });

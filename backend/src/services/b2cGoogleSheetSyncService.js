@@ -355,10 +355,7 @@ async function syncOnce({ configId, user, mode, force = false } = {}) {
       }).select('rep dateKey source').lean()
     : [];
   const existingSet = new Set(existingDocs.map((d) => `${d.rep}:${d.dateKey}`));
-  // ── وما أُدخل في النظام يدويًّا لا يدهسه الشيت ──────────────────────────
-  // يومُ مندوبٍ كتبه مشرفٌ في النظام (source ≠ excel) هو الأحدثُ والأصدق:
-  // كان وضعُ «الاستبدال» يكتب رقمَ الشيت فوقه ويختمه «excel» — فيضيع التصحيحُ
-  // في أوّل مزامنة، ثمّ يُحذف إن غاب من الشيت. النظامُ هو المرجع بعد الإدخال.
+  // Manually entered data is not overwritten by the sheet. A rep's day written by a supervisor in the system (source is not excel) is the newest and most accurate; replace mode used to write the sheet number over it and stamp it excel, losing the correction at the first sync and deleting it if absent from the sheet. After entry, the system is the reference.
   const manualSet = new Set(existingDocs.filter((d) => d.source && d.source !== 'excel').map((d) => `${d.rep}:${d.dateKey}`));
   let keptManual = 0;
 
@@ -467,8 +464,7 @@ async function syncOnce({ configId, user, mode, force = false } = {}) {
     { $set: { lastSyncAt: new Date(), lastSyncStatus: 'ok', lastSyncMessage: '', lastSyncStats: stats, lastSheetHash: sheetHash } }
   );
 
-  // المزامنة هي المصدر الأكبر للبيانات ولم تكن تُبطل ذاكرة اللوحة: الشاشة تعيد
-  // القراءة عند الحدث فتأخذ النسخة القديمة خمس دقائق. الإبطال قبل الإعلان.
+  // Sync is the largest data source yet did not invalidate the board cache, so the screen re-read on the event and got the stale copy for five minutes. Invalidate before announcing.
   require('../utils/ttlCache').clear('b2c:');
   try { emitToAll('b2c:sheet:synced', { configId: String(config._id), stats }); } catch (_) {}
   console.log(`[B2C google-sheet sync ${config._id}] OK in ${stats.durationMs}ms — inserted=${inserted} updated=${updated} skipped=${skipped} keptManual=${keptManual} pruned=${pruned} created_reps=${actuallyCreated}`);

@@ -1,18 +1,8 @@
 /**
- * جردُ مخزن النقل الخفيف → سجلُّ المخزن.
- *
- * ── والشيتُ مصدرٌ مرّةً لا مرجعٌ دائم ───────────────────────────────────────
- * يُقرأ لتُبنى منه الأصنافُ وأرصدتُها اليوم، ثمّ يُدار المخزنُ من النظام:
- * وارد وصادر وحركاتٌ لها أصحابُها وتواريخُها. ولا شيءَ بعدها يُربَط بالملفّ —
- * ولو رُبط لصار لكلّ صنفٍ رصيدان: رصيدُ الورقة ورصيدُ العمل.
- *
- * ── وصيغةُ الصنف «كود-اسم» ─────────────────────────────────────────────────
- * «2283-رأس موتور»: الرقمُ قبل الشرطة كودُ الصنف في دفترهم، وما بعدها اسمُه.
- * ففُصلا — فيُبحَث بالكود كما يُبحَث بالاسم، ويُطابَق به عند إعادة الاستيراد
- * فلا يتكرّر الصنف.
- *
- * الاستعمال:
- *   node src/scripts/importLightStore.js "<ملفّ الجرد>.xlsx" [--apply]
+ * Light transport store stocktake into the store register.
+ * The sheet is a one-time source: it builds the items and today's balances, then the store is run from the system (inbound, outbound, owned movements). Nothing links back to the file afterward, otherwise each item would have two balances.
+ * Item format is code-name (for example a code, a dash, then the name): the code is the item code in their ledger and the rest its name. They are split so search works by code or name and re-imports match by code without duplicating.
+ * Usage: node src/scripts/importLightStore.js with the stocktake xlsx path and optional --apply.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -25,19 +15,14 @@ const { Ls2StoreItem } = require(`${ROOT}/models/Ls2Store`);
 const APPLY = process.argv.includes('--apply');
 const FILE = process.argv.find((a) => a.endsWith('.xlsx'));
 
-/** «2283-رأس موتور» → { code: '2283', name: 'رأس موتور' } — وما لا كودَ له يبقى اسمًا. */
+/** Splits 'code-name' into { code, name }; an item without a code stays name-only. */
 const splitCode = (raw) => {
   const s = String(raw || '').trim();
   const m = /^(\d{2,6})\s*[-–—]\s*(.+)$/.exec(s);
   return m ? { code: m[1], name: m[2].trim() } : { code: '', name: s };
 };
 
-/**
- * تصنيفٌ مبدئيٌّ من اسم الصنف.
- *
- * التصنيفُ يخدم الفرزَ والتنبيه، وتركُه فارغًا يجعل مئةً وتسعين صنفًا كتلةً
- * واحدة. وهو مبدئيٌّ يُصحَّح من الشاشة: الكلمةُ في الاسم دليلٌ لا حكم.
- */
+/** Initial category guessed from the item name. It drives sorting and alerts; leaving it empty lumps about 190 items together. A name keyword is a hint, not a verdict, and it is corrected from the screen. */
 const CATEGORY_RULES = [
   [/زيت|شحم|سائل|فلوي?د|بنزين|وقود/, 'fluids_oils'],
   [/فلتر|فلاتر/, 'filters'],
@@ -65,7 +50,7 @@ const categorise = (name) => {
   const sheet = wb.Sheets[wb.SheetNames[0]];
   const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '', raw: true });
 
-  // الصفُّ الأوّلُ عنوانُ الورقة والثاني رؤوسُ الأعمدة — فتُقرأ البقيّة.
+  // Row 1 is the sheet title and row 2 the column headers, so the rest is read.
   const headerAt = rows.findIndex((r) => String(r[0] || '').trim() === 'الصنف');
   const body = rows.slice(headerAt + 1);
 
@@ -85,7 +70,7 @@ const categorise = (name) => {
     });
   }
 
-  // كودٌ مكرّرٌ في الورقة: تُجمَع كمّيّاتُه ويُقال — صنفٌ واحدٌ في صفّين.
+  // Duplicate code in the sheet: quantities are summed and it is reported as one item on two rows.
   const byKey = new Map();
   let merged = 0;
   for (const it of parsed) {

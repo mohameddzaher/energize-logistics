@@ -1,22 +1,7 @@
 /**
- * settleCustomsHistory — يضبط حالةَ معاملات التخليص القديمة كما قالها صاحبُ الشركة
- * يومَ ٢٠٢٦/١٠/١١، مرّةً واحدة.
- *
- *   node src/scripts/settleCustomsHistory.js            ← تجربة، بلا كتابة
- *   node src/scripts/settleCustomsHistory.js --apply
- *
- * القاعدةُ كما قيلت:
- *   · القادمةُ تبقى قادمة.
- *   · `IN_PROGRESS` ما زالت تجري — لا تُمسّ.
- *   · `AWAITING_INVOICE` أنهت دورتَها كلَّها ولم تُفوتَر: **مغلقةٌ** (صحّحها صاحبُ
- *     الشركة: مغلقةٌ ولم تُفوتَر، لا مفتوحة)، مراحلُها مُنجَزةٌ إلّا «إصدار
- *     الفاتورة»، وحالةُ فاتورتها فارغة — فتظهر في لوحة القسم «مغلقة لم تُفوتَر»
- *     حتى تُصدَر فاتورتُها. وما لم يُعرَف طريقُه بعد أمر النقل يُكتب «إلى العميل
- *     مباشرةً» — يُصحَّح من شاشة المعاملة إن كان غيرَ ذلك.
- *   · وكلُّ ما عدا ذلك تاريخ: أُغلق وفُوتر.
- *
- * والإغلاقُ يُؤرَّخ بآخر يومٍ من شهر المعاملة لا باليوم، وباسم «سجلّ سابق».
- * يُعاد تشغيلُه بلا ضرر.
+ * One-time settlement of old customs transactions' status.
+ * Usage: node src/scripts/settleCustomsHistory.js [--apply] (preview without it)
+ * Rules: upcoming stay upcoming; IN_PROGRESS untouched; AWAITING_INVOICE are closed but not invoiced (all stages done except invoice issuing, invoice status empty, shown in the department board as closed-not-invoiced; unknown route after the transport order is set to direct-to-customer); everything else is history, closed and invoiced. Closing is dated the last day of the transaction month and attributed to a legacy-record label. Safe to rerun.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -39,7 +24,7 @@ const norm = (s) => String(s || '').replace(/\s+/g, '').toUpperCase();
 
   const closedAt = (r) => (r.periodYear && r.periodMonth
     ? new Date(Date.UTC(r.periodYear, r.periodMonth, 0, 9, 0, 0)) : new Date(r.createdAt));
-  /** المراحلُ اللازمةُ لهذه المعاملة كلُّها مُنجَزة — مع الفاتورة أو بدونها. */
+  /** All stages required for this transaction are done, with or without the invoice. */
   const allDone = (r, withInvoice) => {
     const { route: known } = readStages(r);
     const route = known || 'customer';

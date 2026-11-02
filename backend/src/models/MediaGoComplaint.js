@@ -1,14 +1,10 @@
 /**
- * شكاوى Media Go — بلاغاتُ أعطال الشاشات المركَّبة على دبّاباتنا.
- *
- * كانت Media Go تستقبلها في نموذج جوجل. صارت تُكتب هنا: نرفعها نحن من قسم
- * الأفراد، ويدخل حسابُهم (`mediago_account`) فيراها ويحدّث حالتَها ويردّ عليها.
- * الحقولُ هي أسئلةُ نموذجهم نفسُها، بمفاتيحَ ثابتةٍ لا بنصوص — والنصوصُ
- * العربيّةُ والإنجليزيّة في `MEDIAGO_VOCAB` أدناه، يقرؤها الموقعُ والتطبيق.
+ * Media Go complaints: fault reports for screens mounted on our scooters.
+ * Written here instead of Media Go's Google form: we raise them from the individuals section, and their account (`mediago_account`) sees, updates and replies. Fields mirror their form questions with stable keys; Arabic and English texts are in `MEDIAGO_VOCAB` below, read by the site and the app.
  */
 const mongoose = require('mongoose');
 
-// ── المفرداتُ — مفتاحٌ يُحفَظ، ونصّان يُعرَضان ─────────────────────────────────
+// Vocabulary: a stored key and two display texts
 const MEDIAGO_VOCAB = {
   issue: [
     { key: 'screen_off', ar: 'الشاشة لا تعمل بالكامل', en: 'The screen is not working at all' },
@@ -49,7 +45,7 @@ const fileSchema = new mongoose.Schema({
   uploadedAt: { type: Date, default: Date.now },
 }, { _id: true });
 
-/** «مَن» في السجلّ: من جهتنا أم من جهتهم — يُعرَض بجانب كلّ حركة. */
+/** Who is acting in the log: our side or theirs, shown next to each entry. */
 const SIDES = ['energize', 'mediago'];
 
 const historySchema = new mongoose.Schema({
@@ -70,13 +66,12 @@ const replySchema = new mongoose.Schema({
 }, { _id: true });
 
 const mediaGoComplaintSchema = new mongoose.Schema({
-  /** MG-0001 — يُشتقّ من العدّاد ولا يُكتب. */
+  /** MG-0001, derived from the counter and never typed. */
   ref: { type: String, unique: true },
   seq: { type: Number, index: true },
 
-  // ── رقم الدبّاب ─────────────────────────────────────────────────────────────
-  // يُختار من سجلّ المركبات (قطاع النقل الخفيف) فتُحفظ اللوحةُ والتسلسليّ معه،
-  // ويُقبل نصًّا حرًّا إن لم يكن الدبّابُ في السجلّ — البلاغُ لا ينتظر السجلّ.
+  // Scooter number
+  // Picked from the vehicle register (light transport) so plate and serial are stored with it; free text is accepted if the scooter is not in the register, since a report must not wait for the register.
   vehicle: { type: mongoose.Schema.Types.ObjectId, ref: 'VehicleMaster', default: null },
   motorcycleNumber: { type: String, required: true, trim: true, maxlength: 60 },
   plateNumber: { type: String, default: '' },
@@ -104,7 +99,7 @@ const mediaGoComplaintSchema = new mongoose.Schema({
 
 mediaGoComplaintSchema.index({ createdAt: -1 });
 
-// ── العدّادُ والمرجع ─────────────────────────────────────────────────────────
+// Counter and reference
 const counterSchema = new mongoose.Schema({ _id: String, seq: { type: Number, default: 0 } });
 const Counter = mongoose.models.MediaGoCounter || mongoose.model('MediaGoCounter', counterSchema);
 

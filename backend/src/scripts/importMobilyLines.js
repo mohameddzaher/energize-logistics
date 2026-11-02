@@ -1,22 +1,8 @@
 /**
- * importMobilyLines — خطوطُ الجوّال من ملفّ موبايلي إلى عهدة الموارد البشريّة.
- *
- *   node src/scripts/importMobilyLines.js --dry
- *   node src/scripts/importMobilyLines.js --apply
- *
- * ── ما يفعله ────────────────────────────────────────────────────────────────
- * الخطُّ عهدةٌ كالحاسوب: في يد إنسانٍ ويُسأل عنه عند إخلاء الطرف. وكان أربعةٌ
- * وستّون خطًّا مسجَّلًا عندنا برقمه وحدَه — بلا باقةٍ ولا عقدٍ ولا تاريخِ انتهاء،
- * وبلا **المفوَّض**: الاسمِ المسجَّل لدى المزوّد على الخطّ. وهو غيرُ من الخطُّ في
- * يده في عشرين خطًّا من تسعةٍ وسبعين، ومن يراجع موبايلي يحتاجه لا يحتاج المستخدم.
- *
- * فيُقرأ الملفُّ ويُفعَل شيئان: يُضاف الخطُّ غيرُ المسجَّل عهدةً على صاحبه،
- * ويُكمَّل المسجَّلُ بما ينقصه. ولا يُكتب فوق ما كُتب بيدٍ إلّا أن يكون فارغًا.
- *
- * ── ومَن ليس موظّفًا ────────────────────────────────────────────────────────
- * سبعةُ صفوفٍ مستخدمُها ليس شخصًا: «عهدة الشركة» و«رجب قسم الصيانة». تلك خطوطٌ
- * في يد الشركة لا في يد أحد — تُسجَّل بحائزٍ مكتوبِ الاسم (`holderKind: external`)
- * ولا تُنسَب إلى موظّفٍ لم يستلمها، وإلّا مَنَعت إخلاءَ طرفِ من لم يأخذها.
+ * importMobilyLines: mobile lines from the Mobily file into HR custody.
+ * Usage: --dry or --apply.
+ * A line is custody like a computer: in a person's hands and accounted for at clearance. 64 lines were registered by number alone, with no plan, contract or expiry, and no authorized person (the name registered with the provider). The authorized person differs from the holder in 20 of 79 lines, and whoever deals with Mobily needs it.
+ * So unregistered lines are added as custody on their holder and registered ones are completed. Populated values are overwritten only when empty. Seven rows are held by no person (company custody, the maintenance department). They are recorded with a named holder (holderKind: external) and not assigned to an employee who never received them, or clearance of the real recipient would be blocked.
  */
 require('dotenv').config();
 const path = require('path');
@@ -31,7 +17,7 @@ const XLS_EPOCH = Date.UTC(1899, 11, 30);
 const D = (v) => (typeof v === 'number' && v > 1
   ? new Date(XLS_EPOCH + Math.round(v) * 86400000).toISOString().slice(0, 10)
   : S(v));
-/** رقمُ الجوّال يُطوى: ٩٦٦ أو صفرٌ بادئٌ أو مسافاتٌ لا تغيّر الخطّ. */
+/** Phone number folded: the 966 prefix, a leading zero or spaces do not change the line. */
 const fone = (v) => {
   let d = S(v).replace(/\D/g, '');
   if (d.startsWith('966')) d = d.slice(3);
@@ -39,7 +25,7 @@ const fone = (v) => {
 };
 const fold = (x) => S(x).replace(/\s+/g, '').replace(/[أإآٱ]/g, 'ا')
   .replace(/ة/g, 'ه').replace(/ى/g, 'ي').toLowerCase();
-/** الاسمُ الذي لا يدلّ على إنسان — خطُّ الشركة لا خطُّ موظّف. */
+/** A name that does not denote a person: a company line, not an employee's. */
 const NOT_A_PERSON = /^(عهدة\s*الشركة|الشركة|عهده\s*الشركه)$/i;
 
 (async () => {
@@ -97,9 +83,7 @@ const NOT_A_PERSON = /^(عهدة\s*الشركة|الشركة|عهده\s*الشر
       ops.push({ kind: 'create', phone, userName, emp, tel });
       continue;
     }
-    // ── ولا يُكتب فوق ما كُتب بيد ─────────────────────────────────────────
-    // يُملأ الفارغُ وحدَه. ومن صحّح باقةً أو مفوَّضًا في الشاشة لا يُدهَس تصحيحُه
-    // في أوّل استيرادٍ بعده — وهو ما يجعل الناسَ تكفّ عن التصحيح أصلًا.
+    // Never overwrite hand-entered values: fill empty only. A plan or authorized person corrected on screen must not be overwritten by the next import, which would make people stop correcting.
     const patch = {};
     for (const [k, v] of Object.entries(tel)) {
       if (v === null || v === '' ) continue;

@@ -1,13 +1,7 @@
 /**
- * /api/operations-private — «التشغيل — خاصّ».
- *
- * كشوفُ التشغيل نفسُها بسعر بيعنا الحقيقيّ. قراءةٌ للإدارة، وكتابةٌ على عمودٍ
- * واحدٍ لا غير — راجع رأسَ المتحكّم.
- *
- * ── ومَن يراها ──────────────────────────────────────────────────────────────
- * الهامشُ يُقرأ في هذه الصفحة على كلّ حمولة، فهي أضيقُ من سير عمل التشغيل:
- * الإدارةُ ومن يملك المالَ أصلًا (المدير الماليّ والمحاسبة)، ومديرُ العمليّات.
- * وموظّفُ العمليّات يرى الكشوفَ في صفحتها — لا يرى ما نربحه على كلّ واحدة.
+ * /api/operations-private: operations, private view.
+ * The same operations manifests priced at our real selling price. Read for management, and writes only one column; see the controller header.
+ * Who sees it: the margin is readable on every load here, so it is narrower than the operations workflow: management, those who own money anyway (finance manager and accounting) and the operations manager. Operations staff see the manifests on their own page but not what we earn on each.
  */
 const express = require('express');
 
@@ -23,27 +17,19 @@ const ROLES = [
 
 router.use(authenticate);
 router.use(require('../utils/dataOwnerIndex').preload);
-// البحثُ برقم إقامة السائق أو هيكل الشاحنة — كما في سير عمل التشغيل.
+// Search by driver iqama number or truck chassis, as in the operations workflow.
 router.use((req, res, next) => (req.method === 'GET' ? require('../controllers/workflowController').primeRelatedSearch(req, res, next) : next()));
 router.use(authorize(...ROLES));
 
 router.get('/', ctrl.list);
 router.get('/stats', ctrl.stats);
-/**
- * التحليلُ — بطاقاتُ اللوحة ورسومُها على نفس هذه الكشوف وبأسعارنا.
- * يسبق `/:id` كما يسبقه `/export`.
- */
+/** Analysis: dashboard cards and charts over the same manifests at our prices. Registered before `/:id`, like `/export`. */
 router.get('/analytics', ctrl.analytics);
 router.get('/analytics/filters', ctrl.analyticsFilters);
-// كلُّ ما طابق الفلتر بأسعارنا — ملفُّ إكسل (أو `format=json`). يسبق `/:id`.
+// Everything matching the filter at our prices, as an Excel file (or `format=json`). Before `/:id`.
 router.get('/export', ctrl.exportRows);
 
-/**
- * ── وقيمةُ البيع تُكتب في الكشف نفسِه ──────────────────────────────────────
- * بالطريق الذي يكتب به سيرُ العمل (`workflowController.setSellingValue`): مَن
- * يملك العمودَ هناك (SELLING_ROLES) يكتبه هنا، ومَن لا يملكه يُردّ ٤٠٣ — ولو
- * فُتحت له الصفحة. وتُدفَع إلى المنصّة، وتُقيَّد في سجلّ المراجعة باسم من كتب.
- */
+/** The selling value is written on the manifest itself, the same way the workflow does (`workflowController.setSellingValue`): whoever owns the column there (SELLING_ROLES) writes it here, and anyone else gets 403 even if the page is open to them. It is pushed to the platform and recorded in the audit log with the writer's name. */
 router.put('/:id', ctrl.updatePrice);
 
 module.exports = router;

@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 
-// معرّفٌ مشوَّهٌ في الرابط = لا سجلّ، لا عطلٌ في الخادم — راجع utils/idParam.
+// A malformed id in the URL means no record (404), not a server error; see utils/idParam.
 const { objectIdParam } = require('../utils/idParam');
 router.param('id', objectIdParam());
 const so = require('../controllers/shipmentOrdersController');
@@ -11,7 +11,7 @@ const authorize = require('../middleware/rbac');
 // The shipment-orders trial section. Independent of /api/ops by design — see
 // the ShipmentOrder model header.
 const EDIT_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_staff', 'moderator',
-  // فريقُ القسم نفسُه — كان يعدّل بمنح القسم وحدَه؛ صار صريحًا، ومعه «المتابعة».
+  // The section's own team; it used to edit through the section grant alone, now explicit and includes the follow-up role.
   'shipment_orders_manager', 'shipment_orders_staff', 'shipment_orders_followup',
   // The data team creates and corrects shipments too.
   ...require('../config/roles').DATA_ROLES];
@@ -21,45 +21,41 @@ router.use(authenticate);
 
 // Orders
 router.get('/orders', so.listOrders);
-// قيمُ عمودٍ بعدّادها — لفلترِ الأعمدة على طريقة إكسل فوق جدولٍ مُصفَّحٍ في الخادم.
+// Column values with counts, for Excel-style column filters over a table paginated on the server.
 router.get('/orders/filter-options', so.orderFilterOptions);
 router.get('/orders/:id', so.getOrder); // the edit form loads ONE order directly
-// بوالصُ عدّةِ طلباتٍ في ملفٍّ واحد — تُسجَّل قبل `/orders/:id` لا بعده حتى لا
-// يبتلعَها المسارُ ذو المتغيّر.
+// Waybills of several orders in one file. Registered before `/orders/:id` so the parameterized route does not swallow it.
 router.post('/orders/waybills.pdf', so.getWaybillsPdf);
 router.post('/orders', authorize(...EDIT_ROLES), so.createOrder);
-// الحمولةُ الواحدة على عدّةِ شاحنات — كلُّ شاحنةٍ طلبٌ مستقلٌّ برقم بوليصته.
-// تُسجَّل قبل `/orders/:id` كي لا يبتلعها المسارُ ذو المعامل.
+// One load split over several trucks; each truck is an independent order with its own waybill number. Registered before `/orders/:id` so the parameterized route does not swallow it.
 router.post('/orders/batch', authorize(...EDIT_ROLES), so.createOrdersBatch);
 router.get('/money-editors', so.moneyEditors);
 router.put('/orders/:id', authorize(...EDIT_ROLES), so.updateOrder);
 router.patch('/orders/:id/status', authorize(...EDIT_ROLES), so.patchStatus); // inline from the list
-router.post('/orders/:id/note', authorize(...EDIT_ROLES), so.addNote); // ملاحظةُ متابعةٍ بلا تغيير حالة
-router.put('/orders/:id/note/:logId', authorize(...EDIT_ROLES), so.editNote); // كاتبُها أو مديرُ القسم
+router.post('/orders/:id/note', authorize(...EDIT_ROLES), so.addNote); // Follow-up note without a status change.
+router.put('/orders/:id/note/:logId', authorize(...EDIT_ROLES), so.editNote); // Its author or the section manager.
 router.delete('/orders/:id/note/:logId', authorize(...EDIT_ROLES), so.deleteNote);
 const { BRANCH_ACCESS_EDITORS } = require('../config/shipmentBranchRoles');
 router.get('/branch-access', authorize.strict(...BRANCH_ACCESS_EDITORS), so.getBranchAccess);
 router.put('/branch-access/:id', authorize.strict(...BRANCH_ACCESS_EDITORS), so.setBranchAccess);
 router.delete('/orders/:id', authorize.strict(...require('../services/shipmentOrderWorkflowLink').SHIPMENT_DELETE_ROLES), so.deleteOrder);
 
-// Customers (their price-per-route lists feed the create form)
-// تحليلاتُ القسم — قبل `/orders/:id` كي لا يبتلعها المسارُ ذو المعامل.
-// لوحةُ القسم: نداءٌ واحدٌ للمتصفّح والهاتف — نفسُ حساب التحليلات.
+// Customers (their price-per-route lists feed the create form).
+// Section analytics, before `/orders/:id` so the parameterized route does not swallow it.
+// Section dashboard: one call for browser and phone, same analytics computation.
 router.get('/dashboard', so.getDashboard);
 router.get('/analytics', so.getAnalytics);
-// فريقُ المبيعات والعمليّات — لخانة «السيلز التشغيلي» (٢٠٢٦/١٠/٢٢).
+// Sales and operations team, for the operational sales field.
 router.get('/sales-reps', so.salesReps);
-// ── ولوحةُ مدير التشغيل تُقرأ هنا أيضًا ────────────────────────────────────
-// هي نفسُها التي تُقرأ في «التشغيل — خاصّ»: حسابٌ واحدٌ ونقطةٌ واحدة
-// (controllers/opsAnalyticsController)، فلا يختلف رقمٌ بين الشاشتين.
+// The operations manager's dashboard is also read here. It is the same one read in the private operations page: one computation and one endpoint (controllers/opsAnalyticsController), so no number differs between the two screens.
 const opsAn = require('../controllers/opsAnalyticsController');
 router.get('/ops-analytics', opsAn.analytics);
 router.get('/ops-analytics/filters', opsAn.filters);
 router.get('/ops-analytics/targets', opsAn.getTargets);
 router.put('/ops-analytics/targets', authorize(...EDIT_ROLES), opsAn.setTargets);
 
-// عدّادُ البوالص — يُقرأ للجميع ويُقدَّم لمن يملك القسم.
-// مفرداتُ الحالات — تُقرأ للجميع، وتُضبَط من صفحة الإعدادات عبر /api/lookups.
+// Waybill counter: readable by all, prioritized for whoever owns the section.
+// Status vocabulary: readable by all, configured from the settings page via /api/lookups.
 router.get('/statuses', so.listStatuses);
 router.get('/counter', so.getCounter);
 router.put('/counter', authorize(...ADMIN_ROLES), so.updateCounter);
@@ -74,16 +70,15 @@ router.get('/suppliers', so.listSuppliers);
 router.post('/suppliers', authorize(...EDIT_ROLES), so.createSupplier);
 router.put('/suppliers/:id', authorize(...EDIT_ROLES), so.updateSupplier);
 router.delete('/suppliers/:id', authorize(...ADMIN_ROLES), so.deleteSupplier);
-router.post('/suppliers/:id/merge', authorize.strict(...ADMIN_ROLES, 'shipment_orders_manager'), so.mergeSupplier); // دمجُ مورّدَين — بالدور وحده (strict): لا يُتراجَع عنه
+router.post('/suppliers/:id/merge', authorize.strict(...ADMIN_ROLES, 'shipment_orders_manager'), so.mergeSupplier); // Merging two vendors: by role only (strict), since it cannot be undone.
 router.get('/vehicles', so.listVehicles);
-// أعدادُ السجلّ كاملةً — الترويسةُ لا تحسب من الصفحة الواصلة.
+// Full register counts; the header does not compute from the page received.
 router.get('/fleet-summary', so.fleetSummary);
 router.post('/vehicles', authorize(...EDIT_ROLES), so.createVehicle);
 router.put('/vehicles/:id', authorize(...EDIT_ROLES), so.updateVehicle);
 router.delete('/vehicles/:id', authorize(...ADMIN_ROLES), so.deleteVehicle);
 
-// السوّاق — سائقو شاحنات الناقلين، لكلٍّ ملفُّه (الإقامة وبطاقةُ التشغيل
-// والكفيل) ومورّدُه وشاحنتُه. يُستورَد من منصّة الأوبريشن ويُصحَّح هنا.
+// Drivers of the carriers' trucks, each with a file (iqama, operating card, sponsor), vendor and truck. Imported from the operations platform and corrected here.
 router.get('/drivers', so.listDrivers);
 router.post('/drivers', authorize(...EDIT_ROLES), so.createDriver);
 router.put('/drivers/:id', authorize(...EDIT_ROLES), so.updateDriver);
@@ -95,15 +90,9 @@ router.post('/fields', authorize(...ADMIN_ROLES), so.createField);
 router.put('/fields/:id', authorize(...ADMIN_ROLES), so.updateField);
 router.delete('/fields/:id', authorize(...ADMIN_ROLES), so.deleteField);
 /**
- * ── وإضافةُ خيارٍ إلى قائمةٍ قائمةٍ ليست تغييرًا للنموذج ────────────────────
- *
- * الدالّةُ كانت مكتوبةً في الكونترولر بلا مسار، ونموذجُ الشحنة يناديها من زرّ
- * «+ أضِف» تحت القوائم — فيعود النداءُ ٤٠٤ ويُقال للموظّف «تعذّرت الإضافة»،
- * وطولُ الشاحنة الجديدُ لا يُسجَّل.
- *
- * وصلاحيّتُها صلاحيّةُ التشغيل لا الإدارة: تغييرُ شكل النموذج (حقلٌ يُضاف أو
- * يُحذَف) قرارٌ إداريّ، أمّا «جاءت شاحنةٌ بطولٍ لم نسجّله» فواقعُ يومٍ يقف عليه
- * من يحجز الحمولة — ولو احتاج مديرًا لتوقّف العمل حتّى يردّ.
+ * Adding an option to an existing list is not a change to the model.
+ * The function existed in the controller without a route, and the shipment form calls it from the add button under the lists, so the call returned 404 and the employee saw an add-failed message, and a new truck length was never saved.
+ * Its permission is operations, not management: changing the form's shape (adding or removing a field) is an administrative decision, but 'a truck arrived with a length we have not recorded' is a daily fact for whoever books the load, and waiting for a manager would stop work.
  */
 router.post('/fields/:id/options', authorize(...EDIT_ROLES), so.addFieldOption);
 

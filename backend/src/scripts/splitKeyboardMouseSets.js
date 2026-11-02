@@ -1,32 +1,8 @@
 /* eslint-disable no-console */
 /**
- * splitKeyboardMouseSets — قسمةُ كلِّ «طقم ماوس وكيبورد» إلى ماوسٍ وكيبورد.
- *
- *   node src/scripts/splitKeyboardMouseSets.js           ← تجربة (الافتراضي)، لا تكتب شيئًا
- *   node src/scripts/splitKeyboardMouseSets.js --apply   ← التنفيذ
- *
- * قرّر صاحبُ الشركة أنّ الماوسَ والكيبوردَ غيرُ مرتبطين: يُسلَّم أحدُهما ويُرَدّ
- * ويتلف وحدَه، فلا معنى لصنفٍ اسمُه «طقم». فكلُّ صنفٍ نوعُه `keyboard_mouse`:
- *
- *   ١. **الأصلُ يصير الكيبورد.** هو الذي تشير إليه حركاتُ السجلّ (AssetEvent)
- *      وكلُّ ما رُبط به — مفتاحُ الاستيراد، والبلاغاتُ الفنّيّة (relatedAsset)،
- *      وقيدُ المراجعة — فبقاؤه بمعرّفه يُبقي ذلك كلَّه سليمًا بلا لمسة.
- *      يتغيّر فيه النوعُ والاسمُ (والماركةُ إن كانت ملوَّثة بـ«mouse+ keyboard»).
- *
- *   ٢. **والماوسُ صنفٌ جديد** نسخةٌ منه: الحالةُ والموظّفُ أو الحاملُ الخارجيّ،
- *      وتاريخُ التسليم ومَن سلّم، والرقمُ التسلسليّ والموديلُ والملاحظات،
- *      والكمّيّة والموقعُ والقيمةُ والقسم، وتاريخُ إنشائه — ثمّ **يُنسخ له سجلُّ
- *      حركات الأصل** بتواريخه ومَن قيّدها، فيُرى في ملفّ الموظّف وفي «السجل» أنّه
- *      سُلّم يومَ سُلّم الطقم ولمن، لا يومَ القسمة.
- *
- *   ٣. وعلى كلٍّ منهما سطرُ «updated» يقول إنّه قُسم من طقم ومتى، ومعرّفُ
- *      الآخر — والسجلُّ لا يُمحى منه شيء.
- *
- *   ٤. وصفُّ المرجعيّات (asset_type: keyboard_mouse) يُعطَّل فلا يُعرض خيارًا.
- *
- * إعادةُ التشغيل آمنة: الماوسُ يُعرف بمفتاح `split-km:<معرّف الأصل>`، فلا يُنشأ
- * مرّتين؛ وسجلُّه لا يُنسخ إن كان له سجلّ؛ والأصلُ إذا صار كيبوردًا لم يعد
- * يُلتقط أصلًا. وإن انقطع التشغيلُ في منتصفه أكمل الثاني ما بقي.
+ * Splits each keyboard-and-mouse set into a mouse and a keyboard.
+ * Usage: node src/scripts/splitKeyboardMouseSets.js [--apply] (preview by default)
+ * The two are issued, returned and damaged independently. 1) The original becomes the keyboard: it keeps its id so AssetEvent history, import key, tech reports (relatedAsset) and review entry stay valid; type, name and brand are cleaned. 2) The mouse is a new asset copying status, holder, delivery data, serial, model, notes, quantity, location, value, department and creation date, plus a copy of the event history with original dates and actors. 3) Both get an updated line recording the split and the other id. 4) The keyboard_mouse reference row is disabled. Rerun is safe: the mouse is keyed split-km:<asset id>, history is copied only if missing, and converted originals are no longer picked up.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -37,14 +13,10 @@ const SET_TYPE = 'keyboard_mouse';
 const keyOf = (id) => `split-km:${id}`;
 const SPLIT_MARK = 'قُسم من طقم ماوس وكيبورد';
 
-// تاريخ اليوم بتوقيت الرياض — كما في itController.
+// Today's date in Riyadh time, as in itController.
 const today = () => new Date(Date.now() + 3 * 3600 * 1000).toISOString().slice(0, 10);
 
-/**
- * الماركةُ نظيفةً. بعضُ الصفوف كُتب فيها وصفُ الطقم داخل الماركة
- * («Logi / mouse+ keyboard») أو رمزٌ زائد («Hp#»)، وبعضُها بلا ماركة والاسمُ
- * يحملها («ماوس وكيبورد Logitech»).
- */
+/** Cleans the brand. Some rows have the set description in the brand (such as a mouse-plus-keyboard text) or a stray symbol, and some have no brand while the name carries it. */
 const cleanBrand = (brand, name) => {
   let b = String(brand || '').trim();
   if (!b) b = String(name || '').replace(/ماوس\s*و\s*كيبورد|لوحة مفاتيح\s*و\s*فأرة/g, '').trim();
@@ -121,9 +93,7 @@ const pad = (s, w) => {
   for (const { a, brand, existingMouse } of plan) {
     const line = `${SPLIT_MARK} (${a.name}) يوم ${day}`;
 
-    // ── ١. الماوس ──────────────────────────────────────────────────────────
-    // يُكتب عبر المجموعة مباشرةً لا عبر النموذج: ليبقى تاريخُ إنشائه تاريخَ
-    // الطقم، فلا يبدو في تقرير «ما أُضيف هذا الشهر» جهازًا اشتُري اليوم.
+    // 1. Mouse. Written through the collection directly, not the model, so its creation date is the set's date and it does not appear as newly bought in this month's additions report.
     let mouseId = existingMouse?._id;
     if (!mouseId) {
       const { _id, __v, importKey, ...rest } = a;
@@ -142,7 +112,7 @@ const pad = (s, w) => {
       created += 1;
     }
 
-    // ── ٢. سجلّ حركاته: نسخةٌ من سجلّ الطقم بتواريخه ومَن قيّدها ─────────────
+    // 2. Mouse event history: a copy of the set's history with original dates and actors.
     const hasEvents = await AssetEvent.exists({ asset: mouseId });
     if (!hasEvents) {
       const evs = await AssetEvent.find({ asset: a._id }).sort({ createdAt: 1, _id: 1 }).lean();
@@ -152,7 +122,7 @@ const pad = (s, w) => {
       }
     }
 
-    // ── ٣. سطرُ القسمة على كلٍّ منهما ───────────────────────────────────────
+    // 3. Split line on each asset.
     const splitEvent = (assetId, other, what) => ({
       asset: assetId,
       action: 'updated',
@@ -169,7 +139,7 @@ const pad = (s, w) => {
       await AssetEvent.create(splitEvent(a._id, mouseId, 'الكيبورد'));
     }
 
-    // ── ٤. الأصلُ يصير الكيبورد — آخرَ خطوة، فإعادةُ التشغيل تلتقطه إن انقطع ما قبلها
+    // 4. The original becomes the keyboard, as the last step so a rerun picks it up if earlier steps were interrupted.
     await Asset.updateOne(
       { _id: a._id, type: SET_TYPE },
       { $set: {
@@ -208,12 +178,12 @@ const pad = (s, w) => {
     });
   }
 
-  try { require('../utils/ttlCache').clear('it:'); require('../utils/ttlCache').clear('hr:'); } catch (_) { /* خارج الخادم */ }
+  try { require('../utils/ttlCache').clear('it:'); require('../utils/ttlCache').clear('hr:'); } catch (_) { /* Outside the server */ }
 
   const left = await Asset.countDocuments({ type: SET_TYPE });
   console.log(`\n✓ أُنشئ ${created} ماوسًا، ونُسخ ${eventsCopied} سطرَ حركة، وتحوّل ${plan.length} طقمًا إلى كيبورد. بقي من الأطقم: ${left}.`);
   console.log('تذكير: الخادمُ يحتفظ بذاكرةٍ مؤقّتة لكلّ عامل — أعد تحميله (pm2 reload) أو انتظر انتهاءها لتظهر الأرقام الجديدة.');
   await mongoose.disconnect();
-  // logAudit يعلن في الجرس دون انتظار — يُترك له وقتٌ قصير ثمّ يُخرج.
+  // logAudit announces to the bell without waiting; a short delay lets it finish before exiting.
   setTimeout(() => process.exit(0), 300);
 })().catch((e) => { console.error('فشل:', e); process.exit(1); });

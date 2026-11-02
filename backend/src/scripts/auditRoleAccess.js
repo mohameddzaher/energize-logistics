@@ -1,16 +1,9 @@
 /* eslint-disable no-console */
 /**
- * مراجعةُ كلّ دورٍ في النظام: ماذا يفتح، وماذا يُمنع منه، وما الذي ينقصه.
- *
- *   node src/scripts/auditRoleAccess.js            # جدولٌ مختصر
- *   node src/scripts/auditRoleAccess.js --full     # تفصيلُ كلّ دور
- *
- * ── ما الذي يُفحَص ─────────────────────────────────────────────────────────
- *   ١. قسمُه: كلُّ دورٍ يملك قسمَه `edit`. دورٌ لا يملك قسمًا خطأٌ في التعريف.
- *   ٢. الأقسامُ الأخرى: ما فُتح له، وهل فُتح بقصدٍ أم بقاعدةٍ عامّة نسيت أحدًا.
- *   ٣. الخدمةُ الذاتيّة: كلُّ دورٍ داخليّ له ملفُّه وإجازاتُه وطلباتُه وإعداداتُه.
- *   ٤. التقارير: ما يستطيع طباعتَه — ولا يطبع أحدٌ تقريرَ قسمٍ لا يملكه.
- *   ٥. الشذوذ: قسمٌ بلا أدوار، دورٌ بلا قسم، صلاحيّةٌ محفوظةٌ لدورٍ لم يعد موجودًا.
+ * Audits every role: what it opens, what is denied and what is missing.
+ * default: short table
+ * --full: detail per role
+ * Checks: 1) each role has its own section at edit; a role without one is a definition error. 2) other sections opened, and whether on purpose or by a general rule that forgot someone. 3) self-service: every internal role has its file, leave, requests and settings. 4) reports it can print; nobody prints a report for a section they do not own. 5) anomalies: a section with no roles, a role with no section, a saved permission for a role that no longer exists.
  */
 require('dotenv').config({ path: require('path').join(__dirname, '../../.env') });
 const mongoose = require('mongoose');
@@ -22,7 +15,7 @@ const { SUBJECT_SECTIONS } = require('../controllers/reportController');
 const { subjectMeta } = require('../services/reportSources');
 
 const FULL = process.argv.includes('--full');
-// `--fix` يعالج ما يُعالَج بأمان: أن يُمنح المديرُ ما مُنحه موظّفوه.
+// --fix handles what is safe: a manager is granted what his staff were granted.
 const FIX = process.argv.includes('--fix');
 const EXTERNAL = require('../config/scopedRoles').EXTERNAL_ROLES;
 
@@ -54,8 +47,8 @@ const accessFor = async (role, key) => {
     const view = SECTION_KEYS.filter((k) => acc[k] === 'view');
     const none = SECTION_KEYS.filter((k) => acc[k] === 'none');
 
-    // التقارير
     // eslint-disable-next-line no-await-in-loop
+    // Reports
     const subjects = [];
     for (const s of subjectMeta()) {
       const sections = SUBJECT_SECTIONS[s.key];
@@ -64,18 +57,18 @@ const accessFor = async (role, key) => {
       if (sections.some((k) => acc[k] === 'view' || acc[k] === 'edit')) subjects.push(s.key);
     }
 
-    // ── الفحوصات ──────────────────────────────────────────────────────────
+    // Checks
     const isGlobal = R.GLOBAL_ROLES.some((g) => g.key === role);
     const external = EXTERNAL.includes(role);
 
     if (!isGlobal && !own) problems.push(`«${def.ar}» (${role}) لا قسمَ له في التعريف`);
     if (own && acc[own] !== 'edit') problems.push(`«${def.ar}» لا يملك قسمَه «${sectionLabel(own)}» — وصولُه ${acc[own]}`);
     if (!external && !isGlobal && edit.length === 0) problems.push(`«${def.ar}» لا يفتح أيَّ قسم`);
-    // موظّفٌ يفتح كلَّ شيء: قاعدةٌ عامّةٌ نسيت أن تستثنيه.
+    // An employee opens everything: a general rule forgot to exempt him.
     if (!isGlobal && !FULL_ACCESS_ROLES.includes(role) && edit.length === SECTION_KEYS.length) {
       problems.push(`«${def.ar}» يفتح كلَّ الأقسام (${edit.length}) — قاعدةٌ عامّةٌ لم تستثنِه`);
     }
-    // تقريرٌ يخصّ قسمًا لا يملكه
+    // A report for a section it does not own.
     for (const sub of subjects) {
       const sections = SUBJECT_SECTIONS[sub];
       if (!sections || FULL_ACCESS_ROLES.includes(role)) continue;
@@ -85,11 +78,8 @@ const accessFor = async (role, key) => {
     rows.push({ role, ar: def.ar, own, edit, view, none, subjects, isGlobal, external });
   }
 
-  // ── الموظّفُ لا يفتح أكثرَ من مديره ────────────────────────────────────────
-  // القوائمُ المكتوبةُ باليد في `defaultRoles` كُتبت قسمًا قسمًا على مدى شهور،
-  // فدخلها الموظّفُ حيث نُسي مديرُه. والنتيجةُ مقلوبة: مديرٌ ماليٌّ يفتح ثلاثة
-  // أقسامٍ ومحاسبُه ستّة. ليست ثغرةً أمنيّةً بقدر ما هي علامةُ قائمةٍ شاخت،
-  // ولا تُكتشف إلّا بمقارنةٍ كهذه.
+  // A staff role must not open more than its manager.
+  // The hand-written lists in defaultRoles were written section by section over months, so staff got access where the manager was forgotten, which is backwards: a finance manager opens three sections and his accountant six. It is a sign of an aged list rather than a security hole, and only found by a comparison like this.
   for (const sec of R.SECTION_ROLES) {
     const mgr = rows.find((r) => r.role === sec.manager.key);
     for (const st of sec.staff) {
@@ -99,16 +89,13 @@ const accessFor = async (role, key) => {
       if (extra.length) {
         problems.push(`«${stf.ar}» يفتح ما لا يفتحه مديرُه «${mgr.ar}»: ${extra.map(sectionLabel).join('، ')}`);
         if (FIX) {
-          // يُرفع المديرُ إلى مستوى موظّفه، ولا يُنزَل الموظّف: سحبُ وصولٍ
-          // يعمل به أحدٌ اليومَ يكسر عملَه، ومنحُ المديرِ ما يراه فريقُه لا يكسر
-          // شيئًا. والمصفوفةُ تبقى بيد مدير النظام يضيّق بعدها كيف شاء.
           // eslint-disable-next-line no-await-in-loop
+          // Raise the manager to his staff's level, never lower the staff: removing access someone uses today breaks work, while granting the manager what his team sees breaks nothing. The system admin can tighten afterwards via the matrix.
           const RolePermission = require('../models/RolePermission');
           // eslint-disable-next-line no-await-in-loop
           const doc = await RolePermission.findOne({ role: mgr.role }) || new RolePermission({ role: mgr.role, sections: {} });
           for (const k of extra) doc.sections.set(k, 'edit');
-          // ويُثبَّت ما كان يملكه أصلًا بالافتراض، وإلّا صار الصفُّ المحفوظ
-          // هو كلَّ ما يملك — فيخسر بحفظِه ما كان يأخذه بلا حفظ.
+          // Pin what the role already had by default, otherwise the saved row becomes everything it has and saving would lose what it got without saving.
           for (const k of mgr.edit) if (!doc.sections.get(k)) doc.sections.set(k, 'edit');
           for (const k of mgr.view) if (!doc.sections.get(k)) doc.sections.set(k, 'view');
           // eslint-disable-next-line no-await-in-loop
@@ -119,7 +106,7 @@ const accessFor = async (role, key) => {
     }
   }
 
-  // ── جدولٌ مختصر ──────────────────────────────────────────────────────────
+  // Short table
   console.log(`\n${'الدور'.padEnd(30)} ${'قسمه'.padEnd(22)} تعديل  عرض  تقارير`);
   console.log('─'.repeat(78));
   for (const r of rows) {
@@ -138,7 +125,7 @@ const accessFor = async (role, key) => {
     }
   }
 
-  // ── شذوذاتٌ على مستوى النظام ────────────────────────────────────────────
+  // System-wide anomalies
   console.log('\n' + '='.repeat(78));
   const covered = new Set(R.SECTION_ROLES.map((s) => s.section));
   const orphanSections = SECTION_KEYS.filter((k) => !covered.has(k));
@@ -146,7 +133,7 @@ const accessFor = async (role, key) => {
 
   const Permission = mongoose.connection.collection('sectionpermissions');
   let stored = [];
-  try { stored = await Permission.find({}).toArray(); } catch (e) { /* لا مجموعة */ }
+  try { stored = await Permission.find({}).toArray(); } catch (e) { /* No collection. */ }
   const known = new Set(R.ALL_ROLES);
   const ghosts = [...new Set(stored.map((p) => p.role))].filter((x) => x && !known.has(x));
   if (ghosts.length) problems.push(`صلاحيّاتٌ محفوظةٌ لأدوارٍ لم تعد موجودة: ${ghosts.join('، ')}`);

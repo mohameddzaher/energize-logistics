@@ -1,21 +1,8 @@
 /**
- * importCollectionsWorkbook — دفترُ التحصيل يدخل النظام.
- *
- *   node --max-old-space-size=8192 src/scripts/importCollectionsWorkbook.js --dry
- *   node --max-old-space-size=8192 src/scripts/importCollectionsWorkbook.js
- *
- * المصدر: «collection files/Financial Collections    9-2026.xlsx»
- *   Aging                 ٢٥٣ حسابًا ضريبيًّا  — أعمارُ الديون وحدودُ الائتمان
- *   Aging Shipment        ١٢٧ حسابًا نقديًّا
- *   Daily Invoice Report  ١٣٢٩٢ صفَّ فاتورة
- *   JP                    خطّةُ الأسبوع وما تمّ منها
- *   Shipment Report       تحليلٌ لا يُستورَد (بأمر صاحبه)
- *
- * ── والاسمُ لا يُطابَق به إلّا ما قطع الشكّ ────────────────────────────────
- * أسماؤنا من كشوف التشغيل، وأسماءُ الدفتر من المحاسبة. من ٢٥٣ حسابًا طابق
- * الاسمُ ٣٧. فما بلغ تشابهُه حدًّا لا يحتمل الشكَّ يُربط ويُقيَّد أنّه رُبط
- * تلقائيًّا، وما دونه يُعرَض على مدير التحصيل ليقرّر — لأنّ الربطَ ينقل
- * مديونيّةً، وخطؤُه لا يُكتشف إلّا حين يُطالَب عميلٌ بمالِ غيرِه.
+ * Imports the collections workbook.
+ * Source: the Financial Collections 9-2026 workbook.
+ * Aging: tax accounts with debt ages and credit limits. Aging Shipment: cash accounts. Daily Invoice Report: invoice rows. JP: weekly plan and results. Shipment Report: analysis only, not imported.
+ * A name is matched only when similarity leaves no doubt (auto-linked and flagged as such); anything lower goes to the collections manager, because a wrong link moves debt to the wrong customer.
  */
 require('dotenv').config();
 const path = require('path');
@@ -25,7 +12,7 @@ const mongoose = require('mongoose');
 const DRY = process.argv.includes('--dry');
 const FILE = path.join(__dirname, '../../..', 'collection files', 'Financial Collections    9-2026.xlsx');
 
-// حدُّ الربط التلقائيّ. اختير عاليًا: ما دونه يُراجَع بيد.
+// Auto-link threshold. Set high: anything below it is reviewed by hand.
 const AUTO_LINK = 0.85;
 const REVIEW_FLOOR = 0.30;
 
@@ -41,7 +28,7 @@ const D = (v) => {
 };
 const splitList = (v) => S(v).split(/[\/,؛;+&]|\s+و\s+/).map((x) => x.trim()).filter(Boolean);
 
-// كلماتٌ لا تميّز حسابًا عن حساب، فلا تُحسب في التشابه.
+// Words that do not distinguish one account from another, ignored in similarity.
 const STOP = new Set(['شركه', 'شركة', 'مؤسسه', 'مؤسسة', 'موسسه', 'مصنع', 'مكتب', 'المحدوده', 'المحدودة',
   'شخص', 'واحد', 'التجاريه', 'التجارية', 'للخدمات', 'الخدمات', 'اللوجستيه', 'اللوجستية',
   'للنقليات', 'النقليات', 'للتجاره', 'للتجارة', 'co', 'ltd', 'company', 'est', 'for', 'and', 'the']);
@@ -59,24 +46,19 @@ const STOP = new Set(['شركه', 'شركة', 'مؤسسه', 'مؤسسة', 'مو�
   const wb = XLSX.readFile(FILE, { cellDates: false, raw: true });
   const sheet = (n, h) => XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, defval: null, blankrows: false, raw: true }).slice(h + 1);
 
-  // ═══ ١ · الحسابات ═══════════════════════════════════════════════════════
-  //  Aging          0 Code 1 Name 2 Officer 3 HO 4 Grade 5 Sales 6 Dept 7 limit 8 Status 9 CreditDays 10 Outstanding
-  //  Aging Shipment 0 Code 1 Name 2 Officer 3 HO 4 Grade 5 Sales 6 Dept 7 Status 8 CreditDays 9 Outstanding
+  // Step 1: accounts.
+  // Aging: 0 Code 1 Name 2 Officer 3 HO 4 Grade 5 Sales 6 Dept 7 limit 8 Status 9 CreditDays 10 Outstanding
+  // Aging Shipment: 0 Code 1 Name 2 Officer 3 HO 4 Grade 5 Sales 6 Dept 7 Status 8 CreditDays 9 Outstanding
   const accounts = new Map();                       // code → account
-  const nameless = [];                              // كودٌ بلا اسمٍ في الورقة
+  const nameless = [];                              // A code with no name in the sheet
   const addAccount = (a) => {
     if (!a.code) return;
-    // ── والكودُ بلا اسمٍ لا يُهمَل، ولا يُخترَع له اسم ─────────────────────
-    // صفٌّ في الورقة يحمل كودًا وحدًّا ائتمانيًّا (٥٠ ألفًا) وموظّفًا مسؤولًا
-    // ومهلةَ سدادٍ — ولا اسمَ حساب. وإسقاطُ الصفّ كلِّه لأجل خانةٍ فارغةٍ يضيّع
-    // ما فيه: سقط الحدُّ فبقي الحسابُ بلا سقفٍ ولا تنبيه.
-    //
-    // فيُقبَل بلا اسم، ويُطابَق **بالكود وحدَه**. واسمُه يأتي من دفتر الفواتير
-    // حيث هو مكتوبٌ على ثلاثٍ وأربعين فاتورة. ولا يُنشأ سجلٌّ لكودٍ لا اسمَ له
-    // في الموضعين — لا يُخترَع اسمٌ من عندنا.
+    // A code without a name is kept, not dropped or given an invented name.
+    // The row still carries a credit limit, officer and payment term; dropping it would lose the limit and leave the account uncapped.
+    // It is matched by code only; its name comes from the invoice book. No record is created for a code with no name in either place.
     if (!a.name) { nameless.push(a.code); a.codeOnly = true; }
     const prev = accounts.get(a.code);
-    if (prev) { prev.outstanding += a.outstanding; return; }   // الحسابُ في الورقتين
+    if (prev) { prev.outstanding += a.outstanding; return; }   // An account in both sheets
     accounts.set(a.code, a);
   };
   for (const r of sheet('Aging', 4)) {
@@ -89,7 +71,7 @@ const STOP = new Set(['شركه', 'شركة', 'مؤسسه', 'مؤسسة', 'مو�
     addAccount({ code, name: S(r[1]), kind: 'cash', officer: S(r[2]), ho: S(r[3]), grade: S(r[4]),
       sales: splitList(r[5]), dept: S(r[6]), limit: 0, status: S(r[7]), creditDays: N(r[8]), outstanding: N(r[9]) });
   }
-  // JP يزيد المنطقة، ويؤكّد النوع.
+  // JP adds the region and confirms the type.
   for (const r of sheet('JP', 6)) {
     const code = S(r[0]); const a = accounts.get(code); if (!a) continue;
     if (!a.region) a.region = S(r[9]);
@@ -97,29 +79,23 @@ const STOP = new Set(['شركه', 'شركة', 'مؤسسه', 'مؤسسة', 'مو�
   console.log(`حساباتٌ في الدفتر: ${accounts.size}`);
   if (nameless.length) console.log(`  ⚠ أكوادٌ بلا اسمِ حسابٍ في الورقة (تُطابَق بالكود وحدَه): ${nameless.join('، ')}`);
 
-  // ═══ ٢ · المطابقةُ بما عندنا ════════════════════════════════════════════
+  // Step 2: matching against our records
   const ours = await CollectionsParty.find({ kind: 'customer' }).select('name nameKey code').lean();
   const byKey = new Map(); for (const p of ours) byKey.set(p.nameKey || fold(p.name), p);
   const byCode = new Map(ours.filter((p) => p.code).map((p) => [p.code, p]));
   const oursTok = ours.map((p) => ({ _id: p._id, name: p.name, t: toks(p.name) }));
 
-  // ── وسجلٌّ واحدٌ لا يحمل حسابين ──────────────────────────────────────────
-  // «شركة الأخشاب العالمية» و«الأخشاب العالمية للتجارة» حسابان بكودين في
-  // الدفتر، وقد يشيران إلى سجلٍّ واحدٍ عندنا. فلو رُبط كلاهما به لكتب الثاني
-  // كودَه فوق كود الأوّل — فيختفي حسابٌ بأكمله بلا خبر، وتُنسَب مديونيّتُه إلى
-  // غيره. حدث ذلك في أوّل تشغيل: ثمانيةُ أكواد ضاعت هكذا.
-  //
-  // فالسجلُّ يُحجَز لأوّل حسابٍ يطابقه، ومن جاء بعده يُعامَل كحسابٍ لا مرشَّحَ
-  // له: يُنشأ بكوده ويُعرَض للمراجعة إن كان له شبيه.
+  // One record must not carry two accounts: two book accounts with different codes may match the same record, and the second code would overwrite the first, silently losing an account and its debt.
+  // The record is reserved for the first account that matches; later ones are treated as having no candidate: created by code and listed for review if a similar one exists.
   const claimed = new Set();
   const plan = { byCode: [], exact: [], auto: [], review: [], fresh: [] };
-  // الترتيبُ بالكود ليكون التشغيلُ مكرَّرًا بنفس النتيجة لا رهنَ ترتيبِ قراءة.
+  // Ordered by code so a re-run gives the same result regardless of read order.
   for (const a of [...accounts.values()].sort((x, y) => String(x.code).localeCompare(String(y.code)))) {
     const claim = (p) => { claimed.add(String(p._id)); return p; };
     const free = (p) => p && !claimed.has(String(p._id));
 
     if (byCode.has(a.code)) { plan.byCode.push({ a, p: claim(byCode.get(a.code)) }); continue; }
-    // بلا اسمٍ لا يُطابَق بالاسم ولا يُنشأ سجلّ — يُنتظر أن يُعرَف اسمُه.
+    // With no name there is no name match and no record is created; wait until the name is known.
     if (a.codeOnly) continue;
     const ex = byKey.get(fold(a.name));
     if (free(ex)) { plan.exact.push({ a, p: claim(ex) }); continue; }
@@ -145,7 +121,7 @@ const STOP = new Set(['شركه', 'شركة', 'مؤسسه', 'مؤسسة', 'مو�
     await mongoose.disconnect(); return;
   }
 
-  // ═══ ٣ · الكتابة ════════════════════════════════════════════════════════
+  // Step 3: writing
   const setOf = (a) => ({
     code: a.code, kind: 'customer', paymentType: a.kind,
     collectionOfficer: a.officer, hoLocation: a.ho, grade: a.grade,
@@ -156,18 +132,15 @@ const STOP = new Set(['شركه', 'شركة', 'مؤسسه', 'مؤسسة', 'مو�
 
   let linked = 0; let created = 0; const refused = [];
   // eslint-disable-next-line prefer-const
-  // ولا يُكتب كودٌ فوق كودِ حسابٍ آخر: الشرطُ في الاستعلام نفسِه، فلو حدث
-  // تصادمٌ لم يُتوقَّع لم يُكتب شيءٌ ويُقال.
+  // A code is never written over another account's code: the condition is in the query itself, so an unexpected collision writes nothing and is reported.
   const claimParty = async (p, a) => {
     const r = await CollectionsParty.updateOne(
       { _id: p._id, $or: [{ code: '' }, { code: null }, { code: { $exists: false } }, { code: a.code }] },
       { $set: setOf(a), $addToSet: { aliases: a.name, aliasKeys: fold(a.name) } },
     );
     if (!r.matchedCount) {
-      // ── والمرفوضُ يُنشأ حسابًا مستقلًّا، لا يُترك بلا سجلّ ────────────────
-      // السجلُّ محجوزٌ لحسابٍ آخر — والشركةُ الواحدة قد تحمل حسابين (ضريبيًّا
-      // ونقديًّا) لكلٍّ رصيدُه ومدّةُ سداده. فيأخذ الحسابُ سجلَّه بكوده، ولا
-      // يُدهَس الأوّلُ ولا يضيع الثاني.
+      // A rejected account is created as its own account, not left without a record.
+      // The record is reserved for another account, and one company can hold two accounts (tax and cash), each with its own balance and term; so neither is overwritten or lost.
       await CollectionsParty.updateOne({ code: a.code },
         { $set: { ...setOf(a), name: a.name, nameKey: fold(a.name), source: 'collections_workbook' } },
         { upsert: true, setDefaultsOnInsert: true });
@@ -186,8 +159,7 @@ const STOP = new Set(['شركه', 'شركة', 'مؤسسه', 'مؤسسة', 'مو�
     } }, { upsert: true });
     linked += 1;
   }
-  // ما يُراجَع: يُنشأ حسابُه بالكود (فالأرقامُ لا تنتظر قرارًا)، ويُسجَّل
-  // الاقتراحُ ليقرّر إنسانٌ أيُدمَج مع القديم أم يبقى مستقلًّا.
+  // For a review case the account is still created by code (the numbers should not wait on a decision) and the suggestion is recorded so a person decides whether to merge it with the old one or keep it separate.
   for (const { a, p, score } of plan.review) {
     const doc = await CollectionsParty.findOneAndUpdate({ code: a.code },
       { $set: { ...setOf(a), name: a.name, nameKey: fold(a.name), source: 'collections_workbook' } },

@@ -1,4 +1,4 @@
-/** يمشّي طلبَ إجازةٍ على السلسلة كاملةً ثمّ يحذفه. لا يمسّ طلبًا قائمًا. */
+/** Runs a leave request through the whole chain, then deletes it. Touches no existing request. */
 require('dotenv').config();
 const mongoose = require('mongoose');
 (async () => {
@@ -52,12 +52,12 @@ const mongoose = require('mongoose');
   console.log(`الإدارة توافق → ${(await decide(exeU, 'approved')).code}`);     const fin = await show('النهاية');
   console.log(`\n   النتيجة: ${fin.status === 'approved' ? '✓ اعتُمدت بعد المحطّات الأربع' : '✗ ' + fin.status}`);
 
-  // ومَن ليس صاحبَ المحطّة لا يبتّ
+  // Someone who does not own the stage cannot decide.
   const l2 = await LeaveRequest.create({ employee: emp._id, requester: emp.user._id, manager: mgr?._id || null, startDate: '2027-02-01', endDate: '2027-02-02', days: 2, status: 'pending_manager', currentStage: 'manager', reason: 'اختبار الحراسة', leaveType: lt._id, leaveTypeCode: lt.code });
   const res2 = await new Promise((r) => { const res = { statusCode: 200, status(s) { this.statusCode = s; return this; }, json(b) { r({ code: this.statusCode, body: b }); } }; hr.decideLeave({ params: { id: String(l2._id) }, body: { decision: 'approved' }, user: finU, ip: '' }, res).catch((e) => r({ code: 500, body: { err: e.message } })); });
   console.log(`   الحسابات تحاول البتَّ في محطّة المدير → ${res2.code} ${res2.code === 403 ? '✓ مُنعت' : '✗ نفذت!'}`);
 
-  // والإخطاراتُ: مَن أُخبِر بماذا وفي أيّ محطّة.
+  // Notifications: who was told what, at which stage.
   const Notification = require('../models/Notification');
   const notes = await Notification.find({ relatedEntity: 'LeaveRequest', relatedEntityId: { $in: [leave._id] } })
     .sort({ createdAt: 1 }).select('recipient title').lean();
@@ -69,8 +69,7 @@ const mongoose = require('mongoose');
   const toEmp = notes.filter((n) => String(n.recipient) === String(emp.user._id)).map((n) => n.title);
   console.log(`\n  ما وصل الموظّفَ بالترتيب:`);
   toEmp.forEach((t) => console.log(`    · ${t}`));
-  // الرسائلُ الموجَّهةُ إليه بصفته صاحبَ الطلب — لا ما وصله لأنّ حسابَه في
-  // الموارد أو التقنية أيضًا (وهو حالُ حساب الاختبار).
+  // Messages addressed to him as the request owner, not those received because his account is also in HR or IT (as with the test account).
   const own = toEmp.filter((t) => ['تقدّم طلب الإجازة', 'اعتُمدت إجازتك', 'رُفض طلب الإجازة', 'مطلوب إيضاح على طلب الإجازة'].includes(t));
   console.log(`\n  ما وصله بصفته صاحبَ الطلب: ${own.length} رسالة`);
   console.log(`   → «تقدّم» خمس مرّات (خمسُ نقلات)؟ ${own.filter((t) => t === 'تقدّم طلب الإجازة').length === 5 ? 'نعم ✓' : 'لا ✗ (' + own.filter((t) => t === 'تقدّم طلب الإجازة').length + ')'}`);

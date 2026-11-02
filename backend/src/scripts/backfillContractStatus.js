@@ -1,20 +1,8 @@
 /**
- * backfillContractStatus — حالةُ العقد لمن أُنهيت خدمتُه ولم تُكتب له.
- *
- *   node src/scripts/backfillContractStatus.js --dry
- *   node src/scripts/backfillContractStatus.js --apply
- *
- * ── لماذا هي فارغة ─────────────────────────────────────────────────────────
- * `contractStatusText` كان يُملأ من ملفّ الاستيراد وحدَه؛ وإنهاءُ الخدمة من
- * الشاشة لا يكتبه. فمن أُنهيت خدمتُه في النظام بقي عمودُه فارغًا — وهو العمودُ
- * الذي يُقرأ في قائمة «ليس على رأس العمل» ليُعرَف أمفسوخٌ عقدُه أم ساري.
- *
- * وقد صار الإنهاءُ يكتبها (راجع `terminateEmployee`)، فهذا للماضي وحدَه.
- *
- * ── ولا يُكتب إلّا على الفارغ ───────────────────────────────────────────────
- * من كُتبت له حالةٌ — ولو «ساري» على منهيّ الخدمة — لا تُمَسّ: قد تكون صحيحةً
- * (عقدٌ لم يُفسَخ بعدُ وإن غادر) وقد تكون خطأً يُراجَع، وكلاهما قرارُ إنسانٍ لا
- * سكربت. تُطبَع ليقرأها من يعنيه.
+ * backfillContractStatus: contract status for terminated employees that lack one.
+ * Usage: node src/scripts/backfillContractStatus.js --dry | --apply
+ * Why empty: contractStatusText was filled only by the import; terminating from the screen did not write it, so terminated employees kept an empty column, which the "not on the job" list reads to tell a terminated contract from an active one. Termination now writes it (see terminateEmployee), so this only covers the past.
+ * Only empty values are written: an existing status, even "active" on a terminated employee, may be correct (contract not yet cancelled) or an error to review, and either is a human decision. Those are printed.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -37,8 +25,7 @@ const ENDED = 'تم انهاء العقد';
   console.log(`  بلا حالةِ عقدٍ مكتوبة: ${blank.length}   ← تُكتب «${ENDED}»`);
   console.log(`  لها حالةٌ مكتوبة: ${written.length}   ← لا تُمَسّ\n`);
 
-  // والمنهيّةُ خدمتُه وحدَها تأخذ «تم انهاء العقد». من هو «في إجازة» ليس عقدُه
-  // منتهيًا — يُترك ويُقال، فكتابةُ الإنهاء عليه تقلب معناه.
+  // Only terminated staff get "contract terminated". Someone on leave does not have an ended contract: leave them and report, since writing termination would flip the meaning.
   const toWrite = blank.filter((e) => e.employmentStatus === 'terminated');
   const skipped = blank.filter((e) => e.employmentStatus !== 'terminated');
 
@@ -57,7 +44,7 @@ const ENDED = 'تم انهاء العقد';
       { $set: { contractStatusText: ENDED } },
     );
     console.log(`\n  ✔ كُتبت لـ ${r.modifiedCount} موظّفًا.`);
-    try { require('../controllers/hrController'); } catch (_) { /* الكاش يُبطَل عند أوّل قراءة */ }
+    try { require('../controllers/hrController'); } catch (_) { /* Invalidate the cache on first read */ }
   } else if (!APPLY) {
     console.log('\n  لم يُكتب شيء. أضف --apply للتنفيذ.');
   }

@@ -1,20 +1,14 @@
 /**
- * normalizeReportedVia — «تم الإبلاغ عبر» صار قائمةً، فتُوحَّد قيمُه القديمة.
- *
- *   node src/scripts/normalizeReportedVia.js --dry
- *   node src/scripts/normalizeReportedVia.js
- *
- * كان الحقلُ خانةً حرّة: ستٌّ وعشرون واقعةً كُتب فيها «Najm» وإحدى وعشرون
- * «المرور». والجهةُ جهتان لا أكثرُ في السعوديّة كلِّها، فصارت قائمةً تُدار من
- * «إعدادات القسم ← القوائم المنسدلة» (`vehicle_reported_via`). وهذا يُلحق
- * المكتوبَ سلفًا بها، وإلّا فتحَ نموذجُ التعديل قائمةً لا تحوي قيمةَ الصفّ.
+ * Normalizes the old values of reported-via, now a list.
+ * Usage: node src/scripts/normalizeReportedVia.js [--dry]
+ * The field was free text (for example Najm and the traffic authority written variously), but there are only two bodies, so it became a managed list (vehicle_reported_via). This maps existing values onto it; otherwise the edit form would open a list lacking the row's value.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
 
 const DRY = process.argv.includes('--dry');
 
-// كلُّ ما رأيناه مكتوبًا، إلى الاسم الواحد الذي في القائمة.
+// Every variant seen maps to the single list name.
 const MAP = [
   [/^\s*(najm|nagm|نجم)\s*$/i, 'نجم'],
   [/^\s*(traffic|المرور|مرور|ادارة\s*المرور|إدارة\s*المرور)\s*$/i, 'المرور'],
@@ -23,7 +17,7 @@ const normalize = (v) => {
   const s = String(v || '').trim();
   if (!s) return '';
   for (const [rx, out] of MAP) if (rx.test(s)) return out;
-  return null;   // غيرُ معروف — يُترك ويُعرَض
+  return null;   // Unknown: left as is and shown.
 };
 
 (async () => {

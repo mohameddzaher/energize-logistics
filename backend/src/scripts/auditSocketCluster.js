@@ -1,9 +1,7 @@
 /**
- * يُثبت أنّ حدثًا يُبَثّ من عمليةٍ يصل متّصلًا بعمليةٍ أخرى.
- * خادمان على منفذين مختلفين، ومحوّلُ مونجو بينهما — كحال العاملَين على الإنتاج.
- *
- * يحتاج `socket.io-client` وهو ليس من تبعيّات الإنتاج:
- *   npm install --no-save socket.io-client && node src/scripts/auditSocketCluster.js
+ * Proves that an event emitted in one process reaches a client connected to another.
+ * Two servers on different ports with a Mongo adapter between them, like the two production workers.
+ * Needs socket.io-client, which is not a production dependency: npm install --no-save socket.io-client && node src/scripts/auditSocketCluster.js
  */
 require('dotenv').config();
 const http = require('http');
@@ -25,8 +23,8 @@ const COLL = 'socketevents_test';
     await new Promise((r) => srv.listen(port, r));
     return { srv, s };
   };
-  const A = await make(5311);   // «العامل الأوّل»
-  const B = await make(5312);   // «العامل الثاني»
+  const A = await make(5311);   // First worker
+  const B = await make(5312);   // Second worker
 
   const client = Client('http://localhost:5312', { transports: ['websocket'] });
   await new Promise((r) => client.on('connect', r));
@@ -37,7 +35,7 @@ const COLL = 'socketevents_test';
     setTimeout(() => resolve(null), 6000);
   });
 
-  // يُبَثّ من العامل الأوّل — والعميلُ ليس عليه
+  // Emitted from the first worker; the client is not connected to it.
   setTimeout(() => A.s.emit('fleet:drivers', { from: 'worker-1' }), 400);
   const res = await got;
   console.log(res ? `✓ وصل الحدثُ عبر العمّال: ${JSON.stringify(res)}` : '✗ لم يصل — البثُّ ما زال داخل العامل');

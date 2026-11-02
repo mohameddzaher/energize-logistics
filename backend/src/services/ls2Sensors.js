@@ -37,10 +37,7 @@ function evalExpr(expr, params) {
   return val;
 }
 
-// Parse the unit display name — "1080 RXA سعيد اقبال" → { plate:'1080 RXA', driver:'سعيد اقبال' }.
-// The plate is the leading "<digits> <2-4 latin letters>"; the rest is the driver.
-// والفاصلُ بين الأرقام والحروف مسافةٌ أو شَرطة: «3965-DEA خليل» (أُضيفت هكذا
-// ٢٠٢٦/١٠/١٨) كانت تُقرأ لوحةً فارغةً وسائقًا اسمُه «3965-DEA خليل».
+// Parse the unit display name, e.g. "1080 RXA <driver name>" -> { plate:'1080 RXA', driver:'<driver name>' }. The plate is the leading "<digits> <2-4 latin letters>"; the rest is the driver. The separator between digits and letters is a space or a dash: "3965-DEA <name>" was read as an empty plate with the whole string as the driver.
 function parseName(nm) {
   if (!nm) return { plate: '', driver: '' };
   const m = String(nm).match(/^\s*(\d{3,5})[\s-]*([A-Za-z]{1,4})(?![A-Za-z])[\s-]*(.*)$/);

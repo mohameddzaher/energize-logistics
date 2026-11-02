@@ -1,24 +1,8 @@
 /**
- * ربطُ «أسطولنا» في طلبات الشحنات بسجلّاتنا: الشاحنةُ بسجلّ المركبات
- * (`VehicleMaster`)، والسائقُ بملفّه في الموارد البشريّة (`Employee`).
- *
- * ── لماذا ─────────────────────────────────────────────────────────────────
- * قاعدةُ صاحب الشركة: «سجلٌّ واحدٌ للمركبة وللشخص، والتعديلُ يظهر في كلّ مكان».
- * وكانت شاحناتُ أسطولنا في هذا القسم (`ownership: 'ours'`) نسخًا بلوحةٍ وماركةٍ
- * ولونٍ مكتوبةٍ مرّةً — وبعضُ الشاحنات مكتوبةٌ مرّتين وثلاثًا بصيغٍ مختلفة للّوحة.
- * وسائقو الناقلين فيهم موظّفونا برقم إقامتهم، بلا صلةٍ بملفّاتهم.
- *
- * ── ما يفعله ───────────────────────────────────────────────────────────────
- *   ١. كلُّ شاحنةٍ «لنا» تُحلّ بلوحتها إلى سجلّ المركبات (utils/vehicleRef — المفتاحُ
- *      الموحَّد عربيّ↔لاتينيّ) ويُكتب `vehicleMaster`. وما يحلّ إلى مركبةٍ واحدةٍ من
- *      صفوفٍ عدّة يُطبَع **تكرارًا** للمراجعة ولا يُدمَج (الطلباتُ تشير إلى الصفوف).
- *   ٢. كلُّ سائقٍ رقمُ إقامته في الموارد البشريّة يُكتب له `employee`.
- *   شاحناتُ الموردين وسائقوهم الغرباء لا تُمسّ.
- *
- *   node src/scripts/linkShipmentOrdersToRegistry.js            # معاينة
- *   node src/scripts/linkShipmentOrdersToRegistry.js --apply    # كتابة
- *
- * تشغيلُه مرّتين لا يفعل شيئًا في الثانية.
+ * Links our fleet in shipment orders to the registries: truck to VehicleMaster, driver to their HR Employee.
+ * The single-record rule means edits should show everywhere, but these trucks (ownership 'ours') were copies, some written two or three times with different plate spellings, and carrier drivers included our employees by iqama with no link.
+ * Each of our trucks resolves by plate (utils/vehicleRef, unified Arabic/Latin key) and gets vehicleMaster; several rows resolving to one vehicle are printed as duplicates, not merged, since orders point at the rows. Each driver whose iqama number is in HR gets employee. Carrier trucks and outside drivers are untouched.
+ * Usage: [--apply]; idempotent.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -34,7 +18,7 @@ const APPLY = process.argv.includes('--apply');
   const { resolveMany, canonicalPlateKey } = require(`${ROOT}/utils/vehicleRef`);
   const { byIdNumbers, idKey, displayName } = require(`${ROOT}/utils/personLookup`);
 
-  // ── ١. الشاحنات ─────────────────────────────────────────────────────────
+  // 1. Trucks.
   const ours = await V.find({ ownership: 'ours' }).select('plate vehicleMaster isActive').lean();
   const vm = await resolveMany(ours.map((v) => v.plate), '_id plateNumber canonKey');
   const vOps = []; const unresolved = []; const byVm = new Map();
@@ -55,7 +39,7 @@ const APPLY = process.argv.includes('--apply');
   dupes.slice(0, 20).forEach((d) => console.log(`    ${d.plate} ← ${d.rows.map((r) => `«${r.plate}»${r.isActive === false ? '(موقوف)' : ''}`).join(' · ')}`));
   unresolved.slice(0, 10).forEach((v) => console.log(`  لم تُحلّ: «${v.plate}»`));
 
-  // ── ٢. السائقون ─────────────────────────────────────────────────────────
+  // 2. Drivers.
   const drivers = await D.find({ residenceNumber: { $nin: ['', null] } }).select('name residenceNumber employee').lean();
   const emps = await byIdNumbers(drivers.map((d) => d.residenceNumber));
   const dOps = []; let matched = 0; const sample = [];

@@ -1,26 +1,8 @@
 /**
- * auditCollectionsWorkbook — دفترُ التحصيل كلُّه، ورقةً ورقة، مقابلَ النظام.
- *
- *   node --max-old-space-size=8192 src/scripts/auditCollectionsWorkbook.js
- *
- * ── لماذا يُعاد قراءةُ الملفّ في كلّ مرّة ───────────────────────────────────
- * فحصُ الاستيراد بالاستيراد لا يُثبت إلّا أنّه فعل ما فعل. فيُقرأ الملفُّ من
- * جديدٍ وتُقارَن أرقامُه بما في القاعدة.
- *
- * والأوراقُ خمس:
- *   Aging                 حساباتٌ ضريبيّة  — الكود والاسم والحدّ والمهلة والرصيد
- *   Aging Shipment        حساباتٌ نقديّة   — مثلُها بلا حدٍّ ائتمانيّ
- *   Daily Invoice Report  فواتيرُ ضريبيّة  — رقمُ الفاتورة وتواريخُها وحالتُها
- *   Shipment Report       كشوفٌ نقديّة     — رقمُ الكشف وقيمتُه وتواريخُه
- *   JP                    مناطقُ الحسابات
- *
- * والفلاترُ وإخفاءُ الصفوف في إكسل لا تُخفي شيئًا عن هذه القراءة: المكتبةُ تقرأ
- * XML الورقة نفسَه لا ما يعرضه إكسل. (يُطبَع عددُ المخفيّ للتوثيق.)
- *
- * ── وما يُعَدّ فشلًا ────────────────────────────────────────────────────────
- * أمانةُ الاستيراد وحدَها: ما في الورقة موجودٌ عندنا وبالقيمة نفسِها. أمّا
- * اختلافُ الورقة عن ورقةٍ أخرى للمستخدم نفسِه فيُجمَع في «يحتاج قرارَك» ولا
- * يُعَدّ فشلًا — السويتُ الحمراءُ دائمًا تُهمَل، والخلافُ المخفيُّ أسوأ.
+ * Audits the whole collections workbook sheet by sheet against the system, re-reading the file on every run.
+ * Sheets: Aging (tax accounts), Aging Shipment (cash accounts), Daily Invoice Report (tax invoices), Shipment Report (cash statements), JP (account regions).
+ * Excel filters and hidden rows do not hide anything from this read (the library reads the sheet XML); the hidden count is printed.
+ * Only import fidelity counts as failure; disagreement between sheets goes to the needs-decision list.
  */
 require('dotenv').config();
 const path = require('path');
@@ -69,7 +51,7 @@ const money = (n) => Math.round(n * 100) / 100;
     wb.SheetNames.every((n) => !(wb.Sheets[n]['!rows'] || []).some((r) => r && (r.hidden || r.hpx === 0))));
   ok('القراءةُ من XML الورقة لا من عرض إكسل — الفلترُ لا يُخفي صفًّا', true);
 
-  // ═══ ١ · الحسابات ═══════════════════════════════════════════════════════
+  // 1. Accounts
   head('الحسابات — Aging + Aging Shipment');
   const acc = new Map();
   for (const r of sheet('Aging', 5)) {
@@ -112,14 +94,11 @@ const money = (n) => Math.round(n * 100) / 100;
   ok('مجموعُ الحدود الائتمانيّة مطابق', money(sheetLimit) === money(ourLimit),
     `الورقة ${sheetLimit.toLocaleString()} · نحن ${ourLimit.toLocaleString()}`);
 
-  // ═══ ٢ · الفواتير الضريبيّة ═════════════════════════════════════════════
+  // 2. Tax invoices
   head('الفواتير الضريبيّة — Daily Invoice Report');
-  // ── التعريفاتُ هي تعريفاتُ الاستيراد نفسِها ──────────────────────────────
-  // فحصٌ يعرّف «الفاتورة» بغير ما يعرّفها به الاستيراد يفشل أبدًا على بياناتٍ
-  // سليمة، وسويتٌ حمراءُ دائمًا تُهمَل. فيُقرأ هنا كما يُقرأ هناك:
-  //   · الصفُّ الذي فيه رقمٌ ولا شيءَ غيرُه — لا حسابَ ولا مبلغَ ولا تاريخَ ولا
-  //     تعليق — ليس فاتورةً بل رقمٌ محجوزٌ أو ملغًى. (ثلاثُمئةٍ وثمانيةٌ وتسعون.)
-  //   · والرقمُ المتكرِّر تُجمَع صفوفُه، فالفاتورةُ الواحدة قد تمتدّ على أسطر.
+  // Same definitions as the import, otherwise the audit fails forever on healthy data.
+  // A row with only a number (no account, amount, date or comment) is a reserved or cancelled number, not an invoice.
+  // Repeated numbers are merged, since one invoice can span several rows.
   const inv = new Map();
   let invSkipped = 0; let hollow = 0;
   for (const r of sheet('Daily Invoice Report', 6)) {
@@ -130,12 +109,11 @@ const money = (n) => Math.round(n * 100) / 100;
       invoiceDate: rd(r[4]), deliveryDate: rd(r[6]), collectionDate: rd(r[8]),
       status: S(r[9]), exitDate: rd(r[10]), comments: S(r[11]),
     };
-    // المفتاحُ رقمٌ **وكودُ الورقة**: الصفوفُ السالبة تسوياتٌ يرقّمها المحاسب
-    // لكلّ حسابٍ على حدة، فـ‎-14‎ لشركةِ فكر غيرُ ‎-14‎ لشركةِ صليهم.
+    // The key is number plus sheet code: negative rows are adjustments numbered per account by the accountant, so -14 for one company differs from -14 for another.
     const key = `${no}::${row.code}`;
     const prev = inv.get(key);
     if (!prev) { inv.set(key, row); continue; }
-    prev.total += row.total;                       // كما يجمع الاستيراد
+    prev.total += row.total;                       // Same merging as the import.
     for (const f of ['code', 'name', 'status', 'comments']) if (!prev[f]) prev[f] = row[f];
     for (const f of ['invoiceDate', 'deliveryDate', 'collectionDate', 'exitDate']) if (!prev[f]) prev[f] = row[f];
   }
@@ -167,9 +145,7 @@ const money = (n) => Math.round(n * 100) / 100;
   ok('حالةُ كلّ فاتورةٍ مطابقة', badStatus === 0, `${badStatus} مختلفًا`);
   ok('كودُ الحساب على كلّ فاتورةٍ مطابق', badCode === 0, `${badCode} مختلفًا`);
 
-  // رقمٌ سالبٌ لشركتين: «-14» يحمله إشعارُ شركة فكر وإشعارُ شركة صليهم معًا،
-  // فيندمجان في سجلٍّ واحدٍ لأنّ الرقم مفتاح. ليس خطأَ استيرادٍ بل رقمٌ ليس
-  // رقمَ فاتورةٍ أصلًا.
+  // A negative number shared by two companies merges into one record because the number is the key; it is not an import error and not really an invoice number.
   const negDup = [];
   {
     const seen = new Map();
@@ -182,7 +158,7 @@ const money = (n) => Math.round(n * 100) / 100;
       else seen.set(no, code);
     }
   }
-  // لم تعد مشكلةً: كودُ الورقة صار جزءًا من المفتاح، فلكلِّ حسابٍ تسويتُه.
+  // No longer an issue: the sheet code is part of the key, so each account keeps its own adjustment.
   ok('التسويةُ السالبةُ لكلّ حسابٍ على حدة',
     negDup.length === 0 || ours.filter((i) => i.invoiceNumber === '-14').length === 2,
     negDup.length ? `${negDup.join('، ')} — كلٌّ في سجلّه` : 'لا تصادم');
@@ -192,7 +168,7 @@ const money = (n) => Math.round(n * 100) / 100;
   ok('مجموعُ قيم الفواتير مطابق', money(sheetOut) === money(ourOut),
     `الورقة ${sheetOut.toLocaleString()} · نحن ${ourOut.toLocaleString()}`);
 
-  // ═══ ٣ · الكشوف النقديّة ════════════════════════════════════════════════
+  // 3. Cash statements
   head('الكشوف النقديّة — Shipment Report');
   const ship = new Map();
   let shipSkipped = 0;
@@ -230,15 +206,12 @@ const money = (n) => Math.round(n * 100) / 100;
   ok('تاريخُ السداد موجودٌ لكلّ كشفٍ سدّدته الورقة', noPay === 0, `${noPay} ناقصًا`);
   const shipTotal = [...ship.values()].reduce((s, x) => s + x.total, 0);
   console.log(`  مجموعُ قيم الكشوف النقديّة في الورقة: ${shipTotal.toLocaleString()}`);
-  // ── وقيمةُ الكشف رقمان لا رقمٌ واحد ──────────────────────────────────────
-  // `sellingValue` عندنا يأتي من منصّة التشغيل: ما بِيع به الكشف. و«Invoice
-  // Total» في دفتر التحصيل ما فُوتِر به فعلًا — وقد يزيد بانتظارٍ أو نقصٍ متّفقٍ
-  // عليه. فاختلافُهما ليس خطأَ استيراد، ولا يُكتب أحدُهما فوق الآخر.
+  // A statement has two values: sellingValue comes from the operations platform (what it was sold for), Invoice Total in the workbook is what was actually invoiced and may differ by agreed adjustments. The difference is not an import error and neither overwrites the other.
   if (badVal) needsYou.push(`${badVal} كشفًا نقديًّا قيمتُه في دفتر التحصيل غيرُ قيمة بيعه عندنا (مجموعُ الفرق ${money(valGap).toLocaleString()} ر.س)`);
   ok('قيمةُ الكشف مقروءةٌ من الطرفين للمقارنة', true, `${badVal} صفًّا يختلفان فيه`);
 
 
-  // ═══ ٤ · JP — المناطق ═══════════════════════════════════════════════════
+  // 4. JP regions
   head('المناطق — JP');
   const jp = new Map();
   for (const r of sheet('JP', 6)) {
@@ -255,17 +228,14 @@ const money = (n) => Math.round(n * 100) / 100;
   }
   ok('منطقةُ كلّ حسابٍ مطابقة', regDiff === 0, `${regDiff} مختلفًا`);
 
-  // ═══ ٥ · ما تراه الشاشات ════════════════════════════════════════════════
+  // 5. What the screens show
   head('ما تعرضه الشاشات مبنيٌّ على هذه الأرقام');
   const cashWf = await OW.countDocuments({ paymentType: 'cash' });
   const taxWf = await OW.countDocuments({ paymentType: 'tax' });
   console.log(`  كشوفٌ نقديّة ${cashWf} · ضريبيّة ${taxWf}`);
   ok('صفحةُ فواتير الكاش لها كشوفٌ تعرضها', cashWf > 0, `${cashWf} كشفًا`);
   ok('صفحةُ الفواتير الضريبيّة لها كشوفٌ تعرضها', taxWf > 0, `${taxWf} كشفًا`);
-  // ── ونوعُ الدفع ليس أمانةَ استيراد ───────────────────────────────────────
-  // هو قرارٌ يُتَّخذ على الكشف: العميلُ الواحد كاشٌ في حمولةٍ وضريبيٌّ في أخرى.
-  // فاختلافُ دفترِ الكاش عن نوعِنا خلافُ مصدرَين يُعرَض ليُقرَّر فيه، لا خطأٌ
-  // يُصلَح بالكتابة فوقه — وقلبُ نوعِ اثنين وأربعين كشفًا يغيّر أين تُفوتَر.
+  // Payment type is not import fidelity: it is decided per statement (one customer can be cash on one load and tax on another). A cash-sheet mismatch is a source disagreement to decide, not to overwrite; flipping 42 statements changes where they are invoiced.
   if (notCash) {
     needsYou.push(`${notCash} كشفًا تعدّها ورقةُ «Shipment Report» نقديّةً ونوعُها عندنا غيرُ ذلك — ${notCashList.join('، ')}`);
   }

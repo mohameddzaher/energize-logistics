@@ -1,22 +1,7 @@
 /**
- * linkInvoiceReports — يضع تحتَ كلّ فاتورةٍ كشوفَ التشغيل التي تحملها.
- *
- *   node src/scripts/linkInvoiceReports.js --dry
- *   node src/scripts/linkInvoiceReports.js --apply
- *
- * ── ما كان ─────────────────────────────────────────────────────────────────
- * عمودُ «كشوف التشغيل» في دفتر التحصيل كان يقول «لا كشوف» لكلّ فاتورةٍ بلا
- * استثناء — عشرةُ آلافٍ وثمانمئةٍ وثمانٍ وثمانون فاتورةً، صفرٌ منها مربوط.
- * وليس ذلك لأنّ الربطَ غيرُ ممكن: خمسةُ آلافٍ ومئتان وسبعةٌ وسبعون كشفًا تحمل
- * رقمَ فاتورتها مكتوبًا عليها.
- *
- * السببُ أنّ إعادةَ استيراد الدفتر تبني كلَّ فاتورةٍ من الورقة، والورقةُ لا
- * تعرف كشوفَنا — فتُكتب `reportNumbers` فارغةً فوق ما كان.
- *
- * ── والفاتورةُ تجمع كشوفًا ──────────────────────────────────────────────────
- * وهو المقصود: الفاتورةُ الواحدة تُصدَر عن شحناتٍ عدّة. من الخمسمئةِ وثمانٍ
- * وخمسين فاتورةً التي لها كشوفٌ، ثلاثُمئةٍ وثمانٍ وخمسون تحتها ثلاثةُ كشوفٍ
- * فأكثر، وأكبرُها تحتها أحدٌ وعشرون. فالعمودُ ليس زينةً: به يُراجَع ما فُوتِر.
+ * Attaches to each invoice the operations reports it carries.
+ * Usage: node src/scripts/linkInvoiceReports.js --dry | --apply
+ * The reports column was empty for every invoice because re-importing the ledger rebuilds invoices from the sheet, which knows nothing of our reports, resetting reportNumbers. Many reports carry their invoice number, and one invoice legitimately covers several reports.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -42,8 +27,7 @@ const APPLY = process.argv.includes('--apply');
   const sheets = await OperationsWorkflow.find({ invoiceNumber: { $nin: [null, ''] } })
     .select('reportNumber invoiceNumber').lean();
 
-  // رقمُ الفاتورة قد يقع على فاتورتين (نقديّةٍ وضريبيّة بالرقم نفسِه). يُربط
-  // الكشفُ بكلتيهما: الورقةُ لا تفرّق، ونحن لا نخترع تفريقًا ليس فيها.
+  // An invoice number can match two invoices (cash and tax with the same number). The report links to both, since the sheet does not distinguish and we do not invent a distinction.
   const want = new Map();   // _id → Set(reportNumber)
   let matched = 0; let noKey = 0; let unmatched = 0;
   for (const s of sheets) {
@@ -73,9 +57,7 @@ const APPLY = process.argv.includes('--apply');
 
   if (!APPLY) { console.log('\n  لم يُكتب شيء. أضف --apply للتنفيذ.\n'); await mongoose.disconnect(); return; }
 
-  // ── وما لم يعد له كشفٌ يُفرَّغ ────────────────────────────────────────────
-  // الكشفُ قد يُصحَّح رقمُ فاتورته، فتنتقل نسبتُه. ولو أُضيف الجديدُ ولم يُرفَع
-  // القديمُ لبقيت فاتورةٌ تدّعي كشفًا لم يعد لها — ويُراجَع عليها.
+  // Clear invoices that no longer have a report: a report's invoice number can be corrected and move, and adding the new link without removing the old one would leave an invoice claiming a report it no longer has.
   const ops = [];
   for (const inv of invoices) {
     const next = [...(want.get(String(inv._id)) || [])].sort();

@@ -1,15 +1,7 @@
 /**
- * backfillLtUserRentals — لكلّ يوزرٍ في «موظفي النقل الخفيف» تأجيرٌ مربوطٌ به.
- *
- * ── لماذا (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢) ───────────────────────────────────────
- * اللوحةُ قالت «نينجا ١٣ يوزرًا مؤجَّرًا» وصفحةُ «تأجير اليوزرات» فارغة: الثلاثةَ
- * عشرَ مكتوبٌ نوعُ عقدهم «يوزرات» في صفوفهم ولا سجلَّ تأجيرٍ لهم. والتعريفُ الآن
- * تأجيرٌ ساري مربوطٌ بالصفّ (utils/ltRental). فيُنشأ لكلّ صفٍّ «يوزرات» بلا تأجيرٍ
- * مربوطٍ تأجيرٌ أوّليّ: مشروعُه مشروعُ صفّه، ولمن أُجِّر «يُستكمل» — بيانٌ معلَّمٌ
- * ليُصحَّح من الصفحة، لا اسمٌ مخترَع.
- *
- *   node src/scripts/backfillLtUserRentals.js            # عرضٌ فقط
- *   node src/scripts/backfillLtUserRentals.js --apply    # يكتب
+ * backfillLtUserRentals: every user account in light transport staff has a linked rental.
+ * Why: the dashboard said Ninja had 13 rented users while the user rental page was empty; the 13 had contract type "user accounts" on their rows but no rental record. The definition is now an active rental linked to the row (utils/ltRental). So each such row without a linked rental gets an initial one: its project is the row's project, and the renter is "to be completed", a flagged placeholder to fix from the page, not an invented name.
+ * Usage: node src/scripts/backfillLtUserRentals.js (dry run) | --apply
  */
 const path = require('path');
 require('dotenv').config({ path: process.env.ENV_FILE || path.join(__dirname, '../../.env') });

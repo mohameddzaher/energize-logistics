@@ -1,36 +1,23 @@
 const mongoose = require('mongoose');
 
 /**
- * سجلّ السيارة الشهريّ — إدارة الأسطول.
- *
- * ── لماذا سجلٌّ للسيارة لا للحمولة ─────────────────────────────────────────
- * متابعةُ الحمولة تُجيب سؤالًا واحدًا: أين هذه الشحنة الآن. وسؤالُ المشرف
- * الآخر لا تُجيبه: «ماذا جرى لهذه السيّارة الشهر الماضي؟» — عطلٌ يومَ ٩،
- * إطارٌ يوم ١٤، سائقٌ تغيّر يوم ٢٠، وست حمولات بينها. هذه أحداثُ السيّارة لا
- * أحداثُ شحنةٍ بعينها، وكانت تتبعثر بين سجلّات ستّ شحنات فلا تُقرأ مجتمعة.
- *
- * ── والشهرُ يُقفل من نفسِه ───────────────────────────────────────────────────
- * السجلُّ فترةٌ لا دفترٌ مفتوح: يبدأ يوم ١ وينتهي بآخر يوم في الشهر، ومتى جاء
- * أوّلُ الشهر التالي أُقفل ما قبله. والإقفالُ هنا **حقيقةٌ عن الزمن لا خانةٌ
- * يضغطها أحد**: لا وظيفةَ مجدولةً تنساه، ولا علمًا يُرفع متأخّرًا فيبدو
- * الشهرُ مفتوحًا وقد انقضى. `isClosed(monthKey)` تحسبها في سطر.
- *
- * وما أُضيف إلى شهرٍ مُقفل يُوسَم `lateEntry` ولا يُدَسّ: المدير قد يحتاج قيدَ
- * عطلٍ نُسي، لكنّ من يقرأ السجلّ بعدها يجب أن يرى أنّه كُتب بعد الإقفال.
+ * Monthly vehicle log, fleet management.
+ * A per-vehicle log, not per load: load tracking answers where a shipment is, not what happened to this vehicle last month (breakdown on the 9th, tire on the 14th, driver change on the 20th, six loads between). Those are vehicle events scattered across shipment logs.
+ * A month closes by itself: the log is a period, not an open ledger, and when the next month starts the previous one is closed. Closure is a fact about time, not a button, so there is no scheduled job to forget; `isClosed(monthKey)` computes it.
+ * Entries added to a closed month are flagged `lateEntry` rather than slipped in, so a reader sees it was written after closing.
  */
 
-// أنواعُ القيد. الحمولاتُ تُشتقّ من الشحنات نفسِها ولا تُكتب هنا — هذه
-// للأحداث التي لا مكان لها إلّا هنا.
+// Entry types. Loads are derived from shipments and not written here; these are events with no other home.
 const LOG_KINDS = [
-  'breakdown',    // عطل
-  'maintenance',  // صيانة
-  'tire',         // إطارات
-  'fuel',         // وقود
-  'accident',     // حادث
-  'violation',    // مخالفة
-  'driver',       // تغيير سائق
-  'idle',         // توقّف/ركن
-  'note',         // ملاحظة
+  'breakdown',    // Breakdown.
+  'maintenance',  // Maintenance.
+  'tire',         // Tires.
+  'fuel',         // Fuel.
+  'accident',     // Accident.
+  'violation',    // Violation.
+  'driver',       // Driver change.
+  'idle',         // Stop/parking.
+  'note',         // Note.
 ];
 
 const KIND_LABELS = {
@@ -45,20 +32,20 @@ const KIND_LABELS = {
   note: { ar: 'ملاحظة', en: 'Note' },
 };
 
-/** مفتاح الشهر من تاريخٍ أو نصّ: 'YYYY-MM'. */
+/** Month key from a date or string: 'YYYY-MM'. */
 const monthKeyOf = (d) => {
   const dt = d instanceof Date ? d : new Date(d);
   if (Number.isNaN(dt.getTime())) return '';
   return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}`;
 };
 
-/** أوّلُ الشهر التالي مرّ؟ إذن الشهرُ مقفل. */
+/** Whether the next month has started, so this month is closed. */
 const isClosed = (monthKey, now = new Date()) => {
   if (!/^\d{4}-\d{2}$/.test(String(monthKey || ''))) return false;
   return String(monthKey) < monthKeyOf(now);
 };
 
-/** حدّا الشهر بالـUTC: [أوّلُ يومٍ ٠٠:٠٠ ، آخرُ لحظةٍ في آخر يوم]. */
+/** Month bounds in UTC: [first day 00:00, last moment of the last day]. */
 const monthRange = (monthKey) => {
   const [y, m] = String(monthKey).split('-').map(Number);
   const from = new Date(Date.UTC(y, m - 1, 1, 0, 0, 0, 0));
@@ -68,26 +55,25 @@ const monthRange = (monthKey) => {
 
 const fleetVehicleLogSchema = new mongoose.Schema({
   vehicle: { type: mongoose.Schema.Types.ObjectId, ref: 'FleetVehicle', required: true },
-  // لقطةٌ من اللوحة: السجلُّ يُقرأ بعد سنة، ولو حُذفت السيّارة أو غُيّرت لوحتُها
-  // بقي القيدُ يقول على أيِّ سيّارةٍ كُتب.
+  // Plate snapshot: the log is read a year later, and if the vehicle is deleted or re-plated the entry still says which vehicle it was written on.
   vehiclePlate: { type: String, trim: true, default: '', index: true },
 
-  // اليوم الذي وقع فيه الحدث — لا يوم الكتابة.
+  // Day the event happened, not the day it was written.
   at: { type: Date, required: true, index: true },
-  monthKey: { type: String, default: '', index: true }, // YYYY-MM — مشتقّ من at
+  monthKey: { type: String, default: '', index: true }, // YYYY-MM, derived from at.
 
   kind: { type: String, enum: LOG_KINDS, default: 'note', index: true },
   text: { type: String, trim: true, default: '' },
   location: { type: String, trim: true, default: '' },
   cost: { type: Number, default: 0 },
 
-  // القيدُ قد يخصّ حمولةً بعينها — عطلٌ وقع وهي محمَّلة — وقد لا يخصّ شيئًا.
+  // The entry may belong to a specific load (a breakdown while loaded) or to none.
   shipment: { type: mongoose.Schema.Types.ObjectId, ref: 'FleetShipment', default: null, index: true },
   waybillNumber: { type: Number, default: null },
 
   driverName: { type: String, trim: true, default: '' },
 
-  // كُتب بعد إقفال شهره.
+  // Written after its month closed.
   lateEntry: { type: Boolean, default: false },
 
   by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
@@ -97,8 +83,7 @@ const fleetVehicleLogSchema = new mongoose.Schema({
 fleetVehicleLogSchema.index({ vehicle: 1, at: -1 });
 fleetVehicleLogSchema.index({ monthKey: 1, vehicle: 1 });
 
-// monthKey يُشتقّ دائمًا من `at` ولا يُقبل من العميل: لو أُرسل مخالفًا لتاريخه
-// عاش القيدُ في شهرٍ ليس شهرَه، فاختلّ الإقفال والتصفية معًا.
+// monthKey is always derived from `at` and never accepted from the client: a mismatch would put the entry in the wrong month and break closing and filtering.
 fleetVehicleLogSchema.pre('save', function (next) {
   if (this.at) this.monthKey = monthKeyOf(this.at);
   next();

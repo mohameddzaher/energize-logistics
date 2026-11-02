@@ -1,15 +1,6 @@
 /**
- * دليلُ «الاسم القديم ← الاسم اليوم» — لمن يبحث عن عميلٍ باسمه السابق.
- *
- * بعد مطابقة الأسماء (scripts/renameOpsCustomersFromSheet) صار للعميل اسمٌ
- * واحدٌ مُعتمَد، وبقي في الأذهان اسمُه القديم — ويُبحَث به في منصّة التشغيل،
- * وهي تبحث بالحرف فتقول «لا نتائج». فيُصدَّر الدليلُ ورقةً تُفتَح جنبَ الشاشة.
- *
- * ولكلّ سطرٍ ما يهمّ القارئ: الاسمان، وكودُ الحساب في التحصيل، وعددُ كشوفه،
- * وهل الاسمُ القديم ما زال يجده عندنا (محفوظٌ لقبًا) — وأيُّ اسمٍ صحيحٍ جمع
- * أكثرَ من اسمٍ قديم، فذاك سببُ ظهور صفَّين متشابهين في المنصّة.
- *
- *   node src/scripts/exportCustomerNameGuide.js
+ * Guide from old customer name to current name, for people searching by a former name.
+ * After name reconciliation (scripts/renameOpsCustomersFromSheet) each customer has one approved name, but the operations platform searches literally by the old one and finds nothing. The sheet lists both names, the collections account code, statement count and whether the old name is still found here (kept as an alias); a correct name that merged several old names explains duplicate-looking rows on the platform.
  */
 require('dotenv').config({ quiet: true });
 const path = require('path');
@@ -39,7 +30,7 @@ const S = (v) => String(v ?? '').trim();
     }
   }
 
-  // أيُّ اسمٍ صحيحٍ جمع أكثرَ من اسمٍ قديم — فصار في المنصّة صفّان باسمٍ واحد.
+  // A correct name that merged several old names, hence two rows with one name on the platform.
   const gathered = new Map();
   for (const [a, b] of rows) {
     const from = S(a); const to = S(b) || S(a);
@@ -53,7 +44,7 @@ const S = (v) => String(v ?? '').trim();
   for (const [a, b] of rows) {
     const from = S(a);
     if (!from) continue;
-    // عمودُ الاسم الصحيح فارغٌ عند بعضهم — فاسمُه القديم هو اسمُه.
+    // The correct-name column is empty for some; their old name is their name.
     const to = S(b) || from;
     const p = byKey.get(fold(to)) || byKey.get(fold(from));
     const sheets = p ? await W.countDocuments({ username: p.name }) : 0;
@@ -61,15 +52,12 @@ const S = (v) => String(v ?? '').trim();
     out.push({
       'الاسم القديم': from,
       'الاسم الصحيح الآن': p ? p.name : to,
-      // والفرقُ في الرسم فرقٌ يراه القارئ («العالميه» ← «العالمية»)، وإن كان
-      // الطيُّ يسوّي بينهما. فيُقال له ما هو، لا «لا تغيير».
+      // A spelling difference visible to readers is reported as such, even though folding treats the two as equal, rather than as no change.
       'تغيّر؟': from === to ? 'لا — الاسم كما هو'
         : (fold(from) === fold(to) ? 'تصحيحُ رسمٍ فقط' : 'نعم'),
       'كود الحساب في التحصيل': p ? (p.code || '—') : '—',
       'عدد كشوفه': sheets,
-      // ── والسؤالُ «هل يجده البحث؟» لا «هل هو على هذا الصفّ؟» ─────────────
-      // للشركة حسابان أحيانًا (نقديٌّ وضريبيّ) واللقبُ على أحدهما، فالسؤالُ
-      // عن الصفّ الذي اختاره هذا التقرير يقول «لا يجده» والبحثُ يجده.
+      // The question is whether search finds it, not whether it is on this row: a company may have two accounts (cash and tax) with the alias on one, so the row this report picked can say not found while search finds it.
       'البحث بالاسم القديم عندنا': byKey.has(fold(from)) ? (byKey.get(fold(from)).nameKey === fold(from) ? 'يجده' : 'يجده (محفوظٌ لقبًا)') : 'لا يجده',
       'ملاحظة': many > 1 ? `هذا الاسم الصحيح جُمع من ${many} أسماءٍ قديمة — فقد ترى صفّين متشابهين في المنصّة` : '',
     });

@@ -42,7 +42,7 @@ const perfEvaluationSchema = new mongoose.Schema({
     from: { type: String, default: '' }, // YYYY-MM-DD, custom periods only
     to: { type: String, default: '' },
   },
-  // Human label ("الربع الثالث ٢٠٢٦") — computed on save, used for grouping.
+  // Human label, e.g. third quarter 2026; computed on save and used for grouping.
   periodKey: { type: String, default: '', index: true },
   evaluationDate: { type: String, default: '' }, // YYYY-MM-DD, the date entered on the form
 
@@ -59,7 +59,7 @@ const perfEvaluationSchema = new mongoose.Schema({
   // to the employee record — payroll is not part of this system.
   monthlySalary: { type: Number, default: null },
 
-  notes: { type: String, default: '' },            // ملاحظات المُقيِّم
+  notes: { type: String, default: '' },            // Evaluator notes
   status: { type: String, enum: ['draft', 'submitted'], default: 'draft', index: true },
   submittedAt: { type: Date, default: null },
 

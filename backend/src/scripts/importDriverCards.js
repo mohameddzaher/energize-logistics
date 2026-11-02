@@ -1,10 +1,8 @@
 /**
- * importDriverCards — «update for Vehicles.xlsx» → سجلُّ بطاقات السائقين.
- *
- *   node src/scripts/importDriverCards.js [--yes] [ملف.xlsx]
- *
- * يُطابَق بالهويّة في `iqamaNumber` و`nationalId` معًا وإلّا سقط السعوديّون.
- * ويُعاد تشغيلُه بأمان: المطابقةُ بالهويّة والكتابةُ `upsert`.
+ * Imports the vehicles update workbook into the driver cards register.
+ * node src/scripts/importDriverCards.js [--yes] [file.xlsx]
+ * Matches by identity in both iqamaNumber and nationalId, otherwise Saudis are missed.
+ * Safe to re-run: matching is by identity and writes are upserts.
  */
 require('dotenv').config();
 const path = require('path');
@@ -27,17 +25,16 @@ const ymd = (v) => {
   const d = new Date(s);
   return Number.isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 10);
 };
-// «موجود» و«مطلوب» كما كُتبا في الشيت. وأيُّ صياغةٍ أخرى تُترك فارغةً وتُعرَض
-// في آخر التقرير: تخمينُ حالة تأمينٍ أسوأُ من الاعتراف بأنّها غير معروفة.
+// The present and required labels as written in the sheet. Any other wording is left empty and listed at the end of the report: guessing an insurance state is worse than admitting it is unknown.
 const fidelity = (v) => {
   const s = String(v || '').trim();
   if (!s) return null;
   if (/^(موجود|موجوده|موجودة|نعم|yes|covered|✓)$/i.test(s)) return 'covered';
   if (/^(مطلوب|مطلوبه|مطلوبة|لا|no|required)$/i.test(s)) return 'required';
-  return undefined;   // غيرُ مفهوم
+  return undefined;   // not understood
 };
 
-// رقمُ البطاقة يصل عددًا عشريًّا لأنّ إكسل خزّنه رقمًا — يُنظَّف ولا يُخترَع.
+// The card number arrives as a float because Excel stored it as a number; clean it, do not invent one.
 const cardNo = (v) => {
   const s = n(v); if (!s) return '';
   return /^\d+\.\d{6,}$/.test(s) ? String(Number(Number(s).toFixed(8))) : s;
@@ -63,8 +60,8 @@ const cardNo = (v) => {
     absher: col('جوال ابشر'), reg: col('سجل لوجستي'),
     card: col(' بطاقة السائق') || col('بطاقة السائق'),
     type: col('نوع البطاقة'), exp: col('تاريخ انتهاء بطاقة السائق'),
-    // العمودان الجديدان في «بطاقات سائقين النقل الثقيل وخيانة الأمانة - محدث».
-    // غيابُهما في ملفٍّ أقدمَ لا يمسح ما سُجِّل — راجع أدناه.
+    // The two new columns of the updated heavy-transport driver cards / fidelity insurance file.
+    // Their absence in an older file does not wipe what is recorded; see below.
     fid: col('خيانة الامانة') || col('خيانة الأمانة'),
     note: col('ملاحظة') || col('ملاحظات'),
   };
@@ -90,9 +87,7 @@ const cardNo = (v) => {
       cardType: n(r.cells[C.type]),
       expiryDate: ymd(r.cells[C.exp]),
     };
-    // العمودُ الغائبُ لا يُكتب: ملفٌّ أقدمُ بلا عمود «خيانة الامانة» كان
-    // سيمسح حالةَ واحدٍ وستّين سائقًا لو كتبنا `''` مكانَ الغائب. وكذلك
-    // الملاحظةُ الفارغة لا تمحو ملاحظةً كُتبت بالإيد.
+    // An absent column is not written: an older file without the fidelity insurance column would have wiped the state of 61 drivers if an empty string were written in its place. Likewise an empty note never erases a note typed by hand.
     if (C.fid) {
       const f = fidelity(r.cells[C.fid]);
       if (f === undefined) unreadableFid.push(`${id} «${n(r.cells[C.fid])}»`);

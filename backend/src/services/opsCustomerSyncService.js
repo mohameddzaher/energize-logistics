@@ -40,11 +40,7 @@ async function syncOnce() {
     const users = await fetchAllUsers();
     if (!users.length) return { total: 0 };
 
-    // ── لا يُكتب فوق ما عُدِّل عندنا، ولا يُعاد كتابةُ ما لم يتغيّر (٢٠٢٦/١٠/٢٤) ──
-    // كانت كلُّ دورةٍ تكتب الشركاتِ كلَّها: اسمًا وهاتفًا وبريدًا — فبريدٌ صُحِّح في
-    // العلاقات أو التحصيل يعود قديمًا بعد نصف ساعة. فصار يُقارن بما رآه آخرَ مرّة
-    // (`uplSeen`): ما غيّرته المنصّةُ فعلًا يُكتب ويُوزَّع على كلّ أقسام العميل
-    // (services/customerHub)، وما لم يتغيّر هناك لا يُمسّ.
+    // Do not overwrite what was edited here, and do not rewrite what did not change. Every cycle wrote all companies (name, phone, email), so an email corrected in CRM or collections reverted half an hour later. Now compared with what was last seen (`uplSeen`): what the platform actually changed is written and distributed to all of the customer's sections (services/customerHub); what did not change there is untouched.
     const hub = require('./customerHub');
     const fold = require('../models/CollectionsParty').fold;
     const existing = new Map((await CrmCompany.find({ externalSource: SOURCE }).select('externalId name email phone emails uplSeen').lean())
@@ -77,7 +73,7 @@ async function syncOnce() {
       if (!Object.keys(set).length) continue;
       await CrmCompany.updateOne({ _id: cur._id }, { $set: { ...set, uplSeen: now, lastSyncedAt: new Date() } });
       updated += 1;
-      // ما غيّرته المنصّةُ يصل كلَّ أقسام هذا العميل — ولا يُردّ إليها.
+      // What the platform changed reaches all this customer's sections, and is not echoed back to it.
       const after = await CrmCompany.findById(cur._id).lean();
       await hub.onChange('crm', cur, after, 'platform');
     }

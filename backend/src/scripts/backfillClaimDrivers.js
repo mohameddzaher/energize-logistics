@@ -1,12 +1,7 @@
 /**
- * ملءُ «مَن كان يقود» في المطالبات القائمة.
- *
- *   node src/scripts/backfillClaimDrivers.js            # تقرير
- *   node src/scripts/backfillClaimDrivers.js --write    # يكتب
- *
- * الخانةُ جديدة، والمطالباتُ الستُّ والعشرون سُجِّلت قبلها. والسائقُ معروفٌ من
- * سجلَّين: مَن يركب المركبةَ في قسم النقل الخفيف، أو مَن هي مفوَّضةٌ له. فيُملأ
- * منهما، ويُترك فارغًا حيث لا يُعرَف — ولا يُخمَّن اسمٌ في سجلٍّ يُحتَجّ به.
+ * backfillClaimDrivers: fill "who was driving" on existing claims.
+ * Usage: node src/scripts/backfillClaimDrivers.js (report) | --write
+ * The field is new and the 26 claims predate it. The driver is known from two registers: who rides the vehicle in light transport, or who it is authorized to. It is filled from them and left empty where unknown; a name is never guessed in a record used as evidence.
  */
 require('dotenv').config({ quiet: true });
 const mongoose = require('mongoose');

@@ -1,20 +1,8 @@
 /**
- * migrateRoleKeys — تحويل مفاتيح الأدوار القديمة للأسماء الجديدة.
- *
- *   node src/scripts/migrateRoleKeys.js --dry     يعرض بس، من غير كتابة
- *   node src/scripts/migrateRoleKeys.js           ينفّذ
- *
- * التحويلات معرّفة في config/roles.js → RENAMED، فمفيش قائمة تانية تتنسى.
- *
- *   operations           → operations_staff        (كان اسم مبهم: القسم ولا الشخص؟)
- *   purchasing           → procurement_staff       (يتماشى مع قسمه)
- *   administrator        → administration_staff    (القسم بقى له مدير وموظف)
- *   b2c_head             → b2c_manager             (كل المديرين بينتهوا بـ _manager)
- *   b2c_project_manager  → b2c_project_lead        (كان بيتحسب مدير بالغلط)
- *
- * idempotent: تشغيله تاني ما بيعملش حاجة لأن مفيش مفاتيح قديمة فاضلة.
- * بيغطي كل مكان بيتخزّن فيه اسم دور: المستخدمين، مصفوفة الصلاحيات، وحضور
- * الاجتماعات (بيخزّن لقطة من دور الحاضر).
+ * Converts old role keys to the new names.
+ * Usage: node src/scripts/migrateRoleKeys.js [--dry]
+ * Mappings are defined in config/roles.js RENAMED so no second list drifts: operations to operations_staff, purchasing to procurement_staff, administrator to administration_staff, b2c_head to b2c_manager, b2c_project_manager to b2c_project_lead.
+ * Idempotent. Covers users, the permission matrix and meeting attendance (which snapshots the attendee's role).
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -31,7 +19,7 @@ const DRY = process.argv.includes('--dry');
   const pairs = Object.entries(RENAMED);
   console.log(`${pairs.length} تحويل${DRY ? '  (تجربة — لن يُكتب شيء)' : ''}\n`);
 
-  // ── ١. المستخدمون ──────────────────────────────────────────────────────────
+  // 1. Users.
   console.log('المستخدمون:');
   let users = 0;
   for (const [from, to] of pairs) {
@@ -40,16 +28,13 @@ const DRY = process.argv.includes('--dry');
     console.log(`  ${from.padEnd(22)} → ${to.padEnd(22)} ${who.length} حساب`);
     who.forEach((u) => console.log(`      · ${`${u.firstName || ''} ${u.lastName || ''}`.trim()}  ${u.email}`));
     if (!DRY) {
-      // updateMany بيتخطّى الـ validators، وده المطلوب: القيمة القديمة مش في
-      // الـ enum الجديد، فحفظ عادي كان هيترفض.
+      // updateMany skips validators, which is needed: the old value is not in the new enum, so a normal save would be rejected.
       const r = await User.updateMany({ role: from }, { $set: { role: to } });
       users += r.modifiedCount;
     } else users += who.length;
   }
 
-  // ── ٢. مصفوفة الصلاحيات ────────────────────────────────────────────────────
-  // وثيقة لكل دور. لو الدور الجديد عنده وثيقة أصلاً بنسيبها ونمسح القديمة، عشان
-  // ما نكتبش فوق إعداد أحدث.
+  // 2. Permission matrix: one document per role. If the new role already has one, keep it and delete the old, so a newer setting is not overwritten.
   console.log('\nمصفوفة الصلاحيات:');
   let perms = 0;
   for (const [from, to] of pairs) {
@@ -64,7 +49,7 @@ const DRY = process.argv.includes('--dry');
     } else perms++;
   }
 
-  // ── ٣. لقطات الدور داخل حضور الاجتماعات ────────────────────────────────────
+  // 3. Role snapshots inside meeting attendance.
   console.log('\nحضور الاجتماعات (لقطة الدور):');
   let attendees = 0;
   for (const [from, to] of pairs) {
@@ -82,7 +67,7 @@ const DRY = process.argv.includes('--dry');
   }
   if (!attendees) console.log('  (لا شيء)');
 
-  // ── التحقق ─────────────────────────────────────────────────────────────────
+  // Verification.
   if (!DRY) {
     const leftover = [];
     for (const [from] of pairs) {
@@ -97,7 +82,7 @@ const DRY = process.argv.includes('--dry');
       leftover.forEach((l) => console.log('    ' + l));
       process.exit(1);
     }
-    // وكل دور موجود دلوقتي لازم يكون في الـ enum الجديد.
+    // Every existing role must now be in the new enum.
     const roles = await User.distinct('role');
     const valid = new Set(require('../config/roles').ALL_ROLES);
     const unknown = roles.filter((r) => !valid.has(r));

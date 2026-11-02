@@ -19,7 +19,7 @@ const wb = XLSX.readFile(FILE);
   const byType = {}; wf.forEach((w) => { byType[w.paymentType || '(بلا نوع)'] = (byType[w.paymentType || '(بلا نوع)'] || 0) + 1; });
   console.log('نوعُ الدفع:', Object.entries(byType).map(([k, v]) => `${k}=${v}`).join(' · '));
 
-  // شاشةُ فواتير الكاش تشترط: نوعٌ نقديّ + (قبل ١ سبتمبر أو مراجعةُ تشغيل)
+  // The cash invoices screen requires a cash type plus (before 1 September or an operations review).
   const { AUTO_RULE_FROM } = require('../utils/paymentType');
   const visible = wf.filter((w) => w.paymentType === 'cash'
     && (new Date(w.reportDate) < AUTO_RULE_FROM || (w.accountingReview != null && w.accountingReview !== '')));

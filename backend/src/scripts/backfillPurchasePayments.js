@@ -1,22 +1,8 @@
 /**
- * backfillPurchasePayments — مشترياتُ المحفظة تملأ «مبلغ السداد» على كشوفها.
- *
- *   node src/scripts/backfillPurchasePayments.js --dry        يقول ولا يكتب
- *   node src/scripts/backfillPurchasePayments.js              ينفّذ
- *   node src/scripts/backfillPurchasePayments.js --from 2026-09-01
- *
- * ── لماذا ──────────────────────────────────────────────────────────────────
- * الربطُ صار يجري لحظةَ تسجيل المشتريات، لكنّ ما سُجّل قبله بقي في المحفظة
- * وحدَها. وإدخالُه في سير عمل التشغيل باليد صفًّا صفًّا عملٌ مكرَّرٌ والرقمُ
- * موجودٌ أصلًا — فيُنقل كما يُنقل اليوم.
- *
- * ── وحدٌّ زمنيٌّ مقصود ──────────────────────────────────────────────────────
- * من أوّل سبتمبر فقط. وما قبله لا يُمَسّ: تلك كشوفٌ أُغلقت حساباتُها، وكتابةُ
- * «مبلغ سداد» عليها اليوم تغيّر أرقامًا رُوجعت وأُقفلت — والحدُّ يُمرَّر
- * بـ`--from` فلا يكون رقمًا مخبوءًا في الكود.
- *
- * ── ولا يُكتب فوق ما كُتب بيد ──────────────────────────────────────────────
- * الفارغُ وحدَه يُملأ. ومن صحّح مبلغًا في سير عمل التشغيل يجده كما تركه.
+ * backfillPurchasePayments: wallet purchases fill the payment amount on their manifests.
+ * Usage: node src/scripts/backfillPurchasePayments.js --dry | (no flag to write) | --from 2026-09-01
+ * Earlier purchases stayed only in the wallet; they are carried over instead of keyed by hand.
+ * Limited to --from onward because earlier manifests are closed and locked; only empty values are filled.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -37,8 +23,7 @@ const money = (n) => (Number(n) || 0).toLocaleString('en-US');
   console.log(DRY ? '— تجربة، بلا كتابة —' : '');
   console.log(`المدى: من ${FROM} حتى اليوم\n`);
 
-  // `date` على الحركة نصٌّ YYYY-MM-DD — فالمقارنةُ نصّيّةٌ صحيحةٌ هنا وأدقُّ
-  // من التحويل إلى تاريخ (لا منطقةَ زمنيّةَ تتدخّل).
+  // The movement's date is a YYYY-MM-DD string, so string comparison is correct and more exact than converting to a Date (no time zone involved).
   const txns = await WalletTransaction.find({
     type: 'purchase',
     date: { $gte: FROM },
@@ -48,8 +33,7 @@ const money = (n) => (Number(n) || 0).toLocaleString('en-US');
   console.log(`مشترياتٌ برقم كشف: ${txns.length}\n`);
   if (!txns.length) { await mongoose.disconnect(); return; }
 
-  // الكشوفُ تُقرأ دفعةً واحدة: رحلةٌ لكلّ حركةٍ كانت ستكون مئاتِ الرحلات على
-  // عنقودٍ زمنُ ردّه تسعون جزءًا من الألف.
+  // Manifests are read in one batch: a round trip per movement would be hundreds of trips on a cluster with ~90 ms latency.
   const numbers = [...new Set(txns.map((t) => String(t.purchaseDeliveryStatementNumber).trim()))];
   const reports = await OperationsWorkflow.find({
     $or: numbers.map((n) => ({ reportNumber: flexSpaceRegex(n) })),
@@ -73,7 +57,7 @@ const money = (n) => (Number(n) || 0).toLocaleString('en-US');
     if (!r.paymentDate) patch.paymentDate = new Date(t.date);
     if (!Object.keys(patch).length) { already += 1; continue; }
 
-    // الفرقُ يُقال ولا يمنع: قد يكون الاتّفاقُ على غير المسجَّل في المنصّة.
+    // A difference is reported but does not block: the agreed amount may differ from what is recorded in the platform.
     const expected = Number(r.purchaseValue) || 0;
     if (expected > 0 && Math.abs(expected - t.amount) > 0.5) {
       mismatched += 1;

@@ -1,20 +1,8 @@
 /**
- * نقلُ مشرفي المناديب القائمين إلى الدور التفقّديّ.
- *
- * ── لماذا نقلٌ لا إنشاءٌ من جديد ────────────────────────────────────────────
- * كان في القسم دورُ إشرافٍ واحد (`b2c_rep_supervisor`) يجمع عملين لا يتقاطعان:
- * يومَ المندوب (الإدخالُ اليوميّ وأوامرُ التشغيل والعهدة) ولحظةَ بداية الدوام
- * (التفقّدُ بالكاميرا الحيّة). فصار دورين — راجع config/roles.js — و**من كان
- * مشرفًا اليوم هو مشرفُ تفقّد**: ذاك عملُه فعلًا، وشاشاتُه هي التي كانت
- * مفتوحةً له وحدَها قبل الفصل.
- *
- * والحسابُ لا يُحذَف ولا يُعاد إنشاؤه: يُغيَّر دورُه فحسب، فيبقى اسمُه وكلمتُه
- * وما أُسنِد إليه من مناديب (`B2CRep.supervisor` يشير إلى المستخدم لا إلى
- * دوره) كما هو.
- *
- *   node src/scripts/moveB2cSupervisorsToInspection.js            عرضٌ فقط
- *   node src/scripts/moveB2cSupervisorsToInspection.js --apply
- *   node src/scripts/moveB2cSupervisorsToInspection.js --undo --apply
+ * Moves existing rep supervisors to the inspection role.
+ * The single supervision role (b2c_rep_supervisor) covered two unrelated jobs: the rep's day (daily entry, operating orders, custody) and start-of-duty inspection by live camera. It is now two roles (see config/roles.js), and current supervisors are inspection supervisors, as before the split.
+ * The account is not deleted or recreated, only its role changes, keeping name, password and assigned reps (B2CRep.supervisor points to the user).
+ * Usage: [--apply] [--undo --apply]; view only otherwise.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');

@@ -1,19 +1,8 @@
 /**
- * auditCashDelivery — التسليمُ والتفصيل في صفحة الكاش، على البرودكشن.
- *
- *   node src/scripts/auditCashDelivery.js --base https://api.energize-logistics.com
- *
- * ── ما يُفحَص ──────────────────────────────────────────────────────────────
- * أنّ القائمةَ المُدارة بُذرت، وأنّ صفَّ الكاش يحمل حقلَيه الجديدين، وأنّ
- * الكتابةَ تصل — من الشاشة (`/invoices/detail`) ومن التطبيق (`PUT /invoices/
- * cash/:id`) معًا، فذاك هو الطريقُ الذي كان مفقودًا.
- *
- * ── ولا يُترَك أثر ─────────────────────────────────────────────────────────
- * البياناتُ حيّةٌ يعمل عليها فريق. فيُقرأ صفٌّ حقيقيٌّ ويُحفَظ ما كان فيه، ثمّ
- * تُكتَب القيمُ وتُقرأ، ثمّ يُعاد ما كان — عبر الواجهة نفسِها لا بكتابةٍ في
- * القاعدة، فما تفعله الواجهةُ من إبطالِ ذاكرةٍ وتحديثٍ للدفتر يجري كذلك.
- *
- * والقراءةُ تُكرَّر ستًّا: البرودكشن عاملان ولكلٍّ ذاكرتُه.
+ * auditCashDelivery: delivery and detail on the cash page, on production.
+ * node src/scripts/auditCashDelivery.js --base https://api.energize-logistics.com
+ * What is checked: the managed list was seeded, the cash row carries its two new fields, and writes arrive from both the screen (`/invoices/detail`) and the app (`PUT /invoices/cash/:id`), the latter being the path that was missing.
+ * No trace left: the data is live and a team works on it. A real row is read and its contents saved, values are written and read back, then the original is restored, through the API rather than a database write, so the cache invalidation and ledger refresh the API does also happen. Reads are repeated six times: production has two workers, each with its own cache.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -72,7 +61,7 @@ const head = (t) => console.log(`\n── ${t} ${'─'.repeat(Math.max(0, 56 - t
     ok('الصفُّ يحمل `deliveryDate`', 'deliveryDate' in row);
     ok('الصفُّ يحمل `collectionDetail`', 'collectionDetail' in row);
 
-    // ما كان في الصفّ — يُعاد كما هو مهما جرى بعده.
+    // What the row held; restored as it was whatever happens after.
     restore = { id: row._id, detail: row.collectionDetail || '', delivery: row.deliveryDate || null };
     console.log(`  · صفُّ الفحص: كشف ${row.reportNumber} — التفصيل «${restore.detail || 'فارغ'}»، التسليم ${restore.delivery ? String(restore.delivery).slice(0, 10) : 'فارغ'}`);
 
@@ -82,7 +71,7 @@ const head = (t) => console.log(`\n── ${t} ${'─'.repeat(Math.max(0, 56 - t
     });
     ok('`PUT /invoices/detail` تقبل', w1.status === 200, `${w1.status} — ${w1.body?.message || ''}`);
 
-    // ستُّ قراءات: عاملان، ولكلٍّ ذاكرتُه.
+    // Six reads: two workers, each with its own cache.
     const reads = [];
     for (let i = 0; i < 6; i += 1) {
       const r = await api(`/api/collections-dept/invoices/cash?q=${encodeURIComponent(row.reportNumber)}&limit=5`);
@@ -108,10 +97,7 @@ const head = (t) => console.log(`\n── ${t} ${'─'.repeat(Math.max(0, 56 - t
   } catch (e) {
     fail += 1; console.log(`  ✗ خطأ: ${e.message}`);
   } finally {
-    // ── الإعادةُ عبر الواجهة ────────────────────────────────────────────────
-    // لا بكتابةٍ في القاعدة: ما تفعله الواجهةُ من إبطالِ ذاكرةٍ وتحديثٍ للدفتر
-    // يجب أن يجري في الإعادة كما جرى في الكتابة، وإلّا بقيت شاشةٌ تقول غيرَ ما
-    // في القاعدة.
+    // Restore through the API, not a database write: the cache invalidation and ledger refresh the API performs must happen on restore as on write, otherwise a screen keeps showing something different from the database.
     if (restore) {
       const r = await api(`/api/collections-dept/invoices/cash/${restore.id}`, {
         method: 'PUT',

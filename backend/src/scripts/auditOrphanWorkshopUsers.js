@@ -15,7 +15,7 @@ const mongoose = require('mongoose');
     console.log(`    ملفُّ موظّف: ${emp ? `${emp.employeeNumber} · ${emp.department || '—'} · ${emp.jobTitle || '—'} · ${emp.isHrRecord === false ? 'ظِلّيّ (ليس سجلَّ HR)' : 'سجلُّ HR'}` : 'لا يوجد'}`);
     console.log('');
   }
-  // ولا يُمنَح دورٌ إلّا وهو موجود
+  // A role is only granted if it exists.
   const { ALL_ROLE_DEFS } = require('../config/roles');
   const ls = (ALL_ROLE_DEFS || []).filter((r) => /^location_/.test(r.key));
   console.log('أدوارُ لوكيشن سوليوشن المتاحة:', ls.map((r) => `${r.key} (${r.ar})`).join(' | '));

@@ -54,14 +54,11 @@ router.put('/deals/:id', crm.updateDeal);
 router.patch('/deals/:id/move', crm.moveDeal);
 router.delete('/deals/:id', crm.deleteDeal);
 
-// مؤشرات الأداء — customer and vendor scorecards. Read-only: they join finance,
-// fleet, shipment-orders and customs data onto each CRM row (see crmKpiController).
+// Performance indicators: customer and vendor scorecards. Read-only; they join finance, fleet, shipment-orders and customs data onto each CRM row (see crmKpiController).
 const crmKpi = require('../controllers/crmKpiController');
 router.get('/kpis/customers', crmKpi.getCustomerKpis); // ?from&to
 router.get('/kpis/vendors', crmKpi.getVendorKpis);     // ?from&to
-// تفصيلُ صفٍّ واحدٍ (تفصيلُ التقييم والعلاماتُ والخطوط) — يُقرأ عند فتح الصفّ
-// وحدَه، فلا تُحمَّل القائمةُ به لثلاثة آلافِ مورّد. والمفتاحُ في الاستعلام لا في
-// المسار: أسماءُ المورّدين عربيّةٌ وفيها ما يحمل «/».
+// Detail of a single row (rating breakdown, flags, lines), read only when the row is opened so the list is not loaded with it for thousands of vendors. The key is in the query, not the path, because vendor names are Arabic and some contain "/".
 router.get('/kpis/customers/detail', crmKpi.getCustomerKpiDetail); // ?key&from&to
 router.get('/kpis/vendors/detail', crmKpi.getVendorKpiDetail);     // ?key&from&to
 

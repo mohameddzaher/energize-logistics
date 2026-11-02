@@ -2,7 +2,7 @@ const express = require('express');
 const { body } = require('express-validator');
 const router = express.Router();
 
-// معرّفٌ مشوَّهٌ في الرابط = لا سجلّ، لا عطلٌ في الخادم — راجع utils/idParam.
+// A malformed id in the URL means no record (404), not a server error; see utils/idParam.
 const { objectIdParam } = require('../utils/idParam');
 router.param('id', objectIdParam());
 const paymentController = require('../controllers/paymentController');
@@ -50,7 +50,7 @@ router.post(
 router.get('/', paymentController.getPayments);
 router.get('/customer/:id', paymentController.getCustomerPayments);
 
-// التعديل يعيد حساب أثر الدفعة على الفاتورة ورصيد العميل، لا يغيّر الصفّ وحده.
+// Editing recomputes the payment's effect on the invoice and the customer balance, not just the row.
 router.put('/:id', authorize('super_admin', 'admin'), paymentController.updatePayment);
 router.delete('/:id', authorize('super_admin'), paymentController.deletePayment);
 

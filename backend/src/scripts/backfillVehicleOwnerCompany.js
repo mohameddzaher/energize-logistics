@@ -1,23 +1,8 @@
 /* eslint-disable no-console */
 /**
- * backfillVehicleOwnerCompany — يملأ «الشركة المالكة» من «المالك» حين يكون المالكُ
- * إحدى شركتَي المجموعة بالاسم.
- *
- *   node src/scripts/backfillVehicleOwnerCompany.js           (تجربة — لا يكتب شيئًا)
- *   node src/scripts/backfillVehicleOwnerCompany.js --apply   (يكتب)
- *
- * ── لماذا ─────────────────────────────────────────────────────────────────────
- * `ownerCompanyAr` حقلٌ أُضيف بعد الاستيراد، فهو فارغٌ في المركبات كلِّها تقريبًا،
- * و`ownerNameAr` (المالك على الاستمارة) يحمل اسمَ الشركة في أغلبها. وعمودُ
- * «الشركة المالكة» صار يُعرَض في الجدول وفي فلاتره — فيُملأ ممّا هو مكتوبٌ أصلًا.
- *
- * ── ولا يخترع شيئًا ───────────────────────────────────────────────────────────
- *   • يُكتب فقط حين يطابق «المالك» اسمَ شركةٍ من قائمة `vehicle_owner_company`
- *     بعد تطبيعٍ خفيف (بلا «شركة»، توحيد الهمزات والياء والتاء المربوطة، وبلا
- *     فراغات) — مطابقةَ الاسم كلِّه، لا احتواءً.
- *   • «شركة تنشيط الخدمات اللوجستية ( فلان )» ومالكٌ بنكٌ أو فرد: تُترَك وتُعلَن.
- *   • ما فيه قيمةٌ لا يُمَسّ — ما اختاره إنسانٌ في النافذة هو الحجّة.
- * والقيمةُ المكتوبة هي اسمُ القائمة نفسُه (`nameAr`)، كما تحفظه النافذة.
+ * backfillVehicleOwnerCompany: fill the owning company from the owner when it is by name one of the two group companies.
+ * Usage: node src/scripts/backfillVehicleOwnerCompany.js (dry run) | --apply
+ * Written only on a whole-name match with the vehicle_owner_company list after light normalization; the list's own nameAr is stored. Banks, individuals and ambiguous names are reported, and existing values are never touched.
  */
 require('dotenv').config({ quiet: true });
 const mongoose = require('mongoose');

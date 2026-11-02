@@ -1,23 +1,6 @@
 /**
- * auditSectionPermissions — does a section grant actually DO anything?
- *
- * Grants a role a section through the real super-admin endpoint and checks what
- * it can reach: «عرض» must read and not write, «تعديل» must be able to run every
- * action the UI offers. Run it after touching sectionGate, rbac, or any page's
- * gate.
- *
- *   node src/scripts/auditSectionPermissions.js
- *   node src/scripts/auditSectionPermissions.js --base https://api.energize-logistics.com
- *
- * SAFE ON PRODUCTION, by construction rather than by luck:
- *   • It picks its own target role — one with ZERO users and no saved override —
- *     and REFUSES TO RUN if no such role exists. Changing a role's permissions
- *     broadcasts `permissions:updated`, and the client only refetches when the
- *     role matches its own (layout.tsx), so a role nobody holds disturbs nobody.
- *   • Every account it creates is prefixed zz-perm- and deleted at the end.
- *   • It restores the role's permissions through the same endpoint and then
- *     RE-READS to prove the restore landed.
- * It never touches a real account, a real role, or real data.
+ * Checks that a section grant does something: view must read and not write, edit must run every UI action. Run after touching sectionGate, rbac or a page gate.
+ * Safe on production: it picks a role with zero users and no override (refuses otherwise), prefixes accounts zz-perm- and deletes them, and restores then re-reads the role's permissions.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');

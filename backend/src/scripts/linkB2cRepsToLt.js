@@ -1,26 +1,7 @@
 /**
- * ربطُ حسابات تطبيق التوصيل (`B2CRep`) غيرِ المربوطة بأصحابها في سجلّ النقل الخفيف،
- * ومزامنةُ الاسم العربيّ والجوال للمربوط منها.
- *
- * ── لماذا ─────────────────────────────────────────────────────────────────
- * قاعدةُ صاحب الشركة: «سجلٌّ واحدٌ للشخص». والحسابُ المربوطُ يُعرَض باسم صاحبه
- * وتُجمَع طلباتُه له؛ وغيرُ المربوط اسمٌ كتبه الشيتُ يومًا، ويُعَدّ «مندوبًا نشطًا»
- * وصاحبُه قد ترك العمل.
- *
- * ── ما يفعله ───────────────────────────────────────────────────────────────
- *   ١. يطابق كلَّ حسابٍ بلا صفٍّ بمفاتيح utils/b2cRepLink (هويّة · جوال · اسمٌ
- *      مطويٌّ تامّ لا يلتبس). ولا مطابقةَ تقريبيّة: ربطُ حسابٍ بغير صاحبه أسوأُ
- *      من تركه «غير مرتبط».
- *   ٢. يكتب الاسمَ العربيّ والجوالَ للمربوط من سجلّه (`syncRepOf` بالقاعدة نفسِها).
- *   ٣. ما لم يُربط يبقى «غير مرتبط» (فلترٌ في إعدادات القسم ← حسابات التطبيق)،
- *      ويُطبَع **اقتراحُ** إيقافٍ لمن لا طلبَ له منذ ستّين يومًا. لا يُوقَف شيء.
- *
- * الاستعمال:
- *   node src/scripts/linkB2cRepsToLt.js                 # معاينة (الافتراضيّ)
- *   node src/scripts/linkB2cRepsToLt.js --apply         # كتابة
- *   node src/scripts/linkB2cRepsToLt.js --csv=/path.csv # قائمةُ غير المرتبط للمراجعة
- *
- * تشغيلُه مرّتين لا يفعل شيئًا في الثانية.
+ * Links unlinked delivery-app accounts (B2CRep) to their owners in the light transport register and syncs Arabic name and mobile for linked ones.
+ * Matching uses utils/b2cRepLink keys (identity, mobile, unambiguous folded name), never fuzzy: a wrong link is worse than none. Unlinked accounts stay unlinked and a deactivation suggestion is printed for those with no orders in 60 days; nothing is deactivated.
+ * Usage: [--apply] [--csv=/path.csv]; dry-run by default and idempotent.
  */
 require('dotenv').config();
 const fs = require('fs');
@@ -44,7 +25,7 @@ const S = (v) => String(v == null ? '' : v).trim();
   console.log(`الحسابات=${reps.length} · نشطة=${reps.filter((r) => r.isActive !== false).length} · مربوطة=${reps.length - orphans.length} · غير مربوطة=${orphans.length}`);
   console.log(`سجلُّ النقل الخفيف (نشط)=${index.lts.size}`);
 
-  // ١. الربط
+  // 1. Link.
   const links = []; const ambiguous = []; const none = [];
   for (const r of orphans) {
     const m = RL.matchRep(r, index);
@@ -62,7 +43,7 @@ const S = (v) => String(v == null ? '' : v).trim();
   console.log(`لا صاحبَ له في السجلّ=${none.length}`);
   links.slice(0, 10).forEach((l) => console.log(`  [${l.via}] ${S(l.rep.englishName).padEnd(28)} / ${S(l.rep.arabicName).padEnd(24)} ← ${S(index.lts.get(l.lt)?.name)}`));
 
-  // ٢. مزامنةُ الاسم والجوال للمربوط (بعد الربط الجديد)
+  // 2. Sync name and mobile for linked accounts (after the new links).
   const ltById = index.lts;
   const linkedAfter = [
     ...reps.filter((r) => r.ltEmployee).map((r) => ({ rep: r, lt: String(r.ltEmployee) })),
@@ -71,7 +52,7 @@ const S = (v) => String(v == null ? '' : v).trim();
   const syncs = [];
   for (const { rep, lt } of linkedAfter) {
     const row = ltById.get(lt);
-    if (!row) continue; // صفٌّ موقوف — لا يُكتب منه
+    if (!row) continue; // Deactivated row: nothing is written from it.
     const set = {};
     if (S(row.name) && S(row.name) !== S(rep.arabicName)) set.arabicName = S(row.name);
     if (S(row.phone) && S(row.phone) !== S(rep.phone)) set.phone = S(row.phone);
@@ -79,7 +60,7 @@ const S = (v) => String(v == null ? '' : v).trim();
   }
   console.log(`\nمزامنةُ الاسم/الجوال من السجلّ: ${syncs.length} حسابًا (اسم=${syncs.filter((s) => s.set.arabicName).length} · جوال=${syncs.filter((s) => s.set.phone).length})`);
 
-  // ٣. غيرُ المرتبط واقتراحُ الإيقاف
+  // 3. Unlinked accounts and the deactivation suggestion.
   const unlinked = [...ambiguous.map((a) => a.rep), ...none];
   const act = await B2CDailyOrder.aggregate([
     { $match: { rep: { $in: unlinked.map((r) => r._id) }, orders: { $gt: 0 } } },
@@ -105,8 +86,7 @@ const S = (v) => String(v == null ? '' : v).trim();
 
   if (!APPLY) { console.log('\n(معاينةٌ فقط — أضِف --apply)'); await mongoose.disconnect(); return; }
 
-  // نسخةُ ما قبل الكتابة: الاسمُ العربيُّ الذي كتبه الشيتُ يُستبدَل باسم صاحبه،
-  // فيُحفَظ ما كان — للرجوع إليه إن ظهر ربطٌ خاطئ.
+  // Pre-write backup: the sheet's Arabic name is replaced by the owner's name, so keep the old value in case a wrong link shows up.
   const touched = new Set([...links.map((l) => String(l.rep._id)), ...syncs.map((s) => String(s.id))]);
   const backup = path.join(require('os').tmpdir(), `b2c-rep-link-backup-${Date.now()}.json`);
   fs.writeFileSync(backup, JSON.stringify(reps.filter((r) => touched.has(String(r._id)))

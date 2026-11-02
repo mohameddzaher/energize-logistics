@@ -1,31 +1,22 @@
 const mongoose = require('mongoose');
 
 /**
- * ── سطرُ فاتورةٍ رُفع من ورقة المبيعات ───────────────────────────────────────
- *
- * «رفع بيانات فواتير» يكتب ما في الورقة على كشوفه ثمّ ينسى الورقة. فما لا كشفَ
- * له يُقال مرّةً في المعاينة ثمّ يضيع، وفاتورةٌ تقول ورقتُها ٤٠٢٥ ومجموعُ كشوفها
- * ٣٥٠٠ لا يعرفها أحدٌ بعد إغلاق النافذة.
- *
- * فيُحفظ كلُّ سطرٍ كما جاء في الورقة — رقمُ الفاتورة، والكشفُ الذي يذكره،
- * وقيمتُه، واسمُ العميل كما كتبه المحاسب — ومَن رفعه ومتى. ومنه تُحسب بطاقاتُ
- * سير العمل الثلاث (كشفٌ غير موجود · فرقُ قيمة · اسمُ عميلٍ مختلف) حيّةً: يُصحَّح
- * الكشفُ فيسقط السطرُ من البطاقة بلا رفعٍ جديد.
- *
- * والسطرُ الواحد = (فاتورة، كشف): الورقةُ التالية التي تذكره تكتب فوقه (الأحدثُ
- * هو الأصحّ — القاعدةُ نفسُها التي يكتب بها الرفعُ على الكشف).
+ * An invoice line uploaded from the sales sheet.
+ * The invoice-data upload writes the sheet's values onto statements and then forgets the sheet. A line with no statement is reported once in the preview and lost, and an invoice whose sheet says 4025 against statements totaling 3500 is unknown after the window closes.
+ * So each line is kept as in the sheet: invoice number, the statement it names, its value, the customer name as the accountant typed it, who uploaded and when. The three workflow cards (statement not found, value difference, different customer name) are computed live from it: fixing the statement drops the line from the card without a new upload.
+ * One line is (invoice, statement); a later sheet naming it overwrites (newest wins, same rule the upload applies to the statement).
  */
 const invoiceUploadLineSchema = new mongoose.Schema({
   invoiceNumber: { type: String, trim: true, required: true },
   reportNumber: { type: String, trim: true, required: true },
-  // ما في الورقة: صافي السطر وضريبتُه وإجماليُّه. `total` هو ما يُقارَن.
+  // Values in the sheet: line net, its tax and its total. `total` is what is compared.
   net: { type: Number, default: null },
   tax: { type: Number, default: null },
   total: { type: Number, default: null },
   customerName: { type: String, trim: true, default: '' },
   invoiceDate: { type: Date, default: null },
 
-  // الدفعةُ: رفعةٌ واحدة = معرّفٌ واحد، ومعه الملفُّ ومَن رفعه.
+  // Batch: one upload is one id, with the file and who uploaded.
   batchId: { type: String, trim: true, index: true },
   fileName: { type: String, trim: true, default: '' },
   sheet: { type: String, trim: true, default: '' },

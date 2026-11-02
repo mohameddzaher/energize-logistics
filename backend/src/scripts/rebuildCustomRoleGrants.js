@@ -1,30 +1,8 @@
 /**
- * إعادةُ بناءِ صلاحيّاتِ النوعَين المصنوعَين — بيدٍ واحدةٍ ومن أوّلها.
- *
- * ── ما حدث ─────────────────────────────────────────────────────────────────
- * شاشةُ الصلاحيّات كانت ترسل «ما يخالف قسمَه وحدَه»، وتحسب أنّ القسمَ غيرَ
- * المُدارِ بالمصفوفة (ملفي، إجازاتي، طلباتي، الإعدادات، مركزُ التقارير، البوابة،
- * تقييمُ الأداء، شاشاتُ الإدارة) مفتوحٌ للجميع — والخادمُ يقول عن الدور المصنوع
- * إنّه مغلق. فكلُّ حفظٍ على نوعٍ مصنوعٍ كتب **إغلاقًا صريحًا** على تلك الصفحات
- * كلِّها، لأنّ الشاشةَ قرأتها «مغلقةً وقسمُها مفتوح» فعدّتها استثناءً يُحفَظ.
- *
- * وأثرُه على الأرض: سمر ومحمد الحربي لا يريان ملفَّهما ولا رصيدَ إجازاتهما ولا
- * موضعَ كلمةِ المرور — لا لأنّ أحدًا منعهما، بل لأنّ حفظًا قال «تمّ».
- *
- * والعطبُ أُصلح في الشيفرة (راجع `pageFollowsSection` في utils/permissions:
- * القاعدةُ صارت دالّةً واحدةً يقرؤها الخادمُ عند المنح وعند الاختصار). لكنّ
- * الإغلاقاتَ المكتوبةَ تبقى مكتوبة — فتُمحى هنا.
- *
- * ── وما يُكتب بدلًا منها ────────────────────────────────────────────────────
- * الأقسامُ الممنوحةُ كما هي اليوم (لا يُزاد ولا يُنقَص)، والإغلاقاتُ الصريحةُ
- * داخلَ الأقسام الممنوحة وحدَها — فهي قرارٌ مقصودٌ لا أثرُ عطب. وما عدا ذلك
- * يتبع قسمَه: الدورُ المصنوعُ لا يرث شيئًا، فلا حاجةَ إلى كتابة «مغلق» لما هو
- * مغلقٌ أصلًا. وتُضبَط صفحةُ الدخول: دورٌ مصنوعٌ لا تعرفه خريطةُ المسارات، فبلا
- * صفحةٍ مضبوطةٍ يدخل صاحبُه إلى شاشةٍ قد لا تكون له.
- *
- * الاستعمال:
- *   node src/scripts/rebuildCustomRoleGrants.js            # عرضٌ بلا كتابة
- *   node src/scripts/rebuildCustomRoleGrants.js --apply
+ * Rebuilds the grants of the two custom role types from scratch. The permissions screen assumed pages outside the matrix (profile, leave, requests, settings, portal) were open to all while the server treats custom roles as closed, so each save wrote explicit closures on them.
+ * The code is fixed (pageFollowsSection in utils/permissions), but the stored closures remain and are erased here.
+ * Written instead: granted sections as today, explicit closures only inside granted sections, and the login page; the rest follows its section.
+ * Usage: [--apply]; view only otherwise.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -41,10 +19,10 @@ const { effectivePermissions, effectivePages, homePageFor, invalidate } = requir
 const APPLY = process.argv.includes('--apply');
 
 /**
- * ما يصير عليه كلُّ نوع. مكتوبٌ صراحةً لا مستنبطٌ، ليُقرأ ويُراجَع:
- *   sections — الأقسامُ الممنوحةُ ودرجتُها. وما ليس هنا «ممنوع».
- *   closed   — صفحاتٌ تُغلَق صراحةً **داخل** قسمٍ ممنوح (قرارٌ مقصود).
- *   homePage — أوّلُ شاشةٍ تُفتَح لصاحبه.
+ * What each type becomes, written explicitly so it can be reviewed.
+ * sections: granted sections and level; anything absent is denied.
+ * closed: pages explicitly closed inside a granted section (intentional).
+ * homePage: first screen opened for the holder.
  */
 const PLAN = {
   ops_team: {
@@ -56,8 +34,7 @@ const PLAN = {
       CRM: 'edit',
       Sales: 'edit',
     },
-    // المحفظةُ ولوحتُها و«التشغيل — خاصّ» تبقى مغلقةً كما هي اليوم: عهدةٌ
-    // ماليّةٌ تُقفَل وتُراجَع، وشاشةٌ خاصّةٌ لا يفتحها القسمُ كلُّه.
+    // Wallet, its dashboard and private operations stay closed as today: custody is financial and reviewed, and the private screen is not open to the whole section.
     closed: ['/system/operations/private', '/system/wallet', '/system/wallet-dashboard'],
     homePage: '/system/operations',
   },
@@ -87,16 +64,12 @@ const SELF = PAGES.filter((p) => p.section === 'Self Service').map((p) => p.key)
     const explicitBefore = Object.keys(beforeDoc?.pages || {}).length;
     console.log(`   قبل: ${explicitBefore} تأشيرةً صريحة · خدمتُه الذاتيّةُ مغلقةٌ ${closedSelfBefore.length}/${SELF.length} · صفحةُ الدخول «${beforeDoc?.homePage || 'غير مضبوطة'}»`);
 
-    // كلُّ قسمٍ يُكتب صراحةً: «ممنوع» قرارٌ أيضًا، وسكوتُه عن المصنوع يعني ممنوعًا
-    // على أيّ حال — فكتابتُه تجعل الشاشةَ تقرأ قرارًا لا فراغًا.
+    // Every section is written explicitly: denied is a decision too, and silence for a custom role already means denied, so writing it lets the screen read a decision rather than a blank.
     const sections = {};
     for (const s of SECTION_KEYS) sections[s] = plan.sections[s] || 'none';
 
     const pages = {};
-    // ── والخدمةُ الذاتيّةُ تُفتَح صراحةً، لا اتّباعًا ────────────────────────
-    // القاعدةُ الجديدةُ تفتحها لكلّ دورٍ داخليٍّ ولو كان مصنوعًا، لكنّ الخادمَ
-    // الذي لم يُحدَّث بعدُ يقرأ القاعدةَ القديمة. فتُكتب تأشيرةٌ صريحةٌ تسبق
-    // القاعدتين: يرى صاحبُها ملفَّه اليومَ لا بعد النشر.
+    // Self-service is opened explicitly, not by following. The new rule opens it for every internal role including custom ones, but a server not yet updated reads the old rule, so an explicit grant takes precedence over both and the user sees their file now, not after deploy.
     for (const k of SELF) pages[k] = true;
     for (const k of plan.closed) {
       if (!isPage(k)) { console.log(`   ✗ «${k}» ليست صفحةً معروفة`); problems += 1; continue; }
@@ -118,7 +91,7 @@ const SELF = PAGES.filter((p) => p.section === 'Self Service').map((p) => p.key)
       invalidate(key);
     }
 
-    // القراءةُ بعدَها من الخادم نفسِه لا من الخطّة.
+    // Read back from the server itself, not from the plan.
     const after = APPLY ? await effectivePages(key) : null;
     const afterSecs = APPLY ? await effectivePermissions(key) : null;
     if (APPLY) {

@@ -1,15 +1,7 @@
 /**
- * hrStaffCategoryBackfill — الفئةُ الوظيفيّة (إداري · سائق · فني) لموظّفي B2C والنقل
- * الثقيل، مرّةً واحدة (صاحبُ الشركة، ٢٠٢٦/١٠/١٩). وبعدها تكتبها الموارد البشريّة.
- *
- *   node src/scripts/hrStaffCategoryBackfill.js            ← عرضٌ فقط
- *   node src/scripts/hrStaffCategoryBackfill.js --apply
- *
- * من المسمّى الوظيفيّ: «سائق…» سائق · «فني / ميكانيكي» فني · مشرف ومدير ومساعد
- * ومعقّب ومسؤول متابعة إداري. ولمن لا مسمّى له في B2C: نوعُه في سجلّ النقل الخفيف
- * (مندوب/سائق ← سائق، ميكانيكي ← فني، إداري/مشرف ← إداري).
- * وما لا يُعرف (عاملُ نظافةٍ، عاملُ تحميل…) يُعلَّم «مطلوب» لتقرّر فيه الموارد البشريّة.
- * ولا يُمَسّ مَن له فئةٌ مكتوبة. ولكلّ موظّفٍ كُتبت فئتُه سطرٌ في سجلّه.
+ * hrStaffCategoryBackfill: job category (administrative, driver, technician) for B2C and heavy-transport employees, one time; afterwards HR writes it.
+ * Shows only; --apply writes.
+ * Derived from job title: driver titles to driver, technician or mechanic to technician, supervisor, manager, assistant, follow-up officer to administrative. For B2C staff without a title, from their light-transport register type (rep or driver to driver, mechanic to technician, admin or supervisor to administrative). Unknowns (cleaner, loader and so on) are marked required for HR to decide. Anyone with a category already written is untouched, and each written category gets a history entry.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');

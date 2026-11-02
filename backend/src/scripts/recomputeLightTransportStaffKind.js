@@ -1,15 +1,7 @@
 /**
- * إعادةُ اشتقاق `staffKind` لموظّفي النقل الخفيف.
- *
- * ── العلّة ──────────────────────────────────────────────────────────────────
- * كان النوعان `rep` و`admin` فقط، و«إداريّ» فرعَ الـelse. فمن لا وظيفةَ مكتوبةً
- * له صار إداريًّا، وقالت الشاشةُ «إداريّون وفنيّون: ٣٨» وفيها تسعةَ عشرَ بلا
- * وظيفة. صار `unknown` نوعًا ثالثًا، وهذا يُعيد الحسابَ لما سبق.
- *
- *   node src/scripts/recomputeLightTransportStaffKind.js          # معاينة
- *   node src/scripts/recomputeLightTransportStaffKind.js --write  # تنفيذ
- *
- * ولا يُكتَب إلّا ما تغيّر.
+ * Re-derives `staffKind` for light-transport staff.
+ * `unknown` is now a third kind besides `rep` and `admin`, so staff with no job title are no longer counted as admin.
+ * Usage: node src/scripts/recomputeLightTransportStaffKind.js [--write]; only changed rows are written.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');

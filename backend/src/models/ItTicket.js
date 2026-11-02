@@ -1,12 +1,7 @@
 const mongoose = require('mongoose');
 
-// A support issue IT resolved or is working on (بلاغ الدعم الفني).
-//
-// The point of this model is not just logging — it's the `signature` field: a
-// normalized key derived from category + a slug of the title. Two tickets that
-// describe the same underlying problem land on the same signature, which is how
-// the "recurring problems" report tells IT "this keeps coming back, fix the root
-// cause instead of the symptom".
+// A support issue IT resolved or is working on.
+// The point is the `signature` field: a normalized key from category plus a slug of the title. Tickets describing the same underlying problem share a signature, which is how the recurring-problems report tells IT this keeps coming back and the root cause needs fixing, not the symptom.
 const itTicketSchema = new mongoose.Schema(
   {
     ticketNumber: { type: String, unique: true, index: true },
@@ -37,13 +32,10 @@ const itTicketSchema = new mongoose.Schema(
     assignedToName: { type: String, trim: true },
 
     reportedAt: { type: String }, // YYYY-MM-DD
-    // يوم الحل كما يُدخله من أغلق البلاغ. وجوده ضروري لأن `resolvedAt` كان
-    // يُختم بلحظة الحفظ، وأغلب البلاغات تُسجَّل في النظام بعد إصلاحها بأيام —
-    // فكان زمن الحل يقيس تأخّر إدخال البيانات لا زمن الإصلاح.
+    // Resolution day as entered by whoever closed the ticket. Needed because `resolvedAt` was stamped at save time, and most tickets are logged days after the fix, so resolution time measured data-entry lag instead of repair time.
     resolvedDate: { type: String }, // YYYY-MM-DD
     resolvedAt: { type: Date },
-    // بالدقائق، لكنها دائماً من مضاعفات اليوم الكامل: تاريخ البلاغ بلا وقت،
-    // فأي دقّة أدقّ من اليوم رقم مُختلَق لا مصدر له.
+    // In minutes, but always whole-day multiples: the ticket date has no time, so any finer precision would be an invented number.
     resolutionMinutes: { type: Number },
 
     description: { type: String, trim: true },

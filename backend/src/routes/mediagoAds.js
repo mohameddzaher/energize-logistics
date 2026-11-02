@@ -1,7 +1,6 @@
 /**
- * المحتوى الإعلانيّ — راجع controllers/mediagoAdController.
- * يُركَّب في server.js على `/api/b2c/mediago-ads` كشكاوى Media Go: حارسُ «الأفراد»
- * لأهل القسم، وحسابُ Media Go يمرّ إلى هذه القوائم وحدَها، والمتحكّمُ يحسم ما لكلٍّ.
+ * Advertising content; see controllers/mediagoAdController.
+ * Mounted in server.js at `/api/b2c/mediago-ads` like the Media Go complaints: the individuals guard admits section staff, and the Media Go account reaches only these lists; the controller decides what each may do.
  */
 const express = require('express');
 const router = express.Router();

@@ -193,8 +193,7 @@ const seedDemo = async () => {
       { customer: 0, type: 'follow_up', contactType: 'whatsapp', status: 'done', notes: 'WhatsApp follow-up on partial payment for INV-2025-002. Client confirmed remaining payment scheduled.', nextFollowUpDate: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000), daysAgo: 1 },
     ];
 
-    // بذرةُ متابعات التحصيل أُزيلت: صارت تُقيَّد في قسم التحصيل على طرفٍ
-    // وكشف، لا على عميلٍ وفاتورةٍ من ورك فلو زال.
+    // Collections follow-up seed removed: follow-ups are now recorded in the collections section against a party and statement, not a customer and invoice from the removed workflow.
 
     // ── Done ────────────────────────────────────────────────────────
     console.log('\n=== Demo Data Seeded Successfully ===\n');

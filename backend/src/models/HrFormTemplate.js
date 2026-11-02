@@ -1,26 +1,15 @@
 const mongoose = require('mongoose');
 
 /**
- * نموذجٌ أو خطابٌ رسميٌّ للشركة — ملفُّ الموارد البشريّة الجاهزُ للطبع.
- *
- * ── لماذا سجلٌّ لا مرفقٌ على موظّف ──────────────────────────────────────────
- * `EmployeeDocument` ملفٌّ **لموظّفٍ بعينه**: صورةُ إقامته، عقدُه. وهذه ورقةٌ
- * لا صاحبَ لها: «نموذج طلب إجازة»، «خطاب تعريف بالراتب»، «إقرار استلام عهدة»،
- * «نموذج إخلاء طرف». تُكتب مرّةً وتُطبَع لكلّ من يحتاجها.
- *
- * وكانت تعيش في محادثاتِ واتساب ومجلّداتِ أجهزةٍ شخصيّة: من يحتاج نموذجًا
- * يسأل عنه، ومن أرسله يرسل آخرَ نسخةٍ عنده — فتُوقَّع نسخةٌ قديمةٌ وتُعاد.
- *
- * فصارت لها خانةٌ واحدة: الملفُّ الحاليُّ لكلّ نموذج، ومن رفعه ومتى، ورقمُ
- * النسخة. والقديمُ لا يُحذَف بل يُعلَّم `isActive: false` — من وقّع على نسخةٍ
- * قديمةٍ يحتاج أن يجدها.
+ * A company form or official letter: HR's print-ready file.
+ * A registry, not an attachment on an employee: `EmployeeDocument` belongs to one employee, while these belong to no one (leave request form, salary letter, custody receipt, clearance form), written once and printed for anyone. They lived in WhatsApp chats and personal folders, so an old copy got signed and returned.
+ * One slot per form: current file, who uploaded and when, and version number. Old versions are not deleted but marked `isActive: false`, since whoever signed an old copy needs to find it.
  */
 const hrFormTemplateSchema = new mongoose.Schema(
   {
     title: { type: String, required: true, trim: true },
     titleEn: { type: String, trim: true, default: '' },
-    // التصنيفُ قائمةٌ مفتوحةٌ لا مُغلقة: الأقسامُ تطلب أنواعًا لم تُحسَب.
-    // والقيمُ المعروفة: forms | letters | policies | contracts | hse | other
+    // Category is an open list: departments ask for unforeseen types. Known values: forms | letters | policies | contracts | hse | other
     category: { type: String, trim: true, default: 'forms', index: true },
     description: { type: String, trim: true, default: '' },
 
@@ -29,12 +18,11 @@ const hrFormTemplateSchema = new mongoose.Schema(
     mimeType: { type: String, trim: true, default: '' },
     size: { type: Number, default: 0 },
 
-    // رقمُ النسخة يرتفع مع كلّ استبدالٍ للملفّ — فمن يسأل «أهذه الأحدث؟» يقرأ.
+    // Version number rises on each file replacement, so whether this is the latest is readable.
     version: { type: Number, default: 1 },
     isActive: { type: Boolean, default: true, index: true },
 
-    // كم مرّةً نُزِّل: النماذجُ التي لا تُنزَّل إمّا لا يحتاجها أحدٌ أو لا
-    // يعرف أحدٌ أنّها هنا — والرقمُ يفرّق بينهما مع الزمن.
+    // Download count: forms never downloaded are either not needed or unknown, and the number tells them apart over time.
     downloads: { type: Number, default: 0 },
     lastDownloadAt: { type: Date, default: null },
 

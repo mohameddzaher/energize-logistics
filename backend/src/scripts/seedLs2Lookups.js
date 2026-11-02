@@ -1,10 +1,6 @@
 /**
- * يملأ قوائمَ القسم المنسدلة (ماركاتُ الكاوتش، مقاساتُه، وحداتُ الأصناف) بما هو
- * مكتوبٌ فعلًا في السجلّات — فلا تُفتَح القائمةُ فارغةً ولا تُخترَع مفرداتٌ لا
- * يعرفها أحد. ما هو في القائمة لا يُكرَّر (بعد طيّ الحالة والمسافات).
- *
- *   node src/scripts/seedLs2Lookups.js           ← عرضٌ فقط
- *   node src/scripts/seedLs2Lookups.js --apply
+ * Fills the section's dropdown lists (tire brands, sizes, item units) with what is already written in the records, so lists do not open empty and no unknown vocabulary is invented. Anything already in a list is not duplicated (after folding case and spaces).
+ * Usage: node src/scripts/seedLs2Lookups.js [--apply] (dry run by default).
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -13,9 +9,7 @@ const Ls2TireAsset = require('../models/Ls2TireAsset');
 const { Ls2StoreItem } = require('../models/Ls2Store');
 
 const APPLY = process.argv.includes('--apply');
-// المسافاتُ تُطوى كلُّها: «315/80 R22.5» و«315/80R22.5» مقاسٌ واحدٌ كُتب بصيغتين —
-// يُضاف بأكثر صيغتَيه استعمالًا. وما كُتب مرّةً واحدةً خطأُ كتابةٍ («MICHLAIN»)
-// لا مفردةٌ من القائمة.
+// All spaces are folded: '315/80 R22.5' and '315/80R22.5' are one size written two ways, added in the more common form. A value written once is a typo ('MICHLAIN'), not a list entry.
 const fold = (s) => String(s || '').trim().toLowerCase().replace(/\s+/g, '');
 const junk = (v) => !v || /^(-|—|غير محدد|unknown|n\/a|na|لا يوجد)$/i.test(v);
 

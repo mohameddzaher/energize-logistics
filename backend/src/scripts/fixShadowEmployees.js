@@ -1,26 +1,8 @@
 /**
- * سجلّاتُ الموظّفين الظلّيّة — تُنقل بياناتُها، وتُمسح الفارغةُ منها.
- *
- *   node src/scripts/fixShadowEmployees.js          # تقريرٌ وخطّة
- *   node src/scripts/fixShadowEmployees.js --yes    # تنفيذ
- *
- * ── من أين تأتي ─────────────────────────────────────────────────────────────
- * حين يدخل موظّفٌ الخدمةَ الذاتيّة ولا حسابَ له مربوطٌ بسجلٍّ في الموارد
- * البشريّة، يُنشأ له سجلٌّ فارغٌ بلا رقم موظّف كي يمضي طلبُه. ثمّ يُربَط
- * حسابُه لاحقًا بسجلّه الحقيقيّ — فيبقى الظلّيُّ حاملًا إجازاتِه وطلباتِه
- * القديمة، لا يشير إليه أحد، ولا تظهر في ملفّه.
- *
- * وهذا ما حدث مع فتون: رُبط حسابُها بسجلّها الحقيقيّ (#1213) فصار رصيدُها
- * صحيحًا، وبقيت إجازتُها وطلباها على السجلّ الميّت.
- *
- * ── ما يفعله ───────────────────────────────────────────────────────────────
- *   ١) ظلّيٌّ يتيمٌ له بيانات، وصاحبُ اسمِه له حسابٌ مربوطٌ بسجلٍّ حقيقيّ:
- *      تُنقل بياناتُه إلى ذلك السجلّ ثمّ يُحذف. ولا يُنقل شيءٌ إلّا إن كان
- *      الاسمُ مطابقًا والهدفُ واحدًا لا يحتمل الالتباس.
- *   ٢) ظلّيٌّ يتيمٌ لا بياناتِ له ولا اسمَ عربيًّا: يُحذف.
- *   ٣) سجلٌّ باسمٍ عربيٍّ كاملٍ بلا رقم موظّف: **لا يُمَسّ** — هذا شخصٌ حقيقيّ
- *      نقصه رقمٌ تعطيه الموارد البشريّة، لا سجلُّ خدمةٍ ذاتيّة.
- *   ٤) أرقامُ الموظّفين المكرّرة: تُقال ولا تُدمَج — دمجُ شخصين قرارُ إنسان.
+ * Shadow employee records: move their data and delete the empty ones. Without --yes it prints a plan.
+ * Self-service creates an empty record without an employee number when no HR record is linked; later linking leaves the shadow holding old leaves and requests.
+ * 1) Orphan with data and an exact single name match with a linked real record: move data, delete. 2) Orphan with no data or Arabic name: delete.
+ * 3) Full Arabic name but no number: untouched (a real person). 4) Duplicate numbers: reported, not merged.
  */
 require('dotenv').config({ path: require('path').join(__dirname, '../../.env') });
 const mongoose = require('mongoose');
@@ -35,10 +17,8 @@ const EmployeeRenewal = require('../models/EmployeeRenewal');
 
 const APPLY = process.argv.includes('--yes');
 
-// ── ما يُعلَّق على الموظّف ─────────────────────────────────────────────────
-// القائمةُ ناقصةٌ = حذفٌ صامتٌ لما لا يُفحَص. حُذف سبعةُ موظّفين لأنّ التفاويضَ
-// لم تكن فيها، وكلٌّ منهم يحمل تفويضَ قيادةٍ ساريًا على مركبةِ شركة — فبقيت
-// المركبةُ مفوَّضةً لمن لا وجودَ له. يمسكها `auditDataIntegrity` إن تكرّرت.
+// References to the employee.
+// An incomplete list means silent deletion of unchecked data: seven employees were deleted because authorizations were not in the list, each holding an active driving authorization on a company vehicle, leaving the vehicle authorized to a nonexistent person. auditDataIntegrity catches a repeat.
 const VehicleAuthorization = require('../models/VehicleAuthorization');
 const VehicleAccident = require('../models/VehicleAccident');
 const OWNED = [
@@ -82,7 +62,7 @@ async function countsFor(id) {
 
   console.log(`  موظّفون: ${employees.length} · بلا رقم: ${shadows.length} · يشير إليها حساب: ${shadows.filter((e) => referenced.has(String(e._id))).length}`);
 
-  // ٤) الأرقام المكرّرة — تُقال ولا تُمَسّ.
+  // 4) Duplicate numbers: reported, not touched.
   const byNum = new Map();
   for (const e of real) {
     const k = String(e.employeeNumber);
@@ -93,14 +73,8 @@ async function countsFor(id) {
   const dupDeletes = [];
   const dupReport = [];
   for (const [num, list] of dupes) {
-    // ── التكرارُ الذي يُحسم وحده ────────────────────────────────────────────
-    // نسختان بالاسم نفسِه، إحداهما فارغةٌ تمامًا: لا بيانات، ولا رقم إقامة،
-    // ولا حسابَ يشير إليها، والأخرى كاملة. هذه نسخةٌ زائدة لا شخصٌ ثانٍ،
-    // وحذفُها لا يفقد شيئًا.
-    //
-    // وما عدا ذلك يُقال ولا يُمَسّ: رقمٌ واحد يحمله **شخصان مختلفان** خطأٌ
-    // حقيقيّ، وتصحيحُه إعطاءُ أحدهما رقمًا آخر — قرارُ الموارد البشريّة لا
-    // قرارُ سكربت.
+    // Duplicates that resolve themselves: two copies with the same name, one completely empty (no data, no iqama number, no account pointing at it) and the other complete. That is an extra copy, not a second person, and deleting it loses nothing.
+    // Everything else is reported and left: one number held by two different people is a real error, and fixing it means giving one a different number, which is HR's decision.
     const sameName = new Set(list.map((e) => nameOf(e))).size === 1;
     // eslint-disable-next-line no-await-in-loop
     const withCounts = await Promise.all(list.map(async (e) => ({
@@ -111,11 +85,10 @@ async function countsFor(id) {
     })));
     const idOf = (e) => String(e.iqamaNumber || e.nationalId || '').trim();
     const ids = new Set(list.map((x) => idOf(x)).filter(Boolean));
-    // شخصٌ واحد: الاسمُ نفسُه، ورقمُ الهويّة نفسُه (أو غائبٌ عن إحداهما). فهذه
-    // نسخةٌ انشطرت لا شخصان — تُجمع بياناتُها في واحدةٍ وتُحذف الأخرى.
+    // One person: same name and same ID number (or absent on one). A record split in two, not two people; merge the data into one and delete the other.
     const samePerson = sameName && ids.size <= 1;
     if (samePerson) {
-      // الباقيةُ هي التي يشير إليها حساب، وإلّا فأغناها بيانات.
+      // The survivor is the one an account points to, otherwise the one with more data.
       const primary = withCounts.find((x) => x.linked)
         || [...withCounts].sort((a, b) => b.total - a.total)[0];
       withCounts.filter((x) => x !== primary)
@@ -141,7 +114,7 @@ async function countsFor(id) {
   const keeps = [];
 
   for (const sh of shadows) {
-    if (referenced.has(String(sh._id))) continue;      // ليس يتيمًا
+    if (referenced.has(String(sh._id))) continue;      // Not an orphan
     // eslint-disable-next-line no-await-in-loop
     const { out, total } = await countsFor(sh._id);
     const arabicFullName = hasArabic(sh.arabicName || sh.firstName) && String(sh.arabicName || '').trim().split(/\s+/).length >= 3;
@@ -150,7 +123,7 @@ async function countsFor(id) {
 
     if (total === 0) { deletes.push({ sh }); continue; }
 
-    // له بيانات: هل لصاحب اسمه حسابٌ مربوطٌ بسجلٍّ حقيقيّ؟
+    // Has data: does the owner of that name have an account linked to a real record?
     const key = nameOf(sh);
     const cands = users.filter((u) => u.linkedEmployee && fold(`${u.firstName || ''} ${u.lastName || ''}`) === key);
     const targets = [...new Set(cands.map((u) => String(u.linkedEmployee)))];

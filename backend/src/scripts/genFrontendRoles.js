@@ -1,13 +1,7 @@
 /**
- * genFrontendRoles — يولّد frontend/src/lib/roles.ts من config/roles.js.
- *
- *   node src/scripts/genFrontendRoles.js
- *   node src/scripts/genFrontendRoles.js --check    يتأكد إنه محدَّث، من غير كتابة
- *
- * الواجهة محتاجة نفس الهيكل الوظيفي عشان القوائم المنسدلة والأسماء المعروضة.
- * نسخه بالإيد كان هيتفرّق عن الباك إند أول ما حد يضيف دور — فبيتولّد.
- * `--check` بيرجّع كود غير صفري لو الملفين اختلفوا، فينفع يتحط في أي فحص قبل
- * الديبلوي.
+ * genFrontendRoles: generates frontend/src/lib/roles.ts from config/roles.js.
+ * --check verifies it is current without writing.
+ * The frontend needs the same role structure for dropdowns and display names; a hand copy would drift from the backend when a role is added, so it is generated. --check exits non-zero if the files differ, so it can sit in any pre-deploy check.
  */
 const fs = require('fs');
 const path = require('path');

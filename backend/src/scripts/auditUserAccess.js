@@ -1,17 +1,8 @@
 /**
- * فحصُ وصولِ كلّ مستخدم: هل يدخل فيجد شيئًا؟
- *
- * ── لماذا ملفٌّ يُحفَظ ─────────────────────────────────────────────────────
- * الصلاحيّةُ ثلاثُ طبقاتٍ تتقاطع: الدورُ (وهل يعرفه النظام)، والقسمُ من مصفوفة
- * الصلاحيّات، والصفحةُ تحته. وكلُّ عطبٍ فيها **صامت**: لا خطأٌ في السجلّ، بل
- * موظّفٌ يدخل فلا يرى شيئًا — أو يرى قسمًا ولا تُفتَح له فيه صفحةٌ واحدة. ولا
- * يُكتشَف ذلك إلّا بشكوى.
- *
- * فيُقاس لكلّ حساب: دورُه معروف؟ وكم قسمًا يملك؟ وكم صفحةً تُفتَح له؟ وأوّلُ
- * شاشةٍ تُفتَح له موجودةٌ ومسموحة؟ ويُسمّى كلُّ من في حالةٍ لا تصلح للعمل.
- *
- * الاستعمال: node src/scripts/auditUserAccess.js [--all]
- *   بلا `--all` تُطبَع المشاكلُ وحدَها؛ ومعها كلُّ الحسابات.
+ * Per-user access check: does each user land on something?
+ * Permission has three crossing layers: the role (known to the system?), the section from the permission matrix, and the page under it. Every failure is silent: no log error, just an employee who sees nothing or a section with no openable page.
+ * Per account it measures: role known, number of sections, number of openable pages, and whether the first landing screen exists and is allowed. Accounts in an unusable state are named.
+ * Usage: node src/scripts/auditUserAccess.js [--all]; without --all only problems are printed.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -39,7 +30,7 @@ const ALL = process.argv.includes('--all');
     .select('firstName lastName email username role isActive accountType lastLogin')
     .sort({ role: 1 }).lean();
 
-  // الصلاحيّةُ تُحسب للدور لا للحساب — فتُحسب مرّةً لكلّ دورٍ مستعمَل.
+  // Permission is computed per role, not per account, so once per role in use.
   const roles = [...new Set(users.map((u) => u.role))];
   const byRole = new Map();
   for (const r of roles) {
@@ -50,12 +41,8 @@ const ALL = process.argv.includes('--all');
       sections: Object.entries(perms).filter(([, v]) => v !== 'none'),
       edit: Object.entries(perms).filter(([, v]) => v === 'edit').length,
       pages: Object.entries(pages).filter(([, v]) => v).length,
-      // ── وأضعفُ ما يملكه موظّفٌ: نفسُه ────────────────────────────────────
-      // «ملفي» و«إجازاتي» و«طلباتي» و«الإعدادات» ليست قسمًا يُمنَح: هي ما
-      // يراه كلُّ موظّفٍ عن نفسه. وقد أُغلقت مرّةً على نوعَين مصنوعَين بأثرِ
-      // عطبٍ في الحفظ لا بقرار (راجع scripts/rebuildCustomRoleGrants)، فلم
-      // يجد صاحبُها رصيدَ إجازاته ولا موضعَ كلمةِ مروره، ولا شكوى تُقال.
-      // فيُقاس من اليوم في كلّ فحص.
+      // The weakest thing an employee has: self-service
+      // My profile, my leaves, my requests and settings are not a grantable section; they are what each employee sees about themselves. They were once closed for two custom roles by a save bug (see scripts/rebuildCustomRoleGrants), leaving users unable to see leave balance or change password, with no complaint raised. So they are measured on every run.
       selfClosed: PAGES.filter((p) => PERSONAL_SECTIONS.has(p.section) && pages[p.key] === false),
       home,
       full: FULL_ACCESS_ROLES.includes(r),
@@ -75,7 +62,7 @@ const ALL = process.argv.includes('--all');
       const c = customByKey.get(u.role);
       issues.push(c ? `نوعٌ معطَّل: «${u.role}»` : `دورٌ لا يعرفه النظام: «${u.role}»`);
     }
-    // الشريكُ (عميلٌ أو موردٌ) يدخل البوّابةَ لا النظام — فلا يُقاس بمصفوفة الأقسام.
+    // A partner (customer or vendor) enters the portal, not the system, so the section matrix does not apply.
     const partner = u.accountType && u.accountType !== 'employee';
     if (!partner && !r.full && u.isActive !== false) {
       if (!r.sections.length) issues.push('لا قسمَ ممنوحًا — يدخل فلا يرى شيئًا');
@@ -99,7 +86,7 @@ const ALL = process.argv.includes('--all');
     p.issues.forEach((i) => console.log(`        ${i}`));
   }
 
-  // ولا دورَ مستعمَلٌ بلا صلاحيّةٍ — يُقال بالدور لا بالحساب، فيُصلَح مرّةً.
+  // A role in use with no permission is reported by role, not by account, so it is fixed once.
   const emptyRoles = roles.filter((r) => {
     const x = byRole.get(r);
     return !x.full && !x.sections.length && users.some((u) => u.role === r && u.isActive !== false && (!u.accountType || u.accountType === 'employee'));

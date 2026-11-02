@@ -1,11 +1,6 @@
 /**
- * Seed the ls2 fleet-asset registry (سطحات / تيدرات / كاوتشات) from
- * data/ls2Assets.json — the workshop's collected JSON, verbatim.
- *
- * Idempotent: re-running upserts (tires by serial, trailers by number, flatbeds
- * by plate) via the same import logic the /api/ls2/assets/import endpoint uses,
- * so a tire that shows up on a different truck is recorded as a TRANSFER.
- *
+ * Seeds the ls2 fleet-asset registry (flatbeds, trailers, tires) from data/ls2Assets.json.
+ * Idempotent upsert via the /api/ls2/assets/import logic; a tire seen on another truck is recorded as a TRANSFER.
  * Run: node src/seeds/seedLs2Assets.js
  */
 require('dotenv').config({ path: require('path').join(__dirname, '../../.env') });

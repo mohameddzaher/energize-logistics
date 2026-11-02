@@ -1,7 +1,4 @@
-/**
- * /api/finance — الإدارة الماليّة: مالُ كلّ قسمٍ في موضعٍ واحد.
- * القراءةُ وحدَها؛ كلُّ كتابةٍ تبقى في قسمها. راجع controllers/financeController.
- */
+/** /api/finance: financial management, every section's money in one place. Read-only; every write stays in its own section. See controllers/financeController. */
 const express = require('express');
 const router = express.Router();
 const authorize = require('../middleware/rbac');
@@ -12,9 +9,7 @@ const ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'cfo', 'ac
 router.get('/overview', authorize(...ROLES), finance.overview);
 router.get('/departments/:dept', authorize(...ROLES), finance.department);
 
-// ── رسومُ الإقامات ورخص العمل، وطلباتُ الموارد البشريّة ─────────────────────
-// هنا كتابةٌ واحدةٌ في الماليّة: تسجيلُ أنّ الرسوم دُفعت، وجوابُ طلب. التجديدُ
-// نفسُه يبقى في ملفّ الموظّف بالموارد البشريّة. راجع controllers/hrFinanceController.
+// Residency and work-permit fees, and HR requests. The only write in finance is recording that fees were paid and answering a request; the renewal itself stays in the employee file in HR. See controllers/hrFinanceController.
 const hrf = require('../controllers/hrFinanceController');
 const { objectIdParam } = require('../utils/idParam');
 router.param('id', objectIdParam({ status: 400 }));
@@ -22,7 +17,7 @@ router.get('/hr-docs', authorize(...ROLES), hrf.financeDocs);
 router.get('/hr-docs/options', authorize(...ROLES), hrf.options);
 router.get('/hr-docs/summary', authorize(...ROLES), hrf.summary);
 router.post('/hr-docs/pay', authorize(...hrf._PAY_ROLES), hrf.markPaid);
-// والتراجعُ لمديري الماليّة وحدَهم — لا يفتحه منحُ القسم ولا تأشيرةُ صفحة.
+// Undo is for finance managers only; neither a section grant nor a page grant opens it.
 router.post('/hr-docs/unpay', authorize.strict(...hrf._UNDO_ROLES), hrf.undoPaid);
 router.get('/hr-requests', authorize(...ROLES), hrf.financeRequests);
 router.patch('/hr-requests/:id', authorize(...hrf._PAY_ROLES), hrf.answerRequest);

@@ -1,25 +1,8 @@
 /**
- * syncContractStatus — «حالة العقد» في ملفّ الموظّف تُقرأ من عقده.
- *
- *   node src/scripts/syncContractStatus.js --dry
- *   node src/scripts/syncContractStatus.js --apply
- *
- * ── ما يصلحه ────────────────────────────────────────────────────────────────
- * الحالةُ كانت مكتوبةً في موضعين بمفردتين: صفحةُ العقود تقول «مفسوخ» من
- * `Contract.status`، وعمودُ الموظّف يقول «تم انهاء العقد» من ملفّ الاستيراد.
- * والمعنى واحد، فلا يُفلتَر عليهما معًا ولا يُعَدّان واحدًا.
- *
- * ويفترقان في المعنى أيضًا لا في اللفظ وحده: موظّفٌ عقدُه سارٍ وخانتُه تقول
- * «تم انهاء العقد»، وأربعةٌ عقودُهم ساريةٌ وخاناتُهم فارغة.
- *
- * فالعقدُ هو الحَكَم — هو المستند — والخانةُ صورةٌ منه. وقد صارت تُحدَّث مع كلّ
- * تغيّرٍ في العقود (إنشاءً وتعديلًا وتجديدًا وفسخًا وحذفًا)؛ وهذا للماضي.
- *
- * ── ومَن لا عقدَ له في النظام ──────────────────────────────────────────────
- * مئةٌ وسبعةٌ وثلاثون موظّفًا لا عقدَ لهم مسجَّلًا. خانتُهم كلُّ ما يُعرَف عنهم،
- * فلا تُمحى — يُوحَّد لفظُها فقط: «تم انهاء العقد» تصير «مفسوخ» و«غير ساري»
- * تصير «منتهي»، فيقرأ العمودُ كلُّه بمفرداتٍ واحدة. و«لا يوجد» تبقى: هي نفيُ
- * وجود عقدٍ لا حالةٌ له.
+ * Makes the contract status on the employee file follow the employee's contract.
+ * Usage: node src/scripts/syncContractStatus.js (--dry | --apply)
+ * The status lived in two places with different wording (Contract.status versus the import-file column), and they also disagreed in meaning. The contract is the document and therefore the authority; the field is a copy, now updated on every contract change, and this script fixes the past.
+ * Employees with no contract keep their field (it is all that is known); only wording is unified: the terminated variant becomes the cancelled term, the invalid variant becomes expired, and the none value stays as it denies a contract rather than being a status.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -32,7 +15,7 @@ const APPLY = process.argv.includes('--apply');
   const Contract = require('../models/Contract');
   const { CONTRACT_STATUS_AR, normaliseContractStatus } = require('../utils/contractStatus');
 
-  // العقدُ الحاكم لكلّ موظّف — استعلامٌ واحدٌ لا واحدٌ لكلّ صفّ.
+  // Governing contract per employee, from one query rather than one per row.
   const contracts = await Contract.find({}).select('employee status createdAt').sort({ createdAt: -1 }).lean();
   const govern = new Map();
   for (const c of contracts) {
@@ -90,7 +73,7 @@ const APPLY = process.argv.includes('--apply');
     console.log('\n  لم يُكتب شيء. أضف --apply للتنفيذ.');
   }
 
-  // والتحقّق: لا موظّفَ له عقدٌ وخانتُه تخالفه
+  // Verification: no employee has a contract whose status contradicts the field.
   const after = await Employee.find({ isHrRecord: { $ne: false } }).select('contractStatusText').lean();
   const words = {};
   for (const e of after) { const t = String(e.contractStatusText || '').trim() || '(فارغ)'; words[t] = (words[t] || 0) + 1; }

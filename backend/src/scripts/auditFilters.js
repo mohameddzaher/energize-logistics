@@ -1,16 +1,8 @@
 /* eslint-disable no-console */
 /**
- * auditFilters — الفلاتر بترجّع اللي بتقول عليه بالظبط.
- *
- *   node src/scripts/auditFilters.js --base https://api.energize-logistics.com
- *
- * الفلتر اللي رقمه مختلف عن عدد الصفوف اللي بيفتحها أسوأ من اللي مش موجود:
- * بيخلّي المستخدم يشك في الشاشة كلها. التيست ده بيقارن **العدد اللي هيظهر على
- * الشريحة** بـ**عدد الصفوف اللي هترجع** — لكل شريحة، على الداتا الحقيقية،
- * بنفس الشروط المكتوبة في الواجهة بالظبط.
- *
- * ولو الشرط في الواجهة اتغيّر ولا اتغيّر هنا، الرقم هيختلف والتيست هيقع — وده
- * المقصود.
+ * Checks that filters return exactly what they claim.
+ * A filter whose number differs from the rows it opens is worse than none, since it makes the user doubt the whole screen. This compares the count shown on each chip with the rows returned, on real data, using the exact conditions written in the UI.
+ * If a UI condition changes and this one does not, the numbers differ and the test fails, as intended.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -22,7 +14,7 @@ const BASE = (iB >= 0 && argv[iB + 1] ? argv[iB + 1] : process.env.BASE || 'http
 let pass = 0; let fail = 0;
 const ok = (l, c, x = '') => { console.log(`  ${c ? '✓' : '✗ FAIL'}  ${l}${x ? '   — ' + x : ''}`); c ? pass++ : fail++; };
 
-// نفس شروط الشرايح في الواجهة، حرفيًا.
+// Same chip conditions as the UI, verbatim.
 const TRAILER_CHIPS = {
   mounted: (x) => !!x.currentPlate,
   free: (x) => !x.currentPlate && x.status !== 'retired',
@@ -68,7 +60,7 @@ const TIRE_CHIPS = {
     const flatbeds = ov.flatbeds || [];
     const trailers = ov.trailers || [];
 
-    // ═══ التيدرات — المثال اللي اتطلب بالاسم ════════════════════════════════
+    // Trailers (tractor units): the example requested by name.
     console.log('── فلاتر التيدرات ──');
     let sum = 0;
     for (const [key, test] of Object.entries(TRAILER_CHIPS)) {
@@ -83,7 +75,7 @@ const TIRE_CHIPS = {
       standing.map((x) => x.trailerNumber).join(', ') || 'مفيش');
     ok('وكلهم فعلاً من غير عربية', standing.every((x) => !x.currentPlate));
 
-    // ═══ السطحات ═════════════════════════════════════════════════════════════
+    // Flatbeds
     console.log('\n── فلاتر السطحات ──');
     for (const [key, test] of Object.entries(FLATBED_CHIPS)) {
       ok(`${key.padEnd(12)} ${flatbeds.filter(test).length}`, true);
@@ -92,11 +84,11 @@ const TIRE_CHIPS = {
       + flatbeds.filter(FLATBED_CHIPS.short).length
       + flatbeds.filter(FLATBED_CHIPS.none).length;
     ok(`مكتمل + ناقص + ما اتجردش = الإجمالي (${cover} = ${flatbeds.length})`, cover === flatbeds.length);
-    // «ناقصة كاوتش» ما تشملش اللي مفيهاش خالص — دول فئتين مختلفتين
+    // Missing-tyre excludes those with none at all; they are two different categories.
     ok('«ناقصة» و«لم تُجرَد بعد» ما بيتداخلوش',
       !flatbeds.some((f) => FLATBED_CHIPS.short(f) && FLATBED_CHIPS.none(f)));
 
-    // ═══ الكاوتش الحيّ ═══════════════════════════════════════════════════════
+    // Live tyres
     console.log('\n── فلاتر الكاوتش الحيّة ──');
     const veh = (await get('/api/ls2/vehicles')).items || [];
     for (const [key, test] of Object.entries(TIRE_CHIPS)) {
@@ -108,13 +100,12 @@ const TIRE_CHIPS = {
       veh.filter((v) => TIRE_CHIPS.hot(v) || TIRE_CHIPS.low(v) || TIRE_CHIPS.faults(v))
         .every((v) => TIRE_CHIPS.any(v)));
 
-    // ═══ تنبيهات المركبات ════════════════════════════════════════════════════
+    // Vehicle alerts
     console.log('\n── فلاتر تنبيهات المركبات ──');
     const al = await get('/api/vehicle-registry/alerts');
     const items = al.items || [];
     ok(`الإجمالي ${items.length} = المعلن ${al.total}`, items.length === al.total);
-    // الحالات تُقرأ من الاستجابة نفسها لا من قائمة مكتوبة هنا — أُضيف «على
-    // الرادار» بعد كتابة هذا التيست فصار المجموع ينقص ٢٤ ويبدو خطأً وهو ليس به.
+    // Statuses are read from the response, not a hardcoded list: the radar status was added after this test was written, which made the total fall short by 24 and look like a bug.
     const STATES = Object.keys(al.byStatus || {});
     const byStatusSum = STATES.reduce((n, s) => n + (al.byStatus?.[s] || 0), 0);
     ok(`مجموع الحالات = الإجمالي (${byStatusSum} = ${al.total})`, byStatusSum === al.total);

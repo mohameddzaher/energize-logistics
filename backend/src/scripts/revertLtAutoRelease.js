@@ -1,12 +1,7 @@
 /**
- * revertLtAutoRelease — يعيد ما فعله الإصدارُ السابق من utils/ltVehicleRelease
- * (٢٠٢٦/١٠/٢٠): أنزل المركبةَ عن ١٤ منتهي الخدمة وأغلق أوامرَهم، وأسند «ل أ 4566»
- * إلى مفوَّضها. والقاعدةُ صارت: لا إنزال بل تعليقٌ وتنبيه، والقائدُ الفعليُّ لا
- * يُشتقّ من التفويض. فيُعاد كلُّ مندوبٍ إلى مركبته وأمرُه (معلَّقًا)، ويُرفَع
- * الإسنادُ الآليّ.
- *
- *   node src/scripts/revertLtAutoRelease.js           يقول ولا يكتب
- *   node src/scripts/revertLtAutoRelease.js --apply   ينفّذ
+ * revertLtAutoRelease: undo what the previous utils/ltVehicleRelease did.
+ * It removed the vehicle from 14 ended employees and closed their orders, and assigned one vehicle to its authorized person. The rule is now: no release, only suspension and an alert, and the actual driver is not derived from the authorization. Each rep is returned to his vehicle and order (suspended) and the automatic assignment is removed.
+ * Usage: node src/scripts/revertLtAutoRelease.js [--apply] (dry run by default).
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -46,7 +41,7 @@ const APPLY = process.argv.includes('--apply');
     }
   }
   if (APPLY) {
-    // ثمّ القاعدةُ الجديدة: التعليقُ والتنبيه.
+    // Then the new rule: suspension and alert.
     const r = await require('../utils/ltVehicleRelease').run();
     console.log(`عُلِّق: ${r.held.length}`);
   } else console.log('\nللتنفيذ: --apply');

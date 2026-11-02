@@ -91,23 +91,15 @@ const generateDueAlerts = async () => {
 };
 
 /**
- * خبرٌ يخصّ قسمًا — صفٌّ واحدٌ يراه كلُّ من يملك القسمَ في صلاحيّاته.
- *
- * ── ولماذا صفٌّ واحدٌ لا صفٌّ لكلّ شخص ───────────────────────────────────────
- * الكتابةُ لكلّ مستلمٍ على حدةٍ كانت تضخّم المجموعةَ بعدد أهل القسم — رفعُ
- * مستندٍ واحدٍ صار ثلاثةَ عشرَ صفًّا، وبلغ المجموعُ سبعين ألفًا. والأسوأ أنّ
- * قائمةَ المستلمين تُكتب بيدٍ في كلّ موضع، فدورٌ يُستحدَث لا يصله شيء.
- *
- * فيُكتب الخبرُ مرّةً ويُوجَّه إلى القسم، ويُقرَّر القارئُ وقتَ القراءة من
- * مصفوفة الصلاحيّات — راجع controllers/notificationController.
- *
- * @param {string} section مفتاحُ القسم كما في config/sections.
+ * A section news item: one row seen by everyone with the section in their permissions.
+ * One row, not a row per person: writing per recipient inflated the collection by section headcount (one document upload became 13 rows, 70 thousand in total), and recipient lists were hand-written in each place, so a new role received nothing.
+ * The item is written once and routed to the section; the reader is decided at read time from the permission matrix (see controllers/notificationController).
+ * @param {string} section section key as in config/sections.
  */
 const notifySection = async (section, { type = 'system_alert', title, message, relatedEntity, relatedEntityId }) => {
   if (!section) throw new Error('notifySection needs a section');
   const n = await Notification.create({ section, type, title, message, relatedEntity, relatedEntityId });
-  // ولا بثَّ لحظيًّا هنا: المقصودون يُحسَبون بالصلاحيّات لا بقائمةِ مقابسَ
-  // مفتوحة. والشاشةُ تسحب الجرسَ عند فتحه وعند الأحداث الحيّة لقسمها.
+  // No live broadcast here: recipients are computed from permissions, not a list of open sockets. The screen pulls the bell on open and on live events of its section.
   return n;
 };
 

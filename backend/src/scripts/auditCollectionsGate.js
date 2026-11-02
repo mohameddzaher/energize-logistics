@@ -1,14 +1,8 @@
 /**
- * auditCollectionsGate — ما الذي يُوصل الكشفَ قسمَ التحصيل، بعد تغيير الشرط.
- *
- *   node src/scripts/auditCollectionsGate.js --base http://localhost:5199
- *
- * ── القاعدةُ المفحوصة ──────────────────────────────────────────────────────
- *   • رقمُ فاتورةٍ يُكتب → الفواتيرُ الضريبيّة، فورًا، وبلا شرطٍ آخر.
- *   • مراجعةُ التشغيل + نوعٌ نقديٌّ + تاريخُ سداد → فواتيرُ الكاش، فورًا.
- *   • نوعٌ ضريبيٌّ بلا رقمٍ لا يصل شيئًا ولو روجع.
- *   • والكشوفُ السابقة لأوّل سبتمبر تبقى على شرطها القديم — عمودُ المراجعة
- *     فارغٌ فيها كلِّها، فاشتراطُه عليها يُفرغ الشاشة.
+ * auditCollectionsGate: what sends a manifest to the collections section, after the condition change.
+ * node src/scripts/auditCollectionsGate.js --base http://localhost:5199
+ * Rule checked:
+ * - an invoice number written: tax invoices, immediately, with no other condition   - operations review + cash type + payment date: cash invoices, immediately   - a tax type with no number reaches nothing even if reviewed   - manifests before 1 September keep the old condition: the review column is empty in all of them, so requiring it would empty the screen
  */
 require('dotenv').config();
 const mongoose = require('mongoose');

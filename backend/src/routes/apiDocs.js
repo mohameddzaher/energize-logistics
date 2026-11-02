@@ -3,19 +3,9 @@ const express = require('express');
 const router = express.Router();
 
 /**
- * توثيقُ الـ API — وثيقتان وصفحةٌ تعرضهما.
- *
- * ── ولماذا تُولَّد عند الطلب ────────────────────────────────────────────────
- * الوثيقةُ تُبنى من `app._router` في اللحظة التي تُطلَب فيها، فما رُكِّب فعلًا
- * هو ما يُعرَض. ومسارٌ يُضاف اليوم يظهر فيها اليوم بلا أن يتذكّر أحدٌ شيئًا،
- * ومسارٌ يُحذَف يختفي منها — وهذا هو الشرطُ الذي طُلب.
- *
- * ── ومن يرى ماذا ────────────────────────────────────────────────────────────
- *   • `/api/docs/partner.json` — واجهةُ الشركاء. تُفتَح بمفتاح التكامل نفسِه،
- *     فيأخذها من يتكامل معنا بالمفتاح الذي سُلِّم له ولا يحتاج حسابًا.
- *   • `/api/docs/internal.json` — السطحُ كلُّه. حسابٌ إداريٌّ فقط: هي خريطةُ
- *     ما نملك، ولا تُعطى لخارج الشركة.
- *   • `/api/docs` — صفحةٌ تعرض الأولى، وتعرض الثانيةَ لمن سجّل دخولَه إداريًّا.
+ * API documentation: two documents and a page that shows them.
+ * Generated on request from `app._router`, so what is actually mounted is what is shown; added routes appear and removed ones disappear automatically.
+ * Visibility: `/api/docs/partner.json` is the partner surface, opened with the integration key; `/api/docs/internal.json` is the whole surface, admin accounts only; `/api/docs` is a page showing the first, and the second to signed-in admins.
  */
 const { buildOpenApi, buildCatalog, stats } = require('../services/apiDocs');
 const { requireApiKey } = require('../middleware/apiKey');
@@ -28,14 +18,14 @@ const docsOnly = (req, res, next) => (DOCS_ROLES.includes(req.user?.role)
   ? next()
   : res.status(403).json({ message: 'The internal API documentation is for administration and IT only' }));
 
-/** عنوانُ الخادم كما يراه القارئ — خلفَ nginx تُقرأ الترويسةُ المرسَلة. */
+/** Server base URL as the reader sees it; behind nginx the forwarded header is read. */
 const baseUrlOf = (req) => {
   const proto = req.headers['x-forwarded-proto'] || req.protocol || 'https';
   const host = req.headers['x-forwarded-host'] || req.get('host');
   return `${proto}://${host}`;
 };
 
-/** وثيقةُ الشركاء — بمفتاح التكامل. */
+/** Partner document, opened with the integration key. */
 // The partner document opens with the partner key — or for a signed-in admin/IT
 // user, so the "Partner docs" button in the system opens it without a key.
 const partnerKey = requireApiKey('FLEET_API_KEY', 'Partner API documentation');
@@ -48,7 +38,7 @@ router.get('/partner.json', keyOrDocsUser, (req, res) => {
   res.json(buildOpenApi(req.app, { scope: 'partner', baseUrl: baseUrlOf(req) }));
 });
 
-/** وثيقةُ السطح الداخليّ — للإدارة وحدَها. */
+/** Internal surface document, admins only. */
 router.get('/internal.json', authenticate, docsOnly, (req, res) => {
   res.set('Cache-Control', 'no-store');
   return res.json(buildOpenApi(req.app, { scope: 'internal', baseUrl: baseUrlOf(req) }));
@@ -88,13 +78,7 @@ router.get('/stats', authenticate, docsOnly, (req, res) => {
   return res.json(stats(req.app));
 });
 
-/**
- * الصفحةُ التي تُقرأ بالعين.
- *
- * تُرسَل لمن يتكامل معنا مع مفتاحه، فيفتحها ويجرّب النداءات منها. وتُحمَّل
- * أداةُ العرض من شبكة توزيعٍ عامّة؛ وإن تعذّرت فالوثيقةُ نفسُها تبقى متاحةً
- * بصيغة JSON — وهي الأصل، والصفحةُ عرضٌ لها.
- */
+/** The human-readable page. Integrators open it with their key and try calls from it. The viewer loads from a public CDN; if that fails the JSON document remains available and is the source, the page being a view of it. */
 router.get('/', (req, res) => {
   res.set('Cache-Control', 'no-store');
   // ── Its own security policy ──────────────────────────────────────────────

@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 
-// معرّفٌ مشوَّهٌ في الرابط = لا سجلّ، لا عطلٌ في الخادم — راجع utils/idParam.
+// A malformed id in the URL means no record (404), not a server error; see utils/idParam.
 const { objectIdParam } = require('../utils/idParam');
 router.param('id', objectIdParam({ status: 400 }));
 router.param('docId', objectIdParam({ status: 400 }));
@@ -9,66 +9,61 @@ router.param('attId', objectIdParam({ status: 400 }));
 const c = require('../controllers/vehicleRegistryController');
 const authorize = require('../middleware/rbac');
 
-// سجل المركبات — نفس صلاحيات قسم المركبات (super_admin/admin/HR/محاسبة).
-// authenticate + sectionGate('Vehicles') مطبّقان عند التركيب في server.js.
-// أدوار القسم نفسه أول حاجة: القسم مفتوح **بالكامل بكل أكشناته** لمين اتفتح له.
-// كانوا ناقصين من القوايم دي، فمدير المركبات كان بيشوف قسمه ومش قادر يعدّل فيه.
+// Vehicle registry: same permissions as the vehicles section (super_admin/admin/HR/accounting).
+// authenticate + sectionGate('Vehicles') are applied at mount time in server.js.
+// The section's own roles come first: the section is open with all its actions to whoever is granted it. They were missing from these lists, so the vehicles manager saw his section but could not edit it.
 const EDIT = ['super_admin', 'admin', 'vehicles_manager', 'vehicles_staff',
   'hr_manager', 'hr_specialist', 'cfo', 'accounting_manager', 'accountant'];
 const ADMIN = ['super_admin', 'admin', 'vehicles_manager', 'hr_manager'];
-// ── تعديلُ الحوادث وحذفُها للإدارة والماليّة وحدَهم (صاحبُ الشركة، ٢٠٢٦/١٠/٢٠) ──
-// `strict`: لا يفتحه منحُ قسمٍ ولا تأشيرةُ صفحة — القائمةُ هي كلُّ شيء. وتسجيلُ
-// حادثٍ جديدٍ وإرفاقُ ورقه يبقيان لفريق المركبات.
+// Editing and deleting accidents is for management and finance only. `strict`: neither a section grant nor a page grant opens it, the list is everything. Recording a new accident and attaching its papers stay with the vehicles team.
 const CLAIM_EDIT = ['super_admin', 'admin', 'cfo', 'accounting_manager'];
 
 router.get('/dashboard', c.dashboard);
-// نظرة شاملة: كارت لكل عمود، وكله بيوصّل لصفحة مفلترة.
+// Overview: a card per column, each linking to a filtered page.
 router.get('/overview', c.overview);
-// الفلاتر المتاحة وقيمها بأعدادها — محسوبة على ما تبقّى بعد بقيّة الفلاتر
+// Available filters and their values with counts, computed over what remains after the other filters.
 router.get('/filters', c.filterOptions);
 router.get('/document-types', c.documentTypes);
-// الانتهاءات بفلتر «خلال كام يوم» اللي المستخدم بيكتبه هو.
+// Expiries with a days-ahead filter that the user types himself.
 router.get('/expiring', c.expiring);
-// وثائق تأمين المركبات — وثيقة تغطّي عدة مركبات، وتجديدها يسري عليها كلها
-// سجلّات القسم: المُلّاك · المفوَّضون · مزوّدو التتبّع · الأجهزة · شرائح الوقود
+// Vehicle insurance policies: one policy covers several vehicles and its renewal applies to all of them.
+// Section registers: owners, authorized persons, tracking providers, devices, fuel cards.
 router.get('/registers', c.registers);
 router.get('/insurance-policies', c.listInsurancePolicies);
 router.post('/insurance-policies/:id/renew', authorize(...EDIT), c.renewInsurancePolicy);
 
-// بحثُ الأشخاص ولوحاتُ السجلّ — تُملأ بهما نماذجُ القسم بدل الكتابة بالأيدي.
+// People search and registry plates; the section's forms are filled from them instead of typing by hand.
 router.get('/person-lookup', c.personLookup);
-// منسدلةُ الأشخاص لخانات المفوَّض — الموارد البشريّة ثمّ مَن لا ملفَّ له من النقل الخفيف.
+// People dropdown for the authorized-person fields: HR first, then light-transport people who have no file.
 router.get('/people', c.people);
 router.get('/plate-options', c.plateOptions);
 router.get('/claims', c.listClaims);
-// ملفُّ المطالبة الواحدة وسجلُّها — قبل `/:id` العامّ أدناه، وإلّا قُرئ
-// «claims» رقمَ مركبةٍ فردَّ الخادمُ «غير موجود».
+// One claim's file and its log. Before the generic `/:id` below, otherwise 'claims' would be read as a vehicle id and the server would answer not found.
 router.get('/claims/:id', c.getClaim);
 router.get('/claims/:id/audit', c.getClaimAudit);
 router.post('/claims', authorize(...EDIT), c.createClaim);
 router.put('/claims/:id', authorize.strict(...CLAIM_EDIT), c.updateClaim);
 router.delete('/claims/:id', authorize.strict(...CLAIM_EDIT), c.deleteClaim);
-// ورقُ المطالبة: تقريرُ نجم وصورُ الضرر وعرضُ الورشة وخطابُ الشركة.
+// Claim papers: Najm report, damage photos, workshop quote and company letter.
 router.post('/claims/:id/attachments', authorize(...EDIT), c.addClaimAttachments);
 router.put('/claims/:id/attachments/:attId', authorize.strict(...CLAIM_EDIT), c.renameClaimAttachment);
 router.delete('/claims/:id/attachments/:attId', authorize.strict(...CLAIM_EDIT), c.deleteClaimAttachment);
-// تجديد أكتر من مستند مرة واحدة بنفس التاريخ
+// Renew several documents at once with the same date.
 router.post('/renew-bulk', authorize(...EDIT), c.renewBulk);
-// وثيقةٌ واحدةٌ تغطّي مئةً وثمانيًا وتسعين مركبة تُجدَّد بفعلٍ واحد لا بمئةٍ
-// وثمانٍ وتسعين تأشيرة — راجع renewShared.
+// One policy covering 198 vehicles is renewed in one action, not 198 separate ones; see renewShared.
 router.post('/renew-shared', authorize(...EDIT), c.renewShared);
 router.get('/corporate-policies', c.listCorporatePolicies);
 router.post('/corporate-policies/:id/renew', authorize(...EDIT), c.renewCorporatePolicy);
-// وإنهاءُ العقد فعلٌ آخرُ غيرُ التجديد — يُقيَّد بتاريخه وسببه في سجلّ الوثيقة.
+// Ending the contract is a different action from renewing; it is recorded with its date and reason in the policy log.
 router.post('/corporate-policies/:id/end', authorize(...EDIT), c.endCorporatePolicy);
 router.post('/corporate-policies/:id/reopen', authorize(...EDIT), c.reopenCorporatePolicy);
-// الوثيقةُ تُكتب وتُصحَّح لا تُجدَّد فقط، ووثيقةُ خيانة الأمانة لها قائمةُ مشمولين.
+// A policy is written and corrected, not only renewed, and the fidelity-insurance policy has a list of covered people.
 router.post('/corporate-policies', authorize(...EDIT), c.createCorporatePolicy);
 router.put('/corporate-policies/:id', authorize(...EDIT), c.updateCorporatePolicy);
 router.delete('/corporate-policies/:id', authorize(...ADMIN), c.deleteCorporatePolicy);
 router.post('/corporate-policies/:id/drivers', authorize(...EDIT), c.setPolicyDriver);
 router.get('/alerts', c.alerts);
-// ── بطاقاتُ السائقين ───────────────────────────────────────────────────────
+// Driver cards.
 router.get('/driver-cards', c.listDriverCards);
 router.post('/driver-cards', authorize(...ADMIN), c.createDriverCard);
 router.put('/driver-cards/:id', authorize(...ADMIN), c.updateDriverCard);
@@ -81,18 +76,17 @@ router.get('/', c.list);
 router.post('/', authorize(...EDIT), c.create);
 router.get('/:id', c.getOne);
 
-// ── ملفّات المركبة: صور الرخصة والتأمين والبطاقة ──────────────────────────
+// Vehicle files: license, insurance and card images.
 router.get('/:id/documents', c.listVehicleDocuments);
 router.post('/:id/documents', authorize(...EDIT), c.uploadVehicleDocument);
 router.put('/documents/:docId', authorize(...EDIT), c.updateVehicleDocument);
 router.delete('/documents/:docId', authorize(...EDIT), c.deleteVehicleDocument);
 router.put('/:id', authorize(...EDIT), c.update);
-// التجديد: بيحدّث التاريخ وبيقيّد التجديد في سجل المركبة.
+// Renewal: updates the date and records the renewal in the vehicle log.
 router.post('/:id/renew', authorize(...EDIT), c.renew);
-// شريحةُ بترو اب: تركيبٌ ونزع، مقيَّدان بالسجلّ — ونزعُها شرطٌ في إخلاء طرف
-// الموظّف، فلا يصحّ أن يكون تفريغَ خانةٍ لا أثرَ له.
+// Petro App chip: install and removal, both recorded in the log. Removal is a condition of the employee's clearance, so it must not be a silent field clear.
 router.post('/:id/fuel-card', authorize(...EDIT), c.fuelCardAction);
-// التفويضُ يُلغى ويُسنَد بفعلٍ واحدٍ يُغلق السجلَّين — راجع authorizationAction.
+// An authorization is revoked and reassigned in one action that closes both records; see authorizationAction.
 router.post('/:id/authorization', authorize(...EDIT), c.authorizationAction);
 router.delete('/:id', authorize(...ADMIN), c.remove);
 

@@ -1,17 +1,7 @@
 /* eslint-disable no-console */
-// استيراد جرد الكاوتش من ملف الورشة إلى سجل أصول LS2.
-//
-//   node src/scripts/importTireInventory.js                        # الجرد الأصلي
-//   node src/scripts/importTireInventory.js newtrucks.json          # أي ملف تاني
-//   node src/scripts/importTireInventory.js newtrucks.json --dry    # يقول هيعمل إيه
-//
-// idempotent بالـ serial: نفس الملف يتنفّذ عشر مرات يطلع نفس النتيجة. بيضمن
-// وجود السطحة (Flatbed) والتيدر (Trailer) وبيثبّت كل إطار على مكانه.
-//
-// وبيكتب في سجل الحركة (Ls2AssetEvent): كل إطار جديد بياخد `registered` وبعده
-// `mounted`، واللي بيتنقل من عربية لعربية بياخد `transferred` بالمكان القديم
-// والجديد. من غير ده، بروفايل العربية بيعرض ١٤ كاوتش من غير ما حد يعرف جُم
-// منين ولا إمتى — والتاريخ ده هو اللي بيخلّي الورشة تحاسب على عمر الإطار.
+// Imports the workshop tire inventory into the LS2 asset registry.
+// Usage: node src/scripts/importTireInventory.js [file.json] [--dry]
+// Idempotent by serial; writes Ls2AssetEvent history (registered, mounted, transferred) so tire age stays traceable.
 require('dotenv').config();
 const path = require('path');
 const fs = require('fs');
@@ -38,12 +28,7 @@ async function main() {
   const rows = Array.isArray(raw) ? raw : (raw.records || raw.rows || raw.data || []);
   console.log(`${path.basename(file)}: ${rows.length} إطار${DRY ? '   (تجربة)' : ''}`);
 
-  // ── فردة واحدة ما تكونش على عربيتين ────────────────────────────────────────
-  // ملف «2 trucks.json» جه فيه ٦ سيريالات مكتوبة مرتين، مرة على كل عربية وفي
-  // نفس المواقع. لو الاستيراد بلعها، آخر صف كان هيكسب والفردة كانت هتتنقل من
-  // عربية لعربية من غير ما حد يعرف — والصف اللي خسر كان هيسيب مكانه فاضي.
-  // الصفوف دي بتتوقف هنا ويتطبعوا: التعارض ده محتاج بني آدم يقرّر فيه (السكربت
-  // fixTireVehicleMixup بيحلّه بنمرة الإطار لما البلوكات تكون واضحة).
+  // A tire must not sit on two vehicles. Serials listed on two vehicles are stopped and printed for a human decision (fixTireVehicleMixup resolves them by tire number when blocks are clear).
   const seen = new Map();
   const clashes = [];
   for (const r of rows) {
@@ -61,7 +46,7 @@ async function main() {
   }
   const clashed = new Set(clashes.flat().map((r) => String(r.serial)));
 
-  // تجميع حسب المركبة.
+  // Group by vehicle.
   const byPlate = new Map();
   for (const r of rows) {
     const plate = String(r.vehicle_plate || '').trim();
@@ -75,12 +60,12 @@ async function main() {
 
   for (const [plate, v] of byPlate) {
     const key = pk(plate);
-    // السطحة.
+    // Flatbed.
     if (!(await Ls2Flatbed.findOne({ plateKey: key }))) {
       if (!DRY) await Ls2Flatbed.create({ plate, plateKey: key });
       summary.flatbeds++;
     }
-    // التيدر.
+    // Trailer.
     if (v.trailer_number != null && String(v.trailer_number).trim()) {
       const tn = String(v.trailer_number).trim();
       const trailer = await Ls2Trailer.findOne({ trailerNumber: tn });
@@ -93,7 +78,7 @@ async function main() {
       }
       if (!DRY) await Ls2Flatbed.updateOne({ plateKey: key }, { currentTrailerNumber: tn });
     }
-    // الكاوتش.
+    // Tires.
     for (const t of v.tires) {
       const serial = String(t.serial || '').trim();
       if (!serial || clashed.has(serial)) continue;
@@ -127,9 +112,7 @@ async function main() {
 
       const existing = await Ls2TireAsset.findOne({ serial });
 
-      // الشيت ما يدوسش على شغل بني آدم: لو فيه حركة على الفردة بعد تاريخ الجرد
-      // من غير استيراد، يبقى حد نقلها وهو شايفها — ومكانها ده هو الصح. الشيت
-      // بيحدّث بياناتها الوصفية بس.
+      // The sheet must not overwrite human work: a movement after the inventory date means someone moved the tire knowingly, so only its descriptive data is updated.
       if (existing) {
         const touched = await Ls2AssetEvent.findOne({
           refId: existing._id, date: { $gt: at }, notes: { $ne: 'استيراد جرد الورشة' },

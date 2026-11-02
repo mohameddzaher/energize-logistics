@@ -1,15 +1,7 @@
 /**
- * auditHrMaster — ماستر الموارد البشرية: الكروت، «مطلوب» مقابل «غير مطلوب»،
- * وملء البيانات من الشاشة.
- *
- *   node src/scripts/auditHrMaster.js
- *   node src/scripts/auditHrMaster.js --base http://127.0.0.1:5001
- *
- * أهم حاجة بيتأكد منها: أول ما حقل «مطلوب» يتملي، العدّاد بينقص لوحده. من غير
- * كده، الموارد البشرية بتشتغل والرقم يفضل مكانه فيفضلوا بيدوّروا على شغل خلص.
- * وكمان إن «غير مطلوب» عمرها ما بتتحسب ناقصة.
- *
- * بيرجّع أي حقل غيّره لأصله وبيمسح مستخدميه.
+ * Audits the HR master: cards, required versus not-required, and filling data from the screen.
+ * Key check: once a required field is filled, the counter drops on its own; otherwise HR works while the number stays and they keep looking for finished work. Also that not-required is never counted as missing.
+ * Restores any field it changed and deletes its users.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -91,7 +83,7 @@ async function login(e) {
   const badDate = await req('PATCH', `/api/hr/master/employees/${target._id}/fields`, ck, { fields: { iqamaExpiry: 'مش تاريخ' } });
   ok('تاريخ غير صالح مرفوض', badDate.status === 400, badDate.body?.message);
 
-  // رجّع الموظف لحالته
+  // Restore the employee to the original state.
   await Employee.updateOne({ _id: target._id }, { $set: { iqamaExpiry: null }, $set: { [`fieldStatus.iqamaExpiryStatus`]: 'required' } });
   await User.deleteMany({ email: { $regex: '^zz-hr' } });
   console.log(`\n${pass} passed, ${fail} failed`);

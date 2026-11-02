@@ -1,24 +1,7 @@
 /**
- * auditHrSection — تيست على **كل** صفحة في قسم الموارد البشرية، مش عيّنة.
- *
- *   node src/scripts/auditHrSection.js --base http://127.0.0.1:5599
- *
- * الشكوى اللي السكربت ده رد عليها: «خدتها تيست كده تجربة ولسه معملتش تيست في
- * كل الصفحات». فبيمشي على كل صفحة في الشجرة ويشوف الاندبوينت بتاعها بيرد بإيه،
- * وبيقارن بالماستر نفسه مش بتوقّع.
- *
- * أهم تلات حاجات بيمسكها — كلهم كانوا باگ حقيقي اتشاف على الشاشة:
- *
- * ١) تاريخ بايت جنب حالة «مطلوب». لو الماستر قال إن الإقامة مطلوبة، يبقى
- *    ما ينفعش يبقى فيه تاريخ انتهاء ولا «متأخر ٧٨٦٢ يوم». دي كانت ٧٥٠ حقل.
- *
- * ٢) فلتر «ينتهي خلال ٣٠ يوم» بيرجّع منتهي من سنة. أي صف راجع من الفلتر ده
- *    لازم يكون داخل المدة فعلاً، والمنتهي بيبان لوحده باختيار صريح.
- *
- * ٣) رقم الهوية موجود في كل صف راجع من أي جدول — القسم كله بيتسيرش بيه.
- *
- * وبيتأكد كمان إن كل صفحة في app/system/hr ليها اندبوينت بيرد فعلاً، وإن
- * سجلات الأرشيف (isHrRecord:false) مش بتظهر في أي قايمة ولا عدّاد.
+ * Tests every page in the HR section against the master itself, not a sample.
+ * Catches: stale dates next to a required status, expires-within-30-days returning long-expired rows, missing identity numbers in rows.
+ * Also that every page has a responding endpoint and archive records (isHrRecord:false) appear in no list or counter.
  */
 require('dotenv').config();
 const path = require('path');
@@ -36,7 +19,7 @@ async function req(m, p, ck, b) {
     method: m, headers: { 'Content-Type': 'application/json', ...(ck ? { Cookie: ck } : {}) },
     body: b ? JSON.stringify(b) : undefined,
   });
-  let j = null; try { j = await r.json(); } catch { /* مش JSON */ }
+  let j = null; try { j = await r.json(); } catch { /* Not JSON. */ }
   return { status: r.status, body: j };
 }
 async function login(email) {
@@ -48,7 +31,7 @@ async function login(email) {
   return (r.headers.getSetCookie?.() || []).map((c) => c.split(';')[0]).join('; ');
 }
 
-// كل صفحة في القسم والاندبوينت اللي بيغذّيها.
+// Every page in the section and the endpoint feeding it.
 const PAGES = [
   ['/system/hr/master', '/api/hr/master/overview'],
   ['/system/hr/master/expiring', '/api/hr/master/expiring'],
@@ -82,39 +65,36 @@ const PAGES = [
   const ck = await login(u.email);
 
   try {
-    // ═══ ١) الأرقام مقابل الملف نفسه ═════════════════════════════════════════
+    // 1) Numbers against the file itself
     console.log('\n── الأرقام مقابل الماستر ──');
     const ov = (await req('GET', '/api/hr/master/overview', ck)).body;
     const fileTotal = src.employees.length;
     const fileActive = src.employees.filter((e) => e.employment?.is_active !== false).length;
-    // الملف مرجعُ الإجمالي: عدد الصفوف لا يتغيّر بعمل المستخدم.
+    // The file is the reference for the total: the row count does not change with user actions.
     ok(`الموظفون = ${fileTotal} (الملف)`, ov?.totals?.employees === fileTotal, `رجع ${ov?.totals?.employees}`);
 
-    // أما «على رأس العمل» فيتغيّر كل يوم: مَن أنهى المستخدم خدمته على الشاشة لم
-    // يعد على رأس العمل مهما قال ملف الاستيراد. فالمقارنة هنا **بين الواجهات
-    // بعضها ببعض** لا بالملف، والانحراف عن الملف يُطبع ليُقرأ لا ليُرسِب.
+    // The active-staff count changes daily: someone ended on screen is no longer active whatever the import file says. So the comparison is between the interfaces, not against the file; drift from the file is printed for reading, not failing.
     const drift = fileActive - (ov?.totals?.active ?? 0);
     if (drift) console.log(`  ℹ  ${drift} موظفًا تغيّرت حالتهم بعد الاستيراد — الملف ${fileActive} · النظام ${ov?.totals?.active}`);
     ok('«ليس على رأس العمل» = الإجمالي ناقص العاملين',
       ov?.totals?.notActive === ov?.totals?.employees - ov?.totals?.active,
       `${ov?.totals?.notActive} = ${ov?.totals?.employees} − ${ov?.totals?.active}`);
 
-    // «الموظفون» ما يتحركش لما الفلتر يتغيّر — ده اللي كان بيقول ٣٢١.
+    // The Employees number must not move when the filter changes; that was the bug showing 321.
     const ovA = (await req('GET', '/api/hr/master/overview?status=active', ck)).body;
     ok('«الموظفون» ثابت مع فلتر «على رأس العمل فقط»', ovA?.totals?.employees === fileTotal, `رجع ${ovA?.totals?.employees}`);
     ok('«المعروض» بيقول العدد المفلتر', ovA?.totals?.filtered === ov?.totals?.active, `رجع ${ovA?.totals?.filtered}`);
 
-    // عدد «مطلوب» = عدد السنتينلات في الملف بالظبط
+    // The required count equals the sentinel count in the file exactly.
     let fileRequired = 0;
     const countReq = (o) => { for (const [k, v] of Object.entries(o || {})) { if (v && typeof v === 'object') countReq(v); else if (k.endsWith('_status') || k === 'status_sentinel') { if (v === 'required') fileRequired++; } } };
     src.employees.forEach(countReq);
-    // «مطلوب» ينقص كلما ملأ أحدهم خانة — فلا يجوز أن يساوي رقم الملف إلى الأبد.
-    // المطلوب ألا يزيد عنه (لا تُخلق قوائم عمل من العدم) وأن يبقى موجبًا.
+    // The required count falls as people fill fields, so it cannot equal the file forever. It must not exceed it (no work lists out of nothing) and must stay positive.
     ok(`بيانات مطلوبة ${ov?.totals?.required} ≤ ${fileRequired} (الملف)`,
       ov?.totals?.required <= fileRequired && ov?.totals?.required >= 0,
       `اكتُمل ${fileRequired - (ov?.totals?.required ?? 0)} خانة منذ الاستيراد`);
 
-    // ═══ ٢) كل صفحة بترد ═════════════════════════════════════════════════════
+    // 2) Every page responds
     console.log('\n── كل صفحة في القسم ──');
     for (const [page, ep] of PAGES) {
       if (!ep) { ok(`${page}  (صفحة تفاصيل)`, true, 'بتتفتح من قايمة الموظفين'); continue; }
@@ -122,12 +102,12 @@ const PAGES = [
       ok(`${page.padEnd(34)} ${ep}`, r.status === 200, `HTTP ${r.status}`);
     }
 
-    // صفحة تفاصيل موظف حقيقي
+    // Detail page of a real employee.
     const one = await Employee.findOne({ inCurrentMaster: true }).select('_id').lean();
     const det = await req('GET', `/api/hr/employees/${one._id}`, ck);
     ok('/system/hr/employees/[id]  ببيانات حقيقية', det.status === 200, `HTTP ${det.status}`);
 
-    // ═══ ٣) كل مجموعة ليها صفحة ═════════════════════════════════════════════
+    // 3) Every group has a page
     console.log('\n── صفحة كل مجموعة (/system/hr/master/[group]) ──');
     for (const g of H.GROUPS) {
       const r = await req('GET', `/api/hr/master/records/${g.key}`, ck);
@@ -136,7 +116,7 @@ const PAGES = [
       ok(`${g.key.padEnd(20)} ${String(g.ar).padEnd(22)} ${rows.length} صف`, r.status === 200 && hasFields, `HTTP ${r.status}`);
     }
 
-    // ═══ ٤) رقم الهوية في كل صف ══════════════════════════════════════════════
+    // 4) Identity number in every row
     console.log('\n── رقم الهوية موجود في كل جدول ──');
     for (const g of H.GROUPS) {
       const rows = (await req('GET', `/api/hr/master/records/${g.key}`, ck)).body?.rows || [];
@@ -147,7 +127,7 @@ const PAGES = [
     ok(`الانتهاءات: ${exp.length} صف فيهم رقم الهوية`, exp.every((x) => x.iqamaNumber !== undefined),
       `${exp.filter((x) => x.iqamaNumber === undefined).length} من غير`);
 
-    // ═══ ٥) الباگ الأصلي: تاريخ بايت جنب «مطلوب» ═════════════════════════════
+    // 5) Original bug: stale date next to required
     console.log('\n── مفيش تاريخ بايت جنب حالة «مطلوب» ──');
     let stale = 0; const examples = [];
     for (const g of H.GROUPS) {
@@ -163,7 +143,7 @@ const PAGES = [
     }
     ok('مفيش قيمة متخزّنة على حقل حالته «مطلوب»', stale === 0, examples.join(' | '));
 
-    // HRIDOY بالاسم — ده اللي المستخدم شافه بنفسه
+    // HRIDOY by name: the one the user saw himself.
     const iq = (await req('GET', '/api/hr/master/records/iqama?q=HRIDOY', ck)).body?.rows || [];
     if (iq.length) {
       const bad = iq.filter((r) => r.statuses?.iqamaExpiry === 'required' && r.values?.iqamaExpiry);
@@ -171,7 +151,7 @@ const PAGES = [
         bad.map((b) => `${b.name} = ${b.values.iqamaExpiry}`).join(' | '));
     }
 
-    // ═══ ٦) الفلاتر ══════════════════════════════════════════════════════════
+    // 6) Filters
     console.log('\n── الفلاتر ──');
     for (const days of [30, 60, 90, 180]) {
       const r = (await req('GET', `/api/hr/master/records/iqama?withinDays=${days}&includeExpired=0`, ck)).body?.rows || [];
@@ -183,7 +163,7 @@ const PAGES = [
     const noExp = (await req('GET', '/api/hr/master/records/iqama?withinDays=30&includeExpired=0', ck)).body?.rows || [];
     ok(`«مع المنتهي» بيزوّد فعلاً (${withExp.length} مقابل ${noExp.length})`, withExp.length >= noExp.length);
 
-    // فلاتر الحالة — الرقم لازم يطابق كارت النظرة الشاملة
+    // Status filters: the number must match the overview card.
     console.log('\n── الضغط على كارت «مطلوب» بيفتح نفس العدد ──');
     let chipChecks = 0;
     for (const g of H.GROUPS.slice(0, 6)) {
@@ -200,17 +180,17 @@ const PAGES = [
     }
     ok(`${chipChecks} كارت بيفتح نفس العدد اللي مكتوب عليه`, chipChecks > 0);
 
-    // البحث برقم الهوية — أكتر حاجة بيتسيرش بيها
+    // Search by identity number: the thing most often missed.
     const someone = await Employee.findOne({ inCurrentMaster: true, iqamaNumber: { $nin: ['', null] } }).lean();
     const byId = (await req('GET', `/api/hr/master/records/iqama?q=${someone.iqamaNumber}`, ck)).body?.rows || [];
     ok(`البحث برقم الهوية ${someone.iqamaNumber}`, byId.length >= 1 && byId.some((r) => r.iqamaNumber === someone.iqamaNumber));
 
-    // الترتيب
+    // Sort order
     const asc = (await req('GET', '/api/hr/master/records/iqama?sort=iqamaNumber&dir=asc', ck)).body?.rows || [];
     const desc = (await req('GET', '/api/hr/master/records/iqama?sort=iqamaNumber&dir=desc', ck)).body?.rows || [];
     ok('الترتيب برقم الهوية بيقلب', asc.length > 1 && asc[0]?.iqamaNumber !== desc[0]?.iqamaNumber);
 
-    // ═══ ٧) الأرشيف مش بيظهر في أي مكان ══════════════════════════════════════
+    // 7) Archive appears nowhere
     console.log('\n── سجلات الأرشيف مستبعدة ──');
     const archived = await Employee.find({ isHrRecord: false }).select('_id arabicName firstName').lean();
     const empList = (await req('GET', '/api/hr/employees?limit=1000', ck)).body;
@@ -219,14 +199,13 @@ const PAGES = [
     ok(`${archived.length} سجل أرشيفي — مفيش منهم في قايمة الموظفين`, leaked.length === 0,
       leaked.map((x) => x.arabicName || x.firstName).join(' | '));
     const dash = (await req('GET', '/api/hr/dashboard', ck)).body;
-    // الداشبورد واللوحة صفحتان في قسم واحد — رقمان مختلفان لعدد الموظفين على
-    // شاشتين متجاورتين يجعلان القارئ لا يصدّق أيًّا منهما.
+    // The dashboard and the board are two pages in one section; two different employee counts on adjacent screens make the reader trust neither.
     ok(`داشبورد: ${dash?.summary?.totalEmployees ?? '?'} موظف = لوحة ${ov?.totals?.employees}`,
       dash?.summary?.totalEmployees === ov?.totals?.employees);
     ok(`داشبورد: ${dash?.summary?.activeEmployees ?? '?'} على رأس العمل = لوحة ${ov?.totals?.active}`,
       dash?.summary?.activeEmployees === ov?.totals?.active);
 
-    // ═══ ٨) الملء من الشاشة بيقلّل العدّاد ═══════════════════════════════════
+    // 8) Filling from the screen lowers the counter
     console.log('\n── الملء من الشاشة ──');
     const target = await Employee.findOne({ inCurrentMaster: true, 'fieldStatus.companyNumberStatus': 'required' }).lean();
     if (target) {
@@ -235,7 +214,7 @@ const PAGES = [
       const after = (await req('GET', '/api/hr/master/overview', ck)).body?.totals?.required;
       ok('الحفظ نجح', w.status === 200, `HTTP ${w.status}`);
       ok(`العدّاد نقص ${before} → ${after}`, after === before - 1);
-      // رجّعه زي ما كان
+      // Restore it as it was.
       await Employee.updateOne({ _id: target._id }, { $set: { companyNumber: '', 'fieldStatus.companyNumberStatus': 'required' } });
       const back = (await req('GET', '/api/hr/master/overview?fresh=1', ck)).body?.totals?.required;
       ok(`رجع لأصله ${back}`, back === before);

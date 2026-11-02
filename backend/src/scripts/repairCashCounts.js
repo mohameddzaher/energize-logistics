@@ -1,27 +1,8 @@
 /**
- * repairCashCounts — يجعل «النقد المعدود» و«الفرق» يقولان الحقيقة.
- *
- *   node src/scripts/repairCashCounts.js --dry
- *   node src/scripts/repairCashCounts.js --apply
- *
- * ── ما الذي اختلّ ───────────────────────────────────────────────────────────
- * خانتان كانتا تُكتبان مرّةً عند الإقفال ثمّ لا تُمَسّان، بينما يتغيّر الختاميُّ
- * بعدهما — حركةٌ تُضاف أو تُعدَّل، أو تصحيحٌ في يومٍ سابق يتدحرج على ما بعده:
- *
- *   `actualCash`      كان يُملأ بنسخةٍ من الختاميّ حين لا يعدّ أحدٌ النقد —
- *                     في الإقفال التلقائيّ، وفي إقفالٍ يدويٍّ بلا إدخال عدّ.
- *                     فصار «لم يُعَدّ» و«عُدَّ فطابق تمامًا» شيئًا واحدًا.
- *   `cashDifference`  رقمٌ مخزَّنٌ لا مشتَقّ، فيبقى فرقُ أمسِ منسوبًا إلى
- *                     ختاميِّ اليوم.
- *
- * ── وكيف يُعرَف المعدودُ الحقيقيُّ من المنسوخ ───────────────────────────────
- * من سجلّ المراجعة نفسِه: قيدُ `close_wallet_day` يحفظ ما أُرسل. فإن حمل
- * `actualCash` فقد عدّه إنسانٌ وأدخله — وهو واقعةٌ لا تُمَسّ، ويُعاد اشتقاقُ
- * فرقِها من الختاميِّ الجاري. وإن لم يحمله — أو كان الإقفال تلقائيًّا — فلا
- * عدَّ هناك، وتُفرَّغ الخانتان.
- *
- * ولا يُخمَّن: اليومُ الذي لا قيدَ له في السجلّ يُترَك معدودُه كما هو ويُعاد
- * اشتقاق فرقِه فقط. إظهارُ فرقٍ ربّما كان حقيقيًّا أهونُ من محو عدٍّ وقع.
+ * repairCashCounts: make 'counted cash' and 'difference' tell the truth. Usage: node src/scripts/repairCashCounts.js [--dry|--apply]. The two fields were written once at close and never updated, while the closing balance changes afterwards (added or edited movements, or a
+ * correction on an earlier day cascading forward). - `actualCash` was filled with a copy of the closing balance when nobody counted (auto close, or manual close without a count), making 'not counted' and 'counted and matched' identical. - `cashDifference` is stored rather
+ * than derived, so yesterday's difference stays attributed to today's closing. Real vs copied counts are told apart from the audit log: a `close_wallet_day` entry stores what was sent. If it carries `actualCash`, a human counted it: it is kept and its difference is re-derived
+ * from the current closing. If not, or the close was automatic, both fields are cleared. No guessing: a day with no audit entry keeps its count and only the difference is re-derived. Showing a possibly real difference is better than erasing a count that happened.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -44,16 +25,16 @@ const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
     const actual = w.actualCash == null ? null : r2(w.actualCash);
     const closing = r2(w.closingBalance);
 
-    // أعُدَّ نقدُ هذا اليوم فعلًا؟
+    // Was this day's cash actually counted?
     let counted;
-    if (w.autoClosedNote) counted = false;              // النظام أقفله — لا عدّ
-    else if (actual == null) counted = false;           // فارغٌ أصلًا
+    if (w.autoClosedNote) counted = false;              // The system closed it: no count
+    else if (actual == null) counted = false;           // Already empty
     else {
       const log = await AuditLog.findOne({ entity: 'DailyWallet', entityId: w._id, action: 'close_wallet_day' })
         .sort({ createdAt: -1 }).lean();
       const sent = log && log.changes && log.changes.after
         ? log.changes.after.actualCash : undefined;
-      // لا قيدَ في السجلّ ⇒ لا يُخمَّن: يبقى المعدودُ ويُصحَّح الفرقُ وحده.
+      // No audit entry, so no guessing: keep the count and fix only the difference.
       counted = log ? (sent !== undefined && sent !== null) : true;
     }
 
@@ -97,12 +78,12 @@ const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
       await r.w.save();
     }
     console.log(`\n  ✔ صُحّح ${rows.length} يومًا.`);
-    try { require('../websocket/socketManager').emitToAll('wallet:updated', {}); } catch (_) { /* خارج الخادم */ }
+    try { require('../websocket/socketManager').emitToAll('wallet:updated', {}); } catch (_) { /* outside the server */ }
   } else if (rows.length) {
     console.log('\n  لم يُكتب شيء. أضف --apply للتنفيذ.');
   }
 
-  // والتحقّقُ بعد الكتابة: الهُويّةُ تصدق على الدفتر كلِّه.
+  // Post-write check: the identity holds across the whole ledger.
   const after = await DailyWallet.find({}).lean();
   const broken = after.filter((d) => {
     if (d.actualCash == null) return d.cashDifference != null;

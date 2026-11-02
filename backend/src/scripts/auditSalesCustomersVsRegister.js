@@ -1,25 +1,8 @@
 /**
- * عملاءُ «المبيعات/العلاقات» الذين ليسوا في سجلّ العملاء.
- *
- * ── العلّة ──────────────────────────────────────────────────────────────────
- * قسمُ المبيعات لم تكن له صفحةُ عملاء: يقرأ عملاءَه من شركات «إدارة العلاقات»
- * (`CrmCompany`) عبر الصفقات. وصار يفتح الآن سجلَّ العملاء نفسَه الذي يفتحه
- * التشغيلُ وطلباتُ الشحنات (`ShipmentOrderCustomer`). فشركةٌ في العلاقات لا
- * مقابلَ لها في السجلّ عميلٌ يعرفه المندوبُ ولا يجده في صفحته الجديدة.
- *
- * ── والمطابقة ──────────────────────────────────────────────────────────────
- * بمعرّف منصّة التشغيل أوّلًا (`externalId` في الطرفين) ثمّ بالاسم **المطويّ**
- * — العربيّ والإنجليزيّ — لا الحرفيّ: الأسماءُ تحمل مسافاتٍ غيرَ عاديّة وهمزاتٍ
- * وتاءً مربوطةً تُكتب هاءً (راجع customer-name-hidden-differences).
- *
- * ── وما يُضاف ──────────────────────────────────────────────────────────────
- * التقريرُ يعدّ الجميع. و`--apply` تضيف **العملاءَ النشطين** وحدَهم (`status:
- * active`): العميلُ المحتمل ليس عميلَ تشغيلٍ بعد، وإضافتُه تملأ قائمةَ اختيار
- * الشحنة بأسماءٍ لم تتعاقد. ومن أراد الجميع أضاف `--include-leads`. ولا يُحذَف
- * شيءٌ ولا يُعدَّل سجلٌّ قائم — إضافةٌ فقط.
- *
- * تجربةٌ افتراضًا؛ `--apply` للكتابة.
- *   node src/scripts/auditSalesCustomersVsRegister.js [--apply] [--include-leads] [--list]
+ * Sales/relations customers missing from the customer register (ShipmentOrderCustomer), since sales now opens that register.
+ * Matches by externalId first, then by folded name (not literal; names carry odd spaces and hamza variants).
+ * Dry run by default; --apply adds only active customers, --include-leads adds all. Add-only.
+ * node src/scripts/auditSalesCustomersVsRegister.js [--apply] [--include-leads] [--list]
  */
 require('dotenv').config({ quiet: true });
 const mongoose = require('mongoose');
@@ -28,7 +11,7 @@ const mongoose = require('mongoose');
   const apply = process.argv.includes('--apply');
   const includeLeads = process.argv.includes('--include-leads');
   const list = process.argv.includes('--list');
-  // التجربةُ لا تبني فهرسًا ولا تنشئ مجموعة: قراءةٌ خالصة.
+  // A dry run builds no index and creates no collection: pure read.
   await mongoose.connect(process.env.MONGODB_URI, apply ? {} : { autoIndex: false, autoCreate: false });
 
   const CrmCompany = require('../models/CrmCompany');
@@ -90,10 +73,10 @@ const mongoose = require('mongoose');
 
   let added = 0;
   for (const co of eligible) {
-    // الاسمُ العربيّ هو ما يُكتب في الكشوف؛ والإنجليزيّ بديلُه إن غاب.
+    // The Arabic name is what is written on statements; the English one is the fallback.
     const name = String(co.arabicName || co.name || '').replace(/\s+/g, ' ').trim();
     if (!name) continue;
-    // قراءةٌ ثانيةٌ قبل الكتابة: تشغيلان متتاليان لا يضيفان العميلَ مرّتين.
+    // Second read before writing, so two consecutive runs do not add a customer twice.
     const k = fold(name);
     if (byKey.has(k)) continue;
     const doc = await ShipmentOrderCustomer.create({

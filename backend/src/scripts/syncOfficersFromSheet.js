@@ -1,11 +1,7 @@
 /**
- * syncOfficersFromSheet — الورقةُ هي المرجع في مَن يتولّى أيَّ حساب.
- *
- *   node src/scripts/syncOfficersFromSheet.js          تجربة
- *   node src/scripts/syncOfficersFromSheet.js --yes    تنفيذ
- *
- * تُقرأ ورقتا «Aging» و«Aging Shipment» — لكلٍّ منهما عمودُ Collection Officer —
- * ويُطابَق الحسابُ بكوده. ولا يُكتب إلّا ما اختلف.
+ * The sheet is the reference for who handles each account.
+ * Usage: node src/scripts/syncOfficersFromSheet.js (preview) | --yes (apply)
+ * Reads the Aging and Aging Shipment sheets (Collection Officer column), matches accounts by code, and writes only what differs.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -20,8 +16,7 @@ const FILE = path.join(__dirname, '../../../collection files/Financial Collectio
   const CollectionsParty = require('../models/CollectionsParty');
   const wb = XLSX.readFile(FILE);
 
-  // كودُ الحساب ← المسؤول، من الورقتين. والثانيةُ تُكتب فوق الأولى عند التكرار
-  // لأنّها أخصُّ (حسابات الشحنات).
+  // Account code to officer map from both sheets; the second overrides the first on duplicates because it is more specific (shipment accounts).
   const want = new Map();
   for (const [sheet, headerRow] of [['Aging', 4], ['Aging Shipment', 4]]) {
     const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheet], { header: 1, defval: '', blankrows: false });

@@ -1,15 +1,9 @@
 /* eslint-disable no-console */
 /**
- * tireCoverage — أنهي عربية مسجّل عليها كام كاوتش، ومين لسه ناقص.
- *
- *   node src/scripts/tireCoverage.js
- *
- * العربية الكاملة = **١٤ إطار**: ٦ في الرأس، ٦ في التيدر، ٢ استبن. أي رقم أقل
- * من كده معناه إن الورشة لسه ما جردتش العربية دي — مش إن العربية ناقصة كاوتش
- * فعلاً. الفرق مهم: التقرير ده قايمة شغل جرد، مش قايمة أعطال.
- *
- * المصدر: Ls2Flatbed (كل سطحاتنا) مقابل Ls2TireAsset المثبّتة عليها بالـ
- * plateKey — نفس المفتاح اللي الشاشات بتوصل بيه، فالرقم هنا هو نفس الرقم هناك.
+ * Tire coverage report: how many tires are registered per truck and which trucks are still missing.
+ * Usage: node src/scripts/tireCoverage.js
+ * A complete truck has 14 tires: 6 on the head, 6 on the trailer, 2 spare. Fewer means the workshop has not yet inventoried that truck, not that tires are missing, so this is an inventory worklist, not a fault list.
+ * Source: Ls2Flatbed (all our flatbeds) against Ls2TireAsset installed on them by plateKey, the same key the screens join on.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');

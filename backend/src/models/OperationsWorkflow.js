@@ -3,63 +3,48 @@ const { paymentSchema } = require('./collectionPaymentSchema');
 
 const operationsWorkflowSchema = new mongoose.Schema(
   {
-    // ══════════════════════════════════════════════════════════
-    // PRIMARY FIELD — رقم الكشف (Report Number)
-    // ══════════════════════════════════════════════════════════
+    // PRIMARY FIELD: report number
     reportNumber: { type: String, unique: true },
 
     // ══════════════════════════════════════════════════════════
     // GROUP 1: Application Columns (Moderator) — 14 fields
     // ══════════════════════════════════════════════════════════
-    reportDate: { type: Date },                              // تاريخ الكشف
-    fromLocation: { type: String, trim: true },              // من
-    toLocation: { type: String, trim: true },                // الي
-    branch: { type: String, trim: true },                    // الفرع
-    carOwner: { type: String, trim: true },                  // مالك السياره
-    carNumber: { type: String, trim: true },                 // رقم السياره
-    ownerType: { type: String, trim: true },                 // نوع المالك
-    executionStatus: { type: String, trim: true },           // حاله التنفيذ
-    applicationStatus: { type: String, trim: true },         // حاله الابلكيشن
-    paymentMethod: { type: String, trim: true },             // طريقه الدفع
-    username: { type: String, trim: true },                  // اسم المستخدم
-    taxIndicator: { type: String, trim: true },              // ض / غ ض
-    purchaseValue: { type: Number, default: 0 },             // قيمه الشراء
+    reportDate: { type: Date },                              // Report date
+    fromLocation: { type: String, trim: true },              // From
+    toLocation: { type: String, trim: true },                // To
+    branch: { type: String, trim: true },                    // Branch
+    carOwner: { type: String, trim: true },                  // Vehicle owner
+    carNumber: { type: String, trim: true },                 // Vehicle number
+    ownerType: { type: String, trim: true },                 // Owner type
+    executionStatus: { type: String, trim: true },           // Execution status
+    applicationStatus: { type: String, trim: true },         // Application status
+    paymentMethod: { type: String, trim: true },             // Payment method
+    username: { type: String, trim: true },                  // User name
+    taxIndicator: { type: String, trim: true },              // Taxable / non-taxable
+    purchaseValue: { type: Number, default: 0 },             // Purchase value
     sellingValue: { type: Number, default: 0 },
 
-    // ── ومن أين جاءت قيمةُ البيع ──────────────────────────────────────────────
-    //
-    // `sellingValue` تُكتب من منصّة التشغيل في كلّ مزامنة. فتصحيحُها باليد لا
-    // يعيش دقائق: كُتبت قيمُ سبعةٍ وأربعين كشفًا نقديًّا من دفتر التحصيل فأعادتها
-    // المزامنةُ إلى ما كانت قبل أن يراها أحد.
-    //
-    // ودفترُ التحصيل هو المرجعُ في الكشف النقديّ — «لو دي بالذات فواتير كاش
-    // فالسعرُ في شيت التحصيل هو الأصحّ». فمتى كُتبت القيمةُ من الدفتر عُلِّمت
-    // هنا، وامتنعت المزامنةُ عن الكتابة فوقها وحدَها. وبقيّةُ الحقول تُنقَل كما
-    // هي، والقرّاءُ كلُّهم يقرؤون `sellingValue` كما كانوا — لا شرطَ يتناثر في
-    // الشاشات.
-    //
-    // و`manual` = كتبها بيده مَن يملك العمود في سير العمل (مديرُ التشغيل والمبيعاتُ
-    // وأهلُ المال والتحصيل)، وكُتبت معها في منصّة التشغيل (`selling_price`). فلا
-    // تكتب المزامنةُ فوقها كذلك: قرارُ إنسانٍ صريحٌ على كشفٍ بعينه، والمنصّةُ تعيد
-    // `selling_price = purchase_price` من تلقاء نفسها في بعض تعديلاتها.
-    sellingValueSource: { type: String, enum: ['', 'platform', 'collections_book', 'manual'], default: '' },              // قيمه البيع
+    // Where `sellingValue` comes from.
+    // The operations platform writes it on every sync, so a hand correction is overwritten within minutes. For cash reports the collections ledger is the reference; when a value is written from the ledger it is flagged here and sync stops overwriting it. Other fields sync as usual and readers keep reading `sellingValue`, so no conditions spread across screens.
+    // `manual` = typed by a user who owns the column in the workflow (and written to the platform as `selling_price`); sync leaves it alone because the platform sometimes resets `selling_price = purchase_price`.
+    sellingValueSource: { type: String, enum: ['', 'platform', 'collections_book', 'manual'], default: '' },              // Selling value
 
     // Additional Application fields (from Excel import)
-    loadingTime: { type: String, trim: true },                // وقت التحميل
-    driverRentalType: { type: String, trim: true },           // نوع تأجير السائق
-    reference: { type: String, trim: true },                  // رقم المرجع
-    userPhone: { type: String, trim: true },                  // هاتف المستخدم
-    driverName: { type: String, trim: true },                 // اسم السائق
-    driverPhone: { type: String, trim: true },                // هاتف السائق
-    carName: { type: String, trim: true },                    // اسم السيارة
-    plateNumber: { type: String, trim: true },                // رقم اللوحة
-    truckType: { type: String, trim: true },                  // نوع الشاحنة
-    truckSize: { type: String, trim: true },                  // حجم الشاحنة
-    loadType: { type: String, trim: true },                   // نوع الحمولة
-    quantity: { type: String, trim: true },                   // الكمية
-    goodsValue: { type: Number, default: 0 },                 // قيمة البضائع
-    representativeName: { type: String, trim: true },         // اسم المندوب
-    country: { type: String, trim: true },                    // اسم الدولة
+    loadingTime: { type: String, trim: true },                // Loading time
+    driverRentalType: { type: String, trim: true },           // Driver rental type
+    reference: { type: String, trim: true },                  // Reference number
+    userPhone: { type: String, trim: true },                  // User phone
+    driverName: { type: String, trim: true },                 // Driver name
+    driverPhone: { type: String, trim: true },                // Driver phone
+    carName: { type: String, trim: true },                    // Vehicle name
+    plateNumber: { type: String, trim: true },                // Plate number
+    truckType: { type: String, trim: true },                  // Truck type
+    truckSize: { type: String, trim: true },                  // Truck size
+    loadType: { type: String, trim: true },                   // Cargo type
+    quantity: { type: String, trim: true },                   // Quantity
+    goodsValue: { type: Number, default: 0 },                 // Goods value
+    representativeName: { type: String, trim: true },         // Rep name
+    country: { type: String, trim: true },                    // Country name
     // Legacy fields (kept for backwards compatibility)
     ownerName: { type: String, trim: true },
     ownerPhone: { type: String, trim: true },
@@ -73,129 +58,84 @@ const operationsWorkflowSchema = new mongoose.Schema(
     // ══════════════════════════════════════════════════════════
     // GROUP 2: Operations Column (Operations Manager) — 1 field
     // ══════════════════════════════════════════════════════════
-    operationsReview: { type: String, trim: true },          // مراجعه التشغيل
+    operationsReview: { type: String, trim: true },          // Operations review
 
     // ══════════════════════════════════════════════════════════
     // GROUP 3: Manual Moderator Columns (Moderator) — 7 fields
     // ══════════════════════════════════════════════════════════
-    paymentDate: { type: Date },                             // تاريخ السداد
-    // ── ومَن كتب تاريخ السداد ──────────────────────────────────────────────
-    // «مسؤول البيانات»: آخرُ مَن كتب تاريخَ السداد على هذا الكشف أو عدّله. وهو
-    // غيرُ مَن أنشأ الكشف وغيرُ مَن سجّل المشتريات في العهدة اليوميّة — يُسأل
-    // عن رقمٍ في هذا العمود فيُعرف صاحبُه بلا فتح سجلّ التعديلات.
+    paymentDate: { type: Date },                             // Payment date
+    // Data owner: the last person who wrote or edited the payment date on this report. Different from the report creator and from whoever logged the purchase in daily custody, so a number in this column can be traced without opening the edit log.
     paymentDateBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     paymentDateByName: { type: String, trim: true, default: '' },
     paymentDateAt: { type: Date, default: null },
-    payingBranch: { type: String, trim: true },              // الفرع المسدد
+    payingBranch: { type: String, trim: true },              // Paying branch
 
-    // ── ما دُفع للمورّد، وبأيّ صفةٍ يُفوتَر العميل ────────────────────────
-    // `paymentAmount` سعرُ الشراء الحقيقيّ: يُملأ وحدَه من مشتريات المحفظة
-    // (رقمُ الكشف + المبلغ)، ويبقى قابلًا للتعديل باليد هنا.
-    //
-    // و`paymentType` هو ما يفرّق الطريقين: عميلُ الكاش يُحصَّل منه فورًا بلا
-    // فاتورة، وعميلُ الضريبيّ تُكتب له فاتورةٌ ثمّ يُحصَّل بها. وعمودُ «طريقة
-    // الدفع» القادمُ من المنصّة لا يُعتمَد عليه في شيءٍ من ذلك — هذا هو المرجع.
-    paymentAmount: { type: Number, default: 0 },             // مبلغ السداد
-    paymentType: {                                           // نوع الدفع
+    // What was paid to the supplier and how the customer is invoiced.
+    // `paymentAmount` is the real purchase price, filled automatically from wallet purchases (report number + amount) and still hand-editable.
+    // `paymentType` separates the two paths: cash customers are collected immediately with no invoice, tax customers are invoiced then collected. The platform's payment method column is not relied on; this is the reference.
+    paymentAmount: { type: Number, default: 0 },             // Payment amount
+    paymentType: {                                           // Payment type
       type: String,
       enum: ['', 'cash', 'tax'],
       default: '',
     },
-    // ── والنوعُ المختارُ داخل العائلة ────────────────────────────────────────
-    // «آجل - فاتورة» (ضريبيّ)، و«آجل - كاش» و«نقدي - 3PL» و«نقدي - HT» (كاش).
-    // `paymentType` يبقى العائلةَ التي تقرؤها القواعدُ كلُّها، وهذا ما يُعرَض
-    // في العمود متى وُجد. والفارغُ = كشفٌ قائمٌ على «ضريبي»/«كاش» كما كان.
-    // راجع PAYMENT_SUBTYPES في utils/paymentType.
-    paymentSubtype: {                                        // نوع الدفع (التفصيل)
+    // Selected subtype within the family: deferred-invoice (tax), deferred-cash, cash-3PL and cash-HT (cash).
+    // `paymentType` stays the family all rules read; this is what the column shows when present. Empty = a report based on tax/cash as before. See PAYMENT_SUBTYPES in utils/paymentType.
+    paymentSubtype: {                                        // Payment type (detail)
       type: String,
       enum: ['', 'deferred_cash', 'deferred_invoice', 'cash_3pl', 'cash_ht'],
       default: '',
     },
 
-    // ── ومَن كتب النوع ───────────────────────────────────────────────────────
-    // «manual» تعني أنّ موظّفًا اختاره على هذا الكشف بعينه، فلا يُغيَّر بعده
-    // تلقائيًّا مهما تغيّرت صفةُ العميل. وبدون هذا الحقل لا سبيلَ إلى التفريق
-    // بين اختيارٍ مقصودٍ وقيمةٍ اشتُقّت، فيدهس الاشتقاقُ قرارَ الإنسان في أوّل
-    // تحديثٍ لصفحة أنواع الدفع. راجع utils/paymentType.
-    // و«unified» = وُحِّد على صفة عميله من صفحة «أنواع الدفع» — قرارٌ صريحٌ لا
-    // تنقضه المزامنة (راجع isUnified في utils/paymentType).
+    // Who wrote the type.
+    // "manual": an employee chose it on this report, so it is never auto-changed when the customer's type changes; without this field a deliberate choice cannot be told from a derived value.
+    // "unified": set to the customer's type from the payment types page, an explicit decision sync does not override (see isUnified in utils/paymentType). See utils/paymentType.
     paymentTypeSource: {
       type: String,
       enum: ['', 'manual', 'auto', 'unified'],
       default: '',
     },
-    finalReportDestination: { type: String, trim: true },    // وجهه الكشف النهائي
-    documentNumber: { type: String, trim: true },            // رقم السند
-    sendingDate: { type: Date },                             // تاريخ الارسال
+    finalReportDestination: { type: String, trim: true },    // Final report destination
+    documentNumber: { type: String, trim: true },            // Voucher number
+    sendingDate: { type: Date },                             // Send date
 
-    // ── تسليمان لا تسليمٌ واحد ────────────────────────────────────────────────
-    //
-    // كانا حقلًا واحدًا اسمُه «تاريخ التسليم»، وهما حدثان مختلفان في يومين
-    // مختلفين وعلى يد فريقين:
-    //
-    //   `branchDeliveryDate`  تسليمُ الكشف إلى الفرع — عملُ التشغيل، ويأتي في
-    //                         شيت المتابعة بين «تاريخ الإرسال» و«مراجعة
-    //                         الحسابات»، وهذا موضعُه هنا.
-    //   `deliveryDate`        تسليمُ الفاتورة إلى **العميل** — عملُ التحصيل.
-    //                         ومنه وحدَه تبدأ مهلةُ السداد المتّفق عليها: عميلٌ
-    //                         على خمسةٍ وأربعين يومًا تُعَدُّ الخمسةُ والأربعون
-    //                         من يوم استلامه الفاتورة لا من يوم إصدارها ولا من
-    //                         يوم وصولها الفرع.
-    //
-    // ودمجُهما كان يجعل مهلةَ السداد تُحسب من تاريخٍ سابقٍ للتسليم الحقيقيّ،
-    // فتظهر الفاتورةُ متأخّرةً وهي في مهلتها — أو العكس. وهما يختلفان فعلًا:
-    // في البيانات ثمانمئةٌ وستٌّ وتسعون صفًّا التاريخان فيه مختلفان.
-    branchDeliveryDate: { type: Date },                      // تاريخ التسليم للفرع
-    deliveryDate: { type: Date },                            // تاريخ التسليم للعميل
-    accountingReview: { type: String, trim: true },          // مراجعه الحسابات
+    // Two deliveries, not one: they are different events on different days by different teams.
+    // `branchDeliveryDate`: report delivered to the branch (operations). `deliveryDate`: invoice delivered to the CUSTOMER (collections); the agreed credit term counts from this date, not from issue or branch arrival.
+    // Merging them made the credit term start too early and showed invoices late or on time wrongly.
+    branchDeliveryDate: { type: Date },                      // Delivery date to branch
+    deliveryDate: { type: Date },                            // Delivery date to customer
+    accountingReview: { type: String, trim: true },          // Accounts review
 
     // ══════════════════════════════════════════════════════════
     // GROUP 4: Collections Columns (Admin/Employee) — 7 fields
     // ══════════════════════════════════════════════════════════
-    invoiceNumber: { type: String, trim: true },             // رقم الفاتوره
-    netInvoice: { type: Number, default: 0 },                // صافي الفاتوره
-    tax: { type: Number, default: 0 },                       // ضريبه
-    totalInvoice: { type: Number, default: 0 },              // اجمالى الفاتوره
-    invoiceDate: { type: Date },                             // تاريخ الفاتوره
-    invoiceNotes: { type: String, trim: true },              // ملاحظات الفاتوره
-    // ما حصّله قسمُ التحصيل فعلًا — يكتبه بيده عند التحصيل، ولا يُشتقّ من
-    // مبلغ السداد: ذاك ما دُفع للمورّد، وهذا ما قُبض من العميل.
-    collectedAmount: { type: Number, default: 0 },           // مبلغ التحصيل
+    invoiceNumber: { type: String, trim: true },             // Invoice number
+    netInvoice: { type: Number, default: 0 },                // Net invoice
+    tax: { type: Number, default: 0 },                       // Tax
+    totalInvoice: { type: Number, default: 0 },              // Invoice total
+    invoiceDate: { type: Date },                             // Invoice date
+    invoiceNotes: { type: String, trim: true },              // Invoice notes
+    // What collections actually collected, typed by hand at collection. Not derived from the payment amount, which is what was paid to the supplier, while this is what was received from the customer.
+    collectedAmount: { type: Number, default: 0 },           // Collection amount
     collectionDate: { type: Date },
 
-    // ── وحالةُ التحصيل في دفتر الكاش ─────────────────────────────────────────
-    //
-    // ورقةُ «Shipment Report» فيها عمودُ حالةٍ لا يُشتقّ من التاريخ: تسعةٌ
-    // وتسعون كشفًا مكتوبٌ عليها «Collected» وليس لها تاريخُ تحصيلٍ في الورقة
-    // نفسِها — يعرف الدفترُ أنّها حُصّلت ولا يعرف متى. وكانت تظهر عندنا «لم
-    // تُحصَّل» لأنّ الشاشةَ تقرأ التاريخ وحدَه.
-    //
-    // فتُخزَّن الحالةُ كما قالها الدفتر، ولا يُخترَع لها تاريخ. والشاشةُ تقول
-    // «محصَّل — بلا تاريخ»، وهو الصدق: حُصِّل، ومتى؟ لا يُعرف بعد.
-    cashCollectionStatus: { type: String, enum: ['', 'collected'], default: '' },                          // تاريخ التحصيل
+    // Collection status in the cash ledger.
+    // The Shipment Report sheet has a status column not derivable from a date: some reports are marked Collected with no collection date. The ledger knows they were collected but not when, and a screen reading only the date showed them as uncollected.
+    // The status is stored as the ledger says it and no date is invented; the screen shows collected without a date.
+    cashCollectionStatus: { type: String, enum: ['', 'collected'], default: '' },                          // Collection date
 
-    // ── وتحصيلٌ كتبته المحفظة ────────────────────────────────────────────────
-    // مندوبٌ سجّل «تحصيلًا» في المحفظة برقم هذا الكشف والكشفُ نقديّ: فالتاريخُ
-    // والمبلغُ أعلاه منه، ويتبعانه إن عُدِّل القيدُ أو حُذف. والعلمُ هو ما يفرّق
-    // ذلك عن تحصيلٍ سجّله القسمُ بيده — ذاك لا تكتب المحفظةُ فوقه ولا ترفعه.
-    // و`false` (لا الغياب) يعني أنّ القسمَ كتب فيه بيده — سجّل أو عدّل أو رفع —
-    // فلا تعود المحفظةُ إليه. راجع utils/walletCollection.
+    // Collection written by the wallet.
+    // A rep logged a collection in the wallet with this report's number and the report is cash: the date and amount above come from it and follow edits or deletion of that entry. The flag separates this from a collection the department typed by hand, which the wallet never overwrites or clears.
+    // `false` (not absent) means the department wrote it by hand (logged, edited or cleared), so the wallet leaves it. See utils/walletCollection.
     collectedByWallet: { type: Boolean },
 
-    // ── ودفعاتُ التحصيل — لكلٍّ مبلغٌ وتاريخٌ وكاتب ──────────────────────────
-    // التحصيلُ الجزئيّ يُكتب دفعةً هنا ويُزاد بها `collectedAmount`؛ والكشفُ
-    // «محصَّل» (`collectionDate`) حين يبلغ المجموعُ قيمتَه. وما كان في
-    // `collectedAmount` قبل الدفعات (من الشيت أو المحفظة) أساسٌ يبقى كما هو.
-    // راجع collectionsDeptController.recordCollection.
+    // Collection payments, each with amount, date and author.
+    // A partial collection is written as a payment here and added to `collectedAmount`; the report is collected (`collectionDate`) once the sum reaches its value. Whatever was in `collectedAmount` before payments (from the sheet or wallet) is a base that stays. See collectionsDeptController.recordCollection.
     collectionPayments: { type: [paymentSchema], default: undefined },
 
-    // ── ومن أين وصل المال ────────────────────────────────────────────────────
-    // الكشفُ النقديُّ يُحصَّل بأكثرَ من طريق: يقبضه الفرعُ من العميل، أو يُقبض
-    // نقدًا عند التسليم، أو يذهب المحصِّلُ إلى العميل فيأخذه. والفرقُ ليس وصفًا:
-    // منه يُعرَف أين المالُ الآن ومن يُسأل عنه.
-    //
-    // والقيمُ تُدار من إعدادات قسم التحصيل (`collections_detail`) لا من قائمةٍ
-    // مكتوبةٍ هنا — فمن أراد رابعًا أضافه ولم ينتظر إصدارًا.
+    // How the money arrived.
+    // A cash report is collected in several ways: the branch receives it, cash on delivery, or the collector goes to the customer. The difference tells where the money is now and who answers for it.
+    // Values are managed in collections settings (`collections_detail`), not a hardcoded list, so a new one needs no release.
     collectionDetail: { type: String, trim: true, default: '' },
 
     // ══════════════════════════════════════════════════════════
@@ -214,19 +154,9 @@ const operationsWorkflowSchema = new mongoose.Schema(
     lockedByName: { type: String, default: '' },
     lockedAt: { type: Date, default: null },
 
-    // ══════════════════════════════════════════════════════════
     // TRACKING
-    // ══════════════════════════════════════════════════════════
-    // ── المُنشئُ اختياريّ ────────────────────────────────────────────────────
-    // الكشفُ المنقولُ من منصّة التشغيل لا مُنشئَ له عندنا — أحدٌ ما أنشأه هناك.
-    // وكان الحقلُ مطلوبًا، فكانت المزامنةُ تضع فيه أوّلَ سوبر أدمنَ تجده لتمرّ
-    // من التحقّق، فقرأ أربعةٌ وثلاثون ألفَ كشفٍ «أنشأتها فلانة» وهي لم تفتح
-    // واحدًا منها.
-    //
-    // فحين أُزيل الختمُ الكاذب صار كلُّ حفظٍ على تلك الصفوف يفشل: «createdBy
-    // مطلوب». والشرطُ نفسُه هو الذي وَلَّد الكذبةَ ثمّ منعَ تصحيحَها — فسقط.
-    // ومَن أنشأ الكشفَ عندنا يبقى مسجَّلًا كما كان؛ ومَن لم يُنشئه أحدٌ عندنا
-    // يُقرأ من `externalSource`.
+    // Creator is optional.
+    // A report mirrored from the operations platform has no creator here. The field used to be required, so sync stamped the first super admin on it, and tens of thousands of reports falsely read as created by that person. Once the false stamp was removed every save on those rows failed validation, so the requirement itself was dropped. Reports created here keep their creator; otherwise read `externalSource`.
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     lastModifiedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
 
@@ -241,19 +171,14 @@ const operationsWorkflowSchema = new mongoose.Schema(
     fleetShipment: { type: mongoose.Schema.Types.ObjectId, default: undefined },
     externalId: { type: String, trim: true },
     lastSyncedAt: { type: Date },
-    // ── وختمُ المنصّة، لا ختمُنا ───────────────────────────────────────────
-    // `lastSyncedAt` متى قرأنا، وهذا متى تغيّر هناك. والاستطلاعُ الدوريُّ يقارن
-    // به فيكتب ما تبدّل وحدَه بدل تسعِمئةِ صفٍّ في كلّ دورة. يُحفَظ كما ورد
-    // نصًّا — قيمةُ مقارنةٍ لا تاريخٌ يُحسب به. راجع jobs/opsPoll.
+    // Platform stamp, not ours.
+    // `lastSyncedAt` is when we read; this is when it changed there. The periodic poll compares against it and writes only what changed. Stored as received text, a comparison value and not a date to compute with. See jobs/opsPoll.
     externalUpdatedAt: { type: String, trim: true },
-    // بصمةُ آخر ما كتبته المزامنةُ الكاملة — يُتخطّى الصفُّ إن لم يتغيّر شيءٌ يمسّه (services/opsWorkflowSyncService).
+    // Fingerprint of what the last full sync wrote; the row is skipped when nothing relevant changed (services/opsWorkflowSyncService).
     syncSig: { type: String },
 
-    // ── ومعاملةُ التخليص التي يخدمها الكشف ──────────────────────────────────
-    // نسخةٌ مقروءةٌ لا مرجعٌ وحده: الجدولُ وشاشاتُ التحصيل تعرض رقمَ المعاملة
-    // وبوليصتَها وحاوياتِها بلا استعلامٍ ثانٍ. يكتبها services/customsOpsLink
-    // وحدَه — من خانات النقل في المعاملة، أو «رقم السند» = البوليصة/الحاوية،
-    // أو ربطٍ يدويّ. و`via: 'unlinked'` = فكّه موظّفٌ بيده فلا يعيده دليلٌ ضعيف.
+    // The customs transaction this report serves.
+    // A readable copy rather than a bare reference: the table and collections screens show the transaction number, waybill and containers without a second query. Written only by services/customsOpsLink, from the transaction's transport fields, from the voucher number matching waybill/container, or from a manual link. `via: 'unlinked'` means a user unlinked it by hand, so weak evidence does not relink it.
     customsLink: {
       type: new mongoose.Schema({
         clearance: { type: mongoose.Schema.Types.ObjectId, ref: 'CustomsClearance', default: null },
@@ -271,23 +196,19 @@ const operationsWorkflowSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// صفحتا الفواتير تُبنيان على هذين: الكاشُ بنوع الدفع، والضريبيُّ برقم
-// الفاتورة الذي يجمع أكثرَ من كشفٍ تحت صفٍّ واحد.
+// The invoice pages rely on these: cash by payment type, tax by invoice number, which groups several reports under one row.
 operationsWorkflowSchema.index({ paymentType: 1, paymentDate: -1 });
-// لوحةُ التحصيل تقرأ الأنواعَ الأربعة (collectionsReceivablesController.subtypeCards).
+// The collections dashboard reads the four subtypes (collectionsReceivablesController.subtypeCards).
 operationsWorkflowSchema.index({ paymentSubtype: 1, paymentType: 1 });
-// ── والنقديُّ غيرُ المحصَّل يُسأل عنه في كلّ فتحةِ شاشة ────────────────────
-// صفحةُ أعمار الديون تسأل: أيُّ الكشوف النقديّة لم تُحصَّل بعد؟ ولم يكن لهذا
-// السؤال فهرسٌ — الفهرسُ الوحيد على النوع وتاريخِ السداد، والسؤالُ على النوع
-// وتاريخِ التحصيل وحالتِه. فكان يُمسَح ثلاثةُ آلافٍ وثلاثمئة كشفٍ في خمس
-// ثوانٍ ونصف، في كلّ بحثٍ يكتبه المستخدم.
+// Uncollected cash reports are queried on every screen open.
+// The debt aging page asks which cash reports are not yet collected. The only existing index was on type and payment date, while the query is on type, collection date and status, so it scanned thousands of reports for several seconds on each search.
 operationsWorkflowSchema.index({ paymentType: 1, collectionDate: 1, cashCollectionStatus: 1 });
-// والبحثُ بالاسم يبدأ من الاسم: صفحاتُ التحصيل تُجمّع الكشوفَ بصاحبها.
+// Name search starts from the name: collections pages group reports by owner.
 operationsWorkflowSchema.index({ username: 1, paymentType: 1 });
-// ما كتبته المحفظةُ يُسأل عنه في كلّ مطابقة — وهو قليلٌ من ثلاثين ألفًا.
+// Wallet-written collections are queried on every match; they are few among tens of thousands.
 operationsWorkflowSchema.index({ collectedByWallet: 1 }, { partialFilterExpression: { collectedByWallet: true } });
 operationsWorkflowSchema.index({ invoiceNumber: 1, invoiceDate: -1 });
-// كشوفُ معاملة التخليص — قليلةٌ من أربعين ألفًا، فالفهرسُ جزئيّ.
+// Reports of a customs transaction; few among tens of thousands, so the index is partial.
 operationsWorkflowSchema.index({ 'customsLink.clearance': 1 }, { partialFilterExpression: { 'customsLink.clearance': { $type: 'objectId' } } });
 
 operationsWorkflowSchema.index(
@@ -310,10 +231,7 @@ operationsWorkflowSchema.pre('save', async function (next) {
 });
 
 // Indexes
-// ── استطلاعُ الشحنات المتحرّكة (jobs/opsPoll) يسأل كلَّ بضع ثوانٍ ─────────────
-// «كشوفُ المنصّة التي حالتُها في الطريق» — وكان يمسح الأربعين ألفَ كشفٍ ليعيد
-// ألفًا: أثقلُ استعلامٍ في القاعدة كلِّها (قيس بـ$queryStats، ٢٠٢٦/١٠/٢٤). وهذا
-// الفهرسُ يجيبه كاملًا من نفسه بلا فتح صفّ: الحالةُ والمصدرُ وما يُقرأ منهما.
+// The moving-shipments poll (jobs/opsPoll) runs every few seconds asking for platform reports whose status is in transit. It scanned all reports to return about a thousand, the heaviest query in the database (measured with $queryStats). This index answers it fully on its own without fetching rows: status, source and the fields read from them.
 operationsWorkflowSchema.index({ applicationStatus: 1, externalSource: 1, externalId: 1, externalUpdatedAt: 1 });
 operationsWorkflowSchema.index({ stage: 1 });
 operationsWorkflowSchema.index({ fleetShipment: 1, updatedAt: -1 }, { unique: true, partialFilterExpression: { fleetShipment: { $type: 'objectId' } } });

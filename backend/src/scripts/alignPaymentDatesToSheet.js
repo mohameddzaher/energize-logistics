@@ -1,18 +1,8 @@
 /**
- * alignPaymentDatesToSheet — تاريخُ السداد مصدرُه الشيت وحدَه.
- *
- *   node src/scripts/alignPaymentDatesToSheet.js            # فحصٌ فقط
- *   node src/scripts/alignPaymentDatesToSheet.js --yes      # تنفيذ
- *
- * ── القاعدة ─────────────────────────────────────────────────────────────────
- * كشوفُ التشغيل تأتي من منصّة الأوبريشن، وتواريخُ السداد من شيت المتابعة.
- * والمنصّةُ لا ترسل تاريخَ سدادٍ أصلًا (`opsWorkflowSyncService` لا يكتب الحقل)،
- * فأيُّ تاريخِ سدادٍ عندنا لا يقابله مثلُه في الشيت هو إمّا إدخالٌ يدويٌّ على
- * النظام أو بقيّةُ استيرادٍ قديم — وكلاهما يُزال، لأنّ رقمًا واحدًا لا يجوز أن
- * يكون له مصدران.
- *
- * ويُحفظ ما يُمسّ قبل مسّه: الملفُّ في `backups/` يحمل القيمةَ السابقة لكلّ صفّ
- * فيُرَدُّ بأمرٍ واحدٍ إن تبيّن أنّ الشيت هو المتأخّر لا نحن.
+ * alignPaymentDatesToSheet: the payment date's only source is the sheet.
+ * node src/scripts/alignPaymentDatesToSheet.js            # dry run
+ * node src/scripts/alignPaymentDatesToSheet.js --yes      # apply
+ * Rule: operations manifests come from the operations platform and payment dates from the follow-up sheet. The platform never sends a payment date (`opsWorkflowSyncService` does not write the field), so any payment date of ours without the same in the sheet is either a manual entry on the system or a leftover of an old import. Both are removed, since one number cannot have two sources. What is touched is saved first: the file in `backups/` holds the previous value of each row, restorable in one command if the sheet turns out to be the stale side.
  */
 require('dotenv').config();
 const fs = require('fs');
@@ -28,7 +18,7 @@ const SHEET = process.argv.find((a) => a.endsWith('.xlsx'))
 const serial = (v) => { const n = Number(v); return Number.isFinite(n) && n > 1000 ? n : null; };
 const ymd = (n) => (n ? new Date(Date.UTC(1899, 11, 30) + n * 86400000).toISOString().slice(0, 10) : null);
 
-/** رقمُ الكشف → تاريخُ السداد (أو null) من كلّ أوراق الملفّ. */
+/** Manifest number to payment date (or null) from all sheets in the file. */
 function readSheetPayments(file) {
   const map = new Map();
   const xml = require('child_process').execSync(`unzip -Z1 ${JSON.stringify(file)} "xl/worksheets/sheet*.xml"`)
@@ -38,8 +28,7 @@ function readSheetPayments(file) {
     try { rows = xlsx.readSheet(file, sh); } catch { continue; }
     const hdr = rows.find((r) => r.cells && Object.values(r.cells).includes('رقم الكشف'));
     if (!hdr) continue;
-    // العمودُ يُقرأ بعنوانه لا بحرفه: ترتيبُ الأعمدة يتغيّر بين نسخةٍ وأخرى،
-    // و«R» في ورقةٍ قد يكون غيرَه في ورقة.
+    // The column is read by its header, not its letter: column order changes between versions, and 'R' in one sheet may be another column in another.
     const colOf = (title) => Object.keys(hdr.cells).find((k) => String(hdr.cells[k]).trim() === title);
     const cNum = colOf('رقم الكشف'); const cPay = colOf('تاريخ السداد');
     if (!cNum || !cPay) continue;

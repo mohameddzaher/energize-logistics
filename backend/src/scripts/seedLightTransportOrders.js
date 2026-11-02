@@ -1,27 +1,8 @@
 /**
- * إنشاءُ أوامر التشغيل من واقع الداتا.
- *
- *   node src/scripts/seedLightTransportOrders.js            # تقريرٌ بلا كتابة
- *   node src/scripts/seedLightTransportOrders.js --write    # يكتب
- *
- * ── العلّة ──────────────────────────────────────────────────────────────────
- * الحالةُ القائمةُ اليوم واقعٌ لا يُكتب باليد: مئةٌ وإحدى وخمسون موظّفًا يركبون
- * مركبات، ولكلٍّ مشروعُه وفرعُه ومشرفُه، ولمركبته تفويضٌ بتاريخٍ ورقم. فإنشاءُ
- * هذه الأوامر واحدًا واحدًا من الشاشة مئةٌ وإحدى وخمسون نافذة.
- *
- * فتُقرأ من الشيتين وتُكتب أمرًا ساريًا لكلّ راكب — فيصير للنظام نقطةُ بدايةٍ
- * صحيحةٌ، وكلُّ نقلٍ بعدها يُقيَّد فوقها.
- *
- * ── وما يُحتَرس منه ──────────────────────────────────────────────────────────
- * ① **المفوَّضُ ليس دائمًا القائدَ الفعليّ.** في أربعةَ عشرَ مركبةً الورقةُ باسم
- *    واحدٍ والراكبُ غيرُه، وهي حالةٌ صحيحةٌ لا خطأ. فالأمرُ يُسجَّل **للقائد
- *    الفعليّ** — هو من يعمل عليها — ويُذكَر في الأمر أنّ التفويضَ باسمٍ آخر،
- *    ولا يُنقَل التفويضُ ولا يُستبدَل: الورقةُ لا تُغيَّر من سكربتٍ استيراد.
- * ② **لا يُكتب تفويضٌ في سجلّ المركبات من هنا.** هو مكتوبٌ فيه أصلًا (استُورد
- *    مع المركبات)، وإعادةُ كتابته تفتح بابَ الخلاف بين السجلّين.
- * ③ **مَن أُنهيت خدمتُه لا يُشغَّل.** أمرٌ سارٍ لمن ليس عندنا يعني مركبةً
- *    مسجَّلةً على غائب.
- * ④ **يُعاد تشغيلُه بلا ضرر**: من له أمرٌ سارٍ يُتجاوَز ولا يُنشأ له ثانٍ.
+ * Create operating orders from the real data. Usage: node src/scripts/seedLightTransportOrders.js [--write] (report only by default). Why: the current state is fact, not something to type: 151 employees ride vehicles, each with a project, branch and supervisor, and the vehicle has an authorization with date and number.
+ * Creating these orders one by one from the screen would be 151 dialogs. They are read from the two sheets and written as one active order per rider, giving the system a correct starting point for later transfers. Guards: 1) The authorized person is not always the actual driver. On 14 vehicles the paper names one person
+ * and another rides, which is valid. The order is recorded for the actual driver, notes that the authorization is under another name, and the authorization is neither moved nor replaced: an import script must not change the paper. 2) No authorization is written to the vehicles register from here; it is already there (imported
+ * with the vehicles) and rewriting it invites disagreement between the registers. 3) Ended employees are not put on orders: an active order for someone not with us means a vehicle registered to an absent person. 4) Safe to rerun: anyone with an active order is skipped and no second one is created.
  */
 require('dotenv').config({ quiet: true });
 const path = require('path');
@@ -58,7 +39,7 @@ const plateKey = (p) => {
   const { VehicleMaster } = require('../models/VehicleMaster');
   const Employee = require('../models/Employee');
 
-  // ── تفاويضُ الشيت: مفتاحُها اللوحة ────────────────────────────────────────
+  // Sheet authorizations, keyed by plate
   const wb = XLSX.readFile(path.join(DIR, VEH_FILE));
   const rows = XLSX.utils.sheet_to_json(wb.Sheets.Sheet1, { header: 1, defval: '' });
   const head = rows[1].map(S);
@@ -101,7 +82,7 @@ const plateKey = (p) => {
     if (!e.vehicle) { report.noVehicle += 1; continue; }
 
     const paper = authByPlate.get(plateKey(e.vehicle.plateNumber)) || {};
-    // الورقةُ باسم غيره؟ يُذكَر ولا يُغيَّر — راجع الملاحظةَ ① أعلاه.
+    // Paper under another name? Noted, not changed (see guard 1 above).
     const mismatch = !!paper.authId && S(paper.authId) !== S(e.idNumber);
     if (mismatch) report.authMismatch.push(`${e.name} (${e.idNumber}) يقود ${e.vehicle.plateNumber} والتفويضُ باسم ${paper.authName || paper.authId}`);
     if (!paper.authNumber) report.noAuthPaper += 1;
@@ -129,7 +110,7 @@ const plateKey = (p) => {
   let created = 0;
 
   for (const { e, paper, mismatch } of plan) {
-    // بدايةُ الأمر: بدايةُ التفويض إن عُرفت، وإلّا تاريخُ التعيين، وإلّا اليوم.
+    // Order start: authorization start if known, else hire date, else today.
     const start = paper.authStart || e.hireDate || new Date();
     const order = await LightTransportOrder.create({
       orderNumber: `LT-${String(n).padStart(5, '0')}`,
@@ -146,13 +127,12 @@ const plateKey = (p) => {
       housingRoom: e.housingRoom || '',
       startDate: start,
       status: 'active',
-      // التفويضُ مقروءٌ من الورقة لا منقولٌ بها: `authorizationMoved` تعني
-      // «نُقل من النظام»، وهذا لم يُنقل — هو قائمٌ كما هو.
+      // The authorization is read from the paper, not moved by it: `authorizationMoved` means 'moved from the system', and this was not moved, it stands as is.
       authorizationMoved: false,
       authorizationNumber: paper.authNumber || '',
       authorizationStart: paper.authStart || null,
       authorizationEnd: paper.authEnd || null,
-      // لا عبارةَ «من الشيت» — النظامُ هو المرجع بعد الاستيراد (utils/importLabels).
+      // No 'from the sheet' wording: the system is the reference after import (utils/importLabels).
       notesAr: mismatch
         ? `التفويضُ باسم ${paper.authName || paper.authId} والقائدُ الفعليُّ ${e.name}`
         : '',

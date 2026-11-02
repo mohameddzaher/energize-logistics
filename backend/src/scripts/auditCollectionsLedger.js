@@ -1,11 +1,7 @@
 /**
- * auditCollectionsLedger — دفترُ التحصيل، مقيسًا على الورقة التي جاء منها.
- *
- *   node src/scripts/auditCollectionsLedger.js
- *
- * لا يكتفي بأن تردّ النقاطُ ٢٠٠: يقرأ الورقةَ نفسَها ويقارن بها ما يخرج من
- * الخادم — عددَ الحسابات، ومجموعَ الحدود، وشرائحَ الأعمار، ومجموعَ الفواتير.
- * وما لا يُقاس على مصدره ليس مفحوصًا.
+ * auditCollectionsLedger: the collections ledger, measured against the sheet it came from.
+ * node src/scripts/auditCollectionsLedger.js
+ * It does not settle for endpoints returning 200: it reads the sheet itself and compares what the server returns: account count, limit totals, aging buckets and invoice total. What is not measured against its source is not checked.
  */
 require('dotenv').config();
 const path = require('path');
@@ -15,9 +11,7 @@ const mongoose = require('mongoose');
 const argv = process.argv.slice(2);
 const iB = argv.indexOf('--base');
 const BASE = (iB >= 0 && argv[iB + 1] ? argv[iB + 1] : process.env.BASE || 'http://localhost:5599').replace(/\/$/, '');
-// المصدرُ يتبع الخادمَ الذي نفحصه لا ملفَّ البيئة المحلّيّ: حارسُ CSRF يقبل
-// مصادرَ البرودكشن وحدها، فإرسالُ `localhost` إليه يردّ ٤٠٣ على كلّ POST — وهو
-// ما يبدو عطبًا في الميزة وهو عطبٌ في الفحص.
+// The origin follows the server being tested, not the local env file: the CSRF guard accepts only production origins, so sending `localhost` gets 403 on every POST, which looks like a feature fault but is a fault in the check.
 const ORIGIN = /api\.energize-logistics\.com/.test(BASE)
   ? 'https://energize-logistics.com'
   : (process.env.FRONTEND_URL?.split(',')[0].trim() || 'http://localhost:3000');
@@ -52,7 +46,7 @@ const near = (a, b, tol) => Math.abs(Number(a) - Number(b)) <= tol;
     return { status: r.status, j };
   };
 
-  // ── الورقةُ نفسُها ────────────────────────────────────────────────────────
+  // The sheet itself.
   const wb = XLSX.readFile(FILE, { cellDates: false, raw: true });
   const all = (n) => XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, defval: null, blankrows: false, raw: true });
   const N = (v) => { const n = Number(String(v ?? '').replace(/[^\d.\-]/g, '')); return Number.isFinite(n) ? n : 0; };
@@ -73,10 +67,7 @@ const near = (a, b, tol) => Math.abs(Number(a) - Number(b)) <= tol;
     ok('مجموعُ الحدود الائتمانيّة يطابق الورقة', near(ag.j?.totals?.creditLimit, sheetLimits, 0.5),
       `${ag.j?.totals?.creditLimit} — الورقة ${sheetLimits}`);
 
-    // ── الشرائحُ تجمع الإجماليَّ ────────────────────────────────────────
-    // شرطٌ لا يجوز كسرُه: كلُّ ريالٍ في شريحةٍ واحدةٍ لا أكثرَ ولا أقلّ. كسرَه
-    // إشعارُ خصمٍ بثلاثين ألفًا بلا تاريخ — دخل الإجماليَّ ولم يدخل شريحة،
-    // فصار في السجلّ مالٌ لا يظهر في أيّ عمود.
+    // Buckets add up to the total. A rule that must not break: every riyal is in exactly one bucket. It was broken by a 30,000 credit note with no date, which entered the total but no bucket, leaving money in the ledger that appears in no column.
     const bandSum = Object.values(ag.j?.totals?.bands || {}).reduce((a, b) => a + b, 0);
     ok('الشرائحُ تجمع الإجماليَّ (لا تداخلَ ولا ثغرة)', near(bandSum, ag.j?.totals?.outstanding, 1),
       `${bandSum.toFixed(2)} — الإجمالي ${Number(ag.j?.totals?.outstanding).toFixed(2)}`);
@@ -94,8 +85,7 @@ const near = (a, b, tol) => Math.abs(Number(a) - Number(b)) <= tol;
     const sr = await call('GET', `/api/collections-dept/ledger/aging?search=${encodeURIComponent('أركتيك')}`);
     ok('البحثُ بالاسم', (sr.j?.total || 0) >= 1, `${sr.j?.total}`);
     const bandQ = await call('GET', '/api/collections-dept/ledger/aging?band=120%2B&limit=500');
-    // ولا يُشترَط أن يكون موجبًا: إشعارُ الخصم يجعل الشريحةَ سالبةً، وهو مالٌ
-    // في تلك الشريحة يجب أن يُرى — لا أن يُفلتَر خارجَها.
+    // Not required to be positive: a credit note makes the bucket negative, and that is money in that bucket which must be seen, not filtered out of it.
     ok('فلترُ الشريحة', (bandQ.j?.rows || []).every((r) => r.bands['120+'] !== 0), `${bandQ.j?.total} حسابًا`);
     const noDate = await call('GET', '/api/collections-dept/ledger/aging?band=noDate&limit=500');
     ok('وشريحةُ «بلا تاريخ» تُعرَض وحدَها', (noDate.j?.rows || []).every((r) => r.bands.noDate !== 0), `${noDate.j?.total} حسابًا`);
@@ -109,7 +99,7 @@ const near = (a, b, tol) => Math.abs(Number(a) - Number(b)) <= tol;
     ok('تفتح الصفحة', inv.status === 200, `${inv.status}`);
     const dbCount = await CollectionInvoice.countDocuments();
     ok('عددُ الفواتير', inv.j?.total === dbCount, `${inv.j?.total}`);
-    // خليّةُ «Total» في الورقة = مجموعُ ما لا حالةَ له.
+    // The 'Total' cell in the sheet equals the sum of rows with no status.
     const blank = await call('GET', '/api/collections-dept/ledger/invoices?status=&limit=1');
     const sheetTotalCell = N(DI[4][3]);
     const blankSum = (await CollectionInvoice.aggregate([{ $match: { status: '' } }, { $group: { _id: null, s: { $sum: '$total' } } }]))[0]?.s || 0;
@@ -138,14 +128,13 @@ const near = (a, b, tol) => Math.abs(Number(a) - Number(b)) <= tol;
       return Math.abs(new Date(withDue.dueDate) - exp) < 1000;
     })(), withDue ? `${String(withDue.dueDate).slice(0, 10)}` : '(لا عيّنة)');
 
-    // إبطالُ ذاكرة العاملَين بعد تعديلٍ يُكتب في القاعدة مباشرةً — تُكتب
-    // البصمةُ نفسُها التي يكتبها `cache.clear`، فيمسح كلُّ عاملٍ ما عنده.
+    // Invalidate both workers' caches after an edit written straight to the database: write the same signature `cache.clear` writes, so each worker clears its own.
     const cacheBust = async () => {
       try {
         await mongoose.connection.db.collection('cachestamps')
           .updateOne({ _id: 'colledger:' }, { $set: { at: new Date() } }, { upsert: true });
         await new Promise((r) => setTimeout(r, 250));
-      } catch (_) { /* تحسينٌ لا شرط */ }
+      } catch (_) { /* Improvement, not a requirement. */ }
     };
 
     head('التنبيهات');
@@ -158,13 +147,8 @@ const near = (a, b, tol) => Math.abs(Number(a) - Number(b)) <= tol;
       const ack = await call('POST', '/api/collections-dept/ledger/alerts/ack', { party: first.party, kind: 'limit' });
       ok('يُغلَق التنبيه', ack.status === 200, `${ack.status}`);
 
-      // ── يُسأل عن الحساب بعينه لا عن العدد ────────────────────────────────
-      // مقارنةُ الأعداد تكذب متى مسّ أحدٌ سجلَّ الإسكات من خارج النداءات — يُحذف
-      // في القاعدة فتبقى القائمةُ المخزَّنة على عددها، فيقرأ الفحصُ «٤٢ بعد ٤٢»
-      // ويظنّها إخفاقًا وليست به. والسؤالُ الصحيح: أذهب هذا الحساب من القائمة؟
-      //
-      // ويُقرأ ستَّ مرّاتٍ لا مرّة: البرودكشن عاملان ولكلٍّ ذاكرتُه، وقراءةٌ
-      // واحدةٌ تصيب أحدَهما ولا تُثبت شيئًا — راجع utils/ttlCache.
+      // Ask about the specific account, not the count. Comparing counts lies when someone touches the mute record outside the calls: deleted in the database, the stored list stays at its count, so the check reads 42 after 42 and takes it as a failure when it is not. The right question is whether this account left the list.
+      // It is read six times, not once: production has two workers, each with its own cache, and one read hits only one and proves nothing; see utils/ttlCache.
       const gone = [];
       for (let i = 0; i < 6; i += 1) {
         const after = await call('GET', '/api/collections-dept/ledger/alerts');
@@ -173,8 +157,7 @@ const near = (a, b, tol) => Math.abs(Number(a) - Number(b)) <= tol;
       ok('فيختفي من القائمة — وعلى العاملَين معًا', gone.every(Boolean),
         `${gone.map((g) => (g ? 'غاب' : 'ظهر')).join(' ')}`);
 
-      // ويُرفَع الإسكاتُ بالنداء لا بالقاعدة، وإلّا بقيت القائمةُ المخزَّنة على
-      // ما كانت — وهو بعينه ما جعل هذا الفحصَ يكذب.
+      // Muting is lifted through the call, not the database, otherwise the stored list stays as it was, which is exactly what made this check lie.
       await CreditAlertAck.deleteMany({ party: first.party });
       cacheBust();
     }
@@ -183,10 +166,7 @@ const near = (a, b, tol) => Math.abs(Number(a) - Number(b)) <= tol;
     const target = await CollectionsParty.findOne({ kind: 'customer', code: { $gt: '' }, creditLimit: { $gt: 0 } }).lean();
     const upd = await call('PUT', `/api/collections-dept/parties/${target._id}`, { creditLimit: target.creditLimit + 12345 });
     ok('يُحفظ الحدُّ الجديد', upd.status === 200 && upd.j?.party?.creditLimit === target.creditLimit + 12345, `${upd.j?.party?.creditLimit}`);
-    // ── والسجلُّ يقرؤه فورًا ────────────────────────────────────────────
-    // الأعمارُ تُخزَّن دقيقةً لتخفيف الحمل. ورفعُ الحدّ هو الفعلُ الذي يُطفئ
-    // التنبيه، فلو بقيت الذاكرةُ لظلّ معلَّقًا بعد معالجته — والموظّف يظنّ أنّه
-    // لم يُحفظ. فالكتابةُ تُبطلها.
+    // The log is read immediately. Aging is cached for a minute to reduce load. Raising the limit is the action that clears the alert, so if the cache stayed the alert would remain after being handled and the employee would think it was not saved. So the write invalidates it.
     const reread = await call('GET', `/api/collections-dept/ledger/aging?search=${encodeURIComponent(target.name)}&limit=5`);
     const seen = (reread.j?.rows || []).find((r) => String(r._id) === String(target._id));
     ok('ويظهر في سجلّ الأعمار فورًا بلا انتظار ذاكرة',
@@ -242,9 +222,7 @@ const near = (a, b, tol) => Math.abs(Number(a) - Number(b)) <= tol;
     ok('والمربوطُ تلقائيًّا مقيَّدٌ بأنّه تلقائيّ', (sug.j?.counts?.linked || 0) >= 1, `${sug.j?.counts?.linked}`);
 
     head('الكودُ يُولَّد على سياقة الدفتر');
-    // ── ويُقرأ التاليَ من القاعدة لا من عدّادٍ محفوظ ────────────────────────
-    // العدّادُ المنفصل يفترق عن الواقع عند أوّل استيرادٍ أو حذف، فيُعيد كودًا
-    // مأخوذًا. وأكبرُ كودٍ موجودٍ فعلًا صحيحٌ دائمًا بلا صيانة.
+    // The next code is read from the database, not a stored counter. A separate counter drifts from reality at the first import or deletion and returns a taken code. The largest existing code is always correct with no maintenance.
     const codes = await CollectionsParty.distinct('code', { code: { $gt: '' } });
     const maxCash = Math.max(0, ...codes.filter((c) => /^C\d+$/i.test(c)).map((c) => Number(c.slice(1))));
     const maxTax = Math.max(0, ...codes.filter((c) => /^1104\d+$/.test(c)).map((c) => Number(c.slice(4))));

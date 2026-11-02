@@ -1,19 +1,7 @@
 /**
- * importCustomerPaymentTypes — نوعُ الدفع صفةُ العميل، تُقرأ من ملفّه.
- *
- *   node src/scripts/importCustomerPaymentTypes.js --dry
- *   node src/scripts/importCustomerPaymentTypes.js
- *
- * المصدر: «operation files/نوع الدفع للعملاء .xlsx» — عمودان: العميل، نوع الدفع.
- *
- * ── ولماذا على العميل لا على الكشف ─────────────────────────────────────────
- * عميلُ الكاش يدفع في يده دائمًا، والضريبيُّ يُفوتَر دائمًا. فاختيارُ النوع في
- * كلّ كشفٍ على حدة عملٌ مكرَّرٌ يُنسى ويُخطأ — وخطأٌ واحدٌ يُرسل كشفَ عميلٍ
- * ضريبيّ إلى فواتير الكاش. يُكتب على الملفّ مرّةً، ويُقرأ منه عند كلّ سداد.
- *
- * ── والمطابقةُ بالاسم المطويّ ──────────────────────────────────────────────
- * الاسمُ في الشيت يُكتب بصيغةٍ وفي الكشوف بأخرى — همزةٌ، تاءٌ مربوطة، مسافةٌ
- * زائدة. فيُطابَق بالمفتاح المطويّ نفسِه الذي يجمع صفوفَ الطرف الواحد.
+ * Payment type is a customer attribute, read from the customer file (columns: customer, payment type).
+ * It lives on the customer, not the report: a cash customer always pays on the spot and a tax customer is always invoiced, so choosing it per report is repetitive and error-prone, and one mistake sends a tax customer's report to cash invoices.
+ * Matching uses the folded name, which absorbs differences in hamza, taa marbuta and extra spaces between the sheet and the reports.
  */
 require('dotenv').config();
 const path = require('path');
@@ -23,7 +11,7 @@ const mongoose = require('mongoose');
 const DRY = process.argv.includes('--dry');
 const FILE = path.join(__dirname, '..', '..', '..', 'operation files', 'نوع الدفع للعملاء .xlsx');
 
-// «cash» و«ضريبي» كما كُتبا في الشيت، ومعهما ما يُحتمل من صياغات.
+// The cash and tax labels as written in the sheet, plus likely variants.
 const readType = (v) => {
   const t = String(v || '').trim().toLowerCase();
   if (!t) return '';
@@ -42,7 +30,7 @@ const readType = (v) => {
   console.log(DRY ? '— تجربة، بلا كتابة —\n' : '');
   console.log(`صفوف الشيت: ${rows.length}`);
 
-  // الاسمُ الواحد قد يتكرّر في الشيت — يُطوى قبل الكتابة فلا يُكتب مرّتين.
+  // The same name can repeat in the sheet; fold it before writing so it is not written twice.
   const byKey = new Map();
   const unreadable = [];
   for (const r of rows) {
@@ -73,7 +61,7 @@ const readType = (v) => {
     matched += 1;
   }
 
-  // مَن في الشيت وليس في السجلّ يُضاف: الشيتُ يقول إنّه عميلٌ لنا.
+  // A name in the sheet but not in the registry is added: the sheet says it is our customer.
   for (const name of notFound) {
     const v = byKey.get(fold(name));
     created.push({ kind: 'customer', name, nameKey: fold(name), paymentType: v.type, source: 'payment_types_sheet' });

@@ -1,33 +1,8 @@
 /**
- * استيرادُ إجازات الموظفين من «ملف اجازات الموظفين.xlsx».
- *
- * ── ما في الملفّ ────────────────────────────────────────────────────────────
- * مئةٌ وثلاثون موظّفًا في صفوف، ولكلٍّ أربعَ عشرةَ خانةَ إجازةٍ في أعمدةٍ
- * متجاورة — أربعةُ أعمدةٍ لكلّ خانة (النوعُ، الذهابُ، العودةُ، المدّة) تحت
- * رؤوسٍ مدمجةٍ بالسنوات: ٢٠٢٤ و٢٠٢٥ و٢٠٢٦.
- *
- * وأكثرُ الخانات نصُّها «لم يحصل على اجازة في ٢٠٢٦» بلا تواريخ: ليست إجازةً
- * بل تصريحٌ بعدمها، فتُهمَل. والإجازاتُ الحقيقيّةُ مئتان وخمسون.
- *
- * ── ولماذا تُقيَّد «بأثرٍ رجعيّ» ─────────────────────────────────────────────
- * هذه إجازاتٌ وقعت وانقضت قبل أن يوجد النظام. ودورةُ الموافقة تسأل «أنوافق على
- * هذا الغياب؟» — ولا معنى للسؤال بعد عامين. فتُقيَّد كما يقيّدها موظّفُ الموارد
- * البشريّة من الشاشة: معتمَدةً، موسومةً `backdated`، باسم من قيّدها. راجع
- * `hrController.createBackdatedLeave` — هذا نظيرُه حرفًا، فلا يصير في النظام
- * بابان لتسجيل إجازةٍ يفترقان.
- *
- * وبها يصير الرصيدُ صحيحًا: `utils/leaveBalance` يحسب المستحقَّ من العقد
- * ويخصم المأخوذ — ومن لم تُسجَّل إجازاتُه يبقى في الورق مستحقًّا ثلاثين يومًا
- * وقد أخذ اثنين وثلاثين.
- *
- * ── والتواريخُ تُقرأ أرقامًا ────────────────────────────────────────────────
- * `cellDates: true` يُنقص يومًا على هذا الجهاز. فتُقرأ التسلسلاتُ خامًا وتُحوَّل
- * بالحساب — راجع ذاكرةَ المشروع «XLSX date epoch trap».
- *
- * الاستعمال:
- *   node src/scripts/importEmployeeLeaves.js            # عرضٌ فقط
- *   node src/scripts/importEmployeeLeaves.js --apply
- *   node src/scripts/importEmployeeLeaves.js --file=<path> --apply
+ * Imports employee leaves from the employee leaves workbook: 130 employees, 14 slots each, four columns per slot (type, departure, return, duration) under year headers. Slots saying no leave taken carry no dates and are skipped; about 250 are real leaves.
+ * They are recorded backdated, as HR would from the screen: approved, flagged backdated, under the name of who entered them. This mirrors hrController.createBackdatedLeave so there are not two diverging ways to record a leave, and it makes utils/leaveBalance correct.
+ * Dates are read as raw serials: cellDates: true loses a day on this machine (see the XLSX date epoch trap).
+ * node src/scripts/importEmployeeLeaves.js [--file=<path>] [--apply]  (preview without --apply)
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -44,12 +19,12 @@ const { nameKey } = require(`${ROOT}/utils/nameKey`);
 
 const APPLY = process.argv.includes('--apply');
 const UNDO = process.argv.includes('--undo');
-/** وسمُ القيد: به يُعرَف ما جاء من هذا الملفّ، وبه يُسحَب كلُّه إن لزم. */
+/** Entry tag: identifies what came from this file and lets all of it be withdrawn if needed. */
 const IMPORT_TAG = 'مستورَدة من ملفّ إجازات الموظفين';
 const FILE = (process.argv.find((a) => a.startsWith('--file=')) || '').slice(7)
   || path.join(__dirname, '../../../final hr data/new edits/ملف اجازات الموظفين.xlsx');
 
-/** تسلسلُ إكسل → «YYYY-MM-DD». الأصلُ ١٨٩٩-١٢-٣٠، وما قبل ١٩٠٠-٠٣-٠١ لا يُستعمل. */
+/** Excel serial -> YYYY-MM-DD. The epoch is 1899-12-30, and values before 1900-03-01 are not used. */
 const serialToISO = (v, shiftDays = 0) => {
   const n = Number(v);
   if (!Number.isFinite(n) || n <= 0) return '';
@@ -59,13 +34,12 @@ const serialToISO = (v, shiftDays = 0) => {
   return d.toISOString().slice(0, 10);
 };
 
-/** ما يُقرأ في خانة النوع: إجازةٌ حقيقيّةٌ أم تصريحٌ بعدمها؟ */
+/** What is read in the type cell: a real leave or a statement of no leave? */
 const isNonLeave = (t) => /لم\s*يحصل/.test(String(t || ''));
 
 /**
- * اسمُ النوع في الورقة ← رمزُه في النظام.
- * والطيُّ يتسامح مع الهمزة والتاء المربوطة والمسافات — «اجزة عيد الاضحى»
- * مكتوبةٌ في الملفّ ناقصةَ ألف، وهي العيدُ نفسُه.
+ * Sheet type name -> system code.
+ * Folding tolerates hamza, taa marbuta and spaces: one Eid leave type is written in the file with a missing letter but is the same Eid.
  */
 const TYPE_MAP = [
   [/سنوي/, 'annual'],
@@ -87,9 +61,7 @@ const codeOf = (t) => {
 (async () => {
   await mongoose.connect(process.env.MONGODB_URI);
 
-  // ── وللاستيرادِ بابُ رجوع ─────────────────────────────────────────────────
-  // مئتان وتسعٌ وثلاثون إجازةً تُكتب في سجلٍّ يقرأه الرصيدُ والرواتب. فيُوسَم
-  // كلُّ قيدٍ بنصٍّ واحدٍ، ويُسحَب به كلُّه بأمرٍ واحدٍ إن ظهر في الملفّ خطأ.
+  // The import has a rollback: 239 leaves are written into a register read by balances and payroll, so every entry gets one tag and all can be withdrawn with one command if the file turns out wrong.
   if (UNDO) {
     const n = await LeaveRequest.countDocuments({ reason: new RegExp(IMPORT_TAG) });
     if (!APPLY) {
@@ -105,11 +77,11 @@ const codeOf = (t) => {
   const wb = XLSX.readFile(FILE);
   const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: true });
   const header = rows[1] || [];
-  // مواضعُ الخانات: كلُّ أربعةِ أعمدةٍ خانةٌ، تبدأ بعد الأعمدة الأربعة الأولى.
+  // Slot positions: every four columns are a slot, starting after the first four columns.
   const slots = [];
   for (let i = 4; i + 3 < header.length; i += 4) slots.push(i);
 
-  // ── المطابقة: الرقمُ الوظيفيُّ ثمّ الإقامةُ ثمّ الاسمُ مطويًّا ─────────────
+  // Matching: employee number, then iqama, then folded name
   const employees = await Employee.find({})
     .select('firstName lastName arabicName employeeNumber iqamaNumber nationalId user hireDate')
     .lean();
@@ -132,11 +104,8 @@ const codeOf = (t) => {
   const types = await LeaveType.find({}).lean();
   const typeByCode = new Map(types.map((t) => [t.code, t]));
 
-  // ── و«إجازةُ العيد» نوعٌ جديد ───────────────────────────────────────────
-  // في الملفّ أربعون إجازةَ عيدٍ (أضحى وفطر) ولا نوعَ لها في النظام. وتقييدُها
-  // «سنويّةً» يخصم من رصيدٍ لا تُخصَم منه، وإهمالُها يحذف أربعين إجازةً وقعت.
-  // فيُنشأ نوعُها ولا تُخصَم من الرصيد (`affectsBalance: false`) — ومن أراد
-  // خصمَها يقلب الصفةَ من شاشة «أنواع الإجازات» بضغطة.
+  // Eid leave is a new type. The file has 40 Eid leaves (Adha and Fitr) and the system has no type for them. Recording them as annual would deduct from a balance they do not touch, and skipping them would drop 40 real leaves.
+  // So the type is created and does not deduct from the balance (affectsBalance: false); it can be flipped from the leave types screen.
   if (!typeByCode.has('eid')) {
     const def = {
       code: 'eid', nameEn: 'Eid Leave', nameAr: 'إجازة عيد',
@@ -153,7 +122,7 @@ const codeOf = (t) => {
     }
   }
 
-  // مَن يُنسَب إليه القيدُ: حسابُ مديرِ النظام — لا يُترَك بلا اسم.
+  // Who the entry is attributed to: the system admin account, never left unnamed.
   const actor = await User.findOne({ role: 'super_admin' }).select('_id firstName lastName').lean();
   const actorName = actor ? `${actor.firstName || ''} ${actor.lastName || ''}`.trim() : 'النظام';
 
@@ -176,17 +145,9 @@ const codeOf = (t) => {
       if (rawType == null || String(rawType).trim() === '') continue;
       stats.slots += 1;
       if (isNonLeave(rawType)) { stats.nonLeave += 1; continue; }
-      // ── وتاريخُ العودةِ يُحفَظ كما كُتب في الورقة ──────────────────────────
-      //
-      // قيست المئتان والخمسون كلُّها: «المدّة بالأيام» في الورقة = العودة −
-      // الذهاب، لا زائدَ واحد — أي أنّ الورقةَ لا تعدّ يومَ العودة. فنُقص يومٌ
-      // أوّلَ مرّةٍ لتُطابق المدّةُ المحفوظةُ مدّةَ الورقة.
-      //
-      // وقرار صاحب القسم أن يبقى التاريخُ كما أرسله: التاريخُ الذي في الورقة
-      // هو المرجعُ الذي يُقارَن به، وتاريخٌ مختلفٌ بيومٍ في الشاشة يُقرأ خطأً
-      // كلَّ مرّةٍ تُراجَع فيها الورقة. فالمدّةُ تتبع التاريخَ لا العكس: تُحفَظ
-      // شاملةَ الطرفين (`leaveDays`) فتصير مدّةُ كلّ إجازةٍ يومًا أكثرَ مما في
-      // الورقة — وهو المقصود.
+      // The return date is stored as written in the sheet.
+      // All 250 were measured: the sheet's duration equals return minus departure, with no plus one, so the sheet does not count the return day. One day was subtracted the first time so the stored duration matched the sheet.
+      // The department owner decided the date stays exactly as sent: the sheet date is the reference it is compared with, and a date one day off on screen is misread every time the sheet is reviewed. So the duration follows the date, not the reverse: it is stored inclusive of both ends (leaveDays), making each leave one day longer than the sheet, as intended.
       const startDate = serialToISO(r[i + 1]);
       const endDate = serialToISO(r[i + 2]);
       if (!startDate || !endDate) { stats.noDates += 1; continue; }
@@ -203,18 +164,14 @@ const codeOf = (t) => {
       }
       toCreate.push({
         emp, code, startDate, endDate,
-        // شاملةَ الطرفين دائمًا — لا «المدّة» المكتوبةُ في الورقة: تلك لا تعدّ
-        // يومَ العودة، والتاريخُ المحفوظُ يعدّه. فلو أُخذت منها لاختلف العددُ
-        // عن تاريخَيه، وهو أسوأُ من يومٍ زائد.
+        // Always inclusive of both ends, not the duration written in the sheet: that one excludes the return day while the stored date includes it. Using it would make the count disagree with its own dates, which is worse than one extra day.
         days: leaveDays(startDate, endDate),
         label: String(rawType).trim(),
       });
     }
   }
 
-  // ── ولا يُقيَّد يومٌ مرّتين ───────────────────────────────────────────────
-  // التشغيلُ الثاني يجب أن يكون بلا أثر. فيُسأل عن كلّ إجازةٍ: هل في الملفّ
-  // إجازةٌ تتداخل مع أيّامها؟ — وهو نفسُ شرطِ الشاشة (`clash`).
+  // A day is never recorded twice. A second run must have no effect, so each leave is checked for an overlapping leave in the file, the same condition as the screen (clash).
   const existing = await LeaveRequest.find({
     employee: { $in: [...new Set(toCreate.map((x) => x.emp._id))] },
     status: { $in: ['approved', 'pending_manager', 'pending_hr', 'pending_accounting', 'pending_board'] },
@@ -236,7 +193,7 @@ const codeOf = (t) => {
       else { stats.clash += 1; clashes.push(`${x.emp.arabicName || x.emp.firstName} — الورقة ${x.startDate}→${x.endDate} (${x.label}) · المسجَّلة ${overlap.startDate}→${overlap.endDate}`); }
       continue;
     }
-    // التداخلُ يُقاس على ما سيُنشأ أيضًا: في الورقة خانتان متداخلتان لرجلٍ واحد.
+    // Overlap is also measured against what is about to be created: the sheet has two overlapping slots for one man.
     const twin = planned.find((p) => String(p.emp._id) === String(x.emp._id) && p.startDate <= x.endDate && p.endDate >= x.startDate);
     if (twin) {
       stats.clash += 1;
@@ -271,7 +228,7 @@ const codeOf = (t) => {
   for (const x of planned) {
     const lt = typeByCode.get(x.code);
     const affects = lt.affectsBalance !== false;
-    // الرصيدُ لحظةَ القيد — كما تلتقطه الشاشةُ قبل الخصم.
+    // Balance at the moment of entry, as the screen captures it before deduction.
     let snap = { accrued: 0, requested: x.days, remainingAfter: 0 };
     try {
       const contract = await require(`${ROOT}/models/Contract`)
@@ -290,7 +247,7 @@ const codeOf = (t) => {
           remainingAfter: affects ? Math.round((b.available - x.days) * 100) / 100 : b.available,
         };
       }
-    } catch { /* بلا عقدٍ لا رصيد — والإجازةُ تُقيَّد على كلّ حال */ }
+    } catch { /* no contract means no balance; the leave is still recorded */ }
 
     // eslint-disable-next-line no-await-in-loop
     await LeaveRequest.create({

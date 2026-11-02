@@ -1,4 +1,4 @@
-/** يقرأ الشيت كما هو ويقارنه بالقاعدة — بلا كتابة. */
+/** Reads the sheet as is and compares it with the database; read-only. */
 require('dotenv').config();
 const XLSX = require('xlsx');
 const path = require('path');

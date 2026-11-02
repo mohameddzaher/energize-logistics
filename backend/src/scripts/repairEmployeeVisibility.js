@@ -1,23 +1,8 @@
 /**
- * repairEmployeeVisibility — موظّفون حقيقيّون اختفوا من كلّ قائمة.
- *
- *   node src/scripts/repairEmployeeVisibility.js --dry
- *   node src/scripts/repairEmployeeVisibility.js --yes
- *
- * ── العلّة ──────────────────────────────────────────────────────────────────
- * `isHrRecord: false` معناها «هذا ليس موظّفًا — سجلُّ خدمةٍ ذاتيّةٍ أُنشئ لحسابِ
- * دخولٍ ليطلب إجازة». وكلُّ قائمةٍ وكلُّ عدّادٍ في الموارد البشريّة يستثنيه.
- *
- * وحمل العَلَمَ اثنان وثلاثون سجلًّا، تسعةٌ منها موظّفون حقيقيّون بأرقامٍ
- * وظيفيّةٍ وأقسامٍ وأرقام هويّة — فاختفوا من البحث ومن القوائم ومن العدّ، وهم
- * في القاعدة كما تركهم أهلُهم. سُئل عنهم فقيل «محذوفون»، ولم يُحذف أحد.
- *
- * ── وكيف يُفرَّق الحقيقيُّ من الظلّ ────────────────────────────────────────
- * سجلُّ الخدمة الذاتيّة يُنشأ باسمٍ وبريدٍ فقط — لا رقمَ وظيفيَّ له ولا قسمَ
- * ولا هويّة، و`inCurrentMaster: false`. فمن حمل واحدةً من هذه فهو موظّف.
- *
- * والدليلُ الأقوى تناقضٌ صريح: `inCurrentMaster: true` مع `isHrRecord: false` —
- * كشفُ الموظّفين يقول إنّه على رأس القائمة والعَلَمُ يقول إنّه ليس موظّفًا.
+ * repairEmployeeVisibility: real employees that vanished from every list.
+ * Usage: node src/scripts/repairEmployeeVisibility.js [--dry|--yes]
+ * `isHrRecord: false` means 'not an employee, a self-service record created for a login to request leave', and every HR list and counter excludes it. Some real employees carried the flag, so they disappeared from search, lists and counts while still in the database.
+ * Real vs shadow: a self-service record is created with only name and email (no job number, department or identity) and `inCurrentMaster: false`. Having any of those means a real employee. The strongest evidence is `inCurrentMaster: true` with `isHrRecord: false`, a direct contradiction.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -44,10 +29,8 @@ const DRY = !process.argv.includes('--yes');
     console.log(`   ${nm}  ·  رقم ${e.employeeNumber || '—'}  ·  ${e.department || '—'}  ·  ${e.iqamaNumber || e.nationalId || '—'}  ·  ${e.employmentStatus}`);
   }
 
-  // ── وظلالٌ يتيمة: حسابُها زال وبياناتُها فارغة ────────────────────────────
-  // سجلُّ خدمةٍ ذاتيّةٍ أُنشئ لحسابٍ ثمّ حُذف الحساب — فبقي صفٌّ لا يشير إلى
-  // أحدٍ ولا يحمل شيئًا. أكثرُها من حسابات الفحص عندي، وقد حُذفت حساباتُها
-  // ونُسيت ظلالُها. تُحذف: ليست أثرًا لأحد.
+  // Orphan shadows: the account is gone and the data is empty.
+  // A self-service record was created for an account that was then deleted, leaving a row that points to no one and holds nothing (mostly leftovers of test accounts). Deleted: they are nobody's trace.
   const shadows = hidden.filter((e) => !isReal(e));
   const userIds = shadows.map((e) => e.user).filter(Boolean);
   const alive = new Set((await User.find({ _id: { $in: userIds } }).select('_id').lean()).map((u) => String(u._id)));

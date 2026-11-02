@@ -1,27 +1,8 @@
 /**
- * ملفّاتُ مشرفي قطاع الأفراد — تصحيحُ ما يُقرأ منه اسمُهم العربيّ.
- *
- * ── لماذا ─────────────────────────────────────────────────────────────────
- * الاسمُ العربيُّ للمشرف يُقرأ من ملفّه في الموارد البشريّة المربوط بحسابه
- * (`User.linkedEmployee`). وحسابان من التسعة كانا مربوطَين بـ**قوقعة**: صفٌّ
- * أُنشئ يومَ أُنشئ الحساب، بلا اسمٍ عربيٍّ ولا رقمٍ وظيفيّ، حالتُه «منتهي
- * الخدمة»، ولا شيءَ في النظام يشير إليه.
- *
- * فكان سجلُّ النقل الخفيف — وهو عربيٌّ — يعرض «Ahmed Younis» بعد الربط، بعد أن
- * كان يعرض «احمد يونس». والاسمُ لقطةٌ تُقرأ في الجداول والتصدير، فوجب أن يجيء
- * من ملفٍّ صحيح.
- *
- *   · أحمد يونس — له ملفٌّ حقيقيٌّ في الموارد البشريّة (#1224 «احمد محمد محمد
- *     يونس»، قسم ادارة B2C، على رأس العمل)، وصفوفُ السجلّ مربوطةٌ به أصلًا.
- *     فيُصوَّب ربطُ حسابه إليه — ويُصلح معه ملفَّه الشخصيَّ في «ملفي».
- *   · أحمد الشرقاوي — لا ملفَّ له في الموارد البشريّة (الشرقاويُّ الموجود هو
- *     «فايز عبدالهادي عبدالفتاح الشرقاوي»، رجلٌ آخر). فيُكتب الاسمُ العربيُّ
- *     على الصفّ المربوط بحسابه كي تُقرأ الشاشاتُ بالعربيّة — ويبقى أنّ الموارد
- *     البشريّة تحتاج أن تفتح له ملفًّا حقيقيًّا.
- *
- * ثمّ تُعاد كتابةُ لقطةِ الاسم في صفوف السجلّ من الحساب المصحَّح.
- *
- * الاستعمال:  node src/scripts/fixB2CSupervisorFiles.js [--apply]
+ * B2C supervisor files: fix the source of their Arabic names, read from the HR file linked via User.linkedEmployee.
+ * Two accounts were linked to an empty shell row, so the register showed an English name.
+ * Ahmed Younis is relinked to his real HR file; Ahmed Elsharqawy has no HR file, so the Arabic name is written on his linked row (HR still needs to open a file). Then the register name snapshot is rewritten.
+ * Usage: node src/scripts/fixB2CSupervisorFiles.js [--apply]
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -38,7 +19,7 @@ const APPLY = process.argv.includes('--apply');
 (async () => {
   await mongoose.connect(process.env.MONGODB_URI);
 
-  // ١. أحمد يونس → ملفُّه الحقيقيّ
+  // 1. Ahmed Younis: link to his real file
   const younis = await User.findOne({ email: 'ahmed.y@energize.com' }).select('firstName lastName linkedEmployee');
   const realYounis = await Employee.findOne({ employeeNumber: '1224' }).select('arabicName employeeNumber employmentStatus department').lean();
   if (younis && realYounis) {
@@ -51,7 +32,7 @@ const APPLY = process.argv.includes('--apply');
     }
   } else console.log('أحمد يونس: لم يُعثَر على الحساب أو على الملفّ #1224 — تُرك');
 
-  // ٢. أحمد الشرقاوي → اسمٌ عربيٌّ على الصفّ المربوط بحسابه
+  // 2. Ahmed Elsharqawy: Arabic name on the row linked to his account
   const shark = await User.findOne({ email: 'ahmed.sh@energize.com' }).select('linkedEmployee').lean();
   if (shark?.linkedEmployee) {
     const emp = await Employee.findById(shark.linkedEmployee).select('arabicName firstName lastName employeeNumber employmentStatus');
@@ -63,7 +44,7 @@ const APPLY = process.argv.includes('--apply');
     }
   }
 
-  // ٣. لقطةُ الاسم في صفوف السجلّ تُعاد من الحساب
+  // 3. name snapshot in register rows is rewritten from the account
   const sups = await listSupervisors();
   console.log('\n=== لقطاتُ الأسماء بعد التصويب:');
   let writes = 0;

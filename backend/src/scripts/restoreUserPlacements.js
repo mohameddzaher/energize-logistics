@@ -1,27 +1,9 @@
 /* eslint-disable no-console */
 /**
- * restoreUserPlacements — شغل اليوزر هو الحقيقة، والاستيراد ما يدوسش عليه.
- *
- *   node src/scripts/restoreUserPlacements.js --dry
- *   node src/scripts/restoreUserPlacements.js --yes
- *
- * ── الغلطة اللي بيصلّحها ────────────────────────────────────────────────────
- * لما الجرد النهائي اتعارض مع حركتين اليوزرز عملوهم من الشاشة، أنا قدّمت الشيت.
- * وده مقلوب: الشيت لقطة قديمة، والحركة اللي اتعملت من الشاشة هي اللي حصلت على
- * الأرض وبإيد بني آدم شايف العربية. القاعدة: **اللي اليوزر عمله هو الحقيقي**،
- * والشيت بيتقدّم بس في الخانات اللي محدش لمسها.
- *
- * الحركتين:
- *
- * ١) الكاوتش Y5S243257 — اليوزر نقله من ٥٠٣٤ لـ٣٤٤٧ يوم ٦ أغسطس بسبب «تآكل».
- *    أنا رجّعته المخزن عشان الجرد حطّ فردة تانية في نفس الموقع. الصح إنه يفضل
- *    على ٣٤٤٧، وفردة الجرد (Y5S425919) هي اللي تستنى في المخزن لحد ما الورشة
- *    تقرّر — لأنها هي اللي جاية من ورق، وهو اللي جاي من إيد.
- *
- * ٢) التيدر ٢٧ — اليوزر نزّله من ٨١٩٨ يوم ٩ أغسطس. علّقه على TR1 لأن الشاشة
- *    وقتها ماكانش فيها خيار «يقف لوحده»، وTR1 كانت سطحة وهمية اتعملت للتيدر
- *    ٥٩. أنا رجّعته على ٨١٩٨. الصح إن قراره يتنفّذ: التيدر نازل من ٨١٩٨ —
- *    وبقى فيه دلوقتي حالة تعبّر عن ده بالظبط (واقف لوحده)، وكاوتشه معاه.
+ * restoreUserPlacements: what the user did is the truth, and import must not override it. Usage: node src/scripts/restoreUserPlacements.js [--dry|--yes] Fix: when the final stocktake conflicted with two moves users made from the screen, the sheet was preferred. That is backwards: the sheet is an
+ * old snapshot, while the screen move happened on the ground by a person looking at the truck. Rule: the user's action is authoritative; the sheet wins only for fields nobody touched. The two moves: 1) Tire Y5S243257: the user moved it from 5034 to 3447 on Aug 6 for wear. It had been returned to
+ * the store because the stocktake put another tire in the same position. It should stay on 3447, and the stocktake tire (Y5S425919) waits in the store until the workshop decides, since it came from paper and the other from a hand. 2) Trailer 27: the user took it off 8198 on Aug 9. It had been hung
+ * on TR1 because the screen had no 'standing alone' option then, and TR1 was a dummy flatbed made for trailer 59. It had been put back on 8198. The user's decision must be executed: the trailer is off 8198 and there is now a state for exactly that (standing alone), with its tires.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -38,7 +20,7 @@ const DRY = !process.argv.includes('--yes');
 
   const log = (...a) => console.log(...a);
 
-  // ── ① الكاوتش يرجع لمكان اليوزر ───────────────────────────────────────────
+  // 1) The tire returns to the user's position
   log('── الكاوتش Y5S243257 ──');
   const mine = await Ls2TireAsset.findOne({ serial: 'Y5S243257' });
   const fromSheet = await Ls2TireAsset.findOne({ serial: 'Y5S425919' });
@@ -48,7 +30,7 @@ const DRY = !process.argv.includes('--yes');
     log(`   المفروض: مركّب على 3447 موقع 1 (نقلة اليوزر يوم ٦ أغسطس — «تآكل»)`);
     log(`   وفردة الجرد ${fromSheet ? fromSheet.serial : '—'} تستنى في المخزن`);
     if (!DRY) {
-      // الأول نفضّي الموقع من فردة الجرد
+      // First free the position from the stocktake tire
       if (fromSheet && String(fromSheet.plateKey) === String(k3447) && fromSheet.positionNumber === 1) {
         const f = { plate: fromSheet.plate, key: fromSheet.plateKey, pos: `${fromSheet.positionLabel} — ${fromSheet.section}` };
         fromSheet.set({
@@ -78,7 +60,7 @@ const DRY = !process.argv.includes('--yes');
     }
   }
 
-  // ── ② التيدر ٢٧: قرار اليوزر يتنفّذ ───────────────────────────────────────
+  // 2) Trailer 27: the user's decision is executed
   log('\n── التيدر ٢٧ ──');
   const tr = await Ls2Trailer.findOne({ trailerNumber: '27' });
   if (!tr) { log('   مش موجود — اتخطّى'); } else {

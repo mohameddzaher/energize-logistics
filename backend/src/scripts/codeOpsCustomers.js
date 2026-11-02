@@ -1,13 +1,7 @@
 /**
- * عملاءُ التشغيل بلا كود — مرّةً واحدةً للرصيد القائم؛ وما يأتي بعدها يمرّ
- * بـ ensureCollectionsParty تلقائيًّا.
- *   تطابقٌ شبهُ تامّ  ⇒ يُدمَج في حسابه القائم
- *   شبيهٌ غيرُ قاطع    ⇒ طابورُ الربط عند مدير التحصيل (ولا كود حتّى يقرّر)
- *   لا شبيه          ⇒ كودٌ جديدٌ بنوع حمولاته
- * تجربةٌ افتراضًا؛ `--apply` للكتابة.
- *
- * والتشابهُ بالكلمات لا يرى الاسمَ نفسَه بحرفين: «D H L» و«دي اتش ال»،
- * «نيشان» و«Nishan». فهذه تُعرَض على المدير بأيدينا لا بالقياس.
+ * Operations customers without a code, one-time pass for the existing balance; later ones go through ensureCollectionsParty.
+ * Near-exact match merges into the existing account; ambiguous match goes to the collections manager's link queue; no match gets a new code.
+ * Dry run by default; --apply writes. Word similarity misses Arabic/English spellings of one name, so those are shown to the manager.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');

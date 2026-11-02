@@ -1,46 +1,29 @@
 /* eslint-disable no-console */
 /**
- * auditGrowthCaps — أيُّ سقفٍ في الشيفرة صار قريبًا من بيانات اليوم؟
- *
- *   node src/scripts/auditGrowthCaps.js
- *
- * ── لماذا يُشغَّل دوريًّا ─────────────────────────────────────────────────────
- * كلُّ سقفٍ يُكتب اليوم يصير ضيّقًا يومًا: تكبر الشركة، وتتراكم السنوات، فتبلغ
- * مجموعةٌ حدَّها. والقصُّ الصامت لا يُعلن عن نفسه — الشاشة تعرض ألفًا وتبدو
- * كأنّها عرضت الكلّ، فيُقرأ الناقصُ كاملًا ويُبنى عليه قرار.
- *
- * وقع ذلك هنا فعلًا: طلبات الأفراد اليوميّة بلغت ثلاثةً وأربعين ألفًا تحت سقفٍ
- * من خمسة آلاف، فكانت الشاشة تعرض ثُمنَ ما تظنّ أنها تعرضه.
- *
- * ── وثلاثة أخطاءٍ وقع فيها هذا الفحص نفسه قبل أن يصحّ ────────────────────────
- * ١) عدَّ `slice(0, 10)` سقفَ صفوفٍ وهو يقصّ **تاريخًا** إلى YYYY-MM-DD.
- * ٢) نسب الحدَّ إلى نموذجٍ مجاورٍ داخل `Promise.all` — فقاس حدَّ سجلّ الأحداث
- *    إلى عدد الإطارات.
- * ٣) قاس حدَّ استعلامٍ **مفلتَر** («سجلّ هذا الموظّف») إلى المجموعة كلّها،
- *    فأعلن قصًّا لا وجود له.
- *
- * وفحصٌ يُنذر كذبًا يُهمَل بعد إنذارين — فيصير أسوأ من لا فحص إطلاقًا. ولهذا
- * يفصل الآن بين ما يقصّ يقينًا وما يحتاج نظرًا.
+ * Finds code limits that are now close to today's data.
+ * Every limit becomes tight eventually as the company grows. Silent truncation announces nothing: a screen shows a thousand rows and looks complete, so a decision is built on partial data. Daily individual orders once reached 43,000 under a 5,000 cap.
+ * The audit itself had three bugs: it counted slice(0, 10) as a row cap though it trims a date to YYYY-MM-DD; it attributed a limit to a neighbouring model inside Promise.all; and it compared a filtered query's limit to the whole collection.
+ * A false alarm gets ignored, so it now separates certain truncation from what needs a look.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
 const fs = require('fs');
 const path = require('path');
 
-// قائمةٌ من عشرةٍ أو مئةٍ قرارُ عرضٍ مقصود («أحدث عشرة»)، لا سقفُ نموّ.
+// A list of ten or a hundred is a deliberate display choice (latest ten), not a growth cap.
 const MIN_MEANINGFUL_CAP = 100;
 
 const RX_MODEL_FIND = /\b([A-Z][A-Za-z0-9_]*)\s*\.\s*find\s*\(/;
 const RX_LIMIT = /\.limit\(\s*(\d+)\s*\)/;
 const RX_HAS_LIMIT = /\.limit\(/;
 
-/** فلترٌ فارغ: `find()` أو `find({})` — أي القائمة الكاملة. */
+/** Empty filter: find() or find({}), meaning the full list. */
 function looksUnfiltered(afterFind) {
   const head = afterFind.replace(/\s+/g, '');
   return head.startsWith(')') || head.startsWith('{})');
 }
 
-/** يجمع { model, cap, file, line, filtered } لكل حدٍّ ذي معنى. */
+/** Collects { model, cap, file, line, filtered } for each meaningful limit. */
 function collectCaps(base) {
   const found = [];
   const walk = (dir) => {
@@ -56,8 +39,7 @@ function collectCaps(base) {
         const n = Number(cap[1]);
         if (n < MIN_MEANINGFUL_CAP) return;
 
-        // النموذج من **نفس السطر** أوّلًا؛ والنظر إلى ما قبله يتوقّف عند أوّل
-        // `.limit(` آخر، فذاك حدٌّ مستقلٌّ لنموذجٍ غيره.
+        // The model is taken from the same line first; looking at earlier lines stops at the previous .limit(, which belongs to another model.
         let chunk = line;
         let mdl = chunk.match(RX_MODEL_FIND);
         if (!mdl) {
@@ -84,17 +66,15 @@ function collectCaps(base) {
   await mongoose.connect(process.env.MONGODB_URI);
   const base = path.join(__dirname, '..');
 
-  // تُحمَّل كلُّ النماذج أوّلًا: `mongoose.model(name)` لا يعرف نموذجًا لم
-  // يُستدعَ ملفُّه بعد، فبدونه لا يُقاس شيء ويخرج الفحص «سليمًا» وهو لم يفحص.
+  // All models are loaded first: mongoose.model(name) does not know a model whose file has not been required, so nothing would be measured and the audit would pass without checking.
   const modelsDir = path.join(base, 'models');
   for (const f of fs.readdirSync(modelsDir)) {
-    if (f.endsWith('.js')) { try { require(path.join(modelsDir, f)); } catch (e) { /* نموذجٌ معطوب لا يوقف الفحص */ } }
+    if (f.endsWith('.js')) { try { require(path.join(modelsDir, f)); } catch (e) { /* A broken model must not stop the audit. */ } }
   }
 
   const caps = collectCaps(base);
 
-  // أعلى سقفٍ **غير مفلتَر** لكلّ نموذج هو الذي يُقاس: القوائم الجانبية حدودُها
-  // أصغر عمدًا، والمفلترة لا تُقاس إلى المجموعة كلّها أصلًا.
+  // Only the highest unfiltered cap per model is measured: sidebar lists have deliberately smaller limits, and filtered ones are not comparable to the whole collection.
   const byModel = new Map();
   for (const c of caps) {
     const cur = byModel.get(c.model);
@@ -119,12 +99,10 @@ function collectCaps(base) {
   for (const r of rows) {
     let state = '✓';
     if (r.n >= r.cap) {
-      // المفلتَر يُعرَض للنظر لا للإنذار: عددُ المجموعة كلِّها ليس عدد ما يعيده،
-      // والحكم عليه يحتاج قياس أكبر مجموعةٍ لكيانٍ واحد — وهو ما لا يُعرَف من
-      // الشيفرة وحدها.
+      // Filtered caps are shown for review, not alarm: the collection size is not the size of what the query returns, and judging needs the largest per-entity set, which code alone cannot tell.
       if (r.filtered) { state = '· مفلتَر — يُنظَر'; look++; } else { state = '⛔ يقصّ الآن'; crit++; }
     } else if (r.pct >= 60 && !r.filtered) { state = '⚠ اقترب'; warn++; }
-    if (state === '✓') continue;   // السليم لا يُطبَع: التقرير قائمةُ عملٍ لا جرد
+    if (state === '✓') continue;   // Healthy items are not printed: the report is a work list, not an inventory.
     console.log('  ' + r.model.padEnd(24) + String(r.n).padStart(8) + String(r.cap).padStart(10)
       + String(r.pct + '%').padStart(8) + '   ' + state.padEnd(19) + r.at);
   }

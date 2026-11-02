@@ -34,7 +34,7 @@ const serial = (n) => { const v = Number(n); return Number.isFinite(v) && v > 0 
   console.log(`   ومنها كأرقام كشوفٍ في سير عمل التشغيل: ${inWf}`);
   console.log('   مثال:', rows.slice(0, 3).map((r) => `${r.no}/${r.name}/${r.total}`).join(' · '));
 
-  // ── Aging Shipment: مسؤولو التحصيل ──────────────────────────────────────
+  // Aging Shipment: collections owners
   const ag = XLSX.utils.sheet_to_json(wb.Sheets['Aging Shipment'], { header: 1, defval: '', blankrows: false });
   const off = new Map();
   for (let i = 5; i < ag.length; i += 1) {

@@ -1,44 +1,29 @@
 const mongoose = require('mongoose');
 
-// إدارة الأسطول — the section that runs OUR OWN trucks, as opposed to the
-// shipment-orders trial which books supplier trucks. One file for the four
-// models because they only ever change together: a shipment snapshots the
-// vehicle and drivers it was booked with, and the drivers' assignment moves
-// between vehicles as part of booking.
+// Fleet management: the section that runs our own trucks, as opposed to the shipment-orders trial which books supplier trucks. One file for the four models because they change together: a shipment snapshots the vehicle and drivers it was booked with, and driver assignment moves between vehicles as part of booking.
 
 // ── Vehicles: the 57 trucks (seeded from Location Solutions) ────────────────
 const fleetVehicleSchema = new mongoose.Schema({
   plate: { type: String, required: true, unique: true, trim: true ,
-    // صيغةُ اللوحة واحدةٌ في النظام كلِّه — راجع `formatPlate`.
+    // One plate format system-wide; see `formatPlate`.
     set: (v) => require('../utils/plateKey').formatPlate(v),
   },
   name: { type: String, trim: true, default: '' },
-  trailerType: { type: String, trim: true, default: 'سطحة' }, // سطحة / ستارة / …
+  trailerType: { type: String, trim: true, default: 'سطحة' }, // Flatbed / curtain-side / ...
   gpsType: { type: String, trim: true, default: 'LS' },       // LS / EX
-  brand: { type: String, trim: true, default: '' },           // ماركة السيارة — للبوليصة
-  color: { type: String, trim: true, default: '' },           // لون السيارة — للبوليصة
-  // الهدف الشهري للدخل لهذه السيارة (ر.س) — يُقارَن بالمحقَّق في التحليلات.
-  // فارغٌ = يتبع الافتراضيَّ في إعدادات القسم (FleetConfig.defaultMonthlyTarget)
-  // ويتغيّر بتغيّره؛ ورقمٌ هنا هدفٌ خاصٌّ بهذه السيارة. (كان الافتراضيُّ 27000
-  // مكتوبًا على كلّ سيارةٍ جديدة، فلم يكن لتغيير الإعدادات أثرٌ عليها.)
+  brand: { type: String, trim: true, default: '' },           // Vehicle make, for the waybill.
+  color: { type: String, trim: true, default: '' },           // Vehicle color, for the waybill.
+  // Monthly income target for this vehicle (SAR), compared with the achieved in analytics. Empty follows the section default (FleetConfig.defaultMonthlyTarget) and changes with it; a number here is a vehicle-specific target.
   monthlyTarget: { type: Number, default: null },
-  // المشرف المسؤول عن هذه السيارة: يعيّنه مدير القسم، وكل ما يراه المشرف في
-  // القسم (حمولات، سائقون، لوحة، تحليلات) محصور في سياراته هذه.
+  // Supervisor responsible for this vehicle, assigned by the department manager; everything the supervisor sees in the section (loads, drivers, dashboard, analytics) is limited to his vehicles.
   supervisor: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null, index: true },
   supervisorName: { type: String, trim: true, default: '' },
   notes: { type: String, trim: true, default: '' },
   isActive: { type: Boolean, default: true },
-  /**
-   * ── والشاحنةُ في سجلّ المركبات واحدة ───────────────────────────────────
-   * هويّتُها (اللوحةُ الرسميّة والماركةُ والطرازُ والسنةُ والهيكلُ واللون)
-   * ومستنداتُها وانتهاؤها تُقرأ من `VehicleMaster` بهذا المرجع — لا من نسخةٍ
-   * هنا (صاحبُ الشركة، ٢٠٢٦/١٠/٢١: «سجلٌّ واحدٌ لكلّ مركبة»). و`brand`/`color`
-   * أعلاه احتياطٌ لغير المربوط. يُحَلّ عند الإنشاء بالمفتاح الموحَّد للّوحة
-   * (utils/vehicleRef)، وراجع utils/fleetIdentity.
-   */
+  /** The truck is one record in the vehicle registry. Identity (official plate, make, model, year, chassis, color), documents and expiries are read from `VehicleMaster` via this reference, not from a copy here. `brand`/`color` above are a fallback for unlinked trucks. Resolved at creation by the unified plate key (utils/vehicleRef); see utils/fleetIdentity. */
   vehicleMaster: { type: mongoose.Schema.Types.ObjectId, ref: 'VehicleMaster', default: null },
 }, { timestamps: true });
-// مركبةُ السجلّ الواحدة لا تكون شاحنتين في الأسطول — هكذا وُلد تكرارُ 3965/3966.
+// A registry vehicle cannot be two fleet trucks; that is how the 3965/3966 duplicate arose.
 fleetVehicleSchema.index(
   { vehicleMaster: 1 },
   { unique: true, partialFilterExpression: { vehicleMaster: { $type: 'objectId' } } },
@@ -49,62 +34,37 @@ const fleetDriverSchema = new mongoose.Schema({
   name: { type: String, required: true, trim: true },
   phone: { type: String, trim: true, default: '' },
   iqama: { type: String, trim: true, default: '' },
-  nationality: { type: String, trim: true, default: '' }, // الجنسية — للبوليصة
-  /**
-   * الإيبان — يُكتب في ملفّ السائق مرّةً ويُقرأ منه في كلّ صرف.
-   *
-   * وكان يُكتب في كلّ كشفٍ مصروفٍ بيده، فيُخطئ رقمٌ واحدٌ فيذهب المالُ إلى
-   * حسابٍ آخر. ومصدرُه ملفُّ الرجل لا سطرُ الحمولة.
-   */
+  nationality: { type: String, trim: true, default: '' }, // Nationality, for the waybill.
+  /** IBAN: written once on the driver file and read from it at every payout. Typing it per payout statement risked one wrong digit sending money to another account; the source is the driver's file, not the load row. */
   iban: { type: String, trim: true, default: '' },
-  // حالة السائق: does he work at the moment (sick / on leave ⇒ false)?
+  // Driver status: does he work at the moment (sick / on leave means false)?
   working: { type: Boolean, default: true },
-  // WHY he is off — مرضية / إجازة / أخرى — so the dashboard can answer "who is
-  // sick and who is on leave" instead of one flat "off" count.
+  // Why he is off (sick / leave / other), so the dashboard can show who is sick and who is on leave instead of one flat off count.
   offReason: { type: String, enum: ['', 'sick', 'leave', 'other'], default: '' },
   offNote: { type: String, trim: true, default: '' },
-  // على الكفالة أم لا
+  // On our sponsorship or not.
   onSponsorship: { type: Boolean, default: true },
   // The truck he is currently on. Reassigning him — including implicitly, by
   // picking him on a shipment for another truck — just moves this pointer;
   // the shipment events keep the story.
   vehicle: { type: mongoose.Schema.Types.ObjectId, ref: 'FleetVehicle', default: null, index: true },
   /**
-   * ── أوّلٌ أو ثانٍ: المقعدُ رتبةٌ لا مجرّدُ وجود ────────────────────────────
-   *
-   * المقعدان قاعدةُ القسم منذ البداية — شاحنةٌ تحمل سائقَين على الأكثر — لكنّ
-   * الرتبةَ لم تكن مكتوبةً في شيء: السائقان يشتركان في الشاحنة ويُعرَضان بأيّ
-   * ترتيبٍ تُعيده القاعدة. فمن سأل «مين السائق الأول على 2708؟» لم يكن للسؤال
-   * جوابٌ في السجلّ، ونموذجُ الشحنة كان يُجلس أوّلَ مَن يصل في خانة «السائق
-   * الأساسي» — فتُطبَع البوليصةُ باسم الثاني.
-   *
-   * والرتبةُ تُكتب على السائق لا على المركبة: مؤشّرُ `vehicle` هو الصلةُ
-   * الوحيدة بينهما، فلو كُتبت قائمةُ سائقين على المركبة أيضًا صار في النظام
-   * سجلّان لشيءٍ واحدٍ يختلفان أوّلَ ما يُنقَل سائقٌ من شاشةٍ لا تعرف الآخر
-   * (وهذا بعينه ما حدث في تفاويض المركبات).
-   *
-   * ولا معنى للمقعد بلا شاحنة: مَن نزل عن شاحنته يعود إلى الأوّل، فلا يبقى
-   * في السجلّ «سائقٌ ثانٍ» لا شاحنةَ له. وشاحنةٌ فيها ثانٍ بلا أوّلٍ محالٌ —
-   * إن نزل الأوّلُ رُقِّي الثاني (راجع `seatDriver`).
+   * First or second: the seat is a rank, not mere presence.
+   * A truck has at most two drivers, but rank was never stored, so order was arbitrary and the shipment form could seat the second driver as primary, printing the waybill in his name.
+   * Rank is stored on the driver, not the vehicle: the `vehicle` pointer is the only link, and a driver list on the vehicle would be a second record of one fact that diverges when a driver moves.
+   * A seat is meaningless without a truck: a driver who leaves resets to first. A truck cannot have a second without a first: if the first leaves, the second is promoted (see `seatDriver`).
    */
   seat: { type: Number, enum: [1, 2], default: 1 },
-  // هدفُه الشهريُّ إن خُصَّ بواحد — وإلّا فافتراضيُّ القسم.
-  // `null` تعني «استعمل الافتراضيّ»، و`0` تعني «لا هدفَ له» وهما مختلفان.
+  // His monthly target if specific, otherwise the section default. `null` means use the default; `0` means no target. They differ.
   monthlyLoadsTarget: { type: Number, default: null },
   monthlyKmTarget: { type: Number, default: null },
   notes: { type: String, trim: true, default: '' },
   isActive: { type: Boolean, default: true },
-  /**
-   * ── والسائقُ في الموارد البشريّة ملفٌّ واحد ────────────────────────────
-   * الاسمُ والجوالُ ورقمُ الهويّة والجنسيّةُ والإيبان تُقرأ من `Employee` متى
-   * رُبط، وحالةُ عمله تتبع إجازتَه وإنهاءَ خدمته هناك. والنصوصُ أعلاه احتياطٌ
-   * لِمَن لم يُربط بعد (أسماءٌ أولى كـ«حمزه» جاءت من لوكيشن سوليوشن). راجع
-   * utils/fleetIdentity و«ربط بموظف» في صفحة السائقين.
-   */
+  /** The driver is one HR file. Name, phone, identity number, nationality and IBAN are read from `Employee` once linked, and work status follows his leave and termination there. The text fields above are a fallback for the unlinked (first names such as from Location Solutions). See utils/fleetIdentity and the link-to-employee action on the drivers page. */
   employee: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee', default: null },
 }, { timestamps: true });
 fleetDriverSchema.index({ name: 1 });
-// الموظّفُ الواحد سائقٌ واحدٌ في الأسطول — بين القائمين؛ المُزالُ يبقى بمرجعه للتاريخ.
+// One employee is one fleet driver among the active; a removed one keeps its reference for history.
 fleetDriverSchema.index(
   { employee: 1 },
   { unique: true, partialFilterExpression: { employee: { $type: 'objectId' }, isActive: true } },
@@ -116,19 +76,16 @@ const fleetCustomerSchema = new mongoose.Schema({
   name: { type: String, required: true, trim: true },
   phone: { type: String, trim: true, default: '' },
   email: { type: String, trim: true, default: '' },
-  // نوع العميل: عملاء النقل الثقيل (عملاء قسم الأسطول) أو عملاء الفروع.
+  // Customer kind: heavy transport customers (fleet section) or branch customers.
   customerType: { type: String, enum: ['heavy', 'branch'], default: 'heavy', index: true },
-  // تقييمنا للعميل (0–5) — يظهر في ترتيب العملاء بالتحليلات.
+  // Our rating of the customer (0 to 5), shown in the analytics customer ranking.
   rating: { type: Number, default: 0, min: 0, max: 5 },
-  // نوع الدفع المتفق عليه معه — مفتاحٌ من قائمة fleet_payment_type (cash/tax).
-  // يُملأ تلقائيًا في الحمولة عند اختيار العميل، ويبقى قابلًا للتعديل هناك:
-  // العميل الضريبي قد يدفع حمولةً واحدة كاشًا، فالاتفاق افتراضٌ لا قيد.
+  // Agreed payment type, a key from the fleet_payment_type list (cash/tax). Prefilled on the load when the customer is picked and editable there: a tax customer may pay one load in cash, so the agreement is a default, not a constraint.
   paymentType: { type: String, trim: true, default: '' },
-  // الرقم الضريبي والعنوان — يظهران في الفاتورة، ويأتيان من الـCRM إن وُجد.
+  // Tax number and address, shown on the invoice; come from the CRM if present.
   taxNumber: { type: String, trim: true, default: '' },
   address: { type: String, trim: true, default: '' },
-  // ربطٌ بسجلّ الشركة في الـCRM. السجلّان مستقلّان بالنشأة — أُدخل كلٌّ منهما
-  // في قسمه — فلا يجمعهما إلّا الاسم المطبَّع، ولذلك يُخزَّن المفتاح ويُفهرَس.
+  // Link to the CRM company record. The two records were created independently in their own sections and join only by the normalized name, so the key is stored and indexed.
   crmCompany: { type: mongoose.Schema.Types.ObjectId, ref: 'CrmCompany', default: null, index: true },
   nameKey: { type: String, trim: true, default: '', index: true },
   // Copy of the master's customer code (utils/customerCode).
@@ -144,65 +101,56 @@ const fleetCustomerSchema = new mongoose.Schema({
 }, { timestamps: true });
 fleetCustomerSchema.index({ name: 1 });
 
-// ── Shipments (الحمولات) ────────────────────────────────────────────────────
+// Shipments (loads).
 const fleetShipmentSchema = new mongoose.Schema({
-  // بوليصة الشحن. Its OWN series, starting at 100001, six digits — visibly a
-  // different scheme from the shipment-orders 500-series, so the two can never
-  // be mistaken for each other or collide.
+  // Waybill number. Its own series starting at 100001, six digits, visibly different from the shipment-orders 500-series so the two cannot be confused or collide.
   waybillNumber: { type: Number, unique: true, index: true },
 
   customer: { type: mongoose.Schema.Types.ObjectId, ref: 'FleetCustomer', default: null, index: true },
   customerName: { type: String, trim: true, default: '', index: true },
 
   vehicle: { type: mongoose.Schema.Types.ObjectId, ref: 'FleetVehicle', default: null },
-  // Snapshots: the بوليصة must read the same forever, whatever later happens
-  // to the vehicle row.
+  // Snapshots: the waybill must read the same forever, whatever later happens to the vehicle row.
   vehiclePlate: { type: String, trim: true, default: '' },
   trailerType: { type: String, trim: true, default: '' },
   gpsType: { type: String, trim: true, default: '' },
-  vehicleBrand: { type: String, trim: true, default: '' }, // snapshot — للبوليصة
-  vehicleColor: { type: String, trim: true, default: '' }, // snapshot — للبوليصة
+  vehicleBrand: { type: String, trim: true, default: '' }, // Snapshot for the waybill.
+  vehicleColor: { type: String, trim: true, default: '' }, // Snapshot for the waybill.
 
   driver: { type: mongoose.Schema.Types.ObjectId, ref: 'FleetDriver', default: null },
   driverName: { type: String, trim: true, default: '' },
   driverPhone: { type: String, trim: true, default: '' },
-  driverIqama: { type: String, trim: true, default: '' },       // snapshot — للبوليصة
-  driverNationality: { type: String, trim: true, default: '' }, // snapshot — للبوليصة
-  // حقول البوليصة/الحمولة (تُدخَل وقت الإنشاء):
-  rentType: { type: String, trim: true, default: '' },      // نوع الإيجار (قدام/راجعة…) — قائمة قابلة للتعديل
-  paymentType: { type: String, trim: true, default: '' },   // نوع الدفع (كاش/ضريبي) — قائمة قابلة للتعديل
-  loadType: { type: String, trim: true, default: '' },      // نوع الحمولة — قائمة أو كتابة يدوية
-  // إيجار السيارة — الدخل الفعلي لقسم إدارة الأسطول من هذه الحمولة (أساس التحليلات).
+  driverIqama: { type: String, trim: true, default: '' },       // Snapshot for the waybill.
+  driverNationality: { type: String, trim: true, default: '' }, // Snapshot for the waybill.
+  // Waybill/load fields, entered at creation.
+  rentType: { type: String, trim: true, default: '' },      // Rental type (forward / return ...), an editable list.
+  paymentType: { type: String, trim: true, default: '' },   // Payment type (cash / tax), an editable list.
+  loadType: { type: String, trim: true, default: '' },      // Load type: from a list or typed manually.
+  // Vehicle rent: the fleet section's actual income from this load (basis of analytics).
   price: { type: Number, default: 0, index: true },
-  // الإيجار كامل (اختياري) — المبلغ الذي يستلمه السائق من العميل. عادةً مع «قدام».
-  // الفرق (fullRent − price) حصة قسم الفروع (سيناريو 3PL). صفر يعني لا يوجد.
+  // Full rent (optional): the amount the driver collects from the customer, usually with forward rental. The difference (fullRent - price) is the branches section's share (3PL scenario). Zero means none.
   fullRent: { type: Number, default: 0 },
-  // نوع العميل لهذه الحمولة (لقطة): نقل ثقيل أم فرع — للتقارير حتى لو تغيّر العميل لاحقًا.
+  // Customer kind for this load (snapshot): heavy transport or branch, for reports even if the customer changes later.
   customerType: { type: String, enum: ['heavy', 'branch', ''], default: '', index: true },
-  driverExpense: { type: Number, default: 0 },              // مصروف السائق (كان «سلفة السائق»)
-  driverAdvance: { type: String, trim: true, default: '' }, // legacy — يُقرأ للبوليصات القديمة فقط
-  // بونص يوم الجمعة: عند تفعيله يُضاف مبلغ ثابت (FleetConfig.fridayBonusAmount) لمصروف السائق.
+  driverExpense: { type: Number, default: 0 },              // Driver expense (formerly the driver advance).
+  driverAdvance: { type: String, trim: true, default: '' }, // Legacy: read for old waybills only.
+  // Friday bonus: when enabled, a fixed amount (FleetConfig.fridayBonusAmount) is added to the driver expense.
   fridayBonus: { type: Boolean, default: false },
-  /**
-   * ── سدادُ مصروف السائق ────────────────────────────────────────────────
-   * الحساباتُ تعلّم الصفَّ حين تحوّل المبلغ. وهو الحقلُ الذي يفصل «مستحقٌّ
-   * ولم يُصرَف» عن «صُرِف» — وبغيره تُقرأ صفحةُ المصاريف مطالبةً واحدةً لا
-   * فرقَ فيها بين ما دُفع وما لم يُدفَع، فيُدفَع الشيءُ مرّتين أو لا يُدفَع.
-   */
+  /** Driver expense payment. Accounting marks the row when it transfers the amount. This field separates due but not paid from paid; without it the expenses page is one undifferentiated claim and money is paid twice or not at all. */
   driverExpensePaid: { type: Boolean, default: false, index: true },
   driverExpensePaidAt: { type: Date, default: null },
   driverExpensePaidBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   driverExpensePaidByName: { type: String, trim: true, default: '' },
-  branch: { type: String, trim: true, default: '' },        // الفرع — من فروع الشركة
-  // سائق ثانٍ — for loads that must arrive fast, two drivers share the wheel.
+  branch: { type: String, trim: true, default: '' },        // Branch, one of the company branches.
+  // Second driver: for loads that must arrive fast, two drivers share the wheel.
   secondDriver: { type: mongoose.Schema.Types.ObjectId, ref: 'FleetDriver', default: null },
   secondDriverName: { type: String, trim: true, default: '' },
 
-  // المشرف — stamped from the creating account, and a first-class filter.
+  // Supervisor: stamped from the creating account, and a first-class filter.
   supervisor: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null, index: true },
   supervisorName: { type: String, trim: true, default: '' },
 
-  loadDate: { type: Date, default: null }, // تاريخ التحميل
+  loadDate: { type: Date, default: null }, // Loading date.
   fromCity: { type: String, trim: true, default: '' },
   toCity: { type: String, trim: true, default: '' },
 
@@ -217,8 +165,8 @@ const fleetShipmentSchema = new mongoose.Schema({
   },
 
   // Follow-up state, denormalized for the list: the details live in the events.
-  lastContactAt: { type: Date, default: null },   // آخر تواصل مع السائق
-  expectedArrival: { type: Date, default: null }, // متوقع الوصول — optional
+  lastContactAt: { type: Date, default: null },   // Last contact with the driver.
+  expectedArrival: { type: Date, default: null }, // Expected arrival, optional.
 
   notes: { type: String, trim: true, default: '' },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
@@ -235,7 +183,7 @@ fleetShipmentSchema.index({ status: 1, lastContactAt: 1 });
 fleetShipmentSchema.index({ loadDate: -1 });
 
 const counterSchema = new mongoose.Schema({ _id: String, seq: Number });
-// ── العميلُ واحدٌ في كلّ الأقسام — رابطُه إلى شركة العلاقات الأمّ (services/customerHub) ──
+// One customer across all sections: link to the parent CRM company (services/customerHub).
 require('../services/customerHub').attach(fleetCustomerSchema, 'fleet');
 const FleetCounter = mongoose.models.FleetCounter || mongoose.model('FleetCounter', counterSchema);
 
@@ -253,19 +201,13 @@ fleetShipmentSchema.post('save', (doc) => {
   require('../services/shipmentOrderWorkflowLink').mirrorFleetSoon(doc._id);
 });
 
-// ── Events: the append-only story of each shipment ──────────────────────────
-// Everything that ever happened — creation, edits, status flips, driver moves,
-// and every follow-up call — with who and when. Nothing here is updated or
-// deleted; corrections are new events. This is what "افتح تفاصيلها تلاقي كل
-// حاجة حصلت" reads from.
+// Events: the append-only story of each shipment. Everything that happened (creation, edits, status flips, driver moves, follow-up calls) with who and when. Nothing is updated or deleted; corrections are new events. The shipment details view reads from this.
 const fleetEventSchema = new mongoose.Schema({
   shipment: { type: mongoose.Schema.Types.ObjectId, ref: 'FleetShipment', required: true, index: true },
   type: {
     type: String,
     required: true,
-    // maintenance_override: حُمِّلت وصيانتُها متأخّرةٌ بإذنٍ مسجَّل — أثرٌ يبقى
-    // في سجلّ الحمولة لا في جدولٍ آخر: من يقرأ قصّةَ هذه الحمولة يعرف أنّها
-    // خرجت بإذنٍ ومن أذِن. راجع controllers/fleetRequestController.
+    // maintenance_override: loaded with overdue maintenance under a recorded permission. The trace stays in the load's log, not another table, so a reader knows it left under permission and who approved. See controllers/fleetRequestController.
     enum: ['created', 'updated', 'status', 'driver_change', 'followup', 'maintenance_override'],
   },
   // followup: { contactTime, currentLocation, note, expectedArrival }
@@ -282,22 +224,16 @@ fleetEventSchema.index({ shipment: 1, createdAt: -1 });
 // system, not here.
 const fleetConfigSchema = new mongoose.Schema({
   key: { type: String, default: 'fleet', unique: true },
-  fridayBonusAmount: { type: Number, default: 50 },      // ريال يُضاف لمصروف السائق يوم الجمعة
-  defaultMonthlyTarget: { type: Number, default: 27000 }, // الهدف الشهري الافتراضي للسيارة
-  // ── وهدفُ السائق حمولاتٌ ومسافة ──────────────────────────────────────────
-  // السيّارةُ تُقاس بالدخل؛ والسائقُ لا يملك السعر — يملك أن يشيل ويمشي. فما
-  // يُسأل عنه: كم حمولةً شال، وكم قطع. والافتراضيُّ هنا ولكلّ سائقٍ أن يُخصَّ
-  // بهدفٍ يخالفه (FleetDriver.monthlyLoadsTarget / monthlyKmTarget).
+  fridayBonusAmount: { type: Number, default: 50 },      // Riyals added to the driver expense on Friday.
+  defaultMonthlyTarget: { type: Number, default: 27000 }, // Default monthly target for a vehicle.
+  // Driver target is loads and distance. A vehicle is measured by income, but a driver does not control price; he controls hauling and driving. So the questions are how many loads and how many km. The default is here and any driver may have his own (FleetDriver.monthlyLoadsTarget / monthlyKmTarget).
   defaultDriverMonthlyLoads: { type: Number, default: 8 },
   defaultDriverMonthlyKm: { type: Number, default: 8000 },
 
-  // ── الهدفُ يُقاس بماذا؟ ───────────────────────────────────────────────────
-  // «ثلاثون ألفًا شهريًّا» جملةٌ ناقصة ما لم يُقل: ثلاثون ألفَ **دخلٍ** أم
-  // ثلاثون ألفًا **بعد مصروف السائق**؟ والفرقُ بينهما آلافٌ في السيّارة
-  // الواحدة، فتظهر سيّارةٌ محقِّقةً على مقياسٍ ومقصّرةً على الآخر.
-  //   gross → يُقارَن بالدخل كما هو (شامل مصاريف السائقين)
-  //   net   → يُقارَن بالدخل بعد خصم مصروف السائق (غير شامل)
-  // ويُقال المقياسُ في الشاشة مع الرقم، فلا يُقرأ الرقمُ على غير وجهه.
+  // What the target is measured against. A monthly target of thirty thousand is ambiguous: income, or income after driver expense? The difference is thousands per vehicle, so a vehicle could meet one measure and miss the other.
+  // gross: compared with income as is (including driver expenses)
+  // net: compared with income after driver expense
+  // The screen states the measure beside the number.
   targetBasis: { type: String, enum: ['gross', 'net'], default: 'gross' },
   updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
 }, { timestamps: true });

@@ -1,24 +1,7 @@
 /**
- * splitDeliveryDates — تسليمُ الفرع يُفصَل عن تسليم العميل.
- *
- *   node src/scripts/splitDeliveryDates.js --dry
- *   node src/scripts/splitDeliveryDates.js
- *
- * ── الواقعة ────────────────────────────────────────────────────────────────
- * «تاريخ التسليم» كان حقلًا واحدًا، وهو حدثان:
- *
- *   · تسليمُ الكشف إلى الفرع — عملُ التشغيل، وهو ما في عمود شيت المتابعة الواقع
- *     بين «تاريخ الإرسال» و«مراجعة الحسابات».
- *   · تسليمُ الفاتورة إلى العميل — عملُ التحصيل، ومنه تبدأ مهلةُ السداد: عميلٌ
- *     على خمسةٍ وأربعين يومًا تُعَدُّ مهلتُه من يوم استلامه الفاتورة.
- *
- * وكلُّ ما في `deliveryDate` اليومَ جاء من عمود الشيت — أي أنّه تسليمُ الفرع.
- * منصّةُ التشغيل لا تُرسل هذا الحقل أصلًا (راجع opsWorkflowSyncService)، فلا
- * مصدرَ ثالثَ له. فيُنقَل كلُّه إلى `branchDeliveryDate`، ويُفرَّغ `deliveryDate`
- * ليبقى لتسليم العميل وحدَه — يكتبه قسمُ التحصيل من زرّ «تسليم».
- *
- * وترْكُهما مدموجين يعني أن تُحسب مهلةُ السداد من تاريخٍ أسبقَ من التسليم
- * الحقيقيّ، فتظهر فاتورةٌ متأخّرةً وهي في مهلتها.
+ * Separates branch delivery from customer delivery.
+ * Usage: node src/scripts/splitDeliveryDates.js [--dry]
+ * The old single delivery date was two events: the statement handed to the branch (operations, the tracking-sheet column) and the invoice handed to the customer (collections, which starts the payment term). Everything in deliveryDate came from the sheet, so it is moved to branchDeliveryDate and deliveryDate is emptied for customer delivery only. Merged dates would start the payment term too early and show invoices as overdue within their term.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -39,14 +22,13 @@ const DRY = process.argv.includes('--dry');
   console.log(`  لها «تاريخ التسليم» الآن: ${withDelivery}`);
   console.log(`  لها «تاريخ التسليم للفرع» سلفًا: ${alreadySplit}`);
 
-  // مَن نُقل سلفًا لا يُنقَل مرّتين: يُشترَط أن تكون خانةُ الفرع فارغة.
+  // Rows already moved are not moved twice: the branch field must be empty.
   const filter = { deliveryDate: { $ne: null }, $or: [{ branchDeliveryDate: null }, { branchDeliveryDate: { $exists: false } }] };
   const toMove = await OW.countDocuments(filter);
   console.log(`\n${DRY ? 'سيُنقَل' : 'نُقل'} إلى «تاريخ التسليم للفرع»: ${toMove}`);
 
   if (!DRY && toMove) {
-    // خطوتان لا واحدة: النسخُ أوّلًا، ثمّ التفريغ — فإن انقطع الاتّصال بينهما
-    // بقيت القيمةُ في الحقلين لا ضائعةً من كليهما.
+    // Two steps, copy then clear, so an interruption between them leaves the value in both fields rather than lost from both.
     const copied = await OW.updateMany(filter, [{ $set: { branchDeliveryDate: '$deliveryDate' } }]);
     console.log(`  نُسخ: ${copied.modifiedCount}`);
     const cleared = await OW.updateMany(

@@ -1,22 +1,8 @@
 /**
- * سطورُ الفواتير — ماذا تشمل كلُّ فاتورةٍ وبكم، وأيُّ الكشوف «مردود».
- *
- *   node --max-old-space-size=8192 src/scripts/importCollectionInvoiceLines.js --dry
- *   node --max-old-space-size=8192 src/scripts/importCollectionInvoiceLines.js --apply
- *   … --file "1-1-2026 to 28-9-2026  F.xlsx"
- *
- * المصدر: ملفٌّ صفُّه (العميل · المبيعات · تاريخ الفاتورة · رقمها · رقم كشف
- * التخريج · الحالة). راجع models/CollectionInvoiceLine لمعنى «مردود» ولماذا
- * هي صفةُ السطر لا الفاتورة.
- *
- * ── والأعمدةُ تُقرأ بأسمائها لا بمواضعها ───────────────────────────────────
- * في هذا الملفّ عمودٌ أوّلُ فارغٌ تمامًا، ومفتاحُ المبلغ «‎ المبيعات ‎» بمسافتين
- * حوله. فالقراءةُ بالموضع تُزيح كلَّ حقلٍ خانةً — ويُقرأ اسمُ العميل مبلغًا.
- *
- * ── وما يُقال ولا يُخمَّن ──────────────────────────────────────────────────
- * في الملفّ ٤٣ فاتورةً لا يساوي إجماليُّها مجموعَ سطورها، واثنتان لا تساويانه
- * إلّا بإسقاط المردود. تُسمَّى في آخر التشغيل ولا يُصلَّح لها شيء: الفرقُ قد
- * يكون كشفًا خارجَ مدّة الملفّ، وقد يكون خطأً في الورقة — وقرارُه لصاحبها.
+ * Invoice lines: what each invoice covers and for how much, and which statements are returned.
+ * Use --dry or --apply; --file selects the workbook. See models/CollectionInvoiceLine for why returned is a property of the line.
+ * Columns are read by name, not position: the file has an empty first column and the amount key has surrounding spaces.
+ * Invoices whose total differs from their lines (43, plus two that match only without returned lines) are named at the end and not fixed.
  */
 require('dotenv').config();
 const fs = require('fs');
@@ -34,14 +20,13 @@ const FILE = path.join(__dirname, '../../..', 'collection files', BOOK);
 const VAT = 0.15;
 
 const S = (v) => (v == null ? '' : String(v).trim());
-// التواريخُ بالرقم التسلسليّ لا بـ`cellDates` — تلك تُسقط يومًا على هذا الجهاز.
-// راجع xlsx-date-epoch-trap.
+// Dates use the serial number, not cellDates, which drops a day on this machine. See xlsx-date-epoch-trap.
 const D = (n) => {
   const num = Number(n);
   return Number.isFinite(num) && num > 1 ? new Date(Date.UTC(1899, 11, 30) + num * 86400000) : null;
 };
 
-// مفتاحُ العمود قد يحمل مسافاتٍ حوله — تُطوى عند القراءة.
+// A column key may have surrounding spaces; they are trimmed on read.
 const pick = (row, name) => {
   const k = Object.keys(row).find((x) => x.trim() === name);
   return k ? row[k] : null;
@@ -76,9 +61,8 @@ const pick = (row, name) => {
     });
   }
 
-  // ── وترتيبُ المحاولات يُحسب هنا مرّةً ───────────────────────────────────
-  // الكشفُ الواحدُ قد يظهر على أربع فواتير. فيُرقَّم ظهورُه بتاريخ الفاتورة
-  // (ثمّ برقمها عند تساوي التاريخ) — فتقرأ الشاشةُ «المحاولة ٢ من ٣» بلا حساب.
+  // Attempt order is computed here once.
+  // One statement can appear on four invoices, so its appearances are numbered by invoice date (then invoice number on a tie), and the screen reads attempt 2 of 3 without computing it.
   const byReport = new Map();
   for (const l of lines) {
     if (!byReport.has(l.reportNumber)) byReport.set(l.reportNumber, []);
@@ -92,21 +76,20 @@ const pick = (row, name) => {
       || Number(a.invoiceNumber) - Number(b.invoiceNumber));
     if (order.length > 1) repeated += 1;
     order.forEach((l, i) => { l.attempt = i + 1; l.attempts = order.length; });
-    // سطورٌ تحت نفس الفاتورة والكشف (تكرارٌ في الورقة) تأخذ ترتيبَ فاتورتها.
+    // Lines under the same invoice and statement (duplicates in the sheet) take their invoice's order.
     list.forEach((l) => {
       const ref = seen.get(l.invoiceNumber);
       l.attempt = ref.attempt; l.attempts = ref.attempts;
     });
   }
 
-  // نوعُ الفاتورة وصاحبُها من الدفتر — لا يُخمَّنان من الورقة.
+  // Invoice type and owner come from the ledger, not guessed from the sheet.
   const invNums = [...new Set(lines.map((l) => l.invoiceNumber))];
   const ledger = await CollectionInvoice.find({ invoiceNumber: { $in: invNums } })
     .select('invoiceNumber kind total party partyName').lean();
   const byInv = new Map();
   for (const i of ledger) {
-    // رقمٌ واحدٌ قد يكون لحسابين (ضريبيٍّ ونقديّ) — يُقدَّم الضريبيُّ لأنّ هذا
-    // الملفَّ دفترُ الفواتير الضريبيّة.
+    // One number can belong to two accounts (tax and cash); tax is preferred because this file is the tax invoice ledger.
     const prev = byInv.get(i.invoiceNumber);
     if (!prev || (prev.kind !== 'tax' && i.kind === 'tax')) byInv.set(i.invoiceNumber, i);
   }
@@ -118,7 +101,7 @@ const pick = (row, name) => {
     if (!l.partyName) l.partyName = inv.partyName || '';
   }
 
-  // ── التحقّق: أيساوي إجماليُّ الفاتورة مجموعَ سطورها؟ ────────────────────
+  // Check: does the invoice total equal the sum of its lines?
   const sums = new Map();
   for (const l of lines) sums.set(l.invoiceNumber, (sums.get(l.invoiceNumber) || 0) + l.net);
   const mismatch = []; let matched = 0; let noLedger = 0;
@@ -141,7 +124,7 @@ const pick = (row, name) => {
     await mongoose.disconnect(); process.exit(0);
   }
 
-  // المصدرُ واحدٌ، فيُستبدَل كاملًا — السطورُ لا يصنعها النظامُ ولا يعدّلها.
+  // A single source, so it is replaced entirely: the system neither creates nor edits these lines.
   const del = await CollectionInvoiceLine.deleteMany({});
   const CHUNK = 2000;
   let wrote = 0;

@@ -1,27 +1,17 @@
 /**
- * dedupeCorporatePolicies — وثيقتان مكرَّرتان في «وثائق تأمين الشركة».
- *
- *   node src/scripts/dedupeCorporatePolicies.js --dry
- *   node src/scripts/dedupeCorporatePolicies.js
- *
- * السجلُّ يحمل خمسَ وثائق، اثنتان منها هما نفسُهما وثيقتان أخريان:
- *   «تأمين البضائع + ملحق السيارات»  انتهاؤها 2026-08-26  ⟵ سبقتها «تأمين البضائع» 2027-08-26
- *   «تأمين خيانة الأمانة ل 58 سائق»                        ⟵ ورقمُها هو رقمُ «تأمين خيانة الأمانة» نفسُه
- *
- * وعدُّ السائقين في الاسم هو العلّة: الوثيقةُ تُجدَّد ويتغيّر العدد، فيبقى
- * الاسمُ يقول ثمانيةً وخمسين إلى الأبد. فتبقى الوثيقةُ بلا عددٍ في اسمها،
- * ويُقرأ العددُ من السائقين المشمولين أنفسِهم — راجع DriverCard.fidelity.
- *
- * الحذفُ ناعم: `isActive:false`، فالشاشة تقرأ النشطَ وحده والصفُّ يبقى للمراجعة.
+ * dedupeCorporatePolicies: two duplicated documents in the corporate insurance register.
+ * --dry previews.
+ * One policy is a later one under another name, and the fidelity policy shares its number with another. A driver count in the name goes stale on renewal, so names carry no count; it is read from the covered drivers (see DriverCard.fidelity).
+ * Soft delete with isActive:false so the row stays for review.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
 
 const DRY = process.argv.includes('--dry');
 
-// يُطابَق بالاسم لا بالمعرّف: المعرّفات تختلف بين بيئةٍ وأخرى، والاسمُ هو ما رآه صاحبُ الطلب.
+// Match by name, not id: ids differ between environments.
 const DUPES = ['تأمين البضائع + ملحق السيارات', 'تأمين خيانة الأمانة ل 58 سائق'];
-// ولا يُحذف مكرَّرٌ إلّا إن كان أصلُه موجودًا — وإلّا فنحن نحذف الوثيقة الوحيدة.
+// Delete a duplicate only if its original exists, otherwise the only policy would be removed.
 const KEEPERS = { 'تأمين البضائع + ملحق السيارات': 'تأمين البضائع', 'تأمين خيانة الأمانة ل 58 سائق': 'تأمين خيانة الأمانة' };
 
 (async () => {

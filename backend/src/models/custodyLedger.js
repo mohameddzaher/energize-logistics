@@ -1,19 +1,10 @@
-/**
- * دفترُ العهدة — حقولُ القيد مكتوبةٌ مرّةً هنا، وتبني منها العهدتان سجلَّيهما:
- * عهدةُ النقل الخفيف (models/LtCustody) وعهدةُ النقل الثقيل (models/HtCustody).
- * والقواعدُ نفسُها: ثلاثةُ حسابات، ومصادرُ الوارد، والتحويلُ قيدان — راجع
- * شرحَها في models/LtCustody.
- *
- * والثقيلُ يزيد على القيد سيّارتَه: أيُّ شاحنةٍ من أسطول لوكيشن سوليوشن صُرف
- * عليها أو جاء منها المال (`vehicles: true`). اختياريّة، ورقمُ الوحدة واللوحةُ
- * يُلقَطان وقتَ القيد كما يُلقَط المندوب.
- */
+/** Custody ledger: entry fields defined once, from which light-transport (models/LtCustody) and heavy-transport (models/HtCustody) custody build their records. Same rules: three accounts, inflow sources, a transfer as two entries (see models/LtCustody). Heavy adds an optional Location Solutions truck per entry, with unit number and plate captured at entry time like the rep. */
 const mongoose = require('mongoose');
 
 const ACCOUNTS = ['cash', 'card', 'workshop'];
-// مصادرُ الوارد المسموحةُ لكلّ حساب.
+// Allowed inflow sources per account.
 const IN_SOURCES = { cash: ['card', 'workshop', 'bank', 'rep'], card: ['bank'], workshop: ['maintenance'] };
-// الحساباتُ التي تصرف إلى الكاش.
+// Accounts that disburse to cash.
 const TO_CASH = ['card', 'workshop'];
 
 function buildCustodySchema({ vehicles = false } = {}) {
@@ -21,24 +12,24 @@ function buildCustodySchema({ vehicles = false } = {}) {
     account: { type: String, enum: ACCOUNTS, required: true, index: true },
     direction: { type: String, enum: ['in', 'out'], required: true, index: true },
     amount: { type: Number, required: true, min: 0 },
-    // يومُ الحركة «YYYY-MM-DD» بتوقيت الشركة — به تُفلتَر وتُرتَّب.
+    // Movement day, YYYY-MM-DD in company time; used for filtering and ordering.
     date: { type: String, required: true, index: true },
 
-    // الوارد: من أين.
+    // Inflow: where from.
     source: { type: String, enum: ['card', 'workshop', 'bank', 'maintenance', 'rep', 'opening', ''], default: '' },
 
-    // الصادر: إلى مَن. `cash` تحويلٌ إلى حساب الكاش، وغيرُه متحمِّل.
+    // Outflow: to whom. `cash` is a transfer to the cash account; anything else is a bearer.
     target: { type: String, enum: ['rep', 'company', 'cash', ''], default: '' },
-    // المتحمِّلُ مندوب: رقمُ إقامته، وبياناتُه ملقوطةً وقتَ القيد.
+    // Bearer is a rep: residence number and details captured at entry time.
     repIdNumber: { type: String, trim: true, default: '' },
     repName: { type: String, trim: true, default: '' },
     repNationality: { type: String, trim: true, default: '' },
     repProject: { type: String, trim: true, default: '' },
     employee: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee', default: null },
-    // البيان: ما الصرف (للشركة يُكتب دائمًا، وللمندوب اختياريّ).
+    // Statement: what the spend was for (required for the company, optional for a rep).
     detail: { type: String, trim: true, default: '', maxlength: 500 },
 
-    // مرفقاتُ القيد — فاتورةٌ أو إيصالٌ أو صورةُ تحويل. اختياريّة، وقد تتعدّد.
+    // Entry attachments: invoice, receipt or transfer image. Optional, may be several.
     attachments: {
       type: [{
         title: { type: String, trim: true, default: '' },
@@ -51,11 +42,11 @@ function buildCustodySchema({ vehicles = false } = {}) {
       }],
       default: [],
     },
-    // آخرُ تعديلٍ على قيدٍ مسجَّل — لأهل المال ومدير النظام وحدَهم.
+    // Last edit of a recorded entry; finance and system admin only.
     editedByName: { type: String, default: '' },
     editedAt: { type: Date, default: null },
 
-    // قيدا التحويل يحملان المعرّفَ نفسَه.
+    // Both entries of a transfer carry the same id.
     transferId: { type: mongoose.Schema.Types.ObjectId, default: null, index: true },
 
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
@@ -63,11 +54,11 @@ function buildCustodySchema({ vehicles = false } = {}) {
   }, { timestamps: true });
   if (vehicles) {
     schema.add({
-      // السيّارةُ من أسطول لوكيشن سوليوشن (Ls2Vehicle.unitId) — ولوحتُها واسمُها ملقوطان.
+      // Truck from the Location Solutions fleet (Ls2Vehicle.unitId); plate and name captured.
       vehicleUnitId: { type: Number, default: null, index: true },
       vehiclePlate: { type: String, trim: true, default: '' },
       vehicleName: { type: String, trim: true, default: '' },
-      // ومركبتُها في سجلّ المركبات — تُحلّ من الوحدة (Ls2Vehicle.vehicleMaster).
+      // Its vehicle in the vehicle registry, resolved from the unit (Ls2Vehicle.vehicleMaster).
       vehicleMaster: { type: mongoose.Schema.Types.ObjectId, ref: 'VehicleMaster', default: null, index: true },
     });
   }

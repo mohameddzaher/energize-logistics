@@ -1,4 +1,4 @@
-/** مَن يرى ماذا في صندوق الوارد. يُنشئ طلباتٍ في محطّاتٍ مختلفة ثمّ يحذفها. */
+/** Who sees what in the inbox. Creates requests at different stages, then deletes them. */
 require('dotenv').config();
 const mongoose = require('mongoose');
 (async () => {

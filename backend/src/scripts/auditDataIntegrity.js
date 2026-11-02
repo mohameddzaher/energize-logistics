@@ -1,18 +1,12 @@
 /* eslint-disable no-console */
 /**
- * مراجعةُ سلامة البيانات — هل ما في القاعدة يشير إلى شيءٍ موجود؟
- *
- *   node src/scripts/auditDataIntegrity.js
- *
- * ── ما الذي يُفحَص ─────────────────────────────────────────────────────────
- * المرجعُ المعلَّق لا يُخطئ ولا يُسجَّل: يُطلَب `populate` فيعود `null`،
- * فتُعرض شرطةٌ مكان اسمٍ ويُظنُّ أنّ الخانة فارغة. وأخطرُه ما يحمل مالًا —
- * فاتورةٌ على عميلٍ حُذف، أو عهدةٌ على موظّفٍ لم يعد.
+ * Data integrity audit: does everything in the database point at something that exists?
+ * A dangling reference raises no error: populate returns null and the UI shows a dash where a name should be. Most dangerous when money is involved, such as an invoice on a deleted customer or custody on a departed employee.
  */
 require('dotenv').config({ path: require('path').join(__dirname, '../../.env') });
 const mongoose = require('mongoose');
 
-// [النموذج, الحقل, نموذجُ الهدف, وصفٌ عربيّ]
+// [model, field, target model, description]
 const LINKS = [
   ['Contract', 'employee', 'Employee', 'عقدٌ على موظّف'],
   ['LeaveRequest', 'employee', 'Employee', 'إجازةٌ على موظّف'],
@@ -63,8 +57,7 @@ const load = (name) => {
     let A; let B;
     try { A = load(from); B = load(to); } catch (e) { console.log(`  ? ${label} — نموذجٌ لا يُحمَّل`); continue; }
     // eslint-disable-next-line no-await-in-loop
-    // `$ne: null` لا `$nin: [null, '']` — الحقلُ ObjectId، والسلسلةُ الفارغة
-    // في شرطٍ عليه تُرمى قبل أن تُنفَّذ الاستعلامة.
+    // Use $ne: null, not $nin: [null, '']: the field is an ObjectId and an empty string in its condition throws before the query runs.
     const rows = (await A.find({ [field]: { $ne: null } }).select(field).lean())
       .filter((r) => r[field]);
     if (!rows.length) { console.log(`  · ${label.padEnd(28)} 0`); continue; }
@@ -78,7 +71,7 @@ const load = (name) => {
     console.log(`  ${mark} ${label.padEnd(28)} ${String(rows.length).padStart(6)} سجلًّا · معلَّق: ${dangling.length}`);
   }
 
-  // ── أرقامٌ يجب أن تتّسق ──────────────────────────────────────────────────
+  // Numbers that must agree
   console.log('\n  اتّساقُ الأرقام:');
   const Cust = require('../models/CustomsClearance');
   const { recomputeTotals } = Cust;

@@ -1,11 +1,8 @@
 /**
- * Seed / refresh company licenses & subscriptions (التراخيص والاشتراكات) from
- * backend/src/seeds/data/companyLicenses.json.
- *
- * Run:  node src/scripts/seedCompanyLicenses.js
- *
- * Idempotent: upserts by (category + name), so re-running updates in place
- * (e.g. a new expiry date) instead of duplicating rows.
+ * Seed / refresh company licenses and subscriptions from backend/src/seeds/data/companyLicenses.json.
+ * Run:  node src/scripts/seedCompanyLicenses.js  Idempotent: upserts by
+ * (category + name), so re-running updates in place (e.g. a new expiry date)
+ * instead of duplicating rows.
  */
 require('dotenv').config();
 const fs = require('fs');

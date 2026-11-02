@@ -1,21 +1,8 @@
 /* eslint-disable no-console */
 /**
- * auditEmployeeLinks — أيُّ حسابِ دخولٍ مربوطٌ بسجلٍّ وهميّ بدل سجلّه الحقيقيّ؟
- *
- *   node src/scripts/auditEmployeeLinks.js
- *   node src/scripts/auditEmployeeLinks.js --link <userEmail> <employeeNumber> --yes
- *
- * ── العطب الذي يكشفه ────────────────────────────────────────────────────────
- * حين يدخل موظّفٌ ولا يجد له النظامُ سجلًّا في الموارد البشرية، يُنشئ له ملفَّ
- * خدمةٍ ذاتية فارغًا (`isHrRecord: false`) كي يستطيع طلب إجازة. وهذا صحيحٌ حتى
- * تُدخِل الموارد البشرية سجلَّه الحقيقيّ لاحقًا — فيصير للشخص سجلّان: واحدٌ فيه
- * عقدُه وهويّتُه وراتبه، وآخرُ فارغٌ هو المربوط بحسابه.
- *
- * فيطلب إجازةً فيُقرأ رصيدُه من السجلّ الفارغ: صفر. وهو صاحبُ عقدٍ بثلاثين
- * يومًا. والرقم لا يكذب — إنّما يُقرأ من الملفّ الخطأ.
- *
- * ولا يُصلَح آليًّا: الحساب بالإنجليزيّة والسجلّ بالعربيّة، ولا رقمَ هويّةٍ في
- * الحساب. فيُعرَض الاحتمالُ ويُربَط بأمرٍ صريح.
+ * Finds login accounts linked to a placeholder record instead of the real one.
+ * When an employee logs in with no HR record, the system creates an empty self-service file (isHrRecord: false) so they can request leave. Once HR later enters the real record, the person has two: the real one with contract, identity and salary, and an empty one linked to the account. Leave balance is then read from the empty record and shows zero.
+ * Not fixed automatically: the account is in English, the record in the local language, and the account has no identity number. Candidates are listed and linking needs an explicit command.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -32,7 +19,7 @@ const norm = (s) => String(s || '').toLowerCase().replace(/[^a-z؀-ۿ]/g, '');
   const Employee = require('../models/Employee');
   const Contract = require('../models/Contract');
 
-  // ── الربط الصريح ─────────────────────────────────────────────────────────
+  // Explicit link
   if (has('--link')) {
     const email = val('--link');
     const empNo = argv[argv.indexOf('--link') + 2];
@@ -46,13 +33,13 @@ const norm = (s) => String(s || '').toLowerCase().replace(/[^a-z؀-ۿ]/g, '');
     if (!has('--yes')) { console.log('\n  — لم يُمرَّر --yes، فلم يُكتب شيء.\n'); process.exit(0); }
     await User.updateOne({ _id: user._id }, { linkedEmployee: emp._id });
     await Employee.updateOne({ _id: emp._id }, { user: user._id });
-    // السجلُّ الوهميّ يُنزع رابطُه ولا يُحذف: قد تكون عليه طلباتٌ قديمة.
+    // The placeholder record is unlinked, not deleted, since old requests may reference it.
     if (old && old.isHrRecord === false) await Employee.updateOne({ _id: old._id }, { $unset: { user: 1 } });
     console.log('  ✓ رُبط.\n');
     process.exit(0);
   }
 
-  // ── الجرد ────────────────────────────────────────────────────────────────
+  // Inventory
   const [users, emps, activeContracts] = await Promise.all([
     User.find({ role: { $ne: 'client' } }).select('email firstName lastName role linkedEmployee').lean(),
     Employee.find().select('firstName lastName arabicName email employeeNumber iqamaNumber jobTitle isHrRecord').lean(),
@@ -65,8 +52,8 @@ const norm = (s) => String(s || '').toLowerCase().replace(/[^a-z؀-ۿ]/g, '');
   const rows = [];
   for (const u of users) {
     const e = u.linkedEmployee ? byId.get(String(u.linkedEmployee)) : null;
-    if (e && e.isHrRecord !== false) continue;              // مربوطٌ بسجلٍّ حقيقيّ
-    // مرشّحون: أيُّ سجلٍّ حقيقيّ يشترك مع الحساب في كلمةٍ من الاسم.
+    if (e && e.isHrRecord !== false) continue;              // Linked to a real record.
+    // Candidates: any real record sharing a name word with the account.
     const words = norm(`${u.firstName || ''}${u.lastName || ''}`);
     const cands = real
       .map((r) => {

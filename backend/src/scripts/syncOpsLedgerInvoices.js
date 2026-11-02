@@ -1,13 +1,7 @@
 /**
- * syncOpsLedgerInvoices — قيودُ الفواتير الضريبيّة التي مصدرُها كشوفُ التشغيل.
- *
- *   node src/scripts/syncOpsLedgerInvoices.js            يقول ولا يكتب
- *   node src/scripts/syncOpsLedgerInvoices.js --apply    ينفّذ
- *
- * يمرّ على كلّ قيدٍ وُلد من كشف (`sheetCode: 'workflow'`) وكلِّ رقم فاتورةٍ
- * ضريبيّةٍ على كشفٍ لا قيدَ له في الدفتر، ويعيد كلًّا إلى ما تقوله كشوفُه —
- * بالدالّة نفسِها التي يناديها الحفظُ في سير عمل التشغيل (syncOpsInvoices):
- * قيدٌ بلا كشفٍ يُزال، وقيدٌ بمبلغٍ قديمٍ يأخذ مجموعَ كشوفه، ورقمٌ بلا قيدٍ يُنشأ له.
+ * Tax-invoice ledger entries that originate from operations statements.
+ * Usage: node src/scripts/syncOpsLedgerInvoices.js (reports only) | --apply
+ * Visits every entry created from a statement (sheetCode 'workflow') and every tax invoice number on a statement without a ledger entry, and reconciles each with its statements using the same function the workflow save calls (syncOpsInvoices): an entry without a statement is removed, a stale amount takes the statements' total, a missing entry is created.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');

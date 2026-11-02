@@ -1,17 +1,7 @@
 /**
- * closeOut2025Payments — إقفالُ سنةِ ٢٠٢٥ في سير عمل التشغيل.
- *
- *   node src/scripts/closeOut2025Payments.js          # فحصٌ فقط
- *   node src/scripts/closeOut2025Payments.js --yes    # تنفيذ
- *
- * «فواتير لم تصل» يجب أن تكون فواتيرَ السنة الجارية: ما بقي من ٢٠٢٥ بلا تاريخ
- * سدادٍ ليس عملًا مفتوحًا يُطارَد، بل سنةٌ أُقفلت ولم يُسجَّل إقفالُها. فتُختم
- * كلُّها بآخر يومٍ من سنتها وبالفرع الذي حصّلها.
- *
- * ── والملغاةُ لا تُختَم ─────────────────────────────────────────────────────
- * الشحنةُ الملغاة لم تُنفَّذ ولم يصل عنها مال. وتسجيلُ تاريخِ سدادٍ عليها يقيّد
- * مالًا لم يُقبَض عن عملٍ لم يجرِ — وهو ما تُبنى عليه تقاريرُ المال بعد ذلك.
- * وهي أصلًا خارجَ عدّ «لم تصل»، فإقفالُها لا يغيّر رقمًا ويُفسد سجلًّا.
+ * closeOut2025Payments: stamps the 2025 payment close-out in the operations workflow.
+ * Dry run by default; --yes applies.
+ * Unpaid 2025 rows are a closed year, not open work, so they get the year's last day and the collecting branch. Cancelled shipments are not stamped: no money was received and they are outside the not-arrived count.
  */
 require('dotenv').config();
 const fs = require('fs');

@@ -1,28 +1,13 @@
-/**
- * متابعةُ كشف تشغيل — سطرٌ يكتبه موظّفٌ على الكشف: ما جرى، ومَن كتبه، ومتى.
- *
- * ── ولماذا سجلٌّ بذاته لا «ملاحظات الفاتورة» ولا متابعاتُ التحصيل ──────────
- * الكشفُ لم يكن له سجلُّ متابعة: «ملاحظات الفاتوره» (`invoiceNotes`) خانةٌ
- * واحدةٌ من أعمدة المال يكتبها أهلُ الفاتورة وحدَهم ويكتب كلُّ واحدٍ فوق مَن
- * قبله؛ و`CollectionsFollowUp` متابعةُ تحصيلٍ على **طرفٍ** (عميل) بنوعها
- * ووعدها، لا تُكتب بلا طرف ولا يقرؤها التخليص. والذي طُلب أوسعُ منهما: قسمُ
- * التخليص يكتب «الحاويةُ ما زالت في الميناء»، والتشغيلُ يكتب «السائقُ وصل»،
- * والتحصيلُ يكتب «العميلُ استلم» — على الكشف نفسِه، يقرؤها الثلاثة.
- *
- * ── ووثيقةٌ لكلّ سطر ─────────────────────────────────────────────────────────
- * والكشفُ نموذجٌ ساخنٌ تكتب فيه المزامنةُ كلَّ دقيقة؛ فمصفوفةٌ عليه تُثقل كلَّ
- * قراءةٍ له وتجعل كلَّ حفظٍ هناك يحمل سطورًا لا شأنَ له بها (كما في
- * `CollectionAttachment`). والحذفُ هنا حذفُ وثيقة، والعدُّ تجميعٌ على الفهرس.
- */
+/** A follow-up line on an operations statement: what happened, who wrote it, when. A separate record because `invoiceNotes` is a single money-column field that each writer overwrites, and `CollectionsFollowUp` is per party and unreadable by customs. Operations, customs and collections all write and read lines on the same statement. One document per line, because the statement is a hot model synced every minute and an array would burden every read and save (as with `CollectionAttachment`); deletion removes a document and counts use the index. */
 const mongoose = require('mongoose');
 
 const workflowFollowUpSchema = new mongoose.Schema({
   workflow: { type: mongoose.Schema.Types.ObjectId, ref: 'OperationsWorkflow', required: true },
-  // رقمُ الكشف محفوظٌ معه: يبقى السطرُ مقروءًا في سجلّ المراجعة إن حُذف الكشف.
+  // Statement number stored with the line so it stays readable in the audit log if the statement is deleted.
   reportNumber: { type: String, trim: true, default: '' },
 
   text: { type: String, required: true, trim: true, maxlength: 2000 },
-  // مرفقٌ واحدٌ اختياريّ — صورةُ ورقةٍ أو إيصال. راجع utils/fileStore.
+  // One optional attachment, a photo of a paper or receipt. See utils/fileStore.
   attachment: {
     fileUrl: { type: String, default: '' },
     fileName: { type: String, trim: true, default: '' },
@@ -30,11 +15,11 @@ const workflowFollowUpSchema = new mongoose.Schema({
     size: { type: Number, default: 0 },
   },
 
-  // مَن كتب — والاسمُ والقسمُ محفوظان معه فلا يُقرأ المستخدمُ عند كلّ عرض.
+  // Author, with name and department stored so the user is not looked up on every display.
   by: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   byName: { type: String, trim: true, default: '' },
   byRole: { type: String, trim: true, default: '' },
-  // الشاشةُ التي كُتب منها: التشغيل أو التخليص أو التحصيل.
+  // Screen it was written from: operations, customs or collections.
   source: { type: String, enum: ['operations', 'customs', 'collections'], default: 'operations' },
   at: { type: Date, default: Date.now },
 });

@@ -7,68 +7,49 @@ const Ls2TireAsset = require('../models/Ls2TireAsset');
 const cache = require('../utils/ttlCache');
 
 /**
- * واجهةُ قراءةٍ للأتمتة — الأسطول المباشر لأنظمةٍ خارجية.
- *
- * ── لماذا تقرأ من قاعدتنا لا من Wialon مباشرةً ─────────────────────────────
- * نبضُ القسم (jobs/ls2Poll) يسحب كلّ الوحدات من Wialon كلّ عشرين ثانية، يفكّ
- * قراءات الحسّاسات، ويحفظ لقطةً لكلّ مركبة. فالبيانات **عندنا أصلًا**: القراءةُ
- * من هنا أسرع، ولا تستهلك حصّتنا من مزوّد التتبّع مهما تكرّر النداء، وتحمل معها
- * ما أضفناه نحن (سجلّ الإطارات والحالة) وهو ما لا يعرفه المزوّد إطلاقًا.
- *
- * ── وحدُّها القراءة ────────────────────────────────────────────────────────
- * لا كتابةَ هنا بحال. الأتمتة تراقب وتُنبِّه؛ ومَن يملك أن يغيّر شيئًا في
- * النظام يدخل إليه كإنسانٍ بصلاحياته.
- *
- * المفتاح: ترويسة `x-api-key`. يُضبَط في `FLEET_API_KEY` على الخادم.
+ * Read-only API for automation: the live fleet for external systems.
+ * Why it reads from our database, not Wialon directly: the section's pulse (jobs/ls2Poll) pulls all units from Wialon every twenty seconds, decodes sensor readings and stores a snapshot per vehicle. So the data is already ours: reading here is faster, does not consume our tracking-provider quota however often it is called, and carries what we add (tire registry and status) that the provider does not know.
+ * Read-only: no writes at all. Automation watches and alerts; whoever may change something signs in as a person with their own permissions.
+ * Key: `x-api-key` header, set in `FLEET_API_KEY` on the server.
  */
 router.use(requireApiKey('FLEET_API_KEY', 'Fleet automation API'));
 
-/** عمرُ القراءة بالثواني — الأتمتة تحتاج أن تعرف هل ما تقرؤه حديثٌ أم بائت. */
+/** Age of the reading in seconds, so automation can tell fresh from stale. */
 const ageSec = (d) => (d ? Math.round((Date.now() - new Date(d).getTime()) / 1000) : null);
 
 /**
- * شكلٌ واحد للمركبة في كل ردّ — وفيه **كلّ** ما تعرضه شاشة الأسطول المباشر.
- *
- * كان يُصدَّر بعضُه، فيضطرّ المستهلك إلى بناء شرطه على ما نُقص عنه: حالة
- * الصيانة، ومستوى التنبيه، والوقود المستهلك، وبيانات المركبة الثابتة. والواجهةُ
- * التي تُعطي بعضَ ما على الشاشة تُقرأ كلَّها، فيُبنى عليها ما لا تحتمله.
+ * One vehicle shape in every response, with everything the live fleet screen shows.
+ * Partial export forced consumers to build conditions on what was missing (maintenance status, alert level, fuel used, static vehicle data), and an API that gives part of the screen gets read as the whole.
  */
 const shape = (v, tires, crew) => ({
-  // ── الهوية ──
+  // Identity.
   plate: v.plate || null,
   name: v.name || null,
   unitId: v.unitId,
   driver: v.driver || null,
-  // ── ورقمُه مع اسمه ────────────────────────────────────────────────────────
-  // الاسمُ يقول مَن هو، والرقمُ يقول كيف يُبلَّغ. وأتمتةٌ تُنبِّه على حرارة
-  // إطارٍ ثمّ لا تملك رقمَ السائق تُنبِّه إلى الهواء — فيُبحَث عن الرقم بيدٍ
-  // في شاشةٍ أخرى بينما الشاحنةُ تسير.
-  //
-  // ومصدرُه سجلُّ سائقي الأسطول (FleetDriver)، ونظامُ التتبّع لا يعرفه. راجع
-  // `crewIndex`: يُطابَق باسم السائق الذي يبلّغه الجهاز، فإن لم يُعرَف الاسمُ
-  // أُخذ رقمُ سائق الشاحنة إن كان واحدًا لا أكثر — ولا يُخمَّن بين اثنين.
+  // The phone number comes with the name: the name says who, the number says how to reach him. Automation that alerts on a tire temperature without the driver's number sends people searching by hand while the truck is moving.
+  // Source is the fleet driver register (FleetDriver); the tracking system does not know it. See `crewIndex`: match by the driver name the device reports; if the name is unknown use the truck driver's number only when there is exactly one, never guess between two.
   driverPhone: crew ? crew.phone : null,
   driverPhoneSource: crew ? crew.source : null,
-  // وطاقمُ الشاحنة كما هو مسجَّلٌ عندنا — لمن أراد الثانيَ أو أراد أن يختار.
+  // The truck's crew as registered with us, for whoever wants the second driver or wants to choose.
   crew: crew ? crew.list : [],
 
-  // ── حياة القراءة ──
+  // Reading freshness.
   online: v.online ?? null,
   status: v.status || null,
   lastMessageAt: v.lastMessageAt || null,
-  // ثانيةً منذ آخر رسالة. قراءةٌ عمرُها ساعة ليست «قراءة حاليّة»، وبلا هذا
-  // الرقم تبني الأتمتة قرارها على رقمٍ مات ولا تدري.
+  // Seconds since the last message. A one-hour-old reading is not a current reading, and without this number automation decides on a dead value unknowingly.
   dataAgeSeconds: ageSec(v.lastMessageAt),
   lastSyncedAt: v.lastSyncedAt || null,
 
-  // ── الموقع والحركة ──
+  // Position and movement.
   position: v.position ? {
     lat: v.position.lat ?? null, lng: v.position.lng ?? null,
     speed: v.position.speed ?? null, course: v.position.course ?? null,
     altitude: v.position.altitude ?? null,
   } : null,
 
-  // ── المحرّك ──
+  // Engine.
   engine: {
     ignition: v.ignition ?? null,
     moving: v.moving ?? null,
@@ -78,20 +59,20 @@ const shape = (v, tires, crew) => ({
     engineHours: v.engineHours ?? null,
   },
 
-  // ── العدّادات ──
+  // Counters.
   odometerKm: v.odometerKm ?? null,
   fuelPct: v.fuelPct ?? null,
   totalFuelUsedL: v.totalFuelUsedL ?? null,
   weightKg: v.weightKg ?? null,
 
-  // ── الكهرباء والإرسال ──
+  // Electrical and transmission.
   power: {
     mainV: v.mainPowerV ?? null,
     backupV: v.backupBatteryV ?? null,
     gsmSignal: v.gsmSignal ?? null,
   },
 
-  // ── الإطارات ──
+  // Tires.
   tyres: {
     count: v.tireCount ?? 0,
     faults: v.tireFaults ?? 0,
@@ -100,17 +81,17 @@ const shape = (v, tires, crew) => ({
     minTempC: v.minTireTempC ?? null,
     maxPressurePsi: v.maxTirePressurePsi ?? null,
     minPressurePsi: v.minTirePressurePsi ?? null,
-    // كلُّ فردةٍ بموضعها — هذا ما تبني عليه الأتمتة شرطها.
+    // Each tire set by its position; automation builds its conditions on this.
     readings: (v.tires || []).map((t) => ({
       axle: t.axle ?? null, position: t.position ?? null,
       tempC: t.tempC ?? null, pressurePsi: t.pressurePsi ?? null, fault: !!t.fault,
     })),
-    // ما نعرفه نحن ولا يعرفه المزوّد: المركَّب فعلًا في سجلّ الأصول.
+    // What we know and the provider does not: what is actually installed per the asset registry.
     registered: tires ? { mounted: tires.mounted, spare: tires.spare, withSensor: tires.withSensor } : null,
     sensorChangeNotice: v.sensorChangeNotice ?? null,
   },
 
-  // ── التنبيهات والصيانة ──
+  // Alerts and maintenance.
   alerts: {
     level: v.alertLevel ?? null,
     activeCount: v.activeAlertCount ?? 0,
@@ -126,7 +107,7 @@ const shape = (v, tires, crew) => ({
     upcomingServiceName: v.upcomingServiceName || null,
   },
 
-  // ── بيانات المركبة الثابتة ──
+  // Static vehicle data.
   profile: v.profile ? {
     vin: v.profile.vin || null,
     brand: v.profile.brand || null,
@@ -138,10 +119,8 @@ const shape = (v, tires, crew) => ({
 });
 
 /**
- * فهرسُ سائقي الأسطول: مفتاحُ اللوحة ← طاقمُها، واسمٌ مطويّ ← رقمُه.
- *
- * يُبنى مرّةً لكلّ نداءٍ لا استعلامًا لكلّ مركبة، ويُحفَظ دقيقةً: الأرقامُ
- * تتغيّر حين يُكتب رقمٌ في ملفّ سائق، لا كلَّ عشرين ثانية.
+ * Fleet driver index: plate key to crew, and folded name to phone number.
+ * Built once per call rather than one query per vehicle, and cached for a minute: numbers change when one is written in a driver file, not every twenty seconds.
  */
 async function crewIndex() {
   const hit = cache.get('fleetapi:crew');
@@ -152,15 +131,15 @@ async function crewIndex() {
   const { flexNormalize } = require('../utils/plateKey');
   const [vehicles, drivers] = await Promise.all([
     FleetModels.FleetVehicle.find({ isActive: { $ne: false } }).select('plate').lean(),
-    // المؤرشَفُ ليس من طاقم أحد — كأنّه حُذف (برقم إقامته).
+    // An archived driver is not on anyone's crew, as if deleted (by iqama number).
     (async () => FleetModels.FleetDriver.find({ isActive: { $ne: false },
       ...require('../utils/archivedHidden').notArchivedIdNumber(await require('../utils/endedStaff').endedStaff(), 'iqama') })
       .select('name phone vehicle working').lean())(),
   ]);
 
   const plateOf = new Map(vehicles.map((v) => [String(v._id), plateKey(v.plate)]));
-  const byPlate = new Map();   // مفتاحُ اللوحة ← [{name, phone, working}]
-  const byName = new Map();    // الاسمُ المطويّ ← رقمُه
+  const byPlate = new Map();   // Plate key to [{name, phone, working}].
+  const byName = new Map();    // Folded name to phone number.
   for (const d of drivers) {
     const person = {
       name: d.name,
@@ -181,7 +160,7 @@ async function crewIndex() {
   return out;
 }
 
-/** رقمُ سائقٍ بعينه — بالاسم أوّلًا، ثمّ بالشاحنة إن كان سائقُها واحدًا. */
+/** A specific driver's number: by name first, then by truck if it has a single driver. */
 function crewFor(v, index) {
   const { plateKey, flexNormalize } = require('../utils/plateKey');
   const key = plateKey(v.plate);
@@ -195,15 +174,12 @@ function crewFor(v, index) {
     if (onTruck) { phone = onTruck.phone; source = 'driver_name'; }
     else if (index.byName.has(reported)) { phone = index.byName.get(reported); source = 'driver_name'; }
   }
-  // ── ولا يُخمَّن بين اثنين ────────────────────────────────────────────────
-  // للشاحنة سائقان أحيانًا؛ وإرسالُ رقمِ أحدهما على أنّه «سائقُها» يُبلَّغ به
-  // مَن ليس على الطريق. فإن لم يُعرَف الاسمُ ولها سائقان تُترَك فارغةً
-  // و`crew` أمام القارئ يختار منها.
+  // Never guess between two. A truck sometimes has two drivers, and sending one's number as 'the driver' alerts someone who is not on the road. If the name is unknown and there are two drivers, leave it empty and let the reader choose from `crew`.
   if (!phone && list.length === 1 && list[0].phone) { phone = list[0].phone; source = 'vehicle_single_driver'; }
   return { phone, source, list };
 }
 
-/** GET /vehicles — كلّ المركبات بلقطتها الأخيرة. */
+/** GET /vehicles: all vehicles with their latest snapshot. */
 router.get('/vehicles', async (req, res) => {
   try {
     const key = `ls2:api:vehicles:${req.query.plate || 'all'}`;
@@ -214,7 +190,7 @@ router.get('/vehicles', async (req, res) => {
     if (req.query.plate) filter.plate = String(req.query.plate).trim();
     const [vehicles, crew] = await Promise.all([Ls2Vehicle.find(filter).lean(), crewIndex()]);
 
-    // سجلّ الإطارات لكلّ اللوحات دفعةً واحدة — لا استعلامًا لكلّ مركبة.
+    // Tire registry for all plates in one query, not one per vehicle.
     const assets = await Ls2TireAsset.find({ status: { $in: ['mounted', 'spare'] } })
       .select('plateKey status sensor').lean();
     const byPlate = new Map();
@@ -230,12 +206,7 @@ router.get('/vehicles', async (req, res) => {
     const body = {
       generatedAt: new Date().toISOString(),
       count: vehicles.length,
-      // ── ومفتاحُ اللوحة يُشتقّ ولا يُقرأ ──────────────────────────────
-      // كان يُقرأ `v.plateKey` من سجلّ التتبّع — وهو حقلٌ لا وجود له فيه
-      // إطلاقًا (صفرٌ من ثمانٍ وخمسين). فكان `tyres.registered` يخرج `null`
-      // في كلّ مركبةٍ منذ أن كُتبت الواجهة: سجلُّ الإطارات الذي وُعد به
-      // المستهلك لم يصله قطّ، ولا خطأَ يُقال. فيُشتقّ من اللوحة كما يُشتقّ
-      // في بقيّة النظام (utils/plateKey).
+      // The plate key is derived, not read. It used to read `v.plateKey` from the tracking record, a field that does not exist there (zero of 58), so `tyres.registered` came out `null` on every vehicle and the promised tire registry never reached the consumer, with no error. Derive it from the plate as the rest of the system does (utils/plateKey).
       vehicles: vehicles.map((v) => shape(v, byPlate.get(require('../utils/plateKey').plateKey(v.plate) || ''), crewFor(v, crew))),
     };
     cache.set(key, body, 10000);
@@ -246,7 +217,7 @@ router.get('/vehicles', async (req, res) => {
   }
 });
 
-/** GET /vehicles/:plate — مركبةٌ واحدة. */
+/** GET /vehicles/:plate: one vehicle. */
 router.get('/vehicles/:plate', async (req, res) => {
   try {
     const v = await Ls2Vehicle.findOne({ plate: String(req.params.plate).trim() }).lean();
@@ -268,10 +239,8 @@ router.get('/vehicles/:plate', async (req, res) => {
 });
 
 /**
- * GET /alerts — التنبيهات المفتوحة كما يراها النظام.
- *
- * الأتمتة قد تبني شروطها بنفسها، لكنّ العتبات هنا قابلةٌ للتعديل من الشاشة —
- * فالقراءة من هنا تعني أن تغيير العتبة يصل الأتمتة بلا تعديل شيفرتها.
+ * GET /alerts: open alerts as the system sees them.
+ * Automation may build its own conditions, but thresholds here are editable from the screen, so reading from here means a threshold change reaches automation without code changes.
  */
 router.get('/alerts', async (req, res) => {
   try {
@@ -283,10 +252,7 @@ router.get('/alerts', async (req, res) => {
       crewIndex(),
       Ls2Vehicle.find({}).select('plate driver').lean(),
     ]);
-    // ── والتنبيهُ يقول مَن يُبلَّغ ────────────────────────────────────────────
-    // «إطارُ الشاحنة ٣٤٤٩ على ٩٤ درجة» خبرٌ ناقص: مَن يسوقها الآن، وبأيّ رقمٍ
-    // يُبلَّغ؟ وكان يُبحَث عنهما بيدٍ في شاشةٍ أخرى والشاحنةُ تسير. فيُرسَلان مع
-    // التنبيه نفسِه (راجع `crewFor` — ولا يُخمَّن رقمٌ بين سائقَين).
+    // An alert says who to notify. 'Truck 3449 tire at 94 degrees' is incomplete without who drives it now and which number to call, which used to be looked up by hand while the truck moved. So both are sent with the alert (see `crewFor`; no number is guessed between two drivers).
     const byPlate = new Map(units.map((u) => [String(u.plate || '').trim(), u]));
     res.json({
       generatedAt: new Date().toISOString(),
@@ -311,18 +277,9 @@ router.get('/alerts', async (req, res) => {
 });
 
 /**
- * ═══════════════════════════════════════════════════════════════════════════
- *  توزيعُ المشرفين — مَن يشرف على أيّ شاحنة
- * ═══════════════════════════════════════════════════════════════════════════
- *
- * ── لماذا في هذه الواجهة ───────────────────────────────────────────────────
- * شاشةُ «توزيع السيارات على المشرفين» تُقرأ بالعين مرّةً كلَّ حين، والأسئلةُ
- * التي تُبنى عليها يوميّة: أيُّ شاحنةٍ بلا مشرف؟ ومَن حمل أكثرَ من طاقته؟
- * ومتى تحرّكت شاحنةٌ من مشرفٍ إلى آخر؟ وكلُّها أسئلةٌ تُسأل في وقتها لا حين
- * يفتح أحدٌ الشاشة — فتُقرأ من هنا وتُبنى عليها التنبيهات.
- *
- * ── وحدُّها القراءة ────────────────────────────────────────────────────────
- * الإسنادُ قرارُ مدير القسم: يُقرأ من هنا ولا يُكتب. ومَن يوزّع يدخل بصلاحيّته.
+ * Supervisor assignment: who supervises which truck.
+ * Why in this API: the 'assign vehicles to supervisors' screen is read by eye only occasionally, but the questions built on it are daily: which truck has no supervisor, who carries more than capacity, when a truck moved from one supervisor to another. These are asked at their own time, not when someone opens the screen, so alerts are built from here.
+ * Read-only: assignment is the section manager's decision; it is read here, not written, and whoever distributes signs in with their own permission.
  */
 
 const FleetModels = require('../models/FleetModels');
@@ -332,12 +289,12 @@ const User = require('../models/User');
 
 const fullName = (u) => `${u?.firstName || ''} ${u?.lastName || ''}`.trim() || u?.email || '';
 
-/** يقرأ المركباتِ وسائقيها والمشرفين مرّةً واحدة — وتُشتقّ منها كلُّ الردود. */
+/** Reads vehicles, their drivers and supervisors once; all responses are derived from it. */
 async function assignmentSnapshot() {
   const [vehicles, drivers, sups] = await Promise.all([
     FleetVehicle.find({ isActive: { $ne: false } }).sort({ plate: 1 })
       .select('plate name trailerType gpsType brand color supervisor supervisorName notes monthlyTarget updatedAt').lean(),
-    // المؤرشَفُ لا يُعرَض سائقًا على شاحنة — كأنّه حُذف.
+    // An archived driver is not shown on a truck, as if deleted.
     (async () => FleetDriver.find({ isActive: { $ne: false }, vehicle: { $ne: null },
       ...require('../utils/archivedHidden').notArchivedIdNumber(await require('../utils/endedStaff').endedStaff(), 'iqama') })
       .select('name phone working offReason vehicle').lean())(),
@@ -369,13 +326,12 @@ async function assignmentSnapshot() {
       color: v.color || null,
       monthlyTarget: v.monthlyTarget ?? null,
       notes: v.notes || null,
-      // ── والمشرفُ اسمٌ ومعرّفٌ وبريدٌ وهاتف ──────────────────────────────
-      // مَن يبني تنبيهًا يحتاج إلى مَن يُرسِله إليه، لا إلى اسمٍ يبحث عنه.
+      // A supervisor is a name, id, email and phone: whoever builds an alert needs someone to send it to, not a name to look up.
       supervisor: u ? {
         id: String(u._id), name: fullName(u), email: u.email || null,
         phone: u.phone || null, role: u.role,
       } : null,
-      // الاسمُ المحفوظُ على المركبة — يبقى وإن حُذف المستخدم.
+      // Name stored on the vehicle; it stays even if the user is deleted.
       supervisorName: v.supervisorName || null,
       unassigned: !sid,
       drivers: byVehicle.get(String(v._id)) || [],
@@ -383,9 +339,7 @@ async function assignmentSnapshot() {
     };
   });
 
-  // ── ومديرُ القسم نطاقُه الأسطولُ كلُّه ────────────────────────────────────
-  // لا تُسنَد إليه مركباتٌ بالإفراد، فعدُّ ما يحمل اسمَه صفرٌ — ويُقرأ الصفرُ
-  // «لا يعمل» وهو أبعدُ ما يكون عن الحقيقة. فيُقال نطاقُه صراحةً.
+  // The section manager's scope is the whole fleet. Vehicles are not assigned to him individually, so counting those with his name gives zero, which reads as 'not working'. State his scope explicitly.
   const counts = new Map();
   for (const r of rows) {
     const k = r.supervisor ? r.supervisor.id : 'none';
@@ -424,11 +378,9 @@ async function assignmentSnapshot() {
 }
 
 /**
- * GET /supervisor-assignment — الشاشةُ كلُّها في ردٍّ واحد.
- *
- * `?unassignedOnly=true` تختصر الردَّ على ما لا مشرفَ له — وهو أكثرُ ما تُبنى
- * عليه التنبيهات: شاحنةٌ تعمل ولا أحدَ مسؤولٌ عنها.
- * `?supervisor=<id|name>` تقصره على مشرفٍ بعينه.
+ * GET /supervisor-assignment: the whole screen in one response.
+ * `?unassignedOnly=true` narrows to vehicles without a supervisor, the most common basis for alerts: a working truck nobody is responsible for.
+ * `?supervisor=<id|name>` limits to one supervisor.
  */
 router.get('/supervisor-assignment', async (req, res) => {
   try {
@@ -460,7 +412,7 @@ router.get('/supervisor-assignment', async (req, res) => {
   }
 });
 
-/** GET /supervisors — المشرفون وأعدادُ مركباتهم ولوحاتُها، بلا تفاصيل المركبات. */
+/** GET /supervisors: supervisors with their vehicle counts and plates, without vehicle details. */
 router.get('/supervisors', async (req, res) => {
   try {
     const hit = cache.get('fleetapi:assign');
@@ -477,14 +429,14 @@ router.get('/supervisors', async (req, res) => {
   }
 });
 
-/** GET /health — للأتمتة أن تتحقّق من المفتاح وحياة النبض قبل أن تعتمد عليه. */
+/** GET /health: lets automation verify the key and the pulse before relying on it. */
 router.get('/health', async (req, res) => {
   const newest = await Ls2Vehicle.findOne({}).sort({ lastMessageAt: -1 }).select('lastMessageAt').lean();
   const age = ageSec(newest?.lastMessageAt);
   res.json({
     ok: true,
     generatedAt: new Date().toISOString(),
-    // النبض يعمل كلّ عشرين ثانية، فقراءةٌ أحدثُ من خمس دقائق تعني أنه حيّ.
+    // The pulse runs every twenty seconds, so a reading newer than five minutes means it is alive.
     pollHealthy: age != null && age < 300,
     newestReadingAgeSeconds: age,
   });

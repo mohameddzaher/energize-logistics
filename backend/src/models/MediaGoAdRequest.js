@@ -1,16 +1,7 @@
 /**
- * طلباتُ المحتوى الإعلانيّ — Media Go تطلب تصويرَ إعلانٍ على مركباتنا (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢).
- *
- * ── الدورة ───────────────────────────────────────────────────────────────────
- *   Media Go تُنشئ الطلب: اسمُ الإعلان، والشركةُ التي هو لها (من إعدادات القسم —
- *   إنرجايز، هيرو مايل…)، ومركباتُ النقل الخفيف إن كانت شركتَنا، وصورٌ أم فيديو،
- *   وبالإيواء أم بالطريق، وملاحظةٌ وتاريخٌ اختياريّان.
- *   ونحن نصوّر: لكلّ مركبةٍ «تحقّقُها» — صورٌ (عدّة) أو فيديو (١٥ ثانيةً على الأكثر) —
- *   نراجعه ثمّ نعلّم المركبةَ «جاهزة». فإذا جهزت كلُّها قلنا «تمّ» فوصل Media Go
- *   في سجلّاتها، تراه مركبةً مركبة، وتردّ بملاحظةٍ إن شاءت فتصلنا.
- *
- *   new → in_progress (أوّلُ ملفٍّ نرفعه) → delivered (قلنا «تمّ») → closed
- *   وMedia Go تُلغي طلبَها قبل أن يُسلَّم (cancelled).
+ * Ad content requests: Media Go asks for an ad to be filmed on our vehicles.
+ * Flow: Media Go creates the request (ad name, owning company from section settings, light transport vehicles if ours, photos or video, parked or on the road, optional note and date). We film; each vehicle has its own verification (photos or video up to 15 s) that we review and mark ready. When all are ready we mark delivered and Media Go sees it per vehicle and may reply with a note.
+ * new -> in_progress (first file uploaded) -> delivered -> closed; Media Go may cancel before delivery (cancelled).
  */
 const mongoose = require('mongoose');
 
@@ -46,16 +37,16 @@ const fileSchema = new mongoose.Schema({
   uploadedAt: { type: Date, default: Date.now },
 }, { _id: true });
 
-/** مركبةٌ في الطلب — وتحقّقُها: ملفّاتُها ومراجعتُها. */
+/** A vehicle in the request, with its verification: files and review. */
 const itemSchema = new mongoose.Schema({
   vehicle: { type: mongoose.Schema.Types.ObjectId, ref: 'VehicleMaster', default: null },
   plateNumber: { type: String, default: '' },
   serialNumber: { type: String, default: '' },
   project: { type: String, default: '' },
-  // ما نصوّره لهذه المركبة — نوعُ الطلب نفسُه، لا يُغيَّر (٢٠٢٦/١٠/٢٢).
+  // What is filmed for this vehicle: the request type itself, not changed.
   mediaType: { type: String, enum: keysOf(AD_VOCAB.mediaType), default: 'photo' },
   files: { type: [fileSchema], default: [] },
-  ready: { type: Boolean, default: false },   // راجعناه وصار جاهزًا للتسليم
+  ready: { type: Boolean, default: false },   // Reviewed and ready for delivery
   readyAt: { type: Date, default: null },
   readyByName: { type: String, default: '' },
   note: { type: String, default: '', maxlength: 500 },
@@ -82,15 +73,15 @@ const adRequestSchema = new mongoose.Schema({
   ref: { type: String, unique: true },        // AD-0001
   seq: { type: Number, index: true },
   adName: { type: String, required: true, trim: true, maxlength: 200 },
-  // الشركةُ التي الإعلانُ لها — من قائمة «شركات المحتوى الإعلاني» في إعدادات القسم.
+  // Company the ad is for, from the ad-content companies list in section settings.
   company: { type: String, required: true, trim: true, index: true },
   companyKey: { type: String, default: '', index: true },
   mediaType: { type: String, enum: keysOf(AD_VOCAB.mediaType), required: true },
   location: { type: String, enum: keysOf(AD_VOCAB.location), required: true },
   note: { type: String, default: '', trim: true, maxlength: 2000 },
-  neededBy: { type: String, default: '' },     // YYYY-MM-DD — اختياريّ
+  neededBy: { type: String, default: '' },     // YYYY-MM-DD, optional
   items: { type: [itemSchema], default: [] },
-  // ملفّاتٌ للطلب نفسِه حين لا مركباتَ فيه (إعلانٌ لشركةٍ غيرِنا).
+  // Files for the request itself when it has no vehicles (an ad for another company).
   files: { type: [fileSchema], default: [] },
   status: { type: String, enum: keysOf(AD_VOCAB.status), default: 'new', index: true },
   statusHistory: { type: [historySchema], default: [] },

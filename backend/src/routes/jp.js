@@ -1,8 +1,6 @@
 /**
- * /api/jp — خطّةُ العمل: مهامُّ الأقسام ومشروعاتُها، وخطّةُ الإدارة العليا.
- *
- * لا قائمةَ أدوارٍ هنا: من هو مديرٌ ومن هو عضوٌ يُحسَب لكلّ طلبٍ في المتحكِّم
- * من config/jpSections (راجع `who`)، لأنّ الجوابَ يختلف باختلاف القسم المطلوب.
+ * /api/jp: work plan with section tasks and projects, plus the top-management plan.
+ * No role list here: manager vs member is computed per request in the controller from config/jpSections (see `who`), since the answer depends on the requested section.
  */
 const express = require('express');
 const router = express.Router();
@@ -13,7 +11,7 @@ const authenticate = require('../middleware/auth');
 const c = require('../controllers/jpController');
 
 router.use(authenticate);
-// الشريكُ الخارجيُّ ليس من فريق أحد.
+// An external partner is not on anyone's team.
 router.use((req, res, next) => (req.user.role === 'client' ? res.status(403).json({ message: 'Not allowed' }) : next()));
 
 router.get('/me', c.me);
@@ -27,7 +25,7 @@ router.post('/tasks', c.createTask);
 router.patch('/tasks/:id', c.updateTask);
 router.delete('/tasks/:id', c.deleteTask);
 router.post('/tasks/:id/done', c.setDone);
-// المؤقّتُ وتصحيحُ الوقت واليوميّة (٢٠٢٦/١٠/٢٢).
+// Timer, time correction and daily log.
 router.post('/tasks/:id/progress', c.progress);
 router.post('/tasks/:id/time', c.adjustTime);
 router.post('/tasks/:id/hand-down', c.handDown);

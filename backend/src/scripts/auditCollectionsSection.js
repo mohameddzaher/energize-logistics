@@ -1,14 +1,8 @@
 /**
- * auditCollectionsSection — قسمُ التحصيل يعمل فعلًا؟
- *
- *   node src/scripts/auditCollectionsSection.js
- *   node src/scripts/auditCollectionsSection.js --base http://localhost:5599
- *
- * لا يقرأ الكودَ ليقول إنّه سليم: يسجّل الدخولَ بحسابَي القسم الحقيقيَّين
- * وينادي كلَّ نقطةٍ كما ينادي المتصفّح — ثمّ يسأل القاعدةَ هل جرى ما قيل إنّه
- * جرى. والصلاحيّةُ تُفحَص من الجهتين: ما يجب أن يُفتح، وما يجب أن يُمنع.
- *
- * لا يترك أثرًا: ما يُنشئه يحذفه، ولا يمسّ صفًّا حقيقيًّا إلّا بقراءة.
+ * auditCollectionsSection: does the collections section actually work?
+ * node src/scripts/auditCollectionsSection.js
+ * node src/scripts/auditCollectionsSection.js --base http://localhost:5599
+ * It does not read the code and call it fine: it signs in with the section's two real accounts and calls each endpoint as the browser does, then asks the database whether what was said to happen happened. Permission is checked both ways: what must open and what must be blocked. Leaves no trace: what it creates it deletes, and it only reads real rows.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -17,11 +11,8 @@ const argv = process.argv.slice(2);
 const iB = argv.indexOf('--base');
 const BASE = (iB >= 0 && argv[iB + 1] ? argv[iB + 1] : process.env.BASE || 'http://localhost:5599').replace(/\/$/, '');
 const PASSWORD = 'Passenergize1!';
-// الفحصُ ينادي كما ينادي المتصفّح: حارسُ CSRF يردّ كلَّ كتابةٍ تحمل كوكي جلسة
-// بلا ترويسة `Origin` — وهو صوابٌ لا عيبٌ يُلتَفّ عليه.
-// المصدرُ يتبع الخادمَ الذي نفحصه لا ملفَّ البيئة المحلّيّ: حارسُ CSRF يقبل
-// مصادرَ البرودكشن وحدها، فإرسالُ `localhost` إليه يردّ ٤٠٣ على كلّ POST — وهو
-// ما يبدو عطبًا في الميزة وهو عطبٌ في الفحص.
+// The check calls as the browser does: the CSRF guard rejects every write carrying a session cookie without an `Origin` header, which is correct, not a flaw to work around.
+// The origin follows the server being tested, not the local env file: the CSRF guard accepts only production origins, so sending `localhost` gets 403 on every POST, which looks like a feature fault but is a fault in the check.
 const ORIGIN = /api\.energize-logistics\.com/.test(BASE)
   ? 'https://energize-logistics.com'
   : (process.env.FRONTEND_URL?.split(',')[0].trim() || 'http://localhost:3000');
@@ -61,10 +52,7 @@ async function call(method, path, ck, body) {
   const OperationsWorkflow = require('../models/OperationsWorkflow');
   const Lookup = require('../models/Lookup');
 
-  // ── ولا يعتمد الفحصُ على حساب إنسان ────────────────────────────────────
-  // كان يدخل بحسابٍ يعمل به موظّفٌ حقيقيّ وكلمةِ مروره. فلمّا غيّرها — وهو
-  // حقُّه — سقط الفحصُ كلُّه بسببٍ لا علاقةَ له بما يفحص، فقُرئ كأنّ القسمَ
-  // تعطّل. وأسوأُ منه أنّ محاولاتِ الدخول تتكرّر على حسابٍ يعمل به إنسان.
+  // The check does not depend on a person's account. It used to sign in with an account a real employee works with, and his password; when he changed it (his right) the whole check failed for a reason unrelated to what it tests and read as if the section broke. Worse, login attempts repeated on an account a person uses.
   await User.deleteMany({ email: /^zz-cs-/ });
   const MANAGER = 'zz-cs-mgr@example.invalid';
   const STAFF = 'zz-cs-staff@example.invalid';
@@ -73,7 +61,7 @@ async function call(method, path, ck, body) {
     { email: STAFF, password: 'Passenergize1!', firstName: 'م', lastName: 'ف', role: 'collections_staff' },
   ]);
 
-  // ── ١ · الحسابان ───────────────────────────────────────────────────────
+  // 1. The two accounts.
   head('الحسابان');
   const mgr = await login(MANAGER);
   const stf = await login(STAFF);
@@ -90,7 +78,7 @@ async function call(method, path, ck, body) {
   ok('الموظف يفتح قسمه', (meStaff.json?.user?.permissions || {}).Collections === 'edit',
     `Collections=${(meStaff.json?.user?.permissions || {}).Collections}`);
 
-  // ── ٢ · الخدمة الذاتيّة والحاجات المشتركة ──────────────────────────────
+  // 2. Self-service and shared needs.
   head('الخدمة الذاتيّة والصفحات المشتركة');
   for (const [label, path] of [
     ['ملفّي', '/api/hr/me/profile'],
@@ -104,15 +92,12 @@ async function call(method, path, ck, body) {
     ok(label, r.status !== 401 && r.status !== 403, `${r.status}`);
   }
 
-  // ── ٣ · صفحاتُ القسم ───────────────────────────────────────────────────
+  // 3. Section pages.
   head('صفحات القسم');
   const dash = await call('GET', '/api/collections-dept/dashboard', mgr.ck);
   ok('اللوحة تُفتح', dash.status === 200, `${dash.status}`);
   const d = dash.json || {};
-  // ── ومدير التحصيل لا يصله «ما علينا» ──────────────────────────────────
-  // القسمُ يُحصِّل؛ وما ندفعه للموردين والصافيُ شأنُ الإدارة والمالية. والحجبُ
-  // على الخادم لا على الشاشة: إخفاءٌ في الواجهة وحدَها يُقرأ في أدوات المتصفّح
-  // ويخرج في أيّ تصدير.
+  // The collections manager does not get what we owe. The section collects; what we pay vendors and the net are for management and finance. The hiding is on the server, not the screen: hiding in the UI alone is readable in browser tools and leaks into any export.
   ok('اللوحة تحمل جهة العملاء', !!d.customers, `${d.customers?.reports} كشفًا`);
   ok('ولا يصله المستحقّ علينا', !('suppliers' in d), 'suppliers' in d ? 'وصلت!' : 'محجوبة');
   ok('ولا تقادمُ الموردين', !(d.aging || {}).supplier);
@@ -125,7 +110,7 @@ async function call(method, path, ck, body) {
   ok('صفحة العملاء', custList.status === 200 && custList.json?.total > 0, `${custList.json?.total} عميلًا`);
   ok('صفحة الموردين', suppList.status === 200 && suppList.json?.total > 0, `${suppList.json?.total} موردًا`);
 
-  // ومَن يملك الوجهين يراهما — وإلّا كان الحجبُ عامًّا لا مقصودًا.
+  // Whoever owns both sides sees both, otherwise the hiding would be blanket rather than intended.
   await User.deleteMany({ email: /^zz-bothsides/ });
   const both = await User.create({
     email: 'zz-bothsides@example.invalid', password: PASSWORD,
@@ -138,14 +123,14 @@ async function call(method, path, ck, body) {
   ok('ومعها عمودُ «علينا»', ((bothDash.json?.byBranch || [])[0] || {}).payable !== undefined);
   await User.deleteMany({ email: /^zz-bothsides/ });
 
-  // ── ٤ · الأرقام تطابق القاعدة ──────────────────────────────────────────
+  // 4. Numbers match the database.
   head('الأرقام تطابق القاعدة');
   const dbCust = await CollectionsParty.countDocuments({ kind: 'customer' });
   const dbSupp = await CollectionsParty.countDocuments({ kind: 'supplier' });
   ok('عدد العملاء = ما في القاعدة', custList.json?.total === dbCust, `${custList.json?.total} مقابل ${dbCust}`);
   ok('عدد الموردين = ما في القاعدة', suppList.json?.total === dbSupp, `${suppList.json?.total} مقابل ${dbSupp}`);
 
-  // المستحقُّ في اللوحة = مجموعُ ما لا تاريخَ إغلاقٍ له في القاعدة.
+  // Receivable on the dashboard equals the sum of rows with no closing date in the database.
   const NOT_CANCELLED = { executionStatus: { $nin: ['ملغي', 'ملغى', 'ملغاة', 'cancelled', 'canceled', 'Cancelled'] } };
   const [dbDue] = await OperationsWorkflow.aggregate([
     { $match: { username: { $nin: [null, ''] }, collectionDate: null, ...NOT_CANCELLED } },
@@ -157,7 +142,7 @@ async function call(method, path, ck, body) {
   ok('عدد الكشوف غير المحصَّلة = ما في القاعدة', d.customers?.openReports === dbDue?.n,
     `اللوحة ${d.customers?.openReports} · القاعدة ${dbDue?.n}`);
 
-  // ── ٥ · البحث والملف ───────────────────────────────────────────────────
+  // 5. Search and file.
   head('البحث وملفّ الطرف');
   const biggest = (d.customers?.top || [])[0];
   if (biggest) {
@@ -169,24 +154,23 @@ async function call(method, path, ck, body) {
       ok('ملفّ العميل يُفتح', prof.status === 200, `${prof.json?.reportsTotal} كشفًا`);
       ok('الملفّ يحمل كشوفَه', (prof.json?.reports || []).length > 0);
       ok('الملفّ يحمل حركةً شهريّة', (prof.json?.monthly || []).length > 0, `${prof.json?.monthly?.length} شهرًا`);
-      // مجموعُ الكشوف في الملفّ = ما تقوله القاعدة لأسمائه كلِّها.
+      // Manifest total in the file equals what the database says for all his names.
       const names = hit.nameVariants?.length ? hit.nameVariants : [hit.name];
       const dbN = await OperationsWorkflow.countDocuments({ username: { $in: names }, ...NOT_CANCELLED });
       ok('عدد كشوف الملفّ = ما في القاعدة', prof.json?.reportsTotal === dbN, `${prof.json?.reportsTotal} مقابل ${dbN}`);
     }
   } else ok('يوجد عميلٌ عليه مستحق', false, 'اللوحة لم تُرجع أحدًا');
 
-  // البحثُ يطوي فروقَ الرسم: «شركه» تجد «شركة».
+  // Search folds spelling differences: the variant with a different final letter finds the standard spelling.
   const folded = await call('GET', '/api/collections-dept/parties?kind=supplier&q=شركه', mgr.ck);
   ok('البحث يطوي فروق الرسم (شركه ← شركة)', (folded.json?.total || 0) > 0, `${folded.json?.total} نتيجة`);
 
-  // ── ٦ · الإنشاء والتعديل والحذف ────────────────────────────────────────
+  // 6. Create, edit and delete.
   head('إنشاء وتعديل وحذف');
   const NAME = `zz-تحصيل-فحص-${Date.now()}`;
   const created = await call('POST', '/api/collections-dept/parties', stf.ck, {
     kind: 'customer', name: NAME, phone: '0500000000', city: 'جدة',
-    // خاناتٌ فارغة: الاستمارةُ ترسل حقولَها كلَّها وأكثرُها فارغ، ويجب ألّا
-    // تُرفض لأنّ المستخدم **لم** يملأ حقلًا اختياريًّا.
+    // Empty fields: the form sends all its fields and most are empty, and it must not be rejected because the user did not fill an optional field.
     status: '', paymentTerms: '', assignedTo: '', nextFollowUpAt: '',
   });
   ok('الموظف يُنشئ طرفًا', created.status === 201, `${created.status} ${created.json?.message || ''}`);
@@ -202,16 +186,13 @@ async function call(method, path, ck, body) {
     ok('التعديل وصل القاعدة فعلًا', inDb?.phone === '0511111111', inDb?.phone);
     ok('الاسم المطويّ محسوب', !!inDb?.nameKey, inDb?.nameKey);
 
-    // الحذفُ لمن يعدّل: منحُ «تعديل» على القسم يمرّ كلَّ نقطةٍ فيه، فقائمةٌ
-    // أضيقُ منه في المسار لا تمنع شيئًا.
+    // Delete is for whoever edits: an edit grant on the section passes every endpoint in it, so a narrower list on the route blocks nothing.
     const del = await call('DELETE', `/api/collections-dept/parties/${newId}`, stf.ck);
     ok('الموظف يحذف ما لا تاريخَ له', del.status === 200 && del.json?.deleted === true, `${del.status}`);
     ok('اختفى من القاعدة', !(await CollectionsParty.findById(newId)));
   }
 
-  // مَن له تاريخٌ يُعطَّل لا يُحذَف — وإلّا انقطعت كشوفُه عن ملفّه.
-  // ويُختار مَن له كشوفٌ يقينًا (أكبرُ المتأخّرين) لا أوّلُ صفٍّ بالاسم: ذاك
-  // قد يكون طرفًا بلا تاريخ، فيمرّ الفحصُ من غير أن يفحص شيئًا.
+  // One with history is deactivated, not deleted, otherwise his manifests lose their link to his file. One with certainly existing manifests is chosen (the largest overdue), not the first row by name, which may be a party with no history and let the check pass without testing anything.
   const withHistory = biggest
     ? await CollectionsParty.findOne({ kind: 'customer', nameKey: CollectionsParty.fold(biggest.name) }).lean()
     : null;
@@ -221,14 +202,14 @@ async function call(method, path, ck, body) {
     if ((probe.json?.party?.reports || 0) > 0) {
       const del = await call('DELETE', `/api/collections-dept/parties/${withHistory._id}`, mgr.ck);
       ok('مَن له كشوفٌ يُعطَّل لا يُحذَف', del.json?.deactivated === true, del.json?.message || `${del.status}`);
-      // يُعاد كما كان: الفحصُ لا يترك أثرًا.
+      // Restored as it was: the check leaves no trace.
       await CollectionsParty.findByIdAndUpdate(withHistory._id, { $set: { isActive: true } });
       const back = await CollectionsParty.findById(withHistory._id).lean();
       ok('أُعيد تفعيلُه بعد الفحص', back?.isActive === true);
     }
   }
 
-  // ── ٧ · قوائمُ القسم من إعداداته ───────────────────────────────────────
+  // 7. Section lists from its settings.
   head('قوائم القسم');
   const types = await call('GET', '/api/lookups/types', mgr.ck);
   const mine = (types.json?.types || []).filter((t) => t.module === 'collections');
@@ -239,7 +220,7 @@ async function call(method, path, ck, body) {
     ok(`  ${t.nameAr}`, n > 0, `${n} قيمة`);
   }
 
-  // ── ٨ · صفحةُ التشغيل — الأعمدة كلُّها ─────────────────────────────────
+  // 8. Operations page, all columns.
   head('سير عمل التشغيل');
   const list = await call('GET', '/api/workflows?limit=1', stf.ck);
   ok('الموظف يفتح الكشوف', list.status === 200, `${list.status}`);
@@ -254,14 +235,14 @@ async function call(method, path, ck, body) {
   ok('المدير مثل الموظف', (permsWf.json?.roleAccess?.collections_manager || []).length === myFields.length);
   ok('الإحصاءات تُفتح', (await call('GET', '/api/workflows/stats', stf.ck)).status === 200);
   ok('قيم فلتر العمود تُفتح', (await call('GET', '/api/workflows/filters?field=branch', stf.ck)).status === 200);
-  // التصديرُ يقرأ الجدولَ كلَّه فيطول — يُمهَل ولا يُعلَّق عليه الفحصُ كلُّه.
+  // The export reads the whole table so it is slow; it gets a longer timeout rather than hanging the whole check.
   const exp = await Promise.race([
     call('GET', '/api/workflows/export?limit=1', stf.ck),
     new Promise((r) => setTimeout(() => r({ status: 'timeout' }), 45000)),
   ]);
   ok('التصدير غير ممنوع', exp.status !== 403 && exp.status !== 401, `${exp.status}`);
 
-  // الكتابةُ الحقيقيّة: صفٌّ واحد، عمودٌ من كلّ مجموعة، ثمّ يُعاد كما كان.
+  // Real write: one row, one column from each group, then restored as it was.
   const row = await OperationsWorkflow.findOne({}).select('_id reportNumber operationsReview accountingReview invoiceNotes payingBranch').lean();
   if (row) {
     const before = {
@@ -287,7 +268,7 @@ async function call(method, path, ck, body) {
     ok('أُعيد الصفُّ كما كان', restored.operationsReview === before.operationsReview && restored.invoiceNotes === before.invoiceNotes);
   }
 
-  // ── ٩ · ما يجب أن يُمنع ────────────────────────────────────────────────
+  // 9. What must be blocked.
   head('ما يجب أن يُمنع');
   const outsider = await User.findOne({ role: 'workshop_employee', isActive: true }).select('email').lean();
   ok('كشفٌ لا يُحذف إلّا للسوبر أدمن',
@@ -300,9 +281,7 @@ async function call(method, path, ck, body) {
     (await call('GET', '/api/collections-dept/parties/not-an-id', mgr.ck)).status === 400);
   if (outsider) console.log(`  ~  (دورٌ خارج القسم للمقارنة: ${outsider.email})`);
 
-  // ── ١٠ · الأعمدةُ الماليّة محجوبةٌ عن العمليات ─────────────────────────
-  // لا على الشاشة وحدَها: النقطةُ لا تُرجعها، والتصديرُ لا يخرج بها، وقائمةُ
-  // قيمِ العمود تُمنع. والحجبُ في مكانٍ واحدٍ حجبٌ في نصف الطريق.
+  // 10. Financial columns hidden from operations. Not on the screen alone: the endpoint does not return them, the export does not carry them, and the column's value list is blocked. Hiding in one place is hiding halfway.
   head('الأعمدة المالية محجوبة عن العمليات');
   const MONEY = ['invoiceNumber', 'netInvoice', 'tax', 'totalInvoice', 'invoiceDate', 'invoiceNotes', 'collectionDate', 'accountingReview'];
   await User.deleteMany({ email: { $regex: '^zz-money' } });
@@ -334,7 +313,7 @@ async function call(method, path, ck, body) {
       const fo = await call('GET', '/api/workflows/filters?field=totalInvoice', ck);
       ok(`${role} لا يفتح قائمة قيمها`, fo.status === 403, `${fo.status}`);
 
-      // ويُرفض ما يكتبه فيها صراحةً — لا يُبتلع ويُقال «حُفِظ».
+      // A write to them is rejected explicitly, not swallowed and reported saved.
       if (row) {
         const w = await call('PUT', `/api/workflows/${row._id}`, ck, { invoiceNumber: 'zz-should-not-save' });
         const after = await OperationsWorkflow.findById(row._id).select('invoiceNumber').lean();
@@ -343,7 +322,7 @@ async function call(method, path, ck, body) {
       }
     }
 
-    // ومَن يملكها يراها — وإلّا كان الحجبُ عامًّا لا مقصودًا.
+    // Whoever owns them sees them, otherwise the hiding would be blanket rather than intended.
     const mine = await call('GET', '/api/workflows?limit=1', mgr.ck);
     const m0 = (mine.json?.workflows || [])[0] || {};
     ok('التحصيل تصله أعمدة المال', MONEY.some((f) => f in m0), Object.keys(m0).filter((k) => MONEY.includes(k)).join(', '));
@@ -351,7 +330,7 @@ async function call(method, path, ck, body) {
   } finally {
     await User.deleteMany({ email: { $regex: '^zz-money' } });
   }
-  // وحسابا الفحص يُمحيان كما يُمحى ما أنشأه.
+  // The two check accounts are erased, like anything it created.
   await User.deleteMany({ email: /^zz-cs-/ });
 
   console.log(`\n${pass} passed, ${fail} failed`);

@@ -2,7 +2,7 @@ const express = require('express');
 const { body } = require('express-validator');
 const router = express.Router();
 
-// معرّفٌ مشوَّهٌ في الرابط = لا سجلّ، لا عطلٌ في الخادم — راجع utils/idParam.
+// A malformed id in the URL means no record (404), not a server error; see utils/idParam.
 const { objectIdParam } = require('../utils/idParam');
 router.param('id', objectIdParam());
 router.param('branchId', objectIdParam());
@@ -12,10 +12,8 @@ const authenticate = require('../middleware/auth');
 const authorize = require('../middleware/rbac');
 const validate = require('../middleware/validate');
 
-// ── ومَن يقرأ العهدةَ ويكتب فيها ──────────────────────────────────────────
-// المحاسبةُ تقرأ عهدةَ الفروع وتكتب فيها: التحصيلُ والمصروفُ والمشترياتُ قيودٌ
-// ماليّةٌ تُراجَع وتُقفَل. وكانت خارجَ القائمة، فيفتح المحاسبُ الصفحةَ فيُردّ
-// ٤٠٣ — ولا يُقال له لماذا.
+// Who reads and writes custody.
+// Accounting reads branch custody and writes into it: collections, expenses and purchases are financial entries that get reviewed and closed. It was outside the list, so an accountant opened the page and got 403 with no explanation.
 const walletRoles = [
   'super_admin', 'admin', 'it_manager', 'it_specialist',
   'operations_manager', 'operations_staff',
@@ -25,13 +23,8 @@ const walletReadRoles = [...walletRoles, 'moderator', 'collections_manager', 'co
 const { FINANCE_FULL_ROLES } = require('../config/financeAuthority');
 const managerRoles = ['super_admin', 'admin', 'operations_manager', ...FINANCE_FULL_ROLES];
 
-// ── ولوحةُ العهدة تُقرأ بمن يراجعها لا بمن يديرها ──────────────────────────
-// كانت مقصورةً على مديري العمليات، والمحاسبُ خارجَها — وهو من يقرؤها أصلًا:
-// عملُه أن يرى ما فعلته الفروعُ كلُّها لا فرعًا واحدًا. ففتح صفحةَ العهدة
-// اليوميّة فرُدّ «لا فرعَ لحسابك»، وفتح اللوحةَ فلم يجدها في القائمة.
-//
-// والمحاسبةُ لا تُربَط بفرع: حسابُها ليس في فرعٍ بعينه — الخمسةُ كلُّهم بلا
-// فرعٍ على حساباتهم، وذلك صوابٌ لا نقص.
+// The custody dashboard is read by those who review it, not those who run it. It was limited to operations managers, leaving out the accountant, who is the one reading it: his job is to see what all branches did, not one branch. He opened the daily custody page and got 'no branch for your account', and opened the dashboard and did not find it in the list.
+// Accounting is not tied to a branch: its accounts have no branch (all five), which is correct, not a gap.
 const overviewRoles = [...managerRoles, 'cfo', 'accounting_manager', 'accountant', 'it_manager', 'it_specialist'];
 
 router.use(authenticate);
@@ -39,7 +32,7 @@ router.use(authenticate);
 // Daily wallet (moderator has read-only access)
 router.get('/daily', authorize(...walletReadRoles), walletController.getDailyWallet);
 
-// Lookup by report number (رقم كشف التخريج)
+// Lookup by report number (manifest number).
 router.get('/lookup-report', authorize(...walletReadRoles), walletController.lookupByReport);
 
 // Wallet history
@@ -55,24 +48,15 @@ router.post(
   [
     body('type').isIn(['collection', 'expense', 'purchase', 'tax_invoice'])
       .withMessage('النوع: تحصيل أو مصروف أو مشتريات أو استلام فاتورة ضريبية'),
-    // ── و«فاتورة ضريبيّة» بلا مبلغ ────────────────────────────────────────
-    // هي قيدُ استلامٍ لا حركةُ مال، فاشتراطُ مبلغٍ أكبرَ من صفرٍ عليها يمنع
-    // تسجيلَ ما جاء بلا قيمةٍ معروفةٍ بعد — وهو أكثرُ ما يُستلم.
+    // A tax invoice with no amount: it is a receipt entry, not a money movement, so requiring an amount above zero would block recording what arrived without a known value yet, which is the most common case.
     body('amount').custom((v, { req }) => {
       if (req.body.type === 'tax_invoice') return true;
       if (!(Number(v) > 0)) throw new Error('المبلغ يجب أن يكون أكبر من صفر');
       return true;
     }),
-    // ── والاستلامُ يقع على حزمةِ كشوفٍ لا على واحد ────────────────────────
-    // المندوبُ يأتي بسبعةٍ فتُسجَّل دفعةً. والشرطُ هنا كان على الحقل المفرد
-    // وحدَه، فكان يردّ الحزمةَ كلَّها بـ«رقم الفاتورة مطلوب» وهي تحمل سبعةَ
-    // أرقام. فالشرطُ على المعنى: كشفٌ واحدٌ على الأقلّ، من أيّ الشكلين.
-    // ── والشرطُ على المعنى لا على شكلِ الحقل ──────────────────────────────
-    // مرَّ هذا الحقلُ بثلاثة أشكال: رقمٌ واحد، ثمّ قائمةُ أرقام، ثمّ أزواجٌ
-    // (كشفٌ وسندُه). وفي كلّ مرّةٍ كان الشرطُ مكتوبًا على الشكل الأخير وحدَه،
-    // فيردّ الخادمُ «اكتب رقم كشفٍ واحدًا على الأقلّ» على طلبٍ يحمل ثلاثة.
-    //
-    // فالسؤالُ هو السؤال مهما تغيّر الشكل: هل معه كشفٌ واحدٌ على الأقلّ؟
+    // Receipt applies to a bundle of manifests, not one: the rep brings seven and they are recorded in one go. The check used to apply to the single field only and rejected the whole bundle with invoice-number-required although it held seven numbers.
+    // The check is on the meaning, not the field's shape. The field has had three shapes: one number, then a list of numbers, then pairs (manifest and its voucher), and each time the check was written for the latest shape only, so the server rejected a request holding three.
+    // The question is the same whatever the shape: does it carry at least one manifest?
     body('receivedReports').custom((v, { req }) => {
       if (req.body.type !== 'tax_invoice') return true;
       const list = [
@@ -94,13 +78,9 @@ router.put('/transactions/:id', authorize(...walletRoles), walletController.upda
 // Delete transaction
 router.delete('/transactions/:id', authorize(...walletRoles), walletController.deleteTransaction);
 
-// ── نقلُ حركةٍ إلى فرعٍ آخر أو يومٍ آخر — لمديرِ النظام وحدَه ───────────────
-// تُنقَل مسؤوليّةُ نقدٍ بين دفترَي عهدةٍ لرجلين، أو يُردُّ قيدٌ إلى يومه الذي
-// وقع فيه، ويُعاد حسابُ اليوميّتين وتتدحرج أرصدتُهما. راجع رأسَ
-// `moveTransaction`.
+// Moving an entry to another branch or day: system admin only. Cash responsibility moves between two custody ledgers, or an entry returns to the day it happened, and both journals are recomputed and their balances roll forward. See the header of `moveTransaction`.
 router.patch('/transactions/:id/move', authorize('super_admin', ...FINANCE_FULL_ROLES), walletController.moveTransaction);
-// والمسارُ القديمُ يبقى بابًا للنسخ المثبَّتة من التطبيق — يُوزَّع ملفًّا لا من
-// متجر، فنسخةٌ على هاتفٍ تبقى حتّى يُحدِّثها صاحبُها. وهو الحارسُ نفسُه.
+// The old route stays as an entry point for installed app versions: the app is distributed as a file, not from a store, so a phone's version stays until its owner updates it. Same guard.
 router.patch('/transactions/:id/branch', authorize('super_admin', ...FINANCE_FULL_ROLES), walletController.moveTransaction);
 
 // Close day

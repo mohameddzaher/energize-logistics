@@ -1,21 +1,8 @@
 /**
- * reconcileOpsDeletions — ما اختفى من المنصّة يختفي عندنا.
- *
- *   node src/scripts/reconcileOpsDeletions.js         # فحصٌ فقط
- *   node src/scripts/reconcileOpsDeletions.js --yes   # تنفيذ
- *
- * ── الثغرة ──────────────────────────────────────────────────────────────────
- * المزامنةُ تحذف الشحنةَ إذا أعادتها المنصّةُ ومعها `deleted_at`. لكنّ الصفَّ
- * الذي يُحذف حذفًا نهائيًّا لا يعود في أيّ صفحة، فلا يمرّ على المزامنة أصلًا —
- * فيبقى عندنا إلى الأبد كشفًا لا وجودَ له.
- *
- * وشيتُ المتابعة يكتشفها: خانةُ تاريخ الكشف تصير `#N/A` لأنّ البحثَ في المنصّة
- * لم يجد الرقم. ألفٌ ومئةٌ وثلاثةٌ وعشرون صفًّا في الشيت هكذا، ولا واحدَ منها
- * موجودٌ في المنصّة — فالإشارةُ صحيحة. وما ينقصنا هو أن نقرأها نحن أيضًا.
- *
- * فتُمسح القائمةُ كاملةً من المنصّة مرّةً، ويُقارَن ما عندنا بها. والمقارنةُ لا
- * تُنفَّذ إلّا إذا اكتمل المسح: لو انقطع في منتصفه لَبدا كلُّ ما لم يُقرأ بعدُ
- * محذوفًا، فتُمسح آلافُ الصفوف الحيّة.
+ * reconcileOpsDeletions: what disappears from the platform disappears here.
+ * Usage: node src/scripts/reconcileOpsDeletions.js [--yes] (check only by default).
+ * Gap: sync deletes a shipment when the platform returns it with `deleted_at`, but a hard-deleted row never appears on any page, so it stays here forever.
+ * The full platform list is scanned once and compared with ours. The comparison runs only if the scan completed: a partial scan would make unread live rows look deleted.
  */
 require('dotenv').config();
 const fs = require('fs');
@@ -32,7 +19,7 @@ async function sweepPlatform() {
   let page = 1; let total = null; let seen = 0;
   for (;;) {
     // eslint-disable-next-line no-await-in-loop
-    // (`sort` مُهمَلٌ في المنصّة — تردّ دائمًا بترتيب الإنشاء؛ راجع jobs/opsPoll.)
+    // `sort` is ignored by the platform, which always returns creation order (see jobs/opsPoll).
     const out = await upl.get('/admin/shipments', { query: { limit: 100, page } });
     const items = (out.data && out.data.items) || [];
     const meta = (out.data && out.data.meta) || {};
@@ -61,8 +48,7 @@ async function sweepPlatform() {
   const { nums, ids, seen, total } = await sweepPlatform();
   console.log(`  المنصّة: ${nums.size} رقمَ كشفٍ حيّ (قُرئ ${seen}${total ? ' من ' + total : ''})`);
 
-  // ── شرطُ السلامة ──────────────────────────────────────────────────────────
-  // مسحٌ ناقصٌ يجعل الحيَّ يبدو محذوفًا. فإن لم يُقرأ ما وعدت به المنصّةُ، يُوقَف.
+  // Safety condition: a partial scan makes live rows look deleted, so stop if the promised count was not read.
   if (total && seen < total) {
     console.error(`  ✗ المسحُ ناقص (${seen}/${total}) — يُوقَف كي لا يُمسح حيٌّ.`);
     process.exit(1);
@@ -90,7 +76,7 @@ async function sweepPlatform() {
   const dir = path.join(__dirname, '../../backups');
   fs.mkdirSync(dir, { recursive: true });
   const backup = path.join(dir, `opsDeletions-${new Date().toISOString().replace(/[:.]/g, '-')}.json`);
-  // تُحفظ الوثيقةُ كاملةً لا مفتاحُها: المحذوفُ لا يُستعاد من رقمٍ وحدَه.
+  // Keep the whole document, not just its key: a deleted record cannot be restored from a number alone.
   const wfFull = wfGone.length ? await OperationsWorkflow.find({ _id: { $in: wfGone.map((d) => d._id) } }).lean() : [];
   const soFull = soGone.length ? await ShipmentOrder.find({ _id: { $in: soGone.map((d) => d._id) } }).lean() : [];
   fs.writeFileSync(backup, JSON.stringify({ at: new Date(), workflows: wfFull, shipmentOrders: soFull }, null, 1));

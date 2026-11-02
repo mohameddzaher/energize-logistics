@@ -1,45 +1,31 @@
 /**
- * ربطُ حسابٍ باسمٍ آخر — اقتراحٌ يُعرض، لا دمجٌ يقع.
- *
- * ── العلّة ──────────────────────────────────────────────────────────────────
- * أسماءُ العملاء عندنا جاءت من كشوف التشغيل: يكتبها موظّفٌ بسرعة، فتخرج
- * «شركه صليهم الهاجري». واسمُ الحساب في دفتر المحاسبة «شركة صليهم سعيد
- * الهاجري للنقليات». حسابٌ واحدٌ باسمين، ومن ٢٥٣ حسابًا في الدفتر لم يطابق
- * أسماءَنا إلّا ٣٧.
- *
- * ── ولماذا لا يُدمَج ما تشابه ──────────────────────────────────────────────
- * الدمجُ ينقل مديونيّةً من حسابٍ إلى حساب. وتشابهُ الأسماء يُخطئ: «مؤسسة
- * النور للنقليات» و«مؤسسة النور التجارية» متشابهتان ولا تجمعهما جهة. وخطأٌ
- * هنا لا يُكتشف إلّا حين يُطالَب عميلٌ بمالِ غيرِه.
- *
- * فما تجاوز تشابهُه حدًّا عاليًا جدًّا يُربط، وما دونه يُعرض على مدير التحصيل
- * في شاشةٍ يقرّر فيها واحدًا واحدًا. والقرارُ يُحفَظ فلا يُسأل عنه مرّتين.
+ * Linking an account to another name: a suggestion that is shown, never a merge that happens.
+ * Why: customer names came from operations reports, typed quickly, so one ledger account appears under two names, and few of the ledger accounts matched our names.
+ * Why not merge by similarity: merging moves debt between accounts and similar names can be unrelated entities; a mistake surfaces only when a customer is billed for someone else's debt. Above a very high similarity it links; below, it goes to the collections manager to decide one by one. The decision is stored so it is not asked twice.
  */
 const mongoose = require('mongoose');
 
 const partyLinkSuggestionSchema = new mongoose.Schema({
-  // الحسابُ كما جاء من الدفتر.
+  // The account as it came from the ledger.
   code: { type: String, trim: true, required: true },
   accountName: { type: String, trim: true, required: true },
   kind: { type: String, enum: ['tax', 'cash'], default: 'tax' },
 
-  // المرشَّحُ عندنا، ودرجةُ التشابه التي رُشِّح بها.
+  // Our candidate, and the similarity score it was suggested with.
   candidate: { type: mongoose.Schema.Types.ObjectId, ref: 'CollectionsParty' },
   candidateName: { type: String, trim: true, default: '' },
   score: { type: Number, default: 0 },
 
-  // 'pending' ينتظر · 'linked' رُبط · 'separate' حسابٌ مستقلّ
+  // 'pending' awaiting, 'linked' linked, 'separate' independent account
   decision: { type: String, enum: ['pending', 'linked', 'separate'], default: 'pending', index: true },
   decidedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   decidedAt: { type: Date },
-  // 'auto' رُبط تلقائيًّا لعلوّ التشابه · 'manual' قرارُ إنسان
+  // 'auto' linked automatically on high similarity, 'manual' a human decision
   decidedHow: { type: String, trim: true, default: '' },
   party: { type: mongoose.Schema.Types.ObjectId, ref: 'CollectionsParty' },
 }, { timestamps: true });
 
-// اقتراحٌ واحدٌ لكلّ (حساب، مرشَّح) — لا لكلّ حساب: الحسابُ الواحد قد يُكتب
-// في التشغيل بأكثر من اسم («خالد الظافر» و«شركة خالد الظافر»)، وكان الفهرسُ
-// على الكود وحدَه يُسقط الثاني من الطابور فيبقى بلا كودٍ ولا سؤال.
+// One suggestion per (account, candidate), not per account: one account can be written in operations under several names, and an index on the code alone dropped the second from the queue, leaving it with no code and no question.
 partyLinkSuggestionSchema.index({ code: 1, candidate: 1 }, { unique: true });
 partyLinkSuggestionSchema.index({ code: 1 });
 

@@ -1,7 +1,4 @@
-/**
- * /api/customer-requests — Operations' «التواصل مع العملاء»: requests sent from
- * the customer portal, answered in the system or by email.
- */
+/** /api/customer-requests: Operations' customer-communication inbox. Requests sent from the customer portal, answered in the system or by email. */
 const express = require('express');
 const router = express.Router();
 const authenticate = require('../middleware/auth');

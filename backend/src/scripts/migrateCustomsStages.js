@@ -1,16 +1,7 @@
 /**
- * نقلُ `stageDates`/`stageDone` القديمة إلى `paymentStages`.
- *
- * الخانتان القديمتان ثمانيَ مفتاحٍ في المخطَّط، وفيهما تاريخُ كلِّ معاملةٍ
- * مستورَدة. ومحوُهما محوٌ للتاريخ، وتركُهما بلا نقلٍ يجعل الشاشةَ الجديدة تبدو
- * فارغةً على معاملاتٍ سُدِّدت فعلًا — فيُعاد إدخالُ ما هو مُدخَل.
- *
- * فتُنقَل مرّةً واحدة. ويُوسَم المنقولُ بـ`note` كي يُعرَف أنّه من الاستيراد لا
- * من يد أحد، ولا يُنقَل مرّتين: الإدخالُ الموجودُ بالمفتاح نفسِه والتاريخ نفسِه
- * يُتجاوَز.
- *
- *   node src/scripts/migrateCustomsStages.js          # عرضٌ بلا كتابة
- *   node src/scripts/migrateCustomsStages.js --write  # التنفيذ
+ * Moves the old stageDates/stageDone into paymentStages.
+ * The old fields hold every imported transaction's dates; deleting them loses history, and not migrating leaves the new screen empty for transactions already paid. Migrated once, tagged with a note as imported, and skipped when an entry with the same key and date exists.
+ * Usage: [--write]; dry run otherwise.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -45,7 +36,7 @@ const MIGRATED_NOTE = 'مُنقَل من الاستيراد';
         label: labelOf.get(k) || k,
         date: /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : '',
         amount: null,
-        // «تم» بلا تاريخٍ حالةٌ حقيقيّةٌ في الماستر — تُنقَل كما هي ويُقال ذلك.
+        // Done without a date is a real status in the master; it is migrated as is and reported.
         note: date ? MIGRATED_NOTE : `${MIGRATED_NOTE} — «تم» بلا تاريخ`,
         addedAt: c.createdAt || new Date(),
         addedByName: MIGRATED_NOTE,

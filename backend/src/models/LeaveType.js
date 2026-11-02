@@ -11,10 +11,7 @@ const leaveTypeSchema = new mongoose.Schema(
     // Whether using this leave deducts from the annual accrued balance.
     affectsBalance: { type: Boolean, default: true },
 
-    // ── Advance-notice policy (سياسة الإخطار المسبق) ────────────────────────
-    // A planned leave must be requested well before it starts — the company
-    // rule is a month. Leave you cannot plan (مرضية / طارئة / وفاة / وضع) is
-    // exempt: `requiresAdvanceNotice: false` lets it be filed for today.
+    // Advance-notice policy: a planned leave must be requested well ahead (company rule is a month). Leave that cannot be planned (sick, emergency, bereavement, maternity) is exempt: `requiresAdvanceNotice: false` lets it be filed for today.
     requiresAdvanceNotice: { type: Boolean, default: true },
     // How many days before `startDate` the request must be submitted. Only read
     // when requiresAdvanceNotice is true.

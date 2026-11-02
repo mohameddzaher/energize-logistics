@@ -5,7 +5,7 @@ const mongoose = require('mongoose');
   const wf = require('../controllers/workflowController');
   const OperationsWorkflow = require('../models/OperationsWorkflow');
 
-  // القاعدةُ تُختبَر مباشرةً عبر الدالّة المصدَّرة إن وُجدت، وإلّا عبر الحفظ.
+  // The rule is tested directly through the exported function if present, otherwise through save.
   const sample = await OperationsWorkflow.findOne({ paymentType: 'cash', paymentAmount: { $gt: 0 } })
     .select('reportNumber paymentAmount netInvoice tax totalInvoice deliveryDate collectionDate invoiceNumber').lean();
   console.log('كشفٌ نقديٌّ عليه مبلغُ سداد:');
@@ -17,7 +17,7 @@ const mongoose = require('mongoose');
   console.log(`\nكشوفٌ نقديّة: ${cash} · منها بمبلغِ سداد: ${withAmt} · ومنها صافي الفاتورة صفر: ${zeroed}`);
   console.log('   (هذه هي التي كان القفلُ يُصفِّرها وستُملأ بما دُفع عند أوّل حفظ)');
 
-  // ومن أين جاء مبلغُ السداد؟ المحفظةُ تملؤه.
+  // Where did the payment amount come from? The wallet fills it.
   const DailyWallet = require('../models/DailyWallet');
   const wallets = await DailyWallet.countDocuments({});
   console.log(`\nمحافظُ العهدة: ${wallets}`);

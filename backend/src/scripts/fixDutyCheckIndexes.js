@@ -1,16 +1,7 @@
 /**
- * إسقاطُ فهرسَي التفقّد القديمين وبناؤهما بشرطٍ جزئيّ.
- *
- * ── لماذا سكربتٌ ولا يكفي تعديلُ المخطَّط ───────────────────────────────────
- * Mongoose يُنشئ الفهرسَ الناقصَ ولا يُعيد بناءَ فهرسٍ قائمٍ بخصائصَ أخرى. فبقي
- * `rep_1_dateKey_1` فريدًا غيرَ متناثر، وصار الموضوعُ صفَّ سجلّ النقل الخفيف
- * فلم يُكتب `rep` — فتعارض كلُّ تفقّدٍ في اليوم مع أوّله على المفتاح
- * `{null, اليوم}`، وردَّ الخادمُ «سُجِّل تفقّدٌ لهذا المندوب اليوم» عن مندوبٍ
- * لم يُتفقَّد. مندوبٌ واحدٌ في اليوم للشركة كلِّها.
- *
- * والشرطُ الجزئيُّ يُبقي القاعدةَ ولا يُطبّقها على غياب.
- *
- * الاستعمال:  node src/scripts/fixDutyCheckIndexes.js [--apply]
+ * Drop the two old duty-check indexes and rebuild them with a partial filter.
+ * Mongoose creates a missing index but does not rebuild an existing one with different options, so rep_1_dateKey_1 stayed unique and non-sparse. Light-transport register rows do not set rep, so every check that day collided on {null, day} and the server rejected checks for reps who had not been checked. The partial filter keeps the rule and does not apply it to absence.
+ * Usage: node src/scripts/fixDutyCheckIndexes.js [--apply]
  */
 require('dotenv').config();
 const mongoose = require('mongoose');

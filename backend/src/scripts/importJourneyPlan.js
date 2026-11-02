@@ -1,18 +1,8 @@
 /**
- * importJourneyPlan — يُدخل خطّةَ الزيارات (ورقة JP) وتاريخَها.
- *
- *   node src/scripts/importJourneyPlan.js --dry
- *   node src/scripts/importJourneyPlan.js --apply
- *   node src/scripts/importJourneyPlan.js --apply --file "اسم الملفّ.xlsx"
- *
- * ── لماذا مفردًا ────────────────────────────────────────────────────────────
- * استيرادُ الدفتر الكاملُ يمسح الفواتيرَ والأطرافَ ويُعيد بناءها، وهو عملٌ ثقيلٌ
- * لا يُعاد لأجل ورقةٍ واحدة. وهذا يكتب `CollectionTask` وحدَها، فيصلح لسدّ ما
- * فات ولإدخال شهرٍ جديدٍ بعد تحديث الملفّ.
- *
- * ولا يمسح شيئًا: المفتاحُ (عميل × يوم × نوعُ الطلب) — فالتشغيلُ مرّتين لا
- * يُضاعف، وما كُتب في النظام بيدٍ لا يُمحى بتشغيلٍ جديدٍ إلّا إن كان في الورقة
- * ما يقابله.
+ * importJourneyPlan: imports the visit plan (JP sheet) and its history.
+ * Usage: --dry, --apply, and --apply --file with a file name.
+ * Standalone because the full ledger import wipes and rebuilds invoices and parties, too heavy for one sheet. This writes only CollectionTask, so it fills gaps and loads a new month after the file is updated.
+ * It deletes nothing. The key is (customer, day, request type), so running twice does not duplicate, and hand-written records are not erased unless the sheet has a match.
  */
 require('dotenv').config();
 const path = require('path');
@@ -44,7 +34,7 @@ const M = (x) => x.toLocaleString('en-US', { maximumFractionDigits: 2 });
   console.log(`  صفوفُ عملاء: ${nRows}${skipped ? ` · صفوفٌ تُخُطِّيت: ${skipped}` : ''}`);
   console.log(`  مهامُّ فيها شيء: ${tasks.length}   في ${new Set(tasks.map((t) => t.date)).size} يومًا`);
 
-  // ── ورقةُ الخطّة تسمّي العميلَ بكوده، والكودُ يُطابَق كما يُطابَق في الدفتر ──
+  // The plan sheet names customers by code, matched the same way as in the ledger.
   const parties = await CollectionsParty.find({ kind: 'customer' }).select('code name nameKey aliasKeys').lean();
   const byCode = new Map(parties.filter((p) => p.code).map((p) => [String(p.code).trim(), p]));
   const byName = new Map();
@@ -72,7 +62,7 @@ const M = (x) => x.toLocaleString('en-US', { maximumFractionDigits: 2 });
 
   if (!APPLY) { console.log('\n  لم يُكتب شيء. أضف --apply للتنفيذ.\n'); await mongoose.disconnect(); return; }
 
-  // المفتاحُ هو (عميل × يوم × نوعُ الطلب) كما في فهرس النموذج — فلا تكرار.
+  // Key is (customer, day, request type) as in the model index, so no duplicates.
   const ops = tasks.map((t) => ({
     updateOne: {
       filter: { party: t.party || null, date: t.date, requestType: t.requestType },
@@ -88,7 +78,7 @@ const M = (x) => x.toLocaleString('en-US', { maximumFractionDigits: 2 });
   const total = await CollectionTask.countDocuments({});
   console.log(`\n  ✔ أُنشئت ${created} · حُدِّثت ${updated}   — المجموع في القاعدة ${total}`);
 
-  // ── التحقّق: ما في الورقة هو ما في القاعدة ────────────────────────────────
+  // Verification: the sheet content equals the database content.
   const dbSum = (await CollectionTask.aggregate([{ $group: { _id: null, t: { $sum: '$collected' } } }]))[0]?.t || 0;
   const dbDays = (await CollectionTask.distinct('date')).length;
   const okN = total >= tasks.length;

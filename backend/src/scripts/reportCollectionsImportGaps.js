@@ -1,19 +1,8 @@
 /**
- * ما لم يُحسَم في ربط دفتر التحصيل بكشوف التشغيل — ملفٌّ يُراجَع بالعين.
- *
- * استيرادُ الدفتر (scripts/importCollectionsInvoiceLinks) كتب رقمَ الفاتورة على
- * كشوفها. وبقيت ثلاثُ فئاتٍ لا يصحّ فيها قرارٌ آليّ:
- *
- *   ١. كشوفٌ في الملفّ لا وجودَ لها في النظام — لا صفَّ يُكتب عليه.
- *   ٢. كشوفٌ كان لها في النظام رقمُ فاتورةٍ آخر. والملفُّ هو المُعتمَد فكُتب،
- *      والرقمُ القديم يُستخرَج من `CollectionInvoice.reportNumbers` — وهو
- *      الربطُ الذي كتبه استيرادُ الدفتر السابق، فبقي محفوظًا.
- *   ٣. فواتيرُ إجماليُّها في الدفتر أكبرُ من مجموع كشوفها في هذا الملفّ: تشمل
- *      كشوفًا أقدمَ من أوّل يناير (مدى الملفّ)، فلم يُكتب لها صافٍ ناقص.
- *
- * والأعمدةُ تقول لكلّ رقمٍ من أين جاء: «في الملفّ» و«في النظام» و«الفرق».
- *
- *   node src/scripts/reportCollectionsImportGaps.js [path.xlsx]
+ * Report of what remains unresolved when linking the collections book to operations statements, for manual review. The book import (scripts/importCollectionsInvoiceLinks) wrote invoice numbers onto statements. Three categories
+ * cannot be decided automatically: 1. Statements in the file that do not exist in the system: no row to write to. 2. Statements that had a different invoice number in the system. The file is authoritative and was written; the
+ * old number comes from `CollectionInvoice.reportNumbers`, the link written by the earlier book import. 3. Invoices whose book total exceeds the sum of their statements in this file: they include statements older than the file's
+ * range (Jan 1), so no short net was written for them. Columns show where each number came from: in the file, in the system, difference. Usage: node src/scripts/reportCollectionsImportGaps.js [path.xlsx]
  */
 require('dotenv').config({ quiet: true });
 const path = require('path');
@@ -60,13 +49,13 @@ const serialToISO = (n) => {
     .project({ reportNumber: 1, invoiceNumber: 1, username: 1, reportDate: 1, sellingValue: 1, purchaseValue: 1, paymentType: 1, branch: 1 }).toArray();
   const byNo = new Map(wfs.map((w) => [S(w.reportNumber), w]));
 
-  // الربطُ القديم محفوظٌ في الدفتر نفسِه — فاتورةٌ تحمل أرقامَ كشوفها.
+  // The old link is kept in the ledger itself: an invoice carries its statement numbers.
   const linked = await I.find({ 'reportNumbers.0': { $exists: true } })
     .project({ invoiceNumber: 1, reportNumbers: 1, partyName: 1, total: 1, invoiceDate: 1 }).toArray();
   const oldInvoiceOf = new Map();
   for (const inv of linked) for (const rn of inv.reportNumbers || []) oldInvoiceOf.set(S(rn), inv);
 
-  // ── ١ · كشوفٌ في الملفّ لا وجودَ لها في النظام ────────────────────────────
+  // 1. Statements in the file that do not exist in the system
   const missing = [];
   for (const [sh, x] of bySheet) {
     if (byNo.has(sh)) continue;
@@ -81,7 +70,7 @@ const serialToISO = (n) => {
     });
   }
 
-  // ── ٢ · كشوفٌ كان لها رقمٌ آخر في النظام ─────────────────────────────────
+  // 2. Statements that had a different number in the system
   const conflicts = [];
   for (const [sh, x] of bySheet) {
     const w = byNo.get(sh);
@@ -103,7 +92,7 @@ const serialToISO = (n) => {
     });
   }
 
-  // ── ٣ · فواتيرُ إجماليُّها أكبرُ من مجموع كشوفها في الملفّ ─────────────────
+  // 3. Invoices whose total exceeds the sum of their statements in the file
   const ledger = await I.find({ invoiceNumber: { $in: [...byInvoice.keys()] } })
     .project({ invoiceNumber: 1, partyName: 1, total: 1, net: 1, vat: 1, invoiceDate: 1, reportNumbers: 1 }).toArray();
   const bigger = [];
@@ -128,7 +117,7 @@ const serialToISO = (n) => {
     });
   }
 
-  // ── ورقةُ الشرح ───────────────────────────────────────────────────────────
+  // Explanation sheet
   const guide = [
     { 'الورقة': '١ · كشوف غير موجودة', 'ماذا تعني': 'كشوفٌ مكتوبةٌ في ملفّ التحصيل ولا يوجد لها كشفٌ بهذا الرقم في سير عمل التشغيل', 'العدد': missing.length, 'ما فُعل': 'لم يُكتب شيء — لا صفَّ يُكتب عليه' },
     { 'الورقة': '٢ · أرقام فواتير مختلفة', 'ماذا تعني': 'الكشفُ كان مربوطًا في النظام بفاتورةٍ، والملفُّ الجديد يقول فاتورةً أخرى', 'العدد': conflicts.length, 'ما فُعل': 'كُتب رقمُ الملفّ (هو المُعتمَد)، والرقمُ السابق في العمود المجاور' },
@@ -140,7 +129,7 @@ const serialToISO = (n) => {
   const add = (name, data, cols) => {
     const ws = XLSX.utils.json_to_sheet(data.length ? data : [{ 'لا صفوف': '' }]);
     ws['!cols'] = cols;
-    // الورقةُ تُقرأ من اليمين — وإلّا قُرئت الأعمدةُ معكوسة.
+    // Sheet is right-to-left; otherwise columns would read reversed.
     ws['!sheetViews'] = [{ RTL: true }];
     XLSX.utils.book_append_sheet(out, ws, name);
   };

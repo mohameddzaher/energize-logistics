@@ -1,17 +1,7 @@
 /**
- * auditPagePermissions — الصلاحيّاتُ على مستوى الصفحة والنوعِ المصنوع، حيًّا.
- *
- *   node src/scripts/auditPagePermissions.js --base https://api.energize-logistics.com
- *
- * ── ما يُثبَت ─────────────────────────────────────────────────────────────
- * أنّ الفهرس يصل، وأنّ إغلاق صفحةٍ يُغلقها ولا يمسّ جارتَها، وأنّ فتحَ صفحةٍ في
- * قسمٍ ممنوعٍ لا يفتحها (الصفحةُ لا تتجاوز قسمَها)، وأنّ نوعًا يُصنَع يُولَد لا
- * يملك شيئًا ويُسنَد إلى مستخدمٍ ويدخل به فعلًا، وأنّ حذفَه وله أصحابٌ يُرفَض.
- *
- * ── ولا يُترَك أثر ─────────────────────────────────────────────────────────
- * كلُّ ما يُنشئه يُحذَف: الدورُ المصنوع، والمستخدمُ الذي حمله، وحسابُ الفحص. وما
- * يُعدَّل من صلاحيّاتِ دورٍ قائمٍ يُعاد إلى ما كان — تُقرأ حالتُه أوّلًا وتُكتب
- * ثانيةً عبر الواجهة نفسِها، لا في القاعدة، كي يمرّ إبطالُ الذاكرة.
+ * Live check of page-level permissions and created role types.
+ * Proves: the catalogue arrives; closing a page closes it without touching its neighbour; opening a page in a denied section does not open it (a page cannot exceed its section); a created type starts with nothing, can be assigned to a user and truly signs in; deleting it while it has holders is rejected.
+ * Leaves no trace: created role, its user and the audit account are deleted. Modified permissions of an existing role are restored through the same API, not the database, so cache invalidation runs.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -57,7 +47,7 @@ const head = (t) => console.log(`\n── ${t} ${'─'.repeat(Math.max(0, 56 - t
   };
   const api = (p, i) => call(ck, p, i);
 
-  // حالةُ دورٍ قائمٍ قبل أن نمسّه — تُعاد كما هي مهما جرى.
+  // State of an existing role before touching it; always restored.
   let restore = null;
   const VICTIM = 'collections_staff';
   const PAGE_A = '/system/collections-dept/invoices/cash';
@@ -86,7 +76,7 @@ const head = (t) => console.log(`\n── ${t} ${'─'.repeat(Math.max(0, 56 - t
     ok('يُحفَظ', w.status === 200, String(w.status));
     ok('الصفحةُ أُغلقت', w.body?.pages?.[PAGE_A] === false);
     ok('وجارتُها لم تُمسّ', w.body?.pages?.[PAGE_B] === true);
-    // القسمُ نفسُه لم يتغيّر — الصفحةُ طبقةٌ تحته لا بديلٌ عنه.
+    // The section itself is unchanged: a page is a layer under it, not a replacement.
     ok('والقسمُ كما كان', w.body?.permissions?.Collections === before.Collections);
 
     head('الصفحةُ لا تتجاوز قسمَها');
@@ -96,8 +86,7 @@ const head = (t) => console.log(`\n── ${t} ${'─'.repeat(Math.max(0, 56 - t
       body: JSON.stringify({ sections: noSection, pages: { [PAGE_A]: true }, homePage: '' }),
     });
     ok('يُحفَظ', w2.status === 200, String(w2.status));
-    // ملحوظة: `pages` تُقرأ كما أُرسلت، والحارسُ على البيانات هو القسم — وهذا
-    // ما تقوله الشاشةُ صراحةً. فالمفحوصُ هنا أنّ القسمَ صار ممنوعًا فعلًا.
+    // pages is read as sent; the data guard is the section. The check is that the section is actually denied.
     ok('القسمُ صار ممنوعًا', w2.body?.permissions?.Collections === 'none');
 
     head('نوعٌ مصنوع');
@@ -151,14 +140,14 @@ const head = (t) => console.log(`\n── ${t} ${'─'.repeat(Math.max(0, 56 - t
     ok('وصفحةُ دخوله كما ضُبطت', me.body?.user?.homePage === PAGE_A, me.body?.user?.homePage || '—');
     ok('واسمُه العربيّ يصل', me.body?.user?.roleLabel?.ar === 'مراجعُ فحص', me.body?.user?.roleLabel?.ar || '—');
 
-    // القسمُ «مشاهدة» → يقرأ ولا يكتب. وهو الحارسُ الحقيقيّ.
+    // Section view: can read, cannot write. This is the real guard.
     const read = await call(hck, '/api/collections-dept/invoices/cash?limit=1');
     ok('يقرأ ما مُنح', read.status === 200, `${read.status} — ${read.body?.message || ''} ${read.body?.code || ''}`);
     const write = await call(hck, '/api/collections-dept/invoices/detail', {
       method: 'PUT', body: JSON.stringify({ ids: [], detail: 'تحصيل فرع' }),
     });
     ok('ولا يكتب', write.status === 403, `${write.status} — ${write.body?.code || ''}`);
-    // قسمٌ لم يُمنَح — لا شيءَ يرثه المصنوع.
+    // A section not granted: nothing for the created role to inherit.
     const other = await call(hck, '/api/hr/employees?limit=1');
     ok('ولا يدخل قسمًا لم يُمنَح', other.status === 403, String(other.status));
 

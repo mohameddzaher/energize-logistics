@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 
-// معرّفٌ مشوَّهٌ في الرابط = لا سجلّ، لا عطلٌ في الخادم — راجع utils/idParam.
+// A malformed id in the URL means no record, not a server error; see utils/idParam.
 const { objectIdParam } = require('../utils/idParam');
 router.param('id', objectIdParam({ status: 400 }));
 router.param('docId', objectIdParam({ status: 400 }));
@@ -14,53 +14,38 @@ const STAFF = ['super_admin', 'admin', 'hr_manager', 'hr_specialist'];
 
 router.use(authenticate);
 
-// ── ماستر الموارد البشرية: النظرة الشاملة وصفحات كل مجموعة ──────────────────
-// كارت لكل عمود بعدّادات «مطلوب / غير مطلوب / مُدخَل»، وكل رقم بيفتح الناس اللي
-// وراه. الملء بيتم من نفس المكان أو من صفحة الموظف — الاتنين بيعدّوا على نفس
-// الـ endpoint فحالة «مطلوب» بتتشال بنفس الطريقة.
-//
-// ── ولماذا `authorize` على القراءة أيضًا ─────────────────────────────────────
-// هذه الشاشات تُخرج أرقام الإقامات والجوازات والآيبان ورواتب كلّ الموظفين. لم
-// يكن عليها تقييدُ دورٍ إطلاقًا، وحارسُ الأقسام يسمح بالمرور للأدوار التي لا
-// نصيب لها في القسم (قاعدة «زيادة لا تضييق»). فكان كلُّ حسابٍ في النظام —
-// وحسابات العملاء والموردين في البوّابة من بينها، فهي مستخدمون عاديّون —
-// يقرأ الملفّ الوظيفيّ كاملًا بطلبٍ واحد.
+// HR master: the overview and each group's pages. A card per column with counters required / not required / entered, each number opening its people. Filling happens here or on the employee page, both through the same endpoint, so "required" clears the same way.
+// Why `authorize` on reads too: these screens return residence, passport and IBAN numbers and every employee's salary. They had no role restriction, and the section guard lets roles with no stake in the section through ("widen, never narrow"), so any account, including partner portal accounts (ordinary users), could read the whole employment file in one request.
 router.get('/master/overview', authorize(...STAFF), hrm.overview);
 router.get('/master/field-config', authorize(...STAFF), hrm.fieldConfig);
 router.get('/master/choices', authorize(...STAFF), hrm.choices);
-// الفلاتر المتاحة وقيمها بأعدادها — محسوبة على ما تبقّى بعد بقيّة الفلاتر
+// Available filters and their values with counts, computed over what remains after the other filters.
 router.get('/master/filters', authorize(...STAFF), hrm.filterOptions);
 router.get('/master/expiring', authorize(...STAFF), hrm.expiring);
-// تحليلُ الأقسام — صفٌّ لكلّ قسمٍ بأرقامه، يقرأ نفسَ فلتر اللوحة.
+// Department analysis: a row per department with its figures, reading the same filter as the board.
 router.get('/master/by-department', authorize(...STAFF), hrm.byDepartment);
 
-// ── متابعةُ الماليّة: رسومُ الإقامات ورخص العمل (قراءة)، وطلباتُ القسم إلى الماليّة ──
-// الصفوفُ نفسُها التي تراها الماليّة، بحالة دفعها — والدفعُ يُسجَّل هناك لا هنا.
+// Finance follow-up: residency and work-permit fees (read) and the section's requests to finance. The same rows finance sees, with payment state; payment is recorded there, not here.
 const hrf = require('../controllers/hrFinanceController');
 router.get('/finance-follow/docs', authorize(...STAFF), hrf.hrDocs);
 router.get('/finance-follow/options', authorize(...STAFF), hrf.options);
 router.get('/finance-requests', authorize(...STAFF), hrf.hrRequests);
 router.post('/finance-requests', authorize(...STAFF), hrf.createRequest);
 
-// ── النماذجُ والخطاباتُ الرسميّة ────────────────────────────────────────────
-// القراءةُ لمن مُنح قسمَ الموارد البشريّة (لا لأدوارٍ أربعةٍ مكتوبةٍ بيد):
-// حارسُ القسم قبلها يقرّر، فمن فُتح له القسمُ من المصفوفة يقرأ الأوراق.
-// والرفعُ والتعديلُ والأرشفةُ لموظّفي القسم.
+// Official forms and letters. Reading is for whoever is granted the HR section (not four hand-written roles): the section guard before it decides, so anyone given the section from the matrix reads the papers. Upload, edit and archive are for section staff.
 const hrForms = require('../controllers/hrFormsController');
 router.get('/forms', hrForms.list);
 router.post('/forms/:id/downloaded', hrForms.countDownload);
 router.post('/forms', authorize(...STAFF), hrForms.create);
 router.put('/forms/:id', authorize(...STAFF), hrForms.update);
 router.delete('/forms/:id', authorize(...STAFF), hrForms.remove);
-// الماستر: صفٌّ واحدٌ لكلّ موظّف بكلّ الأعمدة — يُسجَّل قبل `records/:group`
-// لأنّه أخصُّ منه في الشكل ولا يتداخلان.
+// Master: one row per employee with all columns. Registered before `records/:group` since it is more specific in shape and they do not overlap.
 router.get('/master/grid', authorize(...STAFF), hrm.grid);
 router.get('/master/grid/options', authorize(...STAFF), hrm.gridOptions);
 router.get('/master/records/:group', authorize(...STAFF), hrm.records);
 router.get('/master/employees/:id/fields', authorize(...STAFF), hrm.employeeFields);
 router.patch('/master/employees/:id/fields', authorize(...STAFF), hrm.updateFields);
-// التجديد — فرديًّا وجماعيًّا. `renew-bulk` قبل أي مسار فيه معرّف حتى لا يُقرأ
-// «renew-bulk» على أنه معرّف موظف.
+// Renewal, individual and bulk. `renew-bulk` comes before any route with an id so it is not read as an employee id.
 router.post('/master/renew-bulk', authorize(...STAFF), hrm.renewBulk);
 router.post('/master/renew', authorize(...STAFF), hrm.renew);
 
@@ -71,11 +56,9 @@ router.get('/me/team', hr.getMyTeam);
 router.get('/me/leaves', hr.listMyLeaves);
 router.post('/me/leaves', hr.createMyLeave);
 router.patch('/me/leaves/:id/cancel', hr.cancelMyLeave);
-// ردُّ صاحب الطلب على استفسارٍ من أيّ محطّة — يعيد السلسلة من أوّلها.
-// موضعُه هنا لا في القسم الموظَّفيّ: الرادُّ هو الموظّف نفسُه، والحارس في
-// المتحكّم يتحقّق أنّه صاحبُ الطلب. راجع replyToLeave.
+// The requester's reply to an inquiry from any station; restarts the chain from the start. It lives here, not in the staff section, because the replier is the employee himself and the controller guard checks he owns the request. See replyToLeave.
 router.post('/me/leaves/:id/reply', hr.replyToLeave);
-// التعديل والحذف ما دام الطلب لم يمسَّه أحد — الحارس في المتحكّم لا هنا.
+// Edit and delete while nobody has acted on the request; the guard is in the controller, not here.
 router.put('/me/leaves/:id', hr.updateMyLeave);
 router.delete('/me/leaves/:id', hr.deleteMyLeave);
 router.get('/me/requests', hr.listMyRequests);
@@ -84,9 +67,7 @@ router.put('/me/requests/:id', hr.updateMyRequest);
 router.delete('/me/requests/:id', hr.deleteMyRequest);
 router.get('/team/leaves', hr.listTeamLeaves);
 
-// صندوقُ وارد الموافقات — كلُّ مَن يملك محطّةً في السلسلة يقرأ منه ما ينتظره.
-// بلا `authorize`: المتحكّمُ نفسُه يبني الاستعلامَ من محطّات القارئ، فمَن لا
-// محطّةَ له لا يرى شيئًا أصلًا. راجع utils/leaveChain.inboxFilter.
+// Approvals inbox: whoever holds a station in the chain reads what awaits them. No `authorize`: the controller builds the query from the reader's stations, so someone with none sees nothing. See utils/leaveChain.inboxFilter.
 router.get('/leaves/inbox', hr.listLeaveInbox);
 router.get('/leaves/inbox/count', hr.leaveInboxCount);
 
@@ -117,14 +98,14 @@ router.delete('/employees/:id', authorize(...STAFF), hr.deleteEmployee);
 
 // Profile actions (staff): renew a document, end of service, reactivate, history.
 router.post('/employees/:id/renew', authorize(...STAFF), hr.renewDocument);
-// يُسأل قبل فتح نافذة الإنهاء: ماذا يحمل هذا الموظّف وأيُّ قسمٍ يصفّيه؟
+// Asked before opening the termination dialog: what does this employee hold, and which department clears it?
 router.get('/employees/:id/clearance', authorize(...STAFF), hr.employeeClearance);
 router.post('/employees/:id/terminate', authorize(...STAFF), hr.terminateEmployee);
 router.post('/employees/:id/reactivate', authorize(...STAFF), hr.reactivateEmployee);
-// «يعمل» ↔ «شركة شقيقة» — و«لا يعمل» هو إنهاءُ الخدمة. راجع setWorkStatus.
+// Working vs sister company; "not working" is end of service. See setWorkStatus.
 router.post('/employees/:id/work-status', authorize(...STAFF), hr.setWorkStatus);
 router.post('/employees/:id/sponsor', authorize(...STAFF), hr.sponsorEmployee);
-// ── الأرشيف: إنهاءُ الخدمة ← خروجٌ من النظام ← الأرشيف. راجع hrArchiveController.
+// Archive: end of service, then out of the system, then archive. See hrArchiveController.
 const hrArchive = require('../controllers/hrArchiveController');
 router.get('/archive', authorize(...STAFF), hrArchive.list);
 router.post('/employees/:id/exit-system', authorize(...STAFF), hrArchive.exitSystem);
@@ -140,21 +121,21 @@ router.delete('/documents/:docId', authorize(...STAFF), hr.deleteDocument);
 router.get('/contracts', authorize(...STAFF), hr.listContracts);
 router.post('/contracts', authorize(...STAFF), hr.createContract);
 router.put('/contracts/:id', authorize(...STAFF), hr.updateContract);
-// التجديدُ يُقفل العقدَ القائم وينشئ خلفَه، ويُرحّل رصيدَ الإجازات غيرَ المستهلَك.
+// Renewal closes the current contract and creates one after it, and carries over unused leave balance.
 router.post('/contracts/:id/renew', authorize(...STAFF), hr.renewContract);
 router.post('/contracts/:id/terminate', authorize(...STAFF), hr.terminateContract);
 router.delete('/contracts/:id', authorize(...STAFF), hr.deleteContract);
 
-// إعدادات القسم — عتبات تنبيه انتهاء المستندات.
+// Section settings: document-expiry alert thresholds.
 router.get('/settings', authorize(...STAFF), hr.getHrSettings);
 router.put('/settings', authorize(...STAFF), hr.updateHrSettings);
 
 router.get('/leaves', authorize(...STAFF), hr.listLeaves);
 router.get('/leave-register', authorize(...STAFF), hr.leaveRegister);
-// تقييدُ إجازةٍ وقعت فعلًا — قبل المسار ذي المعامل وإلّا ابتلعه `/:id`.
+// Recording a leave that actually happened; before the parameterized route, or `/:id` would swallow it.
 router.post('/leaves/backdated', authorize(...STAFF), hr.createBackdatedLeave);
 router.get('/leaves/:id', hr.getLeave); // single leave + signatures (for the PDF); access checked in controller
-// تصحيحُ السجلّ من الموارد البشريّة: تعديلُ التاريخ/النوع/السبب، أو حذفُ الإجازة.
+// HR record correction: edit date, type or reason, or delete the leave.
 router.put('/leaves/:id', authorize(...STAFF), hr.updateLeave);
 router.delete('/leaves/:id', authorize(...STAFF), hr.deleteLeave);
 router.post('/leaves/:id/return', authorize(...STAFF), hr.recordLeaveReturn);
@@ -164,7 +145,7 @@ router.post('/leaves/:id/no-show', authorize(...STAFF), hr.markLeaveNoShow);
 router.get('/requests', authorize(...STAFF), hr.listRequests);
 router.patch('/requests/:id/status', authorize(...STAFF), hr.updateRequestStatus);
 
-// Company licenses & subscriptions (التراخيص والاشتراكات) — staff only.
+// Company licenses & subscriptions, staff only.
 router.get('/licenses', authorize(...STAFF), hr.listLicenses);
 router.post('/licenses', authorize(...STAFF), hr.createLicense);
 router.put('/licenses/:id', authorize(...STAFF), hr.updateLicense);
@@ -176,8 +157,7 @@ router.put('/assets/:id', authorize(...STAFF), hr.updateAsset);
 router.post('/assets/:id/return', authorize(...STAFF), hr.returnAsset);
 router.delete('/assets/:id', authorize(...STAFF), hr.deleteAsset);
 
-// HR's own store (المستودع) — separate shelf from the IT store, same Asset
-// collection. Handing an item out turns the very same document into custody.
+// HR's own store, a separate shelf from the IT store, in the same Asset collection. Handing an item out turns the same document into custody.
 router.get('/stock', authorize(...STAFF), hr.listStock);
 router.post('/stock', authorize(...STAFF), hr.createStock);
 router.put('/stock/:id', authorize(...STAFF), hr.updateStock);

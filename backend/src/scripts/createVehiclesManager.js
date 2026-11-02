@@ -1,16 +1,8 @@
 /* eslint-disable no-console */
 /**
- * createVehiclesManager — حساب مسؤول قسم المركبات والتفاويض.
- *
- *   node src/scripts/createVehiclesManager.js --dry
- *   node src/scripts/createVehiclesManager.js --yes
- *
- * الدور `vehicles_manager` معرّف أصلاً في config/roles.js (ومنه بيتولد enum
- * الموديل وقايمة الاختيار في صفحة المستخدمين). السكربت ده بيعمل الحساب وبس —
- * ما بيضيفش دور جديد.
- *
- * idempotent: لو الحساب موجود بيحدّث اسمه ودوره ويعيد تعيين كلمة السر، مش
- * بيعمل حساب تاني بنفس الإيميل.
+ * createVehiclesManager: account for the vehicles and authorizations manager.
+ * The vehicles_manager role already exists in config/roles.js (it feeds the model enum and the users page picker); this script only creates the account.
+ * Idempotent: an existing account gets its name and role updated and its password reset, never a duplicate email.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -30,7 +22,7 @@ const ACCOUNT = {
   const User = require('../models/User');
   const R = require('../config/roles');
 
-  // الدور لازم يكون معروف قبل أي حاجة — لو اتغيّر اسمه، نقف هنا مش بعد الحفظ.
+  // The role must be known first; if renamed, fail here rather than after saving.
   if (!R.ALL_ROLES.includes(ACCOUNT.role)) {
     console.error(`الدور ${ACCOUNT.role} مش موجود في config/roles.js`);
     process.exit(1);
@@ -46,8 +38,7 @@ const ACCOUNT = {
 
   let user;
   if (existing) {
-    // كلمة السر بتتحطّ على المستند وتتحفظ بـ save() عشان الـ pre-save hook
-    // بتاع التشفير يشتغل. updateOne كان هيخزّنها نص صريح.
+    // Set the password on the document and use save() so the encryption pre-save hook runs; updateOne would store it as plain text.
     existing.set({ ...ACCOUNT, isActive: true, isLocked: false });
     await existing.save();
     user = existing;

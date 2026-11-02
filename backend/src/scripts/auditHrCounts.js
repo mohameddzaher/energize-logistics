@@ -1,4 +1,4 @@
-/** أرقامُ الشريط مقابلَ أرقام الصفحات والتنبيهات. لا يكتب شيئًا. */
+/** Strip numbers versus page and alert numbers. Writes nothing. */
 require('dotenv').config();
 const mongoose = require('mongoose');
 (async () => {
@@ -18,7 +18,7 @@ const mongoose = require('mongoose');
   console.log('المجموعاتُ كما يعرضها الشريط (required = بيانات ناقصة):');
   (ov.body.groups || []).forEach((g) => console.log(`   ${String(g.ar).padEnd(28)} key=${String(g.key).padEnd(14)} required=${g.required}`));
 
-  // صفحةُ مجموعةٍ بعينها: كم صفًّا فيها فعلًا؟
+  // A specific group's page: how many rows does it actually have?
   for (const key of ['iqama', 'passport', 'contract']) {
     const g = await call(hrm.records, {}, { group: key });
     if (g.code !== 200) { console.log(`\ngroup ${key}: خطأ ${g.body.err}`); continue; }

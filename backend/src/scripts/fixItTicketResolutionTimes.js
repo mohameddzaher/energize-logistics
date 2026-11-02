@@ -1,24 +1,9 @@
 /* eslint-disable no-console */
 /**
- * fixItTicketResolutionTimes — إعادة حساب زمن حل بلاغات الدعم الفني.
- *
- *   node src/scripts/fixItTicketResolutionTimes.js --dry
- *   node src/scripts/fixItTicketResolutionTimes.js
- *
- * ما كان يظهر على الشاشة: «١٠ س ٣٢ د» لبلاغ حُلّ في يومه، و«١ يوم» لبلاغ ظلّ
- * مفتوحاً أسبوعين. السبب أن زمن الحل كان يُحسب بطرح منتصف ليل يوم البلاغ
- * بتوقيت UTC من لحظة حفظ السجل:
- *
- *   • منتصف ليل UTC يسبق بداية دوام الرياض بثلاث ساعات، فبلاغ يُسجَّل الظهيرة
- *     ويُغلق فوراً يخرج بتسع ساعات ونصف لم تمرّ على أحد.
- *   • ولحظة الحفظ ليست لحظة الإصلاح: البلاغات أُدخلت دفعةً واحدة يوم
- *     ٢٦-٠٧-٢٠٢٦ وهي مغلقة أصلاً، فقاس الحساب تأخّر إدخال البيانات لا زمن
- *     العمل — بلاغ ٠٧-٠٧ خرج بـ ٢٧٩١٠ دقيقة، أي المسافة إلى يوم الإدخال.
- *   • وتاريخ البلاغ نفسه بلا وقت، فأي رقم بالدقائق دقّة لا يملكها المصدر.
- *
- * الإصلاح: `resolvedDate` يصير يوم الحل المعلن، ويُشتق لما مضى من `resolvedAt`
- * بتوقيت الرياض، ثم يُعاد حساب المدة بالأيام الكاملة (مخزَّنة بالدقائق ×١٤٤٠
- * حتى لا تتغيّر حسابات المتوسط في اللوحة والتقارير).
+ * fixItTicketResolutionTimes: recompute IT support ticket resolution times.
+ * --dry previews.
+ * Resolution time was computed by subtracting UTC midnight of the ticket day from the record's save time, which is wrong in two ways: UTC midnight precedes Riyadh work start by three hours, and tickets were bulk-entered already closed, so it measured data-entry lag. The ticket date also has no time of day, so minute precision is unavailable.
+ * Fix: resolvedDate becomes the declared resolution day, derived from resolvedAt in Riyadh time for past rows; duration is recomputed in whole days, stored as minutes x 1440 so dashboard and report averages keep working.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -50,7 +35,7 @@ const daysBetween = (a, b) => {
   rows.forEach((t) => {
     const isClosed = CLOSED.includes(t.status);
 
-    // بلاغ مفتوح لا زمن حل له. بعض الصفوف تحمل قيمة قديمة من إغلاق أُلغي.
+    // An open ticket has no resolution time; some rows hold a stale value from a cancelled close.
     if (!isClosed) {
       if (t.resolutionMinutes !== undefined || t.resolvedAt || t.resolvedDate) {
         cleared += 1;
@@ -59,7 +44,7 @@ const daysBetween = (a, b) => {
       return;
     }
 
-    // يوم الحل: المعلن إن وُجد، وإلا يوم الختم بتوقيت الرياض، وإلا يوم البلاغ.
+    // Resolution day: the declared one if present, else the Riyadh-time stamp day, else the ticket day.
     const resolvedDate = t.resolvedDate
       || (t.resolvedAt ? dateInRiyadh(t.resolvedAt) : null)
       || t.reportedAt;

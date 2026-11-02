@@ -12,8 +12,7 @@ const perfSettingsSchema = new mongoose.Schema({
   singleton: { type: String, default: 'perf', unique: true },
   bands: { type: mongoose.Schema.Types.Mixed, default: () => DEFAULT_BANDS },
   tiers: { type: mongoose.Schema.Types.Mixed, default: () => DEFAULT_TIERS },
-  // { 'النقل الثقيل': 1, 'التخليص الجمركي': 2, … } — a department's default tier,
-  // used when a template doesn't state its own.
+  // Map of department name to default tier, used when a template does not state its own, e.g. { heavy transport: 1, customs clearance: 2 }.
   departmentTiers: { type: mongoose.Schema.Types.Mixed, default: () => ({}) },
   // Threshold below which no bonus is paid, shown as explanatory text on the form.
   eligibilityThreshold: { type: Number, default: 70 },

@@ -1,28 +1,8 @@
 /**
- * أيُّ فاتورةٍ تشمل أيَّ كشف — من دفتر قسم التحصيل إلى كشوف التشغيل.
- *
- * ── العلّة ──────────────────────────────────────────────────────────────────
- * دفترُ الفواتير يعرف أنّ الفاتورة موجودةٌ وبكم؛ ولا يعرف أيَّ حمولاتٍ تشملها.
- * والكشفُ يعرف حمولتَه؛ ولا يعرف أنّه فُوتِر. فيُسأل «الفاتورة دي شاملة إيه؟»
- * فلا جواب — ويُفتَح ملفُّ إكسل جانبيّ.
- *
- * والربطُ لا يحتاج جدولًا ثالثًا: الفاتورةُ مكتوبةٌ على الكشف (`invoiceNumber`)،
- * وصفحةُ الفاتورة تقرأ كشوفَها بها (collectionsDeptController). فيكفي أن يُكتب
- * الرقمُ على كشوفه — فتُقرأ الصلةُ من الطرفين بلا مزامنةٍ ولا نسخة ثانية.
- *
- * ── وما يُكتب ───────────────────────────────────────────────────────────────
- *   رقمُ الفاتورة وتاريخُها، وصافيها من عمود «المبيعات» (لكلّ كشفٍ نصيبُه).
- *   والضريبةُ والإجماليّ لا يُكتبان من الملفّ: يُشتقّان كما في النظام —
- *   ضريبةٌ ١٥٪ وإجماليٌّ مجموعُهما (راجع deriveInvoiceTotals). وقد طوبق:
- *   إجماليُّ الدفتر = صافي الملفّ × ١٫١٥ بالضبط.
- *
- * ── ونوعُ الدفع يتبع الفاتورة ───────────────────────────────────────────────
- * فاتورةٌ ضريبيّةٌ صادرةٌ تعني كشفًا ضريبيًّا (راجع hasTaxInvoice). فما كُتب له
- * رقمٌ يصير ضريبيًّا — إلّا ما اختاره موظّفٌ بيده (`paymentTypeSource: manual`)
- * فلا يُدهَس اختيارُه، ويُقال في التقرير.
- *
- * تجربةٌ افتراضًا؛ `--apply` للكتابة.
- *   node src/scripts/importCollectionsInvoiceLinks.js [path.xlsx] [--apply]
+ * Links each invoice to the operations reports it covers, from the collections book. The invoice number is written on the report (invoiceNumber) and the invoice page reads its reports by it, so no third table is needed.
+ * Written: invoice number, date and net from the sales column (each report's share); tax and total are derived (15% VAT, see deriveInvoiceTotals).
+ * Payment type follows the invoice (see hasTaxInvoice) unless set by hand (paymentTypeSource: manual), which is kept and reported.
+ * Dry run by default; --apply writes.
  */
 require('dotenv').config({ quiet: true });
 const path = require('path');
@@ -34,8 +14,7 @@ const VAT_RATE = 0.15;
 const S = (v) => String(v ?? '').trim();
 const { NO_INVOICE_RX } = require('../utils/paymentType');
 
-// التواريخُ تُقرأ بالرقم التسلسليّ لا بـ`cellDates` — تلك تُسقط يومًا على هذا
-// الجهاز. راجع xlsx-date-epoch-trap.
+// Dates are read as serial numbers, not via cellDates, which loses a day on this machine. See xlsx-date-epoch-trap.
 const serialToDate = (n) => {
   const num = Number(n);
   if (!Number.isFinite(num) || num <= 0) return null;
@@ -50,7 +29,7 @@ const serialToDate = (n) => {
   const wb = XLSX.readFile(file, { cellDates: false });
   const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: null, blankrows: false, raw: true }).slice(1);
 
-  // صفٌّ لكلّ كشف: العميل، المبيعات (صافي نصيب الكشف)، تاريخ الفاتورة، رقمها، رقم الكشف.
+  // One row per report: customer, sales (net share of the report), invoice date, invoice number, report number.
   const bySheet = new Map();
   const byInvoice = new Map();
   for (const [cust, sales, date, inv, sheet] of rows) {
@@ -93,7 +72,7 @@ const serialToDate = (n) => {
     };
     if (x.date) set.invoiceDate = x.date;
 
-    // اختيارُ اليد لا يُدهَس؛ وما سواه يتبع الفاتورة.
+    // A manual choice is never overwritten; everything else follows the invoice.
     const manual = S(w.paymentTypeSource) === 'manual';
     if (manual && w.paymentType !== 'tax') out.keptManual.push(sh);
     else if (w.paymentType !== 'tax') { set.paymentType = 'tax'; set.paymentTypeSource = 'auto'; out.flippedToTax += 1; }
@@ -107,9 +86,8 @@ const serialToDate = (n) => {
     ops.push({ updateOne: { filter: { _id: w._id }, update: { $set: set } } });
   }
 
-  // ── والدفترُ يُكمَّل لا يُبدَّل ─────────────────────────────────────────────
-  // إجماليُّ الفاتورة في الدفتر صحيحٌ (طوبق)، أمّا صافيها وضريبتُها فلم تُخزَّن.
-  // فتُكتبان من مجموع كشوفها — فيُقرأ في الفاتورة ما يُقرأ في كشوفها.
+  // The book is completed, not replaced: the invoice total in the book is correct, but net and tax were never stored.
+  // They are written from the sum of its reports so the invoice reads the same as its reports.
   const invOps = [];
   const ledger = await I.find({ invoiceNumber: { $in: [...byInvoice.keys()] } })
     .project({ invoiceNumber: 1, net: 1, vat: 1, total: 1 }).toArray();
@@ -119,8 +97,8 @@ const serialToDate = (n) => {
     if (!g) continue;
     const vat = Math.round(g.net * VAT_RATE * 100) / 100;
     const total = Math.round((g.net + vat) * 100) / 100;
-    // إجماليٌّ لا يساوي مجموعَ كشوفِ الملفّ = فاتورةٌ تشمل كشوفًا خارج مدّته
-    // (الملفُّ من ١ يناير). فلا يُكتب لها صافٍ ناقص — يُقال ولا يُخمَّن.
+    // A total that differs from the sum of the file's reports means the invoice covers reports outside the file's period (starts Jan 1).
+    // Do not write a partial net; report it instead of guessing.
     if (Math.abs((Number(inv.total) || 0) - total) > 1) { invMismatch += 1; continue; }
     if (Math.abs((Number(inv.net) || 0) - g.net) < 0.01 && Math.abs((Number(inv.vat) || 0) - vat) < 0.01) continue;
     invFilled += 1;

@@ -1,9 +1,7 @@
 /**
- * /api/ls2/custody — عهدةُ النقل الثقيل. راجع controllers/htCustodyController.
- *
- * مركَّبٌ قبل `/api/ls2` في server.js وبحارسه الخاصّ: موجّهُ القسم يحصر كلَّ
- * نقاطه في أدوار القسم، وأهلُ المال ليسوا منها — والعهدةُ مالٌ يفتحها أهلُه.
- * فقائمتُها وحدَها تقرّر (`strict`)، ومنحُ القسم لا يفتحها لموظّفيه.
+ * /api/ls2/custody: heavy-transport custody; see controllers/htCustodyController.
+ * Mounted before /api/ls2 in server.js with its own guard, because the section router limits every route to section roles and finance roles are not among them.
+ * Only this list decides access (`strict`); a section grant does not open it to the section's staff.
  */
 const express = require('express');
 const router = express.Router();
@@ -17,7 +15,7 @@ router.get('/', CUSTODY, custody.list);
 router.get('/rep', CUSTODY, custody.lookupRep);
 router.get('/vehicles', CUSTODY, custody.listVehicles);
 router.post('/', CUSTODY, custody.create);
-router.put('/:id', CUSTODY, custody.update);      // والمتحكِّمُ يحصره في مدير النظام وأهل المال
+router.put('/:id', CUSTODY, custody.update);      // The controller restricts this to the system admin and finance roles.
 router.delete('/:id', CUSTODY, custody.remove);
 
 module.exports = router;

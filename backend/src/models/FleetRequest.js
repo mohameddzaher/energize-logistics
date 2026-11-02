@@ -1,39 +1,25 @@
 /**
- * طلباتُ الأسطول إلى الصيانة — «أحتاج هذه الشاحنةَ وصيانتُها متأخّرة».
- *
- * ── ما الذي استدعى جدولًا جديدًا ─────────────────────────────────────────────
- * مرآةُ لوكيشن سوليوشن تقول عن شاحنةٍ «فات موعدُ صيانتها بألفٍ وسبعِمئةِ
- * كيلومتر». وكان ذلك شارةً حمراءَ على بطاقتها تُقرأ ولا تمنع: تُحمَّل الشاحنةُ
- * وتسير ألفًا وخمسَمئةِ كيلومترٍ أخرى، ويُكتشَف الأمرُ حين تقف في الطريق.
- *
- * والمنعُ وحدَه لا يكفي: الحمولةُ قد تكون ساعتَين إلى جدّة، ومديرُ الصيانة قد
- * يقول «امشِ بها واحضر إليَّ الخميس». فهذا الجدولُ هو ذلك الحوارُ مكتوبًا:
- * يُطلَب، فيُوافَق أو يُرفَض، ويبقى مَن وافق ومتى وبأيّ سبب.
- *
- * ── والموافقةُ تُستهلَك بحمولةٍ واحدة ────────────────────────────────────────
- * موافقةٌ مفتوحةٌ تعني شاحنةً مفتوحةً إلى الأبد: تُسجَّل مرّةً ثمّ تسير سنةً
- * بلا صيانة. فكلُّ موافقةٍ لحمولةٍ واحدة (`usedBy`)، والتالية تُطلَب من جديد
- * — إلّا أن تُسجَّل الخدمةُ فتزول الحاجةُ إلى الطلب أصلًا.
+ * Fleet requests to maintenance: needing a truck whose maintenance is overdue.
+ * The Location Solutions mirror reports an overdue truck as a red badge that was read but did not block, so trucks were loaded and failed on the road. Blocking alone is not enough (a two-hour trip to Jeddah, or maintenance may allow it until Thursday), so this table records that exchange: requested, approved or rejected, with who, when and why.
+ * An approval is consumed by one load (`usedBy`); the next is requested anew, unless the service is logged, which removes the need.
  */
 const mongoose = require('mongoose');
 
 const fleetRequestSchema = new mongoose.Schema(
   {
-    // اليومَ نوعٌ واحد، والجدولُ مُعَدٌّ لغيره (قطعةٌ، فحصٌ، إدخالُ ورشة).
+    // One type today; the table is ready for others (part, inspection, workshop entry).
     kind: { type: String, enum: ['maintenance_override'], default: 'maintenance_override', index: true },
 
     vehicle: { type: mongoose.Schema.Types.ObjectId, ref: 'FleetVehicle', required: true, index: true },
     plate: { type: String, trim: true, default: '' },
 
-    // لقطةُ ما فات ساعةَ الطلب: الحالةُ تتغيّر حين تُسجَّل الخدمة، ومن يقرأ
-    // الطلبَ بعد شهرٍ يجب أن يعرف على أيّ شيءٍ وافق.
+    // Snapshot of what was overdue at request time: the state changes once service is logged, and a reader a month later must know what was approved.
     service: { type: String, trim: true, default: '' },
     kmToService: { type: Number, default: null },
     odometerKm: { type: Number, default: null },
 
     reason: { type: String, trim: true, default: '' },
-    // ما الحمولةُ المنتظرة — تُقرأ في قرار الصيانة: «ساعتان إلى جدّة» ليست
-    // «ألفًا وأربعَمئةِ كيلومترٍ إلى جيزان».
+    // The load being waited on, read in the maintenance decision: a two-hour trip to Jeddah differs from a long trip to Jazan.
     load: {
       customerName: { type: String, trim: true, default: '' },
       fromCity: { type: String, trim: true, default: '' },
@@ -56,7 +42,7 @@ const fleetRequestSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// طلبٌ معلّقٌ واحدٌ لكلّ شاحنة: ضغطُ الزرّ مرّتين لا يفتح طلبين.
+// One pending request per truck: a double click does not open two.
 fleetRequestSchema.index({ vehicle: 1, status: 1, usedBy: 1 });
 
 module.exports = mongoose.model('FleetRequest', fleetRequestSchema);

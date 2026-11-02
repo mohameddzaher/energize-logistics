@@ -16,7 +16,7 @@ const mongoose = require('mongoose');
     } catch (e) { console.log(`${name}: تعذّر العدّ — ${e.message}`); }
   }
 
-  // صلاحياتٌ محفوظةٌ على قسم الورشة
+  // Permissions saved on the workshop section
   try {
     const P = require('../models/RolePermission');
     const rows = await P.find({ section: 'Workshop' }).lean();

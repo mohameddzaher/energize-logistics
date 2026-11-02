@@ -1,16 +1,8 @@
 /**
- * hrWorkStatusBackfill — «حالة العمل» تُشتقّ من الحالة: «يعمل» أو «لا يعمل — <حالة>».
- *
- *   node src/scripts/hrWorkStatusBackfill.js            ← عرضٌ فقط
- *   node src/scripts/hrWorkStatusBackfill.js --apply
- *
- * قرارُ صاحب الشركة (٢٠٢٦/١٠/١٩): الخانةُ لا تُكتب باليد. كانت نصًّا حرًّا من شيت
- * الماستر («يعمل»، «اجازة»، «لا يعمل»، «تم اصدار خروج نهائي»…). فتُكتب من الحالة:
- *   · مَن لم تنتهِ خدمتُه ← «يعمل» (والإجازةُ تبقى في حالة التوظيف لا هنا)
- *   · مَن انتهت خدمتُه ← «لا يعمل»، ومعها حالتُه إن دلّ عليها النصُّ القديم:
- *       «خروج نهائي…» ← خروج نهائي · «…شقيقة» ← شركة شقيقة · «نقل كفالة» ← انتظار نقل الكفالة
- * ولا يغيّر حالةَ توظيف أحد. والموقوفون (الحالة القديمة) يُعرَضون لتقرّر فيهم
- * الموارد البشريّة: إنهاء خدمةٍ بحالة «انتظار نقل الكفالة»، أو إعادةُ تفعيل.
+ * hrWorkStatusBackfill: work status is derived from status: working, or not working with the status.
+ * Shows only; --apply writes.
+ * The field is no longer typed by hand; it was free text from the master sheet. Whoever has not ended service becomes working (leave stays in the employment status, not here); whoever ended becomes not working, plus a status when the old text indicates one: final exit to final exit, sister company to sister company, sponsorship transfer to awaiting sponsorship transfer.
+ * No one's employment status changes. Suspended staff (old status) are listed for HR to decide: end service with the awaiting-transfer status, or reactivate.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -38,17 +30,17 @@ const kindFromText = (t) => {
       const k = kindFromText(e.workStatusText);
       if (k) {
         set.terminationKind = k;
-        // انتظارٌ قديمٌ مهلتُه من تاريخ إنهائه — وإن مضت بدأت التنبيهاتُ تقول «تجاوز».
+        // An old waiting status has its deadline counted from its end date; once past, alerts start saying overdue.
         if (k === 'transfer_pending') set.transferDeadline = new Date(new Date(e.terminatedAt || Date.now()).getTime() + ENG.TRANSFER_DAYS * 86400000);
       }
     }
     const want = ENG.workStatusTextOf({ ...e, ...set });
     if (String(e.workStatusText || '') !== want) set.workStatusText = want;
     if (e.employmentStatus === 'suspended') suspended.push(`${e.employeeNumber || '—'} ${e.arabicName || `${e.firstName} ${e.lastName}`}`);
-    // على رأس العمل والنصُّ القديم يقول غيرَ ذلك — تقرّر فيه الموارد البشريّة.
+    // Working, yet the old text says otherwise: for HR to decide.
     if (e.employmentStatus !== 'terminated' && /لا يعمل|خروج|استقال|انهاء|إنهاء/.test(String(e.workStatusText || ''))) conflicts.push(`${nm(e)} — «${e.workStatusText}»`);
     if (Object.keys(set).length) {
-      // النصُّ القديم لا يضيع: يُحفَظ في سجلّ الموظّف (تبويب «السجلّ»).
+      // The old text is kept in the employee's history tab.
       if (String(e.workStatusText || '').trim()) {
         audits.push({
           bySystem: true, userName: 'النظام', action: 'hr_work_status_derived', entity: 'Employee', entityId: e._id,

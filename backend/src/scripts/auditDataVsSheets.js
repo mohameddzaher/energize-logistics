@@ -1,14 +1,6 @@
 /**
- * auditDataVsSheets — كلُّ رقمٍ في النظام، مقيسًا على الورقة التي جاء منها.
- *
- *   node --max-old-space-size=8192 src/scripts/auditDataVsSheets.js
- *
- * لا يفحص هذا الملفُّ نقاطَ الخدمة ولا الشاشات — تلك لها فحوصُها. يفحص
- * **الداتا نفسَها**: هل ما في القاعدة هو ما في الإكسل؟
- *
- * ── ولماذا يُقاس على المصدر لا على القاعدة ────────────────────────────────
- * فحصٌ يقرأ القاعدةَ ويقارنها بالقاعدة يؤكّد أنّ الاستيرادَ فعل ما فعل، لا
- * أنّه فعل الصواب. فالورقةُ تُقرأ من جديدٍ في كلّ تشغيل، ويُقارَن بها.
+ * Measures every number in the system against the sheet it came from, re-reading the sheets on every run.
+ * It checks the data itself, not endpoints or screens (those have their own audits). Comparing the database to itself would only show the import did what it did, not that it was right.
  */
 require('dotenv').config();
 const path = require('path');
@@ -19,13 +11,8 @@ let pass = 0; let fail = 0;
 const ok = (l, c, x = '') => { console.log(`  ${c ? '✓' : '✗ FAIL'}  ${l}${x ? '  — ' + x : ''}`); c ? (pass += 1) : (fail += 1); };
 
 /**
- * ── وخلافُ المصادر ليس عطلًا في الكود ────────────────────────────────────────
- * بعضُ الفروق ليست خطأً في الاستيراد بل تناقضٌ بين ملفّين كلاهما من عند صاحب
- * العمل، أو نقصٌ في الورقة نفسِها. جعلُها «فشلًا» يجعل الفحصَ أحمرَ إلى الأبد
- * فيُتجاهَل، وإخفاؤُها كذبٌ.
- *
- * فتُفصَل: ما يجب أن يمرّ يمرّ، وما يحتاج قرارَ إنسانٍ يُسمَّى ويُعَدّ ويُعرَض
- * في آخر التقرير حتى يُقرَّر فيه.
+ * Source disagreement is not a code fault.
+ * Some differences are contradictions between two files from the business owner, or gaps in the sheet itself. Marking them failures keeps the audit red forever so it gets ignored; hiding them is dishonest. So they are separated: what must pass passes, and what needs a human decision is named, counted and listed at the end.
  */
 const decisions = [];
 const needsYou = (title, detail) => { decisions.push({ title, detail }); console.log(`  ?  ${title}  — ${detail}`); };
@@ -35,7 +22,7 @@ const fmt = (n) => Number(n || 0).toLocaleString('en-US', { maximumFractionDigit
 
 const S = (v) => (v == null ? '' : String(v).trim());
 const N = (v) => { const n = Number(String(v ?? '').replace(/[^\d.\-]/g, '')); return Number.isFinite(n) ? n : 0; };
-// مبدأُ تأريخ إكسل بغرينتش — لا يمرّ بتوقيت الجهاز فلا يضيع يوم.
+// Excel epoch based on GMT, so the device time zone cannot lose a day.
 const XE = Date.UTC(1899, 11, 30);
 const D = (v) => (typeof v === 'number' && Number.isFinite(v) && v > 1
   ? new Date(XE + Math.round(v * 86400000)) : null);
@@ -62,7 +49,7 @@ const FILES = {
     .sheet_to_json(XLSX.readFile(file, { cellDates: false, raw: true }).Sheets[name],
       { header: 1, defval: null, blankrows: false, raw: true }).slice(hdr + 1);
 
-  // ═══ ١ · سجلُّ الحسابات ═══════════════════════════════════════════════════
+  // 1. Account register
   head('سجلُّ الحسابات ← ورقتا Aging');
   const aging = sheet(FILES.collections, 'Aging', 4);
   const agingShip = sheet(FILES.collections, 'Aging Shipment', 4);
@@ -105,7 +92,7 @@ const FILES = {
   const cashCodes = [...wantAcc.values()].filter((w) => w.kind === 'cash').length;
   ok('وعددُ حسابات الكاش', await CollectionsParty.countDocuments({ code: /^C\d+$/, paymentType: 'cash' }) === cashCodes, `${cashCodes}`);
 
-  // ═══ ٢ · دفترُ الفواتير ═══════════════════════════════════════════════════
+  // 2. Invoice ledger
   head('دفترُ الفواتير ← ورقة Daily Invoice Report');
   const di = sheet(FILES.collections, 'Daily Invoice Report', 5);
   const TOTALS = /^\s*(?:الإجمالي|الاجمالي|المجموع|total)\s*$/i;
@@ -117,11 +104,7 @@ const FILES = {
     if (prev) { prev.total += N(r[3]); if (!prev.status) prev.status = S(r[9]); continue; }
     wantInv.set(num, { total: N(r[3]), status: S(r[9]), inv: iso(r[4]), del: iso(r[6]), col: iso(r[8]), name: S(r[1]), comment: S(r[11]) });
   }
-  // ── ما يُعَدّ فاتورةً حقيقيّة ─────────────────────────────────────────────
-  // نفسُ شرط الاستيراد حرفًا بحرف: رقمٌ وحدَه ليس فاتورة، وملاحظةُ المشرف
-  // سجلٌّ حقيقيّ («مشكلة في حوالة ٩/٣») فتُحسب. وكان الشرطُ هنا يُسقط
-  // الملاحظةَ وحدَها فاختلف العدُّ عن الاستيراد باثنتين — والاختلافُ كان في
-  // تعريفِ الفحص لا في الداتا.
+  // What counts as a real invoice: exactly the import condition. A bare number is not an invoice, but a supervisor note is a real record and is counted. The check once dropped note-only rows and differed from the import by two; the fault was in the audit definition, not the data.
   const real = [...wantInv.entries()].filter(([, v]) => v.total || v.inv || v.del || v.col || v.status || v.comment);
   const haveInvCount = await CollectionInvoice.countDocuments();
   ok('عددُ الفواتير الحقيقيّة', haveInvCount === real.length, `${haveInvCount} — الورقة ${real.length}`);
@@ -133,13 +116,13 @@ const FILES = {
     ok(`${label}: العدد`, (h[0]?.n || 0) === w.length, `${h[0]?.n} — الورقة ${w.length}`);
     ok(`${label}: المبلغ`, near(h[0]?.s, wSum, 0.05), `${fmt(h[0]?.s)} — الورقة ${fmt(wSum)}`);
   }
-  // خليّةُ «Total» في الورقة = مجموعُ ما لا حالةَ له.
+  // The sheet's Total cell equals the sum of rows that have no status.
   ok('خليّةُ Total في الورقة تُعاد كما هي',
     near((await CollectionInvoice.aggregate([{ $match: { status: '' } }, { $group: { _id: null, s: { $sum: '$total' } } }]))[0]?.s,
       N(XLSX.utils.sheet_to_json(XLSX.readFile(FILES.collections, { cellDates: false, raw: true }).Sheets['Daily Invoice Report'], { header: 1, defval: null, blankrows: false, raw: true })[4][3]), 0.05),
     `${fmt((await CollectionInvoice.aggregate([{ $match: { status: '' } }, { $group: { _id: null, s: { $sum: '$total' } } }]))[0]?.s)}`);
 
-  // عيّنةٌ من التواريخ صفًّا صفًّا — المجاميعُ قد تتطابق وتفاصيلُها مختلفة.
+  // Row-by-row sample of dates: totals can match while details differ.
   const sample = real.slice(0, 400);
   const codes = sample.map(([n]) => n);
   const got = new Map((await CollectionInvoice.find({ invoiceNumber: { $in: codes } })
@@ -154,7 +137,7 @@ const FILES = {
   ok('التواريخُ الثلاثة صفًّا صفًّا (٤٠٠ عيّنة)', badDate === 0, `${badDate} مختلفًا`);
   ok('والمبالغُ صفًّا صفًّا', badAmt === 0, `${badAmt} مختلفًا`);
 
-  // ═══ ٣ · الخطّة ══════════════════════════════════════════════════════════
+  // 3. Plan
   head('الخطّةُ اليوميّة ← ورقة JP');
   const jp = sheet(FILES.collections, 'JP', 6);
   const dateRow = XLSX.utils.sheet_to_json(XLSX.readFile(FILES.collections, { cellDates: false, raw: true }).Sheets.JP,
@@ -178,7 +161,7 @@ const FILES = {
   ok('عددُ المهامّ', haveTasks === wantTasks, `${haveTasks} — الورقة ${wantTasks}`);
   ok('ومجموعُ ما حُصِّل فيها', near(haveColl, wantCollected, 0.01), `${fmt(haveColl)} — الورقة ${fmt(wantCollected)}`);
 
-  // ═══ ٤ · شيتُ المتابعة ═══════════════════════════════════════════════════
+  // 4. Follow-up sheet
   head('كشوفُ التشغيل ← شيت المتابعة');
   const fu = sheet(FILES.followUp, '2026', 4);
   const wantRep = new Map();
@@ -202,17 +185,14 @@ const FILES = {
   }
   ok('تواريخُ التحصيل مطابقة', cdMiss === 0, `${cd - cdMiss}/${cd} مطابق`);
   ok('وأرقامُ الفواتير', invMiss === 0, `${inv - invMiss}/${inv} مطابق`);
-  // ── أرقامُ السندات: الورقةُ مزحزحةٌ صفوفًا ──────────────────────────────
-  // قِيست الفروقُ فبان نمطُها: قيمةُ الكشف عندنا هي قيمةُ الكشف الذي يليه في
-  // الورقة (٨٤٧٥٤ عندنا = ٨٤٧٥٦ في الورقة) — أي أنّ صفوفَ الورقة انزاحت عن
-  // بعضها بإدراجٍ أو حذف. وسندُنا يُكتب في النظام من منصّة التشغيل ومن موظّفي
-  // العمليات، فهو الأحدث. تُسمَّى ليقرّر صاحبُها.
+  // Voucher numbers: the sheet is shifted by rows.
+  // Our statement value equals the value of the next statement in the sheet (84754 here is 84756 there), so rows moved apart through an insert or delete. Our voucher is written by the operations platform and staff, so it is the newer one. Listed for the owner to decide.
   if (docMiss === 0) ok('وأرقامُ السندات', true, `${doc} مطابق`);
   else needsYou('أرقامُ السندات تخالف الورقة',
     `${docMiss} من ${doc} — قيمُ الورقة منزاحةٌ صفًّا عن صفّ؛ ما عندنا من منصّة التشغيل وهو الأحدث`);
   ok('وصوافي الفواتير', netMiss === 0, `${net - netMiss}/${net} مطابق`);
 
-  // ═══ ٥ · نوعُ الدفع ══════════════════════════════════════════════════════
+  // 5. Payment type
   head('نوعُ الدفع ← ورقة نوع الدفع للعملاء');
   const pt = XLSX.utils.sheet_to_json(XLSX.readFile(FILES.payTypes).Sheets[XLSX.readFile(FILES.payTypes).SheetNames[0]], { defval: '' });
   const readType = (v) => { const t = String(v || '').trim().toLowerCase(); if (/cash|نقد|كاش/.test(t)) return 'cash'; if (/tax|ضريب/.test(t)) return 'tax'; return ''; };
@@ -226,38 +206,22 @@ const FILES = {
   let ptMiss = 0; let ptBad = 0;
   for (const [k, v] of wantPt) { const p = ptParties.get(k); if (!p) { ptMiss += 1; continue; } if (p.paymentType !== v.ty) ptBad += 1; }
   ok('كلُّ عميلٍ في الورقة له سجلّ', ptMiss === 0, `${ptMiss} مفقودًا من ${wantPt.size}`);
-  // ── والملفّان لا يتناقضان، بل يصفان شيئين ────────────────────────────────
-  // بدا أوّلًا خلافًا: ورقةُ «نوع الدفع» تقول عن سبعةَ عشرَ عميلًا شيئًا ودفترُ
-  // التحصيل يقول غيرَه. والحقيقةُ أنّ كلَّ واحدٍ منهما يجيب عن سؤالٍ آخر:
-  //
-  //   الدفترُ يقول: في أيّ سجلٍّ يجلس **الحساب** — ومنه كودُه `C####` أو
-  //                 `1104####`، وعليه تُبنى صفحاتُ الأعمار.
-  //   والورقةُ تقول: بم **يُحاسَب هذا العميل عادةً**.
-  //
-  // وليس أيٌّ منهما قاعدةً على شحنةٍ بعينها: العميلُ الواحد يقول في حمولةٍ
-  // «حاسبوني كاش» وفي أخرى «افتحوا فاتورة» — فالسبعةَ عشرَ يتعاملون بالوجهين،
-  // وكلا الملفَّين صادقٌ فيهم. ونوعُ الكشف يُكتب على الكشف بيدٍ ولا يُستنتَج
-  // من أيٍّ منهما.
-  //
-  // فلا يُقاس أحدُهما بالآخر — قياسُ جوابين لسؤالين مختلفين ببعضهما يُخرج
-  // «خلافًا» لا وجودَ له. ويُعَدّ العددُ ويُقال، لأنّه يقول كم عميلًا يتعامل
-  // بالوجهين — وهي معلومةٌ تُقرأ لا عطلٌ يُصلَح.
+  // The two files do not contradict each other; they describe different things.
+  // The workbook says which register the account sits in (its C#### or 1104#### code, used for aging pages). The payment-type sheet says how the customer is usually billed.
+  // Neither is a rule for a given statement: one customer can ask for cash on one load and an invoice on another, so the 17 customers use both and both files are right. The type is entered on the statement by hand.
+  // So they are not compared; the count is reported as information about customers who use both ways.
   ok('ونوعُ الحساب في الدفتر لا يخالف كودَه',
     (await CollectionsParty.countDocuments({ code: /^C\d+$/, paymentType: { $ne: 'cash' } })) === 0
     && (await CollectionsParty.countDocuments({ code: /^1104\d+$/, paymentType: { $ne: 'tax' } })) === 0,
     'كلُّ كود C حسابٌ نقديّ وكلُّ كود 1104 حسابٌ ضريبيّ');
   console.log(`  ·  عملاءُ يتعاملون بالوجهين (الورقةُ تقول شيئًا ودفترُهم سجلٌّ آخر): ${ptBad} من ${wantPt.size}`);
 
-  // ═══ ٦ · العقود ══════════════════════════════════════════════════════════
+  // 6. Contracts
   head('العقود ← ملفّ عقود الموظفين المحدَّث');
   const con = sheet(FILES.contracts, 'ورقة1', 1);
   const emps = await Employee.find({}).select('iqamaNumber nationalId').lean();
   const empIds = new Set(emps.flatMap((e) => [S(e.iqamaNumber), S(e.nationalId)]).filter(Boolean));
-  // ── والعقدُ المقروءُ هو العقدُ الجاري ────────────────────────────────────
-  // موظّفةٌ تحمل عقدين بالتواريخ نفسِها: واحدٌ «منتهٍ» يحمل رقمَ العقد وآخرُ
-  // «ساري» بلا رقم. فالقراءةُ العمياءُ بالهويّة تلتقط أيَّهما اتّفق، فيُقال
-  // «الرقمُ مفقود» وهو موجودٌ على العقد الآخر. يُقرأ الجاري، ويُسمَّى من يحمل
-  // عقدين لأنّه في نفسِه خطأٌ يُصحَّح.
+  // Read the current contract. One employee has two contracts with the same dates: an expired one carrying the contract number and an active one without. Reading by identity picks either, reporting the number as missing though it exists on the other. The current one is read, and anyone with two contracts is named as an error to fix.
   const contracts = await Contract.find({}).select('iqamaNumber contractNumber contractProfession startDate endDate status').lean();
   const byIq = new Map();
   const twice = new Map();
@@ -267,13 +231,9 @@ const FILES = {
     twice.set(k, (twice.get(k) || 0) + 1);
   }
   const dupContracts = [...twice.entries()].filter(([, n]) => n > 1);
-  // ── عقدان لفترةٍ واحدة ──────────────────────────────────────────────────
-  // ستّةُ موظّفين يحملون عقدين بالتواريخ نفسِها، والتوأمُ في كلّ حالةٍ هو الذي
-  // **بلا رقم عقد**. وعقدان «ساريان» لموظّفٍ واحدٍ يفسدان رصيدَ إجازاته وعدَّ
-  // العقود وتقريرَ الانتهاءات. وحذفُ عقدِ موظّفٍ ليس قرارًا يُتَّخذ من فحص.
-  // ── والتجميعُ بالموظّف لا بالهويّة ──────────────────────────────────────
-  // التوأمُ المكرَّرُ لا يحمل رقمَ هويّةٍ ولا رقمَ عقد — فالتجميعُ بالهويّة لا
-  // يراه أصلًا ويقول «واحد» والحقيقةُ أربعة. والمفتاحُ الصحيحُ هو الموظّف.
+  // Two contracts for one period.
+  // Six employees have two contracts with identical dates, and the twin is always the one without a contract number. Two active contracts for one employee corrupt leave balance, contract counts and expiry reports. Deleting an employee's contract is not a decision an audit makes.
+  // Grouping is by employee, not identity: the duplicate twin has neither identity nor contract number, so grouping by identity sees one when there are four.
   const allContracts = await Contract.find({}).select('employee contractNumber startDate endDate status').lean();
   const byEmp = new Map();
   for (const c of allContracts) {
@@ -316,16 +276,14 @@ const FILES = {
   ok('والمهنُ في العقود', cProf === 0, `${checked - cProf}/${checked} مطابق`);
   ok('وتواريخُ النهاية', cEnd === 0, `${checked - cEnd}/${checked} مطابق`);
 
-  // ═══ ٧ · ثوابتُ لا تُكسَر ════════════════════════════════════════════════
+  // 7. Invariants that must not break
   head('ثوابتُ لا تُكسَر مهما تغيّرت الداتا');
   const dup = await CollectionsParty.aggregate([{ $match: { code: { $gt: '' } } }, { $group: { _id: '$code', n: { $sum: 1 } } }, { $match: { n: { $gt: 1 } } }]);
   ok('لا كودَ مكرَّرٌ بين الحسابات', dup.length === 0, `${dup.length}`);
   const dupInv = await CollectionInvoice.aggregate([{ $group: { _id: { k: '$kind', n: '$invoiceNumber' }, n: { $sum: 1 } } }, { $match: { n: { $gt: 1 } } }]);
   ok('ولا رقمَ فاتورةٍ مكرَّرٌ في نوعه', dupInv.length === 0, `${dupInv.length}`);
-  // ── فاتورةٌ بلا حساب: نقصٌ في الورقة يُسمّى، لا عطلٌ في الاستيراد ────────
-  // صفُّ الفاتورة ١١٨٥٤ في ورقتهم يحمل رقمًا وتاريخَ تسليمٍ وحالةً، وخانةُ
-  // العميل فيه فارغة. فليس خطأً عندنا، ولا يجوز حذفُه — هو سجلُّهم. يُسمّى
-  // ليُكمَل في الورقة.
+  // Invoice without an account is a gap in the sheet, named, not an import fault.
+  // Invoice row 11854 has a number, delivery date and status but an empty customer cell. It is their record, so it is not deleted; it is listed to be completed in the sheet.
   const orphans = await CollectionInvoice.find({ party: null }).select('invoiceNumber status').lean();
   if (orphans.length) {
     console.log(`  ⚠  فواتيرُ خانةُ العميل فيها فارغةٌ **في الورقة** (تُكمَل هناك): ${orphans.map((o) => o.invoiceNumber).join('، ')}`);

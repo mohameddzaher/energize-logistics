@@ -1,4 +1,4 @@
-/** لكلّ عائلةِ مستندات: كم مركبةً تُعَدّ «مطلوب — ناقص» اليوم، وكم «غير مطلوب». */
+/** Per document family: how many vehicles count as required-missing today, and how many as not required. */
 require('dotenv').config();
 const mongoose = require('mongoose');
 (async () => {

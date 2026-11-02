@@ -1,12 +1,7 @@
 /**
- * revertCustomsToUpcoming — يردّ معاملةً حُوِّلت إلى جاريةٍ خطأً إلى القادمة.
- *
- *   node src/scripts/revertCustomsToUpcoming.js CC-00273           ← تجربة
- *   node src/scripts/revertCustomsToUpcoming.js CC-00273 --apply
- *
- * يكتب علَمَ «قادمة» ويمسح بصمةَ التحويل وحدَهما. والتاريخُ المرتقَبُ والأوراقُ
- * وكلُّ ما كُتب في المعاملة يبقى كما هو. ومع `--stage <مرحلة>` يردّ المرحلةَ
- * كذلك (لمن ضغط مراحلَ بعد التحويل وهو يجرّب). وما عُلِّم من المراحل لا يُمسّ.
+ * revertCustomsToUpcoming: return a transaction wrongly converted to ongoing back to upcoming.
+ * Usage: node src/scripts/revertCustomsToUpcoming.js CC-00273 [--apply] (dry run by default).
+ * Writes only the 'upcoming' flag and clears the conversion stamp. The expected date, papers and everything else stay. With `--stage <stage>` the stage is reverted too (for someone who advanced stages after converting while testing); stages already marked are not touched.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');

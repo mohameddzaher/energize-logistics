@@ -14,7 +14,7 @@ const mongoose = require('mongoose');
   const r = await run(sa);
   const vehicles = r.vehicles || [];
 
-  // هل يذكر لوحُ مركبةٍ سائقًا لا تشير سيّارتُه إليها؟
+  // Does a vehicle board name a driver whose own vehicle does not point to it?
   const drivers = await FleetDriver.find({ isActive: { $ne: false } }).select('name vehicle').lean();
   const vehOf = new Map(drivers.map((d) => [String(d._id), String(d.vehicle || '')]));
   let bad = 0;
@@ -28,7 +28,7 @@ const mongoose = require('mongoose');
   }
   console.log(`مركبات: ${vehicles.length} · مقاعدُ لا تطابق سجلَّ السائق: ${bad}`);
 
-  // ولقطاتُ الحمولات تحمل أسماءَ سائقين — وهي تاريخٌ لا مقعدٌ حاليّ
+  // Load snapshots carry driver names; they are history, not the current seat.
   const withDrv = await FleetShipment.countDocuments({ driverName: { $nin: [null, ''] } });
   console.log(`لقطاتُ الحمولات التي تحمل اسمَ سائق: ${withDrv} (تاريخٌ، لا تُقرأ كمقعد)`);
   await mongoose.disconnect();

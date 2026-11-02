@@ -1,15 +1,7 @@
 /* eslint-disable no-console */
 /**
- * linkLs2VehicleMaster — يربط النقلَ الثقيل بسجلّ المركبات: وحداتُ لوكيشن
- * سوليوشن، والسطحات، وقيودُ عهدة النقل الثقيل، وحركاتُ المخزن — كلٌّ بحقل
- * `vehicleMaster`. ويعرض معه تعارضاتِ الجهاز مع السجلّ واللوحاتِ التي لا مركبةَ لها.
- *
- *   node src/scripts/linkLs2VehicleMaster.js           (عرضٌ فقط)
- *   node src/scripts/linkLs2VehicleMaster.js --apply   (يكتب)
- *
- * والربطُ يجري بعد ذلك وحدَه: عند مزامنة الهويّة، وعند كلّ حركةٍ أو قيدٍ جديد
- * (services/ls2VehicleLink) — فهذا لِما سبق. يكتب بلا طوابع زمنيّة.
- * ولا يمسّ النصوص: اللوحةُ تبقى كما كُتبت، ويُضاف إليها المرجع.
+ * Links heavy transport to the vehicle registry: Location Solutions units, flatbeds, heavy-transport custody entries and store movements, each via the vehicleMaster field. Also reports device/registry conflicts and plates with no vehicle.
+ * Usage: [--apply]; later links happen automatically (services/ls2VehicleLink), so this covers existing data. Writes without timestamps and leaves text intact, only adding the reference.
  */
 require('dotenv').config({ quiet: true });
 const mongoose = require('mongoose');
@@ -25,14 +17,14 @@ const APPLY = process.argv.includes('--apply');
 
   console.log(APPLY ? '── كتابة ──' : '── عرضٌ فقط ──');
 
-  // ١) الوحداتُ والسطحات
+  // 1) Units and flatbeds.
   const fleet = await link.linkLs2Fleet({ apply: APPLY });
   console.log(`وحدات لوكيشن: ${fleet.units} · مربوطة: ${fleet.unitsLinked} · تتغيّر: ${fleet.unitsChanged}`);
   if (fleet.unitsUnlinked.length) console.log(`  بلا مركبة في السجلّ: ${fleet.unitsUnlinked.join(' / ')}`);
   console.log(`سطحات: ${fleet.flatbeds} · مربوطة: ${fleet.flatbedsLinked} · تتغيّر: ${fleet.flatbedsChanged}`);
   if (fleet.flatbedsUnlinked.length) console.log(`  بلا مركبة: ${fleet.flatbedsUnlinked.join(' / ')}`);
 
-  // ٢) قيودُ عهدة النقل الثقيل — من الوحدة إلى مركبتها
+  // 2) Heavy transport custody entries, from the unit to its vehicle.
   const entries = await HtCustody.find({ vehicleUnitId: { $ne: null } }).select('vehicleUnitId vehicleMaster').lean();
   let custodyChange = 0; let custodyNone = 0;
   const custodyOps = [];
@@ -47,7 +39,7 @@ const APPLY = process.argv.includes('--apply');
   if (APPLY && custodyOps.length) await HtCustody.bulkWrite(custodyOps, { ordered: false, timestamps: false });
   console.log(`قيود عهدة النقل الثقيل بسيّارة: ${entries.length} · تتغيّر: ${custodyChange} · بلا مركبة: ${custodyNone}`);
 
-  // ٣) حركاتُ المخزن — اللوحةُ نصًّا، تُحلّ لكلّ مخزنٍ بقاعدته
+  // 3) Store movements: plate is text, resolved per store by its own rule.
   const unknown = [];
   for (const wh of ['heavy', 'light']) {
     const match = wh === 'light' ? { warehouse: 'light' } : { warehouse: { $ne: 'light' } };
@@ -73,7 +65,7 @@ const APPLY = process.argv.includes('--apply');
   console.log(`لوحاتٌ غير معروفة: ${unknown.length} (حركاتها ${unknown.reduce((s, u) => s + u.n, 0)})`);
   for (const u of unknown) console.log(`  [${u.wh}] ${u.plate} ×${u.n}`);
 
-  // ٤) تعارضاتُ الجهاز مع السجلّ
+  // 4) Device conflicts with the registry.
   const units = await Ls2Vehicle.find({}).select('unitId plate name profile.vin profile.modelYear profile.registrationPlate vehicleMaster').lean();
   const rows = await link.attachRegistry(units.map((u) => ({ ...u, vehicleMaster: fleet.unitMap.get(u.unitId) || null })));
   const year = rows.filter((r) => r.conflicts.year);
@@ -82,7 +74,7 @@ const APPLY = process.argv.includes('--apply');
   for (const r of year) console.log(`  سنة  ${r.plate || link.unitPlate(r)}: السجلّ ${r.conflicts.year.registry} · الجهاز ${r.conflicts.year.device}`);
   for (const r of vin) console.log(`  شاسيه ${r.plate || link.unitPlate(r)}: السجلّ ${r.conflicts.vin.registry} · الجهاز ${r.conflicts.vin.device}${r.conflicts.vin.partial ? ' (جزئيّ)' : ''}`);
 
-  // ٥) أسماءُ السائقين — للعرض فقط، لا تُربط هنا
+  // 5) Driver names: display only, not linked here.
   const Employee = require('../models/Employee');
   const emps = await Employee.find({}).select('firstName lastName arabicName').lean();
   const fold = (s) => String(s || '').replace(/\s+/g, ' ').trim();

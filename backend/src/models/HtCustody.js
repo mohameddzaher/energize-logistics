@@ -1,8 +1,4 @@
-/**
- * عهدةُ النقل الثقيل — الكاش، وكارت المشتريات، والورشة. مثلُ عهدة النقل الخفيف
- * حرفًا بحرف (القواعدُ في models/LtCustody)، ويزيد القيدُ سيّارتَه: شاحنةٌ من
- * أسطول لوكيشن سوليوشن يُختار لها الواردُ أو الصادر، اختيارًا لا إلزامًا.
- */
+/** Heavy transport custody: cash, purchase card and workshop. Identical to light transport custody (rules in models/LtCustody), plus a vehicle per entry: a truck from the Location Solutions fleet chosen for incoming or outgoing, optional. */
 const mongoose = require('mongoose');
 const { ACCOUNTS, IN_SOURCES, TO_CASH, buildCustodySchema } = require('./custodyLedger');
 

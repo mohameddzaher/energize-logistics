@@ -1,8 +1,6 @@
 /**
- * «غير مطلوب» تسري في كلّ شاشة — لا في صفحة العائلة وحدَها.
- *
- * تُنشَأ مركبةُ اختبارٍ بلا أوراقَ أصلًا، فتُقرأ في كلّ موضع؛ ثمّ يُقال عن كلّ
- * عائلةٍ «غير مطلوبة» وتُقرأ ثانيةً. والفرقُ بين القراءتين هو ما يراه المستخدم.
+ * Not-required applies on every screen, not only the family page.
+ * A test vehicle with no documents is read everywhere, then each family is marked not required and read again. The difference between the two reads is what the user sees.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -24,8 +22,7 @@ const mongoose = require('mongoose');
   const id = made.body?.vehicle?._id;
   if (!id) { console.log('تعذّر الإنشاء:', JSON.stringify(made.body)); process.exit(1); }
 
-  // تُقرأ المركبةُ نفسُها لا قائمةُ السجلّ: القائمةُ مخزَّنةٌ ثلاثين ثانية،
-  // فالقراءةُ الثانيةُ كانت تعيد جوابَ الأولى وتُخفي الفرق.
+  // Reads the vehicle itself, not the register list: the list is cached for thirty seconds, so the second read returned the first answer and hid the difference.
   const VDOCcfg = (await require('../models/VehicleMaster').VehicleRegistryConfig.findOne().lean()) || {};
   const alerts = VDOCcfg.alerts || {};
   const get = (o, p2) => p2.split('.').reduce((x, k) => (x == null ? x : x[k]), o);
@@ -40,8 +37,8 @@ const mongoose = require('mongoose');
       const { state } = VDOC.stateOf(get(v, d.path), get(v, d.statusPath), alerts[d.key] || {});
       const mapped = state === 'not_applicable' ? 'not_required' : state === 'missing' ? 'none' : state;
       lines.push(`${d.ar}=${mapped}`);
-      // حرفيًّا كما تحسبها شريحةُ «مطلوب — ناقص» في صفحة العائلة:
-      //   docNeed === 'required'  ||  stateOf(...).state === 'missing'
+      // Exactly as the required-missing chip on the family page computes it:
+      // docNeed === 'required' || stateOf(...).state === 'missing'
       const code = String(get(v, d.statusPath) || '');
       const dn = get(v, d.path) ? 'have'
         : (code === 'not_required' || code === 'not_in_use') ? 'not_required'
@@ -58,7 +55,7 @@ const mongoose = require('mongoose');
 
   const before = await readAll('قبل: بلا أوراقَ ولا وضعٍ مسجَّل');
 
-  // ما يفعله الزرُّ الجديد بالضبط
+  // Exactly what the new button does.
   const patch = {};
   for (const d of VDOC.DOCUMENTS) {
     const [obj, key] = d.statusPath.split('.');

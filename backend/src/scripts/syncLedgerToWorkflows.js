@@ -1,43 +1,14 @@
 /**
- * syncLedgerToWorkflows — ما يعرفه دفترُ التحصيل يصل إلى الكشف.
- *
- *   node src/scripts/syncLedgerToWorkflows.js --dry
- *   node src/scripts/syncLedgerToWorkflows.js
- *
- * ── الواقعة ────────────────────────────────────────────────────────────────
- * الفاتورة ٩٧١٩ في دفتر التحصيل: سُلّمت في ١ مارس وحالتُها «محصَّلة». وكشفُها
- * في التشغيل (٦٢٨٠٠) خانتا التسليم والتحصيل فيه فارغتان. فمن فتح الكشف رأى
- * فاتورةً لم تُسلَّم بعد، ومن فتح الدفتر رآها منتهية — والاثنان عن الشيء نفسه.
- *
- * وليست واحدة: ألفان ومئتان وثلاثةٌ وسبعون كشفًا تحمل رقمَ فاتورةٍ يعرف الدفترُ
- * تاريخَ تسليمها ولا يعرفه الكشف.
- *
- * ── والقاعدة هي القاعدة ────────────────────────────────────────────────────
- * يُملأ الفارغُ ولا يُدهَس المكتوب. وما اختلف فيه الدفتران يُعَدّ ويُعرَض ولا
- * يُطبَّق: تاريخان مختلفان لتسليمٍ واحد سؤالٌ لبشرٍ لا لسكربت.
- *
- * والاتّجاهُ من الدفتر إلى الكشف لا العكس: الدفترُ مصدرُه دفترُ التحصيل الورقيّ
- * وفيه تسعةُ آلافِ فاتورة، والكشوفُ تعرف ستّةً في المئة منها. أمّا من اليوم
- * فصار كلُّ تسجيلٍ في الشاشة يكتب في الوجهين معًا (راجع syncInvoiceLedger).
+ * Brings what the collections ledger knows into the statements (workflows).
+ * Usage: node src/scripts/syncLedgerToWorkflows.js [--dry]
+ * The ledger can know delivery and collection for an invoice while the operations statement has both empty, so the two views disagree about the same invoice; thousands of statements are affected. Rule: fill empties, never overwrite written values; conflicts are counted and shown, not applied. Direction is ledger to statement because the ledger covers far more invoices than the statements; new screen entries now write both sides (see syncInvoiceLedger).
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
 
 const DRY = process.argv.includes('--dry');
-// ── ولماذا يُفصَل التسليمُ عن التحصيل ──────────────────────────────────────
-//
-// «تاريخ التحصيل» شيءٌ واحد في الدفترين: وصل المال. ولذلك يملأ ألفين وتسعمئةً
-// وثمانيةً وثمانين كشفًا ويختلف في اثنين فقط — دليلٌ كافٍ على أنّهما عن الشيء
-// نفسِه.
-//
-// أمّا «تاريخ التسليم» فمشكوكٌ في أنّه واحد: في شيت المتابعة يقع بين «تاريخ
-// الإرسال» و«مراجعة الحسابات» وقبل أعمدة الفاتورة كلِّها — أي أنّه تسليمُ
-// الكشف إلى الحسابات؛ وفي دفتر التحصيل هو تسليمُ الفاتورة إلى العميل. ولو
-// كانا واحدًا لتطابقا في أكثر الصفوف، وهما يتطابقان في خمسةٍ وسبعين ويختلفان
-// في ثمانمئةٍ وستّةٍ وتسعين.
-//
-// فلا يُملأ أحدُهما من الآخر بالتخمين: `--with-delivery` قرارٌ يُتَّخذ صراحةً
-// بعد أن يقول صاحبُ الدفتر إنّهما شيءٌ واحد.
+// Why delivery is kept separate from collection.
+// The collection date means the same thing in both ledgers (money received), so they almost always agree. The delivery date is doubtful: in the tracking sheet it is the statement handed to accounts, in the collections ledger it is the invoice handed to the customer, and the two rarely match. So neither is filled from the other by guessing; --with-delivery is an explicit decision once the ledger owner confirms they are the same thing.
 const WITH_DELIVERY = process.argv.includes('--with-delivery');
 const sameDay = (a, b) => a && b && new Date(a).toISOString().slice(0, 10) === new Date(b).toISOString().slice(0, 10);
 
@@ -56,7 +27,7 @@ const sameDay = (a, b) => a && b && new Date(a).toISOString().slice(0, 10) === n
   for (const i of invs) {
     const no = String(i.invoiceNumber || '').trim();
     if (!no) continue;
-    // الفاتورةُ الواحدة قد تُسجَّل نقديّةً وضريبيّة؛ يُؤخذ ما فيه تاريخ.
+    // One invoice may be recorded as both cash and tax; take the one that has a date.
     const cur = byNo.get(no);
     if (!cur || (!cur.deliveryDate && i.deliveryDate) || (!cur.collectionDate && i.collectionDate)) byNo.set(no, i);
   }

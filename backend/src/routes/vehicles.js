@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 
-// معرّفٌ مشوَّهٌ في الرابط = لا سجلّ، لا عطلٌ في الخادم — راجع utils/idParam.
+// A malformed id in the URL means no record (404), not a server error; see utils/idParam.
 const { objectIdParam } = require('../utils/idParam');
 router.param('id', objectIdParam({ status: 400 }));
 router.param('accId', objectIdParam({ status: 400 }));
@@ -10,11 +10,8 @@ const vehicle = require('../controllers/vehicleController');
 const authenticate = require('../middleware/auth');
 const authorize = require('../middleware/rbac');
 
-// Vehicles & Authorizations (المركبات والتفاويض) — shared by super admin, HR and
-// Accounting. Delete operations are further restricted to the admin tier inside
-// the controller.
-// أدوار القسم نفسه لازم تكون هنا — من غيرها مدير المركبات بيشوف التفاويض
-// ومش قادر يعمل فيها حاجة، وهو صاحب القسم.
+// Vehicles & Authorizations — shared by super admin, HR and Accounting. Delete operations are further restricted to the admin tier inside the controller.
+// The section's own roles must be listed here; without them the vehicles manager sees authorizations but cannot act on them, though he owns the section.
 const STAFF = ['super_admin', 'admin', 'vehicles_manager', 'vehicles_staff',
   'hr_manager', 'hr_specialist', 'cfo', 'accounting_manager', 'accountant'];
 

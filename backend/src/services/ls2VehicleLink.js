@@ -1,22 +1,8 @@
 /**
- * ls2VehicleLink — شاحنةُ لوكيشن سوليوشن هي مركبةُ السجلّ نفسُها، لا نسخةٌ منها.
- *
- * ── القاعدة (صاحبُ الشركة، ٢٠٢٦/١٠/٢١) ───────────────────────────────────────
- * سجلٌّ واحدٌ لكلّ مركبةٍ في النظام كلِّه، وما يُعدَّل فيه يظهر في كلّ قسمٍ
- * لحظتَها. ومرآةُ Wialon (`Ls2Vehicle`) كانت تحمل لوحتَها وماركتَها وسنتَها
- * ورقمَ شاسيهها نصًّا بلا رابط، فاختلفت مع سجلّ المركبات في ٢٢ سنةَ صنع و١٨
- * رقمَ شاسيه ولا يعلم أحدٌ أيَّهما الصحيح.
- *
- * فهنا الربطُ وحدَه:
- *   • `Ls2Vehicle.vehicleMaster` — من لوحته بالمفتاح الموحَّد (عربيّةً أو لاتينيّة).
- *   • `Ls2Flatbed.vehicleMaster` — من شاحنته: إن حملت لوحتُه حروفًا فبالمفتاح
- *     الموحَّد، وإن كانت أرقامًا وحدها («2708») فمن وحدة لوكيشن التي تحمل
- *     الأرقامَ نفسَها — **لا بالأرقام في السجلّ أبدًا**: «1080» دراجةٌ هناك
- *     وتريلا هنا (راجع utils/plateKey).
- *   • ولِما يُكتب نصًّا في المخزن والعهدة: `resolveLs2Plate` بالقاعدة نفسِها.
- *
- * والهويّةُ تُقرأ من السجلّ عند العرض (`attachRegistry`)، وما يقوله الجهاز
- * يبقى «حسب الجهاز» بجانبها — وحيث يختلفان يُرفع العلَم.
+ * ls2VehicleLink: a Location Solutions truck is the registry vehicle itself, not a copy.
+ * Rule: one record per vehicle across the system, edits show in every section at once. The Wialon mirror (`Ls2Vehicle`) held plate, make, year and chassis number as unlinked text and disagreed with the vehicle registry in 22 model years and 18 chassis numbers, with no way to tell which was right.
+ * So only the link is stored here:
+ * `Ls2Vehicle.vehicleMaster`: from its plate by the unified key (Arabic or Latin).   `Ls2Flatbed.vehicleMaster`: from its truck. If the plate has letters, by the unified key; if digits only ("2708"), from the Location Solutions unit carrying the same digits, never by digits in the registry ("1080" is a motorbike there and a trailer here; see utils/plateKey).   For text stored in the store and custody: `resolveLs2Plate` with the same rule. Identity is read from the registry at display time (`attachRegistry`); what the device says stays beside it as "per device", and a conflict raises the flag.
  */
 const Ls2Vehicle = require('../models/Ls2Vehicle');
 const Ls2Flatbed = require('../models/Ls2Flatbed');
@@ -24,14 +10,10 @@ const { canonicalPlateKey, vehiclePlateKey, plateKey } = require('../utils/plate
 
 const VM = () => require('../models/VehicleMaster').VehicleMaster;
 
-/** أفي المفتاح الموحَّد حروف؟ «2708|» لا حروفَ فيه فلا يُطابَق في السجلّ. */
+/** Whether the unified key has letters. "2708|" has none, so it is not matched in the registry. */
 const hasLetters = (k) => !!k && !k.endsWith('|');
 
-/**
- * لوحةُ وحدة لوكيشن كما تُقرأ للربط: `plate` ثمّ لوحةُ التسجيل في الملفّ،
- * وإن خلتا فمن الاسم — والاسمُ «3450 JTA بلال اشرف» فيه اسمُ السائق، وحروفُه
- * العربيّة تُفسد المفتاح، فيُؤخذ منه الرقمُ والحروفُ اللاتينيّةُ اللاصقةُ به وحدَهما.
- */
+/** A Location Solutions unit's plate as read for linking: `plate`, then the file's registration plate, then the name. The name ("3450 JTA <driver name>") includes the driver's name whose Arabic letters corrupt the key, so only the digits and adjoining Latin letters are taken. */
 function unitPlate(v) {
   if (!v) return '';
   const p = String(v.plate || v.profile?.registrationPlate || '').trim();
@@ -48,10 +30,7 @@ async function registryByKeys(keys) {
   return new Map(rows.map((r) => [r.canonKey, r._id]));
 }
 
-/**
- * يربط كلَّ وحدةٍ وكلَّ سطحةٍ بمركبتها في السجلّ. يكتب ما تغيّر وحدَه، ويُرجع
- * الأعداد. `apply=false` عرضٌ فقط (لسكربت الإكمال).
- */
+/** Links every unit and flatbed to its registry vehicle. Writes only what changed and returns the counts. `apply=false` is a dry run (for the completion script). */
 async function linkLs2Fleet({ apply = true } = {}) {
   const [units, flatbeds] = await Promise.all([
     Ls2Vehicle.find({}).select('unitId name plate profile.registrationPlate vehicleMaster').lean(),
@@ -63,7 +42,7 @@ async function linkLs2Fleet({ apply = true } = {}) {
 
   const out = { units: units.length, unitsLinked: 0, unitsChanged: 0, unitsUnlinked: [], flatbeds: flatbeds.length, flatbedsLinked: 0, flatbedsChanged: 0, flatbedsUnlinked: [], unitMap: new Map() };
   const unitOps = [];
-  const vmByDigits = new Map(); // أرقامُ الوحدة ← مركبتُها (للسطحات بلا حروف)
+  const vmByDigits = new Map(); // Unit digits -> its vehicle (for flatbeds without letters)
   units.forEach((u, i) => {
     const id = byKey.get(unitKeys[i]) || null;
     if (id) { out.unitsLinked += 1; vmByDigits.set(vehiclePlateKey(u), id); out.unitMap.set(u.unitId, id); } else out.unitsUnlinked.push(unitPlate(u) || u.name || String(u.unitId));
@@ -83,28 +62,21 @@ async function linkLs2Fleet({ apply = true } = {}) {
     }
   });
   if (apply) {
-    // بلا طوابع زمنيّة: الربطُ ليس تعديلًا على الشاحنة.
+    // No timestamps: linking is not an edit of the truck.
     if (unitOps.length) await Ls2Vehicle.bulkWrite(unitOps, { ordered: false, timestamps: false });
     if (flatOps.length) await Ls2Flatbed.bulkWrite(flatOps, { ordered: false, timestamps: false });
   }
   return out;
 }
 
-/**
- * لوحةٌ مكتوبةٌ نصًّا في قسم النقل الثقيل (حركةُ مخزن، قيدُ عهدة) ← مركبتُها.
- * بحروفها: السجلُّ بالمفتاح الموحَّد. وبأرقامها وحدها: وحدةُ لوكيشن التي تحملها
- * (أسطولُنا الثقيل فريدٌ بأرقامه)، ثمّ مركبتُها. وإلّا null — والنصُّ يبقى كما كُتب.
- */
+/** A plate written as text in Heavy Transport (store movement, custody entry) -> its vehicle. With letters: the registry by the unified key. With digits only: the Location Solutions unit carrying them (our heavy fleet is unique by digits), then its vehicle. Otherwise null, and the text stays as written. */
 async function resolveLs2Plate(plate, opts = {}) {
   const raw = String(plate || '').trim();
   if (!raw) return null;
   return (await resolveLs2Plates([raw], opts)).get(raw) || null;
 }
 
-/**
- * أرقامُ كلّ وحدةٍ في الأسطول ← مركبتُها في السجلّ، محسوبةً من لوحة الوحدة
- * بالمفتاح الموحَّد لا من الحقل المخزَّن — فيصحّ قبل الإكمال وبعده سواء.
- */
+/** Digits of every fleet unit -> its registry vehicle, computed from the unit's plate by the unified key and not from the stored field, so it is right before and after completion. */
 async function fleetByDigits() {
   const units = await Ls2Vehicle.find({}).select('plate name profile.registrationPlate').lean();
   const keys = units.map(unitCanonKey);
@@ -114,7 +86,7 @@ async function fleetByDigits() {
   return m;
 }
 
-/** حلٌّ دفعةً واحدة لعدّة لوحات: Map من النصّ كما كُتب إلى المعرّف أو null. */
+/** Resolves many plates in one pass: Map from the text as written to the id or null. */
 async function resolveLs2Plates(plates, { heavy = true } = {}) {
   const list = [...new Set((plates || []).map((p) => String(p || '').trim()).filter(Boolean))];
   const out = new Map();
@@ -124,8 +96,7 @@ async function resolveLs2Plates(plates, { heavy = true } = {}) {
   let byDigits = null;
   for (let i = 0; i < list.length; i += 1) {
     let id = hasLetters(keys[i]) ? byKey.get(keys[i]) || null : null;
-    // والأرقامُ وحدها حين يكون المكتوبُ أرقامًا لا غير («2708»): نصٌّ فيه رقمٌ
-    // («سيارة الورشة/ 6939»، «فاتورة 11020») ليس لوحةً ولا يُخمَّن له.
+    // Digits alone only when the text is digits and nothing else ("2708"): text containing a number ("workshop car/ 6939", "invoice 11020") is not a plate and is not guessed.
     if (!id && heavy && /^\s*[0-9٠-٩]+\s*$/.test(list[i])) {
       const d = plateKey(list[i]);
       if (d) {
@@ -139,7 +110,7 @@ async function resolveLs2Plates(plates, { heavy = true } = {}) {
   return out;
 }
 
-// ── الهويّةُ من السجلّ عند العرض ──────────────────────────────────────────────
+// Identity from the registry at display time
 
 const REG_SELECT = 'plateNumber brandAr modelAr modelYear chassisNumber sectorAr sectorCode serviceStatusAr '
   + 'vehicleLicense.expiryDate vehicleLicense.statusCode inspection.expiryDate inspection.statusCode '
@@ -149,10 +120,7 @@ const REG_DOCS = ['vehicleLicense', 'inspection', 'insurance', 'operatingCard', 
 
 const normVin = (s) => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
 
-/**
- * ما يقوله الجهاز وما يقوله السجلّ. الفارغُ لا يُعدّ تعارضًا (نقصٌ لا خلاف).
- * ورقمُ شاسيه الجهاز إن كان ذيلَ رقم السجلّ («546250») فهو جزئيّ لا مخالف.
- */
+/** What the device says vs. what the registry says. Empty is not a conflict (missing, not disagreeing). A device chassis number that is the tail of the registry number ("546250") is partial, not conflicting. */
 function compareIdentity(profile, reg) {
   const out = {};
   const dYear = String(profile?.modelYear || '').trim();
@@ -197,11 +165,7 @@ function registryCard(reg, alerts) {
   };
 }
 
-/**
- * يُلحق بكلّ صفٍّ `registry` (هويّةُ السجلّ ومستنداته) و`conflicts`. يُقرأ من
- * السجلّ عند كلّ طلب — لا يمرّ بذاكرة القسم المؤقّتة — فتعديلٌ في سجلّ المركبات
- * يظهر هنا في الطلب التالي، ولا يحتاج قسمُ المركبات أن يعرف ذاكرةَ هذا القسم.
- */
+/** Attaches to each row `registry` (registry identity and documents) and `conflicts`. Read from the registry on every request, bypassing the section cache, so an edit in the vehicle registry shows on the next request and the Vehicles section need not know this section's cache. */
 async function attachRegistry(rows) {
   const ids = [...new Set(rows.map((r) => r.vehicleMaster && String(r.vehicleMaster)).filter(Boolean))];
   const [regs, alerts] = await Promise.all([

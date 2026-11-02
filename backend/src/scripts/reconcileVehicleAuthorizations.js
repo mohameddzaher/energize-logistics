@@ -1,30 +1,8 @@
 /**
- * reconcileVehicleAuthorizations — مطابقةُ سجلَّي التفويض مرّةً واحدة.
- *
- *   node src/scripts/reconcileVehicleAuthorizations.js            (عرضٌ فقط — الافتراضيّ)
- *   node src/scripts/reconcileVehicleAuthorizations.js --apply    (كتابة)
- *   خيارات: --json <ملفّ> يكتب الجدولَ كاملًا · ENV_FILE=<مسار .env>
- *
- * ── لماذا ───────────────────────────────────────────────────────────────────
- * التفويضُ كان يُكتب في سجلَّين يفترقان: الورقةُ على المركبة
- * (`VehicleMaster.authorizedPerson`، يقرؤها قسمُ المركبات و B2C) وسجلُّ الإسناد
- * القديم (`VehicleAuthorization` + مؤشّراتُ `Vehicle` + `Employee.vehiclePlate`،
- * يقرؤه ملفُّ الموظّف وإخلاءُ طرفه). صارت الكتابةُ الآن تمرّ بمصدرٍ واحد
- * (utils/vehicleAuthorization) — وهذا السكربتُ يُصلح ما افترق قبلها.
- *
- * ── قاعدةُ الحسم: الفعلُ الأحدثُ يغلب ───────────────────────────────────────
- * لكلّ مركبةٍ يُقرأ تاريخُ آخر فعلٍ على كلّ سجلّ:
- *   · الورقة: آخرُ قيدِ مراجعةٍ يمسّ التفويض على المركبة (إلغاء/تفويض/تعديل من
- *     B2C/تعديلٌ عامّ فيه حقلُ التفويض)، أو آخرُ قيدِ «تفويض» في `renewals`؛ وإلّا
- *     فتاريخُ استيرادها (`lastImportAt`) أو إنشائها.
- *   · الإسناد: آخرُ فتحٍ (`createdAt`) أو إغلاقٍ (`updatedAt`) لأيّ إسنادٍ عليها.
- * فإن كان الإسنادُ أحدث كُتبت الورقةُ منه، وإلّا تبع الإسنادُ الورقة.
- *
- * ── وما يُعرض ولا يُعَدّ خلافًا ──────────────────────────────────────────────
- *   · ورقةٌ باسم مَن ليس له ملفٌّ في الموارد البشريّة — لا إسنادَ يُفتح له.
- *   · ورقةٌ لا مرآةَ لها في السجلّ القديم — تُنشأ مرآتُها مع --apply.
- *   · مركبةٌ قديمةٌ لا ورقةَ لها في السجلّ — تبقى كما هي (هي سجلُّها الوحيد).
- * ومع --apply تُمحى عباراتُ «مستورد من الشيت» من الملاحظات (utils/importLabels).
+ * reconcileVehicleAuthorizations: reconcile the two authorization registers once. Usage: node src/scripts/reconcileVehicleAuthorizations.js [--apply] [--json <file>] (ENV_FILE=<path to .env>); dry run by default. Why: authorization lived in two diverging registers: the paper on the vehicle (`VehicleMaster.authorizedPerson`) and the older assignment
+ * log (`VehicleAuthorization` + `Vehicle` pointers + `Employee.vehiclePlate`). Writes now go through one source (utils/vehicleAuthorization); this fixes what diverged before. Rule: the most recent action wins. Per vehicle, the last action date is read from each register. - Paper: last audit entry touching authorization (revoke, authorize, B2C
+ * edit, general edit with the authorization field) or last 'authorization' entry in `renewals`; otherwise `lastImportAt` or creation date. - Assignment: last open (`createdAt`) or close (`updatedAt`) of any assignment on it. If the assignment is newer the paper is written from it, otherwise the assignment follows the paper. Reported but not counted
+ * as a conflict: - paper names someone with no HR file: no assignment can be opened. - paper with no mirror in the old log: mirror is created with --apply. - old vehicle with no paper in the log: left as is (the log is its only record). With --apply, 'imported from the sheet' phrases are removed from notes (utils/importLabels).
  */
 const path = require('path');
 require('dotenv').config({ path: process.env.ENV_FILE || path.join(__dirname, '../../.env') });
@@ -39,7 +17,7 @@ const dt = (d) => (d ? new Date(d).toISOString().slice(0, 16).replace('T', ' ') 
 const AUTH_AUDIT = new Set(['revoke_vehicle_authorization', 'assign_vehicle_authorization', 'move_lt_authorization']);
 
 async function main() {
-  // لا فهارسَ ولا مجموعاتٍ تُنشأ من هنا — العرضُ لا يكتب شيئًا في القاعدة.
+  // No indexes or collections are created here; the dry run writes nothing to the database.
   mongoose.set('autoIndex', false);
   mongoose.set('autoCreate', false);
   await mongoose.connect(process.env.MONGODB_URI, { serverSelectionTimeoutMS: 60000, autoIndex: false, autoCreate: false });
@@ -103,7 +81,7 @@ async function main() {
       && [VA.fold(nameOf(empById.get(String(a.employee)))), VA.fold(empById.get(String(a.employee))?.arabicName)].includes(VA.fold(holder.name));
     const isHolder = (a) => (emp ? String(a.employee) === String(emp._id) : nameMatch(a));
 
-    // متى آخرُ فعلٍ على كلّ سجلّ؟
+    // When was the last action on each register?
     const renewAt = (vm.renewals || []).filter((r) => r.document === 'authorization').map((r) => r.at).filter(Boolean);
     const vmAt = [vmAuditAt.get(String(vm._id)), ...renewAt].filter(Boolean).sort((a, b) => b - a)[0]
       || vm.lastImportAt || vm.createdAt;
@@ -118,7 +96,7 @@ async function main() {
     else if (holder && !actives.length && emp && !legacy.length) kind = 'missing_mirror';
     else kind = 'disagree';
 
-    // وفي حال الاتّفاق: رقمُ الورقة ومدّتُها، والمؤشّرات، ولقطةُ اللوحة على الملفّ.
+    // When both agree: paper number and term, pointers, and the plate snapshot on the file.
     const notes = [];
     if (kind === 'agree' && holder && actives[0]) {
       const a = actives[0];
@@ -132,7 +110,7 @@ async function main() {
       if (!ptrOk) { notes.push(`pointers:${v.plateNumber}`); }
     }
     if (notes.some((n) => n.startsWith('pointers'))) counts.pointerFix += 1;
-    // لوحاتُه كلُّها لا لوحةُ هذه المركبة وحدَها — من يحمل مركبتين تحمل خانتُه الاثنتين.
+    // All of the holder's plates, not just this vehicle's: someone holding two vehicles has both in the field.
     if (emp && !(await VA.plateSnapshotOk(emp))) { notes.push(`vehiclePlate:${S(emp.vehiclePlate) || '∅'}`); counts.plateFix += 1; }
 
     if (kind === 'agree') { counts.agree += 1; if (!notes.length) continue; }
@@ -167,13 +145,13 @@ async function main() {
     });
   }
 
-  // مركباتٌ قديمةٌ لا ورقةَ لها — تُعرض ولا تُمسّ.
+  // Old vehicles with no paper: reported, not touched.
   const legacyOnly = vehicles.filter((v) => !linkedLegacy.has(String(v._id)));
   counts.legacyOnlyVehicles = legacyOnly.length;
   const legacyOnlyActive = legacyOnly.filter((v) => (authsByVehicle.get(String(v._id)) || []).some((a) => a.status === 'active'));
   counts.legacyOnlyActive = legacyOnlyActive.length;
 
-  // عباراتُ الاستيراد في الملاحظات.
+  // Import phrases in notes.
   const { LightTransportEmployee, LightTransportOrder } = require('../models/LightTransport');
   const [ltEmps, ltOrders] = await Promise.all([
     LightTransportEmployee.find({}).select('notesAr history').lean(),
@@ -185,7 +163,7 @@ async function main() {
   const labelLtOrders = ltOrders.filter((o) => isImportNote(o.notesAr) || IMPORT_ACTORS.includes(S(o.createdByName)));
   counts.importLabels = { vehicleAuthorizations: labelAuths.length, lightTransportEmployees: labelLtEmps.length, lightTransportOrders: labelLtOrders.length };
 
-  // ── العرض ──────────────────────────────────────────────────────────────
+  // Report
   const order = { disagree: 0, missing_mirror: 1, agree: 2, holder_not_in_hr: 3 };
   rows.sort((a, b) => order[a.kind] - order[b.kind] || a.plate.localeCompare(b.plate, 'ar'));
   console.log(APPLY ? '── تطبيق ──' : '── عرضٌ فقط (أضِف --apply للكتابة) ──');
@@ -209,7 +187,7 @@ async function main() {
 
   if (!APPLY) { await mongoose.disconnect(); return { counts, rows }; }
 
-  // ── الكتابة ────────────────────────────────────────────────────────────
+  // Write
   let done = 0;
   for (const r of rows) {
     if (r.kind === 'holder_not_in_hr') continue;
@@ -231,7 +209,7 @@ async function main() {
     }
     done += 1;
   }
-  // المرآةُ القديمةُ وحدَها: مؤشّراتُها تُصلَح.
+  // Only the old mirror: its pointers are repaired.
   for (const v of legacyOnly) await VA.syncPointers(v._id, null);
 
   for (const a of labelAuths) {

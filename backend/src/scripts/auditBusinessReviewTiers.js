@@ -67,11 +67,11 @@ const navFor = (role) => [
   await User.deleteMany({ email: { $regex: '^zz-t-' } });
   const mk = (k, role) => User.create({ email: `zz-t-${k}@example.invalid`, password: 'Test@12345', firstName: k, lastName: 'T', role });
 
-  const gm  = await mk('gm', 'admin');            // مدير الشركة
-  const sec = await mk('sec', 'administration_staff');   // السكرتارية
-  const ops = await mk('ops', 'operations_manager'); // مدير قسم (حاضر)
-  const hr  = await mk('hr', 'hr_manager');       // مدير قسم (غائب عن الاجتماع)
-  const emp = await mk('emp', 'employee');        // موظف
+  const gm  = await mk('gm', 'admin');            // Company manager.
+  const sec = await mk('sec', 'administration_staff');   // Secretariat.
+  const ops = await mk('ops', 'operations_manager'); // Department manager (present).
+  const hr  = await mk('hr', 'hr_manager');       // Department manager (absent from the meeting).
+  const emp = await mk('emp', 'employee');        // Employee.
 
   const C = {}; for (const [k, u] of Object.entries({ gm, sec, ops, hr, emp })) C[k] = await login(u.email);
 

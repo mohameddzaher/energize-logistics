@@ -1,14 +1,7 @@
 /**
- * auditMeetingCompletion — «اكتمل» غير «انعقد»، والفلاتر والعدّادات بتحترم الفرق.
- *
- *   node src/scripts/auditMeetingCompletion.js
- *   node src/scripts/auditMeetingCompletion.js --base http://127.0.0.1:5001
- *
- * القاعدة: انعقد = الاجتماع حصل. اكتمل = الشؤون الإدارية بتقول إن كل حاجة
- * اترتّبت عليه خلصت — فمينفعش يتقفل وفيه بند تنفيذي أو تكليف فرعي لسه مفتوح،
- * وإلا الكلمة تبقى بلا معنى في الفلتر والتقارير.
- *
- * بيمسح كل ما أنشأه (zz-*) في الآخر ولا بيلمس بيانات حقيقية.
+ * Completed is not the same as held; filters and counters respect the difference.
+ * Rule: held means the meeting happened. Completed means Administration confirms everything arising from it is done, so it cannot be closed while an executive item or sub-assignment is open; otherwise the word means nothing in filters and reports.
+ * Cleans up everything it created (zz-*) and touches no real data.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -85,8 +78,7 @@ async function login(e) {
   ok('الإقفال نجح', done.status === 200 && done.body?.meeting?.status === 'completed', `http ${done.status}`);
   const closed = await BrMeeting.findById(m._id).lean();
   ok('اتسجّل مين قفله وامتى', !!closed.completedAt && closed.completedByName.includes('أسماء'), closed.completedByName);
-  // المهم إن الاتنين حقلين منفصلين والإقفال ما مسحش «انعقد» — مش إن الوقتين
-  // مختلفين، لأن اجتماع بيتقفل نفس اللحظة اللي اتحدد فيها إنه انعقد ده وضع سليم.
+  // What matters is that they are two separate fields and closing did not clear held; not that the times differ, since closing at the same moment it was marked held is valid.
   ok('و«انعقد» فضل محفوظ في خانته المنفصلة', !!closed.heldAt && !!closed.completedAt);
 
   console.log('\n── مينفعش يتقفل من الدروب-ليست العادية ──');

@@ -219,35 +219,21 @@ async function setServiceDate(unitId, id, atDate) {
  * history/track view. `flags`: 1 = data messages (0x0000 gives all).
  */
 /**
- * رسائل وحدةٍ في مدًى زمنيّ — بالترقيم، فلا سقف يكسر مع نموّ البيانات.
- *
- * ── لماذا لا يكفي عددٌ كبير ──────────────────────────────────────────────────
- * المزوّد يُرجع **الأقدم أوّلًا** ويقصّ ما زاد عن العدد المطلوب من آخر المدى. فأيّ
- * سقفٍ نكتبه اليوم يصير ضيّقًا يومًا: تكبر الأجهزة، ويزيد معدّل الإرسال، ويطول
- * المدى المطلوب. والأسوأ أن القصّ **صامت**: لا خطأ ولا تحذير، بل أوائل المدى
- * وصمتٌ عن باقيه — فيُقرأ الناقصُ كاملًا ويُبنى عليه.
- *
- * وقعتُ فيه بنفسي: قرأتُ خمسة آلاف رسالةٍ لشاحنةٍ فظننتُ حسّاساتها صمتت منذ
- * أسبوع، والحقيقة أن دفعتي انتهت هناك.
- *
- * فبدل السقف: يُطلَب المدى على دفعات، كلُّ دفعةٍ تبدأ من حيث انتهت سابقتها،
- * حتى يعود المزوّد بأقلّ من حجم الدفعة — وذلك وحده دليلُ الاكتمال.
- *
- * `maxMessages` سقفُ أمانٍ لا سقفُ بيانات: يمنع نداءً خاطئًا (مدى عشر سنوات)
- * من ابتلاع الذاكرة، ويُعلَن صراحةً في `truncated` إن بُلِغ — فلا يُقصّ شيءٌ
- * بصمتٍ أبدًا.
+ * Messages of a unit over a time range, paginated so no cap breaks as data grows.
+ * The provider returns the oldest first and cuts what exceeds the requested count from the end of the range, silently: no error, so the start of the range is returned and the rest missed, and incomplete data is read as complete. Any cap becomes too small eventually.
+ * So the range is requested in batches, each starting where the last ended, until the provider returns fewer than the batch size, which alone proves completeness.
+ * `maxMessages` is a safety cap, not a data cap: it stops a wrong call (a ten-year range) from exhausting memory, and is reported in `truncated` when reached, so nothing is cut silently.
  */
 async function loadMessages(unitId, timeFrom, timeTo, maxMessages = 500000) {
   const from = Math.floor(timeFrom);
   const to = Math.floor(timeTo);
-  const PAGE = 5000;              // حجم الدفعة الواحدة عند المزوّد
+  const PAGE = 5000;              // Size of one batch at the provider.
   const all = [];
   let cursor = from;
   let guard = 0;
 
   while (cursor <= to) {
-    // حدُّ دورانٍ: لو ردّ المزوّد بما لا يتقدّم بالمؤشّر لأيّ سبب، تُقطَع الحلقة
-    // بدل أن تدور إلى الأبد على نداءٍ لا ينتهي.
+    // Loop bound: if the provider returns something that does not advance the cursor, break rather than loop forever.
     if (++guard > 1000) break;
 
     const res = await call('messages/load_interval', {
@@ -261,14 +247,14 @@ async function loadMessages(unitId, timeFrom, timeTo, maxMessages = 500000) {
     const page = (res && res.messages) || [];
     if (!page.length) break;
 
-    // الدفعات تتداخل عند الحدّ (نفس الثانية)، فتُسقَط المكرّرات بالطابع الزمنيّ.
+    // Batches overlap at the boundary (same second), so duplicates are dropped by timestamp.
     const startAt = all.length && page[0].t <= all[all.length - 1].t
       ? page.findIndex((m) => m.t > all[all.length - 1].t)
       : 0;
-    if (startAt === -1) break;                 // الدفعة كلُّها مكرّرة: انتهينا
+    if (startAt === -1) break;                 // Whole batch is duplicates: done.
     for (let i = startAt; i < page.length; i++) all.push(page[i]);
 
-    if (page.length < PAGE) break;             // دفعةٌ ناقصة = بلغنا آخر المدى
+    if (page.length < PAGE) break;             // Short batch means the end of the range was reached.
     if (all.length >= maxMessages) {
       const lastT = all[all.length - 1] && all[all.length - 1].t;
       console.warn(`[ls2Client] loadMessages hit the ${maxMessages} safety cap for unit ${unitId} — ` +
@@ -277,7 +263,7 @@ async function loadMessages(unitId, timeFrom, timeTo, maxMessages = 500000) {
       return { messages: all, count: all.length, truncated: true, requestedTo: to, actualTo: lastT || null };
     }
     const nextT = page[page.length - 1].t;
-    cursor = nextT > cursor ? nextT : cursor + 1;   // ضمانُ التقدّم
+    cursor = nextT > cursor ? nextT : cursor + 1;   // Guarantees progress.
   }
 
   return { messages: all, count: all.length, truncated: false };

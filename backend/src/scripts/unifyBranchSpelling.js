@@ -1,7 +1,6 @@
 /* eslint-disable no-console */
-// One spelling for every branch: «جده» becomes «جدة», and stray spaces go. Row ids
-// are saved first so the change can be undone. Dry run unless --apply.
-//   node src/scripts/unifyBranchSpelling.js [--apply] [--backup-dir=/opt/energize/archive]
+// One spelling for every branch: the variant spelling of Jeddah is unified to the standard one, and stray spaces are removed. Row ids are saved first so the change can be undone. Dry run unless --apply.
+// Usage: node src/scripts/unifyBranchSpelling.js [--apply] [--backup-dir=/opt/energize/archive]
 require('dotenv').config({ path: require('path').join(__dirname, '../../.env') });
 const fs = require('fs');
 const path = require('path');

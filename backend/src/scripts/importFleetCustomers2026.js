@@ -1,19 +1,7 @@
 /* eslint-disable no-console */
 /**
- * importFleetCustomers2026 — ورقة «Sheet1» من شيت المتابعة ← عملاء الأسطول.
- *
- *   node src/scripts/importFleetCustomers2026.js --dry
- *   node src/scripts/importFleetCustomers2026.js --yes
- *
- * الورقة عمودان: اسم العميل، ونوعُه «ضريبي» أو «cash». والنوع يصير مفتاحًا من
- * قائمة fleet_payment_type (tax / cash) ليطابق ما تقرؤه شاشة إنشاء الحمولة —
- * فالاتفاق مع العميل يُملأ تلقائيًّا حين يُختار، ويبقى قابلًا للتعديل هناك.
- *
- * ويُربط كلٌّ بشركته في الـCRM بالاسم المطبَّع: السجلّان أُدخل كلٌّ منهما في
- * قسمه ولا يجمعهما معرّف، والاسم هو الوصلة الوحيدة.
- *
- * السكربت مُعاد التشغيل بلا ضرر: يُطابق بالمفتاح المطبَّع لا بالنصّ الحرفيّ،
- * ولا يكتب فوق قيمةٍ موجودة إلّا بـ--force.
+ * importFleetCustomers2026: the follow-up sheet Sheet1 into fleet customers.
+ * The type column (tax or cash) becomes a fleet_payment_type key so the load-creation screen can auto-fill the customer agreement. Each customer is linked to its CRM company by normalized name, the only join between the two registers. Safe to re-run: matches by normalized key and overwrites existing values only with --force.
  */
 require('dotenv').config();
 const fs = require('fs');
@@ -23,12 +11,12 @@ const { readSheet } = require('./lib/xlsxStream');
 const { nameKey } = require('../utils/nameKey');
 
 const FILE = path.join(__dirname, '../seeds/data/ops-2026-08/followup-2026-final.xlsx');
-const SHEET = 'xl/worksheets/sheet3.xml';   // ورقة Sheet1 — العمودان C و D
+const SHEET = 'xl/worksheets/sheet3.xml';   // Sheet1, columns C and D
 const DRY = process.argv.includes('--dry');
 const YES = process.argv.includes('--yes');
 const FORCE = process.argv.includes('--force');
 
-/** «ضريبي» → tax · «cash»/«كاش» → cash — مفاتيح قائمة fleet_payment_type. */
+/** Tax label maps to tax, cash labels (English or Arabic) map to cash; these are fleet_payment_type keys. */
 function payKey(raw) {
   const v = String(raw || '').trim().toLowerCase();
   if (!v) return '';
@@ -45,7 +33,7 @@ function payKey(raw) {
   const seen = new Set();
   let unknownType = 0;
   for (const { cells, r } of rows) {
-    if (r < 4) continue;                                   // الترويسة في الصفّ ٣
+    if (r < 4) continue;                                   // Header is on row 3
     const name = String(cells.C ?? '').trim();
     if (!name || name === '0') continue;
     const key = nameKey(name);
@@ -61,7 +49,7 @@ function payKey(raw) {
   const { FleetCustomer } = require('../models/FleetModels');
   const CrmCompany = require('../models/CrmCompany');
 
-  // فهرس الـCRM مرّةً واحدة في الذاكرة — لا استعلامَ لكلّ عميل.
+  // CRM index built once in memory to avoid a query per customer.
   const companies = await CrmCompany.find().select('name arabicName').lean();
   const crmByKey = new Map();
   for (const c of companies) for (const n of [c.name, c.arabicName]) if (n) crmByKey.set(nameKey(n), c._id);

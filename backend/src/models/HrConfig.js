@@ -1,15 +1,9 @@
 const mongoose = require('mongoose');
 
 /**
- * إعدادات قسم الموارد البشريّة — صفٌّ واحد.
- *
- * ── عتباتُ التنبيه ──────────────────────────────────────────────────────────
- * «نبّهني قبل انتهاء الإقامة بكم يومًا؟» كان الجوابُ رقمًا مكتوبًا في الشيفرة،
- * فمن أراد ستّين بدل ثلاثين انتظر نشرةً برمجيّة. والعتبةُ تختلف بطبيعتها:
- * الإقامةُ تُجدَّد في أسبوع فيكفيها ثلاثون، ورخصةُ العمل تحتاج شهرين.
- *
- * وتُخزَّن Map لا حقولًا مسمّاة: المستنداتُ تُزاد (شهادةٌ صحّيّة، بطاقةُ سائق،
- * ما يأتي بعدها)، وإضافةُ حقلٍ للمخطّط في كلّ مرّة نشرةٌ أخرى.
+ * HR department settings: a single row.
+ * Alert thresholds (days before expiry) were numbers in code, so changing sixty for thirty needed a release. They differ by document: residence renews in a week (thirty is enough), work permit needs two months.
+ * Stored as a Map, not named fields: documents are added over time and each new field would need another release.
  */
 const hrConfigSchema = new mongoose.Schema({
   key: { type: String, default: 'hr', unique: true },
@@ -19,7 +13,7 @@ const hrConfigSchema = new mongoose.Schema({
 
 module.exports = mongoose.models.HrConfig || mongoose.model('HrConfig', hrConfigSchema);
 
-/** العتباتُ الافتراضيّة — تُستعمل ما لم يُحفظ غيرُها. */
+/** Default thresholds, used unless others are saved. */
 module.exports.DEFAULT_ALERTS = {
   iqama: 30,
   passport: 60,

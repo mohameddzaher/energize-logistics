@@ -1,10 +1,6 @@
 /**
- * الرصيدُ الافتتاحيّ لعهدة النقل الخفيف — قيدُ واردٍ واحدٌ لكلّ حساب، مصدرُه
- * «رصيد افتتاحي». يُعاد تشغيلُه بأمان: يعدّل القيدَ الموجود ولا يضيف ثانيًا.
- *
- *   node src/scripts/setLtCustodyOpening.js cash=697.93 card=48.66 workshop=715            ← عرضٌ فقط
- *   node src/scripts/setLtCustodyOpening.js cash=697.93 card=48.66 workshop=715 --apply
- *   … date=2026-10-13   (اختياري؛ الافتراضيّ يومُ الشركة)
+ * Opening balance for light-transport custody: one incoming entry per account. Safe to rerun, it updates the existing entry instead of adding another.
+ * Usage: node src/scripts/setLtCustodyOpening.js cash=697.93 card=48.66 workshop=715 [--apply] [date=YYYY-MM-DD]. Without --apply it only previews.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');

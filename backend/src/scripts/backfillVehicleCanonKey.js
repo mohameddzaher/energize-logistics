@@ -1,13 +1,8 @@
 /* eslint-disable no-console */
 /**
- * backfillVehicleCanonKey — يملأ `VehicleMaster.canonKey` (المفتاحُ الموحَّد للّوحة
- * عربيّةً أو لاتينيّة) لكلّ مركبة، ويُعلن التصادمات إن وُجدت.
- *
- *   node src/scripts/backfillVehicleCanonKey.js           (عرضٌ فقط)
- *   node src/scripts/backfillVehicleCanonKey.js --apply   (يكتب)
- *
- * والحقلُ يُشتقّ بعد ذلك عند كلّ حفظ (deriveVehicle) — فهذا لِما سبق وحدَه.
- * يكتب بلا طوابع زمنيّة: ليس تعديلًا على المركبة.
+ * backfillVehicleCanonKey: fill VehicleMaster.canonKey (the unified plate key, Arabic or Latin) for every vehicle and report collisions.
+ * Usage: node src/scripts/backfillVehicleCanonKey.js (dry run) | --apply
+ * The field is derived on every save afterwards (deriveVehicle), so this only covers existing rows. Writes without timestamps: it is not an edit to the vehicle.
  */
 require('dotenv').config({ quiet: true });
 const mongoose = require('mongoose');

@@ -1,29 +1,13 @@
 /**
- * كشفُ حسابٍ لفواتير التحصيل — الضريبيّةِ والكاش — بما على الشاشة بالضبط.
- *
- * ── ما كان ناقصًا ──────────────────────────────────────────────────────────
- * كان زرُّ «طباعة PDF» في الصفحتين يطبع جدولَ الصفحة المعروضة وحدَها (مئةَ
- * صفٍّ من آلاف) بلا البطاقات التي فوقه، وبلا ترويسة الشركة، وبلا ذكرٍ لأكثر
- * الفلاتر. فمن فلتر على عميلٍ وأخرج «كشفَ حسابه» خرج بورقةٍ لا تقول كم عليه.
- *
- * ── ولماذا من الخادم ───────────────────────────────────────────────────────
- * الأرقامُ تُقرأ من الدالّتين نفسَيهما اللتين تملآن الشاشة (`cashInvoices` و
- * `taxInvoices`)، مستدعاتين في العمليّة نفسِها بالاستعلام نفسِه. فالبطاقاتُ في
- * الورقة هي بطاقاتُ الشاشة حرفًا برقم — لا حسابٌ ثانٍ يمكن أن يفترق عنها.
- * والورقةُ على ترويسة الشركة عبر محرّك التقارير (reportBuilder).
- *
- * ── وما لا يعرفه الخادم ─────────────────────────────────────────────────────
- * فلاترُ الأعمدة المحسوبة (العمر، القيمة، عدد الكشوف، المسار) تُطبَّق في
- * المتصفّح على الصفحة المعروضة؛ فتُرسَل هنا `lf_<key>` وتُطبَّق على الصفوف
- * كلِّها بالقاعدة نفسِها (`cellText`). والتحديدُ يُرسَل `sel`. وفي الحالين
- * تُحسب البطاقاتُ من الصفوف الباقية ويُقال ذلك في الورقة صراحةً.
+ * Statement of account for collection invoices (tax and cash), matching the screen exactly.
+ * The print button used to print only the displayed page (100 rows of thousands), without the cards above, the company letterhead or most filters, so a statement for one customer did not say how much he owes.
+ * Generated on the server: figures come from the same functions that fill the screen (`cashInvoices`, `taxInvoices`), called in-process with the same query, so the sheet's cards equal the screen's with no second computation to drift. The sheet uses the company letterhead via the report engine (reportBuilder).
+ * Computed-column filters (age, value, report count, route) are applied in the browser on the displayed page; here `lf_<key>` is sent and applied to all rows by the same rule (`cellText`), and a selection is sent as `sel`. In both cases the cards are computed from the remaining rows and the sheet says so.
  */
 const ctrl = require('../controllers/collectionsDeptController');
 
-/** أقصى ما يُطبَع صفوفًا في الكشف — والإجماليّاتُ تبقى للنتيجة كلِّها. */
-// ألفا صفٍّ ≈ ستّون صفحة. كان الحدُّ خمسةَ آلاف: كشفٌ من مئةٍ وستٍّ وخمسين
-// صفحةً يستغرق نصفَ دقيقةٍ على الخادم، ويُجمّد المتصفّحَ عند الطباعة. والإجماليّاتُ
-// تشمل الكلَّ دائمًا، ومن أراد الصفوفَ كلَّها فعنده تصديرُ Excel.
+/** Maximum printed rows in the statement; totals still cover the whole result. */
+// 2000 rows is about 60 pages. The limit was 5000: a 156-page statement took half a minute on the server and froze the browser on print. Totals always cover everything; Excel export gives all rows.
 const PRINT_ROW_CAP = 2000;
 
 const TZ = 'Asia/Riyadh';
@@ -31,16 +15,16 @@ const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 const money2 = (n) => (Number(n) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const count = (n) => (Number(n) || 0).toLocaleString('en-US');
 const dt = (v) => (v ? new Date(v).toLocaleDateString('en-GB', { timeZone: TZ }) : '');
-/** «YYYY-MM-DD» من فلتر الشاشة يُقرأ كما هو — لا يمرّ بـDate فيزيح يومًا. */
+/** "YYYY-MM-DD" from the screen filter is read as is; going through Date would shift a day. */
 const ymd = (s) => {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(s || ''));
   return m ? `${m[3]}/${m[2]}/${m[1]}` : String(s || '');
 };
-/** نظيرُ `cellText` في useColumnFilters — النصُّ الذي يُفلتَر عليه. */
+/** Counterpart of `cellText` in useColumnFilters: the text that is filtered on. */
 const cellText = (v) => (v === null || v === undefined || v === '' ? '' : String(v));
 const list = (v) => (v === undefined ? [] : Array.isArray(v) ? v.map(String) : [String(v)]);
 
-// بأرقامٍ غربيّةٍ كبقيّة الورقة — لا «١٥» في سطرٍ و«15» في الذي يليه.
+// Western digits like the rest of the sheet, not mixed with Indic digits.
 const AGE_LABELS = {
   '0_15': ['حتى 15 يومًا', 'Up to 15 days'],
   '15_30': ['من 15 إلى 30 يومًا', '15 – 30 days'],
@@ -48,7 +32,7 @@ const AGE_LABELS = {
   '45_60': ['من 45 إلى 60 يومًا', '45 – 60 days'],
   '60_plus': ['أكثر من 60 يومًا', 'Over 60 days'],
 };
-/** الشريحةُ من عدد الأيّام — بحدود `ageCondition` نفسِها: [من، إلى). */
+/** Age bucket from days, with the same bounds as `ageCondition`: [from, to). */
 const bandOf = (d) => {
   for (const [k, [from, to]] of Object.entries(ctrl.AGE_BANDS)) {
     if ((from === 0 || d >= from) && (to == null || d < to)) return k;
@@ -56,15 +40,10 @@ const bandOf = (d) => {
   return '0_15';
 };
 
-/**
- * أعمدةُ الكشف — بأسماء الشاشة وترتيبها (InvoicesPage.tsx · allCols).
- * `cf` اسمُ الحقل في فلتر الأعمدة من الخادم، و`local` عمودٌ يُفلتَر في المتصفّح.
- */
+/** Statement columns, with the screen's names and order (InvoicesPage.tsx allCols). `cf` is the field name in the server column filter; `local` is a column filtered in the browser. */
 function columnsOf(kind, t) {
   const C = (key, ar, en, extra = {}) => ({ key, header: t(ar, en), ...extra });
-  // العناوينُ بلغة العميل لا بلغة القسم: الكشفُ يُرسَل إليه. و`internal`
-  // عمودٌ يخصّنا (فرعُنا المسدِّد، مصدرُ المال، حالةُ الدفتر) فلا يُطبَع أبدًا،
-  // و`party` يُطوى حين يكون الكشفُ لعميلٍ واحد — اسمُه وكودُه في الترويسة.
+  // Headings are in the customer's language, not the department's, since the statement is sent to him. `internal` columns (paying branch, money source, ledger status) are never printed. `party` is dropped when the statement is for one customer, whose name and code are in the header.
   return kind === 'cash'
     ? [
       C('reportNumber', 'رقم الكشف', 'Reference', { cf: 'reportNumber', w: 9 }),
@@ -75,7 +54,7 @@ function columnsOf(kind, t) {
       C('ageDays', 'العمر (يوم)', 'Age (days)', { local: true, end: true, w: 6 }),
       C('value', 'القيمة', 'Amount', { local: true, end: true, money: true, w: 10 }),
       C('collectedAmount', 'المبلغ المسدَّد', 'Paid amount', { local: true, end: true, money: true, w: 10 }),
-      // والمتبقّي بجانب المسدَّد: الجزئيُّ يُطالَب بباقيه لا بقيمته.
+      // Remaining beside paid: a partial invoice is claimed for its remainder, not its value.
       C('remaining', 'المتبقّي', 'Balance', { local: true, end: true, money: true, w: 10 }),
       C('deliveryDate', 'تاريخ الاستلام', 'Received on', { cf: 'deliveryDate', fmt: dt, w: 9 }),
       C('collectionDetail', 'التفاصيل', 'Detail', { cf: 'collectionDetail', w: 8, internal: true }),
@@ -92,7 +71,7 @@ function columnsOf(kind, t) {
       C('partyCode', 'كود الحساب', 'Account code', { cf: 'partyCode', w: 9, party: true }),
       C('reports', 'عدد الكشوف', 'Waybills', { local: true, end: true, w: 7 }),
       C('value', 'قيمة الفاتورة', 'Invoice amount', { local: true, end: true, money: true, w: 12 }),
-      // المسدَّدُ والمتبقّي — الفاتورةُ الجزئيّة تُطالَب بباقيها.
+      // Paid and remaining: a partial invoice is claimed for its remainder.
       C('collectedAmount', 'المسدَّد', 'Paid', { local: true, end: true, money: true, w: 10 }),
       C('remaining', 'المتبقّي', 'Balance', { local: true, end: true, money: true, w: 10 }),
       C('invoiceDate', 'تاريخ الفاتورة', 'Invoice date', { cf: 'invoiceDate', fmt: dt, w: 10 }),
@@ -108,7 +87,7 @@ function columnsOf(kind, t) {
     ];
 }
 
-/** يستدعي دالّةَ القائمة كما يستدعيها المتصفّح — ويردّ جسمَ ردّها. */
+/** Calls the list function as the browser does and returns its response body. */
 function callList(handler, query, user) {
   return new Promise((resolve, reject) => {
     const res = {
@@ -126,18 +105,17 @@ function callList(handler, query, user) {
 }
 
 /**
- * يبني مستندَ الكشف (كتلَ محرّك التقارير).
- *
+ * Builds the statement document (report engine blocks).
  * @param {'cash'|'tax'} kind
- * @param {object} query  استعلامُ الشاشة كما هو + `lf_<key>` + `sel` + `cols`
- * @returns {{ doc, check }}  `check` أرقامُ البطاقات كما خرجت — للتحقّق.
+ * @param {object} query  screen query as is, plus `lf_<key>`, `sel` and `cols`
+ * @returns {{ doc, check }}  `check` holds the card figures as produced, for verification.
  */
 async function buildInvoiceStatement(kind, query, user, lang = 'ar') {
   const ar = lang !== 'en';
   const t = (a, e) => (ar ? a : e);
   const isCash = kind === 'cash';
 
-  // استعلامُ الشاشة وحدَه يصل إلى الدالّة — لا page/limit ولا ما يخصّ الكشف.
+  // Only the screen query reaches the function: no page/limit and nothing statement-specific.
   const screenQuery = {};
   for (const [k, v] of Object.entries(query || {})) {
     if (['page', 'limit', 'sel', 'cols', 'lang', 'format'].includes(k) || k.startsWith('lf_')) continue;
@@ -149,7 +127,7 @@ async function buildInvoiceStatement(kind, query, user, lang = 'ar') {
 
   const allCols = columnsOf(kind, t);
 
-  // ── فلاترُ الأعمدة المحلّيّة والتحديد ─────────────────────────────────────
+  // Local column filters and selection
   const local = [];
   for (const c of allCols.filter((x) => x.local)) {
     const vals = list(query[`lf_${c.key}`]);
@@ -163,9 +141,7 @@ async function buildInvoiceStatement(kind, query, user, lang = 'ar') {
   }
   const narrowed = local.length > 0 || sel.length > 0;
 
-  // ── البطاقات ─────────────────────────────────────────────────────────────
-  // بلا تضييقٍ محلّيّ: أرقامُ الخادم نفسُها التي على الشاشة. ومع التضييق: تُعدّ
-  // من الصفوف الباقية بالتعريفات نفسِها التي في تجميع الخادم.
+  // Cards. Without local narrowing, the server figures are the same as on the screen. With narrowing, they are counted from the remaining rows with the same definitions as the server aggregation.
   const isCollected = (r) => (isCash ? !!(r.collectionDate || r.collectedNoDate) : !!r.fullyCollected);
   const sum = (arr, k) => r2(arr.reduce((s, r) => s + (Number(r[k]) || 0), 0));
   let cards;
@@ -183,13 +159,10 @@ async function buildInvoiceStatement(kind, query, user, lang = 'ar') {
     cards.partial = rows.filter((r) => r.collectionState === 'partial').length;
   }
 
-  // ── الرصيد وأعمارُ المفتوح ───────────────────────────────────────────────
-  // ليست على الشاشة بطاقاتٍ، لكنّها ما يُقرأ في كشف الحساب أوّلًا: كم حُصِّل
-  // وكم بقي، ومنذ متى. والمفتوحُ = القيمةُ − المحصَّل (لا مجموعٌ ثانٍ مقرَّب)،
-  // فيلتقي المجموعان على قيمة البطاقة بالهللة.
+  // Balance and open ageing. Not cards on the screen, but what a statement is read for first: how much was collected, how much remains, and since when. Open = value minus collected (not a second rounded sum), so both totals meet at the card value to the halala.
   const fullSet = !truncatedAtCap || narrowed;
   const open = rows.filter((r) => !isCollected(r));
-  // والمفتوحُ بباقيه: الجزئيّةُ تُطالَب بما لم يُسدَّد منها — لا بقيمتها كلِّها.
+  // Open uses the remainder: a partial invoice is claimed for what was not paid, not its full value.
   const openValue = sum(open, 'remaining');
   const bands = Object.keys(ctrl.AGE_BANDS).map((k) => ({ k, n: 0, v: 0 }));
   for (const r of open) {
@@ -198,31 +171,23 @@ async function buildInvoiceStatement(kind, query, user, lang = 'ar') {
     b.n += 1; b.v += Number(r.remaining) || 0;
   }
 
-  // ── الأعمدةُ المختارة على الشاشة — بلا ما يخصّنا ─────────────────────────
-  // العميلُ من الصفوف نفسِها لا من خانة البحث وحدَها: فلترُ عمود «العميل» على
-  // عميلٍ واحد كان يُخرج «جميع العملاء» في الترويسة وعمودَ العميل في الجدول.
-  // والمسافاتُ تُوحَّد قبل المقارنة: الاسمُ نفسُه محفوظٌ بمسافةٍ مزدوجة أو غيرِ
-  // منكسرة (NBSP) في بعض الفواتير، فكان العميلُ الواحدُ يُقرأ عميلَين.
+  // Columns selected on screen, without internal ones. The customer comes from the rows, not only the search box: a customer-column filter on one customer used to print "all customers" in the header and keep the customer column. Whitespace is normalised before comparing, since the same name is stored with double or non-breaking spaces in some invoices, which read as two customers.
   const partyNames = [...new Set(rows.map((r) => cellText(r.customer).replace(/[\s\u00a0\u200b-\u200f]+/g, ' ').trim()).filter((x) => x && x !== '—'))];
-  // والاسمُ كما في السجلّ لا كما كُتب في البحث (قد يُكتب جزءٌ منه). وبحثٌ يطابق
-  // أكثرَ من عميل = كشفٌ لعدّة عملاء، فيبقى عمودُ العميل.
+  // The name as in the registry, not as typed in search (it may be partial). A search matching more than one customer is a multi-customer statement, so the customer column stays.
   const partyName = partyNames.length === 1 ? partyNames[0] : (!rows.length && query.customer ? String(query.customer) : '');
   const singleParty = !!partyName;
-  // «المبلغ المسدَّد» في الكاش لا يُكتب في أغلب الكشوف (يُعرَف السدادُ بتاريخه)؛
-  // عمودٌ كلُّه «—» يربك العميلَ أمام «مسدَّد» في الخانة المجاورة — فيُطوى حين يكون صفرًا كلَّه.
+  // Cash "paid amount" is not filled on most statements (payment is known by its date); an all-dash column confuses the customer next to a "paid" cell, so it is dropped when all zero.
   const noPaidAmounts = isCash && !rows.some((r) => Number(r.collectedAmount));
   const printable = allCols.filter((c) => !c.internal && !(singleParty && c.party)
     && !(noPaidAmounts && c.key === 'collectedAmount'));
   const wanted = String(query.cols || '').split(',').map((s) => s.trim()).filter(Boolean);
   let cols = wanted.length ? printable.filter((c) => wanted.includes(c.key)) : printable;
-  // رقمُ الفاتورة/الكشف مقفولٌ على الشاشة (لا يُخفى) — فيبقى في الورقة أيضًا.
+  // Invoice/report number is locked on screen (cannot be hidden), so it stays on the sheet too.
   if (!cols.includes(allCols[0])) cols = [allCols[0], ...cols];
 
   const today = dt(new Date());
 
-  // ── الترويسة: لمن الكشف، ومتى، وعن أيّ فترة ──────────────────────────────
-  // لا شيءَ من أدوات القسم (حالةُ التحصيل، فلاترُ الأعمدة، النطاق، اسمُ مُصدِره):
-  // الكشفُ يُرسَل إلى العميل.
+  // Header: whom the statement is for, when, and for which period. None of the department's tools (collection status, column filters, range, issuer name); the statement goes to the customer.
   const codes = [...new Set(rows.map((r) => r.partyCode).filter(Boolean))];
   const head = [
     [t('العميل', 'Customer'), partyName || t('جميع العملاء', 'All customers')],
@@ -232,10 +197,7 @@ async function buildInvoiceStatement(kind, query, user, lang = 'ar') {
     [t('تاريخ الكشف', 'Statement date'), today],
   ];
 
-  // ── ملخّصُ الحساب: ما يسأل عنه العميل ────────────────────────────────────
-  // عددٌ وقيمةٌ (بطاقتا الشاشة نفسُهما)، وما سُدِّد، وما بقي — ومع الباقي عددُ
-  // ما لم يُسدَّد (بطاقةُ «لم تُحصَّل بعد» على الشاشة). والمسدَّدُ = القيمة −
-  // المستحقّ، فيلتقي المجموعان على قيمة البطاقة بالهللة.
+  // Account summary: what the customer asks about. Count and value (the same two screen cards), paid, and remaining with the count of unpaid (the "not yet collected" card). Paid = value minus due, so both totals meet at the card value to the halala.
   const pendingCount = isCash ? cards.pendingCount : cards.pending;
   const summary = [
     { label: isCash ? t('عدد الكشوف', 'Items') : t('عدد الفواتير', 'Invoices'), value: count(cards.count) },
@@ -250,20 +212,19 @@ async function buildInvoiceStatement(kind, query, user, lang = 'ar') {
     ] : []),
   ];
 
-  // ── الجدول ───────────────────────────────────────────────────────────────
+  // Table
   const printed = rows.slice(0, PRINT_ROW_CAP);
   const cellOf = (c, r) => {
     const raw = r[c.key];
     let text;
-    // كالشاشة: قيمةُ الفاتورة الضريبيّة تُكتب ولو صفرًا، وخاناتُ الكاش الفارغةُ «—».
+    // As on screen: a tax invoice value is written even if zero, and empty cash cells show a dash.
     if (c.money) text = raw || !isCash ? money2(raw) : '—';
     else if (c.fmt) text = c.fmt(raw, r) || '—';
     else text = cellText(raw) || '—';
     return c.color ? { t: text, color: c.color(r) } : text;
   };
   const foot = cols.map((c, i) => {
-    // مع النتيجة كلِّها: مجموعُ العمود هو رقمُ البطاقة نفسُه (تجميعُ الخادم)،
-    // لا مجموعُ قيمٍ مقرَّبةٍ صفًّا صفًّا قد يفترق عنه بهللة.
+    // With the whole result: the column total is the card figure itself (server aggregation), not a sum of per-row rounded values which could differ by a halala.
     if (c.money) {
       if (fullSet && c.key === 'value') return money2(cards.value);
       if (fullSet && c.key === 'collectedAmount' && isCash) return money2(cards.collected);
@@ -316,8 +277,7 @@ async function buildInvoiceStatement(kind, query, user, lang = 'ar') {
       `The table lists the first ${count(printed.length)} of ${count(rows.length)} — totals include all. Use the Excel export for the full list.`) });
   }
 
-  // ── خاتمةٌ للعميل لا توقيعاتُ مراجعةٍ داخليّة ───────────────────────────
-  // في كتلةٍ واحدةٍ مع خانة الختم، فلا تنفصلان على صفحتين.
+  // Closing for the customer, not internal review signatures. In one block with the stamp box so they do not split across two pages.
   blocks.push({
     kind: 'signatures',
     lead: [
@@ -336,8 +296,7 @@ async function buildInvoiceStatement(kind, query, user, lang = 'ar') {
     lang: ar ? 'ar' : 'en',
     footerNote: `${t('إنرجايز للخدمات اللوجستية', 'Energize Logistics')} · ${t('كشف حساب بتاريخ', 'Statement dated')} ${today}`,
   };
-  // وما يحتاجه إرسالُ الكشف بالبريد (collectionsMailController): لمن، وكم بقي،
-  // ومنذ متى، وجدولُ الفواتير كلُّه بأعمدة الورقة نفسِها لملفّ Excel المرفق.
+  // What emailing the statement needs (collectionsMailController): recipient, amount remaining, since when, and the full invoice table with the same columns as the sheet for the attached Excel file.
   const oldestDays = open.reduce((mx, r) => (r.ageDays != null && r.ageDays > mx ? r.ageDays : mx), 0);
   const mail = {
     partyName, codes, kindLabel, openCount: open.length, openValue, oldestDays, today,

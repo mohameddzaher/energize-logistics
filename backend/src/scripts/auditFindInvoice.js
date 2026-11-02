@@ -18,7 +18,7 @@ for (const name of wb.SheetNames) {
   }
 }
 
-// كم صفًّا في ورقة الفواتير له رقمٌ بلا اسمِ حساب؟
+// How many rows in the invoices sheet have a number but no account name?
 const inv = XLSX.utils.sheet_to_json(wb.Sheets['Daily Invoice Report'], { header: 1, defval: '', blankrows: false });
 let withNo = 0, noName = 0, noNameButDated = 0;
 for (let i = 6; i < inv.length; i += 1) {

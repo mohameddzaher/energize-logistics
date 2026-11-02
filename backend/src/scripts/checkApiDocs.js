@@ -1,17 +1,8 @@
 /**
- * فحصُ توثيق الـ API — يُشغَّل قبل كلّ نشر.
- *
- * ── لماذا فحصٌ لا توليدُ ملفّ ────────────────────────────────────────────────
- * الوثيقةُ لا تُخزَّن في ملفّ: تُبنى من `app._router` لحظةَ طلبها، فهي بطبيعتها
- * مطابقةٌ لما رُكِّب — لا شيءَ يشيخ. وما يبقى ممكنًا هو أن ينكسر المولِّدُ نفسُه
- * أو تُركَّب مساراتٌ لا يستطيع قراءتَها، فتُسلَّم للشركاء وثيقةٌ ناقصة.
- *
- * فهذا يبني الوثيقتين فعلًا — بالراوتر الحقيقيّ كما يُركَّب في الإنتاج — ويرفض
- * النشرَ إن كسرت إحداهما، أو إن خلت واجهةُ الشركاء من مساراتها، أو إن ظهر مسارٌ
- * لم يُعرَف حارسُه (وهو الخطأُ الصامت: مسارٌ مفتوحٌ تقول عنه الوثيقةُ إنّه
- * محروس، أو بالعكس).
- *
- *   node src/scripts/checkApiDocs.js
+ * API documentation check, run before every deploy.
+ * Why a check and not a generated file: the documentation is built from app._router when requested, so it always matches what is mounted and cannot age. What can still break is the generator itself, or mounted routes it cannot read, which would ship partners an incomplete document.
+ * So this builds both documents for real, with the actual router as mounted in production, and refuses the deploy if either breaks, if the partner API has none of its routes, or if a route with no known guard appears (the silent error: an open route documented as guarded, or the reverse).
+ * node src/scripts/checkApiDocs.js
  */
 process.env.NODE_ENV = process.env.NODE_ENV || 'production';
 process.env.API_DOCS_ONLY = '1';
@@ -42,8 +33,7 @@ const fail = (msg) => { console.error(`✗ ${msg}`); process.exit(1); };
   if (!partnerPaths) fail('وثيقةُ الشركاء فارغة — واجهةُ `/api/fleet-api` لم تُقرأ');
   if (internalPaths < 100) fail(`السطحُ الداخليُّ قُرئ ناقصًا (${internalPaths} مسارًا فقط)`);
 
-  // مسارٌ بلا حارسٍ معروف: إمّا مفتوحٌ فعلًا — وهو ما يجب أن يُعرَف — أو أنّ
-  // حارسَه لا يقول عن نفسِه. والحالتان تُقالان بالاسم لا تمرّان بصمت.
+  // A route with no known guard is either truly open, which must be known, or its guard does not identify itself. Both are reported by name and do not pass silently.
   const all = walk(app._router && app._router.stack).filter((r) => r.path.startsWith('/api'));
   const open = all.filter((r) => !r.auth && !r.section && !r.roles && !r.apiKey);
   const KNOWN_OPEN = [

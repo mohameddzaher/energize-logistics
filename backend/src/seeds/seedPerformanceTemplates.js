@@ -13,8 +13,7 @@ const mongoose = require('mongoose');
 const PerfTemplate = require('../models/PerfTemplate');
 const PerfSettings = require('../models/PerfSettings');
 
-// Shorthand: build the 1..5 scale from five Arabic labels, best-first as they
-// are written in the source documents (٥ … ١).
+// Shorthand: build the 1..5 scale from five Arabic labels, best-first as they are written in the source documents (5 down to 1).
 const scale = (s5, s4, s3, s2, s1) => [
   { score: 1, label: 'Poor', labelAr: s1 },
   { score: 2, label: 'Below', labelAr: s2 },

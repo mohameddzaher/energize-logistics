@@ -9,18 +9,11 @@ const rolePermissionSchema = new mongoose.Schema(
   {
     role: { type: String, required: true, unique: true, trim: true },
     sections: { type: Map, of: String, default: {} }, // sectionKey -> access level
-    // ── وأيُّ صفحاتِ القسم ────────────────────────────────────────────────────
-    // القسمُ يقول ماذا يُفعَل، والصفحةُ تقول أين: قسمُ المركبات تسعَ عشرةَ صفحة،
-    // ومن مُنح «تعديل» كان يأخذها كلَّها — سجلَّ المركبات وبترو آب والإعدادات
-    // وتقييمَ الأداء معًا.
-    //
-    // المفتاحُ مسارُ الصفحة (`/system/vehicles/petro-app`) والقيمةُ صواب أو خطأ.
-    // و**الغيابُ ليس منعًا**: صفحةٌ لا ذكرَ لها تتبع قسمَها — فالدورُ الذي لم
-    // يُفتَح له هذا الباب أصلًا يبقى كما كان، وصفحةٌ جديدةٌ تُولَد مسموحةً لمن
-    // يملك قسمَها بدل أن تختفي عن الجميع صامتةً.
+    // Which pages of the section.
+    // The section says what can be done and the page says where: the vehicles section has nineteen pages and an edit grant used to cover all of them (register, petro app, settings, performance review).
+    // The key is the page path (`/system/vehicles/petro-app`), the value true or false. ABSENCE IS NOT A DENIAL: an unlisted page follows its section, so roles not given this level stay as before and a new page is allowed for the section's holders instead of vanishing silently.
     pages: { type: Map, of: Boolean, default: {} }, // pagePath -> allowed
-    // مسارُ الدخول: أوّلُ شاشةٍ تُفتَح لصاحب هذا الدور. لدورٍ مصنوعٍ لا يعرفه
-    // `roleRoutes` قد تكون لوحةُ التحكّم غيرَ مسموحةٍ له أصلًا.
+    // Entry route: the first screen opened for this role. For a custom role unknown to `roleRoutes`, the dashboard may not be allowed at all.
     homePage: { type: String, trim: true, default: '' },
     updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   },

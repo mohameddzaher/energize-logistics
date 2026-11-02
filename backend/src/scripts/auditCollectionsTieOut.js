@@ -1,14 +1,6 @@
 /**
- * auditCollectionsTieOut — شاشاتُ التحصيل تقول رقمًا واحدًا.
- *
- *   node src/scripts/auditCollectionsTieOut.js
- *
- * يقرأ فقط. ينادي متحكِّماتِ الشاشات نفسَها (لا نسخةً من حسابها) ويطابق ما
- * تعرضه بعضَه ببعض وبدفتر الفواتير: اللوحةُ، وأعمارُ الديون، والفريقُ،
- * والتقييمُ، ودفترُ الفواتير، وصفحةُ الضريبيّ، وقائمةُ العملاء.
- *
- * وُجد لأنّ كلَّ شاشةٍ كان لها تعريفُها لـ«المفتوح»: ١٩٫٩٦ في اللوحة و٢٢٫٠٥
- * في الأعمار و٢٠٫٠٤ في التقييم و٤٥٫٣ في قائمة العملاء — والدفترُ واحد.
+ * Read-only tie-out: calls the screens' own controllers and checks the dashboard, aging, team, rating, invoice ledger, tax page and customer list agree with each other and with the ledger.
+ * Exists because each screen once defined OPEN differently while the ledger was one.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -32,7 +24,7 @@ const f = (n) => Number(n || 0).toLocaleString('en-US', { maximumFractionDigits:
   ])).map((x) => [x._id, x]));
   const tax = byKind.tax || { n: 0, t: 0 }; const cash = byKind.cash || { n: 0, t: 0 };
   const all = tax.t + cash.t;
-  // فاتورةٌ بلا حسابٍ مربوط لا تظهر في شاشةٍ تُجمَع بالحساب — تُعَدّ وتُقال.
+  // An invoice without a linked account is missing from account-grouped screens, so it is counted and reported.
   const orphan = (await CI.aggregate([{ $match: { ...CI.OPEN, party: null } }, { $group: { _id: null, n: { $sum: 1 }, t: { $sum: '$total' } } }]))[0] || { n: 0, t: 0 };
 
   const [ov, ag, tm, pf, li, tx, cu] = await Promise.all([

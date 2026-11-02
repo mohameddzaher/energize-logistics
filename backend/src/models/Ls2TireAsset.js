@@ -1,12 +1,7 @@
 /**
- * Ls2TireAsset — فردة كاوتش: one physical tire tracked by its SERIAL for life.
- * Where it is mounted right now (which flatbed, which of the 14 positions, which
- * section: الرأس / المحور الخلفي للرأس / التيدر / الاستبن) lives here; every
- * mount/removal/transfer is an Ls2AssetEvent. `sensor` is what the workshop
- * registered (يوجد/لايوجد) — the sensor-check endpoint compares it against what
- * the live Wialon feed actually reports.
- *
- * NOT the live pressure/temperature readings — those stay on Ls2Vehicle.tires.
+ * Ls2TireAsset: one physical tire tracked by SERIAL for life.
+ * Current mounting (flatbed, one of 14 positions, section) lives here; each mount/removal/transfer is an Ls2AssetEvent. `sensor` is what the workshop registered (present/absent), compared by the sensor-check endpoint with the live Wialon feed.
+ * NOT the live pressure/temperature readings; those stay on Ls2Vehicle.tires.
  */
 const mongoose = require('mongoose');
 
@@ -16,53 +11,28 @@ const ls2TireAssetSchema = new mongoose.Schema({
   type: { type: String, default: '' },                // Michelin / Bridgestone / Conti / China
   size: { type: String, default: '' },                // e.g. 315/80 R22.5
   sensor: { type: String, enum: ['yes', 'no', 'unknown'], default: 'unknown' },
-  // The tire's LIFECYCLE, exactly as the workshop runs it:
-  // ── دورة حياة الفردة كما تُدار في الورشة ──────────────────────────────────
-  // المكانُ على محورٍ واحد هنا، والدرجةُ (`condition`) وصفٌ للفردة لا لمكانها.
-  // التعريف الكامل وسببُه في config/tireStates.js.
-  //
-  //   mounted        مركَّبة على عربية أو تيدر
-  //   spare          على الرفّ — تُقرأ «الجديد» أو «المستعمل» بحسب درجتها
-  //   under_renewal  تحت التجديد: نزلت وتقرّر تجديدها، وهي في عهدة الورشة
-  //   at_factory     في المصنع: خرجت من الشركة فعلًا وصارت عند مصنع التجديد
-  //   scrap          سكراب: فشل تجديدها، تُحفظ للبيع
-  //   damaged        تالف: انتهت، لا تُستعمل ولا تُباع
-  //   sold           بيعت
-  //   retired/in_repair — قيمتان موروثتان تُقرآن ولا تُكتبان
-  //
-  // و«تحت التجديد» غير «في المصنع»: الأولى قرارٌ اتُّخذ والفردة عندنا، والثانية
-  // موضعٌ فعليّ خارج الشركة. ودمجُهما كان يجعل الورشة تعِد بفردةٍ ليست عندها.
+  // Tire lifecycle (full definition in config/tireStates.js). `condition` describes the tire, not its place.
+  // mounted (on truck/trailer), spare (shelf), under_renewal (decided to renew, still in workshop custody), at_factory (physically at the renewal factory), scrap, damaged, sold; retired/in_repair are legacy read-only values.
+  // Under renewal and at factory differ so the workshop never promises a tire it does not hold.
   status: { type: String, enum: require('../config/tireStates').STATUS_ENUM, default: 'mounted', index: true },
-  // ── درجة الفردة — وصفُها لا مكانُها ────────────────────────────────────────
-  //   new   جديدة من الشراء
-  //   used  مستعملة — وتشمل المجدَّدة، فالورشة تعاملهما على الرفّ سواءً.
-  //
-  // وكانت هنا درجةٌ ثالثة «at_factory» تصف **مكانًا**، فصارت خانة «في المصنع»
-  // تُعَدّ بالدرجة وخانة «تحت التجديد» بالحالة — وصفان لموضعٍ واحد من مصدرين،
-  // فاختلطا. المكان كلُّه في `status` الآن.
+  // Tire condition describes the tire, not its place.
+  // new: new from purchase
+  // used: used, including renewed (the workshop treats both alike on the shelf)
+  // A third condition `at_factory` described a place and mixed two sources; all location now lives in `status`.
   condition: { type: String, enum: ['new', 'used'], default: 'used' },
-  // كام في المية — recorded when a tire goes back to the shelf so the workshop
-  // can pick the right tire for the right slot later (تسكين). Null = never rated.
+  // Percent rating recorded when a tire goes back to the shelf, so the workshop can pick the right tire for a slot later. Null = never rated.
   conditionPercent: { type: Number, min: 0, max: 100, default: null },
   // Current mount (null while spare/retired)
   plate: { type: String, default: null },
   plateKey: { type: String, default: null, index: true },
   positionNumber: { type: Number, default: null },    // 1..14
-  positionLabel: { type: String, default: '' },       // "اطار 3 خارجي يمين"
-  section: { type: String, default: '' },             // الرأس / المحور الخلفي للرأس / التيدر / الاستبن
-  // أي تيدر الفردة دي عليه — لإطارات قسم التيدر بس.
-  //
-  // الفردة اللي على التيدر بتمشي مع **التيدر**، مش مع العربية. من غير الحقل ده
-  // كانت متخزّنة بلوحة العربية وبس، فأول ما التيدر ينتقل لعربية تانية كاوتشه
-  // يفضل مسجّل على العربية القديمة: القديمة تبقى ١٤ إطار وفيهم ٦ مش عليها،
-  // والجديدة ٨ — والاتنين غلط ومحدش واخد باله. ٣٤٢ إطار كانوا كده.
-  //
-  // ولما التيدر يبقى واقف لوحده (مش مركّب على عربية)، الفردة تفضل `mounted`
-  // ومعاها رقم التيدر و plate فاضية — هي فعلًا مركّبة، بس على حاجة مش مجرورة.
+  positionLabel: { type: String, default: '' },       // e.g. outer right tire 3
+  section: { type: String, default: '' },             // Section: head / head rear axle / trailer / spare
+  // Which trailer this tire is on (trailer-section tires only).
+  // A trailer tire follows the TRAILER, not the truck. Stored by truck plate alone, it stayed on the old truck after the trailer moved, leaving both trucks with wrong counts.
+  // A standalone trailer (no truck) keeps its tires `mounted` with the trailer number and an empty plate.
   trailerNumber: { type: String, default: null, index: true },
-  // Is this mounted tire serving as the truck's SPARE (الاستبن)? A first-class
-  // flag (not just text) so the workshop can see at a glance which tire is the
-  // spare — surfaced everywhere. Cleared automatically when the tire leaves a truck.
+  // Is this mounted tire serving as the truck's spare? A first-class flag (not just text) so every screen shows it. Cleared automatically when the tire leaves a truck.
   isSpare: { type: Boolean, default: false, index: true },
   notes: { type: String, default: '' },
 }, { timestamps: true });
@@ -76,32 +46,16 @@ ls2TireAssetSchema.index({ plateKey: 1, positionNumber: 1 }, {
   partialFilterExpression: { status: 'mounted', plateKey: { $type: 'string' }, positionNumber: { $type: 'number' } },
 });
 
-// `isSpare` and `section` must never disagree: the section text comes from the
-// workshop sheet, the flag is what every screen filters and counts on. They
-// drifted once — 47 tires sat in section «الاستبن» with the flag unset, so a
-// vehicle whose real layout is 6 head / 6 trailer / 2 spare rendered as
-// «رأس ٧ · استبن ١». Deriving the flag here means no caller can reintroduce it:
-// mount, swap, import and manual edit all go through save().
-//
-// Only a MOUNTED tire can be the spare — a tire on the shelf is not «الاستبن»
-// of anything, it is stock.
+// `isSpare` and `section` must never disagree: section text comes from the workshop sheet, the flag is what screens filter and count on. They drifted before, so the flag is derived here and mount, swap, import and manual edit all go through save().
+// Only a MOUNTED tire can be the spare; a shelf tire is stock.
 ls2TireAssetSchema.pre('save', function deriveIsSpare(next) {
   this.isSpare = this.status === 'mounted' && /استبن/.test(String(this.section || ''));
   next();
 });
 
 /**
- * ── رقمُ التيدر يتبع موضعَ الفردة — لا يُكتب بيد ───────────────────────────
- *
- * `trailerNumber` كان يُكتب عند الاستيراد ثمّ لا يمسّه شيء: فردةٌ تُنقل من
- * تيدر ٣٩ إلى استبن عربيّةٍ أخرى وتبقى «على تيدر ٣٩» في سجلّها. فتقول صفحةُ
- * التيدرات إنّها على التيدر، وتقول صفحةُ الكاوتشات إنّها على عربيّة ٨٢٠٠ —
- * والتيدرُ نفسُه واقفٌ لا عربيّةَ تحته. وموضعان لحقيقةٍ واحدةٍ يختلفان حتمًا.
- *
- * فالموضعُ هو الحقيقة، والتيدرُ يُشتقّ منه عند كلّ حفظ:
- *   · فردةٌ غيرُ مركّبة، أو مركّبةٌ على الرأس أو استبنًا ← لا تيدرَ لها.
- *   · فردةٌ في قسم التيدر على عربيّة ← تيدرُها هو المركّبُ على تلك العربيّة الآن.
- *   · فردةٌ في قسم التيدر بلا عربيّة ← واقفةٌ مع تيدرها، فيبقى رقمُه كما هو.
+ * Trailer number follows the tire's position and is never hand-written; otherwise a tire moved off a trailer kept the old trailer and two pages disagreed.
+ * Derived on every save: unmounted, head or spare means no trailer; trailer section on a truck means the trailer hitched to that truck now; trailer section without a truck keeps its number.
  */
 const TRAILER_SECTION = /تيدر|تريل/;
 ls2TireAssetSchema.statics.isTrailerSection = (section) => TRAILER_SECTION.test(String(section || ''));

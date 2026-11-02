@@ -1,10 +1,6 @@
 /**
- * createCollectionsUsers — حسابا قسم التحصيل: مديرُه وموظّفُه.
- *
- *   node src/scripts/createCollectionsUsers.js
- *
- * يُعاد تشغيلُه بلا ضرر: الحسابُ القائمُ يُحدَّث دورُه ولا تُمَسّ كلمةُ مروره،
- * فلا يُطرد من النظام مَن غيّر كلمتَه بعد إنشائه.
+ * createCollectionsUsers: the collections section's manager and staff accounts.
+ * Safe to rerun: an existing account gets its role updated, its password untouched, so users who changed it are not locked out.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -35,7 +31,7 @@ const USERS = [
       const before = existing.role;
       existing.role = u.role;
       existing.isActive = true;
-      // كلمةُ المرور لا تُعاد: مَن غيّرها بعد الإنشاء يفقد حسابَه لو أُعيدت.
+      // The password is not reset: a user who changed it would lose access.
       await existing.save();
       console.log(`↻ ${u.email} — كان «${before}» فصار «${u.role}»`);
       continue;

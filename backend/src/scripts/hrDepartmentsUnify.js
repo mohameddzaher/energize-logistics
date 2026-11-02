@@ -1,19 +1,8 @@
 /**
- * hrDepartmentsUnify — قائمةُ الأقسام وملفّاتُ الموظّفين على أقسامها (صاحبُ الشركة، ٢٠٢٦/١٠/١٩).
- *
- *   node src/scripts/hrDepartmentsUnify.js            ← عرضٌ فقط
- *   node src/scripts/hrDepartmentsUnify.js --apply
- *
- *   MD · CEO · ادارة  ← الإدارة
- *   الكافية           ← الموارد البشرية
- *   ادارة B2C         ← B2C
- *   بدون مشروع        ← بدون قسم
- *   غير مطلوب         ← بدون قسم   (ليس قسمًا — علامةُ خانةٍ كُتبت في خانة القسم)
- *
- * والقائمةُ (`Lookup` hr_department) تصير بذورَ config/lookupTypes بأسمائها، وما
- * سواها يُعلَّم محذوفًا (شاهدة: لا يعيده البذرُ عند الإقلاع). والقسمُ الذي ما زال
- * عليه موظّفٌ بعد التوحيد لا يُحذَف — يُطبَع ليُقرَّر فيه.
- * ولكلّ موظّفٍ نُقل سطرٌ في سجلّه (تبويب «السجلّ») بقسمه القديم.
+ * hrDepartmentsUnify: the department list and employee files moved onto it.
+ * Shows only; --apply writes.
+ * Mappings: MD, CEO and management to the management department; the cafeteria department to HR; the B2C management department to B2C; the no-project value and the not-required value to no department (the latter is a checkbox marker typed into the department field).
+ * The hr_department Lookup becomes the seeds in config/lookupTypes by name; everything else is marked deleted with a tombstone so seeding does not restore it. A department that still has an employee after unification is not deleted but printed for a decision. Each moved employee gets a history-tab entry with the old department.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -33,14 +22,14 @@ const MOVES = {
   await mongoose.connect(process.env.MONGODB_URI || process.env.MONGO_URI);
   const seed = byType('hr_department').seed;
 
-  // ── ١. الموظّفون ───────────────────────────────────────────────────────────
+  // 1. employees
   const rows = await Employee.find({ department: { $in: Object.keys(MOVES) } }).select('employeeNumber arabicName firstName lastName department').lean();
   const tally = {};
   for (const e of rows) { const k = `«${e.department}» ← «${MOVES[e.department]}»`; tally[k] = (tally[k] || 0) + 1; }
   console.log(`موظّفون يُنقَلون: ${rows.length}`);
   for (const [k, n] of Object.entries(tally)) console.log(`  ${String(n).padStart(4)}  ${k}`);
 
-  // ── ٢. القائمة ─────────────────────────────────────────────────────────────
+  // 2. the list
   const existing = await Lookup.find({ type: 'hr_department' }).lean();
   const byKey = new Map(existing.map((r) => [r.key, r]));
   const plan = [];
@@ -55,7 +44,7 @@ const MOVES = {
   for (const p of plan) console.log(`  ${p.op === 'create' ? '+' : '~'} ${p.op === 'create' ? '' : `«${p.r.nameAr}» → `}«${p.s.nameAr}»`);
   console.log(`  تُحذف: ${drop.map((r) => r.nameAr).join(' · ') || '—'}`);
 
-  // ما سيبقى عليه موظّفون وليس في القائمة.
+  // Departments that will remain on employees but are not in the list.
   const names = new Set(seed.map((s) => s.nameAr));
   const after = await Employee.aggregate([
     { $match: { isHrRecord: { $ne: false }, department: { $nin: [null, ''] } } },

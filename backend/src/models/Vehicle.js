@@ -1,32 +1,27 @@
 const mongoose = require('mongoose');
 
-// A company vehicle (مركبة): car, motorcycle, heavy truck, trailer, etc. In
-// Saudi an employee may only physically take/operate a company vehicle once a
-// formal authorization (تفويض) has been issued — see VehicleAuthorization. The
-// `currentAuthorization`/`currentEmployee` fields are denormalized pointers to
-// the single ACTIVE authorization for fast fleet listing; the full assignment
-// history lives in the VehicleAuthorization collection.
+// A company vehicle: car, motorcycle, heavy truck, trailer, etc. In Saudi an employee may only take or operate a company vehicle once a formal authorization is issued; see VehicleAuthorization. `currentAuthorization`/`currentEmployee` are denormalized pointers to the single ACTIVE authorization for fast fleet listing; the full assignment history lives in the VehicleAuthorization collection.
 const vehicleSchema = new mongoose.Schema(
   {
-    plateNumber: { type: String, required: true, unique: true, trim: true }, // رقم اللوحة
+    plateNumber: { type: String, required: true, unique: true, trim: true }, // Plate number
     type: {
       type: String,
       enum: ['car', 'motorcycle', 'heavy_truck', 'trailer', 'van', 'equipment', 'other'],
       default: 'car',
     },
-    make: { type: String, trim: true },   // الصانع
+    make: { type: String, trim: true },   // Manufacturer
     model: { type: String, trim: true },
     year: { type: Number },
     color: { type: String, trim: true },
 
     // Classification / ownership context (mirrors the HR sheet)
     branch: { type: mongoose.Schema.Types.ObjectId, ref: 'Branch' },
-    department: { type: String, trim: true }, // القسم (النقل الثقيل / B2C ...)
-    project: { type: String, trim: true },    // المشروع (امازون / هنقرستيشن ...)
+    department: { type: String, trim: true }, // Department (heavy transport / B2C ...)
+    project: { type: String, trim: true },    // Project (Amazon / HungerStation ...)
 
     // Documents / compliance (tracking only)
-    registrationExpiry: { type: String }, // انتهاء الاستمارة — YYYY-MM-DD
-    insuranceExpiry: { type: String },    // انتهاء التأمين — YYYY-MM-DD
+    registrationExpiry: { type: String }, // Registration expiry, YYYY-MM-DD
+    insuranceExpiry: { type: String },    // Insurance expiry, YYYY-MM-DD
 
     // Lifecycle status. `authorized` = currently assigned to an employee via an
     // active authorization; `parked` = revoked/idle; others self-explanatory.
@@ -43,10 +38,8 @@ const vehicleSchema = new mongoose.Schema(
 
     accidentCount: { type: Number, default: 0 },
 
-    // ── المركبةُ نفسُها في سجلّ المركبات (الورقة، وهي المرجع) ─────────────────
-    // هذا السجلُّ صار مرآةً لسجلّ المركبات في التفويض — راجع
-    // utils/vehicleAuthorization. يُثبَّت الربطُ هنا حين يُعرف باللوحة، فلا
-    // يُعاد تخمينُه من نصٍّ يُكتب بمسافةٍ أو بمسافتين.
+    // The same vehicle in the vehicle register (the paper record, which is the reference).
+    // This record is now a mirror of that register for authorizations; see utils/vehicleAuthorization. The link is stored here once known by plate, so it is not re-guessed from text typed with one or two spaces.
     master: { type: mongoose.Schema.Types.ObjectId, ref: 'VehicleMaster', default: null, index: true },
 
     notes: { type: String, trim: true },

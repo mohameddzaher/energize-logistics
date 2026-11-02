@@ -1,72 +1,9 @@
 /* eslint-disable no-console */
 /**
- * importFinalHrData2026 — الملفّ الوظيفيّ النهائيّ (أغسطس ٢٠٢٦).
- *
- *   node src/scripts/importFinalHrData2026.js --dry     خطّة كاملة بلا كتابة
- *   node src/scripts/importFinalHrData2026.js --yes     تنفيذ
- *
- * المصدر: seeds/data/hr-2026-08/ — أربعة عشر ملفًّا، كلٌّ منها عمودٌ أو عمودان
- * على مفتاحٍ واحد: «رقم الهوية». اثنا عشَرَ منها تحمل الـ٣٦٠ نفسها بلا زيادةٍ ولا
- * نقص، واثنان (رخص العمل والعقود) يحملان مجموعةً أضيق فيها اسمان خارج الـ٣٦٠،
- * فالمجموع اثنان وستّون وثلاثمئة رقم هوية.
- *
- * ── والسجلُّ والتأميناتُ خبرٌ واحد ───────────────────────────────────────────
- * الملفّ الرابع عشر («ملف السجل و التأمينات الاجتماعية») يحمل العمودين معًا،
- * وليس ذلك مصادفةَ ترتيب: الخمسةُ والخمسون الذين تركهم فارغين في «رقم السجل»
- * هم بأعيانهم الخمسةُ والخمسون المكتوب عندهم «غيرمطلوب» في التأمينات. فمن
- * ليس على سجلٍّ ليس عليه تأمينات، وفراغُ سجلّه قرارٌ لا نقص. ولذلك يُنسَخ
- * «غير مطلوب» من التأمينات إلى السجلّ — انظر `registerFollowsInsurance`.
- *
- * ── المفتاح، ولماذا يُطبَّع قبل المقارنة ────────────────────────────────────
- * إكسل يكتب رقم الهوية عددًا، وقاعدتنا تحفظه نصًّا، وقد تصل الأرقام هندية
- * («٢٦١٩٦٠٨٣٧١») أو بمسافةٍ في طرفها. والمقارنة النصّية الساذجة تجعل الموظّف
- * الواحد اثنين: واحدٌ في القاعدة وآخرُ «جديد» يُنشَأ فوقه. فيُطبَّع الطرفان إلى
- * أرقامٍ لاتينية متلاصقة قبل أن يلتقيا.
- *
- * ── «مطلوب» و«غير مطلوب» — وهما بيت القصيد ─────────────────────────────────
- * الخانة واحدةٌ من ثلاث لا رابعَ لها:
- *   ① قيمةٌ حقيقية      → تُخزَّن، ويُمحى عنها أيُّ عَلَمِ حالةٍ قديم.
- *   ② «مطلوب»           → نقصٌ على الموارد البشرية أن تجمعه → `<field>Status=required`
- *   ③ «غير مطلوب»       → قرارٌ إداريّ ألّا نجمعه أصلًا → `<field>Status=not_required`
- * والخانة الفارغة — أو التي كتب فيها إكسل صفرًا مكان الفراغ — «مطلوبٌ» أيضًا:
- * غيابُ البيانات شغلٌ ينتظر ما لم يقل أحدٌ صراحةً إنه غير مطلوب.
- *
- * والفرق بين ② و③ ليس تفصيلًا: سعوديٌّ لا جوازَ له في ملفّنا ليس «ناقصَ جواز»،
- * ووضعُه في قائمة عمل الموارد البشرية يجعلها كذبًا يضيّع وقت مَن يفتحها. لذلك
- * لا تُلفَّق الحالة هنا، بل تُكتب بالآلية القائمة نفسها في config/hrFields.js
- * وcontrollers/hrMasterController.js — لا آليةَ ثانية بجانبها.
- *
- * ── وسببُ الغياب لا يمحو قيمةً عندنا ────────────────────────────────────────
- * حين تقول الخانة «غير مطلوب» ويكون عندنا رقمُ جوازٍ مخزَّن، يبقى الرقم ويُكتب
- * العَلَم بجانبه. `statusOf` مصمَّمةٌ على ذلك: تُبقي «غير مطلوب» مهما وُجدت
- * قيمة، وتُرجِّح القيمةَ الموجودة على عَلَمِ «مطلوب» القديم. ومحوُ الرقم كان
- * يفقدنا بيانًا صحيحًا لا يعيده الشيتُ أبدًا لأنه لا يحمله أصلًا.
- *
- * ── والملف لا يدوس على شغل بني آدم ─────────────────────────────────────────
- * (نفس قاعدة a348299b، وكما نفّذها importFinalVehicles2026.js.) الشيت لقطةٌ من
- * ورق، ومَن فتح الشاشة بعده كان ينظر إلى الموظّف نفسه. فقاعدتان:
- *   ① تاريخُ انتهاءٍ جدَّده موظّفٌ بعد لقطة الملف يبقى — يُقرأ من EmployeeRenewal
- *      ويُطبَع مَن جدَّده وإلى أيّ تاريخ. تجديدٌ مسجَّلٌ بأثرِه أصدقُ من ورقةٍ
- *      كُتبت قبله.
- *   ② سجلٌّ `updatedAt` فيه أحدثُ من `lastImportAt` لمسَه إنسان، فلا يُكتب فيه
- *      شيءٌ لم يحمله الشيت. الشيت يزيد ولا ينقص.
- * وما لا تحمله هذه الملفات أصلًا (الراتب، الآيبان، التأمين الطبيّ، بطاقة
- * السائق، رخصة القيادة، تاريخ الميلاد، تاريخ التعيين…) لا يُكتب أبدًا فلا
- * يُمسّ: ملفُّ جوازاتٍ لا يقول شيئًا عن راتب.
- *
- * ── وما في القاعدة وليس في الملفات لا يُحذف ────────────────────────────────
- * أربعةٌ وأربعون موظّفًا في القاعدة لا ذكرَ لهم في هذه الملفات. لا `--replace`
- * هنا ولا حذفَ ولا تعطيل: غيابُ اسمٍ عن ورقةٍ ليس دليلَ خروجٍ من العمل، وقد
- * يكون سهوًا. يُطبَعون بأسمائهم وأرقامهم ليقرّر فيهم إنسان.
- *
- * ── حالة التوظيف لا يحرّكها هذا الاستيراد ──────────────────────────────────
- * عمود «حاله العمل» نصٌّ إداريّ يُكتب في `workStatusText`، ولا يُترجَم إلى
- * `employmentStatus` لمن هو في القاعدة أصلًا: «تم اصدار خروج نهائي» قرارٌ له
- * إجراءٌ كامل (إنهاء الخدمة، إرجاع العهد، مخالصة) ولا يصحّ أن يقع صامتًا من
- * سكربتِ استيراد. يُطبَع الخلافُ ليُتَّخذ القرار على الشاشة. أمّا المُنشأون
- * الجدد فلا حالةَ لهم أصلًا، فتُقرأ لهم من العمود عند الإنشاء وحده.
- *
- * الاستيراد فعّالٌ متكرّر (idempotent): إعادةُ تشغيله لا تغيّر شيئًا.
+ * Imports the final HR data files (August 2026) from seeds/data/hr-2026-08/, keyed by the ID number normalized to contiguous Latin digits (otherwise one employee becomes two). --dry plans, --yes applies; idempotent.
+ * Each cell is a real value (stored, old status flag cleared), required (<field>Status=required) or not required (<field>Status=not_required); empty or zero counts as required. Uses the existing mechanism in config/hrFields.js and controllers/hrMasterController.js; not required never erases a stored value. The commercial register follows insurance (see registerFollowsInsurance).
+ * Human work is not overwritten: later renewals win, and records with updatedAt newer than lastImportAt only get fields the sheet adds. Fields the files never carry (salary, IBAN, etc.) are never written.
+ * Employees absent from the files and employmentStatus changes are printed for a person to decide, never applied.
  */
 require('dotenv').config();
 const path = require('path');
@@ -80,13 +17,13 @@ const ARGV = process.argv.slice(2);
 const DRY = ARGV.includes('--dry') || !ARGV.includes('--yes');
 const DIR = path.join(__dirname, '..', 'seeds', 'data', 'hr-2026-08');
 
-// ── قراءة الخانات ────────────────────────────────────────────────────────────
+// Reading cells
 const S = (v) => (v === null || v === undefined ? '' : String(v).trim().replace(/\s+/g, ' '));
 const AR_DIGITS = (t) => String(t)
   .replace(/[٠-٩]/g, (d) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d))
   .replace(/[۰-۹]/g, (d) => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d));
 
-/** رقمٌ حقيقيّ أو null. النصّ الذي لا يُقرأ رقمًا ليس صفرًا — هو لا رقم. */
+/** A real number or null. Text that does not read as a number is not zero, it is no number. */
 const N = (v) => {
   if (v === null || v === undefined || v === '') return null;
   if (typeof v === 'number') return Number.isFinite(v) ? v : null;
@@ -96,14 +33,10 @@ const N = (v) => {
   return Number.isFinite(n) ? n : null;
 };
 
-// ── الأرقام التسلسلية للتواريخ ───────────────────────────────────────────────
-// إكسل يكتب التاريخ عددًا: ٤٦٣١١ = ١٦ أكتوبر ٢٠٢٦. ومبدؤه ٣٠ ديسمبر ١٨٩٩ لا
-// ١ يناير ١٩٠٠، بسبب سنةٍ كبيسةٍ وهميّة في ١٩٠٠ ورثها عن لوتس ١-٢-٣. الطرحُ من
-// المبدأ الخاطئ يزيح كلّ تاريخٍ في الملفّ يومًا كاملًا.
+// Excel date serials: 46311 = 16 Oct 2026. The epoch is 30 Dec 1899, not 1 Jan 1900, because of a fictitious 1900 leap year inherited from Lotus 1-2-3. Subtracting from the wrong epoch shifts every date in the file by a day.
 const EXCEL_EPOCH = Date.UTC(1899, 11, 30);
 const DAY = 86400000;
-// حدٌّ للعقل: ٢٠٠٠٠ ≈ ١٩٥٤ و٧٥٠٠٠ ≈ ٢١٠٥. رقمُ هويةٍ سقط في خانة تاريخٍ يخرج عن
-// هذا المدى، وقبولُه يصنع تاريخًا في القرن الخامس والعشرين.
+// Sanity bounds: 20000 is about 1954 and 75000 about 2105. An ID number that fell into a date cell is outside this range, and accepting it would produce a date in the 25th century.
 const serialToDate = (n) => {
   if (!Number.isFinite(n) || n < 20000 || n > 75000) return null;
   const d = new Date(EXCEL_EPOCH + Math.round(n) * DAY);
@@ -117,26 +50,19 @@ const D = (v) => {
   const d = new Date(String(v));
   return Number.isNaN(d.getTime()) ? null : d;
 };
-/** يومٌ بصيغة YYYY-MM-DD بتوقيت UTC — نفس ما تحفظه حقول التواريخ النصّية. */
+/** A day as YYYY-MM-DD in UTC, the same as the string date fields store. */
 const iso = (d) => (d ? new Date(d).toISOString().slice(0, 10) : '');
 const show = (v) => (v === '' || v === null || v === undefined ? '—' : (v instanceof Date ? iso(v) : String(v)));
 
-/**
- * مفتاح المطابقة: أرقامٌ لاتينية متلاصقة.
- * وبغيره يصير الموظّف الواحد اثنين — انظر رأس الملف.
- */
+/** Match key: contiguous Latin digits. Without it one employee becomes two; see the file header. */
 const idKey = (v) => AR_DIGITS(S(v)).replace(/[\s\-_ـ]/g, '');
 
 const filled = (v) => !(v === '' || v === null || v === undefined
   || (v instanceof Date && Number.isNaN(v.getTime())));
 
 /**
- * سببُ غياب القيمة، أو '' إن كانت الخانة تحمل قيمةً حقيقية.
- *
- * الصفر معاملَتُه معاملةَ الفراغ عن قصد: إكسل يكتبه مكان الخانة الخالية في
- * أعمدةٍ رقميّة كثيرة هنا (العنوان الوطنيّ، المدير المباشر، رقم السجلّ…)،
- * ونقلُه كما هو كان يجعل «٠» عنوانًا وطنيًّا لمئةٍ واثنين وثلاثين موظّفًا
- * وخيارًا في فلتر العناوين.
+ * The reason a value is absent, or '' if the cell holds a real value.
+ * Zero is deliberately treated as empty: Excel writes it in place of an empty cell in many numeric columns here (national address, direct manager, register number), and keeping it made 0 a national address for 132 employees and an option in the address filter.
  */
 const sentinel = (raw) => {
   const t = S(raw).replace(/ـ/g, '');
@@ -147,13 +73,8 @@ const sentinel = (raw) => {
   return '';
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  خريطة الأعمدة — كلُّ عمودٍ في كلّ ملفّ، وأين يذهب
-// ═══════════════════════════════════════════════════════════════════════════
-//
-// `status:false` تعني عمودًا لا مكانَ فيه لـ«مطلوب/غير مطلوب»: عمود «النوع»
-// قيمتُه صفرٌ أو «فري لانسر»، والصفر فيه **جوابٌ صريح** («ليس عملًا حرًّا») لا
-// خانةٌ فارغة. ولو عُومل كالفراغ لصار ثلاثةَ عشرَ وثلاثمئة موظّفٍ «ينقصهم نوع».
+// Column map: every column of every file and where it goes.
+// status:false means a column with no room for required/not required: the type column holds zero or the freelancer label, and zero there is an explicit answer (not freelance), not an empty cell. Treated as empty it would make 313 employees missing a type.
 const SHEETS = [
   {
     file: 'ارقام ابشر موظفين.xlsx',
@@ -189,7 +110,7 @@ const SHEETS = [
       { header: 'الفرع', field: 'branchName', kind: 'text' },
       { header: 'المدير المباشر', field: 'directManagerName', kind: 'text' },
       { header: 'المسمى الوظيفي', field: 'jobTitle', kind: 'text' },
-      // «النوع» عمودٌ منطقيّ لا نصّيّ — انظر التعليق فوق.
+      // The type column is boolean-like, not text; see the comment above.
       { header: 'النوع', field: 'isFreelancer', kind: 'freelancer', status: false },
     ],
   },
@@ -217,23 +138,18 @@ const SHEETS = [
     cols: [{ header: 'تاريخ انتهاء رخصة العمل', field: 'workPermitExpiry', kind: 'date' }],
   },
   {
-    // ── السجل والتأمينات الاجتماعية ────────────────────────────────────────
-    // موضعُه بعد «السجل للموظفين.xlsx» مقصود: الملفّان يحملان العمود نفسه،
-    // والأخيرُ في هذه القائمة هو الذي يفوز بقيمته في `p.fields`. وهذا أحدثُهما
-    // تسليمًا فهو المرجع؛ ولو سبقه لبقي رقمُ السجلّ القديم مكتوبًا فوق الجديد.
+    // Commercial register and social insurance.
+    // It is deliberately placed after the employees register file: both carry the same column and the last in this list wins its value in p.fields. This one was delivered later so it is the reference; if it came first the old register number would be written over the new one.
     file: 'ملف السجل و التأمينات الاجتماعية للموظفين .xlsx',
     registerFollowsInsurance: true,
     cols: [
-      // «٠» هنا رسمُ إكسل للخانة الفارغة لا رقمَ سجلّ — و`sentinel` يقرؤه فراغًا
-      // فلا يُخزَّن أبدًا. ولو خُزِّن لصار «٠» سجلًّا تجاريًّا لخمسةٍ وخمسين
-      // موظّفًا وخيارًا في فلتر السجلّات يُسأل عنه ولا وجودَ له.
+      // Zero here is Excel's drawing of an empty cell, not a register number, and sentinel reads it as empty so it is never stored. Stored, it would become a commercial register for 55 employees and a phantom option in the register filter.
       { header: 'رقم السجل', field: 'registerNumber', kind: 'digits' },
       { header: 'التأمينات الاجتماعية', field: 'socialInsuranceStatus', kind: 'gosiStatus' },
     ],
   },
   {
-    // العقود: صفٌّ لكلّ عقد. أعمدتُه تُقرأ هنا لقطةً على الموظّف، وتُقرأ مرّةً
-    // ثانيةً في القسم ③ لتصير وثيقةَ عقدٍ قائمةً بذاتها.
+    // Contracts: one row per contract. Its columns are read here as a snapshot on the employee, and again in section 3 to become a standalone contract document.
     file: 'ملف عقود الموظفين.xlsx',
     contracts: true,
     cols: [
@@ -242,13 +158,13 @@ const SHEETS = [
       { header: 'تاريخ نهاية العقد', field: 'contractEndDate', kind: 'date' },
       { header: 'الاجازه السنوية', field: 'annualLeaveDays', kind: 'digits' },
       { header: 'فترة التجربة', field: 'probationPeriod', kind: 'text' },
-      // عمودُ السجلّ هنا يُقرأ للمقارنة والسدّ، لا ليكون المرجع — انظر ما تحت قراءة الملفّات.
+      // The register column here is read for comparison and gap-filling, not as the reference; see the file-reading section.
       { header: 'السجل', field: 'registerNumber', kind: 'digits', fallbackOnly: true },
     ],
   },
 ];
 
-/** حالة التوظيف من نصّ «حاله العمل» — تُقرأ للمُنشَأ حديثًا وحده. */
+/** Employment status from the work status text; read for newly created employees only. */
 const employmentFromText = (t) => {
   const s = S(t);
   if (!s) return 'active';
@@ -257,7 +173,7 @@ const employmentFromText = (t) => {
   return 'active';
 };
 
-/** قيمة الخانة بحسب نوع عمودها. */
+/** Cell value by column type. */
 function readCell(kind, raw) {
   switch (kind) {
     case 'date': {
@@ -269,8 +185,7 @@ function readCell(kind, raw) {
       return /^\d+$/.test(t) ? t : (t || null);
     }
     case 'phone': {
-      // إكسل يقرأ «٠٥٩٥٠٠١٠٦١» عددًا فيبتلع صفرَه الأول. ونقلُه كما عاد يغيّر
-      // كلَّ جوّالٍ في النظام إلى تسع خاناتٍ لا يتّصل بها أحد.
+      // Excel reads a leading-zero mobile number as a number and drops the zero; carrying it over would change every mobile in the system to nine digits nobody can call.
       const t = AR_DIGITS(S(raw)).replace(/[\s+\-()]/g, '');
       if (/^5\d{8}$/.test(t)) return `0${t}`;
       return t || null;
@@ -280,18 +195,15 @@ function readCell(kind, raw) {
       return /@/.test(t) ? t : null;
     }
     case 'gender': {
-      // مخزون القاعدة `male`/`female` (enum في الموديل)، والشيت يكتبها عربيّة.
-      // الترجمة هنا لا هناك: تغييرُ الـenum يكسر كلّ ما كُتب قبله.
+      // The DB stores male/female (an enum in the model) and the sheet writes Arabic. Translate here, not there: changing the enum breaks everything written before.
       const t = S(raw);
       if (/^(ذكر|male|m)$/i.test(t)) return 'male';
       if (/^(انثى|أنثى|female|f)$/i.test(t)) return 'female';
       return null;
     }
     case 'gosiStatus': {
-      // الحقل نصٌّ حرٌّ في الموديل، وفي القاعدة قيمٌ عربيّة كتبتها استيراداتٌ
-      // سابقة. فتُوحَّد صياغةُ ما نعرفه هنا: «غيرنشط» و«غير نشط» حالةٌ واحدة،
-      // وتركُهما كما وردا يصنع خيارين في الفلتر لشيءٍ واحد فيُقسَم العدّاد.
-      // وما لا نعرفه يمرّ كما هو — لا تُخترَع له قيمة ولا يُطرَح.
+      // The field is free text in the model, and the DB holds Arabic values from earlier imports. Known spellings are unified here: two spellings of inactive are one state, and leaving both makes two filter options for one thing and splits the counter.
+      // Unknown values pass through as they are, neither invented nor dropped.
       const t = S(raw);
       if (/^نشط$/.test(t)) return 'نشط';
       if (/^غير\s*نشط$/.test(t)) return 'غير نشط';
@@ -304,14 +216,10 @@ function readCell(kind, raw) {
   }
 }
 
-// ── قراءة ملفّ ───────────────────────────────────────────────────────────────
+// Reading a file
 /**
- * صفوفُ ملفٍّ مع صفّ عناوينه.
- *
- * صفُّ العناوين ليس الأوّل دائمًا: ملفّ العقود صفُّه الأوّل عدّاداتٌ كتبها
- * الملفّ لنفسه («٤٦» مكرَّرة) وعناوينُه في الثاني. فيُبحث عن الصفّ الذي فيه
- * «الهوية» بدل أن يُفترَض موضعُه — والافتراض هنا يقرأ العدّادات عناوينَ فلا
- * يُطابَق عمودٌ واحد.
+ * A file's rows with its header row.
+ * The header is not always the first row: the contracts file's first row holds counters the file wrote for itself (46, repeated) and its headers are in the second. So search for the row containing the ID header rather than assuming a position, otherwise the counters are read as headers and no column matches.
  */
 function readSheet(file) {
   const full = path.join(DIR, file);
@@ -326,9 +234,7 @@ function readSheet(file) {
   const head = (rows[hi] || []).map(S);
   const body = [];
   rows.slice(hi + 1).forEach((r, i) => {
-    // الصفوف الفارغة تمامًا ليست صفوفًا: ملفّ العقود مساحتُه ٩٢٩ صفًّا وفيه
-    // ٢٦٩ عقدًا فقط، والباقي فراغُ ورقةٍ ممتدّة. عدُّها صفوفًا ناقصةً يملأ
-    // التقرير بستّمئةٍ وستّين «صفًّا بلا هوية» لا وجودَ لها.
+    // Completely empty rows are not rows: the contracts file's used range is 929 rows but only 269 are contracts, the rest is blank sheet. Counting them as incomplete rows would fill the report with 660 phantom rows without an ID.
     if (!r || !r.some((c) => c !== null && c !== '')) return;
     body.push({ row: r, sheetRow: hi + i + 2 });
   });
@@ -342,20 +248,15 @@ function readSheet(file) {
     process.exit(1);
   }
 
-  // ── لقطة الملفّات ──────────────────────────────────────────────────────────
-  // لا عمودَ «أيام متبقّية» في هذه الملفّات يُستخرج منه يومُ كتابتها كما في
-  // ملفّ المركبات، فيُؤخَذ أحدثُ تعديلٍ على الملفّات نفسها. وعليه يُقاس «هل
-  // جدَّد موظّفٌ مستندًا بعد لقطة الملفّ؟».
+  // File snapshot time. These files have no days-remaining column to derive the writing day from (as the vehicles file does), so the latest modification time of the files themselves is used. It is the basis for asking whether an employee renewed a document after the snapshot.
   const SNAPSHOT = new Date(Math.max(...SHEETS.map((s) => +fs.statSync(path.join(DIR, s.file)).mtime)));
 
-  const skipped = [];   // صفوفٌ لم تُقرأ، ولماذا
-  const notes = [];     // ملاحظاتٌ على البيانات نفسها
-  const kept = [];      // ما تُرك لأنّ إنسانًا كتبه بعد الملفّ
+  const skipped = [];   // Rows not read, and why
+  const notes = [];     // Notes on the data itself
+  const kept = [];      // What was left because a person wrote it after the file
   const sheetStats = [];
 
-  // ════════════════════════════════════════════════════════════════════════
-  //  ① قراءة الملفّات الثلاثة عشر إلى خطّةٍ واحدة على مفتاح الهوية
-  // ════════════════════════════════════════════════════════════════════════
+  // Step 1: read the 13 files into one plan keyed by ID number
   /** key → { key, names:Set, fields:{}, statuses:{}, fallback:{}, sources:Set } */
   const plan = new Map();
   const of = (key) => {
@@ -393,8 +294,7 @@ function readSheet(file) {
       rowsRead++;
 
       if (spec.contracts) {
-        // ملفّ العقود يقبل أكثر من صفٍّ للشخص الواحد — هو تاريخُ عقودٍ لا صفٌّ
-        // لكلّ موظّف. لا تُرفَض التكرارات هنا؛ يُرفَض تكرارُ العقد نفسه في ③.
+        // The contracts file may have more than one row per person: it is a contract history, not one row per employee. Duplicates are not rejected here; a repeat of the same contract is rejected in step 3.
         contractRows.push({ key, sheetRow, row, idx, head });
       } else if (seen.has(key)) {
         dup++;
@@ -403,10 +303,8 @@ function readSheet(file) {
       }
       if (!spec.contracts) seen.set(key, sheetRow);
 
-      // ── لقطةُ العقد على الموظّف تُؤخذ من أحدث عقدٍ بدايةً ────────────────────
-      // ترتيبُ الصفوف في الورقة ليس ترتيبًا زمنيًّا، فـ«آخرُ صفٍّ يفوز» يضع على
-      // الموظّف عقدًا قديمًا انتهى ويُخفي السارِيَ — فتقرأ الشاشةُ عقدًا منتهيًا
-      // لمن عقدُه سارٍ. والوثائق كلُّها تُسجَّل على أيّ حال في القسم ③.
+      // The contract snapshot on the employee comes from the contract with the latest start date. Row order in the sheet is not chronological, so last row wins would put an expired old contract on the employee and hide the active one.
+      // All documents are recorded anyway in section 3.
       if (spec.contracts) {
         const si = idx['تاريخ بداية العقد'];
         const st = si === undefined ? null : D(row[si]);
@@ -420,23 +318,19 @@ function readSheet(file) {
         const raw = row[idx[c.header]];
         const code = c.status === false ? '' : sentinel(raw);
         const value = code ? null : readCell(c.kind, raw);
-        // خانةٌ ليست سببَ غيابٍ ولا تُقرأ قيمةً: تاريخٌ لا يُقرأ، بريدٌ بلا @،
-        // جنسٌ بكلمةٍ غير معروفة. تُعلَن ولا تُخترَع لها قيمة.
+        // A cell that is neither a reason for absence nor a readable value (unreadable date, email without @, unknown gender word) is reported and no value is invented.
         if (!code && value === null) {
           skipped.push(`${spec.file} صف ${sheetRow} · ${c.header}: «${S(raw)}» لا تُقرأ ${c.kind} — تُرِكت`);
           continue;
         }
         const bucket = c.fallbackOnly ? p.fallback : p.fields;
         if (code) { if (!c.fallbackOnly) p.statuses[c.field] = code; continue; }
-        // صفوفُ العقود مُنِعت فوق إلا أحدثَها بدايةً، فما يصل هنا منها هو
-        // العقد الحاليّ لا آخرُ صفٍّ في الورقة.
+        // Contract rows were filtered above to the latest start only, so what arrives here is the current contract, not the last row in the sheet.
         bucket[c.field] = value;
       }
 
-      // ── فراغُ السجلّ عند «غير مطلوب» قرارٌ لا نقص ────────────────────────────
-      // تركُه «مطلوبًا» يضع خمسةً وخمسين اسمًا في قائمة عمل الموارد البشرية
-      // لجمع رقمِ سجلٍّ قرّر الملفُّ نفسه — في العمود المجاور — أنّه غير مطلوب.
-      // وهو نفسُ الخلط الذي يجعل القائمة كذبًا (انظر رأس الملف).
+      // A blank register where insurance says not required is a decision, not a gap.
+      // Leaving it required would put 55 names on the HR worklist to collect a register number that the file itself, in the adjacent column, says is not required. This is the same mix-up that makes the list wrong (see file header).
       if (spec.registerFollowsInsurance
         && p.statuses.socialInsuranceStatus === 'not_required'
         && !filled(p.fields.registerNumber)) {
@@ -446,13 +340,9 @@ function readSheet(file) {
     sheetStats.push({ file: spec.file, headerRow, rows: rowsRead, dup, ids: spec.contracts ? new Set(contractRows.map((r) => r.key)).size : seen.size });
   }
 
-  // ── السجلّ التجاريّ: المرجع ملفّه، والعقود تسدّ فراغه ──────────────────────
-  // الملفّان في الحزمة نفسها ويقولان الشيء نفسه، لكنّ ملفّ السجلّ يترك خمسةً
-  // وخمسين خانةً فارغة ويحمل ملفُّ العقود لبعضها رقمًا. تركُها «مطلوبةً» ونحن
-  // نملك جوابها في الحزمة ذاتها يضع أسماءً في قائمة عملٍ لا عملَ فيها. المرجع
-  // يبقى ملفَّ السجلّ حين ينطق، والخلافُ يُطبَع ولا يُبتلَع.
-  // ورقمٌ حقيقيٌّ في ملفّ العقود يسبق عَلَمَ «غير مطلوب» المنسوخَ من التأمينات:
-  // مَن له رقمُ سجلٍّ مكتوبٌ فهو على سجلّ، والعَلَم كان استنتاجًا من فراغٍ لا خبرًا.
+  // Commercial register: its own file is the reference, and contracts fill its gaps.
+  // The two files are in the same package and say the same thing, but the register file leaves 55 cells empty while the contracts file carries a number for some of them. Leaving them required when the package has the answer puts names on a worklist with nothing to do. The register file stays the reference when it speaks, and conflicts are printed, not swallowed.
+  // A real number in the contracts file beats the not-required flag copied from insurance: someone with a register number is on a register, and the flag was an inference from emptiness, not a statement.
   let regFilled = 0; let regOverNotRequired = 0; const regConflict = [];
   for (const p of plan.values()) {
     const fb = p.fallback.registerNumber;
@@ -482,28 +372,19 @@ function readSheet(file) {
   }
   console.log(`   الإجمالي: ${plan.size} هوية مميّزة\n`);
 
-  // ════════════════════════════════════════════════════════════════════════
-  //  ② المطابقة بقاعدة البيانات
-  // ════════════════════════════════════════════════════════════════════════
+  // Step 2: matching against the database
   const all = await Employee.find({}).lean();
   const byIqama = new Map();
   for (const e of all) {
-    // ── الهويّةُ خانتان لا واحدة ────────────────────────────────────────────
-    // المقيمُ رقمُه في `iqamaNumber` والسعوديُّ في `nationalId`، والشيتُ يسمّي
-    // العمودَ «رقم الهوية» للاثنين. والمطابقةُ بخانةٍ واحدة تجعل السعوديَّ
-    // يبدو غيرَ موجودٍ فيُنشأ له سجلٌّ ثانٍ في كلّ استيراد — وهو ما حدث مع
-    // «اسماء جميل عبدالعزيز كتبي» (#1230).
+    // Identity is two fields, not one: a resident's number is in iqamaNumber and a Saudi's in nationalId, while the sheet calls the column ID number for both. Matching on one field makes the Saudi look absent, and a second record is created on every import (this happened with one employee, #1230).
     for (const raw of [e.iqamaNumber, e.nationalId]) {
       const k = idKey(raw);
-      // الأول يفوز: سجلٌّ مكرَّرُ الهوية موجودٌ في القاعدة، والكتابةُ في الثاني
-      // تجعل الشاشةَ تعرض الأول بلا تحديث فيبدو الاستيراد وكأنه لم يعمل.
+      // First wins: a record with a duplicate ID exists in the DB, and writing to the second makes the screen show the first without the update, so the import looks like it did nothing.
       if (k && !byIqama.has(k)) byIqama.set(k, e);
     }
   }
 
-  // نوعُ كلّ حقلٍ يُقرأ من المخطَّط نفسه لا من قائمةٍ مكتوبة باليد: بعضُ تواريخ
-  // هذا الموديل نصوصٌ (iqamaExpiry) وبعضُها تواريخٌ حقيقية (healthCertExpiry)،
-  // وكتابةُ Date في مسارٍ نصّيّ تُخزِّن «Fri Oct 16 2026 …» فلا يقرؤها فلتر.
+  // Each field's type is read from the schema, not a hand-written list: some date fields in this model are strings (iqamaExpiry) and some real dates (healthCertExpiry). Writing a Date into a string path stores a long date string that no filter can read.
   const instanceOf = (k) => (Employee.schema.path(k) || {}).instance || 'String';
   const coerce = (k, v) => {
     if (v === null || v === undefined) return v;
@@ -516,16 +397,13 @@ function readSheet(file) {
   };
 
   /**
-   * ختمُ «آخر استيراد» — يُكتب **بعد** الحفظ وبكتابةٍ لا تحرّك `updatedAt`.
-   *
-   * لو كُتب مع الحفظ لصار `updatedAt` أحدثَ منه بجزءٍ من الثانية (mongoose يضعه
-   * في الحفظة نفسها)، فيُقرأ كلُّ سجلٍّ في التشغيل التالي «لمسه إنسان» فلا يُكتب
-   * فيه شيءٌ أبدًا بعد اليوم — أي أنّ الاستيراد يشلّ نفسه من أوّل مرّة.
+   * Last-import stamp: written after the save, with a write that does not move updatedAt.
+   * If written with the save, updatedAt would be fractionally newer (mongoose sets it in the same save), so on the next run every record would read as touched by a person and nothing would ever be written to it: the import would disable itself from the first run.
    */
   const stampImport = (id) => Employee.updateOne(
     { _id: id }, { $set: { lastImportAt: new Date() } }, { timestamps: false });
 
-  // تجديداتٌ سجّلها موظّفٌ بعد لقطة الملفّ — أحدثُ من الورق فتسبقه.
+  // Renewals recorded by an employee after the file snapshot: newer than the paper, so they take precedence.
   const DOC_OF_FIELD = {
     iqamaExpiry: 'iqama', passportExpiry: 'passport',
     workPermitExpiry: 'workPermit', contractEndDate: 'contract',
@@ -545,12 +423,9 @@ function readSheet(file) {
   };
   const created = [];
   const workStatusDrift = [];
-  // ── ولماذا يُفرَد رقمُ السجلّ بإعلان ────────────────────────────────────────
-  // تغيُّرُه على موظّفٍ ليس ملءَ فراغ: هو نقلُه من سجلٍّ تجاريٍّ إلى آخر، وعليه
-  // تُبنى تقاريرُ الجهات واشتراكاتُ التأمينات. وهو يمرّ في هذا السكربت كأيّ حقلٍ
-  // آخر فلا يراه أحد — فيُطبَع باسمه ورقميه ليقرأه إنسان ويتأكّد.
+  // The register number is announced separately: changing it for an employee is not filling a gap, it moves him from one commercial register to another, and authority reports and insurance subscriptions are built on it. It would pass through this script like any other field unseen, so it is printed with both numbers for a person to confirm.
   const regChanged = [];
-  const empByKey = new Map();   // key → مستند الموظّف بعد الحفظ (يحتاجه القسم ③)
+  const empByKey = new Map();   // key -> employee document after save (needed by section 3)
 
   for (const p of [...plan.values()]) {
     const name = [...p.names][0] || '';
@@ -558,9 +433,7 @@ function readSheet(file) {
     const isNew = !emp;
 
     if (isNew) {
-      // الاسم يُشَقّ: أوّلُ كلمةٍ اسمٌ أوّل والباقي اسمٌ أخير — والموديل يشترط
-      // الاثنين. واسمٌ من كلمةٍ واحدة يأخذ الكلمة نفسها في الطرفين حتى لا
-      // يسقط الصفّ كلّه على حقلٍ لا يقرؤه أحد.
+      // The name is split: the first word is the first name and the rest the last name, since the model requires both. A single-word name takes the same word on both sides so the row does not fail on a field nobody reads.
       const parts = name.split(' ').filter(Boolean);
       if (!name) { skipped.push(`الهوية ${p.key}: جديدة وبلا اسمٍ في أيّ ملف — لم تُنشَأ`); continue; }
       const doc = {
@@ -568,19 +441,17 @@ function readSheet(file) {
         arabicName: name,
         firstName: parts[0],
         lastName: parts.slice(1).join(' ') || parts[0],
-        // الهويّة السعودية تبدأ بـ١ والإقامة بـ٢ — قاعدةٌ حكوميّة تنطبق على
-        // الـ٣٦٠ كلّها هنا بلا شذوذ. وبغيرها يظهر السعوديّ «ناقصَ إقامة».
+        // A Saudi ID starts with 1 and an iqama with 2, a government rule that holds for all 360 here without exception. Without it a Saudi shows as missing an iqama.
         idType: /^1/.test(p.key) ? 'national_id' : 'iqama',
         isHrRecord: true,
         inCurrentMaster: true,
-        // حالةُ التوظيف تُقرأ عند الإنشاء وحده — انظر رأس الملف.
+        // Employment status is read at creation only. See the file header.
         employmentStatus: employmentFromText(p.fields.workStatusText),
       };
       created.push({ key: p.key, name, status: doc.employmentStatus, work: p.fields.workStatusText || '—' });
       if (DRY) {
         sum.employeesCreated++;
-        // معرّفٌ وهميّ في التجربة، وإلا بدا كلُّ عقدٍ لموظّفٍ جديد «صفًّا بلا
-        // موظّف» فكانت خطّةُ العقود تُخفي ما ستفعله فعلًا عند التنفيذ.
+        // A dummy id in dry run, otherwise every contract of a new employee would look like a row without an employee and the contracts plan would hide what it will really do on apply.
         empByKey.set(p.key, { _id: new mongoose.Types.ObjectId(), __dry: true });
       } else {
         emp = new Employee(doc);
@@ -602,35 +473,28 @@ function readSheet(file) {
       continue;
     }
 
-    // ── موظّفٌ قائم ──────────────────────────────────────────────────────────
+    // Existing employee
     const doc = DRY ? null : await Employee.findById(emp._id);
-    const current = emp;                              // لقطةٌ قبل الكتابة
+    const current = emp;                              // Snapshot before writing
     const touched = current.lastImportAt
       ? new Date(current.updatedAt) > new Date(current.lastImportAt)
       : false;
     let changed = false;
 
-    // ── العضويّة في الملفّ الوظيفيّ الحاليّ ──────────────────────────────────
-    // وجودُ الاسم في هذه الملفّات **هو** تعريفُ «في الماستر الحاليّ»، وعليه يقوم
-    // النطاقُ الافتراضيّ لكلّ شاشةٍ في القسم. فمَن كان خارجَه وعاد فيه يبقى
-    // مخفيًّا عن كلّ عدّادٍ وقائمة حتى يُرفَع الفلتر — وهو موجودٌ يعمل.
+    // Membership in the current HR file: the name appearing in these files is the definition of being in the current master, and each screen in the section scopes by it by default. Someone outside it who returns stays hidden from every counter and list until the filter is lifted, although he is working.
     if (!current.inCurrentMaster) {
       if (!DRY) doc.set('inCurrentMaster', true);
       changed = true;
       notes.push(`${p.key} · ${name}: كان خارج الماستر الحاليّ وهو في الملفّات — أُعيد إليه`);
     }
 
-    // ── الاسم يُقارَن ولا يُكتَب ────────────────────────────────────────────
-    // عمود «الاسم» في هذه الملفّات وسيلةُ تعرُّفٍ على الصفّ لا موضوعَه — موضوعُ
-    // كلِّ ملفٍّ عمودُه الأخير. والأسماء العربية تُكتب بأكثر من رسم («عبدالرحمن»
-    // و«عبد الرحمن»)، فالكتابةُ فوقها تقلب مئات الأسماء ذهابًا وإيابًا مع كلّ
-    // تسليمٍ بلا أن يطلب ذلك أحد. الخلافُ يُطبَع ليُصحَّح حيث يجب.
+    // The name is compared, not written. The name column in these files identifies the row, it is not its subject (that is each file's last column). Arabic names have several spellings, so overwriting would flip hundreds of names back and forth on every delivery. Differences are printed to be corrected where they belong.
     if (name && S(current.arabicName) && S(current.arabicName) !== name) {
       sum.namesDiffer++;
       notes.push(`اسمٌ مختلف — ${p.key}: الملفّ «${name}» · وعندنا «${S(current.arabicName)}» (لم يُغيَّر)`);
     }
 
-    // «حاله العمل» تُكتب نصًّا ولا تحرّك enum التوظيف — يُطبَع الخلاف ليُقرَّر.
+    // The work status is written as text and does not move the employment enum; the difference is printed for a decision.
     const wantEmployment = employmentFromText(p.fields.workStatusText);
     if (p.fields.workStatusText && wantEmployment !== current.employmentStatus) {
       workStatusDrift.push(`${p.key} · ${name}: الشيت «${p.fields.workStatusText}» (${wantEmployment}) · وعندنا ${current.employmentStatus}`);
@@ -642,7 +506,7 @@ function readSheet(file) {
       const cv = coerce(k, v);
       if (cv === undefined) continue;
 
-      // (أ) تجديدٌ سجّله موظّفٌ بعد لقطة الملفّ يسبق الورق.
+      // (a) A renewal recorded by an employee after the file snapshot takes precedence over the paper.
       const docType = DOC_OF_FIELD[k];
       const ren = docType ? freshRenewals.get(`${current._id}:${docType}`) : null;
       if (ren) {
@@ -655,9 +519,7 @@ function readSheet(file) {
         regChanged.push(`${p.key} · ${name}: عندنا ${show(before)} · والملفّ ${show(cv)}`);
       }
 
-      // (ب) سجلٌّ لمسه إنسانٌ بعد آخر استيراد: الشيت يملأ الفارغ ولا يكتب فوق
-      //    المكتوب. لقطةُ ورقٍ أُخذت قبل أن يفتح الموظّف الشاشة ليست أحدثَ ممّا
-      //    كتبه وهو ينظر إلى الشخص. وما يُترك يُطبَع باسمه وقيمتيه ليُقرَّر فيه.
+      // (b) A record touched by a person after the last import: the sheet fills empty fields and never overwrites written ones. A paper snapshot taken before the employee opened the screen is not newer than what he wrote while looking at the person. What is left out is printed with both values for a decision.
       if (touched && filled(before)) {
         kept.push(`${p.key} · ${name} · ${k}: الملفّ «${show(cv)}» · وكتب موظّفٌ «${show(before)}» بعد آخر استيراد — بقيت`);
         sum.keptUserFields++;
@@ -667,18 +529,14 @@ function readSheet(file) {
       changed = true; sum.valuesWritten++;
     }
 
-    // (ج) والحالةُ لا تمحو قيمةً — تُكتب بجانبها.
+    // (c) A status never erases a value; it is written beside it.
     for (const [k, code] of Object.entries(p.statuses)) {
       if (!H.getField(k)) continue;
       if (filled(current[k])) {
-        // خانةٌ بلا قيمةٍ في الشيت وعندنا قيمة: تبقى قيمتنا. و`statusOf` تُرجّح
-        // القيمة على عَلَم «مطلوب»، وتُبقي «غير مطلوب» قرارًا إداريًّا فوقها.
+        // A cell with no value in the sheet where we have one: our value stays. statusOf prefers the value over the required flag and keeps not required as an administrative decision above it.
         kept.push(`${p.key} · ${name} · ${k}: الشيت «${H.statusLabel(code)}» · وعندنا «${show(current[k])}» — بقيت`);
         sum.keptOverSentinel++;
-        // ولا يُكتب «مطلوب» فوق حقلٍ مملوء: `pre-save` في الموديل يمسحه في
-        // اللحظة نفسها (وهو محقّ — الحقل ليس ناقصًا)، فكتابتُه تجعل كلّ تشغيلٍ
-        // يكتب ويُمسح فلا يستقرّ الاستيراد على حالٍ ولا يصير تكرارُه بلا أثر.
-        // أمّا «غير مطلوب» فقرارٌ إداريّ يبقى فوق القيمة، فتُكتب.
+        // required is not written over a filled field: the model's pre-save hook clears it at once (rightly, the field is not missing), so every run would write and clear it and the import would never settle or be a no-op on re-run. Not required is an administrative decision that stays above the value, so it is written.
         if (code === 'required') continue;
       }
       if (String(current.fieldStatus?.[H.statusKeyOf(k)] ?? '') === code) continue;
@@ -686,7 +544,7 @@ function readSheet(file) {
       changed = true;
       if (code === 'required') sum.statusRequired++; else if (code === 'not_required') sum.statusNotRequired++;
     }
-    // (د) قيمةٌ حقيقية وصلت من الشيت تمحو أيَّ عَلَمِ حالةٍ قديم على حقلها.
+    // (d) A real value from the sheet clears any old status flag on its field.
     for (const k of Object.keys(p.fields)) {
       if (!H.getField(k)) continue;
       if (!(H.statusKeyOf(k) in (current.fieldStatus || {}))) continue;
@@ -701,19 +559,9 @@ function readSheet(file) {
     empByKey.set(p.key, DRY ? null : (doc || emp));
   }
 
-  // ════════════════════════════════════════════════════════════════════════
-  //  ③ العقود — وثيقةٌ لكلّ صفّ، ومطابقةٌ لا تتضاعف بإعادة التشغيل
-  // ════════════════════════════════════════════════════════════════════════
-  //
-  // ملفّ العقود مساحتُه ٩٢٩ صفًّا وفيه ٢٦٩ عقدًا حقيقيًّا لـ٢٦٩ شخصًا — أي أنّه
-  // اليومَ عقدٌ واحدٌ لكلّ موظّف لا تاريخُ عقود. لكنّ النموذج يقبل التاريخ:
-  // المفتاح الثابت هو **(الموظّف + تاريخ البداية)** لا رقمُ الصفّ، فلو أضافت
-  // الموارد البشرية عقدًا ثانيًا لشخصٍ غدًا انضمّ إلى تاريخه ولم يَدُس على
-  // سابقه. ولو اشتُقّ المفتاح من ترتيب الصفوف لتغيّرت المفاتيح كلّها بإدراج
-  // صفٍّ واحد في المنتصف، فتُنشَأ مئتان وتسعةٌ وستّون عقدًا فوق القديمة.
-  //
-  // والراتبُ والبدلات لا يمسّها هذا الاستيراد أبدًا: الملفّ لا يحملها، وعقدٌ
-  // قائمٌ في القاعدة فيه راتبٌ مكتوب أصدقُ من صفرٍ نخترعه.
+  // Step 3: contracts, one document per row, matched so re-runs do not duplicate.
+  // The stable key is (employee + start date), not the row number: a second contract for the same person joins his history, and a key from row order would change for every row when one is inserted. The file's used range is 929 rows with 269 real contracts.
+  // Salary and allowances are never touched: the file does not carry them, and an existing salary is truer than an invented zero.
   const today = iso(new Date());
   const byEmployeeContracts = new Map();
   for (const cr of contractRows) {
@@ -727,8 +575,7 @@ function readSheet(file) {
     const startD = sentinel(cell('تاريخ بداية العقد')) ? null : D(cell('تاريخ بداية العقد'));
     const endD = sentinel(cell('تاريخ نهاية العقد')) ? null : D(cell('تاريخ نهاية العقد'));
     if (!startD) {
-      // بلا تاريخ بدايةٍ لا مفتاحَ ثابتًا للعقد ولا يقبله الموديل أصلًا — تُترك
-      // لقطةُ العقد على الموظّف (القسم ①) ولا تُخترَع وثيقةٌ بتاريخٍ ملفَّق.
+      // Without a start date there is no stable contract key and the model rejects it. The contract snapshot on the employee (section 1) is kept and no document is invented with a fabricated date.
       skipped.push(`عقود صف ${cr.sheetRow} (${cr.key}): «${show(S(cell('تاريخ بداية العقد')))}» ليست تاريخ بداية — لا مفتاح للعقد`);
       sum.contractsSkipped++;
       continue;
@@ -741,9 +588,9 @@ function readSheet(file) {
       type: endDate ? 'fixed' : 'unlimited',
       startDate,
       endDate,
-      // المدّة محسوبةٌ من تاريخَي الملفّ نفسه لا مفترَضةً اثني عشر شهرًا.
+      // Duration is computed from the file's own two dates, not assumed to be twelve months.
       durationMonths: endD ? Math.max(1, Math.round((endD - startD) / DAY / 30.4375)) : 0,
-      // الافتراضُ ٢١ هو افتراضُ الموديل نفسه، وهو حقلٌ إلزاميّ فيه.
+      // The default 21 is the model's own default, and the field is required there.
       annualLeaveDays: leave === null ? 21 : leave,
       jobTitle: sentinel(cell('المهنة في العقد')) ? '' : S(cell('المهنة في العقد')),
     };
@@ -752,7 +599,7 @@ function readSheet(file) {
 
     const found = await Contract.findOne({ employee: emp._id, startDate });
     if (!found) {
-      // «سارٍ» أو «منتهٍ» حقيقةٌ تقرؤها من التاريخ، لا قرارًا نتّخذه.
+      // Active or expired is a fact read from the date, not a decision we make.
       const body = { ...doc, status: endDate && endDate < today ? 'expired' : 'active' };
       if (!DRY) await Contract.create(body);
       sum.contractsCreated++;
@@ -760,22 +607,19 @@ function readSheet(file) {
     }
     const before = JSON.stringify(found.toObject());
     found.set(doc);
-    // «مُنهًى» قرارُ إنسانٍ له إجراؤه (مخالصة، إرجاع عهدة) — لا يعيده تاريخُ
-    // انتهاءٍ مكتوبٌ في ورقة، وإحياؤه يعيد إلى القوائم مَن خرج فعلًا.
+    // Terminated is a human decision with its own procedure (settlement, custody return); an expiry date written in a sheet does not bring it back, and reviving it would return someone who really left to the lists.
     if (found.status !== 'terminated') found.status = endDate && endDate < today ? 'expired' : 'active';
-    // المقارنة قبل/بعد هي ما يجعل إعادة التشغيل بلا أثر: بغيرها يُحفظ كلُّ عقدٍ
-    // في كلّ مرّة فيتحرّك `updatedAt` لمئتين وتسعةٍ وستّين عقدًا بلا تغييرٍ فيها.
+    // The before/after comparison is what makes a re-run a no-op: without it every contract is saved on every run and updatedAt moves for 269 unchanged contracts.
     if (before === JSON.stringify(found.toObject())) { sum.contractsUnchanged++; continue; }
     if (!DRY) await found.save();
     sum.contractsUpdated++;
   }
 
-  // ── العقد الأحدث هو لقطةُ الموظّف، والأقدمُ المنتهي لا يبقى «ساريًا» ────────
+  // The latest contract is the employee's snapshot, and an older expired one does not stay active.
   for (const [empId, list] of byEmployeeContracts) {
     const newest = list.slice().sort((a, b) => (a.doc.startDate < b.doc.startDate ? 1 : -1))[0];
     if (!newest) continue;
-    // عقدٌ آخرُ في القاعدة مضى تاريخُ انتهائه ومازال مكتوبًا «ساريًا» ليس رأيًا
-    // نغيّره بل خطأٌ يصحّحه التاريخ — والموديل ينصّ على عقدٍ ساري واحد للموظّف.
+    // Another contract in the DB whose end date has passed but is still marked active is not an opinion to change but an error the date corrects; the model states one active contract per employee.
     const others = await Contract.find({ employee: empId, status: 'active', startDate: { $ne: newest.doc.startDate } }).lean();
     for (const o of others) {
       if (!o.endDate || o.endDate >= today) continue;
@@ -785,9 +629,7 @@ function readSheet(file) {
     }
   }
 
-  // ════════════════════════════════════════════════════════════════════════
-  //  ④ في القاعدة وليس في الملفّات — يُطبَع ولا يُمَسّ
-  // ════════════════════════════════════════════════════════════════════════
+  // Step 4: in the DB but not in the files; printed, never touched
   const sheetKeys = new Set(plan.keys());
   const dbOnly = all
     .filter((e) => e.isHrRecord !== false
@@ -799,9 +641,7 @@ function readSheet(file) {
       status: e.employmentStatus, master: !!e.inCurrentMaster,
     }));
 
-  // ════════════════════════════════════════════════════════════════════════
-  //  التقرير
-  // ════════════════════════════════════════════════════════════════════════
+  // Report
   console.log('النتيجة:', JSON.stringify(sum, null, 1));
 
   if (created.length) {

@@ -1,21 +1,7 @@
 /**
- * صافي النقل يُعاد اشتقاقُه في كلّ معاملةٍ قائمة — مرّةً واحدة.
- *
- * ── العلّة ──────────────────────────────────────────────────────────────────
- * صار «صافي النقل» فرقًا محسوبًا لا خانةً تُملأ: ما نأخذه من العميل
- * (`revenue.transportSelling`) ناقصَ ما ندفعه للناقل (`costs.transport`) —
- * راجع recomputeTotals في models/CustomsClearance.
- *
- * والقاعدةُ تسري عند الحفظ، فلو تُركت المعاملاتُ القائمةُ لحالها لتغيّر ربحُها
- * واحدةً واحدةً كلّما فتحها أحدٌ وحفظ: لوحةٌ تتحرّك أرقامُها بلا حدثٍ يفسّرها.
- * فتُحسب كلُّها في مرّةٍ واحدةٍ معلومةِ الأثر.
- *
- * وأثرُها معروفٌ قبل تشغيلها: مئةٌ وثمانٍ معاملاتٍ لها سعرُ نقلٍ بلا سعرِ مورد،
- * فصافيها يصير سعرَ البيع كاملًا — وهو الصحيح متى نقلنا بسياراتنا. والقرارُ
- * قرارُ صاحب العمل، اتُّخذ في ٢١ سبتمبر ٢٠٢٦.
- *
- * تجربةٌ افتراضًا؛ `--apply` للكتابة.
- *   node src/scripts/recomputeCustomsTransportNet.js [--apply]
+ * Re-derives transport net on every existing customs transaction, once.
+ * Transport net is now a computed difference: `revenue.transportSelling` minus `costs.transport` (see recomputeTotals in models/CustomsClearance). Existing rows are recomputed in one run so profits do not shift one by one on later saves.
+ * Dry run by default; `--apply` writes.
  */
 require('dotenv').config({ quiet: true });
 const mongoose = require('mongoose');

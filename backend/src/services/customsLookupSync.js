@@ -1,13 +1,6 @@
 /**
- * إعادةُ تسمية بندٍ في إعدادات قسم التخليص تسري في الحال — وعلى ما مضى.
- *
- * كلُّ إدخالٍ في «مراحل السداد» وكلُّ بندٍ في فاتورة العميل يلقط اسمَ بنده
- * وقتَ الإضافة (`label`)، ومرفقُه في «مرفقات المعاملة» يحمل الاسمَ عنوانًا.
- * فكان من يصحّح اسمًا في الإعدادات يراه في القوائم الجديدة وحدَها، ويبقى
- * القديمُ على كلّ ما سُجِّل قبله — في الشاشة وفي التصدير وعند الماليّة.
- *
- * فيُنقَل الاسمُ الجديدُ إلى اللقطات: ما كان يحمل الاسمَ القديمَ حرفًا بحرف
- * يصير بالجديد. وعنوانُ مرفقٍ غيّره صاحبُه بيده لا يُمسّ — ليس اسمَ البند.
+ * Renaming an item in the customs settings applies immediately and retroactively. Payment-stage entries and customer invoice items snapshot the item name (`label`), and the transaction attachment uses it as its title, so old rows kept the old name.
+ * The new name is propagated to snapshots that carry the old name exactly; an attachment title edited by hand is left alone.
  */
 const cache = require('../utils/ttlCache');
 
@@ -37,7 +30,7 @@ async function lookupRenamed({ type, key, from, to }) {
     touched += a.modifiedCount || 0;
   }
   try { cache.clear('customs:'); cache.clear('finance:'); } catch (_) { /* */ }
-  // الشاشاتُ المفتوحةُ تعيد القراءة: المعاملةُ وقائمتُها ولوحةُ القسم والماليّة.
+  // Open screens refetch: the transaction, its list, the section dashboard and finance.
   try { require('../websocket/socketManager').emitToAll('customs:updated', { renamed: { type, key } }); } catch (_) { /* */ }
   return { touched };
 }

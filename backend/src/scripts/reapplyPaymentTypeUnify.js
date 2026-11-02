@@ -1,19 +1,7 @@
 /**
- * reapplyPaymentTypeUnify — يُعيد توحيدَ العملاء الذين وُحِّدوا قبل أن يثبت التوحيد.
- *
- *   node src/scripts/reapplyPaymentTypeUnify.js            ← عرضٌ فقط (لا يكتب شيئًا)
- *   node src/scripts/reapplyPaymentTypeUnify.js --apply    ← يكتب
- *
- * ── لماذا ───────────────────────────────────────────────────────────────────
- * كان «توحيد» في صفحة أنواع الدفع يكتب `paymentTypeSource: 'auto'`، والمزامنةُ
- * تعيد اشتقاقَ كلِّ `auto` في كلّ دورة: كشوفُ العملاء الضريبيّين التي تقول عنها
- * المنصّةُ «cash» عادت كاشًا، وكشوفُ عملاء الكاش ذاتُ الفواتير الصادرة عادت
- * ضريبيّة. فعاد عددُ «المخالف» بعد كلّ توحيد.
- *
- * صار التوحيدُ يكتب `unified` فيثبت. وهذا السكربت يُعيد قرارَ مَن وُحِّد من قبل:
- * كلُّ عميلٍ في سجلّ التدقيق له `unify_customer_payment_type` وما زالت صفتُه هي
- * الصفةَ التي وُحِّد عليها آخرَ مرّة — يُطبَّق عليه الشرطُ نفسُه الذي يطبّقه الزرّ
- * (`unifyFilter`): لا يُمسّ اختيارُ اليد، ولا كشفُ عميلِ كاشٍ صدرت له فاتورة.
+ * Reapplies unification for customers unified before it became sticky.
+ * Usage: node src/scripts/reapplyPaymentTypeUnify.js [--apply]; view only otherwise.
+ * The unify action wrote paymentTypeSource 'auto' and sync re-derives every auto each cycle, so tax customers' statements the platform calls cash reverted to cash and cash customers with issued invoices reverted to tax, bringing the mismatch count back. Unify now writes 'unified', which sticks. This script reapplies earlier decisions: every customer with a unify_customer_payment_type audit entry whose attribute still equals the unified one gets the same condition the button uses (unifyFilter): manual choices are untouched, as are statements of cash customers with an issued invoice.
  */
 require('dotenv').config({ quiet: true });
 const mongoose = require('mongoose');
@@ -27,7 +15,7 @@ const APPLY = process.argv.includes('--apply');
   const OperationsWorkflow = require('../models/OperationsWorkflow');
   const { unifyFilter } = require('../controllers/paymentTypesController');
 
-  // آخرُ توحيدٍ لكلّ عميل.
+  // Last unify per customer.
   const logs = await AuditLog.find({ action: 'unify_customer_payment_type' })
     .sort({ createdAt: 1 }).select('entityId changes createdAt').lean();
   const last = new Map();
@@ -38,7 +26,7 @@ const APPLY = process.argv.includes('--apply');
     const party = await CollectionsParty.findById(id).select('name nameKey paymentType').lean();
     if (!party) continue;
     const wanted = log.changes?.after?.paymentType;
-    // الصفةُ تغيّرت بعد التوحيد — القرارُ القديمُ لم يعد قائمًا.
+    // The attribute changed after unification, so the old decision no longer holds.
     if (!wanted || wanted !== party.paymentType) continue;
     const filter = await unifyFilter(party);
     if (!filter) continue;

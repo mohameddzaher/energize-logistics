@@ -1,15 +1,8 @@
 /**
- * b2cSheetsBackup — نسخةٌ احتياطيّةٌ من شيتات أوردرات B2C قبل إلغاء ربطها (٢٠٢٦/١٠/١٩).
- *
- *   node src/scripts/b2cSheetsBackup.js <dir>              ← نسخةٌ فقط
- *   node src/scripts/b2cSheetsBackup.js <dir> --disable    ← نسخةٌ ثمّ إيقافُ المزامنة
- *
- * في <dir>:
- *   · كلُّ شيتِ جوجل مربوطٍ ملفَّ xlsx كما هو الآن (المشروع_الفرع_المعرّف.xlsx)؛
- *   · وصورةٌ كاملةٌ (EJSON) من: b2cdailyorders · b2creps · b2cprojects ·
- *     b2cgooglesheetsyncs · b2cexceluploads — فما كان قبل الإلغاء يُستعاد كما كان.
- * و--disable يوقف المزامنة في إعداداتها (`enabled: false`) ولا يحذفها: الروابطُ
- * تبقى سجلًّا لما كان.
+ * b2cSheetsBackup: backup of the B2C order sheets before they are unlinked.
+ * Usage: node src/scripts/b2cSheetsBackup.js <dir> (backup only) | <dir> --disable (backup, then stop sync)
+ * In <dir>: every linked Google sheet as an xlsx as it is now (project_branch_id.xlsx), and a full EJSON dump of b2cdailyorders, b2creps, b2cprojects, b2cgooglesheetsyncs, b2cexceluploads, so the pre-unlink state can be restored.
+ * --disable sets enabled: false on the syncs and does not delete them; the links stay as a record.
  */
 require('dotenv').config();
 const fs = require('fs');

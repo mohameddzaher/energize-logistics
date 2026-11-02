@@ -1,11 +1,8 @@
-/**
- * /api/crm-vendors — CRM Vendors (الموردين). Separate route file + path so it
- * can't interfere with the existing CRM module. Same access tier as CRM.
- */
+/** /api/crm-vendors: CRM Vendors. Separate route file and path so it cannot interfere with the existing CRM module. Same access tier as CRM. */
 const express = require('express');
 const router = express.Router();
 
-// معرّفٌ مشوَّهٌ في الرابط = لا سجلّ، لا عطلٌ في الخادم — راجع utils/idParam.
+// A malformed id in the URL means no record, not a server error; see utils/idParam.
 const { objectIdParam } = require('../utils/idParam');
 router.param('id', objectIdParam());
 const c = require('../controllers/crmVendorController');

@@ -1,32 +1,15 @@
 /**
- * ls2TireSensors — كم فردةً من كاوتش الشاحنة عليها حسّاسٌ **يبثّ فعلًا**.
- *
- * الورشة تُركّب الحسّاسات على دفعات، فالأسطول اليوم خليطٌ: شاحنةٌ اكتمل تسليحها
- * وأخرى نصفها. ولم يكن ثمّة رقمٌ واحد يقول للإدارة أين وصلت الحملة، فكان
- * المتابع يفتح تبويب «الحسّاسات» شاحنةً شاحنة ويجمع بنفسه.
- *
- * والحساب هنا في الخادم لا في المتصفّح عمدًا: الشاشتان (الأسطول المباشر وسجل
- * الأسطول) وتطبيق الهاتف تعرض الرقم نفسه، ولو اشتقّته كلُّ واحدةٍ وحدها لاختلفت
- * أرقامها عند أوّل تعديلٍ في قاعدة الاشتقاق، وصار الرقم موضع جدلٍ بدل أن يكون
- * جوابًا.
- *
- * ولمَ مصدران للحقيقة؟ لأن كلًّا منهما يعرف ما يجهله الآخر:
- *   • سجل الأصول (Ls2TireAsset) يعرف **المواضع**: أين كلُّ فردة، وأيّها سُجّل
- *     لها حسّاس. لكنّه ورقٌ: قد يُسجَّل حسّاسٌ ثم يتلف ولا يُحدَّث السطر.
- *   • البثّ الحيّ (Ls2Vehicle.tires) يعرف **العمل**: أي القنوات تُرسل حرارةً
- *     وضغطًا الآن. لكنّه لا يعرف موضع الفردة في تسمية الورشة.
- * فالأخضر يُحسب من البثّ لا من السجل — لأن السؤال «عليها حسّاس؟» جوابه عمليًّا
- * «هل يعطي قراءة؟» — والسجل يُستعمل لمعرفة عدد المواضع وتسميتها، ولكشف
- * المُركَّب الصامت.
+ * ls2TireSensors: how many of a truck's tires have a sensor that is actually transmitting.
+ * The workshop fits sensors in batches, so the fleet is a mix of fully and half equipped trucks, and no single number showed campaign progress.
+ * Computed on the server so the live fleet screen, the fleet register and the mobile app show the same number; if each derived it alone they would diverge on the first rule change.
+ * Two sources, each knowing what the other does not:   asset register (Ls2TireAsset) knows positions: where each tire is and which has a sensor registered; but it is paper, a sensor may be registered then die without an update.   live stream (Ls2Vehicle.tires) knows work: which channels send temperature and pressure now; but not the tire's position in the workshop naming. Green is computed from the stream, since "has a sensor?" practically means "gives a reading?"; the register supplies position counts and names, and detects the silent installed sensor.
  */
 const Ls2TireAsset = require('../models/Ls2TireAsset');
 const Ls2Flatbed = require('../models/Ls2Flatbed');
 const cache = require('../utils/ttlCache');
 const { vehiclePlateKey } = require('../utils/plateKey');
 
-// المخطط الرسمي لمواضع الكاوتش كما تكتبه الورشة في كشوفها. مكانه الخادم لا
-// الشاشة: منه تُشتقّ أعداد المواضع (الأرض/الاستبن) للشاحنة التي لم تُجرَد بعد،
-// فلو بقي في الواجهة وحدها لَما استطاع الخادم أن يحسب رقمًا صحيحًا لها.
+// Official tire position layout as the workshop writes it in its sheets. It lives on the server, not the screen, because position counts (ground/spare) for a truck not yet inventoried are derived from it.
 const TIRE_POSITIONS = [
   { n: 1, label: 'اطار 1 يسار', section: 'الرأس' },
   { n: 2, label: 'اطار 2 يمين', section: 'الرأس' },
@@ -44,14 +27,11 @@ const TIRE_POSITIONS = [
   { n: 14, label: 'اطار 14', section: 'الاستبن' },
 ];
 
-// القسم يُقرأ بالتطابق النمطي لا بالمساواة النصّية: نصّ القسم يأتي من كشف
-// الورشة بصيغٍ متعدّدة («الاستبن» و«استبن» و«التيدر» و«تريلا»)، والمساواة
-// الحرفية كانت تُسقط الفردة إلى قسم الرأس بلا أن يشتكي أحد.
+// Section is matched by pattern, not string equality: the section text comes from the workshop sheet in several forms (spare, trailer and so on), and exact equality dropped the tire into the head section silently.
 const isSpareSection = (s) => /استبن/.test(String(s || ''));
 const isTrailerSection = (s) => /تيدر|تريل/.test(String(s || ''));
 
-// أعداد المخطط القياسي، مشتقّةً من الجدول أعلاه لا مكتوبةً بالأرقام: لو زِيد
-// موضعٌ أو نُقص في الجدول تَبِعه الحساب من تلقاء نفسه.
+// Standard layout counts, derived from the table above rather than hard-coded, so adding or removing a position follows automatically.
 const STD = (() => {
   const spare = TIRE_POSITIONS.filter((p) => isSpareSection(p.section)).length;
   const trailer = TIRE_POSITIONS.filter((p) => isTrailerSection(p.section)).length;
@@ -59,21 +39,15 @@ const STD = (() => {
   return { spare, trailer, head, ground: head + trailer };
 })();
 
-// «قناةٌ تبثّ» — بالتعريف نفسه الذي يستعمله كاشف تغيّر الحسّاسات في ls2Poll.
-// توحيد التعريف مقصود: لو اختلفا لأنذر الكاشف بتغيّرٍ لا يظهر في العمود، أو
-// أظهر العمود أخضرَ لا يراه الكاشف.
+// "Channel that transmits", the same definition the sensor-change detector in ls2Poll uses. Kept identical on purpose: otherwise the detector would alert on a change the column does not show, or the column would show green where the detector sees none.
 const isReporting = (t) => t.tempC != null || (t.pressurePsi != null && t.pressurePsi > 10);
 
 const LAYOUT_KEY = 'ls2:tireSensorLayout';
-const LAYOUT_TTL = 60000; // سجل الأصول يتغيّر بفعل الورشة (مرّات في اليوم)، لا بالثواني
+const LAYOUT_TTL = 60000; // The asset register changes by workshop action (a few times a day), not by the second.
 
 const EMPTY_ENTRY = { known: false, hasTrailer: false, ground: [], spares: [] };
 
-/**
- * خريطة plateKey ← مواضع الشاحنة المسجّلة. استعلامٌ واحد لكل الأسطول بدل
- * استعلامٍ لكل صفٍّ في الجدول: الشاشة تعرض سبعًا وخمسين شاحنة، والقراءة
- * الواحدة على Atlas تكلّف نحو ٩٠ مللي ثانية ذهابًا وإيابًا.
- */
+/** Map of plateKey to the truck's registered positions. One query for the whole fleet instead of one per table row: the screen shows 57 trucks and one Atlas read costs about 90 ms round trip. */
 async function loadLayoutMap() {
   return cache.wrap(LAYOUT_KEY, LAYOUT_TTL, async () => {
     const [tires, flatbeds] = await Promise.all([
@@ -88,7 +62,7 @@ async function loadLayoutMap() {
       return map.get(key);
     };
     for (const t of tires) {
-      if (!t.plateKey) continue; // فردةٌ على تيدرٍ واقفٍ وحده — ليست على شاحنة الآن
+      if (!t.plateKey) continue; // A tire on a standalone trailer; not on a truck now.
       const e = entryFor(t.plateKey);
       e.known = true;
       if (t.isSpare || isSpareSection(t.section)) e.spares.push(t);
@@ -103,23 +77,14 @@ async function loadLayoutMap() {
   });
 }
 
-// تُستدعى من ls2AssetsController عند أي حركة أصول: تركيبُ فردةٍ بحسّاس يجب أن
-// يظهر في العمود فورًا، لا بعد دقيقةٍ يظنّ فيها الفنيّ أن تسجيله ضاع.
+// Called from ls2AssetsController on any asset movement: fitting a tire with a sensor must show in the column at once, not after a minute in which the technician thinks the registration was lost.
 function clearLayoutCache() {
   cache.clear(LAYOUT_KEY);
 }
 
 /**
- * حصّة شاحنةٍ واحدة: «٧ / ٥ / ٢» = مركَّبٌ عليه حسّاسٌ يعمل / باقي مواضع الأرض
- * بلا حسّاس / عدد الاستبن.
- *
- * اشتقاق عدد المواضع (ولمَ لا يُكتب ١٢ و٢ رقمين ثابتين): الشاحنات ليست سواء —
- * الرأس وحده ستّ فردات، وبتيدرٍ اثنتا عشرة، وقد يأتي تيدرٌ بمحاورَ أكثر. فالعدد
- * يُؤخذ من السجل حين يشهد بأكثر من القياسي، ويُهبَط إلى مواضع الرأس وحدها حين
- * يشهد السجل شهادةً موجبة أن لا تيدر (سطحةٌ مسجَّلة، بلا رقم تيدر، ولها فردات
- * مسجَّلة ليس فيها فردةُ تيدرٍ واحدة). وما عدا ذلك فالقياسي — لأن الشاحنة التي
- * لم تُجرَد بعدُ مواضعها موجودةٌ على الأرض وإن خلا منها الورق، وإسقاطها يجعل
- * العمود يقول «٧ / ٠ / ٠» عن شاحنةٍ ينقصها خمسة حسّاسات.
+ * Share for one truck: "7 / 5 / 2" = fitted with working sensor / ground positions without sensor / spare count.
+ * Position counts are derived rather than fixed at 12 and 2: trucks differ (head alone has six tires, with trailer twelve, and a trailer may have more axles). The count is taken from the register when it shows more than standard, and drops to head positions only when the register positively shows no trailer (registered flatbed, no trailer number, with registered tires none of which is a trailer tire). Otherwise the standard, since a truck not yet inventoried still has its positions on the ground, and dropping them would show "7 / 0 / 0" for a truck missing five sensors.
  */
 function summarize(reg, liveTires) {
   const e = reg || EMPTY_ENTRY;
@@ -133,8 +98,7 @@ function summarize(reg, liveTires) {
 
   const live = Array.isArray(liveTires) ? liveTires : [];
   const reporting = live.filter(isReporting).length;
-  // قناةٌ موجودةٌ على الناقل لكنّها تُرسل هراءً (حرارة ١٧٧٤°، أو راية عطلٍ
-  // كهربائي): حسّاسٌ **مركَّب وصامت** — وهذا بالضبط ما لا يجوز عدّه أخضر.
+  // A channel exists on the carrier but sends garbage (temperature 1774, or an electrical fault flag): an installed and silent sensor, which must not be counted green.
   const faulty = live.filter((t) => t.fault).length;
 
   const withSensor = Math.min(reporting, groundCount);
@@ -142,27 +106,22 @@ function summarize(reg, liveTires) {
 
   const fitted = ground.filter((t) => t.sensor === 'yes').length;
   const spareFitted = spares.filter((t) => t.sensor === 'yes').length;
-  // البثّ الزائد عن مواضع الأرض لا يكون إلا من استبنٍ مسلَّح — فالقنوات لا تزيد
-  // على المركَّب على الأرض إلا بذلك.
+  // Stream beyond the ground positions can only come from an armed spare; channels do not exceed those fitted on the ground otherwise.
   const spareReporting = Math.max(0, Math.min(spareCount, reporting - groundCount));
 
-  // الصامت = ما شهد له أحد المصدرين بوجود حسّاسٍ ولم يعطِ قراءة: قناةٌ معطوبة
-  // في البثّ، أو فردةٌ سجّلت الورشةُ لها حسّاسًا ولا أثر لقناتها أصلًا. ويُحدّ
-  // بعدد المواضع الحمراء لأنه تفسيرٌ لجزءٍ منها لا رقمٌ مستقل عنها.
+  // Silent = a sensor that one source says exists but gives no reading: a faulty stream channel, or a tire the workshop registered a sensor for with no channel at all. Bounded by the red position count, since it explains part of them rather than being an independent number.
   const unseenFitted = Math.max(0, fitted - (reporting + faulty));
   const silent = Math.min(withoutSensor, faulty + unseenFitted);
 
   return {
-    // الأرقام الثلاثة كما يقرؤها المالك: أخضر / أحمر / استبن.
+    // The three numbers as the owner reads them: green / red / spare.
     withSensor,
     withoutSensor,
     spare: spareCount,
     spareWithSensor: Math.max(spareFitted, spareReporting),
-    // الصامت: حسّاسٌ مركَّبٌ لا يبثّ — جزءٌ من الأحمر، ويُعرض بالكهرماني حتى
-    // لا يُخلَط «ما رُكِّب» بـ«رُكِّب وتعطّل»، فعلاجهما مختلف: الأول تركيبٌ
-    // والثاني استبدالٌ أو فحص.
+    // Silent: an installed sensor that does not transmit; part of red, shown in amber so "not fitted" is not confused with "fitted and failed": the first needs installation, the second replacement or inspection.
     silent,
-    // سياق التدقيق — منه تُبنى نافذة التفصيل، وبه يُعرف مصدر كل رقم.
+    // Audit context: builds the detail window and identifies the source of each number.
     ground: groundCount,
     registered: ground.length,
     unregistered: Math.max(0, groundCount - ground.length),
@@ -170,26 +129,24 @@ function summarize(reg, liveTires) {
     reporting,
     faulty,
     layout: ground.length > STD.ground ? 'registry' : headOnly ? 'head' : 'standard',
-    // مواضع الأرض التي لم يُسجَّل لها حسّاس — هذه هي إجابة «مين الناقص بالضبط».
+    // Ground positions with no sensor registered; the answer to "exactly who is missing".
     positionsWithoutSensor: ground
       .filter((t) => t.sensor !== 'yes')
       .map((t) => ({ positionNumber: t.positionNumber ?? null, positionLabel: t.positionLabel || '', section: t.section || '', serial: t.serial || '', sensor: t.sensor || 'unknown' }))
       .sort((a, b) => (a.positionNumber ?? 99) - (b.positionNumber ?? 99)),
-    // القنوات المعطوبة بترقيم Wialon (محور/فردة). لا تُترجَم إلى مواضع الورشة
-    // عمدًا: الترقيمان لا يتطابقان واحدًا لواحد، وتخمينُ الموضع هنا يرسل الفنيّ
-    // إلى الفردة الخطأ — والاسم الصريح كما يبثّه الجهاز أصدق من ترجمةٍ ظنّية.
+    // Faulty channels in Wialon numbering (axle/tire). Deliberately not translated to workshop positions: the two numberings do not map one to one, and guessing a position would send the technician to the wrong tire; the device's explicit name is more truthful than a guess.
     faultyChannels: live.filter((t) => t.fault).map((t) => ({ axle: t.axle ?? null, position: t.position ?? null })),
     label: `${withSensor} / ${withoutSensor} / ${spareCount}`,
   };
 }
 
-/** يُلحق `tireSensors` بكل مركبةٍ في القائمة — استعلامُ سجلٍّ واحدٌ للكل. */
+/** Attaches `tireSensors` to each vehicle in the list; one register query for all. */
 async function attachToVehicles(vehicles) {
   const map = await loadLayoutMap();
   return vehicles.map((v) => ({ ...v, tireSensors: summarize(map.get(vehiclePlateKey(v)), v.tires) }));
 }
 
-/** النسخة المفردة — لصفحة المركبة الواحدة. */
+/** Single version, for one vehicle's page. */
 async function attachToVehicle(vehicle) {
   if (!vehicle) return vehicle;
   const map = await loadLayoutMap();

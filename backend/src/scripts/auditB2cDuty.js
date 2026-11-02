@@ -1,4 +1,4 @@
-/** يمشّي تفقُّدَ بداية الدوام كاملًا على بياناتٍ حقيقيّة ثمّ يمحو أثرَه. */
+/** Walks the whole duty-start check on real data, then erases its trace. */
 require('dotenv').config();
 const fs = require('fs');
 const mongoose = require('mongoose');
@@ -29,7 +29,7 @@ const mongoose = require('mongoose');
 
   const today = duty.dayKeyOf();
   const PIX = 'data:image/jpeg;base64,' + fs.readFileSync(require('path').join(__dirname, '../../package.json')).toString('base64').slice(0, 0)
-    // صورةُ JPEG صغيرةٌ صالحة (1×1)
+    // A valid small JPEG image (1x1).
     + '/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/wAALCAABAAEBAREA/8QAFAABAAAAAAAAAAAAAAAAAAAACf/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8AKp//2Q==';
 
   console.log('  ── شاشة المشرف ──');
@@ -93,7 +93,7 @@ const mongoose = require('mongoose');
   const otherView = other ? await call(duty.list, { user: other, query: { date: today } }) : null;
   if (otherView) console.log(`    مستخدمٌ من قسمٍ آخر يرى: ${otherView.body?.total} صفًّا ${otherView.body?.total === 0 ? '✓' : '(يرى ما سجّله هو فقط)'}`);
 
-  // التنظيف
+  // Cleanup.
   const made = await B2CDutyCheck.find({ dateKey: today, rep: { $in: reps.map((r) => r._id) } }).lean();
   made.forEach((m) => (m.photos || []).forEach((p) => deleteStoredFile(p.fileUrl)));
   await B2CDutyCheck.deleteMany({ _id: { $in: made.map((m) => m._id) } });

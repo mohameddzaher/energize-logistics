@@ -1,4 +1,4 @@
-/** تواريخُ الموظّفين: أيُّها خارجُ المعقول (هجريٌّ خُزّن كأنّه ميلاديّ). */
+/** Employee dates: which are implausible (a Hijri date stored as Gregorian). */
 require('dotenv').config();
 const mongoose = require('mongoose');
 (async () => {

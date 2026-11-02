@@ -1,16 +1,8 @@
 /* eslint-disable no-console */
 /**
- * auditPageSpeed — أيُّ نداءٍ يُبطئ أيَّ شاشة؟
- *
- *   node src/scripts/auditPageSpeed.js
- *
- * الشكوى «السيستم بطيء» لا تُصلَح، والنداء الذي يستغرق ثانيتين يُصلَح. فيُقاس
- * كلُّ نداءٍ تفتحه الشاشة عند فتحها، مرّتين: باردًا (أوّل مرّة) ودافئًا (بعد
- * التخزين المؤقّت) — والفرق بينهما يقول أين ينفع التخزين وأين لا ينفع لأنّ
- * الاستعلام نفسه بطيء.
- *
- * ويُستدعى المتحكّم مباشرةً لا عبر الشبكة: القياس يخصّ الخادم وقاعدة البيانات،
- * ولو مرّ بالشبكة لاختلط زمنُ الاستعلام بزمن الرحلة إلى الخادم.
+ * Finds which call slows which screen.
+ * General slowness complaints cannot be fixed, but a two-second call can. Every call a screen makes on open is measured twice: cold (first time) and warm (after cache). The gap shows where caching helps and where the query itself is slow.
+ * The controller is called directly, not over the network, so query time is not mixed with network round trip.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');

@@ -1,21 +1,8 @@
 /**
- * createMediaGoAccount — حسابُ Media Go: يرى «شكاوى Media Go» وحدَها.
- *
- *   node src/scripts/createMediaGoAccount.js --password <كلمة المرور>            معاينة (لا يكتب شيئًا)
- *   node src/scripts/createMediaGoAccount.js --password <كلمة المرور> --apply    يُنشئ الحساب
- *
- * خيارات:
- *   --email <بريد>      الافتراضيّ mediago@energize-logistics.com (هو اسمُ الدخول)
- *   --first <اسم>       الافتراضيّ «Media Go»
- *   --last <اسم>        الافتراضيّ «Account Manager»
- *   --uri <mongodb uri> بدلَ MONGODB_URI من .env (للتجربة على قاعدةٍ محلّيّة)
- *
- * كلمةُ المرور لا تُكتب في الملفّ: تُمرَّر وقتَ التشغيل (ثمانيةُ أحرفٍ على الأقلّ
- * — حدُّ نموذج المستخدم). وإن وُجد الحسابُ مسبقًا فـ`--apply` يعيده إلى الدور
- * ويفعّله ويضع كلمةَ المرور الجديدة؛ والمعاينةُ تقول ذلك قبل أن يحدث.
- *
- * الدورُ `mediago_account` محصورٌ في الخادم (config/scopedRoles): لا يصل إلّا
- * نقاطَ تلك الشاشة، فلا حاجةَ إلى ضبطٍ في صفحة الصلاحيّات.
+ * createMediaGoAccount: creates the Media Go account, which sees only the Media Go complaints. Without --apply it previews.
+ * Options: --password (required, at least eight characters, passed at run time), --email (default mediago@energize-logistics.com), --first, --last, --uri.
+ * An existing account gets its role restored, is activated and gets the new password.
+ * The mediago_account role is server-scoped (config/scopedRoles), so no permissions-page setup is needed.
  */
 require('dotenv').config({ path: require('path').join(__dirname, '../../.env') });
 const mongoose = require('mongoose');
@@ -71,7 +58,7 @@ const APPLY = process.argv.includes('--apply');
     console.log(`  الدور: ${MEDIAGO_ROLE} — مدير حساب Media Go`);
     console.log(`  صفحته الوحيدة: ${MEDIAGO_PAGE}`);
     console.log(`  كلمة المرور: ${'•'.repeat(password.length)} (${password.length} أحرف)`);
-    // يُتحقَّق قبل الكتابة — دورٌ لا يعرفه هذا الإصدارُ يُرفَض هنا لا عند الدخول.
+    // Validate before writing: a role this version does not know is rejected here, not at login.
     const probe = new User({ email, password, firstName, lastName, role: MEDIAGO_ROLE, isActive: true });
     await probe.validate();
     console.log('  ✓ يجتاز تحقّق نموذج المستخدم');

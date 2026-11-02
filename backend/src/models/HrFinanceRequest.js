@@ -1,15 +1,9 @@
 const mongoose = require('mongoose');
 
 /**
- * طلبٌ من الموارد البشريّة إلى الإدارة الماليّة في شأن موظّفين.
- *
- * الموارد البشريّة تختار موظّفًا أو أكثر وتكتب أمامَ كلٍّ منهم ما تحتاجه له
- * (رسومُ نقل كفالة، تأشيرةُ خروجٍ وعودة، غرامةُ تأخير…)، وترفق ما يلزم. والماليّة
- * تجيب: «تمّ» أو «لم يتمّ»، بملاحظةٍ ومرفقاتٍ إن شاءت. ويصل كلَّ طرفٍ إشعارٌ بما
- * فعله الآخر.
- *
- * والجوابُ قابلٌ للتصحيح، وكلُّ جوابٍ يُحفظ في `history` — فما قيل أوّلًا لا
- * يضيع إن غُيِّر.
+ * A request from HR to Finance about employees.
+ * HR picks one or more employees, writes what each needs (sponsorship transfer fees, exit-reentry visa, late fine ...) and attaches what is needed. Finance answers done or not done, with a note and attachments. Each side is notified of what the other did.
+ * An answer can be corrected, and every answer is kept in `history`, so the first one is not lost.
  */
 const STATUSES = ['pending', 'done', 'not_done'];
 
@@ -23,12 +17,12 @@ const fileSchema = new mongoose.Schema({
 
 const itemSchema = new mongoose.Schema({
   employee: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee', required: true },
-  // لقطةٌ تبقى وإن غُيِّر الملفّ لاحقًا.
+  // Snapshot that survives later file changes.
   name: { type: String, trim: true, default: '' },
   employeeNumber: { type: String, trim: true, default: '' },
   idNumber: { type: String, trim: true, default: '' },
   department: { type: String, trim: true, default: '' },
-  // ما تحتاجه الموارد البشريّة لهذا الموظّف — خانةٌ واحدة.
+  // What HR needs for this employee: a single field.
   note: { type: String, trim: true, default: '' },
 }, { _id: true });
 

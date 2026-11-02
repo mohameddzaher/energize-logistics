@@ -23,7 +23,7 @@ const mongoose = require('mongoose');
   ]);
   console.log(`تجميعُ فواتير الدفتر المفتوحة: ${agg.length} مجموعة في ${Date.now() - t}ms`);
 
-  // وهل الفهارس موجودة؟
+  // Are the indexes present?
   const idx = await OperationsWorkflow.collection.indexes();
   console.log('\nفهارسُ كشوف التشغيل ذاتُ الصلة:');
   idx.filter((i) => /paymentType|collectionDate|username/.test(JSON.stringify(i.key)))

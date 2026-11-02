@@ -1,22 +1,10 @@
 const mongoose = require('mongoose');
 
 /**
- * سائقو شاحنات الناقلين — سجلٌّ كان ناقصًا بالكامل.
- *
- * ── الحال قبل ──────────────────────────────────────────────────────────────
- * القسمُ يسجّل المورّدَ وشاحنتَه، وسائقُها اسمٌ ورقمُ هاتفٍ مكتوبان على صفّ
- * الشاحنة (`defaultDriverName`/`defaultDriverPhone`) — لا سجلَّ له. فمن سأل
- * «أرِني سوّاق هذا المورّد» لم يكن له جواب، ومن أراد رقمَ إقامة السائق أو
- * تاريخَ انتهاء بطاقة تشغيله لم يجدهما، ومن كتب الاسمَ بهجاءٍ آخر صار رجلين.
- *
- * ومنصّةُ الأوبريشن تحمل سبعةَ عشرَ ألفًا وخمسَمئةٍ وأربعةً وستّين سائقًا لكلٍّ
- * ملفٌّ كامل. فهذا السجلُّ مرآتُها هنا.
- *
- * ── والسائقُ هو ما يربط الشاحنةَ بمالكها ──────────────────────────────────
- * سجلُّ المركبات في المنصّة لا يحمل مالكَها؛ سجلُّ السائق يحمل الاثنين معًا
- * (`car` و`carOwner`). فإسنادُ الشاحنة إلى مورّدها يُقرأ من هنا — وكان
- * يُستنتَج من تاريخ الطلبات باللوحة، فيصحّ في سبعة آلافٍ ويبقى خمسةُ آلافٍ
- * وسبعُمئةٍ مجهولةَ المالك. والمعرفةُ في مكانها خيرٌ من استنتاجها.
+ * Carrier truck drivers: a register that was entirely missing.
+ * Before: the section recorded the supplier and its truck, with the driver only a name and phone typed on the truck row (`defaultDriverName`/`defaultDriverPhone`), so there was no way to list a supplier's drivers, find a residence number or card expiry, and a different spelling made two people.
+ * The operations platform holds a full file for each driver; this register mirrors it here.
+ * The driver links a truck to its owner: the platform's vehicle register has no owner, while the driver record has both (`car` and `carOwner`). Truck-to-supplier assignment is read from here instead of inferred from order history by plate, which left thousands of owners unknown. Knowing beats inferring.
  */
 const shipmentOrderDriverSchema = new mongoose.Schema(
   {
@@ -24,25 +12,22 @@ const shipmentOrderDriverSchema = new mongoose.Schema(
     phone: { type: String, trim: true, default: '' },
     email: { type: String, trim: true, default: '' },
     nationality: { type: String, trim: true, default: '' },
-    /** رقمُ الإقامة — به يُعرَف الرجلُ حين يتشابه الاسم. */
+    /** Residence number; identifies the person when names are similar. */
     residenceNumber: { type: String, trim: true, default: '', index: true },
     /**
-     * ── والسائقُ الذي هو موظّفُنا يُقرأ من ملفّه ─────────────────────────────
-     * قاعدةُ صاحب الشركة: «سجلٌّ واحدٌ للشخص». فمن كان رقمُ إقامته في الموارد
-     * البشريّة يُربط بملفّه هنا، ويُعرَض اسمُه وجوالُه وجنسيّتُه من هناك. وسائقو
-     * الناقلين الغرباءُ يبقون كما هم.
+     * A driver who is our employee is read from his file.
+     * Company rule: one record per person. Someone whose residence number is in HR is linked to that file here, with name, mobile and nationality shown from there. Outside carrier drivers stay as they are.
      */
     employee: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee', default: null, index: true },
 
-    // ── بطاقةُ التشغيل: سائقٌ بطاقتُه منتهيةٌ لا يُحمَّل ─────────────────────
-    // يُوقفه الطريقُ لا نحن، فمعرفةُ التاريخ قبل الإسناد توفّر حمولةً متعطّلة.
+    // Operating card: a driver with an expired card is not loaded. The road stops him, not us, so knowing the date before assignment saves a stalled load.
     driverCardNumber: { type: String, trim: true, default: '' },
     driverCardExpiry: { type: String, trim: true, default: '' },
 
     companyName: { type: String, trim: true, default: '' },
     sponsorName: { type: String, trim: true, default: '' },
 
-    // صورُ الأوراق كما تحملها المنصّة — روابطُها لا نسخُها.
+    // Document images as the platform holds them: their links, not copies.
     residenceImage: { type: String, trim: true, default: '' },
     licenseImage: { type: String, trim: true, default: '' },
     absherImage: { type: String, trim: true, default: '' },
@@ -52,7 +37,7 @@ const shipmentOrderDriverSchema = new mongoose.Schema(
 
     notes: { type: String, trim: true, default: '' },
     isActive: { type: Boolean, default: true },
-    /** معرّفُه في منصّة الأوبريشن — به يُطابَق في كلّ استيراد فلا يُكرَّر. */
+    /** Its id in the operations platform, used to match on every import so it is not duplicated. */
     externalId: { type: String, trim: true, default: '', index: true },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   },
@@ -61,9 +46,8 @@ const shipmentOrderDriverSchema = new mongoose.Schema(
 
 shipmentOrderDriverSchema.index({ name: 1 });
 
-// ── قوائمُ «طلبات الشحنات» المحفوظة تُمسَح مع كلّ كتابة ─────────────────────
-// السائقُ يظهر في قائمة الشاحنات (سائقُها المعتاد) وفي عدّاد سوّاق المورّد،
-// فأيُّ كتابةٍ عليه — من أيّ شاشةٍ أو سكربت — تمسح البادئةَ كلَّها.
+// Saved shipment-order lists are cleared on every write.
+// A driver appears in the trucks list (its usual driver) and in the supplier's driver count, so any write to it, from any screen or script, clears the whole prefix.
 const clearRegistry = () => {
   try { require('../utils/ttlCache').clear('so:registry:'); } catch (_) { /* */ }
 };

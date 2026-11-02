@@ -1,17 +1,8 @@
 /**
- * auditCollectionsCoverage — كلُّ صفٍّ في دفتر التحصيل: أفي القاعدة؟ وأيظهر في شاشة؟
- *
- *   node --max-old-space-size=8192 src/scripts/auditCollectionsCoverage.js --base https://api.energize-logistics.com
- *
- * ── لماذا سؤالان لا واحد ────────────────────────────────────────────────────
- * `auditCollectionsWorkbook` كان يقول «كلُّ فاتورةٍ في الورقة موجودةٌ عندنا»
- * وكان صادقًا — ثمانيةُ آلافٍ وتسعُمئةٍ وثمانٍ وسبعون فاتورةً في القاعدة. وفي
- * الوقت نفسِه كانت صفحةُ الفواتير الضريبيّة تعرض خمسَمئةٍ وثمانيًا وخمسين
- * منها، لأنّها تُجمِّع الكشوفَ لا تقرأ الدفتر. فُتِح البحثُ عن الفاتورة ١١٨٠٠
- * فلم تُوجد، وهي في النظام.
- *
- * «موجودةٌ في القاعدة» و«يراها المستخدم» سؤالان مختلفان، وهذا الفحصُ يسأل
- * الاثنين: يقرأ الورقةَ صفًّا صفًّا، ثمّ يسأل **الشاشة نفسَها** عبر ندائها.
+ * auditCollectionsCoverage: every row in the collections book: is it in the database, and does it show on a screen?
+ * node --max-old-space-size=8192 src/scripts/auditCollectionsCoverage.js --base https://api.energize-logistics.com
+ * Why two questions, not one: `auditCollectionsWorkbook` said every invoice in the sheet exists with us, and was truthful (8,978 invoices in the database). Meanwhile the tax invoices page showed 558 of them, because it groups manifests and does not read the book. Searching for invoice 11800 found nothing although it is in the system.
+ * 'In the database' and 'visible to the user' are different questions and this check asks both: it reads the sheet row by row, then asks the screen itself through its own call.
  */
 require('dotenv').config();
 const path = require('path');
@@ -63,13 +54,10 @@ const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
   const wb = XLSX.readFile(FILE, { cellDates: false, raw: true });
   const sheet = (n, h) => XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, defval: null, blankrows: false, raw: true }).slice(h + 1);
 
-  // ═══ ١ · الفواتير ═══════════════════════════════════════════════════════
+  // 1. Invoices.
   head('الفواتير — كلُّ صفٍّ في Daily Invoice Report');
   const invRows = sheet('Daily Invoice Report', 5);
-  // ── والفراغُ يُعرَّف كما يعرّفه الاستيرادُ بالضبط ────────────────────────
-  // «رقمٌ ولا شيءَ غيرُه» عند الاستيراد تعني: لا حسابَ ولا مبلغَ ولا تاريخَ ولا
-  // تعليق. وإسقاطُ التاريخ والتعليق من التعريف هنا أسقط فاتورةً واحدةً فقال
-  // الفحصُ «القاعدة ٨٩٧٨ والورقة ٨٩٧٧» — فرقُ صفٍّ سببُه تعريفان لا بيانتان.
+  // Emptiness is defined exactly as the import defines it. 'A number and nothing else' at import means no account, amount, date or comment. Dropping date and comment from the definition here excluded one invoice and the check said database 8978 vs sheet 8977: a one-row difference caused by two definitions, not by the data.
   const byKey = new Map();
   let skipped = 0; let hollow = 0;
   for (const r of invRows) {
@@ -103,14 +91,14 @@ const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
   ok('ومجموعُ القيم مطابقٌ إلى الهللة', r2(sheetSum) === r2(dbSum),
     `الورقة ${sheetSum.toLocaleString()} · القاعدة ${dbSum.toLocaleString()}`);
 
-  // ── وعلى الشاشة ─────────────────────────────────────────────────────────
+  // On the screen.
   const page = await get('/api/collections-dept/invoices/tax?limit=1');
   ok('وصفحةُ الفواتير الضريبيّة تعرضها كلَّها', page.j?.total === byKey.size,
     `الصفحة ${page.j?.total} · الورقة ${byKey.size}`);
   ok('ومجموعُ الصفحة يساوي مجموعَ الورقة', r2(page.j?.totals?.value) === r2(sheetSum),
     `${page.j?.totals?.value?.toLocaleString()} · ${sheetSum.toLocaleString()}`);
 
-  // كلُّ فاتورةٍ تُوجَد بالبحث — تُجرَّب عيّنةٌ عشوائيّةٌ واسعة
+  // Every invoice is found by search; a wide random sample is tried.
   const sample = [...byKey.values()].filter((x) => !x.no.startsWith('-')).sort(() => Math.random() - 0.5).slice(0, 25);
   let found = 0; const notFound = [];
   for (const x of sample) {
@@ -120,7 +108,7 @@ const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
   ok('وكلُّ فاتورةٍ تُوجَد بالبحث عن رقمها', notFound.length === 0,
     notFound.length ? `لم تُوجَد: ${notFound.join('، ')}` : `${found} عيّنةً عشوائيّة`);
 
-  // ═══ ٢ · الحسابات ═══════════════════════════════════════════════════════
+  // 2. Accounts.
   head('الحسابات — Aging + Aging Shipment');
   const accKeys = new Set();
   for (const [name, h] of [['Aging', 4], ['Aging Shipment', 4]]) {
@@ -141,7 +129,7 @@ const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
   ok('وسجلُّ الأعمار يعرضها كلَّها', missShown.length === 0,
     missShown.length ? `${missShown.length} لا تظهر: ${missShown.slice(0, 6).join('، ')}` : `${shown.size} حسابًا`);
 
-  // ── والمستحقُّ النقديُّ لم يعد صفرًا ─────────────────────────────────────
+  // Cash receivable is no longer zero.
   const cashOwed = sheet('Aging Shipment', 4)
     .filter((r) => S(r[0]) && /^[\dC]/i.test(S(r[0])) && N(r[9]) > 0)
     .map((r) => ({ code: S(r[0]), out: N(r[9]) }));
@@ -149,22 +137,16 @@ const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
     const row = (ag.j?.rows || []).find((r) => r.code === x.code);
     return !row || (Number(row.outstanding) || 0) === 0;
   });
-  // ── والصفرُ هنا سببان لا عطبٌ واحد ────────────────────────────────────────
-  //  ① اسمُ العميل في الكشوف غيرُ اسمه في دفتر التحصيل («مكتب اشرف الشامي»
-  //    مقابل «مكتب اشرف»)، فيقع المستحقُّ على سجلٍّ بلا كودٍ لا على الحساب
-  //    المكوَّد. ثمانيةٌ وثلاثون اسمًا من مئةٍ وأربعة كذلك، وعليها مئتان
-  //    وأربعةٌ وثمانون كشفًا مفتوحًا بسبعمئةٍ وتسعةَ عشرَ ألفًا — والربطُ قرارٌ
-  //    يخصّ سجلَّ عميلٍ فلا يُدمَج بلا إذن. (راجع PartyLinkSuggestion.)
-  //  ② أو أنّ كشوفَه كلَّها محصَّلةٌ عندنا بتواريخَ من شيت المتابعة، ودفترُ
-  //    التحصيل يقول إنّه ما زال مدينًا — تعارضُ ورقتين لا خطأُ نظام.
-  //
-  // فالبندُ يُعرَض للقرار ولا يُصبغ السويتَ حمراء.
+  // A zero here has two causes, not one fault.
+  // (1) The customer name on manifests differs from the one in the collections book ('Office Ashraf Al-Shami' vs 'Office Ashraf'), so the receivable lands on a record with no code rather than on the coded account. 38 of 104 names are like this, with 284 open manifests worth 719 thousand. Linking is a decision about a customer record and is not merged without permission (see PartyLinkSuggestion).
+  // (2) Or all his manifests are collected with us, with dates from the follow-up sheet, while the collections book says he still owes: a conflict between two sheets, not a system error.
+  // So the item is shown for decision and does not turn the suite red.
   if (zeroed.length) {
     notes.push(`${zeroed.length} حساباتٍ نقديّةٍ عليها مستحقٌّ في الورقة وتظهر عندنا بصفر (${zeroed.map((z) => z.code).join('، ')}) — إمّا اسمُها في الكشوف غيرُ اسمها في الدفتر، وإمّا كشوفُها محصَّلةٌ عندنا والدفترُ يقول غيرَ ذلك`);
   }
   ok('حساباتُ الصفر معروضةٌ للمراجعة', true, `${zeroed.length} حسابًا (يُعرَض أدناه)`);
 
-  // ═══ ٣ · الكشوف النقديّة ════════════════════════════════════════════════
+  // 3. Cash manifests.
   head('الكشوف النقديّة — Shipment Report');
   const ships = new Set();
   for (const r of sheet('Shipment Report', 5)) { const n = S(r[5]); if (/^\d+$/.test(n)) ships.add(n); }
@@ -179,10 +161,7 @@ const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
   const notCash = await OW.countDocuments({ reportNumber: { $in: nums }, paymentType: { $ne: 'cash' } });
   ok('وكلُّها نوعُها نقديّ', notCash === 0, `${notCash} مختلفًا`);
 
-  // ── والملغى لا يُطالَب به ───────────────────────────────────────────────
-  // مئةٌ وثمانيةٌ وتسعون كشفًا في دفتر التحصيل حالتُها عندنا «ملغاة». والصفحةُ
-  // تُسقط الملغى كما تُسقطه كلُّ شاشات القسم — لا يُلاحَق عميلٌ بشحنةٍ أُلغيت.
-  // فالمقياسُ هو غيرُ الملغى، ويُعرَض عددُ الملغى ليُنظَر فيه.
+  // Cancelled is not claimed. 198 manifests in the collections book are cancelled with us. The page drops cancelled ones like every section screen: a customer is not chased for a cancelled shipment. So the measure is non-cancelled, and the cancelled count is shown to be looked at.
   const cancelled = await OW.countDocuments({
     reportNumber: { $in: nums },
     $or: [{ applicationStatus: /cancel/i }, { executionStatus: /cancel/i }],
@@ -192,7 +171,7 @@ const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
     `الصفحة ${cashPage.j?.total} · الورقة ${ships.size} منها ${cancelled} ملغاة`);
   if (cancelled) notes.push(`${cancelled} كشفًا في دفتر التحصيل حالتُها عندنا «ملغاة» — لا تُلاحَق، ويُراجَع أهي ملغاةٌ فعلًا`);
 
-  // ═══ ٤ · JP ═════════════════════════════════════════════════════════════
+  // 4. JP.
   head('المناطق — JP');
   const jp = new Map();
   for (const r of sheet('JP', 6)) { const c = S(r[0]); if (c && !jp.has(c)) jp.set(c, S(r[9])); }

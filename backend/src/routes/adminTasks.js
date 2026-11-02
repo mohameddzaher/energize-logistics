@@ -1,13 +1,8 @@
-/**
- * /api/admin-tasks — قسم الشؤون الإدارية (السكرتارية): the Trello-style board.
- * The whole section team works every card (create, move, comment) — the board
- * is shared office work, not per-person silos. Deleting is the only action
- * kept away from the secretaries themselves.
- */
+/** /api/admin-tasks: administrative affairs (secretariat) section, a Trello-style board. The whole section team works every card (create, move, comment) since the board is shared office work. Deleting is the only action kept away from the secretaries themselves. */
 const express = require('express');
 const router = express.Router();
 
-// معرّفٌ مشوَّهٌ في الرابط = لا سجلّ، لا عطلٌ في الخادم — راجع utils/idParam.
+// A malformed id in the URL means no record, not a server error; see utils/idParam.
 const { objectIdParam } = require('../utils/idParam');
 router.param('id', objectIdParam());
 const ctrl = require('../controllers/adminTaskController');

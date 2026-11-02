@@ -3,26 +3,12 @@ const router = express.Router();
 const authenticate = require('../middleware/auth');
 const authorize = require('../middleware/rbac');
 const User = require('../models/User');
-// ── وهذه الثلاثةُ لبوّابة العميل وحدَها ─────────────────────────────────────
-// لوحةُ البوّابة تعرض فواتيرَ الشريك ومدفوعاتِه، وسيرُ عمل التشغيل ما زال
-// مصدرَ ما يُنشأ منها. فتبقى هنا لتلك النقطةِ وحدَها، لا لأرقام الشركة.
+// These three serve the customer portal only. The portal dashboard shows the partner's invoices and payments, and the operations workflow is still the source of what is created from them; they are not company figures.
 const Invoice = require('../models/Invoice');
 const Payment = require('../models/Payment');
 const Customer = require('../models/Customer');
 
-/**
- * ── المصدرُ صار كشوفَ التشغيل ───────────────────────────────────────────────
- *
- * كانت هذه النقاطُ تقرأ من `Invoice` و`Payment` و`Customer` — جداولِ ورك فلو
- * «العملاء والمالية» الذي زال. فكانت الصفحةُ الرئيسة تعرض أصفارًا لا لأنّ
- * الشركة لا تُحصّل، بل لأنّها تسأل جدولًا لا يكتب فيه أحد.
- *
- * وما بقي من تلك الخدمات (تقديرُ المخاطر، والتنبّؤُ بالتأخّر، وتدفّقُ النقد
- * المتوقَّع، وأداءُ المحصّلين) نماذجُ مبنيّةٌ على سجلّ فواتيرَ ومدفوعاتٍ لم يعد
- * يُكتب — لا مدخلاتٍ لها ولا مقابلَ لها في البيانات الحيّة، فأُزيلت بدل أن
- * تبقى تعرض أرقامًا مخترَعة. والمخاطرُ الحقيقيّةُ اليوم تُقرأ في تقادم المستحقّ
- * وتنبيهات الائتمان، وكلاهما محسوبٌ من الكشوف.
- */
+/** The source is now operations statements. These endpoints used to read `Invoice`, `Payment` and `Customer` from the removed customers-and-finance workflow, so the home page showed zeros. The remaining services (risk scoring, delay prediction, cash-flow forecast, collector performance) were built on records no longer written, with no live equivalent, so they were removed rather than show invented numbers. Real risk is read from receivable aging and credit alerts, both computed from statements. */
 const receivables = require('../services/receivablesService');
 
 router.use(authenticate);
@@ -56,7 +42,7 @@ router.get('/aging', authorize('super_admin', 'admin', 'it_manager', 'it_special
   }
 });
 
-// أيّامُ التحصيل — متوسّطُ ما بين الكشف وتحصيله، محسوبًا من الواقع لا مقدَّرًا.
+// Collection days: mean time between statement and collection, computed from actual data.
 router.get('/dso', authorize('super_admin', 'admin', 'it_manager', 'it_specialist', 'employee', 'operations_manager', 'operations_staff', 'moderator', 'collections_manager', 'collections_staff', 'cfo', 'accounting_manager', 'accountant'), async (req, res) => {
   try {
     const t = await receivables.dsoTrend({ months: 12 });
@@ -95,7 +81,7 @@ router.get('/overdue', authorize('super_admin', 'admin', 'it_manager', 'it_speci
 const SUPER_OVERVIEW_TTL = 30 * 1000;
 let superOverviewCache = { at: 0, key: '', data: null };
 
-// النظرةُ التنفيذيّة — نقطةٌ واحدة تجمع الأقسامَ من مصادرها الحيّة. راجع executiveController.
+// Executive overview: one endpoint combining sections from live sources. See executiveController.
 router.get('/executive', authorize('super_admin', 'admin'), require('../controllers/executiveController').overview);
 
 router.get('/super-overview', authorize('super_admin', 'admin'), async (req, res) => {
@@ -208,7 +194,7 @@ router.get('/super-overview', authorize('super_admin', 'admin'), async (req, res
       tryQuery(() => Driver.countDocuments({}), 0),
       tryQuery(() => Vendor.countDocuments({}), 0),
       tryQuery(() => Branch.countDocuments({}), 0),
-      Promise.resolve(0), // لوحُ مهامّ التحصيل القديم زال — والمهامُّ الآن في قسم التحصيل
+      Promise.resolve(0), // The old collection tasks board is gone; tasks now live in the collections section.
       Promise.resolve(0),
       tryQuery(() => Complaint.countDocuments({ status: { $in: ['open', 'in_progress'] } }), 0),
       tryQuery(() => Dispute.countDocuments({ status: { $in: ['open', 'under_review'] } }), 0),
@@ -306,8 +292,8 @@ router.get('/super-overview', authorize('super_admin', 'admin'), async (req, res
   }
 });
 
-// Client Portal Dashboard
-// لوحةُ البوابة القديمة (فيها مبالغ) — العميلُ اليومَ على /api/portal بلا أسعار.
+// Client Portal Dashboard.
+// Old portal dashboard (contains amounts); customers now use /api/portal without prices.
 router.get('/portal/dashboard', authorize('client'), (req, res, next) => (
   ['customer', 'vendor'].includes(req.user && req.user.accountType) || (req.user && req.user.role === 'client')
     ? res.status(403).json({ message: 'غير متاح' }) : next()), async (req, res) => {

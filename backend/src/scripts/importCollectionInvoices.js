@@ -1,21 +1,8 @@
 /**
- * importCollectionInvoices — دفترُ الفواتير من ورقة «Daily Invoice Report».
- *
- *   node --max-old-space-size=8192 src/scripts/importCollectionInvoices.js --dry
- *   node --max-old-space-size=8192 src/scripts/importCollectionInvoices.js
- *
- * الأعمدة: Code · Account name · Invoice No · Total Outstanding · Invoice Date
- *          Days · Delivery Date · Days D · Collection Date · Status · Exit Date
- *          Supervisor Comments · Days TTL
- *
- * ── والأيّامُ لا تُستورَد ───────────────────────────────────────────────────
- * أعمدةُ `Days` في الورقة فروقُ تواريخَ محسوبةٌ بمعادلة، وقيمتُها صحيحةٌ يومَ
- * حُفظ الملفّ فقط. تُترك وتُحسب عند القراءة من التواريخ الثلاثة — فلا يبقى في
- * القاعدة رقمٌ يشيخ.
- *
- * ── والربطُ بكشوف التشغيل حيث وُجد ─────────────────────────────────────────
- * من تسعة آلافٍ وثلاثمئة رقمِ فاتورةٍ في الدفتر، خمسُمئةٍ وسبعٌ وخمسون لها
- * كشوفٌ عندنا. تُربط، ويبقى الباقي فواتيرَ قائمةً بنفسها — وهي أكثرُ العمل.
+ * importCollectionInvoices: the invoice ledger from the Daily Invoice Report sheet. --dry previews.
+ * Columns: Code, Account name, Invoice No, Total Outstanding, Invoice Date, Days, Delivery Date, Days D, Collection Date, Status, Exit Date, Supervisor Comments, Days TTL.
+ * Days columns are not imported (formula differences valid only on the save day); they are computed on read from the dates.
+ * Linked to operations statements where found (557 of about 9300 invoice numbers); the rest stay standalone invoices.
  */
 require('dotenv').config();
 const path = require('path');
@@ -31,7 +18,7 @@ const D = (v) => {
   if (typeof v === 'number' && Number.isFinite(v) && v > 1) return new Date(XLS_EPOCH + Math.round(v * 86400000));
   return null;
 };
-// ما يعني «لا فاتورة» ليس رقمَ فاتورة — النصُّ نفسُه الذي تستثنيه الصفحات.
+// A value meaning no invoice is not an invoice number; the same text the pages exclude.
 const NO_INVOICE = /^\s*(?:no\s*inv(?:oice)?|noinv|no-inv|none|n\/a|na|-|—|0|بدون(?:\s*فاتورة)?|لا\s*يوجد|لا\s*توجد|غير\s*مفوتر(?:ة)?)\s*$/i;
 
 (async () => {
@@ -41,7 +28,7 @@ const NO_INVOICE = /^\s*(?:no\s*inv(?:oice)?|noinv|no-inv|none|n\/a|na|-|—|0|�
   const OW = require('../models/OperationsWorkflow');
   const { fold } = CollectionsParty;
 
-  // «الإجمالي» ليس عميلًا — صفُّ مجموعٍ في الورقة.
+  // The total label is not a customer: it is the sheet's totals row.
   const TOTALS_ROW = /^\s*(?:الإجمالي|الاجمالي|المجموع|total|grand\s*total)\s*$/i;
   console.log(DRY ? '── تجربة، بلا كتابة ──\n' : '── تنفيذ ──\n');
   const wb = XLSX.readFile(FILE, { cellDates: false, raw: true });
@@ -57,13 +44,9 @@ const NO_INVOICE = /^\s*(?:no\s*inv(?:oice)?|noinv|no-inv|none|n\/a|na|-|—|0|�
     for (const k of [p.nameKey || fold(p.name), ...(p.aliasKeys || [])]) if (k && !byName.has(k)) byName.set(k, p);
   }
 
-  // ── حساباتٌ يعرفها دفترُ الفواتير ولا يعرفها سجلُّ الأعمار ────────────────
-  // اثنا عشر حسابًا. أحدُها ١١٠٤٠٢٧٣: كودُه في ورقة الأعمار بلا اسمِ حساب،
-  // واسمُه هنا مكتوبٌ على ثلاثةٍ وأربعين فاتورة. فيُكمَل من هنا بدل أن يبقى
-  // كودًا بلا صاحب. وما لا كودَ له يأخذ التاليَ في سلسلة نوعه.
-  //
-  // و«الإجمالي» ليس عميلًا — صفُّ مجموعٍ في الورقة. يُستثنى بالاسم لأنّه
-  // بالاسم يُعرَف؛ ولو أُنشئ حسابًا لظهر في كلّ قائمةٍ ولحمل مديونيّةَ الجميع.
+  // Accounts the invoice ledger knows but the aging register does not.
+  // Twelve accounts. One of them, 11040273, has a code in the aging sheet with no account name, while its name is written on 43 invoices here, so it is completed from here instead of staying a code with no owner. Anything without a code takes the next in its type's series.
+  // The total label is excluded by name because it is recognized by name; creating an account would show it in every list and carry everyone's debt.
   {
     const { nextPartyCode } = require('../utils/partyCode');
     const unknown = new Map();
@@ -98,20 +81,13 @@ const NO_INVOICE = /^\s*(?:no\s*inv(?:oice)?|noinv|no-inv|none|n\/a|na|-|—|0|�
     if (!number || NO_INVOICE.test(number)) { noNumber += 1; continue; }
     const code = S(r[0]);
     const name = S(r[1]);
-    if (TOTALS_ROW.test(name)) continue;               // صفُّ مجموعٍ لا فاتورة
+    if (TOTALS_ROW.test(name)) continue;               // A totals row, not an invoice
     const party = byCode.get(code) || byName.get(fold(name));
     if (!party) { noParty += 1; if (code) unknownCodes.add(code); }
     const kind = party?.paymentType === 'cash' ? 'cash' : (/^C/i.test(code) ? 'cash' : 'tax');
-    // ── والحسابُ جزءٌ من المفتاح، وهو **كودُ الورقة** لا كودُنا ────────────
-    //
-    // الصفوفُ السالبة تسوياتٌ لا فواتير، وترقيمُها لكلّ حسابٍ على حدة: شركةُ
-    // فكر لها ‎-14‎ وشركةُ صليهم لها ‎-14‎ أخرى. وبالرقم وحدَه اندمجتا في سجلٍّ
-    // واحدٍ بمجموعهما ونُسبتا إلى حسابٍ واحد.
-    //
-    // والكودُ المستعمَل هنا هو المكتوبُ في الورقة لا الذي نستنتجه: صفوفٌ بلا
-    // كودٍ يُطابَق حسابُها بالاسم، وإن لم يوجد وُلِّد له كودٌ جديد — ورقمُ المولَّد
-    // يختلف بين تشغيلٍ وآخر، فيصير المفتاحُ متحرّكًا وتتضاعف الفاتورةُ نفسُها
-    // بكودين. حدث ذلك: سبعُ فواتيرَ منها ‎5899‎ مرّتين بكودين مولَّدين.
+    // The account is part of the key, and it is the sheet's code, not ours.
+    // Negative rows are settlements, not invoices, and are numbered per account: one company has -14 and another has a different -14. By number alone they merged into one record with their sum and were attributed to one account.
+    // The code used is the one written in the sheet, not one we infer: rows without a code match the account by name, and if none exists a new code is generated, and a generated number differs between runs, so the key moves and the same invoice doubles under two codes. That happened: seven invoices, including 5899, appeared twice under two generated codes.
     const key = `${kind}::${number}::${code}`;
 
     const doc = {
@@ -123,16 +99,14 @@ const NO_INVOICE = /^\s*(?:no\s*inv(?:oice)?|noinv|no-inv|none|n\/a|na|-|—|0|�
     };
     const prev = invoices.get(key);
     if (!prev) { invoices.set(key, doc); continue; }
-    // الرقمُ الواحد في أكثرَ من صفّ: تُجمَع مبالغُه ويُؤخذ أحدثُ ما يُعرف.
+    // One number in several rows: amounts are summed and the latest known value is taken.
     prev.total += doc.total;
     for (const f of ['invoiceDate', 'deliveryDate', 'collectionDate', 'exitDate']) if (!prev[f] && doc[f]) prev[f] = doc[f];
     if (!prev.status && doc.status) prev.status = doc.status;
     if (doc.comments && !prev.comments.includes(doc.comments)) prev.comments = [prev.comments, doc.comments].filter(Boolean).join(' · ');
   }
-  // ── ورقمُ فاتورةٍ وحدَه ليس فاتورة ──────────────────────────────────────
-  // ثلاثُمئةٍ وثمانيةٌ وتسعون صفًّا فيها رقمٌ ولا شيءَ غيرُه: لا حسابَ ولا مبلغَ
-  // ولا تاريخَ ولا حالة — أرقامٌ محجوزةٌ أو ملغاة. إدخالُها يضخّم السجلَّ
-  // بأربعمئة فاتورةٍ لا مالَ فيها ولا صاحبَ لها، فتُحسب في العدد ولا تُقرأ.
+  // An invoice number alone is not an invoice.
+  // 398 rows have a number and nothing else: no account, amount, date or status; they are reserved or cancelled numbers. Importing them would inflate the ledger by about four hundred invoices with no money and no owner, counted but unreadable.
   let hollow = 0;
   for (const [k, d] of invoices) {
     if (!d.party && !d.total && !d.invoiceDate && !d.deliveryDate && !d.collectionDate && !d.comments) {
@@ -154,7 +128,7 @@ const NO_INVOICE = /^\s*(?:no\s*inv(?:oice)?|noinv|no-inv|none|n\/a|na|-|—|0|�
   console.log(`    ضريبيّة ${byKind.tax || 0} · نقديّة ${byKind.cash || 0}`);
   console.log(`    إجماليُّ المبالغ: ${sum.toFixed(2)} · غيرُ المحصَّل: ${outstanding.toFixed(2)}`);
 
-  // ── كشوفُ التشغيل تحت فواتيرها ──────────────────────────────────────────
+  // Operations statements under their invoices.
   const numbers = [...new Set([...invoices.values()].map((d) => d.invoiceNumber))];
   const linkMap = new Map();
   for (let i = 0; i < numbers.length; i += 1000) {

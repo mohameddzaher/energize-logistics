@@ -1,27 +1,8 @@
 /* eslint-disable no-console */
 /**
- * importVehiclesFolder — تحديث قسم المركبات من مجلّد «vehicles files».
- *
- *   node src/scripts/importVehiclesFolder.js --dry
- *   node src/scripts/importVehiclesFolder.js --yes
- *
- * المجلّد يحمل ثلاثة ملفات ومَنيفست يربطها:
- *   vehicles.json           ٣٣٤ مركبة
- *   accidents.json          ٢٤ حادثًا، مرتبطة بالمركبات بـ vehicle_id
- *   general_insurance.json  وثيقتا تأمين على مستوى الشركة
- *
- * ── ثلاث قواعد ────────────────────────────────────────────────────────────
- *
- * ١) **المطابقة بالشاسيه أولًا.** رقم اللوحة يتغيّر (إعادة تلويح)، والشاسيه لا
- *    يتغيّر. المطابقة باللوحة وحدها سبق أن جعلت مركبةً واحدة تظهر مركبتين.
- *
- * ٢) **الملف لا يدوس على عمل موظف.** إن كان أحدهم قد جدَّد مستندًا من الشاشة بعد
- *    تاريخ لقطة الملف، فتاريخه هو الصحيح — الشاشة أحدث من الورق. تُحدَّث بقية
- *    الحقول ويُترك ذلك التاريخ، ويُطبع ما تُرك حتى لا يمرّ في صمت.
- *
- * ٣) **الحالة تُحسَب ولا تُستورَد.** الملف يحمل status و days_remaining محسوبة
- *    مقابل تاريخ اللقطة؛ لو خُزِّنت كما هي لأصبحت الشاشة تعرض «باقٍ ١٤٦ يومًا»
- *    بعد شهرين من اللقطة. نخزّن التاريخ فقط، والحالة تُحسَب لحظة العرض.
+ * Updates the vehicles section from the vehicles files folder.
+ * Usage: node src/scripts/importVehiclesFolder.js --dry | --yes
+ * Rules: (1) match by chassis first, since plates change; (2) the file never overwrites a date an employee renewed on screen after the snapshot; (3) status is computed at display time, only dates are stored.
  */
 require('dotenv').config();
 const path = require('path');
@@ -39,8 +20,7 @@ const N = (v) => (v === null || v === undefined || v === '' ? null : Number(v));
   const { VehicleMaster, CorporatePolicy } = require('../models/VehicleMaster');
   const VehicleClaim = require('../models/VehicleClaim');
   const AuditLog = (() => { try { return require('../models/AuditLog'); } catch { return null; } })();
-  // مفتاح سجل المركبات (حروف + أرقام) لا مفتاح الأرقام: ٣٣٤ مركبة بينها ٢١٢
-  // دراجة، والأرقام وحدها تتصادم في ١١ حالة — انظر utils/plateKey.
+  // Registry key is letters plus digits, not digits only: digit-only keys collide in 11 cases across the many bikes. See utils/plateKey.
   const { registryPlateKey: plateKey } = require('../utils/plateKey');
 
   const read = (f) => JSON.parse(fs.readFileSync(path.join(DIR, f), 'utf8'));
@@ -57,7 +37,7 @@ const N = (v) => (v === null || v === undefined || v === '' ? null : Number(v));
   const kept = [];
   const idToPlate = new Map();
 
-  // ── المركبات ───────────────────────────────────────────────────────────────
+  // Vehicles.
   for (const v of vehiclesFile.vehicles) {
     const cls = v.classification || {}; const own = v.ownership || {}; const idn = v.identity || {};
     const sp = v.specs || {}; const ap = v.authorized_person || {}; const ins = v.insurance || {};
@@ -111,7 +91,7 @@ const N = (v) => (v === null || v === undefined || v === '' ? null : Number(v));
       isActive: true,
     };
 
-    // التواريخ التي قد يكون موظفٌ جدّدها من الشاشة
+    // Dates an employee may have renewed from the screen.
     const DATES = [
       ['insurance.expiryDate', D(ins.expiry_date), 'insurance'],
       ['gps.expiryDate', D(gps.subscription_expiry_date), 'gps'],
@@ -120,7 +100,7 @@ const N = (v) => (v === null || v === undefined || v === '' ? null : Number(v));
       ['inspection.expiryDate', D(insp.expiry_date_gregorian), 'inspection'],
     ];
 
-    // الشاسيه أولًا؛ فإن غاب فاللوحة.
+    // Chassis first, then plate.
     let existing = chassis ? await VehicleMaster.findOne({ chassisNumber: chassis }) : null;
     if (!existing && key) existing = await VehicleMaster.findOne({ plateKey: key });
 
@@ -136,7 +116,7 @@ const N = (v) => (v === null || v === undefined || v === '' ? null : Number(v));
 
     for (const [p, val] of Object.entries(doc)) existing.set(p, val);
     for (const [p, d, docKey] of DATES) {
-      // جُدِّد من الشاشة بعد لقطة الملف؟ إذن تاريخه أحدث، فلا يُداس عليه.
+      // Renewed on screen after the file snapshot means its date is newer, so keep it.
       const userRenewal = (existing.renewals || [])
         .filter((r) => r.document === docKey && r.at && new Date(r.at) > snapshot)
         .sort((a, b) => new Date(b.at) - new Date(a.at))[0];
@@ -152,7 +132,7 @@ const N = (v) => (v === null || v === undefined || v === '' ? null : Number(v));
     sum.updated++;
   }
 
-  // ── الحوادث ────────────────────────────────────────────────────────────────
+  // Accidents.
   for (const a of accidentsFile.accidents) {
     const sub = a.subject || {}; const cp = a.counterparty || {}; const cl = a.claim || {};
     const link = idToPlate.get(sub.vehicle_id);
@@ -196,7 +176,7 @@ const N = (v) => (v === null || v === undefined || v === '' ? null : Number(v));
     else { await VehicleClaim.create(doc); sum.claims++; }
   }
 
-  // عدّاد حوادث كل مركبة = عدد مطالباتها الفعّالة (محسوب لا مكتوب)
+  // Per-vehicle accident counter equals its active claims count (computed, not typed).
   if (!DRY) {
     const keys = [...new Set((await VehicleClaim.find({ isActive: true }).select('vehiclePlateKey').lean())
       .map((c) => c.vehiclePlateKey).filter(Boolean))];
@@ -207,7 +187,7 @@ const N = (v) => (v === null || v === undefined || v === '' ? null : Number(v));
     }
   }
 
-  // ── وثائق التأمين على مستوى الشركة ────────────────────────────────────────
+  // Company-level insurance policies.
   for (const p of policiesFile.policies) {
     const doc = {
       scopeAr: S(p.coverage_ar),

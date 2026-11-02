@@ -1,22 +1,9 @@
 /* eslint-disable no-console */
 /**
- * importFollowup2026 — «شيت المتابعه 2026 final.xlsx» ← قسم العمليات.
- *
- *   node src/scripts/importFollowup2026.js --dry              # يعرض الخطّة ولا يكتب
- *   node src/scripts/importFollowup2026.js --yes              # يملأ الفارغ فقط
- *   node src/scripts/importFollowup2026.js --yes --create-missing
- *
- * ── القاعدة التي يقوم عليها ──────────────────────────────────────────────────
- * **لا يملأ إلّا الفارغ.** خليّةٌ فيها قيمةٌ عندنا لا يمسّها الملفّ مهما قال،
- * لأنّ ما في القاعدة قد يكون تصحيحًا أدخله موظّفٌ بعد أن كُتب الشيت. والمصدرُ
- * ملفٌّ يدويّ، والقاعدةُ نظامٌ يُدقَّق — فحين يختلفان يُقدَّم المدقَّق.
- *
- * ويُحفظ ما سيتغيّر في ملفّ تراجعٍ قبل الكتابة، لأنّ استيرادًا على ثمانيةٍ
- * وعشرين ألف سجلّ لا يُراجَع بالعين بعد وقوعه.
- *
- * ── لماذا قارئٌ خاصّ لا مكتبة `xlsx` ────────────────────────────────────────
- * ورقة «2026» خمسةٌ وثلاثون ميغا من XML، ومكتبة xlsx تبني الدفتر كلّه في
- * الذاكرة فينفد الكوم قبل أوّل صفّ. القارئ في lib/xlsxStream يقرأ ورقةً واحدة.
+ * importFollowup2026: follow-up sheet 2026 final into operations.
+ * Fills empty fields only: a populated cell is never touched, since it may be a staff correction made after the sheet was written, and the audited system outranks the manual file.
+ * Changes are saved to a rollback file before writing, because a 28k-record import cannot be reviewed by eye afterward.
+ * Uses a streaming reader (lib/xlsxStream) because the 35 MB sheet XML exhausts memory when the xlsx library builds the whole workbook.
  */
 require('dotenv').config();
 const fs = require('fs');
@@ -25,14 +12,14 @@ const mongoose = require('mongoose');
 const { readSheet, excelDate } = require('./lib/xlsxStream');
 
 const FILE = path.join(__dirname, '../seeds/data/ops-2026-08/followup-2026-final.xlsx');
-const SHEET = 'xl/worksheets/sheet2.xml';          // ورقة «2026» — الترويسة في الصفّ ٥
+const SHEET = 'xl/worksheets/sheet2.xml';          // Sheet 2026, header on row 5
 const HEADER_ROW = 5;
 
 const DRY = process.argv.includes('--dry');
 const YES = process.argv.includes('--yes');
 const CREATE_MISSING = process.argv.includes('--create-missing');
 
-/** عمود إكسل ← حقل النموذج. مأخوذةٌ من الصفّ الخامس حرفًا بحرف. */
+/** Excel column to model field, taken from row 5 verbatim. */
 const COL = {
   B: 'reportNumber', C: 'reportDate', D: 'fromLocation', E: 'toLocation', F: 'branch',
   G: 'carOwner', H: 'carNumber', I: 'ownerType', J: 'executionStatus', K: 'applicationStatus',
@@ -45,30 +32,26 @@ const COL = {
 const DATES = new Set(['reportDate', 'paymentDate', 'sendingDate', 'deliveryDate', 'invoiceDate', 'collectionDate']);
 const NUMS = new Set(['purchaseValue', 'sellingValue', 'netInvoice', 'tax', 'totalInvoice']);
 
-// أخطاء إكسل تصل كنصٍّ عاديّ؛ «#N/A» في خليّةٍ يعني فراغًا لا قيمة.
+// Excel errors arrive as plain text; #N/A in a cell means blank, not a value.
 const BAD = /^(#N\/A|#REF!|#VALUE!|#DIV\/0!|#NAME\?|#NULL!|#NUM!|-|\.|_+)$/;
 
-// ── الشيت نفسه فيه أعمدةٌ انزلقت ─────────────────────────────────────────────
-// قياسٌ على الملفّ كلّه كشف ثلاثة انزلاقات، ولكلٍّ حارسُه هنا. وبغير هذه
-// الحرّاس يدخل تاريخٌ في خانة مال، ورقمٌ في خانة فرع، فيصير الخطأ بياناتٍ
-// «موثّقة» في النظام لا يعرف أحدٌ من أين جاءت.
+// Some sheet columns are shifted. Three shifts were found across the file and each has a guard here; without them a date lands in a money field or a number in a branch field and becomes unexplained verified data.
 
-/** رقمٌ في مدى التواريخ التسلسلية — أي أنّه تاريخٌ سقط في خانة مال. */
+/** A number within the serial-date range, i.e. a date that fell into a money cell. */
 const looksLikeDate = (n) => n >= 44000 && n <= 48000;
 
-/** الأعمدة المالية للفاتورة وحدها؛ الشراء والبيع سليمان في الملفّ. */
+/** Invoice money columns only; purchase and sale columns are fine in the file. */
 const INVOICE_MONEY = new Set(['netInvoice', 'tax', 'totalInvoice']);
 
-/** الفرع اسمٌ لا رقم. */
+/** Branch is a name, not a number. */
 const BRANCHY = new Set(['payingBranch', 'finalReportDestination', 'branch']);
 
 const skips = { invoiceMoneyAsDate: 0, branchAsNumber: 0, accountingReview: 0, reviewJunk: 0, badDate: 0 };
 
 /**
- * يُطبِّع القيمة أو يردّ undefined لترفَض.
- * — «مراجعه التشغيل» خانةُ تأشيرٍ في الواجهة، فـ OK/ok تصير «تم».
- * — «مراجعه الحسابات» رقمًا تُرفض: تأشيرُ «راجعت المحاسبة» على رقمٍ مجهولٍ
- *   كذبٌ في تقرير. وعمودُها في هذا الملفّ فارغٌ عمليًّا (خليّةٌ واحدة).
+ * Normalizes the value, or returns undefined to reject it.
+ * The operations review is a tick box in the UI, so OK/ok becomes done.
+ * The accounts review rejects numbers: ticking accounts reviewed on an unknown number is a false report. Its column is practically empty in this file.
  */
 function normalize(key, v) {
   if (key === 'accountingReview' && /^\d+(\.\d+)?$/.test(v)) { skips.accountingReview++; return undefined; }
@@ -86,7 +69,7 @@ function normalize(key, v) {
   return v;
 }
 
-/** فارغٌ فعليّ: null أو نصٌّ كلُّه فراغ. والصفر في حقلٍ رقميّ فراغٌ أيضًا. */
+/** Effectively empty: null or whitespace-only text; zero in a numeric field also counts as empty. */
 function isEmpty(v, key) {
   if (v == null) return true;
   if (typeof v === 'string') return !v.trim();
@@ -96,7 +79,7 @@ function isEmpty(v, key) {
 
 function parseRows() {
   const rows = readSheet(FILE, SHEET).filter((r) => r.r > HEADER_ROW);
-  const out = new Map();                              // آخر صفٍّ لرقمٍ مكرّر يفوز
+  const out = new Map();                              // The last row for a duplicate number wins
   let skipped = 0;
   for (const { cells } of rows) {
     const rn = String(cells.B ?? '').trim();
@@ -156,7 +139,7 @@ function sameValue(a, b) {
 
   console.log(`  في القاعدة: ${await W.countDocuments()} · تطابق: ${existing.length} · غير موجود: ${missing.length}\n`);
 
-  // ── ما الذي سيُملأ ─────────────────────────────────────────────────────────
+  // What will be filled
   const ops = [];
   const undo = [];
   const perField = {};
@@ -168,7 +151,7 @@ function sameValue(a, b) {
       if (key === 'reportNumber') continue;
       const s = src[key];
       if (s === undefined) continue;
-      if (!isEmpty(cur[key], key)) continue;           // ← القاعدة: لا يُدهَس المملوء
+      if (!isEmpty(cur[key], key)) continue;           // Rule: never overwrite a populated value
       if (sameValue(cur[key], s)) continue;
       set[key] = s;
       perField[key] = (perField[key] || 0) + 1;
@@ -195,7 +178,7 @@ function sameValue(a, b) {
     process.exit(0);
   }
 
-  // ── ملفّ التراجع قبل أيّ كتابة ────────────────────────────────────────────
+  // Rollback file before any write
   const undoDir = path.join(__dirname, '../../backups');
   fs.mkdirSync(undoDir, { recursive: true });
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');

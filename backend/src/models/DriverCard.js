@@ -1,52 +1,26 @@
 /**
- * بطاقاتُ السائقين — سجلٌّ في قسم المركبات.
- *
- * ── لماذا سجلٌّ مستقلّ ──────────────────────────────────────────────────────
- * بطاقةُ السائق وثيقةٌ تنتهي ويُطالَب بتجديدها، لها رقمُها ونوعُها وسجلُّها
- * اللوجستيّ — والسجلُّ اللوجستيّ هو الذي تُصدَر البطاقةُ تحته، فمركباتُ سجلٍّ
- * لا يقودها إلّا مَن بطاقتُه منه. وهذا الربطُ لا موضعَ له في ملفّ الموظّف.
- *
- * ولقطةُ رقم البطاقة تبقى على الموظّف كما هي (`driverCardNumber` وأخواتها) —
- * تقرؤها شاشاتُ الموارد البشريّة — وهذا هو السجلُّ الذي يُدار ويُجدَّد منه.
+ * Driver cards: a registry in the vehicles section.
+ * A card is an expiring document with number, type and logistics registry; vehicles of a registry are driven only by holders of its cards. The card-number snapshot stays on Employee for HR screens; this is the registry that is managed and renewed.
  */
 const mongoose = require('mongoose');
 
 const driverCardSchema = new mongoose.Schema({
-  // رقمُ الهويّة هو المفتاح: هو ما في الشيت وما يُبحَث به.
+  // Identity number is the key: it is what the sheet holds and what is searched.
   idNumber: { type: String, required: true, trim: true, unique: true, index: true },
   employee: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee', index: true },
   name: { type: String, trim: true, default: '', index: true },
   dateOfBirth: { type: String, default: '' },        // YYYY-MM-DD
   absherPhone: { type: String, trim: true, default: '' },
-  // السجلُّ اللوجستيّ الذي صدرت تحته البطاقة — رقمٌ تُجمَّع به البطاقاتُ
-  // وتُطابَق بسجلّات المركبات التجاريّة.
+  // Logistics registry the card was issued under; groups cards and matches them to commercial vehicle records.
   logisticRegister: { type: String, trim: true, default: '', index: true },
   cardNumber: { type: String, trim: true, default: '', index: true },
-  cardType: { type: String, trim: true, default: '' },   // سنوية / مقيدة
-  /**
-   * ── نوعُ النقل الذي تُخوِّله هذه البطاقة ────────────────────────────────────
-   * كان يُشتَقّ من نوع تسجيل المركبات المفوَّضة له وحدَه — وهو اشتقاقٌ صحيحٌ لمن
-   * بيده مركبة، لكنّه لا يقول شيئًا عمّن أُصدرت بطاقتُه ولم يُسنَد إليه بعد:
-   * يُنشَأ الصفُّ فيُقرأ «بلا تفويض» وهو سائقُ نقلٍ ثقيلٍ بالورقة.
-   *
-   * فصار يُكتب عند الإنشاء، والمشتقُّ يملأ الفارغَ ولا يغلب المكتوب: ما على
-   * الورقة أصدقُ من استنتاجٍ عن مركبةٍ قد تُبدَّل غدًا.
-   */
+  cardType: { type: String, trim: true, default: '' },   // Annual or restricted.
+  /** Transport type this card authorizes. Written at creation; the value derived from assigned vehicles only fills a blank and never overrides it, since the paper is more reliable than an inference. */
   transportTypeAr: { type: String, trim: true, default: '', index: true },
   expiryDate: { type: String, default: '', index: true }, // YYYY-MM-DD
   notes: { type: String, trim: true, default: '' },
 
-  /**
-   * ── سجلُّ تجديداتِ البطاقة ────────────────────────────────────────────────
-   * نافذةُ التجديد واحدةٌ لكلّ مستندات القسم، وتسأل عن التكلفة ورقم الإيصال
-   * وملاحظة. ومستنداتُ المركبة تحفظها في `VehicleMaster.renewals`، أمّا صفوفُ
-   * بطاقات السائقين فلم يكن لها موضعٌ تُحفَظ فيه: يُقرأ `newExpiry` ويُرمى
-   * الباقي بلا خبر. فكانت الشاشةُ تسأل عمّا لا يمكن حفظُه.
-   *
-   * وهو سجلٌّ لازمٌ في ذاته: البطاقةُ تُجدَّد كلَّ سنةٍ برقمٍ جديدٍ أحيانًا،
-   * والرقمُ القديم يبقى مذكورًا في أوراقٍ سابقة — فالسلسلةُ تُقرأ إلى الوراء
-   * كما تُقرأ في المركبات.
-   */
+  /** Card renewal history. The renewal dialog collects cost, receipt number and note, but card rows had nowhere to store them. Cards renew yearly, sometimes with a new number, so the chain is read backwards as for vehicles. */
   renewals: [{
     previousExpiry: { type: String, default: '' },
     newExpiry: { type: String, default: '' },
@@ -60,26 +34,15 @@ const driverCardSchema = new mongoose.Schema({
   }],
 
   /**
-   * ── خيانة الأمانة ─────────────────────────────────────────────────────────
-   *
-   * وثيقةُ تأمينٍ تغطّي ما يسرقه السائق ممّا في عهدته. وهي وثيقةٌ واحدةٌ على
-   * مستوى الشركة (`CorporatePolicy` باسم «تأمين خيانة الأمانة») — فرقمُها
-   * وتاريخُ انتهائها هناك لا هنا، ولا يُنسَخان على كلّ سائقٍ فيفترقان عند أوّل
-   * تجديد. الذي يخصّ السائق سؤالٌ واحد: **أهو مشمولٌ بها أم مطلوبٌ ضمُّه؟**
-   *
-   * وكان الجوابُ في اسم الوثيقة: «تأمين خيانة الأمانة ل 58 سائق». عددٌ في
-   * اسمٍ لا يُسأل: أيُّ ثمانيةٍ وخمسين؟ ومَن الذي دخل الشهرَ الماضي وليس فيهم؟
-   * فصار العددُ يُعَدُّ من السائقين أنفسِهم.
-   *
-   *   covered  = «موجود» في الشيت — مشمولٌ بالوثيقة
-   *   required = «مطلوب» — يعمل ولم يُضَمّ بعد، وهذا هو الخطر المكشوف
-   *   ''       = لم يُسأل عنه بعد
+   * Breach-of-trust insurance is one company-wide policy (`CorporatePolicy`); number and expiry live there. Per driver only whether he is covered or must be added.
+   * covered = on the policy; required = working but not yet added (the exposed risk); '' = not asked yet.
+   * The count is computed from drivers, not embedded in the policy name.
    */
   fidelity: {
     status: { type: String, enum: ['covered', 'required', ''], default: '', index: true },
-    // يُملأ فقط إن كان هذا السائقُ على وثيقةٍ غير وثيقة الشركة.
+    // Filled only if this driver is on a policy other than the company one.
     policyNumber: { type: String, trim: true, default: '' },
-    addedDate: { type: String, default: '' },     // YYYY-MM-DD — متى ضُمّ
+    addedDate: { type: String, default: '' },     // YYYY-MM-DD, when he was added.
     notes: { type: String, trim: true, default: '' },
   },
 
@@ -88,13 +51,7 @@ const driverCardSchema = new mongoose.Schema({
   lastModifiedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
 }, { timestamps: true });
 
-/**
- * الأيّامُ حتى الانتهاء — تُحسب ولا تُخزَّن.
- *
- * الشيتُ يحمل عمودًا اسمُه «الأيام المتبقية»، وهو رقمٌ صحيحٌ يومَ كُتب وحدَه:
- * يقلُّ يومًا كلَّ يومٍ ولا يعلم الملفُّ بذلك. فيُحسب عند القراءة من تاريخ
- * الانتهاء، ويبقى صحيحًا بلا تحديث.
- */
+/** Days until expiry: computed, not stored. The sheet's remaining-days column goes stale daily, so it is derived from the expiry date on read. */
 driverCardSchema.virtual('daysLeft').get(function daysLeft() {
   if (!this.expiryDate) return null;
   const { startOfDay, todayKey } = require('../utils/companyDay');

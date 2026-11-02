@@ -1,10 +1,6 @@
 const mongoose = require('mongoose');
 
-// A marketing campaign (حملة تسويقية) — a budgeted, dated push on one channel
-// with an objective and its own result metrics. Individual posts/ads/designs
-// executed under it are MarketingActivity docs pointing back here; the campaign
-// itself keeps the rolled-up numbers the team reports on (spend vs budget,
-// leads, conversions, revenue).
+// A marketing campaign: a budgeted, dated push on one channel with an objective and its own result metrics. Individual posts/ads/designs under it are MarketingActivity docs pointing back here; the campaign keeps the rolled-up numbers (spend vs budget, leads, conversions, revenue).
 const PLATFORMS = [
   'facebook', 'instagram', 'twitter', 'linkedin', 'tiktok', 'snapchat',
   'google_ads', 'youtube', 'website', 'email', 'whatsapp', 'offline', 'other',

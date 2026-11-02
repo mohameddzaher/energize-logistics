@@ -1,19 +1,8 @@
 /* eslint-disable no-console */
 /**
- * cleanFleetTestData — يحذف حمولات التجربة وعملاءها من قسم إدارة الأسطول.
- *
- *   node src/scripts/cleanFleetTestData.js --dry
- *   node src/scripts/cleanFleetTestData.js --yes
- *
- * القسم بُني وجُرِّب ببياناتٍ مصطنعة، وهي الآن تفسد كلَّ رقمٍ في القسم: تدخل
- * في الدخل والتحليلات وتقييم السائقين وملفّات العملاء. فتُحذف قبل أن يبدأ
- * الشغل الحقيقيّ عليه.
- *
- * ولا يُحذف شيءٌ إلّا بعد كتابته كاملًا في ملفّ نسخةٍ احتياطية — الحذف قرارٌ
- * لا يُراجَع، وما لم يُنسخ لا يعود.
- *
- * ما يُحذف: كلُّ حمولةٍ أُنشئت قبل بدء التشغيل الفعليّ (--before)، وأحداثُها،
- * والعملاء الذين اسمُهم صريحٌ في التجربة ولا حمولة لهم بعد الحذف.
+ * cleanFleetTestData: delete test loads and their customers from fleet management.
+ * Usage: node src/scripts/cleanFleetTestData.js --dry | --yes
+ * Synthetic data corrupts income, analytics and ratings. Nothing is deleted before a full backup file is written. Deleted: loads created before go-live (--before), their events, and explicit test customers left with no load.
  */
 require('dotenv').config();
 const fs = require('fs');
@@ -26,11 +15,10 @@ const argOf = (flag, dflt) => {
   const i = process.argv.indexOf(flag);
   return i >= 0 && process.argv[i + 1] ? process.argv[i + 1] : dflt;
 };
-// كلُّ حمولةٍ في القسم اليوم من فترة البناء والاختبار؛ التاريخ يُمرَّر صراحةً
-// كي يبقى السكربت صالحًا لو شُغِّل بعد أن يدخل شغلٌ حقيقيّ.
+// Every load in the section today is from the build and test period; the date is passed explicitly so the script stays valid if run after real work enters.
 const BEFORE = new Date(argOf('--before', '2026-08-28'));
 
-/** أسماءٌ لا تكون إلّا تجربة. */
+/** Names that can only be test data. */
 const TEST_NAME = /تجرب|تجريب|test|demo|اختبار/i;
 
 (async () => {
@@ -48,7 +36,7 @@ const TEST_NAME = /تجرب|تجريب|test|demo|اختبار/i;
   const kept = await FleetShipment.countDocuments({ createdAt: { $gte: BEFORE } });
   console.log(`  يبقى ${kept} حمولة.`);
 
-  // العملاء: صريحو التجربة فقط، وبشرط ألّا تبقى لهم حمولة.
+  // Customers: explicit test names only, and only if no load remains for them.
   const survivors = new Set(
     (await FleetShipment.find({ createdAt: { $gte: BEFORE } }).select('customer').lean())
       .map((s) => String(s.customer)).filter(Boolean),
@@ -79,9 +67,7 @@ const TEST_NAME = /تجرب|تجريب|test|demo|اختبار/i;
   if (testCustomers.length) await FleetCustomer.deleteMany({ _id: { $in: testCustomers.map((c) => c._id) } });
   console.log(`  ✓ حُذف ${shipments.length} حمولة · ${events.length} حدثًا · ${testCustomers.length} عميلًا.`);
 
-  // عدّاد البوليصة: يُعاد إلى بدايته وحده حين لا تبقى بوليصةٌ واحدة — فتبدأ
-  // أوّلُ بوليصةٍ حقيقيّة من 100001 كما صُمّم. ولو بقيت واحدةٌ لم يُمسّ العدّاد،
-  // فإعادةُ استعمال رقمٍ صدر لعميلٍ ورقةٌ رسميّةٌ مكرّرة.
+  // Waybill counter: reset to its start only when no waybill remains, so the first real waybill starts at 100001 as designed. If one remains the counter is untouched, since reusing an issued number would duplicate an official paper.
   if (await FleetShipment.countDocuments() === 0) {
     const FleetCounter = mongoose.models.FleetCounter || mongoose.model('FleetCounter');
     await FleetCounter.updateOne({ _id: 'waybill' }, { $set: { seq: 100000 } }, { upsert: true });

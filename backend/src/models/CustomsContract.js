@@ -1,14 +1,6 @@
 /**
- * عقودُ التخليص — عقدُنا مع عميلٍ أو وكيلِ شحنٍ أو ناقل.
- *
- * ── لماذا هنا لا في قسم العقود ──────────────────────────────────────────────
- * قسمُ «إدارة العقود» يعمل على موردي النقل البرّيّ (3PL) وعملائهم؛ وعقودُ
- * التخليص تخصّ أطرافَ التخليص نفسَها — يُسأل عنها في ملفّ الطرف وفي المعاملة،
- * لا في شاشةٍ أخرى. فتُحفظ هنا ويُقرأ أثرُها في ملفّ الطرف مباشرةً.
- *
- * ── والعقدُ ورقةٌ قبل أن يكون صفًّا ──────────────────────────────────────────
- * فله مرفقاته: الموقَّعُ نفسُه والملاحقُ والسجلّ. والمرفقُ يُخزَّن كما يُخزَّن
- * مرفقُ المعاملة (utils/fileStore) — اسمُه ونوعُه وحجمُه ومَن رفعه.
+ * Customs contracts: our contract with a customer, shipping agent or carrier.
+ * Stored here, not in the contracts section (which covers 3PL road vendors), so it reads on the party file. Attachments use utils/fileStore.
  */
 const mongoose = require('mongoose');
 
@@ -25,30 +17,26 @@ const attachmentSchema = new mongoose.Schema({
 
 const customsContractSchema = new mongoose.Schema({
   party: { type: mongoose.Schema.Types.ObjectId, ref: 'CustomsParty', required: true, index: true },
-  // دورُ الطرف يُنسَخ هنا ليُفلتَر العقدُ بلا قراءةِ كلّ طرف.
+  // Party role is copied here so contracts filter without reading each party.
   partyKind: { type: String, enum: ['customer', 'agent', 'carrier'], required: true, index: true },
   partyName: { type: String, trim: true, default: '' },
 
-  title: { type: String, trim: true, required: true },     // «عقد تخليص سنويّ»
+  title: { type: String, trim: true, required: true },     // Example: annual customs contract.
   contractNumber: { type: String, trim: true, default: '' },
   startDate: { type: Date, default: null },
   endDate: { type: Date, default: null, index: true },
-  // ── والقيمةُ تُقرأ مع وحدتها ────────────────────────────────────────────
-  // «٥٠٠» لا تعني شيئًا وحدَها: أهي للحاوية أم للشهر أم للعقد كلِّه؟
+  // Value is read together with its unit: a bare number is ambiguous (per container, per month or whole contract).
   value: { type: Number, default: null },
   valueBasis: { type: String, enum: ['', 'total', 'per_container', 'per_month', 'per_shipment'], default: '' },
   paymentTermDays: { type: Number, default: 0 },
   autoRenew: { type: Boolean, default: false },
   status: { type: String, enum: ['draft', 'active', 'expired', 'terminated'], default: 'active', index: true },
-  scope: { type: String, trim: true, default: '' },        // ما يغطّيه العقد
+  scope: { type: String, trim: true, default: '' },        // What the contract covers.
   /**
-   * ── أسعارُ العقد مع العميل ───────────────────────────────────────────────
-   * تُكتب مرّةً هنا وتُملأ منها «الإيرادات والفوترة» في كلّ معاملةٍ لهذا
-   * العميل (utils/customsContractPricing) — وتبقى هناك قابلةً للتعديل.
-   *   · أجورُ التخليص للحاوية الواحدة، وتُضرَب في عدد حاويات المعاملة.
-   *   · النقلُ من الميناء إلى العميل بحسب الوجهة: «جدة → الرياض ٢٠٠٠».
-   *   · النقلُ من الميناء إلى الساحة، ومن الساحة إلى العميل.
-   * والفارغُ (null) غيرُ متّفقٍ عليه فلا يُملأ منه شيء — لا يُقرأ صفرًا.
+   * Contract prices, used to prefill revenue and billing on each transaction for this customer (utils/customsContractPricing); still editable there.
+   * Clearance fees are per container, multiplied by the transaction's container count.
+   * Transport is priced per destination (port to customer) or port to yard and yard to customer.
+   * null means not agreed: nothing is prefilled, never read as zero.
    */
   pricing: {
     clearanceFeePerContainer: { type: Number, default: null },

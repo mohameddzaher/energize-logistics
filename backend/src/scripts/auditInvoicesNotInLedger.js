@@ -1,4 +1,4 @@
-/** أرقامُ فواتيرَ مكتوبةٌ على كشوف التشغيل ولا قيدَ لها في دفتر الفواتير. */
+/** Invoice numbers written on operations statements with no entry in the invoice ledger. */
 require('dotenv').config();
 const mongoose = require('mongoose');
 (async () => {

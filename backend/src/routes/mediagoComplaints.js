@@ -1,11 +1,7 @@
 /**
- * شكاوى Media Go — راجع controllers/mediagoComplaintController.
- *
- * يُركَّب في server.js على `/api/b2c/mediago-complaints` قبل موجّه القسم:
- * حارسُ «الأفراد» لأهل القسم، وحسابُ Media Go يمرّ إلى هذه القوائم وحدَها.
- *
- * والقوائمُ هنا تفتح، والمتحكّمُ يحسم الحدودَ داخلها (Media Go لا تُنشئ ولا
- * تحذف، ولا تختار من الحالات إلّا «قيد المعالجة» و«تمّ الإصلاح»).
+ * Media Go complaints; see controllers/mediagoComplaintController.
+ * Mounted in server.js at `/api/b2c/mediago-complaints` before the section router: the individuals guard admits section staff, and the Media Go account reaches only these lists.
+ * The lists here open access and the controller sets the limits inside them (Media Go cannot create or delete, and can only choose the in-progress and fixed statuses).
  */
 const express = require('express');
 const router = express.Router();
@@ -18,8 +14,7 @@ const { MEDIAGO_ROLE } = require('../config/scopedRoles');
 router.param('id', objectIdParam());
 router.use(authenticate);
 
-// القراءةُ والحالةُ والردّ: أهلُ القسم وحسابُ Media Go. ومن مُنح «الأفراد» من
-// مصفوفة الصلاحيّات يمرّ بختم القسم (rbac) وإن لم يكن دورُه هنا.
+// Read, status and reply: section staff and the Media Go account. Users granted the individuals section in the permissions matrix pass through the section stamp (rbac) even if their role is not listed here.
 const READ = [...c.CREATE_ROLES, MEDIAGO_ROLE];
 
 router.get('/', authorize(...READ), c.list);
@@ -33,7 +28,7 @@ router.post('/:id/replies', authorize(...READ), c.reply);
 router.put('/:id', authorize.strict(...c.EDIT_ROLES), c.update);
 router.delete('/:id', authorize.strict(...c.DELETE_ROLES), c.remove);
 
-// لا يعبر شيءٌ من هنا إلى موجّه القسم: ما لم يُعرَف هنا غيرُ موجود.
+// Nothing from here falls through to the section router: anything not defined here does not exist.
 router.use((req, res) => res.status(404).json({ message: 'Route not found' }));
 
 module.exports = router;

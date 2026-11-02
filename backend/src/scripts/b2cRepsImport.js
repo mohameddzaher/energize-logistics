@@ -1,24 +1,7 @@
 /**
- * b2cRepsImport — شيتُ «تقرير تحقيق المناديب» إلى سجلّ النقل الخفيف، مرّةً واحدة
- * (صاحبُ الشركة، ٢٠٢٦/١٠/١٩). وبعدها: ما يُكتب على النظام وحدَه.
- *
- *   node src/scripts/b2cRepsImport.js <xlsx>            ← عرضٌ فقط
- *   node src/scripts/b2cRepsImport.js <xlsx> --apply
- *
- * من ورقة «الإدخال اليومي» لكلّ مندوب: رقمُ الإقامة، والاسم، والمشروع، والجهة
- * (كفالة · فري لانسر · يوزرات)، والمشرف، وتاريخ البدء.
- *
- * ١. المشاريع: كيتا · هنجرستيشن · نينجا · امازون بأسمائها العربيّة وأهدافها من
- *    ورقة «الإعدادات» (٤٥٠ · ٤٥٠ · ٣٦٠ · امازون شحناتٌ بلا هدف).
- * ٢. صفُّ المندوب في سجلّ النقل الخفيف: يُطابَق برقم الإقامة (واليوزرُ بلا إقامةٍ
- *    باسمه)، ويُنشأ إن لم يوجد. ويُكتب فيه المشروعُ والجهةُ والمشرف — وكلُّ تغييرٍ
- *    في سجلّه بصاحبه («مطابقة شيت التحقيق ١٧/١٠»).
- * ٣. حسابُ طلباته: كان المندوبُ في الشيتات اسمًا، فصار في النظام أكثرُ من حسابٍ
- *    للرجل الواحد. يُختار الحسابُ الذي **يطابق مجموعُه من ١ إلى ١٥ أكتوبر رقمَ
- *    الشيت** («إجمالي حتى ١٥/١٠») — فتتّصل طلباتُه الماضيةُ بما يُكتب بعدُ —
- *    ويُفكّ الربطُ الخاطئ إن وُجد.
- * ٤. مشاريعُ المشرفين: ما في الشيت لكلّ مشرف (مَن يرى ماذا في مدخلات الأوردرات).
- * ٥. امازون: لا طلباتَ له في النظام؛ تُكتب أيّامُه المفصّلةُ في الشيت (١٥–١٧).
+ * b2cRepsImport: one-time import of the rep verification sheet into the light transport register; afterwards the system is the only place data is written.
+ * Usage: node src/scripts/b2cRepsImport.js <xlsx> (dry run) | <xlsx> --apply
+ * Per rep: residence number, name, project, party, supervisor, start date. Steps: projects and targets, rep rows matched by residence number (changes attributed in history), order account chosen by matching the 1-15 October total, supervisor projects, Amazon detailed days.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -35,7 +18,7 @@ const NOTE = 'مطابقة شيت التحقيق 17/10/2026';
 (async () => {
   await mongoose.connect(process.env.MONGODB_URI || process.env.MONGO_URI);
   const db = mongoose.connection.db;
-  require('../models/Employee'); // listSupervisors يقرأ ملفّاتِ المشرفين
+  require('../models/Employee'); // listSupervisors reads the supervisor files
   const { LightTransportEmployee } = require('../models/LightTransport');
   const B2CRep = require('../models/B2CRep');
   const B2CProject = require('../models/B2CProject');
@@ -45,7 +28,7 @@ const NOTE = 'مطابقة شيت التحقيق 17/10/2026';
   const { listSupervisors } = require('../utils/b2cSupervisors');
   const E = require('../utils/b2cEntry');
 
-  // ── الشيت ────────────────────────────────────────────────────────────────
+  // Sheet
   const wb = XLSX.readFile(file);
   const grid = XLSX.utils.sheet_to_json(wb.Sheets['الإدخال اليومي'], { header: 1, raw: true, defval: '' });
   const head = grid[2];
@@ -60,7 +43,7 @@ const NOTE = 'مطابقة شيت التحقيق 17/10/2026';
   for (const r of settings) if (['هنجرستيشن', 'كيتا', 'نينجا', 'امازون'].includes(S(r[0]))) targets[S(r[0])] = Number(r[1]) || 0;
   console.log(`الشيت: ${reps.length} مندوب · الأيام المفصّلة: ${dayCols.filter((c) => reps.some((r) => r.days[c.iso] != null)).map((c) => c.iso.slice(5)).join('، ')} · الأهداف: ${JSON.stringify(targets)}`);
 
-  // ── ١. المشاريع ─────────────────────────────────────────────────────────
+  // 1. Projects
   const PNAMES = { 'كيتا': /keeta|كيتا/i, 'هنجرستيشن': /hunger|هنجر|هنقر/i, 'نينجا': /ninja|نينجا/i, 'امازون': /amazon|امازون/i };
   const allP = await B2CProject.find({}).lean();
   const projOf = {};
@@ -76,7 +59,7 @@ const NOTE = 'مطابقة شيت التحقيق 17/10/2026';
     await Lookup.create({ type: 'lt_contract_type', key: 'users', nameAr: 'يوزرات', nameEn: 'Rented users', order: 9, isActive: true, isSystem: false }).catch(() => {});
   }
 
-  // ── المشرفون ─────────────────────────────────────────────────────────────
+  // Supervisors
   const sups = await listSupervisors();
   const supOf = (name) => {
     const toks = S(name).split(/\s+/).map(fold).filter(Boolean);
@@ -87,7 +70,7 @@ const NOTE = 'مطابقة شيت التحقيق 17/10/2026';
   const supMap = Object.fromEntries(supNames.map((n) => [n, supOf(n)]));
   for (const n of supNames) console.log(`  مشرف «${n}» ← ${supMap[n] ? `${supMap[n].name} (${supMap[n].role})` : '✗ غير معروف'}`);
 
-  // ── ٢ و٣. المناديب وحساباتُ طلباتهم ────────────────────────────────────
+  // 2 and 3. Reps and their order accounts
   const ltAll = await LightTransportEmployee.find({}).lean();
   const ltById = new Map(ltAll.map((r) => [S(r.idNumber), r]));
   const ltByName = new Map(ltAll.map((r) => [fold(r.name), r]));
@@ -96,10 +79,8 @@ const NOTE = 'مطابقة شيت التحقيق 17/10/2026';
   const tally = { found: 0, created: 0, project: 0, supervisor: 0, kind: 0, linked: 0, relinked: 0, newRep: 0, noHistory: 0, amazonDays: 0 };
   const notes = []; const supProjects = {};
   const usedReps = new Set();
-  // ── المطابقةُ على دفعتين ──────────────────────────────────────────────────
-  // الأولى: الاسمُ والمجموعُ معًا لكلّ المناديب. والثانية لمن بقي: المجموعُ وحدَه
-  // إن لم يطابقه غيرُ حسابٍ واحدٍ لم يُؤخَذ. بدفعةٍ واحدةٍ كان مندوبٌ يأخذ حسابَ
-  // آخرَ تساوى مجموعاهما قبل أن يصل صاحبُه إليه.
+  // Matching in two passes
+  // First: name and total together for all reps. Second: for the rest, total alone, taken only if exactly one account matches. A single pass let one rep take an account of another whose totals were equal before its owner was reached.
   const sumOfRep = (x) => sums.get(String(x._id)) || 0;
   const ltOfSheet = (r) => (r.id && ltById.get(r.id)) || (!r.id && ltByName.get(fold(r.name))) || null;
   const namesOfSheet = (r) => { const lt = ltOfSheet(r); return [fold(r.name), lt ? fold(lt.name) : ''].filter(Boolean); };
@@ -138,9 +119,7 @@ const NOTE = 'مطابقة شيت التحقيق 17/10/2026';
       const doc = APPLY ? await LightTransportEmployee.findById(lt._id) : null;
       const change = (field, val, kindName) => {
         if (S(lt[field]) === S(val) || !S(val)) return false;
-        // تصحيحُ المشروع من الشيت تصحيحٌ لا نقل: يُكتب `project_fix` فلا يقرؤه خطُّ
-        // المشروع (b2cEntry.projectTimeline) نقلًا في يوم التصحيح — وإلّا عُدّ المندوبُ
-        // في المشروع القديم كلَّ ما قبله، فرُفضت أرقامُه في مشروعه الحقيقيّ.
+        // Fixing the project from the sheet is a correction, not a move: write project_fix so the project timeline (b2cEntry.projectTimeline) does not read it as a move on that day; otherwise the rep would count in the old project for everything before, and his numbers would be rejected in his real project.
         if (doc) { doc.history.push({ at: new Date(), byName: 'النظام', kind: kindName === 'project' ? 'project_fix' : kindName, fromValue: S(lt[field]), toValue: S(val), note: NOTE }); doc[field] = val; }
         return true;
       };
@@ -154,7 +133,7 @@ const NOTE = 'مطابقة شيت التحقيق 17/10/2026';
       if (doc && !S(doc.jobTitleAr)) doc.jobTitleAr = 'مندوب';
       if (doc && doc.isModified()) await doc.save();
     }
-    // حسابُ الطلبات.
+    // Order account.
     let pick = assigned.get(ri) || null;
     if (!pick) {
       const inProj = repsAll.filter((x) => String(x.project) === String(proj._id) && !usedReps.has(String(x._id)));
@@ -174,7 +153,7 @@ const NOTE = 'مطابقة شيت التحقيق 17/10/2026';
       tally.newRep += 1; if (base) { tally.noHistory += 1; notes.push(`؟ ${r.name} [${r.project}] الشيت ${base} ولا حسابَ مطابق — يبدأ من النظام`); }
       if (APPLY) await E.ensureRep(await LightTransportEmployee.findById(lt._id), null);
     }
-    // ٥. امازون: الأيامُ المفصّلةُ في الشيت.
+    // 5. Amazon: the detailed days in the sheet.
     if (r.project === 'امازون') {
       for (const [iso, n] of Object.entries(r.days)) {
         if (n == null) continue;
@@ -187,14 +166,14 @@ const NOTE = 'مطابقة شيت التحقيق 17/10/2026';
       }
     }
   }
-  // ٤. مشاريعُ المشرفين.
+  // 4. Supervisor projects.
   for (const [uid, set] of Object.entries(supProjects)) {
     const s = sups.find((x) => String(x._id) === String(uid));
     const ids = [...set].map((n) => projOf[n]?._id).filter(Boolean);
     console.log(`  مشاريع ${s?.name}: ${[...set].join('، ')}`);
     if (APPLY) await User.updateOne({ _id: uid }, { $set: { assignedProjects: ids } });
   }
-  // مناديبُ يعملون في السجلّ وليسوا في الشيت — تقرّر فيهم الإدارة.
+  // Reps working in the register but not in the sheet; management decides on them.
   const inSheet = new Set(reps.map((r) => r.id).filter(Boolean)); const inSheetNames = new Set(reps.map((r) => fold(r.name)));
   const extra = ltAll.filter((r) => r.staffKind === 'rep' && r.isActive !== false && r.workStatusAr !== 'إنهاء خدمة' && !inSheet.has(S(r.idNumber)) && !inSheetNames.has(fold(r.name)));
   console.log('\n', tally);

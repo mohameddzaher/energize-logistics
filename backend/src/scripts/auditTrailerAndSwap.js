@@ -1,24 +1,8 @@
 /* eslint-disable no-console */
 /**
- * auditTrailerAndSwap — نقل التيدر، واستبدال الكاوتش، والتاريخ.
- *
- *   node src/scripts/auditTrailerAndSwap.js --base https://api.energize-logistics.com
- *
- * تلات أسئلة:
- *
- * ① نقل التيدر من عربية لعربية شغّال **صح**؟
- *    الصح مش إن السجل يتغيّر — الصح إن **كاوتشه يمشي معاه**. كان بيتغيّر السجل
- *    وبس، فالعربية القديمة تفضل مسجّل عليها ١٤ إطار وفيهم ٦ مش عليها،
- *    والجديدة ٨. التيست بيعدّ الإطارات على الاتنين قبل وبعد.
- *
- * ② استبدال الكاوتش شغّال؟ الداخل ⇐ الخارج: الفردة الجديدة تاخد الموقع،
- *    والقديمة تروح المكان اللي اتحدّد لها (مخزن / تجديد / تالفة / سكراب).
- *
- * ③ كل حركة بتتسجّل في التاريخ؟ الحركة اللي ما اتسجّلتش كأنها ما حصلتش —
- *    الورشة بتحاسب على عمر الإطار من التاريخ ده.
- *
- * كله بيتعمل على **عربيات وتيدر وكاوتش اختبار** بيتعملوا ويتمسحوا. مفيش سجل
- * شغّال بيتلمس.
+ * auditTrailerAndSwap: trailer transfer, tire swap, and history.
+ * Moving a trailer must move its tires with it (only the record used to change); a tire swap puts the old tire where chosen; every movement is written to history, since the workshop bills by tire age.
+ * Runs on test trucks, trailer and tires that are created and deleted.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -79,12 +63,12 @@ const ok = (l, c, x = '') => { console.log(`  ${c ? '✓' : '✗ FAIL'}  ${l}${x
   const evOf = (id) => Ls2AssetEvent.find({ refId: id }).sort({ createdAt: 1 }).lean();
 
   try {
-    // ── التجهيز: عربيتين، تيدر على A، وكاوتش ──────────────────────────────
+    // Setup: two trucks, a trailer on A, and tires
     await Ls2Flatbed.create([{ plate: A, plateKey: kA }, { plate: B, plateKey: kB }]);
     const mk = (serial, extra) => post('/api/ls2/assets/tires', {
       serial, tireNumber: serial, type: 'Test', ...extra,
     });
-    // ٦ إطارات رأس على A، و٦ إطارات تيدر على A مربوطة بالتيدر
+    // 6 head tires on A, and 6 trailer tires on A attached to the trailer
     for (let i = 1; i <= 6; i++) {
       await mk(`ZZT-H${i}`, { plate: A, positionNumber: i, positionLabel: `اطار ${i}`, section: 'الرأس' });
     }
@@ -94,12 +78,12 @@ const ok = (l, c, x = '') => { console.log(`  ${c ? '✓' : '✗ FAIL'}  ${l}${x
       await mk(`ZZT-T${i}`, { plate: A, positionNumber: i, positionLabel: `اطار ${i}`, section: 'التريلة' });
     }
     await Ls2TireAsset.updateMany({ serial: { $regex: '^ZZT-T' } }, { $set: { trailerNumber: TNUM } });
-    const spare = (await mk('ZZT-SPARE', {})).body?.tire;   // في المخزن
+    const spare = (await mk('ZZT-SPARE', {})).body?.tire;   // In the store
 
     ok(`تجهيز: ${A} عليها ${await countOn(kA)} إطار · ${B} عليها ${await countOn(kB)}`,
       (await countOn(kA)) === 12 && (await countOn(kB)) === 0);
 
-    // ═══ ① نقل التيدر من A لـ B ═══════════════════════════════════════════
+    // 1. Move trailer from A to B
     console.log('\n── نقل التيدر من عربية لعربية ──');
     const mv = await post(`/api/ls2/assets/trailers/${trailer._id}/move`, { toPlate: B, reason: 'تيست' });
     ok('النقل نجح', mv.status === 200, `HTTP ${mv.status} ${mv.body?.message || ''}`);
@@ -111,14 +95,14 @@ const ok = (l, c, x = '') => { console.log(`  ${c ? '✓' : '✗ FAIL'}  ${l}${x
     ok('العربية القديمة بقت من غير تيدر', !fA.currentTrailerNumber, fA.currentTrailerNumber || '');
     ok('والجديدة عليها التيدر', fB.currentTrailerNumber === TNUM, fB.currentTrailerNumber || '—');
 
-    // ** الحاجة اللي كانت مكسورة **
+    // What used to be broken
     const [onA, onB] = [await countOn(kA), await countOn(kB)];
     ok(`وكاوتش التيدر مشي معاه: ${A} → ${onA} (رأس بس) · ${B} → ${onB} (تيدر)`,
       onA === 6 && onB === 6, `${onA}/${onB}`);
     const stray = await Ls2TireAsset.countDocuments({ plateKey: kA, section: /تيدر|تريل/, status: 'mounted' });
     ok('مفيش إطار تيدر فاضل على العربية القديمة', stray === 0, `${stray} إطار`);
 
-    // ── التاريخ سجّل النقل، للتيدر ولكل فردة ───────────────────────────────
+    // History recorded the move, for the trailer and for each tire
     const tEv = await evOf(trailer._id);
     ok('حركة التيدر اتسجّلت', tEv.some((e) => e.action === 'transferred' && e.toPlateKey === kB));
     const oneTire = await Ls2TireAsset.findOne({ serial: 'ZZT-T7' }).lean();
@@ -127,17 +111,17 @@ const ok = (l, c, x = '') => { console.log(`  ${c ? '✓' : '✗ FAIL'}  ${l}${x
       tireEv.some((e) => e.action === 'transferred' && e.toPlateKey === kB && /تيدر/.test(e.reason || '')),
       tireEv.map((e) => e.action).join(' → '));
 
-    // ── ورجوع: التيدر ينزل ويقف لوحده ──────────────────────────────────────
+    // And back: the trailer comes off and stands alone
     const off = await post(`/api/ls2/assets/trailers/${trailer._id}/move`, { toPlate: null, reason: 'تيست وقوف' });
     ok('التيدر ينزل ويقف لوحده', off.status === 200, `HTTP ${off.status}`);
     const standing = await Ls2TireAsset.find({ trailerNumber: TNUM, status: 'mounted' }).lean();
     ok(`وكاوتشه فاضل عليه (${standing.length} إطار، من غير عربية)`,
       standing.length === 6 && standing.every((t) => !t.plateKey));
     ok(`و${B} رجعت ${await countOn(kB)} إطار`, (await countOn(kB)) === 0);
-    // نرجّعه على B عشان باقي التيست
+    // Put it back on B for the rest of the test
     await post(`/api/ls2/assets/trailers/${trailer._id}/move`, { toPlate: B, reason: 'رجوع' });
 
-    // ═══ ①ب التيدر رايح على عربية عليها تيدر — لازم يتحدّد يروح فين ═══════
+    // 1b. Trailer going to a truck that already has one: must say where the old one goes
     console.log('\n── تيدر مكانه تيدر ──');
     const other = await Ls2Trailer.create({ trailerNumber: `${TNUM}B`, currentPlate: A, currentPlateKey: kA, status: 'active' });
     await Ls2Flatbed.updateOne({ plateKey: kA }, { currentTrailerNumber: `${TNUM}B` });
@@ -146,12 +130,12 @@ const ok = (l, c, x = '') => { console.log(`  ${c ? '✓' : '✗ FAIL'}  ${l}${x
     }
     await Ls2TireAsset.updateMany({ serial: { $regex: '^ZZT-X' } }, { $set: { trailerNumber: `${TNUM}B` } });
 
-    // من غير ما نقول التيدر القديم يروح فين ⇒ مرفوض
+    // Without saying where the old trailer goes -> rejected
     const noFate = await post(`/api/ls2/assets/trailers/${trailer._id}/move`, { toPlate: A, displacedTo: '' });
     ok('من غير تحديد مصير التيدر اللي مكانه ⇒ مرفوض',
       noFate.status === 400 && noFate.body?.code === 'DISPLACED_TRAILER_FATE_REQUIRED', `HTTP ${noFate.status}`);
 
-    // تبديل كامل: TNUM (على B) ⟷ TNUM_B (على A)
+    // Full swap: TNUM (on B) <-> TNUM_B (on A)
     const swap = await post(`/api/ls2/assets/trailers/${trailer._id}/move`, {
       toPlate: A, displacedTo: 'swap', reason: 'تبديل تيدرين',
     });
@@ -165,8 +149,8 @@ const ok = (l, c, x = '') => { console.log(`  ${c ? '✓' : '✗ FAIL'}  ${l}${x
     ok(`العربيتين ١٢ و٦: ${await countOn(kA)} / ${await countOn(kB)}`,
       (await countOn(kA)) === 12 && (await countOn(kB)) === 6);
 
-    // تيدر واقف ياخد مكان مركّب، والمركّب يقف
-    const standingTr = await Ls2Trailer.findById(other._id);   // على B
+    // A standing trailer takes the place of the mounted one, and the mounted one stands
+    const standingTr = await Ls2Trailer.findById(other._id);   // On B
     await post(`/api/ls2/assets/trailers/${standingTr._id}/move`, { toPlate: null, reason: 'يقف' });
     ok(`${TNUM}B وقف لوحده وكاوتشه معاه`,
       (await Ls2TireAsset.countDocuments({ trailerNumber: `${TNUM}B`, status: 'mounted', plateKey: null })) === 6);
@@ -181,15 +165,15 @@ const ok = (l, c, x = '') => { console.log(`  ${c ? '✓' : '✗ FAIL'}  ${l}${x
     ok('وكاوتش اللي وقف نزل معاه',
       (await Ls2TireAsset.countDocuments({ trailerNumber: TNUM, status: 'mounted', plateKey: null })) === 6);
 
-    // لوحة مالهاش سطحة ⇒ مرفوض (ده اللي حصل مع تيدر ٢٧)
+    // A plate with no flatbed is rejected (this happened with trailer 27)
     const ghost = await post(`/api/ls2/assets/trailers/${trailer._id}/move`, { toPlate: 'ZZ 9999' });
     ok('نقل لعربية مش موجودة ⇒ مرفوض', ghost.status === 400, `HTTP ${ghost.status}`);
 
-    // نرجّع الوضع: TNUM على A عشان باقي التيست
+    // Restore: TNUM on A for the rest of the test
     await post(`/api/ls2/assets/trailers/${standingTr._id}/move`, { toPlate: null });
     await post(`/api/ls2/assets/trailers/${trailer._id}/move`, { toPlate: A });
 
-    // ═══ ② استبدال كاوتش ═══════════════════════════════════════════════════
+    // 2. Tire swap
     console.log('\n── استبدال فردة كاوتش ──');
     const old = await Ls2TireAsset.findOne({ serial: 'ZZT-H3' }).lean();
     const rep = await post(`/api/ls2/assets/tires/${old._id}/move`, {
@@ -207,7 +191,7 @@ const ok = (l, c, x = '') => { console.log(`  ${c ? '✓' : '✗ FAIL'}  ${l}${x
     ok(`و${A} لسه ${onAafter} إطار (ما زادتش وما نقصتش)`, onAafter === 12,
       brk.map((x) => `${x.serial}@${x.positionNumber}`).join(' '));
 
-    // التاريخ للاتنين
+    // History for both tires
     const oldEv = await evOf(old._id);
     const newEv = await evOf(spare._id);
     ok('تاريخ الفردة النازلة فيه الإنزال',
@@ -217,14 +201,14 @@ const ok = (l, c, x = '') => { console.log(`  ${c ? '✓' : '✗ FAIL'}  ${l}${x
       newEv.some((e) => e.action === 'mounted' && e.toPlateKey === kA),
       newEv.map((e) => e.action).join(' → '));
 
-    // ── والاتنين بيبانوا في تاريخ العربية ─────────────────────────────────
+    // Both show in the truck's history
     const hist = await (await fetch(`${BASE}/api/ls2/assets/vehicle/${encodeURIComponent(A)}/history`, { headers: { Cookie: ck } })).json();
     const rows = hist?.rows || [];
     ok(`تاريخ العربية فيه ${rows.filter((r) => r.kind === 'tire').length} حركة كاوتش`,
       rows.some((r) => String(r.title).includes('ZZT-H3')) && rows.some((r) => String(r.title).includes('ZZT-SPARE')),
       rows.slice(0, 3).map((r) => r.title).join(' | '));
 
-    // ═══ ③ القواعد لسه مفروضة ══════════════════════════════════════════════
+    // 3. Rules are still enforced
     console.log('\n── القواعد ──');
     const head1 = await Ls2TireAsset.findOne({ plateKey: kA, positionNumber: 1, status: 'mounted' }).lean();
     const bare = await post(`/api/ls2/assets/tires/${head1._id}/move`, { toPlate: null, destination: 'store' });

@@ -34,28 +34,17 @@ const employeeSchema = new mongoose.Schema(
     // Job
     jobTitle: { type: String, trim: true },
     department: { type: String, trim: true },
-    // ── الفئةُ الوظيفيّة: إداري · سائق · فني (صاحبُ الشركة، ٢٠٢٦/١٠/١٩) ──────────
-    // لموظّفي B2C والنقل الثقيل وحدَهم — قسمان فيهما الثلاثة معًا، ويُسأل «كم إداريًّا
-    // في النقل الثقيل؟». من قائمةٍ مغلقة (utils/hrLists ← hr_staff_category).
+    // Staff category: administrative, driver or technician. Only for B2C and heavy transport employees, who have all three. Closed list (utils/hrLists, hr_staff_category).
     staffCategory: { type: String, trim: true, default: '', index: true },
-    // ── حالتُه اليومَ في قسم الأفراد (B2C) — لقطةٌ للقراءة لا تُكتب هنا ──────────
-    // إجازة · موقوف · حادث (فراغ = يعمل) تُكتب في «موظفو النقل الخفيف» وحدَه
-    // (`LightTransportEmployee.opStatus`) وتُنسَخ هنا كي تراها الموارد البشريّة في
-    // الملفّ والقائمة (صاحبُ الشركة، ٢٠٢٦/١٠/٢١). لا تمسّ حالةَ التوظيف ولا تُنشئ إجازة.
+    // Today's status in the B2C section: leave, suspended or accident (blank means working). Written only on LightTransportEmployee.opStatus and copied here as a read-only snapshot for HR. Does not touch employment status or create a leave.
     b2cOpStatus: { type: String, enum: ['', 'leave', 'suspended', 'accident'], default: '' },
     hireDate: { type: String }, // YYYY-MM-DD
-    // Actual first day on the job (تاريخ مباشرة العمل). Distinct from hireDate/
-    // contract dates — survives contract renewals so we always know when the
-    // employee actually started with us.
+    // Actual first day on the job. Distinct from hireDate and contract dates; survives contract renewals.
     actualWorkStartDate: { type: String }, // YYYY-MM-DD
     workLocation: { type: String, trim: true },
-    // الفرع الأساسي — الذي يُنسَب إليه الموظف في التقارير والرواتب.
+    // Primary branch, used for reports and salaries.
     branch: { type: mongoose.Schema.Types.ObjectId, ref: 'Branch' },
-    // ── ولماذا فروعٌ أخرى ─────────────────────────────────────────────────────
-    // موظّفون يعملون على أكثر من فرع فعلًا (سائق يخدم جدة ومكة، ومشرف يغطّي
-    // فرعين). حصرُه في فرع واحد كان يجبر الإدارة على اختيار أحدهما، فيختفي من
-    // قوائم الفرع الآخر وكأنه ليس منه. الأساسي يبقى واحدًا للتقارير، وهذه
-    // الفروع الإضافية تجعله يظهر ويُختار في الفرعين معًا.
+    // Additional branches: some employees really work in more than one (a driver serving two cities, a supervisor covering two branches). The primary stays single for reports; these make him appear and be selectable in both.
     branches: { type: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Branch' }], default: [], index: true },
     employmentStatus: {
       type: String,
@@ -76,19 +65,14 @@ const employeeSchema = new mongoose.Schema(
     terminatedAt: { type: Date },
     terminationReason: { type: String, trim: true },
     /**
-     * «لا يعمل» = إنهاءُ الخدمة، وله حالةٌ من ثلاث (صاحبُ الشركة، ٢٠٢٦/١٠/١٩):
-     *   transfer_pending  انتظار نقل الكفالة — شهرٌ تُنبَّه فيه الموارد البشريّة
-     *                     كلَّ يومٍ لإخراجه من النظام (فيذهب إلى الأرشيف)
-     *   sister_company    شركة شقيقة (داخل النظام)
-     *   final_exit        خروج نهائي (داخل النظام)
-     * راجع utils/hrEngagement (TERMINATION_KINDS) و jobs/hrTransferAlerts.
+     * Not working means service ended, in one of three states: transfer_pending (awaiting sponsorship transfer; HR alerted daily for a month, then archived), sister_company, final_exit.
+     * See utils/hrEngagement (TERMINATION_KINDS) and jobs/hrTransferAlerts.
      */
     terminationKind: { type: String, enum: ['transfer_pending', 'sister_company', 'final_exit', ''], default: '' },
     transferDeadline: { type: Date, default: null },
-    // «شركة شقيقة» — حالةُ عملٍ لا إنهاءُ خدمة: موظّفٌ قائمٌ على كفالتنا يعمل لدى
-    // شركةٍ شقيقة، ويُعامَل في كلّ قسمٍ كموظّفٍ عاديّ. راجع utils/hrEngagement.
+    // Sister company is a work status, not a termination: a current employee on our sponsorship working for a sister company, treated as a normal employee in every section. See utils/hrEngagement.
     sisterCompany: { type: Boolean, default: false, index: true },
-    // آخرُ نافذةِ تنبيهٍ أُرسلت (اليوم + صباحًا/مساءً) — يمنع عاملَي الخادم من التكرار.
+    // Last alert window sent (day plus morning/evening); prevents duplicates across the two server workers.
     transferAlertKey: { type: String, default: '' },
 
     // Contact
@@ -104,132 +88,99 @@ const employeeSchema = new mongoose.Schema(
     allowances: { type: Number, default: 0 },
 
     // ── Banking ──────────────────────────────────────────────────────────────
-    iban: { type: String, trim: true },  // الايبان
-    bank: { type: String, trim: true },  // البنك (RJHI / INMA / SNB ...)
+    iban: { type: String, trim: true },  // IBAN.
+    bank: { type: String, trim: true },  // Bank code (RJHI / INMA / SNB ...).
 
     // ── Extra HR-sheet fields (Saudi payroll/compliance bookkeeping) ─────────
-    fileStatus: { type: String, trim: true },        // حاله الملف (كامل ...)
-    absherNumber: { type: String, trim: true },      // رقم ابشر (the number, distinct from absherStatus)
-    companyNumber: { type: String, trim: true },     // رقم الشركه
-    originCountryNumber: { type: String, trim: true }, // رقم دوله الأصل
-    project: { type: String, trim: true },           // المشروع (امازون / هنقرستيشن / النقل الثقيل ...)
-    registerNumber: { type: String, trim: true },    // رقم السجل التجاري (CR)
-    systemStatus: { type: String, trim: true },      // حاله النظام (داخل النظام ...)
-    workStatusText: { type: String, trim: true },    // حاله العمل كنص (يعمل / اجازة) — employmentStatus stays the enum
-    penaltyClause: { type: Number, default: 0 },     // الشرط الجزائي
-    iqamaProfession: { type: String, trim: true },   // المهنه في الاقامه
-    classification: { type: String, trim: true },    // التصنيف
+    fileStatus: { type: String, trim: true },        // File status (complete ...).
+    absherNumber: { type: String, trim: true },      // Absher number (the number, distinct from absherStatus).
+    companyNumber: { type: String, trim: true },     // Company number.
+    originCountryNumber: { type: String, trim: true }, // Country-of-origin number.
+    project: { type: String, trim: true },           // Project (Amazon / HungerStation / heavy transport ...).
+    registerNumber: { type: String, trim: true },    // Commercial registration number (CR).
+    systemStatus: { type: String, trim: true },      // System status (inside the system ...).
+    workStatusText: { type: String, trim: true },    // Work status as text (working / on leave); employmentStatus stays the enum.
+    penaltyClause: { type: Number, default: 0 },     // Penalty clause.
+    iqamaProfession: { type: String, trim: true },   // Profession on the residence permit.
+    classification: { type: String, trim: true },    // Classification.
 
     // ── Contract columns mirrored from the HR master sheet ───────────────────
     // Reference text only — the Contract collection stays the source of truth.
-    contractStatusText: { type: String, trim: true, default: '' },  // حاله العقد (ساري ...)
-    contractStartDate: { type: String, default: '' },               // تاريخ الانشاء — YYYY-MM-DD
-    contractEndDate: { type: String, default: '' },                 // تاريخ الانتهاء_2 — YYYY-MM-DD
-    // ── ولماذا نصٌّ لا رقم ─────────────────────────────────────────────────────
-    // لوحة الفلترة ترسل قيمها نصًّا، و$in على حقلٍ رقميٍّ لا يطابق «٢١» أبدًا
-    // فتعود الشاشة فارغة بلا خطأ يُنبِّه. الرقم المُلزِم يبقى في وثيقة العقد
-    // (Contract.annualLeaveDays) وعليه يقوم حساب رصيد الإجازات؛ وهذا لقطةٌ منه.
-    annualLeaveDays: { type: String, trim: true, default: '' },      // الاجازه السنوية
-    probationPeriod: { type: String, trim: true, default: '' },      // فترة التجربة
+    contractStatusText: { type: String, trim: true, default: '' },  // Contract status (valid ...).
+    contractStartDate: { type: String, default: '' },               // Creation date, YYYY-MM-DD.
+    contractEndDate: { type: String, default: '' },                 // Expiry date 2, YYYY-MM-DD.
+    // String, not number: the filter panel sends values as strings, and $in on a numeric field never matches them, returning an empty screen silently. The binding number stays on the contract (Contract.annualLeaveDays), which drives the leave balance; this is a snapshot of it.
+    annualLeaveDays: { type: String, trim: true, default: '' },      // Annual leave.
+    probationPeriod: { type: String, trim: true, default: '' },      // Probation period.
 
     // Insurance
-    insuranceCompany: { type: String, trim: true },  // شركه التامين
-    insuranceExpiry: { type: String },               // تاريخ انتهاء التامين — YYYY-MM-DD
-    socialInsuranceStatus: { type: String, trim: true }, // حاله التامينات الاجتماعيه (نشط ...)
-    insuranceRequirements: { type: String, trim: true, default: '' },        // متطلبات التامين
-    iqamaProfessionRequirements: { type: String, trim: true, default: '' },  // متطلبات المهنه في الاقامه
+    insuranceCompany: { type: String, trim: true },  // Insurance company.
+    insuranceExpiry: { type: String },               // Insurance expiry date, YYYY-MM-DD.
+    socialInsuranceStatus: { type: String, trim: true }, // Social insurance status (active ...).
+    insuranceRequirements: { type: String, trim: true, default: '' },        // Insurance requirements.
+    iqamaProfessionRequirements: { type: String, trim: true, default: '' },  // Residence-permit profession requirements.
 
     // Visa
-    visaExpiry: { type: String },                    // انتهاء التأشيرة — YYYY-MM-DD
+    visaExpiry: { type: String },                    // Visa expiry, YYYY-MM-DD.
 
     // Travel (latest known trip)
-    lastTravelDate: { type: String },                // تاريخ السفر — YYYY-MM-DD
-    lastReturnDate: { type: String },                // تاريخ الرجوع — YYYY-MM-DD
+    lastTravelDate: { type: String },                // Travel date, YYYY-MM-DD.
+    lastReturnDate: { type: String },                // Return date, YYYY-MM-DD.
 
-    // ── Driving / vehicle eligibility ────────────────────────────────────────
-    // المركبه — لقطةٌ مشتقّةٌ لا تُكتب باليد: لوحاتُ ما يحمله في سجلّ المركبات
-    // (`VehicleMaster.authorizedPerson`)، يكتبها utils/vehicleAuthorization.refreshPlateSnapshot
-    // وحدَه بعد كلّ تفويضٍ أو نقلٍ أو تغيير لوحة. استمارةُ الموارد البشريّة تعرضها ولا تقبلها.
+    // Driving / vehicle eligibility.
+    // Vehicle: derived snapshot, never typed. Plates of what he holds in the vehicle registry (`VehicleMaster.authorizedPerson`); written only by utils/vehicleAuthorization.refreshPlateSnapshot after each authorization, transfer or plate change. The HR form shows it but does not accept it.
     vehiclePlate: { type: String, trim: true },
-    licenseNumber: { type: String, trim: true },     // رقم رخصة القيادة
-    licenseType: { type: String, trim: true },       // نوع الرخصه (نقل ثقيل / دراجة الية ...)
-    licenseExpiry: { type: String },                 // انتهاء الرخصه — YYYY-MM-DD
-    driverCardNumber: { type: String, trim: true },  // رقم كارت السائق
-    driverCardType: { type: String, trim: true },    // نوع كارت السائق (سنوية ...)
-    driverCardStatus: { type: String, trim: true },  // حاله كارت السائق
-    driverCardExpiry: { type: String },              // انتهاء كارت السائق — YYYY-MM-DD
-    workCard: { type: String, trim: true },          // كارت العمل
-    ajeerStatus: { type: String, trim: true },       // حاله اجير
-    ajeerExpiry: { type: String },                   // انتهاء اجير — YYYY-MM-DD
+    licenseNumber: { type: String, trim: true },     // Driving license number.
+    licenseType: { type: String, trim: true },       // License type (heavy transport / motorbike ...).
+    licenseExpiry: { type: String },                 // License expiry, YYYY-MM-DD.
+    driverCardNumber: { type: String, trim: true },  // Driver card number.
+    driverCardType: { type: String, trim: true },    // Driver card type (annual ...).
+    driverCardStatus: { type: String, trim: true },  // Driver card status.
+    driverCardExpiry: { type: String },              // Driver card expiry, YYYY-MM-DD.
+    workCard: { type: String, trim: true },          // Work card.
+    ajeerStatus: { type: String, trim: true },       // Ajeer status.
+    ajeerExpiry: { type: String },                   // Ajeer expiry, YYYY-MM-DD.
 
     // Links
     user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, // login account, optional
     directManager: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
 
-    // ── حقول ماستر الموارد البشرية v2.0 ────────────────────────────────────
+    // HR master v2.0 fields.
     companyEmail: { type: String, trim: true, default: '' },
     employerNumber: { type: String, trim: true, default: '' },
-    directManagerName: { type: String, trim: true, default: '' }, // لقطة الاسم من الماستر
-    // `branch` فوق هي ObjectId لسجل الفرع. الماستر بيدّي اسم الفرع نصًا («جدة»)
-    // ومش دايمًا ليه سجل عندنا، فبيتخزّن هنا. الاتنين مش بديل لبعض.
+    directManagerName: { type: String, trim: true, default: '' }, // Name snapshot from the master.
+    // `branch` above is an ObjectId of the branch record. The master supplies the branch name as text, which may have no record here, so it is stored here. The two are not substitutes.
     branchName: { type: String, trim: true, default: '', index: true },
     isOutsideKingdom: { type: Boolean, default: false, index: true },
     isFreelancer: { type: Boolean, default: false, index: true },
-    // ── نوعُ الارتباط: على كفالتنا أم عملٌ حرّ ────────────────────────────
-    //
-    // كان `isFreelancer` منطقيًّا (نعم/لا). والمنطقيُّ لا يحتمل نوعًا ثالثًا
-    // يظهر غدًا (منتدَب، متعاقد مع مورّد…)، ولا يُدار من إعدادات القسم.
-    // فصار الحقلُ مفتاحَ قائمةٍ تُدار من «القوائم المنسدلة»، ويبقى
-    // `isFreelancer` مرآةً له لأنّ عليه تقوم عدّاداتٌ قائمة — تُكتب الاثنتان
-    // معًا فلا يفترقان. راجع utils/employmentType.
+    // Engagement type: on our sponsorship or freelance. A boolean cannot hold a third type (seconded, vendor contractor) and is not manageable from settings, so the field is a key into a managed list. `isFreelancer` stays as a mirror because existing counters depend on it; both are written together. See utils/employmentType.
     employmentType: { type: String, trim: true, default: '', index: true },
     iqamaIssueDate: { type: Date, default: null },
     iqamaExpiryHijri: { type: String, trim: true, default: '' },
     contractOccupation: { type: String, trim: true, default: '' },
     insuranceClass: { type: String, trim: true, default: '' },
-    // ── التأمينُ الطبّيّ ─────────────────────────────────────────────────────
-    // رقمُ الوثيقة عند شركة التأمين والسجلُّ المسجَّل تحته. يُسألان عند كلّ
-    // مراجعةٍ أو تجديد، وكانا خارجَ الملفّ فيُبحث عنهما في شيتٍ منفصل.
+    // Medical insurance: policy number at the insurer and the registry it is under. Asked at each review or renewal; previously kept outside the file.
     medicalInsuranceNumber: { type: String, trim: true, default: '' },
     medicalInsuranceRegister: { type: String, trim: true, default: '' },
     healthCertNumber: { type: String, trim: true, default: '' },
     healthCertExpiry: { type: Date, default: null, index: true },
 
-    // ── حالة كل حقل: مطلوب / غير مطلوب / لا يوجد ───────────────────────────
-    // Map مفتوحة عشان إضافة حقل في config/hrFields.js ما تحتاجش تعديل هنا.
-    // «مطلوب» معناها ناقص ولازم التيم يجمّعه، و«غير مطلوب» معناها مش بينطبق
-    // على الموظف ده — الاتنين لازم يفضلوا مفصولين، وإلا قايمة شغل الموارد
-    // البشرية بتبقى فيها ناس مالهمش دعوة.
-    // بتتشال أوتوماتيك أول ما الحقل يتملي (pre-save تحت).
+    // Per-field status: required, not required or none.
+    // Open Map so adding a field in config/hrFields.js needs no change here. Required means missing and must be collected; not required means it does not apply to this employee. Keep them separate or the HR work list contains people who need no follow-up.
+    // Removed automatically once the field is filled (pre-save below).
     fieldStatus: { type: Map, of: String, default: {} },
 
-    // هل ده سجل موارد بشرية أصلاً؟
-    // إنشاء حساب دخول بيعمل سجل موظف تلقائي (utils/ensureSelfEmployee) — وده
-    // **مش موظف**. يوزر على السيستم ≠ موظف؛ بيبقى موظف لما يتربط بسجل حقيقي.
-    // بيتعلّم false للسجلات دي فتخرج من عدّادات القسم وتفضل موجودة عشان الحساب
-    // المربوط بيها يفضل شغّال.
+    // Whether this is a real HR record. Creating a login account auto-creates an employee record (utils/ensureSelfEmployee), which is not an employee: a system user is not an employee until linked to a real record. Such records are marked false so they leave department counters but stay for the linked account.
     isHrRecord: { type: Boolean, default: true, index: true },
-    // ── من أين أُنشئ الملفّ ─────────────────────────────────────────────────
-    // قسمُ الأفراد يضيف موظّفَه من سجلّ النقل الخفيف ببياناتٍ قليلة (الاسم
-    // والإقامة والمشروع…)، والموارد البشريّة تُكمل الباقي. فيُعلَّم الملفُّ
-    // بمصدره (`b2c`) لتجد الموارد البشريّة ما أُضيف من هناك بضغطة.
+    // Where the file was created. The people section adds its employee from the light transport registry with little data (name, residence, project), and HR completes the rest. The file is marked with its source (`b2c`) so HR can find what was added from there.
     createdVia: { type: String, trim: true, default: '', index: true },
-    // ── وهل علمت به الموارد البشريّة؟ ───────────────────────────────────────
-    // الزرُّ «موظفون جدد من قسم الأفراد» تنبيهٌ لا سجلّ: يقول «أُنشئ ملفٌّ فانتبهوا».
-    // فمتى عدّلت الموارد البشريّة أيَّ شيءٍ في الملفّ فقد علمت، ويخرج من التنبيه
-    // وحدَه — بلا زرّ «تمّت المراجعة» يُنسى. يُرفَع في خطّاف الحفظ أدناه.
+    // Whether HR has seen it. The new-employees-from-people-section button is an alert, not a record. Any HR edit means HR has seen it, so it leaves the alert on its own, with no review button to forget. Set in the save hook below.
     hrPending: { type: Boolean, default: false, index: true },
 
-    // هل الموظف ده في ملف الماستر الحالي؟
-    // ٣٧٨ صف في الماستر = الملف الوظيفي الحالي (منهم ٣٢١ على رأس العمل والباقي
-    // إجازة/خروج نهائي/لا يعمل). واللي مش فيه خرج قبل كده وسجله محفوظ كتاريخ.
-    // الفرق ده لازم يفضل واضح، وإلا «عدد الموظفين» بيبقى رقم مالوش معنى.
+    // Whether this employee is in the current master file. The master is the current employment file; those not in it left earlier and their record is kept as history. This distinction must stay clear or the employee count is meaningless.
     inCurrentMaster: { type: Boolean, default: false, index: true },
 
-    // ── متى لمسَ الاستيرادُ هذا السجلّ آخرَ مرّة ───────────────────────────────
-    // الشيت لقطةٌ من ورق، ومَن فتح الشاشة بعده كان ينظر إلى الموظّف نفسه. فبمقارنة
-    // `updatedAt` بهذا التاريخ يُعرَف أنّ إنسانًا كتب بعد آخر استيراد، فلا تمحو
-    // خانةٌ فارغة في الشيت ما كتبه. (نفس قاعدة a348299b في قسم المركبات.)
+    // When the import last touched this record. The sheet is a paper snapshot; comparing `updatedAt` with this date shows a human wrote after the last import, so an empty sheet cell does not erase their edits. (Same rule as in the vehicles section.)
     lastImportAt: { type: Date, default: null },
 
     notes: { type: String, trim: true },
@@ -240,27 +191,13 @@ const employeeSchema = new mongoose.Schema(
 
 // Search & filter indexes. Search is by name / iqama / employee number / phone.
 /**
- * أول ما حقل يتملي، حالته «مطلوب» بتتشال لوحدها.
- *
- * ده اللي بيخلّي عدّاد «مطلوب» في الداشبورد صادق: من غيره، الموارد البشرية
- * تملي البيانات والرقم يفضل مكانه، فيفضلوا بيدوّروا على شغل خلص. القرار إنه
- * يحصل هنا مش في الكونترولر عشان يشتغل مهما كان مصدر التعديل — الشاشة، أو
- * الاستيراد، أو أي سكربت.
+ * Once a field is filled, its required status is removed automatically.
+ * Keeps the dashboard required counter honest. Done here rather than in the controller so it works for any edit source: screen, import or script.
  */
 /**
- * ── رقمُ الهويّة يبقى في العمودين ─────────────────────────────────────────────
- *
- * السعوديُّ رقمُه في `nationalId` والمقيمُ في `iqamaNumber`، وهذا صحيحٌ في
- * المعنى. لكنّ الشاشات كلَّها تقرأ `iqamaNumber` — الجداولُ والتصديراتُ
- * وقوائمُ الاختيار — لأنّه في الواقع «رقمُ هويّة هذا الشخص» أيًّا كان نوعُها؛
- * واثنتان وخمسون من أربعٍ وخمسين بطاقةَ سعوديٍّ تحمله فيه أصلًا.
- *
- * فكانت النتيجةُ صفًّا يقول «لا يوجد» عن رقمٍ مكتوبٍ في ملفّ صاحبه، ويُعَدُّ
- * نقصًا يُطالَب بجمعه. والقراءةُ المزدوجة في `config/hrFields` تصلح الماستر،
- * لكنّها لا تصل إلى عشرين شاشةً أخرى تقرأ العمود مباشرة.
- *
- * فيُنسَخ رقمُ السعوديّ إلى `iqamaNumber` عند الحفظ. لا يُنسخ العكس: رقمُ
- * الإقامة ليس رقمًا وطنيًّا، وكتابتُه في `nationalId` تجعل مقيمًا يبدو سعوديًّا.
+ * The identity number stays in both columns.
+ * A Saudi's number is in `nationalId` and a resident's in `iqamaNumber`, but all screens read `iqamaNumber` (tables, exports, pickers) as the person's identity number whatever its type. Otherwise a written number reads as missing and is counted as a gap. The dual read in config/hrFields fixes the master but not screens reading the column directly.
+ * So a Saudi number is copied to `iqamaNumber` on save. Never the reverse: an iqama number is not a national number and would make a resident look Saudi.
  */
 employeeSchema.pre('save', function mirrorNationalId(next) {
   if (this.idType === 'national_id') {
@@ -270,9 +207,7 @@ employeeSchema.pre('save', function mirrorNationalId(next) {
   next();
 });
 
-// ── اسمُ الفرع نصًّا يُملأ من الفرع المختار ─────────────────────────────────
-// الماستر يفلتر ويجمع بـ`branchName` (نصُّ ملفّ الاستيراد)، واستمارةُ الموظّف
-// تختار `branch` معرّفًا ولا تكتب النصّ — فمن أُضيف في النظام يقع تحت «—».
+// Branch name text is filled from the selected branch. The master filters and groups by `branchName` (import text), while the employee form picks `branch` as an id and does not write the text; without this, system-created employees fall under a blank bucket.
 employeeSchema.pre('save', async function fillBranchName(next) {
   try {
     if (this.branch && !String(this.branchName || '').trim()
@@ -280,18 +215,12 @@ employeeSchema.pre('save', async function fillBranchName(next) {
       const b = await mongoose.model('Branch').findById(this.branch).select('name').lean();
       if (b?.name) this.branchName = b.name;
     }
-  } catch (_) { /* لا يُفشل الحفظ */ }
+  } catch (_) { /* Must not fail the save. */ }
   next();
 });
 
-// ── موظّفٌ جديد: مستنداتُه الفارغةُ «مطلوبة» حتّى يُقال غيرُ ذلك ────────────
-// كانت الخانةُ الفارغةُ عند من أُضيف في النظام تُقرأ «لا يوجد»، فلا يدخل عدّادَ
-// «المطلوب» ولا شاشاتِ الانتهاء — و«مطلوب» لم يكن يكتبها إلّا الاستيراد. فيُعلَّم
-// كلُّ حقلٍ من حقول المستندات فارغٍ بلا حالة «مطلوبًا» عند الإنشاء، ومن لا
-// يحتاجه يختار «غير مطلوب» من الاستمارة أو الماستر.
-//
-// ولا يُعلَّم ما لا ينطبق أصلًا: السعوديّ لا إقامةَ له ولا رخصةَ عمل، والتاريخُ
-// الهجريُّ مشتقٌّ لا يُكتب. وحساباتُ الدخول التلقائيّة ليست موظّفين.
+// New employee: empty document fields are marked required until stated otherwise. Previously an empty field on a system-created employee read as none, so it was not counted as required nor shown on expiry screens, since only the import wrote required. Every empty document field with no status is marked required at creation; if not needed, choose not required on the form or master.
+// Not marked where it never applies: Saudis have no residence or work permit, the Hijri date is derived, and auto-created login accounts are not employees.
 employeeSchema.pre('save', function defaultRequiredDocs(next) {
   try {
     if (!this.isNew || this.isHrRecord === false) return next();
@@ -301,7 +230,7 @@ employeeSchema.pre('save', function defaultRequiredDocs(next) {
     if (!this.fieldStatus || typeof this.fieldStatus.set !== 'function') this.fieldStatus = new Map();
     const empty = (v) => v === null || v === undefined || v === '' || (v instanceof Date && isNaN(v));
     for (const g of H.DOCUMENT_GROUPS) {
-      // التأشيرةُ وأجير لا يحملهما كلُّ موظّف (`optional`) — لا تُطلَب من الجميع.
+      // Visa and Ajeer are not held by every employee (`optional`), so not required of everyone.
       if (skipGroups.has(g.key) || g.optional) continue;
       for (const f of g.fields) {
         if (/Hijri$/.test(f.key) || f.optional || f.readOnly) continue;
@@ -310,7 +239,7 @@ employeeSchema.pre('save', function defaultRequiredDocs(next) {
         if (empty(H.valueOf(this, f.key))) this.fieldStatus.set(sk, 'required');
       }
     }
-  } catch (_) { /* لا يُفشل الإنشاء */ }
+  } catch (_) { /* Must not fail the create. */ }
   next();
 });
 
@@ -318,8 +247,7 @@ employeeSchema.pre('save', function clearSatisfiedStatuses(next) {
   if (!this.fieldStatus || typeof this.fieldStatus.forEach !== 'function') return next();
   const filled = (v) => !(v === null || v === undefined || v === '' || (v instanceof Date && isNaN(v)));
   for (const [statusKey, code] of [...this.fieldStatus.entries()]) {
-    // «غير مطلوب» قرار إداري — مش بيتشال لمجرد إن حد كتب حاجة. أمّا «غير نشط»
-    // فحالُ الخانة لا قرار: كتابةُ شركة تأمينٍ من جديد تعني أنّه صار نشطًا.
+    // Not required is an administrative decision: not removed just because something was typed. Inactive is the state of the field, not a decision: entering an insurance company again means it became active.
     if (code !== 'required' && code !== 'inactive') continue;
     const fieldKey = statusKey.replace(/Status$/, '');
     if (filled(this.get(fieldKey))) this.fieldStatus.delete(statusKey);
@@ -328,18 +256,12 @@ employeeSchema.pre('save', function clearSatisfiedStatuses(next) {
 });
 
 /**
- * ── وخاناتُ العقد تُكتب في العقد نفسِه ──────────────────────────────────────
- * نهايةُ العقد وبدايتُه ورقمُه صورةٌ من العقد الساري (راجع utils/contractStatus).
- * فمن عدّلها هنا — من الماستر، أو «تجديد» في صفحة الانتهاءات، أو تجديدٍ جماعيّ —
- * يُكتب تعديلُه في العقد، وإلّا عرضت الانتهاءاتُ تاريخًا وتبويبُ العقود آخر.
- *
- * وهو خطّافٌ على الحفظ لا سطرٌ في كلّ متحكِّم: أبوابُ التعديل أربعةٌ اليوم
- * وتزيد، ومن ينسى السطرَ يعيد العطبَ صامتًا. والمزامنةُ من العقد تكتب
- * بـ`updateOne` فلا تمرّ من هنا — فلا دوران.
+ * Contract fields are written to the contract itself.
+ * Contract end, start and number mirror the active contract (utils/contractStatus). An edit here (master, renew on the expiries page, bulk renewal) is written to the contract, otherwise expiries and the contracts tab show different dates.
+ * A save hook rather than a line per controller, since there are several edit paths and a missed line silently reintroduces the bug. Sync from the contract uses `updateOne` and bypasses this hook, so no loop.
  */
-// أيُّ حفظٍ لملفٍّ قائمٍ هو يدُ الموارد البشريّة عليه (قسمُ الأفراد يكتب في سجلّه
-// هو، لا هنا) — فيُرفَع التنبيه. راجع `hrPending`.
-// Work status text is derived from the status; a blank one read as «not set» in filters.
+// Any save of an existing file is HR's hand on it (the people section writes to its own record), so the alert is cleared. See `hrPending`.
+// Work status text is derived from the status; a blank one read as not set in filters.
 employeeSchema.pre('save', function deriveWorkStatusText(next) {
   if (this.isHrRecord === false) return next();
   const want = require('../utils/hrEngagement').workStatusTextOf(this);
@@ -393,17 +315,8 @@ employeeSchema.post('save', function () {
 employeeSchema.index({ directManager: 1 });
 employeeSchema.index({ vehiclePlate: 1 });
 
-// ── رقمُ الهويّة مفتاحُ الربط مع المركبات و B2C — فإن صُحِّح هنا صُحِّح هناك ──
-// ورقةُ التفويض على المركبة (`VehicleMaster.authorizedPerson.iqamaNumber`)،
-// والقائدُ الفعليّ، وبطاقةُ السائق، وصفُّ النقل الخفيف — كلُّها تعرف الموظّفَ
-// برقم هويّته. فتصحيحُ الرقم في الموارد البشريّة وحدَها يقطع الربط: يختفي
-// تفويضُه من ملفّه ومن إخلاء طرفه، ويبقى على المركبة رقمٌ لا يعرفه أحد.
-// راجع utils/employeeIdentitySync.
-//
-// ── وبياناتُ الشخص تتبعه كذلك (الاسم · الجوال · الجنسيّة · المشروع · القسم · حالة
-// التوظيف): نسخُها في النقل الخفيف وبطاقة السائق وورقة التفويض والقائد الفعليّ
-// تُكتب من هنا — الرقمُ أوّلًا ثمّ البيانات، فتُطابَق النسخُ بالرقم الجديد.
-// راجع utils/employeeIdentitySync.pushPersonChange و utils/personRef.
+// The identity number is the join key with vehicles and B2C; correcting it here corrects it there. The vehicle authorization paper (`VehicleMaster.authorizedPerson.iqamaNumber`), the actual driver, the driver card and the light transport row all identify him by it. Fixing it only in HR breaks the link: his authorization vanishes from his file and clearance, and the vehicle keeps an unknown number. See utils/employeeIdentitySync.
+// Personal data (name, phone, nationality, project, department, employment status) follows too: copies in light transport, driver card, authorization paper and actual driver are pushed from here, number first then data so copies match by the new number. See utils/employeeIdentitySync.pushPersonChange and utils/personRef.
 employeeSchema.post('init', function () {
   this.$locals.idsAtLoad = [this.iqamaNumber, this.nationalId].map((x) => String(x || '').trim());
   this.$locals.personAtLoad = require('../utils/employeeIdentitySync').personSnapshot(this);
@@ -421,20 +334,18 @@ employeeSchema.post('save', async function (doc) {
     try { await sync.pushIdChange(doc, before, now); }
     catch (e) { console.error('employee id → vehicles/b2c:', e.message); }
   }
-  // حسابُ دخولٍ تلقائيّ ليس شخصًا في الموارد البشريّة — لا يكتب في نسخ أحد.
+  // An auto-created login account is not an HR person and writes to nobody's copies.
   if (doc.isHrRecord === false) return;
   const pBefore = doc.$locals && doc.$locals.personAtLoad;
   const pNow = sync.personSnapshot(doc);
-  // ملفٌّ جديد: قد تكون له نسخٌ قائمةٌ برقم هويّته (أنشأه قسمُ الأفراد من صفّه).
+  // New file: existing copies may already carry its identity number (the people section created it from its row).
   const fields = pBefore ? sync.changedPersonFields(pBefore, pNow) : (doc.$locals && doc.$locals.wasNew ? sync.COPIED_FIELDS : []);
   if (doc.$locals) doc.$locals.personAtLoad = pNow;
   if (!fields.length) return;
   try { await sync.pushPersonChange(doc, { fields }); }
   catch (e) { console.error('employee person → copies:', e.message); }
 });
-// والكتابةُ بالاستعلام (`updateOne`/`updateMany`/`findOneAndUpdate`) لا تمرّ بالحفظ:
-// توحيدُ قوائم الجنسيّة والقسم والمشروع، ومزامنةُ المشروع من قسم الأفراد. فتُحفَظ
-// معرّفاتُ مَن تمسّه قبل الكتابة، ثمّ تُدفَع بياناتُه بعدها.
+// Query writes (`updateOne`/`updateMany`/`findOneAndUpdate`) bypass the save hook: nationality, department and project list unification, and project sync from the people section. So ids of affected records are captured before the write and their data pushed afterwards.
 const touchedPersonFields = (update) => {
   if (!update) return [];
   const keys = [];
@@ -464,7 +375,7 @@ for (const op of ['updateOne', 'updateMany', 'findOneAndUpdate']) {
   });
 }
 
-// ── والفئةُ الوظيفيّة تسقط إذا خرج الموظّفُ من قسميها (B2C · النقل الثقيل) ──
+// Staff category is dropped when the employee leaves both its departments (B2C, heavy transport).
 employeeSchema.pre('save', async function () {
   if (!this.isModified('department') || !this.staffCategory) return;
   try {

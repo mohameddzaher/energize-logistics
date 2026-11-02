@@ -1,21 +1,6 @@
 /**
- * importCollectionTasks — خطّةُ الفريق وما تمّ منها، من ورقة «JP».
- *
- *   node --max-old-space-size=8192 src/scripts/importCollectionTasks.js --dry
- *   node --max-old-space-size=8192 src/scripts/importCollectionTasks.js
- *
- * ── شكلُ الورقة ────────────────────────────────────────────────────────────
- * صفٌّ لكلّ عميل، ثمّ كتلةٌ من خمسة أعمدةٍ لكلّ يوم تتكرّر إلى آخر الورقة:
- *
- *     Plan · Request · Status · Collected · action
- *
- * وتاريخُ اليوم مكتوبٌ فوق أوّل عمودٍ من كتلته في صفٍّ سابق. فالوحدةُ الحقيقيّة
- * (عميلٌ × يوم)، وهي التي تُخزَّن — لا صفُّ العميل العريض. وبذلك يُقرأ العملُ
- * بالموظّف وبالتاريخ وبالعميل، وهي الأسئلةُ الثلاثة التي يُسأل بها.
- *
- * ── ولا يُخزَّن اليومُ الفارغ ──────────────────────────────────────────────
- * أكثرُ الخانات فارغة: عميلٌ لا خطّةَ له في ذلك اليوم. فلا يُكتب صفٌّ إلّا حيث
- * خُطِّط شيءٌ أو تمّ شيء.
+ * Imports the team plan and what was done from the JP sheet.
+ * One stored row per customer x day, not the wide customer row; days with no plan or result are skipped.
  */
 require('dotenv').config();
 const path = require('path');
@@ -47,7 +32,7 @@ const isoDay = (v) => (typeof v === 'number' && Number.isFinite(v) && v > 1
   const dateRow = all[DATE_ROW] || [];
   const rows = all.slice(HEADER_ROW + 1);
 
-  // أعمدةُ الأيّام: أوّلُ كلّ كتلةٍ يحمل تاريخَها.
+  // Day columns: the first column of each block carries its date.
   const days = [];
   for (let c = FIRST_BLOCK; c + BLOCK - 1 < (all[HEADER_ROW] || []).length; c += BLOCK) {
     const d = isoDay(dateRow[c]);
@@ -76,7 +61,7 @@ const isoDay = (v) => (typeof v === 'number' && Number.isFinite(v) && v > 1
       const collected = N(r[col + 3]);
       const action = S(r[col + 4]);
       scanned += 1;
-      if (!planned && !requestType && !status && !collected && !action) continue;   // يومٌ لا شيءَ فيه
+      if (!planned && !requestType && !status && !collected && !action) continue;   // A day with nothing in it
       out.push({
         party: party._id, partyCode: party.code || code, partyName: party.name || name,
         officerName, date,

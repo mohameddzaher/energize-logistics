@@ -1,24 +1,8 @@
 /**
- * repairLs2SwapTires — يعيد فِرَدَ التيدر التي جرّها تبديلُ التيدرات إلى غير عربيّتها.
- *
- *   node src/scripts/repairLs2SwapTires.js            ← عرضٌ فقط
- *   node src/scripts/repairLs2SwapTires.js --apply
- *
- * ── ما الذي حدث ───────────────────────────────────────────────────────────
- * في التبديل (تيدر A على العربيّة X يُركَّب على Y، وتيدرُ Y — B — يرجع إلى X)
- * كانت فِرَدُ B تُنقَل إلى X **وA لم يغادرها بعد**، فتأخذ رقمَ A، ثمّ تُجمَع مع
- * فِرَد A وتمشي معه إلى Y. الكاوتشُ كلُّه على Y، وX بلا كاوتش. أُصلح في
- * moveTrailer (controllers/ls2AssetsController، `trailerTires`) يوم ٢٠٢٦/١٠/١٧.
- *
- * ── وكيف تُعرَف الفردةُ المجرورة ──────────────────────────────────────────
- * من سجلّ حركتها: حركتان «مشيت مع التيدر» متتاليتان في الطلب نفسِه (أقلّ من
- * دقيقتين) بتيدرين مختلفين، والثانيةُ تبدأ حيث انتهت الأولى. الأولى هي الحقيقة
- * (الفردةُ على تيدر B)، والثانيةُ هي الخطأ.
- *
- * ── ومتى تُصحَّح وحدَها ───────────────────────────────────────────────────
- * إن لم يمسّها أحدٌ بعد الخطأ (آخرُ حركةٍ لها هي الخاطئة، وهي في مكانها). فتُعاد
- * إلى حيث تيدرُها B الآن — على عربيّةٍ أو واقفًا. وما مُسّ بعدها يُعرَض ولا يُلمَس:
- * الورشةُ ربّما صحّحته باليد.
+ * repairLs2SwapTires: return trailer tires that a trailer swap dragged to the wrong truck. Usage: node src/scripts/repairLs2SwapTires.js [--apply] (dry run by default). What happened: in a swap (trailer A on truck X goes to Y, Y's trailer B returns to X), B's tires
+ * were moved to X while A had not yet left, so they took A's number, were grouped with A's tires and went with A to Y. All tires ended on Y and X had none. Fixed in moveTrailer (controllers/ls2AssetsController, `trailerTires`). Identifying a dragged tire from its
+ * movement log: two consecutive 'moved with trailer' movements in the same request (under two minutes) with different trailers, the second starting where the first ended. The first is true (tire on trailer B); the second is the error. Auto-corrected only if nobody
+ * touched it after the error (its last movement is the wrong one and it is still there): it returns to where its trailer B is now, on a truck or standing alone. Anything touched afterwards is shown and left, since the workshop may have fixed it by hand.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -41,7 +25,7 @@ async function findVictims() {
   }
   const fix = []; const manual = [];
   for (const [id, list] of byTire) {
-    // صحّحها هذا السكربتُ من قبل: لا تُعرَض مرّةً ثانية.
+    // Already fixed by this script earlier: not shown again.
     if (String(list[list.length - 1].reason || '').startsWith('تصحيح: الفردة على التيدر')) continue;
     for (let i = list.length - 2; i >= 0; i -= 1) {
       const a = list[i]; const b = list[i + 1];
@@ -53,7 +37,7 @@ async function findVictims() {
       const row = { tireId: id, serial: tire?.serial || a.label, belongsTo: ta, draggedWith: tb, at: b.createdAt, nowOn: tire?.plate || '(واقفة)' };
       const untouched = i + 1 === list.length - 1 && tire && tire.status === 'mounted' && String(tire.plateKey || '') === String(b.toPlateKey || '');
       (untouched ? fix : manual).push(row);
-      break; // آخرُ خطأٍ للفردة يكفي
+      break; // The tire's latest error is enough
     }
   }
   return { fix, manual };

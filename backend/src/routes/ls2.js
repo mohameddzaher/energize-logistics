@@ -5,10 +5,8 @@
  */
 const express = require('express');
 const router = express.Router();
-// ── معرّفان مختلفان تحت اسمٍ واحد ────────────────────────────────────────────
-// `:id` هنا معرّفُ منغوسة في المخزن والإطارات والتنبيهات، ورقمُ الوحدة في
-// Location Solutions في مسارات `/vehicles`. فلا يصحّ حارسٌ واحدٌ للاسم، ويُركَّب
-// على كلّ مسارٍ حارسُه. راجع utils/idParam.
+// Two different ids under one name.
+// `:id` is the store/tire/alert record id in most routes, but the unit number in Location Solutions in the `/vehicles` routes. One guard per name would be wrong, so each route gets its own guard; see utils/idParam.
 const { objectIdParam, objectIdGuard, numericParam } = require('../utils/idParam');
 const oid = objectIdGuard();
 const unit = numericParam({ status: 400, message: 'Invalid vehicle id' });
@@ -37,9 +35,8 @@ router.get('/settings', ls2.getSettings);
 router.put('/settings', ADMIN, ls2.updateSettings);
 router.post('/refresh', ADMIN, ls2.refresh);
 
-// ── طلباتُ الأسطول ──────────────────────────────────────────────────────────
-// «أحتاج هذه الشاحنةَ وصيانتُها متأخّرة» — تُقرأ هنا ويُؤخَذ فيها القرار.
-// والقرارُ لرتبة الإدارة: الموافقةُ على تأجيل صيانةٍ مسؤوليّةٌ تُسجَّل بالاسم.
+// Fleet requests: 'I need this truck but its maintenance is overdue'. Read here and decided on.
+// The decision is for management ranks: approving a maintenance postponement is a responsibility recorded by name.
 const fleetRequests = require('../controllers/fleetRequestController');
 router.get('/fleet-requests', fleetRequests.list);
 router.post('/fleet-requests/:id/decide', oid, ADMIN, fleetRequests.decide);
@@ -49,7 +46,7 @@ router.patch('/alerts/:id/ack', oid, ls2.acknowledgeAlert);
 
 router.get('/mileage', ls2.getMileage); // fleet distance over a period
 router.post('/identity/refresh', ADMIN, ls2.refreshIdentity); // re-pull VIN/brand/SIM…
-router.get('/registry-conflicts', ls2.registryConflicts); // الجهاز ↔ سجلّ المركبات: سنة الصنع ورقم الشاسيه
+router.get('/registry-conflicts', ls2.registryConflicts); // Device to vehicle registry: manufacture year and chassis number.
 
 // Reports — the whole fleet, or one truck in full, over any period.
 router.get('/service-types', ls2.getServiceTypes); // the real 4 service types, for the workshop
@@ -58,8 +55,8 @@ router.get('/reports/vehicle/:id', ls2reports.getVehicleReport); // ?from&to[&he
 
 // Drivers — km attributed per day to whoever was on the truck that day
 router.get('/drivers', ls2.listDrivers); // ?from&to
-// تقييم أداء السائقين — score from trips / delivery time / loading time / speed.
-// MUST come before /drivers/:driver so "performance" isn't read as a driver name.
+// Driver performance rating: score from trips, delivery time, loading time and speed.
+// MUST come before /drivers/:driver so 'performance' isn't read as a driver name.
 router.get('/drivers/performance', ls2.driverPerformance); // ?from&to[&deep=1]
 router.get('/drivers/performance/:driver', ls2.driverPerformanceDetail); // ?from&to — always deep
 router.get('/drivers/:driver', ls2.getDriver); // ?from&to
@@ -71,48 +68,46 @@ router.post('/repairs', ADMIN, ls2.createRepair);
 router.patch('/repairs/:repairId', ADMIN, ls2.updateRepair);
 router.delete('/repairs/:repairId', ADMIN, ls2.deleteRepair);
 
-// Fleet asset registry — سطحات وتيدرات وفردات كاوتش, with movement history.
+// Fleet asset registry: trailers, tractors and tire sets, with movement history.
 // The workshop's source of truth for WHICH physical tire/trailer is on a truck.
 router.get('/assets/overview', assets.getOverview);
 router.get('/assets/events', assets.listEvents);
 router.get('/assets/sensor-check', assets.sensorCheck);
 router.get('/assets/vehicle/:plate', assets.getVehicleAssets);
-// خط زمني واحد للعربية: كاوتش + قطع غيار + إصلاحات + صيانة
+// One timeline per vehicle: tires, spare parts, repairs and maintenance.
 router.get('/assets/vehicle/:plate/history', assets.getVehicleHistory);
 router.post('/assets/import', ADMIN, assets.importAssets); // workshop JSON, idempotent
-router.get('/assets/tires/next-number', assets.nextTireNumber);   // قبل /assets/tires/:id
+router.get('/assets/tires/next-number', assets.nextTireNumber);   // Before /assets/tires/:id.
 router.post('/assets/tires', ADMIN, assets.createTire);
 router.patch('/assets/tires/:id', oid, ADMIN, assets.updateTire);
-router.get('/assets/tires/:id/profile', oid, assets.getTireProfile);   // حياة الفردة كاملةً
+router.get('/assets/tires/:id/profile', oid, assets.getTireProfile);   // Full life of a tire set.
 router.post('/assets/tires/:id/move', oid, ADMIN, assets.moveTire);
-router.post('/assets/tires/:id/renewal-result', oid, ADMIN, assets.tireRenewalResult); // مجدد أو سكراب
+router.post('/assets/tires/:id/renewal-result', oid, ADMIN, assets.tireRenewalResult); // Retread or scrap.
 router.post('/assets/tires/:id/retire', oid, ADMIN, assets.retireTire);
-router.post('/assets/tires/:id/status', oid, ADMIN, assets.setTireStatus); // نقل بين الحالات
+router.post('/assets/tires/:id/status', oid, ADMIN, assets.setTireStatus); // Move between statuses.
 
-// ── مخزن النقل الثقيل (قطع الغيار) — قائمة/CRUD + حركات وارد/صادر + سجل ──────────
+// Heavy-transport store (spare parts): list/CRUD, in/out movements and log.
 router.get('/store', store.listItems);
 router.get('/store/dashboard', store.dashboard);
 router.get('/store/movements', store.listMovements);
-router.get('/store/issue-reasons', store.issueReasons); // أسبابُ الصرف الأربعة
-router.get('/store/unknown-plates', store.unknownPlates); // لوحاتٌ على حركاتٍ لا مركبةَ لها في السجلّ
+router.get('/store/issue-reasons', store.issueReasons); // The four issue reasons.
+router.get('/store/unknown-plates', store.unknownPlates); // Plates on movements that have no vehicle in the registry.
 // Adding items is for finance and the vehicles manager; section grants do not extend it.
 const STORE_ADD = authorize.strict('super_admin', 'admin', 'accountant', 'accounting_manager', 'cfo', 'vehicles_manager');
 router.post('/store', STORE_ADD, store.createItem);
-router.post('/store/bulk-create', STORE_ADD, store.createItemsBulk);   // فاتورةُ شراءٍ بعدّة أصناف
-// الموردون — مَن تُشترى منه القطع. قبل /store/:id كي لا تُلتقَط كمعرّف.
+router.post('/store/bulk-create', STORE_ADD, store.createItemsBulk);   // Purchase invoice with several items.
+// Suppliers the parts are bought from. Before /store/:id so it is not captured as an id.
 router.get('/suppliers', store.listSuppliers);
 router.post('/suppliers', ADMIN, store.createSupplier);
 router.put('/suppliers/:id', oid, ADMIN, store.updateSupplier);
 router.delete('/suppliers/:id', oid, ADMIN, store.deleteSupplier);
 router.put('/store/:id', oid, ADMIN, store.updateItem);
 router.delete('/store/:id', oid, ADMIN, store.deleteItem);
-// حركة جماعية (صادر أو وارد) لعدة أصناف بكميات مختلفة — تُسجَّل قبل /store/:id
-// حتى لا يُفهم «bulk-out» على أنه معرّف صنف.
+// Bulk movement (out or in) of several items with different quantities. Registered before /store/:id so 'bulk-out' is not read as an item id.
 router.post('/store/bulk-out', ADMIN, store.addBulkOut);
 router.post('/store/bulk-movement', ADMIN, store.addBulkMovement);
 router.post('/store/:id/movement', oid, ADMIN, store.addMovement);
-// التراجع عن حركة — بيكتب حركة معاكسة، مش بيمسح ولا بيعدّل سطر. مفيش PUT/PATCH
-// على الحركات عن قصد: الحركة المسجّلة لا تُعدَّل (قرار الإدارة المالية).
+// Reversing a movement writes an opposite movement; it does not delete or edit a row. There is deliberately no PUT/PATCH on movements: a recorded movement is not edited (finance decision).
 router.post('/store/movements/:movementId/reverse', ADMIN, store.reverseMovement);
 router.post('/assets/trailers', ADMIN, assets.createTrailer);
 router.post('/assets/trailers/:id/move', oid, ADMIN, assets.moveTrailer);
@@ -122,7 +117,7 @@ router.patch('/assets/flatbeds/:id', oid, ADMIN, assets.updateFlatbed);
 router.get('/deferrals', ls2.listDeferrals); // fleet-wide open deferred tasks (Maintenance page)
 router.get('/vehicles', ls2.listVehicles);
 router.get('/vehicles/:id', unit, ls2.getVehicle);
-router.get('/vehicles/:id/tire-sensors', unit, ls2.getVehicleTireSensors); // تفصيلُ التغطية عند فتح النافذة
+router.get('/vehicles/:id/tire-sensors', unit, ls2.getVehicleTireSensors); // Coverage breakdown when the window opens.
 router.get('/vehicles/:id/mileage', unit, ls2.getVehicleMileage); // ?from&to[&source=report]
 router.get('/vehicles/:id/history', unit, ls2.getVehicleHistory); // daily distance series
 router.get('/vehicles/:id/trips', unit, ls2.getVehicleTrips); // ?from&to — trips + derived stops

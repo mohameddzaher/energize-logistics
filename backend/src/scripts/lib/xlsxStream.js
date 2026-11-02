@@ -1,9 +1,4 @@
-/**
- * قارئ xlsx بلا مكتبة — يفكّ الأرشيف ويقرأ ورقةً واحدة سطرًا سطرًا.
- *
- * مكتبة `xlsx` تبني الدفتر كلّه في الذاكرة، وهذا الملفّ ورقتُه الكبرى ٣٥ ميغا
- * من XML فينفد الكوم قبل أن يقرأ صفًّا واحدًا. وما نحتاجه أبسط: نصوصٌ وأرقام.
- */
+/** Dependency-free xlsx reader that streams one sheet row by row. The xlsx library builds the whole workbook in memory, which runs out of heap on this 35 MB sheet. */
 const { execSync } = require('child_process');
 
 const MAXBUF = 2000 * 1024 * 1024;
@@ -22,7 +17,7 @@ function textOf(si) {
   return unesc(out);
 }
 
-/** يقرأ جدول النصوص المشتركة مرّةً واحدة. */
+/** Reads the shared strings table once. */
 function sharedStrings(file) {
   let xml;
   try { xml = execSync(`unzip -p ${JSON.stringify(file)} xl/sharedStrings.xml`, { maxBuffer: MAXBUF }).toString('utf8'); }
@@ -32,7 +27,7 @@ function sharedStrings(file) {
   return out;
 }
 
-/** يعيد [{ r, cells: { A: 'قيمة', … } }] — الخلايا الفارغة محذوفة. */
+/** Returns [{ r, cells: { A: 'value', ... } }]; empty cells are omitted. */
 function readSheet(file, sheetXmlPath) {
   const SS = sharedStrings(file);
   const xml = execSync(`unzip -p ${JSON.stringify(file)} ${sheetXmlPath}`, { maxBuffer: MAXBUF }).toString('utf8');
@@ -40,10 +35,7 @@ function readSheet(file, sheetXmlPath) {
   const rre = /<row[^>]*r="(\d+)"[^>]*>([\s\S]*?)<\/row>/g; let r;
   while ((r = rre.exec(xml))) {
     const cells = {};
-    // الخليّةُ الفارغة تُكتب مغلقةً على نفسها: <c r="I2" s="212"/>. ولو تُرك
-    // الإغلاقُ اختياريًّا في نمطٍ واحد، ابتلعت الفارغةُ قيمةَ الخليّة التي
-    // بعدها — فينزلق العمود صامتًا ويصير مجموعُ المصروفات في خانة «تمديد».
-    // لذلك: إمّا `/>` وتنتهي، وإمّا `>` فمحتوًى فـ`</c>`. لا ثالث.
+    // An empty cell is self-closed (<c r="I2" s="212"/>). Treating the closing as optional in one pattern let an empty cell swallow the next cell's value and shift columns silently. So either `/>` ends it, or `>` then content then `</c>`.
     const cre = /<c\s+r="([A-Z]+)\d+"([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g; let c;
     while ((c = cre.exec(r[2]))) {
       const col = c[1]; const attrs = c[2] || ''; const inner = c[3] || '';
@@ -62,17 +54,12 @@ function readSheet(file, sheetXmlPath) {
 }
 
 /**
- * رقم إكسل التسلسلي ← تاريخ. المرجع 1899-12-30، ويُبنى بـUTC كي لا يزحف يومًا:
- * الواجهة تعرض التاريخ بـ`slice(0,10)` على ISO، فمنتصفُ ليلٍ محليّ يظهر أمسِ.
- *
- * ولا يُقرَّب: ٣٤٨١ خليّةً في هذا الملفّ تحمل كسرًا (وقتًا)، والتقريب يقفز بها
- * يومًا كاملًا حين يتجاوز الوقتُ الظهر.
- *
- * ويُرفض ما خرج عن ١٩٧١–٢٠٦٤: عمودٌ انزلق يضع مبلغًا في خانة تاريخ، فيصير
- * ٢٧٠٠ ريالٍ تاريخًا في ١٩٠٧.
+ * Excel serial number to date. Epoch is 1899-12-30, built in UTC so the UI's ISO slice(0,10) does not show the previous day.
+ * Not rounded: many cells carry a time fraction and rounding would jump a day after noon.
+ * Values outside 1971-2064 are rejected, since a shifted column would turn an amount into a date.
  */
-const DATE_MIN = 26000;   // ١٩٧١
-const DATE_MAX = 60000;   // ٢٠٦٤
+const DATE_MIN = 26000;   // Lower bound year 1971.
+const DATE_MAX = 60000;   // Upper bound year 2064.
 function excelDate(v) {
   const n = Number(v);
   if (!Number.isFinite(n) || n < DATE_MIN || n > DATE_MAX) return null;

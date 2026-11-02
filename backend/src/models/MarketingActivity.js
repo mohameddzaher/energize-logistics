@@ -1,9 +1,6 @@
 const mongoose = require('mongoose');
 
-// One dated marketing activity (نشاط تسويقي): a post, story, reel, ad, design,
-// email blast or event held on a given day. This collection IS the section's
-// history log — the daily/weekly/monthly report is nothing more than these rows
-// bucketed by date, so every reportable number must be captured here.
+// One dated marketing activity: a post, story, reel, ad, design, email blast or event held on a given day. This collection IS the section's history log; the daily/weekly/monthly report is these rows bucketed by date, so every reportable number must be captured here.
 const PLATFORMS = [
   'facebook', 'instagram', 'twitter', 'linkedin', 'tiktok', 'snapchat',
   'google_ads', 'youtube', 'website', 'email', 'whatsapp', 'offline', 'other',

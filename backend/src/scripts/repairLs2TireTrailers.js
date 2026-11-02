@@ -1,12 +1,7 @@
 /**
- * repairLs2TireTrailers — يصحّح رقمَ التيدر المسجَّل على كلّ فردة من موضعها.
- *
- *   node src/scripts/repairLs2TireTrailers.js            ← تجربة، بلا كتابة
- *   node src/scripts/repairLs2TireTrailers.js --apply
- *
- * `trailerNumber` كان يُكتب مرّةً ولا يتبع الفردةَ إن نُقلت، فتراكم: فِرَدٌ على
- * عربيّةٍ وهي «على تيدرٍ» واقفٍ أو على عربيّةٍ أخرى. القاعدةُ والشرحُ في
- * services/ls2TireTrailers. لا يمسّ موضعَ فردةٍ ولا تيدر — رقمُ التيدر وحدَه.
+ * repairLs2TireTrailers: correct the trailer number recorded on each tire from its position.
+ * Usage: node src/scripts/repairLs2TireTrailers.js [--apply] (dry run by default).
+ * `trailerNumber` was written once and did not follow a moved tire, so tires on a truck were recorded as on a trailer, standing, or on another truck. The rule is explained in services/ls2TireTrailers. Only the trailer number changes, never a tire or trailer position.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');

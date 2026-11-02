@@ -1,24 +1,8 @@
 /* eslint-disable no-console */
 /**
- * auditVehiclesSection — قسم المركبات بالكامل، بحساب مدير القسم نفسه.
- *
- *   node src/scripts/auditVehiclesSection.js --base https://api.energize-logistics.com
- *
- * تلات حاجات المستخدم شافها بنفسه، والتيست ده بيمنع رجوعها:
- *
- * ① «مفيش تاب تخليني أكريت حادثة جديدة أو أعمل إيديت» — ما كانش فيه اندبوينت
- *    أصلاً، والقسم كان بيتقرا بس من ناحية الحوادث.
- *
- * ② «الانتهاءات والتجديد شبه تنبيهات المركبات، والأرقام فيهم مش زي بعض» —
- *    الشاشتين كانوا بيحسبوا نفس السؤال بدالتين مختلفتين، والتنبيهات كانت بتسقط
- *    أي نوع مستند تنبيهه متقفول **في صمت**. بقوا على حساب واحد، والتيست بيقارن
- *    الرقمين على نفس الداتا.
- *
- * ③ «ليه بتقفل حاجات على ناس وهم واخدين الفل أكسيس» — أدوار القسم نفسه
- *    (vehicles_manager / vehicles_staff) ماكانوش في قوايم الصلاحيات، فصاحب
- *    القسم كان بيشوفه ومش قادر يعدّل فيه.
- *
- * كل الكتابة بتتعمل على مركبة وحادث اختبار بيتعملوا ويتمسحوا.
+ * auditVehiclesSection: the whole vehicles section, using the section manager's account.
+ * Guards: accidents had no create/edit endpoint; Expiries and Alerts used different calculations (alerts silently dropped types with closed alerts), now shared and compared; vehicles_manager/vehicles_staff were missing from permission lists.
+ * Writes use a test vehicle and accident that are created and deleted.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -64,7 +48,7 @@ const ok = (l, c, x = '') => { console.log(`  ${c ? '✓' : '✗ FAIL'}  ${l}${x
   };
 
   try {
-    // ═══ ① الحوادث: إنشاء وتعديل وحذف ═══════════════════════════════════════
+    // 1. Accidents: create, edit, delete
     console.log('\n── الحوادث ──');
     const before = (await call('GET', '/api/vehicle-registry/claims')).body?.totals?.total ?? 0;
     const made = await call('POST', '/api/vehicle-registry/claims', {
@@ -96,7 +80,7 @@ const ok = (l, c, x = '') => { console.log(`  ${c ? '✓' : '✗ FAIL'}  ${l}${x
     ok('حذف ناعم — السجل المالي بيفضل موجود', !!gone && gone.isActive === false);
     ok(`ورجع العدد ${before}`, ((await call('GET', '/api/vehicle-registry/claims')).body?.totals?.total ?? -1) === before);
 
-    // ═══ ② الانتهاءات = التنبيهات ═══════════════════════════════════════════
+    // 2. Expiries = alerts
     console.log('\n── الانتهاءات مقابل التنبيهات ──');
     const alerts = (await call('GET', '/api/vehicle-registry/alerts')).body;
     const exp = (await call('GET', '/api/vehicle-registry/expiring?state=expired,critical,warning,upcoming')).body;
@@ -111,10 +95,10 @@ const ok = (l, c, x = '') => { console.log(`  ${c ? '✓' : '✗ FAIL'}  ${l}${x
     ok(`المستندات اللي تنبيهها متقفول بتبان ومعلّمة (${alerts?.mutedCount ?? 0})`,
       typeof alerts?.mutedCount === 'number');
 
-    // ═══ ③أ ملفات القسم المستوردة تطابق الملف ═══════════════════════════════
+    // 3a. Imported section files match the source file
     console.log('\n── مطابقة الاستيراد للملف ──');
     const fs = require('fs');
-    // المصدر هو أحدث مجلّد: «new vehicles files» يحلّ محلّ سابقه.
+    // The source is the newest folder: "new vehicles files" replaces its predecessor.
     const dir = require('path').join(__dirname, '..', 'data', 'masters', 'new vehicles files');
     const has = fs.existsSync(dir);
     if (!has) ok('مجلّد new vehicles files موجود', false, dir);
@@ -143,7 +127,7 @@ const ok = (l, c, x = '') => { console.log(`  ${c ? '✓' : '✗ FAIL'}  ${l}${x
       ok(`وثائق الشركة ${(co?.policies || []).length} = ${pf.policies.length}`,
         (co?.policies || []).length === pf.policies.length);
 
-      // البطاقات الجديدة موجودة وتطابق إحصاءات الملف
+      // The new cards exist and match the file's statistics
       const bd = Object.fromEntries((ov?.breakdowns || []).map((b) => [b.key, b]));
       for (const k of ['department', 'city', 'possession', 'gpsDeviceStatus']) {
         ok(`بطاقة «${bd[k]?.ar || k}» موجودة (${(bd[k]?.items || []).length} قيمة)`, !!bd[k] && bd[k].items.length > 0);
@@ -153,14 +137,14 @@ const ok = (l, c, x = '') => { console.log(`  ${c ? '✓' : '✗ FAIL'}  ${l}${x
       const jeddah = cityCard.find((x) => x.value === 'جدة')?.count;
       ok(`جدة ${jeddah} = ${fileCities['جدة']} (الملف)`, jeddah === fileCities['جدة']);
 
-      // الفلاتر الجديدة ترجّع نفس العدد
+      // The new filters return the same count
       const missList = (await call('GET', '/api/vehicle-registry?missing=1&limit=500')).body;
       ok(`فلتر «ينقصه شيء» يرجّع ${missList?.total} = ${missF.length}`, missList?.total === missF.length);
       const byCity = (await call('GET', '/api/vehicle-registry?city=' + encodeURIComponent('جدة') + '&limit=500')).body;
       ok(`فلتر المدينة: ${byCity?.total} = ${fileCities['جدة']}`, byCity?.total === fileCities['جدة']);
     }
 
-    // ═══ ③أ٢ التنبيهات وسجلّات القسم: كل ما في الملف يظهر ═════════════════════
+    // 3a2. Alerts and section records: everything in the file shows
     console.log('\n── التنبيهات وسجلّات القسم ──');
     {
       const dirN = require('path').join(__dirname, '..', 'data', 'masters', 'new vehicles files');
@@ -169,12 +153,10 @@ const ok = (l, c, x = '') => { console.log(`  ${c ? '✓' : '✗ FAIL'}  ${l}${x
       const alerts = (await call('GET', '/api/vehicle-registry/alerts')).body;
       const fileAlerts = LN('expiry_alerts.json');
       ok(`التنبيهات ${alerts?.total} = ${fileAlerts.length} (الملف)`, alerts?.total === fileAlerts.length);
-      // الأفق الثالث موجود — كان ٢٤ مستندًا يسقط من الشاشة تمامًا
+      // The third horizon exists; 24 documents used to fall off the screen entirely.
       ok(`منها «على الرادار» ${alerts?.byStatus?.upcoming}`, (alerts?.byStatus?.upcoming || 0) > 0);
       const fb = {}; fileAlerts.forEach((x) => { fb[x.bucket] = (fb[x.bucket] || 0) + 1; });
-      // عدد المنتهية يتحرّك يوميًّا: تاريخٌ يمرّ فيصير منتهيًا، ومستخدمٌ يجدّد
-      // فيخرج منها. فالمقارنة بالملف تُطبع للقراءة، والمُختبَر هو اتّساق
-      // الاستجابة مع نفسها — العدّاد يساوي الصفوف التي يفتحها.
+      // The expired count moves daily (a date passes, a user renews), so the comparison with the file is printed for reading, and what is asserted is that the response is self-consistent: the counter equals the rows it opens.
       const expiredRows = (alerts?.items || []).filter((x) => x.status === 'expired').length;
       if (alerts?.byStatus?.expired !== fb.expired) {
         console.log(`  ℹ  المنتهية: الملف ${fb.expired} · النظام ${alerts?.byStatus?.expired} — تجديدات وتواريخ مرّت منذ الاستيراد`);
@@ -195,11 +177,11 @@ const ok = (l, c, x = '') => { console.log(`  ${c ? '✓' : '✗ FAIL'}  ${l}${x
       for (const [key, expected, label] of cmp) {
         ok(`${label.padEnd(16)} ${regs?.totals?.[key]} = ${expected} (الملف)`, regs?.totals?.[key] === expected);
       }
-      // النص الدلالي لا يظهر كقيمة: «مطلوب» ليست شركة تتبّع
+      // Semantic text does not appear as a value: "required" is not a tracking company.
       const providers = (regs?.registers?.gpsProviders?.items || []).map((x) => x.value);
       ok('لا نصّ دلالي بين مزوّدي التتبّع', !providers.some((v) => /^(مطلوب|غير مطلوب|لا يوجد)$/.test(v)),
         providers.join(' · '));
-      // وكل صفّ يفتح ما يقوله
+      // And each row opens what it claims
       const owner = (regs?.registers?.owners?.items || [])[0];
       if (owner) {
         const got = (await call('GET', `/api/vehicle-registry?owner=${encodeURIComponent(owner.value)}&limit=500`)).body;
@@ -214,14 +196,14 @@ const ok = (l, c, x = '') => { console.log(`  ${c ? '✓' : '✗ FAIL'}  ${l}${x
       }
     }
 
-    // ═══ ③ب وثائق التأمين: وثيقة واحدة تغطّي مئات المركبات ═══════════════════
+    // 3b. Insurance policies: one policy covers hundreds of vehicles
     console.log('\n── وثائق التأمين ──');
     const { VehicleInsurancePolicy } = require('../models/VehicleMaster');
     const pols = (await call('GET', '/api/vehicle-registry/insurance-policies')).body;
     ok('قائمة الوثائق تردّ', !!pols?.policies, `HTTP`);
     ok(`${pols?.totals?.total} وثيقة تغطّي ${pols?.totals?.vehiclesCovered} مركبة`,
       (pols?.totals?.total || 0) > 0 && (pols?.totals?.vehiclesCovered || 0) > 0);
-    // عدد المركبات على كل وثيقة = المحسوب من المركبات نفسها
+    // Vehicle count per policy equals the count computed from the vehicles themselves
     let mismatched = 0;
     for (const p of (pols?.policies || []).slice(0, 10)) {
       const real = await VehicleMaster.countDocuments({ insurancePolicy: p._id, isActive: { $ne: false } });
@@ -229,7 +211,7 @@ const ok = (l, c, x = '') => { console.log(`  ${c ? '✓' : '✗ FAIL'}  ${l}${x
     }
     ok('عدد مركبات كل وثيقة = المحسوب فعلًا', mismatched === 0, `${mismatched} مختلف`);
 
-    // ── التجديد يسري على كل مركبات الوثيقة ──
+    // Renewal applies to all vehicles on the policy
     const big = (pols?.policies || []).filter((p) => p.vehicles >= 2).sort((a, b) => b.vehicles - a.vehicles)[0];
     if (!big) ok('توجد وثيقة تغطّي أكثر من مركبة للتجربة', false);
     else {
@@ -251,7 +233,7 @@ const ok = (l, c, x = '') => { console.log(`  ${c ? '✓' : '✗ FAIL'}  ${l}${x
       ok('والوثيقة نفسها سجّلت التجديد بعدد مركباتها',
         (polAfter.renewals || []).some((r) => r.reference === 'ZZ-POL' && r.vehiclesUpdated === big.vehicles));
 
-      // إرجاع الحال — التواريخ الأصلية لكل مركبة والوثيقة
+      // Restore: original dates for each vehicle and the policy
       for (const b of before) {
         await VehicleMaster.updateOne({ _id: b._id }, {
           $set: { 'insurance.expiryDate': b.insurance?.expiryDate ?? null },
@@ -265,12 +247,12 @@ const ok = (l, c, x = '') => { console.log(`  ${c ? '✓' : '✗ FAIL'}  ${l}${x
       ok('ورجع الحال كما كان', restored === 0, `${restored} باقٍ`);
     }
 
-    // ── تاريخ في الماضي مرفوض ──
+    // A date in the past is rejected
     const pastDay = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
     const badPol = await call('POST', `/api/vehicle-registry/insurance-policies/${(pols?.policies || [])[0]?._id}/renew`, { newExpiry: pastDay });
     ok('تجديد بتاريخ ماضٍ مرفوض', badPol.status === 400, `HTTP ${badPol.status}`);
 
-    // ═══ ③ج نواقص البيانات ═══════════════════════════════════════════════════
+    // 3c. Missing data
     console.log('\n── نواقص البيانات ──');
     const ovm = (await call('GET', '/api/vehicle-registry/overview')).body;
     ok(`${ovm?.totals?.withMissing} مركبة ينقصها شيء · ${ovm?.totals?.missingItems} بندًا`,
@@ -290,7 +272,7 @@ const ok = (l, c, x = '') => { console.log(`  ${c ? '✓' : '✗ FAIL'}  ${l}${x
         got?.total === firstGap.count);
     }
 
-    // ═══ ③ التجديد الجماعي ══════════════════════════════════════════════════
+    // 3. Bulk renewal
     console.log('\n── تجديد أكتر من مستند بنفس التاريخ ──');
     const v1 = await VehicleMaster.create({ plateNumber: 'ZZV 1', plateKey: 'ZZV1', operatingCard: { expiryDate: new Date('2026-01-01') } });
     const v2 = await VehicleMaster.create({ plateNumber: 'ZZV 2', plateKey: 'ZZV2', operatingCard: { expiryDate: new Date('2026-01-02') } });
@@ -311,7 +293,7 @@ const ok = (l, c, x = '') => { console.log(`  ${c ? '✓' : '✗ FAIL'}  ${l}${x
     ok('وكل واحد اتقيّد في سجل تجديداته زي التجديد المفرد',
       fresh.every((v) => (v.renewals || []).some((r) => r.document === 'operatingCard' && r.reference === 'ZZ-REF' && r.byName)));
 
-    // الرفض الكامل
+    // Full rejection
     const past = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
     const bad = await call('POST', '/api/vehicle-registry/renew-bulk', {
       items: [{ vehicle: v1._id, document: 'operatingCard' }, { vehicle: v2._id, document: 'operatingCard' }],
@@ -328,7 +310,7 @@ const ok = (l, c, x = '') => { console.log(`  ${c ? '✓' : '✗ FAIL'}  ${l}${x
     ok('مركبة مش موجودة في السطر ⇒ الكل يترفض', mixed.status === 400, `HTTP ${mixed.status}`);
     ok('من غير أسطر ⇒ مرفوض', (await call('POST', '/api/vehicle-registry/renew-bulk', { items: [], newExpiry: target })).status === 400);
 
-    // ═══ ④ باقي القسم مفتوح للمدير ═══════════════════════════════════════════
+    // 4. The rest of the section is open to the manager
     console.log('\n── باقي القسم ──');
     const one = await VehicleMaster.findOne({ plateNumber: 'ZZV 1' }).lean();
     ok('يعدّل مركبة', (await call('PUT', `/api/vehicle-registry/${one._id}`, { notes: 'zz' })).status === 200);
@@ -340,7 +322,7 @@ const ok = (l, c, x = '') => { console.log(`  ${c ? '✓' : '✗ FAIL'}  ${l}${x
       ok(`${label.padEnd(16)} ${p}`, (await call('GET', p)).status === 200);
     }
 
-    // ═══ ⑤ موظف القسم يقدر يعدّل برضه ═══════════════════════════════════════
+    // 5. Section staff can edit too
     console.log('\n── موظف القسم ──');
     const st = await User.create({
       email: 'zz-vsec@example.invalid', password: 'Test@12345',

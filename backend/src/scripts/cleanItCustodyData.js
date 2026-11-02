@@ -1,32 +1,9 @@
 /* eslint-disable no-console */
 /**
- * cleanItCustodyData — توحيد سجل عهد تقنية المعلومات، وإخراج شرائح الاتصال منه.
- *
- *   node src/scripts/cleanItCustodyData.js --dry     ← تجربة، لا تكتب شيئاً
- *   node src/scripts/cleanItCustodyData.js
- *   node src/scripts/cleanItCustodyData.js --purge   ← حذف صفوف الشرائح نهائياً
- *
- * ما الذي كان في السجل قبل التنظيف: أربعمئة وأربعة وثمانون... بل ثلاثمئة
- * وأربعة وثمانون صنفاً تحمل ستة وستين اسماً حرّاً مختلفاً — «Dell» و«لابتوب
- * Dell» و«Laptop HP» و«ASUS» و«شاحن لابتوب Asus» صفوف لأشياء يفترض أن تُكتب
- * بطريقة واحدة. والماركة فارغة في مئتين وستة عشر صفاً، ومكتوبة بحالتَي أحرف
- * مختلفتين حيث وُجدت (Honor/HONOR، Asus/ASUS، Oppo/OPPO، logitech/Logitech)،
- * فكان كل تجميع حسب الماركة ينقسم على نفسه.
- *
- * ثلاث خطوات، كلها قابلة لإعادة التشغيل بلا أثر مضاعف:
- *
- *   ١. الشرائح: خطوط الأرقام ليست من عهدة القسم. الافتراضي نقلها إلى
- *      `issuedBySection: 'telecom'` — نقل قابل للتراجع يُخرجها من كل شاشات
- *      القسم دون إتلاف سجل من كانت باسمه. و`--purge` يحذفها فعلاً، وهو
- *      المسار الوحيد الذي يفقد البيانات، ولذلك لا يعمل إلا بطلب صريح.
- *
- *   ٢. الماركة: توحيد حالة الأحرف، واستخراجها من الاسم الحرّ حيث كانت فارغة —
- *      «لابتوب Asus» يعرف ماركته، لكن الحقل الذي تُقرأ منه التقارير كان خالياً.
- *
- *   ٣. الاسم: يُعاد اشتقاقه من النوع والماركة، فيصير للصنف الواحد اسم واحد.
- *
- * الرقم التسلسلي والحالة والموظف والتواريخ لا تُمَس: هي البيانات التي لا يمكن
- * إعادة توليدها إن أُخطئ فيها.
+ * cleanItCustodyData: unify the IT custody register and move SIM cards out of it.
+ * Usage: node src/scripts/cleanItCustodyData.js --dry | (no flag) | --purge (permanently delete SIM rows)
+ * Rerunnable steps: SIMs moved to issuedBySection 'telecom' (reversible; --purge is the only data-losing path), brand case unified and extracted from names, name re-derived from type and brand.
+ * Serial, status, employee and dates are untouched.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -35,8 +12,7 @@ const { deriveAssetName, normalizeBrand, EXCLUDED_TYPES } = require('../config/i
 const DRY = process.argv.includes('--dry');
 const PURGE = process.argv.includes('--purge');
 
-// الماركات كما تظهر داخل الأسماء الحرّة. تُطابَق ككلمة كاملة حتى لا يلتقط
-// «HP» حرفَي «HP» داخل كلمة أخرى.
+// Brands as they appear inside free-text names; matched as whole words so "HP" is not picked up inside another word.
 const BRANDS = ['Dell', 'HP', 'Lenovo', 'Asus', 'Acer', 'Apple', 'Samsung', 'Honor', 'Oppo',
   'MSI', 'LG', 'Logitech', 'Logi', 'Legion', 'SMI', 'Mobily', 'Huawei', 'Xiaomi'];
 
@@ -53,7 +29,7 @@ const brandFromName = (name) => {
   const mode = DRY ? '   (تجربة — لن يُكتب شيء)' : '';
   console.log(`تنظيف سجل عهد تقنية المعلومات${mode}\n`);
 
-  // ── ١. الشرائح ────────────────────────────────────────────────────────────
+  // 1. SIMs
   const sims = await Asset.find({ type: 'sim' }).select('_id name serialNumber status employee').lean();
   console.log(`شرائح الاتصال: ${sims.length} صف`);
   if (sims.length) {
@@ -75,7 +51,7 @@ const brandFromName = (name) => {
     }
   }
 
-  // ── ٢ و٣. الماركة والاسم ──────────────────────────────────────────────────
+  // 2 and 3. Brand and name
   const rows = await Asset.find({ type: { $nin: EXCLUDED_TYPES } })
     .select('_id name type brand')
     .lean();

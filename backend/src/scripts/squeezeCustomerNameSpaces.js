@@ -1,18 +1,8 @@
 /**
- * مسافتان في اسمِ عميلٍ تُخفيانه عن كلّ مَن يبحث عنه — فتُطويان.
- *
- * ── العلّة ──────────────────────────────────────────────────────────────────
- * «مكتب  بترو المحيط» و«مؤسسه  الايمان للمقاولات» مكتوبان في منصّة التشغيل
- * بمسافتين، ومن هناك جاءا إلى التحصيل وإلى كشوفهما. وشاشاتُنا تتسامح — البحثُ
- * عندنا يطوي المسافات (utils/plateKey · flexSpaceRegex) — أمّا المنصّةُ فتبحث
- * بالحرف: مَن كتب الاسمَ كما يقرأه، بمسافةٍ واحدة، قيل له «لا نتائج»، فظنّ
- * العميلَ محذوفًا وهو قائمٌ بكشوفه وفواتيره.
- *
- * والاسمُ لا يتغيّر هنا: تُطوى مسافةٌ زائدةٌ لا غير — في المنصّة أوّلًا (هي
- * الأصل) ثمّ يتبعها التحصيلُ والكشوفُ بالمسار المعتاد (utils/renameOpsCustomer).
- *
- * تجربةٌ افتراضًا؛ `--apply` للكتابة — وهي كتابةٌ في نظامٍ خارجيّ.
- *   node src/scripts/squeezeCustomerNameSpaces.js [--apply]
+ * Collapses double spaces in customer names.
+ * Two spaces hide a customer from anyone searching: our search folds spaces (utils/plateKey flexSpaceRegex) but the operations platform searches literally, so users get no results and think the customer was deleted. Only the extra space is removed, in the platform first (the source), then collections and statements via utils/renameOpsCustomer.
+ * Preview by default; --apply writes to an external system.
+ * Usage: node src/scripts/squeezeCustomerNameSpaces.js [--apply]
  */
 require('dotenv').config({ quiet: true });
 const mongoose = require('mongoose');
@@ -38,7 +28,7 @@ const odd = (v) => S(v) !== squeeze(v);
   const W = mongoose.connection.collection('operationsworkflows');
   const CollectionsParty = require('../models/CollectionsParty');
 
-  // ما في المنصّة، وما في سجلّنا وإن لم يكن هناك (عميلٌ قديمٌ حُذف من المنصّة).
+  // Names on the platform, plus names in our register that may no longer exist there (old customer removed from the platform).
   const targets = new Map();
   for (const u of users) if (odd(u.name)) targets.set(S(u.name), { id: u.id || u._id });
   const parties = await CollectionsParty.find({ kind: 'customer' }).select('name code').lean();

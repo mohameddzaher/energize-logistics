@@ -1,31 +1,15 @@
 /**
- * restoreDeletedWalletTx — يُعيد حركةَ مشترياتٍ حُذفت خطأً يوم ١٦ سبتمبر ٢٠٢٦.
- *
- *   node src/scripts/restoreDeletedWalletTx.js --dry
- *   node src/scripts/restoreDeletedWalletTx.js --apply
- *
- * ── ما جرى ──────────────────────────────────────────────────────────────────
- * اختبارٌ لصلاحيّات المحفظة نادى `deleteTransaction` بدور «مدير النظام» ليرى
- * أيُسمَح له — فسُمح له، وحذفَ حركةً حقيقيّة. الاختبارُ كان يجب أن يجري على
- * حركةٍ مصطنعةٍ أو بلقطةٍ تسبقه، ولم يفعل.
- *
- * ── وكيف عُرفت ─────────────────────────────────────────────────────────────
- * قيدُ المراجعة حفظ `{type:'purchase', amount:1000}` والمعرّف — ولم يحفظ بقيّةَ
- * الحقول. فجُمعت من موضعين:
- *   • نسخةُ `DailyWallet` المحفوظة يوم ١٤ سبتمبر: مشترياتُ الدمّام في ١ سبتمبر
- *     نقصت ألفًا بالضبط، فتعيّن الفرعُ واليوم.
- *   • كشفُ التخريج نفسُه: كشفٌ واحدٌ سُدِّد بألفٍ ذلك اليوم من الدمّام — رقمُه
- *     ٨٦٠٠١، سائقُه «ماجد علي عوضه» — وهو الوحيدُ الذي لا حركةَ تقابله.
- *
- * وتُعاد بمعرّفها الأصليّ لا بمعرّفٍ جديد: أيُّ إحالةٍ إليها في مكانٍ آخر تعود
- * صحيحةً، والقيدُ في سجلّ المراجعة يبقى يشير إلى الشيء نفسِه.
+ * restoreDeletedWalletTx: restore a purchase movement deleted by mistake. Usage: node src/scripts/restoreDeletedWalletTx.js [--dry|--apply] What happened: a wallet-permission test called `deleteTransaction` with
+ * the system-admin role to see if it was allowed, and deleted a real movement. How it was identified: the audit entry kept only `{type:'purchase', amount:1000}` and the id. The rest was recovered from two places:
+ * - the saved `DailyWallet` copy from the 14th: Dammam purchases on the 1st were short by exactly 1000, giving branch and day. - the statement itself: one statement was paid 1000 from Dammam that day (number 86001,
+ * driver Majid Ali Awadh) and is the only one with no matching movement. Restored with its original id so any reference elsewhere stays valid and the audit entry still points to the same thing.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
 
 const APPLY = process.argv.includes('--apply');
 const TX_ID = '6a96a1e84ca8948ef78e0732';
-const WALLET_ID = '6a966414a2fdefbdb3b8515c';   // الدمّام · 2026-09-01
+const WALLET_ID = '6a966414a2fdefbdb3b8515c';   // Dammam, 2026-09-01
 const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
 (async () => {
@@ -67,10 +51,7 @@ const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
   await WalletTransaction.create(doc);
 
-  // ── ثمّ يُعاد الحسابُ لهذا اليوم ولكلّ يومٍ بعده ─────────────────────────
-  // ختاميُّ اليوم افتتاحيُّ الذي يليه، فحركةٌ تعود في أوّل سبتمبر تُزحزح كلَّ
-  // أرصدة الفرع بعدها. والمعدودُ يثبت ويُعاد اشتقاقُ الفرق منه — كما في
-  // setWalletOpening، لا يُغيَّر ما وُجد في الدرج لأنّ الدفتر صُحِّح.
+  // Then recompute that day and every day after it. A day's closing is the next day's opening, so a movement returning on the 1st shifts all later balances of the branch. The counted cash stays and its difference is re-derived, as in setWalletOpening; what was found in the drawer is not changed because the ledger was corrected.
   const days = await DailyWallet.find({ branch: w.branch, date: { $gte: w.date } }).sort({ date: 1 });
   let opening = days[0].openingBalance;
   for (const d of days) {

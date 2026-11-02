@@ -1,18 +1,8 @@
 /**
- * fixWorkflowReportDates — تاريخُ الكشف هو `pick_time` لا لحظةُ الإدخال.
- *
- *   node src/scripts/fixWorkflowReportDates.js         # فحصٌ فقط
- *   node src/scripts/fixWorkflowReportDates.js --yes   # تنفيذ
- *
- * كانت مزامنةُ سير عمل التشغيل تكتب `reportDate` من `created_at` — لحظةِ كتابة
- * الصفّ في منصّة الأوبريشن. وهي ليست تاريخَ الكشف: كشفٌ عُمل في نوفمبر ٢٠٢٥ ثمّ
- * أُدخل في فبراير ٢٠٢٦ كان يُقرأ كشفَ فبراير — فيدخل تقاريرَ شهرٍ لم يحدث فيه،
- * ويسقط من شهره. وشيتُ المتابعة يحمل `pick_time`، فكان الرقمان يفترقان بلا سبب
- * ظاهر.
- *
- * والتصحيحُ لا يحتاج المنصّة: الشحناتُ نفسُها مثبَّتةٌ عندنا في `ShipmentOrder`
- * بحقلَيها معًا (`pickupTime` من `pick_time`)، فيُقرأ منها بالمطابقة على رقم
- * كشف التخريج.
+ * fixWorkflowReportDates: the statement date is pick_time, not the entry moment.
+ * Without --yes it only checks; --yes applies.
+ * The operations workflow sync wrote reportDate from created_at, the time the row was written on the operations platform. A statement made in November 2025 and entered in February 2026 was read as February, entering the wrong month's reports and dropping out of its own; the follow-up sheet carries pick_time, so the two figures diverged.
+ * The fix needs no platform call: shipments are stored in ShipmentOrder with both fields (pickupTime from pick_time), so it reads there, matching on the exit statement number.
  */
 require('dotenv').config();
 const fs = require('fs');

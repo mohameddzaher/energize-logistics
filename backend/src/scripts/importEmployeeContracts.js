@@ -1,18 +1,7 @@
 /**
- * استيراد «ملفّ عقود الموظفين» إلى مجموعة العقود.
- *
- *   node src/scripts/importEmployeeContracts.js --dry
- *   node src/scripts/importEmployeeContracts.js --yes
- *
- * ── لماذا الهويّة هي المفتاح ────────────────────────────────────────────────
- * الأسماء العربيّة تُكتب بصورٍ شتّى — همزةٌ تُهمَل ولقبٌ يُختصر — فالمطابقةُ
- * بها تُخطئ صامتةً فتُلصق عقدُ رجلٍ برجلٍ آخر. ورقمُ الهويّة لا يشبه غيرَه:
- * ٢٦٩ رقمًا في الملفّ، ٢٦٩ فريدة، و٢٦٩ منها وجدت موظّفَها.
- *
- * ── وما لا يُدهَس ───────────────────────────────────────────────────────────
- * الملفُّ لقطةٌ من ورق، والشاشةُ قد صحّحت بعده. فالراتبُ والبدلاتُ والملاحظات
- * لا تُمسّ — الملفُّ لا يحملها أصلًا — ولا يُكتب فوق قيمةٍ قائمةٍ إلّا إن كان
- * الملفُّ يحمل لها قيمةً غيرَ فارغة، وبعلَمِ `--overwrite`.
+ * Imports the employee contracts file into the contracts collection (--dry, --yes).
+ * Identity is the key: Arabic names are written in many forms, so name matching silently attaches one man's contract to another.
+ * Not overwritten: the file is a paper snapshot the screen may have corrected since. Salary, allowances and notes are untouched, and an existing value is replaced only if the file has a non-empty one and --overwrite is set.
  */
 require('dotenv').config({ path: require('path').join(__dirname, '../../.env') });
 const path = require('path');
@@ -36,7 +25,7 @@ const iso = (v) => {
   return d ? d.toISOString().slice(0, 10) : '';
 };
 
-/** «٢١» رقمٌ و«غير مطلوب» نصّ — ولا يُحشر أحدُهما مكانَ الآخر. */
+/** A number such as 21 and a text such as the not-required label are different things; one is never forced into the other. */
 const numOrText = (v) => {
   const s = str(v);
   if (!s) return { n: null, text: '' };
@@ -64,7 +53,7 @@ const numOrText = (v) => {
   }
 
   const contracts = await Contract.find({}).lean();
-  // أحدثُ عقدٍ لكلّ موظّف هو العقدُ الجاري — والملفُّ يصف الجاري.
+  // The latest contract per employee is the current one; the file describes the current contract.
   const byEmp = new Map();
   for (const c of contracts.sort((a, b) => String(b.startDate || '').localeCompare(String(a.startDate || '')))) {
     const k = String(c.employee);
@@ -74,7 +63,7 @@ const numOrText = (v) => {
   const plan = [];
   const noEmployee = [];
   const noStart = [];
-  /** تاريخُ الموظّف قد يكون Date أو نصًّا — والعقدُ يخزّنه YYYY-MM-DD. */
+  /** The employee's date may be a Date or a string; the contract stores YYYY-MM-DD. */
   const dstr = (v) => {
     if (!v) return '';
     if (v instanceof Date) return Number.isNaN(v.getTime()) ? '' : v.toISOString().slice(0, 10);
@@ -113,11 +102,8 @@ const numOrText = (v) => {
       }
     }
     if (!cur) {
-      // ── والعقدُ بلا تاريخ بداية ─────────────────────────────────────────
-      // أربعةُ صفوفٍ في الملفّ تكتب في خانة البداية «غير مطلوب» أو صفرًا.
-      // ولا يُخترَع لها تاريخ: يُؤخَذ تاريخُ مباشرة الموظّف من ملفّه إن وُجد
-      // — وهو مصدرٌ لا اختراع — ويُقيَّد ذلك في الملاحظات كي يعرف من يقرأ
-      // العقد من أين جاء تاريخُه. وما لا مباشرةَ له يُترك ويُقال.
+      // A contract without a start date: four rows have the not-required label or zero in the start cell.
+      // No date is invented; the employee's joining date from his file is used if present (a real source), and the note records where the date came from. Without a joining date the row is skipped and reported.
       const fallback = src.startDate || dstr(emp.contractStartDate) || dstr(emp.hireDate);
       if (!fallback) { noStart.push(`${emp.firstName || ''} ${emp.lastName || ''}`.trim() || iq); continue; }
       const note = src.startDate ? '' : 'تاريخ البداية من تاريخ المباشرة — ملفّ العقود لا يحمله';

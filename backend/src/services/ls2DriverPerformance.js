@@ -1,23 +1,8 @@
 /**
- * ls2DriverPerformance — تقييم أداء السائقين من التليمتري.
- *
- * "How good is this driver?" answered from what the trucks actually report, not
- * from an opinion. Two depths, because the two data sources cost very different
- * amounts:
- *
- *   • SHALLOW (free) — from the mirrored daily-odometer snapshots we already
- *     store: distance, active days, km/day, how many trucks they moved between.
- *     Instant for the whole fleet.
- *
- *   • DEEP (on demand) — runs Wialon's "Trips with Map" report for each truck the
- *     driver was on in the period. That is one upstream report PER TRUCK, so it is
- *     never done for the whole fleet implicitly: the list computes it only when
- *     asked (`deep=1`) and one driver's profile always does. Results are cached
- *     for 30 minutes — the underlying report changes only as new trips close.
- *
- * The deep pass is what the section was asked for: مدة الوصول (trip duration),
- * مدة التحميل (how long the truck sat at each end — the gap between trips), and
- * عدد الرحلات. Those three plus speed discipline and utilisation make the score.
+ * ls2DriverPerformance: driver performance scored from telemetry, not opinion. Two depths because the data sources cost very different amounts:
+ * SHALLOW (free): from the mirrored daily-odometer snapshots already stored: distance, active days, km/day, trucks moved between. Instant for the whole fleet.
+ * DEEP (on demand): Wialon's "Trips with Map" report per truck the driver was on; one upstream report per truck, so never implicit for the fleet: the list computes it only with `deep=1`, and a driver profile always does. Cached 30 minutes, since the report changes only as trips close.
+ * Deep gives arrival duration (trip duration), loading duration (gap between trips at each end) and trip count; with speed discipline and utilisation they make the score.
  */
 const reports = require('./ls2Reports');
 const cache = require('../utils/ttlCache');
@@ -45,12 +30,12 @@ const dayEndEpoch = (d) => Math.floor(Date.parse(`${d}T23:59:59Z`) / 1000) - TZ_
  * for six hours at every gate is not outperforming one who turns around quickly.
  */
 const WEIGHTS = {
-  trips: 25,        // عدد الرحلات — volume delivered
-  tripSpeed: 20,    // مدة الوصول — how long a trip takes for its distance
-  loading: 20,      // مدة التحميل/الانتظار — turnaround at each end
-  utilisation: 15,  // أيام العمل — how much of the period they actually worked
-  distance: 10,     // المسافة — raw ground covered
-  safety: 10,       // الالتزام بالسرعة — over-speed discipline
+  trips: 25,        // Trip count: volume delivered.
+  tripSpeed: 20,    // Arrival duration: how long a trip takes for its distance.
+  loading: 20,      // Loading/waiting duration: turnaround at each end.
+  utilisation: 15,  // Working days: how much of the period was worked.
+  distance: 10,     // Distance: raw ground covered.
+  safety: 10,       // Speed discipline: over-speed behaviour.
 };
 
 // Reference points a "full mark" is measured against. Tuned for Saudi long-haul
@@ -177,8 +162,7 @@ function scoreDriver({ km, activeDays, periodDays, deep, speedLimitKmh }) {
       tripsPerDay / TARGETS.tripsPerActiveDay,
       { tripCount: deep.tripCount, tripsPerActiveDay: round(tripsPerDay, 2), target: TARGETS.tripsPerActiveDay });
 
-    // مدة الوصول: effective km/h over the whole trip (driving time only). Slow
-    // trips for their distance mean stopping, detours or crawling.
+    // Arrival duration: effective km/h over the whole trip (driving time only). Slow trips for their distance mean stopping, detours or crawling.
     const effKmh = deep.totalDriveSec ? (deep.totalKm / (deep.totalDriveSec / 3600)) : 0;
     add('tripSpeed', 'مدة الوصول', 'Delivery time', WEIGHTS.tripSpeed,
       effKmh / TARGETS.minKmPerHourDriving,
@@ -189,8 +173,7 @@ function scoreDriver({ km, activeDays, periodDays, deep, speedLimitKmh }) {
         target: TARGETS.minKmPerHourDriving,
       });
 
-    // مدة التحميل: average turnaround. Lower is better, so the ratio is inverted
-    // between the "good" and "bad" reference hours.
+    // Loading duration: average turnaround. Lower is better, so the ratio is inverted between the "good" and "bad" reference hours.
     const avgStopH = deep.stopCount ? (deep.totalStopSec / deep.stopCount) / 3600 : null;
     const loadingScore = avgStopH == null
       ? 0.5 // no completed turnaround in the period → neutral, don't punish
@@ -204,7 +187,7 @@ function scoreDriver({ km, activeDays, periodDays, deep, speedLimitKmh }) {
         badHours: TARGETS.badLoadingHours,
       });
 
-    // الالتزام بالسرعة: full mark at or under the limit, zero at limit + 40 km/h.
+    // Speed discipline: full mark at or under the limit, zero at limit + 40 km/h.
     const over = Math.max(0, (deep.maxSpeed || 0) - speedLimitKmh);
     add('safety', 'الالتزام بالسرعة', 'Speed discipline', WEIGHTS.safety, 1 - over / 40,
       { maxSpeed: round(deep.maxSpeed, 0), limit: speedLimitKmh, overBy: round(over, 0) });
@@ -213,12 +196,7 @@ function scoreDriver({ km, activeDays, periodDays, deep, speedLimitKmh }) {
   const totalWeight = parts.reduce((s, p) => s + p.weight, 0) || 1;
   const score = round(parts.reduce((s, p) => s + (p.value / 100) * p.weight, 0) * (100 / totalWeight), 0);
 
-  // Without the trip report only utilisation + distance were measured — a
-  // quarter of the model, rescaled. That number says "this driver worked and
-  // covered ground", which nearly everyone does, so it must NOT be dressed up
-  // as a band: calling a driver ممتاز off two metrics is a claim we haven't
-  // earned. Basic runs return a neutral, explicitly provisional label instead,
-  // and the real bands appear once the deep pass has run.
+  // Without the trip report only utilisation + distance were measured, a quarter of the model, rescaled. That says "this driver worked and covered ground", which nearly everyone does, so it must NOT be shown as a band: rating a driver "excellent" off two metrics is an unearned claim. Basic runs return a neutral, explicitly provisional label, and real bands appear once the deep pass has run.
   if (!deep) {
     return {
       score,

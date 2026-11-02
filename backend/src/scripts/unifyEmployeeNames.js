@@ -1,25 +1,7 @@
 /**
- * توحيدُ أسماء الموظفين على الشيتات الثلاثةَ عشر.
- *
- *   node src/scripts/unifyEmployeeNames.js          # تقرير
- *   node src/scripts/unifyEmployeeNames.js --yes    # تنفيذ
- *
- * ── لماذا الشيتات لا الماستر ────────────────────────────────────────────────
- * قرارُ صاحب الشركة. والشيتُ التفصيليّ يُصدَّر من مصدره (أبشر، التأمينات،
- * الجوازات) فاسمُه هو الاسمُ الرسميّ، بينما الماسترُ يُجمَّع باليد.
- *
- * ── والشيتاتُ نفسُها قد تختلف ───────────────────────────────────────────────
- * ثلاثةَ عشرَ ملفًّا كلُّها تحمل عمودَ «الاسم». واثنا عشرَ منها صادرةٌ من
- * دفعةٍ واحدة فتتّفق حرفًا بحرف، والمخالفُ في الغالب ملفُّ العقود وحدَه —
- * وفيه أحيانًا الاسمُ القانونيُّ الأطول («Muhammad Ajmal Haji Munir Ahmad»
- * مقابل «MUHAMMAD AJMAL»).
- *
- * فيُؤخَذ **الأكثرُ ورودًا**: اثنا عشرَ ملفًّا رسميًّا أرجحُ من واحد. ولا
- * يضيع الاسمُ القانونيّ — هو محفوظٌ على العقد نفسِه في `employeeNameAr` من
- * استيراد العقود، وهو موضعُه: اسمُ العقد للعقد، واسمُ التشغيل للشاشات.
- *
- * والاسمُ الحاليُّ يُحفَظ في backups قبل أن يُكتب فوقه: الاسمُ هويّة، والتراجعُ
- * عن مئةٍ ونصفٍ يجب أن يكون ممكنًا بأمر.
+ * Unifies employee names across the thirteen sheets.
+ * Usage: node src/scripts/unifyEmployeeNames.js (report) | --yes (apply)
+ * The sheets, not the master, are the reference: detail sheets are exported from the official source systems while the master is compiled by hand. Twelve of the thirteen come from one batch and agree exactly; the contracts file may carry a longer legal name, so the most frequent name wins. The legal name is kept on the contract itself in employeeNameAr from the contracts import. The current name is saved to backups before overwriting so the change can be reverted by command.
  */
 require('dotenv').config({ path: require('path').join(__dirname, '../../.env') });
 const fs = require('fs');
@@ -33,7 +15,7 @@ const DIR = path.join(__dirname, '../seeds/data/hr-2026-08');
 const MASTER = 'master-of-hr.xlsx';
 
 const n = (v) => String(v ?? '').trim().replace(/\s+/g, ' ');
-/** يُطبَّع للمقارنة فقط — الفروقُ التي لا تُغيّر الاسم لا تُعدُّ اختلافًا. */
+/** Normalized for comparison only: differences that do not change the name are not counted as disagreement. */
 const fold = (v) => n(v).toLowerCase()
   .replace(/[أإآٱ]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي')
   .replace(/[ًٌٍَُِّْـ]/g, '').replace(/\s/g, '');
@@ -43,15 +25,14 @@ const fold = (v) => n(v).toLowerCase()
   console.log(APPLY ? '  توحيد أسماء الموظفين — تنفيذ' : '  توحيد أسماء الموظفين — تقريرٌ فقط');
   console.log('='.repeat(72));
 
-  // ── ما تقوله الشيتات ─────────────────────────────────────────────────────
+  // What the sheets say
   const votes = new Map(); // iqama -> Map(name -> count)
   let filesRead = 0;
   for (const f of fs.readdirSync(DIR)) {
     if (!f.endsWith('.xlsx') || f.startsWith('~$') || f === MASTER) continue;
     let rows;
     try { rows = readSheet(path.join(DIR, f), 'xl/worksheets/sheet1.xml'); } catch (e) { continue; }
-    // ملفُّ العقود ترويستُه في الصفّ الثاني والهويّةُ في A والاسمُ في B —
-    // كالبقيّة، إلّا أنّ الصفَّ الأوّل عدّادٌ لا عنوان.
+    // The contracts file has its header on row 2, identity in A and name in B, like the others, except row 1 is a counter rather than a title.
     const header = rows.findIndex((r) => /الهوية|الهويه/.test(n(r.cells.A)) || /الاسم/.test(n(r.cells.B)));
     if (header < 0) continue;
     filesRead += 1;
@@ -66,14 +47,14 @@ const fold = (v) => n(v).toLowerCase()
   }
   console.log(`  قُرئ ${filesRead} شيتًا · ${votes.size} هويّةً لها اسم`);
 
-  /** الاسمُ الذي تقوله الشيتات: الأكثرُ ورودًا، فإن تساوت فالأطول. */
+  /** The name the sheets give: most frequent, longest on a tie. */
   const chosen = new Map();
   let disagreed = 0;
   const disagreements = [];
   for (const [id, m] of votes) {
     const list = [...m.entries()].sort((a, b) => b[1] - a[1] || b[0].length - a[0].length);
     chosen.set(id, list[0][0]);
-    // اختلافٌ حقيقيّ: رسمان مختلفان بعد التطبيع، لا فرقُ همزةٍ أو مسافة.
+    // A real disagreement: two different spellings after normalization, not a hamza or space difference.
     const forms = new Set(list.map(([x]) => fold(x)));
     if (forms.size > 1) {
       disagreed += 1;
@@ -116,8 +97,7 @@ const fold = (v) => n(v).toLowerCase()
 
   let done = 0;
   for (const p of plan) {
-    // الاسمُ الكامل هو المعروضُ في كلّ مكان؛ ويُشقُّ أوّلًا وأخيرًا لأنّ
-    // المخطّطَ يوجبهما ولأنّ بعضَ الشاشات ترتّب بالاسم الأوّل.
+    // The full name is what is shown everywhere; it is split into first and last because the schema requires both and some screens sort by first name.
     const parts = p.want.split(' ');
     await Employee.updateOne({ _id: p._id }, {
       $set: {

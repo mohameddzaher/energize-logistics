@@ -1,25 +1,8 @@
 /**
- * إعادةُ صنعِ نوعَي المستخدم «فريق العمليات» و«متدرب تقنية المعلومات».
- *
- * ── لماذا ───────────────────────────────────────────────────────────────────
- * النوعان صُنعا من الشاشة ثمّ شُكّ في سلامتهما («لو صنعي بيكون فيهم مشاكل»).
- * فيُصنعان من جديد بمفتاحين جديدين، ويُنقَل إليهما حاملاهما، ويُحذف القديمان.
- *
- * ── وما يُحفَظ حرفًا ────────────────────────────────────────────────────────
- * الأخطرُ في هذا العمل أن يفقد إنسانٌ يعمل الآن ما كان يملكه. فما يُنقَل ليس
- * «أقسامًا تُشبه» بل **نفسَ** مصفوفة القسم ونفسَ الصفحات المؤشَّرة ونفسَ صفحة
- * الدخول، منسوخةً من `RolePermission` القديم كما هي. ثمّ تُقاس الصلاحيّةُ
- * الفعليّةُ (`effectivePermissions`/`effectivePages`) قبلَ النقل وبعدَه ويُشترَط
- * تساويها تمامًا — فلو اختلف حرفٌ لم يُحذف القديمُ وأُبلغ عن الفرق.
- *
- * ── والحذفُ بعد النقل لا قبلَه ──────────────────────────────────────────────
- * حذفُ نوعٍ يحمله حسابٌ يتركه بدورٍ لا يعرفه النظام: لا قسمَ ولا صفحة — أي
- * موظّفٌ يدخل فلا يجد شيئًا. فالترتيبُ: يُصنَع الجديدُ، ثمّ تُنسَخ الصلاحيّات،
- * ثمّ يُنقَل الناس، ثمّ يُقاس، ثمّ يُحذف القديم.
- *
- * الاستعمال:
- *   node src/scripts/recreateCustomRoles.js            # عرضٌ فقط
- *   node src/scripts/recreateCustomRoles.js --apply
+ * Recreate the two custom user types (operations team and IT trainee). The types were created from the UI and their soundness was doubted, so they are recreated under new keys, holders are moved over,
+ * and the old ones are deleted. Permissions are copied exactly from the old `RolePermission`: same section matrix, same ticked pages, same login page. Effective permissions (`effectivePermissions`/`effectivePages`)
+ * are measured before and after and must be identical; otherwise the old type is kept and the difference reported. Order matters: deleting a type that an account still holds leaves a role the system
+ * does not know. So create new, copy permissions, move people, measure, then delete old. Usage: node src/scripts/recreateCustomRoles.js [--apply] (dry run by default).
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -34,7 +17,7 @@ const logAudit = require(`${ROOT}/utils/auditLogger`);
 
 const APPLY = process.argv.includes('--apply');
 
-/** القديمُ ← الجديد. المفتاحُ لاتينيٌّ صغير، ولا ينتهي بـ`_manager` (راجع CustomRole). */
+/** Old key to new key. Keys are lowercase Latin and must not end in `_manager` (see CustomRole). */
 const PLAN = [
   { from: 'operation_team', to: 'ops_team', nameAr: 'فريق العمليات', nameEn: 'Operations Team',
     description: 'فريقُ العمليات — نوعٌ أُعيد صنعُه بمفتاحٍ جديد، بنفس أقسام النوع السابق وصفحاتِه.' },
@@ -47,7 +30,7 @@ const sameJson = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 (async () => {
   await mongoose.connect(process.env.MONGODB_URI);
 
-  // مَن يُنسَب إليه القيد — حسابُ صاحب النظام، لا مجهول.
+  // Who the entry is attributed to: the system owner's account, not anonymous.
   const actor = await User.findOne({ role: 'super_admin', isActive: { $ne: false } }).select('_id firstName lastName').lean();
 
   let failed = false;
@@ -70,13 +53,13 @@ const sameJson = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
     if (!APPLY) { console.log('   (عرضٌ فقط)'); continue; }
 
-    // ١) النوعُ الجديد
+    // 1) the new type
     await CustomRole.findOneAndUpdate(
       { key: step.to },
       { $set: { key: step.to, nameAr: step.nameAr, nameEn: step.nameEn, description: step.description, isActive: true, createdBy: actor?._id || null } },
       { upsert: true, new: true },
     );
-    // ٢) نفسُ الصلاحيّات حرفًا
+    // 2) the same permissions, exactly
     await RolePermission.findOneAndUpdate(
       { role: step.to },
       { $set: { sections: oldPerm?.sections || {}, pages: oldPerm?.pages || {}, homePage: oldPerm?.homePage || '', updatedBy: actor?._id || null } },
@@ -95,7 +78,7 @@ const sameJson = (a, b) => JSON.stringify(a) === JSON.stringify(b);
       continue;
     }
 
-    // ٣) يُنقَل الناس
+    // 3) move the people
     if (holders.length) {
       const r = await User.updateMany({ role: step.from }, { $set: { role: step.to } });
       console.log(`   نُقل ${r.modifiedCount} حسابًا إلى النوع الجديد.`);
@@ -107,7 +90,7 @@ const sameJson = (a, b) => JSON.stringify(a) === JSON.stringify(b);
       }
     }
 
-    // ٤) ثمّ يُحذف القديم — وقد خلا من حامل
+    // 4) then delete the old type, now with no holder
     const left = await User.countDocuments({ role: step.from });
     if (left > 0) {
       failed = true;
@@ -134,10 +117,7 @@ const sameJson = (a, b) => JSON.stringify(a) === JSON.stringify(b);
       const pg = Object.values(await effectivePages(c.key)).filter(Boolean).length;
       console.log(`   ${c.key} · ${c.nameAr} · حسابات ${n} · أقسام ${g.length} · صفحات ${pg}`);
     }
-    // ── ولا حسابَ بدورٍ لا يعرفه النظام ──────────────────────────────────
-    // تُقرأ الأدوارُ من `config/roles` لا من `config/sections`: الثانيةُ قائمةُ
-    // المصفوفة وتستثني `super_admin` عمدًا (له كلُّ شيءٍ دائمًا ولا يُضبَط)،
-    // فلو قيست بها لظهر صاحبُ النظام نفسُه «بدورٍ مجهول».
+    // Roles are read from `config/roles`, not `config/sections`: the latter is the matrix list and deliberately excludes `super_admin` (always has everything), so measuring against it would flag the owner as an unknown role.
     const { ALL_ROLE_DEFS } = require(`${ROOT}/config/roles`);
     const known = new Set([...ALL_ROLE_DEFS.map((d) => d.key), ...all.map((c) => c.key)]);
     const orphan = await User.find({}).select('firstName lastName email role').lean();

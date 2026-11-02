@@ -1,24 +1,8 @@
 /**
- * contractTwoStatuses — حالةُ العقد اثنتان: ساري أو منتهي.
- *
- *   node src/scripts/contractTwoStatuses.js            ← تجربة (لا يكتب شيئًا)
- *   node src/scripts/contractTwoStatuses.js --apply    ← يكتب
- *
- * ── ما يصلحه (صاحبُ الشركة، ٢٠٢٦/١٠/١٩) ────────────────────────────────────
- * كانت للعقد أربعُ حالات: ساري · منتهي · مفسوخ · مجدَّد. والمطلوب اثنتان:
- *   · «مفسوخ» (`terminated`) ← «منتهي» (`expired`). سببُ الإنهاء وتاريخُه يبقيان
- *     في `terminationReason` و`terminatedAt` — لا تضيع المعلومة.
- *   · «مجدَّد» (`renewed`) ← العقدُ الذي جُدِّد عنه عقدٌ آخر خلَفه، فهو «منتهي»
- *     والساري عقدُه الجديد. ومجدَّدٌ بلا خلَفٍ ولا عقدٍ سارٍ لصاحبه يعود «ساري»
- *     إن لم تنقضِ مدّتُه — وإلّا صار للموظّف عقدان ساريان.
- *
- * ثمّ:
- *   · «حالة العقد» في ملفّ كلِّ موظّفٍ مسّه التغيير تُعاد قراءتُها من عقده.
- *   · ومن لا عقدَ له، خانتُه تُوحَّد لفظًا: «مفسوخ» و«تم انهاء العقد» ← «منتهي».
- *   · وخيارُ «مفسوخ» في قائمة `hr_contract_status` يُعلَّم محذوفًا (بشاهدةٍ كي لا
- *     يعيده البذرُ عند الإقلاع).
- *
- * يُعاد تشغيلُه بلا ضرر: ما طُوي لا يُطوى ثانيةً.
+ * contractTwoStatuses: contract status is only active or expired.
+ * Dry run by default; --apply writes.
+ * terminated becomes expired (reason and date stay in terminationReason and terminatedAt); renewed becomes expired when a successor exists, otherwise active if not yet past its end, so an employee never has two active contracts.
+ * Affected employees' contract-status field is re-read from the contract; employees without a contract get unified wording; the terminated option in hr_contract_status is marked deleted with a tombstone so seeding does not restore it. Safe to rerun.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -31,13 +15,13 @@ const APPLY = process.argv.includes('--apply');
   const Employee = require('../models/Employee');
   const Lookup = require('../models/Lookup');
   const { NORMALISE, isLapsed, syncEmployeeContractStatus } = require('../utils/contractStatus');
-  // الكتابةُ بالمجموعة نفسِها: المخطّطُ لم يعد يقبل القيمتين القديمتين.
+  // Write through the collection directly: the schema no longer accepts the two old values.
   const col = Contract.collection;
 
-  // ── ١) المفسوخ ← منتهي ───────────────────────────────────────────────────
+  // 1) terminated to expired
   const terminated = await col.find({ status: 'terminated' }).project({ employee: 1, endDate: 1, terminatedAt: 1, terminationReason: 1 }).toArray();
 
-  // ── ٢) المجدَّد ← منتهي، أو ساري إن لم يخلفه شيء ─────────────────────────
+  // 2) renewed to expired, or active if nothing succeeded it
   const renewed = await col.find({ status: 'renewed' }).project({ employee: 1, endDate: 1 }).toArray();
   const toExpired = terminated.map((c) => c._id);
   const toActive = [];
@@ -48,16 +32,16 @@ const APPLY = process.argv.includes('--apply');
     else toActive.push(c);
   }
 
-  // ── ٣) خاناتُ الموظّفين ──────────────────────────────────────────────────
+  // 3) employee fields
   const touched = new Set([...terminated, ...renewed].map((c) => String(c.employee)));
   const withContract = new Set((await col.distinct('employee')).map(String));
   const oldWords = Object.keys(NORMALISE).filter((k) => NORMALISE[k] !== k);
   const textRows = await Employee.find({ contractStatusText: { $in: oldWords } }).select('_id employeeNumber contractStatusText').lean();
-  // من له عقدٌ تُعاد خانتُه من عقده؛ ومن لا عقدَ له يُوحَّد لفظُها.
+  // Employees with a contract re-read the field from it; those without get unified wording.
   const textOnly = textRows.filter((e) => !withContract.has(String(e._id)));
   for (const e of textRows) if (withContract.has(String(e._id))) touched.add(String(e._id));
 
-  // ── ٤) خيارُ «مفسوخ» في القائمة ──────────────────────────────────────────
+  // 4) the terminated option in the lookup list
   const lookups = await Lookup.find({ type: 'hr_contract_status', deleted: { $ne: true }, $or: [{ key: { $in: ['terminated', 'renewed'] } }, { nameAr: { $in: ['مفسوخ', 'مجدَّد', 'مجدد'] } }] }).select('_id key nameAr').lean();
 
   console.log(`terminated → expired: ${terminated.length}`);

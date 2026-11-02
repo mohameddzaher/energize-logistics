@@ -1,22 +1,8 @@
 /**
- * repairNotRequiredFields — «غير مطلوب» في الورقة ليست خانةً ناقصة.
- *
- *   node src/scripts/repairNotRequiredFields.js --dry
- *   node src/scripts/repairNotRequiredFields.js --yes
- *
- * ── العلّة ──────────────────────────────────────────────────────────────────
- * ملفّاتُ الموارد البشريّة تكتب «غير مطلوب» حيث لا يلزم المستندُ أصلًا: سائقٌ
- * لا يعمل في الأغذية لا شهادةَ صحيّةَ له، وموظّفُ مكتبٍ لا رخصةَ قيادةٍ تُطلب
- * منه. وهذا جوابٌ لا فراغ.
- *
- * ودخلت كلُّها «مطلوب»: ٢٩٣ من ٣٦٢ في الشهادة الصحيّة وحدَها. فامتلأت لوحةُ
- * النواقص بمئاتِ البنودِ التي لا ينقص منها شيء، وصار الرقمُ الذي يُفترض أن
- * يقول «هذا شغلُنا الباقي» لا يقول شيئًا — وهو أسوأُ من غيابه، لأنّ من يقرؤه
- * يظنّه صادقًا فيطارد ما لا وجودَ له.
- *
- * ── والنظامُ يعرف هذه الحالة أصلًا ─────────────────────────────────────────
- * `not_required` موجودةٌ في `hrFields` وتُقرأ «لا ينطبق» ولا تُعَدّ نقصًا. لم
- * تكن الحالةُ ناقصةً — كان الاستيرادُ يتجاهل ما تقوله الورقة.
+ * repairNotRequiredFields: 'not required' in the sheet is not a missing field. Usage: node src/scripts/repairNotRequiredFields.js [--dry|--yes] HR files write 'not required'
+ * where the document does not apply (a driver outside food has no health certificate; an office worker needs no driving license). That is an answer, not a blank. Import
+ * turned them all into 'required', flooding the gaps dashboard with items that are not missing and making its headline number misleading. The system already has this
+ * state: `not_required` exists in `hrFields`, reads as 'not applicable' and is not counted as a gap. The import simply ignored what the sheet said.
  */
 require('dotenv').config();
 const fs = require('fs');
@@ -29,7 +15,7 @@ const DIR = path.join(__dirname, '../../..', 'final hr data', 'extra hr files');
 const S = (v) => (v == null ? '' : String(v).trim());
 const NOT_REQUIRED = /غير\s*مطلوب/;
 
-// عمودُ الورقة ← حقلُ الموظّف الذي يقابله.
+// Sheet column to the matching employee field.
 const MAP = {
   'ملف الشهادة الصحية للموظفين.xlsx': {
     'رقم الشهادة الصحية': 'healthCertNumber',
@@ -57,7 +43,7 @@ const MAP = {
 
   console.log(DRY ? '── تجربة، بلا كتابة ──\n' : '── تنفيذ ──\n');
 
-  // رقمُ الهويّة هو المفتاح — الأسماءُ تُكتب بصورٍ شتّى.
+  // The identity number is the key; names are written in many forms.
   const emps = await Employee.find({}).select('iqamaNumber nationalId fieldStatus arabicName firstName lastName').lean();
   const byId = new Map();
   for (const e of emps) for (const k of [S(e.iqamaNumber), S(e.nationalId)]) if (k && !byId.has(k)) byId.set(k, e);
@@ -82,7 +68,7 @@ const MAP = {
         if (c < 0) continue;
         if (!NOT_REQUIRED.test(S(row[c]))) continue;
         const key = H.statusKeyOf(field);
-        // ما هو «غير مطلوب» أصلًا لا يُكتب ثانيةً.
+        // Already 'not required' is not written again.
         if (emp.fieldStatus?.[key] === 'not_required') continue;
         const id2 = String(emp._id);
         if (!ops.has(id2)) ops.set(id2, {});
@@ -107,7 +93,7 @@ const MAP = {
   }
   console.log(`\n✓ عُدِّل ${done} موظّفًا`);
 
-  // والأثر: كم بند «مطلوب» بقي في الشهادة الصحيّة.
+  // Effect: how many health-certificate items are still 'required'.
   const key = H.statusKeyOf('healthCertExpiry');
   const still = await Employee.countDocuments({ isHrRecord: { $ne: false }, [`fieldStatus.${key}`]: 'required' });
   const na = await Employee.countDocuments({ isHrRecord: { $ne: false }, [`fieldStatus.${key}`]: 'not_required' });

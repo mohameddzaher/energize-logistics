@@ -1,31 +1,8 @@
 /**
- * reconcilePrivateSellingPrices — «السعرُ الحقيقيّ» القديم إلى قيمة البيع في الكشف.
- *
- *   node src/scripts/reconcilePrivateSellingPrices.js                 تجربة (لا كتابة)
- *   node src/scripts/reconcilePrivateSellingPrices.js --apply         ينسخ إلى الكشوف
- *   … --apply --override-book    ويكتب فوق قيمةٍ من دفتر التحصيل أيضًا
- *   … --apply --push             ويدفع كلَّ قيمةٍ إلى منصّة التشغيل (معطَّلٌ افتراضًا)
- *
- * ── العلّة ──────────────────────────────────────────────────────────────────
- * كانت صفحةُ «التشغيل — خاصّ» تحفظ سعرَها في `PrivateSellingPrice`، وسيرُ العمل
- * يقرأ `OperationsWorkflow.sellingValue`. فصار الثاني المرجعَ الوحيد (صاحبُ
- * الشركة، ٢٠٢٦/١٠/٢١) ولم يعد الأوّلُ يُقرأ. وهذا السكربتُ يقول أين يفترقان،
- * و`--apply` يكتب السعرَ القديم في الكشف.
- *
- * ── ما يُكتب وما لا يُكتب ───────────────────────────────────────────────────
- *  • سعرٌ قديمٌ موجبٌ يخالف الكشف ← يُكتب في الكشف، ومصدرُه `manual` فلا تكتب
- *    المزامنةُ فوقه.
- *  • سعرٌ قديمٌ صفر ← لا يُكتب: «لم يُسعَّر» لا يمحو قيمةً قائمة.
- *  • الكشفُ قيمتُه من دفتر التحصيل (`collections_book`) ← يُترك ويُعدّ تعارضًا
- *    إلّا بـ`--override-book`: الدفترُ مرجعُ الكشف النقديّ.
- *  • الكشفُ كُتبت قيمتُه بيدٍ في سير العمل (`manual`) **بعد** آخر تعديلٍ للسعر
- *    القديم ← يُترك: اليدُ الأحدثُ تغلب.
- *
- * ── والمنصّة ───────────────────────────────────────────────────────────────
- * لا يُدفع شيءٌ إليها افتراضًا: آلافُ النداءات دفعةً على منصّةٍ ليست لنا قرارٌ
- * يُتّخذ بعينه. فبعد `--apply` وحدَه يقول الكشفُ القيمةَ الجديدة وتبقى المنصّةُ
- * على القديم — و`manual` يحمي قيمتَنا من المزامنة. و`--push` يدفعها واحدةً
- * واحدةً (pushSellingValue)، وما رفضته المنصّةُ يُقال ولا يوقف الباقي.
+ * reconcilePrivateSellingPrices: copy the old 'real price' into the statement's selling value. Usage: node src/scripts/reconcilePrivateSellingPrices.js [--apply] [--override-book] [--push] (dry run by default; --push is off by default). Why: `PrivateSellingPrice` is no longer
+ * read; `OperationsWorkflow.sellingValue` is the single source. This script shows where they differ and `--apply` writes the old price into the statement. Rules: - positive old price that differs from the statement: written with source `manual`, so sync will not overwrite
+ * it. - zero old price: not written; 'unpriced' must not erase an existing value. - statement value from the collections book (`collections_book`): left as a conflict unless `--override-book`. - statement value written by hand (`manual`) after the last edit of the old price:
+ * left; the newer hand wins. Platform: nothing is pushed by default because thousands of calls to a third-party platform need a deliberate decision. `--push` sends values one by one (pushSellingValue); a rejection is reported and does not stop the rest.
  */
 require('dotenv').config({ quiet: true });
 const mongoose = require('mongoose');
@@ -37,7 +14,7 @@ const OVERRIDE_BOOK = process.argv.includes('--override-book');
 const r2 = (x) => Math.round((Number(x) || 0) * 100) / 100;
 const CACHE_PREFIXES = ['wf:', 'collections-dept:', 'cdr:', 'colledger:', 'opsprivate:', 'ops:'];
 
-/** يقسم الأسعارَ القديمة على أقسامها. لا يكتب شيئًا. */
+/** Splits the old prices into their groups. Writes nothing. */
 async function analyse() {
   const PrivateSellingPrice = require('../models/PrivateSellingPrice');
   const OperationsWorkflow = require('../models/OperationsWorkflow');
@@ -97,8 +74,7 @@ async function run({ apply = APPLY, push = PUSH, log = console.log } = {}) {
 
   if (!apply) { log('\n— تجربةٌ فقط. أضف --apply للنسخ (و--push لدفعها إلى المنصّة).'); return { ...a, written: 0, pushed: 0 }; }
 
-  // ── الكتابة: قيمةٌ لكلّ كشف، مقطَّعةً ─────────────────────────────────────
-  // شرطُ القيمة القديمة في الفلتر نفسِه: كشفٌ عُدِّل بين القراءة والكتابة لا يُكتب فوقه.
+  // Write one value per statement, in chunks. The old-value condition is in the filter itself, so a statement edited between read and write is not overwritten.
   let written = 0;
   const CHUNK = 1000;
   for (let i = 0; i < a.toCopy.length; i += CHUNK) {

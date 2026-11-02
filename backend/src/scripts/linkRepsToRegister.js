@@ -1,23 +1,8 @@
 /**
- * ربطُ حسابات تطبيق التوصيل (`B2CRep`) بصفوف سجلّ النقل الخفيف.
- *
- * ── لماذا ─────────────────────────────────────────────────────────────────
- * شاشةُ تفقّد بداية الدوام تقرأ لوحةَ المندوب من صفّه في السجلّ عبر الصلة
- * `B2CRep.ltEmployee`. والصلةُ كانت تُكتب عرَضًا حين يُسنَد مشرف — فبقيت
- * ثلاثةٌ وخمسون من ثلاثةٍ وتسعين وخمسِمئة، والسجلُّ فيه مئةٌ وأربعةٌ وخمسون
- * مندوبًا له لوحة. فالمشرفُ يكتب اللوحةَ بيده كلَّ صباحٍ لأنّ الصلةَ ناقصة.
- *
- * ── وكيف يُطابَق اسمٌ باسم ──────────────────────────────────────────────────
- * لا مفتاحَ مشترك: سجلُّ التطبيق لا يحمل هويّةً ولا جوالًا، فلم يبقَ إلّا الاسم.
- * ومطابقةُ الاسمِ صفًّا صفًّا تلتبس: «MD ARSHED ALI» و«MD ARSHED» و«محمد ارشد»
- * ثلاثةُ صفوفٍ لاسمٍ واحد.
- *
- * فالمطابقةُ **ثنائيّةُ التفرّد**: يُقبَل الزوجُ إن كان كلٌّ من طرفيه لا يطابق
- * غيرَه في تلك الدرجة. ثلاثُ درجات بالترتيب — الاسمُ كما هو، ثمّ أوّلُ كلمةٍ
- * وآخرُها، ثمّ هيكلُ الحروف الساكنة — وما التبس في درجةٍ يُترَك لدرجةٍ أدنى، وما
- * التبس في الثلاث يُترَك لليد. فربطُ رجلٍ بغير صفّه أسوأُ من لوحةٍ تُكتب.
- *
- * الاستعمال:  node src/scripts/linkRepsToRegister.js [--apply]
+ * Links delivery-app accounts (B2CRep) to light transport register rows.
+ * The start-of-duty inspection reads the rep's plate through B2CRep.ltEmployee, which was only written incidentally on supervisor assignment, leaving many reps unlinked.
+ * No shared key exists (the app register has no identity or mobile), so matching is by name and must be unique on both sides. Three grades in order: full name, first plus last word, consonant skeleton. A pair is accepted only if neither side matches anything else at that grade; ambiguous ones fall to a lower grade, and ambiguity at all three is left for manual work.
+ * Usage: [--apply]
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -30,7 +15,7 @@ const { fold, nameSkeleton } = require(`${ROOT}/utils/b2cSupervisors`);
 
 const APPLY = process.argv.includes('--apply');
 
-/** مفاتيحُ الاسم بثلاث درجاتٍ من الأقوى إلى الأضعف. */
+/** Name keys in three grades, strongest to weakest. */
 const keysOf = (...names) => {
   const exact = new Set();
   const ends = new Set();
@@ -62,7 +47,7 @@ const keysOf = (...names) => {
   const claimedLt = new Set(already.map((r) => String(r.ltEmployee)));
   const claimedRep = new Set(already.map((r) => String(r._id)));
 
-  // فهارسُ الدرجات الثلاث لكلّ جهة
+  // Indexes for the three grades on each side.
   const ltKeys = new Map(lts.map((e) => [String(e._id), keysOf(e.name)]));
   const repKeys = new Map(reps.map((r) => [String(r._id), keysOf(r.englishName, r.arabicName)]));
 
@@ -71,7 +56,7 @@ const keysOf = (...names) => {
   const ambiguous = [];
 
   for (let tier = 0; tier < 3; tier += 1) {
-    // من كلّ مفتاحٍ إلى الصفوف التي تحمله، في هذه الدرجة وحدَها
+    // From each key to the rows carrying it, at this grade only.
     const ltBy = new Map(); const repBy = new Map();
     const put = (map, key, id) => { if (!map.has(key)) map.set(key, []); map.get(key).push(id); };
     for (const e of lts) {
@@ -85,7 +70,7 @@ const keysOf = (...names) => {
     for (const [key, ltIds] of ltBy) {
       const repIds = repBy.get(key);
       if (!repIds) continue;
-      // تفرّدٌ من الجهتين — وإلّا تُرِك
+      // Unique on both sides, otherwise skip.
       if (ltIds.length !== 1 || repIds.length !== 1) {
         ambiguous.push({ key, tier, lt: ltIds.length, rep: repIds.length });
         continue;

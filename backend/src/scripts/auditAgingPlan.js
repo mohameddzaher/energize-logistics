@@ -10,7 +10,7 @@ const mongoose = require('mongoose');
   console.log(`فهرسٌ مستعمل: ${JSON.stringify(ex.queryPlanner.winningPlan.inputStage?.keyPattern || ex.queryPlanner.winningPlan.inputStage?.inputStage?.keyPattern || 'لا')}`);
   console.log(`فُحص: ${st.totalDocsExamined} مستندًا · أُعيد: ${st.nReturned} · زمنُ التنفيذ في الخادم: ${st.executionTimeMillis}ms`);
 
-  // البديل: التجميعُ في القاعدة — تُعاد مئاتُ المجموعات لا آلافُ المستندات
+  // Alternative: aggregate in the database, returning hundreds of groups instead of thousands of documents.
   const t = Date.now();
   const agg = await OperationsWorkflow.aggregate([
     { $match: q },

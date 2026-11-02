@@ -1,18 +1,8 @@
 /**
- * fixCollectionInvoiceComments — يردّ ملاحظاتِ المشرف إلى فواتير الدفتر.
- *
- *   node src/scripts/fixCollectionInvoiceComments.js            ← تجربة
- *   node src/scripts/fixCollectionInvoiceComments.js --apply
- *   … --file "Financial Collections    10-2026.xlsx"
- *
- * ── ما الذي يُصلَح ──────────────────────────────────────────────────────────
- * استيرادُ ملفّ أكتوبر قرأ ورقةَ الفواتير بمواضع أعمدة ملفّ سبتمبر، وبينهما
- * حُذف عمودُ «Exit Date». فكُتب «Days TTL» في خانة الملاحظة (٩٣٦٤ فاتورةً
- * ملاحظتُها رقم)، وضاعت ملاحظاتُ المشرف، وتُخطّي أوّلُ صفٍّ في الورقة.
- *
- * وإعادةُ الاستيراد كلِّه تمسح الدفترَ وتعيد بناءه — ومعه ما سُجّل من تحصيلٍ
- * في النظام بعد تاريخ الملفّ. فهذا يكتب الخانتَين وحدَهما، بمفتاح الفاتورة
- * نفسِه (النوع + الرقم + كود الورقة)، ولا يمسّ مبلغًا ولا تاريخًا ولا حالة.
+ * fixCollectionInvoiceComments: restores supervisor comments to ledger invoices.
+ * Dry run by default; --apply writes; --file selects the workbook.
+ * The October import read the invoices sheet with the September column positions, but the Exit Date column was removed in between. Days TTL landed in the comment field (9364 invoices with a numeric comment), supervisor comments were lost and the first row was skipped.
+ * Re-importing wipes the ledger and any collections recorded since, so this writes only those two fields, keyed by type + number + sheet code, touching no amount, date or status.
  */
 require('dotenv').config();
 const fs = require('fs');
@@ -78,7 +68,7 @@ const N = (v) => { const n = Number(String(v ?? '').replace(/[^\d.\-]/g, '')); r
   }
   console.log(`  ✔ كُتبت: ${wrote}`);
 
-  // الصفُّ المتخطّى يدخل كما كان سيدخل: بحساب كوده، وبلا مبلغٍ إن لم يكن له.
+  // The skipped row enters as it would have: with its account code, and without an amount if it has none.
   for (const m of missing) {
     const party = m.code ? await CollectionsParty.findOne({ code: m.code }).select('_id').lean() : null;
     await CollectionInvoice.updateOne(

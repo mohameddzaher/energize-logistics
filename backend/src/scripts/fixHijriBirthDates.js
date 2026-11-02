@@ -1,21 +1,8 @@
 /**
- * fixHijriBirthDates — تاريخُ ميلادٍ كُتب هجريًّا في الخانة الميلاديّة.
- *
- *   node src/scripts/fixHijriBirthDates.js            ← تجربة: يعرض ما سيُكتب
- *   node src/scripts/fixHijriBirthDates.js --apply
- *
- * ── العلّة ──────────────────────────────────────────────────────────────────
- * `dateOfBirth` تاريخٌ ميلاديٌّ «YYYY-MM-DD»، والهجريُّ يُشتقّ منه عند العرض.
- * وفي الاستيراد الأوّل دخلت تواريخُ بعض الموظّفين بالهجريّ كما في أوراقهم
- * («1415-06-13»)، فقُرئت ميلاديّةً: سنةُ ١٤١٥ للميلاد، وهجريُّها المشتقّ سنةُ ٨١٨.
- *
- * ── الإصلاح ─────────────────────────────────────────────────────────────────
- * ما سنتُه دون ١٥٠٠ ليس ميلادَ موظّفٍ بالميلاديّ: يُقرأ هجريًّا ويُحوَّل إلى
- * ميلاديِّه بتقويم أمّ القرى (utils/hijri) ويُكتب في الخانة. فيعود العمودُ
- * الهجريُّ يعرض التاريخَ نفسَه الذي كُتب أوّلًا، والميلاديُّ صحيحًا بجانبه.
- *
- * ولا يُحوَّل ما يخرج منه عمرٌ دون الخامسةَ عشرة أو فوق التسعين: ذاك ليس تاريخَ
- * ميلادٍ أصلًا (تاريخُ انتهاءٍ كُتب في الخانة الخطأ) — يُعرَض ليُصحَّح بيده.
+ * fixHijriBirthDates: a birth date entered as Hijri in the Gregorian field.
+ * Dry run shows what would be written; --apply writes.
+ * dateOfBirth is Gregorian YYYY-MM-DD and the Hijri date is derived on display. The first import took some employees' Hijri dates as written (e.g. 1415-06-13) as Gregorian, so the derived Hijri year was 818.
+ * A year below 1500 is read as Hijri and converted with the Umm al-Qura calendar (utils/hijri) into the field. Results implying an age under 15 or over 90 are not converted (likely an expiry date in the wrong field) and are listed for manual fixing.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');

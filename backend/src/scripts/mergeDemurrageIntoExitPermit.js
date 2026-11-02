@@ -1,9 +1,4 @@
-/**
- * «الأرضيات» و«تصريح الخروج» بندٌ واحدٌ في الواقع — قالها القسم. فيُجمَع ما في
- * الأوّل إلى الثاني ويُصفَّر، قبل أن تُرفع خانتُه من الشاشة؛ وإلّا بقي مالٌ
- * مسجَّلٌ لا خانةَ له تُقرأ أو تُصحَّح.
- * تجربةٌ افتراضًا؛ `--apply` للكتابة.
- */
+/** Demurrage and exit permit are one item in practice, so the first is summed into the second and zeroed before its field is removed from the screen; otherwise recorded money would have no visible field. Dry run by default; --apply writes. */
 require('dotenv').config({ quiet: true });
 const mongoose = require('mongoose');
 
@@ -24,7 +19,7 @@ const mongoose = require('mongoose');
     if (apply) {
       c.costs.exitPermit = before + d;
       c.costs.demurrage = 0;
-      recomputeTotals(c);          // الإجماليّ والربح يُعاد حسابُهما
+      recomputeTotals(c);          // Total and profit are recomputed.
       await c.save();
     }
   }

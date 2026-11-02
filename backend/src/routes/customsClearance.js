@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 
-// معرّفٌ مشوَّهٌ في الرابط = لا سجلّ، لا عطلٌ في الخادم — راجع utils/idParam.
+// A malformed id in the URL means no record, not a server error; see utils/idParam.
 const { objectIdParam } = require('../utils/idParam');
 router.param('id', objectIdParam());
 router.param('attId', objectIdParam());
@@ -19,14 +19,13 @@ router.use(authenticate);
 router.get('/', ctrl.getClearances);
 // Must stay ABOVE '/:id' or the param route swallows it.
 router.get('/analytics', ctrl.getAnalytics);
-// لوحةُ القسم التشغيليّة — للفريق كلِّه، وبلا أرقامٍ ماليّة.
+// Section operations dashboard: for the whole team, with no financial figures.
 router.get('/dashboard', ctrl.getDashboard);
-// أرقامُ كشوف التخريج: أيُّها موجودٌ في سير عمل التشغيل.
+// Clearance statement numbers: which exist in the operations workflow.
 router.get('/release-sheets', ctrl.releaseSheets);
 router.get('/filters', ctrl.getFilterOptions);
 
-// ── أطرافُ التخليص: العملاءُ ووكلاءُ الشحن ─────────────────────────────────
-// قبل `/:id` لا بعده: «parties» لو جاءت بعدَه قُرئت معرّفَ معاملة.
+// Clearance parties: customers and shipping agents. Before `/:id`, or "parties" would be read as a transaction id.
 router.get('/parties', ctrl.listParties);
 router.post('/parties', authorize(...EDIT_ROLES), ctrl.createParty);
 router.get('/parties/:id', ctrl.getPartyProfile);
@@ -35,20 +34,18 @@ router.delete('/parties/:id', authorize('super_admin', 'admin', 'customs_manager
 router.post('/parties/:id/attachments', authorize(...EDIT_ROLES), ctrl.addPartyAttachments);
 router.put('/parties/:id/attachments/:attId', authorize(...EDIT_ROLES), ctrl.updatePartyAttachment);
 router.delete('/parties/:id/attachments/:attId', authorize(...EDIT_ROLES), ctrl.deletePartyAttachment);
-// ── العقود: قبل `/:id` كذلك ────────────────────────────────────────────────
-// ── نقاطُ المجموعة قبل `/:id` ─────────────────────────────────────────────
+// Contracts, also before `/:id`.
+// Group endpoints before `/:id`.
 const FINANCE_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'cfo', 'accounting_manager', 'accountant'];
 
 router.get('/settings', ctrl.getSettings);
 router.put('/settings', authorize('super_admin', 'admin', 'it_manager', 'customs_manager'), ctrl.updateSettings);
 router.get('/upcoming-alerts', ctrl.upcomingAlerts);
-// طلباتُ الصرف: يقرؤها التخليصُ ليتابع طلبَه، وتقرّر فيها الماليّةُ وحدَها.
+// Disbursement requests: clearance reads them to follow its request; only finance decides.
 router.get('/payment-requests', ctrl.listPaymentRequests);
-// طلباتُ الفوترة — يرسلها التخليص وتجيبها الماليّة (٢٠٢٦/١٠/٢٢).
+// Invoicing requests: sent by clearance, answered by finance.
 router.get('/invoice-requests', ctrl.listInvoiceRequests);
-// ── فواتيرُ العميل ──────────────────────────────────────────────────────────
-// مراحلُ السداد ما ندفعه؛ وهذه ما نفوتره — تُكتب عند الإقفال وتُقرأ هنا.
-// القائمةُ للإدارة الماليّة ولقسم التخليص معًا، فالقراءةُ بحارس القسم وحدَه.
+// Customer invoices. Payment stages are what we pay; these are what we invoice, written at closing and read here. The list serves finance and clearance together, so reads use the section guard only.
 router.get('/invoices', ctrl.listClearanceInvoices);
 
 router.get('/contracts', ctrl.listContracts);
@@ -59,12 +56,11 @@ router.post('/contracts/:id/files', authorize(...EDIT_ROLES), ctrl.addContractFi
 router.delete('/contracts/:id/files/:attId', authorize(...EDIT_ROLES), ctrl.deleteContractFile);
 
 router.get('/:id', ctrl.getClearance);
-// فاتورةُ معاملةٍ واحدةٍ محسوبةً من بنودها — راجع utils/customsInvoice.
+// One transaction's invoice, computed from its line items; see utils/customsInvoice.
 router.get('/:id/invoice', customsOnly, ctrl.getClearanceInvoice);
-// كشوفُ التشغيل المرتبطة بالمعاملة، بحال فوترتها وتحصيلها — راجع services/customsOpsLink.
+// Operations statements linked to the transaction, with invoicing and collection state; see services/customsOpsLink.
 router.get('/:id/ops-reports', ctrl.getOpsReports);
-// متابعاتُ الكشف المرتبط — مَن يرى المعاملةَ يرى كشوفَها ويكتب عليها متابعة، والحذفُ
-// لصاحبها أو للإدارة. والكشفُ يجب أن يكون مربوطًا بهذه المعاملة نفسِها.
+// Follow-ups on the linked statement: whoever sees the transaction sees its statements and may write a follow-up; deleting is for the author or administration. The statement must be linked to this same transaction.
 router.param('reportId', objectIdParam());
 router.param('fuId', objectIdParam());
 const opsFollowUps = require('../controllers/workflowFollowUpController').customs;
@@ -74,39 +70,35 @@ router.delete('/:id/ops-reports/:reportId/follow-ups/:fuId', opsFollowUps.remove
 
 router.post('/', authorize(...EDIT_ROLES), ctrl.createClearance);
 router.put('/:id', authorize(...EDIT_ROLES), ctrl.updateClearance);
-// حذفُ المعاملة لمدير القسم وموظّفه معًا (طلبُ صاحب الشركة) — والحذفُ يُقيَّد في
-// سجلّ المراجعة باسم من حذف ورقم المعاملة.
+// Transaction deletion is for the section manager and staff alike (owner request); the deletion is recorded in the audit log with who deleted and the transaction number.
 router.delete('/:id', authorize('super_admin', 'admin', 'customs_manager', 'customs_officer'), ctrl.deleteClearance);
 
-// مرفقات المعاملة — ورقُ كلِّ مرحلة يُرفَع مع المعاملة نفسِها.
-// ── مراحلُ السداد ──────────────────────────────────────────────────────────
-// إدخالٌ لكلّ مرّة: المرحلةُ نفسُها تُضاف مرّاتٍ (الرسومُ على دفعتين، الإرجاعُ
-// لحاويتين). والقائمةُ التي تُختار منها من إعدادات القسم.
-// أسعارُ عقد العميل: قراءتُها لشاشة المعاملة، و«تعبئة من العقد».
+// Transaction attachments: each stage's papers are uploaded with the transaction.
+// Payment stages: one entry per occurrence, since the same stage is added several times (fees in two payments, return for two containers). The pick list comes from section settings.
+// Customer contract prices: read for the transaction screen, and "fill from contract".
 router.get('/:id/contract-pricing', customsOnly, ctrl.getContractPricing);
 router.post('/:id/apply-contract', authorize(...EDIT_ROLES), ctrl.applyContractPricing);
 router.post('/:id/payment-stages', authorize(...EDIT_ROLES), ctrl.addPaymentStage);
 router.put('/:id/payment-stages/:entryId', authorize(...EDIT_ROLES), ctrl.updatePaymentStage);
 router.delete('/:id/payment-stages/:entryId', authorize(...EDIT_ROLES), ctrl.deletePaymentStage);
-// الفوترةُ والإنهاءُ فعلان: الفاتورةُ تصدر بلا انتظار فاتورة النقل، والمعاملةُ
-// تُنهى حين تُرفَق. راجع issueInvoice و settleClosure.
+// Invoicing and closing are separate actions: the invoice is issued without waiting for the transport invoice, and the transaction is finished when it is attached. See issueInvoice and settleClosure.
 router.patch('/:id/invoice', authorize(...EDIT_ROLES), ctrl.issueInvoice);
 router.post('/:id/transport-invoice', authorize(...EDIT_ROLES), ctrl.receiveTransportInvoice);
 router.patch('/:id/complete', authorize(...EDIT_ROLES), ctrl.completeClearance);
-// تعليمُ مرحلةٍ من دورة التخليص — بقواعدها (طريقان يتنافيان، ومراحلُ تُغلَق).
+// Mark a stage of the clearance cycle, with its rules (two mutually exclusive paths, stages that close).
 router.patch('/:id/stage', authorize(...EDIT_ROLES), ctrl.setStage);
-// تحويلُ معاملةٍ قادمةٍ إلى جارية.
+// Convert an upcoming transaction to in-progress.
 router.patch('/:id/activate', authorize(...EDIT_ROLES), ctrl.activateClearance);
-// قرارُ الإدارة الماليّة على طلبِ صرف — لها وحدَها.
+// Finance decision on a disbursement request; finance only.
 router.patch('/:id/payment-stages/:entryId/decision', authorize(...FINANCE_ROLES), ctrl.decidePaymentStage);
-// وجوابُها على طلب الفوترة: «تمّت الفوترة» (ومعها الفاتورة) أو إعادةٌ أو رفض.
+// Its answer to an invoicing request: invoiced (with the invoice), returned, or rejected.
 router.patch('/:id/invoice-request/decision', authorize(...FINANCE_ROLES), ctrl.decideInvoiceRequest);
 
-// ملاحظاتُ المعاملة — تُضاف من الجدول ومن داخل المعاملة، وآخرُها يُعرض.
+// Transaction notes: added from the table and from inside the transaction; the latest is shown.
 router.post('/:id/notes', authorize(...EDIT_ROLES), ctrl.addNote);
 router.delete('/:id/notes/:noteId', authorize(...EDIT_ROLES), ctrl.deleteNote);
 
-router.get('/:id/parties-card', customsOnly, ctrl.getClearanceParties);   // العميل والوكيل والناقل ومرفقاتُهم
+router.get('/:id/parties-card', customsOnly, ctrl.getClearanceParties);   // Customer, agent, carrier and their attachments.
 router.post('/:id/attachments', authorize(...EDIT_ROLES), ctrl.addAttachments);
 router.put('/:id/attachments/:attId', authorize(...EDIT_ROLES), ctrl.updateAttachment);
 router.delete('/:id/attachments/:attId', authorize(...EDIT_ROLES), ctrl.deleteAttachment);

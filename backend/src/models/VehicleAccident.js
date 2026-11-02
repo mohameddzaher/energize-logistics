@@ -1,18 +1,15 @@
 const mongoose = require('mongoose');
 
-// A vehicle accident/incident (حادث). Linked to the vehicle AND to the employee
-// who was authorized to (responsible for) it at the time, so it surfaces in both
-// the vehicle history timeline and the employee profile. `authorization` is an
-// optional snapshot of the authorization active when the accident happened.
+// A vehicle accident, linked to the vehicle and to the employee authorized for it at the time, so it shows in both the vehicle timeline and the employee profile. `authorization` optionally snapshots the authorization active then.
 const vehicleAccidentSchema = new mongoose.Schema(
   {
     vehicle: { type: mongoose.Schema.Types.ObjectId, ref: 'Vehicle', required: true },
     employee: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee' }, // driver involved
     authorization: { type: mongoose.Schema.Types.ObjectId, ref: 'VehicleAuthorization' },
 
-    date: { type: String, required: true }, // تاريخ الحادث — YYYY-MM-DD
-    location: { type: String, trim: true }, // الموقع
-    description: { type: String, required: true, trim: true }, // وصف الحادث / ما حدث
+    date: { type: String, required: true }, // Accident date, YYYY-MM-DD.
+    location: { type: String, trim: true }, // Location.
+    description: { type: String, required: true, trim: true }, // What happened.
 
     // Who was at fault.
     faultParty: {
@@ -25,10 +22,10 @@ const vehicleAccidentSchema = new mongoose.Schema(
       enum: ['minor', 'moderate', 'severe', 'total_loss'],
       default: 'minor',
     },
-    thirdPartyDetails: { type: String, trim: true }, // تفاصيل الطرف الثالث
-    injuries: { type: Boolean, default: false },     // إصابات
-    actionTaken: { type: String, trim: true },       // الإجراء الذي تم
-    reportNumber: { type: String, trim: true },      // رقم البلاغ / المحضر
+    thirdPartyDetails: { type: String, trim: true }, // Third-party details.
+    injuries: { type: Boolean, default: false },     // Injuries.
+    actionTaken: { type: String, trim: true },       // Action taken.
+    reportNumber: { type: String, trim: true },      // Report / police record number.
 
     estimatedCost: { type: Number, default: 0 },
     actualCost: { type: Number, default: 0 },
@@ -38,7 +35,7 @@ const vehicleAccidentSchema = new mongoose.Schema(
       enum: ['reported', 'investigating', 'resolved', 'closed'],
       default: 'reported',
     },
-    resolution: { type: String, trim: true }, // التسوية / النتيجة
+    resolution: { type: String, trim: true }, // Settlement / outcome.
 
     notes: { type: String, trim: true },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },

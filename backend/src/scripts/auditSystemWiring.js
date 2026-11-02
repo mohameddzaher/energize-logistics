@@ -1,19 +1,8 @@
 /* eslint-disable no-console */
 /**
- * مراجعةُ ترابط النظام — هل كلُّ شيءٍ موصولٌ بما يليه فعلًا؟
- *
- *   node src/scripts/auditSystemWiring.js
- *
- * ── ما الذي يُفحَص ─────────────────────────────────────────────────────────
- * ليست فحوصَ نوعٍ ولا صياغة — تلك يمسكها المترجم. هذه فحوصُ **وصلٍ**: الأشياءُ
- * التي تُكتب في ملفّين فتفترق بلا أن يشتكي أحد.
- *
- *   ١. كلُّ رابطٍ في الشريط الجانبيّ له صفحةٌ موجودة.
- *   ٢. كلُّ نداءٍ للـAPI من الواجهة له مسارٌ في الخادم.
- *   ٣. كلُّ قسمٍ له مدير وموظّف وتسميةٌ عربيّةٌ وإنجليزيّة.
- *   ٤. كلُّ دورٍ له اسمٌ باللغتين ويظهر في القوائم.
- *   ٥. كلُّ `ref` في المخطّطات يشير إلى نموذجٍ مسجَّل.
- *   ٦. كلُّ مسارٍ مركَّبٍ في الخادم له متحكّمٌ حقيقيّ.
+ * auditSystemWiring: is everything actually connected to the next layer?
+ * Not type or syntax checks (the compiler does that) but wiring checks for things written in two files that drift apart silently:
+ * 1. every sidebar link has a page; 2. every frontend API call has a server route; 3. every section has a manager, staff and Arabic/English labels; 4. every role has names in both languages and appears in lists; 5. every schema ref points to a registered model; 6. every mounted route has a real controller.
  */
 const fs = require('fs');
 const path = require('path');
@@ -35,7 +24,7 @@ const problems = [];
 const notes = [];
 const ok = [];
 
-// ═════ ١) روابطُ الشريط الجانبيّ ↔ الصفحات ══════════════════════════════════
+// 1) Sidebar links <-> pages
 const layout = fs.readFileSync(path.join(FE, 'app/system/layout.tsx'), 'utf8');
 const hrefs = [...new Set([...layout.matchAll(/href:\s*'(\/system\/[^']+)'/g)].map((m) => m[1]))];
 const pageFiles = new Set(walk(path.join(FE, 'app/system')).filter((p) => /page\.tsx$/.test(p)));
@@ -43,7 +32,7 @@ const routeOf = (href) => path.join(FE, 'app', href.replace(/^\//, ''), 'page.ts
 let missingPages = 0;
 for (const h of hrefs) {
   if (pageFiles.has(routeOf(h))) continue;
-  // مسارٌ ديناميكيّ: /system/x/[id]
+  // Dynamic route: /system/x/[id]
   const parts = h.split('/').filter(Boolean);
   const dyn = walk(path.join(FE, 'app/system')).some((p) => {
     const rel = path.relative(path.join(FE, 'app'), p).replace(/\/page\.tsx$/, '');
@@ -55,7 +44,7 @@ for (const h of hrefs) {
 }
 ok.push(`روابط الشريط الجانبيّ: ${hrefs.length} · بلا صفحة: ${missingPages}`);
 
-// ═════ ٢) نداءاتُ الواجهة ↔ مسارات الخادم ══════════════════════════════════
+// 2) Frontend calls <-> server routes
 const feFiles = walk(FE).filter((p) => /\.(ts|tsx)$/.test(p));
 const called = new Set();
 for (const f of feFiles) {
@@ -65,7 +54,7 @@ for (const f of feFiles) {
     called.add(raw);
   }
 }
-// المسارات المركَّبة في الخادم
+// Routes mounted on the server
 const server = fs.readFileSync(path.join(BE, 'server.js'), 'utf8');
 const mounts = [...server.matchAll(/app\.use\(\s*'(\/api\/[^']+)'/g)].map((m) => m[1]);
 const mountSet = new Set(mounts);
@@ -74,7 +63,7 @@ const unknownList = [];
 for (const c of called) {
   const seg = c.split('/').slice(0, 3).join('/'); // /api/<mount>
   if (mountSet.has(seg)) continue;
-  // بعضُ المسارات مركَّبةٌ بعمقٍ أكبر (/api/admin/permissions)
+  // Some routes are mounted deeper (/api/admin/permissions)
   const seg4 = c.split('/').slice(0, 4).join('/');
   if (mountSet.has(seg4)) continue;
   if (c === '/api/uploads' || c.startsWith('/api/uploads/')) continue;
@@ -83,7 +72,7 @@ for (const c of called) {
 ok.push(`نداءات API من الواجهة: ${called.size} · مسارات مركَّبة: ${mounts.length} · بلا مسار: ${unknownApi}`);
 unknownList.slice(0, 10).forEach((u) => problems.push(`نداءٌ بلا مسارٍ في الخادم: ${u}`));
 
-// ═════ ٣) الأقسام ══════════════════════════════════════════════════════════
+// 3) Sections
 const { SECTIONS, SECTION_KEYS, sectionLabel } = require(path.join(BE, 'config/sections'));
 const R = require(path.join(BE, 'config/roles'));
 let sectionIssues = 0;
@@ -95,7 +84,7 @@ for (const key of SECTION_KEYS) {
 }
 ok.push(`الأقسام: ${SECTION_KEYS.length} · بلا أدوار: ${sectionIssues}`);
 
-// ═════ ٤) الأدوار ══════════════════════════════════════════════════════════
+// 4) Roles
 const feRoles = fs.readFileSync(path.join(FE, 'lib/roles.ts'), 'utf8');
 let roleIssues = 0;
 for (const d of R.ALL_ROLE_DEFS) {
@@ -104,7 +93,7 @@ for (const d of R.ALL_ROLE_DEFS) {
 }
 ok.push(`الأدوار: ${R.ALL_ROLE_DEFS.length} · مشكلات: ${roleIssues}`);
 
-// ═════ ٥) مراجعُ المخطّطات ══════════════════════════════════════════════════
+// 5) Schema refs
 const modelFiles = walk(path.join(BE, 'models')).filter((p) => /\.js$/.test(p));
 const declared = new Set();
 for (const f of modelFiles) {
@@ -120,7 +109,7 @@ const danglingRefs = [...refs].filter((r) => !declared.has(r));
 danglingRefs.forEach((r) => problems.push(`مرجعُ مخطّطٍ إلى نموذجٍ غير معرَّف: ${r}`));
 ok.push(`النماذج: ${declared.size} · مراجع: ${refs.size} · معلّقة: ${danglingRefs.length}`);
 
-// ═════ ٦) المسارات ↔ المتحكّمات ════════════════════════════════════════════
+// 6) Routes <-> controllers
 const routeFiles = walk(path.join(BE, 'routes')).filter((p) => /\.js$/.test(p));
 let handlerIssues = 0;
 for (const f of routeFiles) {
@@ -131,9 +120,7 @@ for (const f of routeFiles) {
   try { ctrl = require(path.join(BE, 'controllers', ctrlMatch[1])); } catch (e) { problems.push(`متحكّمٌ لا يُحمَّل: ${ctrlMatch[1]} — ${e.message.split('\n')[0]}`); continue; }
   const varName = src.match(new RegExp(`const (\\w+) = require\\('\\.\\./controllers/${ctrlMatch[1]}'\\)`));
   if (!varName) continue;
-  // المتحكّمُ يصدّر ثلاثةَ أشياء: معالجات، وثوابتَ تُنشر على `authorize(...)`،
-  // ومجموعاتٍ متداخلة (`c.tasks.list`). المطلوبُ فحصُه المعالجُ وحدَه — وما
-  // بعده نقطةٌ أو ما سبقه `...` ليس معالجًا.
+  // A controller exports handlers, constants spread onto authorize(...), and nested groups (c.tasks.list). Only handlers should be checked; anything after a dot or preceded by "..." is not a handler.
   for (const m of src.matchAll(new RegExp(`(\\.{3})?${varName[1]}\\.([a-zA-Z0-9_]+)(\\.[a-zA-Z0-9_]+)?`, 'g'))) {
     const [, spread, key, nested] = m;
     const val = ctrl[key];
@@ -154,7 +141,7 @@ for (const f of routeFiles) {
 }
 ok.push(`ملفّات المسارات: ${routeFiles.length} · معالجاتٌ مفقودة: ${handlerIssues}`);
 
-// ═════ التقرير ═════════════════════════════════════════════════════════════
+// Report
 console.log('\n' + '='.repeat(74));
 console.log('  مراجعةُ ترابط النظام');
 console.log('='.repeat(74));

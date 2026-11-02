@@ -15,10 +15,8 @@ const shipmentOrderSupplierSchema = new mongoose.Schema(
     email: { type: String, trim: true, default: '' },
     notes: { type: String, trim: true, default: '' },
 
-    // ── بياناتُ المورّد كما تحملها منصّةُ الأوبريشن ───────────────────────────
-    // المورّدُ ليس اسمًا ورقمَ هاتف: هو سجلٌّ تجاريٌّ وبطاقةٌ ضريبيّةٌ وآيبان
-    // يُحوَّل إليه المال، ومديرٌ ومحاسبٌ لكلٍّ رقمُه — الاتّصالُ بالمالك في
-    // شأن فاتورةٍ يضيّع يومًا. وشروطُ السداد هي ما يُحاسَب عليه.
+    // Supplier data as carried by the operations platform.
+    // A supplier is a commercial register, tax card, IBAN for transfers, a manager and an accountant each with a number, not just a name and phone; calling the owner about an invoice wastes a day. Payment terms are what it is settled on.
     externalId: { type: String, trim: true, default: '', index: true },
     commercialRegister: { type: String, trim: true, default: '' },
     taxCard: { type: String, trim: true, default: '' },
@@ -35,10 +33,8 @@ const shipmentOrderSupplierSchema = new mongoose.Schema(
     agreedPriceStatement: { type: String, trim: true, default: '' },
     contractFile: { type: String, trim: true, default: '' },
 
-    // ── الدمج (٢٠٢٦/١٠/٢٦) ──────────────────────────────────────────────────
-    // مورّدٌ واحدٌ قد يكون له في منصّة الأوبريشن أكثرُ من سجلّ (تنشيط: سجلّان).
-    // فحين يُدمَج مورّدان يبقى معرّفُ الآخر هنا، فيجده الاستيرادُ بأيٍّ منهما ولا
-    // يُعيد إنشاءه. والمدموجُ يبقى معطَّلًا ومعه `mergedInto` — أثرٌ لا يُمحى.
+    // Merging.
+    // One supplier may have several records in the operations platform (one has two). When two are merged, the other's id stays here so import finds it under either and does not recreate it. The merged record stays disabled with `mergedInto`, a permanent trail.
     externalIds: { type: [String], default: [], index: true },
     mergedInto: { type: mongoose.Schema.Types.ObjectId, ref: 'ShipmentOrderSupplier', default: null },
     isActive: { type: Boolean, default: true },
@@ -49,10 +45,8 @@ const shipmentOrderSupplierSchema = new mongoose.Schema(
 
 shipmentOrderSupplierSchema.index({ name: 1 });
 
-// ── قوائمُ «طلبات الشحنات» المحفوظة تُمسَح مع كلّ كتابة ─────────────────────
-// قائمتا الموردين والشاحنات تُحفظان دقيقتين (so:registry) لأنّ قراءتهما من
-// العنقود بطيئة. والمورّدُ يظهر داخل قائمة الشاحنات، وعددُ شاحناته في قائمته،
-// فأيُّ كتابةٍ على أحدهما — من أيّ شاشةٍ أو سكربت — تمسح البادئةَ كلَّها.
+// Saved shipment-order lists are cleared on every write.
+// The suppliers and trucks lists are cached for two minutes (so:registry) because reading them from the cluster is slow. A supplier appears inside the trucks list and its truck count in its own list, so any write to either, from any screen or script, clears the whole prefix.
 const clearRegistry = () => {
   try { require('../utils/ttlCache').clear('so:registry:'); } catch (_) { /* */ }
 };

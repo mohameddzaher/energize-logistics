@@ -1,26 +1,8 @@
 /**
- * توحيدُ صيغةِ اللوحات في السجلّات كلِّها.
- *
- * ── الحال قبل ──────────────────────────────────────────────────────────────
- * اللوحةُ الواحدة تُكتب في شاشةٍ بصيغةٍ وفي أخرى بغيرها:
- *
- *   سجلُّ المركبات والنقلُ الخفيف والحوادث   «أ س ي 7357»
- *   إدارةُ الأسطول ولوكيشن سوليوشن            «1080 RXA»
- *   شاحناتُ الناقلين                          «0749 jxa» · «1000 EDA» · «0008»
- *
- * وبينها فروقٌ لا معنى لها: مسافتان أو ثلاث، ولاتينيّةٌ صغيرةٌ أو كبيرة، وأرقامٌ
- * عربيّةٌ أو غربيّة. فيبحث الموظّفُ باللوحة كما يراها فلا يجدها.
- *
- * ── وما يُمسُّ وما لا يُمسّ ──────────────────────────────────────────────────
- * يُضبَط: الفراغُ والأبجديّةُ وأرقامُ العدّ.
- * لا يُمسّ: ترتيبُ الحروف والرقم — «1611 ب ق ب» تبقى كما كُتبت. إعادةُ ترتيبها
- * تغييرٌ للبيان لا تنسيقٌ له: اللوحةُ تُطابَق بنصّها في الاستيراد ومع لوكيشن
- * سوليوشن.
- *
- * ولا يُمسّ المفتاحُ المشتقّ (`plateKey`): هو مطويٌّ أصلًا فلا يتغيّر بتغيُّر
- * الفراغ — والسكربتُ يتحقّق من ذلك قبل الكتابة ويرفض أيّ صفٍّ يتغيّر مفتاحُه.
- *
- * الاستعمال:  node src/scripts/normalizePlates.js [--apply]
+ * Normalizes plate format across all records.
+ * The same plate is written differently by screen (Arabic letters with spaces, Latin letters, carrier plates in lowercase), with meaningless differences in spaces, case and digit script.
+ * Fixes whitespace, alphabet and digit script. Does not reorder letters and number, since that changes the statement rather than formatting it and plates are matched by text in imports and with Location Solutions. The derived plateKey is already folded and must not change; the script verifies this before writing and refuses any row whose key would change.
+ * Usage: [--apply]
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -60,8 +42,7 @@ const APPLY = process.argv.includes('--apply');
       const before = String(r[field] || '');
       const after = formatPlate(before);
       if (after === before || !after) continue;
-      // حارسٌ: مفتاحُ المطابقة لا يجوز أن يتغيّر — ولو تغيّر فهذا تعديلٌ في
-      // البيان لا تنسيقٌ له، فيُترك الصفُّ ويُقال.
+      // Guard: the matching key must not change. If it would, this is an edit of the statement, not formatting, so the row is skipped and reported.
       if (registryPlateKey(before) !== registryPlateKey(after)) { keyMoved += 1; continue; }
       if (samples.length < 4) samples.push(`«${before}» → «${after}»`);
       ops.push({ updateOne: { filter: { _id: r._id }, update: { $set: { [field]: after } } } });

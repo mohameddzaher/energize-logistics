@@ -1,49 +1,27 @@
 /**
- * النقلُ الخفيف — موظّفوه وسكنُهم وأوامرُ تشغيلهم.
- *
- * ── لماذا سجلٌّ هنا وفي الموارد البشريّة معًا ────────────────────────────────
- * موظّفو هذا القسم موجودون في الموارد البشريّة: كلُّ التسعةِ ومئةٍ الذين على
- * كفالتنا، وأربعون من اثنين وخمسين فري لانسر — أي مئةٌ وتسعةٌ وأربعون من مئةٍ
- * وواحدٍ وستّين. فلا يُنشأ سجلٌّ موازٍ للإنسان: الاسمُ والهويّةُ والجنسيّةُ
- * وتاريخُ التعيين **وحالةُ الخدمة** تُقرأ من ملفّه هناك، فمن أنهت الموارد
- * البشريّةُ خدمتَه يُقرأ هنا خارجَ العمل في اللحظة نفسها بلا أن يُخبِر أحدٌ أحدًا.
- *
- * وما يخصّ هذا القسمَ وحدَه لا موضعَ له هناك: المشروعُ الذي يعمل فيه، والمدينةُ،
- * ومشرفُه، ونوعُ مركبته ولوحتُها، والسجلُ التجاريُّ الذي هو على كفالته، وسكنُه
- * وغرفتُه. فهذا السجلُّ يحمل ذلك ويشير إلى ملفّ الموارد البشريّة.
- *
- * والاثنا عشر الباقون — فري لانسر لا ملفَّ لهم هناك — يملكهم هذا القسمُ كاملًا
- * (`employee: null`). فلا يسقط أحدٌ من القائمة لأنّ قسمًا آخرَ لم يسجّله.
- *
- * ── ولا سجلَّ مركباتٍ ثانيًا ────────────────────────────────────────────────
- * المركباتُ الأربعَ عشرةَ ومئتان كلُّها في سجلّ المركبات (طابقت مئةً بالمئة
- * باللوحة وبالرقم التسلسليّ معًا). فالمركبةُ تُشار إليها ولا تُنسَخ، والتفويضُ
- * يُكتب في موضعه هناك (`VehicleMaster.authorizedPerson`) — وإلّا قرأ قسمٌ أنّ
- * المركبة بيد فلان وقرأ الآخرُ أنّها بيد غيره.
+ * Light transport: employees, housing and operating orders.
+ * Name, identity, nationality, hire date and service status are read from the HR file; section-only data (project, city, supervisor, vehicle, sponsor registry, housing) lives here.
+ * Freelancers without an HR file are owned wholly here (`employee: null`). Vehicles are referenced, not copied; authorization lives in `VehicleMaster.authorizedPerson`.
  */
 const mongoose = require('mongoose');
 
-/** أثرٌ لا يُمحى: كلُّ نقلٍ أو تغييرِ حالةٍ يُقيَّد بصاحبه ووقته. */
+/** Permanent trace: every move or status change is stamped with who and when. */
 const historyEntrySchema = new mongoose.Schema({
   at: { type: Date, default: Date.now },
   by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   byName: { type: String, default: '' },
-  // ما تغيّر: project | city | supervisor | dutySupervisor | vehicle | housing | status | created | order
+  // What changed: project | city | supervisor | dutySupervisor | vehicle | housing | status | created | order
   kind: { type: String, default: '' },
   fromValue: { type: String, default: '' },
   toValue: { type: String, default: '' },
   note: { type: String, trim: true, default: '' },
 }, { _id: true });
 
-// ── السكن ───────────────────────────────────────────────────────────────────
-/**
- * ولماذا غرفٌ لا سعةٌ واحدة: غرفةُ المناديب تسع ثمانيةً وغرفةُ المشرفين ثلاثة.
- * فالسعةُ الكليّةُ مجموعُ الغرف لا رقمٌ يُكتب، ومن يُسكَن يُسكَن في غرفةٍ من
- * نوعه — وإلّا قيل «السكنُ فيه متّسع» وليس فيه متّسعٌ لمشرف.
- */
+// Housing.
+/** Rooms rather than one capacity: a riders' room takes eight and a supervisors' room three. Total capacity is the sum of rooms, not a typed number, and a person is housed in a room of his type; otherwise housing would read as having space when it has none for a supervisor. */
 const housingRoomSchema = new mongoose.Schema({
-  name: { type: String, trim: true, required: true },     // «غرفة ١»
-  // لمن هذه الغرفة: مناديب | إداريّون | للجميع
+  name: { type: String, trim: true, required: true },     // Room name, for example room 1.
+  // Who the room is for: riders | administrative | everyone
   kind: { type: String, enum: ['rep', 'admin', 'any'], default: 'any' },
   capacity: { type: Number, default: 0, min: 0 },
   notes: { type: String, trim: true, default: '' },
@@ -53,10 +31,7 @@ const housingSchema = new mongoose.Schema({
   name: { type: String, trim: true, required: true, unique: true },
   cityAr: { type: String, trim: true, default: '' },
   addressAr: { type: String, trim: true, default: '' },
-  /**
-   * سعةٌ مكتوبةٌ تُستعمل حين لا غرفَ مسجَّلةٌ بعد. ومتى سُجّلت الغرفُ صارت
-   * السعةُ مجموعَها — راجع `totalCapacity`.
-   */
+  /** Written capacity, used while no rooms are registered. Once rooms exist, capacity is their sum; see `totalCapacity`. */
   declaredCapacity: { type: Number, default: 0, min: 0 },
   rooms: [housingRoomSchema],
   isActive: { type: Boolean, default: true, index: true },
@@ -64,7 +39,7 @@ const housingSchema = new mongoose.Schema({
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
 }, { timestamps: true });
 
-/** السعةُ الحقيقيّة: مجموعُ الغرف، وإلّا المكتوبة. */
+/** Real capacity: sum of rooms, otherwise the written one. */
 housingSchema.virtual('totalCapacity').get(function () {
   const rooms = (this.rooms || []).reduce((n, r) => n + (Number(r.capacity) || 0), 0);
   return rooms || Number(this.declaredCapacity) || 0;
@@ -72,113 +47,62 @@ housingSchema.virtual('totalCapacity').get(function () {
 housingSchema.set('toJSON', { virtuals: true });
 housingSchema.set('toObject', { virtuals: true });
 
-// ── الموظّف ─────────────────────────────────────────────────────────────────
+// Employee.
 const employeeSchema = new mongoose.Schema({
-  /**
-   * رقمُ الهويّة هو المفتاح — لا الاسم. أسماءُ الشيت مكتوبةٌ بصيغٍ («إسلام
-   * سرور» في خانة المشرف و«اسلام وحيد محمد ثروت سرور» في الموارد البشريّة)،
-   * فالربطُ بالاسم يُخطئ. والهويّةُ واحدةٌ في السجلّين.
-   */
+  /** Identity number is the key, not the name. Sheet names come in variants (a supervisor field versus the full HR name), so name matching fails. The identity number is the same in both records. */
   idNumber: { type: String, trim: true, required: true, unique: true, index: true },
-  /** ملفُّه في الموارد البشريّة — `null` لمن لا ملفَّ له (فري لانسر). */
+  /** His HR file; `null` for those without one (freelancers). */
   employee: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee', default: null, index: true },
 
-  // ما يُقرأ من الموارد البشريّة حين تكون مربوطةً، ويُكتب هنا حين لا تكون.
+  // Read from HR when linked, written here when not.
   name: { type: String, trim: true, required: true },
   nationalityAr: { type: String, trim: true, default: '' },
   hireDate: { type: Date, default: null },
   phone: { type: String, trim: true, default: '' },
 
-  // ما يخصّ هذا القسمَ وحدَه — كلُّها قوائمُ مُدارةٌ من إعدادات القسم.
-  cityAr: { type: String, trim: true, default: '', index: true },       // الفرع
-  projectAr: { type: String, trim: true, default: '', index: true },    // المشروع
-  jobTitleAr: { type: String, trim: true, default: '', index: true },   // مندوب / مشرف / ميكانيكي…
-  contractTypeAr: { type: String, trim: true, default: '', index: true }, // كفاله / فري لانسر
-  registerNumber: { type: String, trim: true, default: '', index: true }, // على كفالة أيّ سجلّ
-  vehicleTypeAr: { type: String, trim: true, default: '', index: true },  // دراجة نارية / فان / كيا…
+  // What belongs to this section alone; all are managed lists from section settings.
+  cityAr: { type: String, trim: true, default: '', index: true },       // Branch.
+  projectAr: { type: String, trim: true, default: '', index: true },    // Project.
+  jobTitleAr: { type: String, trim: true, default: '', index: true },   // Rider / supervisor / mechanic ...
+  contractTypeAr: { type: String, trim: true, default: '', index: true }, // Sponsored / freelance.
+  registerNumber: { type: String, trim: true, default: '', index: true }, // Which registry he is sponsored under.
+  vehicleTypeAr: { type: String, trim: true, default: '', index: true },  // Motorbike / van / Kia ...
 
-  /**
-   * ── مندوبٌ أو إداريّ ──────────────────────────────────────────────────────
-   * القسمُ يُدار على هذا الفرق: المندوبُ يوصّل ويُقاس بطلباته، وكلُّ من سواه —
-   * مشرفًا كان أو ميكانيكيًّا أو عاملَ نظافة — إداريٌّ يخدم التشغيل. وهو مشتقٌّ
-   * من الوظيفة لا يُكتب مرّتين، فلا يختلف الاثنان.
-   */
-  // ── أربعةٌ لا اثنان ──────────────────────────────────────────────────────
-  // كان النوعان `rep` و`admin` فقط، و«إداريّ» فرعَ الـelse: كلُّ من ليست
-  // وظيفتُه «مندوب» حرفًا صار إداريًّا — بما فيهم من لا وظيفةَ مكتوبةً له.
-  // فقالت الشاشةُ «إداريّون وفنيّون: ٣٨» وفيهم تسعةَ عشرَ بلا وظيفة، وثلاثةُ
-  // سائقين — والإداريّون وأهلُ الحِرَف ستّةَ عشر.
-  //
-  // والقاعدةُ كما قالها صاحبُ القسم: من ليس مندوبَ توصيلٍ ولا سائقًا فهو
-  // إداريّ. فالسائقُ نوعٌ قائمٌ بذاته، لا يُحشَر في الإداريّين.
-  //
-  // و«لا أعرف» ليست تصنيفًا: من لا وظيفةَ مكتوبةً له لا تنطبق عليه القاعدةُ
-  // أصلًا — لا يُقال إنّه ليس مندوبًا، إنّما لم يُكتب. فيُعَدّ `unknown`
-  // ويظهر عددًا يُملأ، لا رقمًا يتضخّم داخل غيره.
+  /** Rider or administrative. The section runs on this split: a rider delivers and is measured by orders; everyone else (supervisor, mechanic, cleaner) is administrative and serves operations. Derived from the job title, not typed twice, so they cannot differ. */
+  // Four kinds, not two. There were only `rep` and `admin`, with admin as the else branch, so anyone whose title was not exactly rider became administrative, including those with no title; the screen then counted administrative and technical staff wrongly, hiding nineteen with no title and three drivers among them.
+  // The owner's rule: whoever is neither a delivery rider nor a driver is administrative. A driver is its own kind, not folded into administrative.
+  // Unknown is not a class: with no title written the rule does not apply (not a non-rider, just unwritten). So `unknown` is counted and shown as a number to fill, not hidden inside another.
   staffKind: { type: String, enum: ['rep', 'driver', 'admin', 'unknown'], default: 'unknown', index: true },
 
   /**
-   * ── المشرفُ المسؤول: حسابٌ على النظام، لا اسمٌ في قائمة ────────────────────
-   *
-   * كان اسمًا يُختار من قائمةٍ مُدارة: «خالد عباس»، «إسلام سرور». والقائمةُ
-   * تُكتب بيدٍ فتُكتب بصيغتين («أحمد الشرقاوي» و«احمد الشرقاوي») ولا تعرف أنّ
-   * صاحبَ الاسم له حسابٌ على النظام يدخل به كلَّ صباح. فالمشرفُ في السجلّ
-   * شيءٌ، والمشرفُ الذي يفتح شاشةَ التفقّد شيءٌ آخر — ولا يعرف أحدُهما الآخر.
-   *
-   * فصار `supervisorUser` هو الأصل: حسابٌ نشطٌ بدورٍ من أدوار الإشراف في القسم
-   * (مشرف مناديب · مدير مشروع · مدير القطاع). ومتى أُسند إليه رجلٌ هنا، رآه في
-   * تفقّد بداية الدوام — وهذا هو الربطُ كلُّه.
-   *
-   * ويبقى معه الاثنان الآخران ولا يُكتبان بيد:
-   *   `supervisorName` — لقطةُ الاسم: تُقرأ في الجداول والتصدير والسجلّ، وتبقى
-   *     صحيحةً في التاريخ ولو تغيّر الحسابُ أو زال.
-   *   `supervisor` — ملفُّه في الموارد البشريّة، يُشتَقّ من الحساب لا يُختار.
+   * Responsible supervisor is a system account, not a name in a list: `supervisorUser` is an active account with a supervision role, so the rider appears in that supervisor's start-of-shift inspection.
+   * `supervisorName` is a name snapshot for tables and history; `supervisor` is the HR file derived from the account. Neither is typed.
    */
   supervisorUser: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null, index: true },
   supervisorName: { type: String, trim: true, default: '', index: true },
   supervisor: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee', default: null },
 
   /**
-   * ── وإشرافان لا إشرافٌ واحد ───────────────────────────────────────────────
-   *
-   * الذي فوق هو **المشرف التشغيليّ**: صاحبُ الرجل في الميدان — مشروعُه وفرعُه
-   * وعملُه اليوميّ، وهو المكتوب في السجلّ من أوّله.
-   *
-   * وهذا **مشرفُ التفقّد**: مَن يقف عليه صباحًا ويصوّره قبل أن يخرج. وهما لا
-   * يتطابقان بالضرورة: التفقّدُ توزيعٌ على المحطّات في ساعةٍ واحدة، والتشغيلُ
-   * مسؤوليّةٌ طولَ اليوم — فرجلٌ مشروعُه عند فلانٍ يُخرجه صباحًا مَن يقف على
-   * محطّته.
-   *
-   * وكانت شاشةُ التفقّد تقرأ الإشرافَ التشغيليّ لغياب غيره، فتُحمّل المشرفَ
-   * التشغيليَّ عملًا ليس عملَه، ولا يجد مَن يقف على المحطّة رجالَها في شاشته.
-   * فصارا حقلين يُسنَدان مستقلَّين — أحدُهما أو كلاهما.
+   * Two supervisions, not one.
+   * The field above is the operational supervisor: the man's owner in the field (project, branch, daily work), recorded from the start.
+   * This is the inspection supervisor: who stands over him in the morning and photographs him before he leaves. They are not necessarily the same: inspection is allocation to stations at one hour, operations is responsibility all day.
+   * The inspection screen used to read the operational supervisor in the absence of another, blaming him for work that is not his and leaving the station owner without his riders. So they are two independently assigned fields: either or both.
    */
   dutySupervisorUser: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null, index: true },
   dutySupervisorName: { type: String, trim: true, default: '', index: true },
 
-  /**
-   * حالةُ العمل. تُقرأ من الموارد البشريّة متى كان مربوطًا — فإنهاءُ الخدمة
-   * هناك يظهر هنا بلا خطوةٍ ثانية. وتُكتب هنا لمن لا ملفَّ له.
-   */
+  /** Work status. Read from HR when linked, so ending service there shows here without another step; written here for those with no file. */
   workStatusAr: { type: String, trim: true, default: '', index: true },
 
-  /**
-   * ── حالةُ اليوم التشغيليّة — يكتبها القسم ─────────────────────────────────
-   * يعمل (فراغ) · إجازة · موقوف · حادث (صاحبُ الشركة، ٢٠٢٦/١٠/٢١): تُعدَّل من صفّ
-   * الموظّف في «موظفو النقل الخفيف». وهي غيرُ حالة التوظيف: تلك للموارد البشريّة
-   * وحدَها، وإجازتُها وإيقافُها يغلبان هذه في العرض — راجع utils/b2cBoard.shownStatus.
-   * ولا تُنسَخ إلى الملفّ هناك («موقوف» هناك = في مرحلة نقل الكفالة).
-   */
+  /** Today's operating status, written by this section: working (blank) / leave / suspended / accident, edited from the employee row. Separate from employment status, which belongs to HR alone; HR leave and suspension override this in display (utils/b2cBoard.shownStatus). Not copied to the HR file, where suspended means in sponsorship transfer stage. */
   opStatus: { type: String, enum: ['', 'leave', 'suspended', 'accident'], default: '', index: true },
   opStatusAt: { type: Date, default: null },
   opStatusNote: { type: String, trim: true, default: '' },
 
-  // المركبةُ التي يعمل عليها الآن — إشارةٌ إلى سجلّ المركبات لا نسخةٌ منه.
+  // Vehicle he works on now: a reference to the vehicle registry, not a copy.
   vehicle: { type: mongoose.Schema.Types.ObjectId, ref: 'VehicleMaster', default: null, index: true },
   vehiclePlate: { type: String, trim: true, default: '' },
-  // ── معلَّقٌ لا مُلغى (صاحبُ الشركة، ٢٠٢٦/١٠/٢٠) ────────────────────────────
-  // مَن انتهت خدمتُه وما زالت معه مركبة لا تُنزَل عنه آليًّا: يُعلَّق أمرُه ويُنبَّه
-  // القسمُ ليتّخذ إجراءً (يستلم المركبة أو يسلّمها لغيره). راجع utils/ltVehicleRelease.
+  // On hold, not cancelled: when someone's service ended while he still holds a vehicle, it is not released automatically; the order is held and the section alerted to act (take the vehicle back or hand it to someone else). See utils/ltVehicleRelease.
   vehicleHold: {
     at: { type: Date, default: null },
     reason: { type: String, trim: true, default: '' },
@@ -199,43 +123,27 @@ employeeSchema.index({ projectAr: 1, cityAr: 1 });
 employeeSchema.index({ staffKind: 1, workStatusAr: 1 });
 employeeSchema.index({ name: 'text' });
 
-/** «مندوب» وحدَه مندوب؛ وما سواه إداريّ. يُحسَب قبل كلّ حفظ. */
+/** Only rider is a rider; anything else is administrative. Computed before every save. */
 const REP_TITLES = ['مندوب', 'مندوب توصيل', 'rep', 'delivery rep'];
-// والسائقُ ليس إداريًّا: هو ميدانٌ كالمندوب، وإن لم يكن مندوبًا. وضعُه في
-// «الإداريّين» يضخّم رقمًا يُقرأ على أنّه عبءٌ مكتبيّ.
+// A driver is not administrative: he is field staff like a rider, though not a rider. Counting him as administrative would inflate a number read as office burden.
 const DRIVER_TITLES = ['سائق', 'سايق', 'driver'];
 /**
- * ── والمشتقُّ لا يُحسَب على حقلٍ لم يُقرأ ────────────────────────────────────
- * `staffKind` يُشتَقّ من الوظيفة. وحفظُ صفٍّ حُمّل بحقولٍ مختارة (`select`)
- * يُشغّل هذا الخطّافَ و`jobTitleAr` غيرُ محمَّلٍ — فيُقرأ فارغًا فيصير كلُّ
- * مندوبٍ «إداريًّا»، ويسقط من كلّ شاشةٍ تسأل عن المناديب. وقع ذلك فعلًا في
- * إسنادٍ جماعيّ: ثلاثةُ مناديبَ خرجوا من القائمة لأنّ الحقلَ لم يُطلَب.
- *
- * فالاشتقاقُ لا يقع إلّا إن كان الحقلُ حاضرًا — والغيابُ يعني «لا خبرَ عندي»
- * لا «فارغ».
+ * The derived value is not computed on a field that was not read. `staffKind` derives from the job title. Saving a row loaded with `select` fields runs this hook with `jobTitleAr` unloaded, reading it empty so every rider became administrative and dropped from screens asking for riders. This happened in a bulk assignment.
+ * Derivation happens only if the field is present: absence means no information, not empty.
  */
-/**
- * ── مشروعُ موظّف B2C في ملفّه بالموارد البشريّة ───────────────────────────────
- * المشروعُ يملكه سجلُّ B2C، وملفُّ الموظّف يقرؤه (صاحبُ الشركة، ٢٠٢٦/١٠/١٩).
- * فكلُّ حفظٍ يغيّر المشروعَ — أو يربط الصفَّ بملفّه أوّلَ مرّة — يكتبه في الملفّ.
- * وما جاء من الملفّ نفسِه (`$locals.fromHr`) لا يُعاد إليه. راجع utils/hrLists.
- */
+/** B2C employee's project in his HR file. The project is owned by the B2C record and the employee file reads it. So every save that changes the project, or links the row to its file for the first time, writes it to the file. Changes that came from the file itself (`$locals.fromHr`) are not echoed back. See utils/hrLists. */
 employeeSchema.pre('save', function (next) {
-  // الربطُ وحدَه لا يمحو مشروعًا في الملفّ: يُنقَل إن كان في السجلّ مشروع. أمّا
-  // تغييرُ المشروع في السجلّ — ولو تفريغُه — فيُنقَل كما هو.
+  // Linking alone does not erase a project in the file: it is carried over only if the record has one. A change of project in the record, even clearing it, is carried as is.
   const linkedWithProject = this.isModified('employee') && !!String(this.projectAr || '').trim() && this.projectAr !== '(غير محدد)';
   this.$locals.projectToHr = !this.$locals.fromHr && !!this.employee && (this.isNew ? linkedWithProject : (this.isModified('projectAr') || linkedWithProject));
   next();
 });
 employeeSchema.pre('save', function (next) {
-  // ومشروعُ طلباته (`B2CRep`) يتبع مشروعَه ومدينتَه — utils/b2cEntry.
+  // His orders' project (`B2CRep`) follows his project and city; utils/b2cEntry.
   this.$locals.repSync = !this.isNew && (this.isModified('projectAr') || this.isModified('cityAr'));
   next();
 });
-// ── القائدُ الفعليّ واحدٌ في القسمين ───────────────────────────────────────
-// مَن على المركبة في هذا السجلّ هو «القائدُ الفعليّ» في سجلّ المركبات
-// (`VehicleMaster.actualDriver`) — يُكتب هناك كلّما تغيّرت مركبتُه، ويُرفَع عن
-// المركبة التي تركها. والتفويضُ شيءٌ آخر لا يمسّه هذا (صاحبُ الشركة، ٢٠٢٦/١٠/٢٠).
+// The actual driver is one across both sections. Whoever is on the vehicle in this record is the actual driver in the vehicle registry (`VehicleMaster.actualDriver`), written there whenever his vehicle changes and removed from the vehicle he left. Authorization is separate and not touched here.
 employeeSchema.pre('save', function (next) {
   this.$locals.driverSync = this.isModified('vehicle') || (!!this.vehicle && (this.isModified('name') || this.isModified('idNumber')));
   next();
@@ -246,7 +154,7 @@ employeeSchema.post('save', async function (doc) {
     const VM = mongoose.model('VehicleMaster');
     const id = String(doc.idNumber || '').replace(/\s+/g, '');
     if (id) {
-      // المركبةُ التي تركها: يُرفَع اسمُه عنها (ولا يُمسّ قائدٌ غيرُه).
+      // The vehicle he left: his name is removed from it, and no other driver is touched.
       await VM.updateMany(
         { 'actualDriver.idNumber': id, ...(doc.vehicle ? { _id: { $ne: doc.vehicle } } : {}) },
         { $set: { 'actualDriver.idNumber': '', 'actualDriver.name': '' } },
@@ -255,19 +163,10 @@ employeeSchema.post('save', async function (doc) {
     if (doc.vehicle) {
       await VM.updateOne({ _id: doc.vehicle }, { $set: { 'actualDriver.idNumber': id, 'actualDriver.name': String(doc.name || '').trim() } });
     }
-  } catch (_) { /* المزامنةُ لا تُسقط حفظَ السجلّ */ }
+  } catch (_) { /* Sync must not fail the record save. */ }
 });
-/**
- * ── وحالةُ اليوم تُسمَع في كلّ مكان (صاحبُ الشركة، ٢٠٢٦/١٠/٢١) ────────────────
- * إجازة · موقوف · حادث تُكتب هنا وحدَه، وتُنسَخ لقطةً للقراءة إلى ملفّه في الموارد
- * البشريّة (`Employee.b2cOpStatus`) وإلى المركبة التي يركبها (`VehicleMaster.b2cRider`)
- * — فتراها الموارد البشريّة في الملفّ والقائمة، وقسمُ المركبات على المركبة. ويُرفَع
- * اسمُه عن المركبة التي تركها. ثمّ تُمحى ذاكرةُ الأقسام الثلاثة قبل الإعلان.
- */
-// ── والراكبُ يُكتب على المركبة كلّما تغيّر ربطُه — لا حين تتغيّر حالتُه وحدَها ──
-// كانت `b2cRider` فارغةً على المركبات كلِّها ومئةٌ وستّون راكبًا مربوطون: لم تُكتب
-// إلّا عند تغيير الحالة. فصارت تُكتب عند كلّ تغييرٍ في المركبة أو الاسم أو النشاط،
-// ومن أيّ باب — الحفظ أو الكتابة بالاستعلام. (والسابقُ يُملأ بـ scripts/backfillPersonVehicleLinks.)
+/** Today's status is heard everywhere. Leave, suspended and accident are written here only, and copied as a read snapshot to his HR file (`Employee.b2cOpStatus`) and to the vehicle he rides (`VehicleMaster.b2cRider`), so HR sees it on file and list and vehicles sees it on the vehicle. His name is removed from the vehicle he left. Then the three sections' caches are cleared before announcing. */
+// The rider is written to the vehicle whenever his link changes, not only when status changes. `b2cRider` was empty on all vehicles with 160 riders linked because it was written only on status change. Now it is written on any change to vehicle, name or activity, from any path: save or query write. (Existing rows are filled by scripts/backfillPersonVehicleLinks.)
 async function syncRider(doc, { emit = true } = {}) {
   const op = doc.isActive === false ? '' : String(doc.opStatus || '');
   if (doc.employee) await mongoose.model('Employee').updateOne({ _id: doc.employee }, { $set: { b2cOpStatus: op } });
@@ -295,7 +194,7 @@ employeeSchema.pre('save', function (next) {
 });
 employeeSchema.post('save', async function (doc) {
   if (!doc.$locals.opSync) return;
-  try { await syncRider(doc); } catch (_) { /* المزامنةُ لا تُسقط حفظَ السجلّ */ }
+  try { await syncRider(doc); } catch (_) { /* Sync must not fail the record save. */ }
 });
 const touchedKeys = (update) => {
   const keys = [];
@@ -324,8 +223,7 @@ employeeSchema.statics.syncRider = syncRider;
 employeeSchema.post('save', async function (doc) {
   if (!doc.$locals.repSync) return;
   try { await require('../utils/b2cEntry').syncRepOf(doc); } catch (_) { /* */ }
-  // ── وتأجيرُ اليوزر الساري ينتقل مع مشروعه (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢) ──────
-  // «نقل مشروع» يُكتب هنا من أيّ باب، فيتبعه سجلُّ التأجير — راجع utils/ltRental.
+  // The active user rental moves with his project. A project transfer is written here from any path, and the rental record follows; see utils/ltRental.
   try { await require('../utils/ltRental').followProject(doc); } catch (_) { /* */ }
 });
 employeeSchema.post('save', async function (doc) {
@@ -336,7 +234,7 @@ employeeSchema.post('save', async function (doc) {
     const want = LISTS.projectFromB2C(doc.projectAr);
     const r = await Employee.updateOne({ _id: doc.employee, project: { $ne: want } }, { $set: { project: want } });
     if (r.modifiedCount) LISTS.bust({ projectFromB2C: String(doc.employee) });
-  } catch (_) { /* المزامنةُ لا تُسقط حفظَ السجلّ */ }
+  } catch (_) { /* Sync must not fail the record save. */ }
 });
 employeeSchema.pre('save', function (next) {
   if (this.jobTitleAr === undefined && !this.isNew) return next();
@@ -348,14 +246,10 @@ employeeSchema.pre('save', function (next) {
   next();
 });
 
-// ── أمرُ التشغيل ────────────────────────────────────────────────────────────
+// Operating order.
 /**
- * «هذا الموظّفُ يعمل على هذه المركبة، في هذا المشروع، بهذا الفرع، تحت هذا
- * المشرف، ويسكن هنا.» أمرٌ واحدٌ سارٍ لكلّ موظّف، وما قبله يُغلَق ولا يُمحى —
- * فتاريخُ من رَكِبَ ماذا ومتى يُقرأ إلى الوراء.
- *
- * وإنشاؤه يكتب الحالةَ الحاضرة على الموظّف (مركبتُه ومشروعُه وسكنُه) ويُقيّد
- * النقلَ في سجلّه؛ ونقلُ التفويض يكتب في سجلّ المركبات نفسِه.
+ * This employee works on this vehicle, in this project, at this branch, under this supervisor, and lives here. One active order per employee; earlier ones are closed, not erased, so the history of who rode what and when reads backwards.
+ * Creating it writes the present state on the employee (vehicle, project, housing) and records the move in his log; a transfer of authorization writes in the vehicle registry itself.
  */
 const orderSchema = new mongoose.Schema({
   orderNumber: { type: String, trim: true, unique: true, index: true },
@@ -369,7 +263,7 @@ const orderSchema = new mongoose.Schema({
 
   projectAr: { type: String, trim: true, default: '', index: true },
   cityAr: { type: String, trim: true, default: '', index: true },
-  // المشرفُ ساعةَ الإسناد — حسابُه واسمُه وملفُّه. راجع `supervisorUser` أعلاه.
+  // Supervisor at assignment time: account, name and file. See `supervisorUser` above.
   supervisorUser: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null, index: true },
   supervisorName: { type: String, trim: true, default: '' },
   supervisor: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee', default: null },
@@ -379,14 +273,11 @@ const orderSchema = new mongoose.Schema({
 
   startDate: { type: Date, default: Date.now, index: true },
   endDate: { type: Date, default: null },
-  // hold: معلَّقٌ لأنّ خدمةَ صاحبه انتهت والمركبةُ ما زالت معه — ينتظر إجراءً.
+  // hold: held because the holder's service ended while the vehicle is still with him; awaits action.
   status: { type: String, enum: ['active', 'hold', 'ended'], default: 'active', index: true },
   endReasonAr: { type: String, trim: true, default: '' },
 
-  /**
-   * هل نُقل تفويضُ المركبة مع هذا الأمر؟ والكتابةُ الفعليّةُ في سجلّ المركبات،
-   * وهذا قيدُ ما حدث لا مصدرُه.
-   */
+  /** Whether the vehicle authorization was transferred with this order. The actual write is in the vehicle registry; this records what happened, not its source. */
   authorizationMoved: { type: Boolean, default: false },
   authorizationNumber: { type: String, trim: true, default: '' },
   authorizationStart: { type: Date, default: null },

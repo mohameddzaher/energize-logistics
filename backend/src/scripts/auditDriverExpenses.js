@@ -1,4 +1,4 @@
-/** صفحةُ مصاريف السوّاق: الأعمدةُ والبطاقاتُ والفلاتر وتعليمُ السداد. */
+/** Driver expenses page: columns, cards, filters and payment marking. */
 require('dotenv').config();
 const mongoose = require('mongoose');
 (async () => {
@@ -35,7 +35,7 @@ const mongoose = require('mongoose');
     for (const [k, v] of cols) console.log(`    ${String(k).padEnd(22)} ${v}`);
   }
 
-  // الإيبان: كم سائقًا مسجَّلٌ إيبانُه
+  // IBAN: how many drivers have one registered.
   const drivers = await FleetDriver.countDocuments({ isActive: { $ne: false } });
   const withIban = await FleetDriver.countDocuments({ isActive: { $ne: false }, iban: { $nin: ['', null] } });
   console.log(`\n  الإيبان في ملفّات السوّاق: ${withIban} من ${drivers} ${withIban ? '' : '← يُملأ من صفحة السوّاق'}`);
@@ -52,7 +52,7 @@ const mongoose = require('mongoose');
     console.log(`    ${lbl.padEnd(28)} حمولات=${String(r.body.summary.loads).padStart(5)} · الإجمالي=${m(r.body.summary.total).padStart(12)}`);
   }
 
-  // ── تعليمُ السداد ثمّ رفعُه ────────────────────────────────────────────
+  // Mark as paid, then undo it.
   const target = await FleetShipment.findOne({ driverExpense: { $gt: 0 }, driverExpensePaid: { $ne: true } }).lean();
   if (target) {
     console.log(`\n  ── تعليمُ السداد (كشف ${target.waybillNumber}) ──`);

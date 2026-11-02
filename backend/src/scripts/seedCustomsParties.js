@@ -1,10 +1,7 @@
 /**
- * seedCustomsParties — يبني ملفّات العملاء ووكلاء الشحن من المعاملات القائمة.
- *
- *   node src/scripts/seedCustomsParties.js [--yes]
- *
- * الأسماءُ موجودةٌ في المعاملات نصًّا منذ أوّل استيراد. فتُقرأ منها ويُبنى لكلٍّ
- * ملفٌّ، ثمّ تُربط المعاملاتُ به. ولا يُخترَع شيء: ما ليس في المعاملات لا يُكتب.
+ * seedCustomsParties: build customer and shipping-agent files from existing transactions.
+ * Usage: node src/scripts/seedCustomsParties.js [--yes]
+ * Names exist in transactions as text since the first import. They are read, a file is built for each, and transactions are linked to it. Nothing is invented: what is not in the transactions is not written.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -30,7 +27,7 @@ const APPLY = process.argv.includes('--yes');
       const k = fold(an);
       if (!agents.has(k)) agents.set(k, { name: an, email: '', n: 0 });
       agents.get(k).n += 1;
-      // البريدُ يُلتقط من أوّل معاملةٍ تحمله — وهو ما كان يُكتب يدويًّا كلَّ مرّة.
+      // The email is taken from the first transaction that has one; it used to be typed by hand each time.
       const em = String(r.shippingAgentEmail || '').trim();
       if (em && !agents.get(k).email) agents.get(k).email = em;
     }
@@ -46,7 +43,7 @@ const APPLY = process.argv.includes('--yes');
   for (const [kind, src] of [['customer', customers], ['agent', agents]]) {
     for (const v of src.values()) {
       const key = fold(v.name);
-      // `upsert` لا `create`: التشغيلُ مرّتين لا ينشئ نسختين.
+      // `upsert`, not `create`: running twice does not create two copies.
       const r = await CustomsParty.updateOne(
         { kind, nameKey: key },
         { $setOnInsert: { kind, name: v.name, nameKey: key }, ...(v.email ? { $set: { email: v.email } } : {}) },
@@ -57,7 +54,7 @@ const APPLY = process.argv.includes('--yes');
   }
   console.log(`\n  أُنشئ: ${made} ملفًّا`);
 
-  // ربطُ المعاملات بملفّاتها — فتُجمَّع بالمعرّف لا بتطابق النصّ.
+  // Link transactions to their files, grouped by id and not by text match.
   const all = await CustomsParty.find({}).select('kind nameKey').lean();
   const byKey = new Map(all.map((p) => [`${p.kind}:${p.nameKey}`, p._id]));
   const ops = [];

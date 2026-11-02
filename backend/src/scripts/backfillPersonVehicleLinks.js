@@ -1,21 +1,7 @@
 /**
- * شخصٌ واحدٌ ومركبةٌ واحدة في النظام كلِّه — يُصلح ما افترق قبل أن تصير المزامنةُ
- * في النماذج (صاحبُ الشركة، ٢٠٢٦/١٠/٢١). مرّةً واحدة، وهو نفسُه فحصُ السلامة:
- * بلا `--apply` يعدّ الفروق ولا يكتب شيئًا، ويخرج بـ1 إن وُجدت.
- *
- *   ١) نسخُ الشخص تتبع الموارد البشريّة (utils/employeeIdentitySync.pushPersonChange):
- *      · النقل الخفيف: الاسم والجوال والجنسيّة (لا الوظيفة — قائمةُ القسم غيرُ
- *        مسمّى الموارد البشريّة، تُعَدّ هنا ولا تُمسّ)، وأوامرُ التشغيل السارية
- *      · بطاقةُ السائق: الاسم
- *      · ورقةُ التفويض: الاسم والجوال · القائدُ الفعليّ: الاسم
- *      والفارغُ في الملفّ لا يمحو ما في النسخة.
- *   ٢) مرجعُ المركبة على الحوادث التي لوحتُها في السجلّ.
- *   ٣) مرجعُ المركبة على تفقّدات بداية الدوام — إلّا حيث للمركبة صفٌّ في اليوم نفسِه.
- *   ٤) راكبُ المركبة (`VehicleMaster.b2cRider`) من ربط صفّ النقل الخفيف بها.
- *
- *   node src/scripts/backfillPersonVehicleLinks.js           ← عرضٌ فقط
- *   node src/scripts/backfillPersonVehicleLinks.js --apply
- *   (--verbose يطبع أمثلة)
+ * One person and one vehicle across the system: repairs drift before model-level sync existed. Doubles as the integrity check: without --apply it counts differences and exits 1 if any exist.
+ * Person copies follow HR (utils/employeeIdentitySync.pushPersonChange): light transport, driver card, authorization sheet, actual driver; an empty value never erases a copy. Also vehicle refs on accidents and duty checks, and VehicleMaster.b2cRider.
+ * node src/scripts/backfillPersonVehicleLinks.js (dry run) | --apply (--verbose prints examples)
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -39,7 +25,7 @@ async function plan() {
   const ex = {};
   const sample = (k, v) => { (ex[k] = ex[k] || []).length < 5 && ex[k].push(v); };
 
-  // ── الموارد البشريّة: برقم الهويّة وبالمعرّف ─────────────────────────────────
+  // HR: by identity number and by id
   const emps = await Employee.find({}).select('firstName lastName arabicName iqamaNumber nationalId phone nationality jobTitle isHrRecord employmentStatus').lean();
   const byId = new Map();
   const byOid = new Map(emps.map((e) => [String(e._id), e]));
@@ -51,10 +37,10 @@ async function plan() {
     return e && e.isHrRecord !== false ? e : null;
   };
 
-  // ── ١) النقل الخفيف ─────────────────────────────────────────────────────────
+  // 1) Light transport
   const lt = await LightTransportEmployee.find({}).select('name idNumber employee phone nationalityAr jobTitleAr vehicle opStatus isActive updatedAt').lean();
   const ltOps = [];
-  const ltName = new Map(); // معرّفُ الصفّ ← الاسمُ بعد التوحيد
+  const ltName = new Map(); // Row id -> normalized name
   Object.assign(t, { ltRows: lt.length, ltLinked: 0, ltName: 0, ltPhone: 0, ltNationality: 0, ltJobTitleDiffers_reportOnly: 0 });
   for (const r of lt) {
     const e = hrOf(r.employee, r.idNumber);
@@ -79,7 +65,7 @@ async function plan() {
   }
   t.ltOrderNames = orderOps.length;
 
-  // ── بطاقاتُ السائقين ────────────────────────────────────────────────────────
+  // Driver cards
   const cards = await DriverCard.find({}).select('name idNumber employee').lean();
   const cardOps = [];
   for (const c of cards) {
@@ -89,7 +75,7 @@ async function plan() {
   }
   t.cardNames = cardOps.length;
 
-  // ── ورقةُ التفويض والقائدُ الفعليّ والراكب ──────────────────────────────────
+  // Authorization sheet, actual driver, and rider
   const vms = await VehicleMaster.find({}).select('plateNumber plateKey canonKey authorizedPerson actualDriver b2cRider').lean();
   const vmSets = new Map(); // id ← $set
   const put = (id, k, v) => { const m = vmSets.get(String(id)) || {}; m[k] = v; vmSets.set(String(id), m); };
@@ -110,7 +96,7 @@ async function plan() {
     }
   }
 
-  // ── ٤) الراكب ───────────────────────────────────────────────────────────────
+  // 4) Rider
   const riders = new Map(); // vm ← [lt rows]
   for (const r of lt) {
     if (!r.vehicle || r.isActive === false) continue;
@@ -136,10 +122,10 @@ async function plan() {
       t.riderCleared += 1;
     }
   }
-  // راكبٌ تغيّر اسمُه في ١) ولم يتغيّر غيرُه — يُكتب اسمُه على مركبته.
+  // A rider whose name changed in 1) and nobody else: write his name onto his vehicle.
   t.vehiclesTouched = vmSets.size;
 
-  // ── ٢) الحوادث ──────────────────────────────────────────────────────────────
+  // 2) Accidents
   const claims = await VehicleClaim.find({ $or: [{ vehicle: null }, { vehicle: { $exists: false } }], vehiclePlate: { $nin: ['', null] } })
     .select('vehiclePlate vehiclePlateKey').lean();
   const cMap = await resolveMany(claims.map((c) => c.vehiclePlate), '_id plateNumber canonKey plateKey');
@@ -151,7 +137,7 @@ async function plan() {
   }
   Object.assign(t, { claimsWithoutRef: claims.length, claimRefs: claimOps.length });
 
-  // ── ٣) التفقّدات ────────────────────────────────────────────────────────────
+  // 3) Duty checks
   const checks = await B2CDutyCheck.find({ $or: [{ vehicle: null }, { vehicle: { $exists: false } }], vehiclePlate: { $nin: ['', null] } })
     .select('vehiclePlate dateKey checkedAt').sort({ checkedAt: 1 }).lean();
   const dMap = await resolveMany(checks.map((c) => c.vehiclePlate), '_id plateNumber canonKey plateKey');
@@ -190,12 +176,12 @@ async function plan() {
     lt: await chunks(LightTransportEmployee, p.ltOps),
     orders: await chunks(LightTransportOrder, p.orderOps),
     cards: await chunks(DriverCard, p.cardOps),
-    // كتابةٌ بلا `timestamps`: مزامنةٌ لا تعديلٌ يدويّ يحميه الاستيراد.
+    // Write without timestamps: this is a sync, not a manual edit that the import protects.
     vehicles: await chunks(VehicleMaster, [...p.vmSets].map(([id, $set]) => ({ updateOne: { filter: { _id: id }, update: { $set }, timestamps: false } }))),
     claims: await chunks(VehicleClaim, p.claimOps),
     duty: await chunks(B2CDutyCheck, p.dutyOps),
   };
-  // عددُ الحوادث على المركبة يُعَدّ بمفتاح اللوحة — يُعاد لما رُبط منها.
+  // Accident count per vehicle is counted by plate key; recomputed for the ones that were linked.
   const keys = [...new Set(p.claimOps.map((o) => o.updateOne.update.$set.vehiclePlateKey).filter(Boolean))];
   for (const k of keys) {
     const n = await VehicleClaim.countDocuments({ vehiclePlateKey: k, isActive: true }); // eslint-disable-line no-await-in-loop

@@ -1,37 +1,8 @@
 /**
- * ═══════════════════════════════════════════════════════════════════════════
- *  ربطُ كشوف التشغيل بمعاملات التخليص
- * ═══════════════════════════════════════════════════════════════════════════
- *
- * كشفُ التخريج (`OperationsWorkflow`) قد يكون نقلةً لحاويةٍ من معاملة تخليص:
- * من الميناء إلى الساحة، أو إلى العميل، أو إرجاعَها إلى الوكيل. وكان ذلك لا
- * يُعرف من الكشف نفسِه — يُسأل قسمُ التخليص فيبحث في أوراقه. فيُكتب الربطُ على
- * الكشف (`customsLink`) نسخةً مقروءةً: المعاملةُ ورقمُها والبوليصةُ والحاويات،
- * فيعرضها جدولُ التشغيل وشاشاتُ التحصيل بلا استعلامٍ ثانٍ.
- *
- * ── من أين يأتي الربط (بترتيب القوّة) ──────────────────────────────────────
- *
- *   `move`      رقمُ الكشف مكتوبٌ في معاملة التخليص نفسِها: خانةُ نقل الحاوية
- *               بسيّارة الشركة (`containers[].moves[].ref`) أو إرجاعِها
- *               (`returnRef`). قولُ قسم التخليص صراحةً — أقوى الأدلّة.
- *   `bl`        «رقم السند» في الكشف هو رقمُ البوليصة نفسُه. يُطابَق بعد نزع
- *               المسافات والشرطات، وبحرف الناقل الأربعة أو بدونها
- *               (COSU6444523620 = 6444523620). وبأيّ طول، ولا تُقبل بوليصةٌ
- *               تحملها أكثرُ من معاملة.
- *   `container` «رقم السند» هو رقمُ حاويةٍ مسجّلةٍ في معاملةٍ واحدة.
- *   `manual`    ربطه موظّفٌ بيده من صفحة الكشف — لا يغيّره دليلٌ آليّ.
- *   `unlinked`  فكّه موظّفٌ بيده — فلا يعيده دليلٌ آليّ ضعيف (`bl`/`container`).
- *               أمّا `move` فيعيده: قسمُ التخليص كتب الرقمَ في معاملته بعد ذلك.
- *
- * والمطابقةُ تامّةٌ لا احتواء: «يحتوي» يصطاد رقمَ سندٍ قصيرًا داخل بوليصةٍ طويلة.
- *
- * ── متى يُعاد الحساب ───────────────────────────────────────────────────────
- *   • كلُّ حفظٍ لمعاملة تخليص (خطّافُ النموذج) ← `queueClearance`.
- *   • تعديلُ «رقم السند» في كشف ← `resolveReports`.
- *   • دخولُ كشوفٍ جديدةٍ من منصّة التشغيل ← `linkPendingMoveRefs`: قد يكتب
- *     التخليصُ رقمَ الكشف قبل أن يصلنا.
- *
- * وكلُّ كتابةٍ تمسح ذاكرةَ الشاشات أوّلًا ثمّ تبثّ (راجع announce-before-invalidate).
+ * Linking operations reports to customs clearance transactions.
+ * A haulage report (`OperationsWorkflow`) may be a container move from a clearance transaction (port to yard, to the customer, or return to the agent). The link is stored on the report as `customsLink`, a readable copy (transaction, number, bill of lading, containers), so the operations table and collections screens need no second query.
+ * Evidence, strongest first:
+ * move: the report number is written in the transaction itself (containers[].moves[].ref, or returnRef); the customs department's explicit statement.   bl: the report's document number equals the bill of lading, compared after stripping spaces/dashes, with or without the 4-letter carrier prefix (COSU6444523620 = 6444523620), any length; a bill shared by more than one transaction is rejected.   container: the document number is a container in exactly one transaction.   manual: linked by hand; automatic evidence never changes it.   unlinked: unlinked by hand; weak evidence (bl/container) does not relink it, but `move` does, since customs wrote the number afterwards. Matching is exact, never "contains", which would catch a short number inside a long bill. Recomputed on: every clearance save (model hook, queueClearance), an edited document number (resolveReports), and new reports arriving from the operations platform (linkPendingMoveRefs). Every write clears the screens' cache first, then broadcasts (see announce-before-invalidate).
  */
 const mongoose = require('mongoose');
 const cache = require('../utils/ttlCache');
@@ -42,14 +13,11 @@ const INDEX_TTL = 60 * 1000;
 const VIA = ['move', 'bl', 'container', 'manual', 'unlinked'];
 const AUTO_VIA = ['move', 'bl', 'container'];
 
-// ── التطبيع ─────────────────────────────────────────────────────────────────
-/** حروفٌ لاتينيّةٌ كبيرةٌ وأرقامٌ غربيّة فقط — «MRKU 701-6023» = «MRKU7016023». */
+// Normalisation
+/** Uppercase Latin letters and Western digits only: "MRKU 701-6023" = "MRKU7016023". */
 const normKey = (s) => westernDigits(String(s == null ? '' : s)).toUpperCase().replace(/[^A-Z0-9]/g, '');
 
-/**
- * مفاتيحُ البوليصة: الرقمُ كاملًا، ومعه بلا بادئة الناقل (أربعةُ حروفٍ يليها
- * رقم) — فالسندُ يُكتب بها أحيانًا وبدونها أحيانًا. Any length: match is exact.
- */
+/** Bill keys: the full number, and the number without the carrier prefix (four letters then digits), since the document number is written both ways. Any length; match is exact. */
 function blKeysOf(bl) {
   const k = normKey(bl);
   if (!k) return [];
@@ -64,22 +32,19 @@ const unitKeyOf = (s) => normKey(s);
 
 const idOf = (v) => (v ? String(v._id || v) : '');
 
-// ── فهرسُ المعاملات ────────────────────────────────────────────────────────
-/**
- * المعاملاتُ مئاتٌ لا آلاف، فتُقرأ كلُّها مرّةً وتُحفظ دقيقة: ما يحتاجه الربطُ
- * منها أرقامٌ قليلة. ويُمسح الفهرسُ مع كلّ حفظِ معاملة (`queueClearance`).
- */
+// Transaction index
+/** There are hundreds of transactions, not thousands, so all are read once and cached for a minute; only a few numbers are needed. The index is cleared on every transaction save (queueClearance). */
 async function loadIndex() {
   return cache.wrap(INDEX_KEY, INDEX_TTL, async () => {
     const CustomsClearance = require('../models/CustomsClearance');
-    // الملغاةُ تُقرأ لاسمها وحده (ربطٌ يدويٌّ إليها يبقى) ولا يُطابَق عليها شيء.
+    // Cancelled transactions are read for their name only (a manual link to one is kept) and never matched against.
     const rows = await CustomsClearance.find({})
       .select('refNumber blNumber customerName cancelled containers.containerNumber containers.moves containers.returnRef containers.returnVehicleKind')
       .lean();
     const meta = new Map();
-    const byReport = new Map();   // رقمُ الكشف ← { id, units:Set }
-    const byBl = new Map();       // مفتاحُ البوليصة ← Set(معرّفات)
-    const byUnit = new Map();     // مفتاحُ الحاوية ← { ids:Set, raw }
+    const byReport = new Map();   // report number -> { id, units:Set }
+    const byBl = new Map();       // bill key -> Set(ids)
+    const byUnit = new Map();     // container key -> { ids:Set, raw }
     const byShortUnit = new Map(); // Container without its last check digit, as people often type it.
     const add = (m, k, id) => { if (!m.has(k)) m.set(k, new Set()); m.get(k).add(id); };
     for (const c of rows) {
@@ -120,10 +85,7 @@ async function loadIndex() {
 
 const unitHit = (idx, uk) => idx.byUnit.get(uk) || (uk.length === 10 ? idx.byShortUnit.get(uk) : null);
 
-/**
- * الربطُ الآليّ لكشفٍ واحد — أو `null`. لا يقرأ القاعدة: الفهرسُ محمَّلٌ سلفًا.
- * كشفٌ تذكره معاملتان في خانات النقل لا يُربط بإحداهما (لا تخمين).
- */
+/** Automatic link for one report, or `null`. Does not query the DB: the index is preloaded. A report named by two transactions' move fields is not linked to either (no guessing). */
 function autoLinkFor(report, idx) {
   const rn = String(report.reportNumber || '').trim();
   const per = rn ? idx.byReport.get(rn) : null;
@@ -148,7 +110,7 @@ function autoLinkFor(report, idx) {
   return null;
 }
 
-/** النسخةُ التي تُكتب على الكشف. */
+/** The copy written onto the report. */
 function snapshot(idx, id, via, containers, extra = {}) {
   const m = idx.meta.get(String(id)) || {};
   return {
@@ -172,24 +134,21 @@ const sameLink = (a, b) => {
     && (x.containers || []).join('|') === (y.containers || []).join('|');
 };
 
-/**
- * ما يجب أن يكون عليه ربطُ الكشف الآن — بحسب ما هو عليه وما تقوله الأدلّة.
- * يُرجع `undefined` = لا تغيير.
- */
+/** What the report's link should be now, given its current state and the evidence. Returns `undefined` for no change. */
 function decide(report, idx) {
   const cur = report.customsLink || null;
   const via = cur && cur.via;
   const auto = autoLinkFor(report, idx);
   if (via === 'manual') {
-    // اليدويُّ باقٍ، وتُحدَّث نسختُه وحدها (رقمٌ أو بوليصةٌ تغيّرت في المعاملة).
+    // A manual link stays; only its copy is refreshed (number or bill changed in the transaction).
     const id = idOf(cur.clearance);
-    if (!idx.meta.has(id)) return null; // معاملةٌ حُذفت — لا شيءَ يُربط به
+    if (!idx.meta.has(id)) return null; // Transaction deleted; nothing to link to.
     const next = snapshot(idx, id, 'manual', cur.containers, { at: cur.at, byName: cur.byName });
     return sameLink(cur, next) ? undefined : next;
   }
   if (via === 'unlinked' && !(auto && auto.via === 'move')) return undefined;
   if (!auto) {
-    if (via && AUTO_VIA.includes(via)) return null; // زال الدليل — يُفكّ
+    if (via && AUTO_VIA.includes(via)) return null; // Evidence gone; unlink.
     return undefined;
   }
   const next = snapshot(idx, auto.id, auto.via, auto.containers, { at: (cur && idOf(cur.clearance) === auto.id && cur.at) || new Date(), byName: '' });
@@ -211,7 +170,7 @@ async function withShipmentNumbers(rows) {
 }
 
 /**
- * يعيد حسابَ ربط كشوفٍ بعينها ويكتب ما تغيّر. `rows` صفوفٌ خفيفة أو شرطُ بحث.
+ * Recomputes the links of the given reports and writes what changed. `rows` are light rows or a query filter.
  * @returns {{changed:number, reportNumbers:string[], clearanceIds:string[]}}
  */
 async function resolveReports(rowsOrFilter, { emit = true, dryRun = false } = {}) {
@@ -246,13 +205,10 @@ async function resolveReports(rowsOrFilter, { emit = true, dryRun = false } = {}
   return { changed: ops.length, reportNumbers: changes.map((c) => c.reportNumber), clearanceIds: [...clearanceIds], changes };
 }
 
-/** نمطٌ يطابق المفتاحَ مكتوبًا بأيّ مسافاتٍ أو شرطاتٍ أو حالةِ أحرف، كاملًا لا جزءًا. */
+/** Pattern matching the key with any spaces, dashes or letter case, whole and not partial. */
 const looseRx = (key) => `^[\\s\\-/._]*${key.split('').map((ch) => ch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('[\\s\\-/._]*')}[\\s\\-/._]*$`;
 
-/**
- * يعيد حسابَ كلِّ كشفٍ يمكن أن يتأثّر بمعاملةٍ واحدة: المربوطُ بها الآن،
- * والمذكورُ رقمُه في خاناتها، ومَن «رقم سنده» بوليصتُها أو إحدى حاوياتها.
- */
+/** Recomputes every report a single transaction can affect: those linked to it now, those whose number appears in its move fields, and those whose document number is its bill or one of its containers. */
 async function syncClearance(clearanceId, opts = {}) {
   const OperationsWorkflow = require('../models/OperationsWorkflow');
   const CustomsClearance = require('../models/CustomsClearance');
@@ -271,7 +227,7 @@ async function syncClearance(clearanceId, opts = {}) {
     }
     if (refs.size) or.push({ reportNumber: { $in: [...refs] } });
     if (keys.size) or.push({ documentNumber: { $regex: [...keys].map(looseRx).join('|'), $options: 'i' } });
-    // وطلباتُ الشحن معها — راجع resolveShipments.
+    // Shipment orders too; see resolveShipments.
     try {
       const filter = shipmentFilterFor(id, c, refs, keys);
       await resolveShipments(filter, opts);
@@ -286,10 +242,7 @@ async function syncClearance(clearanceId, opts = {}) {
   return resolveReports({ $or: or }, opts);
 }
 
-/**
- * كشوفٌ ذكرها التخليصُ في خاناته ولم تُربط بعد — تصل من المنصّة بعد أن يُكتب
- * رقمُها هناك. تُسأل بعد كلّ مزامنةٍ أدخلت كشوفًا جديدة؛ والسؤالُ على الفهرس.
- */
+/** Reports named by customs but not yet linked; they arrive from the platform after their number was written there. Checked after every sync that brought in new reports, against the index. */
 async function linkPendingMoveRefs(opts = {}) {
   const idx = await loadIndex();
   const nums = [...idx.byReport.keys()];
@@ -301,16 +254,10 @@ async function linkPendingMoveRefs(opts = {}) {
   return resolveReports({ reportNumber: { $in: nums }, 'customsLink.via': { $nin: ['move', 'manual'] } }, opts);
 }
 
-// ═══ ربطُ طلبات الشحن (٢٠٢٦/١٠/٢٦) ═══════════════════════════════════════════
-// صاحبُ الشركة: «رقم البوليصة ورقم الحاوية في إنشاء الشحنة… مربوطين بالتخليص؛ لو
-// اتعملت من هنا تسمع في التخليص، ولو اتعملت من التخليص تتربط معانا هنا». فطلبُ
-// الشحن يُربط بالأدلّة نفسِها التي يُربط بها كشفُ التشغيل:
-//   `move`      رقمُه (كشفُ التخريج أو البوليصةُ عندنا) مكتوبٌ في خانة نقل حاويةٍ
-//               في المعاملة.
-//   `bl`        «رقم البوليصة» في الشحنة بوليصةُ معاملةٍ واحدة.
-//   `container` «رقم الحاوية» في الشحنة حاويةٌ في معاملةٍ واحدة.
-// وحين يأتي الربطُ من المعاملة تُملأ خانتا الشحنة الفارغتان منها — فيرى مَن
-// يفتح الشحنة البوليصةَ وحاويتَها بلا أن يكتبهما.
+// Shipment order linking. The bill number and container number in shipment creation are linked to customs: created here they show in customs, and created in customs they link here. A shipment order is linked with the same evidence as an operations report:
+// move: its number (haulage report or our bill) is written in a container move field of the transaction.
+// bl: the shipment's bill number is the bill of exactly one transaction.
+// container: its container number is a container of exactly one transaction. When the link comes from the transaction, the shipment's two empty fields are filled from it.
 const refsOfShipment = (o) => [o.graduationNumber, o.waybillNumber, o.reference]
   .map((x) => (x == null ? '' : String(x).trim())).filter(Boolean);
 
@@ -350,7 +297,7 @@ function decideShipment(o, idx) {
 
 const SHIPMENT_FIELDS = '_id graduationNumber waybillNumber reference blNumber containerNumber customsLink source externalId';
 
-/** يعيد حسابَ ربط طلبات شحنٍ بعينها، ويملأ بوليصتَها وحاويتَها الفارغتين من المعاملة. */
+/** Recomputes the links of the given shipment orders and fills their empty bill and container from the transaction. */
 async function resolveShipments(rowsOrFilter, { emit = true } = {}) {
   const ShipmentOrder = require('../models/ShipmentOrder');
   const rows = Array.isArray(rowsOrFilter)
@@ -367,7 +314,7 @@ async function resolveShipments(rowsOrFilter, { emit = true } = {}) {
       if (o.customsLink && o.customsLink.clearance) clearanceIds.add(idOf(o.customsLink.clearance));
       if (next && next.clearance) clearanceIds.add(idOf(next.clearance));
     }
-    // تُملأ الفارغتان من المعاملة المربوطة — ولا يُكتب فوق ما كتبه أحد.
+    // Fill the two empty fields from the linked transaction; never overwrite what someone wrote.
     if (link && link.clearance) {
       if (!String(o.blNumber || '').trim() && link.blNumber) set.blNumber = link.blNumber;
       // A clearance with one container names it even when the link came by B/L.
@@ -388,16 +335,13 @@ async function resolveShipments(rowsOrFilter, { emit = true } = {}) {
         const { emitToAll } = require('../websocket/socketManager');
         emitToAll('shipmentOrders:updated', { customsLink: true });
         if (clearanceIds.size) emitToAll('customs:opsLinks', { clearanceIds: [...clearanceIds], shipments: true });
-      } catch (_) { /* لا مقابس في السكربت */ }
+      } catch (_) { /* No sockets in the script */ }
     }
   }
   return { changed: ops.length, clearanceIds: [...clearanceIds] };
 }
 
-/**
- * طلبُ شحنٍ حُفظ: يُربط، وكشفُ تشغيله (لشحنات المنصّة) يأخذ البوليصةَ أو الحاويةَ
- * «رقمَ سندٍ» إن كان فارغًا — فيُربط هو أيضًا من سير عمل التشغيل.
- */
+/** A saved shipment order is linked, and its operations report (for platform shipments) takes the bill or container as the document number if empty, so it is linked from the operations workflow too. */
 async function afterShipmentSaved(orderId) {
   const ShipmentOrder = require('../models/ShipmentOrder');
   const before = await ShipmentOrder.findById(orderId).select(SHIPMENT_FIELDS).lean();
@@ -418,7 +362,7 @@ async function afterShipmentSaved(orderId) {
   }
 }
 
-/** شروطُ طلبات الشحن التي قد تمسّها معاملةٌ واحدة. */
+/** Shipment-order conditions a single transaction can touch. */
 function shipmentFilterFor(id, c, refs, keys) {
   const or = [{ 'customsLink.clearance': new mongoose.Types.ObjectId(id) }];
   if (refs.size) {
@@ -434,9 +378,7 @@ function shipmentFilterFor(id, c, refs, keys) {
   return { $or: or };
 }
 
-// ── الطابور: حفظُ المعاملة لا ينتظر الربط ──────────────────────────────────
-// الخطّافُ يُستدعى بعد كلّ حفظ، والمعاملةُ قد تُحفظ مرّتين في طلبٍ واحد. فيُجمَع
-// ما وصل في ربع ثانيةٍ ويُحسب مرّةً. والخطأُ هنا لا يُفشل حفظَ المعاملة.
+// Queue: saving a transaction does not wait for linking. The hook fires after every save and a transaction can be saved twice in one request, so arrivals within 250 ms are batched and computed once. An error here never fails the transaction save.
 const pending = new Set();
 let timer = null;
 let running = Promise.resolve();
@@ -455,17 +397,13 @@ function queueClearance(id) {
     });
   }, 250);
 }
-/** للاختبارات والسكربتات: ينتظر حتى يفرغ الطابور. */
+/** For tests and scripts: waits until the queue is empty. */
 async function flush() {
   if (timer) { clearTimeout(timer); timer = null; const ids = [...pending]; pending.clear(); running = running.then(async () => { for (const one of ids) await syncClearance(one).catch(() => {}); }); }
   await running;
 }
 
-/**
- * الذاكرةُ تُمسح ثمّ يُبَثّ — الترتيبُ مقصود: مَن يسمع الخبر يجلب فيجد جديدًا.
- * والشاشاتُ التي تسمع: جدولُ التشغيل (`workflow:bulkImported`)، وشاشاتُ التحصيل
- * (`collections:changed`)، وصفحةُ المعاملة (`customs:opsLinks`).
- */
+/** Cache is cleared, then broadcast; the order is intentional so a listener that fetches gets fresh data. Listening screens: operations table (`workflow:bulkImported`), collections (`collections:changed`) and the transaction page (`customs:opsLinks`). */
 function announce({ reportNumbers = [], clearanceIds = [] } = {}) {
   for (const p of ['wf:', 'collections-dept:', 'cdr:', 'colledger:', 'customslink:']) {
     try { cache.clear(p); } catch (_) { /* */ }
@@ -475,10 +413,10 @@ function announce({ reportNumbers = [], clearanceIds = [] } = {}) {
     emitToAll('workflow:bulkImported', { customsLink: true, reportNumbers: reportNumbers.slice(0, 200) });
     emitToAll('collections:changed', { source: 'customs-link', reportNumbers: reportNumbers.slice(0, 200) });
     emitToAll('customs:opsLinks', { clearanceIds, reportNumbers: reportNumbers.slice(0, 200) });
-  } catch (_) { /* لا مقابس في السكربت */ }
+  } catch (_) { /* No sockets in the script */ }
 }
 
-/** الشكلُ الذي تقرؤه الشاشات — بلا ما لا يلزمها. */
+/** The shape screens read, without what they do not need. */
 function linkView(l) {
   if (!l || !l.clearance) return null;
   return {
@@ -491,11 +429,7 @@ function linkView(l) {
   };
 }
 
-/**
- * الكشوفُ المربوطةُ كلُّها مفهرسةً برقم الكشف وبرقم الفاتورة — لشاشات التحصيل
- * التي وحدتُها الفاتورة (والفاتورةُ قد تضمّ كشوفًا من معاملاتٍ شتّى). وهي قليلةٌ
- * من أربعين ألفًا فتُقرأ مرّةً وتُحفظ دقيقة؛ و`announce` يمسحها مع كلّ ربط.
- */
+/** All linked reports indexed by report number and by invoice number, for collections screens whose unit is the invoice (an invoice can span reports from several transactions). They are few among about forty thousand, so read once and cached for a minute; `announce` clears them on every link. */
 async function linkedIndex() {
   return cache.wrap('customslink:linked', INDEX_TTL, async () => {
     const OperationsWorkflow = require('../models/OperationsWorkflow');
@@ -511,7 +445,7 @@ async function linkedIndex() {
         if (!byInvoice.has(no)) byInvoice.set(no, new Map());
         const per = byInvoice.get(no);
         const prev = per.get(v.clearanceId);
-        // الفاتورةُ تُظهر المعاملةَ مرّةً، وحاوياتُ كشوفها مجموعة.
+        // An invoice shows the transaction once; the containers of its reports are merged.
         per.set(v.clearanceId, prev
           ? { ...prev, containers: [...new Set([...prev.containers, ...v.containers])].sort(), reports: prev.reports + 1 }
           : { ...v, reports: 1 });
@@ -521,9 +455,9 @@ async function linkedIndex() {
   });
 }
 
-/** معاملاتُ فاتورةٍ واحدة — مصفوفةٌ (فارغةٌ إن لم يُربط شيء). */
+/** Transactions of one invoice: an array (empty if nothing is linked). */
 const customsOfInvoice = (idx, no) => [...((idx.byInvoice.get(String(no || '').trim()) || new Map()).values())];
-/** معاملةُ كشفٍ واحد أو `null`. */
+/** Transaction of one report, or `null`. */
 const customsOfReport = (idx, rn) => idx.byReport.get(String(rn || '').trim()) || null;
 
 module.exports = {

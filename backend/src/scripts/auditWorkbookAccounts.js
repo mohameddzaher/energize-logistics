@@ -1,4 +1,4 @@
-/** كلُّ حسابٍ في كلّ ورقةٍ مقابلَ سجلِّ الأطراف. لا يكتب شيئًا. */
+/** Every account in every sheet against the party register. Read-only. */
 require('dotenv').config();
 const mongoose = require('mongoose');
 const XLSX = require('xlsx');
@@ -9,7 +9,7 @@ const fold = (s) => String(s || '').toLowerCase()
   .replace(/[أإآٱ]/g, 'ا').replace(/[ىئ]/g, 'ي').replace(/[ةه]/g, 'ه').replace(/ؤ/g, 'و')
   .replace(/[ً-ْـ]/g, '').replace(/[()\-_.,]/g, ' ').replace(/\s+/g, ' ').trim();
 
-// الورقة → [صفُّ الترويسة, عمودُ الكود, عمودُ الاسم, عمودُ المسؤول]
+// Sheet -> [header row, code column, name column, owner column]
 const SHEETS = [
   ['Aging', 4, 0, 1, 2],
   ['Aging Shipment', 4, 0, 1, 2],
@@ -23,7 +23,7 @@ const SHEETS = [
   const CollectionsParty = require('../models/CollectionsParty');
   const wb = XLSX.readFile(FILE);
 
-  // كودٌ → { الأسماءُ التي ظهر بها, المسؤولون, الأوراق }
+  // Code -> { names it appeared under, owners, sheets }
   const accounts = new Map();
   for (const [sheet, h, cCode, cName, cOff] of SHEETS) {
     const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheet], { header: 1, defval: '', blankrows: false });
@@ -52,10 +52,10 @@ const SHEETS = [
     }
   }
 
-  const missing = [];      // لا كودَ ولا اسمَ عندنا
-  const nameOnly = [];     // موجودٌ بالاسم بلا كود
-  const nameDiff = [];     // الكودُ عندنا والاسمُ يختلف
-  const noOfficer = [];    // الملفُّ يسمّي مسؤولًا ونحن لا
+  const missing = [];      // Neither code nor name is known to us
+  const nameOnly = [];     // Present by name without a code
+  const nameDiff = [];     // We have the code but the name differs
+  const noOfficer = [];    // The file names an owner and we do not
   const offDiff = [];
 
   for (const [code, a] of accounts) {

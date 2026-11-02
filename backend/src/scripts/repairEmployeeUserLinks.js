@@ -1,15 +1,8 @@
 /* eslint-disable no-console */
 /**
- * إصلاح الرابط أحاديّ الاتجاه بين حساب الدخول وسجلّ الموظّف.
- *
- *   node src/scripts/repairEmployeeUserLinks.js --dry   # معاينة بلا كتابة
- *   node src/scripts/repairEmployeeUserLinks.js         # تنفيذ
- *
- * الرابط طرفان: `User.linkedEmployee` و`Employee.user`. وكان يُكتب في مسارٍ
- * واحدٍ طرفٌ منهما فقط، فتقرأ صفحة المستخدمين «مرتبط» ويقرأ ملفُّ الموظّف «غير
- * مرتبط بحساب دخول» — نقيضان، وكلُّ شاشةٍ صادقةٌ فيما تنظر إليه.
- *
- * يُصلَح من جهة الحساب: هو الطرف الذي كُتب فعلًا، والآخر هو الذي سقط.
+ * Repairs the one-way link between a login account and the employee record.
+ * Usage: node src/scripts/repairEmployeeUserLinks.js [--dry]
+ * The link has two ends, `User.linkedEmployee` and `Employee.user`, and one code path wrote only one of them, so the users page says 'linked' while the employee file says 'not linked'. Fixed from the account side: it is the end that was written; the other is the one that was lost.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -28,8 +21,8 @@ const DRY = process.argv.includes('--dry');
   const orphans = [];
   for (const u of users) {
     const emp = await Employee.findById(u.linkedEmployee).select('user arabicName firstName').lean();
-    if (!emp) { orphans.push(u.email); continue; }          // يشير إلى موظّف محذوف
-    if (String(emp.user || '') === String(u._id)) continue;  // سليم
+    if (!emp) { orphans.push(u.email); continue; }          // points to a deleted employee
+    if (String(emp.user || '') === String(u._id)) continue;  // healthy
     fixes.push({ email: u.email, empId: emp._id, name: emp.arabicName || emp.firstName || '', had: emp.user ? String(emp.user) : null });
   }
 
@@ -38,7 +31,7 @@ const DRY = process.argv.includes('--dry');
   console.log(`تحتاج إصلاحًا  : ${fixes.length}`);
   if (orphans.length) console.log(`تشير إلى موظّف محذوف: ${orphans.length} — ${orphans.slice(0, 5).join(', ')}`);
 
-  // الطرف الذي يشير إلى حسابٍ آخر ليس سقوطًا بل تعارض — يُعلَن ولا يُكتب فوقه.
+  // An end pointing to a different account is a conflict, not a lost write: reported, not overwritten.
   const conflicts = fixes.filter((f) => f.had);
   if (conflicts.length) {
     console.log(`\n⚠ تعارض (الموظّف مرتبطٌ بحسابٍ آخر) — لن يُلمس: ${conflicts.length}`);

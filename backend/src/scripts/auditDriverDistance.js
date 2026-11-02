@@ -12,12 +12,12 @@ const mongoose = require('mongoose');
   console.log(`قراءاتُ العدّاد: ${total} صفًّا · ${units.length} وحدة · ${days.length} يومًا`);
   console.log(`المدى: ${days.sort()[0]} → ${days[days.length - 1]}`);
 
-  // تغطيةُ الشهر الجاري
+  // Current month coverage.
   const m = '2026-09';
   const inMonth = await Od.distinct('unitId', { date: { $regex: `^${m}` } });
   console.log(`\nوحداتٌ لها قراءاتٌ في ${m}: ${inMonth.length}`);
 
-  // هل تُطابَق لوحاتُ الأسطول بوحدات لوكيشن؟
+  // Do fleet plates match the location tracking units?
   const fv = await FleetVehicle.find({}).select('plate').lean();
   const lv = await Ls2Vehicle.find({}).select('unitId plate').lean();
   const norm = (s) => String(s || '').replace(/\s+/g, '').toUpperCase();
@@ -25,11 +25,11 @@ const mongoose = require('mongoose');
   const matched = fv.filter((v) => lvByPlate.has(norm(v.plate)));
   console.log(`مركباتُ الأسطول: ${fv.length} · منها مطابَقةٌ بوحدة لوكيشن: ${matched.length}`);
 
-  // وهل للسائقين مقاعد؟
+  // Do drivers have seats?
   const drv = await FleetDriver.find({}).select('name vehicle').lean();
   console.log(`السائقون: ${drv.length} · منهم على مقعدٍ في مركبة: ${drv.filter((d) => d.vehicle).length}`);
 
-  // حمولاتُ الشهر
+  // Month loads.
   const sh = await FleetShipment.countDocuments({ loadDate: { $gte: new Date('2026-08-01'), $lt: new Date('2026-10-01') } });
   console.log(`حمولاتُ أغسطس–سبتمبر: ${sh}`);
   await mongoose.disconnect();

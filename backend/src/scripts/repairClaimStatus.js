@@ -1,25 +1,14 @@
 /**
- * repairClaimStatus — حالةُ المطالبة خبرٌ واحد، لا اثنان.
- *
- *   node src/scripts/repairClaimStatus.js          تجربة
- *   node src/scripts/repairClaimStatus.js --yes    تنفيذ
- *
- * ── العلّة ────────────────────────────────────────────────────────────────
- * للحالة حقلان: `statusCode` تختاره القائمةُ المنسدلة، و`statusAr` نصٌّ حرّ
- * جاء مع الاستيراد. والشاشةُ تعرض النصَّ إن وُجد — فيُقفل المستخدمُ المطالبةَ
- * فيتغيّر الكودُ ويبقى العمودُ يقول «wait».
- *
- * وثلاثُ مطالباتٍ كذلك حرفيًّا، واثنتان وثلاثون يختلف فيها الحقلان. والنصوصُ
- * مخلوطةُ اللغة: «تم قفلها» و«closed» و«open» و«wait» و«unknown».
- *
- * فالكودُ هو الخبر، والنصُّ يُشتقُّ منه ويُعرَض بلغة الشاشة. ويُوحَّد هنا ما
- * كُتب، ويُملأ كودٌ لمن لا كودَ له استنادًا إلى نصّه.
+ * repairClaimStatus: claim status is one fact, not two.
+ * Usage: node src/scripts/repairClaimStatus.js [--yes] (dry run by default).
+ * The status has two fields: `statusCode` chosen from the dropdown and `statusAr` free text from the import. The screen shows the text when present, so closing a claim changes the code while the column still shows the old text.
+ * The code is the fact; the text is derived from it and shown in the screen language. This unifies what was written and fills a code for rows without one, based on their text.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
 const YES = process.argv.includes('--yes');
 
-// نصُّ الاستيراد ← الكود. ما لا يُعرَف يصير «قيد المتابعة» لا «مقفولة».
+// Import text to code. Unknown text becomes 'under follow-up', never 'closed'.
 const CODE_OF = {
   closed: 'closed', 'تم قفلها': 'closed', 'مقفولة': 'closed', 'مغلقة': 'closed',
   open: 'pending', wait: 'pending', pending: 'pending', 'قيد المتابعة': 'pending', unknown: 'pending',
@@ -35,9 +24,9 @@ const CODE_OF = {
   for (const r of rows) {
     const cur = String(r.statusCode || '').trim();
     const txt = String(r.statusAr || '').trim().toLowerCase();
-    // الكودُ يبقى إن كان مكتوبًا؛ وإلّا يُشتقُّ من النصّ.
+    // Keep the code if present; otherwise derive it from the text.
     const code = cur || CODE_OF[txt] || 'pending';
-    // والنصُّ يُفرَّغ: صار يُشتقُّ عند العرض بلغة الشاشة، فلا يُخزَّن.
+    // Clear the text: it is derived at display time in the screen language, so it is not stored.
     if (cur !== code || r.statusAr) plan.push({ id: r._id, no: r.accidentNumber, from: `${cur || '—'}/${r.statusAr || '—'}`, code });
   }
   const byPair = {};

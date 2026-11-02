@@ -1,15 +1,7 @@
 /**
- * syncPartiesFromWorkbook — الملفُّ هو المرجع في الحسابات ومسؤوليها.
- *
- *   node src/scripts/syncPartiesFromWorkbook.js          تجربة
- *   node src/scripts/syncPartiesFromWorkbook.js --yes    تنفيذ
- *
- * يقرأ الأوراقَ الخمسَ كلَّها (Aging · Aging Shipment · Daily Invoice Report ·
- * Shipment Report · JP) ويصحّح ثلاثةَ أشياء لا رابع:
- *   ١) حسابٌ في الملفّ بلا سجلٍّ عندنا      → يُنشأ
- *   ٢) حسابٌ عندنا بالاسم بلا كود           → يُكتب كودُه
- *   ٣) مسؤولُ التحصيل                        → يُطابَق الملفّ
- * والاسمُ الرسميُّ في الملفّ يُحفَظ لقبًا دائمًا، فيُوجَد بالبحث به.
+ * The workbook is the reference for accounts and their owners.
+ * Usage: node src/scripts/syncPartiesFromWorkbook.js (preview) | --yes (apply)
+ * Reads all five sheets (Aging, Aging Shipment, Daily Invoice Report, Shipment Report, JP) and fixes three things: 1) account in the file with no record here is created, 2) account here without a code gets its code, 3) collection officer is matched to the file. The official name in the file is kept as a permanent alias so search finds it.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -22,18 +14,8 @@ const fold = (s) => String(s || '').toLowerCase()
   .replace(/[أإآٱ]/g, 'ا').replace(/[ىئ]/g, 'ي').replace(/[ةه]/g, 'ه').replace(/ؤ/g, 'و')
   .replace(/[ً-ْـ]/g, '').replace(/[()\-_.,]/g, ' ').replace(/\s+/g, ' ').trim();
 
-// ── وأوراقُ الهويّة غيرُ أوراق الحركة ────────────────────────────────────
-//
-// «Aging» و«Aging Shipment» و«JP» تصف الحساب: كودُه واسمُه ومسؤولُه. أمّا
-// «Daily Invoice Report» و«Shipment Report» فتصف حركةً — فاتورةً أو شحنة —
-// والاسمُ فيها يُكتب مع كلّ صفّ، فيُخطئ.
-//
-// وقِيس ذلك: اثنا عشر صفًّا في أوراق الحركة تحمل كودَ حسابٍ واسمَ حسابٍ آخر —
-// كودُ «كانو» واسمُ «PV Hardware»، وكودُ «قوى العربية» واسمُ «الكبريت». ولو
-// أُخذت ألقابًا لاندمج عميلان مختلفان في سجلٍّ واحد، ولصار الدَّينُ على
-// أحدهما مطلوبًا من الآخر.
-//
-// فالهويّةُ تُؤخَذ من أوراقها وحدَها، والحركةُ تُقرأ ولا تُسمّي أحدًا.
+// Identity sheets versus movement sheets.
+// Aging, Aging Shipment and JP describe the account: code, name, owner. Daily Invoice Report and Shipment Report describe a movement and carry the name on each row, which is error-prone: some rows have one account's code with another account's name. Taking those as aliases would merge two different customers and shift debt between them. So identity comes only from the identity sheets; movement sheets are read but never name anyone.
 const IDENTITY = [
   ['Aging', 4, 0, 1, 2],
   ['Aging Shipment', 4, 0, 1, 2],
@@ -41,10 +23,8 @@ const IDENTITY = [
 ];
 const SHEETS = IDENTITY;
 
-// ── واسمٌ فيه كلمةٌ لاتينيّةٌ وسط العربيّ ليس اسمًا ──────────────────────
-// ورقةُ «Aging» فيها ثلاثةُ أسماءٍ أصابها استبدالٌ في إكسل: «راضي Ahmed
-// المنهالي» و«مروان Ahmed مصطفي» و«شركة التSameh». والاسمُ الصحيحُ لها في
-// ورقة «JP». فحين يختلف الاسمان لكودٍ واحد، يُقدَّم النظيفُ منهما.
+// A name with a Latin word inside Arabic text is not a valid name.
+// An Excel replacement corrupted a few names in the Aging sheet; the correct names are in the JP sheet. When two names differ for one code, the clean one wins.
 const looksMangled = (s) => /[\u0600-\u06FF]/.test(s) && /[A-Za-z]{3,}/.test(s);
 
 (async () => {
@@ -87,7 +67,7 @@ const looksMangled = (s) => /[\u0600-\u06FF]/.test(s) && /[A-Za-z]{3,}/.test(s);
     if (want && String(p.collectionOfficer || '').trim() !== want) {
       officered.push({ id: p._id, code, name: p.name, from: p.collectionOfficer || '(فارغ)', to: want });
     }
-    // الاسمُ الرسميُّ يُحفَظ لقبًا ليُوجَد بالبحث به
+    // The official name is kept as an alias so search finds it.
     const known = new Set([fold(p.name), ...(p.aliases || []).map(fold)]);
     const add = all.filter((n) => !known.has(fold(n)) && !looksMangled(n));
     if (add.length) aliased.push({ id: p._id, name: p.name, add });
@@ -117,7 +97,7 @@ const looksMangled = (s) => /[\u0600-\u06FF]/.test(s) && /[A-Za-z]{3,}/.test(s);
   }
   for (const x of coded) await CollectionsParty.updateOne({ _id: x.id }, { $set: { code: x.code } });
   for (const x of renamed) {
-    // الاسمُ المشوَّهُ يبقى لقبًا: مَن يبحث به — أو نسخه من الورقة — يجد الحساب.
+    // The corrupted name stays as an alias so anyone searching it, or pasting it from the sheet, still finds the account.
     await CollectionsParty.updateOne({ _id: x.id }, {
       $set: { name: x.to, nameKey: fold(x.to) },
       $addToSet: { aliases: x.from, aliasKeys: fold(x.from) },

@@ -18,21 +18,15 @@ const userSchema = new mongoose.Schema(
     },
     firstName: { type: String, required: true, trim: true },
     lastName: { type: String, required: true, trim: true },
-    // ── تفضيلاتُ العرض في حساب المستخدم (٢٠٢٦/١٠/٢٦) ─────────────────────────
-    // «لو عدّل طريقة العرض تثبت عنده» — في الحساب لا في المتصفّح، فتتبعه من
-    // الجوّال إلى الموقع. مفتاحٌ ← قيمة: { 'shipmentOrders.view': 'cards' }.
+    // Display preferences in the user account.
+    // Stored on the account, not in the browser, so they follow the user from mobile to site. Key to value: { 'shipmentOrders.view': 'cards' }.
     uiPrefs: { type: Map, of: String, default: {} },
     role: {
       type: String,
       required: true,
-      // ── المفاتيحُ المكتوبة، وما صُنع من الشاشة ────────────────────────────
-      // مصدرُها الأوّل `config/roles.js`: لكلّ قسمٍ مديرٌ وموظّف، والملفُّ يتحقّق
-      // من القاعدة وقتَ التحميل. وإلى جانبها ما يصنعه صاحبُ النظام من صفحة
-      // الصلاحيّات (`models/CustomRole`).
-      //
-      // ولا تصلح `enum` هنا: تُبنى مرّةً عند التحميل، فالدورُ الذي يُصنَع بعد
-      // إقلاع الخادم يظهر في الشاشة ويُرفَض عند حفظ المستخدم — إعدادٌ يكذب على
-      // من ضبطه. فالتحقّقُ يسأل المصدرين معًا في كلّ حفظ.
+      // Hardcoded role keys and those created from the screen.
+      // The first source is `config/roles.js` (a manager and staff per section, validated at load time), alongside roles the system owner creates on the permissions page (`models/CustomRole`).
+      // An `enum` would not work: it is built once at load, so a role created after server start shows in the UI but is rejected when saving a user. Validation asks both sources on every save.
       validate: {
         validator: async function roleExists(v) {
           const { ALL_ROLES } = require('../config/roles');
@@ -85,11 +79,9 @@ const userSchema = new mongoose.Schema(
     assignedProjects: [
       { type: mongoose.Schema.Types.ObjectId, ref: 'B2CProject' },
     ],
-    // فروع إضافية يعمل عليها هذا الحساب — و`branch` أعلاه هو فرعه المنسوب.
-    // موجودة من قبل، ويقابلها `branches` على سجلّ الموظف: هذه صلاحية وصول
-    // الحساب، وتلك واقعُ عمل الشخص. قد يتطابقان وقد لا — ولذلك لم تُدمجا.
-    // Branches this user sees on the Shipments page (roles in config/shipmentBranchRoles).
-    // Empty means no limit has been set yet.
+    // Extra branches this account works on; `branch` above is its assigned branch.
+    // Previously existing, and the employee record has `branches`: this is the account's access permission and that is the person's actual work, so they may or may not match and were not merged.
+    // Branches this user sees on the Shipments page (roles in config/shipmentBranchRoles). Empty means no limit has been set yet.
     shipmentBranches: { type: [String], default: undefined },
     assignedBranches: [
       { type: mongoose.Schema.Types.ObjectId, ref: 'Branch' },

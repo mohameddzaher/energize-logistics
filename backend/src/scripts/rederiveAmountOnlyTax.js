@@ -1,29 +1,8 @@
 /**
- * rederiveAmountOnlyTax — كشوفٌ صارت «ضريبيًّا» بمبلغٍ لا برقم فاتورة، تُعاد إلى قاعدتها.
- *
- *   node src/scripts/rederiveAmountOnlyTax.js            ← عرضٌ فقط (لا يكتب شيئًا)
- *   node src/scripts/rederiveAmountOnlyTax.js --apply    ← يكتب
- *   node src/scripts/rederiveAmountOnlyTax.js --list     ← ومعه أرقامُ الكشوف
- *
- * ── لماذا ───────────────────────────────────────────────────────────────────
- * كان «عليه فاتورةٌ ضريبيّة» يُقرأ من ثلاثة: رقمِ الفاتورة، أو ضريبةٍ محسوبة، أو
- * صافٍ. والصافي يكتبه المسارُ النقديُّ نفسُه (مبلغُ السداد يُنسَخ إليه)، فكان كلُّ
- * كشفٍ نقديٍّ له مبلغُ سدادٍ ينقلب «ضريبيًّا» في أوّل مزامنة.
- *
- * وقرارُ صاحب الشركة (٢٠٢٦/١٠/٢٠): «الضريبي لازم رقم فاتورة» — والصافي والضريبةُ
- * وحدَهما لا يجعلان الكشفَ ضريبيًّا. فالقاعدةُ صُحِّحت (utils/paymentType)،
- * وهذا السكربتُ يعيد اشتقاقَ ما قلبه الدليلُ القديم:
- *
- *   • نوعُه «ضريبي»، ومصدرُه مشتقّ (`auto` أو فارغ) — لا يُمسّ اختيارُ اليد
- *     (`manual`) ولا التوحيد (`unified`)؛
- *   • ولا رقمَ فاتورةٍ حقيقيٍّ عليه؛
- *   • وعليه صافٍ أو ضريبة (هذا وحدَه ما جعله ضريبيًّا)؛
- *   • ويُشتقّ بالقاعدة الجديدة (صفةُ العميل، وطريقةُ دفع المنصّة للجديد) إلى
- *     غير «ضريبي».
- *
- * ولا تُمَسّ المبالغُ: الصافي والضريبةُ والإجماليّ تبقى كما هي («عادي لو كاش
- * يتكتب صافي فاتورة ويتحسب الفات»). ولا قيدَ في دفتر الفواتير يتأثّر: لا رقمَ
- * فاتورةٍ عليها أصلًا.
+ * rederiveAmountOnlyTax: statements that became 'tax' with only an amount and no invoice number are returned to their base rule. Usage: node src/scripts/rederiveAmountOnlyTax.js [--apply] [--list] (dry run by default; --list adds statement numbers). Why: 'has a tax
+ * invoice' used to be inferred from invoice number, computed tax, or net. The cash path itself writes net (the payment amount is copied to it), so every cash statement with a payment amount flipped to 'tax' on first sync. The rule is now that tax requires an invoice
+ * number (fixed in utils/paymentType); this re-derives what the old rule flipped. Selects rows that: - are type tax with a derived source (`auto` or empty); manual and unified choices are untouched. - have no real invoice number. - have net or tax (the only thing
+ * that made them tax). - derive to a non-tax type under the new rule (customer attribute, platform payment method for new ones). Amounts are not touched (net, tax, total stay). No invoice-ledger entry is affected because none has an invoice number.
  */
 require('dotenv').config({ quiet: true });
 const mongoose = require('mongoose');

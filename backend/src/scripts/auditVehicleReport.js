@@ -1,10 +1,6 @@
 /**
- * تقريرُ المركبة: يُبنى ويُطبَع فعلًا — لا يُفحَص بناؤه وحدَه.
- *
- * العطبُ الذي كشفه هذا الفحصُ أوّلَ مرّة كان في الطباعة لا في البناء: أربعُ
- * كتلٍ كُتب رأسُها `columns` والعارضُ يقرأ `head`، فيُبنى المستندُ سليمًا ثمّ
- * يسقط عند الرسم — وتُردّ كلُّ محاولةِ طباعةٍ لأيّ مركبةٍ بـ«تعذّر إصدار
- * التقرير». فلا يكفي أن يُقال «بُني»: لا بدّ أن يُرسَم.
+ * Vehicle report: built and actually printed, not only built.
+ * The first defect found was in printing: four blocks had a header named columns while the renderer reads head, so the document built fine and failed at draw time, rejecting every print attempt as report generation failed. "Built" is not enough; it must render.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -26,7 +22,7 @@ const mongoose = require('mongoose');
     catch (e) { problems.set(`بناء: ${e.message}`, (problems.get(`بناء: ${e.message}`) || 0) + 1); continue; }
     if (!doc) { problems.set('لا بيانات (null)', (problems.get('لا بيانات (null)') || 0) + 1); continue; }
     built.set(v.plateNumber, doc);
-    // كلُّ كتلةٍ يجب أن تحمل ما يقرؤه العارضُ منها
+    // Each block must carry what the renderer reads from it
     for (const b of doc.blocks || []) {
       if (b.kind === 'table' && b.rows?.length && !Array.isArray(b.head)) {
         problems.set('جدولٌ بلا head', (problems.get('جدولٌ بلا head') || 0) + 1);
@@ -41,7 +37,7 @@ const mongoose = require('mongoose');
   if (problems.size) for (const [k, n] of problems) console.log(`     ✗ ${String(n).padStart(4)}×  ${k}`);
   else console.log('     ✓ لا كتلةَ معطوبة');
 
-  // الطباعةُ ثقيلةٌ (متصفّحٌ حقيقيّ)، فتُختبَر على عيّنةٍ تشمل الأغنى والأفقر.
+  // Printing is heavy (a real browser), so test a sample including the richest and poorest vehicles.
   const keys = [...built.keys()];
   const rich = keys.sort((a, b) => (built.get(b).blocks?.length || 0) - (built.get(a).blocks?.length || 0));
   const sample = [...new Set([...rich.slice(0, 3), ...rich.slice(-2)])];

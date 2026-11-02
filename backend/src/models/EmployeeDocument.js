@@ -1,15 +1,10 @@
 const mongoose = require('mongoose');
 
-// A file attached to an employee profile (iqama scan, license photo, contract
-// PDF ...). The bytes live on disk under /uploads/employees and `fileUrl` is the
-// public path served statically. `title` is the free-text label the user types
-// when uploading ("صورة الإقامة"). Optional `category` lets the renewal actions
-// link a renewal to the matching document type, and `expiryDate` lets a document
-// itself drive expiry alerts.
+// A file attached to an employee profile (iqama scan, license photo, contract PDF ...). Bytes live on disk under /uploads/employees and `fileUrl` is the public static path. `title` is the free-text label typed at upload (for example the residence photo). Optional `category` links a renewal to the matching document type, and `expiryDate` lets a document drive expiry alerts.
 const employeeDocumentSchema = new mongoose.Schema(
   {
     employee: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee', required: true, index: true },
-    title: { type: String, required: true, trim: true },          // ما كتبه المستخدم
+    title: { type: String, required: true, trim: true },          // What the user typed.
     category: { type: String, trim: true, default: 'other' },      // iqama / passport / license / contract / other ...
     fileUrl: { type: String, required: true },                     // /uploads/employees/xxxx.pdf
     fileName: { type: String, trim: true },                        // original name

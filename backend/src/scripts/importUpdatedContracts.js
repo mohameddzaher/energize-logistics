@@ -1,24 +1,7 @@
 /**
- * importUpdatedContracts — «ملفّ عقود الموظفين المحدَّث» يحلّ محلّ سابقِه.
- *
- *   node src/scripts/importUpdatedContracts.js --dry
- *   node src/scripts/importUpdatedContracts.js --yes
- *
- * المصدر: «final hr data/ملفّ عقود الموظفين المحدث.xlsx» — ٢٦٩ عقدًا، وفيه
- * عمودان لم يكونا في الملفّ السابق: **حالةُ العقد** و**رقمُ العقد**.
- *
- * ── ولماذا يُكتب فوق القديم هنا ────────────────────────────────────────────
- * الاستيرادُ في هذا النظام يملأ الفارغَ ولا يدهس المكتوب، لأنّ المكتوبَ عادةً
- * أحدثُ من الورقة. وهذا الملفُّ عكسُه: اسمُه «المحدَّث»، وهو التصحيحُ الذي جاء
- * **بعد** الاستيراد الأوّل — تواريخُ نهايةٍ تغيّرت وعقودٌ انتهت. فالورقةُ هنا
- * هي الأحدث، وتُطبَّق.
- *
- * ولا يُدهَس مع ذلك شيءٌ لا تحمله الورقةُ أصلًا: الراتبُ والبدلاتُ والملاحظاتُ
- * والرصيدُ المرحَّل ليست فيها فلا تُمَسّ.
- *
- * ── والهويّةُ هي المفتاح ───────────────────────────────────────────────────
- * الأسماءُ العربيّة تُكتب بصورٍ شتّى فتُطابَق خطأً وتُلصَق عقودُ الناس ببعضها.
- * ورقمُ الهويّة لا يشبه غيرَه.
+ * Imports the updated employee contracts file, which supersedes the previous one.
+ * Usage: node src/scripts/importUpdatedContracts.js --dry | --yes
+ * The sheet is the newest source, so its values overwrite; fields it does not carry (salary, allowances, notes, carried balance) are untouched. Matching is by identity number, since Arabic names are written in many forms.
  */
 require('dotenv').config({ path: require('path').join(__dirname, '../../.env') });
 const path = require('path');
@@ -28,7 +11,7 @@ const mongoose = require('mongoose');
 const DRY = !process.argv.includes('--yes');
 const FILE = path.join(__dirname, '../../..', 'final hr data', 'ملف عقود الموظفين المحدث.xlsx');
 const SHEET = 'ورقة1';
-const HEADER_ROW = 1;                       // الصفُّ الأوّل عدّاد، والثاني العناوين
+const HEADER_ROW = 1;                       // First row is a counter, second holds the headers.
 
 const EMPTY = new Set(['', '-', '#n/a', 'n/a', 'na', 'null', 'undefined']);
 const str = (v) => {
@@ -36,7 +19,7 @@ const str = (v) => {
   const s = String(v).trim();
   return EMPTY.has(s.toLowerCase()) ? '' : s;
 };
-// مبدأُ تأريخ إكسل — يُحسب بغرينتش فلا يتدخّل توقيتُ الجهاز فيضيع يوم.
+// Excel date epoch, computed in UTC so the device timezone cannot shift a day.
 const XLS_EPOCH = Date.UTC(1899, 11, 30);
 const iso = (v) => {
   if (typeof v === 'number' && Number.isFinite(v) && v > 1) {
@@ -45,14 +28,14 @@ const iso = (v) => {
   const s = str(v);
   return /^\d{4}-\d{2}-\d{2}$/.test(s.slice(0, 10)) ? s.slice(0, 10) : '';
 };
-/** «٢١» رقمٌ و«غير مطلوب» نصّ — ولا يُحشر أحدُهما مكانَ الآخر. */
+/** A numeric value and a text value are kept distinct, never substituted for each other. */
 const numOrText = (v) => {
   const s = str(v);
   if (!s) return { n: null, text: '' };
   const n = Number(s);
   return Number.isFinite(n) ? { n, text: '' } : { n: null, text: s };
 };
-// «ساري» عقدٌ قائم، و«تم انهاء العقد» منتهٍ. وحالةُ «مجدَّد» لا تأتي من ورقة.
+// Active means a running contract and terminated means ended; the renewed status never comes from the sheet.
 const readStatus = (v) => {
   const s = str(v);
   if (!s) return '';
@@ -81,10 +64,10 @@ const readStatus = (v) => {
     const v = str(k); if (v && !byId.has(v)) byId.set(v, e);
   }
 
-  // أحدثُ عقدٍ لكلّ موظّف هو الجاري — والورقةُ تصف الجاري.
+  // The latest contract per employee is the current one, and the sheet describes it.
   const contracts = await Contract.find({}).lean();
   const byEmp = new Map();
-  // ومفتاحٌ ثانٍ بالفترة نفسِها، فلا يُنشأ عقدٌ لفترةٍ لها عقد.
+  // Second key by the same period, so no contract is created for a period that already has one.
   const bySpan = new Map();
   for (const c of contracts.sort((a, b) => String(b.startDate || '').localeCompare(String(a.startDate || '')))) {
     const k = String(c.employee);
@@ -120,13 +103,7 @@ const readStatus = (v) => {
     const status = readStatus(r[2]);
     if (status) src.status = status;
 
-    // ── ولا يُنشأ عقدٌ لفترةٍ له فيها عقد ────────────────────────────────
-    // كان الشرطُ «هل له عقدٌ جارٍ؟» فقط، فمن اختلف تاريخُ عقده الجاري عن سطر
-    // الورقة أُنشئ له عقدٌ ثانٍ بنفس الفترة تمامًا. خمسةُ موظّفين صاروا يحملون
-    // عقدين «ساريين»، ورصيدُ الإجازات يُحسب على «العقد الجاري» — فأيُّهما؟
-    //
-    // فيُسأل عن الفترة نفسِها لا عن الأحدث: مَن له عقدٌ بهذين التاريخين يُحدَّث
-    // عقدُه ذاك ولا يُنشأ له آخر.
+    // No contract is created for a period the employee already covers. Checking only for a current contract produced a second identical-period contract for employees whose dates differed, breaking leave balance. Look up by the exact period and update that contract.
     const spanKey = `${String(emp._id)}|${src.startDate}|${src.endDate}`;
     const sameSpan = bySpan.get(spanKey);
     const cur = sameSpan || byEmp.get(String(emp._id));
@@ -140,16 +117,8 @@ const readStatus = (v) => {
       continue;
     }
 
-    // الورقةُ هي الأحدث: كلُّ قيمةٍ فيها تُطبَّق، وما ليس فيها لا يُمَسّ.
-    // و«مجدَّد» لا تُنزَع من عقدٍ جُدِّد عندنا بعد صدور الورقة.
-    // ── و«ساري» بتاريخِ نهايةٍ مضى لا يُصدَّق ──────────────────────────────
-    // أكثرُ ما تقلبه الورقةُ إلى «ساري» عقودٌ انتهت في أغسطس ومُدّت سنةً —
-    // نهايتُها في الورقة ٢٠٢٧، وهذا تجديدٌ حقيقيّ. لكنّ صفّين يقولان «ساري»
-    // وتاريخُ نهايتهما هو نفسُه الماضي: الحالةُ والتاريخُ يتناقضان في الصفّ
-    // الواحد، فأحدُهما خطأٌ في الورقة لا خبرٌ عن الواقع.
-    //
-    // ولا يُخمَّن أيُّهما: يُترك العقدُ على حاله ويُقال اسمُه ليُراجَع. فتحُ
-    // عقدٍ منتهٍ يجعله يظهر ساريًا في التفتيش وفي كلّ تقرير.
+    // The sheet is newest: every value in it applies, anything absent is untouched, and the renewed status is not stripped from a contract renewed here after the sheet.
+    // An active status with an end date already past contradicts itself, so it is not trusted: the contract is left as is and the name is reported for review, since reopening an ended contract would show it active everywhere.
     const endsAt = src.endDate || cur.endDate || '';
     const contradicts = src.status === 'active' && endsAt && endsAt < TODAY;
     if (contradicts) suspect.push(`${name} — «ساري» ونهايتُه ${endsAt}`);

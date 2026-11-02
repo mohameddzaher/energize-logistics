@@ -1,23 +1,8 @@
 /**
- * ls2FleetRegister — كلُّ شاحنةٍ في لوكيشن سوليوشن لها سطحةٌ في سجلّ الأصول.
- *
- * ── لماذا ─────────────────────────────────────────────────────────────────
- * صفحةُ «السطحات والكاوتشات» تعرض سجلَّ السطحات (`Ls2Flatbed`)، وكان يُملأ
- * باليد أو بالاستيراد. فشاحنةٌ تُضاف في لوكيشن سوليوشن تظهر في التتبّع خلال
- * ثوانٍ وتبقى غائبةً عن الأصول — لا موضعَ تُركَّب عليه فردة، ولا يُنقَل إليها
- * تيدر («مفيش سطحة باللوحة»). وقع مع 3965 DEA و3966 DEA (٢٠٢٦/١٠/١٨).
- *
- * فتُنشأ السطحةُ من الشاشة الحيّة نفسِها: لوحتُها ومفتاحُها (`vehiclePlateKey`،
- * المفتاحُ الذي يقرأ به سجلُّ الأصول الشاحنةَ الحيّة) والترقيمُ التالي والماركة.
- * ومواضعُ الكاوتش الأربعةَ عشرَ قياسيّةٌ في الصفحة فتظهر فارغةً تنتظر الورشة.
- *
- * ── وما لا يُنشأ: الفِرَد ─────────────────────────────────────────────────
- * الفردةُ أصلٌ برقمٍ تسلسليٍّ محفورٍ عليها، ولوكيشن سوليوشن لا تعرفه — حسّاسُ
- * الضغط يقول «الموضع ٣ ضغطُه كذا» لا «الفردة 6156868893». فصنعُ فِرَدٍ بأرقامٍ
- * مخترعة يملأ السجلَّ بأصولٍ لا وجودَ لها. تُسجَّل من الورشة كما تُسجَّل كلُّ فردة.
- *
- * يُنادى من المستطلِع (عند مزامنة الهويّة) ومن نظرة الصفحة العامّة. ولا يكتب
- * شيئًا إن لم يكن جديد؛ وسباقُ عاملين على الشاحنة نفسِها يحسمه الفهرسُ الفريد.
+ * ls2FleetRegister: every Location Solutions truck gets a flatbed in the asset register.
+ * The flatbed page shows the `Ls2Flatbed` register, previously filled by hand or import, so a truck added in Location Solutions showed in tracking but was missing from assets: nowhere to fit a tire and no trailer could be moved to it.
+ * The flatbed is created from the live screen: plate, its key (`vehiclePlateKey`, the key the asset register uses to read the live truck), the next number and make. The 14 standard tire positions appear empty, waiting for the workshop.
+ * Tires are not created: a tire is an asset with a serial engraved on it that Location Solutions does not know (the pressure sensor reports "position 3", not a serial), so inventing serials would fill the register with nonexistent assets. They are registered from the workshop like any tire. Called by the poller (on identity sync) and the general overview. Writes nothing if nothing is new; a race between two workers on one truck is settled by the unique index.
  */
 const Ls2Vehicle = require('../models/Ls2Vehicle');
 const Ls2Flatbed = require('../models/Ls2Flatbed');
@@ -54,13 +39,13 @@ async function ensureFlatbeds() {
         performedByName: 'النظام',
       });
     } catch (e) {
-      if (e?.code !== 11000) throw e; // عاملٌ آخر سبق — السطحةُ موجودة
+      if (e?.code !== 11000) throw e; // Another worker got there first; the flatbed exists.
       next -= 1;
     }
   }
   if (created.length) {
-    // السطحةُ الجديدة تُربط بمركبتها في السجلّ من شاحنتها (services/ls2VehicleLink).
-    try { await require('./ls2VehicleLink').linkLs2Fleet(); } catch (_) { /* يُعاد عند المزامنة التالية */ }
+    // The new flatbed is linked to its registry vehicle from its truck (services/ls2VehicleLink).
+    try { await require('./ls2VehicleLink').linkLs2Fleet(); } catch (_) { /* Retried on the next sync */ }
     try { require('../utils/ttlCache').clear('ls2assets'); } catch (_) { /* */ }
     try { require('./ls2TireSensors').clearLayoutCache(); } catch (_) { /* */ }
     try { require('../utils/ls2Touch').clearLs2Derived(); } catch (_) { /* */ }

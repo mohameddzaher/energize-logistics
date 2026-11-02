@@ -1,56 +1,8 @@
 /* eslint-disable no-console */
 /**
- * importFinalVehicles2026 — الماستر النهائي لقسم المركبات (أغسطس ٢٠٢٦).
- *
- *   node src/scripts/importFinalVehicles2026.js --dry                  خطّة بلا كتابة
- *   node src/scripts/importFinalVehicles2026.js --yes                  تنفيذ
- *   node src/scripts/importFinalVehicles2026.js --yes --replace        + إخراج ما ليس في الملف
- *   node src/scripts/importFinalVehicles2026.js --yes --replace --hard + محوُه نهائيًّا
- *
- * المصدر: seeds/data/vehicles-2026-08/final-vehicles.xlsx — ثلاث صفحات:
- * «Vehicles» (٣٣٥ مركبة، العناوين في الصف الثاني)، «وثائق عامة» (٣ وثائق على
- * مستوى الشركة)، «Accidents» (٢٥ واقعة ومطالباتها).
- *
- * ── وهذا الملف يُحلّ محلّ ما قبله ───────────────────────────────────────────
- * القسم أعلنه مصدرَ الحقيقة، فما في قاعدة البيانات وليس فيه ليس مركبةً منسيّة
- * بل مركبةٌ خرجت. لكنّ الخروج لا يقع في صمت أبدًا: يُطبَع في التجربة لوحةً
- * لوحة، ولا يُنفَّذ إلا بـ`--replace` صراحةً. و`--replace` وحده **يُعطِّل**
- * (isActive:false) فيختفي من كل شاشات القسم ويبقى سجلّ تجديداته وحوادثه
- * قابلًا للرجوع؛ و`--hard` معه هو الذي يمحو المستند. حذفُ مركبةٍ يمحو تاريخَ
- * تجديداتها معها، وذلك ما لا يُسترجَع بإعادة تشغيل الاستيراد.
- *
- * ── ما يُخزَّن وما لا يُخزَّن ───────────────────────────────────────────────
- * أعمدة «الايام المتبقية علي …» السبعة لا تُخزَّن. هي فرقٌ بين تاريخ الانتهاء
- * ويوم كتابة الملف، ويُحسَب لحظةَ العرض (config/vehicleDocuments.js). تخزينُه
- * يعني أن تقول الشاشة «باقٍ ١٣٣ يومًا» بعد أربعة أشهر — وهي حينها منتهية.
- *
- * ولها فائدةٌ أخرى: طرحُ «المتبقّي» من تاريخ الانتهاء يعطي **يوم كتابة الملف**
- * بالضبط. ١٥٧٤ زوجًا في هذا الملف تتّفق كلها على ٢٦ أغسطس ٢٠٢٦ بلا شذوذ، وهو
- * التاريخ الذي يُقاس عليه «هل جدَّد موظفٌ هذا المستند بعد لقطة الملف؟».
- *
- * ── والعمود الهجريّ ليس هجريًّا ────────────────────────────────────────────
- * «تاريخ انتهاء رخصة السير هجري» يساوي الميلاديَّ حرفًا بحرف في ٣١٣ صفًّا من
- * ٣١٤، و«تاريخ انتهاء الفحص هجري» في ٢٨٠ من ٢٨٠ — أي أنه معادلةٌ تعكس الخانة
- * المجاورة لا تاريخٌ هجريّ. فلا يُخزَّن إلا حين يختلف فعلًا (صفٌّ واحد)، ويُطبَع
- * حينها. تخزينُه كما هو كان يملأ الشاشة بتواريخ هجرية كاذبة.
- *
- * ── والملف لا يدوس على شغل بني آدم ─────────────────────────────────────────
- * (نفس قاعدة a348299b في قسم LS2.) الشيت لقطةٌ من ورق، ومن فتح الشاشة كان
- * ينظر إلى المركبة. فقاعدتان:
- *   ① تاريخٌ جدَّده موظف بعد لقطة الملف يبقى، ويُطبَع ما تُرك ومَن جدَّده.
- *   ② مركبةٌ `updatedAt` فيها أحدثُ من `lastImportAt` لمسها إنسان: حينئذٍ لا
- *      تمحو خانةٌ فارغة في الشيت قيمةً موجودة عندنا. الشيت يزيد ولا ينقص.
- * وما لا يحمله الشيت أصلًا (نواقص منصّة لوجستي، حالة الفحص النصّية، معرّف جهاز
- * التتبّع، شريحة الاتصال، المسمّى الوظيفي للمفوَّض) لا يُكتب أبدًا فلا يُمسّ.
- *
- * ── وسبب غياب القيمة قيمةٌ بذاته ───────────────────────────────────────────
- * الماستر يكتب السبب **مكان القيمة**: «مطلوب» في خانة رقم التفويض، «غير مطلوب»
- * في خانة شركة التأمين، «ملكية بنك الراجحي» في خانة قيمة التأمين. نقلُها كما
- * هي يجعل «مطلوب» تظهر شركةَ تأمينٍ لها عشراتُ المركبات. فتُفرَّغ الخانة ويبقى
- * السبب رمزًا في `statusCode` وبندًا في `missingItems` — و«غير مطلوب» لا يُعدّ
- * نقصًا، لأنها حالةٌ سليمة لا عملٌ مطلوب.
- *
- * الاستيراد فعّالٌ متكرّر (idempotent): إعادةُ تشغيله لا تغيّر شيئًا.
+ * Final vehicles master import (Aug 2026): vehicles, company-wide documents and accidents from final-vehicles.xlsx.
+ * Usage: --dry plans without writing, --yes applies, --replace deactivates vehicles missing from the file, --hard deletes them.
+ * Repeatable: re-running changes nothing. Days-remaining columns and the fake Hijri columns are not stored. Human edits are kept, and a reason written in place of a value becomes statusCode/missingItems.
  */
 require('dotenv').config();
 const path = require('path');
@@ -64,12 +16,12 @@ const REPLACE = ARGV.includes('--replace');
 const HARD = ARGV.includes('--hard');
 const FILE = path.join(__dirname, '..', 'seeds', 'data', 'vehicles-2026-08', 'final-vehicles.xlsx');
 
-// ── قراءة الخانات ────────────────────────────────────────────────────────────
+// Cell readers
 const S = (v) => (v === null || v === undefined ? '' : String(v).trim().replace(/\s+/g, ' '));
 const AR_DIGITS = (t) => String(t).replace(/[٠-٩]/g, (d) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d))
   .replace(/[۰-۹]/g, (d) => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d));
 
-/** رقمٌ حقيقي أو null. النصّ الذي لا يقرأ رقمًا ليس صفرًا — هو لا رقم. */
+/** A real number or null; text that is not a number is null, not zero. */
 const N = (v) => {
   if (v === null || v === undefined || v === '') return null;
   if (typeof v === 'number') return Number.isFinite(v) ? v : null;
@@ -79,14 +31,10 @@ const N = (v) => {
   return Number.isFinite(n) ? n : null;
 };
 
-// ── الأرقام التسلسلية للتواريخ ───────────────────────────────────────────────
-// إكسل يكتب التاريخ عددًا: ٤٦٢٦٠ = ٢٦ أغسطس ٢٠٢٦. مبدؤه ٣٠ ديسمبر ١٨٩٩ لا
-// ١ يناير ١٩٠٠ — بسبب سنةٍ كبيسةٍ وهميّة في ١٩٠٠ ورثها عن لوتس ١-٢-٣. الطرحُ
-// من المبدأ الخاطئ يزيح كل تاريخٍ في الملف يومًا كاملًا.
+// Excel serial dates count from 1899-12-30 (not 1900-01-01) because of the phantom 1900 leap year; the wrong epoch shifts every date by a day.
 const EXCEL_EPOCH = Date.UTC(1899, 11, 30);
 const DAY = 86400000;
-// حدٌّ للعقل: ٢٠٠٠٠ ≈ ١٩٥٤ و٧٥٠٠٠ ≈ ٢١٠٥. رقمُ إقامةٍ أو رقمُ لوحةٍ سقط في خانة
-// تاريخٍ يخرج عن هذا المدى، وقبولُه يصنع تاريخًا في القرن الخامس والعشرين.
+// Sanity range: 20000 is about 1954 and 75000 about 2105. Iqama or plate numbers landing in a date cell fall outside it.
 const serialToDate = (n) => {
   if (!Number.isFinite(n) || n < 20000 || n > 75000) return null;
   const d = new Date(EXCEL_EPOCH + Math.round(n) * DAY);
@@ -109,9 +57,7 @@ const filled = (v) => !(v === '' || v === null || v === undefined);
   if (!fs.existsSync(FILE)) { console.error(`الملف غير موجود: ${FILE}`); process.exit(1); }
 
   const VDOC = require('../config/vehicleDocuments');
-  // مفتاح **سجل المركبات** (حروف + أرقام) لا مفتاح الأرقام وحدها. الأرقام
-  // تتصادم هنا: «ل أ 1080» دراجة و«أ ص ر 1080» تريلا — أحد عشر تصادمًا في هذا
-  // الملف بالضبط، وصفرٌ بهذا المفتاح. التفصيل في utils/plateKey.js.
+  // Key on the vehicle register (letters plus digits), not digits alone: digits collide between plates (a motorbike and a trailer both ending in 1080). See utils/plateKey.js.
   const { registryPlateKey: plateKey } = require('../utils/plateKey');
 
   const wb = XLSX.readFile(FILE);
@@ -124,7 +70,7 @@ const filled = (v) => !(v === '' || v === null || v === undefined);
   const GEN = sheet('وثائق عامة');
   const ACC = sheet('Accidents');
 
-  // عناوين صفحة المركبات في الصف الثاني — الصف الأول عدّادات كتبها الملف لنفسه.
+  // Headers are on the second row; the first row holds counters the file wrote for itself.
   const HEAD = (VEH[1] || []).map((h) => S(h));
   const C = {}; HEAD.forEach((h, i) => { if (h && C[h] === undefined) C[h] = i; });
   const need = ['رقم اللوحة', 'رقم الهيكل', 'تاريخ انتهاء التأمين'];
@@ -132,9 +78,7 @@ const filled = (v) => !(v === '' || v === null || v === undefined);
   if (absent.length) { console.error(`أعمدة مفقودة في صفحة Vehicles: ${absent.join(' · ')}`); process.exit(1); }
   const col = (row, name) => (C[name] === undefined ? null : row[C[name]]);
 
-  // ── يوم كتابة الملف، مأخوذًا من الملف نفسه ─────────────────────────────────
-  // كل زوج (تاريخ انتهاء، أيام متبقية) يعطي التاريخ بالطرح. الإجماع هو الجواب،
-  // وأيّ خلافٍ يُطبَع: ملفٌ لم تُحدَّث معادلاته يكذب على قاعدة «ما جدَّده موظف».
+  // File date derived from the file itself: each (expiry, days remaining) pair gives it by subtraction. Consensus wins and any disagreement is printed, since stale formulas would break the human-renewal rule.
   const PAIRS = [
     ['تاريخ نهاية التفويض', 'الايام المتبقية علي نهاية التفويض'],
     ['تاريخ انتهاء التأمين', 'الايام المتبقية علي انتهاء التأمين'],
@@ -174,23 +118,23 @@ const filled = (v) => !(v === '' || v === null || v === undefined);
     missingItems: 0, hijriKept: 0,
     staleVehicles: 0, stalePolicies: 0, staleClaims: 0, staleCorporate: 0, removed: 0,
   };
-  const skipped = [];   // صفوف لم تُقرأ، ولماذا
-  const kept = [];      // ما تُرك لأن إنسانًا كتبه
+  const skipped = [];   // Rows not read, and why
+  const kept = [];      // Values kept because a person wrote them
   const notes = [];
 
-  // نصّ الخانة: قيمةٌ حقيقية أم سببُ غياب؟ الاثنان لا يجتمعان في خانة واحدة.
+  // Cell text is either a real value or a reason for its absence, never both.
   const cell = (row, name) => {
     const raw = col(row, name);
     const code = VDOC.mapSentinelAr(raw);
     return { raw, code, value: code ? '' : S(raw) };
   };
-  // خانة تاريخ: التاريخ إن كان، وإلا سببُ غيابه.
+  // Date cell: the date if present, otherwise the reason it is missing.
   const dcell = (row, name) => {
     const raw = col(row, name);
     const code = VDOC.mapSentinelAr(raw);
     return { date: code ? null : D(raw), code };
   };
-  // خانة رقم: الرقم إن كان، وإلا سببُ غيابه — و«النصّ الحرّ» ليس سببًا معروفًا.
+  // Number cell: the number if present, otherwise the reason; free text is not a known reason.
   const ncell = (row, name) => {
     const raw = col(row, name);
     const code = VDOC.mapSentinelAr(raw);
@@ -199,17 +143,15 @@ const filled = (v) => !(v === '' || v === null || v === undefined);
     return { num: n, code: '', text: n === null ? S(raw) : '' };
   };
 
-  // ════════════════════════════════════════════════════════════════════════
-  //  ① قراءة صفحة المركبات
-  // ════════════════════════════════════════════════════════════════════════
+  // 1. Read the vehicles sheet
   const parsed = [];
   const seenKeys = new Map();
   VEH.slice(2).forEach((row, i) => {
-    const sheetRow = i + 3;                     // رقم الصفّ كما يراه من يفتح إكسل
-    if (!row || !row.some((c) => c !== null && c !== '')) return;   // صفٌّ فارغ تمامًا
+    const sheetRow = i + 3;                     // Row number as seen in Excel
+    if (!row || !row.some((c) => c !== null && c !== '')) return;   // Completely empty row
     const plate = S(col(row, 'رقم اللوحة'));
     if (!plate) {
-      // صفٌّ فيه أثرُ كتابةٍ بلا لوحة — لا مركبةَ فيه ولا مفتاح. يُعلَن ولا يُخترع له مفتاح.
+      // Row with data but no plate: reported, never given an invented key.
       const junk = row.map((c) => S(c)).filter(Boolean).join(' | ').slice(0, 60);
       skipped.push(`صف ${sheetRow}: بلا رقم لوحة${junk ? ` (${junk})` : ''} — لا مفتاح للمركبة`);
       return;
@@ -230,7 +172,7 @@ const filled = (v) => !(v === '' || v === null || v === undefined);
     const authX = dcell(row, 'تاريخ نهاية التفويض');
     const authS = dcell(row, 'تاريخ بداية التفويض');
 
-    // الهجريّ لا يُخزَّن إلا حين يختلف عن الميلاديّ فعلًا — وإلا فهو انعكاسُه.
+    // Hijri value is stored only when it really differs from the Gregorian one; otherwise it is just a mirror of it.
     const hijri = (gregName, hijriName) => {
       const g = N(col(row, gregName)); const h = N(col(row, hijriName));
       if (g === null || h === null || g === h) return '';
@@ -245,8 +187,7 @@ const filled = (v) => !(v === '' || v === null || v === undefined);
     const premium = ncell(row, 'قيمة التأمين');
     const open = /^opened?$/i.test(S(consType.raw)) || /^opened?$/i.test(S(consLimit.text));
 
-    // ── سببُ الغياب يصير بندَ عمل ────────────────────────────────────────────
-    // «غير مطلوب» ليست نقصًا — هي حالةٌ سليمة تُعَدّ وحدها (isGap تستثنيها).
+    // A reason for absence becomes a work item. The not-required status is a healthy state, not a gap (isGap excludes it).
     const missingItems = [];
     const gap = (item, docKey, code) => {
       if (VDOC.isGap(code)) { missingItems.push({ item, docKey, reason: code }); sum.missingItems++; }
@@ -260,10 +201,7 @@ const filled = (v) => !(v === '' || v === null || v === undefined);
     gap('شريحة الوقود', 'fuelCard', VDOC.mapSentinelAr(col(row, 'شريحة بترو اب')));
     gap('السجل التجاري', '', VDOC.mapSentinelAr(col(row, 'السجل')));
 
-    // ── هل تعمل؟ ─────────────────────────────────────────────────────────────
-    // «مسروق» تُكتب في خانة القطاع، و«غير مستخدم» في خانة الإدارة أو المدينة.
-    // كلاهما حالةُ تشغيلٍ لا اسمُ قطاعٍ ولا اسمُ إدارة، فتُقرأ من موضعها وتُخزَّن
-    // في حقلها — وإلا ضاع الرقم الذي تسأل عنه الإدارة أولَ ما تسأل.
+    // Operating state: the stolen value is written in the sector cell and the unused value in the department or city cell. Both are states, not names, so they are read from their position and stored in their own field.
     const sectorRaw = S(col(row, 'القطاع'));
     const idle = [cell(row, 'القسم').code, cell(row, 'المدينة').code].includes('not_in_use');
     const service = sectorRaw === 'مسروق'
@@ -286,7 +224,7 @@ const filled = (v) => !(v === '' || v === null || v === undefined);
         'vehicleLicense.expiryDate': { d: licX.date, doc: 'vehicleLicense' },
         'inspection.expiryDate': { d: insX.date, doc: 'inspection' },
         'authorizedPerson.expiryDate': { d: authX.date, doc: 'authorization' },
-        // بداية التفويض ليست مستندًا يُجدَّد — لا يُقاس عليها سجلّ تجديد.
+        // Authorization start is not a renewable document, so no renewal record is measured against it.
         'authorizedPerson.startDate': { d: authS.date, doc: null },
       },
       fields: {
@@ -310,11 +248,7 @@ const filled = (v) => !(v === '' || v === null || v === undefined);
 
         ownerNameAr: cell(row, 'المالك').value,
         commercialRegistration: cell(row, 'السجل').value,
-        // ── «حالة تم» و«حالة الحيازة» عمودٌ واحد لا عمودان ──────────────────
-        // الملف يكتبه مرةً واحدة (مالك / مستخدم)، والقسم بناه في حقلين قبل هذا
-        // الملف: `tamStatusAr` تقرؤه صفحة المركبة، و`possessionStatusAr` يقرؤه
-        // فلترُ الحيازة وبطاقتُه في النظرة الشاملة. ملءُ أحدهما وحده يُفرِغ
-        // شاشةً كاملة، فيُكتب في كليهما من العمود نفسه.
+        // The file has one column for the TAM and possession status, but the app has two fields: tamStatusAr (vehicle page) and possessionStatusAr (possession filter and overview card). Fill both from the same column.
         tamStatusAr: tam.value,
         tamStatusCode: TAM_CODE[tam.value] || (tam.code === 'not_required' ? 'none' : ''),
         possessionStatusAr: tam.value,
@@ -328,10 +262,7 @@ const filled = (v) => !(v === '' || v === null || v === undefined);
         'insurance.companyAr': cell(row, 'شركة التأمين').value,
         'insurance.coverageTypeAr': cell(row, 'نوع التأمين').value,
         'insurance.premiumSar': premium.num,
-        // ── ولماذا نصُّ «ملكية بنك الراجحي» ولا نصُّ «مطلوب» ───────────────────
-        // الأولى تقول إن القسط قائمٌ ويدفعه المموِّل — فالمركبة مؤمَّنة ورقمُها
-        // ليس عندنا. والثانية تقول إنه ناقص، وهذا بندُ عملٍ مكانُه missingItems
-        // لا خانةُ القيمة. خلطُهما يجعل مركبةً مؤمَّنةً تُقرأ «ينقصها تأمين».
+        // Write the financed-by-bank text, not the required text, into the value cell. The former means the financier pays the installment, so the vehicle is insured; the latter is a work item that belongs in missingItems.
         'insurance.premiumStatusAr': ['with_bank', 'with_aljabr'].includes(premium.code)
           ? S(col(row, 'قيمة التأمين')) : premium.text,
         'insurance.statusCode': ins.code,
@@ -339,7 +270,7 @@ const filled = (v) => !(v === '' || v === null || v === undefined);
         'fuelCard.provider': 'بترو اب',
         'fuelCard.cardNumber': cell(row, 'شريحة بترو اب').value,
         'fuelCard.plateOnInvoiceAr': cell(row, 'رقم اللوحة في فاتورة بترو اب').value,
-        // عمودُ حالةٍ: «غير مطلوب» فيه حالةٌ حقيقية لا سببُ فراغ، فتبقى نصًّا.
+        // Status column: the not-required value is a real state, not an empty-cell reason, so it stays as text.
         'fuelCard.statusAr': S(fuelStatus.raw),
         'fuelCard.statusCode': FUEL_CODE[S(fuelStatus.raw)] || fuelStatus.code,
         'fuelCard.consumptionTypeAr': consType.value,
@@ -373,13 +304,8 @@ const filled = (v) => !(v === '' || v === null || v === undefined);
   console.log(`صفحة Vehicles: ${parsed.length} مركبة مقروءة`
     + `${skipped.length ? ` · ${skipped.length} صفًّا لم يُقرأ` : ''}`);
 
-  // ════════════════════════════════════════════════════════════════════════
-  //  ② وثائق التأمين — الوثيقة كيانٌ واحد تشير إليه مئاتُ المركبات
-  // ════════════════════════════════════════════════════════════════════════
-  // لا صفحةَ وثائق في هذا الملف، فتُستخرج الوثيقة من مركباتها: رقمُها وشركتُها
-  // ونوعُها وتاريخُ انتهائها وعددُ من تغطّيهم. وحين تختلف مركبتان في تاريخ
-  // وثيقةٍ واحدة يُؤخَذ الأكثر شيوعًا ويُعلَن الخلاف — الوثيقة الواحدة لا
-  // تنتهي مرتين، والاختلافُ خطأُ إدخالٍ يجب أن يراه أحد.
+  // 2. Insurance policies: one policy is a single entity shared by hundreds of vehicles.
+  // There is no policies sheet, so each policy is derived from its vehicles (number, company, type, expiry, covered count). If vehicles disagree on a date, the most common one wins and the conflict is reported as an entry error.
   const byPolicy = new Map();
   for (const v of parsed) {
     const num = v.fields['insurance.policyNumber'];
@@ -410,15 +336,13 @@ const filled = (v) => !(v === '' || v === null || v === undefined);
     };
     const found = await VehicleInsurancePolicy.findOne({ policyNumber: p.num });
     if (DRY) {
-      // في التجربة تُبنى الخريطة بمعرّفٍ وهميّ، وإلا بدت كلُّ مركبةٍ بلا وثيقة
-      // وكان تقرير الربط كاذبًا.
+      // In dry-run the map is built with fake ids, otherwise every vehicle looks policy-less and the link report is wrong.
       policyByNumber.set(p.num, found ? found._id : 'dry');
       found ? sum.policiesUpdated++ : sum.policiesCreated++;
       continue;
     }
     if (found) {
-      // تاريخٌ جدَّده موظف على الوثيقة بعد لقطة الملف لا يُداس عليه — تجديدُ
-      // الوثيقة يمسّ مئات المركبات دفعةً واحدة، فدَوسُه أغلى من دَوس مركبة.
+      // A date renewed by staff after the file snapshot is not overwritten; a policy renewal touches hundreds of vehicles at once.
       const renewal = (found.renewals || [])
         .filter((r) => r.at && new Date(r.at) > SNAPSHOT)
         .sort((a, b) => new Date(b.at) - new Date(a.at))[0];
@@ -438,14 +362,10 @@ const filled = (v) => !(v === '' || v === null || v === undefined);
     }
   }
 
-  // ════════════════════════════════════════════════════════════════════════
-  //  ③ المركبات
-  // ════════════════════════════════════════════════════════════════════════
+  // 3. Vehicles
   const liveIds = [];
   for (const v of parsed) {
-    // المطابقة بمفتاح اللوحة أولًا — هو مفتاح القسم. والهيكل احتياطٌ لحالةٍ
-    // واحدة: مركبةٌ بُدِّلت لوحتُها. حينها لا تُخلَق مركبةٌ ثانية بل تُحدَّث
-    // لوحةُ القائمة، ويُطبَع التبديل لأنه ليس تفصيلًا.
+    // Match by plate key first (the department key). Chassis is a fallback for a replaced plate: update the existing vehicle's plate instead of creating a second one, and report the swap.
     let existing = await VehicleMaster.findOne({ plateKey: v.key });
     if (!existing && v.chassis) {
       existing = await VehicleMaster.findOne({ chassisNumber: v.chassis });
@@ -467,7 +387,7 @@ const filled = (v) => !(v === '' || v === null || v === undefined);
     }
     liveIds.push(String(existing._id));
 
-    // هل لمسها إنسان بعد آخر استيراد؟ حينئذٍ خانةُ الشيت الفارغة لا تمحو قيمة.
+    // Touched by a person since the last import: then an empty sheet cell must not erase a value.
     const touched = existing.lastImportAt
       ? new Date(existing.updatedAt) > new Date(existing.lastImportAt)
       : false;
@@ -502,9 +422,7 @@ const filled = (v) => !(v === '' || v === null || v === undefined);
     if (!DRY && changed) { existing.lastImportAt = new Date(); await existing.save(); }
   }
 
-  // ════════════════════════════════════════════════════════════════════════
-  //  ④ الوثائق العامة (وثائق عامة) — على مستوى الشركة لا المركبة
-  // ════════════════════════════════════════════════════════════════════════
+  // 4. General documents: company-level, not per vehicle
   const gHead = (GEN[0] || []).map((h) => S(h));
   const gi = (name) => gHead.indexOf(name);
   const G = {
@@ -518,8 +436,7 @@ const filled = (v) => !(v === '' || v === null || v === undefined);
     const scope = S(row[G.doc]);
     if (!scope) { skipped.push(`وثائق عامة صف ${i + 1}: بلا اسم وثيقة`); continue; }
     genScopes.push(scope);
-    // «القيمة» رقمٌ أحيانًا ونصٌّ أحيانًا («ايجار شهري»). النصّ ليس صفرًا:
-    // وضعُه في خانة المبلغ يجعل عقدًا قائمًا يُقرأ بقيمةِ صفر في تقرير التكلفة.
+    // The value is sometimes a number and sometimes text (monthly rent). Text is not zero; putting it in the amount field would make an active contract cost zero in reports.
     const val = row[G.value];
     const num = N(val);
     const doc = {
@@ -550,9 +467,7 @@ const filled = (v) => !(v === '' || v === null || v === undefined);
     } else { await CorporatePolicy.create(doc); sum.corporateCreated++; }
   }
 
-  // ════════════════════════════════════════════════════════════════════════
-  //  ⑤ الحوادث والمطالبات
-  // ════════════════════════════════════════════════════════════════════════
+  // 5. Accidents and claims
   const aHead = (ACC[0] || []).map((h) => S(h));
   const ai = (name) => aHead.indexOf(name);
   const A = {
@@ -563,8 +478,7 @@ const filled = (v) => !(v === '' || v === null || v === undefined);
     notes: ai('ملاحظات المطالبة'), lastNote: ai('تاريخ اخر ملاحظة'), lastInsurer: ai('تاريخ اخر موقف مع شركة التامين'),
     estimate: ai('قيمة التقدير'), expected: ai('المتوقع تحصيلة'), status: ai('الحالة'),
   };
-  // «-» في هذه الصفحة تعني «لا شيء» لا نصًّا. نقلُها كما هي يجعل شركةَ التأمين
-  // تُدعى «-» في ثمانية سجلّات ويظهر «-» خيارًا في فلتر شركات التأمين.
+  // A dash on this sheet means nothing, not text. Copying it would name the insurer a dash in several records and add a dash option to the insurer filter.
   const dash = (v) => { const t = S(v); return (!t || t === '-' || t === '—') ? '' : t; };
   const dashN = (v) => { const t = S(v); if (!t || t === '-' || t === '—') return null; if (/^zero$/i.test(t)) return 0; return N(v); };
   const plateByKey = new Map(parsed.map((v) => [v.key, v]));
@@ -582,10 +496,7 @@ const filled = (v) => !(v === '' || v === null || v === undefined);
     const accNum = dash(row[A.num]);
     if (!accDate && !accNum) { skipped.push(`Accidents صف ${sheetRow} («${subject}»): بلا تاريخ ولا رقم حادث — لا مفتاح ثابت له`); continue; }
 
-    // ── مفتاحٌ ثابت للحادث، مأخوذٌ من الحادث نفسه ─────────────────────────
-    // الملف لا يحمل معرِّفًا. لو اشتُقّ من رقم الصفّ لتغيّر كلُّ المعرّفات بإدراج
-    // صفٍّ واحد في المنتصف، فتُخلَق خمسةٌ وعشرون حادثًا جديدًا فوق القديمة.
-    // رقمُ الحادث (أو اللوحة + تاريخه) لا يتغيّر بترتيب الصفوف.
+    // Stable accident key derived from the accident itself. The file has no id, and a row-number key would change on any middle insertion and duplicate all accidents. The accident number (or plate plus date) is order-independent.
     const claimId = accNum ? `FV26-${accNum.replace(/\s+/g, '')}` : `FV26-${key || 'X'}-${iso(accDate)}`;
     const est = dashN(row[A.estimate]);
     const rec = dashN(row[A.expected]);
@@ -594,8 +505,7 @@ const filled = (v) => !(v === '' || v === null || v === undefined);
     const doc = {
       claimId,
       sourceRow: sheetRow,
-      // واقعةٌ ليست على مركبة («تلف بضاعة» — مطالبةُ بضاعةٍ لا حادثُ مركبة).
-      // بلا هذا الفصل تظهر في عدّاد حوادث الأسطول وتشوّه نسبة الحوادث لكل مركبة.
+      // An incident not tied to a vehicle (goods damage is a cargo claim). Without this split it inflates the fleet accident counter and the per-vehicle accident rate.
       isVehicleIncident: !!veh,
       incidentSubjectAr: subject,
       vehiclePlate: veh ? veh.plate : '',
@@ -604,7 +514,7 @@ const filled = (v) => !(v === '' || v === null || v === undefined);
       ownerRegistrationAr: dash(row[A.owner]),
       counterpartyNameAr: dash(row[A.party]).replace(/[\r\n]+/g, ' '),
       counterpartyNationalId: dash(row[A.partyId]),
-      // الملف يكتبها كسرًا (٠ · ٠٫٥ · ١)؛ والشاشات تقرأ نسبةً مئوية.
+      // The file writes a fraction (0, 0.5, 1); screens read a percentage.
       faultRatio: fault,
       faultPercent: fault === null ? null : Math.round(fault <= 1 ? fault * 100 : fault),
       accidentDate: accDate,
@@ -620,7 +530,7 @@ const filled = (v) => !(v === '' || v === null || v === undefined);
         lastInsurerUpdateDate: D(row[A.lastInsurer]),
         estimatedAmountSar: est,
         expectedRecoverySar: rec,
-        // الفجوة بين المقدَّر والمتوقَّع استردادُه = الخسارة الصافية المتوقَّعة.
+        // Gap between estimated and expected recovery is the expected net loss.
         recoveryGapSar: est !== null && rec !== null ? Math.round(est - rec) : null,
       },
       statusAr: statusRaw,
@@ -629,34 +539,18 @@ const filled = (v) => !(v === '' || v === null || v === undefined);
     };
     if (!veh && key) notes.push(`حادث ${claimId}: «${subject}» لا تطابق أيّ مركبة في الملف`);
 
-    // مطابقةُ الموجود بمفتاحه الطبيعيّ لا بمعرِّفنا وحده: استيرادٌ سابق سجَّله
-    // بمعرّفٍ آخر (ACC-001)، ولولا هذه المطابقة لتضاعف الحادث نسخةً ثانية.
-    // ── والمطابقةُ تفضّل الحيَّ على المتقاعد ────────────────────────────────
-    // في القاعدة تسعةٌ وأربعون حادثًا، خمسةٌ وعشرون منها نشطة وأربعةٌ وعشرون
-    // أُحيلت إلى التقاعد في استيرادٍ سابق. والبحثُ بلا تمييزٍ كان يُصيب
-    // المتقاعد أوّلًا في أربعةٍ وعشرين صفًّا من خمسةٍ وعشرين: فيُحييه، ويبقى
-    // الحيُّ بلا مطابق فيُعَدّ مهجورًا — ومع `--replace` يُحذف. أي أن الاستيراد
-    // كان سيقلب الحيّ ميتًا والميت حيًّا في الاتجاهين معًا.
+    // Match existing records by natural key, not only our id: an earlier import stored it under another id (ACC-001) and would otherwise duplicate the accident.
+    // Prefer live over retired records: the search would hit a retired record first and revive it, leaving the live one unmatched, abandoned, and deleted by --replace.
     const live = { isActive: { $ne: false } };
     const pick = async (q) => (await VehicleClaim.findOne({ ...q, ...live }))
       || (await VehicleClaim.findOne(q));
     let found = await pick({ claimId });
     if (!found && accNum) found = await pick({ accidentNumber: accNum });
-    // `veh` لا `key`: خانة اللوحة قد تحمل ما ليس لوحةً («تلف بضاعة») فيُشتقّ
-    // منها مفتاحٌ نصّيّ يطابق سجلًّا متقاعدًا يحمل المفتاح نفسه — فيُصاب
-    // المتقاعد قبل أن يُجرَّب ما تحته. المطابقةُ باللوحة لا تصحّ إلا حين تكون
-    // اللوحة لوحةَ مركبةٍ معروفة.
+    // Use veh, not key: the plate cell can hold a non-plate value (goods damage), whose derived text key matches a retired record with the same key. Plate matching is valid only for a known vehicle's plate.
     if (!found && veh && accDate) found = await pick({ vehiclePlateKey: key, accidentDate: accDate });
-    // ── مطالبةٌ ليست عن مركبة ───────────────────────────────────────────────
-    // «تلف بضاعة» تُكتب في خانة اللوحة، فيُشتقّ منها مفتاحٌ نصّيّ («تلفبضاعه»)
-    // بينما السجلّ الموجود يحفظ مفتاحًا فارغًا — فلا يلتقيان أبدًا. تُطابَق
-    // بتاريخها ومبلغها، وإلا عُدَّت الموجودة مهجورةً وأُنشئ لها نظيرٌ ثانٍ،
-    // فصار في التقارير حادثان حيث وقع واحد.
+    // Claim not about a vehicle: the plate cell holds the goods-damage text, giving a text key while the stored record has an empty key, so they never meet. Match by date and amount, otherwise the existing record is treated as abandoned and a duplicate is created.
     if (!found && !veh && accDate) {
-      // لا شرطَ على المفتاح: للحادث الواحد هنا نسختان — متقاعدةٌ تحمل مفتاحًا
-      // نصّيًّا («تلفبضاعه») وحيّةٌ بلا مفتاح. واشتراطُ أحد الشكلين يستبعد
-      // الحيّة فيُصاب المتقاعد. التاريخ والمبلغ يكفيان للتمييز، و`pick` يفضّل
-      // الحيّ متى وُجد الاثنان.
+      // No key condition: the same accident has a retired copy with the text key and a live copy with no key. Requiring either form would exclude the live copy and hit the retired one. Date and amount suffice, and pick prefers the live copy.
       found = await pick({
         accidentDate: accDate,
         'claim.estimatedAmountSar': doc.claim?.estimatedAmountSar,
@@ -665,7 +559,7 @@ const filled = (v) => !(v === '' || v === null || v === undefined);
     seenClaims.push(found ? String(found._id) : claimId);
     if (DRY) { found ? sum.claimsUpdated++ : sum.claimsCreated++; continue; }
     if (found) {
-      // معرِّفُ الحادث القديم يبقى — تغييرُه يقطع أيَّ رابطٍ خارجيّ إليه.
+      // Keep the old accident id; changing it breaks any external link to it.
       const { claimId: _drop, ...rest } = doc;
       found.set(rest);
       await found.save();
@@ -673,7 +567,7 @@ const filled = (v) => !(v === '' || v === null || v === undefined);
     } else { await VehicleClaim.create(doc); sum.claimsCreated++; }
   }
 
-  // عدّاد حوادث المركبة محسوبٌ من مطالباتها الفعّالة، لا مخزَّنًا يدويًّا.
+  // Vehicle accident counter is computed from its effective claims, not stored by hand.
   if (!DRY) {
     await VehicleMaster.updateMany({}, { $set: { accidentCount: 0 } });
     const keys = [...new Set((await VehicleClaim.find({ isActive: true }).select('vehiclePlateKey').lean())
@@ -684,9 +578,7 @@ const filled = (v) => !(v === '' || v === null || v === undefined);
     }
   }
 
-  // ════════════════════════════════════════════════════════════════════════
-  //  ⑥ ما في النظام وليس في الملف
-  // ════════════════════════════════════════════════════════════════════════
+  // 6. In the system but not in the file
   const sheetKeys = new Set(parsed.map((v) => v.key));
   const staleVehicles = (await VehicleMaster.find({ isActive: { $ne: false } })
     .select('plateNumber plateKey chassisNumber renewals accidentCount').lean())
@@ -724,9 +616,7 @@ const filled = (v) => !(v === '' || v === null || v === undefined);
     sum.removed = ids.length + stalePolicies.length + staleCorporate.length + staleClaims.length;
   }
 
-  // ════════════════════════════════════════════════════════════════════════
-  //  التقرير
-  // ════════════════════════════════════════════════════════════════════════
+  // Report
   console.log('\nالنتيجة:', JSON.stringify(sum, null, 1));
 
   if (skipped.length) {

@@ -1,20 +1,9 @@
-/**
- * /api/client-errors — ما ينكسر عند المستخدم يصل إلينا.
- *
- * ── لماذا ────────────────────────────────────────────────────────────────
- * كان خطأُ المتصفّح يُعرَض «Application error: a client-side exception» ثمّ
- * ينتهي — لا اسمَ ولا موضعَ ولا أثر. فيُبلِّغ المستخدمُ أنّ «صفحةً وقعت» ولا
- * سبيلَ لمعرفة أيُّها ولا لماذا، ويُبحَث بالحدس.
- *
- * فيُسجَّل هنا: الرسالةُ والمسارُ والأثرُ ومَن كان يستعمل الشاشة. ولا يُطلَب
- * تسجيلُ دخولٍ — الخطأُ قد يقع قبله — ولكن يُقيَّد المعدّل حتى لا يصير البابُ
- * مصرفًا للسجلّات.
- */
+/** /api/client-errors: browser failures reach us. A browser error used to show a generic 'Application error' with no name, location or trace. It records the message, path, trace and who was using the screen. No login required, since the error may occur before it; the rate is limited so the endpoint cannot become a log sink. */
 const express = require('express');
 
 const router = express.Router();
 
-// ذاكرةٌ صغيرةٌ للتقييد: عنوان → آخرُ وقتٍ وعدد.
+// Small in-memory throttle: address to last time and count.
 const seen = new Map();
 const WINDOW_MS = 60000;
 const MAX_PER_WINDOW = 20;
@@ -28,7 +17,7 @@ router.post('/', express.json({ limit: '64kb' }), (req, res) => {
     rec.n += 1;
     seen.set(ip, rec);
     if (rec.n > MAX_PER_WINDOW) return res.status(429).json({ ok: false });
-    if (seen.size > 5000) seen.clear();          // لا تنمو بلا حدّ
+    if (seen.size > 5000) seen.clear();          // Bounded so it cannot grow without limit.
 
     const b = req.body || {};
     const line = [
@@ -43,7 +32,7 @@ router.post('/', express.json({ limit: '64kb' }), (req, res) => {
     if (b.stack) console.error(String(b.stack).slice(0, 2000));
     res.json({ ok: true });
   } catch (e) {
-    res.json({ ok: true });                       // التبليغُ لا يفشل أبدًا
+    res.json({ ok: true });                       // Reporting must never fail.
   }
 });
 

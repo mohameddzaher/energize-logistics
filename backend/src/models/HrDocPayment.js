@@ -1,22 +1,10 @@
 const mongoose = require('mongoose');
 
 /**
- * دفعُ رسوم تجديد الإقامة أو رخصة العمل — لا التجديدُ نفسُه.
- *
- * ── لماذا مفتاحُه (الموظّف، المستند، تاريخُ الانتهاء) ───────────────────────
- * المالُ يُدفع عن **دورةٍ** من المستند: إقامةٌ تنتهي في ٢٠٢٦/١١/٠٥ تُدفع رسومُ
- * تجديدها مرّةً. ثمّ تجدّدها الموارد البشريّة من ملفّ الموظّف فيتغيّر تاريخُ
- * الانتهاء — وتلك دورةٌ جديدةٌ لم تُدفع رسومُها بعد. فلو كان المفتاحُ الموظّفَ
- * والمستندَ وحدَهما لبقي «مدفوعًا» إلى الأبد بعد أوّل دفعة، ولقرأت الماليّةُ
- * إقامةَ السنة القادمة مدفوعةً وهي لم تُدفع.
- *
- * فالتاريخُ جزءٌ من المفتاح: التجديدُ يبدأ دورةً غيرَ مدفوعةٍ تلقائيًّا، والدفعةُ
- * القديمةُ تبقى سجلًّا كما هي — لا تُمحى ولا تُنقل.
- *
- * ── والتراجعُ إلغاءٌ لا حذف ─────────────────────────────────────────────────
- * من سجّل دفعةً خطأً يلغيها (`voided`)، فتبقى في القاعدة بمن ألغاها ومتى ولماذا.
- * والفهرسُ الفريدُ على الدفعات السارية وحدَها، فتُسجَّل الدورةُ نفسُها مدفوعةً
- * من جديدٍ بعد الإلغاء.
+ * Payment of residence or work-permit renewal fees, not the renewal itself.
+ * Key is (employee, document, expiry date): money is paid per cycle of a document. After HR renews, the expiry date changes and that is a new unpaid cycle; keyed on employee and document alone, it would stay paid forever and finance would read next year's residence as paid.
+ * So the date is part of the key; the old payment stays as a record, never erased or moved.
+ * Undo is void, not delete: a mistaken payment is voided (`voided`) and stays with who, when and why. The unique index covers active payments only, so the same cycle can be recorded again after a void.
  */
 const DOC_TYPES = ['iqama', 'workPermit'];
 
@@ -31,10 +19,10 @@ const fileSchema = new mongoose.Schema({
 const hrDocPaymentSchema = new mongoose.Schema({
   employee: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee', required: true, index: true },
   docType: { type: String, enum: DOC_TYPES, required: true },
-  // تاريخُ انتهاء الدورة المدفوعة (YYYY-MM-DD) كما كان في الملفّ ساعةَ الدفع.
+  // Expiry date of the paid cycle (YYYY-MM-DD) as in the file at payment time.
   expiryDate: { type: String, required: true, trim: true },
 
-  // لقطةٌ تبقى وإن تغيّر الملفّ — الدفعةُ وثيقةٌ تُقرأ بعد سنة.
+  // Snapshot that survives file changes: a payment is a document read a year later.
   snapshot: {
     name: { type: String, trim: true, default: '' },
     employeeNumber: { type: String, trim: true, default: '' },
@@ -42,7 +30,7 @@ const hrDocPaymentSchema = new mongoose.Schema({
     department: { type: String, trim: true, default: '' },
   },
 
-  // المبلغُ اختياريّ: كثيرٌ من الرسوم تُدفع دفعةً واحدةً عن عدّة موظّفين.
+  // Amount is optional: many fees are paid in one lump for several employees.
   amount: { type: Number, default: null, min: 0 },
   note: { type: String, trim: true, default: '' },
   files: [fileSchema],
@@ -58,7 +46,7 @@ const hrDocPaymentSchema = new mongoose.Schema({
   voidNote: { type: String, trim: true, default: '' },
 }, { timestamps: true });
 
-// دفعةٌ ساريةٌ واحدةٌ لكلّ دورة.
+// One active payment per cycle.
 hrDocPaymentSchema.index(
   { employee: 1, docType: 1, expiryDate: 1 },
   { unique: true, partialFilterExpression: { voided: false } },

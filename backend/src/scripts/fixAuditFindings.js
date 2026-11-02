@@ -1,19 +1,8 @@
 /**
- * fixAuditFindings — علاجُ ما كشفه `systemAudit`.
- *
- *   node src/scripts/fixAuditFindings.js [--yes]
- *
- * ثلاثةُ أشياء، ولكلٍّ سببُ علاجه:
- *
- *  ١ · موظّفٌ مكرَّر: سجلّان لشخصٍ واحدٍ برقم الهويّة نفسِه. يُدمَجان في الذي
- *      يحمل الارتباطات (تفويضٌ، عهدةٌ، حساب) لأنّ حذفَه يقطعها، ويُنقَل إليه ما
- *      يملأ فراغاتِه من الآخر — فلا تُفقَد بياناتٌ ولا يبقى نصفُ الرجل في سجلٍّ
- *      ونصفُه في آخر.
- *
- *  ٢ · إشعاراتٌ لمستخدمين محذوفين: لا أحدَ سيقرؤها أبدًا. تُمسح — بخلاف سجلّ
- *      المراجعة الذي يبقى وإن حُذف صاحبُه، فهو تاريخٌ لا بريد.
- *
- *  ٣ · حساباتُ الدخول المرتبطةُ بموظّفٍ محذوف: تُفَكّ ولا تُحذَف.
+ * fixAuditFindings: fixes what systemAudit found. --yes applies.
+ * 1) Duplicate employees (same ID number): merge into the one holding the links and fill its gaps from the other.
+ * 2) Notifications for deleted users: delete; the audit log stays as history.
+ * 3) Login accounts linked to a deleted employee: unlink, never delete.
  */
 require('dotenv').config();
 const fs = require('fs');
@@ -32,13 +21,13 @@ const fold = (s) => String(s || '')
   console.log('='.repeat(72));
   await mongoose.connect(process.env.MONGODB_URI);
   for (const f of fs.readdirSync(path.join(__dirname, '../models')).filter((x) => x.endsWith('.js'))) {
-    try { require(`../models/${f}`); } catch (e) { /* لا يمنع البقيّة */ }
+    try { require(`../models/${f}`); } catch (e) { /* Does not block the rest */ }
   }
   const Employee = mongoose.model('Employee');
   const Notification = mongoose.model('Notification');
   const User = mongoose.model('User');
 
-  // ── ١ · الموظّفون المكرَّرون ────────────────────────────────────────────────
+  // 1. duplicate employees
   const all = await Employee.find({}).lean();
   const groups = new Map();
   for (const e of all) {
@@ -49,7 +38,7 @@ const fold = (s) => String(s || '')
   }
   const dups = [...groups.values()].filter((v) => v.length > 1);
 
-  // ما يشير إلى الموظّف — يُنقَل كلُّه إلى الباقي.
+  // Everything referencing the employee is moved to the survivor.
   const REFS = [];
   for (const name of mongoose.modelNames()) {
     const M = mongoose.model(name);
@@ -60,7 +49,7 @@ const fold = (s) => String(s || '')
 
   const plans = [];
   for (const g of dups) {
-    // الباقي هو الأكثرُ ارتباطًا؛ فإن تساويا فالأقدم — هو الذي بُني عليه العمل.
+    // Survivor is the one with more links; on a tie, the older one, since work was built on it.
     const scored = [];
     for (const e of g) {
       let links = 0;
@@ -73,7 +62,7 @@ const fold = (s) => String(s || '')
     scored.sort((a, b) => (b.links - a.links) || (new Date(a.e.createdAt) - new Date(b.e.createdAt)));
     const keep = scored[0].e;
     const drop = scored.slice(1).map((x) => x.e);
-    // ما يملأ فراغَ الباقي يُؤخَذ من المحذوف — ولا يُكتب فوق قيمةٍ موجودة.
+    // Fill the survivor's gaps from the deleted record, never overwriting existing values.
     const fill = {};
     for (const d of drop) {
       for (const [k, v] of Object.entries(d)) {
@@ -95,13 +84,13 @@ const fold = (s) => String(s || '')
       + (Object.keys(p.fill).length ? ` · يُنقَل ${Object.keys(p.fill).length} حقلًا` : ''));
   });
 
-  // ── ٢ · إشعاراتٌ لمستخدمين محذوفين ─────────────────────────────────────────
+  // 2. notifications for deleted users
   const liveUsers = new Set((await User.find({}).select('_id').lean()).map((x) => String(x._id)));
   const notif = await Notification.find({}).select('recipient').lean();
   const deadNotif = notif.filter((n) => n.recipient && !liveUsers.has(String(n.recipient))).map((n) => n._id);
   console.log(`\n  ٢ · إشعاراتٌ لمستخدمين محذوفين: ${deadNotif.length} من ${notif.length}`);
 
-  // ── ٣ · حساباتُ دخولٍ تشير إلى موظّفٍ محذوف ────────────────────────────────
+  // 3. login accounts pointing at a deleted employee
   const liveEmp = new Set(all.map((e) => String(e._id)));
   const users = await User.find({ employee: { $ne: null } }).select('employee email').lean();
   const brokenLinks = users.filter((u) => !liveEmp.has(String(u.employee)));

@@ -1,14 +1,8 @@
 /**
- * restoreHrBackup — رجوع من نسخة rebuildHrFromMaster الاحتياطية.
- *
- *   node src/scripts/restoreHrBackup.js backups/hr-rebuild-2026-08-05T10-25-47
- *
- * بيرجّع المستندات اللي مش موجودة دلوقتي بس — فآمن لو اتنفّذ مرتين، ومش
- * بيدوس على أي حاجة اتعملت بعد النسخة.
- *
- * النسخة اتكتبت بـ JSON.stringify، فالـ ObjectId والتواريخ بقوا نصوص. الرجوع
- * بيحوّلهم تاني حسب الشكل: ٢٤ خانة hex = معرّف، وصيغة ISO = تاريخ. من غير
- * التحويل ده الروابط بتفضل نصوص وmongoose مش بيلاقيها.
+ * restoreHrBackup: roll back from the rebuildHrFromMaster backup.
+ * Usage: node src/scripts/restoreHrBackup.js backups/hr-rebuild-<timestamp>
+ * Restores only documents that do not exist now, so it is safe to run twice and does not overwrite anything created after the backup.
+ * The backup was written with JSON.stringify, so ObjectIds and dates became strings. Restore converts them back by shape: 24 hex characters = id, ISO format = date. Without this, references stay strings and mongoose cannot resolve them.
  */
 require('dotenv').config();
 const fs = require('fs');
@@ -23,7 +17,7 @@ const COLLECTIONS = {
 const isOid = (v) => typeof v === 'string' && /^[0-9a-f]{24}$/.test(v);
 const isIso = (v) => typeof v === 'string' && /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d/.test(v);
 
-/** بيمشي على المستند كله ويرجّع النصوص لأنواعها. */
+/** Walks the whole document and converts strings back to their types. */
 function revive(v) {
   if (Array.isArray(v)) return v.map(revive);
   if (v && typeof v === 'object') {

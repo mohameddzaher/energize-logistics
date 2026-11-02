@@ -1,17 +1,8 @@
 /**
- * b2cLegacyRowOrder — موضعُ كلّ حسابٍ في الشيتات القديمة لكلّ شهرٍ قبل أكتوبر ٢٠٢٦،
- * لتُرسَم الشهورُ القديمةُ في شيت المشروع الجديد بترتيبها هناك (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢).
- *
- * يقرأ الشيتاتِ القديمةَ نفسَها (`B2CGoogleSheetSync` — الإعداداتُ باقيةٌ وإن أُوقفت
- * المزامنة) ويكتب `B2CLegacyRow` فقط: لا يمسّ أوردرًا ولا حسابًا. ويُعاد تشغيلُه بلا ضرر.
- *
- * الصفُّ يُطابَق بحسابٍ له أوردراتٌ في المشروع والشهر نفسَيهما: برقم الحساب على التطبيق
- * والاسمِ معًا، ثمّ برقم الحساب وحده إن لم يتكرّر، ثمّ بالاسم وحده إن لم يتكرّر —
- * فالحسابُ الواحدُ كان يعمل عليه أكثرُ من مندوب، والرقمُ الواحدُ قد يتكرّر بين تطبيقين.
- * ومشروعٌ له شيتان (كيتا) يُرتَّب الأوّلُ ثمّ الثاني.
- *
- *   node src/scripts/b2cLegacyRowOrder.js           عرضٌ فقط
- *   node src/scripts/b2cLegacyRowOrder.js --apply   كتابة
+ * b2cLegacyRowOrder: each account's position in the old sheets per month before October 2026, so old months render in the new project sheet in their original order.
+ * Reads the old sheets themselves (B2CGoogleSheetSync; settings remain although sync is stopped) and writes only B2CLegacyRow: no order or account is touched. Safe to rerun.
+ * A row is matched to an account that has orders in the same project and month: by app account number and name together, then number alone if unique, then name alone if unique, since one account could be worked by several reps and one number can repeat across apps. A project with two sheets (Keeta) orders the first then the second.
+ * Usage: node src/scripts/b2cLegacyRowOrder.js (dry run) | --apply (write)
  */
 require('dotenv').config({ path: require('path').join(__dirname, '../../.env'), quiet: true });
 const mongoose = require('mongoose');

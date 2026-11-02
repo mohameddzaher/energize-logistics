@@ -1,14 +1,8 @@
 /* eslint-disable no-console */
 /**
- * linkCollectionOfficers — مسؤولُ التحصيل حسابٌ لا اسمٌ مكتوب.
- *
- *   node src/scripts/linkCollectionOfficers.js           (عرضٌ فقط)
- *   node src/scripts/linkCollectionOfficers.js --apply   (يكتب)
- *
- * كان `CollectionsParty.collectionOfficer` نصًّا (Hossam / Yasser / Orabi / Haitham)
- * لا يطابق حسابًا. فيُربط كلٌّ بمستخدمه (`collectionOfficerUser`)، ويبقى النصُّ للعرض.
- * و«Haitham» هو مديرُ التخليص الجمركي — فيُكتب «التخليص الجمركي» ويُربط بحسابه
- * (صاحبُ الشركة، ٢٠٢٦/١٠/٢١). ومهامُّ التحصيل (`CollectionTask.officer`) مثلُها.
+ * Links each collection officer to a user account instead of a free-text name.
+ * Usage: node src/scripts/linkCollectionOfficers.js [--apply]
+ * CollectionsParty.collectionOfficer was text that matched no account; it is linked via collectionOfficerUser while the text stays for display. One name maps to the customs clearance manager. CollectionTask.officer gets the same treatment.
  */
 require('dotenv').config({ quiet: true });
 const mongoose = require('mongoose');

@@ -1,44 +1,23 @@
 /**
- * توثيقُ الـ API — يُبنى من الراوتر نفسِه، فلا يستطيع أن يبعد عنه.
- *
- * ── لماذا لا يُكتب بيد ──────────────────────────────────────────────────────
- * وثيقةٌ تُكتب يدويًّا لثمانٍ وخمسين مجموعةَ مساراتٍ تشيخ في أوّل أسبوع،
- * وشيخوختُها صامتة: يُضاف مسارٌ فلا يُذكَر، ويُحذَف آخرُ فيبقى مكتوبًا — فيبني
- * عليه مَن يتكامل معنا شيئًا لا وجود له، ويكتشف ذلك في الإنتاج.
- *
- * فهذه الوثيقةُ تُقرأ من `app._router`: كلُّ ما رُكِّب فعلًا، بمسارِه وطريقتِه
- * ومعاملاتِه وحارسِه. وإضافةُ مسارٍ تظهر فيها في اللحظة نفسِها بلا أن يتذكّر
- * أحدٌ شيئًا — وهذا هو الشرطُ الذي طُلب: أيُّ تعديلٍ يُصلَح في التوثيق فورًا.
- *
- * ── وحارسُ المسار يُقرأ منه لا يُخمَّن ──────────────────────────────────────
- * `authenticate` و`sectionGate('HR')` و`authorize(...)` و`requireApiKey(...)`
- * دوالُّ مغلقةٌ بعد تركيبها، فعُلِّق على كلٍّ منها ما تحرسه (`__section`،
- * `__roles`) — راجع `middleware/rbac` و`middleware/sectionGate`. فتقول الوثيقةُ
- * عن كلّ مسار: أيحتاج تسجيلَ دخول؟ وأيَّ قسمٍ يلزم؟ وأيَّ الأدوار يقبل؟
- *
- * ── ووثيقتان لا واحدة ───────────────────────────────────────────────────────
- *   • **واجهةُ الشركاء** (`/api/fleet-api`): تُفتَح بمفتاح، وتُرسَل لمن يتكامل
- *     معنا. سطحُها صغيرٌ مقصودٌ ومستقرّ.
- *   • **الواجهةُ الداخليّة**: سطحُ النظام كلُّه — لا تُعطى لأحدٍ من خارجنا،
- *     فهي خريطةُ ما نملك. تُقرأ بحسابٍ إداريّ.
+ * API documentation, built from the router itself so it cannot drift from it.
+ * Why not hand-written: a manual document for 58 route groups ages within a week and silently, so integrators build on routes that no longer exist. This reads from app._router: everything actually mounted, with path, method, parameters and guard, so a new route appears immediately.
+ * Guards are read, not guessed: authenticate, sectionGate('HR'), authorize(...) and requireApiKey(...) are closures, so each is tagged with what it guards (__section, __roles); see middleware/rbac and middleware/sectionGate. The document states per route whether login is needed, which section, and which roles.
+ * Two documents: the partner API (/api/fleet-api), opened by key, small and stable, sent to integrators; and the internal API, the whole system surface, readable only by an admin account.
  */
 const { version } = require('../../package.json');
 const crypto = require('crypto');
 const { routeFields } = require('./apiFieldScan');
 const { routeSamples } = require('./apiSamples');
 
-/** ‏`/api/hr/employees/:id` → `/api/hr/employees/{id}` بصيغة OpenAPI. */
+/** /api/hr/employees/:id becomes /api/hr/employees/{id} in OpenAPI form. */
 const toOpenApiPath = (p) => p.replace(/:([A-Za-z0-9_]+)/g, '{$1}');
 
-/** معاملاتُ المسار كما تُقرأ منه — لا تُكتب في جدولٍ على حدة فتتأخّر عنه. */
+/** Path parameters as read from the path itself, not kept in a separate table that would fall behind. */
 const pathParams = (p) => (p.match(/:([A-Za-z0-9_]+)/g) || []).map((m) => m.slice(1));
 
 /**
- * تعبيرُ المسار الذي بناه إكسبرس → نصُّه كما كُتب.
- *
- * إكسبرس يحوّل `'/employees/:id'` إلى تعبيرٍ نمطيّ ويحتفظ بالمفاتيح بأسمائها،
- * فيُعاد تركيبُ النصّ منهما. ولا يُقرأ المصدرُ النصّيُّ للملفّات: المركَّبُ
- * فعلًا هو الحقيقة، وما في الملفّ قد يكون معلَّقًا أو مشروطًا.
+ * Express-built path expression back to its written text.
+ * Express turns '/employees/:id' into a regular expression and keeps the keys by name, so the text is rebuilt from both. Source files are not parsed as text: what is actually mounted is the truth, while the file may contain commented-out or conditional code.
  */
 function regexpToPath(layer) {
   if (layer.route) return layer.route.path;
@@ -56,7 +35,7 @@ function regexpToPath(layer) {
   return out.replace(/§/g, ':param').replace(/\/$/, '') || '/';
 }
 
-/** ما يحرسه وسيطٌ ما — يُقرأ من تعليقِه لا من اسمِه. */
+/** What a middleware guards, read from its tag, not its name. */
 function guardOf(fn) {
   if (typeof fn !== 'function') return {};
   const out = {};
@@ -68,20 +47,12 @@ function guardOf(fn) {
 }
 
 /**
- * مَسحُ شجرةِ الراوتر إلى قائمةِ مساراتٍ مسطَّحة.
- *
- * كلُّ طبقةٍ إمّا مسارٌ له طرقُه، أو راوترٌ مركَّبٌ تحت بادئة — فيُنزَل فيه
- * بالبادئة نفسِها، وتُورَّث حُرّاسُه إلى ما تحته (الحارسُ المركَّب على
- * `/api/hr` يحرس كلَّ ما فيه).
+ * Walks the router tree into a flat list of routes.
+ * Each layer is either a route with its methods or a router mounted under a prefix, which is descended into with that prefix and passes its guards down to everything below it (a guard mounted on /api/hr guards all of it).
  */
 function walk(stack, prefix = '', inherited = {}) {
   const out = [];
-  // ── والحارسُ لا يتعدّى موضعَه ──────────────────────────────────────────────
-  // `app.use('/api/hr', authenticate, sectionGate('HR'), hrRouter)` يصير في
-  // إكسبرس أربعَ طبقاتٍ متجاورة. فلو جُمعت حُرّاسُ الطبقات في كائنٍ واحدٍ
-  // يمرّ على الإخوة لورث `/api/crm` حارسَ `/api/hr` — فتقول الوثيقةُ إنّ مسارًا
-  // يلزمه قسمٌ ليس قسمَه. فيُحفَظ مع كلّ حارسٍ موضعُه، ولا يرِثه إلّا ما كان
-  // تحته.
+  // A guard does not extend beyond its position. app.use('/api/hr', authenticate, sectionGate('HR'), hrRouter) becomes four adjacent layers in express. Merging all layers' guards into one object passed along siblings would make /api/crm inherit the /api/hr guard, and the document would claim a route needs a section it does not. So each guard keeps its position and only what is beneath it inherits it.
   const atThisLevel = [];
   const inheritedFor = (mount) => {
     const merged = { ...inherited };
@@ -95,11 +66,11 @@ function walk(stack, prefix = '', inherited = {}) {
     if (layer.route) {
       const methods = Object.keys(layer.route.methods || {}).filter((m) => m !== '_all');
       const own = (layer.route.stack || []).reduce((acc, l) => ({ ...acc, ...guardOf(l.handle) }), {});
-      // `router.get('/')` تحت `/api/x` يصير `/api/x/` — والمسارُ واحد، فبلا الشرطة الأخيرة.
+      // router.get('/') under /api/x becomes /api/x/, the same path, so the trailing slash is dropped.
       const full = `${prefix}${layer.route.path}`.replace(/\/{2,}/g, '/').replace(/(.)\/$/, '$1');
       const base = inheritedFor(layer.route.path);
       for (const method of methods) {
-        // الطبقاتُ نفسُها تُحمَل غيرَ قابلةٍ للعدّ — منها تُقرأ الحقول (apiFieldScan) ولا تظهر في الإحصاء.
+        // The layers themselves are carried as non-enumerable: field scanning reads them (apiFieldScan) but they stay out of the statistics.
         const r = { method: method.toUpperCase(), path: full, ...base, ...own };
         Object.defineProperty(r, 'stack', { value: layer.route.stack, enumerable: false });
         out.push(r);

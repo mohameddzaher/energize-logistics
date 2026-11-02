@@ -1,23 +1,8 @@
 /**
- * ربطُ شاحنات «طلبات الشحنات» بأصحابها، وتمييزُ أسطولنا من شاحنات الناقلين.
- *
- * ── الحال قبل ──────────────────────────────────────────────────────────────
- * ثلاثةَ عشرَ ألفَ شاحنةٍ ومئتان استُوردت من تاريخ الطلبات، و**ثلاثةَ عشرَ ألفًا
- * ومئةٌ منها بلا مرجعِ مورّد**. وكان «لا مورّدَ لها» يعني في هذا القسم «من
- * أسطولنا» — فقال العدّادُ «١٣١٠١ من أسطولنا» وأسطولُنا ثمانٍ وخمسون شاحنة.
- * وحين يُضغَط مورّدٌ في نموذج الشحنة لا تظهر له شاحنةٌ واحدة: لا صلةَ بينهما.
- *
- * ── والصلةُ موجودةٌ في الطلبات ───────────────────────────────────────────────
- * كلُّ طلبٍ يحمل لقطتين: اسمَ المورّد ولوحةَ الشاحنة (ستةٌ وثلاثون ألفًا وستُّمئة
- * وثمانيةٌ وعشرون طلبًا). فمن كانت لوحتُه لا تظهر إلّا مع مورّدٍ واحدٍ في التاريخ
- * كلِّه فصاحبُها معروفٌ يقينًا — سبعةُ آلافٍ وخمسُمئةٍ وثلاثٌ وثمانون لوحة. ومن
- * ظهرت لوحتُه مع أكثرَ من مورّدٍ تُترَك: شاحنةٌ عملت لناقلين، أو لوحتان تشابهتا
- * أرقامًا واختلفتا حروفًا. والظنُّ لا يُثبَّت في سجلّ.
- *
- * وأسطولُنا يُعرَف بلوحته من سجلّاتنا الثلاثة (سجلّ المركبات · إدارة الأسطول ·
- * لوكيشن سوليوشن) — ثمانٍ وخمسون شاحنة.
- *
- * الاستعمال:  node src/scripts/linkShipmentOrderFleet.js [--apply]
+ * Links shipment-order trucks to their owners and distinguishes our fleet from carrier trucks.
+ * Trucks imported from order history had no vendor reference, and no vendor was read as our fleet, inflating the fleet counter and leaving vendor forms without trucks.
+ * Each order snapshot carries vendor name and plate: a plate seen with only one vendor in all history has a certain owner; plates seen with several vendors are skipped, since a guess must not be stored. Our fleet is identified by plate across the vehicle registry, fleet management and Location Solutions.
+ * Usage: [--apply]
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -34,19 +19,12 @@ const Ls2Vehicle = require(`${ROOT}/models/Ls2Vehicle`);
 const APPLY = process.argv.includes('--apply');
 
 /**
- * ── ومفتاحُ اللوحة هو القاعدةُ المشتركة لا قاعدةٌ ثالثة ──────────────────────
- *
- * `registryPlateKey` هي ما يُطابِق به سجلُّ المركبات مركباتِه: أرقامٌ وحروفٌ
- * عربيّةً كانت أو لاتينيّة، مطويّةُ الرسم، بلا مسافات. وكتابةُ مفتاحٍ خاصٍّ
- * بهذا السكربت تعني قاعدتين تتباعدان بصمت.
- *
- * والحروفُ داخلةٌ فيه ضرورةً: لوحاتُ أسطولنا تُكتب «5803 RXA»، فلو أُسقطت
- * حروفُها صار مفتاحُها «5803» — فطابقته شاحنةُ مورّدٍ لوحتُها أرقامٌ فقط
- * (والطلباتُ مليئةٌ بها: «0008»، «1002») فحُسبت من أسطولنا وهي ليست منه.
+ * The plate key is the shared rule, not a third one. registryPlateKey is what the vehicle registry uses: digits and letters (Arabic or Latin), folded, no spaces. A private key would let two rules drift apart.
+ * Letters must be included: our plates look like 5803 RXA, so dropping letters yields 5803, which would match carrier trucks with digit-only plates and wrongly count them as ours.
  */
 const { registryPlateKey: plateKey } = require(`${ROOT}/utils/plateKey`);
 
-/** طيُّ اسم المورّد: صورُ الحرف والمسافات لا تصنع موردًا ثانيًا. */
+/** Vendor name fold: letter variants and spacing must not create a second vendor. */
 const nameKey = (v) => String(v || '')
   .replace(/[ً-ْ]/g, '').replace(/[أإآٱ]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه')
   .replace(/\s+/g, ' ').trim().toLowerCase();
@@ -54,7 +32,7 @@ const nameKey = (v) => String(v || '')
 (async () => {
   await mongoose.connect(process.env.MONGODB_URI);
 
-  // ١. أسطولُنا بلوحاته
+  // 1. Our fleet by plates.
   const oursKeys = new Set();
   for (const rows of [
     await VehicleMaster.find({}).select('plateNumber').lean(),
@@ -63,7 +41,7 @@ const nameKey = (v) => String(v || '')
   ]) for (const r of rows) { const k = plateKey(r.plateNumber || r.plate); if (k) oursKeys.add(k); }
   console.log(`مفاتيحُ لوحاتِ أسطولنا: ${oursKeys.size}`);
 
-  // ٢. لوحةٌ → مورّدُها من تاريخ الطلبات، إن كان واحدًا
+  // 2. Plate to its vendor from order history, if only one.
   const pairs = await ShipmentOrder.aggregate([
     { $match: { vehiclePlate: { $nin: ['', null] }, supplierName: { $nin: ['', null] } } },
     { $group: { _id: { p: '$vehiclePlate', s: '$supplierName' }, n: { $sum: 1 } } },
@@ -77,7 +55,7 @@ const nameKey = (v) => String(v || '')
     const nk = nameKey(x._id.s);
     m.set(nk, (m.get(nk) || 0) + x.n);
   }
-  const decisive = new Map();          // مفتاحُ اللوحة → اسمُ المورّد المطويّ
+  const decisive = new Map();          // Plate key to folded vendor name.
   let ambiguous = 0;
   for (const [k, m] of byPlate) {
     if (m.size === 1) decisive.set(k, [...m.keys()][0]);
@@ -85,13 +63,13 @@ const nameKey = (v) => String(v || '')
   }
   console.log(`لوحاتٌ في الطلبات=${byPlate.size} · موردٌ واحدٌ قاطع=${decisive.size} · ملتبسة=${ambiguous}`);
 
-  // ٣. الموردون الموجودون بأسمائهم المطويّة
+  // 3. Existing vendors by folded name.
   const sups = await ShipmentOrderSupplier.find({}).select('name').lean();
   const supByName = new Map();
   for (const s of sups) { const k = nameKey(s.name); if (k && !supByName.has(k)) supByName.set(k, s); }
   console.log(`الموردون المسجَّلون=${sups.length} (بأسماءَ مطويّةٍ مميَّزة=${supByName.size})`);
 
-  // ٤. خطّةُ الكتابة
+  // 4. Write plan.
   const vehicles = await ShipmentOrderVehicle.find({}).select('plate supplier ownership').lean();
   const plan = { ours: [], supplier: [], unknown: [], noSupplierRow: new Set() };
   for (const v of vehicles) {
@@ -115,7 +93,7 @@ const nameKey = (v) => String(v || '')
     await ShipmentOrderVehicle.updateMany({ _id: { $in: plan.ours } },
       { $set: { ownership: 'ours', supplier: null } });
   }
-  // تُكتب دفعاتٍ بالمورّد: تحديثٌ لكلّ مورّدٍ لا لكلّ شاحنة.
+  // Written in batches per vendor: one update per vendor, not per truck.
   const bySup = new Map();
   for (const x of plan.supplier) {
     const k = String(x.sup);

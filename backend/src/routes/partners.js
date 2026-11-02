@@ -1,14 +1,11 @@
 /**
- * /api/partners — العملاء والموردون كقائمة واحدة + حسابات دخولهم.
- *
- * Reads are open to any staff role (the users page and every customer profile
- * page needs them); creating or changing an outside login is limited to the
- * account-admin tier inside the controller.
+ * /api/partners: customers and vendors as one list, plus their login accounts.
+ * Reads are open to any staff role (the users page and every customer profile page need them); creating or changing an outside login is limited to the account-admin tier inside the controller.
  */
 const express = require('express');
 const router = express.Router();
 
-// معرّفٌ مشوَّهٌ في الرابط = لا سجلّ، لا عطلٌ في الخادم — راجع utils/idParam.
+// A malformed id in the URL means no record (404), not a server error; see utils/idParam.
 const { objectIdParam } = require('../utils/idParam');
 router.param('id', objectIdParam());
 const partners = require('../controllers/partnerController');

@@ -1,13 +1,6 @@
 /**
- * auditPageApiGate — أنّ صلاحيّةَ الصفحة تحرس البيانات فعلًا، وأنّها لا تغلق بابًا كان مفتوحًا.
- *
- *   node src/scripts/auditPageApiGate.js --base http://localhost:5199
- *   node src/scripts/auditPageApiGate.js --base https://api.energize-logistics.com
- *
- * ── الخطرُ الذي يُقاس هنا ───────────────────────────────────────────────────
- * هذا حارسٌ على **كلّ** نداءٍ في النظام. فخطؤه في اتّجاه التضييق يوقف الشركة،
- * لا صفحةً واحدة. ولذلك نصفُ الفحص عن المنع، ونصفُه — وهو الأهمّ — عن أنّ ما
- * كان يمرّ ما زال يمرّ: يُجرَّب دورٌ حقيقيٌّ على نقاطِ صفحاته كلِّها.
+ * Checks that page permission truly guards the data and does not close a door that was open.
+ * This guard sits on every call in the system, so an over-narrow mistake stops the company, not one page. Half the audit is about denial; the more important half is that what used to pass still passes: a real role is tried on all its pages' endpoints.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -83,14 +76,12 @@ const head = (t) => console.log(`\n── ${t} ${'─'.repeat(Math.max(0, 56 - t
     ok('يدخل', hLogin.status === 200, String(hLogin.status));
     const hCk = hLogin.ck;
 
-    // نقطةُ صفحةٍ واحدةٍ لا يناديها غيرُها — بها يُقاس المنعُ والسماح.
+    // An endpoint used by only one page, so it measures both denial and allowance.
     const EXCLUSIVE = '/api/workflows/payment-types';
     const owners = Object.entries(PAGE_APIS).filter(([, d]) => (d.apis || []).includes(EXCLUSIVE)).map(([k]) => k);
     ok('النقطةُ حكرٌ على صفحةٍ واحدة', owners.length === 1, owners.join(', '));
 
-    // ── ويُقاس حارسُ الصفحات وحدَه ────────────────────────────────────────
-    // ٤٠٣ قد تأتي من حارس القسم أو من قائمة أدوار المسار، وهما غيرُ ما نقيس.
-    // فالمقياسُ رمزُ الردّ لا رقمُه.
+    // Only the page guard is measured. A 403 may come from the section guard or the route's role list, which are not being measured, so the measure is the response code, not its number.
     const pageBlocked = (r) => r.status === 403 && r.body?.code === 'PAGE_FORBIDDEN';
     const before = await call(hCk, EXCLUSIVE);
     ok('لا يمنعها حارسُ الصفحات والصفحةُ مفتوحة', !pageBlocked(before), `${before.status} ${before.body?.code || ''}`);
@@ -99,7 +90,7 @@ const head = (t) => console.log(`\n── ${t} ${'─'.repeat(Math.max(0, 56 - t
 
     head('تُغلَق صفحةٌ واحدة');
     ok('يُحفَظ الإغلاق', await grant({ '/system/operations/payment-types': false }) === 200);
-    // ستُّ قراءات: العاملان.
+    // Six reads: the two workers.
     const after = [];
     for (let i = 0; i < 6; i += 1) after.push((await call(hCk, EXCLUSIVE)).status);
     ok('تُردّ ٤٠٣ من العاملَين معًا', after.every((s) => s === 403), after.join(' '));
@@ -111,9 +102,8 @@ const head = (t) => console.log(`\n── ${t} ${'─'.repeat(Math.max(0, 56 - t
     ok('وجارتُها لم تُمسّ', stillShared.status === 200, String(stillShared.status));
     const stillWorkflows = await call(hCk, '/api/workflows?limit=1');
     ok('وقاعدةُ القسم لم تُمسّ', !pageBlocked(stillWorkflows), `${stillWorkflows.status} ${stillWorkflows.body?.code || ''}`);
-    // ── ومنحُ القسم يفتح سيرَ العمل فعلًا ──────────────────────────────────
-    // كان `/api/workflows` بلا قسمٍ يملكه، فيُمنَح الدورُ «العمليات» ثمّ لا يفتح
-    // أكبرَ شاشةٍ فيها. راجع config/sections.
+    // Granting the section really opens workflows.
+    // /api/workflows had no owning section, so the operations role could be granted and still not open its biggest screen. See config/sections.
     ok('ومنحُ «العمليات» يفتح سير العمل', stillWorkflows.status === 200, String(stillWorkflows.status));
 
     head('نقاطُ الإطار لا تُغلَق أبدًا');
@@ -127,9 +117,7 @@ const head = (t) => console.log(`\n── ${t} ${'─'.repeat(Math.max(0, 56 - t
 
     // ══════════════════════════════════════════════════════════════════════
     head('ولا يُغلَق بابٌ كان مفتوحًا');
-    // ══════════════════════════════════════════════════════════════════════
-    // هذا نصفُ الفحص الأهمّ: دورٌ حقيقيٌّ بصلاحيّاته المعتادة، تُجرَّب عليه نقاطُ
-    // صفحاته كلِّها. أيُّ ٤٠٣ من حارس الصفحات هنا عطبٌ يوقف موظّفًا عن عمله.
+    // The more important half of the audit: a real role with its usual permissions is tried on all its pages' endpoints. Any 403 from the page guard here is a fault that stops an employee working.
     const REAL = 'collections_staff';
     await User.deleteMany({ email: /^zz-gate-real/ });
     const real = await User.create({ email: 'zz-gate-real@example.invalid', password: PW, firstName: 'م', lastName: 'ح', role: REAL });

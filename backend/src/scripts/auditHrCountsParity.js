@@ -1,4 +1,4 @@
-/** يقارن العدَّ في القاعدة بالعدّ في العقدة، حقلًا حقلًا. لا يكتب. */
+/** Compares the database count with the node count, field by field. Writes nothing. */
 require('dotenv').config();
 const mongoose = require('mongoose');
 (async () => {

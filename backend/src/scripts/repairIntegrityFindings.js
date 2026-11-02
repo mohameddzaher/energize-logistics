@@ -1,26 +1,8 @@
 /**
- * repairIntegrityFindings — ما وجده فحصُ السلامة، يُصلَح هنا.
- *
- *   node --max-old-space-size=8192 src/scripts/repairIntegrityFindings.js --dry
- *
- * ثلاثةُ إصلاحاتٍ لا رابعَ لها، وكلٌّ منها يُطبَع قبل أن يُكتب:
- *
- *  ① دفترُ العهدة يُعاد حسابُه من حركاته.
- *    وُجد يومٌ في الدمّام مجموعُ مشترياته ٧٥٠ ولا حركةَ شراءٍ فيه — مبلغٌ يدخل
- *    الرصيدَ ولا سطرَ يفسّره. تُعاد المجاميعُ من الحركات لكلّ يوم، ثمّ تُسلسَل
- *    الافتتاحيّاتُ من أوّل يومٍ في كلّ فرع — إذ ختاميُّ اليوم افتتاحيُّ ما بعده،
- *    فتصحيحُ يومٍ بلا تسلسلٍ يترك ما بعده محسوبًا على رقمٍ زال.
- *
- *  ② الكشفُ النقديُّ لا يحمل مبالغَ فاتورة.
- *    قلبُ نوعِ الدفع من الشاشة يُفرّغ خاناتِ الفاتورة (applyBillingRules)، أمّا
- *    القلبُ بسكربتٍ فيكتب الحقلَ وحدَه. فبقيت أربعةُ كشوفٍ نقديّةٍ تحمل صافيَ
- *    فاتورةٍ وضريبةً وإجماليًّا — أرقامٌ تُجمَع في تقارير الضريبة عن كشوفٍ لا
- *    فاتورةَ لها. تُفرَّغ كما تُفرَّغ من الشاشة تمامًا.
- *
- *  ③ «غير مطلوب» ليست رقمًا وظيفيًّا.
- *    ستّةُ موظّفين (كلُّهم منتهُو الخدمة) رقمُهم الوظيفيُّ النصُّ «غير مطلوب» —
- *    عبارةٌ من ورقة المصدر وقعت في خانة الرقم، فصاروا يتشاركون «رقمًا» واحدًا.
- *    والفراغُ هو الصادق: لا رقمَ لهم.
+ * repairIntegrityFindings: fixes for what the integrity check found. Usage: node --max-old-space-size=8192 src/scripts/repairIntegrityFindings.js --dry Three fixes only, each printed before it is written: 1) The custody ledger is
+ * recomputed from its movements. A day had a purchases total with no purchase movement behind it. Totals are recomputed per day from movements, then openings are chained from the first day of each branch, since a day's closing is
+ * the next day's opening. 2) A cash statement must not carry invoice amounts. Flipping payment type from a script writes only that field, unlike the screen (applyBillingRules), leaving cash statements with invoice net, tax and total.
+ * They are cleared exactly as the screen clears them. 3) The text 'not required' is not a job number. Six ended employees had that sheet phrase in the number field and so shared one 'number'. Empty is the truthful value.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -39,7 +21,7 @@ const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
   console.log(DRY ? '— تجربة، بلا كتابة —\n' : '');
 
-  // ═══ ① دفترُ العهدة ════════════════════════════════════════════════════
+  // 1) Custody ledger
   console.log('① دفترُ العهدة — يُعاد من حركاته ثمّ يُسلسَل');
   let fixedTotals = 0; let fixedChain = 0;
   for (const b of await Branch.find({}).select('name').lean()) {
@@ -51,8 +33,7 @@ const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
       const col = sum('collection'); const exp = sum('expense'); const pur = sum('purchase');
       const totalsWrong = col !== r2(w.totalCollections) || exp !== r2(w.totalExpenses) || pur !== r2(w.totalPurchases);
 
-      // الافتتاحيُّ يتبع ختاميَّ ما قبله — إلّا أوّلَ يومٍ في الفرع، وإلّا
-      // الافتتاحيّاتِ التي صُحِّحت يدًا بأمرِ صاحب الشركة (١ سبتمبر).
+      // An opening follows the previous closing, except the first day of a branch and openings corrected by hand on the owner's order.
       const keepOpening = carry === null || w.date === '2026-09-01';
       const opening = keepOpening ? r2(w.openingBalance) : carry;
       const chainWrong = !keepOpening && r2(w.openingBalance) !== carry;
@@ -68,8 +49,7 @@ const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
         if (!DRY) {
           w.totalCollections = col; w.totalExpenses = exp; w.totalPurchases = pur;
           w.openingBalance = opening;
-          // النقدُ المعدود ينتقل مع الختاميّ متى كان مساويًا له (فرقٌ صفر)؛
-          // وفرقٌ معدودٌ حقيقيٌّ واقعةٌ تبقى.
+          // The counted cash moves with the closing when equal to it (zero difference); a real counted difference is a fact and stays.
           if (w.actualCash != null && r2(w.actualCash) === r2(w.closingBalance)) { w.actualCash = closing; w.cashDifference = 0; }
           w.closingBalance = closing;
           await w.save();
@@ -80,7 +60,7 @@ const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
   }
   console.log(`   ${DRY ? 'سيُصحَّح' : 'صُحِّح'}: ${fixedTotals} مجموعًا · ${fixedChain} افتتاحيًّا\n`);
 
-  // ═══ ② الكشفُ النقديّ ══════════════════════════════════════════════════
+  // 2) Cash statement
   console.log('② الكشفُ النقديُّ لا يحمل مبالغَ فاتورة');
   const cash = await OW.find({
     paymentType: 'cash',
@@ -95,7 +75,7 @@ const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
   }
   console.log(`   ${DRY ? 'سيُفرَّغ' : 'فُرِّغ'}: ${cash.length} كشفًا\n`);
 
-  // ═══ ③ الرقمُ الوظيفيّ ═════════════════════════════════════════════════
+  // 3) Job number
   console.log('③ «غير مطلوب» ليست رقمًا وظيفيًّا');
   const bad = await Employee.find({ employeeNumber: /^\s*غير\s*مطلوب\s*$/ })
     .select('employeeNumber arabicName englishName employmentStatus').lean();

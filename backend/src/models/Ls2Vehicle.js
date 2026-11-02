@@ -46,8 +46,7 @@ const ls2VehicleSchema = new mongoose.Schema({
   maxTirePressurePsi: Number,
   minTirePressurePsi: Number,
   tireFaults: Number,
-  // قراءةٌ محمولةٌ من نبضةٍ سابقة لأن الرسالة الأخيرة خلت من الإطارات — تُعرَض
-  // ولا يُبنى عليها تنبيهُ حرارةٍ أو ضغط: التنبيه يقتضي قراءةً طازجة.
+  // Reading carried over from an earlier heartbeat because the latest message had no tires. Shown, but never used for temperature or pressure alerts, which need a fresh reading.
   tiresCarriedOver: { type: Boolean, default: false },
   // Manual, optional: tire brand/type (e.g. Continental) — entered by staff, NOT
   // from Wialon (TPMS sensors don't report brand). Poll upserts never touch it.
@@ -119,9 +118,8 @@ const ls2VehicleSchema = new mongoose.Schema({
 
   lastSyncedAt: { type: Date },
 
-  // ── مركبتُها في سجلّ المركبات — المرجعُ لا النسخة ─────────────────────────
-  // تُربط عند مزامنة الهويّة بالمفتاح الموحَّد للّوحة (services/ls2VehicleLink)،
-  // والهويّةُ والمستنداتُ تُقرأ من هناك عند العرض. وما في `profile` هو «حسب الجهاز».
+  // Its vehicle in the vehicle register: a reference, not a copy.
+  // Linked on identity sync by the unified plate key (services/ls2VehicleLink); identity and documents are read from there. `profile` holds the per-device data.
   vehicleMaster: { type: mongoose.Schema.Types.ObjectId, ref: 'VehicleMaster', default: null, index: true },
 }, { timestamps: true });
 

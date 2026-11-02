@@ -1,25 +1,8 @@
 /**
- * dedupeContracts — عقدان لفترةٍ واحدة: يبقى الذي يحمل رقمَه.
- *
- *   node src/scripts/dedupeContracts.js --dry
- *   node src/scripts/dedupeContracts.js --yes
- *
- * ── ما وقع ─────────────────────────────────────────────────────────────────
- * خمسةُ موظّفين يحملون عقدين بتاريخَي بدايةٍ ونهايةٍ متطابقين. والتوأمُ في كلّ
- * حالةٍ واحد: بلا رقمِ عقد، أُنشئ في دفعةِ استيرادٍ يومَي ٢٧ و٢٩ أغسطس.
- *
- * ── ولماذا يُحذَف ──────────────────────────────────────────────────────────
- * عقدان «ساريان» لموظّفٍ واحدٍ ليسا زيادةً بلا أثر:
- *   · رصيدُ الإجازات يُحسب على العقد الجاري — فأيُّهما؟
- *   · تقريرُ الانتهاءات يعدّ الموظّفَ مرّتين
- *   · وأسماء جميل يقول شيتُها «تم إنهاء العقد» ويقول توأمُها «ساري»، فتظهر
- *     على رأس العمل وقد انتهى عقدُها
- *
- * ── وشرطُ الحذف ضيّقٌ عن قصد ───────────────────────────────────────────────
- * لا يُحذف عقدٌ إلّا إذا اجتمع فيه كلُّ هذا: بلا رقمِ عقد، وله توأمٌ لنفس
- * الموظّف بنفس تاريخَي البداية والنهاية، والتوأمُ **يحمل** رقمَ عقد، ولا
- * `renewedFrom` عليه (فليس ثمرةَ تجديد)، ولا `createdBy` (فلم ينشئه إنسانٌ من
- * الشاشة). ما نقص عنه شرطٌ واحدٌ يُترك ويُقال.
+ * dedupeContracts: two contracts for one period, keep the one with a contract number.
+ * --dry previews, --yes applies.
+ * Five employees had twin contracts with identical dates; the twin has no number and came from an import batch. Two active contracts per employee break leave balance and expiry reports.
+ * Deletion is deliberately narrow: no number, a twin with the same dates that has a number, no renewedFrom, no createdBy. Anything else is left and reported.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -53,7 +36,7 @@ const DRY = !process.argv.includes('--yes');
       if (group.length < 2) continue;
       const numbered = group.filter((c) => String(c.contractNumber || '').trim());
       const blank = group.filter((c) => !String(c.contractNumber || '').trim());
-      // لا يُحذف شيءٌ إلّا وله أصلٌ واضحٌ يحمل الرقم.
+      // Delete only when a clear original holding the number exists.
       if (numbered.length !== 1 || !blank.length) {
         spared.push({ emp, sp, why: `${numbered.length} برقمٍ و${blank.length} بلا رقم — لا أصلَ واحدًا واضحًا` });
         continue;

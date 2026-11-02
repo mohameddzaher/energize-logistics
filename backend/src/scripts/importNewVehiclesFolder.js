@@ -1,30 +1,9 @@
 /* eslint-disable no-console */
 /**
- * importNewVehiclesFolder — تحديث قسم المركبات من مجلّد «new vehicles files».
- *
- *   node src/scripts/importNewVehiclesFolder.js --dry
- *   node src/scripts/importNewVehiclesFolder.js --yes
- *
- * المجلّد مجموعة ملفات مترابطة بمَنيفست يصف علاقاتها: ٣٣٥ مركبة، ٢٥ حادثًا،
- * ٤٩ وثيقة تأمين، ٣ وثائق عامة، و٢٤٠ جهاز تتبّع و٣٢٥ شريحة وقود مرتبطة بمركباتها،
- * وقوائم نواقص وتنبيهات.
- *
- * ── ما يُخزَّن وما يُشتَقّ ────────────────────────────────────────────────────
- * تُخزَّن الحقائق: المركبة، ووثيقة التأمين ككيان مستقل (وثيقة واحدة تغطّي مئات
- * المركبات)، والحادث، والوثيقة العامة، وحالة كل مستند وسببها.
- *
- * ولا يُخزَّن ما يُشتَقّ: التنبيهات (٤٦٣) وأيام التبقّي محسوبة مقابل تاريخ اللقطة،
- * وتخزينها يعني أن تعرض الشاشة «باقٍ ١٣٦ يومًا» بعد شهرين. تُحسَب لحظة العرض.
- * وكذلك قوائم المُلّاك والمفوَّضين ومزوّدي التتبّع — كلها تجميعات على المركبات،
- * والشاشة تبنيها من المركبات نفسها فلا تتناقض معها أبدًا.
- *
- * ── وتقرير جودة الملف يُؤخَذ به ─────────────────────────────────────────────
- * الملف نفسه يحذّر أن عمود التاريخ الهجري **معادلة تعكس الميلادي** في ٣١٣ مركبة
- * (رخصة السير) و٢٥١ (الفحص) — أي أنه ليس هجريًّا. فلا يُخزَّن، ويُحسب الهجري عند
- * العرض إن لزم. تخزينه كان سيملأ الشاشة بتواريخ هجرية كاذبة.
- *
- * ── والملف لا يدوس على عمل موظف ────────────────────────────────────────────
- * التاريخ الذي جُدِّد من الشاشة بعد لقطة الملف يبقى، ويُطبع ما تُرك.
+ * importNewVehiclesFolder: update the vehicles section from the new vehicles files folder.
+ * Usage: --dry or --yes.
+ * The folder is a set of linked files with a manifest describing the relations: 335 vehicles, 25 accidents, 49 insurance policies, 3 general documents, 240 tracking devices, 325 fuel chips, plus gap and alert lists.
+ * Stored: the facts (vehicle, insurance policy as its own entity covering hundreds of vehicles, accident, general document, each document's status and reason). Derived and not stored: the 463 alerts and days remaining (measured against the snapshot date; stored they would show 136 days left two months later), and the owner, authorized-person and tracking-provider lists, which the screen aggregates from the vehicles. The file's own quality report is followed: the Hijri column is a formula mirroring the Gregorian one (313 vehicles for the license, 251 for inspection), so it is not stored and is computed at display if needed. Dates renewed from the screen after the snapshot are kept and the skipped ones are printed.
  */
 require('dotenv').config();
 const path = require('path');
@@ -37,7 +16,7 @@ const S = (v) => (v === null || v === undefined ? '' : String(v).trim());
 const D = (v) => { if (!v) return null; const d = new Date(v); return isNaN(d) ? null : d; };
 const N = (v) => (v === null || v === undefined || v === '' ? null : Number(v));
 
-// بند النقص في الملف → مفتاح المستند عندنا
+// Gap item in the file to our document key
 const ITEM_TO_DOC = {
   'التأمين': 'insurance',
   'بطاقة التشغيل': 'operatingCard',
@@ -76,8 +55,8 @@ const ITEM_TO_DOC = {
   const kept = [];
   const notes = [];
 
-  // ── ① وثائق التأمين ────────────────────────────────────────────────────────
-  const policyByNumber = new Map();   // رقم الوثيقة → _id
+  // 1. Insurance policies
+  const policyByNumber = new Map();   // Policy number to _id
   for (const p of policies) {
     const num = S(p.policy_number);
     if (!num) { notes.push(`${p.id}: وثيقة بلا رقم — تُخطَّت`); continue; }
@@ -91,15 +70,14 @@ const ITEM_TO_DOC = {
       isActive: true,
     };
     if (DRY) {
-      // في وضع التجربة نبني الخريطة أيضًا (بمعرّف وهمي) حتى يكون تقرير الربط
-      // صادقًا؛ وإلا بدت كل مركبة كأن وثيقتها مفقودة.
+      // Dry-run also builds the map (with a fake id) so the link report is honest; otherwise every vehicle looks like its policy is missing.
       policyByNumber.set(num, 'dry');
       sum.policies++;
       continue;
     }
     let found = await VehicleInsurancePolicy.findOne({ policyNumber: num });
     if (found) {
-      // تاريخ جدَّده موظف بعد اللقطة لا يُداس عليه
+      // A date renewed by staff after the snapshot is not overwritten
       const userRenewal = (found.renewals || [])
         .filter((r) => r.at && new Date(r.at) > snapshot)
         .sort((a, b) => new Date(b.at) - new Date(a.at))[0];
@@ -118,7 +96,7 @@ const ITEM_TO_DOC = {
     sum.policies++;
   }
 
-  // ── ② نواقص البيانات: مركبة → بنودها بأسبابها ────────────────────────────
+  // 2. Data gaps: vehicle to its items with reasons
   const missingByVehicle = new Map();
   for (const m of missing) {
     const items = (m.missing || []).map((x) => ({
@@ -130,7 +108,7 @@ const ITEM_TO_DOC = {
     sum.missingItems += items.length;
   }
 
-  // ── ③ المركبات ────────────────────────────────────────────────────────────
+  // 3. Vehicles
   const idToVehicle = new Map();
   for (const v of vehicles) {
     const idn = v.identity || {}; const asg = v.assignment || {}; const own = v.ownership || {};
@@ -144,10 +122,7 @@ const ITEM_TO_DOC = {
     idToVehicle.set(v.id, { plate, key, vin });
 
     const st = (x) => VDOC.mapSentinel(x);
-    // ── النص الدلالي لا يُخزَّن كقيمة ──────────────────────────────────────────
-    // الملف يترك «مطلوب» و«غير مطلوب» مكتوبةً داخل خانة القيمة، ويضع رمزها في
-    // الحقل المجاور. نسخُها كما هي يجعل «مطلوب» تظهر كأنها **شركة تتبّع** لها
-    // ٤٥ مركبة، و«غير مطلوب» موديلَ جهاز له ٥٠. القيمة تُفرَّغ ويبقى الرمز.
+    // Semantic text is not stored as a value. The file leaves the required and not-required words in the value cell and puts their code in the adjacent field. Copying them would show required as a tracking company with 45 vehicles and not-required as a device model with 50. The value is cleared and the code kept.
     const val = (v, status) => (status ? '' : S(v));
     const doc = {
       source_row: v.source_row ?? null,
@@ -160,8 +135,7 @@ const ITEM_TO_DOC = {
       modelAr: S(idn.model_name),
       modelYear: N(idn.model_year),
       colorAr: val(idn.color, idn.color_status),
-      // المسافات الزائدة في أسماء الأقسام تصنع قيمتين لقسم واحد — يحذّر منها
-      // تقرير جودة الملف، والتنظيف هنا لا في الشاشة.
+      // Trailing spaces in department names make two values for one department; the file's quality report warns about it, and the cleanup is done here, not on screen.
       sectorAr: S(asg.sector),
       departmentAr: val(asg.department, asg.department_status),
       cityAr: val(asg.city, asg.city_status),
@@ -191,7 +165,7 @@ const ITEM_TO_DOC = {
       'vehicleLicense.statusCode': st(lic.expiry_gregorian_status),
       'inspection.statusAr': val(insp.status, insp.status_code),
       'inspection.statusCode': st(insp.expiry_gregorian_status),
-      // التاريخ الهجري في الملف معادلة تعكس الميلادي — لا يُخزَّن (تقرير الجودة).
+      // The file's Hijri date is a formula mirroring the Gregorian one; not stored (quality report).
       'vehicleLicense.expiryDateHijri': '',
       'inspection.expiryDateHijri': '',
       missingItems: missingByVehicle.get(v.id) || [],
@@ -241,7 +215,7 @@ const ITEM_TO_DOC = {
     sum.vehiclesUpdated++;
   }
 
-  // ── ④ الحوادث ─────────────────────────────────────────────────────────────
+  // 4. Accidents
   for (const a of accidents) {
     const sub = a.subject || a.vehicle || {};
     const cp = a.counterparty || {}; const cl = a.claim || {};
@@ -254,8 +228,7 @@ const ITEM_TO_DOC = {
     const doc = {
       claimId: S(a.id) || S(a.accident_id),
       sourceRow: a.source_row ?? null,
-      // سطر واحد في الملف «تلف بضاعة» — مطالبة بضاعة لا حادث مركبة. يحذّر منه
-      // تقرير الجودة، والفلاج يفصله بدل أن يظهر كمركبة مجهولة.
+      // One row is the goods-damage claim, a cargo claim and not a vehicle accident (flagged by the quality report); the flag separates it instead of showing it as an unknown vehicle.
       isVehicleIncident: !!linked,
       incidentSubjectAr: label,
       vehiclePlate: linked ? plate : '',
@@ -289,7 +262,7 @@ const ITEM_TO_DOC = {
     else { await VehicleClaim.create(doc); sum.claims++; }
   }
 
-  // عدّاد حوادث المركبة محسوب من مطالباتها الفعّالة
+  // Vehicle accident counter is computed from its effective claims
   if (!DRY) {
     await VehicleMaster.updateMany({}, { $set: { accidentCount: 0 } });
     const keys = [...new Set((await VehicleClaim.find({ isActive: true }).select('vehiclePlateKey').lean())
@@ -300,7 +273,7 @@ const ITEM_TO_DOC = {
     }
   }
 
-  // ── ⑤ الوثائق العامة ──────────────────────────────────────────────────────
+  // 5. General documents
   for (const g of generalDocs) {
     const doc = {
       scopeAr: S(g.document_name),

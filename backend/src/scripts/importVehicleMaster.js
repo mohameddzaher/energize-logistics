@@ -1,7 +1,5 @@
 /* eslint-disable no-console */
-// استيراد ماستر المركبات 2026 — يمسح السجل القديم بالكامل ويُدخل الـ326 مركبة
-// من الملف المسطّح (vehicles_2026_flat.json). شغّله مرة واحدة:
-//   node src/scripts/importVehicleMaster.js
+// Imports the 2026 vehicle master: wipes the old registry and inserts the 326 vehicles from vehicles_2026_flat.json. Run once.
 require('dotenv').config();
 const path = require('path');
 const mongoose = require('mongoose');
@@ -91,7 +89,7 @@ async function main() {
   const res = await VehicleMaster.insertMany(docs, { ordered: false });
   console.log(`Inserted ${res.length} vehicles`);
 
-  // ملخّص سريع للتحقّق
+  // Quick summary for verification.
   const bySector = {};
   for (const v of docs) bySector[v.sectorAr || '—'] = (bySector[v.sectorAr || '—'] || 0) + 1;
   console.log('By sector:', bySector);

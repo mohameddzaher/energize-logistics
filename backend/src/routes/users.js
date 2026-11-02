@@ -2,7 +2,7 @@ const express = require('express');
 const { body } = require('express-validator');
 const router = express.Router();
 
-// معرّفٌ مشوَّهٌ في الرابط = لا سجلّ، لا عطلٌ في الخادم — راجع utils/idParam.
+// A malformed id in the URL means no record (404), not a server error; see utils/idParam.
 const { objectIdParam } = require('../utils/idParam');
 router.param('id', objectIdParam());
 const userController = require('../controllers/userController');
@@ -11,35 +11,18 @@ const authorize = require('../middleware/rbac');
 const validate = require('../middleware/validate');
 const User = require('../models/User');
 
-// ── مصدرُ الأدوار الصحيحة ────────────────────────────────────────────────────
-// كان `User.schema.path('role').enumValues` — وهي `enum` تُبنى مرّةً عند تحميل
-// الملفّ من `config/roles.js`. وقد سقطت تلك `enum` حين صار النظامُ يقبل أنواعًا
-// تُصنَع من الشاشة (راجع models/User)، فصار المصدرُ ملفَّ الأدوار مباشرةً — وهو
-// ما كانت تعنيه `enum` أصلًا.
+// Source of the valid roles. It used to be `User.schema.path('role').enumValues`, an `enum` built once at file load from `config/roles.js`. That `enum` was dropped when the system began accepting types created from the screen (see models/User), so the source is now the roles file directly, which is what the `enum` always meant.
 const { ALL_ROLE_DEFS, sectionOfRole, isManager } = require('../config/roles');
 
 router.use(authenticate);
 
 /**
- * GET /api/users/roles — قائمةُ الأدوار التي يقبلها الخادم فعلًا.
- *
- * ── ولماذا تُقرأ ولا تُكتب في الشاشة ──────────────────────────────────────
- * كانت الشاشة تحمل قائمةً مكتوبةً بيدها، فانحرفت عن الحقيقة في الاتّجاهين معًا:
- * أربعةُ أدوار تعرضها ولا وجود لها («b2c_project_manager» بينما اسمه الحقيقيّ
- * `b2c_project_lead`) — تختارها فيردّ الخادم «الدور غير صالح» بلا أن يقول أيّ
- * دورٍ يقبل؛ وثلاثةٌ وعشرون دورًا صحيحًا لا تظهر أصلًا، فلا سبيل إلى إسنادها من
- * الشاشة إطلاقًا. وكلّ دورٍ يُضاف بعد اليوم كان سيغيب عنها بالطريقة نفسها.
- *
- * ومعها القسمُ ومَن يديره: الشاشة تحتاجهما لتقترح المدير المباشر عند اختيار
- * الدور، وحسابُهما هنا يجعل الاقتراح يتبع تعريف الأدوار وحده.
+ * GET /api/users/roles: the list of roles the server actually accepts.
+ * Why it is read, not hand-written in the screen: the screen carried a hand-written list that drifted both ways. Four roles it showed do not exist (for example 'b2c_project_manager' where the real name is `b2c_project_lead`), so choosing one got 'invalid role' without saying which roles are accepted; and twenty-three valid roles never appeared, so they could not be assigned from the screen at all. Every role added later would have been missed the same way.
+ * It also returns the section and who manages it: the screen needs them to suggest the direct manager when a role is chosen, and computing them here keeps the suggestion following the role definitions alone.
  */
-// ── وتُقرأ بعد تسجيل الدخول ────────────────────────────────────────────────
-// كانت مسجَّلةً قبل `authenticate` فكانت مفتوحةً للإنترنت: تُنادى بلا حساب
-// فتُسلّم بنيةَ الأدوار كلَّها بأسمائها وأقسامها ومن يُعدّ مديرًا — خريطةُ
-// تنظيمِ الشركة لمن سأل. وليست سرًّا خطيرًا، لكنّها ليست للعموم، ولا سببَ
-// يجعلها كذلك: لا تُقرأ إلّا من شاشاتٍ خلف تسجيل الدخول.
-//
-// (وجدها فحصُ توثيق الـ API: مسارٌ بلا حارسٍ مقروء — راجع `scripts/checkApiDocs`.)
+// Read after login. It used to be registered before `authenticate`, so it was open to the internet: anyone could get the whole role structure with names, sections and who counts as a manager, the company's org chart. Not a dangerous secret, but not for the public, and nothing needs it public: it is only read from screens behind login.
+// (Found by the API documentation check: a route with no readable guard; see `scripts/checkApiDocs`.)
 router.get('/roles', async (req, res) => {
   const roles = ALL_ROLE_DEFS.map((d) => ({
     key: d.key,
@@ -47,24 +30,19 @@ router.get('/roles', async (req, res) => {
     en: d.en,
     section: sectionOfRole(d.key) || '',
     isManager: isManager(d.key),
-    // ── وما يميّز الدورَ يُرسَل معه ────────────────────────────────────────
-    // كان `distinct` مكتوبًا في `config/roles` ولا يُرَدّ، فلا يُقرأ في شاشة
-    // إنشاء المستخدم. ومن أراد «مشرف تفقّد» بحث عن دورٍ بهذا الاسم فلم يجده —
-    // والتفقّدُ إسنادٌ لا دور، وهذا السطرُ هو ما يقوله.
+    // What distinguishes the role is sent with it. `distinct` was written in `config/roles` but not returned, so the create-user screen could not read it. Someone wanting a duty-check supervisor searched for a role by that name and did not find it; duty check is an assignment, not a role, and this line says so.
     distinct: d.distinct || '',
     custom: false,
   }));
 
-  // ── وما صُنع من شاشة الصلاحيّات يُسنَد كغيره ──────────────────────────────
-  // نوعٌ يُصنَع ولا يظهر في قائمة إنشاء المستخدمين نوعٌ لا يمكن استعمالُه —
-  // يُضبط بابُه ثمّ لا يدخله أحد.
+  // A type created from the permissions screen is assignable like any other. A type that is created but missing from the create-user list is unusable: its access is configured and nobody can enter.
   try {
     const CustomRole = require('../models/CustomRole');
     const custom = await CustomRole.find({ isActive: true }).sort({ createdAt: 1 }).lean();
     custom.forEach((c) => roles.push({
       key: c.key, ar: c.nameAr, en: c.nameEn, section: '', isManager: false, custom: true,
     }));
-  } catch (_) { /* الأنواعُ المصنوعة إضافةٌ لا شرط */ }
+  } catch (_) { /* Created types are an addition, not a requirement. */ }
 
   res.json({ roles });
 });
@@ -80,9 +58,7 @@ router.post(
     body('password').isLength({ min: 8 }).withMessage('كلمة المرور 8 أحرف على الأقل | Password must be at least 8 characters'),
     body('firstName').notEmpty().trim(),
     body('lastName').notEmpty().trim(),
-    // ── والدورُ يُقاس على المصدرين ────────────────────────────────────────
-    // `isIn` بقائمةٍ تُبنى مرّةً عند التحميل ترفض النوعَ المصنوعَ بعد إقلاع
-    // الخادم: يظهر في القائمة المنسدلة ويُرفَض عند الحفظ.
+    // The role is checked against both sources. `isIn` with a list built once at load rejects a type created after the server started: it shows in the dropdown and is rejected on save.
     body('role').custom(async (v) => {
       const { ALL_ROLES } = require('../config/roles');
       if (ALL_ROLES.includes(v)) return true;

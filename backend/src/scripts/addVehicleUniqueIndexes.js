@@ -1,13 +1,9 @@
 /* eslint-disable no-console */
 /**
- * addVehicleUniqueIndexes — يثبّت تفرّد الأرقام الرسميّة في سجلّ المركبات.
- *
- *   node src/scripts/addVehicleUniqueIndexes.js --dry
- *   node src/scripts/addVehicleUniqueIndexes.js --yes
- *
- * الفهرس في المخطَّط لا يُنشأ وحده على مجموعةٍ قائمة، ولا يُنشأ إن كان فيها
- * تكرارٌ أصلًا. فهذا السكربت يفحص التكرار أوّلًا ويسمّيه، ولا يبني إلّا ما صحّ
- * — بناءُ فهرسٍ يفشل في منتصف النشر أسوأ من فهرسٍ لم يُبنَ.
+ * addVehicleUniqueIndexes: enforces uniqueness of official numbers in the vehicle registry.
+ * node src/scripts/addVehicleUniqueIndexes.js --dry
+ * node src/scripts/addVehicleUniqueIndexes.js --yes
+ * A schema index is not created on its own on an existing collection, and not at all if duplicates exist. This script checks and names duplicates first and builds only what is valid, since an index build failing midway through a deploy is worse than an unbuilt index.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');

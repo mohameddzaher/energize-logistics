@@ -1,20 +1,7 @@
 /**
- * employeeClearance — إخلاءُ طرفٍ قبل إنهاء الخدمة.
- *
- * ── لماذا ───────────────────────────────────────────────────────────────────
- * أُنهيت خدمةُ موظّفٍ وهو مفوَّضٌ على مركبةٍ من قسم المركبات. فبقيت المركبةُ
- * مقيَّدةً باسم مَن لم يعد موظّفًا: لا مَن يُسأل عنها إن خُولفت، ولا مَن يُطالَب
- * بها إن فُقدت. والقسمُ الذي يملك المركبةَ لم يعلم أصلًا أنّ الرجل غادر.
- *
- * وكان الشرطُ الوحيدُ في `terminateEmployee` هو عهدةُ الأصول. وهي ليست كلَّ ما
- * يحمله موظّف: يحمل تفويضَ مركبة، وحسابَ دخولٍ إلى النظام، وبريدًا مؤسّسيًّا،
- * ومحفظةً فيها نقد. وكلُّ واحدةٍ منها يُصفّيها قسمٌ آخر — فالقائمةُ ليست منعًا
- * تعسّفيًّا بل عنوانُ مَن يُكلَّم قبل الإنهاء.
- *
- * ── وما يمنع وما يُنبِّه ────────────────────────────────────────────────────
- * ما يمنع: ما يبقى بعد الرحيل بلا صاحبٍ — عهدةٌ، تفويضٌ، نقدٌ في محفظة.
- * وما يُنبِّه: ما يُغلَق بضغطة ولا يُفقَد به شيء — حسابُ دخولٍ وبريد. فالمنعُ
- * فيهما يوقف الإنهاء لأجل ما يمكن أن يُعالَج بعده.
+ * employeeClearance: clearance checks before ending an employee's service.
+ * Terminating an employee who was authorised on a vehicle left the vehicle registered to a non-employee, and the owning department never learned. The only prior check was asset custody, which is not all an employee holds: vehicle authorisation, a system login, a company email and a wallet with cash, each cleared by a different department.
+ * Blocks: what would be left ownerless after departure (custody, authorisation, wallet cash). Warns: what is closed in one click with no loss (login, email).
  */
 const mongoose = require('mongoose');
 
@@ -23,19 +10,12 @@ const fold = (x) => String(x || '')
   .replace(/[^\u0600-\u06FFa-zA-Z0-9]/g, '').toLowerCase();
 
 /**
- * مركباتُ السجلّ المقيَّدة باسم هذا الموظّف — بالإقامة أوّلًا ثمّ بالاسم المطويّ.
- *
- * ── ولماذا هذا السجلّ أيضًا ─────────────────────────────────────────────────
- * التفاويضُ عندنا في موضعين: سجلُّ حركةٍ (`VehicleAuthorization`) وورقةٌ مثبتةٌ
- * على المركبة نفسِها (`VehicleMaster.authorizedPerson`). والثانيةُ هي الحجّةُ
- * عند المرور، وكان الفحصُ يقرأ الأولى وحدَها — فمن كان مفوَّضًا بالورقة ولم
- * يُقيَّد في سجلّ الحركة تُنهى خدمتُه والمركبةُ باسمه.
- *
- * والإقامةُ أوثقُ من الاسم: الأسماءُ تتشابه وتُكتب بصيغ، والرقمُ لا.
+ * Registry vehicles registered to this employee, matched by residence number first, then by folded name.
+ * Authorisations live in two places: the movement log (`VehicleAuthorization`) and the paper on the vehicle itself (`VehicleMaster.authorizedPerson`). The paper is what counts at a checkpoint, and the check only read the log. The residence number is more reliable than the name, which varies in spelling.
  */
 async function vehiclesHeldBy(employee, VehicleMaster) {
   if (!VehicleMaster || !employee) return [];
-  // العمودان معًا: المقيمُ في `iqamaNumber` والسعوديُّ في `nationalId`.
+  // Both columns: a resident is in `iqamaNumber`, a Saudi in `nationalId`.
   const ids = [employee.iqamaNumber, employee.nationalId].map((x) => String(x || '').trim()).filter(Boolean);
   const name = fold(`${employee.firstName || ''} ${employee.lastName || ''}`.trim() || employee.fullName || '');
   const or = [];
@@ -44,13 +24,13 @@ async function vehiclesHeldBy(employee, VehicleMaster) {
   const rows = await VehicleMaster.find(or.length ? { $or: or } : {})
     .select('plateNumber authorizedPerson fuelCard.cardNumber ownerNameAr').lean();
   if (rows.length || !name) return rows;
-  // لا مطابقةَ بالرقم — يُجرَّب الاسمُ مطويًّا، وهو أضعفُ فيُقرأ كتنبيهٍ لا أكثر.
+  // No match by number; try the folded name. It is weaker, so it is read as a warning only.
   const all = await VehicleMaster.find({ 'authorizedPerson.name': { $nin: ['', null] } })
     .select('plateNumber authorizedPerson fuelCard.cardNumber ownerNameAr').lean();
   return all.filter((v) => fold(v.authorizedPerson?.name) === name);
 }
 
-/** ماذا يحمل هذا الموظّف الآن؟ يُعيد بنودًا موصوفةً بالعربيّة والإنجليزيّة. */
+/** What this employee holds now. Returns items described in Arabic and English. */
 async function checkClearance(employeeId) {
   const id = new mongoose.Types.ObjectId(String(employeeId));
   const M = (n) => { try { return mongoose.model(n); } catch (e) { return null; } };
@@ -65,19 +45,14 @@ async function checkClearance(employeeId) {
     User ? User.find({ linkedEmployee: id, isActive: true }).select('email role').lean() : [],
   ]);
 
-  // ── ومركباتُ السجلّ: التفويضُ وشريحةُ الوقود ─────────────────────────────
+  // Registry vehicles: authorisation and fuel card
   const Employee = M('Employee');
   const VehicleMaster = M('VehicleMaster');
   let held = []; let auths = [];
   try {
     const emp = Employee ? await Employee.findById(id).select('firstName lastName fullName arabicName iqamaNumber nationalId').lean() : null;
     held = await vehiclesHeldBy(emp, VehicleMaster);
-    // ── التفويضُ من مصدره الواحد ──────────────────────────────────────────
-    // كانت هنا قراءتان تمنعان كلٌّ على حدة: الورقةُ على المركبة، وسجلُّ الإسناد
-    // القديم. فمن أُلغي تفويضُه من المركبات أو B2C وبقي إسنادُه القديم مفتوحًا
-    // («ق أ 4719» و«ق أ 4723») قيل له «أَلغِ التفويضَ أوّلًا» وهو ملغى.
-    // والآن يُسأل `currentFor` وحدَه: الورقةُ هي المرجع، والإسنادُ القديم لا
-    // يُقرأ إلّا لمركبةٍ لا ورقةَ لها في السجلّ — راجع utils/vehicleAuthorization.
+    // Authorisation from its single source. Two separate reads each blocked: the paper on the vehicle and the old assignment log, so someone whose authorisation was cancelled in Vehicles or B2C but whose old assignment stayed open was told to cancel it again. Now only `currentFor` is asked: the paper is the reference, and the old assignment is read only for a vehicle with no paper in the registry (see utils/vehicleAuthorization).
     if (emp) auths = await require('../utils/vehicleAuthorization').currentFor(emp);
   } catch (_) { held = []; auths = []; }
 
@@ -92,10 +67,7 @@ async function checkClearance(employeeId) {
     });
   }
 
-  // ── والشريحةُ تُنزَع ولو كانت المركبةُ مركبتَه ─────────────────────────────
-  // يشتري الموظّفُ سيّارتَه وتُركَّب له شريحةُ الشركة هديّةً — فالسيّارةُ سيّارتُه
-  // ولا تفويضَ لنا عليها، والشريحةُ شريحتُنا وتصرف من حسابنا. وإنهاءُ خدمته
-  // وهي عليه يعني أن يبقى يصرف بها بعد رحيله.
+  // The fuel card is removed even if the vehicle is the employee's own. An employee who bought his own car may have a company card fitted; the car is his with no authorisation from us, but the card is ours and bills our account, so ending service with it attached lets him keep spending.
   const chips = held.filter((v) => String(v.fuelCard?.cardNumber || '').trim());
   if (chips.length) {
     blockers.push({

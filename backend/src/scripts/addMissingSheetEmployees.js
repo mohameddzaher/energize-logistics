@@ -1,16 +1,8 @@
 /**
- * addMissingSheetEmployees — الشيتاتُ هي المرجع، فمَن فيها وليس عندنا يُضاف.
- *
- *   node src/scripts/addMissingSheetEmployees.js         # فحصٌ فقط
- *   node src/scripts/addMissingSheetEmployees.js --yes   # تنفيذ
- *
- * الشيتاتُ التفصيليّةُ أحدثُ ما لدينا وأصحُّه، فزيادتُها على النظام زيادةٌ
- * حقيقيّة: موظّفٌ باشر العمل ولم يُسجَّل بعد. ويُنشأ سجلُّه بما تحمله الشيتات
- * عنه لا أكثر — لا يُخترَع له قسمٌ ولا راتبٌ ولا فرع.
- *
- * ومَن جاء من ملفّ الماستر وحدَه لا يُضاف: الماسترُ أضعفُ من الشيتات، وقد ثبت
- * فيه أسماءٌ محذوفةٌ وأرقامُ هويّةٍ خاطئة (رقمُ محمد أسامة فيه ينتهي بـ٤٢٣
- * والصحيحُ ٤٢٦). فالإضافةُ من الشيتات التفصيليّة وحدَها.
+ * addMissingSheetEmployees: the sheets are the reference, so anyone in them but not in the system is added.
+ * node src/scripts/addMissingSheetEmployees.js         # dry run
+ * node src/scripts/addMissingSheetEmployees.js --yes   # apply
+ * The detailed sheets are the newest and most accurate data we have, so extras in them are real: an employee who started work and was not yet registered. The record is created with only what the sheets hold: no department, salary or branch is invented. Someone found only in the master file is not added: the master is weaker than the sheets and has proven to contain dropped names and wrong ID numbers. Adding comes from the detailed sheets alone.
  */
 require('dotenv').config();
 const fs = require('fs');
@@ -24,7 +16,7 @@ const DETAIL_DIRS = [
   path.join(__dirname, '../../../final hr data/extra hr files'),
   path.join(__dirname, '../../../final hr data'),
 ];
-// الماسترُ ليس مصدرًا للإضافة — راجع رأس الملفّ.
+// The master is not a source for adding; see the file header.
 const EXCLUDE = /master of hr/i;
 
 const n = (v) => (v === null || v === undefined ? '' : String(v).trim());
@@ -41,7 +33,7 @@ const ymd = (v) => {
 const ID_HDR = /^(رقم الهوية|رقم الاقامة|الهوية|رقم الهويه)$/;
 const NAME_HDR = /^(الاسم|اسم الموظف|الاسم بالكامل)$/;
 
-// عمودُ الشيت → حقلُ الموظّف. ما ليس هنا لا يُخمَّن.
+// Sheet column to employee field. Anything not listed here is not guessed.
 const COL_MAP = {
   'تاريخ الميلاد': ['dateOfBirth', ymd],
   'الرقم التأميني': ['medicalInsuranceNumber', n],
@@ -119,8 +111,7 @@ const NOT_REQUIRED = ['غير مطلوب', 'غير مطلوبة', 'لا يوجد
   const created = [];
   for (const r of found.values()) {
     const { sources, ...doc } = r;
-    // الاسمُ الكاملُ يُقسَم إلى أوّلَ وأخيرَ كما يفعل بقيّةُ النظام، ويبقى
-    // الكاملُ كما كُتب في الشيت.
+    // The full name is split into first and last as the rest of the system does, and the full name is kept as written in the sheet.
     const parts = (doc.fullNameAr || '').split(/\s+/).filter(Boolean);
     if (parts.length) { doc.firstName = parts[0]; doc.lastName = parts.slice(1).join(' ') || parts[0]; }
     doc.arabicName = doc.fullNameAr || '';

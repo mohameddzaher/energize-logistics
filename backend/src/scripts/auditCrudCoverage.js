@@ -1,16 +1,8 @@
 /* eslint-disable no-console */
 /**
- * auditCrudCoverage — أيُّ سجلٍّ في النظام لا يُنشأ أو لا يُعدَّل أو لا يُحذف؟
- *
- *   node src/scripts/auditCrudCoverage.js
- *   node src/scripts/auditCrudCoverage.js --section fleet
- *
- * المستخدم يفتح شاشةً فيجد بياناتٍ لا يستطيع تصحيحها، فيصحّحها في إكسل خارج
- * النظام — وعندها يصير النظام سجلًّا للماضي لا أداةَ عمل. هذا الفحص يقرأ
- * ملفّات المسارات ويقول أين الفجوة، بدل أن تُكتشف واحدةً واحدة بالشكوى.
- *
- * ولا يُقرأ الحرفُ وحده: مسارٌ اسمُه `/:id/restore` إنشاءٌ في الشكل وتعديلٌ في
- * المعنى، فتُصنَّف الأفعال بما تفعله لا بما تُسمّى.
+ * Finds records that cannot be created, edited or deleted.
+ * Users who cannot correct data in the system fix it in Excel, and the system becomes a history instead of a working tool. This reads the route files and reports the gaps.
+ * Actions are classified by what they do, not by name: a route like /:id/restore is create in shape but update in meaning.
  */
 const fs = require('fs');
 const path = require('path');
@@ -18,14 +10,10 @@ const path = require('path');
 const ROUTES = path.join(__dirname, '../routes');
 const SKIP = /^(auth|index|health|publicFleetApi|portal|partners|uploads|reports|lookups|notifications|sectionWork|permissions)\.js$/;
 
-/** المسارات التي هي إجراءُ عملٍ لا CRUD — لا تُحسب إنشاءً. */
+/** Routes that are business actions, not CRUD; not counted as create. */
 const ACTIONY = /(login|logout|refresh|export|import|sync|seed|recalc|send|notify|resolve|assign|transfer|restore|reverse|toggle|mark|generate|preview|bulk|search|filters|options|dashboard|stats|analytics|profile|meta|summary)/i;
 
-/**
- * موارد القراءة: شاشةُ تقريرٍ أو تنبيهٍ أو لوحة، لا سجلٌّ يُنشئه أحد.
- * عدُّها فجوةً يُغرق التقرير بضجيجٍ يُهمَل بعده كلُّه — وفحصٌ يُهمَل أسوأ من
- * لا فحص.
- */
+/** Read resources (report, alert or dashboard screens) are not records anyone creates. Counting them as gaps buries the report in ignored noise. */
 const READ_ONLY = /^(overview|expiring|registers|alerts|risk-alerts|history|range|branch|daily|low-visit-customers|follow-ups|my-tasks|pending-by-customer|lookup-report|document-types|by-employee|employees|roles|suggest-manager|utilisation|permissions|users|store|me|leaves|leave|chat|reports|suggestions|shipments|config|settings|journal|bills|evaluations|announcements|daily-orders|master|requests|assets|vehicles|authorizations|accidents|insurance-policies|corporate-policies)$/;
 
 const files = fs.readdirSync(ROUTES).filter((f) => f.endsWith('.js') && !SKIP.test(f));
@@ -39,8 +27,7 @@ for (const f of files) {
     .map((m) => ({ verb: m[1], p: m[2] }));
   if (!routes.length) continue;
 
-  // تُجمَّع المسارات في «موارد»: الجذر الأوّل بعد الشرطة. و`/:id` جذرٌ أيضًا —
-  // هو تعديلُ المورد الأصليّ وحذفُه، وإهمالُه كان يُظهر كلَّ ملفٍّ بلا تعديل.
+  // Routes are grouped into resources by the first path segment. /:id counts as a root too: it is the edit and delete of the base resource, and ignoring it made every file look like it had no update.
   const byResource = new Map();
   for (const r of routes) {
     const first = r.p.split('/').filter(Boolean)[0] || '/';
@@ -52,7 +39,7 @@ for (const f of files) {
   }
 
   for (const [res, v] of byResource) {
-    // مواردُ القراءة فقط (لوحات، تحليلات، خيارات) ليست فجوةً بل تصميم.
+    // Read-only resources (dashboards, analytics, options) are by design, not a gap.
     if (ACTIONY.test(res) || READ_ONLY.test(res)) continue;
     if (!v.get) continue;
     const missing = [];

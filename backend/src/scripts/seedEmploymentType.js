@@ -1,12 +1,7 @@
 /**
- * seedEmploymentType — قائمةُ «النوع» وتعبئتُها من العلامة القائمة.
- *
- *   node src/scripts/seedEmploymentType.js          تجربة
- *   node src/scripts/seedEmploymentType.js --yes    تنفيذ
- *
- * تُنشأ قائمةُ «نوع الارتباط» في القوائم المنسدلة (تُدار من إعدادات القسم)،
- * ويُملأ حقلُ كلّ موظّفٍ من `isFreelancer` القائمة — فلا يبدأ الحقلُ فارغًا.
- * ومن كان عملًا حرًّا تصير بياناتُ عقده «غير مطلوبة» — راجع applyEmploymentType.
+ * seedEmploymentType: the 'type' list and its backfill from the existing flag.
+ * Usage: node src/scripts/seedEmploymentType.js [--yes] (dry run by default).
+ * Creates the 'engagement type' dropdown list (managed from section settings) and fills each employee's field from the existing `isFreelancer`, so the field does not start empty. For freelancers, contract data becomes 'not required' (see applyEmploymentType).
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -39,7 +34,7 @@ const OPTIONS = [
 
   if (!YES) { console.log('\n— تجربةٌ فقط. أضف --yes للتنفيذ.\n'); await mongoose.disconnect(); return; }
 
-  // لا يُكتب فوق نوعٍ مكتوبٍ بيد.
+  // A hand-written type is not overwritten.
   const f = await Employee.updateMany({ isFreelancer: true, employmentType: { $in: ['', null] } }, { $set: applyEmploymentType(FREELANCER) });
   const s = await Employee.updateMany({ isFreelancer: { $ne: true }, employmentType: { $in: ['', null] } }, { $set: applyEmploymentType(SPONSORED) });
   console.log(`\n✓ عملٌ حرّ: ${f.modifiedCount} · على الكفالة: ${s.modifiedCount}`);

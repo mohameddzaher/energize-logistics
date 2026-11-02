@@ -1,30 +1,8 @@
 /**
- * ربطُ إدارة الأسطول بالسجلّين: الشاحنةُ بسجلّ المركبات، والسائقُ بملفّه في
- * الموارد البشريّة — وتوحيدُ الشاحنة المكرَّرة.
- *
- * ── الحال قبل ──────────────────────────────────────────────────────────────
- * `FleetVehicle` (٦٢ صفًّا) يحمل لوحةً وماركةً ولونًا منسوخةً ولا صلةَ له
- * بـ`VehicleMaster`؛ زُرع مرّةً من لوكيشن سوليوشن. واللوحتان 3965 و3966 DEA
- * مكتوبتان مرّتين («3966 DEA» مُزالةٌ عليها حمولات، و«3966 -DEA» قائمةٌ
- * عليها سائق) — شاحنتان في الأسطول لمركبةٍ واحدة.
- * و`FleetDriver` (٩٩) يحمل الاسمَ والجوالَ والإقامةَ نسخًا بلا صلةٍ بـ`Employee`،
- * وأكثرُهم بلا إقامة (أسماءٌ أولى كـ«حمزه»).
- *
- * ── ما يفعله ───────────────────────────────────────────────────────────────
- * ١. الشاحناتُ تُجمَع بالمفتاح الموحَّد للّوحة (canonicalPlateKey):
- *    · المكرَّرة تُدمَج في واحدة — القائمةُ أوّلًا، ثمّ صاحبةُ السائقين والمراجع،
- *      ثمّ الأقدم — وتُنقَل إليها المراجعُ كلُّها: الحمولات (FleetShipment)،
- *      وطلباتُ الأسطول (FleetRequest)، وسجلّاتُ السيّارة (FleetVehicleLog)،
- *      والسائقون. ولقطاتُ البوليصة لا تُمسّ (مستندٌ قانونيّ).
- *    · ثمّ تُربط كلُّ شاحنةٍ بمركبتها في السجلّ (`vehicleMaster`)، وما في
- *      النسخة من ماركةٍ أو لونٍ والسجلُّ فارغٌ فيه يُكتب في السجلّ.
- * ٢. السائقون يُربطون بملفّاتهم: برقم الهويّة أوّلًا (العمودان iqamaNumber و
- *    nationalId)، ثمّ بالاسم الكامل المطابق تمامًا لموظّفٍ واحدٍ بعينه. ولا
- *    يُربط موظّفٌ مؤرشَف، ولا موظّفٌ بسائقَين قائمين. ويُطبع مَن بقي بلا ربط —
- *    قائمةُ عملٍ لزرّ «ربط بموظف» في صفحة السائقين.
- *
- * الاستعمال:  node src/scripts/linkFleetIdentity.js [--apply]
- * بلا --apply يقرأ ويطبع فقط.
+ * Links fleet management to the two registries (truck to vehicle registry, driver to HR file) and unifies duplicated trucks.
+ * FleetVehicle held copied plate/brand/color unrelated to VehicleMaster, and some plates were written twice with different spellings. FleetDriver held name/mobile/iqama copies unrelated to Employee.
+ * Trucks are grouped by canonicalPlateKey; duplicates merge into one (active first, then the one with drivers and references, then oldest) and all references move to it (FleetShipment, FleetRequest, FleetVehicleLog, drivers); waybill snapshots are untouched as legal documents. Then each truck links to its vehicleMaster and fills empty registry brand/color. Drivers link by identity number (iqamaNumber, nationalId), then by exact full name matching one employee; archived employees and employees with two live drivers are skipped, and the rest are printed.
+ * Usage: node src/scripts/linkFleetIdentity.js [--apply]; prints only without --apply.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -38,7 +16,7 @@ const FI = require(`${ROOT}/utils/fleetIdentity`);
 const APPLY = process.argv.includes('--apply');
 const S = (v) => String(v == null ? '' : v).trim();
 const idNorm = (v) => S(v).replace(/[٠-٩]/g, (d) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d)).replace(/\s+/g, '');
-// اللوحةُ الأنظف في المجموعة: بلا شَرطةٍ ولا رموز.
+// Cleanest plate in the group: no dashes or symbols.
 const plateClean = (p) => /^[0-9A-Z؀-ۿ ]+$/.test(S(p));
 
 (async () => {
@@ -53,7 +31,7 @@ const plateClean = (p) => /^[0-9A-Z؀-ۿ ]+$/.test(S(p));
 
   console.log(APPLY ? '── تطبيق ──' : '── قراءة فقط (أضف --apply للتطبيق) ──');
 
-  // ── ١. الشاحنات ─────────────────────────────────────────────────────────
+  // 1. Trucks.
   const REFS = [
     ['الحمولات', FleetShipment, 'vehicle'],
     ['طلبات الأسطول', FleetRequest, 'vehicle'],
@@ -93,7 +71,7 @@ const plateClean = (p) => /^[0-9A-Z؀-ۿ ]+$/.test(S(p));
     console.log(`\nمكرَّرة ${key}: تبقى ${keep.v._id} «${keep.v.plate}»${keep.active ? '' : ' (مُزالة)'} ← اللوحة «${cleanPlate}»`);
     for (const d of drop) console.log(`   تُدمَج ${d.v._id} «${d.v.plate}»${d.active ? '' : ' (مُزالة)'} مراجعها ${JSON.stringify(d.refs)}`);
 
-    // ما في النسخة المُدمَجة ولا قيمةَ له في الباقية يُحمَل إليها.
+    // Carry values from the merged copy into the survivor where it has none.
     const fill = {};
     for (const f of ['brand', 'color', 'name', 'notes', 'supervisor', 'supervisorName', 'trailerType', 'gpsType']) {
       if (!keep.v[f]) { const from = drop.find((d) => d.v[f]); if (from) fill[f] = from.v[f]; }
@@ -108,13 +86,13 @@ const plateClean = (p) => /^[0-9A-Z؀-ۿ ]+$/.test(S(p));
           if (M === FleetDriver) continue;
           await M.updateMany({ [f]: d.v._id }, { $set: { [f]: keep.v._id } });
         }
-        // السائقون: المقعدان قاعدةٌ — الزائدُ ينزل إلى المخزون لا يُفرض ثالثًا.
+        // Drivers: two seats is a rule, so extras go back to stock instead of forcing a third.
         const seated = await FleetDriver.countDocuments({ vehicle: keep.v._id, isActive: { $ne: false } });
         const incoming = await FleetDriver.find({ vehicle: d.v._id }).sort({ seat: 1 }).lean();
         let room = Math.max(0, 2 - seated);
         for (const x of incoming) {
           if (x.isActive !== false && room > 0) {
-            // المقعدُ يُرتَّب بعد الدمج (أدناه).
+            // Seat order is fixed after the merge (below).
             await FleetDriver.updateOne({ _id: x._id }, { $set: { vehicle: keep.v._id, seat: 2 } });
             room -= 1;
           } else {
@@ -123,7 +101,7 @@ const plateClean = (p) => /^[0-9A-Z؀-ۿ ]+$/.test(S(p));
         }
         await FleetVehicle.deleteOne({ _id: d.v._id });
       }
-      // المقاعد تُرتَّب: أوّلٌ ثمّ ثانٍ، بلا ثانٍ بلا أوّل.
+      // Seats stay ordered: first then second, never a second without a first.
       const crew = await FleetDriver.find({ vehicle: keep.v._id, isActive: { $ne: false } }).sort({ seat: 1, createdAt: 1 }).lean();
       for (let i = 0; i < crew.length; i += 1) await FleetDriver.updateOne({ _id: crew[i]._id }, { $set: { seat: i === 0 ? 1 : 2 } });
       await FleetVehicle.updateOne({ _id: keep.v._id }, { $set: { ...fill, plate: cleanPlate, isActive: keep.active || drop.some((d) => d.active) } });
@@ -135,7 +113,7 @@ const plateClean = (p) => /^[0-9A-Z؀-ۿ ]+$/.test(S(p));
   }
   survivors.push(...noKey);
 
-  // الربطُ بالسجلّ
+  // Link to the registry.
   const resolved = await vehicleRef.resolveMany(survivors.map((v) => v.plate), '_id plateNumber canonKey brandAr colorAr');
   let linked = 0; let already = 0; let unresolved = 0; let pushBrand = 0; let pushColor = 0; let differ = 0;
   const unresolvedList = [];
@@ -161,7 +139,7 @@ const plateClean = (p) => /^[0-9A-Z؀-ۿ ]+$/.test(S(p));
   console.log(`\nالشاحنات: دُمجت ${merged} مكرَّرة · رُبطت ${linked} · مربوطة من قبل ${already} · بلا مركبةٍ في السجلّ ${unresolved}${unresolvedList.length ? ` (${unresolvedList.join('، ')})` : ''}`);
   console.log(`          تختلف نسختُها عن السجلّ ${differ} · تُكتب في السجلّ: ماركة ${pushBrand} · لون ${pushColor}`);
 
-  // ── ٢. السائقون ─────────────────────────────────────────────────────────
+  // 2. Drivers.
   const drivers = await FleetDriver.find({}).lean();
   const emps = await Employee.find({ $nor: [ARCHIVED] }).select(FI.HR_SELECT).lean();
   const byId = new Map();
@@ -176,7 +154,7 @@ const plateClean = (p) => /^[0-9A-Z؀-ۿ ]+$/.test(S(p));
   }
   const uniq = (list) => [...new Map((list || []).map((e) => [String(e._id), e])).values()];
 
-  // الموظّفُ لا يكون سائقَين قائمين.
+  // An employee cannot be two live drivers.
   const takenActive = new Map();
   for (const d of drivers) if (d.employee && d.isActive !== false) takenActive.set(String(d.employee), d);
 
@@ -231,8 +209,7 @@ const plateClean = (p) => /^[0-9A-Z؀-ۿ ]+$/.test(S(p));
   }
 
   if (APPLY) {
-    // الفهرسان الفريدان (مركبةُ السجلّ ← شاحنةٌ واحدة، الموظّف ← سائقٌ قائمٌ واحد)
-    // يُبنيان بعد الدمج — قبله تمنعهما المكرَّرتان.
+    // The two unique indexes (registry vehicle to one truck, employee to one live driver) are built after the merge, since duplicates would block them.
     await FleetVehicle.createIndexes();
     await FleetDriver.createIndexes();
     const cache = require(`${ROOT}/utils/ttlCache`);

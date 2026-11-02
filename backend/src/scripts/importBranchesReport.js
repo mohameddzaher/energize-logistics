@@ -1,16 +1,8 @@
 /**
- * تقريرُ الفروع يدخل النظامَ — ورقةُ `Data` كما هي.
- *
- *   node --max-old-space-size=8192 src/scripts/importBranchesReport.js --dry
- *   node --max-old-space-size=8192 src/scripts/importBranchesReport.js --apply
- *   … --file "update of branches report 2026.xlsx"
- *
- * راجع models/BranchReportRow: لماذا يدخل سجلًّا، ولماذا صفُّه ليس حمولةً
- * واحدة، ولماذا يُستبدَل كاملًا.
- *
- * ولا يمسّ هذا السكربتُ أسعارَ البيع في «التشغيل — خاصّ»: لذاك سكربتُه
- * (`importBranchesSellingPrices.js`) لأنّه يُطابِق صفَّ الورقة بكشفٍ بعينه
- * بأربعة شروط، وهو قرارٌ آخر. هذا يُدخِل التقريرَ ليُحلَّل.
+ * The branches report enters the system, sheet Data as is.
+ * --dry previews, --apply writes, --file selects the workbook.
+ * See models/BranchReportRow for why it is stored as records, why a row is not a single load, and why it is replaced entirely.
+ * This script does not touch selling prices in the private operations page; importBranchesSellingPrices.js does, because it matches a sheet row to a specific statement by four conditions, a different decision. This one loads the report for analysis.
  */
 require('dotenv').config();
 const fs = require('fs');
@@ -28,7 +20,7 @@ const FILE = path.join(__dirname, '../../..', 'operation files', BOOK);
 
 const S = (v) => String(v ?? '').trim();
 const num = (v) => { const n = Number(String(v ?? '').replace(/[^\d.\-]/g, '')); return Number.isFinite(n) ? n : 0; };
-// التواريخُ أرقامٌ تسلسليّة — `cellDates` تُسقط يومًا على هذا الجهاز.
+// Dates are serial numbers; cellDates drops a day on this machine.
 const serialToISO = (n) => {
   const x = Number(n);
   if (!Number.isFinite(x) || x <= 0) return null;
@@ -43,7 +35,7 @@ const serialToISO = (n) => {
   console.log(`\n  الملفّ: ${BOOK}\n  ${APPLY ? '— تنفيذ —' : '— تجربة، بلا كتابة —'}\n`);
   const wb = XLSX.readFile(FILE, { cellDates: false, raw: true });
   const raw = XLSX.utils.sheet_to_json(wb.Sheets.Data, { header: 1, defval: null, blankrows: false, raw: true });
-  // الصفُّ الأوّل أرقامٌ مجمّعة، والثاني هو العناوين — يُبحَث عنه ولا يُفترَض.
+  // The first row is aggregated numbers and the second is the headers; search for it, do not assume.
   const head = raw.findIndex((r) => (r || []).some((c) => S(c) === 'اسم العميل'));
   if (head < 0) { console.error('لم يُعثَر على صفّ العناوين في ورقة Data'); process.exit(1); }
   const H = {};
@@ -95,9 +87,7 @@ const serialToISO = (n) => {
   console.log(`  المدّة: ${months[0]} → ${months[months.length - 1]}  (${months.length} شهرًا)`);
   console.log(`  الرحلات: طلبات ${sum('trips')} · محقق ${sum('achieved')} · غير محقق ${sum('failed')}`);
   console.log(`  المال: بيع ${sum('sellTotal').toLocaleString('en-US')} · شراء ${sum('buyTotal').toLocaleString('en-US')} · هامش ${sum('gp').toLocaleString('en-US')}`);
-  // ── والتحقّقُ من الورقة نفسِها ─────────────────────────────────────────────
-  // «اجمالي البيع» يجب أن يكون سعرَ العربة × عددَ الطلبات. فإن خالف فالورقةُ
-  // فيها صفٌّ محسوبٌ بيدٍ — يُقال عددُه ولا يُصلَّح.
+  // Validate the sheet itself: total sales must equal vehicle price x order count. A mismatch means a hand-computed row; report its count, do not fix it.
   const bad = rows.filter((r) => r.trips > 0 && Math.abs(r.sell * r.trips - r.sellTotal) > 1);
   console.log(`  صفوفٌ إجماليُّها لا يساوي السعر × العدد: ${bad.length}`);
   const dist = (k) => {

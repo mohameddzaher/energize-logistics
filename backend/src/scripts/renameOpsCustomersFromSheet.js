@@ -1,16 +1,8 @@
 /**
- * مطابقةُ أسماء العملاء — من شيت القسم إلى منصّة التشغيل ثمّ إلى التحصيل.
- *
- * الشيت («operation files/مطابقه اسماء العملاء.xlsx» · ورقة «مطابقه») عمودان:
- *   Application Customer  الاسمُ كما هو في المنصّة اليوم
- *   System Customer       الاسمُ الصحيح كما يجب أن يكون
- *
- * والتعديلُ يمرّ بالمسار الذي يمرّ به تعديلُ الشاشة نفسِه: يُكتب الاسمُ في
- * المنصّة (PATCH /admin/users/:id)، ثمّ يتبعه قسمُ التحصيل والكشوفُ المحفوظة
- * (utils/renameOpsCustomer) — فالاسمُ القديم يبقى صيغةً أخرى للطرف ولا ينقسم
- * دَينُه. راجع أيضًا controllers/opsController.update.
- *
- * تجربةٌ افتراضًا؛ `--apply` للكتابة — وهي كتابةٌ في نظامٍ خارجيّ.
+ * Customer name matching: from the department sheet to the operations platform, then to collections.
+ * Sheet columns: 'Application Customer' (name on the platform today) and 'System Customer' (the correct name).
+ * The edit follows the same path as a screen edit: the name is written on the platform (PATCH /admin/users/:id), then collections and saved statements follow (utils/renameOpsCustomer), so the old name stays an alias and the debt is not split. See also controllers/opsController.update.
+ * Dry run by default; `--apply` writes to an external system.
  */
 require('dotenv').config({ quiet: true });
 const path = require('path');
@@ -20,7 +12,7 @@ const upl = require('../services/uplClient');
 
 const FILE = path.join(__dirname, '../../../operation files/مطابقه اسماء العملاء.xlsx');
 const S = (v) => String(v ?? '').trim();
-// الطيُّ نفسُه المستعمل في التحصيل: الهمزةُ والتاءُ المربوطة والمسافات.
+// Same folding as collections: hamza, taa marbuta and spaces.
 const fold = (v) => String(v || '')
   .replace(/[أإآٱ]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي')
   .replace(/[ً-ْـ]/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
@@ -39,7 +31,7 @@ const fold = (v) => String(v || '')
     pairs.push({ from, to, same: fold(from) === fold(to) });
   }
 
-  // كلُّ عملاء المنصّة مرّةً واحدة — لا نداءُ بحثٍ لكلّ اسم.
+  // Fetch all platform customers once instead of one search call per name.
   const users = [];
   for (let page = 1; ; page += 1) {
     const out = await upl.get('/admin/users', { query: { limit: 100, page } });
@@ -59,15 +51,11 @@ const fold = (v) => String(v || '')
 
   const plan = { change: [], already: [], notFound: [], ambiguous: [], targetExists: [] };
   for (const p of pairs) {
-    // ── و«الفرقُ في الرسم» فرقٌ يُنفَّذ ───────────────────────────────────
-    // كان سطرٌ طرفاه يتّفقان بعد الطيّ («متال العالميه» ← «متال العالمية»)
-    // يُعدُّ «صحيحًا أصلًا» فلا يُكتب شيء — وأحدَ عشرَ سطرًا بقيت المنصّةُ
-    // فيها على الرسم القديم، فمَن نسخ الاسمَ الصحيح من الشيت وبحث به هناك
-    // لم يجد عميلَه. فما اتّفق نصُّه يُتخطّى، لا ما اتّفق طيُّه.
+    // A spelling-only difference is still executed. A line whose two sides match after folding was treated as already correct and skipped, leaving the platform on the old spelling so searching there with the correct sheet name found nothing. Skip only when the text matches, not when the folded form matches.
     if (p.from === p.to) { plan.already.push(p); continue; }
     const hits = byKey.get(fold(p.from)) || [];
     if (!hits.length) {
-      // ربّما سُمِّي بالاسم الصحيح من قبل
+      // It may already have been renamed to the correct name
       if ((byKey.get(fold(p.to)) || []).length) plan.already.push(p);
       else plan.notFound.push(p);
       continue;
@@ -95,10 +83,7 @@ const fold = (v) => String(v || '')
   show('لا عميل بهذا الاسم في المنصّة', plan.notFound, 40);
   show('اسمٌ مكرَّر في المنصّة — يُراجَع بيدٍ', plan.ambiguous);
   show('الاسم الجديد يحمله عميلٌ آخر — يُراجَع بيدٍ', plan.targetExists);
-  // ── واسمٌ لا يشترك مع سابقه في كلمة يُعرَض ليُراجَع ───────────────────────
-  // أكثرُ الأسطر تصحيحُ صياغة («كانو» ← «شركة كانو لخدمات مراكز الشحن»)، وبعضُها
-  // اسمٌ آخرُ تمامًا. وهو قد يكون صحيحًا (اسمٌ تجاريّ لكيانٍ مسجَّل باسمٍ آخر)،
-  // لكنّه أيضًا شكلُ خطأِ إزاحةِ صفّ — فيُعرَض بعينه ولا يُدفَن في مئةٍ وعشرين.
+  // A name sharing no word with the previous one is listed for review. Most lines are wording fixes, some are an entirely different name. It may be correct (trade name of an entity registered under another name) but also looks like a row-offset error, so it is shown on its own rather than buried among the rest.
   const toks = (v) => new Set(fold(v).split(/\s+/).filter((w) => w.length > 2
     && !['شركه', 'شركة', 'مؤسسه', 'مؤسسة', 'موسسه', 'مصنع', 'مكتب', 'المحدوده', 'المحدودة', 'واحد', 'شخص'].includes(w)));
   const weak = plan.change.filter((c) => {
@@ -125,11 +110,7 @@ const fold = (v) => String(v || '')
   }
   console.log(`\nتمّ: ${ok} · تعذّر: ${failed.length}`);
 
-  // ── و«صحيحٌ أصلًا» يعني في المنصّة وحدَها ──────────────────────────────────
-  // سطرٌ سُمّي في المنصّة بالاسم الصحيح قبلنا يُعدّ منتهيًا، وسجلُّنا قد يكون
-  // بقي على الرسم القديم («موسسه قصور البنيان» عندنا و«مؤسسة قصور البنيان»
-  // هناك). والطيُّ يجمعهما فلا ينقسم الدَّين — لكنّ الشاشتين تقولان شيئين،
-  // والقارئُ يظنّ نفسه أمام عميلين. فيُكتب الاسمُ عندنا بلا مساسٍ بالمنصّة.
+  // 'Already correct' means on the platform only. A line already named correctly on the platform counts as done, while our record may keep the old spelling; folding joins them so the debt is not split, but the two screens would show different names. So our name is written without touching the platform.
   const CollectionsParty = require('../models/CollectionsParty');
   let synced = 0;
   for (const p of plan.already) {
@@ -142,19 +123,12 @@ const fold = (v) => String(v || '')
   }
   if (synced) console.log(`ووُفِّق سجلُّنا مع المنصّة في ${synced} اسمًا.`);
 
-  // ── والاسمُ القديم لقبٌ للعميل مهما كان طريقُه ─────────────────────────────
-  // اللقبُ يُضاف حين يمرّ التعديلُ بـ`renameOpsCustomer`؛ وبعضُ الأسطر لم تمرّ
-  // به أصلًا (كان اسمُه في المنصّة صحيحًا قبلنا، أو غُيّر من شاشةٍ أخرى). فبقي
-  // اثنا عشرَ اسمًا قديمًا لا يجد صاحبَه أحدٌ إذا بحث به — وهو الاسمُ الذي في
-  // الأذهان والأوراق. فيُضمن اللقبُ لكلّ سطرٍ في الشيت.
+  // The old name is an alias whatever the route. The alias is added when the edit goes through `renameOpsCustomer`, but some lines never did (already correct on the platform, or renamed from another screen), leaving old names unfindable. So the alias is ensured for every sheet line.
   let tagged = 0;
   for (const p of [...plan.change, ...plan.already, ...plan.targetExists, ...plan.ambiguous]) {
     if (p.from === p.to) continue;
     const key = CollectionsParty.fold(p.from);
-    // ── واللقبُ يُوضَع على الحسابين كليهما ──────────────────────────────────
-    // للشركة الواحدة حسابٌ نقديٌّ وآخرُ ضريبيّ باسمٍ واحد، وكلاهما قائمٌ عن
-    // قصد. فوضعُ اللقب على أوّلِ ما يُصادَف يجعل البحثَ بالاسم القديم يقع على
-    // أحدهما دون الآخر — والسائلُ لا يعرف أيُّهما رُقّم.
+    // The alias goes on both accounts. One company has a cash account and a tax account under one name, both intentional; putting the alias on the first match makes a search by the old name hit only one of them.
     const owners = await CollectionsParty.find({
       kind: 'customer', isActive: { $ne: false }, nameKey: CollectionsParty.fold(p.to),
     }).select('_id aliasKeys').lean();

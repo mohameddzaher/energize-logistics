@@ -1,26 +1,8 @@
 /**
- * ربطُ مشرفي سجلّ النقل الخفيف بحساباتهم على النظام.
- *
- * ── لماذا يوجد هذا الملفّ ───────────────────────────────────────────────────
- * السجلُّ كُتب باسمٍ مختارٍ من قائمةٍ مُدارة: «خالد عباس»، «إسلام سرور»، «احمد
- * يونس». وصاحبُ كلِّ اسمٍ له حسابٌ على النظام بالإنجليزيّة — «Khaled
- * Abdelsalam»، «Islam Suror» — يدخل به كلَّ صباح ليتفقّد رجاله. والاسمُ لا
- * يعرف الحساب، فالمشرفُ يفتح شاشةَ التفقّد فلا يجد أحدًا وسجلُّه مليءٌ برجاله.
- *
- * ── وكيف يُطابَق اسمٌ عربيٌّ بحسابٍ إنجليزيّ ─────────────────────────────────
- * لا بالترجمة — بل بالطريق الموجود أصلًا:
- *   ١. الصفُّ مربوطٌ بملفّ موظّفٍ (`supervisor`)، والحسابُ مربوطٌ بملفٍّ
- *      (`linkedEmployee`). فإن كان الملفُّ واحدًا فالربطُ **بنيويٌّ** لا ظنَّ فيه.
- *   ٢. وإلّا: مطابقةُ الاسم بالكلمات — أوّلُ كلمةٍ وآخرُها من الاسم العربيّ في
- *      ملفّ الحساب. وتُقبَل إن ردَّت حسابًا واحدًا فقط.
- *   ٣. وإلّا: تُترَك ويُقال. اسمٌ بلا حسابٍ يبقى مكتوبًا كما هو — لا يُحذف ولا
- *      يُخمَّن له صاحب.
- *
- * ثمّ يُسنَد الرجلُ في سجلّ التطبيق (`B2CRep.supervisor`) فيراه مشرفُه في
- * التفقّد — وهذه هي الغاية.
- *
- * الاستعمال:  node src/scripts/linkLtSupervisors.js            (عرضٌ فقط)
- *             node src/scripts/linkLtSupervisors.js --apply    (يكتب)
+ * Links light transport register supervisors to their system accounts.
+ * The register uses names picked from a managed list (Arabic) while the account is in English, so the name does not know the account and the supervisor sees no one in the inspection screen.
+ * Matching, not translation: (1) if the row's supervisor employee file equals the account's linkedEmployee, the link is structural; (2) else match first and last word of the Arabic name against the account's file, accepted only if exactly one account results; (3) else leave and report. Then the rep is assigned in B2CRep.supervisor.
+ * Usage: [--apply]; prints only without it.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -36,7 +18,7 @@ const { listSupervisors, nameSkeleton, buildRepIndex, findRep } = require(`${ROO
 const APPLY = process.argv.includes('--apply');
 const S = (v) => String(v ?? '').trim();
 
-/** هيكلُ الاسم — يطابق العربيَّ باللاتينيّ. راجع `nameSkeleton`. */
+/** Name skeleton: matches Arabic to Latin. See nameSkeleton. */
 const endsKey = (name) => nameSkeleton(name);
 
 (async () => {
@@ -48,7 +30,7 @@ const endsKey = (name) => nameSkeleton(name);
   console.log(`حساباتُ الإشراف النشطة: ${sups.length}`);
   sups.forEach((s) => console.log(`  ${s.roleAr.padEnd(12)} · ${s.nameEn.padEnd(22)} · ${s.nameAr || '(لا اسمَ عربيًّا في ملفّه)'}`));
 
-  // الاسمُ المكتوبُ في السجلّ → الصفوفُ التي تحمله
+  // Name written in the register to the rows that carry it.
   const rows = await LightTransportEmployee.find({ isActive: { $ne: false } })
     .select('name idNumber supervisorName supervisor supervisorUser staffKind').lean();
   const byName = new Map();
@@ -59,7 +41,7 @@ const endsKey = (name) => nameSkeleton(name);
     byName.get(k).push(r);
   }
 
-  // فهرسُ الحسابات: بملفّ الموظّف، وبمفتاح الاسم
+  // Account index: by employee file and by name key.
   const byEmployee = new Map(sups.filter((s) => s.employee).map((s) => [String(s.employee), s]));
   const byEnds = new Map();
   for (const s of sups) {
@@ -74,13 +56,13 @@ const endsKey = (name) => nameSkeleton(name);
   console.log('\n=== المطابقة:');
   const plan = [];
   for (const [name, list] of [...byName.entries()].sort((a, b) => b[1].length - a[1].length)) {
-    // ١. الطريقُ البنيويّ: ملفُّ الموظّف نفسُه
+    // 1. Structural path: the same employee file.
     let hit = null; let how = '';
     const empIds = [...new Set(list.map((r) => String(r.supervisor || '')).filter(Boolean))];
     for (const id of empIds) {
       if (byEmployee.has(id)) { hit = byEmployee.get(id); how = 'ملفّ الموظّف (بنيويّ)'; break; }
     }
-    // ٢. هيكلُ الاسم — ويُقبَل إن ردّ حسابًا واحدًا وحدَه
+    // 2. Name skeleton, accepted only when it yields a single account.
     if (!hit) {
       const cands = byEnds.get(endsKey(name)) || [];
       if (cands.length === 1) { [hit] = cands; how = `هيكل الاسم (${endsKey(name)})`; }
@@ -94,7 +76,7 @@ const endsKey = (name) => nameSkeleton(name);
   const noName = rows.filter((r) => !S(r.supervisorName)).length;
   console.log(`\nصفوفٌ بلا مشرفٍ مكتوب: ${noName}`);
 
-  // ── الإسنادُ في سجلّ التطبيق: أيُّ الصفوف له مقابلٌ هناك؟ ──
+  // Assignment in the app register: which rows have a counterpart there.
   const repIdx = await buildRepIndex();
   let repHits = 0; let repMiss = 0;
   const repPlan = [];
@@ -123,7 +105,7 @@ const endsKey = (name) => nameSkeleton(name);
   let repWrites = 0;
   for (const rp of repPlan) {
     const set = { supervisor: rp.sup._id };
-    // والصلةُ تُحفَظ مع الإسناد: المطابقةُ بالاسم مرّةً واحدةً لا كلَّ مرّة.
+    // The link is stored with the assignment so name matching happens once, not every time.
     if (!rp.rep.ltEmployee) set.ltEmployee = rp.lt._id;
     if (String(rp.rep.supervisor || '') === String(rp.sup._id) && !set.ltEmployee) continue;
     await B2CRep.updateOne({ _id: rp.rep._id }, { $set: set });
@@ -131,7 +113,7 @@ const endsKey = (name) => nameSkeleton(name);
   }
   console.log(`\nكُتب: ${ltWrites} صفًّا في سجلّ النقل الخفيف · ${repWrites} مندوبًا في سجلّ التطبيق`);
 
-  // ما صار عليه الحال
+  // Resulting state.
   const after = await LightTransportEmployee.aggregate([
     { $match: { isActive: { $ne: false } } },
     { $group: { _id: '$supervisorName', n: { $sum: 1 }, linked: { $sum: { $cond: [{ $ifNull: ['$supervisorUser', false] }, 1, 0] } } } },

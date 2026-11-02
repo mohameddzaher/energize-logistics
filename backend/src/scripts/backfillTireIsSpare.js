@@ -1,17 +1,9 @@
 /* eslint-disable no-console */
 /**
- * backfillTireIsSpare — يظبّط علَم `isSpare` من قسم الإطار.
- *
- *   node src/scripts/backfillTireIsSpare.js --dry
- *   node src/scripts/backfillTireIsSpare.js
- *
- * الموديل بيخزّن «هل الفردة دي استبن؟» في حقل مستقل عشان الشاشات تفلتر عليه،
- * والقسم (الرأس / التريلة / الاستبن) نص جنبه. الاتنين المفروض يقولوا نفس
- * الحاجة، لكن استيراد قديم سجّل عشر فردات قسمها «الاستبن» وعلَمها false —
- * فالشاشة اللي بتعدّ بالعلَم كانت بتقول «رأس ٧ · استبن ١» على عربية تقسيمتها
- * ٦ و٢. الرقم مش غلط في العرض، الغلط في الداتا نفسها.
- *
- * القسم هو المرجع هنا: هو اللي جاي من كشف الورشة، والعلَم مشتق منه.
+ * backfillTireIsSpare: align the isSpare flag with the tire's section.
+ * Usage: node src/scripts/backfillTireIsSpare.js --dry | (no flag to write)
+ * The model stores "is this tire a spare" in its own field so screens can filter on it, with the section (head / trailer / spare) as text beside it. They should agree, but an old import recorded ten tires with section spare and flag false, so a screen counting by flag showed "head 7, spare 1" on a truck split 6 and 2. The display is right; the data is wrong.
+ * The section is the reference because it comes from the workshop sheet; the flag is derived from it.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');

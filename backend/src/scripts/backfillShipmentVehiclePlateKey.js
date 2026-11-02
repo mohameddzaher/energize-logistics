@@ -1,15 +1,8 @@
 /**
- * ملءُ `plateKey` في سجلّ شاحنات طلبات الشحنات.
- *
- * ── العلّة ──────────────────────────────────────────────────────────────────
- * طريقُ البوليصة كان يسحب السجلَّ كلَّه ليُرشّح منه ثلاثَ شاحنات: `plate`
- * مخزَّنةٌ بصيغةِ العرض، والمقارنةُ تجري على مفتاحٍ مجرَّدٍ لم يكن مخزَّنًا.
- * فصار مخزَّنًا ومفهرَسًا، ويُشتقّ عند كلّ حفظ — وهذا يملأ ما سبق.
- *
- *   node src/scripts/backfillShipmentVehiclePlateKey.js            # معاينة
- *   node src/scripts/backfillShipmentVehiclePlateKey.js --write    # تنفيذ
- *
- * ولا يُكتَب إلّا ما تغيّر: تشغيلُه مرّتين لا يفعل شيئًا في الثانية.
+ * Fill plateKey on the shipment orders truck register.
+ * Cause: the waybill route pulled the whole register to filter three trucks, because plate is stored in display format and the comparison runs on a normalized key that was not stored. It is now stored and indexed, and derived on every save; this fills existing rows.
+ * node src/scripts/backfillShipmentVehiclePlateKey.js (preview) | --write
+ * Only changed rows are written, so a second run does nothing.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -37,8 +30,7 @@ const mongoose = require('mongoose');
   console.log(`  مفتاحُه صحيحٌ أصلًا ... ${already}`);
   console.log(`  سيُكتَب ............... ${ops.length}`);
   console.log(`  لوحةٌ لا مفتاحَ لها ... ${empty}`);
-  // لوحتان تنتهيان إلى مفتاحٍ واحدٍ تعنيان صفَّين يتنازعان بوليصةً واحدة —
-  // لا يمنعه هذا السكربت، لكنّه يقوله.
+  // Two plates that normalize to one key mean two rows competing for one waybill; the script does not prevent it but reports it.
   console.log(`  مفاتيحُ مكرَّرة ....... ${collide.length}${collide.length ? '  (' + collide.slice(0, 5).map(([k, n]) => `${k}×${n}`).join(', ') + ')' : ''}`);
 
   if (!WRITE) { console.log('\n  معاينةٌ فقط — أضِف --write للتنفيذ.'); await mongoose.disconnect(); return; }

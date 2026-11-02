@@ -1,25 +1,8 @@
 /* eslint-disable no-console */
 /**
- * importFinalTrucks — آخر أربع عربيات + التيدرات الواقفة، وتصليح ربط الكاوتش بالتيدر.
- *
- *   node src/scripts/importFinalTrucks.js --dry
- *   node src/scripts/importFinalTrucks.js --yes
- *
- * الملف (finaltrucks.json) فيه نوعين من السجلات، والخلط بينهم هو أصل المشكلة:
- *
- *   head_and_trailer  عربية حقيقية بلوحة و١٤ إطار (٦ رأس + ٦ تيدر + ٢ استبن)
- *   trailer_only      **تيدر لوحده** — من غير لوحة، ٦ إطارات، مش مجرور دلوقتي
- *
- * التيدر مش عربية. اللي سجّل التيدرات ٥٩ و٦٠ و٦١ قبل كده عملهم **سطحات** وهمية
- * (TR1 / TR2 / TR3) عشان يقدر يعلّق عليهم كاوتش — فبقوا بيتعدّوا في «عدد
- * سطحاتنا» وبيطلعوا في كل تقرير تغطية على إنهم عربيات ناقصة كاوتش. السكربت ده
- * بيحوّلهم لتيدرات حقيقية وبيشيل السطحات الوهمية.
- *
- * ── والإصلاح الأهم ─────────────────────────────────────────────────────────
- * كاوتش التيدر كان متخزّن بلوحة **العربية**، فأول ما التيدر ينتقل لعربية تانية
- * كاوتشه يفضل مسجّل على القديمة: القديمة تبقى ١٤ إطار وفيهم ٦ مش عليها،
- * والجديدة ٨. ٣٤٢ إطار كانوا كده. الحقل الجديد `trailerNumber` بيربط الفردة
- * بالتيدر نفسه، والنقل بقى بيمشّي الكاوتش معاه.
+ * Imports the last four trucks plus the standing trailers, and fixes the tire-to-trailer link (--dry, --yes).
+ * The file (finaltrucks.json) has head_and_trailer (a real truck with a plate and 14 tires: 6 head + 6 trailer + 2 spare) and trailer_only (a trailer alone, no plate, 6 tires, not towed). A trailer is not a truck: trailers 59, 60 and 61 were registered as fake flatbeds (TR1/TR2/TR3), which inflated the flatbed count and showed in coverage reports as trucks missing tires. This script makes them real trailers and removes the fakes.
+ * Main fix: trailer tires were stored under the truck's plate, so after a trailer moved they stayed on the old truck (342 tires were like that). The new trailerNumber field ties the tire to the trailer, and a transfer now moves its tires.
  */
 require('dotenv').config();
 const path = require('path');
@@ -51,13 +34,13 @@ const S = (v) => (v === null || v === undefined ? '' : String(v).trim());
   const notes = [];
   const userMoves = [];
 
-  // ── ① التيدرات الواقفة: TR1/TR2/TR3 كانوا سطحات وهمية ─────────────────────
+  // Step 1: standing trailers. TR1/TR2/TR3 were fake flatbeds.
   console.log('── التيدرات الواقفة ──');
   for (const r of trailersOnly) {
     const num = S(r.trailer?.trailer_number);
     if (!num) { notes.push(`${r.record_id}: مفيش رقم تيدر`); continue; }
     const existing = await Ls2Trailer.findOne({ trailerNumber: num });
-    // السطحة الوهمية اللي اتعملت له: ترقيمها = رقم التيدر واسمها TR*
+    // The fake flatbed created for it: its numbering equals the trailer number and its name is TR*.
     const fake = await Ls2Flatbed.findOne({ numbering: Number(num), plate: { $regex: '^TR' } });
     console.log(`   تيدر ${num.padEnd(4)}${existing ? 'موجود' : 'هيتعمل'}`
       + (fake ? `   ← وسطحة وهمية «${fake.plate}» هتتشال` : ''));
@@ -67,7 +50,7 @@ const S = (v) => (v === null || v === undefined ? '' : String(v).trim());
         sum.trailers++;
       }
       if (fake) {
-        // الكاوتش اللي كان معلّق على السطحة الوهمية يتحوّل للتيدر ويتفضّى من اللوحة
+        // Tires that were attached to the fake flatbed move to the trailer and are cleared from the plate.
         await Ls2TireAsset.updateMany({ plateKey: fake.plateKey },
           { $set: { trailerNumber: num, plate: null, plateKey: null } });
         await Ls2Flatbed.deleteOne({ _id: fake._id });
@@ -76,7 +59,7 @@ const S = (v) => (v === null || v === undefined ? '' : String(v).trim());
     }
   }
 
-  // ── ② العربيات ────────────────────────────────────────────────────────────
+  // Step 2: trucks
   console.log('\n── العربيات ──');
   for (const r of vehicles) {
     const plate = S(r.vehicle?.plate_number_ar);
@@ -96,7 +79,7 @@ const S = (v) => (v === null || v === undefined ? '' : String(v).trim());
     }
   }
 
-  // ── ③ الكاوتش ─────────────────────────────────────────────────────────────
+  // Step 3: tires
   if (!DRY) {
     for (const r of records) {
       const plate = S(r.vehicle?.plate_number_ar);
@@ -115,8 +98,7 @@ const S = (v) => (v === null || v === undefined ? '' : String(v).trim());
           type: S(t.brand),
           sensor: t.has_sensor === true ? 'yes' : t.has_sensor === false ? 'no' : 'unknown',
           status: 'mounted',
-          // فردة التيدر بتتربط بالتيدر؛ لوحتها هي لوحة العربية المجرور عليها
-          // دلوقتي (أو فاضية لو التيدر واقف لوحده).
+          // A trailer tire is tied to the trailer; its plate is the plate of the truck currently towing it (or empty if the trailer stands alone).
           plate: key ? plate : null,
           plateKey: key,
           trailerNumber: isTrailerTire ? (tNum || null) : null,
@@ -128,13 +110,9 @@ const S = (v) => (v === null || v === undefined ? '' : String(v).trim());
         };
         const existing = await Ls2TireAsset.findOne({ serial });
 
-        // ── الشيت ما يدوسش على شغل بني آدم ──────────────────────────────────
-        // الجرد لقطة من ورق؛ اللي اتعمل من الشاشة بعد كده حصل على الأرض بإيد
-        // حد شايف العربية. لو الاتنين اختلفوا في **مكان** الفردة، اللي اتعمل
-        // من الشاشة هو الصح — الشيت بيتقدّم بس في البيانات اللي محدش لمسها
-        // (النوع، النمرة، السينسور).
-        //
-        // «حد لمسها» = فيه حركة على الفردة دي بعد تاريخ الجرد، مش من استيراد.
+        // The sheet does not overwrite human work.
+        // The inventory is a paper snapshot; what was done from the screen afterwards happened on the ground by someone looking at the truck. If the two differ on where a tire is, the screen wins; the sheet only advances data nobody touched (type, number, sensor).
+        // Touched means there is a movement on that tire after the inventory date, not from an import.
         if (existing) {
           const touched = await Ls2AssetEvent.findOne({
             refId: existing._id,
@@ -175,7 +153,7 @@ const S = (v) => (v === null || v === undefined ? '' : String(v).trim());
     }
   }
 
-  // ── ④ الـ ٣٤٢ إطار اللي مش عارفين تيدرهم ──────────────────────────────────
+  // Step 4: the 342 tires whose trailer is unknown
   console.log('\n── ربط كاوتش التيدر بتيدره (الموجود من قبل) ──');
   const orphans = await Ls2TireAsset.find({
     status: 'mounted', section: /تيدر|تريل/, isSpare: { $ne: true },

@@ -1,13 +1,7 @@
 /**
- * auditWalletToCollections — السلسلةُ من العهدة إلى التحصيل، مفحوصةً حيّةً.
- *
- *   node src/scripts/auditWalletToCollections.js
- *
- * تمشي المسارَ الذي يمشيه الموظّف: يسجّل مشترياتٍ برقم كشفٍ ومبلغ، فيمتلئ
- * الكشفُ من نفسِه — المبلغُ والفرعُ والتاريخ، لا نوعُ الدفع — ثمّ
- * يصل قسمَ التحصيل في الصفحة الصحيحة من الصفحتين.
- *
- * لا يترك أثرًا: ما يُنشئه يُحذف، وحساباتُ الفحص تُمحى.
+ * auditWalletToCollections: the chain from custody wallet to collections, checked live.
+ * Walks the employee's path: record purchases with a manifest number and amount, the manifest fills itself (amount, branch, date, not the payment type), then it reaches the right collections page of the two.
+ * Leaves no trace: what it creates is deleted and test accounts are removed.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -15,9 +9,7 @@ const mongoose = require('mongoose');
 const argv = process.argv.slice(2);
 const iB = argv.indexOf('--base');
 const BASE = (iB >= 0 && argv[iB + 1] ? argv[iB + 1] : process.env.BASE || 'http://localhost:5599').replace(/\/$/, '');
-// المصدرُ يتبع الخادمَ الذي نفحصه لا ملفَّ البيئة المحلّيّ: حارسُ CSRF يقبل
-// مصادرَ البرودكشن وحدها، فإرسالُ `localhost` إليه يردّ ٤٠٣ على كلّ POST — وهو
-// ما يبدو عطبًا في الميزة وهو عطبٌ في الفحص.
+// Origin follows the server under test, not the local env file: the CSRF guard accepts only production origins, so sending localhost gets 403 on every POST, which looks like a feature bug but is a test bug.
 const ORIGIN = /api\.energize-logistics\.com/.test(BASE)
   ? 'https://energize-logistics.com'
   : (process.env.FRONTEND_URL?.split(',')[0].trim() || 'http://localhost:3000');
@@ -55,25 +47,17 @@ const call = async (method, path, ck, body) => {
 
   await User.deleteMany({ email: /^zz-w2c/ });
   const branch = await Branch.findOne({}).select('_id name').lean();
-  // ── والحسابُ بلا فرعٍ عن قصد ──────────────────────────────────────────────
-  // كان يُنشأ بفرعٍ عليه، فيمرّ فحصُ «الفرع المسدد» لأنّ الفحصَ ضَمِن شرطَه
-  // بنفسِه. والواقعُ عكسُه: سبعةٌ وثلاثون من اثنين وخمسين حسابًا نشطًا بلا
-  // فرع — فكان التاريخُ يصل والفرعُ لا يصل، وقِيس ذلك على كشوف سبتمبر:
-  // التاريخُ على أربعةٍ وثلاثين من سبعةٍ وثلاثين، والفرعُ على عشرة.
-  //
-  // فيُفحَص من غير فرعٍ على الحساب: الفرعُ يجب أن يأتي من العهدة نفسِها.
+  // The account has no branch, on purpose
+  // It used to be created with a branch, so the paid-branch check passed because the test guaranteed its own precondition. In reality 37 of 52 active accounts have no branch, so the date arrived but the branch did not (September manifests: date on 34 of 37, branch on 10).
+  // So the test runs without a branch on the account: the branch must come from the custody wallet itself.
   const acc = await User.create({
     email: 'zz-w2c-acc@example.invalid', password: PW, firstName: 'م', lastName: 'ح',
     role: 'accountant',
   });
 
-  // ── ولا يعتمد الفحصُ على حسابِ إنسان ────────────────────────────────────
-  // كان يدخل بحساب مدير التحصيل الحقيقيّ وكلمةِ مروره. فلمّا غيّرها صاحبُها —
-  // وهو حقُّه — سقط الفحصُ بأربعة إخفاقاتٍ لا علاقةَ لها بما يفحصه، وبدا كأنّ
-  // صفحاتِ الفواتير تعطّلت. وأسوأُ منه أنّ محاولاتِ الدخول المتكرّرة تقع على
-  // حسابٍ يعمل به إنسان.
-  //
-  // فيُنشئ الفحصُ حسابَه ويحذفه، كما يفعل مع المحاسب.
+  // The test does not depend on a human's account
+  // It used to log in as the real collections manager. When the owner changed that password, the test failed with four unrelated failures that looked like the invoice pages broke, and repeated logins hit an account a person uses.
+  // So the test creates and deletes its own account, like it does for the accountant.
   const mgrUser = await User.create({
     email: 'zz-w2c-mgr@example.invalid', password: PW, firstName: 'م', lastName: 'ت',
     role: 'collections_manager',
@@ -84,21 +68,14 @@ const call = async (method, path, ck, body) => {
   ok('دخول مدير التحصيل', mgr.status === 200, `${mgr.status}`);
   if (accLogin.status !== 200) process.exit(1);
 
-  // الفرعُ المنتظَر: فرعُ العهدة التي ستستقبل الحركة، بالعربيّة من القائمة.
+  // Expected branch: the branch of the wallet receiving the movement, in Arabic from the list.
   const { arabicBranchName } = require('../utils/payingBranch');
   const expectedBranchAr = await arabicBranchName(branch?._id);
 
-  // ── ويومُ العهدة يُفتَح للفحص ثمّ يُعاد كما كان ─────────────────────────────
-  //
-  // العهدةُ عهدةُ فرعٍ حقيقيّ، ويومُها يُقفَل متى أقفله موظّفُه أو أقفله النظامُ
-  // آخرَ اليوم. وسويتٌ تفشل لأنّ يومًا أُقفِل ليست سويتَ فحص: تُصبح حمراءَ في
-  // أوقاتٍ من اليوم وخضراءَ في أخرى، ومن رآها حمراءَ مرّتين لن ينظر فيها ثالثة.
-  //
-  // فتُفتَح إن كانت مقفلة، ويُحفَظ أنّها كانت كذلك، وتُعاد إلى حالها في النهاية
-  // — فلا تترك السويتُ دفترَ فرعٍ مفتوحًا وقد كان مقفلًا.
-  //
-  // وإعادةُ الفتح صلاحيّةُ مديرٍ (`operations_manager`) لا محاسب، فيُنشئ الفحصُ
-  // حسابَه لها ويحذفه — كما يفعل مع بقيّة حساباته.
+  // The wallet day is opened for the test and restored afterwards
+  // The wallet belongs to a real branch and its day is closed whenever its employee or the system closes it at day end. A suite failing because a day was closed is not a test: it goes red at some hours and green at others.
+  // So it reopens the day if closed, remembers that it was, and restores it at the end, leaving no open branch ledger that was closed.
+  // Reopening is a manager permission (operations_manager), not an accountant's, so the test creates an account for it and deletes it like the others.
   const opsMgrUser = await User.create({
     email: 'zz-w2c-ops@example.invalid', password: PW, firstName: 'م', lastName: 'ع',
     role: 'operations_manager',
@@ -126,27 +103,21 @@ const call = async (method, path, ck, body) => {
 
   const stamp = Date.now();
   const made = []; const parties = [];
-  // ── وكلُّ حركةٍ تُقيَّد تُسجَّل لتُحذف ──────────────────────────────────────
-  //
-  // كانت السويت تحذف حسابَها وكشوفَها وتترك حركاتِ العهدة التي قيّدتها في محفظة
-  // فرعٍ حقيقيّ. فتراكمت أربعٌ وأربعون حركةً بثمانيةَ عشرَ ألفًا وأربعمئة ريالٍ
-  // من مالٍ لا وجودَ له في دفترٍ يقرؤه محاسبٌ ويُقفِله آخِرَ اليوم. وحذفُ
-  // السطرين اللذين كانا يُحذفان بالاسم لا يكفي: كلُّ نداءٍ ينجح يُخلّف قيدًا.
-  //
-  // فما يُقيَّد يُسجَّل هنا، ويُحذف في `finally` مهما انقطع الفحصُ في وسطه.
+  // Every posted movement is recorded so it can be deleted
+  // The suite used to delete its account and manifests but leave the custody movements it posted in a real branch wallet: 44 movements totalling 18,400 SAR of money that exists in no ledger an accountant reads and closes. Deleting the two lines that deleted by name is not enough, since every successful call leaves an entry.
+  // So posted entries are recorded here and removed in finally, however the run is interrupted.
   const txns = [];
   const trackTx = (r) => { const id = r?.json?.transaction?._id; if (id) txns.push(id); return r; };
 
   try {
-    // ── ١ · المحاسبُ يعمل على صفحة التشغيل والعهدة ───────────────────────
+    // 1. The accountant works on the operations and custody page
     head('صلاحيات المحاسب');
     ok('يفتح سير عمل التشغيل', (await call('GET', '/api/workflows?limit=1', accLogin.ck)).status === 200);
-    // الحسابُ بلا فرع، فيُختار الفرعُ كما تختاره الصفحة — وهو المسارُ الواقعيّ.
+    // The account has no branch, so the branch is chosen as the page does it, which is the realistic path.
     ok('يفتح عهدةَ فرعٍ يختاره', (await call('GET', `/api/wallet/daily?branchId=${branch?._id}`, accLogin.ck)).status === 200);
     ok('يفتح لوحة المحفظة', (await call('GET', '/api/wallet/dashboard', accLogin.ck)).status === 200);
-    // ── والمحاسبُ ينظر في أيّ فرعٍ شاء ──────────────────────────────────────
-    // حسابُه بلا فرع — والخمسةُ الحقيقيّون كذلك، وهو صواب: المحاسبةُ ليست في
-    // فرع. فلا يجوز أن تقف صفحةُ العهدة عند «لا فرعَ لحسابك».
+    // The accountant can view any branch
+    // His account has no branch, and neither do the five real ones, which is correct: accounting is not in a branch. So the custody page must not stop at "no branch on your account".
     ok('وينظر في عهدة أيّ فرع', (await call('GET', `/api/wallet/daily?branchId=${branch?._id}`, accLogin.ck)).status === 200);
     ok('ويقرأ لوحةَ فرعٍ بعينه', (await call('GET', `/api/wallet/branch/${branch?._id}`, accLogin.ck)).status === 200);
     ok('وتنبيهاتِ المخاطر', (await call('GET', '/api/wallet/risk-alerts', accLogin.ck)).status === 200);
@@ -157,10 +128,8 @@ const call = async (method, path, ck, body) => {
     ok('ويملك حقولَ عمله كلَّها', need.every((f) => mine.includes(f)),
       need.filter((f) => !mine.includes(f)).join(', ') || `${mine.length} حقلًا`);
 
-    // ── ٢ · نوعُ الدفع يُكتب بيد، ولا يُستنتَج ─────────────────────────────
-    // كان يُملأ من ملفّ العميل على أنّه صفةٌ ثابتةٌ فيه، وليس كذلك: العميلُ
-    // الواحد يحاسب كاشًا في حمولةٍ وضريبيًّا في أخرى. فالاستنتاجُ كان يكتب على
-    // الكشف ما لم يقله أحدٌ ويرسله إلى صفحةِ تحصيلٍ ليست له.
+    // 2. Payment type is typed by hand, not inferred
+    // It used to be filled from the customer file as if fixed, but one customer pays cash on one load and by invoice on another. Inference wrote onto the manifest something nobody said and sent it to a collections page it did not belong to.
     head('نوعُ الدفع يُكتب بيد ولا يُستنتَج من العميل');
     for (const [name, type] of [[`zz-عميل-كاش-${stamp}`, 'cash'], [`zz-عميل-ضريبي-${stamp}`, 'tax']]) {
       const p = await Party.create({ kind: 'customer', name, paymentType: type });
@@ -185,8 +154,8 @@ const call = async (method, path, ck, body) => {
     const taxDb = await OW.findById(taxWf._id).select('paymentType').lean();
     ok('وحسابٌ ضريبيٌّ كذلك', !taxDb.paymentType, taxDb.paymentType || '(فارغ — صواب)');
 
-    // ── والعميلُ الواحدُ يحاسب بالوجهين ─────────────────────────────────────
-    // حمولتان لعميلٍ واحد: واحدةٌ نقدًا وأخرى بفاتورة. كلتاهما تُكتب وتبقى.
+    // One customer pays both ways
+    // Two loads for one customer, one cash and one invoiced; both are written and kept.
     await call('PUT', `/api/workflows/${cashWf._id}`, accLogin.ck, { paymentType: 'cash' });
     await call('PUT', `/api/workflows/${taxWf._id}`, accLogin.ck, { paymentType: 'tax' });
     const both = await OW.find({ _id: { $in: [cashWf._id, taxWf._id] } }).select('paymentType netInvoice documentNumber').lean();
@@ -194,7 +163,7 @@ const call = async (method, path, ck, body) => {
     const cashRow = both.find((w) => w.paymentType === 'cash');
     ok('والنقديُّ تُقفَل أعمدةُ فاتورته', cashRow.netInvoice === 0 && cashRow.documentNumber === '0');
 
-    // ── ٣ · العهدةُ تملأ الكشف ────────────────────────────────────────────
+    // 3. Custody fills the manifest
     head('المشتريات تملأ الكشف');
     const target = await mk(`zz-عميل-كاش-${stamp}`);
     const buy = await call('POST', '/api/wallet/transactions', accLogin.ck, {
@@ -206,25 +175,22 @@ const call = async (method, path, ck, body) => {
     const t1 = await OW.findById(target._id).select('paymentAmount paymentDate payingBranch paymentType documentNumber').lean();
     ok('المبلغُ يصل «مبلغ السداد»', t1.paymentAmount === 800, `${t1.paymentAmount}`);
     ok('والتاريخُ يصل «تاريخ السداد»', !!t1.paymentDate);
-    // ── والفرعُ عربيٌّ كما في العمود ────────────────────────────────────
-    // العمودُ عربيٌّ في أربعةٍ وعشرين ألفَ صفّ وسجلاتُ الفروع إنجليزيّة. وكان
-    // الفحصُ يقارن بـ`Branch.name` — أي يؤكّد أنّ الكودَ يفعل ما يفعله، لا
-    // أنّه صواب. فيُقارَن بالقائمة المرجعيّة التي تُملأ منها الخانةُ باليد.
+    // The branch is Arabic as in the column
+    // The column is Arabic in 24,000 rows while branch records are English. The test used to compare with Branch.name, which only confirms the code does what it does, not that it is right. So it compares with the reference list the field is filled from by hand.
     ok('والفرعُ يصل «الفرع المسدد» من العهدة لا من الحساب',
       !!t1.payingBranch && t1.payingBranch === expectedBranchAr,
       `${t1.payingBranch || '(فارغ)'} — المتوقَّع ${expectedBranchAr}`);
     ok('ومكتوبٌ بالعربيّة كما في بقيّة العمود', !!t1.payingBranch && !/[A-Za-z]/.test(t1.payingBranch), `${t1.payingBranch}`);
-    // والمحفظةُ تكتب ما تعرفه يقينًا، ولا تخترع نوعَ الدفع.
+    // The wallet writes what it knows for certain and does not invent a payment type.
     ok('ولا تخترع المحفظةُ نوعَ الدفع', !t1.paymentType, t1.paymentType || '(فارغ — صواب)');
-    // ورقمُ السند يصل عمودَه: يُكتب في العهدة مرّةً ولا يُبحث عنه في الكشف.
+    // The voucher number reaches its column: written once in custody, not searched for in the manifest.
     ok('ورقمُ السند يصل «رقم السند» في الكشف', t1.documentNumber === 'ZZ-SAND-1', t1.documentNumber || '(فارغ)');
     trackTx(buy);
 
-    // ── ٤ · قيدُ استلام الفاتورة يملأ من سعر الشراء ───────────────────────
+    // 4. The invoice receipt entry fills from the purchase price
     head('استلام الفواتير الضريبيّة — حزمةُ كشوفٍ بلا مبلغ');
-    // ── الحزمةُ لا الواحد ─────────────────────────────────────────────────
-    // المندوبُ يأتي بسبعة كشوفٍ فيسجّلها دفعةً؛ وقيدٌ لكلّ كشفٍ يعني تكرارَ
-    // التاريخ والفرع سبعَ مرّات، ومَن يملّ يترك الباقيَ بلا تسجيل.
+    // A batch, not one
+    // The rep brings seven manifests and records them together; one entry per manifest would repeat date and branch seven times, and a bored user leaves the rest unrecorded.
     const rec = await mk(`zz-عميل-ضريبي-${stamp}`);
     const rec2 = await mk(`zz-عميل-ضريبي-${stamp}`);
     const ti = await call('POST', '/api/wallet/transactions', accLogin.ck, {
@@ -240,21 +206,21 @@ const call = async (method, path, ck, body) => {
     ok('ولا يحمل مالًا', ti.json?.transaction?.amount === 0, `${ti.json?.transaction?.amount}`);
     ok('ويحفظ الكشوفَ كلَّها', (ti.json?.transaction?.receivedReportNumbers || []).length === 3,
       `${(ti.json?.transaction?.receivedReportNumbers || []).length}`);
-    // ورقمٌ لا كشفَ له يُسمّى، فلا يُظنّ أنّ الثلاثةَ خُتمت وقد خُتم منها اثنان.
+    // A number with no manifest is named, so it is not assumed all three were stamped when only two were.
     ok('ويُسمّي الرقمَ الذي لا كشفَ له', (ti.json?.unknownReports || []).includes('zz-لا-وجود-له'),
       JSON.stringify(ti.json?.unknownReports));
 
     for (const [label, r, sand] of [['الأوّل', rec, 'ZZ-SAND-A'], ['والثاني', rec2, 'ZZ-SAND-B']]) {
       // eslint-disable-next-line no-await-in-loop
       const t = await OW.findById(r._id).select('paymentAmount paymentDate payingBranch documentNumber').lean();
-      // ولكلٍّ سندُه هو، لا سندٌ واحدٌ يُنسَخ على الحزمة.
+      // Each has its own voucher, not one voucher copied across the batch.
       ok(`${label}: ورقمُ سنده هو لا سندُ غيره`, t.documentNumber === sand, `${t.documentNumber} — المنتظَر ${sand}`);
       ok(`${label}: مبلغُ السداد = سعرُ شرائه هو`, t.paymentAmount === 800, `${t.paymentAmount}`);
       ok(`${label}: والفرعُ فرعُ العهدة`, t.payingBranch === expectedBranchAr, `${t.payingBranch || '(فارغ)'}`);
       ok(`${label}: وتاريخُ اليوم`, !!t.paymentDate);
     }
 
-    // ── ولا يمسّ رصيدَ العهدة ────────────────────────────────────────────
+    // And it does not touch the custody balance
     const walletBefore = await call('GET', `/api/wallet/daily?branchId=${branch?._id}`, accLogin.ck);
     ok('ورصيدُ العهدة كما هو — القيدُ خارجَه',
       Number(walletBefore.json?.wallet?.totalPurchases || 0) >= 0
@@ -268,10 +234,8 @@ const call = async (method, path, ck, body) => {
 
     trackTx(ti);
 
-    // ── والكشفُ يُشترى مرّةً واحدةً، ولكشفٍ موجود ─────────────────────────
-    // قاعدتان تُمنعان في الخادم لا في الشاشة وحدَها: كُتب في خانة رقم الكشف
-    // رقمُ سيّارةٍ فمرّ، وعشرةُ كشوفٍ سُجِّل لها شراءان — ثمنُ الشحنة الواحدة
-    // مدفوعٌ مرّتين من عهدة الفرع.
+    // A manifest is bought once, and must exist
+    // Two rules enforced on the server, not only on the screen: a car plate number was typed into the manifest number field and passed, and ten manifests got two purchases each, so one shipment's price was paid twice from branch custody.
     head('المشترياتُ لكشفٍ موجود، ومرّةً واحدة');
     const ghostBuy = await call('POST', '/api/wallet/transactions', accLogin.ck, {
       type: 'purchase', amount: 100, branchId: String(branch?._id),
@@ -298,15 +262,14 @@ const call = async (method, path, ck, body) => {
         String(again.json?.message || '').includes(String(bought.amount))
         && String(again.json?.message || '').includes(String(bought.date)),
         again.json?.message || '');
-      // والبحثُ يقولها قبل ملء الاستمارة لا بعد الضغط على «حفظ».
+      // Search says so before the form is filled, not after pressing Save.
       const look = await call('GET', `/api/wallet/lookup-report?reportNumber=${encodeURIComponent(bought.purchaseDeliveryStatementNumber)}`, accLogin.ck);
       ok('والبحثُ يُعلِمُ بالشراء السابق قبل الإدخال', !!look.json?.alreadyPurchased,
         JSON.stringify(look.json?.alreadyPurchased || null));
     }
 
-    // ── ٥ · ويصل الصفحةَ الصحيحة بعد أن يُكتب نوعُه ────────────────────────
-    // الكشفُ لا يصل التحصيلَ حتى يقول أحدٌ نوعَه — وهو الصواب: قبل أن يُقال،
-    // لا أحدَ يعرف أنقدًا حوسب أم بفاتورة.
+    // 5. It reaches the right page once its type is set
+    // A manifest does not reach collections until someone states its type, which is correct: before that, nobody knows whether it was cash or invoiced.
     head('ويصل الصفحة الصحيحة بعد كتابة نوعه');
     const beforeType = await call('GET', `/api/collections-dept/invoices/cash?q=${encodeURIComponent(target.reportNumber)}`, mgr.ck);
     ok('بلا نوعٍ لا يصل أيَّ صفحة', (beforeType.json?.total || 0) === 0, `${beforeType.json?.total}`);
@@ -328,9 +291,8 @@ const call = async (method, path, ck, body) => {
     if (made.length) await OW.deleteMany({ _id: { $in: made } });
     if (parties.length) await Party.deleteMany({ _id: { $in: parties } });
 
-    // ── ولا تُترَك حركةٌ في عهدة فرعٍ حقيقيّ ─────────────────────────────
-    // تُحذف بالنداء لا بالقاعدة: الحذفُ بالنداء يُعيد حساب مجاميع اليوم،
-    // وحذفُها من القاعدة يترك الرصيدَ محسوبًا على مالٍ لم يعد له سطر.
+    // No movement is left in a real branch's custody
+    // Deleted via the API, not the database: the API recomputes the day's totals, while deleting from the database leaves the balance computed on money with no line.
     const mine = await WalletTransaction.find({
       $or: [
         { _id: { $in: txns } },
@@ -342,9 +304,9 @@ const call = async (method, path, ck, body) => {
     for (const t of mine) await call('DELETE', `/api/wallet/transactions/${t._id}`, opsMgr.ck);
     if (mine.length) console.log(`  (حُذفت ${mine.length} حركةَ فحصٍ من العهدة)`);
 
-    // إرجاعُ يوم العهدة قبل حذف حساب الفحص — الإقفالُ يحتاج جلستَه.
+    // Restore the wallet day before deleting the test account; closing needs its session.
     await restoreWalletDay();
-    await User.deleteMany({ email: /^zz-w2c/ });   // يشمل حساب المدير أعلاه
+    await User.deleteMany({ email: /^zz-w2c/ });   // Includes the manager account above
   }
 
 

@@ -1,13 +1,8 @@
 /* eslint-disable no-console */
 /**
- * fixUserEmployeeLinks — حسابُ الدخول وملفُّ الموظّف يشير كلٌّ منهما إلى الآخر.
- *
- *   node src/scripts/fixUserEmployeeLinks.js           (عرضٌ فقط)
- *   node src/scripts/fixUserEmployeeLinks.js --apply   (يكتب)
- *
- * يُكمل الربطَ الذي من جهةٍ واحدة (`User.linkedEmployee` بلا `Employee.user`)،
- * ويُفرغ `Employee.user` الذي يشير إلى حسابٍ لم يعد موجودًا. لا يُنشئ ربطًا جديدًا
- * بالتخمين — ما ليس مربوطًا من أيّ جهةٍ يبقى كما هو.
+ * fixUserEmployeeLinks: a login account and an employee file each point to the other.
+ * Without --apply it only reports; --apply writes.
+ * Completes one-sided links (User.linkedEmployee without Employee.user) and clears Employee.user pointing at an account that no longer exists. It never creates a new link by guessing; anything unlinked on both sides stays as is.
  */
 require('dotenv').config({ quiet: true });
 const mongoose = require('mongoose');

@@ -1,16 +1,7 @@
 /**
- * moveWorkshopUsersToLs2 — الورشةُ صارت لوكيشن سوليوشن، ومَن كان فيها يتبعها.
- *
- *   node src/scripts/moveWorkshopUsersToLs2.js          تجربة
- *   node src/scripts/moveWorkshopUsersToLs2.js --yes    تنفيذ
- *
- * ── لماذا ────────────────────────────────────────────────────────────────
- * أُزيل قسمُ الورشة لأنّ عملَه كلَّه — الصيانةُ والمستودعُ وأوامرُ الشغل — يجري
- * في لوكيشن سوليوشن. وبإزالته بقي ثلاثةُ مستخدمين يحملون دورًا لم يعد له
- * تعريف، فيدخلون ولا يرَون شيئًا: الدورُ المجهول يُقرأ «لا صلاحيّة» في كلّ قسم.
- *
- * والمستوى يُحفَظ كما هو: مديرٌ يبقى مديرًا وفنّيٌّ يبقى موظّفًا. الترقيةُ
- * والتنزيلُ قرارُ صاحب العمل لا أثرٌ جانبيٌّ لنقل قسم.
+ * Moves workshop users to Location Solutions (LS2).
+ * The workshop section was removed because its work happens in LS2; three users kept a role with no definition, so they log in and see nothing (an unknown role reads as no permission). Level is preserved: manager stays manager, technician stays staff.
+ * Usage: --yes to apply, otherwise a trial.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -23,8 +14,7 @@ const MAP = { workshop_manager: 'location_manager', workshop_employee: 'location
   const User = require('../models/User');
   const { ALL_ROLE_DEFS } = require('../config/roles');
 
-  // ولا يُكتب دورٌ لا وجودَ له: خطأٌ مطبعيٌّ هنا يترك المستخدمَ بلا صلاحيّةٍ
-  // كحاله الآن، فيبدو الإصلاحُ وقد جرى ولم يجرِ.
+  // Never write a nonexistent role: a typo would leave the user without permission as now, while appearing fixed.
   const known = new Set((ALL_ROLE_DEFS || []).map((r) => r.key));
   for (const to of Object.values(MAP)) {
     if (!known.has(to)) { console.error(`الدورُ «${to}» غيرُ معرَّف — أُوقف.`); process.exit(1); }
@@ -44,8 +34,7 @@ const MAP = { workshop_manager: 'location_manager', workshop_employee: 'location
 
   if (!YES) { console.log('\n— تجربةٌ فقط. أضف --yes للتنفيذ.\n'); await mongoose.disconnect(); return; }
 
-  // صلاحيّاتُ الأدوار مخزَّنةٌ مؤقّتًا في العمّالَين — تُبطَل وإلّا بقي أحدُهما
-  // يقرأ الدورَ القديم حتى تنتهي المهلة.
+  // Role permissions are cached in both workers; invalidate them or one keeps reading the old role until expiry.
   try { require('../utils/ttlCache').clear('perm:'); } catch (_) {}
   console.log(`\n✓ نُقل ${users.length} مستخدمًا`);
   console.log('  (يلزمهم تسجيلُ خروجٍ ودخولٍ ليُقرأ الدورُ الجديد في المتصفّح)');

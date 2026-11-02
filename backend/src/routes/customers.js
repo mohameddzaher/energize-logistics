@@ -1,19 +1,8 @@
-/**
- * قائمةُ العملاء — من سجلّ قسم التحصيل، لا من `Customer`.
- *
- * ── لماذا بقيت هذه البادئة ─────────────────────────────────────────────────
- * `Customer` جدولُ ورك فلو «العملاء والمالية» الذي زال، وصار فارغًا. وهذه
- * النقطةُ يقرؤها موضعان: شاشةُ المستخدمين (لربط حسابِ شريكٍ بعملائه) والتطبيق.
- * فلو تُركت تقرأ من الجدول القديم لعرضت قائمةً فارغةً في الاثنين.
- *
- * فصارت تقرأ من `CollectionsParty` — سجلُّ الأطراف الحيّ الذي بُني من كشوف
- * التشغيل وبقيّة سجلّات الشركة. وشكلُ الردّ كما كان (`companyName`) فلا تُعاد
- * كتابةُ ما يقرؤه.
- */
+/** Customer list, read from the collections section register, not `Customer`. `Customer` belonged to the removed customers-and-finance workflow and is empty, but this endpoint is still read by the users screen (linking a partner account to its customers) and the app, so it reads `CollectionsParty` instead, the live party register built from operations statements and other company records. The response shape is unchanged (`companyName`) so readers need no rewrite. */
 const express = require('express');
 const router = express.Router();
 
-// معرّفٌ مشوَّهٌ في الرابط = لا سجلّ، لا عطلٌ في الخادم — راجع utils/idParam.
+// A malformed id in the URL means no record, not a server error; see utils/idParam.
 const { objectIdParam } = require('../utils/idParam');
 router.param('id', objectIdParam());
 const authenticate = require('../middleware/auth');
@@ -38,8 +27,7 @@ router.get('/', async (req, res) => {
       .limit(limit)
       .lean();
 
-    // `companyName` هو ما تقرؤه الشاشاتُ القائمة — يُرسَل بجانب `name` فلا
-    // يُكسر ما يعمل، ولا يُجبَر الجديدُ على اسمٍ من جدولٍ زال.
+    // `companyName` is what existing screens read; it is sent alongside `name` so nothing breaks and new code is not forced onto a name from a removed table.
     res.json({
       customers: rows.map((r) => ({ ...r, companyName: r.name })),
       total: rows.length,

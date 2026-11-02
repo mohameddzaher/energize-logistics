@@ -1,20 +1,8 @@
 /**
- * genPageCatalog — يولّد فهرس صفحات النظام من الشريط الجانبي.
- *
- *   node src/scripts/genPageCatalog.js
- *   node src/scripts/genPageCatalog.js --check    يتأكّد إنه محدَّث، بلا كتابة
- *
- * ── لماذا يُولَّد ولا يُكتب ────────────────────────────────────────────────────
- * صفحاتُ الصلاحيّات تحتاج قائمةً بكلّ صفحةٍ في النظام: مسارُها، وقسمُها، واسمُها
- * بالعربيّة والإنجليزيّة. والقائمةُ موجودةٌ أصلًا — هي الشريطُ الجانبيُّ نفسُه في
- * `frontend/src/app/system/layout.tsx`.
- *
- * وكتابتُها مرّةً ثانيةً في الخادم تعني أنّ كلَّ صفحةٍ جديدةٍ تُولَد بلا صلاحيّةٍ
- * تحرسها، ولا يظهر ذلك في شاشة: تُضاف الصفحةُ إلى الشريط فيراها الجميع، ويظنّ
- * من فتح صفحةَ الصلاحيّات أنّه ضبط كلَّ شيء. فتُقرأ من مصدرها، و`--check` يقف
- * في وجه أيّ تفرّقٍ بينهما.
- *
- * ونظيرُه في الاتّجاه المعاكس `genFrontendRoles.js`.
+ * genPageCatalog: generates the system page catalogue from the sidebar.
+ * --check verifies it is current without writing.
+ * The permissions pages need every page's path, section, and Arabic and English names, and that list already exists as the sidebar in frontend/src/app/system/layout.tsx. Writing it again on the server would let each new page be born without a guarding permission, unnoticed on any screen, so it is read from the source and --check blocks any divergence.
+ * The reverse direction is genFrontendRoles.js.
  */
 const fs = require('fs');
 const path = require('path');
@@ -24,11 +12,8 @@ const NAV = path.join(ROOT, 'frontend', 'src', 'app', 'system', 'layout.tsx');
 const OUT = path.join(__dirname, '..', 'config', 'pages.json');
 const CHECK = process.argv.includes('--check');
 
-// ── الأسماءُ التي تأتي من ملفّ الترجمة ──────────────────────────────────────
-// بعضُ المداخل تكتب اسمَها في السطر (`lang === 'ar' ? 'المحفظة' : 'Wallet'`)
-// وبعضُها يشير إلى الترجمة (`label: L.wallet`). وكتابةُ جدولٍ يدويٍّ للثانية
-// يعني أن تصير أربعٌ وستّون صفحةً في شاشة الصلاحيّات بمسارها البرمجيّ بدل
-// اسمها — يقرؤه صاحبُ الشركة فلا يعرف ما يمنح. فيُقرأ `layout` من مصدره.
+// Names that come from the translation file.
+// Some entries write their name inline (a lang === 'ar' ternary) and others point at translations (label: L.wallet). Without a table for the second kind, sixty-four pages would show their code path on the permissions screen instead of a name. So layout is read from its source.
 function layoutLabels() {
   const TR = path.join(ROOT, 'frontend', 'src', 'lib', 'translations.ts');
   const t = fs.readFileSync(TR, 'utf8');
@@ -51,8 +36,7 @@ const L_LABELS = layoutLabels();
 
 const src = fs.readFileSync(NAV, 'utf8');
 
-// كلُّ سطرٍ فيه `href:` هو مدخلُ صفحةٍ في الشريط. والصياغةُ منتظمةٌ لأنّ الملفّ
-// يُكتب هكذا منذ أوّله؛ وما يشذّ يُستخرَج اسمُه من `L_LABELS` أو يُترك بمساره.
+// Every line with href: is a sidebar entry. The format is regular because the file has always been written that way; any exception takes its name from L_LABELS or keeps its path.
 const items = [];
 const seen = new Set();
 for (const line of src.split('\n')) {
@@ -71,9 +55,7 @@ for (const line of src.split('\n')) {
     if (!ar && plain) { ar = plain[1]; en = plain[1]; }
   }
   const key = href[1];
-  // المسارُ الواحد قد يظهر مرّتين لقسمين (سير عمل التشغيل يظهر للتشغيل
-  // وللتحصيل). والصلاحيّةُ على الصفحة لا على ظهورها، فتُسجَّل مرّةً واحدةً
-  // تحت أوّل قسمٍ يعلنها.
+  // One path can appear twice for two sections (the operations workflow shows for operations and collections). The permission is on the page, not its appearance, so it is registered once under the first section that declares it.
   if (seen.has(key)) continue;
   seen.add(key);
   items.push({
@@ -81,7 +63,7 @@ for (const line of src.split('\n')) {
     section: section[1],
     ar: ar || key,
     en: en || key,
-    // صفحةٌ بلا اسمٍ مقروءٍ تُعلَّم كي تُصلَّح، لا كي تُخفى.
+    // A page without a readable name is flagged to be fixed, not hidden.
     ...(ar ? {} : { unnamed: true }),
   });
 }

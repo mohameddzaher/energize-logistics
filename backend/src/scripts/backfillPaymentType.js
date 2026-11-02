@@ -1,30 +1,15 @@
 /**
- * backfillPaymentType — الكشفُ الذي يحمل رقمَ فاتورةٍ كان ضريبيًّا.
- *
- *   node src/scripts/backfillPaymentType.js --dry     يقول ولا يكتب
- *   node src/scripts/backfillPaymentType.js           ينفّذ
- *
- * ── لماذا ──────────────────────────────────────────────────────────────────
- * «نوع الدفع» عمودٌ جديد، وما قبله لا يحمله — فلا يصل قسمَ التحصيل شيءٌ من
- * أربعةٍ وثلاثين ألفَ كشفٍ قديم، وفيها فواتيرُ حقيقيّةٌ لم تُحصَّل بعد.
- *
- * والاستنتاجُ هنا آمنٌ لأنّه من داخل البيانات لا من خارجها: الفاتورةُ لا تُكتب
- * إلّا لعميلٍ ضريبيّ — عميلُ الكاش يدفع في يده بلا فاتورة. فرقمُ الفاتورة
- * إقرارٌ بأنّ الكشف كان ضريبيًّا.
- *
- * ── وما لا يُستنتَج لا يُكتب ───────────────────────────────────────────────
- * الكشفُ بلا رقم فاتورةٍ لا يُقال عنه «نقديّ»: قد يكون ضريبيًّا لم يُفوتَر
- * بعد. وغيابُ الدليل ليس دليلَ الغياب — تُترك فارغةً ليختارها من يعرف.
- *
- * ولا يُكتب فوق اختيارٍ قائم: من اختار نوعًا بيده يجده كما تركه.
+ * backfillPaymentType: a manifest carrying an invoice number was a tax one.
+ * Usage: node src/scripts/backfillPaymentType.js --dry | (no flag to write)
+ * Payment type is a new column, so old manifests lack it and never reach collections. An invoice is written only for tax customers, so an invoice number implies tax.
+ * No invoice number is not called cash (absence of evidence); it stays empty, and an existing choice is never overwritten.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
 
 const DRY = process.argv.includes('--dry');
 
-// ما يعني «لا فاتورة» ليس رقمَ فاتورة — النصُّ نفسُه الذي تستثنيه صفحةُ
-// الفواتير، فلا يفترق الاستيرادُ عن العرض.
+// What means "no invoice" is not an invoice number; same text the invoices page excludes, so import and display do not diverge.
 const NO_INVOICE_TOKENS = [
   'no inv', 'no invoice', 'noinv', 'no-inv', 'none', 'n/a', 'na', '-', '—', '0',
   'بدون', 'بدون فاتورة', 'لا يوجد', 'لا توجد', 'غير مفوتر', 'غير مفوترة',

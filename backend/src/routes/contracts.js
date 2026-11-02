@@ -1,13 +1,8 @@
-/**
- * /api/contracts — قسم إدارة العقود: سجل موردي 3PL بعقودهم ومرفقاتهم، تحليل
- * التشغيل الشهري، سجل تنشيط الموردين الجدد، وعقود بقية الأقسام (عملاء إدارة
- * الأسطول وB2C…). Reads are open to the section (sectionGate in server.js);
- * writes are the contracts team + admin tier.
- */
+/** /api/contracts: contracts management section. 3PL vendor register with contracts and attachments, monthly operations analysis, new-vendor activation register, and other sections' contracts (fleet customers, B2C, ...). Reads are open to the section (sectionGate in server.js); writes are the contracts team and admin tier. */
 const express = require('express');
 const router = express.Router();
 
-// معرّفٌ مشوَّهٌ في الرابط = لا سجلّ، لا عطلٌ في الخادم — راجع utils/idParam.
+// A malformed id in the URL means no record, not a server error; see utils/idParam.
 const { objectIdParam } = require('../utils/idParam');
 router.param('id', objectIdParam());
 router.param('attId', objectIdParam());
@@ -28,8 +23,7 @@ router.delete('/vendors/:id', E, ctrl.deleteVendor);
 router.post('/vendors/:id/attachments', E, ctrl.addVendorAttachment);
 router.delete('/vendors/:id/attachments/:attId', E, ctrl.removeVendorAttachment);
 
-// ── العملاء ─────────────────────────────────────────────────────────────────
-// الطرفُ الآخر من كلّ صفقة. «suggestions» قبل «/:id» وإلّا قُرئت معرّفًا.
+// Customers: the other side of each deal. "suggestions" comes before "/:id", or it would be read as an id.
 router.get('/customers/suggestions', ctrl.customerSuggestions);
 router.get('/customers', ctrl.listCustomers);
 router.post('/customers', E, ctrl.createCustomer);

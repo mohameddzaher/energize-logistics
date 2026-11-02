@@ -2,18 +2,7 @@ const express = require('express');
 const router = express.Router();
 const authenticate = require('../middleware/auth');
 
-/**
- * ── المساعدُ الجديدُ أوّلًا ──────────────────────────────────────────────────
- *
- * هذه المساراتُ هي المساعد: حوارٌ موجَّهٌ على مواضيع مركز التقارير وصلاحيّاته —
- * راجع `controllers/assistantController`. وهي مفتوحةٌ لكلّ حسابٍ داخليّ لأنّ
- * **ما يراه كلٌّ محسومٌ بمصفوفة صلاحيّات الأقسام** داخلَها، لا بقائمة أدوارٍ
- * على الباب.
- *
- * وما تحتها (`/query`) بقايا المساعد القديم: مطابقةُ عباراتٍ إنجليزيّةٍ على
- * جداولَ ماليّةٍ أكثرُها زال. تبقى حتى تُزال واجهتُها، وحارسُها الماليُّ القديم
- * يُطبَّق عليها وحدَها — لا على الجديد.
- */
+/** The new assistant first. These routes are the assistant: a guided dialogue over the reports-hub topics and permissions (see `controllers/assistantController`). Open to every internal account because what each user sees is decided by the section permission matrix inside, not by a role list at the door. The `/query` routes below are leftovers of the old assistant (English phrase matching over mostly removed finance tables), kept until their UI is removed, with the old finance guard applying only to them. */
 const assistant = require('../controllers/assistantController');
 router.get('/sections', authenticate, assistant.sections);
 router.get('/search', authenticate, assistant.search);
@@ -23,13 +12,7 @@ router.get('/topics/:topic/:id', authenticate, assistant.answer);
 const Customer = require('../models/Customer');
 const Invoice = require('../models/Invoice');
 const Payment = require('../models/Payment');
-// ── المصدرُ صار كشوفَ التشغيل ──────────────────────────────────────────────
-// كانت هذه الأربعةُ خدماتٍ تقرأ من `Invoice`/`Payment`/`Customer` — جداولِ ورك
-// فلو زال. فكان المساعدُ يجيب عن «أكبر المتأخّرين» بلا شيء، وهي إجابةٌ أسوأُ
-// من «لا أعرف»: تُقرأ «لا متأخّرات».
-//
-// و«ترتيبُ المحصّلين» و«العملاءُ الأخطر» نموذجان لا مدخلاتِ لهما في البيانات
-// الحيّة — أُسقطت أسئلتُهما بدل أن تُجاب بأرقامٍ مخترَعة.
+// The source is now operations statements. These four services read `Invoice`/`Payment`/`Customer` from a removed workflow, so the assistant answered 'largest overdue' with nothing, which reads as no arrears. Collector ranking and riskiest customers have no live inputs, so their questions were dropped rather than answered with invented numbers.
 const receivables = require('../services/receivablesService');
 const getAgingReport = async () => {
   const a = await receivables.aging({});
@@ -40,15 +23,9 @@ const getDSOTrend = async (months = 12) => (await receivables.dsoTrend({ months 
 
 router.use(authenticate);
 
-// ── ولماذا تقييدُ الدور هنا ─────────────────────────────────────────────────
-// هذا المسار يُخرج قائمة العملاء بحدود ائتمانهم وأرصدتهم، والفواتير المتأخّرة
-// والمجمَّدة، وترتيب المحصّلين. ولم يكن عليه إلا `authenticate` — فكلُّ حسابٍ في
-// النظام، وحسابات العملاء والموردين في البوّابة من بينها فهي مستخدمون عاديّون،
-// يقرأ الملفّ المالي للشركة بطلبٍ واحد.
+// Why the role restriction. This route returns customers with credit limits and balances, overdue and frozen invoices and collector ranking, and had only `authenticate`, so any account, including partner portal accounts (ordinary users), could read the company's financial file in one request.
 const authorize = require('../middleware/rbac');
-// حارسٌ يذكر دورًا لا وجود له لا يفتح لأحد — يبدو أوسعَ ممّا هو. وقد حمل هذا
-// السطرُ اسمين ميّتين مرّتين: `collections_manager`/`collector` قبل أن يصيرا
-// `customers_finance_*`، ثمّ هذين بعد أن حُذف قسمُ العملاء والمالية.
+// A guard naming a role that does not exist opens for nobody while looking broader than it is. This line carried dead names twice: `collections_manager`/`collector` before they became `customers_finance_*`, then those after the customers-and-finance section was removed.
 router.use(authorize('super_admin', 'admin', 'cfo', 'accounting_manager', 'accountant',
   'collections_manager', 'collections_staff'));
 
@@ -57,7 +34,7 @@ const queryHandlers = [
   {
     patterns: ['high risk', 'risky clients', 'risk clients'],
     handler: async () => {
-      const clients = []; // تقديرُ المخاطر كان يُبنى على سجلّ فواتيرَ زال
+      const clients = []; // Risk scoring was built on an invoice record that no longer exists.
       const summary = clients.length === 0
         ? 'No high-risk clients found.'
         : `Found ${clients.length} high-risk clients. Top: ${clients.slice(0, 5).map((c) => `${c.companyName} (Score: ${c.riskScore})`).join(', ')}`;
@@ -67,7 +44,7 @@ const queryHandlers = [
   {
     patterns: ['lowest performance', 'worst collector', 'worst performing'],
     handler: async () => {
-      const ranking = []; // أداءُ المحصّلين كان يُبنى على سجلّ مدفوعاتٍ زال
+      const ranking = []; // Collector performance was built on a payments record that no longer exists.
       const worst = ranking[ranking.length - 1];
       const summary = worst
         ? `Lowest performing collector: ${worst.collector.name} with ${worst.efficiency}% efficiency (Collected: ${worst.totalCollected} / Target: ${worst.target})`
@@ -78,7 +55,7 @@ const queryHandlers = [
   {
     patterns: ['best performance', 'top collector', 'best performing'],
     handler: async () => {
-      const ranking = []; // أداءُ المحصّلين كان يُبنى على سجلّ مدفوعاتٍ زال
+      const ranking = []; // Collector performance was built on a payments record that no longer exists.
       const best = ranking[0];
       const summary = best
         ? `Top performing collector: ${best.collector.name} with ${best.efficiency}% efficiency (Collected: ${best.totalCollected} / Target: ${best.target})`
@@ -274,7 +251,7 @@ const queryHandlers = [
   {
     patterns: ['collector ranking', 'collector performance', 'best collector', 'collector efficiency'],
     handler: async () => {
-      const ranking = []; // أداءُ المحصّلين كان يُبنى على سجلّ مدفوعاتٍ زال
+      const ranking = []; // Collector performance was built on a payments record that no longer exists.
       if (ranking.length === 0) return { type: 'performance', data: [], summary: 'No collector data available.' };
       const summary = `Top collectors: ${ranking.slice(0, 3).map((r, i) => `#${i+1} ${r.collector.name} (${r.efficiency}% efficiency, SAR ${Math.round(r.totalCollected).toLocaleString()} collected)`).join(' | ')}`;
       return { type: 'performance', data: ranking, summary, suggestions: ['Show high risk clients', 'Total outstanding', 'Show overdue invoices'] };
@@ -405,9 +382,8 @@ router.post('/query', async (req, res) => {
       }
     }
 
-    // Default: try to interpret as a customer name search
-    // مهرَّبٌ ومقصوص ومثبَّت في أوّله: كان يُبنى من نصّ المستخدم كما هو، فـ«.»
-    // وحدها تُخرج كلّ العملاء، و«(a+)+z» تُشغل القاعدة دهرًا على مسحٍ كامل.
+    // Default: try to interpret as a customer name search.
+    // Escaped, trimmed and anchored at the start: it used to be built from raw user text, so a lone '.' returned every customer and '(a+)+z' could run the regex for ages on a full scan.
     const safe = String(query ?? '').trim().slice(0, 80).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const customers = safe ? await Customer.find({
       companyName: { $regex: `^${safe}`, $options: 'i' },

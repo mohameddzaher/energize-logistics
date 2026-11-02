@@ -1,14 +1,6 @@
 /**
- * من أيِّ يومٍ يُعَدّ رصيدُ كلّ موظّف — وكم زاد رصيدُ من خدم قبل عقده.
- *
- * الرصيدُ يُعَدّ من **تاريخ مباشرة العمل** دائمًا، لا من تاريخ العقد (راجع
- * utils/leaveBalance). ومن سبقت مباشرتُه عقدَه المسجَّل بسنواتٍ يستحقّ رصيدَ
- * تلك السنوات كاملًا — **وما أخذه فيها من إجازاتٍ لا سجلَّ له عندنا فلا
- * يُخصَم**. فهذا يسمّي أولئك ويقول كم زاد رصيدُ كلٍّ منهم بالقاعدة الجديدة،
- * ليُراجَع: فإن كان أحدُهم قد استهلك شيئًا من تلك السنوات فموضعُ خصمه
- * «الرصيد المُرحَّل» برقمٍ سالبٍ يكتبه من يعرفه.
- *
- *   node src/scripts/auditLeaveAccrualBasis.js
+ * Which day each employee's balance is counted from, and how much the balance grew for those who served before their contract.
+ * Balance is always counted from the work start date, not the contract date (see utils/leaveBalance). Someone who started years before the recorded contract is entitled to those years in full, and leave taken then has no record here so it is not deducted. This names them and the increase under the new rule for review; if one consumed some, the place to deduct is the carried balance with a negative number entered by someone who knows.
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -39,8 +31,7 @@ const DAY = 86400000;
     const opts = { workStartDate: e.actualWorkStartDate || '', contracts: list.length };
     const b = computeBalance(active, 0, new Date(), opts);
     tally[b.accrualBasis] += 1;
-    // ومن سبقت مباشرتُه عقدَه بأكثرَ من سنةٍ: يُقال كم زاد رصيدُه بالقاعدة
-    // الجديدة — فرقٌ محسوبٌ لا مقترَح، ليُراجَع ما استُهلك منه إن استُهلك.
+    // For those who started more than a year before their contract, report the increase under the new rule: a computed difference, not a suggestion, so any consumed leave can be reviewed.
     if (e.actualWorkStartDate && list.length === 1 && active.startDate) {
       const gap = Math.round((new Date(String(active.startDate).slice(0, 10)) - new Date(e.actualWorkStartDate)) / DAY);
       if (gap > 365) {

@@ -15,11 +15,8 @@ const lookupSchema = new mongoose.Schema(
     order: { type: Number, default: 0 },
     isActive: { type: Boolean, default: true },
     isSystem: { type: Boolean, default: false }, // seeded default
-    // ── شاهدةُ قبر ───────────────────────────────────────────────────────────
-    // البذرُ عند الإقلاع ينشئ ما لا يجده، فالقيمةُ المبذورةُ التي تُحذَف حذفًا
-    // نهائيًّا تعود في أوّل إعادة تشغيل. ولذلك كان زرُّ الحذف مخفيًّا عنها —
-    // وهو حلٌّ للعَرَض: القائمةُ تمتلئ بقيمٍ لا تُستعمل ولا تُزال.
-    // فتُعلَّم محذوفةً: تختفي من كلّ قائمةٍ ولا يعيدها البذرُ لأنّه يجدها.
+    // Tombstone: boot seeding recreates missing values, so a hard-deleted seeded value returns on restart.
+    // Deleted values are flagged instead; they vanish from every list and the seed still finds them.
     deleted: { type: Boolean, default: false, index: true },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   },

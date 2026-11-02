@@ -20,17 +20,8 @@ const SOURCE = 'ops_upl';
 const crypto = require('crypto');
 
 /**
- * ── ولا يُعاد كتابةُ ما لم يتغيّر (٢٠٢٦/١٠/٢٤) ──────────────────────────────
- * المزامنةُ الكاملة كانت تكتب الأربعين ألفَ كشفٍ كلَّها كلَّ ساعة — لأنّ كلَّ صفٍّ
- * يحمل `lastSyncedAt` جديدًا فيُعدّ «معدَّلًا» ولو لم يتغيّر فيه حرف. نحوُ ستَّ
- * عشرةَ كتابةً في الثانية بلا انقطاع: تُنسَخ إلى ثلاثة خوادم، وتتضخّم بها نسخُ
- * الاحتياط، ويقرؤها كلُّ مستمعٍ للتغييرات — وهي معظمُ فاتورة القاعدة.
- *
- * فلكلّ صفٍّ بصمةٌ لكلّ ما يدخل في كتابته: ما جاء من المنصّة، والاسمُ المعتمَد،
- * وصفةُ العميل، والنوعُ المشتقّ، وخاناتُ الصفّ نفسِه التي يقرؤها خطُّ التحديث
- * (مصدرُ قيمة البيع ونوعِ الدفع، والفاتورة…). فإن طابقت بصمةَ آخر كتابةٍ فالنتيجةُ
- * هي هي حرفًا بحرف، فيُتخطّى الصفّ. وإن تغيّر شيءٌ منها كُتب كما كان يُكتب.
- * واحتياطًا: مرّةٌ في اليوم (الرابعة فجرًا بتوقيت الرياض) تُكتب الصفوفُ كلُّها كالسابق.
+ * Do not rewrite what did not change. The full sync wrote all 40 thousand reports every hour, because each row carries a fresh `lastSyncedAt` and so counts as modified though nothing changed: about sixteen writes per second nonstop, replicated to three servers, inflating backups and read by every change listener; most of the DB bill.
+ * Each row has a fingerprint of everything that goes into its write: platform values, canonical name, customer type, derived type, and the row's own fields that the update pipeline reads (selling value source, payment type, invoice). If it matches the last write's fingerprint the result is identical, so the row is skipped; if anything changed it is written as before. As a safety net, once a day (04:00 Riyadh time) all rows are written as before.
  */
 const DOC_INPUTS = ['sellingValue', 'sellingValueSource', 'paymentType', 'paymentTypeSource', 'paymentSubtype', 'invoiceNumber', 'reportNumber', 'stage'];
 const sigOf = (parts) => crypto.createHash('sha1').update(JSON.stringify(parts)).digest('hex');
@@ -52,8 +43,7 @@ async function fetchAllShipments() {
   const limit = 100; // UPL page cap
   let page = 1;
   for (let i = 0; i < 1000; i++) {
-    // المسحُ كاملٌ صفحةً صفحة، فالترتيبُ لا يعنيه. (و`sort` مُهمَلٌ في المنصّة
-    // على أيّ حال — تردّ دائمًا بترتيب الإنشاء؛ راجع jobs/opsPoll.)
+    // The scan is complete, page by page, so order does not matter. (`sort` is ignored by the platform anyway; it always returns creation order; see jobs/opsPoll.)
     const out = await upl.get('/admin/shipments', { query: { page, limit } });
     const items = (out.data && out.data.items) || [];
     all.push(...items);
@@ -66,12 +56,7 @@ async function fetchAllShipments() {
 
 function mapShipment(s) {
   const set = {
-    // ── تاريخُ الكشف هو `pick_time` لا `created_at` ────────────────────────
-    // `created_at` لحظةُ كتابة الصفّ في المنصّة، و`pick_time` تاريخُ الكشف
-    // نفسِه. وهما يفترقان في ثمانيةِ آلافٍ وسبعِمئةٍ وثمانٍ وعشرين شحنةً من
-    // ثلاثةٍ وثلاثين ألفًا — كشفٌ عُمل في نوفمبر ٢٠٢٥ ثمّ أُدخل في فبراير ٢٠٢٦
-    // كان يُقرأ كشفَ فبراير، فيدخل تقاريرَ شهرٍ لم يحدث فيه ويخرج من شهره.
-    // وشيتُ المتابعة يحمل `pick_time` — فكان الرقمان يختلفان بلا سبب.
+    // Report date is `pick_time`, not `created_at`. `created_at` is when the platform row was written; `pick_time` is the report's own date. They differ in about 8,700 of 33,000 shipments: a report made in November 2025 and entered in February 2026 was read as a February report, entering the reports of a month it did not occur in and leaving its own. The follow-up sheet carries `pick_time`, so the two figures disagreed for no reason.
     reportDate: s.pick_time ? new Date(s.pick_time)
       : (s.created_at ? new Date(s.created_at) : undefined),
     fromLocation: s.address_from || '',
@@ -118,48 +103,25 @@ function mapShipment(s) {
   return { set, setOnInsert };
 }
 
-// ── ولا يُختَم المنقولُ باسمِ إنسان ─────────────────────────────────────────
-// كانت هنا `getSysUserId` تأخذ أوّلَ `super_admin` تجده في القاعدة وتضعه
-// `createdBy` على كلّ صفٍّ تنشئه المزامنة. فظهر أربعةٌ وثلاثون ألفَ كشفٍ
-// «أنشأتها فتون» — وهي لم تفتح واحدًا منها. والمنقولُ من المنصّة لا مُنشئَ له
-// عندنا، وقولُ «لا أحد» أصدقُ من تسمية من لم يفعل.
-//
-// وشاشةُ التفاصيل تقرأ `externalSource` فتقول «منصّة التشغيل (تلقائي)» — فلا
-// تبقى الخانةُ فارغةً بلا تفسير.
+// Synced rows are not stamped with a person. `getSysUserId` took the first `super_admin` in the DB and set it as `createdBy` on every row the sync created, so 34 thousand reports showed as created by one admin who opened none. Platform-imported rows have no creator here, and "nobody" is more truthful than naming someone who did not do it.
+// The details screen reads `externalSource` and shows "operations platform (automatic)", so the field is not empty without explanation.
 
 // Upsert a batch of shipments into OperationsWorkflow (used by both the full sync
 // and the live poll). Soft-deleted shipments (deleted_at set) are removed instead.
 // Refreshes only the UPL-derived columns; manual columns are $setOnInsert-only.
 /**
- * صفةُ كلّ عميلٍ من صفحة «أنواع الدفع» — مفتاحُ الاسم المطويّ ← cash | tax.
- *
- * تُقرأ مرّةً لكلّ دفعةٍ لا مرّةً لكلّ شحنة، وتُحفَظ تحت بادئة `wf:` — وهي التي
- * تُمسَح حين يُغيَّر نوعُ عميلٍ من تلك الصفحة، فتسري الصفةُ الجديدة على أوّل
- * مزامنةٍ بعدها بلا انتظار.
+ * Each customer's type from the payment-types page: folded name key -> cash | tax.
+ * Read once per batch, not per shipment, and cached under the `wf:` prefix, which is cleared when a customer's type is changed from that page, so the new type applies from the first sync after.
  */
 /**
- * ── والاسمُ الوارد يُردّ إلى اسمِ العميل المعتمَد ──────────────────────────
- *
- * اسمُ العميل يُصحَّح في المنصّة (أو من شاشة العملاء عندنا)، ويبقى في حمولاتٍ
- * قديمةٍ بصيغته الأولى — فتأتي المزامنةُ بالقديم وتكتبه فوق الصحيح. وقد وقع:
- * أربعةُ آلافٍ وثلاثُمئةٍ وستّةٌ وتسعون كشفًا عادت إلى أسمائها القديمة بعد
- * مطابقة الأسماء.
- *
- * فكلُّ اسمٍ يمرّ على أسماء أطراف التحصيل وصيغِها البديلة (`aliasKeys` — وفيها
- * الاسمُ القديم لكلّ من أُعيدت تسميتُه، راجع utils/renameOpsCustomer): إن عُرف
- * كُتب الاسمُ المعتمَد، وإلّا بقي كما جاء. فالتصحيحُ يثبت ولا يُدهَس، وصيغُ
- * الاسم الواحد تجتمع على صفٍّ واحدٍ في كلّ شاشة.
+ * The incoming name is mapped to the canonical customer name.
+ * A customer name corrected on the platform (or in our customers screen) remains in old payloads in its first form, so a sync would bring the old name and overwrite the correct one. It happened: 4,396 reports reverted to old names after name matching.
+ * Every name is checked against collections party names and aliases (`aliasKeys`, which hold the old name of anyone renamed; see utils/renameOpsCustomer): if known, the canonical name is written, otherwise it stays as received. So a correction sticks and variants of one name gather on one row on every screen.
  */
 /**
- * ── وخريطتا العملاء لا تُمسحان مع فلاتر الجدول ──────────────────────────────
- * كانتا تحت بادئة `wf:` — وهي البادئةُ التي تُمسَح عند **كلّ** كتابةٍ على كشف،
- * وفي آخر هذه الدالّة نفسِها. فكلُّ مزامنةٍ كانت تُبطل خريطتَي نفسِها، وتُقرأ
- * في التي تليها من القاعدة من جديد: قُيس ذلك — ٢٫٣ ثانيةٍ للأسماء و١٫٢ للأنواع،
- * أي أربعُ ثوانٍ لمزامنةِ **شحنةٍ واحدة**، وهي ثوانٍ ينتظرها مَن غيّر الحالة.
- *
- * وهما لا تتبعان الكشوفَ أصلًا بل أطرافَ التحصيل، فلهما بادئتُهما: تُمسَح حين
- * يُعاد تسميةُ عميلٍ أو يُغيَّر نوعُه (renameOpsCustomer · paymentTypesController)
- * لا حين تُكتب خانةٌ في كشف.
+ * The two customer maps are not cleared with table filters.
+ * They were under the `wf:` prefix, which is cleared on every report write and at the end of this function, so each sync invalidated its own maps and re-read the DB next time: measured 2.3 s for names and 1.2 s for types, four seconds for a single shipment's sync, which someone changing a status waits for.
+ * They follow collections parties, not reports, so they have their own prefix: cleared when a customer is renamed or its type changed (renameOpsCustomer, paymentTypesController), not when a report field is written.
  */
 async function canonicalNameMap() {
   return cache.wrap('wfparty:canonicalCustomerName', 60000, async () => {
@@ -196,21 +158,13 @@ async function upsertShipments(ships, { force = false } = {}) {
   const live = ships.filter((s) => s && s.id && !s.deleted_at);
   const deletedIds = ships.filter((s) => s && s.id && s.deleted_at).map((s) => String(s.id));
 
-  // ── ونوعُ الدفع يُكتب مع الكشف لا بعده بأسبوع ─────────────────────────────
-  // كانت المزامنةُ لا تمسّ `paymentType` أصلًا، فيولد الكشفُ بلا نوعٍ ويبقى
-  // فارغًا حتى يفتح أحدٌ صفحةَ «أنواع الدفع» ويضغط زرًّا. وأثرُه أنّ أربعةَ
-  // آلافٍ وستَّمئةٍ وأربعةً وأربعين كشفًا لها تاريخُ سدادٍ ولا نوعَ لها — أي
-  // أنّها مستحقّةٌ للتحصيل ولا تظهر في شاشةِ تحصيلٍ أصلًا، لا في الكاش ولا في
-  // الضريبيّ.
-  //
-  // فصار يُشتقّ في المزامنة نفسِها: صفةُ العميل، وتغلبها طريقةُ الدفع النقديّة
-  // إن قالتها المنصّةُ عن هذه الحمولة (وهو الاستثناءُ الوحيد). راجع
-  // utils/paymentType.
+  // Payment type is written with the report, not a week later. The sync never touched `paymentType`, so a report was born without a type and stayed empty until someone opened the payment-types page and pressed a button. As a result 4,644 reports had a payment date but no type: due for collection yet shown on no collection screen, neither cash nor tax.
+  // Now derived in the sync itself: the customer type, overridden by the cash payment method if the platform states it for this payload (the only exception). See utils/paymentType.
   const typeByCustomer = await customerTypeMap();
   const canonicalName = await canonicalNameMap();
   const { fold } = require('../models/CollectionsParty');
 
-  // ما هو مكتوبٌ الآن من كلّ صفّ — بصمتُه، والخاناتُ التي تدخل في كتابته.
+  // What is currently written for each row: its fingerprint and the fields that go into its write.
   const existing = new Map();
   const liveIds = live.map((s) => String(s.id));
   for (let i = 0; i < liveIds.length; i += 5000) {
@@ -222,13 +176,10 @@ async function upsertShipments(ships, { force = false } = {}) {
 
   const ops = live.map((s) => {
     const { set, setOnInsert } = mapShipment(s);
-    // الاسمُ المعتمَد لا الوارد — راجع canonicalNameMap.
+    // The canonical name, not the incoming one; see canonicalNameMap.
     const canon = canonicalName[fold(set.username || '')];
     if (canon) set.username = canon;
-    // ── النوعُ يُشتقّ بالقاعدة كاملةً ────────────────────────────────────────
-    // صفةُ العميل، وتنقضها طريقةُ الدفع النقديّة للكشوف الجديدة وحدَها، وتعلوهما
-    // فاتورةٌ صادرة. راجع utils/paymentType — والقياسُ على `reportDate` لأنّ
-    // القاعدة تسري من أوّل سبتمبر.
+    // Type is derived by the full rule: customer type, overridden by cash payment method for new reports only, and above both an issued invoice. See utils/paymentType; measured on `reportDate` because the rule applies from the start of September.
     const custType = typeByCustomer[fold(s.user?.name || '')] || '';
     const shipDate = s.pick_time ? new Date(s.pick_time) : (s.created_at ? new Date(s.created_at) : null);
     const derived = derivePaymentTypeFor(
@@ -243,37 +194,23 @@ async function upsertShipments(ships, { force = false } = {}) {
     return {
       updateOne: {
         filter: { externalSource: SOURCE, externalId: String(s.id) },
-        // ── إلّا قيمةَ بيعٍ صُحِّحت من دفتر التحصيل ────────────────────────
-        // تُكتب الحقولُ كلُّها من المنصّة إلّا `sellingValue` متى كان مصدرُها
-        // الدفتر: هو المرجعُ في الكشف النقديّ، وبدون هذا الشرط تعود القيمةُ
-        // القديمة في أوّل مزامنةٍ بعد التصحيح — وقد عادت.
-        // (خطُّ تجميعٍ لا `$set` عاديّ، فالشرطُ يحتاج قراءةَ الصفّ نفسِه.)
+        // Except a selling value corrected from the collections ledger. All fields are written from the platform except `sellingValue` when its source is the ledger: it is the reference for a cash report, and without this condition the old value returned at the first sync after the correction, and it did.
+        // (An aggregation pipeline, not a plain `$set`, since the condition must read the row itself.)
         update: [
           {
             $set: {
               ...set,
               sellingValue: {
                 $cond: [
-                  // والمكتوبةُ باليد في سير العمل كذلك (`manual`) — راجع النموذج.
+                  // Likewise a value written by hand in the workflow (`manual`); see the model.
                   { $in: [{ $ifNull: ['$sellingValueSource', ''] }, ['collections_book', 'manual']] },
                   { $ifNull: ['$sellingValue', 0] },
                   set.sellingValue,
                 ],
               },
-              // (كان هنا «لا يُبدَّل نوعٌ مكتوبٌ — يُملأ الفارغُ وحدَه». لم يعد
-              //  كذلك منذ a40ad1c6: المشتقُّ يُعاد اشتقاقُه في كلّ دورة، ولا يثبت
-              //  إلّا اختيارُ اليد والتوحيد — راجع ما يلي.)
-              // ── صفةُ العميل تحكم، وتعلوها فاتورةٌ صادرةٌ واختيارُ يد ────────
-              // كشفٌ يحمل رقمَ فاتورةٍ فقد فُوتِر ضريبيًّا فعلًا، والورقةُ التي خرجت
-              // للعميل أقوى من صفةٍ عامّة.
-              //
-              // ── والتوحيدُ قرارٌ لا يُشتقّ فوقه ──────────────────────────────
-              // كشفٌ وُحِّد على صفة عميله (`unified`) يبقى على ما وُحِّد عليه،
-              // إلّا أن تصدر له فاتورةٌ ضريبيّةٌ حقيقيّة بعدها. كان التوحيدُ
-              // يكتب `auto` فتعيد هذه الخطوةُ اشتقاقَه في الدورة التالية —
-              // ثمانُمئةٍ وثلاثةٌ وعشرون كشفًا لعملاءَ ضريبيّين قالت المنصّةُ عنها
-              // «cash» عادت كاشًا بعد كلّ توحيد، ويعود «المخالف» كما كان.
-              // راجع isUnified في utils/paymentType.
+              // (Formerly "a written type is not replaced; only empty ones are filled". Since a40ad1c6 the derived type is re-derived every cycle; only a manual choice and unification persist; see below.)
+              // Customer type governs, overridden by an issued invoice or a manual choice. A report with an invoice number has actually been tax-invoiced, and the paper sent to the customer outranks a general type.
+              // Unification is a decision that is not derived over. A report unified to its customer's type (`unified`) keeps it unless a real tax invoice is issued for it afterwards. Unification used to write `auto`, so this step re-derived it next cycle: 823 reports of tax customers that the platform called "cash" reverted to cash after each unification, and the mismatched ones returned. See isUnified in utils/paymentType.
               paymentType: derived ? {
                 $switch: {
                   branches: [
@@ -282,9 +219,7 @@ async function upsertShipments(ships, { force = false } = {}) {
                       case: { $eq: [{ $ifNull: ['$paymentTypeSource', ''] }, 'unified'] },
                       then: { $cond: [ISSUED_INVOICE_EXPR, 'tax', { $ifNull: ['$paymentType', ''] }] },
                     },
-                    // رقمُ فاتورةٍ حقيقيّ وحدَه يجعله ضريبيًّا — لا الصافي ولا الضريبة:
-                    // النقديُّ يُكتب له صافٍ (مبلغُ سداده) وقد تُحسب ضريبتُه، ولا رقمَ
-                    // له. قرارُ صاحب الشركة — راجع hasTaxInvoice في utils/paymentType.
+                    // Only a real invoice number makes it tax; not net or tax amounts: a cash report gets a net (its payment amount) and may get a computed tax, but has no number. See hasTaxInvoice in utils/paymentType.
                     { case: ISSUED_INVOICE_EXPR, then: 'tax' },
                   ],
                   default: derived,
@@ -297,14 +232,11 @@ async function upsertShipments(ships, { force = false } = {}) {
                   'auto',
                 ],
               } : { $ifNull: ['$paymentTypeSource', ''] },
-              // العائلةُ قبل هذه الدورة — يقرؤها النوعُ في الخطوة التالية.
+              // The family before this cycle; read by the type in the next step.
               _prevPT: { $ifNull: ['$paymentType', ''] },
             },
           },
-          // ── والنوعُ يتبع العائلةَ إن نقلتها المزامنة ─────────────────────────
-          // انتقالٌ آليٌّ إلى الضريبيّ يأخذ «آجل - فاتورة»، وإلى الكاش يرفع نوعًا
-          // ضريبيًّا (ثلاثةُ أنواعٍ نقديّة — يختار إنسان). واختيارُ اليد لا يُمسّ.
-          // راجع subtypeAfterAuto في utils/paymentType.
+          // The type follows the family if the sync moved it. An automatic move to tax takes the credit-with-invoice type; a move to cash clears a tax type (there are three cash types, so a person chooses). A manual choice is untouched. See subtypeAfterAuto in utils/paymentType.
           {
             $set: {
               paymentSubtype: {
@@ -324,15 +256,8 @@ async function upsertShipments(ships, { force = false } = {}) {
     };
   });
 
-  // ── والعميلُ الجديد يدخل قسمَ التحصيل بكوده ────────────────────────────────
-  //
-  // كان سجلُّ أطراف التحصيل يُملأ بسكربتٍ يُشغَّل باليد، فمن أنشأت له العمليّاتُ
-  // كشفًا اليومَ لا يظهر في القسم حتّى يتذكّر أحدٌ تشغيلَه. والقسمُ يعمل بالكود:
-  // به تُنسَب الفاتورة، وبه يُطابَق الدفتر، وبه تُقرأ المديونيّة — فالعميلُ بلا
-  // كودٍ عميلٌ يُشحَن له ولا يُحصَّل منه.
-  //
-  // فيُنشأ مع أوّل كشف. ونوعُه يُشتقّ بالقاعدة نفسِها التي تُشتقّ بها صفةُ
-  // الكشف أعلاه، لا بقاعدةٍ ثانيةٍ تفترق عنها.
+  // A new customer enters collections with its code. The collections party register used to be filled by a manually run script, so a customer for whom operations created a report today did not appear in the section until someone ran it. The section works by code: invoices are attributed by it, the ledger is matched by it, debt is read by it; a customer without a code is shipped to but not collected from.
+  // So it is created with the first report, with its type derived by the same rule as the report's type above, not a second rule that could drift.
   const { ensureCollectionsParty } = require('../utils/ensureCollectionsParty');
   const seenNames = new Map();
   for (const s of live) {
@@ -345,12 +270,8 @@ async function upsertShipments(ships, { force = false } = {}) {
       paymentType: custType || derivePaymentTypeFor({ reportDate: shipDate, paymentMethod: s.payment_method }, '') || '',
     });
   }
-  // ── ولا يُسأل عن العميل نفسِه في كلّ دورة ──────────────────────────────
-  // العميلُ بلا كودٍ كان يُصنَّف من جديد في كلّ مزامنة — وهي قراءاتٌ وكتابةٌ
-  // تكلّف نحوَ ثانيةٍ ونصفٍ لكلّ اسم، تتكرّر كلَّ خمسَ عشرةَ ثانيةً بلا جديد
-  // (التصنيفُ لا يتغيّر من تلقائه). فمَن سُئل عنه يُسجَّل عشرَ دقائق.
-  //
-  // والذاكرةُ لا تُخفي عميلًا جديدًا: اسمٌ لم يُسأل عنه قطُّ ليس فيها.
+  // The customer is not looked up every cycle. A customer without a code was reclassified on every sync: reads and writes costing about 1.5 s per name, repeated every 15 seconds with nothing new (classification does not change by itself). One that was asked about is remembered for ten minutes.
+  // The cache cannot hide a new customer: a name never asked about is not in it.
   const ASKED_TTL = 10 * 60 * 1000;
   let newParties = 0;
   for (const { name, paymentType } of seenNames.values()) {
@@ -359,18 +280,15 @@ async function upsertShipments(ships, { force = false } = {}) {
     try {
       const CP = require('../models/CollectionsParty');
       const before = await CP
-        // طرفٌ قائمٌ **بكود** لا يُعاد إليه؛ أمّا القائمُ بلا كود فيُمرَّر ليأخذه.
+        // A party that exists with a code is not returned; one that exists without a code is passed through to receive it.
         .countDocuments({ kind: 'customer', code: { $gt: '' }, $or: [{ nameKey: CP.fold(name) }, { aliasKeys: CP.fold(name) }] });
       if (before) { cache.set(askedKey, 1, ASKED_TTL); continue; }
       const p = await ensureCollectionsParty(name, { paymentType, source: 'operations_workflow' });
       cache.set(askedKey, 1, ASKED_TTL);
-      // ── ويُعَدُّ الجديدُ وحدَه ──────────────────────────────────────────
-      // كان يُعَدُّ كلُّ ما رجعت به الدالّة — وهي ترجع القائمَ كما ترجع
-      // المُنشأ. فكان السجلُّ يقول «عميلٌ جديد» في كلّ دورةٍ عن عميلٍ قديم.
+      // Only new ones are counted. Everything the function returned was counted, and it returns existing parties as well as created ones, so the log said "new customer" every cycle for an old one.
       if (p && p.createdAt && Date.now() - new Date(p.createdAt).getTime() < 60000) newParties += 1;
     } catch (e) {
-      // عميلٌ لم يُنشأ لا يوقف مزامنةَ الشحنات: الكشفُ يدخل، والطرفُ يُنشأ في
-      // المزامنة التالية أو بيد القسم.
+      // A customer that was not created does not stop the shipment sync: the report enters, and the party is created in the next sync or by the department.
       console.error('[ops-sync] تعذّر إنشاء طرف التحصيل:', name, e.message);
     }
   }
@@ -397,36 +315,23 @@ async function upsertShipments(ships, { force = false } = {}) {
     // Deleted over there stays here: our row carries work the platform never saw.
     console.log(`[ops-sync] deleted on the platform, kept here: ${deletedIds.join(',')}`);
   }
-  // المزامنة تُدخل حالاتٍ وفروعًا جديدة، وقوائم قيم الفلتر مخزَّنة مؤقّتًا؛ فبغير
-  // إبطالها يفلتر المستخدم على قائمةٍ تسبق آخر مزامنة فلا يرى الكشوف الجديدة.
+  // The sync brings new statuses and branches, and filter value lists are cached; without invalidating them a user filters on a list older than the last sync and does not see the new reports.
   if (created || updated || removed) { try { cache.clear('wf:'); } catch (e) {} }
-  // ── وكشفٌ جديدٌ قد ذكره التخليصُ قبل أن يصلنا ───────────────────────────
-  // رقمُ كشف التخريج يُكتب في خانة نقل الحاوية لحظةَ تحميلها، والكشفُ يصلنا من
-  // المنصّة بعدها. فيُربط حين يصل — راجع services/customsOpsLink.
+  // A new report may already be named by customs before it reaches us. The haulage report number is written in the container move field when loaded, and the report arrives from the platform afterwards, so it is linked on arrival; see services/customsOpsLink.
   if (created) {
     require('./customsOpsLink').linkPendingMoveRefs()
       .catch((e) => console.error('[ops-sync] ربطُ كشوف التخليص:', e.message));
   }
-  // ── والمزامنةُ تعيد اشتقاقَ نوع الدفع ─────────────────────────────────────
-  // كشفٌ صار نقديًّا وعليه تحصيلٌ في المحفظة يُحصَّل، وكشفٌ كفّ عن النقد يُرفع
-  // عنه ما كتبته المحفظة. مرّةً بعد أن تهدأ الدورات — راجع utils/walletCollection.
+  // The sync re-derives payment type. A report that became cash with a wallet collection on it gets collected; one that stopped being cash loses what the wallet wrote. Once, after cycles settle; see utils/walletCollection.
   if (updated || created) { try { require('../utils/walletCollection').scheduleResync(); } catch (e) {} }
   return { created, updated, removed, skipped };
 }
 
 /**
- * ── وما كتبناه نحن لا يُنتظَر فيه دورُ الاستطلاع ────────────────────────────
- *
- * حين تُغيَّر حالةُ شحنةٍ من شاشاتنا نحن (صفحة الطلبات أو جدول سير العمل)،
- * كانت الكتابةُ تذهب إلى المنصّة وحدَها، ويبقى صفُّنا على حالته القديمة حتى
- * يمرّ الاستطلاعُ عليه. فيرى مَن غيّرها بيده أنّ شيئًا لم يحدث — فيغيّرها
- * ثانيةً. والمنصّةُ هي المرجع، لكنّ ما كتبناه إليها نعرفه لحظةَ كتابته: فتُقرأ
- * الشحنةُ منها بعد الكتابة مباشرةً ويُكتب صفُّها عندنا ويُبَثّ.
- *
- * وتُقرأ من المنصّة ولا يُفترَض جوابُها: قد تردّ الحالةَ مختلفةً (قيدٌ في
- * تسلسل الحالات عندهم)، والصحيحُ أن نعرض ما استقرّ هناك لا ما طلبناه.
- *
- * @param {string[]} ids معرّفاتُ الشحنات في المنصّة
+ * What we wrote is not left to wait for the polling cycle.
+ * When a shipment's status is changed from our screens (orders page or workflow table), the write went only to the platform and our row kept the old status until the poll reached it, so the person who changed it saw nothing happen and changed it again. The platform is the reference, but what we wrote we know at the moment of writing: so the shipment is read back from it right after the write, our row is written and broadcast.
+ * It is read back rather than assumed: the platform may return a different status (a constraint in their status sequence), and what settled there is what should be shown, not what was requested.
+ * @param {string[]} ids shipment ids on the platform
  */
 async function syncShipmentsById(ids) {
   const list = [...new Set((ids || []).map((x) => String(x || '').trim()).filter(Boolean))];
@@ -437,12 +342,12 @@ async function syncShipmentsById(ids) {
       const out = await upl.get(`/admin/shipments/${encodeURIComponent(id)}`);
       const d = out?.data ?? out;
       if (d && d.id) ships.push(d);
-    } catch (_) { /* شحنةٌ تعذّرت قراءتُها — الاستطلاعُ يلحقها */ }
+    } catch (_) { /* Shipment could not be read; the poll will catch it up. */ }
   }));
   if (!ships.length) return { rows: [], created: 0, updated: 0, removed: 0 };
   const res = await upsertShipments(ships);
 
-  // وقسمُ طلبات الشحنات يتبع كذلك — هو نظامُنا لا مرآة.
+  // The shipment orders section follows too; it is our own system, not a mirror.
   try {
     const { upsertPlatformShipments } = require('./shipmentOrderSyncService');
     const r = await upsertPlatformShipments(ships);
@@ -453,12 +358,7 @@ async function syncShipmentsById(ids) {
     externalSource: SOURCE, externalId: { $in: ships.map((s) => String(s.id)) },
   }).lean();
 
-  // ── والخبرُ يُبَثّ إلى العاملَين لا إلى واحد ────────────────────────────
-  // `workflow:updated` يُرسَل بـ`emitPerRole` — حلقةٌ على مقابس هذا العامل
-  // وحدَه، لأنّ الصفَّ يُحجَب بحسب الدور قبل إرساله. فالنصفُ المتّصلُ بالعامل
-  // الآخر لا يسمع شيئًا. وهذا الخبرُ لا يحمل صفًّا أصلًا — أرقامَ الشحنات
-  // وحالاتِها — فيُبَثّ للجميع عبر المحوّل، وكلُّ شاشةٍ تُعيد جلبَ صفوفها
-  // بحجبها المعتاد.
+  // The event is broadcast to both workers, not one. `workflow:updated` is sent with `emitPerRole`, a loop over this worker's sockets only, because the row is masked by role before sending, so the half of clients connected to the other worker hear nothing. This event carries no row at all, only shipment numbers and statuses, so it is broadcast to all via the adapter, and each screen refetches its rows with the usual masking.
   try {
     emitToAll('workflow:bulkImported', {
       source: SOURCE, live: true, write: true,

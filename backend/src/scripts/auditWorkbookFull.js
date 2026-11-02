@@ -1,4 +1,4 @@
-/** يقرأ كلَّ ورقةٍ وكلَّ عمود، ويبحث عن عميلين بعينهما. لا يكتب شيئًا. */
+/** Reads every sheet and column and searches for two specific customers. Read-only. */
 require('dotenv').config();
 const XLSX = require('xlsx');
 const path = require('path');

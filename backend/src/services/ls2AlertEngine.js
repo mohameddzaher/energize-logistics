@@ -128,10 +128,7 @@ function evaluate(tel, _vehicle, settings, deferrals = []) {
       message: `No signal for ${Math.round(ageMin)} min` });
   }
 
-  // ---- Tires: temperature + pressure -------------------------------------
-  // قراءةٌ محمولةٌ من نبضةٍ سابقة لا تُبنى عليها تنبيهات: التنبيه يقول «الآن»،
-  // وقراءةٌ عمرُها نبضاتٌ ليست الآن — فقد تُنبِّه على حرارةٍ بردت، أو تسكت عن
-  // ارتفاعٍ حدث بعدها. تُعرَض على الشاشة ولا تُحرِّك إنذارًا.
+  // Tires: temperature + pressure. A reading carried over from an earlier pulse is not used for alerts: an alert means "now", and a reading several pulses old may warn about a temperature that already cooled or miss a rise that came after. It is displayed but does not raise an alarm.
   for (const tire of (tel.tiresCarriedOver ? [] : (tel.tires || []))) {
     const label = `A${tire.axle}·T${tire.position}`;
     const key = `axle${tire.axle}-tire${tire.position}`;

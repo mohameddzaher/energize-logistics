@@ -12,8 +12,7 @@ import 'hr_inbox.dart';
 import 'hr_master.dart';
 import 'hr_ops.dart';
 
-/// لوحة الموارد البشرية — native: the headline numbers, department split and
-/// the expiring-documents list, from the same endpoint the web dashboard uses.
+/// HR dashboard: native headline numbers, department split and expiring-documents list, from the same endpoint as the web dashboard.
 class HrDashboardScreen extends StatefulWidget {
   const HrDashboardScreen({super.key});
   @override
@@ -29,7 +28,7 @@ class _HrDashboardScreenState extends State<HrDashboardScreen> {
   void initState() {
     super.initState();
     _load();
-    // تعديلُ الماستر أو ملفّ الموظّف أو بطاقةِ السائق من المركبات يصل هنا فورًا.
+    // A master edit, employee file edit or driver card edit from vehicles arrives here immediately.
     Live.instance.on('hr:master', _onLive);
     Live.instance.on('hr:employee', _onLive);
   }
@@ -48,12 +47,12 @@ class _HrDashboardScreenState extends State<HrDashboardScreen> {
   Map<String, String> _filters = {};
   int _seq = 0;
 
-  // ── كلُّ رقمٍ يفتح الصفوفَ التي وراءه، حاملًا فلترَ اللوحة ──────────────────
-  // «الهوية» هي المجموعة العامّة التي تعرض الموظّف ببياناته الأساسيّة (كالموقع).
+  // Every number opens the rows behind it, carrying the dashboard filter.
+  // "Identity" is the general group showing the employee's basic data (as on the web).
   void _open(String group, [Map<String, String> q = const {}]) => Navigator.push(context, MaterialPageRoute(
       builder: (_) => HrMasterGroupScreen(group: group, initial: {..._filters, ...q})));
   void _drill(Map<String, String> q) => _open('identity', q);
-  /// الانتهاءاتُ بالفلتر الحاليّ وبالمدّة التي عُدَّ بها الرقم (`alert.warnDays`).
+  /// Expiries under the current filter and the window the number was counted with (`alert.warnDays`).
   void _openExpiring([String? state]) {
     final wd = ((_m?['alert'] as Map?) ?? const {})['warnDays'];
     Navigator.push(context, MaterialPageRoute(builder: (_) => HrExpiringScreen(initial: {
@@ -62,7 +61,7 @@ class _HrDashboardScreenState extends State<HrDashboardScreen> {
   }
   void _push(Widget w) => Navigator.push(context, MaterialPageRoute(builder: (_) => w));
 
-  /// «يعمل» بنصفيه: يعمل · إجازة — كسطر التفصيل في الموقع.
+  /// "Working" in its two halves: working and on leave, like the detail line on the web.
   void _dutyHalf(String half) {
     final dd = ((((_m?['totals'] as Map?) ?? const {})['onDutyDetail'] as Map?)?[half] as Map?) ?? const {};
     showModalBottomSheet(context: context, builder: (c) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -74,7 +73,7 @@ class _HrDashboardScreenState extends State<HrDashboardScreen> {
     ])));
   }
 
-  /// كارتٌ برقمه، وتحته نصفاه: على الكفالة · فريلانسر (من «رقم السجل التجاري»).
+  /// Card with its number and two halves beneath: sponsored by us and freelancer (derived from the commercial registration number).
   Widget _halfCard(String label, dynamic value, Map<String, dynamic> mt, String key, Color c,
       {String? sub, VoidCallback? onTap, void Function(String)? onHalf}) {
     final h = ((mt['halves'] as Map?)?[key] as Map?) ?? const {};
@@ -111,15 +110,14 @@ class _HrDashboardScreenState extends State<HrDashboardScreen> {
   Future<void> _load() async {
     final mine = ++_seq;
     try {
-      // فلترُ اللوحة (القسم، المدينة، حالة العمل، المشروع، الجنسية) يُرسَل مع الطلبين —
-      // فيُحسَب عليه كلُّ رقمٍ عن الموظّفين، كالموقع. راجع ui/hr_quick.dart.
+      // The dashboard filter (department, city, work status, project, nationality) is sent with both requests so every employee number is computed under it, like the web. See ui/hr_quick.dart.
       final q = [for (final e in _filters.entries) if (e.value.isNotEmpty) '${e.key}=${Uri.encodeComponent(e.value)}'].join('&');
       final qs = q.isEmpty ? '' : '?$q';
       final d = await Api.instance.get('/api/hr/dashboard$qs');
-      // كروتُ اللوحة بنصفيها (على الكفالة · فريلانسر) — من نظرة الموارد البشريّة نفسِها.
+      // Dashboard cards with their two halves (sponsored by us, freelancer), from the same HR overview.
       Map<String, dynamic>? m;
       try { m = Map<String, dynamic>.from(await Api.instance.get('/api/hr/master/overview$qs') as Map); } catch (_) {}
-      // تحليلُ الأقسام يقرأ الفلترَ نفسَه — فلا يبقى رقمان على مجموعتين.
+      // Department analysis reads the same filter, so two numbers never come from two sets.
       Map<String, dynamic>? dep;
       try { dep = Map<String, dynamic>.from(await Api.instance.get('/api/hr/master/by-department$qs') as Map); } catch (_) {}
       if (!mounted || mine != _seq) return;
@@ -129,7 +127,7 @@ class _HrDashboardScreenState extends State<HrDashboardScreen> {
     }
   }
 
-  /// شريطُ التنقّل بين صفحات الماستر — MasterNav: الرقمُ = المنتهي والقريب.
+  /// Navigation bar between master pages, like MasterNav: the number is expired plus near-expiry.
   Widget _masterNav() {
     final groups = List<Map<String, dynamic>>.from(_m?['groups'] ?? const []);
     final scope = Map<String, dynamic>.from((_m?['expiryScope'] as Map?) ?? const {});
@@ -179,7 +177,7 @@ class _HrDashboardScreenState extends State<HrDashboardScreen> {
                   child: ListView(
                     padding: const EdgeInsets.all(14),
                     children: [
-                      // ── الفلترةُ السريعة: كلُّ رقمٍ تحتها يُحسَب عليها ──
+                      // Quick filtering: every number below is computed under it.
                       AppCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                         Text(tr('فلترة اللوحة — كل الأرقام تتعدّل حسب اختيارك', 'Filter — every number follows your choice'),
                             style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: T.inkFaint)),
@@ -208,7 +206,7 @@ class _HrDashboardScreenState extends State<HrDashboardScreen> {
                         const SizedBox(width: 10),
                         Expanded(child: FadeSlideIn(delayMs: 280, child: Pressable(onTap: () => _push(const HrCustodyScreen()), child: StatCard(label: tr('عهد بعهدة الموظفين', 'Assigned assets'), value: s['assignedAssets'] ?? 0, color: T.cyan, icon: Icons.devices_other_outlined)))),
                       ]),
-                      // ── كروتُ الموقع بنصفيها: على الكفالة · فريلانسر ──
+                      // Web cards with their two halves: sponsored by us and freelancer.
                       if (mt != null) ...[
                         const SizedBox(height: 10),
                         _halfCard(tr('يعمل', 'Working'), mt['active'], mt, 'active', T.success,
@@ -226,14 +224,14 @@ class _HrDashboardScreenState extends State<HrDashboardScreen> {
                         const SizedBox(height: 8),
                         _halfCard(tr('شركة شقيقة', 'Sister company'), mt['sister'], mt, 'sister', T.cyan,
                             onTap: () => _drill({'employment': 'sister'}), onHalf: (k) => _drill({'employment': 'sister', 'engagement': k})),
-                        // والخمسةُ مجموعُها إجماليُّ الموظفين — يُقال صراحةً.
+                        // The five parts sum to the total employees; stated explicitly.
                         Padding(
                           padding: const EdgeInsets.only(top: 4),
                           child: Text(tr('المجموع ${((mt['active'] ?? 0) as num) + ((mt['noKind'] ?? 0) as num) + ((mt['transfer'] ?? 0) as num) + ((mt['finalExit'] ?? 0) as num) + ((mt['sister'] ?? 0) as num)} = إجمالي الموظفين ${mt['employees'] ?? 0}',
                               'Sum = total employees ${mt['employees'] ?? 0}'), style: const TextStyle(fontSize: 11, color: T.inkFaint)),
                         ),
                         const Divider(height: 20),
-                        // والأرشيفُ ليس هنا — صفحتُه وحدَها في قسم الموارد البشريّة.
+                        // The archive is not here; it has its own page in the HR section.
                         _halfCard(tr('خانات مطلوبة', 'Required fields'), mt['required'], mt, 'required', T.danger,
                             onTap: () => _open('required', {'status': 'required'}), onHalf: (k) => _open('required', {'status': 'required', 'engagement': k})),
                         const SizedBox(height: 8),
@@ -261,7 +259,7 @@ class _HrDashboardScreenState extends State<HrDashboardScreen> {
                         Pressable(onTap: () => _drill({'engagement': 'freelance'}),
                             child: StatCard(label: tr('فريلانسر', 'Freelancers'), value: mt['freelancers'] ?? 0, color: T.ink, icon: Icons.work_outline)),
                       ],
-                      // ── العقود التي تحتاج انتباهًا — مطابقٌ للوحة الموقع ──
+                      // Contracts needing attention, matching the web dashboard.
                       if (((s['noContractCount'] ?? 0) as num) > 0 || ((s['lapsedContractsCount'] ?? 0) as num) > 0) ...[
                         const SizedBox(height: 10),
                         Row(children: [
@@ -276,7 +274,7 @@ class _HrDashboardScreenState extends State<HrDashboardScreen> {
                           )),
                         ]),
                       ],
-                      // ── تحليلُ الأقسام: «أيُّ الأقسام أسوأ؟» ──
+                      // Department analysis: which departments are worst.
                       if (_dept != null && (_dept!['departments'] as List? ?? const []).isNotEmpty) ...[
                         const SizedBox(height: 14),
                         HrDeptAnalysis(
@@ -284,13 +282,13 @@ class _HrDashboardScreenState extends State<HrDashboardScreen> {
                           active: _filters['department'] ?? '',
                           onOpen: _drill,
                           onFilter: (dept) {
-                            // الضغطةُ الثانيةُ على القسم نفسِه ترفع القصرَ عنه.
+                            // A second tap on the same department lifts the restriction.
                             setState(() { if (_filters['department'] == dept) { _filters.remove('department'); } else { _filters = {..._filters, 'department': dept}; } });
                             _load();
                           },
                         ),
                       ],
-                      // ── ابدأ من هنا — أكثر البيانات نقصًا ──
+                      // Start here: the most incomplete data.
                       if ((_m?['topRequired'] as List? ?? const []).isNotEmpty) ...[
                         const SizedBox(height: 12),
                         AppCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -306,7 +304,7 @@ class _HrDashboardScreenState extends State<HrDashboardScreen> {
                           ]),
                         ])),
                       ],
-                      // ── المستندات ومواعيد انتهائها — حالاتُ كلّ مجموعة تفتح صفوفَها ──
+                      // Documents and their expiry dates; each group's states open their rows.
                       if ((_m?['groups'] as List? ?? const []).any((g) => (g as Map)['document'] == true)) ...[
                         const SizedBox(height: 12),
                         AppCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [

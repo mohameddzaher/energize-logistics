@@ -1,11 +1,7 @@
 'use client';
 /**
- * رفعُ بيانات الفواتير — ورقةُ المبيعات (إكسل) تُكتب على كشوفها في سير عمل التشغيل.
- *
- * «امر الشحن» هو رقمُ الكشف، ومعه السند ورقمُ الفاتورة وصافيها وضريبتُها وإجماليُّها
- * وتاريخُها. يُرفع الملفُّ فتُعرض المعاينة (ما سيُكتب، وما لا كشفَ له، وما لن يُكتب
- * ولماذا) ثمّ يُطبَّق بضغطة. والفاتورةُ الضريبيّة تصل التحصيلَ في الحال.
- * راجع POST /api/workflows/import-invoices.
+ * Invoice data upload: the sales sheet (Excel) is written onto its manifests in the operations workflow.
+ * The shipping order is the manifest number, with voucher, invoice number, net, tax, total and date. Upload shows a preview (what will be written, what has no manifest, what will not be written and why), then applies in one click. A tax invoice reaches collections at once. See POST /api/workflows/import-invoices.
  */
 import { useRef, useState } from 'react';
 import api from '@/lib/api';
@@ -17,7 +13,7 @@ type Result = {
   preview: boolean; updated?: number; fileRows: number; reports: number; toUpdate: number; unchanged: number;
   notFound: string[]; skipped: { reportNumber: string; reason: string }[]; badRows: { reportNumber: string; reason: string }[];
   sample: { reportNumber: string; before: Record<string, any>; after: Record<string, any> }[];
-  /** تنبيهاتُ الرفع — الفحوصُ الثلاثةُ على أسطر هذه الورقة (راجع invoiceChecksService). */
+  /** Upload warnings: the three checks on this sheet's lines (see invoiceChecksService). */
   checks?: {
     missingReports: { invoiceNumber: string; reportNumber: string; customerName: string; total: number | null }[];
     valueDiffs: { invoiceNumber: string; customerName: string; uploadedValue: number; reportsValue: number; difference: number }[];
@@ -107,10 +103,7 @@ export default function InvoiceImportButton({ ar, onDone }: { ar: boolean; onDon
                   {t('أرقامُ كشوفٍ غير موجودة في سير العمل: ', 'Not found: ')}{res.notFound.slice(0, 60).join('، ')}{res.notFound.length > 60 ? ' …' : ''}
                 </p>
               )}
-              {/* ── تنبيهاتُ الرفع ─────────────────────────────────────────────
-                  كشفٌ غيرُ موجود، وفاتورةٌ قيمتُها غيرُ مجموع كشوفها، وعميلٌ غيرُ
-                  عميل الكشف. وتبقى بعد التطبيق بطاقاتٍ في سير العمل — تسقط منها
-                  حين يُصحَّح الكشف. */}
+              {/* Upload warnings: a missing manifest, an invoice whose value differs from its manifests' sum, and a customer differing from the manifest customer. They remain as cards in the workflow after applying and drop out once the manifest is corrected. */}
               {res.checks && (() => {
                 const c = res.checks;
                 const fmt = (v: any) => (v === null || v === undefined ? '—' : Number(v).toLocaleString('en-US', { maximumFractionDigits: 2 }));

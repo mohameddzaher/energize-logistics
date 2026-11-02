@@ -13,18 +13,7 @@ import '../ui/theme.dart';
 import '../ui/stat_grid.dart';
 import '../ui/widgets.dart';
 
-/// سجلُّ تفقّد بداية الدوام — المراجعة، لا التفقّد نفسُه.
-///
-/// `B2cDutyScreen` هي شاشةُ المشرف: يقف أمام الدرّاجة ويصوّر ويحفظ. وهذه
-/// مقابلتُها — مَن أخرج مَن، ومتى، وبأيّ صورة — ومَن لم يُتفقَّد اليوم.
-///
-/// ── والمدى يُسأل بالطريقة التي يُسأل بها ────────────────────────────────────
-/// «يوم كذا» و«شهر كذا» هما السؤالان الحقيقيّان. وآخرُ الشهر ليس رقمًا واحدًا
-/// (٢٨ · ٢٩ · ٣٠ · ٣١)، فمن حسبه بيده أخذ شهرًا ناقصًا ولم يعرف — فيُحسَب.
-///
-/// ── والسجلُّ أكبرُ من صفحة ────────────────────────────────────────────────────
-/// مئةٌ وسبعةٌ وأربعون مندوبًا تعني نحو ثلاثة آلاف تفقّدٍ في الشهر. فيُقال كم
-/// عُرض من كم، ويُزاد بزرّ — ولا يُقَصّ صامتًا فيُقرأ النقصُ واقعًا.
+/// Duty start check register: review, not the check itself. `B2cDutyScreen` is the supervisor's screen (stand at the bike, photograph, save); this is its counterpart: who sent whom out, when, with which photo, and who was not checked today. The range is asked the way it is queried: "a day" and "a month" are the real questions. A month end is not one number (28, 29, 30, 31), so it is computed. The register is larger than a page: 147 riders means about three thousand checks a month, so it shows how many of how many are displayed and grows by a button, never truncating silently.
 class B2cDutyRegisterScreen extends StatefulWidget {
   const B2cDutyRegisterScreen({super.key});
   @override
@@ -50,7 +39,7 @@ String _dayKey(DateTime d) =>
 class _B2cDutyRegisterScreenState extends State<B2cDutyRegisterScreen> {
   static const _page = 200;
 
-  /// 'day' · 'month' · 'range' — نوعُ المدى، والحدّان يُحسبان منه.
+  /// 'day' | 'month' | 'range': the range type; both bounds are computed from it.
   String _mode = 'day';
   String _from = _dayKey(DateTime.now());
   String _to = _dayKey(DateTime.now());
@@ -84,7 +73,7 @@ class _B2cDutyRegisterScreenState extends State<B2cDutyRegisterScreen> {
 
   void _pickDay(String d) { _mode = 'day'; _from = d; _to = d; _pages = 1; }
 
-  /// أوّلُ الشهر وآخرُه — واليومُ صفرٌ من الشهر التالي هو آخرُ يومٍ في هذا.
+  /// First and last day of the month; day zero of the next month is the last day of this one.
   void _pickMonth(String m) {
     final parts = m.split('-');
     final y = int.tryParse(parts.first) ?? DateTime.now().year;
@@ -101,11 +90,10 @@ class _B2cDutyRegisterScreenState extends State<B2cDutyRegisterScreen> {
       final d = await Api.instance.get('/api/b2c/duty/supervisors');
       if (!mounted) return;
       setState(() => _sups = List<Map<String, dynamic>>.from(d['supervisors'] ?? []));
-    } catch (_) { /* الفلترُ يبقى «الكل» */ }
+    } catch (_) { /* The filter stays "all". */ }
   }
 
-  /// يومُ «مَن لم يُتفقَّد»: اليومُ إن كان داخل المدى، وإلّا آخرُه — فلا يُسأل
-  /// عن يومٍ لم يأتِ بعد (وآخرُ الشهر المختار قد يكون في المستقبل).
+  /// Day for "not checked": today if inside the range, else its last day, so a day not yet reached is never queried (the end of the selected month may be in the future).
   String get _missingDate {
     final today = _dayKey(DateTime.now());
     return _from.compareTo(today) <= 0 && today.compareTo(_to) <= 0 ? today : _to;
@@ -119,7 +107,7 @@ class _B2cDutyRegisterScreenState extends State<B2cDutyRegisterScreen> {
       if (_outcome.isNotEmpty) q.write('&outcome=$_outcome');
       final sup = _supervisor.isEmpty ? '' : '&supervisor=$_supervisor';
 
-      // الصفحاتُ معًا لا واحدةً بعد واحدة: انتظارٌ واحدٌ لا عدّة.
+      // Pages are fetched together, not one after another: one wait instead of several.
       final pageCalls = [
         for (var i = 1; i <= _pages; i++) Api.instance.get('/api/b2c/duty?$q&page=$i'),
       ];
@@ -147,11 +135,7 @@ class _B2cDutyRegisterScreenState extends State<B2cDutyRegisterScreen> {
     }
   }
 
-  // ── مَن تفقّده ومَن يُسأل عنه اثنان ──────────────────────────────────────────
-  // صار أيُّ مشرفٍ يتفقّد أيَّ مندوب، فسؤالُ «مَن عمل هذا التفقّد؟» غيرُ سؤال
-  // «مَن المسؤول عن هذا الرجل؟» — وعمودٌ واحدٌ كان يخلط الجوابين.
-  /// نفسُ قراءةِ الويب حرفًا بحرف: السجلُّ يحمل المندوبَ من سجلّ النقل الخفيف
-  /// (`ltEmployee.name`) أو — للصفوف القديمة — من سجلّ المناديب (`rep`).
+  // Who checked and who is responsible are two things. Any supervisor can now check any rider, so "who did this check" differs from "who is responsible for this man"; one column mixed the two answers. Same read as the web: the record carries the rider from the light-transport register (`ltEmployee.name`) or, for old rows, from the riders register (`rep`).
   String _nameOf(Map<String, dynamic> r) {
     final lt = r['ltEmployee'];
     if (lt is Map && (lt['name'] ?? '').toString().isNotEmpty) return lt['name'].toString();
@@ -162,14 +146,13 @@ class _B2cDutyRegisterScreenState extends State<B2cDutyRegisterScreen> {
       final en = (rep['englishName'] ?? '').toString();
       if (en.isNotEmpty) return en;
     }
-    // وتفقّدُ دبّابٍ لا راكبَ معروفًا له يُقرأ بلوحته.
+    // A moped check with no known rider is read by its plate.
     final plate = (r['vehiclePlate'] ?? '').toString();
     if (plate.isNotEmpty) return tr('دبّاب $plate', 'Bike $plate');
     return '—';
   }
 
-  /// المسؤولُ عن تفقّده — **مشرفُ التفقّد** لا التشغيليّ: التشغيليُّ مسؤوليّةُ
-  /// اليوم كلِّه، وهذه شاشةُ ساعةٍ واحدة.
+  /// Responsible for the check: the check supervisor, not the operations one. The operations supervisor owns the whole day; this screen is for a single hour.
   String _ownerOf(Map<String, dynamic> r) {
     final lt = r['ltEmployee'];
     if (lt is Map) {
@@ -186,7 +169,7 @@ class _B2cDutyRegisterScreenState extends State<B2cDutyRegisterScreen> {
     return '';
   }
 
-  /// والمشرفُ التشغيليّ — يُقال بجانبه فيُقرأ الفرقُ بينهما.
+  /// The operations supervisor is shown beside it so the difference is visible.
   String _opsOf(Map<String, dynamic> r) {
     final lt = r['ltEmployee'];
     if (lt is Map) {
@@ -197,7 +180,7 @@ class _B2cDutyRegisterScreenState extends State<B2cDutyRegisterScreen> {
     return '';
   }
 
-  /// مَن يراجع التفقّد (سليم / عليه ملاحظة) — كمسار الخادم: READ في routes/b2c.js.
+  /// Who reviews the check (sound / has a note), matching the server path: READ in routes/b2c.js.
   static const _reviewRoles = ['super_admin', 'admin', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead'];
 
   String _when(dynamic v) {
@@ -207,7 +190,7 @@ class _B2cDutyRegisterScreenState extends State<B2cDutyRegisterScreen> {
     return '${two(d.day)}/${two(d.month)}/${d.year} ${two(d.hour)}:${two(d.minute)}';
   }
 
-  /// قرارُ الإدارة على التفقّد — PATCH /api/b2c/duty/:id/review {verdict, note}.
+  /// Management decision on the check: PATCH /api/b2c/duty/:id/review {verdict, note}.
   Future<void> _review(BuildContext sheet, Map<String, dynamic> r, String verdict, String note) async {
     try {
       await Api.instance.patch('/api/b2c/duty/${r['_id']}/review', {'verdict': verdict, 'note': note});
@@ -297,7 +280,7 @@ class _B2cDutyRegisterScreenState extends State<B2cDutyRegisterScreen> {
                       padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
                       itemCount: photos.length + 1,
                       itemBuilder: (c, i) {
-                        // أوّلًا: تفاصيلُ التفقّد وقرارُ الإدارة عليه (كنافذة الموقع).
+                        // First: the check details and the management decision, like the web dialog.
                         if (i == 0) {
                           return Padding(
                             padding: const EdgeInsets.only(bottom: 12),
@@ -315,8 +298,7 @@ class _B2cDutyRegisterScreenState extends State<B2cDutyRegisterScreen> {
                             Text(kind == null ? '' : tr(kind.$1, kind.$2),
                                 style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: T.inkSoft)),
                             const SizedBox(height: 4),
-                            // ودعُ الصورةَ تُكبَّر: وجهُ المندوب ولوحةُ الدبّاب لا
-                            // يُقرآن في مربّعٍ صغير، وهما سببُ التصوير.
+                            // The photo can be enlarged: the rider's face and the moped plate are unreadable in a small square, and they are the reason for the photo.
                             ClipRRect(
                               borderRadius: BorderRadius.circular(12),
                               child: InteractiveViewer(
@@ -385,8 +367,7 @@ class _B2cDutyRegisterScreenState extends State<B2cDutyRegisterScreen> {
                   style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700), overflow: TextOverflow.ellipsis),
               onPressed: () async {
                 if (_mode == 'month') {
-                  // لا منتقيَ أشهرٍ في فلاتر، فتُعرَض الأشهرُ الأربعةَ عشرَ
-                  // الأخيرة: أكثرُ ما يُراجَع شهرُ الأمسِ أو هذا الشهر.
+                  // The filters have no month picker, so the last fourteen months are listed; the most reviewed month is yesterday's or this one.
                   final now = DateTime.now();
                   final chosen = await showModalBottomSheet<String>(
                     context: context,
@@ -420,7 +401,7 @@ class _B2cDutyRegisterScreenState extends State<B2cDutyRegisterScreen> {
                 if (_mode == 'day') {
                   setState(() => _pickDay(_dayKey(v)));
                 } else {
-                  // في «من — إلى» تُسأل البدايةُ ثمّ النهاية.
+                  // In "from - to" the start is asked, then the end.
                   final v2 = await showDatePicker(
                     context: context, initialDate: v,
                     firstDate: v, lastDate: DateTime.now().add(const Duration(days: 1)),
@@ -493,7 +474,7 @@ class _B2cDutyRegisterScreenState extends State<B2cDutyRegisterScreen> {
     final photos = List<Map<String, dynamic>>.from(r['photos'] ?? []);
     final owner = _ownerOf(r);
     final by = (r['supervisorName'] ?? '').toString();
-    // ومَن تفقّد غيرَ مندوبيه يُقال صريحًا: السجلُّ يُحاسَب عليه.
+    // A supervisor who checked someone else's rider is stated explicitly: the register is held against him.
     final onBehalf = owner.isNotEmpty && by.isNotEmpty && owner != by;
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
@@ -546,7 +527,7 @@ class _B2cDutyRegisterScreenState extends State<B2cDutyRegisterScreen> {
                 if (_opsOf(r).isNotEmpty) Chip2('${tr('تشغيليّه', 'ops')}: ${_opsOf(r)}', T.cyan),
               ]),
             ],
-            // الملاحظةُ مطلوبةٌ حين يُمنَع الخروجُ أو لم يحضر — فهي سببُ القرار.
+            // A note is required when departure is blocked or the rider did not show, since it is the reason for the decision.
             if ((r['notes'] ?? '').toString().isNotEmpty) ...[
               const SizedBox(height: 6),
               Text((r['notes']).toString(), style: const TextStyle(fontSize: 11.5, color: T.inkSoft)),
@@ -563,7 +544,7 @@ class _B2cDutyRegisterScreenState extends State<B2cDutyRegisterScreen> {
     return AppScaffold(
       title: Text(tr('سجل تفقّد الدوام', 'Duty register')),
       actions: [
-        // تصديرُ السجلّ بأعمدة الموقع — وروابطُ الصور لكلّ نوع.
+        // Register export with the web columns plus photo links per type.
         ExportButton(
           fileName: 'b2c-duty', sheetName: tr('تفقّد بداية الدوام', 'Duty checks'),
           columns: [
@@ -611,7 +592,7 @@ class _B2cDutyRegisterScreenState extends State<B2cDutyRegisterScreen> {
                         ],
                       ),
                       const SizedBox(height: 14),
-                      // مَن لم يُتفقَّد في يومٍ معيَّن — عملٌ ينتظر لا رقمٌ يُقرأ.
+                      // Who was not checked on a given day: work waiting, not a number to read.
                       if (_missing.isNotEmpty) ...[
                         AppCard(
                           topAccent: T.warn,
@@ -621,8 +602,7 @@ class _B2cDutyRegisterScreenState extends State<B2cDutyRegisterScreen> {
                             const SizedBox(height: 6),
                             Wrap(spacing: 6, runSpacing: 6, children: [
                               for (final m in _missing.take(30))
-                                // صفوفُ هذا النداء تُبنى بأسماء سجلّ المناديب
-                                // (`arabicName`) لا بأسماء سجلّ النقل الخفيف.
+                                // Rows from this call use the riders register names (`arabicName`), not light-transport register names.
                                 Chip2(((m['arabicName'] ?? m['englishName'] ?? m['name']) ?? '—').toString(), T.warn),
                               if (_missing.length > 30) Chip2('+${_missing.length - 30}', T.inkFaint),
                             ]),
@@ -644,7 +624,7 @@ class _B2cDutyRegisterScreenState extends State<B2cDutyRegisterScreen> {
                         )
                       else
                         ..._rows.map(_row),
-                      // ما عُرض من المدى: الصفحةُ حدُّها، والصمتُ عن الباقي يخفيه.
+                      // What was displayed of the range: the page is a limit, and silence about the rest would hide it.
                       if (_total > _rows.length) ...[
                         const SizedBox(height: 6),
                         Center(

@@ -1,20 +1,14 @@
 'use client';
-// شريط الإجراء الجماعي — يظهر بمجرد اختيار أول عنصر.
-//
-// كان موضوعًا بعد الجدول بخاصية sticky، ومع جدول من مئات الصفوف يعني أن المستخدم
-// يختار صفًّا في الأعلى ثم لا يجد الزر إلا بعد النزول إلى آخر الصفحة. الشريط
-// الآن ثابت في أسفل الشاشة (fixed)، فيظهر فورًا في أي موضع من الصفحة.
-//
-// ويترك مساحة أسفله عبر عنصر فارغ في تدفّق الصفحة، حتى لا يحجب آخر صف.
+// Bulk action bar, shown once the first item is selected. It is fixed at the bottom of the screen so it is reachable anywhere in a long table, with a spacer in the page flow so it does not cover the last row.
 import { X } from 'lucide-react';
 
 export default function SelectionBar({
   count, label, hint, actionLabel, onAction, onClear, ar, disabled, tone = 'orange', children,
 }: {
   count: number;
-  /** «٣ أصناف مختارة» — يُكتب كاملاً لأن صيغة الجمع تختلف بين الشاشات. */
+  /** '3 items selected': written in full because plural forms differ between screens. */
   label: string;
-  /** سطر توضيحي صغير: ماذا سيحدث بالضبط عند التنفيذ. */
+  /** Small hint line: what exactly will happen on execution. */
   hint?: string;
   actionLabel: string;
   onAction: () => void;
@@ -32,7 +26,7 @@ export default function SelectionBar({
 
   return (
     <>
-      {/* يمنع الشريط من تغطية آخر صف في الجدول */}
+      {/* Keeps the bar from covering the last table row. */}
       <div aria-hidden className="h-20" />
       <div className="fixed inset-x-0 bottom-0 z-40 px-3 pb-3 pointer-events-none">
         <div className="mx-auto max-w-4xl rounded-2xl border border-slate-300 bg-white shadow-2xl px-4 py-3

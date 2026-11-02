@@ -34,7 +34,7 @@ export default function CustomsDetailPage() {
   const txx = getCustomsIdExtraTranslations(lang);
 
   const [c, setC] = useState<any>(null);
-  // «مراحل السداد» من إعدادات القسم — وهي قائمةُ المرفقات كذلك (٢٠٢٦/١٠/٢٢).
+  // Payment stages come from the department settings, and are the attachment list too.
   const [payDefs, setPayDefs] = useState<{ key: string; nameAr: string; nameEn?: string }[]>([]);
   const loadPayDefs = useCallback(() => {
     api.get<{ items: { key: string; nameAr: string; nameEn?: string }[] }>('/api/lookups?type=customs_payment_stage&active=true')
@@ -45,18 +45,14 @@ export default function CustomsDetailPage() {
   const [closing, setClosing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  // ── وكلُّ حالةٍ تُعلَن هنا، قبل أيّ عودةٍ مبكّرة ──────────────────────────
-  // هذه الشاشةُ ترجع باكرًا مرّتين: أثناء التحميل، وحين لا تُوجَد المعاملة.
-  // وأيُّ `useState` يُكتب بعدهما يُنادى في بعض الرسمات ولا يُنادى في بعضها،
-  // فيسقط المكوّنُ كلُّه بخطأ React #310 («رُسمت خطّافاتٌ أكثرُ من المرّة
-  // السابقة») — شاشةٌ بيضاء لا يُفهَم سببُها. فموضعُها هنا لا هناك.
+  // Every state is declared here, before any early return. This screen returns early twice (while loading and when the transaction is missing), and any useState written after those runs on some renders and not others, crashing the whole component with React error #310 (rendered more hooks than previously), a blank screen with no visible cause.
   const [activating, setActivating] = useState(false);
   const [invoiceOpen, setInvoiceOpen] = useState(false);
   const [stageBusy, setStageBusy] = useState('');
-  // مراحلُ النقل وما بعده: للكلّ معًا، أو لوحدةٍ بعينها (رقمُ خانتها).
+  // Transport stages and later: for all units together, or for a single unit (its slot number).
   const [unitSel, setUnitSel] = useState<'all' | number>('all');
 
-  // الحذفُ لمدير القسم وموظّفه — يطابق حارسَ المسار في الخادم.
+  // Deletion is for the department manager and staff, matching the route guard on the server.
   const canDelete = ['super_admin', 'admin', 'customs_manager', 'customs_officer'].includes(user?.role || '') || canEditSection((user as any)?.permissions, 'Customs');
 
   const removeClearance = async () => {
@@ -82,7 +78,7 @@ export default function CustomsDetailPage() {
   }, [params.id, router]);
 
   useEffect(() => { fetchOne(); }, [fetchOne]);
-  // ملفّاتُ العملاء والوكلاء — منها يُختار كما في نموذج الإنشاء.
+  // Customer and agent files; chosen from them as in the create form.
   const [parties, setParties] = useState<{ customers: any[]; agents: any[] }>({ customers: [], agents: [] });
   useEffect(() => {
     Promise.all([
@@ -90,9 +86,7 @@ export default function CustomsDetailPage() {
       api.get<{ parties: any[] }>('/api/customs-clearance/parties?kind=agent'),
     ]).then(([cu, ag]) => setParties({ customers: cu.parties || [], agents: ag.parties || [] })).catch(() => {});
   }, []);
-  // ── عقدُ العميل الساري وأسعارُه ───────────────────────────────────────────
-  // يُقرأ لشريط «من عقد العميل» في الإيرادات، ويُعاد حين يتغيّر العميلُ أو عددُ
-  // الحاويات (أجورُ التخليص للحاوية الواحدة). `undefined` = لم يُقرأ بعد.
+  // The customer's active contract and its prices. Read for the from-customer-contract bar in revenues and refetched when the customer or the container count changes (clearance fees are per container). `undefined` means not read yet.
   const [contractInfo, setContractInfo] = useState<any>(undefined);
   const [contractBusy, setContractBusy] = useState(false);
   const custKey = String(c?.customerParty || '');
@@ -107,9 +101,9 @@ export default function CustomsDetailPage() {
     return () => { alive = false; };
   }, [params?.id, c?._id, custKey, countKey]);
   useSocket('customs:updated', useCallback((d: any) => {
-    // حمولةٌ بلا مراحلها المحسوبة (نسخةٌ قديمةٌ من الخادم) لا تُعتمَد: تُعاد القراءة.
+    // A payload without its computed stages (an old server version) is not accepted; it is read again.
     if (d?.clearance?._id === params.id) { if (d.clearance.pipeline) setC(d.clearance); else fetchOne(); }
-    // اسمُ بندٍ عُدِّل في إعدادات القسم: يُعاد قراءةُ المعاملة ليظهر الجديد.
+    // An item name was edited in the department settings: the transaction is re-read so the new name appears.
     else if (d?.renamed) fetchOne();
   }, [params.id, fetchOne]));
 
@@ -129,8 +123,7 @@ export default function CustomsDetailPage() {
     };
     setC(optimistic);
     try {
-      // المراحلُ لا تُكتب من هنا (لها `PATCH /stage`) — فلا تُرسَل، كي لا يُرفَض
-      // تعديلُ حقلٍ لأنّ زميلًا علّم مرحلةً في اللحظة نفسِها.
+      // Stages are not written from here (they have `PATCH /stage`), so they are not sent; otherwise a field edit would be rejected because a colleague marked a stage at the same moment.
       const { stage: _s, stagesDone: _d, pipeline: _p, stageLog: _l, ...body } = optimistic;
       const data = await api.put<any>(`/api/customs-clearance/${c._id}`, body);
       if (data?.clearance) setC(data.clearance);
@@ -154,14 +147,12 @@ export default function CustomsDetailPage() {
 
   const Back = isRTL ? ArrowRight : ArrowLeft;
   const ar = lang === 'ar';
-  // ── المراحلُ كما يراها الخادم ───────────────────────────────────────────
-  // أيُّها يَلزم هذه المعاملة، وأيُّها أُغلِق عليها، وكم النسبة: قاعدةٌ واحدةٌ في
-  // الخادم (pipelineOf) — والشاشةُ ترسم ما وصلها ولا تعيد حسابَه.
+  // Stages as the server sees them: which apply to this transaction, which are closed on it, and the percentage are one rule on the server (pipelineOf); the screen draws what it receives and does not recompute it.
   const pipeline: Pipeline = (c as any).pipeline || { route: '', cargoType: 'containers', steps: [], done: 0, total: 0, percent: 0, next: '' };
   const cargo = pipeline.cargoType;
   const sName = (k: string) => stageName(T.stages, k, cargo);
   const invoiceNumber: string = (c as any).saleInvoiceNumber || '';
-  // طلبُ الفوترة إلى الإدارة الماليّة (٢٠٢٦/١٠/٢٢) — المعاملةُ مفوترةٌ حين تقول الماليّةُ ذلك.
+  // Invoicing request to Finance: the transaction is invoiced when Finance says so.
   const ireq: { status?: string; decisionNote?: string; decidedByName?: string; decidedAt?: string; requestedAt?: string; fileUrl?: string } | undefined = (c as any).invoiceRequest;
   const awaitingTransport = (!!invoiceNumber || ireq?.status === 'pending') && !c.isCompleted && !c.cancelled && !(c as any).transportInvoiceReceived;
 
@@ -175,29 +166,22 @@ export default function CustomsDetailPage() {
     setStageBusy('');
   };
 
-  // --- master-spreadsheet field groups -------------------------------------
-  // (قائمةُ مراحل السداد كانت هنا مكتوبةً بثمانيةِ أسطر. صارت تُقرأ من إعدادات
-  //  القسم — راجع `components/customs/PaymentStages`.)
-  // ── التكاليف: مبالغُ تُدفع للغير وتُمرَّر على العميل كما هي ──────────────
-  // مجموعُها هو «اجمالى المصروفات» في الماستر حرفًا بحرف — لا يُزاد عليه بندٌ
-  // من بنود الهامش ولا يُنقص منه، وإلّا اختلف رقمُ الشاشة عن رقم المحاسبة.
+  // Master-spreadsheet field groups. The payment stages list used to be hardcoded here and is now read from the department settings; see `components/customs/PaymentStages`.
+  // Costs: amounts paid to third parties and passed to the customer as they are. Their total is the master sheet's total expenses exactly; no margin item is added to or removed from it, or the screen would differ from accounting.
   const COST_FIELDS: [string, string, string][] = [
     ['deliveryOrder', 'قيمة إذن التسليم', 'Delivery order'],
     ['customsDuty', 'الرسوم الجمركية', 'Customs duty'],
     ['portFees', 'أجور الموانى', 'Port fees'],
     ['unloadingFees', 'أجور التفريغ', 'Unloading fees'],
     ['inspection', 'أجور الكشف', 'Inspection'],
-    // ── النقلُ بأجزائه الثلاثة ─────────────────────────────────────────────
-    // ما ندفعه للناقل في كلّ جزء: «كلّمنا ناقلًا فقال ١٥٠٠». وهو تكلفةٌ لا
-    // إيراد، ومنه يُطرَح سعرُ بيعنا للجزء نفسِه فيظهر صافيه في الإيرادات.
+    // Transport in its three parts: what we pay the carrier for each part. It is a cost, not revenue, and our selling price for the same part is subtracted from it to show the net in revenues.
     ['transport', 'النقل من الميناء إلى العميل', 'Transport: port → customer'],
     ['transportToYard', 'النقل من الميناء إلى الساحة', 'Transport: port → yard'],
     ['transportYardToCustomer', 'النقل من الساحة إلى العميل', 'Transport: yard → customer'],
     ['appointmentBooking', 'حجز الموعد', 'Appointment booking'],
     ['storage', 'تخزين', 'Storage'],
     ['yardFees', 'أجور الساحة', 'Yard fees'],
-    // «الأرضيات» و«تصريح الخروج» بندٌ واحد في الواقع — قالها القسم، وجُمع ما
-    // كان في الأوّل إلى الثاني (scripts/mergeDemurrageIntoExitPermit).
+    // Floor charges (demurrage) and the exit permit are one item in practice, so the first was merged into the second (scripts/mergeDemurrageIntoExitPermit).
     ['exitPermit', 'تصريح الخروج (الأرضيات)', 'Exit permit (demurrage)'],
     ['extension', 'تمديد', 'Extension'],
     ['consolidator', 'الدامج', 'Consolidator'],
@@ -206,10 +190,10 @@ export default function CustomsDetailPage() {
     ['extraFees', 'أجور إضافية', 'Extra fees'],
     ['returnInvoice', 'فاتورة الإرجاع', 'Return invoice'],
   ];
-  // ── الهامش: ما يُضاف فوق المصروفات، ومجموعُه هو الربح ────────────────────
+  // Margin: what is added on top of expenses, and its total is the profit.
   const MARGIN_FIELDS: [string, string, string][] = [
     ['clearanceFee', 'أجور التخليص', 'Clearance fee'],
-    // يُحسب ولا يُكتب: سعرُ البيع ناقصَ سعر المورد (recomputeTotals في الخادم).
+    // Computed, not written: selling price minus supplier price (recomputeTotals on the server).
     ['transportNet', 'صافي النقل', 'Transport net'],
     ['transportToYardNet', 'صافي النقل إلى الساحة', 'Transport-to-yard net'],
     ['yardNet', 'صافي الساحة', 'Yard net'],
@@ -217,11 +201,10 @@ export default function CustomsDetailPage() {
     ['securityScan', 'فحص أمنى', 'Security scan'],
     ['labour', 'عمال', 'Labour'],
     ['transportDailies', 'يوميات نقل', 'Transport per-diems'],
-    // يُحسب ولا يُكتب: سعرُ النقل من الساحة إلى العميل ناقصَ تكلفتِه.
+    // Computed, not written: the yard-to-customer transport price minus its cost.
     ['yardToCustomerNet', 'صافي النقل من الساحة إلى العميل', 'Yard-to-customer net'],
   ];
-  // بنودٌ تُسجَّل ولا تدخل الجمع مباشرةً: «سعر النقل» هو ما نأخذه من العميل
-  // (يدخل الربحَ عبر صافيه)، وصافي نقل الساحة عمودٌ مساعدٌ خارج صيغة الماستر.
+  // Items recorded but not summed directly: the transport price is what we take from the customer (it enters profit through its net), and the yard transport net is a helper column outside the master formula.
   const REVENUE_EXTRA: [string, string, string][] = [
     ['transportSelling', 'سعر النقل من الميناء إلى العميل', 'Price: port → customer'],
     ['transportToYardSelling', 'سعر النقل من الميناء إلى الساحة', 'Price: port → yard'],
@@ -254,11 +237,7 @@ export default function CustomsDetailPage() {
 
   const n = (v: any) => (Number.isFinite(Number(v)) ? Number(v) : 0);
   const costsTotal = Math.round(COST_FIELDS.reduce((a, [k]) => a + n(c.costs?.[k]), 0) * 100) / 100;
-  // ── صافي النقل يُحسب ولا يُكتب ────────────────────────────────────────────
-  // ما نأخذه من العميل ناقصَ ما ندفعه للناقل: ٢٠٠٠ − ١٥٠٠ = ٥٠٠ هي ربحُنا من
-  // النقل. وكان الرقمان يُكتبان بيدٍ فيختلفان: صافٍ لا يساوي الفرقَ بينهما،
-  // ولا أحدَ يعرف أيُّهما الصحيح. والقاعدةُ في الخادم (recomputeTotals)، وهذه
-  // مرآتُها لتُقرأ في اللحظة قبل الحفظ.
+  // Transport net is computed, not written: what we take from the customer minus what we pay the carrier (2000 - 1500 = 500 is our transport profit). Both numbers used to be typed by hand and disagreed, so the rule lives on the server (recomputeTotals) and this mirrors it to show the value before saving.
   const transportNet = Math.round((n(c.revenue?.transportSelling) - n(c.costs?.transport)) * 100) / 100;
   const yardToCustomerNet = Math.round((n(c.revenue?.yardToCustomerSelling) - n(c.costs?.transportYardToCustomer)) * 100) / 100;
   const transportToYardNet = Math.round((n(yardSellRaw) - n(c.costs?.transportToYard)) * 100) / 100;
@@ -269,9 +248,7 @@ export default function CustomsDetailPage() {
     : k === 'transportToYardNet' ? transportToYardNet
     : n(c.revenue?.[k]));
 
-  // ── أسعارُ العقد ← الإيرادات ────────────────────────────────────────────
-  // «تعبئة من العقد» تكتب أسعارَ العقد في خانات الإيراد كلِّها (ولو عُدِّلت)،
-  // واختيارُ وجهةٍ يكتب سعرَها في «سعر النقل من الميناء إلى العميل».
+  // Contract prices to revenues: fill-from-contract writes the contract prices into all revenue fields (even if edited), and choosing a destination writes its price into the port-to-customer transport price.
   const contractRoutes: { from: string; to: string; price: number | null }[] = contractInfo?.pricing?.routes || [];
   const routeIdx = contractInfo?.route
     ? contractRoutes.findIndex((rt) => rt.from === contractInfo.route.from && rt.to === contractInfo.route.to)
@@ -282,20 +259,18 @@ export default function CustomsDetailPage() {
     try {
       const d = await api.post<any>(`/api/customs-clearance/${c._id}/apply-contract`, route ? { from: route.from, to: route.to } : {});
       if (d?.contract !== undefined) setContractInfo(d.contract);
-      // الردُّ بلا مراحلَ محسوبة: تُعاد القراءة كي لا تُمحى من الشاشة.
+      // The reply has no computed stages: re-read so they are not cleared from the screen.
       if (d?.clearance?.pipeline) setC(d.clearance); else fetchOne();
       notify(ar ? 'عُبّئت الإيرادات من العقد' : 'Revenue filled from the contract', 'success');
     } catch (e: any) { notify(e?.message || (ar ? 'تعذّرت التعبئة من العقد' : 'Could not fill from the contract'), 'error'); }
     setContractBusy(false);
   };
-  // مجموعُ بنود الهامش يدخل إجماليَّ الفاتورة. ولا يُعرَض وحدَه هنا: «صافي الربح»
-  // و«هامش الربح» رُفعا من تفاصيل المعاملة — هما في تحليلات القسم، للإدارة.
+  // The margin items' total enters the invoice total. It is not shown alone here: net profit and profit margin were removed from the transaction details and live in the department analytics, for management.
   const marginSum = Math.round(MARGIN_FIELDS.reduce((a, [k]) => a + revVal(k), 0) * 100) / 100;
   const invoiced = Math.round((costsTotal + marginSum) * 100) / 100;
   const sar = (v: number) => v.toLocaleString('en-US', { maximumFractionDigits: 2 });
 
-  // معاملةٌ قديمةٌ تحمل العددَ بلا خانات: تُفتَح لها خاناتُها هنا للعرض، وتُحفَظ
-  // مع أوّل ما يُكتب فيها (الخادمُ يفعل الشيءَ نفسَه عند الحفظ — syncUnits).
+  // An old transaction with a count but no unit slots: slots are opened for display here and saved with the first write (the server does the same on save, syncUnits).
   const containers: any[] = (() => {
     const rows = Array.isArray(c.containers) ? [...c.containers] : [];
     const want = Math.min(300, Math.max(0, Number(c.containerCount) || 0));
@@ -306,10 +281,7 @@ export default function CustomsDetailPage() {
   const updateContainer = (i: number, key: string, v: any) =>
     setContainers(containers.map((r, idx) => (idx === i ? { ...r, [key]: v } : r)));
 
-  // ---- Excel: شيتٌ لكل بطاقةٍ على الشاشة ----------------------------------
-  // بطاقات هذه الصفحة ليست جدولًا واحدًا: بيانات ومراحل ومصروفات وإيرادات
-  // وحاويات. دمجُها في شيتٍ واحد يخلط المصروف بالإيراد في عمودٍ واحد، فيصير
-  // مجموع الملفّ بلا معنى — ولذلك مصنّفٌ متعدّد الشيتات.
+  // Excel: one sheet per on-screen card. The page is not one table (data, stages, expenses, revenues, containers), and merging them mixes expenses with revenue in one column and makes the file total meaningless, hence a multi-sheet workbook.
   const kvCols: ExportColumn[] = [
     { header: ar ? 'البند' : 'Field', key: 'label', width: 32 },
     { header: ar ? 'القيمة' : 'Value', key: 'value', width: 40 },
@@ -365,11 +337,10 @@ export default function CustomsDetailPage() {
 
   const tick = (v: any) => (v ? (ar ? 'نعم' : 'Yes') : (ar ? 'لا' : 'No'));
 
-  // الإقفالُ من الترويسة. والسببُ يُعرَض كما جاء من الخادم — «أضِف فاتورة النقل
-  // بتاريخٍ ومرفق» لا «غير مسموح».
-  /** المعاملةُ القادمة تصير جارية — هي هي، غيّر أنّها وقعت. */
+  // Closing is from the header, and the reason is shown as it comes from the server (such as add the transport invoice with a date and attachment), not a generic not allowed.
+  /** The upcoming transaction becomes current: it is the same transaction, now that it has happened. */
   const activate = async () => {
-    // التحويلُ يُسأل عنه: ضغطةٌ خاطئةٌ كانت تُخرج المعاملةَ من القادمة في الحال.
+    // Conversion is confirmed: a wrong click used to remove the transaction from upcoming immediately.
     if (!(await confirm(ar
       ? `تحويلُ المعاملة ${c?.blNumber || c?.refNumber || ''} إلى معاملةٍ جارية؟ ستخرج من المعاملات القادمة وتدخل قائمةَ الجارية.`
       : `Convert ${c?.blNumber || c?.refNumber || ''} to a current transaction? It leaves the upcoming list and joins the current one.`))) return;
@@ -382,9 +353,7 @@ export default function CustomsDetailPage() {
     setActivating(false);
   };
 
-  // ── وما حُوِّل خطأً يُرَدّ ───────────────────────────────────────────────
-  // معاملةٌ حُوِّلت إلى جاريةٍ بضغطةٍ خاطئة تعود إلى القادمة بتاريخها المرتقَب
-  // نفسِه — لا تُحذف وتُنشأ من جديد. وما كُتب فيها يبقى.
+  // A wrongly converted transaction goes back to upcoming with the same expected date, not deleted and recreated, and what was written in it stays.
   const backToUpcoming = async () => {
     if (!(await confirm(ar
       ? `إرجاعُ المعاملة ${c?.blNumber || c?.refNumber || ''} إلى المعاملات القادمة؟ ستخرج من قائمة الجارية وأعدادها.`
@@ -441,10 +410,7 @@ export default function CustomsDetailPage() {
     ],
   };
 
-  // ── والملفُّ يقرأ ما تقرؤه الشاشة ────────────────────────────────────────
-  // كان يُبنى من `stageDates` الثمانيةِ القديمة. فلمّا صارت المراحلُ قائمةً
-  // تتكرّر ولها مرفقات، بقي الملفُّ يطبع الثمانيةَ وحدَها بلا مرفقٍ ولا دفعةٍ
-  // ثانية — ورقةٌ تُرسَل خارج النظام وتقول أقلَّ ممّا حدث.
+  // The export reads what the screen reads. It used to be built from the old eight `stageDates`; stages are now a repeatable list with attachments, so the file kept printing only the eight, without attachments or second payments, and said less than what happened outside the system.
   const milestonesSheet: ExportSheet = {
     name: ar ? 'مراحل السداد' : 'Payments',
     columns: [
@@ -469,8 +435,7 @@ export default function CustomsDetailPage() {
     { header: ar ? 'البند' : 'Item', key: 'label', width: 32 },
     { header: ar ? 'المبلغ (ر.س)' : 'Amount (SAR)', key: 'amount', width: 16 },
   ];
-  // صفّ الإجمالي جزءٌ من البطاقة على الشاشة، وحذفه من الملفّ يجعل القارئ يجمع
-  // بنفسه فيختلف رقمه عن الرقم الذي تعرضه الصفحة.
+  // The totals row is part of the on-screen card; dropping it from the file makes the reader sum by hand and get a different number from the page.
   const costsSheet: ExportSheet = {
     name: ar ? 'التكاليف' : 'Costs',
     columns: amountCols,
@@ -539,8 +504,7 @@ export default function CustomsDetailPage() {
   const exportSheets: ExportSheet[] = [
     infoSheet, pipelineSheet, documentsSheet, agentPapersSheet, attachmentsSheet,
     milestonesSheet, costsSheet, revenueSheet,
-    // جدول الحاويات لا يُرسَم أصلًا إن لم تُسجَّل حاوية، فشيتٌ فارغٌ باسمه
-    // يوحي بحاوياتٍ ضاعت من الملفّ لا بمعاملةٍ بلا حاويات.
+    // The containers table is not drawn when no container is registered, so an empty sheet by its name would suggest containers lost from the file rather than a transaction without containers.
     ...(containers.length ? [containersSheet] : []),
   ];
 
@@ -553,7 +517,7 @@ export default function CustomsDetailPage() {
           <div className="w-10 h-10 rounded-lg bg-[#f37121]/20 flex items-center justify-center"><Ship className="w-5 h-5 text-[#f37121]" /></div>
           <div>
             <h1 className="flex flex-wrap items-center gap-2 text-2xl font-bold text-slate-900">
-              {/* رقمُ البوليصة أوّلًا: به تُعرَف المعاملةُ في القسم، ورقمُها بعده. */}
+              {/* Waybill number first: it identifies the transaction in the department, then its own number. */}
               <bdi>{c.blNumber || (ar ? 'بلا رقم بوليصة' : 'No BL number')}</bdi>
               <span className="text-[13px] font-semibold text-slate-400"><bdi>{c.refNumber}</bdi></span>
               {c.isCompleted && (
@@ -569,7 +533,7 @@ export default function CustomsDetailPage() {
                   {ar ? 'مفوترة' : 'Invoiced'} · <bdi>{invoiceNumber}</bdi>
                 </span>
               )}
-              {/* معاملةٌ لم تقع بعد — تُقرأ في الترويسة قبل أن يُبنى عليها رقم. */}
+              {/* A transaction that has not happened yet: read in the header before any number is built on it. */}
               {(c as any).upcoming && (
                 <span className="rounded-md bg-amber-100 px-2 py-0.5 text-[11px] font-bold text-amber-800">
                   {ar ? `قادمة · ${(c as any).expectedDate || '—'}` : `Upcoming · ${(c as any).expectedDate || '—'}`}
@@ -583,8 +547,7 @@ export default function CustomsDetailPage() {
         </div>
         <div className="flex items-center gap-2">
           {saving && <span className="text-slate-400 text-xs flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" /></span>}
-          {/* ── وتُحوَّل ولا تُنشأ من جديد ──────────────────────────────────
-              كلُّ ما كُتب فيها يبقى: العميلُ والوكيلُ والميناءُ والحاويات. */}
+          {/* Converted, not recreated: everything written in it stays (customer, agent, port, containers). */}
           {canEdit && (c as any).upcoming && (
             <button type="button" onClick={activate} disabled={activating}
               className="flex items-center gap-1.5 rounded-lg bg-[#f37121] px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-[#e06010] disabled:opacity-60">
@@ -601,16 +564,12 @@ export default function CustomsDetailPage() {
           )}
           <ExportMenu fileName={`customs-${c.refNumber || c.blNumber || c._id}`} lang={lang as 'ar' | 'en'}
             options={[{ key: 'full', label: ar ? 'ملف المعاملة كاملًا' : 'The whole clearance', sheets: exportSheets }]} />
-          {/* ── إصدارُ الفاتورة من الترويسة ───────────────────────────────
-              وهو نفسُه الموجود أسفلَ مراحل السداد — نافذةٌ واحدةٌ تُفتَح من
-              الموضعين، لأنّ مَن أنهى العملَ يكون في أعلى الصفحة لا في آخرها.
-              والفاتورةُ تصدر بلا انتظار فاتورة النقل؛ والمعاملةُ تُنهى حين
-              تُرفَق (راجع الشريطَ الأحمر أدناه). */}
+          {/* Issuing the invoice from the header. It is the same window as under the payment stages, opened from both places because whoever finished the work is at the top of the page. The invoice is issued without waiting for the transport invoice; the transaction is closed when it is attached (see the red bar below). */}
           {canEdit && !c.cancelled && !(c as any).upcoming && (
             c.isCompleted
               ? (
                 <>
-                  {/* أُغلقت ولم تُفوتَر (من السجلّ القديم): فاتورتُها تُصدَر وهي مغلقة. */}
+                  {/* Closed but not invoiced (from the old log): its invoice is issued while it is closed. */}
                   {!invoiceNumber && !pipeline.steps.some((st) => st.key === 'invoiced' && st.done) && (
                     <button type="button" onClick={() => setInvoiceOpen(true)}
                       className="flex items-center gap-1.5 rounded-lg bg-[#f37121] px-3 py-2 text-sm font-bold text-white transition-colors hover:bg-[#e06010]">
@@ -645,9 +604,7 @@ export default function CustomsDetailPage() {
               ? <button type="button" onClick={() => patch({ cancelled: false })} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-green-500/15 text-green-600 text-sm font-medium hover:bg-green-500/25 transition-colors"><RotateCcw className="w-4 h-4" /> {T.reactivate}</button>
               : <button type="button" onClick={() => patch({ cancelled: true })} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-red-500/15 text-red-600 text-sm font-medium hover:bg-red-500/25 transition-colors"><Ban className="w-4 h-4" /> {T.markCancelled}</button>
           )}
-          {/* الإلغاء واقعةٌ تبقى في السجلّ؛ والحذف لمعاملةٍ أُدخلت خطأً أو
-              مكرَّرة، ولا معنى لبقائها «ملغاة» تُحسب في العدّ. وهو للمدير
-              وحده — مع تفاصيلها كلّها. */}
+          {/* Cancellation is an event that stays in the log; deletion is for a transaction entered by mistake or duplicated, which should not stay as cancelled and be counted. Manager only, with all its details. */}
           {canDelete && (
             <button type="button" onClick={removeClearance} title={ar ? 'حذف المعاملة' : 'Delete clearance'}
               className="p-2 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors">
@@ -657,8 +614,8 @@ export default function CustomsDetailPage() {
         </div>
       </div>
 
-      {/* فُوترت ولم تصل فاتورةُ نقلها — أحمرُ في رأس الصفحة حتى تُرفَق. */}
-      {/* ── حالُ طلب الفوترة ─────────────────────────────────────────────── */}
+      {/* Invoiced but its transport invoice has not arrived: red at the top of the page until attached. */}
+      {/* Invoicing request status. */}
       {!c.cancelled && ireq?.status && (
         <div className={`flex flex-wrap items-center gap-3 rounded-2xl border px-4 py-3 ${ireq.status === 'invoiced' ? 'border-emerald-200 bg-emerald-50' : ireq.status === 'pending' ? 'border-amber-200 bg-amber-50' : 'border-red-200 bg-red-50'}`}>
           <Receipt className={`h-5 w-5 shrink-0 ${ireq.status === 'invoiced' ? 'text-emerald-600' : ireq.status === 'pending' ? 'text-amber-600' : 'text-red-600'}`} />
@@ -688,11 +645,7 @@ export default function CustomsDetailPage() {
         <TransportInvoiceBanner clearanceId={String(c._id)} invoiceNumber={invoiceNumber} canEdit={canEdit} ar={ar} onChanged={setC} />
       )}
 
-      {/* ── مراحلُ التخليص ───────────────────────────────────────────────
-          الدورةُ ليست خطًّا واحدًا: بعد «أمر النقل» طريقان يتنافيان — إلى
-          الساحة (فيتبعه التفريغُ والتخزين ثمّ نقلٌ إلى العميل) أو إلى العميل
-          مباشرةً. وما ليس من طريق المعاملة يُغلَق عليها ولا يدخل نسبتَها.
-          والقاعدةُ في الخادم؛ والضغطُ هنا طلبٌ يجيبه بما صارت إليه المراحل. */}
+      {/* Clearance stages. The cycle is not one line: after the transport order there are two mutually exclusive paths, to the yard (followed by unloading, storage and transport to the customer) or straight to the customer. Stages not on the transaction's path are closed on it and excluded from its percentage. The rule is on the server; a click here is a request answered with the resulting stages. */}
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
           <h3 className="text-[14px] font-bold text-slate-900 flex items-center gap-2">
@@ -711,10 +664,10 @@ export default function CustomsDetailPage() {
           const perUnit = !!pipeline.perUnit && units.length > 0;
           const sel = perUnit && unitSel !== 'all' && unitSel < units.length ? unitSel : 'all';
           const numberOf = (key: string) => pipeline.steps.findIndex((x) => x.key === key) + 1;
-          // زرُّ مرحلةٍ واحدة — للمعاملة، أو للكلّ معًا، أو لوحدةٍ بعينها.
+          // A single-stage button: for the transaction, for all units together, or for a single unit.
           const stepButton = (st: typeof pipeline.steps[number], unit?: 'all' | number) => {
             const next = (unit === undefined || unit === 'all' ? pipeline.next : units[unit as number]?.next) === st.key && !c.cancelled;
-            // «إصدار الفاتورة» لا تُعلَّم بيد: تفتح نافذةَ الفاتورة.
+            // Issue invoice is not marked by hand: it opens the invoice window.
             const auto = st.key === 'invoiced';
             const partial = !!st.perUnit && !st.done && (st.unitsDone || 0) > 0;
             const onClick = () => {
@@ -755,7 +708,7 @@ export default function CustomsDetailPage() {
                     </span>
                   )}
                 </span>
-                {/* كم وحدةً أنجزت هذه المرحلةَ من كم تَلزمها. */}
+                {/* How many units have completed this stage out of how many require it. */}
                 {st.perUnit && !st.locked && (
                   <span className={`ms-auto shrink-0 rounded-full px-1.5 py-0.5 text-[10.5px] font-bold tabular-nums ${st.done ? 'bg-emerald-100 text-emerald-700' : partial ? 'bg-amber-100 text-amber-800' : 'bg-slate-200 text-slate-600'}`}>
                     {st.unitsDone}/{st.unitsOf}
@@ -775,10 +728,7 @@ export default function CustomsDetailPage() {
             <div className="space-y-3">
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">{base.map((st) => stepButton(st))}</div>
 
-              {/* ── ومن أوّل النقل: لكلّ حاويةٍ مراحلُها ──────────────────────
-                  الحاوياتُ لا تسير معًا دائمًا: واحدةٌ إلى العميل اليوم واثنتان
-                  إلى الساحة. فيُختار هنا: الكلّ معًا، أو حاويةٌ بعينها تُكمَل
-                  مراحلُها وحدَها. */}
+              {/* From the start of transport each container has its own stages. Containers do not always move together (one to the customer today, two to the yard), so choose here: all together, or a single container whose stages are completed alone. */}
               <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3">
                 <div className="mb-2.5 flex flex-wrap items-center gap-1.5">
                   <span className="me-1 text-[12px] font-bold text-slate-700">
@@ -817,33 +767,30 @@ export default function CustomsDetailPage() {
         })()}
       </section>
 
-      {/* ── الحاوياتُ بعددها — حاويةٌ لكلّ حاوية ──────────────────────────── */}
+      {/* Containers by count: one slot per container. */}
       <Card icon={<Container className="w-4 h-4" />}
         title={`${unitWord(cargo, ar)} (${containers.length})`}>
         <ContainerUnits units={containers} pipeline={pipeline} stages={T.stages} canEdit={canEdit} ar={ar} onSave={setContainers} />
       </Card>
 
-      {/* ── وكشوفُ التشغيل التي نقلت حاوياتِها، بفوترتها وتحصيلها ────────── */}
+      {/* Operating statements that moved its containers, with their invoicing and collection. */}
       <LinkedOpsReports clearanceId={String(c._id)} ar={ar} />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* ── البيانُ والمواعيدُ أوّلًا ───────────────────────────────────────
-            طُلب تبديلُ موضعِ البطاقتين: ما يُتابَع يوميًّا (البيانُ ومواعيدُه)
-            في الصدر، وبياناتُ المعاملة الثابتة تحتَه. */}
+        {/* Data and dates first. The two cards were swapped on request: what is followed daily (the declaration and its dates) goes first, and the fixed transaction data below it. */}
         <Card className="lg:col-span-2" icon={<FileText className="w-4 h-4" />}
           title={ar ? 'بيانات البيان والمواعيد' : 'Declaration & scheduling'}>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <FieldInput label={ar ? 'رقم البيان' : 'Declaration no.'} value={c.declarationNumber} onSave={(v) => patch({ declarationNumber: v })} disabled={!canEdit} />
           <FieldInput label={ar ? 'تاريخ البيان' : 'Declaration date'} type="date" value={c.declarationDate} onSave={(v) => patch({ declarationDate: v })} disabled={!canEdit} />
           <FieldInput label={ar ? 'تاريخ استلام الورق' : 'Papers received'} type="date" value={c.papersReceivedDate} onSave={(v) => patch({ papersReceivedDate: v })} disabled={!canEdit} />
-          {/* موعدٌ يُختار من تقويمٍ كجارَيه: كتابتُه بالحرف تُدخِل «١٥/٩» و«15-9-2026»
-              و«الاثنين» في عمودٍ واحد، فلا يُفرَز ولا يُذكَّر به. */}
+          {/* A date is picked from a calendar like its neighbours: typed text mixes forms such as 15/9, 15-9-2026 and a weekday in one column, which cannot be sorted or reminded. */}
           <FieldInput label={ar ? 'موعد التفريغ' : 'Unloading appointment'} type="date" value={c.unloadingAppointment ? String(c.unloadingAppointment).slice(0, 10) : ''} onSave={(v) => patch({ unloadingAppointment: v })} disabled={!canEdit} />
           <FieldInput label={ar ? 'مكان التفريغ' : 'Unloading location'} value={c.unloadingLocation} onSave={(v) => patch({ unloadingLocation: v })} disabled={!canEdit} />
           <FieldInput label={ar ? 'رقم إذن التسليم' : 'DO number'} value={c.doNumber} onSave={(v) => patch({ doNumber: v })} disabled={!canEdit} />
           <FieldInput label={ar ? 'أيّام السماح للإرجاع' : 'Return free days'} type="number" value={c.returnFreeDays ?? 0} onSave={(v) => patch({ returnFreeDays: Number(v) || 0 })} disabled={!canEdit} />
           <FieldInput label={ar ? 'آخر موعد إرجاع' : 'Return deadline'} type="date" value={c.returnDeadline} onSave={(v) => patch({ returnDeadline: v })} disabled={!canEdit} />
-          {/* اليومُ الذي تبدأ فيه الأرضياتُ على الحاويات — بجانب موعد الإرجاع. */}
+          {/* The day floor charges start on the containers, beside the return date. */}
           <FieldInput label={ar ? 'تاريخ تحمّل الأرضيات' : 'Demurrage start date'} type="date" value={c.demurrageStartDate ? String(c.demurrageStartDate).slice(0, 10) : ''} onSave={(v) => patch({ demurrageStartDate: v })} disabled={!canEdit} />
           <FieldInput label={ar ? 'المدينة' : 'City'} value={c.city} onSave={(v) => patch({ city: v })} disabled={!canEdit} />
           <FieldSelect label={ar ? 'الشهر' : 'Month'} value={String(c.periodMonth || '')} disabled={!canEdit}
@@ -853,9 +800,7 @@ export default function CustomsDetailPage() {
           </div>
         </Card>
 
-        {/* ── العمودُ الجانبيّ: المستنداتُ ثمّ الملاحظات ──────────────────────
-            رُفعت «أوراق الوكيل» و«نماذج الإيميل» بطلب القسم: الأولى تتكرّر مع
-            مستندات المعاملة، والثانية نصوصٌ جاهزةٌ لم تعد تُستعمل. */}
+        {/* Side column: documents, then notes. Agent papers and email templates were removed at the department's request: the first duplicates the transaction documents and the second is ready text no longer used. */}
         <div className="space-y-6">
           <Card icon={<Check className="w-4 h-4" />} title={T.documentsChecklist}>
             <div className="space-y-1">
@@ -874,18 +819,8 @@ export default function CustomsDetailPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <Card className="lg:col-span-3" icon={<Ship className="w-4 h-4" />} title={T.transactionData}>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {/* ── وما لا يُستعمَل لا يُسأل عنه ──────────────────────────────
-              «نوع الفاتورة» و«رقم الفاتورة» و«العملة» كانت ثلاثَ خاناتٍ في كلّ
-              معاملة لا يملؤها أحد ولا يُقرأ منها شيء — والقسمُ يقول إنّها ليست
-              من عمله. وخانةٌ تُعرَض ولا تُملأ تُعلّم الناسَ أن يتخطّوا الخانات.
-              (الأرقامُ المحفوظةُ قبل اليوم باقيةٌ في السجلّ، لا تُعرَض فحسب.) */}
-          {/* ── خمسُ خاناتٍ والفرع — هي خاناتُ الإنشاء نفسُها ─────────────────
-              القسمُ قال: يبقى رقمُ البوليصة والعميلُ وعددُ الحاويات ووكيلُ
-              الشحن والبندُ الجمركيّ، والباقي لا لزومَ له. (والفرعُ معها لأنّه
-              يُكتب عند الإنشاء، فلا يصير خانةً تُكتب ولا تُصحَّح.)
-              والعميلُ والوكيلُ يُختاران من ملفَّيهما كما في الإنشاء — لا نصًّا
-              حرًّا يفصل المعاملةَ عن ملفّ صاحبها. وما رُفع من الخانات باقٍ في
-              السجلّ بقيمه، لا يُعرَض فحسب. */}
+          {/* Unused fields are not asked for: invoice type, invoice number and currency were three fields in every transaction that nobody filled or read, and the department says they are not its work; a displayed field nobody fills teaches people to skip fields. Numbers saved before remain in the log, only not displayed. */}
+          {/* Five fields plus the branch, the same as the create fields. The department kept the waybill number, customer, container count, shipping agent and customs item, and the rest is unnecessary. The branch is written at creation so it does not become a field typed and never corrected. Customer and agent are chosen from their files as in creation, not free text that separates the transaction from its owner's file. Removed fields remain in the log with their values, only not displayed. */}
           <FieldInput label={T.blNumber} value={c.blNumber} onSave={(v) => patch({ blNumber: v })} disabled={!canEdit} />
           <div>
             <label className="text-slate-500 text-xs mb-1 block">{T.customerName}</label>
@@ -896,8 +831,7 @@ export default function CustomsDetailPage() {
               emptyLabel={ar ? 'لا نتائج — أضِفه من صفحة العملاء' : 'No match — add from customers page'}
               options={parties.customers.map((p) => ({ value: p._id, label: p.name }))} />
           </div>
-          {/* نوعُ المعاملة يُختار عند الإنشاء ويُصحَّح من هنا: السيّاراتُ لا
-              إرجاعَ حاوياتٍ فيها، فتُغلَق تلك المرحلةُ عليها. */}
+          {/* Transaction type is chosen at creation and corrected from here: cars have no container return, so that stage is closed on them. */}
           <FieldSelect label={ar ? 'نوع المعاملة' : 'Transaction type'} value={cargo} disabled={!canEdit}
             options={[['containers', ar ? 'حاويات' : 'Containers'], ['vehicles', ar ? 'سيّارات' : 'Vehicles']]}
             onSave={(v) => patch({ cargoType: v } as any)} />
@@ -916,7 +850,7 @@ export default function CustomsDetailPage() {
           </div>
           <FieldInput label={T.hsCode} value={c.hsCode} onSave={(v) => patch({ hsCode: v })} disabled={!canEdit} />
           <FieldSelect label={T.branch} value={c.branch} options={[['jeddah', T.jeddah], ['dammam', T.dammam]]} onSave={(v) => patch({ branch: v })} disabled={!canEdit} />
-          {/* والقادمةُ يُعدَّل تاريخُها المرتقَبُ من هنا أيضًا — كما من نافذتها. */}
+          {/* The expected date of an upcoming transaction is editable from here too, as from its window. */}
           {(c as any).upcoming && (
             <FieldInput label={ar ? 'تاريخ المعاملة المتوقَّع' : 'Expected date'} type="date" value={(c as any).expectedDate || ''} onSave={(v) => patch({ expectedDate: v })} disabled={!canEdit} />
           )}
@@ -925,16 +859,13 @@ export default function CustomsDetailPage() {
       </div>
 
       {/* ------------------------------------------------------------------ */}
-      {/* Master-spreadsheet data (بيانات ماستر التخليص)                      */}
+      {/* Master-spreadsheet data. */}
       {/* ------------------------------------------------------------------ */}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Declaration & scheduling */}
 
-        {/* ── مراحلُ السداد ─────────────────────────────────────────────
-            كانت ثمانيةَ صفوفٍ مكتوبةً في الشيفرة: تاريخٌ واحدٌ لكلٍّ وبلا مرفق
-            ولا تتكرّر. صارت قائمةً تُدار من إعدادات القسم، ولكلّ إدخالٍ تاريخُه
-            ومرفقُه — راجع `components/customs/PaymentStages`. */}
+        {/* Payment stages. They used to be eight rows in code, one date each, with no attachment and no repeats. They are now a list managed from the department settings, each entry with its date and attachment; see `components/customs/PaymentStages`. */}
         <Card title={ar ? 'مراحل السداد' : 'Payment milestones'}>
           <PaymentStages
             clearanceId={String(c._id)}
@@ -971,9 +902,7 @@ export default function CustomsDetailPage() {
 
         {/* Revenue & billing */}
         <Card title={ar ? 'الإيرادات والفوترة' : 'Revenue & billing'}>
-          {/* ── من عقد العميل ─────────────────────────────────────────────
-              أسعارُ العقد تُملأ هنا تلقائيًّا عند الإنشاء وتغيُّر العميل أو عدد
-              الحاويات، وتبقى قابلةً للتعديل. والتعبئةُ يدويًّا من هنا أيضًا. */}
+          {/* From the customer contract: contract prices are filled in automatically on creation and when the customer or container count changes, and remain editable. Filling manually is also possible from here. */}
           {contractInfo !== undefined && (
             contractInfo ? (
               <div className="mb-4 rounded-lg border border-[#f37121]/30 bg-[#f37121]/5 p-3 space-y-2">
@@ -1043,16 +972,14 @@ export default function CustomsDetailPage() {
         </Card>
       </div>
 
-      {/* بياناتُ العميل والوكيل والناقل ومرفقاتُهم لا تُعرض هنا — مكانُها ملفُّ كلّ
-          طرفٍ في صفحته (العملاء · وكلاء الشحن · الناقلون) — صاحبُ الشركة، ٢٠٢٦/١٠/٢٠. */}
+      {/* Customer, agent and carrier data and attachments are not shown here; they live in each party's own file page (customers, shipping agents, carriers). */}
 
-      {/* مرفقات المعاملة — ورقُ كلِّ مرحلةٍ موسومًا بها */}
+      {/* Transaction attachments: each stage's papers tagged with the stage. */}
       <ClearanceAttachments
         clearanceId={c._id}
         refNumber={c.blNumber || c.refNumber}
         items={c.attachments || []}
-        // قائمةُ المرفقات هي «مراحل السداد» نفسُها من إعدادات القسم (٢٠٢٦/١٠/٢٢) — وما
-        // رُفع قبلها تحت مرحلةٍ قديمةٍ يبقى في مجموعته.
+        // The attachment list is the payment stages from the department settings; files uploaded earlier under an old stage stay in their group.
         stages={[...payDefs.map((x) => x.key), ...[...new Set(((c.attachments || []) as any[]).map((a) => a.stage).filter(Boolean))].filter((k) => !payDefs.some((x) => x.key === k))]}
         stageLabel={(k: string) => { const x = payDefs.find((d) => d.key === k); return x ? (ar ? x.nameAr : (x.nameEn || x.nameAr)) : sName(k); }}
         paymentFiles={((c as any).paymentStages || []).map((p: any) => p.fileUrl).filter(Boolean)}
@@ -1060,10 +987,10 @@ export default function CustomsDetailPage() {
         onChange={setC}
       />
 
-      {/* مهامُّ خطّة العمل (JP) المربوطةُ بهذه المعاملة — تُقرأ هنا وتُضاف من هنا. */}
+      {/* Work-plan (JP) tasks linked to this transaction; read and added from here. */}
       <ClearanceTasks kind="clearance" refId={String(c._id)} ar={ar} />
 
-      {/* نافذةُ الفاتورة واحدة — تُفتَح من الترويسة ومن مراحل السداد ومن مرحلتها. */}
+      {/* One invoice window, opened from the header, the payment stages and its stage. */}
       <CloseWithInvoice
         open={invoiceOpen} onClose={() => setInvoiceOpen(false)}
         clearanceId={String(c._id)} stages={(c as any).paymentStages || []} ar={ar}
@@ -1081,12 +1008,7 @@ const MONTH_LABELS: [string, string][] = [
   ['سبتمبر', 'September'], ['أكتوبر', 'October'], ['نوفمبر', 'November'], ['ديسمبر', 'December'],
 ];
 
-/**
- * بطاقةُ الصفحة — ترويسةٌ فاتحةٌ بأيقونةٍ وخطٍّ تحتها.
- *
- * كانت كلُّ ترويسةٍ مستطيلًا أسودَ داخل بطاقةٍ بيضاء: ستُّ لطخاتٍ سوداءَ في
- * صفحةٍ فاتحة، تُثقل الشاشةَ ولا تدلّ على شيء. راجع /system theme.
- */
+/** Page card: a light header with an icon and a line under it. Each header used to be a black rectangle inside a white card, six black blotches on a light page that weighed the screen down and signified nothing. See /system theme. */
 function Card({ title, icon, right, children, className = '' }: {
   title: string; icon?: React.ReactNode; right?: React.ReactNode; children: React.ReactNode; className?: string;
 }) {

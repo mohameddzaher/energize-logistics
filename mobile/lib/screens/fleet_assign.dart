@@ -9,16 +9,14 @@ import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import '../ui/search_field.dart';
 
-/// توزيع السيارات على المشرفين — نفس شاشة الويب /system/fleet/assign: اختر
-/// المشرف، علّم على السيارات، واحفظ الإسناد دفعة واحدة. وكل سيارة تُنقَل وحدها
-/// من قائمتها المنسدلة دون المرور بالتحديد الجماعي.
+/// Assign vehicles to supervisors, same as web screen /system/fleet/assign: pick the supervisor, mark vehicles, and save the assignment in one batch. Each vehicle can also be moved alone from its dropdown without bulk selection.
 class FleetAssignScreen extends StatefulWidget {
   const FleetAssignScreen({super.key});
   @override
   State<FleetAssignScreen> createState() => _FleetAssignScreenState();
 }
 
-// نفس قائمة canAdminFleet في الويب (lib/fleet.ts) و ADMIN_ROLES في routes/fleet.js.
+// Same list as canAdminFleet on the web (lib/fleet.ts) and ADMIN_ROLES in routes/fleet.js.
 const _adminRoles = ['super_admin', 'admin', 'it_manager', 'operations_manager', 'fleet_manager'];
 
 String _supName(Map<String, dynamic> u) {
@@ -26,7 +24,7 @@ String _supName(Map<String, dynamic> u) {
   return n.isEmpty ? (u['email'] ?? '').toString() : n;
 }
 
-/// المشرف على السيارة قد يصل معرّفًا أو كائنًا — نقرؤه معرّفًا دائمًا.
+/// The vehicle's supervisor may arrive as an id or an object; always read as an id.
 String _supId(Map<String, dynamic> v) {
   final s = v['supervisor'];
   if (s == null) return '';
@@ -43,13 +41,13 @@ class _FleetAssignScreenState extends State<FleetAssignScreen> {
   bool _loading = true;
   bool _saving = false;
   String? _error;
-  String _target = '';       // المشرف المستهدف
+  String _target = '';       // Target supervisor.
   final Set<String> _selected = {};
   String _q = '';
-  // الخانةُ تُهدَم مع التحميل والتمرير — النصُّ في متحكِّمٍ يبقى مع الكلمة.
+  // The field is destroyed on loading and scrolling; text kept in a controller survives with the word.
   final _searchCtl = TextEditingController();
-  String _owner = '';        // '' الكل، 'none' غير مُسند، أو معرف مشرف
-  int _seq = 0;              // ردٌّ قديم لا يكتب فوق الأحدث
+  String _owner = '';        // '' all, 'none' unassigned, or a supervisor id.
+  int _seq = 0;              // An old reply does not overwrite a newer one.
   late final void Function() _onLive;
 
   @override
@@ -59,7 +57,7 @@ class _FleetAssignScreenState extends State<FleetAssignScreen> {
     _onLive = () => _load();
     Live.instance.on('fleet:vehicles', _onLive);
     Live.instance.on('fleet:updated', _onLive);
-    // الشاحنةُ من سجلّ المركبات والسائقُ من الموارد البشريّة — كالويب.
+    // The truck is from the vehicle register and the driver from HR, as on the web.
     Live.instance.on('vreg:updated', _onLive);
     Live.instance.on('hr:employee', _onLive);
   }
@@ -85,7 +83,7 @@ class _FleetAssignScreenState extends State<FleetAssignScreen> {
       setState(() {
         _vehicles = List<Map<String, dynamic>>.from(r[0]['vehicles'] ?? const []);
         _supervisors = List<Map<String, dynamic>>.from(r[1]['users'] ?? const []);
-        // مشرفٌ أُرشف بعد اختياره لا يبقى هدفًا معلّقًا.
+        // A supervisor archived after being chosen does not remain a dangling target.
         if (_target.isNotEmpty && !_supervisors.any((s) => s['_id'] == _target)) _target = '';
         _loading = false;
         _error = null;
@@ -111,7 +109,7 @@ class _FleetAssignScreenState extends State<FleetAssignScreen> {
     if (_owner == 'none') {
       r = r.where((v) => _supId(v).isEmpty).toList();
     } else if (_owner.isNotEmpty && !_supervisors.any((s) => s['_id'] == _owner && _isDeptManager(s))) {
-      // اسمُ مديرِ القسم يعرض الأسطولَ كلَّه: نطاقُه هو، لا قائمةُ إسنادٍ له.
+      // A section manager's name shows the whole fleet: their scope, not an assignment list for them.
       r = r.where((v) => _supId(v) == _owner).toList();
     }
     final q = _fold(_q.trim());
@@ -158,7 +156,7 @@ class _FleetAssignScreenState extends State<FleetAssignScreen> {
     if (mounted) setState(() => _saving = false);
   }
 
-  // إسناد سريع لسيارة واحدة مباشرةً — أسهل طريق لتغيير مشرف سيارة بعينها.
+  // Quick assign for a single vehicle directly, the easiest way to change one vehicle's supervisor.
   Future<void> _quickAssign(String vehicleId, String supervisorId) async {
     try {
       await Api.instance.patch('/api/fleet/vehicles/$vehicleId/supervisor', {
@@ -173,7 +171,7 @@ class _FleetAssignScreenState extends State<FleetAssignScreen> {
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
-    // نفس canAdminFleet في الويب: دورٌ إداريّ أو «تعديل» على القسم من مصفوفة الصلاحيات.
+    // Same as canAdminFleet on the web: an admin role or edit on the section from the permission matrix.
     final admin = _adminRoles.contains(auth.role) || auth.canEditSection('Fleet Management');
     final title = Text(tr('توزيع السيارات على المشرفين', 'Assign vehicles to supervisors'));
 
@@ -205,7 +203,7 @@ class _FleetAssignScreenState extends State<FleetAssignScreen> {
       final k = _supId(v).isEmpty ? 'none' : _supId(v);
       counts[k] = (counts[k] ?? 0) + 1;
     }
-    // مديرُ القسم نطاقُه الأسطول كلُّه — رقمُه الأسطول لا صفر.
+    // A section manager's scope is the whole fleet, so their count is the fleet, not zero.
     int scopeCount(Map<String, dynamic> s) => _isDeptManager(s) ? _vehicles.length : (counts[s['_id']] ?? 0);
 
     return ListView(
@@ -229,7 +227,7 @@ class _FleetAssignScreenState extends State<FleetAssignScreen> {
           const SizedBox(height: 10),
         ],
 
-        // ملخص التوزيع الحالي — كل مشرف وعدد سياراته، والضغط يرشّح.
+        // Current distribution summary: each supervisor and vehicle count; tapping filters.
         Row(children: [
           const Icon(Icons.groups_outlined, size: 16, color: T.orange),
           const SizedBox(width: 4),
@@ -248,7 +246,7 @@ class _FleetAssignScreenState extends State<FleetAssignScreen> {
         ),
         const SizedBox(height: 12),
 
-        // شريط التنفيذ — المشرف المستهدف + إسناد/إلغاء المحدد.
+        // Action bar: target supervisor plus assign/clear the selection.
         AppCard(
           padding: const EdgeInsets.all(12),
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -287,7 +285,7 @@ class _FleetAssignScreenState extends State<FleetAssignScreen> {
         ),
         const SizedBox(height: 10),
 
-        // تحديد الكل ضمن المعروض.
+        // Select all within what is displayed.
         Row(children: [
           Checkbox(
             value: allSel,
@@ -332,8 +330,7 @@ class _FleetAssignScreenState extends State<FleetAssignScreen> {
     );
   }
 
-  /// قائمة المشرفين — ومشرفٌ حاليّ خارج القائمة (مؤرشف) يبقى ظاهرًا باسمه
-  /// كي لا تنهار القائمة على قيمةٍ غير موجودة.
+  /// Supervisor list. A current supervisor outside the list (archived) stays visible by name so the dropdown does not break on a missing value.
   Widget _supDropdown({
     required String value,
     required String hint,
@@ -412,7 +409,7 @@ class _FleetAssignScreenState extends State<FleetAssignScreen> {
                   overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 8),
-                // إسناد سريع لهذه السيارة وحدها — لا يمرّ عبر التحديد الجماعي.
+                // Quick assign for this vehicle alone; does not go through bulk selection.
                 _supDropdown(
                   value: _supId(v),
                   hint: tr('— بدون مشرف —', '— unassigned —'),

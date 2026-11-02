@@ -11,27 +11,16 @@ export const SALES_STAFF_ROLES = ['super_admin', 'admin', 'sales_manager', 'sale
 export const SALES_ADMIN_ROLES = ['super_admin', 'admin', 'sales_manager'];
 export const KPI_ROLES = ['super_admin', 'admin', 'moderator'];
 
-// View AND act must both honour the permission matrix. Only the *Staff halves
-// did, so a role the super admin granted «تعديل» on Accounting or Sales could
-// open the section and then found every action hidden — while the API would
-// have accepted the call (rbac lets a section grant through). Pass the whole
-// user, not user.role: only the object carries the grants.
+// View AND act must both honour the permission matrix. Only the *Staff halves did, so a role granted edit on Accounting or Sales by the super admin could open the section and then found every action hidden, while the API would have accepted the call (rbac lets a section grant through). Pass the whole user, not user.role: only the object carries the grants.
 export const isFinanceStaff = (u: RoleOrUser) => FINANCE_STAFF_ROLES.includes(roleOf(u)) || canAccessSection(permsOf(u), 'Accounting');
 export const isFinanceAdmin = (u: RoleOrUser) => FINANCE_ADMIN_ROLES.includes(roleOf(u)) || canEditSection(permsOf(u), 'Accounting');
 export const isSalesStaff = (u: RoleOrUser) => SALES_STAFF_ROLES.includes(roleOf(u)) || canAccessSection(permsOf(u), 'Sales');
 export const isSalesAdmin = (u: RoleOrUser) => SALES_ADMIN_ROLES.includes(roleOf(u)) || canEditSection(permsOf(u), 'Sales');
-// ── مَن يحدّد أهدافَ المبيعات ────────────────────────────────────────────────
-// الهدفُ يضعه المديرُ لفريقه. و`isSalesAdmin` تفتح لكلّ من له «تعديلٌ» على
-// القسم — وهو حالُ المندوب نفسِه في المصفوفة — فكانت أزرارُ الهدف تظهر له ثمّ
-// يردّه الخادم. فالقاعدةُ هنا مطابقةٌ لحارس الخادم (`canSetTargets` في
-// salesController): أدوارُ الإدارة، ومعها دورٌ من خارج فريق القسم مُنح «تعديلَه».
+// Who sets sales targets.
+// A manager sets a team's targets. isSalesAdmin opens for anyone with edit on the section, which includes the rep in the matrix, so target buttons showed for the rep and the server rejected them. This rule matches the server guard (canSetTargets in salesController): management roles plus a role outside the section team granted edit.
 export const canSetSalesTargets = (u: RoleOrUser) => SALES_ADMIN_ROLES.includes(roleOf(u))
   || (canEditSection(permsOf(u), 'Sales') && !SALES_STAFF_ROLES.includes(roleOf(u)));
-/**
- * الشهرُ المحمولُ في الرابط (`?period=2026-09`) — بطاقةُ اللوحة تفتح القائمةَ
- * على الشهر نفسِه الذي قُرئ فيه رقمُها، لا على الشهر الجاري. يُقرأ من العنوان
- * مباشرةً: `useSearchParams` يفرض حدَّ Suspense عند البناء.
- */
+/** Month carried in the URL (`?period=2026-09`): a dashboard card opens the list on the same month its number was read for, not the current month. Read from the location directly, since useSearchParams forces a Suspense boundary at build time. */
 export const periodFromUrl = (fallback: string): string => {
   if (typeof window === 'undefined') return fallback;
   const p = new URLSearchParams(window.location.search).get('period') || '';
@@ -75,8 +64,7 @@ export const money = (v?: number | null, currency = 'SAR') =>
   `${(Number(v) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currency}`;
 export const num = (v?: number | null) => (Number(v) || 0).toLocaleString('en-US');
 export const pct = (v?: number | null) => `${Math.round((Number(v) || 0))}%`;
-// «اليوم» يوم الرياض لا يوم غرينتش: `toISOString()` كانت تعطي أمسِ بين منتصف
-// الليل والثالثة فجرًا. المرجعُ واحدٌ الآن في `lib/companyDay`.
+// Today means the Riyadh day, not the Greenwich day: toISOString() gave yesterday between midnight and 03:00. The single reference is lib/companyDay.
 export { today } from './companyDay';
 export const thisPeriod = () => new Date().toISOString().slice(0, 7); // YYYY-MM
 export const fmtDate = (v?: string | null) => (v ? new Date(v).toLocaleDateString('en-GB') : '—');

@@ -6,14 +6,10 @@ import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import 'performance_evaluations.dart';
 
-/// تقييم الأداء — the mobile twin of the web TeamBoard: the signed-in
+/// Performance evaluation: the mobile twin of the web TeamBoard: the signed-in
 /// manager's team for the current period with each member's score and band.
 class TeamBoardScreen extends StatefulWidget {
-  /// قسمُ النظام الذي تخصّه هذه الشاشة.
-  ///
-  /// الخادمُ يقرأ هذا فيردّ موظّفي الأقسام التي تملكها هذه الصفحة بحسب ملفّاتهم
-  /// في الموارد البشريّة (راجع config/performanceDepartments في الخادم) — وهي
-  /// القائمةُ نفسُها التي يعرضها الويب، والبطاقاتُ هنا تحت أقسامها مثلَه.
+  /// The system section this screen belongs to. The server reads it and returns the staff of the departments this page owns, by their HR profiles (see config/performanceDepartments on the server), the same list web shows; cards sit under their departments as on web.
   final String? section;
   const TeamBoardScreen({super.key, this.section});
   @override
@@ -51,7 +47,7 @@ class _TeamBoardScreenState extends State<TeamBoardScreen> {
     return T.danger;
   }
 
-  // بطاقةُ موظّف. الحقولُ كما يردّها الخادم: `name` و`percentage` و`band`.
+  // Employee card. Fields as the server returns them: name, percentage and band.
   Widget _memberCard(Map<String, dynamic> m, int i, Map<String, Map<String, dynamic>> bands) {
     final name = (m['name'] ?? '').toString();
     final eval0 = m['evaluation'] as Map<String, dynamic>?;
@@ -77,7 +73,7 @@ class _TeamBoardScreenState extends State<TeamBoardScreen> {
                       periodKey: (_d?['periodKey'] ?? '').toString(),
                     ),
                   ));
-                  _load(); // حدّث الدرجة بعد الرجوع من التقييم
+                  _load(); // Refresh the score after returning from the evaluation
                 },
           child: AppCard(
             child: Row(children: [
@@ -117,15 +113,14 @@ class _TeamBoardScreenState extends State<TeamBoardScreen> {
   Widget build(BuildContext context) {
     final members = List<Map<String, dynamic>>.from(_d?['members'] ?? []);
     final summary = _d?['summary'] as Map<String, dynamic>?;
-    // ── البطاقاتُ تحت أقسامها، بترتيب الخادم ──────────────────────────────
-    // القسمُ ما كُتب في ملفّ الموظّف. والعنوانُ يظهر متى تعدّدت الأقسام.
+    // Cards under their departments, in server order. The department is what is written on the employee profile; the heading appears when there are several departments.
     final groups = List<Map<String, dynamic>>.from(_d?['groups'] ?? []);
     final order = groups.map((g) => (g['key'] ?? '').toString()).toList();
     String keyOf(Map<String, dynamic> m) => (m['departmentKey'] ?? m['department'] ?? '').toString();
     int rank(String k) { final i = order.indexOf(k); return i < 0 ? order.length : i; }
     final sorted = [...members]..sort((a, b) => rank(keyOf(a)).compareTo(rank(keyOf(b))));
     final multi = sorted.map(keyOf).toSet().length > 1;
-    // مفتاحُ الشريحة → اسمُها المعروض.
+    // Chip key to its displayed name.
     final bands = <String, Map<String, dynamic>>{
       for (final b in List<Map<String, dynamic>>.from((_d?['settings'] as Map?)?['bands'] ?? []))
         (b['key'] ?? '').toString(): b,

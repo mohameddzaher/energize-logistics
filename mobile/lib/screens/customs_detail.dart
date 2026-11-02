@@ -12,9 +12,7 @@ import '../ui/customs_link.dart';
 import 'jp.dart' show JpTaskPanel;
 import 'customs_party.dart';
 
-/// تفاصيل التخليص الجمركي — دورةُ المراحل كما يحسبها الخادم (`pipeline`)،
-/// الوحداتُ (حاوياتٍ أو سيّارات) وبيانُ نقلها، إصدارُ الفاتورة وفاتورةُ النقل،
-/// مهامُّ الإنجاز بتواريخها، المستندات، مراحلُ السداد، والتكاليف.
+/// Customs clearance details: the stage cycle as computed by the server (`pipeline`), the units (containers or cars) and their transport data, issuing the invoice and the transport invoice, completion tasks with dates, documents, payment stages and costs.
 class CustomsDetailScreen extends StatefulWidget {
   final String clearanceId;
   final String ref;
@@ -23,11 +21,8 @@ class CustomsDetailScreen extends StatefulWidget {
   State<CustomsDetailScreen> createState() => _CustomsDetailScreenState();
 }
 
-/// مراحلُ الدورة بالترتيب — المفاتيحُ من STAGES في الخادم
-/// (models/CustomsClearance) والأسماءُ من config/customsStages.
-///
-/// والدورةُ ليست خطًّا: بعد «أمر النقل» طريقان يتنافيان، ومراحلُ تُغلَق على
-/// معاملةٍ دون أخرى. فما يُنجَز وما يُغلَق يُقرأ من `pipeline.steps` لا من هنا.
+/// Cycle stages in order. Keys come from STAGES on the server (models/CustomsClearance), names from config/customsStages.
+/// The cycle is not a line: after the transport order there are two mutually exclusive paths, and some stages are closed on one transaction but not another. What is done or closed is read from `pipeline.steps`, not from here.
 const customsStages = [
   ('papers_received', 'استلام الأوراق', 'Papers received'),
   ('declaration_paid', 'سداد البيان الجمركي', 'Customs declaration paid'),
@@ -45,10 +40,10 @@ const customsStages = [
   ('invoiced', 'الفوترة', 'Invoiced'),
 ];
 
-// مفتاحُ ما قبل تفريع النقل — باقٍ في `stage` على معاملاتٍ قديمة.
+// Key from before the transport branching; remains in `stage` on old transactions.
 const _legacyStage = ('containers_transported', 'نقل الحاويات', 'Containers transported');
 
-/// اسمُ المرحلة — و«الحاويات» فيه تصير «السيّارات» في معاملة السيّارات.
+/// Stage name; "containers" in it becomes "cars" on a car transaction.
 String customsStageLabel(String key, [String cargoType = 'containers']) {
   final hit = [...customsStages, _legacyStage].where((s) => s.$1 == key);
   if (hit.isEmpty) return key;
@@ -57,9 +52,7 @@ String customsStageLabel(String key, [String cargoType = 'containers']) {
   return tr(ar.replaceFirst('الحاويات', 'السيّارات'), en.replaceFirst('Containers', 'Vehicles'));
 }
 
-/// رابطُ الملفّ باسمٍ يُعرَف به عند التنزيل: «{البوليصة} - {العنوان}[ (n)].{ext}».
-/// الخادمُ يكرّم `dl` على `/api/uploads/...` فيردّ الملفَّ بهذا الاسم؛ والرقمُ (n)
-/// يُعطى حين يتكرّر العنوانُ نفسُه وحدَه.
+/// File link with a recognizable download name: "{waybill} - {title}[ (n)].{ext}". The server honors `dl` on `/api/uploads/...` and returns the file under this name; the (n) suffix is added only when the same title repeats.
 String customsFileUrl(dynamic fileUrl, {required String base, required String title, int n = 0, dynamic fileName}) {
   final u = '${fileUrl ?? ''}';
   if (!u.contains('/api/uploads/')) return u;
@@ -71,7 +64,7 @@ String customsFileUrl(dynamic fileUrl, {required String base, required String ti
   return '$u${u.contains('?') ? '&' : '?'}dl=${Uri.encodeComponent(ext.isEmpty ? name : '$name.$ext')}';
 }
 
-/// حالةُ طلب الصرف عند الماليّة — اسمُها ولونُها.
+/// Disbursement request state at Finance: its name and colour.
 (String, Color) customsPayStatus(dynamic status) => switch ('${status ?? 'pending'}') {
       'paid' => (tr('تمّ الدفع', 'Paid'), T.success),
       'returned' => (tr('أُعيد للتصحيح', 'Returned for correction'), T.info),
@@ -79,7 +72,7 @@ String customsFileUrl(dynamic fileUrl, {required String base, required String ti
       _ => (tr('بانتظار الدفع', 'Awaiting payment'), T.warn),
     };
 
-// المراحلُ التي هي نقلٌ — لكلٍّ منها بيانُ سيّارتها على كلّ وحدة (containers.moves).
+// Stages that are transport; each has its vehicle data per unit (containers.moves).
 const _transportLegs = ['transport_to_yard', 'transport_to_customer', 'yard_to_customer'];
 
 const _stageDoneItems = [
@@ -102,24 +95,21 @@ const _documentItems = [
 ];
 
 
-/// بنود المصروفات — مبالغُ تُدفع للغير وتُمرَّر على العميل كما هي. الترتيب
-/// والمحتوى مطابقان لـCOST_KEYS في الخادم؛ نقصانُ بندٍ هنا يجعل إجماليَّ
-/// الجوّال أقلَّ من إجمالي الويب في المعاملة نفسها.
+/// Expense items: amounts paid to third parties and passed on to the customer as is. Order and content match COST_KEYS on the server; a missing item here makes the mobile total lower than the web total for the same transaction.
 const _costItems = [
   ('deliveryOrder', 'قيمة إذن التسليم', 'Delivery order'),
   ('customsDuty', 'الرسوم الجمركية', 'Customs duty'),
   ('portFees', 'أجور الموانئ', 'Port fees'),
   ('unloadingFees', 'أجور التفريغ', 'Unloading fees'),
   ('inspection', 'أجور الكشف', 'Inspection'),
-  // ما ندفعه للناقل في كلّ جزءٍ من أجزاء النقل — ومنه يُطرَح سعرُ بيعنا
-  // للجزء نفسِه فيظهر صافيه.
+  // What is paid to the carrier for each transport part; our selling price for the same part is subtracted from it to show its net.
   ('transport', 'النقل من الميناء إلى العميل', 'Transport: port → customer'),
   ('transportToYard', 'النقل من الميناء إلى الساحة', 'Transport: port → yard'),
   ('transportYardToCustomer', 'النقل من الساحة إلى العميل', 'Transport: yard → customer'),
   ('appointmentBooking', 'حجز الموعد', 'Appointment booking'),
   ('storage', 'تخزين', 'Storage'),
   ('yardFees', 'أجور الساحة', 'Yard fees'),
-  // «الأرضيات» و«تصريح الخروج» بندٌ واحد — جُمع ما كان في الأوّل إلى الثاني.
+  // Floor charges and the exit permit are one item; the former was merged into the latter.
   ('exitPermit', 'تصريح الخروج (الأرضيات)', 'Exit permit (demurrage)'),
   ('extension', 'تمديد', 'Extension'),
   ('consolidator', 'الدامج', 'Consolidator'),
@@ -129,13 +119,11 @@ const _costItems = [
   ('labourExpenses', 'مصاريف عمال', 'Labour expenses'),
 ];
 
-/// بنود الإيراد — ما يُضاف فوق المصروفات، والفاتورة = المصروفات + الصوافي
-/// والأجور (MARGIN_KEYS في الخادم). وأسعارُ النقل للعميل تُعرَض بجانب صافيها
-/// ولا تُجمع وحدَها: الصافي هو ما يدخل الفاتورة فوق تكلفة الجزء.
+/// Revenue items: what is added on top of expenses; invoice = expenses + nets + fees (MARGIN_KEYS on the server). Customer transport prices are shown beside their net and not summed alone: the net is what enters the invoice on top of the part cost.
 const _marginItems = [
   ('clearanceFee', 'أجور التخليص', 'Clearance fee'),
   ('transportSelling', 'سعر النقل من الميناء إلى العميل', 'Price: port → customer'),
-  // يُحسب في الخادم: سعرُ النقل ناقصَ تكلفته — لا يُكتب بيد.
+  // Computed on the server: transport price minus its cost; never typed by hand.
   ('transportNet', 'صافي النقل', 'Transport net'),
   ('transportToYardSelling', 'سعر النقل من الميناء إلى الساحة', 'Price: port → yard'),
   ('transportToYardNet', 'صافي النقل إلى الساحة', 'Transport-to-yard net'),
@@ -150,15 +138,14 @@ const _marginItems = [
   ('transportDailies', 'يوميات نقل', 'Transport per-diems'),
 ];
 
-/// مراحلُ السداد التي يُكتب مبلغُها في بند تكلفةٍ حين تؤكّد الماليّةُ الدفع
-/// (STAGE_COST في الخادم) — فلا تُضاف ولا تُعدَّل بلا مبلغ (AMOUNT_REQUIRED).
+/// Payment stages whose amount is written into a cost item when Finance confirms payment (STAGE_COST on the server); they cannot be added or edited without an amount (AMOUNT_REQUIRED).
 const customsCostMappedStages = {
   'doInvoicePaid', 'dutyPaid', 'portFeesPaid', 'unloadingFeesPaid', 'extension',
   'transportPortToCustomer', 'transportPortToYard', 'transportYardToCustomer',
   'appointmentBooking', 'inspection', 'exitPermit', 'consolidator', 'commissions', 'labourExpenses',
 };
 
-/// ما يُقرأ «فاتورةَ نقل» للإنهاء: البندُ القديم وأجزاءُ النقل الثلاثة بملفّها.
+/// What counts as the transport invoice for finishing: the old item and the three transport parts with their file.
 const customsTransportInvoiceKeys = {
   'transportInvoice', 'transportPortToCustomer', 'transportPortToYard', 'transportYardToCustomer',
 };
@@ -167,7 +154,7 @@ Map<String, dynamic> _m(dynamic v) => v is Map ? Map<String, dynamic>.from(v) : 
 List<Map<String, dynamic>> _maps(dynamic v) =>
     v is List ? [for (final e in v) if (e is Map) Map<String, dynamic>.from(e)] : [];
 
-// الأرقامُ لاتينيّةٌ دائمًا، عربيّةً كانت الواجهةُ أو إنجليزيّة (صاحبُ الشركة، ٢٠٢٦/١٠/٢٧).
+// Numbers are always Latin digits, in both Arabic and English UI.
 String _arDigits(int n) => '$n';
 
 class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
@@ -176,17 +163,14 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
   bool _loading = true;
   String? _error;
   bool _saving = false;
-  // أرقامُ كشوف التخريج الموجودةُ في سير عمل التشغيل — null ما لم يُسأل الخادم.
+  // Release-sheet numbers present in the operations workflow; null until the server is asked.
   Map<String, dynamic>? _sheets;
   String _sheetsKey = '';
-  // أيُّ وحدةٍ تُعرَض مراحلُها في «النقل وما بعده» — ‎-1: الكلُّ معًا.
+  // Which unit's stages are shown in "transport and after"; -1 means all together.
   int _unitSel = -1;
-  // تعريفاتُ مراحل السداد من إعدادات القسم (`customs_payment_stage`) — أسماؤها
-  // تُقرأ منها وحدَها، فتغييرُ اسمٍ هناك يظهر هنا في الحال.
+  // Payment stage definitions from the section settings (`customs_payment_stage`); names are read only from them, so a rename there shows here at once.
   List<Map<String, dynamic>> _payDefs = const [];
-  // عقدُ العميل الساري بأسعاره (GET /:id/contract-pricing) — null: لا عقد،
-  // و`_contractKey` العميلُ وعددُ الوحدات اللذان قُرئ بهما، فلا يُعاد السؤالُ
-  // إلّا حين يتغيّر أحدُهما.
+  // The customer's valid contract with its prices (GET /:id/contract-pricing); null means no contract. `_contractKey` holds the customer and unit count it was read with, so it is re-requested only when one changes.
   Map<String, dynamic>? _contract;
   bool _contractLoaded = false;
   String _contractKey = '';
@@ -233,11 +217,11 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
       final d = await Api.instance.get('/api/lookups?type=customs_payment_stage&active=true');
       if (mounted) setState(() => _payDefs = _maps(d['items']));
     } catch (_) {
-      // تبقى الإدخالاتُ مقروءةً بأسمائها المحفوظة؛ والإضافةُ تنتظر التعريفات.
+      // Entries stay readable by their stored names; adding waits for the definitions.
     }
   }
 
-  /// أسعارُ عقد العميل لهذه المعاملة — تُقرأ من جديد حين يتغيّر العميلُ أو عددُ الوحدات.
+  /// Customer contract prices for this transaction; re-read when the customer or unit count changes.
   Future<void> _loadContract({bool force = false}) async {
     final key = '${_c?['customerParty'] ?? ''}|${_c?['containerCount'] ?? ''}';
     if (!force && key == _contractKey && _contractLoaded) return;
@@ -246,13 +230,12 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
       final d = await Api.instance.get('/api/customs-clearance/${widget.clearanceId}/contract-pricing');
       if (mounted) setState(() { _contract = d['contract'] is Map ? Map<String, dynamic>.from(d['contract']) : null; _contractLoaded = true; });
     } catch (_) {
-      // الشريطُ زيادةٌ على البطاقة — تعذُّره لا يُعلَن، ويُعاد السؤالُ في القراءة التالية.
+      // The bar is an extra over the card: its failure is not announced, and it is asked again on the next read.
       _contractKey = '';
     }
   }
 
-  /// «تعبئة من العقد»: يكتب الخادمُ أسعارَ العقد في خانات الإيراد كلِّها، وباختيار
-  /// وجهةٍ يُكتب سعرُ النقل من الميناء إلى العميل بحسبها.
+  /// "Fill from contract": the server writes the contract prices into all revenue fields; choosing a destination also writes the port-to-customer transport price for it.
   Future<void> _applyContract({String? from, String? to}) async {
     final r = await _send(
       () => Api.instance.post('/api/customs-clearance/${widget.clearanceId}/apply-contract',
@@ -264,8 +247,7 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
     }
   }
 
-  /// رقمُ كشف التخريج يُكتب على الوحدة حين تُنقَل بسيّارة الشركة، وهو نفسُه في
-  /// سير عمل التشغيل — فيُقال أمرتبطٌ هو أم لا. والتلميحُ زيادة: تعذُّره لا يُعلَن.
+  /// The release-sheet number is written on the unit when moved by a company vehicle, and is the same in the operations workflow, so it can show whether it is linked. The hint is an extra: its failure is not announced.
   Future<void> _checkSheets() async {
     final refs = <String>{
       for (final u in _maps(_c?['containers']))
@@ -285,8 +267,7 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
     if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
-  /// نداءُ كتابةٍ واحد: يُنفَّذ، تُعاد القراءة، وتُعرَض رسالةُ الخادم إن رفض.
-  /// يردّ جسمَ الردّ، أو null إن تعذّر.
+  /// Single write call: run it, re-read, and show the server message if rejected. Returns the response body, or null on failure.
   Future<dynamic> _send(Future<dynamic> Function() call, {String? ok}) async {
     if (_saving) return null;
     setState(() => _saving = true);
@@ -325,11 +306,8 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
     return ok == true;
   }
 
-  /// تعليمُ مرحلةٍ أو رفعُ علامتها — والقواعدُ في الخادم (PATCH /:id/stage):
-  /// ما يُرفَض يعود برسالته فتُعرَض كما هي.
-  ///
-  /// `unit`: رقمُ صفّ الوحدة (من صفر) أو 'all' لمراحل النقل وما بعده — وهي
-  /// تُتابَع لكلّ حاويةٍ على حدة. والمراحلُ التي قبل النقل تُرسَل بلا `unit`.
+  /// Mark a stage or clear its mark; rules are on the server (PATCH /:id/stage). A rejection returns with its message and is shown as is.
+  /// `unit`: zero-based unit row index or 'all' for transport-and-after stages, which are tracked per container. Stages before transport are sent without `unit`.
   Future<void> _setStage(String key, bool done, {Object? unit}) async {
     if (!done && (key == 'transport_to_yard' || key == 'transport_to_customer')) {
       final ok = await _confirm(
@@ -346,8 +324,7 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
     );
   }
 
-  /// إصدارُ فاتورة العميل. وفاتورةُ النقل ليست شرطًا لها: تصدر الفاتورةُ بما هو
-  /// معروف، وتُنهى المعاملةُ وحدَها حين تُرفَق فاتورةُ النقل.
+  /// Issue the customer invoice. The transport invoice is not a precondition: the invoice is issued with what is known, and the transaction is finished only when the transport invoice is attached.
   Future<void> _issueInvoice() async {
     if (_saving) return;
     List<Map<String, dynamic>> defs;
@@ -435,8 +412,7 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
     );
   }
 
-  /// بيانُ وحدةٍ واحدة: رقمُها وتاريخُ إرجاعها وسيّارةُ كلّ مرحلةِ نقلٍ أُنجزت.
-  /// والحفظُ بالمصفوفة كاملةً — الخادمُ يكتب `containers` كما تصله.
+  /// Data of one unit: its number, return date, and the vehicle of each completed transport stage. Saved as the whole array; the server writes `containers` as received.
   Future<void> _editUnit(int i, List<Map<String, dynamic>> units, List<String> legs, String cargo) async {
     final next = await showModalBottomSheet<Map<String, dynamic>>(
       context: context,
@@ -448,7 +424,7 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
     await _patch({'containers': all}, tr('حُفظت بيانات الوحدة', 'Unit saved'));
   }
 
-  /// ملاحظةٌ جديدة — تُضاف إلى السجلّ ولا تمحو ما قبلها.
+  /// New note: appended to the log, does not erase earlier ones.
   Future<void> _addNote() async {
     final text = _note.text.trim();
     if (text.isEmpty) return;
@@ -459,7 +435,7 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
     if (r != null) _note.clear();
   }
 
-  /// حذفُ ملاحظةٍ من السجلّ — DELETE /:id/notes/:noteId كما في الموقع.
+  /// Delete a note from the log: DELETE /:id/notes/:noteId, as on the web.
   Future<void> _deleteNote(Map<String, dynamic> nt) async {
     final ok = await _confirm(tr('حذف الملاحظة؟', 'Delete note?'), '${nt['text'] ?? ''}', action: tr('حذف', 'Delete'));
     if (!ok) return;
@@ -467,7 +443,7 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
         ok: tr('حُذفت الملاحظة', 'Note deleted'));
   }
 
-  /// تعديلُ المرفق: اسمُه ومرحلتُه — PUT /:id/attachments/:attId كما في الموقع.
+  /// Edit an attachment: its name and stage, PUT /:id/attachments/:attId, as on the web.
   Future<void> _editAttachment(Map<String, dynamic> att) async {
     final cargo = (_c?['cargoType'] ?? 'containers').toString();
     final title = TextEditingController(text: '${att['title'] ?? att['fileName'] ?? ''}');
@@ -503,7 +479,7 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
     final t = title.text.trim();
     title.dispose();
     if (ok != true) return;
-    // ما تغيّر وحدَه — كالموقع: الاسمُ يُحفظ عند الخروج من خانته، والمرحلةُ عند اختيارها.
+    // Only what changed, as on the web: the name saves on leaving its field, the stage on selection.
     final body = <String, dynamic>{
       if (t.isNotEmpty && t != origTitle) 'title': t,
       if (stage != origStage) 'stage': stage,
@@ -533,9 +509,7 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final c = _c ?? {};
-    // ── الدورةُ كما حسبها الخادم ───────────────────────────────────────────
-    // ما أُنجز وما أُغلِق والنسبةُ تُقرأ من `pipeline` — لا تُشتقّ هنا: القاعدةُ
-    // (طريقان يتنافيان، ومراحلُ ليست من طريق المعاملة) واحدةٌ في الخادم.
+    // The cycle as computed by the server. Done, closed and percentage are read from `pipeline`, not derived here: the rule (two exclusive paths, stages not on the transaction's path) lives once on the server.
     final pipeline = _m(c['pipeline']);
     final steps = _maps(pipeline['steps']);
     final cargo = (c['cargoType'] ?? 'containers').toString();
@@ -554,17 +528,15 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
     final invoiceNo = (c['saleInvoiceNumber'] ?? '').toString();
     final cancelled = c['cancelled'] == true;
     final completed = c['isCompleted'] == true;
-    // فُوترت ولم تُنهَ: تنتظر فاتورةَ النقل (awaitsTransportInvoice في الخادم).
-    // طلبُ الفوترة عند الإدارة الماليّة (٢٠٢٦/١٠/٢٢): مفوترةٌ حين تقول الماليّةُ ذلك.
+    // Invoiced but not finished: awaiting the transport invoice (awaitsTransportInvoice on the server). Billing request is at Finance: invoiced when Finance says so.
     final ireq = _m(c['invoiceRequest']);
     final ireqStatus = '${ireq['status'] ?? ''}';
     final awaiting = (invoiceNo.isNotEmpty || ireqStatus == 'pending') && !completed && !cancelled && c['transportInvoiceReceived'] != true;
-    // من النقل فما بعده تُتابَع المراحلُ لكلّ وحدة: `units[i].steps` مراحلُها هي،
-    // و`steps` في مستوى المعاملة مجموعُها (unitsDone/unitsOf).
+    // From transport onward stages are tracked per unit: `units[i].steps` are its own stages, and transaction-level `steps` is their aggregate (unitsDone/unitsOf).
     final perUnit = pipeline['perUnit'] == true;
     final pUnits = _maps(pipeline['units']);
     Map<String, dynamic>? pUnit(int i) => pUnits.where((u) => u['index'] == i).firstOrNull;
-    // مراحلُ النقل المنجَزةُ لهذه الوحدة — عنها يُسأل أيُّ سيّارةٍ نقلتها.
+    // Completed transport stages of this unit; they are asked which vehicle carried it.
     List<String> doneLegs(int i) => [
           for (final s in (perUnit ? _maps(pUnit(i)?['steps']) : steps))
             if (_transportLegs.contains(s['key']) && s['done'] == true) '${s['key']}',
@@ -583,9 +555,9 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
       final no = i < units.length ? '${units[i]['containerNumber'] ?? ''}'.trim() : '';
       return no.isNotEmpty ? no : '${vehicles ? tr('السيّارة', 'Vehicle') : tr('الحاوية', 'Container')} ${_arDigits(i + 1)}';
     }
-    // أُغلقت ولم تصدر فاتورتُها — تُفوتَر وهي مغلقة.
+    // Closed without an issued invoice; invoiced while closed.
     final closedNotInvoiced = completed && invoiceNo.isEmpty && !steps.any((x) => x['key'] == 'invoiced' && x['done'] == true);
-    // أوّلُ اسمِ كلّ ملفٍّ يُنزَّل: رقمُ البوليصة، وإلّا رقمُ المعاملة.
+    // Start of every downloaded file name: the waybill number, else the transaction number.
     final fileBase = '${c['blNumber'] ?? ''}'.trim().isNotEmpty ? '${c['blNumber']}'.trim() : '${c['refNumber'] ?? widget.ref}';
     String attTitle(Map<String, dynamic> a) {
       final t = '${a['title'] ?? ''}'.trim();
@@ -606,7 +578,7 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
               : RefreshIndicator(
                   onRefresh: () { _sheetsKey = ''; return _load(); },
                   child: ListView(padding: const EdgeInsets.all(14), children: [
-                    // ── معلومات أساسية ──
+                    // Basic information.
                     FadeSlideIn(
                       child: AppCard(
                         topAccent: cancelled ? T.danger : completed ? T.success : T.navy,
@@ -628,8 +600,7 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
                       ),
                     ),
                     const SizedBox(height: 12),
-                    // ── بانتظار فاتورة النقل ──
-                    // بالأحمر حتى لا تُنسى: الفاتورةُ صدرت والمعاملةُ لم تُنهَ.
+                    // Awaiting the transport invoice. Shown in red so it is not forgotten: the invoice was issued but the transaction is not finished.
                     if (awaiting) ...[
                       Container(
                         padding: const EdgeInsets.all(12),
@@ -667,7 +638,7 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
                       ),
                       const SizedBox(height: 12),
                     ],
-                    // ── حالُ طلب الفوترة ──
+                    // Billing request state.
                     if (!cancelled && ireqStatus.isNotEmpty) ...[
                       AppCard(
                         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -690,7 +661,7 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
                       ),
                       const SizedBox(height: 12),
                     ],
-                    // ── الفوترة والإنهاء فعلان ──
+                    // Invoicing and finishing are two separate actions.
                     if (completed)
                       Align(
                         alignment: AlignmentDirectional.centerStart,
@@ -723,7 +694,7 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
                         ),
                       ),
                     if (completed || (!cancelled && c['upcoming'] != true)) const SizedBox(height: 12),
-                    // ── مسار المراحل ──
+                    // Stage path.
                     FadeSlideIn(
                       delayMs: 40,
                       child: AppCard(
@@ -774,9 +745,7 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
                       ),
                     ),
                     const SizedBox(height: 12),
-                    // ── الوحدات: حاوياتٌ أو سيّارات ──
-                    // خانةٌ لكلّ وحدةٍ بعدد المعاملة (يفتحها الخادم — syncUnits)،
-                    // تُلمَس فيُكتب رقمُها وتاريخُ إرجاعها وبيانُ نقلها.
+                    // Units: containers or cars. One slot per unit matching the transaction count (created by the server, syncUnits); tapping one writes its number, return date and transport data.
                     if (units.isNotEmpty) ...[
                       FadeSlideIn(
                         delayMs: 60,
@@ -791,13 +760,13 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
                       ),
                       const SizedBox(height: 12),
                     ],
-                    // ── كشوفُ التشغيل التي نقلت حاوياتِها، بفوترتها وتحصيلها ──
+                    // Operations sheets that transported its containers, with their invoicing and collection.
                     FadeSlideIn(
                       delayMs: 70,
                       child: CustomsLinkedReports(clearanceId: widget.clearanceId),
                     ),
                     const SizedBox(height: 12),
-                    // ── مهام الإنجاز ──
+                    // Completion tasks.
                     FadeSlideIn(
                       delayMs: 80,
                       child: AppCard(
@@ -825,7 +794,7 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
                       ),
                     ),
                     const SizedBox(height: 12),
-                    // ── مستندات البوليصة ──
+                    // Waybill documents.
                     FadeSlideIn(
                       delayMs: 90,
                       child: AppCard(
@@ -844,8 +813,8 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
                       ),
                     ),
                     const SizedBox(height: 12),
-                    // (رُفعت «أوراق الوكيل» بطلب القسم — تتكرّر مع المستندات أعلاه.)
-                    // ── الملاحظات ──
+                    // The agent papers were uploaded at the section's request and duplicate the documents above.
+                    // Notes.
                     FadeSlideIn(
                       delayMs: 105,
                       child: AppCard(
@@ -856,8 +825,7 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
                             if (notes.isNotEmpty) Text('${notes.length}', style: const TextStyle(fontSize: 11, color: T.inkFaint)),
                           ]),
                           const SizedBox(height: 6),
-                          // سطرٌ يُضاف لا خانةٌ تُدهَس: لكلّ ملاحظةٍ صاحبُها ووقتُها،
-                          // وأحدثُها هي التي تظهر في الجدول. راجع notesLog في الخادم.
+                          // A line is appended rather than a field overwritten: each note has its author and time, and the latest shows in the table. See notesLog on the server.
                           Row(children: [
                             Expanded(
                               child: TextField(
@@ -890,7 +858,7 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
                                         child: Text('${nt['byName'] ?? tr('غير معروف', 'unknown')} · ${_when(nt['at'])}',
                                             style: const TextStyle(fontSize: 10.5, color: T.inkFaint)),
                                       ),
-                                      // حذفُ الملاحظة — لمن يعدّل في التخليص، كما في الموقع (ClearanceNotes).
+                                      // Delete a note: for those who edit customs, as on the web (ClearanceNotes).
                                       if (canEditCustoms(context) && '${nt['_id'] ?? ''}'.isNotEmpty)
                                         InkWell(
                                           onTap: _saving ? null : () => _deleteNote(nt),
@@ -921,10 +889,10 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
                       ),
                     ),
                     const SizedBox(height: 12),
-                    // ── مهامّ خطّة العمل المرتبطة بالمعاملة ──
+                    // Work-plan tasks linked to the transaction.
                     JpTaskPanel(section: 'customs', kind: 'clearance', refId: widget.clearanceId),
                     const SizedBox(height: 12),
-                    // ── التكاليف ──
+                    // Costs.
                     FadeSlideIn(
                       delayMs: 120,
                       child: AppCard(
@@ -956,11 +924,7 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
                       ),
                     ),
                     const SizedBox(height: 12),
-                    // ── الإيراد والفاتورة ──
-                    // في التخليص لا تُباع الرسوم بل تُمرَّر: ما دُفع للموانى
-                    // والجمارك يُسترد كما هو. والفاتورةُ محسوبةٌ لا مكتوبة.
-                    // (صافي الربح وهامشُه رُفعا من تفاصيل المعاملة بطلب صاحب
-                    //  الشركة — موضعُهما «تحليلات قسم التخليص» وهي للإدارة.)
+                    // Revenue and invoice. In customs, fees are passed through, not sold: what was paid to ports and customs is recovered as is. The invoice is computed, not typed. Net profit and margin were removed from the transaction details; they live in customs analytics, for management.
                     FadeSlideIn(
                       delayMs: 140,
                       child: AppCard(
@@ -994,9 +958,7 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
                       ),
                     ),
                     const SizedBox(height: 12),
-                    // ── مراحل السداد ──
-                    // إدخالٌ لكلّ مرّة: المرحلةُ نفسُها قد تُسدَّد على دفعات،
-                    // فتُرقَّم ليُعرَف أيُّها هذا.
+                    // Payment stages. One entry per payment: the same stage can be paid in installments, so entries are numbered to tell them apart.
                     if (payments.isNotEmpty || _payDefs.isNotEmpty) ...[
                       AppCard(
                         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -1008,10 +970,8 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
                       ),
                       const SizedBox(height: 12),
                     ],
-                    // أطرافُ المعاملة لا تُعرض هنا — ملفّاتُهم في صفحاتهم (العملاء · الوكلاء · الناقلون).
-                    // ── المرفقات ──
-                    // ورقُ كلِّ مرحلةٍ موسومًا بها، يُفتح ويُنزَّل من الجوّال
-                    // كما من الويب: من في الميناء أحوجُ إليه ممّن في المكتب.
+                    // Transaction parties are not shown here; their files are on their own pages (customers, agents, carriers).
+                    // Attachments. Each stage's papers are tagged with it and open/download on mobile as on the web, since someone at the port needs them more than someone in the office.
                     FadeSlideIn(
                       delayMs: 160,
                       child: AppCard(
@@ -1040,7 +1000,7 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
                                 const Icon(Icons.description_outlined, size: 17, color: T.navy),
                                 const SizedBox(width: 8),
                                 Expanded(
-                                  // لمسُ العنوان يفتح الملفَّ للعرض — كالعين بجانبه.
+                                  // Tapping the title opens the file for viewing, like the eye icon beside it.
                                   child: InkWell(
                                     onTap: () => customsOpenFile(context, att['fileUrl']),
                                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -1050,7 +1010,7 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
                                     ]),
                                   ),
                                 ),
-                                // فتحٌ للعرض (الصورةُ وPDF تُعرَضان) — والتنزيلُ بجانبه باسمه المرتَّب.
+                                // Open for viewing (images and PDF display); the download beside it uses the tidy name.
                                 IconButton(visualDensity: VisualDensity.compact, icon: const Icon(Icons.visibility_outlined, size: 18, color: T.navy),
                                     tooltip: tr('فتح', 'Open'), onPressed: () => customsOpenFile(context, att['fileUrl'])),
                                 IconButton(visualDensity: VisualDensity.compact, icon: const Icon(Icons.download_rounded, size: 18, color: T.orange),
@@ -1073,20 +1033,19 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
     );
   }
 
-  /// سطرُ مرحلةٍ في المسار. `unit` تُرسَل مع التعليم لمراحل الوحدات ('all' أو
-  /// رقمُ الصفّ)؛ والمجموعُ يحمل عدّادَه (unitsDone/unitsOf).
+  /// A stage row in the path. `unit` is sent with the mark for unit stages ('all' or the row index); the group carries its counter (unitsDone/unitsOf).
   Widget _stepRow(Map<String, dynamic> st, {
     required String cargo, required bool last, required bool isNext, required bool enabled, required bool canInvoice, Object? unit,
   }) {
     final key = '${st['key']}';
     final done = st['done'] == true;
     final locked = st['locked'] == true;
-    // الطريقُ الآخرُ يُضغَط فيتحوّل الاختيارُ إليه — لا بابٌ موصد.
+    // The other path can be tapped to switch the choice to it; it is not a locked door.
     final switchable = st['switchable'] == true;
     final of = st['unitsOf'] == null ? 0 : _nz(st, 'unitsOf').toInt();
     final got = _nz(st, 'unitsDone').toInt();
     final partial = of > 0 && got > 0 && got < of;
-    // «إصدار الفاتورة» لا تُعلَّم بيد: تُعلَّم بإصدارها.
+    // The invoice-issuing stage is not marked by hand; it is marked by issuing the invoice.
     final VoidCallback? onTap = _saving || (locked && !switchable) || !enabled
         ? null
         : key == 'invoiced'
@@ -1134,10 +1093,10 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
     );
   }
 
-  /// بطاقةُ الوحدة على هيئة حاوية: لوحةٌ برقمها، وتحتها ما كُتب عنها.
+  /// Unit card shaped like a container: a plate with its number and what was written about it below.
   Widget _unitCard(int i, List<Map<String, dynamic>> units, List<String> doneLegs, String cargo, Map<String, dynamic>? progress) {
     final vehicles = cargo == 'vehicles';
-    // حالُ الوحدة من مراحلها هي (pipeline.units[i]).
+    // Unit state from its own stages (pipeline.units[i]).
     final waiting = '${progress?['next'] ?? ''}';
     final returned = _maps(progress?['steps']).any((x) => x['key'] == 'containers_returned' && x['done'] == true);
     final state = progress == null ? null
@@ -1192,8 +1151,7 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
     );
   }
 
-  /// إرجاعُ الحاوية: التاريخُ ومعه ما يُسأل عنه حين يطالب الوكيلُ بغرامة —
-  /// المكانُ والإيصالُ والسيّارةُ ورقمُ كشفها أو فاتورتها.
+  /// Container return: the date plus what is asked when the agent claims a fine: place, receipt, vehicle, and its release-sheet or invoice number.
   Widget _returnBox(Map<String, dynamic> u) {
     String s(String k) => '${u[k] ?? ''}'.trim();
     final date = s('returnDate');
@@ -1256,8 +1214,7 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
     );
   }
 
-  /// الإدخالاتُ تحت تعريف مرحلتها: الاسمُ من التعريف الحيّ، وما حُذف تعريفُه
-  /// يبقى مقروءًا باسمه المحفوظ على الإدخال — بلا «إضافة».
+  /// Entries under their stage definition: the name comes from the live definition, and an entry whose definition was deleted stays readable by its stored name, without an add button.
   List<Widget> _paymentGroups(List<Map<String, dynamic>> payments, String fileBase) {
     final known = {for (final d in _payDefs) '${d['key']}'};
     final groups = <(String?, String, List<Map<String, dynamic>>)>[
@@ -1339,7 +1296,7 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
     );
   }
 
-  /// إضافةُ إدخالٍ إلى مرحلة سداد (`key`) أو تعديلُ إدخالٍ قائم (`entry`).
+  /// Add an entry to a payment stage (`key`) or edit an existing entry (`entry`).
   Future<void> _editPayment(String stage, {String? key, Map<String, dynamic>? entry}) async {
     final body = await showModalBottomSheet<Map<String, dynamic>>(
       context: context,
@@ -1362,8 +1319,7 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
         style: const TextStyle(fontSize: 10.5, color: T.inkFaint)),
   );
 
-  /// شريطُ عقد العميل أعلى «الإيراد والفاتورة»: اسمُ العقد، ووجهةُ النقل من الميناء
-  /// إلى العميل، وزرُّ «تعبئة من العقد». يُقرأ للجميع، ويُعمَل به لمن يعدّل وحدَه.
+  /// Customer contract bar above revenue and invoice: contract name, transport destination from port to customer, and the fill-from-contract button. Readable by everyone, actionable only by editors.
   Widget _contractStrip(bool canEdit) {
     if (!_contractLoaded) return const SizedBox.shrink();
     final k = _contract;
@@ -1399,7 +1355,7 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
         if (routes.isNotEmpty) ...[
           const SizedBox(height: 8),
           DropdownButtonFormField<String>(
-            // المفتاحُ يعيد بناءَ الخانة حين يتغيّر العقدُ أو وجهتُه من الخادم.
+            // The key rebuilds the field when the contract or its destination changes from the server.
             key: ValueKey('${k['_id']}|$curKey'),
             initialValue: curKey != null && keys.contains(curKey) ? curKey : null,
             isExpanded: true,
@@ -1538,8 +1494,7 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
     );
   }
 
-  /// إرفاقُ ملفٍّ موسومًا بالمرحلة التي أُنتج فيها — يُقرأ بعدُ في موضعه من
-  /// دورة الإجراءات لا في كومةٍ واحدة.
+  /// Attach a file tagged with the stage that produced it, so it is read later in its place in the procedure cycle, not in one pile.
   Future<void> _uploadAttachment() async {
     final picked = await pickFileAsDataUrl();
     if (picked == null || !mounted) return;
@@ -1585,8 +1540,7 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
     );
   }
 
-  /// الملفُّ يُقدَّم على `/api/uploads/...` من الخادم نفسِه، فيُفتح بمتصفّح
-  /// الجهاز فينزّله أو يعرضه — لا حاجة لتنزيلٍ داخل التطبيق.
+  /// The file is served from `/api/uploads/...` on the same server, so the device browser downloads or shows it; no in-app download is needed.
   Future<void> _openFile(String fileUrl) async {
     final u = fileUrl;
     if (u.isEmpty) return;
@@ -1596,8 +1550,7 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
     }
   }
 
-  /// حذفُ المرفق يحذف معه إدخالَ مرحلة السداد الذي يملكه (removedStages في
-  /// الردّ) — فيُقال قبل الحذف لا بعده.
+  /// Deleting an attachment also deletes the payment-stage entry that owns it (removedStages in the response), so the user is told before the delete, not after.
   Future<void> _deleteAttachment(Map<String, dynamic> att) async {
     final url = '${att['fileUrl'] ?? ''}';
     final owned = url.isNotEmpty && _maps(_c?['paymentStages']).any((p) => p['fileUrl'] == url);
@@ -1665,9 +1618,7 @@ class _CustomsDetailScreenState extends State<CustomsDetailScreen> {
   }
 }
 
-/// ورقةُ الوحدة: رقمُها، تاريخُ إرجاعها (للحاويات وحدَها)، ولكلّ مرحلةِ نقلٍ
-/// أُنجزت أيُّ سيّارةٍ نقلتها — سيّارةُ الشركة برقم كشف التخريج، أو خارجيّةٌ
-/// برقم فاتورتها. تردّ الصفَّ معدَّلًا، والحفظُ عند مَن فتحها.
+/// Unit sheet: its number, return date (containers only), and for each completed transport stage the vehicle that carried it: a company vehicle by release-sheet number, or an external one by invoice number. Returns the edited row; saving is the opener's job.
 class _UnitSheet extends StatefulWidget {
   final Map<String, dynamic> unit;
   final int index;
@@ -1682,7 +1633,7 @@ class _UnitSheetState extends State<_UnitSheet> {
   late final TextEditingController _number = TextEditingController(text: '${widget.unit['containerNumber'] ?? ''}');
   late final TextEditingController _notes = TextEditingController(text: '${widget.unit['notes'] ?? ''}');
   late String _returnDate = '${widget.unit['returnDate'] ?? ''}';
-  // تفاصيلُ إرجاع الحاوية: أين، وبأيّ إيصال، وبأيّ سيّارة.
+  // Container return details: where, with which receipt, and by which vehicle.
   late final TextEditingController _returnDepot = TextEditingController(text: '${widget.unit['returnDepot'] ?? ''}');
   late final TextEditingController _returnReceipt = TextEditingController(text: '${widget.unit['returnReceipt'] ?? ''}');
   late final TextEditingController _returnRef = TextEditingController(text: '${widget.unit['returnRef'] ?? ''}');
@@ -1717,14 +1668,14 @@ class _UnitSheetState extends State<_UnitSheet> {
   }
 
   void _done() {
-    // بيانُ مرحلةٍ رُفعت علامتُها يبقى كما هو — لا يُمحى لأنّه غاب عن الورقة.
+    // Data of a stage whose mark was cleared stays as is; it is not erased because it is absent from the sheet.
     final others = _maps(widget.unit['moves']).where((x) => !widget.legs.contains(x['leg']));
     Navigator.pop(context, <String, dynamic>{
       ...widget.unit,
       'containerNumber': _number.text.trim(),
       'notes': _notes.text.trim(),
       'returnDate': _vehicles ? '${widget.unit['returnDate'] ?? ''}' : _returnDate,
-      // الإرجاعُ للحاويات وحدَها — والسيّارةُ تحمل ما كان فيها كما هو.
+      // Return applies to containers only; a car keeps what it had as is.
       if (!_vehicles) ...{
         'returnDepot': _returnDepot.text.trim(),
         'returnReceipt': _returnReceipt.text.trim().toUpperCase(),
@@ -1844,12 +1795,11 @@ class _UnitSheetState extends State<_UnitSheet> {
   }
 }
 
-/// ورقةُ إدخال السداد: تاريخٌ ومبلغٌ وملاحظةٌ وملفّ — ولا يُسجَّل إدخالٌ بلا تاريخٍ
-/// ولا ملفّ. تردّ جسمَ الطلب، والإرسالُ عند مَن فتحها.
+/// Payment entry sheet: date, amount, note and file; an entry without a date or file is not recorded. Returns the request body; sending is the opener's job.
 class _PaymentSheet extends StatefulWidget {
   final String stage;
   final Map<String, dynamic>? entry;
-  // مرحلةٌ يُكتب مبلغُها في بند تكلفةٍ عند تأكيد الدفع — فالمبلغُ فيها إلزاميّ.
+  // A stage whose amount is written into a cost item on payment confirmation, so the amount is mandatory.
   final bool amountRequired;
   const _PaymentSheet({required this.stage, this.entry, this.amountRequired = false});
   @override
@@ -1949,12 +1899,11 @@ class _PaymentSheetState extends State<_PaymentSheet> {
   }
 }
 
-/// ورقةُ إصدار الفاتورة: بنودُ البيع من إعدادات القسم (`saleItemDefs`) بسعرها
-/// ومرفقها. تردّ البنودَ التي كُتب سعرُها، والإصدارُ عند مَن فتحها.
+/// Invoice issuing sheet: sale items from the section settings (`saleItemDefs`) with price and attachment. Returns the items that have a price; issuing is the opener's job.
 class _InvoiceSheet extends StatefulWidget {
   final List<Map<String, dynamic>> defs;
   final List<Map<String, dynamic>> existing;
-  // وصلت فاتورةُ النقل من بابٍ آخر (خانتُها أو مراحلُ السداد) — فلا تنبيه.
+  // The transport invoice arrived another way (its field or the payment stages), so no warning.
   final bool transportReceived;
   const _InvoiceSheet({required this.defs, required this.existing, required this.transportReceived});
   @override
@@ -1989,7 +1938,7 @@ class _InvoiceSheetState extends State<_InvoiceSheet> {
     for (final d in widget.defs) {
       final key = '${d['key']}';
       final text = _amount[key]!.text.trim();
-      // البنودُ الثلاثةُ كلُّها مطلوبة (٢٠٢٦/١٠/٢٢) — ولا تُؤخذ من مراحل السداد.
+      // All three items are required; they are not taken from the payment stages.
       if (text.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('اكتب سعرَ «${d['nameAr']}» — البنودُ الثلاثةُ مطلوبة', 'Enter "${d['nameEn'] ?? d['nameAr']}" — all three items are required'))));
         return;
@@ -2040,7 +1989,7 @@ class _InvoiceSheetState extends State<_InvoiceSheet> {
                   },
                 ),
               ]),
-              // فاتورةُ النقل ليست شرطًا للإصدار — لكنّ غيابَها يُقال هنا.
+              // The transport invoice is not required to issue, but its absence is stated here.
               if (customsTransportInvoiceKeys.contains('${d['key']}') && !widget.transportReceived
                   && !customsTransportInvoiceKeys.any(_hasFile))
                 Padding(

@@ -1,9 +1,6 @@
 'use client';
-// الحوادث والمطالبات التأمينية — السؤال هنا فلوس: صرفنا كام وهنسترد كام.
-//
-// ⚠️ الصفحة دي غير «حوادث التفاويض» في نفس القسم. تلك بتسجّل الحادث من ناحية
-// التشغيل (أي سائق، بأي تفويض). دي بتتابع **المطالبة**: نسبة الخطأ، رقم نجم،
-// شركة التأمين، مبلغ التقدير، والمبلغ المسترد.
+// Accidents and insurance claims: the question here is money, how much we paid and how much we will recover.
+// Warning: this page is distinct from authorization accidents in the same section. That one records the accident operationally (which driver, under which authorization); this one tracks the claim: fault percentage, Najm number, insurer, estimate, and recovered amount.
 import { useState, useEffect, useCallback, Suspense, useMemo } from 'react';
 import { formatPlate } from '@/lib/flexMatch';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -29,7 +26,7 @@ import ClaimAttachments from '@/components/vehicles/ClaimAttachments';
 import PersonLookup from '@/components/vehicles/PersonLookup';
 import api from '@/lib/api';
 
-// أعمدةُ جدول الحوادث وقارئُ كلٍّ منها — تعريفٌ واحدٌ للترويسة وللقمع.
+// Accident table columns and each column's reader: one definition for header and filter.
 const COL_DEFS: [string, string, string][] = [
   ['plate', 'اللوحة', 'Plate'],
   ['date', 'التاريخ', 'Date'],
@@ -37,9 +34,7 @@ const COL_DEFS: [string, string, string][] = [
   ['driverId', 'رقم الإقامة', 'Iqama'],
   ['vehicleType', 'نوع السيارة', 'Vehicle type'],
   ['estimateNo', 'رقم التقدير', 'Estimate no.'],
-  // ── وبقيّةُ ما في الصفّ يُعرَض ويُفلتَر ──────────────────────────────────
-  // «فين باقي الكولومز؟» — كانت في القاعدة ولا تصل الشاشة: كيف أُبلغ عنه،
-  // ورقمُ المطالبة عند الشركة، والورقُ المرفَق. وكلُّها تُفلتَر من رأس عمودها.
+  // The rest of the row is shown and filterable. These fields were in the database but never reached the screen: how it was reported, the insurer's claim number, and attached papers. All filter from their column header.
   ['reportedVia', 'تم الإبلاغ عبر', 'Reported via'],
   ['claimNumber', 'رقم المطالبة', 'Claim no.'],
   ['fault', 'نسبة الخطأ', 'Fault'],
@@ -55,26 +50,21 @@ const COL_DEFS: [string, string, string][] = [
 const GETTERS: Record<string, (r: any) => any> = {
   plate: (r) => r.vehiclePlate || r.incidentSubjectAr,
   date: (r) => fmtDate(r.accidentDate),
-  // ── ومَن كان يقود ───────────────────────────────────────────────────────
-  // «الطرف الآخر» وحدَه لا يكفي: المخالفةُ تُقيَّد على سائقنا، ويُسأل عن روايته،
-  // وتُراجَع رخصتُه — فهذه الأربعةُ هي ما يُبدأ منه عند كلّ حادث.
+  // Who was driving. The other party alone is not enough: the violation is recorded against our driver, his account is taken and his licence is reviewed, so these four are where every accident starts.
   driver: (r) => r.driverNameAr || '',
   driverId: (r) => r.driverIdNumber || '',
   vehicleType: (r) => r.vehicleTypeAr || '',
   estimateNo: (r) => r.reportOrEstimateNumber || '',
   reportedVia: (r) => r.reportedViaAr || '',
   claimNumber: (r) => r.claim?.claimNumber || '',
-  // الفرقُ = المقدَّر ناقص المسترد — ويُحسب عند الإقفال وحدَه (يحسبه الخادم).
+  // Difference = estimated minus recovered; computed only at closing (by the server).
   gap: (r) => (r.claim?.recoveryGapSar != null ? money(r.claim.recoveryGapSar) : ''),
   files: (r) => (r.attachments?.length ? String(r.attachments.length) : ''),
   fault: (r) => (r.faultPercent == null ? '' : `${r.faultPercent}%`),
   insurer: (r) => r.claim?.insurerAr,
   estimated: (r) => (r.claim?.estimatedAmountSar ? money(r.claim.estimatedAmountSar) : ''),
   recovery: (r) => (r.claim?.expectedRecoverySar ? money(r.claim.expectedRecoverySar) : ''),
-  // ── والحالةُ خبرٌ واحد ────────────────────────────────────────────────
-  // كان يُقرأ `statusAr` أوّلًا وهو نصٌّ حرٌّ جاء مع الاستيراد، فيُقفل
-  // المستخدمُ المطالبةَ ويبقى العمودُ يقول «wait». الكودُ هو الخبر، والنصُّ
-  // يُشتقُّ منه ويُعرَض بلغة الشاشة — فلا يختلط عربيٌّ بإنجليزيّ.
+  // Status is a single fact. `statusAr` was read first, but it is free text from the import, so a closed claim still showed "wait". The code is the source of truth and the text is derived from it in the screen's language, so Arabic and English do not mix.
   status: (r) => (r.statusCode === 'closed' ? 'مقفولة' : 'قيد المتابعة'),
   lastReply: (r) => fmtDate(r.claim?.lastInsurerUpdateDate),
   notes: (r) => r.claim?.notesAr,
@@ -89,25 +79,22 @@ function ClaimsInner() {
   const { notify, confirm } = useDialog();
   const { user } = useAuth();
   const canEdit = canEditVehicles(user);
-  // عرضُ عمود الإجراءات يُقاس لتقف اللوحةُ بجانبه — راجع components/vehicles/stickyLead.
+  // Actions column width is measured so the plate column can stick beside it; see components/vehicles/stickyLead.
   const lead = useLeadOffset();
-  // التعديلُ والحذفُ للإدارة والماليّة وحدَهم؛ والتسجيلُ لفريق المركبات (canEdit).
+  // Edit and delete are for management and finance only; registration is for the vehicles team (canEdit).
   const canManage = canEditClaims(user);
   const canDelete = canManage;
-  // null = مقفول · {} = حادث جديد · سجل = تعديل
+  // null = closed, {} = new accident, record = edit.
   const [form, setForm] = useState<any | null>(null);
 
-  // البحث يُقرأ من العنوان: ملفُّ المركبة يرسل لوحتَها في الرابط، فالضغط على
-  // «الحوادث والمطالبات» يفتح مطالباتِ هذه المركبة لا السجلَّ كلَّه.
+  // Search is read from the URL: the vehicle file sends its plate in the link, so clicking accidents and claims opens this vehicle's claims, not the whole register.
   const [q, setQ] = useState(sp?.get('q') || '');
   const [status, setStatus] = useState(sp?.get('status') || '');
-  // «نايمة»: مفتوحةٌ ومضى ثلاثون يومًا بلا ردٍّ من التأمين — تُحسب في الصفّ
-  // نفسِه الذي يرسمها الجدول، فلا تُطلب من الخادم مرّةً أخرى.
+  // Dormant: open with thirty days and no insurer reply. Computed on the same row the table renders, not requested from the server again.
   const [stale, setStale] = useState(sp?.get('stale') === '1');
-  // «الخطأ علينا» يأتي من كارتٍ في النظرة الشاملة، فيُقرأ من الرابط: الضغطُ
-  // هناك يجب أن يفتح الصفوفَ نفسَها التي عُدَّت هناك.
+  // "Fault is ours" arrives from a card on the overview, so it is read from the URL: clicking there must open the same rows that were counted there.
   const [fault, setFault] = useState(sp?.get('fault') || '');
-  // فلاترُ الصفحة الجديدة — تُحسَب على الصفوف المحمَّلة، فهي أسئلةٌ عن المعروض.
+  // New page filters are computed over the loaded rows, so they answer questions about what is displayed.
   const [reportedVia, setReportedVia] = useState('');
   const [insurer, setInsurer] = useState('');
   const [files, setFiles] = useState('');
@@ -116,10 +103,7 @@ function ClaimsInner() {
   const [d, setD] = useState<Awaited<ReturnType<typeof getClaims>> | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // ── ولا يكتب ردٌّ قديمٌ فوق ردٍّ أحدث ───────────────────────────────────
-  // تُكتب المدّةُ فتنطلق طلبتان: واحدةٌ بالمدّة القديمة وأخرى بالجديدة. والأكبرُ
-  // ردًّا أبطأُ وصولًا، فيصل بعد الأصغر ويكتب فوقه — فيرى الكاتبُ نتيجتَه ثوانيَ
-  // ثمّ تعود الشاشةُ إلى ما قبل الفلتر وهو لم يمسّ شيئًا. راجع hooks/useLatestRequest.
+  // Stale responses must not overwrite newer ones. Typing the period fires two requests, old and new; the larger result is slower and lands after the smaller, so the writer sees his result for seconds and then the screen reverts to the pre-filter state. Uses hooks/useLatestRequest.
   const guard = useLatestRequest();
   const load = useCallback(async () => {
     const mine = guard.begin();
@@ -135,9 +119,7 @@ function ClaimsInner() {
 
   const cf = useColumnFilters<any>();
   const allRows = d?.claims || [];
-  // ومعيارُ «النايمة» هو معيارُ الخادم حرفًا بحرف (statusCode !== 'closed' وآخرُ
-  // ردٍّ مضى عليه ثلاثون يومًا): لو اختلفا لأعطى الكارتُ رقمًا والجدولُ تحته
-  // عددًا آخر، وهو أسوأُ من كارتٍ لا يُضغَط.
+  // The dormant criterion matches the server literally (statusCode !== 'closed' and last reply thirty days old). If they differed the card would show one number and the table another, which is worse than a card that cannot be clicked.
   const staleRows = useMemo(() => {
     const cutoff = Date.now() - 30 * 864e5;
     let out = allRows;
@@ -146,32 +128,32 @@ function ClaimsInner() {
         && r.claim?.lastInsurerUpdateDate
         && new Date(r.claim.lastInsurerUpdateDate).getTime() < cutoff);
     }
-    // ونصفُ الخطأ علينا: هو حدُّ الخادم نفسُه (>= 50%) لا «أكثر من النصف».
+    // Half the fault is ours: the same cutoff as the server (>= 50%), not "more than half".
     if (fault === 'ours') out = out.filter((r: any) => (r.faultPercent || 0) >= 50);
     if (reportedVia) out = out.filter((r: any) => (r.reportedViaAr || '') === reportedVia);
     if (insurer) out = out.filter((r: any) => (r.claim?.insurerAr || '') === insurer);
     if (files === 'with') out = out.filter((r: any) => (r.attachments?.length || 0) > 0);
     if (files === 'without') out = out.filter((r: any) => !(r.attachments?.length || 0));
-    // والمدى على تاريخ الحادث نفسِه — لا على تاريخ تسجيله.
+    // The range applies to the accident date, not its registration date.
     if (from) out = out.filter((r: any) => r.accidentDate && String(r.accidentDate).slice(0, 10) >= from);
     if (to) out = out.filter((r: any) => r.accidentDate && String(r.accidentDate).slice(0, 10) <= to);
     return out;
   }, [allRows, stale, fault, reportedVia, insurer, files, from, to]);
 
-  /** قيمُ الفلاتر من الصفوف نفسِها — لا قائمةَ ثابتةٌ تفترق عن الواقع. */
+  /** Filter values come from the rows themselves; a fixed list would drift from the real data. */
   const viaOptions = useMemo(
     () => [...new Set(allRows.map((r: any) => String(r.reportedViaAr || '').trim()).filter(Boolean))].sort(),
     [allRows]);
   const insurerOptions = useMemo(
     () => [...new Set(allRows.map((r: any) => String(r.claim?.insurerAr || '').trim()).filter(Boolean))].sort(),
     [allRows]);
-  // آخرُ ما يُطبَّق: فوق البحث وفلتر الحالة.
+  // Applied last: above search and the status filter.
   const rows = cf.apply(staleRows, GETTERS);
   const cols: ExportColumn[] = [
     { header: t('رقم الحادث', 'Accident no.'), key: 'accidentNumber', width: 18 },
     { header: t('اللوحة', 'Plate'), key: 'vehiclePlate', width: 16 },
     { header: t('التاريخ', 'Date'), key: 'accidentDate', transform: (v) => fmtDate(v), width: 14 },
-    // الفارغُ يخرج فارغًا: صفرُ الخطأ نتيجةٌ، وغيابُه ليس صفرًا.
+    // Empty stays empty: zero fault is a result and its absence is not zero.
     { header: t('نسبة الخطأ %', 'Fault %'), key: 'faultPercent', width: 12, transform: (v: any) => (v == null ? '' : v) },
     { header: t('شركة التأمين', 'Insurer'), key: 'claim', transform: (v: any) => v?.insurerAr || '', width: 20 },
     { header: t('مبلغ التقدير', 'Estimate amount'), key: 'claim', transform: (v: any) => v?.estimatedAmountSar ?? '', width: 16 },
@@ -194,8 +176,7 @@ function ClaimsInner() {
     { header: t('الملاحظات', 'Notes'), key: 'claim', transform: (v: any) => v?.notesAr || '', width: 46 },
   ];
 
-  // البحث والحالة يُنفَّذان على الخادم، فالمصفوفة التي في اليد نتائجُ الفلتر لا
-  // سجلّ المطالبات؛ ومن غير نداءٍ ثانٍ بلا معاملات لا يوجد «كلّ» أصلًا.
+  // Search and status run on the server, so the array in hand is filter results, not the claims register; without a second call without params there is no "all".
   const hasActiveFilters = !!(q.trim() || status || stale || fault);
   const fetchAllForExport = async () => {
     const all = await getClaims();
@@ -237,11 +218,11 @@ function ClaimsInner() {
           onClick={() => { setStatus(''); setStale(false); }} on={!status && !stale} />
         <Stat label={t('مفتوحة', 'Open')} value={d?.totals.open ?? 0} c="#f59e0b"
           onClick={() => { setStatus('pending'); setStale(false); }} on={status === 'pending' && !stale} />
-        {/* كارتُ مبلغٍ لا قائمةَ صفوفٍ تحته — يبقى رقمًا يُقرأ. */}
+        {/* An amount card with no rows behind it stays a readable number. */}
         <Stat label={t('مبلغ التقدير (ر.س)', 'Estimate amount (SAR)')} value={money(d?.totals.estimatedSar)} c="#0ea5e9" />
         <Stat label={t('المبلغ المسترد (ر.س)', 'Recovered amount')} value={money(d?.totals.expectedRecoverySar)} c="#16a34a" />
         <Stat label={t('الفرق — المقفلة (ر.س)', 'Difference — closed (SAR)')} value={money(d?.totals.gapSar)} c="#dc2626" />
-        {/* «نايمة» = مفتوحة وعدّى عليها ٣٠ يوم من غير أي رد من التأمين. */}
+        {/* Dormant = open for 30 days with no reply from the insurer. */}
         <Stat label={t('بدون رد من التأمين +30 يوم', 'No insurer reply 30d+')} value={d?.totals.stale ?? 0} c="#ea580c"
           onClick={() => { setStale((v) => !v); setStatus(''); }} on={stale} />
       </div>
@@ -258,8 +239,7 @@ function ClaimsInner() {
           <option value="pending">{t('قيد المتابعة', 'Pending')}</option>
           <option value="closed">{t('مقفولة', 'Closed')}</option>
         </select>
-        {/* فلترٌ جاء من كارتٍ أو من رابط يُرفَع من حيث يُقرأ — وإلّا بقي الجدولُ
-            منقوصًا بلا سببٍ ظاهرٍ في شريط الفلاتر. */}
+        {/* A filter that came from a card or a link is lifted to where it is read; otherwise the table stays reduced for no reason visible in the filter bar. */}
         {fault === 'ours' && (
           <button onClick={() => setFault('')}
             className="px-2.5 py-2 rounded-lg border border-[#f37121] text-[#d95f13] bg-orange-50 text-sm font-semibold">
@@ -272,9 +252,7 @@ function ClaimsInner() {
             {t('بدون رد +30 يوم ✕', 'No reply 30d+ ✕')}
           </button>
         )}
-        {/* ── وفلاترُ ما يُسأل عنه يوميًّا ───────────────────────────────────
-            «حوادثُ الشهر»، «اللي جاي من نجم»، «اللي بلا ورق»، «شركةٌ بعينها» —
-            أسئلةٌ كانت تُجاب بفتح الأعمدة واحدًا واحدًا. */}
+        {/* Filters for daily questions: this month's accidents, those from Najm, those without papers, a given company. These used to be answered by opening columns one by one. */}
         <select value={reportedVia} onChange={(e) => setReportedVia(e.target.value)}
           aria-label={t('تم الإبلاغ عبر', 'Reported via')}
           className="px-2.5 py-2 rounded-lg border border-slate-200 text-sm bg-white">
@@ -313,14 +291,14 @@ function ClaimsInner() {
           <table className="w-full text-sm">
             <thead className="bg-slate-900 text-slate-200 text-[13px]">
               <tr>
-                {/* الإجراءاتُ أوّلًا وثابتة — راجع components/vehicles/stickyLead. */}
+                {/* Actions first and sticky (components/vehicles/stickyLead). */}
                 {canManage && (
                   <th ref={lead.ref} className={`${LEAD} bg-slate-900 px-3 py-3 text-center font-bold whitespace-nowrap`}>
                     {t('إجراءات', 'Actions')}
                   </th>
                 )}
                 {COL_DEFS.map(([key, arL, enL], i) => (
-                  // اللوحةُ أوّلُ الأعمدة وتُثبَّت مع الإجراءات — هويّةُ الصفّ.
+                  // Plate is the first column and pinned with the actions: the row identity.
                   <th key={key}
                     className={`px-3 py-3 text-center font-bold whitespace-nowrap ${i === 0 ? `${LEAD_2} bg-slate-900` : ''}`}
                     style={i === 0 ? { insetInlineStart: canManage ? lead.offset : 0 } : undefined}>
@@ -334,7 +312,7 @@ function ClaimsInner() {
             </thead>
             <tbody className="divide-y divide-slate-100">
               {rows.map((r: any) => {
-                // مطالبة مفتوحة وعدّى عليها شهر من غير رد — دي اللي بتضيع.
+                // Open claim with a month and no reply: the ones that get lost.
                 const staleDays = r.claim?.lastInsurerUpdateDate
                   ? Math.floor((Date.now() - new Date(r.claim.lastInsurerUpdateDate).getTime()) / 86400000) : null;
                 const stale = r.statusCode !== 'closed' && staleDays != null && staleDays > 30;
@@ -365,11 +343,7 @@ function ClaimsInner() {
                     )}
                     <td className={`${LEAD_2} px-3 py-2.5 bg-white group-hover:bg-slate-50`}
                       style={{ insetInlineStart: canManage ? lead.offset : 0 }}>
-                      {/* ── والاسمُ يفتح ملفَّ الحادثة لا ملفَّ المركبة ────────
-                          كان يفتح المركبةَ، وهو الجوابُ عن سؤالٍ آخر: مَن يقف
-                          على صفٍّ في هذا الجدول يريد الحادثةَ نفسَها — طرفَها
-                          الآخر وردودَ الشركة وورقَها — لا سجلَّ المركبة. وملفُّ
-                          المركبة يُفتَح من داخل ملفّ الحادثة. */}
+                      {/* The name opens the accident file, not the vehicle file. It used to open the vehicle, which answers a different question: someone on a row here wants the accident itself (other party, insurer replies, papers). The vehicle file opens from inside the accident file. */}
                       <button onClick={() => router.push(`/system/vehicles/registry/claims/${r._id}`)}
                         title={t('ملفّ الحادثة', 'Claim file')}
                         className="font-semibold text-slate-800 hover:text-[#f37121] text-start">
@@ -380,13 +354,7 @@ function ClaimsInner() {
                       </p>
                     </td>
                     <td className="px-3 py-2.5 text-slate-600 whitespace-nowrap">{fmtDate(r.accidentDate)}</td>
-                    {/* ── وأربعةُ أعمدةٍ كانت في الرأس ولا صفوفَ لها ──────────
-                        أُضيفت إلى `COL_DEFS` (السائقُ وإقامتُه ونوعُ السيّارة
-                        ورقمُ التقدير) ولم تُضَف إلى الجسم. فانزاح كلُّ عمودٍ
-                        بعد التاريخ أربعَ خاناتٍ عن عنوانه: «اسم السائق» يعرض
-                        نسبةَ الخطأ، و«نسبة الخطأ» تعرض «مقفولة»، و«شركة
-                        التأمين» تعرض «٤٨ يومًا». رأسٌ وجسمٌ يُكتبان في موضعين،
-                        فيُزاد في أحدهما ويُنسى الآخر. */}
+                    {/* Four columns were in the header but had no body cells. They were added to `COL_DEFS` (driver, residency, vehicle type, estimate number) but not to the body, so every column after the date shifted four cells from its title: driver name showed fault percentage, fault percentage showed "closed", insurer showed "48 days". Header and body are written in two places and one gets updated while the other is forgotten. */}
                     <td className="px-3 py-2.5 text-slate-700 text-[12px] whitespace-nowrap max-w-[220px] truncate"
                       title={r.driverNameAr || ''}>{r.driverNameAr || <span className="text-slate-300">—</span>}</td>
                     <td className="px-3 py-2.5 text-slate-600 font-mono text-[12px] whitespace-nowrap">
@@ -399,11 +367,7 @@ function ClaimsInner() {
                       {r.reportedViaAr || <span className="text-slate-300">—</span>}</td>
                     <td className="px-3 py-2.5 text-slate-600 font-mono text-[12px] whitespace-nowrap">
                       {r.claim?.claimNumber || <span className="text-slate-300">—</span>}</td>
-                    {/* ── و«صفر بالمئة» نتيجةٌ لا فراغ ────────────────────────
-                        كانت الخانةُ الفارغة تُعرَض «0%»، وصفرُ الخطأ نتيجةٌ
-                        حقيقيّة: الحادثُ ليس علينا. فمن لم تُقيَّم مطالبتُه بعد
-                        كان يُقرأ كأنّه بُرِّئ — والفرقُ بينهما مالٌ يُدفَع أو
-                        لا يُدفَع. فما لم يُكتب يبقى شرطةً كبقيّة الأعمدة. */}
+                    {/* Zero percent is a result, not blank. A blank cell used to render "0%", but zero fault is a real result (the accident is not ours), so an unassessed claim read as cleared, and the difference is money paid or not. Unwritten values stay a dash like other columns. */}
                     <td className="px-3 py-2.5">
                       {r.faultPercent == null ? (
                         <span className="text-slate-300">—</span>
@@ -417,7 +381,7 @@ function ClaimsInner() {
                     <td className="px-3 py-2.5 text-slate-600 text-[12px]">{r.claim?.insurerAr || '—'}</td>
                     <td className="px-3 py-2.5 text-slate-800 font-semibold whitespace-nowrap">{r.claim?.estimatedAmountSar ? money(r.claim.estimatedAmountSar) : '—'}</td>
                     <td className="px-3 py-2.5 text-emerald-700 font-semibold whitespace-nowrap">{r.claim?.expectedRecoverySar ? money(r.claim.expectedRecoverySar) : '—'}</td>
-                    {/* الفرقُ يُحسب حين تُقفَل المطالبة (حين يُحصَّل المال) — وقبلها لا فرق. */}
+                    {/* The difference is computed when the claim closes (when the money is collected); before that there is none. */}
                     <td className="px-3 py-2.5 whitespace-nowrap">
                       {r.claim?.recoveryGapSar != null
                         ? <span className="font-semibold text-red-600">{money(r.claim.recoveryGapSar)}</span>
@@ -436,7 +400,7 @@ function ClaimsInner() {
                         </span>
                       )}
                     </td>
-                    {/* عددُ الأوراق المرفقة — يُقرأ من الصفّ فيُعرَف أيُّ حادثةٍ بلا ورق. */}
+                    {/* Number of attached papers, read from the row so accidents without papers are identifiable. */}
                     <td className="px-3 py-2.5 whitespace-nowrap">
                       {r.attachments?.length
                         ? <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 text-[11px] font-semibold">
@@ -444,11 +408,7 @@ function ClaimsInner() {
                         </span>
                         : <span className="text-slate-300">—</span>}
                     </td>
-                    {/* ── الملاحظات في الجدول لا في النافذة ────────────────
-                        كلُّ مطالبةٍ من التسع والأربعين تحمل ملاحظةً، وفيها
-                        الخطوةُ التالية: «بانتظار فاتورة الإصلاح ثم التوجّه
-                        إلى…». وهي التي تُقرأ يوميًّا — إخفاؤها خلف زرِّ تعديلٍ
-                        يعني فتحَ تسعٍ وأربعين نافذةً لمعرفة أين وصلت. */}
+                    {/* Notes in the table, not in the dialog. Each of the 49 claims carries a note holding the next step, for example waiting for the repair invoice; it is read daily, and hiding it behind an edit button means opening 49 dialogs to see where each stands. */}
                     <td className="px-3 py-2.5 text-start text-[12px] text-slate-600 min-w-[16rem] max-w-[26rem]">
                       {r.claim?.notesAr
                         ? <span className="line-clamp-2 leading-snug" title={r.claim.notesAr}>{r.claim.notesAr}</span>
@@ -463,11 +423,7 @@ function ClaimsInner() {
         </ScrollX>
       </div>
 
-      {/* ── والنموذجُ يُبنى من جديدٍ لكلّ حادثةٍ يُفتَح عليها ────────────────
-          حالتُه تُبتدَأ من الخاصّيّة مرّةً واحدةً عند التركيب. فالانتقالُ من
-          حادثةٍ إلى أخرى — أو من حادثةٍ إلى «تسجيل جديد» — بلا إعادة تركيبٍ
-          يُبقي القيمَ القديمةَ في الخانات والمعرِّفَ الجديدَ في الحفظ: تُكتب
-          بياناتُ حادثةٍ فوق حادثةٍ أخرى. و`key` يجعل لكلّ هدفٍ نموذجَه. */}
+      {/* The form is rebuilt for each accident it opens on. Its state is initialized from the prop once at mount, so switching accidents (or to a new registration) without remounting would keep the old field values with the new id on save, writing one accident's data over another. `key` gives each target its own form. */}
       {form && (
         <ClaimForm key={form._id || 'new'} claim={form} ar={ar}
           onClose={() => setForm(null)}
@@ -477,16 +433,7 @@ function ClaimsInner() {
   );
 }
 
-/**
- * ── الرقمُ الذي يُقرأ هو الذي يُفتح ─────────────────────────────────────────
- *
- * الكروتُ كانت أرقامًا صمّاء: تقرأ «مفتوحة ١٧» ولا سبيلَ إلى السبعةَ عشرَ إلّا
- * أن تفتح القائمةَ وتفلتر بيدك — وأنت تنظر إلى الرقم الذي يعنيها. فمن ضغط ولم
- * يحدث شيء ظنّ الشاشةَ معطَّلة.
- *
- * وما لا يُفتَح منها لا يبقى مضلّلًا: كارتُ مبلغٍ (المقدَّر، الفجوة) ليس قائمةَ
- * صفوف — يبقى بلا مؤشّرِ ضغطٍ ولا حركة، فيُقرأ رقمًا كما هو.
- */
+/** The number read is the one opened. Cards were inert numbers: reading "open 17" gave no way to reach those 17 except opening the list and filtering by hand, so a click with no effect looked like a broken screen. Cards that cannot open (amount cards such as estimated and gap) are not lists of rows, so they carry no click cursor or motion and read as plain numbers. */
 function Stat({ label, value, c, onClick, on }: {
   label: string; value: any; c: string; onClick?: () => void; on?: boolean;
 }) {
@@ -508,23 +455,18 @@ function Stat({ label, value, c, onClick, on }: {
   );
 }
 
-// ── تسجيل / تعديل حادث ───────────────────────────────────────────────────────
-// الحقول اللي بتتكتب بالإيد بس. فجوة الاسترداد محسوبة على السيرفر (المقدَّر ناقص
-// المتوقع)، فما بتتكتبش هنا — عشان الشاشة والتقرير ما يقولوش حاجتين مختلفتين.
+// Register / edit accident. Only hand-written fields are here. The recovery gap is computed on the server (estimated minus expected), so it is not written here; the screen and the report must not say two different things.
 function ClaimForm({ claim, ar, onClose, onSaved }: {
   claim: any; ar: boolean; onClose: () => void;
-  /** يُمرَّر الصفُّ المنشأ حديثًا كي يبقى النموذجُ مفتوحًا عليه للمرفقات. */
+  /** The newly created row is passed in so the form stays open on it for attachments. */
   onSaved: (created?: any) => void;
 }) {
   const t = (a: string, e: string) => (ar ? a : e);
   const { notify } = useDialog();
   const isNew = !claim?._id;
-  // المرفقاتُ تُقرأ من الصفّ وتُحدَّث بردّ الخادم — فما يُرفَع يظهر بلا إعادة فتح.
+  // Attachments are read from the row and updated from the server response, so uploads appear without reopening.
   const [attachments, setAttachments] = useState<any[]>(claim?.attachments || []);
-  /**
-   * لوحاتُ السجلّ للاختيار — أيُّ مركبةٍ تقع في حادثٍ هي مركبةٌ مسجَّلةٌ عندنا،
-   * فلا تُكتب لوحتُها بالأيدي فتُكتب بصيغةٍ لا تطابق السجلّ.
-   */
+  /** Registry plates for selection. A vehicle in an accident is registered with us, so its plate is picked rather than typed, which would produce a format that does not match the registry. */
   const [plates, setPlates] = useState<{
     plate: string; typeAr: string; serial?: string; sectorAr?: string; ownerCompanyAr?: string;
     registrationTypeAr?: string; authorizedName: string; actualDriverName: string; actualDriverId: string;
@@ -556,7 +498,7 @@ function ClaimForm({ claim, ar, onClose, onSaved }: {
   const set = (k: string, v: any) => setF((x) => ({ ...x, [k]: v }));
   const [busy, setBusy] = useState(false);
   const num = (v: any) => (v === '' || v == null ? null : Number(v));
-  // الفرقُ عند الإقفال وحدَه — مرآةُ claimDifference في الخادم.
+  // The difference exists only at closing; mirrors claimDifference on the server.
   const gap = f.statusCode === 'closed' && num(f.estimatedAmountSar) != null && num(f.expectedRecoverySar) != null
     ? Number(f.estimatedAmountSar) - Number(f.expectedRecoverySar) : null;
 
@@ -579,7 +521,7 @@ function ClaimForm({ claim, ar, onClose, onSaved }: {
         faultPercent: num(f.faultPercent),
         reportedViaAr: f.reportedViaAr.trim(),
         statusCode: f.statusCode,
-        // النصُّ لا يُخزَّن: يُشتقُّ من الكود عند العرض بلغة الشاشة.
+        // The text is not stored: it is derived from the code at display time in the screen's language.
         statusAr: '',
         claim: {
           insurerAr: f.insurerAr.trim(),
@@ -590,15 +532,7 @@ function ClaimForm({ claim, ar, onClose, onSaved }: {
           notesAr: f.notesAr.trim(),
         },
       };
-      /**
-       * ── والمرفقاتُ تحتاج صفًّا موجودًا ────────────────────────────────────
-       * الملفُّ يُرفَع على حادثةٍ لها معرِّف، فلا موضعَ له قبل الحفظ. وكان
-       * النموذجُ يُغلَق بعد التسجيل، فمن أراد إرفاقَ صورةٍ يفتحه من جديد —
-       * وأكثرُهم لا يفعل، فتبقى الحادثةُ بلا ورق.
-       *
-       * فبعد التسجيل يبقى مفتوحًا على الحادثة نفسِها: صار لها معرِّفٌ، فظهر
-       * صندوقُ المرفقات في موضعه ورُفعت الصورُ في النفَس نفسِه.
-       */
+      /** Attachments need an existing row. A file is uploaded onto an accident that has an id, so there is nowhere for it before saving. The form used to close after registering, and most users never reopened it to attach a photo, leaving the accident without papers. Now it stays open on the same accident: with an id the attachments box appears and photos upload in the same flow. */
       if (isNew) {
         const created = await createClaim(body);
         notify(t('اتسجّل الحادث — تقدر ترفع الملفات دلوقتي', 'Recorded — you can attach files now'), 'success');
@@ -626,15 +560,8 @@ function ClaimForm({ claim, ar, onClose, onSaved }: {
         <div className="px-5 py-4 space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             <div><label className={lbl}>{t('لوحة المركبة', 'Plate')}</label>
-              {/* ── واللوحةُ تُختار من السجلّ ────────────────────────────────
-                  وباختيارها يُملأ نوعُ المركبة وقائدُها الفعليّ من صفّها: هي
-                  مكتوبةٌ هناك، وإعادةُ كتابتها هنا تُنتِج حادثًا بلوحةٍ لا
-                  تطابق أيَّ مركبةٍ عندنا. */}
-              {/* ── وثلاثُمئةٍ وثمانٍ وثلاثون لوحةً تُبحَث لا تُمرَّر ──────────
-                  كانت قائمةً عاديّةً يُنزَل فيها بالعين حتّى تُرى اللوحة، وهي
-                  مكتوبةٌ بحروفٍ عربيّةٍ متشابهة. والسطرُ الثاني يقول الماركةَ
-                  والطراز لا نوعَ التسجيل: ثمانٍ وستّون شاحنةً نوعُ تسجيلها
-                  «نقل عام» جميعًا، فكان الوصفُ واحدًا بجانب كلّ صفّ. */}
+              {/* The plate is picked from the registry. Picking it fills vehicle type and the actual driver from its row; they are written there, and retyping here produces an accident with a plate matching no vehicle. */}
+              {/* A searchable plate list of 338, not a scroll. It was a plain list scanned by eye, with look-alike Arabic letters in the plates. The second line shows make and model, not registration type: 68 trucks are all general transport, so the description was identical beside every row. */}
               <SearchableSelect
                 value={f.vehiclePlate} searchAfter={0}
                 onChange={(v2) => {
@@ -660,7 +587,7 @@ function ClaimForm({ claim, ar, onClose, onSaved }: {
                     label: x.plate,
                     hint: [x.typeAr, x.sectorAr, x.ownerCompanyAr, x.serial && `#${x.serial}`].filter(Boolean).join(' · '),
                   })),
-                  // لوحةٌ قديمةٌ في حادثٍ مسجَّلٍ قبل أن تُحذف المركبة تبقى مقروءة.
+                  // An old plate on an accident recorded before the vehicle was deleted stays readable.
                   ...(f.vehiclePlate && !plates.some((x) => x.plate === f.vehiclePlate)
                     ? [{ value: f.vehiclePlate, label: f.vehiclePlate, hint: t('ليست في سجلّ المركبات', 'not in the registry') }]
                     : []),
@@ -671,10 +598,7 @@ function ClaimForm({ claim, ar, onClose, onSaved }: {
               <input type="date" value={f.accidentDate} onChange={(e) => set('accidentDate', e.target.value)} className={inp} /></div>
             <div><label className={lbl}>{t('رقم الحادث', 'Accident no.')}</label>
               <input value={f.accidentNumber} onChange={(e) => set('accidentNumber', e.target.value)} className={inp} /></div>
-            {/* ── والسائقُ يُبحَث عنه فتُملأ خاناتُه ──────────────────────────
-                يُكتب اسمُه أو رقمُ هويّته فيُردَّ عليه من الموارد البشريّة وسجلّ
-                النقل الخفيف وبطاقات السائقين معًا — فلا يُكتب الاسمُ بصيغتين
-                ولا يُبحَث عن الإقامة في ملفٍّ آخر. */}
+            {/* Search the driver and his fields fill. Entering his name or ID number is answered from HR, the light-transport register and driver cards together, so the name is not written in two forms and residency is not looked up in another file. */}
             <div className="sm:col-span-2 lg:col-span-3">
               <PersonLookup ar={ar}
                 label={t('ابحث عن السائق فتُملأ خاناته', 'Find the driver to fill his fields')}
@@ -686,8 +610,7 @@ function ClaimForm({ claim, ar, onClose, onSaved }: {
                   driverIdNumber: pp.idNumber || x.driverIdNumber,
                 }))} />
             </div>
-            {/* يُقترَح السائقُ من قائد القسم الفعليّ أو من مفوَّض المركبة، ويُصحَّح
-                هنا — فالمفوَّضُ ليس دائمًا الراكب (أربعٌ وعشرون مركبةً كذلك). */}
+            {/* The driver is suggested from the actual section driver or the vehicle's authorized person and corrected here; the authorized person is not always the rider (24 vehicles). */}
             <div><label className={lbl}>{t('اسم السائق', 'Driver name')}</label>
               <input value={f.driverNameAr} onChange={(e) => set('driverNameAr', e.target.value)} className={inp}
                 placeholder={t('يُملأ تلقائيًّا من المركبة', 'auto-filled from the vehicle')} /></div>
@@ -700,8 +623,7 @@ function ClaimForm({ claim, ar, onClose, onSaved }: {
 
             <div><label className={lbl}>{t('نسبة الخطأ علينا %', 'Our fault %')}</label>
               <input type="number" min={0} max={100} value={f.faultPercent} onChange={(e) => set('faultPercent', e.target.value)} className={inp} /></div>
-            {/* جهةُ الإبلاغ قائمةٌ تُدار من «إعدادات القسم ← القوائم المنسدلة»:
-                كانت خانةً حرّة فكُتبت «Najm» و«المرور» فلم يُعَدَّ منها شيء. */}
+            {/* Reporting channel is a list managed in section settings, dropdowns. It was a free field, so "Najm" and the traffic department were written differently and nothing was counted from them. */}
             <div><label className={lbl}>{t('تم الإبلاغ عبر', 'Reported via')}</label>
               <ManagedSelect storeLabel type="vehicle_reported_via" value={f.reportedViaAr}
                 onChange={(v) => set('reportedViaAr', v)} placeholder={t('اختر…', 'Select…')} /></div>
@@ -712,14 +634,8 @@ function ClaimForm({ claim, ar, onClose, onSaved }: {
               </select></div>
           </div>
 
-          {/* ── ردودُ شركة التأمين: سجلٌّ يُضاف إليه ولا يُمحى ──────────────
-              الشركةُ تردّ مرّاتٍ على المطالبة الواحدة — تطلب مستندًا، ثمّ
-              تقدّر، ثمّ تعرض مبلغًا. وكتابةُ الردّ فوق سابقه تمحو تاريخَ
-              المفاوضة، وهو ما يُحتَجّ به عند الخلاف. والأحدثُ أوّلًا. */}
-          {/* ── والورقُ يُرفَع من هنا أيضًا ─────────────────────────────────────
-              كان الإرفاقُ في ملفّ الحادثة وحدَه، ومن يفتح التعديلَ ليسجّل تقديرًا
-              يكون التقريرُ في يده في اللحظة نفسِها — فيُغلق النافذةَ ويفتح الملفَّ
-              ليُرفقه، أو يؤجّل فينسى. فهو هنا وهناك، والسجلُّ واحد. */}
+          {/* Insurer replies: an append-only log. The company replies several times to one claim (asks for a document, estimates, offers an amount), and overwriting the reply erases the negotiation history that is cited in a dispute. Newest first. */}
+          {/* Papers can be uploaded from here too. Attaching used to be in the accident file only, while whoever opens edit to record an estimate has the report in hand and would close the dialog to attach it, or postpone and forget. It exists in both places over a single record. */}
           {!isNew && (
             <div className="rounded-xl border border-slate-200 p-3">
               <ClaimAttachments claimId={claim._id} attachments={attachments} canEdit

@@ -1,29 +1,7 @@
 'use client';
-// لوحة فلاتر واحدة تصلح لأي قسم.
-//
-// المشكلة التي تحلّها: الشاشات كانت تُفلتَر بقيمة واحدة لحقل واحد، فالسؤال
-// الحقيقي — «أرِني الباكستانيين والهنود، الذكور، في النقل الثقيل، بجدّة ومكّة» —
-// كان يحتاج أربع زيارات ولا يُجاب عنه مجتمعًا أبدًا.
-//
-// وثلاث قواعد تحكم هذه اللوحة:
-//
-// ١) قائمة الحقول وقيمها **تأتي من الخادم**، لا تُكتب هنا. فالجنسيات التي تظهر
-//    هي الجنسيات الموجودة فعلًا في البيانات، وأيّ عمود جديد يظهر وحده.
-//
-// ٢) العدد بجانب كل قيمة محسوب **بعد بقيّة الفلاتر**، فما تراه هو ما ستحصل
-//    عليه؛ ولا يظهر خيار عدده صفر فتضغطه فتجد الشاشة فارغة.
-//
-// ٣) الفلتر النشط يبقى مرئيًّا كشرائح تحت الزرّ. الفلتر المخفيّ الذي تنساه
-//    مفعَّلًا هو أسوأ ما في أيّ لوحة تحليلات: الأرقام تبدو خاطئة ولا تعرف لماذا.
-//
-// ── لماذا اللوحة تُرسَم في جذر الصفحة ────────────────────────────────────────
-// كانت تُرسَم `absolute` داخل الشريط، فتقصّها أوّلُ حاوية فوقها ذات `overflow`
-// ولا يظهر منها إلا طرف. البوّابة تخرجها من كل حاوية، فلا شيء يقصّها.
-//
-// وكل ما تحتاجه اللوحة من عناصر مكتوبٌ هنا في موضعه، لا في مكوّنات تُعرَّف داخل
-// جسم الرسم: المكوّن المعرَّف في الجسم يُبنى من جديد مع كل ضغطة، فيُستبدل عنصره
-// في الصفحة ويصير المرجع المحفوظ منفصلًا عنها — فيرجع قياسه أصفارًا وتُرسَم
-// القائمة في زاوية الشاشة العليا. هكذا حدث بالضبط، ولهذا لا مكوّنات هنا.
+// One filter panel for any section. Fields and values come from the server; each count is computed after the other filters so no zero-count option appears; active filters stay visible as chips.
+// Rendered in a portal at the page root because an absolute panel was clipped by overflow containers.
+// No components are defined inside the render body: they would remount on every keystroke, detach the stored ref and draw the menu at the screen corner.
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useLanguage } from '@/context/LanguageContext';
@@ -39,14 +17,12 @@ export interface FilterFieldDef {
 }
 export interface FilterDateDef { key: string; ar: string; en: string }
 /**
- * مدًى رقميّ — يُقرأ بالسنوات أو بالأيام لا بالتاريخ.
- *
- * «مَن أعمارهم بين ٢٥ و٣٠» كان يحتاج حسابَ تاريخَي ميلادٍ في الرأس ثم كتابتهما.
- * والسنّ تتغيّر مع الزمن والتاريخ لا، فالمدى بالسنوات يبقى صحيحًا غدًا.
+ * Numeric range, read in years or days rather than dates.
+ * Age changes with time and a date does not, so a range in years stays correct tomorrow.
  */
 export interface FilterNumRangeDef { key: string; ar: string; en: string; unitAr: string; unitEn: string; min?: number; max?: number }
 
-/** ضمّ/إزالة قيمة من حقل متعدّد القيم (القيم مفصولة بفواصل في نصّ الاستعلام). */
+/** Add or remove a value in a multi-value field (comma-separated in the query string). */
 export const toggleValue = (cur: string | undefined, v: string) => {
   const list = String(cur || '').split(',').map((x) => x.trim()).filter(Boolean);
   const i = list.indexOf(v);
@@ -59,33 +35,22 @@ export const countActive = (v: FilterValues) =>
 export default function FilterPanel({
   optionsUrl, optionsParams, fields: fieldsProp, value, onChange, dateFields = [], numRanges = [], extra, extraLabels = {}, resultCount, resultLabel,
 }: {
-  /** اندبوينت يرجّع { filters: FilterFieldDef[], dateFields?: string[] } */
-  /**
-   * مصدرُ الخيارات من الخادم. ويُستغنى عنه بـ`fields` حين تكون البيانات
-   * محمّلةً في الشاشة أصلًا — صفحاتٌ صغيرةٌ تُحمَّل كاملةً ثمّ تُفلتَر محلّيًّا،
-   * فنداءٌ ثانٍ لحساب ما بين يديها عملٌ بلا فائدة.
-   */
+  /** Endpoint returning { filters: FilterFieldDef[], dateFields?: string[] }. */
+  /** Server source of the options. Replaced by `fields` when the data is already loaded in the screen (small pages filtered locally), since a second call would be wasted work. */
   optionsUrl?: string;
-  /** خياراتٌ محسوبةٌ في الشاشة — تُغني عن `optionsUrl`. */
+  /** Options computed in the screen; replaces `optionsUrl`. */
   fields?: FilterFieldDef[];
-  /**
-   * ثوابتُ تُرسَل مع كلّ نداءٍ للخيارات — نطاقُ الشاشة مثلًا.
-   * تُضاف إلى الفلاتر ولا تُعرَض شريحةً: هي حدُّ الشاشة لا اختيارُ المستخدم.
-   */
+  /** Constants sent with every options call, e.g. the screen scope. Added to the filters but not shown as a chip: they are the screen boundary, not a user choice. */
   optionsParams?: Record<string, string>;
   value: FilterValues;
   onChange: (v: FilterValues) => void;
-  /** حقول التاريخ التي تقبل مدى — بأسمائها المعروضة */
+  /** Date fields that accept a range, with their display names. */
   dateFields?: FilterDateDef[];
-  /** مُدًى رقميّة (عمر، سنوات خدمة، أيام متبقّية) */
+  /** Numeric ranges (age, years of service, days remaining). */
   numRanges?: FilterNumRangeDef[];
-  /** فلاتر خاصة بالقسم (أزرار جاهزة) تظهر أعلى اللوحة */
+  /** Section-specific filters (ready-made buttons) shown at the top of the panel. */
   extra?: React.ReactNode;
-  /**
-   * أسماء مقروءة للفلاتر التي لا تأتي من الخادم (أزرار `extra`). بدونها تظهر
-   * الشريحة باسم المفتاح البرمجيّ — «employment: active» — وهو ليس عربيًّا ولا
-   * إنجليزيًّا ولا يقرؤه أحد.
-   */
+  /** Readable names for filters that do not come from the server (`extra` buttons); without them the chip shows the code key such as "employment: active". */
   extraLabels?: Record<string, { ar: string; en: string; values?: Record<string, { ar: string; en: string }> }>;
   resultCount?: number;
   resultLabel?: string;
@@ -101,23 +66,19 @@ export default function FilterPanel({
   const [search, setSearch] = useState<Record<string, string>>({});
   const [pos, setPos] = useState<{ top: number; left: number; width: number } | null>(null);
 
-  // مرجعان ثابتان لا يتبدّلان مع الرسم: زرّ الفتح، وجسم اللوحة.
+  // Two stable refs that do not change between renders: the open button and the panel body.
   const trigger = useRef<HTMLButtonElement>(null);
   const panel = useRef<HTMLDivElement>(null);
 
-  // القيم تُعاد قراءتها مع كل تغيير في الفلتر — وهذا بيت القصيد: بعد اختيار
-  // «جدّة» يصير عدد كل جنسية هو عددها في جدّة، لا في الشركة كلها.
+  // Values are re-read on every filter change so counts reflect the other filters (after choosing a city, nationality counts are for that city only).
   useEffect(() => {
-    // خياراتٌ جاهزةٌ من الشاشة: لا نداءَ ولا انتظار.
+    // Options provided by the screen: no call, no waiting.
     if (fieldsProp) { setFields(fieldsProp); setLoading(false); return undefined; }
     if (!optionsUrl) { setFields([]); setLoading(false); return undefined; }
     let dead = false;
     setLoading(true);
-    // ── وثوابتُ الشاشة تُرسَل مع الفلاتر ──────────────────────────────────
-    // العددُ بجانب القيمة يجب أن يُحسب على **نطاق الشاشة نفسِه**. وشاشةُ
-    // الموظّفين تعرض كلَّ السجلّات (`scope=all`) بينما تَعُدُّ اللوحةُ مَن في
-    // الماستر وحدَهم — فتقول «١٧٠» ويفتح الجدولُ ١٨٢. والعددُ الذي يخالف ما
-    // بعده أسوأُ من غيابه: يُبنى عليه قرارٌ ثمّ يُكتشَف أنّه غير ما يُرى.
+    // Screen constants are sent with the filters.
+    // The count beside a value must be computed on the screen's own scope. The employees screen shows all records (`scope=all`) while the panel counted master-only, so it said 170 and the table opened 182. A count that disagrees with the result is worse than none.
     const qs = new URLSearchParams({
       ...optionsParams,
       ...Object.fromEntries(Object.entries(value).filter(([, v]) => v !== '' && v != null) as [string, string][]),
@@ -129,8 +90,7 @@ export default function FilterPanel({
     return () => { dead = true; };
   }, [optionsUrl, JSON.stringify(value), JSON.stringify(optionsParams), fieldsProp]);
 
-  // موضع اللوحة: تحت الزرّ، محاذيةً له في اتجاه القراءة، ومزحوحةٌ داخل الشاشة
-  // إن تجاوزت حافّتها. وتتبعه عند التمرير وتغيّر المقاس حتى لا تنفصل عنه.
+  // Panel position: under the button, aligned in the reading direction, shifted inside the viewport if it overflows, and following the button on scroll and resize.
   useLayoutEffect(() => {
     if (!open) return;
     const place = () => {
@@ -187,7 +147,7 @@ export default function FilterPanel({
     return d ? (ar ? d.ar : d.en) : k;
   };
 
-  // شرائح الفلتر النشط — كل قيمة شريحة مستقلّة تُرفع وحدها.
+  // Active-filter chips; each value is its own chip and is removed alone.
   const chips: { k: string; v: string; text: string }[] = [];
   for (const [k, raw] of Object.entries(value)) {
     if (!raw) continue;
@@ -283,10 +243,7 @@ export default function FilterPanel({
             <p className="text-[12px] text-slate-400 py-4 text-center">{t('جارٍ التحميل…', 'Loading…')}</p>
           )}
 
-          {/* ── عمودان: الحقول ثابتة، وقيمها تُبدَّل بجانبها ────────────────────
-              كان الحقل المفتوح يتمدّد داخل الشبكة فيدفع ما تحته ويقفز مكانُ كل
-              شيء مع كل ضغطة. هنا لا يتحرّك شيء: تنتقل بين الحقول فيتبدّل
-              المحتوى في مكانه وحده. */}
+          {/* Two columns: fields stay fixed and their values swap beside them. An expanded field used to grow inside the grid and shift everything on each click. */}
           <div className="flex gap-3 min-h-[17rem]">
             <div className="w-52 shrink-0 max-h-[52vh] overflow-auto p-1.5 rounded-xl bg-slate-50/70 border border-slate-100">
               {byGroup.map(([g, fs]) => (
@@ -419,15 +376,13 @@ export default function FilterPanel({
                             className="w-full px-2 py-1 text-[11.5px] border border-slate-200 rounded-md" />
                         </label>
                       </div>
-                      {/* يومٌ بعينه — «مَن وُلد في هذا اليوم» سؤالٌ يُسأل، وكان
-                          يحتاج كتابة التاريخ نفسه في الخانتين. */}
+                      {/* A single day ("born on this day") is a real question that used to need the same date typed in both inputs. */}
                       <div className="mt-3 pt-3 border-t border-slate-100 max-w-sm">
                         <label className="block">
                           <span className="text-[11px] text-slate-500">{t('أو يومٌ بعينه', 'Or one exact day')}</span>
                           <input type="date" value={value[`${dd.key}On`] || ''}
                             onChange={(e) => {
-                              // اليوم الواحد والمدى لا يجتمعان: أحدهما يُلغي الآخر
-                              // وإلا بقي مدًى منسيّ يقصّ النتيجة بلا سبب ظاهر.
+                              // A single day and a range are mutually exclusive: setting one clears the other, otherwise a forgotten range would cut the result for no visible reason.
                               if (e.target.value) { set(`${dd.key}From`, ''); set(`${dd.key}To`, ''); }
                               set(`${dd.key}On`, e.target.value);
                             }}

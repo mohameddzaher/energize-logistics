@@ -5,7 +5,7 @@ import '../services/lang.dart';
 import '../ui/app_scaffold.dart';
 import '../services/live.dart';
 
-/// لوحة مهام الشؤون الإدارية — the same four columns the web board shows,
+/// Administration tasks board: the same four columns the web board shows,
 /// as swipeable pages (a phone can't fit four columns side by side).
 /// Move buttons, task details with the conversation thread, new-task sheet.
 class TasksBoardScreen extends StatefulWidget {
@@ -102,7 +102,7 @@ class _TasksBoardScreenState extends State<TasksBoardScreen> {
       child: AppScaffold(
         title: Text(tr('لوحة المهام', 'Task Board')),
         appBarBottom: TabBar(
-            // أربعةُ أعمدةٍ بأسمائها وأعدادها لا تتّسع لعرض الهاتف — تُمرَّر أفقيًّا بدل أن تُقصّ.
+            // Four columns with names and counts do not fit a phone width; they scroll horizontally instead of being clipped.
             isScrollable: true,
             tabAlignment: TabAlignment.start,
             indicatorColor: const Color(AppConfig.orange),
@@ -399,7 +399,7 @@ class _TaskSheetState extends State<_TaskSheet> {
               child: Text(tr('حفظ التعديلات', 'Save changes')),
             ),
             const SizedBox(height: 14),
-            // الحالة
+            // Status
             DropdownButtonFormField<String>(
               initialValue: t['status'],
               decoration: InputDecoration(labelText: tr('الحالة', 'Status')),

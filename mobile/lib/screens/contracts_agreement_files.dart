@@ -8,8 +8,7 @@ import '../services/lang.dart';
 import '../ui/file_upload.dart';
 import '../ui/theme.dart';
 
-/// مرفقاتُ عقد القسم — نظيرُ نافذة «مرفقات عقد …» في /system/contracts/agreements:
-/// تُعرض الملفّاتُ وتُفتح، ويرفع مَن يملك التعديلَ ملفَّ العقد ويحذفه.
+/// Section contract attachments, the counterpart of the contract attachments dialog in /system/contracts/agreements: files are listed and opened, and whoever can edit uploads and deletes the contract file.
 const _contractsEditRoles = ['super_admin', 'admin', 'contracts_manager', 'it_manager', 'it_specialist'];
 
 Future<bool> openAgreementFiles(BuildContext context, Map<String, dynamic> row) async {
@@ -18,7 +17,7 @@ Future<bool> openAgreementFiles(BuildContext context, Map<String, dynamic> row) 
     shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
     builder: (_) => _FilesSheet(row: row),
   );
-  return true; // تُعاد القائمة ليتحدّث عدّادُ المرفقات
+  return true; // The list reloads so the attachment counter updates.
 }
 
 class _FilesSheet extends StatefulWidget {
@@ -43,7 +42,7 @@ class _FilesSheetState extends State<_FilesSheet> {
 
   void _snack(Object e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e is ApiException ? e.message : e.toString()))); }
 
-  // بعد الرفع/الحذف يُقرأ العقدُ من القائمة (لا مسارَ GET لعقدٍ واحد).
+  // After upload/delete the contract is read from the list (there is no GET route for a single contract).
   Future<void> _reload() async {
     try {
       final d = await Api.instance.get('/api/contracts/agreements');

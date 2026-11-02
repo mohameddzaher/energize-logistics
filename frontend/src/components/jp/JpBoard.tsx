@@ -1,18 +1,9 @@
 'use client';
 /**
- * خطّةُ العمل (JP) — شاشةٌ واحدةٌ للقسم ولخطّة الإدارة.
- *
- * ── سطرٌ واحدٌ يكفي ────────────────────────────────────────────────────────
- * المهمّةُ تُكتب في سطر: ما المطلوب، ومن ينفّذه، ومتى. وكلُّ ما عدا ذلك
- * (التفاصيل، طريقةُ التواصل، المشروع، المرفق) اختياريٌّ ومطويّ — يُفتَح لمن
- * يحتاجه ولا يقف في طريق من لا يحتاجه.
- *
- * ── والصلاحيّةُ من الخادم ──────────────────────────────────────────────────
- * كلُّ مهمّةٍ تحمل `can` (أيُّ الأزرار يجوز)، و`/me` تقول أهو مديرٌ أم عضو.
- * فلا قائمةَ أدوارٍ هنا: ما يُعرَض هو ما يقبله الخادم.
- *
- * ── والمكوِّناتُ الفرعيّةُ خارج جسم الرسم ─────────────────────────────────
- * مكوِّنٌ يُعرَّف داخل الرسم يُهدَم ويُبنى مع كلّ ضغطة مفتاح فتضيع الكتابة.
+ * Work plan (JP): one screen for the section and the management plan.
+ * A task is one line: what, who, when; everything else is optional and collapsed.
+ * Permission comes from the server: each task carries `can` and `/me` says manager or member, so no role list here.
+ * Sub-components are defined outside the render body, otherwise they remount on every keystroke and lose typing.
  */
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
@@ -40,7 +31,7 @@ const ACTION_ICON: Record<string, React.ReactNode> = {
   meeting: <Users className="w-3.5 h-3.5" />, other: <MoreHorizontal className="w-3.5 h-3.5" />,
 };
 
-/** الموعدُ كما يختاره من يكتب: بلا موعد، أو بيوم، أو بساعات. */
+/** Due time as chosen by the writer: none, a day, or hours. */
 export interface Due { kind: '' | 'date' | 'hours'; date: string; hours: string }
 export const NO_DUE: Due = { kind: '', date: '', hours: '' };
 const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -57,7 +48,7 @@ function Chip({ on, onClick, children }: { on: boolean; onClick: () => void; chi
   );
 }
 
-/** اختيارُ الموعد بضغطة: اليوم، غدًا، بعد ساعة… أو تاريخٌ وعددُ ساعاتٍ بعينهما. */
+/** One-click due time: today, tomorrow, in an hour... or a specific date and number of hours. */
 export function DuePicker({ value, onChange, ar }: { value: Due; onChange: (d: Due) => void; ar: boolean }) {
   const t = (a: string, e: string) => (ar ? a : e);
   const today = ymd(new Date());
@@ -88,7 +79,7 @@ export function DuePicker({ value, onChange, ar }: { value: Due; onChange: (d: D
 
 interface Draft {
   title: string; assignedTo: string; due: Due; details: string; action: JpAction; contact: string; project: string;
-  /** يومُ العمل (YYYY-MM-DD) والوقتُ المتوقّع بالساعات والدقائق — اختياريّان. */
+  /** Work day (YYYY-MM-DD) and expected time in hours and minutes, both optional. */
   workDate: string; expH: string; expM: string;
   files: { dataUrl: string; fileName: string }[];
   links: JpLink[];
@@ -96,13 +87,13 @@ interface Draft {
 const blankDraft = (assignedTo = '', project = '', links: JpLink[] = []): Draft => ({
   title: '', assignedTo, due: NO_DUE, details: '', action: '', contact: '', project, files: [], links, workDate: '', expH: '', expM: '',
 });
-/** الوقتُ المتوقّع من خانتيه بالدقائق — '' إن لم يُكتب شيء. */
+/** Expected time from its two inputs in minutes; '' if nothing is written. */
 const expectedOf = (d: Draft): number | '' => {
   const h = Number(d.expH) || 0; const m = Number(d.expM) || 0;
   return d.expH === '' && d.expM === '' ? '' : Math.round(h * 60 + m);
 };
 
-/** حقولُ «تفاصيل أكثر» — يقرؤها سطرُ الإضافة ونافذةُ التعديل. */
+/** Fields of 'more details', read by the add line and the edit dialog. */
 function MoreFields({ d, set, projects, ar, allowFiles, linkKinds = [], section = '' }: {
   section?: string; d: Draft; set: (p: Partial<Draft>) => void; projects: JpProject[]; ar: boolean; allowFiles: boolean; linkKinds?: string[];
 }) {
@@ -185,7 +176,7 @@ function TaskCard({ task, now, ar, busy, onDone, onReopen, onEdit, onDelete, onA
   const done = task.status === 'done';
   const href = contactHref(task.action, task.contact);
   const mine = jpId(task.assignedTo) === meId;
-  // التعليقاتُ مطويّةٌ حتى تُطلَب — والمكتوبُ حالةُ هذه البطاقة وحدَها.
+  // Comments stay collapsed until requested; what is typed belongs to this card only.
   const [showComments, setShowComments] = useState(false);
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
@@ -200,7 +191,7 @@ function TaskCard({ task, now, ar, busy, onDone, onReopen, onEdit, onDelete, onA
     <li className={`bg-white border rounded-2xl p-4 shadow-sm transition-colors ${
       task.state === 'overdue' ? 'border-red-200' : done ? 'border-slate-200 opacity-80' : 'border-slate-200'}`}>
       <div className="flex items-start gap-3">
-        {/* الإتمامُ بضغطة — ولمن يجوز له وحدَه. */}
+        {/* One-click completion, only for those allowed. */}
         <button type="button" disabled={!task.can.complete || busy}
           onClick={() => (done ? onReopen(task) : onDone(task))}
           title={done ? t('إرجاعها مفتوحة', 'Reopen') : t('تمّت', 'Mark done')}
@@ -241,7 +232,7 @@ function TaskCard({ task, now, ar, busy, onDone, onReopen, onEdit, onDelete, onA
             {task.fromManagement && <span className="px-2 py-0.5 rounded-full bg-violet-50 text-violet-700 font-medium">{t('من خطّة الإدارة', 'From management plan')}</span>}
           </div>
 
-          {/* ── الوقت: المتوقّعُ والفعليّ، والمؤقّتُ لمن يعمل عليها (٢٠٢٦/١٠/٢٢) ── */}
+          {/* Time: expected and actual, and a timer for the person working on it. */}
           {(task.can.track || task.expectedMinutes != null || (task.spentNow || 0) > 0 || task.workDate) && (
             <div className="mt-2 flex flex-wrap items-center gap-2 text-[12px]">
               {task.workDate && <span className="text-slate-500">{t('يوم العمل', 'Work day')}: <bdi>{new Date(task.workDate).toLocaleDateString('en-GB')}</bdi></span>}
@@ -352,18 +343,15 @@ function JpBoardInner({ scope, section }: { scope: JpScope; section?: string }) 
   const t = (a: string, e: string) => (ar ? a : e);
   const { confirm, notify } = useDialog();
   const q = qs(scope, section);
-  // ── المشروعُ صفحةٌ لها رابط ───────────────────────────────────────────────
-  // فتحُ مشروعٍ يغيّر الرابط (`?project=`): زرُّ الرجوع يعود منه، والرابطُ يُرسَل.
+  // A project is a page with a URL: opening one changes the link (`?project=`), so Back returns from it and the link can be shared.
   const router = useRouter();
   const pathname = usePathname() || '';
   const search = useSearchParams();
   const project = search?.get('project') || '';
-  // ── مهمّةٌ تبدأ من صفحة ما تخصّه ───────────────────────────────────────────
-  // `?link=clearance:<id>`: جاء من معاملةٍ (أو ملفّ طرف) ليكتب مهمّةً عليها —
-  // فيُفتَح النموذجُ مربوطًا بها، وتُعرَض مهامُّها وحدَها.
+  // A task started from a related page: `?link=clearance:<id>` comes from a transaction or party file, so the form opens linked to it and only its tasks are listed.
   const linkParam = search?.get('link') || '';
   const [linkKind, linkRef] = linkParam.includes(':') ? linkParam.split(':') : ['', ''];
-  // رُفع القيدُ («عرض مهامّ القسم كلِّها»): المهمّةُ التاليةُ لا تبقى مربوطةً به.
+  // Restriction lifted ('show all section tasks'): the next task is no longer linked to it.
   useEffect(() => { if (!linkRef) setDraft((d) => (d.links.length ? { ...d, links: [] } : d)); }, [linkRef]);
   const setProject = useCallback((id: string) => { router.push(id ? `${pathname}?project=${id}` : pathname); }, [router, pathname]);
 
@@ -387,7 +375,7 @@ function JpBoardInner({ scope, section }: { scope: JpScope; section?: string }) 
   const [editing, setEditing] = useState<JpTask | null>(null);
   const [editDraft, setEditDraft] = useState<Draft>(blankDraft());
   const [doneFor, setDoneFor] = useState<JpTask | null>(null);
-  // تصحيحُ الوقت من المدير: دقائقُ تُزاد أو تُنقَص في يومٍ بعينه.
+  // Manager time correction: minutes added or subtracted on a given day.
   const [adjusting, setAdjusting] = useState<JpTask | null>(null);
   const [adj, setAdj] = useState({ minutes: '', day: '', note: '' });
   const [doneNote, setDoneNote] = useState('');
@@ -395,13 +383,13 @@ function JpBoardInner({ scope, section }: { scope: JpScope; section?: string }) 
   const [projForm, setProjForm] = useState<{ _id?: string; name: string; description: string; endDate: string } | null>(null);
   const [handing, setHanding] = useState<{ task?: JpTask; project?: JpProject } | null>(null);
   const [handTo, setHandTo] = useState('');
-  // قسمُ المدير الذي يُنزل إليه — يقوله الخادمُ مع مهامّ خطّة الإدارة.
+  // The manager's section to hand tasks down to, supplied by the server with the management-plan tasks.
   const [mySection, setMySection] = useState('');
   const [myTeam, setMyTeam] = useState<{ _id: string; name: string; roleAr: string; roleEn: string; isManager?: boolean }[]>([]);
   const titleRef = useRef<HTMLInputElement>(null);
   const { begin, isCurrent } = useLatestRequest();
 
-  // العدُّ التنازليُّ يتحرّك: «بقي ٢٠ د» تصير «بقي ١٩ د» بلا إعادة تحميل.
+  // Countdown ticks: 'N min left' decrements without a reload.
   useEffect(() => { const id = setInterval(() => setNow(Date.now()), 30000); return () => clearInterval(id); }, []);
 
   useEffect(() => {
@@ -409,13 +397,13 @@ function JpBoardInner({ scope, section }: { scope: JpScope; section?: string }) 
     api.get<JpMe>(`/api/jp/me?${q}`).then((d) => {
       if (!alive) return;
       setMe(d);
-      // المديرُ يبدأ على الكلّ: هو يتابع الفريق. والموظّفُ على ما عليه.
+      // A manager starts on all, since they follow the team; an employee starts on their own.
       setBox(d.canManage ? 'all' : 'mine');
       setDraft(blankDraft(d.canManage ? '' : d.me));
       if (linkKind && linkRef && (d.linkKinds || []).includes(linkKind)) {
         setBox('all'); setStatus(''); setMore(true);
         setDraft((x) => ({ ...x, links: [{ kind: linkKind, ref: linkRef, label: '' }] }));
-        // واسمُ ما رُبط به يُقرأ ليُعرَض — الرابطُ يحمل المعرّفَ وحدَه.
+        // The linked item's name is fetched for display; the link carries only the id.
         const named = linkKind === 'clearance'
           ? api.get<{ clearance: { blNumber?: string; refNumber?: string; customerName?: string } }>(`/api/customs-clearance/${linkRef}`)
             .then((r) => [r.clearance?.blNumber || r.clearance?.refNumber, r.clearance?.customerName].filter(Boolean).join(' · '))
@@ -436,7 +424,7 @@ function JpBoardInner({ scope, section }: { scope: JpScope; section?: string }) 
     const token = begin();
     try {
       const p = new URLSearchParams(q);
-      // داخل المشروع تُعرَض مهامُّه كلُّها (ممّا يراه السائل) لا صندوقٌ منها.
+      // Inside a project all its tasks visible to the asker are shown, not one bucket.
       p.set('box', project ? 'all' : box);
       if (linkKind && linkRef) { p.set('linkKind', linkKind); p.set('linkRef', linkRef); }
       if (status) p.set('status', status);
@@ -456,10 +444,10 @@ function JpBoardInner({ scope, section }: { scope: JpScope; section?: string }) 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [me, q, box, status, project, assignee, linkKind, linkRef]);
   useEffect(() => { load(); }, [load]);
-  // داخل المشروع تُعرَض كلُّ حالاته أوّلًا: ما تمّ جزءٌ من صورته.
+  // Inside a project all statuses are shown first: done items are part of the picture.
   useEffect(() => { setStatus(project ? '' : 'open'); }, [project]);
 
-  // حيّة: أيُّ تغييرٍ في هذه الخطّة يعيد القراءة.
+  // Live: any change in this plan triggers a re-read.
   useSocket('jp:changed', useCallback((d: { scope?: string; section?: string }) => {
     if (!d || (d.scope === scope && (scope === 'management' || d.section === section))) load();
   }, [load, scope, section]));
@@ -480,8 +468,7 @@ function JpBoardInner({ scope, section }: { scope: JpScope; section?: string }) 
         files: draft.files, links: draft.links.map((l) => ({ kind: l.kind, ref: l.ref })), ...dueBody(draft.due),
         workDate: draft.workDate || undefined, expectedMinutes: expectedOf(draft) === '' ? undefined : expectedOf(draft),
       });
-      // يبقى المُسنَد إليه والمشروع: من يكتب خمسَ مهامَّ لشخصٍ واحد لا يختاره خمسَ مرّات.
-      // وما جاء مربوطًا من صفحة معاملةٍ يبقى مربوطًا بها.
+      // Assignee and project are kept so five tasks for one person need one pick; a task linked from a transaction page stays linked.
       setDraft((d) => ({ ...blankDraft(d.assignedTo, d.project, linkRef ? d.links : []), due: d.due }));
       titleRef.current?.focus();
       load();
@@ -509,7 +496,7 @@ function JpBoardInner({ scope, section }: { scope: JpScope; section?: string }) 
       expH: task.expectedMinutes != null ? String(Math.floor(task.expectedMinutes / 60)) : '',
       expM: task.expectedMinutes != null ? String(task.expectedMinutes % 60) : '',
       due: task.deadlineKind === 'date' && task.deadlineAt ? { kind: 'date', date: ymd(new Date(task.deadlineAt)), hours: '' }
-        // موعدٌ بالساعات لا يُعاد عدُّه عند فتح التعديل: يبقى كما هو ما لم يُغيَّر.
+        // An hours-based due time is not recounted when opening edit; it stays unless changed.
         : NO_DUE,
     });
   };
@@ -574,7 +561,7 @@ function JpBoardInner({ scope, section }: { scope: JpScope; section?: string }) 
     try { await api.delete(`/api/jp/projects/${p._id}`); if (project === p._id) setProject(''); else load(); } catch (e) { say(e); }
   };
 
-  // ── الإنزال: مديرُ القسم يُسند ما كُلِّف به إلى موظّفٍ عنده ───────────────
+  // Hand-down: a section manager assigns what they were given to an employee of theirs.
   const openHand = async (h: { task?: JpTask; project?: JpProject }) => {
     setHanding(h); setHandTo('');
     if (myTeam.length) return;
@@ -618,7 +605,7 @@ function JpBoardInner({ scope, section }: { scope: JpScope; section?: string }) 
 
   const management = scope === 'management';
   const current = project ? projects.find((p) => p._id === project) || null : null;
-  // من عليه مهامُّ في المشروع وكم — ممّا يراه السائل.
+  // Who has tasks in the project and how many, as visible to the asker.
   const people = current ? [...tasks.reduce((m, x) => m.set(x.assignedToName, (m.get(x.assignedToName) || 0) + 1), new Map<string, number>())] : [];
   const boxes: { key: Box; label: string; n?: number }[] = [
     { key: 'mine', label: t('المُسنَدة إليّ', 'Assigned to me'), n: counts.mine },
@@ -637,7 +624,7 @@ function JpBoardInner({ scope, section }: { scope: JpScope; section?: string }) 
           : me.canManage ? t('أسنِد المهامَّ إلى فريقك وتابِعها من مكانٍ واحد', 'Assign work to your team and follow it in one place')
             : t('ما أُسنِد إليك، وما تطلبه من نفسك أو من زملائك', 'What is assigned to you, and what you ask of yourself or colleagues')}
       >
-        {/* قائمةُ مهامّ القسم تُدار من هنا أيضًا — أقسامٌ كثيرة بلا صفحة إعدادات. */}
+        {/* The section's task list is also managed here, since many sections have no settings page. */}
         {me.canManage && !management && (
           <button type="button" onClick={() => setTitlesOpen(true)}
             className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-white border border-slate-200 text-sm font-semibold text-slate-700 hover:border-[#f37121]/60">
@@ -655,7 +642,7 @@ function JpBoardInner({ scope, section }: { scope: JpScope; section?: string }) 
         {titlesOpen && <ReferenceDataManager type={`jp_task_${section}`} embedded />}
       </Modal>
 
-      {/* جاء من صفحة معاملةٍ أو طرف: تُعرَض مهامُّه وحدَها حتى يُرفَع القيد. */}
+      {/* Came from a transaction or party page: only its tasks are shown until the restriction is lifted. */}
       {!!linkRef && !!linkKind && (
         <div className="flex flex-wrap items-center gap-2 rounded-xl border border-[#f37121]/30 bg-[#f37121]/5 px-4 py-2.5 text-[13px]">
           <span className="text-slate-600">{t('تُعرَض المهامُّ المربوطةُ بـ', 'Showing tasks linked to')}</span>
@@ -666,12 +653,10 @@ function JpBoardInner({ scope, section }: { scope: JpScope; section?: string }) 
         </div>
       )}
 
-      {/* ── سطرُ الإضافة ──────────────────────────────────────────────────── */}
+      {/* Add line */}
       <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm space-y-3">
         <div className="flex flex-col lg:flex-row gap-2.5">
-          {/* ── المهمّةُ من قائمة القسم (٢٠٢٦/١٠/٢٢) ─────────────────────────────
-              فتُجمَع في اليوميّة باسمٍ واحد؛ وما ليس فيها يُضاف من الخانة نفسِها
-              فيظهر في القائمة وفي إعدادات القسم. وخطّةُ الإدارة نصٌّ حرّ. */}
+          {/* Task from the section list: grouped in the daily log under one name; anything not in it is added from the same field and appears in the list and section settings. The management plan is free text. */}
           {scope === 'section' && section ? (
             <div className="flex-1 min-w-0">
               <ManagedSelect type={`jp_task_${section}`} storeLabel value={draft.title} onChange={(v) => patchDraft({ title: v })}
@@ -684,7 +669,7 @@ function JpBoardInner({ scope, section }: { scope: JpScope; section?: string }) 
               placeholder={me.canManage ? t('ما المهمّة؟ اكتبها واضغط Enter', 'What is the task? Type and press Enter') : t('ما الطلب؟ اكتبه واضغط Enter', 'What is the request? Type and press Enter')}
               className="flex-1 px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 text-[15px] text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
           )}
-          {/* Searchable: a top role picks from every employee, the section's team first (badge «القسم»). */}
+          {/* Searchable: a top role picks from every employee, the section's team first (badge for the section). */}
           <div className="lg:w-72">
             <SearchableSelect value={draft.assignedTo} onChange={(v) => patchDraft({ assignedTo: v })}
               placeholder={whoLabel} searchPlaceholder={t('ابحث بالاسم أو الدور…', 'Search name or role…')} searchAfter={0}
@@ -704,7 +689,7 @@ function JpBoardInner({ scope, section }: { scope: JpScope; section?: string }) 
         {current && <p className="text-[12px] text-slate-500">{t(`تُضاف إلى مشروع «${current.name}».`, `Added to project “${current.name}”.`)}</p>}
       </div>
 
-      {/* ── صفحةُ المشروع ─────────────────────────────────────────────────── */}
+      {/* Project page */}
       {current && (
         <section className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
           <div className="px-5 py-4 border-b border-slate-100 flex flex-wrap items-start justify-between gap-3">
@@ -756,7 +741,7 @@ function JpBoardInner({ scope, section }: { scope: JpScope; section?: string }) 
         </section>
       )}
 
-      {/* ── المشروعات ─────────────────────────────────────────────────────── */}
+      {/* Projects */}
       {!current && projects.length > 0 && (
         <div className="flex gap-2.5 overflow-x-auto pb-1">
           <button type="button" onClick={() => setProject('')}
@@ -794,7 +779,7 @@ function JpBoardInner({ scope, section }: { scope: JpScope; section?: string }) 
         </div>
       )}
 
-      {/* ── الفلاتر ───────────────────────────────────────────────────────── */}
+      {/* Filters */}
       <div className="flex flex-wrap items-center gap-2">
         {!current && boxes.map((b) => (
           <Chip key={b.key} on={box === b.key} onClick={() => setBox(b.key)}>
@@ -815,7 +800,7 @@ function JpBoardInner({ scope, section }: { scope: JpScope; section?: string }) 
         )}
       </div>
 
-      {/* ── المهامّ ───────────────────────────────────────────────────────── */}
+      {/* Tasks */}
       {loading ? <Spinner /> : tasks.length === 0 ? (
         <div className="py-16 text-center bg-white border border-dashed border-slate-200 rounded-2xl">
           <CalendarCheck className="w-8 h-8 mx-auto text-slate-300" />
@@ -833,7 +818,7 @@ function JpBoardInner({ scope, section }: { scope: JpScope; section?: string }) 
         </ul>
       )}
 
-      {/* ── الإتمام: الملاحظةُ والملفُّ اختياريّان ─────────────────────────── */}
+      {/* Completion: note and file are optional */}
       <Modal open={!!doneFor} onClose={() => setDoneFor(null)} title={t('إتمام المهمّة', 'Complete task')}
         footer={(
           <>
@@ -853,7 +838,7 @@ function JpBoardInner({ scope, section }: { scope: JpScope; section?: string }) 
         </Field>
       </Modal>
 
-      {/* ── التعديل ───────────────────────────────────────────────────────── */}
+      {/* Edit */}
       <Modal open={!!adjusting} onClose={() => setAdjusting(null)} title={t('تصحيح الوقت', 'Adjust time')}
         footer={<>
           <button type="button" onClick={() => setAdjusting(null)} className="px-4 py-2 rounded-lg text-sm text-slate-600 hover:text-slate-900">{t('إلغاء', 'Cancel')}</button>
@@ -893,7 +878,7 @@ function JpBoardInner({ scope, section }: { scope: JpScope; section?: string }) 
         <MoreFields d={editDraft} set={patchEdit} projects={projects} ar={ar} allowFiles={false} linkKinds={me?.linkKinds} section={me?.section} />
       </Modal>
 
-      {/* ── المشروع ───────────────────────────────────────────────────────── */}
+      {/* Project */}
       <Modal open={!!projForm} onClose={() => setProjForm(null)} title={projForm?._id ? t('تعديل المشروع', 'Edit project') : t('مشروع جديد', 'New project')}
         footer={(
           <>
@@ -911,7 +896,7 @@ function JpBoardInner({ scope, section }: { scope: JpScope; section?: string }) 
         )}
       </Modal>
 
-      {/* ── الإنزال إلى موظّفٍ في قسمي ────────────────────────────────────── */}
+      {/* Hand-down to an employee in my section */}
       <Modal open={!!handing} onClose={() => setHanding(null)} title={t('إسنادٌ إلى موظّفٍ في قسمي', 'Assign to someone on my team')}
         footer={(
           <>
@@ -935,7 +920,7 @@ function JpBoardInner({ scope, section }: { scope: JpScope; section?: string }) 
   );
 }
 
-// `useSearchParams` يحتاج حدَّ تعليقٍ عند البناء الثابت — يُوضَع هنا مرّةً، لا في ستّين صفحة.
+// `useSearchParams` needs a Suspense boundary at static build; placed here once instead of in sixty pages.
 export default function JpBoard(props: { scope: JpScope; section?: string }) {
   return <Suspense fallback={<Spinner />}><JpBoardInner {...props} /></Suspense>;
 }

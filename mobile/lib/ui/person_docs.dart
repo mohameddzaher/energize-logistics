@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
 import 'theme.dart';
 
-/// ── انتهاءُ الإقامة ورخصةِ القيادة في قوائم السوّاق (٢٠٢٦/١٠/٢٧) ──────────────
-/// يحسبهما الخادمُ من ملفّ الموظّف (utils/personDocDates) ويرسل معهما حالتَهما،
-/// والأسوأَ منهما في `docsState` لشريحة التصفية. مثلُ PersonDocDate في الموقع.
+/// Residency and driving-licence expiry in driver lists. The server computes both from the employee file (utils/personDocDates) and sends their state, with the worse of the two in `docsState` for the filter chip. Same as PersonDocDate on the web.
 const personDocStates = <(String, String, String)>[
   ('expired', 'منتهية', 'Expired'),
   ('soon', 'تنتهي خلال 30 يومًا', 'Expires within 30 days'),
@@ -26,7 +24,7 @@ Color _color(Object? s) => switch ('$s') {
       _ => T.inkFaint,
     };
 
-/// قيمةُ واحدٍ منهما بلا عنوان: التاريخُ (وحالتُه إن كانت خبرًا) ملوَّنًا بها.
+/// The value of one of them without a label: the date, colored by its state (and the state if it is a warning).
 (String, Color) personDocValue(Map r, String which) {
   final date = _ymd(r[which == 'iqama' ? 'iqamaExpiry' : 'licenseExpiry']);
   final state = r[which == 'iqama' ? 'iqamaState' : 'licenseState'];
@@ -35,12 +33,12 @@ Color _color(Object? s) => switch ('$s') {
   return ('$date${news ? ' · ${personDocStateAr(state)}' : ''}', _color(state));
 }
 
-/// شريحتا «الإقامة» و«رخصة القيادة» لبطاقات القوائم.
+/// Residency and driving-licence chips for list cards.
 List<(String, Color)> personDocChips(Map r) => [
       for (final (label, which) in [('الإقامة', 'iqama'), ('رخصة القيادة', 'license')])
         ('$label: ${personDocValue(r, which).$1}', personDocValue(r, which).$2),
     ];
 
-/// للتصدير وفلاتر الأعمدة: التاريخ والحالة لكلٍّ منهما.
+/// For export and column filters: date and state of each.
 String personDocDate(Map r, String which) => _ymd(r[which == 'iqama' ? 'iqamaExpiry' : 'licenseExpiry']);
 String personDocState(Map r, String which) => personDocStateAr(r[which == 'iqama' ? 'iqamaState' : 'licenseState']);

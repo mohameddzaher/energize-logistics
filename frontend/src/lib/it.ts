@@ -75,9 +75,7 @@ export interface CustodyItem {
   location?: string;
   returnedTo?: UserRef | string | null;
   createdBy?: UserRef | string | null;
-  // ── وما بيع يقول لمن وبكم ومتى ─────────────────────────────────────────
-  // `soldTo` موظّفٌ مربوط، و`soldToName` اسمٌ حرٌّ لمشترٍ من خارج الشركة —
-  // أحدُهما لا كلاهما. راجع sellCustody في الخادم.
+  // A sold item states to whom, for how much and when. soldTo is a linked employee and soldToName is a free name for an outside buyer; one or the other, not both. See sellCustody on the server.
   soldTo?: EmployeeRef | string | null;
   soldToName?: string;
   soldDate?: string;
@@ -88,17 +86,14 @@ export interface CustodyItem {
 // holder yet — so it reuses the shape rather than inventing a parallel type.
 export type StockItem = CustodyItem;
 
-// ── أعداد شاشة العهد ────────────────────────────────────────────────────────
-// الخادم يعيدها مع الصفوف محسوبةً على نفس الفلتر، فلا تشتقّها الشاشة ثانيةً.
-// اشتقاقها هنا هو ما جعل الكارت يقول ٦٨ ويفتح ٦: العدّ كان يُحسب على السجل
-// كله والجدول تحته مفلتر.
+// Custody screen counts: the server returns them with the rows, computed over the same filter, so the screen does not derive them again (deriving them locally made a card show a different number than the rows it opened).
 export interface CustodyCounts {
   buckets: { key: string; nameAr: string; nameEn: string; count: number }[];
   byStatus: { assigned: number; in_stock: number; returned: number; sold?: number };
-  /** تفصيل دلو «أخرى» بعد بقية الفلاتر. */
+  /** Breakdown of the 'other' bucket after the remaining filters. */
   otherKinds: CountRow[];
   conditions: CountRow[];
-  /** عدد الصفوف المعروضة وقيمتها — كلاهما يصف الجدول لا السجل. */
+  /** Number of displayed rows and their value; both describe the table, not the register. */
   total: number;
   value: number;
 }
@@ -106,7 +101,7 @@ export interface CustodyCounts {
 export interface CustodyListResponse {
   items: CustodyItem[];
   counts?: CustodyCounts;
-  /** إجمالي السجل كله — يُعرض بجانب الرقم المفلتر ليُعرف من أيٍّ اقتُطع. */
+  /** Total of the whole register, shown beside the filtered number to show what it was cut from. */
   register?: { total: number; assigned: number };
 }
 
@@ -160,8 +155,7 @@ export interface Dashboard {
     systemsByStatus: CountRow[];
     renewalsDueSoon: ItSystem[];
   };
-  // ملخّص العهد: نفس الكروت ونفس الأزرار المعروضة في صفحة العهد، محسوبة في
-  // الخادم مرة واحدة حتى لا تختلف الأرقام بين الشاشتين.
+  // Custody summary: the same cards and buttons as the custody page, computed once on the server so the two screens show the same numbers.
   custody?: {
     buckets: { key: string; nameAr: string; nameEn: string; count: number }[];
     byStatus: { assigned: number; in_stock: number; returned: number };
@@ -233,25 +227,19 @@ export const CUSTODY_TYPES: Record<string, Style> = {
   other: { en: 'Other', ar: 'أخرى', bg: 'bg-slate-500/15', text: 'text-slate-700' },
 };
 
-// ── دلاء العرض ──────────────────────────────────────────────────────────────
-// خمس فئات تُعرض ككروت بإجمالياتها أعلى الصفحة. النوع المفصّل يبقى محفوظاً كما
-// هو في قاعدة البيانات — الدلو طبقة عرض تُشتق منه، لأن سجلاً فيه خمسة عشر
-// نوعاً وستة وستون اسماً حرّاً لا يمكن قراءة إجمالياته بالعين.
-// مطابقة لـ BUCKETS في backend/src/config/itCustody.js.
+// Display buckets: five categories shown as cards with totals. The detailed type stays as stored in the database; the bucket is a display layer derived from it. Mirrors BUCKETS in backend/src/config/itCustody.js.
 export interface CustodyBucket {
   key: string;
   ar: string;
   en: string;
-  /** النوع الذي يُكتب عند إضافة صنف جديد من هذا الدلو. */
+  /** The type written when a new item is added from this bucket. */
   canonicalType: string;
   types: string[];
 }
 
 export const CUSTODY_BUCKETS: CustodyBucket[] = [
   { key: 'laptops', ar: 'لابتوبات', en: 'Laptops', canonicalType: 'laptop', types: ['laptop', 'desktop'] },
-  // الماوسُ وحدَه والكيبوردُ وحدَه، ولا طقم — نظيرُ config/itCustody في الخادم
-  // حرفًا. الطقمُ قُسم ماوسًا وكيبوردًا بقرار صاحب الشركة، والنوعُ القديم
-  // `keyboard_mouse` يُقرأ في دلو الكيبورد بشارته «ماوس وكيبورد» ولا يُكتب.
+  // Mouse alone and keyboard alone, no set; mirrors config/itCustody on the server. The old keyboard_mouse type is read into the keyboard bucket with a mouse-and-keyboard badge but is no longer written.
   { key: 'mice', ar: 'ماوس', en: 'Mouse', canonicalType: 'mouse', types: ['mouse'] },
   { key: 'keyboards', ar: 'كيبورد', en: 'Keyboard', canonicalType: 'keyboard', types: ['keyboard', 'keyboard_mouse'] },
   { key: 'phones', ar: 'موبايلات', en: 'Phones', canonicalType: 'phone', types: ['phone'] },
@@ -263,7 +251,7 @@ export const CUSTODY_BUCKETS: CustodyBucket[] = [
 const TYPE_TO_BUCKET = new Map<string, string>();
 CUSTODY_BUCKETS.forEach((b) => b.types.forEach((t) => TYPE_TO_BUCKET.set(t, b.key)));
 
-/** الدلو الذي ينتمي إليه نوع مفصّل — وأي نوع مجهول يسقط في «أخرى» بدل أن يختفي. */
+/** The bucket a detailed type belongs to; an unknown type falls into 'other' instead of disappearing. */
 export const bucketOf = (type?: string) => TYPE_TO_BUCKET.get(String(type || '').trim()) || 'other';
 
 export const bucketLabel = (key: string, lang: Lang) => {
@@ -271,9 +259,7 @@ export const bucketLabel = (key: string, lang: Lang) => {
   return b ? b[lang] : key;
 };
 
-// أسماء الأنواع بالعربية لاشتقاق اسم العرض. مطابقة لـ TYPE_NAME_AR في
-// backend/src/config/itCustody.js — الشاشة تعرض معاينة للاسم قبل الحفظ، وأي
-// اختلاف بين النسختين يجعل المعاينة تَعِد باسم غير الذي يُحفظ.
+// Arabic type names used to derive the display name. Mirrors TYPE_NAME_AR in backend/src/config/itCustody.js; the screen previews the name before saving, so any difference would preview a different name than the one stored.
 export const TYPE_NAME_AR: Record<string, string> = {
   laptop: 'لابتوب', desktop: 'حاسب مكتبي', phone: 'موبايل', tablet: 'تابلت',
   monitor: 'شاشة', keyboard: 'كيبورد', mouse: 'ماوس', keyboard_mouse: 'ماوس وكيبورد',
@@ -282,31 +268,23 @@ export const TYPE_NAME_AR: Record<string, string> = {
   access_card: 'بطاقة دخول', other: 'صنف آخر',
 };
 
-/**
- * اسم العرض مشتقّ من النوع والماركة بدل أن يُكتب باليد — «لابتوب Dell».
- * الاسم الحرّ هو ما أنتج ستة وستين تهجئة لنفس الأجهزة في السجل.
- */
+/** Display name derived from type and brand instead of typed by hand, e.g. Laptop Dell. Free-text names produced dozens of spellings for the same devices. */
 export const deriveAssetName = (type?: string, brand?: string) => {
   const base = TYPE_NAME_AR[String(type || '').trim()] || TYPE_NAME_AR.other;
   const b = String(brand || '').trim();
   return b ? `${base} ${b}` : base;
 };
 
-/** الأنواع المفصّلة داخل دلو «أخرى» — تغذّي الفلتر الثاني الذي يظهر عند اختياره. */
+/** Detailed types inside the 'other' bucket; they feed the second filter shown when it is selected. */
 export const OTHER_BUCKET_TYPES =
   CUSTODY_BUCKETS.find((b) => b.key === 'other')!.types;
 
-// Types IT does NOT hand out (vehicles belong to the fleet section; `tool` is
-// HR's — عدة, safety kit). An EXCLUDE list, mirroring `itHandsOut: false` in
-// backend/src/config/assetDefaults.js: a frozen include-list silently hid every
-// new type added through Reference Data from IT's own dropdowns.
-// الشرائح انضمّت للقائمة: خطوط الأرقام ليست من عهدة القسم، وبقاؤها كان يضيف
-// أربعة وستين صفاً لا يملكها أحد فينا إلى كل عدّ وكل تقرير.
-// مطابقة لـ EXCLUDED_TYPES في backend/src/config/itCustody.js.
+// Types IT does not hand out (vehicles belong to the fleet section; `tool` is HR's: equipment, safety kit). An EXCLUDE list, mirroring `itHandsOut: false` in backend/src/config/assetDefaults.js: a frozen include-list silently hid every new type added through Reference Data from IT's own dropdowns.
+// SIM cards are also excluded: phone lines are not the department's custody and would add rows nobody owns to every count and report.
+// Mirrors EXCLUDED_TYPES in backend/src/config/itCustody.js.
 export const IT_CUSTODY_EXCLUDED_TYPE_KEYS = ['vehicle', 'tool', 'sim'];
 
-// أنواعٌ تُقرأ ولا تُكتب — لا تُعرض خيارًا. مطابقة لـ RETIRED_TYPES في
-// backend/src/config/itCustody.js.
+// Types that are read but never written; not offered as an option. Mirrors RETIRED_TYPES in backend/src/config/itCustody.js.
 export const RETIRED_ASSET_TYPE_KEYS = ['keyboard_mouse'];
 
 // The custody page never lists warehouse stock (that has its own page), so its
@@ -323,21 +301,16 @@ export const CONDITIONS: Record<string, Style> = {
   damaged: { en: 'Damaged', ar: 'تالف', bg: 'bg-red-500/15', text: 'text-red-700' },
 };
 
-// «خارج الخدمة» صارت «تالف» بطلب القسم: العبارة الأولى كانت تصف موقعاً، وما
-// يعني المستودع فعلاً هو أن الصنف لم يعد صالحاً للتسليم.
+// 'Out of service' became 'damaged' at the department's request: the old wording described a location, while what matters to the store is that the item is no longer fit to hand out.
 export const CUSTODY_STATUSES: Record<string, Style> = {
   assigned: { en: 'Assigned', ar: 'بعهدة الموظف', bg: 'bg-amber-500/20', text: 'text-amber-700' },
   in_stock: { en: 'In Stock', ar: 'المستودع', bg: 'bg-blue-500/20', text: 'text-blue-700' },
   returned: { en: 'Faulty', ar: 'تالف', bg: 'bg-red-500/20', text: 'text-red-700' },
-  // ── والمُباعُ خرج من ملكنا ──────────────────────────────────────────────
-  // الموظّفُ يشتري أحيانًا ما في عهدته ويدفع ثمنَه للحسابات. وكان ذلك يُسجَّل
-  // «مسلَّمًا» — فيبقى في عداد ما نملك وقد خرج منه — أو يُحذف صفُّه فلا يُعرف
-  // أين ذهب ولا بكم. فله حالتُه: لا في عهدةِ أحدٍ ولا على الرفّ، وصفُّه يقول
-  // لمن بيع وبكم ومتى.
+  // Sold items left our ownership. An employee sometimes buys what is in his custody and pays Accounts. That used to be recorded as delivered (still counted as owned) or the row was deleted (no trace of where it went or for how much). So sold is its own state: in nobody's custody and not on the shelf, and the row records to whom, for how much and when.
   sold: { en: 'Sold', ar: 'مُباع', bg: 'bg-violet-500/20', text: 'text-violet-700' },
 };
 
-// الأزرار الأربعة العريضة أعلى صفحة العهد، بالترتيب الذي تُقرأ به.
+// The four wide buttons at the top of the custody page, in reading order.
 export const CUSTODY_STATE_KEYS = ['assigned', 'in_stock', 'returned', 'sold'] as const;
 
 export const SYSTEM_TYPES: Record<string, Style> = {
@@ -398,8 +371,7 @@ export const optionsOf = (map: Record<string, Style>, only?: string[]) =>
 
 // ── Formatters ──────────────────────────────────────────────────────────────
 
-// «اليوم» يوم الرياض لا يوم غرينتش: `toISOString()` كانت تعطي أمسِ بين منتصف
-// الليل والثالثة فجرًا. المرجعُ واحدٌ الآن في `lib/companyDay`.
+// Today means the Riyadh day, not the Greenwich day: toISOString() gave yesterday between midnight and 03:00. The single reference is now lib/companyDay.
 export { today } from './companyDay';
 import { dayOffset } from './companyDay';
 
@@ -413,9 +385,7 @@ export const fmtDateTime = (v?: string | Date | null) =>
 export const fmtMoney = (v?: number | null) =>
   typeof v === 'number' ? v.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) : '—';
 
-// زمن الحل يُخزَّن بالدقائق لكنه دائماً من مضاعفات اليوم الكامل، لأن تاريخ
-// البلاغ بلا وقت. صفر يعني أن البلاغ حُلّ في يومه — لا أنه استغرق صفر دقيقة،
-// و«٠ د» كانت تقرأ كأن شيئاً لم يحدث.
+// Resolution time is stored in minutes but is always a whole number of days, because the report date has no time. Zero means resolved the same day, not that it took zero minutes.
 export const fmtDuration = (minutes?: number | null, lang: Lang = 'en') => {
   if (minutes === undefined || minutes === null || !Number.isFinite(minutes)) return '—';
   const m = Math.max(0, Math.round(minutes));
@@ -473,17 +443,12 @@ export const canViewIt = (u: UserLike) => isItStaff(u?.role) || canAccessSection
 export const canEditIt = (u: UserLike) => isItAdmin(u?.role) || canEditSection(u?.permissions, 'Software & IT');
 
 
-// ── قوائم نموذج البلاغ ──────────────────────────────────────────────────────
-// الأقسام تأتي من ملفات الموظفين نفسها، ومن يُسند إليه الحل من مستخدمي النظام:
-// الحقلان كانا نصاً حرّاً، فكان كل تقرير يجمّع حسب القسم أو حسب المسؤول ينقسم
-// على اختلاف تهجئة الاسم.
+// Report form lists: departments come from the employee files and the resolver from system users. Both were free text, so every report grouped by department or owner split on spelling differences.
 export const listItDepartments = () => api.get<{ departments: string[] }>('/api/it/departments');
 export const listItAssignees = () => api.get<{ users: ItAssignee[] }>('/api/it/assignees');
 
 
-// ── بريد الشركة (@energize-logistics.com) ───────────────────────────────────
-// صناديق بريد على هوستنجر — مش حسابات الدخول للسيستم. كلمة المرور بترجع من
-// endpoint الكشف بس، ومع كل كشف بيتسجّل مين وامتى.
+// Company email (@energize-logistics.com): Hostinger mailboxes, not system logins. The password is returned only by the reveal endpoint, and each reveal logs who and when.
 export interface CompanyEmail {
   _id: string;
   email: string;
@@ -531,14 +496,11 @@ export const searchEmailEmployees = (q: string) =>
 export const createCompanyEmail = (body: any) => api.post<{ email: CompanyEmail }>('/api/it/emails', body);
 export const updateCompanyEmail = (id: string, body: any) => api.put<{ email: CompanyEmail }>(`/api/it/emails/${id}`, body);
 export const deleteCompanyEmail = (id: string) => api.delete(`/api/it/emails/${id}`);
-/** الكشف حدث مسجَّل — مش قراءة عادية. */
+/** A reveal is a logged event, not an ordinary read. */
 export const revealCompanyEmailPassword = (id: string) =>
   api.post<{ password: string; email: string; revealCount: number }>(`/api/it/emails/${id}/reveal`, {});
 
-/**
- * تصدير بكلمات المرور. مسار مستقل بنفس صلاحية الكشف ومسجَّل في سجل التدقيق —
- * ملف إكسل فيه كلمات مرور بيسيب الخزنة ويقعد على ديسك توب حد.
- */
+/** Export with passwords: a separate route with the same permission as reveal and audit-logged, since a spreadsheet of passwords leaves the vault and ends up on someone's desktop. */
 export const exportCompanyEmailsWithPasswords = (q: Record<string, string> = {}) => {
   const qs = new URLSearchParams(Object.entries(q).filter(([, v]) => v)).toString();
   return api.get<{ rows: any[]; exported: number; withPassword: number }>(
@@ -554,12 +516,11 @@ export const CUSTODY_ACTION_LABEL: Record<string, { en: string; ar: string }> = 
   returned: { en: 'Returned to store', ar: 'أُعيد إلى المستودع' },
   damaged: { en: 'Reported damaged', ar: 'أُبلغ عن تلفه' },
   lost: { en: 'Reported lost', ar: 'أُبلغ عن فقده' },
-  // «retired» لم تعد تُكتب: «تالف» صارت إجراءً واحداً يكتب damaged/lost. تبقى
-  // هنا لأن في السجل حركاتٍ قديمة كُتبت بها، وحذفُ الاسم يجعلها تُقرأ رمزاً.
+  // 'retired' is no longer written: 'damaged' is now one action that writes damaged/lost. Kept because old log entries were written with it, and removing the name would make them read as a raw key.
   retired: { en: 'Recorded faulty', ar: 'سُجّل كتالف' },
   updated: { en: 'Details updated', ar: 'عُدّلت بياناته' },
-  // البيعُ حدثٌ بذاته: بلا سطرٍ له يظهر في السجلّ بمفتاحه الخامّ «sold».
+  // A sale is an event of its own: without a line for it, the log shows its raw key 'sold'.
   sold: { en: 'Sold', ar: 'بيع' },
-  // إرجاعُ المُباع: البيعُ يبقى في السجلّ وهذا بعده — رجع إلى المخزن ورُدّ ثمنُه.
+  // Returning a sold item: the sale stays in the log and this comes after it; the item went back to the store and the price was refunded.
   sale_returned: { en: 'Sale returned to store', ar: 'أُرجع المبيع إلى المخزن' },
 };

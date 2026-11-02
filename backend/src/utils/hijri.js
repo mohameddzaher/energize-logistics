@@ -1,31 +1,13 @@
 /**
- * التاريخُ الهجريُّ والميلاديُّ — وجهان لتاريخٍ واحدٍ لا حقلان.
- *
- * ── لماذا يُشتقّ ولا يُخزَّن ───────────────────────────────────────────────
- * الطلبُ أن يكون لكلّ تاريخٍ عمودان: ميلاديٌّ وهجريّ، و«مجرّد ما يُكتب أحدهما
- * يسمع الآخر». وأوّلُ ما يُفكَّر فيه حقلان في القاعدة ومزامنةٌ بينهما — وهو
- * بابُ اختلافٍ مؤكَّد: من يكتب في أحدهما بسكربتٍ أو استيرادٍ أو شاشةٍ قديمة
- * يترك الآخرَ قديمًا، ثمّ يُقرأ تاريخان لشيءٍ واحدٍ ولا يُعرَف أيُّهما الصحيح.
- *
- * فالمخزَّنُ واحدٌ — الميلاديُّ كما هو اليوم (`YYYY-MM-DD`) — والهجريُّ **عرضٌ
- * له**. ومن أدخل بالهجريّ تُحوَّل كتابتُه إلى ميلاديٍّ قبل الحفظ. فالعمودان
- * متوافقان بالبناء لا بالمزامنة، ولا يحتاج الأمرُ تحديثَ صفٍّ واحدٍ في القاعدة.
- *
- * ── والتحويلُ بتقويم أمّ القرى ─────────────────────────────────────────────
- * هو التقويمُ الرسميُّ في المملكة، وهو المعنيُّ في الإقامات والرخص. ويُقرأ من
- * `Intl` المبنيّ في العقدة (`islamic-umalqura`) — بلا حزمةٍ تُضاف ولا جدولٍ
- * يُنسَخ ويشيخ.
- *
- * والعكس (هجريٌّ ← ميلاديّ) لا تقدّمه `Intl`، فيُحسَب ببحثٍ ثنائيٍّ على
- * الأيّام: التقويمان متزايدان معًا، فيُقارَب اليومُ الميلاديُّ الذي يُعطي هذا
- * التاريخَ الهجريَّ في نحوِ خمسَ عشرةَ خطوة. وهو دقيقٌ تمامًا لأنّ المرجعَ هو
- * `Intl` نفسُها التي تُقرأ بها الوجهةُ الأخرى — فالذهابُ والعودةُ لا يختلفان.
+ * Hijri and Gregorian dates are two views of one date, not two fields.
+ * Only the Gregorian `YYYY-MM-DD` is stored; Hijri is derived (Umm al-Qura via Intl), so the two cannot disagree. Hijri input is converted to Gregorian before saving.
+ * Hijri to Gregorian is not offered by Intl, so it uses a binary search over days against the same Intl, which makes the round trip exact.
  */
 
 const DAY = 86400000;
 const PAD = (n) => String(n).padStart(2, '0');
 
-// تنسيقٌ واحدٌ يُبنى مرّةً — بناؤه لكلّ تاريخٍ أغلى من التحويل نفسِه.
+// Formatter built once; building it per date costs more than the conversion.
 let fmt = null;
 const formatter = () => {
   if (!fmt) {
@@ -46,14 +28,14 @@ const asDate = (v) => {
   return Number.isNaN(d.getTime()) ? null : d;
 };
 
-/** ميلاديٌّ ← هجريٌّ «YYYY-MM-DD»، أو '' إن لم يُقرأ تاريخًا. */
+/** Gregorian to Hijri `YYYY-MM-DD`, or '' if not a readable date. */
 const toHijri = (value) => {
   const d = asDate(value);
   if (!d) return '';
   try {
     const parts = formatter().formatToParts(d);
     const get = (t) => parts.find((p) => p.type === t)?.value || '';
-    // بعض الإصدارات تُلحق «AH» بالسنة — تُقشَر الأرقامُ وحدَها.
+    // Some Intl versions append an era suffix to the year, so only the digits are taken.
     const y = String(get('year')).replace(/\D/g, '');
     const mo = String(get('month')).replace(/\D/g, '');
     const da = String(get('day')).replace(/\D/g, '');
@@ -64,26 +46,26 @@ const toHijri = (value) => {
   }
 };
 
-/** مفتاحٌ رقميٌّ للمقارنة: 1446-07-03 → 14460703. */
+/** Numeric comparison key: 1446-07-03 becomes 14460703. */
 const hKey = (s) => {
   const m = /^(\d{3,4})-(\d{1,2})-(\d{1,2})$/.exec(String(s || '').trim());
   return m ? Number(m[1]) * 10000 + Number(m[2]) * 100 + Number(m[3]) : null;
 };
 
 /**
- * هجريٌّ «YYYY-MM-DD» ← ميلاديٌّ `Date` (UTC منتصفَ الليل)، أو null.
- * بحثٌ ثنائيٌّ بين سنةِ ٦٠٠ﻫ وسنةِ ١٦٠٠ﻫ تقريبًا — يكفي كلَّ ما يُكتب.
+ * Hijri `YYYY-MM-DD` to a Gregorian `Date` (UTC midnight), or null.
+ * Binary search over roughly year 600 to 1600 AH, enough for any entered value.
  */
 const fromHijri = (value) => {
   const want = hKey(value);
   if (!want) return null;
-  // تقديرٌ أوّليٌّ: السنةُ الهجريّة ٣٥٤٫٣٦٧ يومًا، و١ محرّم ١ﻫ = 622-07-19م.
+  // First estimate: Hijri year is 354.367 days; 1 Muharram 1 AH is 622-07-19 CE.
   const m = /^(\d{3,4})-(\d{1,2})-(\d{1,2})$/.exec(String(value).trim());
   const [, hy, hm, hd] = m.map(Number);
   const guess = Date.UTC(622, 6, 19) + Math.round(((hy - 1) * 354.367 + (hm - 1) * 29.53 + (hd - 1)) * DAY);
   let lo = guess - 40 * DAY;
   let hi = guess + 40 * DAY;
-  // وإن أخطأ التقديرُ وُسِّع المدى — لا يُفترَض صحّةُ التقريب.
+  // If the estimate is off, widen the range rather than trust the approximation.
   if (hKey(toHijri(new Date(lo))) > want) lo = Date.UTC(600, 0, 1);
   if (hKey(toHijri(new Date(hi))) < want) hi = Date.UTC(2200, 0, 1);
   for (let i = 0; i < 64 && lo <= hi; i += 1) {
@@ -96,35 +78,20 @@ const fromHijri = (value) => {
   return null;
 };
 
-/** هجريٌّ ← ميلاديٌّ نصًّا «YYYY-MM-DD»، أو ''. */
+/** Hijri to Gregorian string `YYYY-MM-DD`, or ''. */
 const fromHijriString = (value) => {
   const d = fromHijri(value);
   return d ? `${d.getUTCFullYear()}-${PAD(d.getUTCMonth() + 1)}-${PAD(d.getUTCDate())}` : '';
 };
 
-/** أسماءُ الأشهر الهجريّة — للعرض حين يُكتب التاريخُ كلامًا. */
+/** Hijri month names, for display when a date is written out in words. */
 const HIJRI_MONTHS_AR = ['محرّم', 'صفر', 'ربيع الأول', 'ربيع الثاني', 'جمادى الأولى', 'جمادى الآخرة',
   'رجب', 'شعبان', 'رمضان', 'شوّال', 'ذو القعدة', 'ذو الحجة'];
 
 /**
- * fillHijriPairs — يُكمل توأمَ التاريخ في تعديلٍ مسطَّح (`{ 'block.expiryDate': … }`).
- *
- * بعضُ السجلّات (المركبات) تخزّن التاريخَ مرّتين: `expiryDate` ميلاديًّا
- * و`expiryDateHijri` نصًّا. والحسابُ كلُّه على الميلاديّ، فهجريٌّ بلا ميلاديٍّ
- * مستندٌ «بلا تاريخ». فمن أرسل أحدَهما يُكتب له الآخر هنا:
- *
- *   • هجريٌّ وحدَه            ← يُشتقّ ميلاديُّه.
- *   • ميلاديٌّ وحدَه           ← يُشتقّ هجريُّه (إن كان للحقل توأمٌ في السجلّ).
- *   • الاثنان معًا            ← يغلب ما **تغيّر** عمّا في السجلّ؛ وإن تغيّرا معًا
- *                               فالميلاديُّ هو المرجع.
- *
- * يعدّل `$set` في مكانه ويردّ ما اشتقّه (`{ مفتاح: قيمة }`) ليُقال للشاشة.
- * ولا يرمي: تاريخٌ لا يُقرأ يُترك كما هو — يرفضه التحقّقُ بعده برسالته.
- *
- * ── ولماذا هو هنا ───────────────────────────────────────────────────────────
- * كان متحكِّمُ المركبات ينادي هذه الدالّةَ وهي غيرُ موجودة: فكلُّ حفظٍ على
- * مركبة — تعديلُ بيانٍ، إضافةُ جهاز تتبّع — يردّ «fillHijriPairs is not a
- * function» ولا يُحفَظ شيء.
+ * fillHijriPairs: completes the twin date in a flat update (`{ 'block.expiryDate': ... }`).
+ * Hijri only derives the Gregorian; Gregorian only derives the Hijri (if the record has the twin); if both are sent the changed one wins, Gregorian when both changed.
+ * Mutates `$set` in place and returns what it derived. Never throws; an unreadable date is left for validation to reject.
  */
 const SUFFIX = 'Hijri';
 const getPath = (obj, path) => String(path).split('.').reduce((o, k) => (o == null ? undefined : o[k]), obj);
@@ -136,9 +103,7 @@ const sameDay = (a, b) => {
 };
 const isBlank = (v) => v === undefined || v === null || String(v).trim() === '';
 
-// التواريخُ التي لها توأمٌ هجريٌّ مخزَّنٌ في سجلّ المركبة (models/VehicleMaster):
-// رخصةُ السير والفحصُ الدوريّ. وغيرُهما (اشتراك GPS، التأمين…) ميلاديٌّ وحدَه —
-// فلا يُخترَع له حقلٌ هجريٌّ لا وجودَ له في النموذج.
+// Dates that have a stored Hijri twin in the vehicle record (models/VehicleMaster): registration licence and periodic inspection. Others (GPS subscription, insurance) are Gregorian only, so no Hijri field is invented.
 const VEHICLE_PAIRS = ['vehicleLicense.expiryDate', 'inspection.expiryDate'];
 
 function fillHijriPairs($set, before = {}, known = VEHICLE_PAIRS) {
@@ -147,7 +112,7 @@ function fillHijriPairs($set, before = {}, known = VEHICLE_PAIRS) {
   const bases = new Set();
   for (const k of Object.keys($set)) {
     if (k.endsWith(SUFFIX)) bases.add(k.slice(0, -SUFFIX.length));
-    // ميلاديٌّ بلا توأمٍ مُرسَل: له توأمٌ إن كان معروفًا أو كان في السجلّ.
+    // Gregorian with no twin sent: it has a twin if the field is known or already in the record.
     else if (known.includes(k) || getPath(before, `${k}${SUFFIX}`) !== undefined) bases.add(k);
   }
   for (const base of bases) {
@@ -158,15 +123,15 @@ function fillHijriPairs($set, before = {}, known = VEHICLE_PAIRS) {
     const hChanged = hasH && hKey($set[hk]) !== hKey(getPath(before, hk));
     try {
       if (hasH && !isBlank($set[hk]) && (!hasG || (hChanged && !gChanged))) {
-        // الهجريُّ هو المكتوب: يُخرج ميلاديَّه.
+        // Hijri was written: derive its Gregorian.
         const g = fromHijriString(String($set[hk]).trim());
         if (g) { $set[base] = g; derived[base] = g; }
       } else if (hasG) {
-        // الميلاديُّ هو المكتوب (أو مُسح): توأمُه يتبعه.
+        // Gregorian was written (or cleared): its twin follows.
         const h = isBlank($set[base]) ? '' : toHijri($set[base]);
         if (h !== undefined && h !== null && (!hasH || hKey($set[hk]) !== hKey(h))) { $set[hk] = h; derived[hk] = h; }
       }
-    } catch (e) { /* يُترك للتحقّق بعده */ }
+    } catch (e) { /* Left for validation to handle */ }
   }
   return derived;
 }

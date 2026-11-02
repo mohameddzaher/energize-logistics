@@ -1,19 +1,9 @@
 'use client';
 /**
- * أوامرُ تشغيل النقل الخفيف.
- *
- * ── العلّة ──────────────────────────────────────────────────────────────────
- * «هذا الموظّفُ يعمل على هذه المركبة» كان يُقال في شيتٍ ويُنسى: تُستبدَل الخانةُ
- * فلا يبقى أثرٌ لمن كان عليها قبله ولا متى نزل. وهو أثرٌ يُطلَب عند مخالفةٍ
- * قديمةٍ أو حادثٍ أو خلافٍ على أجرة.
- *
- * فالإسنادُ صار أمرًا يُسجَّل: من، وعلى ماذا، وفي أيّ مشروعٍ وفرعٍ وتحت أيّ
- * مشرفٍ وفي أيّ سكن. أمرٌ واحدٌ سارٍ لكلّ موظّف، وما قبله يُغلَق ولا يُمحى.
- *
- * ── ونقلُ التفويض يُكتب في قسم المركبات ────────────────────────────────────
- * التفويضُ ورقةٌ واحدةٌ للمركبة، وموضعُها سجلُّ المركبات. فلو كُتب هنا وحدَه صار
- * للمركبة مفوَّضان: واحدٌ يقرأه هذا القسمُ وآخرُ يقرأه قسمُ المركبات — وهو غلطٌ
- * يُكتشف عند المرور لا قبله. فالخيارُ هنا يكتب هناك ويُقيَّد في سجلّ المركبة.
+ * Light-transport operating orders.
+ * Which employee works on which vehicle used to be said in a sheet and forgotten: overwriting the field leaves no trace of who had it before or when he got off, and the trace is asked for on an old fine, accident or fare dispute.
+ * Assignment is now a recorded order: who, on what, in which project and branch, under which supervisor, in which housing. One active order per employee; earlier ones are closed, never erased.
+ * Authorization transfer is written in the vehicles section. An authorization is one paper per vehicle and belongs in the vehicle register; written only here, a vehicle would have two authorized people, one read by this section and one by vehicles, found only at inspection. So the choice here writes there and is logged on the vehicle.
  */
 import { useState, useEffect, useCallback, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
@@ -31,7 +21,7 @@ import {
   getLTOrders, getLTOrderOptions, createLTOrder, endLTOrder, moveLTAuthorization, fmtDate, canEditLT, type LTOrder,
 } from '@/lib/lightTransport';
 
-/** ما يُشتقّ في الخادم من ورقة التفويض الحاضرة — راجع `listOrders`. */
+/** Derived on the server from the current authorization paper; see `listOrders`. */
 type LTOrderRow = LTOrder & { authorizedNowName?: string; authorizedNowId?: string; authorizationMismatch?: boolean };
 
 type Opts = Awaited<ReturnType<typeof getLTOrderOptions>>;
@@ -71,7 +61,7 @@ const GETTERS: Record<string, (o: LTOrderRow) => any> = {
   createdByName: (o) => o.createdByName || '',
 };
 
-/** الكارتُ خارجَ جسم الصفحة — داخلَه يصير مكوِّنًا جديدًا في كلّ رسمة فيُهدَم ويُبنى. */
+/** Card outside the page body: inside, it becomes a new component on every render and is torn down and rebuilt. */
 function Stat({ label, value, accent, onClick, on }: { label: string; value: any; accent?: string; onClick?: () => void; on?: boolean }) {
   return (
     <button type="button" onClick={onClick} disabled={!onClick}
@@ -102,7 +92,7 @@ function OrdersInner() {
   const [f, setF] = useState<Record<string, string>>({ status: '', project: '', city: '', from: '', to: '' });
   const [creating, setCreating] = useState<any | null>(null);
   const [moving, setMoving] = useState<any | null>(null);
-  // الخلافُ مشتقٌّ في الخادم، فيُفلتَر هنا على ما وصل.
+  // The dispute is derived on the server, so it is filtered here on what arrived.
   const [onlyMismatch, setOnlyMismatch] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -110,8 +100,7 @@ function OrdersInner() {
 
   const load = useCallback(async () => {
     try {
-      // الحالةُ لا تُرسَل: كروتُ «سارية / مُغلَقة» تُعَدّ بلا فلترها (تحت)، وذلك
-      // يحتاج الأوامرَ بحالتيها. فتُطبَّق الحالةُ هنا، وضغطُ الكارت لا يطلب شيئًا.
+      // Status is not sent: the active/closed cards are counted without their own filter (below), which needs orders in both states. So status is applied here, and a card click requests nothing.
       const { status: _ownFacet, ...serverF } = f;
       const d = await getLTOrders({ ...serverF, q: dq, employee: sp?.get('employee') || '' });
       setOrders(d.orders || []);
@@ -123,7 +112,7 @@ function OrdersInner() {
   useEffect(() => { load(); }, [load]);
   useSocket('lt:updated', useCallback(() => load(), [load]));
 
-  // الخياراتُ تُطلَب مرّةً عند أوّل فتحٍ للنافذة — لا مع كلّ تحميلٍ للصفحة.
+  // Options are fetched once, the first time the dialog opens, not on every page load.
   const openCreate = async () => {
     const employeeId = sp?.get('employee') || '';
     try {
@@ -140,10 +129,8 @@ function OrdersInner() {
   };
 
   /**
-   * ── نقلُ التفويض وحدَه ───────────────────────────────────────────────────
-   * المركبةُ قد تكون مفوَّضةً لشخصٍ وقائدُها الفعليُّ آخر — أربعةَ عشرَ مركبةً
-   * عندنا كذلك، وهي حالةٌ صحيحةٌ لا خطأ. فتصحيحُ الورقةِ وحدَها فعلٌ مستقلٌّ لا
-   * يستلزم أمرَ تشغيلٍ جديدًا، والكتابةُ تقع في سجلّ المركبات نفسِه.
+   * Authorization transfer alone.
+   * A vehicle may be authorized to one person while another actually drives it (14 vehicles are like that), a valid case, not an error. So correcting the paper alone is a separate act that needs no new operating order, and the write lands in the vehicle register itself.
    */
   const openMove = async (o: LTOrder) => {
     try {
@@ -154,7 +141,7 @@ function OrdersInner() {
       setMoving({
         vehicle: vid, plateNumber: o.vehiclePlate || v?.plateNumber || '',
         currentName: v?.authorizedName || '', currentId: v?.authorizedId || '',
-        // المقترَحُ: القائدُ الفعليُّ لهذا الأمر — وهو الغرضُ الأغلب.
+        // Suggested: the actual driver of this order, the most common intent.
         toEmployee: o.ltEmployee, authorizationNumber: o.authorizationNumber || '',
         startDate: new Date().toISOString().slice(0, 10), expiryDate: fmtDate(o.authorizationEnd), reason: '',
       });
@@ -182,9 +169,8 @@ function OrdersInner() {
   const submit = async (driverTo?: string) => {
     if (!creating?.ltEmployee) { notify(t('اختر الموظف', 'Pick the employee'), 'error'); return; }
     const body = driverTo !== undefined ? { ...creating, currentDriverTo: driverTo } : creating;
-    // ── والمركبةُ لقائدٍ فعليٍّ واحد ──────────────────────────────────────
-    // إن كان على المركبة المختارة قائدٌ غيرُ الموظّف، يُسأل أين يذهب: إلى مركبةٍ
-    // أخرى أم بلا مركبة — قبل الإرسال (والخادمُ يرفض بدون الجواب).
+    // A vehicle has one actual driver.
+    // If the chosen vehicle has a driver other than the employee, ask where he goes (another vehicle or none) before submitting; the server rejects without the answer.
     const veh = opts?.vehicles.find((v) => v._id === creating.vehicle);
     if (veh?.driverId && veh.driverId !== creating.ltEmployee && !body.currentDriverTo) {
       setDriverAsk({ name: veh.driverName || '', plate: veh.plateNumber, to: 'none' });
@@ -207,8 +193,7 @@ function OrdersInner() {
     });
     if (!ok) return;
     const reason = await prompt({ message: t('السبب (اختياري)', 'Reason (optional)') });
-    // ── ويُسأل عن التفويض صريحًا ──────────────────────────────────────────
-    // إنزالُ الراكبِ وإبقاءُ التفويض باسمه يعني مركبةً مسجَّلةً على من لا يقودها.
+    // Ask about the authorization explicitly: removing the rider but keeping the authorization in his name leaves a vehicle registered to someone who does not drive it.
     const release = await confirm({
       message: t('يُرفَع التفويضُ عن المركبة أيضًا؟ (يُكتب في سجلّ المركبات)',
         'Also release the vehicle authorisation? (written in the vehicle registry)'),
@@ -223,12 +208,8 @@ function OrdersInner() {
 
   const cf = useColumnFilters<LTOrderRow>();
   /**
-   * ── الأرقامُ لا تتحرّك تحت مَن يضغطها ───────────────────────────────────
-   * كانت الحالةُ تُفلتَر في الخادم والكروتُ تُعَدّ على ما رجع: يُضغط «سارية ١٥٥»
-   * فتصير «مُغلَقة» صفرًا. فكلُّ مجموعةٍ تُعَدّ بكلّ الفلاتر عدا فلترَها: «سارية /
-   * مُغلَقة» بلا الحالة (ومجموعُهما = الإجمالي بلا الحالة)، و«باسم غير الراكب»
-   * بلا فلترها. والإجماليُّ وما لا يُضغَط بكلّ شيء — هو عددُ صفوف الجدول.
-   * والأعدادُ تتبع فلترَ العمود كما تتبع الكروت.
+   * Numbers do not move under the user's click.
+   * Status used to be filtered on the server and cards counted on what came back, so clicking 'active 155' made 'closed' zero. Now each group is counted with all filters except its own: active/closed without status (their sum equals the total without status), and 'in another name than the rider' without its own filter. The total and the unclickable figures use everything, i.e. the table row count. Counts follow the column filter as they follow the cards.
    */
   const statusOk = (o: LTOrderRow) => !f.status || o.status === f.status;
   const mismatchOk = (o: LTOrderRow) => !onlyMismatch || !!o.authorizationMismatch;
@@ -252,7 +233,7 @@ function OrdersInner() {
   const emp = opts?.employees.find((x) => x._id === creating?.ltEmployee);
   const veh = opts?.vehicles.find((x) => x._id === creating?.vehicle);
   const house = opts?.housing.find((x) => x._id === creating?.housing);
-  // غرفُ السكن المختار، ومَن يصلح لها: غرفةُ المناديب لا يُسكَن فيها إداريّ.
+  // Rooms of the chosen housing and who fits them: a rep room does not house an administrative employee.
   const rooms = (house?.rooms || []).filter((r) => r.kind === 'any' || !emp || r.kind === emp.staffKind);
 
   return (
@@ -272,10 +253,7 @@ function OrdersInner() {
         <Stat label={t('مُغلَقة', 'Ended')} value={totals.ended} accent="text-slate-500"
           onClick={() => setF((p) => ({ ...p, status: p.status === 'ended' ? '' : 'ended' }))} on={f.status === 'ended'} />
         <Stat label={t('نُقل معها التفويض', 'Authorisation moved')} value={totals.authorizationMoved} accent="text-indigo-600" />
-        {/* ── والورقةُ باسم غيرِ الراكب ─────────────────────────────────────
-            ليست خطأً يُصحَّح بلا سؤال: الورقةُ باسم واحدٍ والراكبُ غيرُه واقعٌ
-            يحدث. لكنّها تُعرَض صريحةً، وإلّا لم تُكتشف إلّا عند مخالفةٍ أو حادث،
-            وحينها لا يُعرَف صاحبُها. */}
+        {/* Paper in another name than the rider. Not an error to fix silently: paper in one name and a different rider is a real situation. It is shown explicitly, otherwise it would surface only at a fine or accident, when the owner is unknown. */}
         <Stat label={t('التفويض باسم غير الراكب', 'Authorised to someone else')} value={totals.mismatch}
           accent={totals.mismatch ? 'text-amber-600' : 'text-slate-900'}
           onClick={() => setOnlyMismatch((v) => !v)} on={onlyMismatch} />
@@ -459,9 +437,7 @@ function OrdersInner() {
         </Modal>
         <Modal open onClose={() => setCreating(null)} title={t('إنشاء أمر تشغيل', 'New operating order')}>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {/* ── والموظّفون من هذا القسم وحدَه ──────────────────────────────
-                لا من كلّ الأقسام: قائمةٌ بأربعمئةٍ وخمسين موظّفًا لا يُختار منها،
-                والمطلوبُ من يعمل في النقل الخفيف. وفيها بحثٌ لأنّهم مئةٌ وستّون. */}
+            {/* Employees from this department only. Not all departments: a list of 450 employees is unusable, and only light-transport staff are needed. It has search because there are 160 of them. */}
             <Field label={t('الموظف', 'Employee')}>
               <SearchableSelect
                 value={creating.ltEmployee}
@@ -469,12 +445,12 @@ function OrdersInner() {
                   const e2 = opts.employees.find((x) => x._id === v);
                   setCreating((p: any) => ({
                     ...p, ltEmployee: v,
-                    // قائدٌ فعليٌّ على مركبة؟ فالأمرُ يأخذ مركبتَه معه (ويُغيَّر إن أُريد نقلُه).
+                    // An actual driver on a vehicle means the order takes his vehicle with it (changeable if he is to be moved).
                     vehicle: e2?.vehicle || p.vehicle || '',
                     currentDriverTo: '',
                     projectAr: p.projectAr || e2?.projectAr || '',
                     cityAr: p.cityAr || e2?.cityAr || '',
-                    // مشرفُ الموظّف الحاضرُ هو المقترَح — والأمرُ ينقله إن غُيّر.
+                    // The employee's current supervisor is the suggestion; the order moves it if changed.
                     supervisorUser: p.supervisorUser || e2?.supervisorUser || '',
                   }));
                 }}
@@ -484,7 +460,7 @@ function OrdersInner() {
                 }))}
                 placeholder={t('ابحث بالاسم أو الهوية…', 'search by name or ID…')} />
             </Field>
-            {/* والمركباتُ من سجلّ المركبات — دراجاتٌ ومركباتٌ خاصّةٌ لا شاحنات. */}
+            {/* Vehicles come from the vehicle register: motorcycles and private vehicles, not trucks. */}
             <Field label={t('المركبة', 'Vehicle')}>
               <SearchableSelect
                 value={creating.vehicle}
@@ -501,10 +477,7 @@ function OrdersInner() {
             <Field label={t('الفرع', 'Branch')}>
               <TextInput value={creating.cityAr} onChange={(ev) => setCreating((p: any) => ({ ...p, cityAr: ev.target.value }))} />
             </Field>
-            {/* ── المشرفُ حسابٌ على النظام ─────────────────────────────────
-                كانت القائمةُ أسماءَ إداريّي القسم — مشرفًا كان أو ميكانيكيًّا.
-                والسؤالُ «مَن يقف عليه صباحًا»، وجوابُه حسابٌ يفتح شاشةَ التفقّد.
-                وتركُها فارغةً يعني «كما هو على الموظّف» لا «بلا مشرف». */}
+            {/* Supervisor is a system account. The list used to be the department's administrative staff, supervisor or mechanic alike. The question is who stands over him in the morning, and the answer is an account that opens the duty-check screen. Left empty it means 'as on the employee', not 'no supervisor'. */}
             <Field label={t('المشرف', 'Supervisor')}>
               <Select value={creating.supervisorUser} onChange={(ev: any) => setCreating((p: any) => ({ ...p, supervisorUser: ev.target.value }))}>
                 <option value="">{t('— كما هو على الموظّف —', '— keep the employee’s —')}</option>
@@ -529,7 +502,7 @@ function OrdersInner() {
               </Select>
             </Field>
 
-            {/* ── نقلُ التفويض ────────────────────────────────────────────── */}
+            {/* Authorization transfer. */}
             <div className="md:col-span-2 rounded-xl border border-slate-200 bg-slate-50 p-3 space-y-2.5">
               <label className="flex items-center gap-2 text-sm font-semibold text-slate-800 cursor-pointer">
                 <input type="checkbox" className="accent-[#f37121]" checked={!!creating.moveAuthorization}

@@ -1,6 +1,5 @@
 'use client';
-// لوحة تحليلات إدارة الأسطول — الدخل، تحقيق الأهداف لكل سيارة، ترتيب السواقين
-// والعملاء والمشرفين، الترند الشهري وتوزيع الحمولات — بفلاتر متعددة وتصدير Excel.
+// Fleet analytics dashboard: income, target attainment per vehicle, ranking of drivers, customers and supervisors, monthly trend and load distribution, with multiple filters and Excel export.
 import { useState, useEffect, useMemo, useCallback, useRef, Suspense, Fragment } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -36,7 +35,7 @@ type Analytics = {
   monthlyTrend: { month: string; income: number; trips: number }[];
 };
 
-/** صفُّ حمولةٍ في التفصيل تحت السيّارة — نفس ما تقرؤه صفحةُ الحمولات. */
+/** A load row in the per-vehicle detail; same fields as the loads page. */
 type VehLoad = {
   _id: string; waybillNumber: number; customerName?: string; customer?: string | null;
   fromCity?: string; toCity?: string; driverName?: string; secondDriverName?: string;
@@ -48,7 +47,7 @@ type VehLoads = { loading: boolean; rows: VehLoad[]; totals?: { loads: number; i
 const ORANGE = '#f37121';
 const PALETTE = ['#f37121', '#2563eb', '#10b981', '#8b5cf6', '#f59e0b', '#06b6d4', '#ef4444', '#64748b'];
 const money = (n: number) => (Number(n) || 0).toLocaleString('en-US');
-/** يوم/شهر بأرقامٍ لاتينيّة — الجدولُ يُقارَن رأسيًّا فتلزم محاذاةٌ ثابتة. */
+/** Day/month in Latin digits; the table is compared vertically so alignment must be fixed. */
 const dmy = (v?: string | null) => {
   if (!v) return '—';
   const d = new Date(v);
@@ -58,10 +57,8 @@ const dmy = (v?: string | null) => {
 };
 
 /**
- * حمولاتُ سيّارةٍ واحدة — الجدولُ الذي يُفتَح تحت صفّها.
- *
- * مكوّنٌ على مستوى الملفّ لا داخلَ جسم الرسم: المكوّنُ المعرَّف داخل الرسم
- * يُبنى من جديدٍ عند كلّ حالةٍ تتغيّر، فيُفقَد ما فيه ويُعاد تركيبُه بلا سبب.
+ * Loads of a single vehicle: the table that opens under its row.
+ * A file-level component, not defined inside the render body, because an inline component is rebuilt on every state change and loses its state.
  */
 function VehicleLoads({ state, plate, ar, lang }: { state?: VehLoads; plate: string; ar: boolean; lang: Lang }) {
   if (!state || state.loading) {
@@ -139,7 +136,7 @@ function FleetAnalyticsInner({ active = true }: { active?: boolean }) {
   const [loading, setLoading] = useState(true);
   const [supers, setSupers] = useState<{ _id: string; name: string }[]>([]);
 
-  // ── الفلاتر — كلّها في عنوان الصفحة كي يُشارَك التحليل برابطٍ واحد ──
+  // Filters all live in the page URL so an analysis can be shared by one link
   const multi = (k: string) => (sp?.get(k) ? sp!.get(k)!.split(',').filter(Boolean) : []);
   const [period, setPeriod] = useState<Period>(() => periodFromParams(sp));
   const [customerType, setCustomerType] = useState<string[]>(() => multi('customerType'));
@@ -149,11 +146,9 @@ function FleetAnalyticsInner({ active = true }: { active?: boolean }) {
   const [vehicle] = useState<string[]>(() => multi('vehicle'));
   const [q, setQ] = useState(() => sp?.get('q') || '');
   const [vehSort, setVehSort] = useState<'income' | 'trips' | 'achievedPct'>('income');
-  // «وريني اللي مش محقّقة» — السؤالُ الذي يلي البطاقةَ مباشرةً، وكان بلا جواب.
+  // Show the vehicles that missed target: the question that follows the card, which had no answer.
   const [targetFilter, setTargetFilter] = useState<'all' | 'achieved' | 'below'>('all');
-  // ── والبطاقةُ تأخذُك إلى جوابها ──────────────────────────────────────────
-  // كانت تُصفّي جدولًا في آخر الصفحة ولا تُحرّك الشاشة، فيضغط المستخدمُ فلا
-  // يتغيّر أمامه شيءٌ ويظنّ الزرَّ معطَّلًا — والجوابُ تحته بشاشتين.
+  // The card takes you to its answer. It used to filter a table at the bottom without moving the screen, so users saw nothing change and thought the button was broken; the answer was two screens down.
   const vehTableRef = useRef<HTMLDivElement>(null);
   const pickTarget = (k: 'achieved' | 'below') => {
     setTargetFilter((f) => (f === k ? 'all' : k));
@@ -180,8 +175,7 @@ function FleetAnalyticsInner({ active = true }: { active?: boolean }) {
     setLoading(false);
   }, [query]);
 
-  // لا يُجلَب شيءٌ والتبويبُ مخفيّ: التبويبان يبقيان مركَّبَين كي تُحفظ فلاترُ
-  // كلٍّ منهما، لكنّ المخفيّ لا يُناديـ الخادمَ عند كلّ تغيير.
+  // Nothing is fetched while the tab is hidden: both tabs stay mounted to keep each one's filters, but the hidden one must not call the server on every change.
   useEffect(() => {
     if (!active) return undefined;
     const t = setTimeout(load, 250);
@@ -196,15 +190,13 @@ function FleetAnalyticsInner({ active = true }: { active?: boolean }) {
     })();
   }, []);
   useSocket('fleet:updated', useCallback(() => load(), [load]));
-  // الشاحنةُ من سجلّ المركبات والسائقُ من الموارد البشريّة: يُعاد الجلبُ متى تغيّر أحدُهما.
+  // Trucks come from the vehicle register and drivers from HR: refetch when either changes.
   useSocket('vreg:updated', useCallback(() => load(), [load]));
-  // هدفُ الشاحنة وحالةُ السائق تُعلَن بهذين.
+  // Truck target and driver status are announced by these two events.
   useSocket('fleet:vehicles', useCallback(() => load(), [load]));
   useSocket('fleet:drivers', useCallback(() => load(), [load]));
   useSocket('hr:employee', useCallback(() => load(), [load]));
-  // الرابطُ يُكتب ولا يُنتقَل إليه: `router.replace` تنقّلٌ كامل يعيد تركيب
-  // الشجرة مع كلّ ضغطةِ فلتر — بطيءٌ وحدَه، وحلقةٌ لا تنتهي حين تصير الشاشةُ
-  // تبويبًا. و`history.replaceState` تكتب الرابطَ ولا تفعل شيئًا سواه.
+  // The URL is written, not navigated to: router.replace is a full navigation that remounts the tree on every filter click, which is slow and loops forever once the screen is a tab. history.replaceState only writes the URL.
   useEffect(() => {
     if (!active) return;
     const q = new URLSearchParams(query);
@@ -215,17 +207,8 @@ function FleetAnalyticsInner({ active = true }: { active?: boolean }) {
   const reset = () => { setPeriod(EMPTY_PERIOD); setCustomerType([]); setTrailerType([]); setStatus([]); setSupervisor([]); setQ(''); };
 
   /**
-   * ── وتحت كلِّ سيّارةٍ حمولاتُها ────────────────────────────────────────────
-   *
-   * الجدولُ يقول «هذه السيّارة حملت إحدى عشرة حمولةً بستّةٍ وثلاثين ألفًا»،
-   * والسؤالُ الذي يليه دائمًا: **أيُّ إحدى عشرة؟** وكان الجوابُ في شاشةٍ أخرى
-   * بفلترٍ يُعاد بناؤه باليد — فمن بحث بلوحةٍ هنا رأى رقمًا مجمَّعًا ولم يرَ
-   * بوليصةً واحدة.
-   *
-   * فصار الصفُّ يُفتَح على حمولاته: البوليصةُ والعميلُ ومن أين إلى أين والسعر
-   * والمصروف والحالة — نفسُ أعمدة صفحة الحمولات، بنفس فلتر هذه الشاشة (الفترةُ
-   * والحالةُ والمشرفُ والبحث)، من نفس نداء «تحليل الحمولات». فلا رقمَ على
-   * الشاشة إلّا وله تفصيلُه تحته.
+   * Loads under each vehicle. The table says a vehicle carried eleven loads worth a given amount, and the next question is which eleven; the answer used to be on another screen with a hand-built filter, so a plate search showed an aggregate and not a single waybill.
+   * The row now opens onto its loads: waybill, customer, route, price, expense and status, the same columns as the loads page, with this screen's filter (period, status, supervisor, search) and from the same loads-analysis call. Every number on screen has its detail below it.
    */
   const [openVeh, setOpenVeh] = useState<string>('');
   const [vehLoads, setVehLoads] = useState<Record<string, VehLoads>>({});
@@ -234,7 +217,7 @@ function FleetAnalyticsInner({ active = true }: { active?: boolean }) {
     setVehLoads((m) => ({ ...m, [id]: { loading: true, rows: m[id]?.rows || [] } }));
     try {
       const p = new URLSearchParams(query);
-      p.set('vehicle', id);          // يغلب أيَّ فلترِ سيّارةٍ قائم: المقصودُ هذا الصفّ
+      p.set('vehicle', id);          // Overrides any existing vehicle filter: this row is the target
       p.set('limit', '500');
       const d = await api.get<{ shipments: VehLoad[]; totals: VehLoads['totals']; truncated: boolean }>(`/api/fleet/loads-analysis?${p}`);
       setVehLoads((m) => ({ ...m, [id]: { loading: false, rows: d.shipments || [], totals: d.totals, truncated: !!d.truncated } }));
@@ -249,8 +232,7 @@ function FleetAnalyticsInner({ active = true }: { active?: boolean }) {
     fetchVehLoads(id);
   };
 
-  // الفلترُ يتغيّر → التفصيلُ المفتوح يُعاد جلبُه ويُنسى المحفوظُ لغيره: رقمٌ
-  // من فترةٍ وتفصيلٌ من أخرى أسوأُ من لا تفصيل.
+  // When the filter changes, the open detail is refetched and cached details for other filters are dropped: a number from one period beside a detail from another is worse than no detail.
   useEffect(() => {
     setVehLoads({});
     if (openVeh) fetchVehLoads(openVeh);
@@ -270,9 +252,7 @@ function FleetAnalyticsInner({ active = true }: { active?: boolean }) {
     });
   }, [data, vehSort, targetFilter]);
 
-  // ── ومن بحث بلوحةٍ واحدة لا يُطلَب منه ضغطُ صفٍّ واحد ───────────────────
-  // البحثُ يضيّق الجدولَ إلى سيّارةٍ واحدة، فالمقصودُ ظاهر: حمولاتُها. تُفتح
-  // من نفسها — وهذا هو «أعمل سيرش بسيّارة يظهرلي تحت الحمولات كلّها».
+  // A search for a single plate needs no row click. Search narrows the table to one vehicle, so the intent is clear: its loads open on their own.
   useEffect(() => {
     if (!q.trim()) return;
     const withLoads = sortedVehicles.filter((v) => v.trips > 0);
@@ -326,7 +306,7 @@ function FleetAnalyticsInner({ active = true }: { active?: boolean }) {
           ]} />
       </PageHeader>
 
-      {/* ── شريط الفلاتر ── */}
+      {/* Filter bar */}
       <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-3 shadow-sm">
         <PeriodFilter value={period} onChange={setPeriod} lang={ar ? 'ar' : 'en'} />
         <div className="flex flex-wrap items-end gap-3">
@@ -360,8 +340,7 @@ function FleetAnalyticsInner({ active = true }: { active?: boolean }) {
         )}
       </div>
 
-      {/* شريط الفترة: الرقم الذي على الشاشة يخصّ هذا المدى وحده. غيابه هو ما
-          جعل بحثًا عن سيارةٍ خارج الشهر الحالي يبدو «كل حاجة صفر» بلا تفسير. */}
+      {/* Period bar: the on-screen figure belongs to this range only. Without it, searching a vehicle outside the current month looked like 'everything is zero' with no explanation. */}
       <PeriodBanner period={data?.period} lang={ar ? 'ar' : 'en'} count={data?.totals.tripCount} />
 
       {data && (
@@ -371,9 +350,7 @@ function FleetAnalyticsInner({ active = true }: { active?: boolean }) {
             <StatCard label={ar ? 'حصة قسم الفروع' : 'Branches’ share'} value={money(data.totals.branchShare)} accent="text-amber-600" />
             <StatCard label={ar ? 'عدد الرحلات' : 'Trips'} value={data.totals.tripCount} accent="text-[#f37121]" />
             <StatCard label={ar ? 'متوسط دخل الرحلة' : 'Avg / trip'} value={money(data.totals.avgTripIncome)} />
-            {/* ── البطاقةُ سؤالٌ، فلتكن جوابًا ────────────────────────────────
-                «سبعُ سيّاراتٍ دون الهدف» رقمٌ يليه سؤالٌ واحد: أيُّها؟ وكانت
-                البطاقةُ تقف عند الرقم. صارت تُضغط فيُصفَّى الجدولُ عليها. */}
+            {/* A card is a question, so make it an answer. 'Seven vehicles under target' is followed by 'which ones?'. The card used to stop at the number; now clicking it filters the table. */}
             <button type="button" onClick={() => pickTarget('achieved')}
               className={`text-start rounded-xl transition-shadow ${targetFilter === 'achieved' ? 'ring-2 ring-emerald-500' : 'hover:shadow-md'}`}>
               <StatCard label={ar ? 'سيارات محقّقة الهدف' : 'On target'} value={`${data.totals.vehiclesAchieved} / ${data.totals.vehicleCount}`} accent="text-emerald-600" />
@@ -385,7 +362,7 @@ function FleetAnalyticsInner({ active = true }: { active?: boolean }) {
             <StatCard label={ar ? 'مصروف السائقين' : 'Driver expense'} value={money(data.totals.totalDriverExpense || 0)} accent="text-amber-600" />
           </div>
 
-          {/* روابط الشاشات الشقيقة — التحليل يبدأ هنا وينتهي عند تفصيلةٍ هناك. */}
+          {/* Links to sibling screens: analysis starts here and ends at a detail there. */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Link href="/system/fleet/arrivals" className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm hover:border-[#f37121] transition-colors">
               <span className="p-2 rounded-xl bg-[#f37121]/10 text-[#f37121]"><CalendarClock className="w-5 h-5" /></span>
@@ -473,8 +450,7 @@ function FleetAnalyticsInner({ active = true }: { active?: boolean }) {
                 <p className="font-bold text-slate-900" >
                   <span ref={vehTableRef as any} className="block h-0 -mt-20 pt-20" aria-hidden="true" />
                   {ar ? 'أداء السيارات مقابل الهدف' : 'Vehicles vs target'}
-                  {/* من ضغط بطاقةَ «دون الهدف» يجب أن يرى أنّ الجدولَ اقتصر
-                      عليها، وإلّا قرأ جزءًا وحسبه الكلّ. */}
+                  {/* After clicking the under-target card, the user must see the table is restricted to it, or they read a part as the whole. */}
                   {targetFilter !== 'all' && (
                     <span className={`ms-2 text-xs font-semibold ${targetFilter === 'below' ? 'text-red-600' : 'text-emerald-600'}`}>
                       · {targetFilter === 'below' ? (ar ? 'دون الهدف' : 'below target') : (ar ? 'محقّقة الهدف' : 'on target')} ({sortedVehicles.length})
@@ -484,7 +460,7 @@ function FleetAnalyticsInner({ active = true }: { active?: boolean }) {
                     </span>
                   )}
                 </p>
-                {/* المقياسُ يُقال مع الرقم: بغيره يُقرأ الرقمُ على غير وجهه. */}
+                {/* State the metric with the number; without it the figure is misread. */}
                 <p className="text-[11.5px] text-slate-500 mt-0.5">
                   {ar ? 'اضغط صفَّ سيّارةٍ لترى حمولاتها كلَّها بأمر النقل والعميل ومن/إلى والسعر.' : 'Click a row to see that truck’s loads — waybill, customer, route and price.'}
                 </p>
@@ -519,11 +495,7 @@ function FleetAnalyticsInner({ active = true }: { active?: boolean }) {
                     <Fragment key={v._id}>
                     <tr className={`cursor-pointer ${openVeh === v._id ? 'bg-orange-50' : v.achieved === false ? 'bg-red-50/40 hover:bg-red-50/70' : 'hover:bg-slate-50'}`}
                       onClick={() => toggleVeh(v._id)}>
-                      {/* ── والحالةُ تُقرأ بالنظر ────────────────────────────
-                          كانت تُستنتَج من لون نسبةِ التحقيق في آخر عمود: من
-                          يريد «أيُّ السيّارات دون الهدف؟» يمسح الجدولَ عمودًا
-                          بعمود ويقارن ألوانًا. فصارت كلمةً في أوّل الصفّ،
-                          والصفُّ المقصّر مظلَّلٌ كلُّه. */}
+                      {/* Status read at a glance. It used to be inferred from the attainment color in the last column, so finding the under-target vehicles meant scanning column by column and comparing colors. Now it is a word at the row start and an under-target row is fully shaded. */}
                       <td className="px-3 py-2 whitespace-nowrap">
                         {v.achieved == null ? (
                           <span className="text-slate-300 text-xs">{ar ? 'بلا هدف' : 'no target'}</span>
@@ -539,7 +511,7 @@ function FleetAnalyticsInner({ active = true }: { active?: boolean }) {
                       </td>
                       <td className="px-3 py-2 font-mono font-semibold">
                         <span className="inline-flex items-center gap-1.5">
-                          {/* السهمُ يقول إنّ للصفّ تفصيلًا — والصفُّ كلُّه يفتحه. */}
+                          {/* The arrow says the row has a detail; the whole row opens it. */}
                           <span className="text-slate-400">
                             {openVeh === v._id ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5 rtl:rotate-180" />}
                           </span>
@@ -551,7 +523,7 @@ function FleetAnalyticsInner({ active = true }: { active?: boolean }) {
                       <td className="px-3 py-2 text-slate-600">{v.trailerType || '—'}</td>
                       <td className="px-3 py-2 text-slate-600">{v.supervisorName || '—'}</td>
                       <td className="px-3 py-2 tabular-nums">{v.trips}</td>
-                      {/* «شغّالة من إمتى لإمتى» — أوّلُ حمولةٍ وآخرُها في الفترة. */}
+                      {/* Active from when to when: first and last load in the period. */}
                       <td className="px-3 py-2 text-slate-600 whitespace-nowrap text-xs tabular-nums">
                         {v.firstLoadAt ? `${dmy(v.firstLoadAt)} → ${dmy(v.lastLoadAt || v.firstLoadAt)}` : <span className="text-slate-400">{ar ? 'لم تعمل' : 'idle'}</span>}
                       </td>
@@ -651,30 +623,22 @@ function FleetAnalyticsInner({ active = true }: { active?: boolean }) {
 }
 
 /**
- * صفحةُ تحليلات الأسطول — تبويبان لا صفحتان.
- *
- * كانتا شاشتين منفصلتين تجيبان سؤالين متجاورين: «كم دخلَ الأسطول ومن حقّق
- * هدفه؟» و«ماذا حملت كلُّ سيّارة وكم يُصرف لسائقها؟». والفصلُ بينهما جعل
- * المستخدمَ يقف أمام اسمين متشابهين لا يدري أيَّهما يفتح، ويقفز بينهما
- * ليقارن رقمًا برقم.
- *
- * فصارتا تبويبين تحت فلترِ فترةٍ واحد، والتبويبُ في الرابط فيُرسَل ويُحفظ.
+ * Fleet analytics page: two tabs, not two pages.
+ * They were separate screens answering adjacent questions (how much did the fleet earn and who met target; what did each vehicle carry and what is paid to its driver). Two similar names forced users to guess and jump between them to compare numbers. They are now tabs under one period filter, and the tab lives in the URL so it is shared and kept.
  */
 function FleetAnalyticsTabs() {
   const sp = useSearchParams();
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
   const [tab, setTab] = useState<'overview' | 'loads'>(sp?.get('tab') === 'loads' ? 'loads' : 'overview');
-  // التبويبُ الثاني لا يُركَّب قبل أن يُطلَب: نداؤه يمسح آلافَ الحمولات، وتحميلُه
-  // مع فتح الصفحة يُبطئ ما لم يُطلَب بعد. ومتى رُكِّب بقي مركَّبًا.
+  // The second tab is not mounted until requested: its call scans thousands of loads and loading it on open slows what was not asked for. Once mounted it stays mounted.
   const [mountedLoads, setMountedLoads] = useState(sp?.get('tab') === 'loads');
 
   const pick = (t: 'overview' | 'loads') => {
     if (t === tab) return;
     if (t === 'loads') setMountedLoads(true);
     setTab(t);
-    // الرابطُ يُكتب فقط. أمّا `router.replace` فتنقّلٌ كامل، وكانت هي التي
-    // أوقعت الصفحةَ في حلقةٍ لا تنتهي حين صارت الشاشتان تبويبين.
+    // The URL is only written. router.replace is a full navigation and put the page in an infinite loop when the two screens became tabs.
     const q = new URLSearchParams(Array.from(sp?.entries() || []));
     q.set('tab', t);
     syncUrl('/system/fleet/dashboard', q);
@@ -687,11 +651,7 @@ function FleetAnalyticsTabs() {
 
   return (
     <div className="space-y-5" dir={isRTL ? 'rtl' : 'ltr'}>
-      {/* ── التبويبان ────────────────────────────────────────────────────────
-          زرّان متجاوران يفصل بينهما شريطٌ برتقاليٌّ تحت المختار — لا حدودَ
-          مزدوجةٌ ولا ظلال. ولكلٍّ سطرُ وصفٍ تحته: الاسمان متقاربان («تحليلات»
-          و«حمولات») ومن غير وصفٍ يبقى الاختيارُ تخمينًا كما كان حين كانتا
-          صفحتين. ويختفي الوصفُ على الجوّال حيث لا يتّسع. */}
+      {/* Tabs: two adjacent buttons with an orange bar under the selected one, no double borders or shadows. Each has a description line because the names are close; without it the choice is a guess, as when they were two pages. The description is hidden on mobile where it does not fit. */}
       <div className="bg-white border border-slate-200 rounded-xl p-1.5 shadow-sm inline-flex flex-wrap gap-1 w-full sm:w-auto">
         {TABS.map((tb) => {
           const on = tab === tb.key;
@@ -713,8 +673,7 @@ function FleetAnalyticsTabs() {
         })}
       </div>
 
-      {/* كلا التبويبين يبقى مركَّبًا لكنّ غيرَ المعروض يُخفى: العودةُ إليه لا
-          تُعيد الجلبَ من الخادم، والفلاترُ التي ضُبطت فيه تبقى كما تُركت. */}
+      {/* Both tabs stay mounted but the non-displayed one is hidden: returning to it does not refetch, and its filters are kept. */}
       <div className={tab === 'overview' ? '' : 'hidden'}><FleetAnalyticsInner active={tab === 'overview'} /></div>
       {mountedLoads && <div className={tab === 'loads' ? '' : 'hidden'}><LoadsAnalysis active={tab === 'loads'} /></div>}
     </div>

@@ -1,24 +1,10 @@
-/// التقويمُ الهجريُّ (أمُّ القرى) على الجوّال — نظيرُ `frontend/src/lib/hijri.ts`
-/// و`backend/src/utils/hijri.js`.
-///
-/// ── ولماذا جدولٌ لا حساب ───────────────────────────────────────────────────
-/// الويبُ والخادمُ يقرآن التقويمَ من `Intl` (`islamic-umalqura`)، ودارت لا تملك
-/// نظيرًا له. وكتابةُ خوارزميّةٍ ثانيةٍ هنا بابُ اختلافٍ مؤكَّد: يومٌ واحدٌ بين
-/// ما يراه الموظّفُ في الجوّال وما يراه في الموقع.
-///
-/// فهذا الجدولُ **مولَّدٌ من `Intl` نفسِها** — أطوالُ الأشهر (٢٩ أو ٣٠) من
-/// ١ محرّم 1318ﻫ إلى آخر 1500ﻫ (١٩٠٠م–٢٠٧٧م) كما يُعطيها الخادم. فالتحويلُ
-/// هنا قراءةٌ من المصدر ذاتِه لا حسابٌ يُقاربه، وقد طوبق يومًا بيوم على المدى
-/// كلِّه. وما خرج عن المدى يُعاد فارغًا ولا يُخمَّن.
-///
-/// والهجريُّ عرضٌ للميلاديّ لا حقلٌ ثانٍ: لا يُخزَّن ولا يُرسَل — المحفوظُ
-/// ميلاديٌّ وحدَه كما في الويب.
+/// Hijri (Umm al-Qura) calendar on mobile, twin of frontend/src/lib/hijri.ts and backend/src/utils/hijri.js. Table instead of computation: web and server read the calendar from Intl (islamic-umalqura) which Dart lacks, and a second algorithm would cause one-day mismatches. The table is generated from Intl: month lengths (29 or 30) from 1 Muharram 1318 to the end of 1500 AH (1900 to 2077 CE), verified day by day. Dates outside the range return empty, never guessed. Hijri is a view of the Gregorian date, not a stored field; only the Gregorian value is saved, as on the web.
 library;
 
 const int _y0 = 1318;
-// رقمُ اليوم (منذ 1970-01-01) لـ ١ محرّم 1318ﻫ.
+// Day number (since 1970-01-01) of 1 Muharram 1318 AH.
 const int _firstDay = -25448;
-// طولُ كلِّ شهرٍ على التوالي: '1' = ثلاثون يومًا، '0' = تسعةٌ وعشرون.
+// Month lengths in sequence: '1' = thirty days, '0' = twenty-nine.
 const String _bits =
     '101101101010010110101101010010101110101001001111010100010111011010001011011010100101101011010101'
     '001011010110100101011011010010011101101001001101110100100110110110010101010110101100100110110110'
@@ -49,7 +35,7 @@ const List<String> hijriMonthsAr = ['محرّم', 'صفر', 'ربيع الأول
 const List<String> hijriMonthsEn = ['Muharram', 'Safar', 'Rabi I', 'Rabi II', 'Jumada I', 'Jumada II',
   'Rajab', 'Shaban', 'Ramadan', 'Shawwal', 'Dhu al-Qadah', 'Dhu al-Hijjah'];
 
-// بداياتُ الأشهر تُبنى مرّةً عند أوّل استعمال.
+// Month start days are built once on first use.
 List<int>? _starts;
 List<int> _monthStarts() {
   final cached = _starts;
@@ -63,15 +49,11 @@ List<int> _monthStarts() {
 
 String _p2(int n) => n.toString().padLeft(2, '0');
 
-/// اليومُ الميلاديُّ «yyyy-mm-dd» كما يُعرَض — يومُ الشركة (الرياض، +03:00).
-///
-/// النصُّ «yyyy-mm-dd» يومٌ بلا ساعة فيُؤخَذ كما هو؛ واللحظةُ الكاملةُ تُقرأ
-/// بتوقيت الرياض لا بتوقيت الجهاز ولا بغرينتش — وإلّا اختلف اليومُ عمّا في
-/// الموقع لكلّ تاريخٍ حُفظ بعد التاسعة مساءً بغرينتش.
+/// Gregorian day "yyyy-mm-dd" as displayed, using the company day (Riyadh, +03:00). A date-only string is taken as is; a full timestamp is read in Riyadh time, not device or UTC time, so the day matches the web.
 String gregDay(dynamic v) {
   if (v == null) return '';
   if (v is DateTime) {
-    // تاريخٌ اختاره المستخدمُ من المنتقي: يومُه كما اختاره.
+    // A date picked by the user keeps the day as picked.
     if (!v.isUtc) return '${v.year}-${_p2(v.month)}-${_p2(v.day)}';
     final r = v.add(const Duration(hours: 3));
     return '${r.year}-${_p2(r.month)}-${_p2(r.day)}';
@@ -86,18 +68,17 @@ String gregDay(dynamic v) {
   return '${r.year}-${_p2(r.month)}-${_p2(r.day)}';
 }
 
-/// (سنة، شهر، يوم) هجريّة — أو null لما ليس تاريخًا أو خرج عن مدى الجدول.
+/// Hijri (year, month, day), or null for a non-date or a date outside the table range.
 (int, int, int)? hijriParts(dynamic v) {
   final g = gregDay(v);
-  // تاريخٌ مكسور (سنةٌ بخمسة أرقام، نصٌّ لا تاريخ) يُعامَل «بلا تاريخ» — كان int.parse
-  // يرمي فتسقط الشاشةُ كلُّها (لوحة الموارد والماستر والانتهاءات).
+  // A malformed date (five-digit year, non-date text) is treated as no date; int.parse used to throw and crash the whole screen.
   final m = RegExp(r'^(\d{4})-(\d{2})-(\d{2})$').firstMatch(g);
   if (m == null) return null;
   final day = DateTime.utc(int.parse(m.group(1)!), int.parse(m.group(2)!), int.parse(m.group(3)!))
       .millisecondsSinceEpoch ~/ 86400000;
   final st = _monthStarts();
   if (day < st.first || day >= st.last) return null;
-  // بحثٌ ثنائيٌّ عن آخر شهرٍ يبدأ في هذا اليوم أو قبله.
+  // Binary search for the last month starting on or before this day.
   var lo = 0, hi = st.length - 2;
   while (lo < hi) {
     final mid = (lo + hi + 1) ~/ 2;
@@ -106,20 +87,19 @@ String gregDay(dynamic v) {
   return (_y0 + lo ~/ 12, lo % 12 + 1, day - st[lo] + 1);
 }
 
-/// هجريُّ التاريخ «yyyy-mm-dd» — أو '' إن لم يُقرأ.
+/// Hijri date of "yyyy-mm-dd", or '' if unreadable.
 String hijriDay(dynamic v) {
   final h = hijriParts(v);
   return h == null ? '' : '${h.$1}-${_p2(h.$2)}-${_p2(h.$3)}';
 }
 
-/// «1 جمادى الأولى 1448».
+/// Hijri date with month name, e.g. 1 Jumada al-Awwal 1448.
 String hijriLong(dynamic v, {bool ar = true}) {
   final h = hijriParts(v);
   return h == null ? '' : '${h.$3} ${(ar ? hijriMonthsAr : hijriMonthsEn)[h.$2 - 1]} ${h.$1}';
 }
 
-/// التقويمان في سطرٍ واحد، الميلاديُّ أوّلًا: «2026-10-12 · 1448-05-01 هـ».
-/// وما ليس تاريخًا يُعاد `empty`.
+/// Both calendars on one line, Gregorian first, e.g. "2026-10-12 · 1448-05-01 AH"; a non-date returns `empty`.
 String bothDates(dynamic v, {bool ar = true, String empty = '—'}) {
   final g = gregDay(v);
   if (g.isEmpty) return empty;
@@ -127,7 +107,7 @@ String bothDates(dynamic v, {bool ar = true, String empty = '—'}) {
   return h.isEmpty ? g : '$g · $h ${ar ? 'هـ' : 'AH'}';
 }
 
-/// سطرُ «الموافق» تحت تاريخٍ اختير من المنتقي: «الموافق 1 جمادى الأولى 1448 هـ».
+/// "Corresponding to" line under a picker date, e.g. corresponding to 1 Jumada al-Awwal 1448 AH.
 String hijriHint(dynamic v, {bool ar = true}) {
   final h = hijriLong(v, ar: ar);
   if (h.isEmpty) return '';

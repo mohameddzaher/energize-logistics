@@ -12,9 +12,7 @@ import 'ls2_vehicle_assets.dart';
 import 'jp.dart' show JpTaskPanel;
 import '../ui/ht_custody_panel.dart';
 
-/// تفاصيل المركبة (لوكيشن سوليوشن) — خمس تبويبات كما في الويب:
-/// نظرة عامة (حساسات حية + إطارات)، الصيانة (فواصل + تسجيل خدمة + مؤجلات)،
-/// الرحلات، المسافة والوقود، والتنبيهات.
+/// Vehicle details (Location Solutions), five tabs as on the web: overview (live sensors + tires), maintenance (intervals + service log + deferred items), trips, distance and fuel, and alerts.
 class Ls2VehicleDetailScreen extends StatefulWidget {
   final String vehicleId;
   final String plate;
@@ -39,8 +37,7 @@ List<Map<String, dynamic>> _l(dynamic v) =>
 
 Map<String, dynamic> _m(dynamic v) => v is Map ? Map<String, dynamic>.from(v) : {};
 
-/// شريحة حساس: تعرض القيمة، وإن غابت (السينسور لا يرسل / لا تصل من لوكيشن
-/// سوليوشن) تُبرز كتحذير أحمر بدل «—» صامتة.
+/// Sensor chip: shows the value; when missing (the sensor does not send or nothing arrives from Location Solutions) it is highlighted as a red warning instead of a silent dash.
 Widget _sensor(String label, dynamic value, String unit, IconData icon, Color okColor, {int digits = 0}) {
   final n = _numOrNull(value);
   if (n == null) {
@@ -74,7 +71,7 @@ class _Ls2VehicleDetailScreenState extends State<Ls2VehicleDetailScreen> {
     _load();
     _onLive = () => _load();
     Live.instance.on('ls2:updated', _onLive);
-    // الهويّةُ والمستنداتُ من سجلّ المركبات — تعديلٌ هناك يظهر هنا في الحال.
+    // Identity and documents come from the vehicle registry; edits there show here immediately.
     Live.instance.on('vreg:updated', _onLive);
   }
 
@@ -155,14 +152,14 @@ class _Ls2VehicleDetailScreenState extends State<Ls2VehicleDetailScreen> {
   }
 }
 
-// ── نظرة عامة ────────────────────────────────────────────────────────────────
+// Overview
 class _OverviewTab extends StatelessWidget {
   final String vehicleId;
   final Map<String, dynamic> vehicle;
   final Future<void> Function() onRefresh;
   const _OverviewTab({required this.vehicleId, required this.vehicle, required this.onRefresh});
 
-  // تعديل ماركة/نوع الكاوتش يدويًا (PATCH /meta) — يسمع فورًا عبر ls2:updated.
+  // Manual edit of tire brand/type (PATCH /meta); picked up live via ls2:updated.
   Future<void> _editTireBrand(BuildContext context) async {
     final ctrl = TextEditingController(text: (vehicle['tireBrand'] ?? '').toString());
     final ok = await showDialog<bool>(
@@ -211,11 +208,7 @@ class _OverviewTab extends StatelessWidget {
                 Expanded(child: Text('${v['plate'] ?? ''} · ${v['driver'] ?? tr('بلا سائق', 'No driver')}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15))),
                 Chip2(tr(statusMeta.$1, statusMeta.$2), statusMeta.$3),
               ]),
-              // ── وأين هي الآن؟ ─────────────────────────────────────────────
-              // «متحركة» حالةُ المحرّك، وهذا موضعُها من **عمل الشركة**: في
-              // الطريق إلى جدة، أو فرّغت ووصلت الرياض — من حمولات إدارة
-              // الأسطول الحيّة (راجع utils/fleetWhereabouts). ومن يقرأ أنّ
-              // صيانتَها تأخّرت يحتاج هذا السطرَ قبل أن يحدّد موعدًا.
+              // Where is it now. "Moving" is the engine state; this is its position within company work (on the way to Jeddah, or unloaded and arrived in Riyadh) from live fleet-management loads (see utils/fleetWhereabouts). Needed before scheduling its overdue maintenance.
               if (_m(v['whereabouts']).isNotEmpty) ...[
                 const SizedBox(height: 8),
                 Builder(builder: (_) {
@@ -253,14 +246,14 @@ class _OverviewTab extends StatelessWidget {
                 _sensor(tr('الوزن', 'Weight'), v['weightKg'], ' ${tr('كجم', 'kg')}', Icons.scale_outlined, T.info),
                 _sensor(tr('ساعات المحرك', 'Engine hrs'), v['engineHours'], '', Icons.timelapse_outlined, T.inkFaint, digits: 1),
                 Chip2('${tr('آخر إشارة', 'Last seen')}: ${_dt(v['lastMessageAt'])}', status == 'offline' ? T.danger : T.inkFaint, icon: Icons.schedule_outlined),
-                // تغطية حسّاسات الكاوتش — محسوبةً في الخادم كما في شاشتَي الأسطول.
+                // Tire sensor coverage, computed server-side as in the two fleet screens.
                 if (v['tireSensors'] is Map)
                   TireSensorBadge(cov: _m(v['tireSensors']), plate: (v['plate'] ?? '').toString()),
               ]),
             ]),
           ),
         ),
-        // تحذير عام: المركبة غير متصلة → كل البيانات قد تكون قديمة.
+        // General warning: vehicle offline, so all data may be stale.
         if (status == 'offline')
           Padding(
             padding: const EdgeInsets.only(top: 10),
@@ -287,7 +280,7 @@ class _OverviewTab extends StatelessWidget {
                 Wrap(spacing: 8, runSpacing: 8, children: tires.map((t) {
                   final temp = _numOrNull(t['tempC']);
                   final press = _numOrNull(t['pressurePsi']);
-                  final noData = temp == null && press == null; // الحساس لا يرسل
+                  final noData = temp == null && press == null; // Sensor is not sending
                   final hot = temp != null && temp >= 75;
                   final fault = t['fault'] == true;
                   final color = (fault || noData) ? T.danger : hot ? T.orange : T.success;
@@ -314,7 +307,7 @@ class _OverviewTab extends StatelessWidget {
             ),
           ),
         ] else ...[
-          // لا توجد أي بيانات كاوتشات من لوكيشن سوليوشن — تحذير صريح.
+          // No tire data at all from Location Solutions: explicit warning.
           const SizedBox(height: 12),
           FadeSlideIn(
             delayMs: 40,
@@ -356,7 +349,7 @@ class _OverviewTab extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 12),
-        // ── الهويّةُ من سجلّ المركبات، والجهازُ «حسب الجهاز» ─────────────────
+        // Identity from the vehicle registry; the device values are shown as "per device"
         FadeSlideIn(delayMs: 100, child: _RegistryCard(registry: _m(v['registry']), conflicts: _m(v['conflicts']), profile: profile)),
         const SizedBox(height: 12),
         FadeSlideIn(
@@ -397,7 +390,7 @@ class _OverviewTab extends StatelessWidget {
           const SizedBox(height: 12),
           JpTaskPanel(section: 'ls2', kind: 'truck', refId: '${v['_id']}'),
         ],
-        // عهدةُ النقل الثقيل المنسوبةُ إلى هذه الشاحنة — حيّةً مع الدفتر.
+        // Heavy-transport custody attributed to this truck, live with the ledger.
         if ('${v['unitId'] ?? ''}'.isNotEmpty) ...[
           const SizedBox(height: 12),
           HtCustodyPanel(vehicleUnitId: '${v['unitId']}'),
@@ -408,9 +401,7 @@ class _OverviewTab extends StatelessWidget {
   }
 }
 
-/// هويّةُ الشاحنة من سجلّ المركبات (VehicleMaster) — مثلُ RegistryIdentityCard
-/// في الموقع: اللوحةُ والماركةُ والطرازُ والسنةُ والشاسيه والقطاعُ والمستندات،
-/// وسنةُ الجهاز وشاسيهه تحتهما «حسب الجهاز» وعلَمٌ حيث يختلفان.
+/// Truck identity from the vehicle registry (VehicleMaster), like RegistryIdentityCard on the web: plate, make, model, year, chassis, sector and documents. The device year and chassis appear below as "per device", with a flag where they differ.
 class _RegistryCard extends StatelessWidget {
   final Map<String, dynamic> registry;
   final Map<String, dynamic> conflicts;
@@ -493,7 +484,7 @@ class _RegistryCard extends StatelessWidget {
   }
 }
 
-// ── الصيانة ─────────────────────────────────────────────────────────────────
+// Maintenance
 class _MaintenanceTab extends StatefulWidget {
   final String vehicleId;
   final String plate;
@@ -520,7 +511,7 @@ class _MaintenanceTabState extends State<_MaintenanceTab> {
     }
   }
 
-  // تسجيل خدمة — يتبع الفاصل المختار، وقائمة الفحص من قوالب الإعدادات.
+  // Log a service: follows the selected interval; the checklist comes from the settings templates.
   Future<void> _registerService(Map<String, dynamic> interval) async {
     final vehicle = _m(_d?['vehicle']);
     final checklists = _m(_d?['checklists']);
@@ -790,7 +781,7 @@ class _MaintenanceTabState extends State<_MaintenanceTab> {
   }
 }
 
-// ── الرحلات ─────────────────────────────────────────────────────────────────
+// Trips
 class _TripsTab extends StatefulWidget {
   final String vehicleId;
   const _TripsTab({required this.vehicleId});
@@ -905,7 +896,7 @@ class _TripsTabState extends State<_TripsTab> {
   }
 }
 
-// ── المسافة والوقود ─────────────────────────────────────────────────────────
+// Distance and fuel
 class _DistanceFuelTab extends StatefulWidget {
   final String vehicleId;
   const _DistanceFuelTab({required this.vehicleId});
@@ -1026,7 +1017,7 @@ class _DistanceFuelTabState extends State<_DistanceFuelTab> {
   }
 }
 
-// ── التنبيهات ───────────────────────────────────────────────────────────────
+// Alerts
 class _AlertsTab extends StatelessWidget {
   final List<Map<String, dynamic>> alerts;
   final Future<void> Function() onRefresh;

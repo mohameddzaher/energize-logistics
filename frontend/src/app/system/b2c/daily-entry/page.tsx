@@ -1,14 +1,8 @@
 'use client';
 /**
- * مدخلات الأوردرات — للإدخال وحدَه (صاحبُ الشركة، ٢٠٢٦/١٠/١٩).
- *
- * يكتب مديرُ المشروع هنا أوردراتِ كلّ مندوبٍ بدل الإكسيل: الاسمُ ورقمُ الإقامة
- * والمشروعُ وخانةُ اليوم، لا غير. والإجماليّاتُ والأهدافُ والتقييمُ والمشرفون
- * مكانُها لوحةُ B2C وتحليلُ الأوردرات — لا هذه الصفحة.
- *
- * ولا يرى مديرُ المشروع إلّا مناديبَ المشاريع المُسندة إليه (يحسمه الخادم —
- * utils/b2cEntry)، فإن نُقل مندوبٌ إلى مشروعه ظهر عنده في الحال (`lt:updated`).
- * والخانةُ تُحفَظ عند الخروج منها، وEnter ينزل إلى المندوب التالي كما في الإكسيل.
+ * Order entry, for data entry only.
+ * Project managers type each rep's orders here instead of Excel: name, residence number, project and the day cell, nothing else. Totals, targets, rating and supervisors live in the B2C dashboard and orders analysis.
+ * A project manager sees only reps of projects assigned to them (decided by the server, utils/b2cEntry); a rep moved to their project appears at once (`lt:updated`). A cell saves on blur and Enter moves down to the next rep as in Excel.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLanguage } from '@/context/LanguageContext';
@@ -21,7 +15,7 @@ import { CalendarDays, ChevronRight, ChevronLeft, Search, Check, Loader2, AlertC
 import OrderSheetsPanel from '@/components/b2c/OrderSheetsPanel';
 
 type Row = { lt: string; idNumber: string; name: string; projectAr: string; status: string; ended: boolean; orders: number | null; unit: string;
-  /** أمازون: حضورٌ لا أوردرات — `present` افتراضُه «حضر». */
+  /** Amazon: attendance, not orders; `present` defaults to present. */
   mode?: 'orders' | 'attendance'; present?: boolean };
 type Data = { date: string; today: string; rows: Row[]; scope: string[] | null };
 
@@ -30,7 +24,7 @@ const shift = (iso: string, days: number) => {
 };
 const fold = (s: string) => String(s || '').toLowerCase().replace(/[أإآ]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي');
 
-// ── حضورُ مندوب أمازون — زرٌّ يقلب «حضر» ⇄ «لم يحضر» (مكوّنٌ خارج الصفحة أيضًا) ──
+// Amazon rep attendance: a button toggling present and absent (also a component outside the page).
 function AttendanceCell({ row, state, onToggle, ar }: {
   row: Row; state?: 'saving' | 'saved' | 'error'; onToggle: () => void; ar: boolean;
 }) {
@@ -53,7 +47,7 @@ function AttendanceCell({ row, state, onToggle, ar }: {
   );
 }
 
-// ── خانةُ اليوم — مكوّنٌ خارج الصفحة كي لا تُهدَم مع كلّ ضغطة (inline-components-remount) ──
+// Day cell: a component outside the page so it is not torn down on every keystroke (inline-components-remount).
 function OrderCell({ row, value, state, onChange, onCommit, onNav, inputRef, head }: {
   row: Row; value: string; state?: 'saving' | 'saved' | 'error'; head: boolean;
   onChange: (v: string) => void; onCommit: () => void; onNav: (dir: 1 | -1) => void;
@@ -61,7 +55,7 @@ function OrderCell({ row, value, state, onChange, onCommit, onNav, inputRef, hea
 }) {
   return (
     <span className="inline-flex items-center gap-1.5">
-      {/* مسؤولو القسم يصحّحون أيَّ سجلٍّ مضى — حتّى لمن انتهت خدمتُه (٢٠٢٦/١٠/٢١) */}
+      {/* Department heads can correct any past record, even for someone whose service has ended. */}
       <input ref={inputRef} inputMode="numeric" value={value} disabled={row.ended && !head}
         onChange={(e) => onChange(e.target.value.replace(/[^\d]/g, ''))}
         onBlur={onCommit}
@@ -92,7 +86,7 @@ export default function B2COrderEntryPage() {
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState('');
   const [fProject, setFProject] = useState('');
-  // ما يكتبه المستخدم ولم يُحفظ بعد — لا يكتب فوقه ردٌّ من الخادم.
+  // What the user typed and has not saved yet; a server reply must not overwrite it.
   const [vals, setVals] = useState<Record<string, string>>({});
   const dirty = useRef<Set<string>>(new Set());
   const [state, setState] = useState<Record<string, 'saving' | 'saved' | 'error'>>({});
@@ -105,7 +99,7 @@ export default function B2COrderEntryPage() {
     try {
       const res = await api.get<Data>(`/api/b2c/entry${date ? `?date=${date}` : ''}`);
       if (!guard.isCurrent(mine)) return;
-      res.rows = Array.isArray(res?.rows) ? res.rows : []; // ردٌّ بلا صفوف لا يُسقط الصفحة
+      res.rows = Array.isArray(res?.rows) ? res.rows : []; // A reply with no rows must not crash the page.
       setD(res);
       if (!date) setDate(res.date);
       setVals((old) => {
@@ -118,7 +112,7 @@ export default function B2COrderEntryPage() {
   }, [date, guard, notify]);
   useEffect(() => { load(); }, [load]);
 
-  // مندوبٌ نُقل إلى مشروعٍ مُسندٍ إليك يظهر هنا في الحال، ومستخدمان على الجدول يريان بعضَهما.
+  // A rep moved to a project assigned to you appears here at once, and two users on the table see each other's changes.
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const soon = useCallback(() => { if (timer.current) clearTimeout(timer.current); timer.current = setTimeout(() => load(), 600); }, [load]);
   useSocket('b2c:order:upserted', soon);
@@ -126,10 +120,10 @@ export default function B2COrderEntryPage() {
   useSocket('b2c:entry:scope', soon);
   useSocket('hr:employee', soon);
   useSocket('b2c:attendance', soon);
-  // ترتيبُ المناديب كما رتّبه مسؤولو القسم للشيت — من النظام أو بسحب الصفوف فيه.
+  // Rep order as set by the department heads for the sheet, from the system or by dragging rows.
   useSocket('b2c:sheet-order', soon);
 
-  // حضورُ أمازون: يُقلَب في الحال ويُعاد إن رفضه الخادم.
+  // Amazon attendance: toggles immediately and reverts if the server rejects it.
   const toggleAttendance = useCallback(async (lt: string) => {
     if (!d) return;
     const row = d.rows.find((r) => r.lt === lt);
@@ -209,7 +203,7 @@ export default function B2COrderEntryPage() {
           </select>
         )}
         <span className="ms-auto text-[12.5px] font-semibold text-slate-600">{rows.length} {t('مندوبًا', 'reps')}</span>
-        {/* مسؤولو القسم وحدَهم (نطاقُهم كلُّ المشاريع) — والخادمُ يرفض غيرَهم أيضًا */}
+        {/* Department heads only (scope is all projects); the server rejects others too. */}
         {d.scope === null && (
           <button type="button" onClick={() => setSheetsOpen(true)}
             className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-[12.5px] font-semibold text-emerald-800 hover:bg-emerald-100">

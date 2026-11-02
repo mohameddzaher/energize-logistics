@@ -1,13 +1,7 @@
 'use client';
-// اجتماع واحد بالكامل — the record and the work it produced.
-//
-// Three tabs, in the order the meeting actually happens: who is here and what
-// we will discuss (الأجندة), what was said (المحضر — the secretary writes it),
-// and what somebody now has to DO about it (البنود التنفيذية).
-//
-// Minutes and actions are deliberately separate things: minutes are the
-// discussion, actions are the commitments. Conflating them is how decisions get
-// lost inside paragraphs.
+// One whole meeting: the record and the work it produced.
+// Three tabs in meeting order: attendance and agenda, minutes (the secretary writes them), and action items.
+// Minutes and actions are deliberately separate: minutes are discussion, actions are commitments; conflating them loses decisions inside paragraphs.
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useLanguage } from '@/context/LanguageContext';
@@ -31,10 +25,7 @@ import {
 import { openReportPdf } from '@/lib/reports';
 import ScrollX from '@/components/system/ScrollX';
 
-// «السجل الشامل» comes FIRST: open a meeting and you see the whole story — who
-// came and when that was recorded, what was said, what was decided, who owes
-// what, and how far they've got. The other tabs are where you go to WORK on one
-// part of it.
+// The comprehensive record comes FIRST: open a meeting and you see the whole story - who came and when that was recorded, what was said, what was decided, who owes what, and how far they've got. The other tabs are where you go to WORK on one part of it.
 type Tab = 'record' | 'agenda' | 'minutes' | 'actions';
 
 export default function MeetingPage() {
@@ -56,8 +47,7 @@ export default function MeetingPage() {
   const [printing, setPrinting] = useState(false);
   const [closing, setClosing] = useState(false);
 
-  // إقفال الاجتماع = «اكتمل». السيرفر هو اللي بيتأكد إن كل البنود والتكليفات
-  // اتقفلت، فالواجهة بتوصّل رسالته زي ما هي بدل ما تخمّن الشرط عندها.
+  // Closing the meeting means completed. The server verifies that all items and assignments are closed, so the UI passes its message through instead of guessing the condition.
   const completeMeeting = async (m: BrMeeting) => {
     const ok = await confirm({
       title: t('Close this meeting?', 'إقفال هذا الاجتماع؟'),
@@ -134,10 +124,8 @@ export default function MeetingPage() {
     );
   }
 
-  // ---- Excel: الاجتماع كما تراه هذه الشاشة، شيتٌ لكل جدول ------------------
-  // `meeting` و`actions` هما ما أرسله الخادم لهذا المستخدم بعينه بعد تطبيق
-  // قواعد الرؤية (البنود والتكليفات محفوظة في مجموعاتٍ منفصلة تُصفَّى هناك)، فلا
-  // يُجلب هنا شيءٌ إضافي: كل جلبٍ زائد يعني تصديرَ ما لا تعرضه الصفحة.
+  // Excel: the meeting as this screen sees it, one sheet per table.
+  // `meeting` and `actions` are what the server sent this exact user after applying visibility rules (items and assignments are stored in separate collections filtered there), so nothing extra is fetched here: any extra fetch would export what the page does not show.
   const ar = lang === 'ar';
   const kvCols: ExportColumn[] = [
     { header: ar ? 'البند' : 'Field', key: 'label', width: 24 },
@@ -234,9 +222,7 @@ export default function MeetingPage() {
     rows: delegations as any[],
   };
 
-  // الشاشة تعرض آخر ثمانية تحديثاتٍ لكل بند توفيرًا للمساحة، والملفّ يحمل السجلّ
-  // كاملًا: هو ذاته ما يخصّ هذا المستخدم، والاقتصار على ثمانيةٍ في مِلفٍّ يُراجَع
-  // لاحقًا يقطع خيط المتابعة عند أوّل بندٍ نشِط.
+  // The screen shows the last eight updates per item to save space, while the file carries the full log: it is still only this user's data, and cutting to eight in a file reviewed later would break the follow-up thread at the first active item.
   const updatesSheet: ExportSheet = {
     name: ar ? 'متابعة البنود' : 'Action updates',
     columns: [
@@ -249,8 +235,7 @@ export default function MeetingPage() {
     rows: updateRows as any[],
   };
 
-  // الجداول الفارغة لا تُرسَم على الشاشة أصلًا — تُستبدل بجملةٍ («لم يُكتب المحضر
-  // بعد»)، فشيتٌ فارغٌ يحمل اسمها يُقرأ على أنه بياناتٌ ضاعت لا على أنها لم تُكتب.
+  // Empty tables are not drawn on screen at all; a sentence replaces them ('minutes not written yet'). An empty sheet carrying its name would read as lost data rather than not written.
   const actionSheets: ExportSheet[] = [
     actionsSheet,
     ...(delegations.length ? [delegationsSheet] : []),
@@ -427,11 +412,8 @@ export default function MeetingPage() {
 }
 
 
-// ── السجل الشامل ────────────────────────────────────────────────────────────
-// Everything about this meeting on one page, in the order it happened: the
-// facts, who was in the room (and when that was recorded, and who wasn't and
-// why), what was discussed, and every commitment that came out of it — including
-// what each manager passed to their own team and how far it has got.
+// Comprehensive record.
+// Everything about this meeting on one page, in the order it happened: the facts, who was in the room (and when that was recorded, and who wasn't and why), what was discussed, and every commitment that came out of it - including what each manager passed to their own team and how far it has got.
 function RecordTab({ meeting, meta, actions, lang, onPrint, printing }: any) {
   const t = (en: string, ar: string) => tx(lang, en, ar);
   const attendees = meeting.attendees || [];
@@ -689,7 +671,7 @@ function RecordTab({ meeting, meta, actions, lang, onPrint, printing }: any) {
   );
 }
 
-// ── الأجندة والحضور ─────────────────────────────────────────────────────────
+// Agenda and attendance.
 function AgendaTab({ meeting, meta, lang, canEdit, onAttendance }: any) {
   const t = (en: string, ar: string) => tx(lang, en, ar);
   // Which row is having a reason typed into it, and what has been typed.
@@ -805,7 +787,7 @@ function AgendaTab({ meeting, meta, lang, canEdit, onAttendance }: any) {
   );
 }
 
-// ── محضر الاجتماع ───────────────────────────────────────────────────────────
+// Meeting minutes.
 function MinutesTab({ meeting, meta, lang, canWrite, onSaved, notify }: any) {
   const t = (en: string, ar: string) => tx(lang, en, ar);
   const [rows, setRows] = useState<any[]>(
@@ -903,7 +885,7 @@ function MinutesTab({ meeting, meta, lang, canWrite, onSaved, notify }: any) {
   );
 }
 
-// ── البنود التنفيذية ────────────────────────────────────────────────────────
+// Action items.
 function ActionsTab({ meeting, meta, actions, lang, canRaise, onChanged, notify }: any) {
   const t = (en: string, ar: string) => tx(lang, en, ar);
   const [adding, setAdding] = useState(false);

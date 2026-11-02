@@ -48,7 +48,7 @@ export default function VehicleDetailPage() {
   useSocket('vehicle:authorization', useCallback(() => load(), [load]));
   useSocket('vehicle:accident', useCallback(() => load(), [load]));
   useSocket('vehicle:updated', useCallback(() => load(), [load]));
-  // اللوحةُ والمفوَّضُ يُقرآن من سجلّ المركبات — فتعديلُ السجلّ يصل هنا.
+  // Plate and authorized person are read from the vehicle registry, so registry edits propagate here.
   useSocket('vreg:updated', useCallback(() => load(), [load]));
 
   if (!staff) return <div className="text-slate-500 p-8">{tx.notAuthorized}</div>;
@@ -58,10 +58,7 @@ export default function VehicleDetailPage() {
   const v = data.vehicle;
   const active = data.authorizations.find((a) => a.status === 'active') || null;
 
-  // ── تصدير ملفّ المركبة ───────────────────────────────────────────────────
-  // بطاقةُ «تفاصيل المركبة» بندٌ وقيمة على الشاشة، فتُصدَّر كذلك: صفٌّ لكل بند.
-  // إفرادُها في شيتٍ بأعمدةٍ لكل حقل يُخرج جدولًا بصفٍّ واحدٍ وأربعين عمودًا،
-  // لا يُقرأ ولا يُطبَع.
+  // Vehicle file export. The details card is item/value rows on screen, so it exports as one row per item; one column per field would give an unreadable 41-column single-row sheet.
   const infoRows = [
     [tx.plateNumber, v.plateNumber], [tx.type, vehicleTypeLabel(v.type, lang)],
     [tx.status, styledLabel(VEHICLE_STATUS, v.status, lang)],
@@ -115,8 +112,7 @@ export default function VehicleDetailPage() {
   const infoSheet = { name: tx.vehicleDetails, rows: infoRows as any[], columns: infoCols };
   const authSheet = { name: tx.tabAuthorizations, rows: data.authorizations as any[], columns: authCols };
   const accidentSheet = { name: tx.tabAccidents, rows: data.accidents as any[], columns: accidentCols };
-  // الخيار الأوّل يتبع التبويب المفتوح لأن الضغط على «تصدير» وأنت في الحوادث
-  // يُقصد به الحوادث؛ والثاني ملفُّ المركبة كاملًا في مصنَّفٍ واحد.
+  // The first option follows the open tab (Export on the accidents tab means accidents); the second is the whole vehicle file in one workbook.
   const tabSheet = tab === 'authorizations' ? authSheet : tab === 'accidents' ? accidentSheet : infoSheet;
 
   const openAction = (a: Action) => {

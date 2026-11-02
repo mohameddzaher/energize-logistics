@@ -1,9 +1,7 @@
 'use client';
-// الشؤون الإدارية (السكرتارية) — a Trello-style board kept deliberately simple:
-// four fixed columns, drag a card OR tap the arrow button to move it, click a
-// card to open it with EVERYTHING editable behind one explicit save button.
-// The people using this screen are not technical, so every action has a
-// visible button — drag & drop is a bonus, never the only way.
+// Administrative affairs (secretariat): a Trello-style board kept deliberately simple.
+// Four fixed columns, drag a card OR tap the arrow button to move it, click a card to open it with EVERYTHING editable behind one explicit save button.
+// The users are not technical, so every action has a visible button; drag and drop is a bonus, never the only way.
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
@@ -24,10 +22,10 @@ import { useDialog } from '@/components/system/DialogProvider';
 const STAFF = ['super_admin', 'admin', 'administration_staff', 'bd_manager', 'it_manager', 'it_specialist'];
 const DELETE_ROLES = ['super_admin', 'admin', 'bd_manager', 'it_manager'];
 
-// الكحلي — the navy the whole page keys off.
+// The navy the whole page keys off.
 const NAVY = '#12325c';
 
-// ── Vocabulary (فصحى) ───────────────────────────────────────────────────────
+// Vocabulary (formal Arabic)
 const COLUMNS = [
   { key: 'new', ar: 'جديدة', en: 'New', dot: 'bg-sky-500', chip: 'bg-sky-50 text-sky-700' },
   { key: 'in_progress', ar: 'قيد التنفيذ', en: 'In Progress', dot: 'bg-amber-500', chip: 'bg-amber-50 text-amber-700' },
@@ -72,7 +70,7 @@ const toLocalInput = (iso?: string | null): string => {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
 };
 const toISO = (local: string): string | null => (local ? new Date(local).toISOString() : null);
-// الافتراضي: اليوم في نهاية الدوام — يعدّله من يريد.
+// Default: today at end of working hours; editable.
 const defaultDue = (): string => {
   const d = new Date();
   d.setHours(17, 0, 0, 0);
@@ -110,7 +108,7 @@ export default function AdministrationBoardPage() {
   const perms = (user as any)?.permissions;
   const canView = STAFF.includes(role) || canAccessSection(perms, 'Administration');
   const canEdit = STAFF.includes(role) || canEditSection(perms, 'Administration');
-  // Same rule the API applies: a section grant of «تعديل» carries delete too.
+  // Same rule the API applies: an edit grant on the section carries delete too.
   const canDelete = DELETE_ROLES.includes(role) || canEditSection(perms, 'Administration');
 
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -119,10 +117,8 @@ export default function AdministrationBoardPage() {
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
   /**
-   * ── وبطاقةُ الرقم تُصفّي اللوحة ────────────────────────────────────────────
-   * «سبعُ مهامٍ متأخّرة» رقمٌ لا يُفتَح: يُقرأ ثمّ تُقلَّب الأعمدةُ الأربعةُ
-   * بالعين بحثًا عن السبع. والضغطةُ تُبقي المتأخّرةَ وحدَها في الأعمدة، وضغطةٌ
-   * ثانيةٌ تُرجع الكلّ.
+   * A stat card filters the board.
+   * A figure such as seven overdue tasks cannot be opened and forces scanning four columns by eye; clicking keeps only the overdue ones in the columns, and a second click restores all.
    */
   const [dueF, setDueF] = useState<'' | 'overdue' | 'today' | 'open' | 'doneWeek'>('');
   const [saving, setSaving] = useState(false);
@@ -559,7 +555,7 @@ export default function AdministrationBoardPage() {
               </Field>
             </div>
 
-            {/* المحادثة */}
+            {/* Chat */}
             <div className="border-t border-slate-100 pt-4">
               <div className="font-bold text-sm mb-2 flex items-center gap-1.5" style={{ color: NAVY }}>
                 <MessageSquare className="w-4 h-4" />{ar ? 'المحادثة والمتابعة' : 'Conversation & follow-up'}
@@ -588,7 +584,7 @@ export default function AdministrationBoardPage() {
               )}
             </div>
 
-            {/* سجل النشاط */}
+            {/* Activity log */}
             <div>
               <button onClick={() => setShowActivity((v) => !v)} className="text-xs font-semibold text-slate-400 hover:text-slate-600 inline-flex items-center gap-1.5">
                 <History className="w-3.5 h-3.5" />

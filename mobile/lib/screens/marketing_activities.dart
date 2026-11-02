@@ -7,8 +7,7 @@ import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import '../ui/search_field.dart';
 
-/// أنشطة التسويق — منشورات وإعلانات وحملات عبر المنصات، بمقاييسها
-/// (ظهور/نقرات/عملاء محتملون) — إنشاء وعرض مع الفلاتر.
+/// Marketing activities: posts, ads and campaigns across platforms with their metrics (impressions/clicks/leads); create and view with filters.
 class MarketingActivitiesScreen extends StatefulWidget {
   const MarketingActivitiesScreen({super.key});
   @override
@@ -49,7 +48,7 @@ class _MarketingActivitiesScreenState extends State<MarketingActivitiesScreen> {
   bool _loading = true;
   String? _error;
   String _q = '';
-  // متحكِّمُ البحث عند الشاشة: اختيارُ منصّةٍ يُعيد التحميل فلا تعود الخانةُ فارغةً والكلمةُ تُرشِّح.
+  // Search controller owned by the screen: picking a platform reloads, so the field does not go empty while the term still filters.
   final _searchCtl = TextEditingController();
   String _platform = '';
   late final void Function() _onLive;
@@ -108,8 +107,7 @@ class _MarketingActivitiesScreenState extends State<MarketingActivitiesScreen> {
     }
   }
 
-  // ورقة إنشاء/تعديل نشاط بكامل المقاييس (ظهور/وصول/نقرات/إعجاب/تعليق/مشاركة/عملاء)
-  // + رابط وملاحظات. تعديل ⇒ PUT، جديد ⇒ POST.
+  // Create/edit activity sheet with all metrics (impressions/reach/clicks/likes/comments/shares/leads) plus link and notes. Edit uses PUT, new uses POST.
   Future<void> _openSheet({Map<String, dynamic>? row}) async {
     final isEdit = row != null;
     final m = row?['metrics'] is Map ? Map<String, dynamic>.from(row!['metrics']) : {};

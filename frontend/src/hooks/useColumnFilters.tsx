@@ -1,33 +1,9 @@
 'use client';
 /**
- * قمعُ الأعمدة على طريقة إكسل — لأيّ جدولٍ في النظام بثلاثة أسطر.
- *
- * ── العلّة ──────────────────────────────────────────────────────────────────
- * في النظام مئةٌ وواحدُ جدولٍ لا قمعَ فيها. والمستخدمُ تعلَّم في الورقة أن
- * يضغط رأسَ العمود ويختار قيمةً، فيفتح الجدولَ عندنا فيبحث عن الزرّ فلا يجده
- * — فيصدّر إلى إكسل ويفلتر هناك. والسببُ أنّ إضافةَ القمع كانت تعني في كلّ
- * صفحةٍ: حالةً، ودالّةَ تصفية، وقراءةَ قيمةٍ لكلّ عمود، وتعديلَ كلّ `th`.
- *
- * فصار ذلك كلُّه هنا:
- *
- *     const cf = useColumnFilters<Row>({
- *       branch: (r) => r.branch || '',
- *       status: (r) => statusLabel(r.status, lang),
- *     }, rows, lang);
- *     const shown = cf.apply(rows);
- *     …
- *     <th>{cf.head('branch', 'الفرع')}</th>
- *
- * ── وقاعدتان تجعلانه يعمل «كويس» ────────────────────────────────────────────
- *   ١. **القيمةُ المقروءةُ هي المفلترة**: تُمرَّر دالّةُ القراءة نفسُها التي
- *      يُرسَم بها العمود. وبغير ذلك تُقرأ القائمةُ كلُّها «(فارغ)» على جدولٍ
- *      أعمدتُه محسوبة — وهو أوّلُ ما يُفسِد القمعَ في هذا النظام.
- *   ٢. **يعمل مع فلاتر الصفحة لا ضدَّها**: القائمةُ تُبنى من الصفوف التي وصلت
- *      **بعد** فلتر الصفحة (أو الخادم)، فلا تُعرَض قيمةٌ لا تُرى في الجدول،
- *      ولا يُلغي أحدُهما الآخر.
- *
- * والحالةُ تعيش في الصفحة لا في العنوان: اختيارُ قيمةٍ في عمودٍ ضيقٌ لحظيٌّ
- * لا يُشارَك برابط، وفلترُ الصفحة هو الذي يُشارَك (راجع syncUrl).
+ * Excel-style column filters for any table in three lines.
+ * Tables lacked filters, and adding one per page needed state, a filter function, a value reader per column and edits to every th. All of that now lives here:
+ * const cf = useColumnFilters(getters, rows, lang); cf.apply(rows); cf.head(key, label).
+ * Rule: the value read is the value filtered.
  */
 import { useMemo, useState, useCallback } from 'react';
 import { ColumnFilter, type ColumnFilterOption } from '@/components/ColumnFilter';
@@ -35,15 +11,15 @@ import { ColumnFilter, type ColumnFilterOption } from '@/components/ColumnFilter
 export type ValueReaders<T> = Record<string, (row: T) => any>;
 
 export interface ColumnFiltersApi<T> {
-  /** ما اختاره المستخدمُ لكلّ عمود. */
+  /** What the user picked for each column. */
   selected: Record<string, Set<string>>;
-  /** عددُ الأعمدة التي فيها اختيار. */
+  /** Number of columns that have a selection. */
   activeCount: number;
-  /** يُصفّي الصفوفَ بما اختير. */
+  /** Filters the rows by the selection. */
   apply: (rows: T[]) => T[];
-  /** رأسُ العمود: العنوانُ ومعه القمع. */
+  /** Column header: the title with its filter. */
   head: (key: string, label: React.ReactNode) => React.ReactNode;
-  /** القمعُ وحدَه — لرأسٍ مبنيٍّ بيدٍ. */
+  /** The filter alone, for a hand-built header. */
   filterFor: (key: string) => React.ReactNode;
   clear: () => void;
   clearOne: (key: string) => void;
@@ -78,9 +54,7 @@ export function useColumnFilters<T>(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sig, readers]);
 
-  // ── والقائمةُ تُبنى من الصفوف **غيرِ** المصفّاة بهذا العمود ──────────────
-  // لو بُنيت من المعروض لاختفت القيمُ الأخرى أوّلَ ما تُختار واحدةٌ، فلا
-  // يستطيع المستخدمُ أن يضيف قيمةً ثانيةً إلى اختياره — وهو ما تفعله الورقة.
+  // The option list is built from rows not filtered by this column. Built from the displayed rows, the other values would vanish after the first pick and the user could not add a second value to the selection, as in Excel.
   const rowsFor = useMemo(() => {
     const out: Record<string, T[]> = {};
     for (const k of Object.keys(readers)) {

@@ -1,13 +1,5 @@
 'use client';
-/**
- * الإدارة الماليّة ← ماليات الموارد البشرية ← «الإقامات ورخص العمل».
- *
- * تبويبان: الرسومُ المستحقّة (ما انتهى وما بقي عليه ٢٠ يومًا فأقلّ — كلُّ مستندٍ
- * صفّ، ويُسجَّل دفعُه هنا)، وطلباتُ الموارد البشريّة إلى الماليّة (تُجاب «تمّ» أو
- * «لم يتمّ»). راجع backend/src/controllers/hrFinanceController.
- *
- * والتبويبُ في الرابط (`?tab=requests`) — إشعارُ «طلب جديد» يفتح عليه مباشرةً.
- */
+/** Finance management, then HR finance, then residencies and work permits. Two tabs: due fees (expired or with 20 days or fewer left; each document is a row and its payment is recorded here) and HR requests to Finance (answered done or not done). See backend/src/controllers/hrFinanceController. The tab is in the URL (`?tab=requests`) so a new-request notification opens straight on it. */
 import { Suspense, useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';

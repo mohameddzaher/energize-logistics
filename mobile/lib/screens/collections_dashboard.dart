@@ -13,13 +13,7 @@ import '../ui/search_field.dart';
 import 'collections_party.dart';
 import 'collections_receivables.dart';
 
-/// لوحةُ التحصيل — كصفحة الموقع /system/collections-dept/dashboard: شجرةُ
-/// المديونيّة من دفتر الفواتير تحت خمسة فلاترَ ومدى تاريخ، والمديونيّةُ بمسؤول
-/// التحصيل، وأكبرُ المديونيّات، ومداخلُ الأعمار والقضايا والموردين، وكتابةُ مُدد
-/// العملاء على المدّة الافتراضيّة. وكلُّ رقمٍ يفتح شاشةَ صفوفه.
-///
-/// حيّة: كلُّ تعديلٍ على كشفٍ أو فاتورةٍ أو طرفٍ أو مرفقٍ أو ماليّة يعيد
-/// القراءة بعد هدوء الدفعة — والأرقامُ القائمة تبقى حتى يصل الجديد.
+/// Collections dashboard, like the web page /system/collections-dept/dashboard: the debt tree from the invoice ledger under five filters and a date range, debt by collection officer, largest debts, entries to aging, cases and suppliers, and writing customer terms against the default term. Every number opens a screen of its rows. Live: any edit to a sheet, invoice, party, attachment or finance re-reads after the batch settles, and existing numbers stay until the new ones arrive.
 class CollectionsDashboardScreen extends StatefulWidget {
   const CollectionsDashboardScreen({super.key});
   @override
@@ -72,7 +66,7 @@ const _bands = [
 ];
 const _risks = [('normal', 'طبيعي', 'Normal', T.success), ('medium', 'متوسط', 'Medium', T.warn), ('hard', 'مرتفع', 'Hard', T.danger)];
 
-/// «١٢ فاتورة · ٣ كشف تخريج» — ما في الخانة من كلٍّ، ولا يُقال الصفر.
+/// "12 invoices, 3 clearance sheets": what the cell holds of each; zero is not mentioned.
 String _units(Map<String, dynamic> n) {
   final cash = _num(n['cash']);
   final tax = n['tax'] is num ? n['tax'] as num : (cash != 0 ? 0 : _num(n['count']));
@@ -112,7 +106,7 @@ class _CollectionsDashboardScreenState extends State<CollectionsDashboardScreen>
     super.dispose();
   }
 
-  /// الفلاترُ كما يقرؤها الخادم (parseFilters) — مفصولةً بفواصل.
+  /// Filters as the server reads them (parseFilters), comma-separated.
   Map<String, String> get _filterQuery => {
         if (_from.isNotEmpty) 'from': _from,
         if (_to.isNotEmpty) 'to': _to,
@@ -133,20 +127,20 @@ class _CollectionsDashboardScreenState extends State<CollectionsDashboardScreen>
     }
   }
 
-  // من لوحة كشوف التشغيل يبقى عددُ الموردين وحدَه — المالُ كلُّه من الدفتر.
+  // From the operations sheets dashboard only the supplier count remains; all money comes from the ledger.
   Future<void> _loadDash() async {
     final mine = ++_dashSeq;
     try {
       final d = await Api.instance.get('/api/collections-dept/dashboard');
       if (mounted && mine == _dashSeq) setState(() => _dash = _map(d));
-    } catch (_) {/* لا يُوقف اللوحة */}
+    } catch (_) {/* Does not stop the dashboard. */}
   }
 
   void _open(String title, [Map<String, String> node = const {}]) {
     Navigator.push(context, MaterialPageRoute(builder: (_) => CollectionsReceivablesScreen(title: title, query: {..._filterQuery, ...node})));
   }
 
-  // ── الفلاتر ───────────────────────────────────────────────────────────
+  // Filters
   List<Map<String, dynamic>> _facet(String key) =>
       [for (final o in (_map(_recv?['facets'])[key] as List? ?? const [])) _map(o)];
 
@@ -252,7 +246,7 @@ class _CollectionsDashboardScreenState extends State<CollectionsDashboardScreen>
     );
   }
 
-  // ── عناصر الشجرة ──────────────────────────────────────────────────────
+  // Tree items
   Widget _cell(String label, Map<String, dynamic> n, String sub, VoidCallback onTap, {Color? dot, double size = 18}) => InkWell(
         onTap: onTap,
         child: Padding(
@@ -287,7 +281,7 @@ class _CollectionsDashboardScreenState extends State<CollectionsDashboardScreen>
     final bad = checks.where((c) => c['ok'] != true).toList();
 
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      // ① الإجماليُّ ونصفاه
+      // 1. The total and its two halves
       Text(tr('إجمالي المديونية', 'Total receivables'), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: T.inkSoft)),
       const SizedBox(height: 6),
       AppCard(padding: EdgeInsets.zero, child: Column(children: [
@@ -318,7 +312,7 @@ class _CollectionsDashboardScreenState extends State<CollectionsDashboardScreen>
         ]),
       ])),
       const SizedBox(height: 14),
-      // ② أنواعُ الدفع الأربعة
+      // 2. The four payment types
       Text(tr('بأنواع الدفع — مستحق وغير مستحق', 'By payment type — due and not yet due'), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: T.inkSoft)),
       Text(tr('المستحقُّ ما تجاوز موعدَه، ومعه ما لا مدّةَ سدادٍ له — فلا شيءَ يؤجّله', 'Due = past its due date, plus anything with no credit term'),
           style: const TextStyle(fontSize: 10.5, color: T.inkFaint)),
@@ -347,7 +341,7 @@ class _CollectionsDashboardScreenState extends State<CollectionsDashboardScreen>
           ])),
         );
       }),
-      // ③ عمرُ التأخير
+      // 3. Age of delay
       if (tree['ages'] != null) ...[
         const SizedBox(height: 8),
         Text(tr('عمر التأخير', 'Age of receivables'), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: T.inkSoft)),
@@ -388,7 +382,7 @@ class _CollectionsDashboardScreenState extends State<CollectionsDashboardScreen>
             child: Text('${tr('بلا تاريخ تسليمٍ ولا إصدار', 'No delivery or issue date')}: ${_m(nodate['value'])} · ${_units(nodate)}', style: const TextStyle(fontSize: 11.5)),
           ),
       ],
-      // ④ ما ينقص الملفّ
+      // 4. What the file lacks
       if (attach.isNotEmpty) ...[
         const SizedBox(height: 6),
         AppCard(padding: EdgeInsets.zero, child: Column(children: [
@@ -422,7 +416,7 @@ class _CollectionsDashboardScreenState extends State<CollectionsDashboardScreen>
           TextButton(onPressed: _openDefaultTerm, child: Text(tr('حدّد مدد العملاء', 'Set the customers’ terms'))),
         ])),
       ],
-      // ⑤ شريطُ التحقّق
+      // 5. Verification bar
       const SizedBox(height: 8),
       Container(
         padding: const EdgeInsets.all(10),
@@ -461,7 +455,7 @@ class _CollectionsDashboardScreenState extends State<CollectionsDashboardScreen>
         Padding(
           padding: const EdgeInsets.only(bottom: 6),
           child: Pressable(
-            // يفتح صفوفَ المسؤول بفلاتر اللوحة — والمسؤولُ وحدَه بدل اختيار الفلتر.
+            // Opens the officer's rows with the dashboard filters, the officer alone instead of choosing the filter.
             onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => CollectionsReceivablesScreen(
                 title: '${o['officer']}', query: {..._filterQuery, 'officer': '${o['officer'] ?? ''}'}))),
             child: AppCard(padding: const EdgeInsets.all(12), child: Row(children: [
@@ -617,8 +611,7 @@ class _CollectionsDashboardScreenState extends State<CollectionsDashboardScreen>
   }
 }
 
-/// عملاءُ المدّة الافتراضيّة — ومن هنا تُكتب مُددُهم (DefaultTermList في الموقع):
-/// المدّةُ تُحفظ في ملفّ العميل فيخرج من القائمة وتُعاد خطورةُ فواتيره.
+/// Customers on the default term, where their terms are written (DefaultTermList on the web): the term is saved in the customer file so it leaves the list and the severity of its invoices is recomputed.
 class _DefaultTermSheet extends StatefulWidget {
   final List<Map<String, dynamic>> parties;
   final int days;

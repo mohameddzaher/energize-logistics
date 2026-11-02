@@ -1,16 +1,7 @@
 'use client';
-// ملف الأصول للعربية الواحدة: الكاوتش اللي عليها دلوقتي، وكل حاجة حصلت لها.
-//
-// بيترد على سؤالين كانوا محتاجين خمس شاشات:
-//
-//   «الـ ١٤ كاوتش دول مين؟»      → تبويب الكاوتش: السيريال، النمرة، النوع،
-//                                   الموقع من ١٤، القسم، السينسور، الحالة.
-//   «العربية دي عملت فيها إيه؟»  → تبويب التاريخ: حركة الكاوتش + قطع الغيار
-//                                   المصروفة + الإصلاحات + الصيانة، مرتّبين
-//                                   زمنيًا في خط واحد وكل نوع بلونه.
-//
-// المصدر: /assets/vehicle/:plate للكاوتش الحالي، و/history للخط الزمني المدموج.
-// الاتنين بيتحمّلوا مع بعض عشان التبديل بين التبويبين ما يستناش الشبكة.
+// Asset file for one truck: its current tires and everything that happened to it.
+// Tires tab: serial, plate, type, position out of 14, section, sensor, status. History tab: tire movements, issued spare parts, repairs and maintenance in one chronological line, each type in its color.
+// Sources: /assets/vehicle/:plate for current tires and /history for the merged timeline, loaded together so switching tabs does not wait on the network.
 import { useEffect, useState, useMemo } from 'react';
 import { X, CircleDot, Wrench, Boxes, CalendarCheck, Search } from 'lucide-react';
 import api from '@/lib/api';
@@ -55,8 +46,7 @@ const FULL = 14;
 
 export default function VehicleAssetSheet({ plate, ar, onClose, admin = false, busy = false, actions, refreshKey = 0 }: {
   plate: string; ar: boolean; onClose: () => void;
-  // الأفعال جاية من الصفحة زي ما هي — نفس المودالات ونفس الـ API. الشيت ما
-  // بيعرفش يعمل حاجة بنفسه، فمستحيل يختلف سلوكه عن جدول الكاوتش.
+  // Actions come from the page as they are (same modals, same API). The sheet cannot act by itself, so its behavior cannot differ from the tire table.
   admin?: boolean; busy?: boolean; actions?: TireActionHandlers; refreshKey?: number;
 }) {
   const t = (a: string, e: string) => (ar ? a : e);
@@ -89,8 +79,7 @@ export default function VehicleAssetSheet({ plate, ar, onClose, admin = false, b
       && (!s || `${r.title} ${r.detail} ${r.by || ''} ${r.notes || ''}`.toLowerCase().includes(s)));
   }, [rows, kind, q]);
 
-  // نفس قاعدة السيرفر: القسم هو المرجع والعلَم مشتق منه. لو الاتنين اختلفوا
-  // لأي سبب، الشاشة تفضل تعرض التقسيمة الصح بدل ما تقول «رأس ٧ · استبن ١».
+  // Same rule as the server: the section is the reference and the flag is derived from it. If they differ, the screen still shows the right split instead of 'head 7, spare 1'.
   const isSpareTire = (x: Tire) => x.isSpare || /استبن/.test(x.section || '');
   const head = (tires || []).filter((x) => !isSpareTire(x) && !/تيدر|تريل/.test(x.section || ''));
   const trailer = (tires || []).filter((x) => !isSpareTire(x) && /تيدر|تريل/.test(x.section || ''));
@@ -130,7 +119,7 @@ export default function VehicleAssetSheet({ plate, ar, onClose, admin = false, b
                 </p>
               ) : (
                 <div className="space-y-4">
-                  {/* التقسيمة زي ما الورشة بتشوفها: ٦ رأس + ٦ تيدر + ٢ استبن */}
+                  {/* Split as the workshop sees it: 6 head + 6 trailer + 2 spare */}
                   <div className="flex flex-wrap gap-2 text-[12px]">
                     {[[t('الرأس', 'Head'), head.length, 6], [t('التيدر', 'Trailer'), trailer.length, 6], [t('الاستبن', 'Spare'), spare.length, 2]].map(([l, n, want]: any) => (
                       <span key={l} className={`px-2.5 py-1 rounded-lg font-semibold border ${n === want ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-amber-50 text-amber-800 border-amber-200'}`}>

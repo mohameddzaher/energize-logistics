@@ -1,14 +1,7 @@
 'use client';
 /**
- * شارةُ «التخليص» على كشف التشغيل — رقمُ المعاملة · البوليصة · عددُ الحاويات.
- *
- * تُرسم في جدول سير العمل وفي شاشات التحصيل (الكاش والضريبيّ وأعمار الديون
- * وتفصيل الفاتورة) من النسخة المحفوظة على الكشف نفسِه (`customsLink`)، فلا
- * طلبَ ثانيًا. وتفتح صفحةَ المعاملة لمن يدخل قسمَ التخليص؛ ولغيره تبقى نصًّا
- * يقرؤه — فلا يُفضي الضغطُ إلى صفحةٍ مرفوضة.
- *
- * والمصدرُ يُقال عند المرور: من خانة النقل في المعاملة، أو رقمُ السند يطابق
- * البوليصة أو الحاوية، أو ربطٌ يدويّ. راجع backend/src/services/customsOpsLink.
+ * Clearance badge on an operations manifest: transaction number, waybill and container count.
+ * Drawn in the workflow table and the collections screens (cash, tax, receivables aging, invoice detail) from the copy stored on the manifest itself (`customsLink`), so no extra request. It links to the transaction for users in the clearance section and stays plain text for others. The source appears on hover: the transaction's transport field, a voucher number matching the waybill or container, or a manual link. See backend/src/services/customsOpsLink.
  */
 import Link from 'next/link';
 import { Ship } from 'lucide-react';
@@ -40,7 +33,7 @@ export const customsIdOf = (l?: CustomsLinkView | null): string => {
   return c ? (typeof c === 'string' ? c : c._id) : '';
 };
 
-/** مَن يفتح صفحةَ المعاملة: مَن له القسم. */
+/** Who opens the transaction page: whoever has the section. */
 export function useCanOpenCustoms(): boolean {
   const { user } = useAuth();
   if (!user) return false;
@@ -87,7 +80,7 @@ export default function CustomsLinkBadge({ link, ar, compact = false }: {
   );
 }
 
-/** أكثرُ من معاملةٍ على صفٍّ واحد (فاتورةٌ تضمّ كشوفًا) — الأولى، والباقي عددٌ. */
+/** More than one transaction on a row (an invoice covering manifests): the first is shown and the rest as a count. */
 export function CustomsLinkBadges({ links, ar, compact = true }: { links?: CustomsLinkView[] | null; ar: boolean; compact?: boolean }) {
   const list = (links || []).filter((l) => customsIdOf(l));
   if (!list.length) return null;

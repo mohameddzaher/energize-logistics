@@ -1,10 +1,6 @@
 'use client';
-// Performance — the company-wide roll-up (النظرة التنفيذية للتقييم).
-//
-// Every department for one period: how many of its people have been graded,
-// the average score, the band spread, and the total bonus owed. The bonus total
-// is a COUNT OF MONTHLY SALARIES, not money — the system holds no payroll, so
-// turning it into cash means multiplying each person's bonus by their salary.
+// Performance: the company-wide roll-up (executive evaluation overview).
+// Every department for one period: how many of its people are graded, the average score, the band spread, and the total bonus owed. The bonus total is a count of monthly salaries, not money; the system holds no payroll, so turning it into cash means multiplying each person's bonus by their salary.
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
@@ -24,7 +20,7 @@ import {
 import ScrollX from '@/components/system/ScrollX';
 
 interface DeptRow {
-  // القسمُ باسمه المعتمد في الموارد البشريّة، وصفحةُ القسم التي يُقيَّم منها.
+  // Department by its HR-approved name, and the department page it is evaluated from.
   departmentEn?: string; departmentKey?: string; section?: string | null; sectionAr?: string;
   department: string; headcount: number; evaluated: number; coverage: number;
   avgPercentage: number | null; bonusSalaries: number; tier: number | null;
@@ -78,8 +74,7 @@ export default function PerformanceOverviewPage() {
     .sort((a, b) => (b.avgPercentage || 0) - (a.avgPercentage || 0))
     .map((d) => ({ name: d.department, value: d.avgPercentage as number }));
 
-  // نظرةٌ تنفيذيّة مجمَّعة: صفٌّ لكلّ قسمٍ في الفترة المختارة، بلا فلترٍ يُخفي صفوفًا
-  // ولا ترقيمٍ يقتطع منها — فنطاقٌ ثانٍ سيُخرج الملفَّ نفسه لا أكثر.
+  // Aggregated executive overview: one row per department for the chosen period, with no filter hiding rows and no pagination cutting them, so a second export scope would produce the same file.
   const exportColumns: ExportColumn[] = [
     { header: ar ? 'القسم' : 'Department', key: 'department', width: 24 },
     { header: ar ? 'عدد الموظفين' : 'Headcount', key: 'headcount', width: 14 },
@@ -123,7 +118,7 @@ export default function PerformanceOverviewPage() {
       </PageHeader>
 
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-        {/* والعددُ يؤدّي إلى أسماءه: سجلُّ الموظفين، وشاشةُ التقييم. */}
+        {/* The count links to its names: the employee register and the evaluation screen. */}
         <StatCard label={ar ? 'إجمالي الموظفين' : 'Headcount'} value={String(t?.headcount ?? 0)}
           href="/system/hr/master" hint={ar ? 'سجل الموارد البشرية' : 'HR register'} />
         <StatCard label={ar ? 'تم تقييمهم' : 'Evaluated'} value={String(t?.evaluated ?? 0)}
@@ -211,7 +206,7 @@ export default function PerformanceOverviewPage() {
                 <tr key={d.departmentKey || d.department} className="border-b border-slate-100 hover:bg-slate-50">
                   <td className="px-4 py-3 font-medium text-slate-800">
                     {(!ar && d.departmentEn) || d.department}
-                    {/* من أيّ صفحةِ قسمٍ يُقيَّم — وقسمٌ بلا صفحةٍ يقيّمه مديرُ النظام. */}
+                    {/* Which department page evaluates it; a department without a page is evaluated by the system admin. */}
                     <span className="block text-[11px] font-normal text-slate-400">
                       {d.section
                         ? (ar ? `يُقيَّم من صفحة: ${d.sectionAr || d.section}` : `Evaluated from: ${d.section}`)

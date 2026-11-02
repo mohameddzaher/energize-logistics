@@ -1,24 +1,8 @@
 'use client';
 /**
- * لوحةُ قسم الأفراد والنقل الخفيف — الصورةُ الكاملة.
- *
- * ── الترتيبُ كما طلبه صاحبُ الشركة (٢٠٢٦/١٠/٢١) ───────────────────────────────
- *   ١. «الإجمالي» وحدَه فوق، وتحته — لا بجانبه — ثلاثةُ كروت: مندوب · إداري · فني.
- *      لكلٍّ رقمُه فوق، ونصفُه الأسفلُ «على الكفالة» / «فريلانسر»؛ وما ليس هذا ولا
- *      ذاك (متدرّب · يوزرات · غير محدد) رقمٌ صغيرٌ تحتهما — فالنصفان وما تحتهما =
- *      الكارت، والكروتُ (ومعها «غير مصنَّف» إن وُجد) = الإجمالي.
- *   ٢. «حالة العمل» قسمٌ مستقلّ: يعمل · إجازة · موقوف · حادث — لكلٍّ قسمتُه على
- *      الفئات الثلاث، ومجموعُها الإجماليُّ نفسُه. وحالةُ اليوم تُعدَّل من صفّ الموظّف
- *      في «موظفو النقل الخفيف» (وإجازةُ الموارد البشريّة وإيقافُها يغلبانها).
- *   ٣. كلُّ رقمٍ يُضغَط فيفتح أصحابَه: الناسَ في سجلّ الموظّفين، والمركباتِ في
- *      «مركبات النقل الخفيف» — بالفلاتر نفسِها، والخادمُ يعدّ ويفتح بمعنىً واحد
- *      (backend utils/b2cBoard).
- *   ٤. المركباتُ كلُّ ما ينسبه قسمُ المركبات إلى النقل الخفيف — مفوَّضةً أو لا.
- *   ٥. فلاترُ فوق اللوحة كفلاتر لوحة الموارد البشريّة: قوائمُ فيها بحث، وبجانب
- *      كلّ قيمةٍ عددُها تحت الفلاتر الأخرى، وكلُّ رقمٍ في اللوحة يتبعها.
- *
- * والكروتُ هادئة (صاحبُ الشركة لا يحبّ الكروتَ الملوّنة): أبيضُ ورقمٌ داكنٌ ونقطةُ
- * لونٍ صغيرة — على طراز components/collections/ReceivablesTree.
+ * Dashboard of the individuals and light-transport department: the full picture.
+ * Layout: 1. the total alone on top with three cards beneath (rep, admin, technician), each split into sponsored and freelance halves; others (trainee, users, unspecified) appear as a small figure so the halves plus the extras equal the card and the cards equal the total. 2. Work status (working, on leave, suspended, accident) as its own section, each split across the three categories and summing to the total; today's status is edited from the employee row in the light-transport staff page (HR leave and suspension override it). 3. Every figure is clickable and opens its members (people in the employee register, vehicles in the light-transport vehicles page) with the same filters; the server counts and opens with one meaning (backend utils/b2cBoard). 4. Vehicles are everything the vehicles department attributes to light transport, authorised or not. 5. Filters on top like the HR dashboard: searchable lists with each value's count under the other filters, and every figure follows them.
+ * Cards are deliberately calm: white, a dark figure and a small colour dot, in the style of components/collections/ReceivablesTree.
  */
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
@@ -35,11 +19,7 @@ import ScrollX from '@/components/system/ScrollX';
 import { LayoutDashboard, Users, Car, Home, BarChart3, Truck, AlertTriangle, ChevronLeft } from 'lucide-react';
 
 type Opt = { value: string; label?: string; count: number };
-/**
- * ما تقرؤه اللوحةُ من أرقام القسم القديمة — يُعرَّف هنا لا يُستورَد من lib/lightTransport:
- * خريطةُ نقاط الصفحات تُولَّد من الملفّات المستورَدة، فاستيرادُ ذلك الملفّ كان يفتح
- * لصاحب اللوحة وحدَها نقاطَ السجلّ كلَّها (الإسناد، أوامر التشغيل…). راجع genPageApis.
- */
+/** The department figures this board reads are defined here, not imported from lib/lightTransport: the page API map is generated from imported files, so importing that file opened all of its register endpoints (assignments, operating orders) to holders of this dashboard alone. See genPageApis. */
 interface LTTotals {
   housed: number; unhoused: number;
   byProject: Record<string, number>; byCity: Record<string, number>; byJob: Record<string, number>;
@@ -91,25 +71,21 @@ const STATES: { key: string; en: string; tone: string }[] = [
   { key: 'موقوف', en: 'Suspended', tone: '#d97706' },
   { key: 'حادث', en: 'Accident', tone: '#dc2626' },
 ];
-/** ما ليس كفالةً ولا فريلانسر — يُعرَض صغيرًا تحت النصفين، ولا يُقال الصفر. */
+/** Neither sponsored nor freelance: shown small under the two halves, and zero is not displayed. */
 const REST: { key: Eng; ar: string; en: string }[] = [
   { key: 'trainee', ar: 'متدرّب', en: 'Trainee' },
   { key: 'users', ar: 'يوزرات', en: 'Rented users' },
   { key: 'none', ar: 'غير محدد', en: 'Not set' },
 ];
 
-/**
- * ── المكوّناتُ خارجَ جسم الصفحة ─────────────────────────────────────────────
- * مكوّنٌ يُعرَّف داخل الرسم يُهدَم ويُبنى مع كلّ ردٍّ وكلّ حدثٍ حيّ — راجع ذاكرة
- * «inline components remount».
- */
+/** Components outside the page body: a component defined inside render is torn down and rebuilt on every reply and live event (see the inline components remount note). */
 const BOX = 'bg-white border border-slate-200 rounded-2xl shadow-[0_1px_2px_rgba(15,23,42,0.04)] overflow-hidden';
 
 function Dot({ tone }: { tone: string }) {
   return <span className="inline-block w-1.5 h-1.5 rounded-full" style={{ background: tone }} />;
 }
 
-/** نصفٌ (أو ثلثٌ) من كارت: عنوانٌ ورقمٌ ونسبةٌ — يُضغَط فيفتح أصحابَه. */
+/** Half (or third) of a card: title, figure and percentage; clicking opens its members. */
 function Half({ label, value, of, href, tone, unit }: { label: string; value: number; of?: number; href: string; tone?: string; unit?: string }) {
   const pct = of ? Math.round((value / of) * 100) : 0;
   return (
@@ -123,7 +99,7 @@ function Half({ label, value, of, href, tone, unit }: { label: string; value: nu
   );
 }
 
-/** تقسيمةٌ تُقرأ وتُضغَط — هادئة: شريطٌ رماديٌّ ورقمٌ داكن. والصفرُ لا يُعرَض. */
+/** A readable, clickable breakdown: grey bar and dark figure; zero is not shown. */
 function Breakdown({ title, icon, data, filterKey, f, toggle, hrefOf }: {
     title: string; icon: React.ReactNode; data: Record<string, number>; filterKey?: string;
     f: Record<string, string>; toggle: (k: string, v: string) => void; hrefOf?: (k: string) => string;
@@ -172,7 +148,7 @@ function Breakdown({ title, icon, data, filterKey, f, toggle, hrefOf }: {
   );
 }
 
-/** رقمٌ صغيرٌ في كارتٍ هادئ — لـ«ما يحتاج عملًا» والسكن. */
+/** A small figure in a calm card, for items that need action and for housing. */
 function Small({ label, value, href, onClick, hint }: { label: string; value: number; href?: string; onClick?: () => void; hint?: string }) {
   const body = (
     <>
@@ -204,7 +180,7 @@ export default function B2CDashboardPage() {
   const [d, setD] = useState<Overview | null>(null);
   const [loading, setLoading] = useState(true);
   const [f, setF] = useState<Record<string, string>>({});
-  /** التقسيماتُ تُضيف قيمتَها إلى الفلتر أو تُزيلها — كقوائم الفلاتر فوق. */
+  /** Breakdowns add their value to the filter or remove it, like the filter lists above. */
   const toggle = (k: string, v: string) => setF((p) => {
     const cur = String(p[k] || '').split(',').filter(Boolean);
     const next = cur.includes(v) ? cur.filter((x) => x !== v) : [...cur, v];
@@ -221,11 +197,11 @@ export default function B2CDashboardPage() {
       const r = await api.get<Overview>(`/api/light-transport/overview${fKey ? `?${fKey}` : ''}`);
       if (!guard.isCurrent(token)) return;
       setD(r);
-    } catch { /* تبقى الشاشةُ على ما لديها */ }
+    } catch { /* The screen keeps what it has. */ }
     if (guard.isCurrent(token)) setLoading(false);
   }, [fKey, guard]);
   useEffect(() => { load(); }, [load]);
-  // حيّة: القسمُ والموارد البشريّة (حالةٌ ومشروعٌ وسجلّ) وسجلُّ المركبات (تفويضٌ ومشروع).
+  // Live: the department, HR (status, project, register) and the vehicles register (authorisation, project).
   useSocket('lt:updated', useCallback(() => load(), [load]));
   useSocket('hr:employee', useCallback(() => load(), [load]));
   useSocket('hr:master', useCallback(() => load(), [load]));
@@ -237,14 +213,14 @@ export default function B2CDashboardPage() {
 
   const B = d.board; const E: any = d.employees || {}; const V: any = d.vehicles || {};
   const includeEnded = String(f.status || '').split(',').includes('إنهاء خدمة');
-  /** الناسُ خلف الرقم: فلاترُ اللوحة + ما يخصّ الرقم، وفي الخدمة وحدَهم. */
+  /** People behind the figure: dashboard filters plus what belongs to the figure, in-service only. */
   const people = (extra: Record<string, string> = {}) =>
     `/system/b2c/light-transport?${qsOf({ ...f, inService: includeEnded ? '' : '1', ...extra })}`;
-  /** والمركباتُ خلف الرقم — في «مركبات النقل الخفيف» بالفلاتر نفسِها. */
+  /** Vehicles behind the figure, in the light-transport vehicles page with the same filters. */
   const vehiclesOf = (extra: Record<string, string> = {}) => `/system/b2c/vehicles?${qsOf({ ...f, ...extra })}`;
   const catTotal = (c: Cat) => B.categories[c]?.total || 0;
 
-  // ما يُصدَّر: الأرقامُ والتقسيماتُ في ورقةٍ واحدةٍ مسطَّحة.
+  // Exported: figures and breakdowns on one flat sheet.
   const flat = [
     { group: t('الإجمالي', 'Total'), value: '', count: B.total },
     ...CATS.flatMap((c) => (['sponsored', 'freelance', 'trainee', 'users', 'none'] as Eng[])
@@ -282,11 +258,11 @@ export default function B2CDashboardPage() {
         </Link>
       </PageHeader>
 
-      {/* ── الفلاتر: كفلاتر لوحة الموارد البشريّة — وكلُّ رقمٍ تحتها يتبعها ──── */}
+      {/* Filters, like the HR dashboard filters; every figure below follows them */}
       <HrQuickFilters ar={ar} value={f} onChange={setF}
         keys={d.quickFilters?.length ? d.quickFilters : FALLBACK_KEYS} options={d.filterOptions || {}} />
 
-      {/* ① الإجمالي — وحدَه، وتحته الفئاتُ الثلاث ───────────────────────────── */}
+      {/* 1. Total alone, with the three categories under it */}
       <section className="space-y-2">
         <h2 className="text-[13px] font-semibold text-slate-700 flex items-center gap-1.5"><Users className="w-4 h-4 text-slate-400" />{t('الموظفون', 'People')}</h2>
         <div className={BOX}>
@@ -300,7 +276,7 @@ export default function B2CDashboardPage() {
               {catTotal('none') > 0 && <><span className="text-slate-300"> · </span>{t('غير مصنَّف', 'Uncategorised')} {num(catTotal('none'))}</>}
             </p>
           </Link>
-          {/* شريطُ النسبة: كم من الكلّ مندوبٌ وكم إداريٌّ وكم فنّيّ. */}
+          {/* Share bar: how much of the total is rep, admin and technician. */}
           <div className="mx-4 mb-4 h-1.5 rounded-full bg-slate-100 overflow-hidden flex" aria-hidden>
             {CATS.map((c) => <span key={c.key} style={{ width: `${B.total ? (catTotal(c.key) / B.total) * 100 : 0}%`, background: c.tone }} />)}
           </div>
@@ -320,7 +296,7 @@ export default function B2CDashboardPage() {
                   <Half label={t('على الكفالة', 'Sponsored')} value={n?.sponsored || 0} of={n?.total} href={people({ category: c.key, engagement: 'sponsored' })} />
                   <Half label={t('فريلانسر', 'Freelance')} value={n?.freelance || 0} of={n?.total} href={people({ category: c.key, engagement: 'freelance' })} />
                 </div>
-                {/* وما ليس هذا ولا ذاك — رقمٌ صغيرٌ يُفتَح، فيبقى مجموعُ الكارت صحيحًا. */}
+                {/* Neither of those: a small clickable figure, so the card total stays correct. */}
                 {rest.length > 0 && (
                   <div className="border-t border-slate-100 px-3 py-1.5 text-center text-[11px] text-slate-500">
                     {rest.map((r, i) => (
@@ -346,7 +322,7 @@ export default function B2CDashboardPage() {
         )}
       </section>
 
-      {/* ② حالة العمل — يعمل · إجازة · موقوف · حادث، ومجموعُها الإجمالي ──────── */}
+      {/* 2. Work status: working, on leave, suspended, accident; they sum to the total */}
       <section className="space-y-2">
         <div className="flex items-center gap-2 flex-wrap">
           <h2 className="text-[13px] font-semibold text-slate-700">{t('حالة العمل', 'Work status')}</h2>
@@ -381,7 +357,7 @@ export default function B2CDashboardPage() {
         </div>
       </section>
 
-      {/* ③ المركبات — كلُّ مركبات القسم من سجلّ المركبات، مفوَّضةً أو لا ──────── */}
+      {/* 3. Vehicles: all department vehicles from the vehicles register, authorised or not */}
       <section className="space-y-2">
         <div className="flex items-center gap-2 flex-wrap">
           <h2 className="text-[13px] font-semibold text-slate-700 flex items-center gap-1.5"><Car className="w-4 h-4 text-slate-400" />{t('المركبات', 'Vehicles')}</h2>
@@ -399,7 +375,7 @@ export default function B2CDashboardPage() {
                 {t(`عليها أمر تشغيل سارٍ ${num(B.vehicles.onActiveOrder)}`, `Under an active order ${num(B.vehicles.onActiveOrder)}`)}
               </p>
             </Link>
-            {/* عليها راكب + بانتظار التسليم + واقفة = مركبات القسم — الراكبُ صفٌّ مربوطٌ بها أيًّا كانت حالةُ يومه. */}
+            {/* With a rider + awaiting handover + parked = department vehicles; a rider is a row linked to the vehicle whatever their day status. */}
             <div className="grid grid-cols-3 border-t border-slate-100 divide-x divide-slate-100 rtl:divide-x-reverse">
               <Half label={t('عليها راكب', 'With a rider')} value={B.vehicles.withRider} of={B.vehicles.total} tone="#475569" href={vehiclesOf({ vstate: 'withRider' })} />
               <Half label={t('بانتظار التسليم', 'Awaiting hand-over')} value={B.vehicles.hold || 0} of={B.vehicles.total} tone="#d97706" href={vehiclesOf({ vstate: 'hold' })} />
@@ -407,7 +383,7 @@ export default function B2CDashboardPage() {
             </div>
           </div>
           <div className={BOX}>
-            {/* الإجماليُّ فوق كبقيّة الكروت، وأقسامُه الثلاثة تحته مجموعُها هو. */}
+            {/* The total sits on top like the other cards, and its three parts below sum to it. */}
             <Link href={vehiclesOf()} className="block text-center px-4 pt-4 pb-3 hover:bg-slate-50/60 transition-colors">
               <p className="text-[12px] font-medium text-slate-500">{t('التفويض', 'Authorisation')}</p>
               <p className="mt-1 text-[28px] leading-none font-bold tabular-nums tracking-tight text-slate-900">
@@ -424,7 +400,7 @@ export default function B2CDashboardPage() {
         </div>
       </section>
 
-      {/* ── المناديب حسب المشروع: كفالة · فريلانسر · يوزرات — كلُّ رقمٍ يفتح أصحابه ── */}
+      {/* Reps by project: sponsored, freelance, users; each figure opens its members */}
       {d.reps && d.reps.projects.length > 0 && (
         <section className="space-y-2">
           <h2 className="text-[13px] font-semibold text-slate-700 flex items-center gap-1.5">
@@ -455,10 +431,10 @@ export default function B2CDashboardPage() {
         </section>
       )}
 
-      {/* ── تقريرُ تحقيق المناديب — حيًّا من مدخلات الأوردرات ── */}
+      {/* Rep fulfilment report, live from order entry */}
       <OrdersReport url="/api/b2c/entry" />
 
-      {/* ── التقسيمات: ضغطُ سطرٍ يضيفه إلى الفلاتر فوق (ويُزيله) ─────────────── */}
+      {/* Breakdowns: clicking a row adds it to the filters above (and removes it) */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
         <Breakdown f={f} toggle={toggle} title={t('بالمشروع', 'By project')} icon={<Truck className="w-4 h-4" />} data={E.byProject} filterKey="project" />
         <Breakdown f={f} toggle={toggle} title={t('بالفرع', 'By branch')} icon={<Home className="w-4 h-4" />} data={E.byCity} filterKey="city" />
@@ -468,7 +444,7 @@ export default function B2CDashboardPage() {
         <Breakdown f={f} toggle={toggle} title={t('مركبات بحالة التشغيل', 'Vehicles by service status')} icon={<Car className="w-4 h-4" />} data={V.byServiceStatus} />
       </div>
 
-      {/* ── ما يحتاج عملًا — وكلُّ رقمٍ يفتح أصحابه ─────────────────────────── */}
+      {/* Needs action; each figure opens its members */}
       <section className="space-y-2">
         <h2 className="text-[13px] font-semibold text-slate-700 flex items-center gap-1.5"><AlertTriangle className="w-4 h-4 text-slate-400" />{t('ما يحتاج عملًا', 'Needs attention')}</h2>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -479,14 +455,14 @@ export default function B2CDashboardPage() {
           <Small label={t('مناديب بلا مشرف', 'Reps with no supervisor')} value={d.gaps.noSupervisor} href={people({ staffKind: 'rep', supervisor: 'none' })} />
           <Small label={t('بلا سكن', 'Unhoused')} value={d.gaps.unhoused} href={people({ housing: 'none' })} />
           <Small label={t('بلا ملفّ في الموارد البشرية', 'No HR file')} value={d.gaps.noHrFile} hint={t('القسم يملك سجلّهم', 'owned by the section')} />
-          {/* نُقل في الموارد البشريّة إلى قسمٍ آخر ولم يُخرَج من سجلّ القسم — يُراجَع. */}
+          {/* Moved to another department in HR but not removed from the department register; needs review. */}
           <Small label={t(`قسمه في الموارد البشرية غير ${B.b2cDepartment}`, `HR department is not ${B.b2cDepartment}`)} value={B.otherDepartment}
             hint={t('نُقل هناك — يُراجَع هنا', 'moved in HR — review here')} />
           <Small label={t('أوامر تشغيل سارية', 'Active orders')} value={d.orders.active} href="/system/b2c/orders" />
         </div>
       </section>
 
-      {/* ── السكن ───────────────────────────────────────────────────────────── */}
+      {/* Housing */}
       <section className="space-y-2">
         <h2 className="text-[13px] font-semibold text-slate-700 flex items-center gap-1.5">
           <Home className="w-4 h-4 text-slate-400" />{t('السكن', 'Housing')}

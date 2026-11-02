@@ -9,16 +9,8 @@ import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import 'reports.dart';
 
-/// بطاقات التقييم — the mobile side of the four scorecards the web grew:
-///
-///   • تقييم أداء السائقين (لوكيشن سوليوشن) — from telemetry: عدد الرحلات،
-///     مدة الوصول، مدة التحميل، أيام العمل، المسافة، السرعة.
-///   • تقييم أداء السائقين (إدارة الأسطول) — from the loads they carried.
-///   • مؤشرات العملاء / الموردين (CRM).
-///
-/// They all return the same shape — a 0–100 `score`, a coloured band, and a
-/// weighted `breakdown` — so one widget set renders all four and only the row
-/// summary line differs per kind.
+/// Scorecards, the mobile side of the four web scorecards: LS2 driver telemetry, fleet driver loads, and CRM customer and vendor indicators.
+/// All return the same shape (a 0-100 `score`, a colored band and a weighted `breakdown`), so one widget set renders all four and only the row summary line differs.
 
 Color _hex(String? s, [Color fallback = T.inkFaint]) {
   if (s == null || !s.startsWith('#') || s.length != 7) return fallback;
@@ -30,7 +22,7 @@ String _num(dynamic v) => v == null ? '—' : _n(v).round().toString();
 
 String _iso(DateTime d) => '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
-/// شريطُ الفترة «من → إلى» — نظيرُ DateRangeFilter في الويب.
+/// From/to period bar, counterpart of DateRangeFilter on the web.
 class _RangeBar extends StatelessWidget {
   final DateTime from, to;
   final void Function(DateTime from, DateTime to) onChanged;
@@ -107,8 +99,7 @@ class _Breakdown extends StatelessWidget {
   }
 }
 
-/// شارةُ التصنيف. ولوحاتُ CRM لا تحمل اسمَ التصنيف ولونَه في كلّ صفّ — تحمل
-/// مفتاحَه، وتعريفُه يأتي مرّةً أعلى الحمولة — فيُمرَّر هنا حين يُعرف.
+/// Band badge. CRM boards do not carry the band name and color on every row; they carry its key, and its definition comes once at the top of the payload, so it is passed here when known.
 Widget _bandChip(Map<String, dynamic> row, {Map<String, dynamic>? band}) {
   final color = _hex((band?['color'] ?? row['bandColor']) as String?);
   final label = band != null
@@ -117,9 +108,7 @@ Widget _bandChip(Map<String, dynamic> row, {Map<String, dynamic>? band}) {
   return Chip2('${_num(row['score'])} · $label', color);
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// تقييم أداء السائقين — لوكيشن سوليوشن (من بيانات التتبّع)
-// ─────────────────────────────────────────────────────────────────────────────
+// Driver performance, Location Solutions (from tracking data)
 class Ls2DriverPerformanceScreen extends StatefulWidget {
   const Ls2DriverPerformanceScreen({super.key});
   @override
@@ -133,7 +122,7 @@ class _Ls2DriverPerformanceScreenState extends State<Ls2DriverPerformanceScreen>
   bool _deep = false;
   String? _error;
   String _q = '';
-  // متحكِّمٌ للشاشة: الخانةُ تعود بنصِّها بعد التحميل
+  // Screen-owned controller: the field keeps its text after loading.
   final _searchCtl = TextEditingController();
 
   @override
@@ -333,16 +322,14 @@ class _Ls2DriverPerformanceScreenState extends State<Ls2DriverPerformanceScreen>
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// تقييم أداء السائقين — إدارة الأسطول (من الحمولات)
-// ─────────────────────────────────────────────────────────────────────────────
+// Driver performance, fleet management (from loads)
 class FleetDriverKpisScreen extends StatefulWidget {
   const FleetDriverKpisScreen({super.key});
   @override
   State<FleetDriverKpisScreen> createState() => _FleetDriverKpisScreenState();
 }
 
-// فتراتُ الأسطول بمفاتيح الخادم نفسِها (PeriodFilter في الويب).
+// Fleet periods with the server's own keys (PeriodFilter on the web).
 const _fleetPresets = [
   ('today', 'اليوم', 'Today'), ('yesterday', 'أمس', 'Yesterday'), ('last_7', 'آخر 7 أيام', 'Last 7 days'),
   ('this_month', 'هذا الشهر', 'This month'), ('last_month', 'الشهر الماضي', 'Last month'), ('all', 'كل الفترات', 'All time'),
@@ -354,14 +341,14 @@ class _FleetDriverKpisScreenState extends State<FleetDriverKpisScreen> {
   bool _loading = true;
   String? _error;
   String _q = '';
-  // متحكِّمٌ للشاشة: الخانةُ تعود بنصِّها بعد التحميل
+  // Screen-owned controller: the field keeps its text after loading.
   final _searchCtl = TextEditingController();
-  // الفترة: اسمٌ (preset) أو مدى مخصَّص — الخادمُ يحسم الحدود.
+  // Period: a preset name or a custom range; the server resolves the bounds.
   String _preset = 'this_month';
   DateTimeRange? _range;
   int _seq = 0;
   late final void Function() _onLive;
-  // الشاحنةُ من سجلّ المركبات والسائقُ من الموارد البشريّة — كما يسمع الويب.
+  // The truck comes from the vehicle registry and the driver from HR, as the web listens.
   static const _events = ['fleet:updated', 'vreg:updated', 'fleet:drivers', 'fleet:vehicles', 'hr:employee'];
 
   @override
@@ -446,9 +433,7 @@ class _FleetDriverKpisScreenState extends State<FleetDriverKpisScreen> {
             const SizedBox(height: 10),
             Wrap(spacing: 6, runSpacing: 6, children: [
               _bandChip(r),
-              // ── وهدفُ السائق حمولاتٌ ومسافة ────────────────────────────
-              // السيّارةُ تُقاس بالدخل، والسائقُ لا يملك السعر: يملك أن يشيل
-              // ويمشي. والمسافةُ مقروءةٌ من عدّاد المركبة نفسِه.
+              // The driver's target is loads and distance. A vehicle is measured by income, but the driver does not set the price: he can only load and go. Distance is read from the vehicle's own odometer.
               if (r['achieved'] != null)
                 Chip2(
                   r['achieved'] == true
@@ -529,7 +514,7 @@ class _FleetDriverKpisScreenState extends State<FleetDriverKpisScreen> {
                       Expanded(child: StatCard(label: tr('حمولات متأخرة', 'Late loads'), value: _n(_summary['lateTrips']), color: T.danger, icon: Icons.schedule_outlined)),
                     ]),
                   ),
-                  // مَن حقّق ومَن لم يحقّق — السؤالُ الأوّل في هذه الشاشة.
+                  // Who achieved and who did not: the first question on this screen.
                   Padding(
                     padding: const EdgeInsets.fromLTRB(14, 0, 14, 6),
                     child: Row(children: [
@@ -594,9 +579,7 @@ class _FleetDriverKpisScreenState extends State<FleetDriverKpisScreen> {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// مؤشرات العملاء / الموردين — CRM
-// ─────────────────────────────────────────────────────────────────────────────
+// Customer / vendor indicators, CRM
 class CrmKpisScreen extends StatefulWidget {
   /// 'customers' or 'vendors'.
   final String kind;
@@ -611,17 +594,15 @@ class _CrmKpisScreenState extends State<CrmKpisScreen> {
   bool _loading = true;
   String? _error;
   String _q = '';
-  // متحكِّمٌ للشاشة: الخانةُ تعود بنصِّها بعد التحميل
+  // Screen-owned controller: the field keeps its text after loading.
   final _searchCtl = TextEditingController();
-  // ── التصنيفُ والعلاماتُ تُرسَل مرّةً أعلى الحمولة ──────────────────────────
-  // كانت تُكرَّر في كلّ صفٍّ لثلاثة آلافِ مورّد (خمسةُ ميجابايت يهضمها الهاتف
-  // ليعرض صفًّا واحدًا). والآن: مفتاحٌ في الصفّ، ونصُّه وشكلُه من هنا.
+  // The band and flags are sent once at the top of the payload. They used to be repeated on every row for three thousand vendors (five megabytes for the phone to digest to show one row). Now a key sits in the row and its text and shape come from here.
   List<Map<String, dynamic>> _bands = const [];
   Map<String, dynamic> _flagLabels = const {};
   final Map<String, Map<String, dynamic>> _details = {};
 
   bool get _isVendors => widget.kind == 'vendors';
-  // الفترةُ كالويب: آخرُ ١٢ شهرًا افتراضًا، وتُرسَل مع القائمة والتفصيل.
+  // Period as on the web: last 12 months by default, sent with both the list and the detail.
   DateTime _from = DateTime(DateTime.now().year - 1, DateTime.now().month, DateTime.now().day);
   DateTime _to = DateTime.now();
   int _seq = 0;
@@ -635,7 +616,7 @@ class _CrmKpisScreenState extends State<CrmKpisScreen> {
   String _rowKey(Map<String, dynamic> r) =>
       '${r['_id'] ?? r['supplierId'] ?? r['name'] ?? ''}';
 
-  /// تفصيلُ التقييم يُجلب عند فتح الصفِّ وحدَه ويُحفظ، فلا يُجلب مرّتين.
+  /// Scorecard detail is fetched only when the row is opened and cached, so it is not fetched twice.
   Future<Map<String, dynamic>> _detailOf(Map<String, dynamic> r) async {
     final k = _rowKey(r);
     final cached = _details[k];
@@ -744,8 +725,7 @@ class _CrmKpisScreenState extends State<CrmKpisScreen> {
             if (flags.isNotEmpty) ...[
               const SizedBox(height: 12),
               Wrap(spacing: 6, runSpacing: 6, children: flags.map<Widget>((raw) {
-                // المفتاحُ في الصفّ، ونصُّه في `flagLabels` — والقديمُ (كائنٌ
-                // كاملٌ في الصفّ) يبقى مقروءًا لئلّا ينكسر تطبيقٌ لم يُحدَّث.
+                // The key is in the row and its text in `flagLabels`; the old shape (a whole object in the row) stays readable so an app that was not updated does not break.
                 if (raw is Map) {
                   final f = Map<String, dynamic>.from(raw);
                   return Chip2(tr('${f['ar'] ?? ''}', '${f['en'] ?? ''}'), T.danger, icon: Icons.flag_outlined);
@@ -757,7 +737,7 @@ class _CrmKpisScreenState extends State<CrmKpisScreen> {
             const SizedBox(height: 18),
             Text(tr('تفصيل التقييم', 'Score breakdown'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
             const SizedBox(height: 10),
-            // التفصيلُ يُجلب عند فتح الصفّ — لا يُحمَّل مع ثلاثة آلافِ صفّ.
+            // Detail is fetched when the row is opened; it is not loaded with three thousand rows.
             FutureBuilder<Map<String, dynamic>>(
               future: _detailOf(r),
               builder: (c2, snap) {

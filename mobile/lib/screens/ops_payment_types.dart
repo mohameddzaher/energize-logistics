@@ -12,11 +12,8 @@ import '../ui/widgets.dart';
 import '../ui/search_field.dart';
 import 'ops_common.dart';
 
-/// أنواعُ الدفع — صفةُ كلّ عميلٍ في مكانٍ واحد (نظيرُ /system/operations/payment-types).
-///
-/// اختيارُ اليد على الكشف يغلب كلَّ شيء؛ ثمّ «طريقة الدفع» من المنصّة حين تقول
-/// نقدًا؛ ثمّ صفةُ العميل من هنا. نفسُ نقاط الويب: GET/PUT /api/workflows/payment-types،
-/// و/apply (معاينةٌ ثمّ تنفيذ)، و/:id/unify.
+/// Payment kinds: each customer's attribute in one place (counterpart of /system/operations/payment-types).
+/// Precedence: a manual choice on the statement wins; then the platform's payment method when it says cash; then the customer attribute from here. Same endpoints as the web: GET/PUT /api/workflows/payment-types, /apply (preview then execute), /:id/unify.
 class OpsPaymentTypesScreen extends StatefulWidget {
   const OpsPaymentTypesScreen({super.key});
   @override
@@ -38,7 +35,7 @@ class _OpsPaymentTypesScreenState extends State<OpsPaymentTypesScreen> {
   bool _loading = true;
   String? _error;
   String _q = '';
-  // متحكِّمُ البحث عند الشاشة: خطأُ تحديثٍ ثمّ إعادةُ المحاولة لا يُفرغ الخانةَ والكلمةُ تُرشِّح.
+  // Search controller owned by the screen so a failed refresh followed by a retry does not empty the field while the term still filters.
   final _searchCtl = TextEditingController();
   String _filter = ''; // '' | cash | tax | none | conflict
   String? _saving;
@@ -97,7 +94,7 @@ class _OpsPaymentTypesScreenState extends State<OpsPaymentTypesScreen> {
     }).toList();
   }
 
-  /// صفةُ العميل تُحفَظ وتملأ كشوفَه بلا نوع؛ والمخالفُ يُسأل عنه بعدده.
+  /// The customer attribute is saved and fills his untyped statements; mismatching ones are asked about by count.
   Future<void> _setType(Map<String, dynamic> row, String type) async {
     if (type == (row['paymentType'] ?? '')) return;
     setState(() => _saving = '${row['_id']}');
@@ -151,7 +148,7 @@ class _OpsPaymentTypesScreenState extends State<OpsPaymentTypesScreen> {
     }
   }
 
-  /// تمريرُ القاعدة على كلّ الكشوف بلا نوع — يُعرَض أثرُها قبل تنفيذها.
+  /// Run the rule over all untyped statements; its effect is shown before it is executed.
   Future<void> _applyAll() async {
     setState(() => _applying = true);
     try {
@@ -222,7 +219,7 @@ class _OpsPaymentTypesScreenState extends State<OpsPaymentTypesScreen> {
               : RefreshIndicator(
                   onRefresh: _load,
                   child: ListView(keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag, padding: const EdgeInsets.all(14), children: [
-                    // القاعدةُ مكتوبةٌ حيث تُطبَّق.
+                    // The rule is written where it is applied.
                     Container(
                       padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: T.line)),

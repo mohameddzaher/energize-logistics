@@ -13,8 +13,7 @@ export interface GenerateOptions {
   rows: DispatchSheetRow[];
   onProgress?: (progress: GenerateProgress) => void;
   signal?: AbortSignal;
-  // Per-row file naming. The bulk-download flows name each بوليصة with the
-  // waybill number + customer + date; the dispatch page keeps the default.
+  // Per-row file naming. The bulk-download flows name each waybill with the waybill number + customer + date; the dispatch page keeps the default.
   fileNameOf?: (row: DispatchSheetRow) => string;
 }
 
@@ -208,8 +207,7 @@ export async function generateDispatchSheetsZip(opts: GenerateOptions): Promise<
   return { blob, fileName: `كشوف-التخريج-${todayStamp()}.zip` };
 }
 
-// One shipment → one PDF, for the shipment-orders section where every order
-// carries its own بوليصة and is downloaded alone — no ZIP ceremony for one file.
+// One shipment, one PDF, for the shipment-orders section where every order carries its own waybill and is downloaded alone, with no ZIP for one file.
 export async function generateSingleDispatchPdf(row: DispatchSheetRow): Promise<{ blob: Blob; fileName: string }> {
   const html2canvas = await loadHtml2Canvas();
   const letterheadBytes = await getLetterheadBytes();

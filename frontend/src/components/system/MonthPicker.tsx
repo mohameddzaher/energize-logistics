@@ -1,23 +1,7 @@
 'use client';
 /**
- * منتقي الشهر — سنةٌ وشهرٌ، لا `input type="month"`.
- *
- * ── العلّة ──────────────────────────────────────────────────────────────────
- * `input type="month"` لا يدعمه سفاري على الحاسوب ولا فايرفوكس: يرسمه كلٌّ منهما
- * **خانةَ نصٍّ عاديّة** بلا منتقٍ ولا تحقّق. فمن يفتح الشاشةَ بأحدهما يرى مربّعًا
- * فارغًا لا يفتح شيئًا — «مش عارف أختار شهر» — بينما يعمل عند من يفتحها بكروم.
- * والعطبُ صامتٌ تمامًا: لا خطأ في السجلّ، ولا شيءَ في الشاشة إلّا خانةٌ لا
- * تستجيب. وهو منتشرٌ في اثنتي عشرةَ شاشةً: سير العمل والمحفظة والتقارير
- * والمبيعات ولوحةُ العهدة وسجلّات المركبات وتفقّد الدوام.
- *
- * ── والحلُّ قائمتان لا تقويم ───────────────────────────────────────────────
- * الشهرُ ليس تاريخًا يُنتقى من تقويم: هو اثنا عشرَ خيارًا وسنةٌ. وقائمتان
- * تعملان في كلّ متصفّحٍ بلا استثناء، وتُقرآن بالعربيّة كما تُنطَق («سبتمبر
- * ٢٠٢٦») بدل «2026-09» التي يكتبها الحقلُ الأصليّ بالإنجليزيّة مهما كانت لغةُ
- * الشاشة.
- *
- * والقيمةُ تبقى «YYYY-MM» كما كانت، فلا يتغيّر شيءٌ عند من يستعملها ولا في
- * الخادم.
+ * Month picker: year and month selects instead of `input type="month"`.
+ * Desktop Safari and Firefox render type="month" as a plain text box with no picker or validation, a silent failure used on twelve screens. Two selects work in every browser and read in Arabic month names rather than the native English "2026-09". The value stays "YYYY-MM" so callers and the server are unchanged.
  */
 import { useMemo } from 'react';
 
@@ -27,15 +11,15 @@ const MONTHS_EN = ['January', 'February', 'March', 'April', 'May', 'June', 'July
 export default function MonthPicker({
   value, onChange, ar, className, fromYear, toYear, allowEmpty = true, label,
 }: {
-  /** «YYYY-MM» أو فارغ. */
+  /** "YYYY-MM" or empty. */
   value: string;
   onChange: (v: string) => void;
   ar: boolean;
   className?: string;
-  /** حدودُ السنوات — الافتراضيُّ من ٢٠٢٣ إلى العام القادم. */
+  /** Year bounds; default 2023 to next year. */
   fromYear?: number;
   toYear?: number;
-  /** أيُقبل «بلا شهر»؟ شاشاتُ الفلترة تقبله، وشاشاتُ الإدخال لا. */
+  /** Whether "no month" is accepted: filter screens allow it, entry screens do not. */
   allowEmpty?: boolean;
   label?: string;
 }) {
@@ -51,7 +35,7 @@ export default function MonthPicker({
   const months = ar ? MONTHS_AR : MONTHS_EN;
   const box = 'px-2.5 py-2 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/40';
 
-  /** تغييرُ أحد الطرفين يكمّل الآخرَ بالحاليّ — فلا تبقى قيمةٌ نصفَ مكتوبة. */
+  /** Changing one side fills the other with the current value, so no half-written value remains. */
   const emit = (y: string, m: string) => {
     if (!y && !m) { onChange(''); return; }
     const yy = y || String(now.getFullYear());

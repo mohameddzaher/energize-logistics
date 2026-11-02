@@ -34,26 +34,20 @@ export default function VehicleAccidentsPage() {
   const sp = useSearchParams();
   const [accidents, setAccidents] = useState<VehicleAccident[]>([]);
   const cf = useColumnFilters<VehicleAccident>();
-  // عرضُ عمود الإجراءات يُقاس لتقف اللوحةُ بجانبه — راجع components/vehicles/stickyLead.
+  // Actions column width is measured so the plate column can stick beside it; see components/vehicles/stickyLead.
   const lead = useLeadOffset();
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState(sp?.get('status') || '');
   const [editing, setEditing] = useState<VehicleAccident | null>(null);
-  // ── التسجيل ───────────────────────────────────────────────────────────────
-  // كانت الشاشة تعدّل الحوادث وتحذفها ولا تسجّلها: الحادث يُسجَّل من ملفّ
-  // المركبة وحده، فمن يفتح شاشة الحوادث ليكتب حادثًا وقع اليوم لا يجد أين.
-  // وسجلٌّ لا يُكتب فيه من مكان قراءته يُكتب في مكانٍ آخر — أو لا يُكتب.
+  // Registration. The screen could edit and delete accidents but not create them (only the vehicle file could), so a register not writable where it is read ends up written elsewhere or not at all.
   const [creating, setCreating] = useState(false);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [newVehicle, setNewVehicle] = useState('');
   const [form, setForm] = useState<any>(null);
   const [saving, setSaving] = useState(false);
 
-  // ── ولا يكتب ردٌّ قديمٌ فوق ردٍّ أحدث ───────────────────────────────────
-  // البحثُ والحالةُ يُفلتَران على الخادم، فتنطلق طلبتان في اللحظة نفسِها.
-  // والأوسعُ ردًّا أبطأُ وصولًا، فيصل بعد الأضيق ويكتب فوقه — فيبدو الفلترُ
-  // وقد «فُكّ» وحدَه. راجع hooks/useLatestRequest.
+  // Stale responses must not overwrite newer ones. Search and status filter on the server and fire two requests at once; the broader one is slower and lands last, making the filter look cleared. Uses hooks/useLatestRequest.
   const guard = useLatestRequest();
   const load = useCallback(async () => {
     const mine = guard.begin();
@@ -70,10 +64,10 @@ export default function VehicleAccidentsPage() {
 
   useEffect(() => { load(); }, [load]);
   useSocket('vehicle:accident', useCallback(() => load(), [load]));
-  // تصحيحُ اللوحة في السجلّ يُكتب في نسخ الحوادث (utils/vehicleRef) — فتُعاد القراءة.
+  // A plate correction in the registry is written to the accident copies (utils/vehicleRef), so reload.
   useSocket('vreg:updated', useCallback(() => load(), [load]));
 
-  // قائمة المركبات تُجلب مرّةً واحدة عند أوّل فتحٍ للاستمارة، لا مع كل تحميل.
+  // The vehicle list is fetched once on first form open, not on every load.
   const loadVehicles = useCallback(async () => {
     if (vehicles.length) return;
     try {
@@ -112,8 +106,7 @@ export default function VehicleAccidentsPage() {
     setSaving(true);
     const payload = { ...form, estimatedCost: Number(form.estimatedCost) || 0, actualCost: Number(form.actualCost) || 0 };
     try {
-      // الموظّف المسؤول والتفويض يُستنتجان في الخادم من التفويض الساري وقتها —
-      // فلا يُسأل عنهما هنا ولا يُخمَّنان.
+      // Responsible employee and authorization are derived on the server from the authorization valid at that time, so they are neither asked nor guessed here.
       if (creating) await api.post(`/api/vehicles/${newVehicle}/accidents`, payload);
       else if (editing) await api.put(`/api/vehicles/accidents/${editing._id}`, payload);
       closeForm(); load();
@@ -137,16 +130,14 @@ export default function VehicleAccidentsPage() {
     { header: tx.status, key: 'status', transform: (v: any) => (ACCIDENT_STATUS[v]?.[ar ? 'ar' : 'en'] || v), width: 12 },
     { header: tx.actualCost, key: 'actualCost', width: 12 },
   ];
-  // البحث والحالة يُطبَّقان على الخادم، فما في الذاكرة نتائجُ الفلتر لا السجلّ كلّه؛
-  // «الكلّ» يلزمه نداءٌ ثانٍ بلا معاملات، وإلّا كان الاسمان لملفٍّ واحد ناقص.
+  // Search and status filter on the server, so memory holds filter results, not the whole register; "all" needs a second call without params, otherwise the export would be incomplete.
   const hasActiveFilters = !!(search.trim() || statusFilter);
   const fetchAllForExport = async () => {
     const d = await api.get<{ accidents: VehicleAccident[] }>('/api/vehicles/accidents');
     return [{ name: 'Accidents', rows: (d.accidents || []) as unknown as Record<string, any>[], columns: exportColumns }];
   };
   if (!staff) return <div className="text-slate-500 p-8">{tx.notAuthorized}</div>;
-  // قارئُ كلِّ عمود — التعبيرُ نفسُه الذي تُرسم به الخليّة، فلا يفلتر الفلترُ
-  // على غير ما يُقرأ.
+  // Per-column reader: the same expression the cell renders, so the filter matches what is displayed.
   const GETTERS: Record<string, (a: VehicleAccident) => any> = {
     date: (a) => fmtDate(a.date),
     plate: (a) => plateOf(a.vehicle),
@@ -156,12 +147,12 @@ export default function VehicleAccidentsPage() {
     severity: (a) => a.severity || 'minor',
     status: (a) => a.status || 'reported',
   };
-  // آخرُ ما يُطبَّق.
+  // Applied last.
   const shownRows = cf.apply(accidents, GETTERS);
 
   const scope = exportScopeLabels(ar);
   const exportOptions = [
-    // «المعروض» بعد فلاتر الأعمدة لا قبلها — راجع shownRows.
+    // "Shown" means after column filters, not before; see shownRows.
     { key: 'shown', label: scope.shown, sheets: [{ name: 'Accidents', rows: shownRows as unknown as Record<string, any>[], columns: exportColumns }] },
     ...(hasActiveFilters || cf.count ? [{ key: 'all', label: scope.all, resolve: fetchAllForExport }] : []),
   ];
@@ -193,15 +184,11 @@ export default function VehicleAccidentsPage() {
       <ScrollX className="bg-white border border-slate-200 rounded-xl shadow-sm">
         <table className="w-full text-sm">
           <thead>
-            {/* الترويسةُ تحمل قمعَ كلِّ عمود — القيمةُ تُقرأ بالتعبير نفسِه
-                الذي تُرسم به الخليّة. راجع components/useColumnFilters. */}
+            {/* Header carries a per-column filter funnel; the value is read with the same expression the cell renders (components/useColumnFilters). */}
             <tr className="bg-slate-900 border-b border-slate-200 text-slate-300">
-              {/* الإجراءاتُ أوّلًا وثابتة — راجع components/vehicles/stickyLead. */}
+              {/* Actions first and sticky (components/vehicles/stickyLead). */}
               <th ref={lead.ref} className={`${LEAD} bg-slate-900 text-start font-semibold px-4 py-3`}>{tx.actions}</th>
-              {/* ── واللوحةُ قبل التاريخ في الجدول ─────────────────────────
-                  كانت ثانيةً بعد التاريخ، ولتثبيتها بجانب الإجراءات لا بدّ أن
-                  تجاورها — وإلّا انزلق التاريخُ تحتها فاختفى. وترتيبُ الملفّ
-                  المصدَّر لا يتغيّر: له قائمةُ أعمدته (`exportColumns`). */}
+              {/* Plate precedes date in the table. To pin the plate beside actions it must be adjacent, or the date slides under it. The exported file keeps its own order via `exportColumns`. */}
               {([
                 ['plate', tx.plateNumber], ['date', tx.date], ['employee', tx.employee],
                 ['description', tx.description], ['fault', tx.faultParty],

@@ -19,19 +19,18 @@ class EnergizeApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return ChangeNotifierProvider(
       create: (_) => AuthProvider()..bootstrap(),
-      // اللغة ثنائية زي الموقع — التبديل يعيد بناء الشجرة بالاتجاه الصحيح.
+      // Bilingual like the website; switching rebuilds the tree with the correct direction.
       child: ListenableBuilder(
         listenable: Lang.instance..load(),
         builder: (context, _) => MaterialApp(
-          // مفتاح باللغة: التبديل يعيد بناء الشجرة فورًا — دون أي تحديث يدوي.
+          // Keyed by language so switching rebuilds the tree immediately with no manual refresh.
           key: ValueKey(Lang.instance.ar),
           title: 'Energize Logistics',
           debugShowCheckedModeBanner: false,
           locale: Locale(Lang.instance.ar ? 'ar' : 'en'),
           builder: (context, child) => Directionality(
             textDirection: Lang.instance.ar ? TextDirection.rtl : TextDirection.ltr,
-            // لوحةُ المفاتيح تُغلَق في كلّ شاشة: ضغطةٌ على مكانٍ فارغ أو سحبُ القائمة
-            // (صاحبُ الشركة: «السيرش… مبعرفش أقفله»). الأزرارُ تكسب ضغطتَها كما هي.
+            // The keyboard closes on every screen by tapping an empty area or dragging the list (otherwise the search field cannot be closed). Buttons keep their taps as they are.
             child: GestureDetector(
               behavior: HitTestBehavior.translucent,
               onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
@@ -66,10 +65,10 @@ class _Gate extends StatelessWidget {
         ),
       );
     }
-    // انتقال ناعم بين الدخول والداخل.
+    // Smooth transition between login and the signed-in area.
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 400),
-      // حسابُ Media Go يرى شاشةً واحدة — هي بيتُه (backend/src/config/scopedRoles).
+      // The Media Go account sees a single screen, its home (backend/src/config/scopedRoles).
       child: auth.user == null
           ? const LoginScreen()
           : auth.role == mediagoRole

@@ -1,21 +1,8 @@
 #!/usr/bin/env node
 /**
- * حارسُ بوّابات الأزرار — صلاحيّةٌ ممنوحةٌ يجب أن تُرى في الشاشة.
- *
- * ── العلّة التي تكرّرت ──────────────────────────────────────────────────────
- * الخادمُ يفتح القسمَ لمن مُنح «تعديل» في مصفوفة الصلاحيّات (sectionGate ثمّ
- * authorize). والشاشةُ تُخفي أزرارَها بقائمةِ أدوارٍ مكتوبةٍ بيد:
- *   const canEdit = ['super_admin', 'x_manager'].includes(user?.role)
- * فمَن مُنح القسمَ يفتح الصفحةَ ولا يجد زرَّ الحفظ — «عملت حاجة ومسمعتش»، أو
- * «مش لاقي الزرار»، وكلُّ مرّةٍ تُصلَح شاشةٌ واحدة. فهذا يمنع عودتَها: البناءُ
- * يفشل إن وُجدت بوّابةٌ بأسماء الأدوار وحدَها.
- *
- * ── القاعدة ─────────────────────────────────────────────────────────────────
- * بوّابةٌ تُقرأ من دور المستخدم يجب أن تقرأ معه منحَ القسم
- * (`canEditSection` / `canAccessSection` / `permissions` أو مساعدًا يفعل ذلك)،
- * أو أن تقول صراحةً إنّها بالدور وحدَه عن قصد:
- *   // role-only: <السبب>
- * (مالٌ، حذفٌ لا يُستعاد، شاشةُ مدير النظام). فالقصدُ يُكتب، والسهوُ يُمسَك.
+ * Button gate guard: a granted permission must be visible in the screen.
+ * The server opens a section to anyone granted edit (sectionGate then authorize), but screens hid buttons with hand-written role lists, so granted users found no save button. The build fails if a gate uses role names alone.
+ * A gate reading the user's role must also read the section grant (canEditSection / canAccessSection / permissions, or a helper that does), or carry a role-only: <reason> comment (money, irreversible delete, system admin screen).
  */
 const fs = require('fs');
 const path = require('path');
@@ -41,7 +28,7 @@ for (const file of files) {
   const lines = fs.readFileSync(file, 'utf8').split('\n');
   lines.forEach((line, i) => {
     if (!GATE.test(line)) return;
-    // العبارةُ قد تمتدّ على أسطر: تُقرأ حتى الفاصلة المنقوطة.
+    // A statement may span lines; read until the semicolon.
     let stmt = line; let j = i;
     while (!/;\s*(\/\/.*)?$/.test(lines[j]) && j < i + 6 && j + 1 < lines.length) { j += 1; stmt += `\n${lines[j]}`; }
     const around = `${lines[i - 3] || ''}\n${lines[i - 2] || ''}\n${lines[i - 1] || ''}\n${stmt}`;

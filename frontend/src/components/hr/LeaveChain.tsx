@@ -1,10 +1,7 @@
 'use client';
 /**
- * السلسلةُ كما تُرى: شريطةُ المحطّات الأربع، وحوارُ الطلب.
- *
- * كانت الموافقةُ محطّتين وسطرًا واحدًا تحت الطلب. فصارت أربعًا، وصار للطلب
- * تاريخٌ لا حالةٌ واحدة: مَن وافق ومتى، ومَن سأل وبمَ ردّ صاحبُه. ولو كُتب هذا
- * في كلّ صفحةٍ من الصفحات الأربع اختلفت الأربعُ بعد شهر — فهو هنا مرّةً.
+ * Approval chain as shown: four-station stepper and request dialog.
+ * A request has a history (who approved and when, who asked and the reply), not one status. Kept in one place so the four pages do not drift apart.
  */
 import { LeaveRequest, LEAVE_STAGES, LeaveStage, userName } from '@/lib/hr';
 import { bothDatesShort } from '@/lib/hrDates';
@@ -12,13 +9,13 @@ import { Check, X, HelpCircle, Clock, MessageSquare, Paperclip } from 'lucide-re
 
 const STAGE_INDEX: Record<string, number> = { manager: 0, hr: 1, finance: 2, executive: 3 };
 
-/** حالةُ كلّ محطّة في هذا الطلب: انتهت، أو واقفةٌ عندها، أو لم تصلها بعد. */
+/** State of each station for this request: done, stopped at it, or not reached yet. */
 function stageState(leave: LeaveRequest, stage: LeaveStage): 'done' | 'rejected' | 'current' | 'asked' | 'waiting' {
   const d = leave[LEAVE_STAGES.find((s) => s.key === stage)!.decision] as any;
   if (d?.decision === 'rejected') return 'rejected';
   if (d?.decision === 'approved') return 'done';
   if (leave.currentStage === stage) return 'current';
-  // ارتدَّ إلى صاحبه بسؤال: المحطّةُ السائلةُ هي آخرُ سؤالٍ في الحوار.
+  // Returned to the requester with a question: the asking station is the last question in the dialog.
   if (leave.status === 'info_requested') {
     const lastQ = [...(leave.thread || [])].reverse().find((t) => t.kind === 'question');
     if (lastQ?.stage === stage) return 'asked';
@@ -37,7 +34,7 @@ const LOOK: Record<string, { ring: string; dot: string; icon: any }> = {
 
 export function LeaveChainBar({ leave, lang }: { leave: LeaveRequest; lang: 'ar' | 'en' }) {
   const ar = lang === 'ar';
-  // الطلبُ المُلغى أو المرفوض لا شريطةَ له تتقدّم — تُعرض المحطّاتُ كما وقفت.
+  // A cancelled or rejected request has no advancing stepper; stations are shown as they stopped.
   return (
     <div className="flex flex-wrap items-stretch gap-1.5">
       {LEAVE_STAGES.map((s, i) => {
@@ -66,7 +63,7 @@ export function LeaveChainBar({ leave, lang }: { leave: LeaveRequest; lang: 'ar'
   );
 }
 
-/** حوارُ الطلب: السؤالُ والردُّ بترتيبهما، بالأقدم أوّلًا. */
+/** Request dialog: questions and replies in order, oldest first. */
 export function LeaveThread({ leave, lang }: { leave: LeaveRequest; lang: 'ar' | 'en' }) {
   const ar = lang === 'ar';
   const thread = leave.thread || [];

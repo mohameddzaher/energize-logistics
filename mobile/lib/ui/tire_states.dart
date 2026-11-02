@@ -1,27 +1,19 @@
 import 'package:flutter/material.dart';
 import 'theme.dart';
 
-/// حالات فردة الكاوتش — صورةُ config/tireStates.js في الخادم.
-///
-/// المكانُ على محورٍ واحد (`status`)، والدرجة (`condition`) وصفٌ للفردة لا
-/// لمكانها. وكانت خانة «في المصنع» تُعَدّ بالدرجة و«تحت التجديد» بالحالة —
-/// وصفان لموضعٍ واحد من مصدرين، فاختلطا.
-///
-/// و«تحت التجديد» غير «في المصنع»: الأولى قرارٌ اتُّخذ والفردة في عهدة الورشة،
-/// والثانية موضعٌ فعليّ خارج الشركة. ودمجُهما كان يجعل الورشة تعِد بفردةٍ ليست
-/// عندها.
+/// Tire states, mirror of config/tireStates.js on the server. Place is on one axis (`status`); grade (`condition`) describes the tire, not its place. The in-factory slot used to count by grade and under-renewal by status, two descriptions from two sources of one position, which got mixed. Under renewal differs from in factory: the first is a decision with the tire in the workshop's custody, the second a physical location outside the company. Merging them had the workshop promise a tire it did not hold.
 class TireState {
   final String key;
   final String ar;
   final String en;
 
-  /// تُعَدّ ضمن «في المخزن»؟
+  /// Counts as in store?
   final bool inStore;
   final Color color;
   const TireState(this.key, this.ar, this.en, this.inStore, this.color);
 }
 
-/// الترتيب هنا هو ترتيب البطاقات: سُلَّمٌ من المركَّب إلى المنتهي.
+/// Order here is the card order: a ladder from mounted to finished.
 const tireStates = <TireState>[
   TireState('mounted', 'مركّبة', 'Mounted', false, T.success),
   TireState('new', 'الجديد', 'New', true, T.info),
@@ -33,12 +25,12 @@ const tireStates = <TireState>[
   TireState('sold', 'المباع', 'Sold', false, T.inkSoft),
 ];
 
-/// الخانةُ التي تقع فيها الفردة — تعريفٌ واحد للعدّاد والفلتر والشارة.
+/// The slot a tire falls in: one definition for the counter, filter and badge.
 String tireStateKey(Map<String, dynamic> t) {
   final s = (t['status'] ?? '').toString();
   if (s == 'mounted') return 'mounted';
-  if (s == 'in_repair') return 'under_renewal'; // الاسم القديم
-  if (s == 'retired') return 'scrap'; // موروث
+  if (s == 'in_repair') return 'under_renewal'; // Old name
+  if (s == 'retired') return 'scrap'; // Legacy
   if (const ['under_renewal', 'at_factory', 'scrap', 'damaged', 'sold'].contains(s)) return s;
   return (t['condition'] ?? 'used') == 'new' ? 'new' : 'used'; // spare
 }
@@ -46,11 +38,10 @@ String tireStateKey(Map<String, dynamic> t) {
 TireState tireStateOf(Map<String, dynamic> t) =>
     tireStates.firstWhere((x) => x.key == tireStateKey(t), orElse: () => tireStates[2]);
 
-/// «في المخزن» = كلُّ ما هو عندنا وغيرُ مركَّب. والتالف والمباع خرجا من العهدة.
+/// In store = everything we own that is not mounted. Scrapped and sold have left custody.
 bool tireInStore(Map<String, dynamic> t) => tireStateOf(t).inStore;
 
-/// وجهاتُ النزول من العربية — ستٌّ، لا أربع. ومَن يُنزل الفردة هو وحده من يعرف
-/// أهي جديدةٌ على الرفّ أم مستعملة، وأتحت التجديد هي أم خرجت إلى المصنع.
+/// Destinations when taking a tire off a truck: six, not four. Whoever removes it alone knows whether it is new on the shelf or used, and whether it is under renewal or went to the factory.
 const tireDismountDestinations = <(String, String, String)>[
   ('new', 'الجديد (على الرفّ)', 'New (shelf)'),
   ('used', 'المستعمل (على الرفّ)', 'Used (shelf)'),

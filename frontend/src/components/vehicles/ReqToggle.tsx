@@ -1,33 +1,14 @@
 'use client';
-// ── «مطلوبٌ منّا هذا المستند؟» — سؤالٌ يُطرَح حيث يُعدَّل المستند ─────────────
-//
-// ليست كلُّ مركبةٍ في السجلّ مركبتَنا: منها ما هو لموظّفٍ لا نركّب له إلّا شريحةَ
-// تتبّع. فتأمينُها وبطاقةُ تشغيلها وفحصُها ليست نقصًا عندنا — ولا نملك أوراقَها
-// أصلًا. وكان الصمتُ يُقرأ نقصًا: مركبةٌ بلا تاريخِ فحصٍ ولا وضعٍ مسجَّل تُعَدّ
-// «مطلوب — ناقص»، فتُظهر شريحةُ العمل عشراتِ الصفوف أكثرُها لا عملَ فيه.
-//
-// وكان السؤالُ يُطرَح في استمارة سجل المركبات وحدَها. ومَن يراجع الفحصَ الدوريّ
-// يفتح صفحةَ الفحص لا صفحةَ السجلّ، فيرى المركبةَ «ناقصة» ولا يجد فيها ما يقول
-// إنها لا تُفحص أصلًا — فيخرج من الشاشة إلى شاشةٍ أخرى ليصحّح ما رآه هنا.
-// فالسؤالُ صار حيث يُعدَّل المستند: في استمارة كلّ صفحةِ عائلة، وفي السجلّ.
-//
-// والمكتوبُ واحدٌ في الحالين: `<root>.statusCode` على المركبة — تقرؤه `docNeed`
-// و`stateOf` في الخادم، فما يُكتب من صفحة الفحص يُقرأ في السجلّ وفي النظرة
-// الشاملة وفي شرائح العمل بلا نسخةٍ ثانية من الحقيقة.
-//
-// ولا يُكتب شيءٌ إلّا بضغطة: العدمُ اليوم يعني «مطلوب» ضمنًا، فلو كُتبت من
-// أنفسنا عند كلّ حفظٍ لتغيّرت مئاتُ الصفوف بلا أن يطلب ذلك أحد.
+// Toggle for whether this document is required of us, shown where the document is edited.
+// Not every registry vehicle is ours (e.g. only a tracker is fitted), so missing papers are not a gap; silence used to read as missing. The value is `<root>.statusCode` on the vehicle, read by docNeed and stateOf on the server, so it is the same whichever page writes it.
 
-/** أوضاعٌ مسجَّلةٌ تعني «غير مطلوب» — كما يقرؤها `docNeed` في lib/vehicleRegistry. */
+/** Recorded statuses meaning not required, as read by docNeed in lib/vehicleRegistry. */
 export const isNotRequiredCode = (code?: string | null) =>
   code === 'not_required' || code === 'not_in_use';
 
 /**
- * وضعٌ ثالثٌ محفوظ لا يُداس عليه بزرَّين.
- *
- * «لدى البنك» و«لدى الجبر» و«نشط» أوضاعٌ حقيقيّةٌ سجّلها الاستيراد أو مستخدمٌ
- * قبلنا، وليست «مطلوب» ولا «غير مطلوب». فتُعرَض بوصفها وضعًا قائمًا ولا يمحوها
- * زرٌّ إلّا بقصد.
+ * A third stored status that two buttons must not overwrite.
+ * Statuses such as held by bank, held by garage and active were recorded by import or earlier users; they are neither required nor not-required, so they show as an existing state and only an explicit action clears them.
  */
 export const isOtherCode = (code?: string | null) =>
   !!code && !isNotRequiredCode(code) && code !== 'required' && code !== 'none';

@@ -1,9 +1,6 @@
 'use client';
-// سجل المتابعة — every action from every meeting, for the board and the secretariat.
-//
-// This is the page the GM opens before the next round: what did we ask for, who
-// owes it, and what has slipped. The "load by person" table on the right is the
-// question that actually gets asked out loud in the meeting.
+// Follow-up register: every action from every meeting, for the board and the secretariat.
+// This is the page the GM opens before the next round: what did we ask for, who owes it, and what has slipped. The 'load by person' table on the right is the question that actually gets asked out loud in the meeting.
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useLanguage } from '@/context/LanguageContext';
 import { useDialog } from '@/components/system/DialogProvider';
@@ -90,9 +87,7 @@ export default function ActionRegisterPage() {
     { header: t('Delegated to', 'موزّع على'), key: 'delegations', transform: (v: any[]) => (v || []).map((d) => d.assigneeName).join(' | '), width: 34 },
   ];
   const sheetName = t('Action register', 'سجل المتابعة');
-  // فلترُ الحالة والمكلَّف يجري على الخادم، والبحثُ و«المتأخر فقط» في الذاكرة؛
-  // فالسجلّ الظاهر قد يكون شريحةً صغيرةً من البنود. من يفتح الملفَّ ليجرد كلَّ
-  // ما على الجميع كان يأخذ شريحةَ الشاشة وحدها، فصار «الكلّ» يعيد النداء بلا فلاتر.
+  // Status and assignee filters run on the server, while search and the overdue-only toggle run in memory, so the visible register may be a small slice of the items. Whoever opens the file to audit everything owed by everyone would get only the screen's slice, so 'all' repeats the call without filters.
   const fetchAllForExport = async () => {
     const r = await brAllActions({});
     return [{ name: sheetName, rows: (r.actions || []) as unknown as Record<string, any>[], columns: exportColumns }];

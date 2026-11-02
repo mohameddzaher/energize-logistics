@@ -10,14 +10,7 @@ import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import 'hr_employee_profile.dart';
 
-/// طلباتُ الأقسام إلى الموارد البشريّة — شاشةٌ واحدةٌ من طرفين.
-///
-/// نظيرةُ `/system/b2c/hr-requests` و`/system/hr/staff-requests`: القسمُ يرى
-/// الميدانَ فيقول ما رآه («هؤلاء عادوا على رأس العمل»)، والموارد البشريّة
-/// تستلم ثمّ تنفّذ أو ترفض **بسببٍ مكتوب**. والجوابُ قد يكون جزئيًّا، فلكلّ
-/// اسمٍ قرارُه — وبجانبه زرٌّ يفتح ملفَّه ليُعدَّل من هناك.
-///
-/// و`side` هو الفارقُ الوحيد: جانبُ القسم يُنشئ، وجانبُ الموارد البشريّة يجيب.
+/// Department requests to HR, one screen for both sides. Mirrors /system/b2c/hr-requests and /system/hr/staff-requests: the department reports what it saw in the field, HR receives then executes or rejects with a written reason. A reply can be partial, so each name has its own decision, with a button opening the profile to edit from there. side is the only difference: the department side creates, the HR side answers.
 class StaffRequestsScreen extends StatefulWidget {
   const StaffRequestsScreen({super.key, required this.side, this.section = 'B2C'});
   final String side;      // 'section' | 'hr'
@@ -98,8 +91,7 @@ class _StaffRequestsScreenState extends State<StaffRequestsScreen> {
         '${l.hour.toString().padLeft(2, '0')}:${l.minute.toString().padLeft(2, '0')}${hijriDay(v).isEmpty ? '' : ' · ${hijriDay(v)} ${tr('هـ', 'AH')}'}';
   }
 
-  /// سببُ الرفض يُكتَب قبل الإرسال — والخادمُ يردّ الرفضَ بلا سببٍ أيضًا، فهذا
-  /// ليس حارسًا بل كي لا تُردّ المحاولةُ بعد الضغط.
+  /// The rejection reason is typed before sending. The server also rejects a reason-less rejection, so this is not a guard, only avoids a bounced attempt after the tap.
   Future<String?> _askReason(String title) async {
     final c = TextEditingController();
     final go = await showDialog<bool>(
@@ -157,8 +149,7 @@ class _StaffRequestsScreenState extends State<StaffRequestsScreen> {
     final title = TextEditingController();
     final body = TextEditingController();
     String kind = 'back_to_work';
-    // الأسماءُ اختياريّة: «كلُّ من في سكن جدة عادوا» طلبٌ مفهوم، وإجبارُ المرسِل
-    // على تسمية كلِّ واحدٍ يجعله لا يرسل.
+    // Names are optional: a request for everyone in a housing unit is meaningful, and forcing the sender to name each person makes them not send.
     final picked = <Map<String, dynamic>>[];
     List<Map<String, dynamic>> emps = [];
     final search = TextEditingController();
@@ -203,7 +194,7 @@ class _StaffRequestsScreenState extends State<StaffRequestsScreen> {
                 const SizedBox(height: 10),
                 TextField(controller: body, maxLines: 3, decoration: InputDecoration(labelText: tr('التفاصيل', 'Details'))),
                 const SizedBox(height: 10),
-                // خانةُ بحثٍ ضمن نموذج — تبقى بعنوانها، ومعها ✕ يمسح ويُغلق اللوحة
+                // Search field inside a form; keeps its title, with an X that clears and closes the panel
                 TextField(
                   controller: search,
                   onChanged: (_) => setSt(() {}),
@@ -285,10 +276,7 @@ class _StaffRequestsScreenState extends State<StaffRequestsScreen> {
   @override
   Widget build(BuildContext context) {
     context.watch<AuthProvider>();
-    // ── ومن يجيب يقرّره الخادمُ لا الشاشة ───────────────────────────────
-    // `side` يقول «أيُّ الطرفين فُتحت له الشاشة»، و`isHr` يقول «أيملك هذا
-    // القارئُ الجوابَ فعلًا» — وهو جوابُ الخادم نفسِه. فلو عُرضت الأزرارُ على
-    // `side` وحدَه ضغطها من لا يملكها وردّها الخادمُ ٤٠٣.
+    // The server decides who answers, not the screen. side says which party the screen was opened for, isHr says whether this reader actually holds the answer (the server's own verdict). Showing buttons on side alone let non-owners tap them and get a 403.
     final hrSide = widget.side == 'hr' && _isHr;
     final open = ((_counts['new'] ?? 0) as num) + ((_counts['received'] ?? 0) as num);
 
@@ -441,13 +429,12 @@ class _StaffRequestsScreenState extends State<StaffRequestsScreen> {
               Text(s['decisionNote'].toString(), style: TextStyle(fontSize: 11, color: color)),
           ]),
         ),
-        // زرٌّ يفتح ملفَّ الموظّف: الموارد البشريّة تقرأ الاسمَ ثمّ تحتاج أن
-        // تغيّر حالتَه — فالرابطُ هنا بدل البحث عنه في قائمةٍ أخرى.
+        // Button opens the employee profile: HR reads the name and then needs to change the status, so a link here replaces searching another list.
         if ((s['employee'] ?? '').toString().isNotEmpty)
           IconButton(
             tooltip: tr('افتح ملفَّه', 'Open profile'),
             icon: const Icon(Icons.manage_accounts_outlined, size: 18),
-            // الملفُّ قد يُحذَف أو تتغيّر حالتُه هناك — فتُعاد قراءةُ القائمة عند العودة.
+            // The profile may be deleted or change status there, so the list is re-read on return.
             onPressed: () => Navigator.push(context, MaterialPageRoute(
               builder: (_) => HrEmployeeProfileScreen(employeeId: s['employee'].toString()),
             )).then((_) { if (mounted) _load(); }),

@@ -32,12 +32,7 @@
 //     }
 //   }
 
-//   return (
-//     <section className="relative bg-gray-900 text-center px-4 md:px-20 overflow-hidden">
-//       {/* 🔸 اللمسة البرتقالية الناعمة (من الشمال فوق) */}
-//       <div className="absolute top-[-80px] start-[-80px] w-[250px] h-[250px] bg-[#f37121]/20 blur-[90px] rounded-full" />
-//       {/* 🔹 اللمسة الرمادية (من اليمين تحت) */}
-//       <div className="absolute bottom-[-80px] end-[-80px] w-[250px] h-[250px] bg-gray-600/20 blur-[90px] rounded-full" />
+// Commented-out earlier section markup: dark background with soft orange and grey glow blobs.
 
 //       <div className="relative z-10">
 //         <h3 className="pt-16 text-2xl font-bold text-white">Stay In Touch</h3>
@@ -137,7 +132,7 @@ export default function ContactForm() {
       type,
     })
     
-    // إخفاء التوست بعد 4 ثواني
+    // Hide the toast after 4 seconds.
     setTimeout(() => {
       setToast({
         show: false,
@@ -190,9 +185,9 @@ export default function ContactForm() {
         </div>
       )}
 
-      {/* 🔸 اللمسة البرتقالية الناعمة (من الشمال فوق) */}
+      {/* Soft orange glow (top, start side). */}
       <div className="absolute top-[-80px] start-[-80px] w-[250px] h-[250px] bg-[#f37121]/20 blur-[90px] rounded-full" />
-      {/* 🔹 اللمسة الرمادية (من اليمين تحت) */}
+      {/* Soft grey glow (bottom, end side). */}
       <div className="absolute bottom-[-80px] end-[-80px] w-[250px] h-[250px] bg-gray-600/20 blur-[90px] rounded-full" />
 
       <div className="relative z-10">

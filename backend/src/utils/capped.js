@@ -1,26 +1,15 @@
 /**
- * حدُّ صفوفٍ **يُعلِن نفسه** — لا يقصّ بصمت.
- *
- * ── لماذا يلزم هذا أصلًا ────────────────────────────────────────────────────
- * كلُّ سقفٍ يُكتب اليوم يصير ضيّقًا يومًا: تكبر الشركة، وتتراكم السنوات، فتبلغ
- * مجموعةٌ حدَّها. والقصُّ الصامت أخطر من الخطأ الصريح: الخطأ يُرى ويُعالَج،
- * والناتجُ المقصوصُ يبدو كاملًا فيُصدَّق ويُبنى عليه قرار.
- *
- * وقد وقع ذلك هنا فعلًا: طلبات الأفراد اليوميّة بلغت ثلاثةً وأربعين ألفًا تحت
- * سقفٍ من خمسة آلاف، فكانت الشاشة تعرض ثُمنَ ما تظنّ أنها تعرضه.
- *
- * القاعدة: يُطلَب سقفٌ + واحد. فإن عاد الزائدُ فالنتيجة مقصوصة، ويُقال ذلك في
- * الردّ — ويبقى للطالب أن يضيّق مداه أو يرفع سقفه عن علم.
- *
- *   const { rows, truncated, limit } = await cappedFind(Model.find(f).sort(s), 1000);
- *   res.json({ rows, ...(truncated && { truncated, limit, note: CAP_NOTE }) });
+ * A row limit that announces itself instead of silently truncating: request cap + 1, and if the extra row returns the result is truncated and the response says so.
+ * A silent cut looks complete and gets trusted (daily B2C orders once hit 43k under a 5k cap).
+ * const { rows, truncated, limit } = await cappedFind(Model.find(f).sort(s), 1000);
+ * res.json({ rows, ...(truncated && { truncated, limit, note: CAP_NOTE }) });
  */
 const CAP_NOTE_AR = 'النتيجة مبتورة عند الحدّ — ضيّق المدى أو ارفع limit';
 const CAP_NOTE_EN = 'Result truncated at the cap — narrow the range or raise limit';
 
 /**
- * @param {import('mongoose').Query} query  استعلامٌ مُهيَّأ بلا `limit`
- * @param {number} cap                      أقصى عددٍ يُعاد
+ * @param {import('mongoose').Query} query  prepared query without `limit`
+ * @param {number} cap  maximum number of rows returned
  * @returns {Promise<{rows: any[], truncated: boolean, limit: number}>}
  */
 async function cappedFind(query, cap) {
@@ -31,7 +20,7 @@ async function cappedFind(query, cap) {
   return { rows, truncated: false, limit: cap };
 }
 
-/** يقرأ `limit` من الاستعلام بحدٍّ أدنى وأقصى — فلا يطلب أحدٌ الملايين بالخطأ. */
+/** Reads `limit` from the query with a min and max, so nobody requests millions by mistake. */
 function askedLimit(q, fallback, max) {
   const n = Number(q && q.limit);
   if (!Number.isFinite(n) || n <= 0) return fallback;

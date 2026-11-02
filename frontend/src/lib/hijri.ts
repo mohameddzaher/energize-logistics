@@ -1,13 +1,7 @@
 /**
- * التقويمُ الهجريُّ (أمُّ القرى) — تحويلٌ في الاتّجاهين، في المتصفّح.
- *
- * نظيرُ `backend/src/utils/hijri.js` حرفًا بحرف: المصدرُ واحدٌ (`Intl`) في
- * الجهتين، فلا يختلف تاريخٌ بين ما يُعرَض وما يُحسَب.
- *
- * ── ولا تُخزَّن الهجريّة ───────────────────────────────────────────────────
- * الحقلُ في القاعدة لحظةٌ واحدةٌ ميلاديّة، والهجريُّ طريقةُ كتابتها. فالعمودان
- * على الشاشة وجهان لقيمةٍ واحدة: يُعدَّل أحدُهما فيتبعه الآخر في الحال، ولا
- * يُحفَظ إلّا الميلاديّ.
+ * Hijri calendar (Umm al-Qura), converted both ways in the browser.
+ * Identical to backend/src/utils/hijri.js: both sides use Intl as the single source, so a date never differs between display and calculation.
+ * The Hijri date is not stored: the database field is one Gregorian instant and Hijri is another way to write it. The two columns on screen are two views of one value, editing one updates the other, and only the Gregorian is saved.
  */
 
 const FMT = new Intl.DateTimeFormat('en-u-ca-islamic-umalqura-nu-latn', {
@@ -27,7 +21,7 @@ export function toHijriParts(input: any): HijriParts | null {
   return { y, m, d };
 }
 
-/** ميلاديّ ← «yyyy-mm-dd» هجريّة (الترتيبُ نفسُه ليُقرأ ويُحرَّر كالميلاديّ). */
+/** Gregorian to Hijri "yyyy-mm-dd" (same order so it reads and edits like the Gregorian one). */
 export function toHijri(input: any): string {
   const h = toHijriParts(input);
   if (!h) return '';
@@ -37,7 +31,7 @@ export function toHijri(input: any): string {
 const cmp = (a: HijriParts, b: HijriParts) => (a.y - b.y) || (a.m - b.m) || (a.d - b.d);
 const DAY = 86400000;
 
-/** هجريّ ← ميلاديّ. بحثٌ ثنائيٌّ على `Intl` نفسِها، فلا يختلفان. */
+/** Hijri to Gregorian. Binary search over the same Intl, so the two directions agree. */
 export function fromHijri(y: number | string, m: number | string, d: number | string): Date | null {
   const Y = Number(y); const M = Number(m); const D = Number(d);
   if (!Y || !M || !D || M < 1 || M > 12 || D < 1 || D > 30) return null;
@@ -66,7 +60,7 @@ export function fromHijri(y: number | string, m: number | string, d: number | st
   return out;
 }
 
-/** «1449-01-09» أو «09/01/1449» ← ميلاديّ «yyyy-mm-dd». */
+/** "1449-01-09" or "09/01/1449" to Gregorian "yyyy-mm-dd". */
 export function hijriToGregorian(text: string): string {
   const s = String(text || '').trim();
   let m = /^(\d{3,4})[-/](\d{1,2})[-/](\d{1,2})$/.exec(s);
@@ -79,5 +73,5 @@ export function hijriToGregorian(text: string): string {
   return g ? g.toISOString().slice(0, 10) : '';
 }
 
-/** ميلاديّ «yyyy-mm-dd» ← هجريّ، للعرض في عمودٍ بجانبه. */
+/** Gregorian "yyyy-mm-dd" to Hijri, for display in an adjacent column. */
 export const gregorianToHijri = (text: any): string => toHijri(text);

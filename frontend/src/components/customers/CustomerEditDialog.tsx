@@ -1,17 +1,7 @@
 'use client';
 /**
- * تعديلُ العميل — البياناتُ والتفضيلاتُ وأسعارُ المسارات.
- *
- * ── وما كان مكسورًا فيه ─────────────────────────────────────────────────────
- * ١) المدينةُ المحفوظة كانت تُرسَم فارغة: `SearchableSelect` يعرض النصَّ الشبحيّ
- *    لكلّ قيمةٍ ليست في قائمة إعدادات النموذج، ومساراتُ العملاء فيها مدنٌ جاءت
- *    من الكشوف لا من القائمة («جده ص ٣»). فالعميلُ ذو ٧٢ مسارًا يُفتَح تعديلُه
- *    فيبدو بلا بيانات. صار الصندوقُ مركّبًا: يعرض المحفوظَ دائمًا، والقائمةُ
- *    اقتراحاتٌ يُكتَب خارجَها.
- * ٢) والعرضُ كان مقلوبًا: مدينتان ضيّقتان وسعرٌ عريض، والمدينةُ اسمٌ والسعرُ
- *    أربعةُ أرقام. فالمدينتان تأخذان العرضَ والسعرُ سبعةُ أروع لا أكثر.
- * ٣) واثنتان وسبعون مسارًا لا تُقرأ في قائمةٍ بلا بحث: فوقها بحثٌ، وزرُّ
- *    الإضافة ملتصقٌ بأعلاها فلا يُبحَث عنه في آخر القائمة.
+ * Customer edit dialog: data, preferences and route prices.
+ * Fixes: a saved city absent from the form-settings list rendered blank (now a combo box that always shows the saved value); narrow city fields with a wide price field (widths swapped); long route lists need a search box with the add button pinned at the top.
  */
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Plus, X, Check, Loader2, Search, Route } from 'lucide-react';
@@ -46,10 +36,10 @@ const DEFAULT_KEYS: [keyof typeof EMPTY_DEFAULTS, string, string][] = [
 export default function CustomerEditDialog({
   open, customer, onClose, onSaved, lang, canEditPrices = false,
 }: {
-  /** أسعارُ المسارات تُعرَض للتعديل لمدير العمليّات ومدير النظام وحدَهما. */
+  /** Route prices are editable only by the operations manager and the system admin. */
   canEditPrices?: boolean;
   open: boolean;
-  /** `null` = عميلٌ جديد. */
+  /** `null` means a new customer. */
   customer: EditableCustomer | null;
   onClose: () => void;
   onSaved: () => void;
@@ -62,7 +52,7 @@ export default function CustomerEditDialog({
   const [saving, setSaving] = useState(false);
   const [routeQ, setRouteQ] = useState('');
 
-  // القوائمُ نفسُها التي يقرأها نموذجُ إنشاء الشحنة — مفردةٌ واحدةٌ في كلّ مكان.
+  // Same lists the shipment-create form reads, so one vocabulary everywhere.
   useEffect(() => {
     if (!open || fields.length) return;
     api.get<{ fields: FormField[] }>('/api/customer-registry/options')
@@ -91,8 +81,7 @@ export default function CustomerEditDialog({
     [optionsOf, lang],
   );
 
-  // الفهرسُ الأصليُّ يُحمَل مع الصفّ: البحثُ يخفي صفوفًا، والكتابةُ على الفهرس
-  // المعروض تكتب على مسارٍ آخر.
+  // The original index travels with the row because search hides rows and writing to the displayed index would hit another route.
   const visibleRoutes = useMemo(() => {
     const rows = (form.routes || []).map((r: any, i: number) => ({ r, i }));
     const s = foldAr(routeQ);
@@ -118,14 +107,14 @@ export default function CustomerEditDialog({
         email: form.email,
         notes: form.notes,
         defaults: form.defaults,
-        // من لا يكتب الأسعارَ لا يرسل المسارات أصلًا — والخادمُ يتجاهلها لو أُرسِلت.
+        // Users who cannot edit prices do not send routes at all; the server ignores them anyway.
         ...(!canEditPrices ? {} : { routes: (form.routes || [])
           .filter((r: any) => r.fromCity && r.toCity)
           .map((r: any) => ({
             fromCity: r.fromCity,
             toCity: r.toCity,
             price: r.price === '' || r.price == null ? null : Number(r.price),
-            // التاريخُ والمصدرُ لا يُخترعان هنا — يُعادان كما جاءا.
+            // Date and source are not invented here; they are sent back as received.
             ...(r.at ? { at: r.at } : {}),
             ...(r.source ? { source: r.source } : {}),
             ...(r.hits ? { hits: r.hits } : {}),
@@ -205,9 +194,7 @@ export default function CustomerEditDialog({
                     customHint={(t) => (ar ? `استعمل «${t}»` : `Use “${t}”`)}
                     options={cityOptions} />
                 </div>
-                {/* العرضُ على الغلاف لا على الخانة: `TextInput` أساسُه `w-full`
-                    ويغلب أيَّ عرضٍ يُمرَّر إليه، فتصير خانةُ السعر هي العريضة
-                    والمدينتان شريطين — وهو عينُ ما كان مكسورًا. */}
+                {/* Width is on the wrapper, not the field: `TextInput` is `w-full` by default and overrides any width passed to it. */}
                 <div className="w-28 shrink-0">
                   <TextInput type="number" className="text-end" value={r.price ?? ''}
                     onChange={(e) => setRoute(i, 'price', e.target.value)} placeholder={ar ? 'السعر' : 'Price'} />
@@ -235,7 +222,7 @@ export default function CustomerEditDialog({
             <Field key={k} label={ar ? labelAr : labelEn}>
               <Select value={form.defaults[k] || ''} onChange={(e) => setForm((f: any) => ({ ...f, defaults: { ...f.defaults, [k]: e.target.value } }))}>
                 <option value="">—</option>
-                {/* القيمةُ المحفوظةُ تظهر ولو لم تعد في القائمة — لا تُمحى بصمت. */}
+                {/* A saved value stays visible even if it is no longer in the list, so it is not silently wiped. */}
                 {form.defaults[k] && !optionsOf(k).some((o) => o.key === form.defaults[k]) && (
                   <option value={form.defaults[k]}>{form.defaults[k]}</option>
                 )}

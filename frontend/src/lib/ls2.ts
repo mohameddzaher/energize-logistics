@@ -1,26 +1,16 @@
 import { canAccessSection, canEditSection, roleOf, permsOf, type RoleOrUser } from './sections';
-// Location Solutions (قسم لوكيشن سوليوشن) — shared config + helpers.
-//
-// This section is a LIVE mirror of our Location Solutions (Wialon) GPS/telemetry
-// account: 57 heavy trucks streaming per-axle tire pressure/temperature, engine
-// coolant, fuel, weight, odometer and engine hours. Our backend polls Wialon,
-// decodes the sensors, evaluates alerts (hot tire/engine, low fuel, overload,
-// speeding, service-due) and mirrors the latest snapshot into Mongo, kept live
-// over socket.io — pages read /api/ls2/* and refresh on `ls2:updated`.
+// Location Solutions section: shared config and helpers.
+// A live mirror of our Location Solutions (Wialon) GPS/telemetry account: 57 heavy trucks streaming per-axle tire pressure/temperature, engine coolant, fuel, weight, odometer and engine hours. The backend polls Wialon, decodes the sensors, evaluates alerts (hot tire/engine, low fuel, overload, speeding, service-due) and mirrors the latest snapshot into Mongo, kept live over socket.io; pages read the /api/ls2 routes and refresh on `ls2:updated`.
 
 export type Lang = 'en' | 'ar';
 
 // Mirror of backend LS2_*_ROLES (config/constants.js).
-// ── وأهلُ القسم أوّلُ مَن يدخله ──────────────────────────────────────────────
-// هذه القوائمُ كُتبت قبل أن يوجد دورُ «مدير لوكيشن سوليوشن» (config/roles.js)،
-// فبقي صاحبُ القسم خارجَ قوائمه: يفتح صفحاتِه بمنحٍ من مصفوفة الصلاحيّات، ثمّ
-// يقف عند «الإعدادات» — وهي مقيّدةٌ بالأسماء لا بالمنح (`restrict` في القائمة
-// الجانبيّة). فيرى قسمَه كلَّه ولا يرى إعداداتِه.
+// These lists predate the section manager role (config/roles.js), so the section owner was left out: he opened pages by a permission grant but stopped at Settings, which is restricted by name (`restrict` in the sidebar). Section people must be included first.
 export const LS2_STAFF_ROLES = [
   'super_admin', 'admin', 'it_manager', 'it_specialist', 'moderator', 'employee', 'operations_manager', 'operations_staff',
   'workshop_manager', 'workshop_employee', 'procurement_staff',
   'location_manager', 'location_staff',
-  // مديرُ المركبات والتفاويض يعمل في القسم — يطابق constants.js في الخادم.
+  // The vehicles and authorizations manager works in this section; matches constants.js on the server.
   'vehicles_manager',
 ];
 export const LS2_ADMIN_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'workshop_manager', 'location_manager', 'vehicles_manager'];
@@ -75,13 +65,12 @@ export interface Deferral {
   label: string; labelAr?: string; note: string; deferKm: number | null; dueAtOdometerKm: number;
   remainingKm: number | null; intervalName: string;
   deferredAt: string | null; deferredAtOdometerKm: number | null; logId: string;
-  currentOdometerKm?: number | null;   // العداد الآن
+  currentOdometerKm?: number | null;   // Current odometer.
   estimatedDaysLeft?: number | null;   // remaining ÷ the truck's real km/day
   estimatedDueDate?: string | null;    // YYYY-MM-DD
 }
 
-// "774 كم" as TIME: the day-estimate line for a deferral (empty when the truck
-// is parked or has no odometer history to pace from).
+// A distance such as 774 km used as time: the day-estimate line for a deferral (empty when the truck is parked or has no odometer history to pace from).
 export const dayEstimateText = (d: { estimatedDaysLeft?: number | null; estimatedDueDate?: string | null }, lang: Lang): string => {
   const n = d.estimatedDaysLeft;
   if (n == null) return '';
@@ -97,9 +86,7 @@ export const dayEstimateText = (d: { estimatedDaysLeft?: number | null; estimate
 export const checklistLabel = (x: { label: string; labelAr?: string }, lang: Lang) =>
   (lang === 'ar' && x.labelAr ? x.labelAr : x.label);
 
-// Frontend mirror of backend/src/utils/plateKey.js: the workshop registry keys
-// vehicles by bare plate digits ("2708") while Wialon strings vary ("ق ن ر 2708",
-// "3449 JTA محمد عباس"). Reduce to digits before comparing or linking across.
+// Frontend mirror of backend/src/utils/plateKey.js: the workshop registry keys vehicles by bare plate digits ("2708") while Wialon strings vary (letters plus digits plus driver names). Reduce to digits before comparing or linking across.
 export const plateDigitsKey = (p?: string | null): string => {
   if (p == null) return '';
   const west = String(p).replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)));
@@ -139,27 +126,22 @@ export interface Vehicle {
   speed: number | null; rpm: number | null; coolantC: number | null; fuelPct: number | null;
   totalFuelUsedL: number | null; weightKg: number | null; mainPowerV: number | null; backupBatteryV: number | null;
   gsmSignal: number | null; odometerKm: number | null; engineHours: number | null;
-  // قراءةُ كلّ فردةٍ وخطّةُ الخدمة لا تأتيان مع القائمة إلّا بـ`include=`:
-  // انظر listVehicles في الخادم. الصفحاتُ التي تعرضهما تطلبهما، وغيرُها لا
-  // ينقل ٣٠٠ ك.ب لا يرسم منها شيئًا.
+  // Per-tire readings and the service plan come with the list only via `include=`; see listVehicles on the server. Pages that show them request them, so others do not transfer 300 KB they do not draw.
   tires?: Tire[]; tireCount: number; maxTireTempC: number | null; minTireTempC: number | null; maxTirePressurePsi: number | null; minTirePressurePsi: number | null; tireFaults: number;
   tireBrand?: string; // manual: tire brand/type (e.g. Continental)
-  tireSensors?: TireSensorCoverage; // محسوبة في الخادم — لا تُشتقّ في الشاشة
+  tireSensors?: TireSensorCoverage; // Computed on the server; not derived on screen.
   status: string; alertLevel: string | null; activeAlertCount: number;
   serviceIntervals?: ServiceInterval[];
   maintenanceStatus: 'ok' | 'due' | 'overdue';
   maintenanceOverdueCount?: number; maintenanceDueCount?: number;
   kmToService: number | null; nextServiceKm: number | null; nextServiceName: string;
   upcomingKm: number | null; upcomingServiceKm: number | null; upcomingServiceName: string;
-  maintenance?: Maintenance | null; // مركبةٌ واحدة فقط — القائمةُ لا تعيده
+  maintenance?: Maintenance | null; // Single vehicle only; the list does not return it.
   periodKm?: number; // attached when the list is queried with a from/to range
-  // أين هي الآن — من حمولات إدارة الأسطول الحيّة، بـ`include=whereabouts`.
-  // راجع backend/src/utils/fleetWhereabouts.js: الحقيقةُ هناك ولا تُنسَخ هنا.
+  // Where it is now, from live fleet-management loads, via `include=whereabouts`. See backend/src/utils/fleetWhereabouts.js: the truth is there and is not copied here.
   whereabouts?: Whereabouts;
   profile?: VehicleProfile;
-  // ── مركبتُها في سجلّ المركبات ─────────────────────────────────────────────
-  // الهويّةُ (اللوحة والماركة والسنة والشاسيه والقطاع) والمستنداتُ من السجلّ،
-  // وما في `profile` «حسب الجهاز». راجع backend/src/services/ls2VehicleLink.js.
+  // Its vehicle in the vehicle register: identity (plate, make, year, chassis, sector) and documents come from the register, and what is in `profile` is per device. See backend/src/services/ls2VehicleLink.js.
   vehicleMaster?: string | null;
   registry?: Ls2Registry | null;
   conflicts?: Ls2Conflicts;
@@ -176,7 +158,7 @@ export interface Ls2Conflicts {
   vin?: { registry: string; device: string; partial?: boolean };
 }
 
-/** موضعُ الشاحنة ووجهتُها كما يقرؤها قسمُ إدارة الأسطول. */
+/** Truck position and destination as read by the fleet management department. */
 export interface Whereabouts {
   status: string;
   phase: 'idle' | 'preparing' | 'loading' | 'moving' | 'late' | 'arrived' | 'unloaded' | 'unknown';
@@ -188,7 +170,7 @@ export interface Whereabouts {
   others?: number;
 }
 
-/** لونُ الموضع — الفارغُ أخضرُ لأنّه القابلُ للسحب إلى الورشة الآن. */
+/** Position color; empty is green because it can be pulled to the workshop now. */
 export const wherePhaseStyle = (phase?: string) => {
   switch (phase) {
     case 'idle': return { bg: 'bg-emerald-50', text: 'text-emerald-700', ring: 'ring-emerald-200' };
@@ -201,26 +183,17 @@ export const wherePhaseStyle = (phase?: string) => {
     default: return { bg: 'bg-slate-100', text: 'text-slate-600', ring: 'ring-slate-200' };
   }
 };
-/**
- * تغطية حسّاسات الكاوتش لشاحنةٍ واحدة، كما يحسبها الخادم
- * (backend/src/services/ls2TireSensors.js). تُقرأ هنا ولا تُعاد صياغتها:
- * الأرقام الثلاثة «أخضر / أحمر / استبن» يجب أن تكون واحدةً في الأسطول المباشر
- * وسجل الأسطول وتطبيق الهاتف، وأيّ اشتقاقٍ محلّيٍّ يفتح باب اختلافها.
- */
+/** Tire sensor coverage for one truck, as the server computes it (backend/src/services/ls2TireSensors.js). Read here and not re-derived: the three numbers green / red / spare must be the same in the live fleet, the fleet register and the mobile app, and any local derivation lets them diverge. */
 export interface TireSensorCoverage {
-  withSensor: number;        // أخضر: مواضع الأرض التي يبثّ حسّاسها فعلًا
-  withoutSensor: number;     // أحمر: باقي مواضع الأرض
-  spare: number;             // عدد الاستبن
-  spareWithSensor: number;   // > 0 ⇒ الاستبن يُلوَّن أخضر
-  silent: number;            // حسّاسٌ مركَّبٌ لا يبثّ (جزءٌ من الأحمر) — كهرماني
+  withSensor: number;        // Green: ground positions whose sensor actually transmits.
+  withoutSensor: number;     // Red: the remaining ground positions.
+  spare: number;             // Spare count.
+  spareWithSensor: number;   // > 0 means the spare is colored green.
+  silent: number;            // An installed sensor that does not transmit (part of the red count); amber.
   ground: number; registered: number; unregistered: number;
   fitted: number; reporting: number; faulty: number;
   layout: 'registry' | 'head' | 'standard';
-  // ── والتفصيلُ لا يرافق الصفّ ─────────────────────────────────────────────
-  // المواضعُ الناقصةُ والقنواتُ المعطوبة كانت ٤٦ ك.ب في كلّ قائمةٍ لا تُقرأ
-  // إلّا إن فتح أحدٌ نافذةَ شاحنةٍ واحدة. فتُطلَب عند الفتح من
-  // `/api/ls2/vehicles/:unitId/tire-sensors`، وتبقى هنا حين تأتي مع المركبة
-  // المفردة (‏`/vehicles/:id`).
+  // Detail does not travel with the row. Missing positions and faulty channels were 46 KB in every list, read only when a truck dialog opens. So they are requested on open from `/api/ls2/vehicles/:unitId/tire-sensors`, and stay here when they come with the single vehicle (`/vehicles/:id`).
   positionsWithoutSensor?: { positionNumber: number | null; positionLabel: string; section: string; serial: string; sensor: string }[];
   faultyChannels?: { axle: number | null; position: number | null }[];
   label: string;             // "7 / 5 / 2"
@@ -650,7 +623,7 @@ export function ls2Text(lang: Lang) {
     tireLayout: t('Tire Layout', 'توزيع الكاوتش'),
     axle: t('Axle', 'محور'),
     noTireData: t('No tire sensor data', 'لا توجد بيانات كاوتش'),
-    // عمود تغطية الحسّاسات (أخضر / أحمر / استبن)
+    // Sensor coverage column (green / red / spare).
     tireSensorsCol: t('Tire sensors', 'حساسات الكاوتش'),
     tireSensorsHint: t('Working / no sensor / spare', 'يعمل / بدون حساس / استبن'),
     tireSensorsTitle: t('Tire-sensor coverage', 'تغطية حساسات الكاوتش'),

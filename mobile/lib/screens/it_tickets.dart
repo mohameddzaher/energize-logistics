@@ -10,18 +10,16 @@ import '../ui/search_field.dart';
 import 'it_common.dart';
 import 'jp.dart';
 
-/// بلاغاتُ الدعم الفنّي — نظيرُ /system/it/tickets: فلاترُ الحالة والتصنيف
-/// والأولويّة والمدى الزمني على الخادم، وبحثٌ في الشاشة، وتصديرُ المعروض أو الكلّ،
-/// ونموذجُ البلاغ كاملًا (الموظّف وقسمه والمسؤول ويوم الحلّ).
+/// Support tickets, counterpart of /system/it/tickets: status, category, priority and date range filters on the server, search on the screen, export shown or all, and the full ticket form (employee and department, assignee, resolution day).
 class ItTicketsScreen extends StatefulWidget {
-  /// البطاقاتُ في اللوحة تفتح الشاشةَ على حالةٍ بعينها.
+  /// Dashboard cards open the screen on a specific status.
   final String initialStatus;
   const ItTicketsScreen({super.key, this.initialStatus = ''});
   @override
   State<ItTicketsScreen> createState() => _ItTicketsScreenState();
 }
 
-// الحالات التي يصير فيها للبلاغ زمنُ حلّ، فيُطلب يومُ الحلّ.
+// States where a ticket gets a resolution time, so the resolution day is required.
 const _closedStatuses = ['resolved', 'closed'];
 
 List<ExportCol> ticketExportCols() => [
@@ -44,7 +42,7 @@ class _ItTicketsScreenState extends State<ItTicketsScreen> {
   bool _loading = true;
   String? _error;
   String _q = '';
-  // متحكِّمُ البحث عند الشاشة: «مسح الفلاتر» يمسح الخانةَ أيضًا.
+  // The search controller lives at the screen level: "clear filters" also clears the field.
   final _searchCtl = TextEditingController();
   late String _status = widget.initialStatus;
   String _category = '';
@@ -241,7 +239,7 @@ class _ItTicketsScreenState extends State<ItTicketsScreen> {
   }
 }
 
-// ── نموذج البلاغ (إضافة / تعديل) — نفس حقول الويب ───────────────────────────
+// Ticket form (add / edit): the same fields as the web.
 Future<bool?> openTicketForm(BuildContext context, Map<String, dynamic>? editing) async {
   final title = TextEditingController(text: '${editing?['title'] ?? ''}');
   final description = TextEditingController(text: '${editing?['description'] ?? ''}');
@@ -260,7 +258,7 @@ Future<bool?> openTicketForm(BuildContext context, Map<String, dynamic>? editing
   String assignedTo = idOf(editing?['assignedTo']);
   String assignedToName = '${editing?['assignedToName'] ?? ''}';
 
-  // القسمُ ومن يُسند إليه الحلّ قائمتان من الخادم لا نصٌّ حرّ.
+  // Department and assignee are server lists, not free text.
   List<String> departments = [];
   List<Map<String, dynamic>> assignees = [];
   try {
@@ -313,13 +311,13 @@ Future<bool?> openTicketForm(BuildContext context, Map<String, dynamic>? editing
                   const SizedBox(width: 8),
                   Expanded(child: ItDateField(label: tr('تاريخ البلاغ', 'Reported at'), value: reportedAt, onChanged: (v) => setS(() => reportedAt = v))),
                 ]),
-                // يومُ الحلّ يُدخله من أغلق البلاغ — لحظةُ الحفظ ليست لحظةَ الإصلاح.
+                // The resolution day is entered by whoever closed the ticket: save time is not fix time.
                 if (_closedStatuses.contains(status)) ...[
                   const SizedBox(height: 10),
                   ItDateField(label: tr('تاريخ الحل الفعلي', 'Date actually resolved'), value: resolvedDate, onChanged: (v) => setS(() => resolvedDate = v), clearable: true),
                 ],
                 const SizedBox(height: 10),
-                // اختيارُ الموظّف يملأ قسمَه.
+                // Choosing the employee fills his department.
                 picker(tr('الموظف صاحب المشكلة', 'Employee'), requesterLabel, () async {
                   final e = await pickItEmployee(c);
                   if (e == null) return;
@@ -337,7 +335,7 @@ Future<bool?> openTicketForm(BuildContext context, Map<String, dynamic>? editing
                   if (p != null) setS(() => department = '${p['name']}');
                 }),
                 const SizedBox(height: 10),
-                // الاسمُ يُحفظ بجانب المرجع ليبقى البلاغُ مقروءًا لو حُذف المستخدم.
+                // The name is saved next to the reference so the ticket stays readable if the user is deleted.
                 picker(tr('المسؤول عن الحل', 'Assigned to'), assignedToName, () async {
                   final u = await pickFromList(c, title: tr('اختر المسؤول', 'Select the owner'), items: assignees,
                       label: (m) => userName(m), hint: (m) => '${m['email'] ?? m['role'] ?? ''}');
@@ -387,7 +385,7 @@ Future<bool?> openTicketForm(BuildContext context, Map<String, dynamic>? editing
   );
 }
 
-// ── صفحة البلاغ — نظيرُ /system/it/tickets/[id] ─────────────────────────────
+// Ticket page, counterpart of /system/it/tickets/[id].
 class ItTicketDetailScreen extends StatefulWidget {
   final String id;
   const ItTicketDetailScreen({super.key, required this.id});
@@ -406,7 +404,7 @@ class _ItTicketDetailScreenState extends State<ItTicketDetailScreen> {
   final _preventive = TextEditingController();
   final _notes = TextEditingController();
   late final void Function() _onLive;
-  // تحديثٌ حيٌّ لا يمسح ما يكتبه المستخدم: الحقول تُملأ أوّلَ مرّةٍ وبعد الحفظ فقط.
+  // A live refresh does not wipe what the user is typing: fields are filled only the first time and after a save.
   bool _dirty = false;
 
   @override
@@ -554,7 +552,7 @@ class _ItTicketDetailScreenState extends State<ItTicketDetailScreen> {
                     ])),
                     if (canEdit) ...[
                       const SizedBox(height: 10),
-                      // التحديثُ في الصفحة نفسها — القسمُ يعمل على البلاغ من هنا.
+                      // Updating happens on the same page: the department works on the ticket from here.
                       AppCard(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                         Text(tr('تحديث الحالة والحل', 'Update status & resolution'), style: const TextStyle(fontWeight: FontWeight.w800)),
                         const SizedBox(height: 10),
@@ -582,7 +580,7 @@ class _ItTicketDetailScreenState extends State<ItTicketDetailScreen> {
                       ])),
                     ],
                     const SizedBox(height: 10),
-                    // سيرةُ التكرار — كلُّ مرّةٍ سابقةٍ لنفس المشكلة وما جُرِّب فيها.
+                    // Recurrence history: every earlier occurrence of the same problem and what was tried.
                     AppCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                       Row(children: [
                         const Icon(Icons.history, size: 18, color: T.orange),
@@ -622,7 +620,7 @@ class _ItTicketDetailScreenState extends State<ItTicketDetailScreen> {
                         ),
                     ])),
                     const SizedBox(height: 10),
-                    // مهامُّ JP المربوطة بهذا البلاغ — تُضاف من هنا.
+                    // JP tasks linked to this ticket; added from here.
                     JpTaskPanel(section: 'it', kind: 'ticket', refId: '${t['_id'] ?? widget.id}'),
                     const SizedBox(height: 30),
                   ]),

@@ -1,16 +1,5 @@
 'use client';
-/**
- * إدارةُ الفريق — مَن يتولّى مَن، وكيف يعمل كلٌّ منهم.
- *
- * ── لوحتان في صفحة ─────────────────────────────────────────────────────────
- * الأعلى: تقييمُ الفريق — كم حصّل كلُّ موظّف، وكم بقي عليه، وفي كم يومٍ يُحصِّل
- * في المتوسّط. والأسفل: إسنادُ الحسابات — يختار المديرُ حساباتٍ ويسمّي لها
- * مسؤولًا.
- *
- * وهما في صفحةٍ واحدةٍ عن قصد: القرارُ الذي يُتّخذ بعد قراءة التقييم هو نقلُ
- * حساباتٍ من موظّفٍ إلى آخر، وفصلُهما يجعل المدير يقرأ في شاشةٍ ويتصرّف في
- * أخرى وقد نسي ما قرأ.
- */
+/** Team management: who handles whom and how each performs. Two panels on one page (team evaluation and account assignment) because the decision after reading the evaluation is moving accounts between staff. */
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useLanguage } from '@/context/LanguageContext';
@@ -38,10 +27,8 @@ export default function CollectionsTeamPage() {
   const [to, setTo] = useState('');
   const [officerFilter, setOfficerFilter] = useState('');
 
-  /** يفتح سجلَّ العملاء على حسابات موظّفٍ بعينه — أو على ما لا مسؤولَ له. */
-  // وكان هنا `hasCode=true` ليطابق لوحةً كانت تعُدّ أصحابَ الأكواد وحدَهم. ولم
-  // تعد كذلك: الجمعُ صار بالرابط لا بالكود، فصفُّ «بلا مسؤول» يشمل كلَّ من لا
-  // مسؤولَ له — ومنهم من لا كودَ له. ولو بقي القيدُ لفُتح الصفُّ على بعض عدده.
+  /** Opens the customers register on one employee's accounts, or on those with no owner. */
+  // No hasCode filter: grouping is by link now, not by code, so the unassigned row includes accounts without a code and the filter would open it on a partial count.
   const openAccounts = (officer?: string) =>
     router.push(`/system/collections-dept/customers?officer=${encodeURIComponent(officer || 'none')}`);
 
@@ -50,7 +37,7 @@ export default function CollectionsTeamPage() {
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState('');
   const [search, setSearch] = useState('');
-  // مديرُ القسم — عليه كلُّ حسابٍ لم يُسنَد (راجع utils/collectionsOfficer في الخادم).
+  // Department manager: owns every unassigned account (see utils/collectionsOfficer on the server).
   const [managerName, setManagerName] = useState('');
 
   const loadPerf = useCallback(async () => {
@@ -78,8 +65,7 @@ export default function CollectionsTeamPage() {
 
   const officers = useMemo(() => [...new Set(team.map((t) => t.officer).filter(Boolean))].sort(), [team]);
 
-  // ── قمعُ إكسل على أعمدة التقييم ─────────────────────────────────────────
-  // القيمُ هي نصُّ الخليّة نفسِه: «٦٠٪» لا 60.34، و«—» يُقرأ «(فارغ)».
+  // Excel-style column filters on the evaluation columns; values are the cell text itself, and an empty dash reads as blank.
   const cf = useColumnFilters<OfficerStat>();
   const pct = (v: number | null) => (v == null ? '' : `${Math.round(v)}%`);
   const PG: Record<string, (r: OfficerStat) => any> = {
@@ -96,10 +82,7 @@ export default function CollectionsTeamPage() {
     tasks: (r) => `${r.tasksDone || 0}/${r.tasks || 0}`,
   };
   const perfShown = cf.apply(perf, PG);
-  // ── وما يُقرأ على الشاشة يخرج في الملفّ ─────────────────────────────────
-  // لم يكن لهذه اللوحة تصديرٌ أصلًا، فعمودا «في المهلة» و«متقادم ٦٠ي+» —
-  // وهما اللذان يقولان حالَ المحفظة — لا يخرجان منها. والأعمدةُ هنا هي أعمدةُ
-  // الجدول بالترتيب نفسِه وبالقيم نفسِها التي تُقرأ في خلاياه.
+  // Export mirrors the table: same columns, order and values, including the in-term and aged 60+ columns that describe portfolio health.
   const perfCols: ExportColumn[] = [
     { header: ar ? 'الموظف' : 'Officer', key: 'officer', transform: (v: any) => officerLabel({ officer: v }, ar), width: 18 },
     { header: ar ? 'حسابات' : 'Accounts', key: 'accounts', width: 10 },
@@ -109,7 +92,7 @@ export default function CollectionsTeamPage() {
     { header: ar ? 'متأخر' : 'Past due', key: 'overdueAmount', width: 16 },
     { header: ar ? 'منه متقادم 60ي+' : 'of which aged 60d+', key: 'agedOver60Amount', width: 18 },
     { header: ar ? 'في المهلة' : 'Within terms (amount)', key: 'withinTermsAmount', width: 18 },
-    // النسبُ تخرج أرقامًا لا نصوصًا: «٦٠٪» نصٌّ لا يُجمَع ولا يُرتَّب في إكسل.
+    // Percentages are exported as numbers, since text cannot be summed or sorted in Excel.
     { header: ar ? 'نسبة التحصيل %' : 'Collection rate %', key: 'collectionRate', transform: (v: any) => (v == null ? '' : Math.round(v)), width: 16 },
     { header: ar ? 'في المهلة %' : 'Within terms %', key: 'withinTermsRate', transform: (v: any) => (v == null ? '' : Math.round(v)), width: 14 },
     { header: ar ? 'متقادم 60ي+ %' : 'Aged 60d+ %', key: 'agedOver60Rate', transform: (v: any) => (v == null ? '' : Math.round(v)), width: 14 },
@@ -129,7 +112,7 @@ export default function CollectionsTeamPage() {
     setSaving(true); setMsg('');
     try {
       const r = await api.put<any>('/api/collections-dept/ledger/team/assign', { parties: [...sel], officer: assignTo });
-      // تركُ الاسم فارغًا يرفع الإسناد — فيعود الحسابُ إلى مدير القسم.
+      // Leaving the name empty clears the assignment, so the account returns to the department manager.
       const to = assignTo || (managerName ? `${managerName} (${ar ? 'مدير القسم' : 'dept. manager'})` : (ar ? 'مدير القسم' : 'the dept. manager'));
       setMsg(ar ? `نُقل ${r.updated} حسابًا إلى ${to}` : `${r.updated} accounts moved to ${to}`);
       setSel(new Set());
@@ -150,7 +133,7 @@ export default function CollectionsTeamPage() {
         </p>
       </div>
 
-      {/* ── التقييم ────────────────────────────────────────────────────────── */}
+      {/* Evaluation section. */}
       <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
         <div className="flex flex-wrap items-center gap-2 px-4 py-3 border-b border-slate-200">
           <TrendingUp className="w-4 h-4 text-[#f37121]" />
@@ -165,7 +148,7 @@ export default function CollectionsTeamPage() {
             options={[{
               key: 'shown',
               label: ar ? 'تصدير المعروض (بعد الفلتر)' : 'Export shown (filtered)',
-              // المعروضُ بعد قمع الأعمدة — راجع perfShown.
+              // Shown rows after column filters; see perfShown.
               sheets: [{ name: ar ? 'تقييم الفريق' : 'Team', rows: perfShown as unknown as Record<string, any>[], columns: perfCols }],
             }]} />
           <div className="w-52">
@@ -186,10 +169,7 @@ export default function CollectionsTeamPage() {
               {TH('collectionRate', ar ? 'نسبة التحصيل' : 'Collection rate', true,
                 ar ? 'ما حُصِّل ÷ (ما حُصِّل + ما تأخّر عن أجله). المال الذي لم يحن موعدُه خارج الحساب.'
                    : 'Collected ÷ (collected + past due). Money still within terms is excluded.')}
-              {/* ── الرقمان اللذان يقولان حالَ المحفظة ────────────────────────
-                  «نسبة التحصيل» تقيس ما دخل، وهي وحدَها تُجمِّل: مَن يحصّل
-                  كثيرًا ويترك القديمَ يتقادم يبدو ممتازًا. فبجانبها كم من
-                  المفتوح ما زال في مهلته، وكم من المتأخّر جاوز الستّين يومًا. */}
+              {/* Two figures describing portfolio health: collection rate only measures what came in, so it flatters teams that let old debt age. Beside it: how much of the open balance is still in term and how much overdue is past sixty days. */}
               {TH('withinTermsRate', ar ? 'في المهلة' : 'Within terms', true,
                 ar ? 'كم من الرصيد المفتوح لم يحن موعدُ سداده بعد — كلّما ارتفع كانت المحفظة أنظف'
                    : 'Share of the open book still within terms')}
@@ -202,9 +182,7 @@ export default function CollectionsTeamPage() {
             <tbody className="divide-y divide-slate-200">
               {perfShown.map((r) => (
                 <tr key={r.officer || '_'} className="hover:bg-slate-50">
-                  {/* ── ورقمٌ في لوحةٍ يجب أن يفتح صفوفَه ────────────────────
-                      «(بلا مسؤول) ١٢ حسابًا» سطرٌ يُقرأ ولا يُسأل: أيُّ اثنَي
-                      عشرَ حسابًا؟ فالاسمُ والعددُ بابٌ إلى الحسابات نفسِها. */}
+                  {/* A panel figure must open its rows: the name and count link to the accounts themselves. */}
                   <td className="px-3 py-2.5 text-sm font-medium">
                     <button type="button" onClick={() => openAccounts(r.officer)}
                       className="text-[#f37121] hover:underline font-medium text-start"
@@ -253,7 +231,7 @@ export default function CollectionsTeamPage() {
         </ScrollX>
       </div>
 
-      {/* ── الإسناد ────────────────────────────────────────────────────────── */}
+      {/* Assignment section. */}
       {canEdit && (
         <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
           <div className="flex flex-wrap items-center gap-2 px-4 py-3 border-b border-slate-200">

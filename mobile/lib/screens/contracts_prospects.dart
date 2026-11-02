@@ -7,8 +7,7 @@ import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import '../ui/search_field.dart';
 
-/// تنشيط الموردين الجدد — native: the outreach log with interest states and
-/// the one-tap «تحويل إلى مورد».
+/// New vendor activation, native: the outreach log with interest states and the one-tap "convert to vendor".
 class ContractsProspectsScreen extends StatefulWidget {
   const ContractsProspectsScreen({super.key});
   @override
@@ -20,7 +19,7 @@ class _ContractsProspectsScreenState extends State<ContractsProspectsScreen> {
   bool _loading = true;
   String? _error;
   String _q = '';
-  final _searchCtl = TextEditingController(); // النصُّ يبقى مطابقًا لـ_q بعد التحميل
+  final _searchCtl = TextEditingController(); // Text stays equal to _q after loading.
   late final void Function() _onLive;
 
   @override
@@ -76,7 +75,7 @@ class _ContractsProspectsScreenState extends State<ContractsProspectsScreen> {
     }
   }
 
-  // إضافة/تعديل شركة تنشيط — نفس حقول الويب.
+  // Add/edit an activation company, same fields as the web.
   Future<void> _form([Map<String, dynamic>? p]) async {
     final companyName = TextEditingController(text: (p?['companyName'] ?? '').toString());
     final contactPerson = TextEditingController(text: (p?['contactPerson'] ?? '').toString());

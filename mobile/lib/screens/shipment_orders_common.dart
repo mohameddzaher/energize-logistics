@@ -10,10 +10,9 @@ import '../ui/file_upload.dart';
 import '../ui/lookup_field.dart';
 import '../ui/theme.dart';
 
-/// ما تتشاركه شاشاتُ «طلبات الشحنات»: مفرداتُ الحالات، وبابُ الكتابة، والبوليصةُ
-/// من الخادم، ونافذةُ المتابعة — نظيرُ lib/shipmentOrders.ts في الويب.
+/// Shared by the shipment orders screens: status vocabulary, the write gate, the server waybill and the follow-up dialog. Mirrors lib/shipmentOrders.ts on web.
 
-/// الأدوارُ نفسُها في routes/shipmentOrders.js — أو منحةُ «تعديل» من مصفوفة الصلاحيات.
+/// Same roles as routes/shipmentOrders.js, or an edit grant from the permissions matrix.
 const soEditRoles = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_staff', 'moderator',
   'shipment_orders_manager', 'shipment_orders_staff', 'shipment_orders_followup', 'data_manager', 'data_analyst', 'data_entry'];
 const soAdminRoles = ['super_admin', 'admin', 'it_manager', 'operations_manager'];
@@ -26,11 +25,10 @@ bool canAdminOrders(BuildContext c) {
   return soAdminRoles.contains(a.role) || a.canEditSection('Shipment Orders');
 }
 
-/// سجلُّ حالةٍ كما تعرضه الشاشة: مفتاحُها واسمُها ولونُها.
+/// A status record as shown on screen: key, name and colour.
 typedef SoStatus = (String key, String ar, String en, Color color);
 
-/// الحالاتُ الأساسيّة — تُرسَم بها الشاشةُ قبل أن يردّ الخادم، والمضبوطُ من
-/// إعدادات القسم يحلّ محلَّها متى وصل.
+/// Base statuses: used to draw the screen before the server replies; the section-configured ones replace them on arrival.
 const soBaseStatuses = <SoStatus>[
   ('requesting', 'قيد الطلب', 'Requesting', T.inkFaint),
   ('loading', 'جاري التحميل', 'Loading', T.warn),
@@ -51,7 +49,7 @@ Color soHex(String? v) {
   return n == null ? T.inkFaint : Color(0xFF000000 | n);
 }
 
-/// المفرداتُ المضبوطة من الخادم — والأساسيّةُ إن تعذّر.
+/// Statuses configured on the server, falling back to the base ones on failure.
 Future<List<SoStatus>> loadSoStatuses() async {
   try {
     final d = await Api.instance.get('/api/shipment-orders/statuses');
@@ -91,7 +89,7 @@ String soMoney(dynamic n) {
   return s.replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (_) => ',');
 }
 
-/// «نوع الدفع» — مفاتيحُ سير عمل التشغيل (utils/paymentType في الخادم).
+/// Payment type: keys of the operations workflow (utils/paymentType on the server).
 const soPaymentKinds = {
   'deferred_cash': ('آجل - كاش', 'Deferred – cash'),
   'deferred_invoice': ('آجل - فاتورة', 'Deferred – invoice'),
@@ -103,7 +101,7 @@ String soPaymentKindLabel(dynamic k) {
   return l == null ? '' : tr(l.$1, l.$2);
 }
 
-/// بوليصة-501-اسم العميل-22-7-2026 — كاسم الملفّ في الويب.
+/// Waybill file name: waybill-501-customer name-22-7-2026, same as the file name on web.
 /// Customer + plate + manifest number, as the team files them.
 String soWaybillFileName(Map o) {
   final c = '${o['customerName'] ?? ''}'.isEmpty ? 'عميل' : '${o['customerName']}';
@@ -111,8 +109,7 @@ String soWaybillFileName(Map o) {
   return [c, if (plate.isNotEmpty) plate, soRef(o)].join(' - ').replaceAll(RegExp(r'[\\/:*?"<>|]'), ' ');
 }
 
-/// البوليصةُ تُرسَم في الخادم — واحدةً أو كثيرة — فالورقةُ واحدةٌ مهما كان زرُّها.
-/// والخادمُ يحدّ النداءَ بمئة، فما زاد يُرسَل دفعاتٍ متتابعة.
+/// The waybill is rendered on the server, one or many, so the sheet is identical whichever button is used. The server caps a call at 100, so larger sets go out in sequential batches.
 Future<void> soPrintWaybills(BuildContext context, List<Map<String, dynamic>> orders) async {
   if (orders.isEmpty) return;
   final messenger = ScaffoldMessenger.of(context);
@@ -132,7 +129,7 @@ Future<void> soOpenFile(String u) async {
   await launchUrl(Uri.parse(u.startsWith('http') ? u : '${AppConfig.apiBase}$u'), mode: LaunchMode.externalApplication);
 }
 
-/// سجلُّ الحالات — يُعرض في نافذة المتابعة وفي التفاصيل.
+/// Status history, shown in the follow-up dialog and in the details.
 class SoStatusLog extends StatelessWidget {
   final List log;
   final List<SoStatus> vocab;
@@ -172,9 +169,7 @@ class SoStatusLog extends StatelessWidget {
   }
 }
 
-/// ── نافذةُ المتابعة ──────────────────────────────────────────────────────────
-/// الحالةُ تُنقَل ومعها ملاحظةٌ اختياريّة، و«أُرسل السند» لا تُحفظ بلا ملفّه،
-/// و«ملغاة» لا تُحفظ بلا سببٍ من «أسباب الإلغاء». يرجّع true إن حُفظت.
+/// Follow-up dialog: a status moves with an optional note; the 'voucher sent' status cannot be saved without its file, and 'cancelled' cannot be saved without a reason from the cancellation reasons list. Returns true if saved.
 Future<bool> soFollowUp(BuildContext context, Map<String, dynamic> order, List<SoStatus> vocab) async {
   final saved = await showModalBottomSheet<bool>(
     context: context,
@@ -242,7 +237,7 @@ class _FollowUpSheetState extends State<_FollowUpSheet> {
         const SizedBox(height: 14),
         Text(tr('الحالة', 'Status'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
         const SizedBox(height: 8),
-        // أزرارٌ كبيرةٌ عمودين — تُقرأ وتُضغط بلا تكبير (٢٠٢٦/١٠/٢٦).
+        // Large buttons in two columns: readable and tappable without zooming.
         LayoutBuilder(builder: (c, box) {
           final w = (box.maxWidth - 8) / 2;
           return Wrap(spacing: 8, runSpacing: 8, children: [

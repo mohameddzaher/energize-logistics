@@ -1,11 +1,6 @@
 'use client';
-// سجلّات القسم — المُلّاك والمفوَّضون ومزوّدو التتبّع والأجهزة وشرائح الوقود.
-//
-// كلها مبنيّة من المركبات نفسها لا من جداول موازية: المالك ليس كيانًا مستقلًّا،
-// هو اسمٌ على مركبات. ولو خُزِّن مرتين لاختلف عدد مركباته بين الشاشتين أول ما
-// تُنقَل مركبة — والبناء من المصدر يجعل هذا مستحيلًا لا نادرًا.
-//
-// وكل صفّ مدخل: الضغط على عدد مركباته يفتحها مفلترةً عليه.
+// Section records: owners, authorized persons, tracking providers, devices, fuel cards.
+// All are built from the vehicles themselves, not parallel tables, so a vehicle count cannot differ between screens. Each row is clickable and opens its vehicles filtered.
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useLanguage } from '@/context/LanguageContext';
@@ -23,9 +18,7 @@ const TABS = ['owners', 'authorizedPersons', 'gpsProviders', 'gpsDevices', 'gpsU
 type Tab = typeof TABS[number];
 
 
-// ── أعمدةُ كلّ سجلّ وقارئُ كلٍّ منها ────────────────────────────────────────
-// السجلّاتُ ثلاثةٌ ولكلٍّ أعمدتُه، فالتعريفُ مفتاحُه التبويب. وواحدٌ للترويسة
-// وللقمع معًا: عمودٌ يُضاف يجد فلترَه بلا سطرٍ ثانٍ.
+// Columns per record type and their readers, keyed by tab. One definition serves header and funnel, so a new column gets its filter automatically.
 const COL_DEFS: Record<string, [string, string, string][]> = {
   gpsUnits: [
     ['serial', 'السيريال', 'Serial'], ['plate', 'اللوحة', 'Plate'], ['device', 'الجهاز', 'Device'],
@@ -85,19 +78,14 @@ export default function Page() {
     router.push(`/system/vehicles/registry${p ? `?${p}` : ''}`);
   };
 
-  // ── لا خطّافَ بعد خروجٍ مبكر ──────────────────────────────────────────────
-  // كانت `if (loading) return <Spinner/>` تسبق نداء `useChipFilter`، فتُرسَم
-  // الصفحة أوّلًا بخطّافاتٍ أقلّ ثم بأكثر، وReact يرمي استثناءً يظهر للمستخدم
-  // شاشةً بيضاء: «Application error: a client-side exception has occurred».
-  // فالخطّافات كلُّها فوق، والخروج المبكر تحتها.
+  // No hooks after an early return. A loading return before useChipFilter changed the hook count between renders and crashed the page, so all hooks stay above and early returns below.
   const reg = d?.registers?.[tab];
   const rows: any[] = reg?.items || [];
   const cf = useColumnFilters<any>();
 
-  // الفلاترُ آخرُ ما يُطبَّق: فوق الشريحة والبحث، كما يفعل إكسل.
-  // (يُحسَب بعد `f` أدناه.)
+  // Filters apply last, above chip and search, as Excel does. Computed after f below.
 
-  // الشرائح تختلف باختلاف السجلّ — لكل سؤاله.
+  // Chips differ per record type, each with its own question.
   const CHIPS: Chip[] = tab === 'gpsUnits'
     ? [
       { key: '', label: t('الكل', 'All') },
@@ -122,8 +110,7 @@ export default function Page() {
         { key: 'one', label: t('مركبة واحدة', 'Single vehicle'), tone: 'slate', test: (x: any) => (x.vehicles || 0) === 1 },
       ];
 
-  // والبحث يمرّ على كلّ قيمةٍ في الصفّ لا على قائمةٍ مكتوبة: السجلّات مختلفة
-  // الأعمدة، وقائمةٌ واحدة تصلح لواحدٍ منها وتُسقط حقول الباقي بصمت.
+  // Search covers every value in the row, not a fixed list: records have different columns and one list would silently skip fields.
   const search = useCallback((x: any) => Object.entries(x || {})
     .filter(([k]) => k !== 'filter' && k !== 'vehicleId')
     .flatMap(([, val]) => (Array.isArray(val) ? val : [val]))
@@ -155,8 +142,7 @@ export default function Page() {
         { header: t('منها منتهية', 'Expired'), key: 'expired', width: 12 },
       ];
 
-  // شرائح الفلترة والبحث تعمل في الذاكرة، فالنطاقان حاضران معًا وعدّاداهما ظاهران؛
-  // بدونهما كان «تصدير المعروض» يخرج بشريحةٍ صغيرة والمستخدم يحسبه السجلّ كلَّه.
+  // Chip filters and search run in memory, so both scopes and their counters are available; without them export-displayed would export a small slice that the user takes for the whole register.
   const scope = exportScopeLabels(ar);
   const exportOptions = [
     { key: 'shown', label: scope.shown, sheets: [{ name: reg?.ar || tab, rows: shownRows, columns: cols }] },
@@ -194,7 +180,7 @@ export default function Page() {
         <ScrollX>
           <table className="w-full text-sm">
             <thead className="bg-slate-900 text-slate-200 text-[13px]">
-              {/* الترويسةُ وقارئُ العمود من تعريفٍ واحد — راجع COL_DEFS أدناه. */}
+              {/* Header and column reader come from one definition; see COL_DEFS below. */}
               <tr>
                 {(COL_DEFS[tab] || COL_DEFS.default).map(([key, arL, enL]) => (
                   <th key={key} className="px-3 py-3 text-center font-bold whitespace-nowrap">

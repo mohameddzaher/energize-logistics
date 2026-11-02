@@ -1,9 +1,4 @@
-/**
- * خطّةُ العمل (JP) — الأنواعُ والكلماتُ التي تقرؤها الشاشتان.
- *
- * الموعدُ يُعرَض كما يُنتظَر أن يُقرأ: «يُسلَّم قبل ٣:٠٠ م — بقي ساعةٌ و٢٠ د»،
- * لا تاريخًا يُحسَب منه. والحسابُ هنا في موضعٍ واحدٍ تقرؤه الخطّةُ واللوحة.
- */
+/** Work plan (JP): types and wording read by both screens. The deadline is shown as it is expected to be read (e.g. due before 3:00 PM, 1h 20m left) rather than as a date to compute from. The computation lives in one place read by both the plan and the board. */
 export type JpScope = 'section' | 'management';
 export type JpAction = '' | 'call' | 'whatsapp' | 'visit' | 'email' | 'meeting' | 'other';
 
@@ -15,7 +10,7 @@ export interface JpProject {
   createdByName?: string; createdAt?: string;
 }
 export interface JpComment { _id: string; by?: string; byName: string; text: string; at: string }
-/** ما تتعلّق به المهمّة — معاملةٌ أو طرفٌ من أطرافها. الأنواعُ يقولها الخادمُ لكلّ قسم. */
+/** What the task relates to, a transaction or one of its parties. The types come from the server per section. */
 export interface JpLink { kind: string; ref: string; label?: string }
 export const LINK_WORDS: Record<string, { ar: string; en: string }> = {
   clearance: { ar: 'معاملة', en: 'Transaction' },
@@ -36,7 +31,7 @@ export const LINK_WORDS: Record<string, { ar: string; en: string }> = {
   opportunity: { ar: 'فرصة', en: 'Opportunity' },
   campaign: { ar: 'حملة', en: 'Campaign' },
 };
-/** أين يُفتَح ما رُبطت به المهمّة — كما في backend/config/jpLinks.js. */
+/** Where the linked item opens; as in backend/config/jpLinks.js. */
 const LINK_PATH: Record<string, string> = {
   clearance: '/system/customs/:id', customer: '/system/customs/parties/:id', agent: '/system/customs/parties/:id',
   carrier: '/system/customs/parties/:id', workflow: '/system/operations/:id', shipment: '/system/shipment-orders?open=:id',
@@ -58,7 +53,7 @@ export interface JpTask {
   attachments: JpAttachment[];
   comments?: JpComment[];
   can: { complete: boolean; edit: boolean; remove: boolean; attach: boolean; comment?: boolean; track?: boolean; adjust?: boolean };
-  /** يومُ العمل والوقتُ المتوقّع والفعليّ (٢٠٢٦/١٠/٢٢). */
+  /** Working day, expected time and actual time. */
   workDate?: string | null; expectedMinutes?: number | null;
   progress?: 'todo' | 'doing' | 'paused'; timerStartedAt?: string | null;
   spentMinutes?: number; spentNow?: number;
@@ -70,11 +65,11 @@ export interface JpTask {
 export interface JpMe {
   scope: JpScope; section: string; canManage: boolean; sectionAr: string; sectionEn: string;
   me: string; team: JpMember[]; projects: JpProject[];
-  /** أنواعُ ما تُربَط به المهمّةُ في هذا القسم — فارغةٌ لقسمٍ بلا روابط. */
+  /** Types a task can be linked to in this section; empty for a section without links. */
   linkKinds?: string[];
 }
 
-/** «ساعة و٢٠ د» — دقائقُ مقروءة. */
+/** Readable minutes, e.g. 1h 20m. */
 export const fmtMinutes = (m: number | null | undefined, ar: boolean) => {
   const v = Math.max(0, Math.round(Number(m) || 0));
   const h = Math.floor(v / 60); const r = v % 60;
@@ -94,7 +89,7 @@ export const ACTION_WORDS: Record<Exclude<JpAction, ''>, { ar: string; en: strin
 const idOf = (v: { _id: string } | string | null | undefined) => (v && typeof v === 'object' ? v._id : (v || ''));
 export const jpId = idOf;
 
-/** «ساعةٌ و٢٠ د» / «٣ أيّام» — مدّةٌ تُقرأ. */
+/** Readable duration, e.g. 1h 20m or 3 days. */
 export function spanWords(ms: number, ar: boolean): string {
   const m = Math.max(0, Math.round(Math.abs(ms) / 60000));
   if (m < 60) return ar ? `${m} د` : `${m}m`;
@@ -107,12 +102,12 @@ export function spanWords(ms: number, ar: boolean): string {
 const clock = (d: Date, ar: boolean) => d.toLocaleTimeString(ar ? 'ar-EG-u-nu-latn' : 'en-GB', { hour: 'numeric', minute: '2-digit', hour12: true });
 const dayWord = (d: Date, ar: boolean) => d.toLocaleDateString(ar ? 'ar-EG-u-nu-latn' : 'en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
 
-/** سطرُ الموعد ولونُه. `now` يُمرَّر ليتحرّك العدُّ مع الساعة. */
+/** Deadline line and its color. `now` is passed in so the countdown moves with the clock. */
 export function deadlineLine(t: Pick<JpTask, 'deadlineAt' | 'deadlineKind' | 'status' | 'doneAt'>, now: number, ar: boolean):
   { text: string; tone: 'none' | 'ok' | 'soon' | 'late' | 'done' } {
   if (!t.deadlineAt) return { text: ar ? 'بلا موعد' : 'No deadline', tone: 'none' };
   const due = new Date(t.deadlineAt);
-  // موعدٌ بالساعات يُقال بساعته؛ وموعدٌ بيومٍ يُقال بيومه.
+  // A deadline in hours is stated by its hour; a deadline in days by its day.
   const when = t.deadlineKind === 'hours' ? `${clock(due, ar)}${sameDay(due, new Date(now)) ? '' : ` · ${dayWord(due, ar)}`}` : dayWord(due, ar);
   if (t.status === 'done') {
     const late = t.doneAt ? new Date(t.doneAt).getTime() > due.getTime() : false;
@@ -132,7 +127,7 @@ export const TONE_CLASS: Record<string, string> = {
   late: 'text-red-600 font-semibold', done: 'text-emerald-700',
 };
 
-/** ملفٌّ ← نصُّ base64 يُرسَل في الطلب (الخادمُ لا يقبل رفعًا متعدّدَ الأجزاء). */
+/** File to base64 string sent in the request (the server does not accept multipart uploads). */
 export const fileToDataUrl = (file: File) => new Promise<{ dataUrl: string; fileName: string }>((resolve, reject) => {
   const r = new FileReader();
   r.onload = () => resolve({ dataUrl: String(r.result), fileName: file.name });
@@ -140,7 +135,7 @@ export const fileToDataUrl = (file: File) => new Promise<{ dataUrl: string; file
   r.readAsDataURL(file);
 });
 
-/** رقمٌ في خانة «مع مَن» ← رابطُ اتّصالٍ أو واتساب. */
+/** A number in the 'with whom' field to a call or WhatsApp link. */
 export function contactHref(action: JpAction, contact?: string): string | null {
   const digits = String(contact || '').replace(/[^\d+]/g, '');
   if (digits.replace(/\D/g, '').length < 8) return null;
@@ -155,6 +150,6 @@ export function contactHref(action: JpAction, contact?: string): string | null {
 
 export const qs = (scope: JpScope, section?: string) => `scope=${scope}${scope === 'section' ? `&section=${encodeURIComponent(section || '')}` : ''}`;
 
-/** صفحةُ خطّة القسم — كما في backend/config/jpSections.js (path + '/jp'). */
+/** Section plan page; as in backend/config/jpSections.js (path + '/jp'). */
 const JP_SECTION_BASE: Record<string, string> = { collections: '/system/collections-dept' };
 export const jpPagePath = (section: string) => `${JP_SECTION_BASE[section] || `/system/${section}`}/jp`;

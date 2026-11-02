@@ -1,5 +1,5 @@
 'use client';
-// ملفُّ العميل من قسم طلبات الشحنات — نفسُ ملفّه في التشغيل حرفًا بحرف.
+// Customer file from the shipment-orders section: identical to the operations file.
 import { useParams } from 'next/navigation';
 import CustomerProfile from '@/components/customers/CustomerProfile';
 

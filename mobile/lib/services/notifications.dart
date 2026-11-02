@@ -3,9 +3,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'api.dart';
 import 'live.dart';
 
-/// إشعارات التطبيق: يستمع لحدث `notification:new` من السيرفر (لأي مستخدم حسب
-/// قسمه ودوره)، يزوّد عدّاد غير المقروء (شارة حمراء)، ويطلق إشعارًا محليًا بصوت
-/// يظهر في مركز الإشعارات — كله مجاني (أندرويد بوش كامل، آيفون طالما التطبيق حي).
+/// App notifications: listens for `notification:new` (per user by section and role), feeds the unread badge counter and fires a local sound notification in the notification center. All free (full Android push; iPhone only while the app is alive).
 class NotificationService extends ChangeNotifier with WidgetsBindingObserver {
   NotificationService._();
   static final NotificationService instance = NotificationService._();
@@ -22,7 +20,7 @@ class NotificationService extends ChangeNotifier with WidgetsBindingObserver {
   Future<void> init() async {
     if (_wired) return;
     _wired = true;
-    // تهيئة الإشعارات المحلية + طلب الإذن (آيفون).
+    // Initialize local notifications and request permission (iPhone).
     const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
     const iosInit = DarwinInitializationSettings(
       requestAlertPermission: true, requestBadgePermission: true, requestSoundPermission: true,
@@ -31,16 +29,15 @@ class NotificationService extends ChangeNotifier with WidgetsBindingObserver {
       await _plugin.initialize(const InitializationSettings(android: androidInit, iOS: iosInit));
       final android = _plugin.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
       await android?.createNotificationChannel(_channel);
-      await android?.requestNotificationsPermission(); // أندرويد 13+
+      await android?.requestNotificationsPermission(); // Android 13+
       await _plugin
           .resolvePlatformSpecificImplementation<IOSFlutterLocalNotificationsPlugin>()
           ?.requestPermissions(alert: true, badge: true, sound: true);
-    } catch (_) {/* الإشعار المحلي غير متاح — نكمل بالشارة فقط */}
+    } catch (_) {/* Local notification unavailable; continue with the badge only. */}
 
-    // نستقبل الإشعار الحي من السوكت.
+    // Receive the live notification from the socket.
     Live.instance.onData('notification:new', _onNew);
-    // خبرُ فعلٍ على النظام (لمدير النظام ومدير القسم): يُحدَّث العدّادُ من
-    // الخادم — هو من يقرّر ما يخصّ هذا المستخدم — بلا صوتٍ لكلّ فعل.
+    // System action event (for system admin and section manager): the counter is refreshed from the server, which decides what concerns this user, with no sound per action.
     Live.instance.on('notification:activity', refreshCount);
     WidgetsBinding.instance.addObserver(this);
     refreshCount();
@@ -75,17 +72,17 @@ class NotificationService extends ChangeNotifier with WidgetsBindingObserver {
           iOS: const DarwinNotificationDetails(presentAlert: true, presentBadge: true, presentSound: true),
         ),
       );
-    } catch (_) {/* تجاهل */}
+    } catch (_) {/* ignore */}
   }
 
-  /// عدد غير المقروء من السيرفر (عند الفتح/التحديث).
+  /// Unread count from the server (on open/refresh).
   Future<void> refreshCount() async {
     try {
       final d = await Api.instance.get('/api/notifications?unreadOnly=true&limit=100');
       final list = d is Map ? d['notifications'] : null;
       _unread = list is List ? list.length : 0;
       notifyListeners();
-    } catch (_) {/* نبقى على القيمة الحالية */}
+    } catch (_) {/* Keep the current value. */}
   }
 
   void clearBadge() {
@@ -93,7 +90,7 @@ class NotificationService extends ChangeNotifier with WidgetsBindingObserver {
     notifyListeners();
   }
 
-  // مزامنة العدّاد مع القيمة الرسمية من السيرفر (تُستدعى من شاشة الإشعارات).
+  // Sync the counter with the server's value (called from the notifications screen).
   void setUnread(int n) {
     if (_unread == n) return;
     _unread = n;

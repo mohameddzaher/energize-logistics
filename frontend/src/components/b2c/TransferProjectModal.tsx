@@ -1,11 +1,5 @@
 'use client';
-/**
- * «نقل مشروع» — الطريقُ الوحيدُ لتغيير مشروع المندوب (صاحبُ الشركة، ٢٠٢٦/١٠/١٩).
- *
- * يُختار المشروعُ الجديدُ من قائمة مشاريع القسم، ومعه سببٌ يُكتب في سجلّ المندوب.
- * ومن يومه تُكتب أوردراتُه على مشروعه الجديد، وتبقى القديمةُ على القديم.
- * ولا يظهر الزرُّ إلّا لمن يملكه (`canTransferLT`)، والخادمُ يحسمه أيضًا.
- */
+/** Transfer project: the only way to change a rep's project. The new project is picked from the department's projects with a reason written to the rep's log. From that day new orders go to the new project while old ones stay on the old. The button shows only for holders of canTransferLT, and the server enforces it too. */
 import { useState } from 'react';
 import { Modal, Field, TextInput, PrimaryButton, Loader2 } from '@/components/hr/HRKit';
 import ManagedSelect from '@/components/system/ManagedSelect';

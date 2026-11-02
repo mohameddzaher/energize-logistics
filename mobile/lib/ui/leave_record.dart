@@ -19,9 +19,7 @@ Future<bool> showLeaveRecordSheet(BuildContext context, {String? employeeId}) as
   List<Map<String, dynamic>> emps = [];
   List<Map<String, dynamic>> types = [];
   try {
-    // القائمةُ الخفيفة لا المستندُ الكامل — سبعةُ حقولٍ تصل في لحظة.
-    // بشَرطةٍ لا بشَرطةٍ مائلة: `employees/search` يطابق `/employees/:id`
-    // فيردّه حارسُ المعرّفات «معرّفٌ غير صالح» — ولا تُفتَح الورقةُ أبدًا.
+    // Light list rather than the full document: seven fields arrive instantly. Dash, not slash: `employees/search` matches `/employees/:id` and the id guard rejects it as an invalid id, so the sheet never opens.
     final a = await Api.instance.get('/api/hr/employees-search?limit=2000');
     emps = List<Map<String, dynamic>>.from(((a as Map)['employees'] as List? ?? const []).map((e) => Map<String, dynamic>.from(e as Map)));
     final b = await Api.instance.get('/api/hr/leave-types');
@@ -52,8 +50,7 @@ Future<bool> showLeaveRecordSheet(BuildContext context, {String? employeeId}) as
         final q = search.text.trim().toLowerCase();
         final shown = q.isEmpty
             ? emps.take(60).toList()
-            // يُبحَث بالاسم والإقامة والرقم الوظيفي معًا، وتُطوى همزاتُ
-            // العربيّة فـ«احمد» تجد «أحمد».
+            // Searches name, residency and employee number together; Arabic hamzas are folded so a plain alef name finds the hamza form.
             : emps.where((e) => [e['arabicName'], e['firstName'], e['lastName'], e['employeeNumber'], e['iqamaNumber'], e['nationalId']]
                 .any((v) => _foldAr((v ?? '').toString()).contains(_foldAr(q)))).take(60).toList();
         return SafeArea(
@@ -97,7 +94,7 @@ Future<bool> showLeaveRecordSheet(BuildContext context, {String? employeeId}) as
                   initialValue: typeId,
                   isExpanded: true,
                   decoration: InputDecoration(labelText: tr('نوع الإجازة', 'Leave type')),
-                  // الخصمُ صفةُ النوع — يُقال في الاسم كي يُعرف قبل التسجيل.
+                  // Deduction is a property of the type, stated in the name so it is known before recording.
                   items: types.map((t) {
                     final nm = tr('${t['nameAr']}', '${t['nameEn']}');
                     final hint = t['affectsBalance'] == false

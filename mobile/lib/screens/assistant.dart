@@ -10,16 +10,7 @@ import '../ui/widgets.dart';
 import '../ui/search_field.dart';
 import 'reports.dart' show ReportBlock;
 
-/// المساعد — سؤالٌ عن أيّ شيءٍ في النظام.
-///
-/// ── ولماذا لا يعرف شيئًا من عنده ────────────────────────────────────────────
-/// مواضيعُه مواضيعُ مركز التقارير، وصلاحيّاتُه صلاحيّاتُه، وجوابُه هو وثيقتُه.
-/// فما يُضاف هناك يصل هنا بلا سطرٍ واحد، ولا يستطيع أن يقول ما لا يقوله التقرير
-/// ولا أن يُري أحدًا ما لا يملك.
-///
-/// وطريقان إلى الجواب لأنّ السائلين صنفان: مَن يعرف ما يريد يكتبه — لوحةً أو
-/// اسمًا أو رقمَ بوليصة — ومَن لا يعرف أين يسأل يُمشى به: قسمٌ ثمّ موضوعٌ ثمّ
-/// واحدٌ منه.
+/// Assistant: ask about anything in the system. It knows nothing by itself: its topics are the reports center topics, its permissions are the user's permissions, and its answer is the report document. Anything added there appears here with no change, and it cannot say what the report does not say or show what the user may not see. Two paths to an answer because there are two kinds of asker: those who know what they want type it (a dashboard, a name, a waybill number), and those who do not are walked through section, then topic, then item.
 class AssistantScreen extends StatefulWidget {
   const AssistantScreen({super.key});
   @override
@@ -36,7 +27,7 @@ class _AssistantScreenState extends State<AssistantScreen> {
   List<Map<String, dynamic>> _options = [];
   bool _optBusy = false;
   Timer? _optDebounce;
-  int _optSeq = 0; // الأحدثُ وحدَه يُقبَل في بحث الخيارات أيضًا
+  int _optSeq = 0; // Only the latest reply is accepted for option search too.
   final _searchCtl = TextEditingController();
 
   List<Map<String, dynamic>> _groups = [];
@@ -73,11 +64,10 @@ class _AssistantScreenState extends State<AssistantScreen> {
     }
   }
 
-  /// البحثُ يُرسَل بعد سكونِ الكتابة، والأحدثُ وحدَه يُقبَل: الشبكةُ لا تحفظ
-  /// ترتيبَ الردود، فردُّ «مح» الواصلُ متأخّرًا يمحو نتائجَ «محمد».
+  /// Search is sent after typing pauses and only the latest reply is accepted: the network does not keep reply order, so a late reply for a partial query would wipe the results of the full one.
   void _onQuery(String v) {
     _debounce?.cancel();
-    // المسحُ يُبطل أيَّ ردٍّ ما زال في الطريق
+    // Clearing invalidates any reply still in flight.
     if (v.trim().length < 2) { _seq++; setState(() { _groups = []; _searching = false; }); return; }
     setState(() => _searching = true);
     _debounce = Timer(const Duration(milliseconds: 320), () async {
@@ -156,7 +146,7 @@ class _AssistantScreenState extends State<AssistantScreen> {
         padding: const EdgeInsets.fromLTRB(14, 12, 14, 28),
         keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
         children: [
-          // ── اكتبْ ما تعرفه ──────────────────────────────────────────────
+          // Type what you know
           AppCard(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               SearchField(
@@ -197,7 +187,7 @@ class _AssistantScreenState extends State<AssistantScreen> {
                   ),
                 )),
 
-          // ── أو امشِ بالأقسام ────────────────────────────────────────────
+          // Or browse by section
           if (_answer == null) ...[
             AppCard(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -266,7 +256,7 @@ class _AssistantScreenState extends State<AssistantScreen> {
             ErrorRetry(message: _error!, onRetry: _loadSections),
           ],
 
-          // ── الجواب: سطورٌ تُقرأ أوّلًا ثمّ الوثيقةُ كاملة ────────────────
+          // The answer: summary lines first, then the full document
           if (_loading && _answer == null && _sections.isNotEmpty) ...[
             const SizedBox(height: 10),
             const Shimmer(height: 120),
@@ -303,8 +293,7 @@ class _AssistantScreenState extends State<AssistantScreen> {
               ]),
             ),
             const SizedBox(height: 10),
-            // الوثيقةُ نفسُها التي يرسمها مركزُ التقارير — لا صياغةٌ ثانية.
-            // الوثيقةُ بكتلها — نفسُ مكوّن مركز التقارير حرفًا بحرف.
+            // The same document the reports center renders, not a second wording. The document with its blocks: the same component as the reports center, verbatim.
             ...List<Map<String, dynamic>>.from((_answer!['doc'] ?? {})['blocks'] ?? [])
                 .map((b) => ReportBlock(block: b)),
           ],

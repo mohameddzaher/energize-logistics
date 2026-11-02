@@ -1,11 +1,7 @@
 'use client';
 /**
- * طلبُ محتوًى إعلانيّ — صفحتُه (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢: «يفتحلي صفحته مش بوب اب»).
- *
- * البطاقاتُ أوّلًا، ثمّ المركباتُ وتحقّقُها، ثمّ الملاحظاتُ والمسار. ونوعُ المحتوى
- * هو ما طلبه Media Go — صورٌ فقط أو فيديو فقط، لا يُبدَّل لمركبة — ونصوّره حيًّا
- * من الكاميرا (LiveCamera) أو نرفعه من الجهاز. والعارضُ فوق الصفحة: إغلاقُه لا
- * يُغلق شيئًا غيرَه.
+ * Advertising content request, as its own page rather than a popup.
+ * Cards first, then vehicles and their verification, then notes and path. The content type is what Media Go asked for (photos only or video only), not switchable per vehicle; captured live from the camera (LiveCamera) or uploaded. The viewer sits on top of the page: closing it closes nothing else.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
@@ -118,7 +114,7 @@ export default function AdRequestPage() {
           <button type="button" onClick={onClose} className="inline-flex items-center gap-1 rounded-lg bg-white/10 px-2.5 py-1.5 text-[12.5px] font-semibold hover:bg-white/20">
             <ArrowRight className="h-4 w-4 ltr:rotate-180" />{t('كل الطلبات', 'All requests')}
           </button>
-          {/* على الهاتف: العنوانُ سطرٌ كاملٌ تحت الأزرار — لا عمودٌ ضيّقٌ بينها. */}
+          {/* On phones the title is a full line under the buttons, not a narrow column between them. */}
           <div className="order-last min-w-0 basis-full sm:order-none sm:basis-0 sm:flex-1">
             <p className="text-[12px] text-slate-400">{d ? `${fmtDT(d.createdAt)} · ${d.createdByName}` : ''}</p>
             <h2 className="mt-0.5 flex flex-wrap items-center gap-2 text-[19px] font-extrabold">
@@ -141,7 +137,7 @@ export default function AdRequestPage() {
         </div>
         {!d ? <Spinner /> : (
           <div className="space-y-4">
-            {/* البطاقاتُ أوّلًا */}
+            {/* Cards first. */}
             <div className="grid grid-cols-2 gap-2.5 md:grid-cols-4 xl:grid-cols-6">
               {[
                 [t('الشركة', 'Company'), d.company], [t('المطلوب', 'Needed'), V('mediaType', d.mediaType)], [t('المكان', 'Where'), V('location', d.location)],
@@ -154,7 +150,7 @@ export default function AdRequestPage() {
             </div>
             {d.note && <p className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-[13px] text-slate-700"><b>{t('ملاحظة الطلب', 'Request note')}:</b> {d.note}</p>}
 
-            {/* المركباتُ وتحقّقُها */}
+            {/* Vehicles and their verification. */}
             {d.items.length > 0 && (
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
                 {d.items.map((it) => (
@@ -190,7 +186,7 @@ export default function AdRequestPage() {
               </div>
             )}
 
-            {/* طلبٌ بلا مركبات: ملفّاتُه */}
+            {/* A request with no vehicles: its files. */}
             {!d.items.length && (
               <div className="rounded-xl border border-slate-200 bg-white p-3">
                 <p className="mb-2 text-[13px] font-bold text-slate-800">{t('المحتوى', 'Content')} ({d.files.length})</p>
@@ -206,7 +202,7 @@ export default function AdRequestPage() {
               </div>
             )}
 
-            {/* الملاحظاتُ والمسار */}
+            {/* Notes and path. */}
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
               <div className="rounded-xl border border-slate-200 bg-white p-3 lg:col-span-3">
                 <p className="mb-2 text-[13px] font-bold text-slate-800">{t('الملاحظات', 'Notes')} ({d.replies.length})</p>
@@ -256,8 +252,8 @@ export default function AdRequestPage() {
     </div>
   );
 
-  // ── صوّر حيًّا أو ارفع — النوعُ هو نوعُ الطلب، لا غيرُه ──
-  // دالّةٌ تُستدعى لا مكوّنٌ يُركَّب — فلا يُعاد تركيبُ ما حولها مع كلّ رسم.
+  // Capture live or upload; the type is the request's type only.
+  // A called function, not a mounted component, so surrounding markup is not remounted on each render.
   function shootButtons(on: boolean, onShoot: () => void, onPick: () => void) {
     const vid = d?.mediaType === 'video';
     return (

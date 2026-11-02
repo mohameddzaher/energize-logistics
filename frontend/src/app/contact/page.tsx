@@ -312,7 +312,7 @@ export default function ContactPage() {
       type,
     });
 
-    // إخفاء التوست بعد 4 ثواني
+    // Hide the toast after 4 seconds.
     setTimeout(() => {
       setToast({
         show: false,

@@ -1,19 +1,5 @@
 'use client';
-// صفحة أي مجموعة: الإقامات، الجوازات، العقود، التأمين الطبي، الشهادات الصحية،
-// بطاقات السائقين، رخص القيادة، البنوك، التأمينات الاجتماعية…
-//
-// صفحة واحدة بتتبنى من تعريف الحقول اللي جاي من السيرفر — عشان أي مجموعة
-// تتضاف تلاقي نفس الكروت ونفس الفلاتر ونفس التعديل السريع، من غير ما حد يفتكر
-// يعملها. ولو اتعملت صفحة بإيد لكل مجموعة كانوا هيفرقوا عن بعض بعد أول تعديل.
-//
-// الملء بيحصل **من نفس المكان**: تدوس على الخانة الناقصة وتكتبها. الحفظ بيشيل
-// حالة «مطلوب» على السيرفر، فالعدّاد فوق بينقص لوحده.
-//
-// وفوق الملء خانةً خانة، للصفحة ثلاثة أفعالٍ كاملة على بيانات المجموعة:
-// «إضافة» تفتح ملفّ المجموعة لموظّفٍ لا بيانات له فيها، و«تعديل» تفتح حقول
-// المجموعة وحدَها لشخصٍ واحد مجتمعةً — لا استمارة الموظّف كلَّها، فتلك في ملفّه
-// وتكرارها هنا يُفرغ هذه الصفحات من معناها — و«تفريغ» تمحو بيانات هذه المجموعة
-// عنده وحدَه. ولا شيء منها يحذف موظّفًا: انظر components/hr/HrGroupModals.
+// Page for any group: residencies, passports, contracts, medical insurance, health certificates, driver cards, licenses, banks, social insurance. One page built from the field definitions served by the server, so a new group gets the same cards, filters and quick edit, and hand-made pages would drift apart. Filling happens in place: the missing cell is clicked and typed, and saving clears its required state on the server so the counter drops. The page has three whole-group actions: add opens the group file for an employee with no data, edit opens only the group's fields for one person (not the whole employee form), and clear erases this group's data for him only. None deletes an employee; see components/hr/HrGroupModals.
 import { useState, useEffect, useCallback, useRef, Suspense } from 'react';
 import { useRouter, useSearchParams, useParams } from 'next/navigation';
 import { useLanguage } from '@/context/LanguageContext';
@@ -45,13 +31,7 @@ import ContractsTabs from '@/components/hr/ContractsTabs';
 import { HrGroupFormModal, HrGroupClearModal } from '@/components/hr/HrGroupModals';
 import ScrollX from '@/components/system/ScrollX';
 
-/**
- * ── أين يقع عمودُ «الأيّام المتبقّية» ───────────────────────────────────────
- * كان يلي تاريخَ الانتهاء الميلاديَّ مباشرةً — فيقع **بين** التاريخ وتوأمه
- * الهجريّ: «الميلادي ← الأيّام ← الهجري». والقاعدةُ أنّ الهجريَّ يلي ميلاديَّه
- * بلا فاصل. فالمدّةُ تأتي بعد الزوج كلِّه: تُعاد هنا مفتاحَ الانتهاء حين يكون
- * `f` آخرَ الزوج (التوأمُ الهجريّ، أو التاريخُ نفسُه إن لم يكن له توأم).
- */
+/** Where the days-remaining column goes: after the whole date pair, never between the Gregorian date and its Hijri twin. Re-keyed as the expiry key when `f` is the last of the pair (the Hijri twin, or the date itself if it has none). */
 const daysAfter = (f: { key: string }, fields: { key: string }[]): string | null => {
   if (f.key.endsWith('Hijri')) {
     const base = f.key.slice(0, -'Hijri'.length);
@@ -62,28 +42,10 @@ const daysAfter = (f: { key: string }, fields: { key: string }[]): string | null
 };
 
 const QUICK = [30, 60, 90, 180];
-// حالاتُ الخانة التي تُعرَض عدّاداتٍ وتُختار فلترًا. الأربعُ الأولى هي الغالبة،
-// والثلاثُ بعدها تظهر حيث توجد (البنك: «راتب نقدي»، التأمين: «غير نشط») — وبغيرها
-// لا يبلغ مجموعُ عدّادات الحقل عددَ الموظّفين في تلك المجموعات.
+// Cell states shown as counters and chosen as filters. The first four are the common ones; the next three appear where they exist (bank: cash salary, insurance: inactive). Without them the field counters would not sum to the group's employee count.
 const STATUS_KEYS = ['required', 'not_required', 'filled', 'none', 'cash_payroll', 'inactive', 'unparseable'] as const;
 
-/**
- * ── مَن ليس على رأس العمل: لماذا؟ ───────────────────────────────────────────
- *
- * الضغطُ على «ليس على رأس العمل» يفتح الأسماءَ ولا يقول عن أحدهم شيئًا: أمُنهيةٌ
- * خدمتُه أم في إجازة، وعقدُه مفسوخٌ أم ساري. وهو أوّلُ ما يُسأل عن كلّ اسمٍ في
- * تلك القائمة — فيُقرأ كلُّ صفٍّ بفتح ملفّ صاحبه، واحدًا واحدًا.
- *
- * فيظهر العمودان في هذه القائمة وحدَها. وهما اثنان لا واحد عن قصد:
- *
- *   حالةُ التوظيف   قرارُنا نحن، ومعلومٌ دائمًا — منهيّةٌ خدمتُه أم في إجازة.
- *   حالةُ العقد     نصُّ ورقة العقد كما كُتب في ملفّ الموارد البشريّة.
- *
- * وهما يفترقان كثيرًا: من واحدٍ وستّين ليسوا على رأس العمل، سبعةٌ وخمسون
- * منهيّةٌ خدمتُهم وأربعةٌ في إجازة — بينما أربعةٌ وأربعون منهم لا حالةَ عقدٍ
- * مكتوبةٌ لهم أصلًا. فعمودُ العقد وحدَه كان سيُقرأ فارغًا في أكثر الصفوف، وعمودُ
- * التوظيف وحدَه لا يقول ما على الورقة.
- */
+/** Who is not on the job and why. Two columns appear only in this list, deliberately two: employment status is our decision and is always known (ended or on leave), while contract status is the contract paper's text as written in the HR file. They differ often, and contract status is empty for most rows, while employment alone would not say what the paper says. */
 const EMPLOYMENT_META: Record<string, { ar: string; en: string; cls: string }> = {
   terminated: { ar: 'أُنهيت خدمته', en: 'Terminated', cls: 'bg-red-100 text-red-700' },
   on_leave: { ar: 'في إجازة', en: 'On leave', cls: 'bg-amber-100 text-amber-700' },
@@ -105,8 +67,7 @@ function GroupInner() {
 
   const canEdit = ['super_admin', 'admin', 'hr_manager', 'hr_specialist'].includes((user as any)?.role)
     || canEditSection((user as any)?.permissions, 'HR');
-  // الأعمدةُ الثابتة على اليمين: التحديد والإجراءات (لمن يعدّل)، ثمّ الرقم
-  // الوظيفيّ والاسم والهويّة — راجع usePinnedColumns.
+  // Pinned right columns: selection and actions (for editors), then employee number, name and ID. See usePinnedColumns.
   const lead = (RENEWABLE_GROUPS.has(group) && canEdit ? 1 : 0) + (canEdit ? 1 : 0);
   const pin = usePinnedColumns(lead + 3);
 
@@ -115,53 +76,40 @@ function GroupInner() {
   const [status, setStatus] = useState(sp?.get('status') || '');
   const [state, setState] = useState(sp?.get('state') || '');
   const [within, setWithin] = useState(sp?.get('withinDays') || '');
-  // «ينتهي خلال ٣٠ يوم» ماكانش بيستثني المنتهي من سنة — فكان بيطلع معاه ويبوّظ
-  // الرقم. الاختيار بقى صريح للمستخدم زي شاشة المركبات.
+  // "Expires within 30 days" did not exclude those expired over a year ago, which inflated the count. The choice is now explicit to the user, like the vehicles screen.
   const [includeExpired, setIncludeExpired] = useState(true);
   const [sort, setSort] = useState('');
   const [dir, setDir] = useState<'asc' | 'desc'>('asc');
-  // الفلتر القادم من النظرة الشاملة يظل مرئيًّا وقابلًا للتعديل هنا. لو بقي
-  // خفيًّا لرأى المستخدم جدولًا أقصر مما يتوقّع ولا يعرف السبب — وهذا أسوأ من
-  // ألا يكون هناك فلتر أصلًا.
+  // A filter carried from the overview stays visible and editable here; hidden, the user would see a shorter table with no explanation, which is worse than no filter.
   const CTRL = ['field', 'status', 'state', 'withinDays', 'sort', 'dir', 'includeExpired', 'q'];
-  // ملاحظة: `employment` ليست من CTRL — فهي فلتر يظهر في اللوحة كبقيّة الفلاتر.
-  // العمودان لا يظهران إلّا في قائمة «ليس على رأس العمل»، ولا في مجموعة العقود
-  // (فيها حالةُ العقد عمودًا أصلًا) — راجع EMPLOYMENT_META.
+  // `employment` is not in CTRL; it is a panel filter like the others. The two columns appear only in the not-on-the-job list, and not in the contracts group (which already has contract status as a column). See EMPLOYMENT_META.
   const [filters, setFilters] = useState<FilterValues>(() =>
     Object.fromEntries([...(sp?.entries() || [])].filter(([k]) => !CTRL.includes(k))));
   const [d, setD] = useState<Awaited<ReturnType<typeof getHrRecords>> | null>(null);
   const [loading, setLoading] = useState(true);
-  // ── التحديد والتجديد ───────────────────────────────────────────────────────
-  // المجموعات ذات تاريخ الانتهاء وحدها تقبل التجديد؛ «البيانات البنكية» لا
-  // تنتهي فلا معنى لزرّ تجديد فيها.
+  // Selection and renewal: only groups with an expiry date can be renewed; bank data never expires, so it has no renew button.
   const showWhyInactive = (filters as any).employment === 'inactive' && group !== 'contract';
   const renewable = RENEWABLE_GROUPS.has(group);
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [bulk, setBulk] = useState(false);
   const [renewing, setRenewing] = useState<RecordRow | null>(null);
-  // ── إنشاء / تعديل / تفريغ ──────────────────────────────────────────────────
-  // نموذجٌ واحد للحالتين: «إضافة» تختار الموظّف ثم تملأ، و«تعديل» تبدأ بموظّفٍ
-  // معروف. فصلُهما مكوّنين يجعل حقلًا يُضاف إلى المجموعة يظهر في أحدهما فقط.
+  // Create/edit/clear: one form for both cases, since two components would let a field added to the group show in only one.
   const [form, setForm] = useState<{ mode: 'create' | 'edit'; row: RecordRow | null } | null>(null);
   const [clearing, setClearing] = useState<RecordRow | null>(null);
 
-  // ── والعدّاداتُ والجدولُ ردٌّ واحدٌ محروس ──────────────────────────────────
-  // الصفحةُ بلا فلترٍ أثقلُ طلباتها وهي التي تُطلَق عند الفتح؛ فمَن ضغط عدّادًا
-  // بعدها مباشرةً — أو وصله تحديثٌ من السوكِت — كان الردُّ الأوسعُ يصل أخيرًا
-  // فيكتب الجدولَ كلَّه تحت عدّادٍ مضغوط. راجع hooks/useLatestRequest.
+  // Counters and table are one guarded response. The unfiltered page is the heaviest request and fires on open; a later counter click or socket refresh could let the widest response land last and overwrite the table. See hooks/useLatestRequest.
   const guard = useLatestRequest();
-  // الضغطُ على رقمٍ في بطاقة حقلٍ يُنزل إلى أصحابه في الجدول فورًا — لا يتركهم
-  // تحت عشرات البطاقات فيُظنّ أنّ الضغطة لم تفعل شيئًا.
+  // Clicking a number in a field card scrolls to its rows in the table, so the click does not look like it did nothing.
   const tableRef = useRef<HTMLDivElement>(null);
   const load = useCallback(async () => {
     const mine = guard.begin();
     try {
       const res = await getHrRecords(group, {
         q: q.trim(), field, status, state, withinDays: within, sort, dir,
-        // «غير نشط» هنا حالةُ خانة لا حالةُ توظيف — راجع legacyEmploymentStatus في الخادم.
+        // Inactive here is a cell state, not an employment status; see legacyEmploymentStatus on the server.
         statusKind: 'cell',
         includeExpired: includeExpired ? '1' : '0',
-        // فلاتر القيم القادمة من بطاقات النظرة الشاملة (القسم، الجنسية، المدد…)
+        // Value filters coming from the overview cards (department, nationality, durations, ...).
         ...filters,
       });
       if (!guard.isCurrent(mine)) return;
@@ -172,18 +120,15 @@ function GroupInner() {
 
   useEffect(() => { const h = setTimeout(load, 250); return () => clearTimeout(h); }, [load]);
   useSocket('hr:master', useCallback(() => { load(); }, [load]));
-  // وما يُكتب في صفحة العقود (إنشاءٌ، فسخٌ، حذف) يغيّر «حالة العقد» هنا.
+  // Contract changes on the contracts page (create, terminate, delete) change contract status here.
   useSocket('hr:contract', useCallback(() => { load(); }, [load]));
-  // قوائمُ حقول الاختيار (نوع الرخصة، البنك، حالة التأمين…) — راجع MasterCell.
+  // Choice-field lists (license type, bank, insurance status, ...); see MasterCell.
   const [choices, setChoices] = useState<Choices>({});
   const loadChoices = useCallback(() => { api.get<{ choices: Choices }>('/api/hr/master/choices').then((d) => setChoices(d.choices || {})).catch(() => {}); }, []);
   useEffect(() => { loadChoices(); }, [loadChoices]);
   useSocket('hr:master', loadChoices);
 
-  // ── ما تختاره هنا يعيش في عنوان الصفحة ─────────────────────────────────────
-  // كان الفلتر يُقرأ من العنوان مرّةً عند الفتح ثم ينفصل عنه: ترفع شرطًا أو
-  // تضيف آخر فيتغيّر الجدول ويبقى العنوان على حاله — فالرجوع بزرّ المتصفّح
-  // يعيدك إلى ما لم تعد فيه، والتحديث يمسح ما بنيتَه.
+  // Selections live in the URL. Previously the filter was read once on open and then detached, so back went to a stale state and refresh erased the selection.
   useEffect(() => {
     const p = new URLSearchParams();
     for (const [k, v] of Object.entries(filters)) if (v !== '' && v != null) p.set(k, String(v));
@@ -195,14 +140,13 @@ function GroupInner() {
     router.replace(`/system/hr/master/${group}${q ? `?${q}` : ''}`, { scroll: false });
   }, [JSON.stringify(filters), field, status, state, within, group, router]);
 
-  /** الرجوع إلى النظرة الشاملة حاملًا الفلتر الحاليّ — لا مُلقيًا به. */
+  /** Return to the overview carrying the current filter, not dropping it. */
   const backToOverview = () => {
     const q = new URLSearchParams(
       Object.entries(filters).filter(([, v]) => v !== '' && v != null) as [string, string][]).toString();
     router.push(`/system/hr/master${q ? `?${q}` : ''}`);
   };
-  // التحديد يسقط مع تغيّر الفلاتر: صفٌّ اختير ثم خرج من النتيجة يبقى محدَّدًا
-  // بلا أن يُرى، فتُجدَّد في الدفعة أسماءٌ لا تظهر على الشاشة.
+  // Selection is cleared when filters change: a row selected and then filtered out stays selected unseen, and the batch would renew names not on screen.
   useEffect(() => { setPicked(new Set()); }, [group, q, field, status, state, within, includeExpired, JSON.stringify(filters)]);
 
   if (loading && !d) return <Spinner />;
@@ -214,9 +158,7 @@ function GroupInner() {
     { header: t('الرقم الوظيفي', 'Employee no.'), key: 'employeeNumber', width: 14 },
     { header: t('الاسم', 'Name'), key: 'name', width: 30 },
     { header: t('رقم الهوية', 'ID number'), key: 'iqamaNumber', width: 16 },
-    // السجلُّ التجاريُّ الذي عليه الموظّف — «جنب اسمه ورقم إقامته» (٢٠٢٦/١٠/٢٧).
-    // بقاعدة الارتباط نفسِها (backend utils/hrEngagement): رقمُ سجلٍّ منّا يُكتب رقمُه،
-    // و«فري لانسر» بأيّ كتابةٍ «فريلانسر»، و«تدريب» «متدرّب»، والفارغُ «غير محدّد».
+    // Commercial register the employee is on, beside name and residency number. Same linking rule as backend utils/hrEngagement: our register number shows its number, freelancer in any spelling is freelancer, training is trainee, empty is unspecified.
     { header: t('السجل', 'Commercial register'), key: 'registerNumber', width: 16,
       transform: (v: any) => {
         const r = String(v || '').trim();
@@ -226,8 +168,7 @@ function GroupInner() {
         return r;
       } },
     { header: t('القسم', 'Department'), key: 'department', width: 18 },
-    // والملفُّ يحمل ما تحمله الشاشة: من صدّر قائمةَ «ليس على رأس العمل» ليقرأها
-    // في اجتماعٍ لا يجدها بلا سببها.
+    // The export carries what the screen shows, so someone exporting the not-on-the-job list has its reason column.
     ...(showWhyInactive ? [
       {
         header: t('حالة التوظيف', 'Employment'), key: 'employmentStatus', width: 16,
@@ -251,7 +192,7 @@ function GroupInner() {
         },
         width: 18,
       },
-      // والملفُّ يحمل ما تحمله الشاشة — رقمًا يُرتَّب ويُجمَع لا نصًّا.
+      // The export carries what the screen shows, as a sortable, summable number rather than text.
       ...(daysAfter(f, g.fields) ? [{
         header: daysColLabel(daysAfter(f, g.fields)!, ar), key: 'values', width: 16,
         transform: (_v: any, row: any) => { const n = daysUntil(row.values?.[daysAfter(f, g.fields)!]); return n === null ? '' : n; },
@@ -259,10 +200,7 @@ function GroupInner() {
     ] as ExportColumn[]),
   ];
 
-  // كلُّ فلاتر هذه الشاشة تُطبَّق على الخادم — البحث ولوحة الفلاتر والحالة
-  // والمدّة — فالذاكرة لا تحمل إلّا نتيجتها. زرُّ «تصدير المعروض» وحدَه كان
-  // يترك مَن يريد كشف المجموعة كاملةً بلا سبيلٍ إليه إلّا رفعُ الفلاتر يدويًّا
-  // واحدًا واحدًا ثمّ إعادتها. و«الكلّ» يعيد النداء مجرَّدًا منها كلِّها.
+  // All filters here run on the server (search, filter panel, status, duration), so memory holds only the result. "All" re-fetches without any of them, instead of making the user clear filters by hand to export the whole group.
   const hasActiveFilters = !!(q.trim() || field || status || state || within || !includeExpired
     || Object.values(filters).some((v) => v !== '' && v != null));
   const fetchAllRecords = async () => {
@@ -303,7 +241,7 @@ function GroupInner() {
         )}
       </PageHeader>
 
-      {/* الفلتر — يشمل ما جاء محمولًا من النظرة الشاملة، ظاهرًا وقابلًا للرفع */}
+      {/* Filter, including one carried from the overview; visible and removable. */}
       <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-sm space-y-2.5">
         <HrQuickFilters optionsUrl="/api/hr/master/filters" value={filters} onChange={setFilters} ar={ar} />
         <FilterPanel
@@ -322,10 +260,7 @@ function GroupInner() {
         />
       </div>
 
-      {/* ── عدّاداتُ الحالة لكلّ حقل ───────────────────────────────────────────
-          محسوبةٌ على ما تعرضه الفلاتر **عدا العدّادَ المضغوطَ نفسَه** (راجع
-          records في الخادم): فمجموعُ حالات كلّ حقلٍ يساوي `summary.population`
-          دائمًا، والضغطُ على عدّادٍ لا يُخفي جيرانَه — يُنتقَل بينها مباشرةً. */}
+      {/* Status counters per field, computed on the filters except the pressed counter itself (see records on the server). A field's states always sum to `summary.population`, and pressing one does not hide its neighbors. */}
       <p className="text-[11.5px] text-slate-500 -mb-2 px-1">
         {t(`حالة كل حقل لدى ${d.summary.population ?? rows.length} موظفًا — اضغط أي رقم لعرض أصحابه`,
            `Status of every field across ${d.summary.population ?? rows.length} employees — click a number to list them`)}
@@ -350,7 +285,7 @@ function GroupInner() {
                   </button>
                 ))}
               </div>
-              {/* ── وأصحابُ الرقم المضغوط تحته: اسمٌ يفتح ملفَّ الموظّف مباشرةً ── */}
+              {/* Holders of the pressed number are listed beneath it; a name opens the employee file directly. */}
               {field === f.key && status && rows.length > 0 && rows.length <= 40 && (
                 <div className="mt-2 pt-2 border-t border-slate-100 flex flex-wrap gap-1">
                   {rows.map((r) => (
@@ -367,9 +302,7 @@ function GroupInner() {
         })}
       </div>
 
-      {/* ── وإن جاء من رقم الشريط يُقال له لماذا الجدولُ مقصوص ──────────────
-          الضغطُ على «٢٣٢» في الشريط يفتح هذه الصفحة على تلك الصفوف وحدَها.
-          وبغير سطرٍ يقول ذلك يظنُّ القارئُ أنّ هذا كلُّ ما في المجموعة. */}
+      {/* When arriving from a strip number, say why the table is cut: that click opens this page on those rows only, and without a note the reader thinks it is the whole group. */}
       {state === 'attention' && (
         <div className="flex items-center justify-between gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-2.5">
           <p className="text-[13px] font-semibold text-rose-800">
@@ -382,7 +315,7 @@ function GroupInner() {
         </div>
       )}
 
-      {/* حالات التاريخ لو المجموعة مستند */}
+      {/* Date states if the group is a document. */}
       {g.document && d.summary.states && (
         <div className="grid grid-cols-2 md:grid-cols-6 gap-2.5">
           {(['expired', 'critical', 'warning', 'valid', 'missing', 'not_applicable'] as const).map((k) => (
@@ -469,17 +402,14 @@ function GroupInner() {
                   </button>
                 </th>
                 <th className="px-3 py-3 text-center font-bold whitespace-nowrap">{t('القسم', 'Department')}</th>
-                {/* لماذا ليس على رأس العمل — عمودان لا واحد. راجع EMPLOYMENT_META. */}
+                {/* Why not on the job: two columns, not one. See EMPLOYMENT_META. */}
                 {showWhyInactive && (
                   <>
                     <th className="px-3 py-3 text-center font-bold whitespace-nowrap">{t('حالة التوظيف', 'Employment')}</th>
                     <th className="px-3 py-3 text-center font-bold whitespace-nowrap">{t('حالة العقد', 'Contract status')}</th>
                   </>
                 )}
-                {/* ── والمدّةُ بالأيّام تلي انتهاءَها ────────────────────────
-                    التاريخُ يقول متى، والمدّةُ تقول كم بقي — وهو السؤالُ الذي
-                    يُفتَح الجدولُ لأجله. تقع بعد عمودِ انتهائها مباشرةً فتُقرآن
-                    معًا، ولها اسمٌ صريحٌ لأنّ عناوينَ الانتهاء متشابهة. */}
+                {/* Days remaining follows its expiry column: the date says when, the days say how long is left, which is the question the table is opened for. It sits right after its expiry column and has an explicit name since the expiry headings are similar. */}
                 {g.fields.flatMap((f) => [
                   <th key={f.key} className="px-3 py-3 text-center font-bold whitespace-nowrap">
                     <button onClick={() => toggleSort(f.key)} className="inline-flex items-center gap-1 hover:text-white">
@@ -556,13 +486,13 @@ function GroupInner() {
   );
 }
 
-// ── صف موظف: كل خانة قابلة للتعديل في مكانها ─────────────────────────────────
+// Employee row: every cell is editable in place.
 function Row({ r, fields, isDoc, ar, t, canEdit, onSaved, notify, router, choices, pin, lead,
   renewable, picked, setPicked, onRenew, onEdit, onClear, showWhyInactive }: any) {
   const m = r.state ? stateMeta(r.state) : null;
   const sel = renewable && canEdit;
   const on = sel && picked.has(r._id);
-  // الخليّةُ الثابتة تحمل لونَ صفّها — وإلّا بدت بيضاءَ في صفٍّ محدَّد.
+  // A pinned cell carries its row's color, or it looks white in a selected row.
   const bg = on ? 'bg-orange-50' : 'bg-white group-hover:bg-slate-50';
   return (
     <tr className={on ? 'group bg-orange-50/70 text-center align-middle' : 'group hover:bg-slate-50 text-center align-middle'}>
@@ -577,8 +507,7 @@ function Row({ r, fields, isDoc, ar, t, canEdit, onSaved, notify, router, choice
             })} />
         </td>
       )}
-      {/* الأفعال الثلاثة في عمودٍ واحد. التجديد يبقى أوّلها في المستندات لأنّه
-          أكثرها تكرارًا، والتفريغ آخرها وحده بلونٍ يقول إنّه لا يُشبه ما قبله. */}
+      {/* The three actions in one column. Renew stays first for documents as the most frequent; clear is last and alone, colored to show it is unlike the others. */}
       {canEdit && (
         <td {...pin.td(lead - 1, 'px-3 py-2.5', bg)}>
           <div className="inline-flex items-center gap-1">
@@ -604,13 +533,12 @@ function Row({ r, fields, isDoc, ar, t, canEdit, onSaved, notify, router, choice
         <button onClick={() => router.push(`/system/hr/employees/${r._id}`)}
           className="font-semibold text-slate-900 hover:text-[#f37121] text-[13.5px] whitespace-nowrap">{r.name}</button>
       </td>
-      {/* رقم الهوية — أكتر حاجة بيتسيرش بيها، فليها عمودها في كل جدول */}
+      {/* ID number is the most searched field, so it has its own column in every table. */}
       <td {...pin.td(lead + 2, 'px-3 py-2.5 whitespace-nowrap text-slate-700 text-[13px] tabular-nums', bg)}>{r.iqamaNumber || '—'}</td>
       <td className="px-3 py-2.5 text-slate-700 text-[13px] whitespace-nowrap">{r.department || '—'}</td>
       {showWhyInactive && (() => {
         const em = employmentMeta(r.employmentStatus);
-        // نصُّ ورقة العقد كما كُتب في الملفّ — وأربعةٌ وأربعون من واحدٍ وستّين
-        // لا نصَّ لهم، فيُقال «غير مسجَّلة» لا تُترك شرطةً تُقرأ «لا عقد له».
+        // The contract paper's text as written in the file. Most not-on-the-job rows have none, so show "not recorded" instead of a dash that reads as "no contract".
         const cs = String(r.values?.contractStatusText || '').trim();
         return (
           <>
@@ -630,8 +558,7 @@ function Row({ r, fields, isDoc, ar, t, canEdit, onSaved, notify, router, choice
           <MasterCell id={r._id} f={f} raw={r.values[f.key]} st={r.statuses[f.key]} choices={choices}
             ar={ar} canEdit={canEdit} onSaved={onSaved} notify={notify} />
         </td>,
-        // المدّةُ تُحسَب عند القراءة — راجع daysUntil. و«بلا تاريخ» تبقى فارغةً
-        // لا صفرًا: الصفرُ يعني «ينتهي اليوم» وهو خبرٌ آخر.
+        // Days are computed at read time (see daysUntil). With no date it stays empty, not zero, since zero means "expires today".
         ...(daysAfter(f, fields) ? [(() => {
           const base = daysAfter(f, fields)!;
           const n = daysUntil(r.values?.[base]);
@@ -652,11 +579,7 @@ function Row({ r, fields, isDoc, ar, t, canEdit, onSaved, notify, router, choice
   );
 }
 
-// ── تجديد مستند واحد ─────────────────────────────────────────────────────────
-//
-// التجديد ليس كتابةً فوق التاريخ القديم: هو يكتب التاريخ الجديد **ويترك أثرًا**
-// يقول مَن جدّده ومن أيّ تاريخ إلى أيّ. الكتابة المباشرة على الخانة تفقد هذا
-// الجواب تمامًا، وهو أول ما يُسأل عنه عند المراجعة.
+// Renew one document. Renewal writes the new date and leaves a trace of who renewed and from which date to which; writing directly on the cell loses that, and it is the first thing asked in review.
 function HrRenewModal({ row, group, groupLabel, expiryField, ar, t, notify, onClose, onDone }: any) {
   const cur = expiryField ? row.values?.[expiryField] : null;
   const [newExpiry, setNewExpiry] = useState('');
@@ -665,8 +588,7 @@ function HrRenewModal({ row, group, groupLabel, expiryField, ar, t, notify, onCl
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    // الافتراض سنةٌ من تاريخ الانتهاء القائم إن كان في المستقبل، وإلا سنة من
-    // اليوم — فالمنتهي منذ شهور لا يُجدَّد إلى تاريخ ماضٍ.
+    // Default is a year from the existing expiry if in the future, else a year from today, so a long-expired document is never renewed to a past date.
     const base = cur && !isNaN(new Date(cur).getTime()) ? new Date(cur) : new Date();
     const from = base > new Date() ? base : new Date();
     const d = new Date(from);
@@ -697,11 +619,7 @@ function HrRenewModal({ row, group, groupLabel, expiryField, ar, t, notify, onCl
           {row.name} · {groupLabel}{cur ? ` · ${t('ينتهي', 'expires')} ${bothDates(cur, ar)}` : ''}
         </p>
 
-        {/* ── ويُكتب بأيِّ التقويمين ────────────────────────────────────────
-            من يجدّد يقرأ الورقةَ التي في يده: إقامةٌ مكتوبٌ عليها «١٤٥٠/٠٦/١٥»
-            أو جوازٌ بالميلاديّ. فيُكتب كما هو مكتوبٌ، ويُحوَّل عندنا — والمحفوظُ
-            ميلاديٌّ واحدٌ دائمًا (راجع lib/hijri وutils/hijri). والحقلُ الآخرُ
-            يُحدَّث أمام عينه فيتأكّد قبل أن يحفظ. */}
+        {/* Entered in either calendar. The renewer reads the paper in hand (a Hijri-dated residency or a Gregorian passport), so it is entered as written and converted here. Stored is always one Gregorian date (lib/hijri, utils/hijri); the other field updates live so the user can check before saving. */}
         <div className="grid mb-1">
           <DatePair label={`${t('تاريخ الانتهاء الجديد', 'New expiry')} *`} value={newExpiry} onChange={setNewExpiry} ar={ar} autoFocus />
         </div>
@@ -732,10 +650,7 @@ function HrRenewModal({ row, group, groupLabel, expiryField, ar, t, notify, onCl
   );
 }
 
-// ── تجديد دفعة بتاريخ واحد ───────────────────────────────────────────────────
-//
-// كله أو لا شيء. لو رفض الخادم سطرًا لم يُجدَّد أيّ سطر، وتُعرض أسباب الرفض
-// بأرقام سطورها — لأن دفعةً نجح نصفها بصمت أسوأ من دفعةٍ فشلت كلها بوضوح.
+// Batch renewal with one date, all or nothing: if the server rejects a row, none is renewed and the reasons are shown with row numbers, since a half-succeeded batch is worse than a clearly failed one.
 function HrBulkRenewModal({ rows, group, groupLabel, ar, onClose, onDone }: {
   rows: any[]; group: string; groupLabel: string; ar: boolean; onClose: () => void; onDone: () => void;
 }) {
@@ -783,7 +698,7 @@ function HrBulkRenewModal({ rows, group, groupLabel, ar, onClose, onDone }: {
           </p>
 
           <div>
-            {/* خانتان كما في تجديد المستند الواحد — والحدُّ الأدنى على الخانتين معًا. */}
+            {/* Two cells as in single-document renewal; the minimum applies to both together. */}
             <div className="grid">
               <DatePair label={`${t('تاريخ الانتهاء الجديد', 'New expiry')} *`} value={when} onChange={setWhen} ar={ar} min={today} autoFocus />
             </div>

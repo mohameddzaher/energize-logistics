@@ -1,15 +1,4 @@
-/// ── مطابقةٌ لا تبالي بالمسافات ولا بفروق الرسم ───────────────────────────────
-///
-/// توأمُ `backend/src/utils/plateKey.js` و`frontend/src/lib/flexMatch.ts`.
-/// القاعدةُ واحدةٌ في الأماكن الثلاثة عمدًا: اختلافُها يعني أن تجد شاشةٌ ما لا
-/// تجده أخرى، والمستخدمُ يفتح الشاشتين في اليوم نفسه.
-///
-/// لوحةُ السعودية ثلاثةُ حروفٍ ورقم، والمقطورات حرفان فيُترك موضعُ الثالث
-/// فارغًا: «أ ب  3499» بمسافتين. ونحن نخزّنها بمسافةٍ واحدة، والموظّف ينسخها من
-/// أبشر بمسافتين — فكان يبحث عن اللوحة التي أمامه فلا يجدها، فيمسح مسافةً بيده.
-///
-/// فتُنزع المسافاتُ من الطرفين معًا، وتُطوى معها الهمزةُ والتاءُ المربوطة
-/// والواوُ المهموزة والتشكيلُ والأرقامُ العربيّة.
+/// Whitespace- and spelling-insensitive matching. Twin of backend/src/utils/plateKey.js and frontend/src/lib/flexMatch.ts; the rule is identical in all three so screens never disagree. Saudi plates have three letters and a number; trailers have two letters with a blank third slot, giving a double space. We store a single space while Absher copies show two, so spaces are stripped on both sides, and hamza, ta marbuta, hamza-on-waw, diacritics and Arabic-Indic digits are folded.
 String flexFold(Object? v) => (v ?? '')
     .toString()
     .replaceAllMapped(RegExp('[٠-٩]'), (m) => '٠١٢٣٤٥٦٧٨٩'.indexOf(m[0]!).toString())
@@ -21,7 +10,7 @@ String flexFold(Object? v) => (v ?? '')
     .replaceAll(RegExp(r'\s+'), '')
     .toLowerCase();
 
-/// هل يحوي أيٌّ من الحقول نصَّ البحث بعد الطيّ؟ نصٌّ فارغ يعني «الكلّ».
+/// True if any field contains the search text after folding; empty text matches everything.
 bool flexContains(Object? needle, List<Object?> fields) {
   final n = flexFold(needle);
   if (n.isEmpty) return true;

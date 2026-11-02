@@ -13,13 +13,9 @@ import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import '../ui/search_field.dart';
 
-/// النماذجُ والخطاباتُ الرسميّة — مكتبةُ أوراق الموارد البشريّة.
-///
-/// نظيرةُ `/system/hr/forms`. كانت هذه الأوراقُ في محادثاتِ واتساب فتُوقَّع
-/// نسخةٌ قديمةٌ وتُعاد؛ ولكلّ ورقةٍ الآن رقمُ نسخةٍ يرتفع عند استبدالها.
-///
-/// ولفريق الموارد البشريّة ما في الموقع كلُّه: نموذجٌ جديد (رفعُ ملفّ)، وتعديلُه
-/// أو استبدالُ ملفّه (فيرتفع رقمُ النسخة)، وأرشفتُه، وإرجاعُه من الأرشيف.
+/// Official forms and letters: the HR paper library. Counterpart of `/system/hr/forms`.
+/// These papers used to circulate in chat, so an old copy got signed and returned; each paper now has a version number that rises when it is replaced.
+/// HR team has the full web capability: new form (file upload), edit or replace its file (bumps the version), archive and restore from the archive.
 class HrFormsScreen extends StatefulWidget {
   const HrFormsScreen({super.key});
   @override
@@ -30,20 +26,20 @@ class _HrFormsScreenState extends State<HrFormsScreen> {
   List<Map<String, dynamic>> _items = [];
   List<Map<String, dynamic>> _cats = [];
   Map<String, dynamic> _counts = {};
-  // «الكل» = مجموعُ التصنيفات بلا فلترها (الخادم) — لا عددُ التصنيف المختار.
+  // "All" is the sum of categories without their filter (server), not the count of the selected category.
   int _total = 0;
   bool _loading = true;
   String? _error;
   String _cat = '';
   String _q = '';
-  // تبديلُ التصنيف يُعيد التحميلَ فتُهدَم الخانة — النصُّ في متحكِّمٍ يبقى مع الكلمة.
+  // Changing the category reloads and destroys the field; the text lives in a controller so it survives.
   final _searchCtl = TextEditingController();
   Timer? _debounce;
   bool _archived = false;
   int _seq = 0;
   late final void Function() _onLive;
 
-  /// فريقُ الموارد البشريّة بالدور أو بمنح القسم — isHRStaff في الموقع.
+  /// HR team by role or department grant; isHRStaff on the web.
   bool get _staff {
     final a = context.read<AuthProvider>();
     return const ['super_admin', 'admin', 'hr_manager', 'hr_specialist'].contains(a.role) || a.canAccessSection('HR');
@@ -97,12 +93,10 @@ class _HrFormsScreenState extends State<HrFormsScreen> {
     return '${(v / 1024 / 1024).toStringAsFixed(1)} MB';
   }
 
-  /// التنزيلُ يُعَدّ — النموذجُ الذي لا يُنزَّل إمّا لا يحتاجه أحدٌ أو لا يعرف
-  /// أحدٌ أنّه هنا، والرقمُ يفرّق بينهما مع الزمن.
+  /// Downloads are counted: an undownloaded form is either unneeded or unknown, and the count tells which over time.
   Future<void> _download(Map<String, dynamic> it) async {
     Api.instance.post('/api/hr/forms/${it['_id']}/downloaded', const {}).catchError((_) => <String, dynamic>{});
-    // الملفُّ يُقدَّم على `/api/uploads/...` من الخادم نفسِه، فيُفتح بمتصفّح
-    // الجهاز فينزّله أو يعرضه — كما في مرفقات التخليص.
+    // The file is served at `/api/uploads/...` by the same server and opened in the device browser, which downloads or displays it, as with customs attachments.
     final u = (it['fileUrl'] ?? '').toString();
     if (u.isEmpty) return;
     final uri = Uri.parse(u.startsWith('http') ? u : '${AppConfig.apiBase}$u');
@@ -114,8 +108,7 @@ class _HrFormsScreenState extends State<HrFormsScreen> {
 
   void _snack(String m) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m))); }
 
-  /// نموذجٌ جديد أو تعديلُ قائم. الملفُّ إلزاميٌّ عند الإنشاء، واختياريٌّ عند
-  /// التعديل — واستبدالُه يرفع رقمَ النسخة في الخادم.
+  /// New form or edit of an existing one. The file is required on create and optional on edit; replacing it bumps the version on the server.
   Future<void> _openForm([Map<String, dynamic>? edit]) async {
     final title = TextEditingController(text: '${edit?['title'] ?? ''}');
     final titleEn = TextEditingController(text: '${edit?['titleEn'] ?? ''}');

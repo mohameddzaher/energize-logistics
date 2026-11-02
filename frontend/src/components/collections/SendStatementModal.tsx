@@ -1,12 +1,5 @@
 'use client';
-/**
- * «إرسال للعميل» — كشفُ الحساب بالبريد من صندوق التحصيل (صاحبُ الشركة، ٢٠٢٦/١٠/٢٤).
- *
- * يأخذ فلترَ الصفحة كما هو (العميل، الفاتورة، الحالة، الفترة، الأعمدة، التحديد) —
- * وهو نفسُه الذي يطبع «كشف حساب PDF» — فيرى الموظّفُ قبل الإرسال الرسالةَ مملوءةً
- * من قالب القسم، وبريدَ العميل من ملفّه، والـPDF المرفقَ نفسَه. يعدّل ثمّ يرسل،
- * فتخرج من collections@ فورًا. والحسابُ كلُّه في الخادم (collectionsMailController).
- */
+/** Send to customer: the account statement by email from the collections mailbox. It takes the page filter as is (customer, invoice, state, period, columns, selection), the same one that prints the statement PDF, so the employee sees before sending the message filled from the department template, the customer's email from their profile and the attached PDF. They edit then send, and it leaves from collections@ immediately. All computation is on the server (collectionsMailController). */
 import { useEffect, useMemo, useState } from 'react';
 import api from '@/lib/api';
 import { useDialog } from '@/components/system/DialogProvider';
@@ -19,7 +12,7 @@ interface Draft {
 }
 const RX = /^[^\s@<>()[\],;:"]+@[^\s@<>()[\],;:"]+\.[^\s@<>()[\],;:"]{2,}$/;
 
-/** URLSearchParams ← كائنٌ يحفظ المفاتيحَ المكرَّرة قوائمَ (cf_x=a&cf_x=b). */
+/** URLSearchParams from an object, keeping repeated keys as lists (cf_x=a&cf_x=b). */
 function paramsToObject(p: URLSearchParams) {
   const out: Record<string, string | string[]> = {};
   for (const k of new Set(p.keys())) {

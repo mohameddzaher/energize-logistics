@@ -11,9 +11,7 @@ import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import '../ui/search_field.dart';
 
-/// شكاوى العملاء (العامّة) — نظيرُ /system/complaints في الويب: إنشاء، حلّ،
-/// حذف، فلاتر الحالة والتصنيف والأولويّة والبحث (على الخادم، ٢٠ في الصفحة)،
-/// تصدير، وحيّةٌ على complaint:created/updated/resolved/deleted.
+/// Public customer complaints, the counterpart of /system/complaints on the web: create, resolve, delete, filters for status, category and priority, search (server-side, 20 per page), export, and live on complaint:created/updated/resolved/deleted.
 const _categories = [
   ('service', 'الخدمة', 'Service'), ('vehicle', 'المركبة', 'Vehicle'), ('delivery', 'التوصيل', 'Delivery'), ('billing', 'الفواتير', 'Billing'),
   ('damage', 'أضرار', 'Damage'), ('delay', 'تأخير', 'Delay'), ('staff', 'الموظفين', 'Staff'), ('other', 'أخرى', 'Other'),
@@ -26,7 +24,7 @@ const _statuses = {
   'open': ('مفتوح', 'Open', T.warn), 'in_progress': ('قيد المعالجة', 'In Progress', T.info),
   'resolved': ('تم الحل', 'Resolved', T.success), 'closed': ('مغلق', 'Closed', T.inkFaint),
 };
-// يطابق managerRoles في backend/routes/complaints.js — الحلّ والحذف لهم.
+// Matches managerRoles in backend/routes/complaints.js; resolving and deleting are theirs.
 const _managerRoles = ['super_admin', 'admin', 'operations_manager'];
 const _limit = 20;
 
@@ -78,7 +76,7 @@ class _AdminComplaintsScreenState extends State<AdminComplaintsScreen> {
       final d = await Api.instance.get('/api/complaints?${_qs()}&page=$_page&limit=$_limit');
       if (!mounted || mine != _seq) return;
       setState(() {
-        // الخادمُ لا يقرأ `search` اليوم (complaintController) — فيُصفّى ما وصل هنا أيضًا.
+        // The server does not read `search` yet (complaintController), so the received rows are also filtered here.
         final q = _search.toLowerCase();
         _rows = List<Map<String, dynamic>>.from((d['complaints'] ?? const []).map((e) => Map<String, dynamic>.from(e)))
             .where((r) => q.isEmpty || '${r['subject']} ${r['customerName']} ${r['description']} ${r['customerPhone']}'.toLowerCase().contains(q)).toList();

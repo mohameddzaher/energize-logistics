@@ -1,15 +1,8 @@
 'use client';
 /**
- * منسدلةُ الشخص على المركبة — القائدُ الفعليّ والمفوَّض.
- *
- * ── لماذا (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢) ───────────────────────────────────────
- * «اسم القائد الفعلي» خانةٌ نصّيّة: كُتب فيها «غيرمستخدم»، وبقي فيها اسمُ رجلٍ
- * انتقل إلى مركبةٍ أخرى — فعدّت اللوحةُ المركبةَ «واقفة» وعليها اسم. فالشخصُ
- * يُختار من الموظّفين بالبحث، ويأتي معه رقمُ هويّته وجوالُه، ويُحفَظ مرجعًا.
- *
- * القائمةُ من الخادم (`/api/light-transport/people` لمركبات القسم: موظّفوه أوّلًا ثمّ
- * الموارد البشريّة؛ و`/api/vehicle-registry/people` لسجلّ المركبات) — وهي نفسُها
- * ما يقبله الحفظ (backend utils/vehiclePerson)، فلا يُعرَض ما يُرفَض.
+ * Person dropdown on a vehicle: actual driver and authorized person.
+ * The actual-driver name was a free text field holding junk values and stale names of drivers moved elsewhere, so the dashboard counted vehicles as parked. The person is now picked by search from employees, with ID number and mobile, and stored as a reference.
+ * The list comes from the server (`/api/light-transport/people` for the section's vehicles: its employees first then HR; `/api/vehicle-registry/people` for the vehicle register) and matches what save accepts (backend utils/vehiclePerson), so nothing shown gets rejected.
  */
 import { useEffect, useMemo, useState } from 'react';
 import api from '@/lib/api';
@@ -29,22 +22,22 @@ const load = (endpoint: string) => {
   }
   return cache.get(endpoint)!;
 };
-/** بعد حفظٍ يغيّر الربط تُعاد القائمةُ في الفتح التالي (مركبةُ الراكب تُعرَض فيها). */
+/** After a save that changes the link, the list reloads on the next open (a rider's vehicle is shown in it). */
 export const refreshPeople = () => cache.clear();
 
 export default function PersonSelect({
   endpoint, idNumber, name, onChange, ar, onlyLt = false, clearLabel, disabled,
 }: {
-  /** `/api/light-transport/people` أو `/api/vehicle-registry/people` */
+  /** `/api/light-transport/people` or `/api/vehicle-registry/people` */
   endpoint: string;
-  /** الشخصُ الحاليّ برقم هويّته — ويُعرَض اسمُه إن لم يكن في القائمة (منتهي الخدمة مثلًا). */
+  /** Current person by ID number; shown by name even if not in the list (e.g. ended service). */
   idNumber: string;
   name?: string;
   onChange: (p: Person | null) => void;
   ar: boolean;
-  /** الراكبُ لا يكون إلّا من موظّفي النقل الخفيف. */
+  /** A rider can only be a light-transport employee. */
   onlyLt?: boolean;
-  /** نصُّ خيار «بلا» — يُفرِّغ الخانة. */
+  /** Label of the "none" option; clears the field. */
   clearLabel?: string;
   disabled?: boolean;
 }) {
@@ -63,7 +56,7 @@ export default function PersonSelect({
   })), [list, ar]);
   const id = String(idNumber || '').replace(/\s+/g, '');
   const current = id ? list.find((p) => p.idNumber === id) : undefined;
-  // خارجَ القائمة (منتهي الخدمة، أو اسمٌ قديمٌ غيرُ مربوط): يُقال تحتها حتى يُستبدَل.
+  // Outside the list (ended service, or an old unlinked name): noted underneath until replaced.
   const outside = !current && !!(name || id) && people !== null;
   return (
     <div>

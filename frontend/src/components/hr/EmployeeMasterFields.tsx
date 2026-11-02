@@ -1,15 +1,7 @@
 'use client';
 /**
- * كلُّ بيانات الموظّف في ملفّه — مجموعاتُ الماستر نفسُها بخاناتها وحالاتها.
- *
- * صاحبُ الشركة (٢٠٢٦/١٠/١٩): «فيه داتا في الماستر مش بتظهر في بروفايله — إيميل
- * الشركة ورقم الشركة… المفروض ألاقي كل التفاصيل وأقدر أعدل عليها من هنا ويسمع
- * في الماستر وفي كل حتة والعكس».
- *
- * فلا قائمةَ ثانيةَ هنا تشيخ: المجموعاتُ تأتي من الخادم (config/hrFields)، وكلُّ
- * خانةٍ هي `MasterCell` نفسُها التي في الماستر — تكتب بالطريق نفسِه
- * (PATCH /master/employees/:id/fields) فيبثّ الخادم `hr:master` و`hr:employee`،
- * وتسمعهما هذه الشاشةُ والماسترُ واللوحة فتتحدّث كلُّها في اللحظة نفسِها.
+ * All employee data in the file: the same master groups with their fields and statuses.
+ * Data in the master was missing from the profile (company email, company number) and the profile must show it all, editable here with changes heard in the master and everywhere, and the reverse. No second list here to go stale: groups come from the server (config/hrFields), and each field is the master's own `MasterCell`, writing by the same path (PATCH /master/employees/:id/fields). The server broadcasts `hr:master` and `hr:employee`, and this screen, the master and the dashboard all update at once.
  */
 import { useCallback, useEffect, useState } from 'react';
 import api from '@/lib/api';
@@ -22,7 +14,7 @@ type G = { key: string; ar: string; en: string; fields: F[] };
 
 export default function EmployeeMasterFields({ id, fieldsUrl, choicesUrl, canEdit, ar }: {
   id: string;
-  /** نقطتا البيانات — تُمرَّران من الصفحة (راجع genPageApis). */
+  /** The two data endpoints, passed from the page (see genPageApis). */
   fieldsUrl: string;
   choicesUrl: string;
   canEdit: boolean;

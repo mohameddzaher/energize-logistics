@@ -1,17 +1,8 @@
 'use client';
 /**
- * «متابعات الكشف» — سجلٌّ واحدٌ على كشف التشغيل يكتبه ثلاثة أقسام.
- *
- * التخليصُ يكتب «الحاويةُ ما زالت في الميناء»، والتشغيلُ «السائقُ وصل»، والتحصيلُ
- * «العميلُ استلم» — على الكشف نفسِه، ويقرؤها الثلاثة. ولكلّ قسمٍ بابُه إلى السجلّ
- * (`basePath`)، لأنّ كلًّا منهم يصل إلى الكشف بحارس قسمه:
- *   /api/workflows/:id/follow-ups
- *   /api/customs-clearance/:id/ops-reports/:reportId/follow-ups
- *   /api/collections-dept/reports/:reportId/follow-ups
- *
- * مَن يرى الكشفَ يكتب متابعة، ومرفقٌ واحدٌ اختياريّ معها. والحذفُ لكاتبها أو
- * للإدارة (`canDelete` يقوله الخادم). ويتحدّث وحدَه على `workflow:followUps`.
- * راجع backend/src/controllers/workflowFollowUpController.
+ * Manifest follow-ups: one log on an operations manifest written by three sections.
+ * Clearance writes 'container still at port', operations 'driver arrived', collections 'customer received', on the same manifest, and all three read them. Each section reaches the log through its own guard (`basePath`): /api/workflows/:id/follow-ups, /api/customs-clearance/:id/ops-reports/:reportId/follow-ups, /api/collections-dept/reports/:reportId/follow-ups.
+ * Whoever sees the manifest writes a follow-up with one optional attachment. Delete is for the author or management (`canDelete` from the server). Updates itself on `workflow:followUps`. See backend/src/controllers/workflowFollowUpController.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { MessageSquareText, Paperclip, Trash2, Loader2, Send, X } from 'lucide-react';
@@ -43,7 +34,7 @@ const when = (d: string, ar: boolean) => {
 
 export default function ReportFollowUps({ basePath, workflowId, ar, compact = false, onCount }: {
   basePath: string; workflowId: string; ar: boolean;
-  /** داخل صفٍّ مفتوحٍ في جدول: بلا إطار البطاقة. */
+  /** Inside an open table row: without the card frame. */
   compact?: boolean;
   onCount?: (n: number) => void;
 }) {

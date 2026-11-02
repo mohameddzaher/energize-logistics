@@ -7,11 +7,7 @@ import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import '../ui/search_field.dart';
 
-/// توثيقُ الـ API — مثلُ /system/api-docs في الويب (صاحبُ الشركة، ٢٠٢٦/١٠/٢٥:
-/// «كلّ حاجة على كلّ حاجة»). الوثيقةُ نفسُها من الخادم (`/api/docs/internal.json`)،
-/// تُبنى من الكود لحظةَ طلبها: المساراتُ وحُرّاسُها وفلاترُها وحقولُها — فلا شيءَ
-/// هنا يُكتب بيد. تُعرَض أصليّةً (بحثٌ ومجموعاتٌ تُفتح) لأنّ شاشةَ الهاتف لا تتّسع
-/// لعارض Swagger. للإدارة وحدَها، وخريطةُ النظام لا تُرسَل خارج الشركة.
+/// API documentation, like /system/api-docs on the web. The document comes from the server (`/api/docs/internal.json`) and is built from the code when requested: routes, their guards, filters and fields, so nothing here is hand-written. Shown natively (search and expandable groups) because a phone screen cannot fit a Swagger viewer. Admin only; the system map is never sent outside the company.
 class ApiDocsScreen extends StatefulWidget {
   const ApiDocsScreen({super.key});
   @override
@@ -33,7 +29,7 @@ class _ApiDocsScreenState extends State<ApiDocsScreen> {
   bool _loading = true;
   String? _error;
   String _q = '';
-  final _searchCtl = TextEditingController(); // النصُّ يبقى مطابقًا لـ_q بعد التحديث
+  final _searchCtl = TextEditingController(); // Text stays equal to _q after refresh.
 
   @override
   void initState() {
@@ -147,7 +143,7 @@ class _ApiDocsScreenState extends State<ApiDocsScreen> {
                         padding: const EdgeInsets.only(bottom: 8),
                         child: AppCard(
                           padding: EdgeInsets.zero,
-                          // Material شفّاف: ListTile داخل حاويةٍ ملوّنة يحتاج سطحًا خاصًّا يرسم عليه.
+                          // Transparent Material: a ListTile inside a colored container needs its own surface to paint on.
                           child: Material(type: MaterialType.transparency, child: ExpansionTile(
                             shape: const Border(), collapsedShape: const Border(),
                             initiallyExpanded: q.isNotEmpty,

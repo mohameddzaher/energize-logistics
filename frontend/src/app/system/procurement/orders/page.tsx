@@ -54,9 +54,7 @@ export default function PurchaseOrdersPage() {
   const addItem = () => setForm((f: any) => ({ ...f, items: [...f.items, emptyItem()] }));
   const rmItem = (i: number) => setForm((f: any) => ({ ...f, items: f.items.filter((_: any, idx: number) => idx !== i) }));
 
-  // ── التعديل ───────────────────────────────────────────────────────────────
-  // أمرُ شراءٍ فيه بندٌ ناقصٌ أو سعرٌ خاطئ كان يُحذف ويُكتب من جديد برقمٍ آخر،
-  // فينقطع أثرُه عن الطلب الذي وُلد منه وعن الفاتورة التي بُنيت عليه.
+  // Editing: a purchase order with a missing item or wrong price used to be deleted and rewritten under a new number, breaking its link to the request it came from and the bill built on it.
   const [editing, setEditing] = useState<PurchaseOrder | null>(null);
   const openCreate = () => { setEditing(null); setForm({ vendor: '', vatRate: opts?.KSA_VAT_RATE ?? 15, expectedDate: '', notes: '', items: [emptyItem()] }); setShowModal(true); };
   const openEdit = (po: PurchaseOrder) => {
@@ -102,8 +100,7 @@ export default function PurchaseOrdersPage() {
     { header: tx.status, key: 'status', width: 16, transform: (v) => statusLabel(v) },
     { header: tx.expected, key: 'expectedDate', width: 16, transform: (v) => fmtDate(v) },
   ];
-  // البحثُ والحالة يُنفَّذان على الخادم، فالقائمة الحاضرة نتيجةُ فلترٍ لا السجلّ كلّه؛
-  // ولذلك «الكلّ» يعيد النداء بلا معاملات بدل أن يسمّي المفلتَر كلًّا.
+  // Search and status run on the server, so the present list is a filter result, not the full record; "all" calls again without params rather than calling the filtered set all.
   const hasActiveFilters = !!(search.trim() || statusF);
   const fetchAllForExport = async () => {
     const d = await api.get<{ orders: PurchaseOrder[] }>('/api/procurement/orders');

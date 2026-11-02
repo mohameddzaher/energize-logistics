@@ -1,5 +1,5 @@
 'use client';
-// عملاء التشغيل — نفسُ سجلّ «طلبات الشحنات» بلا نسخ: مكوّنٌ واحدٌ لا يفترق.
+// Operations customers: the same register as shipment orders, shared as a single component to avoid divergence.
 import CustomersRegister from '@/components/customers/CustomersRegister';
 
 export default function OperationsCustomersPage() {

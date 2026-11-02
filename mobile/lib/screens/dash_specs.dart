@@ -9,8 +9,7 @@ import 'collections_receivables.dart';
 import 'b2c_orders_report.dart';
 import 'b2c_vehicles.dart' show B2cVehiclesScreen;
 
-/// مواصفات لوحات الأقسام — كل قسم يعرّف بطاقاته وتوزيعاته وقوائمه فوق
-/// SectionDashScreen العامة. الأسماء تطابق استجابة كل /dashboard في الخادم.
+/// Section dashboard specs: each section defines its cards, distributions and lists over the generic SectionDashScreen. Names match each /dashboard response on the server.
 
 String _s(Map<String, dynamic> r, String k) => (r[k] ?? '').toString();
 
@@ -55,7 +54,7 @@ const _billLabels = {
   'paid': ('مدفوع', 'Paid', T.success),
 };
 
-// مراحلُ فرص تطوير الأعمال — كانت تظهر مفاتيحَ إنجليزيّة خامًا في العربيّة.
+// Business development opportunity stages; they were shown as raw English keys in Arabic.
 const _bdStageLabels = {
   'identified': ('محددة', 'Identified', T.info),
   'researching': ('قيد البحث', 'Researching', T.cyan),
@@ -67,7 +66,7 @@ const _bdStageLabels = {
   'on_hold': ('معلّقة', 'On Hold', T.inkFaint),
 };
 
-// حالاتُ الشركة بأسمائها (كما في نموذج الشركة) لا مفاتيحها الخام.
+// Company statuses by name (as in the company form), not raw keys.
 const _companyStatusLabels = {
   'lead': ('عميل محتمل', 'Lead', T.inkSoft),
   'prospect': ('مهتم', 'Prospect', T.info),
@@ -90,7 +89,7 @@ final salesDashSpec = DashSpec(
   arTitle: 'لوحة المبيعات', enTitle: 'Sales Dashboard',
   endpoint: '/api/sales/dashboard', liveEvent: 'sales:updated',
   stats: const [
-    // البطاقاتُ الثماني كما على الويب — كان الهدفُ وعددُ المفتوحة غائبَين هنا.
+    // The eight cards as on the web; the target and the open count were missing here.
     DashStat('مبيعات محقّقة', 'Won value', 'wonValue', Icons.emoji_events_outlined, T.success, money: true),
     DashStat('الهدف', 'Target', 'teamTarget', Icons.track_changes_outlined, T.info, money: true),
     DashStat('نسبة التحقيق %', 'Attainment %', 'attainment', Icons.flag_outlined, T.orange),
@@ -196,10 +195,8 @@ final fleetDashSpec = DashSpec(
   ],
 );
 
-/// لوحةُ طلبات الشحنات — أوّلُ صفحةِ القسم، كما في الويب.
-///
-/// نداءٌ واحدٌ (`/api/shipment-orders/dashboard`) يحمل حسابَ التحليلات نفسَه،
-/// فلا يختلف رقمٌ بين الهاتف والمتصفّح.
+/// Shipment orders dashboard, the first page of the section, as on the web.
+/// One call (`/api/shipment-orders/dashboard`) carries the same analytics computation, so no number differs between phone and browser.
 final shipmentOrdersDashSpec = DashSpec(
   arTitle: 'لوحة الشحنات', enTitle: 'Shipments Dashboard',
   endpoint: '/api/shipment-orders/dashboard', liveEvent: 'shipmentOrders:updated',
@@ -215,7 +212,7 @@ final shipmentOrdersDashSpec = DashSpec(
     DashStat('موردون في السجل', 'Suppliers', 'flat.suppliers', Icons.business_outlined, T.navy),
     DashStat('شاحنات في السجل', 'Trucks', 'flat.vehicles', Icons.local_shipping_outlined, T.cyan),
     DashStat('سوّاق في السجل', 'Drivers', 'flat.drivers', Icons.badge_outlined, T.violet),
-    // ما يحتاج تصرُّفًا — لا ما هو قائم.
+    // What needs action, not what merely exists.
     DashStat('شحنات بخسارة', 'Loss-making', 'flat.losing', Icons.trending_down_outlined, T.danger),
     DashStat('بلا سعر', 'No price', 'flat.missingPrice', Icons.money_off_outlined, T.warn),
     DashStat('شاحنات مجهولة المالك', 'Owner unknown', 'flat.ownerUnknown', Icons.help_outline, T.warn),
@@ -236,16 +233,8 @@ final shipmentOrdersDashSpec = DashSpec(
   ],
 );
 
-/// لوحةُ قسم الأفراد — الصورةُ الكاملة كما في الويب.
-/// كانت تقريرَ طلباتٍ ومناديب: أعدادُ الأوردرات وتحقيقُ الهدف وحدَهما. وهي
-/// زاويةٌ من القسم لا القسمُ كلُّه — فلا يُقرأ فيها كم موظّفًا في فرعٍ، ولا كم
-/// مركبةً واقفة، ولا مَن على كفالة أيّ سجلّ، ولا مَن بلا سكن. وذلك التقريرُ
-/// انتقل إلى «تحليل الأوردرات» وبقي كما هو.
-/// ── وكلُّ رقمٍ في «المناديب حسب المشروع» يفتح أصحابَه ──────────────────────
-/// كالموقع: يُختار النوعُ (كفالة · فري لانسر · بلا نوع عقد · الكلّ) فيُفتَح سجلُّ
-/// الموظّفين بالفلتر نفسِه الذي عدّت به اللوحة — المناديبُ في الخدمة، والمشروعُ
-/// مطويًّا («هنقرستيشن» = «هنجرستيشن») ونوعُ العقد مطويًّا في الخادم.
-/// واليوزراتُ لا تُفتَح من هنا: صفحتُها على الجوّال بلا فلترِ مشروع بعد.
+/// Personnel section dashboard, the full picture as on the web. It used to be an orders and riders report (order counts and target achievement only). It is one angle of the section, not the whole section, so it cannot show how many employees a branch has, how many vehicles are parked, whose sponsorship covers which record, or who has no housing. That report moved to the orders analysis page, unchanged.
+/// Every number in "riders by project" opens its owners: choose the type (sponsorship, freelance, no contract type, all) and the employee register opens with the same filter the dashboard counted by: riders in service, project folded (two spellings of one project name are equal) and contract type folded on the server. The users page cannot be opened from here: on mobile it has no project filter yet.
 void _openRepsOfProject(BuildContext context, Map<String, dynamic> r) {
   final project = _s(r, 'project');
   void open(String kind, String ar, String en) {
@@ -281,18 +270,14 @@ void _openRepsOfProject(BuildContext context, Map<String, dynamic> r) {
   );
 }
 
-/// ── لوحةُ قسم الأفراد (صاحبُ الشركة، ٢٠٢٦/١٠/٢١) — كالموقع ─────────────────
-/// فلاترٌ فوقها (المشروع، المندوب، المركبة، التفويض، السجل، كفالة/فريلانسر، الفئة،
-/// المدينة، حالة العمل) — خياراتُها وعدّاداتُها من ردّ اللوحة (`filterOptions`).
-/// ثمّ `_B2cBoardCards`، وكلُّ رقمٍ فيها يفتح أصحابَه: الناسَ في سجلّ الموظّفين
-/// أو المركباتِ في «مركبات النقل الخفيف» (`_v=1`) — بالفلاتر نفسِها.
+/// Personnel section dashboard, as on the web. Filters above (project, rider, vehicle, authorization, register, sponsorship/freelance, category, city, work status); their options and counters come from the dashboard response (`filterOptions`). Then `_B2cBoardCards`, where every number opens its owners: people in the employee register or vehicles in the light transport vehicles page (`_v=1`), with the same filters.
 void _openB2cDrill(BuildContext context, String title, Map<String, String> query) {
   final q = Map<String, String>.from(query);
   if (q.remove('_v') != null) {
     Navigator.push(context, MaterialPageRoute(builder: (_) => B2cVehiclesScreen(query: q, title: title)));
     return;
   }
-  // في الخدمة وحدَهم — كما تعدّهم اللوحة.
+  // In service only, as the dashboard counts them.
   if (!(q['status'] ?? '').split(',').contains('إنهاء خدمة')) q['inService'] = '1';
   final listQuery = q.entries.where((e) => e.value.isNotEmpty)
       .map((e) => '${Uri.encodeQueryComponent(e.key)}=${Uri.encodeQueryComponent(e.value)}').join('&');
@@ -315,11 +300,11 @@ final b2cDashSpec = DashSpec(
     DashFilter('status', 'حالة العمل', 'Work status', 'filterOptions.status', searchable: false),
   ],
   onDrill: _openB2cDrill,
-  // الأرقامُ كلُّها في الكروت تحت (الإجمالي ← الفئات ← حالة العمل ← المركبات).
+  // All numbers are in the cards below (total, categories, work status, vehicles).
   stats: const [],
   afterStatsDrill: (d, open) => _B2cBoardCards(data: d, open: open),
   lists: [
-    // لكلّ مشروع: كفالة · فري لانسر · يوزرات — كجدول الموقع.
+    // Per project: sponsorship, freelance, users, like the web table.
     DashList('المناديب حسب المشروع', 'Reps by project', 'reps.projects', (r) => '${_s(r, 'project')} — ${_n(r['total'])}',
         subtitle: (r) => '${tr('كفالة', 'Sponsored')} ${_n(r['sponsored'])} · ${tr('فري لانسر', 'Freelance')} ${_n(r['freelance'])} · ${tr('يوزرات', 'Users')} ${_n(r['users'])}'
             '${((r['noContract'] as num?) ?? 0) > 0 ? ' · ${tr('بلا نوع عقد', 'no contract')} ${_n(r['noContract'])}' : ''}',
@@ -327,11 +312,11 @@ final b2cDashSpec = DashSpec(
   ],
 );
 
-/// تقريرُ الطلبات — ما كان في اللوحة، في صفحته.
+/// Orders report: what used to be on the dashboard, on its own page.
 final b2cOrdersDashSpec = DashSpec(
   arTitle: 'تحليل الأوردرات', enTitle: 'Orders Analysis',
   endpoint: '/api/b2c/dashboard', liveEvent: 'b2c:*',
-  // الإجماليُّ بمشاريعه فوق الأرقام — مثلُ الموقع. و«المتوسط اليومي» رُفع (٢٠٢٦/١٠/١٩).
+  // The total with its projects above the numbers, like the web; the daily average was removed.
   header: (d) => B2cProjectsTotal(data: d),
   stats: const [
     DashStat('مناديب نشطون', 'Active reps', 'kpis.repsActive', Icons.groups_outlined, T.info),
@@ -414,8 +399,7 @@ final accountingDashSpec = DashSpec(
   ],
 );
 
-// للإدارة وحدَها (مدير النظام ومدير القسم) — الخادمُ يردّ غيرَهما بـ٤٠٣، والدرجُ
-// لا يعرضها لهم. ولوحةُ الفريق التشغيليّة شاشةٌ أخرى: customs_dashboard.dart.
+// Management only (system admin and section manager): the server returns 403 for others and the drawer does not show it to them. The team operations dashboard is another screen: customs_dashboard.dart.
 final customsDashSpec = DashSpec(
   arTitle: 'تحليلات قسم التخليص', enTitle: 'Customs Analytics',
   endpoint: '/api/customs-clearance/analytics', liveEvent: 'customs:updated',
@@ -438,14 +422,8 @@ final customsDashSpec = DashSpec(
   ],
 );
 
-// ── لوحةُ التحصيل ───────────────────────────────────────────────────────────
-// المديونيّةُ من دفتر الفواتير — النداءُ نفسُه الذي تُبنى منه شجرةُ الموقع.
-// كانت تُقرأ من كشوف التشغيل فتقول ٤٧ مليونًا والموقعُ يقول ١٩٫٩٦: تاريخُ
-// التحصيل لا يُكتب على الكشوف، فكان كلُّ ما سُلِّم يُعَدّ دَينًا.
-//
-// والفلاترُ الخمسة كما في الموقع (مسؤولُ التحصيل، العميل، نوعُ الدفع،
-// الاستحقاق، القضايا): خياراتُها وعدّاداتُها من `facets` في الجواب، وكلُّ رقمٍ
-// هنا تحتها. ولا «بلا مسؤول»: ما لم يُسنَد فعلى مدير القسم.
+// Collections dashboard. Receivables come from the invoice ledger, the same call that builds the web tree. They used to be read from the operations sheets and gave a far larger figure than the web, because the collection date is not written on the sheets and everything delivered counted as debt.
+// The five filters as on the web (collections owner, customer, payment type, due status, cases): options and counters come from `facets` in the response, and every number here sits under them. There is no "no owner" option: unassigned items fall to the section manager.
 const _payLabels = {
   'tax': ('ضريبي', 'Tax'),
   'cash': ('كاش', 'Cash'),
@@ -467,8 +445,7 @@ const _issueLabels = {
 
 final collectionsDashSpec = DashSpec(
   arTitle: 'لوحة التحصيل', enTitle: 'Collections Dashboard',
-  // `collections:changed` لا `collections:party`: تغييرُ نوع الدفع على كشفٍ في سير
-  // العمل يُبثّ به (بعد مسح ذاكرة الشجرة) — فتتبعه البطاقاتُ الأربع في الحال.
+  // `collections:changed`, not `collections:party`: a payment type change on a workflow sheet is broadcast with it (after the tree cache is cleared), so the four cards follow at once.
   endpoint: '/api/collections-dept/receivables/overview', liveEvent: 'collections:changed',
   filters: const [
     DashFilter('officer', 'مسؤول التحصيل', 'Collector', 'facets.officer'),
@@ -481,8 +458,7 @@ final collectionsDashSpec = DashSpec(
     DashStat('إجمالي المديونية', 'Receivable', 'tree.all.value', Icons.call_received_rounded, T.danger, money: true, drill: {}),
     DashStat('ضريبي', 'Tax', 'tree.byKind.tax.value', Icons.receipt_long_outlined, T.navy, money: true, drill: {'kind': 'tax'}),
     DashStat('نقدي', 'Cash', 'tree.byKind.cash.value', Icons.payments_outlined, T.info, money: true, drill: {'kind': 'cash'}),
-    // ── أنواعُ الدفع الأربعة: مستحقٌّ وغيرُ مستحقّ ─────────────────────────
-    // والمستحقُّ ما تجاوز موعدَه ومعه ما لا مدّةَ سدادٍ له. راجع collectionsReceivablesController.
+    // The four payment types: due and not due. Due means past its date, together with those that have no payment term. See collectionsReceivablesController.
     DashStat('آجل - فاتورة · مستحق', 'Deferred invoice · due', 'tree.subtypes.deferred_invoice.due.value', Icons.receipt_long_outlined, T.danger, money: true, drill: {'subtype': 'deferred_invoice', 'due': 'due'}),
     DashStat('آجل - فاتورة · غير مستحق', 'Deferred invoice · not due', 'tree.subtypes.deferred_invoice.notDue.value', Icons.receipt_long_outlined, T.success, money: true, drill: {'subtype': 'deferred_invoice', 'due': 'notdue'}),
     DashStat('آجل - كاش · مستحق', 'Deferred cash · due', 'tree.subtypes.deferred_cash.due.value', Icons.payments_outlined, T.danger, money: true, drill: {'subtype': 'deferred_cash', 'due': 'due'}),
@@ -491,7 +467,7 @@ final collectionsDashSpec = DashSpec(
     DashStat('نقدي - 3PL · غير مستحق', 'Cash 3PL · not due', 'tree.subtypes.cash_3pl.notDue.value', Icons.local_shipping_outlined, T.success, money: true, drill: {'subtype': 'cash_3pl', 'due': 'notdue'}),
     DashStat('نقدي - HT · مستحق', 'Cash HT · due', 'tree.subtypes.cash_ht.due.value', Icons.local_shipping_rounded, T.danger, money: true, drill: {'subtype': 'cash_ht', 'due': 'due'}),
     DashStat('نقدي - HT · غير مستحق', 'Cash HT · not due', 'tree.subtypes.cash_ht.notDue.value', Icons.local_shipping_rounded, T.success, money: true, drill: {'subtype': 'cash_ht', 'due': 'notdue'}),
-    // ── الخطورةُ على مدّة كلّ عميل (والافتراضيّةُ ٣٠ يومًا) ─────────────────
+    // Severity by each customer's term (default 30 days).
     DashStat('طبيعي', 'Normal', 'tree.risk.normal.value', Icons.task_alt_rounded, T.success, money: true, drill: {'risk': 'normal'}),
     DashStat('متوسط', 'Medium', 'tree.risk.medium.value', Icons.schedule_outlined, T.warn, money: true, drill: {'risk': 'medium'}),
     DashStat('مرتفع', 'Hard', 'tree.risk.hard.value', Icons.warning_amber_rounded, T.danger, money: true, drill: {'risk': 'hard'}),
@@ -499,11 +475,9 @@ final collectionsDashSpec = DashSpec(
     DashStat('عملاء بمدّة افتراضية 30 يومًا', 'Customers on default 30-day term', 'defaultTerm.customers', Icons.event_note_outlined, T.navy, drill: {'term': 'default'}),
     DashStat('فواتير مفتوحة', 'Open invoices', 'tree.all.count', Icons.pending_actions_outlined, T.warn, drill: {}),
   ],
-  // كلُّ رقمٍ يفتح شاشةَ صفوفه كاملةً (لا ورقةً سفليّة) — كصفحة الموقع
-  // `/dashboard/receivables`، بالفلاتر المختارة والعقدةِ التي ضُغطت.
+  // Every number opens its full rows screen (not a bottom sheet), like the web page `/dashboard/receivables`, with the chosen filters and the tapped node.
   onDrill: (ctx, title, q) => Navigator.push(ctx, MaterialPageRoute(builder: (_) => CollectionsReceivablesScreen(title: title, query: q))),
-  // «عمر التأخير»: الشرائحُ الخمس وفي كلٍّ طبيعي / متوسط / مرتفع — كما في الموقع،
-  // وكلُّ خانةٍ تُفتَح.
+  // Delay age: five bands, each split into normal / medium / high, as on the web; every cell opens.
   afterStatsDrill: (d, open) => _CollectionsAgeTable(d, open),
   lists: [
     DashList('أكبر المديونيات', 'Largest receivables', 'parties', (r) => _s(r, 'name'),
@@ -519,10 +493,10 @@ final collectionsDashSpec = DashSpec(
   ],
 );
 
-/// جدولُ «عمر التأخير»: صفٌّ لكلّ شريحة، وأعمدتُه أجزاؤها الثلاثة.
+/// Delay age table: a row per band, its columns the three parts.
 class _CollectionsAgeTable extends StatelessWidget {
   final Map<String, dynamic> data;
-  /// يفتح خانةً في شاشة تفاصيل المديونيّة.
+  /// Opens a cell in the receivables details screen.
   final void Function(String title, Map<String, String> node) open;
   const _CollectionsAgeTable(this.data, this.open);
 
@@ -594,7 +568,7 @@ const vehiclesDashSpec = DashSpec(
     DashStat('تفويضات تنتهي قريبًا', 'Expiring', 'totals.expiringAuthorizations', Icons.timelapse_outlined, T.orange),
   ],
   breakdowns: [
-    // أسماءٌ مقروءة لا مفاتيحُ خام (authorized/out_of_service…).
+    // Readable names, not raw keys (authorized/out_of_service...).
     DashBreakdown('حسب الحالة', 'By status', 'byStatus', labels: {
       'available': ('متاحة', 'Available', T.inkFaint),
       'authorized': ('مُفوَّضة', 'Authorized', T.success),
@@ -650,9 +624,7 @@ String _topDriverTitle(Map<String, dynamic> r) => (r['name'] ?? r['_id'] ?? r['d
 String _topDriverSub(Map<String, dynamic> r) => '${r['trips'] ?? 0} ${tr('رحلة', 'trips')}';
 
 
-/// إجماليُّ الطلبات بمشاريعه — مطابقٌ لبطاقة الموقع (`ProjectsTotalCard`).
-/// الرقمُ، وتحته «حتى تاريخ» آخرِ يومٍ فيه طلبات، وتحته بطاقةٌ لكلّ مشروع؛
-/// الضغطُ يختار مشروعًا أو أكثر فيصير الإجماليُّ مجموعَ المختار.
+/// Orders total with its projects, matching the web card (`ProjectsTotalCard`). The number, below it the "as of" date of the last day with orders, below it a card per project; tapping selects one or more projects and the total becomes the sum of the selection.
 class B2cProjectsTotal extends StatefulWidget {
   final Map<String, dynamic> data;
   const B2cProjectsTotal({super.key, required this.data});
@@ -714,8 +686,7 @@ class _B2cProjectsTotalState extends State<B2cProjectsTotal> {
     );
   }
 
-  /// طلباتُ آخر شهرٍ في المعروض يومًا بيوم — أعمدةٌ صغيرة كرسم الموقع. الضغطُ
-  /// المطوَّل على عمودٍ يقول يومَه وعددَه. والأيامُ القادمة أصفارٌ فتبقى فارغة.
+  /// Orders of the last month shown, day by day, as small bars like the web chart. Long press on a bar shows its day and count. Upcoming days are zeros and stay empty.
   List<Widget> _dailyBars(Map<String, dynamic> d) {
     final all = [for (final x in (d['byDay'] as List? ?? const [])) Map<String, dynamic>.from(x as Map)];
     if (all.isEmpty) return const [];
@@ -741,7 +712,7 @@ class _B2cProjectsTotalState extends State<B2cProjectsTotal> {
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 1),
                   child: Column(mainAxisAlignment: MainAxisAlignment.end, children: [
-                    // العمودُ يأخذ ما بقي فوق رقم اليوم — فيكبر الخطّ ولا يفيض.
+                    // The bar takes what remains above the day number, so the font grows without overflow.
                     Expanded(child: Align(
                       alignment: Alignment.bottomCenter,
                       child: FractionallySizedBox(
@@ -765,15 +736,8 @@ class _B2cProjectsTotalState extends State<B2cProjectsTotal> {
 }
 
 
-// ═══════════════════════════════════════════════════════════════════════════
-// كروتُ لوحة قسم الأفراد — الأرقامُ كما في الموقع (صاحبُ الشركة، ٢٠٢٦/١٠/٢١).
-//
-// الإجماليُّ وحدَه فوق، وتحته ثلاثةُ كروت (مندوب · إداري · فني) لكلٍّ نصفاه (على
-// الكفالة · فريلانسر) وما سواهما رقمًا صغيرًا — فالنصفان وما تحتهما = الكارت.
-// ثمّ «حالة العمل» (يعمل · إجازة · موقوف · حادث) بقسمتها على الفئات، ثمّ
-// المركبات (عليها راكب / واقفة، والتفويض). وكلُّ رقمٍ يُضغَط فيفتح أصحابَه.
-// هادئة: أبيضُ ورقمٌ داكنٌ ونقطةُ لونٍ صغيرة، كالموقع.
-// ═══════════════════════════════════════════════════════════════════════════
+// Personnel dashboard cards, numbers as on the web.
+// The total alone on top, below it three cards (rider, admin, technician), each with its two halves (sponsorship, freelance) and the rest as a small number, so the halves and what is under them equal the card. Then work status (working, leave, suspended, accident) split by category, then vehicles (with a rider / parked, and authorization). Every number is tappable and opens its owners. Calm style: white, a dark number and a small colour dot, like the web.
 int _bi(dynamic v) => v is num ? v.toInt() : int.tryParse('${v ?? ''}') ?? 0;
 Map<String, dynamic> _bm(dynamic v) => v is Map ? Map<String, dynamic>.from(v) : <String, dynamic>{};
 
@@ -855,7 +819,7 @@ class _B2cBoardCards extends StatelessWidget {
             onTap: () => open(tr('مركبات القسم', 'Section vehicles'), const {'_v': '1'})),
         _BRow([
           _BHalf(tr('عليها راكب', 'With a rider'), _bi(v['withRider']), () => open(tr('عليها راكب', 'With a rider'), const {'_v': '1', 'vstate': 'withRider'})),
-          // منتهي الخدمة والمركبةُ ما زالت معه — لا راكبٌ ولا واقفة (كالموقع).
+          // Service ended while the vehicle is still with them: neither with a rider nor parked (as on the web).
           _BHalf(tr('بانتظار التسليم', 'Awaiting hand-over'), _bi(v['hold']), () => open(tr('بانتظار التسليم', 'Awaiting hand-over'), const {'_v': '1', 'vstate': 'hold'})),
           _BHalf(tr('واقفة', 'Idle'), _bi(v['idle']), () => open(tr('واقفة بلا راكب', 'Idle'), const {'_v': '1', 'vstate': 'idle'})),
         ]),
@@ -866,7 +830,7 @@ class _B2cBoardCards extends StatelessWidget {
         ]),
       ]),
       const SizedBox(height: 10),
-      // تقريرُ تحقيق المناديب — تحت أرقام الموظفين والمركبات (كالموقع).
+      // Rider achievement report, below the employee and vehicle numbers (as on the web).
       const B2cOrdersReportCard(),
     ]);
   }

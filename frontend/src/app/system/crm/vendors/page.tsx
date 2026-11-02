@@ -1,6 +1,5 @@
 'use client';
-// CRM Vendors (الموردين) — carriers/transporters Energize subcontracts in 3PL.
-// Self-contained; independent of the rest of CRM.
+// CRM Vendors: carriers/transporters Energize subcontracts in 3PL. Self-contained; independent of the rest of CRM.
 import { useState, useEffect, useCallback } from 'react';
 import { useDialog } from '@/components/system/DialogProvider';
 import { useAuth } from '@/context/AuthContext';
@@ -118,9 +117,7 @@ export default function CrmVendorsPage() {
   const anyFilter = !!(debounced || fStatus || fRep || fType || fNew);
   const clearAll = () => { setSearch(''); setFStatus(''); setFRep(''); setFType(''); setFNew(''); };
 
-  // نفس الأعمدة تُستعمل للمعروض وللسجلّ كامله، وفيها ما لا يتّسع له الجدول
-  // (البريد، الأوراق، التوقيعان، تاريخ العقد، الملاحظات) لأن ملفّ الموردين
-  // يُراجَع للتعاقد لا للاطّلاع السريع.
+  // The same columns serve the displayed rows and the whole register, including what the table cannot fit (email, papers, the two signatures, contract date, notes), because the vendor file is reviewed for contracting, not a quick glance.
   const scope = exportScopeLabels(ar);
   const vendorCols: ExportColumn[] = [
     { header: t('Vendor', 'المورد'), key: 'name', width: 30 },
@@ -154,8 +151,7 @@ export default function CrmVendorsPage() {
             {
               key: 'all', label: scope.all,
               hint: t('all', 'الكل'),
-              // التصفية تتم على الخادم، فما في الذاكرة هو نتيجة الفلتر لا السجلّ
-              // كلّه؛ ولذلك يُعاد الجلب بلا وسائط ليخرج «الكل» كلًّا بالفعل.
+              // Filtering is done on the server, so what is in memory is the filter result, not the whole register; therefore the fetch is repeated without parameters so "All" is really all.
               resolve: async () => {
                 const d = await api.get<{ items: Vendor[] }>('/api/crm-vendors');
                 return [{ name: t('Vendors', 'الموردين'), rows: d.items || [], columns: vendorCols }];
@@ -251,7 +247,7 @@ export default function CrmVendorsPage() {
               <ReportButton subject="vendor" id={detail.name} label={t('Full vendor report', 'التقرير الشامل للمورد')} />
             </div>
 
-            {/* حساب البوابة — المورد يتابع الحمولات اللي شالها بنفسه */}
+            {/* Portal account: the vendor follows the loads they carried themselves. */}
             <PortalAccountCard source="crm_vendor" refId={String(detail._id)} name={detail.name} />
             <div className="flex justify-end"><PrimaryButton onClick={() => { setDetail(null); openEdit(detail); }}><Edit className="w-4 h-4" /> {t('Edit', 'تعديل')}</PrimaryButton></div>
           </div>

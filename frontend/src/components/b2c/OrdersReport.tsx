@@ -1,15 +1,5 @@
 'use client';
-/**
- * تقريرُ تحقيق المناديب — في لوحة B2C (صاحبُ الشركة، ٢٠٢٦/١٠/١٩).
- *
- * ما كان في رأس شيت «تقرير تحقيق المناديب»: عددُ المناديب حسب الجهة، وتوزيعُهم على
- * المشاريع، وملخّصُ التحقيق حسب المشرف والمشروع، ثمّ جدولُ المناديب بإجماليّاتهم
- * وأهدافهم وتقييمهم. يُقرأ من مدخلات الأوردرات (GET …/entry?report=1) ويتحدّث مع
- * كلّ إدخال. وصفحةُ الإدخال نفسُها لا تحمل شيئًا منه.
- *
- * والأرقامُ تفتح ما وراءها: كلُّ رقمٍ في الكروت والجدولين يُفلتر جدولَ المناديب على مَن
- * عُدّوا فيه بأعيانهم، ثمّ ينزل إليه. و«بلا مشرف» / «بلا مشروع» فلترٌ لا مسحُ فلتر.
- */
+/** Rep investigation report in the B2C board: what the sheet header held (rep counts by entity, distribution over projects, investigation summary by supervisor and project, then a rep table with totals, targets and rating). Read from order entry (GET .../entry?report=1) and updates with every entry; the entry page itself holds none of it. Every number opens what is behind it: it filters the rep table to exactly those counted, then scrolls to it. "No supervisor" and "no project" are real filters, not a clear. */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import api from '@/lib/api';
 import { useSocket } from '@/hooks/useSocket';
@@ -36,9 +26,9 @@ const EVAL_CLS: Record<string, string> = {
 };
 const pctTxt = (p: number | null) => (p == null ? '—' : `${Math.round(p * 100)}%`);
 const dm = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
-// «بلا مشرف» و«بلا مشروع» فلترٌ له قيمة — لا فراغٌ يمسح الفلتر فيعرض الجميع.
+// "No supervisor" and "no project" are filters with a value, not an empty value that clears the filter and shows everyone.
 const NONE = '__none__';
-// حالاتُ الكروت العلويّة: كلُّ كرتٍ يفتح مناديبَه في الجدول.
+// Top card states: each card opens its reps in the table.
 type CardState = '' | 'entered' | 'notEntered' | 'hasOrders' | 'onLeave';
 const fold = (s: string) => String(s || '').toLowerCase().replace(/[أإآ]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي');
 
@@ -63,8 +53,7 @@ export default function OrdersReport({ url }: { url: string }) {
   const [fKind, setFKind] = useState('');
   const [fEval, setFEval] = useState('');
   const [fState, setFState] = useState<CardState>('');
-  // ما يُعَدّ في الكروت والملخّص هم مَن على رأس العمل — فالضغطُ عليها يعرضهم وحدَهم،
-  // لا المنتهين معهم، وإلّا لم يطابق عددُ الجدول الرقمَ الذي ضُغط.
+  // Cards and summary count only active reps, so clicking shows only them, not ended ones; otherwise the table count would not match the clicked number.
   const [onlyWorking, setOnlyWorking] = useState(false);
   const tableRef = useRef<HTMLDivElement>(null);
   const reveal = () => setTimeout(() => tableRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
@@ -73,11 +62,7 @@ export default function OrdersReport({ url }: { url: string }) {
     const p = new URLSearchParams({ report: '1' });
     if (to) { p.set('to', to); p.set('date', to); }
     if (from) p.set('from', from);
-    // ── The report is for those the server gives it to ─────────────────────
-    // The server answers report=1 only for management (REPORT_ROLES and the
-    // entry head). Anyone else on the page gets the plain entry list, which has
-    // no cards, summary or projects, and the section crashed the whole page
-    // («حدث خطأ») for 7 roles (QA sweep, 2026-10-27). Not a report → not shown.
+    // The report is shown only to those the server gives it to. The server answers report=1 only for management (REPORT_ROLES and the entry head); anyone else gets the plain entry list with no cards, summary or projects, and this section crashed the page for 7 roles. Not a report means not shown.
     api.get<Report>(`${url}?${p}`)
       .then((r: any) => setD(r && r.cards && Array.isArray(r.projects) && Array.isArray(r.rows) ? r : null))
       .catch(() => {});
@@ -106,7 +91,7 @@ export default function OrdersReport({ url }: { url: string }) {
   const sups = [...new Set(d.rows.map((r) => r.supervisorName).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ar'));
   const anyFilter = !!(q || fProject || fSup || fKind || fEval || fState || onlyWorking);
   const clear = () => { setQ(''); setFProject(''); setFSup(''); setFKind(''); setFEval(''); setFState(''); setOnlyWorking(false); };
-  // ضغطُ رقمٍ = فلترٌ واحدٌ واضح: يمسح ما قبله، ويعرض مَن عُدّوا فيه، وينزل إليهم.
+  // A number click is one clear filter: it clears previous ones, shows those counted and scrolls to them.
   const pick = (next: { project?: string; sup?: string; kind?: string; evaluation?: string; state?: CardState }) => {
     setQ(''); setFProject(next.project ?? ''); setFSup(next.sup ?? ''); setFKind(next.kind ?? '');
     setFEval(next.evaluation ?? ''); setFState(next.state ?? ''); setOnlyWorking(next.state !== 'entered' && next.state !== 'hasOrders');

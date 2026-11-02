@@ -11,14 +11,8 @@ import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import '../ui/search_field.dart';
 
-/// شحنات إدارة الأسطول — native: search, status filter chips, and a detail
-/// sheet with the follow-up form (the 3-hour cadence lives on this screen).
-///
-/// ── وبوالصُ كثيرةٌ في ملفٍّ واحد ────────────────────────────────────────────
-/// نفسُ ما على الويب: تُعلَّم حمولاتٌ ثمّ تُطبَع أو تُحفَظ بوالصُها مجتمعةً من
-/// نداءٍ واحدٍ يرسمها في الخادم. والتعليمُ **يعبر البحثَ والفلتر**: الصفُّ
-/// المعلَّم يُحفَظ بكامله في خريطةٍ لا معرّفُه وحدَه، فلا يضيع ما عُلّم حين
-/// تضيق القائمةُ — وهذا بعينه ما انكسر على الويب فخرج الملفُّ ببوليصتين.
+/// Fleet management shipments: native: search, status filter chips, and a detail sheet with the follow-up form (the 3-hour cadence lives on this screen).
+/// Many waybills in one file. Same as the web: loads are marked, then their waybills are printed or saved together from one call that renders them on the server. Marking survives search and filter: a marked row is stored whole in a map, not by id alone, so what was marked is not lost when the list narrows. This is exactly what broke on the web and produced a file with two waybills.
 class FleetShipmentsScreen extends StatefulWidget {
   const FleetShipmentsScreen({super.key});
   @override
@@ -44,12 +38,12 @@ class _FleetShipmentsScreenState extends State<FleetShipmentsScreen> {
   bool _loading = true;
   String? _error;
   String _q = '';
-  // تبديلُ الحالة يُعيد التحميلَ فتُهدَم الخانة — النصُّ في متحكِّمٍ يبقى مع الكلمة.
+  // Switching the status reloads and destroys the field; text kept in a controller survives with the word.
   final _searchCtl = TextEditingController();
   String _status = '';
   bool _excludeCancelled = false;
   late final void Function() _onLive;
-  /// المعلَّمُ: المعرّف → الصفُّ نفسُه، فيبقى معروفًا ولو غاب عن الشاشة.
+  /// Marked: id to the row itself, so it stays known even when off screen.
   final Map<String, Map<String, dynamic>> _picked = {};
   bool _bulkBusy = false;
 
@@ -103,10 +97,8 @@ class _FleetShipmentsScreenState extends State<FleetShipmentsScreen> {
     setState(() { if (_picked.containsKey(id)) { _picked.remove(id); } else { _picked[id] = s; } });
   }
 
-  /// البوالصُ المعلَّمة → ملفٌّ واحدٌ يُطبَع أو يُحفَظ من حوار النظام.
-  ///
-  /// والدفعةُ ستّون: الخادمُ يحدُّ النداءَ بمئة، وnginx يقطع بعد مئةٍ وعشرين
-  /// ثانية — فما زاد يُرسَل دفعاتٍ متتابعة.
+  /// Marked waybills to one file printed or saved from the system dialog.
+  /// The batch is sixty: the server limits the call to a hundred and nginx cuts off after a hundred and twenty seconds, so more is sent in successive batches.
   Future<void> _printPicked() async {
     if (_picked.isEmpty) return;
     setState(() => _bulkBusy = true);
@@ -209,8 +201,7 @@ class _FleetShipmentsScreenState extends State<FleetShipmentsScreen> {
                       ),
                     ),
                   ),
-                  // شريطُ المعلَّم: عددُه، وكم منه خارجَ نتائج البحث الآن، وزرُّ
-                  // الطباعة/الحفظ — فلا يشكّ من بحث في أنّ تعليمَه محفوظ.
+                  // Marked bar: its count, how many are outside the current search results, and the print/save button, so someone searching does not doubt their marking is kept.
                   if (_picked.isNotEmpty)
                     Container(
                       margin: const EdgeInsets.fromLTRB(14, 8, 14, 0),
@@ -263,9 +254,7 @@ class _FleetShipmentsScreenState extends State<FleetShipmentsScreen> {
                                 return FadeSlideIn(
                                   delayMs: (i * 25).clamp(0, 250),
                                   child: Pressable(
-                                    // ضغطةٌ تفتح، وضغطةٌ طويلةٌ تُعلّم — ومتى بدأ
-                                    // التعليمُ صارت الضغطةُ العاديّةُ تُعلّم أيضًا،
-                                    // فلا يُطلَب ضغطٌ طويلٌ لكلّ بوليصة.
+                                    // A tap opens and a long press marks; once marking has started a normal tap marks too, so a long press is not needed for each waybill.
                                     onTap: () => _picked.isEmpty ? _open(s) : _togglePick(s),
                                     onLongPress: () => _togglePick(s),
                                     child: AppCard(
@@ -316,7 +305,7 @@ class _FleetShipmentsScreenState extends State<FleetShipmentsScreen> {
     );
   }
 
-  /// كم من المعلَّم غائبٌ عن القائمة المعروضة الآن.
+  /// How many of the marked are absent from the list currently displayed.
   int _pickedOffScreen(List<Map<String, dynamic>> shown) {
     final ids = shown.map((r) => r['_id'].toString()).toSet();
     return _picked.keys.where((id) => !ids.contains(id)).length;

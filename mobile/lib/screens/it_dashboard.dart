@@ -12,8 +12,7 @@ import 'it_custody.dart';
 import 'it_recurring.dart';
 import 'it_tickets.dart';
 
-/// لوحة تقنية المعلومات — نظيرُ /system/it: مدًى زمنيّ (افتراضه ٩٠ يومًا) يُرسَل
-/// إلى /api/it/dashboard، وتصديرُ Excel بورقةٍ لكلّ كتلة، وكلُّ رقمٍ يُفتح على صفوفه.
+/// IT dashboard, counterpart of /system/it: a date range (default 90 days) sent to /api/it/dashboard, an Excel export with a sheet per block, and every number opens its rows.
 class ItDashboardScreen extends StatefulWidget {
   const ItDashboardScreen({super.key});
   @override
@@ -63,7 +62,7 @@ class _ItDashboardScreenState extends State<ItDashboardScreen> {
       .where((s) => s['key'] == 'down' || s['key'] == 'degraded')
       .fold<int>(0, (s, r) => s + _num(r['count']).toInt());
 
-  // دفترٌ واحد بورقةٍ لكلّ كتلةٍ من اللوحة — نفس أوراق الويب.
+  // One workbook with a sheet per dashboard block, the same sheets as the web.
   Future<void> _export() async {
     final t = _t, c = _custody;
     final byStatus = Map<String, dynamic>.from((c['byStatus'] as Map?) ?? {});
@@ -126,7 +125,7 @@ class _ItDashboardScreenState extends State<ItDashboardScreen> {
         onTo: (v) { setState(() => _to = v.isEmpty ? todayYmd() : v); _load(); },
       ),
       const SizedBox(height: 12),
-      // كلُّ بطاقةٍ تؤدّي إلى صفوفها.
+      // Every card leads to its rows.
       StatGrid(
         spacing: 8, minTileWidth: 96, minColumns: 3, maxColumns: 6,
         children: [
@@ -147,7 +146,7 @@ class _ItDashboardScreenState extends State<ItDashboardScreen> {
         Expanded(child: Text(tr('${_num(c['total'])} صنف في السجل', '${_num(c['total'])} items on the register'), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11.5, color: T.inkFaint))),
         TextButton(onPressed: () => _go(const ItCustodyScreen()), child: Text(tr('السجل الكامل', 'Full register'), style: const TextStyle(fontSize: 12))),
       ]),
-      // ارتفاعُ الشريط من محتواه — يكبر مع حجم الخط ولا يفيض.
+      // Bar height follows its content: grows with font size without overflowing.
       SingleChildScrollView(
         scrollDirection: Axis.horizontal,
         child: IntrinsicHeight(child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -203,11 +202,11 @@ class _ItDashboardScreenState extends State<ItDashboardScreen> {
               label: Text('${custodyTypeLabel(x['key'])}  ${x['count']}', style: const TextStyle(fontSize: 12)),
               onPressed: () => _go(ItCustodyScreen(initialBucket: 'other', initialOtherType: '${x['key']}')),
             )).toList())),
-      // المفتوحة مقابل المحلولة — إن سبقت الأولى الثانيةَ طويلًا فالمتراكمُ يكبر.
+      // Open vs resolved: if the first outpaces the second for long, the backlog grows.
       _card(tr('البلاغات المفتوحة مقابل المحلولة', 'Opened vs resolved'), _timeline(_list(t['timeline']))),
       _card(tr('البلاغات حسب التصنيف', 'Tickets by category'), _bars(_list(t['ticketsByCategory']).map((r) => (categoryLabel(r['key']), _num(r['count']))).toList(), T.orange)),
       _card(tr('البلاغات حسب الأولوية', 'Tickets by priority'), _bars(_list(t['ticketsByPriority']).map((r) => (priorityLabel(r['key']), _num(r['count']))).toList(), T.info)),
-      // المشكلاتُ المتكرّرة — عاليةُ الصوت عمدًا: التكرارُ سببٌ جذريٌّ لم يُعالَج.
+      // Recurring issues are deliberately loud: repetition is an unaddressed root cause.
       Container(
         margin: const EdgeInsets.only(bottom: 10),
         padding: const EdgeInsets.all(14),

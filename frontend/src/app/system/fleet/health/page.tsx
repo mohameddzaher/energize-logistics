@@ -1,18 +1,9 @@
 'use client';
 /**
- * حالةُ المركبات — أرقامُ شاحناتنا الحيّة في قسمِ من يقودها.
- *
- * ── ما كان يحدث ──────────────────────────────────────────────────────────────
- * الشاحناتُ شاحناتُنا ومَن يتابعها هو الأسطول، وأرقامُها الحيّة — ضغطُ الكاوتش
- * وحرارتُه وحرارةُ الماء والصيانةُ والتنبيهات — في قسمٍ آخر لا يفتحه مشرفُ
- * الأسطول ولا يملكه. فكان يُتَّصل بالهاتف: «شوف الفلانيّة سخنت ولا لأ؟».
- *
- * ── والمصدرُ واحدٌ لا نسخة ──────────────────────────────────────────────────
- * كلُّ رقمٍ هنا يُقرأ من `Ls2Vehicle` نفسِه في كلّ فتحة. فما يُقرأ في هذه الشاشة
- * هو ما يُقرأ في لوكيشن سوليوشن حرفًا بحرف، ولا شاشتان تختلفان عن شاحنةٍ واحدة.
- *
- * والترتيبُ بما يحتاج عملًا: ما عليه تنبيهٌ حرِجٌ أوّلًا، ثمّ التنبيه، ثمّ
- * الصيانةُ المتأخّرة. الشاشةُ تُقرأ من أعلاها، والترتيبُ بالحروف يجعلها بحثًا.
+ * Vehicle health: live figures of our trucks inside the section of whoever drives them.
+ * Problem: the trucks are ours and the fleet follows them, but their live figures (tire pressure and temperature, coolant temperature, maintenance, alerts) were in another section that fleet supervisors cannot open, so people phoned to ask whether a truck overheated.
+ * Single source: every figure is read from `Ls2Vehicle` itself on every open, so this screen matches Location Solutions exactly and two screens never disagree about one truck.
+ * Order is by need for action: critical alert first, then alert, then overdue maintenance. The screen reads from the top; alphabetical order turns it into a search.
  */
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '@/context/AuthContext';
@@ -49,9 +40,7 @@ interface HealthRow {
 const n0 = (v: number | null | undefined) => (v == null ? '—' : Math.round(v).toLocaleString('en-US'));
 const n1 = (v: number | null | undefined) => (v == null ? '—' : v.toFixed(1));
 
-// ── حدودُ اللون ──────────────────────────────────────────────────────────────
-// لا تخترع الشاشةُ إنذارًا: التنبيهُ يصنعه محرّكُ التنبيهات في لوكيشن سوليوشن.
-// وهذه ألوانُ قراءةٍ فقط — تجعل الرقمَ الشاذّ يُرى قبل أن يُقرأ.
+// Color thresholds. The screen invents no alarm: alerts come from the Location Solutions alert engine. These colors only make an abnormal number visible before it is read.
 const coolantTone = (c: number | null) => (c == null ? 'text-slate-300'
   : c >= 100 ? 'text-red-600 font-bold' : c >= 92 ? 'text-amber-600 font-semibold' : 'text-slate-700');
 const tireTempTone = (c: number | null) => (c == null ? 'text-slate-300'
@@ -83,16 +72,16 @@ export default function FleetHealthPage() {
     setLoading(false);
   }, []);
   useEffect(() => { load(); }, [load]);
-  // الأرقامُ تتغيّر كلَّ نبضةٍ من الجهاز، والشاشةُ تُترَك مفتوحةً على الحائط.
+  // Figures change on every device pulse, and the screen is left open on a wall.
   useEffect(() => {
     const id = setInterval(() => load(true), 30000);
     return () => clearInterval(id);
   }, [load]);
-  // `ls2:vehicles` اسمُ مخزنٍ مؤقّت لا حدث — الخادمُ يعلن `ls2:updated`.
+  // `ls2:vehicles` is a cache key, not an event; the server emits `ls2:updated`.
   useSocket('ls2:updated', useCallback(() => load(true), [load]));
   useSocket('fleet:vehicles', useCallback(() => load(true), [load]));
   useSocket('fleet:drivers', useCallback(() => load(true), [load]));
-  // الشاحنةُ من سجلّ المركبات والسائقُ من الموارد البشريّة: يُعاد الجلبُ متى تغيّر أحدُهما.
+  // Trucks come from the vehicle register and drivers from HR: refetch when either changes.
   useSocket('vreg:updated', useCallback(() => load(true), [load]));
   useSocket('hr:employee', useCallback(() => load(true), [load]));
 
@@ -152,7 +141,7 @@ export default function FleetHealthPage() {
 
       {error && <ErrorNotice error={error} lang={lang} onRetry={() => load()} />}
 
-      {/* البطاقاتُ فلترٌ: كلُّ رقمٍ منها سؤالٌ يُسأل صباحًا. */}
+      {/* Cards are filters: each number is a morning question. */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
         {([
           ['', t('كل الشاحنات', 'All trucks'), totals.total ?? 0, 'text-[#f37121]'],
@@ -198,8 +187,7 @@ export default function FleetHealthPage() {
                       </p>
                     </td>
                     <td className="px-3 py-3 whitespace-nowrap">
-                      {/* ── الشاحنةُ بلا جهازٍ تُقال ────────────────────────────
-                          إخفاؤها يجعل الشاشةَ تبدو تامّةً وهي ناقصة. */}
+                      {/* A truck without a device is stated. Hiding it makes the screen look complete when it is not. */}
                       {!r.tracked ? <SmallBadge bg="bg-amber-500/15" text="text-amber-700" label={t('بلا جهاز', 'No tracker')} />
                         : r.stale ? <SmallBadge bg="bg-slate-200" text="text-slate-600" label={t('قراءة قديمة', 'Stale')} />
                           : r.moving ? <SmallBadge bg="bg-emerald-500/15" text="text-emerald-700" label={t(`يتحرك ${n0(r.speed)} كم/س`, `Moving ${n0(r.speed)} km/h`)} />
@@ -248,9 +236,7 @@ export default function FleetHealthPage() {
                     </td>
                   </tr>
 
-                  {/* ── التفصيل عند الضغط ────────────────────────────────────
-                      كاوتشٌ كاوتشًا بموضعه، والتنبيهاتُ بنصّها. الصفُّ يقول
-                      «فيه شيء»، والتفصيلُ يقول «ما هو» — بلا مغادرة الشاشة. */}
+                  {/* Detail on click: each tire by position, and alerts in full text. The row says something is wrong; the detail says what, without leaving the screen. */}
                   {isOpen && (
                     <tr key={`${r._id}-d`} className="bg-slate-50/70 border-b border-slate-200">
                       <td colSpan={8} className="px-4 py-4">
@@ -333,9 +319,7 @@ export default function FleetHealthPage() {
         </table>
       </ScrollX>
 
-      {/* ── ومن أين تأتي الأرقام ────────────────────────────────────────────
-          يُقال صراحةً: القراءةُ من جهاز الشاحنة، والتنبيهُ يصنعه محرّكُ لوكيشن
-          سوليوشن لا هذه الشاشة. فمن رأى رقمًا يخالف توقّعَه يعرف أين يذهب. */}
+      {/* Where the numbers come from, stated explicitly: readings come from the truck's device, and alerts are made by the Location Solutions engine, not this screen. Someone seeing an unexpected number knows where to go. */}
       <p className="text-[11.5px] text-slate-400 leading-relaxed">
         {t('الأرقام من أجهزة التتبّع مباشرةً وتُحدَّث كلَّ نصف دقيقة. والتنبيهاتُ يصنعها محرّكُ التنبيهات في «لوكيشن سوليوشن» — تُقرأ هنا وتُغلَق هناك.',
            'Readings come straight from the trackers and refresh every 30 seconds. Alerts are raised by the Location Solutions alert engine — read here, closed there.')}

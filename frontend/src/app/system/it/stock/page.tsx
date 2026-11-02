@@ -20,8 +20,7 @@ import {
 import ScrollX from '@/components/system/ScrollX';
 import { useColumnFilters } from '@/hooks/useColumnFilters';
 
-// لا `name` ولا `model` ولا `location`: الاسم يُشتق من النوع والماركة،
-// والحقلان الآخران كانا يُتركان فارغين فيصيران عمودين فارغين في كل تقرير.
+// No name, model or location: the name is derived from type and brand, and the other two would be empty columns in every report.
 const EMPTY = {
   type: 'laptop', serialNumber: '', brand: '',
   specs: '', condition: 'new', value: 0, quantity: 1, notes: '',
@@ -51,8 +50,7 @@ export default function ItStockPage() {
   // Handing an item over is a separate decision from editing it, so it gets its
   // own modal — the employee and the handover date are what HR later audits.
   const [assigning, setAssigning] = useState<StockItem | null>(null);
-  // بلا حالة فنية: الصنف يحملها من لحظة إضافته للمستودع، وسؤالها ثانيةً عند
-  // التسليم يفتح باب حقيقتين لشيء واحد.
+  // No technical condition: the item carries it from when it entered the store; asking again on handover would create two truths.
   const [assignForm, setAssignForm] = useState({ employee: '', assignedDate: '', notes: '' });
 
   const load = useCallback(async () => {
@@ -78,7 +76,7 @@ export default function ItStockPage() {
 
   const set = (k: string, v: any) => setForm((f: any) => ({ ...f, [k]: v }));
 
-  // الفئة مشتقّة من النوع لا مخزَّنة بجانبه، والاسم مشتقّ من الاثنين.
+  // Category is derived from the type, not stored; the name is derived from both.
   const formBucket = bucketOf(form.type);
   const derivedName = deriveAssetName(form.type, form.brand);
 
@@ -133,8 +131,7 @@ export default function ItStockPage() {
     { header: 'Quantity', key: 'quantity', width: 10 },
     { header: 'Value (per unit)', key: 'value', width: 14 },
   ];
-  // النوع والحالة الفنّية فلترتهما على الخادم، فما في `items` ليس المستودع كلّه؛
-  // ولذلك يلزم «الكلَّ» نداءٌ بلا معاملات بدل أن يصدّر بقايا الفلتر على أنّه السجل.
+  // Type and technical condition are server-filtered, so `items` is not the whole store; 'all' needs a call without parameters instead of exporting filter leftovers.
   const fetchAllForExport = async () => {
     const d = await api.get<{ items: StockItem[] }>('/api/it/stock');
     return [{ name: 'Stock', rows: d.items || [], columns: exportColumns }];
@@ -148,8 +145,7 @@ export default function ItStockPage() {
       ]
     : [{ key: 'all', label: scope.all, sheets: [{ name: 'Stock', rows: filtered, columns: exportColumns }] }];
 
-  // قمعُ الأعمدة — القيمُ كما تُقرأ في الصفّ، والقائمةُ بعد فلتر الصفحة.
-  // راجع hooks/useColumnFilters.
+  // Column filter funnel: values as read in the row, over the page-filtered list. See hooks/useColumnFilters.
   const cf = useColumnFilters<any>({
     item: (a) => a.name || '',
     type: (a) => custodyTypeLabel(a.type, lang),
@@ -275,8 +271,7 @@ export default function ItStockPage() {
           </PrimaryButton>
         </>}>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {/* الفئات الخمس. الاسم لم يعد حقلاً — يُشتق من الفئة والماركة ويُعرض
-              تحتهما كما سيُحفظ، فيخرج الصنف باسم واحد أياً كان من أدخله. */}
+          {/* The five categories. The name is no longer a field; it is derived from category and brand and shown as it will be saved. */}
           <Field label={ar ? 'النوع' : 'Type'}>
             <SearchableSelect
               value={formBucket} searchAfter={0}
@@ -313,8 +308,7 @@ export default function ItStockPage() {
           <Field label={ar ? 'الكمية' : 'Quantity'}>
             <TextInput type="number" min={1} value={form.quantity ?? 1} onChange={(e) => set('quantity', Number(e.target.value))} />
           </Field>
-          {/* القيمة للقطعة الواحدة صراحةً: صف فيه عشرون كابلاً وقيمة واحدة كان
-              يُقرأ على الوجهين، فتختلف قيمة المستودع باختلاف من يقرأها. */}
+          {/* Value is per single piece; a row of twenty cables with one value could be read two ways and change the store value. */}
           <Field label={ar ? 'القيمة للقطعة الواحدة' : 'Value per single unit'} span2>
             <TextInput type="number" value={form.value ?? 0} onChange={(e) => set('value', Number(e.target.value))} />
           </Field>

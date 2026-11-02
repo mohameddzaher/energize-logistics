@@ -1,15 +1,7 @@
 'use client';
 /**
- * نافذةُ المعاملة — كلُّ ما في المعاملة للقراءة، من أيّ شاشةٍ خارجَ التخليص.
- *
- * ── العلّة ──────────────────────────────────────────────────────────────────
- * المحاسبُ يقرأ طلبَ صرفٍ فيسأل «أيُّ معاملةٍ هذه؟ كم كلّفت؟ ماذا دُفع منها؟».
- * وكان رقمُ المعاملة رابطًا إلى /system/customs/:id — شاشةِ قسمٍ لا تُفتح له،
- * فيضغط فيُطرَد. والمطلوبُ ليس شاشةَ التخليص بأزرارها ومراحلها القابلة للتعديل:
- * هو أن يرى. فصارت نافذةً فوق شاشته، للقراءة وحدَها، ولا يغادر مكانَه.
- *
- * وهي حيّة: `customs:updated` لهذه المعاملة يعيد قراءتَها وهي مفتوحة — فقرارٌ
- * يتّخذه زميلٌ أو مرفقٌ يضيفه التخليصُ يظهر أمامه في اللحظة.
+ * Read-only transaction window usable from any screen outside clearance.
+ * The accountant reading a payment request needs to see the transaction, but the clearance screen is not open to that role and its editable stages are not wanted. So it opens as a read-only overlay. It is live: `customs:updated` for this transaction re-reads it while open.
  */
 import { useCallback, useEffect, useState } from 'react';
 import { X, Loader2, Paperclip, FileText, Ship, Package, Receipt, Wallet, Calendar, Hash, Building2 } from 'lucide-react';
@@ -21,7 +13,7 @@ import { PAY_BADGE } from '@/components/customs/PaymentStages';
 import { stageName, type Pipeline } from '@/lib/customsPipeline';
 
 
-// مطابقةٌ لبنود شاشة المعاملة (customs/[id]) — الاسمُ نفسُه في المكانين.
+// Mirrors the items of the transaction screen (customs/[id]); same naming in both places.
 const COSTS: [string, string, string][] = [
   ['deliveryOrder', 'قيمة إذن التسليم', 'Delivery order'],
   ['customsDuty', 'الرسوم الجمركية', 'Customs duty'],
@@ -94,8 +86,7 @@ function Section({ title, icon: Icon, children, extra }: { title: string; icon: 
 }
 
 export default function ClearanceQuickView({ id, ar, onClose }: { id: string; ar: boolean; onClose: () => void }) {
-  // صافي الربح للإدارة وللماليّة — والخادمُ هو من يقرّر: يرسله في حقلٍ على حدة
-  // لمن يحقّ له، ولا يرسله لغيره. فلا قائمةَ أدوارٍ هنا تشيخ وحدَها.
+  // Net profit is for management and finance; the server decides by sending it in a separate field only to eligible users, so no role list here can go stale.
   const [netProfit, setNetProfit] = useState<number | null>(null);
   const seesMoney = netProfit !== null;
   const T = getCustomsTranslations(ar ? 'ar' : 'en');
@@ -127,7 +118,7 @@ export default function ClearanceQuickView({ id, ar, onClose }: { id: string; ar
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  // المراحلُ كما تَلزم هذه المعاملة — محسوبةً في الخادم (pipelineOf).
+  // Stages as this transaction needs them, computed on the server (pipelineOf).
   const pipeline: Pipeline = c?.pipeline || { route: '', cargoType: 'containers', steps: [], done: 0, total: 0, percent: 0, next: '' };
   const costs = COSTS.filter(([k]) => num(c?.costs?.[k]) !== 0);
   const margin = MARGIN.filter(([k]) => num(c?.revenue?.[k]) !== 0);
@@ -137,7 +128,7 @@ export default function ClearanceQuickView({ id, ar, onClose }: { id: string; ar
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-900/50 p-3 sm:p-6" onClick={onClose}>
       <div className="my-auto w-full max-w-4xl rounded-3xl bg-slate-50 shadow-2xl" onClick={(e) => e.stopPropagation()} dir={ar ? 'rtl' : 'ltr'}>
-        {/* الرأس: الرقمُ والعميلُ والمرحلة — ما يُسأل عنه أوّلًا */}
+        {/* Header: number, customer and stage, what is asked first. */}
         <div className="flex items-start gap-3 rounded-t-3xl border-b border-slate-200 bg-white px-5 py-4">
           <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#f37121]/15">
             <Ship className="h-5 w-5 text-[#f37121]" />
@@ -169,12 +160,12 @@ export default function ClearanceQuickView({ id, ar, onClose }: { id: string; ar
 
         {c && (
           <div className="space-y-4 p-4 sm:p-5">
-            {/* المالُ في ثلاثة أرقام */}
+            {/* Money in three figures. */}
             <div className={`grid grid-cols-1 gap-3 ${seesMoney ? 'sm:grid-cols-3' : 'sm:grid-cols-2'}`}>
               {[
                 [ar ? 'إجمالي المصروفات' : 'Total costs', c.costs?.total, 'text-slate-900', 'bg-white'],
                 [ar ? 'إجمالي الفاتورة' : 'Total invoiced', c.revenue?.totalInvoiced, 'text-slate-900', 'bg-white'],
-                // الربحُ للإدارة وحدَها (مديرُ النظام ومديرُ القسم).
+                // Profit is for management only (system admin and section manager).
                 ...(seesMoney ? [[ar ? 'صافي الربح' : 'Net profit', profit, profit < 0 ? 'text-red-600' : 'text-emerald-700', profit < 0 ? 'bg-red-50' : 'bg-emerald-50']] : []),
               ].map(([label, v, tone, bg]) => (
                 <div key={String(label)} className={`rounded-2xl border border-slate-200 px-4 py-3 ${bg}`}>
@@ -186,7 +177,7 @@ export default function ClearanceQuickView({ id, ar, onClose }: { id: string; ar
               ))}
             </div>
 
-            {/* التقدّم */}
+            {/* Progress. */}
             <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
               <div className="mb-2 flex items-center justify-between text-[12px]">
                 <span className="font-bold text-slate-800">{ar ? 'مراحل المعاملة' : 'Progress'}</span>
@@ -205,7 +196,7 @@ export default function ClearanceQuickView({ id, ar, onClose }: { id: string; ar
               </div>
             </div>
 
-            {/* البيانات */}
+            {/* Data. */}
             <Section title={ar ? 'بيانات المعاملة' : 'Details'} icon={FileText}>
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
                 <Fact icon={Hash} label={ar ? 'رقم البوليصة' : 'BL number'} value={c.blNumber} />
@@ -226,7 +217,7 @@ export default function ClearanceQuickView({ id, ar, onClose }: { id: string; ar
               </div>
             </Section>
 
-            {/* المال بالتفصيل */}
+            {/* Money in detail. */}
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
               <Section title={ar ? 'المصروفات' : 'Costs'} icon={Receipt}
                 extra={<span className="text-[12px] font-bold tabular-nums text-slate-700">{money(c.costs?.total)}</span>}>
@@ -256,7 +247,7 @@ export default function ClearanceQuickView({ id, ar, onClose }: { id: string; ar
               </Section>
             </div>
 
-            {/* مراحلُ السداد وطلباتُ الصرف */}
+            {/* Payment stages and payment requests. */}
             <Section title={ar ? 'مراحل السداد وطلبات الصرف' : 'Payment stages & requests'} icon={Wallet}
               extra={<span className="text-[11px] text-slate-400">{stages.length}</span>}>
               {stages.length ? (
@@ -301,7 +292,7 @@ export default function ClearanceQuickView({ id, ar, onClose }: { id: string; ar
               ) : <p className="text-[12px] text-slate-400">{ar ? 'لا مراحل سداد بعد.' : 'No payment stages yet.'}</p>}
             </Section>
 
-            {/* الحاويات والمرفقات */}
+            {/* Containers and attachments. */}
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
               <Section title={ar ? 'الحاويات' : 'Containers'} icon={Package}
                 extra={<span className="text-[11px] text-slate-400">{(c.containers || []).length}</span>}>

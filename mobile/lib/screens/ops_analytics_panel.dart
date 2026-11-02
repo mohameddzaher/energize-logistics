@@ -6,11 +6,8 @@ import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import '../ui/stat_grid.dart';
 
-/// لوحةُ مدير التشغيل — نظيرُ components/ops/OpsAnalytics في الويب.
-///
-/// الحسابُ كلُّه في الخادم (utils/opsAnalytics) فالشاشةُ تعرض ولا تحسب: المالُ
-/// والرحلاتُ والأهدافُ وأسبابُ الإلغاء والفروعُ والمناديبُ والعملاءُ والموردون
-/// والمسارات، بفلتر المدّة (الكل/يوم/شهر/ربع/مدى) وخمسة فلاتر.
+/// Operations manager panel, counterpart of components/ops/OpsAnalytics on the web.
+/// All computation is server-side (utils/opsAnalytics); the screen only displays: money, trips, targets, cancellation reasons, branches, reps, customers, vendors and routes, with a period filter (all/day/month/quarter/range) and five filters.
 class OpsAnalyticsPanel extends StatefulWidget {
   final String base;
   final String liveEvent;
@@ -81,8 +78,7 @@ class _OpsAnalyticsPanelState extends State<OpsAnalyticsPanel> {
     _set(k, '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}');
   }
 
-  // حدٌّ موحَّد اللون مع زوايا مستديرة، والشريطُ الملوَّن أعلاه طبقةٌ داخليّة —
-  // فـFlutter لا يرسم زوايا مستديرة على حدودٍ مختلفة الألوان.
+  // Uniform border color with rounded corners, with the colored strip above as an inner layer, since Flutter cannot draw rounded corners on borders of different colors.
   Widget _kpi(IconData icon, String label, String value, String sub, Color tone) => Container(
         clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: T.line)),
@@ -135,7 +131,7 @@ class _OpsAnalyticsPanelState extends State<OpsAnalyticsPanel> {
         ]),
       );
 
-  /// أعمدةٌ بسيطة لاتّجاه الأشهر — الشهرُ الجاري رماديٌّ لأنّه غيرُ مكتمل.
+  /// Simple bars for the monthly trend; the current month is grey because it is incomplete.
   Widget _monthBars(List monthly, String key, Color tone, {String Function(num)? fmt}) {
     if (monthly.isEmpty) return Text(tr('لا بيانات', 'No data'), style: const TextStyle(fontSize: 12, color: T.inkFaint));
     final vals = monthly.map((m) => _num(m[key])).toList();
@@ -192,7 +188,7 @@ class _OpsAnalyticsPanelState extends State<OpsAnalyticsPanel> {
       opacity: _busy ? 0.6 : 1,
       duration: const Duration(milliseconds: 200),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        // ── الفلتر: المدّةُ أوّلًا ──
+        // Filter: period first
         AppCard(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Wrap(spacing: 5, runSpacing: 5, crossAxisAlignment: WrapCrossAlignment.center, children: [
             Text(tr('الفترة', 'Period'), style: const TextStyle(fontSize: 11.5, color: T.inkFaint)),
@@ -260,7 +256,7 @@ class _OpsAnalyticsPanelState extends State<OpsAnalyticsPanel> {
           ),
         ])),
         const SizedBox(height: 10),
-        // ① المال والرحلات
+        // 1. Money and trips
         StatGrid(
           spacing: 8,
           children: [
@@ -276,7 +272,7 @@ class _OpsAnalyticsPanelState extends State<OpsAnalyticsPanel> {
           ],
         ),
         const SizedBox(height: 10),
-        // ② الأهداف
+        // 2. Targets
         for (final x in [
           (tr('هدف الرحلات', 'Trips target'), t['achieved'], g['periodTrips'], g['tripsAchievementPct'], g['tripsGap'], g['ytdTrips'], g['annualTripsPct'], g['remainingTrips'], _nf),
           (tr('هدف المبيعات', 'Revenue target'), t['sell'], g['periodRevenue'], g['revenueAchievementPct'], g['revenueGap'], g['ytdRevenue'], g['annualRevenuePct'], g['remainingRevenue'], _short),
@@ -308,7 +304,7 @@ class _OpsAnalyticsPanelState extends State<OpsAnalyticsPanel> {
                   ])),
                 ]),
               ])),
-        // ③ أسبابُ عدم التحقيق
+        // 3. Reasons for missing targets
         _panel(tr('مساهمة أسباب الإلغاء', 'Cancellation share'), hint: tr('${_nf(t['failed'])} غير محقق', '${_nf(t['failed'])} failed'),
             child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
               for (var i = 0; i < reasons.length && i < 7; i++) _rank(i, '${reasons[i]['name']}', _nf(reasons[i]['failed']), _num(reasons[i]['share']), T.danger),
@@ -320,10 +316,10 @@ class _OpsAnalyticsPanelState extends State<OpsAnalyticsPanel> {
                   Expanded(child: Text(tr('السبب الرئيسي: ${mainReason['name']} ${mainReason['share']}%', 'Main reason: ${mainReason['name']} ${mainReason['share']}%'), style: const TextStyle(fontSize: 11, color: T.danger))),
                 ])),
             ])),
-        // ④ الاتّجاه
+        // 4. Trend
         _panel(tr('اتجاه المبيعات', 'Sales trend'), hint: tr('الشهر الجاري غير مكتمل', 'current month incomplete'), child: _monthBars(monthly, 'sell', _navy)),
         _panel(tr('اتجاه الرحلات', 'Trips trend'), hint: tr('المحقق شهريًّا', 'achieved per month'), child: _monthBars(monthly, 'achieved', _orange, fmt: (v) => _nf(v))),
-        // ⑤ الفروع
+        // 5. Branches
         _panel(tr('أداء الفروع', 'Branch performance'), hint: tr('${List.from(branches['list'] ?? const []).length} فروع', '${List.from(branches['list'] ?? const []).length} branches'),
             child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
               Table(columnWidths: const {0: FlexColumnWidth(2)}, children: [
@@ -345,7 +341,7 @@ class _OpsAnalyticsPanelState extends State<OpsAnalyticsPanel> {
                 ('أقل فرع مبيعات', 'Lowest revenue', (branches['byRevenue'] as Map?)?['lowest'] as Map?, (n) => '${_short(n['sell'])} · ${n['sellShare'] ?? 0}%'),
               ], Icons.apartment),
             ])),
-        // ⑥ المناديب
+        // 6. Reps
         _panel(tr('أداء مناديب التشغيل', 'Ops representatives'),
             hint: '${opsReps['fleetExcluded'] ?? ''}'.isNotEmpty ? tr('بطاقتا الأعلى والأدنى تستثنيان «${opsReps['fleetExcluded']}» (أسطول الشركة)', 'top/lowest exclude the company fleet') : null,
             child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -355,7 +351,7 @@ class _OpsAnalyticsPanelState extends State<OpsAnalyticsPanel> {
                 ('أقل مندوب', 'Lowest rep', (opsReps['byTrips'] as Map?)?['lowest'] as Map?, (n) => '${_nf(n['achieved'])} · ${n['tripShare'] ?? 0}%'),
               ], Icons.how_to_reg_outlined),
             ])),
-        // ⑦ العملاء والموردون
+        // 7. Customers and vendors
         _panel(tr('أعلى 10 عملاء', 'Top 10 clients'), hint: tr('${clients['count'] ?? 0} عميلًا نشطًا · النسبة من رحلات العملاء', '${clients['count'] ?? 0} active · share of client trips'),
             child: Column(children: [
               for (final (i, c) in List.from(clients['top'] ?? const []).indexed) _rank(i, '${c['name']}', _nf(c['achieved']), _num(c['tripShare']), _navy, extra: _short(c['sell'])),
@@ -364,7 +360,7 @@ class _OpsAnalyticsPanelState extends State<OpsAnalyticsPanel> {
             child: Column(children: [
               for (final (i, v) in List.from(vendors['top'] ?? const []).indexed) _rank(i, '${v['name']}', _nf(v['achieved']), _num(v['tripShare']), T.violet, extra: _short(v['buy'])),
             ])),
-        // ⑧ التوزيعات وأهمُّ المسارات
+        // 8. Distributions and top routes
         for (final s in const [('rentType', 'نوع الإيجار', 'Rent type'), ('payType', 'دفع العميل', 'Customer payment'), ('vendorType', 'نوع المورد', 'Vendor type')])
           _panel(tr(s.$2, s.$3), hint: tr('من المحقق', 'of achieved'), child: Column(children: [
             for (final (i, x) in List.from(shares[s.$1] ?? const []).indexed) _rank(i, '${x['name']}', _nf(x['trips']), _num(x['share']), T.cyan),

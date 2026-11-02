@@ -9,27 +9,13 @@ interface Column {
   render?: (value: any, row: any) => React.ReactNode;
   sortable?: boolean;
   /**
-   * ما يُبحَث فيه لهذا العمود حين لا يكون `key` حقلًا في الصفّ.
-   *
-   * ── العطل الذي أوجب هذا ──────────────────────────────────────────────────
-   * البحثُ كان يقرأ `row[col.key]` دائمًا. وعمودُ الاسم في صفحة المستخدمين
-   * مفتاحُه `name` بينما الصفُّ يحمل `firstName` و`lastName` — فالقيمةُ
-   * `undefined`، فلا يطابق البحثُ بالاسم أحدًا أبدًا. والاسمُ معروضٌ أمام
-   * المستخدم في العمود نفسِه لأنّ `render` يركّبه، فيبحث عمّا يراه فلا يجده
-   * ويظنّ الحسابَ غيرَ موجود.
-   *
-   * فكلُّ عمودٍ يعرض شيئًا مركَّبًا يقول هنا بماذا يُبحَث فيه.
+   * What to search for this column when `key` is not a field of the row.
+   * Search used to read `row[col.key]` only; the users name column has key `name` while the row holds firstName/lastName, so name search never matched. Columns with composed content declare their search text here.
    */
   search?: (row: any) => any;
 }
 
-/**
- * طيُّ العربيّة قبل المقارنة.
- *
- * الاسمُ يُكتب «أحمد» ويُبحَث عنه «احمد»، و«فاطمة» و«فاطمه» اسمٌ واحد. والمقارنةُ
- * الحرفيّة تجعل من يبحث عن الاسم الذي يراه أمامه لا يجده — وهي القاعدةُ نفسُها
- * المستعمَلة في بحث الخادم (`utils/plateKey`).
- */
+/** Arabic folding before comparison, so spelling variants of the same name (alef and ha/ta-marbuta forms) match. Same rule as the server search (`utils/plateKey`). */
 const fold = (v: any) => String(v ?? '')
   .replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)))
   .replace(/[أإآٱ]/g, 'ا').replace(/[ةه]/g, 'ه').replace(/[ىئي]/g, 'ي').replace(/[ؤو]/g, 'و')

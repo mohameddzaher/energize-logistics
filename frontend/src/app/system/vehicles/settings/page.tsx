@@ -1,13 +1,6 @@
 'use client';
-// إعدادات قسم المركبات — القسمُ كلُّه يُضبط من هنا.
-//
-// كان ما يُضبط في القسم موزَّعًا بلا موضع: عتباتُ التنبيه على انتهاء المستندات
-// مذكورةٌ في المخطّط ولا شاشةَ لها، والقوائمُ المرجعيّةُ (القطاع، الماركة،
-// اللون، شركاتُ التأمين…) في صفحةٍ عامّةٍ تعرض قوائمَ الأقسام كلِّها. فمَن أراد
-// ضبطَ شيءٍ بحث عنه، أو لم يجده أصلًا.
-//
-// وكلُّه ديناميكيّ: ما يُغيَّر هنا يظهر في نموذج المركبة وفي الفلاتر وفي
-// التنبيهات في اللحظة نفسِها، بلا نشرةٍ برمجيّة.
+// Vehicles section settings: the whole section is configured here.
+// Expiry alert thresholds and reference lists previously had no single place. Everything is dynamic: changes show in the vehicle form, filters and alerts immediately, without a deploy.
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
@@ -21,11 +14,7 @@ import ScrollX from '@/components/system/ScrollX';
 
 type Tab = 'lists' | 'alerts';
 
-// ── المستنداتُ التي لها عتبةُ تنبيه ─────────────────────────────────────────
-// والاسمُ هو اسمُ الصفحة كما في القائمة الجانبيّة حرفًا بحرف — لا اسمٌ ثالثٌ
-// يُخترَع هنا. كان الصفُّ يُسمّى «التأمين» والصفحةُ «تأمين المركبات»، فيضبط
-// المستخدمُ عتبةً ولا يدري أيَّ شاشةٍ ضبط. ومعه مسارُه: تُفتَح الصفحةُ من
-// موضع ضبطها ويُرى الأثرُ.
+// Documents with an alert threshold. The label is the sidebar page name verbatim, with no third name invented, so users know which screen a threshold affects; the path opens that page.
 const DOCS: { key: string; ar: string; en: string; href: string }[] = [
   { key: 'insurance', ar: 'تأمين المركبات', en: 'Vehicle insurance', href: '/system/vehicles/registry/insurance/vehicles' },
   { key: 'operatingCard', ar: 'بطاقات التشغيل', en: 'Operating cards', href: '/system/vehicles/registry/operating-cards' },
@@ -33,13 +22,12 @@ const DOCS: { key: string; ar: string; en: string; href: string }[] = [
   { key: 'inspection', ar: 'الفحص الدوري', en: 'Periodic inspection', href: '/system/vehicles/registry/inspection' },
   { key: 'authorization', ar: 'التفاويض', en: 'Authorisations', href: '/system/vehicles/registry/authorizations' },
   { key: 'gps', ar: 'أجهزة التتبّع GPS', en: 'GPS devices', href: '/system/vehicles/registry/gps' },
-  // بطاقةُ السائق ورقةٌ على إنسانٍ لا على مركبة، لكنّ انتهاءها يوقف العملَ كما
-  // يوقفه انتهاءُ استمارة — فعتباتُها تُضبَط من هنا كغيرها.
+  // The driver card is a paper on a person, not a vehicle, but its expiry stops work like a registration, so its thresholds are set here like the others.
   { key: 'driverCard', ar: 'بطاقات السائقين', en: 'Driver cards', href: '/system/vehicles/driver-cards' },
   { key: 'corporatePolicy', ar: 'وثائق تأمين الشركة', en: 'Corporate policies', href: '/system/vehicles/registry/corporate' },
 ];
 
-// شرائحُ الحالة بلغة الصفحات ولونِها — تُعرَض مع العتبة نتيجتُها الآن.
+// Status chips use the pages' wording and color; the current result is shown with the threshold.
 const BANDS: { key: string; ar: string; en: string; cls: string }[] = [
   { key: 'expired', ar: 'منتهٍ', en: 'Expired', cls: 'bg-red-100 text-red-700' },
   { key: 'critical', ar: 'حرج', en: 'Critical', cls: 'bg-orange-100 text-orange-700' },
@@ -58,13 +46,12 @@ export default function VehiclesSettingsPage() {
   const { notify } = useDialog();
 
   const role = String((user as any)?.role || '');
-  // مَن مُنح القسمَ «تعديل» يعدّل إعداداتِه — الخادمُ يقبله، فالشاشةُ لا تُخفي عنه الزرّ.
+  // Whoever has an edit grant on the section edits its settings; the server accepts it, so the screen does not hide the button.
   const canEdit = ['super_admin', 'admin', 'vehicles_manager'].includes(role) || canEditSection((user as any)?.permissions, 'Vehicles');
 
   const [tab, setTab] = useState<Tab>('lists');
   const [alerts, setAlerts] = useState<Record<string, AlertCfg> | null>(null);
-  // ما تقوله هذه العتباتُ عن البيانات الآن — يأتي محسوبًا من الخادم بالدالّة
-  // نفسِها التي تحسبه في الصفحات.
+  // What these thresholds say about the data now, computed by the server with the same function the pages use.
   const [counts, setCounts] = useState<Record<string, Record<string, number>>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -84,7 +71,7 @@ export default function VehiclesSettingsPage() {
     setAlerts((p) => ({ ...(p || {}), [k]: { ...((p || {})[k] || {} as AlertCfg), [field]: v } }));
 
   const save = async () => {
-    // الخادمُ يردّ المخالف برسالته؛ ويُقال هنا قبل النداء ليُصحَّح في مكانه.
+    // The server rejects a violating value with a message; it is also stated here before the call so it can be fixed in place.
     const bad = Object.entries(alerts || {}).filter(([, c]: any) => c?.enabled !== false
       && (Number(c.criticalDays) > Number(c.warnDays) || Number(c.warnDays) > Number(c.soonDays)));
     if (bad.length) {
@@ -95,8 +82,7 @@ export default function VehiclesSettingsPage() {
     try {
       await api.put('/api/vehicle-registry/settings', { alerts });
       notify(t('حُفظت الإعدادات', 'Settings saved'), 'success');
-      // ويُعاد السؤالُ فورًا: ما يُقصّه الخادمُ أو يردّه يُرى على الشاشة، ولا
-      // يبقى رقمٌ معروضٌ غيرَ الرقم المحفوظ. والعدّاداتُ تُعاد بالعتبة الجديدة.
+      // Re-read right away: what the server trims or rejects is visible, so the displayed number never differs from the saved one. Counters are recomputed with the new threshold.
       await load();
     } catch (e: any) { notify(e?.message || t('تعذّر الحفظ', 'Could not save'), 'error'); }
     setSaving(false);
@@ -125,24 +111,17 @@ export default function VehiclesSettingsPage() {
         ))}
       </div>
 
-      {/* القوائمُ المرجعيّةُ الخاصّةُ بهذا القسم وحدَه — لا قوائمُ النظام كلِّه. */}
+      {/* Reference lists specific to this section, not the whole system. */}
       {tab === 'lists' && <ReferenceDataManager module="vehicles" alsoType="jp_task_vehicles" embedded />}
 
       {tab === 'alerts' && (
         <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
-          {/* ── ثلاثُ عتباتٍ، وحالةٌ واحدةٌ تُقرأ ──────────────────────────────
-              الشاشاتُ تعرض ثلاثَ حالاتٍ لا غير: منتهٍ · قارب على الانتهاء ·
-              ساري. و«قارب على الانتهاء» تبدأ من عتبة «قريب»؛ والعتبتان
-              الأخريان تغيّران اللونَ وحدَه — أصفرُ ثمّ برتقاليٌّ كلّما اقترب.
-              فمن أراد أن يبدأ التنبيهُ أبكرَ يزيد «قريب» وحدَها. */}
+          {/* Three thresholds, one status read. Screens show only expired, near expiry and valid. Near expiry starts at the near threshold; the other two only change color (yellow then orange). Raising near alone starts alerts earlier. */}
           <p className="text-[12px] text-slate-500 mb-3 leading-relaxed">
             {t('كلُّ رقمٍ عددُ أيّامٍ قبل الانتهاء، وكلُّ صفٍّ يُغيّر شرائحَ صفحته الثلاث: «حرج» و«تحذير» و«قريب» — تُعدّ في الصفحة وتُفلتَر بضغطة. وعمودُ «الوضع الآن» يقول ما تقوله هذه الأرقامُ على بياناتك في هذه اللحظة، فالصفرُ فيه صفرٌ حقيقيّ لا إعدادٌ لم يُحفَظ.',
                'Each number is days before expiry, and each row drives its page’s three bands — critical, warning and soon. “Right now” shows what these numbers say about your data at this moment, so a zero there is a real zero, not an unsaved setting.')}
           </p>
-          {/* ── والقاعدةُ تُكتب قبل الحفظ لا بعده ────────────────────────────
-              كان ما يخالفها يُقَصّ في الخادم بلا خبر، فيقرأ صاحبُه رقمَه ولم
-              يتغيّر ويقول «الإعدادات لا تعمل». فالقاعدةُ معروضة، والصفُّ
-              المخالف يُعلَّم، والحفظُ يقف حتى يُصحَّح. */}
+          {/* The rule is shown before saving, not after. A violating value was silently trimmed on the server and looked like settings not working, so the rule is displayed, the offending row flagged, and saving blocked until fixed. */}
           <p className="text-[12px] text-slate-600 mb-3 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
             {t('القاعدة: حرج ≤ تحذير ≤ قريب. مثال: حرج 7، تحذير 30، قريب 90.',
                'Rule: critical ≤ warning ≤ soon. Example: 7, 30, 90.')}
@@ -183,11 +162,7 @@ export default function VehiclesSettingsPage() {
                       <td className="px-3 py-2.5 text-center">{num('soonDays')}</td>
                       <td className="px-3 py-2.5 text-center">{num('warnDays')}</td>
                       <td className="px-3 py-2.5 text-center">{num('criticalDays')}</td>
-                      {/* ── والرقمُ يُقرأ مدًى لا عتبةً مفردة ────────────────
-                          ثلاثةُ أرقامٍ في سطرٍ واحدٍ لا تقول أين يقع كلُّ
-                          مستند: مَن كتب «حرج ٢٠ وتحذير ٣٠ وقريب ٦٠» لا يرى أنّ
-                          «تحذير» صار ٢١–٣٠ يومًا وأنّ ما بعد الستّين ليس في
-                          شريحةٍ أصلًا. فالمدى مكتوبٌ صريحًا. */}
+                      {/* Show the value as a range, not a single threshold: three numbers on one line do not show where each document falls, nor that days beyond the near threshold are in no slice. */}
                       <td className="px-3 py-2.5 text-[11.5px] text-slate-600 whitespace-nowrap leading-relaxed">
                         <span className="text-orange-700 font-semibold">{t('حرج', 'Crit')}</span>{` ≤${c.criticalDays} · `}
                         <span className="text-amber-700 font-semibold">{t('تحذير', 'Warn')}</span>
@@ -196,11 +171,7 @@ export default function VehiclesSettingsPage() {
                         <span className="text-sky-700 font-semibold">{t('قريب', 'Soon')}</span>
                         {Number(c.soonDays) > Number(c.warnDays) ? ` ${Number(c.warnDays) + 1}–${c.soonDays}` : ` — ${t('معطَّلة', 'off')}`}
                       </td>
-                      {/* ── وأثرُ العتبة في موضع ضبطها ───────────────────────
-                          «أظبط حرج ٢٠ وأروح الصفحة ألاقي صفر» — والصفرُ قد يكون
-                          صحيحًا (لا مستندَ ينتهي في هذا المدى) وقد يكون عطلًا،
-                          ولا سبيلَ للتفريق. فالعددُ هنا، محسوبًا بالعتبة نفسِها
-                          التي تُحسب بها الصفحة. */}
+                      {/* Show the threshold's effect where it is set: a zero on the page could be correct or a fault. The count here uses the same threshold the page uses. */}
                       <td className="px-3 py-2.5">
                         <span className="inline-flex items-center gap-1 flex-wrap">
                           {BANDS.filter((b) => (counts[d.key]?.[b.key] || 0) > 0).map((b) => (

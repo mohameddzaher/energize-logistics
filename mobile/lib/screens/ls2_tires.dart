@@ -13,9 +13,7 @@ import 'ls2_common.dart';
 import 'ls2_vehicle_assets.dart';
 import 'ls2_vehicle_detail.dart';
 
-/// الكاوتش (TPMS) — نظيرُ /system/ls2/tires: ضغطُ وحرارةُ كلِّ فردةٍ عبر
-/// الأسطول، مرتّبةً بالأسخن. والألوانُ بعتبات القسم من الإعدادات لا برقمٍ
-/// مكتوبٍ هنا — كي لا تقول الشاشةُ «طبيعيّ» والتنبيهُ «منخفض» عن الفردة نفسها.
+/// Tires (TPMS), counterpart of /system/ls2/tires: pressure and temperature of every tire across the fleet, hottest first. Colors use the section thresholds from settings, not hardcoded numbers, so the screen and the alert never disagree about the same tire.
 class Ls2TiresScreen extends StatefulWidget {
   const Ls2TiresScreen({super.key});
   @override
@@ -37,7 +35,7 @@ class _Ls2TiresScreenState extends State<Ls2TiresScreen> {
     super.initState();
     _load();
     _loadThresholds();
-    // وتعديلُ الإعدادات يُعلَن بالحدث نفسه — فتُعاد قراءةُ العتبات معه.
+    // Settings changes are announced by the same event, so thresholds are re-read with it.
     _onLive = () { _load(); _loadThresholds(); };
     Live.instance.on('ls2:updated', _onLive);
   }
@@ -52,12 +50,12 @@ class _Ls2TiresScreenState extends State<Ls2TiresScreen> {
       if (t.isNotEmpty && mounted) {
         setState(() { for (final e in t.entries) { final n = ls2Num(e.value); if (n != null) _th[e.key] = n; } });
       }
-    } catch (_) {/* تبقى الافتراضات */}
+    } catch (_) {/* Keep the defaults. */}
   }
 
   Future<void> _load() async {
     try {
-      // قراءةُ كلّ فردةٍ تُطلَب صراحةً — هذه الشاشةُ وحدَها تعرضها.
+      // Per-tire readings are requested explicitly; only this screen shows them.
       final d = await Api.instance.get('/api/ls2/vehicles?include=tires');
       if (mounted) setState(() { _items = ls2List(d['items']); _loading = false; _error = null; });
     } catch (e) {
@@ -245,9 +243,7 @@ class _Ls2TiresScreenState extends State<Ls2TiresScreen> {
   }
 }
 
-// ═════════════════════════════════════════════════════════════════════════════
-// حياةُ فردة كاوتش — نظيرُ /system/ls2/tires/[id]
-// ═════════════════════════════════════════════════════════════════════════════
+// Tire life, counterpart of /system/ls2/tires/[id]
 
 const _actionAr = {
   'registered': 'تسجيل', 'mounted': 'تركيب', 'removed': 'إنزال', 'transferred': 'نقل',
@@ -261,9 +257,7 @@ const _endAr = {
 
 String _day(dynamic d) => d == null ? '—' : (DateTime.tryParse('$d')?.toUtc().toIso8601String().substring(0, 10) ?? '—');
 
-/// السؤالُ هنا ليس «أين هي الآن» بل: كم عاشت، وعلى ماذا، وكم مشت — فتراتُ
-/// التركيب من سجلّ الحركة، والكيلومتراتُ من عدّاد العربية عند التركيب والنزول،
-/// وما جرى للعربية وهي عليها منسوبٌ إليها.
+/// The question is not where it is now but how long it lived, on what, and how far it ran. Mount periods come from the movement log, kilometers from the vehicle odometer at mount and dismount, and events on the vehicle while it was mounted are attributed to the tire.
 class Ls2TireProfileScreen extends StatefulWidget {
   final String tireId;
   final String? serial;
@@ -298,7 +292,7 @@ class _Ls2TireProfileScreenState extends State<Ls2TireProfileScreen> {
     }
   }
 
-  /// صفحةُ العربية برقم وحدتها، وعربيةٌ خارج التتبّع تُفتح أصولُها بلوحتها.
+  /// Vehicle page by unit number; a vehicle outside tracking opens its assets by plate.
   void _openVehicle(dynamic unitId, String plate) {
     Navigator.push(context, MaterialPageRoute(builder: (_) => unitId != null
         ? Ls2VehicleDetailScreen(vehicleId: '$unitId', plate: plate)
@@ -410,7 +404,7 @@ class _Ls2TireProfileScreenState extends State<Ls2TireProfileScreen> {
             if (ti['sensor'] == 'yes') Chip2(tr('بحسّاس', 'Sensor'), T.cyan, icon: Icons.sensors),
           ]),
           const SizedBox(height: 8),
-          // تقريرٌ مطبوعٌ بترويسة الشركة — من المصدر نفسه.
+          // Printed report with the company letterhead, from the same source.
           ReportButton(subject: 'tire', id: '${ti['_id'] ?? widget.tireId}', label: tr('تقرير PDF', 'PDF report')),
         ]),
       ),
@@ -433,7 +427,7 @@ class _Ls2TireProfileScreenState extends State<Ls2TireProfileScreen> {
               _link('${ti['plate']}', ti['unitId'])
             else
               Text(ti['trailerNumber'] != null ? '${tr('تيدر', 'trailer')} ${ti['trailerNumber']}' : '—', style: const TextStyle(fontWeight: FontWeight.w800)),
-            // فردةُ التيدر تمشي معه — فيُقال أيُّ عربيةٍ تجرّه اليوم.
+            // A trailer tire travels with the trailer, so show which vehicle is towing it today.
             if ((ti['plate'] ?? '').toString().isEmpty && (ti['trailerOnPlate'] ?? '').toString().isNotEmpty) ...[
               Text(tr('— والتيدر على العربية', '— and the trailer is on'), style: const TextStyle(color: T.inkSoft)),
               _link('${ti['trailerOnPlate']}', ti['trailerOnUnitId']),

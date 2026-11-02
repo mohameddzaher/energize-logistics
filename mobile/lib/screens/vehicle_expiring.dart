@@ -15,11 +15,8 @@ import 'vehicle_registry.dart' show fmtDate, daysText, canEditVehicles, VehicleR
 import 'vehicle_renew.dart';
 import 'vehicle_registry_dash.dart' show VehicleRegistrySettingsScreen;
 
-/// ── الانتهاءات والتجديد — توأمُ /system/vehicles/registry/expiring ─────────────
-///
-/// كلُّ مستندٍ له تاريخ في صفٍّ واحد (`/api/vehicle-registry/expiring`): المدّةُ
-/// والمستندُ والحالةُ على الخادم، والبحثُ و«تنبيهه متقفول» هنا. وتجديدُ صفٍّ أو
-/// تجديدُ المختار كلِّه بتاريخٍ واحد — بنافذتَي vehicle_renew نفسيهما.
+/// Expiries and renewal, twin of /system/vehicles/registry/expiring.
+/// Every dated document in one row (/api/vehicle-registry/expiring): the period, document and status come from the server; search and the 'alert muted' flag are handled here. Renewing a row or the whole selection with one date uses the same two dialogs as vehicle_renew.
 
 const _states = ['expired', 'critical', 'warning', 'upcoming', 'valid'];
 const _quick = [7, 15, 30, 60, 90, 180];
@@ -38,7 +35,7 @@ class _VehicleExpiringScreenState extends State<VehicleExpiringScreen> {
   late String _state = widget.state ?? '';
   bool _includeExpired = true;
   String _q = '';
-  // متحكِّمٌ للشاشة: الخانةُ لا تعود فارغةً بعد التمرير أو التحديث
+  // Screen-owned controller: the field is not emptied after scrolling or refresh
   final _searchCtl = TextEditingController();
   bool _mutedOnly = false;
   Map<String, dynamic>? _d;
@@ -265,7 +262,7 @@ class _VehicleExpiringScreenState extends State<VehicleExpiringScreen> {
                           Checkbox(value: _includeExpired, onChanged: (x) { setState(() => _includeExpired = x == true); _load(); }),
                           Text(tr('اعرض المنتهي بالفعل', 'Include already expired'), style: const TextStyle(fontSize: 12)),
                         ]),
-                        // ما أُقفل تنبيهُه يبقى معروضًا ومعلَّمًا — لا يُحذف في صمت.
+                        // A row whose alert was muted stays shown and marked, not silently dropped.
                         if (muted > 0)
                           _chip('${tr('تنبيهه متقفول', 'Alert muted')} $muted', _mutedOnly, () => setState(() => _mutedOnly = !_mutedOnly), tone: T.ink),
                       ]),
@@ -273,7 +270,7 @@ class _VehicleExpiringScreenState extends State<VehicleExpiringScreen> {
                           style: const TextStyle(fontSize: 11, color: T.inkFaint))),
                     ])),
                     const SizedBox(height: 10),
-                    // كروت الحالات — الضغطُ يفلتر عليها.
+                    // Status cards; tapping filters on them.
                     Builder(builder: (context) {
                       final tiles = <Widget>[
                         ..._states.map((k) {
@@ -301,7 +298,7 @@ class _VehicleExpiringScreenState extends State<VehicleExpiringScreen> {
                           ]),
                         ),
                       ];
-                      // صفوفٌ بارتفاعٍ واحد يكبر مع النصّ (بلا نسبةٍ ثابتة تقصّ المحتوى).
+                      // Rows of one height that grows with the text (no fixed ratio that clips content).
                       return StatGrid(spacing: 8, minTileWidth: 96, minColumns: 3, maxColumns: 6, children: tiles);
                     }),
                     const SizedBox(height: 8),

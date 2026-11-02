@@ -1,19 +1,7 @@
 'use client';
 /**
- * سجلُّ العملاء — شاشةٌ واحدةٌ تُعرَض في ثلاثة أقسام.
- *
- * ── لماذا مكوّنٌ لا صفحتان ──────────────────────────────────────────────────
- * الشاشةُ نفسُها مطلوبةٌ في «طلبات الشحنات» و«التشغيل» و«المبيعات». ولو نُسخت
- * لافترقت بعد أوّل تعديل: عمودٌ يُضاف هنا ولا يُضاف هناك، وبطاقةٌ تُصلَح في
- * واحدةٍ وتبقى مكسورةً في الأخرى. فالصفحاتُ الثلاثُ أغلفة، والشاشةُ هنا.
- *
- * ── وبطاقاتٌ تُضغَط ────────────────────────────────────────────────────────
- * «كم عميلًا يعمل معنا؟» رقمٌ لا يكفي: من يقرؤه يريد أسماءَهم. فكلُّ بطاقةٍ
- * شريحةٌ تُطبَّق على الجدول وتبقى ظاهرةً أنّها المختارة.
- *
- * ── والمالُ يُخفى لا يُفرَّغ ───────────────────────────────────────────────
- * الخادمُ يحذف `purchaseTotal` عمّن لا يرى المال. فالعمودُ والبطاقةُ يُخفيان
- * كلّيًّا — عمودٌ مرسومٌ بشرطاتٍ يُقرأ «لا شراءَ له» لا «ليس لك أن تراه».
+ * Customers register: one screen rendered in three sections.
+ * A single component, not copies, so columns and cards cannot drift between sections; the three pages are thin wrappers. Cards are clickable slices applied to the table and stay highlighted. Money is hidden entirely, not blanked: the server drops `purchaseTotal` for users without money access, and a dashed column would read as "no purchases".
  */
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import Link from 'next/link';
@@ -42,7 +30,7 @@ import {
 
 const PAGE_SIZES = [50, 100, 200, 500];
 
-/** البطاقاتُ بترتيب قراءتها: الكلُّ، ثمّ من يعمل، ثمّ ما ينقص. */
+/** Cards in reading order: all, then active customers, then what is missing. */
 const KPIS: { key: KpiKey; ar: string; en: string; accent?: string; money?: boolean }[] = [
   { key: 'all', ar: 'كلّ العملاء', en: 'All customers' },
   { key: 'working', ar: 'يعملون معنا', en: 'Working', accent: 'text-emerald-600' },
@@ -93,7 +81,7 @@ export default function CustomersRegister({ basePath }: { basePath: string }) {
   const [editing, setEditing] = useState<EditableCustomer | null>(null);
   const [editOpen, setEditOpen] = useState(false);
   const [portalFor, setPortalFor] = useState<RegistryRow | null>(null);
-  /** قوائمُ المسارات تُجلَب مرّةً عند أوّل تعديلٍ أو تصدير — لا مع كلّ فتحة. */
+  /** Route lists are fetched once on the first edit or export, not on every open. */
   const [fullById, setFullById] = useState<Record<string, EditableCustomer> | null>(null);
 
   const load = useCallback(async () => {
@@ -113,7 +101,7 @@ export default function CustomersRegister({ basePath }: { basePath: string }) {
 
   useEffect(() => { load(); }, [load]);
   useSocket('shipmentOrders:customers', useCallback(() => { setFullById(null); load(); }, [load]));
-  // بطاقةُ عميلٍ عُدِّلت في أيّ قسمٍ — تُعاد القائمة (مُمهَلةً).
+  // A customer card edited in any section reloads the list (debounced).
   const custTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useSocket('customers:changed', useCallback(() => {
     if (custTimer.current) clearTimeout(custTimer.current);
@@ -160,8 +148,7 @@ export default function CustomersRegister({ basePath }: { basePath: string }) {
   const current = page > pages ? 1 : page;
   const pageRows = useMemo(() => shown.slice((current - 1) * size, current * size), [shown, current, size]);
 
-  // كلُّ ما يغيّر مجموعةَ الصفوف يعيدنا إلى الصفحة الأولى — وإلّا وقف القارئُ
-  // على صفحةٍ رقم ٧ من نتيجةٍ صفحتُها واحدة فرأى جدولًا فارغًا.
+  // Any change to the row set resets to page 1; otherwise the reader stays on page 7 of a one-page result and sees an empty table.
   useEffect(() => { setPage(1); }, [q, kpi, size, cf.count]);
 
   const ensureFull = useCallback(async (): Promise<Record<string, EditableCustomer>> => {
@@ -177,7 +164,7 @@ export default function CustomersRegister({ basePath }: { basePath: string }) {
     try {
       const map = await ensureFull();
       let c = map[r._id];
-      // العميلُ الموقوف ليس في قائمة الشحنات — يُقرأ ملفُّه وحدَه.
+      // A suspended customer is not in the shipments list, so its profile is read on its own.
       if (!c) {
         const d = await api.get<{ customer: EditableCustomer }>(`/api/customer-registry/${r._id}`);
         c = d.customer;
@@ -240,7 +227,7 @@ export default function CustomersRegister({ basePath }: { basePath: string }) {
             const v = kpiValue(k.key, summary);
             return (
               <Pick key={k.key} on={kpi === k.key} onClick={() => setKpi((cur) => (cur === k.key && k.key !== 'all' ? 'all' : k.key))}>
-                {/* الرقمُ الطويل (٦٠ مليونًا) يُلَفّ سطرين في بطاقةٍ من ثمانٍ — يصغر قليلًا فيبقى سطرًا. */}
+                {/* A long figure wraps to two lines in an eight-card row; a smaller font keeps it on one line. */}
                 <StatCard label={ar ? k.ar : k.en} accent={k.accent}
                   value={<span className={(v ?? 0).toLocaleString('en-US').length > 9 ? 'text-lg' : ''}>{(v ?? 0).toLocaleString('en-US')}</span>} />
               </Pick>

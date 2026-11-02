@@ -1,11 +1,5 @@
 'use client';
-/**
- * الموارد البشريّة ← «متابعة المالية».
- *
- * تبويبان: حالةُ دفع رسوم الإقامات ورخص العمل (الصفوفُ نفسُها التي تراها الماليّة،
- * قراءةً فقط — الدفعُ يُسجَّل هناك والتجديدُ يبقى هنا في ملفّ الموظّف)، و«طلبات
- * للمالية»: موظّفون، وأمام كلٍّ منهم ما يُحتاج له، ومرفقات — ثمّ ردُّ الماليّة.
- */
+/** HR: finance follow-up. Tab one is residency and work-permit fee payment status (same rows as Finance, read-only; payment is recorded there, renewal stays in the employee file). Tab two is finance requests: employees, what is needed, attachments, then Finance's reply. */
 import { Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useLanguage } from '@/context/LanguageContext';

@@ -9,9 +9,7 @@ import '../ui/stat_grid.dart';
 import 'fleet_customer_profile.dart';
 import '../ui/search_field.dart';
 
-/// تحليلات إدارة الأسطول — نفس تحليلات صفحة الويب /system/fleet/dashboard:
-/// الدخل، الأهداف، ترتيب السيارات/السواقين/العملاء/المشرفين، اتجاه الشهور.
-/// بدون رسوم بيانية (الموبايل يعتمد بطاقات + أشرطة نسبية + جداول).
+/// Fleet management analytics, same as web page /system/fleet/dashboard: income, targets, ranking of vehicles/drivers/customers/supervisors, monthly trend. No charts (mobile uses cards, proportional bars and tables).
 class FleetAnalyticsScreen extends StatefulWidget {
   const FleetAnalyticsScreen({super.key});
   @override
@@ -35,17 +33,12 @@ class _FleetAnalyticsScreenState extends State<FleetAnalyticsScreen> {
   bool _loading = true;
   String? _error;
   String _q = '';
-  // الخانةُ تُهدَم مع التحميل والتمرير — النصُّ في متحكِّمٍ يبقى مع الكلمة.
+  // The field is destroyed on loading and scrolling; text kept in a controller survives with the word.
   final _searchCtl = TextEditingController();
   String _preset = 'thisMonth'; // thisMonth | lastMonth | all
   late final void Function() _onLive;
 
-  /// ── وتحت كلِّ سيّارةٍ حمولاتُها ──────────────────────────────────────────
-  ///
-  /// البطاقةُ تقول «إحدى عشرة حمولةً بستّةٍ وثلاثين ألفًا»، والسؤالُ الذي يليها:
-  /// **أيُّ إحدى عشرة؟** فتُفتَح البطاقةُ على بوالصها: الرقمُ والعميلُ ومن أين
-  /// إلى أين والسعر — من نفس نداء «تحليل الحمولات» الذي يقرؤه الويب، وبنفس
-  /// الفترة المختارة هنا.
+  /// Under each vehicle are its loads. The card says a load count and an amount, and the next question is which loads, so the card opens onto its waybills: number, customer, from-to and price, from the same load-analysis call the web reads, with the same selected period.
   String _openVeh = '';
   Map<String, dynamic>? _vehLoads;
   bool _vehLoading = false;
@@ -153,7 +146,7 @@ class _FleetAnalyticsScreenState extends State<FleetAnalyticsScreen> {
       padding: const EdgeInsets.all(14),
       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       children: [
-        // فلتر الفترة
+        // Period filter.
         SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           child: Row(children: [
@@ -169,7 +162,7 @@ class _FleetAnalyticsScreenState extends State<FleetAnalyticsScreen> {
           hint: tr('ابحث في السيارات/السواقين/العملاء/المشرفين…', 'Search vehicles, drivers, customers…'),
         ),
         const SizedBox(height: 12),
-        // بطاقات المؤشرات
+        // Indicator cards.
         StatGrid(
           spacing: 8,
           children: [
@@ -184,7 +177,7 @@ class _FleetAnalyticsScreenState extends State<FleetAnalyticsScreen> {
           ],
         ),
         const SizedBox(height: 14),
-        // دخل عملاء النقل الثقيل مقابل الفروع
+        // Heavy transport customers' income versus branches.
         _section(tr('الدخل حسب نوع العميل', 'Income by customer type')),
         AppCard(
           child: Column(children: [
@@ -194,44 +187,44 @@ class _FleetAnalyticsScreenState extends State<FleetAnalyticsScreen> {
           ]),
         ),
         const SizedBox(height: 14),
-        // اتجاه الشهور (12 شهر) — أشرطة نسبية
+        // Monthly trend (12 months), proportional bars.
         if (trend.isNotEmpty) ...[
           _section(tr('اتجاه الدخل — 12 شهر', 'Income trend — 12 months')),
           AppCard(child: _trendBars(trend)),
           const SizedBox(height: 14),
         ],
-        // السيارات مقابل الهدف
+        // Vehicles versus target.
         _section(tr('السيارات مقابل الهدف', 'Vehicles vs target')),
         ..._vehicleRows(filterByName(vehicles, ['plate', 'supervisorName']).take(60).toList()),
         const SizedBox(height: 14),
-        // أفضل السواقين
+        // Top drivers.
         if (topDrivers.isNotEmpty) ...[
           _section(tr('أفضل السواقين', 'Top drivers')),
           ...filterByName(topDrivers, ['name']).take(20).map((r) => _rankRow(
               (r['name'] ?? '—').toString(), '${r['trips'] ?? 0} ${tr('رحلة', 'trips')}', _money(r['income']), T.orange)),
           const SizedBox(height: 14),
         ],
-        // المشرفون
+        // Supervisors.
         if (supervisors.isNotEmpty) ...[
           _section(tr('أداء المشرفين', 'Supervisors')),
           ...filterByName(supervisors, ['name']).map((r) => _rankRow(
               (r['name'] ?? '—').toString(), '${r['trips'] ?? 0} ${tr('حمولة', 'shipments')}', _money(r['income']), T.violet)),
           const SizedBox(height: 14),
         ],
-        // نوع القاطرة (سطحة/ستارة/…)
+        // Truck type (flatbed / curtain / ...).
         if (byTrailerType.isNotEmpty) ...[
           _section(tr('الرحلات حسب نوع القاطرة', 'Trips by trailer type')),
           AppCard(child: Wrap(spacing: 8, runSpacing: 8, children: byTrailerType.entries
               .map((e) => Chip2('${e.key}: ${e.value}', T.navy, icon: Icons.category_outlined)).toList())),
           const SizedBox(height: 14),
         ],
-        // أفضل عملاء النقل الثقيل
+        // Top heavy transport customers.
         if (heavy.isNotEmpty) ...[
           _section(tr('أفضل عملاء النقل الثقيل', 'Top heavy customers')),
           ...filterByName(heavy, ['name']).map(_customerRow),
           const SizedBox(height: 14),
         ],
-        // أفضل عملاء الفروع
+        // Top branch customers.
         if (branch.isNotEmpty) ...[
           _section(tr('أفضل عملاء الفروع', 'Top branch customers')),
           ...filterByName(branch, ['name']).map(_customerRow),
@@ -315,7 +308,7 @@ class _FleetAnalyticsScreenState extends State<FleetAnalyticsScreen> {
     }).toList());
   }
 
-  /// ومن بحث بلوحةٍ واحدةٍ لا يُطلَب منه ضغطُ بطاقةٍ واحدة: المقصودُ ظاهر.
+  /// A search that matches a single vehicle opens it without a tap on its card: the intent is clear.
   List<Widget> _vehicleRows(List<Map<String, dynamic>> rows) {
     if (_q.trim().isNotEmpty) {
       final withLoads = rows.where((v) => ((v['trips'] ?? 0) as num) > 0).toList();
@@ -374,7 +367,7 @@ class _FleetAnalyticsScreenState extends State<FleetAnalyticsScreen> {
     );
   }
 
-  /// حمولاتُ السيّارة المفتوحة — البوليصةُ والعميلُ والمسارُ والسعر.
+  /// Open vehicle loads: waybill, customer, route and price.
   Widget _vehLoadsView(String plate) {
     if (_vehLoading) {
       return Row(children: [

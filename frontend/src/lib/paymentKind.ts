@@ -1,13 +1,4 @@
-/**
- * نوعُ الدفع على كشف التشغيل — ستُّ قيمٍ تُعرَض، وأربعٌ تُختار.
- *
- * صاحبُ الشركة (٢٠٢٦/١٠/٢١): «آجل - فاتورة» تحلّ محلَّ «ضريبي»، و«آجل - كاش»
- * و«نقدي - 3PL» و«نقدي - HT» تحلّ محلَّ «كاش». فالاختيارُ من الأربعة وحدَها؛
- * و«ضريبي»/«كاش» يبقيان يُعرَضان ويُفلتَر بهما على الكشوف القائمة حتى تُحوَّل.
- *
- * والخادمُ يحفظ العائلةَ (`paymentType`: cash | tax) — وعليها تقوم القواعدُ كلُّها —
- * والنوعَ (`paymentSubtype`). والمرآةُ في الخادم: utils/paymentType.PAYMENT_SUBTYPES.
- */
+/** Payment kind on an operations statement: six values are displayed and four can be chosen. Credit-invoice replaces tax, and credit-cash, cash-3PL and cash-HT replace cash. Choice is among the four only; the old tax and cash values remain displayable and filterable on existing statements until they are converted. */
 export type PaymentFamily = '' | 'cash' | 'tax';
 export type PaymentSubtype = 'deferred_cash' | 'deferred_invoice' | 'cash_3pl' | 'cash_ht';
 export type PaymentKind = PaymentFamily | PaymentSubtype;
@@ -19,20 +10,17 @@ export const PAYMENT_SUBTYPES: Record<PaymentSubtype, { family: 'cash' | 'tax'; 
   cash_ht: { family: 'cash', ar: 'نقدي - HT', en: 'Cash – HT' },
 };
 
-/** الاختياراتُ المعروضةُ للاختيار — الأربعةُ وحدَها، بترتيبها. */
+/** The options offered for choice: the four only, in order. */
 export const PAYMENT_CHOICES: PaymentSubtype[] = ['deferred_invoice', 'deferred_cash', 'cash_3pl', 'cash_ht'];
 
 export const isSubtype = (k: unknown): k is PaymentSubtype =>
   typeof k === 'string' && Object.prototype.hasOwnProperty.call(PAYMENT_SUBTYPES, k);
 
-/** العائلة: نوعٌ جديدٌ يُقرأ بعائلته، و«cash»/«tax» كما هما. */
+/** The family: a new kind is read by its family, and cash/tax as they are. */
 export const paymentFamily = (k: unknown): PaymentFamily =>
   (isSubtype(k) ? PAYMENT_SUBTYPES[k].family : (k === 'cash' || k === 'tax' ? k : ''));
 
-/**
- * ما تعرضه الخانة لكشف: نوعُه إن وُجد، وإلّا عائلتُه.
- * (`paymentType` قد يحمل أحدَ الأربعة في نسخة التعديل قبل الحفظ.)
- */
+/** What the cell shows for a statement: its kind if present, else its family. (`paymentType` may hold one of the four in the edit copy before saving.) */
 export const paymentKindOf = (w: { paymentType?: string | null; paymentSubtype?: string | null } | null | undefined): PaymentKind => {
   if (!w) return '';
   if (isSubtype(w.paymentType)) return w.paymentType;
@@ -40,7 +28,7 @@ export const paymentKindOf = (w: { paymentType?: string | null; paymentSubtype?:
   return paymentFamily(w.paymentType);
 };
 
-/** اسمُ القيمة كما تُقرأ — الستُّ كلُّها. */
+/** The value's name as read, all six. */
 export const paymentKindLabel = (k: unknown, ar: boolean): string => {
   if (isSubtype(k)) return ar ? PAYMENT_SUBTYPES[k].ar : PAYMENT_SUBTYPES[k].en;
   if (k === 'cash') return ar ? 'كاش' : 'Cash';

@@ -1,8 +1,5 @@
-// قسمُ التحصيل — الأنواعُ والصلاحيّاتُ في موضعٍ واحد.
-//
-// البوّابةُ قاعدةٌ واحدة: قائمةُ الأدوار الثابتة **أو** منحٌ من مصفوفة
-// الصلاحيّات. ونسخُها في كلّ صفحةٍ هو ما جعل أقسامًا تُفتح لمن مُنحها ثمّ
-// يجدها للقراءة فقط لأنّ أزرارَها كانت محروسةً بقائمةٍ أخرى.
+// Collections section: types and permissions in one place.
+// The gate is one rule: the fixed role list OR a grant from the permission matrix. Copying it into each page made sections open for a granted user yet read-only, because their buttons were guarded by a different list.
 import { canAccessSection, canEditSection, roleOf, permsOf, type RoleOrUser } from './sections';
 
 export const SECTION = 'Collections';
@@ -18,7 +15,7 @@ export const COLLECTIONS_EDIT_ROLES = [
   'collections_manager', 'collections_staff', 'cfo', 'accounting_manager',
 ];
 
-// إعداداتُ القسم وحذفُ الأطراف لمديره: تعطيلُ طرفٍ يُخفي دَينًا من كلّ تقرير.
+// Section settings and deleting parties are for its manager: disabling a party hides a debt from every report.
 export const COLLECTIONS_ADMIN_ROLES = ['super_admin', 'admin', 'it_manager', 'collections_manager'];
 
 export const canViewCollections = (u: RoleOrUser): boolean =>
@@ -30,28 +27,19 @@ export const canEditCollections = (u: RoleOrUser): boolean =>
 export const isCollectionsAdmin = (u: RoleOrUser): boolean =>
   COLLECTIONS_ADMIN_ROLES.includes(roleOf(u));
 
-/**
- * «تعديل القيمة» على فاتورةٍ — قرارٌ ماليّ لا عملُ تحصيلٍ يوميّ (صاحبُ الشركة،
- * ٢٠٢٦/١٠/٢١). بالدور وحدَه: منحُ القسم «تعديلًا» لا يفتحه، والخادمُ يحرسه
- * بـ`authorize.strict` على القائمة نفسِها (collectionsDeptController.AMOUNT_EDIT_ROLES).
- */
+/** Editing an invoice's value is a financial decision, not daily collection work. Role-only: granting the section edit does not open it, and the server guards it with authorize.strict on the same list (collectionsDeptController.AMOUNT_EDIT_ROLES). */
 export const AMOUNT_EDIT_ROLES = ['super_admin', 'admin', 'collections_manager', 'cfo', 'accounting_manager'];
 
 export const canEditInvoiceAmount = (u: RoleOrUser): boolean =>
   AMOUNT_EDIT_ROLES.includes(roleOf(u));
 
 /**
- * ── مَن يرى «ما علينا» ─────────────────────────────────────────────────────
- *
- * قسمُ التحصيل يُحصِّل، ولا شأنَ له بما ندفعه للموردين ولا بالصافي ولا بالربح.
- * فالمستحقُّ علينا والصافي يُخفَيان عن دورَيه — لا عن القسم، فالإدارةُ والماليةُ
- * ومديرُ العمليات يفتحون القسمَ نفسَه ويرَون الوجهين.
- *
- * والقاعدةُ بالدور لا بالقسم: القسمُ واحدٌ ومن فيه يختلفون.
+ * Who sees what we owe.
+ * Collections collects and has nothing to do with supplier payments, net or profit, so amounts owed by us and the net are hidden from its two roles, not from the section: management, finance and the operations manager open the same section and see both sides. The rule is by role because the section is shared by people with different duties.
  */
 const RECEIVABLES_ONLY_ROLES = ['collections_manager', 'collections_staff'];
 
-/** هل يقتصر هذا المستخدم على «ما لنا»؟ */
+/** Whether this user is limited to what is owed to us. */
 export const receivablesOnly = (u: RoleOrUser): boolean =>
   RECEIVABLES_ONLY_ROLES.includes(roleOf(u));
 
@@ -64,7 +52,7 @@ export interface CollectionsParty {
   nameKey?: string;
   phone?: string;
   email?: string;
-  /** أكثرُ من بريد (٢٠٢٦/١٠/٢٤) — `email` أوّلُها. راجع backend utils/partyEmails. */
+  /** More than one email; `email` is the first. See backend utils/partyEmails. */
   emails?: string[];
   contactPerson?: string;
   contactPhone?: string;
@@ -77,15 +65,13 @@ export interface CollectionsParty {
   address?: string;
   city?: string;
   partyType?: string;
-  // ── بياناتُ الحساب في دفتر التحصيل ────────────────────────────────────────
-  // كودُه المحاسبيّ (وهو هويّتُه لا اسمُه)، ومَن يتولّاه، وتقييمُه، ومَن يبيع
-  // له من عندنا، ومهلةُ السداد المتّفق عليها.
+  // Account data in the collections ledger: accounting code (its identity, not its name), owner, rating, who sells to it from our side, and the agreed payment term.
   code?: string;
   aliases?: string[];
   collectionOfficer?: string;
-  /** المسؤولُ الفعليّ: الموظّفُ المكتوب، وإلّا مديرُ القسم (لا «بلا مسؤول»). */
+  /** Effective officer: the named employee, otherwise the department manager (never unassigned). */
   effectiveOfficer?: string;
-  /** المسؤولُ الفعليّ آتٍ من المدير — الحسابُ لم يُسنَد إلى موظّف. */
+  /** The effective officer comes from the manager; the account was not assigned to an employee. */
   officerIsDefault?: boolean;
   hoLocation?: string;
   grade?: string;
@@ -93,7 +79,7 @@ export interface CollectionsParty {
   department?: string;
   region?: string;
   creditDays?: number;
-  // نوعُ دفع العميل — منه يُملأ «نوع الدفع» على كشوفه من نفسِه.
+  // Customer payment type; the payment type on its statements is filled from it.
   paymentType?: '' | 'cash' | 'tax';
   paymentTerms?: string;
   creditLimit?: number;
@@ -104,14 +90,13 @@ export interface CollectionsParty {
   notes?: string;
   isActive?: boolean;
   source?: string;
-  // مشتقّةٌ من الكشوف لا مخزَّنةٌ على السجلّ — فلا يقول الملفُّ رقمًا والكشفُ
-  // رقمًا آخر لشيءٍ واحد.
+  // Derived from statements, not stored on the record, so the file and the statement never show two numbers for one thing.
   reports: number;
   total: number;
   settled: number;
   outstanding: number;
   openReports: number;
-  // للعميل: من دفتر الفواتير (والمالُ أعلاه منه كذلك).
+  // For customers: from the invoice ledger (the money above comes from it too).
   invoices?: number;
   openInvoices?: number;
   invoiced: number;
@@ -120,14 +105,13 @@ export interface CollectionsParty {
   nameVariants?: string[];
 }
 
-// «ما لنا» و«ما علينا»: الكلمتان تختلفان باختلاف الجهة، والخلطُ بينهما يجعل
-// دَينًا علينا يُقرأ مالًا لنا.
+// Owed to us vs owed by us: the wording differs by party, and mixing them makes a debt we owe read as money owed to us.
 export const kindWords = (kind: PartyKind, ar: boolean) =>
   kind === 'customer'
     ? {
       title: ar ? 'العملاء' : 'Customers',
       one: ar ? 'عميل' : 'customer',
-      // من دفتر الفواتير: ما فُوتِر وما حُصِّل منه وما بقي.
+      // From the invoice ledger: invoiced, collected and remaining.
       totalLabel: ar ? 'إجمالي المفوتَر' : 'Total invoiced',
       settledLabel: ar ? 'المحصَّل' : 'Collected',
       dueLabel: ar ? 'المستحق لنا' : 'Receivable',
@@ -149,30 +133,24 @@ export const money = (n?: number | null) =>
 
 export const dt = (v?: string | null) => (v ? new Date(v).toLocaleDateString('en-GB') : '—');
 
-/** اسمُ نوع الدفع كما يُقرأ. */
+/** Payment type name as displayed. */
 export const paymentTypeLabel = (t: string | undefined, ar: boolean) =>
   t === 'cash' ? (ar ? 'كاش' : 'Cash') : t === 'tax' ? (ar ? 'ضريبي' : 'Tax') : '—';
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  دفترُ التحصيل
-// ═══════════════════════════════════════════════════════════════════════════
+// Collections ledger
 
-/** شريحةُ عمرٍ كما يقرؤها الفريق في ورقته. */
+/** An age bucket as the team reads it in their sheet. */
 export interface AgeBand { key: string; label: string; min: number | null }
 
 export interface AgingRow extends CollectionsParty {
-  /**
-   * المديونيّةُ وجهان: فواتيرُ ضريبيّةٌ من دفتر الفواتير، وكشوفٌ نقديّةٌ لم
-   * تُحصَّل. وكان النقديُّ لا يُحسب أصلًا فيظهر الحسابُ النقديُّ بصفرٍ وعليه
-   * عشراتُ الآلاف — راجع cashAgingByParty في الخادم.
-   */
+  /** Debt has two sides: tax invoices from the invoice ledger, and uncollected cash statements. Cash was not counted, so a cash account showed zero while owing tens of thousands. See cashAgingByParty on the server. */
   taxOutstanding?: number;
   cashOutstanding?: number;
   outstanding: number;
   invoiceCount: number;
   bands: Record<string, number>;
   bandCounts: Record<string, number>;
-  /** نسبةُ ما عليه إلى حدّه الائتمانيّ — `null` حين لا حدَّ له. */
+  /** Ratio of what is owed to the credit limit; null when there is no limit. */
   limitUsedPct: number | null;
 }
 
@@ -190,8 +168,7 @@ export interface LedgerInvoice {
   status?: string;
   comments?: string;
   reportNumbers?: string[];
-  // ── محسوبةٌ عند القراءة لا مخزَّنة ──────────────────────────────────────
-  // الرقمُ المخزَّن يصدق يومَ كُتب ويكذب في اليوم التالي.
+  // Computed at read time, not stored: a stored number is right the day it is written and wrong the next.
   ageDays?: number | null;
   band?: string;
   daysInvoiceToDelivery?: number | null;
@@ -238,7 +215,7 @@ export interface OfficerStat {
   tasksCollected?: number;
 }
 
-/** تقييمُ العميل — يُلوَّن ليُقرأ في لمحة. */
+/** Customer rating, coloured to be read at a glance. */
 export const gradeTone = (g?: string) => {
   const k = String(g || '').toUpperCase();
   if (k.startsWith('A')) return 'bg-emerald-50 text-emerald-700 border-emerald-200';
@@ -247,11 +224,7 @@ export const gradeTone = (g?: string) => {
   return 'bg-slate-100 text-slate-600 border-slate-200';
 };
 
-/**
- * لونُ استهلاك الحدّ الائتمانيّ.
- * لا لونَ لمن لا حدَّ له: الرماديُّ يقول «لا سقفَ مضبوطٌ لهذا العميل»، وهو
- * خبرٌ في نفسِه — لا يُقرأ «سليم».
- */
+/** Colour for credit-limit usage. No colour when there is no limit: grey means no ceiling is set, which is information in itself and must not read as healthy. */
 export const limitTone = (pct: number | null | undefined) => {
   if (pct == null) return 'text-slate-400';
   if (pct >= 100) return 'text-red-600 font-semibold';
@@ -259,7 +232,7 @@ export const limitTone = (pct: number | null | undefined) => {
   return 'text-emerald-600';
 };
 
-/** أيّامٌ حتى الاستحقاق، مقروءةً بكلامٍ لا برقمٍ سالب. */
+/** Days until due, in words rather than a negative number. */
 export const dueWords = (d: number | null | undefined, ar: boolean) => {
   if (d == null) return '—';
   if (d < 0) return ar ? `متأخّرة ${Math.abs(d)} يومًا` : `${Math.abs(d)}d overdue`;
@@ -268,11 +241,8 @@ export const dueWords = (d: number | null | undefined, ar: boolean) => {
 };
 
 /**
- * اسمُ شريحة العمر بالكلام — لا برمز الدفتر.
- *
- * رموزُ الدفتر «15-» و«60+» تعني «حتى ١٥» و«من ٦٠»، لكنّها تُقرأ في العربيّة
- * معكوسةً («-15»)، وتلتصق بالرقم قبلها فيصير العمرُ «8» والشريحةُ «15-» معًا
- * «-815». فتُعرض بالكلام، والمفتاحُ يبقى هو هو في الفلاتر والخادم.
+ * Age bucket name in words, not the ledger code.
+ * Codes like "15-" and "60+" mean up to 15 and from 60, but in Arabic they render reversed and stick to the preceding number (age 8 and bucket "15-" read as "-815"). So they are shown in words; the key stays the same in filters and on the server.
  */
 const BAND_LABELS: Record<string, [string, string]> = {
   '15-': ['حتى 15 يومًا', 'Up to 15 days'],
@@ -292,11 +262,8 @@ export const bandLabel = (key: string | null | undefined, ar: boolean) => {
 };
 
 /**
- * اسمُ مسؤول التحصيل كما يُعرَض — ولا «بلا مسؤول» بعد اليوم.
- *
- * ما لم يُسنَد إلى موظّفٍ فهو على مدير القسم (صاحبُ الشركة، ٢٠٢٦/١٠/٢١)، والخادمُ
- * يرسل المسؤولَ الفعليّ (`effectiveOfficer`). وما يأتي فارغًا بعدها (لا مديرَ في
- * النظام أصلًا) يُقال «مدير القسم» لا «بلا مسؤول».
+ * Collections officer name as displayed; never "unassigned".
+ * Unassigned accounts belong to the department manager, and the server sends the effective officer (effectiveOfficer). If it still arrives empty (no manager exists), the department manager label is shown.
  */
 export const officerLabel = (
   r: { effectiveOfficer?: string; collectionOfficer?: string; officer?: string } | null | undefined,

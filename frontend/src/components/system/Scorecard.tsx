@@ -1,8 +1,5 @@
 'use client';
-// Shared building blocks for every KPI scorecard page (تقييم السائقين، مؤشرات
-// العملاء والموردين). The backends all return the same shape — a 0–100 `score`,
-// a named `band` with its colour, and a `breakdown` of weighted metrics — so the
-// presentation is written once here instead of four times.
+// Shared building blocks for every KPI scorecard page (driver evaluation, customer and vendor indicators). The backends all return the same shape (a 0-100 `score`, a named `band` with its colour, and a `breakdown` of weighted metrics), so the presentation is written once here instead of four times.
 import { ReactNode } from 'react';
 
 export interface ScoreBreakdownItem {

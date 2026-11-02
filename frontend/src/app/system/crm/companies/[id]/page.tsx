@@ -182,7 +182,7 @@ export default function CrmCompanyDetailPage() {
         </div>
       </div>
 
-      {/* العميلُ نفسُه في الأقسام الأخرى */}
+      {/* The same customer in the other departments. */}
       <CustomerPresence reg="crm" id={String(company._id)} ar={ar} onChanged={reload} />
 
       <Tabs tabs={tabs} active={tab} onChange={setTab} />
@@ -190,7 +190,7 @@ export default function CrmCompanyDetailPage() {
       {/* Overview */}
       {tab === 'overview' && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* حساب البوابة — إنشاء إيميل وباسورد للعميل من ملفه مباشرة */}
+          {/* Portal account: create an email and password for the customer directly from the customer file. */}
           <div className="lg:col-span-2 flex justify-end">
             <ReportButton subject="customer" id={company.name} label={ar ? 'التقرير الشامل للعميل' : 'Full customer report'} />
           </div>
@@ -298,7 +298,7 @@ export default function CrmCompanyDetailPage() {
         </Section>
       )}
 
-      {/* مهامّ JP المربوطة بهذه الشركة — تُضاف من هنا. */}
+      {/* JP tasks linked to this company; added from here. */}
       <JpTaskPanel section="crm" kind="company" refId={String(company._id)} ar={ar} />
 
       {/* Add modal */}

@@ -1,24 +1,12 @@
 /**
- * تثبيتُ شحنات المنصّة في قسم طلبات الشحنات.
- *
- * ── لماذا تُثبَّت ولا تُقرأ ─────────────────────────────────────────────────
- * قسمُ «منصّة الأوبريشن» يقرأ من نظامٍ خارجيّ لحظةً بلحظة: إن انقطع انقطع
- * القسم، ولا تُحلَّل بياناتُه ولا تُفلتَر إلّا بما يسمح به. وقسمُ طلبات الشحنات
- * نظامُنا: يُحلِّل ويُفلتِر ويُصدِّر ويطبع البوليصة. فالشحنةُ تُنسخ إليه ساعةَ
- * تُنشأ هناك، فيبقى نظامُنا كاملًا حتى لو توقّفت المنصّة.
- *
- * ── ورقمُ كشف التخريج يبقى رقمَهم ──────────────────────────────────────────
- * لا يُعاد ترقيمُ المنقول: يبقى رقمُ كشف التخريج كما هو فيكمل الفريقُ عليه حين
- * ينتقل، وشحناتُ النظام تكمل على السلسلة نفسِها.
- *
- * ويُستدعى من `opsPoll` كلَّ دورة — كلُّ ما وصل من المنصّة يُثبَّت عندنا فورًا.
+ * Persists platform shipments into the shipment orders section, so our system stays complete, filterable and printable even if the platform stops.
+ * The release sheet number stays the platform's number; migrated shipments are not renumbered and system shipments continue on the same series.
+ * Called from `opsPoll` every cycle.
  */
 const n = (v) => (v === null || v === undefined ? '' : String(v).trim());
 const num = (v) => { const x = Number(v); return Number.isFinite(x) ? x : null; };
 const date = (v) => { if (!v) return null; const d = new Date(v); return Number.isNaN(d.getTime()) ? null : d; };
-// المنصّةُ تكتب الاسمَ بشكلين: `{ar,en}` مباشرةً، و`{name:{ar,en}}` للمراجع
-// (النوع، الفرع، الحمولة). قراءةُ الشكل الأوّل وحدَه كانت تُفرغ كلَّ عمودٍ
-// مرجعيّ — وهي أعمدةٌ تُفلتَر وتُجمَّع بها التحليلات.
+// The platform writes a name in two shapes: `{ar,en}` directly, and `{name:{ar,en}}` for references (type, branch, load). Reading only the first shape emptied every reference column, and those columns are filtered and aggregated in analytics.
 const label = (v) => {
   if (!v) return '';
   if (typeof v !== 'object') return n(v);
@@ -32,7 +20,7 @@ const STATUS = {
   late: 'late', invoiced: 'invoiced', cancelled: 'cancelled', canceled: 'cancelled',
 };
 
-/** صفُّ المنصّة → مستندُ قسمنا. */
+/** Platform row to our section's document. */
 function mapShipment(x) {
   const car = x.car || {};
   const owner = car.owner || {};
@@ -46,10 +34,8 @@ function mapShipment(x) {
     toCity: label(x.address_to),
     quantity: num(x.qty),
     customerName: n(user.name),
-    // ── اسمُ السائق ورقمُه ────────────────────────────────────────────────
-    // صفُّ السائق في المنصّة لا يحمل `name`: يحمل جنسيّتَه ورقمَ إقامته
-    // و`company_name` — وهو الاسمُ المعروض. ورقمُه في حساب المستخدم المرتبط
-    // به إن وُجد، وإلّا فهو بلا رقمٍ ولا يُخترَع له واحد.
+    // Driver name and number.
+    // The platform driver row has no `name`: it carries nationality, residence number and `company_name`, which is the displayed name. His number comes from the linked user account if there is one; otherwise he has no number and none is invented.
     driverName: n(x.driver && (x.driver.company_name || x.driver.sponsor_name))
       || n(x.driver && x.driver.user && x.driver.user.name)
       || n(x.driver && x.driver.admin && x.driver.admin.name),
@@ -57,16 +43,13 @@ function mapShipment(x) {
       || n(x.driver && x.driver.admin && x.driver.admin.phone),
     vehicleName: label(car.name) || n(car.plate_number),
     vehiclePlate: n(car.plate_number) || n(car.car_number),
-    // المورّدُ في هذا النموذج ليس حقلًا: هو مالكُ الشاحنة — الشركةُ التي
-    // نشتري منها النقلة، بسجلّها التجاريّ وشروط سدادها.
+    // The supplier in this model is not a field: it is the truck owner, the company we buy the trip from, with its commercial register and payment terms.
     supplierName: require('../utils/arLetters').arLetters(n(owner.owner_name)),
-    // المندوبُ هو `delegate`، لا `reference_num`. الأخيرُ رقمُ مرجعٍ عندهم،
-    // وكان يُكتب في خانة الاسم فيُقرأ «١٢٣٤» مندوبًا.
+    // The rep is `delegate`, not `reference_num`. The latter is their reference number and was written into the name field, showing a number as the rep.
     agentName: n(x.delegate && x.delegate.name),
     externalRef: n(x.reference_num),
-    // ── ما كانت التحليلاتُ تجمّع به ولا يُنقَل ──────────────────────────────
-    // النوعُ والفرعُ والحمولةُ والطول: أعمدةٌ تُفلتَر وتُجمَّع في صفحاتنا، وكانت
-    // فارغةً في كلّ صفٍّ منقول لأنّها ببساطة لم تُقرأ من الحمولة.
+    // Analytics grouping fields that were not carried over.
+    // Type, branch, load and length are columns filtered and aggregated on our pages, and were empty on every migrated row because they were simply not read from the payload.
     truckType: label(x.truck_type),
     truckLength: label(x.truck_size),
     cargoType: label(x.load_type),
@@ -86,18 +69,13 @@ function mapShipment(x) {
   };
 }
 
-/**
- * يثبّت دفعةً من شحنات المنصّة. لا يلمس شحناتِنا أبدًا — المطابقةُ بمعرّف
- * المنصّة، وشحناتُنا لا معرّفَ خارجيًّا لها.
- */
+/** Persists a batch of platform shipments. It never touches our own shipments: matching is by platform id and ours have no external id. */
 async function upsertPlatformShipments(items) {
   if (!Array.isArray(items) || !items.length) return { created: 0, updated: 0 };
   const ShipmentOrder = require('../models/ShipmentOrder');
   const mapped = items.map(mapShipment).filter((m) => m.externalId);
-  // ── اسمُ العميل المعتمَد لا الوارد ──────────────────────────────────────
-  // حمولةٌ قديمةٌ تحمل صيغةَ الاسم قبل تصحيحه تعيد القديمَ فوق الصحيح. فيُردّ
-  // كلُّ اسمٍ إلى اسم طرف التحصيل المعتمَد بصيغه البديلة — راجع
-  // utils/renameOpsCustomer و opsWorkflowSyncService.
+  // Use the approved customer name, not the incoming one.
+  // An old payload carrying the pre-correction spelling would overwrite the correct one, so every name is mapped back to the approved collections party name through its alternate forms; see utils/renameOpsCustomer and opsWorkflowSyncService.
   try {
     const CollectionsParty = require('../models/CollectionsParty');
     const { fold } = CollectionsParty;
@@ -117,17 +95,12 @@ async function upsertPlatformShipments(items) {
       const c = canon[fold(m2.customerName || '')];
       if (c) m2.customerName = c;
     }
-  } catch (_) { /* الاسمُ كما ورد */ }
+  } catch (_) { /* The name as received. */ }
   if (!mapped.length) return { created: 0, updated: 0 };
 
-  // ── ومسارُ المنصّة يُسجَّل بلا سعره ───────────────────────────────────────
-  // الشحنةُ التي تأتي من المنصّة تحمل مسارًا قد لا يكون في ملفّ العميل، فيُضاف
-  // إليه: مَن ينشئ شحنةً بعدَها يجد المسارَ أمامه بدل أن يكتبه.
-  //
-  // **وسعرُها لا يُؤخَذ**: منصّةُ التشغيل تكتب بيعًا يساوي الشراء، فلو تعلّمه
-  // الملفُّ لأفسد كلَّ سعرٍ صحيحٍ فيه — وصار المقترَحُ في شاشة الإنشاء سعرَ
-  // التكلفة. السعرُ يأتي من عملنا نحن: شحنةٌ نُسعّرها، أو تصحيحٌ في «التشغيل —
-  // خاصّ»، أو تقريرُ الفروع.
+  // The platform route is recorded without its price.
+  // A platform shipment carries a route that may be missing from the customer's file, so it is added; whoever creates a shipment later finds the route there instead of typing it.
+  // Its price is NOT taken: the platform writes selling equal to purchase, so learning it would corrupt every correct price in the file and make the create screen suggest the cost price. Price comes from our own work: a shipment we price, a correction in private operations, or the branches report.
   try {
     const { learnRouteByName } = require('../utils/customerRoutes');
     const seen = new Set();
@@ -140,7 +113,7 @@ async function upsertPlatformShipments(items) {
         fromCity: m2.fromCity, toCity: m2.toCity, price: null, at: m2.pickupTime, source: 'platform',
       });
     }
-  } catch (e) { /* تعلُّمُ المسار تحسينٌ لا شرطٌ لتثبيت الشحنة */ }
+  } catch (e) { /* Learning the route is an improvement, not a requirement for persisting the shipment. */ }
 
   const ids = mapped.map((m) => m.externalId);
   const have = new Set(
@@ -149,17 +122,14 @@ async function upsertPlatformShipments(items) {
   );
 
   const ops = mapped.map((m) => {
-    // ── ملاحظةُ الرحلة لا تُمحى بفراغ المنصّة (٢٠٢٦/١٠/٢٦) ──────────────────
-    // كانت كلُّ مزامنةٍ تكتب `notes` كما وردت — فارغةً في أغلب شحنات المنصّة —
-    // فتمحو ملاحظةً كتبها فريقُنا على الشحنة خلال دقائق: «كتب ملاحظة ومش لاقيها».
-    // الفارغُ يُكتب عند الإنشاء وحدَه؛ وما كتبته المنصّةُ فعلًا يُكتب كما كان.
+    // The trip note is not erased by an empty platform value.
+    // Every sync wrote `notes` as received, usually empty for platform shipments, which wiped notes our team had written within minutes. An empty value is written only on create; a note the platform actually wrote is written as it is.
     const set = { ...m };
     const onInsert = { createdAt: new Date() };
     if (!String(set.notes || '').trim()) { delete set.notes; onInsert.notes = ''; }
     return { updateOne: {
       filter: { externalId: m.externalId },
-      // `$setOnInsert` على createdAt وحدَه: الشحنةُ المنقولة تحتفظ بتاريخ
-      // إنشائها عندهم، ولا يُعاد كتابتُه في كلّ مزامنة فتبدو جديدةً كلَّ مرّة.
+      // `$setOnInsert` on createdAt only: a migrated shipment keeps its original creation date and is not rewritten on every sync, which would make it look new each time.
       update: { $set: set, $setOnInsert: onInsert },
       upsert: true,
     } };

@@ -48,7 +48,7 @@ export default function OpsDashboardPage() {
   const { lang, isRTL } = useLanguage();
   const router = useRouter();
   const tx = opsText(lang);
-  // آخرُ لوحةٍ رآها المتصفّح تظهر فورًا ثمّ تُستبدل — راجع lib/lastSeen.
+  // The last panel the browser saw appears immediately and is then replaced; see lib/lastSeen.
   const [d, setD] = useState<Dash | null>(() => readLastSeen<Dash>(`ops:dash:${lang}|||`));
   const [loading, setLoading] = useState(() => !readLastSeen(`ops:dash:${lang}|||`));
   // No date filter by default → the dashboard shows the true full totals (matching
@@ -69,9 +69,9 @@ export default function OpsDashboardPage() {
       if (branchFilter) qs.set('branches', branchFilter);
       const ck = `ops:dash:${lang}|${dateFrom}|${dateTo}|${branchFilter}`;
       const res = await api.get<Dash & { upstreamUnavailable?: boolean; stale?: boolean }>(`/api/ops/dashboard?${qs.toString()}`);
-      // ردٌّ فارغٌ من منصّةٍ متعثّرة لا يمسح ما يُعرض.
+      // An empty reply from a struggling platform does not wipe what is shown.
       if (!res?.upstreamUnavailable && (res?.stats || res?.home)) { setD(res); writeLastSeen(ck, res); }
-      // وردٌّ «قديم» يُسأل بعده مرّةً واحدة — لا حلقةٌ إن تعثّرت المنصّة.
+      // A stale reply is asked for once more, so a struggling platform does not cause a loop.
       if (res?.stale && !retried.current) { retried.current = true; setTimeout(() => { loadRef.current?.(); }, 2500); } else if (!res?.stale) retried.current = false;
     } catch { /* keep previous */ }
     setLoading(false);

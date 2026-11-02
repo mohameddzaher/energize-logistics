@@ -1,23 +1,5 @@
 'use client';
-/**
- * ماستر الموارد البشرية — صفٌّ واحدٌ لكلّ موظّف، فيه كلُّ شيء.
- *
- * ── لماذا ────────────────────────────────────────────────────────────────
- * صفحاتُ القسم مقسَّمةٌ بحسب المستند — إقاماتٌ وجوازاتٌ وعقود — وهو التقسيمُ
- * الصحيح للعمل اليوميّ. لكنّ سؤالَ «أرِني هذا الموظّف كلَّه» أو «صدّر الملفَّ
- * بأعمدةٍ أختارها» لا تجيب عنه أيُّ واحدةٍ منها، وكان يُجاب بفتح ثلاثَ عشرةَ
- * شاشةً ولصقِ نتائجها في إكسل.
- *
- * ── وكلُّ تاريخٍ بوجهين ──────────────────────────────────────────────────
- * بجانب كلّ تاريخٍ ميلاديٍّ عمودٌ هجريٌّ يُحسَب — والمحفوظُ ميلاديٌّ وحدَه،
- * فلا يفترق الوجهان. راجع lib/hijri.
- *
- * ── ويُعدَّل في مكانه ───────────────────────────────────────────────────────
- * كلُّ خانةٍ من حقول الموظّف تُفتح بالضغط (MasterCell — الخانةُ نفسُها في صفحات
- * المجموعات)، والحفظُ يبثّ `hr:master` و`hr:employee` فتتحدّث بقيّةُ القسم. أمّا
- * الهجريُّ والأيّامُ وعددُ العهد فمشتقّةٌ لا تُكتب. وفتحُ الملفّ صار زرًّا في عمود
- * الإجراءات — الضغطُ على الصفّ كلِّه كان يسرق الضغطةَ من الخانة.
- */
+/** HR master: one row per employee holding everything. Section pages are split by document, which suits daily work, but no single one answers "show me this employee entirely" or "export the file with columns I choose"; that took thirteen screens pasted into Excel. Every date has two faces: beside each Gregorian date is a computed Hijri column, and only the Gregorian is stored so they never diverge (see lib/hijri). Edited in place. */
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import Link from 'next/link';
 import { useLanguage } from '@/context/LanguageContext';
@@ -51,11 +33,7 @@ type Row = {
 const EMPTY_SET: Set<string> = new Set();
 const EMPTY_OPTS: ColumnFilterOption[] = [];
 
-/**
- * ما يظهر لمن لم يختر أعمدتَه بعد: الأساسيُّ الذي يُسأل عنه كلَّ يوم — من هو،
- * وأين يعمل، ومتى تنتهي إقامتُه وعقدُه. والباقي (مئةُ عمودٍ ونيّف) في قائمة
- * الأعمدة لمن أراده، واختيارُه يُحفَظ.
- */
+/** Default columns for users who have not chosen: the essentials asked about daily (who, where they work, when residency and contract expire). The remaining 100+ columns are in the column list, and the choice is saved. */
 const DEFAULT_COLS = [
   'employeeNumber', 'name', 'iqamaNumber',
   'nationality', 'jobTitle', 'department', 'branchName', 'project', 'systemStatus',
@@ -72,7 +50,7 @@ export default function HrMasterGridPage() {
   const { user } = useAuth();
   const canEdit = ['super_admin', 'admin', 'hr_manager', 'hr_specialist'].includes((user as any)?.role)
     || canEditSection((user as any)?.permissions, 'HR');
-  // الإجراءات، الرقم الوظيفيّ، الاسم، الهويّة — ثابتةٌ على اليمين.
+  // Actions, employee number, name and ID stay pinned to the right.
   const pin = usePinnedColumns(4);
   const [choices, setChoices] = useState<Choices>({});
   const loadChoices = useCallback(() => { api.get<{ choices: Choices }>('/api/hr/master/choices').then((d) => setChoices(d.choices || {})).catch(() => {}); }, []);
@@ -88,13 +66,10 @@ export default function HrMasterGridPage() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [colFilters, setColFilters] = useState<Record<string, Set<string>>>({});
-  // ── فلاترُ ظاهرة فوق الجدول ──────────────────────────────────────────────
-  // «فين الفلاتر؟» — كانت كلُّها مخبوءةً في رؤوس الأعمدة. فالشريطُ نفسُه الذي في
-  // اللوحة وصفحة الموظفين: القسم، الفئة الوظيفية، السجل التجاري، المدينة، حالة
-  // العمل، المشروع، الجنسية — بعدد كلّ قيمة، ويقرؤه الخادم كفلاتر الأعمدة.
+  // Visible filters above the table. They were all hidden in column headers, so this is the same strip as the panel and employees page (department, job category, commercial register, city, work status, project, nationality) with a count per value, read by the server like column filters.
   const [quick, setQuick] = useState<FilterValues>({});
   const guard = useLatestRequest();
-  /** فلاترُ الشريط مُرسَلةً — ما لم يكن للعمود نفسِه فلترٌ من رأسه. */
+  /** Strip filters as sent, unless the column itself has a filter from its header. */
   const appendQuick = useCallback((p: URLSearchParams, skip = '') => {
     for (const [k, v] of Object.entries(quick)) {
       if (!v || k === skip || colFilters[k]) continue;
@@ -105,8 +80,7 @@ export default function HrMasterGridPage() {
   const params = useCallback(() => {
     const p = new URLSearchParams({ page: String(page), limit: String(limit) });
     if (q.trim()) p.set('q', q.trim());
-    // `cf_<عمود>`: الخادمُ يفلتر على الخانة كما تُرسَم، في كلّ عمود — راجع
-    // hrMasterController.gridCell. (كان `<عمود>=` يُهمَل في كلّ عمودٍ غير «قابلٍ للفلترة».)
+    // `cf_<column>`: the server filters on the cell as rendered, for every column (a plain `<column>=` was ignored for non-filterable columns). See hrMasterController.gridCell.
     for (const [k, vals] of Object.entries(colFilters)) for (const v of vals) p.append(`cf_${k}`, v);
     appendQuick(p);
     return p;
@@ -135,46 +109,31 @@ export default function HrMasterGridPage() {
     return () => clearTimeout(id);
   }, [load]);
   useEffect(() => { setPage(1); }, [q, colFilters, quick]);
-  // كلُّ تعديلٍ في أيّ شاشةٍ في القسم يصل هنا — والعكس. راجع hr:master.
+  // Every edit on any screen of the section arrives here, and the reverse. See hr:master.
   useSocket('hr:master', useCallback(() => { load(); loadChoices(); }, [load, loadChoices]));
   useSocket('hr:employee', useCallback(() => load(), [load]));
 
-  // ── الأعمدة: كلُّ حقلٍ، وبجانب كلّ تاريخٍ هجريُّه ──────────────────────
+  // Columns: every field, with its Hijri beside each date.
   const allCols = useMemo(() => {
     const base: { key: string; label: string; type: string; hijriOf?: string; daysOf?: string }[] = [
       { key: 'employeeNumber', label: t('الرقم الوظيفي', 'Employee no.'), type: 'text' },
       { key: 'name', label: t('الموظف', 'Employee'), type: 'text' },
       { key: 'iqamaNumber', label: t('رقم الهوية / الإقامة', 'ID / Iqama no.'), type: 'text' },
     ];
-    // ── والعمودُ المثبَّتُ لا يُعرَض مرّةً ثانيةً في القائمة ──────────────────
-    // الرقمُ الوظيفيُّ والاسمُ مثبَّتان أعلاه، ويعودان في أعمدة الخادم باسمَي
-    // `employeeNumber` و`arabicName` — فيظهران مرّتين في قائمة الاختيار،
-    // ويُعلَّم عليهما فيتكرّران في الجدول وفي الملفّ.
+    // A pinned column is not listed again. Employee number and name are pinned above and also come back in the server columns as `employeeNumber` and `arabicName`, so they would appear twice in the picker and be duplicated in the table and file.
     const PINNED = new Set(['employeeNumber', 'arabicName', 'name', 'iqamaNumber']);
-    // ── ولا يُولَّد توأمٌ هجريٌّ يرسله الخادمُ أصلًا ──────────────────────────
-    // الخادمُ يولّد لكلّ تاريخٍ توأمَه الهجريَّ في `config/hrFields` ويرسله
-    // عمودًا من نوع `hijri` بالمفتاح `<key>Hijri`. وكانت هذه الحلقةُ تولّده
-    // ثانيةً — فيظهر العمودُ **مرّتين**.
-    //
-    // وأسوأُ من التكرار أنّ النسختين تختلفان في المصدر: المُولَّدةُ هنا تقرأ
-    // التاريخَ الميلاديَّ وتحوّله، والقادمةُ من الخادم قيمتُها **نصٌّ هجريٌّ
-    // جاهز**. فعند التصدير يُقرأ ذلك النصُّ تاريخًا ميلاديًّا («1448-07-08» سنةَ
-    // ألفٍ وأربعمئةٍ وثمانٍ وأربعين ميلاديّة) ثمّ يُحوَّل هجريًّا مرّةً ثانية —
-    // فيخرج في الملفّ تاريخٌ لا علاقةَ له بشيء. وهو العمودُ الذي قيل إنّ
-    // تاريخَه خطأ.
+    // Do not generate a Hijri twin the server already sends. The server generates each date's Hijri twin in `config/hrFields` as a `hijri` column keyed `<key>Hijri`; generating it again showed the column twice. Worse, the two differ in source: the generated one converts the Gregorian date, the server's value is ready Hijri text. On export that text was read as a Gregorian date ("1448-07-08" as year 1448 AD) and converted to Hijri again, giving a meaningless date.
     const serverHijri = new Set(cols.filter((c: any) => c.type === 'hijri').map((c: any) => c.key));
     for (const c of cols) {
       if (PINNED.has(c.key)) continue;
-      // عمودٌ هجريٌّ من الخادم: يُقرأ من أصله الميلاديّ (`of`) لا من نصّه.
+      // Hijri column from the server: read from its Gregorian source (`of`), not from its text.
       if (c.type === 'hijri') {
         base.push({ key: c.key, label: ar ? c.ar : c.en, type: 'hijri', hijriOf: (c as any).of || c.key.replace(/Hijri$/, '') });
         continue;
       }
       base.push({ key: c.key, label: ar ? c.ar : c.en, type: c.type });
       if (c.type === 'date' && !serverHijri.has(`${c.key}Hijri`)) {
-        // ── واسمُ العمودِ الهجريِّ لا يحمل «الميلادي» ───────────────────────
-        // الخادمُ يسمّي عمودَ التاريخ «تاريخ الانتهاء الميلادي» (راجع
-        // config/hrFields)، فإلحاقُ «(هجري)» به يعطي «الميلادي (هجري)».
+        // The Hijri column name must not carry "Gregorian". The server names the date column e.g. "expiry date (Gregorian)" (see config/hrFields), so appending "(Hijri)" would read "Gregorian (Hijri)".
         const baseLabel = (ar ? c.ar : c.en)
           .replace(' الميلادي', '').replace(' (ميلادي)', '').replace(' (Gregorian)', '');
         base.push({
@@ -182,13 +141,9 @@ export default function HrMasterGridPage() {
           label: ar ? `${baseLabel} الهجري` : `${baseLabel} (Hijri)`,
           type: 'hijri', hijriOf: c.key,
         });
-        // ── والمدّةُ بالأيّام تلي انتهاءَها ───────────────────────────────────
-        // التاريخُ يقول متى، والمدّةُ تقول كم بقي — وهي السؤالُ الذي يُفتَح
-        // الجدولُ لأجله. وتقع بعد عمودِ انتهائها مباشرةً فتُقرأ معه، ولها اسمٌ
-        // صريحٌ لأنّ خمسةَ أعمدةٍ هنا عنوانُها «تاريخ الانتهاء» نفسُه.
+        // Days remaining follows its expiry column: the date says when, the days say how much is left. It sits right after its expiry column, with an explicit name since five columns here are headed "expiry date".
       }
-      // ── والمدّةُ بالأيّام تلي انتهاءَها، سواءٌ وُلِّد التوأمُ هنا أم جاء ─────
-      // كانت داخل شرطِ توليدِ التوأم، فلو لم يُولَّد سقطت معه.
+      // Days remaining follows its expiry whether the twin was generated here or came from the server; it used to sit inside the twin-generation condition and vanished with it.
       if (c.type === 'date' && isExpiryField(c.key)) {
         base.push({ key: `${c.key}__days`, label: daysColLabel(c.key, ar), type: 'number', daysOf: c.key });
       }
@@ -198,19 +153,16 @@ export default function HrMasterGridPage() {
   }, [cols, ar]);
 
   const scope = exportScopeLabels(ar);
-  // «الكلّ» نداءٌ ثانٍ مجرَّدٌ من البحث وفلاتر الأعمدة والترقيم — وإلّا كان
-  // الاسمان لملفٍّ واحدٍ ناقص.
+  // "All" is a second call without search, column filters and pagination; otherwise the two names would export one incomplete file.
   const fetchAllForExport = async () => {
     const d = await api.get<any>('/api/hr/master/grid?limit=100000');
     return [{ name: t('الماستر', 'Master'), rows: (d.rows || []) as any, columns: exportCols }];
   };
 
   const chooserCols: ChooserColumn[] = allCols.map((c, i) => ({ key: c.key, label: c.label, locked: i < 3 }));
-  // (المفتاحُ `v2`: الاختيارُ القديمُ حُفظ مقصوصًا على أربعة أعمدة — راجع useVisibleColumns.)
+  // Key `v2`: the old saved choice was truncated to four columns (see useVisibleColumns).
   const { visible, setVisible: saveVisible } = useVisibleColumns('hr:master:grid:cols:v2', chooserCols, { defaults: DEFAULT_COLS });
-  // ── والتاريخُ وتوأمُه الهجريُّ يظهران معًا ويختفيان معًا ──────────────────
-  // هما وجهان لتاريخٍ واحد، ومكانُ أحدِهما بعد الآخر مباشرةً. فمن أظهر
-  // الميلاديَّ ظهر هجريُّه بجانبه (والعكس)، ولا يبقى أحدُهما وحدَه.
+  // A date and its Hijri twin show and hide together, one right after the other; showing the Gregorian shows its Hijri (and the reverse), never one alone.
   const setVisible = (next: string[]) => {
     const prev = new Set(visible); const out = new Set(next);
     for (const c of allCols) {
@@ -222,9 +174,9 @@ export default function HrMasterGridPage() {
     }
     saveVisible(allCols.map((c) => c.key).filter((k) => out.has(k)));
   };
-  // الثلاثةُ الأولى ثابتةٌ دائمًا — حتّى لو حُفظ اختيارٌ قديمٌ قبل تثبيت الهويّة.
+  // The first three are always pinned, even if an older choice was saved before ID was pinned.
   const shown = allCols.filter((c, i) => i < 3 || visible.includes(c.key));
-  // الحقلُ الذي يُعدَّل: عمودٌ من أعمدة الخادم، لا مشتقٌّ (هجريّ، أيّام، عهد).
+  // The editable field: a server column, not a derived one (Hijri, days, custody).
   const colMap = useMemo(() => new Map(cols.map((c) => [c.key, c])), [cols]);
 
   const cellOf = (r: Row, c: typeof allCols[number]) => {
@@ -232,12 +184,9 @@ export default function HrMasterGridPage() {
     if (c.key === 'name') return r.name || '—';
     if (c.key === 'custodyCount') return r.custodyCount || 0;
     if (c.key === 'iqamaNumber') return r.values.iqamaNumber || r.values.nationalId || '';
-    // الخادمُ يرسل التوأمَ الهجريَّ مع الصفّ (راجع hrMasterController.grid)،
-    // والحسابُ في المتصفّح يبقى احتياطًا لنسخةٍ أقدمَ من الخادم — فلا شاشةٌ
-    // فارغةٌ إن لم يصل الحقل.
+    // The server sends the Hijri twin with the row (see hrMasterController.grid). Client-side computation stays as a fallback for an older server so the cell is never empty.
     if (c.hijriOf) return (r.values[c.key] as string) || gregorianToHijri(r.values[c.hijriOf]) || '';
-    // الأيّامُ تُحسَب عند القراءة — راجع daysUntil. والفارغُ يبقى فارغًا لا صفرًا:
-    // «بلا تاريخ» غيرُ «ينتهي اليوم».
+    // Days are computed at read time (see daysUntil). Empty stays empty, not zero, since "no date" differs from "expires today".
     if (c.daysOf) { const n = daysUntil(r.values[c.daysOf] as any); return n === null ? '' : n; }
     const v = r.values[c.key];
     if (v === true) return t('نعم', 'Yes');
@@ -248,8 +197,7 @@ export default function HrMasterGridPage() {
   const exportCols: ExportColumn[] = shown.map((c) => ({
     header: c.label, key: c.key, width: 18,
     type: c.type === 'date' ? 'date' : c.type === 'hijri' ? 'hijri' : c.type === 'number' ? 'number' : 'text',
-    // الهجريُّ يُصدَّر بتاريخه الميلاديّ ليصير خانةَ تاريخٍ حقيقيّةً تُعرَض
-    // هجريًّا — لا نصًّا نوعُه General.
+    // Hijri is exported with its Gregorian date so it is a real date cell displayed as Hijri, not General-type text.
     transform: (_v: any, row: any) => (c.hijriOf ? (row.values?.[c.hijriOf] ?? '') : cellOf(row as Row, c)),
   }));
 
@@ -263,16 +211,7 @@ export default function HrMasterGridPage() {
     if (!ok) notify(t('المتصفّح منع نافذة الطباعة', 'The browser blocked the print window'), 'error');
   };
 
-  /**
-   * ── قيمُ عمودٍ للفلتر: من كلّ الموظّفين المطابقين، لا من الصفحة ────────────
-   * كانت تُعَدّ من الخمسين المعروضين: «داخل النظام ٣٧ · — ٨ · خارج ٥» عددُ
-   * الصفحة الأولى وحدَها. فمن اختار «—» ردّ الخادمُ كلَّ مَن خانتُه فارغةٌ في
-   * الشركة، فعُرض أوّلُ خمسين منهم، فقالت القائمةُ «— ٥٠» — وكأنّ الفلتر كذب.
-   *
-   * فتُحسَب عند فتح القمع: كلُّ الموظّفين المطابقين لبقيّة الفلاتر (لا لفلتر هذا
-   * العمود نفسِه — كإكسل: ترى قيمَ العمود كلَّها وتختار منها)، وبدالّة العرض
-   * نفسِها (`cellOf`)، فما يُعَدّ هو ما يظهر في الخانة.
-   */
+  /** Column filter values come from all matching employees, not the page. They used to be counted from the 50 shown, so choosing "—" returned every employee with an empty cell, the first 50 were shown and the list said "— 50", as if the filter lied. They are computed when the funnel opens: all employees matching the other filters (not this column's own, like Excel), with the same display function (`cellOf`), so what is counted is what shows in the cell. */
   const [colOpts, setColOpts] = useState<Record<string, ColumnFilterOption[]>>({});
   const [colLoading, setColLoading] = useState<string>('');
   useEffect(() => { setColOpts({}); }, [q, colFilters, quick]);
@@ -280,14 +219,14 @@ export default function HrMasterGridPage() {
     if (colOpts[key]) return;
     setColLoading(key);
     try {
-      // القيمُ يعدّها الخادمُ بالخانة التي يفلتر بها — فالعددُ هو ما يُرجعه الاختيار.
+      // Values are counted by the server on the cell it filters by, so a count equals what picking it returns.
       const p = new URLSearchParams({ field: key });
       if (q.trim()) p.set('q', q.trim());
       for (const [k, vals] of Object.entries(colFilters)) if (k !== key) for (const v of vals) p.append(`cf_${k}`, v);
       appendQuick(p, key);
       const d = await api.get<any>(`/api/hr/master/grid/options?${p.toString()}`);
       setColOpts((prev) => ({ ...prev, [key]: (d.values || []) as ColumnFilterOption[] }));
-    } catch { /* القمعُ يبقى بلا قيم، والجدولُ كما هو */ }
+    } catch { /* The funnel stays without values and the table is unchanged. */ }
     setColLoading('');
   };
 
@@ -307,10 +246,7 @@ export default function HrMasterGridPage() {
           className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-600 hover:text-slate-900 text-sm font-semibold">
           <Printer className="w-4 h-4" />{t('طباعة PDF', 'Print PDF')}
         </button>
-        {/* ── نطاقان: ما بعد الفلتر، والماستر كلُّه ────────────────────────
-            البحثُ وفلاتر الأعمدة تُطبَّق على الخادم والصفحةُ مرقَّمة، فما في
-            اليد صفحةٌ من شريحة. وكان الخيارُ واحدًا اسمُه «المعروض» — فمن أراد
-            أمر النقل كاملًا لم يجد إليه سبيلًا إلّا رفعَ الفلاتر وتقليبَ الصفحات. */}
+        {/* Two scopes: after the filter, and the whole master. Search and column filters run on the server and the page is paginated, so the loaded data is one page of a slice. With only "shown", exporting a full transfer order meant clearing filters and flipping pages. */}
         <ExportMenu fileName="hr-master" lang={ar ? 'ar' : 'en'}
           options={[
             { key: 'shown', label: scope.shown, sheets: [{ name: t('الماستر', 'Master'), rows: rows as any, columns: exportCols }] },
@@ -378,10 +314,7 @@ export default function HrMasterGridPage() {
                   </td>
                   {shown.map((c, i) => {
                     const st = r.statuses[c.hijriOf || c.key];
-                    // ── والهجريُّ يُعدَّل كما يُعدَّل الميلاديّ ────────────────
-                    // «ممكن واحد يجدّد ويكتب بالهجري» — فالخانةُ تُفتَح ويُكتب
-                    // فيها، والخادمُ يحوّلها إلى ميلاديٍّ ويكتبها في التاريخ
-                    // نفسِه (راجع updateFields)، فيسمع العمودان معًا بلا مزامنة.
+                    // Hijri is editable like Gregorian: the cell opens and takes input, and the server converts it to Gregorian and writes the same date (see updateFields), so both columns update with no sync.
                     const field = c.hijriOf
                       ? { key: c.key, ar: c.label, en: c.label, type: 'hijri' }
                       : colMap.get(c.key);
@@ -391,11 +324,7 @@ export default function HrMasterGridPage() {
                     if (c.key === 'name') {
                       return (
                         <td key={c.key} {...props}>
-                          {/* ── واسمُ الموظّف لا يأخذ نصفَ الشاشة ──────────────
-                              العمودُ `whitespace-nowrap` بلا حدٍّ أعلى، فاسمٌ
-                              رباعيٌّ يمدّه حتّى تختفي الأعمدةُ التي يُفتَح
-                              الجدولُ من أجلها. حدٌّ أعلى وقصٌّ، والاسمُ كاملًا
-                              في التلميح وفي صفحته. نظيرُ جدول الموظّفين. */}
+                          {/* Cap the employee name width and truncate: an uncapped long name hides the columns the table exists for. The full name is in the tooltip and on its page. Same as the employees table. */}
                           <Link href={`/system/hr/employees/${r._id}`}
                             title={r.name || ''}
                             className="block max-w-[15rem] truncate font-semibold text-slate-900 hover:text-[#f37121]">{r.name || '—'}</Link>

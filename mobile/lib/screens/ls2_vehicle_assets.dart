@@ -6,8 +6,7 @@ import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 
-/// أصول المركبة — كل الكاوتشات المركّبة على مركبة بأماكنها (المحور/الموضع)،
-/// مع السطحة/التيدر المركّبين وسجل أحداث الأصول — GET /api/ls2/assets/vehicle/:plate.
+/// Vehicle assets: all tires mounted on a vehicle with their positions (axle/slot), the mounted flatbed/trailer, and the asset event log. GET /api/ls2/assets/vehicle/:plate
 class Ls2VehicleAssetsScreen extends StatefulWidget {
   final String plate;
   const Ls2VehicleAssetsScreen({super.key, required this.plate});
@@ -18,8 +17,7 @@ class Ls2VehicleAssetsScreen extends StatefulWidget {
 List<Map<String, dynamic>> _l(dynamic v) =>
     v is List ? List<Map<String, dynamic>>.from(v.whereType<Map>().map((e) => Map<String, dynamic>.from(e))) : const [];
 
-// نفس خانات درجة الكاوتش في شاشة الأصول: «مجدد» اندمجت في «مستعمل»، و«في
-// المصنع» درجة بتتولد من الحالة in_repair.
+// Same tire-grade slots as the assets screen: the retread grade was merged into used, and the in-factory grade is derived from the in_repair status.
 const _conditions = {
   'new': ('جديد', 'New', T.success),
   'used': ('مستعمل', 'Used', T.info),
@@ -55,8 +53,7 @@ class _Ls2VehicleAssetsScreenState extends State<Ls2VehicleAssetsScreen> {
   Future<void> _load() async {
     try {
       final p = Uri.encodeComponent(widget.plate);
-      // الأصول والخط الزمني مع بعض. الخط الزمني بيلم الكاوتش وقطع الغيار
-      // والإصلاحات والصيانة في مكان واحد — نفس اللي على الموقع بالظبط.
+      // Assets and timeline together. The timeline merges tires, spare parts, repairs and maintenance in one place, same as the web.
       final results = await Future.wait([
         Api.instance.get('/api/ls2/assets/vehicle/$p'),
         Api.instance.get('/api/ls2/assets/vehicle/$p/history').catchError((_) => <String, dynamic>{}),
@@ -72,7 +69,7 @@ class _Ls2VehicleAssetsScreenState extends State<Ls2VehicleAssetsScreen> {
     }
   }
 
-  // فلتر نوع الحركة في الخط الزمني — فاضي = الكل
+  // Timeline movement-type filter; empty means all.
   String _kind = '';
   static const _kinds = {
     'tire': ('كاوتش', 'Tires', T.orange),
@@ -106,7 +103,7 @@ class _Ls2VehicleAssetsScreenState extends State<Ls2VehicleAssetsScreen> {
               : RefreshIndicator(
                   onRefresh: _load,
                   child: ListView(padding: const EdgeInsets.all(14), children: [
-                    // ملخص
+                    // Summary
                     FadeSlideIn(
                       child: AppCard(
                         topAccent: T.navy,
@@ -129,21 +126,21 @@ class _Ls2VehicleAssetsScreenState extends State<Ls2VehicleAssetsScreen> {
                         ]),
                       ),
                     ),
-                    // كاوتشات الرأس
+                    // Truck head tires
                     if (head.isNotEmpty) ...[
                       const SizedBox(height: 12),
                       _sectionTitle(tr('كاوتشات الرأس', 'Head tires'), head.length),
                       const SizedBox(height: 6),
                       ...head.map(_tireRow),
                     ],
-                    // كاوتشات التيدر
+                    // Trailer tires
                     if (trailerTires.isNotEmpty) ...[
                       const SizedBox(height: 12),
                       _sectionTitle(tr('كاوتشات التيدر', 'Trailer tires'), trailerTires.length),
                       const SizedBox(height: 6),
                       ...trailerTires.map(_tireRow),
                     ],
-                    // الاستبن
+                    // Spare tire
                     if (spares.isNotEmpty) ...[
                       const SizedBox(height: 12),
                       _sectionTitle(tr('الاستبن', 'Spare'), spares.length),
@@ -152,7 +149,7 @@ class _Ls2VehicleAssetsScreenState extends State<Ls2VehicleAssetsScreen> {
                     ],
                     if (tires.isEmpty)
                       Padding(padding: const EdgeInsets.only(top: 30), child: EmptyState(icon: Icons.tire_repair_outlined, title: tr('لا توجد كاوتشات مسجّلة على هذه المركبة', 'No tires registered on this vehicle'))),
-                    // الخط الزمني المدموج: كاوتش + قطع غيار + إصلاح + صيانة
+                    // Merged timeline: tires + spare parts + repairs + maintenance
                     if (histAll.isNotEmpty) ...[
                       const SizedBox(height: 14),
                       _sectionTitle(tr('تاريخ المركبة', 'Vehicle history'), histAll.length),
@@ -262,7 +259,7 @@ class _Ls2VehicleAssetsScreenState extends State<Ls2VehicleAssetsScreen> {
     );
   }
 
-  // تفاصيل فردة + تاريخها الكامل (عبر كل المركبات) + تعليم/إلغاء الاستبن.
+  // Tire details with its full history across all vehicles, plus mark/unmark as spare.
   Future<void> _openTire(Map<String, dynamic> t) async {
     List<Map<String, dynamic>> events = [];
     try {

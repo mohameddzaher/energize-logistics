@@ -10,9 +10,7 @@ import '../ui/stat_grid.dart';
 import '../ui/search_field.dart';
 import 'performance_evaluations.dart';
 
-/// تقييم الأداء (للإدارة العليا) — نظرة كل الأقسام: التغطية، متوسط النسبة،
-/// التوزيع حسب النطاق، وأداء كل قسم. مطابقة لصفحة الويب
-/// /system/performance/overview.
+/// Performance evaluation (top management): all-sections overview with coverage, average percentage, distribution by band, and each section's performance. Mirrors web /system/performance/overview.
 class PerformanceOverviewScreen extends StatefulWidget {
   const PerformanceOverviewScreen({super.key});
   @override
@@ -24,9 +22,9 @@ class _PerformanceOverviewScreenState extends State<PerformanceOverviewScreen> {
   bool _loading = true;
   String? _error;
   String _q = '';
-  // متحكِّمُ البحث عند الشاشة: الخانةُ وسطَ قائمةٍ تُبنى من جديد، فلا يضيع نصُّها والكلمةُ تُرشِّح.
+  // Search controller owned by the screen: the field sits in the middle of a list that is rebuilt, so its text is not lost while the term still filters.
   final _searchCtl = TextEditingController();
-  // الفترة ربعٌ كالويب (currentPeriod) ويُتنقّل بينها بالأسهم.
+  // The period is a quarter as on the web (currentPeriod), navigated with arrows.
   int _year = DateTime.now().year;
   int _quarter = (DateTime.now().month - 1) ~/ 3 + 1;
   int _seq = 0;
@@ -72,7 +70,7 @@ class _PerformanceOverviewScreenState extends State<PerformanceOverviewScreen> {
     }
   }
 
-  /// نطاق التقييم (للّون) من إعدادات الخادم — bandOf في الويب.
+  /// Evaluation band (for color) from the server settings, bandOf on the web.
   Color _bandFor(dynamic v) {
     if (v is! num) return T.navy;
     final bands = List<Map<String, dynamic>>.from(_data?['settings']?['bands'] ?? []);
@@ -99,7 +97,7 @@ class _PerformanceOverviewScreenState extends State<PerformanceOverviewScreen> {
     return AppScaffold(
       title: Text(tr('نظرة كل الأقسام', 'All Departments')),
       actions: [
-        // صفٌّ لكلّ قسمٍ في الفترة المختارة — نطاقٌ واحد كالويب.
+        // One row per section for the selected period; a single band, as on the web.
         ExportButton(
           fileName: 'performance-overview-$_periodKey',
           sheetName: tr('تفصيل الأقسام', 'Department breakdown'),
@@ -189,7 +187,7 @@ class _PerformanceOverviewScreenState extends State<PerformanceOverviewScreen> {
                                 Expanded(child: Text((dep['department'] ?? '—').toString(), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14))),
                                 if (dep['avgPercentage'] != null) Chip2(_pct(dep['avgPercentage']), _bandFor(dep['avgPercentage'])),
                               ]),
-                              // من أيّ صفحةِ قسمٍ يُقيَّم — كما في الويب.
+                              // Which section page it is evaluated from, as on the web.
                               Text(
                                 (dep['sectionAr'] ?? '').toString().isNotEmpty
                                     ? tr('يُقيَّم من صفحة: ${dep['sectionAr']}', 'Evaluated from: ${dep['section']}')
@@ -244,8 +242,7 @@ class _PerformanceOverviewScreenState extends State<PerformanceOverviewScreen> {
       );
 }
 
-/// طلبات تعديل التقييم — قيد الانتظار تُقرَّر (موافقة/رفض بملاحظة) والمقرَّرة
-/// تُراجَع. مطابقة لـ /system/performance/requests.
+/// Evaluation edit requests: pending ones are decided (approve/reject with a note) and decided ones are reviewed. Mirrors /system/performance/requests.
 class PerformanceEditRequestsScreen extends StatefulWidget {
   const PerformanceEditRequestsScreen({super.key});
   @override
@@ -257,7 +254,7 @@ class _PerformanceEditRequestsScreenState extends State<PerformanceEditRequestsS
   bool _loading = true;
   String? _error;
   String? _busy;
-  // البطاقة تُفرِد قائمتها: '' / pending / approved / rejected.
+  // The card isolates its list: '' / pending / approved / rejected.
   String _show = '';
 
   void _onLive() => _load();

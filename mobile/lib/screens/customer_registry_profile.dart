@@ -9,12 +9,8 @@ import '../ui/widgets.dart';
 import 'fleet_customer_presence.dart';
 import '../ui/portal_account_card.dart';
 
-/// ملفُّ العميل — مطابقٌ لصفحة الويب /system/shipment-orders/customers/[id]
-/// و/system/operations/customers/[id] (وهما شاشةٌ واحدة).
-///
-/// أرقامُه أوّلًا: كم رحلةً وبكم، ثمّ المساراتُ التي **يعمل** عليها فعلًا
-/// موصولةً بالسعر المتّفق عليه، ثمّ قائمةُ الأسعار، ثمّ آخرُ رحلاته. والفرقُ
-/// بين الجدولين هو الفائدة: مسارٌ يُشتغَل عليه بلا سعرٍ متّفقٍ عليه يُرى بالعين.
+/// Customer profile, matching web /system/shipment-orders/customers/[id] and /system/operations/customers/[id] (one screen).
+/// Numbers first: trips and amounts, then the routes the customer actually works linked to the agreed price, then the price list, then the latest trips. The gap between the two tables is the value: a route worked without an agreed price is visible at a glance.
 class CustomerRegistryProfileScreen extends StatefulWidget {
   final String customerId;
   const CustomerRegistryProfileScreen({super.key, required this.customerId});
@@ -22,7 +18,7 @@ class CustomerRegistryProfileScreen extends StatefulWidget {
   State<CustomerRegistryProfileScreen> createState() => _CustomerRegistryProfileScreenState();
 }
 
-/// «١–٥: 2,200 · ٦ فأكثر: 2,400»
+/// Example: "1-5: 2,200 · 6 and above: 2,400"
 String _tiersText(dynamic tiers) => List.from(tiers ?? []).map((t) {
       final a = t['minTrucks'], b = t['maxTrucks'];
       final range = b == null ? tr('$a فأكثر', '$a+') : (a == b ? '$a' : '$a–$b');
@@ -79,7 +75,7 @@ class _CustomerRegistryProfileScreenState extends State<CustomerRegistryProfileS
     super.dispose();
   }
 
-  /// شرائحُ السعر بعدد السيارات — نظيرُ `TierEditor` في الموقع.
+  /// Price tiers by vehicle count, counterpart of `TierEditor` on the web.
   Future<void> _editTiers(Map<String, dynamic> route) async {
     final rows = List.from(route['tiers'] ?? []).map((t) => [
           TextEditingController(text: '${t['minTrucks'] ?? ''}'),
@@ -163,7 +159,7 @@ class _CustomerRegistryProfileScreenState extends State<CustomerRegistryProfileS
     final agreed = List<Map<String, dynamic>>.from(c['routes'] ?? []);
     final sheets = d != null ? Map<String, dynamic>.from(d['sheets'] ?? {}) : <String, dynamic>{};
     final trips = List<Map<String, dynamic>>.from(sheets['rows'] ?? []);
-    // المالُ يُخفى عمّن لا يراه — الخادمُ يحذف الحقلَ أصلًا، فلا تُرسَم بطاقةٌ فارغة.
+    // Money is hidden from those who cannot see it; the server drops the field, so no empty card is drawn.
     final money = a['purchaseTotal'] != null;
 
     return AppScaffold(
@@ -198,7 +194,7 @@ class _CustomerRegistryProfileScreenState extends State<CustomerRegistryProfileS
                         ],
                       ),
                       const SizedBox(height: 12),
-                      // «نفس العميل في: …» وحسابُ البوابة — كملفّ العميل على الويب.
+                      // "Same customer in" block and portal account, like the web customer profile.
                       CustomerPresence(reg: 'shipment', id: widget.customerId, onChanged: _load),
                       const SizedBox(height: 8),
                       PortalAccountCard(source: 'shipment_order_customer', refId: widget.customerId, name: c['name']?.toString()),
@@ -238,7 +234,7 @@ class _CustomerRegistryProfileScreenState extends State<CustomerRegistryProfileS
                       ),
                       const SizedBox(height: 12),
 
-                      // المساراتُ التي يعمل عليها فعلًا — من كشوف التشغيل.
+                      // Routes actually worked, from the operations sheets.
                       if (runRoutes.isNotEmpty) ...[
                         AppCard(
                           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -260,7 +256,7 @@ class _CustomerRegistryProfileScreenState extends State<CustomerRegistryProfileS
                                     r['price'] == null
                                         ? Chip2(tr('بلا سعر', 'no price'), T.warn)
                                         : Chip2(_money(r['price']), T.success),
-                                    // شرائحُ السعر يعدّلها مديرُ العمليّات ومديرُ النظام وحدَهما.
+                                    // Price tiers are editable only by the operations manager and the system admin.
                                     if (d['canEditTiers'] == true)
                                       IconButton(
                                         visualDensity: VisualDensity.compact,
@@ -270,7 +266,7 @@ class _CustomerRegistryProfileScreenState extends State<CustomerRegistryProfileS
                                       ),
                                   ]),
                                 )).expand((w) => [w]),
-                            // السعرُ بعدد السيارات — يُقرأ تحت مساره.
+                            // Price by vehicle count, shown under its route.
                             ...runRoutes.take(25).where((r) => List.from(r['tiers'] ?? []).isNotEmpty).map((r) => Padding(
                                   padding: const EdgeInsets.only(top: 4),
                                   child: Text('${r['from'] ?? ''} ← ${r['to'] ?? ''}: ${_tiersText(r['tiers'])}',
@@ -288,7 +284,7 @@ class _CustomerRegistryProfileScreenState extends State<CustomerRegistryProfileS
                         const SizedBox(height: 12),
                       ],
 
-                      // قائمةُ الأسعار المتّفق عليها.
+                      // Agreed price list.
                       if (agreed.isNotEmpty) ...[
                         AppCard(
                           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -315,7 +311,7 @@ class _CustomerRegistryProfileScreenState extends State<CustomerRegistryProfileS
                         const SizedBox(height: 12),
                       ],
 
-                      // الرحلاتُ صفحةً صفحة — عميلٌ له أربعةُ آلافِ كشف.
+                      // Trips page by page: a customer can have thousands of sheets.
                       AppCard(
                         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                           Text('${tr('الرحلات', 'Trips')} (${sheets['total'] ?? 0})',

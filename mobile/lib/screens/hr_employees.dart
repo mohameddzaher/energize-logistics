@@ -15,8 +15,7 @@ import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import '../ui/search_field.dart';
 
-/// الموظفون — native register: server-side search (name / iqama / number),
-/// status chips and a detail sheet per employee.
+/// Employees: native register with server-side search (name, iqama, number), status chips and a detail sheet per employee.
 class HrEmployeesScreen extends StatefulWidget {
   const HrEmployeesScreen({super.key});
   @override
@@ -24,7 +23,7 @@ class HrEmployeesScreen extends StatefulWidget {
 }
 
 const _empStatus = {
-  // «حالة العمل»: يعمل أو لا يعمل (= إنهاءُ الخدمة بحالةٍ من ثلاث) — كالموقع.
+  // Work status: working or not working (not working = service ended, with one of three states), like the web.
   'active': ('يعمل', 'Working', T.success),
   'on_leave': ('إجازة', 'On leave', T.info),
   'suspended': ('موقوف (قديم)', 'Suspended (legacy)', T.warn),
@@ -36,24 +35,21 @@ class _HrEmployeesScreenState extends State<HrEmployeesScreen> {
   bool _loading = true;
   String? _error;
   String _status = '';
-  // الفلتر المتقدّم — نفس لغة لوحة الموارد البشرية في الموقع حرفيًّا، فالسؤال
-  // الذي تسأله من المتصفّح تسأله من الهاتف وتحصل على العدد نفسه.
+  // Advanced filter, worded exactly like the web HR dashboard, so a question asked in the browser gives the same count on the phone.
   Map<String, String> _filters = {};
-  // ── ما أضافه قسمُ الأفراد من سجلّ النقل الخفيف ────────────────────────────
-  // يُنشأ الملفُّ هناك ببياناتٍ قليلة، وتُكمله الموارد البشريّة. فزرٌّ يجمعهم:
-  // ضغطةٌ تفلتر القائمةَ بهم، وضغطةٌ ثانيةٌ تعيدها.
+  // Light-transport additions: the file is created there with little data and HR completes it. One button groups them: one tap filters the list to them, a second restores it.
   int _fromB2c = 0;
   bool _b2cOnly = false;
   Timer? _debounce;
   final _qCtrl = TextEditingController();
-  // الأحدثُ وحدَه يُعرض: ردٌّ قديمٌ (أو ردُّ ما قبل المسح) لا يكتب فوق جديد.
+  // Only the latest response is shown: a stale one (or one from before a clear) never overwrites a newer one.
   int _seq = 0;
 
   @override
   void initState() {
     super.initState();
     _load();
-    // تعديلُ الماستر أو ملفّ الموظّف أو بطاقةِ السائق من المركبات يصل هنا فورًا.
+    // A master edit, employee file edit or driver card edit from vehicles arrives here immediately.
     Live.instance.on('hr:master', _onLive);
     Live.instance.on('hr:employee', _onLive);
   }
@@ -101,9 +97,7 @@ class _HrEmployeesScreenState extends State<HrEmployeesScreen> {
     return Lang.instance.ar ? (ar.isNotEmpty ? ar : en) : (en.isNotEmpty ? en : ar);
   }
 
-  // ── أفعالُ الصفّ كالموقع: تعديل · إنهاء الخدمة (يفتح الملفّ) · حذفٌ نهائيّ ──
-  // إنهاءُ الخدمة لا يُفعَل من القائمة: يُكتب سببُه وتاريخُه في ملفّ الموظّف
-  // ويُحرَس بالعهدة والتفويض — فالزرُّ يفتح الملفّ. والحذفُ لمدير النظام وحدَه.
+  // Row actions like the web: edit, end service (opens the file), permanent delete. Ending service is not done from the list: its reason and date are written in the employee file and guarded by custody and authorization checks. Delete is for the system admin only.
   void _editRow(Map<String, dynamic> e) {
     showModalBottomSheet(
       context: context,
@@ -180,7 +174,7 @@ class _HrEmployeesScreenState extends State<HrEmployeesScreen> {
   Future<void> _open(Map<String, dynamic> e) async {
     final deleted = await Navigator.push<bool>(context, MaterialPageRoute(
         builder: (c) => HrEmployeeProfileScreen(employeeId: e['_id'].toString())));
-    // حُذف السجلُّ من ملفّه: القائمةُ تُعاد قراءتُها فلا يبقى صفُّه.
+    // Record deleted from its file: reload the list so its row disappears.
     if (deleted == true && mounted) _load();
   }
 
@@ -188,7 +182,7 @@ class _HrEmployeesScreenState extends State<HrEmployeesScreen> {
   Widget build(BuildContext context) {
     return AppScaffold(
       title: Text(tr('الموظفون', 'Employees')),
-      // التصدير: المعروضُ تحت الفلتر، أو السجلُّ كلُّه — نطاقا الموقع.
+      // Export: what is shown under the filter, or the whole register (the web's two scopes).
       actions: [
         PopupMenuButton<String>(
           icon: const Icon(Icons.file_download_outlined),
@@ -254,7 +248,7 @@ class _HrEmployeesScreenState extends State<HrEmployeesScreen> {
             ),
           ]),
         ),
-        // القسم · المدينة · حالة العمل · المشروع · الجنسية — الفلترُ نفسُه (ui/hr_quick.dart).
+        // Department, city, work status, project, nationality: the same filter (ui/hr_quick.dart).
         Padding(
           padding: const EdgeInsets.fromLTRB(14, 8, 14, 0),
           child: HrQuickFilters(
@@ -320,11 +314,7 @@ class _HrEmployeesScreenState extends State<HrEmployeesScreen> {
                   : RefreshIndicator(
                       onRefresh: _load,
                       child: _rows.isEmpty
-                          // ── ولا يُقال «لا يوجد» وهو موجود ───────────────
-                          // البحثُ يُطبَّق داخلَ الفلاتر القائمة، فمن فلتر
-                          // بـ«نشط» ثمّ بحث عن واحدٍ من منتهيةِ خدمتُهم قرأ
-                          // «لا يوجد موظفون» والموظّفُ في السجلّ. فالشاشةُ
-                          // الفارغةُ تقول ما يحجب. (نفسُ الإصلاح في الويب.)
+                          // Do not say "none found" when records exist: search applies inside the current filters, so filtering by "active" and then searching for an ended employee read "no employees". The empty screen names what hides them. (Same fix on the web.)
                           ? EmptyState(
                               icon: Icons.people_alt_outlined,
                               title: tr('لا يوجد موظفون مطابقون', 'No matching employees'),
@@ -360,8 +350,7 @@ class _HrEmployeesScreenState extends State<HrEmployeesScreen> {
                                         Expanded(
                                           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                                             Text(_name(e), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5), maxLines: 1, overflow: TextOverflow.ellipsis),
-                                            // رقم الهوية أول حاجة تحت الاسم — ده اللي بيتسيرش
-                                            // بيه، ونفس ترتيب جداول الموقع بالظبط.
+                                            // Identity number first under the name: it is the lookup key, same column order as the web tables.
                                             Text([
                                               (e['idType'] == 'national_id' ? e['nationalId'] : e['iqamaNumber']),
                                               e['jobTitle'],
@@ -372,7 +361,7 @@ class _HrEmployeesScreenState extends State<HrEmployeesScreen> {
                                         ),
                                         Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
                                           Chip2(tr(st.$1, st.$2), st.$3),
-                                          // حالتُه اليوم في قسم الأفراد (إجازة · موقوف · حادث).
+                                          // His status today in the personnel section (leave, suspended, accident).
                                           if (b2cOpChip(e['b2cOpStatus']) != null)
                                             Padding(padding: const EdgeInsets.only(top: 4), child: b2cOpChip(e['b2cOpStatus'])!),
                                         ]),

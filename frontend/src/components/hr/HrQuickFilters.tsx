@@ -1,15 +1,7 @@
 'use client';
 /**
- * شريطُ الفلترة السريعة — القسم · الفئة الوظيفية · السجل التجاري · المدينة · حالة العمل · المشروع · الجنسية · المهنة في الإقامة.
- *
- * صاحبُ الشركة (٢٠٢٦/١٠/١٩): «فلتر القسم واضح… ولو اخترت قسم اللوحة تتعدل
- * أرقامها كلها» — وكذلك المدينة وحالة العمل والمشروع والجنسية، في اللوحة والماستر
- * وصفحة الموظفين. فالشريطُ لا يملك فلترًا خاصًّا: يكتب في الفلتر نفسِه الذي تقرؤه
- * لوحةُ الفلترة الكاملة والخادم (`buildFilter`) — القيمةُ مفاتيحُ الحقول نفسُها
- * مفصولةً بفاصلة — فكلُّ رقمٍ في الشاشة يُحسَب عليه.
- *
- * والعددُ بجانب كلّ قيمةٍ يُحسَب بكلّ الفلاتر **عدا** فلترها (`filterOptions`)،
- * فيرى مَن اختار «جدة» كم في كلّ قسمٍ في جدة. وفي كلّ قائمةٍ بحث.
+ * Quick filter bar: department, job category, commercial registration, city, work status, project, nationality, residency profession.
+ * It writes to the same filter that the full filter panel and the server (`buildFilter`) read, so every number on screen follows it. Counts per value use all filters except their own (`filterOptions`). Each list has search.
  */
 import { useEffect, useRef, useState } from 'react';
 import { ChevronDown, Search, X, Check } from 'lucide-react';
@@ -21,36 +13,36 @@ type Def = { key: string; values: Opt[] };
 
 export const QUICK_KEYS: { key: string; ar: string; en: string }[] = [
   { key: 'department', ar: 'القسم', en: 'Department' },
-  // إداري · سائق · فني — لموظّفي B2C والنقل الثقيل.
+  // Administrative, driver, technician: for B2C and heavy-transport employees.
   { key: 'staffCategory', ar: 'الفئة الوظيفية', en: 'Staff category' },
-  // السجلُّ التجاريّ: رقمُ السجلّ أو «فري لانسر» أو «تدريب» (صاحبُ الشركة، ٢٠٢٦/١٠/٢٠).
+  // Commercial registration: the registration number, or freelancer, or training.
   { key: 'registerNumber', ar: 'السجل التجاري', en: 'Commercial register' },
   { key: 'branchName', ar: 'المدينة', en: 'City' },
   { key: 'workStatusText', ar: 'حالة العمل', en: 'Work status' },
   { key: 'project', ar: 'المشروع', en: 'Project' },
   { key: 'nationality', ar: 'الجنسية', en: 'Nationality' },
-  // صاحبُ الشركة (٢٠٢٦/١٠/٢١).
+  // Company owner request.
   { key: 'iqamaProfession', ar: 'المهنة في الإقامة', en: 'Iqama occupation' },
 ];
 
 const split = (v: unknown) => String(v ?? '').split(',').map((x) => x.trim()).filter(Boolean);
 
 export default function HrQuickFilters({ optionsUrl, optionsParams, value, onChange, ar, keys = QUICK_KEYS, options }: {
-  /** نقطةُ الخيارات — تُمرَّر من الصفحة (راجع genPageApis). وبلا نقطةٍ تُقرأ `options`. */
+  /** Options endpoint, passed from the page (see genPageApis); without it `options` is read. */
   optionsUrl?: string;
   optionsParams?: Record<string, string>;
   value: FilterValues;
   onChange: (v: FilterValues) => void;
   ar: boolean;
-  /** فلاترُ شاشةٍ أخرى بالشكل نفسِه (لوحةُ B2C) — والافتراضُ فلاترُ الموارد البشريّة. */
+  /** Filters of another screen in the same shape (B2C board); the default is the HR filters. */
   keys?: { key: string; ar: string; en: string }[];
-  /** خياراتٌ جاءت مع ردّ الشاشة نفسِه (`{key: [{value, label, count}]}`) — فلا نداءَ ثانٍ. */
+  /** Options that came with the screen response itself (`{key: [{value, label, count}]}`), so no second call. */
   options?: Record<string, Opt[]>;
 }) {
   const t = (a: string, e: string) => (ar ? a : e);
   const [defs, setDefs] = useState<Record<string, Opt[]>>({});
   const [open, setOpen] = useState('');
-  // القائمةُ تُفتح نحو المكان المتّسع — وإلّا خرجت قائمةُ آخر فلترٍ عن الشاشة.
+  // The list opens toward the roomier side, otherwise the last filter's list overflows the screen.
   const [alignEnd, setAlignEnd] = useState(false);
   const [q, setQ] = useState('');
   const box = useRef<HTMLDivElement>(null);
@@ -70,7 +62,7 @@ export default function HrQuickFilters({ optionsUrl, optionsParams, value, onCha
 
   useEffect(() => {
     if (!open) return undefined;
-    // تُغلَق بأيّ ضغطةٍ خارجَ الفلتر المفتوح نفسِه (٢٠٢٦/١٠/٢٢) — وبزرّ Esc.
+    // Closes on any click outside the open filter itself, and on Esc.
     const close = (e: Event) => {
       const el = (e.target as HTMLElement | null)?.closest?.('[data-qf-field]');
       if (!el || el.getAttribute('data-qf-field') !== open) setOpen('');

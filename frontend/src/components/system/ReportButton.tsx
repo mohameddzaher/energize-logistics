@@ -1,9 +1,6 @@
 'use client';
-// «تقرير» — the button that turns any profile page into a printed report.
-//
-// Dropped onto a vehicle, customer, employee, vendor or driver profile with the
-// subject and the entity's id. It opens the PDF directly (the common case) and
-// offers the report centre for anyone who wants to change the period first.
+// Report button: turns any profile page into a printed report.
+// Dropped onto a vehicle, customer, employee, vendor or driver profile with the subject and the entity's id. It opens the PDF directly (the common case) and offers the report centre for anyone who wants to change the period first.
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useLanguage } from '@/context/LanguageContext';
@@ -15,18 +12,14 @@ export default function ReportButton({
   subject, id, from, to, label, compact, onDark, withPrint,
 }: {
   subject: 'vehicle' | 'tire' | 'driver' | 'customer' | 'vendor' | 'employee' | 'section';
-  /**
-   * الزرّ موضوعٌ على خلفيةٍ داكنة (ترويسة الملفّ).
-   * بلونه الافتراضيّ — نصٌّ رماديّ داكن على حدٍّ فاتح — يصير داكنًا على داكن
-   * فلا يُقرأ، وهو مكتوبٌ فعلًا لكنّه غير مرئيّ.
-   */
+  /** The button sits on a dark background (profile header). With its default colour (dark grey text on a light border) it becomes dark on dark and unreadable. */
   onDark?: boolean;
   id: string;
   from?: string;
   to?: string;
   label?: string;
   compact?: boolean;
-  /** زرُّ «طباعة» بجانبه: حوارُ الطابعة على التقرير مباشرةً، بلا فتحه أوّلًا. */
+  /** A print button beside it: opens the printer dialog directly on the report. */
   withPrint?: boolean;
 }) {
   const router = useRouter();

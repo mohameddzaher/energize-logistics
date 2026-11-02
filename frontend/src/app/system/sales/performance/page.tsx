@@ -17,7 +17,7 @@ export default function SalesPerformancePage() {
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
   const tx = getSalesPerformanceTranslations(lang);
-  // الشهرُ من الرابط إن جاء من بطاقةٍ في اللوحة — فالرقمُ هنا هو الرقمُ الذي ضُغط عليه.
+  // Month comes from the URL when arriving from a dashboard card, so the figure matches the one clicked.
   const [period, setPeriod] = useState(() => periodFromUrl(thisPeriod()));
   const [rows, setRows] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -37,7 +37,7 @@ export default function SalesPerformancePage() {
     setLoading(false);
   }, [period, guard]);
   useEffect(() => { load(); }, [load]);
-  // كانت تسمع الصفقاتِ وحدَها: هدفٌ يُعدَّل لا يحرّك عمودَ «الهدف» ولا نسبةَ التحقيق.
+  // It used to listen to deals only, so an edited target did not update the target column or the achievement percentage.
   useSocket('sales:updated', useCallback(() => load(), [load]));
 
   const exportColumns: ExportColumn[] = [
@@ -49,8 +49,7 @@ export default function SalesPerformancePage() {
     { header: tx.colOpen, key: 'openValue', width: 16, transform: (_v, r) => money(r.openValue) },
     { header: lang === 'ar' ? 'عدد الصفقات المفتوحة' : 'Open Count', key: 'openCount', width: 14 },
   ];
-  // الجدول صفٌّ لكلّ مندوبٍ في الشهر المختار، يعرضه الخادم كاملًا بلا فلترٍ ولا ترقيم؛
-  // فنطاقٌ ثانٍ لن يزيد صفًّا، والشهرُ اختيارُ فترةٍ لا فلترٌ يُخفي مندوبين.
+  // One row per rep for the chosen month, returned in full by the server with no filter or pagination; a second range would not add rows, and the month is a period choice, not a filter hiding reps.
   const scope = exportScopeLabels(lang === 'ar');
   const exportOptions = [
     { key: 'all', label: scope.all, sheets: [{ name: lang === 'ar' ? 'أداء المبيعات' : 'Sales Performance', rows, columns: exportColumns }] },
@@ -82,7 +81,7 @@ export default function SalesPerformancePage() {
               <tr key={r.rep._id} className="hover:bg-slate-100">
                 <td className="px-4 py-3 text-slate-900">
                   {r.rep.name}
-                  {/* انتهت خدمتُه وبقي صفُّه لأنّ مبيعات الفترة له — لا يُعَدّ في الفريق الحاليّ. */}
+                  {/* Service ended but the row stays because the period's sales belong to them; not counted in the current team. */}
                   {(r as any).former && <span className="ms-1.5 rounded bg-slate-100 px-1.5 py-0.5 text-[10.5px] font-semibold text-slate-500">{lang === 'ar' ? 'سابق' : 'former'}</span>}
                 </td>
                 <td className="px-4 py-3 text-end text-green-600">{money(r.wonValue)} <span className="text-slate-700 text-xs">({r.wonCount})</span></td>

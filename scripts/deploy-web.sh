@@ -1,20 +1,5 @@
 #!/usr/bin/env bash
-#
-# نشرُ الواجهة على خادمنا — بديلُ Netlify.
-#
-# ── العلّة ────────────────────────────────────────────────────────────────────
-# الواجهةُ كانت تُبنى وتُنشَر في Netlify من فرع `main`. وحين ينفد رصيدُ الباقة
-# **تُتخطّى النشراتُ صامتةً**: الشيفرةُ في GitHub، والموقعُ الحيُّ واقفٌ عند آخر
-# نشرةٍ نجحت — تسعُ نشراتٍ متتالية في هذه المرّة. ولا شيءَ في الموقع يقول ذلك:
-# المستخدمُ يفتح الصفحةَ فلا يجد ما بُني له، ويُقال «النظامُ لم يتغيّر».
-#
-# وبناءُ الواجهة عملٌ يتمّ على جهازنا في دقائق، والخادمُ عندنا يشغّل الـAPI
-# أصلًا (٨ جيجا ونواتان، والمستعمَلُ منها الخمس). فلا حاجةَ إلى وسيطٍ يتوقّف
-# بانتهاء رصيد: تُبنى هنا وتُرفَع هناك وتُشغَّل تحت pm2 خلف nginx نفسِه الذي
-# يخدم الـAPI — فالموقعُ والـAPI على خادمٍ واحد، ويُختصَر طريقُ كلّ نداء.
-#
-#   bash scripts/deploy-web.sh
-#
+# Deploys the web frontend on our own server, replacing Netlify. Cause: the frontend was built and deployed by Netlify from `main`, and when the plan credit runs out deploys are skipped silently, so GitHub has the code while the live site stays on the last successful deploy, with nothing on the site saying so. The build takes minutes on our machine and the server already runs the API, so no credit-limited middleman is needed: build here, upload there, run under pm2 behind the same nginx as the API, which also shortens every call. Usage: bash scripts/deploy-web.sh
 set -euo pipefail
 
 VPS_HOST="${VPS_HOST:-root@152.239.127.46}"
@@ -30,9 +15,7 @@ die() { printf '  \033[31m✗\033[0m %s\n' "$1"; exit 1; }
 
 say "Build"
 cd "$HERE/frontend"
-# ── والبناءُ يُعاد كاملًا ────────────────────────────────────────────────────
-# ذاكرةُ `.next` القديمةُ تخلط صفحاتٍ حُذفت بأخرى أُضيفت، فيخرج موقعٌ نصفُه
-# قديم. والبناءُ الكامل دقيقتان.
+# The build is always done from scratch: an old `.next` cache mixes deleted pages with added ones and yields a half-old site. A full build takes two minutes.
 rm -rf .next
 NEXT_PUBLIC_API_URL="${NEXT_PUBLIC_API_URL:-https://api.energize-logistics.com}" npm run build \
   | tail -3 || die "فشل البناء"
@@ -40,13 +23,7 @@ NEXT_PUBLIC_API_URL="${NEXT_PUBLIC_API_URL:-https://api.energize-logistics.com}"
 ok "بُنيت الواجهة"
 
 say "Upload"
-# ما يلزم للتشغيل فقط: الناتج، والعامّ، ووصفُ الحزم، والإعدادات.
-# و`node_modules` لا تُرفَع — تُثبَّت هناك (أسرعُ وأسلم من نسخ عشرات الآلاف من الملفّات).
-# ── وملفّاتُ `static` القديمةُ تبقى ─────────────────────────────────────────
-# كان `--delete` يمحوها فورَ الرفع، والخادمُ القديمُ ما زال يعمل ويوزّع صفحاتٍ
-# تطلبها — فمن فتح صفحةً في دقائق النشر رأى «Loading chunk … failed»
-# (صاحبُ الشركة، ٢٠٢٦/١٠/٢١). وأسماؤها بصماتُ محتواها، فالقديمُ لا يصطدم
-# بالجديد: يُرفَع الجديدُ فوقها بلا حذف، ويُحذف بعد التشغيل ما مضى عليه أسبوع.
+# Only what is needed to run: build output, public, package manifests and configs. `node_modules` is not uploaded; it is installed there, which is faster and safer than copying tens of thousands of files. Old `static` files are kept: `--delete` removed them at upload while the old server still ran and served pages that request them, so a page opened during the deploy showed "Loading chunk ... failed". Names are content hashes, so old files never collide with new: new ones are uploaded over them with no deletion, and files older than a week are removed after the restart.
 rsync -az --delete -e "ssh -i $VPS_KEY -o ConnectTimeout=20" \
   --exclude 'cache' --exclude 'static' \
   "$HERE/frontend/.next/" "$VPS_HOST:$REMOTE/.next/"
@@ -63,20 +40,9 @@ say "Install & run"
 "${SSH[@]}" bash -s <<REMOTE_SCRIPT
 set -euo pipefail
 cd "$REMOTE"
-# حزمُ التشغيل وحدَها — أدواتُ البناء بقيت على جهازنا.
+# Runtime packages only; build tools stay on our machine.
 npm ci --omit=dev --no-audit --no-fund >/dev/null 2>&1 || npm install --omit=dev --no-audit --no-fund >/dev/null
-# ── ولا يُكتَب هنا عنوانُ الـAPI ──────────────────────────────────────────────
-# ولا علامةَ اقتباسٍ خلفيّة في هذه الفقرة: هي داخل heredoc غير مُقتبَس، فما بين
-# العلامتين يُنفَّذ أمرًا على جهازنا قبل أن يُرسَل حرفٌ إلى الخادم. وقد حدث:
-# «NEXT_PUBLIC_*: command not found» في نشرةٍ حقيقيّة.
-#
-# كان هذا الملفُّ يكتب «NEXT_PUBLIC_API_URL=http://127.0.0.1:5001»، على أنّ
-# الواجهةَ ستنادي الـAPI من داخل الخادم بلا خروجٍ إلى الشبكة. وهو وهمٌ: متغيّراتُ
-# «NEXT_PUBLIC_*» **تُثبَّت في الحزمة وقتَ البناء**، لا تُقرأ وقتَ التشغيل. فالسطرُ
-# لا يفعل شيئًا ما دام البناءُ يجري على جهازنا — وهذا هو خطرُه: لو بُنيت الواجهةُ
-# على الخادم يومًا، لُصق «127.0.0.1» في الجافاسكربت الذاهبِ إلى المتصفّحات،
-# ومتصفّحُ المستخدم لا يبلغ localhost الخادمَ أبدًا. فيسقط الموقعُ عن كلّ الناس
-# بسطرٍ كُتب ليُسرّعه. والنداءُ من المتصفّح يلزمه عنوانٌ عامّ، فلا مكسبَ أصلًا.
+# The API URL is not written here, and no backtick appears in this paragraph: it sits inside an unquoted heredoc, so text between backticks runs as a command locally before anything reaches the server (this caused "NEXT_PUBLIC_*: command not found"). This file used to write NEXT_PUBLIC_API_URL=http://127.0.0.1:5001 on the idea that the frontend calls the API from inside the server. That is an illusion: NEXT_PUBLIC_* variables are baked into the bundle at build time, not read at runtime. The line does nothing while the build runs on our machine, and that is the danger: if the frontend were ever built on the server, 127.0.0.1 would be baked into the JavaScript sent to browsers, which can never reach the server's localhost, and the site would fail for everyone. Browser calls need a public address anyway, so there is no gain.
 cat > .env.production <<ENVFILE
 PORT=$PORT
 ENVFILE
@@ -86,7 +52,7 @@ else
   pm2 start "npx next start -p $PORT" --name energize-web --cwd "$REMOTE" >/dev/null
 fi
 pm2 save >/dev/null 2>&1 || true
-# ما بقي من نشراتٍ سابقة أكثرَ من أسبوع — لا يطلبه أحدٌ بعد.
+# Files left from earlier deploys for over a week; nobody requests them any more.
 find "$REMOTE/.next/static" -type f -mtime +7 -delete 2>/dev/null || true
 find "$REMOTE/.next/static" -type d -empty -delete 2>/dev/null || true
 sleep 3
@@ -101,9 +67,6 @@ ver=$("${SSH[@]}" "curl -s http://127.0.0.1:$PORT/login | grep -o 'buildId[^,]*'
 printf '  \033[2m%s\033[0m\n' "$ver"
 
 printf '\n\033[1mالواجهةُ تعمل على الخادم.\033[0m\n'
-# ── والدومينُ موجَّهٌ إلينا منذ ٧ أكتوبر ٢٠٢٦ ────────────────────────────────
-# كان هنا سطرٌ يقول «وجِّه سجلَّ DNS ليصير هذا هو الموقعَ الحيّ». وقد وُجِّه:
-# سجلُّ A للجذر يشير إلى هذا الخادم، مُمرَّرًا عبر Cloudflare. فإبقاءُ السطر
-# يجعل كلَّ نشرةٍ تقول إنّ ما نُشر لم يصل بعد — وهو وصل.
+# The domain already points at us: the root A record points to this server through Cloudflare. A line saying to point DNS here made every deploy claim the release had not arrived yet, but it has.
 printf '  \033[2mالموقعُ الحيُّ هو هذا: energize-logistics.com ← %s عبر Cloudflare.\033[0m\n' "${VPS_HOST#*@}"
 printf '  \033[2mوللرجوع إلى Netlify عند الحاجة: أعِد سجلَّ A إلى 75.2.60.5 — الرجوعُ فوريّ.\033[0m\n'

@@ -11,8 +11,7 @@ import '../ui/search_field.dart';
 import 'package:provider/provider.dart';
 import '../services/auth.dart';
 
-/// المشتريات — طلبات الشراء (المسار الكامل: مسودة → اعتماد → أمر شراء)،
-/// أوامر الشراء (استلام)، وفواتير الموردين (تسجيل دفعات).
+/// Procurement: purchase requests (full path: draft, approval, purchase order), purchase orders (receiving), and supplier invoices (recording payments).
 
 const _prStatuses = {
   'draft': ('مسودة', 'Draft', T.inkFaint),
@@ -52,7 +51,7 @@ String _money(dynamic v) {
 String _vendorName(dynamic v) =>
     v is Map ? (v['name'] ?? v['companyName'] ?? v['vendorName'] ?? '—').toString() : '—';
 
-// ── طلبات الشراء ─────────────────────────────────────────────────────────────
+// Purchase requests
 class ProcRequestsScreen extends StatefulWidget {
   const ProcRequestsScreen({super.key});
   @override
@@ -66,7 +65,7 @@ class _ProcRequestsScreenState extends State<ProcRequestsScreen> {
   bool _loading = true;
   String? _error;
   String _q = '';
-  // متحكِّمُ البحث عند الشاشة: اختيارُ حالةٍ يُعيد التحميل فلا تعود الخانةُ فارغةً والكلمةُ تُرشِّح.
+  // Search controller owned by the screen: picking a status reloads, so the field does not go empty while the term still filters.
   final _searchCtl = TextEditingController();
   String _status = '';
   late final void Function() _onLive;
@@ -176,7 +175,7 @@ class _ProcRequestsScreenState extends State<ProcRequestsScreen> {
                           ? EmptyState(icon: Icons.request_quote_outlined, title: tr('لا توجد طلبات مطابقة', 'No matches'))
                           : ListView.separated(
                               keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-                              padding: const EdgeInsets.fromLTRB(14, 14, 14, 90), // زرُّ الإضافة لا يغطّي آخرَ بطاقة
+                              padding: const EdgeInsets.fromLTRB(14, 14, 14, 90), // Keeps the add button from covering the last card.
                               itemCount: filtered.length,
                               separatorBuilder: (_, __) => const SizedBox(height: 8),
                               itemBuilder: (c, i) {
@@ -467,7 +466,7 @@ class _ProcRequestsScreenState extends State<ProcRequestsScreen> {
   }
 }
 
-// ── أوامر الشراء ─────────────────────────────────────────────────────────────
+// Purchase orders
 class ProcOrdersScreen extends StatefulWidget {
   const ProcOrdersScreen({super.key});
   @override
@@ -479,7 +478,7 @@ class _ProcOrdersScreenState extends State<ProcOrdersScreen> {
   bool _loading = true;
   String? _error;
   String _q = '';
-  // متحكِّمُ البحث عند الشاشة: اختيارُ حالةٍ يُعيد التحميل فلا تعود الخانةُ فارغةً والكلمةُ تُرشِّح.
+  // Search controller owned by the screen: picking a status reloads, so the field does not go empty while the term still filters.
   final _searchCtl = TextEditingController();
   late final void Function() _onLive;
 
@@ -499,8 +498,8 @@ class _ProcOrdersScreenState extends State<ProcOrdersScreen> {
     super.dispose();
   }
 
-  String _status = ''; // فلترُ الحالة — يُنفَّذ على الخادم كالويب
-  int _seq = 0;          // ردٌّ أقدمُ لا يغلب أحدث حين يتغيّر الفلتر
+  String _status = ''; // Status filter, applied on the server as on the web.
+  int _seq = 0;          // An older reply does not beat a newer one when the filter changes.
   num _vatDefault = 15;
 
   Future<void> _load() async {
@@ -533,8 +532,7 @@ class _ProcOrdersScreenState extends State<ProcOrdersScreen> {
     if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e is ApiException ? e.message : e.toString())));
   }
 
-  // أمرُ شراء جديد أو تعديلُ قائم — نفسُ نموذج الويب: مورد + ضريبة% + تاريخ متوقع
-  // + بنود. التعديلُ PUT على الأمر نفسه فيبقى رقمُه وأثرُه في الطلب والفاتورة.
+  // New purchase order or edit of an existing one, same form as the web: supplier + tax % + expected date + items. Edit is a PUT on the order itself so its number and its link to the request and invoice are kept.
   Future<void> _poSheet({Map<String, dynamic>? existing}) async {
     Map<String, dynamic>? vendor = existing == null
         ? null
@@ -679,7 +677,7 @@ class _ProcOrdersScreenState extends State<ProcOrdersScreen> {
     } catch (e) { _msg(e); }
   }
 
-  // فاتورةُ مورد من أمر الشراء — تُرحَّل قيدًا كالويب.
+  // Supplier invoice from the purchase order, posted as a journal entry like the web.
   Future<void> _billFromPO(Map<String, dynamic> r) async {
     if (!await _confirm(tr('إنشاء فاتورة مورد', 'Create vendor bill'),
         '${tr('المورد', 'Vendor')}: ${_vendorName(r['vendor'])}\n${tr('المجموع الفرعي', 'Subtotal')}: ${_money(r['subtotal'])}\n${tr('الضريبة', 'VAT')}: ${_money(r['vatAmount'])}')) {
@@ -757,7 +755,7 @@ class _ProcOrdersScreenState extends State<ProcOrdersScreen> {
                           ? EmptyState(icon: Icons.shopping_cart_outlined, title: _q.trim().isNotEmpty ? tr('لا نتائج مطابقة للبحث', 'No matches') : tr('لا توجد أوامر شراء', 'No orders'))
                           : ListView.separated(
                               keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-                              padding: const EdgeInsets.fromLTRB(14, 14, 14, 90), // زرُّ الإضافة لا يغطّي آخرَ بطاقة
+                              padding: const EdgeInsets.fromLTRB(14, 14, 14, 90), // Keeps the add button from covering the last card.
                               itemCount: filtered.length,
                               separatorBuilder: (_, __) => const SizedBox(height: 8),
                               itemBuilder: (c, i) {
@@ -803,7 +801,7 @@ class _ProcOrdersScreenState extends State<ProcOrdersScreen> {
   }
 }
 
-// ── فواتير الموردين ──────────────────────────────────────────────────────────
+// Supplier invoices
 class ProcBillsScreen extends StatefulWidget {
   const ProcBillsScreen({super.key});
   @override
@@ -815,7 +813,7 @@ class _ProcBillsScreenState extends State<ProcBillsScreen> {
   bool _loading = true;
   String? _error;
   String _q = '';
-  // متحكِّمُ البحث عند الشاشة: اختيارُ حالةٍ يُعيد التحميل فلا تعود الخانةُ فارغةً والكلمةُ تُرشِّح.
+  // Search controller owned by the screen: picking a status reloads, so the field does not go empty while the term still filters.
   final _searchCtl = TextEditingController();
   String _status = '';
   late final void Function() _onLive;
@@ -850,11 +848,8 @@ class _ProcBillsScreenState extends State<ProcBillsScreen> {
 
   void _createBill() => _billSheet();
 
-  /// فاتورة مورد: إنشاءً وتعديلًا في استمارةٍ واحدة.
-  ///
-  /// والمورّد لا يُغيَّر عند التعديل: ذاك التزامٌ لجهةٍ أخرى، يُحذف ويُسجَّل
-  /// باسمها. والقيد المحاسبيّ يُعاد ترحيله في الخادم مع تغيّر المبلغ، فلا
-  /// يُقفَل الشهر بميزانٍ لا يطابق فواتيره.
+  /// Supplier invoice: create and edit in one form.
+  /// The supplier cannot change on edit: that is an obligation to another party, so delete it and record it under that party. The accounting entry is reposted on the server when the amount changes, so a month is not closed with a balance that does not match its invoices.
   Future<void> _billSheet({Map<String, dynamic>? existing}) async {
     Map<String, dynamic>? vendor;
     if (existing == null) {
@@ -1033,7 +1028,7 @@ class _ProcBillsScreenState extends State<ProcBillsScreen> {
                           ? EmptyState(icon: Icons.receipt_long_outlined, title: _q.trim().isNotEmpty ? tr('لا نتائج مطابقة للبحث', 'No matches') : tr('لا توجد فواتير', 'No bills'))
                           : ListView.separated(
                               keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-                              padding: const EdgeInsets.fromLTRB(14, 14, 14, 90), // زرُّ الإضافة لا يغطّي آخرَ بطاقة
+                              padding: const EdgeInsets.fromLTRB(14, 14, 14, 90), // Keeps the add button from covering the last card.
                               itemCount: filtered.length,
                               separatorBuilder: (_, __) => const SizedBox(height: 8),
                               itemBuilder: (c, i) {
@@ -1051,7 +1046,7 @@ class _ProcBillsScreenState extends State<ProcBillsScreen> {
                                       const SizedBox(height: 4),
                                       Text(_vendorName(r['vendor']), style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
                                       const SizedBox(height: 6),
-                                      // المبالغُ في سطرٍ يلتفّ، والأزرارُ في سطرها — لا شيءَ يفيض على الشاشات الضيّقة.
+                                      // Amounts wrap onto a line and the buttons sit on their own line, so nothing overflows on narrow screens.
                                       Wrap(spacing: 6, runSpacing: 4, children: [
                                         Chip2('${_money(r['total'])} ${tr('ر.س', 'SAR')}', T.info, icon: Icons.payments_outlined),
                                         if (r['status'] != 'paid') Chip2('${tr('المتبقي', 'Due')}: ${_money(r['balance'])}', T.danger),

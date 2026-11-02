@@ -1,24 +1,13 @@
 /**
- * «مبلغ السداد» على الكشف = ما كتبه موظّفُ العهدة في المحفظة.
- *
- * ── لماذا المحفظةُ هي المرجع ─────────────────────────────────────────────────
- * مَن دفع للمورّد هو من يمسك المالَ ساعتَها، ويكتب المبلغَ في عهدة فرعه. فذلك
- * هو ما خرج فعلًا، لا ما يُكتب بعدُ في سير عمل التشغيل.
- *
- * وكانت المحفظةُ تملأ الخانةَ مرّةً واحدةً إن كانت فارغة، ثمّ لا شأنَ لها بها:
- * فعُدِّل مبلغُ العهدة فبقي الكشفُ على القديم، وحُذف القيدُ فبقي على الكشف
- * سدادٌ لم يُدفع، وفتح موظّفُ تشغيلٍ الكشفَ فحفظه والخانةُ فارغة فمسح المبلغ —
- * أربعةٌ وثلاثون كشفًا في سبتمبر وحده بقي عليها تاريخُ السداد وفرعُه ومبلغُه صفر.
- *
- * فصار المبلغُ يتبع المحفظةَ في الاتّجاهين: تُسجَّل مشترياتٌ أو تُعدَّل أو
- * تُحذف فيتبعها الكشف، ولا يُكتب فوقها من سير عمل التشغيل. والكشفُ الذي لا
- * مشترياتِ له في المحفظة (سُدِّد بتحويلٍ مثلًا) يبقى مبلغُه يُكتب بيد.
+ * The payment amount on a statement mirrors what the custody clerk recorded in the wallet.
+ * The wallet is the source because the payer holds the money and records what actually left; it follows purchases on create, edit and delete.
+ * A statement with no wallet purchases (paid by transfer) keeps a hand-entered amount.
  */
 const { flexSpaceRegex } = require('./plateKey');
 
 const clean = (v) => String(v || '').trim();
 
-/** مجموعُ مشتريات المحفظة لهذا الكشف، أو `null` إن لم تُسجَّل له مشتريات. */
+/** Sum of wallet purchases for this statement, or null when none are recorded. */
 async function walletPurchaseAmount(reportNumber) {
   const rn = clean(reportNumber);
   if (!rn) return null;
@@ -29,7 +18,7 @@ async function walletPurchaseAmount(reportNumber) {
   return Math.round(rows.reduce((a, r) => a + (Number(r.amount) || 0), 0) * 100) / 100;
 }
 
-/** الكشوفُ ذاتُ المشتريات من قائمة أرقام — لقفل الخانة في الجدول دفعةً واحدة. */
+/** Statements that have wallet purchases, from a list of numbers; used to lock the field in the table in one call. */
 async function walletPaidMap(reportNumbers) {
   const nums = [...new Set((reportNumbers || []).map(clean).filter(Boolean))];
   if (!nums.length) return new Map();
@@ -45,15 +34,8 @@ async function walletPaidMap(reportNumbers) {
 }
 
 /**
- * ── ومَن سجّل الشراء في المحفظة ──────────────────────────────────────────────
- *
- * «مسؤول البيانات» في سير العمل كان يُقرأ من `paymentDateByName` وحدَه — أي من
- * كتب تاريخَ السداد في شاشتنا. وذلك مكتوبٌ في مئتين وسبعةٍ وعشرين صفًّا من
- * ثلاثين ألفًا وثلاثمئةٍ واثنين وستّين لها تاريخُ سداد: فيُقرأ تاريخٌ ولا يُعرَف
- * مَن كتبه.
- *
- * وأكثرُ ما سُدِّد سُجِّل في المحفظة، وهناك اسمُ من دفع ساعتَها. فيُقرأ منه —
- * والسؤالُ المطروح («مَن كتب هذا الصفّ؟») يجده.
+ * Who recorded the purchase in the wallet.
+ * The workflow data owner was read only from paymentDateByName, which covers a tiny share of rows; the wallet holds the payer's name, so read it from there.
  */
 async function walletRecorderMap(reportNumbers) {
   const nums = [...new Set((reportNumbers || []).map(clean).filter(Boolean))];
@@ -74,8 +56,8 @@ async function walletRecorderMap(reportNumbers) {
 }
 
 /**
- * يُطابق مبلغَ السداد على الكشف مع المحفظة ويكتبه إن اختلف.
- * `previousAmount` لقيدٍ حُذف أو نُقل: يُمسح مبلغُه من الكشف إن كان هو المكتوب.
+ * Syncs the payment amount on the statement with the wallet and writes it if different.
+ * `previousAmount` is for an entry that was deleted or moved: its amount is cleared from the statement if that is what was written.
  */
 async function syncSheetPayment(reportNumber, { previousAmount = null } = {}) {
   const rn = clean(reportNumber);
@@ -93,8 +75,7 @@ async function syncSheetPayment(reportNumber, { previousAmount = null } = {}) {
   if (Math.abs(current - next) < 0.01) return null;
 
   const patch = { paymentAmount: next };
-  // الكشفُ النقديّ يُفوتَر بما دُفع (راجع deriveCashTotals): فإن كان صافيه
-  // وإجماليُّه هما المبلغَ القديم تبعا الجديد، وإلّا فقد كُتبا بيدٍ ويُتركان.
+  // A cash statement is invoiced at what was paid (see deriveCashTotals): if net and gross equal the old amount they follow the new one, otherwise they were hand-written and are left alone.
   if (wf.paymentType === 'cash') {
     if (Math.abs((Number(wf.netInvoice) || 0) - current) < 0.01) patch.netInvoice = next;
     if (Math.abs((Number(wf.totalInvoice) || 0) - current) < 0.01) patch.totalInvoice = next;

@@ -1,27 +1,9 @@
 'use client';
 /**
- * لوحةُ التحصيل — ما لنا، وكم عمرُه، وعند مَن، وأين.
- *
- * الرقمُ الواحد «مستحقٌّ كذا» لا يقول شيئًا عن خطره: مليونٌ عمرُه أسبوعٌ عملٌ
- * جارٍ، ومليونٌ عمرُه سنةٌ مالٌ يكاد يضيع. فمعه تقادمُه دائمًا.
- *
- * ── الترتيبُ هو ترتيبُ الأسئلة ──────────────────────────────────────────────
- *   ١. كم لنا، وكم حصّلنا منه؟          ← البطاقةُ الكبيرة ونسبةُ التحصيل
- *   ٢. ما الذي يحتاج تصرّفًا اليوم؟       ← تنبيهاتُ الحدود والاستحقاق
- *   ٣. كم عمرُ ما لنا؟ وكيف يسير الشهر؟   ← سلّمُ التقادم والرسمُ الشهريّ
- *   ٤. عند مَن؟ وفي أيّ فرع؟              ← أكبرُ المتأخّرين والفروع
- * وكلُّ بطاقةٍ تفتح ما تعدّه.
- *
- * ── «ما لنا» لا غير ─────────────────────────────────────────────────────────
- * القسمُ يُحصِّل؛ ما ندفعه للموردين والصافيُ بينهما شأنُ الإدارة والمالية،
- * ولوحةُ الحسابات تعرض الوجهين. فاللوحةُ هنا للجميع بلا إخفاءٍ بالدور.
- *
- * ── حيّة ────────────────────────────────────────────────────────────────────
- * كلُّ تعديلٍ على كشفٍ أو طرفٍ يعيد القراءة، والأرقامُ القائمة تبقى معروضةً حتى
- * يصل الجديد — لا تُمسح ولا تومض.
- *
- * والمكوّناتُ الصغيرة خارج الصفحة عمدًا: مكوّنٌ يُعرَّف داخل الرسم يُعاد إنشاؤه
- * مع كلّ تحديث، فتُفقَد حالتُه ويُعاد رسمُ الرسوم كلّها.
+ * Collections dashboard: what we are owed, how old it is, who owes it, and where.
+ * A single 'owed' figure says nothing about risk, so aging always accompanies it. Order follows the questions: total and collection rate, alerts, aging and monthly chart, top debtors and branches; every card opens what it counts.
+ * Only what is owed to us; payables and the net belong to management and finance. Live: edits re-read while existing numbers stay shown.
+ * Small components are outside the page on purpose: one defined in render is recreated on every update.
  */
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -54,16 +36,12 @@ interface Recv {
   officers: { officer: string; isManager?: boolean; defaulted?: number; count: number; value: number; late: number; lateValue: number; hard: number; hardValue: number }[];
   parties: { party: string | null; key: string; name: string; code: string; officer: string; officerIsDefault?: boolean; issueState: string; count: number; value: number; late: number; lateValue: number; hard: number; hardValue: number; oldest: number | null }[];
 }
-// من لوحة كشوف التشغيل يبقى عددُ الموردين وحدَه — المالُ كلُّه من الدفتر.
+// From the operating-statements dashboard only the vendor count remains; all money comes from the ledger.
 interface Dash {
   counts: { customer: { active: number; inactive: number }; supplier: { active: number; inactive: number } };
 }
 
-/*
- * فلاترُ اللوحة — خمسُ قوائمَ متعدّدةِ الاختيار ومدى تاريخ، وكلُّ رقمٍ في الصفحة
- * تحتها. تعيش في الرابط (راجع components/collections/receivablesFilters): فتُحمَل
- * إلى صفحة التفاصيل مع كلّ رقمٍ يُضغط، ويعود الرجوعُ إلى اللوحة بها.
- */
+/* Dashboard filters: five multi-select lists and a date range, with every number on the page beneath them. They live in the URL (see components/collections/receivablesFilters), so they are carried to the detail page with each number clicked and Back returns to the dashboard with them. */
 
 function Panel({ title, icon, right, children, className = '' }: {
   title: string; icon?: React.ReactNode; right?: React.ReactNode; children: React.ReactNode; className?: string;
@@ -92,14 +70,13 @@ export default function CollectionsDashboardPage() {
   const router = useRouter();
 
   const [data, setData] = useState<Dash | null>(null);
-  // شجرةُ المديونيّة من دفتر الفواتير — راجع components/collections/ReceivablesTree.
+  // Debt tree from the invoice ledger; see components/collections/ReceivablesTree.
   const [recv, setRecv] = useState<Recv | null>(null);
   const [termOpen, setTermOpen] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  // ── الفلاترُ في الرابط ─────────────────────────────────────────────────
-  // تُقرأ منه وتُكتب فيه (`replace` لا `push`: تغييرُ فلترٍ ليس صفحةً يُرجَع
-  // إليها)، فيعود زرُّ الرجوع من صفحة التفاصيل إلى اللوحة بفلاترها.
+  // Filters in the URL.
+  // Read from it and written to it (`replace`, not `push`: changing a filter is not a page to go back to), so Back from the detail page returns to the dashboard with its filters.
   const searchParams = useSearchParams();
   const qs = searchParams?.toString() || '';
   const filters = useMemo(() => filtersFromParams(new URLSearchParams(qs)), [qs]);
@@ -108,17 +85,15 @@ export default function CollectionsDashboardPage() {
     router.replace(s ? `${DASHBOARD_PATH}?${s}` : DASHBOARD_PATH, { scroll: false });
   }, [router]);
 
-  // فلاترُ الصفحة كنصّ استعلام — تُرسَل إلى اللوحة وتُحمَل إلى كلِّ رقمٍ يُفتَح منها.
+  // Page filters as a query string: sent to the dashboard and carried to every number opened from it.
   const ledgerFilters = useMemo(() => filtersToQuery(filters), [filters]);
-  // كلُّ رقمٍ يفتح صفحةَ صفوفه — بفلاتر اللوحة والعقدةِ التي ضُغطت.
+  // Every number opens its rows page, with the dashboard filters and the node clicked.
   const openNode = useCallback((node: Record<string, string> = {}) => {
     router.push(receivablesHref(filters, node));
   }, [router, filters]);
 
-  // ── لكلّ نداءٍ حارسُه ───────────────────────────────────────────────────
-  // ردٌّ متأخّرٌ لفلترٍ سابق لا يكتب فوق الأحدث — وأبطأُ الردود هو غيرُ المفلتَر
-  // الذي أُطلق أوّلَ الفتح (راجع stale-response-races). وحارسٌ لكلّ نداء: حارسٌ
-  // مشتركٌ يجعل كلَّ نداءٍ يُبطل ردَّ الآخر.
+  // Each call has its own guard.
+  // A late reply for an earlier filter must not overwrite a newer one; the slowest reply is the unfiltered one fired at first open (see stale-response-races). One guard per call: a shared guard makes each call invalidate the other's reply.
   const recvGuard = useLatestRequest();
   const dashGuard = useLatestRequest();
 
@@ -140,14 +115,14 @@ export default function CollectionsDashboardPage() {
     try {
       const d = await api.get<Dash>('/api/collections-dept/dashboard');
       if (dashGuard.isCurrent(mine)) setData(d);
-    } catch { /* عددُ الموردين وحدَه — لا يُوقف اللوحة */ }
+    } catch { /* Vendor count only; does not block the dashboard. */ }
   }, [dashGuard]);
 
   const load = useCallback(() => { loadRecv(); loadDash(); }, [loadRecv, loadDash]);
   useEffect(() => { loadRecv(); }, [loadRecv]);
   useEffect(() => { loadDash(); }, [loadDash]);
 
-  // ── حيّة: تعديلٌ على كشفٍ أو فاتورةٍ أو طرفٍ أو مرفق ⇒ قراءةٌ بعد هدوء الدفعة ──
+  // Live: an edit to a statement, invoice, party or attachment triggers a read after the batch settles.
   const tick = useRef<ReturnType<typeof setTimeout> | null>(null);
   const soon = useCallback(() => {
     if (tick.current) clearTimeout(tick.current);
@@ -199,16 +174,10 @@ export default function CollectionsDashboardPage() {
         />
       </PageHeader>
 
-      {/* ── الفلاتر: شريطٌ واحدٌ فوق اللوحة ───────────────────────────────────
-          خمسُ قوائمَ فيها بحثٌ واختيارٌ متعدّد، وبجانب كلِّ خيارٍ عددُه تحت
-          الفلاتر الأخرى. وكلُّ رقمٍ في الصفحة تحتها — الإجماليُّ والأنواعُ الأربعة
-          وعمرُ التأخير والمرفقاتُ والتحقّق — وكلُّ جدولٍ يُفتَح يحملها. */}
+      {/* Filters: one bar above the dashboard. Five lists with search and multi-select, each option showing its count under the other filters. Every number on the page beneath it (total, the four types, delay age, attachments, verification) and every table opened carries them. */}
       <ReceivablesFilterBar filters={filters} onChange={setFilters} facets={recv?.facets} ar={ar} manager={recv?.manager} />
 
-      {/* ── ٠. المديونيّةُ كشجرة ───────────────────────────────────────────────
-          أوّلُ سؤالٍ يُسأل في القسم: كم علينا، وكم عمرُه، وما منه في حدود مدّة
-          عميله وما خرج عنها. ومصدرُه **دفترُ الفواتير** لا أوامر النقل (٩٤٪ من
-          فواتير الدفتر لا أوامر نقل لها عندنا)، والشجرةُ تُطابق نفسَها بشريط تحقّقٍ أسفلها. */}
+      {/* Part 0: debt as a tree. The first question asked in the department: how much is owed, how old, and how much is within the customer's term versus outside it. Its source is the invoice ledger, not transport orders (94% of ledger invoices have no transport order here), and the tree reconciles itself with a verification bar beneath it. */}
       {recv && (
         <ReceivablesTree tree={recv.tree} checks={recv.checks} ar={ar}
           attachments={recv.attachments} defaultTerm={recv.defaultTerm}
@@ -216,8 +185,7 @@ export default function CollectionsDashboardPage() {
           onOpen={(q) => openNode(q as Record<string, string>)} />
       )}
 
-      {/* وبالمسؤول: العملُ موزَّعًا لا مجموعًا — ولا صفَّ «بلا مسؤول»: ما لم يُسنَد
-          فعلى مدير القسم، ويُقال كم منه كذلك. */}
+      {/* By owner: work distributed, not summed. There is no 'no owner' row: unassigned falls on the department manager, and the amount is stated too. */}
       {!!recv?.officers?.length && (
         <Panel title={t('المديونية بمسؤول التحصيل', 'Receivables by collector')} icon={<UserCheck className="w-4 h-4" />}>
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-2.5">
@@ -242,31 +210,9 @@ export default function CollectionsDashboardPage() {
         </Panel>
       )}
 
-      {/* ── ١. كم لنا، وكم حصّلنا ────────────────────────────────────────────
-          هنا كانت بطاقةُ «المستحق لنا من العملاء» ومعها المبيعاتُ والمحصَّلُ
-          ونسبةُ التحصيل — محسوبةً من **أوامر النقل**. وشجرةُ المديونيّة فوقها
-          محسوبةٌ من **دفتر الفواتير**. فكانت الصفحةُ تقول رقمين لشيءٍ واحد:
-          20,661,545 فوق و47,214,194 تحت، ولا شيءَ يقول لماذا.
+      {/* Part 1: how much is ours and how much collected. A card computed from transport orders used to contradict the debt tree computed from the invoice ledger. `collectedAmount` is zero on every transport order (nobody writes it), so it counted everything delivered as owed. The ledger is the truth; a second number contradicting the tree is doubt about both. The credit-limit card (`CreditAlerts`) was removed at the user's request. */}
 
-          والسببُ قيس: `collectedAmount` **صفرٌ على كلّ أوامر النقل** — سبعةٌ
-          وثلاثون ألفًا وخمسمئةٍ واثنا عشر، بلا استثناء. لا أحد يكتبها. فكان
-          ذلك الحسابُ يعدّ كلَّ ما سُلِّم منذ بدء الشركة مستحقًّا. وتفكيكُ
-          الفرق يثبته: 29.9 مليونًا منه أوامر نقل يقول الدفترُ إنّ فواتيرَها
-          **حُصِّلت** (125.9 مليونًا محصَّلة من 146.6).
-
-          فالدفترُ هو الحقيقة: 1,572 فاتورةً غيرَ محصَّلة بـ20.7 مليون. وشجرةُ
-          المديونيّة تقولها وتطابق نفسَها. ورقمٌ ثانٍ يناقضها ليس معلومةً
-          إضافيّةً — هو شكٌّ في الاثنين معًا.
-
-          وبطاقةُ «الحد الائتماني» (`CreditAlerts`) رُفعت بطلب المستخدم. */}
-
-      {/* ── ٣. عند مَن ───────────────────────────────────────────────────────
-          هنا كانت أربعُ لوحاتٍ من **أوامر النقل**: تقادمُ المستحقّ، والمبيعاتُ
-          والمحصَّلُ بالشهر، وأكبرُ المتأخّرين، وبالفرع. وهي الحسابُ نفسُه الذي
-          رُفعت بطاقاتُه من فوق: يعدّ كلَّ أمر نقل بلا تاريخ تحصيلٍ دَينًا، وتاريخُ
-          التحصيل لا يُكتب على أوامر النقل — فكان «تقادمُ المستحقّ» يجمع ٤٧٫٤ مليونًا
-          تحت شجرةٍ تقول ١٩٫٩٦. فرُفعت، وحلّ محلَّها أكبرُ المديونيّات من الدفتر
-          نفسِه الذي تُبنى منه الشجرة: الأرقامُ هنا تُجمَع فتساوي ما فوقها. */}
+      {/* Part 3: who owes. Four panels from transport orders used to sit here: due aging, sales and collected by month, top overdue parties, and by branch. They were the same computation whose cards were removed above: it counts every transport order with no collection date as debt, and collection date is not written on transport orders, so 'due aging' summed 47.4 million under a tree saying 19.96. They were removed and replaced by the top debts from the same ledger the tree is built from: numbers here sum to what is above them. */}
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
         <Panel className="lg:col-span-3" icon={<Users className="w-4 h-4" />} title={t('أكبر المديونيات', 'Largest receivables')}
           right={<span className="text-[11px] text-slate-400">{t(`أعلى ${top.length} من ${recv?.parties.length || 0}`, `Top ${top.length} of ${recv?.parties.length || 0}`)}</span>}>
@@ -312,7 +258,7 @@ export default function CollectionsDashboardPage() {
             </span>
             <ChevronLeft className={`w-4 h-4 text-slate-300 group-hover:text-[#f37121] ${isRTL ? '' : 'rotate-180'}`} />
           </button>
-          {/* «القضايا»: العملاءُ تحت التفاوض أو في القضاء — صفحتُهم، والرقمُ ما عليهم تحت فلاتر اللوحة. */}
+          {/* Cases: customers under negotiation or in litigation; their own page, and the number is what they owe under the dashboard filters. */}
           <button type="button" onClick={() => router.push('/system/collections-dept/cases')}
             className="w-full flex items-center gap-3 bg-white border border-slate-200 rounded-2xl px-5 py-4 shadow-sm text-start hover:border-[#f37121]/50 hover:shadow-md transition-all group">
             <span className="w-9 h-9 rounded-xl bg-slate-100 text-slate-600 flex items-center justify-center"><Scale className="w-5 h-5" /></span>
@@ -336,7 +282,7 @@ export default function CollectionsDashboardPage() {
         </div>
       </div>
 
-      {/* عملاءُ المدّة الافتراضيّة — تُكتب مُددُهم من هنا. */}
+      {/* Customers on the default term; their terms are written from here. */}
       <DefaultTermList
         open={termOpen} onClose={() => setTermOpen(false)}
         parties={recv?.defaultTerm?.parties || []} days={recv?.defaultTerm?.days || 30}

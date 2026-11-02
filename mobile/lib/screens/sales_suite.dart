@@ -8,15 +8,14 @@ import 'sales_dashboard.dart' show SalesMonthPicker, salesThisPeriod;
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 
-/// المبيعات — الأداء (هدف مقابل تحقيق لكل مندوب) ومسار البيع (الصفقات
-/// مجمّعة بالمرحلة). نفس بيانات /api/sales/performance و /api/sales/pipeline.
+/// Sales: performance (target vs achievement per rep) and the sales pipeline (deals grouped by stage). Same data as /api/sales/performance and /api/sales/pipeline.
 
 String _money(dynamic v) {
   final n = (v is num) ? v : num.tryParse(v?.toString() ?? '') ?? 0;
   return n.toStringAsFixed(0).replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (m) => ',');
 }
 
-// ── أداء المناديب ───────────────────────────────────────────────────────────
+// Rep performance
 class SalesPerformanceScreen extends StatefulWidget {
   const SalesPerformanceScreen({super.key});
   @override
@@ -27,11 +26,11 @@ class _SalesPerformanceScreenState extends State<SalesPerformanceScreen> {
   List<Map<String, dynamic>> _rows = [];
   bool _loading = true;
   String? _error;
-  // الشهرُ المختار (YYYY-MM) كالويب — والعدّادُ يمنع ردَّ شهرٍ سابقٍ من الكتابة فوق الأحدث.
+  // Selected month (YYYY-MM) as on the web; the counter stops an earlier month's reply from overwriting the latest.
   String _period = salesThisPeriod();
   int _seq = 0;
 
-  // `sales:updated` نداءُ القسم: صفقةٌ تغيّرت أو هدفٌ وُضع — كما على الويب.
+  // `sales:updated` is the section's signal: a deal changed or a target was set, as on the web.
   @override
   void initState() { super.initState(); _load(); Live.instance.on('sales:updated', _load); }
 
@@ -104,7 +103,7 @@ class _SalesPerformanceScreenState extends State<SalesPerformanceScreen> {
                                     CircleAvatar(radius: 16, backgroundColor: color.withValues(alpha: 0.12), child: Text('${i + 1}', style: TextStyle(color: color, fontWeight: FontWeight.w800, fontSize: 13))),
                                     const SizedBox(width: 10),
                                     Expanded(child: Text((rep['name'] ?? '').toString(), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14))),
-                                    // انتهت خدمتُه وبقي صفُّه لمبيعات الفترة — لا يُعَدّ في الفريق الحاليّ.
+                                    // His service ended but his row stays for the period's sales; he is not counted in the current team.
                                     if (r['former'] == true) Padding(
                                       padding: const EdgeInsetsDirectional.only(end: 6),
                                       child: Chip2(tr('سابق', 'former'), T.inkFaint),
@@ -137,11 +136,7 @@ class _SalesPerformanceScreenState extends State<SalesPerformanceScreen> {
   }
 }
 
-// ── خط الأنابيب ─────────────────────────────────────────────────────────────
-// ── المراحلُ كما في الخادم (config/crmDefaults PIPELINE_STAGES) ─────────────
-// كانت القائمةُ هنا تبدأ بـ«lead» — مفتاحٌ لا وجودَ له — وتخلو من «new»
-// و«contacted» و«won» و«lost»: فالصفقةُ الجديدةُ (وهي أوّلُ ما تُنشأ عليه) لا
-// تظهر في الهاتف أصلًا، والشاشةُ تُعرَض وكأنّها كاملة.
+// Pipeline. Stages as on the server (config/crmDefaults PIPELINE_STAGES). The list here used to start with a nonexistent key "lead" and lacked "new", "contacted", "won" and "lost", so a newly created deal never appeared on the phone while the screen looked complete.
 const _pipeStages = {
   'new': ('جديدة', 'New', T.inkSoft),
   'contacted': ('تمّ التواصل', 'Contacted', T.info),
@@ -181,10 +176,10 @@ class _SalesPipelineScreenState extends State<SalesPipelineScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // تجميع الصفقات بالمرحلة.
+    // Group deals by stage.
     final byStage = <String, List<Map<String, dynamic>>>{};
     for (final d in _deals) {
-      // مرحلةٌ لا تعرفها القائمةُ تُعرَض مع «جديدة» — لا تُخفى.
+      // A stage the list does not know is shown with "new" rather than hidden.
       final st = (d['stage'] ?? 'new').toString();
       (byStage[_pipeStages.containsKey(st) ? st : 'new'] ??= []).add(d);
     }

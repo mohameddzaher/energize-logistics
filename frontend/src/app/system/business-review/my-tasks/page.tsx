@@ -1,9 +1,6 @@
 'use client';
-// مهامي — what an EMPLOYEE sees of the business review, and all they see.
-//
-// The tasks their manager handed down, with who asked, what exactly is wanted
-// and by when. No meeting, no minutes, no other person's work — the endpoint
-// behind this page reads a collection that contains none of those things.
+// My tasks: what an EMPLOYEE sees of the business review, and all they see.
+// The tasks their manager handed down, with who asked, what exactly is wanted and by when. No meeting, no minutes, no other person's work - the endpoint behind this page reads a collection that contains none of those things.
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useLanguage } from '@/context/LanguageContext';
 import { useDialog } from '@/components/system/DialogProvider';

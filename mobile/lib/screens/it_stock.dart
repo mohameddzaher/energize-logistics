@@ -11,16 +11,14 @@ import '../ui/widgets.dart';
 import 'it_common.dart';
 import 'it_custody.dart';
 
-/// مستودع تقنية المعلومات — نظيرُ /system/it/stock: فلترا النوع والحالة الفنّية
-/// على الخادم، وبحثٌ في الشاشة، والمتاحُ حسب النوع (الأقلّ من ثلاث وحداتٍ بالأحمر)،
-/// والإضافةُ والتعديلُ والحذف، والتسليمُ لموظّف، والتصدير.
+/// IT warehouse, counterpart of /system/it/stock: type and technical-condition filters on the server, search on the screen, availability by type (under three units in red), add, edit, delete, issue to an employee, export.
 class ItStockScreen extends StatefulWidget {
   const ItStockScreen({super.key});
   @override
   State<ItStockScreen> createState() => _ItStockScreenState();
 }
 
-// الأنواعُ المعروضة في «المتاح حسب النوع» — بلا النوع الملغى keyboard_mouse.
+// Types shown in "available by type"; excludes the retired keyboard_mouse type.
 final _itTypes = custodyTypes.keys.where((k) => k != 'keyboard_mouse').toList();
 
 int unitsOf(Map a) {
@@ -45,7 +43,7 @@ class _ItStockScreenState extends State<ItStockScreen> {
   bool _loading = true;
   String? _error;
   String _q = '';
-  // متحكِّمُ البحث عند الشاشة: النصُّ الظاهر = الكلمةُ المرشِّحة دائمًا.
+  // The search controller lives at the screen level: the visible text is always the filtering word.
   final _searchCtl = TextEditingController();
   String _type = '';
   String _condition = '';
@@ -199,7 +197,7 @@ class _ItStockScreenState extends State<ItStockScreen> {
     );
   }
 
-  // ── إضافة / تعديل — الاسمُ مشتقٌّ من النوع والماركة ──
+  // Add / edit: the name is derived from type and brand.
   Future<void> _form(Map<String, dynamic>? editing) async {
     String type = '${editing?['type'] ?? 'laptop'}';
     String condition = '${editing?['condition'] ?? 'new'}';
@@ -260,7 +258,7 @@ class _ItStockScreenState extends State<ItStockScreen> {
             Expanded(child: TextField(controller: qty, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: tr('الكمية', 'Quantity')))),
           ]),
           const SizedBox(height: 10),
-          // القيمةُ للقطعة الواحدة صراحةً — لا تُقرأ على الوجهين.
+          // The value is explicitly per single unit; it is not read both ways.
           TextField(controller: value, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: tr('القيمة للقطعة الواحدة', 'Value per single unit'))),
           const SizedBox(height: 10),
           TextField(controller: specs, decoration: InputDecoration(labelText: tr('المواصفات', 'Specs'), hintText: 'i7 / 16GB / 512GB SSD')),
@@ -284,7 +282,7 @@ class _ItStockScreenState extends State<ItStockScreen> {
     } catch (e) { _snack(e is ApiException ? e.message : '$e'); }
   }
 
-  // ── تسليمٌ لموظّف — بلا حالةٍ فنّية: الصنفُ يحملها من المستودع ──
+  // Issue to an employee: no technical condition, the item carries it from the warehouse.
   Future<void> _assign(Map<String, dynamic> a) async {
     final emp = await pickItEmployee(context);
     if (emp == null || !mounted) return;

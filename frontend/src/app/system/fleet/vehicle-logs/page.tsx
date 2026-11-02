@@ -1,12 +1,7 @@
 'use client';
-// سجلّات السيارات — الشهرُ كلُّه لسيّارةٍ واحدة، أو الشهرُ كلُّه لكلّ السيارات.
-//
-// السؤال الذي لم تكن له شاشة: «ماذا جرى لهذه السيّارة الشهر الماضي؟». كانت
-// إجابتُه مبعثرةً في سجلّات ستّ شحنات: عطلٌ مكتوبٌ في متابعة شحنةٍ سُلّمت،
-// وإطارٌ في متابعة أخرى — ولا موضعَ يجمعها.
-//
-// والصفحة طبقتان: جدولٌ بكلّ السيارات في الفترة (حمولاتُها ودخلُها وأعطالُها)،
-// وحين تُختار سيّارةٌ يُفتح سجلُّها الكامل تحته.
+// Vehicle logs: a whole month for one vehicle, or a whole month for all vehicles.
+// The question that had no screen: what happened to this vehicle last month. The answer was scattered across the records of six shipments: a breakdown in one delivered shipment's follow-up, a tire in another, with no place gathering them.
+// Two layers: a table of all vehicles in the period (loads, income, breakdowns), and when one is chosen its full log opens below.
 import { useState, useEffect, useCallback, Suspense } from 'react';
 import MonthPicker from '@/components/system/MonthPicker';
 import { useSearchParams, useRouter } from 'next/navigation';
@@ -54,7 +49,7 @@ function VehicleLogsInner() {
   const router = useRouter();
   const canEdit = canEditFleet(user);
 
-  // ── الفترة: شهرٌ (وهي وحدةُ الإقفال) أو مدًى حرّ أو يومٌ بعينه ─────────────
+  // Period: a month (the closing unit), a free range, or a single day
   const [mode, setMode] = useState<'month' | 'range' | 'day'>((sp?.get('mode') as any) || 'month');
   const [month, setMonth] = useState(sp?.get('month') || thisMonth());
   const [from, setFrom] = useState(sp?.get('from') || '');
@@ -74,7 +69,7 @@ function VehicleLogsInner() {
   };
   const query = params().toString();
 
-  const guard = useLatestRequest(); // ردٌّ قديمٌ (فلترٌ سابق) لا يكتب فوق الأحدث
+  const guard = useLatestRequest(); // A stale response (previous filter) must not overwrite the latest one
   const load = useCallback(async () => {
     const mine = guard.begin();
     try { const r = await api.get<Resp>(`/api/fleet/vehicle-logs/summary?${query}`); if (!guard.isCurrent(mine)) return; setData(r); }
@@ -86,7 +81,7 @@ function VehicleLogsInner() {
   useEffect(() => { setLoading(true); load(); }, [load]);
   useSocket('fleet:updated', useCallback(() => { load(); }, [load]));
 
-  // الرابط يعكس ما على الشاشة — بلا تنقّلٍ يومض عند كل ضغطة.
+  // The URL mirrors the screen, without a navigation that flashes on every click.
   useEffect(() => {
     const q = params();
     q.set('mode', mode);
@@ -133,7 +128,7 @@ function VehicleLogsInner() {
         />
       </PageHeader>
 
-      {/* الفلاتر */}
+      {/* Filters */}
       <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm space-y-3">
         <div className="flex flex-wrap items-center gap-2">
           {(['month', 'range', 'day'] as const).map((m) => (
@@ -207,8 +202,7 @@ function VehicleLogsInner() {
                 {rows.length === 0 ? (
                   <tr><td colSpan={10} className="text-center text-slate-500 py-12">{t('لا سيارات في هذه الفترة.', 'No vehicles in this period.')}</td></tr>
                 ) : rows.map((r) => (
-                  // صفحةٌ تُفتح، لا قسمٌ ينفتح أسفلَ جدولٍ من ثمانٍ وخمسين صفًّا
-                  // فلا يراه أحد.
+                  // A page opens, not a section expanding below a fifty-eight row table where nobody sees it.
                   <tr key={r._id} onClick={() => router.push(`/system/fleet/vehicle-logs/${encodeURIComponent(r.plate)}?${params().toString()}&mode=${mode}`)}
                     className="cursor-pointer transition-colors bg-white hover:bg-orange-50">
                     <td className="px-4 py-3 font-bold text-slate-900 whitespace-nowrap">{r.plate}</td>

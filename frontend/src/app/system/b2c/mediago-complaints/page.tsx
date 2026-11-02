@@ -1,14 +1,9 @@
 'use client';
 /**
- * شكاوى Media Go — بلاغاتُ أعطال الشاشات المركَّبة على دبّاباتنا.
- *
- * شاشةٌ واحدةٌ لطرفين:
- *   • قسمُ الأفراد يرفع البلاغَ بأسئلة نموذج Media Go نفسِها، ويتابعه ويغلقه.
- *   • حسابُ Media Go (`mediago_account`) لا يرى من نظامنا غيرَ هذه الصفحة: يجد
- *     البلاغاتِ بلغتين، ويقول «قيد المعالجة» ثمّ «تمّ الإصلاح»، ويردّ.
- * وحدودُ كلّ طرفٍ يحسمها الخادم ويقولها في `can` — والشاشةُ تعرض ما يُسمح به.
- *
- * والبطاقاتُ تُعَدّ بكلّ الفلاتر إلّا فلترِ الحالة، فلا تقفز تحت الضغطة.
+ * Media Go complaints: reports of faults in screens mounted on our tankers.
+ * One screen for two parties: the personnel department files, follows and closes reports; the Media Go account (`mediago_account`) sees only this page, marks reports in progress or fixed, and replies.
+ * The server decides each side's limits and returns them in `can`.
+ * Cards are counted with all filters except status, so they do not jump on click.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -31,7 +26,7 @@ import { MonitorPlay, Plus, Search, Film, Image as ImageIcon, MessageCircle, Map
 type Filters = { status: string; issue: string; location: string; availability: string; from: string; to: string };
 const NO_FILTERS: Filters = { status: '', issue: '', location: '', availability: '', from: '', to: '' };
 
-// ── بطاقةُ البلاغ لشاشة الشريك — مكوّنٌ في مستوى الملفّ ──
+// Complaint card for the partner screen; a file-level component.
 function ComplaintCard({ r, data, mode, onOpen }: { r: MgRow; data: MgList; mode: Mode; onOpen: () => void }) {
   const ar = mode !== 'en';
   const tone = STATUS_TONE[r.status] || STATUS_TONE.closed;
@@ -80,23 +75,22 @@ export default function MediaGoComplaintsPage() {
   const [f, setF] = useState<Filters>(NO_FILTERS);
   const [creating, setCreating] = useState(false);
   const [openId, setOpenId] = useState<string>('');
-  // ── وحسابُ Media Go يختار العرض: بطاقاتٌ أو جدولٌ كالذي عندنا ──────────────
-  // (صاحبُ الشركة، ٢٠٢٦/١٠/٢١). اختيارٌ لكلّ متصفّح — راحةٌ لا بيانات.
+  // The Media Go account chooses the view: cards or a table like ours. Per browser, a convenience and not data.
   const [view, setView] = useState<'grid' | 'table'>('grid');
-  // يُقرأ بعد التركيب لا قبله: الصفحةُ تُرسَم على الخادم أوّلًا ولا تخزينَ هناك.
+  // Read after mount, not before: the page renders on the server first, where there is no storage.
   useEffect(() => { try { if (localStorage.getItem('mg:view') === 'table') setView('table'); } catch { /* */ } }, []);
   const pickView = (v: 'grid' | 'table') => { setView(v); try { localStorage.setItem('mg:view', v); } catch { /* */ } };
   const [editRow, setEditRow] = useState<MgRow | null>(null);
-  // يومٌ بعينه أو فترة — واليومُ هو فترةٌ أوّلُها آخرُها، فالخادمُ لا يفرّق.
+  // A single day or a range; a day is a range whose start equals its end, so the server does not distinguish.
   const [dateMode, setDateMode] = useState<'day' | 'range'>('day');
   const { notify, confirm } = useDialog();
 
-  // الإشعارُ يفتح البلاغَ بمعرّفه في الرابط (lib/notificationLink).
+  // The notification opens the complaint by the id in the URL (lib/notificationLink).
   useEffect(() => {
     try {
       const id = new URLSearchParams(window.location.search).get('id');
       if (id && /^[0-9a-f]{24}$/i.test(id)) {
-        // حسابُ Media Go يقرأ البلاغَ صفحةً؛ وموظّفونا في النافذة.
+        // The Media Go account reads the complaint as a page; our staff in the dialog.
         if (String(user?.role || '') === MEDIAGO_ROLE) router.replace(`/system/b2c/mediago-complaints/${id}`);
         else setOpenId(id);
       }
@@ -130,7 +124,7 @@ export default function MediaGoComplaintsPage() {
   const mode: Mode = partner ? 'partner' : (lang === 'ar' ? 'ar' : 'en');
   const tx = useMemo(() => makeTx(mode), [mode]);
 
-  // التعديلُ والحذفُ من صفّ الجدول نفسِه — الصلاحيةُ نفسُها التي في التفصيل (`can`).
+  // Edit and delete from the table row itself, with the same permission as the detail view (`can`).
   const removeRow = async (r: MgRow) => {
     const ok = await confirm({ title: tx('حذف البلاغ', 'Delete complaint'), message: tx(`حذف ${r.ref} نهائيًّا مع مرفقاته؟ لا يمكن التراجع.`, `Delete ${r.ref} and its files permanently? This cannot be undone.`), tone: 'danger', confirmLabel: tx('حذف', 'Delete') });
     if (!ok) return;
@@ -181,8 +175,8 @@ export default function MediaGoComplaintsPage() {
 
   return (
     <div className="w-full space-y-4 pb-10" dir={isRTL ? 'rtl' : 'ltr'}>
-      {/* الرأس — للشريك لافتةٌ تحمل الاسمين، ولنا رأسُ القسم */}
-      {/* بلون الشريط الجانبيّ نفسِه (slate-900) — والبرتقاليُّ وحدَه للإبراز. */}
+      {/* Header: the partner gets a banner with both names; ours is the department header. */}
+      {/* Same color as the sidebar (slate-900); orange only for emphasis. */}
       <div className="relative overflow-hidden rounded-2xl bg-slate-900 p-5 text-white shadow-md">
         <div className="pointer-events-none absolute -end-10 -top-16 h-48 w-48 rounded-full bg-[#f37121]/25 blur-2xl" />
         <div className="relative flex flex-wrap items-center gap-4">
@@ -217,7 +211,7 @@ export default function MediaGoComplaintsPage() {
         </div>
       </div>
 
-      {/* البطاقات — تُعَدّ بلا فلتر الحالة */}
+      {/* Cards, counted without the status filter. */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
         <StatCard label={tx('الكل', 'All')} value={data.grandTotal} onClick={() => setF((o) => ({ ...o, status: '' }))} active={!f.status} />
         {data.meta.status.map((s) => (
@@ -226,7 +220,7 @@ export default function MediaGoComplaintsPage() {
         ))}
       </div>
 
-      {/* الفلاتر */}
+      {/* Filters. */}
       <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
         <div className="relative">
           <Search className="absolute start-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
@@ -282,14 +276,14 @@ export default function MediaGoComplaintsPage() {
         )}
       </div>
 
-      {/* القائمة — بطاقاتٌ للشريك، وجدولٌ لنا */}
+      {/* List: cards for the partner, a table for us. */}
       {!data.items.length ? (
         <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-12 text-center">
           <MonitorPlay className="mx-auto mb-2 h-10 w-10 text-slate-300" />
           <p className="font-semibold text-slate-600"><Bi ar={anyFilter ? 'لا بلاغات مطابقة' : 'لا بلاغات بعد'} en={anyFilter ? 'No matching complaints' : 'No complaints yet'} mode={mode} /></p>
         </div>
       ) : partner && view === 'grid' ? (
-        // حسابُ Media Go يفتح البلاغَ صفحةً كاملة لا نافذة.
+        // The Media Go account opens the complaint as a full page, not a dialog.
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {data.items.map((r) => <ComplaintCard key={r._id} r={r} data={data} mode={mode} onOpen={() => router.push(`/system/b2c/mediago-complaints/${r._id}`)} />)}
         </div>
@@ -348,7 +342,7 @@ export default function MediaGoComplaintsPage() {
         </div>
       )}
 
-      {/* بعد الرفع تُحدَّث القائمةُ ولا يُفتَح شيء — التفصيلُ بضغطةٍ على البلاغ وحدَها. */}
+      {/* After upload the list refreshes and nothing opens; detail opens only by clicking the complaint. */}
       <CreateComplaintModal open={creating} onClose={() => setCreating(false)} meta={data.meta} tx={tx} ar={mode !== 'en'}
         onCreated={() => { setCreating(false); load(); }} />
       <CreateComplaintModal open={!!editRow} onClose={() => setEditRow(null)} meta={data.meta} tx={tx} ar={mode !== 'en'}

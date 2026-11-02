@@ -8,8 +8,7 @@ import {
   FileText, ListChecks, Mail, Building2, Anchor,
 } from 'lucide-react';
 
-// Static reference guide (التخليص الجمركى). Content is the domain brief, laid out
-// as simple, readable cards. Now bilingual via getCustomsGuideTranslations.
+// Static reference guide (customs clearance). Content is the domain brief, laid out as simple, readable cards. Now bilingual via getCustomsGuideTranslations.
 export default function CustomsGuidePage() {
   const { isRTL, lang } = useLanguage();
   const Back = isRTL ? ArrowRight : ArrowLeft;

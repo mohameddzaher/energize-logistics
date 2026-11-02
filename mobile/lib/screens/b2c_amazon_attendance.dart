@@ -9,10 +9,7 @@ import '../ui/widgets.dart';
 import '../ui/search_field.dart';
 import 'b2c_daily.dart' show AttendanceToggle;
 
-/// متابعةُ مناديب أمازون — نظيرُ /system/b2c/amazon-attendance.
-///
-/// أمازون حضورٌ لا أوردرات: الجميعُ حاضرون افتراضيًّا، ويُعلَّم الغائبُ وحدَه.
-/// يحسم الخادمُ مَن يراها (مدير مشروع أمازون ومدير القسم) ويردّ ٤٠٣ لغيرهما.
+/// Amazon riders follow-up, the counterpart of /system/b2c/amazon-attendance. Amazon is attendance, not orders: everyone is present by default and only the absent are marked. The server decides who can see it (Amazon project manager and section manager) and returns 403 to others.
 class B2cAmazonAttendanceScreen extends StatefulWidget {
   const B2cAmazonAttendanceScreen({super.key});
   @override
@@ -25,7 +22,7 @@ class _B2cAmazonAttendanceScreenState extends State<B2cAmazonAttendanceScreen> {
   bool _forbidden = false;
   String _date = '';
   String _q = '';
-  final _searchCtl = TextEditingController(); // النصُّ يبقى مطابقًا لـ_q بعد إعادة التحميل
+  final _searchCtl = TextEditingController(); // Text stays equal to _q after a reload.
   String _filter = ''; // '' | present | absent
   final Map<String, String> _state = {}; // saving | error
   Timer? _debounce;
@@ -51,7 +48,7 @@ class _B2cAmazonAttendanceScreenState extends State<B2cAmazonAttendanceScreen> {
     final want = _date;
     try {
       final d = Map<String, dynamic>.from(await Api.instance.get('/api/b2c/attendance${want.isEmpty ? '' : '?date=$want'}') as Map);
-      // ردٌّ متأخّرٌ ليومٍ سابقٍ لا يغلب اليومَ المختار.
+      // A late reply for an earlier day does not beat the selected day.
       if (!mounted || want != _date) return;
       setState(() { _d = d; _error = null; _forbidden = false; _date = '${d['date']}'; });
     } on ApiException catch (e) {
@@ -70,7 +67,7 @@ class _B2cAmazonAttendanceScreenState extends State<B2cAmazonAttendanceScreen> {
       await Api.instance.put('/api/b2c/attendance', {'lt': id, 'dateKey': _date, 'present': !prev});
       if (!mounted) return;
       setState(() => _state.remove(id));
-      _onLive(); // غيابُ الشهر يعدّه الخادم — نعيد القراءة.
+      _onLive(); // The month's absences are counted by the server, so the data is refetched.
     } catch (e) {
       if (!mounted) return;
       setState(() { r['present'] = prev; _state[id] = 'error'; _recount(); });

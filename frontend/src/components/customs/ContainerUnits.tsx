@@ -1,15 +1,7 @@
 'use client';
 /**
- * وحداتُ المعاملة — حاويةٌ لكلّ حاوية.
- *
- * كان في المعاملة رقمٌ واحد: «عدد الحاويات ٣». والعملُ ليس على العدد بل على
- * كلّ حاويةٍ بعينها: رقمُها، وبأيّ سيّارةٍ نُقلت، ومتى أُرجعت إلى الوكيل. فكان
- * ذلك يُكتب في ملاحظةٍ أو في ورقةٍ جانبيّة.
- *
- * فتُرسَم الحاوياتُ بعددها، ولكلّ حاويةٍ خانتُها. وبيانُ النقل يظهر حين تُعلَّم
- * مرحلةُ نقلٍ في دورة التخليص: بسيّارة تنشيط أو بسيّارةٍ خارجيّة، وفي الحالين
- * يُكتب «رقم كشف التخريج» — فالخارجيّةُ يُعمل لها كشفُ تخريجٍ في سير عمل التشغيل
- * كذلك (صاحبُ الشركة، ٢٠٢٦/١٠/٢٠)، فيُقال في الحال أمرتبطٌ هو أم لا. ولا «رقم فاتورة».
+ * Transaction units: one entry per container.
+ * The transaction used to hold only a container count, but work is per container: its number, the vehicle that carried it, and when it was returned to the agent. Containers are drawn by count, each with its own fields. Transport details appear once a transport stage is marked, by company vehicle or external vehicle; both record the dispatch-statement number (external vehicles also get a dispatch statement in the operations workflow), and the UI shows whether it is linked. No invoice number.
  */
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
@@ -20,7 +12,7 @@ import { Car, CalendarDays, Link2, Truck, AlertTriangle, Check, Undo2 } from 'lu
 export interface UnitMove { leg: string; vehicleKind: '' | 'energize' | 'external'; ref: string }
 export interface Unit {
   _id?: string; containerNumber?: string; returnDate?: string; notes?: string; moves?: UnitMove[];
-  // تفاصيلُ إرجاع الحاوية: أين، وبأيّ إيصال، وبأيّ سيّارة.
+  // Container return details: where, with what receipt, by which vehicle.
   returnDepot?: string; returnReceipt?: string; returnVehicleKind?: '' | 'energize' | 'external'; returnRef?: string; returnNotes?: string;
 }
 
@@ -43,16 +35,14 @@ export default function ContainerUnits({
   const t = (a: string, e: string) => (ar ? a : e);
   const cargo = pipeline?.cargoType || 'containers';
   const vehicles = cargo === 'vehicles';
-  // مراحلُ النقل التي أنجزتها كلُّ وحدة — لها وحدَها يُسأل عن السيّارة. والوحداتُ
-  // لا تسير معًا دائمًا، فلكلٍّ منها مراحلُها (ومعاملةٌ بلا وحداتٍ مُتابَعةٍ تأخذ
-  // مراحلَ المعاملة كلِّها).
+  // Transport stages completed by each unit; only those ask for the vehicle. Units do not always move together, so each has its own stages (a transaction with no tracked units takes all the transaction's stages).
   const legsOf = (i: number): string[] => {
     const steps = pipeline?.units?.[i]?.steps || pipeline?.steps || [];
     return steps.filter((s) => (TRANSPORT_LEGS as readonly string[]).includes(s.key) && s.done).map((s) => s.key);
   };
   const anyLeg = units.some((_, i) => legsOf(i).length > 0);
 
-  // أرقامُ كشوف التخريج المكتوبة: أيُّها موجودٌ في سير عمل التشغيل.
+  // Typed dispatch-statement numbers: which ones exist in the operations workflow.
   const sheetNumbers = useMemo(() => [...new Set(units.flatMap((u) => (u.moves || [])
     .filter((m) => m.vehicleKind && m.ref).map((m) => m.ref.trim())))].sort().join(','), [units]);
   const [found, setFound] = useState<Record<string, string>>({});
@@ -85,8 +75,7 @@ export default function ContainerUnits({
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {units.map((u, i) => (
-          // المفتاحُ موضعُ الخانة لا معرّفُها: المعرّفُ يتجدّد مع كلّ حفظ، فلو كان
-          // هو المفتاحَ لأُعيد بناءُ الخانة بعد كلّ حقلٍ وضاع التركيزُ من الذي يليه.
+          // The key is the slot position, not its id: ids regenerate on every save, so keying by id would remount the slot after each field and lose focus on the next one.
           <UnitBox key={i} index={i} unit={u} legs={legsOf(i)} flow={pipeline?.units?.[i]} vehicles={vehicles} cargo={cargo}
             stages={stages} found={found} canEdit={canEdit} ar={ar} onChange={(next) => setUnit(i, next)} />
         ))}
@@ -95,7 +84,7 @@ export default function ContainerUnits({
   );
 }
 
-/** حاويةٌ واحدة — مرسومةً حاويةً: أضلاعُها المموَّجة، وبابُها، ولوحةُ بياناتها. */
+/** A single container drawn as a container: corrugated sides, door and data plate. */
 function UnitBox({
   index, unit, legs, flow, vehicles, cargo, stages, found, canEdit, ar, onChange,
 }: {
@@ -104,14 +93,14 @@ function UnitBox({
   canEdit: boolean; ar: boolean; onChange: (u: Unit) => void;
 }) {
   const t = (a: string, e: string) => (ar ? a : e);
-  // «أُرجعت» من مرحلتها (الخادمُ يؤرّخها بيومها عند التعليم) — أو من تاريخٍ كُتب.
+  // Returned from its stage (the server dates it with the day it was marked) or from a typed date.
   const returned = !vehicles && (!!flow?.steps.some((s) => s.key === 'containers_returned' && s.done) || (!flow && !!unit.returnDate));
-  // الحاويةُ التي أُرجعت تخضرّ: تُرى من بعيدٍ بلا قراءة تاريخ.
+  // A returned container turns green so it is visible at a glance without reading dates.
   const shell = returned ? ['#15803d', '#166534'] : vehicles ? ['#334155', '#1e293b'] : ['#ea6a1c', '#c9530f'];
   return (
     <div className="overflow-hidden rounded-md shadow-sm ring-1 ring-black/10"
       style={{ background: `repeating-linear-gradient(90deg, ${shell[0]} 0 9px, ${shell[1]} 9px 11px)` }}>
-      {/* العارضةُ العليا: رقمُ الخانة ونوعُها */}
+      {/* Top bar: slot number and type. */}
       <div className="flex items-center gap-2 px-3 py-1.5 text-white" style={{ background: shell[1] }}>
         {vehicles ? <Car className="h-4 w-4" /> : <span className="grid h-4 w-5 grid-cols-3 gap-px opacity-80">{[0, 1, 2].map((k) => <i key={k} className="bg-white/70" />)}</span>}
         <span className="text-[12px] font-bold">{unitWord(cargo, ar, false)} {index + 1}</span>
@@ -123,7 +112,7 @@ function UnitBox({
             </span>
           )}
       </div>
-      {/* لوحةُ البيانات — بيضاءُ على جسم الحاوية ليُقرأ ما فيها */}
+      {/* Data plate: white on the container body so its content is readable. */}
       <div className="m-2 space-y-2 rounded bg-white/95 p-2.5">
         <Field label={vehicles ? t('رقم السيارة', 'Vehicle no.') : t('رقم الحاوية', 'Container no.')}
           value={unit.containerNumber || ''} disabled={!canEdit} mono
@@ -135,7 +124,7 @@ function UnitBox({
           return (
             <div key={leg} className="rounded border border-slate-200 bg-slate-50 p-2">
               <p className="mb-1.5 flex items-center gap-1 text-[11px] font-bold text-slate-700"><Truck className="h-3.5 w-3.5 text-[#f37121]" />{stageName(stages, leg, cargo)}</p>
-              {/* بأيّ سيّارةٍ نُقلت هذه الوحدةُ في هذه المرحلة. */}
+              {/* Which vehicle carried this unit in this stage. */}
               <div className="mb-1.5 flex overflow-hidden rounded border border-slate-200 bg-white text-[11.5px] font-semibold">
                 {([['energize', 'سيّارة تنشيط', 'Energize truck'], ['external', 'سيّارة خارجيّة', 'External truck']] as const).map(([k, a, e]) => (
                   <button key={k} type="button" disabled={!canEdit} onClick={() => onChange(withMove(unit, leg, { vehicleKind: k }))}
@@ -162,7 +151,7 @@ function UnitBox({
           );
         })}
         {!vehicles && (
-          // ── إرجاعُ الحاوية: التاريخُ ومعه ما يُسأل عنه حين يطالب الوكيلُ بغرامة ──
+          // Container return: the date plus what is asked when the agent claims a demurrage fine.
           <div className={`rounded border p-2 ${returned ? 'border-emerald-200 bg-emerald-50' : 'border-slate-200 bg-slate-50'}`}>
             <p className="mb-1.5 flex items-center gap-1 text-[11px] font-bold text-slate-700"><Undo2 className="h-3.5 w-3.5 text-[#f37121]" />{t('إرجاع الحاوية', 'Container return')}</p>
             <div className="space-y-1.5">

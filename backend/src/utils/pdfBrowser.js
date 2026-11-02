@@ -1,15 +1,6 @@
 /**
- * pdfBrowser — المتصفّحُ الخفيُّ الواحدُ الذي تُرسَم به أوراقُ الـPDF كلُّها
- * (التقاريرُ وكشوفُ الحساب في services/reportBuilder، والبوالصُ في
- * utils/waybillPdf)، وخطوطُها المضمَّنة.
- *
- * ── لماذا ملفٌّ مستقلّ ──────────────────────────────────────────────────────
- * كان لكلٍّ من الاثنين متصفّحُه المحفوظُ في وعدٍ لا يُنسى: إن مات Chromium
- * (نفادُ ذاكرةٍ أثناء كشفٍ من مئة وخمسين صفحة، أو انهيارُه) بقي الوعدُ يردّ
- * المتصفّحَ الميّت، فكلُّ طلبٍ بعده يسقط بـ«ConnectionClosedError: Connection
- * closed» حتّى يُعاد تشغيلُ الخادم. هذا هو «زرُّ كشف الحساب بايظ».
- * فصار المتصفّحُ يُفحص قبل كلّ استعمال ويُعاد إطلاقُه إن انقطع، والطلبُ الذي
- * صادف الانقطاعَ يُعاد مرّةً واحدةً على متصفّحٍ جديد.
+ * pdfBrowser: the single headless browser that renders every PDF (reports, account statements, waybills) and its embedded fonts.
+ * The browser is health-checked before each use and relaunched if it dropped; a request that hit a disconnect is retried once on a fresh browser. A cached dead browser would otherwise fail every request with ConnectionClosedError until restart.
  */
 const fs = require('fs');
 const path = require('path');
@@ -21,7 +12,7 @@ let browserPromise = null;
 async function launch() {
   const puppeteer = require('puppeteer');
   const browser = await puppeteer.launch({ headless: 'new', args: LAUNCH_ARGS });
-  // انقطاعٌ لاحق يمحو المحفوظ، فالطلبُ التالي يطلق متصفّحًا جديدًا.
+  // A later disconnect clears the cached browser, so the next request launches a new one.
   browser.on('disconnected', () => {
     if (browserPromise && browserPromise.__browser === browser) browserPromise = null;
   });
@@ -42,10 +33,7 @@ async function getBrowser() {
 
 const DEAD = /Connection closed|Target closed|Session closed|Protocol error|browser has disconnected|Navigating frame was detached/i;
 
-/**
- * يفتح صفحةً، ويمرّرها إلى `fn`، ويغلقها. وإن انقطع المتصفّحُ أثناءها أُعيد
- * إطلاقُه وأُعيدت المحاولةُ مرّةً واحدة.
- */
+/** Opens a page, passes it to `fn`, and closes it. If the browser disconnects meanwhile, it is relaunched and the attempt retried once. */
 async function withPage(fn) {
   for (let attempt = 0; ; attempt++) {
     let page = null;
@@ -68,9 +56,7 @@ async function withPage(fn) {
   }
 }
 
-// ── الخطوطُ في الملفّ لا على الشبكة ─────────────────────────────────────────
-// ملفّاتُ WOFF2 عندنا (assets/fonts، من Google Fonts بترخيص OFL) تُقرأ مرّةً
-// وتُحقن نصًّا — فلا ينتظر ترسيمٌ خادمًا في الخارج. راجع utils/waybillPdf.
+// Fonts come from local files, not the network. The WOFF2 files in assets/fonts (Google Fonts, OFL) are read once and injected as text so rendering never waits on an external server. See utils/waybillPdf.
 const FONTS_DIR = path.join(__dirname, '..', 'assets', 'fonts');
 const FONT_FACES = [
   ['Tajawal', 400, ['tajawal-400-arabic.woff2', 'tajawal-400-latin.woff2']],
@@ -91,7 +77,7 @@ function getFontCss() {
         out.push(`@font-face{font-family:'${family}';font-style:normal;font-weight:${weight};`
           + `font-display:block;src:url(data:font/woff2;base64,${b64}) format('woff2');}`);
       } catch (e) {
-        // ملفُّ خطٍّ مفقود لا يمنع الورقة: تُرسَم بخطّ النظام وتُقرأ.
+        // A missing font file does not block the sheet; it renders with the system font.
         console.error('[pdf] font missing:', file);
       }
     }

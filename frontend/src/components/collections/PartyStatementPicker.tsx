@@ -1,12 +1,5 @@
 'use client';
-/**
- * «إرسال كشف حساب» من ملفّ العميل (صاحبُ الشركة، ٢٠٢٦/١٠/٢٤): «أدخل بروفايله،
- * أفلتر على فواتير معيّنة أو فترة… وأقول إرسال».
- *
- * الخطوةُ الأولى هنا: النوعُ (كاش/ضريبي)، والفترةُ، والحالةُ، وفواتيرُ بعينها
- * بعلامة. والثانيةُ نافذةُ المعاينة والإرسال نفسُها (SendStatementModal) بالاختيار
- * نفسِه — فالكشفُ المرفقُ هو ما اختير هنا لا غيرُه.
- */
+/** Send account statement from the customer profile: filter to certain invoices or a period, then send. Step one picks type (cash/tax), period, state and specific invoices by tick. Step two is the same preview and send dialog (SendStatementModal) with the same selection, so the attached statement is exactly what was chosen here. */
 import { useEffect, useMemo, useState } from 'react';
 import api from '@/lib/api';
 import { Modal } from '@/components/hr/HRKit';
@@ -54,7 +47,7 @@ export default function PartyStatementPicker({ partyName, defaultKind, ar, onClo
   const go = () => {
     const p = new URLSearchParams({ customer: partyName, lang: ar ? 'ar' : 'en' });
     if (from) p.set('from', from); if (to) p.set('to', to); if (state) p.set('collected', state);
-    // المختارُ وحدَه إن اختير؛ وإلّا صفوفُ هذا العميل كلُّها (ولو طابق اسمُه عميلًا آخرَ أطول).
+    // Only the selected rows if any; otherwise all this customer's rows (even if the name matches another, longer customer).
     const keys = picked.size ? [...picked] : (rows || []).map(keyOf);
     for (const k of keys) p.append('sel', k);
     setNext(p);

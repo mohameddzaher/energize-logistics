@@ -1,10 +1,5 @@
 'use client';
-// إعدادات الموارد البشريّة — ما يضبطه القسمُ لنفسه في موضعٍ واحد.
-//
-// كان القسمُ بلا صفحةِ إعدادات: أنواعُ الإجازات في صفحةٍ مستقلّة، وعتباتُ
-// التنبيه لانتهاء المستندات مبثوثةٌ في الشيفرة، والقوائمُ المرجعيّة في صفحةٍ
-// عامّةٍ تعرض قوائمَ الأقسام كلِّها. فمن أراد ضبطَ شيءٍ في قسمه بحث عنه في
-// أربعة مواضع.
+// HR settings: what the department configures for itself in one place. The department had no settings page: leave types in a separate page, document-expiry alert thresholds in code, and reference lists in a general page showing every department's lists, so a setting was searched in four places.
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
@@ -58,7 +53,7 @@ export default function HrSettingsPage() {
   if (!staff) return <div className="text-slate-500 p-8">{t('غير مصرّح', 'Not authorized')}</div>;
   if (loading) return <Spinner />;
 
-  // المستنداتُ ذاتُ تاريخ الانتهاء في الموارد البشريّة — العتبةُ لكلٍّ منها.
+  // Documents with an expiry date in HR; each has its own threshold.
   const DOCS: [string, string, string][] = [
     ['iqama', 'الإقامة', 'Iqama'],
     ['passport', 'جواز السفر', 'Passport'],
@@ -80,10 +75,7 @@ export default function HrSettingsPage() {
         subtitle={t('أنواع الإجازات، وعتبات تنبيه انتهاء المستندات، وقوائم القسم', 'Leave types, document-expiry alert thresholds, and the section’s lists')}
       />
 
-      {/* ── أنواع الإجازات ──────────────────────────────────────────────────
-          «تُخصَم من الرصيد» تُقرَّر هنا مرّةً واحدة فتنطبق على كلّ من يأخذ
-          هذا النوع — لا سؤالٌ يُعاد عند كلّ تسجيل، فيُخصَم من موظّفٍ ما لم
-          يُخصَم من زميله في الحالة نفسِها. */}
+      {/* Leave types. "Deducted from balance" is decided once here and applies to everyone taking that type, rather than a question asked on every entry that deducts from one employee and not another in the same case. */}
       <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
           <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold flex items-center gap-2">
@@ -124,9 +116,7 @@ export default function HrSettingsPage() {
         </ScrollX>
       </div>
 
-      {/* ── عتبات التنبيه ───────────────────────────────────────────────────
-          «نبّهني قبل انتهاء الإقامة بكم يومًا؟» كان الجوابُ رقمًا في الشيفرة،
-          فمن أراد ستّين بدل ثلاثين انتظر نشرةً برمجيّة. */}
+      {/* Alert thresholds. "Warn me how many days before residency expires?" was a number in code, so changing sixty for thirty needed a software release. */}
       <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
         <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-2 flex items-center gap-2">
           <BellRing className="w-4 h-4 text-[#f37121]" /> {t('تنبيه انتهاء المستندات', 'Document-expiry alerts')}
@@ -152,8 +142,7 @@ export default function HrSettingsPage() {
         </div>
       </div>
 
-      {/* ── قوائم القسم ─────────────────────────────────────────────────────
-          تعيش عند قسمها لا في صفحةٍ عامّةٍ تعرض قوائمَ الأقسام كلِّها. */}
+      {/* Department lists live with their department, not on a general page showing every department's lists. */}
       <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
         <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-4 flex items-center gap-2">
           <Tags className="w-4 h-4 text-[#f37121]" /> {t('قوائم القسم', 'Section lists')}

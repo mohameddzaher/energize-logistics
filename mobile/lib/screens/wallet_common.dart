@@ -2,8 +2,7 @@ import 'package:flutter/material.dart';
 import '../services/lang.dart';
 import '../ui/theme.dart';
 
-/// ما تشترك فيه شاشاتُ العهدة الثلاث (العهدة اليوميّة، لوحتُها، ولوحةُ الفرع):
-/// صيغةُ المبلغ، ومفتاحُ اليوم، ومنتقي الشهر — كي لا يُكتب كلٌّ منها ثلاثَ مرّات.
+/// Shared by the three custody screens (daily custody, its dashboard and the branch dashboard): amount format, day key and month picker, so each is not written three times.
 
 String walletMoney(dynamic v) {
   final n = (v is num) ? v : num.tryParse(v?.toString() ?? '') ?? 0;
@@ -24,17 +23,17 @@ String walletDayKey(DateTime d) =>
 
 String walletMonthKey(DateTime d) => '${d.year}-${d.month.toString().padLeft(2, '0')}';
 
-/// آخرُ يومٍ في الشهر — «YYYY-MM-DD».
+/// Last day of the month as YYYY-MM-DD.
 String walletMonthEnd(DateTime m) => walletDayKey(DateTime(m.year, m.month + 1, 0));
 
-/// وقتُ الحركة «HH:mm» كما يكتبه الموقع (en-GB).
+/// Movement time as HH:mm, as web writes it (en-GB).
 String walletTime(dynamic iso) {
   final d = DateTime.tryParse('${iso ?? ''}')?.toLocal();
   if (d == null) return '';
   return '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
 }
 
-/// تاريخٌ بصيغة الموقع (dd/mm/yyyy).
+/// Date in the web format (dd/mm/yyyy).
 String walletDateGb(dynamic iso) {
   final d = DateTime.tryParse('${iso ?? ''}')?.toLocal();
   if (d == null) return '';
@@ -49,7 +48,7 @@ const walletMonthsEn = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 
 
 String walletMonthLabel(DateTime m) => '${tr(walletMonthsAr[m.month - 1], walletMonthsEn[m.month - 1])} ${m.year}';
 
-/// منتقي الشهر — نظيرُ MonthPicker في الموقع: سنةٌ ثمّ اثنا عشر شهرًا.
+/// Month picker, twin of MonthPicker on web: a year then twelve months.
 Future<DateTime?> pickWalletMonth(BuildContext context, DateTime initial, {int fromYear = 2023, int? toYear}) {
   final last = toYear ?? DateTime.now().year + 1;
   int year = initial.year.clamp(fromYear, last);

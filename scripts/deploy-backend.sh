@@ -86,11 +86,7 @@ verify() {
     check "mounted: $route" "$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "$API$route")" "401"
   done
 
-  # The 2026-07-26 incident. 101 = the upgrade really happened.
-  #
-  # و`--http1.1` صراحةً: المقبسُ يُرقّى على HTTP/1.1 — هكذا يفعل المتصفّحُ نفسُه،
-  # ولا ترقيةَ بهذه الترويسات في HTTP/2. ومذ صار nginx يعرض h2 صار curl يتفاوض
-  # عليه فيردّ الخادمُ ٤٠٠: فحصٌ يسقط والمقبسُ سليمٌ يُرقّى ١٠١ من المتصفّح.
+  # Expects an HTTP 101 upgrade, which proves the socket upgrade really worked. `--http1.1` is explicit: the socket upgrades over HTTP/1.1 like a browser, and these headers do not upgrade over HTTP/2. Since nginx offers h2, curl negotiates it and the server returns 400: a check that fails while the socket upgrades fine from a browser.
   check "websocket upgrade" "$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 --http1.1 \
       -H 'Connection: Upgrade' -H 'Upgrade: websocket' -H 'Sec-WebSocket-Version: 13' \
       -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' \
@@ -103,35 +99,15 @@ verify() {
       "$API/api/health" | tr -d '\r' | awk -F': ' 'tolower($1)=="access-control-allow-origin"{print $2}')
   check "CORS allows the site" "${origin:-none}" "https://energize-logistics.com"
 
-  # ── وكلُّ عاملٍ على المنفذ يجب أن يكون عاملًا يعرفه pm2 ───────────────────
-  #
-  # الحادثة: مستخدمٌ يعدّل كشفًا فيُقال له «خارج صلاحيّتك» لعمودين يملكهما،
-  # مرّةً من كلّ ثلاث. والسبب لم يكن الصلاحيات: على المنفذ ثلاثةُ عمّال، وpm2
-  # يعرف اثنين. الثالث بقيّةُ إعادةِ تشغيلٍ سابقة، أفلت من `reload` وظلّ ممسكًا
-  # بالمنفذ المشترَك ثلاثَ ساعات — فالنواةُ توزّع الطلبات على ثلاثةٍ أحدُهم
-  # يشغّل كودًا قديمًا. والنشرُ يقول «سليم» لأنّه يسأل أوّلَ عاملٍ فيجده جديدًا.
-  #
-  # فيُعَدُّ العمّالُ لا يُسأل أوّلُهم: كلُّ ما يشغّل `server.js` ولا يعرفه pm2
-  # يتيمٌ يُقتَل. عاملٌ واحدٌ متخلّفٌ يُبطل النشرَ كلَّه، وبصمت.
-  #
-  # والنمطُ مثبَّتُ الطرفين عن قصد: `pgrep -f` يطابق سطرَ الأمر كلَّه، فنمطٌ
-  # حرٌّ يطابق أيضًا الصَّدَفةَ التي تحمل المسارَ في أمرها — أي أمرَ الفحص
-  # نفسِه. جُرِّب فعَدَّ يتيمًا وهمًا؛ ولو مضى القتلُ على ذلك لقتل الفحصُ نفسَه.
+  # Every worker on the port must be one pm2 knows. A user was told "outside your permission" for two columns they own, one request in three, because three workers shared the port and pm2 knew two. The third was a leftover from an earlier restart that escaped `reload` and held the shared port with old code, while the deploy check asked only the first worker and saw it fresh. So workers are counted, and any `server.js` process pm2 does not know is an orphan and is killed. The pattern is anchored at both ends on purpose: `pgrep -f` matches the whole command line, so a loose pattern also matches the shell carrying the path, i.e. the check itself, and would kill it.
   local stray
   stray=$("${SSH[@]}" "MANAGED=\$(pm2 jlist 2>/dev/null | node -e 'let s=\"\";process.stdin.on(\"data\",d=>s+=d).on(\"end\",()=>{try{console.log(JSON.parse(s).map(p=>p.pid).filter(Boolean).join(\" \"))}catch(e){console.log(\"\")}})'); n=0; for pid in \$(pgrep -f \"^node $APP_DIR/src/server.js\$\"); do case \" \$MANAGED \" in *\" \$pid \"*) ;; *) n=\$((n+1));; esac; done; echo \$n" 2>/dev/null | tr -d '\r')
   check "no stray workers on the port" "${stray:-unreadable}" "0"
 
-  # ── وحدُّ كومة node مضبوطٌ دون حدّ pm2 ────────────────────────────────────
-  # بدونه ترى node ثمانيةَ جيجا على الجهاز فتضبط حدَّها على ٢٠٩٦ ميجا ولا تجمع
-  # القمامةَ جادًّا قبلها، فتقتلها pm2 عند ٩٠٠ — إعادةُ تشغيلٍ كلَّ ثلاث دقائق
-  # بلا خطأٍ في السجلّ. وهو إعدادٌ يضيع بأيّ `pm2 delete` ثمّ `pm2 start` بغير
-  # ملفّ الإعداد، فيُفحَص لا يُفترَض.
+  # The node heap limit is set below the pm2 limit. Without it node sees 8 GB on the machine, sets its limit to 2096 MB and does not garbage-collect hard before that, so pm2 kills it at 900 MB, restarting every few minutes with no log error. The setting is lost on any `pm2 delete` then `pm2 start` without the config file, so it is checked, not assumed.
   check "node heap capped under pm2" "$("${SSH[@]}" "pm2 jlist" 2>/dev/null | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const a=JSON.parse(s).filter(x=>x.name==="'"$PM2_NAME"'");console.log(a.length&&a.every(p=>String(p.pm2_env.node_args||"").includes("max-old-space-size"))?"yes":"NO")}catch(e){console.log("unreadable")}})')" "yes"
 
-  # ── وتدويرُ السجلّات ────────────────────────────────────────────────────────
-  # سجلٌّ لا يُدوَّر ينمو حتى يملأ القرص، ثمّ يتوقّف كلُّ شيءٍ لسببٍ لا علاقةَ له
-  # بالتطبيق. يُثبَّت مرّةً ويُفحَص في كلّ نشرةٍ — الوحدةُ تُنزَع بترقيةٍ أو
-  # بإعادة تثبيتِ pm2 ولا يلاحظ أحد.
+  # Log rotation. An unrotated log grows until the disk fills and everything stops for a reason unrelated to the app. It is installed once and checked on every deploy, since the module can be removed by an upgrade or a pm2 reinstall unnoticed.
   check "pm2 log rotation installed" "$("${SSH[@]}" "pm2 list 2>/dev/null | grep -c pm2-logrotate || true")" "1"
 
   # The process, and the env it is actually running with.
@@ -140,7 +116,7 @@ verify() {
   check ".env present" "$("${SSH[@]}" "test -f $APP_DIR/.env && echo yes || echo NO" 2>/dev/null | tr -d '\r')" "yes"
   check "uploads kept" "$("${SSH[@]}" "test -d $APP_DIR/uploads && echo yes || echo NO" 2>/dev/null | tr -d '\r')" "yes"
 
-  # أنهي كوميت شغّال هناك، ومطابق للي عندك ولا لأ.
+  # Which commit is running there, and does it match local.
   local live_commit here_commit
   live_commit=$("${SSH[@]}" "cat $APP_DIR/.deployed-commit 2>/dev/null" | tr -d '\r')
   here_commit=$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || echo '')
@@ -154,14 +130,7 @@ verify() {
     note "informational — انشر لو ده مش مقصود"
   fi
 
-  # ── والموقعُ يُذكَر ولا يحكم ────────────────────────────────────────────────
-  # يُقاس ولا يُسقط نشرةَ الـAPI: خللٌ في الواجهة لا يصلحه رجوعُ الخادم، فلا
-  # معنى لأن يُرجِعه. (كان ذلك يقع حين كانت الواجهةُ في Netlify تُبنى على
-  # جدولها: نشرةُ API سليمةٌ تُعلَن فاشلةً وترجع بنفسها لأنّ بناءً هناك لم يكن
-  # قد تمّ.)
-  #
-  # والواجهةُ الآن على خادمنا تحت pm2 — تُنشَر بـ`scripts/deploy-web.sh` ولا
-  # تتغيّر بنشرة الـAPI. فإن سقطت هنا فالخللُ قائمٌ فعلًا، لا بناءٌ في الطريق.
+  # The website is reported, not authoritative. It is measured but does not fail the API deploy: a web fault is not fixed by rolling back the server. (This used to happen when the web was built on Netlify on its own schedule: a healthy API deploy was declared failed and rolled back because a build there was not finished.) The web now runs on our server under pm2, deployed by `scripts/deploy-web.sh`, and does not change with the API deploy. If it fails here, the fault is real, not a build in progress.
   local site_root site_route site_404
   site_root=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "$SITE/")
   site_route=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "$SITE/system/reports")
@@ -213,16 +182,13 @@ rollback() {
   if ! "${SSH[@]}" "cd $APP_DIR && $NPM_ENV npm install --omit=dev >/tmp/npm-rollback.log 2>&1"; then
     bad "npm install failed during rollback"; "${SSH[@]}" "tail -15 /tmp/npm-rollback.log"; exit 1
   fi
-  # `reload` لا `restart`: التطبيق يعمل في نسختين بوضع العنقود، فتُستبدَل واحدةٌ
-# بينما الأخرى تخدم. و`restart` كان يقتلهما معًا فيردّ nginx ٥٠٢ في تلك الثواني —
-# قِيس ذلك: تسعون طلبًا أثناء إعادةٍ حيّة، تسعون نجحت وصفرٌ فشل.
+  # `reload`, not `restart`: the app runs as two cluster instances, so one is replaced while the other serves. `restart` killed both and nginx returned 502 in those seconds. Measured: ninety requests during a live reload, ninety succeeded, none failed.
 "${SSH[@]}" "pm2 reload $PM2_NAME >/dev/null"
   wait_ready 20 || true
   verify && good "rolled back to $prev" || { bad "still unhealthy after rollback — needs a human"; exit 1; }
 }
 
-# هل الملفات اللي على السيرفر هي نفسها اللي عندي؟ الختم بيقول الكوميت، وده
-# بيقول الملفات — والاتنين مش نفس السؤال: ممكن حد يعدّل ملف على السيرفر بإيده.
+# Are the files on the server the same as mine? The stamp says the commit and this says the files; they are different questions since someone could edit a file on the server by hand.
 diff_source() {
   say "Comparing $ROOT/backend/src with $APP_DIR/src"
   local here there
@@ -270,11 +236,7 @@ for gen in genPageCatalog genPageApis; do
 done
 good "generated page maps are current"
 
-# ── توثيقُ الـ API يُبنى فعلًا قبل النشر ──────────────────────────────────────
-# الوثيقةُ لا تُخزَّن في ملفّ: تُبنى من الراوتر لحظةَ طلبِها، فهي بطبيعتها
-# مطابقةٌ لما رُكِّب. والذي يبقى ممكنًا أن ينكسر المولِّدُ أو تُركَّب مساراتٌ لا
-# يقرؤها، فتُسلَّم للشركاء وثيقةٌ ناقصة — فتُبنى هنا بالراوتر الحقيقيّ ويُرفَض
-# النشرُ إن كسرت. وتقول أيضًا أيُّ مسارٍ لا حارسَ له يُقرأ.
+# API docs are really built before deploy. The document is not stored in a file: it is built from the router when requested, so it matches what is mounted. What can still break is the generator, or mounted routes it cannot read, handing partners an incomplete document. So it is built here with the real router and the deploy is rejected if it breaks. It also reports which route has no guard.
 if ! out="$(API_DOCS_ONLY=1 node "$ROOT/backend/src/scripts/checkApiDocs.js" 2>&1)"; then
   bad "api docs do not build — $out"
   exit 1
@@ -312,19 +274,11 @@ if ! "${SSH[@]}" "cd $APP_DIR && $NPM_ENV npm install --omit=dev >/tmp/npm-deplo
   exit 1
 fi
 good "dependencies installed"
-# `reload` لا `restart`: التطبيق يعمل في نسختين بوضع العنقود، فتُستبدَل واحدةٌ
-# بينما الأخرى تخدم. و`restart` كان يقتلهما معًا فيردّ nginx ٥٠٢ في تلك الثواني —
-# قِيس ذلك: تسعون طلبًا أثناء إعادةٍ حيّة، تسعون نجحت وصفرٌ فشل.
-# ── ويُعاد التحميلُ من ملفّ الإعداد ─────────────────────────────────────────
-# `pm2 reload <name>` يعيد الكودَ ولا يعيد قراءةَ الإعداد، فتغييرٌ في
-# `ecosystem.config.js` — كحدّ كومة node — لا يصل أبدًا. ومن الملفّ يصل الاثنان.
+# `reload`, not `restart`: the app runs as two cluster instances, so one is replaced while the other serves. `restart` killed both and nginx returned 502 in those seconds (ninety of ninety requests succeeded during a live reload). Reload is done from the config file: `pm2 reload <name>` restarts the code but does not re-read the config, so a change in `ecosystem.config.js`, such as the node heap limit, would never arrive. From the file both arrive.
 "${SSH[@]}" "cd $APP_DIR && pm2 reload ecosystem.config.js --update-env >/dev/null 2>&1 || pm2 reload $PM2_NAME >/dev/null"
 good "$PM2_NAME restarted"
 
-# ── والأيتامُ تُجمَع قبل أن تخدم ─────────────────────────────────────────────
-# `reload` يستبدل العمّالَ واحدًا واحدًا، وقد يفلت منه واحدٌ فيبقى ممسكًا
-# بالمنفذ المشترَك بكودٍ قديم. فيُمهَل ثوانٍ حتى يستقرّ العمّالُ الجدد، ثمّ
-# يُقتَل كلُّ ما يشغّل `server.js` ولا يعرفه pm2.
+# Orphans are collected before serving. `reload` replaces workers one by one and one may escape, holding the shared port with old code. So wait a few seconds for the new workers to settle, then kill every `server.js` process pm2 does not know.
 "${SSH[@]}" "sleep 6; MANAGED=\$(pm2 jlist 2>/dev/null | node -e 'let s=\"\";process.stdin.on(\"data\",d=>s+=d).on(\"end\",()=>{try{console.log(JSON.parse(s).map(p=>p.pid).filter(Boolean).join(\" \"))}catch(e){console.log(\"\")}})'); [ -z \"\$MANAGED\" ] && exit 0; for pid in \$(pgrep -f \"^node $APP_DIR/src/server.js\$\"); do case \" \$MANAGED \" in *\" \$pid \"*) ;; *) kill -9 \$pid 2>/dev/null && echo \"reaped \$pid\";; esac; done" 2>/dev/null | while read -r l; do note "$l"; done
 
 # ── Prove it, or put it back ────────────────────────────────────────────────
@@ -332,9 +286,7 @@ note "waiting for the app to come up…"
 wait_ready 20 || note "did not answer within 60s — verifying anyway"
 
 if verify_twice; then
-  # اختم الكوميت اللي اتنشر. من غير الختم ده، السؤال «البرودكشن شغّال على أنهي
-  # نسخة؟» مالوش إجابة إلا بمقارنة الملفات ملف ملف — وده اللي حصل فعلًا لما
-  # اتسأل السؤال. الختم بيتقرا في --check.
+  # Stamp the deployed commit. Without it, "which version is production running?" can only be answered by comparing files one by one. The stamp is read by --check.
   "${SSH[@]}" "printf '%s\n' '$(git rev-parse HEAD)' > $APP_DIR/.deployed-commit"
   "${SSH[@]}" "cd $RELEASES && ls -1 | sort | head -n -$KEEP_RELEASES | xargs -r rm -rf"
   say "Deployed $(git rev-parse --short HEAD) — healthy"

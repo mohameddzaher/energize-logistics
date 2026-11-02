@@ -11,8 +11,7 @@ import '../ui/portal_account_card.dart';
 import '../ui/report_button.dart';
 import 'fleet_customer_presence.dart';
 
-/// ملف العميل — عميل واحد بكامل سجل رحلاته وإحصائياته، وتعديل نوعه وتقييمنا له.
-/// مطابق لصفحة الويب /system/fleet/customers/[id].
+/// Customer profile: one customer with their full trip history and statistics, and editing their type and our rating. Matches web page /system/fleet/customers/[id].
 class FleetCustomerProfileScreen extends StatefulWidget {
   final String customerId;
   const FleetCustomerProfileScreen({super.key, required this.customerId});
@@ -58,7 +57,7 @@ class _FleetCustomerProfileScreenState extends State<FleetCustomerProfileScreen>
   String _type = '';
   String _payType = '';
   int _rating = 0;
-  // آخرُ ما جاء من الخادم: التحديثُ الحيّ لا يمسح اختيارًا لم يُحفَظ بعد.
+  // Last value from the server: a live update does not erase a choice not yet saved.
   String _baseType = '';
   String _basePay = '';
   int _baseRating = 0;
@@ -146,7 +145,7 @@ class _FleetCustomerProfileScreenState extends State<FleetCustomerProfileScreen>
 
     return AppScaffold(
       title: Text(c['name']?.toString() ?? tr('ملف العميل', 'Customer')),
-      // تصديرُ سجلّ رحلاته الكامل — كـExportMenu في صفحة الويب.
+      // Export the customer's full trip history, like ExportMenu on the web page.
       actions: [
         if (d != null)
           ExportButton(
@@ -177,10 +176,10 @@ class _FleetCustomerProfileScreenState extends State<FleetCustomerProfileScreen>
                   child: ListView(
                     padding: const EdgeInsets.all(14),
                     children: [
-                      // العميلُ نفسُه في الأقسام الأخرى
+                      // The same customer in other sections.
                       CustomerPresence(reg: 'fleet', id: (c['_id'] ?? widget.customerId).toString(), onChanged: _load),
                       const SizedBox(height: 10),
-                      // بطاقات الإحصاءات
+                      // Statistics cards.
                       GridView.count(
                         crossAxisCount: 2,
                         shrinkWrap: true,
@@ -203,12 +202,10 @@ class _FleetCustomerProfileScreenState extends State<FleetCustomerProfileScreen>
                         child: ReportButton(subject: 'customer', id: (c['name'] ?? '').toString(), label: tr('التقرير الشامل للعميل', 'Full customer report')),
                       ),
                       const SizedBox(height: 8),
-                      // حساب البوابة — العميل يتابع رحلاته وبوالصه بنفسه
+                      // Portal account: the customer tracks their own trips and waybills.
                       PortalAccountCard(source: 'fleet_customer', refId: widget.customerId, name: (c['name'] ?? '').toString()),
                       const SizedBox(height: 12),
-                      // ── الربط بالـCRM ─────────────────────────────────────
-                      // العميل هنا وشركتُه في الـCRM سجلّان مستقلّان يجمعهما
-                      // الاسم المطبَّع. وحين يجتمعان يجب أن يُريا.
+                      // CRM link. The customer here and their company in the CRM are two independent records joined by the normalized name. When both exist they must be seen.
                       if (d['crm'] != null) ...[
                         AppCard(
                           child: Row(children: [
@@ -229,7 +226,7 @@ class _FleetCustomerProfileScreenState extends State<FleetCustomerProfileScreen>
                         ),
                         const SizedBox(height: 12),
                       ],
-                      // بيانات العميل + التقييم
+                      // Customer data and rating.
                       AppCard(
                         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                           Text(tr('بيانات العميل', 'Customer details'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
@@ -256,9 +253,7 @@ class _FleetCustomerProfileScreenState extends State<FleetCustomerProfileScreen>
                             Expanded(child: _seg(tr('عملاء الفروع', 'Branch'), _type == 'branch', () => setState(() => _type = 'branch'))),
                           ]),
                           const SizedBox(height: 12),
-                          // نوع الدفع المتفق عليه: يُملأ تلقائيًّا في كل حمولةٍ
-                          // جديدة لهذا العميل، ويبقى قابلًا للتعديل في تلك
-                          // الحمولة وحدها — الاتفاق افتراضٌ لا قيد.
+                          // The agreed payment type is filled automatically into every new load for this customer, and stays editable in that load alone: the agreement is a default, not a constraint.
                           Text(tr('نوع الدفع المتفق عليه', 'Agreed payment type'),
                               style: const TextStyle(fontSize: 12.5, color: T.inkFaint, fontWeight: FontWeight.w600)),
                           const SizedBox(height: 6),
@@ -286,7 +281,7 @@ class _FleetCustomerProfileScreenState extends State<FleetCustomerProfileScreen>
                         ]),
                       ),
                       const SizedBox(height: 12),
-                      // حالات الرحلات
+                      // Trip statuses.
                       if (byStatus.isNotEmpty)
                         AppCard(
                           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -299,7 +294,7 @@ class _FleetCustomerProfileScreenState extends State<FleetCustomerProfileScreen>
                           ]),
                         ),
                       const SizedBox(height: 12),
-                      // سجل الرحلات الكامل
+                      // Full trip history.
                       Text('${tr('سجل الرحلات الكامل', 'Full trip history')} (${shipments.length})',
                           style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
                       const SizedBox(height: 8),

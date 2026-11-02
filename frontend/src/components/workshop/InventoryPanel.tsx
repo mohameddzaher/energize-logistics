@@ -30,9 +30,7 @@ interface IssueRow {
   createdAt: string;
 }
 
-// The OUT that an issue's IN displaced — every installation must account for
-// the part it replaced.
-// أين رُكِّبت على المركبة بالضبط.
+// The OUT that an issue's IN displaced; every installation must account for the part it replaced. Also records exactly where it was installed on the vehicle.
 const FIT_LOCATION_LABELS: Record<string, { ar: string; en: string }> = {
   head: { ar: 'الرأس', en: 'Head' },
   flatbed: { ar: 'السطحة', en: 'Flatbed' },
@@ -116,13 +114,11 @@ export function InventoryPanel({ embedded = false }: { embedded?: boolean }) {
   const [rejectNote, setRejectNote] = useState('');
   const [approving, setApproving] = useState<string | null>(null);
 
-  // Issue (صرف): units leaving the shelf onto a vehicle. The log view is what
-  // answers "this part went where" for consumables — the counted half of the
-  // same installed-vs-stock picture the serial-tracked assets already have.
+  // Issue: units leaving the shelf onto a vehicle. The log view answers where a part went for consumables, the counted half of the same installed-vs-stock picture the serial-tracked assets already have.
   const [view, setView] = useState<'stock' | 'issues'>('stock');
   const [issuing, setIssuing] = useState<InventoryItem | null>(null);
   const [issueForm, setIssueForm] = useState({ quantity: '1', vehicleNumber: '', fitLocation: '' as '' | 'head' | 'flatbed' | 'trailer', notes: '', date: new Date().toISOString().slice(0, 10), replacedFate: '' as '' | 'damaged' | 'under_renewal' | 'none' });
-  // نتيجة التجديد for a line's under-renewal bucket: back to stock or scrap.
+  // Renewal result for a line's under-renewal bucket: back to stock or scrap.
   const [renewing, setRenewing] = useState<InventoryItem | null>(null);
   const [renewForm, setRenewForm] = useState({ result: '' as '' | 'renewed' | 'scrap', quantity: '1' });
   const [renewSaving, setRenewSaving] = useState(false);
@@ -143,7 +139,7 @@ export function InventoryPanel({ embedded = false }: { embedded?: boolean }) {
     setRenewSaving(false);
   };
   const [issueSaving, setIssueSaving] = useState(false);
-  // الصرف المجمّع — أمين المخزن بيصرف أصناف كتير في اليوم، والدخول على صنف صنف بطيء.
+  // Bulk issue: the storekeeper issues many items a day, and item-by-item entry is slow.
   const [bulkOpen, setBulkOpen] = useState(false);
   const [issues, setIssues] = useState<IssueRow[]>([]);
   const [issuesTotal, setIssuesTotal] = useState(0);
@@ -151,7 +147,7 @@ export function InventoryPanel({ embedded = false }: { embedded?: boolean }) {
   const [issuesSearch, setIssuesSearch] = useState('');
   const [issuesLoading, setIssuesLoading] = useState(false);
 
-  // role-only: مستودعُ الورشة ليس قسمًا في مصفوفة الصلاحيّات — يحرسه الخادمُ بالأسماء نفسِها (الثلاثةُ التالية كذلك).
+  // role-only: the workshop store is not a section in the permission matrix; the server guards it by these same role names (the next three likewise).
   const canEdit = user && ['super_admin', 'admin', 'workshop_manager', 'procurement_staff'].includes(user.role);
   const canDelete = user && ['super_admin', 'admin', 'workshop_manager'].includes(user.role);
   const canApprove = user && ['super_admin', 'admin', 'workshop_manager'].includes(user.role);
@@ -859,9 +855,7 @@ export function InventoryPanel({ embedded = false }: { embedded?: boolean }) {
           </>
         )}
       </AnimatePresence>
-      {/* Issue (صرف): units leave the shelf onto a vehicle. Quantity is checked
-          server-side too — issuing more than the shelf holds is refused, not
-          clamped, because it means the register is already wrong. */}
+      {/* Issue: units leave the shelf onto a vehicle. Quantity is checked server-side too; issuing more than the shelf holds is refused, not clamped, because it means the register is already wrong. */}
       <AnimatePresence>
         {issuing && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
@@ -938,7 +932,7 @@ export function InventoryPanel({ embedded = false }: { embedded?: boolean }) {
         )}
       </AnimatePresence>
 
-      {/* Renewal result — the only exit from a line's تحت التجديد bucket */}
+      {/* Renewal result, the only exit from a line's under-renewal bucket. */}
       <AnimatePresence>
         {renewing && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}

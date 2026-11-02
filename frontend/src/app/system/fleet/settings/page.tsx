@@ -1,6 +1,5 @@
 'use client';
-// إعدادات إدارة الأسطول — بونص الجمعة، الهدف الشهري الافتراضي، هدف كل سيارة،
-// وروابط تعديل القوائم المنسدلة (نوع الإيجار/الدفع/الحمولة).
+// Fleet settings: Friday bonus, default monthly target, per-vehicle target, and links to edit the dropdown lists (rent/payment/load type).
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useLanguage } from '@/context/LanguageContext';
@@ -27,8 +26,7 @@ export default function FleetSettingsPage() {
   const [defaultMonthlyTarget, setDefaultMonthlyTarget] = useState(27000);
   const [defaultDriverMonthlyLoads, setDefaultDriverMonthlyLoads] = useState(8);
   const [defaultDriverMonthlyKm, setDefaultDriverMonthlyKm] = useState(8000);
-  // «ثلاثون ألفًا شهريًّا» جملةٌ ناقصةٌ ما لم يُقل: دخلًا كما هو، أم بعد مصروف
-  // السائق؟ والفرقُ آلافٌ في السيّارة الواحدة.
+  // 'Thirty thousand per month' is incomplete unless it says whether it is income as is or after the driver expense; the difference is thousands per vehicle.
   const [targetBasis, setTargetBasis] = useState<'gross' | 'net'>('gross');
   const [vehicles, setVehicles] = useState<{ _id: string; plate: string; name?: string; monthlyTarget?: number }[]>([]);
   const [targets, setTargets] = useState<Record<string, string>>({});
@@ -75,15 +73,12 @@ export default function FleetSettingsPage() {
   if (loading) return <Spinner />;
 
   const inputCls = 'w-full px-3 py-2.5 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50';
-  // خانة الهدف تعرض القيمة السارية فعلًا (الهدف الخاصّ، أو الافتراضيّ لمن لا
-  // هدف له) وقد تحمل تعديلًا لم يُحفَظ بعد — فالتصدير يأخذها من نفس الحالة
-  // التي تغذّي الخانة، لا من `monthlyTarget` المحفوظ، كي يطابق الملفُّ الشاشة.
+  // The target cell shows the value actually in force (the vehicle's own target, or the default for one without) and may hold an unsaved edit; export takes it from the same state that feeds the cell, not the saved `monthlyTarget`, so the file matches the screen.
   const targetCols: ExportColumn[] = [
     { header: ar ? 'اللوحة' : 'Plate', key: 'plate', width: 18 },
     { header: ar ? 'الاسم' : 'Name', key: 'name', width: 26, transform: (v) => v || '—' },
     { header: ar ? 'الهدف الشهري' : 'Monthly target', key: '_id', width: 16, transform: (id: string) => Number(targets[id] ?? defaultMonthlyTarget) || 0 },
-    // عمودٌ لا تعرضه الشاشة لأنّها تُظهر القيمة السارية فقط: من يراجع الأهداف
-    // خارج النظام يحتاج تمييز المخصَّص من المتوارَث عن الافتراضيّ.
+    // A column the screen does not show, since it shows only the effective value: someone reviewing targets outside the system needs to tell custom from inherited-default.
     { header: ar ? 'مصدر الهدف' : 'Target source', key: 'monthlyTarget', width: 16, transform: (v) => (v == null || v === '' ? (ar ? 'الافتراضي' : 'Default') : (ar ? 'مخصَّص' : 'Custom')) },
   ];
   const configRows = [
@@ -105,8 +100,7 @@ export default function FleetSettingsPage() {
     <div className="space-y-5 w-full pb-10" dir={isRTL ? 'rtl' : 'ltr'}>
       <PageHeader icon={<Settings className="w-5 h-5" />} title={ar ? 'إعدادات إدارة الأسطول' : 'Fleet Settings'}
         subtitle={ar ? 'الأرقام والقوائم القابلة للتعديل في القسم' : 'The section’s tunable numbers & lists'}>
-        {/* أرقام القسم وأهداف السيارات جدولان مختلفان، فيخرجان في شيتين لا في
-            شيتٍ واحد يخلط سطرين من الإعدادات بعشرات السيارات. */}
+        {/* Department figures and vehicle targets are different tables, so they export as two sheets rather than one that mixes two settings rows with dozens of vehicles. */}
         <ExportMenu
           fileName="fleet-settings" lang={ar ? 'ar' : 'en'}
           options={[{
@@ -120,7 +114,7 @@ export default function FleetSettingsPage() {
         />
       </PageHeader>
 
-      {/* أرقام القسم */}
+      {/* Department figures */}
       <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
         <p className="font-bold text-slate-900 flex items-center gap-2"><CalendarClock className="w-4 h-4 text-[#f37121]" /> {ar ? 'أرقام القسم' : 'Section numbers'}</p>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -134,10 +128,7 @@ export default function FleetSettingsPage() {
             <input type="number" min={0} value={defaultMonthlyTarget} onChange={(e) => setDefaultMonthlyTarget(Number(e.target.value))} className={inputCls} />
           </div>
 
-          {/* ── وهدفُ السائق حمولاتٌ ومسافة ────────────────────────────────
-              السيّارةُ تُقاس بالدخل، والسائقُ لا يملك السعر: يملك أن يشيل
-              ويمشي. فيُقاس بما يملكه. والمسافةُ مقروءةٌ من عدّاد المركبة في
-              لوكيشن سوليوشن، لا مقدَّرةٌ من أسماء المدن. */}
+          {/* Driver target is loads and distance. A vehicle is measured by income, but a driver does not control price; he controls loading and driving, so he is measured by that. Distance is read from the vehicle odometer in Location Solutions, not estimated from city names. */}
           <div>
             <label className="block text-sm font-semibold text-slate-800 mb-1.5">{ar ? 'هدف السائق — حمولات في الشهر' : 'Driver target — loads per month'}</label>
             <input type="number" min={0} value={defaultDriverMonthlyLoads} onChange={(e) => setDefaultDriverMonthlyLoads(Number(e.target.value))} className={inputCls} />
@@ -149,9 +140,7 @@ export default function FleetSettingsPage() {
             <p className="text-[11px] text-slate-500 mt-1">{ar ? 'المسافة تُقرأ من عدّاد المركبة نفسه (لوكيشن سوليوشن)، وتُنسب للسائق بحمولته أو بمقعده على المركبة.' : 'Distance is read from the truck\u2019s own odometer and attributed by load, or by the driver\u2019s seat on the truck.'}</p>
           </div>
           <div className="sm:col-span-2">
-            {/* ── يُقاس الهدفُ بماذا؟ ────────────────────────────────────────
-                بغير هذا السطر يبقى الرقمُ مبهمًا، وتظهر السيّارةُ محقِّقةً على
-                مقياسٍ ومقصّرةً على الآخر، فلا يُصدَّق أيُّهما. */}
+            {/* What the target is measured by. Without this line the number is ambiguous, and a vehicle could meet target on one metric and miss on another with neither believed. */}
             <label className="block text-sm font-semibold text-slate-800 mb-1.5">{ar ? 'الهدف يُقاس بـ' : 'Target is measured against'}</label>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               {([
@@ -176,7 +165,7 @@ export default function FleetSettingsPage() {
         </button>
       </div>
 
-      {/* القوائم المنسدلة */}
+      {/* Dropdown lists */}
       <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <p className="font-bold text-slate-900 flex items-center gap-2 mb-3"><ListChecks className="w-4 h-4 text-[#f37121]" /> {ar ? 'القوائم المنسدلة القابلة للتعديل' : 'Editable dropdown lists'}</p>
         <p className="text-sm text-slate-500 mb-3">{ar ? 'أضِف أو عدّل خيارات نوع الإيجار والدفع والحمولة من صفحة البيانات المرجعية.' : 'Add / edit rent, payment and load type options in Reference Data.'}</p>
@@ -189,12 +178,10 @@ export default function FleetSettingsPage() {
         </div>
       </div>
 
-      {/* ── قوائم القسم المنسدلة ────────────────────────────────────────────
-          نوعُ الإيجار والدفع والحمولة، وملاحظاتُ المتابعة الجاهزة. كانت
-          الأخيرةُ ثمانيةَ سطورٍ في الشيفرة، فمن أراد سطرًا تاسعًا انتظر نشرة. */}
+      {/* Department dropdown lists: rent type, payment type, load type and ready-made follow-up notes. The last used to be eight lines in code, so adding a ninth waited for a release. */}
       <ReferenceDataManager module="fleet" alsoType="jp_task_fleet" embedded />
 
-      {/* أهداف السيارات */}
+      {/* Vehicle targets */}
       <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
         <div className="px-5 py-3 bg-slate-50 border-b border-slate-100 flex items-center gap-2"><Target className="w-4 h-4 text-[#f37121]" /> <p className="font-bold text-slate-900">{ar ? 'الهدف الشهري لكل سيارة' : 'Monthly target per vehicle'}</p></div>
         <ScrollX>

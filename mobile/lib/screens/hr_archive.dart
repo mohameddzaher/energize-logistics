@@ -10,10 +10,8 @@ import '../ui/widgets.dart';
 import 'hr_employee_profile.dart';
 import '../ui/search_field.dart';
 
-/// الأرشيف — مطابقٌ لصفحة الموقع `/system/hr/archive`.
-///
-/// مَن انتهت خدمتُه وخرج من النظام، والفريلانسرُ الذي انتهت خدمتُه. لا يظهرون في
-/// أيّ شاشةٍ أو رقمٍ آخر. والأرشفةُ لا تمحو: الضغطُ يفتح الملفّ كاملًا.
+/// Archive: matches the web page `/system/hr/archive`.
+/// Staff whose service ended and who left the system, plus freelancers whose service ended. They appear in no other screen or count. Archiving erases nothing: tapping opens the full file.
 class HrArchiveScreen extends StatefulWidget {
   const HrArchiveScreen({super.key});
   @override
@@ -24,9 +22,9 @@ class _HrArchiveScreenState extends State<HrArchiveScreen> {
   Map<String, dynamic>? _d;
   String? _error;
   String _q = '';
-  // الخانةُ في قائمةٍ تُطوى مع التمرير — النصُّ في متحكِّمٍ يبقى مع الكلمة.
+  // The field sits in a list that collapses on scroll; text lives in a controller so it survives.
   final _searchCtl = TextEditingController();
-  // البحثُ عند الخادم (`q=`) كالموقع — والردُّ الأقدمُ لا يكتب فوق الأحدث.
+  // Search runs on the server (`q=`) like the web; an older response never overwrites a newer one.
   int _seq = 0;
   Timer? _debounce;
   late final void Function() _onLive;
@@ -60,7 +58,7 @@ class _HrArchiveScreenState extends State<HrArchiveScreen> {
     }
   }
 
-  /// «إرجاع للنظام» — لتصحيح خروجٍ سُجِّل خطأً. والفريلانسرُ لا يُرجَع من هنا (كالموقع).
+  /// Restore to the system: corrects an exit recorded by mistake. Freelancers cannot be restored from here (same as the web).
   Future<void> _returnBack(Map<String, dynamic> r) async {
     final ok = await showDialog<bool>(
       context: context,
@@ -95,7 +93,7 @@ class _HrArchiveScreenState extends State<HrArchiveScreen> {
     return AppScaffold(
       title: Text(tr('الأرشيف', 'Archive')),
       actions: [
-        // أعمدةُ تصدير الموقع نفسُها.
+        // Same export columns as the web.
         ExportButton(
           fileName: 'hr-archive',
           sheetName: tr('الأرشيف', 'Archive'),

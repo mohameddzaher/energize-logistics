@@ -1,9 +1,6 @@
 'use client';
-// ── طرقُ عرض الشحنات: جدول · شبكة · بطاقات ─────────────────────────────────
-// أكثرُ من يفتح القسمَ يفتحه من الجوّال، والجدولُ هناك يُسحَب يمينًا ويسارًا.
-// فالبطاقةُ شحنةٌ كاملةٌ في مربّعٍ واحد يُقرأ على عرض ٣٢٠ بكسل بلا سحب، وعليها
-// ما يُفعَل بها: تغييرُ الحالة (بالنافذة نفسِها: سببُ الإلغاء ورفعُ السند)،
-// والاتّصالُ وواتساب، وملاحظةُ متابعة، والبوليصة. والشبكةُ البطاقةُ نفسُها أصغر.
+// Shipment display modes: table, grid, cards.
+// Most users open the section on mobile, where the table scrolls sideways. A card is a full shipment in one box readable at 320 px without scrolling, with its actions: status change (same dialog: cancel reason and receipt upload), call and WhatsApp, a follow-up note, and the waybill. The grid is the same card smaller.
 import type { CSSProperties } from 'react';
 import {
   Table2, LayoutGrid, Rows3, RefreshCw, Loader2, FileDown, Phone, MessageCircle,
@@ -17,12 +14,12 @@ import { waLink, telLink } from '@/lib/crm';
 export type ViewMode = 'table' | 'grid' | 'cards';
 export const VIEW_MODES: ViewMode[] = ['table', 'grid', 'cards'];
 export const VIEW_PREF_KEY = 'shipmentOrders.view';
-/** المفتاحُ كما يردّه الخادم — النقطةُ تُحفَظ ‹:› (مونغو لا يقبلها في المفاتيح). */
+/** Key as returned by the server; the dot is stored as ':' (Mongo does not accept dots in keys). */
 export const VIEW_PREF_READ_KEY = 'shipmentOrders:view';
 
 export type FollowUpEntry = { from?: string; to?: string; note?: string; at?: string; byName?: string };
 
-/** آخرُ متابعةٍ مكتوبة: أحدثُ قيدٍ في السجلّ له ملاحظة. */
+/** Latest written follow-up: the newest log entry that has a note. */
 export function lastFollowUp(o: ShipmentOrder): FollowUpEntry | null {
   const log = o.statusLog || [];
   for (let i = log.length - 1; i >= 0; i -= 1) {
@@ -46,7 +43,7 @@ export function relTime(iso: string | undefined, ar: boolean): string {
 
 export const orderRef = (o: ShipmentOrder) => String((o as any).reference || o.waybillNumber || '');
 
-/** شارةُ الحالة: لونُ الحالة المعروفة، أو لونُ ما زاده القسمُ من إعداداته. */
+/** Status badge: the color of a known status, or the color of one the section added in its settings. */
 export function statusPill(o: ShipmentOrder, vocab: StatusVocab[], lang: Lang): { className: string; style?: CSSProperties; label: string } {
   const st = orderStatus(o.status);
   const sv = vocab.find((x) => x.key === o.status) || null;
@@ -77,12 +74,12 @@ export function ViewSwitcher({ value, onChange, ar }: { value: ViewMode; onChang
   );
 }
 
-/** كلُّ ملاحظات المتابعة — الأحدثُ أوّلًا. */
+/** All follow-up notes, newest first. */
 export function followUpNotes(o: ShipmentOrder) {
   return [...(o.statusLog || [])].filter((l) => String(l?.note || '').trim()).reverse();
 }
 
-/** سطرُ معلومة: العنوانُ في عمودٍ ثابت والقيمةُ بخطٍّ واضح — فتُقرأ البطاقةُ عمودَين مرتَّبين. */
+/** Info line: label in a fixed column and value in a clear font, so the card reads as two ordered columns. */
 function InfoRow({ label, children, compact }: { label: string; children: React.ReactNode; compact?: boolean }) {
   return (
     <div className={`flex items-baseline gap-3 ${compact ? 'py-1.5' : 'py-2.5'}`}>
@@ -117,13 +114,8 @@ export interface OrderCardProps {
 }
 
 /**
- * بطاقةُ شحنة. `compact` = الشبكة (أعمدةٌ عدّة على الشاشة الواسعة)، وبدونها
- * البطاقةُ الكبيرةُ بعرض الشاشة.
- *
- * (٢٠٢٦/١٠/٢٦: «الكلام عايم على بعضه… بفتحه من الموبايل وبحتاج زوم») — فصار
- * ترتيبُها أقسامًا واضحة: رأسٌ (البوليصة والحالة والعميل)، ثمّ المسارُ في
- * مربّعه، ثمّ المعلوماتُ أسطرًا (عنوانٌ ثابتُ العرض وقيمةٌ بخطٍّ ١٥)، ثمّ
- * الملاحظات، ثمّ الأزرارُ بعناوينها لا أيقوناتٍ وحدَها.
+ * Shipment card. `compact` = the grid (several columns on wide screens); otherwise the large full-width card.
+ * On mobile it needed zoom, so it is laid out in clear sections: header (waybill, status, customer), route in its box, info lines (fixed-width label, 15 px value), notes, then buttons with text labels, not icons alone.
  */
 export function OrderCard({
   order: o, compact, ar, lang, vocab, editor, picked, busy, downloading,
@@ -148,7 +140,7 @@ export function OrderCard({
       onClick={() => onOpen(o)}
       className={`bg-white rounded-2xl border shadow-sm cursor-pointer transition hover:shadow-md flex flex-col min-w-0 overflow-hidden ${
         picked ? 'border-[#f37121] ring-2 ring-[#f37121]/30' : 'border-slate-200 hover:border-slate-300'}`}>
-      {/* ── الرأس: رقمُ البوليصة والحالة، ثمّ العميل ───────────────────────── */}
+      {/* Header: waybill number and status, then customer */}
       <header className={`${pad} ${compact ? 'pt-3 pb-2.5' : 'pt-4 pb-3'} border-b border-slate-100`}>
         <div className="flex items-center gap-2">
           <label className={`shrink-0 flex items-center justify-center rounded-lg hover:bg-slate-100 ${compact ? 'w-8 h-8 -ms-1' : 'w-10 h-10 -ms-2'}`}
@@ -169,7 +161,7 @@ export function OrderCard({
       </header>
 
       <div className={`flex-1 ${pad} ${compact ? 'py-2.5' : 'py-3.5'} space-y-3`}>
-        {/* ── المسار: «من» فوق «إلى» بنقطتين وخطّ — يُقرأ صحيحًا في العربيّة والإنجليزيّة. */}
+        {/* Route: 'from' above 'to' with two dots and a line; reads correctly in Arabic and English. */}
         <div className={`rounded-xl bg-slate-50 border border-slate-100 ${compact ? 'px-3 py-2' : 'px-4 py-3'}`}>
           <div className="flex items-start gap-3">
             <div className="flex flex-col items-center pt-1.5 shrink-0">
@@ -190,11 +182,11 @@ export function OrderCard({
           </div>
         </div>
 
-        {/* ── المعلومات: سطرٌ لكلّ واحدة. */}
+        {/* Info: one line each. */}
         <dl className="divide-y divide-slate-100">
           <InfoRow compact={compact} label={ar ? 'السائق' : 'Driver'}>
             {o.driverName || '—'}
-            {/* الرقمُ ltr داخل سطرٍ يتبع اتّجاهَ الصفحة — فيبقى تحت الاسم لا في الطرف الآخر. */}
+            {/* The ltr number inside a line follows the page direction, so it stays under the name instead of at the far end. */}
             {phone ? <span className={`block font-mono font-medium text-slate-500 ${compact ? 'text-xs' : 'text-sm'}`}><bdi dir="ltr">{phone}</bdi></span> : null}
           </InfoRow>
           <InfoRow compact={compact} label={ar ? 'الشاحنة' : 'Truck'}>
@@ -246,7 +238,7 @@ export function OrderCard({
         )}
       </div>
 
-      {/* ── الأزرار — لا تفتح التفاصيلَ إذا ضُغطت. */}
+      {/* Buttons: pressing them does not open the details. */}
       <footer onClick={stop} className={`border-t border-slate-100 bg-slate-50/60 ${pad} ${compact ? 'py-2.5' : 'py-3'} space-y-2`}>
         {editor && (
           <div className="grid grid-cols-2 gap-2">

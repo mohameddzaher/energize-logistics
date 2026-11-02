@@ -3,10 +3,7 @@ import '../services/api.dart';
 import '../services/lang.dart';
 import 'theme.dart';
 
-/// قيمُ قائمةٍ مرجعيّةٍ بنصّها العربيّ — وهو ما يُخزَّن في السجلّ.
-///
-/// القائمةُ قد تكون فارغةً (لم يُضَف إليها شيءٌ بعد) أو محجوبةً عن هذا الدور،
-/// فيُردّ `fallback` ولا يُرمى خطأ: الخانةُ تبقى صالحةً للكتابة في الحالتين.
+/// Values of a reference list in their Arabic text, which is what the record stores. The list may be empty or hidden from this role, so `fallback` is returned instead of throwing; the field stays writable either way.
 Future<List<String>> loadLookupNames(String type, {List<String> fallback = const []}) async {
   try {
     final d = await Api.instance.get('/api/lookups?type=${Uri.encodeComponent(type)}&active=true');
@@ -21,15 +18,7 @@ Future<List<String>> loadLookupNames(String type, {List<String> fallback = const
   }
 }
 
-/// خانةٌ تُختار قيمتُها من قائمةٍ مرجعيّة (`/api/lookups`) — وتقبل ما يُكتب.
-///
-/// ── ولماذا تقبل المكتوب ─────────────────────────────────────────────────────
-/// القائمةُ تُدار من «البيانات المرجعيّة»، ومن يسجّل في الميدان قد يجد أمامه
-/// قيمةً لم تُضَف بعد. فمنعُه يعني سجلًّا لا يُكتب؛ فتُقبَل القيمةُ كما كُتبت،
-/// ويُحاوَل إضافتُها إلى القائمة — ومن لا يملك إدارةَ القوائم يُرفَض طلبُه (٤٠٣)
-/// بصمتٍ وتبقى قيمتُه في خانته.
-///
-/// والمتحكّمُ يملكه النموذجُ الذي يضع الخانة، فلا يُنشأ هنا ولا يُتلَف.
+/// Field picked from a reference list (`/api/lookups`) that also accepts typed text. The list is managed from Reference Data, and a field user may meet a value not yet added; blocking would mean a record that cannot be written. So the typed value is accepted and added to the list if allowed; without list-management rights the request is rejected (403) silently and the value stays in the field. The controller belongs to the form that places the field, so it is neither created nor disposed here.
 class LookupField extends StatefulWidget {
   final String type;
   final TextEditingController controller;
@@ -37,7 +26,7 @@ class LookupField extends StatefulWidget {
   final String? hint;
   final List<String> fallback;
   final VoidCallback? onChanged;
-  /// قائمةٌ يملكها قسمٌ آخر: القيمةُ المكتوبةُ تُقبَل في الخانة ولا تُضاف إلى قائمته.
+  /// List owned by another section: a typed value is accepted in the field but not added to its list.
   final bool noAdd;
   const LookupField({
     super.key,
@@ -81,11 +70,11 @@ class _LookupFieldState extends State<LookupField> {
     widget.onChanged?.call();
     setState(() {});
     if (picked.isNew && picked.value.isNotEmpty && !widget.noAdd) {
-      // تظهر في القائمة فورًا لمن كتبها، وتُحفَظ فيها إن سُمح له.
+      // Appears in the list immediately for the author and is saved there if permitted.
       setState(() => _options = [..._options, picked.value]);
       try {
         await Api.instance.post('/api/lookups', {'type': widget.type, 'nameEn': picked.value, 'nameAr': picked.value});
-      } catch (_) {/* لا يملك إدارةَ القوائم — القيمةُ تبقى في خانته */}
+      } catch (_) {/* No list-management rights; the value stays in the field. */}
     }
   }
 
@@ -140,7 +129,7 @@ class _LookupSheetState extends State<_LookupSheet> {
           child: Column(children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(14, 14, 14, 6),
-              // الخانةُ تحمل عنوانَ القائمة فتبقى TextField — ومعها ✕ يمسح ويُغلق اللوحة
+              // The field carries the list title so it stays a TextField, with a clear button that also closes the sheet.
               child: TextField(
                 controller: _q,
                 onChanged: (_) => setState(() {}),

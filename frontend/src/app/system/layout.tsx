@@ -66,62 +66,32 @@ import DateFieldLocale from '@/components/system/DateFieldLocale';
 const MARKETING_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'marketing_manager', 'marketing_specialist', 'moderator', 'bd_manager'];
 const BD_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'bd_manager', 'bd_specialist', 'sales_manager', 'crm_manager', 'operations_manager'];
 const IT_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist'];
-// الشؤون الإدارية (السكرتارية) — the shared office task board.
+// Administrative affairs (secretariat): the shared office task board.
 const ADMINISTRATION_ROLES = ['super_admin', 'admin', 'administration_staff', 'bd_manager', 'it_manager', 'it_specialist'];
-// إدارة العقود — 3PL vendor contracts + analysis + other departments' contracts.
+// Contracts management: 3PL vendor contracts, analysis and other departments' contracts.
 const CONTRACTS_ROLES = ['super_admin', 'admin', 'contracts_manager', 'it_manager', 'it_specialist', 'operations_manager'];
 
-// Self service (my profile / my leaves / my requests) belongs to EVERY employee,
-// managers included — they file leave like anyone else. The only login that is
-// not an employee is `client`, an external customer-portal account.
-// ── الخدمةُ الذاتيّة ليست قسمًا من الأقسام ────────────────────────────────
-// كلُّ من يدخل النظام موظّفٌ له راتبٌ ورصيدُ إجازاتٍ وكلمةُ مرورٍ وتوقيع. وكان
-// السطرُ أدناه قائمةَ أدوارٍ تُكتب باليد، فمتى وُلد دورٌ جديد (مدير المركبات،
-// موظّف لوكيشن سوليوشن، مسؤول التخليص…) نُسي فيها — فلا يرى صاحبُه رصيدَ
-// إجازاته ولا يجد أين يصنع توقيعَه، ثمّ يقف أمام «أوقّع على الموافقة» وهي
-// معطّلةٌ ولا سبيل له إلى تفعيلها.
-//
-// فصارت القاعدةُ عكسَ ذلك: الخدمةُ الذاتيّة والإعداداتُ لكلّ **دورٍ داخليّ**،
-// ويُستثنى الشريكُ الخارجيّ وحده (بوابةُ العميل/المورّد لها صفحاتُها).
-// ── والشريكُ الخارجيّ مفتاحُه `client` ────────────────────────────────────
-// كانت القائمةُ ثلاثةَ مفاتيحَ لا وجودَ لأيٍّ منها في `config/roles.js`، فكان
-// `isInternal` يصدق على الشريك الخارجيّ نفسِه — ولم يظهر العطلُ إلّا لأنّ
-// قائمةَ الأدوار بجانبه كانت تحجبه. القاعدةُ التي تحرس وحدَها لا يجوز أن تكون
-// خاطئة.
-// وحسابُ Media Go شريكٌ خارجيٌّ أيضًا — يرى شاشةً واحدة (MEDIAGO_ROLE أدناه).
-// ── اللوحات (صاحبُ الشركة، ٢٠٢٦/١٠/٢٣: «الكلام على الشاشة باهت») ──
-// كلُّ لوحة قسمٍ ولوحةِ JP والملخّصُ التنفيذيّ ولوحةُ المحافظ — وما يُضاف بعدها باسمها.
+// Self service (my profile / my leaves / my requests) belongs to EVERY employee, managers included, and the only non-employee login is `client`, an external customer-portal account.
+// The rule is every internal role, so new roles get self service without a hand-written list; external partners are excluded. The Media Go account is also an external partner and sees one screen (MEDIAGO_ROLE below).
+// Dashboards: every department dashboard, the JP dashboard, the executive summary and the wallets dashboard, plus later ones added by name.
 const isDashboardPath = (p: string) => /\/(dashboard|jp-dashboard|wallet-dashboard|executive)(\/|$)/.test(p);
 const EXTERNAL_ROLES = ['client', 'partner', 'customer_portal', 'vendor_portal', 'mediago_account'];
 
-// ── الحسابُ المحصور ─────────────────────────────────────────────────────────
-// شريكٌ يرى صفحةً واحدةً من نظامنا (backend/src/config/scopedRoles): الشريطُ لا
-// يعرض غيرَها، وأيُّ مسارٍ آخر يُعاد إليها. والحارسُ الحقيقيُّ في الخادم
-// (middleware/scopedRoleFence) — هذا كي لا تُفتَح له شاشةٌ تردّها نقاطُها.
+// Scoped account: a partner sees a single page (backend/src/config/scopedRoles); the sidebar shows only it and every other route redirects to it. The real guard is server-side (middleware/scopedRoleFence); this avoids opening a screen whose endpoints would reject it.
 const SCOPED_HOME: Record<string, string> = { mediago_account: '/system/b2c/mediago-complaints' };
-// صفحاتُ الحساب المحصور كلُّها — نظيرُ `pages` في backend/config/scopedRoles.js.
+// All pages of the scoped account; mirrors `pages` in backend/config/scopedRoles.js.
 const SCOPED_PAGES: Record<string, string[]> = { mediago_account: ['/system/b2c/mediago-complaints', '/system/b2c/mediago-ads'] };
-// role-only: ليست بوّابةَ فعل: تفرّق الموظّفَ عن العميل والمورّد.
+// role-only: not an action gate; it separates employees from customers and suppliers.
 const isInternal = (role?: string | null) => !!role && !EXTERNAL_ROLES.includes(role);
 
-// قسمُ التحصيل. القسمُ مُدارٌ بمصفوفة الصلاحيّات، فهذه القائمةُ توثيقٌ لمن
-// يملكه افتراضيًّا — والمصفوفةُ هي التي تفتحه وتغلقه.
+// Collections department. Access is managed by the permission matrix; this list only documents who has it by default.
 const COLLECTIONS_NAV_ROLES = [
   'super_admin', 'admin', 'it_manager', 'it_specialist',
   'collections_manager', 'collections_staff',
   'operations_manager', 'cfo', 'accounting_manager', 'accountant',
 ];
 
-// ── الخدمةُ الذاتيّة تُشتقّ ولا تُكتب ────────────────────────────────────
-// التعليقُ فوق يقول إنّ القاعدة صارت «كلُّ دورٍ داخليّ»، والسطرُ تحته بقي
-// قائمةً تُكتب باليد — فسقط منها عشرةُ أدوارٍ وُلدت بعدها: مديرُ المركبات
-// وموظّفُه، ولوكيشن سوليوشن، ومنصّةُ الأوبريشن، وطلباتُ الشحنات، ومديرُ
-// الشؤون الإدارية، وموظّفُ العقود. فصاحبُ أيٍّ منها لا يرى رصيدَ إجازاته ولا
-// يجد أين يصنع توقيعَه.
-//
-// المصدرُ الآن `lib/roles.ts` المولَّدُ من `config/roles.js`: كلُّ دورٍ ليس
-// شريكًا خارجيًّا. ودورٌ جديدٌ يأخذ خدمتَه الذاتيّة من أوّل يومٍ بلا سطرٍ
-// يُضاف هنا.
+// Self service is derived, not hand-written: a manual role list dropped roles added later. The source is `lib/roles.ts`, generated from `config/roles.js`: every role that is not an external partner. A new role gets self service from day one.
 const SELF_SERVICE_ROLES = ALL_ROLES.filter((r) => !EXTERNAL_ROLES.includes(r));
 
 interface NavItem {
@@ -172,29 +142,16 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
   // Persists across navigation because this layout stays mounted between pages.
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
 
-  // ── الضغطةُ تُرى في حينها، والشيفرةُ تُجلَب قبلها ───────────────────────
-  //
-  // صفحاتُ النظام يُحمَّل كودُ كلٍّ منها عند أوّل فتحٍ لها. وأقسامُ القائمة
-  // مطويّةٌ فلا تراها Next فلا تُجهّزها مسبقًا: فمن يفتح قسمًا ويضغط فورًا
-  // ينتظر نزولَ الملفّ — جزءُ ثانيةٍ على خطٍّ سريع، وثوانٍ على خطّ المكتب —
-  // ولا شيءَ يتحرّك في الشاشة، فيظنّ أنّ ضغطتَه لم تُسجَّل ويضغط غيرَها.
-  //
-  // فأمران: تُجهَّز صفحاتُ القسم بمجرّد فتحه ومرورِ الفأرة على الرابط
-  // (`router.prefetch` — تنزيلٌ صامتٌ لا يُعيد رسم شيء)، ويُعلَّم الرابطُ
-  // المضغوطُ في اللحظة بشريطٍ ودوّارة حتى تُرسَم الصفحةُ الجديدة.
+  // A click is acknowledged at once while the code is fetched first. Page code loads on first open and collapsed sections are not prefetched by Next, so an immediate click would wait with no feedback.
+  // So section pages are prefetched on open and on link hover (`router.prefetch`, a silent download), and the clicked link shows a bar and spinner until the new page renders.
   const [pendingHref, setPendingHref] = useState<string | null>(null);
   useEffect(() => { setPendingHref(null); }, [pathname]);
-  // ── والتجهيزُ يتنحّى للطلب الحقيقيّ ────────────────────────────────────
-  // تجهيزُ صفحات قسمٍ كامل دفعةً واحدة يطلق عشرين تنزيلًا تزاحم ما تحمّله
-  // الشاشةُ الآن — قيس: أوّلُ ضغطةٍ بعد فتح الأقسام كلِّها انتظرت إحدى عشرة
-  // ثانية. فيُؤجَّل إلى وقت الفراغ (`requestIdleCallback`)، ولا يُجهَّز
-  // المُجهَّزُ مرّتين، وحدُّه ثمانيةٌ من القسم الواحد — وما مرّت عليه الفأرةُ
-  // يُجهَّز في حينه لأنّه أقربُ ما يُضغَط.
+  // Prefetch yields to the real request: prefetching a whole section at once starts about twenty downloads that compete with the current screen. It is deferred to idle time (`requestIdleCallback`), never repeated, capped at eight per section, and a hovered link is prefetched immediately.
   const prefetched = useRef<Set<string>>(new Set());
   const prefetch = useCallback((href: string, soon = false) => {
     if (prefetched.current.has(href)) return;
     prefetched.current.add(href);
-    const run = () => { try { router.prefetch(href); } catch (_) { /* التجهيزُ تحسينٌ لا شرط */ } };
+    const run = () => { try { router.prefetch(href); } catch (_) { /* Prefetch is an optimization, not a requirement. */ } };
     if (soon || typeof window === 'undefined') { run(); return; }
     const ric = (window as any).requestIdleCallback;
     if (typeof ric === 'function') ric(run, { timeout: 3000 }); else setTimeout(run, 300);
@@ -263,11 +220,11 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     }
   }, [isAuthenticated, fetchNotifications]);
 
-  /** إشعارُ ملفِّ تصديرٍ جاهز: يُجلَب ثمّ يُنزَّل. */
+  /** Notification of a ready export file: fetched, then downloaded. */
   const downloadExport = (n: any) => {
     api.get<{ job: any }>(`/api/exports/jobs/${n.relatedEntityId}`)
       .then(({ job }) => downloadExportJob(job))
-      .catch(() => { /* انتهت صلاحيّةُ الملفّ أو حُذف */ });
+      .catch(() => { /* The file expired or was deleted. */ });
     setShowNotifications(false);
   };
 
@@ -284,41 +241,23 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     // Page + /api/analytics/super-overview admit super_admin/admin ONLY — offering
     // the link to the IT roles was a guaranteed dead-end screen.
     { href: '/system/executive', label: lang === 'ar' ? 'النظرة التنفيذية' : 'Executive Overview', icon: <Crown className="w-5 h-5" />, roles: ['super_admin', 'admin'], section: 'Main' },
-    // خطّةُ الإدارة العليا إلى مديري الأقسام — ولوحتُها لمدير النظام وحدَه.
-    // (مديرُ القسم يجد خطّةَ الإدارة داخل قسمه.)
+    // Top-management plan to department managers; its dashboard is for the system admin only (a department manager finds the management plan inside their department).
     { href: '/system/management-jp', label: lang === 'ar' ? 'خطّة الإدارة (Management JP)' : 'Management JP', icon: <CalendarCheck className="w-5 h-5" />, roles: ['super_admin', 'admin'], section: 'Main', visible: (u) => jpTop(u) },
     { href: '/system/management-jp/dashboard', label: lang === 'ar' ? 'لوحة خطّة الإدارة' : 'Management JP Dashboard', icon: <BarChart3 className="w-5 h-5" />, roles: ['super_admin', 'admin'], section: 'Main', visible: (u) => jpTop(u) },
-    // ── و«المتأخرات» أُزيلت ────────────────────────────────────────────────
-    // صفحةٌ من قسم «العملاء والمالية» الذي حُذف. بقيت في القائمة الرئيسيّة
-    // تقرأ `Invoice` و`Customer` — وكلتاهما فارغتان — ثمّ تغيّر شكلُ نقطتها
-    // فصارت تنهار: «Cannot read properties of undefined». كانت الصفحةَ
-    // الوحيدةَ المكسورة من ٢٦٩.
-    //
-    // وسؤالُها يُجاب اليوم أفضلَ في التحصيل → أعمار الديون: من الفواتير
-    // الحقيقيّة، بشرائحَ وفلاترَ وحدٍّ ائتمانيّ.
+    // Arrears page removed: it belonged to a deleted section, read the empty `Invoice` and `Customer` collections, and crashed after its endpoint changed. Collections -> debt aging answers it from real invoices with buckets, filters and credit limit.
     { href: '/system/credit-alerts', label: L.creditAlerts, icon: <Shield className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'operations_manager', 'employee', 'moderator'], section: 'Main' },
     // Operations
     { href: '/system/operations', label: L.operations, icon: <ClipboardList className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'employee', 'operations_manager', 'operations_staff', 'moderator', 'collections_manager', 'collections_staff'], section: 'Operations' },
-    // ── والهامشُ لا يُعرَض لكلّ من يفتح القسم ────────────────────────────
-    // «التشغيل — خاصّ» تعرض ربحَنا على كلّ حمولة، فهي أضيقُ من سير العمل:
-    // الإدارةُ ومن يملك المال. و`restrict` تُبقي القائمةَ صادقةً — رابطٌ
-    // تردّه الصفحةُ أسوأُ من غيابه. والحارسُ في الخادم (routes/operationsPrivate).
+    // Margin is not shown to everyone who opens the section: the private operations page shows our profit per load, so it is narrower than the workflow (management and finance). `restrict` keeps the menu honest, since a link the page rejects is worse than none. The guard is server-side (routes/operationsPrivate).
     { href: '/system/operations/private', label: lang === 'ar' ? 'التشغيل — خاصّ' : 'Operations — private', icon: <Lock className="w-5 h-5" />, roles: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'cfo', 'accounting_manager', 'accountant'], section: 'Operations', restrict: true },
-    // صفةُ العميل تُقرأ لمن يفتح صفحةَ التشغيل ولا تُكتب إلّا لمن يديرها —
-    // والحاجزُ في الخادم، وهذه القائمةُ مَن يصل إلى النقطة أصلًا.
+    // Customer attribute is readable by whoever opens the operations page and writable only by its managers; the server enforces it and this list only gates who reaches the endpoint.
     { href: '/system/operations/payment-types', label: lang === 'ar' ? 'أنواع الدفع' : 'Payment Types', icon: <Banknote className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'employee', 'operations_manager', 'operations_staff', 'moderator', 'cfo', 'accounting_manager', 'accountant', 'collections_manager', 'collections_staff'], section: 'Operations' },
-    // ── سجلّ العملاء ──────────────────────────────────────────────────────
-    // الشاشةُ نفسُها في «طلبات الشحنات»؛ من يعمل على الكشوف يقرأ العميلَ من
-    // قسمه لا من قسمٍ آخر. والمكوّنُ واحد، فلا تفترق النسختان.
+    // Customers register: same screen as in shipment orders so people working on manifests read the customer from their own section; one shared component keeps the copies identical.
     { href: '/system/operations/customers', label: lang === 'ar' ? 'العملاء' : 'Customers', icon: <Users className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'employee', 'operations_manager', 'operations_staff', 'moderator', 'collections_manager', 'collections_staff'], section: 'Operations' },
-    // ── وأوّلُ صفحةِ القسم لوحتُه ──────────────────────────────────────────
-    // من يفتح قسمًا يسأل أوّلًا «كيف حالُ القسم؟» لا «أرني الصفَّ الأوّل من
-    // جدوله». وكانت اللوحةُ آخرَ عناصر المشتريات، فتُفتَح على سجلّ الموردين.
+    // A section's first page is its dashboard: opening a section asks how it is doing, not for the first table row. It used to be last in procurement and opened on the suppliers register.
     { href: '/system/procurement/dashboard', label: L.procurementDashboard, icon: <ShoppingCart className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'procurement_manager', 'procurement_staff'], section: 'Procurement' },
     { href: '/system/vendors', label: L.vendors, icon: <Store className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'operations_manager', 'operations_staff', 'procurement_manager', 'procurement_staff'], section: 'Procurement' },
-    // ── وقوائمُ العهدة من موضعٍ واحد ────────────────────────────────────────
-    // كانت مكتوبةً هنا بيدٍ وفي شرط محدِّد الفرع داخل الصفحة، فأُضيف المحاسبُ
-    // في الخادم ونُسي في الاثنين: نقاطُه مفتوحةٌ ولا يجد الرابطَ أصلًا.
+    // Custody lists come from one place. They were hand-written here and in the branch selector condition, so adding the accountant on the server left both stale: his endpoints were open but he saw no link.
     { href: '/system/wallet', label: L.wallet, icon: <Wallet className="w-5 h-5" />, roles: WALLET_ROLES, section: 'Operations' },
     { href: '/system/wallet-dashboard', label: L.walletDashboard, icon: <BarChart3 className="w-5 h-5" />, roles: WALLET_DASHBOARD_ROLES, section: 'Operations' },
     { href: '/system/operations/jp', label: lang === 'ar' ? 'خطّة العمل (JP)' : 'JP', icon: <CalendarCheck className="w-5 h-5" />, roles: [], section: 'Operations', visible: (u) => jpMember(u, 'Operations') },
@@ -327,35 +266,26 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/operations/customer-requests', label: lang === 'ar' ? 'التواصل مع العملاء' : 'Customer Communication', icon: <MessageSquare className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'operations_manager', 'operations_staff', 'moderator'], section: 'Operations' },
     { href: '/system/operations/complaints', label: lang === 'ar' ? 'الشكاوى' : 'Complaints', icon: <MessageSquare className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'employee', 'operations_manager', 'operations_staff', 'moderator'], section: 'Operations' },
     { href: '/system/operations/kpis', label: lang === 'ar' ? 'تقييم الأداء' : 'KPIs', icon: <Target className="w-5 h-5" />, roles: kpiRoles(['super_admin', 'it_manager', 'it_specialist', 'admin', 'employee', 'operations_manager', 'operations_staff', 'moderator']), section: 'Operations', restrict: true },
-    // ── قسمُ التحصيل ──────────────────────────────────────────────────────
-    // أربعُ صفحاتٍ لا أكثر: لوحةٌ، وسجلّا العملاء والموردين، وإعداداتُ القسم.
-    // ومعها الصفحتان الثابتتان في كلّ قسم (مهامي والشكاوى).
+    // Collections section: four pages (dashboard, customers and vendors registers, department settings) plus the two fixed pages every section has (my tasks and complaints).
     { href: '/system/collections-dept/dashboard', label: lang === 'ar' ? 'لوحة التحصيل' : 'Collections Dashboard', icon: <BarChart3 className="w-5 h-5" />, roles: COLLECTIONS_NAV_ROLES, section: 'Collections' },
-    // ── الفواتير: من هنا يعمل القسم ────────────────────────────────────────
-    // التحصيلُ لا يُحصِّل كشوفًا بل فواتير — فصفحتاهما قبل السجلّات.
+    // Invoices: the department works from here. Collections chases invoices, not manifests, so these pages come before the registers.
     { href: '/system/collections-dept/invoices/tax', label: lang === 'ar' ? 'الفواتير الضريبية' : 'Tax Invoices', icon: <Receipt className="w-5 h-5" />, roles: COLLECTIONS_NAV_ROLES, section: 'Collections' },
     { href: '/system/collections-dept/invoices/cash', label: lang === 'ar' ? 'فواتير الكاش' : 'Cash Invoices', icon: <Banknote className="w-5 h-5" />, roles: COLLECTIONS_NAV_ROLES, section: 'Collections' },
-    // ── ودفترُ التحصيل ────────────────────────────────────────────────────
-    // سجلُّ الأعمار أوّلًا: هو الشاشةُ التي يُفتح عليها الصباح — كم على كلٍّ
-    // ومنذ متى. ثمّ دفترُ الفواتير بتفصيله، ثمّ الخطّةُ والفريق.
+    // Collections ledger: aging register first (the morning screen: how much is owed and since when), then the invoice ledger in detail, then the plan and team.
     { href: '/system/collections-dept/aging', label: lang === 'ar' ? 'أعمار الديون' : 'Aging', icon: <Layers className="w-5 h-5" />, roles: COLLECTIONS_NAV_ROLES, section: 'Collections' },
     { href: '/system/collections-dept/ledger', label: lang === 'ar' ? 'دفتر الفواتير' : 'Invoice Ledger', icon: <BookOpen className="w-5 h-5" />, roles: COLLECTIONS_NAV_ROLES, section: 'Collections' },
-    // «القضايا»: العملاءُ تحت التفاوض أو في القضاء — حالةُ العميل لا الفاتورة.
+    // Cases: customers under negotiation or in litigation; a customer state, not an invoice state.
     { href: '/system/collections-dept/cases', label: lang === 'ar' ? 'القضايا' : 'Cases', icon: <Scale className="w-5 h-5" />, roles: COLLECTIONS_NAV_ROLES, section: 'Collections' },
     { href: '/system/collections-dept/plan', label: lang === 'ar' ? 'الخطة اليومية' : 'Daily Plan', icon: <CalendarCheck className="w-5 h-5" />, roles: COLLECTIONS_NAV_ROLES, section: 'Collections' },
     { href: '/system/collections-dept/team', label: lang === 'ar' ? 'الفريق' : 'The Team', icon: <UserCog className="w-5 h-5" />, roles: COLLECTIONS_NAV_ROLES, section: 'Collections' },
-    // ومراجعةُ الربط قرارُ المدير وحدَه — الدمجُ ينقل مديونيّةً.
+    // Link review is the manager's decision only; merging moves debt.
     { href: '/system/collections-dept/links', label: lang === 'ar' ? 'ربط الحسابات' : 'Account Linking', icon: <Link2 className="w-5 h-5" />, roles: ['super_admin', 'admin', 'it_manager', 'collections_manager'], section: 'Collections', restrict: true },
     { href: '/system/collections-dept/customers', label: lang === 'ar' ? 'العملاء' : 'Customers', icon: <Users className="w-5 h-5" />, roles: COLLECTIONS_NAV_ROLES, section: 'Collections' },
     { href: '/system/collections-dept/suppliers', label: lang === 'ar' ? 'الموردين' : 'Suppliers', icon: <Truck className="w-5 h-5" />, roles: COLLECTIONS_NAV_ROLES, section: 'Collections' },
-    // ── المحفظةُ عرضًا لقسم التحصيل (٢٠٢٦/١٠/٢٧) — صفحتا العمليّات نفسُهما،
-    // تُفتحان هنا لأنّ قسمَ العمليّات مغلقٌ عليهما. راجع config/walletViewOnly.
+    // Wallet shown read-only to collections: the same two operations pages, opened here because the operations section is closed to them. See config/walletViewOnly.
     { href: '/system/wallet', label: lang === 'ar' ? 'محفظة الفروع (عرض)' : 'Branch wallets (view)', icon: <Wallet className="w-5 h-5" />, roles: ['super_admin', 'admin', ...WALLET_VIEW_ONLY_ROLES], section: 'Collections', restrict: true },
     { href: '/system/wallet-dashboard', label: lang === 'ar' ? 'لوحة المحفظة (عرض)' : 'Wallet dashboard (view)', icon: <BarChart3 className="w-5 h-5" />, roles: ['super_admin', 'admin', ...WALLET_VIEW_ONLY_ROLES], section: 'Collections', restrict: true },
-    // ── وصفحةُ التشغيل من داخل قسمهم ──────────────────────────────────────
-    // الكشفُ ورقةُ عملِ التحصيل: منه يُقرأ ما لنا وما علينا، وفيه تُكتب
-    // الفاتورةُ وتاريخُ التحصيل. ووضعُ الرابط هنا يوفّر عليهم البحثَ عنه في
-    // قسمٍ لا يملكونه.
+    // The operations manifest page from inside their section: the manifest is the collections worksheet (what is owed to us and by us; the invoice and collection date are written there), so the link saves searching a section they do not have.
     { href: '/system/operations', label: lang === 'ar' ? 'سير عمل التشغيل' : 'Operations Workflow', icon: <ClipboardList className="w-5 h-5" />, roles: ['super_admin', 'admin', 'collections_manager', 'collections_staff'], section: 'Collections', restrict: true },
     { href: '/system/collections-dept/jp', label: lang === 'ar' ? 'خطّة العمل (JP)' : 'JP', icon: <CalendarCheck className="w-5 h-5" />, roles: [], section: 'Collections', visible: (u) => jpMember(u, 'Collections') },
     { href: '/system/collections-dept/jp-dashboard', label: lang === 'ar' ? 'لوحة JP' : 'JP Dashboard', icon: <BarChart3 className="w-5 h-5" />, roles: [], section: 'Collections', visible: (u) => jpManager(u, 'Collections') },
@@ -364,7 +294,7 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/collections-dept/kpis', label: lang === 'ar' ? 'تقييم الأداء' : 'KPIs', icon: <Target className="w-5 h-5" />, roles: kpiRoles(COLLECTIONS_NAV_ROLES), section: 'Collections', restrict: true },
     { href: '/system/collections-dept/settings', label: lang === 'ar' ? 'إعدادات القسم' : 'Section Settings', icon: <SlidersHorizontal className="w-5 h-5" />, roles: ['super_admin', 'admin', 'it_manager', 'collections_manager'], section: 'Collections' },
     // Customs Clearance
-    // Operations Platform (قسم الأوبريشن) — live mirror of the external UPL field-ops system (B2B: Fleet + 3PL)
+    // Operations Platform: live mirror of the external UPL field-ops system (B2B: Fleet + 3PL)
     { href: '/system/ops', label: lang === 'ar' ? 'لوحة الأوبريشن' : 'Ops Dashboard', icon: <Activity className="w-5 h-5" />, roles: OPS_ROLES, section: 'Operations Platform' },
     { href: '/system/ops/shipments', label: lang === 'ar' ? 'الشحنات' : 'Shipments', icon: <Truck className="w-5 h-5" />, roles: OPS_ROLES, section: 'Operations Platform' },
     { href: '/system/ops/drivers', label: lang === 'ar' ? 'السائقون' : 'Drivers', icon: <Users className="w-5 h-5" />, roles: OPS_ROLES, section: 'Operations Platform' },
@@ -380,19 +310,14 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/ops/car-brands', label: lang === 'ar' ? 'ماركات المركبات' : 'Car Brands', icon: <Tags className="w-5 h-5" />, roles: OPS_ROLES, section: 'Operations Platform' },
     { href: '/system/ops/car-colors', label: lang === 'ar' ? 'ألوان المركبات' : 'Car Colors', icon: <Palette className="w-5 h-5" />, roles: OPS_ROLES, section: 'Operations Platform' },
 
-    // ---- Shipment Orders (طلبات الشحنات) — standalone trial ----
-    // Creating shipments natively instead of on the external UPL system. Kept
-    // fully independent from Operations Platform: if the trial works, the team
-    // moves HERE and the integration is what gets retired.
-    // لوحةُ القسم أوّلًا: مَن يفتحه يسأل «كيف حالُه اليوم؟» لا «أرني الصفَّ الأوّل».
+    // Shipment Orders: standalone trial. Creates shipments natively instead of on the external UPL system, fully independent from the Operations Platform; if the trial works the team moves here and the integration is retired.
+    // Department dashboard first: opening it asks how it is today, not for the first table row.
     { href: '/system/shipment-orders/dashboard', label: lang === 'ar' ? 'لوحة الشحنات' : 'Dashboard', icon: <LayoutDashboard className="w-5 h-5" />, roles: SO_ROLES, section: 'Shipment Orders' },
     { href: '/system/shipment-orders', label: lang === 'ar' ? 'الشحنات' : 'Shipments', icon: <PackageSearch className="w-5 h-5" />, roles: SO_ROLES, section: 'Shipment Orders' },
     { href: '/system/shipment-orders/chat', label: lang === 'ar' ? 'مساعد الإنشاء' : 'Create Assistant', icon: <Bot className="w-5 h-5" />, roles: SO_ROLES, section: 'Shipment Orders' },
     { href: '/system/shipment-orders/customers', label: lang === 'ar' ? 'العملاء' : 'Customers', icon: <Users className="w-5 h-5" />, roles: SO_ROLES, section: 'Shipment Orders' },
     { href: '/system/shipment-orders/fleet', label: lang === 'ar' ? 'الموردون والمركبات' : 'Suppliers & Vehicles', icon: <Truck className="w-5 h-5" />, roles: SO_ROLES, section: 'Shipment Orders' },
-    // ── إعداداتُ القسم تجمع ما كان مبعثرًا ────────────────────────────────
-    // كانت «إعدادات النموذج» صفحةً وحدَها، وبقيّةُ ما يُضبط لا موضعَ له:
-    // ترقيمُ البوالص، وقوائمُ القسم، ودورةُ الحالات. صارت صفحةً واحدة.
+    // Department settings gather what was scattered: waybill numbering, department lists and the status cycle. The form settings used to be a page of their own.
     { href: '/system/shipment-orders/analytics', label: lang === 'ar' ? 'التحليلات' : 'Analytics', icon: <BarChart3 className="w-5 h-5" />, roles: SO_ROLES, section: 'Shipment Orders' },
     { href: '/system/shipment-orders/permissions', label: lang === 'ar' ? 'الصلاحيات' : 'Permissions', icon: <ShieldCheck className="w-5 h-5" />, roles: ['super_admin', 'admin', 'operations_manager'], section: 'Shipment Orders' },
     { href: '/system/shipment-orders/settings', label: lang === 'ar' ? 'إعدادات القسم' : 'Section Settings', icon: <SlidersHorizontal className="w-5 h-5" />, roles: ['super_admin', 'admin', 'it_manager', 'operations_manager', 'shipment_orders_manager'], section: 'Shipment Orders' },
@@ -402,21 +327,17 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/shipment-orders/complaints', label: lang === 'ar' ? 'الشكاوى' : 'Complaints', icon: <MessageSquare className="w-5 h-5" />, roles: ['super_admin', 'admin', 'it_manager', 'operations_manager'], section: 'Shipment Orders' },
     { href: '/system/shipment-orders/kpis', label: lang === 'ar' ? 'تقييم الأداء' : 'KPIs', icon: <Target className="w-5 h-5" />, roles: kpiRoles(['super_admin', 'admin', 'it_manager', 'operations_manager']), section: 'Shipment Orders', restrict: true },
 
-    // ---- Fleet Management (إدارة الأسطول) — our own trucks ----
+    // Fleet Management: our own trucks.
     { href: '/system/fleet/board', label: lang === 'ar' ? 'اللوحة الرئيسية' : 'Fleet Board', icon: <LayoutGrid className="w-5 h-5" />, roles: FLEET_ROLES, section: 'Fleet Management' },
     { href: '/system/fleet', label: lang === 'ar' ? 'الحمولات' : 'Shipments', icon: <Truck className="w-5 h-5" />, roles: FLEET_ROLES, section: 'Fleet Management' },
     { href: '/system/fleet/arrivals', label: lang === 'ar' ? 'المتوقع للوصول' : 'Expected Arrivals', icon: <CalendarClock className="w-5 h-5" />, roles: FLEET_ROLES, section: 'Fleet Management' },
-    // صفحةٌ واحدة بتبويبين: النظرةُ العامّة، والحمولاتُ ومصروفُ السائقين.
-    // كانتا بابين لبيتٍ واحد باسمين متشابهين لا يُفرَّق بينهما.
+    // One page with two tabs: overview, and loads plus driver expenses. They were two similarly named entries for the same thing.
     { href: '/system/fleet/dashboard', label: lang === 'ar' ? 'التحليلات' : 'Analytics', icon: <BarChart3 className="w-5 h-5" />, roles: FLEET_ROLES, section: 'Fleet Management' },
     { href: '/system/fleet/drivers', label: lang === 'ar' ? 'السائقون' : 'Drivers', icon: <UserSquare className="w-5 h-5" />, roles: FLEET_ROLES, section: 'Fleet Management' },
-    // ── مصاريف السوّاق ────────────────────────────────────────────────────
-    // تُقرأ من أدوار القسم، وتعليمُ السداد وحدَه مقصورٌ على الحسابات — الحارس
-    // في المسار لا في القائمة (راجع EXPENSE_PAY_ROLES في routes/fleet).
+    // Driver expenses: read by department roles; only marking as paid is restricted to accounts. The guard is on the route, not the menu (see EXPENSE_PAY_ROLES in routes/fleet).
     { href: '/system/fleet/driver-expenses', label: lang === 'ar' ? 'مصاريف السوّاق' : 'Driver Expenses', icon: <Wallet className="w-5 h-5" />, roles: [...FLEET_ROLES, 'cfo', 'accounting_manager', 'accountant'], section: 'Fleet Management' },
     { href: '/system/fleet/driver-kpis', label: lang === 'ar' ? 'تقييم السائقين' : 'Driver KPIs', icon: <Target className="w-5 h-5" />, roles: FLEET_ROLES, section: 'Fleet Management' },
-    // حالةُ المركبات بعد «سياراتنا» مباشرةً: الشاشتان عن الشاحنة نفسِها —
-    // إحداهما تقول ما هي، والأخرى كيف حالُها الآن.
+    // Vehicle status directly after 'our cars': both screens describe the same truck, one says what it is, the other how it is now.
     { href: '/system/fleet/health', label: lang === 'ar' ? 'حالة المركبات' : 'Vehicle Health', icon: <Activity className="w-5 h-5" />, roles: FLEET_ROLES, section: 'Fleet Management' },
     { href: '/system/fleet/vehicles', label: lang === 'ar' ? 'سياراتنا' : 'Our Vehicles', icon: <Car className="w-5 h-5" />, roles: FLEET_ROLES, section: 'Fleet Management' },
     { href: '/system/fleet/vehicle-logs', label: lang === 'ar' ? 'سجلّات السيارات' : 'Vehicle Logs', icon: <ClipboardList className="w-5 h-5" />, roles: FLEET_ROLES, section: 'Fleet Management' },
@@ -429,37 +350,25 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/fleet/kpis', label: lang === 'ar' ? 'تقييم الأداء' : 'KPIs', icon: <Target className="w-5 h-5" />, roles: kpiRoles(FLEET_ROLES), section: 'Fleet Management', restrict: true },
     { href: '/system/fleet/customers', label: lang === 'ar' ? 'العملاء' : 'Customers', icon: <Users className="w-5 h-5" />, roles: FLEET_ROLES, section: 'Fleet Management' },
 
-    // لوحةُ القسم أوّلًا: «كيف يسير العمل» قبل «ما حالُ هذه المعاملة».
-    // لوحةُ القسم للفريق كلِّه: تشغيلٌ بلا أرقامٍ ماليّة. والتحليلاتُ (الأرباح)
-    // لمدير النظام ومدير القسم وحدَهما — والخادمُ يحرسها بالقائمة نفسِها.
+    // Department dashboard first: how work is going before the status of a single transaction. It is for the whole team: operations with no financial figures. Analytics (profits) are for the system admin and department manager only, and the server guards them with the same list.
     { href: '/system/customs/dashboard', label: lang === 'ar' ? 'لوحة القسم' : 'Section Dashboard', icon: <LayoutDashboard className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'operations_manager', 'customs_manager', 'customs_officer'], section: 'Customs' },
     { href: '/system/customs/analytics', label: lang === 'ar' ? 'تحليلات قسم التخليص' : 'Customs Analytics', icon: <BarChart3 className="w-5 h-5" />, roles: ['super_admin', 'admin', 'customs_manager'], section: 'Customs', restrict: true },
     { href: '/system/customs', label: L.customsClearance, icon: <Ship className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'operations_manager', 'customs_manager', 'customs_officer'], section: 'Customs' },
-    // ── صفحاتُ التخليص ────────────────────────────────────────────────────
-    // «دليل التخليص» أُخفي من التنقّل وبقي في الكود: الصفحةُ مكتوبةٌ وتعمل، ولو
-    // طُلبت عادت بسطرٍ واحد. حذفُها كان سيُفقد ما كُتب لأجل إخفائه.
+    // Clearance pages: the clearance guide is hidden from navigation but kept in code since it is written and working, and restoring it takes one line; deleting it would lose the work.
     { href: '/system/customs/customers', label: lang === 'ar' ? 'العملاء' : 'Customers', icon: <Users className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'admin', 'operations_manager', 'customs_manager', 'customs_officer'], section: 'Customs' },
     { href: '/system/customs/agents', label: lang === 'ar' ? 'وكلاء الشحن' : 'Shipping Agents', icon: <Ship className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'admin', 'operations_manager', 'customs_manager', 'customs_officer'], section: 'Customs' },
     { href: '/system/customs/carriers', label: lang === 'ar' ? 'الناقلون' : 'Carriers', icon: <Truck className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'admin', 'operations_manager', 'customs_manager', 'customs_officer'], section: 'Customs' },
     { href: '/system/customs/contracts', label: lang === 'ar' ? 'العقود' : 'Contracts', icon: <FileSignature className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'admin', 'operations_manager', 'customs_manager', 'customs_officer'], section: 'Customs' },
-    // إعداداتُ القسم تتبع صفحةَ الصلاحيّات كبقيّة صفحاته — في الأقسام كلِّها: كانت
-    // `restrict` تقصرها على المدير والإدارة، فموظّفُ القسم الذي فُتحت له من صفحة
-    // الصلاحيّات لا يجدها في القائمة. ومن أُريد حجبُها عنه تُقفَل له من هناك.
+    // Department settings follow the permissions page like the rest of its pages, in all sections. `restrict` limited them to manager and management, so a staff member granted access from the permissions page could not find them in the menu; whoever should not see them is blocked from there.
     { href: '/system/customs/settings', label: lang === 'ar' ? 'إعدادات القسم' : 'Section Settings', icon: <SlidersHorizontal className="w-5 h-5" />, roles: ['super_admin', 'admin', 'it_manager', 'customs_manager'], section: 'Customs' },
-    // Vehicles & Authorizations (المركبات والتفاويض) — super admin + HR + Accounting
+    // Vehicles & Authorizations: super admin + HR + Accounting.
     { href: '/system/vehicles/registry/overview', label: lang === 'ar' ? 'نظرة شاملة' : 'Overview', icon: <LayoutGrid className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'vehicles_manager', 'vehicles_staff', 'hr_manager', 'hr_specialist', 'cfo', 'accounting_manager', 'accountant'], section: 'Vehicles' },
     { href: '/system/vehicles/registry', label: lang === 'ar' ? 'سجل المركبات' : 'Vehicle Registry', icon: <Car className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'vehicles_manager', 'vehicles_staff', 'hr_manager', 'hr_specialist', 'cfo', 'accounting_manager', 'accountant'], section: 'Vehicles' },
     { href: '/system/vehicles/registry/expiring', label: lang === 'ar' ? 'الانتهاءات والتجديد' : 'Expiries & Renewals', icon: <CalendarClock className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'vehicles_manager', 'vehicles_staff', 'hr_manager', 'hr_specialist', 'cfo', 'accounting_manager', 'accountant'], section: 'Vehicles' },
     { href: '/system/vehicles/registry/claims', label: lang === 'ar' ? 'الحوادث والمطالبات' : 'Accidents & Claims', icon: <TriangleAlert className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'vehicles_manager', 'vehicles_staff', 'hr_manager', 'hr_specialist', 'cfo', 'accounting_manager', 'accountant'], section: 'Vehicles' },
     { href: '/system/vehicles/registry/corporate', label: lang === 'ar' ? 'وثائق تأمين الشركة' : 'Company Policies', icon: <ShieldCheck className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'vehicles_manager', 'vehicles_staff', 'hr_manager', 'hr_specialist', 'cfo', 'accounting_manager', 'accountant'], section: 'Vehicles' },
     { href: '/system/vehicles/registry/records', label: lang === 'ar' ? 'سجلّات القسم' : 'Registers', icon: <Boxes className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'vehicles_manager', 'vehicles_staff', 'hr_manager', 'hr_specialist', 'cfo', 'accounting_manager', 'accountant'], section: 'Vehicles' },
-    // ── صفحةٌ لكل عائلةِ مستند ───────────────────────────────────────────────
-    // في الملف المصدر كل عائلةٍ مجموعةٌ بلونها: التأمين، بترو اب، التتبّع،
-    // بطاقات التشغيل، رخص السير، الفحص، التفاويض. وكانت بياناتها كلُّها مخزَّنة
-    // ولا تجد عمودًا يعرضها — تفلتر على بطاقة التشغيل فلا ترى رقم بطاقةٍ واحد.
-    // وجمعُها في جدولٍ واحد يجاوز الأربعين عمودًا فلا يُقرأ، فصارت كلُّ عائلةٍ
-    // شاشةً تتبع الورقة التي يعرفها القسم. ونفسُ أدوار بقيّة صفحات المركبات:
-    // من فُتح له القسم فُتح له بكامله.
+    // One page per document family. The source file groups each family with a colour (insurance, fuel card, tracking, operating cards, driving licences, inspection, authorizations). The data was stored with no column to show it, and one table would exceed forty columns, so each family is a screen following the paper the department knows. Same roles as the other vehicle pages: a granted section is fully open.
     { href: '/system/vehicles/registry/insurance/vehicles', label: lang === 'ar' ? 'تأمين المركبات' : 'Vehicle Insurance', icon: <ShieldCheck className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'vehicles_manager', 'vehicles_staff', 'hr_manager', 'hr_specialist', 'cfo', 'accounting_manager', 'accountant'], section: 'Vehicles' },
     { href: '/system/vehicles/registry/operating-cards', label: lang === 'ar' ? 'بطاقات التشغيل' : 'Operating Cards', icon: <CreditCard className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'vehicles_manager', 'vehicles_staff', 'hr_manager', 'hr_specialist', 'cfo', 'accounting_manager', 'accountant'], section: 'Vehicles' },
     { href: '/system/vehicles/driver-cards', label: lang === 'ar' ? 'بطاقات السائقين' : 'Driver Cards', icon: <IdCard className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'admin', 'vehicles_manager', 'vehicles_staff', 'hr_manager', 'hr_specialist'], section: 'Vehicles' },
@@ -475,7 +384,7 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/vehicles/complaints', label: lang === 'ar' ? 'الشكاوى' : 'Complaints', icon: <MessageSquare className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'vehicles_manager', 'vehicles_staff', 'hr_manager', 'hr_specialist', 'cfo', 'accounting_manager', 'accountant'], section: 'Vehicles' },
     { href: '/system/vehicles/settings', label: lang === 'ar' ? 'إعدادات القسم' : 'Section Settings', icon: <SlidersHorizontal className="w-5 h-5" />, roles: ['super_admin', 'admin', 'it_manager', 'vehicles_manager'], section: 'Vehicles' },
     { href: '/system/vehicles/kpis', label: lang === 'ar' ? 'تقييم الأداء' : 'KPIs', icon: <Target className="w-5 h-5" />, roles: kpiRoles(['super_admin', 'it_manager', 'it_specialist', 'admin', 'vehicles_manager', 'vehicles_staff', 'hr_manager', 'hr_specialist', 'cfo', 'accounting_manager', 'accountant']), section: 'Vehicles', restrict: true },
-    // Location Solutions (لوكيشن سوليوشن) — live Wialon GPS/telemetry mirror
+    // Location Solutions: live Wialon GPS/telemetry mirror.
     { href: '/system/ls2', label: lang === 'ar' ? 'لوحة التتبّع' : 'Telemetry Dashboard', icon: <Gauge className="w-5 h-5" />, roles: LS2_SECTION_ROLES, section: 'Location Solutions' },
     { href: '/system/ls2/live', label: lang === 'ar' ? 'الأسطول المباشر' : 'Live Fleet', icon: <Satellite className="w-5 h-5" />, roles: LS2_SECTION_ROLES, section: 'Location Solutions' },
     { href: '/system/ls2/registry', label: lang === 'ar' ? 'سجل الأسطول' : 'Fleet Registry', icon: <ClipboardList className="w-5 h-5" />, roles: LS2_SECTION_ROLES, section: 'Location Solutions' },
@@ -487,20 +396,16 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/ls2/fleet-assets', label: lang === 'ar' ? 'السطحات والكاوتشات' : 'Fleet Assets', icon: <Container className="w-5 h-5" />, roles: LS2_SECTION_ROLES, section: 'Location Solutions' },
     { href: '/system/ls2/custody', label: lang === 'ar' ? 'عهدة النقل الثقيل' : 'Heavy Transport Custody', icon: <Wallet className="w-5 h-5" />, roles: ['super_admin', 'admin', 'location_manager', 'cfo', 'accounting_manager', 'accountant'], section: 'Location Solutions' },
     { href: '/system/ls2/store', label: lang === 'ar' ? 'مخزن النقل الثقيل' : 'Store', icon: <Boxes className="w-5 h-5" />, roles: [...LS2_SECTION_ROLES, 'accountant', 'accounting_manager', 'cfo', 'vehicles_manager'], section: 'Location Solutions' },
-    // مَن تُشترى منه قطعُ الغيار — ويُضاف كذلك من خانة «المورد» في استمارة الصنف.
+    // Who spare parts are bought from; also added from the supplier field in the item form.
     { href: '/system/ls2/suppliers', label: lang === 'ar' ? 'الموردون' : 'Suppliers', icon: <Truck className="w-5 h-5" />, roles: LS2_SECTION_ROLES, section: 'Location Solutions' },
     { href: '/system/ls2/repairs', label: lang === 'ar' ? 'الصيانة الاستثنائية' : 'Exceptional Repairs', icon: <Hammer className="w-5 h-5" />, roles: LS2_SECTION_ROLES, section: 'Location Solutions' },
-    // «أحتاج هذه الشاحنةَ وصيانتُها متأخّرة» — طلبُ إدارة الأسطول، وقرارُه هنا.
+    // Fleet management request ('I need this truck but its maintenance is overdue'); the decision is made here.
     { href: '/system/ls2/fleet-requests', label: lang === 'ar' ? 'طلبات الأسطول' : 'Fleet Requests', icon: <ShieldQuestion className="w-5 h-5" />, roles: LS2_SECTION_ROLES, section: 'Location Solutions' },
     { href: '/system/ls2/alerts', label: lang === 'ar' ? 'التنبيهات' : 'Alerts', icon: <Bell className="w-5 h-5" />, roles: LS2_SECTION_ROLES, section: 'Location Solutions' },
     { href: '/system/ls2/reports', label: lang === 'ar' ? 'التقارير' : 'Reports', icon: <FileBarChart className="w-5 h-5" />, roles: LS2_SECTION_ROLES, section: 'Location Solutions' },
 
-    // Workshop — deliberately placed right after Location Solutions: this is the
-    // shop floor that services that fleet, and its store holds the very tires and
-    // trailers the ls2 asset registry tracks. Keeping the two sections apart made
-    // people hunt across the sidebar for one truck's story.
-    // ---- Performance (KPI evaluation) ----
-    // لوحةُ القسم أوّلًا: «نظرةُ كلّ الأقسام» هي حالُ القسم، والتقييمُ عملٌ فيه.
+    // Workshop: placed right after Location Solutions because it is the shop floor servicing that fleet and its store holds the tires and trailers the ls2 asset registry tracks; keeping them apart made people search the sidebar for one truck's story.
+    // Performance (KPI evaluation): department dashboard first; the all-departments view is the department's state and the evaluation is work within it.
     { href: '/system/performance/overview', label: lang === 'ar' ? 'نظرة كل الأقسام' : 'All Departments', icon: <Crown className="w-5 h-5" />, roles: ['super_admin', 'admin'], section: 'Performance' },
     { href: '/system/performance', label: lang === 'ar' ? 'تقييم مديري الأقسام' : 'Evaluate Managers', icon: <Target className="w-5 h-5" />, roles: ['super_admin', 'admin'], section: 'Performance' },
     { href: '/system/performance/requests', label: lang === 'ar' ? 'طلبات تعديل التقييم' : 'Edit Requests', icon: <Inbox className="w-5 h-5" />, roles: ['super_admin', 'admin'], section: 'Performance' },
@@ -525,17 +430,15 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/bd/management-jp', label: lang === 'ar' ? 'خطّة الإدارة (Management JP)' : 'Management JP', icon: <Crown className="w-5 h-5" />, roles: [], section: 'Business Development', visible: (u) => jpManager(u, 'Business Development') && !jpTop(u) },
     { href: '/system/bd/complaints', label: lang === 'ar' ? 'الشكاوى' : 'Complaints', icon: <MessageSquare className="w-5 h-5" />, roles: BD_ROLES, section: 'Business Development' },
     { href: '/system/bd/kpis', label: lang === 'ar' ? 'تقييم الأداء' : 'KPIs', icon: <Target className="w-5 h-5" />, roles: kpiRoles(BD_ROLES), section: 'Business Development', restrict: true },
-    // ---- Administration (الشؤون الإدارية / السكرتارية) ----
+    // Administration (secretariat).
     { href: '/system/administration', label: lang === 'ar' ? 'لوحة المهام' : 'Task Board', icon: <ClipboardList className="w-5 h-5" />, roles: ADMINISTRATION_ROLES, section: 'Administration' },
     { href: '/system/administration/jp', label: lang === 'ar' ? 'خطّة العمل (JP)' : 'JP', icon: <CalendarCheck className="w-5 h-5" />, roles: [], section: 'Administration', visible: (u) => jpMember(u, 'Administration') },
     { href: '/system/administration/jp-dashboard', label: lang === 'ar' ? 'لوحة JP' : 'JP Dashboard', icon: <BarChart3 className="w-5 h-5" />, roles: [], section: 'Administration', visible: (u) => jpManager(u, 'Administration') },
     { href: '/system/administration/management-jp', label: lang === 'ar' ? 'خطّة الإدارة (Management JP)' : 'Management JP', icon: <Crown className="w-5 h-5" />, roles: [], section: 'Administration', visible: (u) => jpManager(u, 'Administration') && !jpTop(u) },
     { href: '/system/administration/complaints', label: lang === 'ar' ? 'الشكاوى' : 'Complaints', icon: <MessageSquare className="w-5 h-5" />, roles: ['super_admin', 'admin'], section: 'Administration' },
     { href: '/system/administration/kpis', label: lang === 'ar' ? 'تقييم الأداء' : 'KPIs', icon: <Target className="w-5 h-5" />, roles: kpiRoles(['super_admin', 'admin']), section: 'Administration', restrict: true },
-    // ---- Contracts (إدارة العقود) ----
-    // اجتماعات مراجعة الأعمال — the managers/board forum. `my-tasks` is listed
-    // for EVERY role because ordinary employees receive delegated work there;
-    // the other three pages check their own tier server-side.
+    // Contracts.
+    // Business review meetings: the managers/board forum. `my-tasks` is listed for EVERY role because ordinary employees receive delegated work there; the other three pages check their own tier server-side.
     { href: '/system/business-review', label: lang === 'ar' ? 'اجتماعات المراجعة' : 'Review Meetings', icon: <CalendarCheck className="w-5 h-5" />, roles: [], section: 'Business Review', visible: (u) => isBrParticipant(u.role) },
     { href: '/system/business-review/my-actions', label: lang === 'ar' ? 'البنود المسندة إليّ' : 'My Actions', icon: <ClipboardList className="w-5 h-5" />, roles: [], section: 'Business Review', visible: (u) => isBrParticipant(u.role) },
     { href: '/system/business-review/actions', label: lang === 'ar' ? 'سجل المتابعة' : 'Action Register', icon: <ListTodo className="w-5 h-5" />, roles: [], section: 'Business Review', visible: (u) => isBrRunner(u.role) },
@@ -543,8 +446,7 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/business-review/my-tasks', label: lang === 'ar' ? 'مهامي من الاجتماعات' : 'My Meeting Tasks', icon: <ListTodo className="w-5 h-5" />, roles: [], section: 'Business Review' },
     { href: '/system/contracts', label: lang === 'ar' ? 'لوحة إدارة العقود' : 'Contracts Dashboard', icon: <FileSignature className="w-5 h-5" />, roles: CONTRACTS_ROLES, section: 'Contracts' },
     { href: '/system/contracts/vendors', label: lang === 'ar' ? 'سجل موردي 3PL' : 'Vendor Register', icon: <Building2 className="w-5 h-5" />, roles: CONTRACTS_ROLES, section: 'Contracts' },
-    // العملاءُ بعد المورّدين مباشرةً: الطرفان يُقرآن معًا، وسجلٌّ لأحدهما وحدَه
-    // كان نصفَ عملِ القسم.
+    // Customers directly after vendors: the two are read together, and a register for one alone was half the department's work.
     { href: '/system/contracts/customers', label: lang === 'ar' ? 'العملاء' : 'Customers', icon: <Handshake className="w-5 h-5" />, roles: CONTRACTS_ROLES, section: 'Contracts' },
     { href: '/system/contracts/analysis', label: lang === 'ar' ? 'تحليل التشغيل' : 'Utilisation Analysis', icon: <BarChart3 className="w-5 h-5" />, roles: CONTRACTS_ROLES, section: 'Contracts' },
     { href: '/system/contracts/prospects', label: lang === 'ar' ? 'تنشيط الموردين الجدد' : 'Prospect Outreach', icon: <PhoneCall className="w-5 h-5" />, roles: CONTRACTS_ROLES, section: 'Contracts' },
@@ -576,43 +478,31 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/ls2/complaints', label: lang === 'ar' ? 'الشكاوى' : 'Complaints', icon: <MessageSquare className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'operations_manager'], section: 'Location Solutions' },
     // B2C
     { href: '/system/b2c/dashboard', label: L.b2cDashboard, icon: <LayoutDashboard className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead'], section: 'B2C' },
-    // تحليلُ الأوردرات: ما كان في اللوحة — نُقل إلى صفحته، واللوحةُ صارت
-    // الصورةَ الكاملةَ للقسم (ناسٌ ومركباتٌ وسكنٌ) لا تقريرَ طلباتٍ وحدَه.
+    // Orders analysis moved to its own page from the dashboard, which is now the full department picture (people, vehicles, housing) rather than an orders report.
     { href: '/system/b2c/orders-analysis', label: L.b2cOrdersAnalysis, icon: <BarChart3 className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead'], section: 'B2C' },
-    // «أداء المناديب» (رفعُ الإكسيل ومزامنةُ شيتات جوجل) أُلغيت (٢٠٢٦/١٠/١٩): الأوردراتُ
-    // تُكتب على النظام في «مدخلات الأوردرات» — ومديرُ المشروع والمشرف يرى مشاريعَه.
+    // Rep performance (Excel upload and Google Sheets sync) was removed: orders are written on the system in order entry, and project managers and supervisors see their own projects.
     { href: '/system/b2c/daily-entry', label: L.b2cDailyEntry, icon: <CalendarDays className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead', 'b2c_rep_supervisor', 'b2c_inspection_supervisor'], section: 'B2C' },
-    // متابعةُ مناديب أمازون (حضورٌ لا أوردرات) — الخادمُ يحسم مَن يفتحها (مدير مشروع أمازون ومسؤولو القسم).
-    // شكاوى Media Go — بلاغاتُ أعطال الشاشات على الدبّابات. يرفعها القسم، ويراها حسابُ
-    // Media Go (وحدَها) فيحدّث حالتَها ويردّ. حدودُ كلّ طرفٍ في الخادم.
+    // Amazon rep follow-up (attendance, not orders); the server decides who opens it (Amazon project manager and department officers).
+    // Media Go complaints: screen fault reports on the vehicles. The department raises them and only the Media Go account sees them, updating status and replying; each side's limits are enforced server-side.
     { href: '/system/b2c/mediago-complaints', label: L.b2cMediaGoComplaints, icon: <MonitorPlay className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead', 'b2c_rep_supervisor', 'b2c_inspection_supervisor'], section: 'B2C' },
-    // المحتوى الإعلانيّ — مشتركٌ مع Media Go (٢٠٢٦/١٠/٢٢).
+    // Advertising content, shared with Media Go.
     { href: '/system/b2c/mediago-ads', label: lang === 'ar' ? 'المحتوى الإعلاني' : 'Ad Content', icon: <Clapperboard className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead', 'b2c_rep_supervisor', 'b2c_inspection_supervisor', 'mediago_account'], section: 'B2C' },
     { href: '/system/b2c/amazon-attendance', label: L.b2cAmazonAttendance, icon: <UserCheck className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead', 'b2c_rep_supervisor', 'b2c_inspection_supervisor'], section: 'B2C' },
-    // ── تفقّد بداية الدوام ─────────────────────────────────────────────
-    // شاشتان: واحدةٌ يقف عليها المشرفُ كلَّ صباح، وواحدةٌ تقرأ منها الإدارة.
-    // وكلتاهما مفتوحتان لأدوار القسم — والذي يحكم مَن يرى أيَّ مندوبٍ هو
-    // `B2CRep.supervisor` في الخادم لا هذه القائمة.
+    // Start-of-shift check: two screens, one the supervisor works from each morning and one management reads. Both are open to department roles; who sees which rep is decided by `B2CRep.supervisor` on the server, not this list.
     { href: '/system/b2c/duty/start', label: lang === 'ar' ? 'تفقّد بداية الدوام' : 'Duty Start Check', icon: <Camera className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead', 'b2c_rep_supervisor', 'b2c_inspection_supervisor'], section: 'B2C' },
     { href: '/system/b2c/duty', label: lang === 'ar' ? 'سجلّ التفقّد والتحليل' : 'Duty Register', icon: <ClipboardList className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead', 'b2c_rep_supervisor', 'b2c_inspection_supervisor'], section: 'B2C' },
-    // ── سجلُّ القسم كلُّه لا مناديبَ التقارير وحدَهم ────────────────────────
-    // «مناديب المبيعات» كانت تعرض مَن له تقريرُ طلبات، فلا يظهر فيها مشرفٌ ولا
-    // ميكانيكيٌّ ولا عاملُ نظافة — وهم أحدَ عشرَ من مئةٍ وواحدٍ وستّين.
+    // The whole department register, not only reporting reps: 'sales reps' showed only those with an order report, hiding supervisors, mechanics and cleaners (11 of 161).
     { href: '/system/b2c/light-transport', label: L.b2cLightTransport, icon: <Truck className="w-5 h-5" />, roles: ['cfo', 'accounting_manager', 'accountant', 'super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead'], section: 'B2C' },
     { href: '/system/b2c/user-rentals', label: lang === 'ar' ? 'تأجير اليوزرات' : 'User Rentals', icon: <KeySquare className="w-5 h-5" />, roles: ['super_admin', 'admin', 'it_manager', 'it_specialist', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead', 'cfo', 'accounting_manager', 'accountant'], section: 'B2C' },
-    // مخزنُ القسم: أصنافُه ورصيدُه وحركاتُه — مفصولٌ عن مخزن النقل الثقيل في
-    // القاعدة، وشاشتُه هي شاشتُه نفسُها (آليّةُ المخزن واحدة).
+    // Department store: items, balance and movements; separate from the heavy-transport store in the database, but the same screen (one store mechanism).
     { href: '/system/b2c/light-transport/store', label: lang === 'ar' ? 'مخزن النقل الخفيف' : 'Light Transport Store', icon: <Boxes className="w-5 h-5" />, roles: ['cfo', 'accounting_manager', 'accountant', 'super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead'], section: 'B2C' },
     { href: '/system/b2c/orders', label: L.b2cOrders, icon: <ClipboardList className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead'], section: 'B2C' },
     { href: '/system/b2c/projects', label: L.b2cProjects, icon: <Target className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead'], section: 'B2C' },
-    // عهدةُ القسم: الكاش وكارت المشتريات والورشة — واردُ كلٍّ وصادرُه ورصيدُه.
+    // Department custody: cash, purchase card and workshop, with each one's in, out and balance.
     { href: '/system/b2c/light-transport/custody', label: lang === 'ar' ? 'عهدة النقل الخفيف' : 'Light Transport Custody', icon: <Wallet className="w-5 h-5" />, roles: ['super_admin', 'admin', 'b2c_manager', 'b2c_deputy', 'cfo', 'accounting_manager', 'accountant'], section: 'B2C' },
-    // مركباتُ مشاريع القسم من سجلّ المركبات نفسِه: القائدُ الفعليّ والتفويض.
+    // Department project vehicles from the vehicle register itself: actual driver and authorization.
     { href: '/system/b2c/vehicles', label: lang === 'ar' ? 'مركبات النقل الخفيف' : 'Light Transport Vehicles', icon: <Truck className="w-5 h-5" />, roles: ['super_admin', 'admin', 'b2c_manager', 'b2c_deputy', 'cfo', 'accounting_manager', 'accountant'], section: 'B2C' },
-    // ── ويُبلَّغ القسمُ الموارد البشريّة بما رآه في الميدان ─────────────────
-    // المندوبُ يعود إلى العمل اليومَ ويبلغ الخبرُ الموارد البشريّة بعد أيّام،
-    // فيبقى في النظام «منتهيًا» ولا يُصدَر له أمرُ تشغيل. ومشرفُ المناديب
-    // التشغيليُّ أوّلُ من يراه، فله هذه الشاشة.
+    // The department reports field observations to HR: a rep may return to work today and HR hear days later, leaving him 'ended' in the system with no operating order. The reps' operations supervisor sees it first, so this screen is theirs.
     { href: '/system/b2c/hr-requests', label: lang === 'ar' ? 'طلبات الموارد البشرية' : 'HR Requests', icon: <Send className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead', 'b2c_rep_supervisor'], section: 'B2C' },
     { href: '/system/b2c/settings', label: L.b2cSettings, icon: <Settings className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead'], section: 'B2C' },
     { href: '/system/b2c/kpis', label: lang === 'ar' ? 'تقييم الأداء' : 'KPIs', icon: <Target className="w-5 h-5" />, roles: kpiRoles(['super_admin', 'it_manager', 'it_specialist', 'admin', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead']), section: 'B2C', restrict: true },
@@ -643,8 +533,7 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/hr/master/healthCertificate', label: lang === 'ar' ? 'الشهادات الصحية' : 'Health Certificates', icon: <FileText className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'hr_manager', 'hr_specialist'], section: 'HR' },
     { href: '/system/hr/master/driverCard', label: lang === 'ar' ? 'بطاقات السائقين' : 'Driver Cards', icon: <FileText className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'hr_manager', 'hr_specialist'], section: 'HR' },
     { href: '/system/hr/master/drivingLicense', label: lang === 'ar' ? 'رخص القيادة' : 'Driving Licences', icon: <FileText className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'hr_manager', 'hr_specialist'], section: 'HR' },
-    // المسار الجديد، والقديم `master/gosi` يظلّ يعمل عبر GROUP_ALIASES — روابطٌ
-    // محفوظةٌ عند الناس لا يصحّ كسرُها لتغيير اسم.
+    // New path; the old `master/gosi` keeps working through GROUP_ALIASES because saved links must not break over a rename.
     { href: '/system/hr/master/socialInsurance', label: lang === 'ar' ? 'السجل والتأمينات الاجتماعية' : 'Register & Social Insurance', icon: <FileText className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'hr_manager', 'hr_specialist'], section: 'HR' },
     { href: '/system/hr/master/banking', label: lang === 'ar' ? 'البيانات البنكية' : 'Banking', icon: <FileText className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'hr_manager', 'hr_specialist'], section: 'HR' },
     { href: '/system/hr/employees', label: L.hrEmployees, icon: <Users className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'hr_manager', 'hr_specialist'], section: 'HR' },
@@ -657,25 +546,20 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/hr/stock', label: L.hrStock, icon: <Boxes className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'hr_manager', 'hr_specialist'], section: 'HR' },
     { href: '/system/hr/finance-follow', label: lang === 'ar' ? 'متابعة المالية' : 'Finance Follow-up', icon: <Landmark className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'hr_manager', 'hr_specialist'], section: 'HR' },
     { href: '/system/hr/licenses', label: lang === 'ar' ? 'التراخيص والاشتراكات' : 'Licenses & Subscriptions', icon: <ScrollText className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'hr_manager', 'hr_specialist'], section: 'HR' },
-    // الجانبُ المستقبِل لطلبات الأقسام — تُستلَم ثمّ تُنفَّذ أو تُرفَض بسبب.
+    // Receiving side of department requests: received, then executed or rejected with a reason.
     { href: '/system/hr/staff-requests', label: lang === 'ar' ? 'طلبات الأقسام' : 'Section Requests', icon: <Inbox className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'hr_manager', 'hr_specialist'], section: 'HR' },
-    // مكتبةُ أوراق القسم: النماذجُ والخطاباتُ الرسميّة، ولكلٍّ رقمُ نسخة.
+    // Department forms library: official forms and letters, each with a version number.
     { href: '/system/hr/forms', label: lang === 'ar' ? 'النماذج والخطابات' : 'Forms & Letters', icon: <FileText className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'hr_manager', 'hr_specialist'], section: 'HR' },
     { href: '/system/hr/leave-types', label: L.hrLeaveTypes, icon: <Tags className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'hr_manager', 'hr_specialist'], section: 'HR' },
-    // إعداداتُ القسم: أنواعُ الإجازات وعتباتُ التنبيه وقوائمُه — في موضعٍ واحد
-    // بدل أن يُبحَث عن كلٍّ منها في صفحة.
+    // Department settings: leave types, alert thresholds and lists in one place instead of one page each.
     { href: '/system/hr/settings', label: lang === 'ar' ? 'إعدادات القسم' : 'HR Settings', icon: <Settings className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'hr_manager', 'hr_specialist'], section: 'HR' },
     // Self Service (HR pages every employee sees)
     { href: '/system/hr/me', label: L.hrMyProfile, icon: <Briefcase className="w-5 h-5" />, roles: SELF_SERVICE_ROLES, visible: (u: any) => isInternal(u?.role), section: 'Self Service' },
     { href: '/system/hr/my-leaves', label: L.hrMyLeaves, icon: <CalendarDays className="w-5 h-5" />, roles: SELF_SERVICE_ROLES, visible: (u: any) => isInternal(u?.role), section: 'Self Service' },
-    // موافقاتُ الإجازات — تحت الخدمة الذاتيّة لا تحت الموارد البشريّة عمدًا:
-    // مديرُ الأسطول ومديرُ العمليّات يوقّعان على إجازات فريقهما ولا يملكان
-    // قسمَ الموارد البشريّة. والصفحةُ نفسُها لا تُري من لا محطّةَ له شيئًا،
-    // فالخادمُ يبني القائمةَ من محطّات القارئ لا من دوره في القائمة هنا.
+    // Leave approvals sit under self service, not HR, on purpose: the fleet and operations managers sign their teams' leaves without owning HR. The page shows nothing to someone with no station, so the server builds the list from the reader's stations, not from the role listed here.
     { href: '/system/hr/leave-approvals', label: lang === 'ar' ? 'موافقات الإجازات' : 'Leave Approvals', icon: <CalendarCheck className="w-5 h-5" />, roles: SELF_SERVICE_ROLES, visible: (u: any) => isInternal(u?.role), section: 'Self Service' },
     { href: '/system/hr/my-requests', label: L.hrMyRequests, icon: <ClipboardList className="w-5 h-5" />, roles: SELF_SERVICE_ROLES, visible: (u: any) => isInternal(u?.role), section: 'Self Service' },
-    // الإعداداتُ الشخصيّة: كلمةُ المرور والتوقيع واللغة. كانت في «الأدوات»
-    // ومقصورةً على ثمانية أدوار، فلم يجدها من يحتاجها.
+    // Personal settings: password, signature and language. They were under Tools and limited to eight roles, so those who needed them could not find them.
     { href: '/system/settings', label: L.settings, icon: <Settings className="w-5 h-5" />, roles: SELF_SERVICE_ROLES, visible: (u: any) => isInternal(u?.role), section: 'Self Service' },
     // CRM
     { href: '/system/crm/dashboard', label: L.crmDashboard, icon: <BarChart3 className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'crm_manager', 'crm_team_lead', 'crm_specialist', 'crm_agent', 'operations_manager', 'operations_staff'], section: 'CRM' },
@@ -690,19 +574,14 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     { href: '/system/crm/activities', label: L.crmActivities, icon: <Phone className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'crm_manager', 'crm_team_lead', 'crm_specialist', 'crm_agent', 'operations_manager', 'operations_staff'], section: 'CRM' },
     // Sales
     { href: '/system/sales/dashboard', label: L.salesDashboard, icon: <TrendingUp className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'sales_manager', 'sales_rep', 'operations_manager', 'operations_staff'], section: 'Sales' },
-    // العملاء — سجلُّ «التشغيل» و«طلبات الشحنات» نفسُه (components/customers): بابٌ ثالثٌ لا نسخةٌ ثالثة.
+    // Customers: the same register as operations and shipment orders (components/customers); a third entry point, not a third copy.
     { href: '/system/sales/customers', label: lang === 'ar' ? 'العملاء' : 'Customers', icon: <Users className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'sales_manager', 'sales_rep', 'operations_manager', 'operations_staff'], section: 'Sales' },
-    // ── وسيرُ عمل التشغيل من داخل قسمهم — لقيمة البيع ─────────────────────
-    // المبيعاتُ تسعّر الكشف: ترى «قيمة البيع» وتكتبها وحدَها (الخادمُ يحجب عنها
-    // ما سواها من مال). كما وُضع الرابطُ في قسم التحصيل.
+    // Operations workflow from inside their section, for the selling value: sales prices the manifest and sees and writes only the selling value (the server hides other money from them), like the link in the collections section.
     { href: '/system/sales/pipeline', label: L.salesPipeline, icon: <Target className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'sales_manager', 'sales_rep', 'operations_manager', 'operations_staff'], section: 'Sales' },
     { href: '/system/sales/targets', label: L.salesTargets, icon: <Target className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'sales_manager', 'sales_rep', 'operations_manager', 'operations_staff'], section: 'Sales' },
     { href: '/system/sales/performance', label: L.salesPerformance, icon: <BarChart3 className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'sales_manager', 'sales_rep', 'operations_manager', 'operations_staff'], section: 'Sales' },
     // Accounting
-    // ── الإدارة الماليّة ────────────────────────────────────────────────────
-    // حلّت محلّ صفحات المحاسبة (دليل الحسابات، القيود، ميزان المراجعة) التي كانت
-    // تُملأ بمزامنةٍ يدويّة فتبقى ناقصة. مالُ كلّ قسمٍ يُقرأ من القسم نفسِه.
-    // والمفتاحُ `Accounting` باقٍ كي لا تُهاجَر صلاحيّاتٌ محفوظة — الاسمُ وحدَه تغيّر.
+    // Finance management replaced the accounting pages (chart of accounts, journal entries, trial balance), which were filled by manual sync and stayed incomplete. Each department's money is read from the department itself. The `Accounting` key stays so saved permissions are not migrated; only the name changed.
     { href: '/system/finance', label: lang === 'ar' ? 'لوحة الإدارة المالية' : 'Finance Overview', icon: <Landmark className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'cfo', 'accounting_manager', 'accountant'], section: 'Accounting' },
     { href: '/system/finance/operations', label: lang === 'ar' ? 'ماليات التشغيل' : 'Operations Finance', icon: <ClipboardList className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'cfo', 'accounting_manager', 'accountant'], section: 'Accounting' },
     { href: '/system/finance/fleet', label: lang === 'ar' ? 'ماليات إدارة الأسطول' : 'Fleet Finance', icon: <Truck className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'cfo', 'accounting_manager', 'accountant'], section: 'Accounting' },
@@ -763,21 +642,15 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
 
     // Admin (configuration & oversight — kept near the bottom)
     { href: '/system/branches', label: L.branches, icon: <Building2 className="w-5 h-5" />, roles: ['super_admin', 'admin', 'it_manager', 'it_specialist'], section: 'Admin' },
-    // ── القوائمُ المرجعيّة: لكلٍّ قوائمُه ────────────────────────────────────
-    // كانت مقصورةً على قائمةِ أدوارٍ مكتوبةٍ باليد — يُنسى منها مديرُ الأسطول
-    // ومديرُ المركبات وهما يملكان قوائمَ فعلًا — ومن دخلها رأى قوائمَ الأقسام
-    // كلِّها. صار الخادمُ يردّ لكلّ دورٍ ما يملك تعديلَه وحدَه، فتُفتح للجميع
-    // ولا يرى فيها أحدٌ ما ليس له. ومن لا قائمةَ له تقول له الصفحةُ ذلك.
+    // Reference lists: each role gets its own lists. It used to be a hand-written role list that missed the fleet and vehicles managers, who do own lists, and whoever entered saw every department's lists. The server now returns only what each role may edit, so the page is open to all and shows nobody what is not theirs; a user with no list is told so.
     { href: '/system/settings/reference-data', label: lang === 'ar' ? 'القوائم المرجعية' : 'Reference Data', icon: <Tags className="w-5 h-5" />, roles: SELF_SERVICE_ROLES, visible: (u: any) => isInternal(u?.role), section: 'Admin' },
     { href: '/system/users', label: L.users, icon: <UserCog className="w-5 h-5" />, roles: ['super_admin', 'admin', 'it_manager', 'it_specialist'], section: 'Admin' },
     { href: '/system/permissions', label: lang === 'ar' ? 'الأدوار والصلاحيات' : 'Roles & Permissions', icon: <ShieldCheck className="w-5 h-5" />, roles: ['super_admin', 'admin', 'it_manager', 'it_specialist'], section: 'Admin' },
     { href: '/system/audit', label: L.auditLog, icon: <ClipboardList className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin'], section: 'Admin' },
-    // توثيقُ الـ API — يُبنى من الكود لحظةَ فتحه؛ السطحُ الداخليُّ لمن يحرسه الخادمُ به (FULL_ACCESS_ROLES).
+    // API documentation, built from the code on open; the internal surface is for those the server guards with it (FULL_ACCESS_ROLES).
     { href: '/system/api-docs', label: 'API Reference', icon: <BookOpen className="w-5 h-5" />, roles: ['super_admin', 'admin', 'it_manager', 'it_specialist'], section: 'Admin' },
     { href: '/system/complaints', label: L.complaints, icon: <MessageSquare className="w-5 h-5" />, roles: ['super_admin', 'it_manager', 'it_specialist', 'admin', 'operations_manager'], section: 'Admin' },
-    // بوابة العميل / المورد. `portalService` gates a link on the partner ACTUALLY
-    // having work of that kind — a customs-only customer never sees a shipments
-    // tab, and a supplier never sees invoices. Links without it always show.
+    // Customer / supplier portal. `portalService` gates a link on the partner ACTUALLY having work of that kind: a customs-only customer never sees a shipments tab, and a supplier never sees invoices. Links without it always show.
     { href: '/system/portal', label: L.overview, icon: <LayoutDashboard className="w-5 h-5" />, roles: ['client'], section: 'Portal' },
     { href: '/system/portal/shipments', label: lang === 'ar' ? 'شحناتي' : 'My Shipments', icon: <Truck className="w-5 h-5" />, roles: ['client'], section: 'Portal', portalService: ['shipments', 'operations', 'heavy_transport', 'shipment_orders'] },
     { href: '/system/portal/customs', label: lang === 'ar' ? 'معاملات التخليص' : 'Customs Files', icon: <Ship className="w-5 h-5" />, roles: ['client'], section: 'Portal', portalService: ['customs'] },
@@ -798,11 +671,9 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
       .catch(() => setPortalServices([]));
   }, [user?.role, user?._id]);
 
-  // ── أرقامٌ بجانب أسماء الصفحات (/api/nav-badges) — ما ينتظر صاحبَ الصفحة ──
-  // (٢٠٢٦/١٠/٢٢) «ماليات التخليص الجمركي»: طلباتُ صرفٍ + طلباتُ فوترةٍ معلّقة.
-  // يُعاد مع كلّ تغييرٍ في التخليص، وكلَّ دقيقةٍ احتياطًا.
+  // Numbers beside page names (/api/nav-badges): what awaits the page owner. Customs finance: pending disbursement and invoicing requests. Refetched on every customs change and every minute as a fallback.
   const [navBadges, setNavBadges] = useState<Record<string, number>>({});
-  // والحساباتُ الخارجيّة والمحصورة (Media Go…) لا شارات لها — ولا يُسأل الخادمُ عنها فيردّ 403.
+  // External and scoped accounts (Media Go...) have no badges and are not queried, which would return 403.
   const wantsBadges = !!user && isInternal(user.role) && !SCOPED_HOME[user.role];
   const fetchNavBadges = useCallback(() => {
     if (!wantsBadges) return;
@@ -824,8 +695,7 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
   useSocket('notification:new', useCallback(() => {
     fetchNotifications();
   }, []));
-  // خبرُ فعلٍ على النظام: يراه مديرُ النظام ومديرُ القسم، فهما وحدَهما يعيدان
-  // السحب — والخادمُ يقرّر ما يُعرَض لكلٍّ منهما (راجع notificationController.scopeOf).
+  // An action on the system: seen by the system admin and the department manager, who alone can re-pull; the server decides what each sees (see notificationController.scopeOf).
   useSocket('notification:activity', useCallback(() => {
     const r = user?.role || '';
     if (['super_admin', 'admin'].includes(r || '') || r === 'cfo' || /_manager$/.test(r)) fetchNotifications();
@@ -841,12 +711,9 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
 
   const filteredNav = navItems.filter((item) => {
     if (!user) return false;
-    // الحسابُ المحصورُ يرى صفحتَه وحدَها، مهما قالت بقيّةُ القواعد.
+    // A scoped account sees only its own page, whatever the other rules say.
     if (SCOPED_HOME[user.role]) return (SCOPED_PAGES[user.role] || [SCOPED_HOME[user.role]]).includes(item.href);
-    // ── الصفحةُ قبل القسم ──────────────────────────────────────────────────
-    // طبقةٌ تحت مصفوفة الأقسام: قسمُ المركبات تسعَ عشرةَ صفحة، ومن مُنح القسمَ
-    // كان يأخذها كلَّها. فما أُغلق من صفحاته يُغلَق هنا مهما قال القسم — وما
-    // سكتت عنه الشاشةُ يتبع قسمَه (يحسبها الخادم، راجع effectivePages).
+    // Page before section: a layer under the sections matrix. The vehicles section has nineteen pages and a granted section used to open all of them. A page closed here stays closed whatever the section says; a page the screen is silent on follows its section (computed by the server, see effectivePages).
     if (!canAccessPage(user.pageAccess, item.href)) return false;
     // Managed sections are governed by the super_admin permission matrix
     // (sectionKey → none/view/edit) instead of the static role list. This is
@@ -864,16 +731,8 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
       return true;
     }
     // Legacy role-gated sections (Main, Tools, Admin, Self Service, Portal).
-    //
-    // و`visible` تسبق القائمة حيث وُجدت: قائمةُ الأدوار تُكتب باليد فتشيخ مع
-    // كلّ دورٍ جديد، والقاعدةُ لا تشيخ. وهذا ما يجعل الخدمةَ الذاتيّة تظهر
-    // لمدير المركبات ولموظّف التخليص دون أن يُضافا إلى ثلاثين سطرًا.
-    //
-    // ── وتأشيرةُ المصفوفة تسبق القائمةَ أيضًا ────────────────────────────────
-    // هذه الأقسامُ لا تملكها مصفوفةُ الأقسام، فحارسُها قائمةٌ. ومن أشّر لدورٍ
-    // مصنوعٍ على «مركز التقارير» في مصفوفة الصفحات فُتحت له نقاطُه ولم يظهر
-    // له رابط: القائمةُ لا تعرف دورَه. فما أُشِّر عليه صراحةً يُعرَض — قصدَه
-    // صاحبُ النظام بيده، والقائمةُ هي التي تشيخ.
+    // `visible` takes precedence over the role list where present: hand-written role lists age with every new role, the rule does not. This is why self service shows for the vehicles manager and clearance staff without thirty added lines.
+    // A matrix grant also precedes the list: these sections are not owned by the sections matrix, so their guard is a list. A custom role granted 'reports center' in the pages matrix got open endpoints but no link, since the list does not know the role. An explicit grant is shown; the list is what ages.
     const ticked = Array.isArray(user.pagesGranted) && user.pagesGranted.includes(item.href);
     if (!ticked) {
       if (item.visible) { if (!item.visible(user)) return false; }
@@ -895,14 +754,8 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     return true;
   });
 
-  // ── وبابُ الصفحة يُغلَق على من يكتب مسارَها ──────────────────────────────
-  // إخفاءُ الرابط لا يمنع أحدًا: من يعرف المسارَ يكتبه في المتصفّح فتُفتَح
-  // الشاشة. والحارسُ الحقيقيُّ على البيانات هو القسمُ على الـ API — لكنّ شاشةً
-  // مُنع صاحبُها منها ثمّ فتحت له نصفَ محتواها إعدادٌ يكذب على من ضبطه.
-  //
-  // والمقارنةُ بالمسار الأطول المطابق: `/system/vehicles/registry/123` صفحةُ
-  // `registry`، و«لا صفحةَ في الفهرس تطابقه» تعني شاشةً خارج الشريط (تفصيلُ
-  // سجلّ) فتتبع أقربَ أصلٍ لها.
+  // The page door closes on those who type the path: hiding a link blocks nobody. The real data guard is the section on the API, but a screen that was denied and then half-opened makes the setting lie to whoever configured it.
+  // Compared against the longest matching path: `/system/vehicles/registry/123` is the `registry` page, and 'no catalogue page matches' means a screen outside the sidebar (a record detail), which follows its nearest ancestor.
   const pageBlocked = (() => {
     if (!user || !user.pageAccess) return false;
     const keys = Object.keys(user.pageAccess);
@@ -915,18 +768,10 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     return !!best && user.pageAccess[best] === false;
   })();
 
-  // ── ترتيبُ الأقسام في الشريط يُقال، ولا يُترك للمصادفة ──────────────────
-  //
-  // كانت الأقسامُ تظهر بترتيب أوّلِ صفحةٍ منها في مصفوفة `nav` — فترتيبُ
-  // الشريط أثرٌ جانبيٌّ لترتيب الكود. فتُضاف صفحةٌ في مكانها الطبيعيّ من
-  // الملفّ فيقفز قسمُها كلُّه إلى أعلى الشريط بلا أن يقصد أحد.
-  //
-  // وهذا هو الترتيبُ المطلوب: سلسلةُ العمل كما تجري — من التشغيل إلى طلبات
-  // الشحنات إلى المنصّة، ثمّ التحصيل، ثمّ الأسطول وتتبّعه، ثمّ ما يُسنِد ذلك
-  // كلَّه. وما لم يُذكَر هنا يأتي بعده بترتيبه كما هو.
+  // Sidebar section order is explicit, not accidental: sections used to appear in the order of their first page in the `nav` array, so adding a page in its natural place could move a whole section to the top.
+  // The intended order follows the work chain: operations, shipment orders, platform, then collections, then fleet and tracking, then supporting sections. Anything not listed comes after in its existing order.
   const SECTION_ORDER = [
-    // «الرئيسية» أوّلًا دائمًا: لم تكن في القائمة فنزلت تحت الأقسام كلِّها،
-    // فبدت لمدير النظام كأنّها اختفت.
+    // Home is always first; when it was missing from the list it dropped below all sections and looked gone to the system admin.
     'Main',
     'Operations',
     'Shipment Orders',
@@ -948,7 +793,7 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
     return acc;
   }, {} as Record<string, NavItem[]>);
 
-  // المذكورُ بترتيبه، ثمّ الباقي كما ورد — فلا يختفي قسمٌ نُسي من القائمة.
+  // Listed sections in order, then the rest as they came, so a section missing from the list does not vanish.
   const orderedNav: [string, NavItem[]][] = Object.entries(groupedNav).sort(([a], [b]) => {
     const ia = SECTION_ORDER.indexOf(a);
     const ib = SECTION_ORDER.indexOf(b);
@@ -1050,12 +895,12 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
 
   return (
     <DialogProvider>
-    {/* صيغةُ خانات التاريخ واحدةٌ عند كلّ الناس — راجع رأس الملفّ. */}
+    {/* Date fields use one format for everyone; see the file header. */}
     <DateFieldLocale />
-    {/* نسخةٌ جديدةٌ نُشرت والتبويبةُ مفتوحة — تُحدَّث (راجع lib/appVersion). */}
+    {/* A new version was published while the tab was open; it refreshes (see lib/appVersion). */}
     <NewVersionWatcher ar={lang === 'ar'} />
     <div className="min-h-screen bg-slate-100 flex" dir={isRTL ? 'rtl' : 'ltr'}>
-      {/* شريطٌ رفيعٌ يقول «ضغطتُك وصلت» حتى تُرسَم الصفحة */}
+      {/* A thin bar showing the click was received until the page renders. */}
       {pendingHref && (
         <div className="fixed inset-x-0 top-0 z-[60] h-0.5 overflow-hidden">
           <div className="refresh-bar" />
@@ -1163,13 +1008,9 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
                       <p className="p-6 text-slate-400 text-sm text-center">{L.noNewNotifications}</p>
                     ) : (
                       notifications.map((n: any) => {
-                        // إشعارُ ملفِّ تصديرٍ جاهز: الضغطةُ تنزّله — لا يُبحث عنه.
+                        // Ready export notification: a click downloads it.
                         const isExport = n.relatedEntity === 'ExportJob' && n.relatedEntityId;
-                        // ── وبقيّةُ الإشعارات تذهب إلى ما تتحدّث عنه ──────────
-                        // كانت كلُّها `div` بلا معالج: يُقرأ «أُسنِدت إليك مهمّة»
-                        // ويُضغَط فلا يحدث شيء. الوجهةُ تُبنى من `relatedEntity`
-                        // — راجع lib/notificationLink. وما لا وجهةَ له لا
-                        // يُخمَّن: يبقى سطرًا يُقرأ ولا يُضغَط.
+                        // Other notifications go to what they refer to. They were all `div`s with no handler, so reading 'a task was assigned to you' and clicking did nothing. The destination is built from `relatedEntity` (see lib/notificationLink); one without a destination is not guessed and stays a plain line.
                         const href = isExport ? null : notificationHref(n);
                         const tone = notificationTone(n);
                         const Icon = tone === 'alert' ? AlertTriangle : tone === 'task' ? ClipboardList : tone === 'ok' ? CheckCircle2 : Info;
@@ -1177,10 +1018,9 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
                           : tone === 'task' ? 'bg-amber-50 text-amber-600'
                           : tone === 'ok' ? 'bg-emerald-50 text-emerald-600' : 'bg-sky-50 text-sky-600';
                         const go = () => {
-                          // يُعلَّم مقروءًا ثمّ يُفتَح: من يفتحه قرأه، وإبقاؤه
-                          // غيرَ مقروءٍ يُبقي العدّادَ يكذب.
+                          // Marked read and then opened: opening it means it was read, and leaving it unread makes the counter wrong.
                           if (!n.isRead) {
-                            api.put(`/api/notifications/${n._id}/read`).catch(() => { /* العدّادُ يُصحَّح عند التحديث التالي */ });
+                            api.put(`/api/notifications/${n._id}/read`).catch(() => { /* The counter is corrected on the next refresh. */ });
                             setUnreadCount((c) => Math.max(0, c - 1));
                           }
                           setShowNotifications(false);
@@ -1204,8 +1044,7 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
                                 <p className="text-slate-900 text-[13px] font-semibold leading-snug flex-1 min-w-0">{n.title}</p>
                                 <span className="text-[10.5px] text-slate-400 shrink-0 mt-0.5 whitespace-nowrap">{sinceLabel(n.createdAt, lang === 'ar')}</span>
                               </div>
-                              {/* سطران على الأكثر: الرسالةُ الطويلةُ كانت تمدّ
-                                  الصفَّ فتصير القائمةُ كتلةَ نصٍّ لا قائمة. */}
+                              {/* At most two lines: a long message stretched the row until the list became a block of text. */}
                               <p className="text-slate-500 text-[12px] mt-0.5 leading-snug line-clamp-2">{n.message}</p>
                               {isExport && (
                                 <p className="text-[#f37121] text-[11px] mt-1 font-semibold">
@@ -1233,7 +1072,7 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
         </header>
 
         {/* Page Content */}
-        {/* لوحاتُ الأقسام تُعرَض على شاشة اجتماع — نصُّها أوضح (globals.css: [data-dash]). */}
+        {/* Department dashboards show on a meeting screen, so their text is made clearer (globals.css: [data-dash]). */}
         <main className="flex-1 p-4 md:p-6 overflow-x-auto min-w-0" data-dash={isDashboardPath(pathname) ? '' : undefined}>
           {pageBlocked ? (
             <div className="max-w-lg mx-auto mt-16 text-center">
@@ -1243,8 +1082,7 @@ function SystemLayoutInner({ children }: { children: React.ReactNode }) {
               <p className="text-lg font-bold text-slate-900">
                 {lang === 'ar' ? 'هذه الصفحة ليست ضمن صلاحيّاتك' : 'This page is not part of your access'}
               </p>
-              {/* ومن يُمنَع يُقال له بمن يتّصل — لا «غير مصرّح» وحدَها، فتلك
-                  تُقرأ عطلًا فيُعاد تحميلُ الصفحةِ مرّاتٍ ثمّ يُتّصل بالدعم. */}
+              {/* A blocked user is told whom to contact, not just 'not authorized', which reads as a fault and gets the page reloaded repeatedly before support is called. */}
               <p className="text-sm text-slate-500 mt-2 leading-relaxed">
                 {lang === 'ar'
                   ? 'صلاحيّاتُ الصفحات تُضبط من «الأدوار والصلاحيّات». إن كنت تحتاجها في عملك فاطلبها من صاحب النظام.'

@@ -1,13 +1,7 @@
 /**
- * invoiceNumberKey — مطابقةُ رقم الفاتورة بين دفتر التحصيل وكشوف التشغيل.
- *
- * الرقمُ نفسُه يُكتب في المكانين بصورتين: «٨٨٩١» و«08891» و«8891 » و«88-91».
- * فيُطوى قبل المقارنة: تُزال المسافاتُ والفواصلُ والأصفارُ البادئة، ويُرفَع ما
- * بقي من حروفٍ إلى الكبير.
- *
- * و«لا فاتورة» ليست رقمًا: الكشفُ الذي كُتب في خانة فاتورته «بدون» أو «no inv»
- * أو صفرٌ لم يُفوتَر بعد. ولو عُومل نصًّا لتجمّعت آلافُ الكشوف تحت «فاتورةٍ»
- * اسمُها «بدون» — راجع ذاكرة «no inv placeholder».
+ * invoiceNumberKey: matches an invoice number between the collections ledger and the operations manifests.
+ * The same number is written in different forms (Arabic digits, leading zeros, trailing space, dashes), so it is folded before comparing: whitespace, separators and leading zeros are removed and remaining letters upper-cased.
+ * 'No invoice' is not a number: a manifest whose invoice field says none, 'no inv' or zero is not yet invoiced. Treating it as text would group thousands of manifests under one fake invoice (see the 'no inv' placeholder note).
  */
 const NO_INVOICE = /^\s*(?:no\s*inv(?:oice)?|noinv|no-inv|none|n\/a|na|-|—|ىى|0|بدون(?:\s*فاتورة)?|لا\s*يوجد|لا\s*توجد|غير\s*مفوتر(?:ة)?)\s*$/i;
 

@@ -8,7 +8,7 @@ import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import 'signatures.dart';
 
-/// الإعدادات — تغيير كلمة المرور وتبديل اللغة وتسجيل الخروج.
+/// Settings: change password, switch language and sign out.
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
 
@@ -38,7 +38,7 @@ class SettingsScreen extends StatelessWidget {
         _tile(context, Icons.draw_outlined, tr('توقيعاتي', 'My signatures'), () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SignaturesScreen()))),
         _tile(context, Icons.lock_outline, tr('تغيير كلمة المرور', 'Change password'), () => _changePassword(context)),
         _tile(context, Icons.translate, tr('اللغة', 'Language'), () => Lang.instance.toggle(), trailing: Text(tr('العربية', 'English'), style: const TextStyle(fontWeight: FontWeight.w700, color: T.navy))),
-        // ── لمدير النظام وحده كالويب: إعادةُ حساب درجات المخاطر + معلوماتُ النظام ──
+        // System admin only, as on the web: recompute risk scores + system info
         if (const ['super_admin', 'admin', 'it_manager', 'it_specialist'].contains(auth.role)) ...[
           _tile(context, Icons.shield_outlined, tr('إعادة حساب المخاطر', 'Recalculate risk scores'), () => _recalcRisk(context)),
           AppCard(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -76,7 +76,7 @@ class SettingsScreen extends StatelessWidget {
         ]),
       );
 
-  /// تشغيلُ إعادة حسابٍ شاملة لدرجات المخاطر لجميع العملاء — POST /api/analytics/risk/recalculate.
+  /// Runs a full recalculation of risk scores for all customers: POST /api/analytics/risk/recalculate.
   Future<void> _recalcRisk(BuildContext context) async {
     final ok = await showDialog<bool>(
       context: context,
@@ -117,7 +117,7 @@ class SettingsScreen extends StatelessWidget {
         ),
       );
 
-  // تعديل الاسم والبريد الحقيقي للحساب (PATCH /api/auth/me) — يتحدّث فورًا.
+  // Edit the account's name and real email (PATCH /api/auth/me); updates immediately.
   void _editProfile(BuildContext context, AuthProvider auth) {
     final firstName = TextEditingController(text: (auth.user?['firstName'] ?? '').toString());
     final lastName = TextEditingController(text: (auth.user?['lastName'] ?? '').toString());

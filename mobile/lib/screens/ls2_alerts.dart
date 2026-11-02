@@ -8,8 +8,7 @@ import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import 'ls2_common.dart';
 
-/// تنبيهات لوكيشن سوليوشن — the telemetry alerts feed with severity/type
-/// filters, live over ls2:updated.
+/// Location Solutions alerts: the telemetry alerts feed with severity and type filters, live over ls2:updated.
 class Ls2AlertsScreen extends StatefulWidget {
   const Ls2AlertsScreen({super.key});
   @override
@@ -38,7 +37,7 @@ class _Ls2AlertsScreenState extends State<Ls2AlertsScreen> {
     _load();
     _onLive = () => _load();
     Live.instance.on('ls2:updated', _onLive);
-    Live.instance.on('ls2:alert', _onLive); // تنبيهٌ جديدٌ أو مُقَرّ
+    Live.instance.on('ls2:alert', _onLive); // A new or acknowledged alert.
   }
 
   @override
@@ -65,7 +64,7 @@ class _Ls2AlertsScreenState extends State<Ls2AlertsScreen> {
     return d == null ? '—' : '${d.day}/${d.month} ${d.hour}:${d.minute.toString().padLeft(2, '0')}';
   }
 
-  // تأكيد الاطلاع على التنبيه — يسمع فورًا في كل مكان عبر ls2:updated.
+  // Acknowledge the alert; everyone hears it at once via ls2:updated.
   Future<void> _ack(Map<String, dynamic> a) async {
     try {
       await Api.instance.patch('/api/ls2/alerts/${a['_id'] ?? a['id']}/ack');
@@ -92,8 +91,7 @@ class _Ls2AlertsScreenState extends State<Ls2AlertsScreen> {
     ExportCol('تم الإقرار', 'Acknowledged', (r) => _dtFull(r['acknowledgedAt'])),
   ];
 
-  /// «المعروض» ما تحت الفلتر، و«الكل» نداءٌ ثانٍ بلا فلاتر — وإلّا خرج ملفُّ
-  /// «المفتوحة فقط» وهو يُحسَب سجلَّ التنبيهات كلَّه.
+  /// "Shown" is what is under the filter; "All" is a second call without filters, otherwise an "open only" file would count as the whole alert log.
   Future<void> _export() async {
     final filtersOn = _severity.isNotEmpty || _type.isNotEmpty || _status != 'all';
     if (!filtersOn) {
@@ -125,7 +123,7 @@ class _Ls2AlertsScreenState extends State<Ls2AlertsScreen> {
     return AppScaffold(
       title: Text(tr('تنبيهات المركبات', 'Fleet Alerts')),
       actions: [
-        // نوعُ التنبيه — كقائمة الأنواع في الموقع.
+        // Alert type, like the type list on the web.
         PopupMenuButton<String>(
           tooltip: tr('نوع التنبيه', 'Alert type'),
           icon: Badge(isLabelVisible: _type.isNotEmpty, smallSize: 8, child: const Icon(Icons.category_outlined)),
@@ -135,7 +133,7 @@ class _Ls2AlertsScreenState extends State<Ls2AlertsScreen> {
             for (final k in _types) CheckedPopupMenuItem(value: k, checked: _type == k, child: Text(ls2AlertType(k))),
           ],
         ),
-        // الحالة: مفتوحة / مغلقة / الكل.
+        // Status: open / closed / all.
         PopupMenuButton<String>(
           tooltip: tr('الحالة', 'Status'),
           icon: const Icon(Icons.filter_list),
@@ -223,7 +221,7 @@ class _Ls2AlertsScreenState extends State<Ls2AlertsScreen> {
                                         if (a['acknowledgedAt'] != null)
                                           Chip2('${tr('تم الاطلاع', 'Acked')} · ${_dt(a['acknowledgedAt'])}', T.success, icon: Icons.check_circle_outline),
                                       ]),
-                                      // زر تأكيد الاطلاع للتنبيهات المفتوحة غير المؤكَّدة.
+                                      // Acknowledge button for open, unacknowledged alerts.
                                       if (a['acknowledgedAt'] == null && (a['status'] ?? 'open') != 'resolved') ...[
                                         const SizedBox(height: 6),
                                         Align(

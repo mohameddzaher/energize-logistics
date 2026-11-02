@@ -1,24 +1,9 @@
 'use client';
 /**
- * المساعد — سؤالٌ عن أيّ شيءٍ في النظام.
- *
- * ── ما كان قبل ─────────────────────────────────────────────────────────────
- * صندوقُ نصٍّ يُطابِق عباراتٍ إنجليزيّةً مكتوبةً في الخادم («top collector»)
- * ويردّ من جداولَ ماليّةٍ أكثرُها زال — فيُجيب بلا شيء، وهي إجابةٌ أسوأُ من
- * «لا أعرف»: تُقرأ «لا متأخّرات». وكان يعرف ثلاثةَ جداولَ والنظامُ سبعةٌ
- * وعشرون قسمًا.
- *
- * ── وما هو الآن ────────────────────────────────────────────────────────────
- * طريقان إلى الجواب، لأنّ السائلين صنفان:
- *   • مَن يعرف ما يريد يكتبه — لوحةً أو اسمًا أو رقمَ بوليصةٍ أو إقامة — فيُقال
- *     له من أيّ نوعٍ هو ويُفتَح جوابُه.
- *   • ومَن لا يعرف أين يسأل — وهو الغالب — يُمشى به: أيُّ قسم؟ ثمّ عمّ تسأل؟
- *     ثمّ أيُّ واحد؟
- *
- * والجوابُ وثيقةُ مركز التقارير نفسُها (`ReportView`) لا صياغةٌ ثانية: ما يُقرأ
- * هنا هو ما يخرج من الطابعة ومن الهاتف حرفًا بحرف. ولا يعرف المساعدُ شيئًا من
- * عنده — مواضيعُه وصلاحيّاتُه وجوابُه كلُّها من هناك، فما يُضاف هناك يصل هنا
- * بلا سطرٍ واحد.
+ * Assistant: ask about anything in the system.
+ * The old version matched English phrases hard-coded on the server and answered from finance tables that mostly no longer exist, so it replied with nothing, which reads as no arrears; it also knew three tables out of 27 sections.
+ * Now there are two paths to an answer: typing what you know (plate, name, waybill or residence number) is classified and opened, and users who do not know where to ask are walked through section, topic, then item.
+ * The answer is the reports centre's own `ReportView` document, so what is read here matches print and mobile exactly. The assistant knows nothing itself: topics, permissions and answers all come from there, so additions there appear here with no change.
  */
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
@@ -60,21 +45,20 @@ export default function AssistantPage() {
   const [periods, setPeriods] = useState<{ key: string; ar: string; en: string }[]>([]);
   const [period, setPeriod] = useState('last_12m');
 
-  // الخطواتُ الثلاث: قسمٌ ثمّ موضوعٌ ثمّ واحدٌ منه.
+  // The three steps: section, then topic, then one item.
   const [section, setSection] = useState<Section | null>(null);
   const [topic, setTopic] = useState<Topic | null>(null);
   const [options, setOptions] = useState<Option[]>([]);
   const [optQ, setOptQ] = useState('');
   const [optBusy, setOptBusy] = useState(false);
 
-  // البحثُ الحرّ — الطريقُ الآخرُ إلى الجواب نفسِه.
+  // Free search, the other route to the same answer.
   const [q, setQ] = useState('');
   const [groups, setGroups] = useState<Group[]>([]);
   const [searching, setSearching] = useState(false);
 
   const [answer, setAnswer] = useState<Answer | null>(null);
-  // ما سُئل عنه آخرًا — تغييرُ الفترة يُعيد السؤالَ نفسَه بفترةٍ أخرى، فلا بدّ
-  // من معرّفه: الجوابُ لا يحمله، والسؤالُ بلا معرّفٍ يُردّ ٤٠٠.
+  // Last question asked: changing the period re-asks the same question for another period, so its id is needed. The answer does not carry it, and a question without an id is rejected with 400.
   const [asked, setAsked] = useState<{ topic: string; id: string } | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -85,9 +69,7 @@ export default function AssistantPage() {
       .catch((e) => setError(e?.message || 'Request failed'));
   }, [ar]);
 
-  // ── والبحثُ يُرسَل بعد سكونِ الكتابة ───────────────────────────────────────
-  // طلبٌ لكلّ حرفٍ يسأل ثمانيةَ سجلّاتٍ في وقتٍ واحد، والحارسُ يمنع ردًّا قديمًا
-  // أن يكتب فوق أحدث منه.
+  // Search is sent after typing pauses: a request per keystroke queries eight registers at once, and the guard stops a stale reply from overwriting a newer one.
   const seq = useRef(0);
   useEffect(() => {
     if (q.trim().length < 2) { setGroups([]); return undefined; }
@@ -140,7 +122,7 @@ export default function AssistantPage() {
         )}
       </PageHeader>
 
-      {/* ── ١: اكتبْ ما تعرفه ──────────────────────────────────────────────── */}
+      {/* Step 1: type what you know */}
       <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm space-y-3">
         <div className="relative">
           <Search className="absolute top-1/2 -translate-y-1/2 start-3 w-4 h-4 text-slate-400" />
@@ -152,7 +134,7 @@ export default function AssistantPage() {
           {searching && <Loader2 className="absolute top-1/2 -translate-y-1/2 end-3 w-4 h-4 text-slate-400 animate-spin" />}
         </div>
 
-        {/* الفترةُ تخصّ ما له فترة (الحمولات والتفقّد والفواتير) ولا تضرّ البقيّة. */}
+        {/* The period applies to things that have one (loads, duty checks, invoices) and is harmless for the rest. */}
         <div className="flex flex-wrap items-center gap-1.5">
           <span className="text-[11px] text-slate-400">{t('الفترة', 'Period')}</span>
           {periods.map((p) => (
@@ -193,7 +175,7 @@ export default function AssistantPage() {
         )}
       </div>
 
-      {/* ── ٢: أو امشِ بالأقسام ────────────────────────────────────────────── */}
+      {/* Step 2: or browse by section */}
       {!answer && (
         <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm space-y-3">
           <div className="flex items-center gap-2 text-sm">
@@ -272,7 +254,7 @@ export default function AssistantPage() {
         </div>
       )}
 
-      {/* ── الجواب: سطورٌ تُقرأ أوّلًا، ثمّ الوثيقةُ كاملةً ───────────────── */}
+      {/* Answer: summary lines first, then the full document */}
       {answer && !loading && (
         <div className="space-y-4">
           <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">

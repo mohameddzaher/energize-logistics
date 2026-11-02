@@ -1,9 +1,7 @@
 'use client';
 /**
- * أطرافُ المعاملة — العميلُ والوكيلُ والناقل: بياناتُهم ومرفقاتُهم في مكانٍ واحد.
- *
- * يُقرأ من ملفّ كلِّ طرف (`/:id/parties-card`)، فما يُرفَع هنا يُرفَع في ملفّه
- * ويُرى من كلّ معاملةٍ هو طرفٌ فيها. والطرفُ المكتوبُ اسمًا بلا ملفٍّ يُقال عنه ذلك.
+ * Transaction parties: customer, agent and carrier, with their data and attachments in one place.
+ * Read from each party's file (`/:id/parties-card`), so uploads here land in the party's own file and show in every transaction it takes part in. A party typed as a bare name with no file is labeled as such.
  */
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';

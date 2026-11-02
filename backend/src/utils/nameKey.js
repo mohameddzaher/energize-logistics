@@ -1,22 +1,8 @@
 /**
  * Arabic-folding join key.
- *
- * The same company is written half a dozen ways across the sections: «شركة
- * التنشيط»، «التنشيط»، «Al Tanshit»، with and without hamza, ta marbuta or the
- * definite article. Nothing links those rows by id — they were entered
- * independently in each register — so a normalised name is the only join we have.
- *
- * Folding rules: hamza forms → ا, ى → ي, ة → ه, ؤ → و, ئ → ي, and every
- * non-letter/digit character (spaces, punctuation, «شركة»-style separators) is
- * stripped. The `\bال` rule only fires on Latin text — JS word boundaries are
- * defined over [A-Za-z0-9_] — so Arabic definite articles are kept. That is
- * deliberate now: this key gates what a customer can see through the portal, and
- * a looser fold that merged «الأمانة» with «أمانة» would show one company another
- * company's shipments. Under-matching is recoverable; over-matching is a leak.
- *
- * Extracted verbatim from contractsController, where this key first proved itself
- * against the real vendor sheets, so the CRM scorecards, the contracts analysis
- * and the customer portal all group companies identically.
+ * The same company is written many ways across sections and no shared id links the rows, so a normalised name is the only join.
+ * Folding: hamza forms to alef, alef maksura to ya, ta marbuta to ha, hamza-on-waw to waw, hamza-on-ya to ya, and every non-letter/digit removed. The `\bal` rule fires only on Latin text, so Arabic definite articles are kept on purpose: this key gates what a portal customer sees, and over-matching would leak shipments while under-matching is recoverable.
+ * Extracted verbatim from contractsController so scorecards, contracts analysis and the portal group companies identically.
  */
 const nameKey = (s) => String(s || '')
   .replace(/[أإآا]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه').replace(/ؤ/g, 'و').replace(/ئ/g, 'ي')

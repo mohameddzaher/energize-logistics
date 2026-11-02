@@ -1,13 +1,5 @@
 'use client';
-/**
- * شكاوى Media Go — مكوّناتُ الشاشة: النموذج، ومنتقي الدبّاب، والمرفقات،
- * ولوحةُ التفصيل. كلُّها في مستوى الملفّ لا داخل جسم الصفحة (راجع
- * inline-components-remount: مكوّنٌ يُعرَّف داخل الرسم يُعيد بناءَ كلّ خانةٍ مع
- * كلّ حرف).
- *
- * والشاشةُ لطرفين: قسمُ الأفراد بلغته، وحسابُ Media Go باللغتين معًا — شريكٌ
- * خارجيٌّ قد لا يقرأ العربيّة. فكلُّ نصٍّ يمرّ بـ`Tx` الذي يعرف الوضع.
- */
+/** Media Go complaints screen components: form, technician picker, attachments and detail panel. All at file level, not inside the page body (see inline-components-remount: a component defined inside render rebuilds every field on each keystroke). The screen serves two sides: the individuals section in its language, and the Media Go account in both languages since it is an external partner who may not read Arabic. Every text goes through Tx, which knows the mode. */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import api from '@/lib/api';
 import { useDialog } from '@/components/system/DialogProvider';
@@ -23,13 +15,13 @@ import {
 } from 'lucide-react';
 import LiveCamera, { type Shot } from '@/components/b2c/LiveCamera';
 
-// ── اللغة: لغةُ القارئ، أو اللغتان للشريك ──────────────────────────────────
+// Language: the reader's language, or both for the partner.
 export type Mode = 'ar' | 'en' | 'partner';
 export type Tx = (ar: string, en: string) => string;
 export const makeTx = (mode: Mode): Tx => (ar, en) => (mode === 'partner' ? `${ar} / ${en}` : mode === 'ar' ? ar : en);
 const vLang = (mode: Mode) => (mode === 'partner' ? 'both' : mode);
 
-/** عنوانٌ بلغتين: العربيّةُ ظاهرةً والإنجليزيّةُ تحتها — للشريك وحدَه. */
+/** Bilingual title: Arabic shown with English below; partner only. */
 export function Bi({ ar, en, mode, className = '', sub = 'text-[11px] font-medium text-slate-400' }: { ar: string; en: string; mode: Mode; className?: string; sub?: string }) {
   if (mode !== 'partner') return <span className={className}>{mode === 'ar' ? ar : en}</span>;
   return (
@@ -50,7 +42,7 @@ export function StatusPill({ status, meta, mode }: { status: string; meta: Vocab
   );
 }
 
-// ── منتقي الدبّاب ─────────────────────────────────────────────────────────
+// Technician picker.
 export type MotoValue = { vehicle: string; motorcycleNumber: string; hint: string };
 type MotoOpt = { _id: string; plateNumber: string; serialNumber: string; project: string; city: string; driverName: string };
 
@@ -88,7 +80,7 @@ export function MotorcyclePicker({ value, onChange, tx }: { value: MotoValue; on
         <input
           value={value.motorcycleNumber}
           onFocus={() => setOpen(true)}
-          // الكتابةُ تفكّ الربطَ بالسجلّ: ما يُكتب يُحفظ نصًّا كما هو.
+          // Typing unlinks from the registry; typed text is saved as is.
           onChange={(e) => { onChange({ vehicle: '', motorcycleNumber: e.target.value, hint: '' }); setOpen(true); }}
           placeholder={tx('ابحث باللوحة أو التسلسلي أو اكتب الرقم', 'Search plate / serial, or type the number')}
           className="w-full rounded-lg border border-slate-200 bg-white py-2.5 pe-3 ps-9 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50"
@@ -117,10 +109,7 @@ export function MotorcyclePicker({ value, onChange, tx }: { value: MotoValue; on
   );
 }
 
-// ── المرفقات قبل الإرسال ────────────────────────────────────────────────────
-// طريقان، وكلاهما يُضيف أكثرَ من صورة: «رفع من الجهاز» (صور ومقاطع)، و«تصوير
-// الآن». والتصويرُ على الهاتف يفتح كاميرته (`capture`)، وعلى الحاسوب نافذةً
-// حيّةً من `LiveCamera` (مكوّنُ تفقّد بداية الدوام نفسُه) تلتقط صورةً بعد صورة.
+// Attachments before submit. Two ways, each adding several images: upload from device (photos and videos) and capture now. On a phone capture opens the camera (capture attribute); on desktop it opens a LiveCamera window (the same component as the start-of-shift check), photo after photo.
 export type LocalFile = { dataUrl: string; fileName: string; size: number; mimeType: string; kind: 'image' | 'video' };
 const MB = 1024 * 1024;
 const isTouch = () => typeof window !== 'undefined' && !!window.matchMedia?.('(pointer: coarse)').matches;
@@ -154,7 +143,7 @@ export function MediaPicker({ files, onChange, tx, room = MG_LIMITS.maxFiles, ar
   const camRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [camera, setCamera] = useState(false);
-  // الدالّةُ تقرأ أحدثَ قائمةٍ — الكاميرا تضيف صورةً بعد صورةٍ قبل أن يُعاد الرسم.
+  // The function reads the latest list: the camera adds photo after photo before a re-render happens.
   const latest = useRef(files);
   latest.current = files;
   const left = room - files.length;
@@ -239,7 +228,7 @@ export function MediaPicker({ files, onChange, tx, room = MG_LIMITS.maxFiles, ar
   );
 }
 
-// ── خيارٌ واحد — أقراصٌ هادئة بعلامةٍ صغيرة ───────────────────────────────
+// Single choice: quiet pills with a small marker.
 function ChoiceGrid({ items, value, onChange }: { items: { key: string; ar: string; en: string }[]; value: string; onChange: (k: string) => void }) {
   return (
     <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
@@ -277,14 +266,10 @@ function Q({ ar, en, required, hint, children }: { ar: string; en: string; requi
 
 const inputCls = 'w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-[#f37121]/60 focus:outline-none focus:ring-2 focus:ring-[#f37121]/20';
 
-// ── نموذجُ رفع البلاغ — أسئلةُ نموذج Media Go نفسُها ─────────────────────
-// موقعُ الصيانة لا يُسأل: الصيانةُ عندنا دائمًا (إنرجايز)، والخادمُ يكتبه.
-// والصورُ في آخر النموذج: يُكتب البلاغُ أوّلًا ثمّ يُوثَّق.
+// Report submission form, with the same questions as the Media Go form. Maintenance location is not asked because maintenance is always Energize and the server writes it. Photos come last: write the report first, then document it.
 const EMPTY = { moto: { vehicle: '', motorcycleNumber: '', hint: '' } as MotoValue, screenNumber: '', issue: '', issueOther: '', availability: '', availabilityOther: '' };
 
-// ── والنموذجُ نفسُه للتعديل ────────────────────────────────────────────────
-// `editing` يملؤه من البلاغ ويُرسَل PUT؛ والمرفقاتُ لا تُعدَّل من هنا — تُضاف من
-// التفصيل.
+// Same form used for editing: editing fills it from the report and sends PUT; attachments are not edited here, they are added from the detail view.
 const fromComplaint = (c: MgRow) => ({
   moto: { vehicle: c.vehicle ? String(c.vehicle) : '', motorcycleNumber: c.motorcycleNumber || '', hint: [c.serialNumber && `#${c.serialNumber}`, c.project].filter(Boolean).join(' · ') },
   screenNumber: c.screenNumber || '', issue: c.issue || '', issueOther: c.issueOther || '',
@@ -293,7 +278,7 @@ const fromComplaint = (c: MgRow) => ({
 
 export function CreateComplaintModal({ open, onClose, meta, onCreated, tx, ar = true, editing = null, onSaved }: {
   open: boolean; onClose: () => void; meta: Vocab | null; onCreated?: (id: string) => void; tx: Tx; ar?: boolean;
-  /** بلاغٌ يُعدَّل — بدلَ إنشاء جديد. */
+  /** A report being edited, instead of creating a new one. */
   editing?: MgRow | null;
   onSaved?: (item: MgFull) => void;
 }) {
@@ -301,7 +286,7 @@ export function CreateComplaintModal({ open, onClose, meta, onCreated, tx, ar = 
   const [f, setF] = useState(EMPTY);
   const [files, setFiles] = useState<LocalFile[]>([]);
   const [saving, setSaving] = useState(false);
-  // يُملأ عند الفتح وحدَه — تحديثٌ حيٌّ للبلاغ أثناء التعديل لا يمسح ما كُتب.
+  // filled only on open, so a live update of the report while editing does not wipe typed input.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { if (open) { setF(editing ? fromComplaint(editing) : EMPTY); setFiles([]); } }, [open, editing?._id]);
   const set = <K extends keyof typeof EMPTY>(k: K, v: (typeof EMPTY)[K]) => setF((o) => ({ ...o, [k]: v }));
@@ -420,7 +405,7 @@ export function CreateComplaintModal({ open, onClose, meta, onCreated, tx, ar = 
     </div>
   );
 }
-// ── عارضُ الصور والمقاطع ────────────────────────────────────────────────────
+// Image and video viewer.
 function Lightbox({ files, index, onClose, onIndex }: { files: MgFull['files']; index: number; onClose: () => void; onIndex: (i: number) => void }) {
   const f = files[index];
   useEffect(() => {
@@ -452,7 +437,7 @@ function Lightbox({ files, index, onClose, onIndex }: { files: MgFull['files']; 
   );
 }
 
-// ── لوحةُ التفصيل ─────────────────────────────────────────────────────────
+// Detail panel.
 function InfoCell({ icon, ar, en, mode, children }: { icon: ReactNode; ar: string; en: string; mode: Mode; children: ReactNode }) {
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-3">
@@ -462,16 +447,10 @@ function InfoCell({ icon, ar, en, mode, children }: { icon: ReactNode; ar: strin
   );
 }
 
-/**
- * تفصيلُ البلاغ — بشكلين ومحتوى واحد:
- *   • `modal`: نافذةٌ في الوسط لموظّفينا، تُفتَح بضغطةٍ على البلاغ، ومنها «فتح كصفحة».
- *   • `page`: صفحةٌ كاملة (/system/b2c/mediago-complaints/[id]) — هي ما يراه حسابُ
- *     Media Go: معرضٌ كبير، وكتلُ معلوماتٍ واضحة، والمسارُ والمحادثةُ بجانبها.
- * الأقسامُ عناصرُ JSX تُبنى في الرسم لا مكوّناتٌ تُعرَّف داخله (inline-components-remount).
- */
+/** Report detail in two forms with the same content: modal (centered window for our staff, opened by clicking the report, with an open-as-page link) and page (full page /system/b2c/mediago-complaints/[id], what the Media Go account sees: large gallery, clear info blocks, timeline and chat alongside). Sections are JSX elements built in render, not components defined inside it (inline-components-remount). */
 export function ComplaintDetail({ id, mode, variant, onClose, onChanged }: {
   id: string; mode: Mode; variant: 'modal' | 'page';
-  /** إغلاقُ النافذة أو الرجوعُ إلى القائمة. */
+  /** Close the modal or go back to the list. */
   onClose: () => void;
   onChanged?: () => void;
 }) {
@@ -486,7 +465,7 @@ export function ComplaintDetail({ id, mode, variant, onClose, onChanged }: {
   const [busy, setBusy] = useState('');
   const [more, setMore] = useState<LocalFile[]>([]);
   const [view, setView] = useState<number | null>(null);
-  // الصورةُ المعروضةُ في عارض الصفحة.
+  // Image shown in the page viewer.
   const [cur, setCur] = useState(0);
   const [editing, setEditing] = useState(false);
   const [gone, setGone] = useState(false);
@@ -502,7 +481,7 @@ export function ComplaintDetail({ id, mode, variant, onClose, onChanged }: {
     }
   }, [id]);
   useEffect(() => { setD(null); load(); }, [load]);
-  // Escape يغلق النافذة — إلّا والعارضُ أو نموذجُ التعديل مفتوحٌ فوقها.
+  // Escape closes the modal unless the viewer or edit form is open above it.
   useEffect(() => {
     if (variant !== 'modal') return undefined;
     const k = (e: KeyboardEvent) => { if (e.key === 'Escape' && view === null && !editing) onClose(); };
@@ -520,7 +499,7 @@ export function ComplaintDetail({ id, mode, variant, onClose, onChanged }: {
 
   const setStatus = async (status: string) => {
     if (!d) return;
-    // إعادةُ فتحِ ما أُصلح أو أُغلق لا تكون إلّا بسبب (والخادمُ هو الحارس).
+    // Reopening a fixed or closed report requires a reason (the server enforces it).
     const reopen = (d.status === 'fixed' || d.status === 'closed') && (status === 'in_progress' || status === 'new');
     const note = await prompt({
       title: vocabLabel(meta, 'status', status, vLang(mode)),
@@ -558,11 +537,10 @@ export function ComplaintDetail({ id, mode, variant, onClose, onChanged }: {
 
   const partner = mode === 'partner';
   const page = variant === 'page';
-  // ما يجوز الآن من الخادم (nextStatuses): الحالةُ تمضي إلى الأمام، وMedia Go لا ترجع
-  // بلاغًا أُصلح — راجع NEXT في mediagoComplaintController.
+  // Allowed transitions come from the server (nextStatuses): status moves forward and Media Go cannot reopen a fixed report; see NEXT in mediagoComplaintController.
   const statusButtons = (d?.nextStatuses ?? (can?.statuses || []).filter((s) => s !== d?.status && !(partner && d?.status === 'closed')));
 
-  // ── الأقسام ───────────────────────────────────────────────────────────────
+  // Sections.
   const header = (
     <div className={`flex flex-wrap items-start justify-between gap-3 bg-slate-900 px-5 py-4 text-white ${page ? 'rounded-2xl shadow-sm' : ''}`}>
       <div className="flex min-w-0 items-start gap-3">
@@ -614,7 +592,7 @@ export function ComplaintDetail({ id, mode, variant, onClose, onChanged }: {
       </div>
       <InfoCell icon={<MapPin className="h-3.5 w-3.5" />} ar="موقع الصيانة" en="Location" mode={mode}>{vocabLabel(meta, 'location', d.location, vLang(mode))}</InfoCell>
       <InfoCell icon={<Clock className="h-3.5 w-3.5" />} ar="وقت التوفّر" en="Available" mode={mode}>{availabilityText(meta, d, vLang(mode))}</InfoCell>
-      {/* تاريخُ الإصلاح لِما أُصلح وحدَه — إعادةُ الفتح تمحوه (ويبقى في المسار). */}
+      {/* Fix date applies only to fixed reports; reopening clears it (it stays in the timeline). */}
       {(d.status === 'fixed' || d.status === 'closed') && d.fixedAt && <InfoCell icon={<CheckCircle2 className="h-3.5 w-3.5" />} ar="تاريخ الإصلاح" en="Fixed at" mode={mode}>{fmtDateTime(d.fixedAt, ar)}</InfoCell>}
     </div>
   );
@@ -624,9 +602,7 @@ export function ComplaintDetail({ id, mode, variant, onClose, onChanged }: {
     <section className="rounded-xl border border-slate-200 bg-white p-3">
       <h3 className="mb-2 flex items-center gap-1.5 text-[13px] font-bold text-slate-800"><ImageIcon className="h-4 w-4 text-[#f37121]" /><Bi ar={`صور العطل (${d.files.length})`} en={`Fault media (${d.files.length})`} mode={mode} /></h3>
       {!d.files.length ? <p className="text-[12.5px] text-slate-500">{tx('لا مرفقات', 'No attachments')}</p> : page && first ? (
-        // في الصفحة: الأولى كبيرةً وما بعدها شريطٌ تحتها.
-        // ── عارضٌ في الصفحة نفسِها (٢٠٢٦/١٠/٢٢): الصورةُ الحاليّةُ كبيرةً، وسهمان
-        //    للتنقّل، وشريطُ مصغّراتٍ تحتها يُختار منه — والضغطُ عليها يفتحها كاملة.
+        // In page mode: first image large and the rest in a strip below. In-page viewer: current image large, two arrows for navigation and a thumbnail strip to pick from; clicking opens it full size.
         <div className="space-y-2">
           {(() => {
             const n = d.files.length; const i = Math.min(cur, n - 1); const f = d.files[i];
@@ -772,7 +748,7 @@ export function ComplaintDetail({ id, mode, variant, onClose, onChanged }: {
       <div className="w-full space-y-4 pb-10" dir={ar ? 'rtl' : 'ltr'}>
         {header}
         {!d ? <div className="rounded-2xl border border-slate-200 bg-white">{missingView}</div> : (
-          // ── الترتيب (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢): البطاقاتُ أوّلًا، ثمّ الصور، ثمّ التفاصيل.
+          // Order: cards first, then images, then details.
           <>
             {info}
             {media}
@@ -788,7 +764,7 @@ export function ComplaintDetail({ id, mode, variant, onClose, onChanged }: {
   }
 
   return (
-    // ── نافذةٌ في الوسط لا لوحةٌ جانبيّة ─────────────────────────────────────
+    // Centered window rather than a side panel.
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-3 backdrop-blur-sm sm:p-6" onClick={onClose}>
       <div role="dialog" aria-modal="true" className="flex max-h-[92vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 shadow-2xl" onClick={(e) => e.stopPropagation()} dir={ar ? 'rtl' : 'ltr'}>
         {header}
@@ -804,7 +780,7 @@ export function ComplaintDetail({ id, mode, variant, onClose, onChanged }: {
   );
 }
 
-/** النافذةُ — الاسمُ القديم يبقى لمن يستعمله. */
+/** The window; the old name is kept for existing users. */
 export function ComplaintDetailModal({ id, onClose, mode, onChanged }: { id: string; onClose: () => void; mode: Mode; onChanged: () => void }) {
   return <ComplaintDetail id={id} mode={mode} variant="modal" onClose={onClose} onChanged={onChanged} />;
 }

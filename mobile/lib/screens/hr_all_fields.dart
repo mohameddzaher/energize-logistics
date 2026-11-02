@@ -7,13 +7,9 @@ import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import '../ui/search_field.dart';
 
-/// «كل البيانات» — كلُّ خانات ماستر الموارد البشريّة للموظّف، نظيرُ
-/// EmployeeMasterFields في الموقع.
-///
-/// المجموعاتُ من الخادم (GET /api/hr/master/employees/:id/fields)، والتعديلُ بالطريق
-/// نفسِه الذي يكتب به الماستر (PATCH …/fields) — فيبثّ الخادم `hr:master` و`hr:employee`
-/// وتتحدّث هذه الشاشةُ والماسترُ واللوحةُ في الموقع والتطبيق معًا.
-/// والقسمُ والجنسيّةُ والمدينةُ والمشروعُ تُختار من قوائمها وفيها بحث (ui/hr_quick.dart).
+/// All-fields screen: every HR master field of an employee, mirrors EmployeeMasterFields on the web.
+/// Groups come from GET /api/hr/master/employees/:id/fields; edits use the same PATCH .../fields path as the master, so the server broadcasts `hr:master` and `hr:employee` and web and app refresh together.
+/// Department, nationality, city and project are searchable pickers (ui/hr_quick.dart).
 class HrAllFieldsTab extends StatefulWidget {
   final String employeeId;
   final bool canEdit;
@@ -27,7 +23,7 @@ class _HrAllFieldsTabState extends State<HrAllFieldsTab> with AutomaticKeepAlive
   Map<String, List<String>> _choices = {};
   String? _error;
   String _q = '';
-  // الخانةُ في قائمةٍ تُطوى مع التمرير — النصُّ في متحكِّمٍ يبقى مع الكلمة.
+  // The field sits in a list that collapses on scroll; text lives in a controller so it survives.
   final _searchCtl = TextEditingController();
   late final void Function() _onLive;
 
@@ -112,7 +108,7 @@ class _HrAllFieldsTabState extends State<HrAllFieldsTab> with AutomaticKeepAlive
         builder: (dc) => AlertDialog(
           title: Text(label),
           content: TextField(controller: c, autofocus: true,
-              // المبلغُ (الراتب والبدلات) رقمٌ — لوحةُ أرقام، والخادمُ يقرأ الأرقامَ العربيّة.
+              // Amounts (salary, allowances) are numeric: number keypad, and the server parses Arabic-Indic digits.
               keyboardType: f['type'] == 'number' ? const TextInputType.numberWithOptions(decimal: true) : null,
               decoration: InputDecoration(hintText: f['type'] == 'hijri' ? '1448-05-07' : null)),
           actions: [

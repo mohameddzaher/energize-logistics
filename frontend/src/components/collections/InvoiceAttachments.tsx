@@ -1,20 +1,5 @@
 'use client';
-/**
- * مرفقاتُ فاتورة التحصيل — ورقُ الفاتورة يعيش مع الفاتورة.
- *
- * النسخةُ الموقَّعة، وإيصالُ الاستلام، وصورةُ الشيك، وكشفُ حساب العميل: كانت
- * تُتداول على الواتساب والإيميل، فإذا سُئل عنها عند المطالبة لم تُوجد. فتُرفَق
- * من صفّ الفاتورة نفسِه، وتُفتَح وتُنزَّل من هناك.
- *
- * ── الوجهان ─────────────────────────────────────────────────────────────────
- * الضريبيّةُ (`tax`) تُعرَف برقمها في الدفتر، والنقديّةُ (`cash`) بمعرّف كشفها
- * في سير العمل — كما يحدّدها `rowKey` في صفحة الفواتير. راجع
- * backend/src/controllers/collectionsAttachmentsController.
- *
- * ── والعددُ حيّ ──────────────────────────────────────────────────────────────
- * الخادمُ يبثّ `collections:attachments` بعد كلّ رفعٍ وحذف، ومعه العددُ الجديد،
- * فيتحدّث مشبكُ الصفّ عند كلّ من فتح الصفحة بلا إعادة تحميل.
- */
+/** Collection invoice attachments: invoice papers live with the invoice. Signed copy, delivery receipt, cheque image and customer statement used to circulate over WhatsApp and email and could not be found when claiming. They are attached from the invoice row and opened and downloaded there. Two faces: tax (tax), identified by its ledger number, and cash (cash), by its statement id in the workflow, as determined by rowKey on the invoices page; see backend/src/controllers/collectionsAttachmentsController. The count is live: the server broadcasts collections:attachments after each upload or delete with the new count, so the row clip updates for everyone with the page open. */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLanguage } from '@/context/LanguageContext';
 import { useDialog } from '@/components/system/DialogProvider';
@@ -36,9 +21,9 @@ export interface InvoiceAttachment {
   canDelete?: boolean;
 }
 
-/** ما يقبله الخادم — يُفحَص هنا أوّلًا كي لا يُرسَل ملفٌّ سيُردّ. */
+/** What the server accepts, checked here first so a file that would be rejected is not sent. */
 const MAX_FILE = 10 * 1024 * 1024;
-/** دفعةُ الطلب الواحد: حدُّ الخادم ١٨ ميغا وعشرة ملفّات — نترك هامشًا. */
+/** Batch per request: server limit is 18 MB and ten files, so a margin is left. */
 const BATCH_BYTES = 15 * 1024 * 1024;
 const BATCH_FILES = 10;
 const EXT_OK = /\.(jpe?g|png|webp|gif|heic|pdf|docx?|xlsx?)$/i;
@@ -56,7 +41,7 @@ const when = (v?: string) => {
   const d = new Date(v);
   return Number.isNaN(d.getTime()) ? '' : `${d.toLocaleDateString('en-GB')} ${d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`;
 };
-/** رابطُ التنزيل باسم الملفّ الأصليّ — الخادمُ يقرأ `?dl=` (راجع server.js). */
+/** Download link under the original file name; the server reads ?dl= (see server.js). */
 export const downloadHref = (a: InvoiceAttachment) =>
   `${a.fileUrl}?dl=${encodeURIComponent(a.fileName || 'attachment')}`;
 
@@ -67,10 +52,7 @@ const readAsDataUrl = (f: File) => new Promise<string>((res) => {
   r.readAsDataURL(f);
 });
 
-/**
- * أعدادُ المرفقات لصفوفٍ لا تحملها في ردّها (صفحةُ الطرف، الدفتر، تفصيلُ
- * المديونيّة): نداءٌ واحدٌ للصفوف المعروضة كلِّها، ويتحدّث حيًّا.
- */
+/** Attachment counts for rows whose response does not carry them (party page, ledger, debt detail): one call for all displayed rows, updating live. */
 export function useAttachmentCounts(kind: AttachKind, keys: string[]) {
   const [counts, setCounts] = useState<Record<string, number>>({});
   const sig = keys.filter(Boolean).join('\u0001');
@@ -93,14 +75,11 @@ export function useAttachmentCounts(kind: AttachKind, keys: string[]) {
   return { counts, setOne };
 }
 
-/**
- * مشبكُ الصفّ: العددُ، والضغطُ يفتح نافذةَ الملفّات. لا يمرّ الضغطُ إلى الصفّ
- * (تحديدٌ أو فتح) — الخليّةُ بابُ المرفقات وحدَها.
- */
+/** Row clip: shows the count and a click opens the files dialog. The click does not reach the row (select or open); the cell is only the attachments door. */
 export function AttachmentsButton({ kind, invKey, label, count, onCount }: {
   kind: AttachKind;
   invKey: string;
-  /** رقمُ الفاتورة أو الكشف — عنوانُ النافذة. */
+  /** Invoice or statement number, the dialog title. */
   label: string;
   count: number;
   onCount?: (n: number) => void;
@@ -139,7 +118,7 @@ export function AttachmentsModal({ kind, invKey, label, open, onClose, onCount }
   );
 }
 
-/** بطاقةٌ في صفحة تفصيل الفاتورة — القائمةُ نفسُها بلا نافذة. */
+/** Card on the invoice detail page: the same list without a dialog. */
 export function AttachmentsPanel({ kind, invKey }: { kind: AttachKind; invKey: string }) {
   const { lang } = useLanguage();
   const ar = lang === 'ar';
@@ -185,7 +164,7 @@ function AttachmentsBody({ kind, invKey, onCount }: { kind: AttachKind; invKey: 
   }, [kind, invKey]);
   useEffect(() => { load(); }, [load]);
 
-  // زميلٌ رفع أو حذف على الفاتورة نفسِها → تُعاد القائمة.
+  // A colleague uploaded or deleted on the same invoice, so the list reloads.
   useSocket('collections:attachments', useCallback((d: any) => {
     if (d?.kind === kind && String(d?.key) === String(invKey)) load();
   }, [kind, invKey, load]));
@@ -204,9 +183,7 @@ function AttachmentsBody({ kind, invKey, onCount }: { kind: AttachKind; invKey: 
     }
     if (!ok.length) { if (input.current) input.current.value = ''; return; }
 
-    // ── دفعاتٌ بحدّ الطلب ────────────────────────────────────────────────
-    // عشرون صورةً من الهاتف تتجاوز حدَّ الطلب الواحد؛ فتُقسَم ويُرسَل كلُّ قسمٍ
-    // على حدة، والعدّادُ يقول أين وصل.
+    // Batches under the request limit: twenty phone photos exceed the single-request limit, so they are split and each part sent separately, with a counter showing progress.
     const batches: File[][] = [];
     let cur: File[] = [];
     let bytes = 0;

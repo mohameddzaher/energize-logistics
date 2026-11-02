@@ -1,13 +1,6 @@
 'use client';
-// عملاء الأسطول — سجلٌّ لا معرضُ بطاقات.
-//
-// كانت الصفحة بطاقتين في الصفّ، وهو تصميمٌ يصلح لعشرة عملاء لا لمئتين
-// وعشرين: لا يُقارَن فيه صفٌّ بصفّ، ولا يُفرز، ولا يُقرأ منه من الأكثر
-// تعاملًا. فصارت جدولًا: كلُّ عميلٍ سطر، ومعه أرقامُه — رحلاته ودخله وآخر
-// تعاملٍ معه — وفوقه فلترٌ وبحث. والضغط على السطر يفتح ملفَّه الكامل.
-//
-// وأرقامُ الصفوف تأتي محسوبةً من الخادم مع القائمة نفسها، لا باستعلامٍ لكلّ
-// صفّ: مئتا استعلامٍ عند كلّ فتحةٍ للصفحة ثمنٌ لا يشتري شيئًا.
+// Fleet customers: a register, not a card gallery. Two cards per row suits ten customers, not two hundred and twenty: rows cannot be compared, sorted, or ranked by activity. So it is a table, one row per customer with trips, income and last activity, plus filter and search; clicking a row opens the full file.
+// Row figures are computed by the server with the list, not one query per row.
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
@@ -32,8 +25,7 @@ import ScrollX from '@/components/system/ScrollX';
 const PAY_AR: Record<string, string> = { tax: 'ضريبي', cash: 'كاش' };
 const PAY_EN: Record<string, string> = { tax: 'Tax invoice', cash: 'Cash' };
 
-// المسارات المتفق عليها تُصدَّر مسطّحةً في خليةٍ واحدة: العميل صفٌّ واحد في
-// الملف، وتفريقُه على صفوفٍ بعدد مساراته يُفسد كل جمعٍ يُبنى فوقه لاحقًا.
+// Agreed routes are exported flattened into a single cell: a customer is one row in the file, and splitting it per route would break any later aggregation.
 const CUSTOMER_COLUMNS = [
   { header: 'العميل', key: 'name', width: 30 },
   { header: 'نوع الدفع', key: 'paymentType', transform: (v: any) => PAY_AR[v] || '', width: 12 },
@@ -81,12 +73,7 @@ export default function FleetCustomersPage() {
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
   const [filters, setFilters] = useState<FilterValues>({});
-  /**
-   * ── وبطاقةُ الرقم تُصفّي القائمة ────────────────────────────────────────────
-   * «٢٨ تعاملنا معهم» و«٩ حمولاتٌ جارية» كانا رقمين لا يُفتَحان: يُقرآن ثمّ
-   * يُقلَّب السجلُّ بالعين. وهذان شرطان على الصفّ نفسِه (له رحلاتٌ / له رحلةٌ
-   * جارية) — فيُكتبان فلترًا يضغطه الرقمُ نفسُه.
-   */
+  /** The number card filters the list. 'Customers we worked with' and 'running loads' were read-only numbers; both are conditions on the row itself (has trips / has a running trip), so the card applies them as a filter. */
   const [work, setWork] = useState<'' | 'dealt' | 'open'>('');
   const [sort, setSort] = useState<SortKey>('name');
   const [dir, setDir] = useState<1 | -1>(1);
@@ -98,8 +85,7 @@ export default function FleetCustomersPage() {
   const [form, setForm] = useState<any>(EMPTY);
   const [saving, setSaving] = useState(false);
 
-  // البحث يُرسَل إلى الخادم مع الفلاتر — فيبحث في اسم شركة الـCRM أيضًا، وهو
-  // ما لا يستطيعه بحثٌ يعمل على الصفحة المعروضة وحدها.
+  // Search is sent to the server with the filters so it also matches the CRM company name, which page-local search cannot do.
   const qs = useMemo(() => {
     const p = new URLSearchParams();
     Object.entries(filters).forEach(([k, v]) => { if (v) p.set(k, v); });
@@ -107,7 +93,7 @@ export default function FleetCustomersPage() {
     return p.toString();
   }, [filters, search]);
 
-  const guard = useLatestRequest(); // ردٌّ قديمٌ (فلترٌ سابق) لا يكتب فوق الأحدث
+  const guard = useLatestRequest(); // A stale response (previous filter) must not overwrite the latest one
   const load = useCallback(async () => {
     const mine = guard.begin();
     try {
@@ -123,9 +109,9 @@ export default function FleetCustomersPage() {
   useEffect(() => { load(); }, [load]);
   useEffect(() => { setPage(1); }, [qs, sort, dir, work]);
   useSocket('fleet:customers', useCallback(() => load(), [load]));
-  // رحلاتُ العميل ودخلُه وحمولاتُه المفتوحة تتغيّر مع كلّ حمولة.
+  // A customer's trips, income and open loads change with every load.
   useSocket('fleet:updated', useCallback(() => load(), [load]));
-  // بطاقةُ عميلٍ عُدِّلت في أيّ قسمٍ — تُعاد القائمة (مُمهَلةً).
+  // A customer card edited in any section: reload the list (debounced).
   const custTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useSocket('customers:changed', useCallback(() => {
     if (custTimer.current) clearTimeout(custTimer.current);
@@ -134,7 +120,7 @@ export default function FleetCustomersPage() {
   useEffect(() => () => { if (custTimer.current) clearTimeout(custTimer.current); }, []);
 
   const sorted = useMemo(() => {
-    // شرطُ البطاقة يُطبَّق قبل الترتيب: ما يُعَدُّ فوق هو ما يُعرَض تحت.
+    // The card condition is applied before sorting: what is counted above is what is shown below.
     const rows = customers.filter((c) => {
       if (work === 'dealt') return (c.trips || 0) > 0;
       if (work === 'open') return (c.openTrips || 0) > 0;
@@ -193,8 +179,7 @@ export default function FleetCustomersPage() {
   };
 
   const remove = async (c: FleetCustomer) => {
-    // بلا حمولاتٍ يُحذف نهائيًّا؛ ومع حمولاتٍ يُعطَّل فقط، لأنّ حذفه يترك
-    // بوليصاتٍ تشير إلى عميلٍ لا وجود له.
+    // A customer without loads is deleted permanently; with loads it is only deactivated, since deleting would leave waybills pointing at a missing customer.
     const hard = (c.trips || 0) === 0;
     if (!(await confirm(hard
       ? t(`حذف «${c.name}» نهائيًّا؟ لا حمولة له.`, `Delete “${c.name}” permanently? No shipments.`)
@@ -240,7 +225,7 @@ export default function FleetCustomersPage() {
       {error && <ErrorNotice error={error} lang={lang} onRetry={load} />}
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        {/* والبطاقةُ تُصفّي القائمةَ تحتها: مَن تعاملنا معه، ومن له حمولةٌ تسير. */}
+        {/* The card filters the list below: customers we worked with and those with a running load. */}
         <StatCard label={t('العملاء المعروضون', 'Customers shown')} value={sorted.length}
           onClick={() => setWork('')} active={!work} hint={t('اضغط لعرض الكل', 'tap to show all')} />
         <StatCard label={t('تعامَلنا معهم', 'With shipments')} value={totals.dealt} accent="#0ea5e9"

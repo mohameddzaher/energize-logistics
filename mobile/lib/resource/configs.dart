@@ -34,7 +34,7 @@ import 'resource.dart';
 
 String _s(Map<String, dynamic> r, String k) => (r[k] ?? '').toString();
 
-/// رقمٌ مقروءٌ بفواصل الآلاف — الرقمُ الطويل بلا فواصلَ لا يُقرأ على شاشة هاتف.
+/// A number with thousands separators; a long number without them is unreadable on a phone screen.
 String _n(dynamic v) {
   final n = v is num ? v : num.tryParse((v ?? '').toString()) ?? 0;
   final whole = n.round().abs().toString();
@@ -46,14 +46,12 @@ String _n(dynamic v) {
   return buf.toString();
 }
 
-// حقل علاقة الشركة لسجلات الـ CRM (صفقة/جهة اتصال/مهمة/نشاط) — يربطها بشركة
-// بدل ما تتحفظ يتيمة. يعرض الاسم العربي إن وُجد وإلا الإنجليزي.
+// Company relation field for CRM records (deal/contact/task/activity): links them to a company instead of leaving them orphaned. Shows the Arabic name if present, else the English.
 FieldSpec _crmCompanyLookup() => FieldSpec('company', 'الشركة', 'Company',
     type: FieldType.lookup, lookupEndpoint: '/api/crm/companies', lookupListKey: 'companies',
     lookupLabel: (r) => _s(r, 'arabicName').isNotEmpty ? _s(r, 'arabicName') : _s(r, 'name'));
 
-/// حالةُ وثيقةِ مركبةٍ كما يرسلها الخادم: `{ state, days, expiryDate }`.
-/// الحالاتُ نفسُها في قسم المركبات وفي الويب — مفردةٌ واحدةٌ لا ثلاث.
+/// Vehicle document state as the server sends it: { state, days, expiryDate }. The same states are used in the vehicles section and on the web: one vocabulary, not three.
 bool _docBad(dynamic d) {
   if (d is! Map) return false;
   return ['expired', 'critical', 'warning'].contains((d['state'] ?? '').toString());
@@ -69,17 +67,15 @@ Color _docColor(dynamic d) {
   return st == 'expired' ? T.danger : st == 'critical' ? T.orange : T.warn;
 }
 
-// ── إدارة الأسطول ────────────────────────────────────────────────────────────
+// Fleet management.
 final fleetDriversCfg = ResourceConfig(
   arTitle: 'السائقون', enTitle: 'Drivers', icon: Icons.badge_outlined,
-  // تعديلُ السائق يُعلَن بـ`fleet:drivers` (و`fleet:updated` للحمولات) — كانت الشاشةُ
-  // تسمع الثاني وحده فلا تتحدّث بعد تعديل سائق (٢٠٢٦/١٠/٢٥).
+  // A driver edit is announced with fleet:drivers (fleet:updated for loads); the screen listened to the second only, so it did not refresh after a driver edit.
   endpoint: '/api/fleet/drivers', listKey: 'drivers', liveEvent: 'fleet:drivers',
   extraLiveEvents: const ['fleet:updated', 'fleet:vehicles', 'hr:employee', 'hr:master', 'vreg:updated'],
-  // اسمُ الزميل يُبحَث به أيضًا: من يكتب اسمَ سائقٍ يريد صفَّه وصفَّ من يشاركه
-  // الشاحنة. والخادمُ يرسل `mate` مع كلّ صفّ، فالبحثُ المحليُّ يقرؤه بنقطة.
+  // The mate's name is searchable too: someone typing a driver name wants his row and his truck-mate's row. The server sends mate with each row, so the local search reads it by dot path.
   searchFields: const ['name', 'phone', 'iqama', 'mate.name'],
-  // شرائحُ أعلى القائمة: الأسوأُ من انتهاء الإقامة ورخصة القيادة (كفلتر الموقع).
+  // Top-of-list chips: the worst of iqama expiry and driving license (like the website filter).
   filterField: 'docsState', filterOptions: personDocStates,
   titleOf: (r) => _s(r, 'name'),
   subtitleOf: (r) => [_s(r, 'phone'), _s(r, 'iqama')].where((x) => x.isNotEmpty).join(' · '),
@@ -88,24 +84,22 @@ final fleetDriversCfg = ResourceConfig(
     r['hrLinked'] == true ? ('من الموارد البشرية', T.info) : ('غير مرتبط بموظف', T.warn),
     if (r['onSponsorship'] == true) ('على الكفالة', T.info),
     if (r['vehicle'] is Map) (_s(r['vehicle'] as Map<String, dynamic>, 'plate'), T.navy),
-    // ── ورتبتُه على الشاحنة ────────────────────────────────────────────────
-    // «السائق الثاني» رتبةٌ تُقرأ في البوليصة وفي نموذج الشحنة، وكانت الشاشةُ
-    // تقول اللوحةَ ولا تقول أوّلًا أم ثانيًا — فيُجاب عن طاقم الشاحنة بالظنّ.
+    // His rank on the truck.
+    // Second driver is a rank read on the waybill and the shipment form, and the screen showed the plate without saying first or second, so the truck crew had to be guessed.
     if (r['vehicle'] is Map) (r['seat'] == 2 ? 'سائق ثانٍ' : 'سائق أول', r['seat'] == 2 ? T.violet : T.info),
-    // ── ومع مَن على الشاحنة ────────────────────────────────────────────────
-    // الشاحنةُ تحمل سائقَين، والسؤالُ الذي يلي اللوحةَ دائمًا: «ومين معاه؟».
+    // And who else is on the truck.
+    // A truck carries two drivers, and the question after the plate is always who is with him.
     if (r['mate'] is Map)
       ('مع ${_s(r['mate'] as Map<String, dynamic>, 'name')}', T.violet)
     else if (r['vehicle'] is Map)
       (r['seat'] == 2 ? 'المقعد الأول شاغر' : 'المقعد الثاني شاغر', T.inkFaint),
-    // وانتهاءُ إقامته ورخصةِ قيادته من ملفّه في الموارد البشريّة.
+    // And his iqama and driving license expiry, from his HR file.
     ...personDocChips(r),
   ],
-  // تبديل سريع لحالة العمل/الكفالة من قائمة الصف دون فتح النموذج.
+  // Quick toggle of work/sponsorship status from the row menu without opening the form.
   rowActions: (r) => [
-    // ── وربطُه بملفّه في الموارد البشريّة ───────────────────────────────────
-    // السائقُ المربوطُ يُقرأ اسمُه وجوالُه وهويّتُه من ملفّه؛ وغيرُ المربوط
-    // (أكثرُهم مكتوبٌ باسمه الأوّل) يُربط من هنا كما في صفحة الموقع.
+    // Linking to his HR file.
+    // A linked driver's name, mobile and ID are read from his file; unlinked ones (mostly written by first name) are linked from here as on the website page.
     ResourceAction(
       icon: Icons.link_rounded,
       ar: r['hrLinked'] == true ? 'تغيير الموظف المرتبط' : 'ربط بموظف',
@@ -127,10 +121,8 @@ final fleetDriversCfg = ResourceConfig(
       color: T.info,
       request: (row) => ('PUT', '/api/fleet/drivers/${row['_id']}', {'onSponsorship': !(row['onSponsorship'] == true)}),
     ),
-    // ── ورفعُه أو إنزالُه بين المقعدين من الصفّ ────────────────────────────
-    // المقعدُ يُبدَّل في الموقع من جدول الشاحنات، وفي الهاتف من صفّ السائق:
-    // المشرفُ في الطريق هو مَن يقرّر مَن يسوق أوّلًا اليوم. والخادمُ يتولّى
-    // التبادل — فمَن رُفع إلى الأوّل نزل زميلُه إلى الثاني.
+    // Moving him up or down between the two seats from the row.
+    // The seat is changed on the web from the trucks table and on the phone from the driver row: the supervisor on the road decides who drives first today. The server performs the swap, so whoever is moved to first sends his mate to second.
     if (r['vehicle'] is Map)
       ResourceAction(
         icon: r['seat'] == 2 ? Icons.arrow_upward : Icons.arrow_downward,
@@ -159,7 +151,7 @@ final fleetDriversCfg = ResourceConfig(
 );
 
 final fleetVehiclesCfg = ResourceConfig(
-  // الضغطُ على السيارة يفتح تحليلَها (كالويب /system/fleet/vehicles/[id])؛ والتعديلُ بالضغط المطوَّل.
+  // Tapping the vehicle opens its analysis (like web /system/fleet/vehicles/[id]); editing is by long press.
   onOpen: (c, r) => Navigator.push(c, MaterialPageRoute(builder: (_) => FleetVehicleAnalyticsScreen(vehicleId: (r['_id'] ?? '').toString(), plate: (r['plate'] ?? '').toString()))),
   filterField: 'trailerType',
   arTitle: 'سيارات الأسطول', enTitle: 'Fleet Vehicles', icon: Icons.local_shipping_outlined,
@@ -167,9 +159,8 @@ final fleetVehiclesCfg = ResourceConfig(
   extraLiveEvents: const ['fleet:updated', 'fleet:drivers', 'vreg:updated'],
   searchFields: const ['plate', 'name', 'trailerType', 'supervisorName'],
   titleOf: (r) => _s(r, 'plate'),
-  // ── وطاقمُها بالرتبة في السطر الثاني ──────────────────────────────────────
-  // «مَن على هذه الشاحنة؟» سؤالُ المشرف الأوّل، وكان السطرُ يقول اسمَها واسمَ
-  // مشرفها ولا يقول سائقَها. والخادمُ يرسل `drivers` مرتَّبةً بالمقعد.
+  // Its crew by rank on the second line.
+  // Who is on this truck is the supervisor's first question, and the line showed the truck name and supervisor but not the driver. The server sends drivers ordered by seat.
   subtitleOf: (r) {
     final crew = List<Map<String, dynamic>>.from((r['drivers'] as List? ?? const []).whereType<Map>().map((e) => Map<String, dynamic>.from(e)));
     final first = crew.firstWhere((d) => (d['seat'] ?? 1) == 1, orElse: () => const {});
@@ -202,7 +193,7 @@ final fleetVehiclesCfg = ResourceConfig(
     ]),
     FieldSpec('notes', 'ملاحظات', 'Notes', type: FieldType.textarea),
   ],
-  // الطاقمُ (المقعدان معًا) والمشرفُ من قائمة الصفّ — كعمودَي السائقين وزرّ المشرف في الويب.
+  // The crew (both seats) and the supervisor from the row menu, like the drivers columns and supervisor button on the web.
   rowActions: (r) => const [
     ResourceAction(icon: Icons.groups_outlined, ar: 'الطاقم (السائقان)', en: 'Crew (drivers)', color: T.navy, run: openFleetVehicleCrew),
     ResourceAction(icon: Icons.manage_accounts_outlined, ar: 'تعيين المشرف', en: 'Assign supervisor', color: T.orange, run: openFleetVehicleSupervisor),
@@ -217,8 +208,7 @@ final fleetCustomersCfg = ResourceConfig(
   searchFields: const ['customerCode', 'name', 'phone', 'email', 'taxNumber'],
   // The code first: it identifies the customer in every section.
   titleOf: (r) => _s(r, 'customerCode').isEmpty ? _s(r, 'name') : '${_s(r, 'customerCode')} · ${_s(r, 'name')}',
-  // السطر الثاني يحمل أرقامه لا بيانات تواصله وحدها: مئتا عميلٍ في قائمةٍ
-  // بلا أرقام جردٌ يُمرَّر لا سجلٌّ يُقرأ منه من الأكثر تعاملًا.
+  // The second line carries his numbers, not only contact data: two hundred customers in a list without numbers is an inventory to scroll, not a register to read from the most active.
   subtitleOf: (r) {
     final trips = (r['trips'] ?? 0).toString();
     final income = (r['income'] ?? 0);
@@ -230,7 +220,7 @@ final fleetCustomersCfg = ResourceConfig(
     return parts.where((x) => x.isNotEmpty).join(' · ');
   },
   chipsOf: (r) => [
-    // نوع الدفع المتفق عليه: هو ما يُملأ تلقائيًّا في كل حمولةٍ جديدة له.
+    // Agreed payment type: auto-filled on every new load for him.
     if (r['paymentType'] == 'tax') ('ضريبي', T.violet),
     if (r['paymentType'] == 'cash') ('كاش', T.success),
     if ((r['openTrips'] ?? 0) != 0) ('${r['openTrips']} جارية', T.warn),
@@ -249,15 +239,14 @@ final fleetCustomersCfg = ResourceConfig(
         options: [('heavy', 'نقل ثقيل', 'Heavy transport'), ('branch', 'عميل فروع', 'Branch customer')]),
     FieldSpec('notes', 'ملاحظات', 'Notes', type: FieldType.textarea),
   ],
-  // الحذفُ العامّ يعطّل فقط؛ والويب يحذف نهائيًّا من لا حمولة له — فالإزالةُ إجراءُ صفّ.
+  // General delete only deactivates; the web permanently deletes a customer with no loads, so removal is a row action.
   canDelete: false,
   rowActions: (r) => const [
     ResourceAction(icon: Icons.delete_outline, ar: 'إزالة', en: 'Remove', color: T.danger, run: removeFleetCustomer),
   ],
 );
 
-/// العملاءُ المعطَّلون (المؤرشفون) — الويب يعرضهم بفلتر «الحالة: معطَّل» ويعيدهم
-/// بزرّ «إعادة تفعيل»؛ ومن لا حمولة له يُحذف نهائيًّا.
+/// Deactivated (archived) customers: the web shows them with the status filter inactive and restores them with a reactivate button; one with no loads is permanently deleted.
 final fleetCustomersArchivedCfg = ResourceConfig(
   onOpen: (c, r) => Navigator.push(c, MaterialPageRoute(builder: (_) => FleetCustomerProfileScreen(customerId: (r['_id'] ?? '').toString()))),
   arTitle: 'العملاء المؤرشفون', enTitle: 'Archived Customers', icon: Icons.archive_outlined,
@@ -281,7 +270,7 @@ final fleetCustomersArchivedCfg = ResourceConfig(
   ],
 );
 
-// ── إدارة العقود ─────────────────────────────────────────────────────────────
+// Contracts management.
 final contractsVendorsCfg = ResourceConfig(
   filterField: 'vendorType',
   onOpen: (c, r) => Navigator.push(c, MaterialPageRoute(builder: (_) => ContractsVendorProfileScreen(vendorId: (r['_id'] ?? '').toString(), name: (r['name'] ?? '').toString()))),
@@ -327,12 +316,11 @@ final contractsVendorsCfg = ResourceConfig(
   ],
 );
 
-// ── عملاءُ العقود ────────────────────────────────────────────────────────────
-// الطرفُ الآخر من كلّ صفقة. الصفُّ يحمل ما يخصّ العقد، والأرقامُ التي تحته —
-// شحناتُه معنا وقيمتُها — تُقرأ من كشوف التشغيل ولا تُكتب هنا.
+// Contract customers.
+// The other party of every deal. The row holds contract data; the numbers under it (shipments with us and their value) are read from the operations sheets and not written here.
 final contractsCustomersCfg = ResourceConfig(
   filterField: 'status',
-  // «إضافة» تفتح الإضافةَ اليدويّة واقتراحاتِ من يشحن معنا بلا سجلّ — كزرَّي الويب.
+  // Add opens manual entry and suggestions of those who ship with us without a record, like the two web buttons.
   onCreate: openContractsCustomerCreate,
   arTitle: 'العملاء', enTitle: 'Customers', icon: Icons.handshake_outlined,
   endpoint: '/api/contracts/customers', listKey: 'customers',
@@ -347,9 +335,8 @@ final contractsCustomersCfg = ResourceConfig(
             ? ('قيد التوقيع', T.warn)
             : ('غير موقّع', T.inkFaint),
     if ((r['loads'] ?? 0) != 0) ('${_n(r['loads'])} شحنة', T.navy),
-    // ── والعقدُ يُجدَّد قبل أن ينتهي ────────────────────────────────────────
-    // «قارب على الانتهاء» تُقال قبل شهرين، فيبقى وقتٌ للتجديد. وبعد الانتهاء
-    // لا يبقى إلّا أن يُشحَن بلا عقد.
+    // A contract is renewed before it ends.
+    // Near expiry is flagged two months ahead, leaving time to renew. After expiry the only option left is shipping without a contract.
     if (r['expiry'] == 'due') ('قارب على الانتهاء', T.warn),
     if (r['expiry'] == 'expired') ('منتهٍ', T.danger),
     if (r['status'] == 'signed' && r['documentsReceived'] != true) ('وثائق ناقصة', T.danger),
@@ -389,7 +376,7 @@ final contractsAgreementsCfg = ResourceConfig(
   searchFields: const ['partyName', 'contactPerson', 'phone', 'subject'],
   titleOf: (r) => _s(r, 'partyName'),
   subtitleOf: (r) => _s(r, 'subject'),
-  // مرفقاتُ العقد (رفعٌ وحذفٌ وفتح) — نافذةُ المرفقات في الويب.
+  // Contract attachments (upload, delete, open): the attachments dialog on the web.
   rowActions: (r) => [
     ResourceAction(icon: Icons.attach_file_rounded, ar: 'المرفقات (${(r['attachments'] as List? ?? const []).length})',
         en: 'Attachments (${(r['attachments'] as List? ?? const []).length})', color: T.cyan, run: openAgreementFiles),
@@ -435,7 +422,7 @@ final contractsAgreementsCfg = ResourceConfig(
   ],
 );
 
-// ── إدارة العلاقات (CRM) ─────────────────────────────────────────────────────
+// Customer relationship management (CRM).
 String _crmCustomerLabel(Map<String, dynamic> r) => _s(r, 'companyName');
 
 final crmCompaniesCfg = ResourceConfig(
@@ -451,7 +438,7 @@ final crmCompaniesCfg = ResourceConfig(
     if (_s(r, 'status').isNotEmpty) (_s(r, 'status'), T.cyan),
     if (r['rating'] != null && r['rating'] != 0) ('★ ${r['rating']}', T.warn),
   ],
-  // التقييمُ بالنجوم من القائمة نفسِها (PATCH /rate) — كعمود النجوم في جدول الويب.
+  // Star rating from the list itself (PATCH /rate), like the stars column in the web table.
   rowActions: (r) => [
     const ResourceAction(icon: Icons.star_outline_rounded, ar: 'التقييم', en: 'Rate', color: T.warn, run: crmRateCompany),
   ],
@@ -463,7 +450,7 @@ final crmCompaniesCfg = ResourceConfig(
       ('lead', 'عميل محتمل', 'Lead'), ('prospect', 'مهتم', 'Prospect'), ('active', 'نشط', 'Active'),
       ('inactive', 'غير نشط', 'Inactive'), ('churned', 'منسحب', 'Churned'),
     ]),
-    // الربطُ بعميلٍ في سجلّ العملاء (الهجين) — /api/crm/customers-search كما في الويب.
+    // Link to a customer in the customers register (hybrid): /api/crm/customers-search as on the web.
     FieldSpec('linkedCustomer', 'العميل المرتبط (سجل العملاء)', 'Linked customer (registry)',
         type: FieldType.lookup, lookupEndpoint: '/api/crm/customers-search', lookupListKey: 'customers',
         lookupQuery: '', lookupServerSearch: true, lookupLabel: _crmCustomerLabel),
@@ -498,7 +485,7 @@ final crmContactsCfg = ResourceConfig(
   ],
 );
 
-// ── تطوير الأعمال ────────────────────────────────────────────────────────────
+// Business development.
 final bdOpportunitiesCfg = ResourceConfig(
   filterField: 'stage',
   onOpen: (c, r) => Navigator.push(c, MaterialPageRoute(builder: (_) => BdOpportunityDetailScreen(opportunityId: (r['_id'] ?? '').toString(), name: (r['name'] ?? '').toString()))),
@@ -620,7 +607,7 @@ final bdTendersCfg = ResourceConfig(
   ],
 );
 
-// ── التسويق ──────────────────────────────────────────────────────────────────
+// Marketing.
 final marketingCampaignsCfg = ResourceConfig(
   filterField: 'status',
   onOpen: (c, r) => Navigator.push(c, MaterialPageRoute(builder: (_) => MarketingCampaignDetailScreen(campaignId: (r['_id'] ?? '').toString(), name: (r['nameAr'] ?? r['name'] ?? '').toString()))),
@@ -657,9 +644,9 @@ final marketingCampaignsCfg = ResourceConfig(
   ],
 );
 
-// ── الورشة ───────────────────────────────────────────────────────────────────
+// Workshop.
 
-// ── إدارة العلاقات: الصفقات والمهام والأنشطة ─────────────────────────────────
+// CRM: deals, tasks and activities.
 final crmDealsCfg = ResourceConfig(
   filterField: 'stage',
   arTitle: 'الصفقات', enTitle: 'Deals', icon: Icons.attach_money_outlined,
@@ -673,7 +660,7 @@ final crmDealsCfg = ResourceConfig(
     if (r['value'] != null) ('${r['value']} ${_s(r, 'currency')}', T.success),
     if (r['probability'] != null) ('${r['probability']}%', T.inkSoft),
   ],
-  // نقلُ المرحلة — نظيرُ سحب البطاقة بين أعمدة اللوحة (PATCH /deals/:id/move).
+  // Moving the stage, the counterpart of dragging a card between board columns (PATCH /deals/:id/move).
   rowActions: (r) => [
     const ResourceAction(icon: Icons.swap_horiz_rounded, ar: 'نقل المرحلة', en: 'Move stage', color: T.info, run: crmMoveDeal),
   ],
@@ -744,12 +731,9 @@ final crmActivitiesCfg = ResourceConfig(
   ],
 );
 
-// ── المبيعات ─────────────────────────────────────────────────────────────────
-// ── أهدافُ المبيعات ──────────────────────────────────────────────────────────
-// كان النموذجُ بلا حقل المندوب: كلُّ هدفٍ يُحفَظ من الهاتف هدفًا «للفريق كلّه»،
-// والثاني يستبدل الأوّل (المفتاحُ مندوبٌ + شهر). وكان عنوانُ الصفّ الشهرَ وحدَه
-// فلا يُعرَف هدفُ مَن. والهدفُ يضعه المدير: `canEdit` تُمرَّر من القائمة بقاعدة
-// الخادم نفسِها (canSetTargets في salesController).
+// Sales: sales targets.
+// The form had no rep field, so every target saved from the phone became a team-wide target and the second replaced the first (key is rep + month). The row title was the month alone, so whose target was unknown.
+// The manager sets the target: canEdit is passed from the list using the server's rule (canSetTargets in salesController).
 String _repName(dynamic rep) => rep is Map
     ? '${rep['firstName'] ?? ''} ${rep['lastName'] ?? ''}'.trim()
     : '';
@@ -766,7 +750,7 @@ ResourceConfig salesTargetsCfg({required bool canEdit}) => ResourceConfig(
     if (r['dealsTarget'] != null) ('${r['dealsTarget']} ${tr('صفقة', 'deals')}', T.info),
   ],
   fields: const [
-    // فارغٌ = الفريق كلّه. ولا يتغيّر بعد الحفظ: الخادمُ يثبّت المندوبَ والشهر.
+    // Empty means the whole team. Does not change after saving: the server fixes the rep and the month.
     FieldSpec('rep', 'المندوب (فارغ = الفريق كلّه)', 'Rep (empty = whole team)',
         type: FieldType.lookup, lookupEndpoint: '/api/sales/options', lookupListKey: 'reps',
         lookupLabel: _repName),
@@ -777,7 +761,7 @@ ResourceConfig salesTargetsCfg({required bool canEdit}) => ResourceConfig(
   ],
 );
 
-// ── الإدارة (Admin) ──────────────────────────────────────────────────────────
+// Administration (Admin).
 final branchesCfg = ResourceConfig(
   arTitle: 'الفروع', enTitle: 'Branches', icon: Icons.store_mall_directory_outlined,
   endpoint: '/api/branches', listKey: 'branches', liveEvent: 'branch:updated',
@@ -793,7 +777,7 @@ final branchesCfg = ResourceConfig(
 );
 
 
-// ── لوكيشن سوليوشن: الإصلاحات ────────────────────────────────────────────────
+// Location Solutions: repairs.
 final ls2RepairsCfg = ResourceConfig(
   filterField: 'status',
   arTitle: 'الإصلاحات', enTitle: 'Repairs', icon: Icons.home_repair_service_outlined,
@@ -839,14 +823,14 @@ final ls2RepairsCfg = ResourceConfig(
   ],
 );
 
-// ── الموارد البشرية: التراخيص وأنواع الإجازات ────────────────────────────────
+// HR: licenses and leave types.
 final hrLicensesCfg = ResourceConfig(
   arTitle: 'التراخيص والاشتراكات', enTitle: 'Licenses', icon: Icons.workspace_premium_outlined,
   endpoint: '/api/hr/licenses', listKey: 'licenses', liveEvent: 'hr:license',
   hijriDates: true,
   searchFields: const ['name', 'category', 'location', 'duration'],
   titleOf: (r) => _s(r, 'name'),
-  // تاريخُ الانتهاء بتقويميه في السطر: الميلاديُّ ثمّ هجريُّه (services/hijri).
+  // Expiry date in both calendars on the line: Gregorian then its Hijri (services/hijri).
   subtitleOf: (r) => [_s(r, 'category'), _s(r, 'location'),
     if (_s(r, 'expiryDate').isNotEmpty) '${tr('ينتهي', 'Expires')} ${bothDates(_s(r, 'expiryDate'), ar: Lang.instance.ar)}',
   ].where((x) => x.isNotEmpty).join(' · '),
@@ -881,48 +865,44 @@ final hrLeaveTypesCfg = ResourceConfig(
   ],
 );
 
-// ── التخليص الجمركي ──────────────────────────────────────────────────────────
+// Customs clearance.
 String _customsCountLabel(Map<String, dynamic> v) =>
     v['cargoType'] == 'vehicles' ? tr('عدد السيّارات', 'Vehicles') : tr('عدد الحاويات', 'Containers');
 
 final customsCfg = ResourceConfig(
-  // (لا شرائحَ تصفيةٍ بالمرحلة: المراحلُ لم تعد خطًّا، و«أين تقف كلُّ معاملة»
-  //  تُقرأ وتُصفّى في لوحة القسم.)
+  // No stage filter chips: stages are no longer a line, and where each transaction stands is read and filtered on the section dashboard.
   onOpen: (c, r) => Navigator.push(c, MaterialPageRoute(builder: (_) => CustomsDetailScreen(clearanceId: (r['_id'] ?? '').toString(), ref: (r['refNumber'] ?? '').toString()))),
   arTitle: 'التخليص الجمركي', enTitle: 'Customs Clearance', icon: Icons.directions_boat_outlined,
   endpoint: '/api/customs-clearance', listKey: 'clearances', liveEvent: 'customs:updated',
-  // الإنشاءُ والحذفُ من شاشةٍ أخرى يظهران هنا في الحال — كالموقع.
+  // Create and delete from another screen show here immediately, like the website.
   extraLiveEvents: const ['customs:created', 'customs:deleted'],
-  // القائمةُ تحمل ما يُعرَض فقط، والنموذجُ يعدّل حقولًا ليست فيها (قيمةُ الفاتورة،
-  // تاريخُ البيان، الملاحظة) — فتُقرأ المعاملةُ كاملةً قبل التعبئة.
+  // The list carries only what is displayed, and the form edits fields not in it (invoice amount, declaration date, note), so the full transaction is read before filling.
   editFullKey: 'clearance',
-  // ── البحثُ في الخادم بكلّ ما في المعاملة ─────────────────────────────────
-  // الصفُّ مقلَّم: لا بيانُ كلّ حاوية ولا إيصالُ إرجاعها ولا طلباتُ الصرف ولا
-  // الملاحظاتُ كلُّها. فيُرسَل النصُّ (`q=`) ويجيب فهرسُ الخادم — كما في الموقع
-  // (راجع SEARCH_INDEX_FIELDS). `searchFields` يبقى لمن يقرأ الإعداد لا للتصفية.
+  // Server-side search over everything in the transaction.
+  // The row is trimmed: no per-container data, return receipt, disbursement requests or all notes. So the text (q=) is sent and the server index answers, as on the website (see SEARCH_INDEX_FIELDS). searchFields remains for whoever reads the config, not for filtering.
   serverSearch: true,
   searchHint: ('ابحث بأيّ رقمٍ أو اسم: المعاملة، الحاوية، البوليصة، البيان، الفاتورة، العميل، الوكيل…',
       'Any number or name: ref, container, BL, declaration, invoice, customer, agent…'),
   searchFields: const ['refNumber', 'customerName', 'blNumber', 'declarationNumber', 'exporterCompany', 'city', 'saleInvoiceNumber', 'containerNumbers'],
-  // رقمُ البوليصة أوّلًا: به تُعرَف المعاملةُ في القسم — ورقمُها المرجعيُّ بعده.
+  // Waybill number first: it identifies the transaction in the section; its reference number comes after.
   titleOf: (r) => _s(r, 'blNumber').isNotEmpty ? '${_s(r, 'blNumber')} — ${_s(r, 'customerName')}' : _s(r, 'customerName'),
   subtitleOf: (r) => [
     if (_s(r, 'refNumber').isNotEmpty) '${tr('رقم المعاملة', 'Transaction no.')}: ${_s(r, 'refNumber')}',
     if (_s(r, 'shippingAgent').isNotEmpty) _s(r, 'shippingAgent'),
-    // عمودا الجدول في الموقع: رقمُ البيان وتاريخُ التفريغ.
+    // The two table columns on the website: declaration number and unloading date.
     if (_s(r, 'declarationNumber').isNotEmpty) '${tr('رقم البيان', 'Declaration no.')}: ${_s(r, 'declarationNumber')}',
     if (_s(r, 'unloadingAppointment').isNotEmpty) '${tr('تاريخ التفريغ', 'Unloading date')}: ${_s(r, 'unloadingAppointment').length >= 10 ? _s(r, 'unloadingAppointment').substring(0, 10).split('-').reversed.join('/') : _s(r, 'unloadingAppointment')}',
-    // آخرُ ملاحظةٍ كُتبت على المعاملة — كعمود «ملاحظات» في الموقع.
+    // The last note written on the transaction, like the notes column on the website.
     if ((r['lastNote'] is Map) && '${r['lastNote']['text'] ?? ''}'.isNotEmpty) '📝 ${r['lastNote']['text']}',
   ].join(' · '),
   chipsOf: (r) {
-    // النسبةُ والمرحلةُ التاليةُ من الخادم (pipeline) — لا تُشتقّان من `stage`.
+    // Percentage and next stage come from the server (pipeline); they are not derived from stage.
     final p = r['pipeline'] is Map ? r['pipeline'] as Map : const {};
     final next = '${p['next'] ?? ''}';
     final vehicles = _s(r, 'cargoType') == 'vehicles';
     final billing = r['billing'] is Map ? '${r['billing']['invoiceStatus'] ?? ''}' : '';
     return [
-      // فُوترت ولم تصل فاتورةُ نقلها — بالأحمر وأوّلًا، حتى لا تُنسى.
+      // Invoiced but its transport invoice has not arrived: shown red and first so it is not forgotten.
       if (r['awaitingTransportInvoice'] == true) (tr('بانتظار فاتورة النقل', 'Awaiting transport invoice'), T.danger),
       if (r['cancelled'] == true) (tr('ملغاة', 'Cancelled'), T.danger)
       else if (r['isCompleted'] == true) (tr('مُقفلة', 'Closed'), T.success)
@@ -935,16 +915,14 @@ final customsCfg = ResourceConfig(
     ];
   },
   fields: const [
-    // خاناتُ بيانات المعاملة كما في الموقع: البوليصةُ والعميلُ والوحداتُ ووكيلُ
-    // الشحن والبندُ الجمركيّ — وما عداها رُفع بطلب القسم.
-    // (المرحلةُ ليست منها: تُعلَّم من شاشة المعاملة بقواعدها — PATCH /:id/stage،
-    //  والخادمُ يُهمل `stage` في جسم الحفظ.)
+    // Transaction data fields as on the website: waybill, customer, units, shipping agent and customs item; anything else was added on the department's request.
+    // Stage is not among them: it is marked from the transaction screen by its rules (PATCH /:id/stage), and the server ignores stage in the save body.
     FieldSpec('blNumber', 'رقم البوليصة BL', 'BL number'),
     FieldSpec('customerName', 'اسم العميل', 'Customer', required: true),
     FieldSpec('cargoType', 'نوع المعاملة', 'Transaction type', type: FieldType.select, options: [
       ('containers', 'حاويات', 'Containers'), ('vehicles', 'سيّارات', 'Vehicles'),
     ]),
-    // الخادمُ يفتح لكلّ وحدةٍ خانتَها بهذا العدد (syncUnits).
+    // The server opens a slot for each unit with this count (syncUnits).
     FieldSpec('containerCount', 'عدد الحاويات', 'Containers', type: FieldType.number, labelOf: _customsCountLabel),
     FieldSpec('shippingAgent', 'وكيل الشحن', 'Shipping agent'),
     FieldSpec('hsCode', 'البند الجمركي HS', 'HS code'),
@@ -953,15 +931,15 @@ final customsCfg = ResourceConfig(
       ('jeddah', 'جدة', 'Jeddah'), ('dammam', 'الدمام', 'Dammam'),
     ]),
     FieldSpec('declarationDate', 'تاريخ البيان', 'Declaration date', type: FieldType.date),
-    // من هذا اليوم تُحسب الأرضياتُ على المعاملة — يُكتب بجانب آخر موعدٍ للإرجاع في الموقع.
+    // Demurrage on the transaction is counted from this day; on the website it is written next to the last return date.
     FieldSpec('demurrageStartDate', 'تاريخ تحمّل الأرضيات', 'Demurrage start date', type: FieldType.date),
     FieldSpec('notes', 'ملاحظات', 'Notes', type: FieldType.textarea),
   ],
 );
 
-// ── الورشة: طلبات الصيانة ────────────────────────────────────────────────────
+// Workshop: maintenance requests.
 
-// ── تقنية المعلومات ──────────────────────────────────────────────────────────
+// Information technology.
 final itTicketsCfg = ResourceConfig(
   filterField: 'status',
   arTitle: 'التذاكر والمشكلات', enTitle: 'IT Tickets', icon: Icons.confirmation_number_outlined,
@@ -1070,10 +1048,8 @@ final b2cProjectsCfg = ResourceConfig(
   ],
 );
 
-// ── حساباتُ تطبيق التوصيل — مراجعةُ «غير المرتبط» ───────────────────────────
-// مطابقٌ لتبويب «حسابات التطبيق» في إعدادات القسم على الويب: الحسابُ المربوطُ
-// يُعرَض باسم صاحبه من ملفّه (`displayName` يحسبه الخادم)، و«غير مرتبط» يُراجَع
-// ويُوقَف بيد. و«مقترحٌ إيقافُه» اقتراحٌ لا إيقاف — لا طلبَ منذ ستّين يومًا.
+// Delivery app accounts: reviewing unlinked ones.
+// Matches the app accounts tab in section settings on the web: a linked account shows its owner's name from his file (displayName computed by the server), and unlinked ones are reviewed and suspended by hand. Suggested for suspension is only a suggestion, not a suspension: no orders for sixty days.
 ResourceConfig b2cRepsCfg({required bool canEdit}) => ResourceConfig(
   arTitle: 'حسابات التطبيق', enTitle: 'App accounts', icon: Icons.sports_motorsports_outlined,
   endpoint: '/api/b2c/reps', listKey: 'reps', listQuery: 'review=1', liveEvent: 'b2c:*',
@@ -1107,17 +1083,9 @@ ResourceConfig b2cRepsCfg({required bool canEdit}) => ResourceConfig(
   fields: const [],
 );
 
-// ── طلبات الشحنات (التجربة المستقلة) ────────────────────────────────────────
-// ── سجلُّ العملاء ────────────────────────────────────────────────────────────
-// يُقرأ من سجلّ العملاء المحسوب (كم كشفًا وبكم وكم مسارًا) لا من جدول العملاء
-// الخام، فيحمل الصفُّ أرقامَه كما على الويب. والنقرةُ تفتح الملفَّ الكامل —
-// نفسَ صفحة الويب.
-//
-// ── سجلٌّ واحدٌ بثلاثة أبواب ─────────────────────────────────────────────────
-// يُفتح من «طلبات الشحنات» و«التشغيل» و«المبيعات»، والقراءةُ والكتابةُ كلُّها
-// على `/api/customer-registry`: كانت الكتابةُ على نقطة طلبات الشحنات المحروسةِ
-// بقسمها، فمن يفتح السجلَّ من قسمٍ آخر يُردّ ٤٠٣ عند أوّل حفظ. ومن يعدّل ومن
-// يزيل يقرّرهما الدورُ كما على الويب (`canEditCustomers`): تُمرَّران من القائمة.
+// Shipment orders (standalone trial) and customers register.
+// Read from the computed customers register (how many sheets, for how much, how many routes), not the raw customers table, so the row carries its numbers as on the web. Tapping opens the full file, the same as the web page.
+// One register with three entry points: opened from shipment orders, operations and sales, with all reads and writes on /api/customer-registry. Writes used to go to the shipment-orders endpoint guarded by its section, so opening the register from another section gave 403 on first save. Who edits and who removes is decided by role as on the web (canEditCustomers) and passed from the list.
 const customerEditRoles = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_staff', 'moderator', 'sales_manager', 'sales_rep',
   'shipment_orders_manager', 'shipment_orders_staff', 'shipment_orders_followup', 'data_manager', 'data_analyst', 'data_entry'];
 final customerRemoveRoles = customerEditRoles.where((r) => r != 'sales_rep').toList();
@@ -1128,17 +1096,17 @@ ResourceConfig customersRegisterCfg({required bool canEdit, required bool canDel
       builder: (_) => CustomerRegistryProfileScreen(customerId: (r['_id'] ?? '').toString()))),
   arTitle: 'سجلّ العملاء', enTitle: 'Customer Register', icon: Icons.people_outline,
   endpoint: '/api/customer-registry',
-  // الملاحظةُ لا عمودَ لها في السجلّ فلا تُنقَل فيه — وتُقرأ من ملفّ العميل قبل التعديل.
+  // The note has no column in the register so it is not carried in it; it is read from the customer file before editing.
   editFullKey: 'customer',
   listKey: 'customers', liveEvent: 'shipmentOrders:customers',
-  // حسابُ البوابة من السطر — كزرّ المفتاح في سجلّ العملاء على الويب (الأبوابُ الثلاثة).
+  // Portal account from the row, like the key button in the customers register on the web (all three entry points).
   rowActions: (r) => const [
     ResourceAction(icon: Icons.key_outlined, ar: 'حساب البوابة', en: 'Portal login', color: T.orange, run: openCustomerPortalLogin),
   ],
   searchFields: const ['customerCode', 'name', 'phone', 'email', 'branch'],
   sortFields: const [('sheets', 'أوامر النقل', 'Sheets'), ('routesCount', 'المسارات', 'Routes')],
   titleOf: (r) => _s(r, 'customerCode').isEmpty ? _s(r, 'name') : '${_s(r, 'customerCode')} · ${_s(r, 'name')}',
-  // السطرُ الثاني يحمل أرقامَه: ٦٧٠ عميلًا بلا أرقامٍ جردٌ يُمرَّر لا سجلٌّ يُقرأ.
+  // The second line carries its numbers: 670 customers without numbers are an inventory to scroll, not a register to read.
   subtitleOf: (r) {
     final parts = <String>[
       if ((r['sheets'] ?? 0) != 0) '${tr('رحلات', 'trips')}: ${_n(r['sheets'])}',
@@ -1160,13 +1128,11 @@ ResourceConfig customersRegisterCfg({required bool canEdit, required bool canDel
   ],
 );
 
-/// الصيغةُ القديمة — لمن يعدّل ويزيل بدوره في طلبات الشحنات.
+/// Old form, for whoever edits and removes by role in shipment orders.
 final shipmentOrdersCustomersCfg = customersRegisterCfg(canEdit: true, canDelete: true);
 
-// ── والسجلّان يُبحَثان عند الخادم ───────────────────────────────────────────
-// ثلاثةُ آلافِ مورّدٍ وثلاثةَ عشرَ ألفَ شاحنة، والشاشةُ تُحمِّل مئتين: فالبحثُ
-// في الواصل يقول «لا نتائج» عن صفٍّ مسجَّل. و`serverSearch` تُرسل النصَّ إلى
-// الخادم فيبحث في السجلّ كلِّه — وفي اللوحةِ والسائقِ وبطاقةِ التشغيل معًا.
+// Both registers are searched on the server.
+// There are three thousand vendors and thirteen thousand trucks and the screen loads two hundred, so searching what arrived says no results for a registered row. serverSearch sends the text to the server, which searches the whole register, including plate, driver and operating card together.
 final shipmentOrdersSuppliersCfg = ResourceConfig(
   filterField: 'type',
   arTitle: 'موردو الشاحنات', enTitle: 'SO Suppliers', icon: Icons.business_outlined,
@@ -1177,11 +1143,11 @@ final shipmentOrdersSuppliersCfg = ResourceConfig(
   subtitleOf: (r) => _s(r, 'phone'),
   chipsOf: (r) => [
     (r['type'] == 'freelancer' ? tr('مستقل', 'Freelancer') : tr('شركة', 'Company'), const Color(0xFF4F46E5)),
-    // كم شاحنةً وكم سائقًا — الرقمان اللذان يُسألان عن المورّد قبل فتح ملفّه.
+    // How many trucks and drivers: the two numbers asked about a vendor before opening his file.
     ('${r['vehicleCount'] ?? 0} شاحنة', T.navy),
     ('${r['driverCount'] ?? 0} سائق', T.cyan),
   ],
-  // دمجُ مورّدٍ مكرَّر في آخر (٢٠٢٦/١٠/٢٦) — للمديرين بالدور، والخادمُ يرفض غيرَهم.
+  // Merging a duplicate vendor into another: for managers by role, and the server rejects others.
   rowActions: (r) => [
     ResourceAction(
       icon: Icons.merge_type, ar: 'دمج مع مورّد آخر', en: 'Merge with another supplier', color: T.orange,
@@ -1203,20 +1169,19 @@ final shipmentOrdersSuppliersCfg = ResourceConfig(
 final shipmentOrdersVehiclesCfg = ResourceConfig(
   arTitle: 'شاحنات طلبات الشحن', enTitle: 'SO Vehicles', icon: Icons.local_shipping_outlined,
   endpoint: '/api/shipment-orders/vehicles', listKey: 'vehicles', liveEvent: 'shipmentOrders:fleet',
-  // هويّةُ شاحناتنا تُقرأ من سجلّ المركبات — تعديلُها هناك يظهر هنا فورًا، كالموقع.
+  // Our trucks' identity is read from the vehicles register; editing it there shows here immediately, like the website.
   extraLiveEvents: const ['vreg:updated'],
   searchFields: const ['plate', 'name', 'defaultDriverName'],
   serverSearch: true,
   titleOf: (r) => _s(r, 'plate'),
   subtitleOf: (r) => '${_s(r, 'name')} ${_s(r, 'defaultDriverName')}'.trim(),
-  // مالكُ الشاحنة شارةً — والخلوُّ يُقال مجهولًا لا «لنا». كان غيابُ المورّد
-  // يعني «من أسطولنا»، فاستُوردت آلافُ شاحنات الناقلين بلا مرجعٍ فقُرئت لنا.
+  // Truck owner as a badge; empty reads as unknown, not ours. A missing vendor used to mean from our fleet, so thousands of carrier trucks were imported with no reference and read as ours.
   chipsOf: (r) {
     final sup = r['supplier'];
     if (sup is Map && (sup['name'] ?? '').toString().isNotEmpty) {
       return [((sup['name']).toString(), const Color(0xFF2563EB))];
     }
-    // وشاحنتُنا المربوطةُ بسجلّ المركبات تُقال كذلك — ماركتُها ولونُها منه.
+    // Our truck linked to the vehicles register is labeled so as well; its make and color come from there.
     if (r['ownership'] == 'ours') {
       return [
         (tr('أسطولنا', 'Our fleet'), T.success),
@@ -1229,17 +1194,14 @@ final shipmentOrdersVehiclesCfg = ResourceConfig(
     FieldSpec('plate', 'اللوحة', 'Plate', required: true),
     FieldSpec('name', 'وصف الشاحنة', 'Description'),
     FieldSpec('truckType', 'نوع الشاحنة', 'Truck type'),
-    // ── الماركةُ واللونُ: البوليصةُ تطبعهما ────────────────────────────────
-    // «بيانات السيارة» في البوليصة ثلاثةٌ: اللوحةُ والماركةُ واللون. وكان
-    // الأخيران يُطبَعان فارغين في ورقةٍ يُتحقَّق منها في البوّابات.
+    // Make and color: the waybill prints them.
+    // Vehicle data on the waybill has three items: plate, make and color. The last two used to print empty on a paper checked at gates.
     FieldSpec('brand', 'الماركة', 'Brand', required: true),
     FieldSpec('color', 'اللون', 'Color', required: true),
     FieldSpec('modelYear', 'سنة الصنع', 'Model year'),
     FieldSpec('operationCardNumber', 'رقم بطاقة التشغيل', 'Operation card no.'),
     FieldSpec('operationCardExpiry', 'انتهاء بطاقة التشغيل', 'Card expiry', type: FieldType.date),
-    // مالكُ الشاحنة يُصحَّح من التطبيق كما يُصحَّح من الموقع: خمسةُ آلافٍ
-    // وسبعُمئةِ شاحنةٍ لم يُعرَف مالكُها من تاريخ الطلبات، ومن يعرفه غالبًا
-    // في الطريق لا على المكتب.
+    // Truck owner is corrected from the app as from the website: about 5,700 trucks had no owner known from order history, and whoever knows is usually on the road, not at the office.
     FieldSpec('supplier', 'المورّد المالك', 'Owner (supplier)', type: FieldType.lookup,
         lookupEndpoint: '/api/shipment-orders/suppliers', lookupListKey: 'suppliers',
         lookupQuery: 'limit=60', lookupServerSearch: true),
@@ -1249,13 +1211,9 @@ final shipmentOrdersVehiclesCfg = ResourceConfig(
   ],
 );
 
-/// سوّاقُ شاحنات الناقلين — سجلٌّ كان ناقصًا بالكامل في القسمين.
-///
-/// كان السائقُ اسمًا على صفّ الشاحنة، فلا ملفَّ له ولا رقمَ إقامةٍ ولا بطاقةَ
-/// تشغيلٍ ولا تاريخَ انتهائها. ومنصّةُ الأوبريشن تحمل سبعةَ عشرَ ألفًا وخمسَمئةٍ
-/// وثلاثةً وستّين سائقًا لكلٍّ ملفُّه، فاستُورد السجلُّ منها.
-///
-/// والبحثُ عند الخادم: سجلٌّ بهذا الحجم لا يُبحَث في صفحةٍ وصلت.
+/// Carrier truck drivers: a register that was entirely missing in both sections.
+/// A driver was only a name on the truck row, with no file, iqama number, operating card or its expiry. The operations platform holds 17,563 drivers each with a file, so the register was imported from it.
+/// Search is on the server: a register this size cannot be searched in an arrived page.
 final shipmentOrdersDriversCfg = ResourceConfig(
   arTitle: 'سوّاق الناقلين', enTitle: 'Carrier Drivers', icon: Icons.badge_outlined,
   endpoint: '/api/shipment-orders/drivers', listKey: 'drivers', liveEvent: 'shipmentOrders:fleet',
@@ -1270,13 +1228,12 @@ final shipmentOrdersDriversCfg = ResourceConfig(
   ].where((x) => x.isNotEmpty).join(' · '),
   chipsOf: (r) {
     final out = <(String, Color)>[];
-    // موظّفُنا: الاسمُ والجوالُ والجنسيّةُ من ملفّه في الموارد البشريّة — كالويب.
+    // Our employee: name, mobile and nationality from his HR file, like the web.
     if (r['hr'] is Map) out.add((tr('موظّف — من الموارد البشرية', 'Employee — from HR'), T.success));
     if (r['supplier'] is Map) out.add((_s(r['supplier'] as Map<String, dynamic>, 'name'), T.info));
     if (_s(r, 'nationality').isNotEmpty) out.add((_s(r, 'nationality'), T.navy));
-    // ── وبطاقةُ التشغيل تُقال قبل الإسناد ────────────────────────────────────
-    // سائقٌ بطاقتُه منتهيةٌ يُوقفه الطريقُ لا نحن، ومعرفةُ ذلك قبل تحميله
-    // توفّر حمولةً متعطّلةً على الطريق.
+    // The operating card is shown before assignment.
+    // A driver with an expired card is stopped by the road, not by us, and knowing before loading him avoids a stalled load on the road.
     final exp = _s(r, 'driverCardExpiry');
     if (exp.isNotEmpty) {
       final d = DateTime.tryParse(exp);
@@ -1315,10 +1272,8 @@ final shipmentOrdersDriversCfg = ResourceConfig(
   ],
 );
 
-// ── أطرافُ التحصيل ─────────────────────────────────────────────────────────
-// سجلٌّ واحدٌ بشكلين: العميلُ يدفع لنا والموردُ ندفع له. الأرقامُ (المستحقّ
-// والمحصَّل) مشتقّةٌ في الخادم من كشوف التشغيل، فلا يقول التطبيقُ رقمًا يخالف
-// الموقع.
+// Collections parties.
+// One register in two forms: the customer pays us and we pay the vendor. Figures (due and collected) are derived on the server from the operations sheets, so the app never states a number that differs from the website.
 ResourceConfig _collectionsPartyCfg({required bool customer}) => ResourceConfig(
       arTitle: customer ? 'عملاء التحصيل' : 'موردو التحصيل',
       enTitle: customer ? 'Collections Customers' : 'Collections Suppliers',
@@ -1328,15 +1283,13 @@ ResourceConfig _collectionsPartyCfg({required bool customer}) => ResourceConfig(
       listQuery: 'kind=${customer ? 'customer' : 'supplier'}',
       updateMethod: 'PUT',
       liveEvent: 'collections:party',
-      // ثلاثةُ آلافِ موردٍ لا تُنزَّل إلى هاتف — فالبحثُ على الخادم لا في
-      // المحمَّل، وإلّا بحث المستخدمُ في أوّل مئتين وقيل له «لا نتائج».
+      // Three thousand vendors are not downloaded to a phone, so search runs on the server and not in the loaded set; otherwise a user searching the first two hundred would be told no results.
       serverSearch: true,
       searchFields: const ['name', 'code', 'phone', 'contactPerson', 'commercialRegister', 'taxNumber', 'iban', 'city', 'collectionOfficer'],
       titleOf: (r) => _s(r, 'name'),
-      // الكودُ أوّلَ السطر: هو هويّةُ الحساب في المحاسبة وفي كلّ مراسلة، ومَن
-      // يتولّاه أوّلُ ما يُسأل عنه حين يتأخّر.
-      // المسؤولُ الفعليّ: ما لم يُسنَد فعلى مدير القسم — لا خانةَ فارغة.
-      // الكودُ من السجلّ، وإلّا من فواتير الدفتر (codeShown في الخادم).
+      // Code first on the line: it is the account identity in accounting and in all correspondence, and who handles it is the first question when it is late.
+      // The responsible person: if unassigned, the section manager, so the field is never empty.
+      // The code comes from the register, else from the ledger invoices (codeShown on the server).
       subtitleOf: (r) => [_s(r, 'codeShown').isNotEmpty ? _s(r, 'codeShown') : _s(r, 'code'), _s(r, 'effectiveOfficer').isNotEmpty ? _s(r, 'effectiveOfficer') : _s(r, 'collectionOfficer'), _s(r, 'city'), _s(r, 'phone')]
           .where((x) => x.isNotEmpty)
           .join(' · '),
@@ -1345,9 +1298,8 @@ ResourceConfig _collectionsPartyCfg({required bool customer}) => ResourceConfig(
         final limit = (r['creditLimit'] as num?)?.toDouble() ?? 0;
         return [
           if (due > 0) ('${_n(due)} ${customer ? 'لنا' : 'علينا'}', T.danger),
-          // ── واستهلاكُ الحدّ يُقرأ في السطر ────────────────────────────────
-          // «قارب حدَّه» قرارٌ يُتّخذ قبل تحميل الشحنة التالية، ومَن يفتح
-          // القائمةَ في الطريق يحتاجه هنا لا بعد نقرتين.
+          // Limit consumption read on the line.
+          // Near its limit is a decision made before loading the next shipment, and someone opening the list on the road needs it here and not two taps away.
           if (limit > 0) ('${(due / limit * 100).round()}% من الحد', due > limit ? T.danger : due >= limit * 0.8 ? T.warn : T.success),
           if (_s(r, 'grade').isNotEmpty) (_s(r, 'grade'), T.cyan),
           if (r['creditDays'] != null && r['creditDays'] != 0) ('${r['creditDays']} يوم سداد', T.navy),
@@ -1357,7 +1309,7 @@ ResourceConfig _collectionsPartyCfg({required bool customer}) => ResourceConfig(
       },
       fields: [
         const FieldSpec('name', 'الاسم', 'Name', required: true),
-        // النوعُ مثبَّتٌ على الصفحة التي فُتحت منها: صفحةُ العملاء لا تُنشئ موردًا.
+        // Type is fixed by the page it was opened from: the customers page does not create a vendor.
         FieldSpec('kind', 'النوع', 'Kind', type: FieldType.select, required: true, options: [
           customer ? ('customer', 'عميل', 'Customer') : ('supplier', 'مورد', 'Supplier'),
         ]),
@@ -1376,11 +1328,8 @@ ResourceConfig _collectionsPartyCfg({required bool customer}) => ResourceConfig(
         const FieldSpec('paymentTerms', 'شروط السداد', 'Payment terms'),
         const FieldSpec('status', 'حالة التحصيل', 'Collection status'),
         const FieldSpec('creditLimit', 'حد الائتمان', 'Credit limit', type: FieldType.number),
-        // ── حقولُ دفتر التحصيل ────────────────────────────────────────────
-        // الكودُ يُترك فارغًا للجديد فيُولَّد على سياقة الدفتر (C#### للنقديّ
-        // و1104#### للضريبيّ). والمهلةُ تُعَدّ من **تسليم** الفاتورة لا من
-        // تاريخها — يُقال في العنوان لأنّ الفرق بينهما هو الفرق بين «متأخّر»
-        // و«لم يستلم بعد».
+        // Collections ledger fields.
+        // The code is left empty for a new one and generated following the ledger sequence (C#### for cash and 1104#### for tax). The credit term counts from invoice delivery, not its date; the title says so because the difference is the difference between overdue and not yet received.
         const FieldSpec('code', 'الكود', 'Code'),
         const FieldSpec('collectionOfficer', 'موظف التحصيل', 'Collection officer'),
         const FieldSpec('grade', 'التقييم', 'Grade'),
@@ -1394,9 +1343,9 @@ ResourceConfig _collectionsPartyCfg({required bool customer}) => ResourceConfig(
         ('outstanding', 'المستحق', 'Outstanding'),
         ('reports', 'عدد أوامر النقل', 'Reports'),
       ],
-      // ── الصفُّ يفتح ملفَّ الطرف (والتحرير من القلم) — كاسمه في الموقع ─────
+      // The row opens the party file (editing from the pencil), like its name on the website.
       onOpen: (ctx, r) => Navigator.push(ctx, MaterialPageRoute(builder: (_) => CollectionsPartyScreen(id: _s(r, '_id')))),
-      // ── وإسنادُ موظّف التحصيل: لهذا الحساب، أو لحساباتٍ معًا ────────────
+      // Assigning the collections employee: to this account or to several accounts together.
       rowActions: (r) => [
         if (collectionsCanEdit)
           ResourceAction(
@@ -1406,10 +1355,8 @@ ResourceConfig _collectionsPartyCfg({required bool customer}) => ResourceConfig(
       ],
     );
 
-// ── دفترُ التحصيل على الجوّال ───────────────────────────────────────────────
-// سجلُّ الأعمار ودفترُ الفواتير: يُقرآن في الطريق وقبل الزيارة — «كم عليه
-// ومنذ متى» و«أيُّ فاتورةٍ تستحقّ». وهما للقراءة هنا: التعديلُ يقع على الشاشة
-// حيث تُرى الأعمدةُ كلُّها بجانب بعضها.
+// Collections ledger on mobile.
+// The aging register and invoice ledger are read on the road and before a visit: how much he owes and since when, and which invoice is due. They are read-only here: editing happens on the screen where all columns are seen side by side.
 final collectionsAgingCfg = ResourceConfig(
   arTitle: 'أعمار الديون', enTitle: 'Aging', icon: Icons.layers_outlined,
   endpoint: '/api/collections-dept/ledger/aging', listKey: 'rows', liveEvent: 'collections:party',
@@ -1426,7 +1373,7 @@ final collectionsAgingCfg = ResourceConfig(
     final old = ((bands['120+'] as num?)?.toDouble() ?? 0) + ((bands['1Y+'] as num?)?.toDouble() ?? 0);
     return [
       (_n(out), T.danger),
-      // ما مضى عليه أربعةُ أشهرٍ فأكثر يُفرد بلونه: هو الذي يُلاحَق أوّلًا.
+      // Four months old or more gets its own color: it is pursued first.
       if (old > 0) ('${_n(old)} فوق 120 يوم', T.warn),
       if (pct != null) ('${pct.round()}% من الحد', pct >= 100 ? T.danger : pct >= 80 ? T.warn : T.success),
       if (_s(r, 'grade').isNotEmpty) (_s(r, 'grade'), T.cyan),
@@ -1449,7 +1396,7 @@ final collectionsLedgerCfg = ResourceConfig(
   titleOf: (r) => '${_s(r, 'invoiceNumber')} · ${_s(r, 'partyName')}',
   subtitleOf: (r) => [
     if (_s(r, 'invoiceDate').isNotEmpty) 'فُوترت ${_s(r, 'invoiceDate').split('T').first}',
-    // تسليمُ الفاتورة إلى العميل — منه تبدأ مهلتُه، وهو غير تسليم الكشف للفرع.
+    // Invoice delivery to the customer: his term starts from it, and it differs from delivering the sheet to the branch.
     if (_s(r, 'deliveryDate').isNotEmpty) 'سُلّمت للعميل ${_s(r, 'deliveryDate').split('T').first}',
     if (_s(r, 'collectionDate').isNotEmpty) 'حُصّلت ${_s(r, 'collectionDate').split('T').first}',
   ].join(' · '),
@@ -1458,8 +1405,7 @@ final collectionsLedgerCfg = ResourceConfig(
     return [
       (_n(r['total']), T.navy),
       if (_s(r, 'band').isNotEmpty && _s(r, 'band') != 'noDate') (_s(r, 'band'), T.cyan),
-      // ── والاستحقاقُ بكلامٍ لا برقمٍ سالب ──────────────────────────────
-      // «متأخّرة ١٢ يومًا» تُقرأ في لمحة، و«−١٢» تحتاج وقفةً لتُفهَم.
+      // Due date in words, not a negative number: "12 days overdue" is read at a glance while a negative twelve needs a pause.
       if (d != null && d < 0) ('متأخّرة ${-d} يومًا', T.danger)
       else if (d != null && d <= 3) ('تستحق بعد $d', T.warn),
       if (_s(r, 'status').isNotEmpty) (_s(r, 'status'), _s(r, 'status') == 'Collected' ? T.success : T.info),
@@ -1468,42 +1414,40 @@ final collectionsLedgerCfg = ResourceConfig(
   fields: const [],
 );
 
-// ── فواتيرُ التحصيل ────────────────────────────────────────────────────────
-// القسمُ يعمل بالفواتير لا بالكشوف. والنقديُّ صفُّه كشفٌ يُحصَّل في يومه،
-// والضريبيُّ صفُّه فاتورةٌ قد تضمّ كشوفًا وقيمتُها مكتوبةٌ فيها.
+// Collections invoices.
+// The section works by invoices, not sheets. A cash row is a sheet collected the same day; a tax row is an invoice that may contain sheets and its amount is written on it.
 final collectionsCashInvoicesCfg = ResourceConfig(
   arTitle: 'فواتير الكاش', enTitle: 'Cash Invoices', icon: Icons.payments_outlined,
   endpoint: '/api/collections-dept/invoices/cash', listKey: 'invoices',
-  // و`collections:changed` يحمل ربطَ الكشوف بالتخليص (services/customsOpsLink).
+  // collections:changed carries the sheet-to-customs link (services/customsOpsLink).
   liveEvent: 'workflow:updated', extraLiveEvents: const ['collections:attachments', 'collections:changed'], serverSearch: true,
   canCreate: false, canDelete: false,
-  // ثلاثُ حالاتٍ كالموقع — يحسبها الخادم مع الصفّ (collectionState).
+  // Three states as on the website, computed by the server with the row (collectionState).
   filterField: 'collectionState', filterOptions: _collectionStates,
   searchFields: const ['reportNumber', 'customer', 'payingBranch'],
   titleOf: (r) => _s(r, 'reportNumber'),
   subtitleOf: (r) => [_s(r, 'customer'), _s(r, 'payingBranch')].where((x) => x.isNotEmpty).join(' · '),
   chipsOf: (r) => [
     if (r['ageDays'] != null) ('${r['ageDays']} يوم', _ageColor(r['ageDays'])),
-    // «محصَّل» في الدفتر وإن لم يُكتب يومُه — كما تقولها شاشةُ الموقع.
+    // Collected in the ledger even if its day was not written, as the website screen says.
     if (r['collectedNoDate'] == true) ('محصَّل — بلا تاريخ', T.success)
     else if (_s(r, 'collectionState') == 'partial') ('جزئي — باقٍ ${_n(r['remaining'])}', T.warn)
     else if (_s(r, 'collectionDate').isEmpty) ('لم يُحصَّل', T.danger)
     else ('${_n(r['collectedAmount'])} محصَّل', T.success),
-    // التسليمُ خطوةٌ قبل التحصيل — ومنه تُعَدُّ مهلةُ العميل.
+    // Delivery is a step before collection, and the customer's term is counted from it.
     if (_s(r, 'deliveryDate').isEmpty) ('لم تُسلَّم', T.warn) else ('سُلِّمت', T.info),
     if (_s(r, 'collectionDetail').isNotEmpty) (_s(r, 'collectionDetail'), T.navy),
     if (_attachCount(r) > 0) ('${_attachCount(r)} مرفقات', T.orange),
-    // معاملةُ التخليص التي يخدمها الكشف — كشارة الموقع.
+    // The customs transaction the sheet serves, like the website badge.
     if (_customsChip(r['customs'] is Map ? [r['customs']] : const []) != null) _customsChip([r['customs']])!,
   ],
-  // ── والتحصيلُ من زرّ «تحصيل» لا من ورقة التحرير ─────────────────────────
-  // كاملٌ أو جزئيّ، ولكلّ دفعةٍ مبلغٌ ويومٌ وكاتب (راجع collection_collect).
-  // فكتابةُ المبلغ والتاريخ في الورقة كانت تتجاوز الدفعات وتمحو الباقي.
+  // Collection is done from the collect button, not the edit sheet.
+  // Full or partial, each payment having an amount, a day and a writer (see collection_collect). Writing the amount and date in the sheet bypassed payments and erased the rest.
   fields: [
-    // ── والتسليمُ للعميل هنا كما هو في الشاشة ──────────────────────────────
-    // كان في صفحة الضريبيّ وحدَها، والنقديُّ يُحمَل إلى العميل مثلَه.
+    // Delivery to the customer is here as on the screen.
+    // It was on the tax page only, and cash is carried to the customer the same way.
     const FieldSpec('deliveryDate', 'تاريخ التسليم للعميل', 'Delivered to customer', type: FieldType.date),
-    // والقائمةُ من إعدادات القسم، ويُخزَّن نصُّها العربيّ لا معرّفُها.
+    // The list comes from section settings, and its Arabic text is stored, not its id.
     FieldSpec('collectionDetail', 'التفاصيل', 'Detail', type: FieldType.lookup,
         lookupEndpoint: '/api/lookups?type=collections_detail&active=true',
         lookupListKey: 'items', lookupQuery: 'limit=200',
@@ -1518,7 +1462,7 @@ final collectionsCashInvoicesCfg = ResourceConfig(
   ],
 );
 
-/// شارةُ «التخليص» في صفّ التحصيل: رقمُ المعاملة · عددُ الحاويات، و«+ن» لغيرها.
+/// Customs badge in a collections row: transaction number and container count, with +n for others.
 (String, Color)? _customsChip(List links) {
   final list = links.whereType<Map>().where((l) => '${l['refNumber'] ?? ''}'.isNotEmpty).toList();
   if (list.isEmpty) return null;
@@ -1528,31 +1472,27 @@ final collectionsCashInvoicesCfg = ResourceConfig(
   return ('تخليص ${first['refNumber']}${n > 0 ? ' · $n حاوية' : ''}$more', T.cyan);
 }
 
-/// حالاتُ التحصيل الثلاث — شرائحُ التصفية فوق القائمتين.
+/// The three collection states: filter chips above the two lists.
 const _collectionStates = [
   ('none', 'لم تُحصَّل بعد', 'Not collected'),
   ('partial', 'تم تحصيلها جزئيًّا', 'Partially collected'),
   ('full', 'تم تحصيلها', 'Collected'),
 ];
 
-/// «تحصيل» — كاملٌ أو جزئيّ، كنافذة الموقع.
+/// Collect: full or partial, like the website dialog.
 ResourceAction _collectAction(bool isCash) => ResourceAction(
       icon: Icons.check_circle_outline_rounded, ar: 'تحصيل', en: 'Collect', color: T.orange,
       run: (ctx, r) => openCollectSheet(ctx, isCash: isCash, row: r),
     );
 
-/// مَن يكتب في فواتير التحصيل — يضبطه `sectionsFor` من دور المستخدم ومنحِ القسم
-/// (EDIT_ROLES في routes/collectionsDept). القراءةُ أوسعُ من الكتابة هنا، فلا
-/// يُعرَض «لم تُحصَّل» لمن سيرفضه الخادم.
+/// Who writes in collections invoices: set by sectionsFor from the user's role and section grant (EDIT_ROLES in routes/collectionsDept). Reading is broader than writing here, so not-collected is not shown to someone the server would reject.
 bool collectionsCanEdit = true;
 
-/// «تعديل القيمة» — بالدور وحدَه، كحارس الخادم (`authorize.strict` على
-/// collectionsDeptController.AMOUNT_EDIT_ROLES): منحُ القسم «تعديلًا» لا يفتحه.
+/// Edit amount: by role alone, like the server guard (authorize.strict on collectionsDeptController.AMOUNT_EDIT_ROLES); a section edit grant does not open it.
 const collectionsAmountEditRoles = ['super_admin', 'admin', 'collections_manager', 'cfo', 'accounting_manager'];
 bool collectionsCanEditAmount = false;
 
-/// «لم تُحصَّل» — الرجوعُ عن تحصيلٍ سُجِّل: السببُ اختياريّ، ويُقيَّد باسم صاحبه.
-/// الفاتورةُ الضريبيّةُ تُعرَف برقمها، والكشفُ النقديُّ بمعرّفه في سير العمل.
+/// Not collected: reverting a recorded collection. The reason is optional and recorded under the user's name. A tax invoice is identified by its number, a cash sheet by its workflow id.
 ResourceAction _uncollectAction(Map<String, dynamic> Function(Map<String, dynamic>) target) => ResourceAction(
       icon: Icons.undo_rounded, ar: 'لم تُحصَّل', en: 'Not collected', color: T.danger,
       confirmAr: 'يُمحى تاريخُ التحصيل ومبلغُه من أوامر النقل ومن سير عمل التشغيل وتعود غيرَ محصَّلة — يُقيَّد باسمك وسببك.',
@@ -1571,9 +1511,9 @@ final collectionsTaxInvoicesCfg = ResourceConfig(
   titleOf: (r) => _s(r, 'invoiceNumber'),
   subtitleOf: (r) => [_s(r, 'customer'), '${_n(r['value'])} ر.س'].where((x) => x.isNotEmpty).join(' · '),
   chipsOf: (r) => [
-    // عددُ الكشوفات: الفاتورةُ الواحدة قد تضمّ أكثرَ من كشف.
+    // Sheet count: one invoice may contain more than one sheet.
     ('${r['reports'] ?? 0} أمر نقل', T.navy),
-    // معاملاتُ التخليص التي تخدمها كشوفُ الفاتورة.
+    // Customs transactions served by the invoice's sheets.
     if (_customsChip(r['customs'] is List ? r['customs'] as List : const []) != null) _customsChip(r['customs'] as List)!,
     if (r['ageDays'] != null) ('${r['ageDays']} يوم', _ageColor(r['ageDays'])),
     if (r['fullyCollected'] == true) ('محصَّلة', T.success)
@@ -1587,7 +1527,7 @@ final collectionsTaxInvoicesCfg = ResourceConfig(
     _attachmentsAction('tax', (r) => _s(r, 'invoiceNumber'), (r) => _s(r, 'invoiceNumber')),
     if (collectionsCanEdit && (r['fullyCollected'] == true || _s(r, 'collectionDate').isNotEmpty || _s(r, 'collectionState') == 'partial'))
       _uncollectAction((r) => {'invoiceNumber': _s(r, 'invoiceNumber')}),
-    // تصحيحُ قيمة الفاتورة في الدفتر (ويجوز بالسالب) — كالموقع، ولأدوارها وحدَها.
+    // Correcting the invoice amount in the ledger (negative allowed), like the website and for its roles only.
     if (collectionsCanEditAmount)
       ResourceAction(
         icon: Icons.edit_note_rounded, ar: 'تعديل القيمة', en: 'Edit amount', color: T.navy,
@@ -1616,18 +1556,17 @@ final collectionsTaxInvoicesCfg = ResourceConfig(
   ],
 );
 
-/// عددُ مرفقات الفاتورة كما يردّه الخادمُ مع الصفّ.
+/// Invoice attachment count as returned by the server with the row.
 int _attachCount(Map<String, dynamic> r) => (r['attachments'] is num) ? (r['attachments'] as num).toInt() : 0;
 
-/// «المرفقات» — تفتح ملفّاتِ الفاتورة: فتحٌ وتنزيل، ورفعٌ وحذفٌ لمن يملكهما
-/// (يقرّره الخادم). الضريبيّةُ برقمها، والنقديّةُ بمعرّف كشفها — كالموقع.
+/// Attachments: opens the invoice files. Open and download, plus upload and delete for whoever has them (decided by the server). Tax by number and cash by its sheet id, like the website.
 ResourceAction _attachmentsAction(String kind, String Function(Map<String, dynamic>) keyOf, String Function(Map<String, dynamic>) labelOf) =>
     ResourceAction(
       icon: Icons.attach_file_rounded, ar: 'المرفقات', en: 'Attachments', color: T.orange,
       run: (ctx, r) => openCollectionAttachments(ctx, kind: kind, key: keyOf(r), label: labelOf(r)),
     );
 
-/// لونُ العمر — الأقدمُ أشدّ. الرقمُ وحدَه لا يقول خطرَه.
+/// Age color: older is more severe; the number alone does not convey the danger.
 Color _ageColor(dynamic d) {
   final n = (d is num) ? d : num.tryParse('$d') ?? 0;
   if (n > 60) return T.danger;
@@ -1699,7 +1638,7 @@ final shipmentOrdersFieldsCfg = ResourceConfig(
   ],
 );
 
-// ── موردو العلاقات (3PL) — CRM Vendors ───────────────────────────────────────
+// CRM vendors (3PL).
 final crmVendorsCfg = ResourceConfig(
   onOpen: (c, r) => Navigator.push(c, MaterialPageRoute(builder: (_) => CrmVendorDetailScreen(vendor: r))),
   arTitle: 'الموردون (3PL)', enTitle: 'CRM Vendors', icon: Icons.local_shipping_outlined,
@@ -1732,37 +1671,32 @@ final crmVendorsCfg = ResourceConfig(
   ],
 );
 
-// ── عقود الموظفين — HR Contracts (قراءة؛ الإنشاء يتم من ملف الموظف) ──────────
+// Employee contracts, HR Contracts (read-only; creation happens from the employee file).
 final hrContractsCfg = ResourceConfig(
   arTitle: 'عقود الموظفين', enTitle: 'Employment Contracts', icon: Icons.description_outlined,
-  // ── والحدثُ الحيُّ هو ما يبثّه الخادمُ فعلًا ─────────────────────────────────
-  // كان `hr:updated` — اسمٌ لا يبثّه الخادمُ في أيّ موضع، فالقائمةُ لا تتحدّث
-  // إلّا بالسحب. وكلُّ كتابةٍ في العقود (إنشاءٌ، تعديلٌ، تجديدٌ، فسخٌ، حذف) وكلُّ
-  // تعديلٍ في ملفّ الموظّف يبثّ `hr:master` للجميع — وهو ما تسمعه صفحةُ الويب.
+  // The live event is the one the server actually broadcasts.
+  // It used to be hr:updated, a name the server never emits, so the list refreshed only by pull. Every contract write (create, edit, renew, terminate, delete) and every employee file edit broadcasts hr:master to everyone, which the web page listens to.
   endpoint: '/api/hr/contracts', listKey: 'contracts', liveEvent: 'hr:master',
   canCreate: false, canEdit: false, canDelete: false,
-  // بياناتُ ورقة العقد نفسِها: الهويّةُ كما كُتبت فيه، والمهنةُ **كما في العقد**
-  // (تختلف عن المهنة في الإقامة وعن المسمّى الوظيفيّ)، والسجلُّ الصادر تحته —
-  // وهي ما يُبحَث به فعلًا، لا حالةُ العقد.
+  // Data of the contract paper itself: identity as written in it, the profession as in the contract (differs from the iqama profession and the job title), and the register issued under it. These are what is actually searched by, not the contract status.
   searchFields: const ['jobTitle', 'type', 'status', 'iqamaNumber', 'contractProfession', 'sponsorRegistration', 'employeeNameAr', 'contractNumber'],
   titleOf: (r) => (r['employee'] is Map ? (r['employee']['arabicName'] ?? r['employee']['englishName'] ?? r['employee']['name']) : null)?.toString()
       ?? (_s(r, 'employeeNameAr').isNotEmpty ? _s(r, 'employeeNameAr') : _s(r, 'jobTitle')),
   subtitleOf: (r) => [
     _s(r, 'contractProfession').isNotEmpty ? _s(r, 'contractProfession') : _s(r, 'jobTitle'),
     _s(r, 'iqamaNumber'),
-    // القسمُ كما في جدول الويب — يُقرأ من ملفّ الموظّف المرفق بالعقد.
+    // Department as in the web table, read from the employee file attached to the contract.
     if (r['employee'] is Map) (r['employee']['department'] ?? '').toString(),
-    // بدايةُ العقد ونهايتُه، كلٌّ بتقويميه: الميلاديُّ ثمّ هجريُّه.
+    // Contract start and end, each in both calendars: Gregorian then Hijri.
     [_s(r, 'startDate'), _s(r, 'endDate')].where((x) => x.isNotEmpty).map((x) => bothDates(x, ar: Lang.instance.ar)).join(' → '),
   ].where((x) => x.isNotEmpty).join(' · '),
   chipsOf: (r) => [
-    // ساري أو منتهي لا غير — كشارة الموقع، لا مفتاحُ القاعدة.
+    // Valid or expired only, like the website badge, not the database key.
     if (_s(r, 'status').isNotEmpty) (r['status'] == 'active' ? 'ساري' : 'منتهي', r['status'] == 'active' ? T.success : T.inkFaint),
-    // «غير مطلوب» حالةٌ سليمة لا صفرٌ ناقص — تُكتب كما هي.
+    // Not required is a healthy state, not a missing zero; written as it is.
     if (_s(r, 'annualLeaveText').isNotEmpty) (_s(r, 'annualLeaveText'), T.warn)
     else if (r['annualLeaveDays'] != null) ('إجازة ${r['annualLeaveDays']}', T.cyan),
-    // رقمُ العقد في «قوى» — هو ما يُطلب في التفتيش ومراسلة المكتب، فيُقرأ
-    // من الجوّال كما يُقرأ من الشاشة.
+    // Contract number in Qiwa: asked for in inspection and office correspondence, so it is read from mobile as on the screen.
     if (_s(r, 'contractNumber').isNotEmpty) ('عقد ${_s(r, 'contractNumber')}', T.navy),
     if (_s(r, 'sponsorRegistration').isNotEmpty) ('سجل ${_s(r, 'sponsorRegistration')}', T.inkFaint),
     if (r['basicSalary'] != null && r['basicSalary'] != 0) ('${r['basicSalary']}', T.navy),
@@ -1770,7 +1704,7 @@ final hrContractsCfg = ResourceConfig(
   fields: const [],
 );
 
-// ── مخزون الموارد البشرية — HR Stock ─────────────────────────────────────────
+// HR stock.
 final hrStockCfg = ResourceConfig(
   arTitle: 'مخزون الموارد البشرية', enTitle: 'HR Stock', icon: Icons.inventory_2_outlined,
   endpoint: '/api/hr/stock', listKey: 'items', liveEvent: 'hr:asset',
@@ -1781,9 +1715,9 @@ final hrStockCfg = ResourceConfig(
     ('الكمية: ${(r['quantity'] is num && r['quantity'] > 0) ? r['quantity'] : 1}', T.navy),
     if (_s(r, 'condition').isNotEmpty) (HrAssetVocab.conditionLabel(r['condition']), _s(r, 'condition') == 'damaged' ? T.danger : T.cyan),
   ],
-  // التالفُ شريحةٌ تُفتَح كبطاقة «التالف» في الموقع.
+  // Damaged is a chip opened like the Damaged card on the website.
   filterField: 'condition',
-  // «تسليم لموظف» — POST /api/hr/stock/:id/assign كالموقع (يُختار الموظّف والتاريخ والحالة).
+  // Hand over to an employee: POST /api/hr/stock/:id/assign as on the website (employee, date and condition are chosen).
   rowActions: (r) => [
     ResourceAction(icon: Icons.person_add_alt_outlined, ar: 'تسليم لموظف', en: 'Assign to employee', color: T.orange,
         run: (c, row) => hrStockAssign(c, row)),
@@ -1811,21 +1745,17 @@ final hrStockCfg = ResourceConfig(
   ],
 );
 
-// ── أوامر شغل المركبات — Workshop Work Orders ───────────────────────────────
+// Vehicle work orders, Workshop Work Orders.
 
-// ── سجل المراجعة — Audit Log (قراءة فقط) ────────────────────────────────────
-// الصفُّ كان يعرض مفتاحَي الفعل والكيان كما هما في القاعدة
-// (`update_workflow · OperationsWorkflow`) ولا يقول ما تغيّر. والخادمُ صار يكتب
-// الجملةَ نفسَها التي يعرضها الموقع: اسمَ الفعل، والسجلَّ الذي وقع عليه، وما
-// تغيّر فيه «من كذا إلى كذا» — فتُعرَض هنا كما هي، ولا تُبنى مرّةً ثانية.
+// Audit log, read-only.
+// The row used to show the action and entity keys as stored (update_workflow · OperationsWorkflow) without saying what changed. The server now writes the same sentence the website shows: action name, the record it hit and what changed from X to Y, so it is displayed as is and not rebuilt.
 final auditCfg = ResourceConfig(
   arTitle: 'سجل التدقيق', enTitle: 'Audit Log', icon: Icons.fact_check_outlined,
   endpoint: '/api/audit', listKey: 'logs', liveEvent: '',
   canCreate: false, canEdit: false, canDelete: false,
   searchFields: const ['actionLabel', 'entityLabel', 'sectionLabel', 'subject', 'summary', 'userName'],
   titleOf: (r) => [_s(r, 'actionLabel'), _s(r, 'subject')].where((x) => x.isNotEmpty).join(' — '),
-  // السطرُ الثاني سطرٌ واحدٌ في القائمة العامّة، فهو لجملة ما تغيّر وحدَها —
-  // ومَن ومتى في الشرائح تحته، فلا تُقصّ الجملةُ ليُفسَح لهما.
+  // The second line is a single line in the general list, so it holds only the sentence of what changed; who and when are in the chips under it, so the sentence is not cut to make room.
   subtitleOf: (r) => _s(r, 'summary'),
   chipsOf: (r) => [
     if (_s(r, 'sectionLabel').isNotEmpty) (_s(r, 'sectionLabel'), T.navy),
@@ -1838,19 +1768,17 @@ final auditCfg = ResourceConfig(
 );
 
 
-// ── أطرافُ التخليص: عملاءُ ووكلاءُ شحنٍ وناقلون ───────────────────────────────
-// سجلٌّ واحدٌ بثلاثة أدوار (CustomsParty.kind) — البنيةُ واحدةٌ والفرقُ الدور،
-// فالإعدادُ واحدٌ يُستنسَخ بالدور لا ثلاثةُ إعداداتٍ تفترق عند أوّل تعديل.
+// Customs parties: customers, shipping agents and carriers.
+// One register with three roles (CustomsParty.kind): the structure is the same and only the role differs, so one config is cloned per role instead of three configs that drift on the first edit.
 ResourceConfig _customsPartyCfg(String kind, String ar, String en, IconData icon) => ResourceConfig(
       arTitle: ar, enTitle: en, icon: icon,
-      // `deep=1` + البحثُ في الخادم: يُوجَد الطرفُ كذلك برقم حاويةٍ أو بوليصةٍ من
-      // معاملاته — كصفحة الأطراف في الموقع.
+      // deep=1 plus server search: a party is also found by a container or waybill number from its transactions, like the parties page on the website.
       endpoint: '/api/customs-clearance/parties', listKey: 'parties', listQuery: 'kind=$kind&deep=1',
       serverSearch: true,
       searchHint: ('ابحث بالاسم أو الجوال أو السجل — أو برقم حاويةٍ أو بوليصةٍ من معاملاته…',
           'Name, phone, CR — or a container / BL number from their deals…'),
       updateMethod: 'PUT', liveEvent: 'customs:updated',
-      // نقرةُ الصفّ تفتح ملفَّه (بياناتُه ومرفقاتُه)، والتحريرُ من أيقونة القلم.
+      // Tapping the row opens its file (data and attachments); editing is from the pencil icon.
       onOpen: (c, r) => Navigator.push(c, MaterialPageRoute(
           builder: (_) => CustomsPartyScreen(partyId: _s(r, '_id'), name: _s(r, 'name')))),
       searchFields: const ['name', 'email', 'phone', 'contactPerson', 'city', 'commercialRegister', 'taxNumber'],
@@ -1863,7 +1791,7 @@ ResourceConfig _customsPartyCfg(String kind, String ar, String en, IconData icon
       ],
       fields: [
         const FieldSpec('name', 'الاسم', 'Name', required: true),
-        // الدورُ يُرسَل مع الإنشاء، وإلّا أُنشئ عميلًا مهما كانت الصفحة.
+        // The role is sent with create, otherwise a customer is created whatever the page.
         FieldSpec('kind', 'الدور', 'Role', type: FieldType.select, options: [(kind, ar, en)]),
         const FieldSpec('contactPerson', 'مسؤول التواصل', 'Contact person'),
         const FieldSpec('phone', 'الجوال', 'Phone'),
@@ -1880,13 +1808,13 @@ final customsCustomersCfg = _customsPartyCfg('customer', 'عملاء التخل�
 final customsAgentsCfg = _customsPartyCfg('agent', 'وكلاء الشحن', 'Shipping Agents', Icons.directions_boat_outlined);
 final customsCarriersCfg = _customsPartyCfg('carrier', 'الناقلون', 'Carriers', Icons.local_shipping_outlined);
 
-/// اسمُ الطرف ومعه دورُه — «الاسم» وحدَه لا يقول أهو عميلٌ أم ناقل.
+/// Party name with its role: the name alone does not say whether it is a customer or a carrier.
 String _partyLabel(Map<String, dynamic> r) {
   final kind = switch (_s(r, 'kind')) { 'agent' => 'وكيل شحن', 'carrier' => 'ناقل', _ => 'عميل' };
   return '${_s(r, 'name')} — $kind';
 }
 
-/// في العقد سعرٌ واحدٌ على الأقلّ متّفقٌ عليه.
+/// A contract has at least one agreed price.
 bool _hasContractPricing(Map<String, dynamic> r) {
   final p = r['pricing'];
   if (p is! Map) return false;
@@ -1894,8 +1822,8 @@ bool _hasContractPricing(Map<String, dynamic> r) {
       || (p['routes'] is List && (p['routes'] as List).isNotEmpty);
 }
 
-// ── عقودُ التخليص ────────────────────────────────────────────────────────────
-// عقدُنا مع عميلٍ أو وكيلٍ أو ناقل — يُقرأ ويُنشأ ويُعدَّل، ومرفقُه يُرفع من صفّه.
+// Customs contracts.
+// Our contract with a customer, agent or carrier: read, created and edited, with its attachment uploaded from its row.
 final customsContractsCfg = ResourceConfig(
   arTitle: 'عقود التخليص', enTitle: 'Customs Contracts', icon: Icons.assignment_outlined,
   endpoint: '/api/customs-clearance/contracts', listKey: 'contracts',
@@ -1919,10 +1847,9 @@ final customsContractsCfg = ResourceConfig(
       ('${(r['attachments'] as List).length} مرفق', T.cyan),
     if (_s(r, 'partyKind') == 'customer' && _hasContractPricing(r)) (tr('بأسعار', 'Priced'), T.success),
   ],
-  // أسعارُ العميل (أجورُ التخليص ووجهاتُ النقل) مصفوفةٌ متداخلة لا يكتبها النموذجُ
-  // العامّ — فلها ورقتُها، ولعقد العميل وحدَه.
+  // Customer prices (clearance fees and transport destinations) are a nested array the generic form does not write, so they have their own sheet, for the customer contract only.
   rowActions: (r) => [
-    // مرفقُ العقد (الموقَّعُ نفسُه) يُرفع ويُفتح ويُحذف من صفّه — كالموقع.
+    // Contract attachment (the signed file itself) is uploaded, opened and deleted from its row, like the website.
     ResourceAction(
       icon: Icons.attach_file_rounded, ar: 'مرفقات العقد', en: 'Contract files', color: T.cyan,
       run: (c, row) => manageCustomsContractFiles(c, row),
@@ -1958,22 +1885,10 @@ final customsContractsCfg = ResourceConfig(
   ],
 );
 
-// ── النقل الخفيف ─────────────────────────────────────────────────────────────
-// سجلُّ القسم كلِّه: المناديبُ والمشرفون والإداريّون والفنيّون. وهو غيرُ
-// «مناديب B2C» أعلاه — تلك تقرأ `B2CRep` وهي مَن لهم تقاريرُ طلبات، وأحدَ عشرَ
-// موظّفًا من مئةٍ وواحدٍ وستّين ليسوا فيها أصلًا.
-//
-// والإنسانُ في الموارد البشريّة والمركبةُ في سجلّ المركبات — لا يُنسَخ منهما شيء
-// (راجع backend/models/LightTransport). فالحالةُ المعروضةُ تأتي مشتقّةً من
-// الخادم في `workStatusShown`، ولا تُحسَب هنا مرّةً ثانية.
-//
-// ── والإضافةُ تُنشئ ملفًّا في الموارد البشريّة ───────────────────────────────
-// فهي لمدير القطاع ونائبه ومدير النظام وأهل المال (`canAdd` — يطابق حارسَ
-// المسار `authorize.strict` في routes/lightTransport)، وبنموذجها الخاصّ: معها
-// مستنداتُ الموظّف، والنموذجُ العامّ لا يحمل ملفّات.
-/// تأجيرُ اليوزرات — يوزرٌ على أحد مشاريعنا مؤجَّرٌ لشركةٍ أو لشخص. مطابقٌ لصفحة
-/// الموقع `/system/b2c/user-rentals`: التاريخُ يكتبه الخادمُ يومَ التسجيل، والتأجيرُ
-/// يُنهى ولا يُمحى (والحذفُ لتصحيح خطأٍ — لإدارة القطاع، والخادمُ يحرسه).
+// Light transport: the whole section register (reps, supervisors, administrators, technicians), unlike the B2C reps above which read B2CRep.
+// The person lives in HR and the vehicle in the vehicles register; nothing is copied (see backend/models/LightTransport). Displayed status is derived by the server in workStatusShown.
+// Adding creates an HR file, limited to the sector manager, deputy, system admin and finance (canAdd, matching authorize.strict in routes/lightTransport), with its own form that carries documents.
+// User rentals match the web page /system/b2c/user-rentals: the server writes the date, a rental is ended not erased.
 ResourceConfig ltUserRentalsCfg({required bool canWrite, required bool canDelete}) => ResourceConfig(
   arTitle: 'تأجير اليوزرات', enTitle: 'User Rentals',
   icon: Icons.key_outlined,
@@ -1986,7 +1901,7 @@ ResourceConfig ltUserRentalsCfg({required bool canWrite, required bool canDelete
   titleOf: (r) => _s(r, 'renterName'),
   subtitleOf: (r) => [
     _s(r, 'projectAr'),
-    // اليوزرُ صفُّه في «موظفي النقل الخفيف» — الرابطُ بكروت اللوحة (كالموقع).
+    // The user's row is in light transport staff: the link to the dashboard cards (like the website).
     if (r['rep'] is Map) '${tr('اليوزر', 'User')}: ${[(r['rep'] as Map)['name'], (r['rep'] as Map)['vehiclePlate']].where((x) => (x ?? '').toString().isNotEmpty).join(' · ')}',
     _s(r, 'renterType') == 'company' ? tr('شركة', 'Company') : tr('شخص', 'Person'),
     _s(r, 'idNumber'),
@@ -1997,13 +1912,12 @@ ResourceConfig ltUserRentalsCfg({required bool canWrite, required bool canDelete
     if (r['rep'] == null) (tr('غير مربوط بيوزر', 'Not linked'), T.warn),
   ],
   fields: [
-    // يُختار اليوزرُ من موظّفي النقل الخفيف فيُربط التأجيرُ بكروت اللوحة: مشروعُه
-    // يتبعه، ونوعُ عقده «يوزرات» ما دام مؤجَّرًا (backend utils/ltRental).
+    // The user is chosen from light transport staff so the rental links to the dashboard cards: his project follows him, and his contract type is users while rented (backend utils/ltRental).
     FieldSpec('ltEmployee', 'اليوزر (من موظفي النقل الخفيف)', 'User (light-transport staff)', type: FieldType.lookup,
         lookupEndpoint: '/api/light-transport/people?only=lt', lookupListKey: 'people',
         lookupLabel: (r) => [_s(r, 'name'), _s(r, 'idNumber'), _s(r, 'projectAr')].where((x) => x.isNotEmpty).join(' · '),
         lookupValue: (r) => _s(r, 'ltId')),
-    // ومع اليوزر المربوط يُؤخذ مشروعُه من صفّه (الخادمُ يكتبه) — فلا يُطلَب هنا.
+    // With a linked user, his project is taken from his row (the server writes it), so it is not asked for here.
     FieldSpec('projectAr', 'المشروع', 'Project', type: FieldType.lookup,
         lookupEndpoint: '/api/lookups?type=lt_project&active=true',
         lookupListKey: 'items', lookupQuery: 'limit=200',
@@ -2029,11 +1943,10 @@ ResourceConfig ltUserRentalsCfg({required bool canWrite, required bool canDelete
   ],
 );
 
-/// `listQuery` يفتح السجلَّ مفلترًا — أرقامُ «إجمالي المناديب» في لوحة القسم
-/// تفتح أصحابَها (staffKind/project/contractKind/inService)، كرابط الموقع.
+/// listQuery opens the register filtered: the total reps numbers on the section dashboard open their owners (staffKind/project/contractKind/inService), like the website link.
 ResourceConfig lightTransportCfg({required bool canAdd, bool canTransfer = false, String listQuery = '', String? arTitle, String? enTitle}) => ResourceConfig(
   canCreate: canAdd,
-  // «نقل المشروع» من القائمة نفسِها — لمن يملكه وحدَه (كالموقع).
+  // Move project from the list itself: only for whoever holds it (like the website).
   rowActions: canTransfer ? (r) => [const ResourceAction(icon: Icons.swap_horiz, ar: 'نقل المشروع', en: 'Transfer project', color: T.orange, run: transferLtProject)] : null,
   listQuery: listQuery,
   onCreate: showLtAddEmployee,
@@ -2043,11 +1956,10 @@ ResourceConfig lightTransportCfg({required bool canAdd, bool canTransfer = false
   icon: Icons.two_wheeler_outlined,
   endpoint: '/api/light-transport/employees', listKey: 'employees',
   liveEvent: 'lt:*',
-  // البحثُ في الخادم: هو الذي يصل سجلَّ المركبات أيضًا — الرقمُ التسلسليُّ ورقمُ
-  // التفويض ليسا في صفّ الموظّف، فبحثٌ محلّيٌّ يقول «لا نتائج» والمركبةُ عندنا.
+  // Server search, which also reaches the vehicles register: the serial number and authorization number are not on the employee row, so a local search says no results while we have the vehicle.
   serverSearch: true,
   searchFields: const ['name', 'idNumber', 'vehiclePlate', 'supervisorName', 'projectAr'],
-  // شرائحُ أعلى القائمة: المشروعُ أكثرُ ما يُفلتَر عليه في هذا القسم.
+  // Top-of-list chips: project is the most common filter in this section.
   filterField: 'projectAr',
   sortFields: const [('name', 'الاسم', 'Name'), ('hireDate', 'تاريخ التعيين', 'Hire date')],
   titleOf: (r) => _s(r, 'name'),
@@ -2062,11 +1974,10 @@ ResourceConfig lightTransportCfg({required bool canAdd, bool canTransfer = false
       if (kind.isNotEmpty) (kind == 'rep' ? 'مندوب' : 'إداري', kind == 'rep' ? T.orange : T.navy),
       if (st.isNotEmpty)
         (st, st == 'إنهاء خدمة' || st == 'حادث' ? T.danger : st == 'موقوف' || st == 'متوقف' ? T.warn : st == 'إجازة' ? T.navy : T.success),
-      // ولا ملفَّ له في الموارد البشريّة: القسمُ يملك سجلَّه — اثنا عشرَ فري لانسر.
+      // No HR file: the section owns its register, twelve freelancers.
       if (r['hrLinked'] == false) ('بلا ملفّ HR', T.warn),
-      // ── بطاقةُ التشغيل والفحصُ: لا تُعرَض إلّا حين تكون خبرًا ──────────────
-      // الشارةُ تقول ما يوقِف الرجلَ صباحًا. و«سارية» ليست خبرًا، فلا تُزاحم
-      // الشاراتِ الأخرى على شاشةِ هاتف.
+      // Operating card and inspection: shown only when they are news.
+      // The badge says what stops the man in the morning. Valid is not news, so it does not crowd other badges on a phone screen.
       if (_docBad(r['operatingCard'])) ('كارت التشغيل ${_docWord(r['operatingCard'])}', _docColor(r['operatingCard'])),
       if (_docBad(r['inspection'])) ('الفحص ${_docWord(r['inspection'])}', _docColor(r['inspection'])),
       ...personDocChips(r),
@@ -2075,8 +1986,7 @@ ResourceConfig lightTransportCfg({required bool canAdd, bool canTransfer = false
   fields: [
     const FieldSpec('idNumber', 'رقم الهوية', 'ID number', required: true),
     const FieldSpec('name', 'الاسم', 'Name', required: true),
-    // القيمُ الثابتةُ قوائمُ مُدارةٌ من إعدادات القسم، وتُخزَّن بنصِّها العربيّ:
-    // الخانةُ الحرّةُ تكتب الواحدةَ بألف صيغة فتصير في التقارير عدّةَ مشاريع.
+    // Fixed values are managed lists from section settings, stored by their Arabic text: a free field writes one value a thousand ways and reports then show several projects.
     FieldSpec('projectAr', 'المشروع', 'Project', type: FieldType.lookup,
         lookupEndpoint: '/api/lookups?type=lt_project&active=true',
         lookupListKey: 'items', lookupQuery: 'limit=200',
@@ -2101,10 +2011,8 @@ ResourceConfig lightTransportCfg({required bool canAdd, bool canTransfer = false
         lookupEndpoint: '/api/lookups?type=lt_vehicle_type&active=true',
         lookupListKey: 'items', lookupQuery: 'limit=200',
         lookupLabel: (r) => _s(r, 'nameAr'), lookupValue: (r) => _s(r, 'nameAr')),
-    // ── حالةُ العمل اليوم: يعمل · إجازة · موقوف · حادث (صاحبُ الشركة، ٢٠٢٦/١٠/٢١) ──
-    // تُكتب من هنا (`opStatus`) وتُرى في ملفّه بالموارد البشريّة وعلى مركبته. «موقوف»
-    // توقّفٌ تشغيليٌّ من القسم وحدَه؛ وإجازةُ الموارد البشريّة تُقرأ ولا تُكتب هنا،
-    // وإنهاءُ الخدمة هناك وحدَها. المعروضُ مشتقٌّ في الخادم (`workStatusShown`).
+    // Work status today: working, leave, suspended, accident.
+    // Written from here (opStatus) and seen in his HR file and on his vehicle. Suspended is an operational stop by the section alone; HR leave is read and not written here, and end of service is HR alone. The displayed value is derived on the server (workStatusShown).
     const FieldSpec('opStatus', 'حالة العمل اليوم', 'Work status today', type: FieldType.select, options: [
       ('', 'يعمل', 'Working'),
       ('leave', 'إجازة', 'On leave'),
@@ -2112,11 +2020,8 @@ ResourceConfig lightTransportCfg({required bool canAdd, bool canTransfer = false
       ('accident', 'حادث', 'Accident'),
     ]),
     const FieldSpec('opStatusNote', 'سبب الحالة', 'Status reason'),
-    // ── المشرفُ حسابٌ على النظام لا اسمٌ يُكتب ────────────────────────────
-    // كان خانةً حرّة، فيُكتب «خالد عباس» هنا و«خالد عبدالسلام» هناك، ولا يعرف
-    // السجلُّ أنّ لصاحب الاسم حسابًا يدخل به ليتفقّد رجاله. فصار اختيارًا من
-    // حسابات الإشراف في القسم — ومن يُختار هنا يرى هذا الرجلَ في تفقّد بداية
-    // الدوام. راجع backend/utils/b2cSupervisors.
+    // The supervisor is a system account, not a typed name.
+    // It was a free field, so one man was written with two different names in two places and the register could not tell the name had an account to check his men. It is now a choice among the section's supervision accounts, and whoever is chosen sees this man in the start-of-shift duty check. See backend/utils/b2cSupervisors.
     FieldSpec('supervisorUser', 'المشرف', 'Supervisor', type: FieldType.lookup,
         lookupEndpoint: '/api/light-transport/supervisors', lookupListKey: 'supervisors',
         lookupLabel: (r) => '${_s(r, 'name')} — ${_s(r, 'roleAr')}',
@@ -2126,14 +2031,12 @@ ResourceConfig lightTransportCfg({required bool canAdd, bool canTransfer = false
     const FieldSpec('hireDate', 'تاريخ التعيين', 'Hire date', type: FieldType.date),
     const FieldSpec('notesAr', 'ملاحظات', 'Notes', type: FieldType.textarea),
   ],
-  // لا حذفَ لموظّف — يُعطَّل السجلّ ويبقى أثرُه، كقاعدة الموارد البشريّة.
+  // No employee delete: the record is deactivated and its trail kept, as in the HR rule.
   canDelete: false,
 );
 
-// ── أوامر التشغيل ────────────────────────────────────────────────────────────
-// «هذا الموظّفُ يعمل على هذه المركبة، في هذا المشروع والفرع.» والقراءةُ هنا
-// والإنشاءُ من الويب: النموذجُ يختار موظّفًا ومركبةً وسكنًا بقواعدَ (مركبةٌ
-// واحدةٌ لراكب، وغرفةٌ لا تُتجاوَز سعتُها) لا تُختصَر في ورقةٍ على هاتف.
+// Operating orders.
+// "This employee works on this vehicle, in this project and branch." Read here and created on the web: the form picks an employee, vehicle and housing under rules (one vehicle per rider, a room's capacity not exceeded) that do not reduce to a phone sheet.
 final lightTransportOrdersCfg = ResourceConfig(
   arTitle: 'أوامر التشغيل', enTitle: 'Operating Orders', icon: Icons.assignment_ind_outlined,
   endpoint: '/api/light-transport/orders', listKey: 'orders', liveEvent: 'lt:*',
@@ -2146,9 +2049,8 @@ final lightTransportOrdersCfg = ResourceConfig(
   ].where((x) => x.isNotEmpty).join(' · '),
   chipsOf: (r) => [
     (r['status'] == 'active' ? 'سارٍ' : r['status'] == 'hold' ? 'معلَّق' : 'مُغلَق', r['status'] == 'active' ? T.success : r['status'] == 'hold' ? T.warn : T.inkFaint),
-    // ── والورقةُ باسم غيرِ الراكب تُعرَض ──────────────────────────────────
-    // أربعٌ وعشرون مركبةً مفوَّضةٌ لشخصٍ وقائدُها الفعليُّ آخر. وهي ليست خطأً
-    // يُصحَّح بلا سؤال، لكنّها لا تُكتشف — إن لم تُعرَض — إلّا عند مخالفة.
+    // A paper in a name other than the rider's is shown.
+    // Twenty-four vehicles are authorized to one person with another as the actual driver. That is not an error to fix without asking, but it is only discovered at a violation unless it is shown.
     if (r['authorizationMismatch'] == true)
       ('التفويض باسم ${_s(r, 'authorizedNowName')}', T.warn),
   ],
@@ -2157,8 +2059,7 @@ final lightTransportOrdersCfg = ResourceConfig(
 );
 
 
-/// نافذةُ «ربط بموظف» لسائق الأسطول — المقترحون من الخادم (النقل الثقيل والأسطول
-/// أوّلًا، والأقربُ اسمًا وهويّةً)، وبحثٌ في الملفّات كلّها، وفكُّ الربط.
+/// Link-to-employee dialog for a fleet driver: server suggestions (heavy transport and fleet first, closest by name and ID), search across all files, and unlinking.
 Future<bool> openFleetDriverLink(BuildContext ctx, Map<String, dynamic> row) async {
   final id = '${row['_id']}';
   final picked = await showModalBottomSheet<Map<String, dynamic>>(

@@ -1,13 +1,6 @@
 'use client';
-// تحليل الحمولات — شاشةُ صرفٍ قبل أن تكون شاشةَ تقارير.
-//
-// يقف المشرف عليها في آخر اليوم ليعرف كم يُسلِّم لكل سائق: ولذلك المصروف عمودٌ
-// أمام كل حمولة **و** مجموعٌ لكل سائقٍ على حدة. والرقمان يأتيان من الخادم من
-// نفس المطابقة، فلا يختلف مجموعُ البطاقة عن حاصل جمع الصفوف حين تتجاوز
-// الحمولاتُ سقفَ العرض — وهو الخطأ الذي يُنتِج صرفًا ناقصًا.
-//
-// وكل حمولةٍ تحمل معها مشرفَها وعميلَها، لأن السؤال الذي يليها دائمًا: «الحمولة
-// دي تبع مين؟».
+// Loads analysis: a disbursement screen before it is a reports screen.
+// The supervisor stands on it at day end to know how much to hand each driver, so the disbursed amount is a column per load and a total per driver. Both numbers come from the server from the same match, so a card total never differs from the sum of rows when loads exceed the display cap, which would cause under-disbursement. Each load carries its supervisor and customer because the next question is always whose load it is.
 import { useState, useEffect, useCallback, useMemo, Suspense } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -52,10 +45,7 @@ export default function LoadsAnalysis({ active = true }: { active?: boolean }) {
   const [q, setQ] = useState(() => sp?.get('q') || '');
   const [debouncedQ, setDebouncedQ] = useState(q);
   useEffect(() => { const t = setTimeout(() => setDebouncedQ(q), 300); return () => clearTimeout(t); }, [q]);
-  // السيارة تأتي من رابطٍ خارجي (صفّ في تحليل السيارة، أو بطاقة في التحليلات).
-  // حالةٌ لا قراءةٌ من الرابط: الرابطُ صار يُكتب بـ`replaceState` (بلا تنقّل)،
-  // و`useSearchParams` لا تسمع ذلك — فتبقى القيمةُ مجمّدةً على ما كانت عند
-  // الفتح، ولا يزول الفلترُ ولو ضُغطت «إزالة».
+  // The vehicle comes from an external link (a row in vehicle analysis, or an analytics card). It is state, not a read of the URL: the URL is now written with `replaceState` (no navigation) and `useSearchParams` does not hear that, so the value would freeze at its value on open and the filter would not clear on "remove".
   const [vehicle, setVehicle] = useState(() => sp?.get('vehicle') || '');
 
   const params = useMemo(() => {
@@ -69,7 +59,7 @@ export default function LoadsAnalysis({ active = true }: { active?: boolean }) {
     return p;
   }, [period, supervisor, customer, status, customerType, vehicle, debouncedQ]);
 
-  /** إزالةُ الفلاتر: تصفيرُ الحالة، لا تنقّلٌ إلى مسارٍ عارٍ. */
+  /** Clearing filters resets state instead of navigating to a bare path. */
   const clearFilters = useCallback(() => {
     setSupervisor(''); setCustomer(''); setStatus(''); setCustomerType(''); setQ(''); setVehicle('');
   }, []);
@@ -82,7 +72,7 @@ export default function LoadsAnalysis({ active = true }: { active?: boolean }) {
     setLoading(false);
   }, [params]);
 
-  // لا جلبَ والتبويبُ مخفيّ — ونداءُ هذه الشاشة يمسح آلافَ الحمولات.
+  // No fetch while the tab is hidden; this screen's call scans thousands of loads.
   useEffect(() => { if (active) load(); }, [load, active]);
   useSocket('fleet:updated', useCallback(() => { if (active) load(); }, [load, active]));
   useEffect(() => {
@@ -91,15 +81,7 @@ export default function LoadsAnalysis({ active = true }: { active?: boolean }) {
       .then((r) => setSupers((r.users || []).map((u) => ({ _id: u._id, name: `${u.firstName || ''} ${u.lastName || ''}`.trim() })))).catch(() => {});
   }, []);
 
-  // ── الرابطُ يُكتب ولا يُنتقَل إليه ────────────────────────────────────────
-  // كان هذا السطرُ `router.replace('/system/fleet/loads-analysis?…')`. وحين
-  // صارت الشاشةُ تبويبًا داخل صفحة التحليلات انقلب إلى حلقةٍ لا تنتهي:
-  // يستبدل الرابطَ بالمسار القديم، والمسارُ القديم يحوّل إلى التبويب، فيُركَّب
-  // المكوّنُ من جديد فيستبدل الرابطَ… حتى يقف المتصفّح.
-  //
-  // وحتى قبل الدمج كان خطأً: `router.replace` تنقّلٌ كامل يعيد تركيب الشجرة
-  // مع **كلّ ضغطةِ فلتر**. والمقصودُ أن يعكس الرابطُ ما على الشاشة فحسب —
-  // وذلك `history.replaceState`: لا تنقّل، ولا إعادةَ تركيب، ولا حلقة.
+  // The URL is written, not navigated to. This used to be `router.replace('/system/fleet/loads-analysis?...')`; once the screen became a tab inside the analytics page it became an infinite loop (replace the URL with the old path, the old path redirects to the tab, the component remounts and replaces again). Even before the merge it was wrong: `router.replace` is a full navigation that remounts the tree on every filter click. The URL should only mirror the screen, which `history.replaceState` does without navigation, remount or loop.
   useEffect(() => {
     if (!active) return;
     const q = new URLSearchParams(params);
@@ -269,7 +251,7 @@ export default function LoadsAnalysis({ active = true }: { active?: boolean }) {
             </div>
           )}
 
-          {/* كشف صرف السائقين — الرقم الذي يُسلَّم باليد، فله صدارة الشاشة. */}
+          {/* Driver disbursement statement: the figure handed over by hand, so it leads the screen. */}
           <div className={cardCls}>
             <div className="px-4 py-3 bg-amber-50 border-b border-amber-100 flex items-center gap-2">
               <Wallet className="w-4 h-4 text-amber-700" />

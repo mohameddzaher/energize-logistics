@@ -8,9 +8,7 @@ import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import '../ui/search_field.dart';
 
-/// تنبيهاتُ الائتمان — نظيرُ /system/credit-alerts في الموقع: العملاءُ الذين
-/// قاربوا حدَّهم أو تجاوزوه، من `/api/analytics/credit-alerts` نفسِها.
-/// وتُعاد قراءتُها مع كلِّ دفعةٍ أو فاتورةٍ أو تعديلِ عميل — الأخبارُ نفسُها.
+/// Credit alerts, the counterpart of /system/credit-alerts on the web: customers near or past their limit, from the same `/api/analytics/credit-alerts`. Re-read with every payment, invoice or customer edit, on the same events.
 class CreditAlertsScreen extends StatefulWidget {
   const CreditAlertsScreen({super.key});
   @override
@@ -34,7 +32,7 @@ class _CreditAlertsScreenState extends State<CreditAlertsScreen> {
   String? _error;
   bool _loading = true;
   String _q = '';
-  final _searchCtl = TextEditingController(); // النصُّ يبقى مطابقًا لـ_q
+  final _searchCtl = TextEditingController(); // Text stays equal to _q.
   int _seq = 0;
   late final void Function() _onLive;
 
@@ -77,7 +75,7 @@ class _CreditAlertsScreenState extends State<CreditAlertsScreen> {
     return _all.where((r) => _fold([r['companyName'], r['customerNumber'], r['grade'], _collector(r['assignedCollector'])].join(' ')).contains(n)).toList();
   }
 
-  // أعمدةُ تصدير الموقع نفسُها (ExportMenu في credit-alerts/page.tsx).
+  // Same export columns as the web (ExportMenu in credit-alerts/page.tsx).
   static final _cols = [
     ExportCol('العميل', 'Customer', (r) => r['companyName'] ?? ''),
     ExportCol('رقم العميل', 'Customer #', (r) => r['customerNumber'] ?? ''),

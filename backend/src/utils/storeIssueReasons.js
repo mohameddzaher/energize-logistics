@@ -1,13 +1,10 @@
-// ── سببُ الصرف من المخزن (٢٠٢٦/١٠/٢٦) ───────────────────────────────────────
-// «الملاحظة / السبب يتحوّل للسبب ويكون اختيارًا إجباريًّا»: كلُّ صادرٍ على مركبة
-// يُقال لماذا خرج — صيانةٌ دوريّة أم حادثٌ أم وقائيّة أم عطلٌ على الطريق — ويظهر
-// السببُ في ملفّ المركبة مع القطعة. والملاحظةُ الحرّة تبقى اختياريّةً بجانبه.
+// Reason for a store issue. Every issue against a vehicle states why it left (periodic maintenance, accident, preventive, roadside breakdown), shown in the vehicle file with the part. The free-text note stays optional beside it.
 const ISSUE_REASONS = [
   { key: 'periodic_maintenance', ar: 'صيانة دورية', en: 'Periodic maintenance' },
   { key: 'accident', ar: 'حادث', en: 'Accident' },
   { key: 'preventive_maintenance', ar: 'صيانة وقائية', en: 'Preventive maintenance' },
   { key: 'roadside_breakdown', ar: 'عطل على الطريق', en: 'Roadside breakdown' },
-  // وأُضيفت «صيانة عامة» بطلب صاحب الشركة في اليوم نفسِه.
+  // "General maintenance" was added at the owner's request.
   { key: 'general_maintenance', ar: 'صيانة عامة', en: 'General maintenance' },
 ];
 const ISSUE_REASON_KEYS = ISSUE_REASONS.map((r) => r.key);

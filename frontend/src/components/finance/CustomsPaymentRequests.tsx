@@ -1,23 +1,9 @@
 'use client';
 /**
- * طلباتُ صرفِ التخليص كما تراها الإدارةُ الماليّة.
- *
- * ── العلّة ──────────────────────────────────────────────────────────────────
- * حين يرفق موظّفُ التخليص فاتورةً في مرحلةٍ من مراحل السداد فهو يقول «هذا ما
- * يجب أن يُدفَع». وكان ذلك يُقال بالهاتف أو الواتساب: لا يُعرَف كم طلبٌ معلَّق،
- * ولا منذ متى، ولا مَن ردّ. والمحاسبُ يفتح معاملةً معاملةً ليعرف.
- *
- * فصارت في شاشةٍ واحدة: كلُّ طلبٍ بمعاملته ومرحلته ومبلغه ومرفقه، وثلاثةُ
- * أجوبةٍ لا واحد — دُفع (ومعه إثباتُه)، أو يُعاد لتصحيحٍ (ومعه سببُه)، أو
- * يُرفَض. والجوابُ يظهر في شاشة التخليص بجانب الطلب نفسِه في اللحظة.
- *
- * ── ورقمُ المعاملة يفتح نافذتَها لا شاشةَ القسم ────────────────────────────
- * شاشةُ التخليص لا تُفتح للماليّة؛ فالرقمُ يفتح `ClearanceQuickView` فوق هذه
- * الشاشة: المعاملةُ كلُّها للقراءة، حيّة، ولا يغادر المحاسبُ مكانه.
- *
- * ── والسرعة ─────────────────────────────────────────────────────────────────
- * القائمةُ صفحةٌ من الخادم (التصفيةُ والعدُّ في القاعدة)، والقرارُ يُخرج السطرَ
- * من القائمة في اللحظة ويعدّل العدّادات — ثمّ تُقرأ القائمةُ لتتأكّد.
+ * Clearance payment requests as Finance sees them.
+ * When a clearance employee attaches an invoice to a payment stage, it says what must be paid. That used to travel by phone or chat, so pending count, age and responder were unknown. Now one screen lists each request with transaction, stage, amount and attachment, and three answers: paid (with proof), returned for correction (with reason), or rejected. The answer shows on the clearance screen beside the request immediately.
+ * The transaction number opens `ClearanceQuickView` over this screen (the clearance screen is closed to Finance): the whole transaction, read-only and live.
+ * Performance: the list is a server page (filtering and counting in the database); a decision removes the row at once and adjusts the counters, then the list re-reads to confirm.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useDialog } from '@/components/system/DialogProvider';
@@ -110,9 +96,7 @@ export default function CustomsPaymentRequests({ onOpen }: { onOpen: (clearanceI
       await api.patch(`/api/customs-clearance/${row.clearanceId}/payment-stages/${row.entryId}/decision`, {
         decision, note: note.trim(), files,
       });
-      // ── السطرُ يخرج في اللحظة ────────────────────────────────────────────
-      // لا ينتظر المحاسبُ قراءةً ثانيةً ليرى أثرَ ضغطته: يُنقَل العدُّ والمبلغُ
-      // من حالةٍ إلى حالة هنا، ثمّ تؤكّد القراءةُ ما حُسب.
+      // The row leaves immediately. The accountant does not wait for a second read to see the effect: count and amount move between states here, then the read confirms the computed values.
       const prev = row.payStatus;
       const amt = Number(row.amount) || 0;
       if (tab !== 'all' && tab !== decision) setRows((rs) => rs.filter((r) => r.entryId !== row.entryId));
@@ -165,7 +149,7 @@ export default function CustomsPaymentRequests({ onOpen }: { onOpen: (clearanceI
         </div>
       </div>
 
-      {/* الأرقامُ التي تُسأل أوّلًا: كم طلبًا ينتظر، وبكم — وكلُّ بطاقةٍ تفتح قائمتَها. */}
+      {/* The numbers asked first: how many requests wait and for how much; each card opens its list. */}
       <div className="grid grid-cols-2 gap-3 px-5 py-4 lg:grid-cols-4">
         {CARDS.map((c, i) => (
           <button key={i} type="button" onClick={() => pickTab(c.key)}
@@ -320,7 +304,7 @@ export default function CustomsPaymentRequests({ onOpen }: { onOpen: (clearanceI
         </div>
       )}
 
-      {/* نافذةُ القرار — الإثباتُ والسببُ كلاهما اختياريّ، والقرارُ ليس كذلك. */}
+      {/* Decision window: proof and reason are optional, the decision is required. */}
       {act && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4" onClick={() => setAct(null)}>
           <div className="w-full max-w-md rounded-2xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>

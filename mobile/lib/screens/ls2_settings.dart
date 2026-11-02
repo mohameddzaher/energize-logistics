@@ -5,15 +5,14 @@ import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 
-/// إعدادات LS2 — عتبات الحساسات (حرارة الإطار/التبريد، الضغط، الوقود، السرعة،
-/// البطارية…) قابلة للتعديل، مطابقة لصفحة الويب /system/ls2/settings.
+/// LS2 settings: editable sensor thresholds (tyre/coolant temperature, pressure, fuel, speed, battery, ...), matching the web page /system/ls2/settings.
 class Ls2SettingsScreen extends StatefulWidget {
   const Ls2SettingsScreen({super.key});
   @override
   State<Ls2SettingsScreen> createState() => _Ls2SettingsScreenState();
 }
 
-// عنوان عربي/إنجليزي + وحدة لكل عتبة معروفة.
+// Arabic/English title and unit for each known threshold.
 const Map<String, (String, String, String)> _labels = {
   'tireTempC': ('حرارة الإطار — تنبيه', 'Tire temp — warn', '°C'),
   'tireTempCriticalC': ('حرارة الإطار — حرج', 'Tire temp — critical', '°C'),
@@ -52,7 +51,7 @@ class _Ls2SettingsScreenState extends State<Ls2SettingsScreen> {
       final d = await Api.instance.get('/api/ls2/settings');
       if (!mounted) return;
       final thr = Map<String, dynamic>.from(d['thresholds'] ?? {});
-      // نرتّب المفاتيح المعروفة أولًا ثم أي مفاتيح إضافية.
+      // Known keys first, then any extra keys.
       final ordered = [..._labels.keys.where(thr.containsKey), ...thr.keys.where((k) => !_labels.containsKey(k))];
       for (final c in _ctrls.values) { c.dispose(); }
       _ctrls.clear();

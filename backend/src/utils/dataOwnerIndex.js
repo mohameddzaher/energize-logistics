@@ -1,22 +1,8 @@
 /**
- * «مسؤول البيانات» في سير عمل التشغيل — فلترُه على ما يُعرض لا على حقلٍ واحد.
- *
- * ── لماذا عمودٌ افتراضيّ ────────────────────────────────────────────────────
- * الخانةُ تُقرأ من ثلاثة مصادرَ بترتيب (راجع getWorkflows): من كتب تاريخَ
- * السداد عندنا (`paymentDateByName`)، فمن سجّل الشراءَ في المحفظة، وإلّا فمصدرُ
- * الاستيراد («منقول من منصّة الأوبريشن»). والحقلُ الأوّل مكتوبٌ في خمسمئةِ صفٍّ
- * من تسعةٍ وثلاثين ألفًا — فقائمةٌ تُبنى عليه وحدَه تعرض «(فارغ)» لثمانيةٍ
- * وثلاثين ألفًا كُتب في خاناتها اسمٌ أو «منقول»، ويختار المستخدمُ اسمًا يراه في
- * الجدول فلا يجده في القائمة.
- *
- * فالعمودُ `dataOwnerShown` يُفلتَر بالترتيب نفسِه: الاسمُ المكتوب، ثمّ مسجّلُ
- * المحفظة لكشفٍ بلا اسم، ثمّ مصدرُ الاستيراد لما بقي.
- *
- * ── ولماذا لقطةٌ في الذاكرة ─────────────────────────────────────────────────
- * مشترياتُ المحفظة بضعةُ آلافٍ لا أكثر، وشرطُ الفلترة يُبنى في دالّةٍ متزامنة
- * (`buildWorkflowFilter`) يقرؤها الجدولُ والإحصاءاتُ والتصدير. فتُحمَّل الخريطةُ
- * قبل الطلب (`ensure`) وتُقرأ في الشرط (`current`). ولكلّ عاملٍ لقطتُه، وعمرُها
- * ثلاثون ثانية — عمرُ قائمة القيم نفسِها تقريبًا.
+ * 'Data owner' in the operations workflow: its filter works on what is displayed, not on one field.
+ * The cell is read from three sources in order (see getWorkflows): who wrote the payment date here (`paymentDateByName`), then who recorded the purchase in the wallet, then the import source (the 'moved from the operations platform' label). The first field is written in only about 500 of 39k rows, so a list built on it alone would show 'blank' for 38k rows whose cells hold a name or the moved label, and a name seen in the table would be missing from the list.
+ * The virtual column `dataOwnerShown` is therefore filtered in the same order: written name, then the wallet recorder for an unnamed statement, then the import source for the rest.
+ * Why an in-memory snapshot: wallet purchases are a few thousand and the filter condition is built in a synchronous function (`buildWorkflowFilter`) read by the table, stats and export. The map is loaded before the request (`ensure`) and read in the condition (`current`). Each worker has its own snapshot with a 30-second age, about the age of the value list itself.
  */
 const { walletRecorderMap } = require('./walletPayment');
 const { normKey, textMatcher, BLANK_VALUES } = require('./colFilter');
@@ -24,14 +10,14 @@ const { normKey, textMatcher, BLANK_VALUES } = require('./colFilter');
 const MAX_AGE_MS = 30 * 1000;
 const OPS_LABEL = 'النظام';
 
-/** النصُّ المعروض لكشفٍ لا اسمَ عليه ولا مشترياتِ محفظة — بحسب مصدره. */
+/** Text displayed for a statement with no name and no wallet purchase, by its source. */
 const importLabel = (externalSource) => {
   const ext = String(externalSource || '').trim();
   if (!ext) return '';
   return ext === 'ops_upl' ? OPS_LABEL : `مستورَد (${ext})`;
 };
 
-/** عكسُ `importLabel`: النصُّ ← المصدر، أو `null` إن لم يكن نصَّ استيراد. */
+/** Inverse of `importLabel`: text to source, or `null` if it is not an import text. */
 const sourceOfLabel = (label) => {
   if (label === OPS_LABEL) return 'ops_upl';
   const m = /^مستورَد \((.+)\)$/.exec(String(label || ''));
@@ -45,7 +31,7 @@ let inflight = null;
 async function load() {
   const WalletTransaction = require('../models/WalletTransaction');
   const raw = await WalletTransaction.distinct('purchaseDeliveryStatementNumber', { type: 'purchase' });
-  // الخريطةُ نفسُها التي يقرؤها الجدول — فلا يختلف الفلترُ عن الخانة في اسمٍ واحد.
+  // The same map the table reads, so the filter and the cell never differ for one name.
   const map = await walletRecorderMap(raw);
   const byName = new Map();
   for (const [rn, raw] of map) {
@@ -56,7 +42,7 @@ async function load() {
   return { byName, rns: [...map.keys()], map };
 }
 
-/** تُحمَّل اللقطةُ إن قدُمت. لا ترمي — الفشلُ يُبقي آخرَ لقطةٍ (أو لا شيء). */
+/** Loads the snapshot if stale. Never throws: a failure keeps the last snapshot (or none). */
 async function ensure(maxAgeMs = MAX_AGE_MS) {
   if (snap && Date.now() - at < maxAgeMs) return snap;
   if (!inflight) {
@@ -73,8 +59,8 @@ const current = () => snap || { byName: new Map(), rns: [], map: new Map() };
 const BLANK_NAME = { paymentDateByName: { $in: BLANK_VALUES } };
 
 /**
- * شرطُ الفلترة لقيمٍ اختارها المستخدم من قائمة «مسؤول البيانات».
- * القيمُ نصوصٌ كما تُعرض: اسمٌ، أو نصُّ استيراد، أو '' للفارغ.
+ * Filter condition for values the user chose from the 'data owner' list.
+ * Values are texts as displayed: a name, an import text, or '' for blank.
  */
 function ownerCondition(values) {
   const { byName, rns } = current();
@@ -94,14 +80,14 @@ function ownerCondition(values) {
     const ext = [...sources, ...(blank ? ['', null] : [])];
     or.push({ $and: [BLANK_NAME, { reportNumber: { $nin: rns } }, { externalSource: { $in: ext } }] });
   }
-  // لا شيءَ يطابق القيمَ المختارة — شرطٌ لا يُرجع صفًّا، لا شرطٌ يُسقَط فيُرجع الكلّ.
+  // Nothing matches the chosen values: a condition that returns no rows, not a dropped condition that returns everything.
   if (!or.length) return { _id: { $exists: false } };
   return or.length === 1 ? or[0] : { $or: or };
 }
 
 /**
- * قيمُ القائمة وعددُ كلٍّ — بالترتيب نفسِه الذي تُملأ به الخانة.
- * `match` هو شرطُ بقيّة الفلاتر (بلا فلتر هذا العمود).
+ * List values and the count of each, in the same order the cell is filled.
+ * `match` is the condition of the other filters (without this column's filter).
  */
 async function ownerOptions(OperationsWorkflow, match) {
   const { map, rns } = await ensure();
@@ -128,10 +114,7 @@ async function ownerOptions(OperationsWorkflow, match) {
   return [...counts.entries()].map(([value, count]) => ({ value, count }));
 }
 
-/**
- * وسيطٌ يُحمّل اللقطةَ قبل أيّ طلبٍ يحمل فلترَ هذا العمود — لأنّ الشرطَ يُبنى
- * متزامنًا في `buildWorkflowFilter` (الجدول والإحصاءات والتصدير والصفحة الخاصّة).
- */
+/** Middleware that loads the snapshot before any request carrying this column's filter, because the condition is built synchronously in `buildWorkflowFilter` (table, stats, export and the dedicated page). */
 const preload = (req, _res, next) => {
   if (req.query && req.query.cf_dataOwnerShown !== undefined) ensure().then(() => next(), () => next());
   else next();

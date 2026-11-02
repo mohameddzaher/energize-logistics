@@ -1,8 +1,5 @@
 'use client';
-// ملفُّ طرفٍ في التخليص — عميلٍ أو وكيلِ شحن.
-//
-// «كم اشتغلنا معه وكم حقّقنا» سؤالٌ كان جوابُه تصديرَ الجدول كلِّه وفلترتَه في
-// إكسل. وهو هنا: أرقامُه، ونموُّه بالشهر، ومع مَن يعمل، وكلُّ معاملاته بتفاصيلها.
+// Customs clearance party file (a customer or a shipping agent). How much we worked with them and how much we earned used to mean exporting the whole table and filtering in Excel. Here: their figures, monthly growth, who they work with, and all their transactions in detail.
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useLanguage } from '@/context/LanguageContext';
@@ -54,13 +51,13 @@ export default function CustomsPartyProfile() {
   if (loading) return <Spinner />;
   if (!d) return null;
   const p = d.party; const T = d.totals;
-  // الربحُ والهامش للإدارة وحدَها — الخادمُ لا يرسلهما لغيرها (`money`).
+  // Profit and margin are for management only; the server does not send them to anyone else (`money`).
   const seesMoney = !!d.money;
   const stageText = (c: any) => (c.cancelled ? t('ملغاة', 'Cancelled') : c.isCompleted ? t('مغلقة', 'Closed') : stageName(getCustomsTranslations(lang).stages, c.pipeline?.next || c.stage, c.cargoType));
   const isAgent = p.kind === 'agent';
 
   const Stat = ({ label, value, accent, hint }: { label: string; value: any; accent?: string; hint?: string }) => (
-    // البطاقةُ لا تنكمش تحت محتواها والرقمُ لا يُلَفّ — فيُمنَع الفيضُ صراحةً.
+    // The card does not shrink below its content and the number does not wrap, so overflow is prevented explicitly.
     <div className="min-w-0 bg-white border border-slate-200 rounded-xl px-3 sm:px-4 py-3 shadow-sm overflow-hidden">
       <p className="text-[11px] text-slate-500 truncate" title={label}>{label}</p>
       <p className={`text-base sm:text-lg lg:text-xl font-bold tabular-nums truncate ${accent || 'text-slate-900'}`} title={String(value)}>{value}</p>
@@ -68,7 +65,7 @@ export default function CustomsPartyProfile() {
     </div>
   );
 
-  // فلاترُ أعمدة جدول المعاملات — على طريقة إكسل.
+  // Column filters for the transactions table, Excel-style.
   const dealGetters: Record<string, (c: any) => any> = {
     ref: (c) => c.refNumber, bl: (c) => c.blNumber, other: (c) => (isAgent ? c.customerName : c.shippingAgent),
     port: (c) => c.port, stage: (c) => stageText(c), units: (c) => c.containerCount || 0, month: (c) => String(c.createdAt || '').slice(0, 7),
@@ -119,16 +116,16 @@ export default function CustomsPartyProfile() {
           <ArrowRight className="w-4 h-4" /> {t('رجوع', 'Back')}
         </button>
       </PageHeader>
-      {/* العميلُ نفسُه في الأقسام الأخرى */}
+      {/* The same customer in the other departments. */}
       {p.kind === 'customer' && <CustomerPresence reg="customs" id={String(p._id)} ar={ar} onChanged={load} />}
-      {/* حساب البوابة يُفعَّل من هنا أيضًا — مربوطًا بسجلّ العميل الرئيسي في CRM. */}
+      {/* The portal account can be activated from here too, linked to the customer's master record in the CRM. */}
       {p.kind === 'customer' && (p as any).crmCompany && (
         <PortalAccountCard source="crm_company" refId={String((p as any).crmCompany?._id || (p as any).crmCompany)} name={p.name} />
       )}
 
-      {/* بياناتُ التواصل — تُقرأ وتُضغط، لا تُنسَخ باليد. */}
+      {/* Contact details: read and clickable, not copied by hand. */}
       <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
-        {/* جهاتُ التواصل كلُّها — كلُّ مسؤولٍ ببريده وجوّاله ووصفه (٢٠٢٦/١٠/٢٢). */}
+        {/* All contacts: each person with email, mobile and description. */}
         {((p.contacts && p.contacts.length) ? p.contacts : [{ name: p.contactPerson, email: p.email, phone: p.phone, description: '' }])
           .filter((c: any) => c.name || c.email || c.phone)
           .map((c: any, i: number) => (
@@ -148,7 +145,7 @@ export default function CustomsPartyProfile() {
         {!p.email && !p.phone && <span className="text-slate-400">{t('لا بيانات تواصل مسجَّلة', 'No contact details recorded')}</span>}
       </div>
 
-      {/* مرفقاتُ الطرف — سجلُّه وشهادتُه وعقدُه؛ تُقرأ كذلك من كلّ معاملةٍ هو طرفٌ فيها. */}
+      {/* Party attachments: its register, certificate and contract; also read from every transaction it is a party to. */}
       <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
         <p className="text-sm font-bold text-slate-800 mb-2">{t('المرفقات', 'Attachments')}</p>
         <PartyAttachments partyId={p._id} items={p.attachments || []} canEdit={canEdit} ar={ar}
@@ -162,7 +159,7 @@ export default function CustomsPartyProfile() {
         <Stat label={t('التكلفة', 'Cost')} value={money(T.cost)} accent="text-slate-700" />
         {seesMoney && <Stat label={t('الربح', 'Profit')} value={money(T.profit)} accent={T.profit >= 0 ? 'text-emerald-600' : 'text-red-600'} />}
         {seesMoney && <Stat label={t('الهامش', 'Margin')} value={`${T.margin}%`} accent={T.margin >= 0 ? 'text-emerald-600' : 'text-red-600'} />}
-        {/* «لم تُفوتَر» أوّلُ ما يُسأل عنه في ملفّ عميل. */}
+        {/* Not invoiced is the first thing asked in a customer file. */}
         <Stat label={t('لم تُفوتَر', 'Uninvoiced')} value={money(T.uninvoiced)} accent={T.uninvoiced ? 'text-amber-600' : undefined} />
       </div>
 
@@ -241,11 +238,11 @@ export default function CustomsPartyProfile() {
         </ScrollX>
       </div>
 
-      {/* عقودُنا معه — تُقرأ في ملفّه، والمصدرُ صفحةُ العقود نفسُها. */}
-      {/* لا عقودَ بيننا وبين وكلاء الشحن (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢). */}
+      {/* Our contracts with them: read in their file, the source being the contracts page itself. */}
+      {/* There are no contracts between us and shipping agents. */}
       {!isAgent && <CustomsContracts ar={ar} canEdit={canEdit} party={{ _id: p._id, name: p.name, kind: p.kind }} notify={notify} embedded />}
 
-      {/* مهامُّ خطّة العمل (JP) المربوطةُ بهذا الطرف. */}
+      {/* Work-plan (JP) tasks linked to this party. */}
       <ClearanceTasks kind={p.kind} refId={String(p._id)} ar={ar} />
     </div>
   );

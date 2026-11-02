@@ -7,34 +7,22 @@ const { PAGES, PERSONAL_SECTIONS } = require('../config/pages');
 const { FULL_ACCESS_ROLES } = require('../config/constants');
 const { isScopedRole, scopeOf } = require('../config/scopedRoles');
 
-// ── والذاكرةُ مشتركةٌ بين العاملَين ──────────────────────────────────────────
-//
-// كانت هنا `Map` داخل العمليّة بمهلة عشرين ثانية، و`invalidate` تمسحها في
-// العامل الذي عالج الحفظ وحدَه. والبرودكشن عاملان بالتناوب — فمن منح دورًا
-// قسمًا رآه يعمل مرّةً ويردّ ٤٠٣ مرّة. أثبته الفحصُ الحيّ: النداءُ نفسُه بعد
-// المنح مباشرةً ردّ `SECTION_FORBIDDEN` من عاملٍ و`SECTION_READ_ONLY` من الآخر
-// في الثانية نفسِها — أي أنّ العاملَين اختلفا في **صلاحيّات** مستخدمٍ واحد.
-//
-// وهذه ثالثُ مرّةٍ يظهر فيها هذا الشكل (راجع two-workers-two-caches)، فلا
-// تُصلَّح بذاكرةٍ ثالثةٍ خاصّة: تُوضع في `ttlCache` المشتركة، وإبطالُها يُختم في
-// القاعدة فيعبر إلى العامل الآخر في أجزاءٍ من الثانية.
+// The cache is shared across both workers. It used to be a per-process Map with a 20s TTL and invalidate cleared only the worker that handled the save; prod runs two workers in rotation, so a granted section worked once and returned 403 the next. It now lives in the shared `ttlCache`, whose invalidation is stamped in the DB and reaches the other worker within a fraction of a second.
 const cache = require('./ttlCache');
 
 const TTL = 20 * 1000;
 const PREFIX = 'perm:';
 
-// eslint-disable-next-line no-unused-vars — الدورُ يُمرَّر ليُقرأ في موضع النداء
+// the role is passed so it is read at the call site
+// eslint-disable-next-line no-unused-vars
 const invalidate = (role) => {
-  // البادئةُ كلُّها لا دورٌ واحد: الخريطةُ ستّةٌ وأربعون سجلًّا صغيرًا، وحسابُ
-  // أيِّها يتأثّر بتغيير الآخر أغلى من إعادة قراءتها عند الحاجة.
+  // Cache the whole prefix, not one role: the map is 46 small records and working out which one a change affects costs more than re-reading them when needed.
   cache.clear(PREFIX);
 };
 
 /**
- * الأدوارُ المصنوعة من الشاشة — يُسأل عنها في كلّ نداءٍ محروس.
- *
- * الجوابُ يقرّر أيرث الدورُ افتراضياتِ قسمِه أم لا يملك إلّا ما مُنح صراحةً.
- * راجع models/CustomRole.
+ * Roles created from the screen, asked about on every guarded call.
+ * The answer decides whether the role inherits its section defaults or has only what was granted explicitly. See models/CustomRole.
  */
 const customRoleKeys = async () => {
   const keys = await cache.wrap(`${PREFIX}custom`, TTL, async () => {
@@ -42,19 +30,14 @@ const customRoleKeys = async () => {
       const CustomRole = require('../models/CustomRole');
       const rows = await CustomRole.find({ isActive: true }).select('key').lean();
       return rows.map((r) => r.key);
-    } catch (_) { return []; /* الفهرسُ غيرُ متاحٍ الآن — لا دورَ مصنوعًا اليوم */ }
+    } catch (_) { return []; /* The index is unavailable now; treat as no custom roles. */ }
   });
   return new Set(keys || []);
 };
 
 const isCustomRole = async (role) => (await customRoleKeys()).has(String(role));
 
-/**
- * ── من لا يرث شيئًا ─────────────────────────────────────────────────────────
- * الدورُ المصنوعُ من الشاشة، و**متدرّبُ القسم** (config/roles): كلاهما لا ماضيَ
- * له في قوائم الأدوار، فسكوتُ المصفوفة عنه يعني «لا شيء» لا «كما كان». يُفتَح
- * له ما يُفتَح من صفحة الصلاحيّات، ولا يأخذ قسمًا ولا صفحةً بالافتراض.
- */
+/** Roles that inherit nothing: screen-created roles and the section trainee (config/roles). They have no history in the role lists, so the matrix being silent means "nothing", not "as before". They get only what is opened from the permissions page, no section or page by default. */
 const inheritsNothing = async (role) => require('../config/roles').isTrainee(String(role)) || isCustomRole(role);
 
 // Raw saved doc for a role (empty when none). Cached across workers.
@@ -77,13 +60,8 @@ const getOverrides = async (role) => (await getSaved(role)).overrides;
 // Gate use: the explicit override for one section, or null when the role has no
 // saved override for it (→ caller falls through to legacy authorize).
 /**
- * ── ما فُتح لأهل المال فُتح كاملًا ──────────────────────────────────────────
- * المحاسبُ ومديرُ الحسابات والمديرُ الماليّ: القسمُ الذي يُفتَح لأحدهم — ولو
- * «عرضًا» — يكتب فيه كما يكتب مديرُ النظام. هم من يُسأل عن الرقم إن اختلف، ومن
- * لا يملك تصحيحَه لا يصحّ أن يُسأل عنه (راجع config/financeAuthority).
- *
- * وهو رفعٌ لما مُنح لا منحٌ جديد: «لا شيء» تبقى لا شيء، فما لم يُفتَح لهم لا
- * يُفتَح بهذا. ولا يجعلهم مديري نظام: المستخدمون والصلاحيّاتُ بحارسٍ `strict`.
+ * Finance roles (accountant, accounts manager, finance manager): a section opened to them, even view-only, is writable like for a system admin, because they answer for the numbers and must be able to correct them (config/financeAuthority).
+ * This raises what was granted, never grants new: "none" stays none, and users/permissions stay behind the `strict` guard.
  */
 const liftFinance = (role, access) =>
   (access === 'view' && require('../config/financeAuthority').isFinanceFull(role) ? 'edit' : access);
@@ -92,21 +70,14 @@ const getOverride = async (role, sectionKey) => {
   if (FULL_ACCESS_ROLES.includes(role)) return 'edit';
   const overrides = await getOverrides(role);
   if (Object.prototype.hasOwnProperty.call(overrides, sectionKey)) return liftFinance(role, overrides[sectionKey]);
-  // ── والدورُ المصنوعُ لا يرث ────────────────────────────────────────────────
-  // الدورُ المكتوبُ في الشيفرة له قسمُه افتراضيًّا وقوائمُ `authorize` تعرفه،
-  // فسكوتُ المصفوفة عنه يعني «كما كان». والمصنوعُ لا ماضيَ له: سكوتُها عنه
-  // يجب أن يعني **لا شيء**، وإلّا وُلد دورٌ جديدٌ يملك ما لم يُمنَح.
+  // A screen-created role does not inherit. A code-defined role has its section by default and `authorize` lists know it, so matrix silence means "as before". A created role has no past, so silence must mean none, or a new role would be born with access nobody granted.
   if (await inheritsNothing(role)) return 'none';
   return null;
 };
 
 /**
- * الأقسامُ السارية لمجموعةِ تجاوزاتٍ معيّنة — بلا قراءةٍ من القاعدة.
- *
- * تُقرأ مرّتين: هنا عند حساب الساري، وفي المتحكّم عند الحفظ ليعرف ما الذي
- * ستصير عليه الأقسامُ **بعد** هذا الحفظ. ولذلك هي دالّةٌ واحدة: لو حسبها كلٌّ
- * منهما على حدةٍ لافترق الحسابان يومًا — وقد افترقا فعلًا (راجع
- * `pageFollowsSection` تحت).
+ * Effective sections for a given overrides set, with no DB read.
+ * Read twice: here when computing the effective set, and in the controller on save to know what sections will be after the save. It is one function so the two calculations cannot diverge (they did once; see `pageFollowsSection` below).
  */
 const resolveSections = (role, overrides, custom) => {
   const out = {};
@@ -119,24 +90,12 @@ const resolveSections = (role, overrides, custom) => {
 };
 
 /**
- * هل هذه الصفحةُ مفتوحةٌ **اتّباعًا لقسمها** (أي بلا تأشيرةٍ صريحة)؟
- *
- * ── ولماذا هي دالّةٌ مُصدَّرة ────────────────────────────────────────────────
- * كان هذا السطرُ مكتوبًا مرّتين: هنا، وفي شاشةِ الصلاحيّات التي تختصر ما
- * ترسله إلى «ما يخالف قسمَه وحدَه». واختلفا في حالةٍ واحدة: قسمٌ غيرُ مُدارٍ
- * بالمصفوفة (ملفي، إجازاتي، طلباتي، الإعدادات، مركزُ التقارير، النظرةُ
- * التنفيذيّة…) تقول عنه الشاشةُ «مفتوحٌ للجميع» ويقول عنه الخادمُ «مغلقٌ على
- * الدور المصنوع». فمن أشّر لمتدرّبٍ على «ملفي» حسبت الشاشةُ أنّ التأشيرةَ
- * تطابق الأصلَ فلم ترسلها، وقرأها الخادمُ مغلقةً: تختفي العلامةُ بعد حفظٍ
- * قال «تمّ»، ولا تُفتَح الصفحة.
- *
- * فصار الاختصارُ في الخادم بهذه الدالّة نفسِها، ولم يبقَ للشاشة رأيٌ في
- * القاعدة: ترسل الخريطةَ كما يراها المستخدمُ ويختصرها مَن يملك القاعدة.
+ * Whether the page is open because it follows its section (no explicit tick).
+ * Exported because the permissions screen used to repeat this rule when shrinking its payload to only what differs from the section. For a section not managed by the matrix (my profile, my leaves, settings, reports hub, executive view) the screen said open to all while the server said closed for created roles, so a tick on such a page matched the baseline, was not sent, and the server read it as closed. The shortcut now lives on the server using this same function, and the screen sends the map as the user sees it.
  */
 const pageFollowsSection = (page, sections, custom) => {
   if (!Object.prototype.hasOwnProperty.call(sections || {}, page.section)) {
-    // قسمٌ شخصيٌّ (الخدمةُ الذاتيّة) أصلُه مفتوحٌ لكلّ دورٍ داخليّ ولو كان
-    // مصنوعًا — راجع `PERSONAL_SECTIONS` في config/pages.
+    // A personal (self-service) section is open to every internal role by default, even a created one. See `PERSONAL_SECTIONS` in config/pages.
     if (PERSONAL_SECTIONS.has(page.section)) return true;
     return !custom;
   }
@@ -151,7 +110,7 @@ const effectivePermissions = async (role) => {
     for (const k of SECTION_KEYS) out[k] = 'edit';
     return out;
   }
-  // الدورُ المحصورُ لا قسمَ له — ولا تُقرأ له مصفوفة (config/scopedRoles).
+  // A scoped role has no section and no matrix is read for it (config/scopedRoles).
   if (isScopedRole(role)) {
     for (const k of SECTION_KEYS) out[k] = 'none';
     return out;
@@ -160,15 +119,8 @@ const effectivePermissions = async (role) => {
 };
 
 /**
- * الصفحاتُ المسموحةُ لهذا الدور — مسارٌ ← صواب/خطأ لكلّ صفحةٍ في الفهرس.
- *
- * القاعدةُ سطران:
- *   • ما أُشِّر عليه صراحةً يُقرأ كما أُشِّر.
- *   • وما سكتت عنه المصفوفةُ يتبع قسمَه: مسموحٌ لمن يملك القسم.
- *
- * والسكوتُ يعني الاتّباعَ لا المنع — وإلّا اختفت كلُّ صفحةٍ تُولَد غدًا عن كلّ
- * دورٍ حتّى يفتح أحدٌ الشاشةَ ويؤشّر عليها، وهو عطبٌ صامتٌ لا يُشتكى منه إلّا
- * بعد أسبوع.
+ * Pages allowed for this role: route to true/false for every page in the catalogue.
+ * Explicit ticks are read as set; pages the matrix is silent on follow their section (allowed for whoever holds it). Silence means follow, not deny, or every page added later would vanish for every role until someone ticks it.
  */
 const effectivePages = async (role) => {
   const out = {};
@@ -176,8 +128,7 @@ const effectivePages = async (role) => {
     for (const p of PAGES) out[p.key] = true;
     return out;
   }
-  // وصفحاتُه ما كُتب له وحدَه، وكلُّ ما عداها مغلق — فيفتح `pageGate` نقاطَ
-  // شاشته ويغلق ما سواها، ولا يرى في الشريط غيرَها.
+  // Its pages are only what was written for it and everything else is closed, so `pageGate` opens its own screen's endpoints and closes the rest; it sees nothing else in the sidebar.
   const scoped = scopeOf(role);
   if (scoped) {
     for (const p of PAGES) out[p.key] = scoped.pages.includes(p.key);
@@ -188,17 +139,10 @@ const effectivePages = async (role) => {
   const custom = await inheritsNothing(role);
   for (const p of PAGES) {
     if (Object.prototype.hasOwnProperty.call(pages, p.key)) { out[p.key] = pages[p.key]; continue; }
-    // وما سكتت عنه المصفوفةُ يتبع قسمَه — والقاعدةُ في `pageFollowsSection`:
-    // قسمٌ غيرُ مُدارٍ بالمصفوفة (الرئيسية، الأدوات، الإدارة، الخدمة الذاتيّة،
-    // البوابة) تحرسه قوائمُ الأدوار القديمة كما كانت، إلّا الدورَ المصنوع فلا
-    // تعرفه قائمةٌ ولا يُفتَح له إلّا ما أُشِّر عليه.
+    // Pages the matrix is silent on follow their section (rule in `pageFollowsSection`). A section not managed by the matrix (home, tools, admin, self-service, portal) stays guarded by the older role lists, except a created role: no list knows it, so only what is ticked opens for it.
     out[p.key] = pageFollowsSection(p, sections, custom);
   }
-  // ── وصفحتا المحفظة لقسم التحصيل، عرضًا دائمًا (config/walletViewOnly) ─────────
-  // كانت تُفتح «إلّا ما أُغلق صراحةً» — وحفظُ مصفوفة الصفحات يكتب كلَّ صفحةٍ في
-  // الدور، فصفحاتُ العمليّات كلُّها محفوظةٌ «مغلقة» لموظّف التحصيل، والمحفظةُ
-  // معها. فلم تظهر لحسام الحوفي (٢٠٢٦/١٠/٢٧). فتُفتح لهما دائمًا: هي عرضٌ فقط،
-  // والكتابةُ مردودةٌ عند البوّابة بالدور.
+  // The two wallet pages are always view-only for the collections section (config/walletViewOnly). They were open unless explicitly closed, but saving the page matrix writes every page into the role, so all operations pages including the wallet were saved as closed for collections staff. They are now always open; writes are rejected at the gate by role.
   const wv = require('../config/walletViewOnly');
   if (wv.isWalletViewOnly(role)) {
     for (const k of wv.WALLET_VIEW_PAGES) out[k] = true;
@@ -212,17 +156,8 @@ const effectivePages = async (role) => {
 };
 
 /**
- * ما أُشِّر عليه صراحةً مفتوحًا لهذا الدور — لا ما وُرث عن قسمه.
- *
- * ── ولماذا تحتاجه الواجهة ───────────────────────────────────────────────────
- * الأقسامُ غيرُ المُدارة بالمصفوفة (الرئيسيّة، الأدوات، الإدارة، البوابة) يحرس
- * شريطُها قوائمَ أدوارٍ مكتوبةً باليد. فمن أشّر لدورٍ مصنوعٍ على «مركز
- * التقارير» في المصفوفة فُتحت له نقاطُ الـ API (حارسُ الصفحات يسمح) ولم يظهر
- * له رابطٌ في الشريط: قائمةٌ قديمةٌ لا تعرف دورَه. فصار «لا يُفتَح له» بلا
- * سببٍ ظاهر.
- *
- * فتُرسَل التأشيراتُ الصريحةُ مع المستخدم، والشريطُ يقدّمها على القائمة: ما
- * أشّر عليه صاحبُ النظام قصدَه، والقائمةُ تشيخ.
+ * Pages explicitly ticked open for this role, not those inherited from its section.
+ * Sections not managed by the matrix (home, tools, admin, portal) have sidebars guarded by hand-written role lists. A created role ticked on "reports hub" got its API endpoints opened by the page guard but no sidebar link, since the old list does not know the role. Explicit ticks are therefore sent with the user and the sidebar prefers them over the list, which ages.
  */
 const explicitlyGrantedPages = async (role) => {
   if (FULL_ACCESS_ROLES.includes(role)) return [];
@@ -231,10 +166,10 @@ const explicitlyGrantedPages = async (role) => {
   return Object.entries(pages || {}).filter(([, v]) => v).map(([k]) => k);
 };
 
-/** نفسُها مجموعةً — تُقرأ في كلّ نداءٍ محروس، فتأتي من ذاكرة الصلاحيّات. */
+/** The same as a set; read on every guarded call, so it comes from the permissions cache. */
 const explicitlyGrantedSet = async (role) => new Set(await explicitlyGrantedPages(role));
 
-/** أوّلُ شاشةٍ تُفتَح لصاحب هذا الدور، إن ضُبطت له واحدة. */
+/** The first screen opened for this role, if one is configured. */
 const homePageFor = async (role) => {
   if (FULL_ACCESS_ROLES.includes(role)) return '';
   if (isScopedRole(role)) return scopeOf(role).home;
@@ -250,24 +185,10 @@ const sectionForPath = (path) => {
 };
 
 /**
- * hasSuperAdminPowers — مديرُ النظام، أو دورٌ مُنح صلاحيّاتِه كاملةً.
- *
- * ── ولماذا يُقرأ من المصفوفة لا من قائمة ────────────────────────────────────
- * بعضُ الأفعال لا يملكها إلّا مديرُ النظام: إعادةُ فتح يومٍ أُقفل في المحفظة،
- * وتعديلُ قيدٍ مسجَّلٍ أو حذفُه. وصاحبُ النظام يمنح أحيانًا دورًا كلَّ شيءٍ من
- * شاشة الصلاحيّات — «تعديل» على كلّ قسم — ويقصد به أن يكون كمدير النظام.
- *
- * فالتعريفُ: `super_admin`، أو دورٌ حفظت له المصفوفةُ «تعديل» على **كلّ** قسمٍ
- * صراحةً. والكلمةُ «صراحةً» مقصودة:
- *   • لا تُحسَب الافتراضيّات: دورٌ لم يُفتَح له بابُ الصلاحيّات قطّ لا يصير
- *     مديرًا للنظام لأنّ افتراضاتِ الشيفرة سخيّة.
- *   • ولا `FULL_ACCESS_ROLES`: أدوارُ تقنية المعلومات تتجاوز حارسَ الأقسام لأنّها
- *     تصون النظام، لا لأنّ لها أن تعيد كتابةَ دفترٍ ماليّ.
- *   • وقسمٌ يُضاف غدًا ولم يُمنَح بعدُ يُسقط الدورَ من هذه الدائرة حتى يُمنَحه —
- *     والأمانُ في هذا الاتّجاه، لا في عكسه.
- *
- * والذاكرةُ هي ذاكرةُ الصلاحيّات نفسُها، وإبطالُها عند الحفظ يعبر إلى العاملين:
- * من يُسحب منه قسمٌ يفقد هذه الصلاحيّة في الحال.
+ * hasSuperAdminPowers: a super admin, or a role granted full permissions.
+ * Some actions belong only to the system admin (reopening a closed wallet day, editing or deleting a recorded entry), and the owner sometimes grants a role "edit" on every section meaning it to act as admin. So the definition is: `super_admin`, or a role whose matrix explicitly has "edit" on every section.
+ * - Code defaults do not count, so a role never opened in the permissions screen is not admin.
+ * - `FULL_ACCESS_ROLES` does not count: IT roles bypass the section guard to maintain the system, not to rewrite a financial ledger. - A section added later and not yet granted drops the role out of this set; failing safe is the intended direction. Uses the permissions cache itself, and invalidation on save reaches both workers: a role that loses a section loses this power immediately.
  */
 const hasSuperAdminPowers = async (role) => {
   if (require('../config/constants').isTopRole(role)) return true;

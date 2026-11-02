@@ -10,15 +10,9 @@ import '../ui/widgets.dart';
 import 'light_transport_list.dart' show canEditLtUser;
 import 'reference_data.dart' show LookupValuesScreen;
 
-/// إعداداتُ قسم الأفراد — مطابقةٌ لـ `/system/b2c/settings`: السكنُ (إضافةٌ وتعديلٌ
-/// وحذفٌ وغرفُه) والقوائمُ المنسدلة. و«حسابات التطبيق» صفحتُها في القائمة.
-///
-/// ── ولماذا غرفٌ لا رقمٌ واحد ────────────────────────────────────────────────
-/// «السكنُ يأخذ كم موظّفًا؟» ليس سؤالًا واحدًا: غرفةُ المناديب تسع ثمانيةً وغرفةُ
-/// المشرفين ثلاثة. فسعةُ السكن مجموعُ غرفه، ولكلّ غرفةٍ نوعُها.
-///
-/// والإشغالُ **محسوبٌ** من الموظّفين لا مكتوبًا باليد — رقمٌ يُحدَّث يدويًّا يصير
-/// بعد أسبوعين رقمًا لا يُصدَّق.
+/// Personnel section settings, matching `/system/b2c/settings`: housing (add, edit, delete and its rooms) and the dropdown lists. "App accounts" has its own page in the menu.
+/// Rooms rather than one number: "how many employees does housing take" is not one question, since a riders' room holds eight and a supervisors' room three. Capacity is the sum of its rooms, each with its type.
+/// Occupancy is computed from employees, not typed: a hand-updated number becomes unbelievable within weeks.
 class LightTransportHousingScreen extends StatefulWidget {
   const LightTransportHousingScreen({super.key});
   @override
@@ -66,7 +60,7 @@ class _LightTransportHousingScreenState extends State<LightTransportHousingScree
     }
   }
 
-  // القوائمُ المنسدلة: قوائمُ وحدة b2c، ومعها قائمةُ مهامّ JP للقسم (كالموقع).
+  // Dropdown lists: the b2c module lists plus the section's JP task list (as on the web).
   Future<void> _loadTypes() async {
     try {
       final d = await Api.instance.get('/api/lookups/types');
@@ -261,7 +255,7 @@ extension on String {
   String ifEmpty(String o) => isEmpty ? o : this;
 }
 
-/// سطرُ غرفةٍ في النموذج — ومتحكّماه يعيشان معه.
+/// A room row in the form; its two controllers live with it.
 class _Room {
   final name = TextEditingController();
   final cap = TextEditingController();

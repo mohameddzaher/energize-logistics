@@ -1,8 +1,5 @@
 'use client';
-/**
- * «العميل» in the operations workflow: picked from the approved names and the customers page,
- * never typed (the server refuses anything else — CUSTOMER_NOT_APPROVED).
- */
+/** Customer in the operations workflow: picked from approved names and the customers page, never typed (the server refuses anything else with CUSTOMER_NOT_APPROVED). */
 import { useCallback, useEffect, useState } from 'react';
 import api from '@/lib/api';
 import { useSocket } from '@/hooks/useSocket';

@@ -1,13 +1,5 @@
 'use client';
-// المتوقع للوصول — جدولان لقرارٍ واحد.
-//
-// المشرف يسأل سؤالًا مركّبًا: «مين العربيات اللي هتوصل يوم السبت في جدة؟ وإيه
-// العربيات اللي هتكون فاضية وقتها؟». الجدول الأول يجيب شطره الأول، والثاني
-// شطره الثاني — ووضعهما في شاشةٍ واحدة هو الفكرة كلّها: إن لم تكفِ الواصلةُ
-// حمولةَ الغد، فمن الفاضية يُكمِل، دون أن ينتقل بين شاشتين ويحمل الأرقام بذهنه.
-//
-// و«فاضية» هنا تعني بلا حمولةٍ نشطة أصلًا — لا تسير ولا تُحمِّل ولا متجهةٌ إلى
-// جهة؛ وهذا ما يُصرَّح به في الجدول كي لا تُقرأ على أنها «وصلت وتُفرِّغ».
+// Expected arrivals: two tables for one decision. The supervisor asks a compound question: which trucks arrive Saturday in Jeddah, and which will be empty then? The first table answers the first part and the second the second, and putting both on one screen is the whole point: if the arriving trucks do not cover tomorrow's load, one can complete from the empty ones without switching screens and carrying numbers in mind. Empty here means no active load at all (not moving, not loading, not heading to a destination), and this is stated in the table so it is not read as arrived and unloading.
 import { useState, useEffect, useCallback, useMemo, Suspense } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -37,15 +29,11 @@ function ArrivalsInner() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  // كل فلاتر الشاشة تعيش في العنوان: تفلتر، تفتح حمولة، ترجع بزرّ المتصفّح
-  // فتجد ما بنيتَه كما تركتَه — ورابطُ «الواصل جدة السبت» يُرسَل كما هو.
+  // All screen filters live in the URL: filter, open a load, come back with the browser button and find what you built as you left it, and a link such as arrived Jeddah Saturday is sent as is.
   const [period, setPeriod] = useState<Period>(() => periodFromParams(sp));
   const [city, setCity] = useState(() => sp?.get('toCity') || '');
   const [q, setQ] = useState(() => sp?.get('q') || '');
-  // ── البطاقةُ المضغوطةُ تُظهر جدولَها وتُخفي ما سواه ───────────────────────
-  // كانت البطاقاتُ الخمسُ أرقامًا لا تُفتَح: يُقرأ «٤ بلا موعد وصول» ثمّ
-  // يُنزَل بالعين للبحث عن جدولها، و«مشغولة» لم يكن لها جدولٌ أصلًا. فصارت
-  // البطاقةُ فلترًا: ضغطةٌ تُفرِد جدولَها، وضغطةٌ تُرجع الكلّ.
+  // A compact card shows its own table and hides the rest. The five cards used to be numbers that did not open: one read 4 without arrival date and then looked down for its table, and the busy card had no table at all. Now a card is a filter: one click isolates its table, another returns all.
   const [focus, setFocus] = useState(() => sp?.get('focus') || '');
   const [debouncedQ, setDebouncedQ] = useState(q);
   useEffect(() => { const t = setTimeout(() => setDebouncedQ(q), 300); return () => clearTimeout(t); }, [q]);
@@ -57,10 +45,10 @@ function ArrivalsInner() {
     return p;
   }, [period, city, debouncedQ]);
 
-  // الفلترُ المعروضُ لا يُرسَل إلى الخادم: الجداولُ كلُّها وصلت، والإفرادُ عرضٌ.
+  // The displayed filter is not sent to the server: all tables arrived, and isolating is a view.
   const urlParams = useMemo(() => (focus ? { ...params, focus } : params), [params, focus]);
 
-  const guard = useLatestRequest(); // ردٌّ قديمٌ (فلترٌ سابق) لا يكتب فوق الأحدث
+  const guard = useLatestRequest(); // An old response (an earlier filter) does not overwrite a newer one.
   const load = useCallback(async () => {
     const mine = guard.begin();
     try {
@@ -76,11 +64,11 @@ function ArrivalsInner() {
   useSocket('fleet:updated', useCallback(() => load(), [load]));
   useSocket('fleet:vehicles', useCallback(() => load(), [load]));
   useSocket('fleet:drivers', useCallback(() => load(), [load]));
-  // الشاحنةُ من سجلّ المركبات والسائقُ من الموارد البشريّة: يُعاد الجلبُ متى تغيّر أحدُهما.
+  // The truck is from the vehicles register and the driver from HR: refetched whenever either changes.
   useSocket('vreg:updated', useCallback(() => load(), [load]));
   useSocket('hr:employee', useCallback(() => load(), [load]));
 
-  // `replace` لا `push`: ضغطةُ فلترٍ لا تستحقّ خطوةً في تاريخ المتصفّح.
+  // `replace`, not `push`: a filter click does not deserve a browser history step.
   useEffect(() => {
     const qs = new URLSearchParams(urlParams).toString();
     router.replace(`/system/fleet/arrivals${qs ? `?${qs}` : ''}`, { scroll: false });
@@ -212,7 +200,7 @@ function ArrivalsInner() {
             <SearchInput value={q} onChange={setQ} placeholder={ar ? 'بحث بلوحة أو سائق أو عميل…' : 'plate / driver / customer…'} />
           </div>
         </div>
-        {/* وجهات الفترة — الضغط على مدينةٍ يرشّح الجدولين معًا. */}
+        {/* Period destinations: clicking a city filters both tables together. */}
         {d && d.byCity.length > 0 && (
           <div className="flex flex-wrap items-center gap-2">
             <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-500"><MapPin className="w-3.5 h-3.5" /> {ar ? 'الوجهات:' : 'Destinations:'}</span>
@@ -279,8 +267,7 @@ function ArrivalsInner() {
       </div>
       )}
 
-      {/* بلا موعدٍ متوقَّع: سائرةٌ فعلًا لكنها لا تدخل أيّ نافذةٍ زمنية، وإخفاؤها
-          يجعل سيارتَها «لا واصلة ولا فاضية» فتسقط من التخطيط بلا أثر. */}
+      {/* No expected date: actually moving but in no time window, and hiding them would leave their vehicle neither arriving nor empty, dropping out of planning without a trace. */}
       {(!focus || focus === 'noEta') && (d?.noEta.length || 0) > 0 && (
         <div className="bg-white border border-amber-200 rounded-xl overflow-hidden shadow-sm">
           <div className="px-4 py-3 bg-amber-50 border-b border-amber-100">
@@ -351,10 +338,7 @@ function ArrivalsInner() {
       </div>
       )}
 
-      {/* ── السياراتُ المشغولةُ بأسمائها ──────────────────────────────────────
-          بطاقةُ «مشغولة» كانت رقمًا بلا جدول — والسؤالُ الذي يُسأل بعدها
-          مباشرةً: «مشغولةٌ بماذا؟». فهذا جوابُه: الحمولةُ والعميلُ والوجهةُ
-          والموعد، وضغطُ الصفِّ يفتح الحمولة. */}
+      {/* Busy vehicles by name. The busy card was a number with no table, and the question asked right after is busy with what? This answers it: the load, customer, destination and date, and clicking the row opens the load. */}
       {(!focus || focus === 'busy') && (
         <div className="bg-white border border-emerald-200 rounded-xl overflow-hidden shadow-sm">
           <div className="px-4 py-3 bg-emerald-50 border-b border-emerald-100 flex items-center gap-2">

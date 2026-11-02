@@ -35,11 +35,11 @@ export interface Employee {
   qiwaContractNumber?: string; gosiNumber?: string; absherStatus?: string; sponsorName?: string; workPermitExpiry?: string;
   jobTitle?: string; department?: string; hireDate?: string; actualWorkStartDate?: string; workLocation?: string;
   branch?: { _id: string; name: string } | string;
-  /** فروع إضافية يعمل عليها الموظف — والأساسي أعلاه هو المنسوب في التقارير. */
+  /** Extra branches the employee works in; the primary one above is the one attributed in reports. */
   branches?: (string | { _id: string; name?: string })[];
   employmentStatus?: 'active' | 'on_leave' | 'suspended' | 'terminated';
   terminatedAt?: string; terminationReason?: string;
-  /** «لا يعمل» وحالتُه: انتظار نقل الكفالة · شركة شقيقة · خروج نهائي. */
+  /** Not working, with the status: awaiting sponsorship transfer, sister company, or final exit. */
   terminationKind?: '' | 'transfer_pending' | 'sister_company' | 'final_exit';
   transferDeadline?: string | null;
   phone?: string; email?: string; address?: string; emergencyContactName?: string; emergencyContactPhone?: string;
@@ -69,20 +69,18 @@ export interface Contract {
   startDate: string; endDate?: string; durationMonths?: number;
   annualLeaveDays: number;
   jobTitle?: string; basicSalary?: number; allowances?: number; probationMonths?: number;
-  // ساري أو منتهي لا غير — «مفسوخ» منتهٍ وسببُه في terminationReason.
+  // Valid or expired only; a terminated contract is expired and its reason is in terminationReason.
   status: 'active' | 'expired';
   terminatedAt?: string; terminationReason?: string; custodyReturned?: boolean;
   notes?: string; createdAt?: string;
-  // ما جاء في ملفّ عقود الموظفين — العقدُ ورقةٌ لها بياناتٌ لا تعيش في ملفّ
-  // الموظّف: الهويّةُ كما كُتبت فيه، والمهنةُ **كما في العقد** (تختلف عن المهنة
-  // في الإقامة وعن المسمّى الوظيفيّ)، والسجلُّ التجاريّ الصادر تحته.
+  // What came from the employee contracts file: the contract is a paper with data that does not live in the employee file: the identity as written in it, the profession as in the contract (differs from the iqama profession and the job title), and the commercial registration issued under it.
   iqamaNumber?: string;
   employeeNameAr?: string;
   contractProfession?: string;
   sponsorRegistration?: string;
-  // رقمُه في «قوى» — هو ما يُطلب في التفتيش وفي مراسلة المكتب، لا اسمُ الموظّف.
+  // Its number in Qiwa; this, not the employee name, is what inspection and office correspondence ask for.
   contractNumber?: string;
-  // «غير مطلوب» حالةٌ سليمة لا صفرٌ ناقص — فالنصّ إلى جانب الرقم.
+  // Not required is a healthy state, not a missing zero, so the text accompanies the number.
   annualLeaveText?: string;
   probationText?: string;
 }
@@ -90,8 +88,7 @@ export interface Contract {
 export interface LeaveType {
   _id: string; code: string; nameEn: string; nameAr: string;
   paid: boolean; affectsBalance: boolean; color?: string; active: boolean;
-  // سياسة الإخطار المسبق: planned leave must be requested this many days before
-  // it starts. Sick/emergency types carry requiresAdvanceNotice: false.
+  // Advance notice policy: planned leave must be requested this many days before it starts. Sick/emergency types carry requiresAdvanceNotice: false.
   requiresAdvanceNotice?: boolean;
   minAdvanceDays?: number;
 }
@@ -119,10 +116,7 @@ export interface LeaveThreadEntry {
   attachment?: string; attachmentName?: string; at?: string;
 }
 
-/**
- * محطّاتُ السلسلة بترتيبها — تُرسم منها الشريطةُ في كلّ صفحة، فلا يُعاد
- * ترتيبُها في أربعة أماكن ثمّ يختلف اثنان منها.
- */
+/** Chain stages in order; the progress bar on every page is drawn from this, so the order is not repeated in four places where two could diverge. */
 export const LEAVE_STAGES: { key: LeaveStage; ar: string; en: string; decision: keyof LeaveRequest }[] = [
   { key: 'manager', ar: 'المدير المباشر', en: 'Direct Manager', decision: 'managerDecision' },
   { key: 'hr', ar: 'الموارد البشرية', en: 'HR', decision: 'hrDecision' },
@@ -142,14 +136,13 @@ export interface LeaveRequest {
   hrDecision?: LeaveDecision;
   financeDecision?: LeaveDecision;
   executiveDecision?: LeaveDecision;
-  // حوارُ الطلب: سؤالُ محطّةٍ وردُّ صاحبه. مرتَّبٌ بالأقدم.
+  // Request dialogue: a stage's question and the requester's reply, oldest first.
   thread?: LeaveThreadEntry[];
   balanceSnapshot?: { accrued?: number; requested?: number; remainingAfter?: number };
   createdAt?: string;
-  // مرفقاتُ الطلب وقراريه — يقرأها المراجعُ قبل أن يبتّ، وتبقى في ملفّ الموظّف.
+  // Request attachments and its two decisions; the reviewer reads them before deciding, and they stay in the employee file.
   attachments?: { _id?: string; title?: string; fileUrl: string; fileName?: string; size?: number; mimeType?: string }[];
-  // إجازةٌ وقعت ثمّ قُيِّدت: لا تمرّ بمديرٍ ولا بمهلة إخطار، لكنّ السجلّ يحفظ
-  // أنّها قيدٌ رجعيّ وباسم من قيّدها.
+  // A leave that already happened and was recorded afterwards: it skips the manager and the notice period, but the log keeps that it is a retroactive entry and who recorded it.
   backdated?: boolean;
   recordedByName?: string;
   recordedAt?: string;
@@ -235,7 +228,7 @@ export const docCategoryLabel = (key: string, lang: Lang) => labelFrom(DOCUMENT_
 
 // Human label for an audit action code.
 export const AUDIT_ACTIONS: Record<string, { en: string; ar: string }> = {
-  // أفعالُ المطالبة — بلا هذه الأسطر يُعرَض المفتاحُ الخامُ في سجلّ الملفّ.
+  // Claim actions; without these lines the raw key shows in the file history.
   create_vehicle_claim: { en: 'Claim opened', ar: 'تسجيل الحادثة' },
   update_vehicle_claim: { en: 'Claim edited', ar: 'تعديل المطالبة' },
   delete_vehicle_claim: { en: 'Claim removed', ar: 'حذف المطالبة' },
@@ -260,7 +253,7 @@ export const LEAVE_STATUS: Record<string, { bg: string; text: string; en: string
   pending_hr: { bg: 'bg-blue-500/20', text: 'text-blue-700', en: 'With HR', ar: 'عند الموارد البشرية' },
   pending_finance: { bg: 'bg-violet-500/20', text: 'text-violet-700', en: 'With Finance', ar: 'عند الحسابات' },
   pending_executive: { bg: 'bg-indigo-500/20', text: 'text-indigo-700', en: 'With Executive', ar: 'عند الإدارة العليا' },
-  // ليست رفضًا: الطلبُ عاد إلى صاحبه ليردّ أو يعدّل.
+  // Not a rejection: the request went back to its owner to reply or edit.
   info_requested: { bg: 'bg-orange-500/20', text: 'text-orange-700', en: 'Needs your reply', ar: 'بانتظار ردّك' },
   approved: { bg: 'bg-green-500/20', text: 'text-green-700', en: 'Approved', ar: 'مقبولة' },
   rejected: { bg: 'bg-red-500/20', text: 'text-red-700', en: 'Rejected', ar: 'مرفوضة' },
@@ -296,24 +289,16 @@ export const CONTRACT_STATUS: Record<string, { bg: string; text: string; en: str
   active: { bg: 'bg-green-500/20', text: 'text-green-700', en: 'Active', ar: 'ساري' },
   expired: { bg: 'bg-gray-500/20', text: 'text-gray-600', en: 'Expired', ar: 'منتهي' },
 };
-// ── حالتان لا أربع (صاحبُ الشركة، ٢٠٢٦/١٠/١٩) ──────────────────────────────
-// «مفسوخ» و«مجدَّد» القديمان يُقرآن «منتهي» — والخادمُ يطويهما قبل أن يصلا.
+// Two states, not four: valid and expired. The old terminated and renewed values read as expired, and the server folds them before they arrive.
 
-/**
- * أيُطلَب لهذا الموظّف عقد؟ الفريلانسرُ والمتدرّبُ لا عقدَ لهما — تاريخُ مباشرةٍ
- * فقط — فلا يُقال عن أحدهما «بلا عقد» ولا «لا عقد ساري له». ويُقرأ من «رقم
- * السجل» كما في الخادم (utils/hrEngagement)، لا من «النوع».
- */
+/** Whether a contract is required for this employee. Freelancers and trainees have no contract, only a start date, so neither is reported as having no contract or no valid contract. Read from the commercial registration number as on the server (utils/hrEngagement), not from the type. */
 export const contractRequired = (e?: { registerNumber?: string } | null) => {
   const r = String(e?.registerNumber ?? '').trim();
   return !(/فري\s*لانس|فريلانس|freelanc/i.test(r) || /تدريب|متدرب|trainee/i.test(r));
 };
 /**
- * ما يُعرَض للعقد — لا ما هو مخزَّنٌ فيه وحدَه.
- *
- * «ساري» حالةٌ تُكتب يومَ يُنشأ العقد ولا يغيّرها مرورُ الوقت: عقدٌ انقضت مدّتُه
- * ولم يُجدَّد يبقى «ساري» في تبويب العقود، وصفحةُ الانتهاءات تقول عنه «منتهي».
- * والاثنان يقرآن العقدَ نفسَه. فالعرضُ يقرأ التاريخَ مع الحالة.
+ * What to display for the contract, not only what is stored.
+ * Valid is written when the contract is created and time does not change it: a contract past its term and not renewed stays valid in the contracts tab while the expiries page calls it expired. Both read the same contract, so the display reads the date together with the status.
  */
 export const CONTRACT_LAPSED = { bg: 'bg-red-500/20', text: 'text-red-700', en: 'Expired', ar: 'منتهي' };
 export const contractBadge = (c?: { status?: string; endDate?: string | null } | null) => {
@@ -382,9 +367,7 @@ export const empName = (e: any, lang: Lang = 'en') => {
 
 export const userName = (u: any) => (!u ? '—' : typeof u === 'string' ? u : `${u.firstName || ''} ${u.lastName || ''}`.trim() || '—');
 
-// ── Date helpers ─────────────────────────────────────────────────────────────
-// «اليوم» يوم الرياض لا يوم غرينتش: `toISOString()` كانت تعطي أمسِ بين منتصف
-// الليل والثالثة فجرًا. المرجعُ واحدٌ الآن في `lib/companyDay`.
+// Date helpers. Today means the Riyadh day, not the Greenwich day: toISOString() gave yesterday between midnight and 03:00. The single reference is lib/companyDay.
 export { today } from './companyDay';
 import { today } from './companyDay';
 export const fmtDate = (v?: string | null) => (v ? new Date(v).toLocaleDateString('en-GB') : '—');

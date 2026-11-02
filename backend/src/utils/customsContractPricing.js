@@ -1,16 +1,7 @@
 /**
- * أسعارُ عقد العميل ← «الإيرادات والفوترة» في المعاملة.
- *
- * وقتَ التعاقد تُكتب الأسعارُ مرّةً (CustomsContract.pricing)، ومنها تُملأ
- * خاناتُ الإيراد في كلّ معاملةٍ لهذا العميل:
- *   أجورُ التخليص            = سعرُ الحاوية في العقد × عددُ حاويات المعاملة
- *   سعرُ النقل من الميناء إلى العميل = سعرُ الوجهة المختارة من العقد
- *   سعرُ النقل من الميناء إلى الساحة = سعرُه في العقد
- *   سعرُ النقل من الساحة إلى العميل  = سعرُه في العقد
- *
- * والخاناتُ تبقى قابلةً للتعديل. فإعادةُ الملء (عند تغيّر العميل أو عدد
- * الحاويات) لا تكتب إلّا في خانةٍ فارغة أو ما زالت على ما وضعه العقدُ آخرَ مرّة
- * — ما عدّله الموظّفُ بيده لا يُدهَس. وزرُّ «تعبئة من العقد» يكتب في الكلّ.
+ * Customer contract prices feed 'Revenue and billing' on the transaction.
+ * Prices are written once in CustomsContract.pricing and fill each transaction's revenue fields: clearance fees = container price x container count; the three transport prices come from the contract (chosen destination for port-to-customer).
+ * Fields stay editable: refilling writes only to empty fields or ones still holding the last contract value, so manual edits survive. The 'fill from contract' button writes all.
  */
 const CustomsContract = require('../models/CustomsContract');
 
@@ -19,7 +10,7 @@ const r2 = (x) => Math.round(x * 100) / 100;
 const fold = (s) => String(s || '').trim().toLowerCase()
   .replace(/[أإآٱ]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي').replace(/\s+/g, ' ');
 
-/** عقدُ العميل الساري الذي فيه أسعار — الأحدثُ بدايةً إن تعدّد. */
+/** The customer's active contract that has prices; the newest start if there are several. */
 async function activeCustomerContract(partyId) {
   if (!partyId) return null;
   const now = Date.now();
@@ -34,7 +25,7 @@ async function activeCustomerContract(partyId) {
   return live.find(priced) || null;
 }
 
-/** الوجهةُ المقصودة: المختارةُ إن بقيت في العقد، وإلّا الوحيدةُ، وإلّا ما يطابق مدينةَ المعاملة. */
+/** Intended destination: the chosen one if still in the contract, else the only one, else the one matching the transaction city. */
 function pickRoute(contract, { from, to } = {}, clearance = {}) {
   const routes = ((contract && contract.pricing && contract.pricing.routes) || []).filter((r) => num(r.price) !== null);
   if (!routes.length) return null;
@@ -51,7 +42,7 @@ function pickRoute(contract, { from, to } = {}, clearance = {}) {
   return null;
 }
 
-/** ما يقوله العقدُ لهذه المعاملة — خانةٌ لا سعرَ لها في العقد لا تظهر هنا. */
+/** What the contract says for this transaction; a field with no contract price does not appear. */
 function pricingFor(contract, containerCount, route) {
   const p = (contract && contract.pricing) || {};
   const out = {};
@@ -64,9 +55,9 @@ function pricingFor(contract, containerCount, route) {
 }
 
 /**
- * يملأ `target.revenue` من العقد ويكتب `target.contractPricing`.
- * `target` كائنٌ عاديّ (بيانات تحديث) أو وثيقة. `current` ما في القاعدة الآن.
- * @returns {boolean} هل تغيّر شيء
+ * Fills `target.revenue` from the contract and writes `target.contractPricing`.
+ * `target` is a plain object (update data) or a document; `current` is what is in the database now.
+ * @returns {boolean} whether anything changed
  */
 function fillRevenue(target, current, contract, { overwrite = false, from, to } = {}) {
   if (!contract) return false;
@@ -103,7 +94,7 @@ function fillRevenue(target, current, contract, { overwrite = false, from, to } 
   return changed;
 }
 
-/** ملخّصُ العقد لشاشة المعاملة: أيُّ عقدٍ، وما وجهاتُه، وما يقوله الآن. */
+/** Contract summary for the transaction screen: which contract, its destinations, and what it says now. */
 function contractSummary(contract, clearance) {
   if (!contract) return null;
   const route = pickRoute(contract, {

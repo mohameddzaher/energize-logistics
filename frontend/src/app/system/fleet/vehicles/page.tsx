@@ -1,14 +1,8 @@
 'use client';
 /**
- * سياراتنا — the 58 trucks of our own fleet.
- *
- * ── وطاقمُ الشاحنة يُسنَد من صفّ الشاحنة ────────────────────────────────────
- * كان الإسنادُ من صفحة السائقين وحدَها: تُفتَح، ويُبحَث عن الرجل بين اثنين
- * وستّين، وتُختار شاحنتُه من قائمة. والسؤالُ عند المشرف معكوسٌ — ينظر إلى
- * شاحنةٍ فيقول «مَن عليها؟ ومَن معه؟» — فصار عمودين في هذا الجدول: السائقُ
- * الأوّل والسائقُ الثاني، يُبدَّل كلٌّ منهما في موضعه.
- *
- * وكان العمودُ واحدًا يسرد الأسماء بلا رتبة، فلا يُعرَف مِن الشاشة مَن الأوّل.
+ * Our vehicles: the 58 trucks of our own fleet.
+ * Crew is assigned from the truck row. Assignment used to be only from the drivers page: open it, find the man among sixty-two, and pick his truck from a list. A supervisor's question is the reverse: looking at a truck, who is on it and who is with him. So the table has two columns, first and second driver, each swapped in place.
+ * A single column used to list names without rank, so the screen could not tell who is first.
  */
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { formatPlate } from '@/lib/flexMatch';
@@ -27,14 +21,13 @@ import { FleetVehicle, FleetDriver, TRAILER_TYPES, GPS_TYPES, foldAr, canEditFle
 import ScrollX from '@/components/system/ScrollX';
 import { useColumnFilters } from '@/hooks/useColumnFilters';
 
-// أعمدة تصدير السيارات — الشاشة تصدّر مرّتين (الكل، والمعروض بعد الفلتر)،
-// فالتعريف واحدٌ كي لا يفترق الملفان.
+// Vehicle export columns: the screen exports twice (all, and the displayed rows after filtering), so one definition keeps the two files from diverging.
 const VEHICLE_COLUMNS = [
   { header: 'Plate', key: 'plate', width: 16 },
   { header: 'Description', key: 'name', width: 22 },
   { header: 'Trailer type', key: 'trailerType', width: 14 },
   { header: 'GPS', key: 'gpsType', width: 8 },
-  // الهويّةُ من سجلّ المركبات — الخادمُ يقرأ الماركةَ واللونَ من هناك.
+  // Identity comes from the vehicle register; the server reads make and color from there.
   { header: 'Registry plate', key: 'registry', transform: (v: any) => v?.plateNumber || '', width: 16 },
   { header: 'Brand', key: 'brand', width: 14 },
   { header: 'Model', key: 'registry', transform: (v: any) => v?.model || '', width: 14 },
@@ -45,7 +38,7 @@ const VEHICLE_COLUMNS = [
     header: `${k} expiry`, key: 'registry', width: 14,
     transform: (v: any) => { const d = (v?.docs || []).find((x: any) => x.key === k); return d?.expiryDate ? String(d.expiryDate).slice(0, 10) : ''; },
   })),
-  // بالرتبة لا مجموعةً: ملفٌّ يقول «أحمد + خالد» لا يقول مَن الأوّل.
+  // By rank, not as a group: a file saying 'Ahmed + Khaled' does not say who is first.
   { header: 'First driver', key: 'drivers', transform: (v: any) => (v || []).find((d: any) => (d.seat || 1) === 1)?.name || '', width: 24 },
   { header: 'Second driver', key: 'drivers', transform: (v: any) => (v || []).find((d: any) => d.seat === 2)?.name || '', width: 24 },
   { header: 'Driver count', key: 'drivers', transform: (v: any) => (v || []).length, width: 12 },
@@ -80,7 +73,7 @@ export default function FleetVehiclesPage() {
   const [form, setForm] = useState<any>(EMPTY);
   const [saving, setSaving] = useState(false);
 
-  // تعيين المشرف — مدير القسم يوزّع السيارات على المشرفين من هنا.
+  // Supervisor assignment: the department manager distributes vehicles to supervisors from here.
   const [supervisors, setSupervisors] = useState<{ _id: string; firstName: string; lastName: string; email: string }[]>([]);
   const [assigning, setAssigning] = useState<FleetVehicle | null>(null);
   const [assignTo, setAssignTo] = useState('');
@@ -100,9 +93,7 @@ export default function FleetVehiclesPage() {
     setAssignSaving(false);
   };
 
-  // ── سائقو القسم: قائمةُ الاختيار في العمودين ──────────────────────────
-  // تُجلَب مرّةً مع الشاحنات، والسوكِت يعيدها عند كلّ نقل — فلا تُسنَد شاحنةٌ
-  // إلى رجلٍ نقله زميلٌ قبل لحظة.
+  // Department drivers: the picker list for both columns. Fetched once with the trucks, and the socket refetches it on every move, so a truck is never assigned to a man a colleague moved a moment ago.
   const [drivers, setDrivers] = useState<FleetDriver[]>([]);
   const [seatBusy, setSeatBusy] = useState('');
 
@@ -123,24 +114,18 @@ export default function FleetVehiclesPage() {
   useSocket('fleet:vehicles', useCallback(() => load(), [load]));
   // Driver moves change the chips on this page too.
   useSocket('fleet:drivers', useCallback(() => load(), [load]));
-  // ── والهويّةُ من سجلّين آخرين: يُعاد الجلبُ متى تغيّرا ──────────────────
-  // الماركةُ والمستنداتُ من سجلّ المركبات، واسمُ السائق وحالتُه من الموارد البشريّة.
+  // Identity comes from two other registers: refetch when they change. Make and documents from the vehicle register, driver name and status from HR.
   useSocket('vreg:updated', useCallback(() => load(), [load]));
   useSocket('hr:employee', useCallback(() => load(), [load]));
 
-  /**
-   * ── والمقعدان يُكتبان في نداءٍ واحد ──────────────────────────────────────
-   * لو كُتب كلُّ مقعدٍ وحدَه لمرّت القاعدةُ بلحظةٍ فيها رجلان في مقعدٍ واحد،
-   * أو رُفض الإسنادُ لأنّ «الشاحنة عليها سائقان بالفعل» — وهو ترتيبُ الكتابة
-   * لا حقيقةُ الطاقم. فالخادمُ يأخذ المقعدين معًا ويرتّبهما.
-   */
+  /** The two seats are written in one call. Writing each seat alone would pass through a moment with two men in one seat, or reject the assignment because the truck already has two drivers, which is write order and not the true crew. So the server takes both seats together and orders them. */
   const setSeat = async (v: FleetVehicle, which: 1 | 2, driverId: string) => {
     const [a, b] = seatsOf(v);
     const next = {
       first: which === 1 ? driverId : (a?._id || ''),
       second: which === 2 ? driverId : (b?._id || ''),
     };
-    // الرجلُ نفسُه في المقعدين لا معنى له: مَن رُفع إلى الأوّل يخلو مقعدُه.
+    // The same man in both seats is meaningless: whoever is promoted to first leaves their seat empty.
     if (next.first && next.first === next.second) {
       if (which === 1) next.second = ''; else next.first = '';
     }
@@ -152,7 +137,7 @@ export default function FleetVehiclesPage() {
     setSeatBusy('');
   };
 
-  /** خيارُ السائق: اسمُه، وأين هو الآن — فلا يُسحَب رجلٌ من شاحنةٍ بلا علم. */
+  /** Driver option: his name and where he is now, so a man is not pulled from a truck unknowingly. */
   const driverOptions = useMemo(() => {
     const plateOf = (d: FleetDriver) => (typeof d.vehicle === 'object' && d.vehicle ? d.vehicle.plate : '');
     return [
@@ -169,7 +154,7 @@ export default function FleetVehiclesPage() {
     ];
   }, [drivers, ar]);
 
-  // «إضافة سائق ثانٍ»: أيُّ سائقٍ، على أيّ شاحنة — السؤالُ الذي طُلب بالحرف.
+  // Add second driver: any driver, on any truck. This is the question as literally asked.
   const [secondOpen, setSecondOpen] = useState(false);
   const [secondForm, setSecondForm] = useState({ vehicle: '', driver: '' });
   const [secondSaving, setSecondSaving] = useState(false);
@@ -230,7 +215,7 @@ export default function FleetVehiclesPage() {
       .some((x) => foldAr(String(x || '')).includes(s));
   });
 
-  // قمعُ الأعمدة — القيمُ كما تُقرأ في الصفّ. راجع hooks/useColumnFilters.
+  // Column funnel: values as read in the row. See hooks/useColumnFilters.
   const cf = useColumnFilters<any>({
     plate: (v) => formatPlate(v.plate),
     trailerType: (v) => v.trailerType || '',
@@ -264,8 +249,7 @@ export default function FleetVehiclesPage() {
             { key: 'filtered', label: ar ? 'المعروض حسب الفلتر' : 'Filtered view', sheets: [{ name: 'Vehicles', rows: filtered as any[], columns: VEHICLE_COLUMNS }] },
             { key: 'all', label: ar ? 'كل السيارات' : 'All vehicles', sheets: [{ name: 'Vehicles', rows: vehicles as any[], columns: VEHICLE_COLUMNS }] },
           ]} />
-        {/* الأيقونةُ بجانب «إضافة سيارة»: سؤالٌ واحدٌ — مَن يركب ثانيًا، وعلى
-            أيّ شاحنة — بدل الذهاب إلى صفحة السائقين والبحث فيها. */}
+        {/* Icon beside add vehicle: one question, who rides second and on which truck, instead of going to the drivers page and searching. */}
         {editor && (
           <button type="button" onClick={() => setSecondOpen(true)}
             className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-[#f37121]/40 text-[#f37121] text-sm font-semibold hover:bg-[#f37121]/10"
@@ -278,11 +262,7 @@ export default function FleetVehiclesPage() {
 
       {error && <ErrorNotice error={error} lang={lang} onRetry={load} />}
 
-      {/* ── والبطاقةُ تُصفّي الجدولَ تحتها ───────────────────────────────────
-          «ستُّ شاحناتٍ بلا سائق» رقمٌ لا يُفتَح: يُقرأ ثمّ يُبحَث عن الستّ
-          بالعين في سبعٍ وخمسين صفًّا. والفلاترُ قائمةٌ في الشاشة أصلًا
-          (`seatsFilter` و`maintFilter`) — فالبطاقةُ تضغطها، وضغطةٌ ثانيةٌ
-          تُرجع الكلّ. */}
+      {/* The card filters the table below. 'Six trucks without a driver' is a number that cannot be opened, and finding the six by eye among fifty-seven rows is slow. The filters already exist on the screen (`seatsFilter` and `maintFilter`), so the card applies them and a second click restores all. */}
       <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
         <StatCard label={ar ? 'إجمالي السيارات' : 'Total vehicles'} value={vehicles.length}
           onClick={() => { setSeatsFilter(''); setMaintFilter(''); setGpsFilter(''); setSearch(''); }}
@@ -354,15 +334,12 @@ export default function FleetVehiclesPage() {
           <tbody>
             {shown.map((v) => (
               <tr key={v._id} className="border-b border-slate-200/70 hover:bg-slate-50">
-                {/* اللوحة هي مدخل التحليل: ضغطةٌ واحدة تفتح كل ما فعلته هذه
-                    السيارة خلال أي فترة — وكان الوصول إليه يمرّ بشاشة تحليلاتٍ
-                    عامة لا تُفتح منها سيارةٌ بعينها أصلًا. */}
+                {/* The plate is the entry to analysis: one click opens everything this vehicle did over any period. Reaching it used to go through a general analytics screen from which no single vehicle opens. */}
                 <td className="px-4 py-3 whitespace-nowrap">
                   <Link href={`/system/fleet/vehicles/${v._id}`} className="text-[#f37121] font-bold font-mono hover:underline">{formatPlate(v.plate)}</Link>
                   {v.name && <span className="block text-xs text-slate-500">{v.name}</span>}
                 </td>
-                {/* ── هويّتُها من سجلّ المركبات لا من نسخةٍ هنا ─────────────────
-                    سجلٌّ واحدٌ لكلّ مركبة: ما يُصحَّح هناك يظهر هنا في اللحظة. */}
+                {/* Identity from the vehicle register, not a copy here. One record per vehicle: what is corrected there appears here immediately. */}
                 <td className="px-4 py-3 whitespace-nowrap text-xs">
                   {v.registry ? (
                     <span className="inline-flex flex-col">
@@ -393,9 +370,7 @@ export default function FleetVehiclesPage() {
                   })()}
                 </td>
                 <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{v.trailerType || '—'}</td>
-                {/* ── الصيانة من لوكيشن سوليوشن ──────────────────────────────
-                    القسمان يتكلّمان عن الشاحنة نفسها؛ وفصلُهما هو ما يجعل
-                    شاحنةً صيانتُها متأخّرة تُحمَّل اليوم وتقف في الطريق غدًا. */}
+                {/* Maintenance from Location Solutions. Both sections describe the same truck; separating them is what lets a truck with overdue maintenance be loaded today and stand on the road tomorrow. */}
                 <td className="px-4 py-3 whitespace-nowrap">
                   {!v.maintenance ? <span className="text-slate-300">—</span> : (
                     <Link href={v.maintenance.unitId != null ? `/system/ls2/${v.maintenance.unitId}` : `/system/ls2/fleet-assets?tab=tires&q=${encodeURIComponent(v.plate)}`}
@@ -418,9 +393,7 @@ export default function FleetVehiclesPage() {
                         text={v.gpsType === 'LS' ? 'text-emerald-700' : 'text-blue-700'} label={v.gpsType} />
                     : <span className="text-slate-400">—</span>}
                 </td>
-                {/* ── المقعدان: كلٌّ في خانته يُبدَّل في موضعه ──────────────
-                    ومَن لا يعمل يُلوَّن: شاحنةٌ سائقُها في إجازةٍ لا تتحرّك،
-                    والاسمُ وحدَه لا يقول ذلك. */}
+                {/* The two seats: each is swapped in place. A non-working driver is colored: a truck whose driver is on leave does not move, and the name alone does not say that. */}
                 {([1, 2] as const).map((seat) => {
                   const who = seatsOf(v)[seat - 1];
                   return (
@@ -485,7 +458,7 @@ export default function FleetVehiclesPage() {
         </table>
       </ScrollX>
 
-      {/* تعيين المشرف: هذه السيارة مسؤول عنها مَن؟ */}
+      {/* Supervisor assignment: who is responsible for this vehicle? */}
       <Modal open={!!assigning} onClose={() => setAssigning(null)}
         title={assigning ? (ar ? `المشرف المسؤول عن ${assigning.plate}` : `Supervisor for ${assigning.plate}`) : ''}
         footer={<>
@@ -514,9 +487,7 @@ export default function FleetVehiclesPage() {
         </div>
       </Modal>
 
-      {/* إضافة سائق ثانٍ: مَن، وعلى أيّ شاحنة. والشاحنةُ تُعرض بسائقها الأوّل
-          فيُرى مع مَن سيركب قبل الحفظ، وما كان مقعدُها الثاني مشغولًا لا يُعرَض
-          بوصفه فارغًا — تُقال حالُه. */}
+      {/* Add second driver: who, and on which truck. The truck is shown with its first driver so it is clear who he will ride with before saving, and a truck whose second seat is occupied is not shown as empty; its state is stated. */}
       <Modal open={secondOpen} onClose={() => setSecondOpen(false)}
         title={ar ? 'إضافة سائق ثانٍ' : 'Add a second driver'}
         footer={<>
@@ -578,7 +549,7 @@ export default function FleetVehiclesPage() {
           </PrimaryButton>
         </>}>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {/* اللوحةُ هويّةُ المركبة في سجلّ المركبات: تُصحَّح هناك متى رُبطت. */}
+          {/* The plate is the vehicle's identity in the vehicle register: corrected there once linked. */}
           <Field label={ar ? 'رقم اللوحة *' : 'Plate *'}>
             <TextInput value={form.plate} disabled={!!editing?.linked} onChange={(e) => setForm((f: any) => ({ ...f, plate: e.target.value }))} />
           </Field>

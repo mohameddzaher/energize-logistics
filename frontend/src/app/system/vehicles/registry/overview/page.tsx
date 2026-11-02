@@ -1,11 +1,6 @@
 'use client';
-// نظرة شاملة على المركبات — كل عمود في الماستر له كارت، وكل رقم بيتضغط.
-//
-// الفكرة اللي الصفحة مبنية عليها: صاحب الشركة يبص مرة واحدة ويعرف كل حاجة عن
-// المركبات، وأي رقم يشدّ انتباهه يدوس عليه فيلاقي نفسه في القائمة مفلترة عليه
-// بالظبط. عشان كده الفلتر بييجي **من السيرفر** مع كل قيمة (`item.filter`) بدل
-// ما الصفحة تبنيه — لو بنته هنا كان ممكن يختلف عن اللي السيرفر بيعدّ بيه، ويبقى
-// الرقم بيقول حاجة والصفحة بتوري حاجة تانية.
+// Fleet overview: a card for every master column, every number clickable.
+// The filter comes from the server with each value (item.filter) so the list always matches what the server counted.
 import { useState, useEffect, useCallback, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useLanguage } from '@/context/LanguageContext';
@@ -28,8 +23,7 @@ import { stateMeta,
 const DOC_ICON: Record<string, any> = {
   insurance: ShieldCheck, operatingCard: CreditCard, vehicleLicense: FileText,
   inspection: Wrench, gps: Satellite, authorization: KeyRound,
-  // بطاقةُ السائق سابعُ الكروت — ورقةٌ على إنسانٍ لا على مركبة، وانتهاؤها
-  // يوقف العملَ كما يوقفه انتهاءُ استمارة. راجع overview في الخادم.
+  // The driver card is the seventh card: a paper on a person, not a vehicle, but its expiry stops work like any registration. See overview on the server.
   driverCard: IdCard,
 };
 
@@ -42,19 +36,14 @@ function VehiclesOverviewInner() {
 
   const [d, setD] = useState<VehicleOverview | null>(null);
   const [loading, setLoading] = useState(true);
-  // الفلتر هو مصدر كل رقم في هذه الصفحة — البطاقات والتحليلات تُعاد قراءتها منه،
-  // فلا يبقى رقمٌ محسوبٌ على أسطولٍ غير الذي يراه المستخدم أمامه.
-  // ويعيش في عنوان الصفحة: تفلتر، تفتح رقمًا، ترجع بزرّ المتصفّح فتجد ما بنيتَه
-  // كما تركتَه — لا اللوحةَ خامًا وقد ضاع الفلتر مع أوّل انتقال.
+  // The filter is the source of every number on this page; cards and analytics are re-read from it.
+  // It lives in the URL so back/forward keeps the built view.
   const sp = useSearchParams();
   const [filters, setFilters] = useState<FilterValues>(() =>
     Object.fromEntries([...(sp?.entries() || [])]));
   const [refreshing, setRefreshing] = useState(false);
 
-  // ── ولا يكتب ردٌّ قديمٌ فوق ردٍّ أحدث ───────────────────────────────────
-  // تُكتب المدّةُ فتنطلق طلبتان: واحدةٌ بالمدّة القديمة وأخرى بالجديدة. والأكبرُ
-  // ردًّا أبطأُ وصولًا، فيصل بعد الأصغر ويكتب فوقه — فيرى الكاتبُ نتيجتَه ثوانيَ
-  // ثمّ تعود الشاشةُ إلى ما قبل الفلتر وهو لم يمسّ شيئًا. راجع hooks/useLatestRequest.
+  // Ignore stale responses: a slower earlier request must not overwrite a newer one. See hooks/useLatestRequest.
   const guard = useLatestRequest();
   const load = useCallback(async () => {
     const mine = guard.begin();
@@ -70,23 +59,19 @@ function VehiclesOverviewInner() {
   }, [JSON.stringify(filters), notify, guard]);
   useEffect(() => { load(); }, [load]);
 
-  // `replace` لا `push`: كل ضغطةِ قيمةٍ لا تستحقّ خطوةً في تاريخ المتصفّح.
+  // replace, not push: each value click should not add a browser history step.
   useEffect(() => {
     const q = new URLSearchParams(
       Object.entries(filters).filter(([, v]) => v !== '' && v != null) as [string, string][]).toString();
     router.replace(`/system/vehicles/registry/overview${q ? `?${q}` : ''}`, { scroll: false });
   }, [JSON.stringify(filters), router]);
-  // والراكبُ والتفويضُ وحالةُ الموظّف تُكتب من B2C والموارد البشريّة أيضًا.
+  // Rider, authorization and employee status are also written from B2C and HR.
   const reload = useCallback(() => { load(); }, [load]);
   useSocket('vreg:updated', reload);
   useSocket('lt:updated', reload);
   useSocket('hr:employee', reload);
 
-  /**
-   * يفتح القائمة بنفس الفلتر الذي عدّ به الخادم — **مضافًا إليه الفلتر النشط**.
-   * لولا ذلك لفتح «١٠ منتهية» وأنت تنظر إلى جدة على العشر في الأسطول كلّه:
-   * رقمٌ ضغطتَه فأعطاك غيره.
-   */
+  /** Opens the list with the same filter the server counted with, plus the active filter, so the number clicked matches the rows shown. */
   const openList = (filter: Record<string, string>) => {
     const q = new URLSearchParams(Object.entries({ ...filters, ...filter }).filter(([, v]) => v !== '') as [string, string][]).toString();
     router.push(`/system/vehicles/registry${q ? `?${q}` : ''}`);
@@ -95,13 +80,7 @@ function VehiclesOverviewInner() {
     const p = new URLSearchParams(Object.entries({ ...filters, ...q }).map(([k, v]) => [k, String(v)])).toString();
     router.push(`/system/vehicles/registry/expiring?${p}`);
   };
-  /**
-   * كل رقم يفتح المركبات التي وراءه — لا يُضيف فلترًا إلى هذه الصفحة.
-   *
-   * الفرق بين الأمرين هو الفرق بين سؤالٍ وجواب: الفلتر يصنع الرقم، والضغط على
-   * الرقم يُري ما فيه. وكان الضغط يُضيف الشرط فتبقى أمامك اللوحة نفسها بأرقامٍ
-   * أصغر ولا ترى المركبات أصلًا.
-   */
+  /** Each number opens the vehicles behind it without adding a filter to this page: the filter produces the number, the click shows its contents. */
   const drill = (q: Record<string, string>) => openList(q);
 
   if (loading) return <Spinner />;
@@ -126,10 +105,7 @@ function VehiclesOverviewInner() {
         </div>
       </PageHeader>
 
-      {/* ── الفلاترُ السريعة: الأعمدةُ المهمّة وحدَها ─────────────────────────
-          كشريط لوحة الموارد البشريّة (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢): قوائمُ فيها بحثٌ
-          وعددُ كلّ قيمةٍ تحت بقيّة الفلاتر، تكتب في الفلتر نفسِه الذي تقرؤه
-          اللوحةُ كلُّها — والفلترةُ الكاملةُ بكلّ الأعمدة تبقى تحته لمن يريدها. */}
+      {/* Quick filters: only the important columns, like the HR dashboard bar. Searchable lists with per-value counts; full filtering stays below. */}
       <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-sm">
         <p className="mb-2 text-[12px] font-bold text-slate-500">{t('فلترة اللوحة — كل الأرقام تتعدّل حسب اختيارك', 'Filter the dashboard — every number follows your choice')}</p>
         <HrQuickFilters
@@ -152,7 +128,7 @@ function VehiclesOverviewInner() {
         />
       </div>
 
-      {/* شريط الفلترة — كل رقم تحته محسوب عليه */}
+      {/* Filter bar; every number below is computed under it. */}
       <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-sm">
         <FilterPanel
           optionsUrl="/api/vehicle-registry/filters"
@@ -194,7 +170,7 @@ function VehiclesOverviewInner() {
         />
       </div>
 
-      {/* ① الأرقام الكبيرة */}
+      {/* 1. Big numbers */}
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
         <Big label={t('إجمالي المركبات', 'Vehicles')} value={d.totals.vehicles} accent="#f37121" onClick={() => openList({})} />
         <Big label={t('يحتاج متابعة', 'Needs attention')} value={d.totals.needsAttention} accent="#dc2626" onClick={() => openExpiring({ withinDays: 60 })} />
@@ -207,7 +183,7 @@ function VehiclesOverviewInner() {
           onClick={() => openList({ missing: '1' })} />
       </div>
 
-      {/* ② المستندات — الجزء اللي بيوجع */}
+      {/* 2. Documents: the painful part */}
       <section className="space-y-2">
         <h2 className="text-sm font-bold text-slate-800">{t('المستندات ومواعيد انتهائها', 'Documents and their expiry')}</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
@@ -215,7 +191,7 @@ function VehiclesOverviewInner() {
         </div>
       </section>
 
-      {/* ③ وثائق الشركة — انتهاؤها بيوقّف الشغل كله */}
+      {/* 3. Company documents: expiry stops all work */}
       {!!d.corporate.length && (
         <section className="space-y-2">
           <h2 className="text-sm font-bold text-slate-800">{t('وثائق التأمين على مستوى الشركة', 'Company-level policies')}</h2>
@@ -244,7 +220,7 @@ function VehiclesOverviewInner() {
         </section>
       )}
 
-      {/* ④ الحوادث — السؤال هنا فلوس */}
+      {/* 4. Accidents: the question is money */}
       <section className="space-y-2">
         <h2 className="text-sm font-bold text-slate-800">{t('الحوادث والمطالبات التأمينية', 'Accidents & insurance claims')}</h2>
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
@@ -252,8 +228,7 @@ function VehiclesOverviewInner() {
           <Big label={t('مطالبات مفتوحة', 'Open claims')} value={d.claims.open} accent="#f59e0b" onClick={() => router.push('/system/vehicles/registry/claims?status=pending')} />
           <Big label={t('الخطأ علينا', 'Our fault')} value={d.claims.ourFault} accent="#dc2626"
             onClick={() => router.push('/system/vehicles/registry/claims?fault=ours')} />
-          {/* والمبلغان ليسا قائمةَ صفوف — تُفتَح عليهما صفحةُ الحوادث كاملةً
-              لأنّهما مجموعُها، لا شريحةٌ منها. */}
+          {/* The two amounts are not row lists; they open the full accidents page because they are its totals, not a slice. */}
           <Big label={t('المبلغ المقدَّر (ر.س)', 'Estimated (SAR)')} value={money(d.claims.estimatedSar)} accent="#0ea5e9"
             onClick={() => router.push('/system/vehicles/registry/claims')} />
           <Big label={t('متوقع استرداده (ر.س)', 'Expected recovery')} value={money(d.claims.expectedRecoverySar)} accent="#16a34a"
@@ -261,7 +236,7 @@ function VehiclesOverviewInner() {
         </div>
       </section>
 
-      {/* التحليلات — شرائح مشتقّة، كل شريحة تفلتر الصفحة عند الضغط */}
+      {/* Analytics: derived slices; clicking a slice filters the page. */}
       {!!d.analytics?.length && (
         <section className="space-y-2">
           <div className="flex items-center gap-2">
@@ -278,14 +253,7 @@ function VehiclesOverviewInner() {
         </section>
       )}
 
-      {/* ── وما كان تحت هذا الموضع رُفع ───────────────────────────────────
-          كانت الصفحةُ تُكمِل بثلاثة جداولَ طويلة: «نواقص البيانات» بندًا بندًا،
-          و«نواقص منصّة لوجستي»، و«تفصيل كل عمود» — عشراتُ الصفوف تُمرَّر بالإصبع
-          تحت لوحةٍ يُفترَض أن تُقرأ في نظرة. وكلُّها موجودةٌ حيث تُعمَل: النواقصُ
-          في سجلّ المركبات بفلترها، والأعمدةُ في صفحاتها.
-
-          والنظرةُ الشاملة تجيب سؤالًا واحدًا: ما حالُ الأسطول اليوم، وما الذي
-          يحتاج عملًا. */}
+      {/* Long detail tables were removed from this page: missing data lives in the vehicle register with its filter, columns on their own pages. The overview answers what needs work today. */}
     </div>
   );
 }
@@ -302,21 +270,14 @@ function Big({ label, value, accent, onClick }: { label: string; value: any; acc
     : <div>{inner}</div>;
 }
 
-// ── كارت مستند ───────────────────────────────────────────────────────────────
-// بيفرّق بين حاجتين بيتخلط بينهم دايمًا:
-//   الحالات المحسوبة (ساري/منتهي/قارب) — دي بتتغيّر لوحدها كل يوم
-//   الحالات الإدارية (مطلوب/غير مطلوب/لا يوجد) — دي حد كتبها
+// Document card. Separates computed states (valid/expired/near, change daily) from administrative states (required/not required/none, typed by a person).
 function DocumentCard({ doc, ar, t, onOpen, onList }: {
   doc: DocCard; ar: boolean; t: (a: string, e: string) => string;
   onOpen: (q: Record<string, string | number>) => void; onList: (f: Record<string, string>) => void;
 }) {
   const Icon = DOC_ICON[doc.key] || FileText;
   const s = doc.states;
-  // ── والدرجاتُ الثلاثُ كلٌّ بسطرها ────────────────────────────────────────
-  // كانت تُجمَع في «قارب على الانتهاء» واحد، فيقرأ المديرُ رقمًا لا يقول له
-  // أيَعمل اليومَ أم الشهرَ القادم. وعتبةُ كلٍّ تُضبَط لهذا المستند من إعدادات
-  // القسم، فالسطرُ يتبعها ولا يحتاج أحدٌ أن يعرف رقمها ليقرأه.
-  // والصفرُ لا يُعرَض: سطرٌ يقول «حرج ٠» يشغل العينَ بلا خبر.
+  // The three severity levels each get their own line. Thresholds come from section settings, and zero counts are hidden as noise.
   const rows: { key: string; n: number }[] = [
     { key: 'expired', n: s.expired || 0 },
     { key: 'critical', n: s.critical || 0 },
@@ -324,8 +285,7 @@ function DocumentCard({ doc, ar, t, onOpen, onList }: {
     { key: 'upcoming', n: (s as any).upcoming || 0 },
     { key: 'valid', n: s.valid || 0 },
   ].filter((r) => r.n > 0 || r.key === 'valid');
-  // الحالات المسجَّلة تُطوى إلى رقمين: ما ينقصنا تاريخه، وما لا يلزم أصلًا.
-  // «غير مطلوب» قرارٌ إداريّ لا نقصٌ — خلطه بالنقص يجعل قائمة العمل تكذب.
+  // Registered states fold into two numbers: missing date, and not needed. Not required is an administrative decision, not a gap.
   const notRequired = s.not_applicable ?? 0;
   const missing = s.missing ?? 0;
 
@@ -344,7 +304,7 @@ function DocumentCard({ doc, ar, t, onOpen, onList }: {
         )}
       </div>
 
-      {/* الحالات المحسوبة */}
+      {/* Computed states */}
       <div className="grid grid-cols-3 gap-1.5">
         {rows.map((r) => {
           const m = stateMeta(r.key);
@@ -358,11 +318,7 @@ function DocumentCard({ doc, ar, t, onOpen, onList }: {
         })}
       </div>
 
-      {/* ── سطرٌ واحد لما لا تاريخ له ─────────────────────────────────────────
-          كانت الحالات الإدارية تُنثَر كلّها شرائحَ بأسمائها من الإكسل، فيصير
-          نصفُ الكارت أسماءً لا يبحث عنها أحد ويضيع فيها الأربعة التي تعني عملًا.
-          والسؤال الحقيقيّ عمّا لا تاريخ له سؤالان لا سبعة: «ينقصنا» و«لا يلزم
-          أصلًا» — وكلاهما يُضغَط فيفتح ما فيه. */}
+      {/* One line for items without a date: needs a date vs not needed, each clickable, instead of every spreadsheet status as its own slice. */}
       {(missing > 0 || notRequired > 0) && (
         <div className="mt-2.5 flex items-center justify-between text-[11px] text-slate-400">
           <button onClick={() => onList({ missingDocDate: doc.key })} className="hover:text-slate-700">
@@ -385,7 +341,7 @@ function DocumentCard({ doc, ar, t, onOpen, onList }: {
   );
 }
 
-// ── كارت عمود ────────────────────────────────────────────────────────────────
+// Column card
 function BreakdownCard({ b, ar, t, onPick }: {
   b: Breakdown; ar: boolean; t: (a: string, e: string) => string; onPick: (f: Record<string, string>) => void;
 }) {
@@ -419,10 +375,8 @@ function BreakdownCard({ b, ar, t, onPick }: {
   );
 }
 
-// ── بطاقة تحليل: شرائح أفقية بعرض متناسب مع العدد ─────────────────────────────
-//
-// الشريحة تحمل معها الفلتر الذي أنتجها؛ الضغط عليها يضيفه إلى الفلتر بدل أن
-// تخمّن الواجهة الشرط — فلا يفترق الرقم المعروض عن الصفوف التي يفتحها.
+// Analysis card: horizontal slices sized by count.
+// A slice carries the filter that produced it and adds it on click, so the number never differs from the rows it opens.
 function AnalyticCard({ a, ar, total, onPick, active }:
 { a: VehicleOverview['analytics'][number]; ar: boolean; total: number;
   onPick: (q: Record<string, string>) => void; active: Record<string, string> }) {

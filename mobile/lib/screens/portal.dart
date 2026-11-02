@@ -12,15 +12,9 @@ import '../ui/search_field.dart';
 import 'customs_detail.dart' show customsStageLabel;
 import 'package:printing/printing.dart';
 
-/// بوابة العميل / المورد — the mobile half of the customer portal.
-///
-/// Same contract as the web (`/api/portal/*`): the partner logs in with the
-/// email and password we created for them and sees only what they actually have
-/// with us — transport trips, heavy-transport loads, shipment orders, customs
-/// files. A customer sees no money at all (2026-10-24: «يشوف رحلاته من غير
-/// أسعار»); a supplier still sees what is owed to them per load.
-/// Which tabs appear is decided by the backend's service detection, so a customs
-/// customer never gets an empty shipments tab.
+/// Customer / supplier portal, the mobile half of the customer portal.
+/// Same contract as the web (`the /api/portal routes`): the partner logs in with the email and password we created and sees only what they actually have with us: transport trips, heavy-transport loads, shipment orders, customs files. A customer sees no money at all; a supplier still sees what is owed to them per load.
+/// Which tabs appear is decided by the backend's service detection, so a customs customer never gets an empty shipments tab.
 
 const _statusLabels = <String, (String, String, Color)>{
   'requesting': ('قيد الطلب', 'Requested', Color(0xFF94A3B8)),
@@ -88,7 +82,7 @@ class _PortalScreenState extends State<PortalScreen> {
   bool _loading = true;
   String? _error;
   bool _forbidden = false;
-  // حيّةٌ كالويب: أيُّ حركةٍ على رحلةٍ تُعيد قراءةَ النظرة العامّة.
+  // Live as on the web: any movement on a trip re-reads the overview.
   late final void Function() _onLive = _load;
 
   @override
@@ -115,7 +109,7 @@ class _PortalScreenState extends State<PortalScreen> {
         _loading = false; _error = null;
       });
     } on ApiException catch (e) {
-      // ٤٠٣ = حسابُ موظّفٍ لا شريك — جملةٌ مفهومة بلغة الواجهة لا رسالةُ الخادم الإنجليزيّة.
+      // 403 means a staff account, not a partner; show an understandable sentence in the UI language instead of the server's English message.
       if (mounted) setState(() { _loading = false; _forbidden = e.status == 403; _error = e.message; });
     } catch (e) {
       if (mounted) setState(() { _loading = false; _error = e.toString(); });
@@ -182,7 +176,7 @@ class _PortalScreenState extends State<PortalScreen> {
   }
 }
 
-// ── نظرة عامة ────────────────────────────────────────────────────────────────
+// Overview
 class _OverviewTab extends StatelessWidget {
   final Map<String, dynamic> overview;
   final bool isVendor;
@@ -226,7 +220,7 @@ class _OverviewTab extends StatelessWidget {
           ]),
           const SizedBox(height: 8),
           Row(children: [
-            // بلا أيّ مبلغ للعميل — أعدادٌ فقط.
+            // No amounts for the customer, counts only.
             Expanded(child: StatCard(label: tr('رحلات النقل', 'Transport trips'), value: _n(t['platformTrips']), color: T.violet, icon: Icons.assignment_outlined)),
             const SizedBox(width: 8),
             Expanded(child: StatCard(label: tr('معاملات تخليص', 'Customs files'), value: _n(t['customsFiles']), color: T.cyan, icon: Icons.directions_boat_outlined)),
@@ -309,7 +303,7 @@ class _OverviewTab extends StatelessWidget {
   }
 }
 
-// ── الشحنات ──────────────────────────────────────────────────────────────────
+// Shipments
 class _ShipmentsTab extends StatefulWidget {
   final String type; // platform | heavy | orders | vendor
   const _ShipmentsTab({required this.type});
@@ -322,7 +316,7 @@ class _ShipmentsTabState extends State<_ShipmentsTab> {
   bool _loading = true;
   String? _error;
   String _q = '';
-  // متحكِّمُ البحث عند الشاشة: خطأُ تحديثٍ حيٍّ ثمّ إعادةُ المحاولة لا يُفرغ الخانةَ والكلمةُ تُرشِّح.
+  // Search controller owned by the screen so a failed live refresh followed by a retry does not empty the field while the term still filters.
   final _searchCtl = TextEditingController();
   String _status = '';
   late final void Function() _onLive = _load;
@@ -341,7 +335,7 @@ class _ShipmentsTabState extends State<_ShipmentsTab> {
     super.dispose();
   }
 
-  // أعمدةُ تصدير الويب — والمبلغُ للمورّد وحدَه: العميلُ لا يرى سعرًا.
+  // Web export columns; the amount is for the supplier only, since the customer sees no price.
   List<ExportCol> get _exportCols => [
         ExportCol(_isPlatform ? 'رقم أمر النقل' : 'رقم أمر النقل', _isPlatform ? 'Report #' : 'Waybill #', (r) => r['waybillNumber']),
         ExportCol('التاريخ', 'Date', (r) => _date(r['loadDate'] ?? r['createdAt'])),
@@ -403,8 +397,7 @@ class _ShipmentsTabState extends State<_ShipmentsTab> {
             Text('${s['fromCity'] ?? '—'} ← ${s['toCity'] ?? '—'}', style: const TextStyle(fontSize: 13, color: T.inkSoft)),
             if (waybillUrl != null) ...[
               const SizedBox(height: 12),
-              // The بوليصة is rendered SERVER-side (Puppeteer + pdf-lib) so the
-              // customer's copy is byte-identical to ours — we only print bytes.
+              // The waybill is rendered SERVER-side (Puppeteer + pdf-lib) so the customer's copy is byte-identical to ours; we only print bytes.
               FilledButton.icon(
                 onPressed: () async {
                   try {
@@ -465,7 +458,7 @@ class _ShipmentsTabState extends State<_ShipmentsTab> {
 
   bool get _isPlatform => widget.type == 'platform';
 
-  // المبلغ للمورد وحده (مستحقُّه عن الحمولة) — العميل لا يرى أيّ مبلغ.
+  // Amount for the supplier only (what is owed to them for the load); the customer sees no amount.
   List<(String, String)> _rowsFor(Map<String, dynamic> s) => [
         if (_isPlatform) (tr('رقم أمر النقل', 'Report number'), '#${s['waybillNumber'] ?? '—'}'),
         (_isPlatform ? tr('تاريخ أمر النقل', 'Report date') : tr('تاريخ التحميل', 'Load date'), _date(s['loadDate'] ?? s['pickupTime'] ?? s['createdAt'])),
@@ -511,7 +504,7 @@ class _ShipmentsTabState extends State<_ShipmentsTab> {
     return Column(children: [
       Padding(
         padding: const EdgeInsets.fromLTRB(14, 12, 14, 4),
-        // زرُّ التصدير بجوار الخانة — مكانُه داخلها صار لزرّ ✕.
+        // Export button next to the field; inside it the spot is taken by the clear button.
         child: Row(children: [
           Expanded(child: SearchField(
             controller: _searchCtl,
@@ -601,7 +594,7 @@ class _ShipmentsTabState extends State<_ShipmentsTab> {
   }
 }
 
-// ── التخليص الجمركي ──────────────────────────────────────────────────────────
+// Customs clearance
 class _CustomsTab extends StatefulWidget {
   const _CustomsTab();
   @override
@@ -774,7 +767,7 @@ class _CustomsTabState extends State<_CustomsTab> {
   }
 }
 
-// ── الفواتير والمدفوعات ─────────────────────────────────────────────────────
+// Invoices and payments
 class _FinanceTab extends StatefulWidget {
   const _FinanceTab();
   @override
@@ -785,7 +778,7 @@ class _FinanceTabState extends State<_FinanceTab> {
   Map<String, dynamic>? _data;
   bool _loading = true;
   String? _error;
-  // أحداثُ صفحتي الفواتير والمدفوعات في الويب.
+  // Events of the invoices and payments pages on the web.
   static const _events = ['invoice:created', 'invoice:updated', 'payment:received', 'payment:logged', 'payment:deleted'];
   late final void Function() _onLive = _load;
 
@@ -880,7 +873,7 @@ class _FinanceTabState extends State<_FinanceTab> {
           const SizedBox(height: 16),
           Row(children: [
             Expanded(child: Text(tr('المدفوعات', 'Payments'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14))),
-            // السجلُّ كاملًا في شاشته — هنا أحدثُها وحدَها.
+            // The full log is on its own screen; only the latest are shown here.
             TextButton(
               onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const _PaymentsScreen())),
               child: Text(tr('كل المدفوعات', 'All payments')),
@@ -903,7 +896,7 @@ class _FinanceTabState extends State<_FinanceTab> {
   }
 }
 
-/// قائمةُ التصدير: المعروضُ أو الكلّ — كـ ExportMenu في الويب.
+/// Export menu: what is displayed or everything, like ExportMenu on the web.
 Widget _exportMenu(void Function(String scope) onPick) => PopupMenuButton<String>(
       tooltip: tr('تصدير Excel', 'Export Excel'),
       icon: const Icon(Icons.file_download_outlined),
@@ -918,7 +911,7 @@ String _daysText(Map inv) => inv['isOverdue'] == true
     ? '-${_n(inv['overdueDays']).round()}${tr('ي', 'd')}'
     : inv['status'] == 'paid' ? tr('مدفوعة', 'Paid') : '${_n(inv['remainingDays']).round()}${tr('ي', 'd')}';
 
-/// أعمدةُ تصدير «فواتيري» في الويب.
+/// Columns of the "my invoices" export on the web.
 List<ExportCol> get _invoiceCols => [
       ExportCol('رقم الفاتورة', 'Invoice #', (r) => r['invoiceNumber']),
       ExportCol('المبلغ', 'Amount', (r) => r['amount']),
@@ -932,7 +925,7 @@ List<ExportCol> get _invoiceCols => [
 
 String _method(dynamic v) => '${v ?? ''}'.replaceFirst('_', ' ');
 
-/// ── تفاصيلُ الفاتورة ومدفوعاتُها — نظيرُ /system/portal/invoices/[id] ──────
+/// Invoice details and its payments, counterpart of /system/portal/invoices/[id]
 class _InvoiceDetailScreen extends StatefulWidget {
   final String invoiceId;
   final String number;
@@ -1076,7 +1069,7 @@ class _InvoiceDetailScreenState extends State<_InvoiceDetailScreen> {
   }
 }
 
-/// ── سجلُّ المدفوعات كاملًا — نظيرُ /system/portal/payments ────────────────────
+/// Full payments log, counterpart of /system/portal/payments
 class _PaymentsScreen extends StatefulWidget {
   const _PaymentsScreen();
   @override
@@ -1103,7 +1096,7 @@ class _PaymentsScreenState extends State<_PaymentsScreen> {
     super.dispose();
   }
 
-  // الخادمُ يرقّم بخمسين افتراضيًّا — والسجلُّ هنا كاملٌ بلا سقفٍ عمليّ.
+  // The server paginates at 50 by default; the log here is complete with no practical cap.
   Future<void> _load() async {
     try {
       final d = await Api.instance.get('/api/payments?page=1&limit=100000');

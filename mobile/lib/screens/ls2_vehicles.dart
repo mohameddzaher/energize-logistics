@@ -13,8 +13,7 @@ import '../services/auth.dart';
 import 'ls2_common.dart';
 import 'ls2_vehicle_detail.dart';
 
-/// مركبات لوكيشن سوليوشن — native: the live GPS fleet with maintenance state,
-/// odometer, driver and search; maintenance chips filter the list.
+/// Location Solutions vehicles, native: the live GPS fleet with maintenance state, odometer, driver and search; maintenance chips filter the list.
 class Ls2VehiclesScreen extends StatefulWidget {
   const Ls2VehiclesScreen({super.key});
   @override
@@ -37,7 +36,7 @@ class _Ls2VehiclesScreenState extends State<Ls2VehiclesScreen> {
     _load();
     _onLive = () => _load();
     Live.instance.on('ls2:updated', _onLive);
-    // اللوحةُ كما في سجلّ المركبات — تعديلُها هناك يظهر هنا في الحال.
+    // Plate as in the vehicle registry; edits there show here immediately.
     Live.instance.on('vreg:updated', _onLive);
   }
 
@@ -48,8 +47,7 @@ class _Ls2VehiclesScreenState extends State<Ls2VehiclesScreen> {
     super.dispose();
   }
 
-  /// كالموقع: فتراتُ الخدمة و«أين هي الآن» تُطلَب صراحةً، والتصفيةُ هنا — فالتصديرُ
-  /// يقرأ الأسطولَ كلَّه لا ما بقي بعد البحث.
+  /// As on the web: service intervals and "where is it now" are requested explicitly, and filtering happens client-side so the export reads the whole fleet, not what is left after the search.
   Future<void> _load() async {
     final seq = ++_seq;
     try {
@@ -85,11 +83,11 @@ class _Ls2VehiclesScreenState extends State<Ls2VehiclesScreen> {
 
   void _openVehicle(Map<String, dynamic> v) => Navigator.push(context, MaterialPageRoute(
       builder: (_) => Ls2VehicleDetailScreen(
-          // المسارُ برقم الوحدة لا بمعرّف منغو (حارسُ `/vehicles/:id` رقميّ).
+          // Path uses the unit number, not the Mongo id (the `/vehicles/:id` guard is numeric).
           vehicleId: (v['unitId'] ?? v['_id'] ?? '').toString(),
           plate: (v['plate'] ?? v['name'] ?? '').toString())));
 
-  // ── تقارير الورشة (Excel) — نفسُ ما يُصدِّره الموقع ─────────────────────
+  // Workshop reports (Excel), same as the web export
   static dynamic _remainOf(Map<String, dynamic> iv) => iv['remainingKm'] ?? iv['remainingDays'] ?? iv['remaining'];
   static String _unitOf(Map<String, dynamic> iv) => iv['remainingKm'] != null ? 'km' : iv['remainingDays'] != null ? 'd' : 'h';
   static String _statusText(dynamic s) => tr(s == 'overdue' ? 'متأخرة' : s == 'due' ? 'قريبة' : 'سليمة', '${s ?? ''}');
@@ -253,7 +251,7 @@ class _Ls2VehiclesScreenState extends State<Ls2VehiclesScreen> {
     ]);
   }
 
-  /// «القريبة من الصيانة» — كشفٌ للورشة بكلّ خدمةٍ تستحقّ خلال مسافةٍ تُكتب كلَّ مرّة.
+  /// Near maintenance: a workshop sheet of every service due within a distance entered each time.
   Future<void> _dueSoon() async {
     final ctrl = TextEditingController(text: '3000');
     bool includeOverdue = true;
@@ -292,7 +290,7 @@ class _Ls2VehiclesScreenState extends State<Ls2VehiclesScreen> {
     ]);
   }
 
-  // ── البنود المؤجّلة في الأسطول كلّه — تُسوّى من هنا بلا زيارة الملف ──
+  // Deferred items across the whole fleet, settled from here without visiting the vehicle file
   Future<void> _openDeferrals(bool admin) async {
     await showModalBottomSheet(
       context: context, isScrollControlled: true, backgroundColor: const Color(0xFFF8FAFC),
@@ -381,7 +379,7 @@ class _Ls2VehiclesScreenState extends State<Ls2VehiclesScreen> {
     );
   }
 
-  /// تسويةُ بندٍ واحد: نُفِّذ / تأجيلٌ إضافيّ / لن يُنفَّذ — بلا تسجيل صيانةٍ كاملة.
+  /// Settle one item: done / further deferral / will not be done, without logging a full maintenance record.
   Future<bool> _settle(Map<String, dynamic> d) async {
     String action = 'done';
     final odo = TextEditingController(text: d['currentOdometerKm'] != null ? '${d['currentOdometerKm']}' : '');
@@ -545,8 +543,7 @@ class _Ls2VehiclesScreenState extends State<Ls2VehiclesScreen> {
                                       ]),
                                       const SizedBox(height: 8),
                                       Wrap(spacing: 6, runSpacing: 6, children: [
-                                        // تغطية حسّاسات الكاوتش «٧ / ٥ / ٢» — نفس رقم الموقع حرفًا بحرف،
-                                        // والضغط عليها يفتح المواضع الناقصة بأسمائها.
+                                        // Tire sensor coverage (e.g. 7 / 5 / 2), digit for digit the same number as the web; tapping it opens the missing positions by name.
                                         if (v['tireSensors'] is Map)
                                           TireSensorBadge(
                                             cov: Map<String, dynamic>.from(v['tireSensors'] as Map),
@@ -560,7 +557,7 @@ class _Ls2VehiclesScreenState extends State<Ls2VehiclesScreen> {
                                           Chip2('${tr('للصيانة', 'To service')}: ${ls2Km(v['kmToService'])}', color, icon: Icons.build_outlined),
                                         if ((v['nextServiceName'] ?? '').toString().isNotEmpty)
                                           Chip2(v['nextServiceName'], T.violet, icon: Icons.handyman_outlined),
-                                        // أين هي الآن — من حمولات إدارة الأسطول الحيّة.
+                                        // Where is it now, from live fleet-management loads.
                                         if (w.isNotEmpty)
                                           Chip2(tr('${w['whereAr'] ?? ''}', '${w['whereEn'] ?? ''}'), T.cyan, icon: Icons.place_outlined),
                                       ]),

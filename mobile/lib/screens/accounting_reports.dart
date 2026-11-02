@@ -6,9 +6,7 @@ import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import '../ui/search_field.dart';
 
-/// تقارير الحسابات — أعمار الديون (المدينون/الدائنون)، ميزان المراجعة، وقائمة
-/// الدخل. مطابقة لصفحات الويب /system/accounting/{receivables,payables,
-/// trial-balance,profit-loss}.
+/// Accounts reports: receivables and payables aging, trial balance and income statement. Matches the web pages for receivables, payables, trial balance and profit and loss.
 
 String _money(dynamic v) {
   final n = (v is num) ? v : num.tryParse(v?.toString() ?? '') ?? 0;
@@ -22,7 +20,7 @@ String _money(dynamic v) {
   return '${neg ? '-' : ''}$b';
 }
 
-// ── أعمار الديون (المدينون/الدائنون) ────────────────────────────────────────
+// Debt aging (receivables/payables)
 class AgingReportScreen extends StatefulWidget {
   final String endpoint;   // /api/accounting/receivables | /payables
   final String arTitle, enTitle;
@@ -42,7 +40,7 @@ class _AgingReportScreenState extends State<AgingReportScreen> {
   bool _loading = true;
   String? _error;
   String _q = '';
-  final _searchCtl = TextEditingController(); // النصُّ يبقى مطابقًا لـ_q بعد إعادة الرسم
+  final _searchCtl = TextEditingController(); // Text stays equal to _q after a rebuild.
 
   @override
   void initState() { super.initState(); _load(); }
@@ -144,7 +142,7 @@ class _AgingReportScreenState extends State<AgingReportScreen> {
       );
 }
 
-// ── ميزان المراجعة ──────────────────────────────────────────────────────────
+// Trial balance
 class TrialBalanceScreen extends StatefulWidget {
   const TrialBalanceScreen({super.key});
   @override
@@ -223,7 +221,7 @@ class _TrialBalanceScreenState extends State<TrialBalanceScreen> {
   }
 }
 
-// ── قائمة الدخل (الأرباح والخسائر) ──────────────────────────────────────────
+// Income statement (profit and loss)
 class ProfitLossScreen extends StatefulWidget {
   const ProfitLossScreen({super.key});
   @override

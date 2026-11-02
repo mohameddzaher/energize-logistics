@@ -1,13 +1,6 @@
 'use client';
-// مرفقاتُ معاملة التخليص — ورقُ الإجراء يعيش مع الإجراء.
-//
-// كلُّ مرحلةٍ في دورة التخليص تُخرج ورقًا: البيانُ المسدَّد، فاتورةُ إذن
-// التسليم، إيصالُ الموانى، تصريحُ الخروج، الفاتورةُ الضريبيّة. كانت تُتداول
-// على الإيميل والواتساب، فإذا سُئل عنها بعد شهرٍ لم تُوجد.
-//
-// فتُرفَع هنا موسومةً بالمرحلة التي أُنتجت فيها، وتُعرض مجمَّعةً عليها: يفتح
-// القارئُ «سداد الموانى» فيرى إيصالَها، لا كومةً من أربعين ملفًّا اسمُ أوّلها
-// IMG_0421.
+// Clearance attachments: the paperwork stays with the procedure.
+// Each stage of the clearance cycle produces documents (paid declaration, delivery-order invoice, port receipt, exit permit, tax invoice). They are uploaded tagged with their stage and shown grouped by it, instead of a pile of unnamed files.
 import { useRef, useState } from 'react';
 import { useLanguage } from '@/context/LanguageContext';
 import { useDialog } from '@/components/system/DialogProvider';
@@ -34,9 +27,9 @@ export default function ClearanceAttachments({
   clearanceId, refNumber, items, stages, stageLabel, canEdit, onChange, paymentFiles,
 }: {
   clearanceId: string;
-  /** رقمُ البوليصة أو المعاملة — به يُسمّى الملفُّ عند تنزيله. */
+  /** Waybill or transaction number; it names the file on download. */
   refNumber?: string;
-  /** روابطُ الملفّات التي يملكها إدخالٌ في «مراحل السداد» — حذفُها حذفٌ له. */
+  /** Links of files owned by a payment-stages entry; deleting them deletes the entry's files. */
   paymentFiles?: string[];
   items: ClearanceAttachment[];
   stages: string[];
@@ -53,12 +46,11 @@ export default function ClearanceAttachments({
   const [stage, setStage] = useState('');
 
   const list = Array.isArray(items) ? items : [];
-  // ما تكرّر اسمُه يُرقَّم: «سداد أجور الموانئ (١)» و«(٢)» — لا اسمان متطابقان
-  // لا يُعرَف أيُّهما أيّ.
+  // A repeated name gets a numeric suffix (1), (2) so two identical names are distinguishable.
   const nums = ordinals(list, (a) => a.title || a.fileName || '');
   const numOf = (a: ClearanceAttachment) => nums[list.indexOf(a)] || 0;
 
-  // المجموعاتُ مرتّبةٌ بترتيب الدورة نفسِه، والعامُّ آخرًا.
+  // Groups follow the cycle order, with the general group last.
   const groups: [string, ClearanceAttachment[]][] = [
     ...stages.map((s) => [s, list.filter((a) => a.stage === s)] as [string, ClearanceAttachment[]]),
     ['', list.filter((a) => !a.stage || !stages.includes(a.stage))] as [string, ClearanceAttachment[]],
@@ -186,7 +178,7 @@ export default function ClearanceAttachments({
                         {stages.map((s) => <option key={s} value={s}>{stageLabel(s)}</option>)}
                       </select>
                     )}
-                    {/* فتحٌ في المتصفّح (الصورةُ وPDF تُعرَضان) — والتنزيلُ بجانبه باسمه المرتَّب. */}
+                    {/* Opens in the browser (images and PDF render); download sits beside it under its ordered name. */}
                     <a href={a.fileUrl} target="_blank" rel="noopener noreferrer"
                       className="p-1.5 rounded-lg text-slate-500 hover:text-[#12325c] hover:bg-white shrink-0" title={t('فتح', 'Open')}>
                       <Eye className="w-4 h-4" />

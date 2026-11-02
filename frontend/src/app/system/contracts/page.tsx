@@ -1,8 +1,5 @@
 'use client';
-// إدارة العقود — the department dashboard: contracted base at a glance
-// (signed vendors, contracted fleet, missing paperwork), geographic and rep
-// distribution, fleet-size buckets, monthly signing trend and quick links.
-// Everything is computed server-side from the live registers.
+// Contracts management dashboard: contracted base at a glance (signed vendors, contracted fleet, missing paperwork), geographic and rep distribution, fleet-size buckets, monthly signing trend and quick links. Everything is computed server-side from the live registers.
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
@@ -28,7 +25,7 @@ interface Dash {
     topByFleet: { _id: string; name: string; fleetSize: number; energizeRep: string; headquarters: string }[];
   };
   prospects: { total: number; interested: number };
-  // العملاء — الطرفُ الآخر من كلّ صفقة، ويُقرأ مع المورّدين لا في شاشةٍ وحدَه.
+  // Customers: the other party of every deal, read together with vendors, not on a screen of its own.
   customers?: {
     total: number; signed: number; unsigned: number; missingDocs: number; expiring: number;
     expiringList: { _id: string; name: string; endDate: string; energizeRep: string }[];
@@ -112,7 +109,7 @@ export default function ContractsDashboardPage() {
 
       {/* KPI row */}
       <div className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-6 gap-3">
-        {/* وكلُّ رقمٍ يُفتَح على صفوفه بفلترها في العنوان. */}
+        {/* Every figure opens its rows with its filter in the URL. */}
         <StatCard label={ar ? 'موردون موقّعون' : 'Signed vendors'} value={fmtN(v.signed)} accent="text-emerald-600"
           href="/system/contracts/vendors?filter=signed" hint={ar ? 'اضغط لعرضهم' : 'tap to open'} />
         <StatCard label={ar ? 'قيد التوقيع / غير موقّع' : 'Pending / unsigned'} value={`${fmtN(v.pending)} / ${fmtN(v.unsigned)}`} accent="text-amber-600"

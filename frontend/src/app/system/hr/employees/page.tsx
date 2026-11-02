@@ -34,7 +34,7 @@ export default function HREmployeesPage() {
   const ar = lang === 'ar';
   const tx = getHrEmployeesTranslations(lang);
   const router = useRouter();
-  // الإجراءات، الرقم الوظيفيّ، الاسم، الهويّة — ثابتةٌ على اليمين.
+  // Actions, employee number, name and ID stay pinned to the right.
   const pin = usePinnedColumns(4);
   const searchParams = useSearchParams();
   const staff = isHRStaff(user);
@@ -46,31 +46,16 @@ export default function HREmployeesPage() {
   // keystroke fires a request and a slow early one can land after a later one.
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState(searchParams?.get('status') || '');
-  // ── وبقيّةُ الفلاتر ────────────────────────────────────────────────────────
-  // `listEmployees` كان يقرأ فلاتر الماستر كلَّها منذ اليوم الأوّل
-  // (`master._buildFilter`) — والشاشةُ لا ترسل منها إلّا الحالة. فالسؤالُ
-  // «أرِني الباكستانيّين في النقل الثقيل بجدّة» كان يُجاب عنه في القاعدة ولا
-  // سبيلَ إلى طرحه من هنا.
-  //
-  // واللوحةُ هي نفسُها لوحةَ الماستر ومصدرُ خياراتها هو نفسُه، فما يُفلتَر به
-  // هناك يُفلتَر به هنا بلا تعريفٍ ثانٍ يشيخ.
+  // Remaining filters. The list endpoint already honors all master filters, so the page exposes the same panel and option source as the master screen instead of a second definition.
   const [filters, setFilters] = useState<FilterValues>(() =>
     Object.fromEntries([...(searchParams?.entries() || [])].filter(([k]) => k !== 'q' && k !== 'status')));
-  // ── ما أضافه قسمُ الأفراد من سجلّ النقل الخفيف ─────────────────────────────
-  // يُنشأ الملفُّ هناك ببياناتٍ قليلة، وتُكمله الموارد البشريّة. فزرٌّ يجمعهم:
-  // ضغطةٌ تفلتر القائمةَ بهم، وضغطةٌ ثانيةٌ تعيدها.
+  // Quick toggle for employees added by the individuals section from the light-transport register; HR completes their files.
   const [fromB2c, setFromB2c] = useState(0);
   const b2cOnly = filters.createdVia === 'b2c';
   const toggleB2c = () => setFilters((p) => { const n = { ...p }; if (n.createdVia === 'b2c') delete n.createdVia; else n.createdVia = 'b2c'; return n; });
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState<Employee | null>(null);
-  /**
-   * ── وقمعُ العمود كما في إكسل ───────────────────────────────────────────────
-   * فلترُ الصفحة (لوحةُ الفلاتر) يسأل الخادمَ ويُضيّق المجموعة؛ وهذا يُضيّق
-   * **ما يُعرَض منها** بقيمةٍ بعينها في عمودٍ بعينه — وهو ما يفعله المستخدمُ
-   * في الورقة: يضغط رأسَ العمود ويختار. فالاثنان يعملان معًا: القمعُ يُحسَب
-   * على ما وصل بعد فلتر الصفحة، فلا يُرى في القائمة ما لا يُرى في الجدول.
-   */
+  /** Excel-style column funnel. The page filter narrows the server set; this narrows what is shown by a value in one column, computed on what passed the page filter. */
   const [colFilters, setColFilters] = useState<Record<string, Set<string>>>({});
   const setCol = (k: string, v: Set<string>) => setColFilters((p) => {
     const n = { ...p };
@@ -78,11 +63,7 @@ export default function HREmployeesPage() {
     return n;
   });
 
-  // ── ولا يكتب ردٌّ قديمٌ فوق ردٍّ أحدث ──────────────────────────────────────
-  // نداءُ القائمة الكاملة يبدأ عند فتح الصفحة وهو الأبطأ (أربعُمئةِ موظّف)،
-  // ونداءُ البحث يبدأ بعده ويعود قبله. فتظهر نتيجةُ البحث ثمّ يهبط الردُّ
-  // الأوّلُ فوقها فتعود القائمةُ كاملةً — وهو ما يُرى: «بيظهر الناتج وبعدها
-  // على طول بيجيب كل الداتا تاني». راجع hooks/useLatestRequest.
+  // Ignore stale responses: the full-list call starts first and is slowest, so it could land after a search result and overwrite it. See hooks/useLatestRequest.
   const guard = useLatestRequest();
   const load = useCallback(async () => {
     const mine = guard.begin();
@@ -104,8 +85,7 @@ export default function HREmployeesPage() {
     return () => clearTimeout(t);
   }, [search]);
 
-  // ما تختاره يعيش في العنوان: يعمل الرجوعُ والتقدّم، ويبقى ما بنيتَه إن حُدِّثت
-  // الصفحة أو أُرسل الرابطُ لزميل.
+  // Selections live in the URL so back/forward work and a refresh or shared link keeps them.
   useEffect(() => {
     const p = new URLSearchParams();
     if (search.trim()) p.set('q', search.trim());
@@ -115,36 +95,19 @@ export default function HREmployeesPage() {
   }, [search, statusFilter, JSON.stringify(filters)]);
 
   useEffect(() => { load(); }, [load]);
-  // ── وما يُعدَّل في الماستر يصل هنا ──────────────────────────────────────
-  // شاشاتُ الماستر تكتب في الحقول نفسِها التي تعرضها هذه الشاشة، وتبثّ
-  // `hr:master`. وبلا هذا السطر تبقى هذه على أرقامها حتى يُحدِّثها أحدٌ بيده —
-  // فيُقرأ رقمان مختلفان للشيء نفسِه في شاشتين مفتوحتين.
+  // Re-fetch on `hr:master`: master screens write the same fields and broadcast it, otherwise two open screens show different numbers.
   useSocket('hr:employee', useCallback(() => load(), [load]));
   useSocket('hr:master', useCallback(() => load(), [load]));
 
   const openCreate = () => { setEditing(null); setShowModal(true); };
   const openEdit = (e: Employee) => { setEditing(e); setShowModal(true); };
 
-  /**
-   * ── ولا زرَّ حذفٍ في سجلّ الموظّفين ─────────────────────────────────────
-   * كان هنا زرٌّ يمحو الموظّف ومستنداتِه وملفّاتَها على القرص محوًا لا رجعةَ
-   * فيه. ومَن ترك العملَ تُنهى خدمتُه ولا يُمحى ملفُّه: يُسأل عنه بعد سنواتٍ —
-   * مكتبُ العمل، والتأمينات، وشهادةُ خبرة، وعهدةٌ كانت بيده. والبابُ في الخادم
-   * مسدودٌ أيضًا (راجع `deleteEmployee`)، فلا يُصنَع الطلبُ من غير هذه الشاشة.
-   *
-   * وإنهاءُ الخدمة يُفعَل من ملفّ الموظّف حيث يُكتب سببُه وتاريخُه ويُحرَس
-   * بالعهدة والتفويض — فالزرُّ يفتح الملفّ ولا يفعل شيئًا بنفسه.
-   */
+  /** No delete button in the employee register. Staff who leave are ended, not erased, since their file is needed later; the server also blocks deletion (see `deleteEmployee`). Ending service is done from the employee file, guarded by custody and authorization checks. */
   const openFileToEndService = (e: Employee) => {
     router.push(`/system/hr/employees/${e._id}`);
   };
 
-  /**
-   * ── والحذفُ النهائيّ لمدير النظام وحدَه ──────────────────────────────────
-   * لسجلٍّ أُدخل خطأً أو مكرَّرًا. يُسأل عنه صراحةً ويُقال ما يذهب معه، والسجلُّ
-   * كلُّه يُحفَظ في سجلّ المراجعة قبل محوه. ومَن بيده عهدةٌ أو تفويضُ مركبةٍ
-   * يُرفَض حذفُه برسالةٍ تقول السبب.
-   */
+  /** Permanent delete is for the system admin only, for records entered by mistake or duplicated. The full record is saved to the audit log first, and holders of custody or a vehicle authorization are rejected with a reason. */
   const removeForGood = async (e: Employee) => {
     if (!(await confirm({
       title: ar ? `حذف سجلّ «${empName(e, lang)}» نهائيًّا؟` : `Permanently delete “${empName(e, lang)}”?`,
@@ -167,7 +130,7 @@ export default function HREmployeesPage() {
     { header: tx.colJobTitle, key: 'jobTitle', width: 18 },
     { header: tx.colIdType, key: 'idType', width: 12 },
     { header: tx.colIqama, key: 'iqamaNumber', width: 16 },
-    // كلُّ تاريخٍ عمودان متجاوران: الميلاديُّ ثمّ هجريُّه المشتقّ (lib/hrDates).
+    // Each date is two adjacent columns: Gregorian, then its derived Hijri (lib/hrDates).
     ...exportDatePair(tx.colIqamaExpiry, 'iqamaExpiry', ar),
     { header: tx.colNationalId, key: 'nationalId', width: 16 },
     { header: tx.colNationality, key: 'nationality', width: 14 },
@@ -175,13 +138,9 @@ export default function HREmployeesPage() {
     { header: tx.colStatus, key: 'employmentStatus', width: 12 },
     ...exportDatePair(tx.colHireDate, 'hireDate', ar),
   ];
-  // البحث وفلتر الحالة كلاهما على الخادم، فالذاكرة لا تحمل إلّا نتائجهما:
-  // زرُّ تصديرٍ واحد كان يكتب «الموظّفون» على ملفٍّ فيه ما طابق كلمة البحث
-  // وحدَه. ولذلك «الكلّ» يعيد النداء مجرَّدًا من المعاملات، ولا يُعرَض أصلًا
-  // حين لا فلتر — إذ يكون المعروضُ هو الكلَّ بعينه.
-  // «المعروض» و«الكل» يفترقان متى كان ثَمّ فلترٌ أصلًا — واللوحةُ الجديدة منه.
+  // Search and status filter run on the server, so memory holds only their results. "All" re-fetches without parameters and is hidden when no filter is active, since shown equals all.
   const hasActiveFilters = !!(debouncedSearch.trim() || statusFilter || countActive(filters));
-  /** الفلاتر التي قد تحجب نتيجةَ بحثٍ صحيح — تُسمّى للقارئ لا تُعَدّ. */
+  /** Filters that can hide a valid search result; named for the reader, not counted. */
   const blockers = [
     statusFilter
       ? `${ar ? 'الحالة' : 'status'}: ${ar ? EMPLOYMENT_STATUS[statusFilter]?.ar : EMPLOYMENT_STATUS[statusFilter]?.en}`
@@ -193,23 +152,21 @@ export default function HREmployeesPage() {
     const d = await api.get<{ employees: Employee[] }>('/api/hr/employees');
     return [{ name: 'Employees', rows: d.employees || [], columns: exportColumns }];
   };
-  // القيمةُ المقروءةُ لكلّ عمود — واحدةٌ للرسم وللقمع وللتصدير، فلا يُفلتَر
-  // على شيءٍ غيرِ المعروض.
+  // One displayed value per column, shared by rendering, the funnel and export, so filtering matches what is shown.
   const colValue: Record<string, (e: Employee) => string> = {
     employeeNumber: (e) => String(e.employeeNumber || ''),
     name: (e) => empName(e, lang),
     iqamaId: (e) => String((e as any).iqamaNumber || (e as any).nationalId || ''),
     jobTitle: (e) => String((e as any).jobTitle || ''),
     nationality: (e) => String((e as any).nationality || ''),
-    // ويُقرأ نصُّ الحالة من نفس الخريطة التي تُرسَم بها الشارةُ في الصفّ،
-    // فلا تُفلتَر على كلمةٍ غيرِ المعروضة.
+    // Status text is read from the same map that draws the row badge, so filtering matches the displayed word.
     status: (e) => {
       const m = (EMPLOYMENT_STATUS as any)[(e as any).employmentStatus || 'active'];
       return m ? (ar ? m.ar : m.en) : String((e as any).employmentStatus || '');
     },
   };
 
-  // ما يُعرَض فعلًا: ما وصل من الخادم بعد فلتر الصفحة، مُضيَّقًا بقمع الأعمدة.
+  // Rows actually shown: the server result after the page filter, narrowed by the column funnels.
   const shown = useMemo(() => {
     const keys = Object.keys(colFilters);
     if (!keys.length) return employees;
@@ -258,8 +215,7 @@ export default function HREmployeesPage() {
         <div className="shrink-0">
           <FilterPanel
             optionsUrl="/api/hr/master/filters"
-            // الشاشةُ تعرض كلَّ السجلّات، فتُعَدُّ الخياراتُ على النطاق نفسِه —
-            // وإلّا قالت اللوحةُ «١٧٠» وفتح الجدولُ ١٨٢.
+            // The screen shows all records, so option counts use the same scope; otherwise the panel and the table disagree.
             optionsParams={{ scope: 'all' }}
             value={filters}
             onChange={setFilters}
@@ -271,7 +227,7 @@ export default function HREmployeesPage() {
         </div>
       </div>
 
-      {/* القسم · المدينة · حالة العمل · المشروع · الجنسية — الفلترُ نفسُه الذي تقرؤه اللوحةُ والجدول. */}
+      {/* Department, city, work status, project, nationality: the same filter the panel and the table read. */}
       <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
         <HrQuickFilters optionsUrl="/api/hr/master/filters" optionsParams={{ scope: 'all' }} value={filters} onChange={setFilters} ar={ar} />
       </div>
@@ -305,14 +261,7 @@ export default function HREmployeesPage() {
           </thead>
           <tbody>
             {shown.length === 0 ? (
-              /* ── ولا يُقال «لا يوجد» وهو موجود ──────────────────────────────
-                 «بعمل سيرش عن موظّف مش بيلاقيه» — والموظّفُ في السجلّ. العلّةُ
-                 أنّ الفلترَ يبقى مكتوبًا في عنوان الصفحة فيعيش عبر التنقّل
-                 والتحديث، والبحثُ يُطبَّق **داخله**. فمن فلتر بالحالة «نشط»
-                 مرّةً ثمّ بحث عن واحدٍ من الواحدٍ وتسعين المنتهيةِ خدمتُهم قرأ
-                 «لا يوجد موظفون». ثبت ذلك على البرودكشن: الاسمُ يُوجَد بلا فلتر
-                 ويُعطي صفرًا مع `status=active`.
-                 فالشاشةُ الفارغةُ تقول ما يحجب، وتمسحه بضغطةٍ واحدة. */
+              /* Empty-state explanation: the filter persists in the URL and search applies inside it, so searching an ended employee under an active-status filter returned nothing. The empty screen names what hides results and clears it in one click. */
               <tr><td colSpan={7} className="text-center py-12">
                 <p className="text-slate-800 font-semibold">{tx.noEmployees}</p>
                 {blockers.length > 0 && (
@@ -341,7 +290,7 @@ export default function HREmployeesPage() {
                         <UserMinus className="w-4 h-4" />
                       </button>
                     )}
-                    {/* الحذفُ لمدير النظام وحدَه — والخادمُ يحرسه بدوره لا بمنح القسم. */}
+                    {/* Delete is for the system admin only; the server enforces it separately from section grants. */}
                     {['super_admin', 'admin'].includes(user?.role || '') && (
                       <button type="button" onClick={() => removeForGood(e)}
                         className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50"
@@ -352,15 +301,11 @@ export default function HREmployeesPage() {
                   </div>
                 </td>
                 <td {...pin.td(1, 'px-4 py-3 text-slate-700 whitespace-nowrap', 'bg-white group-hover:bg-slate-100')}>{e.employeeNumber || '—'}</td>
-                {/* سطر واحد — الإيميل كان تحت الاسم فبيطوّل الصف من غير داعي */}
-                {/* ── والاسمُ لا يأخذ نصفَ الشاشة ──────────────────────────────
-                    كان العمودُ `whitespace-nowrap` بلا حدٍّ، والأسماءُ الرباعيّة
-                    العربيّة تُمدّده حتى يبلغ نصفَ شاشةِ اللابتوب فتُدفَع بقيّةُ
-                    الأعمدة خارجها. فله حدٌّ وما زاد يُقصّ — والكاملُ يُقرأ
-                    بالوقوف عليه، ويبقى كاملًا في التصدير. */}
+                {/* Single line; the email under the name made rows taller for no reason. */}
+                {/* Cap the name column width and truncate: long Arabic names stretched it to half the screen. The full name stays in the tooltip and in export. */}
                 <td {...pin.td(2, 'px-4 py-3 text-slate-900 font-semibold', 'bg-white group-hover:bg-slate-100')}>
                   <span className="block max-w-[15rem] truncate" title={empName(e, lang)}>{empName(e, lang)}</span>
-                  {/* حالتُه اليوم في قسم الأفراد (إجازة · موقوف · حادث) — تُكتب هناك. */}
+                  {/* Current status is maintained in the individuals section (leave, suspended, accident). */}
                   <B2cOpBadge status={(e as any).b2cOpStatus} ar={lang === 'ar'} />
                 </td>
                 <td {...pin.td(3, 'px-4 py-3 text-slate-700 whitespace-nowrap', 'bg-white group-hover:bg-slate-100')}>{e.idType === 'national_id' ? (e.nationalId || '—') : (e.iqamaNumber || '—')}</td>
@@ -370,7 +315,7 @@ export default function HREmployeesPage() {
                   {(e as any).workStatusText === 'شركة شقيقة'
                     ? <Badge style={{ bg: 'bg-teal-500/20', text: 'text-teal-700', ar: 'شركة شقيقة', en: 'Sister company' }} lang={lang} />
                     : <Badge style={employmentBadge(e)} lang={lang} />}
-                  {/* حالةُ «لا يعمل» الثلاث: انتظار نقل الكفالة · شركة شقيقة · خروج نهائي. */}
+                  {/* The three not-working states: awaiting sponsorship transfer, sister company, final exit. */}
                   {e.employmentStatus === 'terminated' && (e as any).workStatusText && String((e as any).workStatusText).includes('—') && (
                     <span className="block text-[10.5px] text-red-600 mt-0.5">{String((e as any).workStatusText).split('—')[1].trim()}</span>
                   )}

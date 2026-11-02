@@ -1,13 +1,7 @@
 'use client';
 /**
- * فلترُ المدّة — يومٌ، أو شهرٌ، أو فترةٌ بين تاريخين.
- *
- * «من/إلى» وحدهما يجيبان عن الفترة، ولا يجيبان بسهولةٍ عن أكثر ما يُسأل: «معاملاتُ
- * اليوم» و«معاملاتُ هذا الشهر» — كلٌّ منهما تاريخان يُختاران بأربع ضغطات. فيُختار
- * هنا نوعُ المدّة أوّلًا، ثمّ يُكتب ما يخصّه: يومٌ واحد، أو شهرٌ وسنة، أو مدًى.
- *
- * والناتجُ دائمًا «من» و«إلى» بصيغة `YYYY-MM-DD` — فما يستقبله لا يعرف أيَّ
- * الثلاثة اختير، ولا يحتاج.
+ * Period filter: a day, a month, or a range between two dates.
+ * From/to alone make the most common questions (today, this month) take four clicks, so the period type is chosen first. The output is always from/to as `YYYY-MM-DD`, so the consumer does not need to know which type was used.
  */
 import { useState } from 'react';
 import DateRangeFilter, { DateField } from '@/components/system/DateRangeFilter';
@@ -17,13 +11,13 @@ export type PeriodMode = '' | 'day' | 'month' | 'range';
 
 const pad = (n: number) => String(n).padStart(2, '0');
 const today = () => { const d = new Date(); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
-/** أوّلُ الشهر وآخرُه لمفتاح «YYYY-MM». */
+/** First and last day of a "YYYY-MM" key. */
 export const monthBounds = (ym: string): [string, string] => {
   const [y, m] = ym.split('-').map(Number);
   if (!y || !m) return ['', ''];
   return [`${y}-${pad(m)}-01`, `${y}-${pad(m)}-${pad(new Date(y, m, 0).getDate())}`];
 };
-/** ما تدلّ عليه «من/إلى» القائمتان: يومٌ، أو شهرٌ كامل، أو فترة. */
+/** What the from/to pair means: a day, a whole month, or a range. */
 const modeOf = (from: string, to: string): PeriodMode => {
   if (!from && !to) return '';
   if (from && from === to) return 'day';
@@ -37,12 +31,12 @@ export default function PeriodFilter({
   from: string; to: string;
   onChange: (from: string, to: string) => void;
   ar: boolean;
-  /** الأنواعُ المتاحة — شاشةٌ تُقاس بالشهر وحدَه تُسقط «يوم». */
+  /** Available types; a screen measured by month only drops "day". */
   modes?: Exclude<PeriodMode, ''>[];
   className?: string;
 }) {
   const [mode, setMode] = useState<PeriodMode>(() => modeOf(from, to));
-  // مُسح المدى من خارجٍ («مسح الفلاتر»): يعود النوعُ إلى «كلّ المدّة».
+  // Range cleared from outside (clear filters): the type returns to "whole period".
   const shown: PeriodMode = !from && !to && mode !== 'range' ? '' : mode;
   const pick = (m: PeriodMode) => {
     setMode(m);

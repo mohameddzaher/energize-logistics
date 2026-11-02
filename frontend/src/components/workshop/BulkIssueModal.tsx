@@ -1,23 +1,6 @@
 'use client';
-// صرف كذا صنف مرة واحدة — بدل ما أمين المخزن يخش على صنف صنف.
-//
-// الطلب كان: «فكرة إنه يخش على صنف صنف دي هتبقى بطيئة، خصوصًا إنه بيصرف أصناف
-// كبيرة في اليوم». فالشاشة دي جدول أسطر: تكتب اسم الصنف، تختار من النتايج،
-// تكتب الكمية، Enter وتروح للسطر اللي بعده.
-//
-// ── تلات قرارات ورا التصميم ────────────────────────────────────────────────
-//
-// ١) البيانات المشتركة فوق مرة واحدة (العربية، التاريخ، المكان، مصير القطعة
-//    المستبدلة). ٩٩٪ من الصرف بيبقى لعربية واحدة في يوم واحد، فتكرارها على كل
-//    سطر شغل زيادة. وأي سطر يقدر يكسر المشترك لنفسه.
-//
-// ٢) الرصيد بيبان جنب كل سطر وهو بيكتب، والزيادة بتتلوّن أحمر **قبل** ما يبعت
-//    — عشان يعرف من غير ما يستنى رد السيرفر.
-//
-// ٣) الكل أو لا شيء. السيرفر بيرفض العملية كلها لو سطر واحد غلط، وبيرجّع
-//    الأخطاء بأرقام أسطرها وإحنا بنعرضها جنب السطر نفسه. صرف نصّه اتنفّذ
-//    أسوأ من اللي اترفض كله: المخزن بيبقى غلط وأمين المخزن مش عارف أنهي سطر
-//    نزل، فيعيد الصرف كله ويطلع بدل مرتين.
+// Bulk issue of several items at once, as a table of lines (item, quantity, Enter for next).
+// Shared data is entered once and any line can override it; the balance shows per line with excess in red before sending; the server rejects the whole operation if one line is invalid and returns errors by line number.
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { X, Plus, Trash2, Search, Check, AlertTriangle } from 'lucide-react';
 import api from '@/lib/api';
@@ -28,7 +11,7 @@ type Line = {
   item: Item | null;
   query: string;
   quantity: string;
-  vehicleNumber: string;   // فاضي = المشترك
+  vehicleNumber: string;   // empty = use the shared value
   fitLocation: '' | 'head' | 'flatbed' | 'trailer';
   replacedFate: '' | 'damaged' | 'under_renewal' | 'none';
   notes: string;
@@ -66,7 +49,7 @@ export default function BulkIssueModal({ ar, onClose, onDone, notify }: {
   const [saving, setSaving] = useState(false);
   const [topError, setTopError] = useState('');
 
-  // ── البحث عن الصنف ────────────────────────────────────────────────────────
+  // Item search.
   const [openFor, setOpenFor] = useState<number | null>(null);
   const [results, setResults] = useState<Item[]>([]);
   const [searching, setSearching] = useState(false);
@@ -92,11 +75,10 @@ export default function BulkIssueModal({ ar, onClose, onDone, notify }: {
   const addLine = () => setLines((ls) => [...ls, blankLine()]);
   const removeLine = (key: number) => setLines((ls) => (ls.length > 1 ? ls.filter((l) => l.key !== key) : ls));
 
-  // الأسطر اللي فيها صنف فعلاً — الفاضية بتتجاهل
+  // Lines that have an item; empty lines are ignored.
   const filled = useMemo(() => lines.filter((l) => l.item), [lines]);
 
-  // مجموع المطلوب لكل صنف عبر كل الأسطر — نفس حساب السيرفر، عشان التحذير
-  // يطابق الرفض. صنف متكرّر في تلات أسطر × ٢ لازم يتقاس على ٦ مش على ٢.
+  // Total requested per item across all lines, same as the server's calculation so the warning matches the rejection. An item repeated in three lines at quantity 2 is checked against 6, not 2.
   const perItem = useMemo(() => {
     const m = new Map<string, number>();
     filled.forEach((l) => m.set(l.item!._id, (m.get(l.item!._id) || 0) + (Number(l.quantity) || 0)));
@@ -136,7 +118,7 @@ export default function BulkIssueModal({ ar, onClose, onDone, notify }: {
       onDone();
       onClose();
     } catch (e: any) {
-      // السيرفر بيرجّع الأخطاء بأرقام أسطرها — نحطّها جنب السطر نفسه.
+      // The server returns errors by line number; they are shown next to the line.
       const errs = e?.data?.errors || e?.errors;
       if (Array.isArray(errs) && errs.length) {
         setLines((ls) => {
@@ -173,7 +155,7 @@ export default function BulkIssueModal({ ar, onClose, onDone, notify }: {
           <button onClick={onClose} className="text-slate-500 hover:text-slate-900"><X className="w-5 h-5" /></button>
         </div>
 
-        {/* المشترك — بيتكتب مرة واحدة لكل الأسطر */}
+        {/* Shared fields, entered once for all lines. */}
         <div className="px-5 py-3 bg-slate-50 border-b border-slate-200 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
           <div>
             <label className="block text-[11.5px] font-semibold text-slate-700 mb-1">{t('رقم المركبة', 'Vehicle')}</label>
@@ -207,7 +189,7 @@ export default function BulkIssueModal({ ar, onClose, onDone, notify }: {
           </div>
         )}
 
-        {/* الأسطر */}
+        {/* Lines. */}
         <div className="px-5 py-3 space-y-2 max-h-[52vh] overflow-y-auto">
           {lines.map((l, i) => {
             const over = l.item && (perItem.get(l.item._id) || 0) > l.item.quantity;

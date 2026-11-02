@@ -1,18 +1,12 @@
 /**
- * ── انتهاءُ الإقامة ورخصةِ القيادة لأيّ سائق (صاحبُ الشركة، ٢٠٢٦/١٠/٢٧) ────────
- * «أيّ مكان فيه داتا عن سوّاق ضيف التاريخين دول كولومين جنبه، من ضمن الداتا
- * والفلاتر». والتاريخان لا يُحفَظان إلّا في ملفّ الموظّف في الموارد البشريّة
- * (`iqamaExpiry` / `licenseExpiry`)، وسجلّاتُ السوّاق كلُّها (بطاقاتُ السائقين،
- * سوّاقُ الأسطول، سوّاقُ طلبات الشحن، مناديبُ النقل الخفيف، سوّاقُ التشغيل)
- * تُشير إليه برقم الهويّة أو بربط الموظّف. فتُقرأ من هناك هنا، مرّةً لكلّ قائمة.
- *
- * والإقامةُ المسجَّلةُ بالهجريّ وحده تُحوَّل إلى ميلاديّ — فلا تُقرأ «غير مسجَّلة».
+ * Expiry of residence permit and driving licence for any driver.
+ * Both dates are stored only on the HR employee file (`iqamaExpiry` / `licenseExpiry`), while every driver register (driver cards, fleet drivers, shipment-order drivers, light-transport reps, operations drivers) points to it by ID number or employee link. So they are read from there, once per list. A residence recorded in Hijri only is converted to Gregorian so it does not read as unrecorded.
  */
 const Employee = require('../models/Employee');
 
 const norm = (v) => String(v || '').replace(/\s+/g, '').trim();
 
-/** حالةُ تاريخ انتهاء: expired / soon (٣٠ يومًا) / valid / missing. */
+/** Expiry state: expired / soon (30 days) / valid / missing. */
 function docState(ymd) {
   const d = String(ymd || '').slice(0, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return 'missing';
@@ -23,7 +17,7 @@ function docState(ymd) {
 }
 
 /**
- * @param {Array<{ idNumber?: string, employee?: any }>} people — رقمُ الهويّة و/أو معرّفُ الموظّف.
+ * @param {Array<{ idNumber?: string, employee?: any }>} people - ID number and/or employee id.
  * @returns {Promise<(p) => { iqamaExpiry: string, licenseExpiry: string, iqamaState: string, licenseState: string }>}
  */
 async function docDatesFor(people) {
@@ -55,7 +49,7 @@ async function docDatesFor(people) {
     const eid = p && p.employee && String(p.employee._id || p.employee);
     const v = (eid && byEmp.get(eid)) || byId.get(norm(p && p.idNumber)) || { iqamaExpiry: '', licenseExpiry: '' };
     const iqamaState = docState(v.iqamaExpiry); const licenseState = docState(v.licenseExpiry);
-    // والأسوأُ منهما — شريحةُ تصفيةٍ واحدة في قوائم التطبيق.
+    // Worse than either alone is a single filter chip in the app lists.
     const docsState = ['expired', 'soon', 'missing'].find((k) => iqamaState === k || licenseState === k) || 'valid';
     return { ...v, iqamaState, licenseState, docsState };
   };

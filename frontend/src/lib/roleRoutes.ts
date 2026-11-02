@@ -1,9 +1,5 @@
-// أوّلُ صفحةٍ يفتحها كلُّ دور بعد الدخول — ما لم تُضبط له صفحةُ دخولٍ من شاشة
-// الصلاحيّات (تلك تسبق هذه، راجع `landingFor`). كلُّ دورٍ هنا صفحتُه في قسمه.
-//
-// كانت «لوحة التحكم» (/system/dashboard) صفحةَ السوبر أدمن والموظّف والاحتياطَ
-// لكلّ دورٍ غير مذكور — وهي لوحةُ قسم «العملاء والمالية» الذي زال، فحُذفت.
-// الإدارةُ العليا تدخل «النظرة التنفيذية»، ومن لا قسمَ معروفًا له يدخل ملفَّه.
+// First page each role opens after login, unless a landing page is set for it on the permissions screen (that takes precedence; see `landingFor`). Each role here lands on a page in its own section.
+// The dashboard (/system/dashboard) used to be the fallback for super admin, employee and every unlisted role, but it belonged to a removed customers-and-finance section, so it was deleted.
 export const ROLE_HOME_ROUTES: Record<string, string> = {
   super_admin: '/system/executive',
   admin: '/system/executive',
@@ -12,7 +8,7 @@ export const ROLE_HOME_ROUTES: Record<string, string> = {
   operations_manager: '/system/operations',
   operations_staff: '/system/operations',
   client: '/system/portal',
-  // حسابُ Media Go يرى شاشةً واحدة — هي بيتُه (backend/src/config/scopedRoles).
+  // The Media Go account sees one screen, which is its home (backend/src/config/scopedRoles).
   mediago_account: '/system/b2c/mediago-complaints',
   shipment_orders_manager: '/system/shipment-orders',
   shipment_orders_staff: '/system/shipment-orders',
@@ -31,7 +27,7 @@ export const ROLE_HOME_ROUTES: Record<string, string> = {
   b2c_deputy: '/system/b2c/dashboard',
   b2c_project_lead: '/system/b2c/dashboard',
   b2c_rep_supervisor: '/system/b2c/daily-entry',
-  // التفقّديُّ يدخل على عملِه: شاشةُ تفقّد بداية الدوام.
+  // The check supervisor lands on his work: the start-of-duty check screen.
   b2c_inspection_supervisor: '/system/b2c/duty/start',
   remote_employee: '/system/remote/attendance',
   remote_manager: '/system/remote/dashboard',
@@ -63,16 +59,7 @@ export const ROLE_HOME_ROUTES: Record<string, string> = {
 export const homeRouteForRole = (role?: string | null) =>
   (role && ROLE_HOME_ROUTES[role]) || '/system/hr/me';
 
-/**
- * ── وأوّلُ قسمٍ مُنح لهذا المستخدم ──────────────────────────────────────────
- * الخريطةُ فوق مكتوبةٌ بأسماء الأدوار، فالدورُ المُصنَّع من شاشة الصلاحيّات ليس
- * فيها ويسقط على «ملفّي». فمن أنشأ دورًا ومنحه «العمليات: تعديل» يرى صاحبَه
- * يدخل على صفحة بياناته الشخصيّة ويستنتج أنّ المنحَ لم يُحفَظ.
- *
- * فإن لم يكن للدور بيتٌ مكتوب، يُقرأ ما مُنح فعلًا: أوّلُ قسمٍ له فيه وصولٌ
- * بترتيب هذه القائمة. والترتيبُ مقصود — الأقسامُ التشغيليّةُ أوّلًا، لأنّها ما
- * يُفتَح في الصباح.
- */
+/** The first section granted to this user. The map above is keyed by role name, so a role created on the permissions screen is not in it and fell back to the profile page; someone who created a role and granted operations edit would see the person land on personal data and conclude the grant was not saved. */
 const SECTION_HOME: [string, string][] = [
   ['Operations', ROLE_HOME_ROUTES.operations_manager],
   ['Collections', ROLE_HOME_ROUTES.collections_manager],
@@ -105,17 +92,13 @@ const firstGrantedHome = (perms?: Record<string, string> | null): string | null 
   return null;
 };
 
-/**
- * أوّلُ صفحةٍ يفتحها المستخدم: صفحةُ الدخول المضبوطة لدوره من شاشة الصلاحيّات،
- * وإلّا الافتراضيُّ المكتوب هنا. كانت تُحفَظ ولا تُقرأ عند الدخول، فيدخل الجميعُ
- * على الصفحة القديمة وكأنّ الإعدادَ لم يُحفَظ.
- */
+/** First page the user opens: the login page configured for his role on the permissions screen, else the default written here. It used to be saved but not read at login, so everyone landed on the old page as if the setting was not saved. */
 export const landingFor = (
   u?: { role?: string | null; homePage?: string | null; permissions?: Record<string, string> | null } | null,
 ) => {
-  // الصفحةُ المضبوطةُ لهذا المستخدم أوّلًا — هي قرارٌ صريح.
+  // The page configured for this user comes first; it is an explicit decision.
   if (u?.homePage && u.homePage.startsWith('/system')) return u.homePage;
-  // ثمّ بيتُ دوره المكتوب، ثمّ أوّلُ قسمٍ مُنح له، ثمّ صفحتُه الشخصيّة.
+  // Then the written home of his role, then the first section granted to him, then his profile page.
   const known = u?.role ? ROLE_HOME_ROUTES[u.role] : null;
   return known || firstGrantedHome(u?.permissions) || '/system/hr/me';
 };

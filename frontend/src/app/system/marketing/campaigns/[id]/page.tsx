@@ -57,7 +57,7 @@ export default function MarketingCampaignPage() {
       setActivities(r.activities || []);
       setLoadError('');
     } catch (e: any) {
-      // A failed request must never read as "الحملة غير موجودة".
+      // A failed request must never read as 'campaign not found'.
       setLoadError(e?.message || 'Request failed');
     }
     setLoading(false);
@@ -135,9 +135,7 @@ export default function MarketingCampaignPage() {
     </div>
   );
 
-  // ---- Excel: بيانات الحملة، ومؤشراتها، وأنشطتها -------------------------
-  // ثلاثة جداول لا جدول واحد: البطاقة تعريفٌ، والبطاقات الرقمية أداءٌ محسوب،
-  // والأنشطة صفوفٌ مؤرَّخة. دمجُها يُفقد صفوفَ الأنشطة معناها الزمني.
+  // Excel: campaign data, indicators and activities. Three sheets, not one: the card is a definition, the numeric cards are computed performance, and activities are dated rows; merging them would lose the activities' time meaning.
   const kvCols: ExportColumn[] = [
     { header: ar ? 'البند' : 'Field', key: 'label', width: 26 },
     { header: ar ? 'القيمة' : 'Value', key: 'value', width: 48 },
@@ -159,8 +157,7 @@ export default function MarketingCampaignPage() {
       { label: ar ? 'ملاحظات' : 'Notes', value: campaign.notes || '—' },
     ],
   };
-  // المؤشرات تُصدَّر بصياغة البطاقات نفسها (العملة، الفواصل، النسبة، ×ROAS)
-  // حتى يطابق الرقمُ في الملفّ الرقمَ الذي قرأه المستخدم على الشاشة.
+  // Indicators export in the cards' own formatting (currency, separators, percentage, x ROAS) so the number in the file matches what the user read on screen.
   const metricsSheet: ExportSheet = {
     name: ar ? 'مؤشرات الحملة' : 'Metrics',
     columns: [
@@ -186,8 +183,7 @@ export default function MarketingCampaignPage() {
   };
   const campaignSheets: ExportSheet[] = [
     briefSheet, metricsSheet,
-    // بلا أنشطةٍ لا يعرض الجدول صفًّا واحدًا، فشيتٌ فارغٌ باسم «أنشطة الحملة»
-    // يُقرأ على أنه فقدان بيانات لا على أنه حملة لم تُنفَّذ أنشطتها بعد.
+    // With no activities the sheet would hold no row, and an empty sheet named 'campaign activities' reads as data loss rather than a campaign with no activities yet.
     ...(activities.length ? [activitiesSheet] : []),
   ];
 
@@ -201,8 +197,7 @@ export default function MarketingCampaignPage() {
         <button type="button" onClick={() => router.push('/system/marketing/campaigns')} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm">
           <ArrowRight className={`w-4 h-4 ${isRTL ? '' : 'rotate-180'}`} /> {ar ? 'كل الحملات' : 'All campaigns'}
         </button>
-        {/* الحذف من صفحة الحملة: من فتحها ورآها مكرَّرةً أو أُنشئت خطأً هو من
-            يعرف ذلك، لا من يمرّ على القائمة. */}
+        {/* Delete from the campaign page: whoever opened it and saw a duplicate or mistaken campaign knows it is one, not someone scanning the list. */}
         <button type="button" onClick={removeCampaign} title={ar ? 'حذف الحملة' : 'Delete campaign'}
           className="p-2 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50">
           <Trash2 className="w-4 h-4" />
@@ -352,7 +347,7 @@ export default function MarketingCampaignPage() {
         </ScrollX>
       </div>
 
-      {/* مهامّ JP المربوطة بهذه الحملة — تُضاف من هنا. */}
+      {/* JP tasks linked to this campaign; added from here. */}
       <JpTaskPanel section="marketing" kind="campaign" refId={String(campaign._id)} ar={ar} />
     </div>
   );

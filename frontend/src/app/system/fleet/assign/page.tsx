@@ -1,7 +1,5 @@
 'use client';
-// توزيع السيارات على المشرفين — شاشة مدير القسم (والسوبر أدمن): اختر المشرف،
-// علّم بالتشيك ليست على السيارات، واحفظ الإسناد دفعة واحدة. كل سيارة تعرض
-// مشرفها الحالي، ويمكن نقلها من مشرف إلى آخر أو إلغاء إسنادها بنفس الطريقة.
+// Assign vehicles to supervisors (department manager and super admin). Tick vehicles, pick a supervisor and save in one batch; each vehicle shows its current supervisor and can be moved or unassigned the same way.
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
@@ -13,8 +11,7 @@ import { Spinner, PageHeader, SearchableSelect, SmallBadge } from '@/components/
 import ExportMenu from '@/components/ls2/ExportMenu';
 import { FleetVehicle, foldAr, canAdminFleet } from '@/lib/fleet';
 
-// كشف التوزيع — «مَن يشرف على ماذا» في ملفٍ واحد، وهو ما يُطلب حين يُراجَع
-// التوزيع خارج الشاشة.
+// Assignment report: who supervises what, in one file, for review outside the screen.
 const ASSIGN_COLUMNS = [
   { header: 'Plate', key: 'plate', width: 16 },
   { header: 'Description', key: 'name', width: 22 },
@@ -24,7 +21,7 @@ const ASSIGN_COLUMNS = [
   { header: 'Drivers', key: 'drivers', transform: (v: any) => (v || []).map((d: any) => d.name).join(' + '), width: 26 },
 ];
 
-// الدورُ يميّز مديرَ القسم من المشرف: نطاقُ الأوّل الأسطولُ كلُّه لا قائمةُ إسناد.
+// The role separates the department manager from a supervisor: the manager's scope is the whole fleet, not an assignment list.
 interface Supervisor { _id: string; firstName: string; lastName: string; email: string; role?: string }
 const supName = (u: Supervisor) => `${u.firstName} ${u.lastName}`.trim() || u.email;
 
@@ -39,10 +36,10 @@ export default function FleetAssignPage() {
   const [supervisors, setSupervisors] = useState<Supervisor[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [target, setTarget] = useState('');           // المشرف المستهدف
+  const [target, setTarget] = useState('');           // Target supervisor
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [q, setQ] = useState('');
-  const [ownerFilter, setOwnerFilter] = useState(''); // '' الكل، 'none' غير مُسند، أو معرف مشرف
+  const [ownerFilter, setOwnerFilter] = useState(''); // Empty = all, 'none' = unassigned, otherwise a supervisor id
 
   const load = useCallback(async () => {
     try {
@@ -58,14 +55,14 @@ export default function FleetAssignPage() {
   }, []);
   useEffect(() => { load(); }, [load]);
   useSocket('fleet:vehicles', useCallback(() => load(), [load]));
-  // الشاحنةُ من سجلّ المركبات والسائقُ من الموارد البشريّة: يُعاد الجلبُ متى تغيّر أحدُهما.
+  // Trucks come from the vehicle register and drivers from HR: refetch when either changes.
   useSocket('vreg:updated', useCallback(() => load(), [load]));
   useSocket('hr:employee', useCallback(() => load(), [load]));
 
   const filtered = useMemo(() => {
     let r = vehicles;
     if (ownerFilter === 'none') r = r.filter((v) => !v.supervisor);
-    // اسمُ مديرِ القسم يعرض الأسطولَ كلَّه: نطاقُه هو، لا قائمةُ إسنادٍ له.
+    // The department manager's name shows the whole fleet: that is their scope, not an assignment list.
     else if (ownerFilter && !supervisors.some((s) => s._id === ownerFilter && s.role === 'fleet_manager')) {
       r = r.filter((v) => v.supervisor === ownerFilter);
     }
@@ -100,7 +97,7 @@ export default function FleetAssignPage() {
     setSaving(false);
   };
 
-  // إسناد سريع لسيارة واحدة مباشرةً — أسهل طريق لتغيير مشرف سيارة بعينها.
+  // Quick single-vehicle assignment: the easiest way to change one vehicle's supervisor.
   const quickAssign = async (vehicleId: string, supervisorId: string) => {
     try {
       await api.patch(`/api/fleet/vehicles/${vehicleId}/supervisor`, { supervisor: supervisorId || null });
@@ -114,14 +111,7 @@ export default function FleetAssignPage() {
   const counts = new Map<string, number>();
   vehicles.forEach((v) => { const k = v.supervisor || 'none'; counts.set(k, (counts.get(k) || 0) + 1); });
 
-  // ── ومديرُ القسم نطاقُه القسم كلُّه ─────────────────────────────────────
-  //
-  // كان العدُّ واحدًا للجميع: كم مركبةً تحمل اسمَك في خانة المشرف. ومديرُ
-  // الأسطول لا تُسنَد إليه مركباتٌ بالإفراد — يشرف على الأسطول كلِّه — فكان
-  // يظهر بصفرٍ بجانب مشرفَين لكلٍّ منهما تسعٌ وعشرون. والصفرُ يُقرأ «لا يعمل»
-  // لا «يشرف على الكلّ»، وهو أبعدُ ما يكون عن الحقيقة.
-  //
-  // فرقمُه هو الأسطول، وضغطُ اسمه يعرضه كلَّه لا يعرض فراغًا.
+  // A department manager's scope is the whole department. A per-name count showed zero for the fleet manager next to supervisors with many vehicles, which reads as 'not working'. So the manager's number is the whole fleet and clicking the name shows all of it.
   const isDeptManager = (s: Supervisor) => s.role === 'fleet_manager';
   const scopeCount = (s: Supervisor) => (isDeptManager(s) ? vehicles.length : (counts.get(s._id) || 0));
 
@@ -144,7 +134,7 @@ export default function FleetAssignPage() {
         </div>
       )}
 
-      {/* ملخص التوزيع الحالي — كل مشرف وعدد سياراته، والضغط يرشح */}
+      {/* Current assignment summary: each supervisor and vehicle count; click to filter */}
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-xs font-semibold text-slate-600 flex items-center gap-1"><Users className="w-3.5 h-3.5 text-[#f37121]" /> {ar ? 'التوزيع الحالي:' : 'Current split:'}</span>
         <button type="button" onClick={() => setOwnerFilter('')}
@@ -171,7 +161,7 @@ export default function FleetAssignPage() {
         </button>
       </div>
 
-      {/* شريط التنفيذ — ثابت أعلى القائمة */}
+      {/* Action bar, sticky above the list */}
       <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-sm flex flex-wrap items-center gap-3 sticky top-2 z-20">
         <div className="w-full sm:w-64">
           <SearchableSelect
@@ -199,7 +189,7 @@ export default function FleetAssignPage() {
         </div>
       </div>
 
-      {/* التشيك ليست */}
+      {/* Checkboxes */}
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
         <div className="flex items-center justify-between px-4 py-2.5 border-b border-slate-100 bg-slate-50/60">
           <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer">
@@ -226,7 +216,7 @@ export default function FleetAssignPage() {
                     {(v.drivers || []).length ? (v.drivers || []).map((d) => d.name).join(' · ') : (ar ? 'بدون سائق' : 'No driver')}
                     {v.trailerType ? ` · ${v.trailerType}` : ''}
                   </span>
-                  {/* إسناد سريع لهذه السيارة وحدها — لا يمرّ عبر التحديد الجماعي. */}
+                  {/* Quick assignment for this vehicle only; bypasses bulk selection. */}
                   <span className="block mt-2" onClick={(e) => e.preventDefault()}>
                     <select value={(v as any).supervisor ? String((v as any).supervisor) : ''}
                       onChange={(e) => quickAssign(v._id, e.target.value)}

@@ -73,8 +73,7 @@ export default function Ls2ReportsPage() {
     setLoading(false);
   }, [range.from, range.to]);
   useEffect(() => { loadFleet(); }, [loadFleet]);
-  // ما يُكتب في القسم — من هذه الشاشة أو من غيرها — يظهر هنا في الحال. ونبضُ
-  // القياس عن بُعد (يحمل `vehicles`) لا يُعيد التحميل: يتكرّر كلَّ دقيقةٍ ولا يغيّر ما هنا.
+  // Anything written in the section, from this screen or elsewhere, appears here at once. The telemetry heartbeat (carries `vehicles`) does not reload: it repeats every minute and changes nothing here.
   useSocket('ls2:updated', useCallback((d: any) => { if (d?.vehicles === undefined) loadFleet(); }, [loadFleet]));
   // A new period invalidates every fuel figure already loaded.
   useEffect(() => { setFuel({}); }, [range.from, range.to]);

@@ -1,19 +1,8 @@
 /**
- * استخدامُ المورّدين من الحمولات الفعليّة — لا من ورقةٍ شهريّة.
- *
- * ── العلّة ──────────────────────────────────────────────────────────────────
- * كان تحليلُ المورّدين ولوحةُ العقود ومؤشّراتُ المورّدين تقرأ `VendorUtilisation`:
- * صفٌّ لكلّ مورّدٍ في كلّ شهر، يُستورَد من شيت القسم أو يُكتب بيد. فتوقّف عند
- * آخر شيتٍ رُفع (مايو ٢٠٢٦) والحمولاتُ جاريةٌ بعده، وأرقامُه لا تطابق الكشوف.
- *
- * فالصفُّ نفسُه يُبنى الآن من الكشوف (`OperationsWorkflow`): كلُّ كشفٍ غيرِ
- * ملغًى حمولةٌ لمالك السيّارة في شهر تاريخه. وصفاتُ المورّد — العقدُ ونوعُه
- * وأسطولُه ومندوبُه — من سجلّ المورّدين (`ContractVendor`) الآن، لا لقطةً
- * من شهر الاستيراد: من وقّع اليوم يُقرأ موقِّعًا في كلّ الأشهر.
- *
- * ومالكٌ لا سجلَّ له في المورّدين «خارجيّ» — بلا عقدٍ ولا سجلّ — ويُعرض باسمه.
- *
- * والشكلُ هو شكلُ صفّ `VendorUtilisation` حرفًا بحرف، فلا يتغيّر مستهلكوه.
+ * Vendor utilisation from actual loads, not a monthly sheet.
+ * Vendor analysis, the contracts dashboard and vendor KPIs used to read `VendorUtilisation` (a row per vendor per month, imported or hand-entered), which stopped at the last uploaded sheet and no longer matched the manifests.
+ * The row is now built from the manifests (`OperationsWorkflow`): each non-cancelled manifest is a load for the vehicle owner in the month of its date. Vendor attributes (contract, type, fleet, rep) come from the vendor register (`ContractVendor`) now, not a snapshot of the import month. An owner with no vendor record is 'external': no contract, shown by name.
+ * The shape matches a `VendorUtilisation` row exactly, so consumers are unchanged.
  */
 const cache = require('./ttlCache');
 
@@ -76,18 +65,9 @@ async function liveUtilisationRows({ nameKey: onlyKey = null } = {}) {
 }
 
 /**
- * مجموعُ الحمولات لكلّ شهر — ما تحتاجه لوحةُ العقود وحده، بلا صفوف المورّدين.
- *
- * يطابق `liveUtilisationRows` مجموعًا بالشهر حرفًا بحرف، لكنّه لا ينقل أسماء
- * المالكين. فذلك التجميع يعيد ~٦٩٠ ك.ب (اسمُ المالك وقائمةُ المندوبين لكلّ شهر)،
- * والنقلُ من العنقود هو الزمن كلّه: ١٢ ثانيةً للّوحة في البرودكشن، والخادمُ
- * نفسُه ينهي التجميعَ في ٢٠٠ جزءٍ من الثانية.
- *
- * والفرقُ الوحيد بين «كلّ الكشوف» و«الصفوف» مالكٌ اسمُه يُطوى إلى لا شيء
- * (`nameKey` فارغ) فيُسقَط. ولا يُطوى اسمٌ إلى الفراغ إلّا إن خلا من كلّ حرفٍ عربيٍّ
- * أو لاتينيٍّ أو رقم، أو احتوى «_» (فـ`\bال` لا يحذف «ال» إلّا بعد حرفٍ لاتينيٍّ
- * أو رقمٍ أو «_»، والأوّلان يبقيان). فتُجلب هذه الأسماءُ القليلة وحدها، وتُطوى
- * بالدالّة نفسها، ويُطرح من الشهر ما طُوي منها إلى الفراغ.
+ * Load totals per month, only what the contracts dashboard needs, without vendor rows.
+ * Matches `liveUtilisationRows` summed by month, but omits owner names: that aggregation returned about 690 KB and cluster transfer was the whole cost.
+ * The only difference is an owner whose name folds to empty (`nameKey`), which is dropped. A name folds to empty only if it has no letter or digit, or contains '_' (the article rule applies only after a Latin letter, digit or '_'), so just those few names are fetched, folded with the same function and subtracted from the month.
  */
 async function liveUtilisationMonths() {
   const mongoose = require('mongoose');
@@ -108,7 +88,7 @@ async function liveUtilisationMonths() {
     const e = byMonth.get(`${s._id.y}-${s._id.m}`);
     if (e) e.orders -= s.n;
   }
-  // شهرٌ كلُّ كشوفه لمالكين بلا اسمٍ لا صفَّ له هناك، فلا يُعرض هنا.
+  // A month whose manifests all belong to nameless owners has no row there, so it is not shown here.
   return [...byMonth.values()].filter((e) => e.orders > 0)
     .sort((a, b) => (a.year - b.year) || (a.month - b.month));
 }

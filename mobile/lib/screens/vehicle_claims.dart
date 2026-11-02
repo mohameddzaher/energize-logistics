@@ -18,15 +18,10 @@ import '../ui/stat_grid.dart';
 import '../ui/widgets.dart';
 import 'vehicle_registry.dart' show VehicleRegistryDetailScreen;
 
-// ═════════════════════════════════════════════════════════════════════════
-// الحوادث والمطالبات التأمينية — نظيرُ /system/vehicles/registry/claims
-// و claims/[id] في الموقع. السؤال هنا فلوس: صرفنا كام وهنسترد كام.
-//
-// الصلاحيات مرآةُ lib/vehicleRegistry.ts حرفًا بحرف:
-//  • canEditVehicles: تسجيلُ حادثٍ جديد وإرفاقُ ورقه.
-//  • canEditClaims: تعديلُ الحادثة وحذفُها وتعديلُ اسم المرفق وحذفُه
-//    (الخادمُ يحرسها بـ authorize.strict فلا يفتحها منحُ قسم).
-// ═════════════════════════════════════════════════════════════════════════
+// Accidents and insurance claims, mirrors /system/vehicles/registry/claims and claims/[id] on web. The question here is money: what we paid and what we will recover.
+// Permissions mirror lib/vehicleRegistry.ts exactly:
+// canEditVehicles: register a new accident and attach its papers.
+// canEditClaims: edit and delete the accident and rename or delete an attachment (guarded by authorize.strict on the server, so a section grant does not open it).
 
 const _editRoles = ['super_admin', 'admin', 'vehicles_manager', 'vehicles_staff',
   'hr_manager', 'hr_specialist', 'cfo', 'accounting_manager', 'accountant'];
@@ -60,14 +55,14 @@ bool _closed(Map r) => r['statusCode'] == 'closed';
 String _statusText(Map r) => _closed(r) ? tr('مقفولة', 'Closed') : tr('قيد المتابعة', 'Pending');
 String _err(Object e) => e is ApiException ? e.message : e.toString();
 
-/// أيّامٌ منذ آخر ردٍّ من التأمين — null إن لم يُسجَّل ردّ.
+/// Days since the last insurer reply; null if no reply is recorded.
 int? _staleDays(Map r) {
   final d = DateTime.tryParse(_s(_m(r['claim'])['lastInsurerUpdateDate']));
   if (d == null) return null;
   return DateTime.now().difference(d).inMilliseconds ~/ 86400000;
 }
 
-// أعمدةُ القمع وقارئُ كلٍّ منها — مرآةُ COL_DEFS/GETTERS في الويب.
+// Funnel columns and the reader of each, mirrors COL_DEFS/GETTERS on web.
 final List<(String, String, String, String Function(Map<String, dynamic>))> _cols = [
   ('plate', 'اللوحة', 'Plate', (r) => _s(r['vehiclePlate']).isNotEmpty ? _s(r['vehiclePlate']) : _s(r['incidentSubjectAr'])),
   ('date', 'التاريخ', 'Date', (r) => _fmtDate(r['accidentDate'])),
@@ -90,12 +85,12 @@ final List<(String, String, String, String Function(Map<String, dynamic>))> _col
   ('notes', 'الملاحظات', 'Notes', (r) => _s(_m(r['claim'])['notesAr'])),
 ];
 
-// أعمدةُ التصدير — نفسُ أعمدة ExportMenu في الويب.
+// Export columns, the same as the web ExportMenu columns.
 List<ExportCol> _exportCols() => [
   ExportCol('رقم الحادث', 'Accident no.', (r) => _s(r['accidentNumber'])),
   ExportCol('اللوحة', 'Plate', (r) => _s(r['vehiclePlate'])),
   ExportCol('التاريخ', 'Date', (r) => _fmtDate(r['accidentDate'])),
-  // الفارغُ يخرج فارغًا: صفرُ الخطأ نتيجةٌ، وغيابُه ليس صفرًا.
+  // Empty stays empty: a zero fault is a result, and absence is not zero.
   ExportCol('نسبة الخطأ %', 'Fault %', (r) => r['faultPercent'] ?? ''),
   ExportCol('شركة التأمين', 'Insurer', (r) => _s(_m(r['claim'])['insurerAr'])),
   ExportCol('مبلغ التقدير', 'Estimate amount', (r) => _m(r['claim'])['estimatedAmountSar'] ?? ''),
@@ -114,12 +109,9 @@ List<ExportCol> _exportCols() => [
   ExportCol('الملاحظات', 'Notes', (r) => _s(_m(r['claim'])['notesAr'])),
 ];
 
-// ═════════════════════════════════════════════════════════════════════════
-// القائمة
-// ═════════════════════════════════════════════════════════════════════════
+// List
 class VehicleClaimsScreen extends StatefulWidget {
-  /// ما يقرؤه الويب من الرابط (?q=&status=&stale=1&fault=ours) — ملفُّ المركبة
-  /// وكروتُ النظرة الشاملة تفتح الشاشةَ على صفوفها.
+  /// What web reads from the URL (?q=&status=&stale=1&fault=ours): the vehicle profile and overview cards open this screen on their rows.
   final String? initialQuery;
   final String? initialStatus;
   final bool initialStale;
@@ -161,7 +153,7 @@ class _VehicleClaimsScreenState extends State<VehicleClaimsScreen> {
   String _qs(Map<String, String> p) =>
       p.entries.where((e) => e.value.isNotEmpty).map((e) => '${e.key}=${Uri.encodeQueryComponent(e.value)}').join('&');
 
-  // ولا يكتب ردٌّ قديمٌ فوق ردٍّ أحدث — نظيرُ useLatestRequest.
+  // A stale response does not overwrite a newer one; equivalent to useLatestRequest.
   Future<void> _load() async {
     final mine = ++_seq;
     try {
@@ -189,16 +181,16 @@ class _VehicleClaimsScreenState extends State<VehicleClaimsScreen> {
         return d != null && d.isBefore(cutoff);
       }).toList();
     }
-    // نصفُ الخطأ علينا: حدُّ الخادم نفسُه (>= 50%).
+    // Half the fault is ours: the same threshold as the server (>= 50%).
     if (_fault == 'ours') out = out.where((r) => (_num(r['faultPercent']) ?? 0) >= 50).toList();
     if (_reportedVia.isNotEmpty) out = out.where((r) => _s(r['reportedViaAr']) == _reportedVia).toList();
     if (_insurer.isNotEmpty) out = out.where((r) => _s(_m(r['claim'])['insurerAr']) == _insurer).toList();
     if (_files == 'with') out = out.where((r) => _list(r['attachments']).isNotEmpty).toList();
     if (_files == 'without') out = out.where((r) => _list(r['attachments']).isEmpty).toList();
-    // والمدى على تاريخ الحادث نفسِه.
+    // The range is on the accident date itself.
     if (_from.isNotEmpty) out = out.where((r) => _ymd(r['accidentDate']).isNotEmpty && _ymd(r['accidentDate']).compareTo(_from) >= 0).toList();
     if (_to.isNotEmpty) out = out.where((r) => _ymd(r['accidentDate']).isNotEmpty && _ymd(r['accidentDate']).compareTo(_to) <= 0).toList();
-    // فلاترُ الأعمدة آخرًا.
+    // Column filters last.
     if (_cf.isNotEmpty) {
       out = out.where((r) => _cf.entries.every((e) {
         final g = _cols.firstWhere((c) => c.$1 == e.key).$4;
@@ -321,7 +313,7 @@ class _VehicleClaimsScreenState extends State<VehicleClaimsScreen> {
           onSelected: _export,
           itemBuilder: (_) => [
             PopupMenuItem(value: false, child: Text(tr('المعروض (${rows.length})', 'Shown (${rows.length})'))),
-            // البحثُ والحالة على الخادم، فـ«الكل» نداءٌ ثانٍ بلا معاملات.
+            // Search and status run on the server, so 'all' is a second call with no parameters.
             if (_hasActiveFilters) PopupMenuItem(value: true, child: Text(tr('السجل كله', 'Everything'))),
           ],
         ),
@@ -514,7 +506,7 @@ class _VehicleClaimsScreenState extends State<VehicleClaimsScreen> {
                     (_num(c['estimatedAmountSar']) ?? 0) != 0 ? _money(c['estimatedAmountSar']) : '—', T.ink)),
                 Expanded(child: _amount(tr('المسترد', 'Recovered'),
                     (_num(c['expectedRecoverySar']) ?? 0) != 0 ? _money(c['expectedRecoverySar']) : '—', T.success)),
-                // الفرقُ يُحسب حين تُقفَل المطالبة — وقبلها لا فرق.
+                // The difference is computed when the claim is closed; before that there is none.
                 Expanded(child: _amount(tr('الفرق', 'Difference'),
                     c['recoveryGapSar'] != null ? _money(c['recoveryGapSar']) : '—', T.danger)),
               ]),
@@ -537,9 +529,7 @@ class _VehicleClaimsScreenState extends State<VehicleClaimsScreen> {
   ]);
 }
 
-// ═════════════════════════════════════════════════════════════════════════
-// تسجيل / تعديل حادث — الحقول اللي بتتكتب بالإيد بس. الفرق يحسبه الخادم.
-// ═════════════════════════════════════════════════════════════════════════
+// Register / edit an accident: only the hand-typed fields. The server computes the difference.
 class _ClaimFormScreen extends StatefulWidget {
   final Map<String, dynamic>? claim;
   const _ClaimFormScreen({this.claim});
@@ -610,7 +600,7 @@ class _ClaimFormScreenState extends State<_ClaimFormScreen> {
 
   num? _n(String k) { final t = c(k).text.trim(); return t.isEmpty ? null : num.tryParse(t); }
 
-  // الفرقُ عند الإقفال وحدَه — مرآةُ claimDifference في الخادم.
+  // The difference exists only at close; mirrors claimDifference on the server.
   num? get _gap => _statusCode == 'closed' && _n('estimatedAmountSar') != null && _n('expectedRecoverySar') != null
       ? _n('estimatedAmountSar')! - _n('expectedRecoverySar')! : null;
 
@@ -627,7 +617,7 @@ class _ClaimFormScreenState extends State<_ClaimFormScreen> {
     if (hit == null || !mounted) return;
     setState(() {
       c('vehiclePlate').text = _s(hit['plate']);
-      // يُملأ من صفّ المركبة ما لم يُكتب بعد.
+      // Filled from the vehicle row unless already typed.
       if (c('vehicleTypeAr').text.isEmpty) c('vehicleTypeAr').text = _s(hit['typeAr']);
       if (c('driverNameAr').text.isEmpty) {
         c('driverNameAr').text = _s(hit['actualDriverName']).isNotEmpty ? _s(hit['actualDriverName']) : _s(hit['authorizedName']);
@@ -636,7 +626,7 @@ class _ClaimFormScreenState extends State<_ClaimFormScreen> {
     });
   }
 
-  // نظيرُ PersonLookup: الموارد البشريّة وسجلّ النقل الخفيف وبطاقات السائقين.
+  // Mirrors PersonLookup: HR, the light transport register and driver cards.
   Future<void> _findPerson() async {
     final term = _personQ.text.trim();
     if (term.length < 3) { _snack(tr('اكتب 3 أحرف على الأقل', 'Type at least 3 characters')); return; }
@@ -694,7 +684,7 @@ class _ClaimFormScreenState extends State<_ClaimFormScreen> {
         'faultPercent': _n('faultPercent'),
         'reportedViaAr': t('reportedViaAr'),
         'statusCode': _statusCode,
-        // النصُّ لا يُخزَّن: يُشتقُّ من الكود عند العرض.
+        // The text is not stored; it is derived from the code at display time.
         'statusAr': '',
         'claim': {
           'insurerAr': t('insurerAr'),
@@ -706,7 +696,7 @@ class _ClaimFormScreenState extends State<_ClaimFormScreen> {
         },
       };
       if (_isNew) {
-        // بعد التسجيل يبقى النموذجُ مفتوحًا على الحادثة نفسِها لترفع ورقَها.
+        // After registering, the form stays open on the same accident so its papers can be uploaded.
         final res = _m(await Api.instance.post(_base, body));
         _snack(tr('اتسجّل الحادث — تقدر ترفع الملفات دلوقتي', 'Recorded — you can attach files now'));
         final created = _m(res['claim']);
@@ -784,7 +774,7 @@ class _ClaimFormScreenState extends State<_ClaimFormScreen> {
           _f('incidentSubjectAr', 'موضوع الواقعة (إن لم تكن مركبة)', 'Subject (if not a vehicle)'),
           _date(tr('تاريخ الحادث', 'Accident date'), _accidentDate, (v) => _accidentDate = v),
           _f('accidentNumber', 'رقم الحادث', 'Accident no.'),
-          // البحثُ عن السائق يملأ خاناته.
+          // Looking up the driver fills his fields.
           Container(
             margin: const EdgeInsets.only(bottom: 10),
             padding: const EdgeInsets.all(10),
@@ -823,7 +813,7 @@ class _ClaimFormScreenState extends State<_ClaimFormScreen> {
             onChanged: (v) => setState(() => _statusCode = v ?? 'pending'),
           ),
         ]),
-        // الورقُ يُرفَع من هنا أيضًا — بعد أن يصير للحادثة معرِّف.
+        // Papers can also be uploaded from here, once the accident has an id.
         if (!_isNew)
           Padding(
             padding: const EdgeInsets.only(bottom: 12),
@@ -887,10 +877,8 @@ Widget _replyTile(Map<String, dynamic> rep) => Container(
   ]),
 );
 
-// ═════════════════════════════════════════════════════════════════════════
-// مرفقاتُ المطالبة — نظيرُ components/vehicles/ClaimAttachments.
-// ═════════════════════════════════════════════════════════════════════════
-const _maxBytes = 20 * 1024 * 1024; // حدُّ الخادم (utils/fileStore)
+// Claim attachments, mirrors components/vehicles/ClaimAttachments.
+const _maxBytes = 20 * 1024 * 1024; // Server limit (utils/fileStore)
 
 String _sizeText(dynamic v) {
   final n = _num(v)?.toInt() ?? 0;
@@ -904,7 +892,7 @@ class _ClaimAttachments extends StatefulWidget {
   final String claimId;
   final List<Map<String, dynamic>> attachments;
   final bool canEdit;
-  /// تعديلُ اسم المرفق وحذفُه — للإدارة والماليّة وحدَهم (canEditClaims).
+  /// Renaming or deleting an attachment is for administration and finance only (canEditClaims).
   final bool canManage;
   final ValueChanged<Map<String, dynamic>> onChange;
   const _ClaimAttachments({required this.claimId, required this.attachments, required this.canEdit,
@@ -924,7 +912,7 @@ class _ClaimAttachmentsState extends State<_ClaimAttachments> {
     final files = <Map<String, String>>[];
     for (final f in picked) {
       if (f.sizeBytes > _maxBytes) { _snack(tr('«${f.fileName}» أكبر من 20 ميجابايت', '"${f.fileName}" exceeds 20 MB')); continue; }
-      // الاسمُ المقترَح: اسمُ الملفّ بلا امتداده — يُصحّحه صاحبُه بعد الرفع.
+      // Suggested name is the file name without its extension; the owner corrects it after upload.
       files.add({'dataUrl': f.dataUrl, 'fileName': f.fileName, 'title': f.fileName.replaceFirst(RegExp(r'\.[^.]+$'), '')});
     }
     if (files.isEmpty) return;
@@ -1041,9 +1029,7 @@ class _ClaimAttachmentsState extends State<_ClaimAttachments> {
   }
 }
 
-// ═════════════════════════════════════════════════════════════════════════
-// ملفُّ الحادثة والمطالبة
-// ═════════════════════════════════════════════════════════════════════════
+// Accident and claim file
 const _auditLabels = {
   'create_vehicle_claim': ('تسجيل الحادثة', 'Claim opened'),
   'update_vehicle_claim': ('تعديل المطالبة', 'Claim edited'),
@@ -1070,7 +1056,7 @@ class _VehicleClaimDetailScreenState extends State<VehicleClaimDetailScreen> {
     super.initState();
     _load();
     _loadAudit();
-    // كلُّ ما يمسّ القسمَ يبثّ هذا الحدث — فالمطالبةُ تُحدَّث وإن عُدِّلت من الجدول.
+    // Anything touching the section broadcasts this event, so the claim refreshes even when edited from the table.
     Live.instance.on('vreg:updated', _load);
   }
 
@@ -1086,11 +1072,11 @@ class _VehicleClaimDetailScreenState extends State<VehicleClaimDetailScreen> {
       final d = _m(await Api.instance.get('$_base/${widget.id}'));
       if (!mounted || mine != _seq) return;
       setState(() => _c = _m(d['claim']).isEmpty ? null : _m(d['claim']));
-    } catch (_) {/* تبقى الشاشةُ على ما لديها */}
+    } catch (_) {/* The screen keeps what it has */}
     if (mounted && mine == _seq) setState(() => _loading = false);
   }
 
-  // السجلُّ يُطلَب مرّةً: هو للمراجعة لا للمتابعة اللحظيّة.
+  // The history is requested once: it is for review, not live follow-up.
   Future<void> _loadAudit() async {
     try {
       final d = _m(await Api.instance.get('$_base/${widget.id}/audit'));
@@ -1189,7 +1175,7 @@ class _VehicleClaimDetailScreenState extends State<VehicleClaimDetailScreen> {
     final closed = _closed(c);
     final est = _num(cl['estimatedAmountSar']) ?? 0;
     final rec = _num(cl['expectedRecoverySar']) ?? 0;
-    // الفرقُ عند الإقفال وحدَه — يحسبه الخادم.
+    // The difference exists only at close; computed by the server.
     final gap = cl['recoveryGapSar'] != null ? _num(cl['recoveryGapSar']) : null;
     final atts = _list(c['attachments']);
     final replies = _list(c['insurerReplies'])..sort((a, b) => _s(b['at']).compareTo(_s(a['at'])));
@@ -1230,7 +1216,7 @@ class _VehicleClaimDetailScreenState extends State<VehicleClaimDetailScreen> {
             ]),
           ),
           const SizedBox(height: 12),
-          // السؤالُ المالي أوّلًا.
+          // The financial question first.
           _eqGrid([
               _kpi(tr('المقدَّر (ر.س)', 'Estimated (SAR)'), _money(est), T.ink),
               _kpi(tr('متوقع استرداده', 'Expected recovery'), _money(rec), const Color(0xFF047857)),
@@ -1293,7 +1279,7 @@ class _VehicleClaimDetailScreenState extends State<VehicleClaimDetailScreen> {
             _section(tr('ملاحظات', 'Notes'), Icons.description_outlined, T.inkFaint, [
               Padding(padding: const EdgeInsets.symmetric(vertical: 4), child: Text(_s(cl['notesAr']), style: const TextStyle(fontSize: 13))),
             ]),
-          // الورقُ الذي تُبنى عليه الأرقام.
+          // The papers the figures are built on.
           _ClaimAttachments(
             claimId: widget.id, attachments: atts,
             canEdit: _canEditVehicles(auth), canManage: _canEditClaims(auth),
@@ -1347,5 +1333,5 @@ class _VehicleClaimDetailScreenState extends State<VehicleClaimDetailScreen> {
   }
 }
 
-// كروتٌ بصفوفٍ متساوية الارتفاع تكبر مع النصّ (بدل GridView بنسبةٍ ثابتة تقصّ المحتوى).
+// Cards in equal-height rows that grow with the text (instead of a fixed-ratio GridView that clips content).
 Widget _eqGrid(List<Widget> tiles) => StatGrid(spacing: 8, minTileWidth: 150, minColumns: 2, maxColumns: tiles.length % 3 == 0 ? 3 : 4, children: tiles);

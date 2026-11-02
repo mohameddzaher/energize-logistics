@@ -1,13 +1,8 @@
 'use client';
 /**
- * موردو مخزن النقل الثقيل — مَن تُشترى منه قطعُ الغيار.
- *
- * المورد يُضاف من هنا، أو من خانة «المورد» في استمارة الصنف نفسِها (يُكتب الاسمُ
- * فيُنشأ مع الحفظ). والقائمتان تسمعان الحدثَ ذاتَه (`ls2:store`)، فما أُضيف في
- * إحداهما يظهر في الأخرى بلا إعادة تحميل.
- *
- * ومع كلّ موردٍ ما اشتُري منه: عددُ الأصناف والتوريدات والقيمة وآخرُ شراء —
- * محسوبةٌ من حركات الوارد لا مكتوبةٌ بيد.
+ * Heavy-transport store suppliers: who spare parts are bought from
+ * A supplier is added here, or from the supplier field of the item form (typing the name creates it on save)
+ * Both lists listen to the same event (`ls2:store`), so an addition in one shows in the other without reload. Each supplier carries what was bought from them (item count, supplies, value, last purchase), computed from in-movements, not typed.
  */
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '@/context/AuthContext';

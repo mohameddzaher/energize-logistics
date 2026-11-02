@@ -1,17 +1,8 @@
 /**
- * تصحيحُ رقم هويّة الموظّف في الموارد البشريّة يصل كلَّ ما يعرفه به.
- *
- * ── لماذا ───────────────────────────────────────────────────────────────────
- * الموظّفُ يُعرَف خارج الموارد البشريّة برقم هويّته لا بمعرّفه:
- *   · ورقةُ التفويض على المركبة   `VehicleMaster.authorizedPerson.iqamaNumber`
- *   · القائدُ الفعليّ               `VehicleMaster.actualDriver.idNumber`
- *   · بطاقةُ السائق                 `DriverCard.idNumber`
- *   · صفُّه في النقل الخفيف        `LightTransportEmployee.idNumber`
- * فإن صُحِّح الرقمُ في ملفّه وحدَه انقطع الربط في صمت: يختفي تفويضُه من ملفّه
- * ومن إخلاء طرفه، وتبقى المركبةُ مقيَّدةً برقمٍ لا يطابق أحدًا.
- *
- * فالرقمُ القديمُ يُستبدَل بالجديد حيث وُجد — والكتابةُ في الورقة تمرّ بخطّاف
- * النموذج فيتبعها سجلُّ الإسناد (utils/vehicleAuthorization).
+ * Correcting an employee's ID number in HR reaches everything that identifies him by it.
+ * Outside HR an employee is known by ID number, not id: the vehicle authorization sheet `VehicleMaster.authorizedPerson.iqamaNumber`, the actual driver `VehicleMaster.actualDriver.idNumber`, the driver card `DriverCard.idNumber`, and his light-transport row `LightTransportEmployee.idNumber`.
+ * If the number is corrected on his file alone, the link breaks silently: his authorization disappears from his file and clearance, and the vehicle stays tied to a number matching nobody.
+ * The old number is replaced by the new one wherever found; writing to the sheet goes through the model hook so the assignment log follows (utils/vehicleAuthorization).
  */
 const S = (v) => String(v == null ? '' : v).trim();
 
@@ -27,7 +18,7 @@ async function pushIdChange(emp, beforeIds, nowIds) {
   const d = await VehicleMaster.updateMany({ 'actualDriver.idNumber': { $in: gone } }, { $set: { 'actualDriver.idNumber': next } });
   changed += (a.modifiedCount || 0) + (d.modifiedCount || 0);
 
-  // البطاقةُ فريدةٌ برقم الهويّة: لا يُكتب الجديدُ فوق بطاقةٍ قائمةٍ به.
+  // The card is unique by ID number: the new number is not written over an existing card that has it.
   if (!(await DriverCard.exists({ idNumber: next }))) {
     const c = await DriverCard.updateMany({ idNumber: { $in: gone } }, { $set: { idNumber: next, employee: emp._id } });
     changed += c.modifiedCount || 0;
@@ -47,27 +38,9 @@ async function pushIdChange(emp, beforeIds, nowIds) {
 }
 
 /**
- * ── وبياناتُ الشخص كذلك: الموارد البشريّة تغلب ───────────────────────────────
- * الاسمُ والجوالُ والجنسيّةُ نُسخت قديمًا على صفوفٍ في أقسامٍ أخرى، وافترقت عن
- * الملفّ: أربعةٌ وخمسون اسمًا في النقل الخفيف، وأحدَ عشرَ في بطاقات السائقين،
- * وستّةٌ وأربعون على أوراق التفويض، وثمانيةٌ وستّون قائدًا فعليًّا. والقاعدة
- * (صاحبُ الشركة، ٢٠٢٦/١٠/٢١): بياناتُ الشخص واحدة — اسمُ الموارد البشريّة يظهر
- * في كلّ مكان. فكلُّ حفظٍ يمسّها هنا يكتبها في نسخها:
- *
- *   · `LightTransportEmployee` — الاسم والجوال والجنسيّة (وما يخصّ القسمَ لا يُمسّ:
- *     الوظيفةُ هناك قائمةُ القسم لا مسمّى الموارد البشريّة، والمشروعُ يملكه القسم)
- *     ومعه لقطتا الاسم: راكبُ المركبة (`VehicleMaster.b2cRider.name`) وأوامرُ
- *     التشغيل السارية (`LightTransportOrder.employeeName`).
- *   · `DriverCard.name`
- *   · `VehicleMaster.authorizedPerson` — الاسم والجوال
- *   · `VehicleMaster.actualDriver.name`
- *
- * والربطُ برقم الهويّة (العمودان) أو بالمعرّف حيث يُحفظ. والفارغُ في الملفّ لا يمحو
- * ما في النسخة: «لا أعرف جوالَه» ليست «جوالُه فارغ». والمشروعُ والقسمُ وحالةُ
- * التوظيف لا نسخَ لها — تُقرأ من الملفّ — فيكفي أن تُمسَح الذاكرةُ ويُعلَن.
- *
- * والكتابةُ في المركبات بلا `timestamps`: ليست تعديلًا يدويًّا يحميه الاستيرادُ
- * التالي، ولا تغييرًا في التفويض (`skipAuthSync`) — الحاملُ هو هو.
+ * Person data: HR wins. Name, phone and nationality had been copied to rows in other sections and drifted from the file, so every save touching them writes the copies:
+ * `LightTransportEmployee` (name, phone, nationality; department-owned job and project untouched) plus the rider and order name snapshots, `DriverCard.name`, `VehicleMaster.authorizedPerson`, `VehicleMaster.actualDriver.name`.
+ * Linking is by ID number (both columns) or id; empty on the file does not erase a copy. Vehicle writes skip `timestamps` and `skipAuthSync` since the holder is unchanged.
  */
 const PERSON_FIELDS = ['firstName', 'lastName', 'arabicName', 'phone', 'nationality', 'project', 'department', 'employmentStatus'];
 const COPIED_FIELDS = ['firstName', 'lastName', 'arabicName', 'phone', 'nationality'];
@@ -77,8 +50,8 @@ function announcePerson(emp) {
 }
 
 /**
- * يكتب بياناتِ الشخص من ملفّه في نسخها. `opts.emit=false` للسكربتات.
- * @returns {{ lt, ltRiders, ltOrders, cards, authorized, actual }} عددُ ما تغيّر في كلّ نسخة
+ * Writes the person's data from his file into its copies. `opts.emit=false` for scripts.
+ * @returns {{ lt, ltRiders, ltOrders, cards, authorized, actual }} count changed in each copy
  */
 async function pushPersonChange(emp, { emit = true, fields = PERSON_FIELDS } = {}) {
   const out = { lt: 0, ltRiders: 0, ltOrders: 0, cards: 0, authorized: 0, actual: 0 };
@@ -144,7 +117,7 @@ async function pushPersonChange(emp, { emit = true, fields = PERSON_FIELDS } = {
   return out;
 }
 
-/** أيُّ حقول الشخص تغيّرت بين لقطتين؟ */
+/** Which person fields changed between two snapshots? */
 const personSnapshot = (doc) => Object.fromEntries(PERSON_FIELDS.map((k) => [k, S(doc?.[k])]));
 const changedPersonFields = (before, now) => PERSON_FIELDS.filter((k) => S(before?.[k]) !== S(now?.[k]));
 

@@ -1,12 +1,5 @@
 'use client';
-/**
- * شارةُ حالة اليوم في قسم الأفراد — تُرى حيث يُرى الإنسان أو مركبتُه.
- *
- * إجازة · موقوف · حادث تُكتب في «موظفو النقل الخفيف» وحدَه، وتُنسَخ لقطةً إلى ملفّه
- * في الموارد البشريّة (`b2cOpStatus`) وإلى مركبته (`b2cRider.opStatus`) — فتظهر
- * هذه الشارةُ هناك (صاحبُ الشركة، ٢٠٢٦/١٠/٢١: «يسمع في كل حته»). والفراغُ «يعمل»
- * فلا شارة. هادئة: نقطةُ لونٍ صغيرةٌ ونصٌّ داكن.
- */
+/** Daily status badge in the individuals section, shown wherever the person or their vehicle appears. Leave, suspended and accident are written only in the light-transport staff page and copied as a snapshot to the HR file (b2cOpStatus) and the vehicle (b2cRider.opStatus). Empty means working, so no badge. Quiet style: small colored dot and dark text. */
 const LABEL: Record<string, [string, string, string]> = {
   leave: ['إجازة', 'On leave', '#0284c7'],
   suspended: ['موقوف', 'Suspended', '#d97706'],

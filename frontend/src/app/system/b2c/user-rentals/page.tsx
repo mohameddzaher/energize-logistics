@@ -1,10 +1,7 @@
 'use client';
 /**
- * تأجيرُ اليوزرات — حسابُ توصيلٍ على أحد مشاريعنا يُؤجَّر لشركةٍ أو لشخص.
- *
- * يُسجَّل المشروع، ولمن (شركة أو شخص) واسمُه ورقمُ إقامته، والتاريخُ يُكتب
- * تلقائيًّا يومَ التسجيل. والمؤجَّرُ الآن يُعَدّ في لوحة قسم الأفراد ضمن «إجمالي
- * المناديب» (كفالة + فري لانسر + يوزرات) ولكلّ مشروع. والتأجيرُ يُنهى ولا يُمحى.
+ * User-account rental: a delivery account on one of our projects rented to a company or a person.
+ * Recorded: the project, the renter (company or person), name and residency number; the date is written automatically on the registration day. What is rented now is counted on the personnel dashboard under total reps (sponsored + freelance + user accounts) and per project. A rental is ended, never erased.
  */
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '@/context/AuthContext';
@@ -26,7 +23,7 @@ interface Rental {
   _id: string; projectAr: string; renterType: 'company' | 'person'; renterName: string; idNumber: string;
   phone?: string; userAccount?: string; notes?: string; startDate: string; status: 'active' | 'ended';
   endDate?: string; endedByName?: string; createdByName?: string;
-  /** صفُّ اليوزر في «موظفي النقل الخفيف» — الرابطُ بكروت اللوحة (backend utils/ltRental). */
+  /** The user-account row in light-transport employees; the link to the dashboard cards (backend utils/ltRental). */
   ltEmployee?: string | null;
   rep?: { _id: string; name: string; idNumber: string; projectAr: string; cityAr: string; vehiclePlate: string; status: string } | null;
 }
@@ -70,17 +67,15 @@ export default function UserRentalsPage() {
   const projects = useMemo(() => Object.entries(d?.counts.byProject || {}).sort((a, b) => b[1] - a[1]), [d]);
 
   /**
-   * ── والمشروعُ يُورَث من رابط اللوحة (?project=) ─────────────────────────
-   * خليّةُ «يوزرات» في «إجمالي المناديب» تفتح هذه الصفحةَ على مشروعها. واللوحةُ
-   * تطوي «هنقرستيشن» و«هنجرستيشن» مشروعًا واحدًا، فإن لم يطابق الاسمُ حرفيًّا
-   * مشروعًا هنا يُؤخذ أوّلُ ما يطابقه مطويًّا — مرّةً واحدةً عند الفتح.
+   * Project inherited from the dashboard link (?project=).
+   * The user-accounts cell in total reps opens this page on its project. The dashboard folds two spellings of the delivery project into one; if the name does not match a project here exactly, the first folded match is taken, once on open.
    */
   const [urlProject, setUrlProject] = useState('');
   useEffect(() => {
     try {
       const p = new URLSearchParams(window.location.search).get('project') || '';
       if (p) { setProject(p); setUrlProject(p); }
-    } catch { /* بلا رابطٍ تُفتح الصفحةُ على الكلّ */ }
+    } catch { /* With no link the page opens on all. */ }
   }, []);
   useEffect(() => {
     if (!urlProject || !d) return;
@@ -145,7 +140,7 @@ export default function UserRentalsPage() {
         )}
       </PageHeader>
 
-      {/* المؤجَّرُ الآن — والضغطُ على مشروعٍ يفلتر الجدول. */}
+      {/* What is rented now; clicking a project filters the table. */}
       <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-5">
         <button type="button" onClick={() => setProject('')}
           className={`rounded-xl border bg-white px-3.5 py-3 text-start shadow-sm ${!project ? 'border-[#f37121] ring-2 ring-[#f37121]/20' : 'border-slate-200'}`}>
@@ -242,8 +237,7 @@ export default function UserRentalsPage() {
             <PrimaryButton onClick={save} disabled={saving}>{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}{t('حفظ', 'Save')}</PrimaryButton>
           </>}>
           <div className="space-y-3">
-            {/* اليوزرُ صفٌّ في «موظفي النقل الخفيف»: يُختار فيُربط التأجيرُ بكروت اللوحة،
-                ويتبعه مشروعُه (نقلُ مشروعه ينقل التأجير) ونوعُ عقده («يوزرات» ما دام مؤجَّرًا). */}
+            {/* The user account is a row in light-transport employees: picking it links the rental to the dashboard cards, and its project follows (moving his project moves the rental) along with its contract type (user accounts while rented). */}
             <Field label={t('اليوزر (من موظفي النقل الخفيف)', 'User (from light-transport staff)')}>
               <PersonSelect endpoint="/api/light-transport/people" ar={ar} onlyLt clearLabel={t('غير مربوط', 'Not linked')}
                 idNumber={form.ltEmployee ? (form.rep?.idNumber || form.idNumber || '') : ''}

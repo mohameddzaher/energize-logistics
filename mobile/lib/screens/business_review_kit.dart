@@ -8,12 +8,11 @@ import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import '../ui/search_field.dart';
 
-/// مراجعة الأعمال — أدواتٌ مشتركة بين القائمة وصفحة الاجتماع (BusinessReviewKit في الويب).
+/// Business review: tools shared by the list and the meeting page (BusinessReviewKit on the web).
 
 const brOpenStatuses = ['open', 'in_progress', 'blocked'];
 
-/// مفاتيح الأقسام إنجليزيّةٌ من الخادم ('Software & IT') — لا تُطبع خامًا: تُترجم
-/// من عناوين الأقسام نفسها في القائمة.
+/// Section keys are English from the server ('Software & IT') and are not printed raw; they are translated from the section titles in the list.
 Map<String, (String, String)>? _deptLabels;
 String brDept(BuildContext context, String? key) {
   if (key == null || key.isEmpty) return '—';
@@ -43,7 +42,7 @@ String brDateTime(dynamic v) {
 String brIsoDay(DateTime d) =>
     '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
-/// مفتاحٌ في أحد قواميس الخادم (/meta).
+/// Key in one of the server dictionaries (/meta).
 ({String label, Color color}) brVocab(List? list, String? key) {
   for (final v in (list ?? [])) {
     if (v['key'] == key) {
@@ -67,7 +66,7 @@ const brAttendance = [
   return (label: k ?? '—', color: T.inkFaint);
 }
 
-/// موعد التسليم كما يُقرأ: متأخر / اليوم / باقي — dueLabel في الويب.
+/// Due date as read: overdue / today / remaining; dueLabel on the web.
 ({String text, Color color}) brDue(dynamic due, String? status) {
   final d = due == null ? null : DateTime.tryParse(due.toString())?.toLocal();
   if (d == null) return (text: '—', color: T.inkFaint);
@@ -103,7 +102,7 @@ Future<bool> brConfirm(BuildContext context, String title, String message, {Stri
   return r == true;
 }
 
-/// اختيار شخص بالبحث — PersonSelect في الويب.
+/// Searchable person picker; PersonSelect on the web.
 Future<Map<String, dynamic>?> brPickPerson(BuildContext context, List<Map<String, dynamic>> people,
     {List<String> exclude = const [], String? title}) {
   var q = '';
@@ -154,7 +153,7 @@ Future<Map<String, dynamic>?> brPickPerson(BuildContext context, List<Map<String
   );
 }
 
-/// تحديث الحالة والنسبة مع ملاحظة — ProgressForm في الويب.
+/// Update status and percentage with a note; ProgressForm on the web.
 Future<Map<String, dynamic>?> brProgressSheet(BuildContext context, Map<String, dynamic> meta, String title, String status, num progress) {
   var st = status;
   var pr = progress.toDouble();
@@ -194,7 +193,7 @@ Future<Map<String, dynamic>?> brProgressSheet(BuildContext context, Map<String, 
   );
 }
 
-/// توزيع البند على الفريق — DelegateForm في الويب: صفٌّ لكل موظف.
+/// Delegate an item to the team; DelegateForm on the web: one row per employee.
 Future<List<Map<String, dynamic>>?> brDelegateSheet(BuildContext context, Map<String, dynamic> meta, List<Map<String, dynamic>> people, dynamic defaultDue) {
   final due = defaultDue == null ? '' : (DateTime.tryParse(defaultDue.toString()) == null ? '' : brIsoDay(DateTime.parse(defaultDue.toString()).toLocal()));
   Map<String, dynamic> blank() => {'assignee': '', 'assigneeName': '', 'title': TextEditingController(), 'instructions': TextEditingController(), 'dueDate': due, 'priority': 'medium'};
@@ -311,7 +310,7 @@ Future<List<Map<String, dynamic>>?> brDelegateSheet(BuildContext context, Map<St
   );
 }
 
-/// سجلّ تحديثات البند — UpdateLog في الويب (آخر ثمانية).
+/// Item update log; UpdateLog on the web (last eight).
 class BrUpdateLog extends StatelessWidget {
   final List updates;
   final Map<String, dynamic> meta;
@@ -342,7 +341,7 @@ class BrUpdateLog extends StatelessWidget {
   }
 }
 
-/// بندٌ تنفيذيّ واحد — ActionCard في الويب: تحديث، توزيع، حذف حسب ما يُمرَّر.
+/// A single executive item; ActionCard on the web: update, delegate, delete depending on what is passed.
 class BrActionCard extends StatefulWidget {
   final Map<String, dynamic> action;
   final Map<String, dynamic> meta;

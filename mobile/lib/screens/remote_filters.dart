@@ -5,11 +5,11 @@ import '../services/lang.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 
-/// أدواتٌ مشتركة لشاشات العمل عن بُعد — كـ lib/remote.ts في الويب.
+/// Shared helpers for the remote-work screens, like lib/remote.ts on the web.
 
 const remoteStaffRoles = ['super_admin', 'admin', 'remote_manager'];
 
-/// المشرف: دورٌ من القائمة أو منحةُ القسم من مصفوفة الصلاحيات — كالويب والخادم.
+/// Supervisor: a role from the list, or the section grant from the permissions matrix, as on the web and the server.
 bool isRemoteStaff(AuthProvider auth) =>
     remoteStaffRoles.contains(auth.role) || auth.canAccessSection('Remote');
 
@@ -19,7 +19,7 @@ String remoteUserName(dynamic u) =>
 String ymd(DateTime d) =>
     '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
-/// دقائق → «X س Y د» / «Xh Ym» — fmtDuration في الويب.
+/// Minutes to "X h Y m", fmtDuration on the web.
 String fmtDuration(dynamic minutes) {
   final m = ((minutes is num ? minutes : num.tryParse('$minutes') ?? 0).round()).clamp(0, 1 << 30);
   final h = m ~/ 60, mm = m % 60;
@@ -38,7 +38,7 @@ String fmtClock(dynamic v) {
   return d == null ? '—' : '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
 }
 
-/// قائمة موظفي العمل عن بُعد (للمشرفين) — تُجلب مرّةً وتُشارك بين الشاشات.
+/// Remote-work employee list (for supervisors); fetched once and shared between screens.
 class RemoteEmployees {
   static List<Map<String, dynamic>>? _cache;
   static Future<List<Map<String, dynamic>>> load() async {
@@ -53,7 +53,7 @@ class RemoteEmployees {
   }
 }
 
-/// شريطُ فلاتر المشرف: الموظّف + (اختياريًّا) من/إلى + (اختياريًّا) الحالة.
+/// Supervisor filter bar: employee + optional from/to + optional status.
 class RemoteFilterBar extends StatefulWidget {
   final String userId;
   final String? from;

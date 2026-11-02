@@ -1,19 +1,7 @@
 /**
- * بناءُ ملفّ الإكسل خارجَ الخيط الرئيسيّ.
- *
- * ── العلّة ──────────────────────────────────────────────────────────────────
- * تصديرُ «كلّ الكشوف» ستّةٌ وثلاثون ألفَ صفٍّ في ثلاثةٍ وأربعين عمودًا، وكتابةُ
- * المصنَّف عملٌ حسابيٌّ خالص: يشغل الخيطَ الواحد ثلاثين ثانيةً لا يخدم فيها
- * ذلك العاملُ أحدًا. قيس على البرودكشن أثناء تصديرةٍ واحدة: طلبُ `/api/health`
- * — وهو لا يمسّ القاعدة — أخذ **أربعَ عشرةَ ثانية**. أي أنّ ضغطةَ «تصدير» من
- * موظّفٍ واحدٍ تُوقف الشاشاتِ عند البقيّة، فيُقال «النظامُ علّق» ولا عطلَ فيه.
- *
- * فالكتابةُ تُنقَل إلى خيطٍ عامل (worker thread): يبني المصنَّفَ ويعيد بايتاته،
- * والخيطُ الرئيسيُّ يظلّ يردّ على الجميع. ويبقى في الرئيسيّ بناءُ المصفوفة
- * وحدَه (ثانيتان ونصف لستّةٍ وثلاثين ألفًا) ونسخُها إلى العامل.
- *
- * وإن تعذّر إنشاءُ العامل لأيّ سبب، يُبنى في مكانه كما كان — تصديرةٌ بطيئةٌ
- * أهونُ من تصديرةٍ لا تخرج.
+ * Builds the Excel file off the main thread.
+ * Exporting all statements (about 36k rows by 43 columns) is pure computation that blocks the single thread for about 30 s, stalling every other request such as the health check. The workbook is built in a worker thread that returns its bytes; only the array building and copy to the worker stay on the main thread.
+ * If the worker cannot be created, it is built in place: a slow export beats none.
  */
 const path = require('path');
 const { Worker } = require('worker_threads');
@@ -21,7 +9,7 @@ const { Worker } = require('worker_threads');
 const WORKER = path.join(__dirname, 'xlsxWorker.js');
 
 /**
- * @param {Array<Array<any>>} aoa صفوفُ المصنَّف (الأوّلُ رؤوسُ الأعمدة).
+ * @param {Array<Array<any>>} aoa workbook rows (the first row is the column headers).
  * @param {{ sheetName?: string, cols?: Array<{ wch: number }> }} opts
  * @returns {Promise<Buffer>}
  */
@@ -31,13 +19,11 @@ function runBuild(aoa, opts = {}) {
     try {
       worker = new Worker(WORKER, { workerData: { aoa, sheetName: opts.sheetName || 'Sheet1', cols: opts.cols || null } });
     } catch (e) {
-      // لا عاملَ: تُبنى هنا (تُبطئ هذا الطلبَ ولا تُسقطه).
+      // No worker available: build here (slows this request but does not crash it).
       try { return resolve(buildInline(aoa, opts)); } catch (e2) { return reject(e2); }
     }
-    // ── ولا يُترك الوعدُ معلَّقًا ──────────────────────────────────────────
-    // العاملُ قد يموت بلا حدث `error` — نفادُ ذاكرةٍ أو إنهاءُ العمليّة عند
-    // النشر — فيبقى الطلبُ ينتظر إلى الأبد وتبقى معه وظيفةُ التصدير «جارية»
-    // ولا تنتهي. فكلُّ مخرجٍ مُغطًّى: رسالةٌ، أو خطأٌ، أو خروجٌ، أو مهلة.
+    // Never leave the promise hanging.
+    // The worker can die without an error event (out of memory, process killed on deploy), which would leave the request and export job pending forever. Every exit path is covered: message, error, exit or timeout.
     let settled = false;
     const finish = (fn, arg) => { if (settled) return; settled = true; clearTimeout(timer); fn(arg); };
     const fallback = (err) => {
@@ -59,18 +45,9 @@ function runBuild(aoa, opts = {}) {
   });
 }
 
-// ── ولا يُبنى مصنَّفان في وقتٍ واحد ──────────────────────────────────────────
-// بناءُ المصنَّف حسابٌ خالصٌ يشغل نواةً كاملةً دقيقةً تقريبًا، والخادمُ نواتان.
-// والخيطُ العاملُ يحمي الخيطَ الرئيسيَّ من التعطّل — وهو يفعل: قِيس أثناء
-// تصديرةٍ واحدةٍ فبقي `/api/auth/me` عند مئةٍ وخمسين جزءًا من الثانية — لكنّه
-// لا يحمي النواتين من الامتلاء. ولمّا كُنست نقاطُ القراءة بأربعةِ طلباتٍ
-// متوازية صادف أن جرت تصديرتان معًا، فامتلأت النواتان وصار نداءٌ يُنجَز في
-// مئتي جزءٍ من الثانية يأخذ **ستَّ عشرةَ ثانيةً ونصفًا**. وليس في النقطتين
-// عطبٌ: قيستا وحدَهما فكانتا 266ms و 220ms.
-//
-// فالبناءُ يُصطَفّ: واحدٌ في كلّ عمليّة. من ضغط «تصدير» ثانيًا ينتظر الأوّل —
-// وهو ينتظره اليوم أيضًا، إذ يتسابقان على النواة نفسِها فيبطؤان معًا ويُبطئان
-// الناسَ كلَّهم. والاصطفافُ يجعل الانتظارَ انتظارَ صاحبِه وحدَه.
+// Only one workbook is built at a time per process.
+// Building is pure computation that occupies a full core for about a minute and the server has two cores. The worker keeps the main thread responsive but cannot stop two concurrent exports from saturating both cores, which made a 200 ms call take over 16 s.
+// Builds are queued so a second export waits for the first, not everyone else.
 const MAX = Math.max(1, Number(process.env.XLSX_MAX_CONCURRENT || 1));
 let active = 0;
 const waiting = [];
@@ -91,7 +68,7 @@ function release() {
   if (next) next();
 }
 
-/** للفحص: كم يُبنى الآن وكم ينتظر. */
+/** For inspection: how many are building and how many are waiting. */
 buildXlsx.stats = () => ({ active, waiting: waiting.length, max: MAX });
 
 function buildInline(aoa, opts = {}) {

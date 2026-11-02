@@ -3,9 +3,7 @@ import '../services/lang.dart';
 import '../ui/theme.dart';
 import '../ui/search_field.dart';
 
-/// فلاترُ الأعمدة — نظيرُ رأس الجدول في الويب (useColumnFilters):
-/// لكلّ عمودٍ قائمةُ قيمه الموجودةِ فعلًا، يُختار منها واحدةٌ أو أكثر،
-/// وتُطبَّق آخرًا على ما تركته الشرائحُ والبحث. والفارغُ «(فارغ)».
+/// Column filters, the counterpart of the web table header (useColumnFilters): each column has the list of values it actually holds, one or more can be selected, and they apply last, after the chips and search. The empty value is shown as "(empty)".
 class ColDef {
   final String key;
   final String ar;
@@ -24,7 +22,7 @@ List<Map<String, dynamic>> applyColumnFilters(
       })).toList();
 }
 
-/// يفتح اللوحة ويردّ الفلاتر الجديدة (أو null إن أُغلقت بلا تطبيق).
+/// Opens the panel and returns the new filters (or null if closed without applying).
 Future<Map<String, Set<String>>?> showColumnFilters(
   BuildContext context, {
   required List<ColDef> cols,
@@ -120,7 +118,7 @@ class _ColSheetState extends State<_ColSheet> {
       Padding(
         padding: const EdgeInsets.symmetric(horizontal: 14),
         child: SearchField(
-          key: ValueKey('vals-${c.key}'), // كلُّ عمودٍ يبدأ بخانةٍ فارغة كـ_q
+          key: ValueKey('vals-${c.key}'), // Each column starts with an empty box like _q.
           dense: true,
           hint: tr('بحث في القيم', 'Search values'),
           onChanged: (v) => setState(() => _q = v.trim()),

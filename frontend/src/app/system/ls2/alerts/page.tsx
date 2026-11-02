@@ -68,9 +68,7 @@ export default function Ls2AlertsPage() {
     { header: ar ? 'آخر ظهور' : 'Last seen', key: 'lastSeenAt', transform: fmtDate, width: 18 },
     { header: ar ? 'تم الإقرار' : 'Acknowledged', key: 'acknowledgedAt', transform: fmtDate, width: 18 },
   ];
-  // الفلترة هنا على الخادم: ما في الذاكرة هو نتائج الفلتر كاملةً (لا ترقيم)، أمّا
-  // «الكلّ» فيلزمه نداءٌ ثانٍ بلا فلاتر — وبدونه كان مَن يفتح الشاشة على حالتها
-  // الافتراضيّة (المفتوحة فقط) يصدّر ملفًّا ناقصًا وهو يحسبه سجلّ التنبيهات كلَّه.
+  // Filtering is server-side: memory holds the full filter result (no pagination), while 'all' needs a second call without filters; otherwise opening the screen on its default (open only) exported a partial file taken for the full alerts log.
   const hasActiveFilters = !!severity || !!type || status !== 'all';
   const fetchAllForExport = async (): Promise<{ name: string; rows: Record<string, any>[]; columns: ExportColumn[] }[]> => {
     const res = await api.get<{ items: Alert[] }>('/api/ls2/alerts?status=all');

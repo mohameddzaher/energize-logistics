@@ -1,22 +1,5 @@
 'use client';
-/**
- * كاميرا حيّة — لا زرَّ رفعٍ فيها بقصد.
- *
- * ── لماذا لا يُقبَل رفعُ ملفّ ─────────────────────────────────────────────
- * الصورةُ هي الحجّةُ كلُّها في تفقّد بداية الدوام: تُقارَن بما رجعت به المركبةُ
- * مساءً فيُعرَف أين وقع العطبُ ومَن يُسأل عنه. فإن جاز أن تُرفَع من ملفّات
- * الجهاز جاز أن تكون صورةَ أمسِ أو صورةَ درّاجةٍ أخرى، وصار السجلُّ ورقةً
- * تُملأ من المكتب — وهو عينُ ما وُجدت الشاشةُ لتمنعه.
- *
- * ولذلك لا `<input type="file">` هنا أصلًا، ولا حتّى بـ`capture` — فتلك تفتح
- * الكاميرا على الهاتف وتفتح متصفّحَ الملفّات على الحاسوب. وهذه تقرأ من
- * `getUserMedia` مباشرةً وترسم على `canvas`: لا سبيلَ إلى ملفٍّ من القرص.
- *
- * ── وما لا تدّعيه ────────────────────────────────────────────────────────
- * لا تمنع هذه الشاشةُ أن يُصوَّر أحدٌ شاشةً أخرى بالكاميرا. الحارسُ الحقيقيّ
- * أنّ المشرفَ يوقّع باسمه ويُسجَّل موضعُه ووقتُه — والصورةُ تجعل الكذبَ عملًا
- * لا سهوًا.
- */
+/** Live camera with deliberately no upload button. The photo is the evidence in the start-of-shift check, compared with the vehicle's return state; if files could be uploaded it could be an old or other bike's photo and the record would be filled from the office. So there is no input type=file (even with capture, which opens the file browser on desktop); it reads from getUserMedia and draws to a canvas. It does not stop someone photographing another screen; the real safeguard is the supervisor signing with name, location and time. */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Camera, RefreshCw, X, AlertTriangle, SwitchCamera } from 'lucide-react';
 
@@ -25,11 +8,11 @@ export interface Shot { dataUrl: string; fileName: string; captureSource: 'camer
 export default function LiveCamera({
   onShot, disabled, ar, max = 3, shots, onRemove, onOpen, label,
 }: {
-  /** نصُّ زرّ الالتقاط — يقول ماذا يُصوَّر الآن. */
+  /** Capture button label; says what is being photographed now. */
   label?: string;
   onShot: (s: Shot) => void;
   onRemove: (i: number) => void;
-  /** فتحُ الصورة بحجمها — اختياريّ، تعرضها الشاشةُ المستعملة. */
+  /** Opens the photo at full size; optional, supplied by the consuming screen. */
   onOpen?: (s: Shot) => void;
   shots: Shot[];
   disabled?: boolean;
@@ -40,7 +23,7 @@ export default function LiveCamera({
   const streamRef = useRef<MediaStream | null>(null);
   const [ready, setReady] = useState(false);
   const [error, setError] = useState('');
-  // الخلفيّةُ أوّلًا: هي التي تُصوَّر بها الدرّاجة، لا كاميرا الوجه.
+  // Rear camera first: it photographs the bike, not the face camera.
   const [facing, setFacing] = useState<'environment' | 'user'>('environment');
 
   const stop = useCallback(() => {
@@ -70,7 +53,7 @@ export default function LiveCamera({
       }
       setReady(true);
     } catch (e: any) {
-      // رفضُ الإذن ليس عطبًا — يُقال للمستخدم ما يفعله، لا اسمُ الاستثناء.
+      // Permission denial is not a fault; the user gets what to do, not the exception name.
       const name = e?.name || '';
       setError(
         name === 'NotAllowedError'
@@ -88,8 +71,7 @@ export default function LiveCamera({
     const v = videoRef.current;
     if (!v || !v.videoWidth) return;
     const c = document.createElement('canvas');
-    // يُصغَّر الطولُ الأكبرُ إلى 1280: صورةُ الهاتف الخام أربعةُ ميغابايت،
-    // وعشرون مندوبًا كلَّ صباحٍ تملأ القرصَ بلا فائدةٍ في الوضوح.
+    // Downscales the longer side to 1280: a raw phone photo is about 4 MB and twenty reps each morning fill the disk with no gain in clarity.
     const scale = Math.min(1, 1280 / Math.max(v.videoWidth, v.videoHeight));
     c.width = Math.round(v.videoWidth * scale);
     c.height = Math.round(v.videoHeight * scale);
@@ -134,8 +116,7 @@ export default function LiveCamera({
       <button type="button" onClick={take} disabled={!ready || disabled || shots.length >= max}
         className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#f37121] py-3 text-sm font-bold text-white disabled:opacity-40">
         <Camera className="h-4 w-4" />
-        {/* و«الحدّ ١ صور» جملةٌ لا تُقال: النوعُ الواحد صورتُه واحدة، فالزرُّ
-            يقول إنّها تمّت ويقول كيف تُعاد. */}
+        {/* "Limit 1 photo" is not worth saying: one photo per type, so the button states it is done and how to retake. */}
         {shots.length >= max
           ? (max === 1
             ? (ar ? 'تمّ التصوير — امسحها لإعادتها' : 'Captured — delete it to retake')
@@ -147,8 +128,7 @@ export default function LiveCamera({
         <div className="flex flex-wrap gap-2">
           {shots.map((s, i) => (
             <div key={i} className="relative">
-              {/* المُصغَّرُ هنا يُفتَح أيضًا: من صوَّر لحظتَها يريد أن يتأكّد
-                  قبل أن ينتقل إلى النوع التالي، لا أن ينزل إلى شريط المراجعة. */}
+              {/* The thumbnail also opens here: whoever just took the photo wants to confirm it before moving to the next type, not scroll down to the review strip. */}
               <button type="button" onClick={() => onOpen?.(s)}
                 className="block overflow-hidden rounded-lg border border-slate-200">
                 {/* eslint-disable-next-line @next/next/no-img-element */}

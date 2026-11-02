@@ -1,16 +1,7 @@
 'use client';
 /**
- * عقودُ التخليص — عقدُنا مع عميلٍ أو وكيلِ شحنٍ أو ناقل.
- *
- * ── لماذا مكوّنٌ واحد ───────────────────────────────────────────────────────
- * العقدُ يُقرأ في موضعين: صفحةُ العقود (كلُّها معًا) وملفُّ الطرف (عقودُه هو).
- * وهو في الموضعين الشيءُ نفسُه — فلو كُتب مرّتين لاختلف عمودٌ هنا عن هناك عند
- * أوّل تعديل. فالقائمةُ والنموذجُ هنا، و`party` يحصرها بطرفٍ واحد.
- *
- * ── والعقدُ ورقةٌ قبل أن يكون صفًّا ─────────────────────────────────────────
- * فمرفقاتُه جزءٌ منه لا زينة: الموقَّعُ نفسُه يُرفَع ويُفتَح من صفّه. والحالةُ
- * تُقرأ من التاريخ لا من الخانة — عقدٌ انتهى أمسِ يُقرأ «منتهيًا» وإن بقي
- * مكتوبًا «ساري».
+ * Clearance contracts: our contract with a customer, shipping agent or carrier.
+ * One component for two places (the contracts page lists all, the party file lists its own), so columns cannot drift; `party` restricts it to one party. A contract is a paper before it is a row: its attachments are part of it, including the signed copy. Status is read from the dates, not the field: a contract that ended yesterday reads as expired even if still stored as active.
  */
 import { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
@@ -28,7 +19,7 @@ export type CustomsContract = {
   status: 'draft' | 'active' | 'expired' | 'terminated'; scope?: string; notes?: string;
   attachments?: { _id: string; fileUrl: string; fileName?: string; title?: string }[];
   state?: string; daysLeft?: number | null; createdByName?: string; createdAt?: string;
-  /** أسعارُ التعاقد مع العميل — تملأ «الإيرادات والفوترة» في معاملاته. */
+  /** Contract pricing with the customer; it fills the revenues and billing of its transactions. */
   pricing?: ContractPricing;
 };
 export type ContractPricing = {
@@ -52,7 +43,7 @@ const BASIS: [string, string, string][] = [
 const dt = (v?: string | null) => (v ? new Date(v).toLocaleDateString('en-GB') : '—');
 const money = (n?: number | null) => (n == null ? '—' : Number(n).toLocaleString('en-US'));
 
-// الأسعارُ في النموذج نصوصٌ (الخانةُ الفارغةُ فراغٌ لا صفر)، وتُحوَّل عند الحفظ.
+// Prices are strings in the form (an empty field is blank, not zero) and converted on save.
 const EMPTY_PRICING = { clearanceFeePerContainer: '', portToYard: '', yardToCustomer: '', routes: [] as { from: string; to: string; price: string }[] };
 const pricingToForm = (p?: ContractPricing) => ({
   clearanceFeePerContainer: p?.clearanceFeePerContainer ?? '',
@@ -66,9 +57,9 @@ const EMPTY = { title: '', contractNumber: '', party: '', startDate: '', endDate
 
 export default function CustomsContracts({ ar, canEdit, party, parties, notify, embedded }: {
   ar: boolean; canEdit: boolean;
-  /** ملفُّ طرفٍ بعينه: تُعرض عقودُه وحدَها ويُملأ الطرفُ تلقائيًّا. */
+  /** A party's file: shows only its contracts and prefills the party. */
   party?: { _id: string; name: string; kind: string } | null;
-  /** قائمةُ الأطراف لاختيارِ صاحب العقد — تُمرَّر في صفحة العقود. */
+  /** List of parties to choose the contract owner from; passed in by the contracts page. */
   parties?: { _id: string; name: string; kind: string }[];
   notify: (m: string, tone?: any) => void;
   embedded?: boolean;
@@ -95,10 +86,10 @@ export default function CustomsContracts({ ar, canEdit, party, parties, notify, 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [party?._id, kindFilter]);
   useEffect(() => { load(); }, [load]);
-  // عقدٌ كُتب من ملفّ الطرف يظهر هنا في اللحظة، والعكسُ كذلك — مصدرٌ واحد.
+  // A contract written from the party file shows here immediately and vice versa; one source.
   useSocket('customs:contract', load);
 
-  // أسعارُ التعاقد للعميل وحدَه: الوكيلُ والناقلُ لا تُملأ منهما إيراداتُ المعاملة.
+  // Contract prices belong to the customer only: agent and carrier contracts do not fill transaction revenues.
   const partyKindOf = (ed: any) => party?.kind
     || (parties || []).find((p) => p._id === ed?.party)?.kind || ed?.partyKind || '';
   const isCustomerContract = !!editing && partyKindOf(editing) === 'customer';
@@ -143,7 +134,7 @@ export default function CustomsContracts({ ar, canEdit, party, parties, notify, 
     catch (e: any) { notify(e?.message || t('تعذّر الحذف', 'Could not delete'), 'error'); }
   };
 
-  // المرفقُ يُرسَل كما تُرسَل بقيّةُ مرفقات النظام: data URL لا multipart.
+  // The attachment is sent like the system's other attachments: a data URL, not multipart.
   const onFiles = async (list: FileList | null) => {
     if (!list?.length || !uploadFor) return;
     const files: any[] = [];
@@ -171,7 +162,7 @@ export default function CustomsContracts({ ar, canEdit, party, parties, notify, 
 
   const openNew = () => setEditing({ ...EMPTY, party: party?._id || '', pricing: { ...EMPTY_PRICING } });
 
-  // فلاترُ الأعمدة على طريقة إكسل — بالقيمة التي تُقرأ في الخليّة.
+  // Excel-style column filters, by the value as read in the cell.
   const colGetters: Record<string, (c: CustomsContract) => any> = {
     title: (c) => c.title, party: (c) => (c as any).partyName, no: (c) => (c as any).contractNumber,
     start: (c) => String((c as any).startDate || '').slice(0, 7), end: (c) => String((c as any).endDate || '').slice(0, 7),
@@ -212,7 +203,7 @@ export default function CustomsContracts({ ar, canEdit, party, parties, notify, 
                 <td className="px-3 py-2.5 text-slate-600 whitespace-nowrap">{dt(c.startDate)}</td>
                 <td className="px-3 py-2.5 whitespace-nowrap">
                   <span className={c.state === 'expired' ? 'text-red-600 font-semibold' : 'text-slate-600'}>{dt(c.endDate)}</span>
-                  {/* ما بقي من مدّته — الرقمُ الذي يُتصرَّف بناءً عليه. */}
+                  {/* Time remaining on the term, the figure acted on. */}
                   {typeof c.daysLeft === 'number' && c.daysLeft >= 0 && c.daysLeft <= 60 && (
                     <span className="block text-[11px] text-amber-600">{t(`${c.daysLeft} يومًا`, `${c.daysLeft} days left`)}</span>
                   )}
@@ -330,9 +321,7 @@ export default function CustomsContracts({ ar, canEdit, party, parties, notify, 
           <Field label={t('ملاحظات', 'Notes')} span2>
             <TextInput value={editing.notes} onChange={(e: any) => setEditing({ ...editing, notes: e.target.value })} />
           </Field>
-          {/* ── أسعارُ التعاقد مع العميل ─────────────────────────────────
-              ما يُتّفق عليه مع العميل يُكتب هنا مرّةً، فيُملأ في إيرادات كلّ
-              معاملةٍ له بدل أن يُكتب في كلٍّ منها بيد. */}
+          {/* Customer contract pricing: agreed once here and filled into every transaction's revenues instead of typing it by hand in each. */}
           {isCustomerContract && (
             <div className="sm:col-span-2 rounded-xl border border-[#f37121]/30 bg-[#f37121]/5 p-3 space-y-3">
               <p className="text-[13px] font-bold text-slate-900">{t('أسعار التعاقد مع العميل', 'Customer contract prices')}</p>
@@ -415,7 +404,7 @@ export default function CustomsContracts({ ar, canEdit, party, parties, notify, 
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex items-center gap-1.5">
-          {/* لا عقودَ مع وكلاء الشحن (٢٠٢٦/١٠/٢٢) — العقودُ للعملاء والناقلين. */}
+          {/* No contracts with shipping agents; contracts are for customers and carriers. */}
           {[['', 'الكل', 'All'], ['customer', 'عملاء', 'Customers'], ['carrier', 'ناقلون', 'Carriers']].map(([k, a, e]) => (
             <button key={k} type="button" onClick={() => setKindFilter(k)}
               className={`px-3 py-1.5 rounded-lg text-[13px] font-medium border transition-colors ${

@@ -65,7 +65,7 @@ export default function ContractFormModal({ open, contract, employeeId, onClose,
       <Group title={t('Term', 'المدة')}>
         <Field label={t('Type', 'النوع')}><Select value={form.type} onChange={(e) => set('type', e.target.value)}><option value="fixed">{t('Fixed term', 'محدد المدة')}</option><option value="unlimited">{t('Unlimited', 'غير محدد')}</option></Select></Field>
         <Field label={t('Duration (months)', 'المدة (أشهر)')}><TextInput type="number" value={form.durationMonths} onChange={(e) => set('durationMonths', Number(e.target.value))} /></Field>
-        {/* لكلّ تاريخٍ خانتان: الميلاديّةُ ثمّ الهجريّة — وما يُرسَل ميلاديٌّ وحدَه. */}
+        {/* Each date has two fields, Gregorian then Hijri; only the Gregorian value is sent. */}
         <DatePair label={t('Start date', 'تاريخ البداية')} value={form.startDate || ''} onChange={(v) => set('startDate', v)} ar={ar} />
         <DatePair label={t('End date', 'تاريخ النهاية')} value={form.endDate || ''} onChange={(v) => set('endDate', v)} ar={ar} />
       </Group>

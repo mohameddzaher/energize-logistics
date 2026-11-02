@@ -24,7 +24,7 @@ interface Branch {
 export default function BranchesPage() {
   const { confirm } = useDialog();
   const { user } = useAuth();
-  // role-only: صلاحيّةُ السوبر أدمن والأدمن (config/constants TOP_ROLES) — لا منحُ قسم.
+  // role-only: super admin and admin permission (config/constants TOP_ROLES), not a section grant.
   const isSuperAdmin = ['super_admin', 'admin'].includes(user?.role || '');
   const { lang } = useLanguage();
   const T = getBranchesTranslations(lang);
@@ -100,8 +100,7 @@ export default function BranchesPage() {
     { header: T.status, key: 'isActive', transform: (v: boolean) => v ? T.active : T.inactive, width: 10 },
     { header: T.createdAt, key: 'createdAt', transform: fmt.date, width: 14 },
   ];
-  // النطاقان يُبنيان دائمًا حتى وإن تساويا؛ العدّاد جنب كلٍّ منهما هو ما يمنع
-  // المستخدمَ من تصدير المفلتَر وهو يحسبه الكلّ.
+  // Both scopes are always built even when equal; the counter beside each prevents exporting a filtered set while believing it is all.
   const scope = exportScopeLabels(lang === 'ar');
   const exportOptions = [
     { key: 'shown', label: scope.shown, sheets: [{ name: 'Branches', rows: filtered, columns: exportColumns }] },

@@ -3,16 +3,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 /**
- * خريطةُ الموقع — تُولَّد من الصفحات الموجودة فعلًا.
- *
- * ── لماذا لا تُكتب باليد ────────────────────────────────────────────────────
- * كانت `public/sitemap.xml` ملفًّا يُحرَّر يدويًّا. وملفٌّ كهذا يشيخ في اتّجاهين:
- * صفحةٌ تُضاف ولا تُدرَج فلا تُفهرَس، وصفحةٌ تُحذف ويبقى رابطُها فيُبلَّغ عنه
- * ٤٠٤ — وكلاهما يخصم من ثقة المفهرِس.
- *
- * فتُقرأ شجرةُ `app` عند البناء: كلُّ `page.tsx` صفحةٌ حقيقيّة. ويُستثنى ما لا
- * يُفهرَس — لوحةُ النظام وتسجيلُ الدخول ومساراتُ الـAPI والصفحاتُ ذاتُ
- * المعامل (`[id]`) لأنّها لا تُعرَف إلّا بمحتواها.
+ * Sitemap, generated from the pages that actually exist.
+ * The old hand-edited public/sitemap.xml aged both ways: added pages were not indexed and deleted pages still got 404 reports, both hurting crawler trust.
+ * The app tree is read at build time: every page.tsx is a real page. Excluded: the system area, login, API routes and parameterised pages (`[id]`), which are only known by content.
  */
 const BASE = 'https://energize-global.com';
 
@@ -28,7 +21,7 @@ function collectRoutes(dir: string, prefix = ''): string[] {
   }
   for (const e of entries) {
     if (!e.isDirectory()) continue;
-    // مجموعاتُ المسارات `(group)` لا تظهر في الرابط، والمعامل `[id]` لا يُفهرَس.
+    // Route groups `(group)` do not appear in the URL, and the `[id]` parameter is not indexed.
     if (e.name.startsWith('[') || e.name.startsWith('@') || e.name.startsWith('_')) continue;
     if (EXCLUDED.has(e.name)) continue;
     const seg = e.name.startsWith('(') ? '' : `/${e.name}`;
@@ -37,7 +30,7 @@ function collectRoutes(dir: string, prefix = ''): string[] {
   return out;
 }
 
-/** الصفحةُ الأهمُّ أعلى أولويّة، وما تحتها يتدرّج بعمقه. */
+/** The main page gets the highest priority; deeper pages get progressively lower. */
 const priorityOf = (route: string) => {
   if (route === '/') return 1;
   const depth = route.split('/').filter(Boolean).length;
@@ -47,11 +40,8 @@ const freqOf = (route: string): 'weekly' | 'monthly' =>
   (route === '/' || route === '/career' ? 'weekly' : 'monthly');
 
 /**
- * الصفحاتُ ذاتُ المعامل التي تُولَّد مسبقًا.
- *
- * `[eventId]` مجلّدٌ واحد لكنّه صفحتان حقيقيّتان: كلُّ ألبومٍ صفحةٌ لها عنوانٌ
- * وصورٌ ونصّ. ومسحُ الشجرة لا يراهما — فتُقرأ من `generateStaticParams` نفسِها،
- * وهي المصدرُ الذي يبني منه Next تلك الصفحات، فلا تفترق الخريطةُ عمّا بُني.
+ * Parameterised pages that are pre-generated.
+ * `[eventId]` is one folder but several real pages (each album has a title, images and text), which a tree scan cannot see. They are read from `generateStaticParams` itself, the same source Next builds from, so the sitemap matches the build.
  */
 function staticParamRoutes(appDir: string): string[] {
   const out: string[] = [];
@@ -60,7 +50,7 @@ function staticParamRoutes(appDir: string): string[] {
     const src = fs.readFileSync(galleryPage, 'utf8');
     const block = src.slice(src.indexOf('generateStaticParams'));
     for (const m of block.matchAll(/eventId:\s*'([^']+)'/g)) out.push(`/gallery/${m[1]}`);
-  } catch { /* لا معرض */ }
+  } catch { /* No gallery */ }
   return out;
 }
 

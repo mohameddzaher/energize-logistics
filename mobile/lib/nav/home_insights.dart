@@ -3,11 +3,10 @@ import '../services/auth.dart';
 import '../services/lang.dart';
 import '../ui/theme.dart';
 
-/// نظرة الصفحة الرئيسية المخصّصة حسب الدور — كل دور يرى مؤشرات قسمه الحية
-/// مسحوبة من نفس نقطة نهاية اللوحة التي يستخدمها القسم.
+/// Home overview customized by role: each role sees its section's live indicators, pulled from the same dashboard endpoint the section uses.
 
 class HomeKpi {
-  final String ar, en, path; // path يدعم التداخل: 'kpis.open'
+  final String ar, en, path; // path supports nesting, e.g. 'kpis.open'.
   final IconData icon;
   final Color color;
   final bool money;
@@ -20,18 +19,16 @@ class HomeInsight {
   const HomeInsight(this.arTitle, this.enTitle, this.endpoint, this.liveEvent, this.kpis);
 }
 
-// ── نظرات جاهزة لكل مجال ─────────────────────────────────────────────────────
+// Ready-made overviews per area.
 const _finance = HomeInsight('الإدارة المالية', 'Finance snapshot', '/api/finance/overview', 'finance:changed', [
   HomeKpi('قيمة البيع (الشهر)', 'Selling (month)', 'headline.selling', Icons.trending_up_rounded, T.navy, money: true),
   HomeKpi('المستحق على العملاء', 'Receivable', 'headline.receivable', Icons.request_quote_outlined, T.warn, money: true),
   HomeKpi('المحصَّل هذا الشهر', 'Collected (month)', 'headline.collected', Icons.payments_outlined, T.success, money: true),
 ]);
 
-// ما لنا وما علينا — أوّلُ ما يُسأل عنه في التحصيل.
-// ── ولا «ما علينا» لمن يُحصِّل ────────────────────────────────────────────
-// القسمُ يُحصِّل، وما ندفعه للموردين شأنُ الإدارة والمالية. فنظرتُهم على وجهٍ
-// واحد — وللإدارة نظرتُها الكاملة في لوحة القسم.
-// ومن دفتر الفواتير لا من كشوف التشغيل — راجع collectionsDashSpec.
+// What is owed to us and by us, the first thing asked in collections.
+// The collections team gets no owed-by-us side: payments to vendors are for management and finance, so their overview shows one side only. Management has the full overview on the section dashboard.
+// It comes from the invoice ledger, not the operations sheets; see collectionsDashSpec.
 const _collections = HomeInsight('نظرة التحصيل', 'Collections snapshot', '/api/collections-dept/receivables/overview', 'collections:party', [
   HomeKpi('إجمالي المديونية', 'Receivable', 'tree.all.value', Icons.call_received_rounded, T.danger, money: true),
   HomeKpi('في موعده', 'Within terms', 'tree.tax.within.value', Icons.task_alt_rounded, T.success, money: true),
@@ -95,8 +92,7 @@ const _bd = HomeInsight('نظرة تطوير الأعمال', 'BD snapshot', '/a
   HomeKpi('مناقصات قريبة', 'Tenders due', 'totals.tendersDueSoon', Icons.gavel_outlined, T.orange),
 ]);
 
-// من لوحة القسم التشغيليّة لا من التحليلات: التحليلاتُ (الإيراد والربح) للإدارة
-// وحدَها، والمخلّصُ يُرَدّ عنها بـ٤٠٣ — فكانت نظرتُه تُرسَم أصفارًا.
+// From the section's operations dashboard, not analytics: analytics (revenue, profit) is for management only and the customs clearer gets 403 on it, so the overview used to render zeros.
 const _customs = HomeInsight('نظرة التخليص', 'Customs snapshot', '/api/customs-clearance/dashboard', 'customs:updated', [
   HomeKpi('معاملات مفتوحة', 'Open', 'counts.open', Icons.directions_boat_outlined, T.navy),
   HomeKpi('معاملات قادمة', 'Upcoming', 'counts.upcoming', Icons.schedule_outlined, T.info),
@@ -110,7 +106,7 @@ const _executive = HomeInsight('النظرة التنفيذية', 'Executive sna
   HomeKpi('المحصَّل هذا الشهر', 'Collected (month)', 'headline.collectedMonth', Icons.payments_outlined, T.success, money: true),
 ]);
 
-// دور → أفضل نظرة. تُرتَّب حسب أولوية الدور، ثم نرجع لصلاحية القسم.
+// Role to best overview, ordered by role priority, then falling back to the section grant.
 const _roleInsight = <String, HomeInsight>{
   'super_admin': _executive,
   'cfo': _finance,
@@ -130,7 +126,7 @@ const _roleInsight = <String, HomeInsight>{
   'b2c_manager': _b2c,
   'b2c_deputy': _b2c,
   'b2c_project_lead': _b2c,
-  // مشرفُ المناديب بلا لوحة القسم — صفحتُه التفقّد (seedRepSupervisorPermissions).
+  // The rep supervisor has no section dashboard; the page is the duty check (seedRepSupervisorPermissions).
   'it_manager': _it,
   'it_specialist': _it,
   'procurement_manager': _procurement,
@@ -144,7 +140,7 @@ const _roleInsight = <String, HomeInsight>{
   'collections_staff': _collections,
 };
 
-// صلاحية القسم (للأدوار المُدارة) → نظرة القسم.
+// Section grant (for managed roles) to the section overview.
 const _sectionInsight = <String, HomeInsight>{
   'Collections': _collections,
   'Fleet Management': _fleet,
@@ -158,11 +154,11 @@ const _sectionInsight = <String, HomeInsight>{
   'Customs': _customs,
 };
 
-/// أفضل نظرة للمستخدم، أو null (فيرجع للخدمة الذاتية فقط).
+/// Best overview for the user, or null (falls back to self-service only).
 HomeInsight? homeInsightFor(AuthProvider auth) {
   final byRole = _roleInsight[auth.role];
   if (byRole != null) return byRole;
-  // admin يرى المالية افتراضيًا.
+  // admin sees finance by default.
   if (auth.role == 'admin') return _finance;
   for (final e in _sectionInsight.entries) {
     if (auth.canAccessSection(e.key)) return e.value;

@@ -1,9 +1,6 @@
 'use client';
-// مركز التقارير — pick what, pick who, pick when, read it, print it.
-//
-// The preview on screen is drawn from the SAME block document the PDF is
-// rendered from, so what you read here is exactly what comes out of the printer.
-// (This page replaced a stub that redirected to the dashboard.)
+// Reports center: pick what, who and when, read it, print it.
+// The on-screen preview is drawn from the same block document the PDF is rendered from, so it matches the print exactly. Replaced a stub that redirected to the dashboard.
 import { useState, useEffect, useCallback, useMemo, Suspense } from 'react';
 import MonthPicker from '@/components/system/MonthPicker';
 import { useSearchParams, useRouter } from 'next/navigation';
@@ -42,7 +39,7 @@ function ReportsInner() {
   const [optionsLoading, setOptionsLoading] = useState(false);
   const [q, setQ] = useState('');
   const [selected, setSelected] = useState<string>(sp?.get('id') || '');
-  // نوعُ اختيار الفترة: اسمٌ جاهز، أو يومٌ، أو شهرٌ، أو مدًى حرّ.
+  // Period selection kind: a preset name, a day, a month or a free range.
   const [mode, setMode] = useState<'preset' | 'day' | 'month' | 'range'>('preset');
   const [range, setRange] = useState(() => ({
     from: sp?.get('from') || defaultRange().from,
@@ -99,7 +96,7 @@ function ReportsInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [subject, range.from, range.to, ar]);
 
-  // A shared link (or a "تقرير" button on a profile page) lands here ready-made.
+  // A shared link or a report button on a profile page lands here pre-filled.
   useEffect(() => {
     const id = sp?.get('id');
     if (id && subject && !doc && !building) build(id);
@@ -167,10 +164,7 @@ function ReportsInner() {
       <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-5 items-start">
         {/* 2 — who, and over what period */}
         <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm space-y-3 lg:sticky lg:top-4">
-          {/* ── الفترةُ تُسأل بالطريقة التي يُسأل بها ────────────────────────
-              كانت خانتين فقط، فمن يريد يومًا يكتب التاريخ مرّتين، ومن يريد
-              شهرًا يحسب آخرَه بيده — وهو ٢٨ أو ٢٩ أو ٣٠ أو ٣١. فصارت تُختار
-              باسمها أو بيومها أو بشهرها، و«من/إلى» تبقى لمدًى لا اسمَ له. */}
+          {/* The period is asked the way it is thought of: by preset name, day or month, with from/to kept for ranges that have no name. Avoids typing a date twice for a day or computing a month's last day by hand. */}
           <div className="space-y-2">
             <div className="flex flex-wrap gap-1">
               {PERIOD_PRESETS.map((p) => (

@@ -10,9 +10,7 @@ import '../ui/export_sheet.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 
-/// الموردون والمركبات — رأسُ /system/shipment-orders/fleet في الويب: أعدادُ السجلّ
-/// (`fleet-summary`) ونواقصُه صريحةً، والتصديرُ الكامل في ثلاث أوراق. والسجلّاتُ
-/// الثلاثة تُفتَح من هنا بقوائمها (إضافةٌ وتعديلٌ وحذفٌ وتصديرُ المعروض).
+/// Suppliers and vehicles: header of /system/shipment-orders/fleet on web, with the register counts (fleet-summary) and its gaps stated explicitly, plus the full export in three sheets. The three registers open from here with their lists (add, edit, delete, export what is shown).
 class ShipmentOrdersFleetScreen extends StatefulWidget {
   const ShipmentOrdersFleetScreen({super.key});
   @override
@@ -52,7 +50,7 @@ class _ShipmentOrdersFleetScreenState extends State<ShipmentOrdersFleetScreen> {
     }
   }
 
-  // ── أعمدةُ تصدير الويب نفسُها ──
+  // Same export columns as web
   String _owner(Map<String, dynamic> v) {
     final sup = v['supplier'];
     final name = sup is Map ? _s(sup['name']) : '';
@@ -101,7 +99,7 @@ class _ShipmentOrdersFleetScreenState extends State<ShipmentOrdersFleetScreen> {
         ExportCol('ملاحظات', 'Notes', (r) => r['notes']),
       ];
 
-  /// التصديرُ الكامل يُجلَب عند طلبه — الصفحاتُ تعرض جزءًا من ثلاثةَ عشرَ ألفًا.
+  /// The full export is fetched on request; the pages show only part of about 13,000 rows.
   Future<void> _exportAll() async {
     setState(() => _exporting = true);
     try {
@@ -167,7 +165,7 @@ class _ShipmentOrdersFleetScreenState extends State<ShipmentOrdersFleetScreen> {
                           const Icon(Icons.chevron_right, color: T.inkFaint),
                         ])),
                       )),
-                    // ── الملكيّة: «أرِني ما لا أعرف مالكَه» ──
+                    // Ownership: show the vehicles whose owner is unknown
                     AppCard(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                       Text(tr('ملكيّة الشاحنات', 'Truck ownership'), style: const TextStyle(fontWeight: FontWeight.w800)),
                       const SizedBox(height: 6),
@@ -178,7 +176,7 @@ class _ShipmentOrdersFleetScreenState extends State<ShipmentOrdersFleetScreen> {
                         Chip2('${tr('أسطولنا', 'Ours')} $ours', T.orange),
                       ]),
                     ])),
-                    // ── نواقصُ السجلّ تُقال ولا تُترَك تُقرأ خرابًا ──
+                    // Register gaps are stated rather than left to read as breakage
                     if (_n(gaps['unknown']) > 0 || _n(gaps['noBrand']) > 0 || _n(gaps['supNoVehicle']) > 0)
                       Container(
                         margin: const EdgeInsets.only(top: 10),

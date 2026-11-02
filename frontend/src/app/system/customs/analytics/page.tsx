@@ -1,11 +1,5 @@
 'use client';
-// تحليلاتُ قسم التخليص — الإيراداتُ والتكاليفُ والأرباح. **للإدارة وحدَها**:
-// مديرُ النظام ومديرُ القسم. والفريقُ له «لوحة القسم» التشغيليّة
-// (/system/customs/dashboard) بلا رقمٍ ماليّ. والحارسُ في الخادم لا هنا.
-//
-// كانت تُفتح من زرٍّ في صفحة المعاملات فتُقرأ ملحقًا بها. وهي سؤالٌ آخر: الجدولُ
-// يقول «ما حال هذه المعاملة»، واللوحةُ تقول «كيف يسير العمل». ولها فلاترُها
-// كاملةً — نفسُ ما يُفلتَر به الجدول، فالسؤالُ الذي يُطرح هناك يُطرح هنا.
+// Customs clearance analytics: revenues, costs and profit. Management only (system manager and department manager); the team has the operational department dashboard (/system/customs/dashboard) with no financial figures. The guard is on the server, not here. It used to open from a button on the transactions page as an appendix, but it is a different question: the table says the state of this transaction, the dashboard says how work is going. It has the full filters of the table, so a question asked there is asked here.
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useLanguage } from '@/context/LanguageContext';
 import { useDialog } from '@/components/system/DialogProvider';
@@ -52,7 +46,7 @@ export default function CustomsAnalyticsPage() {
     return p.toString();
   }, [f]);
 
-  // كلُّ فلترٍ طلبٌ — والأقدمُ لا يكتب فوق الأحدث (راجع useLatestRequest).
+  // Each filter is a request, and an older one never overwrites a newer one (see useLatestRequest).
   const latest = useLatestRequest();
   const load = useCallback(async () => {
     const mine = latest.begin();
@@ -66,7 +60,7 @@ export default function CustomsAnalyticsPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [qs]);
   useEffect(() => { load(); }, [load]);
-  // حيّة: كلُّ تعديلٍ في التخليص أو قرارٍ ماليٍّ يُعيد الأرقام.
+  // Live: every clearance edit or financial decision refreshes the numbers.
   useSocket('customs:updated', load);
   useSocket('customs:created', load);
   useSocket('customs:deleted', load);
@@ -87,11 +81,7 @@ export default function CustomsAnalyticsPage() {
   const T = d.totals;
   const active = Object.values(f).filter(Boolean).length;
 
-  // ── والرقمُ يبقى داخلَ بطاقته ────────────────────────────────────────────
-  // «٣٬٢٣٣٬٤٠٦» في بطاقةٍ عرضُها سُبعُ الشاشة يخرج من حدّها حين تضيق: البطاقةُ
-  // لا تنكمش تحت محتواها، والنصُّ لا يُلَفّ لأنّه رقمٌ بلا فراغات. فيُمنَع
-  // الفيضُ صراحةً (`min-w-0` على البطاقة و`truncate` على الرقم) ويُقاس الخطُّ
-  // بالشاشة، ويبقى الرقمُ كاملًا في `title` لمن يريده.
+  // The number stays inside its card. A long figure in a card one seventh of the screen wide overflows when it narrows, because the card does not shrink below its content and a number has no spaces to wrap. So overflow is prevented explicitly (`min-w-0` on the card and `truncate` on the number), the font is sized by screen, and the full number stays in `title`.
   const Stat = ({ label, value, accent, hint }: { label: string; value: any; accent?: string; hint?: string }) => (
     <div className="min-w-0 bg-white border border-slate-200 rounded-xl px-3 sm:px-4 py-3 shadow-sm overflow-hidden">
       <p className="text-[11px] text-slate-500 truncate" title={label}>{label}</p>
@@ -122,7 +112,7 @@ export default function CustomsAnalyticsPage() {
     ['byCity', 'حسب المدينة', 'By city'],
     ['byBranch', 'حسب الفرع', 'By branch'],
   ];
-  // اسمُ البند كما يُقرأ: مفتاحُ المرحلة أو النوع أو الحالة يُترجَم، وغيرُه اسمٌ كما هو.
+  // Item name as read: a stage, type or status key is translated; anything else is a name as is.
   const WORDS: Record<string, [string, string]> = {
     containers: ['حاويات', 'Containers'], vehicles: ['سيّارات', 'Vehicles'], open: ['مفتوحة', 'Open'], closed: ['مغلقة', 'Closed'],
   };
@@ -168,9 +158,9 @@ export default function CustomsAnalyticsPage() {
           ]} />
       </PageHeader>
 
-      {/* ── الفلاتر ────────────────────────────────────────────────────────── */}
+      {/* Filters. */}
       <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm flex flex-wrap items-center gap-3">
-        {/* الفلاترُ السريعة كلوحة القسم: متعدّدةُ القيم وبأعدادها (٢٠٢٦/١٠/٢٢). */}
+        {/* Quick filters like the department dashboard: multi-valued and with counts. */}
         <HrQuickFilters ar={ar} value={f} onChange={(v) => setF(v as Record<string, string>)}
           keys={[
             { key: 'qState', ar: 'حالة المعاملة', en: 'State' }, { key: 'qCustomer', ar: 'العميل', en: 'Customer' },
@@ -186,7 +176,7 @@ export default function CustomsAnalyticsPage() {
         <Sel k="countryOfOrigin" label={t('كل بلدان المنشأ', 'All origins')} list={opts.countryOfOrigin} />
         <Sel k="invoiceStatus" label={t('كل حالات الفوترة', 'All invoice statuses')} list={opts.invoiceStatus} />
         <Sel k="year" label={t('كل السنوات', 'All years')} list={opts.years} />
-        {/* المدّة بشهر المعاملة: التحليلُ يُجمَع بالشهر، فيُختار شهرٌ أو فترةُ أشهر. */}
+        {/* Period by the transaction's month: the analysis is summed by month, so choose a month or a range of months. */}
         <PeriodFilter ar={ar} modes={['month', 'range']} from={f.from || ''} to={f.to || ''}
           onChange={(a, b) => setF((p) => ({ ...p, from: a, to: b, year: '', month: '' }))} />
         {active > 0 && (
@@ -214,9 +204,7 @@ export default function CustomsAnalyticsPage() {
         <Stat label={t('متوسط المعاملات شهريًّا', 'Avg deals / month')} value={money(T.avgPerMonth)} />
       </div>
 
-      {/* ── ما تسأل عنه الإدارة ───────────────────────────────────────────────
-          الأرقامُ أعلاه مجاميع. وهذه ما يُبنى عليه قرار: كم يدرّ الحاوية، وما
-          المالُ الذي لم يُفوتَر بعد، وكم من الربح يتوقّف على عميلٍ واحد. */}
+      {/* What management asks: how much a container yields, how much money is not yet invoiced, and how much of the profit depends on one customer. The figures above are totals; these are what a decision rests on. */}
       <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
         <Stat label={t('ربح الحاوية', 'Profit / container')} value={money(I.profitPerContainer)} accent={I.profitPerContainer >= 0 ? 'text-emerald-600' : 'text-red-600'} />
         <Stat label={t('إيراد الحاوية', 'Revenue / container')} value={money(I.revenuePerContainer)} />
@@ -230,7 +218,7 @@ export default function CustomsAnalyticsPage() {
           hint={t(`أكبرُ خمسة عملاء · الأوّل ${pct(I.top1Share)}`, `top 5 customers · #1 ${pct(I.top1Share)}`)} />
       </div>
 
-      {/* أين يذهب المالُ ومن أين يأتي الربح — بندًا بندًا. */}
+      {/* Where the money goes and where the profit comes from, item by item. */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {[
           { title: t('أين تذهب التكلفة', 'Where the cost goes'), rows: d.costBreakdown || [], total: T.totalCosts, bar: 'bg-slate-500' },
@@ -339,9 +327,7 @@ export default function CustomsAnalyticsPage() {
         </ScrollX>
       </div>
 
-      {/* ── الصفقاتُ بأسمائها ────────────────────────────────────────────────
-          الرقمُ المجمَّع لا يقول أيَّ صفقةٍ صنعته: أعلاها ربحًا تُدرَس ليُكرَّر،
-          وما خسر يُسأل عنه بعينه. */}
+      {/* Deals by name. An aggregate number does not say which deal made it: the most profitable are studied to repeat them, and the losing ones are asked about individually. */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {[
           { rows: d.topDeals || [], ar: 'أعلى المعاملات ربحًا', en: 'Most profitable', Icon: TrendingUp, tone: 'text-emerald-600' },

@@ -1,10 +1,8 @@
 import '../ui/export_sheet.dart';
 import 'vehicle_registry_form.dart' show hijriPlain;
 
-/// ── أعمدةُ سجل المركبات — توأمُ lib/vehicleColumns.ts في الموقع ─────────────
-///
-/// الترتيبُ والأسماءُ كما في الموقع حرفًا بحرف، فالملفّ المصدَّر من التطبيق هو
-/// نفسُه المصدَّر من الموقع. و`base` هي «الأعمدة الأساسيّة» التي تُعرض أوّلًا.
+/// Vehicle register columns, twin of lib/vehicleColumns.ts on web.
+/// Order and names match web exactly, so the file exported from the app is the same as the one exported from web. base is the 'basic columns' shown first.
 
 class VCol {
   final String key, ar, en;
@@ -90,8 +88,7 @@ final List<VCol> registryColumns = [
 
 final List<String> baseColumnKeys = registryColumns.where((c) => c.base).map((c) => c.key).toList();
 
-/// أعمدةُ التصدير — ويُضاف بجانب كلِّ تاريخٍ ميلاديٍّ هجريُّه (withHijri في الموقع)،
-/// إلّا حيث يجاوره عمودٌ هجريٌّ مكتوب.
+/// Export columns. Each Gregorian date gets its Hijri date beside it (withHijri on web), except where a written Hijri column already sits next to it.
 List<ExportCol> registryExportCols(List<VCol> cols) {
   final out = <ExportCol>[];
   for (var i = 0; i < cols.length; i++) {

@@ -1,28 +1,9 @@
 'use client';
 /**
- * الأدوارُ والصلاحيّات — من هنا يُقرَّر مَن يرى ماذا.
- *
- * ── طبقتان لا واحدة ─────────────────────────────────────────────────────────
- * كانت الشاشةُ تسأل سؤالًا واحدًا: أيقرأ هذا الدورُ هذا القسمَ أم يكتب فيه؟ وهو
- * صحيحٌ وناقص — قسمُ المركبات تسعَ عشرةَ صفحة، ومن مُنح «تعديل» أخذها كلَّها:
- * سجلَّ المركبات وبترو آب وإعداداتِ القسم وتقييمَ الأداء معًا.
- *
- * فصار للسؤال وجهان:
- *   • **القسم** → ممنوع / مشاهدة / تعديل. يقرّر ماذا يُفعَل: قراءةٌ أم كتابة.
- *   • **الصفحة** → مفتوحةٌ أو مغلقة، داخلَ ما منحه القسم. تقرّر أين.
- *
- * والصفحةُ لا تتجاوز قسمَها أبدًا: من لا يملك القسمَ لا تُفتَح له صفحةٌ منه.
- *
- * ── وكلاهما يحرس البيانات ────────────────────────────────────────────────────
- * كانت صلاحيّةُ الصفحة تُخفي الشاشةَ ولا تمنع نقاطَ الـ API، فمن يعرف النقطةَ
- * ينادِيها من خارج الشاشة. صار الخادمُ يعرف أيَّ الصفحات تنادي كلَّ نقطة
- * (`config/pageApis`، مستخرجةً من الشيفرة): فإن كانت كلُّها مغلقةً على الدور
- * رُدَّت النقطةُ ٤٠٣.
- *
- * ── وأنواعُ المستخدمين تُصنَع من هنا ──────────────────────────────────────────
- * الهيكلُ الوظيفيُّ في الشيفرة (مديرٌ وموظّفٌ لكلّ قسم) لا يسع كلَّ حالة: يجيء
- * من يحتاج «مراجعًا يرى المالَ ولا يكتب فيه». فيُصنَع نوعُه بضغطة، ويُولَد لا
- * يملك شيئًا حتّى يُمنَح صراحةً.
+ * Roles and permissions: decides who sees what.
+ * Two layers: the section (none/view/edit) decides read vs write; the page (open/closed, within the section grant) decides where. A page never exceeds its section.
+ * The server also guards the API: an endpoint whose calling pages are all closed to the role returns 403 (`config/pageApis`, derived from code).
+ * Custom user types are created here and start with nothing until granted explicitly.
  */
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useDialog } from '@/components/system/DialogProvider';
@@ -65,9 +46,9 @@ export default function PermissionsPage() {
   const ar = lang === 'ar';
   const t = (a: string, e: string) => (ar ? a : e);
   const tx = getPermissionsTranslations(lang);
-  // role-only: مصفوفةُ الصلاحيّات نفسُها — مَن يضبطها لا يُمنَحها منها.
+  // role-only: the permission matrix itself; whoever edits it cannot grant themselves access through it.
   const isSuper = ['super_admin', 'admin', 'it_manager', 'it_specialist'].includes(user?.role || '');
-  // صنعُ الأنواع لصاحب النظام وحدَه — نوعٌ جديدٌ بابٌ جديدٌ في البيت.
+  // Creating user types is limited to the system owner.
   const canMakeRoles = ['super_admin', 'admin'].includes(user?.role || '');
 
   const [data, setData] = useState<Payload | null>(null);
@@ -75,7 +56,7 @@ export default function PermissionsPage() {
   const [selectedRole, setSelectedRole] = useState<string>('');
   const [roleSearch, setRoleSearch] = useState('');
 
-  // النسخةُ العاملة للدور المختار.
+  // Working copy for the selected role.
   const [draft, setDraft] = useState<Record<string, Access>>({});
   const [pageDraft, setPageDraft] = useState<Record<string, boolean>>({});
   const [homePage, setHomePage] = useState('');
@@ -100,16 +81,8 @@ export default function PermissionsPage() {
   useEffect(() => { load(); }, [load]);
 
   /**
-   * ── ولا تُمسَح شهادةُ الحفظ باليد التي كتبتها ───────────────────────────────
-   *
-   * هذا الأثرُ يُعيد بذرَ النسخة العاملة كلّما تغيّر `data` — وهو صحيحٌ عند
-   * تغيير الدور أو إعادة التحميل. لكنّ `save()` يكتب في `data` أيضًا، فكان
-   * الأثرُ يُطلَق بعد كلّ حفظٍ ناجحٍ ويُصفّر `savedFlash` في نفس الرسمة: يُضغَط
-   * «حفظ» فلا تظهر «تم الحفظ» أبدًا، ويخبو الزرُّ لأنّ `dirty` صارت كذبًا —
-   * فيُقرأ أنّ الشاشةَ لم تستجب، ويُعاد الضغطُ مرّةً ومرّتين.
-   *
-   * فالتصفيرُ مشروطٌ بتغيُّر الدور لا بتغيُّر البيانات: الشهادةُ تبقى حتى
-   * يُنتقَل إلى دورٍ آخر أو يُعدَّل شيءٌ جديد.
+   * Reset the saved-flash only when the role changes, not on every data change.
+   * save() also writes `data`, so resetting on data change cleared `savedFlash` in the same render and the save confirmation never showed.
    */
   const seededFor = useRef('');
   useEffect(() => {
@@ -139,9 +112,7 @@ export default function PermissionsPage() {
     return homePage !== originalHome;
   }, [data, draft, original, pageDraft, originalPages, homePage, originalHome]);
 
-  // ── تغييرُ القسم يجرّ صفحاتِه معه ────────────────────────────────────────────
-  // من يمنع قسمًا يقصد منعَ شاشاته؛ ومن يمنحه يقصد فتحَها. وترْكُ الصفحات على
-  // حالها يجعل الضغطةَ الواحدة تبدو بلا أثر، فتُضغَط ثانيةً وثالثة.
+  // Changing a section carries its pages with it; leaving pages unchanged makes one click look like it did nothing.
   const setLevel = (section: string, level: Access) => {
     setDraft((d) => ({ ...d, [section]: level }));
     const on = level !== 'none';
@@ -166,16 +137,8 @@ export default function PermissionsPage() {
   const togglePage = (key: string) => setPageDraft((p) => ({ ...p, [key]: !p[key] }));
 
   /**
-   * ── والمربّعُ المعطَّلُ كان بابًا مسدودًا بلا لافتة ──────────────────────────
-   *
-   * صفحةٌ في قسمٍ غيرِ ممنوحٍ لا تُفتَح مهما أُشِّرت — والقاعدةُ صحيحة. وكان
-   * مربّعُها `disabled`: يُضغَط فلا يحدث شيء، ولا سطرَ يقول لماذا. فمن أراد أن
-   * يُعطي متدرّبًا شاشةً واحدةً في قسمٍ آخر ضغط عليها عشرَ مرّاتٍ ثمّ قال
-   * «الصلاحيّاتُ لا تُحفَظ» — وهي لم تُطلَب أصلًا.
-   *
-   * فالضغطةُ الآن **تفعل المقصود**: تمنح القسمَ «مشاهدة» (لا تعديل)، وتفتح
-   * هذه الصفحةَ وحدَها فيه وتُغلق بقيّتَه. وهو عينُ ما كان يُفعَل بثلاث خطواتٍ
-   * يدويّة، ويُقال في سطرٍ تحت القائمة.
+   * Ticking a page inside an ungranted section grants that section view-only (not edit), opens just this page and closes the rest.
+   * A disabled checkbox gave no feedback on why nothing happened.
    */
   const openOnePage = (section: string, key: string) => {
     setDraft((d) => ({ ...d, [section]: 'view' }));
@@ -204,16 +167,8 @@ export default function PermissionsPage() {
     if (!selectedRole || !data) return;
     setSaving(true);
     try {
-      // ── وتُرسَل الخريطةُ كما تُرى، ويختصرها مَن يملك القاعدة ────────────────
-      // ما يوافق قسمَه لا يُكتب في القاعدة (وإلّا صار تغييرُ قسمٍ بعد اليوم بلا
-      // أثرٍ على صفحاته)، لكنّ **حسابَ** «ما يوافق قسمَه» كان هنا، وكان يقول
-      // عن قسمٍ غيرِ مُدارٍ بالمصفوفة — ملفي، إجازاتي، طلباتي، الإعدادات،
-      // مركزُ التقارير — إنّه مفتوحٌ للجميع، والخادمُ يقول إنّه مغلقٌ على
-      // الدور المصنوع. فمن أشّر لمتدرّبٍ على «ملفي» لم تُرسَل تأشيرتُه أصلًا:
-      // تُقال «حُفِظ» ثمّ تختفي العلامةُ ولا تُفتَح الصفحة.
-      //
-      // فلم يبقَ للشاشة رأيٌ في القاعدة: تُرسَل الخريطةُ كاملةً مع `pagesAll`،
-      // ويختصرها الخادمُ بالدالّة نفسِها التي يقرأ بها عند المنح.
+      // Send the full map with `pagesAll`; the server compacts it with the same function it uses on read.
+      // A client-side compaction wrongly treated sections not managed by the matrix (profile, leaves, requests, settings, reports) as open to all, so those ticks were dropped.
       const pages: Record<string, boolean> = {};
       data.catalog.forEach((p) => { pages[p.key] = !!pageDraft[p.key]; });
       const res = await api.put<{ role: string; permissions: Record<string, Access>; pages: Record<string, boolean> }>(
@@ -221,14 +176,10 @@ export default function PermissionsPage() {
         { sections: draft, pages, pagesAll: true, homePage },
       );
 
-      // ── والحفظُ يُثبت نفسَه بما عاد من الخادم ─────────────────────────────
-      // ما يُعرَض بعد الحفظ هو **الصلاحيّةُ الفعليّةُ** التي ردّها الخادمُ لا
-      // ما أرسلناه: لو اختلف حرفٌ (قاعدةٌ في الخادم تمنع، أو صفحةٌ لا تتجاوز
-      // قسمَها) ظهر الاختلافُ في الحال بدل أن يُقرأ «حُفظ» ثمّ يُفتَح الغدَ
-      // فيُرى غيرُه. وما يختلف يُقال صريحًا.
+      // Show the effective permission returned by the server after save, not what was sent, so any server-side difference (blocking rule, page above its section) is visible immediately.
       const asked = Object.entries(draft).filter(([k]) => (data.sections || []).includes(k));
       const differ = asked.filter(([k, v]) => (res.permissions?.[k] || 'none') !== (v || 'none'));
-      // ما صار ساريًا فعلًا — من ردّ الخادم لا من النسخة العاملة.
+      // What is actually in force: taken from the server response, not the working copy.
       const grantedNow = Object.values(res.permissions || {}).filter((v) => v !== 'none').length;
       const pagesNow = Object.values(res.pages || {}).filter(Boolean).length;
 
@@ -236,8 +187,7 @@ export default function PermissionsPage() {
         ...prev,
         permissions: { ...prev.permissions, [selectedRole]: res.permissions },
         pages: { ...prev.pages, [selectedRole]: res.pages },
-        // و«الصريح» صار قرارَ الخادم لا قرارَنا — تُقرأ صفحةُ الدخول وحدَها
-        // منه هنا، والصفحاتُ الصريحةُ تُقرأ في التحميل التالي.
+        // "Explicit" is decided by the server; only the entry page is read from it here, explicit pages are read on the next load.
         explicit: { ...prev.explicit, [selectedRole]: { pages: prev.explicit?.[selectedRole]?.pages || {}, homePage } },
       } : prev));
       setSavedFlash(true);
@@ -285,7 +235,7 @@ export default function PermissionsPage() {
   if (loading) return <Spinner />;
 
   const catalog = data?.catalog || [];
-  // أقسامُ الفهرس بترتيب ظهورها، والمُدارةُ أوّلًا — تلك هي التي تحرس الـ API.
+  // Catalogue sections in display order, matrix-managed ones first since they guard the API.
   const managed = data?.sections || [];
   const unmanaged = [...new Set(catalog.map((p) => p.section))].filter((s) => !managed.includes(s));
   const allSections = [...managed, ...unmanaged];
@@ -306,7 +256,7 @@ export default function PermissionsPage() {
       </PageHeader>
 
       <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-5 items-start">
-        {/* ── الأدوار ──────────────────────────────────────────────────────── */}
+        {/* Roles */}
         <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
           <div className="px-3 py-2.5 border-b border-slate-200">
             <div className="relative">
@@ -324,8 +274,7 @@ export default function PermissionsPage() {
                 <button key={r} type="button" onClick={() => setSelectedRole(r)}
                   className={`w-full text-start px-3 py-2 rounded-lg text-sm transition-colors flex items-center gap-2 ${active ? 'bg-[#f37121] text-white font-medium' : 'text-slate-700 hover:bg-slate-100'}`}>
                   <span className="flex-1 truncate">{roleLabel(r)}</span>
-                  {/* المصنوعُ يُعلَّم: من يقرأ القائمةَ يجب أن يعرف ما صنعه بنفسه
-                      عمّا هو جزءٌ من هيكل الشركة. */}
+                  {/* Mark custom-made roles so they are told apart from the built-in company structure. */}
                   {custom && (
                     <span className={`text-[10px] px-1.5 py-0.5 rounded-full shrink-0 ${active ? 'bg-white/25' : 'bg-[#f37121]/10 text-[#f37121]'}`}>
                       {t('مُصنَّع', 'custom')}
@@ -338,7 +287,7 @@ export default function PermissionsPage() {
           </div>
         </div>
 
-        {/* ── القسم والصفحات ──────────────────────────────────────────────── */}
+        {/* Section and pages */}
         <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
           <div className="px-4 py-3 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
             <div className="min-w-0">
@@ -397,11 +346,7 @@ export default function PermissionsPage() {
                           })}
                         </div>
                       ) : (
-                        // ── أقسامٌ لا تحرسها المصفوفة ────────────────────────
-                        // الرئيسيّة والأدوات والإدارة والخدمة الذاتيّة والبوّابة
-                        // تحرسها قوائمُ الأدوار في الشيفرة. فلا يُعرَض لها
-                        // «مشاهدة/تعديل» يوهم بأنّه يفعل شيئًا — وتبقى صفحاتُها
-                        // تُفتَح وتُغلَق، وذلك يعمل.
+                        // Sections not guarded by the matrix: home, tools, administration, self-service and portal are guarded by role lists in code. No view/edit control is shown for them since it would do nothing; their pages can still be opened or closed.
                         <span className="text-[11px] text-slate-400 shrink-0">{t('بالصفحات فقط', 'pages only')}</span>
                       )}
                     </div>
@@ -419,11 +364,7 @@ export default function PermissionsPage() {
                                  'Section not granted — click a page to grant view and open just it.')}
                             </span>
                           )}
-                          {/* ── وما تفعله التأشيرةُ هنا يُقال، لا يُترك يُكتشَف ──
-                              شاشاتُ هذه الأقسام يحرسها سطرُ أدوارٍ في كلّ مسار، لا
-                              قسمٌ يُمنَح. فالتأشيرةُ تفتحها وتفتح أفعالَها، إلّا
-                              بابين: شاشةُ الأدوار والصلاحيّات نفسُها، وإنشاءُ
-                              حسابِ مديرِ نظامٍ أو تعديلُه. */}
+                          {/* These sections are guarded by a roles line on each route, not by a section grant. A tick opens the pages and their actions, except two doors: the roles and permissions screen itself, and creating or editing a system-admin account. */}
                           {!isManaged && (
                             <span className="text-[11px] text-slate-500">
                               {t('التأشيرُ يفتح الشاشةَ وأفعالَها — إلّا هذه الشاشةَ نفسَها وحسابَ مديرِ النظام.',
@@ -434,11 +375,10 @@ export default function PermissionsPage() {
                         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-1.5">
                           {pages.map((pg) => {
                             const allowed = !!pageDraft[pg.key];
-                            // صفحةٌ في قسمٍ ممنوع لا تُفتَح مهما أُشِّرت — تُقال
-                            // لا تُخفى، كي يُعرف السببُ ويُرفَع القسمُ أوّلًا.
+                            // A page in a denied section cannot be opened however it is ticked; shown (not hidden) so the reason is clear and the section is raised first.
                             const blockedBySection = isManaged && cur === 'none';
                             if (blockedBySection) {
-                              // لا مربّعَ معطَّلًا: زرٌّ يفعل المقصود ويقول ما سيفعله.
+                              // No disabled checkbox: a button that does the intended thing and states what it will do.
                               return (
                                 <button key={pg.key} type="button" onClick={() => openOnePage(section, pg.key)}
                                   title={ar
@@ -472,10 +412,7 @@ export default function PermissionsPage() {
 
           {selectedRole && (
             <div className="px-4 py-3 border-t border-slate-200 space-y-3">
-              {/* ── أوّلُ شاشةٍ تُفتَح ──────────────────────────────────────────
-                  الدورُ المصنوع لا تعرفه خريطةُ الصفحات الرئيسيّة، فقد يُلقى به
-                  بعد الدخول على شاشةٍ ممنوعةٍ عليه — فيقرأ «هذه الصفحة ليست ضمن
-                  صلاحيّاتك» أوّلَ ما يدخل. */}
+              {/* First screen on login: the main-pages map does not know a custom role, so it could land on a screen denied to it. */}
               <div className="flex flex-wrap items-center gap-2">
                 <Home className="w-4 h-4 text-slate-400" />
                 <span className="text-[12.5px] text-slate-600">{t('صفحة الدخول', 'Landing page')}</span>
@@ -534,8 +471,7 @@ export default function PermissionsPage() {
             <TextInput value={newRole.key}
               onChange={(e) => setNewRole((r) => ({ ...r, key: e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '_') }))}
               placeholder="financial_reviewer" />
-            {/* المفتاحُ يُكتب على كلّ مستخدمٍ يحمله ولا يُغيَّر بعدها — يُقال ذلك
-                قبل الإنشاء لا بعده. */}
+            {/* The key is written to every user holding it and cannot change afterwards, so this is stated before creation. */}
             <p className="text-[11.5px] text-slate-500 mt-1.5 leading-relaxed">
               {t('حروفٌ لاتينيّةٌ صغيرةٌ وأرقامٌ وشرطةٌ سفليّة. يُكتب على كلّ مستخدمٍ يحمل هذا النوع ولا يُغيَّر بعد الإنشاء — أمّا الاسمُ العربيّ فيُعدَّل متى شئت. ولاحقة «_manager» محجوزةٌ لمديري الأقسام.',
                  'Lowercase letters, digits and underscores. It is written onto every user of this type and cannot change afterwards — the Arabic name can. The “_manager” suffix is reserved for section managers.')}

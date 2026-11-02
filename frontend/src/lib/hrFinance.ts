@@ -1,7 +1,4 @@
-/**
- * ماليّاتُ الموارد البشريّة — رسومُ الإقامات ورخص العمل، وطلباتُ القسم إلى الماليّة.
- * الشكلُ كما يردّه backend/src/controllers/hrFinanceController.js.
- */
+/** HR finance: residency and work-permit fees, and the department's requests to Finance. Shapes match backend/src/controllers/hrFinanceController.js. */
 export interface HrFile { fileUrl: string; fileName: string; mimeType?: string; size?: number }
 
 export interface HrDocPaymentInfo {
@@ -54,7 +51,7 @@ export const REQ_STATUS: Record<string, { ar: string; en: string; cls: string }>
   not_done: { ar: 'لم يتمّ', en: 'Not done', cls: 'bg-red-50 text-red-700 border-red-200' },
 };
 
-/** «متبقٍّ ٣ أيام» / «منتهية منذ ١٠ أيام». */
+/** Readable remaining/overdue text, e.g. 3 days left / expired 10 days ago. */
 export const daysLeftText = (n: number, ar: boolean): string => {
   if (n < 0) return ar ? `منتهية منذ ${-n} يوم` : `Expired ${-n}d ago`;
   if (n === 0) return ar ? 'تنتهي اليوم' : 'Expires today';

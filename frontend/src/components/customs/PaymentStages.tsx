@@ -1,17 +1,7 @@
 'use client';
 /**
- * مراحلُ السداد — إدخالٌ بتاريخه ومرفقه، والمرحلةُ تتكرّر.
- *
- * ── ما كان ────────────────────────────────────────────────────────────────
- * ثمانيةُ صفوفٍ مكتوبةٍ في الشيفرة: تاريخٌ واحدٌ لكلٍّ وعلامةُ «تم» وبلا مرفق.
- * وثلاثةُ أشياءَ لم تكن ممكنة: مرحلةٌ تاسعة (تحتاج نشرةً جديدة)، وورقةُ السداد
- * نفسُها (فيُكتب «سُدِّد ٣/٨» ولا إيصال)، وأن تتكرّر المرحلة — والرسومُ تُسدَّد
- * على دفعتين، والإرجاعُ يقع مرّتين لحاويتين، فيُكتب الثاني فوق الأوّل ويضيع.
- *
- * ── وما صار ───────────────────────────────────────────────────────────────
- * القائمةُ تُدار من إعدادات القسم (`customs_payment_stage`)، وكلُّ مرحلةٍ
- * تُضاف مرّاتٍ بزرّ «+»، ولكلّ إدخالٍ تاريخُه ومرفقُه ومبلغُه. والمرفوعُ يظهر
- * في «مرفقات المعاملة» أيضًا — ملفٌّ واحدٌ مذكورٌ في موضعين، لا نسختان.
+ * Payment stages: entries with their own date and attachment, and a stage can repeat.
+ * Before: eight hardcoded rows with one date each, a done flag and no attachment, which ruled out a ninth stage without a release, the payment paper itself, and repeats (fees paid in two installments, returns for two containers overwriting each other). Now: the list is managed from section settings (`customs_payment_stage`), each stage is added repeatedly with the "+" button, and each entry has its date, attachment and amount. Uploads also appear in the transaction attachments: one file listed in two places, not two copies.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useDialog } from '@/components/system/DialogProvider';
@@ -26,13 +16,13 @@ export interface StageEntry {
   _id: string; key: string; label?: string; date?: string; amount?: number | null;
   note?: string; fileUrl?: string; fileName?: string;
   addedByName?: string; addedAt?: string;
-  // قرارُ الإدارة الماليّة على هذا الطلب — راجع decidePaymentStage في الخادم.
+  // Finance's decision on this request; see decidePaymentStage on the server.
   payStatus?: 'pending' | 'paid' | 'returned' | 'rejected';
   decisionNote?: string; decidedByName?: string; decidedAt?: string;
   proofFiles?: { fileUrl: string; fileName?: string }[];
 }
 
-/** شارةُ حالة الطلب — نفسُ الألفاظ في شاشة التخليص وشاشة الماليّة. */
+/** Request status badge; same wording on the clearance and finance screens. */
 export const PAY_BADGE: Record<string, { ar: string; en: string; cls: string }> = {
   pending: { ar: 'بانتظار الدفع', en: 'Awaiting payment', cls: 'bg-amber-100 text-amber-800' },
   paid: { ar: 'تمّ الدفع', en: 'Paid', cls: 'bg-green-100 text-green-700' },
@@ -49,12 +39,12 @@ export default function PaymentStages({
   invoiceNumber, awaitingTransport, onIssueInvoice,
 }: {
   clearanceId: string;
-  /** رقمُ البوليصة أو المعاملة — به يُسمّى الملفُّ عند تنزيله. */
+  /** Waybill or transaction number; it names the file on download. */
   refNumber?: string;
-  /** رقمُ فاتورة العميل إن صدرت، وهل تنتظر المعاملةُ فاتورةَ النقل. */
+  /** Customer invoice number if issued, and whether the transaction awaits the transport invoice. */
   invoiceNumber?: string;
   awaitingTransport?: boolean;
-  /** نافذةُ إصدار الفاتورة تُفتَح من الصفحة — زرُّها هنا وفي الترويسة واحد. */
+  /** The invoice-issuing window opens from the page; its button here and in the header is the same one. */
   onIssueInvoice: () => void;
   entries: StageEntry[];
   completed?: boolean;
@@ -75,10 +65,10 @@ export default function PaymentStages({
       .then((d) => setDefs(d.items || [])).catch(() => {});
   }, []);
   useEffect(() => { loadDefs(); }, [loadDefs]);
-  // تعديلٌ في إعدادات القسم (اسمٌ، ترتيبٌ، بندٌ جديد) يظهر هنا في الحال.
+  // A change in section settings (name, order, new item) shows here immediately.
   useSocket('lookup:changed', useCallback((p: any) => { if (p?.type === 'customs_payment_stage') loadDefs(); }, [loadDefs]));
 
-  // الإدخالاتُ مجموعةً تحت مرحلتها، بترتيب الإعدادات لا بترتيب الإضافة.
+  // Entries grouped under their stage, in settings order, not insertion order.
   const grouped = useMemo(() => {
     const byKey = new Map<string, StageEntry[]>();
     for (const e of entries || []) {
@@ -87,14 +77,14 @@ export default function PaymentStages({
     }
     for (const list of byKey.values()) list.sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')));
     const known = defs.map((d) => ({ def: d, list: byKey.get(d.key) || [] }));
-    // مرحلةٌ حُذفت من الإعدادات وفيها إدخالاتٌ قديمة لا تُخفى — التاريخُ لا يُمحى.
+    // A stage deleted from settings that still has old entries stays visible; history is not erased.
     const orphans = [...byKey.entries()]
       .filter(([k]) => !defs.some((d) => d.key === k))
       .map(([k, list]) => ({ def: { _id: k, key: k, nameAr: list[0]?.label || k, nameEn: list[0]?.label || k } as StageDef, list }));
     return [...known, ...orphans];
   }, [entries, defs]);
 
-  // ── فواتيرُ النقل الثلاث طريقان لا يجتمعان (٢٠٢٦/١٠/٢٢) — والخادمُ هو الحارس ──
+  // The three transport invoices are alternative paths, not combinable; the server enforces it.
   const transportBlock = (key: string) => {
     const has = (k: string) => (entries || []).some((e) => e.key === k);
     if (key === 'transportPortToCustomer' && (has('transportPortToYard') || has('transportYardToCustomer'))) return t('سُجّل النقلُ عبر الساحة', 'Transport via the yard is recorded');
@@ -145,15 +135,12 @@ export default function PaymentStages({
       <div className="space-y-2">
         {grouped.map(({ def, list }) => {
           const label = ar ? (def.nameAr || def.nameEn || def.key) : (def.nameEn || def.nameAr || def.key);
-          // أيُّ مرحلةِ نقلٍ بمرفقها تُنهي المعاملة — لا «فاتورة النقل» وحدَها.
+          // Any transport stage with its attachment finishes the transaction, not only the transport invoice.
           const isRequired = TRANSPORT_STAGE_KEYS.has(def.key);
           return (
             <div key={def.key} className={`rounded-lg border ${isRequired ? 'border-[#f37121]/40 bg-[#f37121]/5' : 'border-slate-200 bg-slate-50'}`}>
               <div className="flex items-center gap-2 px-3 py-2">
-                {/* ── والعلامةُ تقول «دُفع» لا «كُتب» ───────────────────────
-                    كانت تخضرّ لمجرّد وجود إدخال — والإدخالُ طلبُ صرفٍ لا
-                    إثباتُ دفع. فصارت تتبع قرارَ الإدارة الماليّة: تخضرّ حين
-                    تُدفَع كلُّ إدخالات المرحلة، وتصفرّ ما دام فيها منتظِر. */}
+                {/* The mark means "paid", not "written". It used to turn green on mere entry existence, but an entry is a payment request, not proof of payment. Now it follows Finance's decision: green when all entries of the stage are paid, yellow while any is waiting. */}
                 <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border ${
                   list.length && list.every((x) => (x.payStatus || 'pending') === 'paid')
                     ? 'border-green-500 bg-green-500 text-white'
@@ -163,13 +150,13 @@ export default function PaymentStages({
                 </span>
                 <span className="flex-1 truncate text-sm font-semibold text-slate-800">
                   {label}
-                  {/* (مراحلُ السداد لا شأنَ لها بإقفال المعاملة — راجع settleClosure.) */}
+                  {/* Payment stages are independent of closing the transaction; see settleClosure. */}
                   {list.length > 1 && (
                     <span className="ms-1.5 rounded bg-slate-200 px-1.5 py-0.5 text-[10px] font-bold text-slate-600">
                       {list.length}
                     </span>
                   )}
-                  {/* البندُ المكرَّرُ يُقرأ مجموعًا — وهو ما يُكتب في تكاليفه عند الدفع. */}
+                  {/* A repeated item reads as a sum, which is what is written to its costs on payment. */}
                   {list.length > 1 && list.some((e) => Number(e.amount) > 0) && (
                     <span className="ms-1.5 text-[11px] font-bold tabular-nums text-slate-600">
                       {t('المجموع', 'Total')}: {list.reduce((a, e) => a + (Number(e.amount) || 0), 0).toLocaleString('en-US')}
@@ -190,7 +177,7 @@ export default function PaymentStages({
                 <ul className="space-y-1 border-t border-slate-200/70 px-3 py-2">
                   {list.map((e, n) => (
                     <li key={e._id} className="flex flex-wrap items-center gap-2 text-xs">
-                      {/* المرحلةُ الواحدةُ تتكرّر — فيُقال أيُّ مرّةٍ هذه. */}
+                      {/* A stage can repeat, so the label says which occurrence this is. */}
                       {list.length > 1 && (
                         <span className="rounded bg-slate-200 px-1.5 py-0.5 text-[10.5px] font-bold text-slate-700">
                           {t(`الدفعة ${n + 1}`, `#${n + 1}`)}
@@ -217,7 +204,7 @@ export default function PaymentStages({
                       )}
                       {e.note && <span className="text-slate-400">· {e.note}</span>}
                       {e.addedByName && <span className="text-slate-300">· {e.addedByName}</span>}
-                      {/* قرارُ الإدارة الماليّة بجانب الطلب نفسِه — لا في بريد. */}
+                      {/* Finance's decision sits beside the request itself, not in an email. */}
                       <span className={`rounded-full px-2 py-0.5 text-[10.5px] font-bold ${PAY_BADGE[e.payStatus || 'pending'].cls}`}>
                         {ar ? PAY_BADGE[e.payStatus || 'pending'].ar : PAY_BADGE[e.payStatus || 'pending'].en}
                       </span>
@@ -260,9 +247,7 @@ export default function PaymentStages({
         )}
       </div>
 
-      {/* ── الفاتورةُ ثمّ الإنهاء ───────────────────────────────────────────
-          فعلان لا واحد: الفاتورةُ تصدر متى اكتمل العمل، والمعاملةُ تُنهى حين
-          تصل فاتورةُ النقل. والحالةُ تُقال هنا قبل الضغط لا بعده. */}
+      {/* Invoice, then closing: two actions. The invoice issues when work is complete; the transaction closes when the transport invoice arrives. The status is stated here before clicking, not after. */}
       <div className={`rounded-lg border p-3 ${completed ? 'border-green-300 bg-green-50' : awaitingTransport ? 'border-red-300 bg-red-50' : 'border-slate-200 bg-white'}`}>
         {completed ? (
           <div className="flex flex-wrap items-center gap-2">
@@ -330,12 +315,12 @@ export default function PaymentStages({
   );
 }
 
-/** نموذجُ إدخالٍ واحد: تاريخٌ ومبلغٌ وملاحظةٌ وملفّ. */
+/** Form for a single entry: date, amount, note and file. */
 function AddEntry({
   clearanceId, stageKey, ar, amountRequired, onDone, onCancel,
 }: {
   clearanceId: string; stageKey: string; ar: boolean;
-  /** مرحلةٌ تُكتب في التكاليف عند الدفع — فلا تُضاف بلا مبلغ. */
+  /** A stage is written to costs on payment, so it cannot be added without an amount. */
   amountRequired?: boolean;
   onDone: (cl: any) => void; onCancel: () => void;
 }) {

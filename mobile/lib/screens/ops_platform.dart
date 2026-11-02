@@ -13,8 +13,7 @@ import '../ui/stat_grid.dart';
 import 'ops_common.dart' show opsLoc, opsMoney, opsYmd, opsDate, opsErr;
 import 'ops_platform_extra.dart';
 
-/// منصة العمليات (UPL) — المرآة الحية: لوحة، الشحنات (ops_platform_extra.dart)،
-/// و١٢ جدول مرجعي ببحث الخادم وترقيم الصفحات، كما على الويب.
+/// Operations platform (UPL), the live mirror: dashboard, shipments (ops_platform_extra.dart), and 12 reference tables with server search and pagination, as on the web.
 
 enum OpsKind { text, badge, rel, money, phone, boolean, date }
 
@@ -124,12 +123,12 @@ const opsResources = [
   ]),
 ];
 
-// حقول الإنشاء/التعديل لكل مورد — مطابقة لـ frontend/src/lib/ops.ts.
-// النوع: text | number | date | bool | ref | localized | image(URL).
+// Create/edit fields per resource, matching frontend/src/lib/ops.ts.
+// Types: text | number | date | bool | ref | localized | image(URL).
 class OpsField {
   final String key, ar, en, type;
   final bool required;
-  final String? ref; // اسم المورد للعلاقة (ref)
+  final String? ref; // Resource name for the relation (ref)
   const OpsField(this.key, this.ar, this.en, {this.type = 'text', this.required = false, this.ref});
 }
 
@@ -267,8 +266,7 @@ String opsCell(Map<String, dynamic> r, OpsCol c) {
   }
 }
 
-// ── القائمة العامة ──────────────────────────────────────────────────────────
-/// فلاترُ كلّ مورد — نفسُ `filters` في lib/ops.ts (القيمُ 'true'/'false' كما يرسلها الويب).
+// General list. Filters per resource, same `filters` as lib/ops.ts (values 'true'/'false' as the web sends them).
 const _activeFilter = ('active', 'الحالة', 'Status', [('true', 'مُفعّل', 'Active'), ('false', 'غير مُفعّل', 'Inactive')]);
 const opsResourceFilters = <String, List<(String, String, String, List<(String, String, String)>)>>{
   'cars': [_activeFilter],
@@ -287,10 +285,10 @@ const opsResourceFilters = <String, List<(String, String, String, List<(String, 
   'car-colors': [_activeFilter],
 };
 
-/// الصفوفُ التي تفتح ملفًّا كاملًا بدل نافذة التفاصيل (`profile: true`).
+/// Rows that open a full profile instead of the details dialog (`profile: true`).
 const _profileResources = {'drivers', 'users'};
 
-/// الشحناتُ لها صفحتُها (فلاتر غنيّة وسير حالات)؛ وبقيّةُ الموارد جدولٌ عامّ.
+/// Shipments have their own page (rich filters and status flow); other resources use the generic table.
 class OpsResourceScreen extends StatelessWidget {
   final OpsCfg cfg;
   const OpsResourceScreen({super.key, required this.cfg});
@@ -312,7 +310,7 @@ class _OpsResourceScreenState extends State<_OpsGenericResourceScreen> {
   bool _stale = false;
   String? _error;
   String _q = '';
-  // البحثُ أثناء الكتابة بتأخيرٍ قصير؛ والمتحكِّمُ عند الشاشة كي يمسحه «مسح الكل» أيضًا.
+  // Search while typing with a short debounce; the controller is owned by the screen so "clear all" also clears it.
   final _searchCtl = TextEditingController();
   Timer? _debounce;
   final Map<String, String> _filters = {};
@@ -332,7 +330,7 @@ class _OpsResourceScreenState extends State<_OpsGenericResourceScreen> {
     super.initState();
     _load();
     _onLive = () => _load(silent: true);
-    // الخادمُ يعلن `ops:<المورد>:changed`، و`ops:stats` يلتقط ما أُضيف أو حُذف في المنصّة نفسِها.
+    // The server announces `ops:<resource>:changed`, and `ops:stats` picks up what was added or deleted on the platform itself.
     Live.instance.on('ops:${widget.cfg.key}:changed', _onLive);
     Live.instance.on('ops:stats', _onLive);
   }
@@ -367,7 +365,7 @@ class _OpsResourceScreenState extends State<_OpsGenericResourceScreen> {
       });
     } catch (e) {
       if (!mounted || mine != _seq) return;
-      // تعثُّرُ المنصّة لا يُفرغ ما يُعرض.
+      // A platform failure does not empty what is displayed.
       setState(() {
         _loading = false;
         if (_rows.isEmpty && !silent) { _error = _opsErrText(e); } else { _stale = true; }
@@ -608,8 +606,7 @@ class _OpsResourceScreenState extends State<_OpsGenericResourceScreen> {
   }
 }
 
-// ── نموذج إنشاء/تعديل مورد المنصة ───────────────────────────────────────────
-// يطابق عقد الويب: bool → 'true'/'false' نصًا، localized → {en,ar}، ref → id.
+// Create/edit form for a platform resource. Matches the web contract: bool as 'true'/'false' strings, localized as {en,ar}, ref as id.
 class _OpsForm extends StatefulWidget {
   final OpsCfg cfg;
   final List<OpsField> fields;
@@ -808,14 +805,14 @@ class _OpsFormState extends State<_OpsForm> {
   }
 }
 
-// اسم مورد المنصة للعرض: يدعم name كـ {ar,en} أو نص.
+// Platform resource display name: supports name as {ar,en} or a string.
 String _opsName(Map row) {
   final n = row['name'];
   if (n is Map) return (Lang.instance.ar ? n['ar'] : n['en'])?.toString() ?? n['en']?.toString() ?? n['ar']?.toString() ?? '';
   return (n ?? row['owner_name'] ?? row['name'] ?? row['id'] ?? '').toString();
 }
 
-// منتقي علاقة من موارد المنصة: يجلب /api/ops/:resource ويرجع (id, label).
+// Relation picker over platform resources: fetches /api/ops/:resource and returns (id, label).
 class _OpsRefPicker extends StatefulWidget {
   final String resource;
   final String currentId;
@@ -829,7 +826,7 @@ class _OpsRefPickerState extends State<_OpsRefPicker> {
   bool _loading = true;
   String? _error;
   String _q = '';
-  // آخرُ بحثٍ وحدَه يُكتب — ردٌّ أقدمُ يصل متأخّرًا لا يمحو الأحدث.
+  // Only the latest search is written; an older reply arriving late does not overwrite the newer one.
   int _seq = 0;
   Timer? _debounce;
 
@@ -900,11 +897,7 @@ class _OpsRefPickerState extends State<_OpsRefPicker> {
   }
 }
 
-// ── لوحة المنصة ─────────────────────────────────────────────────────────────
-/// نظيرُ /system/ops: بطاقاتُ الأعداد (تُضغط فتفتح الجدول)، وتوزيعُ الحالات
-/// (يُضغط فيفتح الشحنات مصفّاةً)، والإيراداتُ الشهريّة، وأحدثُ الشحنات،
-/// ولوحتا الصدارة — مع فلتر الفرع وفترةٍ جاهزة (اليوم/أمس/٧ أيام/الشهر/الكل)
-/// أو يومٍ بعينه أو مدى.
+// Platform dashboard, counterpart of /system/ops: count cards (tap to open the table), status distribution (tap to open filtered shipments), monthly revenue, latest shipments and two leaderboards, with a branch filter and a preset period (today/yesterday/7 days/month/all) or a specific day or range.
 const _countCards = [
   ('shipments', 'shipments', 'الشحنات', 'Shipments', Icons.local_shipping_outlined, T.orange),
   ('drivers', 'drivers', 'السائقون', 'Drivers', Icons.badge_outlined, T.info),
@@ -940,7 +933,7 @@ class _OpsDashboardScreenState extends State<OpsDashboardScreen> {
       if (mounted) setState(() => _branches = List<Map<String, dynamic>>.from((d['items'] ?? const []) as List));
     }).catchError((_) {});
     _onChanged = () => _load();
-    // دفعُ الإحصاءات الحيّة غيرُ مفلتر — يُهمَل حين يكون هناك فلتر.
+    // Pushed live stats are unfiltered, so they are ignored while a filter is active.
     _onStats = (stats) {
       if (_from.isNotEmpty || _to.isNotEmpty || _branch.isNotEmpty || stats is! Map || !mounted) return;
       setState(() => _d = {...?_d, 'stats': stats});
@@ -967,7 +960,7 @@ class _OpsDashboardScreenState extends State<OpsDashboardScreen> {
       ];
       final d = await Api.instance.get('/api/ops/dashboard?${qs.join('&')}');
       if (!mounted || mine != _seq) return;
-      // ردٌّ فارغٌ من منصّةٍ متعثّرة لا يمسح ما يُعرض.
+      // An empty reply from a failing platform does not clear what is displayed.
       if (d is Map && d['upstreamUnavailable'] != true && (d['stats'] != null || d['home'] != null)) {
         setState(() => _d = Map<String, dynamic>.from(d));
       }
@@ -977,7 +970,7 @@ class _OpsDashboardScreenState extends State<OpsDashboardScreen> {
       } else if (d is Map && d['stale'] != true) {
         _retried = false;
       }
-    } catch (_) {/* يبقى ما سبق */}
+    } catch (_) {/* Keep the previous values. */}
     if (mounted && mine == _seq) setState(() => _loading = false);
   }
 
@@ -1044,7 +1037,7 @@ class _OpsDashboardScreenState extends State<OpsDashboardScreen> {
               child: ListView(padding: const EdgeInsets.all(14), children: [
                 Text(tr('مرآة حيّة لنظام عمليات الميدان · مباشر', 'Live mirror of the field operations system · Live'), style: const TextStyle(fontSize: 11.5, color: T.inkSoft)),
                 const SizedBox(height: 8),
-                // ── الفلاتر: الفرع، والفترات الجاهزة، ويومٌ بعينه، ومدى ──────────
+                // Filters: branch, preset periods, a specific day, and a range
                 AppCard(
                   padding: const EdgeInsets.all(10),
                   child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -1100,7 +1093,7 @@ class _OpsDashboardScreenState extends State<OpsDashboardScreen> {
                   ]),
                 ),
                 const SizedBox(height: 10),
-                // ── بطاقاتُ الأعداد ────────────────────────────────────────
+                // Count cards
                 StatGrid(
                   spacing: 8, minTileWidth: 96, minColumns: 3, maxColumns: 6,
                   children: [
@@ -1121,7 +1114,7 @@ class _OpsDashboardScreenState extends State<OpsDashboardScreen> {
                   ],
                 ),
                 const SizedBox(height: 12),
-                // ── توزيعُ الحالات ─────────────────────────────────────────
+                // Status distribution
                 AppCard(
                   child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                     Text(tr('توزيع حالات الشحنات', 'Shipment Status Breakdown'), style: const TextStyle(fontWeight: FontWeight.w800)),
@@ -1147,7 +1140,7 @@ class _OpsDashboardScreenState extends State<OpsDashboardScreen> {
                     ]),
                   ]),
                 ),
-                // ── الإيراداتُ الشهريّة ─────────────────────────────────────
+                // Monthly revenue
                 if (revenue.isNotEmpty) ...[
                   const SizedBox(height: 12),
                   AppCard(
@@ -1181,7 +1174,7 @@ class _OpsDashboardScreenState extends State<OpsDashboardScreen> {
                   ),
                 ],
                 const SizedBox(height: 12),
-                // ── أحدثُ الشحنات ──────────────────────────────────────────
+                // Latest shipments
                 AppCard(
                   child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                     Row(children: [
@@ -1220,8 +1213,7 @@ class _OpsDashboardScreenState extends State<OpsDashboardScreen> {
   }
 }
 
-/// رسالةُ خطأ المنصّة بلغة الواجهة: انقطاعُ الوصول إلى منصّة التشغيل يأتي من
-/// الخادم نصًّا تقنيًّا إنجليزيًّا («fetch failed»)، فيُقال للمستخدم بلغته.
+/// Platform error message in the UI language: a lost connection to the operations platform arrives from the server as technical English text ("fetch failed"), so show the user a message in their language.
 String _opsErrText(Object e) {
   final m = opsErr(e);
   final l = m.toLowerCase();

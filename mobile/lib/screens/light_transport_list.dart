@@ -16,11 +16,9 @@ import 'b2c_column_filter.dart';
 import 'light_transport_add.dart';
 import 'light_transport_profile.dart';
 
-/// موظفو النقل الخفيف — سجلُّ القسم كلِّه، مطابقٌ لـ `/system/b2c/light-transport`:
-/// كروتٌ تُفلتِر وتُعاد أعدادُها على ما بقي، فلاترُ الخادم والمحلّية، فلاترُ
-/// الأعمدة، تحديدٌ جماعيٌّ لإسناد المشرفين، تعديلٌ، نقلُ مشروع، وإخراجٌ من القسم.
+/// Light-transport employees: the whole section register, matching `/system/b2c/light-transport`: cards that filter and recount on what remains, server and local filters, column filters, bulk selection to assign supervisors, edit, project transfer, and removal from the section.
 class LightTransportListScreen extends StatefulWidget {
-  /// فلاترٌ يُفتَح عليها (من رقمٍ في اللوحة — كرابط الويب `?project=…&inService=1`).
+  /// Filters the screen opens with (from a dashboard number, like the web link `?project=...&inService=1`).
   final Map<String, String> initial;
   final String? title;
   const LightTransportListScreen({super.key, this.initial = const {}, this.title});
@@ -39,10 +37,10 @@ String _idOf(dynamic v) => v == null ? '' : v is Map ? '${v['_id'] ?? ''}' : '$v
 const _ended = 'إنهاء خدمة';
 const _kindAr = {'rep': 'مندوب', 'admin': 'إداري'};
 const _kindEn = {'rep': 'Rep', 'admin': 'Admin'};
-// المفاتيحُ التي تُفلتَر في التطبيق — الباقي يُرسَل إلى الخادم (كـ LOCAL_KEYS في الويب).
+// Keys filtered in the app; the rest go to the server (LOCAL_KEYS on the web).
 const _localKeys = ['contractKind', 'doc', 'staffKind', 'status', 'hasVehicle', 'housing', 'dutySupervisor'];
 
-/// أعمدةُ الجدول والتصدير — LT_COLUMNS في الويب بترتيبها.
+/// Table and export columns, in the order of LT_COLUMNS on the web.
 final ltColumns = <ColDef>[
   ColDef('plate', 'رقم اللوحة', 'Plate', (e) => _s(e, 'vehiclePlate').isEmpty ? '' : '${_s(e, 'vehiclePlate')}${_s(_m(e['vehicleHold']), 'at').isNotEmpty ? ' — معلّقة' : ''}'),
   ColDef('name', 'الاسم (القائد الفعلي)', 'Name (actual driver)', (e) => _s(e, 'name')),
@@ -74,7 +72,7 @@ final ltColumns = <ColDef>[
   ColDef('operatingCardNumber', 'رقم كارت التشغيل', 'Operating card no.', (e) => _s(_m(e['operatingCard']), 'number')),
   ColDef('operatingCardExpiry', 'انتهاء كارت التشغيل', 'Operating card expiry', (e) => _ymd(_m(e['operatingCard'])?['expiryDate'])),
   ColDef('inspectionExpiry', 'انتهاء الفحص', 'Inspection expiry', (e) => _ymd(_m(e['inspection'])?['expiryDate'])),
-  // انتهاءُ الإقامة ورخصةِ القيادة من ملفّه في الموارد البشريّة، وحالتُهما للفلترة.
+  // Residence and driving-licence expiry come from his HR file, with their states for filtering.
   ColDef('iqamaExpiry', 'انتهاء الإقامة', 'Iqama expiry', (e) => personDocDate(e, 'iqama')),
   ColDef('iqamaState', 'حالة الإقامة', 'Iqama status', (e) => personDocState(e, 'iqama')),
   ColDef('licenseExpiry', 'انتهاء رخصة القيادة', 'Licence expiry', (e) => personDocDate(e, 'license')),
@@ -90,7 +88,7 @@ String _normStatus(String v) {
   return x;
 }
 
-/// ltPasses في الويب — الفلاترُ المحلّيّة (skip لحساب الكرت على ما سواه).
+/// ltPasses on the web: local filters (skip to count a card over everything except itself).
 bool _passes(Map<String, dynamic> r, Map<String, String> f, [String? skip]) {
   bool on(String k) => k != skip && (f[k] ?? '').isNotEmpty;
   if (on('staffKind')) {
@@ -123,7 +121,7 @@ bool _passes(Map<String, dynamic> r, Map<String, String> f, [String? skip]) {
   return true;
 }
 
-/// ltTotalsOf في الويب.
+/// ltTotalsOf on the web.
 Map<String, int> _totalsOf(List<Map<String, dynamic>> rows) {
   final reps = rows.where((r) => (_s(r, 'staffKind').isEmpty ? 'rep' : _s(r, 'staffKind')) == 'rep').toList();
   int count(bool Function(Map<String, dynamic>) fn) => reps.where(fn).length;
@@ -153,7 +151,7 @@ Map<String, int> _totalsOf(List<Map<String, dynamic>> rows) {
   };
 }
 
-/// ltFacetedTotals: كلُّ كرتٍ محسوبٌ على ما بعد الفلاتر سوى فلتره هو.
+/// ltFacetedTotals: each card is counted after all filters except its own.
 Map<String, int> _faceted(List<Map<String, dynamic>> rows, Map<String, String> f) {
   final base = (f['status'] ?? '').split(',').contains(_ended) ? rows : rows.where((r) => _s(r, 'workStatusShown') != _ended).toList();
   List<Map<String, dynamic>> pass([String? skip]) => base.where((r) => _passes(r, f, skip)).toList();
@@ -173,7 +171,7 @@ Map<String, int> _faceted(List<Map<String, dynamic>> rows, Map<String, String> f
   return t;
 }
 
-/// مَن يعدّل السجلّ (canEditLT في الويب).
+/// Who edits the register (canEditLT on the web).
 bool canEditLtUser(AuthProvider a) =>
     const ['super_admin', 'admin', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead', 'it_manager'].contains(a.role) || a.canEditSection('B2C');
 
@@ -185,7 +183,7 @@ class _LightTransportListScreenState extends State<LightTransportListScreen> {
   String? _error;
   String _q = '';
   Timer? _debounce;
-  // متحكِّمُ البحث عند الشاشة: يبقى نصُّه بعد التحميل/الخطأ، و«مسح الكل» يمسحه.
+  // The search controller lives at the screen level: its text survives load and error, and "clear all" clears it.
   final _searchCtl = TextEditingController();
   final Map<String, String> _f = {};
   Map<String, Set<String>> _cf = {};
@@ -248,7 +246,7 @@ class _LightTransportListScreenState extends State<LightTransportListScreen> {
     if (_isServerKey(k)) _load();
   }
 
-  /// كروتُ المناديب تُفلتِر على المناديب أيضًا (repFilter).
+  /// Rider cards also filter the riders (repFilter).
   void _repSet(String k, String v) {
     setState(() {
       if (_f[k] == v) { _f[k] = ''; _f['staffKind'] = ''; } else { _f[k] = v; _f['staffKind'] = 'rep'; }
@@ -268,7 +266,7 @@ class _LightTransportListScreenState extends State<LightTransportListScreen> {
 
   void _say(String m) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
 
-  // ── إخراجٌ من القسم: السجلُّ يبقى وأثرُه محفوظ ──────────────────────────
+  // Removal from the section: the record stays and its trail is kept.
   Future<void> _deactivate(Map<String, dynamic> e) async {
     final reason = TextEditingController();
     final ok = await showDialog<bool>(
@@ -298,7 +296,7 @@ class _LightTransportListScreenState extends State<LightTransportListScreen> {
     }
   }
 
-  // ── إسنادُ مشرفٍ لعدّة موظفين: ما يُترك على «لا تغيير» لا يُمَسّ ────────
+  // Assign a supervisor to several employees: anything left on "no change" is untouched.
   Future<void> _assign() async {
     String ops = '', duty = '';
     bool busy = false;
@@ -369,7 +367,7 @@ class _LightTransportListScreenState extends State<LightTransportListScreen> {
     if (saved == true) _load();
   }
 
-  // ── لوحةُ الفلاتر: فلاترُ الخادم (المشروع…) والمحلّيّة (الحالة، السكن…) ──
+  // Filter panel: server filters (project, ...) and local ones (status, housing, ...).
   Future<void> _filters() async {
     final draft = Map<String, String>.of(_f);
     final statuses = {for (final r in _rows) _s(r, 'workStatusShown')}.where((x) => x.isNotEmpty).toList()..sort();
@@ -583,7 +581,7 @@ class _LightTransportListScreenState extends State<LightTransportListScreen> {
                           _stat(tr('بلا مشرف تفقد', 'No duty supervisor'), t['noDutySupervisor']!, T.danger, onTap: () => _repSet('dutySupervisor', 'none'), on: _f['dutySupervisor'] == 'none'),
                         ]),
                         const SizedBox(height: 10),
-                        // البحثُ في الخادم: يصل سجلَّ المركبات أيضًا (التسلسليّ ورقمُ التفويض).
+                        // Server search also reaches the vehicle register (serial and authorization number).
                         SearchField(
                           controller: _searchCtl, dense: true,
                           hint: tr('اسم · هوية · لوحة · مشرف · مشروع · سجل…', 'name, ID, plate, supervisor, project, register…'),
@@ -610,7 +608,7 @@ class _LightTransportListScreenState extends State<LightTransportListScreen> {
                             Text(tr('منهم $endedShown منتهي الخدمة — لا يُعَدّون في الكروت', '$endedShown of them ended — not counted in the cards'),
                                 style: const TextStyle(fontSize: 11, color: T.inkFaint)),
                         ]),
-                        // الفلاترُ الشغّالةُ مكتوبةً — وكلٌّ يُرفَع بضغطة.
+                        // Active filters are shown as text, and each is removed with a tap.
                         if (_f.values.any((v) => v.isNotEmpty)) ...[
                           const SizedBox(height: 8),
                           Wrap(spacing: 6, runSpacing: 6, children: [
@@ -756,9 +754,7 @@ extension on String {
   String ifEmpty(String other) => isEmpty ? other : this;
 }
 
-/// تعديلُ موظفٍ — نموذجُ «تعديل موظف» في الويب بحقوله كلّها: المشرفان، السكنُ
-/// والغرفة، وحالةُ العمل وسببُها. المشروعُ لا يتغيّر هنا إن كان له مشروع
-/// (يُنقَل بـ«نقل المشروع»)، والكفالةُ لمن له ملفٌّ تُقرأ من الموارد البشريّة.
+/// Edit an employee: the web "edit employee" form with all its fields: the two supervisors, housing and room, work status and its reason. The project cannot change here if he has one (use "transfer project"), and sponsorship for someone with an HR file is read from HR.
 class LtEditEmployeeSheet extends StatefulWidget {
   final Map<String, dynamic> employee;
   final List<Map<String, dynamic>> supervisors;

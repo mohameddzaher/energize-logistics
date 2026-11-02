@@ -1,16 +1,7 @@
 /**
- * فتحُ ملفّ PDF من الخادم أو طباعتُه مباشرةً — بلا أن يحجبه المتصفّح.
- *
- * ── لماذا ملفٌّ مستقلّ ──────────────────────────────────────────────────────
- * `window.open` بعد `await` يُحجَب: المتصفّحُ لا يعدّه استجابةً لضغطة، فيضيع
- * الملفُّ بلا أثرٍ عند كثيرين. فالنافذةُ تُفتح **لحظةَ الضغطة** فارغةً، ثمّ
- * يُكتب فيها الملفُّ حين يصل. وإن حُجبت مع ذلك نزل الملفُّ تنزيلًا.
- *
- * ── والطباعةُ بلا خطوةٍ وسطى ────────────────────────────────────────────────
- * من فتح الـPDF في لسانٍ جديدٍ لم يجد زرَّ الطابعة عنده (عارضُ الملفّات يُخفيه
- * أحيانًا، وعلى الهاتف ليس فيه). فزرُّ «طباعة» يحمّل الملفَّ نفسَه في إطارٍ
- * مخفيّ ويفتح حوارَ الطابعة عليه مباشرةً. والهواتفُ لا تطبع إطارًا فيه PDF،
- * فيُفتح لها الملفُّ في لسانٍ وطباعتُه من زرّ المشاركة فيه.
+ * Opens a server PDF or prints it directly without the browser blocking it.
+ * window.open after an await is blocked, since the browser no longer sees it as a response to a click, so the window is opened empty at click time and the file is written into it on arrival. If blocked anyway, the file downloads.
+ * Printing skips the middle step: a print button loads the same file in a hidden frame and opens the print dialog on it. Phones cannot print a frame holding a PDF, so there the file opens in a tab and prints from its share button.
  */
 
 const isMobile = () =>
@@ -25,20 +16,20 @@ function download(url: string, fileName: string) {
   a.remove();
 }
 
-/** نافذةٌ فارغةٌ تُفتح الآن — قبل أيّ انتظار — فلا يحجبها المتصفّح. */
+/** An empty window opened now, before any waiting, so the browser does not block it. */
 function preopen(ar: boolean): Window | null {
   const w = window.open('', '_blank');
   if (w) {
     try {
       w.document.write(`<p style="font-family:Tahoma,sans-serif;padding:24px;color:#475569">${ar ? 'جارٍ إعداد الملف…' : 'Preparing the file…'}</p>`);
-    } catch { /* نافذةٌ لا تقبل الكتابة — لا بأس */ }
+    } catch { /* A window that rejects writes; harmless. */ }
   }
   return w;
 }
 
 /**
- * يفتح الملفَّ في لسانٍ جديد (أو ينزّله إن حُجب اللسان).
- * يُستدعى **مباشرةً من الضغطة** بالوعد نفسِه، لا بعد انتظاره.
+ * Opens the file in a new tab (or downloads it if the tab was blocked).
+ * Called directly from the click with the promise itself, not after awaiting it.
  */
 export async function openPdf(load: Promise<Blob>, fileName: string, ar: boolean) {
   const w = preopen(ar);
@@ -56,7 +47,7 @@ export async function openPdf(load: Promise<Blob>, fileName: string, ar: boolean
 
 let frame: HTMLIFrameElement | null = null;
 
-/** يفتح حوارَ الطابعة على الملفّ مباشرةً — وعلى الهاتف يفتح الملفّ للطباعة منه. */
+/** Opens the print dialog on the file directly; on a phone opens the file to print from there. */
 export async function printPdf(load: Promise<Blob>, fileName: string, ar: boolean) {
   if (isMobile()) return openPdf(load, fileName, ar);
 
@@ -64,8 +55,7 @@ export async function printPdf(load: Promise<Blob>, fileName: string, ar: boolea
   const url = URL.createObjectURL(blob);
   if (frame) { frame.remove(); frame = null; }
   const f = document.createElement('iframe');
-  // مرسومٌ لا مخفيّ: عارضُ الـPDF في كروم لا يُحمَّل في إطارٍ `display:none`،
-  // فلا يُطبع شيء. فإطارٌ بحجم صفرٍ في الركن.
+  // Rendered, not hidden: Chrome's PDF viewer does not load in a display:none frame, so nothing would print. A zero-size frame in the corner is used.
   f.setAttribute('aria-hidden', 'true');
   f.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;opacity:0;pointer-events:none';
   f.src = url;
@@ -78,11 +68,11 @@ export async function printPdf(load: Promise<Blob>, fileName: string, ar: boolea
       f.contentWindow?.focus();
       f.contentWindow?.print();
     } catch {
-      // متصفّحٌ يرفض طباعةَ الإطار: يُفتح الملفّ نفسُه، والطباعةُ من عارضه.
+      // A browser that refuses to print the frame: the file itself opens and prints from its viewer.
       window.open(url, '_blank') || download(url, fileName);
     }
   };
-  // عارضُ الـPDF يُكمل رسمَه بعد `load` بقليل؛ طباعتُه قبل ذلك تُخرج صفحةً بيضاء.
+  // The PDF viewer keeps painting shortly after load; printing earlier yields a blank page.
   f.onload = () => setTimeout(go, 300);
   document.body.appendChild(f);
   setTimeout(() => { URL.revokeObjectURL(url); if (frame === f) { f.remove(); frame = null; } }, 10 * 60 * 1000);

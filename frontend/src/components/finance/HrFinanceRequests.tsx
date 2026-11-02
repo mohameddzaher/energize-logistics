@@ -1,14 +1,9 @@
 'use client';
 /**
- * طلباتُ الموارد البشريّة إلى الإدارة الماليّة — شاشةٌ واحدةٌ من طرفين.
- *
- *   · الموارد البشريّة (`side='hr'`): تختار موظّفًا أو أكثر، وتكتب أمام كلٍّ منهم
- *     ما تحتاجه له في خانةٍ واحدة، وترفق ما يلزم — فيصل الطلبُ إلى الماليّة.
- *   · الإدارة الماليّة (`side='finance'`): تقرأ الطلبَ وموظّفيه ومرفقاتِه، وتجيب
- *     «تمّ» أو «لم يتمّ» بملاحظةٍ ومرفقاتٍ إن شاءت.
- *
- * ويصل كلَّ طرفٍ إشعارٌ بما فعله الآخر، وتتحدّث الشاشتان حيًّا (`hr-finance:changed`).
- * ونقاطُ الـ API تُمرَّر من الصفحة — فتُنسب إليها في خريطة الصلاحيّات.
+ * HR requests to Finance: one screen from two sides.
+ * - HR (`side='hr'`): selects one or more employees, writes what it needs for each in a single field, attaches what is needed, and the request reaches Finance.
+ * - Finance (`side='finance'`): reads the request, its employees and attachments, and answers done or not done with an optional note and attachments.
+ * Each side is notified of what the other did, and both screens update live (`hr-finance:changed`). API endpoints are passed in from the page so they are attributed to it in the permissions map.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
@@ -88,7 +83,7 @@ export default function HrFinanceRequests({ side, listUrl, createUrl, answerUrl,
   useEffect(() => { load(); }, [load]);
   useSocket('hr-finance:changed', useCallback(() => { load(); }, [load]));
 
-  // ── رابطُ الإشعار يفتح الطلبَ نفسَه: يُرفع فلترُ الحالة ويُمرَّر إليه ──
+  // The notification link opens the request itself: the status filter is lifted and passed to it.
   useEffect(() => {
     if (!focusId || loading) return;
     const el = document.getElementById(`hrfr-${focusId}`);
@@ -97,7 +92,7 @@ export default function HrFinanceRequests({ side, listUrl, createUrl, answerUrl,
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusId, loading, list.length]);
 
-  // ── الإنشاء (الموارد البشريّة) ──
+  // Creation (HR)
   const [open, setOpen] = useState(false);
   const [emps, setEmps] = useState<EmpOption[]>([]);
   const [empState, setEmpState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
@@ -142,7 +137,7 @@ export default function HrFinanceRequests({ side, listUrl, createUrl, answerUrl,
     setSaving(false);
   };
 
-  // ── الجواب (الماليّة) ──
+  // Answer (Finance)
   const [answering, setAnswering] = useState<HrFinanceRequest | null>(null);
   const [ansStatus, setAnsStatus] = useState<'done' | 'not_done'>('done');
   const [ansNote, setAnsNote] = useState('');
@@ -321,7 +316,7 @@ export default function HrFinanceRequests({ side, listUrl, createUrl, answerUrl,
         })}
       </div>
 
-      {/* ── طلبٌ جديد: موظّفون، وخانةٌ واحدةٌ لكلٍّ منهم، ومرفقات ── */}
+      {/* New request: employees, one field per employee, attachments. */}
       <Modal open={open} onClose={() => setOpen(false)} wide title={t('طلب جديد إلى الإدارة المالية', 'New request to Finance')}
         footer={<>
           <button type="button" onClick={() => setOpen(false)} className="px-4 py-2 text-sm text-slate-500 hover:text-slate-900">{t('إلغاء', 'Cancel')}</button>
@@ -362,7 +357,7 @@ export default function HrFinanceRequests({ side, listUrl, createUrl, answerUrl,
         </div>
       </Modal>
 
-      {/* ── جوابُ الماليّة ── */}
+      {/* Finance's answer. */}
       <Modal open={!!answering} onClose={() => setAnswering(null)}
         title={answering ? t(`الرد على الطلب #${answering.number}`, `Answer request #${answering.number}`) : ''}
         footer={<>

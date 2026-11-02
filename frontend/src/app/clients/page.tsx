@@ -1,7 +1,7 @@
 "use client";
 
 export default function ClientsPage() {
-  // قلل عدد الصور لتحسين الأداء
+  // Fewer images to improve performance.
   const logos = Array.from(
     { length: 100 },
     (_, i) => `/images/clients/${i + 1}.jpeg`
@@ -9,12 +9,12 @@ export default function ClientsPage() {
 
   return (
     <main className="min-h-screen bg-gray-900 text-white py-14 px-4 sm:px-6 relative overflow-hidden">
-      {/* 🟠 خلفيات زخرفية ثابتة */}
+      {/* Fixed decorative backgrounds */}
       <div className="absolute top-[-100px] right-[-100px] w-[300px] h-[300px] bg-[#f37121]/20 rounded-full blur-[80px] opacity-60 z-0" />
       <div className="absolute bottom-[-100px] left-[-100px] w-[300px] h-[300px] bg-gray-700/25 rounded-full blur-[80px] opacity-50 z-0" />
 
       <div className="relative z-10 max-w-7xl mx-auto text-center">
-        {/* العنوان */}
+        {/* Title */}
         <h1 className="text-3xl font-bold mb-6">
           Our <span className="text-[#f37121]">Valued Clients</span>
         </h1>
@@ -24,10 +24,10 @@ export default function ClientsPage() {
           industries.
         </p>
 
-        {/* 🎞️ الكاروسيل المتحرك (محسّن للأداء) */}
+        {/* Moving carousel (performance-optimised) */}
         <div className="relative w-full overflow-hidden mb-16">
           <div className="flex gap-6 clients-carousel">
-            {/* 3 نسخ بدلاً من 2 لتقليل التكرار */}
+            {/* Three copies instead of two to reduce repetition. */}
             {[...Array(3)].map((_, loopIndex) => (
               <div key={loopIndex} className="flex gap-6">
                 {logos.map((logo, index) => (
@@ -51,7 +51,7 @@ export default function ClientsPage() {
           </div>
         </div>
 
-        {/* 🖼️ شبكة الصور الثابتة */}
+        {/* Static image grid */}
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
           {logos.map((logo, index) => (
             <div

@@ -8,12 +8,8 @@ import '../services/api.dart';
 import '../services/hijri.dart';
 import '../services/lang.dart';
 
-/// ورقةُ الإجازة الرسميّة PDF — نظيرُ downloadLeaveSheet (lib/leavePdf.ts) في الموقع:
-/// ترويسةُ الشركة خلفيّةً، وتفاصيلُ الإجازة، وخاناتُ التوقيع الثلاث (الموظّف ·
-/// المدير المباشر · الموارد البشريّة) بحبرها إن وُقِّعت.
-///
-/// تُقرأ الإجازةُ كاملةً (بتوقيعاتها) من GET /api/hr/leaves/:id ثمّ تُبنى الورقة
-/// في الجهاز وتُفتح نافذةُ الطباعة/المشاركة.
+/// Official leave sheet PDF, counterpart of downloadLeaveSheet (lib/leavePdf.ts) on the web: company letterhead as background, leave details and three signature boxes (employee, direct manager, HR) with ink if signed.
+/// The full leave (with signatures) is read from GET /api/hr/leaves/:id, the sheet is built on the device, and the print/share dialog opens.
 Future<void> downloadLeaveSheet(BuildContext context, String leaveId) async {
   final messenger = ScaffoldMessenger.of(context);
   try {
@@ -55,7 +51,7 @@ Future<Uint8List> _build(Map<String, dynamic> leave) async {
   String t(String en, String a) => ar ? a : en;
   final regular = await PdfGoogleFonts.tajawalRegular();
   final bold = await PdfGoogleFonts.tajawalBold();
-  // الترويسةُ نفسُها التي يرسمها الموقع خلفيّةً للورقة.
+  // The same letterhead the web draws as the sheet background.
   pw.ImageProvider? letterhead;
   try { letterhead = await networkImage('https://energize-logistics.com/images/payroll.png'); } catch (_) {}
 
@@ -97,7 +93,7 @@ Future<Uint8List> _build(Map<String, dynamic> leave) async {
     build: (ctx) => pw.Stack(children: [
       if (letterhead != null) pw.Positioned.fill(child: pw.Image(letterhead, fit: pw.BoxFit.fill)),
       pw.Padding(
-        // المساحةُ بين رأس الترويسة وذيلها — كأبعاد الموقع (١٧٠ فوق، ١٧٥ تحت من ١١٢٣).
+        // Space between the letterhead header and footer, same dimensions as the web (170 top, 175 bottom out of 1123).
         padding: const pw.EdgeInsets.fromLTRB(45, 127, 45, 131),
         child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.stretch, children: [
           pw.Center(child: pw.Text(t('Leave Request', 'طلب إجازة'), style: pw.TextStyle(font: bold, fontSize: 20))),

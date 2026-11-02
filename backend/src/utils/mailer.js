@@ -1,12 +1,7 @@
 /**
- * الإرسالُ من صندوقٍ من صناديق الشركة (Hostinger) — صاحبُ الشركة، ٢٠٢٦/١٠/٢٤.
- *
- * كلمةُ مرور الصندوق لا تُكتب في الشيفرة ولا في .env: تُقرأ مشفّرةً من «إيميلات
- * الشركة» (CompanyEmail · utils/secretVault) لحظةَ الإرسال. فمن غيّرها هناك
- * يصل تغييرُه أوّلَ رسالةٍ بعده.
- *
- * والرسالةُ تُرسَل (SMTP) ثمّ تُنسَخ إلى «المرسل» في الصندوق نفسِه (IMAP) — فيراها
- * القسمُ في أوتلوك كأنّه أرسلها منه. والنسخُ تحسين: إن تعثّر لا تُعدّ الرسالةُ فاشلة.
+ * Sending from a company mailbox (Hostinger).
+ * The mailbox password is not in code or .env: it is read encrypted from the company emails register (CompanyEmail, utils/secretVault) at send time, so a change there applies from the next message.
+ * The message is sent (SMTP) then copied to the Sent folder of the same mailbox (IMAP), so the department sees it in Outlook as sent from there. Copying is an extra: if it fails the send still counts as successful.
  */
 const nodemailer = require('nodemailer');
 const MailComposer = require('nodemailer/lib/mail-composer');
@@ -26,7 +21,7 @@ async function credentialsFor(address) {
 }
 
 /**
- * يرسل رسالةً من صندوق الشركة.
+ * Sends a message from the company mailbox.
  * @returns {{ messageId: string, savedToSent: boolean }}
  */
 async function sendFromMailbox(address, { fromName, to, cc, subject, text, html, attachments, transport: given }) {
@@ -36,7 +31,7 @@ async function sendFromMailbox(address, { fromName, to, cc, subject, text, html,
     from: { name: fromName || cred.name || cred.user, address: cred.user },
     to, cc: cc && cc.length ? cc : undefined, subject, text, html, attachments,
   };
-  // للاختبار المحلّيّ وحدَه: MAIL_TRANSPORT=json يلتقط الرسالةَ بلا إرسال.
+  // Local testing only: MAIL_TRANSPORT=json captures the message without sending.
   if (!transport && process.env.MAIL_TRANSPORT === 'json') transport = nodemailer.createTransport({ jsonTransport: true });
   const t = transport || nodemailer.createTransport({
     host: SMTP_HOST, port: 465, secure: true, auth: { user: cred.user, pass: cred.pass },

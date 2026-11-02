@@ -6,28 +6,12 @@ import { colKey } from '@/lib/colKey';
 
 export type ColumnFilterOption = { value: string; count?: number };
 
-// فلتر عمودٍ على طريقة إكسل: تُضغط القمعُ في رأس العمود فتُفتح قائمةُ قيمه، تُؤشَّر
-// منها المطلوبة فيقتصر الجدول عليها. المطابقة تجري على القيمة **الخام** كما هي في
-// القاعدة، فيجب أن يحمل `selected` قيمًا خامًّا لا نصوصًا معروضة.
-//
-// للقائمة مصدران:
-//   • `options` — قيمٌ محسوبةٌ في الخادم مع عدد صفوف كلٍّ منها. هذا هو المصدر
-//     الصحيح للجداول المُصفَّحة في الخادم: بناء القائمة من الصفوف المحمَّلة يعرض
-//     قيم الصفحة الحالية وحدها (ثلاث حالاتٍ من تسع)، وتحميلُ الجدول كلّه لعلاجه
-//     يجمّد التبويب.
-//   • `rows` — الاشتقاق من الصفوف المحمَّلة، ويبقى للجداول التي تُحمَّل كاملةً في
-//     المتصفح أصلًا فلا ينقصها شيء.
+// Excel-style column filter: the funnel in the header opens a value list, ticked values limit the table. Matching runs on the raw DB value, so selected must hold raw values, not display text.
+// Two sources: options (server-computed values with row counts; correct for server-paginated tables, since building from loaded rows shows only the current page and loading everything freezes the tab) and rows (derived from loaded rows, for tables fully loaded in the browser).
 export function ColumnFilter({ rows, field, valueOf, selected, onChange, onOpen, lang, format, options, loading, truncated, onQuery, label }: {
   rows?: any[];
   field: string;
-  /**
-   * قراءةُ قيمة العمود من الصفّ حين لا تكون خاصّيّةً مسطَّحة.
-   *
-   * جداولُ قسم المركبات تبني كلَّ عمودٍ بدالّة (`insurance.policyNumber`
-   * ومحسوباتٌ كالحالة)، فقراءةُ `r[field]` تُرجع `undefined` وتُخرج القائمة
-   * كلَّها «(فارغ)». وهي الدالّةُ نفسُها التي يُرسَم بها العمود ويُصدَّر —
-   * فما يُفلتَر عليه هو ما يُقرأ في الشاشة حرفًا بحرف.
-   */
+  /** Reads a column value from a row when it is not a flat property. Vehicle-section tables build each column with a function (nested fields, computed values like status), so r[field] gives undefined and the list shows only "(empty)". This is the same function used to render and export the column, so filtering matches what is read on screen. */
   valueOf?: (row: any) => any;
   selected: Set<string>;
   onChange: (s: Set<string>) => void;
@@ -49,8 +33,7 @@ export function ColumnFilter({ rows, field, valueOf, selected, onChange, onOpen,
 
   useEffect(() => {
     if (!open) return;
-    // اللوحةُ صارت في `body` فليست ابنةً للزرّ: الضغطُ داخلها كان يُقرأ «خارجًا»
-    // فتُغلق قبل أن يُؤشَّر شيء. فيُستثنى ما بداخلها صراحةً.
+    // The panel is now in body, so it is not a child of the button; a click inside was read as outside and closed it before anything was ticked. Its contents are excluded explicitly.
     const h = (e: MouseEvent) => {
       const t = e.target as Node;
       if (ref.current && ref.current.contains(t)) return;
@@ -61,15 +44,12 @@ export function ColumnFilter({ rows, field, valueOf, selected, onChange, onOpen,
     return () => document.removeEventListener('mousedown', h);
   }, [open]);
 
-  // البحث في القيم: يُنفَّذ في المتصفح ما دامت القيم كلّها حاضرة. فإذا بلغت القائمة
-  // سقف الخادم (أعمدةٌ كرقم الكشف فيها قيمةٌ لكل صف) صار البحث سؤالًا للخادم، وإلا
-  // أجاب المتصفح «لا توجد قيم» عن قيمةٍ موجودةٍ في القاعدة لكنها خارج ما وصله.
+  // Value search runs in the browser while all values are present. Once the list reaches the server cap (columns like statement number have a value per row), search goes to the server; otherwise the browser would say no values for a value that exists but was not delivered.
   const [serverSearch, setServerSearch] = useState(false);
   useEffect(() => { if (truncated) setServerSearch(true); }, [truncated]);
   useEffect(() => { if (!open) { setQ(''); setServerSearch(false); } }, [open]);
 
-  // المرجع يمنع إعادةَ ضبط المهلة كلّما أعاد الأب الرسم: لو اعتمد الأثر على هوية
-  // الدالة نفسها لظلّت المهلة تُلغى وتُستأنف فلا يصل البحث إلى الخادم أبدًا.
+  // A ref avoids resetting the timeout on every parent re-render; depending on the function identity would keep cancelling it and the search would never reach the server.
   const queryRef = useRef(onQuery);
   queryRef.current = onQuery;
   useEffect(() => {
@@ -78,9 +58,7 @@ export function ColumnFilter({ rows, field, valueOf, selected, onChange, onOpen,
     return () => clearTimeout(t);
   }, [q, open, serverSearch]);
 
-  // كلُّ سطرٍ في القائمة يحمل القيمَ الخامَّ التي يمثّلها (`raws`): من الصفوف قد
-  // تكون «الدمام» و«الدمام » معًا — سطرٌ واحدٌ على الشاشة، واختيارُه يؤشّر الصيغتين،
-  // فيبقى التصفيةُ في كلّ صفحةٍ مطابقةً خامّةً كما كانت ولا ينقص منها صفّ.
+  // Each list line carries the raw values it stands for (raws): rows may hold two variants of the same city (one with trailing space) that show as one line; selecting it ticks both so filtering stays raw-exact on every page.
   type Entry = { value: string; label: string; count?: number; raws: string[] };
   const values = useMemo((): Entry[] => {
     if (!open) return [];
@@ -89,10 +67,9 @@ export function ColumnFilter({ rows, field, valueOf, selected, onChange, onOpen,
 
     if (options) {
       const seen = new Set(options.map((o) => o.value));
-      // القيمة المختارة تبقى ظاهرةً حتى لو خرجت من نتيجة الخادم (بعد بحثٍ أو بعد
-      // تضييق بقيّة الفلاتر)، وإلا اختفى مربّعُها فتعذّر إلغاء اختيارها.
+      // A selected value stays visible even if it drops out of the server result (after a search or narrowing other filters), otherwise its box disappears and it cannot be unticked.
       const pinned = [...selected].filter((v) => !seen.has(v)).map((v) => ({ value: v, label: label(v, v), count: undefined, raws: [v] }));
-      // الترتيب ترتيبُ الخادم: الأكثر تكرارًا أولًا — وهو ما يبحث عنه المستخدم غالبًا.
+      // Order is the server's: most frequent first, which is what users usually look for.
       return [...pinned, ...options.map((o) => ({ value: o.value, label: label(o.value, o.value), count: o.count, raws: [o.value] }))];
     }
 
@@ -105,12 +82,12 @@ export function ColumnFilter({ rows, field, valueOf, selected, onChange, onOpen,
       if (!e) map.set(k, { value, label: k ? label(value, raw) : label('', raw), count: 1, raws: [value] });
       else { e.count = (e.count || 0) + 1; if (!e.raws.includes(value)) e.raws.push(value); }
     }
-    // ما اختير ولم يعد في الصفوف يبقى ظاهرًا ليُلغى اختيارُه.
+    // Selected values no longer in the rows stay visible so they can be unselected.
     for (const v of selected) {
       if ([...map.values()].some((e) => e.raws.includes(v))) continue;
       map.set(`\u0000${v}`, { value: v, label: label(v, v), count: undefined, raws: [v] });
     }
-    // والعدُّ لا يُعرض هنا (كما كان): الصفوفُ قد تكون صفحةً لا الكلّ.
+    // Counts are not shown here (as before) because the rows may be one page, not the whole set.
     return Array.from(map.values())
       .map((e) => ({ ...e, count: undefined }))
       .sort((a, b) => a.label.localeCompare(b.label, ar ? 'ar' : 'en', { numeric: true }));
@@ -135,16 +112,7 @@ export function ColumnFilter({ rows, field, valueOf, selected, onChange, onOpen,
     onChange(n);
   };
 
-  // ── ولماذا تُرسَم اللوحةُ خارجَ الجدول ──────────────────────────────────────
-  //
-  // كانت `absolute` داخلَ رأس العمود، ورأسُ العمود داخلَ حاويةٍ تُمرَّر أفقيًّا
-  // (`overflow-x-auto`) وأخرى `overflow-hidden`. والحاويةُ التي تقصّ محتواها
-  // تقصّ أبناءها المطلقين أيضًا — ولا ينفع `z-index`: هو يرتّب الطبقات ولا
-  // يُخرج شيئًا من مقصّ. فحين تُظهر النتيجةُ صفًّا واحدًا يكون ارتفاعُ الجدول
-  // أقصرَ من اللوحة، فتُقصّ ويختفي أكثرُها.
-  //
-  // فتُرسَم في `body` بإحداثيّاتٍ من موضع الزرّ: لا أبَ لها يقصّها. وتُصحَّح
-  // إحداثيّاتُها مع التمرير وتغيير المقاس كي تبقى ملتصقةً بزرّها.
+  // Why the panel renders outside the table: it was absolute inside the column header, within an overflow-x-auto container and an overflow-hidden one. A clipping container also clips absolute children and z-index cannot escape it, so with a one-row result the table was shorter than the panel and most of it was cut. It is rendered in body at coordinates from the button, with no clipping parent, and repositioned on scroll and resize.
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
@@ -154,7 +122,7 @@ export function ColumnFilter({ rows, field, valueOf, selected, onChange, onOpen,
       if (!el) return;
       const r = el.getBoundingClientRect();
       const W = 240; const M = 8;
-      // لا تخرج عن الشاشة يمينًا ولا يسارًا.
+      // Keeps the panel within the viewport horizontally.
       let left = ar ? r.right - W : r.left;
       left = Math.max(M, Math.min(left, window.innerWidth - W - M));
       setPos({ top: r.bottom + 4, left });
@@ -211,17 +179,8 @@ export function ColumnFilter({ rows, field, valueOf, selected, onChange, onOpen,
 
   return (
     <span className="relative inline-flex items-center" ref={ref}>
-      {/* ── القمعُ يُرى قبل أن يُبحَث عنه ────────────────────────────────────
-          كان أيقونةً بحجم اثنتَي عشرةَ نقطةً بلونٍ باهتٍ على ترويسةٍ كحليّةٍ
-          داكنة، فمرّ صاحبُ القسم على صفحات القسم كلِّها ولم يجده. والفلترُ الذي
-          لا يُرى غيرُ موجود. فصار خانةً صغيرةً لها أرضيّةٌ وحدٌّ — تُقرأ زرًّا
-          من موضعها قبل أن تُقرأ أيقونة — وتصير برتقاليّةً صريحةً حين تُفعَّل. */}
-      {/* ── والمفعَّلُ يقول عددَه، لا يصير كتلةً ملوّنة ────────────────────────
-          كان المفعَّلُ مربّعًا برتقاليًّا مملوءًا بقمعٍ أبيضَ داخله، في عشرين
-          بكسلًا على ترويسةٍ داكنة: يُقرأ بقعةً مستديرةً غريبةً لا زرًّا — ولا
-          يقول كم قيمةً أُشّرت. فصار إطارًا برتقاليًّا بأرضيّةٍ خفيفةٍ والقمعُ
-          برتقاليٌّ فيه، ومعه العددُ رقمًا حين يزيد على واحد. الحالةُ تُقرأ،
-          والشكلُ يبقى زرًّا. */}
+      {/* The funnel must be visible before it can be used: it was a faint 12px icon on a dark navy header and users missed it. It is now a small bordered box that reads as a button and turns clearly orange when active. */}
+      {/* The active state shows its count rather than a solid color block: the filled orange square with a white funnel read as an odd blob, not a button, and did not say how many values are ticked. It is now an orange outline with light fill, orange funnel and a count when above one. */}
       {label ? (
         <button type="button" onClick={() => { const next = !open; setOpen(next); if (next) onOpen?.(); }} aria-expanded={open}
           className={`inline-flex items-center gap-1.5 min-h-[36px] px-3 rounded-lg border text-[13px] font-semibold transition-colors ${

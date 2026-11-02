@@ -42,19 +42,7 @@
 //     },
 //   ]
 
-//   return (
-//     <section className="relative bg-gray-900 text-white py-24 px-6 overflow-hidden">
-//       {/* ✨ اللمسة البرتقالية الخلفية */}
-//       <motion.div
-//         animate={{ scale: [1, 1.1, 1] }}
-//         transition={{ repeat: Infinity, duration: 10, ease: 'easeInOut' }}
-//         className="absolute top-[-100px] end-[-120px] w-[350px] h-[350px] bg-[#f37121]/20 blur-[120px] rounded-full"
-//       />
-//       <motion.div
-//         animate={{ scale: [1, 1.05, 1] }}
-//         transition={{ repeat: Infinity, duration: 12, ease: 'easeInOut', delay: 1 }}
-//         className="absolute bottom-[-120px] start-[-120px] w-[300px] h-[300px] bg-[#f37121]/15 blur-[110px] rounded-full"
-//       />
+// Commented-out earlier section markup: dark background with animated orange glow blobs.
 
 //       <motion.div
 //         variants={fadeUp}
@@ -135,7 +123,7 @@ const NewsSection: React.FC = () => {
 
   return (
     <section className="relative bg-gray-900 text-white py-24 px-6 overflow-hidden">
-      {/* ✨ اللمسة البرتقالية الخلفية */}
+      {/* Soft orange background glow. */}
       <div className="absolute top-[-100px] end-[-120px] w-[350px] h-[350px] bg-[#f37121]/20 blur-[120px] rounded-full" />
       <div className="absolute bottom-[-120px] start-[-120px] w-[300px] h-[300px] bg-[#f37121]/15 blur-[110px] rounded-full" />
 

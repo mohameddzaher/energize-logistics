@@ -1,38 +1,15 @@
 /**
- * عدّادُ حالات حقول الموارد البشريّة — يُحسَب في القاعدة لا في العقدة.
- *
- * ── لماذا ─────────────────────────────────────────────────────────────────
- * لوحةُ الموارد البشريّة كانت تقرأ الموظّفين كلَّهم بحقولهم كلِّها ثمّ تعدّ
- * بالجافاسكربت. وقِيس ذلك على الإنتاج فبان أنّ العنقودَ يسلّم نحوَ **٩٥
- * كيلوبايت في الثانية** — رقمٌ ثابتٌ يتناسب معه كلُّ شيء تناسبًا مستقيمًا:
- *
- *     ٢٥ ك.ب →  ٢٥٠ مللي        ٢٠٣ ك.ب → ٢١٤٤ مللي
- *     ٦٧ ك.ب →  ٦٨٥ مللي        ١٫٠٧ م.ب → ١١٤٠٣ مللي
- *
- * فأربعُمئةٍ وواحدٌ وأربعون موظّفًا — ميجابايتٌ واحد — أحدَ عشرَ ثانيةً في كلّ
- * فتحةٍ للشريط. وليس ذلك بطءَ حسابٍ ولا كثرةَ بيانات: العدُّ نفسُه (`count`)
- * عشرُ مِلّي ثوانٍ. إنّما هو نقلُ المستندات.
- *
- * فالعدُّ يجري في القاعدة ويُنقَل الجوابُ وحدَه — بضعةُ كيلوبايتات.
- *
- * ── وحالةُ الحقل قاعدةٌ واحدة ─────────────────────────────────────────────
- * تُكتب هنا مرّةً بلغة التجميع، وهي نفسُها المكتوبةُ في `statusOf`:
- *
- *   • «مطلوب» ومملوءٌ فعلًا  → مملوء (الطلبُ قُضِي)
- *   • حالةٌ مكتوبة           → هي
- *   • لا حالة                → مملوءٌ أو لا يوجد
+ * HR field-status counters, computed in the database instead of Node.
+ * Loading every employee document to count in JS was dominated by transfer cost (about 95 KB/s from the cluster); counting in the database transfers only the small result.
+ * Status rule, same as `statusOf`: 'required' and filled is filled; an explicit status is kept; no status is filled or missing.
  */
 const H = require('../config/hrFields');
 
-/** تعبيرُ «قيمةِ» الحقل — يوافق `H.valueOf` بما فيه اختلافُ عمود الهوية. */
+/** Expression for a field's value; matches `H.valueOf`, including the two identity columns. */
 function valueExpr(key) {
   if (key === 'iqamaNumber') {
-    // الهويةُ عمودان: السعوديُّ رقمُه في `nationalId`، وغيرُه في `iqamaNumber`.
-    //
-    // و«أوّلُ غيرِ الفارغ» لا `$ifNull`: الأخيرةُ ترتدّ عن null والغياب فقط،
-    // وجافاسكربت `||` ترتدّ عن النصّ الفارغ أيضًا. وموظّفان لهما `nationalId`
-    // نصٌّ فارغٌ ورقمٌ في `iqamaNumber` — فيقرؤهما الأصلُ رقمًا وتقرؤهما
-    // `$ifNull` فراغًا.
+    // Identity is two columns: Saudis in `nationalId`, others in `iqamaNumber`.
+    // Uses first non-empty rather than `$ifNull`: `$ifNull` falls back only on null/missing, while JS `||` also falls back on an empty string. Employees with an empty `nationalId` and a number in `iqamaNumber` must read as having a number.
     const first = (a, b2) => ({
       $let: {
         vars: { x: { $ifNull: [a, ''] }, y: { $ifNull: [b2, ''] } },
@@ -48,15 +25,15 @@ function valueExpr(key) {
   return { $ifNull: [`$${key}`, ''] };
 }
 
-/** أمملوءٌ هو؟ — الفارغُ نصًّا والصفرُ الفارغُ وnull سواء. */
+/** Is it filled? Empty string, empty zero and null are all empty. */
 function filledExpr(key) {
   const v = valueExpr(key);
-  // والحقلُ الرقميّ صفرُه فراغ — قيمةُ المخطَّط الافتراضيّة (راجع numberField في config/hrFields).
+  // A numeric field's zero counts as empty because it is the schema default (see numberField in config/hrFields).
   const empties = H.getField(key)?.type === 'number' ? ['', null, [], 0] : ['', null, []];
   return { $not: [{ $in: [v, empties] }] };
 }
 
-/** حالةُ الحقل كتعبيرِ تجميع. */
+/** Field status as an aggregation expression. */
 function statusExpr(key) {
   const st = { $ifNull: [`$fieldStatus.${H.statusKeyOf(key)}`, ''] };
   const filled = filledExpr(key);
@@ -73,14 +50,14 @@ function statusExpr(key) {
 }
 
 /**
- * عددُ كلّ حالةٍ لكلّ حقل، لمجموعةِ الموظّفين المطابقة.
- * يُعيد: { [fieldKey]: { required, not_required, filled, none, … } }
+ * Count of each status per field for the matching employees.
+ * Returns: { [fieldKey]: { required, not_required, filled, none, ... } }
  */
 async function statusCounts(Employee, match, keys) {
   const project = { _id: 0 };
   for (const k of keys) project[k.replace(/\./g, '__')] = statusExpr(k);
 
-  // مجموعةٌ واحدةٌ تجمع الكلَّ: لكلّ حقلٍ عدّادٌ لكلّ حالة.
+  // One group computes every counter: one per field per status.
   const group = { _id: null };
   const STATES = ['required', 'not_required', 'filled', 'none', 'cash_payroll', 'inactive', 'unparseable'];
   for (const k of keys) {
@@ -105,12 +82,7 @@ async function statusCounts(Employee, match, keys) {
   return out;
 }
 
-/**
- * توزيعُ قيمِ الحقول القابلة للتجميع — في القاعدة كذلك.
- *
- * البطاقةُ تعرض عشرين قيمةً وعددَ كلٍّ منها. ونقلُ القيم كلِّها لأربعمئةِ
- * موظّفٍ لحسابها في العقدة هو الثمنُ نفسُه الذي دُفع في العدّ.
- */
+/** Value distribution of groupable fields, also in the database; the card shows 20 values with counts, and shipping every value to Node would repeat the transfer cost. */
 async function valueDistributions(Employee, match, keys, limit = 25) {
   if (!keys.length) return {};
   const facet = {};
@@ -146,7 +118,7 @@ async function valueDistributions(Employee, match, keys, limit = 25) {
   return out;
 }
 
-/** عدُّ صفوفٍ بشرطٍ منطقيّ — للمجاميع العامّة (خارج المملكة، فريلانسر…). */
+/** Row count under a logical condition, for general totals (outside the kingdom, freelancer, etc.). */
 async function boolCounts(Employee, match, exprs) {
   const group = { _id: null, total: { $sum: 1 } };
   for (const [name, expr] of Object.entries(exprs)) {
@@ -159,10 +131,8 @@ async function boolCounts(Employee, match, exprs) {
 }
 
 /**
- * حالاتُ انتهاء مستنداتِ المجموعات — في القاعدة.
- *
- * تُطابق `H.stateOf` حرفًا بحرف: «غير مطلوب» أو «لا يوجد» ⇒ لا ينطبق، ثمّ
- * بلا تاريخٍ ⇒ ناقص، ثمّ سالبُ الأيّام ⇒ منتهٍ، ثمّ العتبتان.
+ * Expiry states of document groups, in the database.
+ * Mirrors `H.stateOf` exactly: not-required or none means not applicable, then no date means missing, then negative days means expired, then the two thresholds.
  */
 async function docStateCounts(Employee, match, groups, alert = {}) {
   const crit = Number(alert.criticalDays ?? 30);
@@ -173,12 +143,8 @@ async function docStateCounts(Employee, match, groups, alert = {}) {
   const project = { _id: 0 };
   for (const g of docs) {
     const st = statusExpr(g.expiryField);
-    // `stateOf` تتلقّى '' حين تكون الحالةُ «مملوء» — فلا تُقرأ إلّا الحالتان.
-    // ── والتواريخُ هنا نصوصٌ لا تواريخ ────────────────────────────────
-    // سبعةٌ من حقول الانتهاء الثمانية مخزَّنةٌ نصًّا («YYYY-MM-DD») لا كائنَ
-    // تاريخ — هكذا عُرِّفت. و`$dateDiff` لا تقبل نصًّا، فيُحوَّل بـ`$convert`
-    // مع `onError: null` كي لا يُسقِط نصٌّ واحدٌ رديءُ الشكل الاستعلامَ كلَّه:
-    // ما لا يُقرأ تاريخًا يُعَدُّ «ناقصًا»، وهو ما تفعله `daysLeft` نفسُها.
+    // `stateOf` receives '' when the status is filled, so only the two states are read.
+    // Seven of the eight expiry fields are stored as `YYYY-MM-DD` strings, not Date objects. `$dateDiff` rejects strings, so they go through `$convert` with `onError: null` so one malformed value cannot fail the whole query; an unreadable date counts as missing, as `daysLeft` does.
     const asDate = { $convert: { input: `$${g.expiryField}`, to: 'date', onError: null, onNull: null } };
     const days = {
       $let: {
@@ -215,7 +181,7 @@ async function docStateCounts(Employee, match, groups, alert = {}) {
     for (const st of STATES) {
       group[`${g.key}__${st}`] = { $sum: { $cond: [{ $eq: [`$${g.key}`, st] }, 1, 0] } };
     }
-    // أقربُ انتهاءٍ لم يمضِ — الرقمُ الذي تعرضه البطاقة.
+    // Nearest expiry not yet passed: the number the card shows.
     group[`${g.key}__nearest`] = { $min: `$${g.key}__days` };
   }
 

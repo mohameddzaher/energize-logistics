@@ -1,19 +1,9 @@
 'use client';
 /**
- * شريطُ الفلترة في سير عمل التشغيل — على طريقة شريط الموارد البشرية (HrQuickFilters).
- *
- * صاحبُ الشركة (٢٠٢٦/١٠/٢١): بطاقاتُ الحالات الإحدى عشرة فوق الجدول تُزال،
- * ومكانَها شريطٌ ظاهرٌ يفلتر بأيّ عمود: العميل، الفرع، من/إلى، نوع الدفع، الحالة،
- * السائق، السيارة، الفاتورة… وكلُّ قيمةٍ بجانبها عددُها.
- *
- * ── ولا فلترَ خاصًّا به ──────────────────────────────────────────────────────
- * يكتب في فلاتر الأعمدة نفسِها (`cf_<العمود>`) التي يقرؤها الجدولُ والبطاقاتُ
- * والتصديرُ والخادم — فاختيارُ «جدة» هنا يُرى على رأس عمود «من» في الجدول، ومسحُه
- * من هناك يمسحه هنا. وقيمُ القائمة وأعدادُها من `/api/workflows/filters` التي تعدّ
- * بكلّ الفلاتر **عدا** فلتر العمود نفسِه — فيرى مَن اختار عميلًا كم له في كلّ فرع.
- *
- * والقائمةُ تُجلب حين تُفتح لا مع كلّ رسمة: ثلاثةَ عشرَ تجميعًا على تسعةٍ وثلاثين
- * ألفَ كشفٍ في كلّ تغييرِ فلترٍ ثمنٌ لا يُدفع لقوائمَ لم يفتحها أحد.
+ * Filter bar in the operations workflow, modeled on the HR bar (HrQuickFilters).
+ * It replaces the eleven status cards above the table with a visible bar filtering by any column: customer, branch, from/to, payment type, status, driver, vehicle, invoice... each value with its count.
+ * It has no filter of its own: it writes to the same column filters (`cf_<column>`) read by the table, cards, export and server, so picking a branch here shows in the column header and clearing there clears here. Values and counts come from `/api/workflows/filters`, counting with all filters except the column's own.
+ * The list is fetched on open, not on every render: thirteen aggregations over about 39,000 manifests per filter change are too costly for unopened lists.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ChevronDown, Search, X, Check, Loader2, SlidersHorizontal } from 'lucide-react';
@@ -25,12 +15,12 @@ export type FilterBarField = { key: string; ar: string; en: string };
 
 export default function WorkflowFilterBar({ fields, value, onChange, params, format, ar }: {
   fields: FilterBarField[];
-  /** فلاتر الأعمدة الحاليّة — العمود ← القيم المختارة (الخام). */
+  /** Current column filters: column to selected raw values. */
   value: Record<string, Set<string>>;
   onChange: (field: string, next: Set<string>) => void;
-  /** شروطُ الجدول كلُّها كما يرسلها (البحث والمدى والفلاتر) — تُحسب بها الأعداد. */
+  /** All table conditions as sent (search, range, filters); counts are computed with them. */
   params: () => URLSearchParams;
-  /** عرضُ القيمة (الحالاتُ مترجمة، والتواريخُ بصيغتها) — والفلترةُ على الخام. */
+  /** Value display (statuses translated, dates formatted); filtering uses the raw value. */
   format: (field: string) => ((v: any) => string) | undefined;
   ar: boolean;
 }) {
@@ -41,15 +31,12 @@ export default function WorkflowFilterBar({ fields, value, onChange, params, for
   const [truncated, setTruncated] = useState(false);
   const [busy, setBusy] = useState(false);
   const box = useRef<HTMLDivElement>(null);
-  // ── والقائمةُ تُفتح نحو المكان المتّسع ─────────────────────────────────────
-  // كانت تُفتح دائمًا من بداية الزرّ، فقائمةُ آخر فلترٍ في الصفّ تخرج عن حافّة
-  // الشاشة وتوسّع الصفحةَ فتُسحَب يمينًا ويسارًا. فتُقاس المسافةُ عند الفتح.
+  // The list opens toward the roomier side: it used to open from the button start, so the last filter's list overflowed the screen edge and widened the page. Distance is measured on open.
   const [alignEnd, setAlignEnd] = useState(false);
   const guard = useLatestRequest();
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // القيمُ تُحسب في الخادم بكلّ الفلاتر عدا فلتر العمود نفسِه، والبحثُ داخل
-  // القائمة يجري هناك أيضًا (الخادمُ لا يُرجع إلّا أكثرَ خمسمئة قيمة).
+  // Values are computed on the server with all filters except the column's own; search inside the list also runs there (the server returns at most 500 values).
   const load = useCallback(async (field: string, query: string) => {
     const mine = guard.begin();
     setBusy(true);
@@ -69,7 +56,7 @@ export default function WorkflowFilterBar({ fields, value, onChange, params, for
     }
   }, [params, guard]);
 
-  // تتغيّر الفلاترُ والقائمةُ مفتوحة → تُعاد أعدادُها، فلا تبقى أرقامُ ما قبل الاختيار.
+  // Filters change while the list is open: counts are refetched so pre-selection numbers do not linger.
   useEffect(() => {
     if (!open) return;
     load(open, q);
@@ -78,8 +65,7 @@ export default function WorkflowFilterBar({ fields, value, onChange, params, for
 
   useEffect(() => {
     if (!open) return undefined;
-    // تُغلَق بأيّ ضغطةٍ خارجَ الفلتر المفتوح نفسِه — لا خارجَ الشريط كلِّه: كان الضغطُ
-    // في فراغ الشريط أو على فلترٍ آخر يُبقيها مفتوحة (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢).
+    // Closes on any click outside the open filter itself, not outside the whole bar: a click in the bar's blank space or on another filter used to leave it open.
     const close = (e: Event) => {
       const el = (e.target as HTMLElement | null)?.closest?.('[data-wf-field]');
       if (!el || el.getAttribute('data-wf-field') !== open) setOpen('');

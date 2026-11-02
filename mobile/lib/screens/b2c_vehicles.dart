@@ -9,25 +9,14 @@ import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import '../ui/search_field.dart';
 
-/// مركباتُ النقل الخفيف — مركباتُ مشاريع القسم (كيتا، هنقرستيشن، أمازون، نينجا).
-///
-/// نافذةٌ على سجلّ المركبات نفسِه لا نسخةٌ منه: ما يُعدَّل هنا يُكتب في قسم
-/// المركبات ويظهر فيه في الحال، وما يُعدَّل هناك يظهر هنا — الشاشتان تسمعان
-/// الحدثَ نفسَه. وما يُعدَّل من هنا ما يديره القسم: المشروعُ والمدينةُ وحالةُ
-/// التشغيل واللونُ والملاحظاتُ وتواريخُ المستندات، والقائدُ الفعليّ والتفويض.
-/// واللوحةُ يعدّلها مَن يعدّل سجلَّ المركبات وحدَه.
-///
-/// والقائدُ الفعليّ = راكبُ المركبة من «موظفي النقل الخفيف» (صاحبُ الشركة،
-/// ٢٠٢٦/١٠/٢٢): يُختار من موظّفي القسم فيُربط بها، ولا يُكتب اسمٌ بيد. والمفوَّضُ
-/// يُختار كذلك. مطابقةٌ لشاشة الموقع `/system/b2c/vehicles`.
+/// Light-transport vehicles: vehicles of the section's projects (Keeta, HungerStation, Amazon, Ninja). A window onto the vehicle register itself, not a copy: edits here are written to the vehicles section and show there at once, and edits there show here, since both screens hear the same event. What can be edited here is what the section manages: project, city, operating state, color, notes, document dates, the actual driver and the authorization. The plate is edited only by those who edit the vehicle register. The actual driver is the vehicle's rider from "light-transport employees": chosen from the section's employees and linked, never typed by hand. The authorized person is chosen the same way. Matches the web screen `/system/b2c/vehicles`.
 
 String _s(dynamic v) => (v ?? '').toString();
 String _dmy(dynamic v) { final s = _s(v); return s.length >= 10 ? s.substring(0, 10).split('-').reversed.join('/') : '—'; }
 String _ymd(DateTime d) => '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 String _day(dynamic v) { final s = _s(v); return s.length >= 10 ? s.substring(0, 10) : ''; }
 
-/// `query` يفتحها مفلترةً — أرقامُ مركبات لوحة القسم تفتح مركباتِها بأعيانها
-/// (فلاترُ اللوحة + `vstate`/`auth`)، والخادمُ يعدّ ويفتح بمعنىً واحد (utils/b2cBoard).
+/// `query` opens it pre-filtered: the section dashboard's vehicle numbers open exactly those vehicles (dashboard filters plus `vstate`/`auth`), and the server counts and opens with one meaning (utils/b2cBoard).
 class B2cVehiclesScreen extends StatefulWidget {
   final Map<String, String> query;
   final String? title;
@@ -40,7 +29,7 @@ class _B2cVehiclesScreenState extends State<B2cVehiclesScreen> {
   Map<String, dynamic>? _d;
   String? _error;
   String _q = '';
-  final _searchCtl = TextEditingController(); // النصُّ يبقى مطابقًا لـ_q بعد التحديث الحيّ
+  final _searchCtl = TextEditingController(); // Text stays equal to _q after a live refresh.
   // '' | noAuthorization | expired | expiringSoon | noDriver | hold
   String _state = '';
 
@@ -48,7 +37,7 @@ class _B2cVehiclesScreenState extends State<B2cVehiclesScreen> {
   void initState() {
     super.initState();
     _load();
-    // قسمُ المركبات يبثّ `vreg:updated` (ومعه `lt:updated`) عند كلّ تعديلٍ هناك.
+    // The vehicles section broadcasts `vreg:updated` (with `lt:updated`) on every edit there.
     Live.instance.on('vreg:updated', _onLive);
     Live.instance.on('lt:updated', _onLive);
   }
@@ -63,7 +52,7 @@ class _B2cVehiclesScreenState extends State<B2cVehiclesScreen> {
     super.dispose();
   }
 
-  // الأحدثُ يُكتب وحدَه — ردٌّ أقدمُ (حدثٌ حيٌّ سبق) لا يكتب فوقه.
+  // Only the latest writes; an older reply (after a live event that came first) does not overwrite it.
   int _seq = 0;
   Future<void> _load() async {
     final mine = ++_seq;
@@ -87,7 +76,7 @@ class _B2cVehiclesScreenState extends State<B2cVehiclesScreen> {
       if (_state == 'noAuthorization' && (_s(r['authorizedName']).isNotEmpty || _s(r['authNumber']).isNotEmpty)) return false;
       if (_state == 'expired' && !(left != null && left < 0)) return false;
       if (_state == 'expiringSoon' && !(left != null && left >= 0 && left <= 30)) return false;
-      // بحالة المركبة من الخادم — المعنى نفسُه الذي تعدّه اللوحة.
+      // Vehicle state from the server, the same meaning the dashboard counts.
       if (_state == 'noDriver' && _s(r['vstate']) != 'idle') return false;
       if (_state == 'hold' && _s(r['vstate']) != 'hold') return false;
       return k.isEmpty || [
@@ -135,7 +124,7 @@ class _B2cVehiclesScreenState extends State<B2cVehiclesScreen> {
       ('hold', tr('بانتظار التسليم', 'Awaiting hand-over'), sum['hold'], T.warn),
     ];
     return ListView(padding: const EdgeInsets.all(14), keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag, children: [
-      // ── الملخّص: بطاقةٌ تُضغَط فتُفلتَر القائمة، وتُضغَط ثانيةً فتعود ───────
+      // Summary: a card filters the list when tapped and clears when tapped again
       SizedBox(
         height: 74,
         child: ListView.separated(
@@ -201,8 +190,7 @@ class _B2cVehiclesScreenState extends State<B2cVehiclesScreen> {
             ])),
           ]),
         );
-    // القائدُ الفعليّ = راكبُها من سجلّ القسم؛ وصاحبُ «بانتظار التسليم» بعلامته،
-    // ونصٌّ قديمٌ غيرُ مربوطٍ يُعرَض باهتًا لا قائدًا.
+    // The actual driver is its rider from the section register; one awaiting handover shows with its mark, and an old unlinked text is shown dimmed, not as a driver.
     final hold = r['driverHold'] == true;
     final unlinked = _s(r['driverUnlinked']);
     return AppCard(
@@ -246,7 +234,7 @@ class _B2cVehiclesScreenState extends State<B2cVehiclesScreen> {
   }
 }
 
-/// تعديلُ ما يديره القسمُ من مركبةٍ واحدة — ويُرسَل ما تغيّر وحدَه.
+/// Edit what the section manages on one vehicle; only what changed is sent.
 class _VehicleSheet extends StatefulWidget {
   final Map<String, dynamic> row;
   final bool canEditPlate;
@@ -262,7 +250,7 @@ class _VehicleSheetState extends State<_VehicleSheet> {
     for (final k in _textKeys) k: TextEditingController(text: _s(widget.row[k])),
   };
   late final Map<String, String> _dates = {for (final k in _dateKeys) k: _day(widget.row[k])};
-  // الشخصان يُختاران: `_driverTouched` = مُسّ، و`_driver` = المختار (أو null = «بلا»).
+  // The two people are chosen: `_driverTouched` = touched, and `_driver` = the selection (or null = none).
   bool _driverTouched = false;
   Map<String, dynamic>? _driver;
   bool _holderTouched = false;
@@ -286,7 +274,7 @@ class _VehicleSheetState extends State<_VehicleSheet> {
     if (d != null) setState(() => _dates[key] = _ymd(d));
   }
 
-  /// منتقي الموظّفين — نفسُ قائمة الموقع (`/api/light-transport/people`)، و«بلا» يُفرِّغ.
+  /// Employee picker: the same list as the web (`/api/light-transport/people`); "none" clears.
   Future<void> _pickPerson({required bool driver}) async {
     final choice = await showModalBottomSheet<String>(
       context: context,
@@ -312,7 +300,7 @@ class _VehicleSheetState extends State<_VehicleSheet> {
   Future<void> _save() async {
     final days = _days;
     if (days != null && days < 0) return _say(tr('نهايةُ التفويض قبل بدايته', 'End is before start'));
-    // يُرسَل ما تغيّر وحدَه: خانةٌ لم تُمَسّ لا تُكتب فوق تعديلِ زميلٍ في قسم المركبات.
+    // Only what changed is sent: an untouched field must not overwrite a colleague's edit in the vehicles section.
     final body = <String, dynamic>{
       for (final k in _textKeys)
         if ((k != 'plateNumber' || widget.canEditPlate) && _c[k]!.text.trim() != _s(widget.row[k]).trim()) k: _c[k]!.text.trim(),
@@ -348,7 +336,7 @@ class _VehicleSheetState extends State<_VehicleSheet> {
       child: InputDecorator(
         decoration: InputDecoration(
           labelText: label,
-          // التاريخُ الفارغُ يُرسَل فارغًا فيُمحى من السجلّ.
+          // An empty date is sent empty and is cleared from the record.
           suffixIcon: value.isEmpty
               ? const Icon(Icons.event, size: 18)
               : IconButton(icon: const Icon(Icons.close, size: 18), onPressed: () => setState(() => _dates[key] = '')),
@@ -412,7 +400,7 @@ class _VehicleSheetState extends State<_VehicleSheet> {
           ),
           gap,
           if (widget.canEditPlate) ...[_text('plateNumber', 'رقم اللوحة', 'Plate'), gap],
-          // قوائمُ قسم المركبات: تُختار القيمةُ منها، والمكتوبةُ تُقبَل ولا تُضاف إليها.
+          // Vehicles-section lists: the value is chosen from them; a typed value is accepted but not added to them.
           Row(children: [
             Expanded(child: LookupField(type: 'vehicle_department', controller: _c['project']!, label: tr('المشروع', 'Project'), noAdd: true)),
             const SizedBox(width: 10),

@@ -1,11 +1,6 @@
 'use client';
-// إنشاء شحنة — ONE page instead of the external system's four-step wizard.
-//
-// Reading order mirrors how the team actually books a load: who is it for →
-// which truck carries it → where it goes → when and for how much → how it is
-// paid. Picking the customer autofills their defaults and route price; picking
-// the truck autofills its regular driver; a truck we have never seen registers
-// itself (and its 3PL supplier) as a side effect.
+// Create shipment: one page instead of the external system's four-step wizard.
+// Order mirrors how a load is booked: customer, truck, route, when and how much, payment. Picking the customer autofills defaults and route price; picking the truck autofills its regular driver; an unknown truck registers itself (and its 3PL supplier) as a side effect.
 import { useState, useEffect, useMemo, useCallback, useRef, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
@@ -48,9 +43,7 @@ const GROUP_ICONS: Record<FormField['group'], any> = {
   pickup_delivery: MapPin, shipment: Package, pricing_time: Clock3, payment: Wallet,
 };
 
-// ── مواعيدُ الشحنة يومٌ لا لحظة ───────────────────────────────────────────────
-// كانت الثلاثةُ تُسأل بالساعة والدقيقة، ولا أحدَ يعرف أنّ الاستلام ٧:٤٢ — فمن
-// سُئل كتب ساعةً ليمضي، فصار في القاعدة رقمٌ دقيقُ الشكل كاذبُ المعنى.
+// Shipment dates are a day, not a moment. Asking for hour and minute produced precise-looking but false values, since nobody knows the pickup was at 7:42 and users typed any hour to proceed.
 const toDateInput = (v?: string | null) => {
   if (!v) return '';
   const d = new Date(v);
@@ -67,9 +60,7 @@ function CreateShipmentInner() {
   const router = useRouter();
   const params = useSearchParams();
   const editId = params?.get('id') || null;
-  // ── الفلوسُ بعد الحفظ لمن يسمح له الخادم (صاحبُ الشركة، ٢٠٢٦/١٠/٢٨) ───────
-  // عند الإنشاء يكتبها مَن ينشئ الشحنة؛ وفي التعديل تُقفَل لغير مديري النظام
-  // ومدير التشغيل. والقائمةُ من الخادم (MONEY_EDIT_ROLES) — لا تُكرَّر هنا.
+  // Money after save is writable only for roles the server allows. On create the creator writes it; on edit it is locked except for system admins and the operations manager. The role list comes from the server (MONEY_EDIT_ROLES), not duplicated here.
   const [moneyEdit, setMoneyEdit] = useState<{ fields: string[]; canEdit: boolean }>({ fields: [], canEdit: true });
   useEffect(() => {
     api.get<{ fields: string[]; canEdit: boolean }>('/api/shipment-orders/money-editors')
@@ -80,26 +71,19 @@ function CreateShipmentInner() {
   const { notify } = useDialog();
 
   const [fields, setFields] = useState<FormField[]>([]);
-  // خيارٌ يُضاف من القائمة نفسِها — راجع saveOption.
+  // An option added from the list itself; see saveOption.
   const [addingFor, setAddingFor] = useState('');
   const [newOption, setNewOption] = useState('');
   const [optionBusy, setOptionBusy] = useState(false);
   const [customers, setCustomers] = useState<OrderCustomer[]>([]);
-  // ── والقائمتان تُبحَثان عند الخادم ───────────────────────────────────────
-  // كانتا تُحمَّلان بحدٍّ أعمى — ألفُ شاحنةٍ من ثلاثةَ عشرَ ألفًا، وخمسُمئةِ
-  // مورّدٍ من ثلاثةِ آلافٍ — ثمّ يُبحَث في الواصل. فمن اختار مورّدًا لم تكن
-  // إحدى شاحناته في الألف رأى قائمةً فارغةً ولا يعرف السبب، ومن بحث عن
-  // مورّدٍ اسمُه بعد الخمسمئةِ قيل له «لا نتائج» وهو مسجّل.
+  // Both lists are searched on the server. They used to load with a blind cap (1000 of 13000 trucks, 500 of 3000 suppliers) and then search the received rows, so a supplier whose trucks fell outside the cap saw an empty list, and a supplier past the cap showed no results though registered.
   const [vehicles, setVehicles] = useState<OrderVehicle[]>([]);
   const [suppliers, setSuppliers] = useState<OrderSupplier[]>([]);
   const [supTotal, setSupTotal] = useState(0);
   const [vehTotal, setVehTotal] = useState(0);
   const [supBusy, setSupBusy] = useState(false);
   const [vehBusy, setVehBusy] = useState(false);
-  // ── وسوّاقُ المورّد يُختارون لا يُكتَبون ──────────────────────────────────
-  // كان السائقُ خانةً حرّة: يُكتب الاسمُ بهجاءٍ مرّةً وبآخر أخرى، ويُكتب رقمُه
-  // ناقصًا، ولا يُعرَف أمعه بطاقةُ تشغيلٍ سارية. وسجلُّ السوّاق فيه سبعةَ عشرَ
-  // ألفًا لكلٍّ ملفُّه — فيُختار منه، والكتابةُ تبقى لمن ليس فيه.
+  // A supplier's drivers are picked, not typed. A free-text driver gave inconsistent spellings, incomplete ID numbers and no way to know about a valid operating card. The driver register has about 17000 files, so choose from it and type only for those not in it.
   const [drivers, setDrivers] = useState<OrderDriver[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -108,11 +92,9 @@ function CreateShipmentInner() {
   const [showErrors, setShowErrors] = useState(false);
 
   const statusVocab = useOrderStatuses();
-  // ── والاستلامُ والبداية اليومَ حتى يُقال غيرُ ذلك ────────────────────────────
-  // الشحنةُ تُسجَّل ساعةَ تُحجَز، فيومُها هو اليوم في كلّ مرّةٍ تقريبًا. وخانةٌ
-  // فارغةٌ مطلوبةٌ تُوقف الحفظ لتُملأ بما كان يمكن أن يُملأ من نفسه.
+  // Pickup and start default to today. A shipment is registered when booked, so its day is almost always today, and a required empty field would block saving for something that could fill itself.
   const [form, setForm] = useState<Record<string, any>>({ status: 'requesting', pickupTime: today(), startTime: today() });
-  // «السيلز التشغيلي»: مَن جاء بالحمولة — من فريق المبيعات أو العمليّات، بالبحث.
+  // Operational sales: who brought the load, from the sales or operations team, via search.
   const [salesRep, setSalesRep] = useState('');
   const [salesReps, setSalesReps] = useState<{ value: string; label: string; roleAr?: string }[]>([]);
   useEffect(() => { api.get<{ options: { value: string; label: string; roleAr?: string }[] }>('/api/shipment-orders/sales-reps').then((d) => setSalesReps(d.options || [])).catch(() => {}); }, []);
@@ -121,14 +103,10 @@ function CreateShipmentInner() {
   const [newCustomer, setNewCustomer] = useState({ name: '', phone: '' });
   const [customerBusy, setCustomerBusy] = useState(false);
 
-  // ── المورّدُ أوّلًا، ثمّ شاحنتُه ──────────────────────────────────────────────
-  // كانت السيّارةُ تُختار من كلّ شاحنات المورّدين معًا — مئاتُ لوحاتٍ في قائمةٍ
-  // واحدة — ثمّ يُسأل عن مالكها في لوحةٍ فيها زرّان ومربّعا نصّ. والترتيبُ في
-  // الرأس عكسُه: يُعرف المورّدُ أوّلًا («وليد هيسمّي شاحنة») ثمّ أيُّ شاحنةٍ من
-  // شاحناته. فصار سؤالين متتاليين، والثاني مقصورٌ على جواب الأوّل.
+  // Supplier first, then its truck. Choosing from all suppliers' trucks gave hundreds of plates in one list, then asked about the owner in a panel with two buttons and two text boxes. The real order is supplier first, then which of its trucks; the second question is limited to the first answer.
   const [supplierId, setSupplierId] = useState('');
   const [vehicleId, setVehicleId] = useState('');
-  // لوحةٌ لم تمرّ بنا: تُكتب هنا وتُسجَّل عند الحفظ على المورّد المختار.
+  // A plate we have not seen: typed here and registered on the chosen supplier at save.
   const [newPlate, setNewPlate] = useState('');
   const [addingSupplier, setAddingSupplier] = useState(false);
   const [newSupplier, setNewSupplier] = useState({ name: '', phone: '', type: 'company' as 'company' | 'freelancer' });
@@ -163,8 +141,7 @@ function CreateShipmentInner() {
             setSalesRep(o.salesRep ? String(typeof o.salesRep === 'object' ? o.salesRep._id : o.salesRep) : '');
             setVehicleId(typeof o.vehicle === 'object' ? o.vehicle?._id : (o.vehicle || ''));
             setSupplierId(typeof o.supplier === 'object' ? (o.supplier?._id || '') : (o.supplier || ''));
-            // بذرُ المختارِ في قائمته: القائمةُ صفحةٌ من سجلٍّ كبير، فما لم
-            // يكن فيها ظهرت خانتُه فارغةً وهي مختارة.
+            // Seed the selected item into its list: the list is one page of a large register, so an item outside it would show an empty field while selected.
             if (o.vehicle && typeof o.vehicle === 'object') {
               setVehicles((p) => (p.some((x) => x._id === o.vehicle._id) ? p : [o.vehicle, ...p]));
             }
@@ -184,14 +161,8 @@ function CreateShipmentInner() {
   }, [editId]);
 
   /**
-   * ── بحثُ المورّدين وشاحناتُهم ─────────────────────────────────────────────
-   *
-   * كلُّ طلبٍ محروسٌ بـ`useLatestRequest`: الكتابةُ تُطلق طلبًا لكلّ سكتة،
-   * والشبكةُ لا تحفظ الترتيب — فردُّ «مح» الواصلُ متأخّرًا يمحو نتائجَ
-   * «محمد» ويُقال لا نتائج.
-   *
-   * وشاحناتُ المورّد تُطلَب بمعرّفه لا تُصفَّى من قائمةٍ محمَّلة: هذا هو
-   * موضعُ العطب الأصليّ — «بضغط على المورّد يطلع مفيش حاجة».
+   * Supplier and truck search. Every request is guarded by `useLatestRequest`: typing fires a request per pause and the network does not keep order, so a late reply for a partial query would wipe the results of the full one and show no results.
+   * A supplier's trucks are requested by its id, not filtered from a loaded list; that was the original bug where picking a supplier showed nothing.
    */
   const supGuard = useLatestRequest();
   const vehGuard = useLatestRequest();
@@ -207,7 +178,7 @@ function CreateShipmentInner() {
       if (!supGuard.isCurrent(mine)) return;
       setSuppliers(d.suppliers || []);
       setSupTotal(d.total || 0);
-    } catch { /* الخانةُ تبقى على ما كانت */ }
+    } catch { /* The field keeps its previous value. */ }
     finally { if (supGuard.isCurrent(mine)) setSupBusy(false); }
   }, [supGuard]);
 
@@ -220,36 +191,30 @@ function CreateShipmentInner() {
   useSocket('customers:changed', reloadCustomers);
   useSocket('shipmentOrders:fleet', useCallback(() => { searchSuppliers(supQuery.current); }, [searchSuppliers]));
 
-  // شاحناتُ المورّد المختار، أو بحثٌ في شاحنات الموردين كلِّها حين لا مورّد.
-  // و`ownership=supplier` تُخرج أسطولَنا من القائمة: أسطولُنا يُدار في «إدارة
-  // الأسطول» ولا يُسنَد إليه طلبُ شحنةٍ من هنا.
+  // The selected supplier's trucks, or a search across all suppliers' trucks when none is chosen. `ownership=supplier` excludes our fleet, which is managed in fleet management and cannot be assigned a shipment order from here.
   const searchVehicles = useCallback(async (q: string, sup: string) => {
     const mine = vehGuard.begin();
     setVehBusy(true);
     try {
       const qs = new URLSearchParams({ limit: '80' });
-      // بلا مورّدٍ: كلُّ ما ليس من أسطولنا — شاحناتُ الموردين ومَن لم يُعرَف
-      // مالكُه. وقصرُها على المعروفِ مالكُه يحجب أكثرَ السجلّ عن الاختيار.
-      // Search covers every truck, ours included; the list narrows to the supplier otherwise.
+      // With no supplier: everything not in our fleet, including trucks with unknown owner; restricting to known owners would hide most of the register.
+      // Search covers every truck, ours included; otherwise the list narrows to the supplier.
       if (sup && !q) qs.set('supplier', sup);
       if (q) qs.set('q', q);
       const d = await api.get<{ vehicles: OrderVehicle[]; total: number }>(`/api/shipment-orders/vehicles?${qs}`);
       if (!vehGuard.isCurrent(mine)) return;
       setVehicles(d.vehicles || []);
       setVehTotal(d.total || 0);
-    } catch { /* كما هي */ }
+    } catch { /* As is. */ }
     finally { if (vehGuard.isCurrent(mine)) setVehBusy(false); }
   }, [vehGuard]);
 
-  // تغيُّرُ المورّد يُعيد قائمةَ شاحناته فورًا — لا انتظارَ فتحِ القائمة.
+  // A supplier change reloads its truck list immediately, without waiting for the list to be opened.
   useEffect(() => { searchVehicles('', supplierId); }, [supplierId, searchVehicles]);
 
   /**
-   * سوّاقُ الشاحنة المختارة، فإن لم يُسجَّل لها سائقٌ فسوّاقُ مورّدها.
-   *
-   * والترتيبُ مقصود: السائقُ المسجَّل على الشاحنة هو سائقُها المعتاد، وسوّاقُ
-   * المورّد الآخرون بديلٌ حين يتغيّر — لا يُسأل عن مئةٍ وأربعين سائقًا
-   * لمورّدٍ وشاحنتُه لها سائقُها.
+   * Drivers of the selected truck, falling back to its supplier's drivers.
+   * The order is deliberate: the driver registered on the truck is its usual one, other supplier drivers are the substitute when it changes; avoids asking about 140 drivers when the truck has its own.
    */
   useEffect(() => {
     if (!vehicleId && !supplierId) { setDrivers([]); return; }
@@ -266,8 +231,7 @@ function CreateShipmentInner() {
       .catch(() => setDrivers([]));
   }, [vehicleId, supplierId]);
 
-  // ── وخيارٌ يضيفه زميلٌ يظهر هنا بلا إعادة فتح ────────────────────────────
-  // «طول شاحنةٍ» جديدٌ يضيفه موظّفٌ في مكتبٍ آخر يحتاجه مَن يحجز الآن.
+  // An option added by a colleague appears here without reopening: a new truck length added in another office is needed by whoever is booking now.
   useSocket('shipmentOrders:fields', useCallback(() => {
     api.get<{ fields: FormField[] }>('/api/shipment-orders/fields')
       .then((d) => setFields(d.fields || [])).catch(() => {});
@@ -276,11 +240,7 @@ function CreateShipmentInner() {
   const customer = useMemo(() => customers.find((c) => c._id === customerId) || null, [customers, customerId]);
   const set = (k: string, v: any) => setForm((f) => ({ ...f, [k]: v }));
 
-  // ── طريقةُ الدفع تتبع نوعَ التأجير ولا تُختار ────────────────────────────
-  // «راجعة» تعني حسابًا آجلًا، و«قدام» تعني أنّ السائق يقبض عند التسليم. وكانا
-  // خيارين مستقلّين فيُختار ما يناقض الآخر. فصار الخيارُ يحمل ما يترتّب عليه
-  // (`option.paymentMethod` — يُضبَط من إعدادات القسم لأيّ نوعٍ يُضاف)، وخانةُ
-  // طريقة الدفع تُعرَض مقروءةً لا تُختار.
+  // Payment method follows the rental type and is not chosen. The return type means a credit account and the forward type means the driver collects on delivery; as independent choices they could contradict. The option carries its payment method (`option.paymentMethod`, set in section settings for any added type), and the field is shown read-only.
   const rentOption = (fields.find((f) => f.key === 'driverRentType')?.options || [])
     .find((o) => o.key === form.driverRentType);
   const derivedPay = rentOption?.paymentMethod || '';
@@ -312,11 +272,7 @@ function CreateShipmentInner() {
     setNewPlate('');
     const v = vehicles.find((x) => x._id === id);
     if (!v) return;
-    // ── واختيارُ الشاحنة يُسمّي مالكَها، ولا يُغيّر المورّدَ المختار ──────
-    // يُملأ المورّدُ من مالك الشاحنة حين لم يُختَر بعد — فمن بدأ من اللوحة لا
-    // يُسأل عن مورّدها. أمّا من اختار مورّدَه أوّلًا فاختيارُه قرارُ صفقةٍ،
-    // وكان يُستبدَل صامتًا بمالكِ الشاحنة: فتُحفَظ الشحنةُ على مورّدٍ لم
-    // يتّفق معه أحد. فالمالكُ يُعرَض بجانبها، والمورّدُ يبقى كما اختير.
+    // Picking a truck shows its owner but does not change the chosen supplier. The supplier is filled from the truck's owner only when none is chosen yet; a supplier picked first is a deal decision and used to be silently replaced by the truck owner, saving the shipment on a supplier nobody agreed with.
     const sup = typeof v.supplier === 'object' && v.supplier ? v.supplier._id : (v.supplier || '');
     if (sup && !supplierId) setSupplierId(String(sup));
     setForm((f) => ({
@@ -327,8 +283,7 @@ function CreateShipmentInner() {
     }));
   };
 
-  // والعميلُ الجديد كذلك — يُسجَّل حين يُكتب اسمُه لا حين تُحفَظ الشحنة، فيراه
-  // التحصيلُ وصفحةُ العملاء وزملاؤه في اللحظة نفسِها.
+  // A new customer is registered when the name is typed, not at shipment save, so collections, the customers page and colleagues see it at once.
   const saveCustomer = async () => {
     const name = newCustomer.name.trim();
     if (!name) { notify(ar ? 'اكتب اسم العميل.' : 'Name the customer.', 'error'); return; }
@@ -346,33 +301,16 @@ function CreateShipmentInner() {
     setCustomerBusy(false);
   };
 
-  // ── والمورّدُ الجديد يُسجَّل في لحظته ──────────────────────────────────────────
-  // لا عند حفظ الشحنة: من فتح النموذج وأضاف مورّدًا ثمّ تركه نصفَ ساعةٍ يجب أن
-  // يجده في صفحة المورّدين — ويجده زميلُه أيضًا. والتسجيلُ هنا يُطلق
-  // `shipmentOrders:fleet`، فتلتقطه كلُّ شاشةٍ مفتوحةٍ في القسم.
+  // A new supplier is registered at once, not at shipment save: someone who adds one and leaves for half an hour must find it on the suppliers page, as must a colleague. Registering fires `shipmentOrders:fleet`, picked up by every open screen in the section.
   /**
-   * ── والمورّدُ وسائقُه يُسجَّلان معًا ────────────────────────────────────────
-   *
-   * الثلاثةُ سجلٌّ واحدٌ في الواقع: مورّدٌ له شاحناتٌ لها سوّاق. وكان التسجيلُ
-   * يقف عند المورّد، فيُحجَز عليه حمولةٌ وليس في السجلّ سائقٌ واحدٌ له — ثمّ
-   * يُكتب اسمُ السائق بيدٍ في كلّ شحنة.
-   *
-   * والفريلانسرُ حالةٌ خاصّةٌ تستحقّ الذكر: هو مورّدٌ وسائقٌ في آنٍ — شاحنتُه
-   * واحدةٌ يسوقها بنفسه — فاسمُه يُبذَر في خانة السائق ولا يُكتب مرّتين.
+   * Supplier and driver are registered together. They are one register: a supplier has trucks which have drivers. Registration used to stop at the supplier, so a load was booked with no driver in the register and the name was typed by hand per shipment.
+   * A freelancer is both supplier and driver (one truck, drives it himself), so his name is seeded into the driver field and not typed twice.
    */
   const [newDriver, setNewDriver] = useState({ name: '', phone: '', residenceNumber: '' });
 
   /**
-   * ── الحمولةُ الواحدةُ على عدّةِ شاحنات ────────────────────────────────────
-   *
-   * العميلُ يطلب حمولةً تخرج على خمسِ شاحنات: العميلُ والمسارُ والسعرُ والموعدُ
-   * والدفعُ واحد، ويختلف المورّدُ والشاحنةُ والسائق. وكان الموظّفُ يخرج من
-   * النموذج ويعيد كتابةَ العشرين خانةً خمسَ مرّات — فيُخطئ في واحدةٍ ولا
-   * يُكتشَف إلّا عند المحاسبة.
-   *
-   * فتُضاف الشاحناتُ هنا وتُرى قبل الحفظ، ويُنشئ الخادمُ لكلٍّ منها **طلبًا
-   * مستقلًّا** برقم بوليصته من العدّاد نفسِه — لا طلبٌ أبٌ ولا رابطٌ بينها، إذ
-   * كلُّ شاحنةٍ تمضي وحدَها وتصل وحدَها وتُحاسَب وحدَها.
+   * One load on several trucks. A customer orders a load leaving on five trucks: customer, route, price, date and payment are the same while supplier, truck and driver differ. Re-typing twenty fields five times invited an error found only at accounting.
+   * Trucks are added here and seen before save; the server creates an independent order per truck with its waybill number from the same counter (no parent order, no link), since each truck moves, arrives and is settled alone.
    */
   // What the waybill prints beyond the form: filled from the choice, editable here.
   const [details, setDetails] = useState({ driverNationality: '', driverIqama: '', vehicleBrand: '', vehicleColor: '' });
@@ -412,7 +350,7 @@ function CreateShipmentInner() {
     setExtras((p) => p.map((x) => (x.uid === uid ? { ...x, ...patch } : x)));
   const dropExtra = (uid: string) => setExtras((p) => p.filter((x) => x.uid !== uid));
 
-  /** شاحناتُ مورّدِ هذا الصفّ — تُطلَب بمعرّفه كما في الصفّ الأوّل. */
+  /** Trucks of this row's supplier, requested by its id as in the first row. */
   const loadExtraVehicles = async (uid: string, supplierId: string, q = '') => {
     setExtra(uid, { busy: true });
     try {
@@ -435,7 +373,7 @@ function CreateShipmentInner() {
       setSupplierId(d.supplier._id);
       setVehicleId('');
 
-      // سائقُه يُسجَّل معه إن كُتب — وفريلانسرٌ بلا اسمِ سائقٍ هو نفسُه السائق.
+      // His driver is registered with him if typed; a freelancer with no driver name is the driver himself.
       const drvName = newDriver.name.trim() || (newSupplier.type === 'freelancer' ? name : '');
       let savedDriver: OrderDriver | null = null;
       if (drvName) {
@@ -463,10 +401,7 @@ function CreateShipmentInner() {
     setSupplierBusy(false);
   };
 
-  // ── والمسارُ يُعرَف وإن كُتب بيدٍ من القوائم ──────────────────────────────
-  // مَن اختار «من» و«إلى» من الدروب ليست دون أن يضغط اختصارَ المسار يقصد
-  // المسارَ نفسَه — فيُملأ سعرُه كما لو ضغطه. والمطابقةُ مطويّة: «جده» و«جدة»
-  // مدينةٌ واحدة، والمقارنةُ الحرفيّة كانت تتركها مسارين بسعرين.
+  // The route is recognised even when typed by hand from the lists. Picking from and to from the lists means the route itself, so its price is filled as if the shortcut were pressed. Matching is folded: two spellings of one city are the same city, where a literal comparison left them as two routes with two prices.
   useEffect(() => {
     if (!customer) return;
     const route = findRoute(customer, form.fromCity, form.toCity);
@@ -515,22 +450,17 @@ function CreateShipmentInner() {
       if (customerId) payload.customer = customerId;
       else payload.newCustomer = { name: newCustomer.name.trim(), phone: newCustomer.phone.trim() };
 
-      // ── والمورّدُ المختارُ يُرسَل ولو كانت الشاحنةُ مسجّلةً ────────────────
-      // خمسةُ آلافٍ وسبعُمئةِ شاحنةٍ في السجلّ مجهولةُ المالك، ومن يحجز
-      // الحمولةَ يعرف مالكَها. فيُرسَل اختيارُه، ويكتبه الخادمُ في السجلّ حين
-      // لا يكون مكتوبًا — ولا يُسأل عنه في الشحنة التالية.
+      // The chosen supplier is sent even when the truck is registered. Thousands of registered trucks have an unknown owner and the person booking the load knows it, so the server records it when none is stored and it is not asked again next shipment.
       if (supplierId) payload.supplierChoice = supplierId;
-      // السيلز التشغيليّ — مَن جاء بالحمولة (٢٠٢٦/١٠/٢٢).
+      // Operational sales: who brought the load.
       payload.salesRep = salesRep || null;
       if (vehicleId) payload.vehicle = vehicleId;
       else if (newPlate.trim()) {
-        // اللوحةُ الجديدة تُسجَّل على المورّد المختار — والمورّدُ سُجِّل قبلها.
+        // The new plate is registered on the chosen supplier, which was registered before it.
         payload.newVehicle = { plate: newPlate.trim(), name: '', supplierId: supplierId || null, newSupplier: null };
       }
 
-      // ── اليومُ يُرسَل ظهرًا ────────────────────────────────────────────────
-      // «2026-09-05» وحدَه يُقرأ منتصفَ الليل بتوقيت غرينتش، فيصير في الرياض يومَ
-      // الرابع. والظهرُ آمنٌ في كلّ منطقةٍ زمنيّة.
+      // The day is sent at noon: a bare "2026-09-05" is read as midnight GMT and becomes the 4th in Riyadh. Noon is safe in every timezone.
       ['pickupTime', 'startTime', 'arrivalTime'].forEach((k) => {
         payload[k] = form[k] ? new Date(`${form[k]}T12:00:00`).toISOString() : null;
       });
@@ -541,10 +471,7 @@ function CreateShipmentInner() {
 
       if (editId) await api.put(`/api/shipment-orders/orders/${editId}`, payload);
       else if (extras.length) {
-        // ── الحمولةُ على عدّةِ شاحنات ──────────────────────────────────────
-        // الصفُّ الأوّلُ شاحنةٌ كالبقيّة، فيُرسَل معها في القائمة نفسِها —
-        // ولو أُنشئ وحدَه ثمّ أُرسلت البقيّةُ لصار الأوّلُ قد حُفظ بينما
-        // الثانيةُ تُرفَض، والموظّفُ لا يعرف أين وقف.
+        // Load on several trucks: the first row is a truck like the rest and is sent in the same list. Creating it alone and then sending the others could save the first while the second is rejected, leaving the user not knowing where it stopped.
         const truckOf = (sup: string, veh: string, plate: string, dn: string, dp: string, bl: string, cn: string) => ({
           blNumber: String(bl || '').trim(),
           containerNumber: String(cn || '').trim(),
@@ -569,7 +496,7 @@ function CreateShipmentInner() {
           ? `أُنشئت ${d.created} شحنة — أوامر نقل ${nums}${d.failed?.length ? ` · تعذّرت ${d.failed.length}` : ''}`
           : `${d.created} shipments created — waybills ${nums}${d.failed?.length ? ` · ${d.failed.length} failed` : ''}`,
           d.failed?.length ? 'error' : 'success');
-        if (d.failed?.length) { setSaving(false); return; }   // يبقى النموذجُ ليُعاد ما سقط
+        if (d.failed?.length) { setSaving(false); return; }   // The form stays so the failed part can be resent.
       } else {
         const d = await api.post<{ order: any }>('/api/shipment-orders/orders', payload);
         notify(ar ? `تم إنشاء الشحنة — رقم أمر النقل ${d.order.waybillNumber}` : `Created — waybill ${d.order.waybillNumber}`, 'success');
@@ -584,7 +511,7 @@ function CreateShipmentInner() {
 
   const miss = (k: string) => showErrors && missingKeys.has(k);
 
-  // خيارٌ جديد في قائمةٍ — يُحفَظ في تعريف الحقل ويُختار فورًا.
+  // A new list option: saved in the field definition and selected immediately.
   const saveOption = async (f: FormField) => {
     const ar2 = newOption.trim();
     if (!ar2) return;
@@ -598,7 +525,7 @@ function CreateShipmentInner() {
     } catch (e: any) { notify(e?.message || (ar ? 'تعذّرت الإضافة' : 'Could not add'), 'error'); }
     setOptionBusy(false);
   };
-  // الرقمُ المحليّ: ما بعد +966 — يُعرَض ويُكتب، والمخزَّنُ كاملٌ دائمًا.
+  // Local number: the part after +966, shown and typed; the stored value is always the full number.
   const localPhone = String(form.driverPhone || '').replace(/\D/g, '').replace(/^966/, '').slice(0, 9);
 
   const renderField = (f: FormField) => {
@@ -606,9 +533,7 @@ function CreateShipmentInner() {
     const v = form[f.key] ?? '';
     const bad = miss(f.key);
     const lab = <label className={bad ? labelMissCls : labelCls}>{label}{f.required && <span className="text-red-500"> *</span>}</label>;
-    // ── طريقةُ الدفع تُقرأ ولا تُختار ──────────────────────────────────────
-    // تتبع «نوع تأجير السائق»: راجعةٌ ⇒ آجل، وقدامٌ ⇒ كاش. فتُعرَض بما ترتّب
-    // ومعها سببُه، ولا تُترك خانةً يُختار فيها ما يناقض النوع.
+    // Payment method is read, not chosen. It follows the driver rental type (return means credit, forward means cash), so it is shown with its reason rather than as a field that could contradict the type.
     if (moneyLocked(f.key)) {
       return (
         <div key={f._id}>
@@ -667,11 +592,8 @@ function CreateShipmentInner() {
                 emptyLabel={ar ? 'لا توجد نتائج' : 'No matches'}
                 options={f.options.map((o) => ({ value: o.key, label: optionLabel(o, lang as Lang) }))} />
             </div>
-            {/* ── وما ليس في القائمة يُضاف من مكانه ──────────────────────────
-                مدينةٌ أو نوعُ حمولةٍ جديد كان يوقف الاستمارة: يخرج المستخدم إلى
-                إعدادات القسم فيفقد ما كتبه. والمضافُ هنا يُكتب في الإعدادات
-                نفسِها ويظهر عند الجميع في اللحظة نفسِها (`so:fields`). */}
-            {/* «الفرع» فروعُ الشركة — لا يُضاف إليها من هنا (`locked`). */}
+            {/* Missing list items are added in place. A new city or load type used to stop the form and send the user to section settings, losing what was typed. What is added is written to the same settings and appears for everyone at once (`so:fields`). */}
+            {/* Branch is the company's branches, so nothing can be added from here (`locked`). */}
             {(f as any).locked ? null : addingFor === f._id ? (
               <div className="mt-1.5 flex items-center gap-1.5">
                 <input autoFocus value={newOption} onChange={(e) => setNewOption(e.target.value)}
@@ -714,9 +636,7 @@ function CreateShipmentInner() {
   const activeGroups = groups.filter((g) => fields.some((f) => f.group === g && !FIXED_KEYS.has(f.key)));
   const missingIn = (g: FormField['group']) =>
     fields.filter((f) => f.group === g && !FIXED_KEYS.has(f.key) && missingKeys.has(f.key)).length;
-  // ── «مكتمل» = لا مطلوبَ ناقص **وكُتب فيها شيء** (٢٠٢٦/١٠/٢٦) ───────────────
-  // كانت بطاقةٌ بلا خاناتٍ مطلوبة («المدفوعات») تُعلَّم أخضرَ من أوّل فتحة —
-  // قبل أن يُختار نوعُ الدفع — فيُقرأ الأخضرُ «تمّ» وهو لم يُلمس.
+  // Complete means no missing required field and something was written. A card with no required fields (payments) used to be green from the first open, before a payment type was chosen, reading as done while untouched.
   const hasVal = (v: any) => v != null && String(v).trim() !== '';
   const filledIn = (g: FormField['group']) =>
     fields.some((f) => f.group === g && !FIXED_KEYS.has(f.key) && hasVal(form[f.key]));
@@ -762,9 +682,7 @@ function CreateShipmentInner() {
     const missing = opts?.missing || 0;
     const done = missing === 0 && opts?.filled !== false;
     return (
-      // NO overflow-hidden here: SearchableSelect renders its panel absolutely
-      // inside the card, and clipping it is exactly the "الدروب ليست مستخبية"
-      // bug. The header rounds its own top corners instead.
+      // No overflow-hidden here: SearchableSelect renders its panel absolutely inside the card, and clipping it hid the dropdown. The header rounds its own top corners instead.
       <div id={opts?.id} className={`rounded-2xl border bg-white shadow-sm scroll-mt-24 transition-colors ${
         showErrors && missing ? 'border-red-300' : 'border-slate-200'}`}>
         <div className="px-4 sm:px-5 py-3.5 bg-slate-50/70 border-b border-slate-100 flex items-center gap-3 rounded-t-2xl">
@@ -787,10 +705,7 @@ function CreateShipmentInner() {
     );
   };
 
-  // ── والخلوُّ ليس «أسطولنا» ─────────────────────────────────────────────
-  // كان غيابُ المورّد يُقرأ «من أسطولنا»، ثمّ استُوردت شاحناتُ الناقلين من
-  // تاريخ الطلبات بلا مرجعِ مورّدٍ — فصار السجلُّ يقول عن آلافِ شاحنات الغير
-  // إنّها لنا. فالملكيّةُ تُقرأ من `ownership` صريحةً.
+  // Empty is not "our fleet". A missing supplier used to read as our fleet, then carriers' trucks were imported from order history with no supplier reference, so thousands of other people's trucks were reported as ours. Ownership is read explicitly from `ownership`.
   const supplierOf = (v: OrderVehicle) => {
     const n = typeof v.supplier === 'object' && v.supplier ? v.supplier.name : '';
     if (n) return n;
@@ -798,7 +713,7 @@ function CreateShipmentInner() {
     return ar ? 'مالكٌ غير مسجَّل' : 'Owner not recorded';
   };
 
-  // المختارةُ ومالكُها والمتّفقُ معه — ثلاثةُ أسماءٍ تُقرأ في بطاقةِ المالك.
+  // The selected truck, its owner and the agreed supplier: three names shown in the owner card.
   const vehicle = vehicles.find((v) => v._id === vehicleId) || null;
   const supplierName = suppliers.find((x) => x._id === supplierId)?.name || '';
   const ownerSupId = vehicle && typeof vehicle.supplier === 'object' && vehicle.supplier
@@ -842,11 +757,7 @@ function CreateShipmentInner() {
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-5 items-start">
-      {/* ── ١ ── العميل والمورّد: طرفا الصفقة ───────────────────────────────
-          الشحنةُ عقدٌ بين طرفين: مَن تُحمَل له ومَن تُحمَل منه. وكان المورّدُ
-          في بطاقة الشاحنة لأنّه يصفّيها، فكان يُقرأ وصفًا للشاحنة لا طرفًا في
-          الصفقة. فصار جوارَ العميل بنفس شكلِه: قائمةٌ تُبحَث وزرُّ «جديد»
-          يسجّله في اللحظة — وبطاقةُ الشاحنة تسأل عن الشاحنة ومالكِها وحدَهما. */}
+      {/* 1. Customer and supplier, the two parties to the deal. A shipment is a contract between who it is carried for and who carries it. The supplier sat in the truck card because it filters trucks, so it read as a truck attribute. It now sits beside the customer in the same shape (searchable list plus a new button registering at once), and the truck card asks only about the truck and its owner. */}
       {sectionCard(UserIcon, 1, ar ? 'العميل والمورّد' : 'Customer & supplier', (
         <div className="space-y-3">
           <div>
@@ -877,7 +788,7 @@ function CreateShipmentInner() {
                 placeholder={ar ? 'اسم العميل الجديد *' : 'New customer name *'}
                 className={(miss('customer') ? inputMissCls : inputCls) + ' flex-1'} />
               <div className="sm:w-56">
-                {/* نفسُ صندوق الجوّال في كلّ النظام: مفتاحُه يسارًا وتسعُ خاناتٍ. */}
+                {/* Same mobile box as everywhere in the system: country code at the left and nine digits. */}
                 <PhoneSA value={newCustomer.phone} onChange={(v) => setNewCustomer((c) => ({ ...c, phone: v }))} />
               </div>
               <PrimaryButton onClick={saveCustomer} disabled={customerBusy}>
@@ -894,13 +805,9 @@ function CreateShipmentInner() {
                   : 'Registered on the customers page at once — it does not wait for the shipment — and the route + price land on their profile on save.'}
             </p>
           )}
-          {/* «مساراته المعتمدة» رُفعت (٢٠٢٦/١٠/٢٦): الوجهاتُ تُكتب من خانتيهما
-              كما في كلّ شحنة — والأزرارُ فوقها كانت تكرارًا لا يُحتاج. */}
+          {/* The approved-routes shortcut was removed: destinations are typed in the two fields as on every shipment, and the buttons above them were redundant. */}
 
-          {/* ── والمورّدُ تحتَه بنفس الشكل ────────────────────────────────────
-              نفسُ السؤال ونفسُ الزرّ: قائمةٌ تُبحَث عند الخادم، و«مورّد جديد»
-              يسجّله في صفحة المورّدين فورًا — لا ينتظر حفظَ الشحنة — ومعه
-              سائقُه إن عُرف. واختيارُه هنا يصفّي شاحناتَه في البطاقة التالية. */}
+          {/* Supplier below it in the same shape: same question and button, a list searched on the server and a new-supplier button that registers on the suppliers page immediately, without waiting for the shipment save, along with its driver if known. Choosing it here filters its trucks in the next card. */}
           <div className="pt-3 border-t border-slate-200/70 space-y-3">
             <label className={labelCls}>{ar ? 'المورّد' : 'Supplier'}</label>
             {!addingSupplier ? (
@@ -940,7 +847,7 @@ function CreateShipmentInner() {
                     </button>
                   ))}
                 </div>
-                {/* سائقُه معه: المورّدُ وشاحناتُه وسوّاقُه سجلٌّ واحدٌ مترابط. */}
+                {/* His driver goes with him: supplier, its trucks and its drivers are one linked register. */}
                 <div className="flex flex-col sm:flex-row gap-2 pt-2 border-t border-[#f37121]/20">
                   <input value={newDriver.name} onChange={(e) => setNewDriver((v) => ({ ...v, name: e.target.value }))}
                     placeholder={newSupplier.type === 'freelancer'
@@ -971,24 +878,15 @@ function CreateShipmentInner() {
         </div>
       ), { id: SEC.customer, missing: missingKeys.has('customer') ? 1 : 0, filled: !!customer || !!supplierId })}
 
-      {/* ── ٢ ── مالك السيارة: الشاحنةُ ومن يملكها وسائقُها ────────────────
-          المورّدُ طرفٌ في الصفقة وقد صار جوارَ العميل. وهنا الشاحنةُ نفسُها:
-          لوحتُها، ومالكُها في السجلّ — وهما ليسا واحدًا بالضرورة، فالمورّدُ
-          قد يُخرج حمولتَنا على شاحنةِ غيرِه — ثمّ سائقُها وجوّالُه. */}
+      {/* 2. Vehicle owner: the truck, who owns it and its driver. The supplier is a deal party now beside the customer; here is the truck itself, its plate and its owner in the register. They need not be the same, since a supplier may carry our load on someone else's truck. Then the driver and his mobile. */}
       {sectionCard(Truck, 2, ar ? 'مالك السيارة' : 'Truck owner', (
         <div className="space-y-4">
-          {/* البطاقةُ نصفُ الصفحة من xl — فخاناتُها عمودٌ واحدٌ هناك، وعمودان على
-              الشاشة العريضة جدًّا وحدَها؛ وإلّا صارت كلُّ خانةٍ ربعَ الشاشة
-              مقصوصةَ النصّ («يُملأ تلقائياً عند…»). */}
+          {/* The card is half the page from xl, so its fields are one column there and two only on very wide screens; otherwise each field would be a quarter of the screen with clipped text. */}
           <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2 gap-4">
             <div>
               <label className={labelCls}>{ar ? 'السيارة' : 'Vehicle'}</label>
-              {/* شاحناتُ المورّد المختار وحدَها: قائمةٌ من ثلاثٍ يُختار منها،
-                  وقائمةٌ من ثلاثمئةٍ يُبحَث فيها. */}
-              {/* والخادمُ هو مَن يصفّي: `supplier=<id>` تجلب شاحناتِه وحدَها،
-                  وبلا مورّدٍ يُبحَث في شاحنات الموردين كلِّها. ولا تصفيةَ
-                  محليّةٌ فوقها — كانت `.filter(v => v.supplier)` على صفحةٍ
-                  محمَّلةٍ فتُخرج قائمةً فارغةً وشاحناتُ المورّد مسجَّلة. */}
+              {/* Only the selected supplier's trucks: a list of three is chosen from, a list of three hundred is searched. */}
+              {/* The server does the filtering: `supplier=<id>` fetches only its trucks, and with no supplier it searches all suppliers' trucks. No local filter on top: a `.filter(v => v.supplier)` on a loaded page gave an empty list although the supplier's trucks were registered. */}
               <SearchableSelect value={vehicleId} onChange={applyVehicle} searchAfter={0}
                 onSearch={(q) => searchVehicles(q, supplierId)} loading={vehBusy}
                 placeholder={supplierId
@@ -1006,17 +904,13 @@ function CreateShipmentInner() {
                   label: [v.plate, v.name].filter(Boolean).join(' — '),
                   hint: [supplierOf(v), v.defaultDriverName].filter(Boolean).join(' · '),
                 }))} />
-              {/* ولوحةٌ لم تمرّ بنا تُكتب هنا — لا لوحةٌ تُفتح لها بأربع خانات. */}
+              {/* A plate we have not seen is typed here, not opened as a four-field form. */}
               <input value={newPlate} onChange={(e) => { setNewPlate(e.target.value); if (e.target.value.trim()) setVehicleId(''); }}
                 placeholder={ar ? 'أو اكتب لوحةً جديدة — تُسجَّل على المورّد' : 'Or type a new plate — registered to the supplier'}
                 className={`${inputCls} mt-2`} />
             </div>
 
-            {/* ── ومالكُها يُقرأ لا يُكتب ──────────────────────────────────
-                مالكُ الشاحنة في السجلّ خبرٌ عن الشاحنة لا قرارٌ في الشحنة:
-                يُعرَض ليُرى مَن تخرج حمولتُنا على شاحنته. ولو خالف المورّدَ
-                المتّفقَ معه قيل ذلك صراحةً — فهو أمرٌ معتاد (مورّدٌ يُخرجها
-                على شاحنةِ غيره) وليس خطأً، لكنّه يُعرَف قبل الحفظ لا بعده. */}
+            {/* The owner is read, not typed. The truck's owner in the register is information about the truck, not a decision in the shipment; shown to see whose truck carries our load. If it differs from the agreed supplier, that is stated: it is normal (a supplier using someone else's truck), not an error, but worth knowing before save. */}
             <div>
               <label className={labelCls}>{ar ? 'مالك السيارة (من السجلّ)' : 'Owner (from the registry)'}</label>
               <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 min-h-[42px] flex items-center flex-wrap gap-x-2 gap-y-1 text-sm">
@@ -1046,10 +940,7 @@ function CreateShipmentInner() {
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2 gap-4">
             <div>
               <label className={labelCls}>{ar ? 'السائق' : 'Driver'}</label>
-              {/* صندوقٌ مركّب: المسجَّلون اقتراحاتٌ لا حصر (`allowCustom`)، فمن
-                  ليس في السجلّ يُكتب اسمُه ويمضي العمل. والكتابةُ تبحث عند الخادم
-                  في السوّاق كلِّهم بالاسم والجوال والإقامة، واختيارُ المسجَّل يملأ
-                  جوّالَه معه ويقول إن كانت بطاقةُ تشغيله منتهية. */}
+              {/* Combo box: registered drivers are suggestions, not a restriction (`allowCustom`), so someone not in the register is typed and work continues. Typing searches all drivers on the server by name, mobile and residency; choosing a registered one fills his mobile and says whether his operating card is expired. */}
               <DriverPicker ar={ar} value={form.driverName || ''} contextDrivers={drivers}
                 supplierId={supplierId || undefined} vehicleId={vehicleId || undefined}
                 onPick={(d) => {
@@ -1060,10 +951,7 @@ function CreateShipmentInner() {
             </div>
             <div>
               <label className={labelCls}>{ar ? 'جوال السائق' : 'Driver phone'}</label>
-              {/* ── والرقمُ سعوديٌّ من تسع خانات، ومفتاحُه يسارًا دائمًا ─────
-                  `PhoneSA` واحدٌ لكلّ جوّالٍ في النظام: المفتاحُ ثابتٌ لا يُكتب،
-                  والخاناتُ تسعٌ لا أكثر، والصندوقُ `ltr` فيبقى «+966» يسارَ
-                  الأرقام عربيًّا كان أو إنجليزيًّا — والهاتفُ يُقرأ من اليسار. */}
+              {/* Saudi number of nine digits with the key always at the left. `PhoneSA` is shared by every mobile in the system: the key is fixed and not typed, nine digits at most, and the box is `ltr` so +966 stays left of the digits in Arabic or English. */}
               <PhoneSA value={form.driverPhone || ''} onChange={(v) => set('driverPhone', v)}>
                 {(form.driverPhone || '').trim() ? <ContactButtons phone={form.driverPhone} /> : null}
               </PhoneSA>
@@ -1105,10 +993,7 @@ function CreateShipmentInner() {
             {sectionCard(GROUP_ICONS[g], i + 3, ar ? GROUP_LABELS[g].ar : GROUP_LABELS[g].en, (
               <div className={cols}>
                 {gf.map(renderField)}
-                {/* ── ملاحظةُ الرحلة مع مدنها ────────────────────────────────
-                    مكانُها حيث تُكتب: «التحميل من البوابة الثانية» تُقال مع
-                    العنوان لا في آخر الاستمارة. وتُطبَع في أمر النقل إن كُتبت،
-                    وتظهر عمودًا في الجدول ويُفلتَر بها. */}
+                {/* Trip note beside its cities, where it is written. It is printed on the transport order when present, shown as a table column and filterable. */}
                 {g === 'pickup_delivery' && (
                   <div className="col-span-full">
                     <label className={labelCls}>{ar ? 'ملاحظة الرحلة' : 'Trip note'}</label>
@@ -1117,10 +1002,7 @@ function CreateShipmentInner() {
                       className={inputCls} />
                   </div>
                 )}
-                {/* ── البوليصةُ والحاوية — مربوطتان بالتخليص (٢٠٢٦/١٠/٢٦) ────────
-                    اختياريّتان. تُكتبان هنا فتُربط الشحنةُ بمعاملة التخليص التي
-                    تحملهما (وأمر نقلها معها)، وتُكتب الشحنةُ في المعاملة فتُملآن
-                    هنا وحدَهما — راجع services/customsOpsLink. */}
+                {/* Waybill and container are optional and linked to customs. Written here, they link the shipment to the customs file carrying them (and its transport order); written on the customs side, they fill here by themselves. See services/customsOpsLink. */}
                 {g === 'pickup_delivery' && (
                   <div className="col-span-full grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
@@ -1136,7 +1018,7 @@ function CreateShipmentInner() {
                     {form.customsLink?.clearance ? (
                       <p className="col-span-full text-[12.5px] text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
                         {ar ? 'مربوطة بمعاملة التخليص ' : 'Linked to customs clearance '}
-                        {/* رابطُ المعاملة لمن يفتح قسمَ التخليص وحدَه — وإلّا رقمُها يُقرأ. */}
+                        {/* File link only for users who open the customs section; otherwise the number is plain text. */}
                         {(['super_admin', 'admin'].includes((user as any)?.role || '') || canAccessSection(permsOf(user as any), 'Customs'))
                           ? <a href={`/system/customs/${form.customsLink.clearance}`} target="_blank" rel="noreferrer" className="font-bold underline">{form.customsLink.refNumber || '—'}</a>
                           : <b>{form.customsLink.refNumber || '—'}</b>}
@@ -1151,8 +1033,7 @@ function CreateShipmentInner() {
         );
       })}
 
-      {/* الملاحظاتُ رُفعت من هنا إلى بطاقة «من/إلى»: هي ملاحظةُ الرحلة، وتُطبَع
-          في أمر النقل. راجع notes في بطاقة المدن. */}
+      {/* Notes moved up to the from/to card: they are the trip note and print on the transport order; see notes in the cities card. */}
       {sectionCard(Check, activeGroups.length + 3, ar ? 'الحالة' : 'Status', (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
@@ -1214,10 +1095,7 @@ function CreateShipmentInner() {
             </p>
             <button type="button" onClick={() => router.push('/system/shipment-orders')}
               className="px-4 py-2 text-slate-500 hover:text-slate-900 text-sm">{ar ? 'إلغاء' : 'Cancel'}</button>
-            {/* ── شاحنةٌ أخرى بنفس التفاصيل ──────────────────────────────────
-                بجانب زرّ الإنشاء لأنّها قرارُ اللحظة نفسِها: «هذه الحمولة تخرج
-                على أكثرَ من شاحنة». ولا تظهر في التعديل — التعديلُ على شحنةٍ
-                قائمةٍ لا على حمولةٍ تُحجَز. */}
+            {/* Another truck with the same details: beside the create button because it is the same moment's decision (this load goes out on more than one truck). Hidden on edit, since editing is on an existing shipment, not a load being booked. */}
             {!editId && (
               <button type="button" onClick={addExtra}
                 className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-[#f37121]/40 text-[#f37121] text-sm font-semibold hover:bg-[#f37121]/10">
@@ -1235,9 +1113,7 @@ function CreateShipmentInner() {
         </div>
       </div>
 
-      {/* ── الشاحناتُ الإضافيّةُ تُرى قبل الحفظ ───────────────────────────────
-          كلُّ صفٍّ شحنةٌ مستقلّةٌ ستُنشأ برقم بوليصتها: نفسُ العميل والمسار
-          والسعر والموعد، ويختلف المورّدُ والشاحنةُ والسائق. */}
+      {/* Extra trucks are shown before save. Each row is an independent shipment created with its own waybill number: same customer, route, price and date, differing supplier, truck and driver. */}
       {!editId && extras.length > 0 && (
         <div className="rounded-2xl border border-[#f37121]/30 bg-[#f37121]/[0.03] p-4 space-y-3">
           <div className="flex items-center gap-2">
@@ -1251,7 +1127,7 @@ function CreateShipmentInner() {
             </span>
           </div>
 
-          {/* الصفُّ الأوّلُ يُعرَض للعلم لا للتعديل: يُحرَّر في بطاقته أعلاه. */}
+          {/* The first row is shown for information, not edited; it is edited in its own card above. */}
           <div className="rounded-xl bg-white border border-slate-200 px-3 py-2 text-xs text-slate-600 flex flex-wrap items-center gap-x-4 gap-y-1">
             <span className="font-bold text-slate-900">{ar ? 'الشاحنة 1' : 'Truck 1'}</span>
             <span>{suppliers.find((x) => x._id === supplierId)?.name || (ar ? 'بلا مورّد' : 'no supplier')}</span>
@@ -1267,7 +1143,7 @@ function CreateShipmentInner() {
                 <button type="button" onClick={() => dropExtra(x.uid)}
                   className="text-xs font-semibold text-slate-400 hover:text-red-600">{ar ? 'إزالة' : 'Remove'}</button>
               </div>
-              {/* أربعُ خاناتٍ في صفٍّ كانت تضيّق السائقَ وزرَّه حتى يُقصّ — فاثنتان. */}
+              {/* Four fields in a row squeezed the driver and its button until clipped, so two. */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-[11px] font-semibold text-slate-600 mb-1">{ar ? 'المورّد' : 'Supplier'}</label>
@@ -1303,7 +1179,7 @@ function CreateShipmentInner() {
                     emptyLabel={ar ? 'لا شاحنة — اكتب اللوحة' : 'None — type the plate'}
                     options={x.vehicles.map((v) => ({
                       value: v._id, label: [v.plate, v.name].filter(Boolean).join(' — '),
-                      // مالكُها وسائقُها — نفسُ ما يُقرأ في بطاقة «مالك السيارة» فوق.
+                      // Owner and driver: same as in the vehicle owner card above.
                       hint: [supplierOf(v), v.defaultDriverName].filter(Boolean).join(' · ') || undefined,
                     }))} />
                   <input value={x.newPlate}
@@ -1323,7 +1199,7 @@ function CreateShipmentInner() {
                 </div>
                 <div>
                   <label className="block text-[11px] font-semibold text-slate-600 mb-1">{ar ? 'السائق' : 'Driver'}</label>
-                  {/* الخانةُ نفسُها التي في الشاحنة الأولى: بحثٌ بالاسم والجوال والإقامة، و«سائق جديد». */}
+                  {/* Same field as on the first truck: search by name, mobile and residency, plus new driver. */}
                   <DriverPicker ar={ar} compact value={x.driverName} contextDrivers={[]}
                     supplierId={x.supplierId || undefined} vehicleId={x.vehicleId || undefined}
                     placeholder={ar ? 'يُملأ من الشاحنة — أو ابحث' : 'from the truck — or search'}
@@ -1331,7 +1207,7 @@ function CreateShipmentInner() {
                 </div>
                 <div>
                   <label className="block text-[11px] font-semibold text-slate-600 mb-1">{ar ? 'جوّاله' : 'His phone'}</label>
-                  {/* نفسُ صندوق الجوّال المشترك: مفتاحُه يسارًا وتسعُ خاناتٍ لا أكثر. */}
+                  {/* Same shared mobile box: key at the left and nine digits at most. */}
                   <PhoneSA compact value={x.driverPhone} onChange={(v) => setExtra(x.uid, { driverPhone: v })} />
                 </div>
                 <div>
@@ -1355,9 +1231,7 @@ function CreateShipmentInner() {
   );
 }
 
-// ── مفتاحُ المسار كما يطويه الخادم ──────────────────────────────────────────
-// نظيرُ `routeKey` في backend/src/utils/customerRoutes: الاتّجاهُ يهمّ، والرسمُ
-// لا. ولولاه لكان «من جده» مسارًا و«من جدة» مسارًا آخرَ بسعرٍ آخر.
+// Route key as the server folds it. Mirrors `routeKey` in backend/src/utils/customerRoutes: direction matters, spelling does not; without it two spellings of one city would be two routes with two prices.
 const cityFold = (v: string) => String(v || '')
   .replace(/[أإآٱ]/g, 'ا').replace(/ة/g, 'ه').replace(/[ىئ]/g, 'ي').replace(/ؤ/g, 'و')
   .replace(/[\u064B-\u0652\u0640]/g, '')

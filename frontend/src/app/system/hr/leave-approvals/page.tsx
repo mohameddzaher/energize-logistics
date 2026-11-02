@@ -1,15 +1,5 @@
 'use client';
-/**
- * موافقاتُ الإجازات — ما ينتظر قرارَ هذا المستخدم الآن.
- *
- * صفحةٌ واحدةٌ لأربع محطّات: المديرُ المباشر يرى طلبات فريقه، والمواردُ
- * والحساباتُ والإدارةُ ترى ما وصل محطّتَها. والخادمُ هو الذي يقرّر ما يُعرض
- * (`utils/leaveChain.inboxFilter`) — الصفحةُ لا تُخمّن دورًا ولا تُصفّي بعد
- * القراءة، فلا تُريَ أحدًا ما لا يملك البتَّ فيه ثمّ يُردّ زرُّه بـ 403.
- *
- * وثالثُ الأزرار «استفسار» لا رفض: قد تقول الحسابات «عليه سلفةٌ تُسدَّد أوّلًا»
- * — فالطلبُ يعود إلى صاحبه ليردّ، ثمّ يبدأ من المدير المباشر من جديد.
- */
+/** Leave approvals: what awaits the current user's decision. One page for four stages (direct manager, HR, accounts, management). The server decides what is shown (`utils/leaveChain.inboxFilter`), so the page never guesses a role or filters after reading and no button ends in a 403. The third action is "inquiry", not reject: the request returns to its owner to answer, then restarts from the direct manager. */
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useDialog } from '@/components/system/DialogProvider';
 import { useLanguage } from '@/context/LanguageContext';
@@ -50,10 +40,10 @@ export default function LeaveApprovalsPage() {
     setLoading(false);
   }, []);
   useEffect(() => { load(); }, [load]);
-  // حيّةٌ بلا تحديث: قرارُ محطّةٍ يُنزل الطلبَ من قائمةٍ ويرفعه في أخرى.
+  // Live without refresh: a decision at one stage moves the request from one list to another.
   useSocket('hr:leave', useCallback(() => load(), [load]));
 
-  // التبويباتُ من المحطّات التي فيها عملٌ فعلًا — لا تبويبَ فارغٌ يُضغط ليخيب.
+  // Tabs come only from stages that have work, so no empty tab.
   const present = useMemo(
     () => LEAVE_STAGES.filter((s) => leaves.some((l) => l.currentStage === s.key)),
     [leaves],
@@ -156,7 +146,7 @@ export default function LeaveApprovalsPage() {
               className="flex items-center gap-2 rounded-lg bg-red-500/20 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-500/30 disabled:opacity-50">
               <X className="h-4 w-4" /> {ar ? 'رفض' : 'Reject'}
             </button>
-            {/* لا يُرفَض ما ينقصه إيضاح. يعود إلى صاحبه بسؤال. */}
+            {/* A request that needs clarification is not rejected; it returns to its owner with a question. */}
             <button type="button" onClick={() => decide('info')} disabled={busy}
               className="flex items-center gap-2 rounded-lg bg-orange-500/20 px-4 py-2 text-sm font-medium text-orange-700 hover:bg-orange-500/30 disabled:opacity-50">
               <HelpCircle className="h-4 w-4" /> {ar ? 'استفسار / طلب تعديل' : 'Ask / request change'}

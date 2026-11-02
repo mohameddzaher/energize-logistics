@@ -1,16 +1,9 @@
 /**
- * رسالةُ خطأٍ يفهمها المستخدم — لا «فشل الحفظ».
- *
- * ── لماذا ───────────────────────────────────────────────────────────────────
- * كانت المتحكّماتُ تردّ «Failed to create employee» على كلّ عطل. فمَن ملأ نموذجًا
- * ورُدَّ عليه لا يعرف ما ينقص: هل نسي حقلًا؟ أهو رقمٌ مكرَّر؟ أم عطلٌ في النظام
- * أصلًا فلا فائدةَ من إعادة المحاولة؟ فيعيد الكرّةَ مرّاتٍ ثمّ يسأل مَن يسأل.
- *
- * ومنغوسة تعرف الجوابَ دائمًا: أيُّ حقلٍ، ولماذا. لكنّه يُبتلع في `catch`.
- * فيُترجَم هنا مرّةً ويُستعمل في كلّ مكان.
+ * User-readable error message instead of a generic save failure.
+ * Controllers replied 'Failed to create employee' for every fault, so a user could not tell a missing field from a duplicate number from a real system fault. Mongoose always knows which field and why, but it was swallowed in `catch`. It is translated here once and used everywhere.
  */
 
-// أسماءُ الحقول بالعربيّة — يُقرأ «رقم الإقامة» لا «iqamaNumber».
+// Field names in Arabic, so the message reads the Arabic label rather than 'iqamaNumber'.
 const LABELS = {
   firstName: 'الاسم الأول', lastName: 'الاسم الأخير', arabicName: 'الاسم بالعربية',
   employeeNumber: 'الرقم الوظيفي', iqamaNumber: 'رقم الإقامة', nationalId: 'رقم الهوية',
@@ -24,14 +17,11 @@ const LABELS = {
 };
 const label = (p) => LABELS[p] || LABELS[String(p).split('.').pop()] || p;
 
-/**
- * يحوّل خطأ منغوسة إلى `{ status, message, fields }`.
- * `fields` تُمكّن الشاشةَ من تلوين الخانة نفسِها لا عرضِ نصٍّ فقط.
- */
+/** Converts a Mongoose error to `{ status, message, fields }`. `fields` lets the screen highlight the field itself, not only show text. */
 function describeMongooseError(error, fallback = 'تعذّر الحفظ') {
   if (!error) return { status: 500, message: fallback, fields: [] };
 
-  // حقلٌ مطلوبٌ ناقص، أو قيمةٌ لا يقبلها الحقل.
+  // Required field missing, or a value the field does not accept.
   if (error.name === 'ValidationError' && error.errors) {
     const missing = []; const invalid = []; const fields = [];
     for (const [p, e] of Object.entries(error.errors)) {
@@ -45,7 +35,7 @@ function describeMongooseError(error, fallback = 'تعذّر الحفظ') {
     return { status: 400, message: parts.join(' — '), fields };
   }
 
-  // نصٌّ في خانة تاريخٍ أو معرّف.
+  // Text in a date or id field.
   if (error.name === 'CastError') {
     return {
       status: 400,
@@ -54,7 +44,7 @@ function describeMongooseError(error, fallback = 'تعذّر الحفظ') {
     };
   }
 
-  // رقمٌ مكرَّرٌ في حقلٍ فريد — والرسالةُ تقول أيُّ رقمٍ وأيُّ حقل.
+  // Duplicate value in a unique field; the message names the value and the field.
   if (error.code === 11000) {
     const key = Object.keys(error.keyPattern || error.keyValue || {})[0];
     const val = (error.keyValue || {})[key];
@@ -70,7 +60,7 @@ function describeMongooseError(error, fallback = 'تعذّر الحفظ') {
   return { status: 500, message: error.message || fallback, fields: [] };
 }
 
-/** يردّ الخطأَ موصوفًا. يُستعمل في `catch` بدل `res.status(500)...`. */
+/** Replies with the described error. Used in `catch` instead of `res.status(500)...`. */
 function sendMongooseError(res, error, fallback) {
   const d = describeMongooseError(error, fallback);
   if (d.status >= 500) console.error(fallback || 'error:', error);
@@ -78,13 +68,9 @@ function sendMongooseError(res, error, fallback) {
 }
 
 /**
- * ينظّف جسمَ الطلب قبل الحفظ.
- *
- * الشاشةُ ترسل كلَّ حقولها، وأكثرُها فارغ. والخانةُ الفارغةُ نصٌّ `''` — تقبله
- * حقولُ النصّ ويرفضه كلُّ ما عداه: `''` ليست معرّفًا ولا تاريخًا ولا قيمةً في
- * قائمة. فكان النموذجُ يُرفض لأنّ المستخدم **لم** يملأ حقلًا اختياريًّا.
- *
- * فتُحذف الفراغاتُ من الحقول غير النصّيّة: الفراغُ غيابٌ لا قيمة.
+ * Cleans the request body before saving.
+ * The screen sends every field, most of them empty. An empty field is the string `''`, which text fields accept and every other type rejects (not an id, date or list value), so a form was rejected because an optional field was left blank.
+ * Empty values are removed from non-text fields: empty means absent, not a value.
  */
 function stripEmpty(body, schema) {
   const out = { ...body };
@@ -92,11 +78,10 @@ function stripEmpty(body, schema) {
     if (v !== '' && v !== null) continue;
     const p = schema && schema.paths[k];
     if (!p) { if (v === null) delete out[k]; continue; }
-    // النصُّ الحرُّ يقبل الفراغَ ويعنيه: «لا ملاحظة». فيبقى.
+    // Free text accepts and means empty ('no note'), so it stays.
     if (p.instance === 'String') {
       const en = p.enumValues || (p.options && p.options.enum);
-      // إلّا نصًّا محصورًا في قائمة: `''` ليست خيارًا فيها، فحذفُها يعني
-      // «لم يُختَر» بدل أن تُرفض الاستمارةُ كلُّها لأجل حقلٍ اختياريّ.
+      // Except text restricted to a list: `''` is not an option there, so dropping it means 'not chosen' instead of rejecting the whole form over an optional field.
       if (!en || !en.length || en.includes('')) { if (v === null) delete out[k]; continue; }
     }
     delete out[k];

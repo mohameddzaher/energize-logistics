@@ -138,9 +138,7 @@ export default function BdOpportunitiesPage() {
     { header: ar ? 'المنطقة' : 'Region', key: 'region' },
     { header: ar ? 'الخطوة التالية' : 'Next step', key: 'nextStep' },
   ];
-  // الفلترة هنا تجري على الخادم، فما في الذاكرة هو نتيجة البحث والمرحلة معًا؛
-  // ومَن يريد السجلّ كاملًا لا يملك وسيلةً لرؤيته إلّا بمسح فلاتره أوّلًا،
-  // فنُعيد النداء بلا معاملاتٍ نيابةً عنه بدل أن يظنّ المفلتَر هو الكلّ.
+  // Filtering runs on the server, so what is in memory is the search and stage result together. Whoever wants the full register could only see it by clearing filters first, so the call is repeated without parameters on their behalf instead of letting the filtered set pass for everything.
   const fetchAllForExport = async () => {
     const d = await api.get<{ opportunities: BdOpportunity[] }>('/api/business-development/opportunities');
     return [{ name: 'Opportunities', rows: d.opportunities || [], columns: exportColumns }];

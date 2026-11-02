@@ -9,15 +9,9 @@ import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import '../ui/search_field.dart';
 
-/// موردو مخزن النقل الثقيل — مَن تُشترى منه قطعُ الغيار.
-///
-/// المورد يُضاف من هنا، أو من خانة «المورد» في نموذج الصنف نفسِه (يُكتب الاسمُ
-/// فيُنشأ مع الحفظ). والشاشتان تسمعان الحدثَ ذاتَه (`ls2:store`)، فما أُضيف في
-/// إحداهما يظهر في الأخرى بلا إعادة تحميل.
-///
-/// ومع كلّ موردٍ ما اشتُري منه: عددُ الأصناف والتوريدات والقيمة وآخرُ شراء —
-/// محسوبةٌ في الخادم من حركات الوارد لا مكتوبةٌ بيد. مطابقةٌ لصفحة الموقع
-/// `/system/ls2/suppliers`.
+/// Heavy-transport store suppliers: who spare parts are bought from.
+/// Added here or by typing a name in the item form's supplier field (created on save). Both screens listen to `ls2:store`, so changes show without reload.
+/// Per-supplier items, supplies, value and last purchase are computed server-side from inbound movements. Mirrors `/system/ls2/suppliers` on the web.
 class Ls2SuppliersScreen extends StatefulWidget {
   final String base;
   const Ls2SuppliersScreen({super.key, this.base = '/api/ls2/suppliers'});
@@ -110,8 +104,7 @@ class _Ls2SuppliersScreenState extends State<Ls2SuppliersScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // الخطُّ نفسُه الذي ترسمه شاشةُ المخزن: من يكتب في القسم يكتب في مورديه،
-    // ومن يقرأ وحسبُ لا تُعرَض له أزرارٌ تُرفَض.
+    // Same gating as the store screen: section writers can edit suppliers; read-only users get no buttons that would be rejected.
     final auth = context.watch<AuthProvider>();
     final canEdit = const ['super_admin', 'admin', 'it_manager', 'operations_manager',
       'operations_staff', 'moderator'].contains(auth.role)
@@ -203,7 +196,7 @@ class _Ls2SuppliersScreenState extends State<Ls2SuppliersScreen> {
         if (extra.isNotEmpty)
           Padding(padding: const EdgeInsets.only(top: 2), child: Text(extra, style: const TextStyle(fontSize: 11, color: T.inkFaint), maxLines: 2, overflow: TextOverflow.ellipsis)),
         const SizedBox(height: 8),
-        // ما اشتُري منه — محسوبٌ من حركات الوارد.
+        // What was bought from this supplier, computed from inbound movements.
         Wrap(spacing: 14, runSpacing: 4, children: [
           _kv(tr('الأصناف', 'Items'), '${_numOf(s['items'])}', T.ink),
           _kv(tr('التوريدات', 'Purchases'), '${_numOf(s['purchases'])}', T.ink),
@@ -229,8 +222,7 @@ class _Ls2SuppliersScreenState extends State<Ls2SuppliersScreen> {
       );
 }
 
-/// نموذجُ المورد. يحفظ بنفسه ويبقى مفتوحًا إن رُفض — فالخطأُ يُكتب فيه، لا في
-/// شريطٍ يظهر خلف الورقة المفتوحة.
+/// Supplier form. Saves itself and stays open on rejection so the error shows inside it, not in a snackbar behind the sheet.
 class _SupplierFormSheet extends StatefulWidget {
   final String base;
   final Map<String, dynamic>? supplier;

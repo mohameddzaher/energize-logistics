@@ -12,9 +12,7 @@ import 'ls2_vehicle_detail.dart';
 import 'vehicle_registry.dart';
 import 'ls2_store.dart' show storeIssueReasonLabel;
 
-/// تحليل سيارةٍ واحدة عبر فترة — نفس شاشة الويب /system/fleet/vehicles/[id]:
-/// الفترة تُختار، وكل رقمٍ يخصّ هذه السيارة وحدها. والأرقام تُجمَّع في الخادم
-/// (GET /api/fleet/vehicles/:id/analytics) لا هنا.
+/// Analysis of one vehicle over a period, same as web screen /system/fleet/vehicles/[id]: the period is chosen and every number concerns this vehicle alone. Numbers are aggregated on the server (GET /api/fleet/vehicles/:id/analytics), not here.
 class FleetVehicleAnalyticsScreen extends StatefulWidget {
   final String vehicleId;
   final String plate;
@@ -45,7 +43,7 @@ String _fmtD(dynamic v) {
   return d == null ? '—' : _ymd(d);
 }
 
-// نفس مفاتيح الخادم (resolvePeriod) حرفيًّا — والمستقبليّة مخفيّة كالويب.
+// The same keys as the server (resolvePeriod) literally; future ones are hidden, as on the web.
 const _presets = [
   ('today', 'اليوم', 'Today'),
   ('yesterday', 'أمس', 'Yesterday'),
@@ -77,7 +75,7 @@ const _statuses = {
   'cancelled': ('ملغاة', 'Cancelled', T.danger),
 };
 
-// حالات مستندات سجلّ المركبات — REGISTRY_DOC_STATE في الويب.
+// Vehicle register document states, REGISTRY_DOC_STATE on the web.
 const _docStates = {
   'expired': ('منتهي', 'Expired', T.danger),
   'critical': ('حرج', 'Critical', Color(0xFFEA580C)),
@@ -92,13 +90,13 @@ class _FleetVehicleAnalyticsScreenState extends State<FleetVehicleAnalyticsScree
   Map<String, dynamic>? _d;
   bool _loading = true;
   String? _error;
-  // الفترة: اسمٌ أو يومٌ أو شهرٌ أو مدى — واحدٌ منها فقط فاعل (periodParams في الويب).
+  // Period: a name, a day, a month or a range; only one is active (periodParams on the web).
   String _preset = 'this_month';
   String _day = '';
   String _month = '';
   String _from = '';
   String _to = '';
-  int _seq = 0; // ردٌّ قديمٌ (فترةٌ سابقة) لا يكتب فوق الأحدث
+  int _seq = 0; // An old reply (earlier period) does not overwrite the newer.
   List<Map<String, dynamic>> _loadTypes = [];
   late final void Function() _onLive;
 
@@ -110,7 +108,7 @@ class _FleetVehicleAnalyticsScreenState extends State<FleetVehicleAnalyticsScree
     _onLive = () => _load();
     Live.instance.on('fleet:updated', _onLive);
     Live.instance.on('fleet:vehicles', _onLive);
-    // الهويّةُ والمستنداتُ من سجلّ المركبات، والسائقون من الموارد البشريّة.
+    // Identity and documents from the vehicle register, and drivers from HR.
     Live.instance.on('vreg:updated', _onLive);
     Live.instance.on('hr:employee', _onLive);
   }
@@ -152,7 +150,7 @@ class _FleetVehicleAnalyticsScreenState extends State<FleetVehicleAnalyticsScree
       final r = await Api.instance.get('/api/lookups?type=fleet_load_type&active=true');
       if (!mounted) return;
       setState(() => _loadTypes = List<Map<String, dynamic>>.from(r['items'] ?? const []));
-    } catch (_) {/* التسمية تسقط إلى المفتاح */}
+    } catch (_) {/* The label falls back to the key. */}
   }
 
   String _loadTypeLabel(dynamic key) {
@@ -264,13 +262,13 @@ class _FleetVehicleAnalyticsScreenState extends State<FleetVehicleAnalyticsScree
         _nowCard(v),
         const SizedBox(height: 10),
 
-        // الفترة
+        // Period.
         _periodBar(),
         const SizedBox(height: 8),
         _periodBanner(period, _n(t['trips']).toInt()),
         const SizedBox(height: 10),
 
-        // بطاقات المؤشرات
+        // Indicator cards.
         GridView.count(
           crossAxisCount: 2,
           shrinkWrap: true,
@@ -330,7 +328,7 @@ class _FleetVehicleAnalyticsScreenState extends State<FleetVehicleAnalyticsScree
           EmptyState(icon: Icons.route_outlined, title: tr('لا رحلات لهذه السيارة ضمن الفترة المختارة.', 'No trips for this vehicle in the selected period.')),
         ...ships.map(_tripRow),
 
-        // عهدةُ النقل الثقيل على هذه الشاحنة — كالويب، متى عُرفت وحدتُها في لوكيشن.
+        // Heavy transport custody on this truck, like the web, once its Location Solutions unit is known.
         if (ls2?['unitId'] != null) ...[
           const SizedBox(height: 14),
           HtCustodyPanel(vehicleUnitId: '${ls2!['unitId']}'),
@@ -340,7 +338,7 @@ class _FleetVehicleAnalyticsScreenState extends State<FleetVehicleAnalyticsScree
     );
   }
 
-  // ── هويّتُها ومستنداتُها من سجلّ المركبات ─────────────────────────────────
+  // Identity and documents from the vehicle register.
   Widget _registryCard(Map<String, dynamic> v) {
     final reg = v['registry'] == null ? null : Map<String, dynamic>.from(v['registry']);
     if (reg == null) {
@@ -398,7 +396,7 @@ class _FleetVehicleAnalyticsScreenState extends State<FleetVehicleAnalyticsScree
     );
   }
 
-  // حالة السيارة الآن — التحليل يخصّ فترةً مضت، وهذا السطر يخصّ اللحظة.
+  // Vehicle state now: the analysis concerns a past period, and this line concerns the moment.
   Widget _nowCard(Map<String, dynamic> v) {
     final drivers = List<Map<String, dynamic>>.from(v['drivers'] ?? const []);
     final trip = v['currentTrip'] == null ? null : Map<String, dynamic>.from(v['currentTrip']);
@@ -475,8 +473,7 @@ class _FleetVehicleAnalyticsScreenState extends State<FleetVehicleAnalyticsScree
         ),
       );
 
-  /// الفترة التي حسمها **الخادم** لا التي ظنّتها الشاشة (PeriodBanner في الويب).
-  /// ونهاية المدى حصريّة في الخادم، فيُطرح منها يومٌ عند العرض.
+  /// The period decided by the server, not the one the screen assumed (PeriodBanner on the web). The range end is exclusive on the server, so a day is subtracted when displayed.
   Widget _periodBanner(Map<String, dynamic> p, int count) {
     final from = DateTime.tryParse((p['from'] ?? '').toString());
     if (from == null) return const SizedBox.shrink();
@@ -505,7 +502,7 @@ class _FleetVehicleAnalyticsScreenState extends State<FleetVehicleAnalyticsScree
     );
   }
 
-  // الهدف منسوبٌ إلى عدد أشهر الفترة لا إلى شهرٍ واحد.
+  // The target scaled by the number of months in the period, not one month.
   Widget _targetCard(Map<String, dynamic> t, Map<String, dynamic> period) {
     final pct = t['achievedPct'];
     final achieved = t['achieved'] == true;
@@ -541,7 +538,7 @@ class _FleetVehicleAnalyticsScreenState extends State<FleetVehicleAnalyticsScree
     );
   }
 
-  // ── الحالة الفنّية: لوكيشن سوليوشن ومخزن النقل الثقيل ────────────────────
+  // Technical state: Location Solutions and the heavy transport store.
   Widget _techCard(Map<String, dynamic> tech, Map<String, dynamic>? ls2) {
     final ms = ls2?['maintenanceStatus'];
     final Color border = ms == 'overdue' ? T.danger : (ms == 'due' ? T.warn : T.line);
@@ -603,7 +600,7 @@ class _FleetVehicleAnalyticsScreenState extends State<FleetVehicleAnalyticsScree
               style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: T.inkSoft)),
           const SizedBox(height: 4),
           for (final m in parts.take(20))
-            // وسببُ الصرف بجوار القطعة: صيانة دورية / حادث / وقائية / عطل على الطريق.
+            // The reason for the issue beside the part: periodic maintenance / accident / preventive / breakdown on the road.
             _kv(
               '${m['itemName'] ?? ''}${storeIssueReasonLabel(m['issueReason']).isNotEmpty ? ' — ${storeIssueReasonLabel(m['issueReason'])}' : ''}',
               '×${m['quantity'] ?? ''} · ${_fmtD(m['createdAt'])}',
@@ -633,7 +630,7 @@ class _FleetVehicleAnalyticsScreenState extends State<FleetVehicleAnalyticsScree
         ]),
       );
 
-  /// ترند ١٢ شهرًا: شريطا الدخل والمصروف لكل شهر وعدد الرحلات بجانبهما — بلا مكتبة رسوم.
+  /// 12-month trend: income and expense bars per month with trip count beside them, with no chart library.
   Widget _trendBars(List<Map<String, dynamic>> trend) {
     final maxV = trend.fold<double>(1, (m, r) {
       final a = _n(r['income']).toDouble(), b = _n(r['driverExpense']).toDouble();
@@ -722,7 +719,7 @@ class _FleetVehicleAnalyticsScreenState extends State<FleetVehicleAnalyticsScree
         ]),
       );
 
-  /// صفّ تفصيل (مسار أو عميل): الاسم، الرحلات، الدخل، المصروف.
+  /// Detail row (route or customer): name, trips, income, expense.
   Widget _breakRow(String name, Map<String, dynamic> r, VoidCallback? onTap) => Padding(
         padding: const EdgeInsets.only(bottom: 6),
         child: Pressable(

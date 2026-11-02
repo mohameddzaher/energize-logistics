@@ -57,7 +57,7 @@ export default function SectionWork({ section, kind }: { section: string; kind: 
   const [editing, setEditing] = useState<Row | null>(null);
   const [form, setForm] = useState<Row>({});
   const [saving, setSaving] = useState(false);
-  // «تفاصيل أكثر» مطويّةٌ عند الإضافة، مفتوحةٌ عند التعديل: من يعدّل يريد ما فيه.
+  // 'More details' is collapsed on add and open on edit: whoever edits wants what is in it.
   const [more, setMore] = useState(false);
   const [err, setErr] = useState('');
 
@@ -72,7 +72,7 @@ export default function SectionWork({ section, kind }: { section: string; kind: 
   }, [section, cfg.ep, statusFilter]);
 
   useEffect(() => { load(); }, [load]);
-  // القائمةُ لهذا القسم وحدَه — راجع assignees في الخادم.
+  // Assignee list for this section only; see assignees on the server.
   useEffect(() => { api.get<{ users: Assignee[] }>(`/api/section-work/assignees?section=${encodeURIComponent(section)}`).then((d) => setAssignees(d.users || [])).catch(() => {}); }, [section]);
   useSocket('section:work', useCallback(() => load(), [load]));
 
@@ -89,7 +89,7 @@ export default function SectionWork({ section, kind }: { section: string; kind: 
       status: row.status || cfg.statuses[0], dueDate: row.dueDate ? String(row.dueDate).slice(0, 10) : '',
       resolution: row.resolution || '', assignedTo: row.assignedTo?._id || row.assignedTo || '',
     });
-    // التعديلُ يُفتَح على كلّ شيء: من يعدّل يقصد حقلًا بعينه، وطيُّه يخفيه عنه.
+    // Edit opens everything: the editor targets a specific field, and collapsing would hide it.
     setMore(true);
     setErr(''); setShowForm(true);
   };
@@ -175,12 +175,7 @@ export default function SectionWork({ section, kind }: { section: string; kind: 
         </>}>
         {err && <div className="bg-red-50 text-red-700 text-sm rounded-lg px-3 py-2">{err}</div>}
 
-        {/* ── ما يلزم لتسجيل مهمّةٍ سطران ──────────────────────────────────
-            كانت النافذةُ تفتح على ستّة حقولٍ لكلّ مهمّة: العنوانُ والوصفُ
-            والحالةُ والأولويّةُ والمُسنَدُ إليه وتاريخُ الاستحقاق. وأربعةٌ
-            منها لها جوابٌ صحيحٌ في تسعٍ من كلّ عشر: جديدةٌ، متوسّطةُ
-            الأولويّة، لي أنا، بلا موعد. فكان من يريد كتابةَ سطرٍ يملأ نموذجًا.
-            فالظاهرُ ما يُكتب حقًّا، والباقي تحت «تفاصيل أكثر» لمن يحتاجه. */}
+        {/* Recording a task needs two lines. The dialog used to open six fields per task: title, description, status, priority, assignee and due date. Four have the right answer nine times out of ten (new, medium, me, no date), so what is typed shows and the rest sits under 'more details'. */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Field label={ar ? cfg.titleLabel.ar : cfg.titleLabel.en} span2>
             <TextInput autoFocus value={form[cfg.titleField] || ''}

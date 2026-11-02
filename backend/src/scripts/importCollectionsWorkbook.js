@@ -131,8 +131,8 @@ const STOP = new Set(['شركه', 'شركة', 'مؤسسه', 'مؤسسة', 'مو�
   });
 
   let linked = 0; let created = 0; const refused = [];
-  // eslint-disable-next-line prefer-const
   // A code is never written over another account's code: the condition is in the query itself, so an unexpected collision writes nothing and is reported.
+  // eslint-disable-next-line prefer-const
   const claimParty = async (p, a) => {
     const r = await CollectionsParty.updateOne(
       { _id: p._id, $or: [{ code: '' }, { code: null }, { code: { $exists: false } }, { code: a.code }] },

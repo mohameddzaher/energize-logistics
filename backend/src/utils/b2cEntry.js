@@ -1,23 +1,7 @@
 /**
- * b2cEntry — مدخلات أوردرات المناديب على النظام (صاحبُ الشركة، ٢٠٢٦/١٠/١٩).
- *
- * ── ما كان ────────────────────────────────────────────────────────────────
- * الأوردراتُ تُكتب في شيتات جوجل لكلّ مشروع، والنظامُ يسحبها كلَّ دقيقة ويعرّف
- * المندوبَ باسمه الإنجليزيّ في الشيت (`B2CRep`) — فصار في النظام ٦٩٦ «مندوبًا»
- * لمئةٍ وسبعين رجلًا، و٦٣ منهم فقط مربوطون بسجلّ النقل الخفيف. ونقلُ المندوب من
- * مشروعٍ إلى آخر في سجلّه لا يحرّك طلباتِه.
- *
- * ── ما صار ────────────────────────────────────────────────────────────────
- * ١. **المندوبُ هو صفُّه في سجلّ النقل الخفيف** (`LightTransportEmployee`). ولكلّ صفٍّ
- *    حسابُ طلباتٍ واحد (`B2CRep.ltEmployee`) يحمل تاريخَه كلَّه — فما كُتب في
- *    الشيتات قبلُ وما يُكتب في النظام بعدُ رقمٌ واحدٌ متّصل.
- * ٢. **مشروعُ طلباته مشروعُ سجلّه**: `projectAr` ← `B2CProject.nameAr`. ونقلُ المشروع
- *    لا يكون إلّا بـ«نقل مشروع» ممّن يملكه (`TRANSFER_ROLES`)، ومن يومه تُكتب طلباتُه
- *    على مشروعه الجديد وتبقى القديمةُ على القديم.
- * ٣. **مديرُ المشروع يرى مشاريعَه وحدَها**: `User.assignedProjects` — تُسنَد من سجلّ
- *    النقل الخفيف، وقد تكون أكثرَ من مشروع. والإدارةُ ترى الكلّ.
- * ٤. **الهدفُ من المشروع**: الشهريُّ ÷ ٣٠ يوميًّا، × أيام الاحتساب (أيامٌ فيها طلبات).
- *    حقّق ≥ ١٠٠٪ · قريب ≥ ٨٠٪ · بعيد أقلّ. وامازون شحناتٌ بلا هدف.
+ * b2cEntry: rep order entries typed on the system.
+ * The rep is his light transport register row (`LightTransportEmployee`); each row has one orders account (`B2CRep.ltEmployee`) carrying his whole history. Orders project is the register project (`B2CProject.nameAr`) and moves only via project transfer (`TRANSFER_ROLES`), effective from that day.
+ * Managers see only `User.assignedProjects`. Target is monthly / 30 per day times counted days: achieved >= 100%, near >= 80%, otherwise far; Amazon has no target.
  */
 const mongoose = require('mongoose');
 
@@ -26,18 +10,18 @@ const MONTH_DAYS = 30;
 const ENDED = 'إنهاء خدمة';
 
 const isFinanceFull = (role) => { try { return require('../config/financeAuthority').isFinanceFull(role); } catch (_) { return false; } };
-/** مَن يرى كلَّ المشاريع ويُدخل لكلّ مندوب. */
+/** Who sees all projects and enters for any rep. */
 const isEntryHead = (u) => ['super_admin', 'admin', 'b2c_manager', 'b2c_deputy'].includes(u?.role) || isFinanceFull(u?.role);
-/** «نقل مشروع» — نائبُ مدير القطاع ومديرُ القسم والسوبر أدمن والأدمن (وأهلُ المال كمدير النظام). */
+/** Project transfer: sector deputy manager, section manager, super admin and admin (and finance roles as system manager). */
 const TRANSFER_ROLES = ['super_admin', 'admin', 'b2c_manager', 'b2c_deputy'];
 const canTransfer = (u) => TRANSFER_ROLES.includes(u?.role) || isFinanceFull(u?.role);
-/** مَن يُدخل الأوردرات — في مشاريعه. */
+/** Who enters orders, within their projects. */
 const ENTRY_ROLES = ['super_admin', 'admin', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead', 'b2c_rep_supervisor', 'b2c_inspection_supervisor'];
 
 const S = (v) => String(v ?? '').trim();
 const fold = (v) => S(v).replace(/[أإآٱ]/g, 'ا').replace(/ة/g, 'ه').replace(/[ىئ]/g, 'ي').replace(/\s+/g, '').toLowerCase();
 
-/** مشاريعُ الطلبات بأسمائها العربيّة. */
+/** Order projects by their Arabic names. */
 async function projects() {
   const B2CProject = require('../models/B2CProject');
   const rows = await B2CProject.find({ isActive: true }).lean();
@@ -49,7 +33,7 @@ async function projects() {
   return { rows, byAr, byId, of: (projectAr) => byAr.get(fold(projectAr)) || null };
 }
 
-/** فرعُ الطلبات من مدينة السجلّ (جدة · مكة). */
+/** Orders branch from the register city (Jeddah, Makkah). */
 async function branchFor(cityAr) {
   const Branch = require('../models/Branch');
   const f = fold(cityAr);
@@ -59,7 +43,7 @@ async function branchFor(cityAr) {
   return pick(/jeddah|jedda|جد/i)?._id || null;
 }
 
-/** مشاريعُ المستخدم بأسمائها العربيّة — null = كلُّها. */
+/** A user's projects by Arabic name; null means all. */
 async function scopeOf(user) {
   if (isEntryHead(user)) return null;
   const U = require('../models/User');
@@ -69,10 +53,7 @@ async function scopeOf(user) {
 }
 const inScope = (scope, projectAr) => scope === null || scope.some((n) => fold(n) === fold(projectAr));
 
-/**
- * حسابُ طلبات المندوب — موجودٌ مربوط، أو يُنشأ مربوطًا. ومشروعُه وفرعُه من سجلّه.
- * يُرجع الحساب (وثيقة).
- */
+/** A rep's orders account: an existing linked one, or created already linked. Its project and branch come from his register row. Returns the account document. */
 async function ensureRep(lt, user) {
   const B2CRep = require('../models/B2CRep');
   const P = await projects();
@@ -96,7 +77,7 @@ async function ensureRep(lt, user) {
   return rep;
 }
 
-/** بعد نقل مشروع أو مدينة: حسابُ طلباته على مشروعه الجديد من الآن. */
+/** After a project or city move: the orders account goes onto the new project from now on. */
 async function syncRepOf(lt) {
   const B2CRep = require('../models/B2CRep');
   const P = await projects();
@@ -105,9 +86,7 @@ async function syncRepOf(lt) {
   const set = {};
   if (proj) { set.project = proj._id; set.monthlyTarget = proj.monthlyTarget ?? 450; }
   if (branch) set.branch = branch;
-  // والاسمُ العربيُّ والجوالُ يتبعان صاحبَهما — كانا يُكتبان مرّةً من الشيت ثمّ
-  // لا يتحرّكان، فاختلف اسمُ مئةٍ واثنين وعشرين حسابًا عن سجلّه. واسمُ الحساب
-  // الإنجليزيُّ (`englishName`) اسمُه على التطبيق فلا يُمسّ.
+  // The Arabic name and phone follow their owner. They used to be written once from the sheet and never moved, so the name of 122 accounts differed from the register. The account's English name (`englishName`) is its name on the app and is left alone.
   if (S(lt.name)) set.arabicName = S(lt.name);
   if (S(lt.phone)) set.phone = S(lt.phone);
   if (!Object.keys(set).length) return 0;
@@ -115,7 +94,7 @@ async function syncRepOf(lt) {
   return r.modifiedCount || 0;
 }
 
-/** تقييمُ مندوبٍ على فترة. */
+/** Rating of a rep over a period. */
 function evaluate({ total, workedDays, project }) {
   const monthly = Number(project?.monthlyTarget || 0);
   if (!monthly) return { target: null, pct: null, evaluation: 'شحنات' };
@@ -129,19 +108,14 @@ const dayKey = (d) => new Date(d).toISOString().slice(0, 10);
 const isoDate = (v) => (/^\d{4}-\d{2}-\d{2}$/.test(S(v)) ? S(v) : null);
 const riyadhDay = (d) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Riyadh' }).format(new Date(d));
 
-/**
- * مشروعُ المندوب في كلّ يوم — من سجلّ نقله (`history` بـ kind: project).
- * يُرجع دالّةً: dateKey → اسمُ المشروع في ذلك اليوم.
- * و`project_fix` (تصحيحُ مشروعٍ كُتب خطأً من البداية) لا يُقرأ نقلًا: المندوبُ كان
- * في مشروعه المصحَّح من أوّل يوم.
- */
+/** A rep's project on each day, from his move history (`history` entries of kind project). Returns a function dateKey to project name on that day. `project_fix` (correcting a project written wrongly from the start) is not read as a move: the rep was in the corrected project from day one. */
 function projectTimeline(lt) {
   const moves = (lt.history || []).filter((h) => h.kind === 'project' && h.at)
     .map((h) => ({ day: riyadhDay(h.at), from: S(h.fromValue), to: S(h.toValue) }))
     .sort((a, b) => a.day.localeCompare(b.day));
   return (dk) => {
     if (!moves.length) return S(lt.projectAr);
-    // النقلُ نافذٌ من يومه: يومُ النقل في المشروع الجديد.
+    // A move takes effect on its day: the transfer day counts in the new project.
     let cur = moves[0].from || S(lt.projectAr);
     for (const mv of moves) { if (mv.day <= dk) cur = mv.to; else break; }
     return cur;
@@ -149,11 +123,9 @@ function projectTimeline(lt) {
 }
 
 /**
- * رقمُ اليوم واحدٌ للرجل — والآخرُ هو المعتمد. قد يكون للمندوب أكثرُ من حساب طلبات
- * (من الشيتات القديمة)، والشيتُ والمدخلاتُ يجمعان حساباتِه في خانة اليوم. فإذا كُتب
- * رقمٌ في حسابٍ مُحي ما في حساباته الأخرى ذلك اليوم، وإلّا جُمع القديمُ مع الجديد.
- * `projectId` يحصر المحوَ في مشروعٍ واحد (الشهورُ القديمة تُعرض بمشروع الأوردر).
- * `byName` يشمل حساباتٍ بلا ربطٍ باسمه (الشهورُ القديمة تنسبها إليه باسمه).
+ * One day figure per man, and the latest is authoritative. A rep may have more than one orders account (from old sheets), and the sheet and the entries both sum his accounts into the day cell. When a number is written to one account, what is in his other accounts that day is cleared; otherwise old and new would be summed.
+ * `projectId` limits the clearing to one project (old months show by the order's project).
+ * `byName` includes accounts not linked to him, attributing them by name (old months).
  */
 async function clearOtherAccounts(lt, keepRepId, dateKey, { projectId = null, byName = false } = {}) {
   const B2CRep = require('../models/B2CRep');

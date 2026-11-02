@@ -44,7 +44,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     return Scaffold(
       body: Stack(
         children: [
-          // الخلفية المتنفسة: كحلي غامق + هالات ضوء تتحرك ببطء.
+          // Breathing background: dark navy with slowly moving light halos.
           Container(
             decoration: const BoxDecoration(
               gradient: LinearGradient(
@@ -112,7 +112,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                               controller: _email,
                               keyboardType: TextInputType.emailAddress,
                               textDirection: TextDirection.ltr,
-                              // iOS كان بيكبّر أول حرف ويعمل autocorrect للإيميل → فشل دخول.
+                              // iOS capitalised the first letter and autocorrected the email, which failed login.
                               autocorrect: false,
                               enableSuggestions: false,
                               textCapitalization: TextCapitalization.none,
@@ -191,7 +191,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
               ),
             ),
           ),
-          // زر اللغة أعلى الشاشة.
+          // Language button at the top of the screen.
           Positioned(
             top: MediaQuery.of(context).padding.top + 8,
             left: 14,

@@ -1,8 +1,5 @@
 'use client';
-/**
- * عقودُ التخليص — عقودُنا مع العملاء ووكلاءِ الشحن والناقلين في مكانٍ واحد.
- * والعقدُ نفسُه يظهر في ملفّ صاحبه (راجع صفحة الطرف) — مصدرٌ واحدٌ لا نسختان.
- */
+/** Clearance contracts: our contracts with customers, shipping agents and carriers in one place. The contract also appears in its party's file (see the party page): one source, not two copies. */
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
@@ -22,7 +19,7 @@ export default function Page() {
   const canEdit = ['super_admin', 'admin', 'operations_manager', 'customs_manager', 'customs_officer']
     .includes((user as any)?.role || '') || canEditSection((user as any)?.permissions, 'Customs');
 
-  // أطرافُ القسم كلُّها في قائمةٍ واحدةٍ لاختيار صاحب العقد.
+  // All department parties in one list to choose the contract owner.
   const [parties, setParties] = useState<{ _id: string; name: string; kind: string }[]>([]);
   useEffect(() => {
     Promise.all(['customer', 'agent', 'carrier'].map((k) =>

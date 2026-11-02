@@ -4,11 +4,8 @@ import '../services/lang.dart';
 import '../ui/theme.dart';
 import 'vehicle_registry.dart' show fmtDate;
 
-/// ── نوافذُ التجديد — توأمُ components/vehicles/RenewModals في الموقع ─────────
-///
-/// تجديدُ مستندٍ واحد (`/renew`) وتجديدٌ جماعيّ (`/renew-bulk`)، تستعملهما
-/// ملفُّ المركبة وصفحاتُ العائلات وشاشةُ الانتهاءات — نافذةٌ واحدةٌ لا ثلاث
-/// نسخٍ تفترق عند أوّل تعديل.
+/// Renewal dialogs, twin of components/vehicles/RenewModals on web.
+/// Single-document renewal (/renew) and bulk renewal (/renew-bulk), used by the vehicle profile, the family pages and the expiries screen: one dialog, not three copies that diverge at the first edit.
 
 class RenewTarget {
   final String vehicleId;
@@ -29,7 +26,7 @@ class RenewTarget {
   });
 }
 
-/// اسمُ المستند — نفسُ DOC_TYPES في الموقع (ومعه بطاقةُ السائق).
+/// Document name, the same as DOC_TYPES on web (including the driver card).
 const _docNames = {
   'insurance': ('التأمين', 'Insurance'),
   'operatingCard': ('بطاقة التشغيل', 'Operating Card'),
@@ -43,7 +40,7 @@ String renewDocLabelAr(String k) => _docNames[k]?.$1 ?? k;
 String renewDocLabelEn(String k) => _docNames[k]?.$2 ?? k;
 String renewDocLabel(String k) => tr(renewDocLabelAr(k), renewDocLabelEn(k));
 
-/// اسمُ رقم المستند، أو null لمستندٍ لا رقمَ مستقلَّ له (رخصة السير والفحص).
+/// Name of the document number, or null for a document with no separate number (driving licence and inspection).
 String? docNumberLabel(String k) => switch (k) {
       'insurance' => tr('رقم وثيقة التأمين', 'Policy number'),
       'operatingCard' => tr('رقم بطاقة التشغيل', 'Operating card number'),
@@ -56,7 +53,7 @@ String? docNumberLabel(String k) => switch (k) {
 Map _sub(Map v, String k) => v[k] is Map ? v[k] as Map : const {};
 String _s(dynamic v) => v == null ? '' : v.toString();
 
-/// تاريخُ انتهاء المستند ورقمُه على صفّ مركبةٍ من السجلّ.
+/// A document's expiry date and number on a register vehicle row.
 String? docDateOf(Map v, String k) {
   final d = switch (k) {
     'insurance' => _sub(v, 'insurance')['expiryDate'],
@@ -78,7 +75,7 @@ String docNumberOf(Map v, String k) => switch (k) {
       _ => '',
     };
 
-/// هدفُ التجديد من صفّ مركبة.
+/// Renewal target from a vehicle row.
 RenewTarget renewTargetOf(Map v, String k) => RenewTarget(
       vehicleId: _s(v['_id']),
       plateNumber: _s(v['plateNumber']),
@@ -102,7 +99,7 @@ Widget _dateBtn(BuildContext c, String label, String value, ValueChanged<String>
       },
     );
 
-/// تجديدُ مستندٍ واحد. تعيد true إن جُدِّد.
+/// Renews one document. Returns true if renewed.
 Future<bool> showRenewSheet(BuildContext context, RenewTarget row) async {
   final now = DateTime.now();
   final exp = row.expiryDate == null ? null : DateTime.tryParse(row.expiryDate!);
@@ -126,7 +123,7 @@ Future<bool> showRenewSheet(BuildContext context, RenewTarget row) async {
           Text('${row.plateNumber} · ${renewDocLabel(row.docKey)} · ${tr('ينتهي', 'expires')} ${fmtDate(row.expiryDate)}',
               style: const TextStyle(fontSize: 12.5, color: T.inkFaint)),
           const SizedBox(height: 14),
-          // البدايةُ أوّلًا ثمّ النهاية — كما تُكتب المدّة.
+          // Start first and then end, as the period is written.
           if (hasStart) ...[
             _dateBtn(c, '${tr('تاريخ بداية التفويض', 'Authorisation start date')} *${row.startDate != null ? ' (${tr('الحاليّ', 'current')}: ${fmtDate(row.startDate)})' : ''}', startDate, (x) => setS(() => startDate = x)),
             const SizedBox(height: 10),
@@ -194,8 +191,8 @@ Future<bool> showRenewSheet(BuildContext context, RenewTarget row) async {
   return ok == true;
 }
 
-/// تجديدٌ جماعيّ: تاريخٌ واحدٌ لكلّ المختار، وأرقامٌ جديدةٌ اختياريّة لكلّ صفّ.
-/// الخادمُ يرفض الدفعةَ كاملةً إن فشل سطرٌ واحد، وتُعرَض أخطاءُ الأسطر.
+/// Bulk renewal: one date for the whole selection and optional new numbers per row.
+/// The server rejects the whole batch if one line fails, and the line errors are shown.
 Future<bool> showBulkRenewSheet(BuildContext context, List<RenewTarget> rows) async {
   String when = '';
   final reference = TextEditingController(), note = TextEditingController();
@@ -298,7 +295,7 @@ Future<bool> showBulkRenewSheet(BuildContext context, List<RenewTarget> rows) as
                     Navigator.pop(c, true);
                   }
                 } catch (e) {
-                  // ApiException يحمل جسمَ الرد — أخطاءُ الأسطر إن وُجدت.
+                  // ApiException carries the response body: the per-line errors, if any.
                   final errs = e is ApiException && e.data['errors'] is List ? e.data['errors'] as List : null;
                   setS(() {
                     busy = false;

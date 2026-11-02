@@ -1,7 +1,5 @@
 'use client';
-// يجلب قوائم الأسطول (نوع الإيجار/الدفع/الحمولة) مرة واحدة ويعيد دالة تحوّل
-// المفتاح المخزَّن (forward/general…) إلى اسمه المعروض بلغة الواجهة، حتى لا
-// تظهر المفاتيح الخام في القوائم والجداول.
+// Fetches the fleet lookup lists (rental/payment/load type) once and returns a function mapping the stored key (forward/general...) to its label in the UI language, so raw keys do not show in lists and tables.
 import { useState, useEffect, useCallback } from 'react';
 import api from '@/lib/api';
 import { useSocket } from '@/hooks/useSocket';
@@ -34,10 +32,8 @@ export function useFleetLookups(ar: boolean) {
   }, [map, ar]);
 
   /**
-   * كلُّ خيارات قائمةٍ بترتيبها، لا مجرّدَ ترجمةِ مفتاح.
-   *
-   * ملاحظاتُ المتابعة تُعرض أزرارًا سريعة لا قائمةً منسدلة، فتحتاج القائمةَ
-   * كاملةً. وترجع فارغةً ما دام الجلبُ لم يصل، فلا تُعرض أزرارٌ ثمّ تُستبدل.
+   * All options of a list in order, not just a key translation.
+   * Follow-up notes are shown as quick buttons, not a dropdown, so they need the full list. Returns empty until the fetch arrives, so buttons are not shown and then replaced.
    */
   const options = useCallback((type: string): { key: string; label: string }[] => {
     const m = map[type];

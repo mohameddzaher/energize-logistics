@@ -2,16 +2,14 @@ import 'package:flutter/material.dart';
 import '../services/lang.dart';
 import '../ui/theme.dart';
 
-/// نموذجٌ صغيرٌ في ورقةٍ سفليّة — نظيرُ Modal + Field في CrmKit على الويب.
-/// يُستعمل لتعديل الشركة وإضافة جهة اتصال/نشاط/مهمّة/صفقة من ملفّها، ولمهامّ
-/// العلاقات وتعديل الحملة. الضوابطُ في حالة الودجت لا في دالّة البناء —
-/// وإلّا أُعيد إنشاؤها مع كلّ حرف (راجع inline-components-remount).
+/// Small form in a bottom sheet, counterpart of Modal + Field in CrmKit on the web.
+/// Used for company edit, adding contact/activity/task/deal, CRM tasks and campaign edit. Controls live in widget state, not the build function, or they are recreated on every keystroke (see inline-components-remount).
 enum CrmFieldKind { text, multiline, number, select, date, datetime, check }
 
 class CrmField {
   final String key, ar, en;
   final CrmFieldKind kind;
-  /// (القيمة، عربي، إنجليزي)
+  /// (value, Arabic, English)
   final List<(String, String, String)> options;
   final bool required;
   final bool ltr;
@@ -19,7 +17,7 @@ class CrmField {
       {this.kind = CrmFieldKind.text, this.options = const [], this.required = false, this.ltr = false});
 }
 
-/// يفتح النموذج ويُرجع القيم (نصوص، أرقام، منطقيّ) أو null عند الإلغاء.
+/// Opens the form and returns the values (strings, numbers, booleans), or null on cancel.
 Future<Map<String, dynamic>?> showCrmForm(
   BuildContext context, {
   required String title,
@@ -230,14 +228,14 @@ class _CrmFormSheetState extends State<_CrmFormSheet> {
   }
 }
 
-/// قائمةُ خياراتٍ من /api/crm/options: [{key,nameAr,nameEn}] → (value, ar, en).
+/// Option list from /api/crm/options: [{key,nameAr,nameEn}] mapped to (value, ar, en).
 List<(String, String, String)> crmOpts(dynamic list) => [
       if (list is List)
         for (final o in list.whereType<Map>())
           ('${o['key'] ?? ''}', '${o['nameAr'] ?? o['key'] ?? ''}', '${o['nameEn'] ?? o['key'] ?? ''}'),
     ];
 
-/// المسؤولون من /api/crm/options.owners → (id, اسم, اسم).
+/// Owners from /api/crm/options.owners mapped to (id, name, name).
 List<(String, String, String)> crmOwners(dynamic list) => [
       if (list is List)
         for (final o in list.whereType<Map>())
@@ -247,7 +245,7 @@ List<(String, String, String)> crmOwners(dynamic list) => [
           }(),
     ];
 
-/// نصُّ خيارٍ بمفتاحه.
+/// Option label by its key.
 String crmOptLabel(List<(String, String, String)> opts, dynamic key) {
   final k = (key ?? '').toString();
   for (final o in opts) {

@@ -10,14 +10,8 @@ import '../ui/stat_grid.dart';
 import '../ui/widgets.dart';
 import 'customs_detail.dart';
 
-/// لوحةُ قسم التخليص — نظيرُ `/system/customs/dashboard` في الموقع.
-///
-/// ما يحتاجه الفريقُ ليعمل: كم معاملةً قادمةً ومفتوحةً ومغلقة، وأين تقف كلٌّ
-/// منها، وما الذي ينتظر فاتورةَ نقله، وحركةُ كلّ فردٍ في الفريق. ولا رقمَ
-/// ماليًّا فيها — الأرباحُ في «تحليلات قسم التخليص» وهي للإدارة وحدَها.
-///
-/// والصفوفُ تأتي مع الأرقام في النداء نفسِه: كلُّ بطاقةٍ تُلمَس فتُفتَح معاملاتُها
-/// في ورقة، بلا نداءٍ ثانٍ ولا رقمٍ لا يُعرَف ممّ تكوّن.
+/// Customs section dashboard, counterpart of `/system/customs/dashboard` on the web. What the team needs to work: how many transactions are upcoming, open and closed, where each stands, what awaits its transport invoice, and each member's activity. No financial figures; profits are in customs analytics, which is management only.
+/// Rows arrive with the numbers in the same call: each card opens its transactions in a sheet, with no second call and no number of unknown origin.
 class CustomsDashboardScreen extends StatefulWidget {
   const CustomsDashboardScreen({super.key});
   @override
@@ -39,15 +33,13 @@ class _CustomsDashboardScreenState extends State<CustomsDashboardScreen> {
   Map<String, dynamic>? _d;
   bool _loading = true;
   String? _error;
-  // فلاترُ النداء بأسمائها عند الخادم: customerParty, agentParty, branch,
-  // cargoType, member (مَن أنشأ), from/to (تاريخُ المعاملة). وكلُّ بطاقةٍ تُحسَب
-  // على ما بقي بعدها.
+  // Call filters by server names: customerParty, agentParty, branch, cargoType, member (creator), from/to (transaction date). Each card is computed on what remains after them.
   final Map<String, String> _f = {};
   bool _showFilters = false;
-  // المدّة: '' كلُّها · day · month · range — تُترجَم إلى from/to على تاريخ المعاملة.
+  // Period: '' all, day, month, range; translated into from/to on the transaction date.
   String _period = '';
   int _pm = DateTime.now().month, _py = DateTime.now().year;
-  // الفلاترُ السريعة وخياراتُها في ردّ اللوحة نفسِه (`filters`)، والفريقُ كذلك.
+  // Quick filters and their options come in the dashboard response itself (`filters`), as does the team.
   bool _allCustomers = false;
   int _seq = 0;
   late final void Function() _onLive;
@@ -58,7 +50,7 @@ class _CustomsDashboardScreenState extends State<CustomsDashboardScreen> {
     super.initState();
     _load();
     _onLive = () => _load();
-    // كالموقع: الإنشاءُ والتعديلُ والحذفُ، ومهامُّ خطّة العمل للقسم (عمودُ المهامّ).
+    // As on the web: create, edit, delete, and work-plan tasks for the section (tasks column).
     _onJp = (p) { if (p is! Map || p['section'] == 'customs') _load(); };
     for (final e in const ['customs:created', 'customs:updated', 'customs:deleted']) {
       Live.instance.on(e, _onLive);
@@ -75,7 +67,7 @@ class _CustomsDashboardScreenState extends State<CustomsDashboardScreen> {
     super.dispose();
   }
 
-  /// أعمدةُ تصدير اللوحة — نفسُ أعمدة الموقع (exportCols).
+  /// Dashboard export columns, same as the web (exportCols).
   static String _bucketWord(Map<String, dynamic> r) => switch ('${r['bucket']}') {
         'cancelled' => tr('ملغاة', 'Cancelled'),
         'upcoming' => tr('قادمة', 'Upcoming'),
@@ -110,8 +102,7 @@ class _CustomsDashboardScreenState extends State<CustomsDashboardScreen> {
   ];
 
   Future<void> _load() async {
-    // ردُّ النداء الأقدم لا يغلب الأحدث: غيرُ المفلتَر أبطأ، فلو وصل آخِرًا
-    // رسم أرقامَ الكلّ تحت اسم عميلٍ مختار.
+    // An older call's reply must not overwrite the newer: the unfiltered one is slower, and arriving last it would draw all-customer numbers under a chosen customer name.
     final mine = ++_seq;
     final q = _f.entries.map((e) => '${e.key}=${Uri.encodeQueryComponent(e.value)}').join('&');
     try {
@@ -159,8 +150,7 @@ class _CustomsDashboardScreenState extends State<CustomsDashboardScreen> {
         ),
       );
 
-  /// المدّةُ على تاريخ المعاملة: يومٌ بعينه، أو شهرٌ بأوّله وآخره، أو فترةٌ من–إلى.
-  /// والخادمُ يعرف `from`/`to` وحدَهما — فكلُّ اختيارٍ يُترجَم إليهما.
+  /// Period on the transaction date: a single day, a month by its first and last day, or a from-to range. The server knows only `from`/`to`, so every choice is translated to them.
   Widget _periodControl() {
     final from = _f['from'] ?? '', to = _f['to'] ?? '';
     void month() => _setRange(_ymd(DateTime(_py, _pm, 1)), _ymd(DateTime(_py, _pm + 1, 0)));
@@ -231,8 +221,7 @@ class _CustomsDashboardScreenState extends State<CustomsDashboardScreen> {
             ]),
           ),
           if (_showFilters) ...[
-            // الفلاترُ السريعة كالموقع (٢٠٢٦/١٠/٢٢): متعدّدةُ القيم وبأعدادها، وتُطبَّق في الخادم
-            // على كلّ رقمٍ في اللوحة (dashQuickFilters).
+            // Quick filters as on the web: multi-value with counts, applied on the server to every number on the dashboard (dashQuickFilters).
             const SizedBox(height: 6),
             HrQuickFilters(
               keys: _customsQuick,
@@ -250,7 +239,7 @@ class _CustomsDashboardScreenState extends State<CustomsDashboardScreen> {
   void _open(Map<String, dynamic> r) => Navigator.push(context, MaterialPageRoute(
       builder: (_) => CustomsDetailScreen(clearanceId: '${r['_id']}', ref: '${r['refNumber'] ?? ''}')));
 
-  /// معاملاتُ بطاقةٍ أو مرحلةٍ أو عميل — من الصفوف المحمَّلة نفسِها.
+  /// Transactions of a card, stage or customer, from the already loaded rows.
   void _showRows(String title, bool Function(Map<String, dynamic>) test) {
     final rows = _maps(_d?['rows']).where(test).toList();
     showModalBottomSheet<void>(
@@ -268,7 +257,7 @@ class _CustomsDashboardScreenState extends State<CustomsDashboardScreen> {
             padding: const EdgeInsets.fromLTRB(16, 14, 8, 6),
             child: Row(children: [
               Expanded(child: Text('$title (${rows.length})', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15))),
-              // تصديرُ المعروض — كزرّ «تصدير» فوق جدول اللوحة في الموقع.
+              // Export what is displayed, like the export button above the dashboard table on the web.
               ExportButton(fileName: 'customs-dashboard', sheetName: title, columns: _exportCols, rows: () => rows),
               IconButton(onPressed: () => Navigator.pop(c), icon: const Icon(Icons.close)),
             ]),
@@ -413,7 +402,7 @@ class _CustomsDashboardScreenState extends State<CustomsDashboardScreen> {
     return AppScaffold(
       title: Text(tr('لوحة القسم', 'Section Dashboard')),
       actions: [
-        // كلُّ معاملات اللوحة بفلاترها (عدا الملغاة) — «الكلّ» في الموقع.
+        // All dashboard transactions with their filters (except cancelled): the "all" of the web.
         ExportButton(fileName: 'customs-dashboard-all', sheetName: tr('كلّ المعاملات', 'All transactions'), columns: _exportCols,
             rows: () => _maps(_d?['rows']).where((r) => r['bucket'] != 'cancelled').toList()),
       ],
@@ -436,7 +425,7 @@ class _CustomsDashboardScreenState extends State<CustomsDashboardScreen> {
     return ListView(padding: const EdgeInsets.fromLTRB(14, 12, 14, 30), children: [
       _filters(team),
       if (_loading) const Padding(padding: EdgeInsets.only(top: 8), child: LinearProgressIndicator(minHeight: 2)),
-      // ── حالة المعاملات ──
+      // Transaction status.
       _head(tr('حالة المعاملات', 'Transaction status')),
       StatGrid(
         children: [
@@ -452,16 +441,16 @@ class _CustomsDashboardScreenState extends State<CustomsDashboardScreen> {
               onTap: () => _showActiveCustomers(_maps(d['byCustomer']).where((c) => _i(c['open']) > 0).toList())),
         ],
       ),
-      // ── ما يحتاج متابعة ──
+      // What needs follow-up.
       _head(tr('ما يحتاج متابعة', 'Needs follow-up')),
       StatGrid(
         children: [
           _card(tr('مفوترة بانتظار فاتورة النقل', 'Invoiced, awaiting transport invoice'), _i(n['awaitingTransportInvoice']), T.danger, Icons.error_outline,
               (r) => r['awaitingTransportInvoice'] == true),
-          // أُغلقت ولم تصدر فاتورتُها: مالٌ خرج من قوائم المتابعة ولم يُطالَب به.
+          // Closed without an issued invoice: money that left the follow-up lists and was never claimed.
           _card(tr('مغلقة لم تُفوتَر', 'Closed, not invoiced'), _i(n['closedNotInvoiced']), T.danger, Icons.receipt_long_outlined,
               (r) => r['bucket'] == 'closed' && r['invoiced'] != true),
-          // والمغلقةُ المفوترة — وإليها تنتقل الأولى حين تصدر فاتورتُها.
+          // And closed-and-invoiced; the previous group moves here once its invoice is issued.
           _card(tr('مغلقة مفوترة', 'Closed, invoiced'), _i(n['closedInvoiced']), T.success, Icons.verified_outlined,
               (r) => r['bucket'] == 'closed' && r['invoiced'] == true),
           _card(tr('مفتوحة لم تُفوتَر', 'Open, not invoiced'), _i(n['notInvoiced']), T.warn, Icons.pending_actions_outlined,
@@ -474,9 +463,7 @@ class _CustomsDashboardScreenState extends State<CustomsDashboardScreen> {
               sub: _i(n['tasksOverdue']) > 0 ? tr('${n['tasksOverdue']} متأخّرة', '${n['tasksOverdue']} late') : null),
         ],
       ),
-      // ── أين الوحداتُ نفسُها ──
-      // من النقل فما بعده تُتابَع كلُّ حاويةٍ على حدة، فالعدُّ هنا بالوحدات لا
-      // بالمعاملات — وكلُّ بطاقةٍ تفتح المعاملاتِ التي فيها من ذلك شيء.
+      // Where the units themselves are. From transport onward each container is tracked separately, so the count is in units, not transactions; each card opens the transactions that have some unit there.
       _head(tr('الحاويات والسيّارات في المعاملات المفتوحة', 'Containers & vehicles in open transactions')),
       StatGrid(
         children: [
@@ -491,7 +478,7 @@ class _CustomsDashboardScreenState extends State<CustomsDashboardScreen> {
                 (r) => r['bucket'] == 'open' && r['unitsState'] is Map && _i(r['unitsState'][x.$1]) > 0),
         ],
       ),
-      // ── أين تقف المفتوحة ──
+      // Where the open ones stand.
       _head(tr('أين تقف المعاملات المفتوحة', 'Where open transactions stand')),
       AppCard(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -517,7 +504,7 @@ class _CustomsDashboardScreenState extends State<CustomsDashboardScreen> {
             }(),
         ]),
       ),
-      // ── الفرعان ──
+      // The two branches.
       _head(tr('حسب الفرع', 'By branch')),
       AppCard(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -540,7 +527,7 @@ class _CustomsDashboardScreenState extends State<CustomsDashboardScreen> {
             ),
         ]),
       ),
-      // ── العملاء ──
+      // Customers.
       _head(tr('حسب العميل', 'By customer')),
       AppCard(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -573,9 +560,9 @@ class _CustomsDashboardScreenState extends State<CustomsDashboardScreen> {
             ),
         ]),
       ),
-      // ── الفريق: ما على كلّ فردٍ الآن، وما فعله في ثلاثين يومًا ──
+      // Team: what each member has now and what they did in thirty days.
       _head(tr('حركة الفريق (30 يومًا)', 'Team activity (30 days)')),
-      // لمسةُ فردٍ تجعل اللوحةَ كلَّها لما أنشأه هو — ولمسةٌ ثانيةٌ ترفع الفلتر.
+      // Tapping a member scopes the whole dashboard to what they created; a second tap clears the filter.
       for (final m in team) ...[
         Pressable(
           onTap: () => _setF('member', _f['member'] == '${m['_id']}' ? '' : '${m['_id']}'),

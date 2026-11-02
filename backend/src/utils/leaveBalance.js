@@ -1,36 +1,7 @@
 // Leave-balance maths for the HR section.
-//
-// The balance accrues *progressively* over the life of a contract: an employee
-// earns their annual entitlement day-by-day, so the longer the contract has
-// run, the more leave is available — reaching the full annual amount after a
-// year of service. This is computed on the fly on every read (pure arithmetic,
-// no jobs, no stored counters) so it is always live and instant.
-//
-//   accruedPerYear = contract.annualLeaveDays
-//   accrued        = annualLeaveDays * (daysElapsed / 365)
-//   available      = accrued - daysTaken
-//
-// `daysElapsed` is clamped to the contract window (never before start, never
-// after end), and `daysTaken` is the sum of approved, balance-affecting leave.
-//
-// ── ومن أيِّ يومٍ يبدأ العدّ ─────────────────────────────────────────────────
-// كان من `contract.startDate` — تاريخِ الورقة. والرصيدُ لا يُستحَقّ بالورقة بل
-// بالعمل: الموظّفُ يستحقّ إجازتَه من **يوم مباشرته العمل**
-// (`Employee.actualWorkStartDate`)، وهو تاريخٌ آخر غيرُ تاريخ التعيين.
-//
-// وقياسُه على البيانات: من ٢٩٦ عقدًا، ١٧٥ مباشرتُها **قبل** بداية العقد (عمل
-// ثمّ وُثّق عقدُه) و١٦ **بعدها** (وُقّع العقدُ ثمّ تأخّرت المباشرة). فالعدُّ من
-// الورقة يظلم الأوّلين ويحسب للآخرين أيّامًا لم يعملوها.
-//
-// وقرارُ صاحب العمل صريح: **من تاريخ المباشرة، لا من تاريخ العقد** — وفي كلّ
-// حال. فلا حدَّ ولا استثناء: لا لمن سبقت مباشرتُه عقدَه بسنواتٍ (٥٣ موظّفًا،
-// أكبرُهم مباشرتُه ٢٠١٨ وعقدُه ٢٠٢٦)، ولا لمن تعدّدت عقودُه.
-//
-// ويتبع ذلك أمرٌ يجب أن يُعرَف لا أن يُخفى: مَن خدم سنواتٍ قبل عقده المسجَّل
-// يستحقّ الآن رصيدَ تلك السنوات كاملًا، **وما أخذه فيها من إجازاتٍ لا سجلَّ له
-// عندنا** فلا يُخصَم. فإن أُريد خصمُه فموضعُه `Contract.carriedOverDays` برقمٍ
-// سالبٍ يكتبه من يعرفه — لا رقمٌ يخترعه النظامُ من فرق تاريخين.
-// و`scripts/auditLeaveAccrualBasis.js` يسمّي هؤلاء ويقول كم زاد رصيدُ كلٍّ.
+// The balance accrues progressively and is computed on every read (no jobs or stored counters):
+// accrued = annualLeaveDays * (daysElapsed / 365); available = accrued - daysTaken
+// `daysElapsed` is clamped to the contract window and starts from the actual work start date (`Employee.actualWorkStartDate`), not the contract start, with no exception. Earlier service has no leave record, so it is not deducted; a negative `Contract.carriedOverDays` can deduct it. `scripts/auditLeaveAccrualBasis.js` lists the affected employees.
 
 const DAY_MS = 86400000;
 
@@ -50,14 +21,13 @@ function leaveDays(startDate, endDate) {
 }
 
 /**
- * اليومُ الذي يبدأ منه العدّ: مباشرةُ العمل إن عُرفت، وإلّا بدايةُ العقد.
- * `opts.workStartDate` يأتي من `Employee.actualWorkStartDate`، و`opts.contracts`
- * عددُ عقود الموظّف — راجع رأسَ الملفّ لسبب الحدّ.
+ * Day counting starts from: actual work start if known, otherwise contract start.
+ * `opts.workStartDate` comes from `Employee.actualWorkStartDate`; `opts.contracts` is the employee's contract count. See the file header for why.
  */
 function accrualStart(contract, opts = {}) {
   const work = toDate(opts.workStartDate);
-  if (work) return work;                 // المباشرةُ هي الأصل، بلا استثناء
-  return toDate(contract?.startDate);    // ولا مباشرةَ مسجَّلة: يُعَدّ من العقد
+  if (work) return work;                 // Work start is the basis, with no exception.
+  return toDate(contract?.startDate);    // No work start recorded: count from the contract.
 }
 
 // Days elapsed as of `asOf`, from the accrual start, clamped to the contract end.
@@ -74,8 +44,7 @@ function contractDaysElapsed(contract, asOf = new Date(), opts = {}) {
 // (sum of approved leave whose type affects the balance).
 function computeBalance(contract, daysTaken = 0, asOf = new Date(), opts = {}) {
   const annual = Number(contract?.annualLeaveDays) || 0;
-  // ما رُحِّل من العقد السابق يُضاف إلى المتاح: أيّامٌ لم تُستهلَك، ولا تسقط
-  // بتجديد العقد. راجع `models/Contract.carriedOverDays`.
+  // Days carried over from the previous contract are added to the available balance: unused days do not lapse on renewal. See `models/Contract.carriedOverDays`.
   const carried = round2(Number(contract?.carriedOverDays) || 0);
   if (!contract || !annual) {
     return {
@@ -94,8 +63,7 @@ function computeBalance(contract, daysTaken = 0, asOf = new Date(), opts = {}) {
     accrued,
     taken,
     available: round2(carried + accrued - taken),
-    // ويُقال من أيِّ يومٍ عُدَّ، وبأيّ تاريخٍ — فمن يقرأ رصيدًا لا يطابق
-    // توقّعَه يجد السببَ في السطر نفسِه بدل أن يسأل.
+    // Also report the counting start day and its date, so a balance that differs from expectation explains itself.
     accrualFrom: start ? start.toISOString().slice(0, 10) : '',
     accrualBasis: start && opts.workStartDate && start.toISOString().slice(0, 10) === String(opts.workStartDate).slice(0, 10)
       ? 'workStart' : 'contract',

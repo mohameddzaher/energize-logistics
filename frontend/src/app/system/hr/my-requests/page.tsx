@@ -24,9 +24,7 @@ export default function MyRequestsPage() {
   const [requests, setRequests] = useState<HRRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
-  // ── ما دام مفتوحًا ولم يردّ عليه أحد فهو ملكُ صاحبه ─────────────────────────
-  // وأوّلُ ردٍّ في الخيط أو تغييرٍ لحالته يُثبّته: مَن ردّ ردّ على نصٍّ بعينه،
-  // وتغييرُه بعده يجعل الردّ جوابًا عن سؤالٍ لم يُطرح.
+  // While open and unanswered it belongs to its owner. The first reply in the thread or a status change locks it: a reply answers a specific text, and changing it afterwards makes the reply answer a question never asked.
   const [editing, setEditing] = useState<HRRequest | null>(null);
   const editable = (r: HRRequest) =>
     r.status === 'open' && (r.thread || []).filter((m2: any) => String(m2.sender?._id || m2.sender) !== String(r.requester?._id || r.requester)).length === 0;
@@ -47,8 +45,7 @@ export default function MyRequestsPage() {
   const [saving, setSaving] = useState(false);
   const [open, setOpen] = useState<HRRequest | null>(null);
   const [reply, setReply] = useState('');
-  // المرفقات تعيش مع الطلب لا خارجه: الرابط يُحذف من درايف فيبقى في السجلّ سطرٌ
-  // يقول «أُرسلت الشهادة» ورابطٌ لا يفتح.
+  // Attachments live with the request, not outside it: if the link is deleted from the drive, the record keeps a line saying a certificate was sent and a link that does not open.
   const [files, setFiles] = useState<PickedFile[]>([]);
   const [busy, setBusy] = useState(false);
 
@@ -81,18 +78,17 @@ export default function MyRequestsPage() {
     setBusy(false);
   };
 
-  // «آخر تحديث الميلادي» لا تُقرأ — فالاسمُ الأساسيُّ «تاريخ آخر تحديث».
+  // The "last update Gregorian" label is never shown; the main name is last update date.
   const updatedLabels = pairLabels(ar ? 'تاريخ آخر تحديث' : 'Last updated', ar);
   const exportColumns: ExportColumn[] = [
     { header: tx.colCategory, key: 'category', transform: (v) => categoryLabel(v, lang), width: 22 },
     { header: tx.colSubject, key: 'subject', width: 32 },
     { header: tx.colStatus, key: 'status', transform: (v) => (ar ? REQUEST_STATUS[v]?.ar : REQUEST_STATUS[v]?.en) || v, width: 16 },
-    // الميلاديُّ بساعته، وبعده مباشرةً هجريُّ اليوم نفسِه (lib/hrDates).
+    // Gregorian with the time, then the Hijri of the same day right after (lib/hrDates).
     { header: updatedLabels[0], key: 'updatedAt', transform: (v) => fmtDateTime(v), width: 22 },
     { header: updatedLabels[1], key: 'updatedAt', type: 'hijri', transform: (v) => gregDay(v), width: 16 },
   ];
-  // طلباتي أنا وحدي، والجدول يعرضها كلَّها بلا بحثٍ ولا فلتر — فـ«المعروض» هو
-  // «الكلّ» حرفيًّا، وفصلُهما خيارين يوهم بفرقٍ لا وجود له.
+  // Only my own requests, and the table shows them all without search or filter, so shown is literally all; two choices would suggest a difference that does not exist.
   const scope = exportScopeLabels(ar);
   const exportOptions = [
     { key: 'all', label: scope.all, sheets: [{ name: tx.pageTitle, rows: requests, columns: exportColumns }] },

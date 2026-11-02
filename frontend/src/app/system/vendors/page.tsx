@@ -32,10 +32,9 @@ interface Vendor {
 export default function VendorsPage() {
   const { confirm } = useDialog();
   const { user } = useAuth();
-  // role-only: صلاحيّةُ السوبر أدمن والأدمن (config/constants TOP_ROLES) — لا منحُ قسم.
+  // role-only: super admin and admin power (config/constants TOP_ROLES), not a section grant.
   const isSuperAdmin = ['super_admin', 'admin'].includes(user?.role || '');
-  // والمصفوفةُ تُحسب كما تُحسب القائمة: دورٌ مُنح «تعديل» في هذا القسم يعدّل
-  // — وإلّا فُتحت الشاشةُ لدورٍ مصنوعٍ وامتنعت عنه أزرارُها (راجع فريق العمليات).
+  // The matrix is computed like the list: a role granted edit on this section can edit; otherwise the screen opens for a custom role while its buttons stay unavailable (see operations team).
   const canEdit = ['super_admin', 'admin', 'operations_manager', 'operations_staff'].includes(user?.role || '')
     || canEditSection((user as any)?.permissions, 'Operations');
   const { lang } = useLanguage();
@@ -117,15 +116,14 @@ export default function VendorsPage() {
     { header: 'Notes', key: 'notes', width: 25 },
     { header: 'Created At', key: 'createdAt', transform: fmt.date, width: 14 },
   ];
-  // كلّ الموردين محمّلون في الذاكرة والبحث يفلترهم هناك، فالزرّ الواحد كان
-  // يصدّر المفلتَر ويسمّيه «الكلّ»؛ النطاقان بعدّاديهما يفصلان الأمرين.
+  // All vendors are loaded in memory and search filters them there, so one button exported the filtered set but called it all; the two scopes with counters separate them.
   const scope = exportScopeLabels(lang === 'ar');
   const exportOptions = [
     { key: 'shown', label: scope.shown, sheets: [{ name: 'Vendors', rows: filtered, columns: exportColumns }] },
     { key: 'all', label: scope.all, sheets: [{ name: 'Vendors', rows: vendors, columns: exportColumns }] },
   ];
 
-  // قمعُ الأعمدة — القيمُ كما تُقرأ في الصفّ. راجع hooks/useColumnFilters.
+  // Column funnel: values as read in the row. See hooks/useColumnFilters.
   const cf = useColumnFilters<any>({
     name: (v) => v.name || '',
     contactPerson: (v) => v.contactPerson || '',

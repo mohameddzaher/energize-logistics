@@ -6,9 +6,7 @@ import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 
-/// «مهامي» و«الشكاوى» لكل قسم — the mobile twin of the web's SectionWork:
-/// one screen, mounted per section, full CRUD + assignment + status, live on
-/// the same 'section:work' event. Opens ~40 web pages at once.
+/// My tasks and complaints per section, the mobile twin of the web's SectionWork: one screen mounted per section, full CRUD + assignment + status, live on the same 'section:work' event. Opens about 40 web pages at once.
 class SectionWorkScreen extends StatefulWidget {
   final String section;      // 'fleet', 'contracts', …
   final bool complaints;     // false → tasks, true → complaints

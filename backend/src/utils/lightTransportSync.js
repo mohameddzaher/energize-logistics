@@ -1,46 +1,28 @@
 /**
- * موظّفُ النقل الخفيف يُسجَّل في قسمه بمجرّد أن يُكتب قسمُه في الموارد البشريّة.
- *
- * ── العلّة ──────────────────────────────────────────────────────────────────
- * الإنسانُ يُسجَّل مرّةً واحدة — في الموارد البشريّة. فإن كان قسمُه النقلَ الخفيف
- * (وهو قطاعُ الأفراد نفسُه)، فهو من ذلك القسم بحكم قسمه، ولا معنى لأن يُطلَب من
- * أحدٍ أن يفتح شاشةً ثانيةً ويعيد كتابةَ اسمِه وهويّتِه. وما يُطلَب مرّتين يُنسى
- * مرّةً: فيعمل الرجلُ شهرًا ولا يظهر في سجلّ قسمه، ولا في عدّةٍ ولا في سكن.
- *
- * فالرابطُ يقوم هنا: يُنشَأ صفُّه في سجلّ النقل الخفيف مربوطًا بملفّه — لا
- * منسوخًا عنه. الاسمُ والهويّةُ والحالةُ تبقى تُقرأ من الموارد البشريّة، وما
- * يُكتب هنا هو ما يخصّ القسمَ وحدَه (مشروعُه ومركبتُه وسكنُه) ويملؤه القسم.
- *
- * ── وما لا يفعله ────────────────────────────────────────────────────────────
- * لا يحذف: من نُقل من هذا القسم إلى غيره يبقى صفُّه ويُعطَّل بيد القسم — إخراجُه
- * تلقائيًّا يمحو مشروعَه وسكنَه وتاريخَ نقله لمجرّد أنّ خانةً في ملفٍّ آخرَ
- * تغيّرت. ولا يكرّر: المفتاحُ رقمُ الهويّة، فإعادةُ الحفظ لا تُنشئ صفًّا ثانيًا.
+ * A light-transport employee is registered in that department as soon as HR writes their department.
+ * A person is registered once, in HR. If the department is light transport (the individuals sector), they belong to it by that fact, and nobody should re-enter name and identity on a second screen; anything asked twice gets forgotten, and the person works for a month absent from their department register, housing and equipment.
+ * The link is created here: a row in the light-transport register tied to the HR file, not copied from it. Name, identity and status keep being read from HR; what is written here is department-only (project, vehicle, housing), filled by the department.
+ * It never deletes: someone moved out stays and is deactivated by the department, since auto-removal would erase project, housing and transfer history because a field in another file changed. It never duplicates: the key is the identity number, so re-saving creates no second row.
  */
 const S = (v) => String(v == null ? '' : v).trim();
 
-/** يطوي صورَ الحروف والمسافات — للمقارنة لا للعرض. */
+/** Folds letter and whitespace variants, for comparison only. */
 const fold = (v) => S(v).replace(/[أإآٱ]/g, 'ا').replace(/ة/g, 'ه').replace(/[ىئ]/g, 'ي')
   .replace(/\s+/g, '').toLowerCase();
 
-/**
- * أسماءُ القسم التي تعني «النقل الخفيف». وهي أكثرُ من واحد: الملفّاتُ كُتبت
- * على مدى سنةٍ بأيدٍ مختلفة — «B2C» و«b2c» و«ادارة B2C» و«النقل الخفيف».
- */
+/** Department names meaning light transport. There are several because files were written by different hands over a year: B2C variants and the Arabic light-transport name. */
 const LIGHT_DEPARTMENTS = ['النقل الخفيف', 'b2c', 'إدارة b2c', 'ادارة b2c', 'قطاع الأفراد', 'light transport'];
 const isLightDepartment = (dept) => {
   const f = fold(dept);
   return !!f && LIGHT_DEPARTMENTS.some((d) => fold(d) === f);
 };
 
-/**
- * يضمن وجودَ صفٍّ لهذا الموظّف في سجلّ النقل الخفيف. يُعيد `'created'` أو
- * `'linked'` أو `null` — ولا يرمي أبدًا: فشلُ المزامنة لا يُسقط حفظَ الموظّف.
- */
+/** Ensures a row exists for this employee in the light-transport register. Returns `'created'`, `'linked'` or `null`; never throws, since a sync failure must not fail the employee save. */
 async function syncEmployeeToLightTransport(employee, user) {
   try {
     if (!employee || !isLightDepartment(employee.department)) return null;
     const idNumber = S(employee.nationalId) || S(employee.iqamaNumber);
-    // بلا رقمِ هويّةٍ لا مفتاحَ للصفّ — والمفتاحُ هو ما يمنع التكرار.
+    // Without an identity number the row has no key, and the key prevents duplicates.
     if (!idNumber) return null;
 
     const { LightTransportEmployee } = require('../models/LightTransport');
@@ -48,7 +30,7 @@ async function syncEmployeeToLightTransport(employee, user) {
       $or: [{ idNumber }, { employee: employee._id }],
     });
     if (existing) {
-      // موجودٌ ولم يكن مربوطًا: يُربَط فتُقرأ حالتُه من الملفّ من الآن.
+      // Exists but was unlinked: link it so its status is read from the file from now on.
       if (!existing.employee) {
         existing.employee = employee._id;
         await existing.save();
@@ -68,11 +50,9 @@ async function syncEmployeeToLightTransport(employee, user) {
       phone: S(employee.phone),
       hireDate: employee.hireDate || employee.joiningDate || null,
       jobTitleAr: S(employee.jobTitle),
-      // ومشروعُه إن كان في ملفّه مشروعٌ من مشاريع B2C — قرّرته الموارد البشريّة
-      // فلا يُترك فارغًا (نقلُ المشروع بين القسمين في الاتجاهين، ٢٠٢٦/١٠/٢١).
+      // Also set the project if the file holds a B2C project, as HR decided it, so it is not left empty (project moves between the two sections in both directions).
       projectAr: (await require('./hrLists').namesOf('lt_project')).includes(S(employee.project)) ? S(employee.project) : '',
-      // ما يخصّ القسمَ وحدَه يُترك فارغًا ليملأه القسم: مشروعٌ يُخترَع هنا
-      // يُقرأ حقيقةً في اللوحة، ولا أحدَ يعلم أنّه لم يُقرَّر.
+      // Department-only fields are left empty for the department to fill: an invented project would read as real on the dashboard and nobody would know it was never decided.
       isActive: true,
       createdBy: user?._id,
       history: [{
@@ -84,7 +64,7 @@ async function syncEmployeeToLightTransport(employee, user) {
     });
     return 'created';
   } catch (e) {
-    // السجلُّ يحمل الخطأ، وحفظُ الموظّف لا يُنقَض من أجل مزامنة.
+    // The register carries the error; saving the employee is not undone for a sync.
     console.error('[lightTransportSync]', e.message);
     return null;
   }

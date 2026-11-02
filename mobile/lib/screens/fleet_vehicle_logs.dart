@@ -10,10 +10,8 @@ import '../ui/widgets.dart';
 import '../ui/vehicle_month_log.dart';
 import '../ui/search_field.dart';
 
-/// سجلّات السيارات — الشهرُ كلُّه لكلّ سيّارة، ثمّ السجلُّ الكامل لمن تُختار.
-///
-/// السؤال الذي لم تكن له شاشة: «ماذا جرى لهذه السيّارة الشهر الماضي؟» — كانت
-/// إجابتُه مبعثرةً في متابعات ستّ شحنات، ولا موضعَ يجمعها.
+/// Vehicle logs: the whole month for every vehicle, then the full log of the selected one.
+/// Answers "what happened to this vehicle last month", which was scattered across six shipments' follow-ups.
 class FleetVehicleLogsScreen extends StatefulWidget {
   const FleetVehicleLogsScreen({super.key});
   @override
@@ -33,7 +31,7 @@ class _FleetVehicleLogsScreenState extends State<FleetVehicleLogsScreen> {
   String _month = monthKeyNow();
   String _plate = '';
   String _search = '';
-  // تبديلُ الشهر يُعيد التحميلَ فتُهدَم الخانة — النصُّ في متحكِّمٍ يبقى مع الكلمة.
+  // Changing the month reloads and destroys the field; the text lives in a controller so it survives.
   final _searchCtl = TextEditingController();
 
   late final void Function() _onLive;
@@ -42,7 +40,7 @@ class _FleetVehicleLogsScreenState extends State<FleetVehicleLogsScreen> {
   void initState() {
     super.initState();
     _load();
-    // قيدٌ يُضاف أو حمولةٌ تُحفَظ في أيّ مكان — كما في الويب.
+    // An entry or load saved anywhere refreshes this screen, as on the web.
     _onLive = () => _load();
     Live.instance.on('fleet:updated', _onLive);
   }

@@ -1,17 +1,9 @@
 'use client';
 /**
- * «مناديب المبيعات» — استُبدلت بسجلّ القسم كلِّه.
- *
- * ── لماذا تحويلةٌ لا حذف ────────────────────────────────────────────────────
- * الصفحةُ كانت تعرض مَن له تقريرُ طلباتٍ وحدَه، فلا يظهر فيها مشرفٌ ولا ميكانيكيٌّ
- * ولا عاملُ نظافة — وهم أحدَ عشرَ من مئةٍ وواحدٍ وستّين. فحلَّ محلَّها «موظفون
- * النقل الخفيف» بكلّ من يعمل في القسم.
- *
- * والرابطُ يبقى يعمل: هو محفوظٌ في مفضّلات الناس وفي رسائلَ قديمة، وصفحةٌ
- * تُحذَف تعطي خطأً لا يُفهَم منه أين ذهبت. فيُحوَّل إلى السجلّ الجديد.
- *
- * وسجلُّ `B2CRep` نفسُه لم يُمَسّ: خمسةُ مئةٍ وثلاثةٌ وتسعون صفًّا تشير إليها
- * ستٌّ وأربعون ألفَ طلبٍ، وهي أساسُ تحليل الطلبات.
+ * Sales reps page, replaced by the whole department register.
+ * Why a redirect, not a delete: the page listed only people with an order report, so supervisors, mechanics and cleaners (11 of 161) never appeared. The light-transport employees page replaces it with everyone in the department.
+ * The URL still works: it is saved in bookmarks and old messages, and a deleted page gives an error that does not say where it went. So it redirects to the new register.
+ * The `B2CRep` register itself is untouched: 593 rows are referenced by 46,000 orders and it underlies order analysis.
  */
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';

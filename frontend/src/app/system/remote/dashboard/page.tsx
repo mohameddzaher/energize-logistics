@@ -62,8 +62,7 @@ export default function RemoteDashboardPage() {
     { header: tx.colHours, key: 'totalMinutes', width: 16, transform: (v) => fmtDuration(v, ar ? 'ar' : 'en') },
     { header: tx.leaveDays, key: 'leaveDays', width: 14 },
   ];
-  // الصفوف هنا حصائلُ محسوبة للفترة المختارة لا سجلّاتٍ خامًا: نطاقٌ ثانٍ بلا فلترٍ
-  // لن يزيد صفًّا بل سيغيّر الأرقام نفسها إلى مدّةٍ أخرى، فيكون تضليلًا لا خيارًا.
+  // Rows here are computed totals for the selected period, not raw records: a second range with no filter would not add rows, it would change the numbers to another period and mislead.
   const scope = exportScopeLabels(ar);
   const exportOptions = [
     { key: 'all', label: scope.all, sheets: [{ name: tx.perEmployeeBreakdown, rows: (data?.perEmployee ?? []) as unknown as Record<string, any>[], columns: exportColumns }] },

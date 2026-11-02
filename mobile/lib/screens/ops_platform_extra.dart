@@ -13,13 +13,11 @@ import '../ui/widgets.dart';
 import '../ui/search_field.dart';
 import 'ops_common.dart';
 
-/// منصّةُ العمليات — ما لا يقوم به الجدولُ العامّ: صفحةُ الشحنات بفلاترها
-/// وأعدادها، وتفاصيلُ الشحنة بتحديث حالتها وسجلّها، وملفّا العميل والسائق
-/// بسجلّ شحناتهما — نظيرُ /system/ops/shipments و/ops/users/[id] و/ops/drivers/[id].
+/// Operations platform, what the generic table does not cover: the shipments page with its filters and counts, shipment details with status update and history, and customer and driver profiles with their shipment history. Counterpart of /system/ops/shipments, /ops/users/[id] and /ops/drivers/[id].
 
 const _opsAdminRoles = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager'];
 
-/// مَن يكتب في المنصّة — نفسُ isOpsAdmin في lib/ops.ts.
+/// Who may write to the platform, same as isOpsAdmin in lib/ops.ts.
 bool isOpsAdmin(AuthProvider a) => _opsAdminRoles.contains(a.role) || a.canEditSection('Operations Platform');
 
 String opsDriverName(Map s) {
@@ -47,7 +45,7 @@ String opsCarOwnerName(Map s) {
 
 String _relName(dynamic v) => v is Map ? opsLoc(v['name']) : '';
 
-/// مَن قام بالخطوة وملاحظتُها — نفسُ timelineMeta (admin قد يكون null، وdetails قد يكون كائنًا).
+/// Who performed the step and its note, same as timelineMeta (admin may be null, details may be an object).
 (String, String) _timelineMeta(Map ev) {
   final details = ev['details'];
   var who = opsLoc(ev['admin'] is Map ? ev['admin']['name'] : null);
@@ -67,7 +65,7 @@ String _relName(dynamic v) => v is Map ? opsLoc(v['name']) : '';
   return (who, note);
 }
 
-/// حقولُ البحث في الشحنات — البحثُ العامّ ضبابيّ، والرقمان الفريدان يُطابَقان حرفيًّا.
+/// Shipment search fields: general search is fuzzy, while the two unique numbers are matched literally.
 const _searchFields = [
   ('', 'الكل', 'Anything'),
   ('graduation', 'رقم أمر النقل', 'Graduation statement #'),
@@ -104,9 +102,7 @@ Future<List<Map<String, dynamic>>> _loadBranches() async {
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// الشحنات
-// ═══════════════════════════════════════════════════════════════════════════
+// Shipments
 class OpsShipmentsScreen extends StatefulWidget {
   final String? initialStatus;
   const OpsShipmentsScreen({super.key, this.initialStatus});
@@ -122,7 +118,7 @@ class _OpsShipmentsScreenState extends State<OpsShipmentsScreen> {
   bool _stale = false;
   int _page = 1;
   String _q = '';
-  // البحثُ أثناء الكتابة بتأخيرٍ قصير؛ والمتحكِّمُ عند الشاشة كي لا يضيع النصُّ إذا خرجت الخانةُ من الشاشة.
+  // Search while typing with a short debounce; the controller is owned by the screen so the text is not lost if the field leaves the screen.
   final _searchCtl = TextEditingController();
   Timer? _debounce;
   String _field = '';
@@ -189,7 +185,7 @@ class _OpsShipmentsScreenState extends State<OpsShipmentsScreen> {
         _stale = false;
       });
     } catch (_) {
-      // تعثُّرُ المنصّة لا يُفرغ المعروض.
+      // A platform failure does not empty what is displayed.
       if (mounted && mine == _seq) setState(() => _stale = true);
     }
     if (mounted && mine == _seq) setState(() { _loading = false; _loaded = true; });
@@ -213,7 +209,7 @@ class _OpsShipmentsScreenState extends State<OpsShipmentsScreen> {
         if (map.isNotEmpty) _counts = map;
         _countsState = dash['upstreamUnavailable'] == true || map.isEmpty ? 'error' : 'ok';
       });
-      // الخادمُ ردَّ بآخر أرقامٍ عنده وهو يجلب الأحدث — يُسأل ثانيةً مرّةً واحدة.
+      // The server replied with its last known numbers while fetching fresh ones; ask once more.
       if (dash['stale'] == true && !retried) {
         Future.delayed(const Duration(milliseconds: 2500), () { if (mounted) _loadCounts(retried: true); });
       }
@@ -227,7 +223,7 @@ class _OpsShipmentsScreenState extends State<OpsShipmentsScreen> {
 
   num get _allCount => _counts['all'] ?? _counts.values.fold<num>(0, (a, b) => a + b);
 
-  /// تصديرُ «كلّ النتائج» يُعاد جلبُه صفحاتٍ من مئة (حتى ثلاثين صفحة) — كالويب.
+  /// Exporting all results is refetched in pages of 100 (up to 30 pages), as on the web.
   Future<List<Map<String, dynamic>>> _fetchAllFiltered() async {
     final out = <Map<String, dynamic>>[];
     for (var p = 1; p <= 30; p++) {
@@ -301,8 +297,7 @@ class _OpsShipmentsScreenState extends State<OpsShipmentsScreen> {
                       : tr('تعذّر جلب أعداد الحالات من منصّة التشغيل.', 'Could not fetch status counts.'),
                       action: TextButton(onPressed: _loadCounts, child: Text(tr('إعادة المحاولة', 'Retry')))),
                 const SizedBox(height: 6),
-                // ── بطاقاتُ الحالة: تحديدٌ متعدّد ──────────────────────────────
-                // يتمدّد ارتفاعُ الشريط مع حجم الخط بدل ارتفاعٍ ثابت يفيض.
+                // Status cards: multi-select. The bar height grows with the font size instead of a fixed height that overflows.
                 SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
                   child: IntrinsicHeight(child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -320,7 +315,7 @@ class _OpsShipmentsScreenState extends State<OpsShipmentsScreen> {
                     TextButton(onPressed: () { setState(_statuses.clear); _refilter(); }, child: Text(tr('مسح', 'clear'))),
                   ]),
                 const SizedBox(height: 6),
-                // ── البحث والفلاتر ─────────────────────────────────────────
+                // Search and filters
                 Row(children: [
                   SizedBox(
                     width: 130,
@@ -411,7 +406,7 @@ class _OpsShipmentsScreenState extends State<OpsShipmentsScreen> {
       );
 }
 
-/// صفُّ شحنةٍ — يُضغط فتُفتح تفاصيلُها الكاملة.
+/// Shipment row: tap to open its full details.
 class OpsShipmentCard extends StatelessWidget {
   final Map<String, dynamic> row;
   final VoidCallback? onChanged;
@@ -454,7 +449,7 @@ class OpsShipmentCard extends StatelessWidget {
   }
 }
 
-/// تفاصيلُ الشحنة الشاملة — وتحديثُ حالتها لمن يكتب في المنصّة، وسجلُّ حالاتها.
+/// Full shipment details, with status update for platform writers and the status history.
 Future<bool?> showOpsShipmentDetail(BuildContext context, Map<String, dynamic> row) {
   return showModalBottomSheet<bool>(
     context: context,
@@ -676,9 +671,7 @@ class _ShipmentDetailState extends State<_ShipmentDetail> {
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// سجلُّ شحنات عميلٍ أو سائق — نظيرُ OpsShipmentHistory
-// ═══════════════════════════════════════════════════════════════════════════
+// Shipment history of a customer or driver, counterpart of OpsShipmentHistory
 const _histSearch = [
   ('', 'الكل', 'Anything'), ('graduation', 'أمر النقل', 'Graduation #'), ('reference', 'رقم المرجع', 'Reference #'),
   ('driver_name', 'اسم السائق', 'Driver name'), ('driver_phone', 'هاتف السائق', 'Driver phone'),
@@ -833,9 +826,7 @@ class _OpsShipmentHistoryState extends State<OpsShipmentHistory> {
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// ملفُّ العميل — /system/ops/users/[id]
-// ═══════════════════════════════════════════════════════════════════════════
+// Customer profile, /system/ops/users/[id]
 class OpsCustomerProfileScreen extends StatefulWidget {
   final String id;
   const OpsCustomerProfileScreen({super.key, required this.id});
@@ -980,9 +971,7 @@ class _OpsCustomerProfileScreenState extends State<OpsCustomerProfileScreen> {
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// ملفُّ السائق — /system/ops/drivers/[id]
-// ═══════════════════════════════════════════════════════════════════════════
+// Driver profile, /system/ops/drivers/[id]
 class OpsDriverProfileScreen extends StatefulWidget {
   final String id;
   const OpsDriverProfileScreen({super.key, required this.id});

@@ -12,40 +12,28 @@ const isObjectId = (v) => !!v && mongoose.Types.ObjectId.isValid(String(v)) && S
  * non-ObjectId hit a cast error and the entry was dropped entirely, which is how
  * every role-permission change went unrecorded.
  */
-// ── سجلُّ المراجعة يُنسَب إلى إنسان ────────────────────────────────────────
-// سكربتُ فحصٍ يستدعي متحكّمًا حقيقيًّا يحتاج `req.user`، فيُؤخذ أوّلُ مدير نظام
-// من القاعدة — ويُقيَّد عملُ السكربت باسمه. وقد حدث: مئتان واثنان من إنشاء
-// حساباتِ اختبارٍ وحذفِها نُسبت إلى موظّفةٍ لم تفتح الشاشةَ أصلًا، فقرأها
-// صاحبُ الشركة في السجلّ وسأل عنها بحقّ.
-//
-// والسجلُّ الذي يتّهم بريئًا أسوأُ من سجلٍّ ناقص. فمتى كان النظامُ خارجَ
-// الإنتاج (`AUDIT_SUPPRESS=1`، وتضعها سكربتاتُ الفحص) لم يُكتب شيء.
+// The audit log is attributed to a person.
+// A test script calling a real controller needs `req.user`, so the first system admin is taken from the database and the script's work would be recorded under their name. That happened: 202 test-account creates and deletes were attributed to an employee who never opened the screen.
+// A log that accuses an innocent person is worse than a missing one, so when the system is outside production (`AUDIT_SUPPRESS=1`, set by test scripts) nothing is written.
 const SUPPRESSED = process.env.AUDIT_SUPPRESS === '1';
 
 const logAudit = async ({
   user, action, entity, entityId, entityKey, changes, ipAddress, bySystem, details, ip,
 }) => {
-  // قُيِّد في هذا الطلب شيء — فلا تكتب شبكةُ الأمان قيدَها العامّ فوقه
-  // (راجع middleware/auditTrail). يُرفَع العلَمُ قبل الكتابة: المحاولةُ هي المعيار.
-  try { require('./auditContext').mark(); } catch (_) { /* خارجَ طلب */ }
+  // Something was recorded in this request, so the safety net does not write its generic entry on top (see middleware/auditTrail). The flag is raised before writing: the attempt is what counts.
+  try { require('./auditContext').mark(); } catch (_) { /* Outside a request. */ }
   if (SUPPRESSED) return;
   try {
-    // الفاعلُ إمّا إنسانٌ وإمّا النظامُ صراحةً. وغيابُهما معًا خطأُ نداءٍ: يُقيَّد
-    // في السجلّ التقنيّ ولا يُكتب قيدُ مراجعةٍ بلا فاعل.
+    // The actor is either a person or explicitly the system. Neither is a caller error: it is recorded in the technical log and no audit entry without an actor is written.
     const actor = user?._id || (isObjectId(user) ? user : null);
     if (!actor && !bySystem) {
       console.error(`[audit] فعلٌ بلا فاعل: ${action} على ${entity} — لم يُقيَّد`);
       return;
     }
     /**
-     * ── والاسمُ يُلتقط ولو لم يُمرَّر الكائن ────────────────────────────────
-     * بعضُ النداءات تمرّر `user: req.user` وبعضُها `user: req.user._id` — وكان
-     * الاسمُ يُلتقط من الأوّل وحدَه، فتُكتب قيودٌ بمرجعٍ صحيحٍ واسمٍ فارغ.
-     * والسجلُّ يُقرأ بالاسم لا بالمعرّف: سُئل «مَن أنهى خدمةَ فلان؟» فأظهر
-     * السجلُّ «(غير مسجَّل)» والفاعلُ مسجَّلٌ في الصفّ نفسِه.
-     *
-     * فمتى جاء المعرّفُ وحدَه يُقرأ اسمُه مرّةً — سؤالٌ صغيرٌ لا يقع إلّا حين
-     * ينقص الاسم، ولا يُبطئ نداءً مرّر كائنَه.
+     * The name is captured even when the object is not passed.
+     * Some callers pass `user: req.user` and others `user: req.user._id`; the name was captured only from the first, so entries had a valid reference and an empty name. The log is read by name, not id: asked who ended an employee's service, it showed unregistered although the actor was recorded on the same row.
+     * When only the id arrives its name is read once: a small query that happens only when the name is missing and does not slow a caller that passed its object.
      */
     let snapName = user && (user.firstName || user.lastName)
       ? `${user.firstName || ''} ${user.lastName || ''}`.trim() : '';
@@ -58,7 +46,7 @@ const logAudit = async ({
           snapName = `${u.firstName || ''} ${u.lastName || ''}`.trim();
           snapEmail = u.email || '';
         }
-      } catch (e) { /* القيدُ يُكتب بمرجعه ولو تعذّر الاسم */ }
+      } catch (e) { /* The entry is written with its reference even if the name cannot be resolved. */ }
     }
 
     const id = isObjectId(entityId) ? entityId : undefined;
@@ -66,23 +54,19 @@ const logAudit = async ({
     const entry = await AuditLog.create({
       user: actor || undefined,
       bySystem: !actor,
-      // يُلتقط الاسمُ الآن لا يُقرأ لاحقًا — راجع models/AuditLog.
+      // The name is captured now rather than read later; see models/AuditLog.
       userName: snapName || (actor ? '' : 'النظام'),
       userEmail: snapEmail,
       action,
       entity,
       entityId: id,
       entityKey: key,
-      // ── و`details` لا تُرمى ──────────────────────────────────────────────
-      // التعديلُ الجماعيّ في كشوف التشغيل يمرّر وصفَه في `details` وعنوانَه في
-      // `ip` — اسمان لا يعرفهما هذا النداء، فكُتب اثنان وخمسون قيدًا بلا أيّ
-      // تفصيل: «تعديل جماعي» ولا يُعرَف كم كشفًا ولا أيَّ حقل. فيُحفَظ الوصفُ
-      // حيث تُقرأ التفاصيل.
+      // `details` is not dropped.
+      // Bulk edits in operations sheets pass their description in `details` and their title in `ip`, names this call does not know, so 52 entries were written with no detail (a bulk edit with no count or field). The description is saved where details are read.
       changes: changes !== undefined ? changes : (details ? { details } : undefined),
       ipAddress: ipAddress || ip,
     });
-    // والفعلُ يصير خبرًا في الجرس لمن يحقّ له — راجع services/activityFeed.
-    // لا يُنتظَر: الخبرُ لا يؤخّر الفعلَ ولا يُفشله.
+    // The action becomes a bell item for those entitled to it; see services/activityFeed. It is not awaited: the item neither delays nor fails the action.
     require('../services/activityFeed').announce(entry.toObject());
   } catch (error) {
     console.error('Audit log error:', error.message);

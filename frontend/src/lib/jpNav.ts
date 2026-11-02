@@ -1,16 +1,9 @@
-/**
- * من يرى صفحاتِ خطّة العمل في القائمة الجانبيّة.
- *
- * القاعدةُ من الهيكل الوظيفيّ نفسِه (`lib/roles`، المولَّد من الخادم) لا من
- * قائمةٍ تُكتب هنا: الخطّةُ لفريق القسم ومديره، ولوحتُها وخطّةُ الإدارة لمديره.
- * وهي مرآةُ `who()` في jpController — الخادمُ هو الحارس، وهذه تمنع رابطًا
- * يفتح صفحةً ترفض صاحبَها.
- */
+/** Who sees the work-plan pages in the sidebar. The rule comes from the org structure (lib/roles, generated from the server), not a hand-written list: the plan is for the section team and its manager, and its board and the management plan are for the manager. Mirrors who() in jpController; the server is the guard and this only avoids a link to a page that refuses its owner. */
 import { SECTION_ROLES } from '@/lib/roles';
 
-// من يدير القسمَ وليس دورُه دورَ مديره — مرآةُ `extraManagers` في config/jpSections.
+// Who manages the section without having the manager role; mirrors `extraManagers` in config/jpSections.
 const EXTRA_MANAGERS: Record<string, string[]> = { Accounting: ['cfo'] };
-// السوبر أدمن والأدمن يريان كلَّ شيء — مرآةُ TOP_ROLES في jpController.
+// Super admin and admin see everything; mirrors TOP_ROLES in jpController.
 const TOP = ['super_admin', 'admin'];
 
 type U = { role?: string | null };
@@ -25,7 +18,7 @@ export const jpManager = (u: U, section: string): boolean => {
 
 export const jpMember = (u: U, section: string): boolean => {
   const d = def(section);
-  // والمتدرّبُ من الفريق — متى فُتح له القسمُ وصفحةُ الخطّة من الصلاحيّات.
+  // A trainee counts as team once the section and the plan page are granted in permissions.
   return jpManager(u, section) || (!!d && (d.trainee.key === (u?.role || '') || d.staff.some((s) => s.key === (u?.role || ''))));
 };
 

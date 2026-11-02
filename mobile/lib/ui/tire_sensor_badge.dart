@@ -3,23 +3,11 @@ import '../services/api.dart';
 import '../services/lang.dart';
 import 'theme.dart';
 
-/// شارة «حساسات الكاوتش» — نظيرة العمود الذي أُضيف إلى الأسطول المباشر وسجل
-/// الأسطول على الموقع: «٧ / ٥ / ٢».
-///
-///   أخضر  = فردةٌ مركَّبةٌ على الأرض وحسّاسها يبثّ الآن
-///   أحمر  = باقي مواضع الأرض بلا تغطية
-///   الاستبن = عدده؛ أخضر إن كان مسلَّحًا، ورماديٌّ إن لم يكن
-///
-/// الأرقام تأتي جاهزةً من الخادم في حقل `tireSensors`
-/// (backend/src/services/ls2TireSensors.js)، ولا يُشتقّ منها شيءٌ هنا: لو حسبها
-/// التطبيق بنفسه لاختلف رقمه عن رقم الموقع عند أوّل تعديلٍ في قاعدة الاشتقاق،
-/// والعمود كلُّه إنما وُجد ليكون رقمًا لا يُختلَف فيه.
+/// Tire sensors badge, twin of the column added to live fleet and fleet register on the web, e.g. "7 / 5 / 2". Green: a tire mounted on the ground whose sensor is transmitting now. Red: remaining ground positions without coverage. Spare: its count; green if armed, grey if not. The numbers come ready from the server in `tireSensors` (backend/src/services/ls2TireSensors.js) and nothing is derived here, so the app and web can never differ when the derivation rule changes.
 class TireSensorBadge extends StatelessWidget {
   final Map<String, dynamic>? cov;
   final String plate;
-  /// رقم الوحدة — يُطلب به تفصيل المواضع عند فتح الشارة. قائمة المركبات لا
-  /// تحمل التفصيل (كان ٤٦ ك.ب لا تُقرأ إلا إن فُتحت شاحنة واحدة)، وصفحة
-  /// المركبة المفردة تحمله فلا تحتاج طلبًا.
+  /// Unit number, used to request the position breakdown when the badge opens. The vehicle list does not carry the breakdown (it was 46 KB), while the single-vehicle page does, so it needs no request.
   final int? unitId;
   const TireSensorBadge({super.key, required this.cov, required this.plate, this.unitId});
 
@@ -55,8 +43,7 @@ class TireSensorBadge extends StatelessWidget {
             const TextSpan(text: ' / ', style: TextStyle(color: T.inkFaint)),
             TextSpan(text: '$spare', style: TextStyle(fontWeight: FontWeight.w800, color: spareOn ? T.success : T.inkFaint)),
           ]), style: const TextStyle(fontSize: 11.5)),
-          // الحسّاس المركَّب الصامت لا يُدمَج في الأخضر ولا يُخفى: علامةٌ كهرمانية
-          // تقول إن جزءًا من الأحمر عطلٌ يحتاج استبدالًا، لا موضعًا يحتاج تركيبًا.
+          // A mounted but silent sensor is neither merged into green nor hidden: an amber mark says part of the red is a fault needing replacement, not a position needing fitting.
           if (silent > 0) ...[
             const SizedBox(width: 5),
             const Icon(Icons.warning_amber_rounded, size: 12, color: T.warn),
@@ -78,8 +65,7 @@ void _showDetail(BuildContext context, Map<String, dynamic> c, String plate, int
   );
 }
 
-/// الأرقام الثلاثة تأتي مع الصف، والتفصيل (المواضع الناقصة والقنوات المعطوبة)
-/// يُطلب عند الفتح إن لم يكن معه.
+/// The three numbers arrive with the row; the breakdown (missing positions and faulty channels) is requested on open if not present.
 class _CoverageSheet extends StatefulWidget {
   final Map<String, dynamic> cov;
   final String plate;
@@ -203,8 +189,7 @@ Widget _sheetBody(Map<String, dynamic> c, Map<String, dynamic>? full, String pla
                     ]),
                   )),
             ],
-            // المواضع غير المجرودة ليست «بلا حسّاس»، بل مجهولة — والفرق يمنع أن
-            // يُقرأ نقصُ الجرد على أنه نقصُ تسليح.
+            // Positions not inventoried are unknown, not sensorless; the difference stops missing inventory being read as missing sensors.
             if (unregistered > 0) ...[
               const SizedBox(height: 10),
               Text('$unregistered ${tr('موضع لم تجرده الورشة بعد', 'positions not yet stock-taken by the workshop')}',

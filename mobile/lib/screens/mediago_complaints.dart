@@ -17,16 +17,13 @@ import '../ui/widgets.dart';
 import '../ui/search_field.dart';
 import 'admin_suite.dart' show NotificationsScreen;
 
-/// شكاوى Media Go — نظيرُ /system/b2c/mediago-complaints.
-///
-/// بلاغاتُ أعطال الشاشات المركَّبة على دبّاباتنا. قسمُ الأفراد يرفعها بأسئلة
-/// نموذج Media Go نفسِها، وحسابُ Media Go (`mediago_account`) لا يرى من النظام
-/// غيرَها: يقرؤها باللغتين، ويقول «قيد المعالجة» ثمّ «تمّ الإصلاح»، ويردّ.
-/// وحدودُ كلّ طرفٍ يقولها الخادمُ في `can`.
+/// Media Go complaints, counterpart of /system/b2c/mediago-complaints.
+/// Reports of faults in the screens mounted on our motorbikes. The individuals section files them with Media Go's own form questions; the Media Go account (`mediago_account`) sees nothing else in the system: it reads them in both languages, sets in-progress then fixed, and replies.
+/// Each side's limits are stated by the server in `can`.
 const _api = '/api/b2c/mediago-complaints';
 const mediagoRole = 'mediago_account';
 
-/// نصٌّ للطرفين: لغةُ القارئ لنا، واللغتان معًا للشريك.
+/// Text for both sides: the reader's language for us, both languages together for the partner.
 String _bx(bool partner, String ar, String en) => partner ? '$ar / $en' : tr(ar, en);
 
 String _vocab(Map? meta, String group, String key, bool partner) {
@@ -42,14 +39,14 @@ String _availOf(Map? meta, Map r, bool partner) =>
     r['availability'] == 'other' && '${r['availabilityOther'] ?? ''}'.isNotEmpty ? '${r['availabilityOther']}' : _vocab(meta, 'availability', '${r['availability']}', partner);
 
 Color _statusColor(String s) => switch (s) {
-      // «جديدة» بلون الشريط الجانبيّ في الموقع (slate-900) لا بالأزرق.
+      // "New" uses the web sidebar color (slate-900) rather than blue.
       'new' => _slate,
       'in_progress' => T.warn,
       'fixed' => T.success,
       _ => T.inkFaint,
     };
 
-/// لونُ الشريط الجانبيّ في الموقع (slate-900) — رأسُ شاشات Media Go كلِّها.
+/// Web sidebar color (slate-900), the header of all Media Go screens.
 const _slate = Color(0xFF0F172A);
 
 String _when(dynamic iso) {
@@ -71,11 +68,9 @@ class _StatusPill extends StatelessWidget {
   Widget build(BuildContext context) => Chip2(_vocab(meta, 'status', status, partner), _statusColor(status), icon: Icons.circle);
 }
 
-// ═════════════════════════════════════════════════════════════════════════
-// القائمة
-// ═════════════════════════════════════════════════════════════════════════
+// List
 class MediaGoComplaintsScreen extends StatefulWidget {
-  /// حسابُ Media Go يدخل عليها مباشرةً — بلا درجٍ ولا شريطٍ سفليّ يفتحان ما ليس له.
+  /// The Media Go account lands here directly, with no drawer or bottom bar that would open screens it is not allowed.
   final bool partnerHome;
   const MediaGoComplaintsScreen({super.key, this.partnerHome = false});
   @override
@@ -89,10 +84,10 @@ class _MediaGoComplaintsScreenState extends State<MediaGoComplaintsScreen> {
   final _searchCtl = TextEditingController();
   String _status = '';
   String _issue = '';
-  // يومٌ بعينه = فترةٌ أوّلُها آخرُها (yyyy-MM-dd) — والخادمُ يعدّ اليومَ بتوقيت السعوديّة.
+  // A specific day is a period whose start equals its end (yyyy-MM-dd); the server counts the day in Saudi time.
   String _from = '';
   String _to = '';
-  // عرضُ القائمة: بطاقاتٌ أو صفوفٌ مضغوطة كالجدول — يختاره المستخدم.
+  // List view: cards or compact table-like rows, chosen by the user.
   bool _table = false;
   Timer? _debounce;
   int _seq = 0;
@@ -138,7 +133,7 @@ class _MediaGoComplaintsScreenState extends State<MediaGoComplaintsScreen> {
     }
   }
 
-  // حسابُ Media Go يفتح البلاغَ صفحةً كاملة؛ وموظّفونا لوحةً من الأسفل.
+  // The Media Go account opens a report as a full page; our staff get a bottom sheet.
   void _open(String id) async {
     if (_partner) {
       await Navigator.push(context, MaterialPageRoute(builder: (_) => MediaGoDetailScreen(id: id, partner: true, fullPage: true)));
@@ -148,7 +143,7 @@ class _MediaGoComplaintsScreenState extends State<MediaGoComplaintsScreen> {
     _load();
   }
 
-  // بعد الرفع تُحدَّث القائمةُ ولا يُفتَح شيء — التفصيلُ بضغطةٍ على البلاغ وحدَها.
+  // After upload the list refreshes and nothing opens; details open only by tapping the report.
   Future<void> _create() async {
     await Navigator.push<String>(context, MaterialPageRoute(builder: (_) => MediaGoCreateScreen(meta: _d?['meta'] as Map?)));
     await _load();
@@ -249,7 +244,7 @@ class _MediaGoComplaintsScreenState extends State<MediaGoComplaintsScreen> {
         keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
         padding: const EdgeInsets.fromLTRB(14, 12, 14, 90),
         children: [
-          // اللافتة
+          // Banner
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(color: _slate, borderRadius: BorderRadius.circular(18)),
@@ -282,7 +277,7 @@ class _MediaGoComplaintsScreenState extends State<MediaGoComplaintsScreen> {
             onChanged: (v) { _q = v.trim(); _debounce?.cancel(); _debounce = Timer(const Duration(milliseconds: 350), _load); },
           ),
           const SizedBox(height: 8),
-          // موقعُ الصيانة إنرجايز دائمًا — فلا فلترَ له.
+          // Maintenance site is always Energize, so there is no filter for it.
           Row(children: [
             Expanded(child: OutlinedButton.icon(
               onPressed: () => _pickFilter('issue'),
@@ -372,7 +367,7 @@ class _MediaGoComplaintsScreenState extends State<MediaGoComplaintsScreen> {
                 Text(_when(r['createdAt']), style: const TextStyle(fontSize: 11, color: T.inkFaint)),
                 const Spacer(),
                 if ((r['replyCount'] ?? 0) > 0) Row(children: [const Icon(Icons.chat_bubble_outline, size: 14, color: T.violet), const SizedBox(width: 3), Text('${r['replyCount']}', style: const TextStyle(color: T.violet, fontWeight: FontWeight.w700, fontSize: 12))]),
-                // التعديلُ والحذفُ من البطاقة نفسِها — بالصلاحية نفسِها التي في التفصيل.
+                // Edit and delete from the card itself, with the same permission as in the details.
                 if (_d?['can']?['edit'] == true)
                   IconButton(visualDensity: VisualDensity.compact, tooltip: tr('تعديل', 'Edit'), icon: const Icon(Icons.edit_outlined, size: 20), onPressed: () => _editRow(r)),
                 if (_d?['can']?['delete'] == true)
@@ -385,7 +380,7 @@ class _MediaGoComplaintsScreenState extends State<MediaGoComplaintsScreen> {
     );
   }
 
-  /// صفٌّ مضغوطٌ كصفّ الجدول: المرجعُ والدبّابُ والمشكلةُ والحالةُ والتاريخ.
+  /// Compact table-like row: reference, motorbike, problem, status and date.
   Widget _row(Map<String, dynamic> r, Map? meta, bool partner) => Container(
         margin: const EdgeInsets.only(bottom: 6),
         decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: T.line)),
@@ -443,9 +438,7 @@ class _MediaGoComplaintsScreenState extends State<MediaGoComplaintsScreen> {
     if (!widget.partnerHome) {
       return AppScaffold(title: Text(tr('شكاوى Media Go', 'Media Go Complaints')), body: _body(), floatingActionButton: fab);
     }
-    // ── بيتُ حساب Media Go ─────────────────────────────────────────────────
-    // لا درجَ أقسامٍ ولا «ملفي»: كلُّها نقاطٌ يردّها الخادمُ عليه. له الإشعاراتُ
-    // واللغةُ والخروج — وشاشتُه.
+    // Media Go account shell. No section drawer or "my profile": all are endpoints the server rejects for it. It has notifications, language, sign-out and its screen.
     final auth = context.read<AuthProvider>();
     return Scaffold(
       appBar: AppBar(
@@ -473,13 +466,11 @@ class _MediaGoComplaintsScreenState extends State<MediaGoComplaintsScreen> {
   }
 }
 
-// ═════════════════════════════════════════════════════════════════════════
-// التفصيل
-// ═════════════════════════════════════════════════════════════════════════
+// Details
 class MediaGoDetailScreen extends StatefulWidget {
   final String id;
   final bool partner;
-  /// صفحةٌ كاملة (حسابُ Media Go) بدلَ اللوحة المنزلقة.
+  /// Full page (Media Go account) instead of the sliding sheet.
   final bool fullPage;
   const MediaGoDetailScreen({super.key, required this.id, this.partner = false, this.fullPage = false});
   @override
@@ -488,7 +479,7 @@ class MediaGoDetailScreen extends StatefulWidget {
 
 class _MediaGoDetailScreenState extends State<MediaGoDetailScreen> {
   Map<String, dynamic>? _item;
-  // الصورةُ المعروضةُ في عارض الصفحة.
+  // The image shown in the page viewer.
   int _cur = 0;
   Map? _meta;
   Map? _can;
@@ -615,7 +606,7 @@ class _MediaGoDetailScreenState extends State<MediaGoDetailScreen> {
   void _viewFile(List files, int i) {
     final f = Map<String, dynamic>.from(files[i] as Map);
     if (f['kind'] == 'video') {
-      // لا مشغّلَ فيديو في التطبيق — يُفتَح في مشغّل الهاتف.
+      // No in-app video player; opens in the phone's player.
       launchUrl(Uri.parse(_url('${f['fileUrl']}')), mode: LaunchMode.externalApplication);
       return;
     }
@@ -644,7 +635,7 @@ class _MediaGoDetailScreenState extends State<MediaGoDetailScreen> {
       final files = List.from(it['files'] ?? const []);
       final history = List<Map>.from(it['statusHistory'] ?? const []);
       final replies = List<Map>.from(it['replies'] ?? const []);
-      // ما يجوز الآن من الخادم — الحالةُ تمضي إلى الأمام، وMedia Go لا ترجع بلاغًا أُصلح.
+      // What the server allows now: status only moves forward, and Media Go cannot reopen a fixed report.
       final statuses = it['nextStatuses'] is List
           ? List<String>.from(it['nextStatuses'] as List)
           : List<String>.from((_can?['statuses'] as List?) ?? const [])
@@ -672,7 +663,7 @@ class _MediaGoDetailScreenState extends State<MediaGoDetailScreen> {
               const SizedBox(width: 8),
               Expanded(child: _info(Icons.schedule_outlined, 'وقت التوفّر', 'Available', _availOf(_meta, it, partner))),
             ]),
-            // تاريخُ الإصلاح لِما أُصلح وحدَه — إعادةُ الفتح تمحوه ويبقى في المسار.
+            // Fix date only for fixed reports; reopening clears it and it stays in the history.
             if ((it['status'] == 'fixed' || it['status'] == 'closed') && it['fixedAt'] != null) ...[
               const SizedBox(height: 8),
               _info(Icons.check_circle_outline, 'تاريخ الإصلاح', 'Fixed at', _when(it['fixedAt'])),
@@ -681,8 +672,7 @@ class _MediaGoDetailScreenState extends State<MediaGoDetailScreen> {
             Text(_bx(partner, 'صور العطل (${files.length})', 'Fault media (${files.length})'), style: const TextStyle(fontWeight: FontWeight.w800)),
             const SizedBox(height: 8),
             if (files.isEmpty) Text(_bx(partner, 'لا مرفقات', 'No attachments'), style: const TextStyle(color: T.inkSoft)),
-            // في الصفحة: الأولى كبيرةً بعرض الشاشة، وما بعدها شبكةٌ تحتها.
-            // في الصفحة: عارضٌ يُسحَب بين الصور (٢٠٢٦/١٠/٢٢)، ورقمُ الصورة عليه، والضغطُ يفتحها كاملة.
+            // In the page: the first image large at screen width, the rest in a grid below. In the page: a swipeable viewer with the image number, and tapping opens it full size.
             if (files.isNotEmpty && widget.fullPage) ...[
               ClipRRect(
                 borderRadius: BorderRadius.circular(14),
@@ -806,7 +796,7 @@ class _MediaGoDetailScreenState extends State<MediaGoDetailScreen> {
         ),
       ]);
     }
-    // تعديلٌ وحذفٌ لمن يملكهما (مدير النظام والإدارة العليا ورأسا القسم) — يقولها الخادم في `can`.
+    // Edit and delete for those who hold them (system admin, top management and the two section heads); the server states this in `can`.
     final actions = <Widget>[
       if (it != null && _can?['edit'] == true)
         IconButton(tooltip: tr('تعديل', 'Edit'), icon: const Icon(Icons.edit_outlined), onPressed: _edit),
@@ -820,7 +810,7 @@ class _MediaGoDetailScreenState extends State<MediaGoDetailScreen> {
         body: body,
       );
     }
-    // ── لوحةٌ تنزلق من الأسفل، بمِرسالها الخاصّ كي تظهر الرسائلُ فوقها ──
+    // Bottom sliding sheet with its own messenger so messages appear above it
     return ClipRRect(
       borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
       child: ScaffoldMessenger(
@@ -839,7 +829,7 @@ class _MediaGoDetailScreenState extends State<MediaGoDetailScreen> {
   }
 }
 
-/// تفصيلُ البلاغ — لوحةٌ تُفتَح بضغطةٍ على البلاغ، لا صفحةٌ ولا تُفتَح وحدَها.
+/// Report details: a sheet opened by tapping the report; not a page and never opens by itself.
 Future<void> showMediaGoDetail(BuildContext context, String id, {bool partner = false}) => showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -864,9 +854,7 @@ class _Gallery extends StatelessWidget {
       );
 }
 
-// ═════════════════════════════════════════════════════════════════════════
-// المرفقات — صورٌ ومقاطع، من المعرض أو الكاميرا
-// ═════════════════════════════════════════════════════════════════════════
+// Attachments: photos and clips, from gallery or camera
 class MgPicked {
   final String dataUrl;
   final String fileName;
@@ -882,10 +870,8 @@ const _mime = {
   'mp4': 'video/mp4', 'mov': 'video/quicktime', 'webm': 'video/webm', '3gp': 'video/3gpp', 'm4v': 'video/x-m4v',
 };
 
-/// يختار صورًا أو مقاطع ويرجّعها جاهزةً للإرسال — بحدود الخادم نفسِها:
-/// صورةٌ حتى ٨ ميغا، مقطعٌ حتى ١٥، والمجموعُ ١٨ في المرّة الواحدة.
-/// `source`: 'gallery' (صورٌ ومقاطعُ متعدّدة) أو 'camera' (صورةٌ بعد صورةٍ حتى
-/// الحدّ، أو مقطعٌ قصير).
+/// Picks photos or clips and returns them ready to send, within the server's limits: photo up to 8 MB, clip up to 15, total 18 per batch.
+/// `source`: 'gallery' (multiple photos and clips) or 'camera' (photo after photo up to the limit, or a short clip).
 Future<List<MgPicked>> pickMediaFiles(BuildContext context, {required String source, int room = 5, bool partner = false, int already = 0}) async {
   if (room <= 0) return const [];
   String? src = source;
@@ -917,7 +903,7 @@ Future<List<MgPicked>> pickMediaFiles(BuildContext context, {required String sou
 
   try {
     if (src == 'photo') {
-      // صورةٌ بعد صورة حتى يقول «تمّ» أو يبلغ الحدّ.
+      // Photo after photo until done is chosen or the limit is reached.
       while (out.length < room && problem == null) {
         final x = await ImagePicker().pickImage(source: ImageSource.camera, maxWidth: 1600, maxHeight: 1600, imageQuality: 82);
         if (x == null) break;
@@ -953,12 +939,10 @@ Future<List<MgPicked>> pickMediaFiles(BuildContext context, {required String sou
   return out;
 }
 
-// ═════════════════════════════════════════════════════════════════════════
-// رفعُ بلاغ — أسئلةُ نموذج Media Go نفسُها
-// ═════════════════════════════════════════════════════════════════════════
+// Filing a report, using Media Go's own form questions
 class MediaGoCreateScreen extends StatefulWidget {
   final Map? meta;
-  /// بلاغٌ يُعدَّل بدلَ إنشاء جديد — يُرجع البلاغَ بعد الحفظ.
+  /// A report being edited instead of creating a new one; returns the report after saving.
   final Map<String, dynamic>? editing;
   const MediaGoCreateScreen({super.key, this.meta, this.editing});
   @override
@@ -1085,7 +1069,7 @@ class _MediaGoCreateScreenState extends State<MediaGoCreateScreen> {
         ]),
       );
 
-  // ── خياراتٌ هادئة: شبكةٌ من عمودين، علامةٌ صغيرة، والإنجليزيّةُ ثانويّة ──
+  // Quiet options: two-column grid, small checkmark, English secondary
   Widget _choices(String group, String value, void Function(String) onPick) {
     final items = List<Map>.from((_meta?[group] as List?) ?? const []);
     return LayoutBuilder(builder: (context, box) {
@@ -1176,8 +1160,7 @@ class _MediaGoCreateScreenState extends State<MediaGoCreateScreen> {
                   if (_availability == 'other') ...[const SizedBox(height: 8), TextField(controller: _availOther, onChanged: (_) => setState(() {}), decoration: dec.copyWith(hintText: tr('اكتب الوقت المناسب', 'Write the preferred time')))],
                 ])),
               ]),
-              // الصورُ في آخر النموذج — رفعٌ من الجهاز أو تصويرٌ الآن، وكلاهما متعدّد.
-              // وفي التعديل لا تُعرَض: المرفقاتُ تُضاف من التفصيل.
+              // Photos at the end of the form: upload from device or capture now, both multiple. Not shown when editing, since attachments are added from the details.
               if (widget.editing == null) _card([
                 _q('صورة العطل', 'Photo of the Fault', child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Row(children: [
@@ -1234,7 +1217,7 @@ class _MediaGoCreateScreenState extends State<MediaGoCreateScreen> {
   }
 }
 
-/// بحثٌ في دبّابات النقل الخفيف من سجلّ المركبات.
+/// Search light-transport motorbikes from the vehicle registry.
 class _MotoSheet extends StatefulWidget {
   const _MotoSheet();
   @override

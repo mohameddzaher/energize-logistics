@@ -12,11 +12,7 @@ import 'search_field.dart';
 import 'theme.dart';
 import 'widgets.dart';
 
-/// ربطُ كشوف التشغيل بمعاملات التخليص — نفسُ الموقع:
-///   • شارةُ «التخليص» على الكشف (components/customs/CustomsLinkBadge)،
-///   • ربطُه يدويًّا بالبحث (components/operations/WorkflowCustomsPanel)،
-///   • «كشوف التشغيل المرتبطة» في صفحة المعاملة (components/customs/LinkedOpsReports).
-/// والربطُ يكتبه الخادم وحدَه — راجع backend/src/services/customsOpsLink.
+/// Linking operations reports to clearance transactions, same as the web: clearance badge on the report (CustomsLinkBadge), manual linking by search (WorkflowCustomsPanel), and linked operations reports on the transaction page (LinkedOpsReports). Links are written by the server only; see backend/src/services/customsOpsLink.
 
 String customsIdOf(dynamic l) {
   if (l is! Map) return '';
@@ -39,7 +35,7 @@ String _units(int n) => n == 0
         ? '$n ${n == 1 ? 'حاوية' : n == 2 ? 'حاويتان' : n <= 10 ? 'حاويات' : 'حاوية'}'
         : '$n unit${n == 1 ? '' : 's'}';
 
-/// الشارة: رقمُ المعاملة · البوليصة · عددُ الحاويات — تُضغط فتفتح نافذةَ المعاملة.
+/// Badge: transaction number, waybill, container count; tapping opens the transaction window.
 class CustomsLinkChip extends StatelessWidget {
   final dynamic link;
   final bool compact;
@@ -63,7 +59,7 @@ class CustomsLinkChip extends StatelessWidget {
   }
 }
 
-/// أكثرُ من معاملةٍ على صفٍّ واحد (فاتورةٌ تضمّ كشوفًا) — الأولى والباقي عدد.
+/// More than one transaction on a row (an invoice covering reports): show the first plus a count.
 class CustomsLinkChips extends StatelessWidget {
   final dynamic links;
   const CustomsLinkChips(this.links, {super.key});
@@ -81,8 +77,7 @@ class CustomsLinkChips extends StatelessWidget {
   }
 }
 
-/// تفاصيلُ الربط في ورقة الكشف، وزرّا الربط وفكّه لمن يملكهما.
-/// يُرجع الكشفَ بعد التعديل (أو null إن لم يتغيّر شيء).
+/// Link details in the report sheet, with link and unlink buttons for those allowed. Returns the updated report, or null if nothing changed.
 class WorkflowCustomsSection extends StatelessWidget {
   final Map<String, dynamic> workflow;
   final bool canLink;
@@ -180,7 +175,7 @@ class WorkflowCustomsSection extends StatelessWidget {
         );
 }
 
-/// البحثُ عن معاملةٍ بالرقم أو البوليصة أو الحاوية ثمّ الربط — يُرجع الكشفَ المحدَّث.
+/// Search a transaction by number, waybill or container, then link; returns the updated report.
 Future<Map<String, dynamic>?> showCustomsLinkPicker(BuildContext context, String workflowId) {
   return showModalBottomSheet<Map<String, dynamic>>(
     context: context,
@@ -205,7 +200,7 @@ class _PickerState extends State<_Picker> {
   bool _saving = false;
   int _seq = 0;
   Timer? _t;
-  String _typed = ''; // لرسالة «لا نتائج»
+  String _typed = ''; // For the no-results message
 
   @override
   void dispose() { _t?.cancel(); super.dispose(); }
@@ -293,7 +288,7 @@ class _PickerState extends State<_Picker> {
   }
 }
 
-/// «كشوف التشغيل المرتبطة» في صفحة المعاملة — بفوترتها وتحصيلها.
+/// Linked operations reports on the transaction page, with billing and collection.
 class CustomsLinkedReports extends StatefulWidget {
   final String clearanceId;
   const CustomsLinkedReports({super.key, required this.clearanceId});
@@ -312,7 +307,7 @@ class _CustomsLinkedReportsState extends State<CustomsLinkedReports> {
   Map<String, dynamic>? _d;
   String? _error;
   int _seq = 0;
-  // الكشوفُ المفتوحة على تفاصيلها — كالصفّ المفتوح في الموقع (LinkedOpsReports).
+  // Reports expanded to their details, like the open row on the web (LinkedOpsReports).
   final Set<String> _open = {};
   late final void Function(dynamic) _onLinks;
   late final void Function() _onChanged;
@@ -327,7 +322,7 @@ class _CustomsLinkedReportsState extends State<CustomsLinkedReports> {
       if (ids == null || ids.contains(widget.clearanceId)) _load();
     };
     _onChanged = () => _load();
-    // عددُ المتابعات على الكشف المطويّ — تُكتب من التشغيل والتحصيل أيضًا.
+    // Follow-up count on a collapsed report; written by operations and collections too.
     _onFollowUps = (p) {
       if (p is! Map || '${p['clearanceId'] ?? ''}' == widget.clearanceId) _load();
     };
@@ -352,7 +347,7 @@ class _CustomsLinkedReportsState extends State<CustomsLinkedReports> {
     _load();
   }
 
-  /// الكشفُ المفتوح: حالُه بكلمة، وحقولُه كما يراها الدور، وتعديلُه، ومتابعاتُه.
+  /// Open report: status in a word, fields as the role sees them, edit, and follow-ups.
   Widget _expanded(Map<String, dynamic> r, Map access) {
     final detail = (r['detail'] as Map?) ?? const {};
     final fields = List<String>.from((access['fields'] as List?) ?? const []);
@@ -490,7 +485,7 @@ class _CustomsLinkedReportsState extends State<CustomsLinkedReports> {
               style: const TextStyle(fontSize: 11.5, color: T.inkSoft),
             ),
           ),
-        // ── طلباتُ الشحن المربوطة (٢٠٢٦/١٠/٢٦) — بالبوليصة أو الحاوية أو رقمِها في خانة النقل.
+        // Linked shipment orders: matched by waybill, container, or number in the transport field.
         if (shipments.isNotEmpty) ...[
           const Divider(height: 20),
           Text(tr('طلبات الشحن المرتبطة (${shipments.length})', 'Linked shipment orders (${shipments.length})'),

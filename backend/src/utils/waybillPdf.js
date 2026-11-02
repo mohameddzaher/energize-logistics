@@ -1,18 +1,11 @@
 /**
- * Server-side بوليصة (waybill) generator — produces the EXACT sheet the web
- * download makes, so web and mobile print the identical file.
- *
- * Pipeline mirrors frontend/src/lib/dispatchSheetGenerator.ts:
- *   1. build the transparent HTML overlay (ported verbatim from
- *      dispatchSheetTemplate.ts),
- *   2. render it to a transparent PNG with headless Chromium (replaces the
- *      browser-only html2canvas step),
- *   3. stitch it onto the vector letterhead PDF with pdf-lib (same code).
+ * Server-side waybill generator: produces the exact sheet the web download makes, so web and mobile print the identical file.
+ * Mirrors frontend/src/lib/dispatchSheetGenerator.ts: HTML overlay (ported from dispatchSheetTemplate.ts), rendered to a transparent PNG with headless Chromium, stitched onto the letterhead PDF with pdf-lib.
  */
 const fs = require('fs');
 const path = require('path');
 const { PDFDocument } = require('pdf-lib');
-// صيغةُ اللوحة واحدةٌ في النظام كلِّه — راجع `utils/plateKey`.
+// The plate format is the same across the whole system; see `utils/plateKey`.
 const { formatPlate } = require('./plateKey');
 
 const ASSETS = path.join(__dirname, '..', 'assets', 'waybill');
@@ -25,31 +18,15 @@ let stampDataUri = null;
 const getStampDataUri = () => (stampDataUri ||= `data:image/png;base64,${fs.readFileSync(STAMP).toString('base64')}`);
 
 /**
- * ── الخطوطُ في الملفّ لا على الشبكة ─────────────────────────────────────────
- *
- * كانت الورقةُ تطلب خطوطَها من `fonts.googleapis.com` بوسمِ `<link>`، والترسيمُ
- * ينتظر `networkidle0` — أي سكونَ الشبكة نصفَ ثانيةٍ بعد آخر طلب. فكلُّ بوليصةٍ
- * تدفع ثمنَ رحلتين إلى خادمٍ في الخارج: ملفُّ التنسيق ثمّ ملفّاتُ الخطّ.
- *
- * قِيس ذلك: ثلاثُ ثوانٍ للبوليصة الواحدة، **٢٫٩٦ منها في `setContent` وحدَها**،
- * واللقطةُ ثلاثٌ وستّون مِلّي ثانية. أي أنّ ٩٥٪ من انتظار المستخدم كان انتظارَ
- * خطٍّ يُحمَّل من جديد في كلّ مرّة.
- *
- * فصارت الخطوطُ ملفّاتٍ عندنا (`assets/fonts`, وهي WOFF2 من Google Fonts
- * بترخيص OFL) تُقرأ مرّةً عند أوّل ترسيمٍ وتُحقَن في الصفحة نصًّا. فلا شبكةَ
- * أصلًا: الترسيمُ لا يتعلّق بخادمٍ ليس لنا، ولا يتغيّر شكلُ الورقة إن تعذّر
- * الوصول إليه.
- *
- * والمجموعتان المحمَّلتان هما العربيّةُ واللاتينيّة — لا الرياضيّاتُ ولا الرموز.
+ * Fonts are loaded from local files, not the network.
+ * A remote font stylesheet plus waiting for networkidle0 cost nearly all of the render time on every waybill.
+ * The WOFF2 files in assets/fonts (OFL licence) are read once on first render and injected as text, so rendering never depends on an external server. Only the Arabic and Latin subsets are loaded.
  */
 const { withPage, getFontCss } = require('./pdfBrowser');
 
 /**
- * أرقامُ التواصل المطبوعةُ في البوليصة.
- *
- * مكتوبةٌ هنا لا في قاعدةٍ: هي أرقامُ الشركةِ على ورقٍ يُسلَّم بيدٍ، تتغيّر مرّةً
- * في سنواتٍ ويُراجَع نصُّها قبل الطبع. وإن صارت تُدار من إعدادات القسم فمكانُها
- * `FleetConfig` — لا تُكتب في شاشةٍ وتُقرأ هنا بافتراضٍ.
+ * Contact numbers printed on the waybill.
+ * Kept in code, not the database: they are company numbers on hand-delivered paper, rarely change and are reviewed before printing. If they become configurable they belong in `FleetConfig`.
  */
 const CONTACT_PHONES = [
   '0544714240',
@@ -68,18 +45,9 @@ const valOrBlank = (v) => {
 // Ported verbatim from dispatchSheetTemplate.ts — with the Tajawal <link> added
 // to the head (the web loaded it into the parent document separately).
 /**
- * إقرارُ السائق — بالعربيّة والأردية.
- *
- * ── لماذا في الورقة نفسِها ──────────────────────────────────────────────────
- * البوليصةُ هي ما يحمله السائقُ ويوقّعه عند الاستلام، والإقرارُ هو ما يُلزمه:
- * أنّه تسلّم الحمولةَ سليمةً، وأنّه مفوَّضٌ من المالك بالتوقيع والتسوية، وأنّه
- * يتحمّل ما يترتّب على تقصيره. وورقةٌ منفصلةٌ تُنسى أو تُفقَد، وتُوقَّع مرّةً
- * ثمّ لا تُربَط بحمولةٍ بعينها. فصارت في البوليصة بعينها: رقمُها ورقمُه.
- *
- * ── وبلغته ──────────────────────────────────────────────────────────────────
- * أكثرُ السائقين يقرؤون الأردية، ونصٌّ لا يُقرأ لا يُلزِم أحدًا حقًّا. فيُكتب
- * بالعربيّة (وهي المعتمدة نظامًا) وتحتها ترجمتُه الأردية بخطٍّ نسخيٍّ يغطّي
- * حروفَها (ٹ ڈ ڑ ں ے ہ ھ) — وTajawal وحدَها لا تغطّيها فتظهر مربّعات.
+ * Driver acknowledgement, in Arabic and Urdu.
+ * It sits on the waybill itself so it is tied to a specific load and cannot be lost as a separate sheet.
+ * Arabic is the legally binding text; the Urdu translation uses a Naskh font that covers Urdu letters, which Tajawal alone does not (it renders boxes).
  */
 function pledgeHTML(row) {
   const line = (v, w) => (v ? `<span class="fill">${esc(v)}</span>` : `<span class="fill" style="padding:0 ${w}px">&nbsp;</span>`);
@@ -267,15 +235,10 @@ async function renderWaybillPdf(row) {
   return withPage(async (page) => {
     // 210mm × 297mm at 96dpi = 794 × 1123, ×1.5 device scale — matches the web's html2canvas scale.
     await page.setViewport({ width: 794, height: 1123, deviceScaleFactor: 1.5 });
-    // لا مواردَ خارجيّةً في الصفحة (الخطوطُ والختمُ مضمَّنان)، فانتظارُ سكون
-    // الشبكة انتظارٌ لما لا يأتي: `networkidle0` وحدَها كانت تكلّف ٢٫٩ ثانية
-    // من ثلاثٍ. ويبقى انتظارُ جاهزيّة الخطوط — وهو الشرطُ الحقيقيّ للّقطة.
+    // No external resources on the page (fonts and stamp are inlined), so waiting for network idle only wastes time; wait for font readiness, the real condition for the snapshot.
     await page.setContent(buildDispatchSheetHTML(row), { waitUntil: 'domcontentloaded', timeout: 20000 });
     try { await page.evaluateHandle('document.fonts.ready'); } catch (e) { /* fallback font */ }
-    // ── والبوليصةُ ورقةٌ واحدة ─────────────────────────────────────────
-    // بياناتُها وإقرارُ سائقها في ورقةٍ واحدة: تُسلَّم بيدٍ وتُطبَع بالمئات،
-    // فورقةٌ ثانيةٌ لكلّ واحدةٍ ضعفُ الورق كلَّ يوم. والإقرارُ ضُغط ليسع لا
-    // ليُقسَم — راجع أنماطَ `.pledge`.
+    // The waybill is a single page, with the driver acknowledgement compressed to fit, because a second sheet per waybill doubles paper use. See the `.pledge` styles.
     const el = await page.$('.sheet');
     const overlayPng = await el.screenshot({ omitBackground: true, type: 'png' });
 
@@ -285,44 +248,20 @@ async function renderWaybillPdf(row) {
     const png = await pdfDoc.embedPng(overlayPng);
     p0.drawImage(png, { x: 0, y: 0, width, height });
     while (pdfDoc.getPageCount() > 1) pdfDoc.removePage(pdfDoc.getPageCount() - 1);
-    // ── والحفظُ بلا «مجاري الكائنات» ──────────────────────────────────────
-    // ضغطُها يوفّر كيلوبايتين في ملفٍّ وزنُه أربعُمئة (الصورةُ هي الوزن كلُّه،
-    // وهي مضغوطةٌ أصلًا)، ويكلّف مئةً وعشرين مِلّي ثانيةٍ من انتظار المستخدم
-    // على معالج الخادم. فالكفّةُ واضحة.
+    // Object streams are not used when saving: compressing them saves about 2 KB on a roughly 400 KB file (the image is almost all of it) but costs about 120 ms of server CPU per request.
     return Buffer.from(await pdfDoc.save({ useObjectStreams: false }));
   });
 }
 
 /**
- * بوليصاتٌ كثيرةٌ في ملفٍّ واحد.
- *
- * ── ولماذا في الخادم لا في المتصفّح ───────────────────────────────────────
- * كان التحميلُ الجماعيُّ يرسم كلَّ بوليصةٍ في المتصفّح بـ`html2canvas`: يُركَّب
- * الجدولُ في الصفحة، ويُرسَّم بمقياس ١٫٥ (نحو ١٦٠٠×٢٢٤٤)، ثمّ يُنزَع — مرّةً
- * لكلّ كشف. والترسيمُ يجري على الخيط الرئيسيّ، فالشاشةُ تتجمّد. ثلاثون كشفًا
- * تعني ثلاثين تجمّدًا متتاليةً تبدو كإعادة تحميلٍ متكرّرة.
- *
- * والخادمُ يرسمها أصلًا للبوليصة الواحدة (نفسُ الملفّ حرفًا بحرف — راجع
- * `renderWaybillPdf`). فالجماعيُّ نداءٌ واحدٌ يردّ ملفًّا واحدًا: لا تجمّدَ،
- * ولا ثلاثون تنزيلًا، وملفٌّ واحدٌ يُطبَع دفعةً واحدة.
- *
- * وصفحةُ المتصفّح تُفتَح مرّةً لكلّ الصفوف لا مرّةً لكلّ صفّ — وهو الفارقُ
- * الأكبرُ في الزمن.
+ * Many waybills in one file, built on the server.
+ * The browser path rendered each waybill with html2canvas on the main thread, freezing the screen once per row. The server already renders a single waybill (see `renderWaybillPdf`), so a bulk request is one call returning one printable file, with one browser page opened for all rows.
  */
 async function renderWaybillsPdf(rows) {
   const merged = await PDFDocument.create();
-  // ── وكلُّ بوليصةٍ تُرسَم كما تُرسَم وحدَها ────────────────────────────────
-  // صفحةٌ جديدةٌ لكلّ صفٍّ لا صفحةٌ واحدةٌ يُعاد ملؤها: `networkidle0` على
-  // صفحةٍ مستعمَلةٍ قد لا يُطلَق ثانيةً — والشبكةُ ساكنةٌ أصلًا — فينتظر حتى
-  // تنقضي المهلة. وهذا هو المسارُ نفسُه المجرَّبُ للبوليصة الواحدة، لا مسارٌ
-  // ثانٍ يُخالفه في شيء.
-  // ── وتُرسَم بالتوازي بقدرٍ محدود ──────────────────────────────────────
-  // الواحدةُ نحوَ أربع ثوانٍ (صفحةٌ تُفتَح وخطٌّ يُحمَّل وترسيمٌ)، فثلاثون
-  // واحدةً تباعًا دقيقتان — وnginx يقطع الطلبَ قبلها. وأربعُ صفحاتٍ معًا في
-  // متصفّحٍ واحدٍ تختصر الزمنَ إلى الرُّبع دون أن تُثقل الخادم.
-  //
-  // والترتيبُ محفوظٌ رغم التوازي: النتائجُ تُوضَع في مواضعها بالفهرس ثمّ تُدمَج
-  // بالترتيب — الملفُّ يُقرأ بالترتيب الذي عُلّم به.
+  // Each waybill is rendered on a fresh page, exactly as a single one is: networkidle0 on a reused page may never fire and would wait for the timeout.
+  // Pages render in parallel with a small cap: each takes about 4 s, so sequential rendering of 30 would exceed the nginx timeout; four at once cuts it to about a quarter.
+  // Order is preserved: results are placed by index and merged in order.
   const CONCURRENCY = 6;
   const out = new Array(rows.length);
   let next = 0;
@@ -340,7 +279,7 @@ async function renderWaybillsPdf(rows) {
     if (!one) continue;
     // eslint-disable-next-line no-await-in-loop
     const doc = await PDFDocument.load(one);
-    // صفحاتُ البوليصة كلُّها لا أولاها: صار معها إقرارُ السائق.
+    // All waybill pages, not just the first, since the driver acknowledgement was added.
     // eslint-disable-next-line no-await-in-loop
     const copied = await merged.copyPages(doc, doc.getPageIndices());
     copied.forEach((pg) => merged.addPage(pg));
@@ -349,14 +288,9 @@ async function renderWaybillsPdf(rows) {
 }
 
 /**
- * صفُّ بوليصةٍ من طلب شحنة — نفسُ شكل `rowFromShipment`.
- *
- * ── وسعرُ البيع يُطبَع للنقديّ وحدَه ────────────────────────────────────────
- * «قدام» تعني أنّ السائق يقبض من العميل عند التسليم، فالبوليصةُ هي ورقتُه:
- * تُطبَع فيها قيمةُ النقل ليعرف ما يقبض. و«راجعة» تعني أنّ الحساب بيننا وبين
- * العميل لاحقًا — فلا سعرَ بيعٍ ولا شراءٍ في ورقةٍ تخرج مع السائق.
- * والقاعدةُ تُقرأ من خيار «نوع تأجير السائق» نفسِه (paymentMethod عليه)، لا
- * من كلمةٍ مكتوبةٍ في الشيفرة — فأيُّ نوعٍ يُضاف في الإعدادات يعمل بلا تعديل.
+ * A waybill row built from a shipment order, same shape as `rowFromShipment`.
+ * The selling price is printed for cash orders only: when the driver collects on delivery the sheet shows the freight value; on credit the account is settled later, so no sale or purchase price leaves with the driver.
+ * The rule is read from the driver hire type option's paymentMethod, not from a hard-coded word, so new types work without code changes.
  */
 /** Payment type as printed: the chosen type, else what the shipment's terms say. */
 function paymentLabelOf(o) {
@@ -368,14 +302,11 @@ function paymentLabelOf(o) {
 function rowFromOrder(o, opts = {}) {
   const d = o.pickupTime || o.startTime || o.createdAt || new Date();
   const dt = new Date(d);
-  // النقديُّ يُعرَف من طريقة الدفع أو من نوع التأجير — والمصدران يكتبان
-  // مفاتيحَ مختلفة (منصّةٌ بالإنجليزيّة وشاشتُنا بالعربيّة).
+  // Cash is detected from the payment method or the hire type; the two sources store different keys (platform in English, our screen in Arabic).
   const CASH = ['cash', 'نقدي', 'كاش'];
   const FRONT = ['front', 'ذهاب فقط', 'قدام'];
-  // ── و«نوع الدفع» أوّلًا متى كان على الطلب ──────────────────────────────────
-  // حلّ محلَّ نوع التأجير في نموذج الإنشاء (٢٠٢٦/١٠/٢١): «نقدي - …» يقبض فيه
-  // السائقُ عند التسليم، و«آجل - …» حسابٌ لاحق. والطلباتُ التي قبله بلا نوع،
-  // فتبقى على القاعدة القديمة وتُطبَع كما طُبعت.
+  // The order's payment type takes precedence when present.
+  // It replaced the hire type in the create form: cash means the driver collects on delivery, credit means a later account. Older orders have no payment type and keep the previous rule.
   const bySubtype = require('./shipmentOrderPayment').collectsOnDelivery(o.paymentSubtype);
   const cash = opts.cashRental !== undefined
     ? !!opts.cashRental

@@ -9,10 +9,7 @@ import '../ui/widgets.dart';
 import 'b2c_orders_report.dart';
 import 'dash_specs.dart' show B2cProjectsTotal;
 
-/// تحليل الأوردرات — مطابقٌ لـ `/system/b2c/orders-analysis`:
-/// فلاتر (سنة · شهر · مشروع · فرع · مندوب · من/إلى)، شريطُ الشهور، ثلاثةُ
-/// تبويبات (نظرة عامة · تقييم المناديب · تحليلات)، تفاصيلُ اليوم، ملفُّ المندوب،
-/// قائمةُ «دون الهدف»، وتصديرٌ Excel بثلاثة نطاقات كالموقع.
+/// Orders analysis, matching `/system/b2c/orders-analysis`: filters (year, month, project, branch, rider, from/to), month strip, three tabs (overview, rider evaluation, analytics), day details, rider profile, the "below target" list, and Excel export with three scopes like the web.
 class B2cOrdersAnalysisScreen extends StatefulWidget {
   const B2cOrdersAnalysisScreen({super.key});
   @override
@@ -104,7 +101,7 @@ class _B2cOrdersAnalysisScreenState extends State<B2cOrdersAnalysisScreen> {
     } catch (_) {}
   }
 
-  // أوّلَ مرّة: يُفتح على آخر شهرٍ فيه بيانات — كالموقع.
+  // First load: opens on the latest month that has data, like the web.
   Future<void> _initMonths() async {
     await _loadMonths();
     if (!mounted) return;
@@ -167,7 +164,7 @@ class _B2cOrdersAnalysisScreenState extends State<B2cOrdersAnalysisScreen> {
         if (_from.isNotEmpty || _to.isNotEmpty) '${_from.isEmpty ? '…' : _from} → ${_to.isEmpty ? '…' : _to}',
       ].where((x) => x.isNotEmpty).join(' · ');
 
-  // ── التصدير: الأوراقُ والأعمدةُ نفسُها في الموقع ─────────────────────────
+  // Export: same sheets and columns as the web
   List<(String, List<ExportCol>, List<Map<String, dynamic>>)> _overviewSheets(Map<String, dynamic> d, String scope) {
     final k = _m(d['kpis']);
     final kpiRows = <Map<String, dynamic>>[
@@ -290,7 +287,7 @@ class _B2cOrdersAnalysisScreenState extends State<B2cOrdersAnalysisScreen> {
     await exportExcel(context, fileName: 'b2c-dashboard', sheets: sheets);
   }
 
-  // ── الفلاتر ───────────────────────────────────────────────────────────────
+  // Filters
   Future<void> _filters() async {
     int? y = _year, mo = _month;
     String p = _project, b = _branch, r = _rep, f = _from, t = _to;
@@ -572,8 +569,7 @@ class _B2cOrdersAnalysisScreenState extends State<B2cOrdersAnalysisScreen> {
 
   Widget _kpiHighlight(String title, String value, String sub, Color c, {VoidCallback? onTap}) => InkWell(
         onTap: onTap,
-        // حدٌّ رماديٌّ مستدير، وشريطُ اللون في البداية داخله — إذ لا تُقبَل
-        // زوايا مستديرةً لحدودٍ مختلفةِ الألوان (Flutter).
+        // A rounded grey border with the color strip inside at the start, since Flutter does not accept rounded corners with borders of different colors.
         child: Container(
           clipBehavior: Clip.antiAlias,
           decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: T.line)),
@@ -589,7 +585,7 @@ class _B2cOrdersAnalysisScreenState extends State<B2cOrdersAnalysisScreen> {
         ),
       );
 
-  /// بطاقاتُ الأيام — شهرًا شهرًا؛ والضغطُ يفتح تفاصيلَ اليوم.
+  /// Day cards, month by month; tapping opens the day's details.
   Widget _days(List<Map<String, dynamic>> days) {
     if (days.isEmpty) return const SizedBox.shrink();
     final byMonth = <String, List<Map<String, dynamic>>>{};
@@ -781,7 +777,7 @@ class _B2cOrdersAnalysisScreenState extends State<B2cOrdersAnalysisScreen> {
     ];
   }
 
-  // ── المناديب دون الهدف (<80%): حسب الفرع، وكلُّ مشروعٍ بفروعه، ثمّ القائمة ──
+  // Riders below target (<80%): by branch, each project with its branches, then the list
   void _belowTarget(List<Map<String, dynamic>> byRep) {
     final below = byRep.where((r) => _n(r['workingDays']) > 0 && _n(r['performancePercent']) < 80).toList()
       ..sort((a, b) => _n(a['performancePercent']).compareTo(_n(b['performancePercent'])));
@@ -946,7 +942,7 @@ class _DaySheetState extends State<_DaySheet> {
   }
 }
 
-/// ملفُّ المندوب — نظيرُ B2CRepProfileModal (GET /api/b2c/reps/:id/profile).
+/// Rider profile, the counterpart of B2CRepProfileModal (GET /api/b2c/reps/:id/profile).
 class B2cRepProfileSheet extends StatefulWidget {
   final String repId;
   const B2cRepProfileSheet({super.key, required this.repId});

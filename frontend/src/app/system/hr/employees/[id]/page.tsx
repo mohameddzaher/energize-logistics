@@ -71,11 +71,11 @@ export default function EmployeeProfilePage() {
   const [recordingLeave, setRecordingLeave] = useState(false);
   const [vehicleData, setVehicleData] = useState<{
     current: VehicleAuthorization | null;
-    // كلُّ ما بيده الآن — من ورقة التفويض في سجلّ المركبات (المرجع).
+    // Everything he holds now, from the authorization sheet in the vehicle register (the reference).
     currents?: VehicleAuthorization[];
     authorizations: VehicleAuthorization[];
     accidents: VehicleAccident[];
-    // ما هو مقيَّدٌ عليه في سجلّ المركبات: التفويضُ الورقيُّ وشريحةُ بترو اب.
+    // What is restricted to him in the vehicle register: the paper authorization and the Petro App SIM.
     registry?: {
       _id: string; plateNumber: string; ownerNameAr: string;
       authorizationNumber: string; authStart: string | null; authExpiry: string | null;
@@ -91,7 +91,7 @@ export default function EmployeeProfilePage() {
   const [editingContract, setEditingContract] = useState<Contract | null>(null);
   const [showRenew, setShowRenew] = useState(false);
   const [showTerminate, setShowTerminate] = useState(false);
-  // ── تحويلُ فريلانسر إلى كفالتنا: يُختار سجلٌّ من سجلّاتنا التجاريّة ──────────
+  // Converting a freelancer to our sponsorship: pick one of our commercial registers.
   const [sponsorOpen, setSponsorOpen] = useState(false);
   const [registers, setRegisters] = useState<string[]>([]);
   const [register, setRegister] = useState('');
@@ -120,7 +120,7 @@ export default function EmployeeProfilePage() {
   useSocket('hr:contract', useCallback(() => load(), [load]));
   useSocket('vehicle:authorization', useCallback(() => loadVehicles(), [loadVehicles]));
   useSocket('vehicle:accident', useCallback(() => loadVehicles(), [loadVehicles]));
-  // التفويضُ يُكتب أيضًا من سجلّ المركبات ومن مركبات B2C — فيصل هنا في الحال.
+  // Authorization is also written from the vehicle register and B2C vehicles, so it arrives here at once.
   useSocket('vreg:updated', useCallback(() => loadVehicles(), [loadVehicles]));
   useSocket('lt:updated', useCallback(() => loadVehicles(), [loadVehicles]));
 
@@ -170,22 +170,16 @@ export default function EmployeeProfilePage() {
   const b = data.balance;
   const assignedAssets = data.assets.filter((a) => a.status === 'assigned');
   const terminated = e.employmentStatus === 'terminated';
-  // ── الأرشيف: إنهاءُ الخدمة ← خروجٌ من النظام ← الأرشيف ─────────────────────
-  // والفريلانسرُ لا خروجَ له: إنهاءُ خدمته يؤرشفه (راجع utils/hrEngagement).
+  // Archive: end of service, then leave the system, then archive. A freelancer has no leave-system step: ending his service archives him (see utils/hrEngagement).
   const freelance = /فري\s*لانس|فريلانس|freelanc/i.test(String(e.registerNumber || ''));
   const outOfSystem = String(e.systemStatus || '').trim() === 'خارج النظام';
   const archived = terminated && (outOfSystem || freelance);
 
-  // ── تصدير ملفّ الموظف ────────────────────────────────────────────────────
-  // نصُّ الحالة يُقرأ من نفس خرائط الشارات المعروضة، فلا يخرج في الملفّ مفتاحٌ
-  // برمجيّ («pending_hr») مكان الكلمة التي يراها المستخدم.
+  // Export the employee file. Status text is read from the same badge maps shown on screen, so the file does not contain a programmatic key (`pending_hr`) in place of the word the user sees.
   const statusText = (map: Record<string, { en: string; ar: string }>, key?: string) =>
     (key && map[key] ? (ar ? map[key].ar : map[key].en) : (key || ''));
 
-  // ── أسماءُ التواريخ الأساسيّة ─────────────────────────────────────────────
-  // يُشتقّ منها اسما العمودين («… الميلادي» ثمّ «… الهجري») في الجدول والتصدير
-  // معًا، فلا يُسمّى التاريخُ الواحدُ باسمين. و«من/إلى» و«التاريخ» لا تقبل
-  // الصفة («من الميلادي»)، فلكلٍّ اسمُه الصريح.
+  // Names of the base dates. The two column names (Gregorian then Hijri) in the table and the export are derived from these, so one date never has two names. 'From/to' and 'date' do not take the adjective, so each has its explicit name.
   const L = {
     from: ar ? 'تاريخ البداية' : 'Start date',
     to: ar ? 'تاريخ النهاية' : 'End date',
@@ -208,10 +202,8 @@ export default function EmployeeProfilePage() {
     { header: ar ? 'البند' : 'Field', key: 'label', width: 26 },
     { header: ar ? 'القيمة' : 'Value', key: 'value', width: 34 },
   ];
-  // بطاقة النظرة العامة بندٌ وقيمة على الشاشة، فتُصدَّر صفًّا لكل بند؛ ولو صارت
-  // أعمدةً لخرج شيتٌ بصفٍّ واحدٍ وأربعين عمودًا لا يُقرأ.
-  // والحقول المالية تُحذف لغير فريق الموارد البشرية: الملفّ يخرج من النظام
-  // ويُتداول، فما لا يُمنح للدور لا يُصدَّر له.
+  // The overview card is an item and a value on screen, so it exports as a row per item; as columns it would give a one-row sheet with forty columns, unreadable.
+  // Financial fields are dropped for anyone outside the HR team: the file leaves the system and circulates, so what is not granted to the role is not exported to it.
   const overviewSheet: ExportSheet = {
     name: tx.tabOverview,
     rows: ([
@@ -223,9 +215,7 @@ export default function EmployeeProfilePage() {
       { label: tx.iqamaExpiry, value: bothDates(e.iqamaExpiry, ar, ''), date: e.iqamaExpiry },
       ...profileRows(e, tx, vtx, ar).filter((r) => staff || !r.financial),
     ] as ProfileRow[]).filter((r) => r.value && r.value !== '—')
-      // ── وبندُ التاريخ في الملفّ سطران متتاليان ───────────────────────────
-      // الشاشةُ تكتب التقويمين في سطرٍ واحد، والملفُّ يُفرَز ويُنسَخ منه: فلكلّ
-      // تاريخٍ سطرٌ ميلاديٌّ يليه مباشرةً سطرُه الهجريّ، باسمٍ يقول تقويمَه.
+      // A date item in the file is two consecutive rows. The screen writes both calendars on one line, but the file is sorted and copied from, so each date gets a Gregorian row immediately followed by its Hijri row, with a name stating its calendar.
       .flatMap((r) => {
         if (!r.date) return [r];
         const [g, h] = pairLabels(r.label, ar);
@@ -286,7 +276,7 @@ export default function EmployeeProfilePage() {
       { header: vtx.plateNumber, key: 'vehicle', transform: (v) => plateOf(v), width: 14 },
       { header: vtx.status, key: 'status', transform: (v) => statusText(AUTH_STATUS, v), width: 12 },
       ...exportDatePair(L.authStart, 'startDate', ar),
-      // تفويضٌ بلا نهايةٍ قائمٌ «حتى الآن» — تُكتَب في العمودين معًا.
+      // An authorization with no end is in force until now: written in both columns.
       ...exportDatePair(L.authEnd, 'endDate', ar, { empty: ar ? 'حتى الآن' : 'now' }),
       { header: vtx.authType, key: 'authorizationType', width: 16 },
       { header: vtx.documentNumber, key: 'documentNumber', width: 16 },
@@ -318,8 +308,7 @@ export default function EmployeeProfilePage() {
       ...exportDatePair(L.from, 'startDate', ar),
       ...exportDatePair(L.to, 'endDate', ar),
       { header: tx.colAnnualLeave, key: 'annualLeaveDays', width: 12 },
-      // الراتب والبدلات عمودان يُبنيان بشرطٍ لا يُخفيان بعد البناء: العمود الذي
-      // لا يُنشَأ لا يمكن أن يتسرّب في ملفٍّ يُفتَح خارج النظام.
+      // Salary and allowances are columns built conditionally, not hidden after building: a column never created cannot leak into a file opened outside the system.
       ...(staff ? [
         { header: tx.colSalary, key: 'basicSalary', transform: (v: any) => (v || 0).toLocaleString(), width: 14 },
         { header: ar ? 'البدلات' : 'Allowances', key: 'allowances', transform: (v: any) => (v || 0).toLocaleString(), width: 14 },
@@ -336,7 +325,7 @@ export default function EmployeeProfilePage() {
       { header: tx.colSubject, key: 'subject', width: 34 },
       { header: ar ? 'التصنيف' : 'Category', key: 'category', width: 18 },
       { header: tx.colStatus, key: 'status', transform: (v) => statusText(REQUEST_STATUS, v), width: 14 },
-      // الميلاديُّ بساعته، وبعده مباشرةً هجريُّ اليوم نفسِه.
+      // Gregorian with its time, immediately followed by the Hijri of the same day.
       { header: pairLabels(L.requested, ar)[0], key: 'createdAt', transform: (v) => fmtDateTime(v), width: 20 },
       { header: pairLabels(L.requested, ar)[1], key: 'createdAt', type: 'hijri', transform: (v) => gregDay(v), width: 16 },
     ],
@@ -380,10 +369,7 @@ export default function EmployeeProfilePage() {
     { key: 'documents', label: ar ? 'الملفات' : 'Files', badge: data.documents?.length || undefined },
     { key: 'leaves', label: tx.tabLeaves, badge: data.leaves.length || undefined },
     { key: 'custody', label: tx.tabCustody, badge: assignedAssets.length || undefined },
-    // ── والشارةُ تعدّ كلَّ ما يخصّه في المركبات ──────────────────────────
-    // كانت تعدّ التفاويضَ وحدَها، فمن رُكّبت له شريحةُ بترو اب على سيّارته
-    // الخاصّة بلا تفويضٍ يظهر بلا شارة — فتبدو التبويبةُ فارغةً ولا تُفتَح،
-    // وتبقى الشريحةُ تصرف من حسابنا ولا يعلم بها أحد.
+    // The badge counts everything held in vehicles. It used to count authorizations only, so someone with a Petro App SIM on his own car and no authorization showed no badge; the tab looked empty and was never opened, and the SIM kept charging our account unnoticed.
     { key: 'vehicles',
       label: vtx.empVehicleTab,
       badge: ((vehicleData?.authorizations.length || 0)
@@ -407,13 +393,13 @@ export default function EmployeeProfilePage() {
           <div className="flex items-center gap-3 flex-wrap">
             <h1 className="text-2xl font-bold text-slate-900">{empName(e, lang)}</h1>
             <Badge style={employmentBadge(e)} lang={lang} />
-            {/* حالتُه اليوم في قسم الأفراد — تُكتب هناك وتُرى هنا. */}
+            {/* His status today in the personnel section: written there, seen here. */}
             <B2cOpBadge status={(e as any).b2cOpStatus} ar={lang === 'ar'} />
           </div>
           <p className="text-slate-500 text-sm mt-1">{e.jobTitle || '—'} {e.department ? `· ${e.department}` : ''} {e.employeeNumber ? `· #${e.employeeNumber}` : ''}</p>
           <p className="text-slate-500 text-xs mt-1">{e.user ? `${tx.linkedLogin}: ${userName(e.user)}` : tx.noLoginLinked}</p>
         </div>
-        {/* Quick actions — الجميع يصدّرون، وما عدا ذلك لفريق الموارد البشرية */}
+        {/* Quick actions: everyone exports; everything else is for the HR team. */}
         <div className="flex flex-wrap items-center gap-2">
           <ExportMenu fileName={`employee-${e.employeeNumber || id}`} lang={lang as 'ar' | 'en'}
             options={[
@@ -421,10 +407,7 @@ export default function EmployeeProfilePage() {
               {
                 key: 'all', label: `${exportScopeLabels(ar).all} — ${ar ? 'ملفّ الموظف' : 'full employee file'}`,
                 hint: ar ? 'كل التبويبات' : 'all tabs',
-                // سجلّ التغييرات لا يُجلب إلا عند فتح تبويب «السجل»، فلو بُني
-                // الخيارُ من الحالة المحمّلة لخرج المصنَّفُ «الكامل» بلا سجلّ
-                // لمجرّد أن أحدًا لم يفتح التبويب. ويُجلب لموظّفي الموارد
-                // البشرية وحدهم لأن الخادم لا يُتيحه لغيرهم أصلًا.
+                // The change log is fetched only when the log tab is opened, so building the option from loaded state would produce a full workbook without a log merely because nobody opened the tab. It is fetched for HR staff only, because the server does not provide it to anyone else.
                 resolve: async (): Promise<ExportSheet[]> => {
                   let logs = audit;
                   if (staff && !logs.length) {
@@ -445,16 +428,16 @@ export default function EmployeeProfilePage() {
             {terminated
               ? <ActionBtn onClick={reactivate} icon={<UserCheck className="w-4 h-4" />} label={ar ? 'إعادة تفعيل' : 'Reactivate'} />
               : <ActionBtn onClick={() => setShowTerminate(true)} icon={<UserX className="w-4 h-4" />} label={ar ? 'إنهاء الخدمة' : 'End Service'} danger />}
-            {/* «يعمل» ↔ «شركة شقيقة» — والثالثةُ «لا يعمل» هي إنهاءُ الخدمة. */}
+            {/* Working and sister company; the third, not working, is end of service. */}
             {!terminated && (
               <ActionBtn onClick={toggleSister} icon={<Building2 className="w-4 h-4" />}
                 label={(e as any).sisterCompany ? (ar ? 'إرجاعه: يعمل' : 'Back to working') : (ar ? 'شركة شقيقة' : 'Sister company')} />
             )}
-            {/* مَن ليس على كفالتنا (فريلانسر، متدرّب، غير محدّد) يُحوَّل إليها على سجلٍّ من سجلّاتنا. */}
+            {/* Someone not under our sponsorship (freelancer, trainee, unspecified) is converted to it on one of our registers. */}
             {!terminated && !/^\s*\d{6,}\s*$/.test(String(e.registerNumber || '')) && (
               <ActionBtn onClick={openSponsor} icon={<BadgeCheck className="w-4 h-4" />} label={ar ? 'تحويل على كفالتنا' : 'Move to our sponsorship'} />
             )}
-            {/* لا يظهر إلّا بعد إنهاء الخدمة، ولغير الفريلانسر. */}
+            {/* Shown only after end of service, and not for a freelancer. */}
             {terminated && !archived && (
               <ActionBtn onClick={exitSystem} icon={<Archive className="w-4 h-4" />} label={ar ? 'خروج من النظام' : 'Exit the system'} danger />
             )}
@@ -465,7 +448,7 @@ export default function EmployeeProfilePage() {
         </div>
       </div>
 
-      {/* شارةُ الأرشيف — الملفُّ للقراءة، ولا يظهر صاحبُه في غير صفحة الأرشيف. */}
+      {/* Archive badge: the file is read-only, and its owner appears nowhere but the archive page. */}
       {archived && (
         <div className="flex items-center gap-2 rounded-xl border border-slate-300 bg-slate-100 p-3 text-sm font-semibold text-slate-700">
           <Archive className="h-4 w-4" />
@@ -477,7 +460,7 @@ export default function EmployeeProfilePage() {
       {/* Termination banner */}
       {terminated && (
         <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-700">
-          {/* «حالة العمل» كما تُكتب في كلّ شاشة: «لا يعمل — <حالته>». */}
+          {/* Work status as written on every screen: not working, followed by its state. */}
           {e.workStatusText && e.workStatusText !== 'يعمل' ? e.workStatusText : (ar ? 'انتهت خدمة هذا الموظف' : 'This employee’s service has ended')}
           {e.terminatedAt ? ` · ${bothDates(e.terminatedAt, ar)}` : ''}
           {e.terminationKind === 'transfer_pending' && e.transferDeadline && !archived && (
@@ -487,11 +470,7 @@ export default function EmployeeProfilePage() {
         </div>
       )}
 
-      {/* ── وتناقضُ الحالتين يُقال، لا يُترك للقارئ يكتشفه ──────────────────
-          حالةُ التوظيف تأتي من ماستر الموارد البشريّة، وحالةُ العقد من ملفّ
-          العقود — ملفّان يُملآن بيدين. فيقول أعلى الصفحة «منتهي» ويقول تبويبُ
-          العقود «ساري»، ولا شيءَ يفسّر أيُّهما الصواب. أربعون موظّفًا كذلك.
-          فيُقال هنا صراحةً ومن أين جاء كلُّ رقم، بدل أن يُقرأ عطلًا في النظام. */}
+      {/* The mismatch between the two statuses is stated rather than left for the reader to discover. Employment status comes from the HR master and contract status from the contracts file, two files filled by hand. So the page top says ended while the contracts tab says active, with nothing saying which is right (forty employees were like this). It is stated explicitly, with where each figure came from, rather than being read as a system fault. */}
       {terminated && data.contracts.some((c: any) => c.status === 'active') && (
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-900">
           <b>{ar ? 'تنبيه: الحالتان لا تتّفقان' : 'Heads up: the two records disagree'}</b>
@@ -502,7 +481,7 @@ export default function EmployeeProfilePage() {
           </p>
         </div>
       )}
-      {/* والفريلانسرُ والمتدرّبُ لا عقدَ لهما أصلًا — فلا يُنبَّه عنهما «لا عقد ساري». */}
+      {/* A freelancer and a trainee have no contract at all, so they are not warned about having no active contract. */}
       {!terminated && contractRequired(e) && data.contracts.length > 0 && !data.contracts.some((c: any) => c.status === 'active') && (
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-900">
           <b>{ar ? 'تنبيه: الحالتان لا تتّفقان' : 'Heads up: the two records disagree'}</b>
@@ -517,10 +496,7 @@ export default function EmployeeProfilePage() {
       {/* Leave balance stats */}
       {b && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {/* ── ثلاثةٌ من الأربعة أرقامٌ لا صفوفَ تحتها ────────────────────
-              الرصيدُ السنويُّ بندُ سياسةٍ، والمستحقُّ حتى تاريخه حسابُ مدّة،
-              والمتاحُ فرقُ الاثنين. أمّا «المستهلك» فإجازاتٌ وقعت، ولها لسانٌ
-              في الصفحة — فهو وحدَه يفتحه. */}
+          {/* Three of the four are figures with no rows under them. Annual balance is a policy item, accrued to date is a period calculation, and available is the difference. Consumed is leaves that happened, and has a tab on the page, so only it opens. */}
           <StatCard label={tx.annualEntitlement} value={`${b.entitlement} ${tx.dayUnit}`} />
           <StatCard label={tx.accruedToDate} value={`${b.accrued} ${tx.dayUnit}`} accent="text-blue-600" />
           <Pick onClick={() => setTab('leaves')}>
@@ -532,12 +508,12 @@ export default function EmployeeProfilePage() {
 
       <Tabs tabs={tabs} active={tab} onChange={setTab} />
 
-      {/* فريقُ الموارد البشريّة يرى كلَّ بيانات الماستر ويعدّلها من هنا — والموظّفُ نفسُه يرى الملخّص. */}
+      {/* The HR team sees and edits all master data from here; the employee himself sees the summary. */}
       {tab === 'overview' && (staff
         ? <EmployeeMasterFields id={String(e._id)} fieldsUrl={`/api/hr/master/employees/${e._id}/fields`} choicesUrl="/api/hr/master/choices" canEdit={staff} ar={ar} />
         : <Overview e={e} lang={lang} tx={tx} vtx={vtx} />)}
 
-      {/* مهامّ JP المربوطة بهذا الموظّف — تُضاف من هنا. */}
+      {/* JP tasks linked to this employee, added from here. */}
       {tab === 'overview' && <JpTaskPanel section="hr" kind="employee" refId={String(e._id)} ar={ar} />}
 
       {(() => {
@@ -594,7 +570,7 @@ export default function EmployeeProfilePage() {
                       <span>{bothDatesShort(d.createdAt, ar)}</span>
                       {d.uploadedBy && <span>· {userName(d.uploadedBy)}</span>}
                       {d.expiryDate && exp && <SmallBadge bg={exp.bg} text={exp.text} label={exp.label} />}
-                      {/* تاريخُ الانتهاء نفسُه بتقويميه — الشارةُ تقول كم بقي ولا تقول متى. */}
+                      {/* The expiry date in both calendars: the badge says how long is left, not when. */}
                       {d.expiryDate && <span className="basis-full">{L.docExpiry}: {bothDates(d.expiryDate, ar)}</span>}
                     </div>
                     <div className="flex items-center gap-1 pt-1 border-t border-slate-100">
@@ -629,8 +605,7 @@ export default function EmployeeProfilePage() {
               <Th>{tx.colType}</Th><DateThs label={L.from} ar={ar} /><DateThs label={L.to} ar={ar} /><Th>{tx.colDays}</Th><Th>{tx.colStatus}</Th><DateThs label={L.submitted} ar={ar} /><Th>{ar ? 'المرفقات' : 'Attachments'}</Th><Th>{''}</Th>
             </tr></thead>
             <tbody>{data.leaves.map((l) => {
-              // مرفقاتُ الطلب ومرفقاتُ قراريه معًا: التقريرُ الطبّيّ وورقةُ
-              // الموافقة يُقرآن من سطرٍ واحد.
+              // Attachments of the request and of its two decisions together: the medical report and the approval sheet are read from one row.
               const files = [
                 ...(((l as any).attachments) || []),
                 ...(((l as any).managerDecision?.attachments) || []),
@@ -662,7 +637,7 @@ export default function EmployeeProfilePage() {
         </DataCard>
       )}
 
-      {/* وعهدةُ النقل الثقيل المسجَّلةُ عليه بالمال (صادرٌ إليه أو واردٌ منه). */}
+      {/* Heavy-transport custody recorded on him in money (issued to him or received from him). */}
       {tab === 'custody' && <HtCustodyPanel by={{ employee: String(e._id) }} ar={ar} showVehicle />}
       {tab === 'custody' && (
         <DataCard empty={!data.assets.length} emptyText={tx.noCustodyItems}>
@@ -686,7 +661,7 @@ export default function EmployeeProfilePage() {
         <div className="space-y-4">
           <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
             <h3 className="text-[#f37121] text-sm font-semibold mb-3">{vtx.empCurrentVehicle}</h3>
-            {/* الحاليُّ من ورقة التفويض في سجلّ المركبات — ما تقرؤه المركبات و B2C نفسُه. */}
+            {/* Current authorization from the vehicle register sheet: the same thing vehicles and B2C read. */}
             {(vehicleData?.currents ?? (vehicleData?.current ? [vehicleData.current] : [])).length ? (
               <div className="space-y-3">
                 {(vehicleData?.currents ?? [vehicleData!.current!]).map((c) => (
@@ -707,15 +682,7 @@ export default function EmployeeProfilePage() {
             ) : <p className="text-slate-400 text-sm">{vtx.empNoCurrentVehicle}</p>}
           </div>
 
-          {/* ── ما هو مقيَّدٌ عليه في سجلّ المركبات ────────────────────────────
-              التفويضُ الورقيُّ المثبَّت على المركبة (وهو الحجّةُ عند المرور)،
-              وشريحةُ بترو اب.
-
-              والشريحةُ هي المقصودُ الأوّل هنا: قد يشتري الموظّفُ سيّارتَه فتُركَّب
-              له شريحةُ الشركة — فالسيّارةُ سيّارتُه ولا تفويضَ لنا عليها،
-              والشريحةُ شريحتُنا وتصرف من حسابنا. فإن لم تظهر في ملفّه لم يعرف
-              أحدٌ أنّها عنده، وبقي يصرف بها بعد رحيله. ولذلك تمنع إنهاءَ خدمته
-              حتّى تُنزَع. */}
+          {/* What is restricted to him in the vehicle register. The paper authorization fixed on the vehicle (the proof at a checkpoint), and the Petro App SIM. The SIM is the main concern: an employee may buy his own car and have the company SIM fitted, so the car is his with no authorization from us, while the SIM is ours and charged to our account. If it did not appear in his file, nobody would know he has it and he would keep spending after leaving. So it blocks ending his service until removed. */}
           {!!vehicleData?.registry?.length && (
             <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
               <h3 className="text-slate-900 font-semibold mb-4">
@@ -825,10 +792,7 @@ export default function EmployeeProfilePage() {
         </div>
       )}
 
-      {/* ── سجلّ الطلبات ─────────────────────────────────────────────────────
-          ما أُرفق بالطلب يُقرأ من هنا بعد سنة: الشهادةُ التي أرسلتها الموارد
-          البشريّة، والتقريرُ الذي أرفقه الموظّف. كان يعيش في خيط الرسائل وحده
-          فلا يجده من يفتح الملفّ — وهو أوّلُ ما يُفتح حين يُسأل عن ورقة. */}
+      {/* Request log. What was attached to a request is read from here a year later: the certificate HR sent and the report the employee attached. It used to live only in the message thread, so whoever opened the file did not find it, and it is the first thing opened when a paper is asked for. */}
       {tab === 'requests' && (
         <DataCard empty={!data.requests.length} emptyText={tx.noRequests}>
           <table className="w-full text-sm">
@@ -953,7 +917,7 @@ function RenewModal({ open, employeeId, ar, onClose, onDone }: { open: boolean; 
           {RENEWAL_TYPES.map((t) => <option key={t.key} value={t.key}>{renewalTypeLabel(t.key, lang)}</option>)}
         </Select>
       </Field>
-      {/* خانتان: الميلاديّةُ ثمّ الهجريّة — وما يُرسَل `newExpiry` ميلاديًّا كما كان. */}
+      {/* Two fields: Gregorian then Hijri; `newExpiry` is sent as Gregorian as before. */}
       <DatePair label={ar ? 'تاريخ الانتهاء الجديد' : 'New expiry date'} value={newExpiry} onChange={setNewExpiry} ar={ar} />
       <Field label={ar ? 'الرقم الجديد (اختياري)' : 'New number (optional)'}><TextInput value={documentNumber} onChange={(ev) => setDocumentNumber(ev.target.value)} /></Field>
       <Field label={ar ? 'ملاحظات' : 'Notes'}><TextArea rows={2} value={notes} onChange={(ev) => setNotes(ev.target.value)} /></Field>
@@ -962,27 +926,24 @@ function RenewModal({ open, employeeId, ar, onClose, onDone }: { open: boolean; 
 }
 
 // End of service.
-/** «لا يعمل» وحالاتُه الثلاث — مطابقةٌ لـ TERMINATION_KINDS في الخادم (utils/hrEngagement). */
+/** Not working and its three states: matches TERMINATION_KINDS on the server (utils/hrEngagement). */
 const TERMINATION_KINDS: { key: string; ar: string; en: string; hint: string; hintEn: string }[] = [
   { key: 'transfer_pending', ar: 'انتظار نقل الكفالة', en: 'Awaiting sponsorship transfer', hint: 'شهر واحد — وتنبيهاتٌ يومية لإخراجه من النظام', hintEn: 'One month — daily reminders to take him out of the system' },
   { key: 'final_exit', ar: 'خروج نهائي', en: 'Final exit', hint: '', hintEn: '' },
 ];
 
 function TerminateModal({ open, employeeId, ar, onClose, onDone, archivesNow }: { open: boolean; employeeId: string; ar: boolean; onClose: () => void; onDone: () => void;
-  /** خارجَ النظام أو فريلانسر: إنهاءُ خدمته يؤرشفه فورًا، فلا يُسأل عن حالة. */
+  /** Outside the system or a freelancer: ending service archives immediately, so no status is asked. */
   archivesNow?: boolean }) {
   const { notify } = useDialog();
   const [kind, setKind] = useState('');
   const [reason, setReason] = useState('');
   const [contractStatus, setContractStatus] = useState('');
-  // ملاحظةٌ حرّةٌ إلى جانب السبب المختار — التفصيلُ الذي لا تسعه قائمة.
+  // Free note beside the chosen reason: detail a list cannot hold.
   const [note, setNote] = useState('');
   const [date, setDate] = useState('');
   const [saving, setSaving] = useState(false);
-  // ── ما يحمله قبل أن يُكتب سببٌ وتاريخ ────────────────────────────────────
-  // كان المستخدم يملأ النافذة ثمّ يُصدُّ برسالةٍ واحدة، فيعيد الكرّة ليعرف ما
-  // ينقص. فيُسأل الخادمُ عند الفتح: ما الذي يحمله هذا الموظّف، وأيُّ قسمٍ
-  // يصفّيه، وما يُفعل به.
+  // What he holds, before a reason and date are written. Users used to fill in the dialog and then be rejected with a single message, and repeat to learn what was missing. So the server is asked on open: what does this employee hold, which department clears it, and what is done with it.
   const [clearance, setClearance] = useState<{
     clear: boolean;
     blockers: { ar: string; section: string; items: string[]; actionAr?: string }[];
@@ -1019,7 +980,7 @@ function TerminateModal({ open, employeeId, ar, onClose, onDone, archivesNow }: 
           title={blocked ? (ar ? 'تُسوَّى البنود المعلّقة أولًا' : 'Settle the pending items first') : undefined}
           className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 disabled:opacity-50">{saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserX className="w-4 h-4" />}{ar ? 'تأكيد الإنهاء' : 'Confirm'}</button>
       </>}>
-      {/* ── حالة «لا يعمل» — شرطٌ للإنهاء (إلّا مَن يُؤرشَف فورًا) ──────────── */}
+      {/* Not-working status: required to end service (except those archived immediately). */}
       {archivesNow ? (
         <p className="mb-3 rounded-lg border border-slate-300 bg-slate-100 px-3 py-2 text-[12.5px] font-semibold text-slate-700">
           {ar ? 'خارج النظام أو فريلانسر — بإنهاء خدمته ينتقل إلى الأرشيف فورًا.' : 'Out of the system or freelancer — ending his service moves him to the archive at once.'}
@@ -1039,9 +1000,7 @@ function TerminateModal({ open, employeeId, ar, onClose, onDone, archivesNow }: 
         </div>
       )}
       {checking && <p className="text-slate-400 text-sm">{ar ? 'جارٍ فحص إخلاء الطرف…' : 'Checking clearance…'}</p>}
-      {/* ── إخلاءُ الطرف ────────────────────────────────────────────────────
-          المنعُ بلا عنوانٍ يوقف العمل؛ والمنعُ مع العنوان يوجّهه. فمع كلّ بندٍ
-          القسمُ الذي يصفّيه وما يُفعل به. */}
+      {/* Clearance. A block with no title stops work; a block with a title directs it. So each item carries the department that clears it and what is done with it. */}
       {clearance && !clearance.clear && (
         <div className="rounded-xl border border-red-200 bg-red-50 p-3 space-y-2.5">
           <p className="text-sm font-bold text-red-800">
@@ -1069,20 +1028,13 @@ function TerminateModal({ open, employeeId, ar, onClose, onDone, archivesNow }: 
       )}
       <p className="text-slate-500 text-sm">{ar ? 'سيتم تحديث الحالة إلى "منتهي" وإنهاء العقد الساري.' : 'Status becomes “terminated” and the active contract is ended.'}</p>
       <DatePair label={ar ? 'تاريخ الإنهاء' : 'Termination date'} value={date} onChange={setDate} ar={ar} />
-      {/* ── السببُ قائمةٌ لا نصٌّ حرّ ──────────────────────────────────────────
-          «استقالة» و«استقاله» و«قدّم استقالته» ثلاثةُ أسبابٍ في التقرير لشيءٍ
-          واحد، فلا يُعَدّ سببٌ ولا يُقارَن شهرٌ بشهر. والقائمةُ تُدار من إعدادات
-          القسم، ومن نقصه سببٌ يزيده من مكانه هذا فيراه كلُّ من بعده — فلا يضطرّ
-          أحدٌ إلى كتابته حرًّا لأنّه غيرُ موجود. */}
+      {/* The reason is a list, not free text. 'Resignation' in three spellings is three reasons in the report for one thing, so reasons cannot be counted or compared month to month. The list is managed from department settings, and whoever finds a missing reason adds it from this place for everyone after, so nobody has to type it freely because it does not exist. */}
       <Field label={ar ? 'السبب' : 'Reason'}>
         <ManagedSelect storeLabel type="hr_termination_reason" value={reason}
           onChange={(v) => setReason(v)}
           placeholder={ar ? 'اختر السبب…' : 'Select a reason…'} />
       </Field>
-      {/* ── وحالةُ العقد تُحدَّد هنا ────────────────────────────────────────
-          هي عمودٌ يُقرأ في قائمة «ليس على رأس العمل» ليُعرَف أمنتهٍ عقدُه أم
-          ساري. وكان لا يكتبه أحدٌ عند الإنهاء، فيبقى فارغًا. يُقترَح «منتهي»
-          ويُترك للمستخدم أن يغيّره. */}
+      {/* Contract status is set here. It is a column read in the not-on-duty list to know whether a contract is ended or active. Nobody wrote it at termination, so it stayed empty. 'Ended' is suggested and the user may change it. */}
       <Field label={ar ? 'حالة العقد بعد الإنهاء' : 'Contract status after ending'}>
         <ManagedSelect storeLabel type="hr_contract_status" value={contractStatus}
           onChange={(v) => setContractStatus(v)}
@@ -1164,11 +1116,8 @@ function DocModal({ open, doc, employeeId, ar, onClose, onDone }: { open: boolea
   );
 }
 
-// صفوف «نظرة عامة»: تعريفٌ واحد تقرؤه الشاشةُ ويقرؤه التصدير، فلا تُصان قائمةُ
-// الحقول في موضعين فيتخلّف أحدهما عن الآخر. و`financial` تُعلّم الحقول المالية
-// وحدها كي يُسقطها التصديرُ عمّن لا يملك صلاحية الموارد البشرية.
-// `date` تحمل التاريخَ الخامّ لبنود التواريخ: الشاشةُ تكتبه بتقويميه في السطر،
-// والتصديرُ يشقّه سطرين متتاليين (ميلاديّ ثمّ هجريّ).
+// Overview rows: one definition read by both the screen and the export, so the field list is not maintained in two places where one falls behind. `financial` marks the financial fields only, so the export drops them for anyone without HR permission.
+// `date` carries the raw date of date items: the screen writes it in both calendars on the line, and the export splits it into two consecutive rows (Gregorian, then Hijri).
 type ProfileRow = { label: string; value: any; financial?: boolean; date?: string | null };
 function profileRows(e: Employee, tx: ReturnType<typeof getHrEmployeesIdTranslations>, vtx: ReturnType<typeof getVehiclesText>, ar: boolean): ProfileRow[] {
   const D = (v?: string | null): [string, boolean, string | null] => [bothDates(v, ar, ''), false, v || null];
@@ -1247,9 +1196,7 @@ const Th = ({ children }: { children: React.ReactNode }) => <th className="text-
 const Td = ({ children, className }: { children: React.ReactNode; className?: string }) => <td className={`px-4 py-3 text-slate-700 ${className || ''}`}>{children}</td>;
 const Tr = ({ children }: { children: React.ReactNode }) => <tr className="border-b border-slate-200/70 hover:bg-slate-100">{children}</tr>;
 
-// ── كلُّ تاريخٍ في جدولٍ عمودان متجاوران ───────────────────────────────────
-// الميلاديُّ ثمّ هجريُّه مباشرةً، من القيمة نفسِها (lib/hrDates). وهما مكوّنان
-// على مستوى الملفّ: رأسٌ بخانتين وصفٌّ بخانتين، فلا يُنسى أحدُهما دون الآخر.
+// Each date in a table is two adjacent columns: Gregorian, then its Hijri straight after, from the same value (lib/hrDates). They are file-level components: a header with two cells and a row with two cells, so one is never forgotten without the other.
 const DateThs = ({ label, ar }: { label: string; ar: boolean }) => {
   const [g, h] = pairLabels(label, ar);
   return <><Th>{g}</Th><Th>{h}</Th></>;
@@ -1262,11 +1209,8 @@ const DateTds = ({ v }: { v?: string | Date | null }) => (
 );
 
 /**
- * روابطُ المرفقات في صفٍّ من جدول.
- *
- * الملفُّ يُقدَّم على `/api/uploads/...` من الخادم نفسِه، فيُفتح في تبويبٍ
- * جديد ويُنزَّل باسمه الأصليّ. و`download` وحدَه لا يكفي: المتصفّح يتجاهله
- * أحيانًا للـPDF فيعرضه بدل حفظه — وكلاهما مقبول، المهمّ أن يصل.
+ * Attachment links in a table row.
+ * The file is served from the same server under the uploads path, so it opens in a new tab and downloads under its original name. `download` alone is not enough: the browser sometimes ignores it for PDFs and shows them instead of saving, and both are acceptable; what matters is that it arrives.
  */
 function AttachmentLinks({ items }: { items: { fileUrl: string; title?: string; fileName?: string; size?: number; mimeType?: string }[] }) {
   return (

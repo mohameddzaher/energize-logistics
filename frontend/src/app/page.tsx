@@ -11,10 +11,10 @@ import NationalDaySection from "../components/NationalDaySection"
 
 export default function Home() {
   return (
-    <div className="w-full overflow-hidden"> {/* غيرت من overflow-x-hidden إلى overflow-hidden */}
+    <div className="w-full overflow-hidden"> {/* Changed from overflow-x-hidden to overflow-hidden. */}
       <Hero />
 
-      {/* اليوم الوطني السعودي ٩٦ — يختفي وحدَه بعد المناسبة */}
+      {/* Saudi National Day banner; removes itself after the occasion. */}
       <NationalDaySection />
       
       <section className="w-full overflow-hidden">

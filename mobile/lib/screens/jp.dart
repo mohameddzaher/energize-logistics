@@ -15,12 +15,8 @@ import '../ui/search_field.dart';
 import '../ui/stat_grid.dart';
 import 'customs_detail.dart';
 
-/// خطّةُ العمل (JP) — نظيرُ `JpBoard` و`JpDashboard` في الموقع.
-///
-/// شاشةٌ واحدةٌ للقسم ولخطّة الإدارة. والصلاحيّةُ من الخادم: كلُّ مهمّةٍ تحمل
-/// `can`، و`/me` تقول أهو مديرٌ أم عضو — فلا قائمةَ أدوارٍ تُكرَّر هنا إلّا ما
-/// يُخفي به الدرجُ صفحةً يرفض الخادمُ صاحبَها (الخريطتان أدناه، مولَّدتان من
-/// backend/src/config/jpSections.js).
+/// Work plan (JP), counterpart of `JpBoard` and `JpDashboard` on the web.
+/// One screen for the section and for the management plan. Permission comes from the server: each task carries `can` and `/me` says manager or member, so no role list is repeated here except what the drawer uses to hide a page the server would refuse (the two maps below, generated from backend/src/config/jpSections.js).
 const jpManagerRoles = <String, List<String>>{
   'operations': ['operations_manager'],
   'collections': ['collections_manager'],
@@ -80,8 +76,7 @@ const _actions = {
   'other': ('أخرى', 'Other', Icons.more_horiz),
 };
 
-/// ما تُربَط به المهمّة — لكلّ قسمٍ أنواعُه (`linkKinds`، backend/config/jpLinks.js):
-/// معاملةٌ، شحنةٌ، موظّفٌ، مركبةٌ… والخادمُ يتحقّق ويلتقط الاسم.
+/// What a task can be linked to; each section has its kinds (`linkKinds`, backend/config/jpLinks.js): transaction, shipment, employee, vehicle, ... The server validates and captures the name.
 const _linkKinds = {
   'clearance': ('معاملة', 'Transaction', Icons.directions_boat_outlined),
   'customer': ('عميل', 'Customer', Icons.people_outline),
@@ -114,7 +109,7 @@ String _span(Duration d) {
 String _two(int n) => n.toString().padLeft(2, '0');
 String _ymd(DateTime d) => '${d.year}-${_two(d.month)}-${_two(d.day)}';
 
-/// سطرُ الموعد ولونُه — كما في الموقع: «تُسلَّم قبل ٣:٠٠ م — بقي ساعة».
+/// Deadline line and its colour, as on the web: "due before 3:00 PM, one hour left".
 (String, Color) jpDeadline(Map<String, dynamic> t) {
   final raw = t['deadlineAt'];
   if (raw == null) return (tr('بلا موعد', 'No deadline'), T.inkFaint);
@@ -145,7 +140,7 @@ class JpScreen extends StatefulWidget {
 }
 
 class _JpScreenState extends State<JpScreen> {
-  /// تصحيحُ المدير: دقائقُ تُزاد أو تُنقَص في يومٍ بعينه.
+  /// Manager correction: minutes added or subtracted on a specific day.
   Future<void> _adjust(Map<String, dynamic> t) async {
     final mins = TextEditingController(), note = TextEditingController();
     final ok = await showDialog<bool>(context: context, builder: (c) => AlertDialog(
@@ -183,7 +178,7 @@ class _JpScreenState extends State<JpScreen> {
     _init();
     _onLive = () => _load();
     Live.instance.on('jp:changed', _onLive);
-    // العدُّ التنازليُّ يتحرّك بلا إعادة تحميل.
+    // The countdown ticks without a reload.
     _tick = Timer.periodic(const Duration(seconds: 30), (_) { if (mounted) setState(() {}); });
   }
 
@@ -275,7 +270,7 @@ class _JpScreenState extends State<JpScreen> {
     }));
   }
 
-  /// تعليقاتُ المهمّة — تُقرأ ويُكتب فيها من أُسنِدت إليه ومن أسندها ومديرُ القسم.
+  /// Task comments: readable and writable by the assignee, the assigner and the section manager.
   Future<void> _comments(Map<String, dynamic> t) async {
     final text = TextEditingController();
     var list = List<Map<String, dynamic>>.from(t['comments'] ?? []);
@@ -337,7 +332,7 @@ class _JpScreenState extends State<JpScreen> {
     if (ok == true) await _run(() => Api.instance.delete('/api/jp/tasks/${t['_id']}'));
   }
 
-  /// مديرُ القسم يُنزل ما كُلِّف به إلى موظّفٍ عنده — الموظّفُ يراها من مديره.
+  /// The section manager hands what he was assigned down to an employee under him; the employee sees it as from his manager.
   Future<void> _handDown({Map<String, dynamic>? task, Map<String, dynamic>? project}) async {
     if (_mySection.isEmpty) return;
     List<Map<String, dynamic>> team;
@@ -368,7 +363,7 @@ class _JpScreenState extends State<JpScreen> {
         : Api.instance.post('/api/jp/projects/${project!['_id']}/hand-down', {'assignedTo': who}));
   }
 
-  /// مشروعٌ جديد أو تعديلُ قائم — الاسم والوصف وتاريخ الانتهاء، كالموقع.
+  /// New project or edit of an existing one: name, description and end date, like the web.
   Future<void> _projectForm([Map<String, dynamic>? p]) async {
     final name = TextEditingController(text: (p?['name'] ?? '').toString());
     final desc = TextEditingController(text: (p?['description'] ?? '').toString());
@@ -441,7 +436,7 @@ class _JpScreenState extends State<JpScreen> {
     }
   }
 
-  /// حذفُ مرفقٍ من المهمّة — لمن يعدّلها أو لمن رفعه، كالموقع.
+  /// Delete a task attachment: by whoever can edit the task or whoever uploaded it, like the web.
   Future<void> _removeFile(Map<String, dynamic> t, Map<String, dynamic> a) async {
     final ok = await showDialog<bool>(context: context, builder: (c) => AlertDialog(
       title: Text(tr('حذف المرفق؟', 'Remove file?')),
@@ -494,7 +489,7 @@ class _JpScreenState extends State<JpScreen> {
                 _chip(tr('الكلّ', 'All'), _status.isEmpty, () => _set(() => _status = ''), color: T.inkSoft),
               ])),
               if (_projects.isNotEmpty) SizedBox(height: 46, child: ListView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.fromLTRB(14, 6, 14, 2), children: [
-                // ضغطةٌ تفتح المشروع، وضغطةٌ مطوّلة تعديلُه وإغلاقُه وحذفُه (أو إسنادُه).
+                // Tap opens the project; long press offers edit, close and delete (or assign).
                 for (final p in _projects) Opacity(
                   opacity: p['status'] == 'closed' ? 0.55 : 1,
                   child: GestureDetector(
@@ -552,7 +547,7 @@ class _JpScreenState extends State<JpScreen> {
             if (t['fromManagement'] == true) Chip2(tr('من خطّة الإدارة', 'From management'), T.violet),
             if (act != null) Chip2(tr(act.$1, act.$2), T.info, icon: act.$3),
           ]),
-          // ── الوقت: المتوقّعُ والفعليّ، والمؤقّتُ لمن يعمل عليها ──
+          // Time: expected and actual, and a timer for whoever works on it.
           if (can['track'] == true || t['expectedMinutes'] != null || ((t['spentNow'] ?? 0) as num) > 0)
             Padding(padding: const EdgeInsets.only(top: 6), child: Wrap(spacing: 6, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
               Chip2('${_fmtMin(t['spentNow'])}${t['expectedMinutes'] != null ? ' / ${_fmtMin(t['expectedMinutes'])}' : ''}',
@@ -570,7 +565,7 @@ class _JpScreenState extends State<JpScreen> {
               final k = _linkKinds[l['kind']];
               final label = (l['label'] ?? '').toString();
               final chip = Chip2('${k == null ? '' : '${tr(k.$1, k.$2)}: '}$label', T.navy, icon: k?.$3);
-              // شريحةُ المعاملة تفتح المعاملةَ نفسَها.
+              // The transaction chip opens the transaction itself.
               return l['kind'] != 'clearance' ? chip : InkWell(
                 onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => CustomsDetailScreen(clearanceId: _id(l['ref']), ref: label.split(' · ').first))),
                 child: chip,
@@ -621,7 +616,7 @@ class _JpScreenState extends State<JpScreen> {
   }
 }
 
-/// نموذجُ المهمّة: ما المطلوب، ولمن، ومتى — والباقي اختياريٌّ مطويّ.
+/// Task form: what is needed, for whom and when; the rest is optional and collapsed.
 String _fmtMin(dynamic v) {
   final m = ((v ?? 0) as num).round();
   final h = m ~/ 60, r = m % 60;
@@ -632,7 +627,7 @@ class _JpForm extends StatefulWidget {
   final String scope; final String? section; final Map<String, dynamic> me;
   final List<Map<String, dynamic>> projects; final Map<String, dynamic>? task;
   final String presetProject; final Future<void> Function() onDone;
-  /// ما فُتحت منه النافذة (معاملة، شحنة…) — مربوطٌ سلفًا.
+  /// What the dialog was opened from (transaction, shipment, ...) is pre-linked.
   final List<Map<String, dynamic>> presetLinks;
   const _JpForm({required this.scope, required this.section, required this.me, required this.projects, required this.task, required this.presetProject, required this.onDone, this.presetLinks = const []});
   @override
@@ -641,13 +636,13 @@ class _JpForm extends StatefulWidget {
 
 class _JpFormState extends State<_JpForm> {
   final _title = TextEditingController(), _details = TextEditingController(), _contact = TextEditingController(), _hours = TextEditingController();
-  // يومُ العمل والوقتُ المتوقّع (٢٠٢٦/١٠/٢٢).
+  // Work day and expected time.
   final _expH = TextEditingController(), _expM = TextEditingController();
   String _workDate = '';
   String _assignee = '', _action = '', _project = '', _dueKind = '', _dueDate = '';
   bool _more = false, _saving = false, _dueTouched = false;
   PickedFile? _file;
-  // روابطُ المهمّة: {kind, ref, label} — الاسمُ للعرض، والخادمُ يلتقط اسمَه هو.
+  // Task links: {kind, ref, label}; the name is for display and the server captures its own.
   final List<Map<String, dynamic>> _links = [];
 
   bool get _editing => widget.task != null;
@@ -661,7 +656,7 @@ class _JpFormState extends State<_JpForm> {
     _project = widget.presetProject;
     if (!_canManage) _assignee = (widget.me['me'] ?? '').toString();
     _links.addAll(widget.presetLinks.map((l) => Map<String, dynamic>.from(l)));
-    // ومن صفحة الشيء نفسِه: لنفسه ابتداءً، والمديرُ يغيّره من القائمة.
+    // From the item's own page: assigned to himself by default, and the manager changes it from the list.
     if (widget.presetLinks.isNotEmpty && _assignee.isEmpty) _assignee = (widget.me['me'] ?? '').toString();
     if (t != null) {
       _title.text = (t['title'] ?? '').toString(); _details.text = (t['details'] ?? '').toString();
@@ -679,7 +674,7 @@ class _JpFormState extends State<_JpForm> {
 
   Future<void> _addLink(String kind) async {
     final k = _linkKinds[kind]!;
-    // البحثُ عند الخادم (q) كالموقع — المعاملاتُ بالآلاف، وأحدثُ ٢٠٠ لا تكفي.
+    // Search runs on the server (q) like the web: transactions number in the thousands and the latest 200 are not enough.
     final picked = await showModalBottomSheet<Map<String, dynamic>>(
       context: context, isScrollControlled: true, backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
@@ -704,7 +699,7 @@ class _JpFormState extends State<_JpForm> {
       final body = <String, dynamic>{
         'title': _title.text.trim(), 'assignedTo': _assignee, 'details': _details.text.trim(),
         'action': _action, 'contact': _contact.text.trim(), 'project': _project.isEmpty ? null : _project,
-        // موعدٌ بالساعات لا يُعاد عدُّه عند التعديل ما لم يُغيَّر.
+        // A deadline in hours is not recounted on edit unless it was changed.
         if (!_editing || _dueTouched) ..._dueBody(),
         if (_kinds.isNotEmpty) 'links': [for (final l in _links) {'kind': l['kind'], 'ref': l['ref']}],
         'workDate': _workDate,
@@ -741,7 +736,7 @@ class _JpFormState extends State<_JpForm> {
       child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Text(_editing ? tr('تعديل', 'Edit') : _canManage ? tr('مهمّة جديدة', 'New task') : tr('طلب جديد', 'New request'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
         const SizedBox(height: 12),
-        // المهمّةُ من قائمة القسم (وما ليس فيها يُضاف منها) — وخطّةُ الإدارة نصٌّ حرّ.
+        // The task comes from the section list (what is missing is added from it); the management plan is free text.
         if (widget.scope == 'section' && widget.section != null)
           LookupField(type: 'jp_task_${widget.section}', controller: _title, label: tr('المهمّة', 'Task'))
         else
@@ -859,7 +854,7 @@ class _JpFormState extends State<_JpForm> {
   }
 }
 
-/// لوحةُ الخطّة — للمدير وحدَه؛ الخادمُ يرفض غيرَه والشاشةُ تقول ذلك.
+/// Plan dashboard: manager only; the server refuses others and the screen says so.
 class JpDashScreen extends StatefulWidget {
   final String scope; final String? section;
   const JpDashScreen({super.key, this.scope = 'section', this.section});
@@ -871,10 +866,10 @@ class _JpDashScreenState extends State<JpDashScreen> {
   Map<String, dynamic>? _d;
   String? _error;
   String _assignee = '';
-  // فلاترُ اللوحة كالموقع: المدى والمشروع والنوع وطريقة التواصل — كلُّها على الخادم.
+  // Dashboard filters as on the web: range, project, type and contact method, all on the server.
   String _from = '', _to = '', _project = '', _kind = '', _action = '';
   int _seq = 0;
-  // اليوميّة (٢٠٢٦/١٠/٢٢): مَن عمل على ماذا في يومٍ بعينه وكم أخذ.
+  // Daily view: who worked on what on a given day and how long it took.
   Map<String, dynamic>? _daily;
   String _day = '';
   late final void Function() _onLive;
@@ -1038,7 +1033,7 @@ class _JpDashScreenState extends State<JpDashScreen> {
                   return ListView(padding: const EdgeInsets.fromLTRB(14, 12, 14, 30), children: [
                     _dailyCard(),
                     const SizedBox(height: 12),
-                    // اللوحةُ كلُّها لموظّفٍ بعينه — كما في الموقع.
+                    // The whole dashboard for one specific employee, as on the web.
                     JpPersonField(
                       label: management ? tr('المدير', 'Manager') : tr('الموظّف', 'Employee'),
                       value: team.any((m) => m['_id'] == _assignee) ? _assignee : '',
@@ -1101,11 +1096,7 @@ class _JpDashScreenState extends State<JpDashScreen> {
   }
 }
 
-/// مهامُّ JP لشيءٍ بعينه — تُقرأ وتُضاف من شاشته (صاحبُ الشركة، ٢٠٢٦/١٠/٢٣).
-///
-/// كالموقع (components/jp/JpTaskPanel): يوضع في شاشة المعاملة والشحنة والموظّف
-/// والمركبة… ويكتب المهمّةَ في نافذةٍ فوقها مربوطةً بما فُتحت منه، فتظهر في
-/// خطّة القسم ولوحته في اللحظة. ويختفي لمن ليس من فريق القسم.
+/// JP tasks for a specific item: read and added from its screen. Like the web (components/jp/JpTaskPanel): placed on the transaction, shipment, employee and vehicle screens, and writes the task in a dialog above it linked to what it was opened from, so it appears in the section plan and dashboard at once. Hidden from anyone outside the section team.
 class JpTaskPanel extends StatefulWidget {
   const JpTaskPanel({super.key, required this.section, required this.kind, required this.refId});
   final String section, kind, refId;
@@ -1146,8 +1137,7 @@ class _JpTaskPanelState extends State<JpTaskPanel> {
     } catch (_) { if (mounted) setState(() => _hidden = true); }
   }
 
-  /// اسمُ ما فُتحت منه اللوحة — المعاملةُ أو طرفُ التخليص يُقرأ ليُعرَض في
-  /// النموذج كما في الموقع؛ والخادمُ يلتقط الاسمَ عند الحفظ على كلّ حال.
+  /// Name of what the panel was opened from: the transaction or customs party is read to show in the form as on the web; the server captures the name on save anyway.
   String _label = '';
   Future<void> _lookupLabel() async {
     if (_label.isNotEmpty) return;
@@ -1223,8 +1213,7 @@ class _JpTaskPanelState extends State<JpTaskPanel> {
   }
 }
 
-/// بحثُ ما تُربَط به المهمّة عند الخادم (/api/jp/link-options&q=) — نظيرُ
-/// LinkPicker في الموقع: يُكتب رقمُ البوليصة أو اسمُ العميل فيُبحث في السجلّ كلّه.
+/// Server-side search for what a task links to (/api/jp/link-options&q=), like LinkPicker on the web: type a waybill number or customer name and the whole register is searched.
 class _LinkSearch extends StatefulWidget {
   const _LinkSearch({required this.section, required this.kind, required this.title});
   final String section, kind, title;

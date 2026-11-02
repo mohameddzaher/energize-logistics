@@ -1,7 +1,4 @@
-/**
- * الخيطُ العامل: يبني المصنَّفَ ويعيد بايتاته. لا قاعدةَ بياناتٍ هنا ولا شبكة —
- * حسابٌ خالصٌ بعيدًا عن الخيط الذي يخدم الطلبات. راجع utils/xlsxBuilder.
- */
+/** Worker thread: builds the workbook and returns its bytes. No database or network here, only computation away from the request thread. See utils/xlsxBuilder. */
 const { parentPort, workerData } = require('worker_threads');
 
 try {
@@ -12,12 +9,8 @@ try {
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, sheetName);
   const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx', compression: true });
-  // ── وتُنقَل الذاكرةُ نقلًا لا نسخًا — حقًّا هذه المرّة ────────────────────
-  // كان السطرُ يستدعي `slice` **مرّتين**: واحدةً في الرسالة وأخرى في قائمة
-  // النقل. و`slice` تُنشئ مخزنًا جديدًا في كلّ مرّة، فالمنقولُ ليس المُرسَل:
-  // يُستنسَخ ما في الرسالة استنساخًا بنيويًّا كاملًا، ويُرمى المنقولُ بلا
-  // فائدة. فكانت سبعةَ عشرَ ميجابايت تُخصَّص ثلاثَ مرّات وتُنسَخ مرّةً، على
-  // تعليقٍ يقول إنّها لا تُنسَخ. والمخزنُ الآن واحدٌ يُشار إليه في الموضعين.
+  // Memory is transferred, not copied.
+  // The previous code called `slice` twice, once for the message and once for the transfer list; each creates a new buffer, so the transferred one was not the one sent and the message was structurally cloned. Now one buffer is referenced in both places.
   const ab = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
   parentPort.postMessage({ ok: true, buf: ab }, [ab]);
 } catch (e) {

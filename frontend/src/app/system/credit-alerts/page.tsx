@@ -53,8 +53,7 @@ export default function CreditAlertsPage() {
     { header: txx.lastPaymentDate, key: 'lastPaymentDate', transform: fmt.date, width: 18 },
     { header: txx.lastPaymentAmount, key: 'lastPaymentAmount', transform: fmt.money, width: 20 },
   ];
-  // المسار يعيد كلّ الإنذارات دفعةً واحدة بلا ترقيمٍ ولا فلترةٍ على الخادم، وبحث
-  // الجدول محصورٌ داخل DataTable ولا نملكه هنا؛ فنطاقٌ ثانٍ سيكون نسخةً من الأوّل.
+  // The route returns all alerts at once with no pagination or server filtering, and table search lives inside DataTable which we do not own here, so a second scope would be a copy of the first.
   const scope = exportScopeLabels(lang === 'ar');
   const exportOptions = [
     { key: 'all', label: scope.all, sheets: [{ name: 'Credit Alerts', rows: data?.alerts || [], columns: exportColumns }] },

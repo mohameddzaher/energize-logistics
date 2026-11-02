@@ -1,11 +1,7 @@
 'use client';
 /**
- * ما يُعرَف عن صاحب رقم الإقامة — تاريخُ ميلاده ورقمُ جواله — يظهر تحت الخانة
- * لحظةَ يُكتب الرقم.
- *
- * يُقرأ من البحث نفسِه الذي يملأ الاستمارة (`person-lookup`: الموارد البشريّة
- * وسجلُّ النقل الخفيف وبطاقاتُ السائقين)، ويُطابَق بالرقم كاملًا لا بجزئه:
- * رقمٌ ناقصٌ لا يُظهر بياناتِ رجلٍ آخر.
+ * Shows the birth date and mobile number for the entered iqama number below the field.
+ * Read from the same person-lookup that fills the form; matched on the full number only, so a partial number never shows another person's data.
  */
 import { useEffect, useState } from 'react';
 import api from '@/lib/api';
@@ -16,7 +12,7 @@ const dmy = (v?: string | null) => (v ? String(v).slice(0, 10).split('-').revers
 
 export default function IqamaPersonInfo({ idNumber, ar, onFound }: {
   idNumber?: string; ar: boolean;
-  /** يُنادى بالشخص حين يُعرَف — لمن يريد أن يملأ خاناته (الجوال وتاريخ الميلاد). */
+  /** Called with the person once known, so the caller can fill its own fields (mobile, birth date). */
   onFound?: (p: FoundPerson) => void;
 }) {
   const t = (a: string, e: string) => (ar ? a : e);
@@ -54,7 +50,7 @@ export default function IqamaPersonInfo({ idNumber, ar, onFound }: {
         <span className="inline-flex items-center gap-1"><Cake className="h-3 w-3" />{t('تاريخ الميلاد', 'Date of birth')}: <b>{dmy(p.dateOfBirth) || t('غير مسجَّل', 'not recorded')}</b></span>
         <span className="inline-flex items-center gap-1"><Phone className="h-3 w-3" />{t('الجوال', 'Mobile')}: <b dir="ltr">{phone || t('غير مسجَّل', 'not recorded')}</b></span>
       </p>
-      {/* وانتهاءُ الإقامة والرخصة — بالميلاديّ، ومنتهيةٌ تُلوَّن أحمر (٢٠٢٦/١٠/٢٧). */}
+      {/* Iqama and licence expiry, Gregorian; expired ones are shown red. */}
       <p className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5">
         {([
           [IdCard, t('انتهاء الإقامة', 'Iqama expiry'), p.iqamaExpiry],

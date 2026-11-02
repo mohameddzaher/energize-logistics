@@ -1,18 +1,5 @@
 'use client';
-/**
- * ملفُّ الحادثة والمطالبة — لا سطرٌ في كشف.
- *
- * ── العلّة ──────────────────────────────────────────────────────────────────
- * كانت المطالبةُ كلُّها سطرًا في جدولٍ عرضُه تسعةُ أعمدة، وما لا يتّسع له السطرُ
- * لا يُقرأ إلّا بفتح نافذة التعديل: الطرفُ الآخر وهويّتُه، ونسبةُ الخطأ، ومصدرُ
- * البلاغ، ورقمُ نجم، ورقمُ المطالبة عند الشركة، وسجلُّ ردودها. فمن سُئل «إيه
- * اللي حصل في الحادثة دي؟» قرأ تسعَ خاناتٍ ثمّ فتح نافذةَ تحريرٍ ليقرأ الباقي —
- * وهي نافذةٌ للكتابة لا للقراءة.
- *
- * والمطالبةُ ملفٌّ يُفتَح ويُتابَع شهورًا: تُقدَّر، ويُطالَب، وتردّ الشركةُ مرّةً
- * ومرّة، ثمّ تُقفَل بمبلغ. فلها صفحتُها: أرقامُها في الأعلى، وتفاصيلُها مبوَّبةً،
- * وورقُها مرفوعٌ فيها، وسجلٌّ يقول من غيّر ماذا ومتى.
- */
+/** Accident and claim file, not a row in a statement. A claim is followed for months (estimate, claim, repeated insurer replies, closing amount), so it has its own page with numbers on top, tabbed details, attached papers and a change log. */
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -48,19 +35,19 @@ export default function ClaimDetailPage() {
 
   const load = useCallback(async () => {
     try { const d = await getClaim(id); setC(d.claim); }
-    catch { /* تبقى الشاشةُ على ما لديها */ }
+    catch { /* The screen keeps what it already has. */ }
     finally { setLoading(false); }
   }, [id]);
   useEffect(() => { load(); }, [load]);
 
-  // السجلُّ يُطلَب مرّةً: هو للمراجعة لا للمتابعة اللحظيّة.
+  // The log is requested once: it is for review, not live follow-up.
   const loadAudit = useCallback(async () => {
     try { const d = await getClaimAudit(id); setAudit(d.logs || []); }
     catch { setAudit([]); }
   }, [id]);
   useEffect(() => { loadAudit(); }, [loadAudit]);
 
-  // كلُّ ما يمسّ القسمَ يبثّ هذا الحدث — فالمطالبةُ تُحدَّث وإن عُدِّلت من الجدول.
+  // Anything touching the section broadcasts this event, so the claim refreshes even when edited from the table.
   useSocket('vreg:updated', useCallback(() => load(), [load]));
 
   if (loading) return <Spinner />;
@@ -78,7 +65,7 @@ export default function ClaimDetailPage() {
   const closed = c.statusCode === 'closed';
   const est = Number(c.claim?.estimatedAmountSar) || 0;
   const rec = Number(c.claim?.expectedRecoverySar) || 0;
-  // الفرقُ عند الإقفال وحدَه — يحسبه الخادم (claimDifference).
+  // The difference exists only at closing; the server computes it (claimDifference).
   const gap = c.claim?.recoveryGapSar != null ? Number(c.claim.recoveryGapSar) : null;
 
   const val = (x: unknown) => (x === null || x === undefined || x === ''
@@ -121,7 +108,7 @@ export default function ClaimDetailPage() {
     </div>
   );
 
-  // الملفُّ يُصدَّر شيتًا مسطَّحًا: خانةٌ في كلّ صفّ — يُلصَق في بريدٍ أو يُطبع.
+  // The file exports as a flat sheet, one field per row, to paste into email or print.
   const flat = [
     [t('رقم الحادثة', 'Claim no.'), c.claimId],
     [t('موضوع الواقعة', 'Subject'), c.incidentSubjectAr],
@@ -149,7 +136,7 @@ export default function ClaimDetailPage() {
 
   return (
     <div className="space-y-4 w-full pb-10" dir={isRTL ? 'rtl' : 'ltr'}>
-      {/* ترويسةٌ داكنةٌ كترويسة ملفّ المركبة — القسمُ يُقرأ بلغةٍ واحدة. */}
+      {/* Dark header like the vehicle file header, so the section reads in one visual language. */}
       <div className="rounded-2xl bg-slate-900 text-white px-5 py-4 shadow-sm">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="flex items-start gap-3 min-w-0">
@@ -193,7 +180,7 @@ export default function ClaimDetailPage() {
         </div>
       </div>
 
-      {/* السؤالُ المالي أوّلًا: صرفنا كام وهنسترد كام وكام الفارق. */}
+      {/* The financial question first: how much we paid, how much we will recover, and the gap. */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <Kpi label={t('المقدَّر (ر.س)', 'Estimated (SAR)')} value={money(est)} accent="text-slate-900" />
         <Kpi label={t('متوقع استرداده', 'Expected recovery')} value={money(rec)} accent="text-emerald-700" />
@@ -222,11 +209,7 @@ export default function ClaimDetailPage() {
           <Row label={t('السجل المالك', 'Owner registration')}>{val(c.ownerRegistrationAr)}</Row>
         </Section>
 
-        {/* ── مَن كان يقود مركبتَنا ─────────────────────────────────────────
-            كان هذا الكارتُ للطرف الآخر وحدَه، ولا يقول مَن كان خلف المقود عندنا
-            — وهو أوّلُ ما يُسأل عنه: المخالفةُ تُقيَّد عليه، ويُسأل عن روايته،
-            وتُراجَع رخصتُه. ويُقترَح من قائد القسم الفعليّ أو من مفوَّض المركبة،
-            ويُصحَّح باليد: المفوَّضُ ليس دائمًا الراكب. */}
+        {/* Who was driving our vehicle. This card used to cover only the other party and not who was behind our wheel, which is asked first: the violation is recorded against him, his account is taken and his licence is reviewed. Suggested from the actual section driver or the vehicle's authorized person, and correctable by hand since the authorized person is not always the rider. */}
         <Section title={t('السائق والمركبة', 'Driver & vehicle')} icon={<Users className="w-4 h-4" />} accent="#f37121">
           <Row label={t('اسم السائق', 'Driver name')}>{val(c.driverNameAr)}</Row>
           <Row label={t('رقم الإقامة', 'Iqama number')} mono>{val(c.driverIdNumber)}</Row>
@@ -263,11 +246,11 @@ export default function ClaimDetailPage() {
         )}
       </div>
 
-      {/* الورقُ الذي تُبنى عليه الأرقام. */}
+      {/* The papers the numbers are built on. */}
       <ClaimAttachments claimId={id} attachments={c.attachments || []} canEdit={canEdit} canManage={canEditClaims(user)}
         onChange={(claim) => setC(claim)} />
 
-      {/* ردودُ الشركة — سجلٌّ يُضاف إليه ولا يُمحى، الأحدثُ أوّلًا. */}
+      {/* Insurer replies: an append-only log, newest first. */}
       {!!c.insurerReplies?.length && (
         <section className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
           <div className="px-4 py-3 bg-slate-50 border-b border-slate-200">
@@ -296,10 +279,7 @@ export default function ClaimDetailPage() {
         </section>
       )}
 
-      {/* ── سجلُّ الملفّ ──────────────────────────────────────────────────────
-          من غيّر ماذا ومتى. والمطالبةُ سجلٌّ ماليٌّ يُراجَع، ولم تكن أيُّ كتابةٍ
-          فيها تُقيَّد قبل هذا — فالصفوفُ القديمةُ لا سجلَّ لها، وما يُكتب من
-          الآن يُقيَّد. */}
+      {/* File log: who changed what and when. A claim is a financial record that gets reviewed, and no write to it was logged before; old rows have no log, new writes are recorded. */}
       <section className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
         <div className="px-4 py-3 bg-slate-50 border-b border-slate-200">
           <p className="font-extrabold text-slate-900 flex items-center gap-1.5 text-[14.5px]">
@@ -329,7 +309,7 @@ export default function ClaimDetailPage() {
                       {a.userName ? ` · ${a.userName}` : ''}
                     </span>
                   </div>
-                  {/* ما تغيّر لا المستندُ كلُّه: قائمةُ الخانات تُقرأ، والمستندُ لا. */}
+                  {/* What changed, not the whole document: a list of fields is readable, a document is not. */}
                   {Array.isArray(a.changes?.after) && !!a.changes.after.length && (
                     <p className="text-slate-500 text-[11.5px] mt-0.5">{a.changes.after.slice(0, 10).join('، ')}</p>
                   )}

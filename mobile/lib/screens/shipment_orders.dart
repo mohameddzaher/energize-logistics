@@ -17,19 +17,16 @@ import 'shipment_order_create.dart';
 import 'shipment_order_detail.dart';
 import 'shipment_orders_common.dart';
 
-/// طلبات الشحنات — نظيرُ قائمة الويب: مُصفَّحةٌ في الخادم (خمسةٌ وعشرون صفًّا)،
-/// والبحثُ وفلاترُ الحالة والمصدر والعميل والتاريخ والملاحظة وفلاترُ الأعمدة كلُّها
-/// تجري هناك — فما يُرى هو ما في القاعدة لا ما وصل من مئةٍ أولى.
+/// Shipment orders list, mirrors the web list. Paginated on the server (25 rows); search and all filters run there, so the list reflects the database, not just a first batch of 100.
 class ShipmentOrdersScreen extends StatefulWidget {
-  /// الفلترُ يُورَث ممّا ضُغط في اللوحة (`?status=…&from=…` في الويب):
-  /// «١٤ متأخّرة» تُفتَح على المتأخّرة أنفسِها لا على الجدول كلِّه.
+  /// The initial filter is inherited from what was tapped on the dashboard (like ?status=...&from=... on web): a late-count card opens on the late shipments themselves, not the whole table.
   final List<String> initialStatuses;
   final String initialFrom;
-  // من اللوحة (٢٠٢٦/١٠/٢٧): المدى بيوم الاستلام، وفلترُ عمود (مندوب، عميل، مورّد…).
+  // From the dashboard: the range is by pickup day, plus a column filter (rep, customer, supplier...).
   final String initialTo;
   final bool byPickup;
   final Map<String, Set<String>> initialCols;
-  /// المربوطةُ بمعاملة تخليص وحدَها — من بطاقة اللوحة (يبقى في القسم نفسِه).
+  /// Only shipments linked to a clearance transaction; opened from the dashboard card and stays in the same section.
   final bool customsLinked;
   const ShipmentOrdersScreen({super.key, this.initialStatuses = const [], this.initialFrom = '', this.initialTo = '',
     this.byPickup = false, this.initialCols = const {}, this.customsLinked = false});
@@ -37,14 +34,14 @@ class ShipmentOrdersScreen extends StatefulWidget {
   State<ShipmentOrdersScreen> createState() => _ShipmentOrdersScreenState();
 }
 
-/// أعمدةُ فلتر إكسل كما في الويب: (المفتاح، عربي، إنجليزي).
+/// Excel-style filter columns as on web: (key, Arabic label, English label).
 const _colFields = [
   ('customerName', 'العميل', 'Customer'),
   ('fromCity', 'من', 'From'),
   ('toCity', 'إلى', 'To'),
   ('driverName', 'السائق', 'Driver'),
   ('truckType', 'الشاحنة', 'Truck'),
-  // وبقيّةُ الأعمدة كالويب (٢٠٢٦/١٠/٢٧).
+  // The remaining columns are as on web.
   ('reference', 'رقم أمر النقل', 'Transport order'),
   ('status', 'الحالة', 'Status'),
   ('pickupDay', 'يوم الاستلام', 'Pickup day'),
@@ -71,7 +68,7 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
   int _pageSize = 50;
   bool _loading = true;
   String? _error;
-  int _seq = 0; // لا يكتب ردٌّ قديمٌ فوق أحدث
+  int _seq = 0; // A stale response does not overwrite a newer one
 
   final _searchCtrl = TextEditingController();
   String _q = '';
@@ -86,16 +83,14 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
   bool _excludeCancelled = false;
   List<Map<String, dynamic>> _customers = [];
 
-  // البوالصُ المعلَّمة → ملفٌّ واحدٌ من الخادم.
+  // Selected waybills become one file from the server.
   final Map<String, Map<String, dynamic>> _picked = {};
   bool _bulkBusy = false;
 
   List<SoStatus> _vocab = soBaseStatuses;
   late final void Function() _onLive = _load;
 
-  /// ── وضعُ العرض: «بطاقات» (الافتراضيّ على الجوّال) أو «قائمة» ─────────────
-  /// يُحفَظ في الحساب (`shipmentOrders.view`) فيبقى في كلّ زيارةٍ وجهاز؛ والويبُ
-  /// يكتب table/grid/cards — «table» هنا قائمة، وما سواها بطاقات.
+  /// View mode: cards (mobile default) or list. Saved on the account (shipmentOrders.view) so it persists across visits and devices; web writes table/grid/cards, and here table means list and anything else means cards.
   static const _prefKey = 'shipmentOrders.view';
   String _view = 'cards';
   final _listKey = GlobalKey();
@@ -125,14 +120,13 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
     super.dispose();
   }
 
-  /// معاملاتُ الفلاتر — للجدول وللتصدير ولقوائم الأعمدة معًا.
+  /// Filter query parameters, shared by the table, the export and the column value lists.
   List<String> _params({String? skipCol, bool withSearch = true}) {
     final p = <String>[];
     void add(String k, String v) => p.add('$k=${Uri.encodeQueryComponent(v)}');
     _colFilters.forEach((k, set) {
       if (k == skipCol) return;
-      // كلُّ قيمةٍ معاملٌ مكرَّر: اسمٌ فيه فاصلةٌ لا يصير اسمين.
-      // ‏`col_` لا `col.`: الخادمُ يحذف المفاتيحَ ذاتَ النقطة (express-mongo-sanitize).
+      // Each value is a repeated parameter so a name containing a comma stays one name. Uses col_ not col. because the server strips dotted keys (express-mongo-sanitize).
       for (final v in set) { add('col_$k', v); }
     });
     if (withSearch && _q.trim().isNotEmpty) add('q', _q.trim());
@@ -164,7 +158,7 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
     }
   }
 
-  /// [reveal]: بعد الضغط على بطاقة إحصاء تُجلَب القائمةُ تحتها مباشرةً إلى العين.
+  /// [reveal]: after tapping a stats card, the list is fetched and scrolled into view right below it.
   Future<void> _refilter(VoidCallback change, {bool reveal = false}) async {
     setState(() { change(); _page = 1; });
     await _load();
@@ -175,7 +169,7 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
     }
   }
 
-  /// تفاؤليّ: يتبدّل فورًا ويُحفَظ في الخلفية؛ فإن فشل بقي لهذه الجلسة مع تنبيهٍ صغير.
+  /// Optimistic: switches immediately and saves in the background; on failure it stays for this session with a small notice.
   Future<void> _setView(String v) async {
     if (v == _view) return;
     setState(() => _view = v);
@@ -190,8 +184,7 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
     }
   }
 
-  /// ملاحظةٌ حُفظت: سجلُّ الحالات الجديد يُدمَج في صفّه فتتحدّث البطاقةُ فورًا
-  /// (والحدثُ الحيُّ يعيد تحميل القائمة بعدها عند الجميع).
+  /// Note saved: the new status history is merged into its row so the card updates at once (the live event then reloads the list for everyone).
   void _applyNote(Map<String, dynamic> updated) {
     final id = '${updated['_id'] ?? ''}';
     if (id.isEmpty || updated['statusLog'] == null) { _load(); return; }
@@ -215,7 +208,7 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
 
   int _byStatus(String k) => ((_stats?['byStatus'] as Map?)?[k] as num?)?.toInt() ?? 0;
 
-  // ── الملفُّ يحمل ما يحمله الجدول (أعمدةُ تصدير الويب) ──────────────────────
+  // The file carries what the table carries (web export columns)
   List<ExportCol> get _exportCols => [
         ExportCol('المرجع', 'Reference', (r) => soRef(r)),
         ExportCol('العميل', 'Customer', (r) => r['customerName']),
@@ -238,7 +231,7 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
 
   bool get _hasFilters => _q.trim().isNotEmpty || _statuses.isNotEmpty || _customer.isNotEmpty || _from.isNotEmpty || _to.isNotEmpty;
 
-  /// الصفحةُ الظاهرة، أو المطابِق كلُّه، أو الكلّ — كلُّ نطاقٍ يُجلَب من الخادم بحدّه.
+  /// Visible page, all matches, or everything; each scope is fetched from the server with its own limit.
   Future<void> _export(String scope) async {
     List<Map<String, dynamic>> rows = _rows;
     if (scope != 'page') {
@@ -267,8 +260,7 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
     _refilter(() => from ? _from = s : _to = s);
   }
 
-  /// ── فلترُ العمود على طريقة إكسل ───────────────────────────────────────────
-  /// القيمُ تُطلَب من الخادم بعدّادها تحت بقيّة الفلاتر (لا قيمُ الصفحة وحدَها).
+  /// Excel-style column filter. Values are requested from the server with counts under the other filters, not just the page values.
   Future<void> _columnFilter() async {
     final field = await showModalBottomSheet<String>(context: context, builder: (c) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
       Padding(padding: const EdgeInsets.all(14), child: Text(tr('فلترة بعمود', 'Filter by column'), style: const TextStyle(fontWeight: FontWeight.w800))),
@@ -387,8 +379,7 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
               label: Text(tr('إنشاء شحنة', 'Create shipment')),
             )
           : null,
-      // خانةُ البحث ومبدِّلُ العرض مثبَّتان فوق — خارج تبديل التحميل/الخطأ، فلا
-      // تُعاد رسمُهما فارغتين (ui/search_field.dart).
+      // Search box and view toggle are pinned above, outside the loading/error switch, so they are not rebuilt empty (ui/search_field.dart).
       body: Column(children: [
         Padding(
           padding: const EdgeInsetsDirectional.only(start: 14, top: 6),
@@ -433,7 +424,7 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
                 : RefreshIndicator(
                     onRefresh: _load,
                     child: ListView(keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag, padding: const EdgeInsets.fromLTRB(12, 4, 12, 90), children: [
-                      // ── بطاقاتُ الإحصاء: الضغطُ يعرض تلك الشحناتِ وحدَها تحتها، والضغطُ ثانيةً يمسح ──
+                      // Stats cards: tapping shows only those shipments below, tapping again clears
                       Row(children: [
                         Expanded(child: _kpiTile(tr('كل الشحنات', 'All'), _total, T.navy, _statuses.isEmpty,
                             () => _refilter(_statuses.clear, reveal: true))),
@@ -445,7 +436,7 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
                             () => _refilter(() { final on = _isSet(_done); _statuses.clear(); if (!on) _statuses.addAll(_done); }, reveal: true))),
                       ]),
                       const SizedBox(height: 6),
-                      // ── شريطُ الحالات: الضغطُ يعرضها وحدَها، والمطوَّلُ يضيفها إلى المنتقى ──
+                      // Status bar: tapping shows only that status, long-press adds it to the selection
                       SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: [
                         for (final s in _vocab)
                           _statusCard(tr(s.$2, s.$3), _byStatus(s.$1), s.$4, _statuses.contains(s.$1),
@@ -456,7 +447,7 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
                               }, reveal: true),
                               onLongPress: () => _refilter(() => _statuses.contains(s.$1) ? _statuses.remove(s.$1) : _statuses.add(s.$1))),
                       ])),
-                      // مرسى «اعرض القائمة»: إليه تُمرَّر الشاشةُ بعد الضغط على بطاقة إحصاء.
+                      // Anchor for 'show list': the screen scrolls here after a stats card is tapped.
                       SizedBox(key: _listKey, height: 4),
                       if (_total > 0)
                         ListPager(page: _page, pages: pages, pageSize: _pageSize, total: _total, onPage: _goPage,
@@ -489,7 +480,7 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
     );
   }
 
-  /// «قائمة / بطاقات» — زرّان كبيران بجانب البحث.
+  /// List / cards toggle: two large buttons beside the search.
   Widget _viewSwitch() {
     Widget b(String v, IconData icon, String tip) {
       final on = _view == v;
@@ -518,7 +509,7 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
     );
   }
 
-  /// بطاقاتٌ كبيرة: عمودٌ واحد على الجوّال، واثنان أو ثلاثة على اللوح (شبكة).
+  /// Large cards: one column on phones, two or three on tablets (grid).
   Widget _bigCards(bool editor) => LayoutBuilder(builder: (context, c) {
         final cols = c.maxWidth >= 1000 ? 3 : c.maxWidth >= 680 ? 2 : 1;
         const gap = 10.0;
@@ -562,12 +553,12 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
         ),
       );
 
-  /// كم فلترًا فاعلًا في اللوحة (الملاحظة، المصدر، العميل، التاريخان، الأعمدة).
+  /// Count of active filters in the panel (note, source, customer, both dates, columns).
   int get _sheetFilterCount =>
       (_note.isNotEmpty ? 1 : 0) + (_customer.isNotEmpty ? 1 : 0) +
       (_from.isNotEmpty ? 1 : 0) + (_to.isNotEmpty ? 1 : 0) + _colFilters.length;
 
-  /// زرُّ «فلاتر» — برتقاليٌّ بعدّاده متى كان فيها فلترٌ فاعل.
+  /// Filters button: orange with a counter whenever a filter is active.
   Widget _filtersButton() {
     final n = _sheetFilterCount;
     return Tooltip(
@@ -595,7 +586,7 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
     );
   }
 
-  /// لوحةُ الفلاتر: كانت تتكدّس فوق القائمة وتدفع أوّلَ شحنةٍ تحت الشاشة.
+  /// Filter panel; it used to stack above the list and push the first shipment off screen.
   Future<void> _openFilters() async {
     await showModalBottomSheet<void>(
       context: context,
@@ -703,7 +694,7 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
           ]),
           if ('${r['notes'] ?? ''}'.trim().isNotEmpty)
             Padding(padding: const EdgeInsets.only(top: 4), child: Text('${tr('ملاحظة أمر النقل', 'Transport order note')}: ${r['notes']}', maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, color: T.inkSoft))),
-          // تُفتح منها كلُّ الملاحظات — للقراءة والإضافة والتعديل والحذف.
+          // Opens all notes: read, add, edit and delete.
           SoLatestFollowUpLine(order: r, onTap: () async {
             final u = await soQuickNote(context, r);
             if (u != null) _applyNote(u);
@@ -741,7 +732,7 @@ class _ShipmentOrdersScreenState extends State<ShipmentOrdersScreen> {
   }
 }
 
-/// قائمةُ قيم العمود بعدّادها — بحثٌ يُرسَل إلى الخادم، واختيارٌ متعدّد.
+/// Column value list with counts: server-side search and multi-select.
 class _ColumnValuesSheet extends StatefulWidget {
   final String title;
   final Set<String> initial;

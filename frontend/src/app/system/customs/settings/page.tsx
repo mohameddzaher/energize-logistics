@@ -1,9 +1,5 @@
 'use client';
-// إعدادات قسم التخليص الجمركي — القسمُ كلُّه يُضبط من هنا.
-//
-// كلُّ قائمةٍ منسدلةٍ في القسم تُدار من هذه الصفحة: الموانئُ والعملاتُ وأنواعُ
-// الفواتير وبلدانُ المنشأ والمدن. ومَن ينقصه خيارٌ يضيفه هنا فيراه كلُّ من بعده،
-// بدل أن يكتبه بيده في معاملته وحدَها فيصير صيغةً سادسةً للشيء نفسِه.
+// Customs clearance settings: the whole department is configured from here. Every dropdown in the department (ports, currencies, invoice types, origin countries, cities) is managed on this page, so a missing option is added once and everyone after sees it, instead of being typed in one transaction and becoming a sixth spelling of the same thing.
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
@@ -28,9 +24,7 @@ export default function CustomsSettingsPage() {
     ['alerts', 'التنبيهات', 'Alerts', Bell],
   ];
 
-  // ── مدّةُ التنبيه على المعاملات القادمة ──────────────────────────────────
-  // رقمٌ واحدٌ يحكم الشارةَ في شاشة القسم. وكتابتُه في الشيفرة تجعل تغييرَه
-  // نشرًا؛ فهو هنا، ويسري على النداء التالي بلا انتظار.
+  // Alert period for upcoming transactions. One number governs the badge on the department screen; hardcoding it makes changing it a deploy, so it lives here and takes effect on the next call.
   const [days, setDays] = useState<number | ''>('');
   const [savingDays, setSavingDays] = useState(false);
   const [loadedDays, setLoadedDays] = useState(false);
@@ -92,9 +86,7 @@ export default function CustomsSettingsPage() {
         </div>
       )}
 
-      {/* ── والأطرافُ لها صفحاتُها ────────────────────────────────────────────
-          العميلُ ووكيلُ الشحن ليسا قائمةَ خياراتٍ بل ملفّان لهما بريدٌ وسجلٌّ
-          تجاريٌّ وتاريخُ عملٍ وأرقام. فمكانُهما صفحةٌ لا صفٌّ في جدول قوائم. */}
+      {/* Parties have their own pages. A customer and a shipping agent are not option lists but files with email, commercial register, work history and numbers, so they belong on a page, not a row in a lists table. */}
       {tab === 'parties' && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {[

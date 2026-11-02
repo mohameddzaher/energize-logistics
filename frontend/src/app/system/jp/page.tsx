@@ -1,6 +1,5 @@
 'use client';
-// الإشعارُ يحمل «مهمّة» ولا يعرف قسمَ صاحبها — فيفتح هذه، وهي تسأل الخادمَ عن
-// خطّة هذا المستخدم وتذهب إليها.
+// The notification carries a task but not its owner's department, so this page asks the server for the user's plan and redirects to it.
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import api from '@/lib/api';

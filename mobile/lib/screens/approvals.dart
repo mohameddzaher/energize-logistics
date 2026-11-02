@@ -12,15 +12,7 @@ import '../services/live.dart';
 import '../ui/file_upload.dart';
 import '../ui/leave_chain.dart';
 
-/// موافقات الإجازات — ما ينتظر قرارَ هذا المستخدم الآن.
-///
-/// كانت تقرأ `/api/hr/team/leaves`: طلباتِ المرؤوسين وحدَها، فلا يرى مديرُ
-/// الموارد ولا الحساباتُ ولا الإدارةُ العليا على الهاتف ما وصل محطّتَها.
-/// وصارت تقرأ صندوقَ الوارد، والخادمُ يبني القائمةَ من محطّات القارئ نفسِه
-/// (`utils/leaveChain.inboxFilter`) — فلا تُعرَض أزرارٌ تُردّ ٤٠٣.
-///
-/// وثالثُ الأزرار «استفسار» لا رفض: يعود الطلبُ إلى صاحبه ليردّ أو يعدّل، ثمّ
-/// يبدأ من المدير المباشر من جديد.
+/// Leave approvals: what awaits this user's decision now. It used to read `/api/hr/team/leaves` (subordinates' requests only), so the HR manager, accounts and top management could not see on the phone what reached their stage. It now reads the inbox, and the server builds the list from the reader's own stages (`utils/leaveChain.inboxFilter`), so no button leads to a 403. The third button is "ask", not reject: the request returns to its owner to answer or amend, then restarts from the direct manager.
 class ApprovalsScreen extends StatefulWidget {
   const ApprovalsScreen({super.key});
   @override
@@ -29,8 +21,8 @@ class ApprovalsScreen extends StatefulWidget {
 
 class _ApprovalsScreenState extends State<ApprovalsScreen> {
   List<Map<String, dynamic>> _leaves = [];
-  String _q = ''; // البحث بالاسم أو نوع الإجازة أو السبب — كالويب
-  final _searchCtl = TextEditingController(); // النصُّ يبقى مطابقًا لـ_q بعد التحديث الحيّ
+  String _q = ''; // Search by name, leave type or reason, like the web.
+  final _searchCtl = TextEditingController(); // Text stays equal to _q after a live refresh.
   bool _loading = true;
   String? _error;
   late final void Function() _onLive;
@@ -66,8 +58,7 @@ class _ApprovalsScreenState extends State<ApprovalsScreen> {
 
   Future<void> _decide(Map<String, dynamic> l, String decision) async {
     final note = TextEditingController();
-    // ورقةُ القرار: خطابُ الاعتماد أو سببُ الرفض حين يكون له سند. تعيش مع
-    // الطلب فتُقرأ من ملفّ الموظّف بعد سنة، لا في محادثةٍ ضاعت.
+    // Decision sheet: approval letter or rejection reason when it has supporting grounds. It lives with the request, so it can be read from the employee file a year later, not in a lost chat.
     final files = <PickedFile>[];
     final ok = await showDialog<bool>(
       context: context,
@@ -81,7 +72,7 @@ class _ApprovalsScreenState extends State<ApprovalsScreen> {
           LeaveChainBar(leave: l),
           const SizedBox(height: 10),
           LeaveThread(leave: l),
-          // سندُ الطلب يُقرأ قبل البتّ فيه.
+          // The request's supporting grounds are read before deciding.
           if ((l['attachments'] as List? ?? const []).isNotEmpty) ...[
             Text(tr('مرفقات الموظّف', 'Employee attachments'), style: const TextStyle(fontSize: 11.5, color: T.inkFaint)),
             ...List<Map<String, dynamic>>.from((l['attachments'] as List).map((e) => Map<String, dynamic>.from(e as Map))).map((a) => Row(children: [
@@ -146,7 +137,7 @@ class _ApprovalsScreenState extends State<ApprovalsScreen> {
                 _ => const Color(0xFFDC2626),
               },
             ),
-            // الرفضُ بلا سببٍ والاستفسارُ بلا سؤالٍ يصلان الموظّفَ فارغَين.
+            // A rejection without a reason or a question without text reaches the employee empty.
             onPressed: decision != 'approved' && note.text.trim().isEmpty
                 ? null
                 : () => Navigator.pop(c, true),
@@ -179,8 +170,7 @@ class _ApprovalsScreenState extends State<ApprovalsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // صندوقُ الوارد لا يحمل إلا ما ينتظر قرارًا، فكلُّه قابلٌ للبتّ. وكانت
-    // القسمةُ على `pending_manager` وحدَها — فما بلغ الموارد أو الحسابات سقط.
+    // The inbox holds only what awaits a decision, so every item is decidable. The split used to be on `pending_manager` alone, which dropped items that reached HR or accounts.
     final q = _q.trim().toLowerCase();
     bool hit(Map<String, dynamic> l) {
       if (q.isEmpty) return true;
@@ -284,7 +274,7 @@ class _ApprovalsScreenState extends State<ApprovalsScreen> {
                   ),
                 ]),
                 const SizedBox(height: 8),
-                // ما ينقصه إيضاحٌ لا يُرفَض: يعود إلى صاحبه بسؤال.
+                // A request that lacks clarification is not rejected; it goes back to its owner with a question.
                 SizedBox(
                   width: double.infinity,
                   child: OutlinedButton.icon(

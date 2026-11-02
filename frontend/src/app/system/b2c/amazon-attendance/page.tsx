@@ -1,10 +1,7 @@
 'use client';
 /**
- * متابعةُ مناديب أمازون — حضورٌ لا أوردرات.
- *
- * مشروعُ أمازون لا هدفَ أوردراتٍ له، فيُتابَع مندوبُه بالحضور: الجميعُ حاضرون
- * افتراضيًّا ويُعلَّم الغائبُ وحدَه (الخادمُ لا يكتب إلّا الغياب — B2CAttendance).
- * تُفتح لمدير مشروع أمازون ومدير القسم ونائبه؛ ويرفض الخادمُ غيرَهم بـ 403.
+ * Amazon representatives follow-up: attendance, not orders.
+ * The Amazon project has no order target, so its reps are tracked by attendance: everyone is present by default and only absences are marked (the server writes only absences, B2CAttendance). Open to the Amazon project manager and the department manager and deputy; the server returns 403 for anyone else.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLanguage } from '@/context/LanguageContext';
@@ -30,7 +27,7 @@ const shift = (iso: string, days: number) => {
 };
 const fold = (s: string) => String(s || '').toLowerCase().replace(/[أإآ]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي');
 
-// ── زرُّ الحضور — مكوّنٌ خارج الصفحة (inline-components-remount) ──
+// Attendance button: a component outside the page (inline-components-remount).
 function PresenceToggle({ row, state, onToggle, ar }: { row: Row; state?: SaveState; onToggle: () => void; ar: boolean }) {
   return (
     <span className="inline-flex items-center gap-1.5">
@@ -88,7 +85,7 @@ export default function AmazonAttendancePage() {
   useSocket('lt:updated', soon);
   useSocket('hr:employee', soon);
 
-  // يُقلَب في الحال ويُعاد إن رفضه الخادم.
+  // Toggles immediately and reverts if the server rejects it.
   const toggle = useCallback(async (lt: string) => {
     if (!d) return;
     const row = d.rows.find((r) => r.lt === lt);

@@ -56,7 +56,7 @@ export default function BdOpportunityDetailPage() {
       setActivities(d.activities || []);
       setLoadError('');
     } catch (e: any) {
-      // A failed request must never read as "الفرصة غير موجودة".
+      // A failed request must never read as 'opportunity not found'.
       setLoadError(e?.message || 'Request failed');
     }
     setLoading(false);
@@ -297,7 +297,7 @@ export default function BdOpportunityDetailPage() {
         </div>
       </div>
 
-      {/* مهامّ JP المربوطة بهذه الفرصة — تُضاف من هنا. */}
+      {/* JP tasks linked to this opportunity; added from here. */}
       <JpTaskPanel section="bd" kind="opportunity" refId={String(opp._id)} ar={ar} />
 
       <Modal open={showActivity} onClose={() => setShowActivity(false)} title={ar ? 'إضافة نشاط' : 'Add activity'}

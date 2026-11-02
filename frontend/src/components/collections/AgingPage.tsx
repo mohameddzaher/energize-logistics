@@ -1,18 +1,5 @@
 'use client';
-/**
- * سجلُّ أعمار الديون — الصفحةُ التي يعمل عليها قسمُ التحصيل كلَّ صباح.
- *
- * ── ما تعرضه ───────────────────────────────────────────────────────────────
- * صفٌّ لكلّ حساب: كودُه، ومَن يتولّاه، وتقييمُه، وحدُّه الائتمانيُّ وكم استُهلك
- * منه، ومهلةُ السداد المتّفق عليها، ثمّ دَينُه موزَّعًا على شرائح العمر.
- *
- * ── ولماذا الشرائحُ أعمدةٌ لا صفحات ────────────────────────────────────────
- * السؤالُ الذي يُطرح ليس «كم عليه» بل «كم عليه **منذ متى**»: مئةُ ألفٍ عمرُها
- * خمسةَ عشرَ يومًا عملٌ جارٍ، ومئةُ ألفٍ عمرُها سنةٌ خسارةٌ تُلاحَق. وعرضُها في
- * صفٍّ واحدٍ يجعل الفرقَ يُرى بلا نقرة.
- *
- * وكلُّ شريحةٍ زرٌّ يفلتر: مَن أراد «أرِني مَن عليه دينٌ فوق ١٢٠ يومًا» ضغطها.
- */
+/** Debt ageing register, the page collections works on each morning. One row per account: code, owner, rating, credit limit and consumed share, agreed payment term, then debt spread over age buckets. Buckets are columns because the question is how long it has been owed, not only how much (100k at 15 days is ongoing business, 100k at a year is a loss to chase), and one row shows the difference without clicks. Each bucket is a filter button, e.g. debt over 120 days. */
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useColumnFilters, ClearColumnFilters } from '@/components/useColumnFilters';
@@ -64,7 +51,7 @@ export default function AgingPage({ kind }: { kind?: 'tax' | 'cash' }) {
   const [sort, setSort] = useState('outstanding');
   const [dir, setDir] = useState<'asc' | 'desc'>('desc');
 
-  // البحثُ يُمهَل حتى يتوقّف الكتابة: طلبٌ لكلّ حرفٍ يُغرق الخادمَ ولا يُقرأ.
+  // Search is debounced until typing stops; a request per character floods the server and is unreadable.
   useEffect(() => {
     const t = setTimeout(() => { setSearch(input); setPage(1); }, 300);
     return () => clearTimeout(t);
@@ -92,7 +79,7 @@ export default function AgingPage({ kind }: { kind?: 'tax' | 'cash' }) {
       const d = await api.get<any>(`/api/collections-dept/ledger/aging?${p.toString()}`);
       setRows(d.rows || []); setTotals(d.totals || {}); setBands(d.bands || []);
       setTotal(d.total || 0); setPages(d.pages || 1);
-    } catch { /* الشاشةُ تبقى على آخر ما عُرف */ }
+    } catch { /* The screen keeps the last known state. */ }
     finally { setBusy(false); setLoading(false); }
   }, [params, page]);
   useEffect(() => { load(); }, [load]);
@@ -130,9 +117,7 @@ export default function AgingPage({ kind }: { kind?: 'tax' | 'cash' }) {
     { header: ar ? 'الحد الائتماني' : 'Credit limit', key: 'creditLimit', width: 16 },
     { header: ar ? 'مهلة السداد' : 'Credit days', key: 'creditDays', width: 12 },
     { header: ar ? 'إجمالي المديونية' : 'Outstanding', key: 'outstanding', width: 18 },
-    // ── والمديونيّةُ وجهان ────────────────────────────────────────────────────
-    // الضريبيُّ من دفتر الفواتير، والنقديُّ من الكشوف غير المحصَّلة. وكان
-    // النقديُّ لا يُحسب أصلًا، فيظهر الحسابُ النقديُّ بصفرٍ وعليه عشراتُ الآلاف.
+    // Debt has two sides: tax from the invoice ledger and cash from uncollected statements. Cash was not counted at all, so a cash account showed zero while owing tens of thousands.
     { header: ar ? 'منها ضريبي' : 'of which tax', key: 'taxOutstanding', width: 16 },
     { header: ar ? 'منها نقدي' : 'of which cash', key: 'cashOutstanding', width: 16 },
     ...ageBands.map((b) => ({ header: bandLabel(b.key, ar), key: `band_${b.key}`, width: 14 })),
@@ -143,13 +128,11 @@ export default function AgingPage({ kind }: { kind?: 'tax' | 'cash' }) {
 
   const th = 'px-3 py-3 text-start text-xs text-slate-300 font-semibold whitespace-nowrap';
 
-  // ── قمعُ إكسل على كلّ عمود ───────────────────────────────────────────────
-  // القيمةُ التي يُفلتَر عليها هي النصُّ الذي تُظهره الخليّة — «٦٠ يومًا» لا
-  // «60»، و«—» يظهر «(فارغ)» — فما يُختار من القائمة هو ما يُقرأ في الصفّ.
+  // Excel-style funnel on every column. The filtered value is the text the cell shows ("60 days", not "60"; a dash appears as "(empty)"), so what is picked from the list is what is read in the row.
   const G: Record<string, (r: any) => any> = {
     code: (r) => r.code,
     name: (r) => r.name,
-    // المسؤولُ الفعليّ: ما لم يُسنَد فعلى مدير القسم — لا «—».
+    // Effective owner: the department manager when unassigned, not a dash.
     collectionOfficer: (r) => r.effectiveOfficer || r.collectionOfficer,
     hoLocation: (r) => r.hoLocation,
     grade: (r) => r.grade,
@@ -157,7 +140,7 @@ export default function AgingPage({ kind }: { kind?: 'tax' | 'cash' }) {
     salesManagers: (r) => (r.salesManagers || []).join(' / '),
     creditDays: (r) => (r.creditDays ? (ar ? `${r.creditDays} يومًا` : `${r.creditDays}d`) : ''),
     creditLimit: (r) => (r.creditLimit ? money(r.creditLimit) : ''),
-    // «المديونية» تُعرض دائمًا ولو صفرًا — فلا تُفرَّغ.
+    // Debt is always shown even when zero, so it is not blanked.
     limitUsedPct: (r) => (r.limitUsedPct == null ? '' : `${Math.round(r.limitUsedPct)}%`),
     outstanding: (r) => money(r.outstanding),
     ...Object.fromEntries(ageBands.map((b) => [`band:${b.key}`,
@@ -165,7 +148,7 @@ export default function AgingPage({ kind }: { kind?: 'tax' | 'cash' }) {
   };
   const shown = cf.apply(rows, G);
 
-  // التصديرُ «المعروض» يتبع فلاتر الأعمدة كما يتبع البحثَ والشريحة.
+  // The shown-scope export follows column filters as well as search and bucket.
   const exportRows = shown.map((r) => ({
     ...r,
     ...Object.fromEntries(ageBands.map((b) => [`band_${b.key}`, r.bands?.[b.key] || 0])),
@@ -189,9 +172,7 @@ export default function AgingPage({ kind }: { kind?: 'tax' | 'cash' }) {
 
   return (
     <div className="space-y-4" dir={isRTL ? 'rtl' : 'ltr'}>
-      {/* ── الأرقامُ الكبيرة، على ما يُعرَض لا على الكلّ ─────────────────────
-          البطاقاتُ تعكس الفلترَ النشط: مَن فلتر بموظّفٍ يريد أرقامَ ذلك الموظّف
-          لا أرقامَ الشركة. */}
+      {/* Big numbers reflect what is displayed, not everything: cards follow the active filter, since someone filtering by an employee wants that employee's numbers, not the company's. */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {[
           { label: ar ? 'حسابات' : 'Accounts', value: total.toLocaleString('en-US'), tone: 'text-slate-900' },
@@ -206,7 +187,7 @@ export default function AgingPage({ kind }: { kind?: 'tax' | 'cash' }) {
         ))}
       </div>
 
-      {/* ── الشرائحُ أزرارُ فلترة ───────────────────────────────────────────── */}
+      {/* Buckets are filter buttons. */}
       <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-sm">
         <div className="flex flex-wrap gap-2">
           <button type="button" onClick={() => { setBand(''); setPage(1); }}
@@ -219,7 +200,7 @@ export default function AgingPage({ kind }: { kind?: 'tax' | 'cash' }) {
               <span className="opacity-70">{bandLabel(b.key, ar)}</span> · {money(totals.bands?.[b.key])}
             </button>
           ))}
-          {/* ما لا تاريخَ له يُعرَض ولا يُخفى: مالٌ في السجلّ لا شريحةَ عمرٍ له. */}
+          {/* Items without a date are shown, not hidden: money in the ledger with no age bucket. */}
           {hasNoDate && (
             <button type="button" onClick={() => { setBand(band === 'noDate' ? '' : 'noDate'); setPage(1); }}
               title={ar ? 'فواتير بلا تاريخ فوترة ولا تسليم — يُكمَل تاريخُها لتدخل شريحتَها' : 'Invoices with no invoice or delivery date'}
@@ -231,7 +212,7 @@ export default function AgingPage({ kind }: { kind?: 'tax' | 'cash' }) {
         </div>
       </div>
 
-      {/* ── الفلاتر ─────────────────────────────────────────────────────────── */}
+      {/* Filters. */}
       <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-sm">
         <div className="flex flex-wrap items-center gap-2">
           <div className="relative flex-1 min-w-[220px]">
@@ -265,10 +246,7 @@ export default function AgingPage({ kind }: { kind?: 'tax' | 'cash' }) {
               <FilterX className="w-4 h-4" />{ar ? 'مسح' : 'Clear'}
             </button>
           )}
-          {/* ── ويُصدَّر ما يُرى، ثمّ كلُّ نتائج الفلتر ────────────────────────
-              الصفحةُ مرقَّمةٌ على الخادم، فتصديرُ «المعروض» يعني الصفحةَ وحدَها
-              — تُسمّى باسمها كي لا يظنّ أحدٌ أنّه صدّر الكلّ. و«كلُّ النتائج»
-              يجلبها من الخادم بالفلتر نفسِه. */}
+          {/* Export shown first, then all filter results. The page is server-paginated, so exporting shown means the current page only, named as such so nobody thinks they exported everything; all results are fetched from the server with the same filter. */}
           <ClearColumnFilters count={cf.count} onClear={cf.clear} ar={ar} />
           <ExportMenu
             fileName={ar ? 'أعمار-الديون' : 'aging'} lang={lang as 'ar' | 'en'}
@@ -289,7 +267,7 @@ export default function AgingPage({ kind }: { kind?: 'tax' | 'cash' }) {
         </div>
       </div>
 
-      {/* ── الجدول ──────────────────────────────────────────────────────────── */}
+      {/* Table. */}
       <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
         {busy && <div className="refresh-bar" aria-hidden="true" />}
         <ScrollX aria-busy={busy}>
@@ -343,8 +321,7 @@ export default function AgingPage({ kind }: { kind?: 'tax' | 'cash' }) {
                   </td>
                   <td className="px-3 py-2.5 text-sm text-end tabular-nums font-semibold text-slate-900 whitespace-nowrap">
                     {money(r.outstanding)}
-                    {/* الكشوفُ النقديّةُ غيرُ المحصَّلة دَينٌ كالفاتورة — تُقال
-                        صراحةً لأنّ الحسابَ النقديَّ كان يظهر بصفر. */}
+                    {/* Uncollected cash statements are debt like an invoice; stated explicitly because the cash account used to show zero. */}
                     {(r.cashOutstanding ?? 0) > 0 && (r.taxOutstanding ?? 0) > 0 && (
                       <span className="block text-[10.5px] font-normal text-slate-400">
                         {ar ? `ضريبي ${money(r.taxOutstanding ?? 0)} · نقدي ${money(r.cashOutstanding ?? 0)}`

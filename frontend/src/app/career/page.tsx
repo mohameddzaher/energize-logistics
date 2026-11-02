@@ -14,27 +14,7 @@
 
 //     if (!form.current) return;
 
-//     emailjs
-//       .sendForm(
-//         "service_v2cra3g", // ✅ Service ID من EmailJS
-//         "template_b3t6ueb", // ✅ Template ID من EmailJS
-//         form.current,
-//         "hUIH-7NBh0vPFMSni" // ✅ Public Key من EmailJS
-//       )
-//       .then(
-//         (result) => {
-//           console.log("Application Sent:", result.text);
-//           alert("✅ Your application has been submitted successfully!");
-//           form.current?.reset();
-//           setLoading(false);
-//         },
-//         (error) => {
-//           console.error("Error:", error.text);
-//           alert("❌ Failed to submit application, please try again later.");
-//           setLoading(false);
-//         }
-//       );
-//   };
+// Disabled code: submit handler that sends the application form through EmailJS and shows a success or failure alert.
 
 //   const fadeUp = {
 //     hidden: { opacity: 0, y: 40 },
@@ -305,27 +285,7 @@
 
 //     if (!form.current) return;
 
-//     emailjs
-//       .sendForm(
-//         "service_v2cra3g", // ✅ Service ID من EmailJS
-//         "template_b3t6ueb", // ✅ Template ID من EmailJS
-//         form.current,
-//         "hUIH-7NBh0vPFMSni" // ✅ Public Key من EmailJS
-//       )
-//       .then(
-//         (result) => {
-//           console.log("Application Sent:", result.text);
-//           alert("✅ Your application has been submitted successfully!");
-//           form.current?.reset();
-//           setLoading(false);
-//         },
-//         (error) => {
-//           console.error("Error:", error.text);
-//           alert("❌ Failed to submit application, please try again later.");
-//           setLoading(false);
-//         }
-//       );
-//   };
+// Disabled code: submit handler that sends the application form through EmailJS and shows a success or failure alert.
 
 //   return (
 //     <section className="min-h-screen bg-gray-900 text-white py-16 px-6 md:px-20">
@@ -578,7 +538,7 @@ export default function CareerPage() {
       type,
     });
 
-    // إخفاء التوست بعد 4 ثواني
+    // Hide the toast after 4 seconds.
     setTimeout(() => {
       setToast({
         show: false,
@@ -596,10 +556,10 @@ export default function CareerPage() {
 
     emailjs
       .sendForm(
-        "service_v2cra3g", // ✅ Service ID من EmailJS
-        "template_b3t6ueb", // ✅ Template ID من EmailJS
+        "service_v2cra3g", // EmailJS service ID
+        "template_b3t6ueb", // EmailJS template ID
         form.current,
-        "hUIH-7NBh0vPFMSni" // ✅ Public Key من EmailJS
+        "hUIH-7NBh0vPFMSni" // EmailJS public key
       )
       .then(
         (result) => {

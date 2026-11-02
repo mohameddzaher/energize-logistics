@@ -1,31 +1,19 @@
 /**
- * حالةُ التحصيل — ثلاثٌ لا اثنتان: لم تُحصَّل، وجزئيّة، ومحصَّلةٌ بالكامل.
- *
- * ── لماذا في مكانٍ واحد ────────────────────────────────────────────────────
- * الحالةُ تُقرأ في الفلتر فوق الجدول، وفي عمود الحالة، وفي البطاقات، وفي لوحة
- * المديونيّة، وفي كشف الحساب، وفي تحصيل المحفظة. فإن عرّفها كلٌّ بنفسه قالت
- * شاشةٌ «جزئيّة» وقالت الأخرى «لم تُحصَّل» عن الكشف نفسِه.
- *
- * ── الكاش (كشفُ التشغيل) ───────────────────────────────────────────────────
- *   محصَّلٌ بالكامل: له تاريخُ تحصيل، أو قال دفترُ الكاش «Collected» بلا تاريخ.
- *   جزئيّ: لا هذا ولا ذاك، وفيه مقبوضٌ (`collectedAmount > 0`).
- *   لم يُحصَّل: لا تاريخَ ولا مقبوض.
- * فالتاريخُ يُكتب حين يبلغ المقبوضُ القيمةَ لا قبله — راجع recordCollection.
- *
- * ── الضريبيّ (دفترُ الفواتير) ──────────────────────────────────────────────
- * راجع CollectionInvoice.stateOf / PARTIAL / NOT_STARTED — التعريفُ نفسُه على
- * الحالة بدل التاريخ (الحالةُ هي حكمُ الدفتر).
+ * Collection state: three, not two: not collected, partial, fully collected.
+ * One definition because it is read in the filter, status column, cards, debt board, account statement and wallet collection; separate definitions made screens disagree on the same statement.
+ * Cash (operating statement): fully collected = has a collection date, or the cash ledger says 'Collected' with no date. Partial = neither, but has received money (`collectedAmount > 0`). Not collected = no date and nothing received. The date is written when received reaches the value, not before; see recordCollection.
+ * Tax (invoice ledger): see CollectionInvoice.stateOf / PARTIAL / NOT_STARTED; same definition on state instead of date (the ledger's state is the verdict).
  */
 const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
-/** فرقُ هللةٍ لا يُعدّ باقيًا — المبالغُ تُكتب بكسرين. */
+/** A difference of one halala is not a remainder: amounts have two decimals. */
 const EPS = 0.005;
 
 const CASH_COLLECTED = Object.freeze({ $or: [{ collectionDate: { $ne: null } }, { cashCollectionStatus: 'collected' }] });
 const CASH_OPEN = Object.freeze({ collectionDate: null, cashCollectionStatus: { $ne: 'collected' } });
 
 /**
- * شرطُ حالة التحصيل على كشوف الكاش — يُضاف إلى `$and`.
- * `open` = لم يكتمل (لم يُحصَّل + جزئيّ): ما تعدّه المديونيّة.
+ * Collection-state condition on cash statements, added to `$and`.
+ * `open` = not complete (not collected + partial): what the debt counts.
  */
 function cashStateMatch(state) {
   switch (state) {
@@ -37,11 +25,11 @@ function cashStateMatch(state) {
   }
 }
 
-/** الشرطُ نفسُه داخل تجميعة — «محصَّلٌ بالكامل». */
+/** The same condition inside an aggregation: fully collected. */
 const cashCollectedExpr = { $or: [{ $ifNull: ['$collectionDate', false] }, { $eq: ['$cashCollectionStatus', 'collected'] }] };
-/** «جزئيّ» داخل تجميعة. */
+/** 'Partial' inside an aggregation. */
 const cashPartialExpr = { $and: [{ $not: [cashCollectedExpr] }, { $gt: [{ $ifNull: ['$collectedAmount', 0] }, 0] }] };
-/** الباقي داخل تجميعة: صفرٌ للمحصَّل، والقيمةُ ناقصَ المقبوض لغيره (ولا ينزل تحت الصفر). */
+/** Remainder inside an aggregation: zero when collected, otherwise value minus received (never below zero). */
 const cashRemainingExpr = {
   $cond: [cashCollectedExpr, 0, { $max: [0, { $subtract: [{ $ifNull: ['$sellingValue', 0] }, { $ifNull: ['$collectedAmount', 0] }] }] }],
 };
@@ -52,10 +40,10 @@ const cashState = (w) => {
   if (cashIsCollected(w)) return 'full';
   return (Number(w && w.collectedAmount) || 0) > 0 ? 'partial' : 'none';
 };
-/** ما بقي على الكشف — والقيمةُ قيمةُ البيع، ولا يُطالَب بأقلَّ من صفر. */
+/** What remains on the statement; the value is the selling value and the result is never below zero. */
 const cashRemaining = (w) => (cashIsCollected(w) ? 0 : Math.max(0, r2((Number(w && w.sellingValue) || 0) - (Number(w && w.collectedAmount) || 0))));
 
-/** الدفعةُ كما تُعرَض — بلا ما يخصّ القاعدة. */
+/** The payment as displayed, without the database-only fields. */
 const paymentView = (p) => ({
   _id: String(p._id),
   amount: r2(p.amount),

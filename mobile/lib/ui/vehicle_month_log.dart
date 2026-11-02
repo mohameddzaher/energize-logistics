@@ -5,12 +5,7 @@ import '../services/live.dart';
 import 'theme.dart';
 import 'widgets.dart';
 
-/// سجلّ السيّارة الشهريّ — بطاقةٌ واحدة تُقرأ في موضعين، كما في الويب.
-///
-/// متابعةُ الحمولة تجيب «أين هذه الشحنة الآن». وهذا يجيب السؤال الآخر: ماذا
-/// جرى لهذه السيّارة هذا الشهر — عطلٌ يوم ٩، إطارٌ يوم ١٤، وستُّ حمولاتٍ
-/// بينها. والشهرُ يُقفل مع أوّل الشهر التالي: حقيقةٌ عن الزمن لا خانةٌ يضغطها
-/// أحد، فما أُضيف بعد الإقفال يظهر موسومًا «قيد متأخّر» ولا يُدَسّ.
+/// Vehicle monthly log: one card read in two places, as on the web. Load tracking answers where a shipment is now; this answers what happened to this vehicle this month: a breakdown on the 9th, a tire on the 14th, and six loads between. The month closes at the start of the next month, a fact about time, not a button; entries added after closing are marked as late entries and not hidden.
 
 const kindMeta = <String, (String, String, IconData, Color)>{
   'load': ('حمولة', 'Load', Icons.local_shipping_outlined, T.success),
@@ -36,13 +31,13 @@ String monthKeyNow() {
 }
 
 class VehicleMonthLog extends StatefulWidget {
-  final String vehicle;        // اللوحة أو المعرّف
+  final String vehicle;        // Plate or id
   final String? month;         // YYYY-MM
   final String? from;
   final String? to;
   final String? date;
   final bool canEdit;
-  final String? shipmentId;    // لربط القيد بالحمولة المفتوحة
+  final String? shipmentId;    // To link the entry to the open load
   const VehicleMonthLog({
     super.key,
     required this.vehicle,
@@ -92,7 +87,7 @@ class _VehicleMonthLogState extends State<VehicleMonthLog> {
     super.dispose();
   }
 
-  // الخادمُ يقول إن كان يكتب هنا: المشرفُ يكتب في سيّاراته وحدَها.
+  // The server says whether this user may write here: a supervisor writes only on their own vehicles.
   bool get _mayWrite => widget.canEdit && _d?['canWrite'] != false;
 
   @override
@@ -123,7 +118,7 @@ class _VehicleMonthLogState extends State<VehicleMonthLog> {
     final d = DateTime.tryParse(v?.toString() ?? '')?.toLocal();
     if (d == null) return '—';
     String p(int n) => n.toString().padLeft(2, '0');
-    // السنةُ تُكتب: السجلُّ يُفتح على شهرٍ ماضٍ، و«١٤/٠٣» بلا سنةٍ التباس.
+    // The year is written: the log may open on a past month and "14/03" without a year is ambiguous.
     return '${p(d.day)}/${p(d.month)}/${d.year} · ${p(d.hour)}:${p(d.minute)}';
   }
 
@@ -334,7 +329,7 @@ class _VehicleMonthLogState extends State<VehicleMonthLog> {
                         const Icon(Icons.schedule, size: 12, color: T.inkFaint),
                       ],
                       const Spacer(),
-                      // متى وقع هذا؟ أوّلُ ما يُسأل عنه في سجلّ، وكان أبهتَ ما فيه.
+                      // When did this happen? The first thing asked in a log, and it was the faintest element.
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                         decoration: BoxDecoration(color: const Color(0xFFEFF3F8), borderRadius: BorderRadius.circular(6)),
@@ -366,11 +361,7 @@ class _VehicleMonthLogState extends State<VehicleMonthLog> {
     );
   }
 
-  /// بطاقةُ رقم.
-  ///
-  /// الرقمُ الطويل («١٢٤٬٥٠٠») كان يخرج من حدود بطاقته على الشاشات الضيّقة.
-  /// فالبطاقةُ لها حدٌّ أدنى وأقصى للعرض، والعنوانُ يُقصّ إن ضاق، والرقمُ لا
-  /// يُقصّ: `FittedBox` تصغّره حتى يسع — نصفُ رقمٍ أسوأُ من رقمٍ صغير.
+  /// Number card. A long number (e.g. 124,500) overflowed its card on narrow screens, so the card has a minimum and maximum width, the title is clipped if tight, and the number is never clipped: `FittedBox` shrinks it to fit, since half a number is worse than a small one.
   Widget _stat(String label, String value) => ConstrainedBox(
     constraints: const BoxConstraints(minWidth: 92, maxWidth: 150),
     child: Container(

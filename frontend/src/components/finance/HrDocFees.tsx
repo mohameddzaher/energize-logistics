@@ -1,21 +1,8 @@
 'use client';
 /**
- * رسومُ تجديد الإقامات ورخص العمل — شاشةٌ واحدةٌ تُقرأ من جهتين.
- *
- *   · الإدارة الماليّة (`canPay`): تختار صفًّا أو أكثر — أو كلَّ نتائج الفلتر —
- *     وتسجّل «تمّ دفع الرسوم» بملاحظةٍ ومبلغٍ ومرفقات، ويتراجع مديروها عن دفعة.
- *   · الموارد البشريّة: الصفوفُ نفسُها بحالة دفعها، قراءةً فقط.
- *
- * ── الصفُّ مستندٌ لا موظّف ──────────────────────────────────────────────────
- * الإقامةُ ورخصةُ العمل تُدفعان منفصلتين، فقد يظهر الموظّفُ صفّين.
- *
- * ── والفلاترُ كلُّها في الخادم ──────────────────────────────────────────────
- * شرائحُ المدّة والمستند والدفع والفلاترُ السريعةُ وفلاترُ الأعمدة تُرسَل كلُّها،
- * وكلُّ مجموعةٍ تُعَدّ هناك بدون فلترها — فلا يقفز رقمٌ تحت مَن يضغطه، ولا
- * يقول عدّادٌ غيرَ ما يفتحه. و«تحديد كلّ نتائج الفلتر» يُرسل الفلترَ نفسَه،
- * فتُدفع النتائجُ كلُّها لا الصفحةُ المعروضةُ وحدَها.
- *
- * والدفعُ ليس تجديدًا: التجديدُ يبقى في ملفّ الموظّف بالموارد البشريّة.
+ * Residence and work-permit renewal fees: one screen read by Finance (`canPay`, pays selected rows or all filter results) and HR (read-only).
+ * A row is a document, not an employee, so one employee can appear twice.
+ * All filters and per-group counts run on the server, and "select all filter results" sends the filter itself so every result is paid, not only the page. Paying is not renewing; renewal stays in the employee file.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -41,12 +28,12 @@ const PAGE = 50;
 const EMPTY: Set<string> = new Set();
 
 export default function HrDocFees({ listUrl, optionsUrl, payUrl, unpayUrl, profileLinks = false }: {
-  /** نقاطُ الـ API تُمرَّر من الصفحة — فتُنسب إليها في خريطة الصلاحيّات (genPageApis). */
+  /** API endpoints are passed in from the page so they are attributed to it in the permissions map (genPageApis). */
   listUrl: string;
   optionsUrl: string;
   payUrl?: string;
   unpayUrl?: string;
-  /** اسمُ الموظّف يفتح ملفَّه — للموارد البشريّة وحدَها (الماليّةُ لا تملك صفحةَ الملفّ). */
+  /** The employee name opens the file for HR only (Finance has no file page). */
   profileLinks?: boolean;
 }) {
   const { lang, isRTL } = useLanguage();
@@ -55,8 +42,8 @@ export default function HrDocFees({ listUrl, optionsUrl, payUrl, unpayUrl, profi
   const { notify, confirm } = useDialog();
   const router = useRouter();
 
-  // ── الفلاتر ──
-  const [win, setWin] = useState('');           // '' = منتهية + خلال ٢٠ يومًا
+  // Filters
+  const [win, setWin] = useState('');           // '' = expired plus within 20 days.
   const [doc, setDoc] = useState('');
   const [paid, setPaid] = useState('');
   const [q, setQ] = useState('');
@@ -77,7 +64,7 @@ export default function HrDocFees({ listUrl, optionsUrl, payUrl, unpayUrl, profi
   }, [win, doc, paid, qDeb, quick, cf]);
   const queryKey = JSON.stringify(query);
 
-  // ── البيانات ──
+  // Data
   const [d, setD] = useState<HrDocsPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -101,11 +88,11 @@ export default function HrDocFees({ listUrl, optionsUrl, payUrl, unpayUrl, profi
   useSocket('hr:master', live);
   useSocket('hr:employee', live);
 
-  // ── التحديد: صفوفٌ بعينها، أو كلُّ نتائج الفلتر ──
+  // Selection: specific rows, or all filter results.
   const [sel, setSel] = useState<Set<string>>(EMPTY);
   const [allMatching, setAllMatching] = useState(false);
   const [page, setPage] = useState(0);
-  // فلترٌ جديد = نتائجُ جديدة: التحديدُ القديمُ لا يُحمَل إليها.
+  // A new filter yields new results; the old selection is not carried over.
   useEffect(() => { setSel(EMPTY); setAllMatching(false); setPage(0); }, [queryKey]);
 
   const rows = d?.rows || [];
@@ -133,7 +120,7 @@ export default function HrDocFees({ listUrl, optionsUrl, payUrl, unpayUrl, profi
     ? { all: true, query }
     : { items: selectedRows.map((r) => ({ employeeId: r.employeeId, docType: r.docType })) });
 
-  // ── الدفع ──
+  // Payment
   const [payOpen, setPayOpen] = useState(false);
   const [payForm, setPayForm] = useState({ note: '', amount: '' });
   const [payFiles, setPayFiles] = useState<PickedFile[]>([]);
@@ -169,7 +156,7 @@ export default function HrDocFees({ listUrl, optionsUrl, payUrl, unpayUrl, profi
     setBusy(false);
   };
 
-  // ── التصدير ──
+  // Export
   const cols: ExportColumn[] = [
     { header: t('الرقم الوظيفي', 'Employee no.'), key: 'employeeNumber', width: 14 },
     { header: t('الاسم', 'Name'), key: 'name', width: 30 },
@@ -203,7 +190,7 @@ export default function HrDocFees({ listUrl, optionsUrl, payUrl, unpayUrl, profi
       ]
     : [{ key: 'all', label: scope.all, sheets: [{ name: sheetName, rows, columns: cols }] }];
 
-  // ── فلترُ عمود: قائمتُه من الخادم بعدد صفوف كلّ قيمة ──
+  // Column filter: its list comes from the server with the row count per value.
   const colHead = (key: string, format?: (v: string) => string) => (
     <ColumnFilter field={key} options={d?.columnOptions?.[key] || []}
       selected={cf[key] ? new Set(cf[key]) : EMPTY}
@@ -231,7 +218,7 @@ export default function HrDocFees({ listUrl, optionsUrl, payUrl, unpayUrl, profi
 
   return (
     <div className="space-y-4" dir={isRTL ? 'rtl' : 'ltr'}>
-      {/* ── شرائحُ المدّة: الرقمُ في كلٍّ منها بكلّ الفلاتر عدا المدّة ── */}
+      {/* Term chips: each number counts under all filters except the term. */}
       <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm space-y-3">
         <div className="flex flex-wrap items-center gap-2">
           <CalendarClock className="w-4 h-4 text-slate-400" />
@@ -286,7 +273,7 @@ export default function HrDocFees({ listUrl, optionsUrl, payUrl, unpayUrl, profi
         )}
       </div>
 
-      {/* ── شريطُ التحديد والأفعال ── */}
+      {/* Selection bar and actions. */}
       <div className="flex flex-wrap items-center gap-2">
         <p className="text-[13px] font-semibold text-slate-700">
           {t(`المعروض: ${d.total} مستند`, `Shown: ${d.total} documents`)}

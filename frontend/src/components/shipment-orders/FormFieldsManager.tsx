@@ -1,12 +1,6 @@
 'use client';
-// إعدادات نموذج الشحنة — the page that decides how every input on the create
-// form looks and behaves: dropdown, tappable cards, or typed; its label, its
-// options, whether it is required, and its order. New questions are added here
-// and appear on the form immediately, no deploy.
-//
-// System fields (المرتبطة بحسابات النظام) can be reshaped, relabelled, reordered
-// and hidden — but not deleted, because deleting سعر البيع would not remove a
-// question, it would break the pricing logic.
+// Shipment form settings: decides how every input on the create form looks and behaves (dropdown, tappable cards or typed), its label, options, required flag and order. New questions added here appear on the form immediately, no deploy.
+// System fields (linked to system accounts) can be reshaped, relabelled, reordered and hidden but not deleted, because deleting the selling price would break the pricing logic.
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
@@ -46,7 +40,7 @@ export default function ShipmentFormFields({ embedded = false }: { embedded?: bo
   const admin = canAdminOrders(user);
 
   const [fields, setFields] = useState<FormField[]>([]);
-  // خيارات «طريقة الدفع» كما هي في تعريفها — لتُربَط بها أنواعُ التأجير.
+  // Options of the payment method as defined, so rental types can link to them.
   const payOptions = (fields.find((f) => f.key === 'paymentMethod')?.options || []) as any[];
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
@@ -135,7 +129,7 @@ export default function ShipmentFormFields({ embedded = false }: { embedded?: bo
 
   return (
     <div className="space-y-6 w-full" dir={isRTL ? 'rtl' : 'ltr'}>
-      {/* حين يُضمَّن داخل «إعدادات القسم» يكون له عنوانٌ هناك، فلا يُكرَّر. */}
+      {/* When embedded in section settings it has a heading there, so it is not repeated. */}
       {embedded ? (
         <div className="flex items-center justify-end">
           <PrimaryButton onClick={openCreate}><Plus className="w-4 h-4" /> {ar ? 'إضافة حقل جديد' : 'Add a field'}</PrimaryButton>
@@ -234,10 +228,8 @@ export default function ShipmentFormFields({ embedded = false }: { embedded?: bo
           </label>
         </div>
 
-        {/* ── «نوع الدفع» أربعةٌ ثابتة ──────────────────────────────────────
-            مفاتيحُ سير عمل التشغيل بأعيانها؛ فتُعرَض ولا تُعدَّل، والخادمُ
-            يتجاهل خياراتٍ تصله لهذا الحقل (updateField). */}
-        {/* «الفرع» فروعُ الشركة من البيانات المرجعيّة — تُعرَض ولا تُعدَّل هنا. */}
+        {/* Payment type is four fixed options: the exact operations workflow keys, shown but not editable; the server ignores options sent for this field (updateField). */}
+        {/* Branch comes from company reference data: shown, not edited here. */}
         {hasOptions && form.key === 'branch' && (
           <p className="mt-4 text-[12px] text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
             {ar ? 'خياراتُ «الفرع» هي فروعُ الشركة كلُّها، تُقرأ من البيانات المرجعيّة («الفروع المسدِّدة») — يُضاف الفرعُ أو يُعدَّل من هناك.'
@@ -277,10 +269,7 @@ export default function ShipmentFormFields({ embedded = false }: { embedded?: bo
                 <div key={i} className="flex items-center gap-2">
                   <TextInput value={o.ar} onChange={(e) => setForm((f: any) => ({ ...f, options: f.options.map((x: any, k: number) => (k === i ? { ...x, ar: e.target.value } : x)) }))} placeholder={ar ? 'عربي' : 'Arabic'} />
                   <TextInput value={o.en} onChange={(e) => setForm((f: any) => ({ ...f, options: f.options.map((x: any, k: number) => (k === i ? { ...x, en: e.target.value } : x)) }))} placeholder="English" />
-                  {/* ── وما يترتّب على الخيار ─────────────────────────────────
-                      «نوع تأجير السائق» يقرّر طريقةَ الدفع: راجعةٌ ⇒ آجل،
-                      وقدامٌ ⇒ كاش. فأيُّ نوعٍ يُضاف هنا يُقال معه ما يترتّب
-                      عليه، وإلّا بقيت الشحنةُ بلا طريقةِ دفع. */}
+                  {/* What the option implies: driver rental type decides payment method (return trip means credit, forward means cash). Any type added here states its implication, otherwise the shipment has no payment method. */}
                   {form.key === 'driverRentType' && (
                     <select value={o.paymentMethod || ''}
                       onChange={(e) => setForm((f: any) => ({ ...f, options: f.options.map((x: any, k: number) => (k === i ? { ...x, paymentMethod: e.target.value } : x)) }))}

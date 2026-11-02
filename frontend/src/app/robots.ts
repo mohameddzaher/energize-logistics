@@ -1,10 +1,8 @@
 import type { MetadataRoute } from 'next';
 
 /**
- * robots — يُولَّد ليبقى مع خريطةِ الموقع في ملفٍّ واحدٍ من الحقيقة.
- *
- * ولوحةُ النظام محجوبةٌ عن المفهرِسات: صفحاتُها خلف تسجيل دخولٍ فلن تُقرأ،
- * لكنّ زحفَها يستهلك حصّةَ الزحف التي كان يجب أن تُنفَق على صفحات الخدمات.
+ * robots: generated so it stays in sync with the sitemap as one source of truth.
+ * The system area is blocked from crawlers: its pages are behind login and unreadable anyway, but crawling them would use crawl budget meant for the service pages.
  */
 export default function robots(): MetadataRoute.Robots {
   return {

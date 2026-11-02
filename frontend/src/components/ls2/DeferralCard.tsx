@@ -1,8 +1,5 @@
 'use client';
-// بطاقة بند مؤجّل — التصميم الموحّد أينما ظهرت البنود المؤجلة (لوحة الأسطول
-// وملف المركبة): سطر العنوان (البند + اللوحة + شارة المتبقي)، ثم ثلاث خانات
-// أرقام واضحة (العداد الحالي / الاستحقاق عند / الاستحقاق خلال)، ثم تذييل فيه
-// بيانات التأجيل وزر التسوية.
+// Deferred-item card, one design wherever deferred items appear (fleet board and vehicle file): title row (item, plate, remaining badge), three number boxes (current odometer / due at / due within), and a footer with deferral data and the settle button.
 import { fmtNum, fmtDate, checklistLabel, type Lang, type Deferral } from '@/lib/ls2';
 
 function MiniCell({ label, value, sub, accent }: { label: string; value: string; sub?: string; accent?: 'amber' | 'red' }) {
@@ -29,7 +26,7 @@ export default function DeferralCard({ d, lang, admin, plate, currentOdoFallback
   const over = d.remainingKm != null && d.remainingKm < 0;
   const odoNow = d.currentOdometerKm ?? currentOdoFallback ?? null;
 
-  // «الاستحقاق خلال» — بحسب معدل مشي الشاحنة الفعلي.
+  // 'Due within' follows the truck's actual mileage rate.
   const n = d.estimatedDaysLeft;
   const dueIn = over
     ? (ar ? 'مستحق الآن' : 'due now')
@@ -42,7 +39,7 @@ export default function DeferralCard({ d, lang, admin, plate, currentOdoFallback
 
   return (
     <div className={`rounded-xl border bg-white p-3.5 shadow-sm ${over ? 'border-red-200' : 'border-amber-200/80'}`}>
-      {/* البند + اللوحة + شارة المتبقي */}
+      {/* Item, plate and remaining badge */}
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-sm font-bold text-slate-900 flex items-center gap-2 flex-wrap">
@@ -65,14 +62,14 @@ export default function DeferralCard({ d, lang, admin, plate, currentOdoFallback
         </span>
       </div>
 
-      {/* ثلاث خانات أرقام */}
+      {/* Three number boxes */}
       <div className="grid grid-cols-3 gap-2 mt-3">
         <MiniCell label={ar ? 'العداد الحالي' : 'Odometer now'} value={odoNow != null ? `${fmtNum(odoNow)} ${km}` : '—'} />
         <MiniCell label={ar ? 'الاستحقاق عند' : 'Due at'} value={`${fmtNum(d.dueAtOdometerKm)} ${km}`} />
         <MiniCell label={ar ? 'الاستحقاق خلال' : 'Due in'} value={dueIn} sub={dueInSub} accent={over ? 'red' : 'amber'} />
       </div>
 
-      {/* بيانات التأجيل + زر التسوية */}
+      {/* Deferral data and settle button */}
       <div className="flex items-center justify-between gap-2 mt-3 pt-2.5 border-t border-slate-100">
         <p className="text-[11px] text-slate-500 truncate">
           {ar ? 'أُجِّل بتاريخ' : 'Deferred on'} {fmtDate(d.deferredAt, lang)}

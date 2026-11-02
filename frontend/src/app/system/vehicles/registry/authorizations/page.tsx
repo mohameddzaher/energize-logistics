@@ -1,10 +1,6 @@
 'use client';
-// التفاويض — مَن هو المفوَّض على كل مركبة، وبأيّ ورقة، وإلى متى.
-//
-// لم تكن لهذه العائلة شاشة أصلًا. واسمُ المفوَّض وحده كان يظهر في سجلّات القسم
-// بلا رقمِ إقامته ولا رقمِ تفويضه ولا مدّته — وهذه هي الورقة كلُّها. وانتهاء
-// التفويض ليس خانةً فارغة: السائق حينئذٍ يقود بلا صفة، فتُقيَّد المخالفة على
-// الشركة وتُنازِع شركةُ التأمين في التغطية عند أوّل حادث.
+// Authorizations: who is authorized on each vehicle, by which paper, and until when.
+// This family had no screen; only the authorized person's name appeared in section registers, without residency number, authorization number or period, which is the whole paper. An expired authorization is not just a blank: the driver then drives without standing, the violation is recorded against the company, and the insurer can dispute cover at the first accident.
 import { useState } from 'react';
 import { UserCheck, UserMinus, UserPlus, X, Save, Loader2 } from 'lucide-react';
 import api from '@/lib/api';
@@ -25,11 +21,7 @@ const COLUMNS: DocColumn[] = [
   { key: 'authorizationNumber', ar: 'رقم التفويض', en: 'Authorisation number', mono: true, get: (v) => v.authorizedPerson?.authorizationNumber, width: 20 },
   { key: 'startDate', ar: 'تاريخ بداية التفويض', en: 'Start date', get: (v) => fmtDate(v.authorizedPerson?.startDate), width: 14 },
   { key: 'expiryDate', ar: 'تاريخ نهاية التفويض', en: 'End date', get: (v) => fmtDate(v.authorizedPerson?.expiryDate), width: 14 },
-  // ── والسائقُ نفسُه ─────────────────────────────────────────────────────────
-  // التفويضُ ورقةٌ على مركبة، لكنّه يُعطى لشخص. وثلاثةُ أشياء تخصّ ذلك الشخص:
-  // ورقتُه هذه، وبطاقةُ سائقه، وخيانةُ أمانته — ولا يجوز أن يقود بواحدةٍ منها
-  // ناقصة. فتُقرأ الثلاثةُ في سطرٍ واحد، ومَن ينقصه شيءٌ يُقرأ من العمود لا من
-  // فتح شاشةٍ أخرى بحثًا عن اسمه.
+  // The driver himself. An authorization is a paper on a vehicle but is granted to a person, and three things concern that person: this paper, his driver card and his breach-of-trust cover; he must not drive with any of them missing. All three are read in one line, so the gap shows in the column.
   { key: 'driverCardNumber', ar: 'بطاقة السائق', en: 'Driver card', mono: true, width: 16,
     get: (v) => (v.authorizedPerson?.iqamaNumber ? (v.driverCard?.cardNumber || (v.driverCard ? '—' : 'لا بطاقة')) : '') },
   { key: 'driverCardExpiry', ar: 'انتهاء بطاقة السائق', en: 'Card expiry', width: 16,
@@ -38,8 +30,7 @@ const COLUMNS: DocColumn[] = [
     get: (v) => (!v.driverCard ? ''
       : v.driverCard.fidelityStatus === 'covered' ? 'مشمول'
         : v.driverCard.fidelityStatus === 'required' ? 'مطلوب ضمُّه' : 'غير محدَّد') },
-  // وانتهاءُ إقامته ورخصةِ قيادته من ملفّه في الموارد البشريّة (٢٠٢٦/١٠/٢٧)،
-  // والحالةُ بجانب التاريخ ليُفلتَر بها: منتهية / تنتهي خلال 30 يومًا / غير مسجَّلة.
+  // Residency and driving licence expiry come from his HR file; the status sits beside the date so it can be filtered: expired / expires within 30 days / not recorded.
   { key: 'iqamaExpiry', ar: 'انتهاء الإقامة', en: 'Iqama expiry', width: 18,
     get: (v) => personDocCell((v as any).personDocs, 'iqama') },
   { key: 'licenseExpiry', ar: 'انتهاء رخصة القيادة', en: 'Licence expiry', width: 18,
@@ -54,18 +45,15 @@ function personDocCell(d: PersonDocs | undefined, which: 'iqama' | 'license') {
   return state === 'expired' || state === 'soon' ? `${date.slice(0, 10)} (${docStateLabel(state, true)})` : date.slice(0, 10);
 }
 
-// ورقةُ التفويض كاملةً: مَن، وبأيّ إقامة، وبأيّ رقم، ومن متى إلى متى. وناقصُها
-// لا يُقرأ: اسمٌ بلا رقمِ تفويضٍ ولا مدّة لا يُثبِت صفةَ السائق أمام أحد.
+// The full authorization paper: who, which residency, which number, from when to when. A name without authorization number or period proves nothing about the driver's standing.
 const FIELDS: DocField[] = [
-  // المفوَّضُ يُختار من الموظّفين (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢): إقامتُه وجوالُه من ملفّه
-  // لا يُكتبان — والخادمُ يرفض اسمًا لا يطابق موظّفًا.
+  // The authorized person is chosen from employees: residency and mobile come from his file, not typed, and the server rejects a name that matches no employee.
   { path: 'authorizedPerson.name', ar: 'اسم المفوَّض', en: 'Authorised person', wide: true,
     person: { idPath: 'authorizedPerson.iqamaNumber', phonePath: 'authorizedPerson.phone', jobPath: 'authorizedPerson.jobTitleAr' } },
   { path: 'authorizedPerson.iqamaNumber', ar: 'رقم الإقامة', en: 'Iqama number', mono: true, personInfo: true, readOnly: true },
-  // جوالُه في ورقة التفويض نفسِها — أوّلُ ما يُطلَب حين يقع شيءٌ في الطريق.
+  // His mobile is on the authorization paper itself; it is the first thing needed when something happens on the road.
   { path: 'authorizedPerson.phone', ar: 'جوال المفوَّض', en: 'Authorised phone', mono: true, readOnly: true },
-  // المسمّى قائمةٌ تُدار من إعدادات القسم: «سائق نقل ثقيل» في سبعٍ وخمسين مركبة
-  // و«مندوب توصيل» في ثلاثٍ وعشرين — وخانةٌ حرّةٌ تجعلها عشرين مسمًّى بعد شهر.
+  // The job title is a list managed from section settings. A free field would turn a few titles into twenty variants within a month.
   { path: 'authorizedPerson.jobTitleAr', ar: 'المسمّى الوظيفي لقائد المركبة', en: 'Driver job title', lookup: 'vehicle_job_title' },
   { path: 'authorizedPerson.authorizationNumber', ar: 'رقم التفويض', en: 'Authorisation number', mono: true },
   { path: 'authorizedPerson.startDate', ar: 'تاريخ بداية التفويض', en: 'Start date', kind: 'date' },
@@ -79,20 +67,8 @@ export default function Page() {
   const { confirm, notify } = useDialog();
   const canEdit = canEditVehicles(user);
 
-  // ── إلغاءُ التفويض فعلٌ له طرفان ──────────────────────────────────────────
-  //
-  // كان المسؤولُ يفتح المركبةَ ويمسح اسمَ الموظّف ظنًّا أنّه ألغى التفويض. وهو
-  // لا يُلغي: التفويضُ مسجَّلٌ في سجلَّين — ورقةٌ على المركبة، وإسنادٌ يربطها
-  // بالموظّف يقرؤه ملفُّه في الموارد البشريّة. فالمسحُ يفرّغ الورقةَ ويترك
-  // الإسنادَ، فيبقى الرجلُ «مفوَّضٌ على سيّارة» في ملفّه وليس كذلك — وهو شرطٌ
-  // في إخلاء طرفه، فلا يُخلى طرفُه حتى يُكتشَف الأمرُ بيد.
-  //
-  // فصار للفعل زرُّه باسمه، ويُغلق السجلَّين معًا في نداءٍ واحد.
-  // ── والتفويضُ يُسنَد من مكانه أيضًا ───────────────────────────────────────
-  // «بلا تفويض» كان نصًّا يُقرأ ولا يُضغَط، فمن أراد أن يفوّض فتح زرَّ التعديل
-  // وكتب اسمَ الموظّف ورقمَ إقامته بيده — وهو منقولٌ من ملفٍّ مفتوحٍ في تبويبٍ
-  // آخر، فيُخطئ فيه رقمٌ ولا يُربط التفويضُ بأحد. فصار الاسمُ يُختار من السجلّ،
-  // ويأتي رقمُ الإقامة معه.
+  // Revoking an authorization touches two records. Clearing the employee name on the vehicle does not revoke it: the authorization lives in two places, the paper on the vehicle and an assignment linking it to the employee, which his HR file reads. Clearing empties the paper but keeps the assignment, so his file still says he is authorized on a vehicle, and that blocks his clearance until noticed by hand. The action has its own named button and closes both records in one call.
+  // Assigning also works from here. "No authorization" was plain text; assigning meant opening edit and retyping the employee name and residency number from another tab, where a digit gets wrong and the authorization attaches to nobody. Now the name is picked from the register and the residency number comes with it.
   const [assigning, setAssigning] = useState<{ v: VReg; reload: () => void } | null>(null);
 
   const revoke = async (v: VReg, reload: () => void) => {
@@ -120,12 +96,9 @@ export default function Page() {
         onDone={(msg) => { notify(msg, 'success'); assigning.reload(); setAssigning(null); }} />
     )}
     <DocumentFamilyPage
-      /* المفوَّضُ يُختار من منسدلة الموظّفين في خانته نفسِها (DocField.person) —
-         فتأتي إقامتُه وجوالُه من ملفّه، ولا يُكتب اسمٌ بيد. */
+      /* The authorized person is picked from the employee dropdown in its own field (DocField.person), so residency and mobile come from his file and no name is typed by hand. */
       docKey="authorization"
-      // ── ولا زرَّ «مسح البيانات» هنا ────────────────────────────────────────
-      // هو الذي أوقع في الخطأ: اسمُه يقول إنّه يمسح، والمستخدمُ يريد أن يُلغي،
-      // فيضغطه ويمضي. والفعلُ الصحيح له زرُّه أدناه.
+      // No "clear data" button here. Its name says clear while users wanted to revoke, so they pressed it and moved on; the correct action has its own button below.
       hideClear
       rowAction={(v, reload) => {
         if (!canEdit) return null;
@@ -158,13 +131,7 @@ export default function Page() {
   );
 }
 
-/**
- * ── نافذةُ التفويض ──────────────────────────────────────────────────────────
- *
- * الموظّفُ يُختار من السجلّ لا يُكتب: رقمُ الإقامة هو المفتاحُ الذي يُربط به
- * التفويضُ بملفّه، ورقمٌ منقولٌ بالنظر يُخطئ رقمًا فيبقى التفويضُ ورقةً على
- * مركبةٍ لا تصل إلى أحد. وباختياره من القائمة يأتي الرقمُ معه.
- */
+/** Authorization dialog. The employee is picked from the register, not typed: the residency number is the key that links the authorization to his file, and a hand-copied number gets a digit wrong and leaves a paper on a vehicle that reaches nobody. Picking from the list brings the number along. */
 function AssignModal({ v, ar, onClose, onDone }: {
   v: VReg; ar: boolean; onClose: () => void; onDone: (msg: string) => void;
 }) {
@@ -176,7 +143,7 @@ function AssignModal({ v, ar, onClose, onDone }: {
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
 
-  // الموظّفُ يُختار من المنسدلة — موظّفو الموارد البشريّة ومَن لا ملفَّ له من النقل الخفيف.
+  // Employee picked from the dropdown: HR employees plus light-transport people with no HR file.
   const pick = (e: Person | null) => {
     setEmp(e);
     if (!e) { setF((p) => ({ ...p, name: '', iqamaNumber: '' })); return; }
@@ -223,7 +190,7 @@ function AssignModal({ v, ar, onClose, onDone }: {
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div><L>{t('رقم الإقامة', 'Iqama number')}</L>
-              {/* من ملفّ الموظّف المختار — لا يُكتب. */}
+              {/* From the selected employee's file; not typed. */}
               <input className={`${inp} font-mono bg-slate-50 text-slate-500`} dir="ltr" value={f.iqamaNumber} readOnly tabIndex={-1} />
               <IqamaPersonInfo idNumber={f.iqamaNumber} ar={ar} />
             </div>

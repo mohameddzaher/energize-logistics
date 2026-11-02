@@ -1,13 +1,7 @@
 'use client';
 /**
- * صفحةُ «ماليات قسم» — واحدةٌ لكلّ الأقسام، تُرسَم من حمولة الخادم.
- *
- * البطاقاتُ أوّلًا (وكلٌّ منها يُفتح على مصدره)، ثمّ ملاحظاتُ ما لا يُسجَّل،
- * ثمّ الجداول. والفترةُ تُختار مرّة فتسري على الصفحة كلِّها، والتصديرُ الكامل
- * يضع كلَّ جدولٍ في ورقةٍ من ملفٍّ واحد.
- *
- * وتسمع `finance:changed`: أيُّ حركةٍ ماليّةٍ في أيّ قسمٍ تُعيد القراءة، ولا
- * يكتب ردٌّ قديمٌ فوق أحدث (useLatestRequest).
+ * Department finance page: one for all departments, drawn from the server payload.
+ * Cards first (each opens its source), then notes on what is not recorded, then tables. The period is chosen once for the whole page, and full export puts each table in a sheet of one file. It listens to `finance:changed`: any financial movement in any department re-reads, and an old reply never overwrites a newer one (useLatestRequest).
  */
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
@@ -84,7 +78,7 @@ export default function FinanceDeptView({ dept, onOpenRow }: { dept: string; onO
   }, [dept, period.range.from, period.range.to, guard]);
 
   useEffect(() => { load(); }, [load]);
-  // الخبرُ يسمّي أقسامَه — وما لا يخصّ هذا القسمَ لا يعيد قراءتَه.
+  // The event names its departments; one not concerning this department does not re-read.
   useSocket('finance:changed', useCallback((p?: { depts?: string[] }) => {
     if (Array.isArray(p?.depts) && !p!.depts.includes(dept)) return;
     setLiveAt(Date.now()); load();

@@ -1,14 +1,8 @@
 'use client';
 /**
- * عهدةُ النقل الثقيل في ملفّ السيّارة وملفّ الموظّف (صاحبُ الشركة، ٢٠٢٦/١٠/٢٥):
- * «لمّا يعمل صادر أو وارد في عهدة النقل الثقيل… يسمع في البروفايل فورًا».
- *
- * القيدُ يحمل سيّارتَه (رقمَ وحدة لوكيشن، ومركبتَها في السجلّ) وموظّفَه من
- * الموارد البشريّة؛ فيُقرأ من الدفتر نفسِه بفلترٍ — لا نسخةَ في الملفّ — ويستمع
- * لـ`ht:custody`: أيُّ قيدٍ يُضاف أو يُعدَّل أو يُحذف يظهر هنا في اللحظة.
- *
- * يُعرَض لمن يفتح الدفترَ وحدَه (مديرُ لوكيشن ومديرُ النظام وأهلُ المال —
- * `CUSTODY_ROLES` في htCustodyController)، ويختفي إن لم يكن على السيّارة شيء.
+ * Heavy-transport custody in the vehicle and employee files: an entry in or out appears in the profile instantly.
+ * An entry carries its vehicle (unit number and register vehicle) and its HR employee, so it is read from the ledger itself with a filter, not a copy, and listens to `ht:custody`.
+ * Shown only to those who can open the ledger (`CUSTODY_ROLES` in htCustodyController); hidden when the vehicle has nothing.
  */
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
@@ -34,16 +28,16 @@ interface Entry {
 const money = (n?: number) => (Math.round((Number(n) || 0) * 100) / 100).toLocaleString('en-US', { minimumFractionDigits: 2 });
 const fmt = (d?: string) => (d ? d.slice(0, 10).split('-').reverse().join('/') : '—');
 
-/** `by` واحدٌ من الثلاثة: رقمُ وحدة لوكيشن، أو مركبةُ السجلّ، أو ملفُّ الموظّف. */
+/** `by` is one of three: tracking unit number, register vehicle, or employee file. */
 export default function HtCustodyPanel({ by, ar, showVehicle = false }: {
   by: { vehicle?: number | string; vehicleMaster?: string; employee?: string };
   ar: boolean;
-  /** في ملفّ الموظّف: عمودُ السيّارة. وفي ملفّ السيّارة: عمودُ الموظّف. */
+  /** In the employee file: the vehicle column. In the vehicle file: the employee column. */
   showVehicle?: boolean;
 }) {
   const { user } = useAuth();
   const t = (a: string, e: string) => (ar ? a : e);
-  // role-only: الدفترُ `authorize.strict` في الخادم (routes/htCustody) — منحُ القسم لا يفتحه.
+  // role-only: the ledger is `authorize.strict` on the server (routes/htCustody); a section grant does not open it.
   const allowed = !!user && (HT_CUSTODY_ROLES.includes(user.role) || !!(user as any).superAdminPowers);
   const [rows, setRows] = useState<Entry[] | null>(null);
   const guard = useLatestRequest();

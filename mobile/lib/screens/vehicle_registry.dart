@@ -23,9 +23,7 @@ import 'vehicle_registry_dash.dart' show VehicleRegistryDashboardScreen, Vehicle
 import 'vehicle_registry_form.dart';
 import 'vehicle_renew.dart';
 
-/// سجل المركبات (Vehicle Registry) — قائمة/تفاصيل/تحليلات/تنبيهات/إعدادات،
-/// مبنيّة على ماستر Vehicles_2026 (326 مركبة) عبر /api/vehicle-registry.
-/// الموبايل بلا رسوم بيانية: بطاقات + أشرطة نسبية + شرائح.
+/// Vehicle Registry: list, details, analytics, alerts and settings, built on the Vehicles_2026 master (326 vehicles) through /api/vehicle-registry. Mobile has no charts: cards, proportional bars and chips.
 
 String money(dynamic v) {
   final nn = (v is num) ? v : num.tryParse(v?.toString() ?? '') ?? 0;
@@ -36,8 +34,7 @@ String money(dynamic v) {
   return '${neg ? '-' : ''}$b';
 }
 
-// توأمُ STATUS_META في الموقع — بالسبع حالاتٍ التي يبعثها الخادم، وما لا يُعرَف
-// يُعرض رماديًّا باسمه (statusMeta) لا يُسقط الشاشة.
+// Twin of STATUS_META on web, with the seven statuses the server emits; an unknown one is shown grey with its own name (statusMeta) rather than crashing the screen.
 const _statusMeta = {
   'expired': ('منتهي', 'Expired', T.danger),
   'critical': ('حرج', 'Critical', Color(0xFFEA580C)),
@@ -48,14 +45,14 @@ const _statusMeta = {
   'upcoming': ('قارب على الانتهاء', 'Due soon', Color(0xFF0EA5E9)),
 };
 
-// ── مَن يكتب ومَن يحذف — canEditVehicles / canAdminVehicles في الموقع ─────────
+// Who writes and who deletes: canEditVehicles / canAdminVehicles on web
 const _vehEditRoles = {'super_admin', 'admin', 'vehicles_manager', 'vehicles_staff',
   'hr_manager', 'hr_specialist', 'cfo', 'accounting_manager', 'accountant'};
 const _vehAdminRoles = {'super_admin', 'admin', 'vehicles_manager', 'hr_manager'};
 bool canEditVehicles(AuthProvider a) => _vehEditRoles.contains(a.role) || a.canEditSection('Vehicles');
 bool canAdminVehicles(AuthProvider a) => _vehAdminRoles.contains(a.role) || (a.role != 'client' && a.canEditSection('Vehicles'));
 
-/// صفحةُ عائلة المستند — يفتحها ملفُّ المركبة على لوحتها.
+/// Document family page; the vehicle profile opens it on its plate.
 DocFamily? familyOf(String docKey) => switch (docKey) {
       'insurance' => vehicleInsuranceFamily,
       'operatingCard' => vehicleOperatingCardFamily,
@@ -74,8 +71,7 @@ const docTypes = [
   ('vehicleLicense', 'رخصة السير', 'Vehicle License'),
   ('inspection', 'الفحص', 'Inspection'),
   ('gps', 'اشتراك GPS', 'GPS'),
-  // التفويض مستندٌ له تاريخ انتهاء كسائر المستندات — الخادم يرسله، وبدونه هنا
-  // يرى مستخدم الويب مستندًا لا يراه مستخدم الموبايل على نفس المركبة.
+  // Authorization is a document with an expiry date like the others. The server sends it, and without it here a web user would see a document that a mobile user does not see on the same vehicle.
   ('authorization', 'التفويض', 'Authorisation'),
 ];
 String docLabel(String k) { for (final d in docTypes) { if (d.$1 == k) return tr(d.$2, d.$3); } return k; }
@@ -92,15 +88,14 @@ String daysText(dynamic n) {
   if (v == 1) return tr('باقي يوم واحد', '1 day left');
   return tr('باقي $v يوم', '$v days left');
 }
-/// الطيُّ الموحَّد — راجع services/flex_match. كان هذا يطوي الهمزةَ ولا يطوي
-/// المسافة، فاللوحةُ المنسوخة بمسافتين لا تجد نفسَها المخزَّنة بواحدة.
+/// Unified folding; see services/flex_match. This used to fold the hamza but not the space, so a plate copied with two spaces did not find itself stored with one.
 String _fold(String s) => flexFold(s);
 
-// ══════════════════ القائمة ══════════════════
+// List
 class VehicleRegistryListScreen extends StatefulWidget {
   final String? sector, expiringDoc, expiredDoc;
-  final Map<String, String>? filters; // فلاتر إضافية من كروت اللوحة
-  final String? filterLabel; // شارة توضّح الفلتر المطبّق
+  final Map<String, String>? filters; // Extra filters from the dashboard cards
+  final String? filterLabel; // Badge showing the applied filter
   final String? initialQuery;
   const VehicleRegistryListScreen({super.key, this.sector, this.expiringDoc, this.expiredDoc, this.filters, this.filterLabel, this.initialQuery});
   @override
@@ -113,14 +108,12 @@ class _VehicleRegistryListScreenState extends State<VehicleRegistryListScreen> {
   bool _loading = true;
   String? _error;
   late String _q = widget.initialQuery ?? '';
-  // نصُّ البحث في متحكِّمٍ يملكه الشاشة: الظاهرُ = المُرشِّح دائمًا
+  // Search text lives in a screen-owned controller: what is shown is always the filter
   late final _searchCtl = TextEditingController(text: _q);
   int _seq = 0;
-  // الأعمدةُ المعروضة في البطاقة وفي «تصدير المعروض» — «الأساسيّة» أوّلًا كالموقع.
+  // Columns shown on the card and in 'export shown'; the basic ones first, as on web.
   List<String> _visible = List.of(baseColumnKeys);
-  // الفلتر الحيّ للشاشة — يبدأ بما جاء من بطاقة اللوحة، ثم يعدّله المستخدم من
-  // اللوحة نفسها. مصدر واحد للفلترة بدل ثلاثة حقول منفصلة، فما تراه الشرائح هو
-  // ما يُرسل إلى الخادم حرفيًّا.
+  // The screen's live filter: it starts with what came from the dashboard card, then the user edits it from the panel itself. One source of filtering instead of three separate fields, so what the chips show is exactly what is sent to the server.
   late Map<String, String> _filters = {
     ...?widget.filters,
     if (widget.sector != null) 'sector': widget.sector!,
@@ -140,7 +133,7 @@ class _VehicleRegistryListScreenState extends State<VehicleRegistryListScreen> {
   @override
   void dispose() { Live.instance.off('vreg:updated', _onLive); _searchCtl.dispose(); super.dispose(); }
 
-  // البحثُ والفلاترُ على الخادم، وردٌّ قديمٌ لا يكتب فوق أحدث.
+  // Search and filters run on the server, and a stale response does not overwrite a newer one.
   Future<void> _load() async {
     final mine = ++_seq;
     try {
@@ -224,7 +217,7 @@ class _VehicleRegistryListScreenState extends State<VehicleRegistryListScreen> {
     final q = _fold(_q.trim());
     final rows = q.isEmpty ? _rows : _rows.where((v) => [v['plateNumber'], v['chassisNumber'], v['ownerNameAr'], v['brandAr'], v['serialNumber'],
         (v['insurance'] as Map?)?['policyNumber'], (v['authorizedPerson'] as Map?)?['name']].any((x) => _fold((x ?? '').toString()).contains(q))).toList();
-    // ما يُعرض في البطاقة من الأعمدة المختارة — عدا ما في رأسها أصلًا.
+    // Chosen columns shown on the card, except those already in its header.
     const inHeader = {'plateNumber', 'brandAr', 'modelAr', 'sectorAr', 'ownerNameAr'};
     final extra = _shownCols.where((c) => !inHeader.contains(c.key)).toList();
     return AppScaffold(
@@ -243,7 +236,7 @@ class _VehicleRegistryListScreenState extends State<VehicleRegistryListScreen> {
         label: Text(tr('إضافة', 'Add')),
       ),
       body: Column(children: [
-          // البحثُ خارج فرع التحميل/الخطأ — لا يُعاد رسمُه فارغًا
+          // Search sits outside the loading/error branch so it is not rebuilt empty
                   Padding(
                     padding: const EdgeInsets.fromLTRB(14, 12, 14, 6),
                     child: Row(children: [
@@ -259,8 +252,7 @@ class _VehicleRegistryListScreenState extends State<VehicleRegistryListScreen> {
                         ),
                       ),
                       const SizedBox(width: 8),
-                      // نفس لوحة الموقع: أي عدد من القيم في أي عدد من الحقول،
-                      // وأعدادها محسوبة بعد بقيّة الفلاتر.
+                      // Same panel as web: any number of values in any number of fields, with counts computed after the other filters.
                       Badge(
                         isLabelVisible: _filters.isNotEmpty,
                         label: Text('${_filters.length}'),
@@ -328,7 +320,7 @@ class _VehicleRegistryListScreenState extends State<VehicleRegistryListScreen> {
                                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                                       Row(children: [
                                         Flexible(flex: 5, child: Text((v['plateNumber'] ?? '').toString(), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15))),
-                                        // النقطةُ تقول «هنا عمل» لمنصّة لوجستي — وتفصيلُه في الملفّ.
+                                        // The dot signals 'there is work here' for the Logisti platform; details are in the profile.
                                         if (gaps.isNotEmpty)
                                           Tooltip(
                                             message: tr('ينقصها لمنصّة لوجستي: ${gaps.join(' · ')}', 'Logisti gaps: ${gaps.join(' · ')}'),
@@ -344,7 +336,7 @@ class _VehicleRegistryListScreenState extends State<VehicleRegistryListScreen> {
                                       ]),
                                       const SizedBox(height: 4),
                                       Text('${v['brandAr'] ?? ''} ${v['modelAr'] ?? ''} · ${v['sectorAr'] ?? ''}', style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600)),
-                                      // راكبُها من قسم الأفراد في إجازةٍ أو موقوفٌ أو في حادث.
+                                      // Its rider from the personnel section is on leave, suspended or in an accident.
                                       if (b2cOpChip((v['b2cRider'] as Map?)?['opStatus']) != null)
                                         Padding(padding: const EdgeInsets.only(top: 4), child: b2cOpChip((v['b2cRider'] as Map?)?['opStatus'], who: ((v['b2cRider'] as Map?)?['name'] ?? '').toString())!),
                                       if ((v['ownerNameAr'] ?? '').toString().isNotEmpty)
@@ -373,7 +365,7 @@ class _VehicleRegistryListScreenState extends State<VehicleRegistryListScreen> {
   }
 }
 
-// ══════════════════ التفاصيل ══════════════════
+// Details
 class VehicleRegistryDetailScreen extends StatefulWidget {
   final String id, plate;
   const VehicleRegistryDetailScreen({super.key, required this.id, required this.plate});
@@ -432,7 +424,7 @@ class _VehicleRegistryDetailScreenState extends State<VehicleRegistryDetailScree
         ]),
       );
 
-  // سطرُ تاريخٍ بشارة الأيام بلون حالة المستند.
+  // A date line with a days badge in the document state colour.
   Widget _dateRow(String label, dynamic date, String docKey) {
     final st = (_v?['docStatuses']?[docKey]) as Map?;
     if (date == null || '$date'.isEmpty) return _row(label, null);
@@ -464,7 +456,7 @@ class _VehicleRegistryDetailScreenState extends State<VehicleRegistryDetailScree
         ),
       );
 
-  // نواقصُ المركبة: ما يُعمَل لا ما كُتب في الشيت — كلُّ بندٍ مستندٌ معروفٌ يفتح صفحتَه.
+  // Vehicle gaps: what is to be done, not what is written in the sheet; each item is a known document that opens its page.
   List<(String, String, String?)> _gaps(Map v) {
     final out = <(String, String, String?)>[];
     final seen = <String>{};
@@ -541,7 +533,7 @@ class _VehicleRegistryDetailScreenState extends State<VehicleRegistryDetailScree
               : RefreshIndicator(
                   onRefresh: _load,
                   child: ListView(padding: const EdgeInsets.all(14), children: [
-                    // الترويسة: اللوحة والحالة الأسوأ وحالة التشغيل.
+                    // Header: plate, worst status and operating status.
                     AppCard(
                       topAccent: statusColor(worst),
                       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -552,13 +544,13 @@ class _VehicleRegistryDetailScreenState extends State<VehicleRegistryDetailScree
                         ]),
                         Text([v['brandAr'], v['modelAr'], v['sectorAr'], v['cityAr']].where((x) => (x ?? '').toString().isNotEmpty).join(' · '),
                             style: const TextStyle(fontSize: 12.5, color: T.inkFaint)),
-                        // راكبُها من قسم الأفراد وحالتُه اليوم — تُكتب في «موظفو النقل الخفيف».
+                        // Its rider from the personnel section and his status today; written in 'light transport employees'.
                         if (b2cOpChip((v['b2cRider'] as Map?)?['opStatus']) != null)
                           Padding(padding: const EdgeInsets.only(top: 6), child: b2cOpChip((v['b2cRider'] as Map?)?['opStatus'], who: ((v['b2cRider'] as Map?)?['name'] ?? '').toString())!),
                       ]),
                     ),
                     const SizedBox(height: 10),
-                    // حالة المستندات — البطاقةُ مدخلٌ لصفحة عائلتها، وزرُّ التجديد من مكانها.
+                    // Document status: the card is an entry to its family page, and the renew button works from there.
                     GridView.count(
                       crossAxisCount: 2, shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
                       childAspectRatio: canEdit ? 1.45 : 1.9, mainAxisSpacing: 8, crossAxisSpacing: 8,
@@ -636,13 +628,13 @@ class _VehicleRegistryDetailScreenState extends State<VehicleRegistryDetailScree
                       _row(tr('حالة التشغيل', 'Service status'), v['serviceStatusAr'], color: outOfService ? T.danger : T.success),
                     ]),
                     _section(tr('الملكية والحيازة', 'Ownership'), Icons.business_outlined, neutral, [
-                      // المجموعةُ شركتان والأسطولُ مشتركُ التشغيلِ مفصولُ الملكيّة.
+                      // The group is two companies and the fleet is shared in operation but separate in ownership.
                       _row(tr('الشركة المالكة', 'Owning company'), v['ownerCompanyAr']),
                       _row(tr('المالك', 'Owner'), v['ownerNameAr']),
                       _row(tr('السجل التجاري', 'Commercial reg.'), v['commercialRegistration'], mono: true),
                       _row(tr('حالة الحيازة', 'Possession'), v['possessionStatusAr']),
                       _row(tr('حالة تم', 'Tam status'), v['tamStatusAr']),
-                      // الحوادث تُقرأ من مطالبات هذا القسم — والرقمُ يفتح ما يعدّه.
+                      // Accidents are read from this section's claims, and the number opens what it counts.
                       InkWell(
                         onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => VehicleClaimsScreen(initialQuery: (v['plateNumber'] ?? '').toString()))),
                         child: _row(tr('الحوادث والمطالبات', 'Accidents & claims'), '${v['accidentCount'] ?? 0}  ↗', color: (v['accidentCount'] ?? 0) != 0 ? T.danger : null),
@@ -650,7 +642,7 @@ class _VehicleRegistryDetailScreenState extends State<VehicleRegistryDetailScree
                     ]),
                     _section(tr('جهاز التتبّع GPS', 'GPS tracking'), Icons.satellite_alt_outlined, gpsOn ? docAccent('gps') : neutral, [
                       _row(tr('جهاز GPS', 'GPS device'), (o('gps')['deviceModel'] ?? '').toString().isNotEmpty ? o('gps')['deviceModel'] : (gpsOn ? null : tr('غير مركّب', 'Not installed'))),
-                      // حالةُ الجهاز غيرُ حالة الاشتراك.
+                      // Device status differs from subscription status.
                       _row(tr('حالة جهاز GPS', 'Device status'), o('gps')['deviceStatusAr'] ?? o('gps')['status']),
                       _row(tr('شركة الـGPS', 'Provider'), o('gps')['provider']),
                       _row(tr('سريال GPS', 'Serial / IMEI'), o('gps')['serialImei'], mono: true),
@@ -691,7 +683,7 @@ class _VehicleRegistryDetailScreenState extends State<VehicleRegistryDetailScree
                     ], docKey: 'operatingCard', linkLabel: tr('صفحة بطاقات التشغيل', 'Operating-cards page')),
                     _section(tr('رخصة السير', 'Vehicle licence'), Icons.description_outlined, docAccent('vehicleLicense'), [
                       _dateRow(tr('تاريخ الانتهاء', 'Expiry'), o('vehicleLicense')['expiryDate'], 'vehicleLicense'),
-                      // الهجريُّ المكتوبُ في الرخصة أوّلًا — والمحسوبُ إن لم يُسجَّل.
+                      // The Hijri date written on the licence comes first, the computed one if none is recorded.
                       _row(tr('تاريخ الانتهاء (هجري)', 'Expiry (Hijri)'), (o('vehicleLicense')['expiryDateHijri'] ?? '').toString().isNotEmpty
                           ? o('vehicleLicense')['expiryDateHijri'] : hijriPlain(fmtDate(o('vehicleLicense')['expiryDate'])), mono: true),
                     ], docKey: 'vehicleLicense', linkLabel: tr('صفحة رخص السير', 'Licences page')),
@@ -701,7 +693,7 @@ class _VehicleRegistryDetailScreenState extends State<VehicleRegistryDetailScree
                       _row(tr('انتهاء الفحص (هجري)', 'Expiry (Hijri)'), (o('inspection')['expiryDateHijri'] ?? '').toString().isNotEmpty
                           ? o('inspection')['expiryDateHijri'] : hijriPlain(fmtDate(o('inspection')['expiryDate'])), mono: true),
                     ], docKey: 'inspection', linkLabel: tr('صفحة الفحص', 'Inspection page')),
-                    // الملاحظةُ تُكتب حيث تُقرأ — والكارتُ يظهر ولو كانت فارغة.
+                    // The note is written where it is read, and the card shows even when empty.
                     _section(tr('ملاحظات', 'Notes'), Icons.notes_outlined, neutral, [
                       if (!canEdit)
                         Text((v['notesAr'] ?? '').toString().isEmpty ? '—' : v['notesAr'].toString(), style: const TextStyle(fontSize: 13))
@@ -720,9 +712,9 @@ class _VehicleRegistryDetailScreenState extends State<VehicleRegistryDetailScree
                           ]),
                       ],
                     ]),
-                    // ملفّات المركبة — صورُ ما سبق من مستندات.
+                    // Vehicle files: images of the documents above.
                     _VehicleFiles(vehicleId: (v['_id'] ?? widget.id).toString(), canEdit: canEdit),
-                    // سجلّ التجديدات — الأثر يُقرأ إلى الوراء.
+                    // Renewal history: the trail is read backwards.
                     if (renewals.isNotEmpty) ...[
                       const SizedBox(height: 10),
                       Text('${tr('سجلّ التجديدات', 'Renewal history')} (${renewals.length})', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14.5)),
@@ -759,7 +751,7 @@ class _VehicleRegistryDetailScreenState extends State<VehicleRegistryDetailScree
                       )),
                     ],
                     const SizedBox(height: 10),
-                    // مهامّ JP المربوطة بهذه المركبة — تُضاف من هنا.
+                    // JP tasks linked to this vehicle; added from here.
                     JpTaskPanel(section: 'vehicles', kind: 'vehicle', refId: '${v['_id'] ?? widget.id}'),
                     const SizedBox(height: 24),
                   ]),
@@ -768,7 +760,7 @@ class _VehicleRegistryDetailScreenState extends State<VehicleRegistryDetailScree
   }
 }
 
-// ══════════════════ ملفّات المركبة — توأمُ VehicleDocuments في الموقع ══════════════════
+// Vehicle files, twin of VehicleDocuments on web
 class _VehicleFiles extends StatefulWidget {
   final String vehicleId;
   final bool canEdit;

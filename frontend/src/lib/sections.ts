@@ -32,11 +32,7 @@ export const canAccessSection = (perms: Perms, section: string): boolean => {
 export const canEditSection = (perms: Perms, section: string): boolean =>
   sectionAccess(perms, section) === 'edit';
 
-// ── صلاحيّةُ الصفحة ──────────────────────────────────────────────────────────
-// طبقةٌ تحت القسم: القسمُ يقول ماذا يُفعَل (قراءةٌ أم كتابة) والصفحةُ تقول أين.
-// خريطةُ الصفحات تأتي كاملةً من الخادم (`pageAccess` في /auth/me)، فالمفتاحُ
-// الغائبُ يعني نسخةً أقدمَ من الواجهة — ويُقرأ **مسموحًا**: إخفاءُ شاشةٍ بسبب
-// اختلافِ إصدارٍ عطبٌ صامتٌ لا يُشتكى منه.
+// Page permission: a layer under the section. The section says what can be done (read or write) and the page says where. The page map comes whole from the server (`pageAccess` in /auth/me), so a missing key means an older frontend version and is read as allowed: hiding a screen because of a stale map would be worse.
 type Pages = Record<string, boolean> | undefined | null;
 
 export const canAccessPage = (pages: Pages, href: string): boolean => {

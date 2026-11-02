@@ -7,10 +7,7 @@ import api from '@/lib/api';
 import { IdCard, ChevronLeft, ChevronRight } from 'lucide-react';
 import FinanceDeptView from '@/components/finance/FinanceDeptView';
 
-/**
- * ماليات الموارد البشرية — وفوقها مدخلٌ ظاهرٌ إلى «الإقامات ورخص العمل»: رسومٌ
- * مستحقّةٌ بتاريخ، وطلباتٌ تنتظر جوابًا. أرقامُه حيّةٌ (`hr-finance:changed`).
- */
+/** HR finance, with a visible entry to residencies and work permits on top: fees due by date, and requests awaiting an answer. Its numbers are live (`hr-finance:changed`). */
 export default function Page() {
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';

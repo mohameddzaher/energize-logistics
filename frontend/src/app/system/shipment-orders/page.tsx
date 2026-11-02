@@ -1,7 +1,5 @@
 'use client';
-// طلبات الشحنات — the trial section's main list. Everything the team needs to
-// run the day happens HERE, without opening each order: search by بوليصة or
-// customer, flip a status inline, download the بوليصة PDF per row.
+// Shipment orders: the trial section's main list. Everything for running the day happens here without opening each order: search by waybill or customer, change status inline, download the waybill PDF per row.
 import { useState, useEffect, useCallback, useRef, Suspense, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
@@ -36,13 +34,8 @@ import {
 import NoteModal from '@/components/shipment-orders/NoteModal';
 
 
-// ── حالاتٌ لا تُقال بلا ورقة ────────────────────────────────────────────────
-// نظيرُ `REQUIRE_FILE` في الخادم (shipmentOrdersController) — وهو الحارس؛
-// وهذه لتعين الموظّفَ قبل أن يُردَّ عليه.
-// ── ونزولُ الملفّ لا يستدعي مولّدًا ─────────────────────────────────────────
-// كان الزرُّ يجلب `lib/dispatchSheetGenerator` ليستعمل منه سطرَ التنزيل وحدَه —
-// وهو ملفٌّ يجرّ معه JSZip وpdf-lib والقالبَ كلَّه: مئاتُ الكيلوبايتات تُحمَّل
-// وتُفسَّر عند أوّل ضغطة، وقد صارت البوليصةُ تُرسَم في الخادم فلا حاجةَ إليه.
+// Statuses that cannot be set without a document. Mirrors `REQUIRE_FILE` on the server (shipmentOrdersController), which is the real guard; this only helps the user before they are rejected.
+// Download does not call a generator: the button used to import `lib/dispatchSheetGenerator` just for the download line, pulling JSZip, pdf-lib and the whole template (hundreds of KB parsed on first click), and the waybill is now rendered on the server.
 function downloadBlob(blob: Blob, fileName: string) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -64,13 +57,9 @@ const fmtDate = (v?: string | null) => {
   return `${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear()}`;
 };
 
-// ── والصفُّ لم يعد يُبنى هنا ───────────────────────────────────────────────
-// كان `toSheetRow` يحوّل الطلبَ إلى صفِّ بوليصةٍ ليرسمها المتصفّح. والرسمُ صار
-// في الخادم من الطلب نفسِه (utils/waybillPdf · rowFromOrder)، فالتحويلُ هنا
-// نسخةٌ ثانيةٌ من القاعدة تشيخ وحدَها: أُضيفت الملاحظاتُ وسعرُ البيع والإقرار
-// إلى تلك ولم تصل هذه.
+// The row is no longer built here. `toSheetRow` converted the order into a waybill row for the browser to draw; drawing is now on the server from the order itself (utils/waybillPdf, rowFromOrder), so a conversion here would be a second copy of the rule that ages alone: notes, sale price and the declaration were added there and never reached this one.
 
-// بوليصة-501-اسم العميل-22-7-2026
+// Example file name: waybill-501-customer-22-7-2026
 const DEFAULT_COLS = ['reference', 'customerName', 'pickup', 'fromCity', 'toCity', 'branch', 'driverName', 'contact', 'status', 'owner', 'truck', 'plate', 'cargo', 'payment', 'sales', 'buy', 'sell', 'notes', 'followup', 'actions'];
 const dayOf = (d: unknown) => (d ? new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Riyadh' }).format(new Date(String(d))) : '—');
 
@@ -80,18 +69,13 @@ const waybillFileName = (o: ShipmentOrder) => {
   return parts.join(' - ').replace(/[\\/:*?"<>|]/g, ' ');
 };
 
-/** ثابتان لئلّا يُبنَيا في كلّ رسمةٍ فتُعاد لوحةُ الفلتر بلا سبب. */
+/** Constant, so they are not rebuilt each render and the filter panel is not reset for no reason. */
 const EMPTY_SET: Set<string> = new Set();
 const EMPTY_OPTIONS: { value: string; count: number }[] = [];
 
 /**
- * ── والفلترُ يُورَث من الرابط ─────────────────────────────────────────────────
- * بطاقاتُ اللوحة تؤدّي إلى هنا: «١٤ متأخّرة» تُضغَط فتُفتَح الشحناتُ المتأخّرةُ
- * أنفسُها لا كلُّ الجدول. وكانت الشاشةُ تبدأ فارغةَ الفلاتر دائمًا، فينتهي كلُّ
- * رقمٍ في النظام إلى الصفحة الأولى من سبعةٍ وثلاثين ألف صفّ.
- *
- * ويُقرأ مرّةً عند الفتح ثمّ تُمسك الشاشةُ حالتَها — وإلّا أعاد الرابطُ كتابةَ
- * ما يغيّره المستخدم.
+ * The filter is inherited from the URL. Dashboard cards link here, so clicking "14 late" opens those late shipments, not the whole table; the page used to start with empty filters, ending every number on the first page of tens of thousands of rows.
+ * Read once at open, after which the screen holds its own state; otherwise the URL would overwrite what the user changes.
  */
 function ShipmentOrdersInner() {
   const { user, refreshUser } = useAuth();
@@ -112,12 +96,9 @@ function ShipmentOrdersInner() {
 
   const [search, setSearch] = useState(() => sp?.get('q') || '');
   const [debounced, setDebounced] = useState(() => sp?.get('q') || '');
-  // ── الحالةُ تُنتقى بالتراكم ───────────────────────────────────────────────
-  // «أرِني المتأخّرةَ وما في الطريق معًا» سؤالٌ يُسأل كلَّ صباح، وقائمةٌ منسدلة
-  // تجيب عن واحدةٍ فقط. فالبطاقاتُ فوق الجدول هي الفلتر — كما في شاشة شحنات
-  // المنصّة، والفريقُ يعرفها.
+  // Status is picked cumulatively. "Show me late and in-transit together" is a daily question that a dropdown cannot answer, so the cards above the table are the filter, as in the platform shipments screen the team knows.
   const [statuses, setStatuses] = useState<string[]>(() => (sp?.get('status') || '').split(',').filter(Boolean));
-  // ملاحظةُ الرحلة: الكلّ · لها ملاحظة · بلا ملاحظة.
+  // Trip note: all, has a note, no note.
   const [noteFilter, setNoteFilter] = useState('');
   const statusVocab = useOrderStatuses();
   const statusFilter = statuses.join(',');
@@ -135,28 +116,24 @@ function ShipmentOrdersInner() {
     setPage(1);
     revealList();
   };
-  /** بطاقةٌ تُضغَط: تُفلتِر ثمّ تُنزِل إلى القائمة. */
+  /** A clickable card: filters, then scrolls down to the list. */
   const pickStatuses = (next: string[]) => { setStatuses(next); setPage(1); revealList(); };
   const revealList = () => {
     if (typeof window === 'undefined') return;
     window.requestAnimationFrame(() => listRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
   };
-  // ── الخاصّ بنا أم المنصّة؟ ────────────────────────────────────────────────
-  // شحناتُ المنصّة تحمل رقمَ كشف تخريجٍ حقيقيًّا يُحاسَب عليه، وشحناتُنا —
-  // تجريبيّةً اليوم — يسبق رقمَها حرف. ومن يقرأ تقريرًا يجب أن يعرف أهو عن
-  // عملٍ جرى أم عن تجربة.
+  // Ours or the platform's? Platform shipments carry a real manifest number that is billed against, while ours (trial for now) are prefixed with a letter. A report reader must know whether it is about real work or a trial.
   const [customerFilter, setCustomerFilter] = useState(() => sp?.get('customer') || '');
   const [fromDate, setFromDate] = useState(() => sp?.get('from') || '');
   const [toDate, setToDate] = useState(() => sp?.get('to') || '');
-  // ‏`dateBy=pickup`: المدى بيوم الاستلام لا بيوم التسجيل — هكذا تحسب اللوحة،
-  // فرقمُها يفتح صفوفَه نفسَها (٢٠٢٦/١٠/٢٧). ويُمحى مع مسح المدى.
+  // `dateBy=pickup`: the range is by pickup day, not registration day, which is how the dashboard counts, so its number opens its own rows. Cleared when the range is cleared.
   const [dateBy, setDateBy] = useState(() => (['pickup', 'created', 'activity'].includes(sp?.get('dateBy') || '') ? sp!.get('dateBy')! : 'pickup'));
   // Quick periods ask what happened in them: created, or moved to a status.
   const riyadhDay = (back = 0) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Riyadh' }).format(new Date(Date.now() - back * 86400000));
   const setPeriod = (from: string, to: string) => { setDateBy('activity'); setFromDate(from); setToDate(to); setPage(1); };
   const today = riyadhDay();
   const monthStart = `${today.slice(0, 8)}01`;
-  // ‏`customs=linked`: الشحناتُ المربوطةُ بمعاملة تخليص — من بطاقة اللوحة.
+  // `customs=linked`: shipments linked to a customs file, from a dashboard card.
   const [customsOnly, setCustomsOnly] = useState(() => sp?.get('customs') === 'linked');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState<number>(() => readPageSize('so:pageSize'));
@@ -164,17 +141,17 @@ function ShipmentOrdersInner() {
 
   const [busyId, setBusyId] = useState<string | null>(null);
 
-  // نافذةُ المتابعة: الحالةُ الجديدة وملاحظةٌ اختياريّة.
+  // Follow-up dialog: the new status and an optional note.
 
   const [fu, setFu] = useState<{ order: any; status: string; note: string; reason?: string } | null>(null);
   const [detail, setDetail] = useState<ShipmentOrder | null>(null);
-  // ?open=<id> — رابطُ مهمّة JP يفتح الشحنةَ نفسَها ثم يُمحى من العنوان.
+  // ?open=<id>: a JP task link opens the shipment itself, then the param is removed from the URL.
   const openId = sp?.get('open') || '';
   useEffect(() => {
     if (!openId) return;
     api.get<{ order: ShipmentOrder }>(`/api/shipment-orders/orders/${openId}`)
       .then((r) => { if (r?.order) setDetail(r.order); })
-      .catch(() => { /* محذوفةٌ أو بلا صلاحية — تبقى القائمة */ });
+      .catch(() => { /* Deleted or no permission: the list stays. */ });
     const q = new URLSearchParams(window.location.search);
     q.delete('open');
     router.replace(`${window.location.pathname}${q.toString() ? `?${q}` : ''}`, { scroll: false });
@@ -183,17 +160,14 @@ function ShipmentOrdersInner() {
 
   const openFollowUp = (o: any) => { setFuFile(null); setFu({ order: o, status: o.status, note: '' }); };
 
-  // ── وحالةٌ تقول «أُرسل السند» تُثبِت السند ────────────────────────────────
-  // الشرطُ على الخادم (REQUIRE_FILE في shipmentOrdersController)، وهنا يُعان
-  // الموظّفُ عليه: الزرُّ لا يعمل قبل الإرفاق ويُقال له لماذا — بدل أن يضغط
-  // فيُردَّ عليه بخطأ.
+  // A status meaning the bond was sent requires the bond file. The condition is on the server (REQUIRE_FILE in shipmentOrdersController); here the button stays disabled until attached and says why, instead of failing after a click.
   const submitFollowUp = async () => {
     if (!fu) return;
     if (STATUS_NEEDS_FILE.has(fu.status) && fu.status !== fu.order.status && !fuFile) {
       notify(ar ? 'أرفق صورة السند أو ملفه أولًا.' : 'Attach the bond file first.', 'error');
       return;
     }
-    // ولا تُلغى شحنةٌ بلا سبب (٢٠٢٦/١٠/٢٢) — والخادمُ هو الحارس.
+    // A shipment is not cancelled without a reason; the server is the guard.
     if (fu.status === 'cancelled' && fu.order.status !== 'cancelled' && !String(fu.reason || '').trim()) {
       notify(ar ? 'اختر سببَ الإلغاء.' : 'Choose the cancellation reason.', 'error');
       return;
@@ -203,14 +177,12 @@ function ShipmentOrdersInner() {
     setFu(null);
   };
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
-  // Tick rows → one ZIP of their بوليصات, named number-customer-date.
+  // Ticked rows download as one ZIP of their waybills, named number-customer-date.
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkProgress, setBulkProgress] = useState('');
 
-  // ── طريقةُ العرض تُحفَظ في الحساب ────────────────────────────────────────
-  // تُقرأ من المستخدم (uiPrefs) فتتبعه على كلّ جهاز، وتُبدَّل فورًا وتُحفَظ في
-  // الخلفية. وبلا اختيارٍ محفوظ: «المتابعة» بطاقاتٌ (جوّالُه أوّلًا)، وغيرُه جدول.
+  // The view mode is saved on the account. It is read from the user (uiPrefs) so it follows them across devices, switches immediately and saves in the background. With no saved choice, follow-up users get cards (mobile first) and everyone else a table.
   const [viewLocal, setViewLocal] = useState<ViewMode | null>(null);
   const savedView = String(user?.uiPrefs?.[VIEW_PREF_READ_KEY] || '') as ViewMode;
   const view: ViewMode = viewLocal
@@ -222,9 +194,9 @@ function ShipmentOrdersInner() {
       .then(() => { refreshUser().catch(() => {}); })
       .catch(() => notify(ar ? 'تعذّر حفظ طريقة العرض في حسابك — ستبقى لهذه الجلسة.' : 'Could not save the view to your account — kept for this session.', 'error'));
   };
-  // ملاحظةُ المتابعة السريعة — من البطاقة أو من الجدول.
+  // Quick follow-up note, from the card or the table.
   const [noteFor, setNoteFor] = useState<ShipmentOrder | null>(null);
-  // البطاقةُ تُضغَط فيُنزَل إلى القائمة: «في الطريق» يُرى تحتها لا فوقَها.
+  // Clicking a card scrolls to the list so the in-transit rows are seen below it, not above.
   const listRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -233,19 +205,12 @@ function ShipmentOrdersInner() {
   }, [search]);
   useEffect(() => { setPage(1); }, [noteFilter]);
 
-  // لا يكتب ردٌّ قديمٌ فوق ردٍّ أحدث — راجع hooks/useLatestRequest.
+  // An older reply never overwrites a newer one; see hooks/useLatestRequest.
   const guard = useLatestRequest();
-  /**
-   * ── فلترُ الأعمدة على طريقة إكسل ─────────────────────────────────────────
-   *
-   * الجدولُ مُصفَّحٌ في الخادم (خمسةٌ وعشرون صفًّا)، فبناءُ قائمة العمود من
-   * الصفوف الواصلة يعرض قيمَ هذه الصفحة وحدَها — ثلاثَ مدنٍ من أربعِمئة.
-   * فالقيمُ تُطلَب من الخادم بعدّادها عند فتح القمع، والتصفيةُ تجري هناك.
-   */
-  // ‏`col_` لا `col.`: الخادمُ يحذف المفاتيحَ ذاتَ النقطة (express-mongo-sanitize).
+  /** Excel-style column filters. The table is paginated on the server (25 rows), so building a column list from the received rows would show this page's values only (three cities of four hundred). Values are requested from the server with counts when the funnel opens, and filtering runs there. */
+  // `col_` not `col.`: the server strips dotted keys (express-mongo-sanitize).
   const COL_PREFIX = 'col_';
-  // فلاترُ الأعمدة تُقرأ من العنوان أيضًا (`col_<العمود>`) — فرقمُ مندوبٍ أو عميلٍ
-  // في اللوحة يفتح شحناتِه هو (٢٠٢٦/١٠/٢٧).
+  // Column filters are also read from the URL (`col_<column>`), so a rep or customer number on the dashboard opens that rep's or customer's shipments.
   const [colFilters, setColFilters] = useState<Record<string, Set<string>>>(() => {
     const o: Record<string, Set<string>> = {};
     sp?.forEach((v, k) => { if (k.startsWith('col_') && v) (o[k.slice(4)] ||= new Set()).add(v); });
@@ -255,13 +220,12 @@ function ShipmentOrdersInner() {
   const [colLoading, setColLoading] = useState<Record<string, boolean>>({});
   const colSeq = useRef<Record<string, number>>({});
 
-  /** معاملاتُ الصفحة الحاليّة — تُستعمل للجدول وللقائمة وللتصدير معًا. */
+  /** Current page params, shared by the table, the list and the export. */
   const colParams = useCallback((into: URLSearchParams, skip?: string) => {
     if (excludeCancelled) into.set('excludeCancelled', '1');
     Object.entries(colFilters).forEach(([k, set]) => {
       if (!set.size || k === skip) return;
-      // كلُّ قيمةٍ معاملٌ مكرَّر لا مفصولةً بفاصلة: اسمُ عميلٍ فيه فاصلةٌ كان يصير
-      // اسمين لا يطابقان شيئًا. (راجع shipmentOrdersController.columnFilters.)
+      // Each value is a repeated param, not comma-separated: a customer name containing a comma used to become two names matching nothing (see shipmentOrdersController.columnFilters).
       into.delete(`${COL_PREFIX}${k}`);
       set.forEach((v) => into.append(`${COL_PREFIX}${k}`, v));
     });
@@ -282,8 +246,7 @@ function ShipmentOrdersInner() {
     setColLoading((p) => ({ ...p, [field]: true }));
     try {
       const qs = new URLSearchParams({ field });
-      // فلاترُ بقيّةِ الأعمدة وحدَها: من صفّى «جدة» في «من» يريد أن يرى في
-      // «إلى» ما وصلت إليه شحناتُ جدة فقط — وهذا ما يفعله إكسل.
+      // Filters of the other columns only: someone who filtered "Jeddah" under from wants to see under to only where Jeddah's shipments went, which is what Excel does.
       colParams(qs, field);
       if (statusFilter) qs.set('status', statusFilter);
       if (customerFilter) qs.set('customer', customerFilter);
@@ -293,9 +256,9 @@ function ShipmentOrdersInner() {
       if (customsOnly) qs.set('customs', 'linked');
       if (search.trim()) qs.set('search', search.trim());
       const d = await api.get<{ values: { value: string; count: number }[] }>(`/api/shipment-orders/orders/filter-options?${qs}`);
-      if (colSeq.current[field] !== seq) return;   // ردٌّ سبقه أحدثُ منه
+      if (colSeq.current[field] !== seq) return;   // A reply already superseded by a newer one.
       setColOptions((p) => ({ ...p, [field]: d }));
-    } catch { /* تُترَك القائمةُ كما هي */ }
+    } catch { /* The list is left as is. */ }
     finally { if (colSeq.current[field] === seq) setColLoading((p) => ({ ...p, [field]: false })); }
   }, [colParams, statusFilter, customerFilter, fromDate, toDate, dateBy, customsOnly]);
 
@@ -330,7 +293,7 @@ function ShipmentOrdersInner() {
       .then((d) => setCustomers(d.customers || [])).catch(() => {});
   }, []);
 
-  // The inline change — the reason nobody has to open an order to say "وصلت".
+  // The inline change: nobody needs to open an order just to mark it arrived.
   const changeStatus = async (o: ShipmentOrder, status: string, note = '', file?: PickedFile | null, cancelReason = '') => {
     setBusyId(o._id);
     try {
@@ -342,8 +305,7 @@ function ShipmentOrdersInner() {
     setBusyId(null);
   };
 
-  // الملاحظةُ تظهر في بطاقتها فورًا (السجلُّ كما ردّه الخادم)، ثمّ يُعاد التحميل —
-  // وبقيّةُ الشاشات تتحدّث بخبر shipmentOrders:updated الذي يُطلقه الخادم.
+  // The note shows on its card at once (the record as the server returned it), then the list reloads; other screens update from the shipmentOrders:updated event the server fires.
   const onNoteSaved = (u: ShipmentOrder) => {
     if (!u?._id) return;
     const merge = (o: ShipmentOrder) => (o._id === u._id ? { ...o, statusLog: u.statusLog, status: u.status } : o);
@@ -352,17 +314,9 @@ function ShipmentOrdersInner() {
     load();
   };
 
-  // ── ولا يُمحى كشفٌ حدث ────────────────────────────────────────────────────
-  // كان هنا زرُّ حذف: يُزيل البوليصةَ ورقمَها وسجلَّ حالاتها من القاعدة بلا
-  // رجعة. والشحنةُ الملغاة حدثٌ وقع — له رقمٌ أُعطي للعميل وسجلٌّ يُسأل عنه —
-  // فمحوُها يُخفي الواقعةَ لا يصحّحها، ويقطع تسلسلَ الأرقام. فمن أراد إلغاءَها
-  // يضعها في حالة «ملغاة»: تبقى مقروءةً ومحسوبةً ومفلترةً بحالتها.
+  // A manifest that happened is never erased. A delete button used to remove the waybill, its number and its status history permanently. A cancelled shipment is an event that occurred, with a number given to the customer and a record to answer for, so deleting hides the fact and breaks the number sequence. To cancel, set the cancelled status: it stays readable, counted and filterable by status.
 
-  // ── والبوليصةُ الواحدة تُرسَم حيث تُرسَم الكثيرة ─────────────────────────
-  // كانت تُبنى في المتصفّح بقالبٍ ثانٍ (lib/dispatchSheetTemplate)، والجماعيّةُ
-  // تُبنى في الخادم بقالبه. فقالبان لورقةٍ واحدة: ما يُضاف إلى أحدهما لا يظهر
-  // في الآخر — الملاحظاتُ تُطبَع في الجماعيّة ولا تُطبَع في المفردة، والإقرارُ
-  // كذلك. والورقةُ التي تُسلَّم للسائق يجب أن تكون واحدةً مهما كان زرُّها.
+  // A single waybill is drawn where many are. It used to be built in the browser with a second template (lib/dispatchSheetTemplate) while bulk is built on the server with its own, so one sheet had two templates and anything added to one was missing from the other (notes and the declaration printed in bulk but not single). The sheet handed to the driver must be one regardless of the button.
   const downloadWaybill = async (o: ShipmentOrder) => {
     setDownloadingId(o._id);
     try {
@@ -437,8 +391,7 @@ function ShipmentOrdersInner() {
   const togglePick = (id: string) =>
     setPicked((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
-  // التصديرُ يحمل ما يحمله الجدول: المرجعَ لا الرقمَ الخام، والمصدرَ والمورّدَ
-  // والفرعَ — الملفُّ يُفتح خارج النظام ويُقرأ وحدَه.
+  // The export carries what the table shows: the reference, not the raw number, plus source, supplier and branch, since the file is opened outside the system and read alone.
   const exportColumns: ExportColumn[] = [
     { header: 'Reference', key: 'reference', width: 12, transform: (v: any, r: any) => v || r?.waybillNumber || '' },
     { header: 'Customer', key: 'customerName', width: 26 },
@@ -458,12 +411,11 @@ function ShipmentOrdersInner() {
     { header: 'Agent', key: 'agentName', width: 16 },
     { header: 'Note', key: 'notes', width: 30 },
   ];
-  // الترقيم على الخادم بخمسةٍ وعشرين صفًّا: فلترةُ مئتَي شحنة ثم التصدير كانت
-  // تُخرج الصفحة الظاهرة وحدها بلا أيّ إنذار، فصار كلُّ نطاقٍ يُجلَب من الخادم بحدّه.
+  // Pagination is on the server (25 rows): filtering 200 shipments then exporting used to output only the visible page with no warning, so every range is now fetched from the server up to its limit.
   const fetchForExport = async (withFilters: boolean) => {
     const qs = new URLSearchParams({ page: '1', limit: '100000' });
     if (withFilters) {
-      // وفلاترُ الأعمدة منها: ملفٌّ يخالف الشاشةَ أسوأُ من ملفٍّ لا يخرج.
+      // Column filters are part of it: a file that differs from the screen is worse than no file.
       colParams(qs);
       if (debounced.trim()) qs.set('q', debounced.trim());
       if (statusFilter) qs.set('status', statusFilter);
@@ -485,9 +437,7 @@ function ShipmentOrdersInner() {
     ...(hasActiveFilters ? [{ key: 'all', label: scope.all, resolve: () => fetchForExport(false) }] : []),
   ];
 
-  // ── على الجوّال: شريطُ الحالات يُمرَّر أفقيًّا، والفلاترُ الثانويّة خلف زرّ ──
-  // كانت أحدَ عشرَ مربّعًا وثلاثُ بطاقاتٍ تملأ الشاشةَ الأولى كلَّها، فلا تُرى
-  // شحنةٌ قبل تمريرٍ طويل. والحالةُ المختارةُ تُمرَّر إلى الظاهر من الشريط.
+  // On mobile the status strip scrolls horizontally and secondary filters sit behind a button. Eleven boxes and three cards filled the first screen so no shipment showed before a long scroll. The selected status scrolls into view in the strip.
   const [showFilters, setShowFilters] = useState(false);
   const chipStripRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
@@ -497,19 +447,19 @@ function ShipmentOrdersInner() {
     if (!chip) return;
     const cr = chip.getBoundingClientRect();
     const sr = strip.getBoundingClientRect();
-    // بالفرق بين المستطيلين لا بـoffsetLeft — يصحّ في الاتّجاهين (RTL وLTR).
+    // Uses the difference between the rectangles, not offsetLeft, which is correct in both directions (RTL and LTR).
     strip.scrollBy({ left: (cr.left - sr.left) - (sr.width - cr.width) / 2, behavior: 'smooth' });
   }, [statuses]);
   const secondaryActive = [noteFilter, customerFilter, fromDate, toDate].filter(Boolean).length;
 
   if (loading) return <Spinner />;
 
-  // المجموعتان تُكتبان مرّةً: البطاقةُ تعدُّ ما تفلتره هي نفسُها.
+  // The two groups are defined once: the card counts what it filters itself.
   const IN_FLIGHT_KEYS = ['loading', 'uploaded', 'on_way'];
   const DONE_KEYS = ['arrived', 'bond_sent', 'bond_received', 'invoiced'];
   const inFlight = IN_FLIGHT_KEYS.reduce((s, k) => s + (stats?.byStatus[k] || 0), 0);
   const done = DONE_KEYS.reduce((s, k) => s + (stats?.byStatus[k] || 0), 0);
-  /** الحالاتُ المنتقاةُ هي هذه المجموعةُ بعينها؟ */
+  /** Are the selected statuses exactly this group? */
   const isSet = (keys: string[]) => keys.length === statuses.length && keys.every((k) => statuses.includes(k));
 
   return (
@@ -538,11 +488,8 @@ function ShipmentOrdersInner() {
 
       {error && <ErrorNotice error={error} lang={lang} onRetry={load} />}
 
-      {/* ── بطاقاتُ الحالات: هي الفلتر ─────────────────────────────────────
-          الرقمُ فوق الاسم يُقرأ من بعيد، والضغطُ ينتقي — وتنتقي أكثرَ من واحدة.
-          والأعدادُ محسوبةٌ تحت بقيّة الفلاتر لا تحت الحالة، فمن ضغط «متأخرة»
-          يظلّ يرى كم «في الطريق» ليضمّها. */}
-      {/* الجوّال: شريطٌ واحدٌ يُمرَّر أفقيًّا — الضغطُ نفسُه والتمييزُ نفسُه. */}
+      {/* Status cards are the filter. The number above the name reads from afar and a click selects, several at once. Counts are computed under the other filters, not under the status, so someone who clicked late still sees how many are in transit to add them. */}
+      {/* Mobile: one strip scrolled horizontally, with the same click and highlight. */}
       <div ref={chipStripRef} className="sm:hidden flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         <button type="button" onClick={() => pickStatuses([])}
           className={`shrink-0 inline-flex items-center gap-1.5 rounded-full px-3 min-h-[36px] text-xs font-semibold border whitespace-nowrap ${
@@ -591,11 +538,8 @@ function ShipmentOrdersInner() {
         </div>
       )}
 
-      {/* ── والباقي عددان لا خمسة ─────────────────────────────────────────
-          «إجمالي البيع» و«هامش الربح» كانا فوق شاشةٍ يفتحها فريقُ التشغيل كلَّ
-          يوم — رقمان ماليّان لا يُقرآن هنا ولا يُتصرَّف بهما، ومكانُهما صفحةُ
-          التحليلات. */}
-      {/* الجوّال: صفٌّ واحدٌ من ثلاث بطاقاتٍ صغيرة بلا أسطر تلميح. */}
+      {/* Two remaining figures, not five. Total sale and profit margin sat above a screen the operations team opens every day: two financial numbers not read or acted on there; they belong to the analytics page. */}
+      {/* Mobile: one row of three small cards with no hint lines. */}
       <div className="sm:hidden grid grid-cols-3 gap-2">
         {([
           [ar ? 'الإجمالي' : 'Total', total, 'text-[#f37121]', statuses.length === 0, () => pickStatuses([])],
@@ -610,8 +554,7 @@ function ShipmentOrdersInner() {
         ))}
       </div>
       <div className="hidden sm:grid grid-cols-2 sm:grid-cols-3 gap-3">
-        {/* والبطاقةُ تضغط بطاقاتِ الحالات تحتها: «قيد التنفيذ» ثلاثُ حالاتٍ
-            مجموعة، و«وصلت/مكتملة» أربع — والفلترُ يقبل عدّةً أصلًا. */}
+        {/* The card selects the status cards below it: in progress is a group of three statuses and arrived/completed is four; the filter already accepts several. */}
         <StatCard label={ar ? 'إجمالي الشحنات' : 'Total shipments'} value={total} accent="text-[#f37121]"
           onClick={() => pickStatuses([])} active={statuses.length === 0}
           hint={ar ? 'اضغط لعرض الكل' : 'tap to show all'} />
@@ -631,7 +574,7 @@ function ShipmentOrdersInner() {
         <div className="flex items-center gap-2 w-full sm:w-auto">
           <ViewSwitcher value={view} onChange={changeView} ar={ar} />
           {view === 'table' && <ColumnChooser columns={chooserCols} visible={visible} onChange={setVisible} ar={ar} />}
-          {/* الجوّال: الفلاترُ الثانويّة خلف زرّ، وعددُ المفعَّل منها عليه. */}
+          {/* Mobile: secondary filters behind a button showing how many are active. */}
           <button type="button" onClick={() => setShowFilters((v) => !v)} aria-expanded={showFilters}
             className={`sm:hidden ms-auto inline-flex items-center gap-1.5 min-h-[38px] px-3 rounded-lg border text-[13px] font-semibold ${
               showFilters || secondaryActive ? 'border-[#f37121] text-[#f37121] bg-orange-50' : 'border-slate-200 text-slate-600 bg-white'}`}>
@@ -641,12 +584,8 @@ function ShipmentOrdersInner() {
           </button>
         </div>
         <div className={`${showFilters ? 'flex flex-wrap gap-3 items-center w-full' : 'hidden'} sm:contents`}>
-        {/* ── مصدرُ الشحنة ─────────────────────────────────────────────────
-            أزرارٌ لا قائمةٌ منسدلة: هذا سؤالٌ يُسأل في كلّ جلسة، وكلُّ زرٍّ
-            يحمل عددَه تحت بقيّة الفلاتر — فيُعرف الحجمُ قبل الضغط. */}
-        {/* ── وفلترُ الملاحظة ──────────────────────────────────────────────
-            «أرِني ما كُتبت عليه ملاحظة» سؤالٌ يُسأل قبل الطباعة: أمر النقل
-            تحمل الملاحظة، فيُراجَع ما سيُطبَع فيها. */}
+        {/* Shipment source: buttons rather than a dropdown, since this is asked every session; each button carries its count under the other filters, so the size is known before clicking. */}
+        {/* Note filter: show shipments with a note is asked before printing, since the transport order carries the note and what will print is reviewed. */}
         <div className="w-56 grow sm:grow-0">
           <Select value={customerFilter} onChange={(e) => { setCustomerFilter(e.target.value); setPage(1); }}>
             <option value="">{ar ? 'كل العملاء' : 'All customers'}</option>
@@ -769,7 +708,7 @@ function ShipmentOrdersInner() {
               <th key={i} className={`font-semibold px-4 py-3 whitespace-nowrap ${i === 0 ? 'text-center sticky start-[44px] z-10 bg-slate-900' : 'text-start'}`}>
                 <span className="inline-flex items-center">
                   {h}
-                  {/* القمعُ يُفتَح فيُطلَب عمودُه وحدَه — لا الأعمدةُ العشرة. */}
+                  {/* Opening the funnel requests only its own column, not all ten. */}
                   {col && (
                     <ColumnFilter
                       field={col}
@@ -799,8 +738,7 @@ function ShipmentOrdersInner() {
               </td></tr>
             ) : orders.map((o) => {
               const st = orderStatus(o.status);
-              // حالةٌ زادها القسمُ من إعداداته لا صفوفَ ألوانٍ لها في الشيفرة —
-              // فتُلوَّن بلونها المضبوط بدل أن تظهر شارةً بلا لون.
+              // A status added by the section in its settings has no color row in code, so it is colored with its configured color instead of showing as a colorless badge.
               const sv = statusVocab.find((x) => x.key === o.status) || null;
               const pillStyle = st ? undefined : (sv ? { background: `${sv.color}1a`, color: sv.color } : undefined);
               const pillLabel = sv ? vocabLabel(sv, lang as Lang) : statusLabel(o.status, lang as Lang);
@@ -845,11 +783,7 @@ function ShipmentOrdersInner() {
                   )}
                   {on('status') && (
                   <td className="px-4 py-3 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                    {/* ── المتابعةُ نقلةُ حالةٍ ومعها سببُها ──────────────────
-                        القائمةُ المنسدلة تنقل الحالةَ بلا أن تسأل «لماذا»، ثمّ
-                        يُسأل بعد أسبوع «مين أخّرها؟» فلا جواب. صارت تفتح نافذةً
-                        تُختار فيها الحالةُ وتُكتب ملاحظةٌ **اختياريّة**، ويُقرأ
-                        فيها سجلُّ الانتقالات السابقة. */}
+                    {/* Follow-up is a status move with its reason. The dropdown moved status without asking why, and a week later nobody could say who delayed it. It now opens a dialog to choose the status and write an optional note, and shows the history of earlier transitions. */}
                     {editor ? (
                       <button type="button" onClick={() => openFollowUp(o)} disabled={busyId === o._id}
                         className={`inline-flex items-center gap-1.5 text-xs font-medium rounded-full px-2.5 py-1.5 transition-opacity hover:opacity-80 ${st ? `${st.bg} ${st.text}` : 'bg-slate-100 text-slate-700'}`}
@@ -943,7 +877,7 @@ function ShipmentOrdersInner() {
                       const all = followUpNotes(o);
                       const f = all[0];
                       if (!f) return <span className="text-slate-300">—</span>;
-                      // تُفتح كلُّ الملاحظات من هنا — للتعديل والحذف والإضافة بعدها.
+                      // All notes open from here, for edit, delete and add afterwards.
                       return (
                         <button type="button" onClick={(e) => { e.stopPropagation(); setNoteFor(o); }}
                           className="block w-full text-start rounded-md hover:bg-sky-50 -mx-1 px-1" title={`${f.note}${f.byName ? ` — ${f.byName}` : ''}`}>
@@ -980,10 +914,7 @@ function ShipmentOrdersInner() {
                           <Pencil className="w-4 h-4" />
                         </button>
                       )}
-                      {/* ── والعرضُ مكانَ الحذف ──────────────────────────
-                          الصفُّ يحمل خمسةَ عشرَ عمودًا لا يظهر منها في الجدول
-                          إلّا ما يسع، والباقي يُعرَف بفتح التعديل — وهو بابُ
-                          كتابةٍ يُفتَح لقراءة. فصار للقراءة بابُها. */}
+                      {/* View instead of delete. A row has fifteen columns of which the table shows only what fits and the rest were seen by opening edit, a write door opened for reading. Reading has its own door now. */}
                       <button type="button" onClick={() => setDetail(o)}
                         className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-100"
                         title={ar ? 'عرض التفاصيل' : 'View details'}>
@@ -1002,11 +933,7 @@ function ShipmentOrdersInner() {
 
       {total > pageSize && <TablePager compact page={page} pageSize={pageSize} total={total} ar={ar} onPage={setPage} />}
 
-      {/* ── نافذةُ التفاصيل ──────────────────────────────────────────────────
-          الجدولُ يعرض ما يسعه، والحمولةُ فيها أربعون حقلًا: المدنُ والعناوينُ
-          والسائقُ ومركبتُه والأسعارُ ونوعُ التأجير والحقولُ التي زادها القسمُ
-          من إعداداته. وكانت تُقرأ بفتح شاشة التعديل — بابُ كتابةٍ يُفتَح
-          لقراءة، فيُحفَظ منه تعديلٌ بالخطأ. فصار للقراءة بابُها. */}
+      {/* Details dialog. The table shows what fits while a load has about forty fields: cities, addresses, driver and vehicle, prices, rental type and fields the section added in settings. These were read by opening the edit screen, a write door opened for reading that could save an accidental edit; reading has its own door now. */}
       {detail && (() => {
         const d = detail;
         const sv2 = statusVocab.find((x) => x.key === d.status) || null;
@@ -1117,7 +1044,7 @@ function ShipmentOrdersInner() {
                   <Row k={ar ? 'تاريخ الإنشاء' : 'Created at'} v={fmtDT(d.createdAt, lang as Lang)} />
                 </Group>
 
-                {/* أرقامُ المال لمن يملكها — الجدولُ نفسُه يعرضها لهؤلاء. */}
+                {/* Money figures only for those who have them; the table shows them to the same people. */}
                 <Group title={ar ? 'الأجرة والدفع' : 'Fare & payment'}>
                   <Row k={ar ? 'سعر البيع' : 'Selling price'} v={money(d.sellPrice)} />
                   <Row k={ar ? 'سعر الشراء' : 'Buying price'} v={money(d.buyPrice)} />
@@ -1127,7 +1054,7 @@ function ShipmentOrdersInner() {
                   <Row k={ar ? 'طريقة الدفع' : 'Payment method'} v={d.paymentMethod} />
                 </Group>
 
-                {/* الحقولُ التي زادها القسمُ من إعداداته — تُقرأ بأسمائها لا بمفاتيحها. */}
+                {/* Fields the section added in its settings, read by their names, not their keys. */}
                 {d.customFields && Object.keys(d.customFields).length > 0 && (
                   <div className="md:col-span-2">
                     <Group title={ar ? 'حقول إضافية' : 'Extra fields'}>
@@ -1136,7 +1063,7 @@ function ShipmentOrdersInner() {
                   </div>
                 )}
 
-                {/* سجلُّ الحالات — نفسُه المعروض في نافذة المتابعة. */}
+                {/* Status history, the same shown in the follow-up dialog. */}
                 {(d.statusLog || []).length > 0 && (
                   <div className="md:col-span-2">
                     <Group title={ar ? 'سجلّ الحالات' : 'Status history'}>
@@ -1160,7 +1087,7 @@ function ShipmentOrdersInner() {
                     </Group>
                   </div>
                 )}
-                {/* مهامّ JP المربوطة بهذه الشحنة — تُضاف من هنا. */}
+                {/* JP tasks linked to this shipment, added from here. */}
                 <JpTaskPanel section="shipment-orders" kind="shipment" refId={String(d._id)} ar={ar} />
               </div>
             </div>
@@ -1168,10 +1095,7 @@ function ShipmentOrdersInner() {
         );
       })()}
 
-      {/* ── نافذةُ المتابعة ───────────────────────────────────────────────────
-          الحالةُ تُنقَل، والملاحظةُ اختياريّة — تُكتب حين يكون للنقلة سبب
-          («العميل أجّل التحميل»، «الشاحنة تعطّلت في الطريق») وتُترك حين لا
-          يكون. والسجلُّ تحتها يقول من نقلها ومتى وبأيّ سبب. */}
+      {/* Follow-up dialog. The status moves and the note is optional: written when the move has a reason (customer postponed loading, truck broke down) and left when not. The history below says who moved it, when and why. */}
       {noteFor && (
         <NoteModal order={noteFor} ar={ar} onClose={() => setNoteFor(null)} onSaved={onNoteSaved} />
       )}
@@ -1201,7 +1125,7 @@ function ShipmentOrdersInner() {
                     const on = fu.status === s2.key;
                     return (
                       <button key={s2.key} type="button" onClick={() => setFu({ ...fu, status: s2.key })}
-                        // المختارُ يُعرَف بلونه — والحلقةُ البرتقاليّة فوقه تزاحمه.
+                        // The selected one is identified by its color; an orange ring on top competes with it.
                         className={`min-h-[48px] text-[15px] font-bold rounded-xl px-3 py-2.5 border-2 transition-colors ${
                           on ? 'text-white border-transparent' : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'}`}
                         style={on ? { background: s2.color } : undefined}>
@@ -1217,7 +1141,7 @@ function ShipmentOrdersInner() {
                   <label className="block text-sm font-semibold text-slate-800 mb-1.5">
                     {ar ? 'سبب الإلغاء' : 'Cancellation reason'}<span className="text-red-500 ms-1">*</span>
                   </label>
-                  {/* من «أسباب الإلغاء» في إعدادات القسم — وما ليس فيها يُضاف من هنا فيظهر هناك. */}
+                  {/* From cancellation reasons in section settings; a reason not in the list is added here and appears there. */}
                   <ManagedSelect type="so_cancel_reason" storeLabel value={fu.reason || ''} onChange={(v) => setFu({ ...fu, reason: v })}
                     placeholder={ar ? 'اختر السبب' : 'Choose the reason'}
                     className="w-full px-3 py-2 rounded-lg bg-white border border-slate-200 text-sm" />
@@ -1234,7 +1158,7 @@ function ShipmentOrdersInner() {
                   className="w-full px-4 py-3 rounded-xl bg-white border border-slate-300 text-base focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
               </div>
 
-              {/* المرفقُ يظهر حين تطلبه الحالة — ولا يُعرَض في غيرها فيُشغِل. */}
+              {/* The attachment appears when the status requires it, and is not shown otherwise since it would clutter. */}
               {STATUS_NEEDS_FILE.has(fu.status) && (
                 <div>
                   <label className="block text-sm font-semibold text-slate-800 mb-1.5">
@@ -1279,7 +1203,7 @@ function ShipmentOrdersInner() {
                           </span>
                         </div>
                         {h.note ? <p className="text-sm text-slate-800 mt-1 whitespace-pre-wrap break-words">{h.note}</p> : null}
-                        {/* المرفقُ يُقرأ من حيث قُيِّد — لا يُبحَث عنه في مكانٍ آخر. */}
+                        {/* The attachment is read from where it was attached, not searched for elsewhere. */}
                         {h.fileUrl ? (
                           <a href={h.fileUrl} target="_blank" rel="noreferrer"
                             className="inline-flex items-center gap-1 mt-1 text-[11.5px] font-semibold text-[#f37121] hover:underline">
@@ -1312,6 +1236,6 @@ function ShipmentOrdersInner() {
 }
 
 export default function ShipmentOrdersPage() {
-  // useSearchParams يحتاج حدَّ Suspense في موجّه التطبيقات.
+  // useSearchParams needs a Suspense boundary in the app router.
   return <Suspense fallback={<Spinner />}><ShipmentOrdersInner /></Suspense>;
 }

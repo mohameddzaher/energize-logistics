@@ -1,27 +1,17 @@
 /**
- * personLookup — أيُّ ملفٍّ في الموارد البشريّة هذا الرجل؟
- *
- * ── لماذا هنا ───────────────────────────────────────────────────────────────
- * قاعدةُ صاحب الشركة: «سجلٌّ واحدٌ للشخص في النظام كلِّه» — والشخصُ ملفُّه في
- * الموارد البشريّة (`Employee`)، يُعرَف برقم هويّته: في `iqamaNumber` للمقيم وفي
- * `nationalId` للسعوديّ (ويُنسخ الثاني إلى الأوّل عند الحفظ، لكنّ ملفّاتٍ قديمةً
- * لم تُحفَظ بعده). فالبحثُ في العمودين معًا، وإلّا قُرئ رقمٌ مكتوبٌ كأنّه مفقود.
- *
- * ── وصلتُه بـ `utils/personRef` ─────────────────────────────────────────────
- * بابُ الربط العامّ للأشخاص يُكتب في `utils/personRef` (بحثٌ برقم الهويّة ثمّ
- * بالاسم المطويّ، و`displayName`). وهذا الملفُّ نسخةٌ صغيرةٌ بالمعنى نفسِه لأقسامٍ
- * كُتبت قبله (سائقو طلبات الشحنات، الفنّيّون، المستخدمون) — **يُستبدَل به حين
- * يصل، ولا يُضاف إليه شيء**: قاعدتان للشخص الواحد تتباعدان بصمت.
+ * personLookup: which HR file is this person?
+ * Rule: one record per person system-wide, and the person's file is HR `Employee`, identified by ID number: `iqamaNumber` for residents, `nationalId` for Saudis (the second is copied to the first on save, but older files were not saved since). So both columns are searched, or a written number would read as missing.
+ * Relation to `utils/personRef`: the general person-link door lives there (ID number, then folded name, plus `displayName`). This file is a small same-meaning copy for sections written before it (shipment-order drivers, technicians, users). It is to be replaced by personRef when that arrives, and nothing is added here: two rules for one person drift apart silently.
  */
 const S = (v) => String(v == null ? '' : v).trim();
 
-/** رقمُ الهويّة بلا مسافاتٍ وبأرقامٍ غربيّة — «٢٤٥ ٦٧» و«24567» رقمٌ واحد. */
+/** ID number without spaces and with Latin digits, so the Arabic-digit and Latin forms are one number. */
 const idKey = (v) => S(v).replace(/[٠-٩]/g, (d) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d)).replace(/\s+/g, '');
 
-/** الاسمُ الذي يُعرَض للشخص: الاسمُ العربيّ الكامل إن وُجد، وإلّا الأوّلُ والأخير. */
+/** Display name: full Arabic name if present, otherwise first and last. */
 const displayName = (e) => (e ? (S(e.arabicName) || [S(e.firstName), S(e.lastName)].filter(Boolean).join(' ')) : '');
 
-/** طيُّ الاسم للمقارنة: صورُ الحرف والمسافاتُ وحالةُ اللاتينيّة لا تصنع رجلًا ثانيًا. */
+/** Fold a name for comparison: letter variants, spaces and Latin case do not make a second person. */
 const foldName = (s) => S(s)
   .replace(/[ً-ْـ]/g, '')
   .replace(/[أإآٱ]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه').replace(/ؤ/g, 'و').replace(/ئ/g, 'ي')
@@ -32,7 +22,7 @@ const foldName = (s) => S(s)
 
 const SELECT = '_id firstName lastName arabicName iqamaNumber nationalId idType phone nationality employmentStatus';
 
-/** ملفٌّ واحدٌ برقم الهويّة، أو null. */
+/** One file by ID number, or null. */
 async function byIdNumber(id, select = SELECT) {
   const k = idKey(id);
   if (!k) return null;
@@ -40,7 +30,7 @@ async function byIdNumber(id, select = SELECT) {
   return Employee.findOne({ $or: [{ iqamaNumber: k }, { nationalId: k }] }).select(select).lean();
 }
 
-/** دفعةً واحدة: Map من رقم الهويّة إلى الملفّ. الرقمُ الذي يحمله ملفّان يُترَك (لا يُخمَّن). */
+/** Batch lookup: Map from ID number to file. A number held by two files is skipped, not guessed. */
 async function byIdNumbers(ids, select = SELECT) {
   const keys = [...new Set((ids || []).map(idKey).filter(Boolean))];
   const out = new Map();

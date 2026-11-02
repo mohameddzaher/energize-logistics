@@ -1,15 +1,8 @@
 'use client';
 /**
- * ربطُ الحسابات — قرارٌ بشريٌّ لا تخمينُ آلة.
- *
- * ── لماذا شاشة ─────────────────────────────────────────────────────────────
- * أسماءُ العملاء عندنا جاءت من كشوف التشغيل، وأسماءُ الدفتر من المحاسبة. من
- * ٢٥٣ حسابًا طابق الاسمُ ٣٧. وما تجاوز تشابهُه حدًّا عاليًا رُبط تلقائيًّا، وما
- * دونه هنا.
- *
- * ولا يُدمَج ما تشابه: الدمجُ ينقل مديونيّةً من حسابٍ إلى حساب، والتشابهُ
- * يُخطئ — «شركة فكر للاتصالات» و«شركة الفترة المتقدمة للاتصالات» تتشابهان
- * ولا تجمعهما جهة. وخطأٌ هنا لا يُكتشف إلّا حين يُطالَب عميلٌ بمالِ غيرِه.
+ * Account linking: a human decision, not a machine guess.
+ * Customer names came from operating statements and ledger names from accounting; high-similarity matches were linked automatically, the rest are here.
+ * Similar names are not merged: a merge moves debt between accounts and similarity is sometimes wrong (two telecom companies with similar names belong to no single party). A mistake is found only when a customer is billed for another's money.
  */
 import { useState, useEffect, useCallback } from 'react';
 import { useLanguage } from '@/context/LanguageContext';
@@ -96,7 +89,7 @@ export default function PartyLinksPage() {
                 </p>
               )}
             </div>
-            {/* درجةُ التشابه تُعرَض كما هي: القارئُ يقرّر بها، فإخفاؤها يخفي أساسَ القرار. */}
+            {/* The similarity score is shown as is: the reader decides by it, and hiding it hides the basis of the decision. */}
             <span className={`px-2 py-0.5 rounded text-[11px] font-semibold ${
               r.score >= 0.7 ? 'bg-emerald-50 text-emerald-700' : r.score >= 0.5 ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-700'}`}
               title={ar ? 'درجة تشابه الأسماء' : 'name similarity'}>

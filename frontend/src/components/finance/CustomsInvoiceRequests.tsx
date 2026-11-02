@@ -1,14 +1,8 @@
 'use client';
 /**
- * طلباتُ الفوترة من قسم التخليص كما تراها الإدارةُ الماليّة (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢).
- *
- * التخليصُ لا يُصدر فاتورةَ العميل: يكتب بنودَها ويطلبها. والماليّةُ تفوترها في
- * نظامها ثمّ تقول هنا «تمّت الفوترة» — ومعها رقمُ الفاتورة والفاتورةُ النهائيّة
- * (اختياريّة) — فتصير المعاملةُ مفوترةً وتظهر الفاتورةُ في معاملة التخليص. أو
- * تعيده للتصحيح، أو ترفضه، بسببٍ يقرؤه التخليص.
- *
- * وهي غيرُ طلبات الصرف (CustomsPaymentRequests): تلك ما ندفعه، وهذه ما نفوتره.
- * والعددان معًا هما الرقمُ بجانب «ماليات التخليص الجمركي» في الشريط الجانبيّ.
+ * Billing requests from the clearance section as Finance sees them.
+ * Clearance does not issue the customer invoice: it writes the items and requests it. Finance invoices in its own system, then marks it invoiced here with the invoice number and the final invoice (optional), so the transaction becomes invoiced and the invoice shows in the clearance transaction. Or it returns it for correction, or rejects it, with a reason clearance reads.
+ * Distinct from payment requests (CustomsPaymentRequests): those are what we pay, these are what we invoice. Both counts make the number beside customs finance in the sidebar.
  */
 import { Fragment, useCallback, useEffect, useState } from 'react';
 import api from '@/lib/api';

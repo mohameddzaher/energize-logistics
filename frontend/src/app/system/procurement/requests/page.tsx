@@ -97,8 +97,7 @@ export default function PurchaseRequestsPage() {
     { header: tx.colPriority, key: 'priority', width: 14, transform: (v) => priorityLabel(v) },
     { header: tx.colStatus, key: 'status', width: 18, transform: (v) => statusLabel(v) },
   ];
-  // البحثُ والحالة يُنفَّذان على الخادم، فالقائمة الحاضرة نتيجةُ فلترٍ لا السجلّ كلّه؛
-  // ولذلك «الكلّ» يعيد النداء بلا معاملات بدل أن يسمّي المفلتَر كلًّا.
+  // Search and status run on the server, so the present list is a filter result, not the full record; "all" calls again without params rather than calling the filtered set all.
   const REQUESTS_SHEET = ar ? 'طلبات الشراء' : 'Purchase Requests';
   const hasActiveFilters = !!(search.trim() || statusF);
   const fetchAllForExport = async () => {

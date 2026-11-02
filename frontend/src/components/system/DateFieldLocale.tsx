@@ -1,40 +1,12 @@
 'use client';
 /**
- * خاناتُ التاريخ تُقرأ صحيحةً عند كلّ الناس.
- *
- * ── العطب ────────────────────────────────────────────────────────────────
- * `<input type="date">` وهي فارغةٌ تكتب صيغتَها من **إعداد المنطقة في جهاز
- * المستخدم** لا من صفحتنا. فمن كان جهازُه عربيًّا رأى «يوم/شهر/سنة» داخل خانةٍ
- * يفرضها كروم من اليسار إلى اليمين، فقرأها مقلوبةً «موي/رهش/ةنس». والشاشةُ
- * الواحدةُ تختلف بين اثنين يجلسان متجاورَين.
- *
- * ولا يُصلَح ذلك بـCSS ولا بـ`lang`: كروم يفرض `ltr` على الخانة فرضًا ويتجاهل
- * لغةَ العنصر — قِيسَ ذلك ولم يُخمَّن. راجع `styles/globals.css`.
- *
- * ── فما يفعله هذا الملفّ ─────────────────────────────────────────────────
- * يضع `data-empty="1"` على كلّ خانةٍ فارغة، فتُخفي CSS نصَّ المتصفّح وترسم
- * مكانَه `dd/mm/yyyy` — نصًّا نملكه، لاتينيًّا لا ينقلب، واحدًا عند الجميع.
- * ويُرفَع الوسمُ بمجرّد امتلائها فيعود نصُّها الأصليّ، وليس فيه حينئذٍ إلّا
- * الأرقام.
- *
- * ── ويفتح التقويمَ بالضغط على الخانة كلِّها ───────────────────────────────
- * الضغطُ على خانة التاريخ لا يفتح التقويمَ في متصفّحاتٍ كثيرة: يفتحه الضغطُ
- * على أيقونته وحدَها، وهي صغيرةٌ وقد تكون باهتةً على الأبيض. فيُقرأ الحقلُ
- * نصًّا يُكتب بالإصبع — ويُكتب فعلًا، فيدخل تاريخٌ بصيغةٍ غيرِ صيغتنا أو لا
- * يدخل شيءٌ ويُقال «مش بعرف أختار».
- *
- * و`showPicker()` يفتحه من أيّ موضعٍ في الخانة. وهو هنا للكلّ: مئتا خانةٍ في
- * سبعةٍ وثمانين ملفًّا، وما يُكتب في شاشةٍ واحدةٍ يُنسى في الشاشة التالية.
- * (`DateRangeFilter` يفعلها لنفسه أصلًا، وتكرارُها لا يضرّ — نداءٌ واحدٌ.)
- *
- * ── ولماذا مراقبٌ للـDOM ─────────────────────────────────────────────────
- * الخاناتُ مئتان في سبعةٍ وثمانين ملفًّا، وأكثرُها داخل نوافذَ تُبنى عند فتحها
- * لا مع الصفحة. ولا يصحّ أن يُعتمَد على أن يتذكّر ذلك كاتبُ كلِّ شاشةٍ جديدة —
- * يُنسى مرّةً فيعود العطبُ في موضعٍ لا يُلحَظ.
+ * Date inputs read correctly for everyone. An empty date input writes its format from the OS locale and Chrome forces ltr, so CSS and `lang` cannot fix it (see styles/globals.css).
+ * Sets data-empty="1" on empty inputs so CSS paints dd/mm/yyyy instead, and opens the picker on a click anywhere via showPicker().
+ * A DOM observer is used because ~200 inputs sit in ~87 files, many inside modals built on open.
  */
 import { useEffect } from 'react';
 
-// `time` مستثنًى: الساعةُ لا يختلف ترتيبُها بين اللغات كاختلاف التاريخ.
+// `time` is excluded: its order does not vary by locale like dates do.
 const TYPES = ['date', 'datetime-local', 'month', 'week'];
 const SELECTOR = TYPES.map((t) => `input[type="${t}"]`).join(',');
 
@@ -52,8 +24,7 @@ export default function DateFieldLocale() {
   useEffect(() => {
     markAll(document);
 
-    // الخانةُ تمتلئ وتفرغ بعد رسمها، وقد تُملأ من الشيفرة لا من لوحة المفاتيح،
-    // فيُلتقط الحدثان في مرحلة الالتقاط ليصل ما يقع داخل النوافذ أيضًا.
+    // Inputs are filled and emptied after render, possibly from code; both events are caught in the capture phase so ones inside modals are seen too.
     const onChange = (e: Event) => {
       const t = e.target as Element | null;
       if (t?.matches?.(SELECTOR)) mark(t);
@@ -62,12 +33,11 @@ export default function DateFieldLocale() {
     document.addEventListener('change', onChange, true);
     document.addEventListener('blur', onChange, true);
 
-    // الضغطُ في أيّ موضعٍ من الخانة يفتح التقويمَ الأصليّ. والمتصفّحُ الذي لا
-    // يعرف `showPicker` يبقى كما هو — لا يُرمى خطأٌ في وجه المستخدم.
+    // A click anywhere in the field opens the native picker; browsers without `showPicker` are left as they are, no error.
     const onClick = (e: Event) => {
       const t = e.target as (HTMLInputElement & { showPicker?: () => void }) | null;
       if (!t?.matches?.(SELECTOR) || t.disabled || t.readOnly) return;
-      try { t.showPicker?.(); } catch { /* يحتاج تفاعلًا مباشرًا في بعضها */ }
+      try { t.showPicker?.(); } catch { /* Some of them need direct interaction. */ }
     };
     document.addEventListener('click', onClick, true);
 

@@ -1,47 +1,28 @@
 /**
- * b2cBoard — لوحةُ قسم الأفراد (B2C): تعريفاتٌ واحدةٌ تقرؤها اللوحةُ والقائمتان.
- *
- * ── لماذا ملفٌّ واحد ────────────────────────────────────────────────────────
- * طلبُ صاحب الشركة (٢٠٢٦/١٠/٢١): كلُّ رقمٍ في اللوحة يُضغَط فيفتح أصحابَه —
- * الناسَ في «موظفو النقل الخفيف» والمركباتِ في «مركبات النقل الخفيف». فإن حسبت
- * اللوحةُ «مفوَّض» بمعنى وحسبته القائمةُ بمعنى آخر، قال الكارتُ ثلاثين وفتح
- * ثمانيةً وعشرين. فالمعاني هنا مرّةً واحدة: حالةُ العمل، والفئةُ، ونوعُ
- * الارتباط، والسجلّ، وحالةُ التفويض، ومركباتُ القسم — وفلاترُها.
- *
- * ── حالةُ العمل: أربعٌ تُجمَع إلى الإجمالي ──────────────────────────────────
- * يعمل · في إجازة · موقوف · حادث. وهي حالةُ اليوم التشغيليّة لا حالةُ التوظيف:
- *   · الموارد البشريّة وحدَها تكتب التوظيفَ وإنهاءَ الخدمة (قاعدةُ ٢٠٢٦/١٠/١٩) —
- *     فإجازتُها (`on_leave`) وإيقافُها (`suspended`) يغلبان هنا ولا يُعدَّلان من القسم.
- *   · وما سوى ذلك يكتبه القسمُ في سجلّه (`LightTransportEmployee.opStatus`): مندوبٌ
- *     أُوقف عن التوصيل أو وقع له حادثٌ أو أُذن له بإجازةٍ قصيرة — ولا يمسّ ملفَّه
- *     في الموارد البشريّة. ولا يُنسَخ إليها: «موقوف» هناك معناه «في مرحلة نقل
- *     الكفالة»، فنسخُه يقول عن مندوبٍ أوقفه مشرفُه إنّه ينقل كفالتَه.
- *   · ومن انتهت خدمتُه لا يُعَدّ (قاعدةُ «ended staff»).
- *
- * ── التفويضُ يُقرأ من سجلّ المركبات ──────────────────────────────────────────
- * `VehicleMaster.authorizedPerson` هو المرجع. ويُقرأ هنا عبر `authOf` وحدَها كي
- * يُستبدَل مصدرُه في موضعٍ واحدٍ إن توحّدت سجلّاتُ التفويض.
+ * b2cBoard: B2C section board definitions read by the board and both lists, so a clickable card number and the list it opens always agree.
+ * Work status is today's operational state (working, on leave, suspended, accident): HR alone writes employment, so HR leave wins, the rest is the section's `opStatus`, and ended staff are not counted.
+ * Authorization is read only through `authOf` from VehicleMaster.authorizedPerson.
  */
 const mongoose = require('mongoose');
 const { fold: foldAr } = require('./b2cSupervisors');
 const ENG = require('./hrEngagement');
 
 const S = (v) => String(v == null ? '' : v).trim();
-/** قيمُ الفلتر مفصولةً بفاصلة — كفلاتر الموارد البشريّة السريعة. */
+/** Filter values separated by commas, like the HR quick filters. */
 const vals = (v) => S(v).split(',').map((x) => x.trim()).filter(Boolean);
 
-// ── حالةُ العمل ─────────────────────────────────────────────────────────────
+// Work status.
 const ENDED = 'إنهاء خدمة';
 const WORKING = 'يعمل';
 const LEAVE = 'إجازة';
 const SUSPENDED = 'موقوف';
 const ACCIDENT = 'حادث';
 const WORK_STATES = [WORKING, LEAVE, SUSPENDED, ACCIDENT];
-/** ما يكتبه القسمُ (`opStatus`) ← اسمُه. والفراغُ «يعمل». */
+/** What the section writes (`opStatus`) to its name; empty means working. */
 const OP_STATUS = { leave: LEAVE, suspended: SUSPENDED, accident: ACCIDENT };
-// و`suspended` في الموارد البشريّة مرحلةُ نقل كفالة — ليس «موقوفًا» هنا.
+// `suspended` in HR is a sponsorship-transfer stage, not suspended here.
 const HR_STATUS_AR = { terminated: ENDED, suspended: WORKING, active: WORKING, on_leave: LEAVE };
-/** صيغٌ قديمةٌ للحالة نفسِها — روابطُ محفوظةٌ ونسخُ تطبيقٍ قديمة. */
+/** Legacy spellings of the same status, for saved links and old app versions. */
 const normStatus = (v) => {
   const x = S(v);
   if (x === 'متوقف') return SUSPENDED;
@@ -52,15 +33,10 @@ const normStatus = (v) => {
 const hrOf = (row) => (row && row.employee && typeof row.employee === 'object' ? row.employee : null);
 
 /**
- * الحالةُ المعروضة (تصحيحُ صاحب الشركة، ٢٠٢٦/١٠/٢١). الترتيبُ هو القاعدة:
- *   ١. إنهاءُ الخدمة في الموارد البشريّة — يُستثنى من كلّ رقم.
- *   ٢. حادث · موقوف — من القسم وحدَه (`opStatus`): «موقوف» توقّفٌ تشغيليّ (لا يعمل
- *      على مركبة)، لا إيقافُ الموارد البشريّة. و`suspended` هناك (مرحلةُ نقل الكفالة)
- *      لا يُقرأ «موقوفًا» هنا.
- *   ٣. إجازة — من أيّ الجهتين: إجازةُ الموارد البشريّة (`on_leave` أو إجازةٌ معتمَدةٌ
- *      تشمل اليوم — `row._hrLeave`) أو إجازةُ القسم (`opStatus = leave`).
- *   ٤. مَن لا ملفَّ له: آخرُ ما كُتب في السجلّ القديم (إجازة/موقوف).
- *   ٥. وإلّا: يعمل.
+ * Displayed status, in this order:
+ * 1. HR service end: excluded from every number.
+ * 2. Accident or suspended: section opStatus only; HR suspended (sponsorship transfer) is not read as suspended here.
+ * 3. Leave: HR leave (on_leave or approved leave covering today, row._hrLeave) or section leave; no HR file uses the last legacy value; else working.
  */
 function shownStatus(row) {
   const hr = hrOf(row);
@@ -76,7 +52,7 @@ function shownStatus(row) {
   }
   return WORKING;
 }
-/** مَن قال الحالة: القسم (`opStatus`) أو الموارد البشريّة (إجازتُها وإنهاءُ الخدمة) أو لا أحد. */
+/** Who set the status: the section (`opStatus`), HR (its leave and service end), or nobody. */
 function statusSource(row) {
   if (OP_STATUS[row.opStatus]) return 'section';
   const es = hrOf(row)?.employmentStatus;
@@ -84,10 +60,7 @@ function statusSource(row) {
   return '';
 }
 
-/**
- * مَن عليه إجازةٌ معتمَدةٌ في الموارد البشريّة تشمل اليوم — يُعلَّم `_hrLeave`. سؤالٌ
- * واحدٌ لكلّ الصفوف (لا سؤالٌ لكلّ صفّ)، واليومُ بتوقيت الشركة.
- */
+/** People with an approved HR leave covering today, marked `_hrLeave`. One query for all rows (not per row), with today in company time. */
 async function markHrLeave(rows) {
   const ids = rows.map((r) => hrOf(r)?._id).filter(Boolean);
   if (!ids.length) return rows;
@@ -100,13 +73,8 @@ async function markHrLeave(rows) {
   return rows;
 }
 
-// ── الفئة: مندوب · إداري · فني ─────────────────────────────────────────────
-/**
- * الفئةُ من «الفئة الوظيفية» في الموارد البشريّة (إداري · سائق · فني) متى كُتبت
- * — و«سائق» هناك هو المندوبُ هنا — وإلّا من الوظيفة في سجلّ القسم، وإلّا من
- * المسمّى في الملفّ. والسائقُ في سجلّ القسم ميدانٌ لا مكتب، فيُعَدّ مع المناديب.
- * و`none` لمن لا يُعرَف عنه شيء: يُعرَض رقمًا صغيرًا يُملأ لا يذوب في غيره.
- */
+// Category: rep, administrative, technical.
+/** Category from the HR job category (administrative, driver, technical) when written (driver there means rep here), otherwise from the job in the section register, otherwise from the title in the file. A driver in the section register is field staff, not office, so counts with reps. `none` is for someone nothing is known about: shown as a small number to fill in rather than hidden inside another. */
 const REP_RX = /مندوب|سائق|سايق|rep|driver|courier/i;
 const TECH_RX = /فني|ميكانيك|كهرب|سمكر|tech|mechanic/i;
 const kindOfTitle = (t) => {
@@ -125,14 +93,10 @@ function categoryOf(row) {
 }
 const CATEGORY_AR = { rep: 'مندوب', admin: 'إداري', tech: 'فني', none: 'غير مصنَّف' };
 
-// ── نوعُ الارتباط ──────────────────────────────────────────────────────────
-/**
- * على الكفالة / فريلانسر / متدرّب من «رقم السجل التجاري» في الموارد البشريّة
- * (utils/hrEngagement)، وخانةُ القسم لمن لا ملفَّ له. واليوزرُ المؤجَّرُ قسمٌ
- * قائمٌ بذاته، و`none` لمن لم يُكتب له شيء.
- */
+// Engagement type.
+/** Sponsored, freelancer or trainee from the commercial register number in HR (utils/hrEngagement), and the section's field for someone with no file. A rented-out user is a section of its own, and `none` is for someone with nothing written. */
 function engagementOf(row) {
-  // تأجيرٌ ساري مربوطٌ بالصفّ أوّلًا، ونوعُ العقد احتياطًا — utils/ltRental.
+  // An active rental linked to the row first, contract type as fallback; see utils/ltRental.
   if (require('./ltRental').isRented(row)) return 'users';
   const hr = hrOf(row);
   if (hr) return ENG.engagementOf(hr) || 'none';
@@ -144,24 +108,20 @@ function engagementOf(row) {
 }
 const ENGAGEMENT_AR = { sponsored: 'على الكفالة', freelance: 'فريلانسر', trainee: 'متدرّب', users: 'يوزرات', none: 'غير محدد' };
 
-/** السجلُّ التجاريّ: من ملفّ الموارد البشريّة، وإلّا خانةُ القسم. */
+/** Commercial register: from the HR file, otherwise the section field. */
 const registerOf = (row) => {
   const hr = hrOf(row);
   return S(hr ? hr.registerNumber : row.registerNumber) || '—';
 };
 
-// ── المشروع ────────────────────────────────────────────────────────────────
+// Project.
 const UNSET = '(غير محدد)';
-/** «هنقرستيشن» و«هنجرستيشن» مشروعٌ واحد. */
+/** Two spellings of the Hungerstation name are one project. */
 const projectKey = (p) => (S(p) === UNSET ? '' : foldAr(S(p)).replace(/\s+/g, '').replace(/ق/g, 'ج'));
 
-// ── التفويض — من سجلّ المركبات (المرجع) ────────────────────────────────────
+// Authorization, from the vehicle register (the reference).
 const AUTH_AR = { authorized: 'مفوَّض', expired: 'تفويض منتهٍ', none: 'بلا تفويض' };
-/**
- * حالةُ تفويض المركبة: `authorized` | `expired` | `none` — بالمعنى نفسِه الذي
- * تعرضه صفحةُ «مركبات النقل الخفيف» (اسمُ المفوَّض أو رقمُ التفويض، والنهايةُ).
- * الموضعُ الوحيدُ الذي يقرأ مصدرَ التفويض — يُبدَّل هنا إن تبدّل.
- */
+/** Vehicle authorization state: `authorized` | `expired` | `none`, with the same meaning as the light transport vehicles page (authorized person name or authorization number, and end date). The only place that reads the authorization source; change it here if the source changes. */
 function authOf(v, today = new Date().toISOString().slice(0, 10)) {
   const a = (v && v.authorizedPerson) || {};
   const has = !!(S(a.name) || S(a.authorizationNumber));
@@ -171,12 +131,8 @@ function authOf(v, today = new Date().toISOString().slice(0, 10)) {
   return 'authorized';
 }
 
-// ── مركباتُ القسم ──────────────────────────────────────────────────────────
-/**
- * كلُّ مركبةٍ يَنسبها قسمُ المركبات إلى النقل الخفيف — بقطاعها («النقل الخفيف»
- * أو رمزه) أو بإدارتها (أحد مشاريع القسم) — ومعها كلُّ مركبةٍ عليها راكبٌ من
- * سجلّ القسم. مفوَّضةً كانت أو لا: التفويضُ حالةٌ تُعَدّ لا شرطُ دخول.
- */
+// Section vehicles.
+/** Every vehicle the vehicles section attributes to light transport, by its sector (the light transport name or its code) or by its department (one of the section's projects), plus every vehicle with a rider from the section register. Authorized or not: authorization is a counted state, not an entry condition. */
 const LT_VEHICLE_PROJECTS = /^(كيتا|هنجرستيشن|هنقرستيشن|امازون|أمازون|نينجا)$/;
 const vehicleScope = (riddenIds = []) => ({
   isActive: { $ne: false },
@@ -186,10 +142,10 @@ const vehicleScope = (riddenIds = []) => ({
   ],
 });
 
-// ── الفلاتر ────────────────────────────────────────────────────────────────
+// Filters.
 /**
- * فلاترُ اللوحة السريعة بترتيبها — مفاتيحُها نفسُها في رابط القائمتين.
- *   project · rep · vehicle · auth · cr (السجل) · engagement · category · city · status
+ * The board's quick filters in order; the keys are the same ones used in both lists' URLs.
+ * project, rep, vehicle, auth, cr (register), engagement, category, city, status
  */
 const QUICK = [
   { key: 'project', ar: 'المشروع', en: 'Project' },
@@ -202,17 +158,13 @@ const QUICK = [
   { key: 'city', ar: 'المدينة', en: 'City' },
   { key: 'status', ar: 'حالة العمل', en: 'Work status' },
 ];
-/** مفاتيحُ تخصّ الإنسانَ وحدَه — المركبةُ تمرّ بها براكبها. */
+/** Keys that concern the person only; a vehicle passes through them via its rider. */
 const PERSON_ONLY = ['rep', 'cr', 'engagement', 'category', 'status', 'jobTitle', 'contractType', 'register',
   'staffKind', 'supervisor', 'housing', 'contractKind'];
 
 const idOf = (x) => S(x && typeof x === 'object' ? x._id : x);
 
-/**
- * اختباراتُ الإنسان: `(row, skip) => boolean`. الصفُّ مزخرَفٌ (`workStatusShown`
- * و`vehicleTypeShown` و`authState` — حالةُ تفويض مركبته).
- * كلُّ مفتاحٍ يقبل قيمًا مفصولةً بفاصلة؛ والقيمةُ الواحدةُ كما كانت.
- */
+/** Person tests: `(row, skip) => boolean`. The row is decorated (`workStatusShown`, `vehicleTypeShown`, `authState` for his vehicle's authorization state). Each key accepts comma-separated values; a single value works as before. */
 function personTests(q, { typeKey = (x) => S(x), contractKindOf } = {}) {
   const t = {};
   const has = (k) => vals(q[k]).length > 0;
@@ -226,7 +178,7 @@ function personTests(q, { typeKey = (x) => S(x), contractKindOf } = {}) {
   if (has('engagement')) { const s = set('engagement'); t.engagement = (r) => s.has(engagementOf(r)); }
   if (has('category')) { const s = set('category'); t.category = (r) => s.has(categoryOf(r)); }
   if (has('status')) { const s = set('status', normStatus); t.status = (r) => s.has(r.workStatusShown); }
-  // ── ومفاتيحُ اللوحة السابقة (التقسيمات وروابطُها) ─────────────────────────
+  // Keys of the previous board (breakdowns and their links).
   for (const [key, field] of [['jobTitle', 'jobTitleAr'], ['contractType', 'contractTypeAr'], ['register', 'registerNumber'], ['staffKind', 'staffKind']]) {
     if (has(key)) { const s = set(key); t[key] = (r) => s.has(S(r[field])); }
   }
@@ -251,10 +203,7 @@ function personTests(q, { typeKey = (x) => S(x), contractKindOf } = {}) {
   return fn;
 }
 
-/**
- * اختباراتُ المركبة. `vr` = { _id, project, city, typeKey, auth, riders: [صفوف] }.
- * مفاتيحُ الإنسان تمرّ بالراكب: مركبةٌ تمرّ إن كان أحدُ راكبيها يمرّ بها.
- */
+/** Vehicle tests. `vr` = { _id, project, city, typeKey, auth, riders: [rows] }. Person keys pass through the rider: a vehicle passes if any of its riders passes. */
 function vehicleTests(q, people, { typeKey = (x) => S(x) } = {}) {
   const t = {};
   const has = (k) => vals(q[k]).length > 0;
@@ -275,7 +224,7 @@ function vehicleTests(q, people, { typeKey = (x) => S(x) } = {}) {
   return fn;
 }
 
-/** يبني `people.only(r, k)` — اختبارُ مفتاحٍ واحد (تمرّ به المركبةُ براكبها). */
+/** Builds `people.only(r, k)`, a single-key test (a vehicle passes through its rider). */
 function withOnly(q, opts) {
   const all = personTests(q, opts);
   const singles = {};

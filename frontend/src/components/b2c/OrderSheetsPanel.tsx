@@ -1,10 +1,5 @@
 'use client';
-/**
- * شيتاتُ جوجل — ربطُ ملفّ جوجل شيت لكلّ مشروع (backend: b2cOrderSheetController).
- *
- * يُفتح من «مدخلات الأوردرات» لمسؤولي القسم وحدَهم (الخادمُ يرفض غيرَهم).
- * والخادمُ يقرأ كلَّ ملفٍّ كلَّ دقيقة؛ وما يتغيّر يصل الجدولَ عبر `b2c:order:upserted`.
- */
+/** Google Sheets linking: one Google Sheet file per project (backend: b2cOrderSheetController). Opened from order entry for department managers only (the server rejects others). The server reads each file every minute and changes reach the table via b2c:order:upserted. */
 import { useCallback, useEffect, useState } from 'react';
 import api from '@/lib/api';
 import { useDialog } from '@/components/system/DialogProvider';
@@ -18,17 +13,14 @@ type Sheet = {
 };
 type Data = { sheets: Sheet[]; projects: string[]; headEmails?: string[] };
 
-/**
- * بريدُ جوجل لمسؤولي القسم — يُضافون محرّرين لحماية كلّ ورقة في الشيتات الثلاثة
- * (يكتبون في أيّ يومٍ من أيّ شهر).
- */
+/** Google email of department managers, added as editors to protect every tab in the three sheets (they write on any day of any month). */
 function HeadEmails({ initial, ar, onSaved }: { initial: string[]; ar: boolean; onSaved: () => void }) {
   const t = (a: string, e: string) => (ar ? a : e);
   const { notify } = useDialog();
   const joined = initial.join('\n');
   const [text, setText] = useState(joined);
   const [busy, setBusy] = useState(false);
-  // المحفوظُ تغيّر (حفظٌ هنا أو من مسؤولٍ آخر) — لا كلُّ إعادة تحميلٍ للوحة.
+  // Reload only when the saved value changed (saved here or by another admin), not on every panel reload.
   useEffect(() => { setText(joined); }, [joined]);
   const save = async () => {
     setBusy(true);
@@ -79,7 +71,7 @@ export default function OrderSheetsPanel({ open, onClose, ar }: { open: boolean;
     } catch (e: any) { setErr(e?.message || 'Failed'); }
   }, []);
   useEffect(() => { if (open) load(); }, [open, load]);
-  // القراءةُ الدوريّة على الخادم تُغيّر «آخر قراءة» وعددَ التغييرات.
+  // The periodic server read changes last-read time and change count.
   useSocket('b2c:order:upserted', () => { if (open) load(); });
 
   const downloadScript = async () => {
@@ -128,7 +120,7 @@ export default function OrderSheetsPanel({ open, onClose, ar }: { open: boolean;
   return (
     <Modal open={open} onClose={onClose} wide title={t('شيتات جوجل — ملفّ لكلّ مشروع', 'Google Sheets — one per project')}>
       <div className="space-y-4" dir={ar ? 'rtl' : 'ltr'}>
-        {/* ── الطريقةُ المعتمدة: سكربتُ جوجل يُنشئ الملفّات ويديرها ── */}
+        {/* Adopted method: a Google script creates and manages the files. */}
         <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-[12.5px] leading-6 text-emerald-900">
           <p className="font-bold">{t('سكربت جوجل — الملفّات يديرها النظام', 'Google script — the system manages the files')}</p>
           <ol className="list-decimal ps-5">

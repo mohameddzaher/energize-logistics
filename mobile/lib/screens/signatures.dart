@@ -7,8 +7,7 @@ import '../ui/file_upload.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 
-/// توقيعاتي — إدارة تواقيع المستخدم (صورة توقيع) لاستخدامها في اعتماد الإجازات
-/// وغيرها. /api/auth/signatures (GET/POST/PUT/DELETE). الصورة تُرفع كـ base64.
+/// My signatures: manages the user's signature images, used when approving leaves and similar. /api/auth/signatures (GET/POST/PUT/DELETE). The image is uploaded as base64.
 class SignaturesScreen extends StatefulWidget {
   const SignaturesScreen({super.key});
   @override

@@ -12,13 +12,9 @@ import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import '../ui/search_field.dart';
 
-/// بريد الشركة — صناديق البريد على هوستنجر (@energize-logistics.com).
-///
-/// ⚠️ مش حسابات الدخول للسيستم. الموظف ممكن يكون له الاتنين بكلمتين مرور
-/// مختلفتين، وتغيير واحدة ما بيمسّش التانية. الشاشة بتقول كده صراحةً فوق.
-///
-/// كلمة المرور مشفّرة على السيرفر ومش بترجع مع القائمة؛ فيه زر إظهار بينده
-/// endpoint مستقل وكل كشف بيتسجّل باسم اللي عمله.
+/// Company email: mailboxes on Hostinger (@energize-logistics.com).
+/// Not the system login accounts. An employee may have both, with different passwords, and changing one does not touch the other. The screen states this at the top.
+/// The password is encrypted on the server and not returned with the list; a reveal button calls a separate endpoint and each reveal is logged under the user who did it.
 const _domain = 'energize-logistics.com';
 
 class ItEmailsScreen extends StatefulWidget {
@@ -35,13 +31,13 @@ class _ItEmailsScreenState extends State<ItEmailsScreen> {
   bool _canReveal = false;
   String? _error;
   String _q = '';
-  // الخانةُ تُهدَم مع الخطأ والتحميل — النصُّ في متحكِّمٍ يبقى مع الكلمة.
+  // The field is destroyed on error and load; text lives in a controller so it survives.
   final _searchCtl = TextEditingController();
   Timer? _debounce;
   String _linked = '';
   String _status = '';
   String _type = '';
-  /// «بدون كلمة مرور» فلترٌ قائمٌ بنفسِه على الخادم (`hasPassword=no`) — المعدودُ هو المعروض.
+  /// "No password" is a server-side filter (`hasPassword=no`) of its own: the count is what is shown.
   String _hasPassword = '';
   int _seq = 0;
 
@@ -97,8 +93,7 @@ class _ItEmailsScreenState extends State<ItEmailsScreen> {
     ExportCol('ملاحظات', 'Notes', (r) => r['notes'] ?? ''),
   ];
 
-  /// التصدير: بدون كلمات المرور (الصفوف المعروضة)، أو معها — تُجلب لحظةَ الاختيار
-  /// من /api/it/emails/export بنفس صلاحية الكشف، والجلبُ نفسُه يُسجَّل في سجل التدقيق.
+  /// Export: without passwords (the shown rows), or with them, fetched at the moment of choice from /api/it/emails/export under the same permission as reveal; the fetch itself is written to the audit log.
   Future<void> _export() async {
     final choice = await showModalBottomSheet<String>(
       context: context,
@@ -131,7 +126,7 @@ class _ItEmailsScreenState extends State<ItEmailsScreen> {
     }
   }
 
-  /// يزيله من سجلّ النظام فقط — الصندوقُ نفسُه على هوستنجر يبقى ويُغلق من هناك.
+  /// Removes it from the system register only; the mailbox itself stays on Hostinger and is closed there.
   Future<void> _delete(Map<String, dynamic> r) async {
     final ok = await showDialog<bool>(context: context, builder: (c) => AlertDialog(
       title: Text(tr('حذف «${r['email']}» من السجل؟', 'Remove "${r['email']}"?')),
@@ -222,7 +217,7 @@ class _ItEmailsScreenState extends State<ItEmailsScreen> {
           : _error != null
               ? ErrorRetry(message: _error!, onRetry: () { setState(() => _loading = true); _load(); })
               : Column(children: [
-                  // الفرق اللي لازم يبان من أول نظرة.
+                  // The distinction must be visible at first glance.
                   Container(
                     width: double.infinity,
                     margin: const EdgeInsets.fromLTRB(14, 12, 14, 0),
@@ -249,11 +244,11 @@ class _ItEmailsScreenState extends State<ItEmailsScreen> {
                            'Password vault not configured — storing passwords is disabled.'),
                         style: const TextStyle(fontSize: 11, color: Color(0xFF991B1B))),
                     ),
-                  // ارتفاعُ الشريط من محتواه — يكبر مع حجم الخط ولا يفيض.
+                  // Bar height follows its content: grows with font size without overflowing.
                   SingleChildScrollView(
                     scrollDirection: Axis.horizontal, padding: const EdgeInsets.fromLTRB(8, 12, 8, 4),
                     child: IntrinsicHeight(child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                      // «الإجمالي» يُرجع الكلّ، والبقيّةُ تفلتر بالضغط وتُلغى بالضغط ثانيةً.
+                      // "Total" restores everything; the others filter on tap and clear on a second tap.
                       _chip(tr('الإجمالي', 'Total'), 'total', _status.isEmpty && _type.isEmpty && _linked.isEmpty && _hasPassword.isEmpty,
                           () { _status = ''; _type = ''; _linked = ''; _hasPassword = ''; }),
                       _chip(tr('نشط', 'Active'), 'active', _status == 'active', () => _status = _status == 'active' ? '' : 'active'),
@@ -377,7 +372,7 @@ class _ItEmailsScreenState extends State<ItEmailsScreen> {
     );
   }
 
-  // ── إضافة / تعديل ──
+  // Add / edit.
   Future<void> _openForm(Map<String, dynamic>? row) async {
     final localPart = TextEditingController(
         text: row == null ? '' : (row['localPart'] ?? (row['email'] ?? '').toString().split('@').first).toString());
@@ -402,8 +397,7 @@ class _ItEmailsScreenState extends State<ItEmailsScreen> {
             Text(row == null ? tr('بريد جديد', 'New mailbox') : tr('تعديل بريد', 'Edit mailbox'),
                 style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
             const SizedBox(height: 14),
-            // الموظف الأول: الترتيب الذهني هو «مين الموظف ← إيه بريده ← إيه كلمته».
-            // بحث حقيقي، القائمة الساكنة مش هتنفع مع مئات الموظفين.
+            // Employee first: the mental order is employee, then email, then password. Real search, since a static list will not work with hundreds of employees.
             Pressable(
               onTap: () async {
                 final picked = await _pickEmployee(c2);
@@ -436,7 +430,7 @@ class _ItEmailsScreenState extends State<ItEmailsScreen> {
               ),
             ),
             const SizedBox(height: 6),
-            // الباقي مش بيتكتب كل مرة، فمش لازم ياخد مساحة كل مرة.
+            // The rest is not typed every time, so it should not take space every time.
             Align(
               alignment: AlignmentDirectional.centerStart,
               child: TextButton(
@@ -511,7 +505,7 @@ class _ItEmailsScreenState extends State<ItEmailsScreen> {
     final search = TextEditingController();
     List<Map<String, dynamic>> found = [];
     bool busy = false;
-    // بحثٌ في الخادم: تأخيرٌ قصير، والأحدثُ وحدَه يُعرض.
+    // Server-side search: short delay, and only the latest response is shown.
     int seq = 0;
     Timer? deb;
     return showModalBottomSheet<Map<String, dynamic>>(

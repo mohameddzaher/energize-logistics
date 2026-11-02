@@ -1,10 +1,6 @@
 'use client';
-// مساعد إنشاء الشحنة — the create form as a conversation. One question per
-// turn, each rendered as whatever form-settings configured (chips for options,
-// typed inputs otherwise), and at the end it POSTs the SAME payload to the SAME
-// endpoint as the form page. There is no AI and no extra backend: it is a
-// scripted walk over the field config, so it costs the server exactly one
-// request — the create — no matter how many agents use it at once.
+// Shipment creation assistant: the create form as a conversation.
+// One question per turn, rendered as configured in form settings (chips for options, typed inputs otherwise); at the end it POSTs the same payload to the same endpoint as the form page. No AI and no extra backend: a scripted walk over the field config, costing the server exactly one request, the create.
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
@@ -213,8 +209,7 @@ export default function ChatCreatePage() {
       if (customerId) payload.customer = customerId;
       else if (answers.newCustomerName) payload.newCustomer = { name: answers.newCustomerName, phone: '' };
       if (vehicleId) payload.vehicle = vehicleId;
-      // اليومُ يُرسَل ظهرًا — «2026-09-05» وحدَه يُقرأ منتصفَ الليل بغرينتش
-      // فيصير في الرياض يومَ الرابع.
+      // The day is sent at noon: a bare "2026-09-05" is read as midnight GMT and becomes the 4th in Riyadh.
       ['pickupTime', 'startTime', 'arrivalTime'].forEach((k) => {
         payload[k] = answers[k]
           ? new Date(/^\d{4}-\d{2}-\d{2}$/.test(String(answers[k])) ? `${answers[k]}T12:00:00` : answers[k]).toISOString()

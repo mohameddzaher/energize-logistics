@@ -1,26 +1,8 @@
 'use client';
 /**
- * دفترُ العهدة — الكاش، وكارت المشتريات، والورشة. شاشةٌ واحدةٌ لعهدتين:
- * النقلُ الخفيف (/system/b2c/light-transport/custody) والنقلُ الثقيل
- * (/system/ls2/custody). وما يختلف بينهما يأتي في `cfg`.
- *
- * ثلاثةُ حساباتٍ في أعلى الصفحة، ولكلٍّ واردُه وصادرُه ورصيدُه:
- *   الكاش    واردُه من الكارت أو الورشة أو البنك
- *   الكارت   واردُه من البنك
- *   الورشة   واردُها من الصيانة
- * والصادرُ إلى متحمِّل: مندوبٌ/موظّفٌ (يُكتب رقمُ إقامته فتأتي بياناتُه من
- * الموارد البشريّة) أو الشركة (ويُكتب البيان). والكارتُ والورشةُ يصرفان إلى
- * الكاش أيضًا — وذاك تحويلٌ يُكتب في الحسابين معًا.
- *
- * وعهدةُ النقل الثقيل تزيد السيّارة (`cfg.vehicles`): الواردُ أو الصادرُ يُنسب —
- * اختيارًا — إلى شاحنةٍ من أسطول لوكيشن سوليوشن، تُختار من منسدلةٍ فيها بحث.
- *
- * القواعدُ في الخادم (controllers/custodyLedgerController) وتصل هنا في `rules`:
- * الشاشةُ ترسم ما يُسمَح به ولا تعيد كتابتَه.
- *
- * ونقطةُ الـ API تأتي من الصفحة (`cfg.api`) نصًّا كاملًا هناك لا هنا: منها
- * تُبنى خريطةُ الصفحات والنقاط (scripts/genPageApis)، فلا تُنسَب نقاطُ عهدةٍ
- * إلى صفحة الأخرى.
+ * Custody ledger: cash, purchase card and workshop accounts. One screen for light-transport and heavy-transport custody; differences come in `cfg`.
+ * Three accounts, each with in/out/balance: cash (in from card, workshop or bank), card (in from bank), workshop (in from maintenance). Out goes to a bearer (rep/employee looked up by ID number, or the company with a note). Card and workshop can also pay out to cash, written as a transfer in both accounts.
+ * Heavy transport adds an optional LS2 truck per entry (`cfg.vehicles`). Rules come from the server (controllers/custodyLedgerController) via `rules`; the screen only renders them. The API path is written in full in each page so the page-API map (scripts/genPageApis) does not mix the two.
  */
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '@/context/AuthContext';
@@ -56,18 +38,18 @@ interface Payload {
 interface Vehicle { unitId: number; plate: string; name: string; driver: string }
 type Pair = [string, string];
 export interface CustodyConfig {
-  /** نقطةُ الـ API — تُكتب نصًّا كاملًا في الصفحة نفسِها (light-transport/custody أو ls2/custody). */
+  /** API endpoint, written in full in the page itself (light-transport/custody or ls2/custody). */
   api: string;
-  /** بثُّ التغيير من الخادم. */
+  /** Server change broadcast. */
   event: string;
   title: Pair;
-  /** مطابقةٌ لحارس المسار في الخادم (`CUSTODY_ROLES`). العهدةُ مالٌ لا تُفتَح بمنح القسم. */
+  /** Mirrors the server route guard (`CUSTODY_ROLES`). Custody is money, so a section grant does not open it. */
   roles: string[];
   exportPrefix: string;
-  /** المتحمِّلُ برقم الهويّة: «مندوب» في الخفيف، «موظف / سائق» في الثقيل. */
+  /** Bearer looked up by ID number: rep in light transport, employee/driver in heavy transport. */
   rep: Pair;
   repMissing: Pair;
-  /** السيّارةُ من أسطول لوكيشن سوليوشن على كلّ وارد/صادر — اختياريّة. */
+  /** Optional LS2 fleet vehicle on each in/out entry. */
   vehicles?: boolean;
 }
 interface Rep { idNumber: string; name: string; nationality: string; project: string; jobTitle: string; employeeNumber: string; status: string; inHr: boolean }
@@ -92,19 +74,18 @@ export default function CustodyLedger({ cfg }: { cfg: CustodyConfig }) {
   const t = (a: string, e: string) => (ar ? a : e);
   const w = (k?: string) => (k === 'rep' ? (ar ? cfg.rep[0] : cfg.rep[1]) : k && WORD[k] ? (ar ? WORD[k][0] : WORD[k][1]) : (k || ''));
   const { notify, confirm } = useDialog();
-  // يطابق حارسَ المسار في الخادم (`CUSTODY_ROLES`). وتعديلُ قيدٍ مسجَّلٍ وحذفُه يقرّرهما
-  // الخادم (`canEdit` / `canDelete` في الجواب) لمدير النظام وأهل المال وحدَهم.
-  // role-only: العهدةُ مالٌ لا تُفتَح بمنح القسم؛ الخادمُ يحرسها بـ`authorize.strict`.
+  // Mirrors the server route guard (`CUSTODY_ROLES`). Editing and deleting a posted entry is decided by the server (`canEdit` / `canDelete` in the response) for super admin and finance only.
+  // role-only: custody is money, a section grant does not open it; the server guards it with `authorize.strict`.
   const canEdit = cfg.roles.includes(user?.role || '');
   const { api: API } = cfg;
 
   const [d, setD] = useState<Payload | null>(null);
-  // كلُّ القيود في الحسابات الثلاثة بلا فلتر — لتصدير «الكلّ».
+  // All entries of the three accounts without filters, for the export of everything.
   const [all, setAll] = useState<Entry[]>([]);
   const [account, setAccount] = useState<Account>('cash');
   const EMPTY = { direction: '', target: '', vehicle: '', from: '', to: '', q: '' };
   const [f, setF] = useState<typeof EMPTY>(EMPTY);
-  // سيّاراتُ الأسطول للمنسدلة — مرّةً واحدة.
+  // Fleet vehicles for the dropdown, fetched once.
   const [cars, setCars] = useState<Vehicle[]>([]);
   useEffect(() => {
     if (!cfg.vehicles) return;
@@ -133,7 +114,7 @@ export default function CustodyLedger({ cfg }: { cfg: CustodyConfig }) {
   useEffect(() => { load(); }, [load]);
   useSocket(cfg.event, load);
 
-  // من أين / إلى أين — كما تُقرأ في الجدول والتصدير.
+  // From/to labels as read in the table and export.
   const party = useCallback((e: Entry) => {
     if (e.source === 'opening') return w('opening');
     if (e.source === 'rep') return `${ar ? 'من' : 'From'} ${w('rep')}: ${e.repName || ''}`;
@@ -193,7 +174,7 @@ export default function CustodyLedger({ cfg }: { cfg: CustodyConfig }) {
         title={ar ? cfg.title[0] : cfg.title[1]}
         subtitle={t('الكاش وكارت المشتريات والورشة — واردُ كلٍّ وصادرُه ورصيدُه', 'Cash, purchases card and workshop — in, out and balance for each')} />
 
-      {/* ── الحساباتُ الثلاثة بالعرض ───────────────────────────────────────── */}
+      {/* The three accounts overview. */}
       <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
         {ACCOUNTS.map((a) => {
           const b = d.balances[a.key]; const on = account === a.key;
@@ -219,7 +200,7 @@ export default function CustodyLedger({ cfg }: { cfg: CustodyConfig }) {
         })}
       </div>
 
-      {/* ── الواردُ والصادر للحساب المختار ──────────────────────────────────── */}
+      {/* In/out of the selected account. */}
       <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
         <span className="me-1 flex items-center gap-2 text-[13px] font-bold text-slate-800"><cur.Icon className="h-4 w-4 text-[#f37121]" />{ar ? cur.ar : cur.en}</span>
         {canEdit && (
@@ -240,7 +221,7 @@ export default function CustodyLedger({ cfg }: { cfg: CustodyConfig }) {
         </span>
       </div>
 
-      {/* ── الفلاتر ─────────────────────────────────────────────────────────── */}
+      {/* Filters. */}
       <div className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
         <Sel value={f.direction} onChange={(v) => setF((p) => ({ ...p, direction: v }))} label={t('وارد وصادر', 'In & out')}
           list={[['in', t('وارد', 'In')], ['out', t('صادر', 'Out')]]} />
@@ -265,7 +246,7 @@ export default function CustodyLedger({ cfg }: { cfg: CustodyConfig }) {
         <ClearColumnFilters count={cf.count} onClear={cf.clear} ar={ar} />
       </div>
 
-      {/* ── القيود ──────────────────────────────────────────────────────────── */}
+      {/* Entries. */}
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
         <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 bg-slate-50 px-4 py-3 text-[13px]">
           <span className="font-bold text-slate-900">{t('قيود', 'Entries')} {ar ? cur.ar : cur.en}</span>
@@ -277,7 +258,7 @@ export default function CustodyLedger({ cfg }: { cfg: CustodyConfig }) {
               options={[
                 { key: 'shown', label: t('المعروض حاليًا (بعد الفلتر)', 'Current view (filtered)'), sheets: [{ name: ar ? cur.ar : cur.en, rows: rows.map((e) => ({ ...e, _party: party(e), _vehicle: carLabel(e) })), columns: exportCols }] },
                 { key: 'account', label: t(`كلُّ قيود ${ar ? cur.ar : cur.en}`, `All ${cur.en} entries`), sheets: [{ name: ar ? cur.ar : cur.en, rows: all.filter((e) => e.account === account).map((e) => ({ ...e, _party: party(e), _vehicle: carLabel(e) })), columns: exportCols }], disabled: !all.length },
-                // ورقةٌ لكلّ حساب — الدفترُ كلُّه في ملفٍّ واحد.
+                // One sheet per account, whole ledger in one file.
                 { key: 'all', label: t('الكلّ — الحساباتُ الثلاثة', 'Everything — all three accounts'), sheets: ACCOUNTS.map((a) => ({ name: ar ? WORD[a.key][0] : a.en, rows: all.filter((e) => e.account === a.key).map((e) => ({ ...e, _party: party(e), _vehicle: carLabel(e) })), columns: exportCols })), disabled: !all.length },
               ]} />
           </span>
@@ -377,16 +358,14 @@ function Sel({ value, onChange, label, list }: { value: string; onChange: (v: st
   );
 }
 
-/** الملفُّ يُرسَل نصًّا (base64) في الطلب نفسِه — كبقيّة مرفقات النظام. */
+/** The file is sent as base64 text in the same request, like other system attachments. */
 const readAsDataUrl = (file: File) => new Promise<string>((resolve, reject) => {
   const r = new FileReader(); r.onload = () => resolve(String(r.result)); r.onerror = () => reject(new Error('read')); r.readAsDataURL(file);
 });
 
 /**
- * نموذجُ القيد: واردٌ (من أين) أو صادرٌ (إلى مَن) — بأقلّ ما يُكتب.
- *
- * وبـ`entry` يصير تعديلًا لقيدٍ مسجَّل: يُصحَّح المبلغُ واليومُ والبيانُ والمندوبُ
- * والمرفقات. ونوعُ القيد لا يتغيّر — ما كُتب في غير موضعه يُحذَف ويُكتب من جديد.
+ * Entry form: in (from where) or out (to whom), with minimal fields.
+ * With `entry` it edits a posted entry (amount, day, note, rep, attachments). The entry type cannot change; a misplaced entry is deleted and re-created.
  */
 function EntryForm({ cfg, carOptions, account, direction, rules, today, ar, onClose, onSaved, notify, entry }: {
   cfg: CustodyConfig; carOptions: { value: string; label: string; hint?: string }[];
@@ -413,10 +392,10 @@ function EntryForm({ cfg, carOptions, account, direction, rules, today, ar, onCl
   const [removed, setRemoved] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const accName = ar ? ACCOUNTS.find((a) => a.key === account)!.ar : ACCOUNTS.find((a) => a.key === account)!.en;
-  // المندوبُ يُسأل عنه في الصادر إلى مندوب، وفي واردِ الكاش من مندوب.
+  // The rep is asked for on out-to-rep and on cash in-from-rep.
   const needsRep = isIn ? source === 'rep' : target === 'rep';
 
-  // رقمُ الإقامة يُكتب فتأتي بياناتُ المندوب من الموارد البشريّة — بلا زرّ بحث.
+  // Typing the iqama number loads the rep's data from HR, no search button.
   useEffect(() => {
     const id = idNumber.replace(/\s+/g, '');
     setRep(null);
@@ -460,9 +439,9 @@ function EntryForm({ cfg, carOptions, account, direction, rules, today, ar, onCl
 
   const chip = (on: boolean) => `rounded-lg px-3 py-2 text-[13px] font-bold transition-colors ${on ? 'bg-slate-900 text-white' : 'bg-white text-slate-600 ring-1 ring-slate-200 hover:ring-slate-300'} disabled:opacity-60`;
   const transfer = isIn ? ['card', 'workshop'].includes(source) : target === 'cash';
-  // السيّارةُ على كلّ واردٍ وصادر — إلّا التحويلَ بين حسابين: مالٌ انتقل لا سيّارةَ له.
+  // Vehicle on every in/out except a transfer between two accounts, which is money moving with no vehicle.
   const withCar = !!cfg.vehicles && !transfer && !entry?.transferId;
-  // المرفقاتُ للصادر (فاتورة، إيصال، صورة تحويل) — ولواردِ المندوب كذلك.
+  // Attachments for out entries (invoice, receipt, transfer image) and for in-from-rep.
   const canAttach = !isIn || source === 'rep' || (entry?.attachments || []).length > 0;
   const kept = (entry?.attachments || []).filter((a) => !removed.includes(a._id));
 

@@ -1,5 +1,4 @@
-// إدارة العقود — types, vocabulary and access gates.
-// Mirrors backend/src/routes/contracts.js + models/ContractModels.js.
+// Contract management: types, vocabulary and access gates. Mirrors backend/src/routes/contracts.js and models/ContractModels.js.
 import { canAccessSection, canEditSection, roleOf, permsOf, type RoleOrUser } from './sections';
 
 export const CONTRACTS_STAFF_ROLES = ['super_admin', 'admin', 'contracts_manager', 'it_manager', 'it_specialist', 'operations_manager'];
@@ -71,9 +70,7 @@ export interface DeptContract {
 
 export type Lang = 'en' | 'ar';
 
-// ── العملاء ─────────────────────────────────────────────────────────────────
-// الطرفُ الآخر من كلّ صفقة. الصفُّ يحمل ما يخصّ العقدَ وحدَه، وما عداه (حجمُه
-// معنا، وما بقي عليه، وعقودُه المرفوعة) يُقرأ من مصدره في كلّ نداء ولا يُنسَخ.
+// Customers: the other party of every deal. The row holds only contract-specific data; the rest (volume with us, outstanding balance, uploaded contracts) is read from its source on each call and never copied.
 export interface ContractCustomer {
   customerCode?: string;
   _id: string;
@@ -102,7 +99,7 @@ export interface ContractCustomer {
   followUpNotes?: string;
   notes?: string;
   attachments?: ContractAttachment[];
-  // محسوبةٌ عند القراءة
+  // Computed at read time
   status?: 'signed' | 'pending' | 'unsigned';
   expiry?: '' | 'valid' | 'due' | 'expired';
   loads?: number;
@@ -113,16 +110,14 @@ export interface ContractCustomer {
   agreements?: number;
 }
 
-// التسميةُ نفسُها المستعملة للمورّدين: من يقرأ الشاشتين يقرأ الشيءَ نفسَه.
+// Same labels as used for vendors, so both screens read the same.
 export const CUSTOMER_STATUS = {
   signed: { ar: 'موقّع', en: 'Signed', cls: 'bg-emerald-100 text-emerald-700' },
   pending: { ar: 'قيد التوقيع', en: 'Pending', cls: 'bg-amber-100 text-amber-700' },
   unsigned: { ar: 'غير موقّع', en: 'Unsigned', cls: 'bg-slate-100 text-slate-600' },
 } as const;
 
-// ── والانتهاءُ ثلاثُ حالاتٍ لا خمس ────────────────────────────────────────────
-// العقدُ ساري، أو قارب على الانتهاء فيُجدَّد، أو انتهى. وهي القسمةُ نفسُها التي
-// استقرّت في وثائق المركبات — لا يُخترَع لها هنا شكلٌ آخر.
+// Expiry has three states, not five: valid, near expiry (to renew), expired. The same split as vehicle documents; no other shape is invented here.
 export const EXPIRY_META = {
   valid: { ar: 'ساري', en: 'Valid', cls: 'bg-slate-100 text-slate-600' },
   due: { ar: 'قارب على الانتهاء', en: 'Due soon', cls: 'bg-amber-100 text-amber-700' },

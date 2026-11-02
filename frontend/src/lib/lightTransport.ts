@@ -1,11 +1,7 @@
 import { docStateLabel, type PersonDocs } from '@/components/system/PersonDocDate';
 /**
- * النقلُ الخفيف — أنواعُه ونداءاتُه وأعمدةُ جدوله.
- *
- * والأعمدةُ تُعرَّف مرّةً واحدةً هنا: الترويسةُ والقمعُ والتصديرُ يقرؤون
- * التعريفَ نفسَه، فما يُفلتَر عليه هو ما يُعرَض وهو ما يُصدَّر حرفًا بحرف.
- * تعريفان يفترقان بعد أسبوعٍ من التعديل، فيُصدَّر عمودٌ لا يُرى ويُفلتَر على
- * قيمةٍ لا تُعرض.
+ * Light transport: its types, calls and table columns.
+ * Columns are defined once here: header, filter funnel and export read the same definition, so what is filtered is what is shown and exported. Two definitions drift apart and export a column nobody sees or filter on a value that is not displayed.
  */
 import api from '@/lib/api';
 import { FINANCE_FULL_ROLES } from '@/lib/financeAuthority';
@@ -25,43 +21,31 @@ export interface LTEmployee extends PersonDocs {
   registerNumber?: string;
   vehicleTypeAr?: string;
   vehiclePlate?: string;
-  /** انتهت خدمتُه والمركبةُ ما زالت معه — أمرُه معلَّق حتى تُستلم أو تُسلَّم لغيره. */
+  /** Service ended but the vehicle is still with him; his order stays pending until the vehicle is received or handed to someone else. */
   vehicleHold?: { at?: string | null; reason?: string };
-  /**
-   * بطاقةُ التشغيل والفحصُ الدوريُّ — من سجلّ المركبة، بحالتهما محسوبةً
-   * بعتبات قسم المركبات. راجع `docOf` في الخادم.
-   */
+  /** Operating card and periodic inspection, from the vehicle register, with their status computed by the vehicles department thresholds. See `docOf` on the server. */
   operatingCard?: LTDoc;
   inspection?: LTDoc;
   supervisorName?: string;
-  /**
-   * حسابُ المشرف على النظام — هو الأصل، والاسمُ لقطةٌ منه.
-   * راجع `backend/utils/b2cSupervisors`: من أُسند إليه رجلٌ هنا رآه في تفقّد
-   * بداية الدوام.
-   */
+  /** The supervisor's system account is the source and the name is a snapshot of it. See backend/utils/b2cSupervisors: whoever is assigned a rider here sees him in the start-of-duty check. */
   supervisorUser?: { _id: string; firstName?: string; lastName?: string; role?: string } | string | null;
-  /**
-   * ── إشرافان ───────────────────────────────────────────────────────────────
-   * `supervisorUser` = **المشرف التشغيليّ**: صاحبُ الرجل في الميدان طولَ اليوم.
-   * `dutySupervisorUser` = **مشرف التفقّد**: مَن يقف عليه صباحًا ويصوّره قبل
-   * الخروج — وهو الذي تنقسم به شاشةُ تفقّد بداية الدوام. ولا يتطابقان بالضرورة.
-   */
+  /** Two supervisors. `supervisorUser` is the operational supervisor, who owns the rider in the field all day. `dutySupervisorUser` is the check supervisor, whom he reports to in the morning and photographs before going out; it splits the start-of-duty check screen. They need not be the same person. */
   dutySupervisorUser?: { _id: string; firstName?: string; lastName?: string; role?: string } | string | null;
   dutySupervisorName?: string;
   workStatusAr?: string;
-  /** الحالةُ كما تُقرأ: حالةُ القسم، تغلبها الموارد البشريّةُ حين تنفي. */
+  /** Status as read: the department status, overridden by HR when HR negates it. */
   workStatusShown?: string;
-  /** نوعُ العقد كما يعدّه الخادم (`contractKindOf`): كفالة · فري لانسر · يوزرات · فارغ. */
+  /** Contract kind as the server counts it (`contractKindOf`): sponsored, freelance, users, or empty. */
   contractTypeShown?: string;
-  /** نوعُ المركبة من سجلّها متى كانت مربوطةً — مفردةٌ واحدةٌ للاثنين. */
+  /** Vehicle type from its register entry when linked; one vocabulary for both. */
   vehicleTypeShown?: string;
-  /** مَن قال الحالة: الموارد البشريّة (لا تُعدَّل هنا) · القسم (`opStatus`) · لا أحد (يعمل). */
+  /** Who set the status: HR (not editable here), the department (`opStatus`), or nobody (working). */
   statusSource?: 'hr' | 'section' | '';
-  /** حالةُ اليوم التي يكتبها القسم: فراغ (يعمل) · leave · suspended · accident. */
+  /** Today's status written by the department: empty (working), leave, suspended or accident. */
   opStatus?: '' | 'leave' | 'suspended' | 'accident';
   opStatusNote?: string;
   opStatusAt?: string | null;
-  /** بمعاني لوحة القسم (backend utils/b2cBoard). */
+  /** With the meanings of the department board (backend utils/b2cBoard). */
   categoryShown?: 'rep' | 'admin' | 'tech' | 'none';
   engagementShown?: 'sponsored' | 'freelance' | 'trainee' | 'users' | 'none';
   registerShown?: string;
@@ -74,12 +58,12 @@ export interface LTEmployee extends PersonDocs {
   vehicle?: {
     _id: string; plateNumber?: string; serialNumber?: string; registrationTypeAr?: string;
     brandAr?: string; modelAr?: string;
-    /** ورقةُ التفويض على المركبة — مَن يحقُّ له أن يقودها وإلى متى. */
+    /** Authorization paper on the vehicle: who may drive it and until when. */
     authorizedPerson?: {
       name?: string; iqamaNumber?: string; phone?: string;
       authorizationNumber?: string; startDate?: string | null; expiryDate?: string | null;
     } | null;
-    /** والقائدُ الفعليّ — ليس المفوَّضَ دائمًا (٥٨ مركبةً كذلك). */
+    /** The actual driver, not always the authorized person. */
     actualDriver?: { name?: string; idNumber?: string } | null;
   } | null;
   housing?: { _id: string; name?: string; cityAr?: string } | null;
@@ -95,21 +79,14 @@ export interface LTHistory {
   fromValue?: string; toValue?: string; note?: string;
 }
 
-/**
- * نوعُ التعاقد مطويًّا — «كفالة» و«كفاله» واحد، و«فري لانسر» و«فريلانسر» واحد.
- * تُستعمل في العدّ وفي الفلترة معًا، فلا يفترق الكارتُ عن الجدول.
- */
+/** Contract kind folded, so spelling variants of sponsored and of freelance are equal. Used by counting and filtering together so the card matches the table. */
 export const foldContract = (v?: string) => String(v || '')
   .replace(/[ً-ْ]/g, '').replace(/[أإآٱ]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه')
   .replace(/\s+/g, '');
 export const isFreelance = (r: { contractTypeAr?: string }) => foldContract(r.contractTypeAr).includes('فريلانسر');
 export const hasContract = (r: { contractTypeAr?: string }) => !!foldContract(r.contractTypeAr);
 
-/**
- * مفاتيحُ الفلترة التي تُحسَب في الشاشة ولا تُرسَل إلى الخادم: المشتقّان (نوعُ
- * العقد، حالةُ الوثيقة) ومفاتيحُ الكروت كلُّها. فالكروتُ تُعَدّ بالأوجه — كلُّ
- * مجموعةٍ بلا فلترها (`ltFacetedTotals`) — وذلك يحتاج الصفوفَ قبل فلتر الكارت.
- */
+/** Filter keys computed on screen and not sent to the server: the two derived ones (contract kind, document status) and all card keys. Cards are counted by facets, each group without its own filter (`ltFacetedTotals`), which needs the rows before the card filter. */
 export const LOCAL_KEYS = ['contractKind', 'doc', 'staffKind', 'status', 'hasVehicle', 'housing', 'dutySupervisor'] as const;
 export const serverFilters = (f: Record<string, string>) => {
   const o: Record<string, string> = {};
@@ -117,7 +94,7 @@ export const serverFilters = (f: Record<string, string>) => {
   return o;
 };
 
-/** حالةُ وثيقةٍ على مركبةِ الموظّف — نفسُ مفرداتِ قسم المركبات. */
+/** Status of a document on the employee's vehicle; same vocabulary as the vehicles department. */
 export interface LTDoc {
   expiryDate?: string | null;
   number?: string;
@@ -126,7 +103,7 @@ export interface LTDoc {
   days: number | null;
 }
 
-/** ألوانُ حالة الوثيقة — نفسُها في كلّ شاشةٍ تقرؤها. */
+/** Document status colors, shared by every screen that reads them. */
 export const DOC_CLS: Record<string, string> = {
   expired: 'bg-red-100 text-red-700',
   critical: 'bg-orange-100 text-orange-700',
@@ -147,10 +124,10 @@ export const DOC_EN: Record<string, string> = {
 
 export interface LTTotals {
   total: number;
-  /** نوعُ التعاقد — كارتان ثابتان فوق الجدول، محسوبان على ما بعد الفلترة. */
+  /** Contract kind: two fixed cards above the table, computed after filtering. */
   sponsored: number;
   freelance: number;
-  /** مناديبٌ بلا مشرف تفقّد — لا يظهرون لأحدٍ في شاشة التفقّد. */
+  /** Riders with no check supervisor; they appear to nobody on the check screen. */
   noDutySupervisor: number;
   cardGap: number; cardSoon: number;
   inspectionGap: number; inspectionSoon: number; reps: number; admins: number; drivers?: number; unknownKind?: number; working: number; notWorking: number;
@@ -162,22 +139,19 @@ export interface LTTotals {
   byStatus: Record<string, number>;
 }
 
-/**
- * معرِّفُ حساب المشرف في صفٍّ — يجيء مُعبَّأً من القائمة ومجرَّدًا بعد الحفظ.
- * `populate` تردّ كائنًا، والحفظُ المحليُّ يترك معرِّفًا نصًّا — فيُقرأ الاثنان.
- */
+/** Supervisor account id in a row: populated from the list, bare after save. `populate` returns an object while a local save leaves a string id, so both are read. */
 const idOf = (v: unknown): string => {
   if (!v) return '';
   return typeof v === 'string' ? v : String((v as any)._id || '');
 };
 export const supervisorIdOf = (e?: { supervisorUser?: unknown } | null): string => idOf(e?.supervisorUser);
-/** معرِّفُ حساب مشرف التفقّد — يجيء مُعبَّأً من القائمة ومجرَّدًا بعد الحفظ. */
+/** Check supervisor account id: populated from the list, bare after save. */
 export const dutySupervisorIdOf = (e?: { dutySupervisorUser?: unknown } | null): string => idOf(e?.dutySupervisorUser);
 
-/** مشرفٌ متاحٌ للإسناد — حسابٌ على النظام بدورِ إشرافٍ في القسم. */
+/** A supervisor available for assignment: a system account with a supervision role in the department. */
 export interface LTSupervisor {
   _id: string;
-  /** ما يُعرَض: الاسمُ العربيُّ من ملفّه، وإلّا اسمُ حسابه. */
+  /** Displayed name: the Arabic name from his file, else his account name. */
   name: string;
   nameEn: string;
   nameAr: string;
@@ -190,9 +164,9 @@ export interface LTSupervisor {
 export interface LTOptions {
   project: string[]; city: string[]; jobTitle: string[]; contractType: string[];
   register: string[]; vehicleType: string[];
-  /** حساباتُ الإشراف — لا أسماءٌ مكتوبة. */
+  /** Supervision accounts, not typed names. */
   supervisor: LTSupervisor[];
-  /** أسماءُ مشرفين كُتبت في السجلّ ولا حسابَ لها بعد — تبقى للفلترة. */
+  /** Supervisor names written in the register that have no account yet; kept for filtering. */
   supervisorsUnlinked?: string[];
   housing: { _id: string; name: string }[];
 }
@@ -218,35 +192,10 @@ export interface LTOrder {
 }
 
 
-/**
- * ── والكاردُ يقرأ ما في الجدول ──────────────────────────────────────────────
- * الأعدادُ كانت تأتي من الخادم محسوبةً على فلاترِه وحدَها، وفلترُ العمود (الشبيهُ
- * بفلتر إكسل) يُطبَّق في المتصفّح بعدها. فمن فلتر عمودًا رأى الجدولَ يَنقُص
- * والكاردَ ثابتًا — رقمان لشيءٍ واحدٍ على شاشةٍ واحدة، ولا يُعرَف أيُّهما الصحيح.
- *
- * فالأعدادُ تُحسَب هنا من الصفوف المعروضة فعلًا — أيًّا كان ما نقّاها: شريحةٌ أو
- * بحثٌ أو فلترُ عمود. والمنطقُ هو منطقُ الخادم نفسُه (`totalsOf` في المتحكِّم)
- * كي لا يفترق الرقمُ باختلاف الجهة التي حسبته.
- */
-/**
- * ── والقسمُ مناديبُ ومَن يخدمهم ──────────────────────────────────────────────
- *
- * في السجلّ مئةٌ واثنتان وسبعون نفسًا: مئةٌ وإحدى وستّون مندوبًا، وأحدَ عشرَ
- * إداريًّا وفنيًّا ومشرفًا. والسؤالُ الذي تُسأل عنه البطاقاتُ كلُّها سؤالُ
- * المناديب وحدَهم: مَن له مركبة، ومن كارتُ تشغيله منتهٍ، ومن له سكنٌ، وكيف
- * يتوزّعون على المشاريع والمدن.
- *
- * وكان كلُّ ذلك يُقاس على المئةِ والاثنتين والسبعين. فيُقرَأ «أحدَ عشرَ بلا
- * مركبة» وهم إداريُّو مكتبٍ لا تُعطى لهم مركبةٌ أصلًا، و«بلا كارت تشغيل» وهم
- * لا يُشغَّلون. فأرقامُ النقص كلُّها مضخَّمةٌ بثابتٍ لا يعني شيئًا — ومن يقرأ
- * نقصًا كاذبًا يطارده.
- *
- * فالإجمالُ وقسمتُه (مناديب/إداريون) على الجميع، وكلُّ ما بعدها على المناديب.
- * ويُكتب ذلك في الشاشة صريحًا تحت البطاقات، فلا تُجمَع أرقامٌ لا تُجمَع.
- */
+/** The card reads what the table shows. Counts used to come from the server computed on its own filters only, while the column filter (Excel-like) is applied in the browser afterwards, so filtering a column shrank the table but left the card unchanged: two numbers for one thing on one screen. */
+/** The section is riders plus those who serve them. Most records are riders; the rest are admins, technicians and supervisors. Every card asks about riders only: who has a vehicle, whose operating card expired, who has housing, and so on. */
 export function ltTotalsOf(rows: LTEmployee[]): LTTotals {
-  // المندوبُ هو الأصل: `staffKind` يُشتَقّ من الوظيفة في الخادم، والافتراضُ
-  // «مندوب» — فصفٌّ قديمٌ بلا نوعٍ يُعَدُّ مندوبًا كما يعدُّه الخادم.
+  // The rider is the default: `staffKind` is derived from the job on the server, and an old row with no kind counts as a rider as the server counts it.
   const reps = rows.filter((r) => (r.staffKind || 'rep') === 'rep');
   const count = (fn: (r: LTEmployee) => boolean) => reps.filter(fn).length;
   const group = (fn: (r: LTEmployee) => string | undefined) => {
@@ -254,17 +203,13 @@ export function ltTotalsOf(rows: LTEmployee[]): LTTotals {
     for (const r of reps) { const k = fn(r) || '—'; o[k] = (o[k] || 0) + 1; }
     return o;
   };
-  // «على رأس العمل» = حالتُه «يعمل» — الفلترُ نفسُه الذي يفتحه الكارت (وتعريفُ
-  // الخادم في `totalsOf`). كان «ليس منتهيًا ولا موقوفًا» فدخلت الإجازة: الكارتُ
-  // ١٧٥ وضغطُه يفتح ١٧١ ثمّ يصير هو نفسُه ١٧١.
+  // 'On duty' means status is working, the same filter the card opens (and the server definition in `totalsOf`). It used to be 'not ended and not suspended', which included leave, so the card showed more than the rows it opened.
   const working = (r: LTEmployee) => r.workStatusShown === 'يعمل';
   const gap = (d?: LTDoc) => !!d && ['expired', 'critical'].includes(d.state);
   const soon = (d?: LTDoc) => !!d && ['warning', 'upcoming'].includes(d.state);
   return {
     total: rows.length,
-    // بنوع العقد كما يعدّه الخادم ويفلتر به (`contractKindOf`): ملفُّ الموارد البشريّة
-    // لمن له ملف، واليوزرُ ليس كفالة. كانت خانةُ القسم تُطوى هنا: ١١٤ على الكفالة
-    // وضغطُها يفتح ١٠١ — الثلاثةَ عشرَ يوزرًا كانوا يُعَدّون كفالة.
+    // Contract kind as the server counts and filters it (`contractKindOf`): the HR file for those who have one, and a user is not sponsorship. The department cell used to be folded here, so the sponsorship card counted users and opened fewer rows.
     sponsored: count((r) => r.contractTypeShown === 'كفالة'),
     freelance: count((r) => r.contractTypeShown === 'فري لانسر'),
     noDutySupervisor: count((r) => !dutySupervisorIdOf(r)),
@@ -272,12 +217,9 @@ export function ltTotalsOf(rows: LTEmployee[]): LTTotals {
     cardSoon: count((r) => soon(r.operatingCard)),
     inspectionGap: count((r) => gap(r.inspection)),
     inspectionSoon: count((r) => soon(r.inspection)),
-    // هذان على الجميع — هما قسمةُ الإجمال نفسِه.
+    // These two apply to everyone; they split the overall total.
     reps: reps.length,
-    // ── ولا يُحسَب «الإداريّون» بالطرح ──────────────────────────────────────
-    // كان `rows.length - reps.length`، أي «كلُّ من ليس مندوبًا». وهي القسمةُ
-    // نفسُها التي جعلت تسعةَ عشرَ بلا وظيفةٍ وثلاثةَ سائقين إداريّين. فيُعَدّ
-    // كلُّ نوعٍ باسمه.
+    // Admins are not counted by subtraction (rows minus riders, i.e. everyone who is not a rider), which also counted people with no job and drivers as admins. Each kind is counted by its own name.
     admins: rows.filter((r) => r.staffKind === 'admin').length,
     drivers: rows.filter((r) => r.staffKind === 'driver').length,
     unknownKind: rows.filter((r) => r.staffKind === 'unknown' || !String((r as any).jobTitleAr || '').trim()).length,
@@ -305,22 +247,19 @@ export function ltTotalsOf(rows: LTEmployee[]): LTTotals {
 }
 
 const ENDED = 'إنهاء خدمة';
-/** صيغٌ قديمةٌ للحالة نفسِها — روابطُ محفوظة (backend utils/b2cBoard.normStatus). */
+/** Old spellings of the same status, kept for saved links (backend utils/b2cBoard.normStatus). */
 export const normStatus = (v: string) => {
   const x = String(v || '').trim();
   if (x === 'متوقف') return 'موقوف';
   if (x === 'اجازه' || x === 'في إجازة') return 'إجازة';
   return x;
 };
-/** أهذا معرِّفُ حساب؟ — المشرفُ يُفلتَر بحسابه، أو باسمه المكتوب لمن لا حسابَ له. */
+/** Whether this is an account id: a supervisor is filtered by account, or by written name when there is no account. */
 const looksLikeId = (v: string) => /^[0-9a-f]{24}$/i.test(v);
 
 /**
- * أيمرّ الصفُّ بفلاتر الكروت — كلِّها، أو عدا `skip`؟
- *
- * بالمعنى نفسِه الذي يطبّقها به الخادمُ في `listEmployees` (الحالةُ المعروضة،
- * نوعُ العقد كما يعدّه، المشرفُ بحسابه أو باسمه) — فما يقوله الكارتُ هو ما
- * يفتحه. و«بلا وظيفة» تفتح مَن تعدّهم بطاقتُها (بلا نوعٍ أو بلا وظيفةٍ مكتوبة).
+ * Whether the row passes the card filters, all of them or all except `skip`.
+ * Same meaning as the server applies in `listEmployees` (displayed status, contract kind as it counts it, supervisor by account or name), so the card's number is what it opens. 'No job' opens those its card counts (no kind or no written job).
  */
 export function ltPasses(r: LTEmployee, f: Record<string, string>, skip?: string): boolean {
   const on = (k: string) => k !== skip && !!f[k];
@@ -328,7 +267,7 @@ export function ltPasses(r: LTEmployee, f: Record<string, string>, skip?: string
     const kind = r.staffKind || 'rep';
     if (f.staffKind === 'unknown' ? !(kind === 'unknown' || !String((r as any).jobTitleAr || '').trim()) : kind !== f.staffKind) return false;
   }
-  // قيمٌ مفصولةٌ بفاصلة (فلاترُ اللوحة)، و«متوقف» القديمةُ هي «موقوف».
+  // Comma-separated values (board filters); the old 'stopped' equals 'suspended'.
   if (on('status') && !f.status.split(',').map(normStatus).includes(String(r.workStatusShown || ''))) return false;
   if (on('hasVehicle') && (f.hasVehicle === 'yes' ? !r.vehicle : f.hasVehicle === 'no' ? !!r.vehicle : false)) return false;
   if (on('housing')) {
@@ -353,18 +292,7 @@ export function ltPasses(r: LTEmployee, f: Record<string, string>, skip?: string
   return true;
 }
 
-/**
- * ── الأرقامُ لا تتحرّك تحت مَن يضغطها ─────────────────────────────────────
- *
- * كانت الكروتُ تُعَدّ على الصفوف بعد كلّ فلتر — ومنها فلترُ الكارت المضغوط: يُضغط
- * «مناديب» فيصير «إداريون» و«سائقون» أصفارًا، ويُضغط «لهم مركبة» فيصير «بلا
- * مركبة» صفرًا. فكلُّ مجموعةٍ تُعَدّ بكلّ الفلاتر **عدا فلترَها** (القاعدةُ نفسُها
- * في لوحة القسم وانتهاءات الموارد البشريّة): مجموعُها يبقى، والمضغوطُ على رقمه.
- * «الإجمالي» وما لا يُضغَط بكلّ شيء — هو عددُ صفوف الجدول بلا المنتهين.
- *
- * والمنتهي لا يُعَدّ (قاعدةُ الأقسام عدا الموارد البشريّة) — إلّا إن فُلتر عليه
- * صراحةً بحالة «إنهاء خدمة»؛ وصفُّه يبقى في الجدول ليُراجَع.
- */
+/** Numbers do not move under whoever clicks them. Cards used to be counted over rows after every filter, including the clicked card's own, so clicking riders zeroed admins and drivers. Each group is counted with all filters except its own (the same rule as column filters), while the table applies all. */
 export function ltFacetedTotals(rows: LTEmployee[], f: Record<string, string>): LTTotals {
   const base = String(f.status || '').split(',').includes(ENDED) ? rows : rows.filter((r) => r.workStatusShown !== ENDED);
   const pass = (skip?: string) => base.filter((r) => ltPasses(r, f, skip));
@@ -388,16 +316,7 @@ const qs = (o: Record<string, string>) =>
   Object.entries(o).filter(([, v]) => v !== '' && v != null)
     .map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join('&');
 
-/**
- * ── والمسارُ يُكتب صريحًا لا يُركَّب ──────────────────────────────────────────
- * كان يُبنى من ثابتٍ ومقطعٍ («BASE» ثمّ اسمُ النقطة)، وخريطةُ نقاطِ الصفحات تُولَّد بقراءة
- * النصوص في ملفّ الصفحة وما تستورده — فلا ترى نصًّا مركَّبًا. فكُتب للصفحات
- * مسارٌ واحدٌ عامٌّ للقسم كلِّه، ثمّ سقط عند إعادة التوليد، فصارت
- * صفحةُ أوامر التشغيل بلا نقاطٍ أصلًا: ومَن مُنح هذه الصفحةَ وحدَها يأخذ 403 من
- * كلّ نداءٍ فيها (راجع middleware/pageGate).
- *
- * فالمسارُ يُكتب حرفًا حرفًا — طولٌ زائدٌ في الشِّفرة يقابل بابًا لا يُغلق خطأً.
- */
+/** The route is written explicitly, not composed. It used to be built from a constant and a segment, but the page endpoint map is generated by reading string literals in the page file and its imports, so it cannot see composed strings. A single general section route for the pages was written and then dropped on regeneration, so the pages lost access. */
 
 export const getLTEmployees = (q: Record<string, string> = {}) =>
   api.get<{ employees: LTEmployee[]; totals: LTTotals; options: LTOptions }>(`/api/light-transport/employees${qs(q) ? `?${qs(q)}` : ''}`);
@@ -406,10 +325,7 @@ export const getLTEmployee = (id: string) =>
 // Attachments ride in the body, so a slow phone connection needs more than the default wait.
 export const createLTEmployee = (body: any) => api.post<{ employee: LTEmployee }>(`/api/light-transport/employees`, body, { timeoutMs: 180000 });
 export const updateLTEmployee = (id: string, body: any) => api.put<{ employee: LTEmployee }>(`/api/light-transport/employees/${id}`, body);
-/**
- * إسنادُ مشرفٍ لعدّة موظّفين دفعةً — تشغيليٌّ أو مشرفُ تفقّدٍ أو كلاهما.
- * ما لا يُرسَل لا يُمَسّ، و`'none'` رفعٌ صريح.
- */
+/** Assign a supervisor to several employees at once: operational, check, or both. Fields not sent are untouched, and 'none' clears explicitly. */
 export const assignLTSupervisors = (body: {
   ids: string[]; supervisorUser?: string; dutySupervisorUser?: string; note?: string;
 }) => api.post<{ updated: number }>('/api/light-transport/employees/assign-supervisors', body);
@@ -429,21 +345,17 @@ export const getLTOrderOptions = () => api.get<{
   supervisors: LTSupervisor[];
 }>(`/api/light-transport/orders/options`);
 export const createLTOrder = (body: any) => api.post<{ order: LTOrder }>(`/api/light-transport/orders`, body);
-/**
- * نقلُ تفويضِ مركبةٍ وحدَه — بلا أمرِ تشغيلٍ جديد. يُستعمَل حين تكون المركبةُ
- * مفوَّضةً لشخصٍ وقائدُها الفعليُّ آخرَ (حالةٌ قائمةٌ في أربعةَ عشرَ مركبة)، أو
- * حين يُنقَل التفويضُ من مندوبٍ إلى مندوب. `toEmployee` فارغًا يعني رفعَه.
- */
+/** Transfer a vehicle's authorization alone, with no new operating order. Used when the vehicle is authorized to one person but actually driven by another, or when authorization moves from one rider to another. An empty `toEmployee` removes it. */
 export const moveLTAuthorization = (body: {
   vehicle: string; toEmployee?: string; authorizationNumber?: string;
   startDate?: string; expiryDate?: string; reason?: string;
 }) => api.post<{ vehicle: { _id: string; plateNumber: string; authorizedPerson: any } }>(`/api/light-transport/authorization/move`, body);
 export const endLTOrder = (id: string, body: any) => api.post<{ order: LTOrder }>(`/api/light-transport/orders/${id}/end`, body);
 
-// ── العرض ───────────────────────────────────────────────────────────────────
+// Display.
 export const fmtDate = (d?: string | null) => (d ? new Date(d).toISOString().slice(0, 10) : '');
 
-/** شرائحُ الحالة بلونها — «إنهاء خدمة» و«متوقف» ليستا محايدتين. */
+/** Status chips with color; 'service ended' and 'suspended' are not neutral. */
 export const LT_STATUS: Record<string, { cls: string }> = {
   'يعمل': { cls: 'bg-emerald-100 text-emerald-700' },
   'إجازة': { cls: 'bg-sky-100 text-sky-700' },
@@ -454,11 +366,7 @@ export const LT_STATUS: Record<string, { cls: string }> = {
 };
 export const statusCls = (s?: string) => LT_STATUS[String(s || '')]?.cls || 'bg-slate-100 text-slate-600';
 
-/**
- * ── حالةُ اليوم التي يكتبها القسم ──────────────────────────────────────────
- * يعمل · إجازة · موقوف · حادث (صاحبُ الشركة، ٢٠٢٦/١٠/٢١). وإجازةُ الموارد البشريّة
- * وإيقافُها وإنهاءُ الخدمة يغلبنها ولا يُعدَّلن من هنا (`statusSource === 'hr'`).
- */
+/** Today's status written by the department: working, leave, suspended, accident. HR leave, HR suspension and service end override them and are not editable here (`statusSource === 'hr'`). */
 export const OP_STATUS_OPTIONS: { value: '' | 'leave' | 'suspended' | 'accident'; ar: string; en: string }[] = [
   { value: '', ar: 'يعمل', en: 'Working' },
   { value: 'leave', ar: 'إجازة', en: 'On leave' },
@@ -468,7 +376,7 @@ export const OP_STATUS_OPTIONS: { value: '' | 'leave' | 'suspended' | 'accident'
 export const KIND_AR: Record<string, string> = { rep: 'مندوب', admin: 'إداري' };
 export const KIND_EN: Record<string, string> = { rep: 'Rep', admin: 'Admin' };
 
-/** أسبابُ قيدِ السجلّ بلغةٍ تُقرأ — لا مفاتيحُ إنجليزيّة في شاشةٍ عربيّة. */
+/** Readable reasons for a register entry, so an Arabic screen has no English keys. */
 export const HISTORY_KIND: Record<string, { ar: string; en: string }> = {
   created: { ar: 'أُنشئ السجلّ', en: 'Record created' },
   project: { ar: 'نقلٌ بين المشاريع', en: 'Project moved' },
@@ -481,21 +389,15 @@ export const HISTORY_KIND: Record<string, { ar: string; en: string }> = {
   authorization: { ar: 'نقلُ تفويض', en: 'Authorisation moved' },
 };
 
-/**
- * ── أعمدةُ الجدول: تعريفٌ واحدٌ للترويسة والقمع والتصدير ────────────────────
- * كلُّ عمودٍ يقول اسمَه وكيف يُقرأ. و«اللوحة» و«الإجراءات» تُثبَّتان في الأوّل
- * (راجع components/vehicles/stickyLead): الجدولُ عرضُه عشرون عمودًا، ومن يمرّ
- * يمينًا يفقد مَن يقرأ عنه.
- */
+/** Table columns: one definition for header, filter funnel and export. Each column states its name and how it is read. The plate and actions are pinned first (see components/vehicles/stickyLead): the table is twenty columns wide, and scrolling right would lose the row being read. */
 export type LTCol = { key: string; ar: string; en: string; get: (e: LTEmployee) => any; width?: number; mono?: boolean };
 
 export const LT_COLUMNS: LTCol[] = [
   { key: 'plate', ar: 'رقم اللوحة', en: 'Plate', get: (e) => (e.vehiclePlate ? `${e.vehiclePlate}${e.vehicleHold?.at ? ' — معلّقة' : ''}` : ''), width: 14, mono: true },
-  // مَن على المركبة هنا هو قائدُها الفعليّ في سجلّ المركبات — يُكتب هناك تلقائيًّا.
+  // Whoever is on the vehicle here is its actual driver in the vehicle register; it is written there automatically.
   { key: 'name', ar: 'الاسم (القائد الفعلي)', en: 'Name (actual driver)', get: (e) => e.name, width: 30 },
   { key: 'idNumber', ar: 'رقم الهوية', en: 'ID number', get: (e) => e.idNumber, width: 14, mono: true },
-  // انتهاءُ الإقامة ورخصةِ القيادة من ملفّه في الموارد البشريّة (٢٠٢٦/١٠/٢٧).
-  // القيمةُ حالتُه — بها يُفلتَر العمود — والخليّةُ ترسم التاريخَ ملوَّنًا بها.
+  // Residency and driving-license expiry from his HR file. The value is his status, which filters the column, and the cell draws the date colored by it.
   { key: 'iqamaExp', ar: 'انتهاء الإقامة', en: 'Iqama expiry', get: (e) => docStateLabel(e.iqamaState, true), width: 16 },
   { key: 'licenseExp', ar: 'انتهاء رخصة القيادة', en: 'Licence expiry', get: (e) => docStateLabel(e.licenseState, true), width: 16 },
   { key: 'jobTitleAr', ar: 'الوظيفة', en: 'Job', get: (e) => e.jobTitleAr || '', width: 12 },
@@ -503,7 +405,7 @@ export const LT_COLUMNS: LTCol[] = [
   { key: 'projectAr', ar: 'المشروع', en: 'Project', get: (e) => e.projectAr || '', width: 14 },
   { key: 'cityAr', ar: 'الفرع', en: 'Branch', get: (e) => e.cityAr || '', width: 12 },
   { key: 'supervisorName', ar: 'المشرف التشغيلي', en: 'Ops supervisor', get: (e) => e.supervisorName || '', width: 18 },
-  // مشرفُ التفقّد: مَن يقف عليه صباحًا — غيرُ التشغيليّ بالضرورة.
+  // Check supervisor: whom he reports to in the morning, not necessarily the operational one.
   { key: 'dutySupervisorName', ar: 'مشرف التفقد', en: 'Duty supervisor', get: (e) => e.dutySupervisorName || '', width: 18 },
   { key: 'vehicleTypeAr', ar: 'نوع المركبة', en: 'Vehicle type', get: (e) => e.vehicleTypeAr || '', width: 14 },
   { key: 'contractTypeAr', ar: 'نوع التعاقد', en: 'Contract', get: (e) => e.contractTypeAr || '', width: 12 },
@@ -515,7 +417,7 @@ export const LT_COLUMNS: LTCol[] = [
   { key: 'housing', ar: 'السكن', en: 'Housing', get: (e) => e.housing?.name || '', width: 14 },
   { key: 'housingRoom', ar: 'الغرفة', en: 'Room', get: (e) => e.housingRoom || '', width: 12 },
   { key: 'serialNumber', ar: 'الرقم التسلسلي', en: 'Serial', get: (e) => e.vehicle?.serialNumber || '', width: 15, mono: true },
-  // ── ورقةُ التفويض والقائدُ الفعليّ — من شيت القسم، على مركبته ──────────────
+  // Authorization paper and actual driver, from the department sheet, on his vehicle.
   { key: 'authorizedName', ar: 'المفوَّض', en: 'Authorised person', get: (e) => e.vehicle?.authorizedPerson?.name || '', width: 24 },
   { key: 'authorizedId', ar: 'هوية المفوَّض', en: 'Authorised ID', get: (e) => e.vehicle?.authorizedPerson?.iqamaNumber || '', width: 14, mono: true },
   { key: 'authorizedPhone', ar: 'جوال المفوَّض', en: 'Authorised phone', get: (e) => e.vehicle?.authorizedPerson?.phone || '', width: 14, mono: true },
@@ -524,9 +426,7 @@ export const LT_COLUMNS: LTCol[] = [
   { key: 'authorizationEnd', ar: 'نهاية التفويض', en: 'Auth. end', get: (e) => fmtDate(e.vehicle?.authorizedPerson?.expiryDate), width: 14, mono: true },
   { key: 'actualDriverName', ar: 'القائد الفعلي', en: 'Actual driver', get: (e) => e.vehicle?.actualDriver?.name || '', width: 24 },
   { key: 'actualDriverId', ar: 'هوية القائد الفعلي', en: 'Actual driver ID', get: (e) => e.vehicle?.actualDriver?.idNumber || '', width: 14, mono: true },
-  // ── وثيقتا المركبة في الجدول والتصدير ────────────────────────────────────
-  // «كارتُ تشغيلِ مَن ينتهي هذا الشهر؟» يُقرأ من صفّ الرجل لا من سجلّ المركبات:
-  // من يُوقَف صباحًا هو الرجل.
+  // The two vehicle documents in table and export. 'Whose operating card expires this month' is read from the rider's row, not the vehicle register, because the person is the one who gets stopped in the morning.
   { key: 'operatingCardNumber', ar: 'رقم كارت التشغيل', en: 'Operating card no.', get: (e) => e.operatingCard?.number || '', width: 16, mono: true },
   { key: 'operatingCardExpiry', ar: 'انتهاء كارت التشغيل', en: 'Operating card expiry', get: (e) => fmtDate(e.operatingCard?.expiryDate), width: 16, mono: true },
   { key: 'inspectionExpiry', ar: 'انتهاء الفحص', en: 'Inspection expiry', get: (e) => fmtDate(e.inspection?.expiryDate), width: 15, mono: true },
@@ -534,41 +434,31 @@ export const LT_COLUMNS: LTCol[] = [
   { key: 'notesAr', ar: 'ملاحظات', en: 'Notes', get: (e) => e.notesAr || '', width: 28 },
 ];
 
-/** ما يُثبَّت في أوّل الجدول — واللوحةُ أوّلُ ما يُسأل عنه في هذا القسم. */
+/** What is pinned at the start of the table; the plate is the first thing asked about in this section. */
 export const LT_PINNED = ['plate'];
 
 export const canEditLT = (u?: { role?: string | null; permissions?: Record<string, string> | null } | null) =>
   ['super_admin', 'admin', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead', 'it_manager'].includes(String(u?.role || ''))
   || u?.permissions?.B2C === 'edit';
 
-/**
- * «نقل مشروع» — الطريقُ الوحيدُ لتغيير مشروع المندوب (صاحبُ الشركة، ٢٠٢٦/١٠/١٩):
- * نائبُ مدير قطاع الأفراد، ومديرُ القسم، والسوبر أدمن، والأدمن — وأهلُ المال كمدير
- * النظام. ويحسمه الخادمُ أيضًا (utils/b2cEntry.canTransfer).
- */
+/** Project transfer is the only way to change a rider's project: deputy head of the individuals sector, the department manager, super admin and admin, plus finance as a system manager. The server also decides it (utils/b2cEntry.canTransfer). */
 export const canTransferLT = (u?: { role?: string | null } | null) =>
   ['super_admin', 'admin', 'b2c_manager', 'b2c_deputy', ...FINANCE_FULL_ROLES].includes(String(u?.role || ''));
 export const transferLTProject = (id: string, projectAr: string, note: string) =>
   api.post<{ ok: boolean; projectAr: string }>(`/api/light-transport/employees/${id}/transfer-project`, { projectAr, note });
 
-/** أوردراتُ المندوب موزّعةً على مشاريعه شهرًا شهرًا — من الأوردرات نفسِها لا من مشروعه الحاليّ. */
+/** A rider's orders split by project month by month, from the orders themselves and not his current project. */
 export type LTRepMonth = { month: string; total: number; projects: { project: string; unit: string; total: number; days: number; from: string; to: string }[] };
 export const getLTRepOrders = (id: string) => api.get<{ months: LTRepMonth[] }>(`/api/light-transport/employees/${id}/orders`);
 
-/** مشرفو القسم ومديرو مشاريعه — ومشاريعُ كلٍّ منهم (مَن يرى ماذا في مدخلات الأوردرات). */
+/** Department supervisors and project managers, and each one's projects (who sees what in order entry). */
 export type B2CManager = { _id: string; name: string; role: string; projects: string[] };
 export const getB2CManagers = () =>
   api.get<{ managers: B2CManager[]; projects: string[]; canEdit: boolean }>('/api/b2c/entry/managers');
 export const setB2CManagerProjects = (userId: string, projects: string[]) =>
   api.put<{ ok: boolean }>(`/api/b2c/entry/managers/${userId}`, { projects });
 
-/**
- * من يرى شاشاتِ القسم.
- *
- * الحارسُ على **القسم** لا على قائمةِ أدوارٍ مكتوبةٍ بيد: من مُنح «B2C» من
- * صفحة الصلاحيّات يدخل بلا تعديلِ شيفرة — وهو ما يعِد به الخادمُ أصلًا
- * (`sectionGate`). وقائمةُ الأدوار كانت تنقض ذلك الوعد بصمت.
- */
+/** Who sees the department screens. The guard is on the section, not a hand-written role list: whoever is granted B2C from the permissions page gets in without a code change, as the server promises (`sectionGate`). A role list silently broke that promise. */
 export const canSeeLT = (u?: { role?: string | null; permissions?: Record<string, string> | null } | null) =>
   canEditLT(u) || !!u?.permissions?.B2C
   || ['b2c_rep_supervisor', 'operations_manager', 'moderator'].includes(String(u?.role || ''));

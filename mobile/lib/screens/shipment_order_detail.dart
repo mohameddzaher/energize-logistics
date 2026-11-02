@@ -12,9 +12,7 @@ import 'jp.dart' show JpTaskPanel;
 import 'shipment_order_create.dart';
 import 'shipment_orders_common.dart';
 
-/// ── تفاصيلُ الشحنة ───────────────────────────────────────────────────────────
-/// نظيرُ نافذة التفاصيل في الويب: الحمولةُ فيها أربعون حقلًا لا يسعها الصفّ،
-/// وكانت تُقرأ بفتح التعديل — بابُ كتابةٍ يُفتَح لقراءة. فصار للقراءة بابُها.
+/// Shipment details: mirrors the web details dialog. The load has about 40 fields that do not fit a row, so reading has its own view instead of opening the edit form.
 class ShipmentOrderDetailScreen extends StatefulWidget {
   final Map<String, dynamic> order;
   final List<SoStatus> vocab;
@@ -45,7 +43,7 @@ class _ShipmentOrderDetailScreenState extends State<ShipmentOrderDetailScreen> {
     try {
       final d = await Api.instance.get('/api/shipment-orders/orders/${widget.order['_id']}');
       if (mounted && d['order'] is Map) setState(() => _o = Map<String, dynamic>.from(d['order']));
-    } catch (_) {/* المعروضُ يبقى */}
+    } catch (_) {/* Keep what is shown */}
   }
 
   Widget _group(String title, List<(String, dynamic)> rows) {
@@ -192,7 +190,7 @@ class _ShipmentOrderDetailScreenState extends State<ShipmentOrderDetailScreen> {
               const SizedBox(height: 6),
               SoStatusLog(log: log, vocab: widget.vocab),
             ]))),
-          // مهامّ JP المربوطة بهذه الشحنة — تُضاف من هنا.
+          // JP tasks linked to this shipment; added from here.
           JpTaskPanel(section: 'shipment-orders', kind: 'shipment', refId: '${d['_id']}'),
         ]),
       ),

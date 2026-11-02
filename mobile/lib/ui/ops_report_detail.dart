@@ -4,13 +4,7 @@ import '../services/api.dart';
 import '../services/lang.dart';
 import 'theme.dart';
 
-/// كشفُ التشغيل كاملًا وتعديلُه — نظيرُ ReportDetail في
-/// components/customs/LinkedOpsReports (الموقع) والحقولِ في lib/workflowFields.
-///
-/// ما يُعرض هو ما يصل من الخادم: يحجب قيمةَ البيع وأعمدةَ المال عمّن لا يملكها
-/// بقاعدة سير العمل نفسِها (`stripRowFor`)، فلا تُحجب هنا بقائمةٍ ثانية. والتعديلُ
-/// يُحفظ من `PUT /api/workflows/:id` بقفله وقواعده — والحقولُ القابلةُ للتعديل
-/// هي التي يقول الخادمُ إنّه سيقبلها (`access.fields`).
+/// Full operations report and its editing, twin of ReportDetail in components/customs/LinkedOpsReports (web) and the fields in lib/workflowFields. What is shown is what the server sends: it hides the sale value and money columns from those without access by the workflow rule itself (`stripRowFor`), so there is no second list here. Edits save through `PUT /api/workflows/:id` with its lock and rules, and editable fields are those the server says it will accept (`access.fields`).
 
 typedef OpsField = (String key, String ar, String en, String type);
 
@@ -70,7 +64,7 @@ const List<(String, String, List<OpsField>)> opsReportSections = [
   ]),
 ];
 
-/// نوعُ الدفع: ستُّ قيمٍ تُعرَض وأربعٌ تُختار — كـ lib/paymentKind في الويب.
+/// Payment kind: six values displayed and four selectable, like lib/paymentKind on the web.
 const opsPaymentChoices = [
   ('deferred_invoice', 'آجل - فاتورة', 'Deferred – invoice'),
   ('deferred_cash', 'آجل - كاش', 'Deferred – cash'),
@@ -117,7 +111,7 @@ String _shown(OpsField f, Map d) {
   }
 }
 
-/// الأقسامُ بما وصل منها — قسمٌ لا خانةَ فيه للدور لا يُعرض.
+/// Sections as received; a section with no field for the role is not shown.
 List<(String, String, List<OpsField>)> visibleSections(Map d) => [
       for (final s in opsReportSections)
         if (s.$3.any((f) => d.containsKey(f.$1)))
@@ -151,8 +145,7 @@ class OpsReportFields extends StatelessWidget {
   }
 }
 
-/// تعديلُ الكشف: يأخذ القفلَ، ويفتح نموذجَ الحقول المسموحة، ويحفظ ما تغيّر وحدَه.
-/// يُرجع رسالةَ النجاح (أو ما رفضه الخادم) — و null إن أُلغي.
+/// Edit the report: takes the lock, opens the form of allowed fields and saves only what changed. Returns the success message (or the server's rejection), and null if cancelled.
 Future<String?> editOpsReport(BuildContext context, {required String workflowId, required Map detail, required List<String> fields}) async {
   final can = fields.toSet();
   final editable = [for (final s in visibleSections(detail)) for (final f in s.$3) if (can.contains(f.$1)) f];
@@ -170,9 +163,9 @@ Future<String?> editOpsReport(BuildContext context, {required String workflowId,
     useSafeArea: true,
     builder: (_) => FractionallySizedBox(heightFactor: 0.9, child: _EditSheet(workflowId: workflowId, detail: detail, fields: editable)),
   );
-  // أُغلقت بلا حفظ: يُرفع القفل (الحفظُ يرفعه بنفسه).
+  // Closed without saving: release the lock (saving releases it itself).
   if (res == null) {
-    try { await Api.instance.post('/api/workflows/$workflowId/unlock'); } catch (_) { /* القفلُ ينتهي وحدَه */ }
+    try { await Api.instance.post('/api/workflows/$workflowId/unlock'); } catch (_) { /* The lock expires on its own. */ }
   }
   return res;
 }
@@ -226,7 +219,7 @@ class _EditSheetState extends State<_EditSheet> {
       final refused = out is Map ? '${out['refusedMessage'] ?? ''}' : '';
       Navigator.pop(context, refused.isNotEmpty ? refused : tr('حُفظ التعديل', 'Saved'));
     } catch (e) {
-      // رسالةُ الخادم كما هي: «لا يُسجَّل تاريخ السداد إلا بعد…».
+      // Server message as is, e.g. the payment date cannot be recorded until a condition is met.
       if (mounted) setState(() { _saving = false; _error = e.toString(); });
     }
   }

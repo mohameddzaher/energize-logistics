@@ -7,8 +7,7 @@ import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 
-/// مسار المركبة على الخريطة — يرسم نقاط GPS (polyline) ليوم مختار على خريطة
-/// OpenStreetMap المجانية. /api/ls2/vehicles/:unitId/track?from&to
+/// Vehicle track on the map: draws the GPS points (polyline) for a chosen day on free OpenStreetMap. /api/ls2/vehicles/:unitId/track?from&to
 class Ls2TrackMapScreen extends StatefulWidget {
   final int vehicleId; // unitId
   final String plate;
@@ -61,7 +60,7 @@ class _Ls2TrackMapScreenState extends State<Ls2TrackMapScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final center = _pts.isNotEmpty ? _pts.first : const LatLng(24.7136, 46.6753); // الرياض افتراضيًا
+    final center = _pts.isNotEmpty ? _pts.first : const LatLng(24.7136, 46.6753); // Default to Riyadh.
     return AppScaffold(
       title: Text('${tr('مسار', 'Track')} ${widget.plate}'),
       actions: [

@@ -1,34 +1,8 @@
 /**
- * التفويض — مصدرٌ واحدٌ لـ«مَن المفوَّضُ على هذه المركبة الآن؟».
- *
- * ── ما وقع ───────────────────────────────────────────────────────────────────
- * «ق أ 4723» في مركبات النقل الخفيف بلا مفوَّض، وفي ملفّ الموظّف في الموارد
- * البشريّة «مُفوَّضةٌ لـ MD Rakib Hossen منذ ٢٦/٠٨»، وإنهاءُ خدمته يقول «أَلغِ
- * التفويضَ أوّلًا». والسببُ أنّ التفويضَ مكتوبٌ في سجلَّين:
- *
- *   ١) `VehicleMaster.authorizedPerson` — ورقةُ التفويض على المركبة، تقرؤها
- *      شاشاتُ المركبات والنقل الخفيف. **وهي المرجع.**
- *   ٢) `VehicleAuthorization` (+ مؤشّراتُ `Vehicle` القديم و`Employee.vehiclePlate`)
- *      — سجلُّ الإسناد بالموظّف، يقرؤه ملفُّ الموظّف وإخلاءُ الطرف.
- *
- * وكان كلُّ بابٍ يكتب في واحدٍ منهما: صفحةُ التفاويض تكتب في الاثنين، وتعديلُ
- * مركبات القسم من B2C وأوامرُ التشغيل وتعديلُ المركبة من السجلّ يكتبون في
- * الأوّل وحدَه، وأزرارُ صفحة المركبة القديمة في الثاني وحدَه. فافترقا: 4723
- * أُلغي تفويضُها من B2C يوم ٢١/١٠ والإسنادُ المفتوح يوم ١١/١٠ بقي «ساريًا».
- *
- * ── القاعدة ──────────────────────────────────────────────────────────────────
- * • الحالُ الحاضرةُ تُكتب وتُقرأ من الورقة (`authorizedPerson`) وحدَها.
- * • سجلُّ الإسناد **مرآةٌ وتاريخ**: يتبع الورقةَ بعد كلّ كتابةٍ فيها — من أيّ
- *   باب — عبر `syncLegacyFromMaster`. وخطّافاتُ النموذج (models/VehicleMaster)
- *   تناديها، فلا يحتاج بابٌ جديدٌ أن يتذكّرها.
- * • والكتابةُ من الباب القديم (صفحة المركبة في الموارد البشريّة) تمرّ بـ
- *   `setHolder`: تكتب الورقةَ أوّلًا، ثمّ تتبعها المرآة.
- * • القرّاءُ (الملفّ، إخلاءُ الطرف، بطاقاتُ السائقين) يسألون `currentFor`.
- *   ولا يُقرأ الإسنادُ وحدَه إلّا لمركبةٍ قديمةٍ لا ورقةَ لها في السجلّ.
- *
- * والربطُ بين `Vehicle` و`VehicleMaster` باللوحة (`orderlessPlateKey`: لا ترتيبَ
- * ولا مسافات — «ق أ  4723» بمسافتين هي «ق أ 4723»)، ثمّ يُثبَّت في
- * `Vehicle.master` فلا يُعاد التخمين.
+ * Authorization: a single source for "who is authorized on this vehicle now?".
+ * What happened: a light-transport vehicle had no authorized person, while the employee's HR file said it was authorized to a named employee since a given date, and ending his service said to cancel the authorization first. Cause: the authorization is written in two registers:
+ * 1) `VehicleMaster.authorizedPerson` is the authorization sheet on the vehicle, read by the vehicles and light-transport screens. It is the reference.
+ * 2) `VehicleAuthorization` (plus the legacy `Vehicle` pointers and `Employee.vehiclePlate`) is the per-employee assignment register, read by the employee file and clearance. Each write path wrote to only one: the authorizations page wrote both; B2C's section vehicle edit, operations orders and the registry's vehicle edit wrote only the first; the legacy vehicle page's buttons wrote only the second. So they diverged: one plate had its authorization cancelled from B2C while its open assignment stayed active. Rules: - The present state is written and read from the sheet (`authorizedPerson`) alone. - The assignment register is a mirror and history: it follows the sheet after every write to it, from any path, via `syncLegacyFromMaster`. The model hooks (models/VehicleMaster) call it, so a new path need not remember. - A write from the legacy path (the HR vehicle page) goes through `setHolder`: it writes the sheet first, then the mirror follows. - Readers (file, clearance, driver cards) ask `currentFor`. The assignment alone is read only for a legacy vehicle with no sheet in the registry. The link between `Vehicle` and `VehicleMaster` is by plate (`orderlessPlateKey`: no order or spaces, so a plate with two spaces equals the one with one), then pinned in `Vehicle.master` so it is not guessed again.
  */
 const mongoose = require('mongoose');
 const { orderlessPlateKey } = require('./plateKey');
@@ -52,7 +26,7 @@ const M = () => ({
   Employee: require('../models/Employee'),
 });
 
-/** مَن على الورقة؟ — `null` إن كانت فارغة. */
+/** Who is on the sheet? `null` if empty. */
 function holderOf(vm) {
   const a = vm?.authorizedPerson || {};
   const name = S(a.name); const id = S(a.iqamaNumber).replace(/\s+/g, '');
@@ -62,7 +36,7 @@ function holderOf(vm) {
 const empName = (e) => S(`${e?.firstName || ''} ${e?.lastName || ''}`) || S(e?.arabicName) || S(e?.fullName);
 const empIds = (e) => [S(e?.iqamaNumber), S(e?.nationalId)].filter(Boolean);
 
-/** الموظّفُ برقم هويّته (العمودان معًا) — ملفُّ الموارد البشريّة الساري أوّلًا. */
+/** Employee by ID number (both columns); the active HR file first. */
 async function employeeByIdNumber(id) {
   const n = S(id);
   if (!n) return null;
@@ -74,7 +48,7 @@ async function employeeByIdNumber(id) {
   return rows.sort((a, b) => rank(b) - rank(a))[0];
 }
 
-/** مركباتُ السجلّ القديم التي هي هذه المركبة — بالمؤشّر أوّلًا ثمّ باللوحة. */
+/** Legacy-register vehicles that are this vehicle, by pointer first and then by plate. */
 async function legacyVehiclesOf(vm) {
   const { Vehicle } = M();
   const key = orderlessPlateKey(vm.plateNumber);
@@ -82,7 +56,7 @@ async function legacyVehiclesOf(vm) {
   return all.filter((x) => (x.master && String(x.master) === String(vm._id)) || (key && orderlessPlateKey(x.plateNumber) === key));
 }
 
-/** مركبةُ السجلّ (الورقة) لمركبةٍ قديمة — أو null إن لم تكن في السجلّ. */
+/** The registry vehicle (sheet) for a legacy vehicle, or null if it is not in the registry. */
 async function masterOfLegacy(vehicle) {
   const { VehicleMaster } = M();
   if (!vehicle) return null;
@@ -99,7 +73,7 @@ async function masterOfLegacy(vehicle) {
   return hit ? VehicleMaster.findById(hit._id) : null;
 }
 
-/** تُنشأ مرآةٌ قديمةٌ للمركبة حين يلزم فتحُ إسنادٍ ولا مرآةَ لها. */
+/** Creates a legacy mirror for the vehicle when an assignment must be opened and none exists. */
 async function ensureLegacyMirror(vm) {
   const { Vehicle } = M();
   const reg = S(vm.registrationTypeAr);
@@ -110,14 +84,14 @@ async function ensureLegacyMirror(vm) {
       department: S(vm.sectorAr), project: S(vm.departmentAr), status: 'available',
     })).toObject();
   } catch (e) {
-    // سباقٌ مع كاتبٍ آخر على اللوحة نفسِها (فريدة) — تُقرأ الموجودة.
+    // Race with another writer on the same (unique) plate; read the existing one.
     const again = await legacyVehiclesOf(vm);
     if (again.length) return again[0];
     throw e;
   }
 }
 
-/** يجعل مؤشّرات المركبة القديمة تطابق إسنادَها الساري الوحيد. */
+/** Makes the legacy vehicle's pointers match its single active assignment. */
 async function syncPointers(vehicleId, masterId) {
   const { Vehicle, VehicleAuthorization } = M();
   const active = await VehicleAuthorization.findOne({ vehicle: vehicleId, status: 'active' }).sort({ createdAt: -1 });
@@ -131,14 +105,10 @@ async function syncPointers(vehicleId, masterId) {
 }
 
 /**
- * سجلُّ الإسناد يتبع الورقة.
- *
- * @param vmOrId  مركبةُ السجلّ (مستندٌ أو معرّف)
- * @param opts.employee  الموظّفُ إن عُرف بغير رقم الهويّة (من الباب القديم)
- * @param opts.meta      حقولٌ للإسناد الجديد: authorizationType, issuedBy, notes
- * @param opts.reason    سببُ الإغلاق حين تُفرَّغ الورقة
- * @param opts.userId    مَن فعل
- * @returns {{ changed, opened, closed, employees: string[], vehicles: string[], unlinkedHolder }}
+ * The assignment register follows the sheet.
+ * @param vmOrId  registry vehicle (document or id)
+ * @param opts.employee  the employee if known by something other than ID number (from the legacy path)
+ * @param opts.meta      fields for the new assignment: authorizationType, issuedBy, notes @param opts.reason    closing reason when the sheet is emptied @param opts.userId    who acted @returns {{ changed, opened, closed, employees: string[], vehicles: string[], unlinkedHolder }}
  */
 async function syncLegacyFromMaster(vmOrId, opts = {}) {
   const { VehicleMaster, VehicleAuthorization, Employee } = M();
@@ -160,8 +130,7 @@ async function syncLegacyFromMaster(vmOrId, opts = {}) {
       .populate('employee', 'firstName lastName arabicName iqamaNumber nationalId').sort({ createdAt: -1 })
     : [];
 
-  // أيُّ إسنادٍ ساريٍ هو صاحبُ الورقة؟ بالموظّف إن عُرف، وإلّا بالاسم المطويّ
-  // (ورقةٌ بلا رقم هويّة كتبها الباب القديم لموظّفٍ بلا إقامة مسجَّلة).
+  // Which active assignment belongs to the sheet's holder? By employee if known, else by folded name (a sheet without an ID number written by the legacy path for an employee with no recorded residence).
   const isHolder = (a) => {
     if (!holder) return false;
     const e = a.employee || {};
@@ -192,7 +161,7 @@ async function syncLegacyFromMaster(vmOrId, opts = {}) {
   }
 
   if (keep) {
-    // الورقةُ هي المرجع في رقمها ومدّتها أيضًا.
+    // The sheet is the reference for its number and term too.
     const want = { documentNumber: holder.authorizationNumber, documentExpiry: ymd(holder.expiryDate) };
     const diff = Object.entries(want).filter(([k, v]) => v && S(keep[k]) !== v);
     if (diff.length) {
@@ -217,14 +186,12 @@ async function syncLegacyFromMaster(vmOrId, opts = {}) {
     });
     out.opened += 1; out.changed = true;
   } else if (holder && !emp) {
-    out.unlinkedHolder = true; // ورقةٌ باسم مَن ليس له ملفٌّ في الموارد البشريّة
+    out.unlinkedHolder = true; // A sheet in the name of someone with no HR file
   }
 
   for (const v of legacy) { await syncPointers(v._id, vm._id); out.vehicles.push(String(v._id)); }
 
-  // ── ولقطةُ اللوحة على ملفّ الموظّف (`vehiclePlate`) ─────────────────────
-  // قد يُفوَّض الواحدُ على مركبتين، والخانةُ واحدة: كانت تأخذ لوحةَ آخر مركبةٍ
-  // مُزامَنة، فتتقافز بين اللوحتين في كلّ مرور. فهي لوحاتُه كلُّها مرتّبةً.
+  // The plate snapshot on the employee file (`vehiclePlate`): one person may be authorized on two vehicles but there is one field. It used to take the plate of the last synced vehicle and flip between the two on every pass. It now holds all his plates, sorted.
   const key = orderlessPlateKey(vm.plateNumber);
   if (emp) {
     touched.add(String(emp._id));
@@ -244,16 +211,12 @@ async function syncLegacyFromMaster(vmOrId, opts = {}) {
   return out;
 }
 
-/**
- * يُمسَح كلُّ ما يُقرأ منه التفويض ثمّ يُعلَن — الإبطالُ قبل الإعلان، وإلّا جلب
- * المستمعُ حالًا قديمةً وتأخّرت الشاشةُ تغييرًا واحدًا (راجع ذاكرة
- * «announce before invalidate»).
- */
-/** لوحاتُ الخانة: قد تحمل أكثرَ من لوحةٍ مفصولةً بـ « · ». */
+/** Clears everything the authorization is read from, then announces. Invalidation comes before the announcement, or the listener fetches stale state and the screen lags one change (see the announce-before-invalidate note). */
+/** The field's plates: it may hold more than one, separated by a middle dot. */
 const PLATE_SEP = ' · ';
 const plateKeysOf = (txt) => S(txt).split(/\s*[·،,]\s*/).map(orderlessPlateKey).filter(Boolean);
 
-/** اللوحاتُ التي يحملها الموظّفُ الآن في سجلّ المركبات — مرتّبة. */
+/** The plates the employee currently holds in the vehicle registry, sorted. */
 async function currentPlatesOf(emp) {
   const ids = empIds(emp);
   if (!ids.length) return [];
@@ -262,15 +225,15 @@ async function currentPlatesOf(emp) {
   return [...new Set(rows.map((r) => S(r.plateNumber)).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ar'));
 }
 
-/** أتطابق الخانةُ ما يحمله؟ (مجموعةً لا ترتيبًا.) */
+/** Does the field match what he holds? As a set, not an order. */
 async function plateSnapshotOk(emp) {
   const want = (await currentPlatesOf(emp)).map(orderlessPlateKey).sort();
-  if (!want.length) return true; // لا تفويضَ له: الخانةُ لا تُمَسّ (قد تقول «غير مطلوب»)
+  if (!want.length) return true; // No authorization: leave the field alone (it may say not required)
   const have = plateKeysOf(emp.vehiclePlate).sort();
   return want.length === have.length && want.every((k, i) => k === have[i]);
 }
 
-/** يكتب لوحاتِه في الخانة إن اختلفت — ويفرّغها إن كانت لوحةً لم يعد يحملها. */
+/** Writes his plates to the field if they differ, and clears it if it holds a plate he no longer has. */
 async function refreshPlateSnapshot(emp) {
   const { Employee } = M();
   const plates = await currentPlatesOf(emp);
@@ -286,8 +249,7 @@ async function refreshPlateSnapshot(emp) {
   return false;
 }
 
-// المسحُ والإعلانُ من الباب المشترك (utils/vehicleAnnounce)، وحدثا التفويض
-// وملفِّ الموظّف بعدهما.
+// Clearing and announcing go through the shared door (utils/vehicleAnnounce), followed by the authorization and employee-file events.
 function announce(result = {}) {
   const vs = result.vehicles || [];
   require('./vehicleAnnounce').announceVehicles({}, {
@@ -298,7 +260,7 @@ function announce(result = {}) {
   });
 }
 
-/** بعد كلّ كتابةٍ في الورقة (من خطّافات النموذج). لا يُسقط الكتابةَ إن فشل. */
+/** After every write to the sheet (from model hooks). Never fails the write itself. */
 async function afterMasterWrite(vmId, ctx = {}) {
   try {
     const r = await syncLegacyFromMaster(vmId, ctx);
@@ -311,11 +273,8 @@ async function afterMasterWrite(vmId, ctx = {}) {
 }
 
 /**
- * يكتب صاحبَ الورقة (أو يفرّغها) ثمّ يُتبعها سجلَّ الإسناد — للباب القديم ولكلّ
- * من يعرف الموظّفَ بمعرّفه.
- *
- * @param holder  null للإلغاء، أو { employee?, name?, idNumber?, jobTitleAr?, phone?,
- *                authorizationNumber?, startDate?, expiryDate? }
+ * Writes the sheet's holder (or empties it), then makes the assignment register follow. For the legacy path and anyone who knows the employee by id.
+ * @param holder  null to cancel, or { employee?, name?, idNumber?, jobTitleAr?, phone?, authorizationNumber?, startDate?, expiryDate? }
  * @param ctx     { userId, byName, reason, note, meta }
  */
 async function setHolder(vmOrId, holder, ctx = {}) {
@@ -329,7 +288,7 @@ async function setHolder(vmOrId, holder, ctx = {}) {
     const ids = emp ? empIds(emp) : [];
     vm.authorizedPerson = {
       ...(vm.authorizedPerson?.toObject ? vm.authorizedPerson.toObject() : (vm.authorizedPerson || {})),
-      // اسمُ الموارد البشريّة يغلب متى عُرف الموظّف — utils/personRef.
+      // The HR name wins once the employee is known; see utils/personRef.
       name: (emp && require('./personRef').canonicalName(emp)) || S(holder.name) || empName(emp),
       iqamaNumber: S(holder.idNumber) || ids[0] || '',
       jobTitleAr: holder.jobTitleAr !== undefined ? S(holder.jobTitleAr) : S(vm.authorizedPerson?.jobTitleAr),
@@ -342,7 +301,7 @@ async function setHolder(vmOrId, holder, ctx = {}) {
   } else {
     vm.authorizedPerson = { name: '', iqamaNumber: '', jobTitleAr: '', phone: '', authorizationNumber: '', startDate: null, expiryDate: null, statusCode: '' };
   }
-  // قيدٌ في سجلّ المركبة: مَن قبلَ مَن، ومن أيّ باب.
+  // An entry in the vehicle's log: who before whom, and through which path.
   if (ctx.note !== false) {
     vm.renewals = vm.renewals || [];
     vm.renewals.push({
@@ -354,7 +313,7 @@ async function setHolder(vmOrId, holder, ctx = {}) {
       byName: S(ctx.byName), at: new Date(),
     });
   }
-  vm.$locals.skipAuthSync = true; // المزامنةُ تُنادى هنا صراحةً ومعها الموظّف
+  vm.$locals.skipAuthSync = true; // The sync is called explicitly here, with the employee.
   await vm.save();
   const r = await syncLegacyFromMaster(vm.toObject(), { employee: emp, meta: ctx.meta, reason: ctx.reason, userId: ctx.userId });
   announce(r);
@@ -362,9 +321,8 @@ async function setHolder(vmOrId, holder, ctx = {}) {
 }
 
 /**
- * ما بيد هذا الموظّف الآن — الجوابُ الواحد لملفّه ولإخلاء طرفه ولبطاقات السائقين.
- * من الورقة برقم الهويّة (ثمّ بالاسم المطويّ إن لم يُطابَق رقم)، ومن الإسناد
- * القديم **فقط** لمركبةٍ لا ورقةَ لها في السجلّ.
+ * What this employee holds now: the single answer for his file, his clearance and the driver cards.
+ * From the sheet by ID number (then by folded name if no number matched), and from the legacy assignment only for a vehicle that has no sheet in the registry.
  */
 async function currentFor(employeeOrId) {
   const { VehicleMaster, VehicleAuthorization, Employee } = M();
@@ -394,7 +352,7 @@ async function currentFor(employeeOrId) {
     expiryDate: ymd(v.authorizedPerson?.expiryDate),
   }));
 
-  // الإسنادُ القديم: يُقرأ لمركبةٍ لا ورقةَ لها — وإلّا فالورقةُ قالت كلمتَها.
+  // Legacy assignment: read for a vehicle with no sheet; otherwise the sheet has spoken.
   const legacy = await VehicleAuthorization.find({ employee: emp._id, status: 'active' })
     .populate('vehicle', 'plateNumber type department project master').lean();
   if (legacy.length) {
@@ -413,7 +371,7 @@ async function currentFor(employeeOrId) {
   return out;
 }
 
-/** «هل للورقة رأيٌ في هذه المركبة القديمة؟» — مجموعةُ مفاتيح لوحات السجلّ. */
+/** Does the sheet have a say on this legacy vehicle? A set of registry plate keys. */
 async function registryPlateKeys() {
   const { VehicleMaster } = M();
   return new Set((await VehicleMaster.find({}).select('plateNumber').lean()).map((v) => orderlessPlateKey(v.plateNumber)));

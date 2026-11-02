@@ -8,11 +8,7 @@ import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import '../ui/search_field.dart';
 
-/// مدخلات الأوردرات — للإدخال وحدَه، نظيرُ /system/b2c/daily-entry (صاحبُ الشركة، ٢٠٢٦/١٠/١٩).
-///
-/// يكتب مديرُ المشروع هنا أوردراتِ كلّ مندوبٍ بدل الإكسيل: الاسمُ ورقمُ الإقامة والمشروعُ
-/// وخانةُ اليوم لا غير. والإجماليّاتُ والتقييمُ مكانُها اللوحةُ وتحليلُ الأوردرات. ولا يرى
-/// إلّا مناديبَ المشاريع المُسندة إليه (يحسمه الخادم)، ومَن نُقل إلى مشروعه يظهر في الحال.
+/// Order entry, for entry only, the counterpart of /system/b2c/daily-entry. The project manager types each rider's orders here instead of Excel: name, residence number, project and the day cell only. Totals and evaluation belong to the dashboard and orders analysis. Visibility is limited to riders of the projects assigned to the user (decided by the server), and a rider moved to the project appears immediately.
 class B2cDailyEntryScreen extends StatefulWidget {
   const B2cDailyEntryScreen({super.key});
   @override
@@ -24,7 +20,7 @@ class _B2cDailyEntryScreenState extends State<B2cDailyEntryScreen> {
   String? _error;
   String _date = '';
   String _q = '';
-  final _searchCtl = TextEditingController(); // النصُّ يبقى مطابقًا لـ_q بعد إعادة التحميل
+  final _searchCtl = TextEditingController(); // Text stays equal to _q after a reload.
   String _project = '';
   final Map<String, TextEditingController> _ctrls = {};
   final Set<String> _dirty = {};
@@ -84,7 +80,7 @@ class _B2cDailyEntryScreenState extends State<B2cDailyEntryScreen> {
     }
   }
 
-  /// أمازون حضورٌ لا أوردرات: الأصلُ «حضر»، والنقرُ يقلبه — تحديثٌ متفائلٌ يُرَدّ عند الخطأ.
+  /// Amazon is attendance, not orders: the default is present and tapping flips it; an optimistic update is rolled back on error.
   Future<void> _toggleAttendance(Map<String, dynamic> r) async {
     final id = '${r['lt']}';
     if (_state[id] == 'saving') return;
@@ -121,8 +117,7 @@ class _B2cDailyEntryScreenState extends State<B2cDailyEntryScreen> {
     final scope = d['scope'];
     final today = '${d['today']}';
 
-    // مسؤولو القسم (نطاقُهم كلُّ المشاريع): يصحّحون أيَّ سجلٍّ مضى حتّى لمن انتهت
-    // خدمتُه (٢٠٢٦/١٠/٢١).
+    // Section managers (scope is all projects) can correct any past record, even for staff whose service ended.
     final head = scope == null;
 
     return AppScaffold(
@@ -206,7 +201,7 @@ class _B2cDailyEntryScreenState extends State<B2cDailyEntryScreen> {
   }
 }
 
-/// زرُّ الحضور: ✓ حضر / ✗ لم يحضر — يُستعمَل في المدخلات وفي متابعة أمازون.
+/// Attendance button: present / absent; used in entry and in Amazon follow-up.
 class AttendanceToggle extends StatelessWidget {
   final bool present;
   final bool busy;

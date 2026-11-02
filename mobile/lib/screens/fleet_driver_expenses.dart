@@ -13,18 +13,15 @@ import '../ui/stat_grid.dart';
 import '../ui/vehicle_month_log.dart' show monthKeyNow;
 import '../ui/search_field.dart';
 
-/// مصاريف السوّاق — ما يُستحقّ للرجل على كلّ حمولة، وهل صُرِف.
-///
-/// نفسُ صفحة الويب: المبلغُ هو «مصروف السائق» المكتوبُ وقت إنشاء الحمولة
-/// (وبونصُ الجمعة فيه)، والإيبانُ من ملفّ السائق. وعلامةُ السداد تفصل
-/// «مستحقٌّ ولم يُصرَف» عن «صُرِف» فلا يُدفَع الشيءُ مرّتين.
+/// Driver expenses: what is owed to the man on each load, and whether it was paid out.
+/// Same as the web page: the amount is the driver expense written when the load was created (Friday bonus included), and the IBAN comes from the driver file. The paid mark separates owed-and-unpaid from paid so nothing is paid twice.
 class FleetDriverExpensesScreen extends StatefulWidget {
   const FleetDriverExpensesScreen({super.key});
   @override
   State<FleetDriverExpensesScreen> createState() => _FleetDriverExpensesScreenState();
 }
 
-// صرفُ مال — للماليّة ومدير الأسطول بأدوارهم (= PAY_ROLES في الويب و EXPENSE_PAY_ROLES في الخادم).
+// Paying money: for Finance and the fleet manager by their roles (= PAY_ROLES on the web and EXPENSE_PAY_ROLES on the server).
 const _payRoles = {
   'super_admin', 'admin', 'it_manager', 'cfo', 'accounting_manager',
   'accountant', 'fleet_manager', 'operations_manager',
@@ -34,7 +31,7 @@ String _ymd(DateTime d) =>
     '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
 class _FleetDriverExpensesScreenState extends State<FleetDriverExpensesScreen> {
-  // الفترة: شهر (الافتراضي) · يوم · مدى · الكل — كما في الويب.
+  // Period: month (default), day, range, all, as on the web.
   String _mode = 'month';
   String _month = monthKeyNow();
   String _day = _ymd(DateTime.now());
@@ -52,7 +49,7 @@ class _FleetDriverExpensesScreenState extends State<FleetDriverExpensesScreen> {
   String? _error;
   final Set<String> _picked = {};
 
-  // الأحدثُ وحدَه يُعرض: كلُّ حرفٍ في البحث طلب، وردٌّ قديمٌ لا يكتب فوق جديد.
+  // Only the latest is shown: each search character is a request, and an old reply does not overwrite a new one.
   int _seq = 0;
 
   late final void Function() _onLive;
@@ -61,7 +58,7 @@ class _FleetDriverExpensesScreenState extends State<FleetDriverExpensesScreen> {
   void initState() {
     super.initState();
     _load();
-    // السدادُ يُعلَن بـ fleet:driverExpense، وحفظُ الحمولة وحذفُها بـ fleet:updated.
+    // Payment is announced by fleet:driverExpense, and saving or deleting a load by fleet:updated.
     _onLive = () => _load();
     Live.instance.on('fleet:driverExpense', _onLive);
     Live.instance.on('fleet:updated', _onLive);
@@ -102,7 +99,7 @@ class _FleetDriverExpensesScreenState extends State<FleetDriverExpensesScreen> {
       });
     } catch (e) {
       if (!mounted || mine != _seq) return;
-      // الفشلُ يُقال، لا يُعرض قائمةً فارغة.
+      // A failure is reported, not shown as an empty list.
       setState(() {
         _rows = [];
         _summary = null;
@@ -156,7 +153,7 @@ class _FleetDriverExpensesScreenState extends State<FleetDriverExpensesScreen> {
 
   Future<void> _setPaidFor(List<String> ids, bool value) async {
     if (ids.isEmpty || _busy) return;
-    // اللمسُ على الهاتف أسهلُ خطأً من الفأرة — فالتأكيدُ لكلّ تعليم، لا للجماعيّ وحدَه.
+    // A touch is easier to mistake than a mouse, so confirmation applies to every mark, not only the bulk one.
     final n = ids.length;
     final msg = value
         ? (n > 1 ? tr('تعليم $n صفًّا كمسدَّد؟', 'Mark $n rows as paid?') : tr('تعليم هذا الصفّ كمسدَّد؟', 'Mark this row as paid?'))
@@ -167,7 +164,7 @@ class _FleetDriverExpensesScreenState extends State<FleetDriverExpensesScreen> {
     try {
       await Api.instance.patch('/api/fleet/driver-expenses/paid', {'ids': ids, 'paid': value});
       if (!mounted) return;
-      // التحديثُ محليًّا ثمّ الجلب: العلامةُ تُرى فورًا.
+      // Update locally, then fetch: the mark is seen immediately.
       setState(() {
         for (final r in _rows) {
           if (ids.contains(r['_id'].toString())) r['driverExpensePaid'] = value;
@@ -225,7 +222,7 @@ class _FleetDriverExpensesScreenState extends State<FleetDriverExpensesScreen> {
           ),
           const SizedBox(height: 10),
 
-          // ── البطاقات: على المطابق كلِّه لا على المعروض ──
+          // Cards: over everything matching, not over what is displayed.
           StatGrid(
             spacing: 10,
             children: [
@@ -242,7 +239,7 @@ class _FleetDriverExpensesScreenState extends State<FleetDriverExpensesScreen> {
           ),
           const SizedBox(height: 12),
 
-          // ── الفلاتر ──
+          // Filters.
           AppCard(
             child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
               SegmentedButton<String>(
@@ -311,7 +308,7 @@ class _FleetDriverExpensesScreenState extends State<FleetDriverExpensesScreen> {
             ]),
           ),
 
-          // ── التعليمُ الجماعيّ ──
+          // Bulk marking.
           if (canPay && _rows.isNotEmpty) ...[
             const SizedBox(height: 10),
             Row(children: [
@@ -419,7 +416,7 @@ class _FleetDriverExpensesScreenState extends State<FleetDriverExpensesScreen> {
             const Spacer(),
             Text(_dt(r['loadDate']), style: const TextStyle(fontSize: 11.5, color: T.inkFaint)),
           ]),
-          // السائقُ الثاني يُكتب إن وُجد.
+          // The second driver is written if present.
           if (second.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(top: 2),
@@ -458,7 +455,7 @@ class _FleetDriverExpensesScreenState extends State<FleetDriverExpensesScreen> {
   }
 }
 
-/// بطاقةُ رقم — المبالغُ بفواصل لا عدًّا متحرّكًا (StatCard يقرّب ولا يفصل).
+/// Number card: amounts with separators, not an animated count (StatCard rounds and does not separate).
 class _Kpi extends StatelessWidget {
   final String label;
   final String value;

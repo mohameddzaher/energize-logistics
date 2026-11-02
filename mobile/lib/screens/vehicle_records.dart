@@ -11,12 +11,8 @@ import '../ui/widgets.dart';
 import 'vehicle_corporate.dart' show vStateColor, vStateLabel;
 import 'vehicle_registry.dart' show money, fmtDate, daysText, VehicleRegistryDetailScreen, VehicleRegistryListScreen;
 
-/// سجلّات قسم المركبات — نظيرُ /system/vehicles/registry/records.
-///
-/// المُلّاك والمفوَّضون ومزوّدو التتبّع والأجهزة وشرائح الوقود — كلها مبنيّة من
-/// المركبات نفسها (GET /api/vehicle-registry/registers). تبويب لكل سجلّ، شرائح
-/// وبحث وفلاتر أعمدة على طريقة إكسل، وكل صفّ مدخل: عدد المركبات يفتحها مفلترة،
-/// واللوحة تفتح ملف المركبة.
+/// Vehicle section registers, mirrors /system/vehicles/registry/records.
+/// Owners, delegates, tracking providers, devices and fuel chips are all built from the vehicles themselves (GET /api/vehicle-registry/registers). One tab per register, with chips, search and Excel-style column filters; every row is an entry: the vehicle count opens them filtered, and the plate opens the vehicle profile.
 
 const _tabs = ['owners', 'authorizedPersons', 'gpsProviders', 'gpsDevices', 'gpsUnits', 'fuelCards'];
 
@@ -25,7 +21,7 @@ typedef _Chip = (String key, String ar, String en, Color color, bool Function(Ma
 String _s(dynamic v) => v == null ? '' : v.toString();
 num _n(dynamic v) => v is num ? v : num.tryParse(_s(v)) ?? 0;
 
-// ── أعمدةُ كلّ سجلّ وقارئُها — واحدٌ للعرض ولفلتر الأعمدة (COL_DEFS + GETTERS) ──
+// Columns of each register and their reader, one for display and for column filters (COL_DEFS + GETTERS)
 final Map<String, List<(String, String, String, dynamic Function(Map<String, dynamic>))>> _colDefs = {
   'gpsUnits': [
     ('serial', 'السيريال', 'Serial', (x) => x['value']),
@@ -68,7 +64,7 @@ class _VehicleRecordsScreenState extends State<VehicleRecordsScreen> {
   String _q = '';
   String _filter = '';
   final _qCtl = TextEditingController();
-  // فلاتر الأعمدة: مفتاح العمود ← القيم المختارة (فارغ = «(فارغ)»)
+  // Column filters: column key to selected values (empty is shown as '(empty)')
   Map<String, Set<String>> _colFilters = {};
   int _seq = 0;
   late final void Function() _onLive;
@@ -105,7 +101,7 @@ class _VehicleRecordsScreenState extends State<VehicleRecordsScreen> {
       ((_reg(_tab)['items'] as List?) ?? []).map((e) => Map<String, dynamic>.from(e as Map)).toList();
   List<(String, String, String, dynamic Function(Map<String, dynamic>))> get _cols => _colDefs[_tab] ?? _colDefs['default']!;
 
-  // الشرائح تختلف باختلاف السجلّ — لكل سؤاله.
+  // Chips differ per register, each with its own question.
   List<_Chip> get _chips {
     final all = <_Chip>[('', 'الكل', 'All', T.navy, null)];
     if (_tab == 'gpsUnits') {
@@ -135,7 +131,7 @@ class _VehicleRecordsScreenState extends State<VehicleRecordsScreen> {
     ];
   }
 
-  // البحث يمرّ على كلّ قيمةٍ نصّيّة/رقميّة في الصفّ (عدا filter وvehicleId)
+  // Search covers every text/numeric value in the row (except filter and vehicleId)
   List<Map<String, dynamic>> _searched(List<Map<String, dynamic>> rows) {
     final q = flexFold(_q.trim());
     if (q.isEmpty) return rows;
@@ -167,7 +163,7 @@ class _VehicleRecordsScreenState extends State<VehicleRecordsScreen> {
     Navigator.push(context, MaterialPageRoute(builder: (_) => VehicleRegistryDetailScreen(id: _s(x['vehicleId']), plate: _s(x['plateNumber']))));
   }
 
-  // ── التصدير: «المعروض» و«الكلّ» — نفس أعمدة الويب ──────────────────────
+  // Export: 'shown' and 'all', the same columns as web
   List<ExportCol> get _exportCols => _tab == 'gpsUnits'
       ? [
           ExportCol('السيريال', 'Serial', (r) => r['value']),
@@ -205,7 +201,7 @@ class _VehicleRecordsScreenState extends State<VehicleRecordsScreen> {
     await exportExcel(context, fileName: 'vehicle-$_tab', sheets: [(name, _exportCols, rows)]);
   }
 
-  // ── فلتر الأعمدة: عمودٌ ← قيمه بأعدادها محسوبة على المعروض قبل فلاتر الأعمدة ──
+  // Column filter: a column to its values, counted on the shown rows before column filters
   Future<void> _columnFilters(List<Map<String, dynamic>> base) async {
     final r = await showModalBottomSheet<Map<String, Set<String>>>(
       context: context, isScrollControlled: true, useSafeArea: true,
@@ -234,7 +230,7 @@ class _VehicleRecordsScreenState extends State<VehicleRecordsScreen> {
           : _error != null
               ? ErrorRetry(message: _error!, onRetry: () { setState(() => _loading = true); _load(); })
               : Column(children: [
-                  // التبويبات بأعدادها
+                  // Tabs with their counts
                   SizedBox(
                     height: 48,
                     child: ListView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.fromLTRB(12, 8, 12, 4), children: [
@@ -375,7 +371,7 @@ class _VehicleRecordsScreenState extends State<VehicleRecordsScreen> {
         ])),
         const SizedBox(width: 8),
         Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-          // عددُ المركبات يفتحها مفلترةً على هذا الصفّ
+          // The vehicle count opens them filtered on this row
           ActionChip(
             label: Text('${x['vehicles'] ?? 0} ${tr('مركبة', 'vehicles')}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12, color: Color(0xFF075985))),
             backgroundColor: const Color(0xFFF0F9FF),
@@ -389,7 +385,7 @@ class _VehicleRecordsScreenState extends State<VehicleRecordsScreen> {
   }
 }
 
-// ══════════════════ فلتر الأعمدة (طريقة إكسل) ══════════════════
+// Column filter (Excel style)
 class _ColumnFilterSheet extends StatefulWidget {
   final List<(String, String, String, dynamic Function(Map<String, dynamic>))> cols;
   final List<Map<String, dynamic>> rows;

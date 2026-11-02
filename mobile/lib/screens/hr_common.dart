@@ -7,18 +7,17 @@ import '../services/lang.dart';
 import '../ui/theme.dart';
 import '../ui/search_field.dart';
 
-/// أدواتٌ مشتركةٌ بين شاشات الموارد البشريّة في التطبيق — نظيرُ lib/hr.ts وHRKit
-/// في الموقع: مَن هو من فريق القسم، ومنتقي الموظّف، وخانةُ التاريخ بتقويميها.
+/// Helpers shared by the HR screens, mirroring lib/hr.ts and HRKit on the web: HR team membership, employee picker and a dual-calendar date field.
 
 const hrStaffRoles = ['super_admin', 'admin', 'hr_manager', 'hr_specialist'];
 
-/// فريقُ الموارد البشريّة بالدور أو بمنح القسم — isHRStaff في الموقع.
+/// HR team by role or department grant; isHRStaff on the web.
 bool hrIsStaff(BuildContext context) {
   final a = context.read<AuthProvider>();
   return hrStaffRoles.contains(a.role) || a.canAccessSection('HR');
 }
 
-/// يكتب في الماستر: الدورُ أو منحُ «تعديل» على القسم — canEdit في صفحات الماستر.
+/// Can write to the master: by role or an edit grant on the department; canEdit in the master pages.
 bool hrCanEdit(BuildContext context) {
   final a = context.read<AuthProvider>();
   return hrStaffRoles.contains(a.role) || a.canEditSection('HR');
@@ -33,7 +32,7 @@ String hrEmpName(dynamic e) {
 
 String hrIso(DateTime d) => '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
-/// «yyyy-mm-dd» أو DateTime أو null → DateTime.
+/// "yyyy-mm-dd", DateTime or null to DateTime.
 DateTime? hrParse(dynamic v) {
   if (v == null || '$v'.isEmpty) return null;
   if (v is DateTime) return v;
@@ -44,8 +43,7 @@ void hrSnack(BuildContext context, String m) {
   if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
 }
 
-/// زرُّ تاريخٍ بتقويميه — نظيرُ DatePair: يُختار ميلاديًّا ويُكتب هجريُّه تحته،
-/// والمُرسَل ميلاديٌّ وحدَه. `onChanged(null)` يمسحه.
+/// Date button with both calendars, like DatePair: pick Gregorian, the Hijri date shows below, only the Gregorian value is sent. `onChanged(null)` clears it.
 class HrDateButton extends StatelessWidget {
   final String label;
   final DateTime? value;
@@ -81,9 +79,7 @@ class HrDateButton extends StatelessWidget {
   }
 }
 
-/// منتقي موظّفٍ فيه بحث — نظيرُ SearchableSelect على قائمة الموظّفين.
-/// `rows` تُمرَّر حين تكون عند الشاشة (مرتّبةً بغرضها)، وإلّا تُقرأ من
-/// GET /api/hr/employees. ويُرجع الصفَّ المختار.
+/// Searchable employee picker, like SearchableSelect over the employee list. `rows` is passed when the screen already has them (ordered for its purpose), otherwise read from GET /api/hr/employees. Returns the chosen row.
 Future<Map<String, dynamic>?> pickHrEmployee(BuildContext context, {
   List<Map<String, dynamic>>? rows,
   String Function(Map<String, dynamic>)? hintOf,
@@ -180,13 +176,13 @@ class _EmpPickerState extends State<_EmpPicker> {
   }
 }
 
-/// مفاتيحُ الاستعلام من خريطة — تُسقط الفارغ.
+/// Query keys from a map, dropping empty values.
 String hrQs(Map<String, String> m) {
   final p = [for (final e in m.entries) if (e.value.isNotEmpty) '${e.key}=${Uri.encodeQueryComponent(e.value)}'];
   return p.isEmpty ? '' : '?${p.join('&')}';
 }
 
-/// نافذةُ تأكيدٍ قصيرة.
+/// Short confirmation dialog.
 Future<bool> hrConfirm(BuildContext context, String message, {String? title, String? ok, bool danger = false}) async {
   final r = await showDialog<bool>(
     context: context,
@@ -206,7 +202,7 @@ Future<bool> hrConfirm(BuildContext context, String message, {String? title, Str
   return r == true;
 }
 
-/// ورقةٌ سفليّةٌ بعنوانٍ وزرّ حفظ — يردّ true عند الحفظ.
+/// Bottom sheet with a title and a save button; returns true on save.
 Future<bool> hrSheet(BuildContext context, {required String title, required Widget Function(BuildContext, StateSetter) body, String? saveLabel}) async {
   final r = await showModalBottomSheet<bool>(
     context: context,

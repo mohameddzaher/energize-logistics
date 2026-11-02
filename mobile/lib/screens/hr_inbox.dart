@@ -13,10 +13,9 @@ import 'hr_leave_pdf.dart';
 import 'hr_leave_register.dart';
 import '../ui/search_field.dart';
 
-/// HR — طلبات الإجازات (قرارات الموارد البشرية) وطلبات الموظفين (الرد وتغيير
-/// الحالة): the two HR inboxes, native.
+/// HR inboxes, native: leave requests (HR decisions) and employee requests (reply and status change).
 
-// ── طلبات الإجازات ───────────────────────────────────────────────────────────
+// Leave requests.
 class HrLeavesScreen extends StatefulWidget {
   const HrLeavesScreen({super.key});
   @override
@@ -30,9 +29,9 @@ class _HrLeavesScreenState extends State<HrLeavesScreen> {
   String? _error;
   String _status = '';
   String _type = '';
-  // بحثٌ بالموظّف أو مقدّم الطلب — كالموقع (يُصفّى المحمَّل).
+  // Search by employee or requester, like the web (filters the loaded rows).
   String _q = '';
-  // تبديلُ الحالة يُعيد التحميلَ فتُهدَم الخانة — النصُّ في متحكِّمٍ يبقى مع الكلمة.
+  // Changing the status reloads and destroys the field; the text lives in a controller so it survives.
   final _searchCtl = TextEditingController();
   int _seq = 0;
   late final void Function() _onLive;
@@ -52,7 +51,7 @@ class _HrLeavesScreenState extends State<HrLeavesScreen> {
         || '${(l['employee'] as Map?)?['arabicName'] ?? ''}'.contains(q)).toList();
   }
 
-  // أعمدةُ تصدير الموقع: الموظّف · النوع · البداية والنهاية بتقويميهما · الأيّام · الحالة · السبب.
+  // Export columns as on the web: employee, type, start and end in both calendars, days, status, reason.
   List<ExportCol> get _exportCols => [
         ExportCol('Employee', 'Employee', (r) => _empName(r)),
         ExportCol('Type', 'Type', (r) => r['leaveType'] is Map ? (r['leaveType']['nameEn'] ?? r['leaveType']['nameAr'] ?? '') : ''),
@@ -68,7 +67,7 @@ class _HrLeavesScreenState extends State<HrLeavesScreen> {
   Future<void> _export(String scope) async {
     var rows = _shown;
     final messenger = ScaffoldMessenger.of(context);
-    // فلترُ الحالة عند الخادم — فـ«الكل» يعيد النداء بلا حالة وإلّا خرج السجلُّ مبتورًا.
+    // Status filter runs on the server, so "All" refetches without a status; otherwise the record comes back truncated.
     if (scope == 'all') {
       if (_status.isEmpty) {
         rows = _rows;
@@ -111,13 +110,13 @@ class _HrLeavesScreenState extends State<HrLeavesScreen> {
   Future<void> _decide(Map<String, dynamic> l, String decision) async {
     final note = TextEditingController();
     final approving = decision == 'approved';
-    // نجلب تواقيع المعتمِد ليختار توقيعه (اختياري) عند الاعتماد.
+    // Fetch the approver's signatures so they can optionally pick one when approving.
     List<Map<String, dynamic>> signatures = [];
     if (approving) {
       try {
         final d = await Api.instance.get('/api/auth/signatures');
         signatures = List<Map<String, dynamic>>.from(d['signatures'] ?? []);
-      } catch (_) { /* بدون تواقيع */ }
+      } catch (_) { /* no signatures */ }
     }
     if (!mounted) return;
     String? sigId = approving
@@ -388,7 +387,7 @@ class _HrLeavesScreenState extends State<HrLeavesScreen> {
                                         : '${l['employee']['firstName'] ?? ''} ${l['employee']['lastName'] ?? ''}'.trim())
                                     : (l['requester'] is Map ? '${l['requester']['firstName'] ?? ''} ${l['requester']['lastName'] ?? ''}'.trim() : '—');
                                 final type = l['leaveType'] is Map ? (l['leaveType']['nameAr'] ?? l['leaveType']['nameEn'] ?? '') : '';
-                                final actionable = l['status'] == 'pending_hr';  // محطّةُ الموارد وحدَها من هنا
+                                final actionable = l['status'] == 'pending_hr';  // The HR station only, from here.
                                 return FadeSlideIn(
                                   delayMs: (i * 15).clamp(0, 150),
                                   child: AppCard(
@@ -397,7 +396,7 @@ class _HrLeavesScreenState extends State<HrLeavesScreen> {
                                       Row(children: [
                                         Expanded(child: Text(emp.toString(), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14))),
                                         Chip2(tr(st.$1, st.$2), st.$3),
-                                        // ورقةُ الإجازة الرسميّة PDF بتوقيعاتها — كزرّ PDF في الموقع.
+                                        // Official leave sheet PDF with signatures, like the PDF button on the web.
                                         IconButton(
                                           visualDensity: VisualDensity.compact,
                                           tooltip: tr('تحميل ورقة الإجازة PDF', 'Download PDF sheet'),
@@ -462,7 +461,7 @@ class _HrLeavesScreenState extends State<HrLeavesScreen> {
   }
 }
 
-// ── طلبات الموظفين ───────────────────────────────────────────────────────────
+// Employee requests.
 class HrRequestsScreen extends StatefulWidget {
   const HrRequestsScreen({super.key});
   @override

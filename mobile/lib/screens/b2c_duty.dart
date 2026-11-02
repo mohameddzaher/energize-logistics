@@ -9,14 +9,7 @@ import '../ui/widgets.dart';
 import '../ui/search_field.dart';
 import '../ui/live_shot.dart';
 
-/// تفقُّد بداية الدوام — شاشةُ المشرف على الهاتف.
-///
-/// وهي الأولى بالهاتف لا بالحاسوب: المشرفُ واقفٌ في المحطّة أمام الدرّاجة، لا
-/// جالسٌ خلف مكتب. والصورةُ تُلتقَط من الكاميرا ولا تُرفَع من المعرض — راجع
-/// `ui/live_shot.dart`.
-///
-/// قائمتان كالموقع: المناديبُ والدبّاباتُ. التفقّدُ يقع على أيٍّ منهما، والاثنان
-/// مربوطان في الخادم: تفقّدُ دبّابٍ له راكبٌ يظهر «تمّ» عند الراكب، والعكس.
+/// Duty start check, the supervisor's phone screen. Phone-first because the supervisor stands at the station in front of the bike, not at a desk. The photo is taken from the camera and cannot be uploaded from the gallery; see `ui/live_shot.dart`. Two lists like the web: riders and mopeds. A check applies to either, and the server links them: checking a moped that has a rider shows as done on the rider, and vice versa.
 class B2cDutyScreen extends StatefulWidget {
   const B2cDutyScreen({super.key});
   @override
@@ -29,15 +22,14 @@ const _outcomes = <String, (String, String, IconData, Color)>{
   'blocked': ('مُنع من الخروج', 'Blocked', Icons.block, T.danger),
 };
 
-/// صورُ الخروج الثلاث — كلُّ واحدةٍ تُلتقَط وحدَها وتُوسَم بنوعها.
+/// The three departure photos, each taken separately and tagged with its type.
 const _kinds = <String, (String, String, IconData)>{
   'rep': ('صورة المندوب', 'Rider photo', Icons.person_outline),
   'vehicle': ('صورة الدبّاب', 'Bike photo', Icons.two_wheeler),
   'box': ('صورة البوكس', 'Box photo', Icons.inventory_2_outlined),
 };
 
-/// ورابعةٌ ليوم الخميس: لقطةُ الملصق الإعلانيّ على الدبّاب. ليست شرطًا لبدء
-/// الدوام، وتقبل أكثرَ من صورة، ولا تظهر في غير يومها — والخادمُ يردّها كذلك.
+/// A fourth photo on Thursday: the advertising sticker on the moped. It is not required to start the shift, accepts more than one photo, and is hidden on other days; the server rejects it likewise.
 const _adKind = 'ad';
 const _adMeta = ('المحتوى الإعلاني', 'Ad content', Icons.campaign_outlined);
 bool get _isThursday => DateTime.now().weekday == DateTime.thursday;
@@ -47,7 +39,7 @@ class _B2cDutyScreenState extends State<B2cDutyScreen> {
   List<Map<String, dynamic>> _bikes = [];
   String _mode = 'reps';
   String _q = '';
-  final _searchCtl = TextEditingController(); // النصُّ يبقى مطابقًا لـ_q بعد التحديث الحيّ
+  final _searchCtl = TextEditingController(); // Text stays equal to _q after a live refresh.
   bool _loading = true;
   String? _error;
   late final void Function() _onLive;
@@ -99,7 +91,7 @@ class _B2cDutyScreenState extends State<B2cDutyScreen> {
     }
   }
 
-  // فتحُ دبّاب: براكبه إن عُرف (فيُكتب التفقّدُ عليه أيضًا)، أو وحدَه.
+  // Opening a moped: with its rider if known (so the check is also written on him), or alone.
   void _openBike(Map<String, dynamic> b) {
     final vehicle = {'plate': b['plate'], 'typeAr': 'دراجة آلية', 'typeKey': 'motorcycle'};
     final riderId = (b['rider'] as Map?)?['_id'];
@@ -152,7 +144,7 @@ class _B2cDutyScreenState extends State<B2cDutyScreen> {
                           padding: const EdgeInsets.fromLTRB(14, 12, 14, 24),
                           keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                           children: [
-                            // التفقّدُ بالمندوب أو بالدبّاب.
+                            // The check is by rider or by moped.
                             Row(children: [
                               for (final m in [
                                 ('reps', tr('المناديب (${_reps.length})', 'Riders (${_reps.length})'), Icons.person_outline),
@@ -326,11 +318,11 @@ class _B2cDutyScreenState extends State<B2cDutyScreen> {
   }
 }
 
-/// ورقةُ التفقّد: الحالةُ، ثمّ الصورةُ إن خرجت مركبة، ثمّ التفاصيل.
+/// Check sheet: status, then the photo if a vehicle goes out, then details.
 class _CheckSheet extends StatefulWidget {
   const _CheckSheet({required this.rep, this.bikeId, this.bikeOnly = false});
   final Map<String, dynamic> rep;
-  /// فُتح من قائمة الدبّابات: الدبّابُ معروف. و`bikeOnly` = لا راكبَ معروفًا له.
+  /// Opened from the moped list: the moped is known. `bikeOnly` means no known rider.
   final String? bikeId;
   final bool bikeOnly;
   @override
@@ -349,11 +341,11 @@ class _CheckSheetState extends State<_CheckSheet> {
       _shots.where((s) => s.$1 == kind).length +
       ((widget.rep['check'] as Map?)?['photos'] as List? ?? const [])
           .where((p) => '${(p as Map)['kind'] ?? 'vehicle'}' == kind).length;
-  /// دبّابٌ بلا راكبٍ معروف: صورةُ الدبّاب والبوكس — لا مندوبَ يُصوَّر.
+  /// A moped with no known rider: photos of the moped and its box; no rider is photographed.
   Map<String, (String, String, IconData)> get _needed =>
-      _kinds; // الصورُ الثلاث في كلّ حال — كالموقع والخادم.
+      _kinds; // The three photos in every case, like the web and server.
   List<String> get _lacking => _needed.keys.where((k) => _countOf(k) == 0).toList();
-  /// الأنواعُ المعروضة اليوم: الثلاثةُ دائمًا، والإعلانيُّ يوم الخميس.
+  /// Types shown today: the three always, and the advertising one on Thursday.
   Map<String, (String, String, IconData)> get _shownKinds =>
       _isThursday ? {..._needed, _adKind: _adMeta} : _needed;
 
@@ -539,7 +531,7 @@ class _CheckSheetState extends State<_CheckSheet> {
             const SizedBox(width: 8),
             Expanded(child: TextField(
               controller: _plate,
-              // الدبّابُ المفتوحُ من قائمته لوحتُه معروفةٌ لا تُكتب.
+              // A moped opened from its list has a known plate, which is not typed.
               readOnly: widget.bikeId != null,
               decoration: InputDecoration(labelText: tr('اللوحة', 'Plate')),
             )),

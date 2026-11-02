@@ -189,8 +189,7 @@ export default function ComplaintsPage() {
     { header: tx.colResolved, key: 'resolvedAt', transform: fmt.date, width: 15 },
   ];
   const hasActiveFilters = !!(statusFilter || categoryFilter || priorityFilter || search);
-  // الصفحة عشرون شكوى فقط مهما بلغ عدد ما يطابق الفلتر، فتصدير ما في الذاكرة
-  // كان يسلّم ملفًّا مبتورًا يبدو كاملًا. نُعيد الجلب بحدٍّ مفتوح لنطاقَي الفلتر والكلّ.
+  // The page holds only twenty complaints however many match the filter, so exporting memory gave a truncated file that looked complete; refetch with an unlimited limit for the filtered and all scopes.
   const fetchForExport = async (withFilters: boolean) => {
     const params = new URLSearchParams({ page: '1', limit: '100000' });
     if (withFilters) {

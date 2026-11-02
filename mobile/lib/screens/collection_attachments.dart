@@ -10,16 +10,7 @@ import '../services/live.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 
-// ═════════════════════════════════════════════════════════════════════════
-// مرفقاتُ فاتورة التحصيل — نظيرُ components/collections/InvoiceAttachments
-// في الموقع.
-//
-// الضريبيّةُ (`tax`) تُعرَف برقمها في الدفتر، والنقديّةُ (`cash`) بمعرّف كشفها.
-// مَن يقرأ الفواتير يفتح وينزّل، ومَن يكتب فيها يرفع (الخادمُ يقول ذلك في
-// `abilities.upload`)، والحذفُ لمن رفع الملفَّ أو لمدير التحصيل (`canDelete`).
-// والحدودُ حدودُ الخادم: صور وPDF وWord وExcel، حتى ١٠ ميغا للملف — وما يُختار
-// يُرسَل على دفعاتٍ لا تتجاوز حدَّ الطلب.
-// ═════════════════════════════════════════════════════════════════════════
+// Collection invoice attachments, the counterpart of components/collections/InvoiceAttachments on the web. A tax invoice (`tax`) is identified by its ledger number and a cash one (`cash`) by its sheet id. Whoever reads invoices can open and download; whoever writes to them can upload (the server says so in `abilities.upload`); deletion is for the uploader or the collections manager (`canDelete`). Limits are the server's: images, PDF, Word and Excel, up to 10 MB per file, and the selection is sent in batches within the request limit.
 
 const _mb = 1024 * 1024;
 const _maxFile = 10 * _mb;
@@ -38,7 +29,7 @@ const _mimeByExt = {
 String _url(String u) => u.startsWith('http') ? u : '${AppConfig.apiBase}$u';
 String _base(String kind, String key) => '/api/collections-dept/attachments/$kind/${Uri.encodeComponent(key)}';
 
-/// يفتح شاشةَ مرفقات فاتورة — يُرجع true إن رُفع أو حُذف شيء (فتُعاد القائمة).
+/// Opens the invoice attachments screen; returns true if something was uploaded or deleted (so the list reloads).
 Future<bool> openCollectionAttachments(BuildContext context, {required String kind, required String key, required String label}) async {
   if (key.isEmpty) return false;
   final changed = await Navigator.push<bool>(context,
@@ -108,7 +99,7 @@ class _CollectionAttachmentsScreenState extends State<CollectionAttachmentsScree
     }
   }
 
-  // ── الاختيار ───────────────────────────────────────────────────────────
+  // Selection
   Future<List<_Picked>> _pick(String source) async {
     final out = <_Picked>[];
     String? problem;
@@ -122,7 +113,7 @@ class _CollectionAttachmentsScreenState extends State<CollectionAttachmentsScree
 
     try {
       if (source == 'camera') {
-        // صورةٌ بعد صورة حتى يقول «تمّ».
+        // Image after image until the user says done.
         while (true) {
           final x = await ImagePicker().pickImage(source: ImageSource.camera, maxWidth: 2000, maxHeight: 2000, imageQuality: 85);
           if (x == null) break;
@@ -176,7 +167,7 @@ class _CollectionAttachmentsScreenState extends State<CollectionAttachmentsScree
     final picked = await _pick(src);
     if (picked.isEmpty || !mounted) return;
 
-    // دفعاتٌ بحدّ الطلب الواحد.
+    // Batches within the single-request limit.
     final batches = <List<_Picked>>[];
     var cur = <_Picked>[];
     var bytes = 0;
@@ -231,7 +222,7 @@ class _CollectionAttachmentsScreenState extends State<CollectionAttachmentsScree
 
   void _open(Map<String, dynamic> f, {bool download = false}) {
     final u = _url('${f['fileUrl']}');
-    // التنزيلُ باسمه الأصليّ: الخادمُ يقرأ `?dl=` (راجع server.js).
+    // Download keeps the original file name: the server reads `?dl=` (see server.js).
     final link = download ? '$u?dl=${Uri.encodeQueryComponent('${f['fileName'] ?? 'attachment'}')}' : u;
     launchUrl(Uri.parse(link), mode: LaunchMode.externalApplication);
   }

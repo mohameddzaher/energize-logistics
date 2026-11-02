@@ -1,25 +1,11 @@
 /**
- * reportBuilder — محرك التقارير: من مستند بلوكات إلى PDF احترافي على ورق الشركة.
- *
- * Every report in the system (vehicle, customer, employee, vendor, driver,
- * department) is described the same way: a list of BLOCKS. This module knows
- * nothing about what it is printing — it only knows how to lay blocks out on the
- * company letterhead, in Arabic RTL, across as many A4 pages as they need.
- *
- * Why server-side: the same rule as the بوليصة. A report generated in the
- * browser and one generated on a phone would drift apart; generating both here
- * means the file a customer receives is byte-identical whoever asked for it.
- *
- * Why real PDF text (page.pdf) instead of rasterising each page: the output is
- * searchable, selectable, copy-pasteable and ~10× smaller. Chromium repeats
- * `position: fixed` elements on every printed page, which is what puts the
- * letterhead behind page 7 as well as page 1.
+ * reportBuilder: lays a block document out as a PDF on the company letterhead, Arabic RTL, across A4 pages.
+ * Server-side so web and mobile output is identical; real PDF text (page.pdf) keeps it searchable and small, and Chromium repeats position: fixed elements on every page, which puts the letterhead on each one.
  */
 const fs = require('fs');
 const path = require('path');
 
-// The real, vector A4 letterhead — the same file the بوليصة is printed on, so a
-// report and a waybill come off the printer looking like the same company.
+// The real vector A4 letterhead, the same file the waybill is printed on, so reports and waybills look like the same company.
 const LETTERHEAD_PDF = path.join(__dirname, '..', 'assets', 'waybill', 'letterhead.pdf');
 
 let letterheadBytes = null;
@@ -72,20 +58,8 @@ const isolate = (text) => String(text ?? '')
   .join('');
 
 /**
- * ── The block vocabulary ─────────────────────────────────────────────────────
- *   { kind: 'title',    text, sub }                         العنوان الرئيسي
- *   { kind: 'section',  text }                              ترويسة قسم
- *   { kind: 'kv',       items: [[label, value], …] }         جدول بيانات
- *   { kind: 'stats',    items: [{label, value, accent}] }    بطاقات أرقام
- *   { kind: 'table',    head, rows, align, widths,           جدول
- *                       foot?, small?, isolate? }            (سطرُ إجماليٍّ · خطٌّ أصغر · عزلُ الاتّجاه)
- *   { kind: 'bars',     items: [{label, value, max, text}] } رسم أعمدة أفقي
- *   { kind: 'timeline', label, items: [{title, sub, at}] }   خط زمني
- *   { kind: 'note',     text, tone }                         ملاحظة
- *   { kind: 'signatures', items: [{name, title}] }           خانات التوقيع
- *   { kind: 'callout',  title, lines: [] }                   صندوق مميز
- *   { kind: 'pagebreak' }                                    صفحة جديدة
- *   { kind: 'spacer',   h }
+ * Block vocabulary: title (text, sub), section, kv (label/value pairs), stats, table (head, rows, align, widths, foot?, small?, isolate?),
+ * bars, timeline, note (text, tone), signatures, callout (title, lines), pagebreak, spacer (h).
  */
 function blockHtml(b, rtl) {
   const startAlign = rtl ? 'right' : 'left';
@@ -121,28 +95,19 @@ function blockHtml(b, rtl) {
       if (!b.rows?.length) return b.emptyText ? blockHtml({ kind: 'note', text: b.emptyText }, rtl) : '';
       const al = (i) => (b.align?.[i] === 'end' ? (rtl ? 'left' : 'right') : b.align?.[i] === 'center' ? 'center' : startAlign);
       const cols = b.widths ? `<colgroup>${b.widths.map((w) => `<col style="width:${w}">`).join('')}</colgroup>` : '';
-      // ── ورؤوسُ الجدول لا تُسقط الملفَّ كلَّه ──────────────────────────────
-      // أربعُ كتلٍ في تقرير المركبة كُتبت `columns` بدل `head`، فكان
-      // `b.head.map` يرمي وتُردّ كلُّ محاولةِ طباعةٍ لأيّ مركبة بـ«تعذّر إصدار
-      // التقرير» — ثلاثُ مئةٍ وخمسٌ وثلاثون مركبة، لا واحدة.
-      //
-      // والاسمان يُقبلان الآن، وغيابُهما معًا يعني جدولًا بلا ترويسة لا ملفًّا
-      // لا يُفتَح: صفحةٌ ناقصةُ العناوين تُقرأ ويُبلَّغ عنها، وملفٌّ ساقطٌ لا
-      // يقول شيئًا.
+      // Table headers must not take down the whole file. Four vehicle-report blocks were written with `columns` instead of `head`, so `b.head.map` threw and every print attempt for any vehicle failed with a report-generation error. Both names are now accepted, and having neither yields a table without a header rather than an unopenable file.
       const head = Array.isArray(b.head) ? b.head : Array.isArray(b.columns) ? b.columns : null;
       const thead = head
         ? `<thead><tr>${head.map((h, i) => `<th style="text-align:${al(i)}">${esc(h)}</th>`).join('')}</tr></thead>`
         : '';
-      // رقمُ كشفٍ مثل «INV-12» أو اسمٌ لاتينيٌّ داخل سطرٍ عربيّ يُعاد ترتيبُه
-      // بخوارزميّة الاتّجاه — فيُعزَل كلُّ خليّةٍ في اتّجاهها حين يُطلب.
+      // An invoice number like INV-12 or a Latin name inside an Arabic line gets reordered by the bidi algorithm, so each cell is isolated in its own direction when requested.
       const txt = (v) => (b.isolate ? `<span dir="auto" style="unicode-bidi:isolate">${esc(val(v))}</span>` : esc(val(v)));
       const tr = (r, cls) => `<tr class="${cls}">${r.map((c, i) => {
         const cell = (c && typeof c === 'object') ? c : { t: c };
         const style = `text-align:${al(i)};${cell.color ? `color:${cell.color};font-weight:600` : ''}`;
         return `<td style="${style}">${txt(cell.t)}</td>`;
       }).join('')}</tr>`;
-      // سطرُ الإجماليّ آخرُ صفٍّ في الجسم لا `tfoot`: كرومُ يكرّر الـtfoot في
-      // ذيل كلّ صفحة، فيظهر «الإجماليّ» تحت كلّ صفحةٍ وهو إجماليُّ الكلّ.
+      // The totals row is the last body row, not a tfoot: Chrome repeats tfoot at the bottom of every page, which would show a grand total under each page.
       return `<table class="blk data${b.small ? ' sm' : ''}">${cols}
         ${thead}
         <tbody>${b.rows.map((r, ri) => tr(r, ri % 2 ? 'alt' : '')).join('')}${b.foot ? tr(b.foot, 'tot') : ''}</tbody>
@@ -188,10 +153,8 @@ function blockHtml(b, rtl) {
 
     case 'signatures': {
       if (!b.items?.length) return '';
-      // A محضر اجتماع is signed. Printing it without somewhere to sign makes it
-      // a printout rather than a record.
-      // `lead`: سطرُ ختامٍ يسبق التوقيع داخلَ الكتلة نفسِها — فلا يقع التوقيعُ
-      // وحدَه في صفحةٍ وخاتمتُه في التي قبلها.
+      // A meeting record is signed; printing it without a place to sign makes it a printout rather than a record.
+      // `lead` is a closing line placed before the signature inside the same block, so the signature is never alone on a page apart from its closing line.
       const sigRow = `<div class="sigs">${b.items.map((i) => `
         <div class="sig">
           <div class="sig-line"></div>

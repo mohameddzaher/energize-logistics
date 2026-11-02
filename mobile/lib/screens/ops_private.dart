@@ -12,23 +12,19 @@ import '../ui/widgets.dart';
 import '../ui/search_field.dart';
 import 'ops_common.dart';
 
-/// «التشغيل — خاصّ»: كشوفُ التشغيل نفسُها بقيمة البيع وربحها.
-///
-/// قيمةُ البيع هنا هي عمودُ الكشف نفسُه في سير العمل — مرجعٌ واحد (٢٠٢٦/١٠/٢١).
-/// وتعديلُها هنا يمرّ بطريق سير العمل: الصلاحيّةُ نفسُها، ويُكتب في منصّة
-/// التشغيل. وسعرُ مسار العميل يُعرَض اقتراحًا يُعتمَد بضغطة.
-/// وتُقرأ كما يُقرأ سيرُ العمل: بطاقاتُ الحالة، وفلاترُ الأعمدة (`cf_*`)، والفترة،
-/// و«فواتير لم تصل»، والتصديرُ بنطاقاته الثلاثة — نفسُ /system/operations/private.
+/// Operations - private: the same operations statements with the selling value and its profit.
+/// The selling value is the statement's own column in the workflow, a single reference. Editing it here goes through the workflow path: same permission, written to the operations platform. The customer's route price is shown as a suggestion accepted with one tap.
+/// Read like the workflow: status cards, column filters (`cf_*`), period, "invoices not received", and the three export scopes, same as /system/operations/private.
 class OpsPrivateScreen extends StatefulWidget {
   const OpsPrivateScreen({super.key});
   @override
   State<OpsPrivateScreen> createState() => _OpsPrivateScreenState();
 }
 
-/// شاشةُ أسعار البيع — مقيّدةٌ بالأسماء عمدًا (كالويب).
+/// Selling prices screen: restricted by names on purpose (as on the web).
 const _roles = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'cfo', 'accounting_manager', 'accountant'];
 
-/// الأعمدةُ التي يقبل الخادمُ الفلترةَ عليها — (المفتاح، العربيّ، الإنجليزيّ، مالٌ؟).
+/// Columns the server accepts filtering on: (key, Arabic label, English label, is money).
 const _filterCols = [
   ('reportNumber', 'رقم أمر النقل', 'Report #', false), ('reportDate', 'تاريخ أمر النقل', 'Report date', false),
   ('fromLocation', 'من', 'From', false), ('toLocation', 'إلى', 'To', false), ('branch', 'الفرع', 'Branch', false),
@@ -64,7 +60,7 @@ class _OpsPrivateScreenState extends State<OpsPrivateScreen> {
   bool _loading = true;
   String? _error;
   String _q = '';
-  // متحكِّمُ البحث عند الشاشة: خطأٌ أو إعادةُ تحميلٍ لا تُرجع الخانةَ فارغةً والكلمةُ تُرشِّح.
+  // Search controller owned by the screen so an error or reload does not empty the field while the term still filters.
   final _searchCtl = TextEditingController();
   Timer? _debounce;
   int _page = 1;
@@ -73,7 +69,7 @@ class _OpsPrivateScreenState extends State<OpsPrivateScreen> {
   bool _canMoney = false;
   int _seq = 0;
   int _statsSeq = 0;
-  // يُفتح على الشهر الجاري — كالويب.
+  // Opens on the current month, as on the web.
   final OpsPeriod _period = OpsPeriod(mode: OpsDateMode.month, month: DateTime(DateTime.now().year, DateTime.now().month));
   String _priced = ''; // '' | yes | no
   bool _pendingOnly = false;
@@ -90,7 +86,7 @@ class _OpsPrivateScreenState extends State<OpsPrivateScreen> {
   void initState() {
     super.initState();
     _load();
-    // الأحداثُ المتلاحقةُ تُجمَع في تحديثٍ واحد (كالويب: ١٫٢ ثانية).
+    // Rapid successive events are coalesced into one refresh (as on the web: 1.2 seconds).
     _onLive = () {
       _liveTimer?.cancel();
       _liveTimer = Timer(const Duration(milliseconds: 1200), () { if (mounted) _load(); });
@@ -180,7 +176,7 @@ class _OpsPrivateScreenState extends State<OpsPrivateScreen> {
     _reload();
   }
 
-  /// قيمةُ البيع وحدَها تُعدَّل — في الكشف نفسِه، وتصير آخرَ سعرٍ في ملفّ العميل.
+  /// Only the selling value is editable, in the statement itself, and it becomes the latest price in the customer's file.
   Future<void> _editPrice(Map<String, dynamic> w, {num? suggest}) async {
     final ctrl = TextEditingController(
       text: suggest != null ? '$suggest' : ((w['sellingValue'] ?? 0) == 0 ? '' : '${w['sellingValue']}'),
@@ -245,7 +241,7 @@ class _OpsPrivateScreenState extends State<OpsPrivateScreen> {
     }
   }
 
-  // ── التصدير: الصفحةُ هنا، و«كلُّ ما طابق» و«الجدولُ كلُّه» من الخادم ─────
+  // Export: the page is built here; "everything matching" and "the whole table" come from the server
   String _cell(Map<String, dynamic> r, String k) {
     final v = r[k];
     if (k == 'stage') { final s = _stageL[v]; return s == null ? '${v ?? '—'}' : tr(s.$1, s.$2); }
@@ -340,7 +336,7 @@ class _OpsPrivateScreenState extends State<OpsPrivateScreen> {
         ),
       );
     }
-    // ارتفاعُ الشريط يتبع محتواه (حجمُ خطّ النظام) — لا ارتفاعَ ثابتًا يقصّ البطاقات.
+    // Bar height follows its content (system font size); a fixed height would clip the cards.
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: IntrinsicHeight(child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [

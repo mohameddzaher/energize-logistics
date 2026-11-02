@@ -1,15 +1,7 @@
 'use client';
 /**
- * أنواعُ الدفع — صفةُ كلّ عميلٍ في مكانٍ واحد.
- *
- * ── لماذا صفحةٌ بذاتها ─────────────────────────────────────────────────────
- * كان النوعُ يُكتب على كلّ كشفٍ على حدة، وأكثرُ العملاء صفتُهم ثابتة. فكتابتُه
- * أربعةً وثلاثين ألفَ مرّةٍ عملٌ مكرَّرٌ يُنسى ويُخطأ، وخطأٌ واحدٌ يُرسل كشفَ
- * عميلٍ ضريبيّ إلى فواتير الكاش.
- *
- * والقاعدةُ الكاملةُ مشروحةٌ في `backend/src/utils/paymentType.js`، وخلاصتُها:
- * اختيارُ اليد على الكشف يغلب كلَّ شيء، ثمّ «طريقة الدفع» القادمةُ من منصّة
- * التشغيل حين تقول نقدًا، ثمّ صفةُ العميل من هذه الصفحة.
+ * Payment kinds: each customer's attribute in one place
+ * The kind used to be written on each statement, yet most customers have a fixed attribute. Writing it 34,000 times is repeated work that gets forgotten and mistyped, and one mistake sends a tax customer's statement to the cash invoices. The full rule is in `backend/src/utils/paymentType.js`: a hand choice on the statement beats everything, then the payment method from the operations platform when it says cash, then the customer's attribute from this page.
  */
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '@/context/AuthContext';
@@ -27,7 +19,7 @@ interface Row {
   officer: string; department: string;
   reports: number; cashReports: number; taxReports: number;
   manualReports: number; methodCashReports: number; value: number;
-  /** كشوفٌ نوعُها غيرُ صفة عميلها — تُعرَض لتُحلّ، ولا تُقلَب وحدَها. */
+  /** Statements whose kind differs from their customer's attribute; shown to be resolved, not flipped automatically. */
   conflicts: number;
 }
 
@@ -76,12 +68,8 @@ export default function PaymentTypesPage() {
   }, [rows, q, filter]);
 
   /**
-   * صفةُ العميل تُحفَظ، وتسري على كشوفه.
-   *
-   * ── وخطوتان لا واحدة ──────────────────────────────────────────────────────
-   * الكشوفُ بلا نوعٍ تُملأ فورًا — تلك ليست تغييرًا بل استكمال. أمّا الكشوفُ
-   * التي لها نوعٌ مخالفٌ فتُعَدُّ ويُسأل عنها: قلبُها يغيّر أين تُفوتَر وأين
-   * تُحصَّل، وذلك قرارٌ يُرى عددُه قبل اتّخاذه لا أثرٌ جانبيٌّ لاختيارٍ في قائمة.
+   * A customer's attribute is saved and applies to their statements
+   * Two steps, not one: statements with no kind are filled at once, since that completes rather than changes. Those with a conflicting kind are counted and confirmed first, because flipping them changes where they are invoiced and collected, a decision whose count should be seen before it is taken, not a side effect of a list choice.
    */
   const setType = async (row: Row, paymentType: '' | 'cash' | 'tax') => {
     if (paymentType === row.paymentType) return;
@@ -117,10 +105,8 @@ export default function PaymentTypesPage() {
   };
 
   /**
-   * توحيدُ كشوف عميلٍ على صفته.
-   *
-   * نوعُ الكشف المكتوب جاء من عمود «ض / غ ض» في شيت المتابعة — وهو قولُ التشغيل
-   * عن تلك الحمولة. فنقضُه يُعرَض عددُه أوّلًا ثمّ يُطلَب.
+   * Unify a customer's statements to its attribute
+   * The written kind came from the tax / non-tax column of the follow-up sheet, which is Operations' statement about that load. Overriding it shows the count first and then asks.
    */
   const unify = async (row: Row) => {
     if (!row.conflicts) return;
@@ -138,7 +124,7 @@ export default function PaymentTypesPage() {
     setUnifying(null);
   };
 
-  /** تمريرُ القاعدة على كلّ الكشوف بلا نوع — يُعرَض أثرُها قبل تنفيذها. */
+  /** Run the rule over all statements with no kind; its effect is shown before it runs. */
   const applyAll = async () => {
     setApplying(true);
     try {
@@ -200,9 +186,7 @@ export default function PaymentTypesPage() {
         )}
       </PageHeader>
 
-      {/* ── القاعدةُ مكتوبةٌ حيث تُطبَّق ────────────────────────────────────────
-          مَن يفتح الصفحةَ يحتاج أن يعرف لماذا كشفُ عميلٍ ضريبيّ خرج نقديًّا،
-          وإلّا بدا النظامُ يخالف ما كُتب فيه. */}
+      {/* The rule is written where it applies Whoever opens the page needs to know why a tax customer's statement came out cash, otherwise the system seems to contradict what is written in it. */}
       <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-[12.5px] text-slate-600 leading-relaxed">
         <span className="font-semibold text-slate-800">{t('كيف يُقرَّر نوعُ الكشف؟', 'How a report gets its type')}</span>{' '}
         {t('اختيارُ الموظّف على أمر النقل يغلب كلَّ شيء. فإن لم يُختَر: متى قالت منصّةُ التشغيل إنّ طريقة دفع الحمولة «كاش» فهي نقديّة ولو كان العميلُ ضريبيًّا — وهو الاستثناء الوحيد. وما عدا ذلك يأخذ صفةَ العميل من هذه الصفحة.',
@@ -214,10 +198,7 @@ export default function PaymentTypesPage() {
         <Chip k="cash" label={t('كاش', 'Cash')} n={totals.cash} tone="text-emerald-700" />
         <Chip k="tax" label={t('ضريبي', 'Tax')} n={totals.tax} tone="text-sky-700" />
         <Chip k="none" label={t('بلا نوع', 'Not set')} n={totals.none} tone="text-amber-700" />
-        {/* ── والمخالفُ يُعرَض ليُحلّ ────────────────────────────────────────
-            أوامر نقل نوعُها غيرُ صفة عميلها. لا تُقلَب وحدَها: نوعُها المكتوب جاء من
-            عمود «ض / غ ض» في شيت المتابعة، وهو قولُ التشغيل عن تلك الحمولة
-            بعينها — نقضُه قرارٌ يُتّخذ لعميلٍ بعينه بعد أن يُرى عددُه. */}
+        {/* Conflicts are shown to be resolved Transport orders whose kind differs from their customer's attribute are not flipped automatically: the written kind came from the tax / non-tax column of the follow-up sheet, Operations' statement about that exact load. Overriding it is a per-customer decision taken after seeing the count. */}
         {!!totals.conflictCustomers && (
           <Chip k="conflict"
             label={t(`مخالف لصفته · ${totals.conflictReports.toLocaleString()} أمر نقل`,
@@ -275,8 +256,7 @@ export default function PaymentTypesPage() {
                     <span className="text-emerald-700">{r.cashReports}</span>
                     <span className="text-slate-300 mx-1">/</span>
                     <span className="text-sky-700">{r.taxReports}</span>
-                    {/* ── وما يخالف صفتَه يُقال هنا ────────────────────────
-                        عددُ كشوفه التي نوعُها غيرُ صفته — تُحلّ من زرّ «توحيد». */}
+                    {/* Conflicts are shown here Count of this customer's statements whose kind differs from its attribute; resolved with the Unify button. */}
                     {r.conflicts > 0 && (
                       <span className="ms-2 text-[11px] font-semibold text-red-600"
                         title={t('أوامر نقل نوعُها يخالف صفةَ هذا العميل', "Reports whose type differs from this customer's")}>

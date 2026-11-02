@@ -1,6 +1,4 @@
-// Shared helpers, types, status maps and bilingual labels for the Vehicles &
-// Authorizations (المركبات والتفاويض) section. UI chrome strings live in
-// getVehiclesText(lang) so the whole section is fully bilingual from one place.
+// Shared helpers, types, status maps and bilingual labels for the Vehicles & Authorizations section. UI chrome strings live in getVehiclesText(lang) so the whole section is fully bilingual from one place.
 import { empName, fmtDate, fmtDateTime, today, daysUntil, expiryBadge, exportToExcel } from '@/lib/hr';
 export { empName, fmtDate, fmtDateTime, today, daysUntil, expiryBadge, exportToExcel };
 
@@ -35,7 +33,7 @@ export interface Vehicle {
   currentAuthorization?: VehicleAuthorization | string | null;
   accidentCount?: number;
   notes?: string; createdAt?: string;
-  // ورقةُ التفويض في سجلّ المركبات (المرجع) — تُعرض بدل المرآة حين تخالفها.
+  // Authorization paper in the vehicles register (the reference); shown instead of the mirror when they disagree.
   registryId?: string;
   registryHolder?: { name: string; idNumber: string; authorizationNumber: string; startDate: string; expiryDate: string } | null;
 }
@@ -54,9 +52,9 @@ export interface VehicleAuthorization {
   notes?: string;
   createdBy?: any; endedBy?: any;
   createdAt?: string; updatedAt?: string;
-  // «ساري» في سجلّ الإسناد وتخالفه ورقةُ التفويض في سجلّ المركبات — لا يُقرأ ساريًا.
+  // Valid in the assignment log but contradicted by the authorization paper in the vehicles register, so it is not read as valid.
   stale?: boolean;
-  // التفويضُ الحاليّ يُقرأ من سجلّ المركبات: معرّفُ المركبة هناك.
+  // The current authorization is read from the vehicles register, keyed by vehicle id there.
   registryId?: string | null;
   source?: 'registry' | 'legacy';
 }
@@ -98,13 +96,13 @@ export const AUTH_STATUS: Record<string, Styled> = {
   active: { bg: 'bg-green-500/20', text: 'text-green-600', en: 'Active', ar: 'سارٍ' },
   transferred: { bg: 'bg-blue-500/20', text: 'text-blue-600', en: 'Transferred', ar: 'تم نقله' },
   revoked: { bg: 'bg-red-500/20', text: 'text-red-600', en: 'Revoked', ar: 'ملغى' },
-  // إسنادٌ قديمٌ تخالفه ورقةُ التفويض في سجلّ المركبات — ليس ساريًا.
+  // An old assignment contradicted by the authorization paper in the vehicles register; not valid.
   stale: { bg: 'bg-slate-500/20', text: 'text-slate-600', en: 'Not current (vehicle registry)', ar: 'غير سارٍ — حسب سجل المركبات' },
 };
 
-/** حالةُ سطر الإسناد كما تُعرض: «ساري» تخالفه الورقةُ يُقرأ «غير سارٍ». */
+/** Assignment line status as displayed: valid contradicted by the paper reads as not valid. */
 export const authStatusKey = (a: { status: string; stale?: boolean }) => (a.stale ? 'stale' : a.status);
-/** رابطُ المركبة: صفحتُها في سجلّ المركبات إن كانت فيه، وإلّا الصفحةُ القديمة. */
+/** Vehicle link: its page in the vehicles register if present, else the old page. */
 export const vehicleHref = (registryId: string | null | undefined, legacyId: string | null | undefined) =>
   (registryId ? `/system/vehicles/registry/${registryId}` : legacyId ? `/system/vehicles/${legacyId}` : '#');
 

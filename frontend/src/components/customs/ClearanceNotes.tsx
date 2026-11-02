@@ -1,13 +1,7 @@
 'use client';
 /**
- * ملاحظاتُ المعاملة — سطرٌ يُضاف، لا خانةٌ تُدهَس.
- *
- * كانت الملاحظةُ خانةً واحدة: من كتب اليومَ محا ما كتبه غيرُه أمس، ولا يُعرف
- * مَن كتب ولا متى. فصارت سجلًّا: لكلّ ملاحظةٍ صاحبُها ووقتُها، والأحدثُ أعلاها
- * وهي نفسُها التي تظهر في عمود «ملاحظات» في الجدول (راجع lastNote في الخادم).
- *
- * وما كُتب في الخانة القديمة يبقى معروضًا أسفلَ السجلّ — لا يُحذف ولا يُحوَّل
- * إلى ملاحظةٍ بصاحبٍ لا نعرفه.
+ * Transaction notes: an appended entry, not a single overwritten field.
+ * The note used to be one field, so a new author erased the previous one with no author or time. Now each note keeps its author and time, newest first, and the latest also feeds the table's notes column (see lastNote on the server). Text from the old field stays shown below the log, never converted into a note with an unknown author.
  */
 import { useState } from 'react';
 import { Loader2, MessageSquarePlus, Trash2 } from 'lucide-react';
@@ -29,7 +23,7 @@ export default function ClearanceNotes({ clearance, canEdit, ar, onChanged, noti
   const t = (a: string, e: string) => (ar ? a : e);
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
-  const log: ClearanceNote[] = [...(clearance.notesLog || [])].reverse();   // الأحدثُ أعلى
+  const log: ClearanceNote[] = [...(clearance.notesLog || [])].reverse();   // Newest first.
 
   const add = async () => {
     const v = text.trim();
@@ -87,7 +81,7 @@ export default function ClearanceNotes({ clearance, canEdit, ar, onChanged, noti
             </div>
           </li>
         ))}
-        {/* الملاحظةُ القديمة — كُتبت قبل السجلّ، فلا صاحبَ لها ولا وقت. */}
+        {/* Legacy note written before the log existed, so it has no author or time. */}
         {clearance.notes && (
           <li className="rounded-xl border border-dashed border-slate-200 px-3 py-2">
             <p className="text-[13px] text-slate-600 whitespace-pre-wrap">{clearance.notes}</p>

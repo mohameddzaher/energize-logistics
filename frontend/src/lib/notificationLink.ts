@@ -1,33 +1,22 @@
 /**
- * أين يفتح الإشعار؟
- *
- * ── العلّة ──────────────────────────────────────────────────────────────────
- * قائمةُ الجرس كانت تعرض الإشعارَ ولا تذهب إليه: `onClick` مكتوبٌ لإشعارِ ملفِّ
- * التصدير وحدَه، وكلُّ ما عداه `div` بلا معالج. فيُقرأ «أُسنِدت إليك مهمّة»
- * ويُضغَط فلا يحدث شيء — ويُبحَث عن الشاشة بالقائمة الجانبيّة.
- *
- * والإشعارُ يحمل `relatedEntity` و`relatedEntityId`؛ منهما تُبنى الوجهة. وما
- * لا نعرف له وجهةً لا يُخمَّن: يبقى سطرًا يُقرأ ولا يُضغَط — ضغطةٌ تفتح شاشةً
- * خاطئةً أسوأُ من ضغطةٍ لا تفتح شيئًا.
- *
- * المسارات كلُّها مُتحقَّقٌ منها في `backend/src/config/pages.json`.
+ * Where a notification opens.
+ * The bell list showed the notification but did not navigate: `onClick` was written only for the export-file notification, and every other one was a div with no handler, so clicking did nothing. This maps each notification to its destination.
  */
 
-/** الكياناتُ التي لها صفحةُ تفصيلٍ بالمعرّف. */
+/** Entities that have a detail page by id. */
 const BY_ID: Record<string, (id: string) => string> = {
   Employee: (id) => `/system/hr/employees/${id}`,
   FleetShipment: (id) => `/system/fleet/${id}`,
   CustomsClearance: (id) => `/system/customs/${id}`,
-  // بلاغُ Media Go يُفتَح في قائمته، والمعرّفُ يفتح تفصيلَه — الشاشةُ واحدةٌ للطرفين.
+  // A Media Go complaint opens in its list, and the id opens its detail; one screen serves both parties.
   MediaGoComplaint: (id) => `/system/b2c/mediago-complaints?id=${id}`,
   MediaGoAdRequest: (id) => `/system/b2c/mediago-ads/${id}`,
-  // طلبُ الموارد البشريّة إلى الماليّة: يصل الماليّةَ في صندوقها، وردُّها يصل
-  // صاحبَ الطلب في «متابعة المالية» — كيانان لوجهتين، والمعرّفُ يفتح الطلبَ نفسَه.
+  // An HR request to Finance arrives in Finance's inbox, and the reply reaches the requester in the Finance follow-up page: two entities, two destinations, and the id opens the request itself.
   HrFinanceRequest: (id) => `/system/finance/hr/residency?tab=requests&id=${id}`,
   HrFinanceRequestReply: (id) => `/system/hr/finance-follow?tab=requests&id=${id}`,
 };
 
-/** الكياناتُ التي تُفتَح على شاشةِ قسمِها. */
+/** Entities that open on their section's screen. */
 const BY_ENTITY: Record<string, string> = {
   Ls2Alert: '/system/ls2/alerts',
   Contract: '/system/hr/contracts',
@@ -43,7 +32,7 @@ const BY_ENTITY: Record<string, string> = {
   RemoteLeaveRequest: '/system/remote/leave',
   RemoteReport: '/system/remote/dashboard',
   SectionComplaint: '/system/operations/complaints',
-  // المهمّةُ لا تعرف قسمَ صاحبها — `/system/jp` تسأل الخادمَ وتذهب إلى خطّته.
+  // A task does not know its owner's section: `/system/jp` asks the server and goes to its plan.
   JpTask: '/system/jp',
 };
 
@@ -53,7 +42,7 @@ export type NotificationLike = {
   type?: string | null;
 };
 
-/** وجهةُ الإشعار، أو `null` إن لم تُعرَف — فلا يُضغَط. */
+/** Notification destination, or `null` if unknown, in which case it is not clickable. */
 export function notificationHref(n: NotificationLike): string | null {
   const e = String(n?.relatedEntity || '');
   const id = n?.relatedEntityId ? String(n.relatedEntityId) : '';
@@ -62,7 +51,7 @@ export function notificationHref(n: NotificationLike): string | null {
   return null;
 }
 
-/** أيقونةٌ تُقرأ قبل النصّ — اسمُ أيقونةٍ من lucide يُترجمه المستدعي. */
+/** An icon read before the text: a lucide icon name that the caller translates. */
 export function notificationTone(n: NotificationLike): 'alert' | 'task' | 'ok' | 'info' {
   const t = String(n?.type || '');
   if (t === 'invoice_overdue' || t === 'dispute_opened' || t === 'system_alert') return 'alert';
@@ -71,7 +60,7 @@ export function notificationTone(n: NotificationLike): 'alert' | 'task' | 'ok' |
   return 'info';
 }
 
-/** «منذ كم» — بالعربيّة أو الإنجليزيّة، بلا مكتبة. */
+/** Time since, in Arabic or English, with no library. */
 export function sinceLabel(iso: string | Date | undefined, ar: boolean): string {
   if (!iso) return '';
   const ms = Date.now() - new Date(iso).getTime();

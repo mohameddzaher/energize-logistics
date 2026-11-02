@@ -1,12 +1,8 @@
 'use client';
-// A drop-in <select> for any editable reference list (lookup type). It fetches its
-// own options from /api/lookups?type=... and renders an inline "+ Add" affordance
-// underneath so users can create a new option without leaving the form — the new
-// item is saved to its lookup collection and selected immediately.
-//
+// A drop-in <select> for any editable reference list (lookup type). It fetches its own options from /api/lookups?type=... and renders an inline "+ Add" affordance underneath so users can create a new option without leaving the form; the new item is saved to its lookup collection and selected immediately.
 // Usage:
-//   <ManagedSelect type="procurement_category" value={form.category}
-//     onChange={(v) => set('category', v)} placeholder={ar ? 'الفئة' : 'Category'} />
+// <ManagedSelect type="procurement_category" value={form.category}
+// onChange={(v) => set('category', v)} placeholder={ar ? 'Category' : 'Category'} />
 import { useEffect, useState, useCallback } from 'react';
 import { Plus, Check, X, Loader2 } from 'lucide-react';
 import { useLanguage } from '@/context/LanguageContext';
@@ -35,11 +31,8 @@ const loadCanManage = (): Promise<Record<string, boolean>> => {
   return typesCache;
 };
 
-// ── طلبٌ واحدٌ لكلّ نوعٍ لا لكلّ خانة ──────────────────────────────────────
-// جدولُ الفواتير يرسم الخانةَ في كلّ صفّ، فمئةُ صفٍّ كانت مئةَ طلبٍ للقائمة
-// نفسها (ثلاث قيم) في اللحظة نفسها — تصطفّ في المتصفّح والخادم فيصل آخرُها بعد
-// ٣٫٤ ثانية. فالخانات المرسومة معًا تشترك في وعدٍ واحد، ويبقى الجوابُ ثوانيَ
-// معدودة فقط كي لا تتأخّر إضافةٌ من شاشة الإعدادات؛ وإضافةٌ من هنا تمسحه.
+// One request per lookup type, not per input.
+// An invoice table draws the input in every row, so 100 rows meant 100 identical requests that queued up and the last one arrived after 3.4 s. Inputs drawn together share one promise; the answer is kept only a few seconds so a settings-screen add is not delayed, and an add from here clears it.
 const LOOKUP_TTL = 10000;
 const lookupCache = new Map<string, { at: number; p: Promise<LookupItem[]> }>();
 const loadItems = (type: string): Promise<LookupItem[]> => {
@@ -49,7 +42,7 @@ const loadItems = (type: string): Promise<LookupItem[]> => {
     .get<{ items: LookupItem[] }>(`/api/lookups?type=${encodeURIComponent(type)}&active=true`)
     .then((d) => d.items || []);
   lookupCache.set(type, { at: Date.now(), p });
-  // الفشلُ لا يُحفَظ — وإلّا ورثته كلُّ خانةٍ تُرسَم بعده.
+  // A failure is not cached, or every input drawn afterwards would inherit it.
   p.catch(() => { if (lookupCache.get(type)?.p === p) lookupCache.delete(type); });
   return p;
 };
@@ -76,32 +69,20 @@ export default function ManagedSelect({
   required?: boolean;
   disabled?: boolean;
   /**
-   * يُخفي «إضافة عنصر جديد» داخل الخانة.
-   *
-   * القوائمُ المغلقة — فروعُنا مثلًا — تُدار من صفحة الإعدادات لا من داخل صفٍّ
-   * في جدول. فزرُّ الإضافة على بُعد ضغطةٍ من خانةٍ يُكتب فيها بسرعةٍ يفتح البابَ
-   * نفسَه الذي فُتحت القائمةُ لإغلاقه: كُتب فيها «ج» بالخطأ فصارت فرعًا.
+   * Hides "add new item" inside the input.
+   * Closed lists (e.g. our branches) are managed from the settings page, not from a table row; a one-click add next to a quickly typed field turned a stray character into a new branch.
    */
   noAdd?: boolean;
   /**
-   * يُخزّن **الاسم العربيّ** بدل المفتاح.
-   *
-   * حقولٌ كثيرة في النظام تحمل النصّ العربيّ نفسه منذ أوّل استيراد — قطاع
-   * المركبة ولونها ونوع تغطية تأمينها — وتقرؤه الفلاتر والتصديرات والتقارير
-   * مباشرةً. فتحويلها إلى مفاتيح يُبطل ذلك كلَّه دفعةً واحدة.
-   *
-   * والمقصود ليس تغييرَ ما يُخزَّن بل **حصرَ ما يُكتب**: يبقى المخزَّن نصًّا
-   * عربيًّا، لكنّه لا يأتي إلّا من القائمة — فلا تصير «مرسيدس» ثلاثَ ماركات.
+   * Stores the Arabic name instead of the key.
+   * Many fields (vehicle sector, color, insurance cover type) have held the Arabic text since the first import and filters, exports and reports read it directly, so converting to keys would break all of them. The goal is to restrict what can be written, not change what is stored: still Arabic text, but only from the list, so one make does not become three spellings.
    */
   storeLabel?: boolean;
-  /** يمنع الكتابةَ الحرّة — حيث تُبنى على القيمة منطقيّاتٌ لا تحتمل نصًّا جديدًا. */
+  /** Disables free typing where logic is built on the value and cannot accept new text. */
   strict?: boolean;
   /**
-   * مقاسُ الخانة حين تختلف عن الافتراضيّ.
-   *
-   * الافتراضيُّ مقاسُ الاستمارات؛ وداخلَ صفٍّ في جدولٍ يبدو ضخمًا بجانب خاناتٍ
-   * أصغرَ منه في الصفّ نفسِه — فيختلف ارتفاعُ الخلايا ويتقطّع الصفّ. فيُمرَّر
-   * مقاسُ الجدول من موضعه، ولا يُنسَخ المكوّنُ نسخةً ثانيةً لأجل المقاس.
+   * Input size when it differs from the default.
+   * The default is the form size and looks oversized inside a table row, making cell heights uneven; the table passes its own size instead of forking the component.
    */
   className?: string;
 }) {
@@ -149,17 +130,12 @@ export default function ManagedSelect({
   };
 
   const optionValue = (i: LookupItem) => (storeLabel ? i.nameAr : i.key);
-  // القيمة المحفوظة التي خرجت من القائمة (عُطِّلت أو أُدخلت قبل توحيدها) تبقى
-  // معروضةً كخيارٍ يتيم: حذفُها من الشاشة يجعل الحقل يبدو فارغًا وهو ليس كذلك،
-  // فيُحفَظ الفراغ فوق قيمةٍ صحيحة عند أوّل تعديلٍ لحقلٍ آخر.
+  // A saved value no longer in the list (disabled or entered before unification) stays shown as an orphan option. Removing it makes the field look empty and the next edit of another field would save the blank over a valid value.
   const hasValue = value && items.some((i) => optionValue(i) === value);
 
   /**
-   * ── ويُبحَث في القائمة ──────────────────────────────────────────────────
-   * بعضُ هذه القوائم يطول: الأقسامُ ثمانيةٌ وعشرون، وشركاتُ التأمين تسع،
-   * والمشاريعُ تكبر. و`<select>` المتصفّح لا بحثَ فيه — فيُفتَح ويُمرَّر بالعين
-   * سطرًا سطرًا، وهو أبطأُ ما في إدخال موظّف. فما زاد على ثمانيةِ خيارات يُفتَح
-   * بصندوق بحث، وما قلّ يبقى قائمةً مباشرةً لأنّ البحثَ فيه زينةٌ تُبطئ.
+   * The list is searchable.
+   * Some lists are long (28 departments, projects grow) and a native <select> has no search. More than 8 options open with a search box; fewer stay a plain list since search there only slows things down.
    */
   return (
     <div>
@@ -170,17 +146,14 @@ export default function ManagedSelect({
         placeholder={placeholder || (ar ? 'اختر…' : 'Select…')}
         searchPlaceholder={ar ? 'ابحث…' : 'Search…'}
         options={[
-          // القيمةُ المحفوظةُ التي خرجت من القائمة تبقى خيارًا يتيمًا — حذفُها
-          // من الشاشة يجعل الحقلَ يبدو فارغًا وهو ليس كذلك.
+          // A saved value that left the list stays as an orphan option; dropping it makes the field look empty when it is not.
           ...(value && !hasValue ? [{ value, label: value }] : []),
           // One option per value: two lookup rows with the same label must not show twice.
           ...items.filter((i, k) => items.findIndex((x) => optionValue(x) === optionValue(i)) === k)
             .map((i) => ({ value: optionValue(i), label: (ar ? i.nameAr : i.nameEn) || optionValue(i) })),
         ]}
-        // ── و«أخرى» تُكتب ولا تُمنَع ──────────────────────────────────────
-        // القائمةُ حصرٌ لما يُكتب لا سجنٌ له: قسمٌ جديدٌ أو حالةٌ لم تُسجَّل بعد
-        // لا تُوقف إدخالَ موظّف. فما لا يوجد يُكتب، ويظهر لمن يُدير القائمة
-        // فيُضيفه إليها. (يُعطَّل بـ`strict` حيث تُبنى على القيمة منطقيّات.)
+        // "Other" can be typed rather than blocked.
+        // The list restricts what is typed but must not stop data entry for a new department or status not yet registered; it is typed and shows up for the list manager to add. Disabled by `strict` where logic depends on the value.
         allowCustom={!strict}
         customHint={(typed) => (ar ? `استعمل «${typed}» (أخرى)` : `Use “${typed}” (other)`)}
       />

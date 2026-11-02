@@ -56,8 +56,8 @@ const load = (name) => {
   for (const [from, field, to, label] of LINKS) {
     let A; let B;
     try { A = load(from); B = load(to); } catch (e) { console.log(`  ? ${label} — نموذجٌ لا يُحمَّل`); continue; }
-    // eslint-disable-next-line no-await-in-loop
     // Use $ne: null, not $nin: [null, '']: the field is an ObjectId and an empty string in its condition throws before the query runs.
+    // eslint-disable-next-line no-await-in-loop
     const rows = (await A.find({ [field]: { $ne: null } }).select(field).lean())
       .filter((r) => r[field]);
     if (!rows.length) { console.log(`  · ${label.padEnd(28)} 0`); continue; }

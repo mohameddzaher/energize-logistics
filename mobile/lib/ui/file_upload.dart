@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'package:file_picker/file_picker.dart';
 
-/// نتيجة اختيار ملف: رابط بيانات base64 جاهز للإرسال + اسم الملف + الحجم.
+/// Result of picking a file: a base64 data URL ready to send, plus file name and size.
 class PickedFile {
   final String dataUrl;
   final String fileName;
@@ -18,7 +18,7 @@ const _mime = {
   'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
 };
 
-/// يفتح منتقي الملفات ويرجّع الملف المختار كـ data URL (base64). null لو أُلغي.
+/// Opens the file picker and returns the chosen file as a data URL (base64); null if cancelled.
 Future<PickedFile?> pickFileAsDataUrl() async {
   final res = await FilePicker.platform.pickFiles(
     withData: true,
@@ -35,7 +35,7 @@ Future<PickedFile?> pickFileAsDataUrl() async {
   return PickedFile(dataUrl, f.name, bytes.length);
 }
 
-/// كـ`pickFileAsDataUrl` لكن يُختار فيه أكثرُ من ملفٍّ معًا. قائمةٌ فارغةٌ لو أُلغي.
+/// Like `pickFileAsDataUrl` but allows several files at once; empty list if cancelled.
 Future<List<PickedFile>> pickFilesAsDataUrls() async {
   final res = await FilePicker.platform.pickFiles(
     withData: true,

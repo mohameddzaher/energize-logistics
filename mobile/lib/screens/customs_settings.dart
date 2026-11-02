@@ -8,11 +8,8 @@ import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import 'reference_data.dart' show LookupValuesScreen;
 
-/// إعداداتُ قسم التخليص — نظيرُ `/system/customs/settings` في الموقع.
-///
-/// ثلاثةُ أبواب كالموقع: القوائمُ المنسدلة (قوائمُ وحدة `customs` ومعها مهامُّ
-/// خطّة العمل `jp_task_customs`)، والعملاءُ والوكلاء (ملفّاتٌ لا قوائم)، ومدّةُ
-/// تنبيه المعاملات القادمة (`PUT /api/customs-clearance/settings`).
+/// Customs section settings, counterpart of `/system/customs/settings` on the web.
+/// Three areas as on the web: dropdown lists (lists of the `customs` module plus the work-plan tasks `jp_task_customs`), customers and agents (files, not lists), and the upcoming-transactions alert period (`PUT /api/customs-clearance/settings`).
 class CustomsSettingsScreen extends StatefulWidget {
   const CustomsSettingsScreen({super.key});
   @override

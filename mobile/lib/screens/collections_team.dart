@@ -10,9 +10,7 @@ import '../ui/widgets.dart';
 import '../ui/search_field.dart';
 import 'collections_party.dart';
 
-/// الفريق — أداءُ كلّ موظّف تحصيل، ومَن يتولّى أيَّ حساب (كصفحة الموقع
-/// /system/collections-dept/team). اللوحتان في شاشةٍ واحدة عن قصد: القرارُ بعد
-/// قراءة التقييم هو نقلُ حساباتٍ من موظّفٍ إلى آخر.
+/// Team: each collection employee's performance and who handles which account (like the web page /system/collections-dept/team). Both panels are on one screen on purpose: the decision after reading the evaluation is moving accounts from one employee to another.
 class CollectionsTeamScreen extends StatefulWidget {
   const CollectionsTeamScreen({super.key});
   @override
@@ -25,7 +23,7 @@ String _m(dynamic n) {
   final s = v.round().abs().toString().replaceAllMapped(RegExp(r'(\d)(?=(\d{3})+$)'), (m) => '${m[1]},');
   return v < 0 ? '-$s' : s;
 }
-/// اسمُ المسؤول — وما لم يُسنَد فعلى مدير القسم (officerLabel في الموقع).
+/// Officer name; unassigned accounts belong to the section manager (officerLabel on the web).
 String _officerLabel(Map r) {
   for (final k in ['effectiveOfficer', 'collectionOfficer', 'officer']) {
     final v = '${r[k] ?? ''}';
@@ -51,7 +49,7 @@ class _CollectionsTeamScreenState extends State<CollectionsTeamScreen> {
   String _from = '', _to = '';
   String _officerFilter = '';
   String _search = '';
-  final _searchCtl = TextEditingController(); // النصُّ يبقى مطابقًا لـ_search إن خرجت الخانةُ من الشاشة
+  final _searchCtl = TextEditingController(); // Text stays equal to _search if the field leaves the screen.
   final Set<String> _sel = {};
   String _assignTo = '';
   bool _saving = false;
@@ -103,7 +101,7 @@ class _CollectionsTeamScreenState extends State<CollectionsTeamScreen> {
       final d = await Api.instance.get('/api/collections-dept/ledger/aging?$p');
       if (!mounted || mine != _rowsSeq) return;
       setState(() => _rows = List<Map<String, dynamic>>.from(d['rows'] ?? const []));
-    } catch (_) {/* تبقى الصفوفُ القائمة */}
+    } catch (_) {/* Existing rows remain. */}
   }
 
   List<String> get _officers {
@@ -124,7 +122,7 @@ class _CollectionsTeamScreenState extends State<CollectionsTeamScreen> {
     setState(() { _saving = true; _msg = ''; });
     try {
       final r = await Api.instance.put('/api/collections-dept/ledger/team/assign', {'parties': _sel.toList(), 'officer': _assignTo});
-      // تركُ الاسم فارغًا يرفع الإسناد — فيعود الحسابُ إلى مدير القسم.
+      // Leaving the name empty removes the assignment, so the account returns to the section manager.
       final to = _assignTo.isNotEmpty
           ? _assignTo
           : (_managerName.isNotEmpty ? '$_managerName (${tr('مدير القسم', 'dept. manager')})' : tr('مدير القسم', 'the dept. manager'));
@@ -136,11 +134,11 @@ class _CollectionsTeamScreenState extends State<CollectionsTeamScreen> {
     if (mounted) setState(() => _saving = false);
   }
 
-  /// يفتح حساباتِ موظّفٍ — أو ما لا مسؤولَ له — كرابط الموقع إلى سجلّ العملاء.
+  /// Opens an employee's accounts, or those with no officer, like the web link to the customer register.
   void _openAccounts(String officer) => Navigator.push(context, MaterialPageRoute(
       builder: (_) => _OfficerAccountsScreen(officer: officer.isEmpty ? 'none' : officer)));
 
-  // أعمدةُ التصدير — هي أعمدةُ الموقع بالترتيب والقيم نفسِها.
+  // Export columns: the web columns in the same order and values.
   List<ExportCol> get _perfCols => [
         ExportCol('الموظف', 'Officer', (r) => _officerLabel({'officer': r['officer']})),
         ExportCol('حسابات', 'Accounts', (r) => r['accounts']),
@@ -233,7 +231,7 @@ class _CollectionsTeamScreenState extends State<CollectionsTeamScreen> {
                     style: const TextStyle(fontSize: 12.5, color: T.inkFaint)),
                 if (_error != null) Padding(padding: const EdgeInsets.only(top: 8), child: ErrorRetry(message: _error!, onRetry: _loadPerf)),
                 const SizedBox(height: 10),
-                // ── التقييم ─────────────────────────────────────────────
+                // Evaluation
                 Row(children: [
                   const Icon(Icons.trending_up, color: T.orange, size: 18),
                   const SizedBox(width: 6),
@@ -265,7 +263,7 @@ class _CollectionsTeamScreenState extends State<CollectionsTeamScreen> {
                 else
                   for (final r in _perf) _perfCard(r),
 
-                // ── الإسناد ─────────────────────────────────────────────
+                // Assignment
                 if (canEdit) ...[
                   const SizedBox(height: 14),
                   Row(children: [
@@ -339,7 +337,7 @@ class _CollectionsTeamScreenState extends State<CollectionsTeamScreen> {
   }
 }
 
-/// حساباتُ موظّفٍ واحد — أو «بلا مسؤول» (`officer=none`) — من سجلّ العملاء.
+/// One employee's accounts, or "no officer" (`officer=none`), from the customer register.
 class _OfficerAccountsScreen extends StatefulWidget {
   final String officer;
   const _OfficerAccountsScreen({required this.officer});

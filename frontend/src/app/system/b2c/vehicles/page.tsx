@@ -1,17 +1,8 @@
 'use client';
 /**
- * مركباتُ النقل الخفيف — مركباتُ مشاريع القسم (كيتا، هنقرستيشن، أمازون، نينجا).
- *
- * نافذةٌ على سجلّ المركبات نفسِه لا نسخةٌ منه: ما يُعدَّل هنا يُكتب في قسم
- * المركبات ويظهر فيه في الحال، وما يُعدَّل هناك يظهر هنا — الشاشتان تسمعان
- * الحدثَ نفسَه. وما يُعدَّل من هنا ما يديره القسم: المشروعُ والمدينةُ وحالةُ
- * التشغيل واللونُ والملاحظاتُ وتواريخُ المستندات، والقائدُ الفعليّ والتفويض.
- * اللوحةُ يعدّلها مَن يعدّل سجلَّ المركبات وحدَه، والرقمُ التسلسليّ يبقى له.
- *
- * ── القائدُ الفعليّ = راكبُ المركبة (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢) ───────────────
- * يُقرأ من صفّه في «موظفي النقل الخفيف» لا من نصٍّ على المركبة، ويُختار من
- * موظّفي القسم بالبحث فيُربط بها (backend utils/ltRider) — فلا تكون مركبةٌ
- * «واقفة» وعليها اسم. والمفوَّضُ يُختار كذلك ويُكتب بـ setHolder.
+ * Light-transport vehicles: vehicles of the department's projects (Keeta, Hungerstation, Amazon, Ninja).
+ * A window on the vehicle register itself, not a copy: edits here are written to the vehicles section and show there at once, and vice versa; both screens listen to the same event. Editable here is what the department manages: project, city, operating status, color, notes, document dates, actual driver and authorization. The plate is edited only by whoever edits the vehicle register, and the serial number stays with it.
+ * The actual driver is the vehicle's rider: read from his row in light-transport employees, not from text on the vehicle, picked by search among department staff and linked to it (backend utils/ltRider), so no vehicle is idle with a name on it. The authorized person is picked the same way and written with setHolder.
  */
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useLanguage } from '@/context/LanguageContext';
@@ -32,18 +23,16 @@ interface Row {
   _id: string; serialNumber: string; project: string; city: string; plateNumber: string;
   driverId: string; driverName: string; authorizedId: string; authorizedName: string; authorizedPhone: string;
   authStart: string; authEnd: string; authNumber: string; durationDays: number | null; daysLeft: number | null;
-  /** بمعاني لوحة القسم: مشروعُ الراكب (وإلّا الإدارة)، وحالةُ التفويض، والراكبُ من سجلّ القسم. */
+  /** In dashboard meaning: the rider's project (otherwise administration), the authorization status, and the rider from the department register. */
   boardProject?: string; authState?: 'authorized' | 'expired' | 'none'; riderName?: string; riderId?: string;
-  /** الراكبُ من سجلّ القسم (معرّفُ صفّه)، ومنتهي الخدمة «بانتظار التسليم»، ونصٌّ قديمٌ غيرُ مربوط. */
+  /** The rider from the department register (his row id), ended-service riders awaiting handover, and old unlinked text. */
   driverLt?: string; driverHold?: boolean; driverUnlinked?: string; vstate?: 'withRider' | 'hold' | 'idle';
   serviceStatus?: string; color?: string; notes?: string; registrationType?: string;
   operatingCardNumber?: string; operatingCardEnd?: string; insuranceEnd?: string; licenseEnd?: string; inspectionEnd?: string;
 }
 /**
- * ── فلاترُ اللوحة في الرابط ─────────────────────────────────────────────────
- * كلُّ رقمِ مركباتٍ في لوحة القسم يفتح هذه الصفحةَ بفلاتره (المشروع، المندوب،
- * التفويض، السجل… و`vstate`: عليها راكب / بانتظار التسليم / واقفة / أمرُ تشغيل).
- * تُرسَل إلى الخادم كما هي فيردّ المركباتِ التي عدّها الكارتُ بأعيانها.
+ * Dashboard filters in the URL.
+ * Every vehicle number on the department dashboard opens this page with its filters (project, rep, authorization, registration, and `vstate`: has rider / awaiting handover / idle / operating order). They are sent to the server as is, which returns exactly the vehicles the card counted.
  */
 const BOARD_KEYS: Record<string, [string, string]> = {
   project: ['المشروع', 'Project'], rep: ['المندوب', 'Rep'], vehicle: ['المركبة', 'Vehicle'], auth: ['التفويض', 'Authorisation'],
@@ -75,7 +64,7 @@ export default function B2cVehiclesPage() {
   const [d, setD] = useState<Payload | null>(null);
   const [q, setQ] = useState('');
   const [state, setState] = useState<StateKey>('');
-  // اللوحةُ تفتح هذه الصفحة على رقمٍ بعينه (`?state=`) — فتُعرض مركباتُه لا الكلّ.
+  // The dashboard opens this page on a specific figure (`?state=`), so its vehicles show, not all.
   useEffect(() => {
     try {
       const v = new URLSearchParams(window.location.search).get('state') || '';
@@ -95,7 +84,7 @@ export default function B2cVehiclesPage() {
   }, []);
   const bfKey = JSON.stringify(bf);
 
-  // نداءٌ مفلتَرٌ يحتاج حارسَه: ردٌّ أقدمُ (بلا فلتر) لا يكتب فوق أحدث.
+  // A filtered call needs its guard: an older unfiltered reply must not overwrite a newer one.
   const guard = useLatestRequest();
   const load = useCallback(() => {
     const token = guard.begin();
@@ -106,11 +95,11 @@ export default function B2cVehiclesPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bfKey, guard]);
   useEffect(() => { load(); }, [load]);
-  // قسمُ المركبات يبثّ `vreg:updated` (ومعه `lt:updated`) عند كلّ تعديلٍ هناك.
+  // The vehicles section broadcasts `vreg:updated` (with `lt:updated`) on every edit there.
   const reloadLive = useCallback(() => { refreshPeople(); load(); }, [load]);
   useSocket('vreg:updated', reloadLive);
   useSocket('lt:updated', reloadLive);
-  // عمودا التعديل واللوحة ثابتان في أوّل الجدول — هويّةُ الصفّ وفعلُه لا يغيبان بالتمرير.
+  // The edit and plate columns are pinned at the start of the table so the row identity and action stay visible while scrolling.
   const pin = usePinnedColumns(2);
 
   const getters: Record<string, (r: Row) => any> = useMemo(() => ({
@@ -123,11 +112,11 @@ export default function B2cVehiclesPage() {
       if (state === 'noAuthorization' && (r.authorizedName || r.authNumber)) return false;
       if (state === 'expired' && !(r.daysLeft != null && r.daysLeft < 0)) return false;
       if (state === 'expiringSoon' && !(r.daysLeft != null && r.daysLeft >= 0 && r.daysLeft <= 30)) return false;
-      // «بلا قائد» و«بانتظار التسليم» بحالة المركبة من الخادم — المعنى نفسُه الذي تعدّه اللوحة.
+      // 'No driver' and 'awaiting handover' come from the server's vehicle state, the same meaning the dashboard counts.
       if (state === 'noDriver' && r.vstate !== 'idle') return false;
       if (state === 'hold' && r.vstate !== 'hold') return false;
       if (state === 'withDriver' && r.vstate !== 'withRider') return false;
-      // أمرُ التشغيل السارِي = تفويضٌ قائمٌ لم ينتهِ.
+      // An active operating order means a standing authorization that has not ended.
       if (state === 'activeOrder' && !((r.authorizedName || r.authNumber) && (r.daysLeft == null || r.daysLeft >= 0))) return false;
       return !k || [r.plateNumber, r.serialNumber, r.project, r.city, r.driverName, r.driverId, r.authorizedName, r.authorizedId, r.authorizedPhone, r.authNumber, r.serviceStatus, r.operatingCardNumber]
         .some((v) => String(v || '').toLowerCase().includes(k));
@@ -190,7 +179,7 @@ export default function B2cVehiclesPage() {
         {card('noDriver', t('بلا قائدٍ فعليّ', 'No actual driver'), d.summary.noDriver, 'text-slate-600')}
         {card('hold', t('بانتظار التسليم', 'Awaiting hand-over'), d.summary.hold || 0, 'text-amber-700')}
       </div>
-      {/* فلترٌ جاء من اللوحة ولا كرتَ له هنا — يُقال صراحةً ويُرفَع بضغطة. */}
+      {/* A filter from the dashboard with no card here is stated explicitly and clears in one click. */}
       {(state === 'withDriver' || state === 'activeOrder') && (
         <button type="button" onClick={() => setState('')}
           className="inline-flex items-center gap-1 rounded-lg border border-[#f37121]/30 bg-[#f37121]/5 px-2.5 py-1 text-[12px] font-semibold text-[#f37121]">
@@ -305,7 +294,7 @@ const PEOPLE = '/api/light-transport/people';
 function VehicleForm({ row, ar, canEditPlate, onClose, onSaved }: { row: Row; ar: boolean; canEditPlate: boolean; onClose: () => void; onSaved: () => void }) {
   const { notify } = useDialog();
   const t = (a: string, e: string) => (ar ? a : e);
-  // الحقولُ النصّيّة والتواريخ — يُرسَل ما تغيّر منها وحدَه.
+  // Text fields and dates: only what changed is sent.
   const initial = {
     plateNumber: row.plateNumber, project: row.project, city: row.city, serviceStatus: row.serviceStatus || '', color: row.color || '',
     notes: row.notes || '', operatingCardNumber: row.operatingCardNumber || '', operatingCardEnd: row.operatingCardEnd || '',
@@ -313,7 +302,7 @@ function VehicleForm({ row, ar, canEditPlate, onClose, onSaved }: { row: Row; ar
     authStart: row.authStart, authEnd: row.authEnd, authNumber: row.authNumber,
   };
   const [f, setF] = useState(initial);
-  // الشخصان يُختاران: `undefined` = لم يُمَسّ، `null` = «بلا»، وإلّا الشخصُ المختار.
+  // The two people are picked: `undefined` means untouched, `null` means none, otherwise the chosen person.
   const [driver, setDriver] = useState<Person | null | undefined>(undefined);
   const [holder, setHolder] = useState<Person | null | undefined>(undefined);
   const [busy, setBusy] = useState(false);
@@ -321,7 +310,7 @@ function VehicleForm({ row, ar, canEditPlate, onClose, onSaved }: { row: Row; ar
   const days = f.authStart && f.authEnd ? Math.round((new Date(f.authEnd).getTime() - new Date(f.authStart).getTime()) / 86400000) : null;
   const save = async () => {
     if (days != null && days < 0) { notify(t('نهايةُ التفويض قبل بدايته', 'End is before start'), 'error'); return; }
-    // يُرسَل ما تغيّر وحدَه: خانةٌ لم تُمَسّ لا تُكتب فوق تعديلِ زميلٍ في قسم المركبات.
+    // Only what changed is sent: an untouched field must not overwrite a colleague's edit in the vehicles section.
     const body: Record<string, any> = Object.fromEntries(Object.entries(f).filter(([k, v]) => String(v || '') !== String((initial as any)[k] || '')));
     if (driver !== undefined) body.driverLt = driver ? driver.ltId : '';
     if (holder !== undefined) {

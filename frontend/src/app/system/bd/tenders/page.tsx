@@ -46,9 +46,8 @@ export default function BdTendersPage() {
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('');
   /**
-   * ── وبطاقةُ الرقم تُصفّي القائمة ────────────────────────────────────────────
-   * «تُغلق خلال ٧ أيام» و«تم الفوز بها» شرطانِ على الصفّ (موعدٌ قريبٌ وحالةٌ
-   * مترقّبة / حالةُ فوز) — وكانا رقمين يُقرآن ثمّ يُقلَّب الجدولُ بالعين.
+   * The number card filters the list.
+   * 'Closes within 7 days' and 'won' are conditions on the row (a near deadline with a watching/preparing status, or a won status); they used to be two numbers read and then eyeballed in the table.
    */
   const [cardF, setCardF] = useState<'' | 'dueSoon' | 'open' | 'won'>('');
 
@@ -82,7 +81,7 @@ export default function BdTendersPage() {
   }, []);
 
   // Deadline-ascending, with undated tenders parked at the end.
-  // وشرطُ البطاقة يُطبَّق قبل الترتيب: المعدودُ هو المعروض.
+  // The card condition is applied before sorting: what is counted is what is shown.
   const sorted = useMemo(() => byDeadline(rows.filter((r) => {
     if (cardF === 'dueSoon') {
       const d = daysUntil(r.submissionDeadline);
@@ -99,8 +98,7 @@ export default function BdTendersPage() {
     return m;
   }, [rows]);
 
-  // Same definition as the BD dashboard's «مناقصات قريبة» KPI (watching/preparing
-  // within 30 days) — two different numbers under one name confused everyone.
+  // Same definition as the BD dashboard's 'upcoming tenders' KPI (watching/preparing within 30 days) - two different numbers under one name confused everyone.
   const dueSoon = rows.filter((r) => {
     const d = daysUntil(r.submissionDeadline);
     return d !== null && d >= 0 && d <= 30 && ['watching', 'preparing'].includes(r.status);
@@ -165,9 +163,7 @@ export default function BdTendersPage() {
     { header: ar ? 'المستندات جاهزة' : 'Docs ready', key: 'documentsReady', transform: (v) => (v ? (ar ? 'نعم' : 'Yes') : (ar ? 'لا' : 'No')) },
     { header: ar ? 'المسؤول' : 'Owner', key: 'ownerName', transform: (v, r) => v || userName(r.owner) },
   ];
-  // الفلترة على الخادم: ما في الذاكرة حصيلةُ البحث والحالة لا السجلّ كلّه، فنُعيد
-  // النداء بلا معاملاتٍ لمن أراد الكلّ. والترتيب يُعاد هنا بعينه لأنّ ملفًّا
-  // بمواعيدَ غير مرتّبةٍ تصعب قراءته كما تُقرأ الشاشة.
+  // Filtering is server-side: memory holds the search and status result, not the whole register, so the call is repeated without parameters for whoever wants everything. The ordering is repeated here exactly, since a file with unsorted deadlines is harder to read than the screen.
   const fetchAllForExport = async () => {
     const d = await api.get<{ tenders: BdTender[] }>('/api/business-development/tenders');
     return [{ name: 'Tenders', rows: byDeadline(d.tenders || []), columns: exportColumns }];
@@ -195,7 +191,7 @@ export default function BdTendersPage() {
       </PageHeader>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* والبطاقةُ تُصفّي القائمةَ تحتها — ما يُعَدُّ هو ما يُعرَض. */}
+        {/* The card filters the list beneath it: what is counted is what is shown. */}
         <StatCard label={ar ? 'إجمالي المناقصات' : 'Total tenders'} value={rows.length}
           onClick={() => setCardF('')} active={!cardF} hint={ar ? 'اضغط لعرض الكل' : 'tap to show all'} />
         <StatCard label={ar ? 'تُغلق خلال 7 أيام' : 'Closing in 7 days'} value={dueSoon} accent={dueSoon > 0 ? 'text-red-600' : 'text-slate-900'}

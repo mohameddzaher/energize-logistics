@@ -1,7 +1,5 @@
 'use client';
-// سجل موردي 3PL — the 212-vendor master register: search, filter by rep /
-// headquarters / contract status, add & edit & delete, click through to the
-// full vendor profile. Status cards on top double as filters.
+// 3PL vendor register: the 212-vendor master register with search, filter by rep / headquarters / contract status, add, edit and delete, and click-through to the full vendor profile. Status cards on top double as filters.
 import { useState, useEffect, useCallback, useMemo, Suspense } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
@@ -40,9 +38,7 @@ function VendorsPageInner() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [q, setQ] = useState('');
-  // ── والفلترُ يُورَث من الرابط كلُّه ────────────────────────────────────────
-  // كانت «مستندات ناقصة» وحدَها تُقرأ من العنوان، فبطاقاتُ لوحة العقود الأخرى
-  // («موردون موقّعون»، «قيد التوقيع») لم يكن لها مقصدٌ يُفتَح على صفوفها.
+  // The whole filter is inherited from the URL: only missing documents used to be read from it, so the other department dashboard cards (signed vendors, pending signature) had no destination opening on their rows.
   const [statusFilter, setStatusFilter] = useState<'' | 'signed' | 'pending' | 'unsigned' | 'missingDocs'>(() => {
     const v = params?.get('filter') || '';
     return (['signed', 'pending', 'unsigned', 'missingDocs'].includes(v) ? v : '') as any;
@@ -139,8 +135,7 @@ function VendorsPageInner() {
     { header: ar ? 'الوجهات' : 'Destinations', key: 'destinations', width: 28 },
     { header: ar ? 'المستندات' : 'Docs', key: 'documentsReceived', transform: (v: boolean) => (v ? (ar ? 'مكتملة' : 'complete') : (ar ? 'ناقصة' : 'missing')), width: 10 },
   ];
-  // بطاقات الحالة أعلى الصفحة تفلتر الجدول من غير أن يشعر المصدِّر أنّه فلتر،
-  // فكان زرُّ التصدير الواحد يعطي الموقّعين وحدهم ويُسمّيه سجلَّ الموردين كلَّه.
+  // The status cards filter the table without the exporter noticing, so the single export button gave only the signed vendors and called it the whole vendor register.
   const scope = exportScopeLabels(ar);
   const sheetName = ar ? 'الموردون' : 'Vendors';
   const exportOptions = [

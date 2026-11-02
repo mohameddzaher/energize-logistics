@@ -1,28 +1,7 @@
 'use client';
-// نماذج مجموعات الموارد البشرية: فتحُ ملفّ مجموعةٍ لموظّف، وتعديلُ حقولها
-// مجتمعةً، وتفريغُها.
-//
-// ── لماذا «الإنشاء» هنا ليس إنشاء موظّف ─────────────────────────────────────
-// الموظّف يُولَد مرّةً واحدة في سجلّ الموظفين، ومعه رقمُه ومَن أنشأه. ولو صار
-// يُولَد من صفحة الإقامات ومن صفحة الجوازات ومن صفحة العقود لظهر في السجلّ ناسٌ
-// لا يعرف أحدٌ من أيّ باب دخلوا ولا ما الذي نقصهم. فالإنشاء في هذه الصفحات هو
-// **فتحُ ملفّ المجموعة لمن لا ملفَّ له فيها**: تختار الموظّف — والقائمة تقدّم من
-// لا بيانات له في المجموعة — ثم تكتب حقولها كلّها دفعةً واحدة، بدل ملاحقة خاناته
-// في الجدول خانةً خانة.
-//
-// ── ولماذا «الحذف» تفريغٌ لا محو ────────────────────────────────────────────
-// صفحةُ مستندٍ لا تملك أن تمحو رجلًا من الشركة: محوُ الموظّف يمحو معه عهدته
-// وإجازاته ومستنداته المرفوعة، ويتخطّى إجراء إنهاء الخدمة كلَّه (إعادة العهدة
-// والمخالصة). فالفعل المدمِّر الصحيح في هذه الصفحة هو تفريغُ بيانات هذه المجموعة
-// وحدَها عند شخصٍ بعينه. ومحوُ الموظّف باقٍ في سجلّ الموظفين محصورًا بمن يملكه
-// هناك.
-//
-// ── والعلامات لا تُمَسّ ضمنًا ───────────────────────────────────────────────
-// تفريغُ الخانة ليس قولَ «غير مطلوبة»: الأولى تقول «لا نملك البيانات» فتبقى
-// شغلًا على التيم، والثانية قرارٌ إداريّ يقول «لا تنطبق على هذا الموظّف» فتخرج
-// من قائمة الشغل أصلًا. وخلطُهما يُخرج أسماءً من القائمة بلا أن يقرّر ذلك أحد،
-// فتبدو الأرقام أفضل ممّا هي. لذلك: التفريغ يترك العَلَم كما هو، و«غير مطلوب»
-// لا تُكتب إلا باختيارٍ صريح من القائمة المجاورة للحقل.
+// HR group modals: open a group file for an employee, edit its fields together, and clear them.
+// Create only opens the group file for an existing employee; employees are born once in the employee register.
+// Delete only clears this group's data, never the employee. Clearing leaves the flag untouched; 'not required' is set only by an explicit choice.
 import { useState, useEffect, useMemo } from 'react';
 import { useDialog } from '@/components/system/DialogProvider';
 import { Modal, Field, TextInput, Select, SearchableSelect, type SearchOption } from '@/components/hr/HRKit';
@@ -35,14 +14,14 @@ import DatePair from '@/components/hr/DatePair';
 
 const isFilled = (v: any) => !(v === null || v === undefined || v === '' || (Array.isArray(v) && !v.length));
 
-/** قيمة الحقل كما تُكتب في مُدخَل النموذج — التاريخ بصيغة الحقل، والمنطقيّ نعم/لا. */
+/** Field value as typed in the form input: date in the field format, boolean as yes/no. */
 const asInput = (f: FieldDef, v: any) => {
   if (f.type === 'date') return toDateInput(v);
   if (f.type === 'bool') return v === true ? '1' : v === false ? '0' : '';
   return v == null ? '' : String(v);
 };
 
-/** ماذا يفعل المستخدم بعَلَم الحالة — «كما هي» هو الأصل فلا يُرسَل شيء. */
+/** What the user does with the status flag; 'as is' is the default and sends nothing. */
 type Mark = 'keep' | 'clear' | 'required' | 'not_required' | 'inactive';
 
 function StatusChip({ code, ar }: { code?: string; ar: boolean }) {
@@ -57,7 +36,7 @@ function StatusChip({ code, ar }: { code?: string; ar: boolean }) {
 
 export function HrGroupFormModal({ open, mode, group, groupLabel, fields, row, ar, onClose, onDone }: {
   open: boolean;
-  /** create = فتح ملفّ المجموعة لموظّف تختاره، edit = تعديل حقولها لصفٍّ قائم */
+  /** create = open the group file for a chosen employee, edit = edit the fields of an existing row */
   mode: 'create' | 'edit';
   group: string;
   groupLabel: string;
@@ -72,9 +51,7 @@ export function HrGroupFormModal({ open, mode, group, groupLabel, fields, row, a
   const [empId, setEmpId] = useState('');
   const [pool, setPool] = useState<RecordRow[] | null>(null);
   const [form, setForm] = useState<Record<string, string>>({});
-  // الحالة الابتدائية تُحفَظ بجانب النموذج ليُرسَل **ما تغيّر وحدَه**: إرسال
-  // الحقول كلّها في كلّ حفظ يكتب فوق قيمٍ لم يمسّها أحد ويملأ سجلّ التدقيق
-  // بتغييراتٍ لم تحدث، فيضيع التغيير الحقيقيّ بينها.
+  // Initial state is kept beside the form so only changed fields are sent; sending all would overwrite untouched values and flood the audit log.
   const [base, setBase] = useState<Record<string, string>>({});
   const [marks, setMarks] = useState<Record<string, Mark>>({});
   const [busy, setBusy] = useState(false);
@@ -82,9 +59,7 @@ export function HrGroupFormModal({ open, mode, group, groupLabel, fields, row, a
   const target = mode === 'edit' ? row : (pool || []).find((x) => x._id === empId) || null;
 
   useEffect(() => { setPool(null); }, [group]);
-  // وتُجلَب من جديد عند كلّ فتح: حالات الموظفين تتغيّر بالحفظ نفسه، فقائمةٌ
-  // محفوظةٌ من الفتحة السابقة تعرض «لا بيانات في هذه المجموعة» لمن ملأتَ بياناته
-  // قبل لحظة.
+  // Refetched on every open: employee states change with saving, so a cached list would show stale 'no data' entries.
   useEffect(() => { if (!open) setPool(null); }, [open]);
 
   useEffect(() => {
@@ -97,9 +72,7 @@ export function HrGroupFormModal({ open, mode, group, groupLabel, fields, row, a
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, mode, row?._id]);
 
-  // قائمة الاختيار تُجلَب بلا فلاتر الشاشة: مَن ينقصه هذا المستند غالبًا ما يكون
-  // خارج الفلتر القائم — فلو اقتُصر على المعروض لَما ظهر في القائمة أبدًا من
-  // فُتحت الشاشة أصلًا لأجله.
+  // The picker is fetched without the screen filters, since employees missing this document are often outside the current filter.
   useEffect(() => {
     if (!open || mode !== 'create' || pool) return;
     getHrRecords(group, {}).then((d) => setPool(d.rows || [])).catch(() => setPool([]));
@@ -113,8 +86,7 @@ export function HrGroupFormModal({ open, mode, group, groupLabel, fields, row, a
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [empId, pool, mode]);
 
-  // الترتيب: مَن لا بيانات له في المجموعة أوّلًا. الغرض من الشاشة هو هؤلاء،
-  // وقائمةٌ أبجديّةٌ تدفنهم بين ثلاثمئة اسمٍ مكتملٍ تجعل الزرّ زينة.
+  // Order: employees with no data in the group first, since they are the point of the screen.
   const options: SearchOption[] = useMemo(() => {
     const filledCount = (r: RecordRow) => fields.filter((f) => r.statuses?.[f.key] === 'filled').length;
     return [...(pool || [])]
@@ -139,8 +111,7 @@ export function HrGroupFormModal({ open, mode, group, groupLabel, fields, row, a
     const changed = fields.filter((f) => (form[f.key] ?? '') !== (base[f.key] ?? ''));
     const marked = fields.filter((f) => marks[f.key] && marks[f.key] !== 'keep');
     if (!changed.length && !marked.length) { notify(t('لا يوجد تغيير لحفظه', 'Nothing changed'), 'info'); return; }
-    // الحقل المُعلَّم يُرسَل بقيمته الحالية: الخادم يرفض طلبًا بلا حقول، فتغييرُ
-    // العلامة وحدَها كان يرتدّ خطأً لا يفهمه من غيّرها.
+    // The flagged field is sent with its current value: the server rejects a request with no fields, so a flag-only change failed.
     const send: Record<string, any> = {};
     for (const f of [...changed, ...marked]) send[f.key] = form[f.key] ?? '';
     const markStatus: Record<string, string> = {};
@@ -201,12 +172,7 @@ export function HrGroupFormModal({ open, mode, group, groupLabel, fields, row, a
 
       {target && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {/* ── التاريخُ خانتان، وتوأمُه الهجريُّ لا يُرسَم مرّةً ثانية ──────────
-              الخادمُ يرسل لكلّ تاريخٍ حقلًا مشتقًّا `<key>Hijri` (config/hrFields).
-              لو رُسم خانةً مستقلّةً لصار للتاريخ الواحد ثلاثُ خانات، اثنتان
-              منها هجريّتان لا تسمع إحداهما الأخرى. فالزوجُ يُرسَم مرّةً واحدةً
-              عند الحقل الميلاديّ (DatePair)، والمشتقُّ يُتخطّى — والمُرسَل
-              ميلاديٌّ وحدَه كما كان. */}
+          {/* Date is two inputs; the derived Hijri twin `<key>Hijri` (config/hrFields) is skipped and drawn once by DatePair at the Gregorian field. Only the Gregorian value is sent. */}
           {fields.filter((f) => (f.type as string) !== 'hijri').map((f) => (
             <div key={f.key} className={f.type === 'date' ? 'col-span-full' : undefined}>
               <div className="flex items-center justify-between gap-2 mb-1">
@@ -228,9 +194,7 @@ export function HrGroupFormModal({ open, mode, group, groupLabel, fields, row, a
                 <TextInput type="text" value={form[f.key] ?? ''}
                   onChange={(e) => setForm((s) => ({ ...s, [f.key]: e.target.value }))} />
               )}
-              {/* العَلَم الإداريّ بجانب الحقل لا في شاشةٍ أخرى: «هذا لا ينطبق على
-                  هذا الموظّف» قرارٌ يُتَّخذ وأنت تنظر إلى الخانة الفارغة، وكان
-                  الخادم يقبله ولا شاشة تُرسله. */}
+              {/* Admin flag beside the field: 'does not apply to this employee' is decided while looking at the empty field. */}
               <div className="mt-1">
                 <Select value={marks[f.key] || 'keep'}
                   aria-label={t('حالة الحقل', 'Field status')}
@@ -254,18 +218,14 @@ export function HrGroupFormModal({ open, mode, group, groupLabel, fields, row, a
   );
 }
 
-// ── تفريغ بيانات المجموعة عند موظّف واحد ────────────────────────────────────
+// Clear the group's data for one employee
 export function HrGroupClearModal({ open, groupLabel, fields, row, ar, onClose, onDone }: {
   open: boolean; groupLabel: string; fields: FieldDef[]; row: RecordRow | null; ar: boolean;
   onClose: () => void; onDone: () => void;
 }) {
   const { notify } = useDialog();
   const t = (a: string, e: string) => (ar ? a : e);
-  // حقلٌ كان مملوءًا ثم فُرِّغ يعود «لا يوجد» لا «مطلوب»، لأنّ عَلَم «مطلوب»
-  // يُحذف في الموديل أوّلَ ما يُملأ الحقل فلا يبقى ما يعود إليه. وأكثرُ ما
-  // يُفرَّغ إنما يُفرَّغ لأنّه كُتب خطأً والبيان ما زال مطلوبًا، فالخيار معروضٌ
-  // صريحًا ومُفعَّلٌ ابتداءً — ولا يُطبَّق إلّا على ما حالته «مُدخَل» حتى لا
-  // يُنقَض قرارُ «غير مطلوب» من حيث لا يدري صاحبه.
+  // A cleared field returns to 'none', not 'required', because the required flag is dropped in the model once filled. The option is shown explicitly and applies only to entries whose state is 'entered', so a 'not required' decision is never overridden.
   const [reRequire, setReRequire] = useState(true);
   const [busy, setBusy] = useState(false);
   useEffect(() => { if (open) { setReRequire(true); setBusy(false); } }, [open]);

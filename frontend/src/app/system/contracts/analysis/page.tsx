@@ -1,9 +1,5 @@
 'use client';
-// تحليل حجم تشغيل الموردين — the quarterly report the department used to build
-// by hand, computed live: pick any month window and get the contract-status
-// split, top vendors, wasted capacity, movers, rep performance and the vendor
-// stability picture. Data entry (a new month's numbers) is on this page too,
-// so the analysis is always as fresh as the last row typed in.
+// Vendor volume analysis: the quarterly report once built by hand, computed live. Pick a month window for the contract-status split, top vendors, wasted capacity, movers, rep performance and vendor stability. Data entry for a new month is on this page too.
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
@@ -120,9 +116,7 @@ export default function ContractsAnalysisPage() {
   const t = data?.totals;
   const share = (n: number) => (t && t.orders ? pct(n / t.orders) : '—');
 
-  // الصفحة ليست جدولًا واحدًا بل ستّة تحليلات متجاورة، فيخرج الملف بورقةٍ لكل
-  // تحليل: دمجها في ورقة واحدة يُفقد الأعمدة معناها ويمنع الفرز والجمع.
-  // ويأخذ البنّاء التحليل وسيطًا لأن الخيار الثاني يصدّر تحليلًا آخر مجلوبًا.
+  // The page holds six side-by-side analyses, so the file gets one sheet per analysis; merging them loses column meaning and blocks sorting and summing. The builder takes the analysis as a parameter because the second option exports another fetched analysis.
   const buildSheets = (d: Analysis): ExportSheet[] => {
     const catLabel = (k: CategoryKey) => (ar ? CATEGORY_LABELS[k].ar : CATEGORY_LABELS[k].en);
     const keys = Object.keys(CATEGORY_LABELS) as CategoryKey[];
@@ -131,8 +125,7 @@ export default function ContractsAnalysisPage() {
       { header: ar ? 'القيمة' : 'Value', key: 'value', width: 18 },
     ];
 
-    // أعمدة الأشهر تُبنى من نافذة التحليل نفسها لأن عددها يتغيّر بتغيّر الفترة،
-    // ومفاتيحها منقّطة (months.2026-01) فتقرأ الخريطة الشهرية مباشرةً.
+    // Month columns are built from the analysis window because their count changes with the period; keys are dotted (months.2026-01) so they read the monthly map directly.
     const monthCols: ExportColumn[] = d.window.months.map((m) => ({
       header: monthLabel(m, ar), key: `months.${m}`, transform: (v: any) => (v == null ? '' : v), width: 12,
     }));
@@ -196,8 +189,7 @@ export default function ContractsAnalysisPage() {
       },
       {
         name: ar ? 'النمو والتراجع' : 'Movers',
-        // بطاقتان على الشاشة ومعناهما واحد (فرق أول شهر عن آخره)، فتُدمجان في
-        // ورقةٍ واحدة يميّزها عمود الاتجاه ليمكن فرزها معًا.
+        // Two on-screen cards mean the same (first month versus last month difference), so they merge into one sheet distinguished by a direction column, which allows sorting them together.
         rows: [
           ...d.movers.growth.map((m) => ({ ...m, direction: ar ? 'نمو' : 'Growth' })),
           ...d.movers.decline.map((m) => ({ ...m, direction: ar ? 'تراجع' : 'Decline' })),
@@ -226,7 +218,7 @@ export default function ContractsAnalysisPage() {
   };
 
   const monthKey = (m: { year: number; month: number }) => `${m.year}-${String(m.month).padStart(2, '0')}`;
-  // صياغة موحّدة لأسماء النطاقات عبر كل شاشات النظام: «الكلّ» هنا هو «الكلّ» هناك.
+  // Shared scope-name wording across all system screens: "All" here is "All" everywhere.
   const scope = exportScopeLabels(ar);
 
   return (
@@ -251,9 +243,7 @@ export default function ContractsAnalysisPage() {
                 label: scope.all,
                 hint: available.length ? `${available.length} ${ar ? 'شهرًا' : 'months'}` : '',
                 disabled: available.length < 2,
-                // التحليل كلّه يُحسب على الخادم لنافذة الشهرين المختارة، ولا تحمل
-                // الصفحة إلا نتيجتها — فالتصدير الشامل يُعاد طلبه بأوسع مدى مسجّل،
-                // وبناؤه من المعروض كان سيصدّر ثلاثة أشهر باسم «كل الأشهر».
+                // The whole analysis is computed on the server for the selected two-month window and the page only holds its result, so the all-months export is refetched with the widest recorded range; building it from the displayed data would export three months as "all months".
                 resolve: async () => {
                   const wide = await api.get<Analysis>(`/api/contracts/analysis?from=${monthKey(available[0])}&to=${monthKey(available[available.length - 1])}`);
                   return buildSheets(wide);
@@ -261,9 +251,7 @@ export default function ContractsAnalysisPage() {
               },
             ]} />
         )}
-        {/* الأرقامُ من الكشوف الفعليّة لا من إدخال شهرٍ بيد — راجع
-            utils/liveVendorUtilisation. فزرُّ «إدخال أرقام شهر» رُفع: رقمٌ يُكتب
-            هنا لا يُقرأ في شيء، وبقاؤه يوهم أنّه يُحسب. */}
+        {/* Figures come from the actual statements, not manual monthly entry (see utils/liveVendorUtilisation). The monthly-entry button was removed because a number typed there is read nowhere and would imply it is calculated. */}
         <span className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-50 text-emerald-700 text-xs font-semibold">
           <span className="w-2 h-2 rounded-full bg-emerald-500" />{ar ? 'مباشر من أوامر النقل' : 'Live from operations'}
         </span>

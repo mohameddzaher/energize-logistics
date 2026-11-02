@@ -24,8 +24,7 @@ export default function VehicleAssets({ plate, lang }: { plate?: string | null; 
   const ar = lang === 'ar';
   const [data, setData] = useState<Payload | null>(null);
   const [showHistory, setShowHistory] = useState(false);
-  // القسم ده بيعرض حركة الأصول بس. الملف الكامل (الكاوتش ببياناته + قطع الغيار
-  // المصروفة + الإصلاحات + الصيانة في خط زمني واحد) بيتفتح من هنا.
+  // This section shows asset movement only. The full file (tires with data, issued spare parts, repairs and maintenance in one timeline) opens from here.
   const [sheet, setSheet] = useState(false);
 
   const load = useCallback(async () => {
@@ -43,8 +42,7 @@ export default function VehicleAssets({ plate, lang }: { plate?: string | null; 
           <CircleDot className="w-4 h-4 text-[#f37121]" />
           {ar ? 'الكاوتشات والتيدر (سجل الورشة)' : 'Tires & Trailer (workshop registry)'}
         </h3>
-        {/* The registry stores bare plate digits — searching the raw Wialon
-            string ("ق ن ر 2708") there finds nothing. Link by the shared key. */}
+        {/* The registry stores bare plate digits, so searching the raw Wialon string (with letters and spaces) finds nothing. Link by the shared key. */}
         <div className="flex flex-wrap items-center gap-1.5">
           <button type="button" onClick={() => setSheet(true)}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#12325c] text-white hover:bg-[#0e2547] text-xs font-medium">

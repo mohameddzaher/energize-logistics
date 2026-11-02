@@ -11,8 +11,7 @@ import 'ls2_alerts.dart';
 import 'ls2_common.dart';
 import 'ls2_live.dart';
 
-/// لوحة لوكيشن سوليوشن — حالة الأسطول الحية، التنبيهات، الصيانة المستحقة،
-/// الحرارة، ومسافات الفترة — نفس أقسام لوحة الويب.
+/// Location Solutions dashboard: live fleet status, alerts, due maintenance, temperature and period distances, the same sections as the web dashboard.
 class Ls2DashboardScreen extends StatefulWidget {
   const Ls2DashboardScreen({super.key});
   @override
@@ -59,7 +58,7 @@ class _Ls2DashboardScreenState extends State<Ls2DashboardScreen> {
 
   void _open(Widget screen) => Navigator.push(context, MaterialPageRoute(builder: (_) => screen));
 
-  // سطر «التفاصيل ←» أسفل الكارت — يوضّح إنه قابل للضغط.
+  // "Details" line under the card: shows it is tappable.
   Widget _more() => Padding(
         padding: const EdgeInsets.only(top: 8),
         child: Row(mainAxisAlignment: MainAxisAlignment.end, children: [
@@ -68,7 +67,7 @@ class _Ls2DashboardScreenState extends State<Ls2DashboardScreen> {
         ]),
       );
 
-  /// ملفٌّ واحدٌ يعكس كلَّ لوحةٍ في الشاشة — نفسُ أوراق تصدير الموقع.
+  /// One file mirroring every panel on the screen; the same export sheets as the web.
   Future<void> _export() async {
     final d = _d;
     if (d == null) return;
@@ -142,10 +141,10 @@ class _Ls2DashboardScreenState extends State<Ls2DashboardScreen> {
               : RefreshIndicator(
                   onRefresh: _load,
                   child: ListView(padding: const EdgeInsets.all(14), children: [
-                    // الفترةُ تحكم لوحةَ المسافات — كـ RangePicker في الموقع.
+                    // The period drives the distances panel, like RangePicker on the web.
                     Ls2RangeBar(value: _range, onChanged: (r) { setState(() => _range = r); _load(); }),
                     const SizedBox(height: 10),
-                    // ── حالة الأسطول ── (تفتح الأسطولَ المباشر كالموقع)
+                    // Fleet status (opens the live fleet, like the web).
                     FadeSlideIn(
                       child: Pressable(
                         onTap: () => _open(const Ls2LiveScreen()),
@@ -168,7 +167,7 @@ class _Ls2DashboardScreenState extends State<Ls2DashboardScreen> {
                       ),
                     ),
                     const SizedBox(height: 12),
-                    // ── التنبيهات ──
+                    // Alerts.
                     FadeSlideIn(
                       delayMs: 40,
                       child: Pressable(
@@ -201,7 +200,7 @@ class _Ls2DashboardScreenState extends State<Ls2DashboardScreen> {
                       ),
                     )),
                     const SizedBox(height: 12),
-                    // ── الصيانة ──
+                    // Maintenance.
                     FadeSlideIn(
                       delayMs: 80,
                       child: Pressable(
@@ -230,7 +229,7 @@ class _Ls2DashboardScreenState extends State<Ls2DashboardScreen> {
                       ),
                     )),
                     const SizedBox(height: 12),
-                    // ── الحرارة ──
+                    // Temperature.
                     FadeSlideIn(
                       delayMs: 120,
                       child: AppCard(
@@ -256,7 +255,7 @@ class _Ls2DashboardScreenState extends State<Ls2DashboardScreen> {
                       ),
                     ),
                     const SizedBox(height: 12),
-                    // ── مسافات الفترة ──
+                    // Period distances.
                     FadeSlideIn(
                       delayMs: 160,
                       child: AppCard(

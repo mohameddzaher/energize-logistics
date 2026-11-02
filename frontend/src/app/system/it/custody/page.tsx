@@ -25,8 +25,7 @@ import { CustodyCards, CustodyStateButtons } from '@/components/it/CustodyOvervi
 import ScrollX from '@/components/system/ScrollX';
 import { useColumnFilters } from '@/hooks/useColumnFilters';
 
-// لا `name` ولا `model`: الاسم يُشتق في الخادم من النوع والماركة، والموديل
-// أُسقط لأنه كان يُترك فارغاً في أغلب الصفوف.
+// No `name` or `model`: the name is derived on the server from type and brand, and model was dropped because it was left empty in most rows.
 const EMPTY = {
   employee: '', type: 'laptop', serialNumber: '', brand: '',
   specs: '', condition: 'good', value: 0, assignedDate: '', notes: '',
@@ -41,19 +40,14 @@ export default function ItCustodyPage() {
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
   const staff = canViewIt(user);
-  // Types/conditions are editable from Settings → Reference Data.
-  // لا حاجة لـ itTypes هنا: النوع صار يُختار من الفئات الخمس لا من قائمة
-  // الأنواع المفصّلة، والفئات ثابتة في lib/it.ts لأنها طبقة عرض لا مفردات.
+  // Types and conditions are editable from Settings, Reference Data. No itTypes here: the type is chosen from the five categories, not the detailed type list, and the categories are fixed in lib/it.ts since they are a display layer, not vocabulary.
   const { conditions, typeLabel: custodyTypeLabel, conditionLabel } = useAssetVocab();
 
   const [items, setItems] = useState<CustodyItem[]>([]);
   const [employees, setEmployees] = useState<EmployeeRef[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  // الفلاتر كلها تُرسَل إلى الخادم، ويعود معها عددُ كل كارت وكل زر محسوباً على
-  // نفس المجموعة المفلترة. كانت الشاشة تحمّل السجل كله وتحسب الإجماليات عليه
-  // بينما الجدول تحتها مفلتر، فيضغط المستخدم «المستودع» فتتبدّل الصفوف ويبقى
-  // كارت «لابتوبات» على ٦٨ وتحته ستة — رقمٌ لا يصف ما تحته.
+  // All filters go to the server, which returns each card and button count computed on the same filtered set. The screen used to load the whole register and compute totals on it while the table below was filtered, so pressing "warehouse" changed the rows and left the laptops card at 68 over six rows: a number that does not describe what is under it.
   const [counts, setCounts] = useState<CustodyCounts | null>(null);
   const [register, setRegister] = useState({ total: 0, assigned: 0 });
   const [bucket, setBucket] = useState('');
@@ -81,17 +75,10 @@ export default function ItCustodyPage() {
   const [transferring, setTransferring] = useState<CustodyItem | null>(null);
   const [transferForm, setTransferForm] = useState({ toEmployee: '', date: '', condition: 'good', notes: '' });
 
-  // «تالف» — إجراء واحد بعد أن كان زرَّين: «الإبلاغ عن تالف» الذي يكتب بلاغاً
-  // ويترك الصنف بعهدة الموظف، و«التحويل إلى تالف» الذي ينقل الحالة بلا سبب ولا
-  // خصم. المدمَج يفعل الاثنين.
-  // ── بيعُ صنفٍ من العهدة ────────────────────────────────────────────────
-  // الموظّفُ يشتري ما في عهدته ويدفع ثمنَه للحسابات. والمشتري إمّا موظّفٌ من
-  // القائمة وإمّا اسمٌ حرٌّ لمن هو خارج الشركة — أحدُهما لا كلاهما، والخادمُ
-  // يردّ إن لم يُذكر واحدٌ منهما. راجع sellCustody.
+  // Damaged is one action, previously two buttons: "report damaged" wrote a report and left the item in the employee's custody, and "convert to damaged" moved the state with no reason or deduction. The merged one does both. Selling an item from custody: the employee buys what is in his custody and pays accounts. The buyer is either an employee from the list or a free name for someone outside the company, one not both, and the server rejects if neither is given. See sellCustody.
   const [selling, setSelling] = useState<CustodyItem | null>(null);
   const [sellForm, setSellForm] = useState({ employee: '', buyerName: '', price: 0, date: '', notes: '' });
-  // ── إرجاعُ المُباع ────────────────────────────────────────────────────
-  // يُلغى البيعُ ويُردّ الثمن، فيعود الجهازُ نفسُه إلى الرفّ بسيرته. راجع unsellCustody.
+  // Return a sold item: the sale is cancelled and the price refunded, so the same device returns to the shelf with its history. See unsellCustody.
   const [unselling, setUnselling] = useState<CustodyItem | null>(null);
   const [unsellForm, setUnsellForm] = useState({ refund: 0, date: '', notes: '' });
   const [faulty, setFaulty] = useState<CustodyItem | null>(null);
@@ -107,14 +94,14 @@ export default function ItCustodyPage() {
   const [handoverEmployee, setHandoverEmployee] = useState('');
   const [handoverHeld, setHandoverHeld] = useState<CustodyItem[]>([]);
   const [handoverPicked, setHandoverPicked] = useState<string[]>([]);
-  // `outcome`: إلى المخزون · تالف · مُباع للموظّف نفسِه. راجع handoverCustody.
+  // `outcome`: to stock, damaged, or sold to the same employee. See handoverCustody.
   const [handoverForm, setHandoverForm] = useState<{
     date: string; condition: string; notes: string; retire: boolean;
     outcome: 'stock' | 'faulty' | 'sold'; price: number;
   }>({ date: '', condition: 'good', notes: '', retire: false, outcome: 'stock', price: 0 });
   const [handoverLoading, setHandoverLoading] = useState(false);
 
-  // اللوحة تفتح هذه الصفحة على كارت أو زر بعينه، فتصل الحالة الأولية من الرابط.
+  // The dashboard opens this page on a specific card or button, so the initial state arrives from the URL.
   const params = useSearchParams();
   useEffect(() => {
     const b = params?.get('bucket'); if (b) setBucket(b);
@@ -123,22 +110,19 @@ export default function ItCustodyPage() {
     const c = params?.get('condition'); if (c) setConditionFilter(c);
   }, [params]);
 
-  // الكتابة تُطلق طلباً لكل حرف لولا التأخير، والبحث الآن على الخادم لأن
-  // الأعداد تُحسب عليه معه — فلو بقي البحث في الشاشة وحدها لعادت الأعداد تصف
-  // مجموعةً غير التي في الجدول.
+  // Without debouncing, typing fires a request per character. Search is now on the server because counts are computed there with it; a screen-only search would make counts describe a different set than the table.
   const [searchQuery, setSearchQuery] = useState('');
   useEffect(() => {
     const t = setTimeout(() => setSearchQuery(search.trim()), 300);
     return () => clearTimeout(t);
   }, [search]);
 
-  // `scope=all` يضم المستودع: زر «المستودع» وكارت كل فئة يجب أن يعدّا المخزون
-  // أيضاً، وبدونه تعرض الشاشة إجماليات ينقصها ثلث السجل.
+  // `scope=all` includes the warehouse: the warehouse button and each category card must count stock too, otherwise the screen shows totals missing a third of the register.
   const load = useCallback(async () => {
     try {
       const qs = new URLSearchParams({ scope: 'all' });
       if (bucket) qs.set('bucket', bucket);
-      // النوع المفصّل لا معنى له خارج دلو «أخرى».
+      // The detailed type has no meaning outside the "other" bucket.
       if (bucket === 'other' && otherType) qs.set('otherType', otherType);
       if (stateFilter) qs.set('status', stateFilter);
       if (conditionFilter) qs.set('condition', conditionFilter);
@@ -176,7 +160,7 @@ export default function ItCustodyPage() {
 
   const set = (k: string, v: any) => setForm((f: any) => ({ ...f, [k]: v }));
 
-  // الفئة مشتقّة من النوع المحفوظ لا مخزَّنة بجانبه: قيمتان لشيء واحد تفترقان.
+  // Category is derived from the saved type, not stored beside it: two values for one thing diverge.
   const formBucket = bucketOf(form.type);
   const derivedName = deriveAssetName(form.type, form.brand);
 
@@ -210,10 +194,7 @@ export default function ItCustodyPage() {
       if (editing) {
         await api.put(`/api/it/custody/${editing._id}`, form);
       } else if (createMode === 'stock') {
-        // Same document leaves the shelf and lands on the employee — the device
-        // keeps its serial and its whole history.
-        // بلا `condition`: الصنف يحمل حالته من المستودع، وإعادة سؤالها هنا
-        // تعني حقيقتين لشيء واحد — وأيّهما الصحيحة سؤال بلا إجابة.
+        // The same document leaves the shelf and lands on the employee; the device keeps its serial and whole history. No `condition`: the item carries its condition from the warehouse, and asking again here gives two truths for one thing with no way to tell which is right.
         await api.post(`/api/it/stock/${pickedStockId}/assign`, {
           employee: form.employee,
           assignedDate: form.assignedDate,
@@ -259,7 +240,7 @@ export default function ItCustodyPage() {
 
   const openSell = (a: CustodyItem) => {
     setSelling(a);
-    // والمشتري الافتراضيُّ هو حائزُه: أكثرُ البيع يقع لمن الصنفُ في يده أصلًا.
+    // The default buyer is the holder: most sales go to whoever already has the item.
     const holder = typeof a.employee === 'object' && a.employee ? String((a.employee as any)._id || '') : '';
     setSellForm({ employee: holder, buyerName: '', price: a.value || 0, date: today(), notes: '' });
   };
@@ -269,7 +250,7 @@ export default function ItCustodyPage() {
     try {
       await api.post(`/api/it/custody/${selling._id}/sell`, {
         ...sellForm,
-        // لا يُرسَل الاثنان: مَن اختار موظّفًا فالاسمُ الحرُّ لغوٌ، والعكس.
+        // Both are never sent: if an employee is chosen the free name is ignored, and the reverse.
         employee: sellForm.employee || undefined,
         buyerName: sellForm.employee ? undefined : sellForm.buyerName.trim(),
       });
@@ -280,7 +261,7 @@ export default function ItCustodyPage() {
 
   const openUnsell = (a: CustodyItem) => {
     setUnselling(a);
-    // المردودُ افتراضًا هو ما دُفع — ويُعدَّل إن رُدّ أقلُّ منه.
+    // The refund defaults to what was paid and is editable if less was returned.
     setUnsellForm({ refund: a.soldPrice || 0, date: today(), notes: '' });
   };
   const doUnsell = async () => {
@@ -326,11 +307,7 @@ export default function ItCustodyPage() {
       const d = await api.get<{ assigned: CustodyItem[] }>(`/api/it/custody/by-employee/${id}`);
       const held = d.assigned || [];
       setHandoverHeld(held);
-      // ── و«سلّم عهدتَه كاملةً» هو الحالُ الغالب ────────────────────────────
-      // مَن يفتح هذا الباب يفتحه لأنّ موظّفًا أنهى خدمتَه أو نُقل، فيسلّم ما
-      // معه كلَّه. وكان يُعلَّم صنفًا صنفًا — عشرون ضغطةً لعشرين صنفًا — ثمّ
-      // يُنسى واحدٌ فيبقى على الموظّف ويمنع إخلاءَ طرفه.
-      // فتُعلَّم كلُّها، ومن استلم بعضَها يرفع علامةَ ما لم يستلم.
+      // "Handed over his full custody" is the common case. This screen opens because an employee ended service or transferred and hands over everything. Marking item by item took twenty presses for twenty items, and one forgotten item stayed on the employee and blocked his clearance. So all are marked and those only partly received are unticked.
       setHandoverPicked(held.map((i) => i._id));
     } catch {}
     setHandoverLoading(false);
@@ -344,8 +321,7 @@ export default function ItCustodyPage() {
       const d = await api.post<{ returned: number; outstanding: any[] }>('/api/it/custody/handover', {
         employee: handoverEmployee, items: handoverPicked, ...handoverForm,
       });
-      // Say plainly what is still on them — that is the whole point of the screen.
-      // والفعلُ يُسمّى باسمه: «استُلم» غيرُ «بيع»، ومن باع يريد أن يقرأ أنّه باع.
+      // Say plainly what is still on them; that is the whole point of the screen. The action is named by its name: "received" differs from "sold", and whoever sold wants to read that.
       const verb = handoverForm.outcome === 'sold' ? (ar ? 'بيع' : 'sold')
         : handoverForm.outcome === 'faulty' ? (ar ? 'سُجّل كتالف' : 'recorded faulty')
         : (ar ? 'استلام' : 'handed back');
@@ -357,17 +333,13 @@ export default function ItCustodyPage() {
     setSaving(false);
   };
 
-  // الأعداد كما حسبها الخادم على المجموعة المفلترة نفسها: كل كارت يقول بالضبط
-  // كم صفاً سيفتحه الضغط عليه. اشتقاقها هنا ثانيةً هو ما يعيد الرقمين المختلفين
-  // لشيء واحد.
+  // Counts as computed by the server on the same filtered set: each card says exactly how many rows pressing it opens. Deriving them again here is what produced two different numbers for one thing.
   const bucketCounts = counts?.buckets ?? CUSTODY_BUCKETS.map((b) => ({ key: b.key, count: 0 }));
   const stateCounts = counts?.byStatus ?? { assigned: 0, in_stock: 0, returned: 0 };
-  // الفلتر الثاني لدلو «أخرى» يعرض ما هو موجود فعلاً بعد بقية الفلاتر فقط:
-  // خيارٌ نتيجته صفر ليس خياراً.
+  // The second filter for the "other" bucket shows only what exists after the other filters; an option with a zero result is not an option.
   const otherKinds = counts?.otherKinds ?? [];
 
-  // قمعُ الأعمدة — القيمُ كما تُقرأ في الصفّ، والقائمةُ بعد فلتر الصفحة.
-  // راجع hooks/useColumnFilters.
+  // Column funnel: values as read in the row, list after the page filter. See hooks/useColumnFilters.
   const cf = useColumnFilters<any>({
     employee: (a) => empName(a.employee, lang),
     item: (a) => a.name || '',
@@ -383,8 +355,7 @@ export default function ItCustodyPage() {
   if (!staff) return <div className="text-slate-500 p-8">{ar ? 'غير مصرح لك بالوصول لهذا القسم.' : 'You are not authorized to view this section.'}</div>;
   if (loading) return <Spinner />;
 
-  // أزرار الحالة تصف المفلتر، أما ترويسة الصفحة فتصف السجل كله — ولذلك تقرأ من
-  // `register` لا من `stateCounts`، وإلا لتغيّر «عهدة بحوزة الموظفين» بضغطة فلتر.
+  // Status buttons describe the filtered set, while the page header describes the whole register, so it reads from `register` not `stateCounts`; otherwise "custody with employees" would change on a filter click.
   const anyFilter = !!(bucket || stateFilter || conditionFilter || otherType || search.trim());
 
   const exportColumns: ExportColumn[] = [
@@ -398,7 +369,7 @@ export default function ItCustodyPage() {
     { header: 'Value (per unit)', key: 'value', width: 14 },
     { header: 'Assigned', key: 'assignedDate', width: 14 },
     { header: 'Status', key: 'status', transform: (v: any) => custodyStatusLabel(v, 'en'), width: 12 },
-    // تفاصيلُ خطّ الجوّال — فارغةٌ لغيره، وهي كلُّ ما يُسأل عنه فيه.
+    // Mobile line details: empty for other items, and all that is asked about it.
     { header: ar ? 'الباقة' : 'Package', key: 'telecom', transform: (v: any) => v?.package || '', width: 22 },
     { header: ar ? 'المزوّد' : 'Provider', key: 'telecom', transform: (v: any) => v?.provider || '', width: 12 },
     { header: ar ? 'الرقم التسلسلي للشريحة' : 'SIM serial', key: 'telecom', transform: (v: any) => v?.iccid || '', width: 24 },
@@ -408,9 +379,7 @@ export default function ItCustodyPage() {
     { header: 'Returned', key: 'returnedDate', width: 14 },
     { header: 'Returned by', key: 'returnedTo', transform: (v: any) => (v && typeof v === 'object' ? [v.firstName, v.lastName].filter(Boolean).join(' ') : ''), width: 20 },
   ];
-  // الفلترة كلّها على الخادم بلا ترقيم، فما في الذاكرة هو نتيجة الفلتر كاملةً —
-  // أمّا «الكلّ» فلا سبيل إليه إلّا بنداءٍ ثانٍ بلا معاملات، وبدونه كان على من
-  // يريد السجل كاملًا أن يمسح فلاتره يدويًّا ثم يصدّر ويرجعها.
+  // All filtering is on the server without pagination, so memory holds the full filter result. "All" needs a second call without parameters; otherwise exporting the whole register meant clearing filters by hand, exporting, and restoring them.
   const fetchAllForExport = async () => {
     const d = await api.get<CustodyListResponse>('/api/it/custody?scope=all');
     return [{ name: 'Custody', rows: d.items || [], columns: exportColumns }];
@@ -440,7 +409,7 @@ export default function ItCustodyPage() {
         <PrimaryButton onClick={openCreate}><Plus className="w-4 h-4" /> {ar ? 'تسليم عهدة' : 'Assign item'}</PrimaryButton>
       </PageHeader>
 
-      {/* الفئات الخمس بإجمالياتها. الضغط يفلتر، والضغط ثانيةً يلغي. */}
+      {/* The five categories with their totals. Pressing filters, pressing again clears. */}
       <CustodyCards
         buckets={bucketCounts}
         active={bucket}
@@ -448,7 +417,7 @@ export default function ItCustodyPage() {
         lang={lang}
       />
 
-      {/* الفلتر الثاني: أي نوع من «أخرى» بالضبط. لا يظهر إلا حين يكون له معنى. */}
+      {/* Second filter: exactly which kind within "other". Shown only when meaningful. */}
       {bucket === 'other' && otherKinds.length > 0 && (
         <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-4">
           <p className="text-xs font-semibold text-slate-500 mb-3">{ar ? 'أي نوع من «أخرى»؟' : 'Which kind of "Other"?'}</p>
@@ -471,7 +440,7 @@ export default function ItCustodyPage() {
         </div>
       )}
 
-      {/* أين الصنف الآن: بعهدة موظف، أو على الرف، أو تالف. */}
+      {/* Where the item is now: in an employee's custody, on the shelf, or damaged. */}
       <CustodyStateButtons byStatus={stateCounts} active={stateFilter} onPick={setStateFilter} lang={lang} />
 
       <div className="flex flex-col sm:flex-row gap-3">
@@ -495,11 +464,10 @@ export default function ItCustodyPage() {
         )}
       </div>
 
-      {/* الرقمان جنباً إلى جنب عمداً: «المعروض» يصف الجدول، و«إجمالي السجل» يقول
-          من أيٍّ اقتُطع — وبلا الثاني لا يعرف أحد أن الفلتر أخفى شيئاً أصلاً. */}
+      {/* The two numbers sit side by side on purpose: shown describes the table and register total says what it was cut from; without the second nobody knows the filter hid anything. */}
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
         <StatCard label={ar ? 'المعروض الآن' : 'Showing'} value={counts?.total ?? items.length} accent="text-slate-900" />
-        {/* «إجمالي السجل» تُرجع الكلَّ: الرقمُ الأكبرُ هو البابُ إلى غير المفلتَر. */}
+        {/* The register total returns everything: the bigger number is the way back to unfiltered. */}
         <StatCard label={ar ? 'إجمالي السجل' : 'Total register'} value={register.total} accent="text-slate-900"
           onClick={() => { setStateFilter(''); setConditionFilter(''); setBucket(''); setOtherType(''); setSearch(''); }}
           hint={ar ? 'اضغط لعرض الكل' : 'tap to show all'} />
@@ -543,7 +511,7 @@ export default function ItCustodyPage() {
                     bg={CUSTODY_STATUSES[a.status]?.bg || 'bg-slate-500/15'}
                     text={CUSTODY_STATUSES[a.status]?.text || 'text-slate-700'}
                     label={a.status === 'returned' ? `${custodyStatusLabel(a.status, lang)} ${fmtDate(a.returnedDate)}${a.returnedTo && typeof a.returnedTo === 'object' ? ` · ${lang === 'ar' ? 'سجّله' : 'by'} ${[a.returnedTo.firstName, a.returnedTo.lastName].filter(Boolean).join(' ')}` : ''}`
-                      // المُباعُ يقول ثمنَه في الوسم: «مُباع» وحدَها تترك السؤال قائمًا.
+                      // A sold item states its price in the label; "sold" alone leaves the question open.
                       : a.status === 'sold' ? `${custodyStatusLabel(a.status, lang)}${a.soldPrice ? ` · ${a.soldPrice.toLocaleString()}` : ''}`
                       : custodyStatusLabel(a.status, lang)}
                   />
@@ -554,15 +522,12 @@ export default function ItCustodyPage() {
                       <button type="button" onClick={() => openReturn(a)} className="p-1.5 rounded-lg text-slate-700 hover:text-green-600 hover:bg-slate-100" title={ar ? 'استرجاع' : 'Return'}><Undo2 className="w-4 h-4" /></button>
                       <button type="button" onClick={() => openTransfer(a)} className="p-1.5 rounded-lg text-slate-700 hover:text-blue-600 hover:bg-slate-100" title={ar ? 'نقل لموظف آخر' : 'Transfer to another employee'}><ArrowLeftRight className="w-4 h-4" /></button>
                     </>)}
-                    {/* «تالف»: زر واحد بالاسم الذي يحمله زر الفلتر نفسه. ما دام
-                        الصنف لم يُسجَّل تالفاً بعد — سواء بعهدة موظف أو على الرف
-                        — فهذا هو طريقه إلى ذلك. */}
+                    {/* Damaged: one button, named like the filter button itself. While the item is not yet recorded damaged (whether in custody or on the shelf), this is how to get there. */}
                     {a.status !== 'returned' && a.status !== 'sold' && (
                       <button type="button" onClick={() => openFaulty(a)} className="p-1.5 rounded-lg text-slate-700 hover:text-red-600 hover:bg-slate-100" title={ar ? 'تالف' : 'Faulty'}><AlertTriangle className="w-4 h-4" /></button>
                     )}
-                    {/* البيع: ما دام الصنفُ في ملكنا — بعهدةٍ أو على الرفّ —
-                        فهذا طريقُه إلى الخروج ببيع. والمُباعُ لا يُباع مرّتين. */}
-                    {/* والمُباعُ طريقُه الوحيدُ الرجوعُ إلى المخزن حين يُلغى بيعُه. */}
+                    {/* Sale: while the item is ours (in custody or on the shelf) this is how it leaves by sale. A sold item cannot be sold twice. */}
+                    {/* A sold item's only way back is to the store when its sale is cancelled. */}
                     {a.status === 'sold' && (
                       <button type="button" onClick={() => openUnsell(a)} className="p-1.5 rounded-lg text-slate-700 hover:text-emerald-600 hover:bg-slate-100" title={ar ? 'إرجاع المبيع إلى المخزن' : 'Return sale to store'}><Undo2 className="w-4 h-4" /></button>
                     )}
@@ -655,8 +620,7 @@ export default function ItCustodyPage() {
             </Field>
           ) : (
             <>
-              {/* النوع يُختار من الفئات الخمس. الاسم لم يعد حقلاً: يُشتق من الفئة
-                  والماركة، ويُعرض تحتهما كما سيُحفظ بالضبط. */}
+              {/* Type is chosen from the five categories. The name is no longer a field: it is derived from category and brand and shown below as it will be saved. */}
               <Field label={ar ? 'النوع' : 'Type'}>
                 <SearchableSelect
                   value={formBucket} searchAfter={0}
@@ -693,17 +657,7 @@ export default function ItCustodyPage() {
               <Field label={ar ? 'القيمة للقطعة الواحدة' : 'Value per single unit'}>
                 <TextInput type="number" value={form.value ?? 0} onChange={(e) => set('value', Number(e.target.value))} />
               </Field>
-              {/* ── وخطُّ الجوّال يُوصَف بغير ما يُوصَف به الحاسوب ─────────────
-                  لا ماركةَ له ولا طرازَ ولا مواصفات؛ له باقةٌ وعقدٌ بمدّةٍ
-                  وتاريخِ انتهاء، ورقمٌ تسلسليٌّ للشريحة (ICCID).
-
-                  وأهمُّها **المفوَّض**: الاسمُ المسجَّلُ لدى المزوّد على الخطّ،
-                  وهو غيرُ من الخطُّ في يده في اثنين وعشرين خطًّا من تسعةٍ
-                  وتسعين. ومن يراجع المزوّدَ يحتاج المفوَّضَ لا المستخدم —
-                  فبلا هذه الخانة تُفتَح المراجعةُ باسمٍ لا يعرفه المزوّد.
-
-                  والباقةُ قائمةٌ تُدار من المرجعيّات لا نصٌّ حرّ: تسعةٌ وسبعون
-                  خطًّا تُكتب باقاتُها بيدٍ تعني تسعًا وسبعين تهجئةً لباقتين. */}
+              {/* A mobile line is described differently from a computer: no brand, model or specs; it has a plan, a contract with term and expiry date, and a SIM serial (ICCID). Most important is the authorized person: the name registered with the provider on the line, which differs from the person holding it in 22 of 99 lines. Whoever contacts the provider needs the authorized person, not the user. The plan is a managed reference list, not free text, since typing 79 lines by hand gives 79 spellings of two plans. */}
               {form.type === 'sim' && (
                 <>
                   <Field label={ar ? 'الباقة' : 'Package'}>
@@ -810,15 +764,8 @@ export default function ItCustodyPage() {
       </Modal>
       {/* Transfer — the device goes straight to the next person, so both sides
           of the handover are recorded on one event. */}
-      {/* ── بيعُ صنفٍ من العهدة ──────────────────────────────────────────────
-          الموظّفُ يشتري ما في يده ويدفع ثمنَه للحسابات. وكان ذلك يُسجَّل
-          «مسلَّمًا» — فيبقى في عداد ما نملك وقد خرج منه — أو يُحذف صفُّه فلا
-          يُعرف أين ذهب ولا بكم. فله حالتُه، وصفُّه يبقى يقول لمن ومتى وبكم.
-
-          والمشتري أحدُ اثنين لا كلاهما: موظّفٌ من القائمة، أو اسمٌ حرٌّ لمن هو
-          خارج الشركة. واختيارُ موظّفٍ يُعطّل خانةَ الاسم الحرّ كي لا يُكتب
-          اسمانِ لمشترٍ واحد. */}
-      {/* ── إرجاعُ المُباع إلى المخزن ──────────────────────────────────────── */}
+      {/* Sell an item from custody: the employee buys what he holds and pays accounts. It used to be recorded as "handed over", staying in the owned count after leaving, or its row was deleted so where it went and for how much was lost. It now has its own status, and its row keeps saying to whom, when and for how much. The buyer is one of two, not both: an employee from the list, or a free name for someone outside; choosing an employee disables the free-name field so one buyer never has two names. */}
+      {/* Return a sold item to the store. */}
       <Modal open={!!unselling} onClose={() => setUnselling(null)} title={ar ? 'إرجاع المبيع إلى المخزن' : 'Return sale to store'}
         footer={<>
           <button type="button" onClick={() => setUnselling(null)} className="px-4 py-2 text-slate-500 hover:text-slate-900 text-sm">{ar ? 'إلغاء' : 'Cancel'}</button>
@@ -956,8 +903,7 @@ export default function ItCustodyPage() {
         </div>
       </Modal>
 
-      {/* «تالف» — الإجراء الذي كان زرَّين. يكتب البلاغ بسببه وخصمه، وينقل الصنف
-          إلى «تالف» فيظهر تحت زر الفلتر الذي يحمل الاسم نفسه. */}
+      {/* Damaged: the action that used to be two buttons. It writes the report with its reason and deduction and moves the item to damaged, so it appears under the filter button of the same name. */}
       <Modal open={!!faulty} onClose={() => setFaulty(null)} title={ar ? 'تالف' : 'Faulty'}
         footer={<>
           <button type="button" onClick={() => setFaulty(null)} className="px-4 py-2 text-slate-500 hover:text-slate-900 text-sm">{ar ? 'إلغاء' : 'Cancel'}</button>
@@ -1108,10 +1054,7 @@ export default function ItCustodyPage() {
               <Field label={ar ? 'ملاحظات' : 'Notes'} span2>
                 <TextArea rows={2} value={handoverForm.notes} onChange={(e) => setHandoverForm({ ...handoverForm, notes: e.target.value })} />
               </Field>
-              {/* ── ومصيرُ ما استُلم ثلاثةٌ لا اثنان ────────────────────────
-                  كانت خانةَ اختيارٍ واحدة: «تالفة» أو إلى المستودع. والثالثةُ
-                  تقع فعلًا — الموظّفُ يشتري ما في يده ويدفع ثمنَه — وكانت
-                  تُسجَّل «مسلَّمةً» فتبقى في عداد ما نملك وقد خرجت منه. */}
+              {/* What happens to a received item has three outcomes, not two. It used to be a single choice, damaged or back to the warehouse. The third really happens: the employee buys what he holds and pays for it, and it was recorded as "handed over", staying in the owned count after it left. */}
               <div className="sm:col-span-2">
                 <p className="text-xs font-semibold text-slate-600 mb-1.5">{ar ? 'مصير ما استُلم' : 'What happens to them'}</p>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">

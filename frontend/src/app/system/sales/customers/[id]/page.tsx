@@ -1,6 +1,5 @@
 'use client';
-// ملفُّ العميل من قسم المبيعات — نفسُ ملفّه في التشغيل وطلبات الشحنات حرفًا
-// بحرف، بأسعار مساراته وشرائحها.
+// Customer file from the sales section: identical to the operations and shipment-orders file, with its route prices and tiers.
 import { useParams } from 'next/navigation';
 import CustomerProfile from '@/components/customers/CustomerProfile';
 

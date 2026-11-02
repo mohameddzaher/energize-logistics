@@ -6,7 +6,7 @@ import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 
-/// Customer requests: the portal side (customer) and Operations' «التواصل مع العملاء».
+/// Customer requests: the portal side (customer) and the Operations customer-communication screen.
 /// Mirrors web /system/portal/requests and /system/operations/customer-requests.
 
 String _fmt(dynamic v) {
@@ -390,7 +390,7 @@ class _EmailSheetState extends State<_EmailSheet> {
   }
 }
 
-// ── Operations: «التواصل مع العملاء» ────────────────────────────────────────
+// Operations: customer communication.
 class CustomerRequestsScreen extends StatefulWidget {
   const CustomerRequestsScreen({super.key});
   @override

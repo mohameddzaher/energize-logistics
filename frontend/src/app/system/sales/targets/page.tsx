@@ -24,7 +24,7 @@ export default function SalesTargetsPage() {
   const tx = getSalesTargetsTranslations(lang);
   const [items, setItems] = useState<SalesTarget[]>([]);
   const [reps, setReps] = useState<any[]>([]);
-  // الشهرُ من الرابط إن جاء من بطاقة «الهدف» في اللوحة.
+  // Month comes from the URL when arriving from the target card on the dashboard.
   const [period, setPeriod] = useState(() => periodFromUrl(thisPeriod()));
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -34,7 +34,7 @@ export default function SalesTargetsPage() {
   const [form, setForm] = useState<any>(EMPTY);
   const [saving, setSaving] = useState(false);
 
-  // الهدفُ يضعه المدير: القاعدةُ نفسُها التي يحرس بها الخادم (راجع canSetSalesTargets).
+  // Targets are set by the manager: the same rule the server enforces (see canSetSalesTargets).
   const canEdit = canSetSalesTargets(user);
 
   const load = useCallback(async () => {
@@ -57,7 +57,7 @@ export default function SalesTargetsPage() {
   const openEdit = (t: SalesTarget) => { setEditing(t); setForm({ ...EMPTY, ...t, notes: t.notes || '', rep: typeof t.rep === 'object' ? t.rep?._id : (t.rep || '') }); setShowModal(true); };
   const save = async () => {
     if (!form.period) { notify(ar ? 'اختر الشهر أوّلًا' : 'Pick a month first', 'error'); return; }
-    // هدفٌ جديدٌ لمندوبٍ له هدفٌ في الشهر نفسِه يستبدله على الخادم — فيُسأل قبله.
+    // A new target for a rep who already has one that month replaces it on the server, so the user is asked first.
     if (!editing) {
       const clash = items.find((t) => t.period === form.period
         && String((typeof t.rep === 'object' ? t.rep?._id : t.rep) || '') === String(form.rep || ''));
@@ -67,14 +67,14 @@ export default function SalesTargetsPage() {
     }
     setSaving(true);
     try {
-      // لا يُرسَل إلّا ما يقرؤه الخادم — لا السجلُّ كلُّه بمعرّفه وتواريخه.
+      // Send only what the server reads, not the whole record with its id and dates.
       const payload = {
         rep: form.rep || null, period: form.period, notes: form.notes || '',
         amountTarget: Number(form.amountTarget) || 0, dealsTarget: Number(form.dealsTarget) || 0,
       };
       if (editing) await api.put(`/api/sales/targets/${editing._id}`, payload);
       else await api.post('/api/sales/targets', payload);
-      // الشهرُ المحفوظُ هو المعروض: هدفٌ يُحفَظ لشهرٍ آخر كان يختفي من الجدول فيُظنّ أنّه لم يُحفَظ.
+      // The saved month becomes the displayed one: a target saved for another month used to vanish from the table and look unsaved.
       setShowModal(false);
       if (!editing && form.period !== period) setPeriod(form.period); else load();
     } catch (e: any) { notify(e.message, 'error'); } finally { setSaving(false); }
@@ -91,8 +91,7 @@ export default function SalesTargetsPage() {
     { header: tx.dealsTarget, key: 'dealsTarget', width: 14 },
     { header: ar ? 'ملاحظات' : 'Notes', key: 'notes', width: 30 },
   ];
-  // الشاشة لا تُظهر إلّا مستهدفات الشهر المختار لأنّ الفلترة على الخادم، ومن صدّر
-  // «الأهداف» ظنَّها كلَّها؛ فصار «الكلّ» نداءً بلا معامل الفترة يجلب كلَّ الشهور.
+  // The screen shows only the selected month's targets because filtering is server-side; an export under the all label looked complete. "All" is a call without the period param, fetching every month.
   const fetchAllForExport = async () => {
     const d = await api.get<{ targets: SalesTarget[] }>('/api/sales/targets');
     return [{ name: tx.pageTitle, rows: (d.targets || []) as unknown as Record<string, any>[], columns: exportColumns }];
@@ -150,7 +149,7 @@ export default function SalesTargetsPage() {
             <option value="">{tx.wholeTeam}</option>
             {reps.map((r) => <option key={r._id} value={r._id}>{r.firstName} {r.lastName}</option>)}
           </Select></Field>
-          {/* الشهرُ قائمتان لا حقلٌ أصليّ: سفاري وفايرفوكس يرسمانه خانةَ نصّ. */}
+          {/* Month is two selects rather than a native input: Safari and Firefox render it as a plain text box. */}
           <Field label={tx.period}>
             {editing
               ? <TextInput value={form.period} disabled onChange={() => {}} />
@@ -158,7 +157,7 @@ export default function SalesTargetsPage() {
           </Field>
           <Field label={tx.amountTarget}><TextInput type="number" min={0} value={form.amountTarget} onChange={(e) => setForm({ ...form, amountTarget: e.target.value })} dir="ltr" /></Field>
           <Field label={tx.dealsTarget}><TextInput type="number" min={0} value={form.dealsTarget} onChange={(e) => setForm({ ...form, dealsTarget: e.target.value })} dir="ltr" /></Field>
-          {/* الملاحظةُ في النموذج والهاتف، وكانت الشاشةُ لا تعرضها ولا تكتبها. */}
+          {/* The note exists in the form and on mobile, but this screen neither showed nor wrote it. */}
           <Field label={ar ? 'ملاحظات' : 'Notes'} span2><TextArea value={form.notes || ''} onChange={(e) => setForm({ ...form, notes: e.target.value })} rows={2} /></Field>
         </div>
       </Modal>

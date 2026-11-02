@@ -1,15 +1,8 @@
 'use client';
 /**
- * الموردون والمركبات — the fleet register the create form reads and feeds.
- *
- * ── وثلاثةُ أحوالٍ للملكيّة لا حالان ────────────────────────────────────────
- * كان الحالان: لها مورّدٌ، أو «من أسطولنا». ثمّ استُوردت ثلاثةَ عشرَ ألفَ
- * شاحنةٍ من تاريخ الطلبات بلا مرجعِ مورّد، فقالت هذه الصفحةُ «١٠٠٠ سيارة،
- * ١٠٠٠ من أسطولنا» — وأسطولُنا ثمانٍ وخمسون شاحنة. الغيابُ «لا أعلم».
- *
- * والأعدادُ تُقرأ من الخادم لا من المصفوفةِ الواصلة: القائمةُ صفحةٌ بحدٍّ،
- * فعدُّها يعدّ الحدَّ. والبحثُ كذلك عند الخادم — طيُّ المسافاتِ والهمزةِ فيه
- * لا في المتصفّح، وإلّا بُحث في مئةٍ وصلت وقيل «لا نتائج» عن اثنيَ عشرَ ألفًا.
+ * Suppliers and vehicles: the fleet register the create form reads and feeds.
+ * Three ownership states, not two: has a supplier, ours, or unknown. Thousands of trucks were imported from order history with no supplier reference, so absence means unknown, not ours (our fleet is 58 trucks).
+ * Counts come from the server, not the received array (a capped page would count the cap). Search is server-side too, with whitespace and hamza folding there, otherwise it searches only the loaded rows and reports no results.
  */
 import { useState, useEffect, useCallback } from 'react';
 import { formatPlate } from '@/lib/flexMatch';
@@ -51,38 +44,26 @@ export default function FleetPage() {
 
   const [suppliers, setSuppliers] = useState<OrderSupplier[]>([]);
   const [vehicles, setVehicles] = useState<OrderVehicle[]>([]);
-  // ── والسوّاق سجلٌّ ثالث ─────────────────────────────────────────────────
-  // كان السائقُ اسمًا على صفّ الشاحنة: فلا يُسأل عن رقم إقامته ولا عن بطاقة
-  // تشغيله ولا متى تنتهي، ولا «أرِني سوّاق هذا المورّد». وهو السجلُّ الذي
-  // تحمل به المنصّةُ ربطَ الشاحنة بمالكها، فبه عُرف مالكُ أحدَ عشرَ ألفًا.
+  // The driver is a third register. A driver used to be a name on the truck row, so residency number, operating card and expiry, and a supplier's drivers could not be queried. It is also the record the platform uses to link a truck to its owner.
   const [drivers, setDrivers] = useState<OrderDriver[]>([]);
   const [fields, setFields] = useState<FormField[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  /**
-   * ── والصفحةُ تفتح على الموردين ─────────────────────────────────────────
-   *
-   * المورّدُ هو وحدةُ هذا السجلّ: له شاحناتُه وله سوّاقُه، ويُتّفق معه أوّلًا
-   * ثمّ يُقال أيُّ شاحنةٍ من شاحناته. وفتحُها على ثلاثةَ عشرَ ألفَ شاحنةٍ
-   * يضع القارئَ أمام قائمةٍ لا أوّلَ لها ولا تنظيم.
-   */
+  /** The page opens on suppliers: the supplier is the unit of this register, with its trucks and drivers. Opening on thousands of trucks gives an unorganised list. */
   const [tab, setTab] = useState('suppliers');
-  // مورّدٌ مفتوحٌ: تبويبا الشاحنات والسوّاق يقتصران عليه حتى يُغلَق.
+  // With a supplier open, the trucks and drivers tabs are limited to it until it is closed.
   const [focusSup, setFocusSup] = useState<OrderSupplier | null>(null);
   const [search, setSearch] = useState('');
-  // ── وأسطولُنا لا يُعرَض إلّا إن طُلب ───────────────────────────────────
-  // هذا سجلُّ الناقلين: حمولاتُ هذا القسم تُسنَد إليهم، وأسطولُنا الثمانِ
-  // والخمسون يُدار في «إدارة الأسطول». فالصفحةُ تُفتَح على ما يخصُّها، وشارةُ
-  // «أسطولنا» تُظهره لمن أراد أن يتحقّق — ولا يُحذَف صفٌّ من السجلّ.
+  // Our own fleet is shown only on request. This is the carriers' register: this section's loads are assigned to them, while our 58 trucks are managed in fleet management. The badge for our fleet reveals them for verification; no row is deleted from the register.
   const [owner, setOwner] = useState<Owner>('not_ours');
   const [sum, setSum] = useState({ vehicles: 0, suppliers: 0, drivers: 0, supplier: 0, ours: 0, unknown: 0 });
-  // نواقصُ السجلّ كما يعدّها الخادم — تُعرَض صريحةً ويُضغَط عليها فتُصفّي.
+  // Register gaps as counted by the server; shown explicitly and clickable to filter.
   const [gaps, setGaps] = useState({ unknown: 0, noBrand: 0, supNoVehicle: 0 });
   const [shownTotals, setShownTotals] = useState({ vehicles: 0, suppliers: 0, drivers: 0 });
 
   const [supModal, setSupModal] = useState(false);
   const [editingSup, setEditingSup] = useState<OrderSupplier | null>(null);
-  // دمجُ مورّدَين مكرَّرين (٢٠٢٦/١٠/٢٦) — راجع SupplierMergeModal.
+  // Merge of two duplicate suppliers; see SupplierMergeModal.
   const [mergeFor, setMergeFor] = useState<OrderSupplier | null>(null);
   const [supForm, setSupForm] = useState<any>(EMPTY_SUPPLIER);
 
@@ -90,8 +71,7 @@ export default function FleetPage() {
   const [editingVeh, setEditingVeh] = useState<OrderVehicle | null>(null);
   const [vehForm, setVehForm] = useState<any>(EMPTY_VEHICLE);
   const [saving, setSaving] = useState(false);
-  // قائمةُ المالك في النموذج مستقلّةٌ عن قائمة التبويب: تلك تتبع بحثَ الصفحة،
-  // وهذه بحثَ الخانة — وخلطُهما يجعل الكتابةَ في النموذج تُعيد بناء الجدول.
+  // The owner list in the form is independent of the tab list: that one follows the page search, this one the field search; mixing them rebuilds the table while typing in the form.
   const [modalSupQ, setModalSupQ] = useState('');
   const [modalSups, setModalSups] = useState<OrderSupplier[]>([]);
   const [modalSupTotal, setModalSupTotal] = useState(0);
@@ -105,8 +85,7 @@ export default function FleetPage() {
   const [drvModal, setDrvModal] = useState(false);
   const [editingDrv, setEditingDrv] = useState<OrderDriver | null>(null);
   const [drvForm, setDrvForm] = useState<any>(EMPTY_DRIVER);
-  // شاحناتُ المورّد المختار وحدَها: سائقٌ يُربَط بشاحنةٍ ليست لمورّده خطأٌ
-  // يُكتب مرّةً ويُقرأ طويلًا.
+  // Only the selected supplier's trucks: linking a driver to a truck outside his supplier is an error written once and read for long.
   const [drvVehicles, setDrvVehicles] = useState<OrderVehicle[]>([]);
 
   const guard = useLatestRequest();
@@ -131,16 +110,15 @@ export default function FleetPage() {
     } catch (e: any) { if (guard.isCurrent(mine)) setError(e?.message || 'Request failed'); }
     if (guard.isCurrent(mine)) setLoading(false);
   }, [search, owner, focusSup, guard]);
-  // البحثُ مؤجَّلٌ بعد سكونِ الكتابة — لا طلبٌ لكلّ حرف.
+  // Search is debounced after typing stops, not one request per character.
   useEffect(() => {
     const t = setTimeout(() => load(), search.trim() ? 300 : 0);
     return () => clearTimeout(t);
   }, [load, search]);
   useSocket('shipmentOrders:fleet', useCallback(() => load(), [load]));
-  // هويّةُ شاحناتنا (اللوحةُ والماركةُ واللون) تُقرأ من سجلّ المركبات عند العرض
-  // (vehicleView) — فتعديلُها هناك يظهر هنا في اللحظة نفسِها.
+  // Identity of our trucks (plate, make, colour) is read from the vehicle register at view time (vehicleView), so edits there show here immediately.
   useSocket('vreg:updated', useCallback(() => load(), [load]));
-  // أنواعُ الشاحنات تُقرأ من حقول النموذج، فنوعٌ يُضاف هناك يُنتقى هنا فورًا.
+  // Truck types are read from the form fields, so a type added there is selectable here at once.
   useSocket('shipmentOrders:fields', useCallback(() => {
     api.get<{ fields: FormField[] }>('/api/shipment-orders/fields')
       .then((d) => setFields(d.fields || [])).catch(() => {});
@@ -172,7 +150,7 @@ export default function FleetPage() {
 
   const supplierName = (v: OrderVehicle) =>
     typeof v.supplier === 'object' && v.supplier ? v.supplier.name : '';
-  // ملكيّةُ الصفّ في كلمة — والمجهولُ يُقال مجهولًا.
+  // Row ownership in one word, with unknown shown as unknown.
   const ownerLabel = (v: OrderVehicle) => supplierName(v)
     || (v.ownership === 'ours' ? (ar ? 'أسطولنا' : 'Our fleet') : (ar ? 'غير مسجَّل' : 'Not recorded'));
 
@@ -189,7 +167,7 @@ export default function FleetPage() {
 
   const saveVehicle = async () => {
     if (!vehForm.plate.trim()) return;
-    // البوليصةُ تطبع الماركةَ واللون، فالخانتان تُطلبان هنا لا تُترَكان للورقة.
+    // The waybill prints make and colour, so both are required here rather than left to the paper.
     if (!String(vehForm.brand || '').trim() || !String(vehForm.color || '').trim()) {
       notify(ar ? 'الماركة واللون مطلوبان — يُطبعان في أمر النقل.' : 'Brand and colour are required — they print on the waybill.', 'error');
       return;
@@ -220,14 +198,14 @@ export default function FleetPage() {
         vehicle: veh?._id || (typeof d.vehicle === 'string' ? d.vehicle : ''),
       }
       : { ...EMPTY_DRIVER });
-    // مورّدُه وشاحنتُه يُبذران في قائمتيهما: كلٌّ منهما صفحةٌ من سجلٍّ كبير.
+    // Its supplier and truck are seeded into their lists: each list is one page of a large register.
     if (sup) setModalSups((p) => (p.some((x) => x._id === sup._id) ? p : [sup, ...p]));
     setDrvVehicles(veh ? [veh] : []);
     setModalSupQ('');
     setDrvModal(true);
   };
 
-  // شاحناتُ المورّد تُطلَب بمعرّفه لا تُصفَّى من صفحةٍ محمَّلة.
+  // A supplier's trucks are requested by its id, not filtered from a loaded page.
   useEffect(() => {
     if (!drvModal || !drvForm.supplier) return;
     api.get<{ vehicles: OrderVehicle[] }>(`/api/shipment-orders/vehicles?supplier=${drvForm.supplier}&limit=500`)
@@ -260,10 +238,10 @@ export default function FleetPage() {
     try { await api.delete(`/api/shipment-orders/vehicles/${v._id}`); load(); } catch (e: any) { notify(e.message, 'error'); }
   };
 
-  // الخادمُ صفّى بالبحث والملكيّة — وتصفيةُ الواصل ثانيًا تحجب ما وجده.
+  // The server already filtered by search and ownership; filtering the received rows again would hide what it found.
   const shownVehicles = vehicles;
   const shownSuppliers = suppliers;
-  // الأسماءُ المكرَّرة بعد طيّ الحروف — تُعلَّم «مكرَّر» ويُفتح منها الدمج.
+  // Names duplicated after letter folding are marked as duplicate and open the merge.
   const dupKeys = (() => {
     const n = new Map<string, number>();
     suppliers.forEach((x) => { const k = supplierNameKey(x.name); n.set(k, (n.get(k) || 0) + 1); });
@@ -278,7 +256,7 @@ export default function FleetPage() {
     { header: ar ? 'اللون' : 'Color', key: 'color', width: 14, transform: (v) => v || '—' },
     { header: ar ? 'بطاقة التشغيل' : 'Operation card', key: 'operationCardNumber', width: 16, transform: (v) => v || '—' },
     { header: ar ? 'انتهاؤها' : 'Card expiry', key: 'operationCardExpiry', width: 14, transform: (v) => (v || '').slice(0, 10) || '—' },
-    // خلوُّ الخانة يُقرأ نقصًا في البيانات، فالملكيّةُ تُكتب كلمةً.
+    // An empty cell reads as missing data, so ownership is written as a word.
     { header: ar ? 'المالك' : 'Owner', key: 'supplier', width: 26, transform: (_v, r) => ownerLabel(r) },
     { header: ar ? 'السائق المعتاد' : 'Usual driver', key: 'defaultDriverName', width: 24, transform: (v) => v || '—' },
     { header: ar ? 'جواله' : 'Driver phone', key: 'defaultDriverPhone', width: 16, transform: (v) => v || '—' },
@@ -308,8 +286,7 @@ export default function FleetPage() {
     { header: ar ? 'ملاحظات' : 'Notes', key: 'notes', width: 26 },
   ];
 
-  // انتهاءُ بطاقة التشغيل يُلوَّن: سائقٌ بطاقتُه منتهيةٌ يُوقفه الطريقُ لا نحن،
-  // ومعرفةُ التاريخ قبل الإسناد توفّر حمولةً متعطّلةً على الطريق.
+  // Operating card expiry is coloured: a driver with an expired card is stopped by the road, so knowing the date before assignment avoids a stranded load.
   const cardState = (d: OrderDriver) => {
     const x = (d.driverCardExpiry || '').slice(0, 10);
     if (!x) return { cls: 'text-slate-300', label: '—' };
@@ -319,7 +296,7 @@ export default function FleetPage() {
     return { cls: 'bg-emerald-500/15 text-emerald-700', label: x };
   };
 
-  // انتهاءُ الإقامة ورخصةِ القيادة: قمعٌ على رأس عموديهما بالحالة لا بالتاريخ.
+  // Residency and driving licence expiry: a funnel on their column headers filters by status, not by date.
   const cf = useColumnFilters<OrderDriver>({
     iqamaExp: (d) => docStateLabel(d.iqamaState, ar),
     licenseExp: (d) => docStateLabel(d.licenseState, ar),
@@ -337,8 +314,7 @@ export default function FleetPage() {
         subtitle={ar
           ? `${sum.suppliers} مورّدًا · ${sum.vehicles} شاحنة · ${sum.drivers} سائقًا — المورّدُ أوّلًا، ومنه تُفتَح شاحناتُه وسوّاقُه`
           : `${sum.suppliers} suppliers · ${sum.vehicles} trucks · ${sum.drivers} drivers — start from the supplier, open his trucks and drivers from him`}>
-        {/* التبويبان يعرضان سجلّين مختلفين والبحث يصفّي المعروض منهما، فالخيار
-            الأوّل يطابق الشاشة والثاني يخرج السجلّين كاملين في شيتين. */}
+        {/* The two tabs show different registers and the search filters what is displayed, so the first option matches the screen and the second exports both registers in full as two sheets. */}
         <ExportMenu
           fileName="shipment-orders-fleet" lang={ar ? 'ar' : 'en'}
           options={[
@@ -348,9 +324,7 @@ export default function FleetPage() {
                 ? { key: 'tab', label: exportScopeLabels(ar).shown, sheets: [{ name: ar ? 'السائقون' : 'Drivers', rows: shownDrivers as any[], columns: driverCols }] }
                 : { key: 'tab', label: exportScopeLabels(ar).shown, sheets: [{ name: ar ? 'الموردون' : 'Suppliers', rows: shownSuppliers as any[], columns: supplierCols }] },
             {
-              // ── والتصديرُ الكامل يُجلَب عند طلبه ─────────────────────────
-              // الصفحةُ تعرض مئتين من ثلاثةَ عشرَ ألفًا، فتصديرُ المصفوفةِ
-              // الواصلة تحت عنوان «الكل» يسلّم مئتين ويُقال إنّها السجلّ.
+              // The full export is fetched on request: the page shows 200 of thousands, so exporting the received array under an all label would hand over 200 as if it were the register.
               key: 'all', label: exportScopeLabels(ar).all,
               resolve: async () => {
                 const [v, sp] = await Promise.all([
@@ -382,9 +356,7 @@ export default function FleetPage() {
         { key: 'drivers', label: ar ? 'السائقون' : 'Drivers', badge: focusSup ? shownTotals.drivers : sum.drivers },
       ]} />
 
-      {/* ── المورّدُ المفتوح: الشاحناتُ والسوّاقُ تقتصر عليه ───────────────────
-          السؤالُ الذي يلي «مَن المورّد؟» هو «ماذا عنده؟»، وكان جوابُه يحتاج
-          بحثًا بالاسم في تبويبٍ آخر. */}
+      {/* Open supplier: trucks and drivers are limited to it. The next question after who the supplier is is what it has, which used to need a name search in another tab. */}
       {focusSup && (
         <div className="flex flex-wrap items-center gap-3 rounded-xl border border-[#f37121]/30 bg-[#f37121]/[0.04] px-4 py-2.5">
           <span className="text-sm font-bold text-slate-900">{focusSup.name}</span>
@@ -399,12 +371,7 @@ export default function FleetPage() {
         </div>
       )}
 
-      {/* ── نواقصُ السجلّ تُقال ولا تُترَك تُقرأ خرابًا ───────────────────────
-          الجداولُ تُفتَح على خاناتٍ فارغةٍ كثيرة، فيُقرأ ذلك على أنّ السجلّ
-          معطوب — وهو ليس معطوبًا: المنصّةُ التي استُورد منها لا تحمل الماركةَ
-          ولا اللون أصلًا، وثمانِمئةٍ وثمانون شاحنةً لم يُعرَف مالكُها بعد.
-          فتُقال الأعدادُ صريحةً، وكلُّ رقمٍ يُضغَط فيُصفّي الجدولَ عليه: عملٌ
-          ينتظر لا عيبٌ يُخفى. */}
+      {/* Register gaps are stated rather than left to look broken. Many empty cells read as a corrupt register, but the source platform carries no make or colour and many trucks have no known owner yet. Counts are explicit and each is clickable to filter: pending work, not a hidden defect. */}
       {tab !== 'drivers' && !focusSup && (gaps.unknown > 0 || gaps.noBrand > 0) && (
         <div className="flex flex-wrap items-center gap-2 rounded-xl border border-amber-200 bg-amber-50/60 px-4 py-2.5">
           <span className="text-xs font-bold text-amber-900">{ar ? 'ينقص السجلَّ:' : 'The register is missing:'}</span>
@@ -437,9 +404,7 @@ export default function FleetPage() {
                 ? (ar ? 'بالاسم أو الجوّال أو رقم الإقامة أو بطاقة التشغيل…' : 'Name, phone, iqama or driver card…')
                 : (ar ? 'بالاسم أو الجوّال أو السجل أو الآيبان…' : 'Name, phone, CR or IBAN…')} />
         </div>
-        {/* ── ومصفاةُ الملكيّة: «أرِني ما لا أعرف مالكَه» سؤالٌ يُسأل ───────
-            خمسةُ آلافٍ وسبعُمئةِ شاحنةٍ لم يُعرَف مالكُها من تاريخ الطلبات،
-            وهي عملٌ ينتظر — ولا تُرى إن لم تُطلَب. */}
+        {/* Ownership filter: showing trucks with unknown owner is a question users ask; thousands of such trucks are pending work and invisible unless requested. */}
         {tab === 'vehicles' && !focusSup && (
           <div className="flex flex-wrap gap-1.5">
             {([['not_ours', ar ? 'شاحنات الناقلين' : 'Carrier trucks', sum.vehicles - sum.ours],
@@ -456,7 +421,7 @@ export default function FleetPage() {
           </div>
         )}
       </div>
-      {/* ما يُعرَض من الـمُطابِق: الصفحةُ حدُّها مئتان، والصمتُ عن الباقي يخفيه. */}
+      {/* What the matcher shows: the page caps at 200, and silence about the rest would hide it. */}
       {tab === 'vehicles' && shownTotals.vehicles > vehicles.length && (
         <p className="text-xs text-slate-500">
           {ar ? `يُعرَض ${vehicles.length} من ${shownTotals.vehicles} مطابقة — ضيّق البحث لترى البقيّة.`
@@ -499,7 +464,7 @@ export default function FleetPage() {
                       : v.ownership === 'ours'
                         ? <span className="inline-flex flex-col items-start gap-0.5">
                             <SmallBadge bg="bg-emerald-500/15" text="text-emerald-700" label={ar ? 'أسطولنا' : 'Our fleet'} />
-                            {/* مربوطةٌ بسجلّ المركبات: الماركةُ واللونُ منه، وتعديلُهما هناك يظهر هنا. */}
+                            {/* Linked to the vehicle register: make and colour come from it, and edits there show here. */}
                             {v.registry && <span className="text-[11px] text-slate-500" title={ar ? 'من سجلّ المركبات' : 'From the vehicle register'}>{ar ? 'سجلّ المركبات: ' : 'Register: '}{v.registry.plateNumber}</span>}
                           </span>
                         : <SmallBadge bg="bg-slate-400/20" text="text-slate-600" label={ar ? 'غير مسجَّل' : 'Not recorded'} />}
@@ -510,7 +475,7 @@ export default function FleetPage() {
                       {editor && <button type="button" onClick={() => {
                         setEditingVeh(v);
                         setVehForm({ ...EMPTY_VEHICLE, ...v, ownership: v.ownership || 'unknown', supplier: typeof v.supplier === 'object' ? v.supplier?._id || '' : (v.supplier || '') });
-                        // مورّدُ الصفّ يُبذَر في القائمة: هي صفحةٌ من ثلاثة آلاف.
+                        // The row's supplier is seeded into the list, which is one page of thousands.
                         if (typeof v.supplier === 'object' && v.supplier) {
                           const sp = v.supplier as OrderSupplier;
                           setModalSups((pv) => (pv.some((x) => x._id === sp._id) ? pv : [sp, ...pv]));
@@ -533,10 +498,7 @@ export default function FleetPage() {
         </ScrollX>
       )}
 
-      {/* ── والمورّدون جدولٌ لا بطاقات ────────────────────────────────────────
-          كانا سجلَّين في صفحةٍ واحدة، أحدُهما جدولٌ والآخرُ بطاقتان في الصفّ:
-          فيُقرأ الأوّلُ بالعين نزولًا ويُقرأ الثاني بالقفز بين المربّعات، ولا
-          يُفرَز ولا يُقارَن. والسجلُّ يُقرأ صفًّا صفًّا. */}
+      {/* Suppliers are a table, not cards. Two registers shared a page, one a table and one two cards per row; a table reads down the column and sorts and compares, whereas cards force jumping between boxes. A register is read row by row. */}
       {tab === 'suppliers' && (
         <ScrollX className="bg-white border border-slate-200 rounded-xl shadow-sm">
           <table className="w-full text-sm">
@@ -544,10 +506,7 @@ export default function FleetPage() {
               <th className={th}>{ar ? 'المورّد' : 'Supplier'}</th>
               <th className={th}>{ar ? 'النوع' : 'Type'}</th>
               <th className={th}>{ar ? 'التواصل' : 'Contact'}</th>
-              {/* ── والبريدُ يُستبدَل بما يُسأل عنه ──────────────────────────
-                  البريدُ مكتوبٌ عند واحدٍ من كلّ عشرة، والسجلُّ التجاريُّ
-                  والآيبانُ عند ثمانيةٍ من كلّ عشرة — وهما ما يُطلَب عند أوّل
-                  دفعةٍ لمورّد. */}
+              {/* Email is replaced by what is actually asked for: email is filled for about one in ten suppliers, while commercial registration and IBAN are filled for about eight in ten and are needed at the first payment. */}
               <th className={th}>{ar ? 'السجل والآيبان' : 'CR & IBAN'}</th>
               <th className={th}>{ar ? 'سياراته' : 'Vehicles'}</th>
               <th className={th}>{ar ? 'سوّاقه' : 'Drivers'}</th>
@@ -588,7 +547,7 @@ export default function FleetPage() {
                     {(s.phone || '').trim()
                       ? <div className="flex items-center gap-2"><span className="font-mono text-[13px]" dir="ltr">{s.phone}</span><ContactButtons phone={s.phone} size={15} /></div>
                       : <span className="text-slate-300">—</span>}
-                    {/* ومديرُه برقمه: الاتّصالُ بالمالك في شأن فاتورةٍ يضيّع يومًا. */}
+                    {/* And the manager by number: contacting the owner about an invoice wastes a day. */}
                     {s.managerName ? (
                       <span className="block text-[11px] text-slate-500 truncate max-w-[190px]">
                         {s.managerName}{s.managerPhone ? ` · ${s.managerPhone}` : ''}
@@ -603,10 +562,8 @@ export default function FleetPage() {
                       </span>
                     ) : <span className="text-amber-600 text-[11px] font-semibold">{ar ? 'بلا أوراق' : 'no paperwork'}</span>}
                   </td>
-                  {/* عددُ سياراته: من له سيّارةٌ واحدةٌ ليس كمن له عشرون، والفرقُ
-                      يُقرأ من الرقم قبل أن يُفتَح أيُّ ملفّ. */}
-                  {/* والرقمُ بابٌ: مَن قرأ «١٧٥ شاحنة» يريد أن يراها، وكان
-                      عليه أن يبحث باسم المورّد في تبويبٍ آخر. */}
+                  {/* Truck count: one truck differs from twenty, readable from the number before opening any file. */}
+                  {/* The number is a door: a reader seeing the truck count wants to see those trucks, which used to need a supplier-name search in another tab. */}
                   <td className="px-4 py-3">
                     {s.vehicleCount
                       ? <button type="button" onClick={() => { setFocusSup(s); setTab('vehicles'); setSearch(''); }}
@@ -643,9 +600,7 @@ export default function FleetPage() {
         </ScrollX>
       )}
 
-      {/* ── جدولُ السوّاق ───────────────────────────────────────────────────
-          الملفُّ هو ما يُسأل عنه عند الإسناد: رقمُ الإقامة، وبطاقةُ التشغيل
-          ومتى تنتهي، ومَن كفيلُه، وعلى أيّ شاحنةٍ هو ولأيّ مورّد. */}
+      {/* Drivers table: the file holds what is asked at assignment: residency number, operating card and its expiry, sponsor, and which truck and supplier he works for. */}
       {tab === 'drivers' && (
         <ScrollX className="bg-white border border-slate-200 rounded-xl shadow-sm">
           <table className="w-full text-sm whitespace-nowrap">
@@ -676,7 +631,7 @@ export default function FleetPage() {
                         </span>
                         <span className="min-w-0">
                           <span className="block font-bold text-slate-900 truncate">{d.name}</span>
-                          {/* موظّفُنا: الاسمُ والجوالُ من ملفّه في الموارد البشريّة. */}
+                          {/* Our own employee: name and mobile come from his HR file. */}
                           {d.hr ? <span className="block"><SmallBadge bg="bg-emerald-500/15" text="text-emerald-700" label={ar ? 'موظّف — من الموارد البشرية' : 'Employee — from HR'} /></span> : null}
                           {d.sponsorName ? <span className="block text-[11px] text-slate-500 truncate">{ar ? 'كفيله: ' : 'Sponsor: '}{d.sponsorName}</span> : null}
                         </span>
@@ -756,9 +711,7 @@ export default function FleetPage() {
         </div>
       </Modal>
 
-      {/* ── نموذجُ السائق ───────────────────────────────────────────────────
-          المورّدُ قبل الشاحنة: الشاحنةُ تُختار من شاحنات مورّده وحدَها، فلا
-          يُربَط رجلٌ بشاحنةٍ ليست لمن يعمل عنده. */}
+      {/* Driver form: supplier before truck. The truck is chosen only from his supplier's trucks, so a man is never linked to a truck that is not his employer's. */}
       <Modal open={drvModal} onClose={() => setDrvModal(false)}
         title={editingDrv ? (ar ? 'تعديل سائق' : 'Edit driver') : (ar ? 'إضافة سائق' : 'Add driver')}
         footer={<>
@@ -819,10 +772,7 @@ export default function FleetPage() {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Field label={ar ? 'رقم اللوحة *' : 'Plate *'}><TextInput value={vehForm.plate} onChange={(e) => setVehForm((f: any) => ({ ...f, plate: e.target.value }))} /></Field>
           <Field label={ar ? 'الوصف' : 'Description'}><TextInput value={vehForm.name} onChange={(e) => setVehForm((f: any) => ({ ...f, name: e.target.value }))} /></Field>
-          {/* ── الماركةُ واللونُ مطلوبان ────────────────────────────────────
-              أمر النقل فيها «بيانات السيارة»: اللوحةُ والماركةُ واللون. وكانت
-              الخانتان تُطبَعان فارغتين في كلّ ورقةٍ تخرج مع سائقٍ ويُتحقَّق منها
-              في البوّابات — لأنّ السجلَّ لم يكن يسأل عنهما أصلًا. */}
+          {/* Make and colour are required. The transport order carries the vehicle data (plate, make, colour); both fields were printed empty on every sheet leaving with a driver and checked at gates, because the register never asked for them. */}
           <Field label={ar ? 'الماركة *' : 'Brand *'}>
             <TextInput value={vehForm.brand} onChange={(e) => setVehForm((f: any) => ({ ...f, brand: e.target.value }))} />
           </Field>
@@ -842,10 +792,7 @@ export default function FleetPage() {
               placeholder={ar ? 'اختر النوع…' : 'Choose…'} searchPlaceholder={ar ? 'اكتب للبحث…' : 'Search…'}
               options={truckTypes.map((o) => ({ value: o.key, label: optionLabel(o, lang as Lang) }))} />
           </div>
-          {/* ── والمالكُ سؤالٌ صريحٌ بثلاثة أجوبة ────────────────────────────
-              كان «اتركه فارغًا إن كانت من أسطولنا»، والفراغُ جوابان في واحد:
-              «هي لنا» و«لا أعرف». فصار الأوّلُ خيارًا يُختار، والفراغُ يبقى
-              «غير مسجَّل» — والقائمةُ تُبحَث عند الخادم لأنّ الموردين آلاف. */}
+          {/* Owner is an explicit question with three answers. Leaving it empty meant both "ours" and "unknown"; now "ours" is a choice and empty stays unregistered. The list is searched on the server because suppliers number in the thousands. */}
           <div className="sm:col-span-2">
             <label className={labelCls}>{ar ? 'المالك' : 'Owner'}</label>
             <SearchableSelect

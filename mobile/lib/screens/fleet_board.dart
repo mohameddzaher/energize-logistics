@@ -7,9 +7,7 @@ import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import '../ui/search_field.dart';
 
-/// لوحة إدارة الأسطول — the vehicle cards board, native: every truck a card
-/// colored by its computed state (late/arrived/moving/preparing/idle),
-/// grouped by supervisor, with the same live updates as the web board.
+/// Fleet management board: the vehicle cards board, native: every truck a card colored by its computed state (late/arrived/moving/preparing/idle), grouped by supervisor, with the same live updates as the web board.
 class FleetBoardScreen extends StatefulWidget {
   const FleetBoardScreen({super.key});
   @override
@@ -19,14 +17,14 @@ class FleetBoardScreen extends StatefulWidget {
 const _states = {
   'late': ('متأخرة عن الوصول', 'Late', T.danger),
   'arrived': ('وصلت موقع التنزيل', 'Arrived', T.success),
-  // فرّغت: أُرسل سندُها فخلت من حمولتها — تُجهَّز لما بعدها ولا تُستعجَل.
+  // Emptied: its document was sent and it is free of its load; it is prepared for what follows and not rushed.
   'unloaded': ('فرّغت', 'Unloaded', T.cyan),
   'moving': ('في الطريق', 'On the road', T.warn),
   'preparing': ('تحميل / تجهيز', 'Loading', T.info),
   'idle': ('بدون حمولة', 'Idle', T.inkFaint),
 };
 
-/// ما يُعَدُّ في الشرائح — «بدون حمولة» حالةُ بطاقةٍ لا رقمٌ يُتابَع.
+/// What the chips count; "no load" is a card state, not a number to follow.
 const _counted = ['late', 'moving', 'arrived', 'unloaded', 'preparing'];
 
 class _FleetBoardScreenState extends State<FleetBoardScreen> {
@@ -36,7 +34,7 @@ class _FleetBoardScreenState extends State<FleetBoardScreen> {
   String _filter = '';
   String _city = '';
   String _q = '';
-  // الخانةُ تُهدَم مع التحميل والتمرير — النصُّ في متحكِّمٍ يبقى مع الكلمة.
+  // The field is destroyed on loading and scrolling; text kept in a controller survives with the word.
   final _searchCtl = TextEditingController();
   late final void Function() _onLive;
 
@@ -46,9 +44,9 @@ class _FleetBoardScreenState extends State<FleetBoardScreen> {
     _load();
     _onLive = () => _load();
     Live.instance.on('fleet:updated', _onLive);
-    // هويّةُ الشاحنة ومستنداتُها من سجلّ المركبات — كالموقع.
+    // Truck identity and documents from the vehicle register, as on the web.
     Live.instance.on('vreg:updated', _onLive);
-    // مقعدٌ يتبدّل أو شاحنةٌ تُعدَّل يُعلَن بهذين وحدَهما — والبطاقةُ تعرض سائقيها.
+    // A seat change or a truck edit is announced by these two events only; the card shows its drivers.
     Live.instance.on('fleet:drivers', _onLive);
     Live.instance.on('fleet:vehicles', _onLive);
   }
@@ -103,15 +101,12 @@ class _FleetBoardScreenState extends State<FleetBoardScreen> {
       groups.putIfAbsent(k, () => []).add(c);
     }
 
-    // ── والأرقامُ تُقاس على الوجهة المختارة ─────────────────────────────────
-    // مَن ضغط «الدمام» يريد أرقامَ الدمام لا أرقامَ الأسطول كلِّه. والحالةُ لا
-    // تدخل في العَدّ: الشريحةُ هي التي تختار الحالة، فلو قاست نفسَها بها
-    // لصفّرت أخواتِها.
+    // Numbers are measured on the chosen destination. Someone who tapped Dammam wants Dammam numbers, not the whole fleet. Status is excluded from the count: the chip is what chooses the status, so counting itself by it would zero its siblings.
     final all = List<Map<String, dynamic>>.from(_data?['cards'] ?? [])
         .where((c) => _city.isEmpty || ((c['trip'] as Map?)?['toCity'] ?? '') == _city)
         .toList();
     int countOf(String s) => all.where((c) => c['state'] == s).length;
-    /// كم من حالةٍ ما صيانتُها متأخّرة، وأيُّ صيانة.
+    /// How many states have overdue maintenance, and which maintenance.
     (int, String) maintOf(String st) {
       final od = all.where((c) => c['state'] == st && (c['maintenance'] as Map?)?['status'] == 'overdue').toList();
       final names = <String, int>{};
@@ -141,7 +136,7 @@ class _FleetBoardScreenState extends State<FleetBoardScreen> {
                     padding: const EdgeInsets.all(14),
                     keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                     children: [
-                      // بحث شامل: لوحة/سائق/عميل/مدينة/بوليصة/مشرف.
+                      // Full search: plate / driver / customer / city / waybill / supervisor.
                       SearchField(
                         controller: _searchCtl,
                         onChanged: (v) => setState(() => _q = v),
@@ -198,7 +193,7 @@ class _FleetBoardScreenState extends State<FleetBoardScreen> {
                             ]),
                         ),
                       ),
-                      // ── الوجهاتُ الآن: شريحةٌ تحكم الأرقام فوقها ──────────
+                      // Destinations now: a chip governs the numbers above it.
                       if (dests.isNotEmpty) ...[
                         const SizedBox(height: 8),
                         SingleChildScrollView(
@@ -274,7 +269,7 @@ class _VehicleCard extends StatelessWidget {
     final trip = card['trip'] as Map<String, dynamic>?;
     final maint = card['maintenance'] as Map<String, dynamic>?;
     final drivers = List<Map<String, dynamic>>.from(card['drivers'] ?? []);
-    // الخادمُ يقول `due` لا `due_soon` — وكانت الشارةُ لا تظهر للقريبة أصلًا.
+    // The server says `due`, not `due_soon`; the badge never showed for the near-due case.
     final maintDue = maint != null && (maint['status'] == 'overdue' || maint['status'] == 'due');
 
     return Container(

@@ -1,17 +1,5 @@
 'use client';
-/**
- * القضايا — العملاءُ الذين عليهم حالةُ خلاف: «تحت التفاوض» أو «قضايا».
- *
- * ── لماذا صفحةٌ لها ─────────────────────────────────────────────────────────
- * كانت حالةُ الخلاف فلترًا في اللوحة وزرًّا على صفّ فاتورة، ولا مكانَ يُسأل فيه:
- * مَن عندنا في القضاء؟ منذ متى؟ وما بيانُ قضيّته؟ وكم عليه؟ فهذه الصفحةُ تجيب.
- *
- * ── العميلُ هو الوحدة ───────────────────────────────────────────────────────
- * الحالةُ صفةُ العميل (`CollectionsParty.issue`) وكلُّ فواتيره تتبعه، فالصفُّ
- * عميل — ومن صار في القضاء يبقى هنا **ولو سُوِّيت فواتيرُه**: القضيّةُ قائمةٌ
- * حتى تُرفَع. والمبالغُ من صفوف الدفتر نفسِها التي تعدّها اللوحة، فالضغطُ على
- * عميلٍ يفتح صفحةَ المديونيّة على فواتيره بحالته، بالعدد والقيمة نفسيهما.
- */
+/** Cases: customers in a dispute state (under negotiation or legal cases). The dispute state used to be a dashboard filter and a button on an invoice row, with nowhere to ask who is in court, since when, what the case is and how much is owed. The customer is the unit: the state is a customer attribute (CollectionsParty.issue) and all invoices follow it, so a customer stays here even when invoices are settled, until the case is lifted. Amounts come from the same ledger rows the dashboard counts, so opening a customer shows the receivables page with the same count and value. */
 import { useState, useEffect, useCallback, useMemo, useRef, Fragment } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Scale, Handshake, Ban, ChevronDown, ChevronLeft, Search, X, ExternalLink } from 'lucide-react';
@@ -65,7 +53,7 @@ export default function CasesPage() {
   const canEdit = canEditCollections(user);
   const { notify, prompt } = useDialog();
 
-  // الفلاترُ في الرابط — كصفحة المديونيّة: تُرسَل وتُحفَظ.
+  // Filters live in the URL, like the receivables page: sent and saved.
   const searchParams = useSearchParams();
   const qs = searchParams?.toString() || '';
   const params = useMemo(() => new URLSearchParams(qs), [qs]);
@@ -83,7 +71,7 @@ export default function CasesPage() {
     router.replace(s ? `${PATH}?${s}` : PATH, { scroll: false });
   }, [qs, router]);
 
-  // الخانةُ لا تقرأ صدى ما كتبته من الرابط — راجع ReceivablesPage («يتمسح حرف»).
+  // The field does not read back the echo of what it wrote from the URL; see ReceivablesPage (typed characters getting wiped).
   const [q, setQ] = useState(qParam);
   const pushedQ = useRef(qParam);
   useEffect(() => { if (qParam !== pushedQ.current) { pushedQ.current = qParam; setQ(qParam); } }, [qParam]);
@@ -124,7 +112,7 @@ export default function CasesPage() {
   useSocket('collections:party', soon);
   useSocket('workflow:updated', soon);
 
-  // ── فواتيرُ عميلٍ تُفتَح تحت صفّه ────────────────────────────────────────
+  // A customer's invoices open beneath its row.
   const [open, setOpen] = useState<string>('');
   const [mini, setMini] = useState<{ key: string; rows: MiniRow[]; total: number } | null>(null);
   const miniGuard = useLatestRequest();
@@ -200,7 +188,7 @@ export default function CasesPage() {
           options={[{ key: 'shown', label: t('المعروض', 'Shown'), sheets: [{ name: t('القضايا', 'Cases'), rows: parties, columns: exportCols }] }]} />
       </PageHeader>
 
-      {/* الحالتان — كلٌّ تختار نفسَها فلترًا */}
+      {/* The two states; each selects itself as a filter. */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {(['negotiating', 'legal'] as const).map((s) => {
           const n = data?.summary?.[s] || { customers: 0, count: 0, value: 0 };
@@ -326,7 +314,7 @@ export default function CasesPage() {
                     <tr className="bg-slate-50/70 border-b border-slate-100">
                       <td />
                       <td colSpan={11} className="px-3 py-3">
-                        {/* شرائحُ العمر لهذا العميل — قيمٌ لا ألوان */}
+                        {/* Age buckets for this customer: values, not colors. */}
                         <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11.5px] text-slate-500 tabular-nums mb-2">
                           {BANDS.map((b) => <span key={b.key}>{t(b.ar, b.en)}: <b className="text-slate-800 font-semibold">{money(p.bands?.[b.key])}</b></span>)}
                           <span>{t('المدّة', 'Term')}: <b className="text-slate-800 font-semibold">{p.term}</b>{!p.creditDays ? ` (${t('افتراضية', 'default')})` : ''}</span>

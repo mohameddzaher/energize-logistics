@@ -11,9 +11,8 @@ import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import 'remote_filters.dart';
 
-/// العمل عن بُعد — الإجازات، المهام، التقرير اليومي، الإعلانات، والمحادثات.
-/// لحظيًّا كالويب: «remote:task» يُحدّث المهام، و«remote:message» يُلحق الرسالة
-/// بالمحادثة المفتوحة (مع استطلاعٍ أبطأ احتياطًا لو انقطع المقبس).
+/// Remote work: leaves, tasks, daily report, announcements and chats.
+/// Live as on the web: "remote:task" refreshes tasks and "remote:message" appends the message to the open chat (with a slower polling fallback if the socket drops).
 
 const _leaveTypes = {
   'annual': ('سنوية', 'Annual'),
@@ -32,7 +31,7 @@ const _leaveStatuses = {
 
 String _userName(dynamic u) => remoteUserName(u);
 
-/// الطارئة والمرضية لا تُخطَّط فهي معفاة؛ وغيرها يُقدَّم قبل ٣٠ يومًا (الخادم يفرضها).
+/// Emergency and sick leave cannot be planned so they are exempt; others are requested 30 days ahead (the server enforces it).
 const _noNoticeLeave = {'sick', 'emergency'};
 const _leaveNoticeDays = 30;
 DateTime _earliestLeaveStart(String type) {
@@ -48,7 +47,7 @@ String _d(dynamic v) {
 
 bool _isRemoteStaff(AuthProvider auth) => isRemoteStaff(auth);
 
-// ── الإجازات ────────────────────────────────────────────────────────────────
+// Leaves
 class RemoteLeavesScreen extends StatefulWidget {
   const RemoteLeavesScreen({super.key});
   @override
@@ -59,7 +58,7 @@ class _RemoteLeavesScreenState extends State<RemoteLeavesScreen> {
   List<Map<String, dynamic>> _rows = [];
   bool _loading = true;
   String? _error;
-  // فلاتر المشرف — كالويب: الموظف والحالة (على الخادم).
+  // Supervisor filters as on the web: employee and status (server-side).
   String _userId = '';
   String _status = '';
   int _seq = 0;
@@ -138,7 +137,7 @@ class _RemoteLeavesScreenState extends State<RemoteLeavesScreen> {
                 items: _leaveTypes.entries.map((e) => DropdownMenuItem(value: e.key, child: Text(tr(e.value.$1, e.value.$2)))).toList(),
                 onChanged: (v) => setS(() {
                   type = v ?? type;
-                  // نوعٌ مخطَّط لا يرث تاريخًا يكسر القاعدة.
+                  // A planned type must not inherit a date that breaks the rule.
                   final min = _earliestLeaveStart(type);
                   if (start.isBefore(min)) { start = min; end = min; }
                 }),
@@ -286,7 +285,7 @@ class _RemoteLeavesScreenState extends State<RemoteLeavesScreen> {
   }
 }
 
-// ── المهام ──────────────────────────────────────────────────────────────────
+// Tasks
 class RemoteTasksScreen extends StatefulWidget {
   const RemoteTasksScreen({super.key});
   @override
@@ -306,7 +305,7 @@ class _RemoteTasksScreenState extends State<RemoteTasksScreen> {
   void initState() {
     super.initState();
     _load();
-    // الموظف يتلقّى نبضةً لحظيّةً حين تُسند إليه مهمّة — كالويب.
+    // The employee gets a live pulse when a task is assigned, as on the web.
     Live.instance.on('remote:task', _onLive);
   }
 
@@ -328,7 +327,7 @@ class _RemoteTasksScreenState extends State<RemoteTasksScreen> {
   }
 
   Future<void> _toggle(Map<String, dynamic> r) async {
-    // تفاؤليّ كالويب، ويُعاد التحميل عند الفشل.
+    // Optimistic as on the web; reloads on failure.
     final next = !(r['done'] == true);
     setState(() => r['done'] = next);
     try {
@@ -477,7 +476,7 @@ class _RemoteTasksScreenState extends State<RemoteTasksScreen> {
   }
 }
 
-// ── التقرير اليومي ──────────────────────────────────────────────────────────
+// Daily report
 class RemoteReportScreen extends StatefulWidget {
   const RemoteReportScreen({super.key});
   @override
@@ -493,7 +492,7 @@ class _RemoteReportScreenState extends State<RemoteReportScreen> {
   bool _hasToday = false;
   bool _saving = false;
   String _saved = '';
-  // فلاتر المشرف — كالويب: الموظف ومن/إلى على الخادم.
+  // Supervisor filters as on the web: employee and from/to (server-side).
   String _userId = '';
   String? _from, _to;
   int _seq = 0;
@@ -523,7 +522,7 @@ class _RemoteReportScreenState extends State<RemoteReportScreen> {
         if (!staff) {
           final t = results[1];
           _todayDate = (t['today'] ?? '').toString();
-          // تقريرُ اليوم يُفتح للتعديل كالويب: يُملأ النصّ ويُحفظ من جديد.
+          // Today's report opens for editing as on the web: the text is filled in and saved again.
           if (t['report'] is Map) { _hasToday = true; _body.text = (t['report']['body'] ?? '').toString(); }
         }
         _loading = false;
@@ -614,7 +613,7 @@ class _RemoteReportScreenState extends State<RemoteReportScreen> {
   }
 }
 
-// ── الإعلانات ───────────────────────────────────────────────────────────────
+// Announcements
 class RemoteAnnouncementsScreen extends StatefulWidget {
   const RemoteAnnouncementsScreen({super.key});
   @override
@@ -641,9 +640,8 @@ class _RemoteAnnouncementsScreenState extends State<RemoteAnnouncementsScreen> {
 
   void _create() => _sheet();
 
-  /// إعلان: نشرًا وتعديلًا في استمارةٍ واحدة.
-  /// والتعديل لا يُشعر أحدًا — حذفُ الإعلان ونشرُه من جديد كان يُرسل إشعارًا
-  /// ثانيًا للفريق عن الخبر نفسه فيُقرأ خبرًا جديدًا.
+  /// Announcement: publish and edit in one form.
+  /// Editing notifies nobody: deleting and republishing used to send the team a second notification for the same news, read as new news.
   Future<void> _sheet({Map<String, dynamic>? existing}) async {
     final title = TextEditingController(text: (existing?['title'] ?? '').toString());
     final body = TextEditingController(text: (existing?['body'] ?? '').toString());
@@ -751,8 +749,7 @@ class _RemoteAnnouncementsScreenState extends State<RemoteAnnouncementsScreen> {
   }
 }
 
-// ── المحادثات ───────────────────────────────────────────────────────────────
-/// موظف عن بُعد → محادثته المباشرة؛ المشرفون → قائمة محادثات ثم المحادثة.
+// Chats. A remote employee goes to their direct chat; supervisors get a chat list, then the chat.
 class RemoteChatEntryScreen extends StatelessWidget {
   const RemoteChatEntryScreen({super.key});
   @override
@@ -780,7 +777,7 @@ class _RemoteThreadsScreenState extends State<_RemoteThreadsScreen> {
   void initState() {
     super.initState();
     _load();
-    // رسالةٌ واردة تُحدّث القائمة (آخر رسالة وغير المقروء) لحظيًّا.
+    // An incoming message updates the list (last message and unread) live.
     Live.instance.onData('remote:message', _onMsg);
   }
 
@@ -876,7 +873,7 @@ class _RemoteChatScreenState extends State<RemoteChatScreen> {
   void initState() {
     super.initState();
     _load();
-    // المقبس أوّلًا كالويب؛ والاستطلاع البطيء احتياطٌ لو انقطع الاتصال.
+    // Socket first, as on the web; slow polling is the fallback if the connection drops.
     Live.instance.onData('remote:message', _onIncoming);
     _poll = Timer.periodic(const Duration(seconds: 45), (_) => _load(silent: true));
   }
@@ -889,7 +886,7 @@ class _RemoteChatScreenState extends State<RemoteChatScreen> {
     super.dispose();
   }
 
-  /// {employee, message} — المشرف يُلحقها إن كانت لمحادثته المفتوحة، والموظف دائمًا.
+  /// {employee, message}: the supervisor appends it if it belongs to the open chat, the employee always.
   void _onIncoming(dynamic payload) {
     if (!mounted || payload is! Map) return;
     final emp = (payload['employee'] ?? '').toString();
@@ -1012,8 +1009,7 @@ class _RemoteChatScreenState extends State<RemoteChatScreen> {
   }
 }
 
-// ── لوحة العمل عن بُعد ───────────────────────────────────────────────────────
-// ملخص (أيام العمل/الساعات/الإجازات/طلبات معلّقة) + جدول لكل موظف (للمشرفين).
+// Remote-work dashboard: summary (work days/hours/leaves/pending requests) + a per-employee table (for supervisors).
 class RemoteDashboardScreen extends StatefulWidget {
   const RemoteDashboardScreen({super.key});
   @override
@@ -1024,7 +1020,7 @@ class _RemoteDashboardScreenState extends State<RemoteDashboardScreen> {
   Map<String, dynamic>? _d;
   bool _loading = true;
   String? _error;
-  // فلاتر المشرف — كالويب: الموظف (أو الفريق كلّه) ومن/إلى.
+  // Supervisor filters as on the web: employee (or the whole team) and from/to.
   String _userId = '';
   String? _from, _to;
   int _seq = 0;
@@ -1063,7 +1059,7 @@ class _RemoteDashboardScreenState extends State<RemoteDashboardScreen> {
     final staff = _isRemoteStaff(context.watch<AuthProvider>());
     return AppScaffold(
       title: Text(staff ? tr('لوحة الفريق', 'Team dashboard') : tr('لوحتي', 'My dashboard')),
-      // الصفوف حصائلُ الفترة المختارة — فتصديرٌ واحد لما يُرى، كالويب.
+      // Rows are totals for the selected period, so one export of what is displayed, as on the web.
       actions: [
         if (staff && per.isNotEmpty)
           ExportButton(

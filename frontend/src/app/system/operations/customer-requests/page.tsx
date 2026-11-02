@@ -1,8 +1,7 @@
 'use client';
 /**
- * Operations — «التواصل مع العملاء»: requests sent from the customer portal.
- * Reply inside the system (the customer sees it in the portal) or by email from
- * a company mailbox (To/CC to several people, any subject, Arabic or English).
+ * Operations customer-communication page: requests sent from the customer portal.
+ * Reply in the system (shown in the portal) or by email from a company mailbox (To/CC, any subject, Arabic or English).
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { MessagesSquare, Mail, Send, Loader2, X, Lock, Unlock, Search } from 'lucide-react';

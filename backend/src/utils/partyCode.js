@@ -1,24 +1,14 @@
 /**
- * كودُ الحساب — يُولَّد على سياقة الدفتر، لا على سياقةٍ نخترعها.
- *
- * ── السياقتان ──────────────────────────────────────────────────────────────
- * في دفتر التحصيل سلسلتان قائمتان:
- *   الضريبيّ  `1104xxxx`  — رقمُ الحساب في دفاتر المحاسبة
- *   النقديّ   `C####`     — بحرف C، من C0001 صعودًا
- *
- * فالحسابُ الجديد يأخذ التاليَ في سلسلة نوعِه. ولو وُلِّد بصيغةٍ أخرى لصار في
- * العمود الواحد صيغتان، وانكسر كلُّ ما يُرتَّب أو يُطابَق بالكود.
- *
- * ── والتالي يُقرأ من القاعدة لا من عدّادٍ محفوظ ────────────────────────────
- * العدّادُ المنفصل يفترق عن الواقع عند أوّل استيرادٍ أو حذف. فيُقرأ أكبرُ كودٍ
- * موجودٍ فعلًا ويُزاد واحدًا — وهو صحيحٌ دائمًا بلا صيانة.
+ * Account code, generated in the ledger's convention.
+ * The ledger has two series: tax `1104xxxx` and cash `C####` (from C0001). A new account takes the next code in its type's series, so a column never mixes formats.
+ * The next code is the largest existing code plus one, read from the database; a stored counter would drift after an import or delete.
  */
 const TAX_PREFIX = '1104';
 const CASH_PREFIX = 'C';
 
 /**
  * @param {'cash'|'tax'} paymentType
- * @returns {Promise<string>} الكودُ التالي في سلسلة النوع.
+ * @returns {Promise<string>} the next code in the type's series.
  */
 async function nextPartyCode(paymentType) {
   const CollectionsParty = require('../models/CollectionsParty');
@@ -33,7 +23,7 @@ async function nextPartyCode(paymentType) {
   }
 
   if (cash) return `${CASH_PREFIX}${String(max + 1).padStart(4, '0')}`;
-  // الضريبيُّ يبدأ من حيث انتهى الدفتر؛ ولو خلا فمن أوّل السلسلة.
+  // Tax starts where the ledger ended; if empty, from the start of the series.
   return `${TAX_PREFIX}${String(max + 1).padStart(4, '0')}`;
 }
 

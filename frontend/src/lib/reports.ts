@@ -1,8 +1,5 @@
 // Shared client for the reporting engine (/api/reports).
-//
-// One place that knows how to list subjects, search what can be reported on,
-// fetch a report as blocks, and open it as a PDF — used by the report centre and
-// by every "تقرير" button scattered across the profile pages.
+// One place that lists subjects, searches what can be reported on, fetches a report as blocks, and opens it as a PDF; used by the report centre and by every report button on the profile pages.
 import api from '@/lib/api';
 import { openPdf, printPdf } from '@/utils/pdfActions';
 import type { ReportDoc } from '@/components/system/ReportView';
@@ -40,12 +37,11 @@ export const reportPdfPath = (subject: string, id: string, from: string, to: str
  * the access token needed refreshing.
  */
 export async function openReportPdf(subject: string, id: string, from: string, to: string, lang: 'ar' | 'en') {
-  // النافذةُ تُفتح لحظةَ الضغطة لا بعد وصول الملفّ — وإلّا حجبها المتصفّح
-  // فلا يظهر شيء. راجع utils/pdfActions.
+  // The window is opened at click time, not after the file arrives, or the browser blocks it and nothing appears. See utils/pdfActions.
   return openPdf(api.getBlob(reportPdfPath(subject, id, from, to, lang)), `${subject}-report.pdf`, lang === 'ar');
 }
 
-/** يفتح حوارَ الطابعة على التقرير مباشرةً — بلا فتحه في لسانٍ أوّلًا. */
+/** Opens the print dialog on the report directly, without opening it in a tab first. */
 export async function printReportPdf(subject: string, id: string, from: string, to: string, lang: 'ar' | 'en') {
   return printPdf(api.getBlob(reportPdfPath(subject, id, from, to, lang)), `${subject}-report.pdf`, lang === 'ar');
 }
@@ -61,14 +57,7 @@ export function defaultRange() {
   return { from: iso(from), to: iso(to) };
 }
 
-/**
- * ── الفترةُ تُسأل بالطريقة التي يُسأل بها ────────────────────────────────────
- *
- * كانت خانتين: «من» و«إلى». ومَن يريد يومًا بعينه يكتب التاريخ مرّتين، ومَن
- * يريد شهرًا يحسب أوّلَه وآخرَه بيده — وآخرُ الشهر ليس رقمًا واحدًا (٢٨ · ٢٩ ·
- * ٣٠ · ٣١). فتُختار الفترةُ باسمها، والحدّان يُحسبان — ونظيرُ هذا الحساب في
- * الخادم (`resolvePeriod`) فلا تختلف شاشتان في معنى «الشهر الماضي».
- */
+/** The period is asked the way it is asked. It used to be two fields, from and to: a single day needed the date twice, and a month needed hand-computed first and last days, but a month end is not one number (28, 29, 30 or 31). So a period is chosen by name and the two bounds are computed; the server has the same computation. */
 export const PERIOD_PRESETS: { key: string; ar: string; en: string }[] = [
   { key: 'today', ar: 'اليوم', en: 'Today' },
   { key: 'yesterday', ar: 'أمس', en: 'Yesterday' },
@@ -82,7 +71,7 @@ export const PERIOD_PRESETS: { key: string; ar: string; en: string }[] = [
   { key: 'all', ar: 'كل التاريخ', en: 'All time' },
 ];
 
-/** حدّا فترةٍ باسمها — بتقويم الجهاز، كما يحسبها الخادم. */
+/** Bounds of a named period, in the device calendar, as the server computes them. */
 export function presetRange(preset: string): { from: string; to: string } | null {
   const p = (n: number) => String(n).padStart(2, '0');
   const key = (d: Date) => `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
@@ -104,7 +93,7 @@ export function presetRange(preset: string): { from: string; to: string } | null
   }
 }
 
-/** شهرٌ «YYYY-MM» → أوّلُه وآخرُه — واليومُ صفرٌ من التالي هو آخرُ هذا. */
+/** Month YYYY-MM to its first and last day; day zero of the next month is the last of this one. */
 export function monthRange(month: string): { from: string; to: string } | null {
   const [y, mo] = String(month).split('-').map(Number);
   if (!y || !mo) return null;

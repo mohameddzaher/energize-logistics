@@ -81,7 +81,7 @@ export default function BdDashboardPage() {
 
       {/* KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-6 gap-4">
-        {/* وكلُّ رقمٍ يؤدّي إلى سجلّه: الفرصُ والشراكاتُ والمناقصات. */}
+        {/* Every number leads to its register: opportunities, partnerships and tenders. */}
         <StatCard label={ar ? 'فرص مفتوحة' : 'Open opportunities'} value={t.openOpportunities}
           href="/system/bd/opportunities" hint={ar ? 'اضغط لعرضها' : 'tap to open'} />
         <StatCard label={ar ? 'قيمة خط الفرص' : 'Pipeline value'} value={moneyShort(t.pipelineValue)} accent="text-[#f37121]"

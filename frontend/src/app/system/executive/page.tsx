@@ -60,10 +60,7 @@ export default function ExecutiveOverviewPage() {
   const [updatedAt, setUpdatedAt] = useState<number | null>(null);
   const debounce = useRef<any>(null);
 
-  // ── نقطةٌ واحدةٌ على الخادم ─────────────────────────────────────────────
-  // كانت الصفحةُ تنادي ثماني لوحات، أوّلُها تقرأ جداولَ قسمٍ زال فتعرض أصفارًا،
-  // وتُفتح بطاقاتُها على صفحاتٍ حُذفت. صار الخادمُ يجمع كلَّ قسمٍ من مصدره الحيّ
-  // (راجع backend executiveController)، وكلُّ رابطٍ هنا صفحةٌ موجودة.
+  // One endpoint on the server. The page used to call eight panels, several reading tables of a removed section and showing zeros, with cards opening deleted pages. The server now aggregates each section from its live source (see backend executiveController), and every link here is an existing page.
   const load = useCallback(async () => {
     setRefreshing(true);
     try {
@@ -77,9 +74,7 @@ export default function ExecutiveOverviewPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  // ── لحظيّ ─────────────────────────────────────────────────────────────────
-  // الخادمُ يبثّ `executive:changed` بعد أيّ حدثٍ في أيّ قسم (مجمَّعًا خمسَ
-  // ثوانٍ)، و`finance:changed` بعد أيّ حركةٍ ماليّة. ومهلةُ الدقيقة احتياط.
+  // Live: the server broadcasts `executive:changed` after any event in any section (batched over five seconds) and `finance:changed` after any financial movement. The one-minute timeout is a fallback.
   const kick = useCallback(() => {
     if (debounce.current) clearTimeout(debounce.current);
     debounce.current = setTimeout(() => load(), 800);

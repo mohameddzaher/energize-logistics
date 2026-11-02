@@ -1,24 +1,7 @@
 /**
- * تحليلُ التشغيل — البطاقاتُ والرسومُ التي يقرؤها مديرُ التشغيل كلَّ يوم.
- *
- * ── من أين جاءت هذه الأسئلةُ بعينها ────────────────────────────────────────
- * مديرُ التشغيل بنى لنفسه لوحةً في إكسل (ورقةُ `Dashboard` في تقرير الفروع)
- * وعمل بها شهورًا. فهي ليست تخميننا لما يحتاجه: هي ما يحتاجه فعلًا، بعنوانه
- * وترتيبه. فنُقلت كما هي وبُنيت على بياناتنا الحيّة:
- *
- *   ① المال والرحلات: بيعٌ وشراءٌ وهامشٌ ونسبتُه · طلباتٌ ومحقَّقٌ وغيرُ محقَّق
- *   ② الأهداف: هدفُ السنة، وهدفُ الفترة مشتقًّا، والفجوةُ ونسبةُ الإنجاز
- *   ③ أسبابُ عدم التحقيق — ومساهمةُ كلّ سبب
- *   ④ الاتّجاهُ شهرًا بشهر (والشهرُ الجاري يُستثنى: ناقصٌ فيُقرأ هبوطًا)
- *   ⑤ الفروع: أعلاها وأدناها، وجدولُها كاملًا بالهامش
- *   ⑥ مناديبُ التشغيل: أعلاهم وأدناهم، وقائمتُهم
- *   ⑦ العملاءُ والموردون: الأعلى، وأعلى عشرة بمساهمة كلٍّ
- *   ⑧ التوزيعات: نوعُ الإيجار، ودفعُ العميل، ونوعُ المورد
- *
- * ── وصفُّ التقرير ليس رحلةً واحدة ──────────────────────────────────────────
- * `trips` عددُ الطلبات في الصفّ، و`sell` سعرُ العربة الواحدة. فالمبيعاتُ
- * `sellTotal` (المضروب) والرحلاتُ `trips` — ومن جمع `sell` أو عدَّ الصفوف أخطأ
- * خطأً لا يُعلن عن نفسه. راجع models/BranchReportRow.
+ * Operations analytics: the cards and charts the operations manager reads daily, replicating the manager's Excel dashboard on live data.
+ * Sections: money and trips, targets, reasons for non-fulfilment, month-by-month trend, branches, operations reps, customers and vendors, distributions.
+ * A report row is not one trip: `trips` is the order count in the row and `sell` is the price per vehicle. Sales are `sellTotal` and trips are `trips`; summing `sell` or counting rows is silently wrong. See models/BranchReportRow.
  */
 
 const round = (n, d = 2) => {
@@ -27,12 +10,12 @@ const round = (n, d = 2) => {
 };
 const pct = (a, b) => (b ? round((a / b) * 100, 1) : 0);
 
-/** مجموعُ حقلٍ على مجموعةٍ من الصفوف. */
+/** Sum of a field over a set of rows. */
 const sum = (rows, k) => round(rows.reduce((a, r) => a + (Number(r[k]) || 0), 0));
 
 /**
- * يجمع الصفوفَ على مفتاحٍ ويُعيدها مرتَّبةً بما يهمّ.
- * كلُّ عقدةٍ: رحلاتٌ ومحقَّقٌ وبيعٌ وشراءٌ وهامشٌ ونسبةُ مساهمةٍ من الإجماليّ.
+ * Groups rows by a key and returns them sorted by what matters.
+ * Each node: trips, fulfilled, sell, buy, margin and contribution percent of the total.
  */
 const groupBy = (rows, key, totals) => {
   const m = new Map();
@@ -47,11 +30,7 @@ const groupBy = (rows, key, totals) => {
     g.buy += Number(r.buyTotal) || 0;
     g.gp += Number(r.gp) || 0;
   }
-  // ── والمساهمةُ تُقاس على المحقَّق ──────────────────────────────────────────
-  // الورقةُ التي يعمل بها مديرُ التشغيل تقيس كلَّ مساهمةٍ على **الرحلات
-  // المحقَّقة** لا على الطلبات: العميلُ الذي طلب خمسَ مئةٍ وأُنجز له مئتان
-  // مساهمتُه مئتان. ولو قُسِم على الطلبات لتبدّل ترتيبُ العملاء والفروع عمّا
-  // يقرؤه في ورقته — وهو أوّلُ ما يُفقِد الثقةَ في لوحة.
+  // Contribution is measured on fulfilled trips, not orders, as in the manager's sheet: a customer who ordered 500 and got 200 contributes 200. Dividing by orders would change the customer and branch ranking from what he reads in his sheet, which quickly destroys trust in the dashboard.
   return [...m.values()].map((g) => ({
     ...g,
     sell: round(g.sell), buy: round(g.buy), gp: round(g.gp),
@@ -62,15 +41,12 @@ const groupBy = (rows, key, totals) => {
 };
 
 /**
- * ── وأسطولُ الشركة ليس مندوبًا يُقاس ─────────────────────────────────────────
- * «شركه تنشيط» تُكتب في عمود مندوب التشغيل لما يُشغَّل بأسطول الشركة، فتتصدّر
- * القائمةَ بثلث الرحلات ويقرأ من يقارن المناديبَ أنّ أعلاهم ليس أحدًا منهم.
- * وورقةُ مدير التشغيل تستثنيها صراحةً («Company Fleet excluded»)، فتُستثنى
- * هنا من بطاقتَي الأعلى والأدنى — وتبقى في القائمة كما هي.
+ * The company fleet is not a rep to rank.
+ * The company-fleet label is written in the operations rep column for loads run on the company fleet, so it tops the list with a third of the trips and misleads rep comparison. The manager's sheet excludes it explicitly ('Company Fleet excluded'), so it is excluded from the top and bottom cards and kept in the list.
  */
 const COMPANY_FLEET = ['شركه تنشيط', 'شركة تنشيط'];
 
-/** أعلى وأدنى عقدةٍ بمقياسٍ — مع استثناء ما لا يُقاس (الصفرُ والمجهول). */
+/** Top and bottom node by a measure, excluding what cannot be measured (zero and unknown). */
 const peak = (list, by, { excludeFleet = false } = {}) => {
   const real = list.filter((x) => x.name !== '—' && (Number(x[by]) || 0) > 0
     && !(excludeFleet && COMPANY_FLEET.some((f) => x.name.includes(f))));
@@ -80,8 +56,8 @@ const peak = (list, by, { excludeFleet = false } = {}) => {
 };
 
 /**
- * التحليلُ كلُّه من صفوفٍ مُصفّاةٍ سلفًا.
- * @param rows صفوفُ `BranchReportRow` (أو ما يُطابق شكلَها)
+ * The whole analysis from pre-filtered rows.
+ * @param rows `BranchReportRow` rows (or the same shape)
  * @param opts { from, to, days, target: {annualTrips, annualRevenue, periodTrips, periodRevenue}, monthly }
  */
 const buildOpsAnalytics = (rows, opts = {}) => {
@@ -98,15 +74,13 @@ const buildOpsAnalytics = (rows, opts = {}) => {
   totals.failedPct = pct(totals.failed, totals.trips);
   totals.rows = rows.length;
 
-  // ── المتوسّطُ اليوميُّ على أيّام الفترة لا على الأيّام التي فيها عمل ──────
-  // لو قُسِم على الأيّام العاملة وحدَها بدا المتوسّطُ أعلى ممّا هو، ويُقاس
-  // عليه الهدفُ فيُقرأ إنجازٌ لم يحدث.
+  // Daily average is over the days of the period, not only days with work; dividing by working days would overstate the average, and the target is measured against it, reading as achievement that did not happen.
   const days = Math.max(1, Number(opts.days) || 1);
   totals.avgRevenuePerDay = round(totals.sell / days);
   totals.avgTripsPerDay = round(totals.achieved / days, 1);
   totals.days = days;
 
-  // ② الأهداف
+  // 2. Targets
   const t = opts.target || {};
   const targets = {
     annualTrips: Number(t.annualTrips) || 0,
@@ -125,12 +99,12 @@ const buildOpsAnalytics = (rows, opts = {}) => {
   targets.remainingTrips = round(Math.max(0, targets.annualTrips - targets.ytdTrips), 0);
   targets.remainingRevenue = round(Math.max(0, targets.annualRevenue - targets.ytdRevenue));
 
-  // ③ أسبابُ عدم التحقيق — المساهمةُ من **غير المحقَّق** لا من الكلّ.
+  // 3. Reasons for non-fulfilment: contribution is of the unfulfilled total, not of all.
   const reasons = groupBy(rows.filter((r) => (Number(r.failed) || 0) > 0 && String(r.failReason || '').trim()), 'failReason', totals)
     .map((g) => ({ name: g.name, failed: g.failed, share: pct(g.failed, totals.failed) }))
     .sort((a, b) => b.failed - a.failed);
 
-  // ④ الاتّجاهُ شهرًا بشهر — والشهرُ الجاري يُستثنى من المقارنة ويُقال.
+  // 4. Month-by-month trend: the current month is excluded from comparison and flagged.
   const byMonthMap = new Map();
   for (const r of rows) {
     const k = r.month || String(r.day || '').slice(0, 7);
@@ -148,7 +122,7 @@ const buildOpsAnalytics = (rows, opts = {}) => {
     .map((g) => ({
       ...g, sell: round(g.sell), buy: round(g.buy), gp: round(g.sell - g.buy),
       margin: pct(g.sell - g.buy, g.sell),
-      partial: g.month === nowMonth,   // شهرٌ غيرُ مكتمل
+      partial: g.month === nowMonth,   // Incomplete month
     }));
   const complete = monthly.filter((m) => !m.partial);
   const monthPeak = {
@@ -167,9 +141,7 @@ const buildOpsAnalytics = (rows, opts = {}) => {
   const routes = groupBy(rows.map((r) => ({ ...r, route: `${r.fromCity || '—'} → ${r.toCity || '—'}` })), 'route', totals)
     .sort(byAch);
 
-  // ── والتوزيعاتُ على **المحقَّق** لا على الطلبات ──────────────────────────
-  // الطلبُ الملغى لا نوعَ إيجارٍ له ولا موردًا، فلو قُسِمت على الطلبات صارت
-  // «غير مسجَّل ٤٣٪» أكبرَ شريحةٍ في الرسم — وهي ليست شريحةً بل ملغًى.
+  // Distributions are over fulfilled trips, not orders. A cancelled order has no rental type or vendor, so over orders 'unrecorded' would be the largest slice, though it is cancelled rather than a real slice.
   const share = (key) => {
     const done = rows.filter((r) => (Number(r.achieved) || 0) > 0);
     const base = done.reduce((a, r) => a + (Number(r.achieved) || 0), 0);
@@ -186,13 +158,9 @@ const buildOpsAnalytics = (rows, opts = {}) => {
       .sort((a, b) => b.trips - a.trips);
   };
 
-  // ونسبةُ كلّ موردٍ تُعاد على أساسه هو — بعد أن عُرِف الأساس.
+  // Each vendor's percentage is recomputed on its own base once the base is known.
   const rebase = (list, base) => list.map((x) => ({ ...x, tripShare: pct(x.achieved, base) }));
-  // ── و«إجماليُّ رحلات الموردين» ليس كلَّ الرحلات ──────────────────────────
-  // في ورقة مدير التشغيل مساهمةُ المورد الأوّل ٤٥٫٦٪ لا ٣٣٪ — لأنّ الأساسَ
-  // رحلاتُ **الموردين** وحدَهم: ما شُغِّل بسائقٍ فرديٍّ ليس موردًا، وما شُغِّل
-  // بأسطولنا ليس موردًا. فيُحسَب الأساسُ من صفوفِ «مورد» وحدَها، ويُطابق
-  // الورقةَ (٦٦٠ من ١٤٤٥ = ٤٥٫٧٪).
+  // Total vendor trips is not all trips. In the manager's sheet the first vendor's contribution is 45.6%, not 33%, because the base is only vendor trips: individual-driver loads and our own fleet are not vendors. So the base is computed from vendor rows only and matches the sheet (660 of 1445 = 45.7%).
   const vendorBase = rows
     .filter((r) => String(r.vendorType || '').trim() === 'مورد')
     .reduce((a, r) => a + (Number(r.achieved) || 0), 0)
@@ -213,15 +181,13 @@ const buildOpsAnalytics = (rows, opts = {}) => {
     clients: {
       top: rebase(clients.slice(0, 10), clientBase), count: clients.filter((c) => c.name !== '—').length,
       byTrips: peak(rebase(clients, clientBase), 'achieved'),
-      // «من إجماليّ رحلات العملاء» — الأساسُ ما له عميلٌ مسمّى.
+      // Of total customer trips: the base is rows with a named customer.
       base: clientBase,
     },
     vendors: {
       top: rebase(vendors.slice(0, 10), vendorBase), count: vendors.filter((c) => c.name !== '—').length,
       byTrips: peak(rebase(vendors, vendorBase), 'achieved'),
-      // ── وأساسُ مساهمةِ المورد رحلاتُ الموردين وحدَها ────────────────────
-      // ما شُغِّل بأسطولنا لا موردَ له، فلو قُسِم على الكلّ بدت مساهمةُ كلّ
-      // موردٍ أصغرَ ممّا هي في ورقة مدير التشغيل («of Total Vendor Trips»).
+      // Vendor contribution base is vendor trips only. Loads on our fleet have no vendor, so dividing by all would show each vendor smaller than in the manager's sheet ('of Total Vendor Trips').
       base: vendorBase,
     },
     routes: routes.slice(0, 15),
@@ -234,15 +200,15 @@ const buildOpsAnalytics = (rows, opts = {}) => {
 };
 
 /**
- * هدفُ الفترة من الهدف السنويّ: موزَّعًا على أيّامها.
- * و`overrides` لشهرٍ بعينه تسبق الاشتقاق — هدفٌ يُقال لشهرٍ أولى من حسابٍ عنه.
+ * Period target from the annual target, spread over its days.
+ * `overrides` for a specific month take precedence over derivation: a target stated for a month beats a computed one.
  */
 const periodTarget = (target, { from, to, days }) => {
   const annualTrips = Number(target?.annualTrips) || 0;
   const annualRevenue = Number(target?.annualRevenue) || 0;
   const month = String(from || '').slice(0, 7);
   const ov = (target?.overrides || []).find((o) => o.month === month);
-  // الشهرُ كاملًا ومعه تخصيصٌ: يُقرأ التخصيصُ كما هو.
+  // Whole month with an override: the override is read as is.
   const sameMonth = month && month === String(to || '').slice(0, 7);
   if (ov && sameMonth) {
     return {

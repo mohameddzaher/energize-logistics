@@ -1,15 +1,5 @@
 'use client';
-/**
- * فواتيرُ التحصيل — الكاشُ والضريبيّ، بالصفحة نفسِها ونوعين.
- *
- * ── من هنا يعمل القسم ──────────────────────────────────────────────────────
- * التحصيلُ لا يُحصِّل كشوفًا؛ يُحصِّل فواتير. والكشفُ الذي لم يُفوتَر لا شأنَ
- * له بالقسم — إلّا أن يكون نقديًّا، فالنقديُّ يُحصَّل في يومه بلا فاتورة
- * ويُعرَف برقم كشفه.
- *
- * والفرقُ بين الوجهين ليس شكلًا: النقديُّ صفُّه كشفٌ ويكتب المحصِّلُ ما قبضه،
- * والضريبيُّ صفُّه فاتورةٌ قد تضمّ كشوفًا وقيمتُها مكتوبةٌ فيها.
- */
+/** Collection invoices, cash and tax, in one page with two types. Collections collects invoices, not statements; an unbilled statement is not the department's business unless it is cash, which is collected the same day without an invoice and identified by its statement number. The two faces differ in substance: a cash row is a statement and the collector writes what was received; a tax row is an invoice that may include several statements and carries its value. */
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
@@ -39,25 +29,25 @@ const EMPTY_OPTIONS: ColumnFilterOption[] = [];
 
 export type InvoiceKind = 'cash' | 'tax';
 
-/** حالةُ التحصيل كما يشتقّها الخادم — راجع backend/src/utils/collectionState. */
+/** Collection state as the server derives it; see backend/src/utils/collectionState. */
 type CollectionState = 'none' | 'partial' | 'full';
-/** دفعةُ تحصيل: كاملةٌ أو جزئيّة، بكاتبها ويومها. */
+/** A collection payment, full or partial, with its writer and day. */
 interface Payment { _id: string; amount: number; date: string | null; byName: string; note: string; mode: 'partial' | 'full'; at: string | null }
 
 interface CashRow {
   _id: string; reportNumber: string; customer: string; partyId?: string; branch: string; payingBranch: string;
   paymentDate: string | null; route: string; value: number; collectedAmount: number; collectionDate: string | null;
-  /** تاريخُ وصول الفاتورة إلى العميل — كالضريبيّ، ومنه تُعَدُّ المهلة. */
+  /** Date the invoice reached the customer, like tax; the term counts from it. */
   deliveryDate: string | null;
-  /** من أين وصل المال: تحصيلُ فرعٍ أو كاشٍ أو عميل — من إعدادات القسم. */
+  /** Where the money came from: branch collection, cash or customer, from department settings. */
   collectionDetail?: string;
-  /** الدفترُ يقول «محصَّل» ولا يعرف يومَه — يُقال كما هو لا «لم يُحصَّل». */
+  /** The ledger says collected but not on which day; shown as is, not as uncollected. */
   collectedNoDate?: boolean;
   ageDays: number | null;
-  /** عددُ مرفقات الكشف — راجع InvoiceAttachments. */
+  /** Statement attachment count; see InvoiceAttachments. */
   attachments?: number;
   collectionState?: CollectionState; remaining?: number; payments?: Payment[];
-  /** معاملةُ التخليص التي يخدمها الكشف — راجع services/customsOpsLink. */
+  /** Customs transaction served by the statement; see services/customsOpsLink. */
   customs?: CustomsLinkView | null;
 }
 interface TaxRow {
@@ -65,22 +55,16 @@ interface TaxRow {
   invoiceDate: string | null; deliveryDate: string | null; branch: string; payingBranch: string;
   reports: number; collectedReports: number; fullyCollected: boolean;
   collectionDate: string | null; ageDays: number | null;
-  /** كودُ الحساب في دفتر التحصيل، وحالتُه كما يقولها الدفتر. */
+  /** Account code in the collections ledger and its state as the ledger states it. */
   partyCode?: string; status?: string;
   attachments?: number;
-  /** المقبوضُ (قيمةُ المحصَّلة كلُّها، ومجموعُ دفعات الجزئيّة) والباقي. */
+  /** Amount received (full value if collected, sum of payments if partial) and the remainder. */
   collectionState?: CollectionState; collectedAmount?: number; remaining?: number; payments?: Payment[];
-  /** معاملاتُ التخليص التي تخدمها كشوفُ الفاتورة. */
+  /** Customs transactions served by the invoice's statements. */
   customs?: CustomsLinkView[];
 }
 
-/**
- * شرائحُ العمر — لا تتداخل.
- *
- * «فوق ١٥ يومًا» تعني من خمسةَ عشرَ إلى ثلاثين، لا كلَّ ما تجاوزها. والشرائحُ
- * المتداخلة تجعل الفاتورةَ الواحدة تُعدّ في أربعة أرقام، فلا يُعرف كم فاتورةً
- * في كلّ عمرٍ حقًّا — ومجموعُ الشرائح يزيد على الكلّ.
- */
+/** Age buckets, non-overlapping. "Over 15 days" means 15 to 30, not everything beyond: overlapping buckets count one invoice in four figures, so the per-age count is unknown and the bucket total exceeds the whole. */
 const AGE_BANDS: [string, string, string][] = [
   ['0_15', 'حتى 15 يومًا', 'Up to 15 days'],
   ['15_30', 'من 15 إلى 30', '15 – 30 days'],
@@ -97,12 +81,12 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
   const { notify, prompt } = useDialog();
   const router = useRouter();
   const canEdit = canEditCollections(user);
-  // «تعديل القيمة» أضيقُ من التعديل: بالدور وحدَه — راجع lib/collections.
+  // Edit value is narrower than edit: by role only; see lib/collections.
   const canEditAmount = canEditInvoiceAmount(user);
   const isCash = kind === 'cash';
 
   const [rows, setRows] = useState<(CashRow | TaxRow)[]>([]);
-  // «بحثتُ عن الرقم فلم أجده»: أين هو ولماذا ليس هنا — يردّه الخادمُ مع النتيجة الفارغة.
+  // "I searched for the number and did not find it": where it is and why it is not here, returned by the server with the empty result.
   const [elsewhere, setElsewhere] = useState<Elsewhere | null>(null);
   const [totals, setTotals] = useState<any>({});
   const [total, setTotal] = useState(0);
@@ -111,10 +95,7 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  // ── حالةُ التحصيل فوق الجدول لا داخلَ الفلاتر ─────────────────────────────
-  // السؤالُ يُطرح على الوجهين كلَّ يوم: «ما الذي بقي؟» و«كم حصّلنا؟». فالاختيارُ
-  // ظاهرٌ لا مخبوءٌ خلف زرّ، والبطاقاتُ فوقه تتحرّك معه.
-  // وثلاثُ حالاتٍ لا اثنتان: «جزئيّة» تبقى كذلك حتى يبلغ المقبوضُ القيمة.
+  // Collection state sits above the table, not inside filters. Both faces are asked every day what is left and how much was collected, so the choice is visible and not hidden behind a button, and the cards above move with it. There are three states, not two: partial stays so until the amount received reaches the value.
   const [collected, setCollected] = useState<'' | 'no' | 'partial' | 'yes'>('');
   const [stateCounts, setStateCounts] = useState<{ all?: number; no?: number; partial?: number; yes?: number }>({});
   const [q, setQ] = useState('');
@@ -127,14 +108,11 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
   const [showFilters, setShowFilters] = useState(false);
   const [opts, setOpts] = useState<{ customers: string[]; branches: string[] }>({ customers: [], branches: [] });
 
-  // ── تحديدُ صفوف ───────────────────────────────────────────────────────
-  // «اختر فواتيرَ بعينها ثمّ صدّرها أو اطبعها» — فالتحديدُ بمفتاح الصفّ:
-  // رقمُ الفاتورة في الضريبيّ، ومعرّفُ الكشف في النقديّ.
+  // Row selection: pick specific invoices then export or print; selection is by row key (invoice number for tax, statement id for cash).
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const rowKey = (r: any) => (isCash ? String(r._id) : String(r.invoiceNumber));
 
-  // ── فلاترُ الأعمدة على طريقة إكسل ──────────────────────────────────────
-  // تُرسَل إلى الخادم فيفلتر بها المجموعةَ كلَّها — لا مئةَ صفٍّ معروضة.
+  // Excel-style column filters, sent to the server which filters the whole set, not the hundred displayed rows.
   const [colFilters, setColFilters] = useState<Record<string, Set<string>>>({});
   const [colOptions, setColOptions] = useState<Record<string, { values: ColumnFilterOption[]; truncated: boolean }>>({});
   const [colLoading, setColLoading] = useState<Record<string, boolean>>({});
@@ -143,25 +121,19 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
 
   const activeCount = [age, customer, branch, from, to, detail].filter(Boolean).length + colCount;
 
-  // ── تسجيلُ التحصيل ────────────────────────────────────────────────────────
-  // ── كاملٌ أو جزئيّ ──────────────────────────────────────────────────────
-  // «تحصيل بالكامل» يقبض الباقي كلَّه، و«تحصيل جزئي» يكتب ما قُبض فينقص به
-  // الباقي. وقيمةُ الصفّ ومقبوضُه ودفعاتُه معه، فيُقال الباقي قبل الحفظ.
+  // Recording a collection, full or partial. Full collects the whole remainder; partial writes what was received and reduces the remainder. The row's value, received amount and payments come with it, so the remainder is shown before saving.
   const [collecting, setCollecting] = useState<{
     label: string; invoiceNumber?: string; ids?: string[]; needAmount: boolean; collected?: boolean;
     value: number; paid: number; remaining: number; state: CollectionState; payments: Payment[]; full: boolean;
   } | null>(null);
   const [collectMode, setCollectMode] = useState<'full' | 'partial'>('full');
   const [collectNote, setCollectNote] = useState('');
-  // تعديلُ دفعةٍ في مكانها: مبلغُها ويومُها.
+  // Edit a payment in place: its amount and day.
   const [editingPay, setEditingPay] = useState<{ id: string; amount: string; date: string } | null>(null);
-  // «لم تُحصَّل»: الرجوعُ عن تحصيلٍ سُجِّل خطأً — بسببٍ يُكتب.
+  // Not collected: reverses a collection recorded by mistake, with a reason.
   const [undoReason, setUndoReason] = useState('');
   const [undoOpen, setUndoOpen] = useState(false);
-  // ── والتسليمُ خطوةٌ قبل التحصيل ───────────────────────────────────────────
-  // الفاتورةُ تُرسَل وتُستلَم ويُوقَّع عليها، ومن يومئذٍ تُعَدُّ المدّةُ المتّفق
-  // عليها. وكانت الشاشةُ تسجّل التحصيل وحدَه، فيبقى «متى وصلت العميل؟» بلا
-  // جوابٍ إلّا في ورقةٍ خارج النظام — وهو أوّلُ ما يُسأل عند كلّ مطالبة.
+  // Delivery is a step before collection. The invoice is sent, received and signed, and the agreed term counts from then. The screen used to record only collection, leaving "when did it reach the customer" with no answer except a paper outside the system, which is the first question in any claim.
   const [delivering, setDelivering] = useState<{ label: string; invoiceNumber?: string; ids?: string[]; numbers?: string[] } | null>(null);
   // Several selected rows collected in full, one date for all.
   const [bulkCollect, setBulkCollect] = useState<{ rows: any[]; total: number } | null>(null);
@@ -171,14 +143,7 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
 
   const guard = useLatestRequest();
 
-  /**
-   * كلُّ ما يفهمه الخادمُ من فلترةٍ في مكانٍ واحد.
-   *
-   * يقرؤه الجدولُ وقوائمُ قيم الأعمدة والتصديرُ معًا، فلا يفلتر أحدُها على
-   * شرطٍ ويعرض الآخرُ نتيجةَ شرطٍ غيره. وقيمُ العمود تُرسَل مكرَّرةً
-   * (`cf_x=a&cf_x=b`) لا مفصولةً بفاصلة — فقد تحوي القيمةُ نفسُها فاصلةً،
-   * واسمُ عميلٍ فيه فاصلةٌ يصير عميلين.
-   */
+  /** Everything the server understands as filtering, in one place. Read by the table, column value lists and export together, so none filters on a condition while another shows the result of a different one. Column values are sent repeated (cf_x=a&cf_x=b), not comma-separated, since a value can contain a comma and a customer name with a comma would become two customers. */
   const queryParams = useCallback(() => {
     const p = new URLSearchParams();
     if (q.trim()) p.set('q', q.trim());
@@ -214,8 +179,7 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
     } catch (e: any) {
       if (guard.isCurrent(mine)) notify(e?.message || t('تعذّر التحميل', 'Could not load'), 'error');
     } finally {
-      // الرايةُ تُطفأ دائمًا: ربطُها بـ«الأحدث يفوز» يُبقيها مشتعلةً أبدًا في
-      // صفحةٍ يعمل عليها فريق.
+      // The flag is always cleared: tying it to latest-wins would leave it on forever on a page a team works in.
       if (!background) setRefreshing(false);
       setLoading(false);
     }
@@ -230,16 +194,12 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
   }, [load]);
 
   useEffect(() => { setPage(1); }, [q, collected, age, customer, branch, from, to, detail, colFilters]);
-  // التحديدُ لا يعبر فلترًا: صفٌّ اختير ثمّ خرج من النتيجة يبقى محدَّدًا خفيةً
-  // فيُصدَّر ما لا يُرى.
+  // Selection does not cross a filter: a row selected then filtered out would stay selected invisibly and export something not seen.
   useEffect(() => { setSelected(new Set()); }, [q, collected, age, customer, branch, from, to, detail, colFilters, page]);
 
-  // التحصيلُ يُكتب على الكشف، فأيُّ تعديلٍ هناك يُحدِّث هنا في لحظته.
+  // Collection is written on the statement, so any edit there updates here at once.
   useSocket('workflow:updated', useCallback(() => { load(true); }, [load]));
-  // ربطُ الكشوف بمعاملات التخليص يُعلَن بهذا الخبر (والخادمُ مسح ذاكرته قبله).
-  // وأيُّ خانةٍ في الكشف تُدخله الشاشةَ أو تُخرجه (مراجعةُ التشغيل، تاريخُ السداد،
-  // النوع، الفاتورة…) يُعلَن بهذا الخبر للعاملَين كليهما، والخادمُ مسح ذاكرته قبله.
-  // («عملتُ مراجعة التشغيل وما لقيتُ الكشف» — ٢٠٢٦/١٠/٢٤.) يُجمَع ما تتابع في ثانية.
+  // Linking statements to customs transactions is announced by this event (the server cleared its cache first). Any statement field that moves it onto or off the screen (operations review, payment date, type, invoice...) is announced to both workers via this event, after the server cleared its cache. Events within one second are coalesced.
   const liveTick = useRef<ReturnType<typeof setTimeout> | null>(null);
   const soon = useCallback(() => {
     if (liveTick.current) clearTimeout(liveTick.current);
@@ -249,8 +209,7 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
   useSocket('collections:changed', soon);
   useSocket('workflow:bulkImported', soon);
 
-  // ── وعددُ المرفقات يتحدّث في مكانه ─────────────────────────────────────────
-  // الخبرُ يحمل العددَ الجديد، فلا تُعاد قراءةُ الصفحة كلِّها لأجل مشبك.
+  // Attachment count updates in place: the event carries the new count, so the whole page is not reread for a clip.
   const setAttachCount = useCallback((key: string, n: number) => {
     setRows((prev) => prev.map((r: any) => ((isCash ? String(r._id) : String(r.invoiceNumber)) === key ? { ...r, attachments: n } : r)));
   }, [isCash]);
@@ -272,7 +231,7 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
     const full = state === 'full';
     const remaining = r.remaining != null ? Number(r.remaining) : Math.max(0, value - paid);
     const base = { value, paid, remaining, state, full, payments: (r.payments || []) as Payment[] };
-    // الكاشُ الذي لا قيمةَ معروفةً له يكتب المحصِّلُ ما قبضه (كما كان) — ولا جزئيَّ فيه.
+    // For cash with no known value the collector writes what was received (as before); no partial applies.
     setCollectMode('full');
     if (isCash) {
       setCollecting({ ...base, label: r.reportNumber, ids: [r._id], needAmount: !(value > 0), collected: full || paid > 0 });
@@ -319,9 +278,7 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
     setSaving(false);
   };
 
-  // ── تفصيلُ التحصيل يُحفَظ في مكانه ─────────────────────────────────────────
-  // صفةٌ لا حدث: لا تاريخَ لها ولا مبلغ، فلا تستحقّ نافذةً تُفتح وتُغلَق. تُختار
-  // من الصفّ فتُحفظ، ويبقى الصفُّ مكانه — والقائمةُ نفسُها من إعدادات القسم.
+  // Collection detail saved in place. It is an attribute, not an event: no date or amount, so it does not merit a dialog. It is chosen from the row and saved, the row stays, and the list itself comes from department settings.
   const [detailSaving, setDetailSaving] = useState<string | null>(null);
   const saveDetail = async (row: CashRow, v: string) => {
     setRows((prev) => prev.map((r: any) => (r._id === row._id ? { ...r, collectionDetail: v } : r)));
@@ -373,7 +330,7 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
     if (!collectForm.collectionDate) { notify(t('تاريخ التحصيل مطلوب', 'Collection date required'), 'error'); return; }
     const partial = collectMode === 'partial';
     const amount = Number(String(collectForm.collectedAmount).replace(/,/g, '').trim());
-    // التحقّقُ نفسُه الذي في الخادم، قبل الإرسال: الجزئيُّ أكبرُ من صفرٍ وأقلُّ من الباقي.
+    // Same validation as the server, before sending: partial is greater than zero and less than the remainder.
     if (partial) {
       if (!Number.isFinite(amount) || amount <= 0) { notify(t('اكتب المبلغ المحصَّل رقمًا أكبر من صفر', 'Enter an amount greater than zero'), 'error'); return; }
       if (amount >= collecting.remaining - 0.005) {
@@ -401,7 +358,7 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
     setSaving(false);
   };
 
-  /** تعديلُ دفعةٍ أو رفعُها — ويُعاد حسابُ الحالة في الخادم. */
+  /** Edit or add a payment; status is recomputed on the server. */
   const target = () => (collecting?.invoiceNumber ? { invoiceNumber: collecting.invoiceNumber } : { id: collecting?.ids?.[0] });
   const savePayment = async () => {
     if (!editingPay) return;
@@ -438,10 +395,7 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
     setSaving(false);
   };
 
-  /**
-   * «لم تُحصَّل» — يرفع التحصيلَ عن الفاتورة (أو الكشف النقديّ): يُمحى تاريخُه
-   * ومبلغُه من كشوف التشغيل وتعود في دفتر التحصيل غيرَ محصَّلة. والسببُ اختياريّ.
-   */
+  /** Not collected: removes collection from the invoice (or cash statement), clearing its date and amount from the operations statements, and it returns to the collections ledger as uncollected. The reason is optional. */
   const saveUndo = async () => {
     setSaving(true);
     try {
@@ -455,9 +409,7 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
     setSaving(false);
   };
 
-  /**
-   * تعديلُ قيمة فاتورةٍ ضريبيّة — تصحيحٌ في الدفتر (ويجوز بالسالب)، ويُقفَل على ما كُتب.
-   */
+  /** Edit a tax invoice's value: a ledger correction (negative allowed), locked to what was written. */
   const editAmount = async (r: any) => {
     const v = await prompt({
       title: t(`تعديل قيمة الفاتورة ${r.invoiceNumber}`, `Edit invoice ${r.invoiceNumber} amount`),
@@ -475,7 +427,7 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
     } catch (e: any) { notify(e?.message || t('تعذّر الحفظ', 'Could not save'), 'error'); }
   };
 
-  /** قيمُ عمودٍ من الخادم — تحت الفلاتر القائمة عدا فلترِ العمود نفسِه. */
+  /** Column values from the server, under existing filters except the column's own filter. */
   const fetchColOptions = useCallback(async (field: string, search = '') => {
     const seq = (optionsSeq.current[field] || 0) + 1;
     optionsSeq.current[field] = seq;
@@ -484,15 +436,14 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
       const p2 = queryParams();
       p2.delete(`cf_${field}`);
       p2.set('field', field);
-      // بحثُ القائمة اسمُه `search`، وبحثُ الصفحة يبقى `q` — فلا يفلتر أحدُهما
-      // بالآخر.
+      // List search is named search and page search stays q, so neither filters by the other.
       if (search.trim()) p2.set('search', search.trim());
       const d = await api.get<{ values: ColumnFilterOption[]; truncated: boolean }>(
         `/api/collections-dept/invoices/${kind}/column-options?${p2.toString()}`);
-      // ترتيبُ وصول الردود ليس ترتيبَ إرسالها: آخرُ طلبٍ وحدَه يُقبل.
+      // Responses can arrive out of order: only the last request is accepted.
       if (optionsSeq.current[field] !== seq) return;
       setColOptions((p3) => ({ ...p3, [field]: d }));
-    } catch { /* تُترك القائمةُ كما هي */ }
+    } catch { /* The list is left as is. */ }
     finally { if (optionsSeq.current[field] === seq) setColLoading((p3) => ({ ...p3, [field]: false })); }
   }, [kind, queryParams]);
 
@@ -505,16 +456,13 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
   };
   const clearColFilters = () => setColFilters({});
 
-  // ── مصدرٌ واحدٌ للأعمدة ────────────────────────────────────────────────
-  // الشاشةُ والتصديرُ والطباعةُ تقرأ من هنا، فما يُرى هو ما يخرج. و`filter`
-  // اسمُ الحقل في القاعدة حين يقبل العمودُ فلترَ إكسل.
+  // Single source of columns. Screen, export and print read from here, so what is seen is what leaves. filter is the DB field name when the column accepts an Excel filter.
   type Col = ExportColumn & {
     filter?: string;
     align?: 'start' | 'end' | 'center';
     cell?: (r: any) => React.ReactNode;
   };
-  // ── المرفقات: مشبكٌ وعدد، ويفتح نافذةَ ملفّات الصفّ ──────────────────────
-  // ويُصدَّر العددُ في Excel عمودًا باسمه («عدد المرفقات»).
+  // Attachments: clip and count, opening the row's files dialog. The count is exported to Excel as a column named for it (attachment count).
   const attachCol: Col = {
     header: t('المرفقات', 'Files'), key: 'attachments', width: 12, type: 'number', align: 'center',
     cell: (r) => (
@@ -522,10 +470,7 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
         count={r.attachments || 0} onCount={(n) => setAttachCount(rowKey(r), n)} />
     ),
   };
-  // ── الحالةُ الثلاثيّة بكلمةٍ ولون ───────────────────────────────────────
-  // قبل الأعمدة لا بعدها: فلترُ عمود «حالة التحصيل» يستدعي `stateLabel` من
-  // `transform` أثناءَ `cf.apply` — وكانت معرَّفةً بعده فتنهار الشاشةُ
-  // («Cannot access before initialization») لكلّ مَن فلتر بالحالة.
+  // Three-state status as a word and color. Defined before the columns: the collection-state column filter calls stateLabel from transform during cf.apply, and defining it after crashed the screen (Cannot access before initialization) for anyone filtering by state.
   const stateLabel = (s: CollectionState | undefined) => (s === 'full'
     ? t('تم تحصيلها بالكامل', 'Fully collected')
     : s === 'partial' ? t('تم تحصيلها جزئيًّا', 'Partially collected') : t('لم تُحصَّل بعد', 'Not collected'));
@@ -601,13 +546,9 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
       attachCol,
     ];
 
-  // ── وكلُّ عمودٍ يُفلتَر، بأحد فلترين ─────────────────────────────────────
-  // الأعمدةُ التي تُقابل حقلًا في القاعدة (`c.filter`) تُفلتَر من الخادم، فتقرأ
-  // كلَّ القيم لا قيمَ الصفحة. وما ليس له حقلٌ — عددُ الكشوف، والعمر، والمبلغ،
-  // والمسار — محسوبٌ لا مخزَّن، فلا يُسأل عنه الخادم: يُفلتَر هنا على المعروض.
-  // وكلاهما يظهر قمعًا واحدًا في رأس العمود، فلا يعرف القارئُ أيُّهما.
+  // Every column is filterable, by one of two filters. Columns that map to a DB field (c.filter) filter on the server and read all values, not the page's. Columns with no field (statement count, age, amount, path) are computed, not stored, so the server is not asked; they filter here on the displayed rows. Both appear as one funnel in the header, so the reader cannot tell which.
   const cf = useColumnFilters<any>();
-  // (عمودُ المرفقات بلا فلتر: عددٌ يتغيّر حيًّا، وكشفُ الحساب لا يعرفه.)
+  // The attachments column has no filter: a live changing count that the account statement does not know.
   const localGetters = Object.fromEntries(allCols.filter((c) => !c.filter && c.key !== 'attachments').map((c) => [c.key,
     (r: any) => (c.transform ? c.transform(r[c.key], r) : r[c.key])]));
   const shown = cf.apply(rows, localGetters);
@@ -619,9 +560,7 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
   const openInvoice = (no: string) =>
     router.push(`/system/collections-dept/invoices/tax/${encodeURIComponent(no)}`);
 
-  // ── واسمُ العميل بابُ ملفّه ────────────────────────────────────────────
-  // الخادمُ يترجم الاسمَ إلى معرّفِ ملفٍّ مع الصفّ. ومن لا ملفَّ له يُعرَض
-  // اسمُه نصًّا — لا زرًّا يَعِد بصفحةٍ لا تُفتَح.
+  // Customer name is the door to the profile. The server resolves the name to a profile id with the row; a customer with no profile shows the name as text, not a button promising a page that will not open.
   const customerCell = (r: any) => (r.partyId ? (
     <button type="button" onClick={(e) => { e.stopPropagation(); router.push(`/system/collections-dept/parties/${r.partyId}`); }}
       className="text-[#f37121] hover:underline text-start">{r.customer || '—'}</button>
@@ -659,20 +598,13 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
     </div>
   ) : <span>{r.collectionDetail || '—'}</span>);
 
-  // ── التصديرُ والطباعةُ يتبعان ما على الشاشة ────────────────────────────
-  // الأعمدةُ المختارة، والصفوفُ المحدَّدة إن حُدِّدت — وإلّا صفوفُ الفلتر كما
-  // هي. وعدّادُ النطاق يقول العددَ صراحةً، فلا يظنّ أحدٌ أنّه أخذ ما لم يأخذ.
+  // Export and print follow the screen: selected columns, and selected rows if any, otherwise the filter's rows. The scope counter states the count so nobody thinks they took what they did not.
   const selectedRows = rows.filter((r) => selected.has(rowKey(r)));
-  // في Excel يُسمّى العمودُ بما فيه: عدد.
+  // In Excel the column is named for what it holds: count.
   const exportCols = cols.map((c) => (c.key === 'attachments' ? { ...c, header: t('عدد المرفقات', 'Attachments count') } : c));
-  // ── كشفُ الحساب: ما على الشاشة كلُّه، من الخادم ─────────────────────────
-  // كانت الطباعةُ تأخذ صفوفَ الصفحة المعروضة وحدَها (مئةً من آلاف) بلا
-  // البطاقات ولا ترويسة الشركة. فصار الكشفُ يُبنى في الخادم من الدالّة نفسِها
-  // التي تملأ الشاشة، بالفلاتر نفسِها — فبطاقاتُه هي بطاقاتُ الشاشة، وصفوفُه
-  // النتيجةُ كلُّها بكلّ صفحاتها. وما يُفلتَر هنا في المتصفّح (فلاترُ الأعمدة
-  // المحسوبة) والتحديدُ والأعمدةُ الظاهرة تُرسَل معه.
+  // Account statement: everything on screen, built on the server. Print used to take only the displayed page rows (a hundred of thousands) without the cards or company header. The statement is now built on the server by the same function that fills the screen, with the same filters, so its cards are the screen's cards and its rows are the whole result across pages. Browser-side filters (computed column filters), selection and visible columns are sent with it.
   const [stBusy, setStBusy] = useState<'' | 'open' | 'print'>('');
-  // «إرسال للعميل» — بالفلتر نفسِه الذي يطبع الكشف (SendStatementModal).
+  // Send to customer, with the same filter that prints the statement (SendStatementModal).
   const [sendParams, setSendParams] = useState<URLSearchParams | null>(null);
   const statementParams = () => {
     const p = queryParams();
@@ -699,8 +631,7 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
     setStBusy(mode);
     const fileName = `${isCash ? 'cash' : 'tax'}-invoices-statement.pdf`;
     try {
-      // الطلبُ يبدأ والنافذةُ تُفتح في الضغطة نفسِها — راجع utils/pdfActions.
-      // ولا انتظارَ بلا نهاية: بعد مئة ثانيةٍ رسالةٌ واضحة بدلَ زرٍّ يدور أبدًا.
+      // The request starts and the window opens in the same click; see utils/pdfActions. No endless wait: after 100 seconds a clear message replaces a spinner that never stops.
       const load = Promise.race([
         api.getBlob(statementPath()),
         new Promise<never>((_, rej) => setTimeout(() => rej(new Error(t(
@@ -769,8 +700,7 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
           fileName={`collections-${kind}-invoices`}
           lang={ar ? 'ar' : 'en'}
           options={[
-            // النطاقُ يُسمّى بما فيه: من صدّر وهو يظنّ أنّه أخذ الكلَّ بينما أخذ
-            // المحدَّد يخرج بملفٍّ خاطئٍ صامت.
+            // The scope is named for what it holds: someone who exported selected rows thinking it was everything would get a silently wrong file.
             ...(selected.size ? [{
               key: 'selected',
               label: t(`المحدَّد (${selected.size})`, `Selected (${selected.size})`),
@@ -781,7 +711,7 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
         />
       </PageHeader>
 
-      {/* ── حالةُ التحصيل ────────────────────────────────────────────────── */}
+      {/* Collection state. */}
       <div className="flex items-center gap-2 flex-wrap">
         {([['', 'all', 'الكل', 'All'], ['no', 'no', 'لم تُحصَّل بعد', 'Not collected'],
           ['partial', 'partial', 'تم تحصيلها جزئيًّا', 'Partially collected'], ['yes', 'yes', 'تم تحصيلها', 'Collected']] as const).map(([k, ck, arL, enL]) => (
@@ -789,7 +719,7 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
             className={`px-3.5 py-2 rounded-lg text-sm font-semibold transition-colors ${
               collected === k ? 'bg-[#f37121] text-white' : 'bg-white border border-slate-200 text-slate-600 hover:text-slate-900'}`}>
             {t(arL, enL)}
-            {/* العددُ تحت الفلاتر الأخرى — لا تحت هذا الاختيار نفسِه. */}
+            {/* Count is under the other filters, not under this selection itself. */}
             {(stateCounts as any)[ck] != null && (
               <span className={`ms-1.5 tabular-nums text-[12px] ${collected === k ? 'text-white/85' : 'text-slate-400'}`}>
                 {money((stateCounts as any)[ck])}
@@ -836,9 +766,7 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
 
       {showFilters && (
         <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm space-y-4">
-          {/* ── العمرُ شرائحُ لا تتداخل ──────────────────────────────────────
-              «من ١٥ إلى ٣٠» لا «كلُّ ما تجاوز ١٥» — وإلّا عُدَّت الفاتورةُ
-              الواحدة في أربع شرائح فلا يُعرف كم في كلّ عمر. */}
+          {/* Age buckets do not overlap: "15 to 30", not "everything over 15"; otherwise one invoice counts in four buckets and the per-age count is unknown. */}
           <div>
             <p className="text-[12px] font-bold text-slate-600 mb-2">{t('عمر الفاتورة', 'Invoice age')}</p>
             <div className="flex items-center gap-2 flex-wrap">
@@ -853,9 +781,7 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {/* منسدلاتٌ فيها بحث: قوائمُ العملاء مئات، واختيارُ اسمٍ منها
-                بالتمرير عملٌ لا داعيَ له — المستخدم يعرف الاسم، ينقصه أن
-                يكتبه. راجع SearchSelect. */}
+            {/* Dropdowns with search: customer lists run to hundreds and scrolling to a name is wasted work; the user knows the name and needs to type it. See SearchSelect. */}
             <Field label={t('العميل', 'Customer')}>
               <SearchSelect ar={ar} value={customer} onChange={setCustomer}
                 allLabel={t('جميع العملاء', 'All customers')}
@@ -928,7 +854,7 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
           <table className="w-full text-sm">
             <thead className="table-head">
               <tr>
-                {/* تحديدُ صفحةٍ كاملةً بضغطةٍ واحدة. */}
+                {/* Select a whole page with one click. */}
                 <th className="px-3 py-2.5 w-10">
                   <input type="checkbox" className="accent-[#f37121]"
                     checked={shown.length > 0 && shown.every((r) => selected.has(rowKey(r)))}
@@ -938,7 +864,7 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
                   <th key={c.key} className="px-3 py-2.5 text-start font-semibold whitespace-nowrap">
                     <span className="inline-flex items-center">
                       {c.header}
-                      {/* لا حقلَ في القاعدة → قمعٌ محلّيٌّ على المعروض. */}
+                      {/* No DB field, so a local funnel on the displayed rows. */}
                       {!c.filter && localGetters[c.key] && cf.header(c.key, rows, localGetters[c.key], ar)}
                       {c.filter && (
                         <ColumnFilter
@@ -952,9 +878,7 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
                           onQuery={(query) => fetchColOptions(c.filter as string, query)}
                           lang={ar ? 'ar' : 'en'}
                           format={c.type === 'date' ? (v: any) => {
-                            // الخادمُ يجمّع التواريخ بيوم الرياض ويردّها «YYYY-MM-DD».
-                            // إعادةُ تفسيرها بمنطقة المتصفّح تُنقص يومًا لمن هو غربَ
-                            // غرينتش، فتُعرض كما هي.
+                            // The server groups dates by Riyadh day and returns YYYY-MM-DD. Reinterpreting them in the browser's zone drops a day west of Greenwich, so they are shown as they are.
                             const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(v || ''));
                             return m ? `${m[3]}/${m[2]}/${m[1]}` : String(v || '');
                           } : undefined}
@@ -1096,7 +1020,7 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
           </PrimaryButton>
         </>}
       >
-        {/* ── القيمةُ والمقبوضُ والباقي قبل أيّ اختيار ──────────────────── */}
+        {/* Value, received and remainder before any choice. */}
         {collecting && (
           <div className="grid grid-cols-3 gap-2 mb-4">
             {[
@@ -1112,8 +1036,7 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
           </div>
         )}
 
-        {/* ── كاملٌ أو جزئيّ ─────────────────────────────────────────────────
-            الجزئيُّ لما لم يكتمل وله قيمةٌ معروفة — والمكتملُ يُعدَّل يومُه. */}
+        {/* Full or partial: partial applies to an incomplete item with a known value; a completed item has its day edited. */}
         {collecting && !collecting.full && !collecting.needAmount && (
           <div className="flex items-center gap-2 mb-3" role="radiogroup">
             {([['full', t('تحصيل بالكامل', 'Collect in full')], ['partial', t('تحصيل جزئي', 'Partial collection')]] as const).map(([k, l]) => (
@@ -1127,7 +1050,7 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
         )}
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {/* الجزئيُّ يكتب ما قُبض؛ والكاشُ الذي لا قيمةَ له يكتب ما قُبض كلَّه. */}
+          {/* Partial writes what was received; cash with no value writes the whole amount received. */}
           {collecting && !collecting.full && (collectMode === 'partial' || collecting.needAmount) && (
             <Field label={collectMode === 'partial' ? t('المبلغ المحصَّل *', 'Amount collected *') : t('مبلغ التحصيل *', 'Collected amount *')}>
               <TextInput type="number" value={collectForm.collectedAmount} min={0}
@@ -1172,8 +1095,7 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
           </p>
         )}
 
-        {/* ── الدفعات ────────────────────────────────────────────────────────
-            كلُّ دفعةٍ بمبلغها ويومها وكاتبها — تُعدَّل أو تُرفَع وحدَها. */}
+        {/* Payments: each with amount, day and writer, edited or removed individually. */}
         {!!collecting?.payments.length && (
           <div className="mt-4">
             <p className="text-[12px] font-bold text-slate-600 mb-2">{t('الدفعات', 'Payments')}</p>
@@ -1214,10 +1136,7 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
             </div>
           </div>
         )}
-        {/* ── لم تُحصَّل ────────────────────────────────────────────────────
-            سُجِّلت محصَّلةً ولم يُقبَض مالُها (شيكٌ رُدّ، أو ضغطةٌ على الصفّ
-            الخطأ): يُرفَع عنها التحصيلُ هنا، فتعود إلى المطالبات والأعمار،
-            ويُمحى التاريخُ من سير عمل التشغيل أيضًا. */}
+        {/* Not collected: recorded as collected but the money was not received (a bounced cheque, or a click on the wrong row). Collection is removed here, returning it to claims and ageing, and the date is cleared from the operations workflow too. */}
         {collecting?.collected && (
           <div className="mt-4 rounded-xl border border-red-200 bg-red-50/60 p-3">
             {!undoOpen ? (
@@ -1258,9 +1177,7 @@ export default function CollectionsInvoicesPage({ kind }: { kind: InvoiceKind })
   );
 }
 
-// ── «الرقمُ موجودٌ في مكانٍ آخر» ──────────────────────────────────────────────
-// راجع locateNumber في الخادم. صفحةُ الكاش تقرأ الكشوفَ النقديّة المراجَعة،
-// وصفحةُ الضريبيّ فواتيرَ الدفتر الضريبيّة؛ وما خرج عنهما يُقال أين هو ببابٍ إليه.
+// "The number exists elsewhere": see locateNumber on the server. The cash page reads reviewed cash statements and the tax page reads tax ledger invoices; anything outside them is told where it is, with a link.
 interface Elsewhere {
   number: string;
   ledger: { kind: 'tax' | 'cash'; invoiceNumber: string; customer: string; collected: boolean }[];

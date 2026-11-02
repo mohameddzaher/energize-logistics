@@ -12,8 +12,7 @@ import '../services/auth.dart';
 import '../ui/export_sheet.dart';
 import '../ui/api_picker.dart';
 
-/// المركبات والتفويضات — أسطول الشركة الإداري: تسجيل المركبات، تفويض موظف،
-/// نقل التفويض، إلغاؤه، وتسجيل الحوادث — بنفس مفردات صفحة الويب.
+/// Vehicles and authorizations: the company's administrative fleet. Register vehicles, authorize an employee, transfer or revoke the authorization, and record accidents, with the same vocabulary as the web page.
 
 const vehicleTypes = {
   'car': ('سيارة', 'Car'),
@@ -74,7 +73,7 @@ List<Map<String, dynamic>> _l(dynamic v) =>
     v is List ? List<Map<String, dynamic>>.from(v.whereType<Map>().map((e) => Map<String, dynamic>.from(e))) : const [];
 
 
-// ── الأدوار — نظيرُ isVehicleStaff / isVehicleAdmin في lib/vehicles.ts ──────
+// Roles, mirrors isVehicleStaff / isVehicleAdmin in lib/vehicles.ts
 const _vehicleAdminRoles = ['super_admin', 'admin', 'hr_manager', 'cfo', 'accounting_manager'];
 bool isVehicleAdmin(AuthProvider a) => _vehicleAdminRoles.contains(a.role) || a.canEditSection('Vehicles');
 
@@ -92,7 +91,7 @@ String _empNameOrBlank(dynamic e) => e is Map ? empName(e) : '';
 
 void _snack(BuildContext c, String m) { if (c.mounted) ScaffoldMessenger.of(c).showSnackBar(SnackBar(content: Text(m))); }
 
-/// خانةُ تاريخٍ تُكتب YYYY-MM-DD كما يرسلها الموقع.
+/// Date field typed as YYYY-MM-DD, as web sends it.
 class _DateBox extends StatelessWidget {
   final String label;
   final String value;
@@ -120,7 +119,7 @@ class _DateBox extends StatelessWidget {
   }
 }
 
-// ── قائمة المركبات ──────────────────────────────────────────────────────────
+// Vehicle list
 class VehiclesListScreen extends StatefulWidget {
   final String? initialStatus, initialType, initialSearch;
   const VehiclesListScreen({super.key, this.initialStatus, this.initialType, this.initialSearch});
@@ -133,7 +132,7 @@ class _VehiclesListScreenState extends State<VehiclesListScreen> {
   bool _loading = true;
   String? _error;
   late String _q = widget.initialSearch ?? '';
-  // نصُّ البحث في متحكِّمٍ يملكه الشاشة
+  // Search text lives in a screen-owned controller
   late final _searchCtl = TextEditingController(text: _q);
   late String _status = widget.initialStatus ?? '';
   late String _type = widget.initialType ?? '';
@@ -147,7 +146,7 @@ class _VehiclesListScreenState extends State<VehiclesListScreen> {
     _onLive = () => _load();
     Live.instance.on('vehicle:updated', _onLive);
     Live.instance.on('vehicle:authorization', _onLive);
-    // المفوَّضُ واللوحةُ من سجلّ المركبات — تعديلُه يصل هنا، كالموقع.
+    // The delegate and plate come from the vehicle register; editing it arrives here, as on web.
     Live.instance.on('vreg:updated', _onLive);
   }
 
@@ -160,7 +159,7 @@ class _VehiclesListScreenState extends State<VehiclesListScreen> {
     super.dispose();
   }
 
-  // البحثُ والنوعُ والحالةُ على الخادم كالموقع — وردٌّ قديمٌ لا يكتب فوق أحدث.
+  // Search, type and status run on the server like web, and a stale response does not overwrite a newer one.
   Future<void> _load() async {
     final mine = ++_seq;
     try {
@@ -324,7 +323,7 @@ class _VehiclesListScreenState extends State<VehiclesListScreen> {
   }
 }
 
-// إنشاء/تعديل مركبة — مشترك بين القائمة وشاشة التفاصيل. نفسُ حقول نموذج الموقع.
+// Create/edit a vehicle: shared by the list and the details screen. Same fields as the web form.
 Future<void> editVehicleSheet(BuildContext context, Map<String, dynamic>? v, Future<void> Function() onDone) async {
   final plate = TextEditingController(text: (v?['plateNumber'] ?? '').toString());
   final make = TextEditingController(text: (v?['make'] ?? '').toString());
@@ -447,7 +446,7 @@ Future<void> editVehicleSheet(BuildContext context, Map<String, dynamic>? v, Fut
 
 // searchable employee picker shared by authorize/transfer/accident
 Future<Map<String, dynamic>?> pickVehicleEmployee(BuildContext context) async {
-  // الحالةُ خارج builder: إعادةُ بناء النافذة لا تُصفِّرها والخانةُ مكتوبة
+  // State is kept outside the builder: rebuilding the dialog does not reset it while the field has text.
   String q = '';
   List<Map<String, dynamic>> emps = [];
   bool loading = true;
@@ -511,7 +510,7 @@ Future<Map<String, dynamic>?> pickVehicleEmployee(BuildContext context) async {
   );
 }
 
-/// خانةُ موظّفٍ تفتح المنتقي — قيمةٌ ظاهرةٌ وزرُّ تفريغ.
+/// Employee field that opens the picker: a shown value and a clear button.
 class _EmpBox extends StatelessWidget {
   final String label;
   final Map<String, dynamic>? emp;
@@ -530,9 +529,8 @@ class _EmpBox extends StatelessWidget {
       );
 }
 
-// ── نموذجُ الحادث: تسجيلٌ وتعديل، من ملفّ المركبة أو من شاشة الحوادث ──────────
-// نفسُ حقول الموقع: التاريخ، الموظف (من ملفّ المركبة)، الموقع، رقم المحضر،
-// المتسبّب، الخطورة، الحالة، التكلفتان، الوصف، الطرف الثالث، الإجراء، التسوية.
+// Accident form: register and edit, from the vehicle profile or the accidents screen.
+// Same fields as web: date, employee (from the vehicle profile), location, report number, party at fault, severity, status, the two costs, description, third party, action, settlement.
 Future<bool> accidentFormSheet(
   BuildContext context, {
   Map<String, dynamic>? accident,
@@ -664,7 +662,7 @@ Future<bool> accidentFormSheet(
   return ok == true;
 }
 
-/// تعديلُ حادثٍ (اسمٌ قديمٌ تبقيه الشاشات) — النموذجُ الكامل نفسُه.
+/// Edit an accident (an old name the screens keep): the same full form.
 Future<void> editAccident(BuildContext context, Map<String, dynamic> a, Future<void> Function() onDone) async {
   if (await accidentFormSheet(context, accident: a)) await onDone();
 }
@@ -682,7 +680,7 @@ Future<bool> _confirmDeleteAccident(BuildContext context, Map<String, dynamic> a
   catch (e) { if (context.mounted) _snack(context, e.toString()); return false; }
 }
 
-// ── تفاصيل المركبة ──────────────────────────────────────────────────────────
+// Vehicle details
 class VehicleDetailScreen extends StatefulWidget {
   final String vehicleId;
   final String plate;
@@ -697,7 +695,7 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
   List<Map<String, dynamic>> _accidents = [];
   bool _loading = true;
   String? _error;
-  int _tab = 0; // 0 نظرة عامة · 1 التفويضات · 2 الحوادث
+  int _tab = 0; // 0 overview, 1 authorizations, 2 accidents
   late final void Function() _onLive;
 
   @override
@@ -741,7 +739,7 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
     return null;
   }
 
-  // ── تفويض / نقل: نفسُ حقول الموقع ─────────────────────────────────────────
+  // Authorize / transfer: same fields as web
   Future<void> _authForm(String action) async {
     Map<String, dynamic>? emp;
     String start = _todayYmd(), docExpiry = '';
@@ -828,7 +826,7 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
     if (ok) _load();
   }
 
-  // ── تصدير ملفّ المركبة: «التبويب الحالي» أو الملفّ كاملًا ──────────────────
+  // Vehicle profile export: current tab or the whole file
   List<Map<String, dynamic>> _infoRows() {
     final v = _vehicle ?? {};
     final a = _active;
@@ -1022,7 +1020,7 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
       );
 }
 
-/// أعمدةُ تصدير الحوادث في ملفّ المركبة (كالموقع).
+/// Accident export columns in the vehicle profile (as on web).
 List<ExportCol> accidentExportCols() => [
       ExportCol('التاريخ', 'Date', (r) => _dd(r['date'])),
       ExportCol('الموظف', 'Employee', (r) => r['employee'] is Map ? empName(r['employee']) : '—'),
@@ -1077,7 +1075,7 @@ class _AccidentCard extends StatelessWidget {
   }
 }
 
-// ── قائمة الحوادث المستقلة ──────────────────────────────────────────────────
+// Standalone accidents list
 class AccidentsListScreen extends StatefulWidget {
   final String? initialStatus;
   const AccidentsListScreen({super.key, this.initialStatus});
@@ -1100,7 +1098,7 @@ class _AccidentsListScreenState extends State<AccidentsListScreen> {
     _load();
     _onLive = () => _load();
     Live.instance.on('vehicle:accident', _onLive);
-    // تصحيحُ اللوحة في السجلّ يُكتب في نسخ الحوادث — فتُعاد القراءة.
+    // A plate correction in the register is written into the accident copies, so the data is re-read.
     Live.instance.on('vreg:updated', _onLive);
   }
 

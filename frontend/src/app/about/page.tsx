@@ -9,20 +9,7 @@
 //   visible: { opacity: 1, y: 0, transition: { duration: 0.8, ease: easeOut } },
 // };
 
-// export default function AboutPage() {
-//   return (
-//     <section className="bg-gray-900 text-white overflow-hidden">
-//       {/* --- COMPANY INTRO (بدون animation - يظهر فوراً) --- */}
-//       <div className="max-w-6xl mx-auto px-6 py-20 text-center">
-//         <div className="flex justify-center mb-8">
-//           <Image
-//             src="/images/Asset 3.png"
-//             alt="Energize Logistics Logo"
-//             width={160}
-//             height={160}
-//             priority
-//           />
-//         </div>
+// Disabled code: the previous About page component, starting with the company intro section (shown immediately, no animation) and the logo image.
 
 // {/* <div className="absolute top-[-80px] left-[-80px] w-[250px] h-[250px] bg-[#f37121]/20 blur-[90px] rounded-full" /> */}
 
@@ -188,35 +175,7 @@
 //     Founder & Executive Team
 //   </h2>
 
-//   <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-6 justify-center max-w-5xl mx-auto">
-//     {/* Dulaim (يظهر أول واحد في الموبايل فقط) */}
-//     <motion.div
-//       whileHover={{ scale: 1.04 }}
-//       className="rounded-lg shadow-xl p-4 hover:shadow-2xl transition bg-gray-800 border border-gray-700/40 order-1 sm:order-2 md:order-2"
-//     >
-//       <Image
-//         src="/images/dulaim.jpeg"
-//         alt="Dulaim Al Nasher"
-//         width={150}
-//         height={150}
-//         className="mx-auto rounded-xl mb-3 object-cover object-center w-[160px] h-[220px]"
-//         loading="lazy"
-//       />
-//       <h3 className="text-lg font-semibold text-white mb-1">
-//         Dulaim Al Nasher
-//       </h3>
-//       <p className="text-gray-400 text-xs mb-2">Founder and Chairman</p>
-//       <div className="flex justify-center gap-3">
-//         <a
-//           href="https://www.linkedin.com/in/dulaim-al-nasher-492507166/"
-//           target="_blank"
-//           rel="noopener noreferrer"
-//           className="text-[#f37121] hover:text-white transition"
-//         >
-//           <FaLinkedin size={18} />
-//         </a>
-//       </div>
-//     </motion.div>
+// Disabled code: team member cards grid (founder card with photo, title and LinkedIn link); on mobile the first card appears first.
 
 //     {/* Sameh */}
 //     <motion.div
@@ -418,7 +377,7 @@ import { FaLinkedin } from "react-icons/fa";
 export default function AboutPage() {
   return (
     <section className="bg-gray-900 text-white overflow-hidden">
-      {/* --- COMPANY INTRO (يظهر فوراً) --- */}
+      {/* Company intro (shown immediately) */}
       <div className="max-w-6xl mx-auto px-6 py-20 text-center">
         <div className="flex justify-center mb-8">
           <Image

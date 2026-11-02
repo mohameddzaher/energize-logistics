@@ -4,15 +4,11 @@ import '../services/lang.dart';
 import '../ui/search_field.dart';
 import '../ui/widgets.dart';
 
-/// منتقي بحثٍ عام: يجلب من endpoint ويعرض قائمةً قابلةً للبحث، ويرجّع المختار.
-///
-/// كان يعيش داخل شاشة «التحصيلات والنزاعات» ويستورده منها قسمُ المشتريات —
-/// فحذفُ الشاشة كسر قسمًا لا علاقة له بها. الأداةُ المشتركة موضعُها `ui/`،
-/// لا جوفُ شاشةٍ تصادف أنّها أوّلُ من احتاجها.
+/// Generic search picker: fetches from an endpoint, shows a searchable list and returns the selection. It lives in `ui/` because it is shared; it used to sit inside the collections screen and deleting that screen broke the procurement section.
 
 String _foldAr(String s) => s.replaceAll(RegExp('[أإآ]'), 'ا').replaceAll('ى', 'ي').replaceAll('ة', 'ه').toLowerCase();
 
-/// منتقي بحث عام: يجلب من endpoint ويعرض قائمة قابلة للبحث، يرجّع العنصر المختار.
+/// Generic search picker: fetches from an endpoint, shows a searchable list, returns the selected item.
 Future<Map<String, dynamic>?> pickFromApi(BuildContext context, {
   required String endpoint,
   required String listKey,

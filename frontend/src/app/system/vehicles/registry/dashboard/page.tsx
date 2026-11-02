@@ -1,6 +1,5 @@
 'use client';
-// لوحة تحليلات سجل المركبات — أرقام كثيفة لكل بُعد + فلاتر متعددة + نطاق تاريخي
-// + عتبات انتهاء المستندات، وكله حي وقابل للنقر للفلترة.
+// Vehicle registry analytics dashboard: dense numbers per dimension, multiple filters, a date range and document-expiry thresholds, all live and clickable to filter.
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -25,10 +24,9 @@ type Dash = {
   };
   bySector: Row[]; byRegistrationType: Row[]; byBrand: Row[]; byOwner: Row[]; byInsuranceCompany: Row[];
   byCoverageType: Row[]; byFuelCardStatus: Row[]; byInspectionStatus: Row[]; byColor: Row[]; byTamStatus: Row[]; byModelYear: Row[];
-  // وشريحةُ «قريب» منها: كانت ساقطةً من هذا النوع ومن الحساب معًا، فلا تُعَدّ
-  // ولا تُرسَم — والمركباتُ التي تقع فيها تختفي من النِّسَب كلِّها.
+  // And the "near" bucket among them: it was missing from both this type and the computation, so it was neither counted nor drawn, and the vehicles in it dropped out of every percentage.
   docBuckets: Record<string, { expired: number; critical: number; warning: number; upcoming: number; valid: number; none: number }>;
-  /** عتباتُ القسم كما ضُبطت — أزرارُ الشرائح تنتقل بها. */
+  /** Section thresholds as configured; the bucket buttons navigate with them. */
   alerts?: Record<string, { criticalDays?: number; warnDays?: number; soonDays?: number }>;
 };
 
@@ -55,10 +53,7 @@ export default function VehicleRegistryDashboard() {
     return p.toString();
   }, [q, sectors, regTypes, expiringDoc, expiringWithin]);
 
-  // ── ولا يكتب ردٌّ قديمٌ فوق ردٍّ أحدث ───────────────────────────────────
-  // تُكتب المدّةُ فتنطلق طلبتان: واحدةٌ بالمدّة القديمة وأخرى بالجديدة. والأكبرُ
-  // ردًّا أبطأُ وصولًا، فيصل بعد الأصغر ويكتب فوقه — فيرى الكاتبُ نتيجتَه ثوانيَ
-  // ثمّ تعود الشاشةُ إلى ما قبل الفلتر وهو لم يمسّ شيئًا. راجع hooks/useLatestRequest.
+  // Stale responses must not overwrite newer ones. Typing the period fires two requests, old and new; the larger result is slower and lands after the smaller, so the writer sees his result for seconds and then the screen reverts to the pre-filter state. Uses hooks/useLatestRequest.
   const guard = useLatestRequest();
   const load = useCallback(async () => {
     const mine = guard.begin();
@@ -79,7 +74,7 @@ export default function VehicleRegistryDashboard() {
     Object.entries(extra).forEach(([k, v]) => p.set(k, v));
     router.push(`/system/vehicles/registry?${p.toString()}`);
   };
-  // نقر أي عمود/شريحة في الرسوم يفتح القائمة مفلترة على تلك القيمة.
+  // Clicking any bar or slice in the charts opens the list filtered to that value.
   const chartClick = (field: string) => (d: any) => {
     const k = d?.key ?? d?.payload?.key;
     if (k && k !== '—') goList({ [field]: String(k) });
@@ -89,11 +84,11 @@ export default function VehicleRegistryDashboard() {
   if (!data) return <div className="p-8 text-slate-500">{ar ? 'تعذّر تحميل اللوحة' : 'Failed to load'}</div>;
   const t = data.totals;
 
-  // خريطة أكواد القطاع/النوع للأسماء العربية (من التوزيعات) للفلاتر.
+  // Map of sector/type codes to Arabic names (from the distributions), for the filters.
   const sectorOpts = data.bySector.map((r) => r.key);
   const regTypeOpts = data.byRegistrationType.map((r) => r.key);
 
-  /** أقصى عددِ أيّامٍ في هذه الشريحة بحسب إعدادات القسم. */
+  /** Maximum number of days in this bucket per the section settings. */
   const bandDays = (docKey: string, band: 'critical' | 'warning' | 'upcoming') => {
     const a = data?.alerts?.[docKey] || {};
     if (band === 'critical') return Number(a.criticalDays ?? 7);
@@ -115,7 +110,7 @@ export default function VehicleRegistryDashboard() {
         </div>
       </PageHeader>
 
-      {/* شريط الفلاتر */}
+      {/* Filter bar. */}
       <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm space-y-3">
         <div className="flex flex-wrap items-center gap-2">
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={ar ? 'لوحة / هيكل / مالك / بوليصة…' : 'plate / chassis / owner…'}
@@ -140,7 +135,7 @@ export default function VehicleRegistryDashboard() {
         </div>
       </div>
 
-      {/* بطاقات المؤشرات — كلها قابلة للضغط وتفتح المفلتر المناسب */}
+      {/* KPI cards: all clickable and open the matching filter. */}
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
         <ClickStat label={ar ? 'إجمالي المركبات' : 'Vehicles'} value={t.vehicles} accent="text-[#f37121]" onClick={() => goList({})} />
         <ClickStat label={ar ? 'مستندات منتهية' : 'Expired docs'} value={t.expiredTotal} accent="text-red-600" onClick={() => router.push('/system/vehicles/registry/expiring?state=expired&includeExpired=1')} />
@@ -154,7 +149,7 @@ export default function VehicleRegistryDashboard() {
         <ClickStat label={ar ? 'عدد المُلّاك' : 'Owners'} value={t.owners} onClick={() => goList({})} />
       </div>
 
-      {/* عتبات انتهاء المستندات */}
+      {/* Document expiry thresholds. */}
       <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
         <p className="font-bold text-slate-900 mb-3">{ar ? 'حالة المستندات حسب النوع' : 'Document status by type'}</p>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -173,11 +168,7 @@ export default function VehicleRegistryDashboard() {
                   ))}
                 </div>
                 <div className="flex flex-wrap gap-x-3 gap-y-1 mt-2 text-[11px]">
-                  {/* ── والانتقالُ بالعتبة المضبوطة لا برقمٍ مكتوب ─────────
-                      كان «حرج» يفتح القائمةَ على ثلاثين يومًا و«تحذير» على
-                      ستّين، أيًّا كان ما ضبطه القسمُ في إعداداته. فمن جعل الحرجَ
-                      عشرةَ أيّامٍ ضغط «حرج ٤» فوجد أربعين صفًّا. والعتباتُ تأتي
-                      مع اللوحة (`alerts`) فيُنتقَل بها. */}
+                  {/* Navigate with the configured threshold, not a hard-coded number. Critical used to open the list at thirty days and warning at sixty regardless of section settings, so with critical set to ten days, clicking "critical 4" showed forty rows. The thresholds come with the dashboard (`alerts`) and are used for navigation. */}
                   {(['expired', 'critical', 'warning', 'upcoming', 'valid'] as const).map((k) => b[k] > 0 && (
                     <button key={k} onClick={() => k === 'valid' ? null : goList({ [k === 'expired' ? 'expiredDoc' : 'expiringDoc']: d.key, ...(k !== 'expired' ? { expiringWithin: String(bandDays(d.key, k)) } : {}) })}
                       className="flex items-center gap-1" style={{ color: bucketColors[k] }}>
@@ -191,7 +182,7 @@ export default function VehicleRegistryDashboard() {
         </div>
       </div>
 
-      {/* الرسوم */}
+      {/* Charts. */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <ChartCard title={ar ? 'حسب القطاع' : 'By sector'}>
           <ResponsiveContainer width="100%" height={260}>

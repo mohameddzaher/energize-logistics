@@ -12,8 +12,7 @@ import '../ui/widgets.dart';
 import 'ops_workflows.dart';
 import 'reference_data.dart' show LookupValuesScreen;
 
-/// إعداداتُ قسم التحصيل — كصفحة الموقع /system/collections-dept/settings:
-/// القوائمُ المنسدلةُ للقسم، والسجلّات، وقالبُ بريد كشف الحساب.
+/// Collections section settings, like the web page /system/collections-dept/settings: the section's dropdown lists, registers, and the account statement email template.
 class CollectionsSettingsScreen extends StatefulWidget {
   const CollectionsSettingsScreen({super.key});
   @override
@@ -43,8 +42,7 @@ class _CollectionsSettingsScreenState extends State<CollectionsSettingsScreen> {
   }
 }
 
-/// قوائمُ هذا القسم وحدَه — لا قوائمُ النظام كلِّه (module=collections، ومعها
-/// قائمةُ مهامّ JP للقسم، كـ ReferenceDataManager في الموقع).
+/// Lists of this section only, not the whole system (module=collections, plus the section's JP task list, like ReferenceDataManager on the web).
 class _ListsTab extends StatefulWidget {
   const _ListsTab();
   @override
@@ -145,8 +143,7 @@ class _RegistersTab extends StatelessWidget {
   }
 }
 
-/// قالبُ بريد كشف الحساب — الخاناتُ بين قوسين تُملأ عند الإرسال، والحفظُ يصل
-/// أوّلَ رسالةٍ بعده (EmailTemplateEditor في الموقع).
+/// Account statement email template: placeholders in braces are filled on send, and a save applies from the next message (EmailTemplateEditor on the web).
 class _EmailTemplateTab extends StatefulWidget {
   const _EmailTemplateTab();
   @override
@@ -168,7 +165,7 @@ class _EmailTemplateTabState extends State<_EmailTemplateTab> {
     super.initState();
     _load();
     for (final c in [_subject, _body, _sig]) { c.addListener(_changed); }
-    // زميلٌ حفظ القالبَ من شاشةٍ أخرى — يُقرأ الجديد ما لم يكن هنا تعديلٌ لم يُحفظ.
+    // A colleague saved the template from another screen; the new one is read unless there is an unsaved local edit.
     _onLive = () { if (!_dirty) _load(); };
     Live.instance.on('collections:changed', _onLive);
   }
@@ -226,7 +223,7 @@ class _EmailTemplateTabState extends State<_EmailTemplateTab> {
     if (mounted) setState(() => _saving = false);
   }
 
-  /// يُدرج الخانة في موضع المؤشّر من نصّ الرسالة.
+  /// Inserts the placeholder at the cursor position in the message text.
   void _insert(String token) {
     final sel = _body.selection;
     final text = _body.text;
@@ -296,7 +293,7 @@ class _EmailTemplateTabState extends State<_EmailTemplateTab> {
         ]),
       ])),
       const SizedBox(height: 10),
-      // ── التوقيع: يُلحَق بآخر كلّ رسالة ──────────────────────────────────
+      // Signature: appended to the end of every message
       AppCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text(tr('التوقيع — يُضاف في آخر كلّ رسالة', 'Signature — added to the end of every email'),
             style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: T.inkSoft)),

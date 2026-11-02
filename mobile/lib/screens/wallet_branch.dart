@@ -8,9 +8,8 @@ import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import 'wallet_common.dart';
 
-/// لوحةُ فرعٍ واحد — نظيرُ /system/wallet-dashboard/branch/[id] في الموقع.
-/// تُفتح من بطاقة الفرع في لوحة المحفظة على الفترة نفسِها: ملخّصُ الفرع،
-/// والمحافظُ يومًا يومًا، وسجلُّ الحركات بتصفيةٍ بالنوع وبالموظّف، والتصدير.
+/// Single branch dashboard, mirrors /system/wallet-dashboard/branch/[id] on web.
+/// Opened from the branch card in the wallet dashboard on the same period: branch summary, wallets day by day, the movement log filtered by type and employee, and export.
 class WalletBranchScreen extends StatefulWidget {
   final String branchId;
   final String branchName;
@@ -111,7 +110,7 @@ class _WalletBranchScreenState extends State<WalletBranchScreen> {
         return true;
       }).toList();
 
-  // ── أعمدةُ التصدير — أعمدةُ الموقع (walletColumns / txColumns) ──────────────
+  // Export columns, the web columns (walletColumns / txColumns)
   List<ExportCol> get _walletCols => [
         ExportCol('المستخدم', 'User', (r) => walletUserName(r['user'])),
         if (_mode == 'range') ExportCol('التاريخ', 'Date', (r) => '${r['date'] ?? ''}'),
@@ -155,7 +154,7 @@ class _WalletBranchScreenState extends State<WalletBranchScreen> {
   Future<void> _export() async {
     final filtered = _typeFilter.isNotEmpty || _userFilter.isNotEmpty;
     String which = 'all';
-    // والمعروضُ يُعرَض خيارًا حين تكون تصفية — كما في الموقع.
+    // The shown option is offered when a filter is active, as on web.
     if (filtered) {
       final w = await showModalBottomSheet<String>(
         context: context,

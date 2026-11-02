@@ -1,15 +1,4 @@
-// لوحة فلترة واحدة تصلح لأي شاشة — نظير FilterPanel في الويب.
-//
-// نفس القواعد الثلاث:
-//
-// ١) قائمة الحقول وقيمها تأتي من الخادم (`optionsUrl`)، لا تُكتب هنا. فالجنسيات
-//    المعروضة هي الموجودة في البيانات فعلًا، وأي عمود جديد يظهر وحده — ولا
-//    يفترق التطبيق عن الموقع لأن كليهما يقرأ من المصدر نفسه.
-//
-// ٢) العدد بجانب كل قيمة محسوب بعد بقيّة الفلاتر، فما تراه هو ما ستحصل عليه.
-//
-// ٣) الفلتر النشط يبقى مرئيًّا كشرائح فوق الشاشة؛ الفلتر المخفيّ الذي تنساه
-//    مفعَّلًا يجعل الأرقام تبدو خاطئة بلا سبب ظاهر.
+// One filter sheet for any screen, twin of the web FilterPanel. Rules: (1) fields and values come from the server (`optionsUrl`), not written here, so values match the data, new columns appear on their own, and app and web read the same source. (2) The count beside each value is computed after the other filters, so it matches the result. (3) An active filter stays visible as chips above the screen, since a forgotten hidden filter makes numbers look wrong.
 import 'package:flutter/material.dart';
 import '../services/api.dart';
 import '../services/lang.dart';
@@ -35,14 +24,14 @@ class FilterField {
       );
 }
 
-/// ضمّ/إزالة قيمة من حقل متعدّد القيم (القيم مفصولة بفواصل في نص الاستعلام).
+/// Add or remove a value in a multi-value field (values are comma-separated in the query string).
 String toggleValue(String? cur, String v) {
   final list = (cur ?? '').split(',').map((x) => x.trim()).where((x) => x.isNotEmpty).toList();
   list.contains(v) ? list.remove(v) : list.add(v);
   return list.join(',');
 }
 
-/// يفتح اللوحة ويُرجع الفلتر بعد الإغلاق (أو null إن لم يتغيّر شيء).
+/// Opens the sheet and returns the filter after closing (null if unchanged).
 Future<Map<String, String>?> showFilterSheet({
   required BuildContext context,
   required String optionsUrl,
@@ -71,7 +60,7 @@ class _FilterSheetState extends State<_FilterSheet> {
   bool _loading = true;
   String? _expanded;
   final Map<String, String> _search = {};
-  // متحكِّمٌ لكلّ حقل: الخانةُ تعود بنصِّها بعد الطيّ أو التمرير
+  // One controller per field; the box returns its text after folding or scrolling.
   final Map<String, TextEditingController> _searchCtl = {};
 
   @override
@@ -86,8 +75,7 @@ class _FilterSheetState extends State<_FilterSheet> {
     super.dispose();
   }
 
-  // تُعاد قراءة القيم مع كل تغيير — بعد اختيار «جدة» يصير عدد كل جنسية عددها
-  // في جدة لا في الشركة كلها.
+  // Values are re-read on every change, so after choosing Jeddah each nationality count is its count in Jeddah, not company-wide.
   Future<void> _load() async {
     setState(() => _loading = true);
     try {
@@ -199,7 +187,7 @@ class _FilterSheetState extends State<_FilterSheet> {
     );
   }
 
-  // (المفتاح، القيمة، النص) — القيمة الفارغة تعني شريحةً تُرفع بالكامل.
+  // (key, value, label); an empty value means the chip clears the whole field.
   List<(String, String, String)> _chips() {
     final out = <(String, String, String)>[];
     for (final e in _v.entries) {

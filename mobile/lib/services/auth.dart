@@ -25,12 +25,7 @@ class AuthProvider extends ChangeNotifier with WidgetsBindingObserver {
   /// action to a view-only user is offering a button that will 403.
   bool canEditSection(String section) => permissions[section] == 'edit';
 
-  /// ── وأيُّ صفحاتِ القسم ──────────────────────────────────────────────────
-  /// طبقةٌ تحت القسم: القسمُ يقول ماذا يُفعَل، والصفحةُ تقول أين. مفتاحُها مسارُ
-  /// الصفحة في الويب — تُضبط مرّةً من شاشةٍ واحدة فتسري على الاثنين.
-  ///
-  /// والمفتاحُ الغائبُ مسموح: الخادمُ يرسل الخريطةَ كاملةً، فغيابُه يعني نسخةً
-  /// من التطبيق أقدمَ من الصفحة — وإخفاءُ شاشةٍ لاختلاف إصدارٍ عطبٌ صامت.
+  /// Page-level gate under the section: the section says what is allowed, the page says where. Keyed by the web route, set once from one screen and applied to both clients. A missing key is allowed: the server sends the full map, so absence means an app older than the page, and hiding a screen over a version mismatch would be a silent fault.
   Map<String, dynamic> get pageAccess =>
       (user?['pageAccess'] as Map<String, dynamic>?) ?? const {};
 
@@ -39,19 +34,14 @@ class AuthProvider extends ChangeNotifier with WidgetsBindingObserver {
     return pageAccess[path] != false;
   }
 
-  /// ── وما أُشِّر عليه صراحةً يسبق قائمةَ الأدوار ─────────────────────────────
-  /// الأقسامُ غيرُ المُدارة بالمصفوفة (تقييمُ الأداء، النظرةُ التنفيذيّة،
-  /// الإدارة، البوابة) يحرسها سطرُ أدوارٍ مكتوبٌ باليد. فنوعُ مستخدمٍ مصنوعٌ
-  /// من الشاشة لا تعرفه تلك السطور: يُؤشَّر له على صفحةٍ منها في المصفوفة
-  /// فتُفتَح له نقاطُها ولا يجد لها مدخلًا. وما أشّر عليه صاحبُ النظام قصدَه،
-  /// والقائمةُ هي التي تشيخ — فهي تُقدَّم عليها. ونفسُ القاعدة في الموقع.
+  /// An explicit page grant wins over the role list. Sections not managed by the matrix are guarded by hand-written role lines that do not know screen-made user types. The web follows the same rule.
   List<String> get pagesGranted =>
       ((user?['pagesGranted'] as List?) ?? const []).map((e) => e.toString()).toList();
 
-  /// تفضيلاتُ العرض المحفوظة في الحساب (`uiPrefs`، والنقطةُ في المفتاح ‹:›).
+  /// Display preferences saved on the account (`uiPrefs`); the dot in the key is written as a colon.
   String pref(String key) => '${(user?['uiPrefs'] as Map?)?[key.replaceAll('.', ':')] ?? ''}';
 
-  /// يحدّث نسخةَ الذاكرة بعد PATCH /api/auth/me/prefs — فلا تعود الشاشةُ للقديم.
+  /// Updates the in-memory copy after PATCH /api/auth/me/prefs so the screen does not revert.
   void setPref(String key, String value) {
     final u = user;
     if (u == null) return;
@@ -69,9 +59,7 @@ class AuthProvider extends ChangeNotifier with WidgetsBindingObserver {
   /// session silently (loadTokens + /me does the refresh dance if needed).
   Future<void> bootstrap() async {
     WidgetsBinding.instance.addObserver(this);
-    // ── وتغييرُ الصلاحيّات يصل فورًا لا عند العودة للتطبيق ──────────────────
-    // الموقعُ يعيد قراءةَ المستخدم لحظةَ حفظ الصلاحيّات؛ والتطبيقُ كان ينتظر
-    // أن يُغلَق ويُفتَح. فيُسمَع الحدثُ نفسُه.
+    // Permission changes arrive immediately: the web re-reads the user on save, so the app listens to the same event instead of waiting for a restart.
     Live.instance.on('permissions:updated', _onPermissionsChanged);
     Live.instance.on('permissions:roles', _onPermissionsChanged);
     await Api.instance.loadTokens();
@@ -88,8 +76,7 @@ class AuthProvider extends ChangeNotifier with WidgetsBindingObserver {
     notifyListeners();
   }
 
-  // كل ما التطبيق يرجع للواجهة نعيد جلب المستخدم — فأي تغيير في الدور/الصلاحيات
-  // (مثلاً ترقية لـ super_admin) يظهر فورًا بلا تسجيل خروج/دخول.
+  // Re-fetch the user whenever the app returns to the foreground so role or permission changes (e.g. promotion to super_admin) show without logging in again.
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) refreshUser();

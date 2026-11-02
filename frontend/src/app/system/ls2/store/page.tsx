@@ -1,10 +1,7 @@
 'use client';
 /**
- * مخزن النقل الثقيل — قطعُ الغيار.
- *
- * الشاشةُ نفسُها يستعملها مخزنُ النقل الخفيف بنطاقٍ آخر: آليّةُ المخزن واحدةٌ
- * (وارد وصادر، رصيدٌ بعد كلّ حركة، تراجعٌ بحركةٍ معاكسةٍ لا بمسح) والأصنافُ
- * والأرصدةُ مختلفة — راجع `components/store/StoreScreen`.
+ * Heavy-transport store: spare parts.
+ * The light-transport store uses the same screen with another scope: one store mechanism (in and out, balance after each movement, reversal by an opposite movement and never by deletion) with different items and balances. See `components/store/StoreScreen`.
  */
 import { useAuth } from '@/context/AuthContext';
 import StoreScreen from '@/components/store/StoreScreen';
@@ -20,14 +17,10 @@ export default function Ls2StorePage() {
       suppliersBase: '/api/ls2/suppliers',
       titleAr: 'مخزن النقل الثقيل', titleEn: 'Heavy Transport Store',
       subtitleAr: 'قطع الغيار — الرصيد والحركات', subtitleEn: 'Spare parts — stock & movements',
-      /**
-       * شاحناتُ النقل الثقيل من مرآة لوكيشن. ولا مشروعَ لها — هي أسطولُنا
-       * يعمل بالبوالص — فيُعرَض وصفُها وسائقُها مكانَه، ويبقى السطرُ تحت
-       * الخانة يجيب «ما هذه المركبة؟» كما يجيب في النقل الخفيف «أيُّ مشروع؟».
-       */
+      /** Heavy-transport trucks from the Location mirror. They have no project (it is our fleet running on waybills), so their description and driver show in its place and the line under the field answers 'what is this vehicle?' as 'which project?' does in light transport. */
       plateSource: {
         url: '/api/ls2/vehicles',
-        // والوصفُ من سجلّ المركبات: لوحتُها هناك وماركتُها وطرازُها.
+        // The description comes from the vehicle register: its plate, brand and model.
         rows: (d: any) => (d.items || []).map((v: any) => ({
           plate: v.plate,
           rider: v.driver || '',

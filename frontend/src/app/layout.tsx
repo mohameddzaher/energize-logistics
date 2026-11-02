@@ -52,8 +52,7 @@ export const metadata: Metadata = {
   openGraph: {
     type: 'website',
     locale: 'en_US',
-    // الجمهورُ الأوّل سعوديّ: تُعلَن العربيّةُ لغةً بديلةً كي تظهر البطاقةُ
-    // بالعربيّة حين يُشارَك الرابطُ في واتساب أو لينكدإن بحسابٍ عربيّ.
+    // The main audience is Saudi, so Arabic is declared as an alternate language so the preview card shows in Arabic when the link is shared on WhatsApp or LinkedIn by an Arabic account.
     alternateLocale: ['ar_SA'],
     url: 'https://energize-global.com',
     siteName: 'Energize Logistics',
@@ -79,29 +78,18 @@ export const metadata: Metadata = {
   },
   alternates: {
     canonical: 'https://energize-global.com',
-    // الموقعُ عربيٌّ وإنجليزيّ: بغير هذا يفهرس جوجل نسخةً واحدة ويعدّ الأخرى
-    // تكرارًا، فتضيع نصفُ الكلمات المفتاحيّة — ومعظمُ من يبحث عن نقلٍ ثقيلٍ
-    // في السعوديّة يبحث بالعربيّة.
+    // The site is bilingual; without this Google indexes one version and treats the other as a duplicate, losing half the keywords, and most heavy-transport searches in Saudi Arabia are in Arabic.
     languages: {
       'ar-SA': 'https://energize-global.com',
       'en-US': 'https://energize-global.com/en',
       'x-default': 'https://energize-global.com',
     },
   },
-  // ── الأيقونة ──────────────────────────────────────────────────────────────
-  // كان شريطُ التبويب يعرض ورقةً فارغة. والعلامةُ في ستّةَ عشرَ بكسلًا لا
-  // تحتمل كلمة «energize» كاملةً — تصير خطًّا رماديًّا — فحرفُ الـ«z» وحدَه،
-  // وهو العلامةُ التي تُعرَف بها الشركة، برتقاليًّا على داكنِ الشريط الجانبيّ.
-  // وأرضيّتُه مصمتةٌ لا شفّافة، وإلّا اختفى الحرفُ في الوضع الداكن.
-  //
-  // ── ولماذا `?v=` على الروابط ────────────────────────────────────────────
-  // كاشُ الأيقونات في المتصفّح منفصلٌ عن كاش الصفحة، ولا يمسحه التحديثُ
-  // القسريّ. فحين تغيّرت العلامةُ من «e» إلى «z» ظلّ المستخدمون يرون القديمة
-  // وإن كان الخادمُ يقدّم الجديدة. والرقمُ يُزاد عند كلّ تغييرٍ للعلامة —
-  // رابطٌ جديدٌ لا كاشَ له، فتظهر فورًا بلا أن يُطلب من أحدٍ مسحُ شيء.
+  // Icon: the tab showed a blank page. The full word mark is unreadable at 16 px, so only the letter z, the company's mark, is used in orange on the dark sidebar colour; the background is solid, not transparent, or the letter disappears in dark mode.
+  // The ?v= on the links busts the icon cache, which is separate from the page cache and survives hard refresh; bump it whenever the mark changes.
   icons: {
     icon: [
-      // ‎.ico أوّلًا: هو ما يطلبه المتصفّحُ من تلقاء نفسه، وكان يرجع 404.
+      // The .ico comes first: browsers request it on their own and it used to return 404.
       { url: '/favicon.ico?v=2', type: 'image/x-icon', sizes: 'any' },
       { url: '/icon.png?v=2', type: 'image/png', sizes: '512x512' },
     ],
@@ -118,15 +106,9 @@ export const viewport: Viewport = {
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
-  // ── ما تقرؤه محرّكاتُ البحث ────────────────────────────────────────────
-  // البياناتُ المنظَّمة ليست زينةً: منها تبني جوجل «بطاقةَ المعرفة» — الاسمُ
-  // والشعارُ والفروعُ والخدماتُ وأرقامُ التواصل تظهر بجانب النتيجة. وكانت
-  // `Organization` عامّةً: شركةٌ ما، لا يُعرف ما تفعل. صارت `MovingCompany`
-  // ومعها فهرسُ خدماتٍ صريح.
-  //
-  // وكلُّ رقمٍ هنا حقيقيّ: ثمانيةُ فروعٍ من سجلّ الفروع، والتأسيسُ ٢٠٢١،
-  // والعددُ من سجلّ الموارد البشريّة. الرقمُ المخترَع في بياناتٍ منظَّمةٍ
-  // يُكتشَف ويُعاقَب عليه، وأسوأُ من ذلك أنّه يُقرأ ويُصدَّق.
+  // What search engines read.
+  // Structured data feeds Google's knowledge card (name, logo, branches, services, contacts). It was a generic `Organization`; it is now `MovingCompany` with an explicit service catalogue.
+  // Every figure here is real (eight branches from the branch register, founded 2021, headcount from the HR register); invented figures in structured data get penalised and, worse, believed.
   const BRANCH_CITIES = [
     ['Jeddah', 'جدة'], ['Riyadh', 'الرياض'], ['Al Dammam', 'الدمام'],
     ['Makkah', 'مكة المكرمة'], ['Yanbu', 'ينبع'], ['Rabigh', 'رابغ'],
@@ -166,7 +148,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       addressRegion: 'Makkah Province',
       addressCountry: 'SA',
     },
-    // المناطقُ التي تُخدَم فعلًا — فروعٌ قائمةٌ لا نيّاتٌ للتوسّع.
+    // Regions actually served: existing branches, not planned expansion.
     areaServed: [
       { '@type': 'Country', name: 'Saudi Arabia' },
       ...BRANCH_CITIES.map(([en]) => ({ '@type': 'City', name: en })),
@@ -211,7 +193,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     ],
   };
 
-  // موقعٌ يُبحَث فيه: يجعل جوجل يعرض خانةَ بحثٍ تحت النتيجة الأولى.
+  // Searchable site: lets Google show a search box under the top result.
   const siteLd = {
     '@context': 'https://schema.org',
     '@type': 'WebSite',

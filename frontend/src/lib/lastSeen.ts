@@ -1,11 +1,4 @@
-/**
- * آخرُ ما رآه هذا المتصفّح — يُعرض فورَ فتح الصفحة ثمّ يحلّ محلَّه الجديد.
- *
- * أرقامُ منصّة التشغيل تصل بعد ثوانٍ، وكانت البطاقاتُ تعرض «—» كلَّ فتحة. فيُحفَظ
- * آخرُ جوابٍ سليمٍ لكلّ مفتاح في المتصفّح ويُقرأ أوّلًا. للعرض الفوريّ وحده —
- * ليس مصدرَ حقيقة، والجديدُ يستبدله ما إن يصل. وكلُّ قراءةٍ وكتابةٍ محميّة:
- * التخزينُ قد يُمنع (نافذةٌ خاصّة) فتعمل الصفحةُ بدونه.
- */
+/** Last value this browser saw, shown instantly on page open and replaced when fresh data arrives. Operations platform numbers arrive after seconds and cards showed a dash on every open. Display only, not a source of truth. Every read and write is guarded because storage may be blocked (private window), and the page works without it. */
 const PREFIX = 'lastSeen:';
 
 export function readLastSeen<T>(key: string): T | null {

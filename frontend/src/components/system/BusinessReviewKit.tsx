@@ -1,10 +1,5 @@
 'use client';
-// Shared pieces for اجتماعات مراجعة الأعمال.
-//
-// The same action card appears on the meeting page, the manager's board and the
-// board-wide register, and the same task card on both the manager's and the
-// employee's view — so they live here once, and every screen stays consistent
-// as the module grows.
+// Shared pieces for the business review meetings. The action card and task card appear on several screens, so they live here once to stay consistent.
 import { useState, useEffect, useRef } from 'react';
 import { useLanguage } from '@/context/LanguageContext';
 import { useDialog } from '@/components/system/DialogProvider';

@@ -19,7 +19,7 @@ const idOf = (e: any) => (e?.idType === 'national_id' ? (e?.nationalId || e?.iqa
 const BG = 'bg-white group-hover:bg-slate-100';
 
 export default function HRRequestsPage() {
-  // الإجراءات، الرقم الوظيفيّ، الاسم، الهويّة — ثابتةٌ على اليمين.
+  // Actions, employee number, name and ID stay pinned to the right.
   const pin = usePinnedColumns(3);
   const { notify } = useDialog();
   const { user } = useAuth();
@@ -35,8 +35,7 @@ export default function HRRequestsPage() {
   const [open, setOpen] = useState<HRRequest | null>(null);
   const [reply, setReply] = useState('');
   const [link, setLink] = useState('');
-  // المرفقات تعيش مع الطلب لا خارجه: الرابط يُحذف من درايف فيبقى في السجلّ سطرٌ
-  // يقول «أُرسلت الشهادة» ورابطٌ لا يفتح.
+  // Attachments live with the request, not outside it: if the link is deleted from the drive, the record keeps a line saying a certificate was sent and a link that does not open.
   const [files, setFiles] = useState<PickedFile[]>([]);
   const [busy, setBusy] = useState(false);
 
@@ -67,27 +66,23 @@ export default function HRRequestsPage() {
     try { const d = await api.patch<{ request: HRRequest }>(`/api/hr/requests/${open._id}/status`, { status }); setOpen(d.request); load(); } catch (e: any) { notify(e.message, 'error'); }
   };
 
-  // ── الحالةُ تُفلتَر هنا لا في الخادم ───────────────────────────────────────
-  // كانت تُرسَل إلى الخادم، والرقمُ في رأس الصفحة يُعَدّ على ما رجع: يُختار
-  // «مُغلَق» فيقول الرأسُ «٠ مفتوح». فيُجلَب الكلُّ مرّةً ويُفلتَر الجدولُ وحدَه.
+  // Status is filtered client-side. It used to go to the server while the header number was counted on the result, so choosing "closed" showed "0 open"; so fetch all once and filter only the table.
   const requests = statusFilter ? allRequests.filter((r) => r.status === statusFilter) : allRequests;
   const filtered = requests.filter((r) => !search.trim() || r.subject.toLowerCase().includes(search.toLowerCase()) || userName(r.requester).toLowerCase().includes(search.toLowerCase()));
   const openCount = allRequests.filter((r) => r.status === 'open' || r.status === 'in_progress').length;
 
-  // «آخر تحديث الميلادي» لا تُقرأ — فالاسمُ الأساسيُّ «تاريخ آخر تحديث».
+  // The "last update Gregorian" label is never shown; the main name is last update date.
   const updatedLabels = pairLabels(ar ? 'تاريخ آخر تحديث' : 'Last updated', ar);
   const exportColumns: ExportColumn[] = [
     { header: tx.colEmployee, key: 'requester', transform: (v) => userName(v), width: 22 },
     { header: tx.colCategory, key: 'category', transform: (v) => categoryLabel(v, lang), width: 18 },
     { header: tx.colSubject, key: 'subject', width: 32 },
     { header: tx.colStatus, key: 'status', transform: (v) => (REQUEST_STATUS[v] ? (ar ? REQUEST_STATUS[v].ar : REQUEST_STATUS[v].en) : v), width: 16 },
-    // الميلاديُّ بساعته، وبعده مباشرةً هجريُّ اليوم نفسِه (lib/hrDates).
+    // Gregorian with the time, then the Hijri of the same day right after (lib/hrDates).
     { header: updatedLabels[0], key: 'updatedAt', transform: (v) => fmtDateTime(v), width: 22 },
     { header: updatedLabels[1], key: 'updatedAt', type: 'hijri', transform: (v) => gregDay(v), width: 16 },
   ];
-  // فلتر الحالة يُطبَّق على الخادم: حين يكون «مغلق» لا تعرف الذاكرة بالطلبات
-  // المفتوحة شيئًا، فـ«الكلّ» يجب أن يعيد النداء بلا حالة. والبحث في الذاكرة،
-  // فـ«المعروض» صادقٌ كما هو.
+  // Status filter runs on the server: with "closed" memory knows nothing of open requests, so "All" must re-fetch without status. Search is in memory, so "shown" is accurate as is.
   const fetchAllRequests = async () => {
     const d = await api.get<{ requests: HRRequest[] }>('/api/hr/requests');
     return [{ name: tx.pageTitle, rows: d.requests || [], columns: exportColumns }];

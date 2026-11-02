@@ -1,23 +1,8 @@
 /**
- * حارسُ ترتيب الخطّافات — يُشغَّل قبل كلّ بناء (`prebuild`).
- *
- * ── العلّة ──────────────────────────────────────────────────────────────────
- * React يعدّ الخطّافات في كلّ رسمة، فإن اختلف العددُ بين رسمتين أسقط المكوّنَ
- * كلَّه بخطأ #310 — شاشةٌ بيضاءُ برقمٍ لا يقول لمن أمامه شيئًا.
- *
- * ووقع ذلك في شاشتين معًا (٢٢ سبتمبر ٢٠٢٦): ملفُّ العميل في التحصيل ومعاملةُ
- * التخليص. في كلتيهما خطّافٌ كُتب **بعد** عودةٍ مبكّرة («يحمّل…» أو «لا يوجد»)،
- * فيُنادى في رسمةٍ ولا يُنادى في أخرى. خمسٌ وثلاثون مرّةً في سجلّ الأخطاء، وكلُّ
- * عميلٍ رابطٌ مختلف — فبدا أنّ «صفحاتٍ كثيرةً جدًّا» تسقط.
- *
- * والخطأُ لا يظهر في البناء ولا في فحص الأنواع ولا في الشاشة الفارغة: يظهر
- * حين تصل البيانات. فيُفحَص هنا بمحلّل TypeScript نفسِه، مكوّنًا مكوّنًا، وتُرفَض
- * البنيةُ قبل أن تصل أحدًا:
- *   ١. خطّافٌ بعد عودةٍ مبكّرة في جسم المكوّن.
- *   ٢. خطّافٌ داخل شرطٍ أو حلقة.
- *   ٣. خطّافٌ داخل دالّةٍ مُمرَّرة (map/filter/forEach…) — عددُه عددُ الصفوف.
- *
- *   node scripts/checkHooks.cjs
+ * Hook-order guard, run before every build (prebuild).
+ * React counts hooks per render; a differing count crashes the component with error #310 (blank screen). It appears only when data arrives, not in build or type check, so it is checked with the TypeScript parser.
+ * Rejects: 1) a hook after an early return in a component body; 2) a hook inside a condition or loop; 3) a hook inside a callback passed to a non-hook call (map/filter/forEach).
+ * Usage: node scripts/checkHooks.cjs
  */
 const ts = require('typescript');
 const fs = require('fs');
@@ -48,7 +33,7 @@ for (const file of files) {
   const at = (n) => src.getLineAndCharacterOfPosition(n.getStart()).line + 1;
   const rel = path.relative(path.join(__dirname, '..'), file);
 
-  // ١ و٢ — داخل جسم كلّ دالّة
+  // Cases 1 and 2: inside each function body.
   const hooksIn = (node, cb) => {
     const walk = (n) => { if (isFn(n)) return; if (isHookCall(n)) cb(n); ts.forEachChild(n, walk); };
     walk(node);
@@ -67,7 +52,7 @@ for (const file of files) {
     if (ts.isFunctionDeclaration(node) && node.name) checkBody(node.body, node.name.text);
     else if (ts.isVariableDeclaration(node) && node.initializer && isFn(node.initializer)) checkBody(node.initializer.body, node.name.getText());
 
-    // ٣ — خطّافٌ داخل دالّةٍ مُمرَّرةٍ وسيطًا لنداءٍ ليس خطّافًا
+    // Case 3: a hook inside a function passed as an argument to a non-hook call.
     if (isHookCall(node)) {
       let n = node.parent;
       while (n && !ts.isFunctionDeclaration(n)) {

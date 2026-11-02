@@ -1,8 +1,5 @@
 'use client';
-// Marketing dashboard (لوحة التسويق) — the section's overview for a date window:
-// how much we spent, what we published, on which platforms, and what it brought
-// back in reach, clicks and leads. Fed by /api/marketing/dashboard and kept live
-// by the `marketing:updated` socket event.
+// Marketing dashboard: the section's overview for a date window: how much we spent, what we published, on which platforms, and what it brought back in reach, clicks and leads. Fed by /api/marketing/dashboard and kept live by the `marketing:updated` socket event.
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';

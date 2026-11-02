@@ -1,21 +1,8 @@
 'use client';
 /**
- * «التشغيل — خاصّ»: كشوفُ التشغيل نفسُها، بقيمة البيع وربحها وهامشها.
- *
- * ── قيمةُ البيع واحدة ──────────────────────────────────────────────────────
- * كانت هذه الصفحةُ تحفظ «سعرًا حقيقيًّا» في جدولٍ لها وحدَها، فيُصحَّح السعرُ
- * هنا ويبقى سيرُ العمل والتحصيلُ على غيره. وصار عمودُ «قيمة البيع» في الكشف هو
- * المرجعَ الوحيد (صاحبُ الشركة، ٢٠٢٦/١٠/٢١): تقرؤه هذه الصفحةُ وتكتبه بالطريق
- * الذي يكتبه به سيرُ العمل — الصلاحيّةُ نفسُها، ويُدفَع إلى منصّة التشغيل.
- *
- * وسعرُ مسار العميل (آخرُ سعرٍ على المسار) يُعرَض اقتراحًا بجانب القيمة، ولا
- * يُحسب قيمةً حتى يُعتمَد — والتصحيحُ هنا يصير الأحدثَ في ملفّ العميل.
- *
- * ── وهي تُقرأ كما يُقرأ سيرُ العمل ─────────────────────────────────────────
- * الأعمدةُ نفسُها، وفلاترُ الأعمدة نفسُها (`cf_<العمود>` تُطبَّق في الخادم،
- * وقيمُها من `/api/workflows/filters`)، والمدى نفسُه (يوم / شهر / مدى). فلا
- * يُرى في الشاشتين كشفٌ في واحدةٍ وليس في الأخرى، ولا مجموعٌ لا يساوي مجموعًا.
- * وفوقها ما لهذه الصفحة: الربحُ والهامشُ واقتراحُ سعر المسار.
+ * Operations private: the same operations statements, with selling value, profit and margin.
+ * The statement selling-value column is the single reference; this page reads and writes it through the workflow path and pushes it to the operations platform. The customer route price is only a suggestion until approved.
+ * Columns, column filters (`cf_<column>`, applied on the server) and range match the workflow page, so totals agree.
  */
 import { useState, useEffect, useCallback, useRef } from 'react';
 import MonthPicker from '@/components/system/MonthPicker';
@@ -43,11 +30,10 @@ import { SHIPMENT_STATUSES, PAYMENT_METHODS } from '@/lib/ops';
 const LIMIT = 50;
 const ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'cfo', 'accounting_manager', 'accountant'];
 
-// مرجعان ثابتان — كما في صفحة سير العمل: العمودُ غيرُ المفلتَر لا يصنع مرجعًا جديدًا في كلّ رسمة.
+// Two stable references, as on the workflow page: an unfiltered column does not create a new reference each render.
 const EMPTY_SET = new Set<string>();
 const EMPTY_OPTIONS: ColumnFilterOption[] = [];
-// الأعمدةُ التي يقبل الخادمُ الفلترةَ عليها (`FILTERABLE_COLUMNS` في workflowController).
-// ما سواها يُعرض بلا قائمة: قائمةٌ يردّها الخادمُ ٤٠٠ تبدو فارغةً فتُقرأ «لا قيم».
+// Columns the server accepts filters on (`FILTERABLE_COLUMNS` in workflowController). Others show without a list, because a list the server rejects with 400 would look empty and read as no values.
 const FILTERABLE = new Set([
   'reportNumber', 'reportDate', 'fromLocation', 'toLocation', 'branch', 'carOwner',
   'carNumber', 'ownerType', 'executionStatus', 'applicationStatus', 'paymentMethod',
@@ -79,7 +65,7 @@ interface Stats {
   byStatus?: Record<string, number>; statusTotal?: number;
 }
 
-/** الشهرُ الجاري بتقويم الرياض: مفتاحُه وأوّلُه وآخرُه. */
+/** The current month in Riyadh calendar: its key, start and end. */
 const CURRENT_MONTH = () => {
   const key = new Date(Date.now() + 3 * 3600e3).toISOString().slice(0, 7);
   const [y, mo] = key.split('-').map(Number);
@@ -94,7 +80,7 @@ const money = (v?: number | null) => (v == null ? '—'
 const fmtDate = (d?: string) => (d ? new Date(d).toLocaleDateString('en-GB') : '—');
 
 export default function OperationsPrivatePage() {
-  // لوحةُ التحليل تُطوى افتراضًا — راجع التعليقَ عند موضعها.
+  // The analysis panel is collapsed by default; see the comment where it is rendered.
   const [showAnalytics, setShowAnalytics] = useState(false);
   const { user } = useAuth();
   const { lang, isRTL } = useLanguage();
@@ -110,11 +96,8 @@ export default function OperationsPrivatePage() {
   const [canMoney, setCanMoney] = useState(false);
   const [search, setSearch] = useState('');
   const [debounced, setDebounced] = useState('');
-  // ── ثلاثةُ أوضاعٍ للفترة — كصفحة سير العمل ──────────────────────────────
-  // اليومُ والشهرُ يُترجمان إلى مدًى يفهمه الخادم؛ و«إلى» تشمل يومَها كلَّه
-  // (نهايةُ اليوم بتوقيت الشركة — `endOfDay` في الخادم).
-  // ويُفتح على الشهر الجاري: سؤالُ «كم ربحنا هذا الشهر» هو الأكثرُ طرحًا، والشهرُ
-  // مكتوبٌ في خانته فلا يُحسب فلترًا خفيًّا — ومَن أراد الكلَّ يمسحه.
+  // Three period modes, as on the workflow page
+  // Day and month translate into a range the server understands, and To includes its whole day (end of day in company time, `endOfDay` on the server). It opens on the current month because how much did we earn this month is the most common question, and the month is written in its field so it is not a hidden filter; clear it to see everything.
   const [dateMode, setDateMode] = useState<DateMode>('month');
   const [monthKey, setMonthKey] = useState(() => CURRENT_MONTH().key);
   const [dayKey, setDayKey] = useState('');
@@ -134,7 +117,7 @@ export default function OperationsPrivatePage() {
   const [draft, setDraft] = useState('');
   const [saving, setSaving] = useState(false);
 
-  // role-only: شاشةُ أسعار البيع — مقيّدةٌ بالأسماء عمدًا (restrict في القائمة).
+  // role-only: selling-price screen; restricted to named users on purpose (restrict in the menu).
   const allowed = ROLES.includes(String(user?.role || ''));
   const hasColFilters = Object.keys(colFilters).length > 0;
 
@@ -152,12 +135,12 @@ export default function OperationsPrivatePage() {
   const applyDay = (d: string) => { setDayKey(d); setDateFrom(d); setDateTo(d); };
   const switchMode = (m: DateMode) => {
     setDateMode(m);
-    // تبديلُ الوضع يمسح ما اختاره الوضعُ السابق: بقاؤه يعني فلترًا لا يراه أحد.
+    // Switching mode clears the previous mode's selection; keeping it would leave a filter nobody can see.
     setDateFrom(''); setDateTo(''); setMonthKey(''); setDayKey('');
   };
 
-  // ── شرطٌ واحدٌ يقرؤه الجدولُ والبطاقاتُ وقوائمُ الأعمدة والتصدير ─────────
-  // بأسماء صفحة سير العمل نفسِها، فيفلتر الخادمُ هنا كما يفلتر هناك.
+  // One condition read by the table, cards, column lists and export
+  // Uses the workflow page's own names, so the server filters here exactly as there.
   const buildParams = useCallback(() => {
     const p = new URLSearchParams();
     if (debounced) p.set('search', debounced);
@@ -169,7 +152,7 @@ export default function OperationsPrivatePage() {
     return p;
   }, [debounced, dateFrom, dateTo, pendingOnly, priced, colFilters]);
 
-  // ── والردُّ القديم لا يكتب فوق الأحدث ──────────────────────────────────────
+  // A stale reply does not overwrite a newer one.
   const guard = useLatestRequest();
   const load = useCallback(async (background = false) => {
     const mine = guard.begin();
@@ -187,29 +170,28 @@ export default function OperationsPrivatePage() {
     } catch (e: any) {
       if (guard.isCurrent(mine)) notify(e?.message || 'Failed', 'error');
     } finally {
-      // الرايةُ تُطفأ دائمًا؛ والحارسُ يقرّر بياناتِ مَن تُعرض فقط.
+      // The busy flag is always cleared; the guard only decides whose data is shown.
       if (!background) setRefreshing(false);
       if (guard.isCurrent(mine)) setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [buildParams, page, guard]);
 
-  // ── والبطاقاتُ بحارسٍ مستقلّ ─────────────────────────────────────────────
-  // أثقلُ طلبٍ هو غيرُ المفلتَر، وهو أوّلُ ما يُطلق؛ فلو وصل بعد المفلتَر لكتب
-  // مجموعَ الجدول كلِّه تحت عنوان «حسب الفلتر».
+  // Cards use an independent guard
+  // The heaviest request is the unfiltered one and it fires first; if it arrived after the filtered one it would write the whole table's total under a by-filter label.
   const statsGuard = useLatestRequest();
   const loadStats = useCallback(async () => {
     const mine = statsGuard.begin();
     try {
       const d = await api.get<Stats>(`/api/operations-private/stats?${buildParams().toString()}`);
       if (statsGuard.isCurrent(mine)) setStats(d);
-    } catch { /* الأرقامُ تحسينٌ لا شرط */ }
+    } catch { /* The numbers are an enhancement, not a requirement. */ }
   }, [buildParams, statsGuard]);
 
   useEffect(() => { if (allowed) load(); }, [load, allowed]);
   useEffect(() => { if (allowed) loadStats(); }, [loadStats, allowed]);
 
-  // قيمُ عمودٍ واحد عند فتح قائمته — من نقطة سير العمل نفسِها وبالفلاتر النشطة كلِّها.
+  // Values of one column when its list opens, from the workflow endpoint with all active filters.
   const fetchColOptions = useCallback(async (field: string, q = '') => {
     const seq = (optionsSeq.current[field] || 0) + 1;
     optionsSeq.current[field] = seq;
@@ -235,10 +217,8 @@ export default function OperationsPrivatePage() {
     if (openField) fetchColOptions(openField);
   }, [fetchColOptions, openField, openNonce]);
 
-  // ── حيٌّ مع سير عمل التشغيل ─────────────────────────────────────────────
-  // نفسُ الأحداث التي تسمعها تلك الصفحة (عدا الأقفال — لا عمودَ لها هنا)، وحدثُ
-  // أسعارنا. واستطلاعُ المنصّة يبثّ `workflow:updated` كلَّ بضع ثوانٍ، فتُجمَع
-  // الأحداثُ المتلاحقة في تحديثٍ واحد بدل عشرة طلباتٍ للبطاقات في الدقيقة.
+  // Live with the operations workflow
+  // The same events that page listens to (except locks, which have no column here), plus the prices event. The platform poll broadcasts `workflow:updated` every few seconds, so consecutive events are coalesced into one refresh instead of ten card requests a minute.
   const liveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const loadRef = useRef(load);
   const statsRef = useRef(loadStats);
@@ -275,7 +255,7 @@ export default function OperationsPrivatePage() {
           margin: value > 0 && d.profit != null ? Math.round((d.profit / value) * 10000) / 100 : null,
         } : x)));
       setEditing(null);
-      // ويُقال أين كُتبت: في المنصّة وهنا، أم هنا وحدَه (كشفٌ ليس منها).
+      // Reports where it was written: the platform and here, or here only (a statement not from the platform).
       notify(d.sellingPlatform
         ? (ar ? 'حُفظت قيمة البيع — وكُتبت في منصّة التشغيل' : 'Saved — and written to the operations platform')
         : (ar ? 'حُفظت قيمة البيع' : 'Selling value saved'), 'success');
@@ -290,21 +270,21 @@ export default function OperationsPrivatePage() {
     draft: T.draft, submitted_to_ops: T.submittedToOps, ops_completed: T.opsCompleted,
     submitted_to_collections: T.toCollections, completed: T.completedStage,
   };
-  // مصدرُ قيمة الكشف — عمودُ `sellingValueSource` نفسُه.
+  // Source of the statement's value: the `sellingValueSource` column itself.
   const sourceLabel = (s?: string) => (
     s === 'manual' ? (ar ? 'يدويّ' : 'manual')
       : s === 'collections_book' ? (ar ? 'دفتر التحصيل' : 'collections book')
         : s === 'platform' ? (ar ? 'المنصّة' : 'platform') : '—');
-  // الستُّ كما في سير العمل — راجع lib/paymentKind.
+  // The six kinds as in the workflow; see lib/paymentKind.
   const payType = (v?: string) => paymentKindLabel(v, ar) || '—';
   const done = (v?: string) => (v ? (ar ? 'تمّت' : 'Done') : '—');
 
-  // العرضُ يُترجَم والفلترةُ على القيمة الخام — كصفحة سير العمل.
+  // Display is translated and filtering uses the raw value, as on the workflow page.
   const colFormat = (field: string): ((v: any) => string) | undefined => {
     if (field === 'stage') return (v: any) => stageLabels[v] || v;
     if (field === 'executionStatus' || field === 'applicationStatus') return trStatus;
     if (field === 'paymentMethod') return trPayment;
-    // «cash»/«tax» تُقرأ كما في الخانة.
+    // cash and tax are read as in the cell.
     if (field === 'paymentType') return (v: any) => (v ? payType(v) : '');
     if (DATE_FIELDS.has(field)) return (v: any) => {
       const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(v || ''));
@@ -314,8 +294,8 @@ export default function OperationsPrivatePage() {
     return undefined;
   };
 
-  // ── أعمدةُ سير العمل بترتيبها، وبعد قيمة البيع ربحُها وهامشُها ومصدرُها ──
-  // `kind` يقرّر رسمَ الخانة؛ و`money` = لا يُعرض إلّا لمن يملك أعمدةَ الفاتورة.
+  // Workflow columns in order, then profit, margin and source after selling value
+  // `kind` decides how the cell is drawn; `money` means shown only to users who hold the invoice columns.
   type Col = { key: string; label: string; kind?: 'date' | 'num' | 'status' | 'pay' | 'stage' | 'done' | 'ptype'; money?: boolean; tone?: string };
   const COLS: Col[] = [
     { key: 'reportNumber', label: T.thReportNumber },
@@ -333,7 +313,7 @@ export default function OperationsPrivatePage() {
     { key: 'userPhone', label: T.thUserPhone },
     { key: 'taxIndicator', label: T.thTaxIndicator },
     { key: 'purchaseValue', label: T.thPurchaseValue, kind: 'num' },
-    // قيمةُ البيع: عمودُ `sellingValue` في سير العمل نفسُه — وفلترُه فلترُه، وتُعدَّل هنا.
+    // Selling value: the workflow's own `sellingValue` column; its filter is the same filter, and it is edited here.
     { key: 'sellingValue', label: ar ? 'قيمة البيع' : 'Selling value', kind: 'num' },
   ];
   const ALL_AFTER: Col[] = [
@@ -379,7 +359,7 @@ export default function OperationsPrivatePage() {
     }
   };
 
-  // رأسُ عمودٍ بقائمة فلتر — دالّةٌ تُنادى لا مكوّنٌ يُعرَّف في الرسم.
+  // Column header with a filter list; a function that is called, not a component defined in render.
   const colHead = (c: Col) => (
     <th key={c.key} className="px-3 py-3 text-start text-xs font-semibold whitespace-nowrap">
       <span className={`inline-flex items-center ${c.tone || 'text-slate-300'}`}>
@@ -411,9 +391,8 @@ export default function OperationsPrivatePage() {
     </td>
   );
 
-  // ── التصدير: ثلاثةُ نطاقات كصفحة سير العمل ───────────────────────────────
-  // الصفحةُ المعروضة في اليد؛ و«كلُّ ما طابق الفلتر» و«الجدولُ كلُّه» يبنيهما
-  // الخادمُ ملفًّا بأسعارنا المحلولة — لا تعبر عشراتُ الآلاف المتصفّحَ خامًا.
+  // Export: three scopes, as on the workflow page
+  // The shown page is in hand; everything matching the filter and the whole table are built by the server as a file with our resolved prices, so tens of thousands of rows do not cross the browser raw.
   const exportColumns: ExportColumn[] = [...COLS, ...COLS_AFTER].flatMap((c): ExportColumn[] => {
     const base: ExportColumn = { header: c.label, key: c.key, width: 14, transform: (_v, r) => cellText(c, r) };
     if (c.key !== 'sellingValue') return [base];
@@ -430,10 +409,8 @@ export default function OperationsPrivatePage() {
     p.delete('page'); p.delete('limit');
     if (scope === 'all') p.set('scope', 'all');
 
-    // ── «الجدولُ كلُّه» يُبنى في الخلفيّة ──────────────────────────────────
-    // ستّةٌ وثلاثون ألفَ صفٍّ ونصفُ دقيقةِ بناء: لا يُنتظَر أمام شاشةٍ جامدة،
-    // ولا يضيع العملُ إن أُغلقت الصفحة. يُسجَّل الطلبُ، ويُنزَّل حين يجهز،
-    // ويصل إشعارٌ بالرابط على كلّ حال. راجع lib/backgroundExport.
+    // The whole table is built in the background
+    // About 36,000 rows and half a minute of building: do not wait before a frozen screen, and do not lose the work if the page closes. The request is recorded, downloaded when ready, and a notification with the link is sent anyway. See lib/backgroundExport.
     if (scope === 'all') {
       notify(ar ? 'جارٍ تجهيز الملف… سيُنزَّل تلقائياً، وسيصلك إشعار عند جهوزه.'
         : 'Preparing the file… it will download automatically, and you will get a notification.', 'info');
@@ -457,10 +434,8 @@ export default function OperationsPrivatePage() {
     return <div className="p-8 text-slate-500">{ar ? 'هذه الصفحة للإدارة فقط.' : 'Management only.'}</div>;
   }
   /**
-   * ── بطاقاتُ الحالة: قائمةُ اختيارٍ لا زرُّ راديو ──────────────────────────
-   * نظيرُ «سير عمل التشغيل». ضغطةٌ تُدخل الحالةَ وأخرى تُخرجها، فيُرى «في
-   * الطريق» و«وصلت» معًا — وهو أوّلُ ما يُسأل عنه. و«الكلّ» تمسحها جميعًا،
-   * ولا يُترك فلترٌ بمجموعةٍ فارغةٍ تُقرأ «لا شيء».
+   * Status cards: multi-select, not radio
+   * Counterpart of the operations workflow. A click adds a status and another removes it, so on the way and arrived can be seen together, the most common question. All clears them, and a filter with an empty set is never kept because it would read as nothing.
    */
   const statusSel: Set<string> = colFilters.applicationStatus || EMPTY_STATUS_SET;
   const toggleStatusCard = (key: string) => {
@@ -491,13 +466,7 @@ export default function OperationsPrivatePage() {
           ]} />
       </PageHeader>
 
-      {/* ── بطاقاتُ حالة الشحنة ────────────────────────────────────────────────
-          لم تكن هنا: الصفحةُ تعرض المالَ وحدَه، ومن أراد «ما هو في الطريق
-          الآن» فتح قائمةَ العمود. وهي أوامر النقل نفسُها التي في «سير عمل
-          التشغيل»، فلها بطاقاتُها نفسُها — والأعدادُ من الخادم على الفلتر كلِّه
-          لا على الصفحة المعروضة.
-
-          وهي قائمةُ اختيارٍ: ضغطةٌ تُضيف وأخرى تُزيل، فتُجمَع حالتان معًا. */}
+      {/* Shipment status cards Not here before: the page shows money only, and whoever wanted what is on the way opened the column list. These are the same transport orders as in the operations workflow, so they get the same cards, with counts from the server over the whole filter, not the shown page. Multi-select: a click adds and another removes, so two statuses can be combined. */}
       {stats?.byStatus && (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
           <button type="button" onClick={() => toggleStatusCard('')}
@@ -530,11 +499,7 @@ export default function OperationsPrivatePage() {
         </div>
       )}
 
-      {/* ── ولوحةُ التحليل تُفتَح من هنا ──────────────────────────────────────
-          هي اللوحةُ التي يعمل بها مديرُ التشغيل (ورقتُه في إكسل) — وموضعُها
-          هذه الصفحةُ لأنّها الصفحةُ التي فيها ربحُ كلّ أمر نقل. وتُطوى
-          افتراضًا: من يفتح الصفحةَ يفتحها للجدول عادةً، فلا تُؤخَّر بحسابٍ
-          لا يطلبه. راجع components/ops/OpsAnalytics. */}
+      {/* Analysis panel opens from here It is the panel the operations manager works with (his Excel sheet) and belongs on this page because it holds each transport order's profit. It is collapsed by default: whoever opens the page usually wants the table, so it does not delay them with a computation they did not ask for. See components/ops/OpsAnalytics. */}
       <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
         <button type="button" onClick={() => setShowAnalytics((v) => !v)}
           className="w-full flex items-center gap-2 px-4 py-3 text-start hover:bg-slate-50">
@@ -553,7 +518,7 @@ export default function OperationsPrivatePage() {
         )}
       </div>
 
-      {/* ── البطاقاتُ على الفلتر كلِّه لا على الصفحة المعروضة ───────────────── */}
+      {/* Cards cover the whole filter, not the shown page. */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
         <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
           <div className="flex items-center justify-between">
@@ -588,7 +553,7 @@ export default function OperationsPrivatePage() {
           </p>
           <p className="mt-1 text-[11px] text-slate-500">{ar ? 'على المسعَّر وحدَه — البيع ناقص شرائه' : 'priced rows only — selling minus their purchase'}</p>
         </div>
-        {/* ── وما لم يُسعَّر يُقال ولا يُخفى — والضغطُ عليه يعرضه ────────────── */}
+        {/* What is not priced is stated, not hidden, and clicking it shows it. */}
         <button type="button" onClick={() => setPriced((v) => (v === 'no' ? '' : 'no'))}
           className={`rounded-xl border p-4 text-start shadow-sm transition-colors ${
             priced === 'no' ? 'border-amber-400 bg-amber-50 ring-2 ring-amber-300/50' : 'border-slate-200 bg-white hover:border-amber-300'}`}>
@@ -611,7 +576,7 @@ export default function OperationsPrivatePage() {
         </button>
       </div>
 
-      {/* ── الفلاتر: البحث، والفترة (يوم/شهر/مدى)، ثمّ ما يخصّ هذه الصفحة ───── */}
+      {/* Filters: search, period (day / month / range), then what is specific to this page. */}
       <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm space-y-3">
         <div className="flex flex-col lg:flex-row lg:items-center gap-3 flex-wrap">
           <div className="relative flex-1 min-w-[220px]">
@@ -698,7 +663,7 @@ export default function OperationsPrivatePage() {
                 <tr key={r._id} className="hover:bg-slate-50">
                   {COLS.filter((c) => c.key !== 'sellingValue').map((c) => td(c, r))}
 
-                  {/* ── قيمةُ البيع — عمودُ الكشف نفسُه، يُعدَّل هنا ──────────── */}
+                  {/* Selling value: the statement's own column, edited here. */}
                   <td className="px-3 py-2.5 whitespace-nowrap bg-[#f37121]/[0.03]">
                     {editing === r._id ? (
                       <span className="inline-flex items-center gap-1">
@@ -722,7 +687,7 @@ export default function OperationsPrivatePage() {
                           title={ar ? 'اضغط للتعديل — يُكتب في سير العمل ومنصّة التشغيل، ويصير آخرَ سعرٍ في ملفّ العميل' : 'Click to edit — written to the workflow and the platform, and becomes the latest customer price'}>
                           {r.sellingValue ? money(r.sellingValue) : (ar ? 'بلا سعر' : 'not priced')}
                         </button>
-                        {/* سعرُ مسار العميل اقتراحٌ يُعتمَد بضغطة — لا يُحسب قيمةً قبلها. */}
+                        {/* The customer route price is a suggestion approved with a click; it is not counted as a value before that. */}
                         {r.routePrice != null && Number(r.routePrice) !== Number(r.sellingValue || 0) && (
                           <button type="button"
                             onClick={() => { setEditing(r._id); setDraft(String(r.routePrice)); }}

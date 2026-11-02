@@ -5,11 +5,8 @@ import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 
-/// ربط الحسابات — نظيرُ /system/collections-dept/links على الموقع.
-///
-/// عميلٌ من التشغيل اسمُه قريبٌ من حسابٍ في الدفتر: أهو هو («ربط» — يصير اسمُه
-/// صيغةً للحساب فتُقرأ حمولاتُه عليه) أم عميلٌ آخر («مستقلّ» — يأخذ كودَه الآن
-/// بنوع حمولاته)؟ قرارُ إنسانٍ لا قياس: كودٌ خاطئٌ يقسم دَينَ عميلٍ على حسابين.
+/// Account linking, counterpart of /system/collections-dept/links on the web.
+/// An operations customer whose name is close to a ledger account: is it the same (link: its name becomes a form of the account so its loads are read on it) or another customer (independent: gets its own code now, by its load type)? A human decision, not a measurement: a wrong code splits a customer's debt across two accounts.
 class PartyLinksScreen extends StatefulWidget {
   const PartyLinksScreen({super.key});
   @override

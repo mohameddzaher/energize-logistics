@@ -16,10 +16,9 @@ import { getWalletDashboardTranslations, getWalletDashboardExtraTranslations } f
 
 interface BranchData {
   branch: { _id: string; name: string; code: string };
-  // رصيدُ الفرع قبل بداية الفترة — به تُقرأ الحركاتُ على ما جرت عليه.
+  // Branch balance before the period starts; movements are read on top of it.
   openingBalance: number;
-  // فرقُ الجرد داخل الفترة: يظهر حين يُثبَّت رصيدٌ يدويًّا فلا يقفل الميزانُ
-  // بالحركات وحدَها. صفرٌ في الأحوال العاديّة.
+  // Stocktake difference within the period: shows when a balance was set manually so movements alone do not close the balance. Zero normally.
   adjustment?: number;
   totalCollections: number;
   totalExpenses: number;
@@ -51,8 +50,7 @@ export default function WalletDashboardPage() {
   const [selectedDate, setSelectedDate] = useState(getTodayStr());
   const [dateFrom, setDateFrom] = useState(getTodayStr());
   const [dateTo, setDateTo] = useState(getTodayStr());
-  // الشهرُ سؤالٌ يُطرح أكثرَ من المدى الحرّ: «كم حصّل الفرعُ هذا الشهر».
-  // وكتابتُه مدًى من أوّله إلى آخره في كلّ مرّة عملٌ يتكرّر بلا داعٍ.
+  // Month is asked more often than a free range ("what did the branch collect this month"), so it gets its own control instead of retyping first/last day.
   const [month, setMonth] = useState(getTodayStr().slice(0, 7));
   const monthRange = (mk: string) => {
     const [y, mo] = mk.split('-').map(Number);
@@ -83,9 +81,7 @@ export default function WalletDashboardPage() {
   useSocket('wallet:transaction', handleEvent);
   useSocket('wallet:dayClosed', handleEvent);
   useSocket('wallet:dayReopened', handleEvent);
-  // ── وحذفُ حركةٍ يغيّر الرصيدَ كما تغيّره إضافتُها ──────────────────────────
-  // كانت اللوحةُ تسمع الإضافةَ والإقفالَ ولا تسمع الحذفَ ولا التصفير، فتبقى
-  // تعرض مالًا أُزيل حتّى يُحدَّث المتصفّح بيدٍ.
+  // Deleting a movement changes the balance just like adding one; the board now listens to delete and reset too, so it does not keep showing removed money.
   useSocket('wallet:transactionDeleted', handleEvent);
   useSocket('wallet:reset', handleEvent);
 
@@ -94,8 +90,7 @@ export default function WalletDashboardPage() {
   const exportColumns: ExportColumn[] = [
     { header: txx.colBranch, key: 'branch.name', width: 20 },
     { header: txx.colBranchCode, key: 'branch.code', width: 12 },
-    // الافتتاحيُّ أوّلًا كما يُقرأ على الشاشة: الملفُّ يُفتح خارج النظام حيث
-    // لا شيءَ يشرحه، فترتيبُ أعمدته هو ترتيبُ الحساب.
+    // Opening balance comes first, as on screen: the file is opened outside the system, so column order is the order of the calculation.
     { header: lang === 'ar' ? 'الرصيد الافتتاحي' : 'Opening balance', key: 'openingBalance', transform: fmt.money, width: 20 },
     { header: txx.colCollections, key: 'totalCollections', transform: fmt.money, width: 18 },
     { header: txx.colExpenses, key: 'totalExpenses', transform: fmt.money, width: 18 },
@@ -110,10 +105,7 @@ export default function WalletDashboardPage() {
     { header: lang === 'ar' ? 'فرق الجرد' : 'Cash difference', key: 'totalDifference', transform: fmt.money, width: 18 },
   ];
 
-  // ── نطاقان لا واحد ────────────────────────────────────────────────────────
-  // «المعروض» هو الفترةُ التي على الشاشة الآن — وهو ما يُصدَّر في الغالب.
-  // و«الكلّ» كلُّ ما في الدفتر منذ أوّل يوم: يُطلب عند التسليم والمراجعة، وكان
-  // يتطلّب تغييرَ الفلتر إلى مدًى واسعٍ ثمّ إعادتَه.
+  // Two scopes: "shown" is the period currently on screen (the usual export); "all" is the whole ledger since day one, needed for handover and audit without widening the filter and restoring it.
   const scope = exportScopeLabels(lang === 'ar');
   const periodLabel = dateMode === 'range'
     ? `${dateFrom} → ${dateTo}`
@@ -127,8 +119,7 @@ export default function WalletDashboardPage() {
     {
       key: 'all',
       label: scope.all,
-      // يُجلب من الخادم عند الضغط لا قبله: لا يُحمَّل تاريخُ الدفتر كلِّه لمن
-      // فتح الصفحة ولن يصدّر.
+      // Fetched from the server on click, not earlier, so the whole ledger history is not loaded for someone who will not export.
       resolve: async () => {
         const d = await api.get<any>('/api/wallet/dashboard?dateFrom=2000-01-01&dateTo=2100-12-31');
         return [{ name: 'Branches', rows: (d.branches || []) as Record<string, any>[], columns: exportColumns }];
@@ -212,7 +203,7 @@ export default function WalletDashboardPage() {
           ) : (
             <>
               <div className="flex items-center gap-1.5">
-                {/* «من» و«إلى» خارجَ الخانة — راجع DateRangeFilter. */}
+                {/* "From" and "to" are outside the field; see DateRangeFilter. */}
                 <span className="text-[12px] font-bold text-slate-600">{lang === 'ar' ? 'من' : 'From'}</span>
                 <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)}
                   className="px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm [color-scheme:light] focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" aria-label={txx.fromDate} />
@@ -237,10 +228,7 @@ export default function WalletDashboardPage() {
         </div>
       )}
 
-      {/* ── الميزانُ يُقرأ من اليسار إلى اليمين ──────────────────────────────
-          افتتاحيٌّ + تحصيلاتٌ − مصروفاتٌ − مشترياتٌ = ختاميّ. وبلا الافتتاحيّ
-          تُقرأ الحركاتُ بلا ما جرت عليه: «حصّلنا كذا» بلا «من كم بدأنا».
-          والبطاقاتُ مرتّبةٌ على هذا الترتيب فتُقرأ كسطرِ حساب. */}
+      {/* Balance reads left to right: opening + collections - expenses - purchases = closing. Without the opening balance the movements lack their starting point, so cards follow this order and read as an account line. */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 xl:grid-cols-7 gap-4">
         <div className="min-w-0 bg-white border border-slate-300 rounded-xl p-4 shadow-sm overflow-hidden">
           <div className="flex items-center gap-2 mb-2"><Wallet className="w-4 h-4 text-slate-500" />
@@ -267,8 +255,7 @@ export default function WalletDashboardPage() {
           <div className="flex items-center gap-2 mb-2"><TrendingUp className="w-4 h-4 text-[#f37121]" /><p className="text-slate-500 text-xs">{T.netMovement}</p></div>
           <p className={`text-xl font-bold ${totals.net >= 0 ? 'text-green-600' : 'text-red-600'}`}>{totals.net.toLocaleString()}</p>
         </div>
-        {/* تسويةُ الجرد: تظهر حين تكون، وتُخفى حين لا تكون — الصفرُ لا يُعرض
-            لئلّا يُقرأ بندًا قائمًا في كلّ فترة. */}
+        {/* Stocktake adjustment: shown only when non-zero, so a constant zero is not read as a standing item in every period. */}
         {Math.abs(totals.adjustment) > 0.01 && (
           <div className="min-w-0 bg-white border border-amber-400/40 rounded-xl p-4 shadow-sm overflow-hidden">
             <div className="flex items-center gap-2 mb-2"><AlertTriangle className="w-4 h-4 text-amber-600" />
@@ -309,7 +296,7 @@ export default function WalletDashboardPage() {
               {b.branch.code && <span className="text-xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded">{b.branch.code}</span>}
             </div>
             <div className="space-y-2 text-sm">
-              {/* بطاقةُ الفرع تُقرأ كسطر حساب: من كم بدأ، وما جرى، وإلامَ انتهى. */}
+              {/* Branch card reads as an account line: where it started, what happened, where it ended. */}
               <div className="flex justify-between pb-2 border-b border-slate-100">
                 <span className="text-slate-500">{lang === 'ar' ? 'الافتتاحي' : 'Opening'}</span>
                 <span className={`font-medium tabular-nums ${(b.openingBalance || 0) >= 0 ? 'text-slate-800' : 'text-red-600'}`}>

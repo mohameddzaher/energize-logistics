@@ -1,11 +1,6 @@
 'use client';
-// اللوحة الرئيسية لإدارة الأسطول — كل سيارة بطاقة واحدة، مجمّعة تحت مشرفها،
-// بحالة تلقائية اللون: أحمر متأخرة عن الوصول المتوقع، أخضر وصلت موقع التنزيل,
-// أصفر في الطريق، أزرق تحميل/تجهيز، رمادي بدون حمولة. فوقها بطاقات الأرقام
-// الجاهزة (المتأخرات، الواصلة، صيانة متأخرة/قريبة…) ووجهات السفر الحالية —
-// فلا أحد يفتش في القوائم ليعرف من تأخر أو من استحق صيانة.
-//
-// مدير القسم يرى كل السيارات؛ المشرف يصله من الخادم سياراته هو فقط.
+// Main fleet board: one card per vehicle, grouped under its supervisor, with an auto-colored status (red late, green arrived at drop-off, yellow on the road, blue loading/preparing, gray no load). Summary cards above (late, arrived, maintenance overdue/due soon) and current destinations.
+// A department manager sees all vehicles; a supervisor receives only their own from the server.
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -19,7 +14,7 @@ import {
 import { Spinner, PageHeader, ErrorNotice } from '@/components/hr/HRKit';
 import ExportMenu from '@/components/ls2/ExportMenu';
 
-// أعمدة تصدير اللوحة — بطاقةُ كل سيارة مسطّحةً في صفّ.
+// Board export columns: each vehicle card flattened into one row.
 const BOARD_COLUMNS = [
   { header: 'Plate', key: 'plate', width: 16 },
   { header: 'Description', key: 'name', width: 20 },
@@ -49,8 +44,8 @@ interface BoardCard {
   drivers: { name: string; working: boolean }[];
   trip: BoardTrip | null;
   state: 'late' | 'arrived' | 'unloaded' | 'moving' | 'preparing' | 'idle';
-  liveCity: string | null;      // أين هي الآن جغرافيًا (من GPS لوكيشن سوليوشن)
-  atDestination: boolean;       // دخلت نطاق مدينة وجهتها — يُفترض أنها تُفرِّغ
+  liveCity: string | null;      // Current geographic location (from Location Solutions GPS)
+  atDestination: boolean;       // Entered the destination city's range; presumed to be unloading
   maintenance: { status: 'ok' | 'due' | 'overdue'; kmToService: number | null; nextServiceName: string; odometerKm: number | null } | null;
 }
 interface BoardSummary {
@@ -88,9 +83,9 @@ export default function FleetBoardPage() {
   useEffect(() => { load(); }, [load]);
   useSocket('fleet:updated', useCallback(() => load(), [load]));
   useSocket('ls2:updated', useCallback(() => load(), [load]));
-  // الشاحنةُ من سجلّ المركبات والسائقُ من الموارد البشريّة: يُعاد الجلبُ متى تغيّر أحدُهما.
+  // Trucks come from the vehicle register and drivers from HR: refetch when either changes.
   useSocket('vreg:updated', useCallback(() => load(), [load]));
-  // مقعدٌ يتبدّل أو شاحنةٌ تُعدَّل يُعلَن بهذين وحدَهما — والبطاقةُ تعرض سائقيها.
+  // A seat change or truck edit is announced by these two events only; the card shows its drivers.
   useSocket('fleet:drivers', useCallback(() => load(), [load]));
   useSocket('fleet:vehicles', useCallback(() => load(), [load]));
   useSocket('hr:employee', useCallback(() => load(), [load]));
@@ -112,7 +107,7 @@ export default function FleetBoardPage() {
     return r;
   }, [cards, stateFilter, cityFilter, q]);
 
-  // المجموعات: مشرف ← سياراته. غير المُسند في مجموعة أخيرة.
+  // Groups: supervisor, then their vehicles. Unassigned goes in a final group.
   const groups = useMemo(() => {
     const m = new Map<string, { name: string; cards: BoardCard[] }>();
     for (const c of filtered) {
@@ -123,22 +118,14 @@ export default function FleetBoardPage() {
     return [...m.entries()].sort((a, b) => (a[0] === '_none' ? 1 : b[0] === '_none' ? -1 : a[1].name.localeCompare(b[1].name)));
   }, [filtered, ar]);
 
-  // ── الأرقامُ تُحسب من البطاقات نفسِها، لا من ملخّصٍ ثابت ───────────────────
-  // سببُه أنّ شرائحَ الوجهات صارت فلترًا: مَن ضغط «الدمام» يريد أرقامَ الدمام
-  // («تسعٌ إليها، منها ثلاثٌ في الطريق وواحدةٌ متأخّرة»)، لا أرقامَ الأسطول
-  // كلِّه وتحتَها تسعُ بطاقات. والملخّصُ من الخادم يصف الأسطولَ كلَّه، فيُحسب
-  // هنا على المدى المختار — والبحثُ والحالةُ لا يدخلان فيه: البطاقةُ هي التي
-  // تختار الحالة، فلو قاست نفسَها بها لصفّرت أخواتِها.
+  // The numbers are computed from the cards themselves, not a fixed summary. Destination chips act as filters, so the numbers must describe the chosen scope, not the whole fleet. The server summary covers the whole fleet, so it is recomputed here over the selected range. Search and status are excluded: a card selects the status, and measuring itself by it would zero its siblings.
   const cityScoped = useMemo(
     () => (cityFilter ? cards.filter((c) => c.trip?.toCity === cityFilter) : cards),
     [cards, cityFilter],
   );
   const kpis = useMemo(() => {
     const of = (f: (c: BoardCard) => boolean) => cityScoped.filter(f);
-    // ── وكم منها صيانتُها متأخّرة، وأيُّ صيانة ───────────────────────────────
-    // رقمٌ وحدَه يقول «ثمانيةَ عشرَ في الطريق» ولا يقول إنّ خمسًا منها تسير
-    // وصيانتُها فائتة. وهو القرارُ نفسُه: تُستدعى أو تُكمل. ويُسمّى ما فاتها —
-    // «زيت محرّك» ليست «فرامل» — فيُعرَف قبل أن تُفتَح بطاقتُها.
+    // How many of them have overdue maintenance, and which one. A bare count cannot tell that some moving vehicles are overdue, and that is the decision: recall or let them finish. The missed item is named so it is known before opening the card.
     const overdueOf = (list: BoardCard[]) => {
       const od = list.filter((c) => c.maintenance?.status === 'overdue');
       const names = new Map<string, number>();
@@ -174,7 +161,7 @@ export default function FleetBoardPage() {
       <PageHeader icon={<LayoutGrid className="w-5 h-5" />}
         title={`${ar ? 'اللوحة الرئيسية للأسطول' : 'Fleet Board'}${summary ? ` · ${summary.total} ${ar ? 'سيارة' : 'trucks'}` : ''}`}
         subtitle={ar ? 'كل سيارة ببطاقة — الحالة والوجهة والصيانة تلقائيًا' : 'Every truck as one card — state, destination and maintenance, automatically'}>
-        {/* اللوحة تُظهر حالة اللحظة؛ ومَن أراد التخطيط لما هو آتٍ ينتقل من هنا. */}
+        {/* The board shows the current state; planning ahead starts from here. */}
         <Link href="/system/fleet/arrivals" className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[#f37121]/10 hover:bg-[#f37121]/20 text-[#f37121] text-sm font-medium">
           <CalendarClock className="w-4 h-4" /> {ar ? 'المتوقع للوصول' : 'Expected arrivals'}
         </Link>
@@ -190,9 +177,7 @@ export default function FleetBoardPage() {
 
       {error && <ErrorNotice error={error} lang={lang} onRetry={() => { setLoading(true); load(); }} />}
 
-      {/* ── بطاقاتُ الأرقام: ثلثان للرقم وثلثٌ لما فاتته صيانتُه ──────────────
-          الضغطُ يرشح السياراتَ تحتها، والثلثُ يقول كم منها صيانتُها متأخّرةٌ
-          وأيُّ صيانة — ولو صفرًا كُتب خطٌّ باهتٌ ليُقرأ «لا شيءَ فائت» صريحًا. */}
+      {/* Number cards: two thirds for the figure, one third for the overdue-maintenance count. Clicking filters the vehicles below; a zero is shown as a faint dash so 'nothing overdue' reads explicitly. */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
         {KPIS.map((k) => {
           const on = stateFilter === k.key && !!k.key;
@@ -217,7 +202,7 @@ export default function FleetBoardPage() {
         })}
       </div>
 
-      {/* الوجهات الحالية — "عدد السيارات المتّجهة إلى جدة" بنظرة واحدة */}
+      {/* Current destinations: number of vehicles heading to a city at a glance */}
       {summary && summary.byDestination.length > 0 && (
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs font-semibold text-slate-600 flex items-center gap-1">
@@ -237,7 +222,7 @@ export default function FleetBoardPage() {
           )}
         </div>
       )}
-      {/* والأرقامُ فوق صارت أرقامَ هذه الوجهة وحدَها — يُقال ذلك ولا يُترَك يُخمَّن. */}
+      {/* The numbers above now describe this destination only; say so explicitly. */}
       {cityFilter && (
         <p className="-mt-2 text-[11px] text-[#f37121] font-semibold">
           {ar ? `البطاقات أعلاه تعرض ${cityScoped.length} سيارة متوجهة إلى ${cityFilter}` : `The cards above cover ${cityScoped.length} trucks bound for ${cityFilter}`}
@@ -252,7 +237,7 @@ export default function FleetBoardPage() {
         {q && <button type="button" onClick={() => setQ('')} className="absolute top-1/2 -translate-y-1/2 end-2.5 text-slate-400 hover:text-slate-600"><X className="w-3.5 h-3.5" /></button>}
       </div>
 
-      {/* المجموعات: المشرف وتحته سياراته */}
+      {/* Groups: supervisor with their vehicles beneath */}
       {groups.map(([key, g]) => (
         <div key={key} className="space-y-2">
           <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
@@ -281,7 +266,7 @@ export default function FleetBoardPage() {
                       <span className={`w-1.5 h-1.5 rounded-full ${st.dot}`} /> {ar ? st.ar : st.en}
                     </span>
                   </div>
-                  {/* GPS يقول إنها داخل نطاق وجهتها — يُفترض أنها تُفرِّغ الآن */}
+                  {/* GPS says it is inside its destination range; presumed to be unloading */}
                   {c.atDestination && (
                     <p className="mt-1.5 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[11px] font-semibold">
                       <MapPin className="w-3 h-3" /> {ar ? `دخلت نطاق ${c.trip?.toCity} — يُفترض بدء التفريغ` : `Entered ${c.trip?.toCity} — presumably unloading`}
@@ -305,7 +290,7 @@ export default function FleetBoardPage() {
                   ) : (
                     <p className="mt-2 text-xs text-slate-500">{c.drivers.length ? c.drivers.map((d) => d.name).join(' · ') : (ar ? 'لا يوجد سائق مُسند' : 'No driver assigned')}</p>
                   )}
-                  {/* شارة الصيانة — من مرآة Location Solutions مباشرة */}
+                  {/* Maintenance badge, straight from the Location Solutions mirror */}
                   {m && m.status !== 'ok' && (
                     <p className={`mt-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold ${m.status === 'overdue' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>
                       {m.status === 'overdue' ? <AlertTriangle className="w-3 h-3" /> : <Wrench className="w-3 h-3" />}

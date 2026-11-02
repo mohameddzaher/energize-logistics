@@ -1,40 +1,21 @@
 /**
- * b2cRepLink — حسابُ تطبيق التوصيل (`B2CRep`) لأيّ رجلٍ في سجلّ النقل الخفيف؟
- *
- * ── الحال (٢٠٢٦/١٠/٢١) ─────────────────────────────────────────────────────
- * سبعُمئةٍ وأربعون حسابًا كلُّها «نشطة»، والمربوطُ منها بصفٍّ في السجلّ
- * (`ltEmployee`) مئةٌ واثنان وثمانون. والباقي اسمٌ إنجليزيٌّ واسمٌ عربيٌّ كتبهما
- * الشيتُ يومًا، لا هويّةَ فيهما ولا جوال — فيُعرَض الرجلُ في شاشةٍ باسمٍ وفي
- * أخرى بغيره، ويُعَدّ الحسابُ «مندوبًا» وصاحبُه ترك العمل من شهور.
- *
- * ── مفاتيحُ الربط بالترتيب، من اليقين إلى الأضعف ──────────────────────────
- *   ١. رقمُ الهويّة — مكتوبًا عند الإنشاء، أو رقمُ الحساب (`repId`) إن كان هويّةً
- *   ٢. الجوال (آخرُ تسعة أرقام: «0545…» و«966545…» رقمٌ واحد)
- *   ٣. الاسمُ المطويُّ **تامًّا** — العربيُّ أو الإنجليزيّ، على اسم السجلّ أو اسم
- *      الملفّ في الموارد البشريّة. ويُقبَل إن دلّت الأسماءُ كلُّها على صفٍّ واحد؛
- *      اسمان يدلّان على رجلين = ملتبسٌ يُترَك لليد.
- *
- * ولا «قريبٌ من الاسم» هنا: ربطُ حسابٍ بغير صاحبه يحسب طلباتِ رجلٍ على آخر، وهو
- * أسوأُ من حسابٍ يبقى «غير مرتبط» ويُراجَع. (درجاتُ الاسم الأضعف — أوّلٌ وآخر،
- * هيكلُ الحروف — في `scripts/linkRepsToRegister.js` وتُشغَّل بيدٍ ومراجعة.)
- *
- * ── وحسابان لرجلٍ واحد صحيح ─────────────────────────────────────────────────
- * الحسابُ ليس الشخص: الرجلُ يُعطى حسابًا ثانيًا حين يُنقل أو يُغلق الأوّل. فيُربط
- * الحسابان بصفّه، وتُجمَع طلباتُهما له (`b2cEntryController` يجمع بالصفّ لا بالحساب).
+ * b2cRepLink: which delivery-app account (`B2CRep`) belongs to which light transport register row.
+ * Keys, strongest first: ID number (or `repId` if it is an ID), phone (last nine digits), fully folded name accepted only if all names point to one row. No near-name matching: a wrong link counts one man's orders for another (weaker tiers are in scripts/linkRepsToRegister.js, run manually).
+ * Two accounts for one man is valid; both link to his row and orders are summed by row.
  */
 const { fold } = require('./b2cSupervisors');
 const { idKey, displayName } = require('./personLookup');
 
 const S = (v) => String(v == null ? '' : v).trim();
-/** الجوالُ بآخر تسعة أرقام — المفتاحُ الذي يتّفق عليه «05…» و«9665…» و«+966 5…». */
+/** Phone by last nine digits, the key on which 05..., 9665... and +966 5... agree. */
 const phoneKey = (v) => {
   const d = idKey(v).replace(/\D/g, '');
   return d.length >= 9 ? d.slice(-9) : '';
 };
-/** رقمُ حسابٍ يصلح أن يكون هويّة: عشرةُ أرقامٍ تبدأ بـ١ أو ٢. */
+/** An account number that can be an ID: ten digits starting with 1 or 2. */
 const looksLikeId = (v) => /^[12]\d{9}$/.test(idKey(v));
 
-/** فهرسُ سجلّ النقل الخفيف للمطابقة — يُبنى مرّةً لكلّ دفعة. */
+/** Index of the light transport register for matching, built once per batch. */
 async function buildIndex() {
   const { LightTransportEmployee } = require('../models/LightTransport');
   const Employee = require('../models/Employee');
@@ -61,14 +42,9 @@ async function buildIndex() {
 
 const one = (set) => (set && set.size === 1 ? [...set][0] : null);
 
-/**
- * مطابقةُ حسابٍ واحد. `extra.idNumber` رقمُ هويّةٍ يُكتب عند الإنشاء (لا يُخزَّن
- * على الحساب — مكانُه السجلّ). يُرجع `{ lt, via }` أو `{ ambiguous }` أو null.
- */
+/** Matches one account. `extra.idNumber` is an ID number written at creation (not stored on the account; it belongs in the register). Returns `{ lt, via }`, `{ ambiguous }` or null. */
 function matchRep(rep, index, extra = {}) {
-  // ── والشيتُ كتب الهويّةَ والجوالَ أحيانًا في خانة الاسم ────────────────────
-  // «2553949062» و«569632109» في `arabicName` — فيُقرأ كلُّ حقلٍ بما يحمله لا
-  // بعنوانه: عشرةُ أرقامٍ تبدأ بـ١ أو ٢ هويّة، وتسعةٌ فأكثر جوال.
+  // The sheet sometimes wrote the ID or phone in the name field (a ten-digit and a nine-digit number in `arabicName`), so each field is read by what it holds, not its label: ten digits starting with 1 or 2 is an ID, nine digits or more is a phone.
   const fields = [extra.idNumber, rep.repId, rep.arabicName, rep.englishName];
   for (const raw of fields) {
     if (!looksLikeId(raw)) continue;
@@ -92,17 +68,14 @@ function matchRep(rep, index, extra = {}) {
   return null;
 }
 
-/** يربط حسابًا جديدًا ساعةَ إنشائه إن عُرف صاحبُه يقينًا. يُرجع معرّفَ الصفّ أو null. */
+/** Links a new account when it is created if its owner is known with certainty. Returns the row id or null. */
 async function linkAtCreate(rep, extra = {}) {
   if (rep.ltEmployee) return rep.ltEmployee;
   const m = matchRep(rep, await buildIndex(), extra);
   return m && m.lt ? m.lt : null;
 }
 
-/**
- * هويّةُ الحساب كما تُعرَض: من ملفّ الموارد البشريّة إن كان الصفُّ مربوطًا به،
- * وإلّا من صفّ النقل الخفيف، وإلّا ما كتبه الشيت. `lt` مأهولٌ بـ`employee`.
- */
+/** Account identity as displayed: from the HR file if the row is linked to it, otherwise from the light transport row, otherwise what the sheet wrote. `lt` is populated with `employee`. */
 function personOf(rep, lt) {
   const e = lt && lt.employee && typeof lt.employee === 'object' ? lt.employee : null;
   if (e && displayName(e)) {

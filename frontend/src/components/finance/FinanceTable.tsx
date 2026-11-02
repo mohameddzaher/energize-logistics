@@ -1,10 +1,7 @@
 'use client';
 /**
- * جدولٌ ماليّ عامّ — كلُّ جداول الإدارة الماليّة تُرسَم به.
- *
- * فلترٌ على كلّ عمود كإكسل، وبحثٌ، وفرزٌ بالضغط على الرأس، وصفوفٌ تُفتح على
- * مصدرها (`_href`)، وتصديرُ الجدول وحدَه — المعروضُ بعد الفلاتر أو كلُّه.
- * والمجموعُ في الذيل لأعمدة المال والأعداد: المديرُ الماليّ يقرأ المجموعَ أوّلًا.
+ * Generic finance table used for all finance-management tables.
+ * Excel-style filter per column, search, sort by header click, rows that open their source (`_href`), and export of the table alone (filtered or all). Footer totals for money and count columns: the finance manager reads the total first.
  */
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -17,10 +14,7 @@ import ScrollX from '@/components/system/ScrollX';
 const fold = (v: any) => String(v ?? '').replace(/[أإآ]/g, 'ا').replace(/[ةه]/g, 'ه').replace(/[ىي]/g, 'ي').toLowerCase();
 const PAGE = 100;
 
-/**
- * `_open` على الصفّ: يُفتح في الشاشة نفسِها (نافذة) بدل الانتقال إلى `_href` —
- * لصفوفٍ مصدرُها شاشةٌ لا يملكها قارئُ الماليّة.
- */
+/** `_open` on a row opens it in the same screen (a window) instead of navigating to `_href`, for rows whose source is a screen the finance reader does not own. */
 export default function FinanceTable({ table, ar, fileName, onOpenRow }: { table: FinTable; ar: boolean; fileName: string; onOpenRow?: (row: any) => void }) {
   const router = useRouter();
   const cf = useColumnFilters<any>();

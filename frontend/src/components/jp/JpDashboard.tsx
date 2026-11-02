@@ -1,17 +1,8 @@
 'use client';
 /**
- * لوحةُ خطّة العمل — لمدير القسم وحدَه (ولمدير النظام في خطّة الإدارة).
- *
- * ── تُقرأ من فوق إلى تحت ───────────────────────────────────────────────────
- *   ١. الفلاتر: موظّفٌ، يومٌ أو مدّة، مشروعٌ، نوعٌ، طريقةُ تواصل.
- *   ٢. ستُّ بطاقات: كم قائمٌ وكم تأخّر وكم يستحقّ اليوم — وكلٌّ منها تفتح
- *      قائمتَها أسفلَ الصفحة.
- *   ٣. الفريق: من عليه ماذا، وصفُّه يفلتر اللوحةَ به.
- *   ٤. المشروعات وطرقُ التواصل وآخرُ ١٤ يومًا.
- *   ٥. قائمةُ المهامّ نفسُها تحت الفلاتر — فكلُّ رقمٍ فوق له صفوفُه تحت.
- *
- * والخادمُ يطبّق الفلاترَ على كلّ شيء، ويردّ 403 لغير المدير — فتُقال الرسالةُ
- * ولا تُعرَض لوحةٌ فارغة.
+ * Work plan board: for the section manager only (and system admin in the management plan).
+ * Top to bottom: filters (employee, day or range, project, type, contact method); six cards (open, late, due today), each opening its list below; the team, whose row filters the board; projects, contact methods and last 14 days; the task list itself, so every number above has rows below.
+ * The server applies the filters to everything and returns 403 for non-managers, so the message is shown instead of an empty board.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLanguage } from '@/context/LanguageContext';
@@ -70,7 +61,7 @@ function Panel({ title, icon, right, children, className = '' }: {
   );
 }
 
-/** بطاقةُ رقم: أيقونةٌ بلونها، والرقمُ كبيرًا، وسطرٌ يشرحه — وتُضغَط فتفلتر القائمة. */
+/** Number card: colored icon, large number, an explanatory line; clicking filters the list. */
 function Kpi({ icon, tone, label, value, hint, on, onClick }: {
   icon: React.ReactNode; tone: string; label: string; value: string; hint?: string; on?: boolean; onClick?: () => void;
 }) {
@@ -87,7 +78,7 @@ function Kpi({ icon, tone, label, value, hint, on, onClick }: {
   );
 }
 
-/** حلقةُ نسبةٍ بلا مكتبة: دائرةٌ مخروطيّةُ التدرّج وفي وسطها الرقم. */
+/** Percentage ring without a library: a conic-gradient circle with the number in the middle. */
 function Ring({ value, color, label }: { value: number | null; color: string; label: string }) {
   const v = Math.max(0, Math.min(100, value || 0));
   return (
@@ -146,7 +137,7 @@ export default function JpDashboard({ scope, section }: { scope: JpScope; sectio
     if (!d || (d.scope === scope && (scope === 'management' || d.section === section))) load();
   }, [load, scope, section]));
 
-  // فلترُ الحالة والبحثُ على القائمة وحدَها: البطاقاتُ تبقى تعدّ الحالاتِ كلَّها ليُختار منها.
+  // Status filter and search apply to the list only; the cards keep counting all statuses so they can be picked from.
   const rows = useMemo(() => {
     const s = search.trim().toLowerCase();
     return (data?.tasks || []).filter((r) => (
@@ -177,10 +168,10 @@ export default function JpDashboard({ scope, section }: { scope: JpScope; sectio
         </span>
       </PageHeader>
 
-      {/* ── اليوميّة أوّلًا: مَن عمل على ماذا اليوم وكم أخذ (٢٠٢٦/١٠/٢٢) ─────── */}
+      {/* Daily log first: who worked on what today and how long it took */}
       <JpDaily scope={scope} section={section} ar={ar} />
 
-      {/* ── ١. الفلاتر ─────────────────────────────────────────────────────── */}
+      {/* 1. Filters */}
       <div className="bg-white border border-slate-200 rounded-2xl px-4 py-3 shadow-sm flex flex-wrap items-center gap-2.5">
         <select value={assignee} onChange={(e) => setAssignee(e.target.value)} className={selectCls} aria-label={person}>
           <option value="">{management ? t('كلُّ المديرين', 'All managers') : t('كلُّ الموظّفين', 'All employees')}</option>
@@ -211,7 +202,7 @@ export default function JpDashboard({ scope, section }: { scope: JpScope; sectio
         )}
       </div>
 
-      {/* ── ٢. الأرقام ─────────────────────────────────────────────────────── */}
+      {/* 2. Numbers */}
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
         <Kpi icon={<ListChecks className="w-5 h-5" />} tone="bg-slate-100 text-slate-700" label={t('الإجمالي', 'Total')} value={String(T.total)}
           hint={t(`${T.tasks} مهمّة · ${T.requests} طلب`, `${T.tasks} tasks · ${T.requests} requests`)} on={status === ''} onClick={() => setStatus('')} />
@@ -229,7 +220,7 @@ export default function JpDashboard({ scope, section }: { scope: JpScope; sectio
         </div>
       </div>
 
-      {/* ── ٣. الفريق ──────────────────────────────────────────────────────── */}
+      {/* 3. Team */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
         <Panel className="xl:col-span-2" title={management ? t('المديرون', 'Managers') : t('الفريق', 'Team')} icon={<Users className="w-4 h-4" />}
           right={<span className="text-[11px] text-slate-400">{t('اضغط اسمًا لتصفية اللوحة به', 'Click a name to filter by it')}</span>}>
@@ -307,7 +298,7 @@ export default function JpDashboard({ scope, section }: { scope: JpScope; sectio
         </div>
       </div>
 
-      {/* ── ٤. المشروعات وسيرُ الأيّام ─────────────────────────────────────── */}
+      {/* 4. Projects and daily trend */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Panel title={t('المشروعات', 'Projects')} icon={<FolderKanban className="w-4 h-4" />}>
           {data.projects.length ? (
@@ -349,7 +340,7 @@ export default function JpDashboard({ scope, section }: { scope: JpScope; sectio
         </Panel>
       </div>
 
-      {/* ── ٥. المهامُّ نفسُها ─────────────────────────────────────────────── */}
+      {/* 5. The tasks themselves */}
       <section className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
         <header className="flex flex-wrap items-center justify-between gap-2 px-5 py-3.5 border-b border-slate-100">
           <h2 className="flex items-center gap-2 text-[14px] font-bold text-slate-900">

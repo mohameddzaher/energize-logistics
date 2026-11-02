@@ -1,11 +1,6 @@
 'use client';
-// The evaluation form (تقييم موظف).
-//
-// Left: one block per criterion — its weight, what it means, and the 1..5 cards
-// the manager clicks. Right (sticky): the score, the gauge and the radar, all
-// recomputed locally on every click so the manager sees the consequence of an
-// answer immediately, including the bonus it earns. The server recomputes on
-// save and its numbers are the ones stored.
+// The evaluation form (employee evaluation).
+// Left: one block per criterion with its weight, meaning and the 1..5 cards the manager clicks. Right (sticky): the score, gauge and radar, all recomputed locally on every click so the manager sees the consequence immediately, including the bonus. The server recomputes on save and its numbers are the ones stored.
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';

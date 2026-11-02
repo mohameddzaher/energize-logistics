@@ -1,18 +1,4 @@
-/**
- * تواريخُ الموارد البشريّة — كلُّ تاريخٍ عمودان: ميلاديٌّ ثمّ هجريُّه مباشرةً.
- *
- * ── القاعدة ─────────────────────────────────────────────────────────────────
- * «تاريخ انتهاء الإقامة الميلادي» ثمّ «تاريخ انتهاء الإقامة الهجري»، في كلّ
- * شاشةٍ من القسم: الجداول، وبطاقاتُ التفاصيل، والتصدير. والهجريُّ **مشتقٌّ**
- * من الميلاديّ بالمحوّل المشترك (`lib/hijri`، أمّ القرى) — لا يُخزَّن ولا
- * يُحسَب بخوارزميّةٍ ثانية، فلا يفترق الوجهان.
- *
- * ── واليومُ يُقرأ مرّةً واحدة ───────────────────────────────────────────────
- * الميلاديُّ المعروضُ والهجريُّ بجانبه يُشتقّان من **اليوم نفسِه**: يومُ
- * الشركة (`dayKey`، الرياض). فلو حُسب الهجريُّ من اللحظة بغرينتش والميلاديُّ
- * بالتوقيت المحلّيّ لاختلفا بيومٍ في كلّ تاريخٍ حُفظ بعد التاسعة مساءً
- * بغرينتش — عمودان متجاوران يقولان يومين.
- */
+/** HR dates: every date is two columns, Gregorian then its Hijri equivalent. Hijri is derived from the Gregorian day via the shared Umm al-Qura converter (lib/hijri), never stored. Both come from the same company day (dayKey, Riyadh) so the two columns never differ by a day. */
 import { dayKey } from './companyDay';
 import { toHijri, toHijriParts } from './hijri';
 
@@ -20,24 +6,24 @@ type DateLike = string | number | Date | null | undefined;
 
 const PLAIN = /^(\d{4})-(\d{2})-(\d{2})$/;
 
-/** اليومُ الميلاديُّ «yyyy-mm-dd» كما تعرضه الشاشة — أو '' لما ليس تاريخًا. */
+/** Gregorian day yyyy-mm-dd as shown on screen, or '' for a non-date. */
 export const gregDay = (v: DateLike): string => {
   if (v === null || v === undefined || v === '') return '';
-  // النصُّ «yyyy-mm-dd» يومٌ بلا ساعة: يُؤخَذ كما هو، بلا منطقةٍ زمنيّةٍ في الطريق.
+  // A yyyy-mm-dd string is a day without time: used as is, no timezone conversion.
   if (typeof v === 'string' && PLAIN.test(v.trim())) return v.trim();
   return dayKey(v);
 };
 
-/** هجريُّ التاريخ «yyyy-mm-dd» — أو '' إن لم يُقرأ تاريخًا. */
+/** Hijri date yyyy-mm-dd, or '' if the input is not a date. */
 export const hijriDay = (v: DateLike): string => {
   const g = gregDay(v);
   return g ? toHijri(g) : '';
 };
 
-/** للخانة في الجدول: الهجريُّ أو «—». */
+/** Table cell: the Hijri date or a dash. */
 export const hijriCell = (v: DateLike): string => hijriDay(v) || '—';
 
-/** الميلاديُّ «dd/mm/yyyy» — صيغةُ جداول القسم — من اليوم نفسِه الذي يُحسَب منه الهجريّ. */
+/** Gregorian dd/mm/yyyy (HR table format), from the same day the Hijri date is computed from. */
 export const gregCell = (v: DateLike): string => {
   const g = gregDay(v);
   if (!g) return '—';
@@ -45,7 +31,7 @@ export const gregCell = (v: DateLike): string => {
   return `${d}/${m}/${y}`;
 };
 
-// أسماءُ الأشهر الهجريّة — نظيرُ `HIJRI_MONTHS_AR` في backend/src/utils/hijri.js.
+// Hijri month names; counterpart of HIJRI_MONTHS_AR in backend/src/utils/hijri.js.
 const HIJRI_MONTHS_AR = ['محرّم', 'صفر', 'ربيع الأول', 'ربيع الثاني', 'جمادى الأولى', 'جمادى الآخرة',
   'رجب', 'شعبان', 'رمضان', 'شوّال', 'ذو القعدة', 'ذو الحجة'];
 const HIJRI_MONTHS_EN = ['Muharram', 'Safar', 'Rabi I', 'Rabi II', 'Jumada I', 'Jumada II',
@@ -54,13 +40,13 @@ const HIJRI_MONTHS_EN = ['Muharram', 'Safar', 'Rabi I', 'Rabi II', 'Jumada I', '
 const G_AR = new Intl.DateTimeFormat('ar-SA-u-ca-gregory-nu-latn', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
 const G_EN = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
 
-/** «12 أكتوبر 2026» */
+/** Long Gregorian date, e.g. 12 October 2026. */
 export const gregLong = (v: DateLike, ar: boolean): string => {
   const g = gregDay(v);
   return g ? (ar ? G_AR : G_EN).format(new Date(`${g}T00:00:00Z`)) : '';
 };
 
-/** «1 جمادى الأولى 1448» */
+/** Long Hijri date, e.g. 1 Jumada al-Awwal 1448. */
 export const hijriLong = (v: DateLike, ar: boolean): string => {
   const g = gregDay(v);
   const h = g ? toHijriParts(`${g}T00:00:00Z`) : null;
@@ -68,10 +54,7 @@ export const hijriLong = (v: DateLike, ar: boolean): string => {
   return `${h.d} ${(ar ? HIJRI_MONTHS_AR : HIJRI_MONTHS_EN)[h.m - 1]} ${h.y}`;
 };
 
-/**
- * سطرُ التفاصيل: التقويمان معًا، الميلاديُّ أوّلًا —
- * «12 أكتوبر 2026 · 1 جمادى الأولى 1448».
- */
+/** Detail line with both calendars, Gregorian first. */
 export const bothDates = (v: DateLike, ar: boolean, empty = '—'): string => {
   const g = gregLong(v, ar);
   if (!g) return empty;
@@ -79,7 +62,7 @@ export const bothDates = (v: DateLike, ar: boolean, empty = '—'): string => {
   return h ? `${g} · ${h}${ar ? ' هـ' : ' AH'}` : g;
 };
 
-/** النسخةُ المختصرةُ للأماكن الضيّقة: «12/10/2026 · 1448-05-01 هـ». */
+/** Short form for tight spaces: 12/10/2026 · 1448-05-01 H. */
 export const bothDatesShort = (v: DateLike, ar: boolean, empty = '—'): string => {
   const g = gregDay(v);
   if (!g) return empty;
@@ -87,19 +70,14 @@ export const bothDatesShort = (v: DateLike, ar: boolean, empty = '—'): string 
   return h ? `${gregCell(g)} · ${h}${ar ? ' هـ' : ' AH'}` : gregCell(g);
 };
 
-/**
- * اسما العمودين من اسمٍ واحد: [الميلاديّ، الهجريّ].
- *
- * «تاريخ الميلاد الميلادي» لا يُقرأ — فحيث يتكرّر الجذرُ تُكتَب الصفةُ بين
- * قوسين، كما في `config/hrFields` على الخادم.
- */
+/** Names of the two columns from one label: [Gregorian, Hijri]. Where the root repeats, the qualifier goes in parentheses, as in config/hrFields on the server. */
 export const pairLabels = (base: string, ar: boolean): [string, string] => {
-  // علامةُ الإلزام تبقى في آخر الاسم لا في وسطه.
+  // The required marker stays at the end of the name, not the middle.
   const star = /\s*\*\s*$/.test(base) ? ' *' : '';
   let b = base.replace(/\s*\*\s*$/, '').trim()
-    // الخادمُ يسمّي حقولَ الماستر «… الميلادي» أصلًا (config/hrFields) — فلا تُكرَّر الصفة.
+    // The server already names master fields with the Gregorian qualifier (config/hrFields), so it is not repeated.
     .replace(/\s*(الميلادي|\(ميلادي\)|\(Gregorian\))$/, '').trim();
-  // «انتهاء الإقامة الميلادي» تُقرأ صفةً للانتهاء — فيُسبَق الاسمُ بـ«تاريخ».
+  // The expiry label reads as an adjective of expiry, so the name is prefixed with the word for date.
   if (ar && /^انتهاء/.test(b)) b = `تاريخ ${b}`;
   if (!ar) return [`${b} (Gregorian)${star}`, `${b} (Hijri)`];
   if (/ميلاد/.test(b)) return [`${b} (ميلادي)${star}`, `${b} (هجري)`];
@@ -112,16 +90,10 @@ export type HrExportColumn = {
   type?: 'text' | 'date' | 'number' | 'hijri';
 };
 
-/**
- * عمودا التصدير لتاريخٍ واحد — متجاوران، من القيمة نفسِها.
- *
- * الميلاديُّ خانةُ تاريخٍ حقيقيّةٌ (`type: 'date'`) لا نصٌّ يبدو تاريخًا،
- * والهجريُّ نصُّ أمّ القرى كما على الشاشة (`type: 'hijri'` في exportExcel).
- * وكلاهما يمرّ بـ`gregDay`، فما في الملفّ هو ما في الصفحة.
- */
+/** Export columns for one date, side by side, from the same value. Gregorian is a real date cell (type: 'date'); Hijri is the Umm al-Qura text as on screen (type: 'hijri' in exportExcel). Both go through gregDay so the file matches the page. */
 export const exportDatePair = (
   base: string, key: string, ar: boolean,
-  // `empty`: ما يُكتَب في العمودين معًا حين لا تاريخ («حتى الآن» لتفويضٍ قائم).
+  // empty: what both columns get when there is no date (e.g. 'until now' for an ongoing authorization).
   opts: { width?: number; get?: (row: any) => DateLike; empty?: string } = {},
 ): HrExportColumn[] => {
   const [g, h] = pairLabels(base, ar);
@@ -132,17 +104,13 @@ export const exportDatePair = (
   ];
 };
 
-/**
- * فحصُ «لا تكرار»: عمودان بالعنوان نفسِه في جدولٍ واحدٍ خطأٌ في البناء — وقد
- * ظهر العمودُ الهجريُّ مرّتين في الماستر مرّةً (واحدٌ من الخادم وآخرُ من
- * المتصفّح). يُنادى في التطوير عند بناء أعمدة التصدير.
- */
+/** No-duplicates check: two columns with the same title in one table is a build bug (the Hijri column once appeared twice in the master, one from the server and one from the browser). Called in development when building export columns. */
 export const duplicateHeaders = (columns: { header: string }[]): string[] => {
   const seen = new Set<string>(); const dup = new Set<string>();
   for (const c of columns) { if (seen.has(c.header)) dup.add(c.header); seen.add(c.header); }
   return [...dup];
 };
 
-/** فترةٌ في سطر تفاصيل: كلُّ طرفٍ بتقويميه — «… · … هـ → … · … هـ». */
+/** A period in a detail line, each end shown in both calendars. */
 export const bothPeriod = (from: DateLike, to: DateLike, ar: boolean): string =>
   `${bothDates(from, ar)} → ${bothDates(to, ar)}`;

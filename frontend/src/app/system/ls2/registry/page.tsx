@@ -37,8 +37,7 @@ export default function Ls2RegistryPage() {
 
   const load = useCallback(async () => {
     try {
-      // السجلُّ يعرض خطّةَ الخدمة وبطاقةَ الهويّة كاملةً، فيطلبهما صراحةً —
-      // وهما أثقلُ ما في المستند فلا يُحمَّلان على الشاشات الأخرى.
+      // The register shows the service plan and the full identity card, so it requests both explicitly; they are the heaviest part of the document and are not loaded for other screens.
       const res = await api.get<{ items: Vehicle[] }>(`/api/ls2/vehicles?from=${range.from}&to=${range.to}&include=intervals,profile`);
       setItems(res.items || []);
     } catch { /* keep */ }
@@ -46,7 +45,7 @@ export default function Ls2RegistryPage() {
   }, [range.from, range.to]);
   useEffect(() => { load(); }, [load]);
   useSocket('ls2:updated', useCallback(() => load(), [load]));
-  // الهويّةُ والمستنداتُ من سجلّ المركبات: تعديلٌ هناك يظهر هنا في الحال.
+  // Identity and documents come from the vehicle register; an edit there shows here at once.
   useSocket('vreg:updated', useCallback(() => load(), [load]));
   // A new period invalidates the loaded fuel figures.
   useEffect(() => { setFuel({}); }, [range.from, range.to]);
@@ -92,8 +91,7 @@ export default function Ls2RegistryPage() {
     { header: lang === 'ar' ? 'سنة الصنع (حسب الجهاز)' : 'Model year (device)', key: 'profile.modelYear', transform: (v) => v ?? '', width: 12 },
     { header: lang === 'ar' ? 'النوع' : 'Type', key: 'profile.vehicleType', transform: (v) => v ?? '', width: 16 },
     { header: lang === 'ar' ? 'ماركة الكاوتش' : 'Tire brand', key: 'tireBrand', transform: (v) => v ?? '', width: 16 },
-    // «٧ / ٥ / ٢» كنصٍّ واحد، وعمودٌ مستقلٌّ للصامت: الأول يقول أين وصل التسليح،
-    // والثاني يقول أين يوجد حسّاسٌ يحتاج استبدالًا لا تركيبًا.
+    // '7 / 5 / 2' as one text, plus a separate column for the silent ones: the first says how far arming got, the second says where a sensor needs replacing rather than installing.
     { header: lang === 'ar' ? 'حساسات الكاوتش (يعمل/بدون/استبن)' : 'Tire sensors (ok/none/spare)', key: 'tireSensors.label', transform: (v) => v ?? '', width: 26 },
     { header: lang === 'ar' ? 'حساس مركّب لا يبثّ' : 'Fitted but silent', key: 'tireSensors.silent', transform: (v) => v ?? '', width: 16 },
     { header: lang === 'ar' ? 'رقم الشاسيه (حسب الجهاز)' : 'VIN (device)', key: 'profile.vin', transform: (v) => v ?? '', width: 22 },
@@ -162,7 +160,7 @@ export default function Ls2RegistryPage() {
                     <tr className="border-b border-slate-100 hover:bg-slate-50 cursor-pointer" onClick={() => toggle(v.unitId)}>
                       <td className="px-3 py-3 text-slate-700">{isOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className={`w-4 h-4 ${isRTL ? 'rotate-180' : ''}`} />}</td>
                       <td className="px-4 py-3 font-medium text-slate-800 whitespace-nowrap" onClick={(e) => { e.stopPropagation(); router.push(`/system/ls2/${v.unitId}`); }}>
-                        {/* اللوحةُ كما في سجلّ المركبات، وكما يكتبها الجهازُ تحتها */}
+                        {/* The panel as in the vehicle register, and as the device writes it below. */}
                         <span className="flex items-center gap-1.5">{v.registry?.plateNumber || v.plate || v.name}<ConflictFlag v={v} lang={lang as Lang} /></span>
                         {v.registry?.plateNumber && v.plate ? <span className="block text-[10px] text-slate-400 font-normal">{v.plate}</span> : null}
                       </td>
@@ -171,7 +169,7 @@ export default function Ls2RegistryPage() {
                       <td className="px-4 py-3"><span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium ${st.bg} ${st.text}`}><span className={`w-1.5 h-1.5 rounded-full ${st.dot}`} />{lang === 'ar' ? st.ar : st.en}</span></td>
                       <td className="px-4 py-3 text-end tabular-nums text-slate-800">{fmtKm(v.odometerKm)}</td>
                       <td className="px-4 py-3 text-end tabular-nums font-semibold text-slate-800">{v.periodKm != null ? fmtNum(Math.round(v.periodKm)) : '—'}</td>
-                      {/* تغطية الحسّاسات — الرقم من الخادم، والضغط يفتح المواضع الناقصة بأسمائها. */}
+                      {/* Sensor coverage: the number comes from the server and a click opens the missing positions by name. */}
                       <td className="px-4 py-3 text-center whitespace-nowrap">
                         <TireSensorCell cov={v.tireSensors} plate={v.plate || v.name} unitId={v.unitId} lang={lang as Lang} />
                       </td>

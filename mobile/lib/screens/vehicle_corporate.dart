@@ -12,13 +12,10 @@ import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import 'vehicle_registry.dart' show money, fmtDate, daysText;
 
-/// وثائق التأمين على مستوى الشركة — نظيرُ /system/vehicles/registry/corporate.
-///
-/// تأمين البضائع وخيانة الأمانة: غير مرتبطة بمركبة، وانتهاءُ واحدةٍ يوقف العمل
-/// كله. إنشاء وتعديل وتجديد (فردي وجماعي) وإنهاء وإعادة فتح وحذف، وقائمةُ
-/// السائقين المشمولين — بنفس نقاط النهاية وبوّابات الأدوار في الويب.
+/// Company-level insurance documents, mirrors /system/vehicles/registry/corporate.
+/// Goods insurance and breach-of-trust cover: not tied to a vehicle, and one expiring stops all work. Create, edit, renew (single and bulk), end, reopen, delete, and the list of covered drivers, with the same endpoints and role gates as web.
 
-// ── بوّاباتُ القسم — نسخةُ canEditVehicles / canAdminVehicles في الويب ──────
+// Section gates: copy of canEditVehicles / canAdminVehicles on web
 const _editRoles = ['super_admin', 'admin', 'vehicles_manager', 'vehicles_staff',
   'hr_manager', 'hr_specialist', 'cfo', 'accounting_manager', 'accountant'];
 const _adminRoles = ['super_admin', 'admin', 'vehicles_manager', 'hr_manager'];
@@ -27,7 +24,7 @@ bool canEditVehiclesOf(AuthProvider a) =>
 bool canAdminVehiclesOf(AuthProvider a) =>
     a.user != null && (_adminRoles.contains(a.role) || (a.role != 'client' && a.canEditSection('Vehicles')));
 
-// ── حالاتُ المستند — STATE_META في الويب ────────────────────────────────────
+// Document states: STATE_META on web
 const _stateMeta = <String, (String, String, Color)>{
   'expired': ('منتهي', 'Expired', Color(0xFFDC2626)),
   'due': ('قارب على الانتهاء', 'Due soon', Color(0xFFF59E0B)),
@@ -37,7 +34,7 @@ const _stateMeta = <String, (String, String, Color)>{
   'upcoming': ('قريب', 'Upcoming', Color(0xFF0EA5E9)),
   'missing': ('مطلوب — بلا تاريخ', 'Needed — no date', Color(0xFF94A3B8)),
   'not_applicable': ('غير مطلوب', 'Not applicable', Color(0xFF64748B)),
-  // وثيقةٌ أُنهيت بقرار — لا تُعرض كمفتاحٍ خام.
+  // A document ended by decision is not shown as a raw key.
   'ended': ('مُنهاة', 'Ended', Color(0xFF64748B)),
 };
 Color vStateColor(dynamic s) => _stateMeta[(s ?? 'valid').toString()]?.$3 ?? const Color(0xFF64748B);
@@ -46,7 +43,7 @@ String vStateLabel(dynamic s) {
   return m == null ? (s ?? '—').toString() : tr(m.$1, m.$2);
 }
 
-// ── ماذا تغطّي الوثيقة ─────────────────────────────────────────────────────
+// What the document covers
 const _subjects = [
   ('vehicles', 'السيارات', 'Vehicles',
     'يُحسب القسط لكل سيارة: اكتب سعر السيارة وعددها ويُحسب الإجمالي — أو اكتب الإجمالي مباشرةً.',
@@ -121,7 +118,7 @@ class _VehicleCorporatePoliciesScreenState extends State<VehicleCorporatePolicie
   bool _loading = true;
   String? _error;
   final Set<String> _picked = {};
-  int _seq = 0; // ردٌّ قديم لا يكتب فوق أحدث
+  int _seq = 0; // A stale response does not overwrite a newer one
   late final void Function() _onLive;
 
   @override
@@ -151,7 +148,7 @@ class _VehicleCorporatePoliciesScreenState extends State<VehicleCorporatePolicie
     }
   }
 
-  // أعمدةُ الملفّ — نفسُ أعمدة تصدير الويب.
+  // File columns, the same as the web export columns.
   List<ExportCol> get _cols => [
         ExportCol('الوثيقة', 'Policy', (r) => r['scopeAr']),
         ExportCol('المؤمَّن له', 'Policyholder', (r) => r['policyholderAr']),
@@ -252,7 +249,7 @@ class _VehicleCorporatePoliciesScreenState extends State<VehicleCorporatePolicie
                       ]),
                     ),
                   ),
-                  // شريطُ التحديد — تجديدٌ جماعي بتاريخ واحد
+                  // Selection bar: bulk renewal with one date
                   if (canEdit && chosen > 0)
                     SafeArea(
                       top: false,
@@ -410,7 +407,7 @@ class _VehicleCorporatePoliciesScreenState extends State<VehicleCorporatePolicie
           if (canEdit) ...[
             const SizedBox(height: 12),
             Row(children: [
-              // الإنهاءُ فعلٌ غيرُ التجديد — وما أُنهي يُعاد فتحه
+              // Ending is a different action from renewing, and an ended document can be reopened
               if (ended)
                 Expanded(child: OutlinedButton.icon(
                   onPressed: () => _reopen(p), icon: const Icon(Icons.refresh, size: 16),
@@ -435,7 +432,7 @@ class _VehicleCorporatePoliciesScreenState extends State<VehicleCorporatePolicie
   }
 }
 
-// ══════════════════ تجديد وثيقة ══════════════════
+// Renew a document
 class _RenewSheet extends StatefulWidget {
   final Map<String, dynamic> p;
   final VoidCallback onDone;
@@ -453,7 +450,7 @@ class _RenewSheetState extends State<_RenewSheet> {
   @override
   void initState() {
     super.initState();
-    // سنةٌ بعد الانتهاء الحالي إن لم يفُت، وإلّا سنةٌ من اليوم — كما في الويب
+    // One year after the current expiry if not yet passed, otherwise one year from today, as on web.
     final cur = DateTime.tryParse((widget.p['expiryDate'] ?? '').toString());
     final base = cur != null && cur.isAfter(DateTime.now()) ? cur : DateTime.now();
     _newExpiry = _ymd(DateTime(base.year + 1, base.month, base.day));
@@ -526,9 +523,8 @@ class _DateField extends StatelessWidget {
       );
 }
 
-// ══════════════════ تجديد جماعي بتاريخ واحد ══════════════════
-// لا endpoint جماعي: نداءات متتابعة، عدّاد أثناء التنفيذ، أسماء صريحة لما فشل،
-// وإعادة المحاولة تمسّ ما فشل وحده — كما في الويب.
+// Bulk renewal with one date
+// No bulk endpoint: sequential calls, a counter while running, explicit names for failures, and a retry touches only the failed ones, as on web.
 class _BulkRenewSheet extends StatefulWidget {
   final List<Map<String, dynamic>> policies;
   final VoidCallback onDone, onReload;
@@ -642,7 +638,7 @@ class _BulkRenewSheetState extends State<_BulkRenewSheet> {
   }
 }
 
-// ══════════════════ استمارةُ الوثيقة (جديدة/تعديل) ══════════════════
+// Document form (new/edit)
 class _PolicyForm extends StatefulWidget {
   final Map<String, dynamic> p;
   final VoidCallback onDone;
@@ -695,7 +691,7 @@ class _PolicyFormState extends State<_PolicyForm> {
         'premiumPerPersonSar': _subj == 'drivers' ? _num(_perPerson.text) : null,
         'premiumPerVehicleSar': _subj == 'vehicles' ? _num(_perVehicle.text) : null,
         'vehicleCount': _subj == 'vehicles' ? _num(_vehCount.text) : null,
-        // السائقون يُحسب إجماليُّهم من القائمة؛ والسيّارات من السعر × العدد إن كُتبا
+        // The driver total is computed from the list; vehicles from price x count when both are entered.
         'premiumSar': _subj == 'drivers' ? null : (_subj == 'vehicles' && vt != null ? vt : _num(_premium.text)),
       };
       if (_isNew) {
@@ -790,9 +786,8 @@ class _PolicyFormState extends State<_PolicyForm> {
   }
 }
 
-// ══════════════════ قائمةُ المشمولين ══════════════════
-// الأسماء من سجلّ بطاقات السائقين، والضمّ والإخراج يُكتبان فيه
-// (POST corporate-policies/:id/drivers). تُعاد قراءة الوثيقة بعد كل تغيير.
+// Covered list
+// Names come from the driver cards register, and adding or removing is written there (POST corporate-policies/:id/drivers). The document is re-read after every change.
 class _DriverRosterScreen extends StatefulWidget {
   final String policyId;
   final Map<String, dynamic> initial;
@@ -806,7 +801,7 @@ class _DriverRosterScreen extends StatefulWidget {
 class _DriverRosterScreenState extends State<_DriverRosterScreen> {
   late Map<String, dynamic> _p = widget.initial;
   String _q = '';
-  // متحكِّمٌ للشاشة: الخانةُ لا تعود فارغةً إذا مُرِّرت خارج الشاشة ثم عادت
+  // Screen-owned controller: the field is not emptied if scrolled off screen and back
   final _searchCtl = TextEditingController();
   String? _busyId;
   int _seq = 0;

@@ -90,9 +90,7 @@ export default function CrmContactsPage() {
     { header: T.primary, key: 'isPrimary', transform: fmt.yesNo, width: 8 },
     { header: txx.colCreated, key: 'createdAt', transform: fmt.date, width: 14 },
   ];
-  // فلترةُ الشركة والبحث تجريان على الخادم: تصديرُ ما في الذاكرة وأنت مُصفٍّ على
-  // شركةٍ واحدة يعطي جهاتِ اتصالها وحدها، ولا شيء في الملفّ يقول ذلك.
-  // والخادم يسقّف هذا المسار بخمسمئة جهةٍ في الحالتين.
+  // Company and search filtering run on the server: exporting memory while filtered to one company yields only its contacts, and nothing in the file says so. The server caps this route at 500 contacts in both cases.
   const fetchAllForExport = async () => {
     const d = await api.get<{ contacts: CrmContact[] }>('/api/crm/contacts');
     return [{ name: 'Contacts', rows: d.contacts || [], columns: exportColumns }];
@@ -104,7 +102,7 @@ export default function CrmContactsPage() {
     ...(hasActiveFilters ? [{ key: 'all', label: scope.all, resolve: fetchAllForExport }] : []),
   ];
 
-  // قمعُ الأعمدة — القيمُ كما تُقرأ في الصفّ. راجع hooks/useColumnFilters.
+  // Column filters; values as read in the row. See hooks/useColumnFilters.
   const cf = useColumnFilters<any>({
     name: (c) => contactName(c, lang),
     company: (c) => companyName(c.company, lang) || '',

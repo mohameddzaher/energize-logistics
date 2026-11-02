@@ -1,19 +1,12 @@
 /**
- * نوعُ ارتباط الموظّف — على الكفالة أم عملٌ حرّ.
- *
- * ── والفريلانسر لا عقدَ له ────────────────────────────────────────────────
- * مَن ليس على كفالتنا فلا عقدَ بيننا وبينه، فبياناتُ العقد في حقّه ليست
- * «ناقصة» بل **غيرُ مطلوبة**. والفرقُ ليس تجميلًا: عمودُ «مطلوب» هو قائمةُ
- * عملِ فريق الموارد البشريّة، فوضعُ سبعةٍ وستّين اسمًا فيه يُشغلهم بجمع ورقٍ
- * لا وجودَ له.
- *
- * ويُقلَب في أيّ وقت: مَن نقلناه إلى كفالتنا تعود بياناتُ عقده مطلوبةً كغيره
- * — من صفحة العقود أو من ملفّه، والقاعدةُ واحدةٌ في الموضعين.
+ * Employee engagement type: sponsored by us, or freelance.
+ * A freelancer has no contract: someone not on our sponsorship has no contract with us, so contract data for him is not 'missing' but 'not required'. This matters because the 'required' column is the HR team's work list; putting 67 names in it sends them chasing paper that does not exist.
+ * It can be flipped at any time: someone moved to our sponsorship has his contract data required again, from the contracts page or his file, with one rule in both places.
  */
 const SPONSORED = 'sponsored';
 const FREELANCER = 'freelancer';
 
-// حقولُ العقد التي لا معنى لها بلا كفالة.
+// Contract fields that make no sense without sponsorship.
 const CONTRACT_FIELDS = [
   'contractStatusText', 'qiwaContractNumber', 'contractOccupation',
   'contractStartDate', 'contractEndDate', 'annualLeaveDays', 'probationMonths',
@@ -22,19 +15,15 @@ const CONTRACT_FIELDS = [
 const isFreelancerType = (v) => String(v || '').trim() === FREELANCER;
 
 /**
- * يبني ما يُكتب على الموظّف حين يتغيّر نوعُه.
- *
- * يُعيد `$set` جاهزًا: النوعَ نفسَه، ومرآتَه المنطقيّة، وحالاتِ حقول العقد.
- * ولا يمسّ **قيمَ** العقد — مَن كان له عقدٌ ثمّ صار عملًا حرًّا يبقى تاريخُه
- * مكتوبًا؛ الذي يتغيّر هو أنّه لم يعد مطلوبًا.
+ * Builds what is written on the employee when his type changes.
+ * Returns a ready `$set`: the type, its logical mirror, and the contract field states. It does not touch contract values: someone who had a contract and became freelance keeps his dates; what changes is that they are no longer required.
  */
 function applyEmploymentType(type) {
   const t = String(type || '').trim();
   const free = isFreelancerType(t);
   const set = { employmentType: t, isFreelancer: free };
   for (const f of CONTRACT_FIELDS) {
-    // «غير مطلوب» للعمل الحرّ، وتُرفَع العلامةُ عند العودة إلى الكفالة فتُقرأ
-    // الحالةُ من القيمة كما لبقيّة الناس.
+    // 'Not required' for freelance; the flag is lifted on return to sponsorship so the state is read from the value like everyone else.
     set[`fieldStatus.${f}Status`] = free ? 'not_required' : '';
   }
   return set;

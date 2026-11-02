@@ -12,8 +12,7 @@ import 'reference_data.dart' show LookupValuesScreen;
 import 'shipment_orders_common.dart';
 import 'shipment_orders_fleet.dart';
 
-/// إعداداتُ قسم طلبات الشحنات — نظيرُ /system/shipment-orders/settings:
-/// نموذجُ الإنشاء، وقوائمُ القسم، وترقيمُ البوالص، وحالاتُ الشحنة.
+/// Shipment orders section settings, mirrors /system/shipment-orders/settings: the create form, section lists, waybill numbering and shipment statuses.
 class ShipmentOrdersSettingsScreen extends StatefulWidget {
   const ShipmentOrdersSettingsScreen({super.key});
   @override
@@ -48,10 +47,10 @@ class _ShipmentOrdersSettingsScreenState extends State<ShipmentOrdersSettingsScr
       final d = await Api.instance.get('/api/shipment-orders/counter');
       if (!mounted) return;
       setState(() { _next = (d['next'] as num?)?.toInt(); _start.text = '${d['start'] ?? ''}'; });
-    } catch (_) {/* اختياريّ */}
+    } catch (_) {/* Optional */}
   }
 
-  // تشمل المُطفأة: صفحةُ الضبط تُري ما أُخفي كي يُعاد.
+  // Includes the switched-off ones: the settings page shows what was hidden so it can be restored.
   Future<void> _loadStatuses() async {
     try {
       final d = await Api.instance.get('/api/shipment-orders/statuses?all=1');
@@ -139,7 +138,7 @@ class _ShipmentOrdersSettingsScreenState extends State<ShipmentOrdersSettingsScr
           AppCard(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             Text(tr('ترقيم أوامر النقل', 'Transport order numbering'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
             const SizedBox(height: 6),
-            // الرقمُ لا يُنقَص ولا يُعاد: بوليصتان بالرقم نفسِه في يدين.
+            // The number is never decremented or reused: two waybills with the same number would be in circulation.
             Text(tr('رقمُ أمر النقل يُكتب على ورقٍ يُسلَّم للسائق ويُحاسَب عليه، فلا يُعاد رقمٌ صُرف. يمكن تقديمُ العدّاد إلى رقمٍ أكبر، ولا يمكن إرجاعُه.',
                 'The waybill number goes on paper handed to a driver and is accounted for, so a used number is never reissued. The counter may be moved forward, never back.'),
                 style: const TextStyle(fontSize: 12.5, color: T.inkSoft)),

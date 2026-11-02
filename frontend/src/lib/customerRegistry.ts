@@ -1,18 +1,11 @@
-// سجلُّ العملاء — الأنواعُ والأعمدةُ مكتوبةٌ مرّةً واحدة.
-//
-// الشاشةُ نفسُها تُفتَح من ثلاثة أقسام (طلبات الشحنات والتشغيل والمبيعات)، فلو
-// كُتب العمودُ في كلٍّ منها افترقت بعد شهر: عمودٌ يُضاف هنا ولا يُضاف هناك، ومن
-// يقرأ الرقمين يظنّهما رقمين مختلفين. فالمصدرُ واحد.
+// Customer registry: types and columns defined once.
+// The same screen opens from three sections (shipment orders, operations, sales); per-section column copies would drift apart and the same figure would read as two different numbers.
 import { canEditSection, roleOf, permsOf, type RoleOrUser } from './sections';
 import { SO_EDIT_ROLES, SO_ADMIN_ROLES } from './shipmentOrders';
 
-// ── مَن يعدّل العميل ─────────────────────────────────────────────────────────
-// قاعدةٌ واحدةٌ للأبواب الثلاثة، تطابق حارسَ `/api/customer-registry` حرفًا:
-// أدوارُ طلبات الشحنات، ومعها مديرُ المبيعات (السعرُ المتّفقُ عليه عملُه)، ومن
-// مُنح «تعديلَ طلبات الشحنات» من المصفوفة. والمندوبُ يقرأ ولا يكتب. وشرائحُ
-// السعر خارجَ هذه القاعدة: يقرّرها الخادمُ في `canEditTiers`.
+// Who edits a customer: one rule for the three entry points, identical to the /api/customer-registry guard: shipment-orders roles, the sales manager (agreed price is their job), and anyone granted shipment-orders edit in the matrix. Reps read only. Price tiers are outside this rule; the server decides in canEditTiers.
 export const CUSTOMER_EDIT_ROLES = [...SO_EDIT_ROLES, 'sales_manager', 'sales_rep'];
-/** أسعارُ الوجهات (المتّفقُ عليه والشرائح) — لمدير العمليّات ومدير النظام وحدَهما؛ والخادمُ هو الحارس. */
+/** Destination prices (agreed and tiers): operations manager and system admin only; the server is the guard. */
 export const canEditRoutePrices = (u: RoleOrUser) => ['super_admin', 'admin', 'operations_manager'].includes(roleOf(u));
 export const canEditCustomers = (u: RoleOrUser) =>
   CUSTOMER_EDIT_ROLES.includes(roleOf(u)) || canEditSection(permsOf(u), 'Shipment Orders');
@@ -21,11 +14,8 @@ export const canRemoveCustomers = (u: RoleOrUser) =>
   (roleOf(u) !== 'sales_rep' && CUSTOMER_EDIT_ROLES.includes(roleOf(u))) || canEditSection(permsOf(u), 'Shipment Orders');
 
 /**
- * صفُّ السجلّ.
- *
- * والفارغُ لا يصل: الخادمُ يحذف الحقلَ الذي لا قيمةَ فيه بدل أن يرسله `""` أو
- * `null` ستّمئةَ مرّة (راجع shapeRow) — فكلُّ ما قد يفرغ اختياريٌّ هنا، و`cellOf`
- * يقرؤه كما كان. أمّا الصفرُ فيصل: «٠ كشفًا» رقمٌ يُقرأ وشريحةٌ تُبنى عليه.
+ * Registry row.
+ * Empty fields do not arrive: the server omits a field with no value instead of sending "" or null hundreds of times (see shapeRow), so everything that can be empty is optional here and cellOf reads it as before. Zero does arrive: a count of 0 statements is a number and a tier is built on it.
  */
 export interface RegistryRow {
   _id: string;
@@ -43,7 +33,7 @@ export interface RegistryRow {
   avgPrice?: number | null;
   lastPriceAt?: string | null;
   sheets: number;
-  /** غائبٌ لمن لا يرى المال — لا يُرسَم «undefined»، يُخفى العمود. */
+  /** Absent for users who do not see money: the column is hidden, not rendered as "undefined". */
   purchaseTotal?: number;
   firstSheetAt?: string | null;
   lastSheetAt?: string | null;
@@ -76,10 +66,10 @@ export interface AgreedRoute {
   hits?: number;
 }
 
-/** شريحةُ سعرٍ بعدد السيارات: من عددٍ إلى عدد (والنهايةُ الفارغة = فما فوق) بسعر السيارة. */
+/** Price tier by vehicle count: from one count to another (an empty end means and above) at a price per vehicle. */
 export interface PriceTier { minTrucks: number; maxTrucks: number | null; price: number }
 
-/** «١–٥: 2,200 · ٦ فأكثر: 2,400» — الشرائحُ سطرًا يُقرأ ويُصدَّر. */
+/** A readable and exportable tier line, e.g. "1-5: 2,200 · 6 and above: 2,400". */
 export const tiersText = (tiers: PriceTier[] | undefined, ar: boolean): string =>
   (tiers || []).map((t) => `${t.maxTrucks == null ? (ar ? `${t.minTrucks} فأكثر` : `${t.minTrucks}+`)
     : t.minTrucks === t.maxTrucks ? `${t.minTrucks}` : `${t.minTrucks}–${t.maxTrucks}`}: ${Number(t.price).toLocaleString('en-US')}`).join(' · ');
@@ -111,13 +101,13 @@ export interface ProfilePayload {
     monthly: { month: string; sheets: number; purchase?: number }[];
   };
   routes: RunRoute[];
-  /** مديرُ العمليّات ومديرُ النظام وحدَهما — يقوله الخادم. */
+  /** Operations manager and system admin only; the server enforces it. */
   canEditTiers?: boolean;
   sheets: { rows: any[]; total: number; page: number; pages: number };
   orders: any[];
 }
 
-/** الطيُّ العربيّ — «جده» تجد «جدة»، والهمزاتُ لا تُبحَث حرفًا بحرف. */
+/** Arabic folding: searching one spelling finds the other, and hamza variants are not matched letter by letter. */
 export const foldAr = (x: any): string => String(x ?? '')
   .replace(/ /g, ' ')
   .replace(/\s+/g, ' ')
@@ -139,7 +129,7 @@ export const fmtDay = (v?: string | null): string => {
 export const fmtNum = (n?: number | null): string =>
   (n == null ? '—' : Number(n).toLocaleString('en-US', { maximumFractionDigits: 2 }));
 
-/** مصدرُ السعر يُقرأ كلامًا: «١٤٥٠» وحدَه لا يُعرَف من أين جاء. */
+/** Price source in words: a bare number alone does not say where it came from. */
 export const priceSourceLabel = (s: string | undefined, ar: boolean): string => {
   switch (s) {
     case 'sheet': return ar ? 'من تقرير الفروع' : 'branches report';
@@ -155,10 +145,10 @@ export type RegistryCol = {
   key: keyof RegistryRow;
   ar: string;
   en: string;
-  /** رقمٌ: يُحاذى إلى النهاية ويُفرَز عدديًّا. */
+  /** Number: end-aligned and sorted numerically. */
   num?: boolean;
   date?: boolean;
-  /** عمودُ مالٍ: يُخفى كلُّه عمّن لا يراه بدل أن يُرسَم فارغًا. */
+  /** Money column: hidden entirely for those who cannot see it instead of rendering empty. */
   money?: boolean;
   width?: number;
 };
@@ -188,7 +178,7 @@ export const REGISTRY_COLS: RegistryCol[] = [
   { key: 'isActive', ar: 'الحالة', en: 'Status' },
 ];
 
-/** نصُّ الخليّة — هو نفسُه ما يُفلتَر عليه وما يُبحَث فيه. */
+/** Cell text; the same text is filtered and searched. */
 export const cellOf = (r: RegistryRow, c: RegistryCol, ar: boolean): string => {
   const v = r[c.key];
   if (c.key === 'isActive') return r.isActive ? (ar ? 'نشط' : 'Active') : (ar ? 'موقوف' : 'Inactive');
@@ -197,7 +187,7 @@ export const cellOf = (r: RegistryRow, c: RegistryCol, ar: boolean): string => {
   return v == null || v === '' ? '' : String(v);
 };
 
-/** بطاقاتُ الأرقام فوق الجدول — كلُّ واحدةٍ شريحةٌ تُضغَط. */
+/** Number cards above the table; each one is a clickable filter. */
 export type KpiKey = 'all' | 'working' | 'idle' | 'withRoutes' | 'withoutRoutes' | 'unpriced' | 'sheets' | 'purchase';
 
 export const kpiMatches = (k: KpiKey, r: RegistryRow): boolean => {

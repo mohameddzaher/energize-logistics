@@ -1,13 +1,7 @@
 'use client';
-// «إنشاء إيميل للعميل من البروفايل بتاعه».
-//
-// One card, dropped onto every customer/supplier profile page in every section.
-// It asks the backend whether THIS register row already has a portal login and
-// then either offers to create one (email + password) or shows the account with
-// the actions that matter afterwards: reset the password, suspend it, delete it.
-//
-// The register key + row id are all it needs — see backend/config/partnerRegisters.js
-// for the list of registers this works against.
+// Create a customer email from their profile.
+// One card on every customer/supplier profile page: asks the backend whether this register row already has a portal login, then offers to create one or shows the account with reset, suspend and delete actions.
+// Needs only the register key and row id; see backend/config/partnerRegisters.js.
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
@@ -53,7 +47,7 @@ export default function PortalAccountCard({
   const [form, setForm] = useState({ email: '', password: '' });
   const [showPw, setShowPw] = useState(false);
   const [openForm, setOpenForm] = useState(false);
-  // role-only: حساباتُ الشركاء — يطابق ACCOUNT_ADMIN_ROLES في الخادم.
+  // role-only: partner accounts; matches ACCOUNT_ADMIN_ROLES on the server.
   const canManage = !!user && ADMIN_ROLES.includes(user.role);
 
   const load = useCallback(async () => {

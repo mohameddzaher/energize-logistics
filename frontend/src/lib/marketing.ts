@@ -1,13 +1,6 @@
 import { canAccessSection, canEditSection } from '@/lib/sections';
-// Marketing (قسم التسويق) — shared config, types and helpers.
-//
-// The section tracks two things: campaigns (a budgeted, dated push on one
-// channel) and activities (each individual dated post/ad/design/event executed).
-// The activity log IS the history, and the daily/weekly/monthly report is just
-// those rows bucketed by date — which is how a marketing manager answers "what
-// did we actually do this week?".
-//
-// Pages read /api/marketing/* and refresh on the `marketing:updated` socket.
+// Marketing section: shared config, types and helpers.
+// Two things are tracked: campaigns (a budgeted, dated push on one channel) and activities (each individual dated post/ad/design/event executed). The activity log is the history, and the daily/weekly/monthly report is those rows bucketed by date, which answers what was actually done this week. Pages read the /api/marketing routes and refresh on the `marketing:updated` socket.
 
 export type Lang = 'en' | 'ar';
 

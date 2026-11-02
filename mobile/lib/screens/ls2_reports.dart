@@ -10,13 +10,10 @@ import '../ui/search_field.dart';
 import 'ls2_common.dart';
 import 'ls2_vehicle_detail.dart';
 
-/// تقارير لوكيشن سوليوشن — نظيرُ /system/ls2/reports: تقريران بفترةٍ واحدة.
-///   • كلّ المركبات: صفٌّ لكلّ شاحنة (المسافة، ساعات الموتور، الوقود، الصيانة،
-///     التنبيهات، الأعمال) مع ملخّصٍ أعلاه.
-///   • مركبةٌ واحدة: ملفُّها كاملًا — الهويّة، المسافة اليوميّة، الرحلات، الوقود،
-///     خطّةُ الصيانة، الصيانات، الإصلاحات، التنبيهات.
-/// وكلاهما يُصدَّر Excel بأوراقٍ متعدّدة كالموقع. والوقودُ تقريرٌ لكلّ شاحنة
-/// (~٢ث) فيُجلَب عند الطلب تتابعًا لا دفعةً واحدة.
+/// Location Solutions reports, counterpart of /system/ls2/reports: two reports with one period.
+/// All vehicles: a row per truck (distance, engine hours, fuel, maintenance, alerts, jobs) with a summary above.
+/// One vehicle: its full file: identity, daily distance, trips, fuel, maintenance plan, maintenances, repairs, alerts.
+/// Both export to multi-sheet Excel like the web. Fuel is a per-truck report (about 2 s), so it is fetched on demand sequentially, not all at once.
 class Ls2ReportsScreen extends StatefulWidget {
   const Ls2ReportsScreen({super.key});
   @override
@@ -39,22 +36,22 @@ class _Ls2ReportsScreenState extends State<Ls2ReportsScreen> with SingleTickerPr
   late final TabController _tab = TabController(length: 2, vsync: this);
   DateTimeRange _range = ls2ThisMonthToDate();
 
-  // ── تقرير الأسطول ──
+  // Fleet report.
   Map<String, dynamic>? _report;
   bool _loading = true;
   String? _error;
   String _q = '';
-  // متحكِّمُ البحث عند الشاشة: تبديلُ التبويب يُعيد بناءَ الخانة فلا يضيع نصُّها.
+  // The search controller lives at the screen level: switching tabs rebuilds the field, so its text survives.
   final _searchCtl = TextEditingController();
   String _maint = 'all';
   String _sortKey = 'km';
   bool _asc = false;
-  // الوقودُ يُدمَج على الصفوف؛ و null يبقى null — شاحنةٌ بلا وقود CAN لا تُقرأ صفرًا.
+  // Fuel is merged onto the rows; null stays null: a truck with no CAN fuel is not read as zero.
   final Map<String, Map<String, dynamic>?> _fuel = {};
   (int, int)? _fuelProgress;
   int _seq = 0;
 
-  // ── تقرير المركبة ──
+  // Vehicle report.
   List<Map<String, dynamic>> _fleetList = [];
   String? _unitId;
   Map<String, dynamic>? _vr;
@@ -70,7 +67,7 @@ class _Ls2ReportsScreenState extends State<Ls2ReportsScreen> with SingleTickerPr
   void initState() {
     super.initState();
     _loadFleet();
-    // نبضُ القياس كلَّ دقيقة يحمل `vehicles` ولا يغيّر ما هنا — فلا يُعاد التحميل له.
+    // The per-minute telemetry pulse carries `vehicles` and changes nothing here, so it does not trigger a reload.
     _onLive = (d) { if (!(d is Map && d.containsKey('vehicles'))) _loadFleet(); };
     Live.instance.onData('ls2:updated', _onLive);
     _tab.addListener(() {
@@ -102,7 +99,7 @@ class _Ls2ReportsScreenState extends State<Ls2ReportsScreen> with SingleTickerPr
     try {
       final d = await Api.instance.get('/api/ls2/vehicles');
       if (mounted) setState(() => _fleetList = ls2List(d['items']));
-    } catch (_) {/* المنتقي يبقى فارغًا */}
+    } catch (_) {/* the picker stays empty */}
   }
 
   Future<void> _loadVehicle() async {
@@ -146,7 +143,7 @@ class _Ls2ReportsScreenState extends State<Ls2ReportsScreen> with SingleTickerPr
     list.sort((a, b) {
       final va = a[_sortKey], vb = b[_sortKey];
       if (va is String || vb is String) return (va ?? '').toString().compareTo((vb ?? '').toString()) * dir;
-      if (va == null) return 1; // الغائبُ يغرق أيًّا كان الاتجاه
+      if (va == null) return 1; // Missing values sort last in either direction.
       if (vb == null) return -1;
       return ((va as num) - (vb as num)).sign.toInt() * dir;
     });

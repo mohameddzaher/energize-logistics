@@ -46,7 +46,7 @@ const layout = {
     b2c: 'B2C',
     b2cDashboard: 'B2C Dashboard',
     b2cRepsPerformance: 'Reps Performance',
-    // «مناديب المبيعات» استُبدلت بسجلّ القسم كلِّه — المفتاحُ يبقى لبياناتٍ قديمة.
+    // The sales reps label was replaced by the whole department register; the key stays for old data.
     b2cReps: 'Sales Reps',
     b2cOrdersAnalysis: 'Orders Analysis',
     b2cLightTransport: 'Light-transport Employees',
@@ -7135,7 +7135,7 @@ const customsPage = {
     advanceStage: 'الانتقال إلى المرحلة التالية',
     completedAllStages: 'اكتملت كل المراحل',
     stages: {
-      // الأسماءُ نفسُها في backend/src/config/customsStages.js — يُعدَّلان معًا.
+      // Same names as backend/src/config/customsStages.js; edit them together.
       papers_received: 'استلام الأوراق',
       declaration_paid: 'سداد البيان الجمركي',
       do_requested: 'طلب فاتورة إذن التسليم',
@@ -7150,7 +7150,7 @@ const customsPage = {
       yard_to_customer: 'نقل الحاويات من الساحة إلى العميل',
       containers_returned: 'إرجاع الحاويات',
       invoiced: 'إصدار الفاتورة',
-      // مفتاحُ ما قبل تفريع النقل — باقٍ على معاملاتٍ قديمة.
+      // Key from before transport branching; still present on old transactions.
       containers_transported: 'نقل الحاويات',
     } as Record<string, string>,
   },
@@ -7272,19 +7272,14 @@ export const SECTION_LABEL_KEYS: Record<string, keyof typeof layout.en> = {
   'Executive': 'sectionExecutive',
 };
 
-// User role → layout translation key. Use with getLayoutTranslations(lang)[key].
-// التعريفُ المولَّد من الخادم: مفتاحُ الدور → اسمُه بالعربيّة والإنجليزيّة.
-// يُبنى مرّةً واحدة لا مع كلّ نداء.
+// User role to layout translation key. Use with getLayoutTranslations(lang)[key].
+// Generated definition from the server: role key to its Arabic and English name. Built once, not per call.
 const ROLE_DEFS: Record<string, { ar: string; en: string }> = Object.fromEntries(
   [...GLOBAL_ROLES, ...SECTION_ROLES.flatMap((s) => [s.manager, ...s.staff])]
     .map((r) => [r.key, { ar: r.ar, en: r.en }]),
 );
 
-/**
- * ألقابٌ قديمة ما تزال على حساباتٍ قائمة. تُقرأ باسم الدور الذي حلّ محلّها،
- * فلا يظهر «crm agent» بالإنجليزيّة في شاشةٍ عربيّة لأنّ الدور أُعيدت تسميته.
- * مطابقةٌ لـ`RENAMED` في `backend/src/config/roles.js`.
- */
+/** Old titles still on existing accounts, read by the role that replaced them, so a renamed role does not show its English key on an Arabic screen. Matches `RENAMED` in `backend/src/config/roles.js`. */
 const RENAMED_ROLES: Record<string, string> = {
   operations: 'operations_staff',
   purchasing: 'procurement_staff',
@@ -7336,33 +7331,14 @@ export const ROLE_LABEL_KEYS: Record<string, keyof typeof layout.en> = {
   contracts_manager: 'roleContractsManager',
 };
 
-/**
- * اسمُ الدور بلغة الواجهة.
- *
- * ── لماذا يُقرأ من `roles.ts` أوّلًا ────────────────────────────────────────
- * كان يُقرأ من `ROLE_LABEL_KEYS` وحدَها — خريطةٌ تُكتب باليد هنا. وأدوارُ
- * النظام تُعرَّف في مكانٍ آخر (`backend/src/config/roles.js`، ومنه يُولَّد
- * `lib/roles.ts`)، فكلُّ دورٍ يُضاف هناك ولا يُضاف هنا كان يسقط إلى السطر
- * الأخير: `role.replace('_', ' ')`.
- *
- * وهذا هو سببُ ما بدا هبلًا في الشاشة: الواجهةُ عربيّة، وبعضُ الأدوار عربيّةٌ
- * وبعضُها «customers finance manager» و«ops platform staff» — ليست ترجمةً
- * إنجليزيّة، بل **المفتاحُ نفسُه** وقد استُبدلت شرطاتُه فراغات. وفي الإنجليزيّة
- * لا يظهر الخلل لأنّ المفتاح إنجليزيٌّ أصلًا فيبدو اسمًا سليمًا.
- *
- * فصار المصدرُ واحدًا: التعريفُ المولَّد من الخادم، وفيه لكلّ دورٍ اسمٌ عربيٌّ
- * وإنجليزيّ يفحصهما الخادمُ وقت التحميل ولا يقوم بدونهما. و`ROLE_LABEL_KEYS`
- * تبقى للأدوار القديمة التي حُذفت من التعريف وما تزال على حساباتٍ قائمة.
- * فأيُّ دورٍ جديدٍ يُولَد مسمًّى بلغتيه من أوّل يوم، بلا خطوةٍ يدويّةٍ تُنسى.
- */
+/** Role name in the interface language. It is read from `roles.ts` first: it used to come only from `ROLE_LABEL_KEYS`, a hand-written map, while roles are defined in backend/src/config/roles.js (which generates `lib/roles.ts`), so any role added there and not here showed as a raw key. */
 export function getRoleLabel(role: string | undefined | null, lang: Lang): string {
   if (!role) return '';
   const def = ROLE_DEFS[role] || ROLE_DEFS[RENAMED_ROLES[role] || ''];
   if (def) return lang === 'ar' ? def.ar : def.en;
   const key = ROLE_LABEL_KEYS[role];
   if (key) return layout[lang][key];
-  // آخرُ ملجأ: دورٌ لا يعرفه التعريفُ ولا الخريطة — يُعرض مفتاحُه مقروءًا
-  // بدل خانةٍ فارغة، وهو ما لا يُفترض أن يحدث بعد اليوم.
+  // Last resort: a role unknown to the definition and the map shows its readable key instead of an empty cell.
   return role.replace(/_/g, ' ');
 }
 

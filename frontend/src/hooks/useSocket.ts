@@ -4,15 +4,8 @@ import { getSocket } from '@/lib/socket';
 import { useAuth } from '@/context/AuthContext';
 
 /**
- * ── وأخبارُ التحديث لا تُعالَج والشاشةُ مطفأة ──────────────────────────────
- *
- * أخبارُ «تغيَّر شيءٌ فأعِد القراءة» تصل كلَّ ثوانٍ (مزامنةُ منصّة التشغيل).
- * والتبويبُ في الخلف أو الهاتفُ في الجيب كان يجلب الحمولةَ مع كلّ خبر: بياناتٌ
- * وبطّاريّةٌ تُستهلك في صفحةٍ لا يراها أحد. فتُؤجَّل: يُعلَّم أنّ ثَمّ تغييرًا،
- * ويُنفَّذ مرّةً واحدةً حين تعود الشاشة.
- *
- * وما ليس تحديثَ صفحةٍ — إشعارٌ أو رسالةُ محادثة — يمرّ كما هو: تلك أخبارٌ
- * يريدها المستخدم حتّى وهو في تبويبٍ آخر.
+ * Refresh notices are not handled while the screen is off.
+ * Notices to re-read arrive every few seconds (operations platform sync). A background tab or a phone in a pocket used to fetch the payload for each, wasting data and battery. They are deferred: a flag marks that a change happened and it runs once when the screen returns. Non-refresh events such as notifications and chat messages pass through unchanged.
  */
 const DEFERRABLE = /(:changed|:updated|:created|:deleted|:bulkImported|^workflow:|^ops:|^vreg:|^ls2:|^fleet:|^customs:|^collections:|^b2c:|^hr:|^finance:|^executive:)/;
 

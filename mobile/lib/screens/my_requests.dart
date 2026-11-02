@@ -8,8 +8,7 @@ import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import '../ui/export_sheet.dart';
 
-/// طلباتي — HR requests (salary certificate, letters, …): history + new request
-/// + فتح الطلب لقراءة رد الموارد البشرية والرد عليه (نفس مسار الويب).
+/// My requests: HR requests (salary certificate, letters, ...): history + new request + opening a request to read HR's reply and answer it (same path as the web).
 class MyRequestsScreen extends StatefulWidget {
   const MyRequestsScreen({super.key});
   @override
@@ -51,7 +50,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
   List<Map<String, dynamic>> _requests = [];
   bool _loading = true;
   String? _error;
-  String _filter = ''; // '' = الكل
+  String _filter = ''; // Empty string means all
   late final void Function() _onLive;
 
   @override
@@ -92,7 +91,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
     );
   }
 
-  /// ما دام مفتوحًا ولم يردّ عليه أحدٌ غيرُ صاحبه فهو ملكُه: يُعدَّل أو يُحذف (كالموقع).
+  /// While open and unanswered by anyone but its owner, the request is his: editable or deletable (as on the web).
   bool _editable(Map<String, dynamic> r) {
     if (r['status'] != 'open') return false;
     final me = '${r['requester'] is Map ? r['requester']['_id'] : r['requester']}';
@@ -138,7 +137,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
 
     return AppScaffold(
       title: Text(tr('طلباتي', 'My Requests')),
-      // التصدير: طلباتي كلُّها — أعمدةُ الموقع (النوع · الموضوع · الحالة · آخر تحديث بتقويميه).
+      // Export: all my requests, web columns (type, subject, status, last update in both calendars).
       actions: [
         ExportButton(
           fileName: 'my-requests',
@@ -265,7 +264,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
   }
 }
 
-/// شيت المحادثة: كامل الـ thread + مربع رد (نفس endpoint الويب: /requests/:id/reply).
+/// Conversation sheet: the whole thread plus a reply box (same endpoint as the web: /requests/:id/reply).
 class _RequestThreadSheet extends StatefulWidget {
   final String requestId;
   final Future<void> Function() onChanged;
@@ -294,7 +293,7 @@ class _RequestThreadSheetState extends State<_RequestThreadSheet> {
 
   Future<void> _load() async {
     try {
-      // نجلب القائمة ونلتقط الطلب المطلوب (لا يوجد endpoint مفرد للموظف).
+      // Fetch the list and pick the requested one (there is no single-request endpoint for the employee).
       final d = await Api.instance.get('/api/hr/me/requests');
       final all = List<Map<String, dynamic>>.from(d['requests'] ?? []);
       final found = all.firstWhere((x) => (x['_id'] ?? '').toString() == widget.requestId, orElse: () => {});
@@ -476,7 +475,7 @@ class _Chip extends StatelessWidget {
 
 class _NewRequestSheet extends StatefulWidget {
   final Future<void> Function() onDone;
-  /// طلبٌ قائمٌ يُعدَّل (PUT /api/hr/me/requests/:id) — وإلّا طلبٌ جديد.
+  /// Existing request being edited (PUT /api/hr/me/requests/:id); otherwise a new request.
   final Map<String, dynamic>? editing;
   const _NewRequestSheet({required this.onDone, this.editing});
   @override

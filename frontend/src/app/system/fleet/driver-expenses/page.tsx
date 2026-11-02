@@ -1,13 +1,8 @@
 'use client';
 /**
- * مصاريف السوّاق — ما يُستحقّ للرجل على كلّ حمولة، وهل صُرِف.
- *
- * تجيب عن سؤالٍ واحدٍ للحسابات: مَن نحوّل له اليوم وكم؟ ولا تُنشئ رقمًا جديدًا:
- * المبلغُ هو «مصروف السائق» المكتوبُ وقت إنشاء الحمولة — وبونصُ الجمعة مضافٌ
- * فيه وقتَها — والإيبانُ مقروءٌ من ملفّ السائق لا من سطر الحمولة.
- *
- * وعمودُ حالة الدفع هو ما يفصل «مستحقٌّ ولم يُصرَف» عن «صُرِف». وبغيره تُقرأ
- * الصفحةُ مطالبةً واحدةً لا فرقَ فيها، فيُدفَع الشيءُ مرّتين أو لا يُدفَع.
+ * Driver expenses: what is owed to the driver per load and whether it was paid.
+ * Answers one accounting question: who do we transfer to today, and how much. It creates no new figure: the amount is the driver expense written at load creation (Friday bonus already included) and the IBAN is read from the driver file, not the load row.
+ * The payment-status column separates owed-but-unpaid from paid; without it the page reads as one undifferentiated claim and a payment is made twice or never.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import MonthPicker from '@/components/system/MonthPicker';
@@ -58,7 +53,7 @@ export default function DriverExpensesPage() {
   const { notify, confirm } = useDialog();
   const ar = lang === 'ar';
   const t = (a: string, e: string) => (ar ? a : e);
-  // role-only: صرفُ مال — للماليّة ومدير الأسطول بأدوارهم.
+  // role-only: spending money is for finance and the fleet manager by their roles.
   const canPay = PAY_ROLES.includes(user?.role || '');
 
   const [mode, setMode] = useState<'all' | 'day' | 'range' | 'month'>('month');
@@ -85,7 +80,7 @@ export default function DriverExpensesPage() {
     return p.toString();
   }, [mode, day, from, to, month, paid, search]);
 
-  // الأحدثُ وحدَه يُعرض (كلُّ حرفٍ في البحث طلب)، والفشلُ يُقال لا يُعرض جدولًا فارغًا.
+  // Only the latest response is shown (every search keystroke is a request), and a failure is reported rather than rendering an empty table.
   const guard = useLatestRequest();
   const [loadError, setLoadError] = useState('');
   const load = useCallback(async () => {
@@ -107,7 +102,7 @@ export default function DriverExpensesPage() {
   }, [qs, guard, ar]);
   useEffect(() => { load(); }, [load]);
   useSocket('fleet:driverExpense', useCallback(() => load(), [load]));
-  // حفظُ الحمولة وحذفُها يُعلَنان بـ`fleet:updated` (لا `fleet:shipments` — لا يُرسَل).
+  // Saving and deleting a load are announced by fleet:updated; fleet:shipments is never emitted.
   useSocket('fleet:updated', useCallback(() => load(), [load]));
 
   const shownLabel = mode === 'all' ? t('كل الفترات', 'All time')
@@ -121,7 +116,7 @@ export default function DriverExpensesPage() {
     setBusy(true);
     try {
       await api.patch('/api/fleet/driver-expenses/paid', { ids, paid: value });
-      // التحديثُ محليًّا ثمّ الجلب: العلامةُ تُرى فورًا ولا تنتظر دورةَ الشبكة.
+      // Update locally first, then refetch: the mark appears immediately without waiting for a network round trip.
       setRows((p) => p.map((r) => (ids.includes(r._id) ? { ...r, driverExpensePaid: value } : r)));
       load();
     } catch (e: any) { notify(e?.message || t('تعذّر الحفظ', 'Failed'), 'error'); }
@@ -140,8 +135,7 @@ export default function DriverExpensesPage() {
     { header: t('من', 'From'), key: 'fromCity', width: 14 },
     { header: t('إلى', 'To'), key: 'toCity', width: 14 },
     { header: t('المشرف', 'Supervisor'), key: 'supervisorName', width: 20 },
-    // ── والحالةُ تُكتب كلامًا لا علامةً ────────────────────────────────────
-    // الملفُّ يُقرأ خارج النظام ويُرسَل إلى البنك، فخانةٌ فارغةٌ تعني «لا نعلم».
+    // Status is written as words, not a mark. The file is read outside the system and sent to the bank, so an empty cell would mean 'unknown'.
     { header: t('حالة الدفع', 'Payment status'), key: 'driverExpensePaid', width: 16,
       transform: (v: any) => (v ? t('تم السداد', 'Paid') : t('لم يتم السداد', 'Not paid')) },
     { header: t('تاريخ السداد', 'Paid at'), key: 'driverExpensePaidAt', width: 16, transform: (v: any) => dt(v) },
@@ -195,7 +189,7 @@ export default function DriverExpensesPage() {
           }]} />
       </div>
 
-      {/* ── البطاقات: على المطابق كلِّه لا على المعروض ─────────────────────── */}
+      {/* Cards cover everything that matches, not just the displayed rows. */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
         <K label={t('عدد الحمولات', 'Loads')} value={summary?.loads ?? 0} Icon={CalendarDays} />
         <K label={t('عدد السوّاق', 'Drivers')} value={summary?.driverCount ?? 0} Icon={Users} />
@@ -208,7 +202,7 @@ export default function DriverExpensesPage() {
           hint={t('حمولات عليها بونص', 'loads with bonus')} />
       </div>
 
-      {/* ── الفلاتر ─────────────────────────────────────────────────────────── */}
+      {/* Filters */}
       <div className="flex flex-wrap items-end gap-2 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
         <div className="flex rounded-lg border border-slate-200 p-0.5">
           {([['month', t('شهر', 'Month')], ['day', t('يوم', 'Day')], ['range', t('فترة', 'Period')], ['all', t('الكل', 'All')]] as const)
@@ -308,7 +302,7 @@ export default function DriverExpensesPage() {
                       </span>
                     )}
                   </td>
-                  {/* السائقُ الثاني يُكتب إن وُجد، ويُترك خطًّا إن لم يوجد. */}
+                  {/* The second driver is written if present, otherwise a dash. */}
                   <td className="px-3 py-2 text-[13px] text-slate-600">{r.secondDriverName || <span className="text-slate-300">—</span>}</td>
                   <td className="px-3 py-2 font-mono text-[11.5px]" dir="ltr">
                     {r.driverIban || <span className="text-amber-600 font-sans text-[11px] font-semibold">{t('غير مسجَّل في ملفّه', 'not on file')}</span>}

@@ -1,13 +1,5 @@
 'use client';
-// لوحةُ القسم — التشغيلُ لا الأرباح.
-//
-// «تحليلات قسم التخليص» تقول كم ربحنا، وهي للإدارة. وهذه تقول ما يحتاجه الفريقُ
-// ليعمل: كم معاملةً قادمةً ومفتوحةً ومغلقة، وأين تقف كلُّ مفتوحة، ومع كم عميلٍ
-// نعمل الآن، وما الذي فُوتر ولم تصل فاتورةُ نقله، وما على كلّ فردٍ في الفريق.
-// ولا رقمَ ماليًّا فيها.
-//
-// وكلُّ رقمٍ يُضغَط: البطاقةُ تُصفّي جدولَ المعاملات تحتها بما عدّته، والصفُّ
-// يفتح معاملتَه. فلا رقمَ هنا لا يُعرَف ممّ تكوّن.
+// Department dashboard: operations, not profit. Customs clearance analytics says how much we earned and is for management. This says what the team needs to work: how many transactions are upcoming, open and closed, where each open one stands, how many customers we work with now, what was invoiced without its transport invoice arriving, and what each team member has. It has no financial figure. Every figure is clickable: a card filters the transactions table below by what it counted, and a row opens its transaction, so no number here has an unknown origin.
 import HrQuickFilters from '@/components/hr/HrQuickFilters';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import Link from 'next/link';
@@ -38,7 +30,7 @@ interface Row {
   createdAt: string; createdBy: string | null; createdByName: string; expectedDate: string; expectedState?: string;
   completedAt: string | null; invoiceNumber: string; invoiced: boolean; awaitingTransportInvoice: boolean; invoiceRequest?: string;
   returnDeadline: string; returnState: '' | 'overdue' | 'due'; pendingPayments: number; openTasks: number;
-  /** أين وحداتُ المعاملة (حاوياتُها أو سيّاراتُها) — لكلّ وحدةٍ مراحلُها من أوّل النقل. */
+  /** Where a transaction's units (its containers or cars) are, each with its own stages from the start of transport. */
   unitsState: { total: number; atPort: number; inYard: number; delivered: number; returned: number; notReturned: number; late: number };
 }
 interface Member {
@@ -55,7 +47,7 @@ interface Dash {
   team: Member[]; rows: Row[]; canManage: boolean; canSeeAnalytics: boolean;
 }
 
-/** فلاترُ اللوحة السريعة — مفاتيحُها في الخادم (dashQuickFilters). */
+/** The dashboard's quick filters; their keys are on the server (dashQuickFilters). */
 const CUSTOMS_QUICK = [
   { key: 'qState', ar: 'حالة المعاملة', en: 'State' },
   { key: 'qInvoice', ar: 'الفوترة', en: 'Invoicing' },
@@ -70,7 +62,7 @@ const CUSTOMS_QUICK = [
   { key: 'qMonth', ar: 'الشهر', en: 'Month' },
 ];
 
-/** ما تعدّه كلُّ بطاقة — والجدولُ يُصفّى بالدالّة نفسِها، فلا يختلف العدُّ عن المعروض. */
+/** What each card counts. The table is filtered by the same function, so the count never differs from what is shown. */
 const VIEWS: Record<string, (r: Row) => boolean> = {
   all: (r) => r.bucket !== 'cancelled',
   upcoming: (r) => r.bucket === 'upcoming',
@@ -100,7 +92,7 @@ export default function CustomsDashboardPage() {
   const { notify } = useDialog();
   const router = useRouter();
   const T = getCustomsTranslations(lang);
-  // اسمُ المرحلة بلغة الشاشة — والخادمُ يرسل مفتاحَها.
+  // Stage name in screen language; the server sends its key.
   const stageOf = (key: string, cargo?: string) => (key === 'done' ? t('اكتملت مراحلُها — بقي الإنهاء', 'All stages done — to be closed') : stageName(T.stages, key, cargo));
 
   const [d, setD] = useState<Dash | null>(null);
@@ -141,15 +133,14 @@ export default function CustomsDashboardPage() {
   const base = useMemo(() => {
     if (!d) return [];
     const test = VIEWS[view] || VIEWS.all;
-    // البحثُ بكلّ ما في المعاملة: ما في الصفّ هنا، والباقي (الحاوياتُ، الإذنُ،
-    // الإرجاعُ، طلباتُ الصرف، الملاحظات…) من فهرس الخادم — راجع useCustomsSearch.
+    // Search over everything in the transaction: what is in the row here, and the rest (containers, permit, return, disbursement requests, notes) from the server index; see useCustomsSearch.
     return d.rows.filter((r) => test(r)
       && (!stage || (r.bucket === 'open' && (r.next || 'done') === stage))
       && (!search.trim() || matchesSearch(search, [r.blNumber, r.refNumber, r.customerName, r.shippingAgent, r.invoiceNumber,
         r.createdByName, r.declarationNumber, (r as any).carrierName, (r as any).port])
         || !!searchHits?.ids.has(String(r._id))));
   }, [d, view, stage, search, searchHits]);
-  // فلاترُ الأعمدة (على طريقة إكسل) آخرُ ما يُطبَّق — على ما تركته البطاقةُ والبحث.
+  // Excel-style column filters are applied last, on what the card and search left.
   const cf = useColumnFilters<Row>();
 
   if (!d) return <Spinner />;
@@ -221,8 +212,7 @@ export default function CustomsDashboardPage() {
 
   const maxStage = Math.max(1, ...d.byStage.map((s) => s.count));
 
-  // رأسُ عمودٍ بقمعِ فلتره. دالّةٌ تُنادى لا مكوّنٌ يُعرَّف هنا: المكوّنُ المعرَّفُ
-  // داخل الرسم يُعاد بناؤه مع كلّ رسمة، فتُغلَق لوحةُ الفلتر وهي مفتوحة.
+  // A column header with its filter funnel. A function called, not a component defined here: a component defined inside the render is rebuilt on every render and closes the filter panel while it is open.
   const th = (k: string, label: string) => (
     <th key={k} className="px-3 py-2.5 text-start font-semibold whitespace-nowrap">
       <span className="inline-flex items-center gap-1">{label}{cf.header(k, base, getters[k], ar)}</span>
@@ -242,12 +232,10 @@ export default function CustomsDashboardPage() {
         )}
       </PageHeader>
 
-      {/* ── الفلاتر: تُطبَّق على كلّ ما في الصفحة ───────────────────────────── */}
+      {/* Filters: applied to everything on the page. */}
       <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm space-y-3">
         <div className="flex flex-wrap items-center gap-3">
-          {/* ── الفلاترُ السريعة على طريقة الموارد البشريّة (٢٠٢٦/١٠/٢٢) ─────────
-              متعدّدةُ القيم وبجانب كلّ قيمةٍ عددُها بالفلاتر الأخرى، وتُطبَّق في
-              الخادم على كلّ رقمٍ في اللوحة — راجع dashQuickFilters. */}
+          {/* Quick filters in the HR style: multi-valued, each value with its count under the other filters, applied on the server to every figure on the dashboard (see dashQuickFilters). */}
           <HrQuickFilters ar={ar} keys={CUSTOMS_QUICK} value={f} onChange={(v) => setF(v as Record<string, string>)}
             options={Object.fromEntries((d.filters || []).map((x) => [x.key, x.values]))} />
           {active > 0 && (
@@ -256,7 +244,7 @@ export default function CustomsDashboardPage() {
             </button>
           )}
         </div>
-        {/* المدّة بتاريخ المعاملة (استلام الورق ثمّ البيان ثمّ شهرها) — والقادمةُ بتاريخها المرتقَب. */}
+        {/* Period by the transaction's date (paper receipt, then declaration, then its month); upcoming ones by their expected date. */}
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-[12px] font-bold text-slate-600">{t('المدّة:', 'Period:')}</span>
           <PeriodFilter ar={ar} from={f.from || ''} to={f.to || ''} onChange={(a, b) => setF((p) => ({ ...p, from: a, to: b }))} />
@@ -269,7 +257,7 @@ export default function CustomsDashboardPage() {
         </p>
       )}
 
-      {/* ══ ١ · حالةُ المعاملات ═════════════════════════════════════════════ */}
+      {/* 1. Transaction status. */}
       <Group title={t('حالة المعاملات', 'Transactions')} hint={t(`${C.total} معاملة`, `${C.total} transactions`)}>
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           <Tile on={view === 'upcoming'} onClick={() => pick('upcoming')} icon={<CalendarClock className="h-5 w-5" />} tone="amber"
@@ -285,7 +273,7 @@ export default function CustomsDashboardPage() {
             label={t('عملاء نعمل معهم الآن', 'Active customers')} value={C.activeCustomers}
             hint={t(`من ${C.customers} عميلًا — اضغط لترى أسماءهم`, `of ${C.customers} — click to see who`)} />
         </div>
-        {/* المغلقةُ قسمان لا يُخلَطان: فُوترت فانتهت، أو أُغلقت وفاتورتُها لم تصدر بعد. */}
+        {/* Closed has two parts that are not mixed: invoiced and finished, or closed with its invoice not yet issued. */}
         <div className="mt-3 grid grid-cols-2 gap-3 lg:grid-cols-4">
           <Mini on={view === 'closedInvoiced'} onClick={() => pick('closedInvoiced')} icon={<Lock className="h-4 w-4" />}
             label={t('مغلقة مفوترة', 'Closed, invoiced')} value={C.closedInvoiced || 0} hint={t('انتهت وصدرت فاتورتُها', 'Done and invoiced')} />
@@ -294,7 +282,7 @@ export default function CustomsDashboardPage() {
         </div>
       </Group>
 
-      {/* ══ ٢ · ما يحتاج متابعة ═════════════════════════════════════════════ */}
+      {/* 2. What needs follow-up. */}
       <Group title={t('ما يحتاج متابعة', 'Needs attention')}>
         <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
           <Mini on={view === 'awaiting'} onClick={() => pick('awaiting')} icon={<AlertTriangle className="h-4 w-4" />} tone={C.awaitingTransportInvoice ? 'red' : undefined}
@@ -313,9 +301,7 @@ export default function CustomsDashboardPage() {
         </div>
       </Group>
 
-      {/* ══ ٣ · الحاوياتُ واحدةً واحدة ══════════════════════════════════════
-          المعاملةُ لا تقول أين حاوياتُها: ثلاثٌ في بوليصةٍ قد تكون واحدةٌ منها
-          سُلِّمت واثنتان في الساحة. فتُعَدّ الوحداتُ نفسُها بمواضعها. */}
+      {/* 3. Containers one by one. A transaction does not say where its containers are: of three on a waybill, one may be delivered and two in the yard. So the units themselves are counted by position. */}
       <Group title={t('الحاويات والسيّارات في المعاملات المفتوحة', 'Containers & vehicles in open transactions')} hint={t(`${C.openUnits} وحدة`, `${C.openUnits} units`)}>
         <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
           <Mini on={view === 'unitsAtPort'} onClick={() => pick('unitsAtPort')} icon={<Container className="h-4 w-4" />}
@@ -331,7 +317,7 @@ export default function CustomsDashboardPage() {
         </div>
       </Group>
 
-      {/* ══ الجدول: ما وراء البطاقة المضغوطة — تحت البطاقات مباشرةً ══════════ */}
+      {/* Table: what lies beyond the compact card, directly under the cards. */}
       <div ref={tableRef} className="scroll-mt-4 overflow-hidden rounded-xl border-2 border-slate-900/10 bg-white shadow-sm">
         <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 bg-slate-50 px-4 py-3">
           <h3 className="text-[14px] font-bold text-slate-900">{ar ? VIEW_TITLE[view][0] : VIEW_TITLE[view][1]}</h3>
@@ -439,7 +425,7 @@ export default function CustomsDashboardPage() {
         </ScrollX>
       </div>
 
-      {/* ══ ٤ · تفصيلٌ: بالمرحلة، وبالعميل — والضغطُ يُصفّي الجدولَ أعلاه ════ */}
+      {/* 4. Breakdown by stage and by customer; clicking filters the table above. */}
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
         <Panel title={t('أين تقف المعاملاتُ المفتوحة', 'Where the open transactions stand')}
           hint={t('بالمرحلة التي تنتظرها كلُّ معاملة — اضغط مرحلةً فتظهر معاملاتُها في الجدول', 'By the stage each one is waiting on — click one to list its transactions above')}>
@@ -504,7 +490,7 @@ export default function CustomsDashboardPage() {
         </div>
       </div>
 
-      {/* ══ ٥ · الفريق ══════════════════════════════════════════════════════ */}
+      {/* 5. Team. */}
       <Panel title={t('الفريق', 'The team')}
         hint={t('ما على كلّ فردٍ الآن، وحركتُه في آخر ثلاثين يومًا — اضغط اسمًا لترى معاملاتِه', 'What each member carries now and their last-30-day activity — click a name to see their transactions')}>
         <ScrollX>

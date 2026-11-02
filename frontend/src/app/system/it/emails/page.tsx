@@ -1,12 +1,7 @@
 'use client';
-// بريد الشركة — سجل صناديق البريد المُنشأة على هوستنجر (@energize-logistics.com).
-//
-// ⚠️ الصفحة دي مالهاش أي علاقة بحسابات الدخول للسيستم. الموظف ممكن يكون له
-// الاتنين بكلمتين مرور مختلفتين، وتغيير واحدة ما بيمسّش التانية. الصفحة بتقول
-// كده صراحة فوق عشان محدش يخلط بينهم ويغيّر الحاجة الغلط.
-//
-// كلمة المرور مشفّرة على السيرفر ومش بترجع مع القائمة — فيه زر «إظهار» بينده
-// endpoint مستقل، وكل كشف بيتسجّل باسم اللي عمله.
+// Company mail: registry of mailboxes created on Hostinger (@energize-logistics.com).
+// Unrelated to system login accounts; an employee may have both with different passwords.
+// The password is encrypted server-side and not returned with the list; a reveal button calls a separate endpoint and each reveal is logged with who did it.
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useLanguage } from '@/context/LanguageContext';
 import { useAuth } from '@/context/AuthContext';
@@ -42,7 +37,7 @@ export default function CompanyEmailsPage() {
   const [status, setStatus] = useState('');
   const [type, setType] = useState('');
   const [linked, setLinked] = useState('');
-  /** «بدون كلمة مرور» فلترٌ قائمٌ بنفسِه — لا نوعُ صندوق. */
+  /** 'No password' is a standalone filter, not a mailbox type. */
   const [hasPassword, setHasPassword] = useState('');
   const [editing, setEditing] = useState<CompanyEmail | null>(null);
   const [adding, setAdding] = useState(false);
@@ -72,8 +67,7 @@ export default function CompanyEmailsPage() {
   ];
   const pwCols: ExportColumn[] = [...baseCols, { header: t('كلمة المرور', 'Password'), key: 'password', width: 22 }];
 
-  // كلمات المرور مش موجودة في الصفحة أصلاً — بتتجاب لحظة ما المستخدم يختار
-  // الخيار ده، فالصفحة ما بتحملش أسرار هو ممكن ما يطلبهاش.
+  // Passwords are fetched only when this option is chosen, so the page never holds secrets the user did not ask for.
   const resolveWithPasswords = async () => {
     const d = await exportCompanyEmailsWithPasswords({ q: q.trim(), status, mailboxType: type, linked });
     return [{ name: t('بريد الشركة', 'Company email'), rows: d.rows || [], columns: pwCols }];
@@ -94,7 +88,7 @@ export default function CompanyEmailsPage() {
             options={[
               { key: 'plain', label: t('بدون كلمات المرور', 'Without passwords'),
                 sheets: [{ name: t('بريد الشركة', 'Company email'), rows, columns: baseCols }] },
-              // بتتجاب لما تتختار بس، والجلب نفسه بيتسجّل في سجل التدقيق.
+              // Fetched on selection only; the fetch itself is written to the audit log.
               { key: 'withpw', label: t('مع كلمات المرور', 'With passwords'),
                 resolve: resolveWithPasswords, hint: t('مسجَّل', 'recorded'), disabled: !canReveal },
             ]} />
@@ -118,9 +112,7 @@ export default function CompanyEmailsPage() {
       )}
 
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
-        {/* ── وبطاقةُ «بدون كلمة مرور» كانت تضغط فلترًا آخر ────────────────────
-            كانت تُصفّي «صندوق وظيفيّ»: رقمٌ يُقرأ وصفوفٌ أخرى تُعرَض. وصار لها
-            فلترُها في الخادم (`hasPassword=no`) — فالمعدودُ هو المعروض. */}
+        {/* The 'no password' card applies its own server filter (hasPassword=no), so the counted rows are the displayed rows. */}
         <StatCard label={t('إجمالي الصناديق', 'Mailboxes')} value={counts?.total ?? 0} accent="text-[#f37121]"
           onClick={() => { setStatus(''); setType(''); setLinked(''); setHasPassword(''); }}
           active={!status && !type && !linked && !hasPassword} hint={t('اضغط لعرض الكل', 'tap to show all')} />
@@ -198,10 +190,7 @@ export default function CompanyEmailsPage() {
   );
 }
 
-// ── صف واحد ─────────────────────────────────────────────────────────────────
-// سطر واحد لكل صندوق. أي بيان تاني (الرقم الوظيفي، القسم، النوع، الحالة، آخر
-// عرض) موجود في نموذج التعديل — حشره في الجدول كان بيخلّي الصف سطرين والعين
-// تتوه بين الصفوف.
+// One line per mailbox; other details live in the edit form, since extra columns wrapped the row to two lines.
 function Row({ r, ar, t, canEdit, canReveal, onEdit, onChanged, notify, confirm }: any) {
   const [shown, setShown] = useState('');
   const [busy, setBusy] = useState(false);
@@ -211,7 +200,7 @@ function Row({ r, ar, t, canEdit, canReveal, onEdit, onChanged, notify, confirm 
     try {
       const d = await revealCompanyEmailPassword(r._id);
       setShown(d.password);
-      // بتختفي لوحدها — شاشة سايبة كلمة مرور ظاهرة هي أكتر طريقة بتتسرب بيها.
+      // Revealed passwords hide automatically; a visible password left on screen is the likeliest leak.
       setTimeout(() => setShown(''), 30000);
     } catch (e: any) { notify(e?.message || 'Failed', 'error'); }
     setBusy(false);
@@ -236,7 +225,7 @@ function Row({ r, ar, t, canEdit, canReveal, onEdit, onChanged, notify, confirm 
     <tr className="hover:bg-slate-50">
       <td className={`${cell} font-semibold text-slate-800 text-[13.5px]`}>{r.displayName || '—'}</td>
 
-      {/* البريد لاتيني دايمًا — dir=ltr عشان النقطة والـ @ ما يتقلبوش في صفحة عربية */}
+      {/* Email is always LTR so the dot and @ are not flipped in an Arabic page. */}
       <td className={`${cell} text-slate-700 text-[13px]`} dir="ltr">{r.email}</td>
 
       <td className={cell}>
@@ -277,10 +266,7 @@ function Row({ r, ar, t, canEdit, canReveal, onEdit, onChanged, notify, confirm 
   );
 }
 
-// ── إضافة / تعديل ────────────────────────────────────────────────────────────
-// الشاشة بتسأل التلات حاجات اللي بيتعملوا فعلاً وقت إنشاء البريد: مين الموظف،
-// إيه البريد، وإيه كلمة المرور. الباقي (الاسم الظاهر، النوع، الحالة، الملاحظات)
-// اتحط تحت «خيارات إضافية» — موجود لما تحتاجه، مش قدامك كل مرة.
+// Add / edit: asks only what creating a mailbox needs (employee, email, password); the rest sits under extra options.
 function EmailModal({ row, ar, t, vaultReady, onClose, onSaved, notify }: any) {
   const [local, setLocal] = useState(row ? (row.localPart || row.email?.split('@')[0] || '') : '');
   const [displayName, setDisplayName] = useState(row?.displayName || '');
@@ -296,7 +282,7 @@ function EmailModal({ row, ar, t, vaultReady, onClose, onSaved, notify }: any) {
   );
   const [busy, setBusy] = useState(false);
 
-  // اختيار الموظف بيملا الاسم الظاهر لوحده — حاجة أقل تتكتب.
+  // Picking the employee fills the display name.
   const pickEmployee = (e: any) => {
     setEmp(e);
     if (e?.name && !displayName.trim()) setDisplayName(e.name);
@@ -343,7 +329,7 @@ function EmailModal({ row, ar, t, vaultReady, onClose, onSaved, notify }: any) {
 
           <div>
             <L>{t('البريد', 'Email')} *</L>
-            {/* الدومين ثابت وظاهر جنب الخانة — أقل حاجة تتكتب غلط. */}
+            {/* The domain is fixed and shown beside the field to reduce typos. */}
             <div className="flex items-stretch" dir="ltr">
               <input value={local} onChange={(e) => setLocal(e.target.value)} autoFocus placeholder="first.last"
                 className="flex-1 px-3 py-2 rounded-s-lg border border-slate-200 text-sm" />
@@ -370,7 +356,7 @@ function EmailModal({ row, ar, t, vaultReady, onClose, onSaved, notify }: any) {
             )}
           </div>
 
-          {/* الباقي مش بيتكتب كل مرة، فمش لازم ياخد مساحة كل مرة. */}
+          {/* Rarely edited fields stay collapsed. */}
           <button type="button" onClick={() => setMore((v) => !v)}
             className="text-[12px] text-slate-500 hover:text-slate-800 underline underline-offset-2">
             {more ? t('إخفاء الخيارات الإضافية', 'Hide extra options') : t('خيارات إضافية', 'More options')}
@@ -410,8 +396,7 @@ function EmailModal({ row, ar, t, vaultReady, onClose, onSaved, notify }: any) {
   );
 }
 
-// ── اختيار موظف بالبحث ───────────────────────────────────────────────────────
-// دروب-ليست جواها سيرش: الشركة فيها مئات الموظفين، فقائمة ساكنة مش هتنفع.
+// Searchable employee dropdown: hundreds of employees make a static list unusable.
 function EmployeePicker({ value, onChange, ar, t }: any) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');

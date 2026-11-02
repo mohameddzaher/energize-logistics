@@ -1,7 +1,5 @@
 import type { PersonDocs } from '@/components/system/PersonDocDate';
-// إدارة الأسطول — types + vocabulary. Our own trucks: booking, drivers,
-// follow-up calls. Sibling of lib/shipmentOrders.ts (that section books
-// supplier trucks); the status vocabulary is the same on purpose.
+// Fleet management: types and vocabulary. Our own trucks: booking, drivers, follow-up calls. Sibling of lib/shipmentOrders.ts (that section books supplier trucks); the status vocabulary is the same on purpose.
 
 export type Lang = 'en' | 'ar';
 
@@ -9,37 +7,33 @@ export interface FleetVehicle {
   _id: string;
   plate: string;
   name?: string;
-  trailerType?: string; // سطحة / ستارة …
+  trailerType?: string; // Flatbed / curtain-side ...
   gpsType?: string;     // LS / EX
   brand?: string;
   color?: string;
-  supervisor?: string | null;   // المشرف المسؤول — يعيّنه مدير القسم
+  supervisor?: string | null;   // Responsible supervisor, assigned by the department manager
   supervisorName?: string;
   notes?: string;
-  /** مرجعُها في سجلّ المركبات — الهويّةُ والمستنداتُ تُقرأ من هناك. */
+  /** Its entry in the vehicle registry; identity and documents are read from there. */
   vehicleMaster?: string | null;
-  /** مربوطةٌ بسجلّ المركبات؟ (`registry` غيرُ فارغ) */
+  /** Whether it is linked to the vehicle registry (`registry` is non-empty). */
   linked?: boolean;
-  /** صورتُها من سجلّ المركبات — تُرسَل مع القائمة، والماركةُ واللونُ أعلاه منها. */
+  /** Its snapshot from the vehicle registry, sent with the list; the brand and colour above come from it. */
   registry?: FleetRegistryView | null;
   /**
-   * السائقون عليها، **مرتَّبين بالمقعد**: الأوّلُ ثمّ الثاني.
-   *
-   * والترتيبُ من الخادم لا من الواجهة: ثلاثُ شاشاتٍ تقرأ `drivers[0]` على
-   * أنّه السائقُ الأوّل — ونموذجُ الشحنة يُجلسه في خانة «السائق الأساسي».
+   * Drivers on it, ordered by seat: first, then second.
+   * The order comes from the server, not the frontend: three screens read drivers[0] as the first driver, and the shipment form seats it in the primary driver field.
    */
   drivers?: { _id: string; name: string; phone?: string; working?: boolean; seat?: 1 | 2; hrLinked?: boolean; offSource?: string }[];
-  // إثراء حي وقت الاختيار: أين هي الآن، وماذا تحمل بالفعل، وهل وصلت وجهتها.
+  // Live enrichment at selection time: where it is now, what it already carries, and whether it reached its destination.
   live?: { city: string | null; status?: string | null; lastMessageAt?: string | null } | null;
-  /** حالة الصيانة من لوكيشن سوليوشن — تُقرأ مع الموقع لأنّ القرار يحتاجهما معًا. */
+  /** Maintenance status from Location Solutions; read with the location because the decision needs both. */
   maintenance?: { status: 'ok' | 'due' | 'overdue'; kmToService: number | null; nextServiceName: string; unitId?: number | null } | null;
   trip?: { waybillNumber: number; status: string; fromCity: string; toCity: string; expectedArrival: string | null } | null;
   atDestination?: boolean;
 }
 
-// سطر توافر السيارة أثناء الاختيار: «متاحة — في جدة» / «عليها حمولة إلى الرياض
-// · متوقع …» / «وصلت نطاق الدمام — تفريغ». يظهر في قائمة الاختيار ويُبحث فيه،
-// فكتابة اسم مدينة تُظهر سيارات هذه المدينة فورًا.
+// Vehicle availability line during selection, e.g. "available - in Jeddah" / "loaded to Riyadh, expected ..." / "arrived Dammam zone - unloading". It appears in the picker and is searchable, so typing a city shows that city's vehicles at once.
 export const vehicleAvailabilityText = (v: FleetVehicle, lang: Lang): string => {
   const ar = lang === 'ar';
   if (v.trip) {
@@ -52,10 +46,8 @@ export const vehicleAvailabilityText = (v: FleetVehicle, lang: Lang): string => 
 };
 
 /**
- * سائقا الشاحنة بالرتبة: `[الأوّل, الثاني]` وأحدُهما قد يكون `null`.
- *
- * يُقرأ في ثلاث شاشاتٍ (الشاحنات، السائقون، نموذج الشحنة)، فلو حسبته كلُّ
- * واحدةٍ بنفسها اختلفت الشاشاتُ في مَن هو الأوّلُ أوّلَ ما يتغيّر الترتيب.
+ * The truck's two drivers by rank: [first, second]; either may be null.
+ * Read in three screens (trucks, drivers, shipment form); if each computed it, the screens would disagree on who is first once the order changes.
  */
 export const seatsOf = (v?: Pick<FleetVehicle, 'drivers'> | null) => {
   const list = v?.drivers || [];
@@ -65,7 +57,7 @@ export const seatsOf = (v?: Pick<FleetVehicle, 'drivers'> | null) => {
   ] as const;
 };
 
-/** مستندٌ من مستندات المركبة في سجلّ المركبات، بحالته المحسوبة هناك. */
+/** A vehicle document from the vehicle registry, with the status computed there. */
 export interface FleetRegistryDoc {
   key: string; ar: string; en: string;
   expiryDate: string | null;
@@ -80,7 +72,7 @@ export interface FleetRegistryView {
   docs: FleetRegistryDoc[];
 }
 
-/** ملفُّ السائق في الموارد البشريّة كما يُرسَل مع القائمة. */
+/** The driver's HR file as sent with the list. */
 export interface FleetDriverHr {
   _id: string; name: string; employeeNumber?: string;
   employmentStatus: 'active' | 'on_leave' | 'suspended' | 'terminated' | string;
@@ -92,31 +84,28 @@ export interface FleetDriver extends PersonDocs {
   name: string;
   phone?: string;
   iqama?: string;
-  /** الإيبان — يُكتب في ملفّ السائق وتقرؤه صفحةُ مصاريف السوّاق. */
+  /** IBAN: entered in the driver's file and read by the driver expenses page. */
   iban?: string;
   nationality?: string;
-  working: boolean;       // حالة السائق: يعمل أم لا
-  offReason?: '' | 'sick' | 'leave' | 'other'; // سبب التوقف — مرضية/إجازة/أخرى
+  working: boolean;       // Driver status: working or not
+  offReason?: '' | 'sick' | 'leave' | 'other'; // Reason for stopping: sick / leave / other
   offNote?: string;
-  /** 'hr' حين تقول الموارد البشريّة إنّه لا يعمل (إجازة/إيقاف/إنهاء خدمة). */
+  /** 'hr' when HR says he is not working (leave, suspension, termination). */
   offSource?: '' | 'hr';
-  /** مرجعُه في الموارد البشريّة — الاسمُ والجوالُ والإقامةُ والجنسيّةُ والإيبانُ منه. */
+  /** Its HR entry; name, mobile, iqama, nationality and IBAN come from it. */
   employee?: string | null;
   hrLinked?: boolean;
   hr?: FleetDriverHr | null;
-  onSponsorship: boolean; // على الكفالة أم لا
+  onSponsorship: boolean; // Whether on sponsorship
   vehicle?: FleetVehicle | string | null;
   /**
-   * السائقُ الآخر على نفس الشاحنة — يحسبه الخادمُ مع القائمة.
-   *
-   * المقعدان قاعدةٌ في القسم (شاحنةٌ تحمل سائقَين على الأكثر)، والسؤالُ الذي
-   * يلي «على أيّ سيّارة؟» هو «ومع مَن؟». ويأتي من الخادم لا يُقابَل في كلّ
-   * واجهةٍ على حدة: فلا يفترق جوابُ الويب عن جواب الهاتف.
+   * The other driver on the same truck, computed by the server with the list.
+   * A truck carries at most two drivers (a section rule) and the question after which truck is with whom. It comes from the server rather than being matched in each frontend, so web and mobile give the same answer.
    */
   mate?: { _id: string; name: string; phone?: string; working?: boolean; seat?: 1 | 2 } | null;
-  /** عددُ من على الشاحنة — واحدٌ أو اثنان، أو صفرٌ لمن لا شاحنةَ له. */
+  /** Number of people on the truck: one or two, or zero for a driver with no truck. */
   seatMates?: number;
-  /** مقعدُه على شاحنته: الأوّلُ أو الثاني. و`null` لمن لا شاحنةَ له. */
+  /** His seat on his truck: first or second; null for a driver with no truck. */
   seat?: 1 | 2 | null;
   notes?: string;
 }
@@ -131,15 +120,15 @@ export interface FleetCustomer {
   rating?: number;
   routes: { fromCity: string; toCity: string; price: number | null }[];
   notes?: string;
-  /** نوع الدفع المتفق عليه — مفتاح من fleet_payment_type (tax/cash). */
+  /** Agreed payment type; key from fleet_payment_type (tax/cash). */
   paymentType?: string;
   taxNumber?: string;
   address?: string;
   isActive?: boolean;
-  /** ربطُه بشركته في الـCRM، ولقطةٌ منها للعرض. */
+  /** Link to its company in the CRM, plus a snapshot of it for display. */
   crmCompany?: string | null;
   crm?: { _id: string; name: string; arabicName?: string; status?: string; rating?: number } | null;
-  /** أرقامه — تأتي محسوبةً مع القائمة، فالجدول لا يستعلم صفًّا صفًّا. */
+  /** Its figures, computed with the list so the table does not query row by row. */
   trips?: number;
   income?: number;
   openTrips?: number;
@@ -150,7 +139,7 @@ export interface FleetCustomer {
 
 export interface FleetShipment {
   _id: string;
-  waybillNumber: number; // بوليصة الشحن — its own 100001+ series
+  waybillNumber: number; // Shipping waybill: its own 100001+ series
   customer?: FleetCustomer | string | null;
   customerName?: string;
   vehicle?: FleetVehicle | string | null;
@@ -238,7 +227,7 @@ export const fmtD = (v?: string | null) => {
   return `${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear()}`;
 };
 
-// "آخر تواصل من ساعتين" — the number the follow-up cadence runs on.
+// "Last contact two hours ago": the number the follow-up cadence runs on.
 export const hoursSince = (v?: string | null): number | null => {
   if (!v) return null;
   const ms = Date.now() - new Date(v).getTime();
@@ -255,11 +244,11 @@ import { canAccessSection, canEditSection, roleOf, permsOf, type RoleOrUser } fr
 export const FLEET_EDIT_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_staff', 'moderator', 'fleet_manager', 'fleet_supervisor'];
 export const FLEET_ADMIN_ROLES = ['super_admin', 'admin', 'it_manager', 'operations_manager', 'fleet_manager'];
 
-// حالة البطاقة على اللوحة الرئيسية — تُحسب تلقائيًا في الخادم.
+// Card status on the main board; computed automatically on the server.
 export const BOARD_STATES: Record<string, { ar: string; en: string; card: string; chip: string; dot: string }> = {
   late: { ar: 'متأخرة عن الوصول', en: 'Late', card: 'border-red-300 bg-red-50', chip: 'bg-red-100 text-red-700', dot: 'bg-red-500' },
   arrived: { ar: 'وصلت موقع التنزيل', en: 'Arrived', card: 'border-emerald-300 bg-emerald-50', chip: 'bg-emerald-100 text-emerald-700', dot: 'bg-emerald-500' },
-  // فرّغت: أُرسل سندُها فخلت من حمولتها — تُجهَّز لما بعدها، ولا تُستعجَل.
+  // Unloaded: its receipt was sent and it is empty; it is prepared for what follows, not rushed.
   unloaded: { ar: 'فرّغت', en: 'Unloaded', card: 'border-cyan-300 bg-cyan-50', chip: 'bg-cyan-100 text-cyan-700', dot: 'bg-cyan-500' },
   moving: { ar: 'في الطريق', en: 'On the road', card: 'border-amber-300 bg-amber-50', chip: 'bg-amber-100 text-amber-700', dot: 'bg-amber-500' },
   preparing: { ar: 'تحميل / تجهيز', en: 'Loading', card: 'border-blue-200 bg-blue-50', chip: 'bg-blue-100 text-blue-700', dot: 'bg-blue-500' },
@@ -271,12 +260,10 @@ export const canAdminFleet = (u: RoleOrUser) => FLEET_ADMIN_ROLES.includes(roleO
 // lists) even though it can't create or edit anything.
 export const canViewFleet = (u: RoleOrUser) => FLEET_EDIT_ROLES.includes(roleOf(u)) || canAccessSection(permsOf(u), 'Fleet Management');
 
-// ── شاشات التحليل الثلاث: المتوقع للوصول، تحليل السيارة، تحليل الحمولات ──────
-// الأنواع تصف ردود `/api/fleet/arrivals` و`/vehicles/:id/analytics`
-// و`/loads-analysis`. تعيش هنا لا داخل الصفحات، لأن الصفحات تتقاطع: صفّ حمولةٍ
-// في تحليل الحمولات يفتح تحليل سيارته، وكلاهما يعرض نفس أرقام الحمولة.
+// The three analysis screens: expected arrivals, vehicle analysis, load analysis.
+// The types describe the replies of `/api/fleet/arrivals`, `/vehicles/:id/analytics` and `/loads-analysis`. They live here, not in the pages, because the pages overlap: a load row in load analysis opens its vehicle's analysis, and both show the same load figures.
 
-/** الفترة كما حسمها الخادم — تُعرض كما هي ولا تُعاد حسابتها في المتصفّح. */
+/** The period as resolved by the server; shown as is, not recomputed in the browser. */
 export interface FleetPeriod {
   from: string;
   to: string;
@@ -292,17 +279,17 @@ export interface FleetIdleVehicle {
   gpsType?: string;
   supervisorName?: string;
   drivers: { _id: string; name: string; phone?: string; working?: boolean }[];
-  // آخر رحلةٍ سارتها قبل أن تفرغ — «فاضية منذ متى وعائدةٌ من أين».
+  // The last trip it made before becoming empty: how long empty and where it returned from.
   lastTrip: { waybillNumber: number; toCity?: string; status?: string; customerName?: string; at?: string | null } | null;
 }
 
 export interface FleetArrivals {
   period: FleetPeriod;
   arriving: FleetShipment[];
-  /** حمولاتٌ سائرة بلا وصولٍ متوقَّع مُسجَّل — لا تظهر في أيّ نافذةٍ زمنية. */
+  /** Loads in transit with no registered expected arrival; they appear in no time window. */
   noEta: FleetShipment[];
   idle: FleetIdleVehicle[];
-  /** السياراتُ المشغولةُ بأسمائها وحمولةِ كلٍّ — لتُفتَح بطاقةُ «مشغولة». */
+  /** Busy vehicles by name with each one's load, to open the busy card. */
   busyList: (FleetIdleVehicle & {
     trip: { _id: string; waybillNumber: number; customerName?: string; fromCity?: string; toCity?: string; status: string; expectedArrival?: string | null; driverName?: string } | null;
   })[];
@@ -328,11 +315,7 @@ export interface FleetVehicleAnalytics {
   monthlyTrend: { month: string; trips: number; income: number; driverExpense: number }[];
   shipments: FleetShipment[];
   truncated: boolean;
-  /**
-   * الحالة الفنّية للشاحنة من قسم لوكيشن سوليوشن ومخزن النقل الثقيل.
-   * القسمان يتكلّمان عن الشاحنة نفسها، وفصلُهما عن أرقامها التشغيلية هو ما
-   * يجعل شاحنةً صيانتُها متأخّرة تُشغَّل لأنّ الشاشة أمام المقرِّر لا تذكرها.
-   */
+  /** Technical status of the truck from Location Solutions and the heavy-transport store. Both talk about the same truck, and separating them from its operating figures lets a truck with overdue maintenance be dispatched because the decision screen does not mention it. */
   tech?: {
     ls2: {
       plate: string; maintenanceStatus: 'ok' | 'due' | 'overdue';
@@ -360,31 +343,28 @@ export interface FleetLoadsAnalysis {
   byDriver: { _id: string | null; name: string; loads: number; income: number; driverExpense: number }[];
   byStatus: Record<string, number>;
   shipments: FleetShipment[];
-  /** الصفوف مسقوفة والمجاميع ليست كذلك — يُعلَن الفرق بدل أن يُكتشَف بالجمع اليدوي. */
+  /** Rows are capped and totals are not; the difference is announced instead of being found by manual summing. */
   truncated: boolean;
   shown: number;
 }
 
 export const money = (n?: number | null) => (Number(n) || 0).toLocaleString('en-US');
 
-/** معرّف السيارة من حمولة، سواء أُعيدت كمرجعٍ أو ككائنٍ مضمَّن. */
+/** Vehicle id from a load, whether returned as a reference or an embedded object. */
 export const shipmentVehicleId = (s: FleetShipment): string | null => {
   const v = s.vehicle as any;
   if (!v) return null;
   return typeof v === 'string' ? v : (v._id || null);
 };
 
-/** معرّف العميل من حمولة — نفس السبب. */
+/** Customer id from a load; same reason. */
 export const shipmentCustomerId = (s: FleetShipment): string | null => {
   const c = s.customer as any;
   if (!c) return null;
   return typeof c === 'string' ? c : (c._id || null);
 };
 
-/**
- * حالةُ مستند المركبة كما تُقرأ في الأسطول — الألوانُ والأسماءُ نفسُها في سجلّ
- * المركبات (config/vehicleDocuments)، فلا تقول شاشتان لوثيقةٍ واحدةٍ حالتين.
- */
+/** Vehicle document status as read in fleet; same colours and names as the vehicle registry (config/vehicleDocuments), so two screens never show two states for one document. */
 export const REGISTRY_DOC_STATE: Record<string, { ar: string; en: string; cls: string }> = {
   expired: { ar: 'منتهي', en: 'Expired', cls: 'bg-red-500/15 text-red-700' },
   critical: { ar: 'حرج', en: 'Critical', cls: 'bg-orange-500/15 text-orange-700' },
@@ -394,7 +374,7 @@ export const REGISTRY_DOC_STATE: Record<string, { ar: string; en: string; cls: s
   missing: { ar: 'بلا تاريخ', en: 'No date', cls: 'bg-slate-500/15 text-slate-600' },
   not_applicable: { ar: 'غير مطلوب', en: 'N/A', cls: 'bg-slate-500/10 text-slate-500' },
 };
-/** أسوأُ مستندٍ في المركبة — للخلية المختصرة في الجدول. */
+/** Worst document of the vehicle, for the compact table cell. */
 export const worstRegistryDoc = (docs?: FleetRegistryDoc[] | null): FleetRegistryDoc | null => {
   const rank: Record<string, number> = { expired: 5, critical: 4, warning: 3, upcoming: 2, missing: 1, valid: 0, not_applicable: -1 };
   let worst: FleetRegistryDoc | null = null;

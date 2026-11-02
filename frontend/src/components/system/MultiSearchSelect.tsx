@@ -1,13 +1,7 @@
 'use client';
 /**
- * منسدلةٌ متعدّدةُ الاختيار فيها بحث — وبجانب كلّ خيارٍ عددُه.
- *
- * أختُ `SearchSelect`: القائمةُ نفسُها والبحثُ نفسُه بالطيّ العربيّ، والفرقُ أنّ
- * الضغطَ يضمّ الخيارَ أو يرفعه ولا يُغلق القائمة — «ياسر وحسام» سؤالٌ واحد.
- *
- * والعددُ بجانب الخيار يأتي من الخادم محسوبًا **تحت الفلاتر الأخرى**، فما
- * تراه هو ما ستحصل عليه. والمختارُ يبقى ظاهرًا ولو صار عددُه صفرًا، كي لا
- * يختفي فلترٌ مفعَّلٌ من أمام صاحبه.
+ * Multi-select dropdown with search and a count beside each option.
+ * Sibling of `SearchSelect` with the same list and Arabic-folded search, but a click adds or removes the option without closing. The count comes from the server, computed under the other filters; a selected option stays visible even at zero so an active filter never disappears.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDown, Search, X, Check } from 'lucide-react';
@@ -21,13 +15,13 @@ export type MultiOption = { value: string; label: string; hint?: string; count?:
 export default function MultiSearchSelect({
   label, value, onChange, options, ar, searchable = true, className,
 }: {
-  /** اسمُ الفلتر — يُكتب على الزرّ حين لا اختيار. */
+  /** Filter name, shown on the button when nothing is selected. */
   label: string;
   value: string[];
   onChange: (v: string[]) => void;
   options: MultiOption[];
   ar: boolean;
-  /** قائمةٌ من ثلاثة خيارات لا تحتاج بحثًا. */
+  /** A list of three options needs no search. */
   searchable?: boolean;
   className?: string;
 }) {
@@ -45,7 +39,7 @@ export default function MultiSearchSelect({
 
   const shown = useMemo(() => {
     const s = fold(q);
-    // ما لا عددَ له تحت الفلاتر الأخرى يُخفى — إلّا المختار.
+    // Options with no count under the other filters are hidden, except selected ones.
     const live = options.filter((o) => o.count == null || o.count > 0 || value.includes(o.value));
     if (!s) return live;
     return live.filter((o) => fold(o.label).includes(s) || fold(o.hint || '').includes(s) || fold(o.value).includes(s));

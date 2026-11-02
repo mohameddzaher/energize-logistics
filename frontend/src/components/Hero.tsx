@@ -7,7 +7,7 @@ import { CalendarDays, ArrowRight, LogIn } from "lucide-react";
 export default function Hero() {
   return (
     <section className="relative w-full h-screen">
-      {/* الخلفية */}
+      {/* Background. */}
       <div className="absolute inset-0">
         <Image
           src="/images/energize-hero.jpg"
@@ -21,11 +21,11 @@ export default function Hero() {
         <div className="absolute inset-0 bg-black/60 md:bg-gradient-to-r md:from-black/60 md:via-black/60 md:to-transparent" />
       </div>
 
-      {/* المحتوى */}
+      {/* Content. */}
       <div className="relative z-10 h-full px-6 md:px-24 text-white">
         <div className="grid grid-cols-1 md:grid-cols-2 h-full items-center">
           
-          {/* ===== الشمال ===== */}
+          {/* Start side. */}
           <div className="pt-32 md:pt-0">
             <motion.h1
               initial={{ opacity: 0, y: 20 }}
@@ -94,7 +94,7 @@ export default function Hero() {
             </motion.p>
           </div>
 
-          {/* ===== اليمين (في النص طوليًا بالنسبة للشمال) ===== */}
+          {/* End side (vertically centered relative to the start side). */}
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}

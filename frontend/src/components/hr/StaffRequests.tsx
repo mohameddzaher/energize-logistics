@@ -1,14 +1,7 @@
 'use client';
 /**
- * طلباتُ الأقسام إلى الموارد البشريّة — شاشةٌ واحدةٌ من طرفين.
- *
- * ── ولماذا مُكوَّنٌ واحدٌ لا صفحتان ──────────────────────────────────────────
- * القسمُ يرسل ويتابع، والموارد البشريّة تستلم وتجيب. وهما **نفسُ الطلب**
- * مقروءًا من جهتين: لو كُتبت الشاشتان مرّتين لافترقت الكلماتُ والحالاتُ، فيقرأ
- * المرسِلُ «قيد التنفيذ» ويقرأ المستقبِلُ «منتهي» في اللحظة نفسِها.
- *
- * فالفارقُ `side`: جانبُ القسم يُنشئ، وجانبُ الموارد البشريّة يجيب — وبجانب
- * كلّ اسمٍ زرٌّ يفتح ملفَّ الموظّف ليُعدَّل من هناك فورًا.
+ * Department requests to HR: one screen from two sides.
+ * The same request read from two sides; one component keeps wording and statuses identical. `side` differs: the department side creates, the HR side answers, with a button beside each name that opens the employee file.
  */
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
@@ -68,7 +61,7 @@ export default function StaffRequests({ side, section = 'B2C' }: { side: 'sectio
   const [tab, setTab] = useState(side === 'hr' ? 'open' : 'all');
   const [q, setQ] = useState('');
 
-  // الإنشاء
+  // Create
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ kind: 'back_to_work', title: '', body: '' });
   const [picked, setPicked] = useState<EmpOption[]>([]);
@@ -94,8 +87,7 @@ export default function StaffRequests({ side, section = 'B2C' }: { side: 'sectio
   useEffect(() => { load(); }, [load]);
   useSocket('staff-requests:changed', useCallback(() => { load(); }, [load]));
 
-  // قائمةُ الموظفين تُجلب عند أوّل فتحٍ للنموذج لا مع كلّ زيارة. والمسارُ
-  // `employees-search` بشَرطةٍ — راجع صفحة الإجازات.
+  // Employee list is fetched on the first form open, not every visit. The route is `employees-search` with a hyphen; see the leave page.
   const loadEmps = useCallback(async () => {
     if (emps.length || empState === 'loading') return;
     setEmpState('loading');
@@ -134,9 +126,7 @@ export default function StaffRequests({ side, section = 'B2C' }: { side: 'sectio
   const decide = async (r: StaffRequest, status: 'received' | 'done' | 'rejected') => {
     let note = '';
     if (status === 'rejected') {
-      // ── والرفضُ لا يمضي بلا سبب ────────────────────────────────────────
-      // رفضٌ صامتٌ يُعاد إرسالُه غدًا كما هو. والخادمُ يرفضه أيضًا، فالسؤالُ
-      // هنا ليُكتَب السببُ قبل أن تُردّ المحاولة.
+      // A rejection needs a reason: the server refuses it too, so this asks for the reason before the attempt is bounced.
       const reason = window.prompt(t('سببُ الرفض — يُقرأ في القسم الطالب:', 'Reason for rejection — the requesting section reads it:'));
       if (!reason || !reason.trim()) return;
       note = reason.trim();
@@ -233,7 +223,7 @@ export default function StaffRequests({ side, section = 'B2C' }: { side: 'sectio
                   {r.body ? <p className="text-sm text-slate-600 whitespace-pre-wrap mt-0.5">{r.body}</p> : null}
                   <p className="text-[11px] text-slate-400 mt-1">
                     {t('من', 'From')} {r.createdByName || '—'} · {new Date(r.createdAt).toLocaleString(ar ? 'ar-EG-u-nu-latn' : 'en-GB')}
-                    {/* والهجريُّ بعد الميلاديّ مباشرةً — قاعدةُ القسم (lib/hrDates). */}
+                    {/* Hijri right after Gregorian: department rule (lib/hrDates). */}
                     {hijriDay(r.createdAt) ? ` · ${hijriLong(r.createdAt, ar)} ${t('هـ', 'AH')}` : ''}
                     {r.receivedByName ? ` · ${t('استلمها', 'received by')} ${r.receivedByName}` : ''}
                     {r.decidedByName ? ` · ${t('أجابها', 'answered by')} ${r.decidedByName}` : ''}
@@ -283,9 +273,7 @@ export default function StaffRequests({ side, section = 'B2C' }: { side: 'sectio
                             {s.name}{s.employeeNumber ? <span className="text-[10px] text-slate-400 ms-1">#{s.employeeNumber}</span> : null}
                             {s.decisionNote ? <span className="block text-[10px] opacity-80 truncate">{s.decisionNote}</span> : null}
                           </span>
-                          {/* ── وزرٌّ يفتح ملفَّه ليُعدَّل من هناك ──────────────
-                              الموارد البشريّة تقرأ الاسمَ ثمّ تحتاج أن تفتحه
-                              وتغيّر حالتَه — فالرابطُ هنا بدل البحث عنه. */}
+                          {/* Button that opens the employee file for editing; HR reads the name and needs to open it, so a link replaces searching. */}
                           {s.employee && (
                             <button type="button" title={t('افتح ملفَّه', 'Open profile')}
                               onClick={() => router.push(`/system/hr/employees/${s.employee}`)}

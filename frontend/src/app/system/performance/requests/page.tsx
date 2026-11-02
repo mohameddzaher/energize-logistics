@@ -1,9 +1,6 @@
 'use client';
-// Edit requests (طلبات تعديل التقييمات) — super-admin only.
-//
-// A manager cannot change an evaluation once submitted; they ask here and the
-// super admin decides. Approving unlocks exactly ONE correction — the approval
-// is consumed by the next save, so it can't become a standing permission.
+// Edit requests for evaluations (super-admin only).
+// A manager cannot change an evaluation once submitted; they ask here and the super admin decides. Approving unlocks exactly one correction: the approval is consumed by the next save, so it cannot become a standing permission.
 import { useState, useEffect, useCallback } from 'react';
 import { useDialog } from '@/components/system/DialogProvider';
 import { useRouter } from 'next/navigation';
@@ -45,9 +42,8 @@ export default function PerformanceRequestsPage() {
 
   const [pending, setPending] = useState<RequestRow[]>([]);
   /**
-   * ── وبطاقةُ الرقم تُفرِد قائمتَها ──────────────────────────────────────────
-   * الشاشةُ قائمتان: المعلّقةُ تُقرَّر، والمقرَّرةُ تُراجَع. وبطاقاتُها الثلاثُ
-   * كانت أرقامًا لا تؤدّي إلى شيء — فصارت تُفرِد ما تَعدُّه.
+   * The number card opens its own list
+   * The screen has two lists: pending to decide and decided to review. Its three cards were numbers leading nowhere; each now isolates what it counts.
    */
   const [show, setShow] = useState<'' | 'pending' | 'approved' | 'rejected'>('');
   const [recent, setRecent] = useState<RequestRow[]>([]);
@@ -78,9 +74,7 @@ export default function PerformanceRequestsPage() {
     setBusy(null);
   };
 
-  // أعمدة التصدير مبنيّة على ما تعرضه الشاشة وحدها: النسبة المئوية دون
-  // الدرجة المرجّحة ولا الشريحة ولا مضاعِف البونص. تلك الثلاثة أرقام تعويضات
-  // لا تظهر في هذه الصفحة، فإدراجها في الملفّ يجعل التصدير يفشي ما تخفيه.
+  // Export columns are built only from what the screen shows: the percentage, not the weighted score, band or bonus multiplier. Those three are compensation figures not shown on this page, so including them would make the export leak what the page hides.
   const scope = exportScopeLabels(ar);
   const baseCols: ExportColumn[] = [
     { header: ar ? 'الموظف' : 'Employee', key: 'employeeName', width: 24 },
@@ -101,7 +95,7 @@ export default function PerformanceRequestsPage() {
     { header: ar ? 'ملاحظة القرار' : 'Decision note', key: 'editRequest.decisionNote', width: 40 },
   ];
   const pendingSheet = { name: ar ? 'قيد المراجعة' : 'Pending', rows: pending as any[], columns: baseCols };
-  // ما يُعرَض من القرارات السابقة بحسب البطاقة المختارة.
+  // Previous decisions shown according to the selected card.
   const recentShown = show === 'approved' || show === 'rejected'
     ? recent.filter((r) => r.editRequest.status === show)
     : recent;
@@ -128,15 +122,14 @@ export default function PerformanceRequestsPage() {
         <ExportMenu fileName="performance-edit-requests" lang={lang as 'ar' | 'en'}
           options={[
             { key: 'pending', label: ar ? 'الطلبات المعلّقة' : 'Pending requests', sheets: [pendingSheet] },
-            // «القرارات السابقة» هي آخر خمسين قرارًا كما يرسلها الخادم، ولا يقبل
-            // المسار وسيطًا يوسّع النطاق، فلا يوجد تصديرٌ أشمل يُجلَب هنا.
+            // Previous decisions are the last fifty as the server sends them, and the route accepts no parameter to widen the scope, so there is no wider export to fetch here.
             { key: 'decided', label: ar ? 'القرارات السابقة' : 'Recent decisions', sheets: [decidedSheet] },
             { key: 'all', label: `${scope.all} (${ar ? 'شيتان' : '2 sheets'})`, sheets: [pendingSheet, decidedSheet] },
           ]} />
       </PageHeader>
 
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
-        {/* والبطاقةُ تُفرِد قائمتَها: المعلّقةُ تُقرَّر، والمقرَّرةُ تُراجَع. */}
+        {/* The card isolates its own list: pending is decided, decided is reviewed. */}
         <StatCard label={ar ? 'قيد المراجعة' : 'Pending'} value={String(pending.length)}
           onClick={() => setShow((v) => (v === 'pending' ? '' : 'pending'))} active={show === 'pending'}
           hint={ar ? 'اضغط لعرضها' : 'tap to filter'} />
@@ -148,7 +141,7 @@ export default function PerformanceRequestsPage() {
           hint={ar ? 'اضغط لعرضها' : 'tap to filter'} />
       </div>
 
-      {/* Pending — تُخفى إن انتُقيت بطاقةُ قرارٍ سابق. */}
+      {/* Pending; hidden if a previous-decision card is selected. */}
       {(show === '' || show === 'pending') && (
       <div className="space-y-3">
         <h2 className="text-sm font-semibold text-slate-800 flex items-center gap-2">

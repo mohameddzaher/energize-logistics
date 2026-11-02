@@ -11,8 +11,7 @@ import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import 'jp.dart' show JpTaskPanel;
 
-/// الملف التحليلي لمورد 3PL — بيانات المورد وحالة العقد والسعة،
-/// وجدول التشغيل الشهري (عدد الطلبات ونسبة استغلال السعة).
+/// Analytical profile of a 3PL vendor: vendor data, contract state and capacity, and the monthly operations table (order count and capacity utilization).
 class ContractsVendorProfileScreen extends StatefulWidget {
   final String vendorId;
   final String name;
@@ -21,10 +20,10 @@ class ContractsVendorProfileScreen extends StatefulWidget {
   State<ContractsVendorProfileScreen> createState() => _ContractsVendorProfileScreenState();
 }
 
-// canEditContracts في الويب: الدورُ أو صلاحيةُ «تعديل» على القسم.
+// canEditContracts on the web: the role or an edit permission on the section.
 const _contractsEditRoles = ['super_admin', 'admin', 'contracts_manager', 'it_manager', 'it_specialist'];
 
-// الحقولُ التي تُعدَّل في مكانها — نفسُ ما يُحفظ بـPATCH /api/contracts/vendors/:id.
+// Fields edited in place, the same ones saved by PATCH /api/contracts/vendors/:id.
 const _editFields = <(String, String, String, bool)>[
   ('name', 'اسم المورد', 'Vendor name', false),
   ('crNumber', 'السجل التجاري', 'CR number', false),
@@ -127,7 +126,7 @@ class _ContractsVendorProfileScreenState extends State<ContractsVendorProfileScr
     if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e is ApiException ? e.message : e.toString())));
   }
 
-  /// تقييمُ المورد (نجومٌ + ملاحظات) — نافذةُ «تقييم المورد» في الويب.
+  /// Vendor rating (stars and notes), the web rate-vendor dialog.
   Future<void> _rate() async {
     final v = _vendor ?? {};
     var rating = (_n(v['rating'])).toInt();
@@ -157,7 +156,7 @@ class _ContractsVendorProfileScreenState extends State<ContractsVendorProfileScr
     } catch (e) { _snack(e); }
   }
 
-  /// تعديلُ بيانات المورد في مكانها (PATCH) — بلا رجوعٍ إلى السجلّ.
+  /// Edit vendor data in place (PATCH), without going back to the register.
   Future<void> _edit() async {
     final v = _vendor ?? {};
     final ctrls = {for (final f in _editFields) f.$1: TextEditingController(text: v[f.$1] == null ? '' : v[f.$1].toString())};
@@ -204,7 +203,7 @@ class _ContractsVendorProfileScreenState extends State<ContractsVendorProfileScr
     } catch (e) { _snack(e); }
   }
 
-  /// تصديرُ ملفّ المورد كاملًا — ورقةٌ لكلّ جدولٍ كما في الويب.
+  /// Export the whole vendor file, one sheet per table, as on the web.
   void _export() {
     final v = _vendor ?? {};
     final orders = _util.fold<num>(0, (a, r) => a + _n(r['orders']));
@@ -371,7 +370,7 @@ class _ContractsVendorProfileScreenState extends State<ContractsVendorProfileScr
                       ),
                     ),
                     const SizedBox(height: 12),
-                    // ── المرفقات ──
+                    // Attachments
                     FadeSlideIn(
                       child: AppCard(
                         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [

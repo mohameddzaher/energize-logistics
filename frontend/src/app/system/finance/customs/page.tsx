@@ -1,14 +1,5 @@
 'use client';
-/**
- * ماليّاتُ التخليص الجمركيّ — ما ينتظر الدفعَ أوّلًا، ثمّ أرقامُ القسم.
- *
- * البطاقاتُ والجداولُ تقول ما وقع (إيرادٌ وتكلفةٌ وربح)، وطلباتُ الصرف تقول ما
- * ينتظر: فاتورةٌ أرفقها موظّفُ التخليص ومعناها «ادفعوا هذه». وكانت تُقال
- * بالهاتف — فصارت في الشاشة التي يفتحها المحاسبُ أصلًا.
- *
- * وكلُّ رقمِ معاملةٍ في الصفحة — في الطلبات وفي جدول المعاملات — يفتح نافذتَها
- * هنا (ClearanceQuickView)، لا شاشةَ قسمٍ لا تُفتح للماليّة.
- */
+/** Customs clearance finance: what awaits payment first, then the department figures. Cards and tables say what happened (revenue, cost, profit), and disbursement requests say what waits: an invoice the clearance employee attached means pay this. This used to be said by phone; it now sits on the screen the accountant already opens. Every transaction number on the page, in requests and in the transactions table, opens its window here (ClearanceQuickView), not a department screen that finance cannot open. */
 import { useState } from 'react';
 import { useLanguage } from '@/context/LanguageContext';
 import FinanceDeptView from '@/components/finance/FinanceDeptView';
@@ -23,9 +14,9 @@ export default function Page() {
   return (
     <div className="space-y-6">
       <CustomsPaymentRequests onOpen={setOpenId} />
-      {/* طلباتُ الفوترة — غيرُ طلبات الصرف: هذه ما نفوتره (٢٠٢٦/١٠/٢٢). */}
+      {/* Invoicing requests, distinct from disbursement requests: these are what we invoice. */}
       <CustomsInvoiceRequests ar={lang === 'ar'} onOpen={setOpenId} />
-      {/* ما أصدره قسمُ التخليص ليُفوتَر — وما لم تصل فاتورةُ نقله منه بالأحمر. */}
+      {/* What customs clearance issued to be invoiced; those whose transport invoice has not arrived are red. */}
       <CustomsCustomerInvoices onOpen={setOpenId} />
       <FinanceDeptView dept="customs" onOpenRow={(r) => { if (r._customsId) setOpenId(String(r._customsId)); }} />
       {openId && <ClearanceQuickView id={openId} ar={lang === 'ar'} onClose={() => setOpenId(null)} />}

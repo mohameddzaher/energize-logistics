@@ -1,10 +1,6 @@
 'use client';
-// رخص السير — تاريخُ انتهاء الرخصة لكل مركبة، هجريًّا وميلاديًّا.
-//
-// ولماذا التاريخان معًا: الرخصة تُطبَع بالهجريّ، والنظامُ يحسب الأيام المتبقية
-// بالميلاديّ. عرضُ أحدهما وحده يجعل الموظف يقارن ما في يده بما في الشاشة فلا
-// يتطابقان، فيشكّ في الرقم بدل أن يعمل به. وهما هنا متجاوران فلا مقارنة تُحسَب
-// في الرأس ولا خطأ يقع عند التسليم.
+// Vehicle licenses: license expiry per vehicle, in both Hijri and Gregorian.
+// The paper is printed in Hijri but days left are computed in Gregorian, so both show side by side to avoid mental conversion.
 import { FileText } from 'lucide-react';
 import DocumentFamilyPage, { commonColumns, type DocColumn, type DocField } from '@/components/vehicles/DocumentFamilyPage';
 import { fmtDate, toHijri } from '@/lib/vehicleRegistry';
@@ -12,12 +8,11 @@ import { fmtDate, toHijri } from '@/lib/vehicleRegistry';
 const COLUMNS: DocColumn[] = [
   ...commonColumns(),
   { key: 'expiryDate', ar: 'انتهاء رخصة السير', en: 'Licence expiry', get: (v) => fmtDate(v.vehicleLicense?.expiryDate), width: 18 },
-  // يُشتقّ من الميلاديّ لا يُكتب: عمودٌ يُملأ مرّتين يفترق عند أوّل تجديد.
+  // Derived from the Gregorian date, not typed: a column filled twice drifts apart at the first renewal.
   { key: 'expiryDateHijri', ar: 'انتهاء رخصة السير (هجري)', en: 'Licence expiry (Hijri)', mono: true, get: (v) => toHijri(v.vehicleLicense?.expiryDate), width: 18 },
 ];
 
-// التاريخان يُكتبان معًا لا أحدُهما: الرخصة في اليد هجريّة، والنظام يحسب
-// بالميلاديّ. من أدخل واحدًا وترك الآخر أعاد الخلافَ الذي جاء العمودان لرفعه.
+// Both dates are written together: the paper is Hijri, the system computes in Gregorian. Entering only one brings back the mismatch the two columns exist to remove.
 const FIELDS: DocField[] = [
   { path: 'vehicleLicense.expiryDate', ar: 'انتهاء رخصة السير', en: 'Licence expiry', kind: 'date' },
 ];

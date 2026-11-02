@@ -1,6 +1,5 @@
 'use client';
-// طلباتُ الأقسام في الموارد البشريّة — الجانبُ المستقبِل: تُستلَم ثمّ تُنفَّذ
-// أو تُرفَض بسببٍ مكتوب، وبجانب كلّ اسمٍ زرٌّ يفتح ملفَّه ليُعدَّل من هناك.
+// Department requests in HR, the receiving side: received, then executed or rejected with a written reason; beside each name a button opens his file to edit from there.
 import StaffRequests from '@/components/hr/StaffRequests';
 
 export default function HrStaffRequestsPage() {

@@ -1,12 +1,6 @@
 'use client';
-// ملفّات المركبة — صور الرخصة والتأمين وبطاقة التشغيل والفحص.
-//
-// المركبة تحمل **تواريخ** مستنداتها وأرقامَها؛ وهذه تحمل **صورَها**. ومن دونها
-// يُسأل «فين صورة الرخصة؟» فيُبحث عنها في واتساب — وهذا هو الفرق بين سجلٍّ
-// ومجلَّد.
-//
-// والاسم يُكتب بيد الرافع ولا يُشتقّ من اسم الملفّ: «IMG_20260829.jpg» لا يقول
-// شيئًا لمن يفتحه بعد سنة، و«صورة الرخصة» تقول كلَّ شيء.
+// Vehicle files: images of licence, insurance, operating card and inspection.
+// The vehicle holds document dates and numbers; this holds the images. The name is typed by the uploader, not derived from the file name, which means nothing a year later.
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useLanguage } from '@/context/LanguageContext';
 import api from '@/lib/api';
@@ -54,12 +48,12 @@ export default function VehicleDocuments({ vehicleId, canEdit }: { vehicleId: st
 
   const pick = (f: File | null) => {
     if (!f) { setFile(null); return; }
-    // عشرون ميغا هو حدُّ الخادم — يُقال هنا قبل الرفع لا بعده.
+    // The server limit is 20 MB; it is reported before the upload, not after.
     if (f.size > 20 * 1024 * 1024) { notify(t('الملفّ أكبر من 20 ميغا', 'File is larger than 20MB'), 'error'); return; }
     const r = new FileReader();
     r.onload = () => setFile({ dataUrl: String(r.result), name: f.name, size: f.size });
     r.readAsDataURL(f);
-    // الاسم يُقترَح من اسم الملفّ ثم يُصحَّح — أفضل من خانةٍ فارغة.
+    // The name is suggested from the file name and then corrected; better than an empty field.
     if (!form.title.trim()) setForm((p) => ({ ...p, title: f.name.replace(/\.[^.]+$/, '') }));
   };
 

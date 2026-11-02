@@ -35,10 +35,9 @@ interface Driver {
 export default function DriversPage() {
   const { confirm } = useDialog();
   const { user } = useAuth();
-  // role-only: صلاحيّةُ السوبر أدمن والأدمن (config/constants TOP_ROLES) — لا منحُ قسم.
+  // role-only: super admin and admin permission (config/constants TOP_ROLES), not a department grant.
   const isSuperAdmin = ['super_admin', 'admin'].includes(user?.role || '');
-  // والمصفوفةُ تُحسب كما تُحسب القائمة: دورٌ مُنح «تعديل» في هذا القسم يعدّل
-  // — وإلّا فُتحت الشاشةُ لدورٍ مصنوعٍ وامتنعت عنه أزرارُها (راجع فريق العمليات).
+  // The matrix is computed like the list: a role granted edit in this section can edit, otherwise the screen would open for a custom role and refuse its buttons (see the operations team).
   const canEdit = ['super_admin', 'admin', 'operations_manager', 'operations_staff'].includes(user?.role || '')
     || canEditSection((user as any)?.permissions, 'Operations');
   const { lang } = useLanguage();
@@ -125,22 +124,21 @@ export default function DriversPage() {
     { header: 'Notes', key: 'notes', width: 25 },
     { header: 'Created At', key: 'createdAt', transform: fmt.date, width: 14 },
   ];
-  // الصفحة تحمّل السائقين كلّهم ثمّ تفلترهم في الذاكرة، فبحثٌ منسيٌّ في الخانة
-  // كان يقصّ الملفّ على صمتٍ؛ العدّادان جنب النطاقين يكشفان الفرق قبل التصدير.
+  // The page loads all drivers and filters them in memory, so a forgotten search in the box silently cut the file; the two counters beside the scopes show the difference before exporting.
   const scope = exportScopeLabels(lang === 'ar');
   const exportOptions = [
     { key: 'shown', label: scope.shown, sheets: [{ name: 'Drivers', rows: filtered, columns: exportColumns }] },
     { key: 'all', label: scope.all, sheets: [{ name: 'Drivers', rows: drivers, columns: exportColumns }] },
   ];
 
-  // قمعُ الأعمدة — القيمُ كما تُقرأ في الصفّ. راجع hooks/useColumnFilters.
+  // Column filters; values as read in the row. See hooks/useColumnFilters.
   const cf = useColumnFilters<any>({
     name: (d) => d.name || '',
     phone: (d) => d.phone || '',
     idNumber: (d) => d.idNumber || '',
     branch: (d) => d.branch?.name || '',
     status: (d) => (d.isActive ? T.active : T.inactive),
-    // يُفلتَر بالحالة لا بالتاريخ: منتهية / خلال 30 يومًا / سارية / غير مسجَّلة.
+    // Filtered by status, not date: expired / within 30 days / valid / not registered.
     iqamaExp: (d) => docStateLabel(d.iqamaState, lang === 'ar'),
     licenseExp: (d) => docStateLabel(d.licenseState, lang === 'ar'),
   }, filtered, lang === 'ar' ? 'ar' : 'en');

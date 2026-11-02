@@ -1,9 +1,5 @@
 'use client';
-// Marketing activity log (سجل الأنشطة التسويقية) — the section's history: every
-// post, story, reel, ad, design, email and event we published, with the day it
-// went out and the numbers it brought back. The daily/weekly/monthly report on
-// /marketing/reports is nothing more than these rows bucketed by date, so this
-// is where the reportable truth is entered.
+// Marketing activity log: the section's history, every post, story, reel, ad, design, email and event we published, with its day and the numbers it brought back. The daily/weekly/monthly report on /marketing/reports is these rows bucketed by date, so this is where the reportable truth is entered.
 import { useState, useEffect, useCallback } from 'react';
 import { useDialog } from '@/components/system/DialogProvider';
 import { useAuth } from '@/context/AuthContext';
@@ -123,9 +119,7 @@ export default function MarketingActivitiesPage() {
     { header: ar ? 'الرابط' : 'Link', key: 'link', transform: (v) => v || '', width: 32 },
     { header: ar ? 'ملاحظات' : 'Notes', key: 'notes', transform: (v) => v || '', width: 28 },
   ];
-  // الفلترة كلّها على الخادم — المدى الزمنيّ أوّلها — فما في الذاكرة هو شهرٌ واحد
-  // افتراضًا لا السجلّ كلّه؛ ومَن صدّر ظنّ أنّه أخذ الأنشطة جميعها. خيار «الكلّ»
-  // يعيد النداء بلا مدًى ولا منصّةٍ ولا نوع. والخادم يسقّف المسار بثلاثة آلاف نشاط.
+  // All filtering is server-side, date range first, so memory holds one month by default, not the whole log; someone exporting would think they got all activities. 'All' re-calls with no range, platform or type. The server caps the path at three thousand activities.
   const sheetName = ar ? 'الأنشطة' : 'Activities';
   const fetchAllForExport = async () => {
     const d = await api.get<{ items: Activity[] }>('/api/marketing/activities');

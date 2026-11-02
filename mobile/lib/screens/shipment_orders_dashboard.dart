@@ -20,13 +20,7 @@ import 'shipment_orders_analytics.dart';
 import 'shipment_orders_common.dart';
 import 'shipment_orders_fleet.dart';
 
-/// لوحةُ طلبات الشحنات — نظيرُ /system/shipment-orders/dashboard في الويب.
-///
-/// أُعيد بناؤها (٢٠٢٦/١٠/٢٧) كالويب: فترةٌ تُختار (اليوم، ٧ أيّام، الشهر، ٣٠ يومًا،
-/// السنة)، وكلُّ رقمٍ بسهمه عن الفترة السابقة، والشحناتُ يومًا بيوم، وأين تقف،
-/// وأداءُ مناديب التشغيل من «السيلز التشغيلي» المختار عند إنشاء الشحنة، والعملاءُ
-/// والموردون والمسارات، وما يربطها ببقيّة الشركة (التخليص، المتابعة، السوّاق).
-/// تتحدّث وحدَها مع كلّ تغيير وكلَّ دقيقة، وكلُّ رقمٍ يُفتَح على صفوفه.
+/// Shipment orders dashboard, mirrors /system/shipment-orders/dashboard on web. Rebuilt like web: a selectable period (today, 7 days, month, 30 days, year), each figure with an arrow versus the previous period, shipments per day, where they stand, operations rep performance from the operations sales chosen at creation, customers/suppliers/routes, and links to the rest of the company (clearance, follow-up, drivers). Refreshes on every change and every minute; every figure opens its rows.
 class ShipmentOrdersDashboardScreen extends StatefulWidget {
   const ShipmentOrdersDashboardScreen({super.key});
   @override
@@ -97,7 +91,7 @@ class _ShipmentOrdersDashboardScreenState extends State<ShipmentOrdersDashboardS
 
   void _openFleet() => Navigator.push(context, MaterialPageRoute(builder: (_) => const ShipmentOrdersFleetScreen()));
   void _openAnalytics() => Navigator.push(context, MaterialPageRoute(builder: (_) => const ShipmentOrdersAnalyticsScreen()));
-  // سجلُّ العملاء بقاعدة الويب نفسِها (canEditCustomers / canRemoveCustomers).
+  // Customer register uses the same rules as web (canEditCustomers / canRemoveCustomers).
   void _openCustomers() {
     final a = context.read<AuthProvider>();
     Navigator.push(context, MaterialPageRoute(builder: (_) => ResourceScreen(config: customersRegisterCfg(
@@ -115,7 +109,7 @@ class _ShipmentOrdersDashboardScreenState extends State<ShipmentOrdersDashboardS
     return soMoney(v.round());
   }
 
-  /// سهمُ التغيّر عن الفترة السابقة.
+  /// Change arrow versus the previous period.
   Widget _delta(num cur, num prev, {bool goodWhenUp = true}) {
     if (cur == 0 && prev == 0) return const SizedBox.shrink();
     final String label;
@@ -325,7 +319,7 @@ class _ShipmentOrdersDashboardScreenState extends State<ShipmentOrdersDashboardS
       body: RefreshIndicator(
         onRefresh: _load,
         child: ListView(padding: const EdgeInsets.fromLTRB(14, 12, 14, 90), children: [
-          // ── الفترة ──
+          // Period
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: Row(children: [
@@ -337,7 +331,7 @@ class _ShipmentOrdersDashboardScreenState extends State<ShipmentOrdersDashboardS
                 )),
             ]),
           ),
-          // البياناتُ على الشاشة لفترةٍ غيرِ المختارة = الفترةُ الجديدةُ في الطريق (٢٠٢٦/١٠/٢٧).
+          // Data on screen for a period other than the selected one means the new period's data is on its way.
           if (_d != null && p['key'] != null && p['key'] != _period)
             Padding(padding: const EdgeInsets.only(top: 6), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               const LinearProgressIndicator(minHeight: 2),
@@ -374,7 +368,7 @@ class _ShipmentOrdersDashboardScreenState extends State<ShipmentOrdersDashboardS
               _kpi(Icons.payments_outlined, tr('السلف للسائقين', 'Driver advances'), _short(_n(p['advances'])), tone: const Color(0xFF7C3AED),
                   sub: tr('على ${p['withAdvance'] ?? 0} شحنة', 'on ${p['withAdvance'] ?? 0} loads')),
             ]),
-            // ── يومًا بيوم ──
+            // Day by day
             _section(tr('الشحنات يومًا بيوم', 'Shipments by day'), Icons.insights, [
               if (byDay.isEmpty)
                 Padding(padding: const EdgeInsets.all(16), child: Text(tr('لا شحنات في هذه الفترة', 'No shipments in this period'), textAlign: TextAlign.center, style: const TextStyle(color: T.inkFaint)))
@@ -393,7 +387,7 @@ class _ShipmentOrdersDashboardScreenState extends State<ShipmentOrdersDashboardS
                   ]));
                 })),
             ]),
-            // ── أين تقف ──
+            // Where they stand
             _section(tr('أين تقف الشحنات', 'Where shipments stand'), Icons.local_shipping_outlined, [
               if (statuses.isNotEmpty)
                 ClipRRect(borderRadius: BorderRadius.circular(8), child: SizedBox(height: 10, child: Row(children: [
@@ -412,7 +406,7 @@ class _ShipmentOrdersDashboardScreenState extends State<ShipmentOrdersDashboardS
                   ])),
                 ),
             ]),
-            // ── أداءُ مناديب التشغيل ──
+            // Operations rep performance
             _section(tr('أداء مناديب التشغيل', 'Operations reps performance'), Icons.emoji_events_outlined, [
               Text(tr('من «السيلز التشغيلي» المختار عند إنشاء كلّ شحنة. اضغط اسمًا لترى شحناته.', 'From the «operational sales» chosen at creation. Tap a name for their shipments.'),
                   style: const TextStyle(fontSize: 11.5, color: T.inkFaint)),
@@ -446,7 +440,7 @@ class _ShipmentOrdersDashboardScreenState extends State<ShipmentOrdersDashboardS
                     ])),
                   ),
             ]),
-            // ── العملاء والموردون والمسارات ──
+            // Customers, suppliers and routes
             for (final g in [
               (tr('أكبر العملاء', 'Top customers'), Icons.people_outline, cur['byCustomer'], 'customerName'),
               (tr('أكبر الموردين', 'Top suppliers'), Icons.store_outlined, cur['bySupplier'], 'supplierName'),
@@ -468,7 +462,7 @@ class _ShipmentOrdersDashboardScreenState extends State<ShipmentOrdersDashboardS
               ], action: g.$4 == 'customerName' ? TextButton(onPressed: _openCustomers, child: Text(tr('الكل', 'all')))
                   : g.$4 == 'supplierName' ? TextButton(onPressed: _openFleet, child: Text(tr('الكل', 'all')))
                   : TextButton(onPressed: _openAnalytics, child: Text(tr('الكل', 'all')))),
-            // ── مربوطةٌ بالشركة ──
+            // Linked to the company
             const SizedBox(height: 12),
             StatGrid(spacing: 8, minColumns: 2, maxColumns: 3, children: [
               _kpi(Icons.trending_down, tr('بيع أقل من الشراء', 'Sold below cost'), soMoney(_n(t['losing'])), tone: _n(t['losing']) > 0 ? T.danger : T.inkFaint, onTap: _openAnalytics),
@@ -476,7 +470,7 @@ class _ShipmentOrdersDashboardScreenState extends State<ShipmentOrdersDashboardS
                   onTap: () => _openList(cols: {'buyPrice': {'__blank__'}})),
               _kpi(Icons.schedule, tr('متأخرة الآن', 'Late now'), soMoney(_n(p['lateNow'])), tone: _n(p['lateNow']) > 0 ? T.danger : T.inkFaint,
                   onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ShipmentOrdersScreen(initialStatuses: ['late'])))),
-              // تُفتح الشحناتُ المربوطةُ هنا، في القسم نفسِه — لا قسمُ التخليص.
+              // Linked shipments open here in the same section, not in the clearance section.
               _kpi(Icons.directions_boat_outlined, tr('مربوطة بالتخليص', 'Linked to customs'), soMoney(_n(p['customsLinked'])), tone: const Color(0xFF0E7490),
                   onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ShipmentOrdersScreen(
                     initialFrom: '${p['from'] ?? ''}', initialTo: '${p['to'] ?? ''}', byPickup: true, customsLinked: true)))),
@@ -495,7 +489,7 @@ class _ShipmentOrdersDashboardScreenState extends State<ShipmentOrdersDashboardS
 
           _section(tr('آخر الشحنات', 'Latest shipments'), Icons.history, [
             if (recent.isEmpty) Padding(padding: const EdgeInsets.all(12), child: Text(tr('لا شحنات بعد', 'nothing yet'), textAlign: TextAlign.center, style: const TextStyle(color: T.inkFaint))),
-            // Material شفّاف: ListTile داخل بطاقةٍ ملوّنة يحتاج سطحًا يرسم عليه أثرَ الضغط.
+            // Transparent Material: a ListTile inside a coloured card needs a surface to paint its tap ripple on.
             for (final o in recent)
               Material(type: MaterialType.transparency, child: ListTile(
                 dense: true, contentPadding: EdgeInsets.zero,
@@ -508,7 +502,7 @@ class _ShipmentOrdersDashboardScreenState extends State<ShipmentOrdersDashboardS
                 },
               )),
           ], action: TextButton(onPressed: () => _openList(all: true), child: Text(tr('كل الشحنات', 'all')))),
-          // ── تحليلُ تقرير الفروع — مصدرٌ آخر ──
+          // Branch report analysis, a different source
           Padding(padding: const EdgeInsets.only(top: 12), child: AppCard(child: Theme(
             data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
             child: Material(type: MaterialType.transparency, child: ExpansionTile(

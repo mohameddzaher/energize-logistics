@@ -16,13 +16,10 @@ import 'vehicle_claims.dart' show VehicleClaimsScreen;
 import 'vehicle_corporate.dart' show VehicleCorporatePoliciesScreen;
 import 'vehicle_registry_dash.dart' show VehicleRegistryAlertsScreen, VehicleRegistrySettingsScreen;
 
-/// نظرة شاملة على المركبات (نظير /system/vehicles/registry/overview).
-///
-/// الفلترُ مصدرُ كلّ رقم: البطاقاتُ والتحليلات تُعاد قراءتها منه. وكلّ شريحةٍ
-/// تحمل فلترَها من الخادم (`item.filter`) فيُفتح بها السجلّ مضافًا إليه الفلترُ
-/// النشط — فلا يفترق الرقمُ المعروض عن الصفوف التي يفتحها.
+/// Vehicles overview (mirrors /system/vehicles/registry/overview).
+/// The filter is the source of every figure: cards and analytics are re-read from it. Each chip carries its own server filter (item.filter), and opens the register with it plus the active filter, so the displayed figure never differs from the rows it opens.
 
-// ── الحالاتُ كما يعرضها الويب (STATE_META/stateMeta في lib/vehicleRegistry) ──
+// States as web displays them (STATE_META/stateMeta in lib/vehicleRegistry)
 const _stateMeta = {
   'expired': ('منتهي', 'Expired', Color(0xFFDC2626)),
   'due': ('قارب على الانتهاء', 'Due soon', Color(0xFFF59E0B)),
@@ -34,7 +31,7 @@ const _stateMeta = {
   'not_applicable': ('غير مطلوب', 'Not applicable', Color(0xFF64748B)),
 };
 
-/// لا يعود فارغًا مهما كان المفتاح — كـstateMeta في الويب.
+/// Never empty whatever the key, like stateMeta on web.
 (String, String, Color) stateMetaOf(String? s) {
   final k = (s == null || s.isEmpty) ? 'valid' : s;
   return _stateMeta[k] ?? (k, k, const Color(0xFF64748B));
@@ -67,7 +64,7 @@ const _docIcon = {
   'inspection': Icons.build_outlined,
   'gps': Icons.satellite_alt_outlined,
   'authorization': Icons.vpn_key_outlined,
-  // بطاقةُ السائق سابعُ الكروت — ورقةٌ على إنسانٍ لا على مركبة.
+  // The driver card is the seventh card: a paper on a person, not on a vehicle.
   'driverCard': Icons.badge_outlined,
 };
 
@@ -115,7 +112,7 @@ class _VehicleRegistryOverviewScreenState extends State<VehicleRegistryOverviewS
   bool _refreshing = false;
   String? _error;
   late Map<String, String> _filters = {...?widget.filters};
-  // ولا يكتب ردٌّ قديمٌ فوق ردٍّ أحدث — راجع useLatestRequest في الويب.
+  // A stale response does not overwrite a newer one; see useLatestRequest on web.
   int _seq = 0;
   late final void Function() _onLive;
 
@@ -123,7 +120,7 @@ class _VehicleRegistryOverviewScreenState extends State<VehicleRegistryOverviewS
   void initState() {
     super.initState();
     _onLive = () { if (mounted) _load(); };
-    // والراكبُ والتفويضُ وحالةُ الموظّف تُكتب من B2C والموارد البشريّة أيضًا.
+    // The rider, authorization and employee status are also written from B2C and HR.
     for (final e in const ['vreg:updated', 'lt:updated', 'hr:employee']) { Live.instance.on(e, _onLive); }
     _load();
   }
@@ -156,24 +153,23 @@ class _VehicleRegistryOverviewScreenState extends State<VehicleRegistryOverviewS
 
   void _setFilters(Map<String, String> f) { setState(() => _filters = f); _load(); }
 
-  /// يفتح السجلّ بفلتر الخادم مضافًا إليه الفلترُ النشط.
+  /// Opens the register with the server filter plus the active filter.
   void _openList(Map<String, String> filter, String label) {
     final f = <String, String>{..._filters, ...filter}..removeWhere((k, v) => v.isEmpty);
     Navigator.push(context, MaterialPageRoute(builder: (_) => VehicleRegistryListScreen(filters: f, filterLabel: label)));
   }
 
-  /// الويبُ يفتح صفحةَ الانتهاءات بالمستند وحالته؛ الهاتفُ يفتح شاشةَ عائلة المستند.
+  /// Web opens the expiries page on the document and its state; the phone opens the document family screen.
   void _go(Widget w) => Navigator.push(context, MaterialPageRoute(builder: (_) => w));
 
   void _openDoc(String key, {String state = ''}) {
     if (key == 'driverCard') {
-      // شرائحُ البطاقات بأسمائها نفسِها؛ «غير مطلوب» لا شريحةَ له فتُفتح كاملة.
+      // Card chips under their own names; 'not required' has no chip so it opens unfiltered.
       const known = ['expired', 'critical', 'warning', 'upcoming', 'valid'];
       Navigator.push(context, MaterialPageRoute(builder: (_) => VehicleDriverCardsScreen(initialState: known.contains(state) ? state : '')));
       return;
     }
-    // كالموقع (openExpiring): شاشةُ الانتهاءات على المستند وحالته. و«غير مطلوب»
-    // لا صفَّ له هناك، فيُفتح لها صفحةُ عائلة المستند.
+    // As on web (openExpiring): the expiries screen on the document and its state. 'Not required' has no row there, so the document family page opens for it.
     final fam = _familyOf(key);
     if (state == 'not_applicable' && fam != null) {
       Navigator.push(context, MaterialPageRoute(builder: (_) => VehicleDocumentsScreen(family: fam)));
@@ -235,12 +231,12 @@ class _VehicleRegistryOverviewScreenState extends State<VehicleRegistryOverviewS
         ]),
       );
 
-  // ── كارت مستند: الحالاتُ المحسوبة، ثمّ سطرٌ واحدٌ لما لا تاريخ له ──
+  // Document card: the computed states, then one line for what has no date
   Widget _docCard(Map doc) {
     final key = '${doc['key']}';
     final s = Map<String, dynamic>.from(doc['states'] ?? {});
     int n(String k) => (s[k] as num?)?.toInt() ?? 0;
-    // والصفرُ لا يُعرَض — إلّا «ساري».
+    // Zero is not shown, except 'valid'.
     final rows = [for (final k in const ['expired', 'critical', 'warning', 'upcoming', 'valid']) if (n(k) > 0 || k == 'valid') (k, n(k))];
     final missing = n('missing');
     final notRequired = n('not_applicable');
@@ -311,7 +307,7 @@ class _VehicleRegistryOverviewScreenState extends State<VehicleRegistryOverviewS
     );
   }
 
-  // ── بطاقة تحليل: شرائح أفقية بعرضٍ متناسبٍ مع العدد ──
+  // Analysis card: horizontal chips with width proportional to the count
   Widget _analyticCard(Map a, int total) {
     final items = List<Map>.from(a['items'] ?? []);
     final max = items.fold<int>(1, (m, i) => ((i['count'] as num?)?.toInt() ?? 0) > m ? (i['count'] as num).toInt() : m);
@@ -398,7 +394,7 @@ class _VehicleRegistryOverviewScreenState extends State<VehicleRegistryOverviewS
     final nActive = _filters.values.where((v) => v.isNotEmpty).length;
     return ListView(padding: const EdgeInsets.fromLTRB(14, 12, 14, 30), children: [
       if (_refreshing) const LinearProgressIndicator(minHeight: 2),
-      // ── الفلاترُ السريعة: الأعمدةُ المهمّة وحدَها ──
+      // Quick filters: the important columns only
       AppCard(
         padding: const EdgeInsets.all(10),
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -408,7 +404,7 @@ class _VehicleRegistryOverviewScreenState extends State<VehicleRegistryOverviewS
         ]),
       ),
       const SizedBox(height: 8),
-      // ── الفلترةُ الكاملة بكلّ الأعمدة + الشرائحُ الخمس ──
+      // Full filtering with all columns, plus the five chips
       AppCard(
         padding: const EdgeInsets.all(10),
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -453,7 +449,7 @@ class _VehicleRegistryOverviewScreenState extends State<VehicleRegistryOverviewS
         ]),
       ),
       const SizedBox(height: 12),
-      // ① الأرقام الكبيرة
+      // 1. Big numbers
       Wrap(spacing: 8, runSpacing: 8, children: [
         _big(tr('إجمالي المركبات', 'Vehicles'), t['vehicles'], T.orange, onTap: () => _openList({}, tr('إجمالي المركبات', 'Vehicles'))),
         _big(tr('يحتاج متابعة', 'Needs attention'), t['needsAttention'], T.danger,
@@ -464,9 +460,9 @@ class _VehicleRegistryOverviewScreenState extends State<VehicleRegistryOverviewS
         _big(tr('مركبات لها حوادث', 'With accidents'), t['withAccidents'], const Color(0xFFEA580C), onTap: () => _go(const VehicleClaimsScreen())),
         _big(tr('ينقصها بيانات', 'Missing data'), t['withMissing'], T.violet, onTap: () => _openList({'missing': '1'}, tr('ينقصها بيانات', 'Missing data'))),
       ]),
-      // ② المستندات
+      // 2. Documents
       _section(tr('المستندات ومواعيد انتهائها', 'Documents and their expiry'), [for (final doc in docs) _docCard(doc)]),
-      // ③ وثائق الشركة — انتهاؤها يوقف الشغل كلّه
+      // 3. Company documents: their expiry stops all work
       if (corporate.isNotEmpty)
         _section(tr('وثائق التأمين على مستوى الشركة', 'Company-level policies'), [
           for (final p in corporate)
@@ -495,7 +491,7 @@ class _VehicleRegistryOverviewScreenState extends State<VehicleRegistryOverviewS
               );
             }),
         ]),
-      // ④ الحوادث والمطالبات
+      // 4. Accidents and claims
       _section(tr('الحوادث والمطالبات التأمينية', 'Accidents & insurance claims'), [
         Wrap(spacing: 8, runSpacing: 8, children: [
           _big(tr('إجمالي الحوادث', 'Total'), claims['total'], T.ink, onTap: () => _go(const VehicleClaimsScreen())),
@@ -505,7 +501,7 @@ class _VehicleRegistryOverviewScreenState extends State<VehicleRegistryOverviewS
           _big(tr('متوقع استرداده (ر.س)', 'Expected recovery'), _money(claims['expectedRecoverySar']), const Color(0xFF16A34A), onTap: () => _go(const VehicleClaimsScreen())),
         ]),
       ]),
-      // التحليلات — كلّ شريحةٍ تفتح ما فيها
+      // Analytics: each chip opens what is in it
       if (analytics.isNotEmpty)
         _section(tr('التحليلات', 'Analytics'), [for (final a in analytics) _analyticCard(a, total)],
             hint: tr('اضغط أيّ شريحة لعرض ما فيها', 'Tap any band to see what is in it')),

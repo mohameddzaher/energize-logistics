@@ -120,12 +120,9 @@ const stripArabicDiacritics = (s: string): string =>
     .replace(/[ىي]/g, 'ي')
     .replace(/ة/g, 'ه');
 
-// STRICT matcher — sheet must START with a month name (case-insensitive),
-// optionally followed by year/space/punctuation. Anything else is rejected.
-// Examples that MATCH: "May", "MAY", "may", "May 2026", "MAY-2026", "May2026",
-//   "January", "JANURARY" (common typo), "March", "Mayo", "مايو", "ابريل 2026"
-// Examples that DON'T MATCH: "Sheet1", "MAINTENANC", "Performance", "DA INFO",
-//   "Motorcycle Info", "Marathon", "Mayonnaise", "Notes", "Summary"
+// STRICT matcher: the sheet name must START with a month name (case-insensitive), optionally followed by year/space/punctuation. Anything else is rejected.
+// Matches: "May", "may 2026", "MAY-2026", "January", "JANURARY" (common typo), "Mayo", plus Arabic month names with an optional year.
+// Does not match: "Sheet1", "MAINTENANC", "Performance", "DA INFO", "Marathon", "Mayonnaise", "Notes", "Summary".
 const matchMonth = (sheetName: string): { name: string; index: number } | null => {
   const raw = String(sheetName ?? '').trim();
   if (!raw) return null;
@@ -202,11 +199,7 @@ const findHeaderRow = (sheet: XLSX.WorkSheet, range: XLSX.Range): number => {
   return bestRow;
 };
 
-// Lenient numeric parsing — Excel/Sheets cells can carry the value as a
-// string with Arabic-Indic digits (٠-٩), Persian digits (۰-۹), thousands
-// separators, decimal commas, or stray whitespace. Without this, any of
-// those legitimate cells gets dropped to null/0 and the rep's total comes
-// out short by exactly one (or more) order.
+// Lenient numeric parsing: Excel/Sheets cells can carry the value as a string with Arabic-Indic digits, Persian digits, thousands separators, decimal commas, or stray whitespace. Without this, any such legitimate cell is dropped to null/0 and the rep's total comes out short by an order of magnitude.
 const coerceNumeric = (v: any): number | null => {
   if (typeof v === 'number') return Number.isFinite(v) ? v : null;
   let s = String(v == null ? '' : v).trim();

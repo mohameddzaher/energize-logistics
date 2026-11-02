@@ -1,15 +1,5 @@
 'use client';
-/**
- * تنبيهاتُ التحصيل — الحدُّ الائتمانيُّ وموعدُ الاستحقاق.
- *
- * ── لا تُخزَّن، تُحسب ────────────────────────────────────────────────────────
- * «قارب حدَّه» و«يستحقّ بعد يومين» جوابان عن الرصيد والتواريخ اليوم. والتنبيهُ
- * المخزَّن يصدق يومَ كُتب ويكذب في اليوم التالي — يبقى معلَّقًا بعد أن يسدّد
- * العميل، أو يغيب بعد أن ترتفع مديونيّتُه.
- *
- * والمخزَّنُ وحدَه هو الإسكات: قرارٌ بشريٌّ بأنّ فلانًا رآه. وهو مقيَّدٌ برصيده
- * لحظتَها — فمَن أسكته عند تسعين في المئة يعود إليه عند مئةٍ وعشرين.
- */
+/** Collection alerts for credit limit and due date. Computed, not stored: "near its limit" and "due in two days" answer from today's balance and dates, while a stored alert is true the day it was written and false the next (stuck after the customer pays, absent after debt rises). Only silencing is stored: a human decision that someone saw it, tied to the balance at that moment, so one silenced at 90% returns at 120%. */
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useLanguage } from '@/context/LanguageContext';
@@ -30,10 +20,7 @@ export default function CreditAlerts({ compact = false }: { compact?: boolean })
   const [openLimit, setOpenLimit] = useState(true);
   const [openDue, setOpenDue] = useState(!compact);
 
-  // ── والصفوفُ تُطلَب بقدر ما يُعرَض ─────────────────────────────────────────
-  // فواتيرُ الاستحقاق ستُّمئةٌ، والشاشةُ المضغوطةُ تعرض خمسةً ثمّ تقول «وكم
-  // غيرها» — والعددُ يأتي من `counts` لا من طول المصفوفة، فيظلّ العددُ هو
-  // نفسَه وإن قُطعت الصفوف.
+  // Rows are requested as many as displayed. There are about 600 due invoices and the compact view shows five then "and N more"; the count comes from counts, not array length, so it stays the same when rows are truncated.
   const load = useCallback(async () => {
     try { setD(await api.get<any>(`/api/collections-dept/ledger/alerts?rows=${compact ? 5 : 1000}`)); } catch { /* keep */ }
   }, [compact]);
@@ -52,7 +39,7 @@ export default function CreditAlerts({ compact = false }: { compact?: boolean })
   if (!limit.length && !due.length) return null;
   const showLimit = compact ? limit.slice(0, 5) : limit;
   const showDue = compact ? due.slice(0, 5) : due;
-  // الأعدادُ محسوبةٌ في الخادم على الكلّ — لا على ما وصل من صفوف.
+  // Counts are computed on the server over everything, not on delivered rows.
   const limitTotal = d.counts?.limitTotal ?? limit.length;
   const dueTotal = d.counts?.dueTotal ?? due.length;
 
@@ -126,7 +113,7 @@ export default function CreditAlerts({ compact = false }: { compact?: boolean })
                     className="text-sm text-slate-900 flex-1 min-w-[160px] text-start hover:text-[#f37121]">{a.name}</button>
                   <span className="text-xs text-slate-500">{a.officer}</span>
                   <span className="text-xs tabular-nums text-slate-700">{money(a.total)}</span>
-                  {/* المهلةُ تُعَدّ من التسليم، فيُعرَض التسليمُ لا الفوترة. */}
+                  {/* The term counts from delivery, so delivery is shown, not invoicing. */}
                   <span className="text-[11px] text-slate-400" title={ar ? 'تُحسب المهلة من يوم تسليم الفاتورة للعميل' : 'terms count from the day the customer received the invoice'}>
                     {ar ? `سُلّمت ${new Date(a.deliveryDate).toLocaleDateString('en-GB')} · ${a.creditDays} يومًا` : `del. ${new Date(a.deliveryDate).toLocaleDateString('en-GB')} · ${a.creditDays}d`}
                   </span>

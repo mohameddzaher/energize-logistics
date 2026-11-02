@@ -1,11 +1,5 @@
 'use client';
-/**
- * إعداداتُ قسم التحصيل — القسمُ كلُّه يُضبط من هنا.
- *
- * كلُّ قائمةٍ منسدلةٍ في القسم تُدار من هذه الصفحة: تصنيفُ الطرف وشروطُ السداد
- * وحالةُ التحصيل ووسيلةُ المتابعة والمدن. ومَن ينقصه خيارٌ يضيفه هنا فيراه كلُّ
- * من بعده، بدل أن يكتبه بيده في سجلٍّ واحدٍ فيصير صيغةً أخرى للشيء نفسِه.
- */
+/** Collections department settings: every dropdown in the department (party class, payment terms, collection status, follow-up method, cities) is managed here so options are shared instead of typed as variants. */
 import { useState } from 'react';
 import Link from 'next/link';
 import { useLanguage } from '@/context/LanguageContext';
@@ -51,8 +45,7 @@ export default function CollectionsSettingsPage() {
         ))}
       </div>
 
-      {/* قوائمُ هذا القسم وحدَه — لا قوائمُ النظام كلِّه في صفحةٍ عامّةٍ يبحث
-          فيها المستخدم عن قائمته بين قوائم غيره. */}
+      {/* Lists of this department only, not the system-wide lists page. */}
       {tab === 'lists' && <ReferenceDataManager module="collections" alsoType="jp_task_collections" embedded />}
 
       {tab === 'email' && <EmailTemplateEditor ar={ar} canEdit={canEditCollections(user)} />}

@@ -8,14 +8,8 @@ import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import '../ui/search_field.dart';
 
-/// حالةُ المركبات — أرقامُ شاحناتنا الحيّة في قسمِ من يقودها.
-///
-/// الكاوتشُ وحرارتُه وحرارةُ الماء والصيانةُ والتنبيهات، لشاحناتنا وحدَها ومن
-/// أجهزتها مباشرةً. وكانت في قسمٍ آخر لا يفتحه مشرفُ الأسطول ولا يملكه، فيُسأل
-/// عنها بالهاتف.
-///
-/// والمشرفُ لا يرى إلّا سياراته: الخادمُ يحصر النطاق، فيفتح الشاشةَ فيجد عشرًا
-/// لا سبعًا وخمسين.
+/// Vehicle health: live numbers of our trucks in the section of whoever drives them. Tires, tire temperature, coolant temperature, maintenance and alerts, for our trucks only and straight from their devices. They used to be in another section the fleet supervisor can neither open nor own, so they were asked by phone.
+/// A supervisor sees only their vehicles: the server limits the scope, so the screen opens with ten, not fifty-seven.
 class FleetHealthScreen extends StatefulWidget {
   const FleetHealthScreen({super.key});
   @override
@@ -28,7 +22,7 @@ class _FleetHealthScreenState extends State<FleetHealthScreen> {
   bool _loading = true;
   String? _error;
   String _q = '';
-  // الخانةُ تُهدَم مع الخطأ وإعادة المحاولة — النصُّ في متحكِّمٍ يبقى مع الكلمة.
+  // The field is destroyed on error and retry; text kept in a controller survives with the word.
   final _searchCtl = TextEditingController();
   String _filter = '';
   Timer? _tick;
@@ -37,9 +31,9 @@ class _FleetHealthScreenState extends State<FleetHealthScreen> {
   void initState() {
     super.initState();
     _load();
-    // الأرقامُ تتغيّر مع كلّ نبضةٍ من الجهاز، والشاشةُ تُترَك مفتوحة.
+    // Numbers change with every device heartbeat, and the screen is left open.
     _tick = Timer.periodic(const Duration(seconds: 30), (_) => _load(background: true));
-    // وما يتغيّر في النظام يظهر في اللحظة — كالويب.
+    // Changes in the system show instantly, like the web.
     for (final e in _events) { Live.instance.on(e, _onLive); }
   }
 
@@ -78,8 +72,7 @@ class _FleetHealthScreenState extends State<FleetHealthScreen> {
     return n == null ? '—' : n.round().toString();
   }
 
-  /// ألوانُ قراءةٍ لا إنذار: التنبيهُ يصنعه محرّكُ لوكيشن سوليوشن، وهذه تجعل
-  /// الرقمَ الشاذّ يُرى قبل أن يُقرأ.
+  /// Reading colours, not alarms: the alert is produced by the Location Solutions engine, and these make an abnormal number visible before it is read.
   Color _coolantTone(dynamic v) {
     final n = _num(v);
     if (n == null) return T.inkFaint;
@@ -202,8 +195,7 @@ class _FleetHealthScreenState extends State<FleetHealthScreen> {
           Row(children: [
             Text('${r['plate']}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
             const SizedBox(width: 8),
-            // الشاحنةُ بلا جهازٍ تُقال ولا تُخفى: إخفاؤها يجعل الشاشةَ تبدو تامّةً
-            // وهي ناقصة.
+            // A truck without a device is reported, not hidden: hiding it makes the screen look complete when it is not.
             if (r['tracked'] != true)
               Chip2(tr('بلا جهاز', 'No tracker'), T.warn)
             else if (r['stale'] == true)

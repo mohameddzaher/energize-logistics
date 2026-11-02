@@ -11,9 +11,7 @@ import '../ui/widgets.dart';
 import '../ui/search_field.dart';
 import 'collections_party.dart';
 
-/// الخطّةُ اليوميّة — «مَن أزور اليوم، وماذا حدث» (كصفحة الموقع
-/// /system/collections-dept/plan). الوحدةُ (عميلٌ × يوم): تُكتب الخطّة، ثمّ
-/// يُكتب بعد الفعل ما حدث وكم حُصِّل.
+/// Daily plan: "whom do I visit today, and what happened" (like the web page /system/collections-dept/plan). The unit is (customer by day): the plan is written, then after the action what happened and how much was collected is written.
 class CollectionsPlanScreen extends StatefulWidget {
   const CollectionsPlanScreen({super.key});
   @override
@@ -35,11 +33,11 @@ String _m(dynamic n) {
   return v.round().toString().replaceAllMapped(RegExp(r'(\d)(?=(\d{3})+$)'), (m) => '${m[1]},');
 }
 
-/// المدى بكلمةٍ لا بتاريخين — والتاريخان يبقيان لمن يريد فترةً بعينها.
+/// The range as a word, not two dates; the two dates remain for whoever wants a specific period.
 final _presets = <(String, String, String, (DateTime, DateTime) Function())>[
   ('today', 'اليوم', 'Today', () => (_today(), _today())),
   ('yesterday', 'أمس', 'Yesterday', () { final y = _today().subtract(const Duration(days: 1)); return (y, y); }),
-  // الأسبوعُ يبدأ السبت.
+  // The week starts on Saturday.
   ('week', 'هذا الأسبوع', 'This week', () { final t = _today(); final back = (t.weekday % 7 + 1) % 7; return (t.subtract(Duration(days: back)), t); }),
   ('month', 'هذا الشهر', 'This month', () { final t = _today(); return (DateTime(t.year, t.month, 1), t); }),
   ('lastMonth', 'الشهر الماضي', 'Last month', () { final t = _today(); return (DateTime(t.year, t.month - 1, 1), DateTime(t.year, t.month, 0)); }),
@@ -122,7 +120,7 @@ class _CollectionsPlanScreenState extends State<CollectionsPlanScreen> {
     catch (e) { _toast('$e', err: true); }
   }
 
-  /// «ما حدث» — الحفظُ يُعلّمها «تمّت»: كتابةُ ما حدث تعني أنّها حدثت.
+  /// "What happened": saving marks it done, since writing what happened means it happened.
   Future<void> _openLog(Map<String, dynamic> t) async {
     final action = TextEditingController(text: '${t['action'] ?? ''}');
     final collected = TextEditingController(text: (t['collected'] is num && t['collected'] != 0) ? '${t['collected']}' : '');
@@ -307,7 +305,7 @@ class _CollectionsPlanScreenState extends State<CollectionsPlanScreen> {
   }
 }
 
-/// مهمةٌ جديدة — العميلُ يُبحث في سجلّ الأعمار، والموظّفُ يبدأ باسم الداخل.
+/// New task: the customer is searched in the aging register, and the employee starts from the typed name.
 class _NewTaskSheet extends StatefulWidget {
   final String myName;
   final List<String> officers;
@@ -326,7 +324,7 @@ class _NewTaskSheetState extends State<_NewTaskSheet> {
   late String _officerName = widget.myName;
   Timer? _deb;
   int _seq = 0;
-  bool _pending = false; // بحثٌ جارٍ — لا تُعرَض «لا نتائج» قبل الردّ
+  bool _pending = false; // A search in progress: "no results" is not shown before the reply.
   bool _saving = false;
   String _err = '';
 
@@ -336,7 +334,7 @@ class _NewTaskSheetState extends State<_NewTaskSheet> {
   void _search(String v) {
     setState(() { _party = ''; _partyName = ''; });
     _deb?.cancel();
-    // المسحُ يُبطل أيَّ ردٍّ ما زال في الطريق
+    // Clearing invalidates any reply still in flight.
     if (v.trim().isEmpty) { _seq++; setState(() { _hits = []; _pending = false; }); return; }
     setState(() => _pending = true);
     _deb = Timer(const Duration(milliseconds: 350), () async {

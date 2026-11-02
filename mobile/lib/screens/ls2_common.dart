@@ -3,9 +3,7 @@ import '../services/lang.dart';
 import '../ui/export_sheet.dart';
 import '../ui/theme.dart';
 
-/// أدواتُ لوكيشن سوليوشن المشتركة بين شاشاتها — صورةُ lib/ls2.ts في الموقع:
-/// أسماءُ أنواع التنبيهات ووصفُها بالعربيّة، حالاتُ المركبة والصيانة، الأرقام،
-/// وشريطُ الفترة (هذا الشهر حتى اليوم افتراضًا) كـ RangePicker.
+/// Location Solutions helpers shared by its screens, mirroring lib/ls2.ts on the web: Arabic names and descriptions of alert types, vehicle and maintenance states, numbers, and the period bar (this month to today by default) like RangePicker.
 
 List<Map<String, dynamic>> ls2List(dynamic v) =>
     v is List ? List<Map<String, dynamic>>.from(v.whereType<Map>().map((e) => Map<String, dynamic>.from(e))) : <Map<String, dynamic>>[];
@@ -14,7 +12,7 @@ Map<String, dynamic> ls2Map(dynamic v) => v is Map ? Map<String, dynamic>.from(v
 
 num? ls2Num(dynamic v) => v is num ? v : num.tryParse(v?.toString() ?? '');
 
-/// رقمٌ بفواصل الآلاف، و«—» للغائب (لا صفرًا: الغائبُ لا يُقرأ صفرًا).
+/// Number with thousands separators; "-" for missing (not zero: missing is not read as zero).
 String ls2Fmt(dynamic v) {
   final n = ls2Num(v);
   if (n == null) return '—';
@@ -58,7 +56,7 @@ String ls2TimeAgo(dynamic iso) {
   return tr('منذ ${h ~/ 24} يوم', '${h ~/ 24}d ago');
 }
 
-// ── الحالات ───────────────────────────────────────────────────────────────
+// States.
 const ls2Statuses = {
   'moving': ('يتحرك', 'Moving', T.success),
   'idle': ('خامل', 'Idle', T.warn),
@@ -116,7 +114,7 @@ String ls2RepairCategory(dynamic c) {
   return x == null ? (c ?? '').toString() : tr(x.$1, x.$2);
 }
 
-/// وصفُ التنبيه من حقوله — بلغة القارئ (رسالةُ الخادم إنجليزيّةٌ فقط).
+/// Alert description from its fields, in the reader's language (the server message is English only).
 String ls2AlertMessage(Map<String, dynamic> a) {
   final v = a['value'];
   final key = (a['key'] ?? '').toString();
@@ -147,14 +145,13 @@ String ls2AlertMessage(Map<String, dynamic> a) {
   }
 }
 
-// ── الفترة ────────────────────────────────────────────────────────────────
-/// «هذا الشهر حتى اليوم» — افتراضُ فلاتر الفترة في القسم كلِّه.
+// Period. "This month to today": the default of the period filters across the section.
 DateTimeRange ls2ThisMonthToDate() {
   final now = DateTime.now();
   return DateTimeRange(start: DateTime(now.year, now.month, 1), end: DateTime(now.year, now.month, now.day));
 }
 
-/// شريطُ الفترة: نفسُ اختصارات RangePicker في الموقع + فترةٌ تُنتقى بالتقويم.
+/// Period bar: the same shortcuts as RangePicker on the web plus a calendar-picked range.
 class Ls2RangeBar extends StatelessWidget {
   final DateTimeRange value;
   final ValueChanged<DateTimeRange> onChanged;
@@ -205,7 +202,7 @@ class Ls2RangeBar extends StatelessWidget {
   }
 }
 
-/// قائمةُ خيارات التصدير — كـ ExportMenu في الموقع: كلّ خيارٍ ملفٌّ بأوراقه.
+/// Export options list, like ExportMenu on the web: each option is a file with its sheets.
 Future<void> ls2ExportMenu(
   BuildContext context, {
   required String fileName,

@@ -17,14 +17,7 @@ import 'collections_party.dart';
 import 'collections_send.dart';
 import 'ops_workflow_detail.dart';
 
-// ═════════════════════════════════════════════════════════════════════════
-// فواتيرُ التحصيل — الكاشُ والضريبيّ، بالشاشة نفسِها ونوعين.
-// نظيرُ components/collections/InvoicesPage في الموقع، بأفعاله كلِّها:
-// حالةُ التحصيل الثلاثيّة بعدّاداتها، البطاقات، البحثُ والفلاتر (العمر، العميل،
-// الفرع، التفاصيل، الفترة)، الصفحات، تحديدُ صفوفٍ وتسليمُها معًا، التسليم،
-// التحصيل (ودفعاتُه تُعدَّل وتُرفَع)، «لم تُحصَّل»، تعديلُ القيمة، المرفقات،
-// كشفُ الحساب PDF، «إرسال للعميل»، والتصدير — وحيّةٌ على أخبار الموقع نفسِها.
-// ═════════════════════════════════════════════════════════════════════════
+// Collection invoices, cash and tax, on the same screen as two types. The counterpart of components/collections/InvoicesPage on the web, with all its actions: the three-state collection status with counts, cards, search and filters (age, customer, branch, details, period), paging, selecting rows and delivering them together, delivery, collection (its payments are edited and revoked), not-collected, value edit, attachments, account statement PDF, send to customer, and export. Live on the same events as the web.
 
 String _s(Map r, String k) => '${r[k] ?? ''}';
 num _num(dynamic v) => v is num ? v : num.tryParse('${v ?? ''}') ?? 0;
@@ -40,7 +33,7 @@ String _dt(dynamic v) {
 }
 String _ymd(DateTime d) => '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
-/// شرائحُ العمر — لا تتداخل (كالموقع).
+/// Age buckets: non-overlapping, like the web.
 const _ageBands = [
   ('0_15', 'حتى 15 يومًا', 'Up to 15 days'),
   ('15_30', 'من 15 إلى 30', '15 – 30 days'),
@@ -70,7 +63,7 @@ Color _ageColor(dynamic d) {
   return T.inkSoft;
 }
 
-/// يفتح تفصيلَ فاتورةٍ ضريبيّة.
+/// Opens a tax invoice's detail.
 void openTaxInvoice(BuildContext context, String invoiceNumber) {
   if (invoiceNumber.isEmpty) return;
   Navigator.push(context, MaterialPageRoute(builder: (_) => CollectionsTaxInvoiceScreen(invoiceNumber: invoiceNumber)));
@@ -86,7 +79,7 @@ class CollectionsInvoicesScreen extends StatefulWidget {
 class _CollectionsInvoicesScreenState extends State<CollectionsInvoicesScreen> {
   bool get _cash => widget.kind == 'cash';
   List<Map<String, dynamic>> _rows = [];
-  // «بحثتُ عن الرقم فلم أجده»: أين هو — يردّه الخادمُ مع النتيجة الفارغة (locateNumber).
+  // "I searched for the number and did not find it": where it is; the server returns it with the empty result (locateNumber).
   Map<String, dynamic>? _elsewhere;
   Map<String, dynamic> _totals = {};
   Map<String, dynamic> _stateCounts = {};
@@ -95,7 +88,7 @@ class _CollectionsInvoicesScreenState extends State<CollectionsInvoicesScreen> {
   String? _error;
   int _seq = 0;
 
-  // الفلاتر — كلُّها تُرسَل إلى الخادم كما يرسلها الموقع.
+  // Filters: all are sent to the server as the web sends them.
   String _collected = '';
   String _q = '';
   String _age = '', _customer = '', _branch = '', _detail = '', _from = '', _to = '';
@@ -126,14 +119,14 @@ class _CollectionsInvoicesScreenState extends State<CollectionsInvoicesScreen> {
         setState(() => _details = [for (final x in (d['items'] as List? ?? const [])) if ('${(x as Map)['nameAr'] ?? ''}'.isNotEmpty) '${x['nameAr']}']);
       }).catchError((_) {});
     }
-    // التحصيلُ يُكتب على الكشف، فأيُّ تعديلٍ هناك يُحدِّث هنا في لحظته.
+    // Collection is written on the sheet, so any edit there updates here at once.
     _onWf = () => _load(background: true);
-    // وربطُ التخليص وما يُدخل الكشفَ الشاشةَ أو يُخرجه يُجمَع ما تتابع منه في ثانية.
+    // Clearance linking and whatever adds or removes a sheet from the screen are batched for what arrives within a second.
     _onSoon = () {
       _liveTick?.cancel();
       _liveTick = Timer(const Duration(milliseconds: 800), () => _load(background: true));
     };
-    // وعددُ المرفقات يتحدّث في مكانه — الخبرُ يحمل العدد الجديد.
+    // The attachment count updates in place; the event carries the new count.
     _onAtt = (d) {
       if (d is! Map || '${d['kind']}' != widget.kind || '${d['key'] ?? ''}'.isEmpty) return;
       final key = '${d['key']}';
@@ -163,7 +156,7 @@ class _CollectionsInvoicesScreenState extends State<CollectionsInvoicesScreen> {
 
   String _keyOf(Map r) => _cash ? _s(r, '_id') : _s(r, 'invoiceNumber');
 
-  /// كلُّ ما يفهمه الخادمُ من فلترةٍ في مكانٍ واحد — يقرؤه الجدولُ والكشفُ والإرسال.
+  /// Everything the server understands as filtering in one place; read by the table, the statement and the send.
   QueryPairs _params() => [
         if (_q.isNotEmpty) ('q', _q),
         if (_collected.isNotEmpty) ('collected', _collected),
@@ -175,7 +168,7 @@ class _CollectionsInvoicesScreenState extends State<CollectionsInvoicesScreen> {
         if (_to.isNotEmpty) ('to', _to),
       ];
 
-  /// الفلترُ تغيّر: الصفحةُ الأولى، والتحديدُ لا يعبر فلترًا.
+  /// The filter changed: first page, and the selection does not cross a filter.
   void _refilter() {
     _page = 1;
     _selected.clear();
@@ -201,12 +194,12 @@ class _CollectionsInvoicesScreenState extends State<CollectionsInvoicesScreen> {
     } catch (e) {
       if (mounted && mine == _seq) setState(() => _error = e is ApiException ? e.message : '$e');
     } finally {
-      // الرايةُ تُطفأ دائمًا.
+      // The flag is always cleared.
       if (mounted) setState(() { if (!background) _refreshing = false; _loading = false; });
     }
   }
 
-  // ── المحدَّدُ إن حُدِّد، وإلّا نتيجةُ الفلتر ───────────────────────────────
+  // The selection if any, otherwise the filter result
   QueryPairs _statementParams() => [
         ..._params(),
         for (final k in _selected) ('sel', k),
@@ -242,7 +235,7 @@ class _CollectionsInvoicesScreenState extends State<CollectionsInvoicesScreen> {
     }
   }
 
-  // ── التسليمُ خطوةٌ قبل التحصيل — ومنه تُعَدُّ المهلة ──────────────────────
+  // Delivery is a step before collection, and the term is counted from it
   Future<void> _deliver(List<Map<String, dynamic>> rows) async {
     if (rows.isEmpty) return;
     final first = DateTime.tryParse(_s(rows.first, 'deliveryDate'));
@@ -259,11 +252,11 @@ class _CollectionsInvoicesScreenState extends State<CollectionsInvoicesScreen> {
     try {
       String msg = '';
       if (_cash) {
-        // الكشوفُ النقديّةُ تُسلَّم معًا بطلبٍ واحد.
+        // Cash sheets are delivered together in one request.
         final r = await Api.instance.post('/api/collections-dept/invoices/deliver', {'ids': rows.map((x) => _s(x, '_id')).toList(), 'deliveryDate': _ymd(d)});
         msg = r is Map ? '${r['message'] ?? ''}' : '';
       } else {
-        // والفاتورةُ الضريبيّة برقمها — واحدةً واحدة.
+        // A tax invoice is delivered by its number, one at a time.
         for (final x in rows) {
           final r = await Api.instance.post('/api/collections-dept/invoices/deliver', {'invoiceNumber': _s(x, 'invoiceNumber'), 'deliveryDate': _ymd(d)});
           if (rows.length == 1) msg = r is Map ? '${r['message'] ?? ''}' : '';
@@ -278,7 +271,7 @@ class _CollectionsInvoicesScreenState extends State<CollectionsInvoicesScreen> {
     }
   }
 
-  /// الرقمُ موجودٌ لكن ليس في هذه الصفحة — أين هو، ولماذا، وبابٌ إليه.
+  /// The number exists but is not on this page: where it is, why, and a door to it.
   Widget _elsewhereHint(Map<String, dynamic> e) {
     final ledger = [for (final x in (e['ledger'] as List? ?? const [])) Map<String, dynamic>.from(x as Map)];
     final sheets = [for (final x in (e['sheets'] as List? ?? const [])) Map<String, dynamic>.from(x as Map)];
@@ -390,7 +383,7 @@ class _CollectionsInvoicesScreenState extends State<CollectionsInvoicesScreen> {
     }
   }
 
-  /// تفصيلُ التحصيل (الكاش) — من أين وصل المال، من قائمة إعدادات القسم.
+  /// Collection detail (cash): where the money came from, from the section's settings list.
   Future<void> _setDetail(Map<String, dynamic> r) async {
     final v = await showModalBottomSheet<String>(
       context: context,
@@ -421,7 +414,7 @@ class _CollectionsInvoicesScreenState extends State<CollectionsInvoicesScreen> {
       ? (_s(r, 'collectionDate').isNotEmpty || _num(r['collectedAmount']) > 0 || r['collectedNoDate'] == true)
       : (r['fullyCollected'] == true || _s(r, 'collectionDate').isNotEmpty || _s(r, 'collectionState') == 'partial' || _num(r['collectedAmount']) > 0);
 
-  /// أفعالُ الصفّ — أزرارُ صفّ الموقع، في ورقةٍ واحدة.
+  /// Row actions: the web row buttons, in one sheet.
   Future<void> _rowActions(Map<String, dynamic> r) async {
     final label = _cash ? _s(r, 'reportNumber') : _s(r, 'invoiceNumber');
     final pick = await showModalBottomSheet<String>(
@@ -468,7 +461,7 @@ class _CollectionsInvoicesScreenState extends State<CollectionsInvoicesScreen> {
     }
   }
 
-  // ── أعمدةُ التصدير — أعمدةُ الموقع بالترتيب والقيم نفسِها ─────────────────
+  // Export columns: the web columns in the same order and values
   List<ExportCol> get _cols => _cash
       ? [
           ExportCol('رقم أمر النقل', 'Report no.', (r) => r['reportNumber']),
@@ -626,7 +619,7 @@ class _CollectionsInvoicesScreenState extends State<CollectionsInvoicesScreen> {
     final t = _totals;
     final none = t['noneCount'] ?? t['pendingCount'];
     final noneTax = t['none'] ?? t['pending'];
-    // شريطٌ أفقيّ بارتفاعٍ يتبع المحتوى (لا ارتفاعَ ثابتًا يقصّ الأرقام مع الخطّ الكبير).
+    // A horizontal strip whose height follows its content (no fixed height that clips numbers at large font sizes).
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: IntrinsicHeight(child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -748,7 +741,7 @@ class _CollectionsInvoicesScreenState extends State<CollectionsInvoicesScreen> {
                     child: RefreshIndicator(
                       onRefresh: _load,
                       child: ListView(padding: const EdgeInsets.fromLTRB(12, 10, 12, 20), keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag, children: [
-                        // ── حالةُ التحصيل — والعددُ تحت الفلاتر الأخرى ──────────
+                        // Collection status, with the count under the other filters
                         SizedBox(
                           height: 40,
                           child: ListView(scrollDirection: Axis.horizontal, children: [
@@ -786,7 +779,7 @@ class _CollectionsInvoicesScreenState extends State<CollectionsInvoicesScreen> {
                           ),
                         ]),
                         const SizedBox(height: 8),
-                        // ── التحديد: تسليمٌ معًا، وتصديرٌ وكشفٌ وإرسالٌ للمحدَّد ──
+                        // Selection: deliver together, and export, statement and send for the selection
                         Row(children: [
                           Checkbox(value: allOn, onChanged: (_) => setState(() {
                             if (allOn) { _selected.clear(); } else { _selected.addAll(_rows.map(_keyOf)); }
@@ -819,7 +812,7 @@ class _CollectionsInvoicesScreenState extends State<CollectionsInvoicesScreen> {
   }
 }
 
-/// منسدلٌ فيه بحث — قوائمُ العملاء مئات.
+/// Dropdown with search; customer lists run to hundreds.
 class _SearchPick extends StatefulWidget {
   final String title;
   final List<String> options;
@@ -862,10 +855,7 @@ class _SearchPickState extends State<_SearchPick> {
   }
 }
 
-// ═════════════════════════════════════════════════════════════════════════
-// تفصيلُ فاتورةٍ ضريبيّة — كشوفُها كلُّها بأرقامها، ومتابعاتُ كلِّ كشف، ومرفقاتُها.
-// نظيرُ /system/collections-dept/invoices/tax/[invoiceNumber].
-// ═════════════════════════════════════════════════════════════════════════
+// Tax invoice detail: all its sheets with their numbers, the follow-ups of each sheet, and its attachments. The counterpart of /system/collections-dept/invoices/tax/[invoiceNumber].
 class CollectionsTaxInvoiceScreen extends StatefulWidget {
   final String invoiceNumber;
   const CollectionsTaxInvoiceScreen({super.key, required this.invoiceNumber});
@@ -885,9 +875,9 @@ class _CollectionsTaxInvoiceScreenState extends State<CollectionsTaxInvoiceScree
   void initState() {
     super.initState();
     _load();
-    // ربطُ كشوفها بالتخليص يتغيّر من التشغيل أو من صفحة المعاملة.
+    // Linking its sheets to clearance changes from operations or from the transaction page.
     _onCustoms = (d) { if (d is Map && d['source'] == 'customs-link') _load(); };
-    // ومتابعاتُ كشوفها تُكتب من التشغيل والتخليص أيضًا — يتبعها العدد.
+    // Follow-ups of its sheets are also written from operations and clearance; the count follows.
     _onFu = (d) {
       final inv = d is Map ? '${d['invoiceNumber'] ?? ''}' : '';
       if (inv.isEmpty || inv == widget.invoiceNumber) _load();
@@ -914,9 +904,7 @@ class _CollectionsTaxInvoiceScreenState extends State<CollectionsTaxInvoiceScree
     }
   }
 
-  // ── تحصيلُ الفاتورة من صفحتها (٢٠٢٦/١٠/٢٧) — نظيرُ CollectionPanel في الموقع ──
-  // الفاتورةُ النقديّةُ في الدفتر بلا كشفٍ لا تظهر في قائمتَي الكاش والضريبيّ،
-  // فلا بابَ لتحصيلها غيرُ هذه الشاشة. والخادمُ يعرف أين يكتب برقمها.
+  // Collecting the invoice from its own page, the counterpart of CollectionPanel on the web. A cash invoice in the ledger with no sheet appears in neither the cash nor the tax list, so this screen is the only door to collect it. The server knows where to write by its number.
   Widget _collectionCard(Map<String, dynamic> c) {
     final st = _s(c, 'collectionState');
     final full = st == 'full';
@@ -1141,7 +1129,7 @@ class _CollectionsTaxInvoiceScreenState extends State<CollectionsTaxInvoiceScree
                         ),
                       ),
                     const SizedBox(height: 10),
-                    // ورقُ الفاتورة: النسخةُ الموقَّعة وإيصالُ الاستلام وما يُطالَب به.
+                    // Invoice papers: the signed copy, the receipt of delivery and what is claimed.
                     OutlinedButton.icon(
                       icon: const Icon(Icons.attach_file_rounded, color: T.orange),
                       label: Text(tr('مرفقات الفاتورة', 'Invoice attachments')),

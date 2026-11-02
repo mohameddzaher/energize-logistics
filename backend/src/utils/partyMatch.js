@@ -1,12 +1,7 @@
 /**
- * هل هذا العميلُ حسابٌ قائمٌ باسمٍ آخر؟ — قبل أن يُعطى كودًا جديدًا.
- *
- * أسماءُ التشغيل مختصرة («PV Hardware Middle east factory») وأسماءُ الدفتر
- * رسميّة («PV Hardware Middle East Factory Co., Ltd» بكود 11040037). وكودٌ
- * جديدٌ للمختصَر يقسم مديونيّةَ عميلٍ واحدٍ على حسابين. فيُقاس التشابهُ بالقاعدة
- * نفسِها التي ربط بها استيرادُ الدفتر (scripts/importCollectionsWorkbook):
- * كلماتٌ مميِّزة، وتقاطعٌ على اتّحاد — ويُزاد عليها «الاحتواء»: كلُّ كلمات
- * الاسم المختصر في اسم الحساب.
+ * Is this customer an existing account under another name? Checked before giving a new code.
+ * Operations names are abbreviated ('PV Hardware Middle east factory') while ledger names are official ('PV Hardware Middle East Factory Co., Ltd', code 11040037). A new code for the short name would split one customer's debt across two accounts.
+ * Similarity uses the same rule as the ledger import (scripts/importCollectionsWorkbook): distinctive words, intersection over union, plus containment (all words of the short name appear in the account name).
  */
 const STOP = new Set(['شركه', 'شركة', 'مؤسسه', 'مؤسسة', 'موسسه', 'مصنع', 'مكتب', 'المحدوده', 'المحدودة',
   'شخص', 'واحد', 'التجاريه', 'التجارية', 'للخدمات', 'الخدمات', 'اللوجستيه', 'اللوجستية',
@@ -23,9 +18,9 @@ const contains = (small, big) => small.size > 0 && [...small].every((x) => big.h
 
 /**
  * @returns {{ level: 'auto'|'review'|'none', best?: object, score: number }}
- *   auto   — حسابٌ واحدٌ لا لبسَ فيه: يُربط به.
- *   review — شبيهٌ يُعرَض على مدير التحصيل ولا يُمنح كودٌ حتّى يقرّر.
- *   none   — لا شبيه: عميلٌ جديدٌ حقًّا.
+ * auto   - one unambiguous account: link to it.
+ * review - a lookalike shown to the collections manager; no code until they decide.
+ * none   - no lookalike: a genuinely new customer.
  */
 function matchAccount(name, accounts) {
   const t = toks(name);
@@ -37,9 +32,7 @@ function matchAccount(name, accounts) {
   }).filter((x) => x.score >= REVIEW_FLOOR).sort((x, y) => y.score - x.score);
   if (!scored.length) return { level: 'none', score: 0 };
   const [top, second] = scored;
-  // الربطُ التلقائيُّ بالتطابق وحدَه (تقاطعٌ ≥ ٠٫٨٥) ولا منافس — قاعدةُ استيراد
-  // الدفتر نفسُها. أمّا الاحتواءُ فيُعرَض ولا يُربط: «الشركه الوطنيه» محتواةٌ في
-  // «الشركه الوطنيه لمنتجات الكبريت» ولا يعني ذلك أنّها هي.
+  // Auto-link only on match alone (intersection >= 0.85) with no competitor, the same rule as the ledger import. Containment is shown but not linked: a short name contained in a longer one does not mean they are the same company.
   const unique = !second || second.score < top.score - 0.1;
   const strong = top.jac >= AUTO_LINK && unique;
   return { level: strong ? 'auto' : 'review', best: top.a, score: top.score, runnerUp: second?.a };

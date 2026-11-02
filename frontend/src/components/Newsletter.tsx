@@ -34,11 +34,7 @@
 //       );
 //   };
 
-//   return (
-//     <section className="relative bg-gray-900 text-white py-14 px-6 md:px-16 text-center overflow-hidden">
-//       {/* 🔸 اللمسة البرتقالية الناعمة */}
-//       <div className="absolute top-[-80px] end-[-80px] w-[250px] h-[250px] bg-[#f37121]/20 blur-[90px] rounded-full" />
-//       <div className="absolute bottom-[-80px] start-[-80px] w-[250px] h-[250px] bg-gray-600/20 blur-[90px] rounded-full" />
+// Commented-out earlier section markup: dark centered section with orange and grey glow blobs.
 
 //       <div className="relative z-10">
 //         <h2 className="text-2xl md:text-3xl font-bold text-[#f37121] mb-3">
@@ -116,11 +112,7 @@
 //       );
 //   };
 
-//   return (
-//     <section className="relative bg-gray-900 text-white py-14 px-6 md:px-16 text-center overflow-hidden">
-//       {/* 🔸 اللمسة البرتقالية الناعمة */}
-//       <div className="absolute top-[-80px] end-[-80px] w-[250px] h-[250px] bg-[#f37121]/20 blur-[90px] rounded-full" />
-//       <div className="absolute bottom-[-80px] start-[-80px] w-[250px] h-[250px] bg-gray-600/20 blur-[90px] rounded-full" />
+// Commented-out earlier section markup: dark centered section with orange and grey glow blobs.
 
 //       <div className="relative z-10">
 //         <h2 className="text-2xl md:text-3xl font-bold text-[#f37121] mb-3">
@@ -187,7 +179,7 @@ export default function Newsletter() {
       type,
     });
     
-    // إخفاء التوست بعد 4 ثواني
+    // Hide the toast after 4 seconds.
     setTimeout(() => {
       setToast({
         show: false,
@@ -242,7 +234,7 @@ export default function Newsletter() {
         </div>
       )}
 
-      {/* 🔸 اللمسة البرتقالية الناعمة */}
+      {/* Soft orange glow. */}
       <div className="absolute top-[-80px] end-[-80px] w-[250px] h-[250px] bg-[#f37121]/20 blur-[90px] rounded-full" />
       <div className="absolute bottom-[-80px] start-[-80px] w-[250px] h-[250px] bg-gray-600/20 blur-[90px] rounded-full" />
 

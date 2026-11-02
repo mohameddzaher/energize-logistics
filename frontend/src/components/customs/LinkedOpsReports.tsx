@@ -1,23 +1,9 @@
 'use client';
 /**
- * «كشوف التشغيل المرتبطة» في صفحة معاملة التخليص.
- *
- * كلُّ كشف تخريجٍ نقل حاويةً من هذه المعاملة — من خانات النقل هنا، أو سندُه
- * بوليصتُها أو حاويتُها، أو ربطه التشغيلُ بيده — ومعه أين وصل: فُوتر؟ حُصِّل؟
- * والأرقامُ المكتوبةُ في خانات النقل ولم يصل كشفُها بعدُ تُذكر وحدَها.
- *
- * ── والصفُّ يُفتَح على الكشف كلِّه ──────────────────────────────────────────
- * طلبُ صاحب الشركة: «اعرض كلَّ شيءٍ عن الكشف هنا، ودع المستخدمَ يتابع ويعدّل من
- * المكان نفسِه». فالصفُّ المفتوح يعرض الكشفَ بحقوله كلِّها **كما يراها هذا الدورُ
- * في سير العمل** — الخادمُ يحجب قيمةَ البيع وأعمدةَ المال بالقاعدة نفسِها
- * (`stripRowFor`)، فلا تُحجب هنا بقائمةٍ ثانية. والتعديلُ يُحفظ من النقطة نفسِها
- * التي تحفظ منها صفحةُ الكشف (`PUT /api/workflows/:id`) بقفلها وقواعد فوترتها
- * ودفعِ قيمة البيع إلى المنصّة — لا طريقَ كتابةٍ ثانٍ. وما يُعرض قابلًا للتعديل
- * هو ما يقول الخادمُ إنّه سيقبله (`access.fields`).
- *
- * ويتحدّث وحدَه: `customs:opsLinks` حين يتغيّر ربطٌ أو يُعدَّل كشفٌ مربوط،
- * و`collections:changed` حين تُفوتَر الكشوفُ أو تُحصَّل، و`workflow:followUps`
- * حين تُكتب متابعة. راجع backend/src/services/customsOpsLink.
+ * Operations manifests linked to a clearance transaction.
+ * Each dispatch statement that moved a container of this transaction (via the transport fields here, a voucher equal to its waybill or container, or a manual link), with how far it got: invoiced, collected. Numbers typed in the transport fields whose statement has not arrived are listed alone.
+ * An open row shows the whole manifest with all fields as this role sees them in the workflow: the server hides selling value and money columns by the same rule (`stripRowFor`), so no second list here. Edits save through the same endpoint as the manifest page (`PUT /api/workflows/:id`) with its lock, billing rules and platform price push; there is no second write path. Editable fields are those the server says it accepts (`access.fields`).
+ * Live: `customs:opsLinks` on link or linked-manifest changes, `collections:changed` on invoicing or collection, `workflow:followUps` on a new follow-up. See backend/src/services/customsOpsLink.
  */
 import { Fragment, useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
@@ -40,7 +26,7 @@ type Rep = {
   paymentType: string; paymentSubtype?: string; invoiceNumber: string; invoiceDate: string | null; deliveryDate?: string | null;
   collectionDate: string | null; billing: Billing; via: string; containers: string[]; sellingValue?: number; totalInvoice?: number;
   followUps?: number; attachments?: number;
-  /** الكشفُ كلُّه كما يراه هذا الدورُ في سير العمل (محجوبًا على الخادم). */
+  /** The whole manifest as this role sees it in the workflow (redacted on the server). */
   detail?: Record<string, any>;
 };
 type Access = { canEdit: boolean; fields: string[]; money: boolean; selling: boolean };
@@ -49,7 +35,7 @@ type Resp = {
   pendingRefs: { reportNumber: string; state: 'not_arrived' | 'linked_elsewhere'; otherRef?: string }[];
   summary: { total: number; collected: number; invoiced: number; cashPending: number; notInvoiced: number; selling?: number };
   access?: Access;
-  /** طلباتُ الشحن المربوطة بالمعاملة — بالبوليصة أو الحاوية أو رقمِها في خانة النقل. */
+  /** Shipment orders linked to the transaction: by waybill, container, or its number in the transport field. */
   shipmentOrders?: { _id: string; ref: string; source: string; customerName: string; fromCity: string; toCity: string;
     status: string; driverName: string; vehiclePlate: string; pickupTime: string | null; blNumber: string; containerNumber: string; via: string }[];
 };
@@ -63,12 +49,12 @@ const BILLING: Record<Billing, [string, string, string]> = {
 
 const LOCK_MS = 5 * 60 * 1000;
 const dayOf = (v: any) => (v ? String(v).split('T')[0] : '');
-/** قيمةُ الخانة في نموذج التعديل — كما تكتبها صفحةُ الكشف. */
+/** Field value in the edit form, as the manifest page writes it. */
 const formValue = (f: WorkflowField, d: Record<string, any>) => (
   f.type === 'ptype' ? paymentKindOf(d as any) : f.type === 'date' ? dayOf(d[f.key]) : (d[f.key] ?? '')
 );
 
-/** خانةٌ واحدة: تُقرأ، أو تُكتب إن كانت للدور. */
+/** A single field: read-only, or writable if the role may. */
 function FieldCell({ f, d, editing, editable, value, onChange, ar }: {
   f: WorkflowField; d: Record<string, any>; editing: boolean; editable: boolean;
   value: any; onChange: (v: any) => void; ar: boolean;
@@ -115,7 +101,7 @@ function FieldCell({ f, d, editing, editable, value, onChange, ar }: {
   );
 }
 
-/** الصفُّ المفتوح: الكشفُ كلُّه، وتعديلُه، ومتابعاتُه. */
+/** The open row: whole manifest, its edit form and its follow-ups. */
 function ReportDetail({ r, access, clearanceId, ar, canOpenOps, userId, onSaved }: {
   r: Rep; access: Access; clearanceId: string; ar: boolean; canOpenOps: boolean; userId: string;
   onSaved: () => void;
@@ -130,7 +116,7 @@ function ReportDetail({ r, access, clearanceId, ar, canOpenOps, userId, onSaved 
   const [note, setNote] = useState('');
 
   const can = new Set(access.fields);
-  // ما يصل من الخادم هو ما يحقّ للدور أن يراه — فالقسمُ الذي لا خانةَ فيه لا يُعرض.
+  // What arrives from the server is what the role may see, so a section without a field is not shown.
   const sections = WORKFLOW_SECTIONS
     .map((s) => ({ ...s, fields: s.fields.filter((f) => f.key in d || (f.type === 'ptype' && 'paymentType' in d)) }))
     .filter((s) => s.fields.length);
@@ -140,7 +126,7 @@ function ReportDetail({ r, access, clearanceId, ar, canOpenOps, userId, onSaved 
   const start = async () => {
     setError(''); setNote(''); setBusy(true);
     try {
-      // القفلُ نفسُه الذي تأخذه صفحةُ الكشف — فلا يكتب اثنان على كشفٍ واحد.
+      // Same lock the manifest page takes, so two users do not write one manifest.
       await api.post(`/api/workflows/${r._id}/lock`);
       const fd: Record<string, any> = {};
       for (const s of sections) for (const f of s.fields) fd[f.key] = formValue(f, d);
@@ -151,12 +137,12 @@ function ReportDetail({ r, access, clearanceId, ar, canOpenOps, userId, onSaved 
   };
 
   const cancel = async () => {
-    try { await api.post(`/api/workflows/${r._id}/unlock`); } catch { /* القفلُ ينتهي وحدَه */ }
+    try { await api.post(`/api/workflows/${r._id}/unlock`); } catch { /* The lock expires on its own. */ }
     setEditing(false); setError('');
   };
 
   const save = async () => {
-    // ما تغيّر وحدَه يُرسَل: إرسالُ نوع الدفع كما هو يختمه «اختيارَ يد».
+    // Only changed fields are sent; sending the payment type as is would stamp it as a manual choice.
     const payload: Record<string, any> = {};
     for (const k of editableKeys) if (String(form[k] ?? '') !== String(orig[k] ?? '')) payload[k] = form[k];
     if (!Object.keys(payload).length) { await cancel(); return; }
@@ -168,7 +154,7 @@ function ReportDetail({ r, access, clearanceId, ar, canOpenOps, userId, onSaved 
       setNote(out?.refusedMessage || t('حُفظ التعديل.', 'Saved.'));
       onSaved();
     } catch (e: any) {
-      // رسالةُ الخادم كما هي: «لا يُسجَّل تاريخ السداد إلا بعد…»، «الكشف نقديّ…».
+      // The server message is shown as is, e.g. the payment date cannot be recorded until a condition holds, or the manifest is cash.
       setError(e?.message || t('تعذّر الحفظ', 'Could not save'));
     } finally { setBusy(false); }
   };
@@ -176,7 +162,7 @@ function ReportDetail({ r, access, clearanceId, ar, canOpenOps, userId, onSaved 
   const b = BILLING[r.billing];
   return (
     <div className="bg-slate-50/70 px-4 py-4 space-y-4">
-      {/* الحالُ بكلمة: الفوترةُ والتحصيلُ والتسليمُ والمرفقات. */}
+      {/* Status in a word: billing, collection, delivery and attachments. */}
       <div className="flex flex-wrap items-center gap-2 text-xs">
         <span className={`rounded px-1.5 py-0.5 font-medium ${b[2]}`}>{ar ? b[0] : b[1]}</span>
         {r.paymentType && <span className="rounded px-1.5 py-0.5 bg-white border border-slate-200 text-slate-700">{paymentKindLabel(paymentKindOf(r as any), ar)}</span>}
@@ -240,7 +226,7 @@ export default function LinkedOpsReports({ clearanceId, ar }: { clearanceId: str
   const t = (a: string, e: string) => (ar ? a : e);
   const { user } = useAuth();
   const canOpenOps = ['super_admin', 'admin'].includes(user?.role || '') || canAccessSection(user?.permissions, 'Operations');
-  // وطلبُ الشحن يُفتح لمن يفتح قسمَه — وإلّا يُقرأ رقمُه.
+  // A shipment order opens for users who can open its section; otherwise only its number is shown.
   const canOpenShipments = ['super_admin', 'admin'].includes(user?.role || '') || canAccessSection(user?.permissions, 'Shipment Orders');
   const [data, setData] = useState<Resp | null>(null);
   const [error, setError] = useState('');
@@ -267,7 +253,7 @@ export default function LinkedOpsReports({ clearanceId, ar }: { clearanceId: str
     const id = d?.clearance?._id || d?.id;
     if (!id || String(id) === clearanceId) load();
   }, [clearanceId, load]));
-  // عددُ المتابعات في الصفّ المطويّ — المتابعةُ تُكتب من التشغيل والتحصيل أيضًا.
+  // Follow-up count in the collapsed row; follow-ups are also written from operations and collections.
   useSocket('workflow:followUps', useCallback((d: any) => {
     if (!d || d.clearanceId === clearanceId) load();
   }, [clearanceId, load]));
@@ -384,8 +370,7 @@ export default function LinkedOpsReports({ clearanceId, ar }: { clearanceId: str
           ))}
         </div>
       )}
-      {/* ── طلباتُ الشحن المربوطة (٢٠٢٦/١٠/٢٦) ──────────────────────────────
-          من «إنشاء شحنة»: بالبوليصة أو الحاوية، أو برقم الشحنة في خانة النقل هنا. */}
+      {/* Linked shipment orders: from create-shipment, by waybill or container, or by shipment number in the transport field here. */}
       {data && (data.shipmentOrders || []).length > 0 && (
         <div className="border-t border-slate-100">
           <p className="px-5 pt-3 pb-1 text-xs font-bold text-slate-700">

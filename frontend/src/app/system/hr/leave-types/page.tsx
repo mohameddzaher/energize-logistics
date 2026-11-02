@@ -58,8 +58,7 @@ export default function LeaveTypesPage() {
     { header: ar ? 'الإخطار المسبق (يوم)' : 'Advance notice (days)', key: 'minAdvanceDays', transform: (v, r: any) => (r.requiresAdvanceNotice === false ? (ar ? 'معفاة' : 'Exempt') : (v ?? 30)), width: 20 },
     { header: tx.colActive, key: 'active', transform: (v) => (v ? tx.activeLabel : tx.inactiveLabel), width: 14 },
   ];
-  // الصفحة تعرض أنواع الإجازات كلَّها بلا بحثٍ ولا فلتر، فنطاقٌ ثانٍ سيخرج
-  // بالملفّ نفسه — واختيارٌ بين متطابقَين يوهم المستخدمَ بفرقٍ لا وجود له.
+  // The page lists all leave types without search or filter, so a second scope would export the same file; two identical choices would suggest a difference that does not exist.
   const scope = exportScopeLabels(ar);
   const exportOptions = [
     { key: 'all', label: scope.all, sheets: [{ name: tx.title, rows: types, columns: exportColumns }] },
@@ -124,7 +123,7 @@ export default function LeaveTypesPage() {
           <Field label={tx.fieldPaid}><Select value={form.paid ? '1' : '0'} onChange={(e) => set('paid', e.target.value === '1')}><option value="1">{tx.yes}</option><option value="0">{tx.no}</option></Select></Field>
           <Field label={tx.fieldAffectsBalance}><Select value={form.affectsBalance ? '1' : '0'} onChange={(e) => set('affectsBalance', e.target.value === '1')}><option value="1">{tx.yes}</option><option value="0">{tx.no}</option></Select></Field>
           <Field label={tx.fieldActive}><Select value={form.active ? '1' : '0'} onChange={(e) => set('active', e.target.value === '1')}><option value="1">{tx.yes}</option><option value="0">{tx.no}</option></Select></Field>
-          {/* سياسة الإخطار المسبق — الطارئة والمرضية تُعفى بضبط «لا» هنا. */}
+          {/* Advance-notice policy; emergency and sick leave are exempt by setting "no" here. */}
           <Field label={ar ? 'يتطلب إخطارًا مسبقًا؟' : 'Requires advance notice?'}>
             <Select value={form.requiresAdvanceNotice === false ? '0' : '1'} onChange={(e) => set('requiresAdvanceNotice', e.target.value === '1')}>
               <option value="1">{ar ? 'نعم — إجازة مخطَّطة' : 'Yes — planned leave'}</option>

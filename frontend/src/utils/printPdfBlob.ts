@@ -1,19 +1,8 @@
 /**
- * طباعةُ ملفِّ PDF جاهزٍ على الطابعة المتّصلة بالجهاز — بلا تنزيلٍ ولا فتحِ ملفّ.
- *
- * ── ولماذا إطارٌ مخفيٌّ لا نافذةٌ جديدة ────────────────────────────────────
- * البوليصةُ تُرسَم في الخادم (Puppeteer) وتعود بايتاتٍ في `Blob`. والمستخدم
- * يريدها على الورق لا في مجلّد التنزيلات: فيُعطى الـBlob عنوانًا محلّيًّا
- * (`blob:` — من أصل الصفحة نفسِه، فلا مانعَ أصلٍ يمنع الطباعة)، ويُحمَّل في
- * إطارٍ لا يُرى، ويُنادى `print()` على نافذته فيفتح حوارُ الطابعة على الملفّ
- * وحدَه — لا على الصفحة ولا على قوائمها.
- *
- * ونافذةٌ جديدة (`window.open`) كانت أسهل، لكنّ حاجبَ النوافذ يحجبها بلا خبر
- * حين تُفتح بعد `await` — وكلُّ طباعةٍ هنا تلي رحلةً إلى الخادم.
- *
- * والإطارُ يبقى مركَّبًا حتى تُغلَق حوارُ الطباعة: نَزْعُه فورَ النداء يُلغي
- * الطبعةَ في بعض المتصفّحات لأنّ المصدرَ يزول تحت الحوار. فيُنزَع بعد مهلةٍ
- * واسعة، ويُبطَل العنوانُ معه كي لا تتراكم الملفّاتُ في الذاكرة.
+ * Prints a ready PDF on the printer connected to the device, without downloading or opening a file.
+ * The waybill is rendered on the server (Puppeteer) and returns as bytes in a Blob. The Blob gets a local blob: URL (same origin as the page, so no origin restriction blocks printing), is loaded in an invisible frame, and print() on its window opens the print dialog on the file alone, not the page.
+ * A new window (window.open) was easier but the popup blocker silently blocks it after an await, and every print here follows a server round trip.
+ * The frame stays mounted until the print dialog closes: removing it right after the call cancels the print in some browsers because the source disappears under the dialog. It is removed after a generous delay and the URL revoked with it so files do not pile up in memory.
  */
 export function printPdfBlob(blob: Blob, { timeoutMs = 120000 }: { timeoutMs?: number } = {}): Promise<boolean> {
   return new Promise((resolve) => {
@@ -26,8 +15,8 @@ export function printPdfBlob(blob: Blob, { timeoutMs = 120000 }: { timeoutMs?: n
     let settled = false;
     const cleanup = () => {
       setTimeout(() => {
-        try { frame.remove(); } catch { /* نُزع سلفًا */ }
-        try { URL.revokeObjectURL(url); } catch { /* أُبطل سلفًا */ }
+        try { frame.remove(); } catch { /* Already removed. */ }
+        try { URL.revokeObjectURL(url); } catch { /* Already revoked. */ }
       }, timeoutMs);
     };
 
@@ -40,12 +29,12 @@ export function printPdfBlob(blob: Blob, { timeoutMs = 120000 }: { timeoutMs?: n
         cleanup();
         resolve(true);
       } catch {
-        // متصفّحٌ لا يطبع من إطار — يُفتح الملفُّ في تبويبٍ ليطبعه المستخدم.
+        // A browser that cannot print from a frame: the file opens in a tab for the user to print.
         cleanup();
         try { window.open(url, '_blank'); resolve(true); } catch { resolve(false); }
       }
     };
-    // لو لم يُطلَق `onload` أصلًا (قارئُ PDF معطَّل) لا يبقى النداءُ معلّقًا.
+    // If onload never fires (disabled PDF viewer), the call does not stay hanging.
     setTimeout(() => {
       if (settled) return;
       settled = true;

@@ -6,22 +6,15 @@ import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 
-// ═════════════════════════════════════════════════════════════════════════
-// «إرسال للعميل» — كشفُ الحساب بالبريد من صندوق التحصيل.
-// نظيرُ components/collections/SendStatementModal و PartyStatementPicker.
-//
-// يأخذ فلترَ الشاشة كما هو (العميل، الحالة، الفترة، التحديد) — وهو نفسُه الذي
-// يطبع «كشف حساب PDF» — فيرى الموظّفُ الرسالةَ مملوءةً من قالب القسم وبريدَ العميل
-// من ملفّه، ويعاين الـPDF المرفق، ثمّ يرسل. والحسابُ كلُّه في الخادم.
-// ═════════════════════════════════════════════════════════════════════════
+// Send to customer: the account statement by email from the collections mailbox. Counterpart of SendStatementModal and PartyStatementPicker. It takes the screen filter as is (customer, status, period, selection), the same one that prints the account statement PDF, so the employee sees the message filled from the section template and the customer's email from its file, previews the attached PDF, then sends. All computation is on the server.
 
-/// معاملاتُ الطلب أزواجًا — المفتاحُ قد يتكرّر (sel=a&sel=b، cf_x=…).
+/// Request parameters as pairs: a key may repeat (sel=a&sel=b, cf_x=...).
 typedef QueryPairs = List<(String, String)>;
 
 String queryString(QueryPairs p) =>
     p.map((x) => '${Uri.encodeQueryComponent(x.$1)}=${Uri.encodeQueryComponent(x.$2)}').join('&');
 
-/// الأزواجُ ← كائنٌ يحفظ المكرَّرَ قائمةً — كما يرسله الموقع في `query`.
+/// Pairs to an object that keeps duplicates as a list, as the web sends in `query`.
 Map<String, dynamic> queryObject(QueryPairs p) {
   final out = <String, dynamic>{};
   for (final (k, v) in p) {
@@ -37,7 +30,7 @@ Map<String, dynamic> queryObject(QueryPairs p) {
   return out;
 }
 
-/// كشفُ الحساب PDF لما على الشاشة — يُفتح للمعاينة أو الطباعة أو المشاركة.
+/// Account statement PDF for what is on screen; opened for preview, print or share.
 Future<void> openCollectionsStatement(BuildContext context, String kind, QueryPairs params) async {
   final messenger = ScaffoldMessenger.of(context);
   messenger.showSnackBar(SnackBar(content: Text(tr('جارٍ إعداد الكشف…', 'Preparing the statement…')), duration: const Duration(seconds: 2)));
@@ -49,7 +42,7 @@ Future<void> openCollectionsStatement(BuildContext context, String kind, QueryPa
   }
 }
 
-/// يفتح شاشةَ الإرسال — ويردّ true إن أُرسلت الرسالة.
+/// Opens the send screen; returns true if the message was sent.
 Future<bool> openSendStatement(BuildContext context, {required String kind, required QueryPairs params}) async {
   final r = await Navigator.push<bool>(context, MaterialPageRoute(builder: (_) => SendStatementScreen(kind: kind, params: params)));
   return r == true;
@@ -109,7 +102,7 @@ class _SendStatementScreenState extends State<SendStatementScreen> {
     }
   }
 
-  /// يقسم ما كُتب على الفواصل والمسافات، فيُضاف الصحيحُ ويبقى غيرُه في الخانة.
+  /// Splits the typed text on commas and spaces; valid entries are added and the rest stays in the field.
   void _add(List<String> list, TextEditingController c) {
     final parts = c.text.split(RegExp(r'[\s,;،]+')).map((x) => x.trim().toLowerCase()).where((x) => x.isNotEmpty).toList();
     if (parts.isEmpty) return;
@@ -292,9 +285,7 @@ class _SendStatementScreenState extends State<SendStatementScreen> {
   }
 }
 
-// ── «إرسال كشف حساب» من ملفّ العميل ─────────────────────────────────────────
-// النوعُ والفترةُ والحالةُ وفواتيرُ بعينها بعلامة، ثمّ شاشةُ المعاينة والإرسال
-// بالاختيار نفسِه — فالكشفُ المرفقُ هو ما اختير هنا لا غيرُه.
+// Send account statement from the customer file: type, period, status and specific marked invoices, then the preview and send screen with the same selection, so the attached statement is exactly what was chosen here.
 
 Future<bool> openPartyStatementPicker(BuildContext context, {required String partyName, required String defaultKind}) async {
   final r = await Navigator.push<bool>(context,
@@ -353,7 +344,7 @@ class _PartyStatementPickerScreenState extends State<PartyStatementPickerScreen>
       final d = await Api.instance.get('/api/collections-dept/invoices/$_kind?${queryString(p)}');
       if (!mounted || mine != _seq) return;
       final all = [for (final r in (d['invoices'] as List? ?? const [])) Map<String, dynamic>.from(r as Map)];
-      // اسمٌ يطابق عميلًا آخرَ أطول لا يدخل كشفَ هذا.
+      // A name matching another, longer customer does not enter this one's statement.
       setState(() => _rows = all.where((r) => _norm(r['customer']) == _norm(widget.partyName) || _norm(r['customer']).isEmpty).toList());
     } catch (_) {
       if (mounted && mine == _seq) setState(() => _rows = []);
@@ -375,7 +366,7 @@ class _PartyStatementPickerScreenState extends State<PartyStatementPickerScreen>
     final rows = _rows ?? const [];
     final p = <(String, String)>[('customer', widget.partyName), ('lang', Lang.instance.ar ? 'ar' : 'en'),
       if (_from.isNotEmpty) ('from', _from), if (_to.isNotEmpty) ('to', _to), if (_state.isNotEmpty) ('collected', _state)];
-    // المختارُ وحدَه إن اختير؛ وإلّا صفوفُ هذا العميل كلُّها.
+    // The selected only if any are selected; otherwise all of this customer's rows.
     final keys = _picked.isNotEmpty ? _picked.toList() : rows.map(_keyOf).toList();
     for (final k in keys) {
       p.add(('sel', k));

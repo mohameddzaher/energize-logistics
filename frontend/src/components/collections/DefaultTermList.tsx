@@ -1,14 +1,5 @@
 'use client';
-/**
- * عملاءُ يُقاسون على المدّة الافتراضيّة — ومن هنا تُكتب مُددُهم.
- *
- * خطورةُ الفاتورة تُقاس على مدّة سداد عميلها؛ ومن لم تُكتب مدّتُه يُقاس على
- * ثلاثين يومًا (قرارُ صاحب الشركة). وذلك تقديرٌ لا اتّفاق، فالقائمةُ تُعرَض
- * ليُسَدّ نقصُها: لكلّ عميلٍ خانةُ «المدّة» تُحفَظ في ملفّه (`PUT /parties/:id`)،
- * فيخرج من القائمة وتُعاد خطورةُ فواتيره في الحال.
- *
- * والصفوفُ من جواب اللوحة نفسِه (`defaultTerm.parties`) — تحت فلاترها.
- */
+/** Customers measured against the default term, and where their terms are entered. Invoice severity is measured against the customer's payment term; one without a term is measured against thirty days (company decision). That is an estimate, not an agreement, so the list is shown to be filled in: each customer gets a term field saved to their file (PUT /parties/:id), leaving the list and recomputing their invoices' severity at once. Rows come from the dashboard response (defaultTerm.parties), under its filters. */
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { X, Search, ExternalLink, Loader2, Check } from 'lucide-react';
@@ -31,7 +22,7 @@ export default function DefaultTermList({
 }: {
   open: boolean; onClose: () => void; parties: DefaultTermParty[]; days: number; ar: boolean; canEdit: boolean;
   onSaved?: () => void;
-  /** يفتح فواتيرَ عميلٍ واحدٍ على المدّة الافتراضيّة. */
+  /** Opens one customer's invoices on the default term. */
   onOpenInvoices?: (p: DefaultTermParty) => void;
 }) {
   const t = (a: string, e: string) => (ar ? a : e);

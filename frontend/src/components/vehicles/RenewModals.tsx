@@ -1,41 +1,33 @@
 'use client';
-// نافذتا التجديد — الفردية والجماعية — لمستندات المركبات.
-//
-// كانتا مكتوبتين داخل صفحة «الانتهاءات» وحدها، فصفحة التنبيهات — وهي أول شاشة
-// يفتحها المسؤول صباحًا — لم يكن فيها زر تجديد أصلًا: يرى المستند منتهيًا ثم
-// يخرج ليفتح شاشة أخرى ليجدّده. النسخ واللصق كان سيجعل النافذتين تفترقان مع
-// أول تعديل، فالمكان الصحيح لهما ملف واحد تستورده الشاشتان.
+// Single and bulk renewal modals for vehicle documents.
+// Shared by the expiries and alerts pages so the two copies cannot drift apart.
 import { useState, useEffect } from 'react';
 import { X, Check } from 'lucide-react';
 import { useDialog } from '@/components/system/DialogProvider';
-// ── والتجديدُ يُكتب بالهجريّ كما يُكتب بالميلاديّ ───────────────────────────
-// الاستمارةُ والفحصُ والتفويضُ تصدر بتواريخَ هجريّة، ومن يجدّد يقرأ التاريخَ
-// الجديدَ من الورقة التي في يده. فخانةُ التجديد خانتان تُسمِع كلٌّ منهما الأخرى،
-// كما في نموذج التعديل. راجع HijriGregorianField.
+// Renewal dates are entered in Hijri or Gregorian, as in the edit form. See HijriGregorianField.
 import HijriGregorianField from '@/components/vehicles/HijriGregorianField';
 import { renewDocument, renewBulk, renewSharedPolicy, fmtDate, docNumberLabel, docStartLabel } from '@/lib/vehicleRegistry';
 
-/** أقلّ ما تحتاجه النافذة لتجدّد مستندًا — تكتفي به الصفوف على اختلاف مصادرها.
- *  صفوف «الانتهاءات» تسمّي المستند docKey وصفوف «التنبيهات» تسمّيه docType،
- *  فالشكل المشترك هنا هو ما يمنع كل شاشة من فرض تسميتها على النافذة. */
+/**
+ * Minimum a modal needs to renew a document, so rows from different sources fit.
+ * Expiries rows name the document docKey and alerts rows name it docType; this shared shape avoids forcing one naming on the modal.
+ */
 export type RenewTarget = {
   vehicleId: string;
-  /** بطاقةُ السائق لا مركبةَ لها: تُجدَّد بمعرّفها هي. راجع renewDriverCard. */
+  /** A driver card has no vehicle; it is renewed by its own id. See renewDriverCard. */
   driverCardId?: string;
   plateNumber: string;
   docKey: string;
   docAr?: string;
   docEn?: string;
   expiryDate?: string | null;
-  /** رقم المستند الجاري به العمل — يُعرَض ليُقارَن بالجديد قبل استبداله. */
+  /** Current document number, shown to compare with the new one before replacing it. */
   documentNumber?: string;
-  /** تاريخ بداية المستند الجاري (للتفويض) — يُعرَض ليُقارَن بالجديد. */
+  /** Current document start date (authorization), shown to compare with the new one. */
   startDate?: string | null;
 };
 
-// ── تجديد ────────────────────────────────────────────────────────────────────
-// خطوة واحدة: التاريخ الجديد. الباقي اختياري. السيرفر بيقيّد القديم والجديد في
-// سجل المركبة، فـ«جدّدناها امتى وبكام» بيفضل له إجابة.
+// Renew: one step, the new date; the rest is optional. The server records old and new values in the vehicle history.
 export function RenewModal({ row, ar, onClose, onDone }: {
   row: RenewTarget; ar: boolean; onClose: () => void; onDone: () => void;
 }) {
@@ -48,18 +40,16 @@ export function RenewModal({ row, ar, onClose, onDone }: {
   const [startDate, setStartDate] = useState('');
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
-  // اسمُ الرقم يأتي من تعريف المستند لا من هذه النافذة: المستند الذي لا رقم له
-  // لا يجد هنا خانةً أصلًا، فلا يكتب أحدٌ رقمًا لا موضع له يُحفَظ فيه.
+  // The number label comes from the document definition, not this modal, so a document with no number gets no field.
   const numLabel = docNumberLabel(row.docKey, ar);
   const startLabel = docStartLabel(row.docKey, ar);
 
-  // اقتراح: سنة من تاريخ الانتهاء الحالي لو لسه ساري، وإلا سنة من النهاردة.
+  // Suggested date: one year from the current expiry if still valid, otherwise one year from today.
   useEffect(() => {
     const base = row.expiryDate && new Date(row.expiryDate) > new Date() ? new Date(row.expiryDate) : new Date();
     const y = new Date(base); y.setFullYear(y.getFullYear() + 1);
     setNewExpiry(y.toISOString().slice(0, 10));
-    // البدايةُ تُقترَح باليوم: المستند الذي يُجدَّد اليوم يبدأ اليوم غالبًا،
-    // ومن كانت بدايتُه غير ذلك يكتبها.
+    // Start defaults to today since a document renewed today usually starts today; it can be edited.
     setStartDate(new Date().toISOString().slice(0, 10));
   }, [row]);
 
@@ -67,7 +57,7 @@ export function RenewModal({ row, ar, onClose, onDone }: {
     if (!newExpiry) { notify(ar ? 'اختر تاريخ الانتهاء الجديد' : 'Pick the new expiry', 'error'); return; }
     setBusy(true);
     try {
-      // بطاقةُ السائق لا مركبةَ لها، فالمسارُ يمضي بمعرّفها هي.
+      // A driver card has no vehicle, so the request goes by its own id.
       await renewDocument(row.vehicleId || row.driverCardId || '', {
         document: row.docKey, newExpiry,
         ...(row.driverCardId ? { driverCardId: row.driverCardId } : {}),
@@ -94,10 +84,7 @@ export function RenewModal({ row, ar, onClose, onDone }: {
         </p>
 
         <div className="space-y-3">
-          {/* ── البدايةُ أوّلًا ثم النهاية ──────────────────────────────────
-              المدّة تُقرأ من اليسار إلى اليمين: من كذا إلى كذا. ووضعُ النهاية
-              فوق البداية يجعل مَن يملأ الاستمارة يكتب النهاية قبل أن يعرف
-              البداية — وهو ترتيبٌ لا يُكتب به تاريخٌ في أيّ ورقة. */}
+          {/* Start first, then end: a duration reads from start to end, and this is the order dates appear on paper. */}
           {startLabel && (
             <div>
               <label className="block text-xs font-semibold text-slate-600 mb-1">
@@ -114,9 +101,7 @@ export function RenewModal({ row, ar, onClose, onDone }: {
             <HijriGregorianField value={newExpiry} onChange={setNewExpiry} ar={ar} inp={inp}
               min={startLabel && startDate ? startDate : undefined} autoFocus={!startLabel} />
           </div>
-          {/* ── الرقم الجديد، للمستند الذي يخرج من التجديد برقمٍ آخر ────────
-              بطاقة التشغيل تُستخرج برقمٍ جديد كل مرة، والتفويض كذلك أحيانًا.
-              وتركُ الخانة فارغة يعني «الرقم هو هو» — لا محوَه. */}
+          {/* New number, for documents that come out of renewal with a different number (operating card, sometimes authorization). Empty means keep the same number, not clear it. */}
           {numLabel && (
             <div>
               <label className="block text-xs font-semibold text-slate-600 mb-1">
@@ -158,12 +143,8 @@ export function RenewModal({ row, ar, onClose, onDone }: {
   );
 }
 
-// ── تجديد أكتر من مستند بنفس التاريخ ─────────────────────────────────────────
-// «النهاردة عندي تجديد ١٥١ كارت تشغيل كلهم انتهاءهم في يوم واحد» — فبدل ما يفتح
-// مركبة مركبة، يختار ويقول التاريخ مرة واحدة.
-//
-// السيرفر بيرفض العملية كلها لو سطر واحد غلط: تجديد نصّه اتنفّذ على ١٥١ مركبة
-// كارثة — مفيش حد هيعرف مين اتجدّد ومين لأ.
+// Bulk renewal of several documents with one date.
+// The server rejects the whole operation if one line is invalid, since a half-applied renewal across many vehicles would be untraceable.
 export function BulkRenewModal({ rows, ar, onClose, onDone }: {
   rows: RenewTarget[]; ar: boolean; onClose: () => void; onDone: () => void;
 }) {
@@ -174,10 +155,7 @@ export function BulkRenewModal({ rows, ar, onClose, onDone }: {
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
   const [errors, setErrors] = useState<string[]>([]);
-  // ── الأرقام الجديدة: سطرًا سطرًا، ومطويّةً حتى تُطلَب ────────────────────
-  // بطاقةُ كل مركبة تخرج برقمها هي، فرقمٌ واحد مشترك على مئةٍ منها يجعل المئة
-  // نسخةً من ورقة واحدة — وهذا أسوأ من ألا يُكتب رقم. ومَن جدّد التواريخ فقط
-  // لا يُجبَر على المرور بمئة خانة: القائمة مطويّة ما لم يفتحها.
+  // New numbers: one per line, collapsed until opened. Each vehicle's card has its own number, so one shared number would clone one paper across many vehicles. Date-only renewals skip this list.
   const [showNumbers, setShowNumbers] = useState(false);
   const [numbers, setNumbers] = useState<Record<string, string>>({});
   const numbered = rows.filter((r) => !!docNumberLabel(r.docKey, ar));
@@ -188,7 +166,7 @@ export function BulkRenewModal({ rows, ar, onClose, onDone }: {
 
   const today = new Date().toISOString().slice(0, 10);
   const past = !!when && when < today;
-  // نفس المستند على أكتر من مركبة شائع؛ بنعرض التقسيمة عشان يتأكد إنه اختار صح.
+  // The same document on several vehicles is common; the breakdown is shown so the selection can be checked.
   const byDoc = rows.reduce((m: Record<string, number>, r) => {
     const k = (ar ? r.docAr : r.docEn) || r.docKey; m[k] = (m[k] || 0) + 1; return m;
   }, {});
@@ -199,7 +177,7 @@ export function BulkRenewModal({ rows, ar, onClose, onDone }: {
       const r = await renewBulk({
         items: rows.map((x, i) => ({
           vehicle: x.vehicleId, document: x.docKey,
-          // بطاقةُ السائق لا مركبةَ لها: تُرسَل بمعرّفها.
+          // A driver card has no vehicle; sent by its own id.
           ...(x.driverCardId ? { driverCardId: x.driverCardId } : {}),
           documentNumber: (numbers[`${x.vehicleId}:${x.docKey}:${i}`] || '').trim(),
         })),
@@ -300,19 +278,11 @@ export function BulkRenewModal({ rows, ar, onClose, onDone }: {
   );
 }
 
-// ── تجديد ورقةٍ واحدةٍ تغطّي مركباتٍ كثيرة ────────────────────────────────────
-//
-// وثيقةُ تأمينٍ واحدة تغطّي مئةً وثمانيًا وتسعين مركبة. وتجديدُها بتأشير مئةٍ
-// وثمانٍ وتسعين خانةً ليس تجديدًا للوثيقة: هو مئةٌ وثمانٍ وتسعون عمليّةً يدويّةً
-// لحدثٍ واحد، وأيُّ مركبةٍ تُنسى تبقى في الشاشة «منتهية» وهي مؤمَّنةٌ فعلًا.
-//
-// فالنافذةُ تسأل عن الوثيقة لا عن المركبات: تُعرَض أرقامُ الوثائق وأمام كلٍّ
-// عددُ مركباتها، ويُختار رقمٌ ويُكتب التاريخُ الجديد مرّةً واحدة. والرقمُ
-// الجديد — إن خرجت الوثيقةُ برقمٍ آخر — يسري على الجميع، وهو صحيحٌ هنا وحده:
-// هي وثيقةٌ واحدة. والخادمُ يرفضه لأيّ مستندٍ ورقتُه لكلّ مركبة.
+// Renewing one paper that covers many vehicles (e.g. one insurance policy).
+// The modal asks about the policy, not the vehicles: it lists document numbers with their vehicle counts, and one date is applied to all. A new number applies to all, valid only because it is one document. The server rejects it for documents that have a paper per vehicle.
 export function SharedPolicyRenewModal({ docKey, groups, ar, onClose, onDone }: {
   docKey: string;
-  /** أرقامُ الوثائق المعروضة وعددُ مركبات كلٍّ منها وأقربُ انتهاء. */
+  /** Document numbers shown, with the vehicle count and nearest expiry of each. */
   groups: { number: string; count: number; expiryDate?: string | null }[];
   ar: boolean; onClose: () => void; onDone: () => void;
 }) {
@@ -330,7 +300,7 @@ export function SharedPolicyRenewModal({ docKey, groups, ar, onClose, onDone }: 
   const today = new Date().toISOString().slice(0, 10);
   const past = !!when && when < today;
 
-  // سنةٌ من انتهائها الحالي إن كانت سارية، وإلّا سنةٌ من اليوم — كالتجديد المفرد.
+  // One year from the current expiry if still valid, otherwise one year from today, as in single renewal.
   useEffect(() => {
     const base = picked?.expiryDate && new Date(picked.expiryDate) > new Date()
       ? new Date(picked.expiryDate) : new Date();

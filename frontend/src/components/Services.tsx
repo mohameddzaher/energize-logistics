@@ -58,7 +58,7 @@ export default function Services() {
 
   return (
     <section id="services" className="relative py-16 bg-gray-800 overflow-hidden">
-      {/* ✨ لمسة الخلفية البرتقالية الناعمة */}
+      {/* Soft orange background glow. */}
       <div className="absolute top-[-100px] end-[-120px] w-[350px] h-[350px] bg-[#f37121]/20 blur-[120px] rounded-full" />
       <div className="absolute bottom-[-120px] start-[-120px] w-[300px] h-[300px] bg-[#f37121]/15 blur-[110px] rounded-full" />
 
@@ -68,7 +68,7 @@ export default function Services() {
         </h2>
 
         <div className="flex flex-col gap-10 items-center">
-          {/* الصف الأول */}
+          {/* First row. */}
           <div className="flex flex-wrap justify-center gap-8">
             {services.slice(0, 3).map((s, idx) => (
               <div
@@ -86,7 +86,7 @@ export default function Services() {
             ))}
           </div>
 
-          {/* الصف الثاني */}
+          {/* Second row. */}
           <div className="flex flex-wrap justify-center gap-8">
             {services.slice(3).map((s, idx) => (
               <div

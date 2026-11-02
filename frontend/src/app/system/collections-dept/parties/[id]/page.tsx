@@ -1,10 +1,7 @@
 'use client';
 /**
- * ملفُّ الطرف — عميلًا كان أو موردًا.
- *
- * السؤالُ الذي لم تكن له شاشة: «كم لنا عند هذا العميل، ومن أيّ كشوف؟» كان
- * جوابُه تصديرَ الجدول كلِّه وفلترتَه في إكسل. وهنا: أرقامُه، وحركتُه بالشهر،
- * وكشوفُه بتفاصيلها — وكلُّ صيغةٍ كُتب بها اسمُه في الكشوف تخصّه.
+ * Party file, customer or vendor.
+ * The question with no screen: 'how much is ours with this customer, and from which statements?' was answered by exporting the whole table and filtering in Excel. Here: his figures, monthly movement, and his statements in detail, including every spelling of his name in the statements.
  */
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
@@ -55,7 +52,7 @@ interface LedgerInvoice {
 
 interface Profile {
   party: CollectionsParty;
-  /** مالُه كما يقوله دفترُ التحصيل — لا كما يُشتقُّ من الكشوف. */
+  /** His money as the collections ledger says it, not as derived from the statements. */
   money?: {
     invoices: LedgerInvoice[];
     totals: { count: number; invoiced: number; collected: number; outstanding: number; openCount: number; oldestOpenDays: number };
@@ -69,7 +66,7 @@ interface Profile {
 }
 
 export default function PartyProfilePage() {
-  // `useParams` قد تعود فارغةً أثناء أوّل رسمة، فتُقرأ بحذر.
+  // `useParams` may return empty on the first render, so read it defensively.
   const id = String(useParams<{ id: string }>()?.id || '');
   const router = useRouter();
   const { lang, isRTL } = useLanguage();
@@ -79,25 +76,22 @@ export default function PartyProfilePage() {
 
   const { user } = useAuth();
   const canEdit = canEditCollections(user);
-  // «إرسال كشف حساب» من ملفّ العميل نفسِه — يصل إليه ولو لم تكن له فواتير بعد
-  // (لا يظهر في فلتر صفحتي الفواتير إلّا مَن له فواتير). راجع SendStatementModal.
+  // Send an account statement from the customer's own file, reachable even with no invoices yet (only parties with invoices appear in the invoice pages' filters). See SendStatementModal.
   const [sendKind, setSendKind] = useState<'cash' | 'tax' | null>(null);
   const [data, setData] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
 
-  // ── المتابعات ───────────────────────────────────────────────────────────
-  // كانت صفحةً في قسمٍ زال، تُقيَّد على عميلٍ من ورك فلو ميّت. صارت هنا: على
-  // الطرف نفسِه الذي تُقرأ أرقامُه أعلى الصفحة.
-  // ── مدى كشف الحساب ─────────────────────────────────────────────────────
-  // يبدأ على الشهر الجاري — وهو أكثرُ ما يُطلَب — ويُغيَّر بضغطتين لمن أراد
-  // شهرًا بعينه أو فترةً بين تاريخين.
+  // Follow-ups.
+  // They were a page in a removed section, tied to a customer through a free-text field. Now they are here, on the same party whose figures are read at the top of the page.
+  // Account statement range.
+  // Starts on the current month, the most common request, and changes in two clicks for a specific month or a range between two dates.
   const monthStart = new Date();
   const [stFrom, setStFrom] = useState(
     new Date(monthStart.getFullYear(), monthStart.getMonth(), 1).toISOString().slice(0, 10));
   const [stTo, setStTo] = useState(new Date().toISOString().slice(0, 10));
 
-  // قائمةُ الفواتير تبدأ على ما لم يُحصَّل: هو سببُ فتح الملفّ.
+  // The invoice list starts on what is uncollected: it is why the file is opened.
   const [showPaidInvoices, setShowPaidInvoices] = useState(false);
 
   const [followUps, setFollowUps] = useState<FollowUp[]>([]);
@@ -109,7 +103,7 @@ export default function PartyProfilePage() {
     try {
       const d = await api.get<{ followUps: FollowUp[] }>(`/api/collections-dept/parties/${id}/follow-ups`);
       setFollowUps(d.followUps || []);
-    } catch { /* الملفُّ يُقرأ ولو تعذّرت المتابعات */ }
+    } catch { /* The file is readable even if follow-ups fail to load. */ }
   }, [id]);
   useEffect(() => { loadFollowUps(); }, [loadFollowUps]);
 
@@ -147,19 +141,16 @@ export default function PartyProfilePage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, page]);
   useEffect(() => { load(); }, [load]);
-  // تعديلُ الطرف (بريدُه، بياناتُه) من أيّ شاشةٍ، وبريدُ كشفٍ أُرسل إليه — يظهر هنا في لحظته.
+  // A party edit (email, data) from any screen, and a statement emailed to him, show here immediately.
   useSocket('collections:party', useCallback((d: any) => { if (!d?.id || String(d.id) === String(id)) load(); }, [id, load]));
   useSocket('collections:changed', useCallback((d: any) => { if (d?.source === 'email' && (!d.party || String(d.party) === String(id))) load(); }, [id, load]));
 
-  // ── قمعُ إكسل على جدولَي الملفّ ────────────────────────────────────────
-  // لكلِّ جدولٍ قمعُه: فلترُ الفواتير لا يفلتر الكشوفَ ولا العكس.
-  //
-  // وموضعُهما هنا لا بعد العودتين أدناه: الشاشةُ ترجع باكرًا أثناء التحميل
-  // وحين لا يُوجَد الطرف، فخطّافٌ بعدهما يُنادى في رسمةٍ ولا يُنادى في أخرى —
-  // وهو خطأ React #310 الذي يُسقط الشاشةَ كلَّها برقمٍ لا يقول شيئًا.
+  // Excel-style funnel on the file's two tables.
+  // Each table has its own funnel: the invoice filter does not filter statements and vice versa.
+  // Placed here, not after the two early returns below: the screen returns early while loading and when the party is missing, so a hook after them is called in one render and not in another, which is React error #310 that takes down the whole screen with an unhelpful number.
   const invCf = useColumnFilters<any>();
   const repCf = useColumnFilters<any>();
-  // مرفقاتُ فواتير الطرف — نداءٌ واحدٌ للمعروض كلِّه (قبل أيّ رجوعٍ مبكّر: خطّاف).
+  // Attachments of the party's invoices: one call for everything shown (before any early return, since it is a hook).
   const invAtt = useAttachmentCounts('tax', (data?.money?.invoices || []).map((i: any) => String(i.invoiceNumber || '')));
 
   if (loading && !data) return <Spinner />;
@@ -170,11 +161,11 @@ export default function PartyProfilePage() {
   const W = kindWords(kind, ar);
   const openCount = kind === 'customer' ? (p.openInvoices ?? 0) : p.openReports;
   const Icon = kind === 'supplier' ? Truck : Users;
-  // العمودُ الذي يحمل المال يختلف بالجهة، وكذلك الذي يقول إنّه أُغلق.
+  // The column carrying the money differs by side, and so does the one saying it is closed.
   const valueKey = kind === 'customer' ? 'sellingValue' : 'purchaseValue';
   const closedKey = kind === 'customer' ? 'collectionDate' : 'paymentDate';
 
-  // والقيمُ هي نصوصُ الخلايا كما تُقرأ — «لم تُحصَّل» لا `false`.
+  // Values are the cell texts as read ('not collected'), not `false`.
   const invBase = (data.money?.invoices || []).filter((i) => showPaidInvoices || !i.collected);
   const IG: Record<string, (i: any) => any> = {
     invoiceNumber: (i) => i.invoiceNumber,
@@ -197,7 +188,7 @@ export default function PartyProfilePage() {
   };
   const repShown = repCf.apply(data.reports || [], RG);
 
-  /** طباعةُ فواتيره — المعروضةُ منها، بالأعمدة نفسِها. */
+  /** Print his invoices: those shown, with the same columns. */
   const printInvoices = () => {
     const ok = printTable({
       title: t(`فواتير ${data.party.name}`, `${data.party.name} — invoices`),
@@ -272,11 +263,7 @@ export default function PartyProfilePage() {
           </button>
         )}
 
-        {/* ── كشفُ حسابٍ يُطبَع ويُرسَل ────────────────────────────────────
-            المطالبةُ تُرسَل ورقةً: ما فُوتِر في الفترة، وما حُصّل منه، وما بقي،
-            ومعه ما دار من متابعاتٍ مع العميل. ويُبنى في الخادم لا في المتصفّح —
-            هناك الترويسةُ والخطوطُ مضبوطةٌ والعربيّةُ تُرسَم صحيحةً.
-            والمدى يُختار هنا: «اطبعه لي عن شهر ٨» سؤالٌ يُطرح كلَّ شهر. */}
+        {/* Account statement printed and sent. A claim is sent as paper: what was invoiced in the period, what was collected, what remains, with the follow-ups held with the customer. Built on the server, not in the browser, where the letterhead and fonts are controlled and Arabic renders correctly. The range is chosen here: 'print month 8 for me' is asked every month. */}
         {kind === 'customer' && (
           <div className="flex items-center gap-1.5">
             <input type="date" value={stFrom} onChange={(e) => setStFrom(e.target.value)}
@@ -295,14 +282,14 @@ export default function PartyProfilePage() {
           options={[{
             key: 'shown',
             label: t('أوامر نقل هذه الصفحة', 'Reports on this page'),
-            // بعد قمع الأعمدة لا قبله — راجع repShown.
+            // After the column funnel, not before; see repShown.
             sheets: [{ name: t('أوامر النقل', 'Reports'), rows: repShown, columns: reportCols }],
           }]}
         />
       </PageHeader>
-      {/* العميلُ نفسُه في الأقسام الأخرى */}
+      {/* The same customer in the other sections. */}
       {kind === 'customer' && <CustomerPresence reg="collections" id={String((p as any)._id || id)} ar={ar} onChanged={load} />}
-      {/* حساب البوابة يُفعَّل من هنا أيضًا — مربوطًا بسجلّ العميل الرئيسي في CRM. */}
+      {/* The portal account is also enabled from here, linked to the customer's master record in CRM. */}
       {kind === 'customer' && (p as any).crmCompany && (
         <PortalAccountCard source="crm_company" refId={String((p as any).crmCompany?._id || (p as any).crmCompany)} name={p.name} />
       )}
@@ -312,7 +299,7 @@ export default function PartyProfilePage() {
         <Stat label={W.totalLabel} value={money(p.total)} />
         <Stat label={W.settledLabel} value={money(p.settled)} accent="text-emerald-600" />
         <Stat label={W.dueLabel} value={money(p.outstanding)} accent={p.outstanding > 0 ? 'text-red-600' : 'text-slate-400'} />
-        {/* للعميل: فواتيرُ الدفتر المفتوحة. وللمورّد: كشوفُه التي لم تُسدَّد. */}
+        {/* For a customer: open ledger invoices. For a vendor: his unpaid statements. */}
         <Stat label={W.openLabel} value={money(openCount)} accent={openCount > 0 ? 'text-amber-600' : 'text-slate-400'} />
       </div>
 
@@ -327,7 +314,7 @@ export default function PartyProfilePage() {
               <Row label={t('البريد', 'Email')} value={((p as any).emails && (p as any).emails.length ? (p as any).emails : (p.email ? [p.email] : [])).join(' · ')} href={p.email ? `mailto:${((p as any).emails && (p as any).emails.length ? (p as any).emails : [p.email]).join(',')}` : undefined} />
               <Row label={t('مسؤول التواصل', 'Contact')} value={p.contactPerson} />
               <Row label={t('جوال المسؤول', 'Contact phone')} value={p.contactPhone} href={p.contactPhone ? `tel:${p.contactPhone}` : undefined} />
-              {/* محاسبُ الطرف: مناقشةُ سندٍ مع المالك تضيّع يومًا. */}
+              {/* The party's accountant: discussing a voucher with the owner wastes a day. */}
               <Row label={t('محاسب الطرف', 'Their accountant')} value={p.accountantName} />
               <Row label={t('جوال المحاسب', 'Accountant phone')} value={p.accountantPhone} href={p.accountantPhone ? `tel:${p.accountantPhone}` : undefined} />
             </div>
@@ -346,15 +333,13 @@ export default function PartyProfilePage() {
             </div>
           </div>
 
-          {/* ── الحسابُ في دفتر التحصيل ──────────────────────────────────────
-              الكودُ هويّتُه في المحاسبة وفي كلّ مراسلة، ومَن يتولّاه هو أوّلُ
-              ما يُسأل عنه حين يتأخّر. وكانت تُقرأ من الإكسل في كلّ مرّة. */}
+          {/* The account in the collections ledger. The code is his identity in accounting and in all correspondence, and who handles him is the first thing asked when he is late. It used to be read from Excel each time. */}
           {(p.code || p.effectiveOfficer || p.collectionOfficer || p.grade || p.department) && (
             <div>
               <p className="text-[13px] font-bold text-slate-900 mb-2">{t('الحساب', 'The account')}</p>
               <div className="space-y-1.5">
                 <Row label={t('الكود', 'Code')} value={p.code} />
-                {/* المسؤولُ الفعليّ: حسابٌ لم يُسنَد فعلى مدير القسم — ويُقال ذلك. */}
+                {/* The effective owner: an account with no assignee falls on the department manager, and this is stated. */}
                 <Row label={t('موظف التحصيل', 'Collection officer')}
                   value={p.officerIsDefault && p.effectiveOfficer
                     ? `${p.effectiveOfficer} — ${t('مدير القسم (غير مُسنَد)', 'dept. manager (unassigned)')}`
@@ -371,15 +356,11 @@ export default function PartyProfilePage() {
           <div>
             <p className="text-[13px] font-bold text-slate-900 mb-2">{t('شروط التحصيل', 'Collection terms')}</p>
             <div className="space-y-1.5">
-              {/* ── نوعُ الحساب، لا قاعدةٌ على شحناته ────────────────────────
-                  يقول في أيّ دفترٍ يجلس الحساب ومنه يُولَّد كودُه. ولا يقرّر
-                  نوعَ دفعِ أمر نقل بعينه: العميلُ الواحد يقول في حمولةٍ «كاش»
-                  وفي أخرى «افتحوا فاتورة»، وذلك يُكتب على أمر النقل نفسِه. */}
+              {/* Account type, not a rule on its shipments. It says which ledger the account sits in and his code is generated from it. It does not decide the payment type of a given transport order: one customer says 'cash' on one load and 'open an invoice' on another, and that is written on the transport order itself. */}
               {kind === 'customer' && (
                 <Row label={t('نوع الحساب', 'Account type')} value={paymentTypeLabel(p.paymentType, ar)} />
               )}
-              {/* المهلةُ تُعَدّ من تسليم الفاتورة، لا من تاريخها — تُقال صراحةً
-                  لأنّ الفرقَ بينهما هو الفرقُ بين «متأخّر» و«لم يستلم بعد». */}
+              {/* The term counts from invoice delivery, not invoice date; stated explicitly because the difference is the difference between 'overdue' and 'not received yet'. */}
               <Row label={t('مهلة السداد (من تاريخ التسليم)', 'Credit days (from delivery)')}
                 value={p.creditDays ? (ar ? `${p.creditDays} يومًا` : `${p.creditDays} days`) : ''} />
               <Row label={t('شروط السداد', 'Payment terms')} value={p.paymentTerms} />
@@ -391,8 +372,7 @@ export default function PartyProfilePage() {
             </div>
           </div>
 
-          {/* الاسمُ الواحدُ كُتب بصيغتين في الكشوف — يُقال صراحةً، لأنّ من رأى
-              الصيغةَ الأخرى في مكانٍ آخر يظنّها طرفًا ثانيًا. */}
+          {/* The same name written in two spellings in the statements is stated, since someone who saw the other spelling elsewhere would take it for a second party. */}
           {p.nameVariants && p.nameVariants.length > 1 && (
             <div>
               <p className="text-[13px] font-bold text-slate-900 mb-2">{t('صيغ الاسم في أوامر النقل', 'Name spellings in the reports')}</p>
@@ -425,12 +405,8 @@ export default function PartyProfilePage() {
         </div>
       </div>
 
-      {/* ── متابعاتُ التحصيل ────────────────────────────────────────────────
-          الوعدُ بالسداد بندٌ له موعدٌ يُسأل عنه، لا سطرٌ يُدفن في ملاحظة. */}
-      {/* ── فواتيرُه ومديونيّتُه ─────────────────────────────────────────────
-          كان الملفُّ يعرض أوامر النقل ويحسب منها ماله وما عليه. ودفترُ
-          التحصيل يقول إنّ ستّةً في المئة من فواتيره لها أمر نقل عندنا — فأربعةٌ
-          وتسعون في المئة من مال العميل لم تكن تظهر في ملفّه. وهذا هو المال. */}
+      {/* Collection follow-ups. A promise to pay is an item with a date that gets asked about, not a line buried in a note. */}
+      {/* His invoices and debt. The file used to show transport orders and compute what he owes and is owed from them. The collections ledger says only 6% of its invoices have a transport order here, so 94% of the customer's money was not appearing in his file. That is the money. */}
       {!!data.money && data.money.totals.count > 0 && (
         <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
           <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between flex-wrap gap-2">
@@ -482,7 +458,7 @@ export default function PartyProfilePage() {
                   </td></tr>
                 ) : shownInvoices.map((i) => (
                   <tr key={i.invoiceNumber} className={`border-b border-slate-100 hover:bg-slate-50 ${i.collected ? '' : 'bg-red-50/30'}`}>
-                    {/* ورقمُ الفاتورة بابُها. */}
+                    {/* The invoice number links to the invoice. */}
                     <td className="px-3 py-2 whitespace-nowrap">
                       <button type="button"
                         onClick={() => router.push(`/system/collections-dept/invoices/tax/${encodeURIComponent(i.invoiceNumber)}`)}
@@ -570,9 +546,7 @@ export default function PartyProfilePage() {
         )}
       </div>
 
-      {/* ── شغلُه معنا من كلّ باب ──────────────────────────────────────────
-          العميلُ يُنقَل له بشاحناتنا وبشاحناتِ موردٍ كما يُنقَل على المنصّة —
-          وملفٌّ يعرض بابًا واحدًا يقول رقمًا ناقصًا. */}
+      {/* His work with us through every door. A customer is carried on our trucks and on a vendor's trucks, as on the platform; a file showing one door gives an incomplete number. */}
       {!!(data.work && (data.work.fleetLoads.length || data.work.orders.length)) && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {data.work.fleetLoads.length > 0 && (
@@ -639,8 +613,7 @@ export default function PartyProfilePage() {
                   <tr key={r._id} className="border-b border-slate-100 hover:bg-slate-50">
                     <td className="px-3 py-2 font-medium text-slate-900 whitespace-nowrap">{r.reportNumber || '—'}</td>
                     <td className="px-3 py-2 text-slate-600 whitespace-nowrap">{dt(r.reportDate)}</td>
-                    {/* «من» و«إلى» في خليّتين لا خليّةً بسهم: السهمُ يشير يسارًا
-                        والنصُّ يجري يمينًا فيُقرأ بالعينين. */}
+                    {/* 'From' and 'to' in two cells, not one cell with an arrow: the arrow points left while the text runs right, so it reads confusingly. */}
                     <td className="px-3 py-2 text-slate-600 whitespace-nowrap">
                       {[r.fromLocation, r.toLocation].filter(Boolean).join(' — ') || '—'}
                     </td>
@@ -670,7 +643,7 @@ export default function PartyProfilePage() {
         )}
       </div>
 
-      {/* مهامّ JP المربوطة بهذا الطرف — تُضاف من هنا. */}
+      {/* JP tasks linked to this party; added from here. */}
       <JpTaskPanel section="collections" kind="collParty" refId={String(p._id)} ar={ar} />
 
       <Modal
@@ -706,7 +679,7 @@ export default function PartyProfilePage() {
             <TextInput type="number" value={String(fuForm?.amountCollected ?? '')}
               onChange={(e) => setFuForm((p) => ({ ...p, amountCollected: e.target.value === '' ? 0 : Number(e.target.value) }))} />
           </Field>
-          {/* الوعدُ له تاريخٌ ومبلغ، فيُسأل عنه في موعده — لا يُدفن في نصّ. */}
+          {/* A promise has a date and an amount, so it is asked about on time and not buried in text. */}
           <Field label={t('وعد بالسداد — التاريخ', 'Promised on')}>
             <TextInput type="date" value={(fuForm?.promiseDate || '').slice(0, 10)}
               onChange={(e) => setFuForm((p) => ({ ...p, promiseDate: e.target.value }))} />
@@ -735,7 +708,7 @@ const FU_TYPES: Record<string, [string, string]> = {
   note: ['ملاحظة', 'Note'],
 };
 
-/** جدولٌ مختصرٌ لبابٍ من أبواب العمل مع الطرف. */
+/** A compact table for one door of work with the party. */
 function WorkPanel({ title, rows, cols }: {
   title: string;
   rows: Record<string, any>[];

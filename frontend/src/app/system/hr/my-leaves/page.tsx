@@ -36,9 +36,7 @@ export default function MyLeavesPage() {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ leaveType: '', startDate: '', endDate: '', reason: '' });
   const [saving, setSaving] = useState(false);
-  // ── سندُ الطلب ─────────────────────────────────────────────────────────
-  // الإجازة المرضيّة تُطلب بتقرير. كان يُرسَل على الواتساب فيضيع، ثمّ
-  // يُسأل عنه بعد شهرين. يعيش مع الطلب نفسِه ويُقرأ من ملفّ الموظّف.
+  // Request supporting document. Sick leave is requested with a report; it used to be sent over chat and got lost, then was asked for two months later. It now lives with the request and is read from the employee file.
   const [files, setFiles] = useState<PickedFile[]>([]);
   const [kept, setKept] = useState<string[]>([]);
 
@@ -66,21 +64,17 @@ export default function MyLeavesPage() {
     api.get<{ hasTeam: boolean }>('/api/hr/me/team').then((d) => setHasTeam(!!d.hasTeam)).catch(() => {});
   }, []);
 
-  // سياسة الإخطار المسبق — the picked type decides the earliest legal start date.
+  // Advance-notice policy: the picked type decides the earliest legal start date.
   const chosenType = types.find((t) => t._id === form.leaveType) || null;
   const minStart = earliestStartDate(chosenType);
   const noticeDays = chosenType?.requiresAdvanceNotice === false ? 0 : (chosenType?.minAdvanceDays ?? 30);
   const noticeViolated = !!(chosenType && noticeDays > 0 && form.startDate && form.startDate < minStart);
 
-  // ── ما دام معلَّقًا فهو ملكُ صاحبه ─────────────────────────────────────────
-  // الموظّف يخطئ في تاريخٍ أو يبدو له غيرُ ذلك، وكان علاجُه الوحيد إلغاءَه
-  // وكتابةَ غيره — فيرى المديرُ طلبَين ولا يعرف أيَّهما المقصود. ويُقفل الباب
-  // فور اتّخاذ أيّ قرار: الموافقةُ على تاريخٍ ثم تغييرُه بعدها تجعل الموافقة
-  // على شيءٍ والمعتمَد شيئًا آخر.
+  // While pending, it belongs to its owner. The employee may get a date wrong, and the only fix was to cancel and rewrite, so the manager saw two requests. The door closes as soon as any decision is made: approving one date and then changing it would approve one thing and approve another.
   const [editing, setEditing] = useState<LeaveRequest | null>(null);
   const editable = (l: LeaveRequest) =>
     ['pending_manager', 'pending_hr'].includes(l.status) && !l.managerDecision?.at && !l.hrDecision?.at;
-  // الإلغاءُ متاحٌ ما دام الطلبُ لم يُغلَق — في أيّ محطّةٍ كان، أو مرتدًّا للردّ.
+  // Cancel is available while the request is not closed, at any stage or returned for reply.
   const cancellable = (l: LeaveRequest) =>
     ['pending_manager', 'pending_hr', 'pending_finance', 'pending_executive', 'info_requested'].includes(l.status);
 
@@ -115,7 +109,7 @@ export default function MyLeavesPage() {
     try {
       const payload: any = { ...form, files: files.map((f) => ({ dataUrl: f.dataUrl, fileName: f.fileName, title: f.title })) };
       if (editing) {
-        // ما أُزيل من قائمة المحفوظ يُحذف من القرص أيضًا — لا ملفَّ يتيمًا.
+        // Files removed from the saved list are also deleted from disk, leaving no orphan file.
         const before = ((editing as any).attachments || []).map((a: any) => String(a._id));
         payload.removeAttachments = before.filter((id: string) => !kept.includes(id));
         await api.put(`/api/hr/me/leaves/${editing._id}`, payload);
@@ -135,9 +129,7 @@ export default function MyLeavesPage() {
     try { await api.patch(`/api/hr/me/leaves/${l._id}/cancel`, {}); load(); } catch (e: any) { notify(e.message, 'error'); }
   };
 
-  // ── الردُّ على استفسار ────────────────────────────────────────────────────
-  // محطّةٌ سألت بدل أن ترفض، فعاد الطلبُ إلى صاحبه. وردُّه يُعيد السلسلةَ من
-  // أوّلها — لأنّ الطلبَ بعد الردّ لم يعد الطلبَ الذي وافق عليه المدير.
+  // Reply to an inquiry. A stage asked instead of rejecting and the request returned to its owner. His reply restarts the chain from the beginning, because the request after the reply is no longer the one the manager approved.
   const [answering, setAnswering] = useState<LeaveRequest | null>(null);
   const [answer, setAnswer] = useState('');
   const [answerFiles, setAnswerFiles] = useState<PickedFile[]>([]);
@@ -170,8 +162,7 @@ export default function MyLeavesPage() {
     setBusy(false);
   };
 
-  // ── كلُّ تاريخٍ عمودان متجاوران: الميلاديُّ ثمّ هجريُّه المشتقّ ───────────
-  // «من الميلادي» لا تُقرأ — فالاسمُ الأساسيُّ «تاريخ البداية/النهاية».
+  // Each date is two adjacent columns: Gregorian, then its derived Hijri. The "from Gregorian" label is never shown; the main name is start/end date.
   const FROM_LABEL = ar ? 'تاريخ البداية' : 'Start date';
   const TO_LABEL = ar ? 'تاريخ النهاية' : 'End date';
   const fromLabels = pairLabels(FROM_LABEL, ar);
@@ -191,8 +182,7 @@ export default function MyLeavesPage() {
     { header: tx.colDays, key: 'days', width: 8 },
     { header: tx.colStatus, key: 'status', transform: (v) => (LEAVE_STATUS[v] ? (ar ? LEAVE_STATUS[v].ar : LEAVE_STATUS[v].en) : v), width: 16 },
   ];
-  // كلُّ تبويبٍ هنا نطاقٌ قائم بذاته — طلباتي كلُّها، وطلبات فريقي كلُّها — بلا
-  // بحثٍ ولا فلتر. فالنطاق الثاني سيكرّر الملفّ نفسه بعنوانٍ آخر لا أكثر.
+  // Each tab here is a self-contained scope (all my requests, all my team's requests) without search or filter, so a second scope would repeat the same file under another title.
   const scope = exportScopeLabels(ar);
   const mineExportOptions = [
     { key: 'all', label: scope.all, sheets: [{ name: tx.pageTitle, rows: leaves, columns: mineColumns }] },
@@ -219,10 +209,7 @@ export default function MyLeavesPage() {
 
       {balance && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {/* ── ثلاثةٌ من الأربعة أرقامٌ لا صفوفَ تحتها ────────────────────
-              الرصيدُ السنويُّ بندُ سياسةٍ، والمستحقُّ حتى تاريخه حسابُ مدّة،
-              والمتاحُ فرقُ الاثنين. أمّا «المستهلك» فهو إجازاتٌ وقعت — ولها
-              قائمةٌ أسفلَ الصفحة، فهو وحدَه يُفتَح عليها. */}
+          {/* Three of the four numbers have no rows beneath them: annual balance is a policy item, accrued-to-date is a duration calculation, and available is their difference. Consumed is leave that happened and has a list below the page, so only it opens it. */}
           <StatCard label={tx.annual} value={`${balance.entitlement} ${tx.dayShort}`} />
           <StatCard label={tx.accrued} value={`${balance.accrued} ${tx.dayShort}`} accent="text-blue-600" />
           <Pick onClick={() => document.getElementById('my-leave-list')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
@@ -372,8 +359,7 @@ export default function MyLeavesPage() {
           )}
 
           <div className="grid grid-cols-2 gap-3">
-            {/* لكلّ تاريخٍ خانتان: الميلاديّةُ ثمّ الهجريّة. والحدُّ الأدنى يُطبَّق على
-                الخانتين معًا — وإلّا كُتب بالهجريّ تاريخٌ دون مهلة الإشعار ومرّ. */}
+            {/* Two cells per date: Gregorian then Hijri. The minimum applies to both together, otherwise a date under the notice period could be entered in Hijri and pass. */}
             <DatePair label={`${FROM_LABEL} *`} ar={ar} value={form.startDate} min={minStart} disabled={!form.leaveType}
               onChange={(v) => setForm((f) => ({ ...f, startDate: v }))} />
             <DatePair label={`${TO_LABEL} *`} ar={ar} value={form.endDate} min={form.startDate || minStart} disabled={!form.startDate}
@@ -389,8 +375,7 @@ export default function MyLeavesPage() {
           <Field label={tx.reasonNotes}><TextArea rows={3} value={form.reason} onChange={(e) => setForm((f) => ({ ...f, reason: e.target.value }))} /></Field>
           <Field label={ar ? 'المرفقات (تقرير طبّي، ورقة تُبرّر الطلب…)' : 'Attachments (medical report, supporting paper…)'}>
             <FilePicker files={files} onChange={setFiles} max={5} />
-            {/* ما رُفع سابقًا يبقى معروضًا ويُنزَع بالضغط — لا يُطلب من أحدٍ
-                إعادةُ رفع ما رفعه. */}
+            {/* Previously uploaded files stay shown and are removed by pressing, so nobody re-uploads what was already uploaded. */}
             {editing && !!((editing as any).attachments || []).length && (
               <ul className="mt-2 space-y-1.5">
                 {((editing as any).attachments || []).map((a: any) => {
@@ -415,7 +400,7 @@ export default function MyLeavesPage() {
         </div>
       </Modal>
 
-      {/* الردُّ على استفسار — نصٌّ ومرفقٌ واحد، ثمّ تعود السلسلةُ من أوّلها. */}
+      {/* Reply to an inquiry: text and one attachment, then the chain restarts from the beginning. */}
       <Modal open={!!answering} onClose={() => setAnswering(null)}
         title={ar ? 'الردّ على الاستفسار' : 'Reply to the question'}
         footer={<>
@@ -442,7 +427,7 @@ export default function MyLeavesPage() {
         )}
       </Modal>
 
-      {/* مسارُ الطلب — أين وقف ومن قال ماذا. */}
+      {/* Request trail: where it stopped and who said what. */}
       <Modal open={!!detail} onClose={() => setDetail(null)} wide title={ar ? 'مسار الطلب' : 'Request trail'}>
         {detail && (
           <div className="space-y-3 text-sm">

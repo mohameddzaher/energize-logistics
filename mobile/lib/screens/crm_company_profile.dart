@@ -14,10 +14,10 @@ import 'crm_form.dart';
 import 'customer_registry_profile.dart';
 import 'jp.dart' show JpTaskPanel;
 
-// شاشاتُ CRM الأخرى تُفتح من configs.dart الذي يستورد هذا الملفّ وحده.
+// The other CRM screens are opened from configs.dart, which imports only this file.
 export 'crm_vendor_detail.dart';
 
-// ── أدوارُ CRM كما في الويب (lib/crm.ts) ─────────────────────────────────────
+// CRM roles, same as the web (lib/crm.ts).
 const crmStaffRoles = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'crm_manager', 'crm_team_lead', 'crm_specialist', 'crm_agent', 'operations_manager', 'operations_staff'];
 const crmAdminRoles = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'crm_manager', 'crm_team_lead'];
 bool isCrmAdmin(AuthProvider a) => crmAdminRoles.contains(a.role) || a.canEditSection('CRM');
@@ -27,7 +27,7 @@ void _snack(BuildContext context, Object e) {
   ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e is ApiException ? e.message : e.toString())));
 }
 
-/// نجومُ التقييم ٠–٥. `onChanged` فارغٌ = للعرض فقط.
+/// Rating stars 0-5. An empty `onChanged` means read-only.
 class CrmStars extends StatelessWidget {
   final int value;
   final double size;
@@ -48,7 +48,7 @@ class CrmStars extends StatelessWidget {
 
 int _rating(dynamic v) => (v is num ? v : num.tryParse('${v ?? ''}') ?? 0).round().clamp(0, 5);
 
-/// تقييمُ الشركة من القائمة — PATCH /api/crm/companies/:id/rate (كنجوم الجدول في الويب).
+/// Company rating from the list: PATCH /api/crm/companies/:id/rate (like the web table stars).
 Future<bool> crmRateCompany(BuildContext context, Map<String, dynamic> row) async {
   var v = _rating(row['rating']);
   final picked = await showDialog<int>(
@@ -74,7 +74,7 @@ Future<bool> crmRateCompany(BuildContext context, Map<String, dynamic> row) asyn
   }
 }
 
-// ── مراحلُ الصفقة كما في الخادم (config/crmDefaults PIPELINE_STAGES) ─────────
+// Deal stages, same as the server (config/crmDefaults PIPELINE_STAGES).
 const crmDealStages = <(String, String, String)>[
   ('new', 'جديد', 'New'), ('contacted', 'تم التواصل', 'Contacted'), ('qualified', 'مؤهّل', 'Qualified'),
   ('proposal', 'عرض سعر', 'Proposal'), ('negotiation', 'تفاوض', 'Negotiation'),
@@ -85,7 +85,7 @@ const crmDealStageColors = {
   'negotiation': T.orange, 'won': T.success, 'lost': T.danger,
 };
 
-/// نقلُ الصفقة لمرحلةٍ أخرى — نظيرُ السحب بين أعمدة لوحة الصفقات في الويب.
+/// Move a deal to another stage, the counterpart of dragging between board columns on the web.
 /// PATCH /api/crm/deals/:id/move {stage}
 Future<bool> crmMoveDeal(BuildContext context, Map<String, dynamic> row) async {
   final cur = (row['stage'] ?? '').toString();
@@ -114,9 +114,7 @@ Future<bool> crmMoveDeal(BuildContext context, Map<String, dynamic> row) async {
   }
 }
 
-/// ملف الشركة (CRM) — نفس صفحة الويب /system/crm/companies/[id]: تعديلٌ في
-/// مكانه، التقييم بالنجوم، جهات الاتصال والأنشطة والمهامّ والصفقات (إضافةٌ
-/// وحذف)، العميلُ نفسُه في الأقسام الأخرى، حسابُ البوابة، التقرير، ومهامّ JP.
+/// CRM company profile, same as web /system/crm/companies/[id]: in-place edit, star rating, contacts, activities, tasks and deals (add/delete), the same customer in other sections, portal account, report, and JP tasks.
 class CrmCompanyProfileScreen extends StatefulWidget {
   final String companyId;
   final String name;
@@ -179,7 +177,7 @@ class _CrmCompanyProfileScreenState extends State<CrmCompanyProfileScreen> {
     } catch (e) {
       if (mounted && mine == _seq) setState(() { _loading = false; _error = e.toString(); });
     }
-    // «نفس العميل في:» — /api/customer-hub/presence (CustomerPresence في الويب).
+    // "Same customer in" block: /api/customer-hub/presence (CustomerPresence on the web).
     try {
       final p = await Api.instance.get('/api/customer-hub/presence/crm/${widget.companyId}');
       if (mounted && mine == _seq) {
@@ -242,7 +240,7 @@ class _CrmCompanyProfileScreenState extends State<CrmCompanyProfileScreen> {
     );
   }
 
-  /// إضافةُ جهة اتصال / نشاط / مهمّة / صفقة مربوطةً بالشركة — كنافذة «إضافة» في الويب.
+  /// Add a contact / activity / task / deal linked to the company, like the web add dialog.
   Future<void> _add(String kind) async {
     final me = context.read<AuthProvider>().user?['_id']?.toString() ?? '';
     final (title, fields, init, path) = switch (kind) {
@@ -405,7 +403,7 @@ class _CrmCompanyProfileScreenState extends State<CrmCompanyProfileScreen> {
                             Chip2([company['city'], company['country']].where((x) => '${x ?? ''}'.isNotEmpty).join(', '), T.navy, icon: Icons.location_on_outlined),
                         ]),
                         const SizedBox(height: 6),
-                        // النجوم تُضغط فتُحفظ مباشرةً — كما في رأس الصفحة على الويب.
+                        // Tapping a star saves immediately, as in the web page header.
                         CrmStars(value: _rating(company['rating']), onChanged: _rate),
                         const SizedBox(height: 6),
                         ...[
@@ -421,7 +419,7 @@ class _CrmCompanyProfileScreenState extends State<CrmCompanyProfileScreen> {
                               ]),
                             )),
                         ContactButtons(phone: (company['whatsapp'] ?? company['phone'])?.toString(), compact: true),
-                        // العميلُ المربوط في سجلّ العملاء (الهجين) — يُفتح ملفُّه.
+                        // The customer linked in the customer register (hybrid); opens its profile.
                         if (linked != null)
                           InkWell(
                             onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => CustomerRegistryProfileScreen(customerId: '${linked['_id']}'))),

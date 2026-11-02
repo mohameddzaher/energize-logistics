@@ -14,13 +14,10 @@ import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import 'ops_common.dart';
 
-/// طلبُ تشغيلٍ جديد — نظيرُ /system/operations/new: طلبٌ واحدٌ بنموذجه، أو
-/// استيرادٌ من Excel بقالبه ومعاينةِ صفوفه (تُعدَّل وتُحذف) قبل الرفع.
-///
-/// نفسُ العقد: POST /api/workflows (طلبٌ واحد) وPOST /api/workflows/bulk-import
-/// `{ rows }` (الدفعة)، ونفسُ مطابقة رؤوس الأعمدة العربيّة والإنجليزيّة وأسمائها البديلة.
+/// New operations request, counterpart of /system/operations/new: a single request with its form, or an Excel import with a template and a row preview (edit and delete) before upload.
+/// Same contract: POST /api/workflows (single) and POST /api/workflows/bulk-import `{ rows }` (batch), and the same matching of Arabic and English column headers and their aliases.
 
-// (المفتاح، العربيّ، الإنجليزيّ، النوع، الأسماء البديلة)
+// (key, Arabic label, English label, type, aliases)
 typedef _F = (String, String, String, String, List<String>);
 
 const List<_F> _appFields = [
@@ -80,7 +77,7 @@ const _sections = [
   ('collections', 'التحصيل', 'Collections', T.info, _colFields),
 ];
 
-/// الدورُ ← المجموعاتُ التي يكتبها في النموذج — نفسُ جدول الويب.
+/// Role to the groups it writes in the form, same table as the web.
 const _roleEditable = {
   'super_admin': ['application', 'operations_staff', 'manual_moderator', 'collections'],
   'moderator': ['application', 'manual_moderator'],
@@ -93,7 +90,7 @@ const _roleEditable = {
 const _allFields = [..._appFields, ..._opsFields, ..._modFields, ..._colFields];
 const _dateKeys = {'reportDate', 'paymentDate', 'sendingDate', 'deliveryDate', 'invoiceDate', 'collectionDate'};
 
-/// أعمدةُ المعاينة: رقم الكشف، من، إلى، الفرع، المالك، رقم السيارة، الشراء، البيع.
+/// Preview columns: statement number, from, to, branch, owner, vehicle number, purchase, sale.
 final _previewCols = [_appFields[0], _appFields[2], _appFields[3], _appFields[4], _appFields[5], _appFields[6], _appFields[13], _appFields[14]];
 
 Map<String, String> _buildHeaderMap() {
@@ -149,7 +146,7 @@ class _OpsWorkflowNewScreenState extends State<OpsWorkflowNewScreen> {
     }
   }
 
-  // ── قراءةُ الملفّ ──────────────────────────────────────────────────────────
+  // Reading the file
   Future<void> _pickFile() async {
     final res = await FilePicker.platform.pickFiles(withData: true, type: FileType.custom, allowedExtensions: ['xlsx', 'xls', 'csv']);
     final f = res?.files.firstOrNull;
@@ -173,7 +170,7 @@ class _OpsWorkflowNewScreenState extends State<OpsWorkflowNewScreen> {
           final v = i < row.length ? row[i] : null;
           if (key != null) {
             if (_dateKeys.contains(key) && v is num) {
-              // تاريخُ إكسل رقمٌ تسلسليّ — يُقرأ خامًا (راجع xlsx-date-epoch-trap).
+              // An Excel date is a serial number; read it raw (see xlsx-date-epoch-trap).
               final d = DateTime.utc(1899, 12, 30).add(Duration(days: v.floor()));
               out[key] = opsYmd(d);
             } else {
@@ -213,7 +210,7 @@ class _OpsWorkflowNewScreenState extends State<OpsWorkflowNewScreen> {
     return out;
   }
 
-  /// قارئُ xlsx صغير: الورقةُ الأولى بقيمها (نصوصٌ مشتركة/مضمَّنة وأرقام).
+  /// Small xlsx reader: the first sheet with its values (shared/inline strings and numbers).
   List<List<Object?>> _readXlsx(List<int> bytes) {
     final zip = ZipDecoder().decodeBytes(bytes);
     String? read(String name) {
@@ -232,7 +229,7 @@ class _OpsWorkflowNewScreenState extends State<OpsWorkflowNewScreen> {
     if (ss != null) {
       for (final m in RegExp(r'<si>([\s\S]*?)</si>').allMatches(ss)) { shared.add(textOf(m[1]!)); }
     }
-    // الورقةُ الأولى من دفتر العمل ثمّ هدفُها في العلاقات.
+    // First sheet of the workbook, then its target in the relationships.
     var sheetPath = 'xl/worksheets/sheet1.xml';
     final wb = read('xl/workbook.xml');
     final rels = read('xl/_rels/workbook.xml.rels');
@@ -297,7 +294,7 @@ class _OpsWorkflowNewScreenState extends State<OpsWorkflowNewScreen> {
     }
   }
 
-  /// القالب: رؤوسُ حقول الطلب الثمانية والعشرين بالعربيّة.
+  /// Template: the 28 request field headers in Arabic.
   void _downloadTemplate() {
     final bytes = buildXlsx([('Template', [_appFields.map((f) => f.$2 as Object?).toList()])], rtl: true);
     opsShareBytes(context, bytes, 'operations-import-template.xlsx');
@@ -308,7 +305,7 @@ class _OpsWorkflowNewScreenState extends State<OpsWorkflowNewScreen> {
     final rows = _rows.map((r) => Map<String, dynamic>.from(r)).toList();
     opsExportMenu(context, [
       (tr('أعمدة المعاينة', 'Preview columns'), () => exportExcel(context, fileName: 'operations-import-preview', sheets: [(tr('المعاينة', 'Preview'), cols(_previewCols), rows)])),
-      // المعاينة تُظهر ثمانية أعمدة والاستيرادُ يرفع كلَّ المطابَق.
+      // The preview shows eight columns; the import uploads every matched row.
       (tr('كل الحقول (${_allFields.length} عموداً)', 'All fields (${_allFields.length} columns)'),
           () => exportExcel(context, fileName: 'operations-import-preview', sheets: [(tr('كل الحقول', 'All fields'), cols(_allFields), rows)])),
     ]);

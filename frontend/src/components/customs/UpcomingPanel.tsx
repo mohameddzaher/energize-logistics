@@ -1,18 +1,8 @@
 'use client';
 /**
- * المعاملاتُ القادمة — نافذةٌ واحدةٌ تكفي عن صفحة.
- *
- * كانت القادمةُ تُرى في مكانين: نافذةُ «قرُب موعدها» وصفحةٌ كاملةٌ تُفتَح
- * بزرّ. والقسمُ قال إنّ النافذةَ تكفي — فصارت تحمل القادمةَ **كلَّها** مرتَّبةً
- * بالأقرب، ومع كلّ واحدة:
- *   • كم بقي على موعدها (أو كم فات)،
- *   • تاريخُها يُعدَّل في مكانه،
- *   • أوراقُها الخمسُ تُعلَّم في مكانها — ما استُلِم منها وما لم يُستلَم،
- *   • وتُحوَّل إلى جاريةٍ (بسؤالٍ أوّلًا). ولا تُفتَح من هنا: القادمةُ تُدار
- *     من نافذتها، وصفحتُها تُفتَح بعد أن تصير جارية.
- *
- * والأوراقُ هي نفسُها قائمةُ «الأوراق المطلوبة» داخل المعاملة (`documents`):
- * ما يُعلَّم هنا معلَّمٌ هناك، والعكس — خانةٌ واحدةٌ تُكتب من بابين.
+ * Upcoming transactions: one window replaces a page.
+ * It holds all upcoming transactions, nearest first, each with: time left (or overdue), a date edited in place, its five documents marked in place (received or not), and conversion to ongoing (after a confirmation). They are not opened from here: upcoming ones are managed from this window and the page opens once ongoing.
+ * The documents are the same list as the transaction's required documents (`documents`): a mark here shows there and vice versa, one field written from two entry points.
  */
 import { useRef, useState } from 'react';
 import api from '@/lib/api';
@@ -31,12 +21,12 @@ export const DOC_LABELS: Record<DocKey, [string, string]> = {
 export interface UpcomingItem {
   _id: string; refNumber?: string; blNumber?: string; customerName?: string; shippingAgent?: string;
   expectedDate?: string; containerCount?: number; branch?: string; documents?: Partial<Record<DocKey, boolean>>;
-  /** ملاحظاتُ المعاملة — تُكتب وتُعدَّل من النافذة نفسِها (٢٠٢٦/١٠/٢٦). */
+  /** Transaction notes, written and edited in the window itself. */
   notes?: string;
   daysLeft: number | null; overdue?: boolean; dueSoon?: boolean;
 }
 
-/** «باقي ٣ أيّام» / «اليوم» / «فات يومان». */
+/** "3 days left" / "today" / "2 days overdue". */
 export function remainingWords(n: number | null, ar: boolean): string {
   if (n === null) return ar ? 'بلا تاريخ' : 'No date';
   if (n === 0) return ar ? 'اليوم' : 'Today';
@@ -49,7 +39,7 @@ export function remainingWords(n: number | null, ar: boolean): string {
   return ar ? `فات ${late} ${late <= 10 ? 'أيّام' : 'يومًا'}` : `${late} days overdue`;
 }
 
-/** قائمةُ الأوراق الخمس كأزرارٍ تُعلَّم — تُستعمَل هنا وفي نموذج الإنشاء. */
+/** The five documents as toggle buttons; used here and in the create form. */
 export function DocChecklist({ value, onToggle, disabled, ar }: {
   value: Partial<Record<DocKey, boolean>> | undefined; onToggle: (k: DocKey, on: boolean) => void; disabled?: boolean; ar: boolean;
 }) {
@@ -74,22 +64,14 @@ export function DocChecklist({ value, onToggle, disabled, ar }: {
 }
 
 /**
- * خانةُ التاريخ في صفّ القادمة.
- *
- * ── ولماذا لها مكوِّنٌ وزرُّ حفظ ─────────────────────────────────────────────
- * كانت تُحفَظ مع كلّ تغيير: يفتح المستخدمُ التقويمَ فيكتب المتصفّحُ قيمةً
- * أولى، فيُرسَل الحفظُ، فتُعاد قراءةُ النافذة، فيُعاد بناءُ الخانة (مفتاحُها
- * كان التاريخَ نفسَه) — **فيُغلَق التقويمُ قبل أن يُختار اليوم**.
- *
- * فالمكتوبُ مسوّدةٌ في الخانة لا تُرسَل حتى يُقال «حفظ» (أو Enter). والخانةُ
- * لا يُعاد بناؤها: مفتاحُها المعاملةُ لا تاريخُها.
+ * Date field in an upcoming row.
+ * It used to save on every change: opening the calendar made the browser emit a first value, which saved, which re-read the window, which rebuilt the field (its key was the date itself), closing the calendar before a day was picked. Now typing is a draft that is sent only on "save" (or Enter), and the field is not rebuilt because its key is the transaction, not its date.
  */
 function DateEditor({ value, disabled, saving, onSave, ar }: {
   value: string; disabled?: boolean; saving?: boolean; onSave: (v: string) => void; ar: boolean;
 }) {
   const [draft, setDraft] = useState(value);
-  // تاريخٌ تغيّر من خارج الخانة (حفظٌ نجح، أو زميلٌ عدّله) يُعرَض — ما لم تكن
-  // فيها مسوّدةٌ لم تُحفَظ بعد.
+  // A date changed from outside the field (a successful save, or a colleague's edit) is displayed unless the field holds an unsaved draft.
   const [seen, setSeen] = useState(value);
   if (value !== seen) { if (draft === seen) setDraft(value); setSeen(value); }
   const dirty = !!draft && draft !== value;
@@ -111,11 +93,7 @@ function DateEditor({ value, disabled, saving, onSave, ar }: {
   );
 }
 
-/**
- * ملاحظاتُ المعاملة القادمة (صاحبُ الشركة، ٢٠٢٦/١٠/٢٦): «يكون فيه نوت… تفاصيل
- * يقدروا يكتبوا ويعدّلوا فيه». مسوّدةٌ لا تُرسَل إلّا بـ«حفظ» — كخانة التاريخ —
- * وما تغيّر من خارجها (زميلٌ حفظ) يظهر ما لم تكن فيها كتابةٌ لم تُحفَظ.
- */
+/** Notes of the upcoming transaction, written and edited in the window. A draft is sent only on "save", like the date field; changes from outside (a colleague's save) show unless unsaved typing is present. */
 function NotesEditor({ value, disabled, saving, onSave, ar }: {
   value: string; disabled?: boolean; saving?: boolean; onSave: (v: string) => void; ar: boolean;
 }) {
@@ -143,21 +121,17 @@ function NotesEditor({ value, disabled, saving, onSave, ar }: {
 
 export default function UpcomingPanel({ items, days, canEdit, canDelete, ar, onClose, onChanged, notify, confirm }: {
   items: UpcomingItem[]; days: number; canEdit: boolean; ar: boolean;
-  /** من يحذف المعاملة — مديرُ القسم وموظّفُه، كما في جدول المعاملات. */
+  /** Who deletes a transaction: the section manager and staff, as in the transactions table. */
   canDelete?: boolean;
-  /** `full` حين تتغيّر قائمةُ الجارية أيضًا (تحويل)؛ وإلّا فالنافذةُ وحدَها. */
+  /** `full` when the ongoing list also changes (conversion); otherwise only this window. */
   onClose: () => void; onChanged: (full?: boolean) => void; notify: (m: string, tone?: 'success' | 'error' | 'info') => void;
-  /** سؤالُ التأكيد قبل التحويل — نافذةُ النظام لا `window.confirm`. */
+  /** Confirmation before conversion: the system dialog, not `window.confirm`. */
   confirm: (message: string) => Promise<boolean>;
 }) {
   const [busy, setBusy] = useState('');
   const t = (a: string, e: string) => (ar ? a : e);
 
-  // ── العلامةُ تظهر في الحال، والحفظُ خلفها ────────────────────────────────
-  // كانت الورقةُ لا تُعلَّم حتى يعود الخادمُ ثمّ تُعاد قراءةُ النافذة والجدول
-  // كلِّه — فيضغط المستخدمُ ولا يرى شيئًا لثانيةٍ أو اثنتين، فيظنّها معلّقةً
-  // ويضغط ثانيةً فتنقلب. فما ضُغط يُكتب على الشاشة فورًا (`local`)، ويُحفَظ في
-  // الخلف؛ وإن رُدّ الحفظُ عادت العلامةُ كما كانت وقيل ذلك.
+  // The mark shows immediately and saving runs behind it. Waiting for the server and then re-reading the window and whole table left the user with no feedback for a second or two, so they clicked again and flipped it. The click is applied on screen at once (`local`) and saved in the background; if the save is rejected the mark reverts and the error is shown.
   const [local, setLocal] = useState<Record<string, { documents?: Partial<Record<DocKey, boolean>>; expectedDate?: string; branch?: string; notes?: string }>>({});
   const view = (x: UpcomingItem): UpcomingItem => {
     const o = local[x._id];
@@ -173,10 +147,7 @@ export default function UpcomingPanel({ items, days, canEdit, canDelete, ar, onC
   const toggleDoc = async (x: UpcomingItem, k: DocKey, on: boolean) => {
     setLocal((m) => ({ ...m, [x._id]: { ...m[x._id], documents: { ...(m[x._id]?.documents || {}), [k]: on } } }));
     try {
-      // ── وعلامتان متتاليتان تُحفَظان واحدةً بعد واحدة ──────────────────────
-      // الخادمُ يقرأ أوراقَ المعاملة ثمّ يكتبها كاملةً؛ فطلبان معًا يقرآن الحالةَ
-      // نفسَها ويكتب الثاني فوق الأوّل فتضيع علامتُه. فتُصَفّ طلباتُ المعاملة
-      // الواحدة: كلٌّ ينتظر ما قبله.
+      // Two consecutive marks are saved one after the other. The server reads the transaction's documents then writes them whole, so two concurrent requests read the same state and the second overwrites the first. Requests for one transaction are queued, each awaiting the previous.
       const prev = queue.current[x._id] || Promise.resolve();
       const mine = prev.catch(() => undefined).then(() => api.put(`/api/customs-clearance/${x._id}`, { documents: { [k]: on } }));
       queue.current[x._id] = mine;
@@ -188,7 +159,7 @@ export default function UpcomingPanel({ items, days, canEdit, canDelete, ar, onC
     }
   };
 
-  /** التاريخُ أو الفرع: يُكتب على الشاشة فورًا ويُحفَظ في صفّ المعاملة نفسِه. */
+  /** Date or branch: written on screen immediately and saved in the transaction's own row. */
   const save = async (x: UpcomingItem, body: { expectedDate?: string; branch?: string; notes?: string }) => {
     const before = { expectedDate: x.expectedDate, branch: x.branch, notes: x.notes };
     setBusy(x._id);
@@ -205,9 +176,7 @@ export default function UpcomingPanel({ items, days, canEdit, canDelete, ar, onC
     }
     setBusy('');
   };
-  // ── والتحويلُ يُسأل عنه أوّلًا ─────────────────────────────────────────
-  // ضغطةٌ خاطئةٌ على الزرّ كانت تُخرج المعاملةَ من
-  // القادمة في الحال وتُدخلها أعدادَ الجارية. فيُسأل، ويُقال أيُّ معاملة.
+  // Conversion is confirmed first. A mistaken click used to move the transaction out of upcoming into the ongoing counts at once, so it asks and names the transaction.
   const activate = async (id: string) => {
     const x = items.find((i) => i._id === id);
     const name = x?.blNumber || x?.refNumber || '';
@@ -222,9 +191,7 @@ export default function UpcomingPanel({ items, days, canEdit, canDelete, ar, onC
     setBusy('');
   };
 
-  // ── وقادمةٌ أُدخلت خطأً أو لن تأتي تُحذَف من هنا ──────────────────────────
-  // الحذفُ نهائيٌّ (المعاملةُ وأوراقُها)، فيُسأل عنه ويُقال أيُّ معاملة — وهو
-  // الحذفُ نفسُه الذي في جدول المعاملات، يُقيَّد في سجلّ المراجعة.
+  // An upcoming transaction entered by mistake or that will not come is deleted from here. Deletion is permanent (transaction and its documents), so it asks and names the transaction; it is the same deletion as in the transactions table and is recorded in the audit log.
   const remove = async (x: UpcomingItem) => {
     const name = x.blNumber || x.refNumber || '';
     if (!(await confirm(t(`حذفُ المعاملة القادمة ${name} نهائيًّا؟ لا يمكن استرجاعُها بعد الحذف.`,
@@ -266,7 +233,7 @@ export default function UpcomingPanel({ items, days, canEdit, canDelete, ar, onC
               <div key={x._id} className={`rounded-xl border px-4 py-3 ${tone}`}>
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="min-w-0">
-                    {/* رقمُ البوليصة أوّلًا — هو ما تُعرَف به المعاملةُ في القسم. */}
+                    {/* Waybill number first: it identifies the transaction in the section. */}
                     <p className="font-bold text-slate-900 text-[14.5px]"><bdi>{x.blNumber || t('بلا رقم بوليصة', 'No BL number')}</bdi></p>
                     <p className="text-[12.5px] text-slate-600 mt-0.5 truncate">
                       {x.customerName || '—'}{x.shippingAgent ? ` · ${x.shippingAgent}` : ''}{x.containerCount ? ` · ${x.containerCount} ${t('حاوية', 'containers')}` : ''}

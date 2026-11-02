@@ -6,8 +6,7 @@ import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 
-/// ملفي — بطاقة الموظف الشخصية لكل مستخدم مرتبط بملف موظف: بياناته،
-/// عقده النشط ورصيد إجازاته، آخر إجازاته، وعهده — عرض ذاتي من /api/hr/me/profile.
+/// My profile: the personal employee card for every user linked to an employee file: data, active contract and leave balance, recent leaves and custody. Self-view from /api/hr/me/profile.
 class MyProfileScreen extends StatefulWidget {
   const MyProfileScreen({super.key});
   @override
@@ -85,7 +84,7 @@ class _MyProfileScreenState extends State<MyProfileScreen> {
                           ),
                         ),
                         const SizedBox(height: 12),
-                        // رصيد الإجازات + العقد
+                        // Leave balance + contract
                         Row(children: [
                           Expanded(child: StatCard(label: tr('رصيد الإجازات', 'Leave balance'), value: ((balance['available'] ?? 0) as num), color: T.cyan, icon: Icons.beach_access_outlined)),
                           const SizedBox(width: 10),

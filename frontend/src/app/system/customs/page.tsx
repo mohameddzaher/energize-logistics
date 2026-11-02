@@ -24,14 +24,7 @@ import { SlidersHorizontal } from 'lucide-react';
 import ScrollX from '@/components/system/ScrollX';
 import { stageName } from '@/lib/customsPipeline';
 
-/**
- * صفُّ الجدول — وهو أقلُّ من المعاملة.
- *
- * الخادمُ يرسل ما تقرؤه هذه الشاشةُ وحدَه (راجع `DISPLAY_FIELDS` في
- * customsClearanceController): فما لا عمودَ له ولا خانةَ في إكسل لا يصل، وما
- * كان فارغًا يُحذف حقلُه بدل إرساله `""`. والمعاملةُ كاملةً تُقرأ من
- * `/api/customs-clearance/:id` — وهو ما تفعله نافذةُ الملاحظات أدناه.
- */
+/** Table row, which is less than the transaction. The server sends only what this screen reads (see `DISPLAY_FIELDS` in customsClearanceController): fields with no column or Excel cell are not sent, and empty ones are omitted instead of sent as an empty string. The full transaction is read from `/api/customs-clearance/:id`, as the notes window below does. */
 interface Clearance {
   _id: string;
   refNumber: string;
@@ -44,7 +37,7 @@ interface Clearance {
   customerName?: string;
   shippingAgent?: string;
   port?: string;
-  /** يقرؤه صندوقُ البحث في المتصفّح — لا عمودَ له (راجع DISPLAY_FIELDS). */
+  /** Read by the browser search box; it has no column (see DISPLAY_FIELDS). */
   invoiceNumber?: string;
   containerCount?: number;
   createdAt: string;
@@ -58,17 +51,17 @@ interface Clearance {
   stageDone?: Record<string, boolean>;
   revenue?: { totalInvoiced?: number; clearanceFee?: number; profit?: number };
   billing?: { invoiceStatus?: string; ourInvoiceNumber?: string };
-  // آخرُ ملاحظةٍ فقط تصل مع الجدول — والسجلُّ داخل المعاملة.
+  // Only the latest note arrives with the table; the full log is inside the transaction.
   lastNote?: { text: string; byName?: string; at?: string } | null;
   notesCount?: number;
   cargoType?: 'containers' | 'vehicles';
-  /** رقمُ فاتورة العميل إن صدرت — به تُقرأ «حالة الفاتورة». */
+  /** The customer invoice number if issued; the invoice status is read from it. */
   saleInvoiceNumber?: string;
-  /** فُوترت ولم تصل فاتورةُ نقلها — تُلوَّن بالأحمر. */
+  /** Invoiced but its transport invoice has not arrived; coloured red. */
   awaitingTransportInvoice?: boolean;
-  /** نسبةُ المراحل والمرحلةُ التالية — محسوبتان في الخادم (pipelineOf). */
+  /** Stage percentage and next stage, computed on the server (pipelineOf). */
   pipeline?: { percent: number; done: number; total: number; next: string };
-  /** تاريخُ المعاملة الذي تُفلتَر به: استلامُ الورق ثمّ البيان ثمّ شهرُها (راجع txDateOf في الخادم). */
+  /** The transaction date used for filtering: paper receipt, then declaration, then its month (see txDateOf on the server). */
   date?: string;
   invoiced?: boolean;
 }
@@ -79,8 +72,7 @@ const MONTH_LABELS: [string, string][] = [
   ['سبتمبر', 'September'], ['أكتوبر', 'October'], ['نوفمبر', 'November'], ['ديسمبر', 'December'],
 ];
 
-// لونُ الشارة بنسبة ما أُنجز من مراحل المعاملة — لا بموضعها في قائمةٍ ثابتة:
-// المراحلُ تتفرّع، فموضعُ المرحلة لا يقول كم بقي.
+// Badge colour follows the share of stages completed, not the position in a fixed list: stages branch, so a stage's position does not say how many remain.
 function stageBadge(percent: number, cancelled: boolean) {
   if (cancelled) return 'bg-slate-500/20 text-slate-600';
   if (percent >= 100) return 'bg-green-500/20 text-green-600';
@@ -89,11 +81,11 @@ function stageBadge(percent: number, cancelled: boolean) {
   return 'bg-[#f37121]/20 text-[#f37121]';
 }
 
-// الميناءُ وبريدُ الوكيل رُفعا من الإنشاء بطلب القسم — البريدُ في ملفّ الوكيل.
+// Port and agent email were removed from creation at the department's request; the email lives in the agent file.
 const EMPTY = {
   branch: 'jeddah', blNumber: '', customerName: '', customerParty: '',
   shippingAgent: '', agentParty: '',
-  // نوعُ المعاملة يُختار عند الإنشاء: حاوياتٌ أو سيّارات — وعليه تُبنى مراحلُها.
+  // Transaction type is chosen at creation: containers or cars, and its stages are built on it.
   cargoType: 'containers',
   containerCount: 0,
 };
@@ -102,21 +94,21 @@ export default function CustomsPage() {
   const { confirm, notify } = useDialog();
   const { user } = useAuth();
   const router = useRouter();
-  // الأرباحُ لمدير النظام ومدير القسم وحدَهما — والخادمُ لا يرسلها لغيرهما.
+  // Profits are for the system manager and department manager only; the server does not send them to anyone else.
   const seesMoney = ['super_admin', 'admin', 'customs_manager'].includes(user?.role || '');
   const canEdit = ['super_admin', 'admin', 'operations_manager', 'customs_manager', 'customs_officer'].includes(user?.role || '') || canEditSection((user as any)?.permissions, 'Customs'); // matrix edit grants count too
-  // الحذفُ لمدير القسم وموظّفه — يطابق حارسَ المسار في الخادم.
+  // Deletion is for the department manager and staff, matching the route guard on the server.
   const canDelete = ['super_admin', 'admin', 'customs_manager', 'customs_officer'].includes(user?.role || '') || canEditSection((user as any)?.permissions, 'Customs');
   const { lang } = useLanguage();
   const T = getCustomsTranslations(lang);
 
   const [list, setList] = useState<Clearance[]>([]);
-  // المعاملةُ التي تُكتب لها ملاحظةٌ من الجدول — راجع ClearanceNotes.
+  // The transaction a table note is written for; see ClearanceNotes.
   const [noteFor, setNoteFor] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState<any>({ ...EMPTY });
-  // ملفّاتُ الأطراف تُحمَّل مرّةً: القوائمُ تُختار منها ولا تُكتب.
+  // Party files are loaded once: lists are chosen from them, not typed.
   const [parties, setParties] = useState<{ customers: any[]; agents: any[] }>({ customers: [], agents: [] });
   useEffect(() => {
     Promise.all([
@@ -125,27 +117,22 @@ export default function CustomsPage() {
     ]).then(([c, a]) => setParties({ customers: c.parties || [], agents: a.parties || [] })).catch(() => {});
   }, []);
   const [saving, setSaving] = useState(false);
-  // ── القائمتان منفصلتان ──────────────────────────────────────────────────
-  // الجاريةُ هي الأصل، والقادمةُ تُفتَح بزرّها: خلطُهما يجعل كلَّ عدٍّ في
-  // الشاشة يشمل ما لم يقع بعد.
-  // (صفحةُ «القادمة» رُفعت: النافذةُ تحملها كلَّها — راجع UpcomingPanel.)
+  // The two lists are separate. Current is the main one and upcoming opens with its button; mixing them would make every count on the screen include what has not happened yet. The upcoming page was removed: the window holds it all (see UpcomingPanel).
   const [creatingUpcoming, setCreatingUpcoming] = useState(false);
   const [alerts, setAlerts] = useState<{ count: number; days: number; items: any[]; upcoming: UpcomingItem[]; total: number }>({ count: 0, days: 2, items: [], upcoming: [], total: 0 });
   const [showAlerts, setShowAlerts] = useState(false);
   const [search, setSearch] = useState('');
-  // الخادمُ يجيب بما لا يحمله الصفّ — ويُعاد السؤالُ كلَّما أُعيدت قراءةُ القائمة.
+  // The server answers with what the row does not carry, and the question is repeated whenever the list is re-read.
   const searchHits = useCustomsSearch(search, list);
   const [fYear, setFYear] = useState('');
   const [fMonth, setFMonth] = useState('');
   const [fInvoice, setFInvoice] = useState('');
-  // حالةُ المعاملة مع فوترتها: المغلقةُ قسمان لا يُخلَطان (مفوترة · لم تُفوتَر).
+  // Transaction status with invoicing: closed has two parts that are not mixed (invoiced, not invoiced).
   const [fState, setFState] = useState('');
   const [fReturn, setFReturn] = useState('');
   const [showFilters, setShowFilters] = useState(false);
   const cf = useColumnFilters<Clearance>();
-  // ── فلاترُ الأعمدة التي كانت تُقرأ ولا يُفلتَر بها ──────────────────────────
-  // العميلُ والوكيلُ والميناءُ والفرعُ والمرحلة: أعمدةٌ في الجدول أمام العين،
-  // ومَن أراد قصْرَ القائمة عليها كان يصدّر الكلَّ ويفلتر في إكسل.
+  // Column filters that used to be read but not filterable: customer, agent, port, branch and stage are columns in front of the user, and anyone wanting to narrow the list by them had to export all and filter in Excel.
   const [fCustomer, setFCustomer] = useState('');
   const [fAgent, setFAgent] = useState('');
   const [fPort, setFPort] = useState('');
@@ -168,7 +155,7 @@ export default function CustomsPage() {
     setLoading(false);
   }, []);
 
-  // شارةُ «اقترب موعدُها» — مدّتُها من إعدادات القسم، تُقرأ في كلّ نداء.
+  // The due-soon badge: its period comes from the department settings, read on every call.
   const fetchAlerts = useCallback(async () => {
     try {
       const d = await api.get<any>('/api/customs-clearance/upcoming-alerts');
@@ -179,27 +166,23 @@ export default function CustomsPage() {
   useEffect(() => { fetchList(); }, [fetchList]);
   useEffect(() => { fetchAlerts(); }, [fetchAlerts]);
   useSocket('customs:created', useCallback(() => fetchList(), [fetchList]));
-  // تعديلُ معاملةٍ **قادمة** (ورقةٌ عُلِّمت، تاريخٌ غُيِّر) لا يمسّ جدولَ الجارية —
-  // فلا يُعاد تحميلُه كلِّه مع كلّ علامة؛ تكفي النافذة (fetchAlerts أدناه).
+  // Editing an upcoming transaction (a paper marked, a date changed) does not touch the current table, so it is not fully reloaded on every mark; the window is enough (fetchAlerts below).
   useSocket('customs:updated', useCallback((d: any) => { if (!d?.clearance?.upcoming) fetchList(); }, [fetchList]));
   useSocket('customs:deleted', useCallback(() => fetchList(), [fetchList]));
   useSocket('customs:created', useCallback(() => fetchAlerts(), [fetchAlerts]));
   useSocket('customs:updated', useCallback(() => fetchAlerts(), [fetchAlerts]));
 
-  // ── ونافذةُ الملاحظات تقرأ المعاملة ────────────────────────────────────
-  // سجلُّ الملاحظات والملاحظةُ القديمة ليسا في صفّ الجدول — الجدولُ يعرض
-  // الأخيرةَ وعددَها. فكانت النافذةُ تُفتح على سجلٍّ فارغٍ وإن كان للمعاملة
-  // عشرُ ملاحظات. فتُقرأ المعاملةُ عند الفتح، والصفُّ يظهر في الحال.
+  // The notes window reads the transaction. The notes log and the old note are not in the table row, which shows the latest and the count, so the window used to open on an empty log even if the transaction had ten notes. So the transaction is read on open while the row shows immediately.
   const openNotes = useCallback(async (c: Clearance) => {
     setNoteFor(c);
     const d = await api.get<any>(`/api/customs-clearance/${c._id}`).catch(() => null);
-    // ولا تُعاد فتحُ ما أُغلق: القارئُ قد يُغلق قبل وصول الجواب.
+    // A closed window is not reopened: the user may close before the reply arrives.
     if (d?.clearance) setNoteFor((cur: any) => (cur && cur._id === c._id ? d.clearance : cur));
   }, []);
 
   const openCreate = (upcoming = false) => {
     setCreatingUpcoming(upcoming);
-    // القادمةُ تُنشأ ومعها أوراقُها الخمس: يُعلَّم ما استُلِم منها الآن.
+    // An upcoming transaction is created with its five papers: the ones already received are marked now.
     setForm({ ...EMPTY, ...(upcoming ? { upcoming: true, expectedDate: '', documents: {} } : {}) });
     setShowModal(true);
   };
@@ -215,7 +198,7 @@ export default function CustomsPage() {
       setShowModal(false);
       fetchList();
       fetchAlerts();
-      // القادمةُ تبقى في نافذتها — منها تُتابَع أوراقُها وتاريخُها؛ والجاريةُ تُفتَح.
+      // Upcoming stays in its window, where its papers and date are followed; a current one opens.
       if (creatingUpcoming) setShowAlerts(true);
       else if (data?.clearance?._id) router.push(`/system/customs/${data.clearance._id}`);
     } catch (e: any) { notify(e?.message || 'Failed to save', 'error'); }
@@ -230,9 +213,7 @@ export default function CustomsPage() {
   };
 
   const years = Array.from(new Set(list.map((c) => c.periodYear).filter(Boolean) as number[])).sort((a, b) => b - a);
-  // ── حالةُ الفاتورة تتبع إصدارَها ────────────────────────────────────────
-  // كانت خانةً تُكتب بيدٍ فتقول «غير مفوتر» لمعاملةٍ صدرت فاتورتُها. فما صدرت
-  // فاتورتُه من النظام «مفوترة» برقمها، وما سبق النظامَ يُقرأ نصُّه كما هو.
+  // Invoice status follows its issuing. It used to be a hand-typed field saying not invoiced for a transaction whose invoice had been issued. So one invoiced by the system is invoiced with its number, and what predates the system is read as its text.
   const invoiceState = (c: Clearance): { text: string; number: string } => {
     if (c.saleInvoiceNumber) return { text: ar ? 'مفوترة' : 'Invoiced', number: c.saleInvoiceNumber };
     return { text: (c.billing?.invoiceStatus || '').trim(), number: c.billing?.ourInvoiceNumber || '' };
@@ -247,9 +228,7 @@ export default function CustomsPage() {
       : c.pipeline?.next ? `${ar ? 'تنتظر' : 'Next'}: ${stageName(T.stages, c.pipeline.next, c.cargoType)}`
         : stageName(T.stages, c.stage, c.cargoType));
 
-  // ── حالةُ إرجاع الحاويات ────────────────────────────────────────────────
-  // تجاوزُ آخر موعدِ إرجاعٍ ليس تأخيرًا إداريًّا: هو عدّادُ أرضياتٍ يفتح ويأكل
-  // ربحَ المعاملة كلَّه. فيُحسب هنا لا في رأس القارئ، ويُفلتَر عليه.
+  // Container return status. Passing the last return date is not an administrative delay: it starts a floor-charge meter that eats the whole transaction profit. So it is computed here, not in the reader's head, and can be filtered on.
   const today = new Date().toISOString().slice(0, 10);
   const returnState = (c: Clearance): 'returned' | 'overdue' | 'due' | 'open' | 'none' => {
     if (c.stageDone?.containersReturned) return 'returned';
@@ -270,8 +249,7 @@ export default function CustomsPage() {
   const overdueCount = list.filter((c) => returnState(c) === 'overdue').length;
 
   const filtered = list.filter((c) => {
-    // البحثُ بكلّ ما في المعاملة: ما في الصفّ يُطابَق هنا فورًا، والباقي
-    // (بيانُ كلّ حاوية، الإرجاع، طلباتُ الصرف، الملاحظاتُ…) يجيب عنه الخادم.
+    // Search over everything in the transaction: what is in the row is matched here instantly, and the rest (each container's declaration, return, disbursement requests, notes) is answered by the server.
     if (search.trim() && !matchesSearch(search, [c.refNumber, c.blNumber, c.customerName, c.shippingAgent, c.invoiceNumber, c.port,
       c.declarationNumber, c.billing?.ourInvoiceNumber, (c as any).saleInvoiceNumber, (c as any).exporterCompany, (c as any).city,
       (c as any).containerNumbers, c.lastNote?.text])
@@ -288,7 +266,7 @@ export default function CustomsPage() {
     if (fPort && (c.port || '') !== fPort) return false;
     if (fBranch && (c.branch || '') !== fBranch) return false;
     if (fStage && (c.isCompleted || c.cancelled || (c.pipeline?.next || '') !== fStage)) return false;
-    // المدى بتاريخ المعاملة لا بيوم إدخالها: ما استُورد أُدخل كلُّه في يومٍ واحد.
+    // The range is by transaction date, not entry day: imported records were all entered on one day.
     if (fFrom || fTo) {
       const d = c.date || (c.createdAt ? String(c.createdAt).slice(0, 10) : '');
       if (!d) return false;
@@ -299,13 +277,11 @@ export default function CustomsPage() {
   });
 
   const money = (v: any) => (Number.isFinite(Number(v)) ? Number(v) : 0);
-  // ── فلاترُ الأعمدة على طريقة إكسل ───────────────────────────────────────
-  // تُطبَّق آخرًا — على ما تركه البحثُ والفلاترُ أعلاه — وبالقيمة التي تُقرأ في
-  // الخليّة نفسِها.
+  // Excel-style column filters, applied last on what the search and the filters above left, using the value read in the cell itself.
   const colGetters: Record<string, (c: Clearance) => any> = {
     bl: (c) => c.blNumber, ref: (c) => c.refNumber, customer: (c) => c.customerName,
     decl: (c) => c.declarationNumber || '',
-    // الشهرُ لا اليوم: قائمةُ الفلتر تبقى قصيرةً تُقرأ.
+    // Month, not day, so the filter list stays short and readable.
     unloading: (c) => String(c.unloadingAppointment || '').slice(0, 7),
     branch: (c) => (c.branch === 'dammam' ? T.dammam : T.jeddah),
     period: (c) => (c.periodMonth ? `${MONTH_LABELS[c.periodMonth - 1][ar ? 0 : 1]} ${c.periodYear || ''}`.trim() : (c.periodYear || '')),
@@ -354,8 +330,7 @@ export default function CustomsPage() {
     { header: T.stage, key: '_stage', width: 36 },
     { header: ar ? 'نسبة المراحل' : 'Progress', key: '_percent', width: 12 },
   ];
-  // المعاملات كلّها تصل دفعةً واحدة وفلاتر السنة والشهر وحالة الفاتورة والبحث
-  // تعمل في المتصفّح؛ فمن صدّر وهو على فلتر شهرٍ واحد كان يحمل ملفًّا يسمّيه سجلَّ السنة.
+  // All transactions arrive at once and the year, month, invoice status and search filters run in the browser, so someone exporting while on a single month filter would carry a file they call the year's register.
   const scope = exportScopeLabels(ar);
   const exportOptions = [
     { key: 'shown', label: scope.shown, sheets: [{ name: T.title, rows: shownRows.map(withReturn), columns: exportColumns }] },
@@ -387,14 +362,10 @@ export default function CustomsPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {/* زرّا «لوحة المعلومات» و«الدليل» أُزيلا: التحليلاتُ صارت صفحةً في
-              التنقّل، والدليلُ أُخفي من القسم. وزرٌّ في الرأس يقود إلى صفحةٍ
-              موجودةٍ في القائمة الجانبيّة تكرارٌ يزاحم ما يخصّ هذه الشاشة. */}
+          {/* The dashboard and guide buttons were removed: analytics became a navigation page and the guide was hidden from the department. A header button to a page already in the sidebar is duplication competing with what belongs to this screen. */}
           <ExportMenu fileName="customs-clearances" lang={ar ? 'ar' : 'en'} variant="subtle" label={ar ? 'تصدير Excel' : 'Export Excel'} options={exportOptions} />
 
-          {/* ── شارةُ ما اقترب موعدُه ──────────────────────────────────────
-              رقمٌ على زرٍّ لا رسالةٌ تُغلَق: يبقى أمام العين ما دام هناك عمل،
-              ويُفتح فيرى القائمة. والمدّةُ من إعدادات القسم. */}
+          {/* Due-soon badge: a number on a button, not a closable message; it stays in view as long as there is work, and opening it shows the list. The period comes from the department settings. */}
           <button type="button" onClick={() => setShowAlerts(true)}
             className={`relative inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold transition-colors ${
               alerts.count ? 'bg-amber-50 text-amber-800 hover:bg-amber-100' : 'bg-white text-slate-600 hover:bg-slate-50 border border-slate-200'}`}
@@ -422,11 +393,7 @@ export default function CustomsPage() {
         </div>
       </div>
 
-      {/* ── البحثُ ظاهرٌ والفلاترُ خلف زرّ ────────────────────────────────────
-          أحدَ عشرَ فلترًا مبسوطةً في صفَّين تزاحم الجدولَ الذي جاء المستخدمُ
-          لأجله، وأكثرُها لا يُلمَس في الجلسة الواحدة. فيبقى البحثُ ظاهرًا —
-          وهو ما يُستعمل كلَّ مرّة — وتُطوى البقيّةُ خلف زرٍّ يحمل عددَ ما هو
-          مُفعَّلٌ منها، فلا تختفي عمّن يستعملها ولا تزاحم من لا يستعملها. */}
+      {/* Search visible, filters behind a button. Eleven filters spread over two rows crowd the table the user came for, and most are not touched in one session. So search stays visible, being used every time, and the rest fold behind a button carrying the count of active ones, so they do not vanish for those who use them nor crowd those who do not. */}
       <div className="flex flex-col lg:flex-row gap-3">
         <div className="relative flex-1">
           <Search className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
@@ -481,7 +448,7 @@ export default function CustomsPage() {
             <option key={k} value={k}>{RETURN_LABEL[k][ar ? 0 : 1]}{k === 'overdue' && overdueCount ? ` (${overdueCount})` : ''}</option>
           ))}
         </select>
-        {/* الصفُّ الثاني — أعمدةُ الجدول التي لم يكن يُفلتَر بها. */}
+        {/* Second row: table columns that could not be filtered before. */}
         <select value={fCustomer} onChange={(e) => setFCustomer(e.target.value)} className="cc-filter" aria-label={ar ? 'العميل' : 'Customer'}>
           <option value="">{ar ? 'جميع العملاء' : 'All customers'}</option>
           {parties.customers.map((p) => <option key={p._id} value={p._id}>{p.name}</option>)}
@@ -517,7 +484,7 @@ export default function CustomsPage() {
           <table className="w-full text-sm min-w-[1380px]">
             <thead>
               <tr className="bg-slate-900">
-                {/* رقمُ البوليصة قبل رقم المعاملة: به تُعرَف المعاملةُ في القسم. */}
+                {/* Waybill number before the transaction number: it identifies the transaction in the department. */}
                 {th('bl', T.blNumber)}
                 {th('ref', T.refNumber)}
                 {th('customer', T.customerName)}
@@ -563,7 +530,7 @@ export default function CustomsPage() {
                     </span>
                   </td>
                   <td className="px-4 py-3">
-                    {/* فُوترت ولم تصل فاتورةُ نقلها: حمراءُ حتى تُرفَق. */}
+                    {/* Invoiced but its transport invoice has not arrived: red until attached. */}
                     {c.awaitingTransportInvoice
                       ? (
                         <span className="inline-flex flex-col items-start gap-0.5">
@@ -576,9 +543,7 @@ export default function CustomsPage() {
                         : <span className="px-2 py-1 rounded-full text-xs font-medium bg-slate-200 text-slate-600 whitespace-nowrap">{ar ? 'غير مفوترة' : 'Not invoiced'}</span>}
                   </td>
                   <td className="px-4 py-3">
-                    {/* «مغلقة» تسبق المرحلة: المعاملةُ المغلقة خرجت من دورة
-                        الإجراءات. وللمفتوحة تُقال المرحلةُ التي تنتظرها ونسبةُ
-                        ما أُنجز — لا آخرُ ما عُلِّم. */}
+                    {/* Closed precedes the stage: a closed transaction has left the procedure cycle. For an open one, the stage it waits on and the percentage done are shown, not the last thing marked. */}
                     <span className={`inline-block max-w-[15rem] truncate align-middle px-2 py-1 rounded-full text-xs font-medium ${
                       c.isCompleted && !c.cancelled ? 'bg-green-500/20 text-green-700' : stageBadge(c.pipeline?.percent ?? 0, c.cancelled)}`}
                       title={stageText(c)}>
@@ -588,9 +553,7 @@ export default function CustomsPage() {
                       <span className="ms-1.5 text-[11px] tabular-nums text-slate-400">{c.pipeline?.percent ?? 0}%</span>
                     )}
                   </td>
-                  {/* ── الملاحظةُ الأخيرة، وتُكتب من هنا ─────────────────────
-                      عمودٌ يقول آخرَ ما قيل عن المعاملة بلا فتحها، وزرٌّ يكتب
-                      ملاحظةً جديدة في مكانها. والسجلُّ كلُّه داخل المعاملة. */}
+                  {/* Last note, written from here: a column showing the latest thing said about the transaction without opening it, and a button that writes a new note in place. The full log is inside the transaction. */}
                   <td className="px-4 py-3 max-w-[280px]" onClick={(e) => e.stopPropagation()}>
                     <button type="button" onClick={() => openNotes(c)} disabled={!canEdit}
                       title={canEdit ? (ar ? 'اضغط لإضافة ملاحظة' : 'Click to add a note') : ''}
@@ -648,14 +611,9 @@ export default function CustomsPage() {
                     <option value="dammam">{T.dammam}</option>
                   </select>
                 </Field>
-                {/* ── حقلُ «المخلّص» أُزيل ────────────────────────────────────
-                    مَن أنشأ المعاملةَ مسجَّلٌ في سجلّ المراجعة وفي `createdBy`،
-                    فسؤالُه في النموذج يطلب ما هو معروفٌ ويفتح بابَ كتابته خطأً. */}
+                {/* The clearance-agent field was removed. Who created the transaction is recorded in the audit log and in `createdBy`, so asking in the form requests what is known and invites wrong entry. */}
                 <Field label={T.blNumber}><input className="cc-input" value={form.blNumber} onChange={(e) => setForm((f: any) => ({ ...f, blNumber: e.target.value }))} /></Field>
-                {/* ── العميلُ والوكيلُ يُختاران من ملفَّيهما ───────────────────
-                    كانا نصًّا حرًّا: الاسمُ الواحد يُكتب بصيغتين فيصير طرفين في
-                    التحليل، ولا يُعرف كم عاملنا هذا العميل. والبريدُ يأتي مع
-                    الوكيل من ملفّه فلا يُكتب من الذاكرة. */}
+                {/* Customer and agent are chosen from their files. They used to be free text: one name typed in two forms became two parties in analytics, and it was unknown how many times we dealt with this customer. The email comes from the agent's file instead of being typed from memory. */}
                 <Field label={T.customerName}>
                   <SearchableSelect value={form.customerParty || ''} searchAfter={0}
                     onChange={(v) => setForm((f: any) => ({ ...f, customerParty: v, customerName: (parties.customers.find((p) => p._id === v) || {}).name || '' }))}
@@ -668,7 +626,7 @@ export default function CustomsPage() {
                   <SearchableSelect value={form.agentParty || ''} searchAfter={0}
                     onChange={(v) => {
                       const a = parties.agents.find((p) => p._id === v);
-                      // بريدُ الوكيل يُؤخَذ من ملفّه بلا خانةٍ تُكتب.
+                      // The agent's email is taken from their file, with no field to type.
                       setForm((f: any) => ({ ...f, agentParty: v, shippingAgent: a?.name || '', shippingAgentEmail: a?.email || '' }));
                     }}
                     placeholder={ar ? 'اختر الوكيل — اكتب للبحث…' : 'Pick agent — type to search…'}
@@ -676,10 +634,7 @@ export default function CustomsPage() {
                     emptyLabel={ar ? 'لا نتائج — أضِفه من صفحة الوكلاء' : 'No match — add from agents page'}
                     options={parties.agents.map((p) => ({ value: p._id, label: p.name, hint: p.email || '' }))} />
                 </Field>
-                {/* ── نوعُ المعاملة وعددُ وحداتها ───────────────────────────────
-                    حاوياتٌ أو سيّارات — يُختار هنا لأنّ دورةَ المعاملة تُبنى
-                    عليه: السيّاراتُ لا إرجاعَ حاوياتٍ فيها. والعددُ يفتح لكلّ
-                    حاويةٍ خانتَها داخل المعاملة. */}
+                {/* Transaction type and unit count: containers or cars, chosen here because the transaction cycle is built on it (cars have no container return). The count opens a slot for each container inside the transaction. */}
                 <Field label={ar ? 'نوع المعاملة' : 'Transaction type'}>
                   <select value={form.cargoType} onChange={(e) => setForm((f: any) => ({ ...f, cargoType: e.target.value }))} className="cc-input">
                     <option value="containers">{ar ? 'حاويات' : 'Containers'}</option>
@@ -689,17 +644,14 @@ export default function CustomsPage() {
                 <Field label={form.cargoType === 'vehicles' ? (ar ? 'عدد السيّارات' : 'Number of vehicles') : T.containerCount}>
                   <input type="number" min={0} className="cc-input" value={form.containerCount} onChange={(e) => setForm((f: any) => ({ ...f, containerCount: Number(e.target.value) }))} />
                 </Field>
-                {/* التاريخُ المرتقَب هو كلُّ الفرق بين معاملةٍ قادمةٍ وجارية —
-                    وعليه يقوم التنبيه، فلا تُحفَظ القادمةُ بدونه. */}
+                {/* The expected date is the whole difference between an upcoming and a current transaction, and the alert rests on it, so an upcoming one is not saved without it. */}
                 {creatingUpcoming && (
                   <Field label={ar ? 'تاريخ المعاملة المتوقَّع' : 'Expected date'}>
                     <input type="date" className="cc-input" value={form.expectedDate || ''}
                       onChange={(e) => setForm((f: any) => ({ ...f, expectedDate: e.target.value }))} />
                   </Field>
                 )}
-                {/* ── الأوراقُ المطلوبة: ما استُلِم منها الآن ───────────────────
-                    هي قائمةُ «الأوراق المطلوبة» نفسُها داخل المعاملة — تُعلَّم
-                    هنا عند الإنشاء، ثمّ من نافذة القادمة أو من داخل المعاملة. */}
+                {/* Required papers: which are received now. The same required-papers list is inside the transaction; marked here at creation, then from the upcoming window or inside the transaction. */}
                 {creatingUpcoming && (
                   <div className="sm:col-span-2">
                     <label className="text-slate-500 text-xs mb-1.5 block">{ar ? 'الأوراق المطلوبة — علِّم ما استُلِم' : 'Required papers — tick what has been received'}</label>
@@ -744,7 +696,7 @@ export default function CustomsPage() {
         :global(.cc-filter:focus) { outline: none; box-shadow: 0 0 0 2px rgba(243,113,33,0.4); }
       `}</style>
 
-      {/* ملاحظةٌ تُكتب من الجدول — نفسُ سجلّ المعاملة، لا خانةٌ ثانية. */}
+      {/* A note written from the table: the same transaction log, not a second field. */}
       <Modal open={!!noteFor} onClose={() => setNoteFor(null)}
         title={`${ar ? 'ملاحظات' : 'Notes'} · ${noteFor?.refNumber || ''}`}>
         {noteFor && (

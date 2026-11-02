@@ -1,25 +1,7 @@
 'use client';
 /**
- * DatePair — تاريخٌ واحدٌ بخانتين متجاورتين: الميلاديّةُ ثمّ الهجريّةُ مباشرةً.
- *
- * ── خانتان لقيمةٍ واحدة ─────────────────────────────────────────────────────
- * قاعدةُ القسم: لكلّ تاريخٍ وجهان، ومن كتب في أحدهما تبعه الآخرُ في الحال.
- * والمحفوظُ واحدٌ — الميلاديُّ «yyyy-mm-dd» كما يُرسَل للخادم اليوم — والهجريُّ
- * عرضٌ له يُحسَب بـ`lib/hijri` (أمّ القرى). فلا حقلَ ثانيًا في النموذج ولا في
- * الطلب: `onChange` يُعطي الميلاديَّ وحدَه.
- *
- * ── والهجريُّ الخاطئ لا يمحو الميلاديّ ──────────────────────────────────────
- * «30-02-1448» ناقصٌ أو غيرُ موجود: تُلوَّن الخانةُ ويبقى آخرُ تاريخٍ صحيح.
- * لو مُحي الميلاديُّ مع كلّ حرفٍ ناقصٍ لضاع تاريخُ الانتهاء بضغطةٍ خاطئة،
- * ولحُفظ النموذجُ بلا تاريخ. أمّا إفراغُ الخانة كلِّها فمسحٌ مقصود.
- *
- * ── ولماذا مكوّنٌ واحد ──────────────────────────────────────────────────────
- * يُستعمل في كلّ نماذج القسم، ومعرَّفٌ على مستوى الملفّ لا داخل دالّةِ عرض —
- * وإلّا أُعيد بناءُ الخانة مع كلّ حرفٍ فضاع التركيز.
- *
- * وخانةُ الميلاديّ `<input type="date">` عاديّة، فيتولّى `DateFieldLocale`
- * تلميحَها الفارغ كبقيّة خانات التاريخ. والهجريّةُ نصٌّ `dir="ltr"` لأنّ
- * المتصفّح لا يملك خانةَ تاريخٍ للتقويم الهجريّ.
+ * Contracts tabs: one menu entry with two views.
+ * Contracts is the work register (create, renew, end); Contract data shows the contract columns in the HR file with their state and what is missing.
  */
 import { useState } from 'react';
 import { gregorianToHijri, hijriToGregorian } from '@/lib/hijri';
@@ -28,7 +10,7 @@ import { pairLabels } from '@/lib/hrDates';
 const inputCls = 'w-full px-3 py-2.5 rounded-lg bg-white border text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50 disabled:opacity-60';
 const labelCls = 'text-slate-500 text-xs mb-1 block';
 
-// الأرقامُ الهنديّة (٠-٩) والفارسيّة تُكتب من لوحة المفاتيح العربيّة — تُقرأ كاللاتينيّة.
+// Arabic-Indic and Persian digits typed from the Arabic keyboard are read as Latin.
 const latinDigits = (s: string) => s
   .replace(/[٠-٩]/g, (c) => String(c.charCodeAt(0) - 0x0660))
   .replace(/[۰-۹]/g, (c) => String(c.charCodeAt(0) - 0x06f0))
@@ -39,21 +21,19 @@ type Draft = { text: string; forValue: string } | null;
 export default function DatePair({
   label, value, onChange, ar, min, max, disabled, autoFocus, inputClassName,
 }: {
-  /** الاسمُ الأساسيّ — يُشتقّ منه «… الميلادي» و«… الهجري». بدونه تُكتب «ميلادي»/«هجري». */
+  /** Base label from which "... Gregorian" and "... Hijri" are derived; without it, plain Gregorian/Hijri labels are used. */
   label?: string;
-  /** الميلاديّ «yyyy-mm-dd» — وهو وحدَه ما يُحفَظ ويُرسَل. */
+  /** Gregorian yyyy-mm-dd; the only value stored and sent. */
   value: string;
   onChange: (gregorian: string) => void;
   ar: boolean;
-  /** حدودُ التاريخ الميلاديّ — تُطبَّق على الخانتين معًا. */
+  /** Gregorian date bounds, applied to both fields. */
   min?: string; max?: string;
   disabled?: boolean; autoFocus?: boolean;
   inputClassName?: string;
 }) {
   const g = (value || '').slice(0, 10);
-  // ما يكتبه المستخدمُ في الهجريّ الآن. `forValue` يربطه بالميلاديّ الذي كُتب
-  // عليه: فإن تغيّر الميلاديُّ من خارج الخانة (صفٌّ آخر، زرُّ تجديد) سقطت
-  // المسوّدةُ وتبع الهجريُّ القيمةَ — بلا `useEffect` يُعيد الصياغةَ تحت الأصابع.
+  // What the user is typing in the Hijri field now. `forValue` ties it to the Gregorian value it was typed against: if the Gregorian changes from outside (another row, a renew button) the draft is dropped and the Hijri follows the value, with no `useEffect` re-formatting under the fingers.
   const [draft, setDraft] = useState<Draft>(null);
   const live = draft && draft.forValue === g ? draft : null;
   const text = live ? live.text : gregorianToHijri(g);
@@ -67,7 +47,7 @@ export default function DatePair({
     if (!t) { setDraft(null); if (g) onChange(''); return; }
     const next = hijriToGregorian(latinDigits(t));
     const ok = !!next && !(min && next < min) && !(max && next > max);
-    // لا يُترجَم إلّا تاريخٌ تامٌّ صحيح — وما دونه يبقى الميلاديُّ على حاله.
+    // Only a complete valid date is converted; anything less leaves the Gregorian as it was.
     setDraft({ text: raw, forValue: ok ? next : g });
     if (ok && next !== g) onChange(next);
   };
@@ -94,15 +74,13 @@ export default function DatePair({
         aria-invalid={invalid || undefined}
         title={ar ? 'اكتب التاريخ الهجري (سنة-شهر-يوم) — يُحوَّل إلى الميلادي في الحال' : 'Type the Hijri date (year-month-day) — the Gregorian follows at once'}
         onChange={(e) => onHijri(e.target.value)}
-        // عند الخروج تُعاد الصياغةُ القياسيّة إن صحّ المكتوب؛ والخاطئُ يبقى ظاهرًا ليُصحَّح.
+        // On blur the canonical format is restored if the typed value is valid; an invalid one stays visible to be fixed.
         onBlur={() => { if (!invalid) setDraft(null); }}
         className={`${inputCls} tabular-nums text-start ${invalid ? 'border-red-400 bg-red-50' : 'border-slate-200'} ${inputClassName || ''}`} />
       {message && <p className="text-[11px] text-red-600 mt-1">{message}</p>}
     </div>
   );
 
-  // ── صفٌّ كاملٌ بخانتين ───────────────────────────────────────────────────
-  // في شبكة النموذج يأخذ الزوجُ الصفَّ كلَّه (`col-span-full`) أيًّا كان موضعُه
-  // وعددُ الأعمدة — فلا تنزل الهجريّةُ إلى سطرٍ وحدَها تحت حقلٍ لا يخصّها.
+  // A full-width row with two fields: in the form grid the pair takes the whole row (`col-span-full`) wherever it sits and however many columns there are, so the Hijri field never drops alone onto a line under an unrelated field.
   return <div className="col-span-full grid grid-cols-1 sm:grid-cols-2 gap-3">{gregorian}{hijri}</div>;
 }

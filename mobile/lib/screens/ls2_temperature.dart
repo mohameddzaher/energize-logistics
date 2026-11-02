@@ -10,8 +10,7 @@ import '../ui/search_field.dart';
 import 'ls2_common.dart';
 import 'ls2_vehicle_detail.dart';
 
-/// حرارة الأسطول (LS2) — ترتيب المركبات حسب أعلى حرارة إطار/تبريد، مع تلوين
-/// التجاوزات. مطابق لصفحة الويب /system/ls2/temperature (من /api/ls2/vehicles).
+/// Fleet temperature (LS2): vehicles ranked by highest tire/coolant temperature, with over-threshold highlighting. Mirrors web /system/ls2/temperature (from /api/ls2/vehicles).
 class Ls2TemperatureScreen extends StatefulWidget {
   const Ls2TemperatureScreen({super.key});
   @override
@@ -24,7 +23,7 @@ class _Ls2TemperatureScreenState extends State<Ls2TemperatureScreen> {
   bool _loading = true;
   String? _error;
   String _q = '';
-  // متحكِّمُ البحث عند الشاشة: خطأُ تحديثٍ حيٍّ ثمّ إعادةُ المحاولة لا يُفرغ الخانةَ والكلمةُ تُرشِّح.
+  // Search controller owned by the screen so a failed live refresh followed by a retry does not empty the field while the term still filters.
   final _searchCtl = TextEditingController();
   String _sort = 'tire'; // tire | coolant
   late final void Function() _onLive;
@@ -48,7 +47,7 @@ class _Ls2TemperatureScreenState extends State<Ls2TemperatureScreen> {
       ]);
       if (!mounted) return;
       setState(() {
-        // النقطةُ تردّ `items` — و`vehicles` كان يُقرأ فتخرج القائمةُ فارغةً بلا خطأ.
+        // The endpoint returns `items`; reading `vehicles` gave an empty list with no error.
         _vehicles = List<Map<String, dynamic>>.from(res[0]['items'] ?? res[0]['vehicles'] ?? []);
         _thresholds = Map<String, dynamic>.from(res[1]['thresholds'] ?? {});
         _loading = false;
@@ -59,7 +58,7 @@ class _Ls2TemperatureScreenState extends State<Ls2TemperatureScreen> {
 
   double? _n(dynamic v) => v == null ? null : (v is num ? v.toDouble() : double.tryParse(v.toString()));
 
-  // عتبة من الإعدادات إن وُجدت، وإلا افتراضي معقول.
+  // Threshold from settings if present, otherwise a sensible default.
   double _thr(String key, double dflt) {
     final t = _thresholds[key];
     final n = _n(t is Map ? (t['warn'] ?? t['max'] ?? t['value']) : t);
@@ -85,7 +84,7 @@ class _Ls2TemperatureScreenState extends State<Ls2TemperatureScreen> {
     ExportCol('الحالة', 'Status', (r) { final st = ls2Status(r['status']); return tr(st.$1, st.$2); }),
   ];
 
-  /// «المعروض»: ما وصلت منه قراءةُ حرارة (ورقتان كالموقع) · «الكل»: الأسطول كلُّه.
+  /// Shown: vehicles that reported a temperature reading (two sheets, as on the web). All: the whole fleet.
   Future<void> _export() {
     final tire = _vehicles.where((v) => v['maxTireTempC'] != null).toList()
       ..sort((a, b) => (_n(b['maxTireTempC']) ?? 0).compareTo(_n(a['maxTireTempC']) ?? 0));
@@ -106,7 +105,7 @@ class _Ls2TemperatureScreenState extends State<Ls2TemperatureScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // أسماءُ العتبات كما في إعدادات القسم (والأسماءُ القديمة احتياطًا).
+    // Threshold names as in the section settings, plus legacy names as fallback.
     final tireWarn = _thr('tireTempC', 75), tireDanger = _thrAny(['tireTempCriticalC', 'tireTempMaxC'], 85);
     final coolWarn = _thrAny(['coolantTempC', 'coolantC'], 100), coolDanger = _thrAny(['coolantTempCriticalC', 'coolantMaxC'], 110);
     String fold(String s) => s.replaceAll(RegExp('[أإآ]'), 'ا').replaceAll('ى', 'ي').replaceAll('ة', 'ه').toLowerCase();
@@ -165,8 +164,7 @@ class _Ls2TemperatureScreenState extends State<Ls2TemperatureScreen> {
                                 final tire = _n(v['maxTireTempC']);
                                 final cool = _n(v['coolantC']);
                                 return Pressable(
-                                  // `/api/ls2/vehicles/:id` يقرأ رقمَ الوحدة لا معرّفَ منغوسة — وبالمعرّف كان
-                                  // الملفُّ لا يُفتح أبدًا من هذه الشاشة.
+                                  // `/api/ls2/vehicles/:id` expects the unit number, not a Mongo id; with the id the file never opened from this screen.
                                   onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => Ls2VehicleDetailScreen(vehicleId: (v['unitId'] ?? v['_id'] ?? '').toString(), plate: (v['plate'] ?? '').toString()))),
                                   child: AppCard(
                                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),

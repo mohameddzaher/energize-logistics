@@ -14,11 +14,9 @@ import 'b2c_column_filter.dart';
 import 'light_transport_list.dart' show canEditLtUser;
 import 'light_transport_profile.dart';
 
-/// أوامر التشغيل — مطابقٌ لـ `/system/b2c/orders`: «هذا الموظّفُ يعمل على هذه
-/// المركبة، في هذا المشروع والفرع». إنشاءُ أمرٍ (وسؤالُ قائد المركبة الحاليّ
-/// أين يذهب)، إنزالٌ وإغلاق (ورفعُ التفويض اختيارًا)، ونقلُ تفويض المركبة.
+/// Operating orders, matching `/system/b2c/orders`: "this employee works on this vehicle, in this project and branch". Create an order (asking where the current vehicle driver goes), unassign and close (optionally revoking authorization), and transfer vehicle authorization.
 class LtOperatingOrdersScreen extends StatefulWidget {
-  /// يفتح على أوامر موظّفٍ واحد (كـ ?employee= في الويب).
+  /// Opens on a single employee's orders (like ?employee= on the web).
   final String? employee;
   const LtOperatingOrdersScreen({super.key, this.employee});
   @override
@@ -60,7 +58,7 @@ class _LtOperatingOrdersScreenState extends State<LtOperatingOrdersScreen> {
   bool _loading = true;
   String? _error;
   String _q = '';
-  final _searchCtl = TextEditingController(); // النصُّ يبقى مطابقًا لـ_q بعد إعادة التحميل
+  final _searchCtl = TextEditingController(); // Text stays equal to _q after a reload.
   Timer? _debounce;
   String _status = '';
   String _from = '', _to = '';
@@ -126,7 +124,7 @@ class _LtOperatingOrdersScreenState extends State<LtOperatingOrdersScreen> {
 
   void _say(String m) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m))); }
 
-  // ── إنزالٌ وإغلاق ─────────────────────────────────────────────────────────
+  // Unassign and close
   Future<void> _end(Map<String, dynamic> o) async {
     final reason = TextEditingController();
     bool release = false;
@@ -161,7 +159,7 @@ class _LtOperatingOrdersScreenState extends State<LtOperatingOrdersScreen> {
     } catch (e) { _say(_err(e)); }
   }
 
-  // ── نقلُ تفويض المركبة ────────────────────────────────────────────────────
+  // Transfer vehicle authorization
   Future<void> _move(Map<String, dynamic> o) async {
     if (await _options() == null || !mounted) return;
     final vid = o['vehicle'] is Map ? '${o['vehicle']['_id']}' : '${o['vehicle'] ?? ''}';
@@ -254,7 +252,7 @@ class _LtOperatingOrdersScreenState extends State<LtOperatingOrdersScreen> {
                     Row(children: [
                       stat(tr('نُقل معها التفويض', 'Authorisation moved'), moved, T.info),
                       const SizedBox(width: 6),
-                      // الورقةُ باسم غير الراكب — تُعرَض صريحةً، وإلّا لم تُكتشف إلّا عند مخالفة.
+                      // The paper is in a name other than the rider's; shown explicitly, otherwise it is found only at a violation.
                       stat(tr('التفويض باسم غير الراكب', 'Authorised to someone else'), mismatch, mismatch > 0 ? T.warn : T.ink,
                           onTap: () => setState(() => _onlyMismatch = !_onlyMismatch), on: _onlyMismatch),
                     ]),
@@ -340,7 +338,7 @@ class _LtOperatingOrdersScreenState extends State<LtOperatingOrdersScreen> {
   }
 }
 
-/// اختيارٌ من قائمةٍ طويلةٍ مع بحث — نظيرُ SearchableSelect.
+/// Pick from a long list with search, the counterpart of SearchableSelect.
 Future<String?> _pick(BuildContext context, String title, List<(String, String)> options) => showModalBottomSheet<String>(
       context: context, isScrollControlled: true, showDragHandle: true,
       builder: (c) {
@@ -531,7 +529,7 @@ class _CreateSheetState extends State<_CreateSheet> {
     });
   }
 
-  /// للمركبة قائدٌ فعليٌّ غيرُ هذا الموظّف — أين يذهب؟ (يبقى بلا مركبة أو ينتقل إلى مركبةٍ بلا قائد)
+  /// The vehicle has an actual driver other than this employee: where does he go? (stays without a vehicle or moves to a vehicle with no driver)
   Future<String?> _askDriver(Map<String, dynamic> v) async {
     String to = 'none';
     return showDialog<String>(
@@ -599,7 +597,7 @@ class _CreateSheetState extends State<_CreateSheet> {
     final emp = _find(_emps, _emp);
     final veh = _find(_vehs, _veh);
     final house = _find(_houses, _house);
-    // الغرفُ: ما يناسب نوعَ الموظّف (مندوب/إداري) أو «أيّ».
+    // Rooms: those that fit the employee type (rider/administrative) or "any".
     final rooms = List<Map<String, dynamic>>.from(((house['rooms'] as List?) ?? const []).map((x) => (x as Map).cast<String, dynamic>()))
         .where((r) => r['kind'] == 'any' || emp.isEmpty || r['kind'] == emp['staffKind']).toList();
     return SafeArea(

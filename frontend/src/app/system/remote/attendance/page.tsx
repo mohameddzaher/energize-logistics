@@ -160,8 +160,7 @@ function StaffAttendance({ ar, isRTL }: { ar: boolean; isRTL: boolean }) {
     { header: tx.hours, key: 'durationMinutes', width: 12, transform: (v: number) => fmtDuration(v, ar ? 'ar' : 'en') },
     { header: tx.status, key: 'status', width: 14, transform: (v: AttRecord['status']) => (v === 'present' ? tx.statusComplete : tx.statusOpen) },
   ];
-  // الفلترةُ (موظّف/من/إلى) تجري على الخادم، فما في الذاكرة سجلّاتُ الفلتر وحدها؛
-  // ومن أراد سجلّ الفريق كلّه احتاج نداءً جديدًا بلا معاملات لا تصديرًا لما يراه.
+  // Filtering (employee/from/to) runs on the server, so memory holds only the filtered records; the whole team record needs a fresh call without params, not an export of the visible rows.
   const hasActiveFilters = !!(userId || from || to);
   const fetchAllForExport = async () => {
     const d = await api.get<{ records: AttRecord[] }>('/api/remote/attendance');

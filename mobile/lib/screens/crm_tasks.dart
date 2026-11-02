@@ -12,9 +12,7 @@ import '../ui/widgets.dart';
 import 'crm_form.dart';
 import '../ui/search_field.dart';
 
-/// مهامّ العلاقات — نظيرُ /system/crm/tasks: «الكلّ / مهامّي»، الحالة، البحث
-/// (كلّها على الخادم)، والدائرةُ بجانب المهمّة تُكملها أو تعيد فتحها بضغطةٍ
-/// واحدة (PUT {status}). تعديلٌ وحذفٌ وتصدير Excel، وحيٌّ على `crm:task`.
+/// CRM tasks, counterpart of /system/crm/tasks: all / mine, status and search (all server-side). The circle beside a task completes or reopens it in one tap (PUT {status}). Edit, delete, Excel export; live on `crm:task`.
 class CrmTasksScreen extends StatefulWidget {
   const CrmTasksScreen({super.key});
   @override
@@ -86,7 +84,7 @@ class _CrmTasksScreenState extends State<CrmTasksScreen> {
 
   Future<void> _toggle(Map<String, dynamic> t) async {
     final status = t['status'] == 'done' ? 'todo' : 'done';
-    setState(() => t['status'] = status); // تفاؤليّ كالويب
+    setState(() => t['status'] = status); // Optimistic update, like the web.
     try {
       await Api.instance.put('/api/crm/tasks/${t['_id']}', {'status': status});
     } catch (e) { if (mounted) _msg(e); }

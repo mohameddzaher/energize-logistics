@@ -1,9 +1,7 @@
 'use client';
 /**
- * تفصيلُ فاتورةٍ ضريبيّة — كشوفُها كلُّها بأرقامها.
- *
- * الفاتورةُ الواحدة قد تضمّ كشوفًا عدّة، وذلك معتاد. والصفحةُ التي تعرضها صفًّا
- * واحدًا تقول «كم» ولا تقول «ممّ» — فهنا يُفتَح ما تحتها.
+ * Tax invoice detail: all its statements with their numbers.
+ * One invoice may hold several statements, which is normal. A page showing it as one row says how much but not from what, so what is under it opens here.
  */
 import { Fragment, useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
@@ -30,9 +28,9 @@ interface Row {
   netInvoice?: number; tax?: number; totalInvoice?: number;
   invoiceDate?: string; deliveryDate?: string; sendingDate?: string; documentNumber?: string;
   collectedAmount?: number; collectionDate?: string; accountingReview?: string;
-  /** معاملةُ التخليص التي يخدمها الكشف — راجع services/customsOpsLink. */
+  /** The clearance transaction the statement serves; see services/customsOpsLink. */
   customs?: CustomsLinkView | null;
-  /** عددُ متابعات الكشف — راجع components/operations/ReportFollowUps. */
+  /** Number of follow-ups on the statement; see components/operations/ReportFollowUps. */
   followUps?: number;
 }
 interface Detail {
@@ -40,10 +38,10 @@ interface Detail {
   kind?: 'tax' | 'cash'; inLedger?: boolean; status?: string; comments?: string;
   invoiceDate: string | null; deliveryDate: string | null; collectionDate?: string | null;
   reports: Row[];
-  /** معاملاتُ التخليص التي تخدمها كشوفُ الفاتورة، مجموعةً. */
+  /** Clearance transactions served by the invoice's statements, combined. */
   customs?: CustomsLinkView[];
   totals: { reports: number; net: number; vat: number; value: number; collectedReports: number };
-  /** حالةُ تحصيلها كما يقرؤها التحصيلُ نفسُه — راجع taxInvoiceDetail في الخادم. */
+  /** Its collection status as collections itself reads it; see taxInvoiceDetail on the server. */
   collection?: Collection | null;
 }
 interface Collection {
@@ -55,11 +53,9 @@ interface Collection {
 const todayYmd = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Riyadh' });
 
 /**
- * ── تحصيلُ الفاتورة من صفحتها (٢٠٢٦/١٠/٢٧) ────────────────────────────────
- * الفاتورةُ النقديّةُ في الدفتر بلا كشفٍ عندنا لا تظهر في صفحة الكاش (تقرأ
- * الكشوف) ولا في صفحة الضريبيّ (تقرأ الضريبيّ) — فلا بابَ لتحصيلها غيرُ هذه
- * الصفحة، وكانت بلا زرّ: تبقى دَينًا على العميل وقد سدّد (الفاتورة 65994).
- * فيُسجَّل التحصيلُ هنا بالرقم، والخادمُ يعرف أين يكتبه.
+ * Collecting the invoice from its own page.
+ * A cash invoice in the ledger with no statement here appears neither on the cash page (reads statements) nor on the tax page (reads tax), so this page is the only way to collect it, and it had no button: the invoice stayed a debt on a customer who had paid.
+ * So the collection is recorded here by number, and the server knows where to write it.
  */
 function CollectionPanel({ invoiceNumber, c, canEdit, ar, onDone }: {
   invoiceNumber: string; c: Collection; canEdit: boolean; ar: boolean; onDone: () => void;
@@ -72,7 +68,7 @@ function CollectionPanel({ invoiceNumber, c, canEdit, ar, onDone }: {
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
   const full = c.collectionState === 'full';
-  // قيمةٌ غيرُ معروفة: يُكتب المقبوضُ كلُّه، ولا جزئيَّ فيه.
+  // Unknown value: the whole amount received is recorded, with no partial.
   const needAmount = !(c.value > 0);
 
   const collect = async () => {
@@ -194,9 +190,8 @@ export default function TaxInvoiceDetailPage() {
 
   const [data, setData] = useState<Detail | null>(null);
   const [loading, setLoading] = useState(true);
-  // ── والخطأُ يُكتب على الصفحة ────────────────────────────────────────────
-  // كانت الصفحةُ ترتدُّ `null` عند الفشل، فيرى المستخدمُ بياضًا لا يُخبره
-  // بشيء: أفشِل التحميل؟ أم لا فاتورةَ أصلًا؟ فالخطأُ يُحفظ ويُعرَض.
+  // The error is shown on the page.
+  // The page used to return `null` on failure, so the user saw blank with no hint whether loading failed or the invoice does not exist. The error is kept and displayed.
   const [error, setError] = useState('');
 
   const load = useCallback(async () => {
@@ -210,20 +205,19 @@ export default function TaxInvoiceDetailPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [invoiceNumber]);
   useEffect(() => { load(); }, [load]);
-  // ربطُ كشوفها بالتخليص يتغيّر من التشغيل أو من صفحة المعاملة.
+  // The link between its statements and clearance changes from operations or the transaction page.
   useSocket('collections:changed', useCallback((d: any) => { if (d?.source === 'customs-link') load(); }, [load]));
-  // ومتابعاتُ كشوفها تُكتب من التشغيل والتخليص أيضًا — يتبعها العدد.
+  // Follow-ups on its statements are also written from operations and clearance, so the count follows them.
   useSocket('workflow:followUps', useCallback((d: any) => {
     if (!d?.invoiceNumber || d.invoiceNumber === invoiceNumber) load();
   }, [invoiceNumber, load]));
-  // الكشفُ المفتوحُ على متابعاته.
+  // The statement opened on its follow-ups.
   const [openFu, setOpenFu] = useState('');
 
   const backToList = () => router.push('/system/collections-dept/invoices/tax');
 
-  // ── قمعُ إكسل على كشوف هذه الفاتورة ─────────────────────────────────────
-  // الفاتورةُ الواحدةُ قد تجمع أحدًا وعشرين كشفًا، فالفلترُ هنا ليس ترفًا.
-  // والقيمُ نصوصُ الخلايا كما تُقرأ — لا القيمَ الخام.
+  // Excel-style funnel over this invoice's statements.
+  // One invoice can group 21 statements, so filtering here is not a luxury. Values are the cell texts as read, not raw values.
   const cf = useColumnFilters<any>();
   const RG: Record<string, (r: any) => any> = {
     reportNumber: (r) => r.reportNumber,
@@ -295,7 +289,7 @@ export default function TaxInvoiceDetailPage() {
         title={t(`فاتورة ${data.invoiceNumber}`, `Invoice ${data.invoiceNumber}`)}
         subtitle={
           <span className="inline-flex flex-wrap items-center gap-1.5">
-            {/* واسمُ العميل بابُ ملفّه — إن عُرف له ملفّ. */}
+            {/* The customer name links to his file, when a file is known. */}
             {data.partyId ? (
               <button type="button" onClick={() => router.push(`/system/collections-dept/parties/${data.partyId}`)}
                 className="font-medium text-[#f37121] hover:underline">{data.customer}</button>
@@ -314,7 +308,7 @@ export default function TaxInvoiceDetailPage() {
           <ArrowRight className={`w-4 h-4 ${isRTL ? '' : 'rotate-180'}`} />{t('رجوع', 'Back')}
         </button>
         <ExportMenu fileName={`invoice-${data.invoiceNumber}`} lang={ar ? 'ar' : 'en'}
-          // بعد قمع الأعمدة لا قبله — راجع shown.
+          // After the column funnel, not before; see shown.
           options={[{ key: 'shown', label: t('أوامر نقل الفاتورة', 'Invoice reports'), sheets: [{ name: t('أوامر النقل', 'Reports'), rows: shown as any, columns: cols }] }]} />
       </PageHeader>
 
@@ -334,8 +328,7 @@ export default function TaxInvoiceDetailPage() {
         <CollectionPanel invoiceNumber={data.invoiceNumber} c={data.collection} canEdit={canEdit} ar={ar} onDone={load} />
       )}
 
-      {/* ── ومعاملاتُ التخليص التي تخدمها كشوفُها ──────────────────────────
-          فاتورةُ نقلِ حاوياتٍ تُسأل عنها: لأيّ معاملةٍ وأيّ بوليصة؟ تُقال هنا. */}
+      {/* Clearance transactions served by its statements. For a container-transport invoice, 'which transaction and which waybill?' is answered here. */}
       {!!data.customs?.length && (
         <div className="bg-white border border-slate-200 rounded-xl shadow-sm px-4 py-3">
           <p className="text-[13px] font-bold text-slate-900 mb-2">{t('التخليص الجمركي', 'Customs clearance')}</p>
@@ -373,9 +366,7 @@ export default function TaxInvoiceDetailPage() {
               </tr>
             </thead>
             <tbody>
-              {/* ── ولا كشوفَ حالٌ طبيعيّة ────────────────────────────────
-                  أكثرُ فواتير الدفتر أقدمُ من النظام، فلا أوامر نقل لها عندنا.
-                  تُقال الحالُ ولا تُترك الصفحةُ فارغةً كأنّ شيئًا فُقد. */}
+              {/* No statements is a normal case. Most ledger invoices predate the system and have no transport orders here. State the case instead of leaving the page empty as if something were lost. */}
               {!shown.length && (
                 <tr>
                   <td colSpan={12} className="px-4 py-8 text-center text-sm text-slate-500">
@@ -389,7 +380,7 @@ export default function TaxInvoiceDetailPage() {
               {shown.map((r) => (
                 <Fragment key={r._id}>
                 <tr className="border-b border-slate-100 hover:bg-slate-50">
-                  {/* ورقمُ الكشف بابُ الكشف. */}
+                  {/* The statement number links to the statement. */}
                   <td className="px-3 py-2 font-medium whitespace-nowrap">
                     <button type="button" onClick={() => router.push(`/system/operations/${r._id}`)}
                       className="text-[#f37121] hover:underline font-medium">{r.reportNumber || '—'}</button>
@@ -430,8 +421,7 @@ export default function TaxInvoiceDetailPage() {
             <tfoot>
               <tr className="bg-slate-50 font-bold text-slate-900">
                 <td className="px-3 py-2.5" colSpan={6}>{t('الإجمالي', 'Total')}</td>
-                {/* ويتبع المجموعُ ما بقي بعد القمع: مجموعٌ لصفوفٍ لا تُرى يُقرأ
-                    على أنّه مجموعُ المعروض وليس هو. */}
+                {/* The total follows what remains after the funnel: a total over unseen rows would be read as the total of what is shown, and it is not. */}
                 <td className="px-3 py-2.5 tabular-nums">{money(totals.net)}</td>
                 <td className="px-3 py-2.5 tabular-nums">{money(totals.vat)}</td>
                 <td className="px-3 py-2.5 tabular-nums">{money(totals.value)}</td>
@@ -442,7 +432,7 @@ export default function TaxInvoiceDetailPage() {
         </ScrollX>
       </div>
 
-      {/* ورقُ الفاتورة: النسخةُ الموقَّعة وإيصالُ الاستلام وما يُطالَب به. */}
+      {/* Invoice papers: the signed copy, the receipt of delivery and what is being claimed. */}
       <AttachmentsPanel kind="tax" invKey={data.invoiceNumber} />
     </div>
   );

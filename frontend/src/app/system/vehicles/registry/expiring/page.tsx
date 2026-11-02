@@ -1,16 +1,6 @@
 'use client';
-// الانتهاءات والتجديد — الشاشة الوحيدة لسؤالٍ واحد: أيُّ مستندٍ قارب أو انتهى،
-// وكيف يُجدَّد من مكانه.
-//
-// كانت شاشتان: هذه و«تنبيهات المركبات»، وكلتاهما تبنيان من نفس دالة الخادم
-// (buildExpiryRows) وتعرضان نفس الصفوف باسمين مختلفين — فكان المستخدم يقارن
-// رقمًا برقم ويسأل أيّهما الصحيح. أُبقيت هذه وحدها، ونُقل إليها كل ما كانت
-// شاشة التنبيهات تنفرد به: البحث الحُرّ، وإظهار المركبة (ماركة وطراز)، وفلتر
-// «تنبيهه متقفول»، ورابط إعدادات التنبيهات.
-//
-// المدة **رقم يكتبه المستخدم**، مش قايمة ثابتة. الأزرار الجاهزة (٣٠/٦٠/٩٠)
-// اختصار للشائع بس، واللي عايز ٤٧ يوم يكتب ٤٧. الفلترة الأساسية بتحصل على
-// السيرفر عشان الملخّص اللي فوق يفضل بيوصف نفس الصفوف اللي تحت بالظبط.
+// Expiries and renewal: the single screen for which document is close to expiry or expired, and renewing it in place. It replaced the separate vehicle alerts screen, which showed the same rows from buildExpiryRows under another name.
+// The period is a number the user types; the 30/60/90 buttons are shortcuts. Main filtering is on the server so the summary describes exactly the rows below.
 import { useState, useEffect, useCallback, useMemo, Suspense } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -34,12 +24,9 @@ import ScrollX from '@/components/system/ScrollX';
 
 const QUICK = [7, 15, 30, 60, 90, 180];
 
-// أعمدةُ جدول الانتهاءات وقارئُ كلٍّ منها — تعريفٌ واحدٌ للترويسة وللقمع.
+// Expiry table columns and each column's reader: one definition for header and filter.
 const COL_DEFS: [string, string, string][] = [
-  // ── هويّةُ المركبة بالترتيب المعتمد في صفحات القسم كلِّها ─────────────────
-  // اللوحة، الهيكل، التسلسلي، نوع التسجيل، الماركة، الطراز، الموديل، اللون —
-  // بالعناوين نفسِها التي في السجلّ وبطاقات التشغيل، فيُنقَل الفلترُ بينها بلا
-  // ترجمة ويُقارَن ملفُّ إكسل بآخرَ عمودًا بعمود.
+  // Vehicle identity in the order used across the whole section: plate, chassis, serial, registration type, make, model, year, colour. Titles match the registry and operating cards, so a filter carries between them without translation and two Excel files compare column by column.
   ['plate', 'رقم اللوحة', 'Plate'],
   ['chassisNumber', 'رقم الهيكل', 'Chassis'],
   ['serialNumber', 'الرقم التسلسلي', 'Serial'],
@@ -48,10 +35,7 @@ const COL_DEFS: [string, string, string][] = [
   ['modelAr', 'طراز المركبة', 'Model'],
   ['modelYear', 'الموديل', 'Year'],
   ['colorAr', 'اللون', 'Colour'],
-  // ── والسائقُ لا «صاحبُ المستند» ─────────────────────────────────────────
-  // كان يُملأ للتفويض وحدَه فخرج فارغًا في أغلب الصفوف. صار المفوَّضَ على
-  // المركبة في كلّ مستنداتها، وصاحبَ البطاقة في صفّ بطاقة السائق — وبجانبه
-  // رقمُ بطاقته.
+  // The driver is not the document owner. This used to be filled for authorization only and was empty in most rows. It is now the vehicle's authorized person on all its documents, and the card holder on a driver-card row, with his card number beside him.
   ['holder', 'السائق', 'Driver'],
   ['driverCardNumber', 'رقم البطاقة', 'Driver card no.'],
   ['doc', 'المستند', 'Document'],
@@ -61,10 +45,7 @@ const COL_DEFS: [string, string, string][] = [
   ['sector', 'القطاع', 'Sector'],
   ['owner', 'المالك', 'Owner'],
 ];
-// ── والدرجاتُ الثلاثُ تُختار كلٌّ على حدة ───────────────────────────────────
-// «حرج» عملُ اليوم، و«تحذير» عملُ الأسبوع، و«قريب» تجهيزٌ للشهر القادم. وكانت
-// تُطوى في «قارب على الانتهاء» فلا يجد من يريد الحرجَ وحدَه ما يختاره.
-// وعتباتُها بالأيّام تُضبَط لكلّ مستندٍ من إعدادات القسم.
+// The three tiers are selectable separately. Critical is today's work, warning is the week's, near is preparation for next month. They used to be folded into "close to expiry", so someone wanting critical alone had nothing to choose. Their day thresholds are set per document in section settings.
 const STATES = ['expired', 'critical', 'warning', 'upcoming', 'valid'] as const;
 
 function ExpiringInner() {
@@ -79,34 +60,24 @@ function ExpiringInner() {
   const [doc, setDoc] = useState(sp?.get('doc') || '');
   const [state, setState] = useState(sp?.get('state') || '');
   const [includeExpired, setIncludeExpired] = useState(sp?.get('includeExpired') !== '0');
-  // البحث الحُرّ ورّثناه من شاشة التنبيهات: مسؤول القسم يبحث برقم لوحةٍ بعينه
-  // لا بمدةٍ، وبدونه كان يُضطر إلى تصفّح مئات الصفوف بعينه.
+  // Free search inherited from the alerts screen: the section manager looks up a specific plate, not a period, and without it had to scan hundreds of rows by eye.
   const [q, setQ] = useState('');
-  // المستند الذي أُوقف تنبيهه من الإعدادات يظل معروضًا هنا دائمًا — إخفاؤه هو
-  // ما كان يجعل مستندًا منتهيًا فعلًا يغيب في صمت. وهذا الفلتر يُظهر هذه الفئة
-  // وحدها ليراجعها من يضبط العتبات.
+  // A document whose alert is disabled in settings always stays visible here; hiding it is what made an actually expired document vanish silently. This filter shows only that category for whoever sets thresholds.
   const [mutedOnly, setMutedOnly] = useState(false);
   const [d, setD] = useState<Awaited<ReturnType<typeof getExpiring>> | null>(null);
   const { user } = useAuth();
   const canEdit = canEditVehicles(user);
-  // عرضُ عمود الإجراءات يُقاس لتقف اللوحةُ بجانبه — راجع components/vehicles/stickyLead.
+  // Actions column width is measured so the plate column can stick beside it; see components/vehicles/stickyLead.
   const lead = useLeadOffset();
-  // تجديد أكتر من مستند بنفس التاريخ. المفتاح مركّب (مركبة+مستند) لأن نفس
-  // المركبة ممكن يكون عندها أكتر من مستند بينتهي — واحد يتجدّد والتاني لأ.
+  // Renew more than one document with the same date. The key is composite (vehicle + document) because one vehicle can have several expiring documents, one renewed and the other not.
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [bulk, setBulk] = useState(false);
-  // ── هويّةُ الصفّ يرسلها الخادم ──────────────────────────────────────────
-  // كانت تُركَّب من `vehicleId` و`docKey`. وبطاقةُ السائق لا مركبةَ لها، فصار
-  // للسبعِ والخمسين بطاقةً مفتاحٌ واحدٌ هو `null:driverCard`: تُرسم واحدةٌ
-  // وتُهمَل البقيّة، ويقع الاختيارُ على غير ما يُضغَط. و`rowId` فريدٌ لكلّ صفّ.
+  // Row identity is sent by the server. It used to be composed from `vehicleId` and `docKey`; a driver card has no vehicle, so all 57 cards had the single key `null:driverCard`: one rendered and the rest were dropped, and selection landed on a row that could not be clicked. `rowId` is unique per row.
   const rowKey = (r: any) => String(r.rowId || `${r.vehicleId}:${r.docKey}`);
   const [loading, setLoading] = useState(true);
   const [renewing, setRenewing] = useState<ExpiringRow | null>(null);
 
-  // ── ولا يكتب ردٌّ قديمٌ فوق ردٍّ أحدث ───────────────────────────────────
-  // تُكتب المدّةُ فتنطلق طلبتان: واحدةٌ بالمدّة القديمة وأخرى بالجديدة. والأكبرُ
-  // ردًّا أبطأُ وصولًا، فيصل بعد الأصغر ويكتب فوقه — فيرى الكاتبُ نتيجتَه ثوانيَ
-  // ثمّ تعود الشاشةُ إلى ما قبل الفلتر وهو لم يمسّ شيئًا. راجع hooks/useLatestRequest.
+  // Stale responses must not overwrite newer ones. Typing the period fires two requests, old and new; the larger result is slower and lands after the smaller, so the writer sees his result for seconds and then the screen reverts to the pre-filter state. Uses hooks/useLatestRequest.
   const guard = useLatestRequest();
   const load = useCallback(async () => {
     const mine = guard.begin();
@@ -127,8 +98,7 @@ function ExpiringInner() {
   const cf = useColumnFilters<any>();
   const all = useMemo(() => d?.rows || [], [d]);
   const needle = q.trim().toLowerCase();
-  // البحث والفلتر المتوقّف يُطبَّقان هنا لا على الخادم، فيجب أن يُعاد حساب
-  // الملخّص عليهما أيضًا — وإلا وصف الرقمُ فوق صفوفًا غير التي تحت.
+  // Search and the disabled-alert filter apply here, not on the server, so the summary must be recomputed on them too; otherwise the number above describes different rows than the ones below.
   const rows = useMemo(() => all.filter((r: any) => {
     if (mutedOnly && r.alertEnabled !== false) return false;
     if (!needle) return true;
@@ -154,13 +124,13 @@ function ExpiringInner() {
     sector: (r) => r.sectorAr,
     owner: (r) => r.ownerNameAr,
   }), [ar]);
-  // آخرُ ما يُطبَّق: فوق البحث والحالة والمدّة.
+  // Applied last: above search, status and period.
   const shownRows = useMemo(() => cf.apply(rows, GETTERS), [cf, rows, GETTERS]);
 
   const summary = useMemo(() => {
     const s: Record<string, number> = { total: rows.length };
     for (const k of STATES) s[k] = 0;
-    // كلُّ درجةٍ تُعَدّ باسمها — والشريحةُ التي لا صفَّ لها تعرض صفرًا صادقًا.
+    // Each tier is counted by its own name; a chip with no rows shows an honest zero.
     for (const r of rows) { const k = publicState(r.state); s[k] = (s[k] || 0) + 1; }
     return s;
   }, [rows]);
@@ -193,9 +163,7 @@ function ExpiringInner() {
   ];
 
 
-  // المدة والمستند والحالة تُطبَّق على الخادم، والبحث و«المتوقّف تنبيهه» في الذاكرة؛
-  // فالصفوف التي في اليد شريحةٌ من شريحة. «الكلّ» يعيد النداء بلا نافذةٍ زمنيّة،
-  // وإلّا كان مَن فتح الشاشة على ستّين يومًا يصدّر ملفًّا يظنّه سجلّ الانتهاءات كلَّه.
+  // Period, document and status apply on the server, while search and disabled-alert apply in memory, so the rows in hand are a slice of a slice. "All" repeats the call without a time window; otherwise whoever opened the screen on sixty days would export a file believed to be the whole expiry register.
   const hasActiveFilters = !!(needle || mutedOnly || doc || state || within !== '' || !includeExpired || cf.count);
   const fetchAllForExport = async () => {
     const res = await getExpiring({ withinDays: undefined, includeExpired: '1' });
@@ -203,9 +171,7 @@ function ExpiringInner() {
   };
   const scope = exportScopeLabels(ar);
   const exportOptions = [
-    // ── و«المعروض» هو المعروضُ بعد فلاتر الأعمدة ────────────────────────
-    // كان يصدّر `rows` — ما قبل القمع — فمن فلتر على ماركةٍ وصدّر «المعروض»
-    // أخذ الجدولَ كلَّه وهو يظنّه شريحتَه.
+    // "Shown" is what is displayed after column filters. It used to export `rows`, the pre-funnel set, so someone filtering a make and exporting "shown" got the whole table while believing it was his slice.
     { key: 'shown', label: scope.shown, sheets: [{ name: t('الانتهاءات', 'Expiries'), rows: shownRows as unknown as Record<string, any>[], columns: cols }] },
     ...(hasActiveFilters ? [{ key: 'all', label: scope.all, resolve: fetchAllForExport }] : []),
   ];
@@ -225,8 +191,7 @@ function ExpiringInner() {
         subtitle={t('كل مستند له تاريخ — اختر المدة التي تهمّك', 'Every dated document — pick the window that matters to you')}
       >
         <div className="flex items-center gap-2">
-          {/* العتبات تُضبط من الإعدادات، وهي التي تحدّد «حرج» من «تحذير» —
-              فالرابط إليها ينتمي إلى الشاشة التي تُظهر أثرها. */}
+          {/* Thresholds are set in settings and decide critical vs warning, so the link to them belongs on the screen that shows their effect. */}
           <Link href="/system/vehicles/settings"
             className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm">
             <Settings className="w-4 h-4" /> {t('إعدادات التنبيهات', 'Alert settings')}
@@ -235,7 +200,7 @@ function ExpiringInner() {
         </div>
       </PageHeader>
 
-      {/* المدة — الجزء اللي المستخدم بيتحكّم فيه */}
+      {/* The period: the part the user controls. */}
       <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm space-y-3">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-sm font-semibold text-slate-700">{t('ينتهي خلال', 'Expiring within')}</span>
@@ -294,7 +259,7 @@ function ExpiringInner() {
         </div>
       </div>
 
-      {/* ملخّص — بيتحسب على نفس الصفوف المعروضة */}
+      {/* Summary: computed over the same rows that are displayed. */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-2.5">
         {STATES.map((k) => {
           const m = stateMeta(k);
@@ -312,7 +277,7 @@ function ExpiringInner() {
         </div>
       </div>
 
-      {/* توزيع على المستندات */}
+      {/* Distribution across documents. */}
       <div className="flex flex-wrap gap-1.5">
         {byDoc.map((x) => (
           <button key={x.key} onClick={() => setDoc(doc === x.key ? '' : x.key)}
@@ -329,8 +294,7 @@ function ExpiringInner() {
           <table className="w-full text-sm">
             <thead className="bg-slate-900 text-slate-200 text-[13px]">
               <tr>
-                {/* الاختيارُ والتجديدُ فعلٌ واحدٌ على الصفّ — فهما في عمودٍ
-                    واحدٍ أوّلَ الجدول وثابتٍ فيه. راجع components/vehicles/stickyLead. */}
+                {/* Selection and renewal are one action on the row, so they share one pinned column at the start of the table (components/vehicles/stickyLead). */}
                 <th ref={lead.ref} className={`${LEAD} bg-slate-900 px-3 py-3 text-start font-bold whitespace-nowrap`}>
                   <span className="inline-flex items-center gap-2">
                     {canEdit && (
@@ -347,7 +311,7 @@ function ExpiringInner() {
                   </span>
                 </th>
                 {COL_DEFS.map(([key, arL, enL], i) => (
-                  // اللوحةُ أوّلُ الأعمدة وتُثبَّت مع الإجراءات — هويّةُ الصفّ.
+                  // Plate is the first column and pinned with the actions: the row identity.
                   <th key={key}
                     className={`px-3 py-3 text-center font-bold whitespace-nowrap ${i === 0 ? `${LEAD_2} bg-slate-900` : ''}`}
                     style={i === 0 ? { insetInlineStart: lead.offset } : undefined}>
@@ -390,7 +354,7 @@ function ExpiringInner() {
                           <button onClick={() => router.push(`/system/vehicles/registry/${r.vehicleId}`)}
                             className="font-semibold text-slate-800 hover:text-[#f37121]">{r.plateNumber}</button>
                         )
-                        // بطاقةُ السائق لا مركبةَ لها — فلا لوحةَ ولا ملفَّ مركبةٍ يُفتَح.
+                        // A driver card has no vehicle, so there is no plate and no vehicle file to open.
                         : <span className="text-slate-300">—</span>}
                     </td>
                     <td className="px-3 py-2.5 text-slate-600 whitespace-nowrap font-mono text-[12px]" dir="ltr">{r.chassisNumber || '—'}</td>
@@ -407,8 +371,7 @@ function ExpiringInner() {
                     <td className="px-3 py-2.5 text-slate-600">
                       <span className="inline-flex items-center gap-1 justify-center">
                         {ar ? r.docAr : r.docEn}
-                        {/* التنبيه المتوقّف يُعلَّم ولا يُخفى: الصف قائم، والمستخدم
-                            يعرف لماذا لم يصله إشعارٌ به. */}
+                        {/* A disabled alert is marked, not hidden: the row stays and the user knows why no notification reached him. */}
                         {r.alertEnabled === false && (
                           <BellOff className="w-3.5 h-3.5 text-slate-400" aria-label={t('تنبيهه متقفول', 'Alert muted')} />
                         )}
@@ -434,9 +397,7 @@ function ExpiringInner() {
         </ScrollX>
       </div>
 
-      {/* شريط الإجراء الجماعي — ثابت أسفل الشاشة، يظهر فور اختيار أول مستند.
-          كان sticky وموضعه بعد الجدول، فمع مئات الصفوف لا يظهر إلا بعد النزول
-          إلى آخر الصفحة — واختيار صف في الأعلى يبدو بلا زر. */}
+      {/* Bulk action bar: fixed at the bottom of the screen, appears as soon as the first document is selected. It used to be sticky after the table, so with hundreds of rows it appeared only after scrolling to the end, and selecting a row near the top seemed to have no button. */}
       {canEdit && (
         <SelectionBar
           count={picked.size} ar={ar} tone="green"

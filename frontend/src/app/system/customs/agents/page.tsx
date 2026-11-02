@@ -1,4 +1,4 @@
 'use client';
-// وكلاءُ الشحن — الصفحةُ نفسُها التي تخدم العملاء، بدورٍ آخر.
+// Shipping agents: the same page that serves customers, with another role.
 import PartiesPage from '@/components/customs/PartiesPage';
 export default function Page() { return <PartiesPage kind="agent" />; }

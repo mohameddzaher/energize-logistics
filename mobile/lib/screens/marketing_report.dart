@@ -9,8 +9,7 @@ import '../ui/theme.dart';
 import '../ui/stat_grid.dart';
 import '../ui/widgets.dart';
 
-/// التقرير الدوري للتسويق — تجميع الأنشطة يوميًا/أسبوعيًا/شهريًا مع الملخص.
-/// /api/marketing/report?period=daily|weekly|monthly
+/// Periodic marketing report: activities grouped daily/weekly/monthly with a summary. /api/marketing/report?period=daily|weekly|monthly
 class MarketingReportScreen extends StatefulWidget {
   const MarketingReportScreen({super.key});
   @override
@@ -28,11 +27,11 @@ class _MarketingReportScreenState extends State<MarketingReportScreen> {
   bool _loading = true;
   String? _error;
   String _period = 'weekly';
-  // المدى كالويب: من أوّل الشهر حتى اليوم افتراضًا.
+  // Range as on the web: first of the month to today by default.
   MarketingRange _range = marketingThisMonth();
   int _seq = 0;
 
-  // حيٌّ على `marketing:updated` — نشاطٌ يُضاف يظهر في التقرير في اللحظة.
+  // Live on `marketing:updated`: an added activity shows in the report immediately.
   @override
   void initState() { super.initState(); _load(); Live.instance.on('marketing:updated', _load); }
 
@@ -95,8 +94,7 @@ class _MarketingReportScreenState extends State<MarketingReportScreen> {
             for (final p in [('daily', 'يومي', 'Daily'), ('weekly', 'أسبوعي', 'Weekly'), ('monthly', 'شهري', 'Monthly')])
               Padding(
                 padding: const EdgeInsetsDirectional.only(end: 6),
-                // حبّةٌ مرسومة يدويًّا: ثيمُ ChoiceChip يفرض خلفيةً بيضاء على غير
-                // المحدَّدة فيختفي نصُّها الأبيض على شريط العنوان الداكن.
+                // Hand-drawn pill: the ChoiceChip theme forces a white background on unselected chips, which hides white text on the dark header bar.
                 child: Pressable(
                   onTap: () { setState(() { _period = p.$1; _loading = true; }); _load(); },
                   child: Container(

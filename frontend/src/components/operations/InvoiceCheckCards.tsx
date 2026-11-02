@@ -1,16 +1,8 @@
 'use client';
 /**
- * بطاقاتُ فحص الفواتير في سير عمل التشغيل — أربعٌ حيّة.
- *
- *  · «فواتير لم تُفوتَر»: أرقامٌ ناقصةٌ في تسلسل الفواتير الضريبيّة — من بدايته
- *    إلى أعلى رقمٍ مكتوبٍ على كشف (والأعلى يتحرّك مع كلّ فاتورةٍ تُكتب).
- *  · «فواتير بكشوفات غير موجودة»: سطرٌ في ورقة المبيعات المرفوعة يذكر كشفًا لا يوجد.
- *  · «فرق قيمة الفاتورة»: ما تقوله الورقةُ غيرُ مجموع كشوف الفاتورة.
- *  · «عدم تطابق اسم العميل»: عميلُ الورقة غيرُ عميل الكشف (بعد طيّ المسافات والهمزات).
- *
- * الأعدادُ من `GET /api/workflows/invoice-checks` — على التسلسل كلِّه وأوراق الرفع
- * كلِّها، لا على فلتر الجدول: رقمٌ ناقصٌ في التسلسل لا يخصّ عميلًا ولا فرعًا.
- * وكلُّ تعديلٍ على الكشوف يُعيدها (البثُّ الحيّ) — والخادمُ يمسح ذاكرتَه قبل أن يبثّ.
+ * Invoice check cards in the operations workflow, four live.
+ * 1. Uninvoiced: gaps in the tax invoice sequence, from its start up to the highest number written on a manifest (the highest moves with each invoice). 2. Invoices with missing manifests: a sales-sheet line cites a manifest that does not exist. 3. Invoice value difference: the sheet total differs from the sum of the invoice manifests. 4. Customer name mismatch: sheet customer differs from the manifest customer (after folding spaces and hamza).
+ * Counts come from `GET /api/workflows/invoice-checks` over the whole sequence and all uploaded sheets, not the table filter. Any manifest edit refreshes them via live broadcast; the server clears its cache before broadcasting.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import api from '@/lib/api';
@@ -49,7 +41,7 @@ export default function InvoiceCheckCards({ ar }: { ar: boolean }) {
     try {
       const d = await api.get<Summary>('/api/workflows/invoice-checks');
       if (guard.isCurrent(mine)) setSum(d);
-    } catch { /* البطاقاتُ زيادة — لا تُسقط الصفحة */ }
+    } catch { /* The cards are an addition; they must not break the page. */ }
   }, [guard]);
 
   const loadList = useCallback(async (k: Kind) => {
@@ -64,8 +56,7 @@ export default function InvoiceCheckCards({ ar }: { ar: boolean }) {
 
   useEffect(() => { load(); }, [load]);
 
-  // ── حيّة: كلُّ كتابةٍ على الكشوف تعيدها، مجمَّعةً في ثانيةٍ ونصف ──────────
-  // المزامنةُ تبثّ كلَّ بضع ثوانٍ؛ والتجميعُ يجعل عشرين بثًّا في الدقيقة طلبًا أو اثنين.
+  // Live: every manifest write refreshes them, batched in 1.5 s. Sync broadcasts every few seconds; batching turns twenty broadcasts a minute into one or two requests.
   const poke = useCallback(() => {
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(() => { load(); if (open) loadList(open); }, 1500);
@@ -80,10 +71,7 @@ export default function InvoiceCheckCards({ ar }: { ar: boolean }) {
 
   if (!sum) return null;
   const g = sum.gaps;
-  // ── الأرقامُ الناقصةُ وحدَها ───────────────────────────────────────────────
-  // كانت القائمةُ تكتب بجانب الرقم عميلًا وقيمةً من دفتر التحصيل — فقرأها صاحبُ
-  // الشركة بياناتٍ مخترَعة (٢٠٢٦/١٠/٢١). والمطلوبُ هو الأرقامُ التي لا كشفَ عليها
-  // في سير عمل التشغيل بين أوّل فاتورةٍ وأحدثِها، يبحث هو عنها.
+  // Only the missing numbers: the list used to show a customer and value from the collections ledger, which read as invented data. What is needed is the numbers with no manifest in the operations workflow between the first and latest invoice.
 
   const cards: { k: Kind; n: number; title: string; sub: string; icon: any; tone: string }[] = [
     {
@@ -109,12 +97,12 @@ export default function InvoiceCheckCards({ ar }: { ar: boolean }) {
       sub: t('عميل الورقة ≠ عميل أمر النقل', 'sheet customer ≠ report customer'),
     },
   ];
-  // ── ألوانٌ هادئة: بطاقةٌ بيضاء ورقمٌ بالحبر، والنبرةُ نقطةٌ صغيرة لا خلفيّة ──
+  // Quiet colors: white card, ink number, tone as a small dot rather than a background
   const TONE: Record<string, string> = {
     violet: '#8b5cf6', amber: '#f59e0b', rose: '#e11d48', sky: '#0ea5e9',
   };
 
-  // ── أعمدةُ كلّ قائمة — للجدول وللإكسل معًا ──────────────────────────────
+  // Columns of each list, shared by the table and Excel
   const COLS: Record<Kind, { key: string; ar: string; en: string; kind?: 'money' | 'date' }[]> = {
     gaps: [
       { key: 'invoiceNumber', ar: 'رقم الفاتورة الناقص', en: 'Missing invoice #' },
@@ -207,8 +195,7 @@ export default function InvoiceCheckCards({ ar }: { ar: boolean }) {
             <p className="py-8 text-center text-slate-400">{t('لا شيء هنا', 'Nothing here')}</p>
           ) : (
             open === 'gaps' ? (
-              /* رقمٌ واحدٌ في كلّ صفّ كان يُمدّ بعرض النافذة كلِّها — فصارت الأرقامُ
-                 شبكةً متراصّة (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢). */
+              /* One number per row was stretched to full window width; now numbers form a compact grid. */
               <div className="max-h-[55vh] overflow-auto rounded-lg border border-slate-200 bg-white p-2">
                 <div className="grid grid-cols-[repeat(auto-fill,minmax(84px,1fr))] gap-1.5">
                   {shown.slice(0, 3000).map((r, i) => (

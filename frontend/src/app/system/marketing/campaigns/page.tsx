@@ -1,7 +1,5 @@
 'use client';
-// Marketing campaigns (الحملات التسويقية) — the list every campaign lives on:
-// search, status/platform filters, create/edit/delete and an Excel export.
-// Clicking a row opens the campaign's own page with its activities.
+// Marketing campaigns: the list every campaign lives on: search, status/platform filters, create/edit/delete and an Excel export. Clicking a row opens the campaign's own page with its activities.
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useDialog } from '@/components/system/DialogProvider';
 import { useRouter } from 'next/navigation';
@@ -119,8 +117,7 @@ export default function MarketingCampaignsPage() {
     { header: 'CPL', key: 'cpl', transform: (v) => Number(v ?? 0).toFixed(2), width: 10 },
     { header: ar ? 'المسؤول' : 'Owner', key: 'owner', transform: (v) => personName(v as never), width: 20 },
   ];
-  // الحملات تُفلتَر في المتصفّح (بحث وحالة ومنصّة)، وكان زرُّ التصدير يأخذ
-  // المفلتَر وحده باسم «الحملات» — فيخرج ملفٌّ ناقصٌ لا شيء فيه يشي بنقصه.
+  // Campaigns are filtered in the browser (search, status, platform), and the export button took only the filtered rows under the name 'campaigns', producing a partial file with nothing indicating it.
   const scope = exportScopeLabels(ar);
   const sheetName = ar ? 'الحملات' : 'Campaigns';
   const exportOptions = [

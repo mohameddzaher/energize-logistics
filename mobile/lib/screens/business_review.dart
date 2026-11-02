@@ -10,15 +10,7 @@ import '../ui/search_field.dart';
 import 'business_review_kit.dart';
 import 'business_review_meeting.dart';
 
-/// اجتماعات مراجعة الأعمال — the mobile half.
-///
-/// Same contract as the web (`/api/business-review/*`) and the same visibility
-/// rule, enforced server-side: a department head gets the meetings they sat in
-/// and the actions they own; an ordinary employee gets ONLY the tasks delegated
-/// to them, and the tabs they don't qualify for simply never appear.
-///
-/// The vocabularies (statuses, priorities, cadences) come from `/meta`, so a new
-/// status added on the server shows up here without an app release.
+/// Business review meetings, the mobile half. Same contract as the web (the business-review API) and the same visibility rule, enforced server-side: a department head gets the meetings they sat in and the actions they own; an ordinary employee gets ONLY the tasks delegated to them, and the tabs they don't qualify for simply never appear. The vocabularies (statuses, priorities, cadences) come from `/meta`, so a new status added on the server shows up here without an app release.
 
 const _open = ['open', 'in_progress', 'blocked'];
 
@@ -127,7 +119,7 @@ class _BusinessReviewScreenState extends State<BusinessReviewScreen> {
   }
 }
 
-// ── الاجتماعات ──────────────────────────────────────────────────────────────
+// Meetings
 class _MeetingsTab extends StatefulWidget {
   final Map<String, dynamic> meta;
   const _MeetingsTab({required this.meta});
@@ -135,7 +127,7 @@ class _MeetingsTab extends StatefulWidget {
   State<_MeetingsTab> createState() => _MeetingsTabState();
 }
 
-/// أوعية البطاقات — نفس مفاتيح الـ bucket اللي السيرفر بيفهمها، ونفس ترتيب الويب.
+/// Card buckets: the same bucket keys the server understands, in the web order.
 const _buckets = [
   ('', 'كل الاجتماعات', 'All', 'total', T.navy),
   ('open', 'ما زالت مفتوحة', 'Still open', 'open', T.orange),
@@ -152,7 +144,7 @@ class _MeetingsTabState extends State<_MeetingsTab> {
   String _cadence = '';
   String _status = '';
   String _q = '';
-  final _searchCtl = TextEditingController(); // النصُّ يبقى مطابقًا لـ_q بعد التحميل
+  final _searchCtl = TextEditingController(); // Text stays equal to _q after loading.
   bool _loading = true;
   String? _error;
   int _seq = 0;
@@ -187,7 +179,7 @@ class _MeetingsTabState extends State<_MeetingsTab> {
       final d = r[0];
       setState(() {
         _rows = List<Map<String, dynamic>>.from(d['meetings'] ?? []);
-        // العدّادات محسوبة على النطاق كله، فهي بتفضل صحيحة وانت واقف على فلتر.
+        // Counters are computed over the whole scope, so they stay correct while a filter is active.
         if (d['counts'] != null) _counts = Map<String, dynamic>.from(d['counts'] as Map);
         _dash = (r[1] as Map).isEmpty ? _dash : Map<String, dynamic>.from(r[1]);
         _loading = false; _error = null;
@@ -202,7 +194,7 @@ class _MeetingsTabState extends State<_MeetingsTab> {
     _load();
   }
 
-  // ارتفاعٌ طبيعيّ (لا ثابت) — بخطّ Tajawal وتكبير النصّ كانت 74 تقصّ الرقم والعنوان.
+  // Natural height (not fixed): with the Tajawal font and text scaling, 74 clipped the number and title.
   Widget _cards() => SingleChildScrollView(
     scrollDirection: Axis.horizontal,
     padding: const EdgeInsets.fromLTRB(14, 12, 14, 4),
@@ -236,7 +228,7 @@ class _MeetingsTabState extends State<_MeetingsTab> {
     ),
   );
 
-  /// بطاقات «اجتماعاتي/بنودي/المتأخر/المهام/الإنجاز» — لوحة الويب نفسها.
+  /// Cards for my meetings / my items / overdue / tasks / completion, the same dashboard as the web.
   Widget _tiles() {
     final mine = Map<String, dynamic>.from(_dash?['mine'] ?? {});
     if (mine.isEmpty) return const SizedBox.shrink();
@@ -405,7 +397,7 @@ class _MeetingsTabState extends State<_MeetingsTab> {
   }
 }
 
-// ── جدولة اجتماع ────────────────────────────────────────────────────────────
+// Schedule a meeting
 class _NewMeetingScreen extends StatefulWidget {
   final Map<String, dynamic> meta;
   const _NewMeetingScreen({required this.meta});
@@ -426,7 +418,7 @@ class _NewMeetingScreenState extends State<_NewMeetingScreen> {
   late List<String> _attendees;
   String _chair = '';
   String _peopleQ = '';
-  final _peopleCtl = TextEditingController(); // يبقى مطابقًا لـ_peopleQ إن خرجت الخانةُ من الشاشة
+  final _peopleCtl = TextEditingController(); // Stays equal to _peopleQ if the field leaves the screen.
   bool _busy = false;
 
   @override
@@ -437,7 +429,7 @@ class _NewMeetingScreenState extends State<_NewMeetingScreen> {
   @override
   void initState() {
     super.initState();
-    // الإدارة حاضرة افتراضيًا — منها تأتي أغلب البنود (كالويب).
+    // Management is present by default, since most items come from them (like the web).
     _attendees = _participants.where((p) => p['isExecutive'] == true).map((p) => p['_id'].toString()).toList();
     _chair = _attendees.isNotEmpty ? _attendees.first : '';
     final cads = List.from(widget.meta['cadences'] ?? []);
@@ -592,7 +584,7 @@ class _NewMeetingScreenState extends State<_NewMeetingScreen> {
   }
 }
 
-// ── البنود (مِلكي أو السجل الكامل) ──────────────────────────────────────────
+// Items (mine or the full register)
 class _ActionsTab extends StatefulWidget {
   final Map<String, dynamic> meta;
   /// true → my own actions; false → the whole register (board/secretariat).
@@ -608,13 +600,13 @@ class _ActionsTabState extends State<_ActionsTab> {
   List<Map<String, dynamic>> _byPerson = [];
   bool _loading = true;
   String? _error;
-  // بنودي: مفتوحة/متأخرة/منجزة/الكل — كالويب.
+  // My items: open/overdue/done/all, like the web.
   String _filter = 'open';
-  // السجل: الحالة والمكلَّف على الخادم، والبحث و«المتأخر فقط» في الذاكرة.
+  // Register: status and assignee on the server; search and "overdue only" in memory.
   String _status = '';
   String _assignee = '';
   String _q = '';
-  final _searchCtl = TextEditingController(); // النصُّ يبقى مطابقًا لـ_q بعد التحميل
+  final _searchCtl = TextEditingController(); // Text stays equal to _q after loading.
   bool _onlyOverdue = false;
   int _seq = 0;
 
@@ -686,7 +678,7 @@ class _ActionsTabState extends State<_ActionsTab> {
         ExportCol('موزّع على', 'Delegated to', (r) => List.from(r['delegations'] ?? []).map((d) => d['assigneeName']).join(' | ')),
       ];
 
-  /// كالويب: «المعروض» تحت الفلتر، أو «الكل» بنداءٍ جديد بلا فلاتر.
+  /// Like the web: "shown" under the filter, or "all" via a fresh call with no filters.
   Future<void> _export() async {
     final filtered = _q.trim().isNotEmpty || _status.isNotEmpty || _assignee.isNotEmpty || _onlyOverdue;
     var scope = 'shown';
@@ -779,7 +771,7 @@ class _ActionsTabState extends State<_ActionsTab> {
     );
   }
 
-  /// من عليه ماذا — اللوحة الجانبيّة في الويب؛ والضغط يفلتر بالمكلَّف.
+  /// Who owes what: the web's side panel; tapping filters by assignee.
   void _showByPerson() {
     showModalBottomSheet(
       context: context,
@@ -873,7 +865,7 @@ class _ActionsTabState extends State<_ActionsTab> {
                 meta: widget.meta,
                 showMeeting: true,
                 onChanged: _load,
-                // بنودي: تحديث وتوزيع. السجل: تحديث وتوزيع (للمالك أو المدير) وحذف.
+                // My items: update and delegate. Register: update and delegate (owner or manager) and delete.
                 canDelegate: widget.mine || a['assignee'] == meId || runner,
                 canDelete: !widget.mine,
               ),
@@ -884,7 +876,7 @@ class _ActionsTabState extends State<_ActionsTab> {
   }
 }
 
-// ── مهامي (الموظف) ──────────────────────────────────────────────────────────
+// My tasks (employee)
 class _TasksTab extends StatefulWidget {
   final Map<String, dynamic> meta;
   const _TasksTab({required this.meta});

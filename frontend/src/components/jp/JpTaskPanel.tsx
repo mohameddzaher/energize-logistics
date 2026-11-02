@@ -1,14 +1,8 @@
 'use client';
 /**
- * مهامُّ JP لشيءٍ بعينه — تُقرأ وتُضاف من صفحته (صاحبُ الشركة، ٢٠٢٦/١٠/٢٣).
- *
- * «من جوّا المعاملة أعمل JP… بيودّيني لصفحة الـ JP، لا — خلّيني أعملها من نفس
- * المكان». فالصندوقُ يُوضع في صفحة المعاملة والشحنة والموظّف والمركبة… ويكتب
- * المهمّةَ في نافذةٍ فوق الصفحة نفسِها، مربوطةً بما فُتحت منه، فتظهر في خطّة
- * القسم ولوحته في اللحظة (jp:changed). والمهمّةُ تُختار من قائمة القسم
- * (jp_task_<القسم>)، وتُسنَد وتُوقَّت كما في الخطّة.
- *
- * يختفي كلُّه لمن ليس من فريق القسم — الخادمُ يقول ذلك (/api/jp/me ← 403).
+ * JP tasks for a specific thing, read and added from its page.
+ * The box sits in the transaction, shipment, employee and vehicle pages and writes the task in a dialog over the same page, linked to its origin, so it appears in the section plan and board instantly (jp:changed). The task is chosen from the section list (jp_task_<section>), assigned and timed as in the plan.
+ * Hidden for anyone outside the section team (the server returns 403 from /api/jp/me).
  */
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
@@ -99,7 +93,7 @@ export default function JpTaskPanel({ section, kind, refId, ar, compact }: {
   );
 }
 
-/** نافذةُ الإضافة — فوق الصفحة، لا انتقالَ إلى الخطّة. */
+/** Add dialog: over the page, no navigation to the plan. */
 function QuickAdd({ me, section, kind, refId, ar, onClose, onSaved }: {
   me: JpMe; section: string; kind: string; refId: string; ar: boolean; onClose: () => void; onSaved: () => void;
 }) {

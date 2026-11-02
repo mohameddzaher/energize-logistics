@@ -88,22 +88,13 @@ const STAGE_CONFIG: Record<string, { label: string; color: string; bg: string }>
   completed: { label: 'Completed', color: 'text-green-600', bg: 'bg-green-500/20' },
 };
 
-// الحقولُ بمجموعاتها في lib/workflowFields — تقرؤها صفحةُ معاملة التخليص أيضًا.
+// Fields with their groups are in lib/workflowFields; the customs transaction page reads them too.
 const SECTIONS = WORKFLOW_SECTIONS;
 const AMOUNT_KEYS = new Set(['netInvoice', 'tax', 'totalInvoice', 'invoiceDate', 'invoiceNotes', 'collectedAmount', 'collectionDate']);
 
 /**
- * ── ما يحقُّ لهذا المستخدمِ تعديلُه يقولُه الخادم ───────────────────────────
- * كان هنا جدولٌ مكتوبٌ باليد يوزّع «المجموعات» على الأدوار، وكان غلطًا من ثلاث
- * جهات: أسماءُ مجموعاتٍ لا وجودَ لها في الصفحة نفسِها (مُنح مديرُ التشغيل
- * مجموعةَ `operations_staff` وليس في الصفحة مجموعةٌ بهذا الاسم، فلم يقدر أن
- * يعدّل شيئًا)، وأسماءُ أدوارٍ لا وجودَ لها في النظام (`operations`,
- * `employee`)، وكلُّ دورٍ يُستحدَث — ومنه الأدوارُ المُصنَّعة — يسقط من الجدول
- * فيجد الصفحةَ كلَّها للقراءة وإن كان له «تعديلٌ» على قسم التشغيل.
- *
- * فالإذنُ يُسأل عنه الخادمُ (`/api/workflows/permissions`) حقلًا حقلًا، وهي
- * القائمةُ نفسُها التي يُنقّي بها ما يُحفظ. فما تُظهره الشاشةُ قابلًا للتعديل
- * هو ما سيَقبله الخادم — لا بابٌ مفتوحٌ يُردّ عند الحفظ، ولا حقٌّ يُحجب.
+ * What this user may edit is stated by the server. A hand-written table assigned field 'groups' to roles and was wrong three ways: group names absent from the page itself (the operations manager got an `operations_staff` group the page lacks, so he could edit nothing), role names that do not exist in the system (`operations`, `employee`), and every newly created role, including custom ones, missing from the table so the whole page was read-only even with 'edit' on the operations section.
+ * So the server (`/api/workflows/permissions`) is asked field by field, using the same list that filters what is saved. What the screen shows editable is what the server will accept.
  */
 
 export default function WorkflowDetailPage() {
@@ -135,9 +126,9 @@ export default function WorkflowDetailPage() {
 
   const role = user?.role || '';
 
-  // `null` = لم تصل القائمةُ بعد؛ فلا يُقال «للقراءة» قبل أن يُعرف الجواب.
+  // `null` means the list has not arrived; do not show 'read-only' before the answer is known.
   const [myFields, setMyFields] = useState<Set<string> | null>(null);
-  // ربطُ الكشف بمعاملة تخليص — يقوله الخادم (canLinkCustoms) ويفحصه ثانيةً عند الحفظ.
+  // Linking the manifest to a customs transaction: decided by the server (canLinkCustoms) and checked again on save.
   const [canLinkCustoms, setCanLinkCustoms] = useState(false);
   // Invoice amounts (net invoice onward) are hidden unless the server says this reader sees them.
   const [seesAmounts, setSeesAmounts] = useState(false);
@@ -150,7 +141,7 @@ export default function WorkflowDetailPage() {
       .catch(() => { if (alive) setMyFields(new Set()); });
     return () => { alive = false; };
   }, [role]);
-  // role-only: صلاحيّةُ السوبر أدمن والأدمن (config/constants TOP_ROLES) — لا منحُ قسم.
+  // role-only: super admin and admin privilege (config/constants TOP_ROLES), not a section grant.
   const canEditField = (key: string) => ['super_admin', 'admin'].includes(role || '') || myFields === null || myFields.has(key);
   const canEditGroup = (group: string) =>
     (SECTIONS.find((s) => s.group === group)?.fields || []).some((f) => canEditField(f.key));
@@ -209,7 +200,7 @@ export default function WorkflowDetailPage() {
   useSocket('workflow:stageChanged', handleRealTimeUpdate);
   useSocket('workflow:locked', handleRealTimeLock);
   useSocket('workflow:unlocked', handleRealTimeUnlock);
-  // ربطُ التخليص يتغيّر من صفحة المعاملة أيضًا (خانةُ نقلٍ كُتب فيها رقمُ هذا الكشف).
+  // The customs link also changes from the transaction page (a transport field holding this manifest's number).
   const handleCustomsLinked = useCallback((d: any) => {
     if (!d?.customsLink || editing) return;
     const nums: string[] = Array.isArray(d.reportNumbers) ? d.reportNumbers : [];
@@ -229,11 +220,7 @@ export default function WorkflowDetailPage() {
     }
   };
 
-  /**
-   * حذف الكشف — للمدير الأعلى وحده، وبتأكيدٍ يذكر رقمه.
-   * ما يُحذف هنا يختفي من تقارير التشغيل والتحصيل معًا، فالتأكيد يذكر ما
-   * يُحذف بالاسم لا «هل أنت متأكد؟».
-   */
+  /** Delete manifest: top manager only, with a confirmation that names its number. A delete disappears from both operations and collections reports, so the confirmation names what is deleted rather than 'are you sure?'. */
   const handleDeleteWorkflow = async () => {
     if (!workflow) return;
     if (!window.confirm(lang === 'ar'
@@ -266,8 +253,7 @@ export default function WorkflowDetailPage() {
     try {
       setSaving(true);
       setError('');
-      // نوعُ الدفع يُرسَل إن تغيّر وحدَه: إرسالُه كما هو يختمه «اختيارَ يد»
-      // فيُخرجه من صفحة «أنواع الدفع» بلا أن يختاره أحد.
+      // Payment type is sent only if it changed: sending it as is would stamp it as a manual choice and remove it from the payment types page though nobody chose it.
       const payload: Record<string, any> = { ...formData };
       if (payload.paymentType === paymentKindOf(workflow as any)) delete payload.paymentType;
       await api.put(`/api/workflows/${workflow._id}`, payload);
@@ -287,9 +273,7 @@ export default function WorkflowDetailPage() {
   const getTransitions = () => {
     if (!workflow) return [];
     const map: Record<string, { stage: string; label: string; roles: string[] }[]> = {
-      // ── «إرسال للتشغيل» أُزيل ──────────────────────────────────────────
-      // الكشوفُ تصل من منصّة التشغيل وهي جاريةٌ هناك أصلًا، فلا معنى لإرسالها
-      // إليها من عندنا. والزرُّ بقي من زمنٍ كانت تُنشأ فيه الكشوفُ هنا يدويًّا.
+      // 'Send to operations' removed: manifests arrive from the operations platform already running there, so sending them back is meaningless. The button remained from when manifests were created here by hand.
       draft: [],
       submitted_to_ops: [
         { stage: 'ops_completed', label: T.markOpsComplete, roles: ['operations_manager', 'super_admin', 'admin'] },
@@ -334,11 +318,7 @@ export default function WorkflowDetailPage() {
   }
 
   if (!workflow) {
-    // ── ورابطٌ قديمٌ ليس كشفًا مفقودًا ──────────────────────────────────────
-    // هذا المسار يبتلع كلَّ ما بعد `/system/operations/`، فرابطٌ محفوظٌ لصفحةٍ
-    // أُزيلت (كشوف التخريج مثلًا) يصل إلى هنا فيُقال له «الكشف غير موجود» —
-    // وهو لم يطلب كشفًا. ومعرّفُ الكشف أربعٌ وعشرون خانةً ستّ عشريّة، فما ليس
-    // كذلك ليس رقمَ كشفٍ أصلًا، ويُقال له الصوابُ: هذه الصفحة أُزيلت.
+    // An old link is not a missing manifest. This route swallows everything after `/system/operations/`, so a saved link to a removed page (e.g. the outgoing manifests) lands here and says 'manifest not found' though no manifest was requested. A manifest id is 24 hex characters; anything else is not a manifest id and gets the right message: this page was removed.
     const looksLikeId = /^[0-9a-f]{24}$/i.test(String(id || ''));
     return (
       <div className="text-center py-20">
@@ -355,8 +335,7 @@ export default function WorkflowDetailPage() {
   const sc = STAGE_CONFIG[workflow.stage] || STAGE_CONFIG.draft;
   const transitions = getTransitions();
 
-  // شاشةُ عمليّةٍ واحدة: الملفّ صفٌّ واحد هو هذه العمليّة بحقولها كلّها — لا فلترَ
-  // هنا ولا ترقيم، ونطاقٌ ثانٍ سيُخرج الملفَّ نفسه ويوهم بأنّ أمام المصدِّر اختيارًا.
+  // Single-operation screen: the file is one row, this operation with all its fields; no filter or pagination, and a second scope would export the same file and imply a choice.
   const exportColumns: ExportColumn[] = SECTIONS.flatMap((sec) => sec.fields).map((f: any) => ({
     header: f.labelEn || f.label,
     key: f.key,
@@ -441,7 +420,7 @@ export default function WorkflowDetailPage() {
         </div>
       )}
 
-      {/* معاملةُ التخليص التي يخدمها الكشف — وربطُها يدويًّا. */}
+      {/* The customs transaction this manifest serves, and linking it manually. */}
       {!editing && (
         <WorkflowCustomsPanel
           workflowId={workflow._id}
@@ -453,7 +432,7 @@ export default function WorkflowDetailPage() {
         />
       )}
 
-      {/* متابعاتُ الكشف — يكتبها التشغيلُ والتخليصُ والتحصيل على السجلّ نفسِه. */}
+      {/* Manifest follow-ups, written by operations, clearance and collections on the same record. */}
       {!editing && (
         <ReportFollowUps basePath={`/api/workflows/${workflow._id}/follow-ups`} workflowId={workflow._id} ar={lang === 'ar'} />
       )}
@@ -472,12 +451,11 @@ export default function WorkflowDetailPage() {
             </div>
             <div className="p-6">
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {/* قيمةُ البيع لمن في قائمتها وحدَه — الخادمُ لا يرسلها لغيره، فخانتُها
-                    الفارغةُ كانت تُقرأ «لا سعر». راجع SELLING_ROLES في workflowController. */}
+                {/* Selling value only for those in its list: the server does not send it to others, so an empty cell used to read as 'no price'. See SELLING_ROLES in workflowController. */}
                 {section.fields.filter((f) => (f.key !== 'sellingValue' || ['super_admin', 'admin'].includes(role || '') || !!myFields?.has('sellingValue'))
                   && (seesAmounts || !AMOUNT_KEYS.has(f.key))).map((field) => {
                   const val = formData[field.key];
-                  // حقلًا حقلًا: قد يُعدِّل المستخدمُ بعضَ مجموعةٍ لا كلَّها.
+                  // Field by field: a user may edit some of a group but not all.
                   const editable = editing && canEditField(field.key);
                   return (
                     <div key={field.key}>
@@ -489,7 +467,7 @@ export default function WorkflowDetailPage() {
                           onChange={(e) => setFormData({ ...formData, paymentType: e.target.value })}
                           className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50">
                           <option value="" disabled>{lang === 'ar' ? '— اختر —' : '— select —'}</option>
-                          {/* «ضريبي»/«كاش» القائمُ يُرى ولا يُختار — الأربعةُ وحدَها اختيار. */}
+                          {/* An existing 'tax' / 'cash' value is shown but not selectable; only the four are choices. */}
                           {(val === 'cash' || val === 'tax') && <option value={val} disabled>{paymentKindLabel(val, lang === 'ar')}</option>}
                           {PAYMENT_CHOICES.map((k) => <option key={k} value={k}>{paymentKindLabel(k, lang === 'ar')}</option>)}
                         </select>
@@ -522,7 +500,7 @@ export default function WorkflowDetailPage() {
         );
       })}
 
-      {/* مهامّ JP المربوطة بهذا الكشف — تُضاف من هنا. */}
+      {/* JP tasks linked to this manifest; added from here. */}
       {!editing && <JpTaskPanel section="operations" kind="workflow" refId={String(workflow._id)} ar={lang === 'ar'} />}
 
       {/* Meta info */}
@@ -531,11 +509,7 @@ export default function WorkflowDetailPage() {
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
           <div>
             <p className="text-slate-500 text-xs">{T.createdBy}</p>
-            {/* ── ولا يُنسَب المنقولُ إلى إنسان ──────────────────────────────
-                كانت المزامنةُ تختم كلَّ أمر نقل تنشئه باسم أوّلِ سوبر أدمنَ تجده
-                في القاعدة، فقرأ أربعةٌ وثلاثون ألفَ أمر نقل «أنشأتها فتون» وهي
-                لم تفتح واحدًا منها. والمنقولُ لا مُنشئَ له عندنا — ومصدرُه
-                يُقال بدل أن تُترك الخانةُ فارغةً بلا تفسير. */}
+            {/* Migrated records are not attributed to a person. Sync used to stamp every transfer order it created with the first super admin found in the database, so 34 thousand transfer orders read 'created by' someone who opened none. A migrated record has no creator here, and its source is stated instead of leaving the field blank unexplained. */}
             <p className="text-slate-700 mt-0.5">
               {workflow.createdBy
                 ? `${workflow.createdBy.firstName} ${workflow.createdBy.lastName}`

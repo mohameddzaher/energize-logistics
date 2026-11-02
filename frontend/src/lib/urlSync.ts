@@ -1,16 +1,6 @@
 /**
- * تحديثُ العنوان بلا ملاحة.
- *
- * الشاشات تكتب فلترَها وبحثَها في العنوان كي يُرسَل الرابط ويعمل التحديث. وكانت
- * تفعل ذلك بـ`router.replace`، وهي **ملاحةٌ كاملة** في موجّه Next: تُعيد رسم
- * قطعة المسار، فتسقط الشاشة إلى حدّ `Suspense` وتظهر الشاشةُ الفارغة، ثم تعود.
- * ومع كلّ حرفٍ في خانة البحث تتكرّر الدورة — فيرى المستخدم النتيجة تظهر وتختفي
- * وتظهر، ويظنّ البحث معطوبًا.
- *
- * و`history.replaceState` يكتب العنوان نفسه بلا ملاحةٍ ولا إعادة رسم: الرابط
- * يبقى صالحًا للإرسال وللتحديث، والجدول لا يرتجف.
- *
- * (ولا يُضاف إلى سجلّ التصفّح — وهو ما كان `replace` يفعله أصلًا، فلا فرق.)
+ * Update the URL without navigation.
+ * Screens write their filter and search into the URL so the link can be sent and refresh works. They used `router.replace`, which is a full navigation in the Next router: it re-renders the path segment, the screen drops to the Suspense boundary, shows the empty screen and comes back, and the cycle repeats with each search character. This writes the URL without that.
  */
 export function syncUrl(path: string, params: URLSearchParams | Record<string, string | number | null | undefined>) {
   if (typeof window === 'undefined') return;

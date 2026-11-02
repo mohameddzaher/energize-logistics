@@ -1,14 +1,7 @@
 'use client';
 /**
- * ملفُّ العميل — كلُّ ما يُعرَف عنه في شاشةٍ واحدة.
- *
- * رحلاتُه (كشوفُ التشغيل) وتحليلُه الشهريُّ والمساراتُ التي **يعمل** عليها
- * فعلًا موصولةً بالسعر المتّفق عليه، ثمّ قائمةُ الأسعار المتّفق عليها نفسُها —
- * وهي وحدَها القابلةُ للتعديل. والفرقُ بين الجدولين هو الفائدة: مسارٌ يُشتغَل
- * عليه خمسين مرّةً بلا سعرٍ متّفقٍ عليه سؤالٌ يُرى بالعين.
- *
- * وهو مكوّنٌ واحدٌ تفتحه ثلاثُ صفحات (طلبات الشحنات والتشغيل والمبيعات) — راجع رأسَ
- * CustomersRegister.
+ * Customer profile: everything known about a customer on one screen.
+ * Trips, monthly analysis and the routes actually worked, tied to the agreed price, then the agreed-price list itself (the only editable part). The gap between the two tables is the point: a route worked often with no agreed price is visible. One component opened by three pages (see CustomersRegister).
  */
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import Link from 'next/link';
@@ -76,14 +69,7 @@ const SHEET_COLS: { key: string; ar: string; en: string; date?: boolean; num?: b
   { key: 'purchaseValue', ar: 'قيمة الشراء', en: 'Purchase', num: true, money: true },
 ];
 
-/**
- * شرائحُ سعر المسار بعدد السيارات.
- *
- * «من سيارةٍ إلى خمسٍ السعرُ ٢٢٠٠ للسيارة، ومن ستٍّ إلى عشرٍ ٢٤٠٠». والعددُ
- * ما يطلبه العميلُ على المسار. و«التشغيل — خاصّ» يكتب للكشف أعلى شريحة:
- * الكشفُ سيارةٌ واحدة ولا يُعرَف منه العدد. معرَّفٌ خارج جسم الصفحة: مكوِّنٌ يُعرَّف
- * داخل الرسم يُهدَم مع كلّ ضغطة مفتاح فتضيع الكتابة.
- */
+/** Route price tiers by vehicle count, e.g. 1-5 vehicles at one price, 6-10 at another; the count is what the customer requests on the route. The private operations price writes the top tier to the manifest, since a manifest is a single vehicle. Defined outside the page body because a component defined inside a render remounts and loses typed input. */
 function TierEditor({ customerId, route, ar, onClose, onSaved }: {
   customerId: string; route: RunRoute; ar: boolean; onClose: () => void; onSaved: () => void;
 }) {
@@ -94,7 +80,7 @@ function TierEditor({ customerId, route, ar, onClose, onSaved }: {
     : [{ min: '1', max: '', price: '' }]));
   const [saving, setSaving] = useState(false);
   const set = (i: number, p: Partial<Row>) => setRows((rs) => rs.map((r, j) => (j === i ? { ...r, ...p } : r)));
-  // الشريحةُ الجديدة تبدأ بعد نهاية الأخيرة — فلا يُكتب العددُ مرّتين.
+  // A new tier starts after the end of the last one, so the count is not typed twice.
   const add = () => setRows((rs) => {
     const last = rs[rs.length - 1];
     const next = last && last.max ? String(Number(last.max) + 1) : '';
@@ -160,7 +146,7 @@ export default function CustomerProfile({ id, basePath }: { id: string; basePath
   const [error, setError] = useState('');
   const [page, setPage] = useState(1);
   const [tab, setTab] = useState('routes');
-  // المسارُ المفتوحةُ شرائحُه للتعديل — لمدير العمليّات ومدير النظام وحدَهما.
+  // Tiers of the open route are editable by the operations manager and the system admin only.
   const [tierRoute, setTierRoute] = useState<RunRoute | null>(null);
   const [routeQ, setRouteQ] = useState('');
   const [agreedQ, setAgreedQ] = useState('');
@@ -265,7 +251,7 @@ export default function CustomerProfile({ id, basePath }: { id: string; basePath
         </button>
         {editor && <PrimaryButton onClick={() => setEditOpen(true)}><Pencil className="w-4 h-4" /> {ar ? 'تعديل' : 'Edit'}</PrimaryButton>}
       </PageHeader>
-      {/* العميلُ نفسُه في الأقسام الأخرى */}
+      {/* The same customer in the other sections. */}
       <CustomerPresence reg="shipment" id={String(c._id)} ar={ar} onChanged={load} />
 
       <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3">
@@ -275,7 +261,7 @@ export default function CustomerProfile({ id, basePath }: { id: string; basePath
         <StatCard label={ar ? 'المسارات المتّفق عليها' : 'Agreed routes'} value={a.routesCount.toLocaleString('en-US')} accent="text-blue-600" />
         <StatCard label={ar ? 'منها مُسعَّرة' : 'Priced'} value={a.pricedRoutes.toLocaleString('en-US')}
           accent={a.pricedRoutes < a.routesCount ? 'text-amber-600' : 'text-emerald-600'} />
-        {/* التاريخُ أضيقُ من الرقم في البطاقة — بخطّ البطاقة نفسِه يُلَفّ سطرين. */}
+        {/* The date is narrower than the card number; at the card font it wraps to two lines. */}
         <StatCard label={ar ? 'أوّل عمل' : 'First work'} value={<span className="text-lg">{fmtDay(a.firstAt)}</span>} />
         <StatCard label={ar ? 'آخر عمل' : 'Last work'} value={<span className="text-lg">{fmtDay(a.lastAt)}</span>} />
       </div>

@@ -8,8 +8,7 @@ import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import '../ui/search_field.dart';
 
-/// تقييم الأداء — قائمة التقييمات، وتقييم موظف عبر قالب معاييره الموزونة
-/// (كل معيار من ٥) مع حساب النسبة والفئة مباشرة — /api/performance.
+/// Performance evaluation: the evaluations list, and evaluating an employee through a template of weighted criteria (each out of 5) with the percentage and band computed live. /api/performance
 
 const _bands = {
   'excellent': ('ممتاز', 'Excellent', T.success),
@@ -21,7 +20,7 @@ const _bands = {
 List<Map<String, dynamic>> _l(dynamic v) =>
     v is List ? List<Map<String, dynamic>>.from(v.whereType<Map>().map((e) => Map<String, dynamic>.from(e))) : const [];
 
-// ── قائمة التقييمات ─────────────────────────────────────────────────────────
+// Evaluations list
 class EvaluationsScreen extends StatefulWidget {
   const EvaluationsScreen({super.key});
   @override
@@ -203,7 +202,7 @@ class _EvaluationsScreenState extends State<EvaluationsScreen> {
   }
 }
 
-// ── نموذج تقييم موظف ────────────────────────────────────────────────────────
+// Employee evaluation form
 class EvaluateEmployeeScreen extends StatefulWidget {
   final String employeeId;
   final String name;
@@ -265,7 +264,7 @@ class _EvaluateEmployeeScreenState extends State<EvaluateEmployeeScreen> {
     return (weighted: weightedScore, pct: pct.toDouble(), answered: answered);
   }
 
-  /// طلب تعديل تقييمٍ مُرسَلٍ مقفول — يقرّره المدير العام (كالويب).
+  /// Request to edit a submitted, locked evaluation; decided by the general manager (as on the web).
   Future<void> _requestEdit() async {
     final evId = (_form?['evaluation'] is Map ? _form!['evaluation']['_id'] : null)?.toString();
     if (evId == null) return;
@@ -297,7 +296,7 @@ class _EvaluateEmployeeScreenState extends State<EvaluateEmployeeScreen> {
     }
   }
 
-  /// تقرير التقييم PDF — نفس محتوى تصدير الويب (البيانات، المؤشرات، النتيجة).
+  /// Evaluation PDF report: same content as the web export (data, indicators, result).
   Future<void> _pdf() async {
     final f = _form;
     if (f == null) return;
@@ -373,7 +372,7 @@ class _EvaluateEmployeeScreenState extends State<EvaluateEmployeeScreen> {
   Widget build(BuildContext context) {
     final template = _form?['template'];
     final perms = _form?['permissions'] is Map ? Map<String, dynamic>.from(_form!['permissions']) : <String, dynamic>{};
-    // المقفول يُعرض كاملًا للقراءة فقط — readOnly = !canEdit كالويب.
+    // A locked evaluation is shown in full, read-only: readOnly = !canEdit, as on the web.
     final locked = perms['canEdit'] == false || perms['locked'] == true;
     final submitted = _form?['evaluation'] is Map && _form!['evaluation']['status'] == 'submitted';
     final req = perms['editRequest'] is Map ? Map<String, dynamic>.from(perms['editRequest']) : null;
@@ -393,7 +392,7 @@ class _EvaluateEmployeeScreenState extends State<EvaluateEmployeeScreen> {
               : template is! Map || _criteria.isEmpty
                   ? EmptyState(icon: Icons.assignment_late_outlined, title: tr('لا يوجد قالب تقييم لهذا الموظف/القسم', 'No template for this employee'))
                   : Column(children: [
-                      // حالة القفل وطلب التعديل — كالويب.
+                      // Lock state and edit request, as on the web.
                       if (submitted && perms['locked'] == true)
                         Container(
                           width: double.infinity,

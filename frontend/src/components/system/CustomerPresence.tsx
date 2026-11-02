@@ -1,11 +1,7 @@
 'use client';
 /**
- * «نفس العميل في: …» — العميلُ واحدٌ في كلّ الأقسام (صاحبُ الشركة، ٢٠٢٦/١٠/٢٤).
- *
- * يُوضع في ملفّ العميل في أيّ قسم: يقرأ من الخادم أين يوجد العميلُ نفسُه
- * (/api/customer-hub/presence — services/customerHub) ويعرضها روابطَ. ويستمع
- * لـ`customers:changed`: ما عُدِّل في العميل من أيّ شاشةٍ يُعيد قراءةَ الصفحة
- * التي هو فيها (onChanged) في اللحظة.
+ * "Same customer in: ...": one customer across all sections.
+ * Shown on a customer profile in any section; reads where the same customer exists (/api/customer-hub/presence, services/customerHub) and renders links. Listens to `customers:changed` and calls onChanged to reload the current page.
  */
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';

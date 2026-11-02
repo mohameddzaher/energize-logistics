@@ -6,7 +6,7 @@ import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 
-// أسماءٌ مقروءة للمفاتيح الخام (كما في نماذج الأنشطة والمهام).
+// Readable labels for the raw keys, as in the activity and task forms.
 const _activityTypes = {
   'call': ('مكالمة', 'Call'), 'meeting': ('اجتماع', 'Meeting'), 'email': ('بريد', 'Email'),
   'visit': ('زيارة', 'Visit'), 'whatsapp': ('واتساب', 'WhatsApp'),
@@ -21,8 +21,8 @@ String? _label(Map<String, (String, String)> m, dynamic k) {
   return v == null ? key : tr(v.$1, v.$2);
 }
 
-/// تقويم العلاقات — أنشطة CRM ومهامها للشهر مجمّعة باليوم، مع تنقّل بين الشهور.
-/// مطابق لصفحة الويب /system/crm/calendar (/api/crm/calendar?from&to).
+/// CRM calendar: activities and tasks for the month grouped by day, with month navigation.
+/// Mirrors web /system/crm/calendar (/api/crm/calendar?from&to).
 class CrmCalendarScreen extends StatefulWidget {
   const CrmCalendarScreen({super.key});
   @override
@@ -36,7 +36,7 @@ class _CrmCalendarScreenState extends State<CrmCalendarScreen> {
   List<Map<String, dynamic>> _activities = [], _tasks = [];
   bool _loading = true;
   String? _error;
-  int _year = 2026, _month = 8; // مبدئيًا؛ يُضبط في initState
+  int _year = 2026, _month = 8; // Placeholder; set in initState.
   late final void Function() _onLive;
 
   @override
@@ -47,7 +47,7 @@ class _CrmCalendarScreenState extends State<CrmCalendarScreen> {
     _month = now.month;
     _load();
     _onLive = () => _load();
-    // الخادمُ يعلن `crm:activity` و`crm:task` (لا `crm:updated`).
+    // The server emits `crm:activity` and `crm:task` (not `crm:updated`).
     Live.instance.on('crm:activity', _onLive);
     Live.instance.on('crm:task', _onLive);
   }
@@ -88,7 +88,7 @@ class _CrmCalendarScreenState extends State<CrmCalendarScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // دمج الأنشطة والمهام في أحداث مرتّبة باليوم.
+    // Merge activities and tasks into events ordered by day.
     final events = <Map<String, dynamic>>[];
     for (final a in _activities) {
       final dt = DateTime.tryParse((a['date'] ?? '').toString())?.toLocal();
@@ -105,7 +105,7 @@ class _CrmCalendarScreenState extends State<CrmCalendarScreen> {
         'color': done ? T.success : (t['priority'] == 'high' ? T.danger : T.warn), 'done': done});
     }
     events.sort((a, b) => (a['dt'] as DateTime).compareTo(b['dt'] as DateTime));
-    // تجميع باليوم.
+    // Group by day.
     final byDay = <int, List<Map<String, dynamic>>>{};
     for (final e in events) { byDay.putIfAbsent(e['day'] as int, () => []).add(e); }
     final days = byDay.keys.toList()..sort();
@@ -117,7 +117,7 @@ class _CrmCalendarScreenState extends State<CrmCalendarScreen> {
           : _error != null
               ? ErrorRetry(message: _error!, onRetry: _load)
               : Column(children: [
-                  // شريط تنقّل الشهور
+                  // Month navigation bar.
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                     color: T.navy.withValues(alpha: 0.04),

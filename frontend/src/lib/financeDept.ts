@@ -1,7 +1,4 @@
-/**
- * الإدارة الماليّة — تعريفُ الأقسام وشكلُ الحمولة التي يردّها الخادم.
- * راجع backend/src/controllers/financeController.js.
- */
+/** Finance management: department definitions and the shape of the payload the server returns. See backend/src/controllers/financeController.js. */
 export type FinFormat = 'money' | 'number' | 'pct' | 'date' | 'text';
 
 export interface FinCard {
@@ -18,7 +15,7 @@ export interface FinDept {
   cards: FinCard[]; tables: FinTable[]; notes: { ar: string; en: string }[];
 }
 
-/** الأقسامُ بترتيبها في الشريط — وأسماءُ صفحاتها «ماليات …» لا اسمُ القسم نفسُه. */
+/** Departments in nav-bar order; their page names are finance-prefixed, not the department's own name. */
 export const FINANCE_DEPTS: { key: string; ar: string; en: string; href: string }[] = [
   { key: 'operations', ar: 'ماليات التشغيل', en: 'Operations finance', href: '/system/finance/operations' },
   { key: 'fleet', ar: 'ماليات إدارة الأسطول', en: 'Fleet finance', href: '/system/finance/fleet' },
@@ -50,7 +47,7 @@ export const fmtFin = (v: any, format: FinFormat, ar: boolean): string => {
 const RIYADH = 'Asia/Riyadh';
 export const todayKey = () => new Intl.DateTimeFormat('en-CA', { timeZone: RIYADH, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 
-/** فتراتٌ جاهزة — والمخصَّصةُ تُكتب يدويًّا. */
+/** Preset periods; a custom one is typed by hand. */
 export function presetRange(key: string): { from: string; to: string } {
   const t = todayKey();
   const [y, m] = t.split('-').map(Number);

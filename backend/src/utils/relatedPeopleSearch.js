@@ -1,28 +1,19 @@
 /**
- * ── البحثُ بما يخصّ أصحابَ الشحنة لا بما كُتب في صفّها ────────────────────
- *
- * صاحبُ الشركة (٢٠٢٦/١٠/٢٦): «سيرش برقم إقامة السائق أو رقم أي حاجة تخص السائق
- * أو الشحنة أو أي حد فيها». والشحنةُ (طلبُ شحن أو كشفُ تشغيل) لا تحمل إقامةَ
- * سائقها ولا هيكلَ شاحنتها — تحمل اسمَه وهاتفَه ولوحتَها لقطةً. والإقامةُ في
- * سجلّات أصحابها: سائقو طلبات الشحن، وسائقو الأسطول، وملفُّ الموظّف؛ والهيكلُ
- * والرقمُ التسلسليُّ في سجلّ المركبات.
- *
- * فيُترجَم الرقمُ أوّلًا إلى أصحابه — اسمٌ وهاتفٌ ولوحة — ثمّ تُطابَق الشحناتُ
- * بها. هذا ما يجعل «2345678901» يُخرج كلَّ شحنات السائق الذي هذه إقامتُه.
- *
- * يُستدعى للأرقام وحدها (ستُّ خاناتٍ فأكثر): الاسمُ يُبحث في الشحنة مباشرةً،
- * والرقمُ القصير يصيد في كلّ سجلّ.
+ * Search by who and what belongs to the shipment, not by what is written on its row.
+ * A shipment (order or operations statement) carries a snapshot of the driver's name, phone and plate, but not the driver's residence number or the truck chassis. Residence lives in the owners' registers (shipment-order drivers, fleet drivers, the employee file) and chassis and serial in the vehicle registry.
+ * So a number is first translated to its owners (name, phone, plate) and then shipments are matched on those; this is why a residence number returns all shipments of that driver.
+ * Called for numbers only (six digits or more): names are searched on the shipment directly, and a short number matches in every register.
  */
 const esc = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-/** آخرُ تسع خانات — «+966 50…» و«050…» هاتفٌ واحد. */
+/** Last nine digits, so "+966 50..." and "050..." are one phone. */
 const phoneTail = (p) => {
   const d = String(p || '').replace(/\D/g, '');
   return d.length >= 7 ? d.slice(-9) : '';
 };
 
 /**
- * @param {string} bare أرقامٌ فقط.
+ * @param {string} bare Digits only.
  * @returns {Promise<{ names: string[], phones: string[], plates: string[] }>}
  */
 async function relatedByNumber(bare) {
@@ -54,7 +45,7 @@ async function relatedByNumber(bare) {
       { iqamaNumber: rx }, { nationalId: rx }, { passportNumber: rx }, { employeeNumber: bare },
       ...(tailRx ? [{ phone: tailRx }] : []),
     ] }).select('firstName lastName phone').limit(30).lean()),
-    // الهيكلُ والرقمُ التسلسليّ في سجلّ المركبات → لوحتُها.
+    // Chassis and serial number in the vehicle registry map to its plate.
     safe(VehicleMaster.find({ $or: [{ chassisNumber: rx }, { serialNumber: rx }] })
       .select('plateNumber').limit(30).lean()),
   ]);
@@ -68,16 +59,15 @@ async function relatedByNumber(bare) {
 }
 
 /**
- * شروطُ `$or` تُطابق الشحنةَ بأصحاب الرقم.
+ * `$or` conditions that match a shipment through the number's owners.
  * @param {string} bare
- * @param {{ name: string[], phone: string[], plate: string[] }} fields حقولُ الشحنة لكلّ صنف.
+ * @param {{ name: string[], phone: string[], plate: string[] }} fields The shipment's fields for each kind.
  */
 async function relatedClauses(bare, fields) {
   const r = await relatedByNumber(bare);
   const { plateDigitsRegex } = module.exports;
   const or = [];
-  // الاسمُ مطابقٌ بتمامه (بلا حالة أحرف ولا مسافاتٍ زائدة) — لا جزءًا منه، فلا
-  // يجرّ «محمد» كلَّ محمد.
+  // The name must match entirely (case and extra spaces ignored), not as a substring, so a common first name does not pull in every person with it.
   for (const n of r.names) {
     const nameRx = new RegExp(`^\\s*${esc(n).replace(/\s+/g, '\\s+')}\\s*$`, 'i');
     fields.name.forEach((f) => or.push({ [f]: nameRx }));
@@ -90,7 +80,7 @@ async function relatedClauses(bare, fields) {
   return or;
 }
 
-/** أرقامُ اللوحة وحدها، محفوفةً بحدٍّ يمنع «1082» من مطابقة «21082». */
+/** Plate digits alone, bounded so that "1082" does not match "21082". */
 const plateDigitsRegex = (plate) => {
   const d = String(plate || '').replace(/\D/g, '');
   return d.length >= 3 ? new RegExp(`(^|\\D)${d}(\\D|$)`) : null;

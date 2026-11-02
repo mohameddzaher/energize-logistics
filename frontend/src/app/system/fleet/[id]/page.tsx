@@ -1,7 +1,5 @@
 'use client';
-// تفاصيل الحمولة — the full story of one shipment: its data, the follow-up
-// calls (وقت المتابعة، الموقع الحالي، الملاحظة، متوقع الوصول), and the complete
-// event log — who did what and when, from creation to the last call.
+// Load details: the full story of one shipment: its data, the follow-up calls (follow-up time, current location, note, expected arrival), and the complete event log, who did what and when, from creation to the last call.
 import { useState, useEffect, useCallback, Suspense } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
@@ -48,8 +46,7 @@ function FleetShipmentDetailsInner() {
   const id = (params as any)?.id as string;
   const { notify } = useDialog();
   const editor = canEditFleet(user);
-  // الملاحظاتُ الجاهزة من قوائم القسم، وتسقط إلى الثابتة ما دام الجلبُ لم يصل
-  // — فلا تختفي الأزرارُ لحظةَ فتحِ الصفحة.
+  // Ready-made notes come from the department lists, falling back to the static ones until the fetch arrives, so the buttons do not vanish when the page opens.
   const lookups = useFleetLookups(lang === 'ar');
   const lookupNotes = lookups.options('fleet_followup_note').map((o) => o.label).filter(Boolean);
   const quickNotes = lookupNotes.length ? lookupNotes : FOLLOWUP_NOTES_AR;
@@ -77,7 +74,7 @@ function FleetShipmentDetailsInner() {
 
   useEffect(() => { load(); }, [load]);
   useSocket('fleet:updated', useCallback(() => load(), [load]));
-  // الشاحنةُ من سجلّ المركبات والسائقُ من الموارد البشريّة: يُعاد الجلبُ متى تغيّر أحدُهما.
+  // The truck is from the vehicles register and the driver from HR: refetched whenever either changes.
   useSocket('vreg:updated', useCallback(() => load(), [load]));
   useSocket('hr:employee', useCallback(() => load(), [load]));
 
@@ -105,9 +102,7 @@ function FleetShipmentDetailsInner() {
     if (!shipment) return;
     setDownloading(true);
     try {
-      // البوليصةُ نفسُها التي تطبعها القائمةُ والجوّال: الخادمُ يملؤها من سجلّ
-      // المركبات والموارد البشريّة (الماركة واللون والإقامة والجنسية…) — كانت
-      // تُبنى هنا بخاناتٍ فارغة.
+      // The same waybill the list and mobile print: the server fills it from the vehicles and HR registers (make, colour, residency, nationality and so on); it used to be built here with empty fields.
       const blob = await api.getBlob(`/api/fleet/shipments/${shipment._id}/waybill.pdf?lang=${ar ? 'ar' : 'en'}`);
       const gen = await import('@/lib/dispatchSheetGenerator');
       const d = new Date(shipment.loadDate || shipment.createdAt || Date.now());
@@ -123,10 +118,10 @@ function FleetShipmentDetailsInner() {
   const hrs = hoursSince(shipment.lastContactAt);
   const followups = events.filter((e) => e.type === 'followup');
 
-  // لوحةُ السيّارة قد تصل كائنًا مُعبّأً أو لقطةً نصّية — والسجلُّ يُطلب بأيّهما.
+  // The vehicle plate may arrive as a populated object or a text snapshot, and the log is requested with either.
   const vehiclePlate: string = (typeof (shipment as any)?.vehicle === 'object' && (shipment as any)?.vehicle?.plate)
     || (shipment as any)?.vehiclePlate || '';
-  // شهرُ الحمولة لا الشهرُ الجاري: من يفتح بوليصةً من مايو يريد سجلَّ مايو.
+  // The load's month, not the current month: someone opening a May waybill wants the May log.
   const shipmentMonth = (() => {
     const d = new Date((shipment as any)?.loadDate || (shipment as any)?.createdAt || Date.now());
     if (Number.isNaN(d.getTime())) return undefined;
@@ -176,7 +171,7 @@ function FleetShipmentDetailsInner() {
       </PageHeader>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-5 items-start">
-        {/* البيانات */}
+        {/* Data. */}
         <div className="rounded-2xl border border-slate-200 bg-white shadow-sm p-5">
           <p className="text-sm font-bold text-slate-900 mb-3 flex items-center gap-2"><Satellite className="w-4 h-4 text-[#f37121]" /> {ar ? 'بيانات الحمولة' : 'Shipment data'}</p>
           <dl className="space-y-2 text-sm">
@@ -189,7 +184,7 @@ function FleetShipmentDetailsInner() {
           </dl>
         </div>
 
-        {/* المتابعة */}
+        {/* Follow-up. */}
         <div className="rounded-2xl border border-slate-200 bg-white shadow-sm p-5 space-y-4">
           <p className="text-sm font-bold text-slate-900 flex items-center gap-2"><PhoneCall className="w-4 h-4 text-[#f37121]" /> {ar ? 'تسجيل متابعة' : 'Record a follow-up'}</p>
           {editor && (
@@ -212,11 +207,7 @@ function FleetShipmentDetailsInner() {
               <div>
                 <label className={labelCls}>{ar ? 'الملاحظة' : 'Note'}</label>
                 {/* The usual outcomes as one-tap chips — typing is the exception. */}
-                {/* ── الملاحظاتُ الجاهزة صارت قائمةً تُدار ────────────────────
-                    كانت ثمانيةَ سطورٍ مكتوبةً في الشيفرة، فمن أراد سطرًا
-                    تاسعًا («في الجمرك») انتظر نشرةً برمجيّة. صارت في قوائم
-                    القسم: تُزاد وتُحذف وتُرتَّب من إعدادات الأسطول، وتصل
-                    التعديلاتُ حيّةً بلا إعادة تحميل. */}
+                {/* Ready-made notes are now a managed list. They were eight hardcoded lines, so a ninth (at customs) waited for a software release. They now live in the department lists: added, deleted and reordered from fleet settings, with changes arriving live without a reload. */}
                 <div className="flex flex-wrap gap-1.5 mb-2">
                   {quickNotes.map((n) => (
                     <button key={n} type="button" onClick={() => setFu((f) => ({ ...f, note: f.note === n ? '' : n }))}
@@ -268,11 +259,7 @@ function FleetShipmentDetailsInner() {
           )}
         </div>
 
-        {/* ── السجلّ الكامل: للسيّارة لا للشحنة ────────────────────────────
-            متابعاتُ هذه الحمولة أعلاه تجيب «أين هي الآن». وهذا يجيب السؤال
-            الآخر: ماذا جرى لهذه السيّارة هذا الشهر — عطلٌ وإطارٌ وسائقٌ تغيّر
-            وستُّ حمولاتٍ بينها، وفيها أحداثُ هذه الشحنة موسومةً برقم بوليصتها.
-            والشهرُ يُقفل مع أوّل الشهر التالي. */}
+        {/* Full log: for the vehicle, not the shipment. This load's follow-ups above answer where it is now; this answers what happened to this vehicle this month: a breakdown, a tyre, a driver change and six loads between, including this shipment's events tagged with its waybill number. The month closes at the start of the next month. */}
         {vehiclePlate ? (
           <VehicleMonthLog
             vehicle={vehiclePlate}
@@ -289,7 +276,7 @@ function FleetShipmentDetailsInner() {
         )}
       </div>
 
-      {/* مهامّ JP المربوطة بهذه الحمولة — تُضاف من هنا. */}
+      {/* JP tasks linked to this load; added from here. */}
       <JpTaskPanel section="fleet" kind="fleetShipment" refId={String(shipment._id)} ar={ar} />
     </div>
   );

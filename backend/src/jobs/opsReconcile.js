@@ -15,8 +15,8 @@ async function sweepPlatform() {
   const nums = new Set(); const ids = new Set();
   let page = 1; let total = null; let seen = 0;
   for (;;) {
-    // eslint-disable-next-line no-await-in-loop
     // `sort` is ignored by the platform, which always returns creation order; see jobs/opsPoll.
+    // eslint-disable-next-line no-await-in-loop
     const out = await upl.get('/admin/shipments', { query: { limit: 100, page } });
     const items = (out.data && out.data.items) || [];
     const meta = (out.data && out.data.meta) || {};

@@ -1,14 +1,7 @@
 /**
- * ختمُ التغيير — «هل تغيّر شيءٌ في هذه المجموعات؟» بسؤالٍ واحدٍ صغير.
- *
- * عنقودُ Atlas بطيءُ النقل لا بطيءُ الحساب: التنفيذ في القاعدة جزءٌ من المِلّي
- * ثانية، ونقلُ كلّ مئة كيلوبايت يكلّف قرابةَ ثانية. فالقائمةُ الكبيرة تُدفَع
- * مرّةً ثم تُحفَظ، ويُسأل قبل كلّ قراءةٍ عن ختمٍ لا يتجاوز بضعةَ بايتات: العددُ،
- * ومجموعُ `updatedAt`، وأكبرُه. أيُّ إضافةٍ أو حذفٍ أو تعديلٍ يمرّ بـ mongoose
- * يُغيّر المجموع — حتى لو كانت ساعةُ الكاتب متأخّرةً فلم يتغيّر الأكبر.
- *
- * وبذلك لا يعتمد صدقُ الذاكرة على أن يتذكّر كلُّ مسارِ كتابةٍ مسحَها؛ والمدّةُ
- * القصوى شبكةُ أمانٍ لكتابةٍ خامٍ لا تلمس `updatedAt` (سكربت استيراد مثلًا).
+ * Change stamp: answers 'did anything change in these collections?' with one tiny query.
+ * The Atlas cluster is slow to transfer, not to compute (about 1s per 100 KB), so a big list is pushed once and cached, and each read first fetches a stamp of a few bytes: count, sum of `updatedAt`, and its max. Any add, delete or edit through mongoose changes the sum, even when the writer's clock is behind and the max does not move.
+ * Memory correctness therefore does not depend on every write path remembering to clear it; the max age is a safety net for raw writes that skip `updatedAt` (import scripts).
  */
 const cache = require('./ttlCache');
 
@@ -21,7 +14,7 @@ const group = (tag) => [{
   },
 }];
 
-/** ختمُ عدّة مجموعاتٍ في رحلةٍ واحدة إلى القاعدة ($unionWith). */
+/** Stamp for several collections in a single round trip ($unionWith). */
 async function stampOf(models) {
   const [first, ...rest] = models;
   const pipeline = [...group(first.collection.name)];
@@ -32,11 +25,7 @@ async function stampOf(models) {
 
 const inflight = new Map();
 
-/**
- * مثل `cache.wrap` لكنّ الصلاحيةَ بالختم لا بالساعة: القيمةُ تُخدَم ما دام ختمُ
- * المجموعات هو هو، وتُعاد حين يتغيّر. والمسحُ بالبادئة (`cache.clear`) يبقى
- * يعمل كما كان لأنّ القيمة في الذاكرة نفسها.
- */
+/** Like `cache.wrap`, but validity follows the stamp rather than the clock: the value is served while the collections' stamp is unchanged and rebuilt when it changes. Prefix clearing (`cache.clear`) still works because the value lives in the same memory. */
 async function freshWrap(key, maxTtlMs, models, producer) {
   const stamp = await stampOf(models);
   const hit = cache.get(key);
@@ -53,11 +42,8 @@ async function freshWrap(key, maxTtlMs, models, producer) {
 }
 
 /**
- * مرآةٌ لمجموعةٍ كاملة بحقولٍ محدّدة، تُحدَّث بالفرق لا بإعادة النقل.
- *
- * `rowsFor(filter)` يسأل القاعدةَ عن معرّفات المطابِق فقط (بضعةُ كيلوبايتات،
- * وبالترتيب الذي كانت ستعيده القاعدة) ويأخذ الصفوفَ من المرآة. وتعديلُ مركبةٍ
- * واحدة يجلب تلك المركبة وحدها لا الأسطولَ كلّه.
+ * Mirror of a whole collection with selected fields, refreshed by diff instead of full transfer.
+ * `rowsFor(filter)` asks the database only for matching ids (a few KB, in the order the database would return) and takes the rows from the mirror, so editing one vehicle fetches only that vehicle.
  */
 function mirror(Model, fields, { maxAgeMs = 10 * 60 * 1000 } = {}) {
   const sel = [...new Set([...String(fields).split(/\s+/).filter(Boolean), 'updatedAt'])].join(' ');
@@ -91,14 +77,13 @@ function mirror(Model, fields, { maxAgeMs = 10 * 60 * 1000 } = {}) {
     const p = (async () => {
       let next = null;
       if (!force && young && state.u) {
-        // الفرقُ وحده: ما عُدِّل منذ آخر ختم. و«>=» لا «>» كي لا يفوت تعديلٌ في
-        // المِلّي ثانية نفسها.
+        // Only the diff: what changed since the last stamp. '>=' not '>' so a change in the same millisecond is not missed.
         const changed = await Model.find({ updatedAt: { $gte: state.u } }).select(sel).lean();
         const byId = new Map(state.byId);
         for (const d of changed) byId.set(String(d._id), d);
         const cand = build(byId);
-        cand.at = state.at; // الفرقُ لا يجدّد عمرَ المرآة — شبكةُ الأمان تبقى
-        // حذفٌ أو ساعةٌ متأخّرة لا يلتقطهما الفرق — فيظهران في الختم ونعيد كلّ شيء.
+        cand.at = state.at; // A diff does not renew the mirror's age: the safety net stays
+        // A delete or a lagging clock is not caught by the diff; it shows in the stamp and everything is reloaded.
         if (cand.n === st.n && cand.s === st.s) next = cand;
       }
       state = next || await full();
@@ -112,7 +97,7 @@ function mirror(Model, fields, { maxAgeMs = 10 * 60 * 1000 } = {}) {
     const [ids, s] = await Promise.all([Model.find(filter).select('_id').lean(), sync()]);
     let rows = ids.map((x) => s.byId.get(String(x._id)));
     if (rows.some((r) => !r)) {
-      // أُضيفت مركبةٌ بين السؤالين — نعيد التحميل مرّةً ونأخذ الصفوف منه.
+      // A vehicle was added between the two queries: reload once and take the rows from that.
       const f = await sync(true);
       rows = ids.map((x) => f.byId.get(String(x._id))).filter(Boolean);
     }

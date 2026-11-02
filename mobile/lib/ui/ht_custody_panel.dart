@@ -7,9 +7,7 @@ import '../services/live.dart';
 import 'theme.dart';
 import 'widgets.dart';
 
-/// عهدةُ النقل الثقيل في ملفّ الشاحنة وملفّ الموظّف — مثلُ HtCustodyPanel في
-/// الويب: تُقرأ من الدفتر نفسِه بفلتر (رقمُ وحدة لوكيشن أو ملفُّ الموظّف)، وتتحدّث
-/// مع `ht:custody` في اللحظة. لمن يفتح الدفترَ وحدَه، وتختفي إن لم يكن شيء.
+/// Heavy-transport custody on the truck and employee profile, like HtCustodyPanel on the web: reads the same ledger with a filter (location unit number or employee file) and updates live on `ht:custody`. Shown to those who can open the ledger, hidden when empty.
 class HtCustodyPanel extends StatefulWidget {
   final String? vehicleUnitId;
   final String? employeeId;
@@ -20,7 +18,7 @@ class HtCustodyPanel extends StatefulWidget {
   State<HtCustodyPanel> createState() => _HtCustodyPanelState();
 }
 
-// يطابق CUSTODY_ROLES في htCustodyController.
+// Matches CUSTODY_ROLES in htCustodyController.
 const _roles = ['super_admin', 'admin', 'location_manager', 'cfo', 'accounting_manager', 'accountant'];
 const _acc = {'cash': ('الكاش', 'Cash'), 'card': ('الكارت', 'Card'), 'workshop': ('الورشة', 'Workshop')};
 const _src = {
@@ -57,7 +55,7 @@ class _HtCustodyPanelState extends State<HtCustodyPanel> {
 
   Future<void> _load() async {
     if (!mounted || !_allowed || _query.isEmpty) return;
-    final mine = ++_seq; // الأحدثُ وحدَه يُعرض
+    final mine = ++_seq; // Only the latest is shown.
     try {
       final d = await Api.instance.get('/api/ls2/custody?$_query');
       if (!mounted || mine != _seq) return;

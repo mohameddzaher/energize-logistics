@@ -1,8 +1,5 @@
 'use client';
-// السائقون — the fleet's driver register. The one flow that must be effortless
-// here is MOVING a driver between trucks: the vehicle picker sits inline in the
-// row, the server enforces the two-seat rule, and its Arabic 400 message is
-// surfaced as-is. Benching (sick / vacation) is just `vehicle: null`.
+// Drivers: the fleet's driver register. The flow that must be effortless is moving a driver between trucks: the vehicle picker sits inline in the row, the server enforces the two-seat rule, and its Arabic 400 message is shown as-is. Benching (sick / vacation) is just `vehicle: null`.
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { formatPlate } from '@/lib/flexMatch';
 import { useAuth } from '@/context/AuthContext';
@@ -29,7 +26,7 @@ const EMPTY = { name: '', phone: '', iqama: '', iban: '', nationality: '', worki
 const vehId = (d: FleetDriver) => (typeof d.vehicle === 'object' && d.vehicle ? d.vehicle._id : (d.vehicle || ''));
 const vehPlate = (d: FleetDriver) => (typeof d.vehicle === 'object' && d.vehicle ? d.vehicle.plate : '');
 
-/** مرشّحٌ من الموارد البشريّة لـ«ربط بموظف». */
+/** A candidate from HR for linking to an employee. */
 type HrCandidate = {
   _id: string; name: string; idNumber: string; employeeNumber: string; department: string;
   jobTitle: string; phone: string; employmentStatus: string; linkedTo: { _id: string; name: string } | null; score: number;
@@ -45,8 +42,7 @@ const DRIVER_COLUMNS = [
   { header: 'IBAN', key: 'iban', width: 30 },
   { header: 'Nationality', key: 'nationality', width: 14 },
   { header: 'Vehicle', key: 'vehicle', transform: (v: any) => (v && typeof v === 'object' ? v.plate : ''), width: 16 },
-  // «السائق الثاني» يُصدَّر أيضًا: من يقرأ الكشف على الورق يسأل عنه كما يسأل
-  // من يقرأ الشاشة.
+  // The second driver is exported too: someone reading the printed report asks about him as they would on screen.
   { header: 'Seat', key: 'seat', transform: (v: any) => (v === 2 ? 'Second' : v === 1 ? 'First' : ''), width: 10 },
   { header: 'Team-mate', key: 'mateName', width: 24 },
   { header: 'Team-mate phone', key: 'matePhone', width: 16 },
@@ -95,14 +91,11 @@ export default function FleetDriversPage() {
   useEffect(() => { load(); }, [load]);
   useSocket('fleet:drivers', useCallback(() => load(), [load]));
   useSocket('fleet:vehicles', useCallback(() => load(), [load]));
-  // الاسمُ والجوالُ والإقامةُ وحالةُ العمل من ملفّ الموارد البشريّة: يُعاد الجلبُ متى تغيّر.
+  // Name, mobile, residency and work status come from the HR file: refetch when it changes.
   useSocket('hr:employee', useCallback(() => load(), [load]));
   useSocket('vreg:updated', useCallback(() => load(), [load]));
 
-  // ── «ربط بموظف» ──────────────────────────────────────────────────────────
-  // السائقُ سجلٌّ واحدٌ في النظام: ملفُّه في الموارد البشريّة. ومَن لم يُربط
-  // آليًّا (برقم الهويّة أو الاسم الكامل) يُربط من هنا — والمقترَحون أوّلًا
-  // موظّفو النقل الثقيل الأقربُ أسماؤهم إلى اسمه المكتوب.
+  // Link to employee. A driver is one record in the system: the HR file. One not linked automatically (by ID number or full name) is linked from here, with heavy-transport employees whose names are closest to the written name suggested first.
   const [linking, setLinking] = useState<FleetDriver | null>(null);
   const [linkQ, setLinkQ] = useState('');
   const [candidates, setCandidates] = useState<HrCandidate[]>([]);
@@ -153,15 +146,8 @@ export default function FleetDriversPage() {
   ], [vehicles, ar]);
 
   /**
-   * ── السائقُ الثاني على نفس الشاحنة ────────────────────────────────────────
-   *
-   * المقعدان قاعدةٌ في القسم: الشاحنةُ تحمل سائقَين على الأكثر (الخادمُ يمنع
-   * الثالث). وكانت الصفحةُ تقول «السيّارة» ولا تقول **مع مَن** — فمن يريد
-   * «مين معاه على 2708؟» يبحث باللوحة ويقرأ صفّين ويقابل بينهما بعينه.
-   *
-   * والمقعدُ الآخر يجيء من الخادم مع القائمة (`mate`) لا يُقابَل هنا: فهو
-   * مشتقٌّ من الإسناد الحاضر لا حقلٌ يُكتَب، والهاتفُ يقرأ ما تقرؤه الشاشةُ
-   * حرفيًّا. ويُستدرَك من سجلّ المركبات إن غاب — خادمٌ لم يُحدَّث بعد.
+   * Second driver on the same truck. Two seats is a department rule: a truck carries at most two drivers (the server blocks a third). The page said which vehicle but not with whom, so answering who shares truck 2708 meant searching by plate and reading two rows.
+   * The other seat comes from the server with the list (`mate`), not matched here: it is derived from the current assignment, not a written field, and the phone reads exactly what the screen reads. Falls back to the vehicle register if absent, for a server not yet updated.
    */
   const mateOf = useCallback((d: FleetDriver) => {
     if (d.mate !== undefined) return d.mate;
@@ -177,12 +163,11 @@ export default function FleetDriversPage() {
     try {
       await api.put(`/api/fleet/drivers/${d._id}`, { vehicle: vehicleId || null });
       await load();
-    } catch (e: any) { notify(e.message, 'error'); } // «السيارة … عليها سائقان بالفعل»
+    } catch (e: any) { notify(e.message, 'error'); } // Message: the vehicle already has two drivers
     setRowBusy('');
   };
 
-  // Benching now ASKS WHY — an accidental one-click bench already happened, and
-  // the reason (مرضية/إجازة) is what the dashboard reports.
+  // Benching now asks why: an accidental one-click bench already happened, and the reason (sick/vacation) is what the dashboard reports.
   const [benching, setBenching] = useState<FleetDriver | null>(null);
   const [benchReason, setBenchReason] = useState<'sick' | 'leave' | 'other' | ''>('');
   const [benchNote, setBenchNote] = useState('');
@@ -253,27 +238,25 @@ export default function FleetDriversPage() {
     if (statusFilter === 'unlinked' && d.hrLinked) return false;
     if (assignFilter === 'assigned' && !vehId(d)) return false;
     if (assignFilter === 'unassigned' && vehId(d)) return false;
-    // «مين شغّال لوحده ومين معاه تاني؟» — سؤالٌ يُسأل عند التوزيع.
+    // Who works alone and who has a partner: a question asked during assignment.
     if (assignFilter === 'paired' && !mateOf(d)) return false;
     if (assignFilter === 'alone' && (!vehId(d) || mateOf(d))) return false;
     if (assignFilter === 'seat1' && !(vehId(d) && d.seat !== 2)) return false;
     if (assignFilter === 'seat2' && d.seat !== 2) return false;
     const s = foldAr(search.trim());
     if (!s) return true;
-    // والبحثُ باسم الزميل يجد الاثنين معًا: من يكتب اسمَ سائقٍ يريد صفَّه
-    // وصفَّ من يشاركه الشاحنة.
+    // Searching by the partner's name finds both rows: someone typing a driver's name wants his row and his truck-mate's.
     return [d.name, d.phone, d.iqama, vehPlate(d), mateOf(d)?.name, mateOf(d)?.phone]
       .some((v) => foldAr(String(v || '')).includes(s));
   });
-  // وانتهاءُ الإقامة ورخصةِ القيادة: قمعٌ على رأس عموديهما بالحالة لا بالتاريخ.
+  // Residency and driving license expiry: column funnels by status, not by date.
   const cf = useColumnFilters<FleetDriver>({
     iqamaExp: (d) => docStateLabel(d.iqamaState, ar),
     licenseExp: (d) => docStateLabel(d.licenseState, ar),
   }, filtered, ar ? 'ar' : 'en');
   const shown = cf.apply(filtered);
 
-  // صفوفُ التصدير تحمل الزميلَ منسوخًا — ExportMenu يقرأ مفاتيحَ الصفّ لا دوالَّ
-  // الشاشة، فلولا النسخُ لخرج العمودُ فارغًا في الملفّ.
+  // Export rows carry the partner copied in: ExportMenu reads row keys, not screen functions, so without the copy the column would be empty in the file.
   const withMate = (rows: FleetDriver[]) => rows.map((d) => {
     const m = mateOf(d);
     return { ...d, mateName: m?.name || '', matePhone: m?.phone || '' };
@@ -284,7 +267,7 @@ export default function FleetDriversPage() {
   const th = 'text-start font-semibold px-4 py-3 whitespace-nowrap';
   const working = drivers.filter((d) => d.working).length;
   const unassigned = drivers.filter((d) => !vehId(d)).length;
-  // عددُ الشاحنات التي عليها سائقان — الرقمُ الذي يُسأل عنه مع عمود الزميل.
+  // Number of trucks with two drivers: the figure asked for alongside the partner column.
   const pairedTrucks = vehicles.filter((v) => (v.drivers || []).length >= 2).length;
 
   return (
@@ -329,7 +312,7 @@ export default function FleetDriversPage() {
             <option value="unassigned">{ar ? 'بلا سيارة' : 'Unassigned'}</option>
             <option value="paired">{ar ? 'سيارة بسائقين' : 'Sharing a truck'}</option>
             <option value="alone">{ar ? 'سيارة بسائق واحد' : 'Alone on a truck'}</option>
-            {/* الرتبةُ تُسأل كما يُسأل عنها: «هاتِ السوّاق الثواني». */}
+            {/* Rank is asked as it is spoken: list the second drivers. */}
             <option value="seat1">{ar ? 'سائقون أوائل' : 'First drivers'}</option>
             <option value="seat2">{ar ? 'سائقون ثوانٍ' : 'Second drivers'}</option>
           </Select>
@@ -356,7 +339,7 @@ export default function FleetDriversPage() {
               <tr key={d._id} className={`border-b border-slate-200/70 hover:bg-slate-50 ${rowBusy === d._id ? 'opacity-50' : ''}`}>
                 <td className="px-4 py-3 text-slate-900 font-semibold whitespace-nowrap">
                   {d.name}
-                  {/* من ملفّه في الموارد البشريّة، أو نصٌّ مكتوبٌ هنا ينتظر الربط. */}
+                  {/* From his HR file, or free text written here awaiting a link. */}
                   {d.hrLinked
                     ? <span className="block text-[10.5px] font-normal text-emerald-700">{ar ? 'من الموارد البشرية' : 'From HR'}{d.hr?.employeeNumber ? ` · ${d.hr.employeeNumber}` : ''}</span>
                     : <span className="block text-[10.5px] font-normal text-amber-700">{ar ? 'غير مربوط بموظف' : 'Not linked to an employee'}</span>}
@@ -366,8 +349,8 @@ export default function FleetDriversPage() {
                 <td className="px-4 py-3"><PersonDocDate ar={ar} date={d.iqamaExpiry} state={d.iqamaState} /></td>
                 <td className="px-4 py-3"><PersonDocDate ar={ar} date={d.licenseExpiry} state={d.licenseState} /></td>
                 <td className="px-4 py-3">
-                  {/* The badge itself is the toggle — one click flips يعمل/لا يعمل. */}
-                  {/* ما تقوله الموارد البشريّة (إجازة/إيقاف/إنهاء خدمة) لا يُبدَّل من هنا. */}
+                  {/* The badge itself is the toggle: one click flips working / not working. */}
+                  {/* What HR says (leave, suspension, termination) cannot be changed from here. */}
                   <button type="button" disabled={!editor || rowBusy === d._id || d.offSource === 'hr'}
                     onClick={() => editor && d.offSource !== 'hr' && toggle(d, 'working')}
                     className={editor && d.offSource !== 'hr' ? 'cursor-pointer' : 'cursor-default'}
@@ -408,18 +391,14 @@ export default function FleetDriversPage() {
                       : <SmallBadge bg="bg-red-500/15" text="text-red-700" label={ar ? 'بدون سيارة' : 'Unassigned'} />
                   )}
                 </td>
-                {/* ── رتبتُه على شاحنته ──────────────────────────────────────
-                    «السائق الثاني» رتبةٌ تُقرأ في أمر النقل وفي نموذج الشحنة،
-                    وكان الجدولُ يقول «على 2708» ولا يقول أوّلًا أم ثانيًا —
-                    فيُسأل المشرفُ عن طاقم شاحنةٍ فيجيب بالظنّ. وتُبدَّل من
-                    صفحة الشاحنات حيث يُرى المقعدان معًا. */}
+                {/* His rank on his truck. 'Second driver' is a rank read on the transport order and the shipment form, and the table said 'on 2708' without first or second, so a supervisor asked about a truck's crew had to guess. It is changed from the trucks page where both seats are visible. */}
                 <td className="px-4 py-3 whitespace-nowrap">
                   {!vehId(d) ? <span className="text-slate-300">—</span>
                     : d.seat === 2
                       ? <SmallBadge bg="bg-violet-500/15" text="text-violet-700" label={ar ? 'سائق ثانٍ' : 'Second'} />
                       : <SmallBadge bg="bg-blue-500/15" text="text-blue-700" label={ar ? 'سائق أول' : 'First'} />}
                 </td>
-                {/* المقعدُ الآخر: مَن يشاركه الشاحنة، أو أنّه شاغرٌ ويقبل واحدًا. */}
+                {/* The other seat: who shares the truck, or vacant and accepting one. */}
                 <td className="px-4 py-3 whitespace-nowrap">
                   {(() => {
                     if (!vehId(d)) return <span className="text-slate-300">—</span>;
@@ -489,8 +468,7 @@ export default function FleetDriversPage() {
           </PrimaryButton>
         </>}>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {/* المربوطُ بملفّه: ما يُعدَّل هنا يُكتب في ملفّه في الموارد البشريّة أيضًا
-              (٢٠٢٦/١٠/٢٥) — نسخةٌ واحدة، ويظهر في كلّ قسمٍ فورًا. */}
+          {/* Linked to his file: edits here are also written to his HR file, a single copy visible in every section immediately. */}
           {editing?.hrLinked && (
             <p className="sm:col-span-2 text-xs text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
               {ar ? 'هذا السائق مربوط بملفّه في الموارد البشرية — ما تعدّله هنا (الاسم، الجوال، الإقامة، الإيبان، الجنسية) يُحفَظ في ملفّه هناك أيضًا.'
@@ -500,10 +478,7 @@ export default function FleetDriversPage() {
           <Field label={ar ? 'الاسم *' : 'Name *'} span2><TextInput value={form.name} onChange={(e) => setForm((f: any) => ({ ...f, name: e.target.value }))} /></Field>
           <Field label={ar ? 'الجوال' : 'Phone'}><TextInput value={form.phone} onChange={(e) => setForm((f: any) => ({ ...f, phone: e.target.value }))} /></Field>
           <Field label={ar ? 'رقم الإقامة' : 'Iqama'}><TextInput value={form.iqama} onChange={(e) => setForm((f: any) => ({ ...f, iqama: e.target.value }))} /></Field>
-          {/* ── الإيبان يُكتب هنا مرّةً ─────────────────────────────────────
-              مصاريفُ السوّاق تُحوَّل إليه، وصفحتُها تقرؤه من هنا لا من سطر
-              الحمولة — يُكتب مرّةً ويُصحَّح مرّةً، بدل أن يُنسَخ في كلّ أمر نقل
-              فيُخطئ رقمٌ واحدٌ فيذهب المالُ إلى حسابٍ آخر. */}
+          {/* IBAN is entered once here. Driver expenses are transferred to it and its page reads it from here, not from the load row: written once and corrected once, instead of copied into every transport order where one wrong digit sends money to another account. */}
           <Field label={ar ? 'رقم الإيبان (لتحويل المصاريف)' : 'IBAN (for expense transfers)'}>
             <TextInput value={form.iban} dir="ltr" placeholder="SA00 0000 0000 0000 0000 0000"
               onChange={(e) => setForm((f: any) => ({ ...f, iban: e.target.value.toUpperCase() }))} />
@@ -531,8 +506,7 @@ export default function FleetDriversPage() {
           </Field>
         </div>
       </Modal>
-      {/* «ربط بموظف» — يُختار ملفُّه في الموارد البشريّة، فيُقرأ منه الاسمُ والجوالُ
-          والإقامةُ والجنسيّةُ والإيبانُ وحالةُ العمل في كلّ شاشات الأسطول. */}
+      {/* Link to employee: pick his HR file, and name, mobile, residency, nationality, IBAN and work status are read from it on all fleet screens. */}
       <Modal open={!!linking} onClose={() => setLinking(null)}
         title={linking ? (ar ? `ربط «${linking.name}» بموظف` : `Link “${linking.name}” to an employee`) : ''}
         footer={<>
@@ -593,7 +567,7 @@ export default function FleetDriversPage() {
         </div>
       </Modal>
 
-      {/* لماذا يُنزَل؟ — the reason feeds the dashboard's sick/leave counts. */}
+      {/* Why is he benched? The reason feeds the dashboard's sick/leave counts. */}
       <Modal open={!!benching} onClose={() => setBenching(null)}
         title={benching ? (ar ? `إنزال «${benching.name}» من السيارة` : `Bench “${benching.name}”`) : ''}
         footer={<>

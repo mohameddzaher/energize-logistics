@@ -1,21 +1,19 @@
-// عميل ماستر الموارد البشرية — يقابل /api/hr/master.
-//
-// «مطلوب» و«غير مطلوب» مفصولين في كل حتة عن قصد: «مطلوب» شغل لازم يتعمل،
-// و«غير مطلوب» مش نقص أصلاً. خلطهم بيحوّل قايمة الشغل لأرقام مالهاش معنى.
+// HR master client for /api/hr/master.
+// Required and not-required are kept apart everywhere: required is work to do, not-required is not a gap; mixing them makes the work list meaningless.
 import api from '@/lib/api';
 
 export type StatusCode = 'required' | 'not_required' | 'none' | 'filled' | 'cash_payroll' | 'inactive' | 'unparseable';
 export type DocState = 'valid' | 'warning' | 'critical' | 'expired' | 'missing' | 'not_applicable';
 
-// `number`: مبلغٌ (الراتب والبدلات)؛ `readOnly`: يُقرأ ولا يُكتب (المركبة من سجلّ المركبات).
+// number: an amount (salary, allowances); readOnly: read but not written (vehicle data from the vehicle register).
 export interface FieldDef { key: string; ar: string; en: string; type: 'text' | 'date' | 'bool' | 'number'; groupable?: boolean; readOnly?: boolean }
 export interface FieldCard extends FieldDef {
   group: string; total: number;
   counts: Record<string, number>;
   required: number;
-  /** أعلى ٢٥ قيمة فقط — القائمة الكاملة في لوحة الفلترة. */
+  /** Top 25 values only; the full list is in the filter panel. */
   values?: { value: string; count: number }[];
-  /** عدد القيم المختلفة كلّها، لا عدد ما وصل منها. */
+  /** Count of all distinct values, not just those returned. */
   valuesTotal?: number;
 }
 export interface GroupCard {
@@ -24,37 +22,33 @@ export interface GroupCard {
   states?: Record<DocState, number>;
   expiryField?: string; needsAttention?: number; nearestDays?: number | null;
 }
-/** شريحة تحليلية: عنوانها وعددها والفلتر الذي يفتح صفوفها بالضبط. */
+/** Analytics tile: its title, count and the exact filter that opens its rows. */
 export interface AnalyticItem { label: string; labelEn: string; count: number; filter: Record<string, string> }
 export interface AnalyticBlock {
   key: string; ar: string; en: string; kind: 'bar' | 'horizon'; field?: string; items: AnalyticItem[];
 }
 export interface HrOverview {
-  // employees/active/notActive = ما يعرضه الفلتر الآن، وroster = إجمالي الملفّ
-  // الوظيفيّ يُعرض بجانبه ليُعرف من أيٍّ اقتُطع.
+  // employees/active/notActive are what the current filter shows; roster is the total employment file, shown beside it to show what it was cut from.
   totals: { employees: number; active: number; notActive: number; terminated?: number; roster: number; filtered: number; required: number; expiringSoon: number; expiringStates?: Record<string, number>; outsideKingdom: number; freelancers: number; cashPayroll: number; gosiRegistered: number;
-    /** في مرحلة نقل الكفالة (الموقوف) والأرشيف. */
+    /** In the sponsorship-transfer stage (suspended) and the archive. */
     transfer?: number; archived?: number; finalExit?: number; noKind?: number; sister?: number;
-    /** نصفا كلّ كارت: على الكفالة · فريلانسر — من «رقم السجل التجاري». */
+    /** The two halves of each card: sponsored vs freelance, from the commercial registration number. */
     halves?: Record<string, { sponsored: number; freelance: number }>;
     onDutyDetail?: Record<'sponsored' | 'freelance', { working: number; leave: number }>;
   };
-  /** الشغل اليوميّ محسوبًا على الموظفين المطابقين وحدهم. */
+  /** Daily work computed over the matching employees only. */
   work: { pendingLeaves: number; openRequests: number; assignedAssets: number };
   groups: GroupCard[];
   topRequired: (FieldCard & { groupAr: string; groupKey: string })[];
   analytics: AnalyticBlock[];
   alert: { warnDays: number; criticalDays: number };
-  /**
-   * الشرطُ الذي عُدَّت به الانتهاءات (مَن لم تنتهِ خدمتُه، ما لم يُختَر غيرُه).
-   * يُحمَل في كلّ رابطٍ يفتح رقمَ انتهاءٍ — فيفتح الرقمُ صفوفَه بعينها.
-   */
+  /** The condition the expiries were counted with (staff whose service has not ended, unless another is chosen). Carried in every link that opens an expiry number so it opens exactly those rows. */
   expiryScope?: Record<string, string>;
 }
 
 export interface RecordRow {
   _id: string; employeeNumber: string; name: string;
-  /** يُرجَع في كل مجموعة وإن لم يكن من حقولها — كل جداول القسم تعرضه وبه يُبحَث. */
+  /** Returned in every group even if not one of its fields; all department tables show it and search by it. */
   iqamaNumber?: string;
   department?: string; branchName?: string; project?: string;
   workStatusText?: string; employmentStatus?: string;
@@ -68,7 +62,7 @@ export const STATUS_META: Record<string, { ar: string; en: string; color: string
   required: { ar: 'مطلوب', en: 'Required', color: '#dc2626', bg: 'bg-red-100 text-red-700' },
   not_required: { ar: 'غير مطلوب', en: 'Not required', color: '#64748b', bg: 'bg-slate-100 text-slate-600' },
   none: { ar: 'لا يوجد', en: 'None', color: '#94a3b8', bg: 'bg-slate-100 text-slate-500' },
-  // «مُدخَل»: في الخانة قيمةٌ مكتوبة — راجع توأمَها في config/hrFields.
+  // Entered: the cell holds a written value; see its twin in config/hrFields.
   filled: { ar: 'مُدخَل', en: 'Filled', color: '#16a34a', bg: 'bg-emerald-100 text-emerald-700' },
   cash_payroll: { ar: 'راتب نقدي', en: 'Cash payroll', color: '#8b5cf6', bg: 'bg-violet-100 text-violet-700' },
   inactive: { ar: 'غير نشط', en: 'Inactive', color: '#b45309', bg: 'bg-amber-100 text-amber-800' },
@@ -81,15 +75,10 @@ export const STATE_META: Record<string, { ar: string; en: string; color: string;
   expired: { ar: 'منتهي', en: 'Expired', color: '#dc2626', bg: 'bg-red-100 text-red-700' },
   missing: { ar: 'بدون تاريخ', en: 'No date', color: '#94a3b8', bg: 'bg-slate-100 text-slate-600' },
   not_applicable: { ar: 'لا ينطبق', en: 'Not applicable', color: '#64748b', bg: 'bg-slate-100 text-slate-500' },
-  // ── حالةٌ تجمع الثلاثَ التي تستدعي عملًا ────────────────────────────────
-  // الرقمُ في الشريط هو المنتهي والحرج والقريب مجموعةً. وبغير قيمةٍ تجمعها لا
-  // يفتح الضغطُ على الرقم صفوفَه بعينها — فيُقرأ رقمٌ ويُفتَح جدولٌ فيه غيرُه.
+  // A combined status for the three that need action. The strip number counts expired, critical and soon together; without a value that groups them, clicking the number would not open exactly those rows.
   attention: { ar: 'يحتاج انتباهًا', en: 'Needs attention', color: '#dc2626', bg: 'bg-rose-100 text-rose-700' },
 };
-/**
- * الحالةُ ← عرضُها، ولا تعود فارغةً. راجع توأمَها في `lib/vehicleRegistry`:
- * قراءةُ لونٍ من مفتاحٍ ناقصٍ تُسقط الشاشةَ كلَّها لا الخانةَ وحدَها.
- */
+/** Status to display, never empty. See its twin in lib/vehicleRegistry: reading a color from a missing key crashes the whole screen, not just the cell. */
 export const statusMeta = (c?: string | null) =>
   STATUS_META[c || 'none'] || { ...STATUS_META.none, ar: String(c || '—'), en: String(c || '—') };
 export const stateMeta = (c?: string | null) =>
@@ -104,28 +93,13 @@ export const fmtDate = (d?: string | Date | null) => {
   return isNaN(x.getTime()) ? String(d) : x.toISOString().slice(0, 10);
 };
 
-/**
- * القيمة كما يقبلها `<input type="date">`.
- *
- * حقول التواريخ في هذا الملفّ تحمل أحيانًا كلمةً إدارية لا تاريخًا («مطلوب»)،
- * و`new Date('مطلوب').toISOString()` يرمي استثناءً يُسقِط الشاشة كلَّها لا
- * الخانةَ وحدها — فيصير حقلٌ واحدٌ سيّئُ الكتابة كافيًا لتعطيل الصفحة.
- */
+/** Value as accepted by <input type="date">. Date fields here sometimes hold an administrative word instead of a date, and new Date(word).toISOString() throws, which would take down the whole screen. */
 export const toDateInput = (v?: string | Date | null) => {
   if (!v) return '';
   const d = new Date(v);
   return isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 10);
 };
-/**
- * ── حقولُ الانتهاء، وما يُسمّى به عمودُ مدّتها ─────────────────────────────
- *
- * خمسةُ أعمدةٍ في الماستر عنوانُها «تاريخ الانتهاء» نفسُه — تفرّقها المجموعةُ
- * التي تعيش فيها لا اسمُها. فعمودُ المدّة لا يصحّ أن يرث ذلك الغموض: «المدة
- * بالأيام» خمسَ مرّاتٍ في قائمة الأعمدة لا تُختار منها واحدة.
- *
- * فلكلّ انتهاءٍ اسمُ مدّته صريحًا، ومنها يُعرَف أيُّ التواريخ انتهاءٌ أصلًا —
- * تاريخُ الميلاد والتعيين وبدايةِ العقد تواريخُ لا تنتهي، ولا مدّةَ تُعَدّ عليها.
- */
+/** Expiry fields and the name of each one's duration column. Five master columns share the title 'expiry date' and differ only by group, so each duration column gets an explicit unambiguous name, which also identifies which dates are expiries. */
 export const EXPIRY_FIELDS: Record<string, { ar: string; en: string }> = {
   iqamaExpiry: { ar: 'المدة بالأيام — الإقامة', en: 'Days left — Iqama' },
   passportExpiry: { ar: 'المدة بالأيام — الجواز', en: 'Days left — Passport' },
@@ -139,16 +113,13 @@ export const EXPIRY_FIELDS: Record<string, { ar: string; en: string }> = {
 
 export const isExpiryField = (key: string): boolean => Object.hasOwn(EXPIRY_FIELDS, key);
 
-/** اسمُ عمود المدّة لهذا الانتهاء. */
+/** Duration column name for this expiry. */
 export const daysColLabel = (key: string, ar: boolean): string => {
   const m = EXPIRY_FIELDS[key];
   return m ? (ar ? m.ar : m.en) : (ar ? 'المدة بالأيام' : 'Days left');
 };
 
-/**
- * الأيّامُ حتى التاريخ — سالبٌ لما مضى، و`null` لما لا تاريخَ له.
- * تُحسَب عند القراءة لا تُخزَّن: رقمٌ يُخزَّن يصدق يومَ كُتب ويكذب في اليوم التالي.
- */
+/** Days until the date: negative if past, null if no date. Computed at read time, never stored, because a stored number is stale the next day. */
 export const daysUntil = (d?: string | Date | null): number | null => {
   if (!d) return null;
   const x = new Date(d);
@@ -183,37 +154,29 @@ export const getHrExpiring = (q: Record<string, any> = {}) =>
     alert?: { warnDays: number; criticalDays: number }; expiryScope?: Record<string, string> }>(
     `/api/hr/master/expiring${qs(q) ? `?${qs(q)}` : ''}`);
 
-/** ملء حقول ناقصة. حالة «مطلوب» بتتشال لوحدها على السيرفر. */
+/** Fill in missing fields. The required status is cleared automatically on the server. */
 export const updateEmployeeFields = (id: string, fields: Record<string, any>, markStatus?: Record<string, string>) =>
   api.patch<{ employee: any; statuses: Record<string, StatusCode>; rejected: string[] }>(
     `/api/hr/master/employees/${id}/fields`, { fields, markStatus });
 
-/** تجديد مستند واحد — يكتب التاريخ الجديد ويترك أثرًا يقول مَن جدّده ومن أيّ تاريخ. */
+/** Renew one document: writes the new date and leaves a trail of who renewed it and from which date. */
 export const renewHrDocument = (body: {
   employee: string; group: string; newExpiry: string; documentNumber?: string; notes?: string;
 }) => api.post<{ employee: any; renewal: any }>('/api/hr/master/renew', body);
 
-/**
- * تجديد دفعة بتاريخ واحد. كله أو لا شيء: لو سقط سطر في التحقّق لا يُكتب أيّ
- * سطر، ويعود الخطأ في `errors` مع رقم السطر — فالتجديد الجزئي الصامت أسوأ من
- * الفشل الصريح.
- */
+/** Renew a batch with one date, all or nothing: if any row fails validation nothing is written and the error returns in `errors` with the row number, since a silent partial renewal is worse than a clear failure. */
 export const renewHrBulk = (body: {
   items: { employee: string; group: string }[]; newExpiry: string; notes?: string;
 }) => api.post<{ renewed: any[]; summary: { count: number; employees: number } }>(
   '/api/hr/master/renew-bulk', body);
 
-/** المجموعات التي لها تاريخ انتهاء، فيصحّ فيها التجديد. */
+/** Groups that have an expiry date and so can be renewed. */
 export const RENEWABLE_GROUPS = new Set([
   'iqama', 'passport', 'contract', 'workPermit', 'medicalInsurance', 'healthCertificate', 'driverCard', 'drivingLicense',
   'visa', 'ajeer',
 ]);
 
-/**
- * تسمياتُ حالة التوظيف في لوحة الفلترة — مصدرٌ واحدٌ لصفحات الماستر كلِّها.
- * «على قوّة العمل» = كلُّ مَن لم تنتهِ خدمتُه (على رأس العمل أو في إجازةٍ أو
- * موقوف)، وهو نطاقُ عدّ الانتهاءات. راجع EXPIRY_SCOPE في الخادم.
- */
+/** Employment status labels in the filter panel, one source for all master pages. 'On the workforce' means everyone whose service has not ended (active, on leave or suspended) and is the scope for expiry counts. See EXPIRY_SCOPE on the server. */
 export const HR_EMPLOYMENT_LABELS = {
   ar: 'حالة التوظيف', en: 'Employment', values: {
     active: { ar: 'على رأس العمل', en: 'Active' },
@@ -227,24 +190,18 @@ export const HR_EMPLOYMENT_LABELS = {
 export const getHrFieldConfig = () =>
   api.get<{ groups: (GroupCard & { fields: FieldDef[] })[]; statuses: any; states: any; alert: any }>('/api/hr/master/field-config');
 
-/** الحقول القابلة للفلترة وقيمها بأعدادها — محسوبة على ما تبقّى بعد بقيّة الفلاتر. */
+/** Filterable fields and their values with counts, computed over what remains after the other filters. */
 export const getHrFilters = (q: Record<string, any> = {}) =>
   api.get<{ filters: { key: string; ar: string; en: string; groupAr: string; groupEn: string; values: { value: string; count: number }[] }[]; dateFields: string[] }>(
     `/api/hr/master/filters${qs(q) ? `?${qs(q)}` : ''}`);
 
-/** أسماء حقول التاريخ التي تقبل مدى — تُعرض في لوحة الفلترة. */
-/**
- * فلاتر رقميّة بمدى — تُقرأ بالسنوات أو بالأيام لا بالتاريخ.
- *
- * «مَن أعمارهم بين ٢٥ و٣٠» و«ما ينتهي خلال ثلاثين يومًا» سؤالان يُسألان كل يوم،
- * وكان جوابهما يحتاج حسابَ تاريخين في الرأس. والسنُّ تتغيّر مع الزمن والتاريخ
- * لا، فالمدى المكتوب بالسنوات يبقى صحيحًا غدًا والمكتوب بالتاريخ يشيخ.
- */
+/** Names of date fields that accept a range; shown in the filter panel. */
+/** Numeric range filters read in years or days, not dates. Ranges written in years stay valid tomorrow while date ranges go stale. */
 export interface NumRangeDef { key: string; ar: string; en: string; unitAr: string; unitEn: string; min?: number; max?: number }
 export const HR_NUM_RANGES: NumRangeDef[] = [
   { key: 'age', ar: 'العمر', en: 'Age', unitAr: 'سنة', unitEn: 'years', min: 15, max: 90 },
   { key: 'tenure', ar: 'سنوات الخدمة', en: 'Years of service', unitAr: 'سنة', unitEn: 'years', min: 0, max: 50 },
-  // الأيام المتبقّية: السالب ماضٍ، فـ«المنتهي منذ شهر إلى ما ينتهي بعد شهر» = ‎-30 إلى 30.
+  // Remaining days: negative is past, so 'expired a month ago to expiring in a month' is -30 to 30.
   { key: 'iqamaExpiryDays', ar: 'الإقامة — الأيام المتبقّية', en: 'Iqama — days left', unitAr: 'يوم', unitEn: 'days' },
   { key: 'contractEndDateDays', ar: 'العقد — الأيام المتبقّية', en: 'Contract — days left', unitAr: 'يوم', unitEn: 'days' },
   { key: 'passportExpiryDays', ar: 'الجواز — الأيام المتبقّية', en: 'Passport — days left', unitAr: 'يوم', unitEn: 'days' },

@@ -1,10 +1,7 @@
 'use client';
 /**
- * اليوميّة — «كلُّ واحدٍ في اليوم يعمل على ماذا، وكم أخذ من وقت» (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢).
- *
- * صفٌّ لكلّ مهمّةٍ في كلّ يوم: ما خُطِّط له ذلك اليوم، وما عُمل فيه بالمؤقّت (والفترةُ
- * عبر منتصف الليل تُقسَم على يوميها)، وتصحيحُ المدير، وما تمّ فيه. يُفلتَر بيومٍ أو مدًى،
- * وبالموظّف، وبالمهمّة، وبالحالة — والحسابُ كلُّه في الخادم (GET /api/jp/daily).
+ * Daily log: what each person worked on each day and how long it took.
+ * One row per task per day: what was planned, what was worked with the timer (a span across midnight is split between its two days), the manager's correction, and what was done. Filter by day or range, employee, task and status. All computation is on the server (GET /api/jp/daily).
  */
 import { useCallback, useEffect, useState } from 'react';
 import api from '@/lib/api';
@@ -52,7 +49,7 @@ export default function JpDaily({ scope, section, ar }: { scope: JpScope; sectio
       if (status) p.set('status', status);
       const r = await api.get<Daily>(`/api/jp/daily?${p.toString()}`);
       if (guard.isCurrent(mine)) setD(r);
-    } catch { /* اليوميّةُ زيادةٌ على اللوحة */ }
+    } catch { /* The daily log is an addition to the board. */ }
     if (guard.isCurrent(mine)) setLoading(false);
   }, [scope, section, from, to, assignee, title, status, guard]);
   useEffect(() => { load(); }, [load]);
@@ -90,7 +87,7 @@ export default function JpDaily({ scope, section, ar }: { scope: JpScope; sectio
 
       {d && (
         <>
-          {/* لكلّ موظّفٍ: وقتُه في المدى، وما خُطِّط له، وما تمّ. */}
+          {/* Per employee: time in the range, what was planned, and what was done. */}
           {d.people.length > 0 && (
             <div className="grid grid-cols-1 gap-2 px-4 pb-3 sm:grid-cols-2 lg:grid-cols-4">
               {d.people.map((p) => (

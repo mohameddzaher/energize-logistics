@@ -1,9 +1,5 @@
 'use client';
-// نظرة الموارد البشرية الشاملة — كارت لكل عمود، وقايمة شغل مش أرقام.
-//
-// كل رقم «مطلوب» معناه بيانات ناقصة لازم التيم يجمّعها، والضغط عليه بيفتح
-// الناس اللي وراه عشان يتملي من هناك على طول. و«غير مطلوب» متعدّة لوحدها —
-// سعودي مالوش إقامة مش «ناقص إقامة»، وحطّه في قايمة الشغل بيضيّع وقت الناس.
+// HR overview: a card per column and a work list, not just numbers. Each "required" number is missing data the team must collect, and pressing it opens those people to fill in place. "Not required" is counted separately: a Saudi with no residency is not missing a residency, and listing him wastes people's time.
 import { useState, useEffect, useCallback, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useLanguage } from '@/context/LanguageContext';
@@ -32,54 +28,38 @@ function HrMasterInner() {
   const { notify } = useDialog();
 
   const [d, setD] = useState<HrOverview | null>(null);
-  // الجزء التشغيلي (إجازات، طلبات، عهد، تراخيص) جاي من داشبورد الموارد البشرية
-  // القديمة — الصفحة دي بقت المكان الوحيد، فما ينفعش نسيب حاجة وراها.
+  // The operational part (leave, requests, custody, licenses) comes from the old HR dashboard. This page is now the only place, so nothing may be left behind.
   const [ops, setOps] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  // الفلتر هو مصدر كل رقم في هذه الصفحة. البطاقات والتحليلات كلها تُعاد قراءتها
-  // منه، فلا يبقى في الشاشة رقمٌ محسوبٌ على مجموعة غير التي يراها المستخدم.
+  // The filter is the source of every number on this page. Cards and analytics are re-read from it, so no number is computed on a different group than the user sees.
   const sp = useSearchParams();
-  // ── الفلتر يعيش في عنوان الصفحة ─────────────────────────────────────────────
-  // بغير ذلك يذهب مع أوّل انتقال: تفلتر، تفتح رقمًا، ترجع بزرّ المتصفّح فتجد
-  // اللوحة كما كانت أوّل مرّة وقد ضاع ما بنيتَه. وفي العنوان يعمل الرجوع
-  // والتقدّم، ويبقى ما اخترتَه إن حدّثتَ الصفحة، ويمكن نسخ الرابط ومشاركته.
-  // النصفُ المفتوح من «على رأس العمل» — يُري كم يعمل وكم في إجازة.
+  // The filter lives in the URL. Otherwise it is lost on the first navigation: filter, open a number, press back, and the dashboard is as it was. In the URL back/forward work, the choice survives refresh, and the link can be shared. The open half of "on the job" shows how many work and how many are on leave.
   const [dutyHalf, setDutyHalf] = useState<'' | 'sponsored' | 'freelance'>('');
   const [filters, setFilters] = useState<FilterValues>(() =>
     Object.fromEntries([...(sp?.entries() || [])]));
   const onlyActive = filters.employment === 'active';
 
-  // التراخيص وحدها تأتي من الداشبورد العامّ، وهي لا تتحرّك مع الفلتر — فتُقرأ
-  // مرّةً واحدة عند فتح الصفحة، لا مع كل ضغطةٍ على فلتر.
-  // كانت تُقرأ مرّةً عند الفتح: يُنشأ عقدٌ فيبقى «بلا عقد» على رقمه حتى تُعاد
-  // الصفحة. فتسمع ما تسمعه بقيّةُ اللوحة.
-  // وبلا عقد / عقودٌ منتهية تُحسَب على فلتر اللوحة (والتراخيصُ للشركة كلِّها).
+  // Licenses alone come from the general dashboard and do not move with the filter, so they are read once on open, not on every filter click. The same read also reacts to socket writes (previously a created contract stayed "no contract" until reload). No-contract and expired-contract lists are computed on the panel filter, while licenses are company-wide.
   const opsQs = new URLSearchParams(Object.entries(filters).filter(([, v]) => v !== '' && v != null) as [string, string][]).toString();
   const loadOps = useCallback(() => { api.get<any>(`/api/hr/dashboard${opsQs ? `?${opsQs}` : ''}`).then(setOps).catch(() => {}); }, [opsQs]);
   useEffect(() => { loadOps(); }, [loadOps]);
   useSocket('hr:master', loadOps);
   const [contractList, setContractList] = useState<'' | 'noContract' | 'lapsedContracts'>('');
 
-  // ── وتحليلُ الأقسام يقرأ الفلترَ نفسَه ───────────────────────────────────
-  // فلو قُصرت اللوحةُ على جدة كانت أرقامُ الأقسام أرقامَ جدة — ولا يبقى في
-  // الشاشة رقمان محسوبان على مجموعتين مختلفتين.
+  // Department analysis reads the same filter. If the panel is limited to Jeddah, department numbers are Jeddah's, so two numbers never describe two groups.
   const [depts, setDepts] = useState<DeptAnalysis | null>(null);
-  // عددُ أوراق المكتبة — رقمٌ واحدٌ على اللوحة يفتحها، ولا يحرّكه فلترُ الموظفين.
+  // Count of library forms: one number on the panel opens it and the employee filter does not move it.
   const [forms, setForms] = useState(0);
   useEffect(() => {
     api.get<{ total: number }>('/api/hr/forms').then((r) => setForms(r.total || 0)).catch(() => {});
   }, []);
 
-  // ── ولا يكتب ردٌّ قديمٌ فوق ردٍّ أحدث ───────────────────────────────────────
-  // اللوحةُ بلا فلترٍ أثقلُ طلباتها، وهي التي تُطلَق عند الفتح. فكلُّ فلترٍ
-  // يُضاف بعدها يفتح نافذةً يصل فيها الردُّ الأوسعُ أخيرًا — فتُقرأ أرقامُ
-  // الشركة كلِّها تحت فلترِ قسمٍ واحد. راجع hooks/useLatestRequest.
+  // Ignore stale responses. The unfiltered panel is the heaviest request and fires on open, so each filter added afterwards opens a window where the widest response lands last and shows company numbers under one department's filter. See hooks/useLatestRequest.
   const guard = useLatestRequest();
   const load = useCallback(async () => {
     const mine = guard.begin();
-    // الشاشة تبقى معروضةً باهتةً أثناء التحديث بدل أن تُفرَّغ: الفراغ يجعل كل
-    // ضغطة فلترٍ تبدو انقطاعًا، والباهت يقول «يُحدَّث» بلا أن يأخذ الصفحة منك.
+    // The screen stays shown but dimmed while refreshing instead of emptying: empty makes each filter click look like an outage, while dimmed says "updating" without taking the page.
     setRefreshing(true);
     try {
       const qs = new URLSearchParams(filters as Record<string, string>).toString();
@@ -97,8 +77,7 @@ function HrMasterInner() {
   }, [JSON.stringify(filters), notify, guard]);
   useEffect(() => { load(); }, [load]);
 
-  // `replace` لا `push`: كل ضغطةِ قيمةٍ في الفلتر لا تستحقّ خطوةً في تاريخ
-  // المتصفّح، وإلا احتاج الرجوعُ إلى الصفحة السابقة عشرَ ضغطات.
+  // `replace`, not `push`: each filter value click does not deserve a browser history step, or going back would take ten presses.
   useEffect(() => {
     const q = new URLSearchParams(
       Object.entries(filters).filter(([, v]) => v !== '' && v != null) as [string, string][]).toString();
@@ -106,30 +85,14 @@ function HrMasterInner() {
   }, [JSON.stringify(filters), router]);
   useSocket('hr:master', useCallback(() => { load(); }, [load]));
 
-  /**
-   * يفتح صفحة المجموعة على الصفوف التي وراء الرقم المضغوط بالضبط.
-   *
-   * الفلتر النشط يُحمل معه. لولا ذلك لفتح «١٢ مطلوبًا» وأنت تنظر إلى جدة على
-   * الاثني عشر في الشركة كلها — رقمٌ ضغطتَه فأعطاك غيره.
-   */
+  /** Opens the group page on exactly the rows behind the pressed number. The active filter is carried along; otherwise "12 required" while looking at Jeddah would open the company-wide twelve. */
   const open = (group: string, q: Record<string, string> = {}) => {
     const p = new URLSearchParams({ ...filters, ...q } as Record<string, string>).toString();
     router.push(`/system/hr/master/${group}${p ? `?${p}` : ''}`);
   };
-  /**
-   * كل رقم يفتح الصفوف التي وراءه — لا يُضيف فلترًا إلى هذه الصفحة.
-   *
-   * كان الضغط على «ليس على رأس العمل ١٣» يُضيف الشرط إلى فلتر اللوحة، فتبقى
-   * أمامك اللوحة نفسها بأرقامٍ أصغر ولا ترى الثلاثة عشر. والفرق بين الأمرين
-   * هو الفرق بين سؤالٍ وجواب: الفلتر يصنع الرقم، والضغط على الرقم يُري مَن فيه.
-   * «الهوية» هي المجموعة العامّة التي تعرض الموظف ببياناته الأساسية.
-   */
+  /** Each number opens the rows behind it and does not add a filter to this page. Pressing "not on the job" used to add the condition to the panel filter, leaving the same panel with smaller numbers and not showing the thirteen. A filter makes the number; pressing the number shows who is in it. "Identity" is the general group showing the employee with basic data. */
   const drill = (q: Record<string, string>) => open('identity', q);
-  /**
-   * صفحةُ الانتهاءات بالفلتر الحاليّ وبالمدّة التي عُدَّ بها الرقم.
-   * «ينتهي قريبًا» = المنتهي + ما ينتهي خلال `alert.warnDays` على ما يعرضه
-   * الفلتر — فتُفتَح الصفحةُ على الشرطين نفسيهما، لا مجرَّدةً منهما.
-   */
+  /** Expiries page with the current filter and the duration the number was counted with. "Expiring soon" is expired plus what expires within `alert.warnDays` on the filter's scope, so the page opens on both conditions. */
   const openExpiring = (state?: unknown) => {
     const p = new URLSearchParams({
       ...(filters as Record<string, string>),
@@ -139,7 +102,7 @@ function HrMasterInner() {
     router.push(`/system/hr/master/expiring${p ? `?${p}` : ''}`);
   };
 
-  // نصفا كلّ كارت (على الكفالة · فريلانسر) — من الخادم. راجع Big.
+  // The two halves of each card (on sponsorship, freelancer) come from the server. See Big.
   const H = (k: string) => ((d as any)?.totals?.halves?.[k] ?? null) as { sponsored: number; freelance: number } | null;
   if (loading) return <Spinner />;
   if (!d) return <div className="text-slate-500 p-8">{t('تعذّر التحميل', 'Could not load')}</div>;
@@ -161,15 +124,13 @@ function HrMasterInner() {
         </div>
       </PageHeader>
 
-      {/* ── الفلترةُ السريعة: كلُّ رقمٍ تحتها يُحسَب عليها ───────────────────────
-          القسم والمدينة وحالة العمل والمشروع والجنسية — في الفلتر نفسِه الذي
-          تقرؤه لوحةُ الفلترة الكاملة تحته والخادم. راجع HrQuickFilters. */}
+      {/* Quick filtering: every number below is computed on it. Department, city, work status, project, nationality, in the same filter the full filter panel below and the server read. See HrQuickFilters. */}
       <div className="rounded-xl border border-orange-200 bg-gradient-to-l from-orange-50 to-white p-3 shadow-sm">
         <p className="mb-2 text-[12px] font-bold text-slate-500">{t('فلترة اللوحة — كل الأرقام تتعدّل حسب اختيارك', 'Filter the dashboard — every number follows your choice')}</p>
         <HrQuickFilters optionsUrl="/api/hr/master/filters" value={filters} onChange={setFilters} ar={ar} />
       </div>
 
-      {/* شريط الفلترة — كل ما تحته محسوب عليه */}
+      {/* Filter strip: everything below is computed on it. */}
       <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-sm">
         <FilterPanel
           optionsUrl="/api/hr/master/filters"
@@ -208,8 +169,8 @@ function HrMasterInner() {
       </div>
 
       <div className={refreshing ? 'opacity-50 transition-opacity pointer-events-none space-y-5' : 'transition-opacity space-y-5'}>
-      {/* الأرقام الكبيرة */}
-      {/* ── الموظفون المطابقون: العددُ وحدَه في صفّه ───────────────────────── */}
+      {/* Big numbers. */}
+      {/* Matching employees: the count alone in its row. */}
       <div role="button" tabIndex={0} onClick={() => open('identity')}
         onKeyDown={(e) => { if (e.key === 'Enter') open('identity'); }}
         className="flex cursor-pointer items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm hover:border-slate-300">
@@ -220,16 +181,12 @@ function HrMasterInner() {
         <span className="text-3xl font-extrabold tabular-nums text-[#f37121]">{d.totals.employees}</span>
       </div>
 
-      {/* ── «حالة العمل»: خمسةٌ مجموعُها إجماليُّ الموظفين ──────────────────────
-          يعمل · لا يعمل (داخل النظام، بلا حالةٍ محدّدة) · لا يعمل — انتظار نقل
-          الكفالة · لا يعمل — خروج نهائي · شركة شقيقة. والأرشيفُ خارجَ الإجماليّ. */}
+      {/* Work status: five states summing to total employees. Works; not working (in the system, no specific status); not working, awaiting sponsorship transfer; not working, final exit; sister company. Archive is outside the total. */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5">
         <Big label={t('يعمل', 'Working')} value={d.totals.active} c="#16a34a"
           halves={H('active')} onHalf={(k) => setDutyHalf((v) => (v === k ? '' : k))} activeHalf={dutyHalf} ar={ar}
           onClick={() => drill({ employment: 'working' })}
-          // ── وسطرُ التفصيل محجوزٌ مكانُه ─────────────────────────────────────
-          // كان يظهر حين يُضغَط نصفٌ فيطول الكارتُ ويطول صفُّ الكروت الخمسة معه
-          // فتقفز الشاشةُ تحت يد المستخدم. فالسطرُ قائمٌ دائمًا ومخفيٌّ حتى يُختار.
+          // The detail line's space is reserved. It used to appear when a half was pressed, lengthening the card and the whole row of five cards so the screen jumped under the user's hand. The line always exists and stays hidden until selected.
           detail={d.totals.onDutyDetail ? (() => {
             const half = dutyHalf || 'sponsored';
             const x = d.totals.onDutyDetail[half] || { working: 0, leave: 0 };
@@ -260,7 +217,7 @@ function HrMasterInner() {
           halves={H('sister')} onHalf={(k) => drill({ employment: 'sister', engagement: k })} ar={ar}
           onClick={() => drill({ employment: 'sister' })} />
       </div>
-      {/* والمجموعُ يُقال صراحةً — فلا يُحسب بالعين. */}
+      {/* The total is stated explicitly so nobody sums by eye. */}
       {(() => {
         const sum = (d.totals.active || 0) + (d.totals.noKind || 0) + (d.totals.transfer || 0) + (d.totals.finalExit || 0) + (d.totals.sister || 0);
         return (
@@ -272,7 +229,7 @@ function HrMasterInner() {
 
       <hr className="border-slate-200" />
 
-      {/* والأرشيفُ ليس هنا — صفحتُه وحدَها (صاحبُ الشركة، ٢٠٢٦/١٠/١٩). */}
+      {/* The archive is not here; it has its own page. */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5">
         <Big label={t('خانات مطلوبة', 'Required fields')} value={d.totals.required} c="#dc2626"
           halves={H('required')} onHalf={(k) => open('required', { status: 'required', engagement: k })} ar={ar}
@@ -280,7 +237,7 @@ function HrMasterInner() {
         <Big label={t('مستندات منتهية أو قريبة الانتهاء', 'Expired or expiring documents')} value={d.totals.expiringSoon} c="#ea580c"
           halves={H('expiringSoon')} ar={ar}
           onClick={openExpiring}
-          // مراحلُه الثلاث — مجموعُها هو رقمُ الكارت، وكلٌّ يفتح الانتهاءاتِ على حالته.
+          // Its three stages sum to the card's number, and each opens the expiries on its own state.
           detail={d.totals.expiringStates ? (
             <span className="mt-1.5 flex flex-wrap gap-1.5 text-[10.5px] tabular-nums">
               {(['expired', 'critical', 'warning'] as const).map((k) => (
@@ -301,7 +258,7 @@ function HrMasterInner() {
           onClick={() => drill({ engagement: 'freelance' })} />
       </div>
 
-      {/* الشغل اليوميّ — محسوبٌ على الموظفين المطابقين وحدهم */}
+      {/* Daily work, computed on the matching employees only. */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
         <Big label={t('إجازات قيد المراجعة', 'Leaves pending')} value={d.work?.pendingLeaves ?? 0} c="#0ea5e9"
           onClick={() => router.push('/system/hr/leaves')} />
@@ -309,16 +266,12 @@ function HrMasterInner() {
           onClick={() => router.push('/system/hr/requests')} />
         <Big label={t('عهد بعهدة الموظفين', 'Assets held')} value={d.work?.assignedAssets ?? 0} c="#0f172a"
           onClick={() => router.push('/system/hr/custody')} />
-        {/* ── ومكتبةُ أوراق القسم ────────────────────────────────────────────
-            النماذجُ والخطاباتُ كانت في محادثاتِ واتساب ومجلّداتٍ شخصيّة، فتُوقَّع
-            نسخةٌ قديمةٌ وتُعاد. ولها الآن خانةٌ واحدةٌ تُفتَح من هنا. */}
+        {/* The department's forms library. Forms and letters were in chats and personal folders, so an old copy was signed and returned; they now have one place opened from here. */}
         <Big label={t('النماذج والخطابات', 'Forms & letters')} value={forms} c="#0d9488"
           onClick={() => router.push('/system/hr/forms')} />
       </div>
 
-      {/* التراخيص والاشتراكات على مستوى الشركة، لا على مستوى الموظفين — فلا
-          يحرّكها فلترُ جنسيةٍ أو فرع. مفصولةٌ بعنوانها حتى لا يُظنّ أنها لم
-          تسمع الفلتر. */}
+      {/* Licenses and subscriptions are company-level, not employee-level, so a nationality or branch filter does not move them. Separated by their heading so they are not thought to ignore the filter. */}
       {ops?.summary && (
         <section className="space-y-2">
           <h2 className="text-sm font-bold text-slate-800">
@@ -335,9 +288,7 @@ function HrMasterInner() {
         </section>
       )}
 
-      {/* ── العقود التي تحتاج انتباهًا ───────────────────────────────────────
-          مَن على قوّة العمل (غير الفريلانسر) ولا عقدَ له في النظام، ومَن انقضت
-          مدّةُ عقده ولم يُجدَّد. يخرج الموظّفُ من القائمة لحظةَ يُنشأ عقدُه أو يُجدَّد. */}
+      {/* Contracts needing attention: workforce (non-freelancer) with no contract in the system, and those whose contract term ended without renewal. An employee leaves the list as soon as a contract is created or renewed. */}
       {ops?.summary && (ops.summary.noContractCount > 0 || ops.summary.lapsedContractsCount > 0) && (
         <section className="space-y-2">
           <h2 className="text-sm font-bold text-slate-800">{t('عقود تحتاج انتباهًا', 'Contracts needing attention')}</h2>
@@ -376,7 +327,7 @@ function HrMasterInner() {
         </section>
       )}
 
-      {/* التحليلات — شرائح مشتقّة، كل شريحة تفلتر الصفحة عند الضغط */}
+      {/* Analytics: derived slices, each filtering the page when pressed. */}
       {!!d.analytics?.length && (
         <section className="space-y-2">
           <div className="flex items-center gap-2">
@@ -394,22 +345,21 @@ function HrMasterInner() {
         </section>
       )}
 
-      {/* تحليلُ الأقسام — الجوابُ عن «أيُّ الأقسام أسوأ؟» */}
+      {/* Department analysis: answers which departments are worst. */}
       {!!depts?.departments?.length && (
         <DepartmentAnalysis
           data={depts} ar={ar}
           onOpen={(q) => drill(q as Record<string, string>)}
           onFilter={(dept) => setFilters((f) => ({
             ...f,
-            // الضغطةُ الثانيةُ على القسم نفسِه ترفع القصرَ عنه — فلا يبقى
-            // المستخدمُ يبحث عن زرٍّ يُلغي ما فعله.
+            // A second press on the same department removes the restriction, so the user does not hunt for a button to undo it.
             department: f.department === dept ? '' : dept,
           }))}
           active={String(filters.department || '')}
         />
       )}
 
-      {/* توزيع كل عمود له قيم متكرّرة — بطاقة لكل عمود */}
+      {/* Distribution of each column with repeated values: a card per column. */}
       <section className="space-y-2">
         <h2 className="text-sm font-bold text-slate-800">{t('التوزيعات', 'Distributions')}</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
@@ -422,7 +372,7 @@ function HrMasterInner() {
         </div>
       </section>
 
-      {/* ابدأ من هنا — أكتر البيانات نقصًا */}
+      {/* Start here: the most incomplete data. */}
       {!!d.topRequired.length && (
         <section className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
           <div className="flex items-center gap-2 mb-3">
@@ -443,7 +393,7 @@ function HrMasterInner() {
         </section>
       )}
 
-      {/* المستندات ذات التاريخ */}
+      {/* Documents with dates. */}
       <section className="space-y-2">
         <h2 className="text-sm font-bold text-slate-800">{t('المستندات ومواعيد انتهائها', 'Documents and their expiry')}</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
@@ -453,7 +403,7 @@ function HrMasterInner() {
         </div>
       </section>
 
-      {/* كل مجموعة وكل حقل جواها */}
+      {/* Every group and each field inside it. */}
       <section className="space-y-2">
         <h2 className="text-sm font-bold text-slate-800">{t('كل عمود بالتفصيل', 'Every column in detail')}</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
@@ -468,16 +418,16 @@ function HrMasterInner() {
 type Half = 'sponsored' | 'freelance';
 function Big({ label, value, c, onClick, sub, halves, onHalf, activeHalf, detail, ar }: {
   label: string; value: any; c: string; onClick?: () => void;
-  /** سطرٌ صغير تحت الرقم — يُستعمل لإجمالي الملفّ بجانب الرقم المفلتر. */
+  /** Small line under the number, used for the file total beside the filtered number. */
   sub?: string;
-  /** نصفا الرقم: على الكفالة · فريلانسر — وكلٌّ يُضغَط وحدَه. */
+  /** The two halves of the number (on sponsorship, freelancer), each pressable on its own. */
   halves?: { sponsored: number; freelance: number } | null;
   onHalf?: (k: Half) => void;
   activeHalf?: string;
   detail?: React.ReactNode;
   ar?: boolean;
 }) {
-  // الكارتُ div يُضغَط لا button: داخله أزرارُ النصفين، والزرُّ داخل زرٍّ لا يصحّ.
+  // The card is a div that is clicked, not a button: it contains the half buttons, and a button inside a button is invalid.
   return (
     <div role={onClick ? 'button' : undefined} tabIndex={onClick ? 0 : undefined} onClick={onClick}
       onKeyDown={(e) => { if (onClick && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); onClick(); } }}
@@ -504,12 +454,7 @@ function Big({ label, value, c, onClick, sub, halves, onHalf, activeHalf, detail
   );
 }
 
-// كارت مستند: حالات التاريخ فوق، وحالة الحقول تحت.
-//
-// ── وكلُّ رقمٍ يفتح صفوفَه بشرطه ────────────────────────────────────────────
-// حالاتُ الانتهاء تُعَدّ لمن لم تنتهِ خدمتُه (`scope` من الخادم)، فيُحمَل الشرطُ
-// في كلّ ضغطة. وشارةُ «يحتاج انتباهًا» مجموعُ المنتهي والحرج والقريب — وكانت
-// تفتح المنتهي وحدَه: ٢٥٧ في الشارة و١٠٢ في الجدول.
+// Document card: date states on top, field states below. Each number opens its rows with its condition. Expiry states are counted for those whose service has not ended (`scope` from the server), so the condition is carried on every click. The "needs attention" badge is expired plus critical plus soon; it used to open only expired (257 on the badge vs 102 in the table).
 function DocGroupCard({ g, ar, t, onOpen: openRaw, scope }: { g: GroupCard; ar: boolean; t: any; onOpen: any; scope: Record<string, string> }) {
   const onOpen = (key: string, q: Record<string, string> = {}) => openRaw(key, { ...scope, ...q });
   const s = g.states!;
@@ -548,7 +493,7 @@ function DocGroupCard({ g, ar, t, onOpen: openRaw, scope }: { g: GroupCard; ar: 
   );
 }
 
-// كارت مجموعة: كل حقل بعدّاداته الأربعة.
+// Group card: each field with its four counters.
 function GroupBlock({ g, ar, t, onOpen }: { g: GroupCard; ar: boolean; t: any; onOpen: any }) {
   return (
     <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
@@ -595,7 +540,7 @@ function FieldRow({ f, g, ar, t, onOpen }: { f: FieldCard; g: GroupCard; ar: boo
           {chip('none', c.none)}
         </div>
       </div>
-      {/* الحقول اللي ليها قيم متكرّرة (القسم، الجنسية…) بتتفتح بتوزيعها */}
+      {/* Fields with repeated values (department, nationality, ...) open with their distribution. */}
       {!!f.values?.length && (
         <>
           <button onClick={() => setOpen((v) => !v)} className="text-[10px] text-slate-400 hover:text-slate-700 mt-0.5">
@@ -611,9 +556,7 @@ function FieldRow({ f, g, ar, t, onOpen }: { f: FieldCard; g: GroupCard; ar: boo
                   <b className="text-slate-700 tabular-nums">{v.count}</b>
                 </button>
               ))}
-              {/* البطاقة تعرض الأعلى؛ وبغير هذا السطر يظنّ القارئ أنّ ما رآه كلُّ
-                  القيم فيبني على ناقصٍ لا يعرف أنّه ناقص. الاختيار من بينها كلّها
-                  في لوحة الفلترة فوق. */}
+              {/* The card shows the top values; without this line the reader assumes it is all values and builds on incomplete data. Choosing among all values is in the filter panel above. */}
               {(f.valuesTotal ?? 0) > 20 && (
                 <p className="text-[10px] text-slate-400 pt-0.5">
                   {t(`أعلى 20 من ${f.valuesTotal} — الباقي في لوحة الفلترة`,
@@ -628,10 +571,7 @@ function FieldRow({ f, g, ar, t, onOpen }: { f: FieldCard; g: GroupCard; ar: boo
   );
 }
 
-// ── بطاقة تحليل: شرائح أفقية بعرض متناسب مع العدد ─────────────────────────────
-//
-// الشريحة تحمل معها الفلتر الذي يُنتجها؛ الضغط عليها يضيفه إلى الفلتر بدل أن
-// تُعيد الواجهة تخمين الشرط — فلا يفترق الرقم المعروض عن الصفوف التي يفتحها.
+// Analysis card: horizontal slices with width proportional to the count. A slice carries the filter that produces it; pressing adds it to the filter rather than the UI guessing the condition, so the shown number never differs from the rows it opens.
 function AnalyticCard({ a, ar, total, onPick, active }:
 { a: AnalyticBlock; ar: boolean; total: number; onPick: (q: Record<string, string>) => void; active: Record<string, string> }) {
   const max = Math.max(1, ...a.items.map((i) => i.count));
@@ -673,10 +613,7 @@ function AnalyticCard({ a, ar, total, onPick, active }:
   );
 }
 
-// ── بطاقة توزيع عمود: أعلى القيم، وبقيّتها خلف زر ────────────────────────────
-//
-// فوق البطاقة عدّادا «مطلوب» و«غير مطلوب» — لأنهما ليسا وجهين لعملة: «مطلوب»
-// عملٌ ينتظر، و«غير مطلوب» لا شيء فيه أصلًا، وخلطهما يصنع قائمة عملٍ كاذبة.
+// Column distribution card: top values, the rest behind a button. The "required" and "not required" counters sit above because they are not two sides of one coin: required is pending work, not required has nothing in it, and mixing them makes a false work list.
 function DistributionCard({ f, groupAr, ar, t, total, onPick, active }:
 { f: FieldCard; groupAr: string; ar: boolean; t: any; total: number;
   onPick: (q: Record<string, string>) => void; active: Record<string, string> }) {

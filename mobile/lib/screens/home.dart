@@ -40,14 +40,13 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     Live.instance.connect();
-    NotificationService.instance.init(); // إشعارات حية + صوت + شارة
+    NotificationService.instance.init(); // Live notifications, sound and badge.
     _loadStats();
     Live.instance.on('admintasks:updated', _loadStats);
     Live.instance.on('hr:leave', _loadStats);
-    // النظرة الحية للقسم تُحدَّث على حدث القسم نفسه.
+    // The live section overview refreshes on the section's own event.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      // «المتابعة» تبدأ يومَها من الشحنات نفسِها (نظيرُ roleRoutes في الويب) —
-      // والرئيسيّةُ تحتها، يرجع إليها بزرّ الرجوع.
+      // The follow-up role starts its day on the shipments screen (mirrors roleRoutes on the web); home sits below it, reachable with back.
       if (context.read<AuthProvider>().role == 'shipment_orders_followup') {
         Navigator.push(context, MaterialPageRoute(builder: (_) => const ShipmentOrdersScreen()));
       }
@@ -106,8 +105,7 @@ class _HomeScreenState extends State<HomeScreen> {
       final results = await Future.wait([
         Api.instance.get('/api/hr/me/team').catchError((_) => {}),
         Api.instance.get('/api/hr/me/leaves').catchError((_) => {}),
-        // صندوقُ الوارد لا طلباتِ الفريق: المديرُ والمواردُ والحساباتُ
-        // والإدارةُ كلٌّ يرى ما وصل محطّتَه.
+        // Show the inbox, not team requests: manager, HR, accounts and admin each see what reached their station.
         Api.instance.get('/api/hr/leaves/inbox').catchError((_) => {}),
         if (_canSeeBoard(auth)) Api.instance.get('/api/admin-tasks').catchError((_) => {}),
       ]);
@@ -180,11 +178,11 @@ class _HomeScreenState extends State<HomeScreen> {
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            // ── الكارد الترحيبي: تدرج ليلي بلمسة برتقالي + زخارف دوائر ──
+            // Welcome card: night gradient with an orange accent and decorative circles.
             FadeSlideIn(child: _HeroCard(auth: auth, greeting: _greeting(), today: _todayLabel())),
             const SizedBox(height: 16),
 
-            // ── نظرة القسم الحية (مخصّصة حسب الدور) ──
+            // Live section overview, specific to the role.
             if (_insight != null) ...[
               FadeSlideIn(
                 delayMs: 60,
@@ -236,7 +234,7 @@ class _HomeScreenState extends State<HomeScreen> {
               const SizedBox(height: 20),
             ],
 
-            // ── مؤشراتي الشخصية (للموظفين فقط) ──
+            // Personal KPIs (employees only).
             if (auth.role == 'client')
               FadeSlideIn(
                 delayMs: 80,
@@ -376,8 +374,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-/// الكارد الترحيبي — تدرج من الكحلي الليلي إلى لمسة برتقالية، مع دوائر
-/// زخرفية شفافة واسم اليوم والتاريخ.
+/// Welcome card: gradient from night navy to an orange accent, with translucent decorative circles, the weekday and the date.
 class _HeroCard extends StatelessWidget {
   final AuthProvider auth;
   final String greeting;
@@ -399,7 +396,7 @@ class _HeroCard extends StatelessWidget {
       child: ClipRRect(
         borderRadius: BorderRadius.circular(22),
         child: Stack(children: [
-          // زخارف: دوائر شفافة + توهج برتقالي في الزاوية.
+          // Decoration: translucent circles and an orange glow in the corner.
           Positioned(top: -46, left: -30, child: _circle(130, Colors.white.withValues(alpha: 0.05))),
           Positioned(bottom: -60, right: -20, child: _circle(150, T.orange.withValues(alpha: 0.14))),
           Positioned(top: 18, left: 26, child: _circle(14, T.orange.withValues(alpha: 0.55))),
@@ -482,7 +479,7 @@ class _NavTile extends StatelessWidget {
   }
 }
 
-/// شريط سفلي احترافي: الرئيسية · ملفي · الإشعارات · القائمة.
+/// Bottom bar: home, my profile, notifications, menu.
 class _HomeBottomNav extends StatelessWidget {
   @override
   Widget build(BuildContext context) {

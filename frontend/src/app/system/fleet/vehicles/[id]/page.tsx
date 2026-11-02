@@ -1,13 +1,7 @@
 'use client';
-// تحليل سيارةٍ واحدة عبر فترة — «أضغط على العربية فيطلع لي كل حاجة عنها».
-//
-// كانت شاشة التحليلات تجيب عن الأسطول كلّه ولا تُفتَح سيارةٌ منها، فمَن أراد
-// سيارةً بعينها بحث باسم لوحتها في شاشةٍ مداها الشهر الحالي فخرجت أصفارًا.
-// هنا السيارة هي الموضوع: الفترة تُختار، وكل رقمٍ يخصّها وحدها.
-//
-// والأرقام تُجمَّع في الخادم لا هنا: سيارةٌ واحدة عبر سنةٍ قد تحمل مئات
-// الحمولات، وجرُّها كلّها إلى المتصفّح ليجمعها هو ما يجعل الصفحة تثقل ثم تكذب
-// حين يُقتطَع السجلّ عند سقفٍ ما.
+// Single-vehicle analysis over a period: click a vehicle and see everything about it.
+// The analytics screen answered for the whole fleet and no vehicle could be opened from it; searching a plate in a screen whose range is the current month returned zeros. Here the vehicle is the subject: the period is chosen and every number belongs to it alone.
+// Totals are aggregated on the server, not here: one vehicle over a year can hold hundreds of loads, and pulling them all to the browser makes the page heavy and then wrong once the log is truncated at some cap.
 import { useState, useEffect, useCallback, useMemo, Suspense } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams, useParams } from 'next/navigation';
@@ -49,7 +43,7 @@ function VehicleAnalyticsInner() {
 
   const params = useMemo(() => periodParams(period), [period]);
 
-  const guard = useLatestRequest(); // ردٌّ قديمٌ (فلترٌ سابق) لا يكتب فوق الأحدث
+  const guard = useLatestRequest(); // A stale response (previous filter) must not overwrite the latest one
   const load = useCallback(async () => {
     if (!id) return;
     const mine = guard.begin();
@@ -65,7 +59,7 @@ function VehicleAnalyticsInner() {
   useEffect(() => { load(); }, [load]);
   useSocket('fleet:updated', useCallback(() => load(), [load]));
   useSocket('fleet:vehicles', useCallback(() => load(), [load]));
-  // الهويّةُ والمستنداتُ من سجلّ المركبات، والسائقون من الموارد البشريّة.
+  // Identity and documents come from the vehicle register, drivers from HR.
   useSocket('vreg:updated', useCallback(() => load(), [load]));
   useSocket('hr:employee', useCallback(() => load(), [load]));
 
@@ -110,8 +104,7 @@ function VehicleAnalyticsInner() {
   const t = d.totals;
   const th = 'text-start font-semibold px-3 py-3 whitespace-nowrap';
   const cardCls = 'bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm';
-  // رابط الفترة يُمرَّر إلى شاشة الحمولات كما هو، فلا يفتح المستخدمُ فترةً غير
-  // التي كان ينظر إليها ثم يقارن رقمين لا يخصّان بعضهما.
+  // The period link is passed to the loads screen unchanged, so the user does not open a different period than the one they were viewing and compare two unrelated numbers.
   const periodQS = new URLSearchParams(params).toString();
 
   return (
@@ -133,8 +126,7 @@ function VehicleAnalyticsInner() {
         </Link>
       </PageHeader>
 
-      {/* ── هويّتُها ومستنداتُها من سجلّ المركبات ─────────────────────────────
-          سجلٌّ واحدٌ لكلّ مركبة: ما يُصحَّح في قسم المركبات يظهر هنا في اللحظة. */}
+      {/* Identity and documents from the vehicle register. One record per vehicle: what is corrected in the vehicles section appears here immediately. */}
       <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm text-sm space-y-3">
         {v.registry ? (
           <>
@@ -170,7 +162,7 @@ function VehicleAnalyticsInner() {
         )}
       </div>
 
-      {/* حالة السيارة الآن — التحليل يخصّ فترةً مضت، وهذا السطر يخصّ اللحظة. */}
+      {/* The vehicle's state now: the analysis covers a past period, and this line covers the present. */}
       <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
         <div className="flex items-center gap-2">
           <Users className="w-4 h-4 text-slate-400" />
@@ -209,8 +201,7 @@ function VehicleAnalyticsInner() {
         <StatCard label={ar ? 'حصة قسم الفروع' : 'Branches’ share'} value={money(t.branchShare)} accent="text-blue-600" />
       </div>
 
-      {/* الهدف: منسوبًا إلى عدد أشهر الفترة لا إلى شهرٍ واحد، وإلا بدت سيارةُ
-          ثلاثة أشهرٍ محقِّقةً ٣٠٠٪ وهي على هدفها بالضبط. */}
+      {/* Target scaled by the number of months in the period, not a single month; otherwise a three-month vehicle would show 300% while exactly on target. */}
       <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="flex flex-wrap items-center gap-3 mb-2">
           <Target className="w-4 h-4 text-[#f37121]" />
@@ -228,9 +219,7 @@ function VehicleAnalyticsInner() {
         </div>
       </div>
 
-      {/* ── الحالة الفنّية: لوكيشن سوليوشن ومخزن النقل الثقيل ────────────────
-          الأرقام فوق تقول ماذا كسبت الشاحنة؛ وهذه تقول هل تصلح أن تُشغَّل غدًا.
-          والسؤالان يُقرَّران معًا أو لا يُقرَّران — ولهذا صارا شاشةً واحدة. */}
+      {/* Technical state: Location Solutions and the heavy-transport store. The figures above say what the truck earned; these say whether it can run tomorrow. The two questions are decided together or not at all, hence one screen. */}
       {d.tech && (d.tech.ls2 || d.tech.partsCount > 0 || d.tech.mountedTires > 0) && (
         <div className={`rounded-2xl border p-4 shadow-sm ${d.tech.ls2?.maintenanceStatus === 'overdue' ? 'border-red-200 bg-red-50/40'
           : d.tech.ls2?.maintenanceStatus === 'due' ? 'border-amber-200 bg-amber-50/40' : 'border-slate-200 bg-white'}`}>
@@ -289,7 +278,7 @@ function VehicleAnalyticsInner() {
                       <li key={m._id} className="flex items-center justify-between gap-2 text-[11.5px]">
                         <span className="text-slate-600 truncate">
                           {m.itemName}
-                          {/* سببُ الصرف — صيانة دورية / حادث / وقائية / عطل على الطريق. */}
+                          {/* Reason for the disbursement: periodic maintenance / accident / preventive / breakdown on the road. */}
                           {m.issueReason ? <span className="ms-1.5 rounded bg-orange-50 text-[#c2410c] font-semibold px-1.5 py-0.5 text-[10.5px]">{issueReasonLabel(m.issueReason, ar)}</span> : null}
                         </span>
                         <span className="shrink-0 text-slate-400">×{m.quantity} · {fmtD(m.createdAt)}</span>
@@ -428,7 +417,7 @@ function VehicleAnalyticsInner() {
         </ScrollX>
       </div>
 
-      {/* عهدةُ النقل الثقيل على هذه الشاحنة (تُختار في الدفتر من أسطول لوكيشن). */}
+      {/* Heavy-transport custody on this truck (chosen in the ledger from the Location Solutions fleet). */}
       {d.tech?.ls2?.unitId != null && <HtCustodyPanel by={{ vehicle: d.tech.ls2.unitId }} ar={ar} />}
     </div>
   );

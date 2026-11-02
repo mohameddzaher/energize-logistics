@@ -1,17 +1,7 @@
 'use client';
 /**
- * بحثُ شخصٍ في نماذج قسم المركبات — يُكتب رقمٌ فتُملأ الخانات.
- *
- * ── لماذا بحثٌ لا قائمةُ اختيار ──────────────────────────────────────────────
- * كلُّ نموذجٍ في هذا القسم يسأل عن شخص: المالك، والمفوَّض، والقائدُ الفعليّ،
- * وسائقُ الحادث، وصاحبُ البطاقة. وقائمةٌ منسدلةٌ تعرض الناسَ كلَّهم في كلّ مرّة
- * ثقيلةٌ ولا تُقرأ — ومن يملأ النموذجَ يعرف من يقصد، في يده اسمُه أو رقمُه.
- *
- * فيُكتب ما في اليد (اسمًا أو هويّةً أو إقامة) فيُردُّ عليه، وتُملأ الخاناتُ من
- * الجواب. ومن لا يوجد يُقال فيه صراحةً أنّ الموارد البشريّة هي التي تسجّله —
- * لا يُترَك المستخدمُ يظنّ البحثَ معطَّلًا.
- *
- * والكتابةُ باليد تبقى كما هي: هذا زيادةٌ تُسرّع، لا بابٌ يُغلق غيرَه.
+ * Person lookup for vehicle-section forms: type a number or name and the fields are filled.
+ * A searchable lookup is used instead of a dropdown listing everyone. Unknown people are reported as not yet registered by HR. Manual typing still works.
  */
 import { useState, useCallback, useRef } from 'react';
 import { Search, Loader2, UserCheck, X } from 'lucide-react';
@@ -28,7 +18,7 @@ export interface FoundPerson {
   employmentStatus?: string;
   hireDate?: string | null;
   dateOfBirth?: string;
-  /** انتهاءُ الإقامة ورخصةِ القيادة — بالميلاديّ (YYYY-MM-DD). */
+  /** Iqama and driving licence expiry, Gregorian (YYYY-MM-DD). */
   iqamaExpiry?: string;
   licenseExpiry?: string;
   cardNumber?: string;
@@ -50,7 +40,7 @@ const SOURCE_EN: Record<string, string> = {
 
 export default function PersonLookup({ ar, onPick, label, hint }: {
   ar: boolean;
-  /** يُستدعى بالشخص المختار — على الشاشة أن تملأ خاناتها منه. */
+  /** Called with the chosen person; the screen fills its fields from it. */
   onPick: (p: FoundPerson) => void;
   label?: string;
   hint?: string;
@@ -59,7 +49,7 @@ export default function PersonLookup({ ar, onPick, label, hint }: {
   const [q, setQ] = useState('');
   const [busy, setBusy] = useState(false);
   const [people, setPeople] = useState<FoundPerson[] | null>(null);
-  // آخرُ بحثٍ يفوز: الكتابةُ أسرعُ من الشبكة، وردُّ «مح» يصل بعد ردّ «محمد».
+  // Latest search wins: typing outpaces the network, so a reply for a short prefix can arrive after the longer one.
   const seq = useRef(0);
 
   const run = useCallback(async () => {

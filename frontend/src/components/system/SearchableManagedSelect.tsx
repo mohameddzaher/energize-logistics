@@ -1,7 +1,5 @@
 'use client';
-// مثل ManagedSelect لكن بقائمة منسدلة فيها بحث — لأي قائمة مرجعية قابلة للتعديل.
-// يجلب خياراته من /api/lookups?type=…، يبحث فيها، ويسمح بإضافة عنصر جديد ثم
-// يختاره فورًا. يخزّن مفتاح العنصر (key) مثل ManagedSelect تمامًا.
+// Like ManagedSelect but a searchable dropdown, for any editable reference list. Fetches its options from /api/lookups?type=..., searches them, and allows adding a new item that is then selected immediately. Stores the item key, exactly like ManagedSelect.
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { Plus, Check, ChevronDown, Search, Loader2 } from 'lucide-react';
 import { useLanguage } from '@/context/LanguageContext';

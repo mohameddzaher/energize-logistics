@@ -22,8 +22,7 @@ import DateRangeFilter from '@/components/system/DateRangeFilter';
 import ScrollX from '@/components/system/ScrollX';
 import { useColumnFilters } from '@/hooks/useColumnFilters';
 
-// لا `requesterName` ولا `device`: مقدّم البلاغ هو الموظف المختار نفسه، والجهاز
-// يعرّفه تصنيف البلاغ أعلاه — والحقلان الحرّان كانا يكرّران ما هو معروف أصلاً.
+// No requesterName or device: the reporter is the selected employee and the device comes from the ticket category above.
 const EMPTY = {
   title: '', category: 'hardware', priority: 'medium', status: 'open',
   requester: '', requesterDepartment: '',
@@ -31,14 +30,10 @@ const EMPTY = {
   description: '', resolution: '', rootCause: '', preventiveAction: '', notes: '',
 };
 
-// الحالات التي يصير فيها للبلاغ زمن حل، فيُطلب يوم الحل.
+// Statuses where the ticket gets a resolution time, so a resolution day is required.
 const CLOSED_STATUSES = ['resolved', 'closed'];
 
-/**
- * ── والفلترُ يُورَث من الرابط ─────────────────────────────────────────────────
- * بطاقاتُ لوحة تقنية المعلومات تؤدّي إلى هنا: «١٤ بلاغًا مفتوحًا» تُضغَط فتُفتَح
- * الأربعةَ عشرَ أنفسُها لا كلُّ البلاغات.
- */
+/** The filter is inherited from the URL: IT dashboard cards link here, so '14 open tickets' opens those 14, not all tickets. */
 function ItTicketsInner() {
   const { confirm, notify } = useDialog();
   const { user } = useAuth();
@@ -48,8 +43,7 @@ function ItTicketsInner() {
 
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [employees, setEmployees] = useState<EmployeeRef[]>([]);
-  // القسم ومن يُسند إليه الحل كانا نصاً حرّاً، فكان كل تجميع حسب أيّهما ينقسم
-  // على اختلاف التهجئة. المصدر الآن ملفات الموظفين ومستخدمو النظام.
+  // Department and assignee were free text, so any grouping split on spelling; the source is now employee files and system users.
   const [departments, setDepartments] = useState<string[]>([]);
   const [assignees, setAssignees] = useState<ItAssignee[]>([]);
   const [loading, setLoading] = useState(true);
@@ -91,8 +85,7 @@ function ItTicketsInner() {
 
   const set = (k: string, v: any) => setForm((f: any) => ({ ...f, [k]: v }));
 
-  // اختيار الموظف يملأ قسمه: كتابته يدوياً بعد اختياره كانت تسمح ببلاغ يقول إن
-  // الموظف في قسم غير قسمه في ملفه.
+  // Choosing the employee fills their department; typing it by hand allowed a ticket whose department differs from the employee file.
   const pickRequester = (id: string) => {
     const emp = employees.find((e) => e._id === id);
     setForm((f: any) => ({ ...f, requester: id, requesterDepartment: emp?.department || f.requesterDepartment || '' }));
@@ -143,9 +136,7 @@ function ItTicketsInner() {
     { header: 'Resolution', key: 'resolution', width: 40 },
     { header: 'Root cause', key: 'rootCause', width: 32 },
   ];
-  // الحالة والتصنيف والأولويّة والمدى الزمني كلّها فلاتر خادم، فالبلاغات المحمّلة
-  // هي نتيجة الفلتر لا السجلّ؛ و«الكلّ» يلزمه نداءٌ بلا معاملات، وإلّا لسُمّي
-  // ملفُّ شهرٍ واحد «الكلَّ» وهو ليس كذلك.
+  // Status, category, priority and date range are server filters, so loaded tickets are the filter result; 'all' needs a call without parameters or one month's file would be labelled all.
   const fetchAllForExport = async () => {
     const d = await api.get<{ tickets: Ticket[] }>('/api/it/tickets');
     return [{ name: 'Tickets', rows: d.tickets || [], columns: exportColumns }];
@@ -159,7 +150,7 @@ function ItTicketsInner() {
       ]
     : [{ key: 'all', label: scope.all, sheets: [{ name: 'Tickets', rows: filtered, columns: exportColumns }] }];
 
-  // قمعُ الأعمدة — القيمُ كما تُقرأ في الصفّ. راجع hooks/useColumnFilters.
+  // Column filter funnel: values as read in the row. See hooks/useColumnFilters.
   const cf = useColumnFilters<any>({
     ticketNumber: (t) => t.ticketNumber || '',
     title: (t) => t.title || '',
@@ -301,9 +292,7 @@ function ItTicketsInner() {
           <Field label={ar ? 'تاريخ البلاغ' : 'Reported at'}>
             <TextInput type="date" value={form.reportedAt || ''} onChange={(e) => set('reportedAt', e.target.value)} />
           </Field>
-          {/* يوم الحل يُدخله من أغلق البلاغ. لحظة الحفظ ليست لحظة الإصلاح —
-              أغلب البلاغات تُسجَّل بعد إغلاقها بأيام، وأخذ لحظة الحفظ كان يقيس
-              تأخّر إدخال البيانات ويعرضه كزمن حل. */}
+          {/* The resolution day is entered by whoever closed the ticket. Save time is not repair time; tickets are often logged days after closing, which would measure data-entry lag as resolution time. */}
           {CLOSED_STATUSES.includes(form.status) && (
             <Field label={ar ? 'تاريخ الحل الفعلي' : 'Date actually resolved'}>
               <TextInput type="date" value={form.resolvedDate || ''} onChange={(e) => set('resolvedDate', e.target.value)} />
@@ -338,8 +327,7 @@ function ItTicketsInner() {
               value={form.assignedTo || ''}
               onChange={(v) => {
                 const u = assignees.find((x) => x._id === v);
-                // الاسم يُحفظ بجانب المرجع حتى يظل البلاغ مقروءاً لو حُذف
-                // المستخدم لاحقاً — سجل بلا اسم صاحبه سجل ناقص.
+                // The name is stored beside the reference so the ticket stays readable if the user is deleted later.
                 setForm((f: any) => ({ ...f, assignedTo: v, assignedToName: u ? userName(u) : '' }));
               }}
               searchAfter={0}
@@ -371,6 +359,6 @@ function ItTicketsInner() {
 }
 
 export default function ItTicketsPage() {
-  // useSearchParams يحتاج حدَّ Suspense في موجّه التطبيقات.
+  // useSearchParams needs a Suspense boundary in the app router.
   return <Suspense fallback={<Spinner />}><ItTicketsInner /></Suspense>;
 }

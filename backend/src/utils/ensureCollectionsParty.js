@@ -1,38 +1,16 @@
 /**
- * ensureCollectionsParty — العميلُ الجديد يدخل قسمَ التحصيل بكوده من أوّل كشف.
- *
- * ── الثغرة التي يسدُّها ─────────────────────────────────────────────────────
- * كان سجلُّ أطراف التحصيل يُملأ بسكربتٍ يُشغَّل باليد (`seedCollectionsParties`).
- * فمن أنشأت له العمليّاتُ كشفًا اليومَ لا يظهر في قسم التحصيل حتّى يتذكّر أحدٌ
- * تشغيلَ السكربت — وحتّى يظهر، لا كودَ له.
- *
- * وأثرُه ليس صفًّا ناقصًا في قائمة: قسمُ التحصيل يعمل بالكود — به تُنسَب
- * الفاتورةُ، وبه يُطابَق الدفتر، وبه تُقرأ المديونيّة. فالعميلُ بلا كودٍ عميلٌ
- * لا يُحصَّل منه: تُشحَن له حمولاتٌ ولا يدخل قائمةَ أحد.
- *
- * ── الكودُ من سلسلة نوعه ───────────────────────────────────────────────────
- * في الدفتر سلسلتان: الضريبيُّ `1104xxxx` والنقديُّ `Cxxxx` — و`nextPartyCode`
- * تقرأ أكبرَ موجودٍ وتزيد واحدًا، فلا عدّادَ يفترق عن الواقع.
- *
- * ونوعُ العميل يُشتقّ من الكشف نفسِه بالقاعدة المعروفة (`derivePaymentType`):
- * فاتورةٌ صادرةٌ ⇒ ضريبيّ، وطريقةُ دفعٍ نقديّةٌ ⇒ نقديّ. ومتى لم يُعرَف فلا
- * يُخمَّن نوعٌ: يُنشأ الطرفُ بلا نوعٍ وبلا كود، ويظهر في القسم ليُصنَّف — وكودٌ
- * من السلسلة الخطأ أسوأُ من لا كود، لأنّه يُقرأ في الدفتر حسابًا آخر.
- *
- * ── ولا يُنشأ طرفٌ من اسمٍ لا يُعرَف ───────────────────────────────────────
- * أسماءُ العملاء تصل من منصّة التشغيل كما كتبها موظّفُ الطلب، وفيها ما ليس
- * عميلًا: فراغٌ، وشرطة، و«الإجمالي». فما لا يبلغ حرفين لا يصير سجلًّا.
+ * ensureCollectionsParty: a new customer enters collections with its code from the first statement.
+ * Collections works by code (invoice attribution, ledger matching, debt), and the party register used to be filled by a manual script, so new customers had no code.
+ * The code comes from the chain of its type (tax `1104xxxx`, cash `Cxxxx`) via `nextPartyCode`; the type is derived from the statement (`derivePaymentType`). If unknown, no type or code is guessed, since a code from the wrong chain is worse than none.
+ * Names under two characters (blank, dash, totals label) create no record.
  */
 const MIN_NAME = 2;
 const JUNK = /^\s*(?:-|—|_|n\/a|na|none|null|undefined|test|الإجمالي|الاجمالي|المجموع|total)\s*$/i;
 
 /**
- * يُعيد سجلَّ الطرف — قائمًا كان أو مُنشأً الآن.
- *
- * @param {string} name        اسمُ العميل كما وصل
- * @param {object} opts
- * @param {'cash'|'tax'|''} opts.paymentType  نوعُه إن عُرف
- * @param {string} opts.source  من أيّ قسمٍ جاء (`operations_workflow` …)
+ * Returns the party record, existing or just created.
+ * @param {string} name  customer name as received
+ * @param {object} opts  { paymentType: 'cash'|'tax'|'' (type if known), source: originating section such as `operations_workflow` }
  * @returns {Promise<object|null>}
  */
 async function ensureCollectionsParty(name, opts = {}) {
@@ -44,15 +22,12 @@ async function ensureCollectionsParty(name, opts = {}) {
   const key = fold(clean);
   if (!key) return null;
 
-  // الاسمُ يُطابَق مطويًّا وباسمٍ بديل: العميلُ الواحد يُكتب بالهمزة وبدونها،
-  // وإنشاءُ سجلٍّ ثانٍ له يقسم مديونيّتَه على صفَّين.
+  // The name is matched folded and by alias: one customer is written with and without hamza, and a second record would split his debt across two rows.
   const found = await CollectionsParty.findOne({
     kind: 'customer', $or: [{ nameKey: key }, { aliasKeys: key }],
   }).lean();
   const paymentType = opts.paymentType === 'cash' || opts.paymentType === 'tax' ? opts.paymentType : '';
-  // ── طرفٌ قائمٌ بلا كود يأخذه متى عُرف نوعُ حمولته ─────────────────────────
-  // كان الطرفُ يُنشأ بلا كودٍ إن جهل النوعَ أوّلَ مرّة، ثمّ لا يعود إليه شيء:
-  // مئةٌ وثمانيةٌ وأربعون عميلًا لهم حمولاتٌ بلا كود، فلا يدخلون الأعمار.
+  // An existing party with no code gets one once the type of its loads is known. A party created without a code because the type was unknown was never revisited, leaving 148 customers with loads and no code, so they were missing from aging.
   if (found) {
     if (!found.code && found.isActive !== false) {
       try { await classifyCodelessParty(found, { apply: true, paymentType }); } catch (_) { /* */ }
@@ -60,8 +35,7 @@ async function ensureCollectionsParty(name, opts = {}) {
     }
     return found;
   }
-  // الكودُ لا يُمنح عند الإنشاء مباشرةً: يُسأل أوّلًا أهو حسابٌ قائمٌ باسمٍ
-  // آخر — راجع classifyCodelessParty.
+  // A code is not granted directly at creation: first check whether it is an existing account under another name; see classifyCodelessParty.
   const code = '';
 
   try {
@@ -82,8 +56,7 @@ async function ensureCollectionsParty(name, opts = {}) {
       return doc;
     });
   } catch (e) {
-    // سباقٌ بين مزامنتين على الاسم نفسِه: الفهرسُ الفريد يمنع الثانية، فتُقرأ
-    // التي سبقت بدل أن يُردّ النداءُ ويسقط الكشفُ كلُّه.
+    // Race between two syncs on the same name: the unique index rejects the second, so the one that won is read instead of failing the call and dropping the whole statement.
     if (e && e.code === 11000) {
       return CollectionsParty.findOne({ kind: 'customer', nameKey: key }).lean();
     }
@@ -92,16 +65,9 @@ async function ensureCollectionsParty(name, opts = {}) {
 }
 
 /**
- * طرفٌ بلا كود: أهو حسابٌ قائمٌ باسمٍ آخر، أم عميلٌ جديد؟
- *
- *   auto    — حسابٌ واحدٌ لا لبسَ فيه ⇒ يُدمَج فيه كما يدمج «ربط» مدير التحصيل:
- *             اسمُه صيغةٌ أخرى للحساب، ويُعطَّل السجلُّ المكرَّر ولا يُحذف.
- *   review  — شبيهٌ غيرُ قاطع ⇒ اقتراحٌ في طابور الربط، ولا كودَ حتّى يُقرَّر:
- *             كودٌ جديدٌ لعميلٍ قائمٍ يقسم دَينَه على حسابين، وهذا لا يُصلَح بعدها.
- *   none    — لا شبيه ⇒ كودٌ جديدٌ من سلسلة نوع حمولاته (ضريبيّ 1104… / نقديّ C…).
- *   unknown — لا يُعرف نوعُه من حمولاته ولا من ملفّه ⇒ يبقى حتّى يُعرَف.
- *
- * والنوعُ: المكتوبُ على الطرف، وإلّا الغالبُ في حمولاته.
+ * A party with no code: an existing account under another name, or a new customer?
+ * auto: one unambiguous account, merged into it (duplicate disabled, not deleted). review: non-conclusive lookalike, a suggestion in the link queue and no code until decided, since a duplicate code splits the debt irreparably. none: new code from the chain of its loads' type. unknown: type unknown, stays until known.
+ * Type = the one on the party, else the majority among its loads.
  */
 async function classifyCodelessParty(party, { apply = false, paymentType = '' } = {}) {
   const CollectionsParty = require('../models/CollectionsParty');
@@ -130,7 +96,7 @@ async function classifyCodelessParty(party, { apply = false, paymentType = '' } 
   }
 
   if (m.level === 'review') {
-    // قرارٌ سابقٌ بأنّهما منفصلان يُحترَم: فلا يُسأل مرّتين، ويُعامَل جديدًا.
+    // A previous decision that the two are separate is respected: not asked twice, and treated as new.
     const prior = await PartyLinkSuggestion.findOne({ code: m.best.code, candidate: party._id }).lean();
     const saidSeparate = prior && prior.decision === 'separate';
     if (!saidSeparate) {
@@ -157,7 +123,7 @@ async function classifyCodelessParty(party, { apply = false, paymentType = '' } 
   let code = '';
   if (apply) {
     const { nextPartyCode } = require('./partyCode');
-    // سباقٌ على الكود التالي: الفهرسُ الفريد يردّ الثاني فيُعاد بالتالي.
+    // Race on the next code: the unique index rejects the second, which retries with the next one.
     for (let i = 0; i < 5 && !code; i += 1) {
       const next = await nextPartyCode(type);
       try {

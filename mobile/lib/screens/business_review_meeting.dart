@@ -10,10 +10,7 @@ import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import 'business_review_kit.dart';
 
-/// اجتماعٌ واحد بالكامل — /system/business-review/[id] في الويب.
-///
-/// أربعة تبويبات بترتيب ما يجري في الاجتماع: السجل الشامل، الأجندة والحضور،
-/// المحضر، البنود التنفيذية. وما يُسمح به (`can`) يقرّره الخادم لكلّ مستخدم.
+/// One whole meeting, /system/business-review/[id] on the web. Four tabs in the order things happen in a meeting: full record, agenda and attendance, minutes, executive items. What is allowed (`can`) is decided by the server per user.
 class BusinessReviewMeetingScreen extends StatefulWidget {
   final String id;
   const BusinessReviewMeetingScreen({super.key, required this.id});
@@ -128,7 +125,7 @@ class _BusinessReviewMeetingScreenState extends State<BusinessReviewMeetingScree
     }
   }
 
-  /// المحضر الرسمي PDF — يُولَّد على الخادم بترويسة الشركة كالويب.
+  /// Official minutes PDF: generated on the server with the company letterhead, like the web.
   Future<void> _print() async {
     final day = brIsoDay(DateTime.now());
     try {
@@ -140,7 +137,7 @@ class _BusinessReviewMeetingScreenState extends State<BusinessReviewMeetingScree
     }
   }
 
-  // ── Excel: الاجتماع كما تراه الشاشة، ورقةٌ لكلّ جدول (كالويب) ──────────────
+  // Excel: the meeting as the screen shows it, one sheet per table (like the web)
   Future<void> _export() async {
     final scope = await showModalBottomSheet<String>(
       context: context,
@@ -293,7 +290,7 @@ class _BusinessReviewMeetingScreenState extends State<BusinessReviewMeetingScree
         ),
         body: Column(children: [
           if (_busy) const LinearProgressIndicator(minHeight: 2),
-          // الرأس: الحالة والدورة والموعد والرابط — وتغيير الحالة لمن يملك التعديل.
+          // Header: status, cycle, time and link; changing status is for whoever can edit.
           Container(
             color: Colors.white,
             padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
@@ -354,7 +351,7 @@ class _BusinessReviewMeetingScreenState extends State<BusinessReviewMeetingScree
   }
 }
 
-// ── السجل الشامل ────────────────────────────────────────────────────────────
+// Full record
 class _RecordTab extends StatelessWidget {
   final Map<String, dynamic> meeting;
   final Map<String, dynamic> meta;
@@ -494,7 +491,7 @@ class _RecordTab extends StatelessWidget {
   }
 }
 
-// ── الأجندة والحضور ─────────────────────────────────────────────────────────
+// Agenda and attendance
 class _AgendaTab extends StatelessWidget {
   final Map<String, dynamic> meeting;
   final bool canEdit;
@@ -551,7 +548,7 @@ class _AgendaTab extends StatelessWidget {
                       selected: a['attendance'] == mk.$1,
                       selectedColor: mk.$4.withValues(alpha: 0.18),
                       onSelected: (_) {
-                        // الغياب/الاعتذار يطلب سببًا حتى لا يضيع «لماذا» من السجل.
+                        // Absence or apology asks for a reason so the "why" is not lost from the record.
                         if (mk.$1 == 'attended') {
                           onAttendance(a['user'].toString(), 'attended', '');
                         } else {
@@ -599,7 +596,7 @@ class _AgendaTab extends StatelessWidget {
   }
 }
 
-// ── محضر الاجتماع ───────────────────────────────────────────────────────────
+// Meeting minutes
 class _MinutesTab extends StatefulWidget {
   final Map<String, dynamic> meeting;
   final Map<String, dynamic> meta;
@@ -723,7 +720,7 @@ class _MinutesTabState extends State<_MinutesTab> {
   }
 }
 
-// ── البنود التنفيذية ────────────────────────────────────────────────────────
+// Executive items
 class _ActionsTab extends StatelessWidget {
   final Map<String, dynamic> meeting;
   final Map<String, dynamic> meta;
@@ -733,11 +730,11 @@ class _ActionsTab extends StatelessWidget {
   const _ActionsTab({required this.meeting, required this.meta, required this.actions, required this.canRaise, required this.onChanged});
 
   Future<void> _add(BuildContext context) async {
-    // البند يقع على أحد الحاضرين…
+    // An item falls on one of the attendees...
     final owners = List<Map<String, dynamic>>.from(meeting['attendees'] ?? [])
         .map((a) => {'_id': a['user'], 'name': a['name'], 'role': a['role'], 'department': a['department']})
         .toList();
-    // …لكن من طلبه قد لا يكون حضر: الحاضرون + الإدارة.
+    // ...but whoever requested it may not have attended: attendees plus management.
     final requesters = [
       ...owners,
       ...List<Map<String, dynamic>>.from(meta['participants'] ?? [])
@@ -870,7 +867,7 @@ class _ActionsTab extends StatelessWidget {
             action: a,
             meta: meta,
             onChanged: onChanged,
-            // التحديث للمالك أو لمن يدير الاجتماعات — كالخادم.
+            // Update is for the owner or whoever manages meetings, like the server.
             canUpdate: a['assignee'] == me['_id'] || me['canRunMeetings'] == true,
             canDelegate: a['assignee'] == me['_id'] || me['canRunMeetings'] == true,
             canDelete: canRaise,

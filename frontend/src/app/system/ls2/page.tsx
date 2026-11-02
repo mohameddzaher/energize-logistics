@@ -160,8 +160,7 @@ export default function Ls2DashboardPage() {
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> {t.live}
         </span>
         <button type="button" onClick={() => load()} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm"><RefreshCw className="w-4 h-4" /> {t.refresh}</button>
-        {/* لوحةٌ لا فلتر صفوفٍ فيها: كلّ شيتاتها هي مجملُ ما حسبه الخادم، فلا يوجد
-            «معروضٌ» يختلف عن «كلّ» — ونطاقان يخرجان بالملفّ نفسه يضلّلان لا يفيدان. */}
+        {/* A dashboard has no row filter: its sheets are all the server's computed totals, so 'displayed' never differs from 'all', and two scopes that export the same file would mislead. */}
         <ExportMenu
           fileName="ls2-dashboard"
           lang={lang as Lang}

@@ -1,34 +1,15 @@
 /**
- * يومُ الشركة — حدُّ اليوم يُحسب بتوقيت الرياض لا بتوقيت غرينتش.
- *
- * ── لماذا هذا الملفّ ────────────────────────────────────────────────────────
- * كان كلُّ فلترِ فترةٍ في النظام يبني حدَّه هكذا:
- *
- *     $gte: new Date(`${from}T00:00:00.000Z`)
- *     $lte: new Date(`${to}T23:59:59.999Z`)
- *
- * وهو منتصفُ ليلٍ **بغرينتش** = الثالثةَ فجرًا بالرياض. فمَن فلتر «من ١ يناير»
- * كان يفقد كلَّ ما جرى بين منتصف الليل والثالثة فجرًا من ذلك اليوم، ويكسب —
- * بلا أن يدري — أوّلَ ثلاثِ ساعاتٍ من اليوم التالي لآخر يومٍ اختاره. النافذةُ
- * كلُّها مزاحةٌ ثلاثَ ساعات.
- *
- * وليس رقمًا نظريًّا: في سير عمل التشغيل وحدَه ٢١٢١ كشفًا من ٣٣٩١٧ مؤرَّخةٌ في
- * تلك الساعات الثلاث — كلُّها على الجانب الخطأ من الحدّ.
- *
- * وبعضُ المواضع كانت أسوأ: `new Date('2026-01-01T00:00:00')` بلا `Z` تُقرأ
- * بتوقيت **الخادم**، فتعطي نتيجةً على جهاز المطوّر وأخرى على الخادم.
- *
- * ── ولماذا `Intl` لا `+03:00` مكتوبةً ───────────────────────────────────────
- * السعوديّةُ لا تغيّر ساعتَها، فـ«+03:00» صحيحةٌ اليوم. لكنّ الثابتَ المكتوبَ
- * يديًا يصمت حين يتغيّر ما تحته: فرعٌ في بلدٍ يوقّت صيفًا، أو `COMPANY_TZ`
- * تُضبط لغير الرياض. فيُسأل النظامُ عن الإزاحة وقتَ الحساب بدل أن تُفترض.
+ * Company day: day boundaries are computed in Riyadh time, not GMT.
+ * Period filters used to build bounds as `$gte: new Date(`${from}T00:00:00.000Z`)` and `$lte: new Date(`${to}T23:59:59.999Z`)`, which is GMT midnight = 03:00 Riyadh. A filter 'from Jan 1' lost everything between midnight and 03:00 and gained the first three hours of the day after the last selected day: the whole window shifted three hours. In operations alone 2121 of 33917 statements fall in those three hours.
+ * Some places were worse: `new Date('2026-01-01T00:00:00')` without `Z` is read in server time, so developer machine and server disagreed.
+ * Why `Intl` and not a hard-coded '+03:00': Saudi Arabia has no DST so it is correct today, but a hard-coded constant fails silently when the base changes (a branch in a DST country, or `COMPANY_TZ` set to another zone). The offset is asked of the system at compute time instead of assumed.
  */
 
 const COMPANY_TZ = process.env.COMPANY_TZ || 'Asia/Riyadh';
 const DAY_MS = 24 * 60 * 60 * 1000;
 const YMD = /^\d{4}-\d{2}-\d{2}$/;
 
-/** إزاحةُ المنطقة بالدقائق عند لحظةٍ بعينها (موجبةٌ شرقَ غرينتش). */
+/** Zone offset in minutes at a given instant (positive east of GMT). */
 function offsetMinutesAt(instant, tz = COMPANY_TZ) {
   const parts = new Intl.DateTimeFormat('en-US', {
     timeZone: tz, hour12: false,
@@ -42,31 +23,26 @@ function offsetMinutesAt(instant, tz = COMPANY_TZ) {
   return (asIfUTC - instant.getTime()) / 60000;
 }
 
-/** أوّلُ لحظةٍ من يومٍ بتوقيت الشركة، كتاريخٍ مطلق. */
+/** First instant of a day in company time, as an absolute date. */
 function startOfDay(ymd, tz = COMPANY_TZ) {
   const key = String(ymd || '').slice(0, 10);
   if (!YMD.test(key)) return null;
   const naive = new Date(`${key}T00:00:00.000Z`);
-  // تقديرٌ ثمّ تصحيح: الإزاحةُ تُقاس عند اللحظة الناتجة نفسِها، فلو وقع التقديرُ
-  // على الجانب الآخر من تغييرِ ساعةٍ صيفيّةٍ صُحّح بإزاحتها هي.
+  // Estimate then correct: the offset is measured at the resulting instant, so if the estimate lands across a DST change it is corrected with that offset.
   const first = new Date(naive.getTime() - offsetMinutesAt(naive, tz) * 60000);
   const second = new Date(naive.getTime() - offsetMinutesAt(first, tz) * 60000);
   return second;
 }
 
-/** آخرُ لحظةٍ من يومٍ بتوقيت الشركة (٢٣:٥٩:٥٩٫٩٩٩ عندهم). */
+/** Last instant of a day in company time (23:59:59.999 there). */
 function endOfDay(ymd, tz = COMPANY_TZ) {
   const s = startOfDay(ymd, tz);
   return s ? new Date(s.getTime() + DAY_MS - 1) : null;
 }
 
 /**
- * مدًى جاهزٌ لمنغو من تاريخَي واجهةٍ (YYYY-MM-DD)، شاملًا الطرفين.
- *
- * و«إلى» فارغةً تعني «حتى الآن» لا «بلا نهاية»: المدى المفتوح يُدخل صفوفًا
- * مؤرَّخةً في المستقبل — تُكتب بالخطأ أو تأتي بتاريخٍ مقلوب — فيقرأ المستخدم
- * عددًا أكبرَ ممّا حدث. يُعطَّل بـ`openEnd: true` حيث يكون المستقبلُ مقصودًا
- * (موعدٌ قادم، وثيقةٌ تنتهي لاحقًا).
+ * Ready Mongo range from two UI dates (YYYY-MM-DD), inclusive on both ends.
+ * An empty 'to' means 'until now', not unbounded: an open range admits future-dated rows (mistyped or with reversed dates) and the user reads a larger count than happened. Disable with `openEnd: true` where the future is intended (upcoming appointment, document expiring later).
  */
 function dayRange(from, to, { openEnd = false } = {}) {
   const gte = startOfDay(from);
@@ -78,7 +54,7 @@ function dayRange(from, to, { openEnd = false } = {}) {
   return r;
 }
 
-/** يومُ تاريخٍ ما بتوقيت الشركة، YYYY-MM-DD. */
+/** Day of a date in company time, YYYY-MM-DD. */
 function dayKeyOf(date, tz = COMPANY_TZ) {
   const d = date instanceof Date ? date : new Date(date);
   if (Number.isNaN(d.getTime())) return null;
@@ -87,10 +63,8 @@ function dayKeyOf(date, tz = COMPANY_TZ) {
 }
 
 /**
- * عددُ الأيّام بين تاريخين، محسوبًا على تقويم الشركة لا على الساعات.
- *
- * الفرقُ بالمللي ثانية يقسم على ٨٦٤٠٠٠٠٠ فيعطي «صفرًا» لما بين الحادية عشرة
- * مساءً والواحدة صباحًا — وهما يومان. تُقارَن الأيّامُ لا اللحظات.
+ * Number of days between two dates, computed on the company calendar not on hours.
+ * A millisecond difference divided by 86400000 gives zero between 11 pm and 1 am although they are two days. Days are compared, not instants.
  */
 function daysBetween(fromDate, toDate) {
   const a = startOfDay(dayKeyOf(fromDate));
@@ -99,12 +73,12 @@ function daysBetween(fromDate, toDate) {
   return Math.round((b - a) / DAY_MS);
 }
 
-/** الأيّامُ حتى تاريخٍ بتقويم الشركة — سالبةٌ لما مضى، صفرٌ لليوم نفسِه. */
+/** Days until a date on the company calendar: negative for the past, zero for the same day. */
 function daysUntil(date) {
   return daysBetween(new Date(), date);
 }
 
-/** اليومُ الحاليّ بتوقيت الشركة، YYYY-MM-DD. */
+/** Current day in company time, YYYY-MM-DD. */
 function todayKey(tz = COMPANY_TZ) {
   return new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' })
     .format(new Date());

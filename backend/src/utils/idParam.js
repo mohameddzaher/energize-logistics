@@ -1,25 +1,8 @@
 /**
- * حارسُ المعرّفات في الروابط.
- *
- * ── لماذا ───────────────────────────────────────────────────────────────────
- * الرابطُ المقصوص أو المحفوظُ في المفضّلة أو الذي كتبته يدٌ يحمل أحيانًا معرّفًا
- * ليس معرّفًا أصلًا. ومنغوسة ترمي `CastError` قبل أن تصل إلى القاعدة، فيقع في
- * `catch` العامّ ويخرج «٥٠٠ — تعذّر التحميل»: أي أنّ الخادمَ معطوب. فيُفتح بلاغٌ
- * على النظام، ويُقرأ السطرُ في السجلّ، ولا شيءَ معطوبٌ أصلًا — لا سجلَّ بهذا
- * المعرّف، لا غير.
- *
- * فيُفحص المعرّفُ قبل المتحكّم، ويُردّ «غير موجود» — وهو الجواب الصادق.
- *
- * ── ٤٠٤ أم ٤٠٠ ──────────────────────────────────────────────────────────────
- * الافتراضُ ٤٠٤: من يقرأ الجوابَ يريد سجلًّا فلا يجده. وحيث سبق في الملفّ حارسٌ
- * صريحٌ يردّ ٤٠٠ («Invalid id» / «معرّف غير صالح») يُمرَّر `{ status: 400 }`
- * كي لا يجيب المسارُ الواحد بجوابين مختلفين عن الخطأ نفسه.
- *
- * ── تنبيه ───────────────────────────────────────────────────────────────────
- * `router.param('id', …)` يسري على **كلّ** مسارٍ في ذلك الموجّه يحمل `:id`.
- * فلا يُركَّب إلّا حيث كان `:id` معرّفَ منغوسة في كلّ مساراته. وما كان لوحةً أو
- * رقمَ فاتورةٍ أو رمزًا يُسمّى باسمٍ آخر (`:plate`, `:invoiceNumber`, `:code`)
- * ولا يُحرَس هنا.
+ * Guard for ids in URLs.
+ * A cut, bookmarked or hand-typed link can carry a non-id. Mongoose throws `CastError` before reaching the database, which the generic `catch` turns into a 500, so it looks like a server fault when there is simply no such record. The id is checked before the controller and 'not found' is returned.
+ * 404 is the default. Where the file already has an explicit guard returning 400, pass `{ status: 400 }` so one route does not give two answers for the same error.
+ * `router.param('id', ...)` applies to every route in that router with `:id`, so mount it only where `:id` is a Mongoose id in all of them. Plates, invoice numbers and codes use other param names and are not guarded here.
  */
 const mongoose = require('mongoose');
 
@@ -27,17 +10,17 @@ const reject = (res, opts) => res
   .status(opts.status || 404)
   .json({ message: opts.message || (opts.status === 400 ? 'معرّف غير صالح' : 'غير موجود') });
 
-/** لـ `router.param(name, …)`: يوقف الطلبَ إن لم يكن المعرّفُ معرّفَ منغوسة. */
+/** For `router.param(name, ...)`: stops the request if the id is not a Mongoose id. */
 const objectIdParam = (opts = {}) => (req, res, next, value) => (
   mongoose.isValidObjectId(value) ? next() : reject(res, opts)
 );
 
-/** الحارسُ نفسُه وسيطًا لمسارٍ بعينه — حيث يحمل الموجّهُ الواحد `:id`ين مختلفين. */
+/** The same guard as route middleware, for routers with two different `:id` params. */
 const objectIdGuard = (name = 'id', opts = {}) => (req, res, next) => (
   mongoose.isValidObjectId(req.params[name]) ? next() : reject(res, opts)
 );
 
-/** ومنها ما ليس معرّفَ منغوسة بل رقمٌ — وحدةُ التتبّع مثلًا. */
+/** Some ids are numbers rather than Mongoose ids, for example the tracking unit. */
 const numericParam = (opts = {}) => (req, res, next) => (
   Number.isFinite(Number(req.params[opts.name || 'id'])) ? next() : reject(res, opts)
 );

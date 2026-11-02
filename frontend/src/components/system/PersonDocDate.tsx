@@ -1,10 +1,7 @@
 'use client';
 /**
- * ── انتهاءُ الإقامة ورخصةِ القيادة في قوائم السوّاق (٢٠٢٦/١٠/٢٧) ──────────────
- * «أيّ مكان فيه داتا عن سوّاق ضيف التاريخين دول كولومين جنبه، من ضمن الداتا
- * والفلاتر». يحسبهما الخادمُ من ملفّ الموظّف (utils/personDocDates) ويرسل معهما
- * حالتَهما: منتهية / خلال ٣٠ يومًا / سارية / غير مسجَّلة. فهنا خليّتُهما واسمُ
- * حالتِهما للفلتر والتصدير — واحدٌ لكلّ صفحة.
+ * Residence and driving-licence expiry in driver lists.
+ * Every place with driver data shows these two dates as columns, with filters. The server computes them from the employee file (utils/personDocDates) with a status: expired, within 30 days, valid, not recorded. This file holds the cell and the status label for filter and export, shared by all pages.
  */
 export type DocState = 'expired' | 'soon' | 'valid' | 'missing';
 export type PersonDocs = { iqamaExpiry?: string; licenseExpiry?: string; iqamaState?: DocState; licenseState?: DocState };
@@ -23,7 +20,7 @@ export const docStateLabel = (s: DocState | undefined, ar: boolean) => {
 
 const dmy = (v?: string) => (v && /^\d{4}-\d{2}-\d{2}/.test(v) ? v.slice(0, 10).split('-').reverse().join('/') : '');
 
-/** التاريخُ بالميلاديّ ملوَّنًا بحالته، وتحته اسمُ الحالة إن كانت منتهية أو قريبة. */
+/** Gregorian date coloured by status, with the status name underneath when expired or near. */
 export function PersonDocDate({ date, state, ar }: { date?: string; state?: DocState; ar: boolean }) {
   const s = state || 'missing';
   const d = dmy(date);
@@ -36,7 +33,7 @@ export function PersonDocDate({ date, state, ar }: { date?: string; state?: DocS
   );
 }
 
-/** عمودا التصدير — التاريخُ وحالتُه، لكلّ صفحةٍ تُصدِّر سوّاقًا. */
+/** The two export columns (date and status) for every page that exports a driver. */
 export const personDocExportColumns = (ar: boolean, get: (row: any) => PersonDocs = (r) => r) => [
   { header: ar ? 'انتهاء الإقامة' : 'Iqama expiry', key: '_iqamaExpiry', width: 14,
     transform: (_v: any, row: any) => dmy(get(row)?.iqamaExpiry) },

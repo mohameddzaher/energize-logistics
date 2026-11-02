@@ -1,29 +1,5 @@
 'use client';
-/**
- * المديونيّة كشجرة — ومن كلّ عقدةٍ تُفتَح صفوفُها.
- *
- * ── لماذا شجرةٌ لا بطاقاتٌ متجاورة ─────────────────────────────────────────
- * «علينا عشرون مليونًا» رقمٌ لا يُعمَل به. والذي يُعمَل به: منه كذا ضريبيٌّ وكذا
- * كاش، ومنه كذا عمرُه أسبوعان وكذا تجاوز التسعين، ومن كلّ شريحةٍ كذا في حدود
- * مدّة عميله وكذا خرج عنها. فكلُّ عقدةٍ ابنةُ ما فوقها، ومجموعُ الأبناء = الأب.
- * والشاشةُ تقول ذلك صريحًا: شريطُ التحقّق أسفلها يُقرأ ✔ أو يُسمّي الفرق.
- *
- * ── وكلُّ رقمٍ قيمةٌ وعدد ───────────────────────────────────────────────────
- * «ثلاثُ مئةٍ وستُّ فواتير» و«ثلاثةُ ملايين» سؤالان مختلفان: الأوّلُ عملٌ
- * يُنجَز، والثاني مالٌ يُحصَّل. فلا يُعرَض أحدُهما وحدَه. والعددُ وحدتان لا
- * تُجمعان في الكلام: فواتيرُ ضريبيّة وكشوفُ تخريجٍ نقديّة — تُقالان منفصلتين.
- *
- * ── وكلُّ رقمٍ يفتح صفحةً لا نافذة ────────────────────────────────────────────
- * `onOpen` يُعطى العقدةَ، واللوحةُ تنتقل بها إلى `/dashboard/receivables`
- * (راجع receivablesFilters) — جدولٌ كاملٌ برابطٍ يُشارَك ويُرجَع إليه.
- *
- * ── «عمر التأخير» (صاحبُ الشركة، ٢٠٢٦/١٠/٢١) ─────────────────────────────────
- * حلّ محلَّ «المتأخر — بعمر التأخير» و«ما كسر الـ٦٠» معًا: خمسُ شرائحَ للعمر،
- * وفي كلٍّ ثلاثةُ أجزاءٍ للخطورة (طبيعي / متوسط / مرتفع) على مدّة كلّ عميل.
- * وحالةُ الخلاف (تفاوض / قضايا) صارت فلترًا فوق اللوحة لا بطاقات. وقسمُ «الكاش
- * — في موعده / متأخر / بلا مدّة» طُوي فيها: الكاشُ داخلٌ في الشرائح بأجزائها،
- * ويُعزَل بفلتر «نوع الدفع».
- */
+/** Debt as a tree where each node opens its rows. A tree, not side-by-side cards: "we owe twenty million" is not actionable; what is actionable is how much is tax and cash, how much is two weeks old and over ninety, and per bucket how much is within the customer's term and how much past it. Each node is a child of the one above and children sum to the parent, which the screen states: the check bar below reads a tick or names the difference. Every number is a value and a count, since "306 invoices" and "three million" are different questions (work to do vs money to collect), and the count has two units not to be added: tax invoices and cash clearance statements. Every number opens a page, not a dialog: onOpen gets the node and the board navigates to /dashboard/receivables (see receivablesFilters), a full table with a shareable URL. Delay age replaced the earlier overdue and past-60 sections: five age buckets, each split into three severities (normal / medium / high) against each customer's term. Dispute state (negotiation / cases) is now a filter above the board, not cards, and the cash on-time / late / no-term section was folded in: cash is inside the buckets and isolated with the payment-type filter. */
 import { useMemo } from 'react';
 import { AlertTriangle, CheckCircle2, Paperclip, CalendarClock, ChevronLeft } from 'lucide-react';
 
@@ -33,10 +9,10 @@ export type BandKey = 'd1_15' | 'd16_30' | 'd31_60' | 'd61_90' | 'd91_plus';
 export interface Tree {
   all: Node;
   byKind: { tax: Node; cash: Node };
-  /** شرائحُ العمر — وفي كلٍّ أجزاؤها الثلاثة. و`nodate` ما لا تاريخَ له. */
+  /** Age buckets, each with its three severities; nodate is items with no date. */
   ages?: Partial<Record<BandKey, { total: Node } & Record<Risk, Node>>> & { nodate?: { total: Node } };
   risk?: Record<Risk, Node>;
-  /** الأنواعُ الأربعة — مستحقٌّ وغيرُ مستحقّ. راجع collectionsReceivablesController. */
+  /** The four types, due and not due; see collectionsReceivablesController. */
   subtypes?: Partial<Record<SubtypeKey, { total: Node; due: Node; notDue: Node }>>;
 }
 type SubtypeKey = 'deferred_invoice' | 'deferred_cash' | 'cash_3pl' | 'cash_ht';
@@ -48,10 +24,7 @@ export interface Query {
 export interface AttachKpi { of: Node; missing: Node; plainTaxMissing: Node }
 export interface DefaultTerm extends Node { days: number }
 
-/**
- * البطاقاتُ الأربع بترتيبها: الضريبيُّ أوّلًا ثمّ الثلاثةُ النقديّة. ووحدةُ العدّ:
- * «آجل - فاتورة» فواتيرُ الدفتر، والثلاثةُ كشوفُ تخريج.
- */
+/** The four cards in order: tax first, then the three cash ones. Count unit: deferred invoice counts ledger invoices, and the three cash cards count clearance statements. */
 const SUBTYPE_CARDS: { key: SubtypeKey; ar: string; en: string; tone: string; invoice: boolean }[] = [
   { key: 'deferred_invoice', ar: 'آجل - فاتورة', en: 'Deferred – invoice', tone: '#475569', invoice: true },
   { key: 'deferred_cash', ar: 'آجل - كاش', en: 'Deferred – cash', tone: '#0d9488', invoice: false },
@@ -59,7 +32,7 @@ const SUBTYPE_CARDS: { key: SubtypeKey; ar: string; en: string; tone: string; in
   { key: 'cash_ht', ar: 'نقدي - HT', en: 'Cash – HT', tone: '#5eead4', invoice: false },
 ];
 
-/** الشرائحُ الخمس — بلا تداخل: الحدُّ الأعلى شامل، والأولى تضمّ عمرَ اليوم. */
+/** The five buckets do not overlap: the upper bound is inclusive and the first includes today's age. */
 export const BANDS: { key: BandKey; ar: string; en: string }[] = [
   { key: 'd1_15', ar: '1 – 15 يومًا', en: '1–15 days' },
   { key: 'd16_30', ar: '16 – 30 يومًا', en: '16–30 days' },
@@ -67,7 +40,7 @@ export const BANDS: { key: BandKey; ar: string; en: string }[] = [
   { key: 'd61_90', ar: '61 – 90 يومًا', en: '61–90 days' },
   { key: 'd91_plus', ar: 'أكثر من 90 يومًا', en: 'Over 90 days' },
 ];
-/** الخطورةُ على مدّة العميل N: طبيعيٌّ حتى N، ومتوسّطٌ حتى N+30، ومرتفعٌ بعدها. */
+/** Severity against customer term N: normal up to N, medium up to N+30, high after. */
 export const RISKS: { key: Risk; ar: string; en: string; tone: string }[] = [
   { key: 'normal', ar: 'طبيعي', en: 'Normal', tone: '#16a34a' },
   { key: 'medium', ar: 'متوسط', en: 'Medium', tone: '#f59e0b' },
@@ -78,7 +51,7 @@ const EMPTY: Node = { count: 0, value: 0, customers: 0, tax: 0, cash: 0 };
 const money = (n: number) => Math.round(n || 0).toLocaleString('en-US');
 const num = (n?: number) => (n || 0).toLocaleString('en-US');
 
-/** «١٢ فاتورة · ٣ كشف تخريج» — ما في الخانة من كلٍّ، ولا يُقال الصفر. */
+/** Count text such as "12 invoices, 3 clearance statements": what each holds, with zero omitted. */
 export function unitsOf(n: Node | undefined, ar: boolean) {
   const t = (a: string, e: string) => (ar ? a : e);
   const tax = n?.tax ?? (n?.cash ? 0 : n?.count || 0);
@@ -103,17 +76,16 @@ export default function ReceivablesTree({
 
   return (
     <div className="space-y-6">
-      {/* ① كم علينا — والقسمةُ الأولى: ضريبيٌّ ونقديّ */}
+      {/* 1. How much we are owed, and the first split: tax and cash. */}
       <section className="space-y-2">
         <h2 className="text-[13px] font-semibold text-slate-700">{t('إجمالي المديونية', 'Total receivables')}</h2>
-        {/* كارتٌ واحدٌ طويل: الإجماليُّ فوق، وتحته نصفاه — ضريبيٌّ وكاش —
-            ومجموعُهما هو الإجماليُّ نفسُه (صاحبُ الشركة، ٢٠٢٦/١٠/٢١). */}
+        {/* One tall card: total on top and its two halves below, tax and cash, summing to the total. */}
         <div className="bg-white border border-slate-200 rounded-2xl shadow-[0_1px_2px_rgba(15,23,42,0.04)] overflow-hidden">
           <button type="button" onClick={() => onOpen({}, t('كلُّ المديونية', 'All receivables'))}
             className="w-full text-center px-4 pt-5 pb-4 hover:bg-slate-50/60 transition-colors">
             <p className="text-[12px] font-medium text-slate-500">{t('كلُّ ما لنا — غيرُ محصَّل', 'All outstanding')}</p>
             <p className="mt-1.5 text-[34px] leading-none font-bold tabular-nums tracking-tight text-slate-900">{money(tree.all.value)}</p>
-            {/* العدُّ نوعان لا يُجمعان: فواتيرُ ضريبيّة وكشوفُ تخريجٍ نقديّة. */}
+            {/* The count has two units that are not added: tax invoices and cash clearance statements. */}
             <p className="mt-1.5 text-[11.5px] text-slate-400 tabular-nums">
               {num(tree.byKind.tax.count)} {t('فاتورة', 'invoices')}
               <span className="text-slate-300"> · </span>
@@ -121,7 +93,7 @@ export default function ReceivablesTree({
               {tree.all.customers != null && <><span className="text-slate-300"> · </span>{customers(tree.all)}</>}
             </p>
           </button>
-          {/* شريطُ النسبة: كم من الكلّ ضريبيٌّ وكم كاش — يُقرأ قبل الأرقام. */}
+          {/* Ratio bar: how much of the total is tax and how much cash, read before the numbers. */}
           <div className="mx-4 h-1.5 rounded-full bg-slate-100 overflow-hidden flex" aria-hidden>
             <span style={{ width: `${pct(tree.byKind.tax, tree.all)}%`, background: '#475569' }} />
             <span style={{ width: `${pct(tree.byKind.cash, tree.all)}%`, background: '#14b8a6' }} />
@@ -151,8 +123,7 @@ export default function ReceivablesTree({
         </div>
       </section>
 
-      {/* ② أنواعُ الدفع الأربعة: مستحقٌّ وغيرُ مستحقّ ─────────────────────────
-          «ضريبي»/«كاش» بلا نوعٍ جديد لا تدخلها. وكلُّ نصفٍ يُفتَح فتُرى صفوفُه. */}
+      {/* 2. The four payment types, due and not due. Tax and cash with no new type do not enter here; each half opens its rows. */}
       <section className="space-y-2">
         <div className="flex items-center gap-2 flex-wrap">
           <h2 className="text-[13px] font-semibold text-slate-700">{t('بأنواع الدفع — مستحق وغير مستحق', 'By payment type — due and not yet due')}</h2>
@@ -195,7 +166,7 @@ export default function ReceivablesTree({
         </div>
       </section>
 
-      {/* ③ عمرُ التأخير — خمسُ شرائح، وفي كلٍّ طبيعي / متوسط / مرتفع ────────── */}
+      {/* 3. Delay age: five buckets, each with normal / medium / high. */}
       {tree.ages && (
         <section className="space-y-2">
           <div className="flex items-center gap-2 flex-wrap">
@@ -205,7 +176,7 @@ export default function ReceivablesTree({
                 'Age from delivery to the customer (else issue) · risk on each customer’s term N: normal ≤ N, medium ≤ N+30, hard beyond')}
             </span>
           </div>
-          {/* الخطورةُ في الكلّ — سطرٌ هادئٌ فوق الشرائح، كلُّ جزءٍ يُفتَح. */}
+          {/* Severity across everything: a quiet line above the buckets, each part opens. */}
           {tree.risk && (
             <div className="grid grid-cols-3 bg-white border border-slate-200 rounded-2xl shadow-[0_1px_2px_rgba(15,23,42,0.04)] overflow-hidden divide-x divide-slate-100 rtl:divide-x-reverse">
               {RISKS.map((r) => (
@@ -253,7 +224,7 @@ export default function ReceivablesTree({
               );
             })}
           </div>
-          {/* وما لا تاريخَ له لا عمرَ له — يُقال كي تُجمَع الشرائحُ إلى الإجمالي. */}
+          {/* Items without a date have no age; stated so the buckets sum to the total. */}
           {!!nodate?.count && (
             <button type="button" onClick={() => onOpen({ band: 'nodate' }, t('بلا تاريخ', 'No date'))}
               className="text-[11.5px] text-slate-500 hover:text-slate-900 tabular-nums">
@@ -263,7 +234,7 @@ export default function ReceivablesTree({
         </section>
       )}
 
-      {/* ④ ما ينقص الملفَّ: فواتيرُ بلا مرفق، وعملاءُ بلا مدّة سداد ─────────── */}
+      {/* 4. What the file lacks: invoices without an attachment and customers without a payment term. */}
       {(attachments || defaultTerm) && (
         <section className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {attachments && (
@@ -302,7 +273,7 @@ export default function ReceivablesTree({
                   <span className="inline-flex items-center gap-0.5">{t('فواتيرهم', 'their invoices')}<ChevronLeft className={`w-3 h-3 ${ar ? '' : 'rotate-180'}`} /></span>
                 </p>
               </button>
-              {/* وكتابةُ مُددهم أداةُ تعديلٍ لا تفصيلُ رقم — تبقى نافذةً فوق اللوحة. */}
+              {/* Writing their terms is an editing tool, not a number's detail, so it stays a dialog over the board. */}
               <button type="button" onClick={onOpenDefaultTerm}
                 className="w-full border-t border-slate-100 px-4 py-2 text-[11.5px] text-slate-500 hover:bg-slate-50/60">
                 {t('حدّد مدد العملاء', 'Set the customers’ terms')}
@@ -312,7 +283,7 @@ export default function ReceivablesTree({
         </section>
       )}
 
-      {/* ⑤ وشريطُ التحقّق: الأرقامُ تُطابق نفسَها أو يُقال أين الفرق */}
+      {/* 5. Check bar: the numbers match each other or the screen says where the difference is. */}
       <div className={`rounded-xl px-3.5 py-2.5 text-[12px] flex flex-wrap items-center gap-x-4 gap-y-1 ${
         bad.length ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-emerald-50 text-emerald-800 border border-emerald-200'}`}>
         {bad.length ? <AlertTriangle className="w-4 h-4" /> : <CheckCircle2 className="w-4 h-4" />}

@@ -10,11 +10,8 @@ import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import 'vehicle_documents.dart' show ReqToggle;
 
-/// ── نموذجُ مركبةٍ في السجلّ — توأمُ VehicleForm في صفحة سجل المركبات ─────────
-///
-/// نفسُ البطاقات ونفسُ الحقول ونفسُ القوائم المُدارة (`/api/lookups`). والتعديلُ
-/// يرسل **الفرقَ وحدَه** كما يفعل الموقع (`patchOf`): الخادمُ يدمج الكائنَ
-/// الفرعيّ ولا يستبدله، فإرسالُ النموذج كاملًا كان يكتب فوق ما عدّله غيرُك.
+/// Vehicle form in the register, twin of VehicleForm on the vehicle register page.
+/// Same cards, fields and managed lists (/api/lookups). Editing sends only the difference, as web does (patchOf): the server merges the sub-object rather than replacing it, so sending the whole form used to overwrite what someone else edited.
 
 class _F {
   final String path, ar, en;
@@ -86,7 +83,7 @@ const _authFields = [
   _F('authorizedPerson.startDate', 'بداية التفويض', 'Auth. start', kind: 'date'),
   _F('authorizedPerson.expiryDate', 'نهاية التفويض', 'Auth. expiry', kind: 'date'),
 ];
-// تُكتب من منتقي الموظّفين لا باليد.
+// Written from the employee picker, not by hand.
 const _authPersonPaths = ['authorizedPerson.name', 'authorizedPerson.iqamaNumber', 'authorizedPerson.phone'];
 const _reqPaths = ['insurance.statusCode', 'operatingCard.statusCode', 'vehicleLicense.statusCode', 'inspection.statusCode',
   'fuelCard.statusCode', 'gps.statusCode', 'authorizedPerson.statusCode'];
@@ -106,14 +103,14 @@ dynamic _read(Map? v, String path) {
 String _ymd(DateTime d) => '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 String _p2(int n) => n.toString().padLeft(2, '0');
 
-/// الهجريُّ كما يكتبه الموقع: «DD/MM/YYYY».
+/// Hijri as web writes it: DD/MM/YYYY.
 String hijriPlain(String greg) {
   final h = hijriParts(greg);
   return h == null ? '' : '${_p2(h.$3)}/${_p2(h.$2)}/${h.$1}';
 }
 
-/// «04/04/1448» أو «1448-04-04» أو بالأرقام العربيّة ← ميلاديٌّ YYYY-MM-DD، أو فارغ.
-/// يُبحث حول تقديرٍ تقريبيّ حتى يطابق الهجريُّ المحسوبُ المكتوب — كـ fromHijri في الموقع.
+/// '04/04/1448' or '1448-04-04' or Arabic-Indic digits to a Gregorian YYYY-MM-DD, or empty.
+/// Searches around a rough estimate until the computed Hijri equals the written one, like fromHijri on web.
 String fromHijriText(String text) {
   var t = text.replaceAllMapped(RegExp('[٠-٩]'), (m) => '${m[0]!.codeUnitAt(0) - 0x0660}')
       .replaceAllMapped(RegExp('[۰-۹]'), (m) => '${m[0]!.codeUnitAt(0) - 0x06f0}')
@@ -134,7 +131,7 @@ String fromHijriText(String text) {
   return '';
 }
 
-/// يفتح النموذج؛ يعيد true إن حُفظ.
+/// Opens the form; returns true if saved.
 Future<bool> showVehicleRegistryForm(BuildContext context, Map<String, dynamic>? vehicle) async {
   final r = await Navigator.push<bool>(context, MaterialPageRoute(builder: (_) => _VehicleRegistryForm(vehicle: vehicle)));
   return r == true;
@@ -149,7 +146,7 @@ class _VehicleRegistryForm extends StatefulWidget {
 
 class _VehicleRegistryFormState extends State<_VehicleRegistryForm> {
   final _ctrl = <String, TextEditingController>{};
-  final _vals = <String, dynamic>{}; // date · flag · statusCode · المفوَّض
+  final _vals = <String, dynamic>{}; // date, flag, statusCode, delegate
   final _orig = <String, dynamic>{};
   bool _saving = false;
 
@@ -203,9 +200,8 @@ class _VehicleRegistryFormState extends State<_VehicleRegistryForm> {
     out[parts[0]] = sub;
   }
 
-  // ── التاريخان يتبعان أحدهما الآخر (كالموقع) ─────────────────────────────
-  // الهجريُّ المكتوب يُملي الميلاديَّ متى صار مقروءًا، والميلاديُّ يملأ الهجريَّ
-  // الفارغَ وحده — لا يُطمَس هجريٌّ مكتوبٌ باليد.
+  // The two dates follow each other (as on web).
+  // A written Hijri date dictates the Gregorian once it is readable, while the Gregorian fills only an empty Hijri, so a hand-written Hijri is never overwritten.
   void _onHijri(String root, String text) {
     final g = fromHijriText(text);
     setState(() { if (g.isNotEmpty) _vals['$root.expiryDate'] = g; });
@@ -319,7 +315,7 @@ class _VehicleRegistryFormState extends State<_VehicleRegistryForm> {
         ])),
       );
 
-  // المالكُ قد يكون موظّفًا عندنا — يُبحث عنه فيُملأ اسمُه كما في ملفّه.
+  // The owner may be our employee: search for him and his name is filled as in his profile.
   Future<void> _findOwner() async {
     final p = await _personSearch(context, tr('ابحث عن المالك (موظف عندنا)', 'Find the owner (our employee)'));
     if (p != null) setState(() => _ctrl['ownerNameAr']!.text = (p['name'] ?? '').toString());
@@ -371,7 +367,7 @@ class _VehicleRegistryFormState extends State<_VehicleRegistryForm> {
         _card('التتبّع — GPS', 'Tracking — GPS', [_req('gps', 'اشتراك التتبّع', 'Tracking subscription'), ..._gpsFields.map(_field)]),
         _card('التفويض بالقيادة', 'Driving authorisation', [
           _req('authorizedPerson', 'هل نطلبه؟', 'Do we need it?'),
-          // المفوَّضُ يُختار من الموظّفين: إقامتُه وجوالُه من ملفّه.
+          // The delegate is chosen from employees: iqama and mobile from his profile.
           Row(children: [
             Expanded(child: OutlinedButton.icon(
               icon: const Icon(Icons.person_search_outlined, size: 18),
@@ -401,9 +397,9 @@ class _VehicleRegistryFormState extends State<_VehicleRegistryForm> {
   }
 }
 
-/// بحثٌ عن شخصٍ في الموظّفين وملفّات القسم (`/person-lookup`) — نظيرُ PersonLookup.
+/// Search for a person in employees and section files (/person-lookup); twin of PersonLookup.
 Future<Map<String, dynamic>?> _personSearch(BuildContext context, String title) {
-  // الحالةُ خارج builder: إعادةُ بناء النافذة لا تُصفِّرها والخانةُ مكتوبة
+  // State is kept outside the builder: rebuilding the dialog does not reset it while the field has text.
   List<Map<String, dynamic>> rows = [];
   bool loading = false;
   int seq = 0;

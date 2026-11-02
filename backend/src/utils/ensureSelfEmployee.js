@@ -34,21 +34,12 @@ async function ensureSelfEmployee(user) {
       user: user._id,
       directManager: (user.manager && (user.manager._id || user.manager)) || undefined,
       createdBy: user._id,
-      // مهم: ده **مش موظف**. حساب دخول اتعمله ملف خدمة ذاتية عشان يقدر يطلب
-      // إجازة، وخلاص. الموظفين الحقيقيين مصدرهم الماستر وحده. من غير السطر ده
-      // كل حساب جديد كان بيزوّد «عدد الموظفين» واحد — رقم الموارد البشرية كان
-      // بيتحرك من غير ما حد يتعيّن. الموارد البشرية تقدر تربط الحساب بسجل
-      // حقيقي، وساعتها الحقيقي هو اللي بيتعدّ.
+      // Important: this is NOT an employee. It is a login account given a self-service file so it can request leave, nothing more. Real employees come from master alone. Without this flag every new account raised the employee count by one, so the HR number moved with nobody being hired. HR can link the account to a real record, and then the real one is counted.
       isHrRecord: false,
       inCurrentMaster: false,
     });
   }
-  // ── الرابط يُكتَب في الاتجاهين ──────────────────────────────────────────────
-  // كان يُكتب هنا في اتجاهٍ واحد: الحسابُ يشير إلى الموظّف والموظّفُ لا يشير إلى
-  // الحساب. فتفتح صفحة المستخدمين فتراه مرتبطًا، وتفتح ملفَّه في الموارد البشرية
-  // فتقرأ «غير مرتبط بحساب دخول» — الشاشتان تقرآن طرفين مختلفين من رابطٍ واحد،
-  // فتقولان نقيضين وكلتاهما صادقة فيما تقرأ. ثلاثون حسابًا من واحدٍ وأربعين
-  // كانت كذلك.
+  // The link is written in both directions. It used to be one-way: the account pointed to the employee and the employee did not point back, so the users page showed it linked while the HR file said 'not linked to a login account'. The two screens read opposite ends of one link and each was truthful about what it read. 30 of 41 accounts were like that.
   await Promise.all([
     User.updateOne({ _id: user._id }, { linkedEmployee: emp._id }),
     Employee.updateOne({ _id: emp._id }, { user: user._id }),

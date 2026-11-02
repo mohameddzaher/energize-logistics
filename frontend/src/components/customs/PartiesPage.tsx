@@ -1,8 +1,6 @@
 'use client';
-// صفحةُ أطرافِ التخليص — تخدم العملاءَ ووكلاءَ الشحن بالكود نفسِه.
-//
-// البنيةُ واحدة (اسمٌ، تواصلٌ، أرقامٌ، ملفٌّ يُفتح) والفرقُ دورُ الطرف لا شكلُه.
-// وصفحتان متطابقتان بملفّين تعنيان إصلاحَ كلّ عطلٍ مرّتين ثمّ نسيانَ إحداهما.
+// Clearance parties page: serves customers and shipping agents with the same code.
+// The structure is identical (name, contact, numbers, an openable file); only the party's role differs. Two identical pages in two files would mean fixing every bug twice and forgetting one.
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
@@ -18,9 +16,9 @@ import ExportMenu, { type ExportColumn } from '@/components/ls2/ExportMenu';
 import { Users, Ship, Truck, Plus, Pencil, Trash2, Mail, Phone, ChevronLeft } from 'lucide-react';
 import ScrollX from '@/components/system/ScrollX';
 
-// ثلاثةُ أدوارٍ بالبنية نفسِها: صاحبُ البضاعة، ومخلِّصُها، وناقلُها.
+// Three roles with the same structure: cargo owner, its clearing agent and its carrier.
 export type Contact = { name: string; email: string; phone: string; description?: string };
-/** جهاتُ الطرف — وما سبق الجهاتِ يُقرأ من حقوله القديمة جهةً واحدة. */
+/** Party contact points; anything older than them is read from the legacy fields as a single contact. */
 const contactsOf = (p: Partial<{ contacts?: Contact[]; contactPerson?: string; email?: string; phone?: string }> | null): Contact[] => {
   if (p?.contacts?.length) return p.contacts;
   if (p && (p.contactPerson || p.email || p.phone)) return [{ name: p.contactPerson || '', email: p.email || '', phone: p.phone || '', description: '' }];
@@ -39,9 +37,9 @@ export interface Party {
   _id: string; kind: PartyKind; name: string; email?: string; phone?: string;
   contactPerson?: string; commercialRegister?: string; taxNumber?: string;
   address?: string; city?: string; notes?: string; isActive?: boolean;
-  /** جهاتُ التواصل — مسؤولٌ ببريده وجوّاله، ووصفٌ اختياريّ (٢٠٢٦/١٠/٢٢). */
+  /** Contact points: a person with email and mobile, plus an optional description. */
   contacts?: Contact[];
-  /** للناقل: رابطُ موقع الساحة. */
+  /** For carriers: the yard location link. */
   yardLocationUrl?: string;
   deals: number; revenue: number; profit: number; containers: number; lastDealAt?: string | null;
 }
@@ -62,7 +60,7 @@ export default function PartiesPage({ kind }: { kind: PartyKind }) {
 
   const [rows, setRows] = useState<Party[]>([]);
   const cf = useColumnFilters<Party>();
-  // الربحُ والهامش للإدارة وحدَها — الخادمُ يقول من يراهما ولا يرسلهما لغيره.
+  // Profit and margin are for management only; the server states who sees them and sends them to no one else.
   const [seesMoney, setSeesMoney] = useState(false);
   const [q, setQ] = useState('');
   const [loading, setLoading] = useState(true);
@@ -79,7 +77,7 @@ export default function PartiesPage({ kind }: { kind: PartyKind }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [kind]);
   useEffect(() => { load(); }, [load]);
-  // بطاقةُ عميلٍ عُدِّلت في أيّ قسمٍ — تُعاد القائمة (مُمهَلةً).
+  // A customer card edited in any section reloads the list (debounced).
   const custTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useSocket('customers:changed', useCallback(() => {
     if (custTimer.current) clearTimeout(custTimer.current);
@@ -87,10 +85,7 @@ export default function PartiesPage({ kind }: { kind: PartyKind }) {
   }, [load]));
   useEffect(() => () => { if (custTimer.current) clearTimeout(custTimer.current); }, []);
 
-  // البحثُ في المتصفّح: القائمةُ عشراتٌ لا آلاف. والطيُّ هو الطيُّ نفسُه
-  // المستعمَل في الخادم (searchKey): المسافاتُ والشرطاتُ وصورُ الحروف سواء.
-  // ويُوجَد الطرفُ كذلك بما في معاملاته — رقمِ حاويةٍ أو بوليصةٍ أو بيان: الخادمُ
-  // يجيب بأطراف المعاملات المطابقة (راجع useCustomsSearch).
+  // Search runs in the browser because the list is tens of rows, not thousands. The fold is the same as the server's (searchKey): spaces, dashes and letter variants are equivalent. A party is also found by what is in its transactions (container, waybill or declaration number): the server returns the parties of matching transactions (see useCustomsSearch).
   const hits = useCustomsSearch(q, rows);
   const searched = useMemo(() => {
     if (!searchKey(q)) return rows;
@@ -98,7 +93,7 @@ export default function PartiesPage({ kind }: { kind: PartyKind }) {
       || !!hits?.parties.has(String(r._id)));
   }, [rows, q, hits]);
 
-  // فلاترُ الأعمدة (على طريقة إكسل) — آخرُ ما يُطبَّق، بعد البحث.
+  // Excel-style column filters, applied last, after search.
   const colGetters: Record<string, (p: Party) => any> = {
     name: (p) => p.name, deals: (p) => p.deals, containers: (p) => p.containers,
     active: (p) => (p.isActive === false ? t('معطَّل', 'Inactive') : t('نشط', 'Active')),
@@ -245,8 +240,7 @@ export default function PartiesPage({ kind }: { kind: PartyKind }) {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div className="sm:col-span-2"><Field label={t('الاسم *', 'Name *')}>
             <TextInput value={editing?.name || ''} onChange={(e) => setEditing((p) => ({ ...p, name: e.target.value }))} /></Field></div>
-          {/* ── جهاتُ التواصل: أكثرُ من واحدة، كلُّ مسؤولٍ ببريده وجوّاله (٢٠٢٦/١٠/٢٢).
-              الأولى هي الأساسيّة — بريدُها يُملأ وحدَه في معاملات الوكيل. */}
+          {/* Contact points: more than one, each person with email and mobile. The first is primary and its email auto-fills the agent's transactions. */}
           <div className="sm:col-span-2 space-y-2">
             <div className="flex items-center justify-between">
               <p className="text-[13px] font-semibold text-slate-700">{t('جهات التواصل', 'Contacts')}</p>
@@ -272,7 +266,7 @@ export default function PartiesPage({ kind }: { kind: PartyKind }) {
                         className="shrink-0 p-1.5 text-slate-400 hover:text-red-600"><Trash2 className="h-4 w-4" /></button>
                     )}
                   </div>
-                  {/* وصفُ البريد اختياريّ لوكلاء الشحن: «للفواتير»، «لإذن التسليم»… */}
+                  {/* The email description is optional for shipping agents, e.g. for invoices, for delivery order. */}
                   {kind === 'agent' && (
                     <div className="sm:col-span-3">
                       <TextInput placeholder={t('وصف البريد (اختياري) — مثلًا: للفواتير، لإذن التسليم', 'Email description (optional) — e.g. invoices, delivery orders')}

@@ -1,17 +1,7 @@
 'use client';
 /**
- * فلاترُ المديونيّة — شريطٌ واحدٌ للوحة ولصفحة التفاصيل، ورابطٌ يحملها.
- *
- * ── لماذا في الرابط ─────────────────────────────────────────────────────────
- * كان الرقمُ في اللوحة يفتح نافذةً فوقها، فلا تُشارَك ولا تُحفَظ ولا يرجع إليها
- * زرُّ الرجوع. والآن كلُّ رقمٍ يفتح صفحةً (`/dashboard/receivables`) رابطُها
- * يحمل فلاترَ اللوحة والعقدةَ التي ضُغطت — فيُرسَل إلى زميلٍ فيرى الصفوفَ نفسَها،
- * ويعود الرجوعُ إلى اللوحة بفلاترها.
- *
- * ── قسمان في الرابط ────────────────────────────────────────────────────────
- *   الفلاترُ   officer, parties, pay, dueState, issue, from, to — كما في اللوحة؛
- *   العقدةُ    kind, subtype, due, band, risk, attach, term, lateBand — البطاقةُ
- *              التي فُتحت (راجع nodeOf في collectionsReceivablesController).
+ * Receivables filters shared by the dashboard and the details page, carried in the URL.
+ * Every dashboard number opens a shareable page whose URL holds the dashboard filters (officer, parties, pay, dueState, issue, from, to) plus the clicked node (kind, subtype, due, band, risk, attach, term, lateBand; see nodeOf in collectionsReceivablesController).
  */
 import { useMemo } from 'react';
 import { X } from 'lucide-react';
@@ -46,7 +36,7 @@ export const ISSUE_LABELS: Record<string, [string, string]> = {
 type Params = { get: (k: string) => string | null };
 const split = (v: string | null) => (v ? v.split(',').map((s) => s.trim()).filter(Boolean) : []);
 
-/** فلاترُ اللوحة من الرابط. */
+/** Dashboard filters parsed from the URL. */
 export function filtersFromParams(p: Params | null | undefined): DashFilters {
   if (!p) return NO_FILTERS;
   return {
@@ -56,7 +46,7 @@ export function filtersFromParams(p: Params | null | undefined): DashFilters {
   };
 }
 
-/** …وإليه — مفصولةً بفواصل كما يقرؤها الخادم (parseFilters). */
+/** Serializes filters back to the URL, comma-separated as the server's parseFilters reads them. */
 export function filtersToQuery(f: DashFilters): Record<string, string> {
   const q: Record<string, string> = {};
   if (f.from) q.from = f.from;
@@ -68,14 +58,14 @@ export function filtersToQuery(f: DashFilters): Record<string, string> {
 export const activeFilterCount = (f: DashFilters) =>
   FILTER_KEYS.filter((k) => f[k].length).length + (f.from || f.to ? 1 : 0);
 
-/** رابطُ صفحة التفاصيل لعقدةٍ تحت فلاتر اللوحة. */
+/** Details-page link for a node under the dashboard filters. */
 export function receivablesHref(f: DashFilters, node: Record<string, string> = {}) {
   const p = new URLSearchParams({ ...filtersToQuery(f), ...node });
   const s = p.toString();
   return s ? `${RECEIVABLES_PATH}?${s}` : RECEIVABLES_PATH;
 }
 
-/** اسمُ عقدةٍ كما تُقرأ في رأس الصفحة. */
+/** Node label as shown in the page header. */
 export function nodeLabel(key: string, value: string, ar: boolean): string {
   const t = (a: string, e: string) => (ar ? a : e);
   switch (key) {
@@ -101,10 +91,7 @@ export function nodeLabel(key: string, value: string, ar: boolean): string {
 export type FacetOpt = { value: string; label?: string; count: number; amount: number; code?: string; isManager?: boolean };
 export interface Facets { officer: FacetOpt[]; parties: FacetOpt[]; pay: FacetOpt[]; dueState: FacetOpt[]; issue: FacetOpt[] }
 
-/**
- * خمسُ قوائمَ فيها بحثٌ واختيارٌ متعدّد، وبجانب كلِّ خيارٍ عددُه تحت الفلاتر
- * الأخرى (من `facets` في جواب اللوحة) — ومعها مدى التاريخ.
- */
+/** Five searchable multi-select lists, each option with its count under the other filters (from `facets` in the dashboard response), plus the date range. */
 export function ReceivablesFilterBar({ filters, onChange, facets, ar, manager }: {
   filters: DashFilters; onChange: (f: DashFilters) => void; facets?: Facets; ar: boolean;
   manager?: { name: string } | null;

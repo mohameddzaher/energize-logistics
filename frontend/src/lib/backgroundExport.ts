@@ -1,16 +1,8 @@
 import api from '@/lib/api';
 
 /**
- * التصديرُ الكبير: يُطلَب ثمّ يُنتظر جاهزًا.
- *
- * ── العلّة ──────────────────────────────────────────────────────────────────
- * «كلُّ الكشوف» ستّةٌ وثلاثون ألفَ صفٍّ واثنان وعشرون ميجابايت، وبناؤه نصفُ
- * دقيقة. وكان الطلبُ يبقى مفتوحًا طوالَها: صفحةٌ لا تستجيب، وإن أُغلقت أو
- * تعثّرت الشبكةُ ضاع العملُ وأُعيد من أوّله.
- *
- * فيُسجَّل الطلبُ في الخادم ويُردّ فورًا، ويُبنى هناك، ويُسأل عنه كلَّ ثانيتين.
- * فإذا جهز نُزِّل. وإن أُغلقت الصفحةُ بقي الملفُّ في مكانه يومًا كاملًا، ووصل
- * صاحبَه إشعارٌ فيه رابطُه — فلا ينتظر أحدٌ أمام شاشةٍ ولا يضيع عملٌ بُني.
+ * Large exports: requested, then waited on until ready.
+ * The full statements export is large and takes about half a minute to build. Holding the request open froze the page, and a closed tab or network blip lost the work. Now the server registers the request and replies at once, builds it there, and the client polls every 2 seconds and downloads when ready. If the page is closed the file stays for a day and the owner gets a notification with its link.
  */
 export interface ExportJob {
   _id: string;
@@ -29,14 +21,11 @@ export const downloadExportJob = async (job: ExportJob) => {
   a.href = url;
   a.download = job.fileName || 'export.xlsx';
   document.body.appendChild(a); a.click(); a.remove();
-  // يُترك للمتصفّح ما يكفي لبدء الحفظ قبل سحب العنوان من تحته.
+  // Leave the browser enough time to start the save before revoking the URL.
   setTimeout(() => URL.revokeObjectURL(url), 60000);
 };
 
-/**
- * يبدأ التصديرَ ويتابعه. `onQueued` تُنادى فورَ التسجيل (لتقول «جارٍ التجهيز»)،
- * و`onReady` حين يجهز. والمتابعةُ تتوقّف بعد عشر دقائق — الإشعارُ يبقى.
- */
+/** Starts the export and follows it. onQueued is called as soon as it is registered and onReady when it is ready. Polling stops after ten minutes; the notification remains. */
 export async function startBackgroundExport(
   kind: string,
   query: Record<string, string> = {},
@@ -56,7 +45,7 @@ export async function startBackgroundExport(
         return;
       }
       if (cur.status === 'failed') { handlers.onFailed?.(cur.error || 'failed'); return; }
-    } catch { /* انقطاعٌ عابر: يُسأل مرّةً أخرى */ }
+    } catch { /* Transient failure: ask again. */ }
     setTimeout(tick, 2500);
   };
   setTimeout(tick, 2500);

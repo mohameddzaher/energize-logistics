@@ -1,10 +1,5 @@
 'use client';
-// انتهاءات مستندات الموظفين — الإقامة، الجواز، العقد، التأمين الطبي، الشهادة
-// الصحية، بطاقة السائق، رخصة القيادة — في شاشة واحدة.
-//
-// المدة رقم يكتبه المستخدم مش قايمة ثابتة. الأزرار السريعة اختصار بس.
-// ملاحظة: المسار ده ساكن، فبياخد الأولوية على [group] في Next — لولا كده كان
-// «expiring» هيتفهم على إنه اسم مجموعة ويرجّع 404.
+// Employee document expiries (residency, passport, contract, medical insurance, health certificate, driver card, license) on one screen. The duration is a number the user types; the quick buttons are shortcuts. This static route takes priority over [group] in Next, otherwise "expiring" would be read as a group name and 404.
 import { useState, useEffect, useCallback, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useLanguage } from '@/context/LanguageContext';
@@ -21,7 +16,7 @@ import { usePinnedColumns } from '@/components/hr/usePinnedColumns';
 import ScrollX from '@/components/system/ScrollX';
 
 const QUICK = [7, 15, 30, 60, 90, 180];
-// فلاترُ الصفحة — قوائمُها من الخادم بعدد مستندات كلّ قيمة (راجع hrMaster.expiring).
+// Page filters; lists come from the server with a document count per value (see hrMaster.expiring).
 const FACETS: { key: string; ar: string; en: string }[] = [
   { key: 'registerNumber', ar: 'السجل', en: 'Register' },
   { key: 'engagement', ar: 'نوع التعاقد', en: 'Engagement' },
@@ -29,7 +24,7 @@ const FACETS: { key: string; ar: string; en: string }[] = [
   { key: 'project', ar: 'المشروع', en: 'Project' },
   { key: 'nationality', ar: 'الجنسية', en: 'Nationality' },
   { key: 'branchName', ar: 'الفرع', en: 'Branch' },
-  // «لا يعمل» = أُنهيت خدمتُه ولم يُؤرشَف بعد (المؤرشَفُ خارج الصفحة أصلًا).
+  // Not working means service ended and not yet archived (archived records are outside this page).
   { key: 'workState', ar: 'حالة العمل', en: 'Work status' },
 ];
 const WORK_LABEL: Record<string, [string, string]> = { working: ['يعمل', 'Working'], notWorking: ['لا يعمل', 'Not working'] };
@@ -38,7 +33,7 @@ const ENGAGEMENT_LABEL: Record<string, [string, string]> = {
 };
 
 function ExpiringInner() {
-  // الرقم الوظيفيّ والاسم والهويّة ثابتةٌ على اليمين — راجع usePinnedColumns.
+  // Employee number, name and ID stay pinned to the right; see usePinnedColumns.
   const pin = usePinnedColumns(3);
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
@@ -53,10 +48,7 @@ function ExpiringInner() {
   const [includeExpired, setIncludeExpired] = useState(sp?.get('includeExpired') !== '0');
   const [d, setD] = useState<Awaited<ReturnType<typeof getHrExpiring>> | null>(null);
   const [loading, setLoading] = useState(true);
-  // ── وفلترُ اللوحة يُحمَل إلى هنا ───────────────────────────────────────────
-  // «ينتهي قريبًا» في النظرة الشاملة يُحسَب على فلترها (قسمٌ، جنسيّة…). وكانت
-  // الضغطةُ تفتح هذه الصفحةَ مجرَّدةً منه: رقمٌ لقسمٍ واحدٍ يفتح انتهاءاتِ
-  // الشركة كلِّها. فما جاء في العنوان غيرَ مفاتيح هذه الشاشة فلترٌ يُرسَل كما هو.
+  // The panel filter is carried here. The overview's "expiring soon" is computed on its filter (department, nationality, ...), and the click used to open this page without it, so one department's number opened company-wide expiries. Any URL keys other than this screen's own are a filter sent as is.
   const CTRL = ['withinDays', 'doc', 'state', 'includeExpired'];
   const [filters, setFilters] = useState<Record<string, string>>(() =>
     Object.fromEntries([...(sp?.entries() || [])].filter(([k, v]) => !CTRL.includes(k) && v !== '')));
@@ -67,14 +59,10 @@ function ExpiringInner() {
     if (v) n[k] = v; else delete n[k];
     return n;
   });
-  // المدّةُ والمستندُ والحالةُ ثلاثةُ مفاتيحَ تتغيّر تباعًا، ومعها تحديثُ السوكِت:
-  // أوسعُ الطلبات أبطؤها، فيصل أخيرًا ويكتب فوق الأضيق. راجع useLatestRequest.
+  // Duration, document and status are three keys that change in turn, with socket refreshes. The widest request is slowest and lands last, overwriting the narrower. See useLatestRequest.
   const guard = useLatestRequest();
 
-  // ── ولا تُرسَل حالةُ توظيفٍ من هنا ──────────────────────────────────────────
-  // كانت الصفحةُ تُرسل `status: 'active'` والشريطُ يعدّ الملفَّ كلَّه: ٥٦٨ في
-  // الرقم و٤٤٣ في الجدول. والنطاقُ الآن قاعدةٌ واحدةٌ في الخادم (مَن لم تنتهِ
-  // خدمتُه — وفيهم مَن في إجازة) يقرؤها الرقمُ والجدولُ معًا.
+  // No employment status is sent from here. The page sent `status: 'active'` while the strip counted the whole file (568 vs 443). Scope is now one server rule (anyone whose service has not ended, including those on leave) read by both the number and the table.
   const load = useCallback(async () => {
     const mine = guard.begin();
     try {
@@ -90,8 +78,7 @@ function ExpiringInner() {
     if (guard.isCurrent(mine)) setLoading(false);
   }, [within, doc, state, includeExpired, JSON.stringify(filters), q, notify, guard]);
   useEffect(() => { const h = setTimeout(load, 250); return () => clearTimeout(h); }, [load]);
-  // ── ويسمع كلَّ كتابةٍ تخصّه ───────────────────────────────────────────────
-  // تعديلُ ملفّ موظّف، أو تجديدُ مستند، أو عقد — كلُّها تغيّر تاريخًا هنا.
+  // Listens to every write that concerns it: employee edit, document renewal or contract changes all change a date here.
   const live = useCallback(() => { load(); }, [load]);
   useSocket('hr:master', live);
   useSocket('hr:employee', live);
@@ -105,16 +92,14 @@ function ExpiringInner() {
     { header: t('الاسم', 'Name'), key: 'name', width: 30 },
     { header: t('رقم الهوية', 'ID number'), key: 'iqamaNumber', width: 16 },
     { header: t('المستند', 'Document'), key: 'docAr', width: 18 },
-    // تاريخُ الانتهاء عمودان متجاوران: الميلاديُّ ثمّ هجريُّه المشتقّ (lib/hrDates).
+    // Expiry date is two adjacent columns: Gregorian, then its derived Hijri (lib/hrDates).
     ...exportDatePair(EXPIRY_LABEL, 'expiryDate', ar),
     { header: t('المتبقي', 'Days left'), key: 'daysRemaining', width: 12 },
     { header: t('الحالة', 'State'), key: 'state', transform: (v) => stateLabel(v, ar), width: 16 },
     { header: t('القسم', 'Department'), key: 'department', width: 18 },
   ];
 
-  // الشاشة تفتح على مدّةٍ افتراضيّة (٦٠ يومًا) — أي أنّها مفلترة قبل أن يلمسها
-  // أحد. فمَن صدّر ظانًّا أنّه أخذ كلّ الانتهاءات كان يأخذ نافذةً ضيّقة بلا أن
-  // يُنبَّه؛ و«الكلّ» هنا يعيد النداء بلا مدّةٍ ولا مستندٍ ولا حالة.
+  // The screen opens on a default duration (60 days), so it is filtered before anyone touches it; exporting would silently give a narrow window. "All" here re-fetches without duration, document or status.
   const hasActiveFilters = within !== '' || !!doc || !!state || !includeExpired || hasFilters || !!q.trim();
   const fetchAllExpiring = async () => {
     const full = await getHrExpiring({ includeExpired: '1' });
@@ -153,7 +138,7 @@ function ExpiringInner() {
       )}
 
       <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm space-y-3">
-        {/* ── الفلاتر: بحثٌ وقوائمُ بعدد مستندات كلّ قيمة ── */}
+        {/* Filters: search plus lists with a document count per value. */}
         <div className="flex flex-wrap items-center gap-2 pb-3 border-b border-slate-100">
           <div className="relative">
             <Search className="absolute start-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
@@ -204,7 +189,7 @@ function ExpiringInner() {
         </div>
         <div className="flex flex-wrap gap-1.5 pt-1 border-t border-slate-100">
           {(d?.byDoc || []).map((x) => (
-            // أرقامُها لا تتبع المستندَ المختارَ ولا الحالة — فلا تتغيّر ولا تهتزّ حين تُضغط.
+            // Their numbers do not follow the selected document or status, so they do not change when pressed.
             <button key={x.key} type="button" onClick={() => setDoc(doc === x.key ? '' : x.key)}
               className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-colors ${doc === x.key ? 'bg-[#12325c] text-white border-[#12325c]' : 'bg-white text-slate-700 border-slate-200 hover:border-slate-400'}`}>
               {ar ? x.ar : x.en}
@@ -222,7 +207,7 @@ function ExpiringInner() {
             <p className="text-[11.5px] text-slate-600 mt-1.5 font-medium">{stateLabel(k, ar)}</p>
           </button>
         ))}
-        {/* الإجماليُّ = مجموعُ الحالات الأربع = رقمُ المستند المختار فوق. ضغطُه يرفع فلترَ الحالة. */}
+        {/* Total equals the sum of the four states and the selected document's number above. Pressing it clears the status filter. */}
         <button type="button" onClick={() => setState('')}
           className={`text-start bg-slate-900 rounded-xl p-3 text-white ${!state ? 'ring-2 ring-[#f37121]/50' : ''}`}>
           <p className="text-2xl font-extrabold leading-none tabular-nums">{d?.summary?.total ?? 0}</p>
@@ -256,7 +241,7 @@ function ExpiringInner() {
                       <button onClick={() => router.push(`/system/hr/employees/${r.employeeId}`)}
                         className="font-semibold text-slate-900 hover:text-[#f37121] text-[13.5px] whitespace-nowrap">{r.name}</button>
                     </td>
-                    {/* رقم الهوية — ده اللي القسم بيسيرش بيه */}
+                    {/* ID number is what the section searches by. */}
                     <td {...pin.td(2, 'px-3 py-2.5 whitespace-nowrap text-slate-700 text-[13px] tabular-nums')}>{r.iqamaNumber || '—'}</td>
                     <td className="px-3 py-2.5">
                       <button onClick={() => router.push(`/system/hr/master/${r.docKey}`)}

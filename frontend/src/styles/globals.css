@@ -11,7 +11,7 @@
   --accent: #0ea5a4;
 }
 
-/* أضف هذه القواعد الهامة */
+/* Additional important rules. */
 html, body {
   max-width: 100%;
   overflow-x: hidden;
@@ -27,7 +27,7 @@ body {
   height: 100%;
 }
 
-/* باقي الكود كما هو */
+/* Rest of the code unchanged. */
 .container-max {
   max-width: 1180px;
   width: 100%;
@@ -60,38 +60,11 @@ body {
   background-clip: content-box;
 }
 .sidebar-scroll::-webkit-scrollbar-thumb:hover { background-color: #475569; }
-/* شريطُ خطواتٍ يُمرَّر أفقيًّا: التمريرُ مطلوب، والمِسطرةُ الرماديّةُ تحته لا. */
+/* Horizontally scrolling steps strip: scrolling is needed, the grey scrollbar below it is not. */
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 .no-scrollbar::-webkit-scrollbar { display: none; }
 
-/* ── خاناتُ التاريخ: النصُّ الذي يظهر وهي فارغةٌ نصُّنا نحن ────────────────
- *
- * ── ما كان يقع ───────────────────────────────────────────────────────────
- * الخانةُ الفارغةُ تكتب صيغتَها من **إعداد المنطقة في جهاز المستخدم** لا من
- * صفحتنا. فمن كان جهازُه عربيًّا ظهر له «يوم/شهر/سنة» داخل خانةٍ يفرضها كروم
- * من اليسار إلى اليمين، فقُرئت مقلوبةً «موي/رهش/ةنس». والشاشةُ الواحدةُ تختلف
- * بين اثنين يجلسان متجاورَين.
- *
- * ── ولماذا لم يُصلَح بما هو أبسط ─────────────────────────────────────────
- * جُرِّب الأبسطُ أوّلًا وسقط كلُّه، وقياسُه محفوظٌ لئلّا يُعاد:
- *
- *   · `direction: ltr` على الخانة **لا أثر له**: كروم يفرض `ltr` على خانة
- *     التاريخ فرضًا، بلا قاعدةٍ أصلًا، ويتجاهل `direction: rtl` صريحةً. فالقاعدةُ
- *     التي كانت هنا لم تكن تصنع شيئًا — لا الداءَ ولا الدواء.
- *   · `lang="en-GB"` على الخانة **يُتجاهَل** أيضًا: `en-US` و`en-GB` و`ja`
- *     تُرسم ثلاثتُها `31/08/2026` سواءً. الصيغةُ من الجهاز وحدَه.
- *
- * فما دام النصُّ ليس نصَّنا ولا نملك تغييرَه، يُخفى ويُرسم مكانَه نصُّنا:
- * `dd/mm/yyyy` لاتينيٌّ لا عربيَّ فيه ينقلب، واحدٌ عند كلّ مستخدمٍ مهما كان
- * جهازُه. ويظهر النصُّ الأصليُّ كما هو بمجرّد لمسِ الخانة أو امتلائها — وليس
- * فيها حينئذٍ إلّا الأرقام.
- *
- * و`background-origin: content-box` هي التي تجعل النصَّ المرسومَ ينطبق على
- * موضع نصّ الخانة تمامًا مهما اختلف الحشو بين شاشةٍ وأخرى.
- *
- * يضع `data-empty` مكوّنُ `components/system/DateFieldLocale.tsx` — الخاناتُ
- * مئتان في سبعةٍ وثمانين ملفًّا وأكثرُها داخل نوافذَ تُبنى عند فتحها، فلا يصحّ
- * أن يُعتمَد على أن يتذكّرها كاتبُ كلِّ شاشةٍ جديدة. */
+/* Date inputs: the empty-state placeholder is ours. Chrome forces ltr and takes the format from the device locale (direction and lang are ignored), so on an Arabic device it renders reversed. The native text is hidden and a latin dd/mm/yyyy is painted instead; the native text returns on touch or when filled. background-origin: content-box aligns the painted text with the field text. data-empty is set by components/system/DateFieldLocale.tsx, since the many fields cannot rely on each screen remembering. */
 input[type="date"],
 input[type="datetime-local"],
 input[type="time"],
@@ -100,8 +73,7 @@ input[type="week"] {
   text-align: start;
 }
 
-/* الإخفاءُ والرسمُ معًا داخل `@supports`: متصفّحٌ لا يعرف كيف يُخفي النصَّ
- * الأصليَّ لا يُرسَم له نصٌّ ثانٍ فوقه. */
+/* Hiding and painting both sit inside @supports: a browser that cannot hide the native text gets no second text painted over it. */
 @supports selector(::-webkit-datetime-edit) {
   input[type="date"][data-empty="1"]:not(:focus)::-webkit-datetime-edit,
   input[type="datetime-local"][data-empty="1"]:not(:focus)::-webkit-datetime-edit,
@@ -126,18 +98,7 @@ input[type="week"] {
   }
 }
 
-/* ── شريطُ تحديثٍ غيرُ محدَّد المدّة ──────────────────────────────────────────
- *
- * حين تُحدَّث بياناتٌ معروضةٌ بالفعل (بحثٌ، فلترٌ، صفحةٌ تالية) لا يصحّ إفراغُ
- * الشاشة ولا وضعُ دوّارةٍ داخل خانة البحث: الأولى تُفقد السياق، والثانية تُبدّل
- * أيقونةَ المكبّر فترفرف الخانةُ وتقول «البحثُ يعمل» ولو كان المستخدم يقلّب
- * الصفحات.
- *
- * فالقاعدة: يبقى المعروضُ مقروءًا وباهتًا قليلًا، ويجري فوق حافّة الجدول شريطٌ
- * رفيع. وهو غيرُ محدَّد المدّة عن قصد — لا نعرف كم يبقى، وشريطُ تقدّمٍ يكذب
- * أسوأُ من شريطٍ يقول «جارٍ» فحسب.
- *
- * ولا يُرسَم لمن طلب تقليلَ الحركة: تُترك حالةٌ ثابتةٌ بلونٍ خافت. */
+/* Indeterminate refresh bar. When displayed data is refreshed (search, filter, next page) the screen is not emptied and no spinner replaces the search icon, which would make the field flicker. The content stays readable and slightly faded with a thin bar over the table edge. It is indeterminate on purpose, since duration is unknown and a false progress bar is worse. Under reduced motion a static muted state is used. */
 @keyframes indeterminate-slide {
   0%   { inset-inline-start: -40%; width: 40%; }
   50%  { inset-inline-start: 25%;  width: 55%; }
@@ -160,17 +121,7 @@ input[type="week"] {
   }
 }
 
-/* ── رأسُ الجدول ──────────────────────────────────────────────────────────────
- *
- * داكنٌ في كلّ جدولٍ في النظام. كان جدولُ سير عمل التشغيل وحدَه داكنًا وبقيّةُ
- * الجداول رماديّةً فاتحة، فتبدو الشاشاتُ كأنّها من نظامين.
- *
- * والداكنُ ليس ذوقًا وحدَه: الجداولُ هنا عريضةٌ تُمرَّر أفقيًّا، والرأسُ الفاتح
- * يذوب في الصفوف تحته فيضيع اسمُ العمود عند التمرير. والتباينُ العالي يُبقيه
- * مقروءًا وهو ثابت.
- *
- * صنفٌ واحدٌ لا لونٌ مكرَّرٌ في ثمانيةَ عشرَ ملفًّا: تغييرُه مرّةً يغيّرها كلَّها،
- * والجدولُ الجديد يأخذه بكلمة. */
+/* Table header. Dark on every table in the system; only the operations workflow table was dark, so screens looked like two systems. Tables are wide and scroll horizontally, and a light header blends into the rows below and loses the column name. One class instead of a color repeated in eighteen files: change it once, and a new table gets it by name. */
 .table-head {
   background-color: #0f172a;   /* slate-900 */
   color: #cbd5e1;              /* slate-300 */
@@ -179,11 +130,7 @@ input[type="week"] {
 }
 .table-head th { color: inherit; }
 
-/* ── اللوحات: نصٌّ واضحٌ على الشاشات (صاحبُ الشركة، ٢٠٢٦/١٠/٢٣) ──────────────
-   «العناوين في الكروت باهتة، والخطُّ الفاصل لا يُرى» — في كلّ لوحات الأقسام.
-   فداخلَ [data-dash] (يضعه app/system/layout على مسارات اللوحات): الرماديُّ
-   الفاتح يغمق درجتين (إلّا فوق خلفيّةٍ داكنة)، والعناوينُ الصغيرة عريضة، والفواصلُ أوضح. قاعدةٌ واحدة
-   بدل تعديل أربعين صفحة، وكلُّ لوحةٍ جديدةٍ تأخذها وحدَها. */
+/* Dashboards: legible text on screens. Card titles were faint and the divider line invisible on all section dashboards. Inside [data-dash] (set by app/system/layout on dashboard paths) light greys darken two steps (except over dark backgrounds), small headings go bold and dividers get clearer. One rule instead of editing forty pages; each new dashboard gets it automatically. */
 [data-dash] .text-slate-400:not(:is(.bg-slate-900, .bg-slate-800, .bg-black, .table-head) *) { color: #475569; }   /* → slate-600 */
 [data-dash] .text-slate-500:not(:is(.bg-slate-900, .bg-slate-800, .bg-black, .table-head) *) { color: #334155; }   /* → slate-700 */
 [data-dash] .text-slate-600:not(:is(.bg-slate-900, .bg-slate-800, .bg-black, .table-head) *) { color: #1e293b; }   /* → slate-800 */

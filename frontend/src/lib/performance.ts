@@ -1,33 +1,15 @@
-// Performance / KPI evaluation (تقييم الأداء) — shared types, styling and the
-// scoring maths.
-//
-// The score rule, identical to the backend (config/performanceConfig.js):
-//   weightedScore = Σ (score(1..5) × weight%)   → out of 5
-//   percentage    = weightedScore × 20          → 0..100
-//   band          = which bracket that % lands in
-//   bonus         = looked up from the team's TIER table, in monthly salaries
-//
-// It is duplicated here on purpose: the evaluation page recomputes on every
-// click so the gauge, the radar and the bonus move instantly, without a round
-// trip. The server recomputes on save and its answer is authoritative.
+// Performance / KPI scoring maths, identical to the backend (config/performanceConfig.js): weightedScore = sum(score 1..5 x weight%), percentage = weightedScore x 20, band from the percentage, bonus from the TIER table in monthly salaries.
+// Duplicated so the page recomputes on every click; the server recomputes on save and is authoritative.
 
 import { MANAGER_ROLES } from './roles';
 
 export type Lang = 'en' | 'ar';
 
-// ── مَن يفتح لوحةَ التقييم: يُشتقّ ولا يُكتب ──────────────────────────────
-// الخادمُ يقرّرها بقاعدةٍ واحدة (`/(_manager|_head|_lead|moderator)/` في
-// `performanceController`)، وكانت هنا قائمةً تُكتب باليد — فسقط منها ستّةُ
-// مديرين وُلدوا بعدها (المركبات، لوكيشن سوليوشن، منصّة الأوبريشن، طلبات
-// الشحنات، الشؤون الإدارية، التحصيل). فكلٌّ منهم يفتح الصفحةَ برابطٍ مباشر
-// ولا يجد لها مدخلًا في شريطه.
-//
-// و«_manager» ليست تسميةً جميلة: `config/roles.js` يوقف الخادمَ عند التحميل
-// إن خالفها دورٌ واحد — فالاشتقاقُ عليها آمنٌ كاشتقاق الخادم.
+// Who opens the evaluation board is derived, not written. The server decides with one rule (`/(_manager|_head|_lead|moderator)/` in `performanceController`); a hand-written list here dropped six managers created after it was written.
 export const PERF_STAFF_ROLES = [
   'super_admin', 'admin', 'it_manager', 'moderator',
   ...MANAGER_ROLES,
-  // موظّفون يشاركون في التقييم بحكم عملهم لا بحكم إدارتهم.
+  // Employees who take part in evaluation through their work, not their management.
   'hr_specialist', 'crm_team_lead', 'b2c_project_lead', 'cfo',
 ];
 // Full visibility across every department.
@@ -76,15 +58,15 @@ export interface Evaluation {
   tier: number | null; bonusMultiplier: number | null; monthlySalary: number | null;
   notes: string; status: 'draft' | 'submitted'; submittedAt: string | null; updatedAt: string;
 }
-// قسمٌ ممثَّلٌ في قائمة التقييم — باسمه المعتمد في الموارد البشريّة.
+// A department represented in the evaluation list, by its HR-approved name.
 export interface DeptGroup {
   key: string; label: string; labelEn: string; count: number;
-  // صفحةُ القسم التي يُقيَّم منها، إن وُجدت.
+  // The department page it is evaluated from, if any.
   section: string | null; sectionAr: string;
 }
 export interface TeamMember {
   _id: string; name: string; jobTitle: string;
-  // القسمُ كما في ملفّ الموظّف، باسمه المعتمد — و`departmentKey` لتجميع البطاقات.
+  // The department as in the employee file, by its approved name; `departmentKey` groups the cards.
   department: string; departmentEn?: string; departmentKey?: string;
   employeeNumber: string; photo: string;
   template: { _id: string; nameAr: string; tier: number; criteriaCount: number } | null;
@@ -203,7 +185,7 @@ export const pct = (v?: number | null) => (v == null ? '—' : `${Number(v).toLo
 export const score5 = (v?: number | null) => (v == null ? '—' : Number(v).toFixed(1));
 export const money = (v?: number | null) =>
   v == null ? '—' : Number(v).toLocaleString('en-US', { maximumFractionDigits: 0 });
-// Bonus is expressed in monthly salaries: 0.5 → "½ راتب".
+// Bonus is expressed in monthly salaries: 0.5 means half a salary.
 export function bonusLabel(mult: number | null | undefined, lang: Lang): string {
   if (mult == null) return '—';
   if (mult === 0) return lang === 'ar' ? 'لا بونص' : 'No bonus';

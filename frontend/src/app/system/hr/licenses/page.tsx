@@ -47,7 +47,7 @@ const LOCATION_SUGGESTIONS = ['جدة', 'عقلة الصقور'];
 const EMPTY = { category: '', name: '', duration: '', expiryDate: '', location: '', notes: '' };
 
 export default function LicensesPage() {
-  // الإجراءات والاسم ثابتان على اليمين — كبقيّة جداول القسم.
+  // Actions and name stay pinned to the right, like the other section tables.
   const pin = usePinnedColumns(2);
   const { confirm, notify } = useDialog();
   const { user } = useAuth();
@@ -61,9 +61,7 @@ export default function LicensesPage() {
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
   const [locationFilter, setLocationFilter] = useState('');
-  // ── والرقمُ الذي يُقرأ يجب أن يُفتح ──────────────────────────────────────
-  // «منتهية ٣» سطرٌ يُقرأ ولا يُسأل: أيُّ ثلاث؟ فالكارتُ يفلتر الجدولَ تحته
-  // على حالة الصلاحية، ويُضغَط ثانيةً فيُرفَع الفلتر.
+  // The number shown must be openable: the card filters the table below by validity status, and pressing again removes the filter.
   const [stateFilter, setStateFilter] = useState<'' | 'expired' | 'soon' | 'valid'>('');
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState<License | null>(null);
@@ -79,10 +77,7 @@ export default function LicensesPage() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
-  // ── وما يُعدَّل في الماستر يصل هنا ──────────────────────────────────────
-  // شاشاتُ الماستر تكتب في الحقول نفسِها التي تعرضها هذه الشاشة، وتبثّ
-  // `hr:master`. وبلا هذا السطر تبقى هذه على أرقامها حتى يُحدِّثها أحدٌ بيده —
-  // فيُقرأ رقمان مختلفان للشيء نفسِه في شاشتين مفتوحتين.
+  // Re-fetch on `hr:master`: master screens write the same fields and broadcast it, otherwise two open screens show different numbers.
   useSocket('hr:license', useCallback(() => load(), [load]));
   useSocket('hr:master', useCallback(() => load(), [load]));
 
@@ -111,7 +106,7 @@ export default function LicensesPage() {
     if (categoryFilter && l.category !== categoryFilter) return false;
     if (locationFilter && l.location !== locationFilter) return false;
     if (stateFilter) {
-      // الحدُّ نفسُه الذي تُعَدّ به البطاقاتُ أعلاه — لا حدٌّ ثانٍ يفترق عنه.
+      // The same limit the cards above are counted with, not a second one.
       const d = daysUntil(l.expiryDate);
       const st = d === null ? 'valid' : d < 0 ? 'expired' : d <= 60 ? 'soon' : 'valid';
       if (st !== stateFilter) return false;
@@ -141,21 +136,19 @@ export default function LicensesPage() {
     { header: tx.thCategory, key: 'category', width: 26 },
     { header: tx.thName, key: 'name', width: 40 },
     { header: tx.thDuration, key: 'duration', width: 16 },
-    // تاريخُ الانتهاء عمودان متجاوران: الميلاديُّ ثمّ هجريُّه المشتقّ (lib/hrDates).
+    // Expiry date is two adjacent columns: Gregorian, then its derived Hijri (lib/hrDates).
     ...exportDatePair(tx.thExpiry, 'expiryDate', ar),
     { header: tx.thLocation, key: 'location', width: 16 },
     { header: tx.thDaysLeft, key: 'expiryDate', transform: (v: any) => { const d = daysUntil(v); return d === null ? '' : d; }, width: 12 },
   ];
-  // الفلترة كلُّها في الذاكرة (بحث + تصنيف + موقع)، فالسجلّ الكامل حاضرٌ هنا
-  // ولا يحتاج جلبًا. والنطاقان يُبنيان دائمًا: العدّاد جنب كلٍّ منهما هو ما
-  // يكشف أنّ «المعروض» أقلُّ من «الكلّ» قبل أن يُفتح الملفّ لا بعده.
+  // All filtering is in memory (search, category, location), so the full register is present. Both scopes are always built; the counter beside each shows when shown is less than all.
   const scope = exportScopeLabels(ar);
   const exportOptions = [
     { key: 'shown', label: scope.shown, sheets: [{ name: 'Licenses', rows: filtered, columns: exportColumns }] },
     { key: 'all', label: scope.all, sheets: [{ name: 'Licenses', rows: licenses, columns: exportColumns }] },
   ];
 
-  // قمعُ الأعمدة — راجع hooks/useColumnFilters.
+  // Column funnel; see hooks/useColumnFilters.
   const cf = useColumnFilters<any>({
     name: (l) => l.name || '',
     category: (l) => l.category || '',
@@ -186,9 +179,7 @@ export default function LicensesPage() {
 
       {/* Mini dashboard cards */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-        {/* ثلاثةٌ تفلتر وثلاثةٌ لا: «الإجمالي» يرفع الفلتر، والحالاتُ تفلتر
-            عليها. و«التصنيفات» و«المواقع» عددُ قيمٍ لا عددُ صفوف — لا شريحةَ
-            تحتهما تُفتَح، فتبقيان رقمين يُقرآن. */}
+        {/* Three tiles filter and three do not: Total clears the filter and the statuses filter by themselves. Categories and locations count values, not rows, so no slice opens under them. */}
         <Pick on={!stateFilter} onClick={() => setStateFilter('')}>
           <StatCard label={tx.cardTotal} value={stats.total} />
         </Pick>
@@ -275,7 +266,7 @@ export default function LicensesPage() {
           <Field label={tx.fieldName} span2><TextInput value={form.name} onChange={(e) => set('name', e.target.value)} /></Field>
           <Field label={tx.fieldDuration}><TextInput value={form.duration} onChange={(e) => set('duration', e.target.value)} placeholder={ar ? 'سنوي / 3 سنوات' : 'Annual / 3 years'} /></Field>
           <Field label={tx.fieldLocation}><TextInput list="license-locations" value={form.location} onChange={(e) => set('location', e.target.value)} /></Field>
-          {/* خانتان في صفٍّ واحد: الميلاديّةُ ثمّ الهجريّة — وما يُرسَل ميلاديٌّ وحدَه. */}
+          {/* Two cells in a row: Gregorian, then Hijri; only the Gregorian is sent. */}
           <DatePair label={tx.fieldExpiry} value={form.expiryDate || ''} onChange={(v) => set('expiryDate', v)} ar={ar} />
           <Field label={tx.fieldNotes} span2><TextArea rows={2} value={form.notes} onChange={(e) => set('notes', e.target.value)} /></Field>
         </div>

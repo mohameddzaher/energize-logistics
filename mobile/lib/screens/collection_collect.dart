@@ -3,20 +3,12 @@ import '../services/api.dart';
 import '../services/lang.dart';
 import '../ui/theme.dart';
 
-// ═════════════════════════════════════════════════════════════════════════
-// تسجيلُ التحصيل — كاملٌ أو جزئيّ. نظيرُ نافذة «تسجيل تحصيل» في
-// components/collections/InvoicesPage.tsx.
-//
-// «تحصيل بالكامل» يقبض الباقي كلَّه فتصير الفاتورةُ محصَّلةً بالكامل،
-// و«تحصيل جزئي» يكتب ما قُبض فينقص به الباقي وتبقى «جزئيّة» حتى يبلغ
-// المقبوضُ قيمتَها. والتحقّقُ تحقّقُ الخادم نفسُه: الجزئيُّ أكبرُ من صفر
-// وأقلُّ من الباقي. والكاشُ الذي لا قيمةَ معروفةً له يكتب المحصِّلُ ما قبضه.
-// ═════════════════════════════════════════════════════════════════════════
+// Recording a collection, full or partial. The counterpart of the record-collection dialog in components/collections/InvoicesPage.tsx. Full collection takes the whole remainder so the invoice becomes fully collected; partial collection records what was received, reducing the remainder, and the invoice stays partial until the received amount reaches its value. Validation is the server's: partial is above zero and below the remainder. For cash with no known value, the collector types what was received.
 
 num _num(dynamic v) => v is num ? v : num.tryParse('${v ?? ''}') ?? 0;
 String _money(num v) => v == v.roundToDouble() ? v.toInt().toString() : v.toStringAsFixed(2);
 
-/// يفتح نافذةَ التحصيل للصفّ — ويردّ `true` إن سُجِّل شيء.
+/// Opens the collection dialog for the row; returns `true` if something was recorded.
 Future<bool> openCollectSheet(BuildContext context, {required bool isCash, required Map<String, dynamic> row}) async {
   final saved = await showModalBottomSheet<bool>(
     context: context,
@@ -43,7 +35,7 @@ class _CollectSheetState extends State<_CollectSheet> {
   late DateTime _date;
   bool _saving = false;
   String? _error;
-  // تعديلُ دفعةٍ في مكانها: مبلغُها ويومُها — كنافذة الموقع.
+  // Edit a payment in place: its amount and day, like the web dialog.
   String? _editPay;
   final _editAmount = TextEditingController();
   DateTime? _editDate;
@@ -56,7 +48,7 @@ class _CollectSheetState extends State<_CollectSheet> {
   bool get _full => _state == 'full';
   num get _paid => _num(r['collectedAmount']);
   num get _remaining => r['remaining'] != null ? _num(r['remaining']) : (_value - _paid).clamp(0, double.infinity);
-  /// كاشٌ بلا قيمةٍ معروفة: يُكتب المقبوضُ كلُّه ولا جزئيَّ فيه.
+  /// Cash with no known value: the whole received amount is typed and there is no partial.
   bool get _needAmount => widget.isCash && !(_value > 0);
 
   @override
@@ -109,7 +101,7 @@ class _CollectSheetState extends State<_CollectSheet> {
     }
   }
 
-  /// الفاتورةُ الضريبيّةُ برقمها، والكشفُ النقديُّ بمعرّفه.
+  /// A tax invoice is identified by its number, a cash sheet by its id.
   Map<String, dynamic> get _target => widget.isCash ? {'id': '${r['_id']}'} : {'invoiceNumber': '${r['invoiceNumber']}'};
 
   String _d(DateTime d) => '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
@@ -121,7 +113,7 @@ class _CollectSheetState extends State<_CollectSheet> {
     Navigator.pop(context, true);
   }
 
-  /// تعديلُ دفعة — ويُعاد حسابُ الحالة في الخادم.
+  /// Edit a payment; the status is recomputed on the server.
   Future<void> _savePayment() async {
     final a = num.tryParse(_editAmount.text.replaceAll(',', '').trim());
     if (a == null || a <= 0) { setState(() => _error = tr('اكتب المبلغ رقمًا أكبر من صفر', 'Enter an amount greater than zero')); return; }
@@ -136,7 +128,7 @@ class _CollectSheetState extends State<_CollectSheet> {
     }
   }
 
-  /// رفعُ دفعة — والسببُ اختياريّ.
+  /// Revoke a payment; the reason is optional.
   Future<void> _removePayment(Map p) async {
     final ctrl = TextEditingController();
     final reason = await showDialog<String>(
@@ -302,7 +294,7 @@ class _CollectSheetState extends State<_CollectSheet> {
             if (payments.isNotEmpty) ...[
               const SizedBox(height: 14),
               Text(tr('الدفعات', 'Payments'), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Colors.black54)),
-              // كلُّ دفعةٍ بمبلغها ويومها وكاتبها — تُعدَّل أو تُرفَع وحدَها.
+              // Each payment with its amount, day and writer; edited or revoked individually.
               for (final p in payments) _paymentRow(p),
             ],
             if (_error != null) ...[

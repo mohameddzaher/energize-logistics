@@ -155,12 +155,9 @@ export const mailLink = (email?: string | null, subject?: string) => {
   return `mailto:${email}${subject ? `?subject=${encodeURIComponent(subject)}` : ''}`;
 };
 
-// ── Date / money helpers ─────────────────────────────────────────────────────
-// «اليوم» يوم الرياض لا يوم غرينتش: `toISOString()` كانت تعطي أمسِ بين منتصف
-// الليل والثالثة فجرًا. المرجعُ واحدٌ الآن في `lib/companyDay`.
+// Date / money helpers. Today means the Riyadh day, not the Greenwich day: toISOString() gave yesterday between midnight and 03:00. The single reference is lib/companyDay.
 export { today } from './companyDay';
-// كانت تُخرج اليومَ السابق لأيّ وقتٍ مخزَّنٍ بعد التاسعة مساءً بتوقيت الرياض،
-// فيُعرض في النموذج ناقصًا يومًا ثمّ يُحفظ كما عُرض.
+// This returned the previous day for any stored time after 21:00 Riyadh time, so the form showed it a day short and then saved it as shown.
 export { toDateInput } from './companyDay';
 export const fmtDate = (v?: string | null) => (v ? new Date(v).toLocaleDateString('en-GB') : '—');
 export const fmtDateTime = (v?: string | null) =>

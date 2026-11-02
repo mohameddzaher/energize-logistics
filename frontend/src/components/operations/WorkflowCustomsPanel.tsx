@@ -1,11 +1,7 @@
 'use client';
 /**
- * «التخليص الجمركي» في صفحة الكشف — المعاملةُ التي يخدمها، وربطُها يدويًّا.
- *
- * الربطُ الآليُّ يأتي من الخادم (خانةُ النقل في المعاملة، أو «رقم السند» =
- * البوليصة أو الحاوية — راجع backend/src/services/customsOpsLink). وما لا دليلَ
- * عليه يربطه موظّفُ التشغيل هنا بالبحث برقم المعاملة أو البوليصة أو الحاوية.
- * وما كتبه قسمُ التخليص في خانة النقل لا يُفكّ من هنا: يُصحَّح في المعاملة.
+ * Customs clearance on the manifest page: the transaction it serves, and manual linking.
+ * Auto-linking comes from the server (the transport field in the transaction, or voucher number = waybill or container; see backend/src/services/customsOpsLink). Without evidence, operations staff link it here by searching transaction, waybill or container number. A link written by clearance in the transport field is not unlinked here; fix it in the transaction.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link2, Loader2, Search, Ship, Unlink, X } from 'lucide-react';

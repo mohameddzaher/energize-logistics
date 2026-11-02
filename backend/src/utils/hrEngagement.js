@@ -1,24 +1,7 @@
 /**
- * hrEngagement — نوعُ ارتباط الموظّف، والأرشيف. قاعدةٌ واحدةٌ تقرؤها كلُّ شاشة.
- *
- * ── على الكفالة / فريلانسر / متدرّب (صاحبُ الشركة، ٢٠٢٦/١٠/١٩) ─────────────
- * يُقرأ من «رقم السجل التجاري» (`registerNumber`) وحدَه:
- *   · رقمُ سجلٍّ تجاريٍّ من سجلّاتنا (أرقامٌ: 7025667531 · 7038387267 …) ← على الكفالة
- *   · «فري لانسر»                                                       ← فريلانسر
- *   · «تدريب» / متدرّب                                                   ← متدرّب (لا هذا ولا ذاك)
- *   · فارغ                                                               ← غير محدّد
- * كان «النوع» (`employmentType`) يُكتب وحدَه فيختلف عن السجلّ (٧٠ فريلانسر هناك
- * و٩٠ هنا). والسجلُّ هو ما يُسأل عنه، فهو الأصل.
- *
- * والفريلانسرُ والمتدرّبُ لا عقدَ لهما — لا يُقال عن أحدهما «بلا عقد».
- *
- * ── الأرشيف ──────────────────────────────────────────────────────────────
- * مَن أُنهيت خدمتُه ثمّ أُخرج من النظام (`systemStatus` = «خارج النظام»)، أو
- * فريلانسرٌ أُنهيت خدمتُه (لا خروجَ من نظامٍ ليس عليه أصلًا). المؤرشَفُ لا يظهر
- * في أيّ شاشةٍ ولا رقمٍ — إلّا صفحةَ الأرشيف وكارتَها.
- *
- * ولا يُخزَّن «مؤرشَف»: يُشتقّ في الاستعلام نفسِه من الحالة والخروج والسجلّ،
- * فلا يتأخّر ولا يختلف عن مصدره لحظة.
+ * hrEngagement: employee engagement type and the archive; one rule read by every screen.
+ * Type comes only from `registerNumber`: a numeric commercial register is sponsored, the freelancer label is freelancer, the training label is trainee, empty is unspecified. Freelancers and trainees have no contract.
+ * Archived means ended and out of the system, or an ended freelancer; it is derived in the query, never stored.
  */
 const SYSTEM_OUT = 'خارج النظام';
 const SYSTEM_IN = 'داخل النظام';
@@ -35,23 +18,23 @@ function engagementOf(e) {
   if (CR_RX.test(r)) return 'sponsored';
   return '';
 }
-/** مَن لا يُطلَب له عقد. */
+/** People who are not required to have a contract. */
 const contractRequired = (e) => !['freelance', 'trainee'].includes(engagementOf(e));
 
 const isArchived = (e) => e?.employmentStatus === 'terminated'
   && (String(e?.systemStatus || '').trim() === SYSTEM_OUT || engagementOf(e) === 'freelance');
 
-// الشرطُ نفسُه استعلامًا (find و$match معًا).
+// The same condition as a query (find and $match).
 const ARCHIVED = {
   employmentStatus: 'terminated',
   $or: [{ systemStatus: SYSTEM_OUT }, { registerNumber: { $regex: FREELANCE_RX.source, $options: 'i' } }],
 };
 const NOT_ARCHIVED = { $nor: [ARCHIVED] };
 
-/** يضمّ «غيرَ المؤرشَف» إلى فلترٍ قائم دون أن يطأ `$or`/`$nor` فيه. */
+/** Adds 'not archived' to an existing filter without clobbering its `$or`/`$nor`. */
 const withoutArchived = (filter = {}) => ({ ...filter, $and: [...(filter.$and || []), NOT_ARCHIVED] });
 
-// شروطُ النوع استعلامًا.
+// Engagement-type conditions as queries.
 const ENGAGEMENT_MATCH = {
   sponsored: { registerNumber: { $regex: CR_RX.source } },
   freelance: { registerNumber: { $regex: FREELANCE_RX.source, $options: 'i' } },
@@ -59,14 +42,9 @@ const ENGAGEMENT_MATCH = {
 };
 
 /**
- * ── «حالة العمل» ثلاث: يعمل · شركة شقيقة · لا يعمل (صاحبُ الشركة، ٢٠٢٦/١٠/١٩) ──
- *   يعمل         على رأس عمله.
- *   شركة شقيقة   موظّفٌ عاديٌّ على كفالتنا يعمل لدى شركةٍ شقيقة — ليس إنهاءَ خدمة،
- *                ويُعامَل في كلّ قسمٍ كموظّف (`sisterCompany` على ملفٍّ قائم).
- *   لا يعمل      = إنهاءُ الخدمة، وحالتُه إحدى اثنتين:
- *                  انتظار نقل الكفالة · خروج نهائي.
- * ثمّ: خارجَ النظام (أو فريلانسر) ← الأرشيف فورًا؛ داخلَ النظام ← ينتظر «خروج من
- * النظام» ثمّ الأرشيف.
+ * Work status has three values: working, sister company, not working.
+ * Sister company is a regular employee on our sponsorship working for a sister company; not a termination (`sisterCompany` on an existing file).
+ * Not working is service ended: awaiting sponsorship transfer or final exit. Out of the system (or freelancer) archives at once; otherwise it waits for removal, then archive.
  */
 const TERMINATION_KINDS = {
   transfer_pending: { ar: 'انتظار نقل الكفالة', en: 'Awaiting sponsorship transfer' },
@@ -76,8 +54,8 @@ const SISTER = 'شركة شقيقة';
 const TRANSFER_DAYS = 30;
 const WORKING = 'يعمل';
 const NOT_WORKING = 'لا يعمل';
-/** نصُّ «حالة العمل» كما يُكتب ويُعرَض — مشتقٌّ من الحالة لا يُكتب باليد. */
-// «لا يعمل» means off the job (termination); leave is not that.
+/** Work-status text as written and shown; derived from the state, not typed by hand. */
+// 'Not working' means off the job (termination); leave is not that.
 const ON_LEAVE = 'إجازة';
 const LEAVE_NO_SHOW = 'مخالفة — لم يعد من الإجازة';
 function workStatusTextOf(e) {
@@ -90,7 +68,7 @@ function workStatusTextOf(e) {
   const k = TERMINATION_KINDS[e?.terminationKind];
   return k ? `${NOT_WORKING} — ${k.ar}` : NOT_WORKING;
 }
-/** إنهاءُ خدمته يؤرشفه فورًا — فلا يُسأل عن حالة. */
+/** Ending his service archives him immediately, so no status is asked. */
 const archivesOnTermination = (e) => String(e?.systemStatus || '').trim() === SYSTEM_OUT || engagementOf(e) === 'freelance';
 
 module.exports = {

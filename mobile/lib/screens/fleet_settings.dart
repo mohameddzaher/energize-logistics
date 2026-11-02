@@ -8,9 +8,7 @@ import '../ui/widgets.dart';
 import 'fleet_reference_lists.dart';
 import '../ui/search_field.dart';
 
-/// إعدادات إدارة الأسطول — نفس صفحة الويب: مبلغ بونص الجمعة، الهدف الشهري
-/// الافتراضي للسيارة، وتعديل هدف كل سيارة على حدة. القوائم المرجعية (أنواع
-/// الإيجار/الدفع/الحمولة) تُدار من هنا كما في الويب (FleetReferenceLists).
+/// Fleet management settings, same as the web page: Friday bonus amount, default monthly vehicle target, and per-vehicle target edit. The reference lists (rent/payment/load types) are managed from here as on the web (FleetReferenceLists).
 class FleetSettingsScreen extends StatefulWidget {
   const FleetSettingsScreen({super.key});
   @override
@@ -27,7 +25,7 @@ class _FleetSettingsScreenState extends State<FleetSettingsScreen> {
   final Map<String, TextEditingController> _targets = {};
   final Set<String> _savingVeh = {};
   String _q = '';
-  // الخانةُ تُهدَم مع التحميل والتمرير — النصُّ في متحكِّمٍ يبقى مع الكلمة.
+  // The field is destroyed on loading and scrolling; text kept in a controller survives with the word.
   final _searchCtl = TextEditingController();
   late final void Function() _onLive;
 
@@ -35,10 +33,10 @@ class _FleetSettingsScreenState extends State<FleetSettingsScreen> {
   void initState() {
     super.initState();
     _load();
-    // إعادة تحميل بثّية لا تُعيد ملء الحقول — كي لا نمسح تعديلًا جاريًا للمستخدم.
+    // A streamed reload does not refill the fields, so the user's in-progress edit is not erased.
     _onLive = () => _load(hydrate: false);
     Live.instance.on('fleet:updated', _onLive);
-    // هدفُ الشاحنة يُحفَظ بـPUT على الشاحنة فيُعلَن `fleet:vehicles`.
+    // A truck's target is saved with PUT on the truck, which announces `fleet:vehicles`.
     Live.instance.on('fleet:vehicles', _onLive);
   }
 
@@ -63,7 +61,7 @@ class _FleetSettingsScreenState extends State<FleetSettingsScreen> {
       final cfg = Map<String, dynamic>.from(results[0]['config'] ?? {});
       final veh = List<Map<String, dynamic>>.from(results[1]['vehicles'] ?? []);
       if (hydrate) {
-        // التحميل الأول: نبني كل الحقول من الخادم.
+        // First load: build all fields from the server.
         for (final c in _targets.values) { c.dispose(); }
         _targets.clear();
         for (final v in veh) {
@@ -71,7 +69,7 @@ class _FleetSettingsScreenState extends State<FleetSettingsScreen> {
           _targets[id] = TextEditingController(text: (v['monthlyTarget'] ?? '').toString());
         }
       } else {
-        // بثّ حي: نضيف فقط متحكمات لسيارات جديدة، ونُبقي القيم الجاري تعديلها.
+        // Live stream: add controllers only for new vehicles and keep the values being edited.
         for (final v in veh) {
           final id = (v['_id'] ?? '').toString();
           _targets.putIfAbsent(id, () => TextEditingController(text: (v['monthlyTarget'] ?? '').toString()));
@@ -163,7 +161,7 @@ class _FleetSettingsScreenState extends State<FleetSettingsScreen> {
                         ]),
                       ),
                       const SizedBox(height: 16),
-                      // قوائمُ القسم المنسدلة — كـReferenceDataManager في صفحة الويب.
+                      // Section dropdown lists, like ReferenceDataManager on the web page.
                       const FleetReferenceLists(),
                       const SizedBox(height: 16),
                       Text(tr('الهدف الشهري لكل سيارة', 'Monthly target per vehicle'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),

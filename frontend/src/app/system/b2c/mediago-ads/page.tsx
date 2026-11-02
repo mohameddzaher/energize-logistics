@@ -1,13 +1,7 @@
 'use client';
 /**
- * المحتوى الإعلانيّ — صفحةٌ مشتركةٌ بيننا وبين Media Go (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢).
- *
- * Media Go تطلب تصويرَ إعلانٍ: اسمُه، ولأيّ شركة (إنرجايز، هيرو مايل… من إعدادات
- * القسم)، ومركباتُ النقل الخفيف إن كان لشركتنا، وصورٌ أم فيديو، وبالإيواء أم
- * بالطريق، وملاحظةٌ وتاريخٌ اختياريّان. ونحن نصوّر لكلّ مركبةٍ تحقّقَها — صورًا
- * أو فيديو حتى ١٥ ثانية — ونراجعه ونعلّمه «جاهز»، ثمّ «تمّ» فيصلها في سجلّاتها
- * مركبةً مركبة، وتردّ بملاحظةٍ إن شاءت. والحسابُ كلُّه في الخادم
- * (controllers/mediagoAdController).
+ * Advertising content: a page shared between us and Media Go.
+ * Media Go requests an ad shoot: its name, for which company (from department settings), light-transport vehicles if it is ours, photos or video, at shelter or on the road, plus an optional note and date. We shoot each vehicle's verification (photos or video up to 15 seconds), review it and mark it ready, then done, and it reaches Media Go in its records vehicle by vehicle; it may reply with a note. All logic is server-side (controllers/mediagoAdController).
  */
 import { Suspense, useCallback, useEffect, useState } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
@@ -49,7 +43,7 @@ function AdContentInner() {
   }, [f, q, guard]);
   useEffect(() => { const h = setTimeout(load, q ? 250 : 0); return () => clearTimeout(h); }, [load, q]);
   useSocket('mediago:ad', useCallback(() => load(), [load]));
-  // الطلبُ صفحتُه (٢٠٢٦/١٠/٢٢) — وروابطُ الإشعارات القديمة (?id=) تُحوَّل إليها.
+  // Each request has its own page; old notification links (?id=) are redirected to it.
   const open = (id: string) => router.push(`/system/b2c/mediago-ads/${id}`);
   useEffect(() => { const id = sp?.get('id'); if (id) router.replace(`/system/b2c/mediago-ads/${id}`); }, [sp, router]);
 
@@ -76,7 +70,7 @@ function AdContentInner() {
         )}
       </PageHeader>
 
-      {/* ── الحالات ── */}
+      {/* Statuses. */}
       <div className="flex flex-wrap gap-2">
         {statusTabs.map(([k, a, e]) => (
           <button key={k || 'all'} type="button" onClick={() => setF((p) => ({ ...p, status: k }))} className={chip((f.status || '') === k)}>
@@ -85,7 +79,7 @@ function AdContentInner() {
         ))}
       </div>
 
-      {/* ── الفلاتر ── */}
+      {/* Filters. */}
       <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white p-3">
         <div className="relative min-w-[220px] flex-1 basis-[260px]">
           <Search className="absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
@@ -113,13 +107,13 @@ function AdContentInner() {
         )}
       </div>
 
-      {/* ── الطلبات ── */}
+      {/* Requests. */}
       {!data.items.length ? (
         <div className="rounded-2xl border border-dashed border-slate-300 bg-white py-16 text-center text-slate-500">
           <Clapperboard className="mx-auto mb-2 h-8 w-8 text-slate-300" />{t('لا طلبات هنا', 'No requests here')}
         </div>
       ) : (
-        // ── جدولٌ لا بطاقات (٢٠٢٦/١٠/٢٢): يُقرأ صفًّا صفًّا، والضغطُ يفتح صفحةَ الطلب.
+        // A table, not cards: read row by row, and a click opens the request page.
         <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
           <table className="w-full min-w-[860px] text-[13px]">
             <thead className="bg-slate-900 text-[12px] text-slate-200">
@@ -163,7 +157,7 @@ function AdContentInner() {
   );
 }
 
-// ── طلبٌ جديد ────────────────────────────────────────────────────────────────
+// New request.
 function CreateModal({ ar, meta, onClose, onCreated }: { ar: boolean; meta: Meta; onClose: () => void; onCreated: (id: string) => void }) {
   const t = (a: string, e: string) => (ar ? a : e);
   const { notify } = useDialog();

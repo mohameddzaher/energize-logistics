@@ -1,7 +1,5 @@
 'use client';
-// عقود الأقسام — every OTHER department's contracts in one register: fleet
-// customers, B2C customers, 3PL customers and anything else. Tabs by
-// department, full CRUD, contract-file attachments, expiry highlighting.
+// Department contracts: every other department's contracts in one register (fleet, B2C, 3PL customers and others). Tabs by department, full CRUD, contract file attachments, expiry highlighting.
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
@@ -135,11 +133,10 @@ export default function AgreementsPage() {
     ...Object.entries(DEPT_LABELS).map(([k, l]) => ({ key: k, label: `${ar ? l.ar : l.en} (${contracts.filter((c) => c.department === k).length})` })),
   ];
   const soon = new Date(Date.now() + 60 * 86400000);
-  // صياغة موحّدة لأسماء النطاقات عبر كل شاشات النظام: «الكلّ» هنا هو «الكلّ» هناك.
+  // Shared scope-name wording across all system screens: "All" here is "All" everywhere.
   const scope = exportScopeLabels(ar);
 
-  // «منتهٍ» و«يقارب الانتهاء» لونان في عمود التاريخ لا نصّان، فيُشتقّان هنا
-  // صراحةً بنفس عتبة الستين يومًا — وإلا خرج الملف بلا أهمّ ما تُقرأ به القائمة.
+  // Expired and expiring soon are colours in the date column, not text, so they are derived explicitly with the same sixty-day threshold; otherwise the file loses the main signal of the list.
   const withExpiryFlag = (list: DeptContract[]) => list.map((c) => ({
     ...c,
     expiryFlag: c.status !== 'active' || !c.endDate ? ''
@@ -148,9 +145,7 @@ export default function AgreementsPage() {
           : (ar ? 'ساري' : 'Running'),
   }));
 
-  // الأعمدة ترتيبها ترتيبُ الجدول على الشاشة، ثم حقول العقد التي لا يتّسع لها
-  // العرض (السداد والقيمة والتجديد والملاحظات): من يفتح الملف يريد السجل كاملًا
-  // لا صورةً من الشاشة، والمرفقات تُعَدُّ عددًا لأن الملفات نفسها لا تُصدَّر.
+  // Columns follow the on-screen table order, then contract fields that do not fit the width (payment, value, renewal, notes), so the file is the full record. Attachments are exported as a count because the files themselves are not.
   const cols: ExportColumn[] = [
     { header: ar ? 'الجهة' : 'Party', key: 'partyName', width: 28 },
     { header: ar ? 'القسم' : 'Department', key: 'department', transform: (v) => { const d = DEPT_LABELS[v]; return d ? (ar ? d.ar : d.en) : (v || ''); }, width: 18 },
@@ -187,8 +182,7 @@ export default function AgreementsPage() {
               sheets: [{ name: ar ? 'العقود' : 'Contracts', rows: withExpiryFlag(filtered), columns: cols }],
             },
             {
-              // الخادم يُرجع السجلّ كاملًا بلا ترقيم صفحات، فالخيار الشامل يُبنى
-              // مما في الصفحة بلا إعادة جلب — لا خطر هنا من تصدير التبويب باسم «الكل».
+              // The server returns the whole register without pagination, so the full option is built from the page data without refetching; exporting the tab as "All" is safe.
               key: 'all',
               label: scope.all,
               sheets: [{ name: ar ? 'العقود' : 'Contracts', rows: withExpiryFlag(contracts), columns: cols }],

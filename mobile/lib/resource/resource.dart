@@ -24,24 +24,16 @@ class FieldSpec {
   final FieldType type;
   final bool required;
   final List<(String, String, String)>? options; // (value, ar, en)
-  // حقل علاقة (lookup): يجلب الخيارات من endpoint ويخزّن الـ id المختار.
+  // Lookup field: fetches options from an endpoint and stores the selected id.
   final String? lookupEndpoint;   // '/api/crm/companies'
   final String? lookupListKey;    // 'companies'
   final String? lookupQuery;      // 'limit=200'
-  final String Function(Map<String, dynamic>)? lookupLabel; // صف → نص للعرض
-  // ── ما الذي يُخزَّن من الصفّ المختار ──────────────────────────────────────
-  // الأصلُ أن يُخزَّن `_id`: الحقلُ علاقةٌ إلى سجلٍّ قائم. لكنّ القوائمَ المدارة
-  // (`/api/lookups`) تُخزَّن بنصِّها العربيّ لا بمعرّفها — تقرؤها التصديراتُ
-  // والفلاتر مباشرةً، ومعرّفُ Mongo لا يقول شيئًا لمن يفتح الملفّ. فيُمرَّر ما
-  // يُخزَّن صراحةً حين يختلف عن المعرّف.
+  final String Function(Map<String, dynamic>)? lookupLabel; // Row to display text.
+  // Which value is stored from the selected row: normally `_id`, since the field links to an existing record. Managed lists (`/api/lookups`) are stored by their Arabic text instead, because exports and filters read them directly. The stored value is passed explicitly when it differs from the id.
   final String Function(Map<String, dynamic>)? lookupValue;
-  /// ── وسجلٌّ بالآلاف يُبحَث عند الخادم ────────────────────────────────────
-  /// لوحُ الاختيار يحمّل صفحةً ثمّ يصفّيها بصندوقِ بحثه. وهو يكفي أربعين
-  /// موظّفًا، ويكذب على ثلاثةِ آلافِ مورّد: مَن كتب اسمًا بعد الصفحة الأولى
-  /// قيل له «لا نتائج» وهو مسجَّل. فمن رفع هذه أرسل نصَّ البحث إلى الخادم.
+  /// A registry with thousands of rows is searched on the server. The picker loads one page and filters it locally, which is fine for forty employees but reports "no results" for a supplier past the first page. Callers that raise this send the search text to the server.
   final bool lookupServerSearch;
-  /// عنوانٌ يتبع ما اختير في النموذج: «عدد الحاويات» يصير «عدد السيّارات» حين
-  /// يُختار نوعُ المعاملة. يُعطى قيمَ النموذج الحاليّة؛ وبلاه العنوانُ ثابت.
+  /// Title that follows the form selection, e.g. the container count label becomes the vehicle count label when a transaction type is chosen. Receives the current form values; without it the title is fixed.
   final String Function(Map<String, dynamic> values)? labelOf;
   const FieldSpec(this.name, this.ar, this.en,
       {this.type = FieldType.text, this.required = false, this.options,
@@ -56,17 +48,13 @@ class ResourceConfig {
   final String enTitle;
   final IconData icon;
   final String endpoint;      // '/api/fleet/drivers'
-  /// نقطةُ الكتابة حين تختلف عن نقطة القراءة.
-  ///
-  /// سجلُّ العملاء يُقرأ من `/api/customer-registry` (فيه الأرقام: كم كشفًا
-  /// وبكم) ويُكتب على `/api/shipment-orders/customers` — قراءةٌ محسوبةٌ وكتابةٌ
-  /// على الجدول نفسِه. وبلا هذا الفصل تُرسَل التعديلاتُ إلى نقطةٍ لا تكتب.
+  /// Write endpoint when it differs from the read endpoint. The customer registry is read from `/api/customer-registry` (computed figures) and written on `/api/shipment-orders/customers` (the actual table). Without the split, edits go to an endpoint that does not write.
   final String? writeEndpoint;
   final String listKey;       // 'drivers'
   final String listQuery;     // extra query for the LIST GET only (e.g. 'all=1') — kept off endpoint so /:id actions stay clean
   final String updateMethod;  // 'PUT' | 'PATCH'
   final String liveEvent;     // 'fleet:updated'
-  /// أخبارٌ أخرى تُعيد قراءةَ القائمة (مثلُ عدد مرفقات فاتورة التحصيل).
+  /// Other events that trigger a list reload (e.g. the attachment count of a collection invoice).
   final List<String> extraLiveEvents;
   final List<String> searchFields;
   final List<FieldSpec> fields;
@@ -76,46 +64,29 @@ class ResourceConfig {
   final bool canCreate;
   final bool canEdit;
   final bool canDelete;
-  /// عند ضبطها: نقرة الصف تفتح ملفًا كاملًا بدل ورقة التحرير (والتحرير من أيقونة القلم).
+  /// When set, tapping a row opens a full detail page instead of the edit sheet; editing is via the pencil icon.
   final void Function(BuildContext, Map<String, dynamic>)? onOpen;
-  /// عند ضبطها: زرُّ الإضافة يفتح نموذجًا خاصًّا بدل النموذج العامّ، ويردّ `true`
-  /// إن حُفظ فتُعاد قراءةُ القائمة. لإضافةٍ معها ما لا يحمله النموذجُ العامّ (ملفّات).
+  /// When set, the add button opens a custom form instead of the generic one and returns `true` if saved, so the list reloads. For additions that need more than the generic form holds (files).
   final Future<bool?> Function(BuildContext)? onCreate;
-  /// اسم حقل (من نوع select) تُبنى منه شرائح التصفية أعلى القائمة (الكل + كل خيار بعدّاده).
+  /// Name of a select field used to build the filter chips above the list (All plus each option with its count).
   final String? filterField;
-  /// خياراتُ شرائح التصفية حين لا يكون `filterField` حقلًا في النموذج — حقلٌ
-  /// يحسبه الخادم (مثلُ حالة التحصيل) فلا يُعرَض في ورقة التحرير.
+  /// Filter chip options when `filterField` is not a form field, e.g. a server-computed field such as collection status that is not shown in the edit sheet.
   final List<(String, String, String)>? filterOptions;
-  /// حقول يُتاح الفرز بها إضافةً للاسم (name, ar, en) — (fieldName, arLabel, enLabel).
+  /// Extra sort fields besides the name (name, ar, en): (fieldName, arLabel, enLabel).
   final List<(String, String, String)> sortFields;
-  /// إجراءات سريعة لكل صف (قائمة ثلاث نقاط): تبديل/حذف/تغيير حالة دون فتح النموذج.
-  /// تُعيد قائمة إجراءات لكل صف؛ كل إجراء ينفّذ طلبًا ثم تُحدَّث القائمة.
+  /// Quick per-row actions (three-dot menu): toggle, delete or change status without opening the form. Returns the actions for each row; each runs a request and then the list refreshes.
   final List<ResourceAction> Function(Map<String, dynamic>)? rowActions;
 
-  /// يُرسل نصُّ البحث إلى الخادم (`q=`) بدل تصفيته في التطبيق.
-  ///
-  /// البحثُ في المحمَّل وحدَه يصحّ ما دامت القائمةُ تُحمَّل كاملة. أمّا سجلٌّ
-  /// فيه ثلاثةُ آلافِ صفٍّ فلا يُنزَّل إلى هاتفٍ على شبكةٍ مقيَّدة، فيبحث
-  /// المستخدمُ في أوّل مئتين ويُقال له «لا نتائج» — وهو قصٌّ صامت.
+  /// Sends the search text to the server (`q=`) instead of filtering in the app. Searching only what is loaded works while the whole list is loaded. A registry of three thousand rows is not downloaded to a phone on a limited network, so the user would search the first 200 and get "no results", a silent truncation.
   final bool serverSearch;
 
-  /// مفتاحُ السجلِّ الكامل في `GET endpoint/:id` — يُضبَط حين تكون القائمةُ مقلَّمة.
-  ///
-  /// ── ولماذا ────────────────────────────────────────────────────────────────
-  /// ورقةُ التحرير تُملأ من صفّ القائمة، و`_save` ترسل **كلَّ** حقولِ النموذج.
-  /// فحقلٌ في النموذج لا يحمله الصفُّ يُرسَل فارغًا فيمحو ما في القاعدة: قيمةُ
-  /// الفاتورة وتاريخُ البيان في التخليص كانا يُمحيان عند كلّ تعديلٍ من الهاتف
-  /// لأنّهما ليسا في القائمة أصلًا. والقوائمُ تُقلَّم أكثرَ كلَّما ثقلت الحمولةُ
-  /// على الشبكة، فتُمحى حقولٌ أخرى بلا أن يُقال.
-  ///
-  /// فمن ضبطها: تُقرأ المعاملةُ كاملةً قبل الملء، والفارغُ فيها فارغٌ حقًّا.
+  /// Key of the full record in `GET endpoint/:id`, set when the list rows are trimmed. The edit sheet is filled from the list row and `_save` sends every form field, so a form field missing from the row is sent empty and wipes the stored value (e.g. invoice value and declaration date in clearance). When set, the full record is read before filling, so an empty value really is empty.
   final String? editFullKey;
 
-  /// قسمُ الموارد البشريّة: تحت كلّ تاريخٍ يُختار يُكتب ما يوافقه هجريًّا.
-  /// اختياريٌّ كي لا يتغيّر نموذجُ قسمٍ لم يطلبه.
+  /// HR section: under each selected date, shows the matching Hijri date. Optional so other sections' forms are unchanged.
   final bool hijriDates;
 
-  /// تلميحُ صندوق البحث (عربيّ، إنجليزيّ) — يقول بماذا يُبحث. وبدونه «ابحث…».
+  /// Search box hint (Arabic, English) saying what is searched; defaults to a generic "search".
   final (String, String)? searchHint;
 
   const ResourceConfig({
@@ -132,12 +103,11 @@ class ResourceConfig {
 
   String get title => tr(arTitle, enTitle);
 
-  /// المسارُ الذي تُرسَل إليه الإضافةُ والتعديلُ والحذف.
+  /// Endpoint that receives add, edit and delete requests.
   String get writePath => writeEndpoint ?? endpoint;
 }
 
-/// إجراء صف سريع: أيقونة + عنوان + لون + دالة تُرجع (method, path, body?) للتنفيذ،
-/// أو دالة تنفيذ مخصّصة. رسالة تأكيد اختيارية قبل التنفيذ.
+/// Quick row action: icon, title, color, and a function returning (method, path, body?) to execute, or a custom execute function. Optional confirmation message before running.
 class ResourceAction {
   final IconData icon;
   final String ar;
@@ -145,16 +115,15 @@ class ResourceAction {
   final Color color;
   final String? confirmAr;
   final String? confirmEn;
-  /// طلب جاهز: (method 'PATCH'|'PUT'|'POST'|'DELETE', path, body?).
+  /// Ready request: (method 'PATCH'|'PUT'|'POST'|'DELETE', path, body?).
   final (String, String, Map<String, dynamic>?) Function(Map<String, dynamic>)? request;
-  /// إجراءٌ لا يمرّ بلا سبب: يُسأل عنه في نافذة التأكيد (ثلاثةُ أحرفٍ على الأقلّ)
-  /// ويُرسَل في جسم الطلب تحت هذا المفتاح. وعنوانُ خانته `reasonAr`/`reasonEn`.
+  /// Action that requires a reason: asked in the confirm dialog (at least three characters) and sent in the request body under this key. The input label uses `reasonAr`/`reasonEn`.
   final String? reasonKey;
   final String? reasonAr;
   final String? reasonEn;
-  /// السببُ يُسأل عنه ولا يُشترط (مثلُ «لم تُحصَّل» — صاحبُ الشركة، ٢٠٢٦/١٠/٢٠).
+  /// The reason is asked for but not required (e.g. for the not-collected action).
   final bool reasonOptional;
-  /// إجراءٌ بشاشته — يُختار فيه قبل الإرسال (مثلُ «نقل المشروع»). يُرجع true إن تغيّر شيء.
+  /// Action with its own screen where the user chooses before sending (e.g. moving a project). Returns true if something changed.
   final Future<bool> Function(BuildContext, Map<String, dynamic>)? run;
   const ResourceAction({
     required this.icon, required this.ar, required this.en, required this.color,
@@ -164,8 +133,7 @@ class ResourceAction {
   String get label => tr(ar, en);
 }
 
-/// قيمةُ حقلٍ في صفٍّ — تقبل مسارًا بنقطة («mate.name») كي يُبحَث في
-/// كائنٍ متداخلٍ كما يُبحَث في حقلٍ مسطَّح.
+/// Value of a field in a row; accepts a dotted path ("mate.name") so nested objects can be searched like flat fields.
 String _path(Map<String, dynamic> row, String field) {
   if (!field.contains('.')) return (row[field] ?? '').toString();
   dynamic cur = row;
@@ -187,7 +155,7 @@ class ResourceScreen extends StatefulWidget {
   State<ResourceScreen> createState() => _ResourceScreenState();
 }
 
-// أوضاع الفرز المتاحة على أي قائمة.
+// Sort modes available on any list.
 enum _Sort { none, azAsc, azDesc, newest, oldest }
 
 class _ResourceScreenState extends State<ResourceScreen> {
@@ -197,14 +165,14 @@ class _ResourceScreenState extends State<ResourceScreen> {
   String? _error;
   String _q = '';
   final _searchCtl = TextEditingController();
-  String _filter = '';        // '' = الكل ؛ وإلا قيمة filterField المختارة
+  String _filter = '';        // '' = all; otherwise the selected filterField value.
   _Sort _sort = _Sort.none;
-  int _limit = 200;           // يزيد عند «تحميل المزيد» — بدل القص الصامت
+  int _limit = 200;           // Increases on "load more" instead of silently truncating.
   late final void Function() _onLive;
 
   ResourceConfig get cfg => widget.config;
 
-  // FieldSpec الخاص بحقل التصفية (إن وُجد وكان من نوع select).
+  // FieldSpec of the filter field (if present and of type select).
   FieldSpec? get _filterSpec {
     if (cfg.filterField == null) return null;
     if (cfg.filterOptions != null) {
@@ -234,15 +202,14 @@ class _ResourceScreenState extends State<ResourceScreen> {
     super.dispose();
   }
 
-  // نداءُ الخادم عند كلّ حرفٍ إسرافٌ على شبكةٍ مقيَّدة — والمؤقّتُ السابقُ
-  // يُلغى فلا تصل نتيجةُ حرفٍ قديمٍ بعد نتيجة ما كُتب أخيرًا.
+  // A server call per keystroke wastes a limited network; the previous timer is cancelled so a stale keystroke result never lands after the latest.
   Timer? _searchTimer;
   void _searchDebounced() {
     _searchTimer?.cancel();
     _searchTimer = Timer(const Duration(milliseconds: 350), () { if (mounted) _load(); });
   }
 
-  int _seq = 0; // الأحدثُ وحدَه يُكتب: بحثٌ أقدمُ يصل متأخّرًا لا يمحو نتيجةَ الأحدث
+  int _seq = 0; // Only the latest request writes; an older search arriving late does not wipe the newer result.
   Future<void> _load() async {
     final mine = ++_seq;
     try {
@@ -253,7 +220,7 @@ class _ResourceScreenState extends State<ResourceScreen> {
       ].join('&');
       final d = await Api.instance.get('${cfg.endpoint}?$qs');
       if (!mounted || mine != _seq) return;
-      // نتحمّل أي شكل استجابة: {listKey:[...]} أو مصفوفة مباشرة — بلا كراش.
+      // Tolerates any response shape: {listKey:[...]} or a bare array, without crashing.
       final raw = d is Map ? d[cfg.listKey] : (d is List ? d : null);
       setState(() {
         _rows = raw is List ? List<Map<String, dynamic>>.from(raw.whereType<Map>().map((e) => Map<String, dynamic>.from(e))) : [];
@@ -266,14 +233,14 @@ class _ResourceScreenState extends State<ResourceScreen> {
     }
   }
 
-  // «تحميل المزيد»: نرفع الحد ونعيد الجلب — نهاية القص الصامت عند 200.
+  // Load more: raise the limit and refetch, ending the silent truncation at 200.
   Future<void> _loadMore() async {
     if (_loadingMore) return;
     setState(() { _loadingMore = true; _limit += 200; });
     await _load();
   }
 
-  // فرز نسخة من القائمة حسب الوضع المختار.
+  // Sort a copy of the list by the selected mode.
   List<Map<String, dynamic>> _applySort(List<Map<String, dynamic>> list) {
     if (_sort == _Sort.none) return list;
     final out = [...list];
@@ -356,10 +323,10 @@ class _ResourceScreenState extends State<ResourceScreen> {
     }
   }
 
-  // قائمة الإجراءات السريعة (ثلاث نقاط) على الصف — تشمل «تعديل» و«حذف» تلقائيًا.
+  // Quick-action menu (three dots) on the row; includes edit and delete automatically.
   Widget _rowActionsMenu(Map<String, dynamic> row) {
     final acts = cfg.rowActions!(row);
-    // صفٌّ لا إجراءَ له لا يُرسَم له زرٌّ يفتح قائمةً فارغة.
+    // A row with no actions gets no button, so an empty menu is never opened.
     if (acts.isEmpty && !cfg.canEdit && !cfg.canDelete) return const SizedBox.shrink();
     return PopupMenuButton<int>(
       icon: const Icon(Icons.more_vert, color: T.inkFaint),
@@ -453,7 +420,7 @@ class _ResourceScreenState extends State<ResourceScreen> {
         'DELETE' => await Api.instance.delete(path),
         _ => null,
       };
-      // رسالةُ الخادم تُعرَض إن أرسلها («أُعيدت ٣ كشوف غيرَ محصَّلة»).
+      // Server message is shown when sent (e.g. "3 sheets returned to uncollected").
       if (mounted && res is Map && '${res['message'] ?? ''}'.isNotEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${res['message']}')));
       }
@@ -478,8 +445,7 @@ class _ResourceScreenState extends State<ResourceScreen> {
     );
   }
 
-  /// شارةٌ تحمل قيمةً خامًا («lead»، «visit») تُعرَض بنصّ خيارها في النموذج —
-  /// القيمةُ للخادم والنصُّ للقارئ. وما ليس خيارًا يبقى كما هو.
+  /// Badge holding a raw value ("lead", "visit") shown with its form option label: the value is for the server, the label for the reader. A non-option value stays as is.
   String _chipLabel(String v) {
     for (final f in cfg.fields) {
       for (final o in f.options ?? const <(String, String, String)>[]) {
@@ -492,7 +458,7 @@ class _ResourceScreenState extends State<ResourceScreen> {
     return v;
   }
 
-  /// أعمدةُ التصدير: العنوانُ ثمّ حقولُ النموذج بأسمائها، والاختيارُ بنصّه لا بقيمته.
+  /// Export columns: the title, then the form fields by name; select fields export their label, not their value.
   List<ExportCol> _exportColumns() => [
         ExportCol(cfg.arTitle, cfg.enTitle, (r) => cfg.titleOf(r)),
         for (final f in cfg.fields)
@@ -515,16 +481,15 @@ class _ResourceScreenState extends State<ResourceScreen> {
   Widget build(BuildContext context) {
     final q = _fold(_q.trim());
     final fSpec = _filterSpec;
-    // تصفية بالشريحة المختارة ثم بالبحث ثم الفرز.
+    // Filter by the selected chip, then search, then sort.
     final filtered = _applySort(_rows.where((r) {
       if (_filter.isNotEmpty && (r[cfg.filterField] ?? '').toString() != _filter) return false;
       if (q.isEmpty) return true;
-      // الخادمُ بحث بالفعل — وإعادةُ التصفية هنا تُسقط ما طابقه في حقلٍ
-      // لا يعرفه `searchFields`.
+      // The server already searched; filtering again here would drop rows matched on a field `searchFields` does not know.
       if (cfg.serverSearch) return true;
       return cfg.searchFields.any((f) => _fold(_path(r, f)).contains(q));
     }).toList());
-    // عدّاد كل خيار تصفية محسوبًا من كامل الصفوف المحمّلة.
+    // Count of each filter option, computed from all loaded rows.
     int countFor(String v) => v.isEmpty
         ? _rows.length
         : _rows.where((r) => (r[cfg.filterField] ?? '').toString() == v).length;
@@ -538,7 +503,7 @@ class _ResourceScreenState extends State<ResourceScreen> {
             tooltip: tr('ترتيب', 'Sort'),
             onPressed: _openSort,
           ),
-        // تصديرُ ما يُرى (تحت الشريحة والبحث والفرز) — كـExportMenu في الويب.
+        // Exports what is visible (after chip, search and sort), like ExportMenu on the web.
         if (!_loading && _error == null && _rows.isNotEmpty)
           ExportButton(fileName: cfg.enTitle, sheetName: cfg.title, columns: _exportColumns(), rows: () => filtered),
       ],
@@ -577,8 +542,7 @@ class _ResourceScreenState extends State<ResourceScreen> {
               label: Text(tr('إضافة', 'Add')),
             )
           : null,
-      // خانةُ البحث ثابتةٌ فوق، لا تُستبدَل وقتَ التحميل أو الخطأ — كانت تُرسَم
-      // من جديدٍ فارغةً والكلمةُ ما زالت تُرشِّح، فيختفي المحتوى ولا يُمسَح.
+      // The search box stays fixed on top and is not swapped out while loading or on error; it was redrawn empty while the term still filtered, so content vanished with no way to clear it.
       body: Column(children: [
                   Padding(
                     padding: const EdgeInsets.fromLTRB(14, 12, 14, 4),
@@ -606,7 +570,7 @@ class _ResourceScreenState extends State<ResourceScreen> {
                           : ListView.separated(
                               keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                               padding: const EdgeInsets.fromLTRB(14, 8, 14, 90),
-                              // صف إضافي في النهاية لزر «تحميل المزيد» عندما نكون على الحدّ.
+                              // Extra trailing row for the load-more button when at the limit.
                               itemCount: filtered.length + ((_rows.length >= _limit && _filter.isEmpty && q.isEmpty) ? 1 : 0),
                               separatorBuilder: (_, __) => const SizedBox(height: 8),
                               itemBuilder: (c, i) {
@@ -663,7 +627,7 @@ class _ResourceScreenState extends State<ResourceScreen> {
                                         if (cfg.rowActions != null)
                                           _rowActionsMenu(r)
                                         else if (cfg.canEdit)
-                                          // chevron_right ينقلب وحدَه في العربيّة؛ اختيارُ اليسار هناك كان يقلبه مرّتين.
+                                          // chevron_right flips automatically in Arabic; choosing the left icon there flipped it twice.
                                           const Icon(Icons.chevron_right, color: T.inkFaint),
                                       ]),
                                     ),
@@ -678,7 +642,7 @@ class _ResourceScreenState extends State<ResourceScreen> {
   }
 }
 
-/// شريحة تصفية أعلى القائمة: عنوان + عدّاد، تُبرز حالتها عند الاختيار.
+/// Filter chip above the list: title plus count, highlighted when selected.
 class _FilterChip extends StatelessWidget {
   final String label;
   final int count;
@@ -738,7 +702,7 @@ class _ResourceForm extends StatefulWidget {
 class _ResourceFormState extends State<_ResourceForm> {
   final Map<String, dynamic> _values = {};
   final Map<String, TextEditingController> _ctrls = {};
-  final Map<String, String> _lookupLabels = {}; // fieldName → نص عرض العلاقة المختارة
+  final Map<String, String> _lookupLabels = {}; // fieldName to the display text of the selected relation.
   bool _busy = false;
 
   bool get isEdit => widget.row != null;
@@ -759,7 +723,7 @@ class _ResourceFormState extends State<_ResourceForm> {
         case FieldType.select:
           _values[f.name] = (v ?? '').toString();
         case FieldType.lookup:
-          // القيمة قد تكون كائنًا مملوءًا {_id,...} أو id نصيًا.
+          // The value may be a populated object {_id,...} or a string id.
           if (v is Map) {
             _values[f.name] = (v['_id'] ?? '').toString();
             if (f.lookupLabel != null) _lookupLabels[f.name] = f.lookupLabel!(Map<String, dynamic>.from(v));
@@ -769,8 +733,7 @@ class _ResourceFormState extends State<_ResourceForm> {
         case FieldType.date:
           _values[f.name] = v != null ? (v.toString().split('T').first) : '';
         default:
-          // الضابطُ يُعاد استعمالُه حين تُعاد التعبئةُ بالسجلّ الكامل — إنشاءُ
-          // ضابطٍ جديدٍ يترك القديمَ معلَّقًا في الشجرة.
+          // The controller is reused when refilling with the full record; creating a new one would leave the old one dangling in the tree.
           final c = _ctrls[f.name];
           if (c == null) {
             _ctrls[f.name] = TextEditingController(text: (v ?? '').toString());
@@ -781,8 +744,7 @@ class _ResourceFormState extends State<_ResourceForm> {
     }
   }
 
-  /// السجلُّ الكامل قبل التعديل — راجع `editFullKey`: الصفُّ في القائمة مقلَّمٌ،
-  /// والحفظُ يرسل كلَّ حقولِ النموذج، فالملءُ من الصفِّ وحدَه يمحو ما ليس فيه.
+  /// Full record before editing; see `editFullKey`. The list row is trimmed and saving sends every form field, so filling from the row alone wipes what it lacks.
   Future<void> _loadFull() async {
     try {
       final d = await Api.instance.get('${widget.cfg.endpoint}/${widget.row!['_id']}');
@@ -791,7 +753,7 @@ class _ResourceFormState extends State<_ResourceForm> {
         setState(() => _prefill({...widget.row!, ...Map<String, dynamic>.from(full)}));
       }
     } catch (_) {
-      // تعذّرت القراءة: تبقى التعبئةُ من الصفّ — ولا تُمنَع ورقةٌ مفتوحةٌ من العمل.
+      // Read failed: filling from the row continues so an open sheet is never blocked.
     }
   }
 
@@ -902,7 +864,7 @@ class _ResourceFormState extends State<_ResourceForm> {
           ),
         );
       case FieldType.select:
-        // قيمة الصف قد تكون null أو قيمة قديمة مش في options — نتحمّل الاتنين بلا كراش.
+        // The row value may be null or an old value not in options; both are tolerated without crashing.
         final current = (_values[f.name] ?? '').toString();
         final opts = f.options ?? const <(String, String, String)>[];
         final known = opts.any((o) => o.$1 == current);
@@ -997,8 +959,7 @@ class _ResourceFormState extends State<_ResourceForm> {
   }
 }
 
-/// منتقي علاقة: يجلب الخيارات من endpoint، بحث فوري، واختيار يُرجع (id, label).
-/// «بدون» يمسح الاختيار (يُرجع ('', '')).
+/// Relation picker: fetches options from an endpoint, live search, and returns (id, label) on selection. "None" clears the selection (returns ('', '')).
 class _LookupPicker extends StatefulWidget {
   final FieldSpec field;
   final String currentId;
@@ -1032,7 +993,7 @@ class _LookupPickerState extends State<_LookupPicker> {
     try {
       final qs = f.lookupQuery ?? 'limit=200';
       final sep = (f.lookupEndpoint ?? '').contains('?') ? '&' : '?';
-      // نصُّ البحث يُرسَل إلى الخادم لمن طلب ذلك — وردٌّ قديمٌ لا يمحو أحدثَ منه.
+      // The search text goes to the server when requested; a stale reply never overwrites a newer one.
       final search = f.lookupServerSearch && _q.trim().isNotEmpty
           ? '&q=${Uri.encodeQueryComponent(_q.trim())}' : '';
       final d = await Api.instance.get('${f.lookupEndpoint}$sep$qs$search');
@@ -1050,7 +1011,7 @@ class _LookupPickerState extends State<_LookupPicker> {
 
   String _label(Map<String, dynamic> r) => f.lookupLabel?.call(r) ?? (r['name'] ?? r['title'] ?? r['_id'] ?? '').toString();
 
-  /// الكتابةُ تُعيد الطلبَ بعد سكونها — لمن يبحث عند الخادم وحدَه.
+  /// Typing re-requests after a pause; used only for server-side search.
   void _onQueryChanged() {
     if (!f.lookupServerSearch) return;
     _debounce?.cancel();
@@ -1060,7 +1021,7 @@ class _LookupPickerState extends State<_LookupPicker> {
   @override
   Widget build(BuildContext context) {
     final q = _fold(_q.trim());
-    // الخادمُ صفّى لمن طلب — وتصفيةُ الواصل ثانيًا تحجب ما وجده بالجوّال أو السجل.
+    // The server already filtered; filtering the result again would hide matches found by mobile number or registry.
     final filtered = f.lookupServerSearch
         ? _rows
         : _rows.where((r) => q.isEmpty || _fold(_label(r)).contains(q)).toList();

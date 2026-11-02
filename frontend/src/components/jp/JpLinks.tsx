@@ -1,10 +1,7 @@
 'use client';
 /**
- * بماذا تتعلّق المهمّة — رقائقُ تُقرأ، ومنتقٍ يربط.
- *
- * «تابِع فاتورةَ النقل» لا تُفهَم إلّا بمعاملتها، و«كلِّم العميل» بعميلها. فتُربَط
- * المهمّةُ بما تخصّه وتُفتَح منه. والأنواعُ المسموحةُ يقولها الخادمُ لكلّ قسم
- * (`linkKinds` في /api/jp/me) — قسمٌ بلا أنواعٍ لا يظهر له شيءٌ من هذا.
+ * What a task relates to: readable chips and a linking picker.
+ * A task is understood only with its transaction or customer, so it is linked to that and opened from it. Allowed kinds come from the server per section (`linkKinds` in /api/jp/me); a section without kinds shows nothing.
  */
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
@@ -50,7 +47,7 @@ export function LinkChips({ links, ar, onRemove }: { links?: JpLink[]; ar: boole
 }
 
 type Opt = { value: string; label: string };
-/** ما يُختار للربط — بحثٌ في الخادم لكلّ نوع (/api/jp/link-options؛ config/jpLinks). */
+/** What can be picked to link: a server-side search per kind (/api/jp/link-options; config/jpLinks). */
 async function optionsFor(section: string, kind: string, q = ''): Promise<Opt[]> {
   const d = await api.get<{ options: Opt[] }>(`/api/jp/link-options?scope=section&section=${encodeURIComponent(section)}&kind=${kind}&q=${encodeURIComponent(q)}`);
   return d.options || [];

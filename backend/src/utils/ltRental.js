@@ -1,29 +1,13 @@
 /**
- * ltRental — «اليوزرُ المؤجَّر» تعريفٌ واحد، وربطُه بصفّ المندوب.
- *
- * ── ما وقع (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢) ──────────────────────────────────────
- * اللوحةُ تقول «نينجا ١٣ يوزرًا مؤجَّرًا» وصفحةُ «تأجير اليوزرات» فارغة: اللوحةُ
- * تعدّ من نوع العقد المكتوب في صفّ المندوب («يوزرات»)، والصفحةُ تعدّ سجلّاتِ
- * التأجير — ولا رابطَ بين الاثنين. فطلب أن تكون بطاقاتُ اليوزرات مربوطةً
- * بالصفحة: نقلُ اليوزر إلى مشروعٍ آخر، أو إنهاءُ تأجيره، يظهر في الكروت فورًا.
- *
- * ── القاعدة ──────────────────────────────────────────────────────────────────
- * • اليوزرُ المؤجَّر = تأجيرٌ ساري (`LtUserRental.status = active`) مربوطٌ بصفّه
- *   (`ltEmployee`). ونوعُ العقد «يوزرات» في الصفّ **مرآةٌ** لذلك يكتبها هذا الملفّ،
- *   ويُقرأ وحدَه احتياطًا لصفٍّ لم يُربط بتأجيرٍ بعد.
- * • تسجيلُ تأجيرٍ لصفٍّ يجعل نوعَ عقده «يوزرات» (ويحفظ ما كان قبله)، وإنهاؤه
- *   يُعيد ما كان قبله (أو فراغًا «غير محدد»).
- * • ونقلُ المندوب إلى مشروعٍ آخر ينقل تأجيرَه الساري معه (خطّافُ النموذج).
+ * ltRental: one definition of a rented user, and its link to the rider row.
+ * A rented user is an active rental (`LtUserRental.status = active`) linked to its row (`ltEmployee`). The row's contract type 'users' is a mirror of that, written here and read alone only as a fallback for unlinked rows.
+ * Registering a rental sets the contract type to 'users' (saving the previous one); ending it restores it. Moving the rider to another project moves their active rental (model hook).
  */
 const S = (v) => String(v == null ? '' : v).trim();
 const USERS_AR = 'يوزرات';
 const isUsersText = (v) => /يوزر/.test(S(v));
 
-/**
- * يعلّم الصفوفَ بتأجيرها: `r._rented` = true (ساري) · false (له تأجيرٌ انتهى ولا
- * ساريَ له) · undefined (لا تأجيرَ مربوطًا — يُقرأ نوعُ العقد احتياطًا). و`r.rental`
- * ملخّصُ الساري لعرضه. سؤالٌ واحدٌ للصفوف كلّها.
- */
+/** Marks rows with their rental: `r._rented` is true (active), false (had a rental that ended and none active) or undefined (no linked rental; contract type is read as a fallback). `r.rental` is the active summary for display. One query for all rows. */
 async function markRentals(rows) {
   const ids = rows.map((r) => r._id).filter(Boolean);
   if (!ids.length) return rows;
@@ -45,7 +29,7 @@ async function markRentals(rows) {
   return rows;
 }
 
-/** هل هو يوزرٌ مؤجَّر؟ التأجيرُ المربوطُ أوّلًا، ونوعُ العقد احتياطًا. */
+/** Is it a rented user? Linked rental first, contract type as fallback. */
 const isRented = (r) => (r && r._rented !== undefined ? r._rented === true : isUsersText(r?.contractTypeAr));
 
 function announce() {
@@ -57,9 +41,9 @@ function announce() {
 }
 
 /**
- * بعد كلّ كتابةٍ في التأجير: يجعل نوعَ عقد الصفّ المربوط يطابقه.
- * @param rental  وثيقةُ التأجير بعد الحفظ (أو null بعد الحذف — ومعها `removed`)
- * @param opts.previousLt  صفٌّ كان مربوطًا قبل التعديل (فُكّ عنه)
+ * After every rental write: makes the linked row's contract type match it.
+ * @param rental  the rental document after saving (or null after delete, with `removed`)
+ * @param opts.previousLt  a row that was linked before the edit (now unlinked)
  */
 async function syncEmployee(rental, { previousLt = null, removed = false, user = null } = {}) {
   const { LightTransportEmployee } = require('../models/LightTransport');
@@ -73,7 +57,7 @@ async function syncEmployee(rental, { previousLt = null, removed = false, user =
     const want = active ? USERS_AR : null;
     if (want) {
       if (!isUsersText(lt.contractTypeAr)) {
-        // يُحفَظ ما كان قبله على التأجير ليُعاد عند إنهائه.
+        // Keep the previous type on the rental so it can be restored when the rental ends.
         if (!active.prevContractTypeAr) { active.prevContractTypeAr = S(lt.contractTypeAr); await active.save(); }
         lt.history.push({ kind: 'contract', ...by, fromValue: S(lt.contractTypeAr), toValue: USERS_AR, note: 'تأجير يوزر' });
         lt.contractTypeAr = USERS_AR;
@@ -91,7 +75,7 @@ async function syncEmployee(rental, { previousLt = null, removed = false, user =
   announce();
 }
 
-/** نقلُ المندوب إلى مشروعٍ آخر ينقل تأجيرَه الساري معه — يناديه خطّافُ النموذج. */
+/** Moving the rider to another project moves their active rental along; called by the model hook. */
 async function followProject(lt) {
   const LtUserRental = require('../models/LtUserRental');
   const r = await LtUserRental.updateMany({ ltEmployee: lt._id, status: 'active', projectAr: { $ne: S(lt.projectAr) } },

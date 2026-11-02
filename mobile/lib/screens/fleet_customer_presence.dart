@@ -12,10 +12,7 @@ import 'customer_registry_profile.dart';
 import 'customs_party.dart';
 import 'fleet_customer_profile.dart';
 
-/// «نفس العميل في: …» — نظيرُ CustomerPresence في الويب. يقرأ من
-/// /api/customer-hub/presence/:reg/:id أين يوجد العميلُ نفسُه في الأقسام
-/// الأخرى ويعرضها روابطَ، ويستمع لـ`customers:changed` فيعيد قراءة الشاشة
-/// التي هو فيها (onChanged) متى عُدِّل العميلُ من أيّ مكان.
+/// "Same customer in" block, counterpart of CustomerPresence on the web. Reads from /api/customer-hub/presence/:reg/:id where the same customer exists in other sections and shows them as links; listens to `customers:changed` and re-reads the screen it is in (onChanged) whenever the customer is edited anywhere.
 class CustomerPresence extends StatefulWidget {
   final String reg; // crm | collections | shipment | fleet | customs | contracts
   final String id;

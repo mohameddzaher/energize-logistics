@@ -1,16 +1,12 @@
 'use client';
-// ── دمجُ مورّدَين (٢٠٢٦/١٠/٢٦) ──────────────────────────────────────────────
-// «فيه اتنين مورد بنفس الاسم… دول نفس الشخص، وحّدهم وضيف بياناتهم على بعض».
-// يُختار المورّدُ الآخر (المكرَّرُ باسمه أوّلًا)، ويُختار أيُّهما يبقى، ثمّ يدمج
-// الخادمُ: الخاناتُ الفارغةُ تُملأ، والمختلفةُ تُضاف إلى الملاحظات، وتنتقل
-// الشاحناتُ والسائقون والشحناتُ إلى الباقي (POST /suppliers/:id/merge).
+// Merge two suppliers: pick the other supplier (the same-name duplicate first) and which one stays; the server then merges: empty fields are filled, differing ones are appended to the notes, and trucks, drivers and shipments move to the survivor (POST /suppliers/:id/merge).
 import { useEffect, useMemo, useState } from 'react';
 import { X, Loader2, GitMerge, Search } from 'lucide-react';
 import api from '@/lib/api';
 import { useDialog } from '@/components/system/DialogProvider';
 import type { OrderSupplier } from '@/lib/shipmentOrders';
 
-/** يطوي الاسم: التشكيل والهمزات والتاء المربوطة والمسافات — «اللوجيستيه» = «اللوجستية» تقريبًا. */
+/** Folds the name: diacritics, hamza forms, ta marbuta and spaces, so near-identical spellings match. */
 export const supplierNameKey = (v?: string) => String(v || '')
   .replace(/[ً-ْـ]/g, '')
   .replace(/[أإآ]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي')
@@ -23,7 +19,7 @@ const FIELDS: [keyof OrderSupplier | string, string, string][] = [
 
 export default function SupplierMergeModal({ supplier, all, ar, onClose, onDone }: {
   supplier: OrderSupplier;
-  /** المورّدون المحمَّلون في الصفحة — منهم يُقترح المكرَّر. */
+  /** Suppliers loaded in the page, from which the duplicate is suggested. */
   all: OrderSupplier[];
   ar: boolean;
   onClose: () => void;
@@ -55,7 +51,7 @@ export default function SupplierMergeModal({ supplier, all, ar, onClose, onDone 
     return () => { live = false; clearTimeout(t); };
   }, [q, supplier._id]);
 
-  // يبقى افتراضًا مَن له شاحناتٌ أكثر — هو المعروفُ في الشحنات.
+  // The one with more trucks stays by default, as the one known in shipments.
   useEffect(() => {
     if (!other) return;
     setKeepId((other.vehicleCount || 0) > (supplier.vehicleCount || 0) ? other._id : supplier._id);

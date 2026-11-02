@@ -40,8 +40,8 @@ const mapShipment = (x) => ({ ...mapCore(x), createdAt: date(x.created_at) || ne
   let page = 1; let seen = 0; let created = 0; let updated = 0; let total = null;
   let quietPages = 0;
   for (;;) {
-    // eslint-disable-next-line no-await-in-loop
     // The platform ignores sort and always returns creation order; see jobs/opsPoll.
+    // eslint-disable-next-line no-await-in-loop
     const r = await upl.get('/admin/shipments', { query: { limit: 100, page } });
     const d = (r && r.data) || {};
     const items = d.items || [];

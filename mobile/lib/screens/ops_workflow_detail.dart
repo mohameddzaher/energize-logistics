@@ -15,14 +15,11 @@ import '../ui/widgets.dart';
 import 'jp.dart' show JpTaskPanel;
 import 'ops_common.dart';
 
-/// كشفُ التشغيل الواحد — نظيرُ /system/operations/[id]: حقولُه بمجموعاتها،
-/// والتعديلُ بقفل الصفّ (lock/unlock)، وأزرارُ المراحل، والحذف، والتصدير،
-/// ومعاملةُ التخليص والمتابعات ومهامُّ JP.
-///
-/// ما يحقّ تعديلُه يقوله الخادم حقلًا حقلًا (`/api/workflows/permissions`).
+/// A single operations statement, counterpart of /system/operations/[id]: its grouped fields, editing with a row lock (lock/unlock), stage buttons, delete, export, the clearance transaction, follow-ups and JP tasks.
+/// Which fields may be edited is stated by the server field by field (`/api/workflows/permissions`).
 
-/// الحقولُ بمجموعاتها — نفسُ lib/workflowFields.ts.
-/// النوع: '' نصّ · 'date' · 'number' · 'ptype' نوعُ الدفع.
+/// Fields by group, same as lib/workflowFields.ts.
+/// Types: '' text, 'date', 'number', 'ptype' payment kind.
 const opsWorkflowSections = [
   ('application', 'بيانات الطلب', 'Application Details', T.cyan, [
     ('reportNumber', 'رقم أمر النقل', 'Report Number', ''),
@@ -90,7 +87,7 @@ const _stageLabels = {
 class OpsWorkflowDetailScreen extends StatefulWidget {
   final String id;
   final Map<String, dynamic>? initial;
-  /// يُفتح على التعديل مباشرةً — نظيرُ `?edit=1` في الويب.
+  /// Opens straight into edit mode, counterpart of `?edit=1` on the web.
   final bool startInEdit;
   const OpsWorkflowDetailScreen({super.key, required this.id, this.initial, this.startInEdit = false});
   @override
@@ -104,7 +101,7 @@ class _OpsWorkflowDetailScreenState extends State<OpsWorkflowDetailScreen> {
   bool _editing = false;
   bool _saving = false;
   bool _transitioning = false;
-  /// `null` = لم تصل القائمة بعد (أو مديرُ النظام: كلُّ شيء).
+  /// `null` means the list has not arrived yet (or system admin: everything).
   Set<String>? _myFields;
   // Invoice amounts (net invoice onward) are shown only when the server says so.
   bool _seesAmounts = false;
@@ -130,7 +127,7 @@ class _OpsWorkflowDetailScreenState extends State<OpsWorkflowDetailScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadPerms());
     _onUpdated = (d) {
       if (d is! Map || '${d['_id']}' != widget.id || !mounted) return;
-      // الصفُّ كاملًا يُستبدَل؛ والإشعارُ المختصرُ يعيد الجلب.
+      // The whole row is replaced; the short notification triggers a refetch.
       if (d.containsKey('reportNumber')) {
         setState(() {
           _w = Map<String, dynamic>.from(d);
@@ -148,7 +145,7 @@ class _OpsWorkflowDetailScreenState extends State<OpsWorkflowDetailScreen> {
       if (d is! Map || '${d['_id']}' != widget.id || !mounted || _w == null) return;
       setState(() => _w = {..._w!, 'lockedBy': null, 'lockedByName': '', 'lockedAt': null});
     };
-    // ربطُ التخليص يتغيّر من صفحة المعاملة أيضًا.
+    // The clearance link also changes from the transaction page.
     _onBulk = (d) {
       if (_editing || _w == null || d is! Map || d['customsLink'] == null) return;
       final nums = (d['reportNumbers'] is List) ? (d['reportNumbers'] as List).map((e) => '$e').toList() : const <String>[];
@@ -168,7 +165,7 @@ class _OpsWorkflowDetailScreenState extends State<OpsWorkflowDetailScreen> {
     Live.instance.offData('workflow:locked', _onLocked);
     Live.instance.offData('workflow:unlocked', _onUnlocked);
     Live.instance.offData('workflow:bulkImported', _onBulk);
-    // الخروجُ في أثناء التعديل لا يترك الصفَّ مقفلًا على الزملاء.
+    // Leaving during edit must not leave the row locked for colleagues.
     if (_editing) Api.instance.post('/api/workflows/${widget.id}/unlock').catchError((_) => null);
     for (final c in _ctrl.values) { c.dispose(); }
     super.dispose();
@@ -261,7 +258,7 @@ class _OpsWorkflowDetailScreenState extends State<OpsWorkflowDetailScreen> {
         payload[f.$1] = f.$4 == 'number' ? (num.tryParse(t.trim()) ?? 0) : t;
       }
     }
-    // نوعُ الدفع يُرسَل إن تغيّر وحدَه: إرسالُه كما هو يختمه «اختيارَ يد».
+    // Payment kind is sent only if it changed: sending it unchanged stamps it as a manual choice.
     if (_ptype != opsPaymentKindOf(_w!)) payload['paymentType'] = _ptype;
     try {
       await Api.instance.put('/api/workflows/${widget.id}', payload);
@@ -277,7 +274,7 @@ class _OpsWorkflowDetailScreenState extends State<OpsWorkflowDetailScreen> {
     }
   }
 
-  /// انتقالاتُ المراحل كما في صفحة الكشف على الويب («إرسال للتشغيل» أُزيل).
+  /// Stage transitions as on the web statement page ("send to operations" was removed).
   List<(String, String, String)> get _transitions {
     final stage = (_w?['stage'] ?? 'draft').toString();
     const opsRoles = ['operations_manager', 'super_admin', 'admin'];
@@ -361,7 +358,7 @@ class _OpsWorkflowDetailScreenState extends State<OpsWorkflowDetailScreen> {
         isExpanded: true,
         decoration: InputDecoration(labelText: label, isDense: true),
         items: [
-          // «ضريبي»/«كاش» القائمُ يُرى ولا يُختار.
+          // An existing tax/cash value is shown but not selectable.
           if (_ptype == 'cash' || _ptype == 'tax')
             DropdownMenuItem(value: _ptype, enabled: false, child: Text(opsPaymentKindLabel(_ptype), style: const TextStyle(color: T.inkFaint))),
           for (final c in opsPaymentChoices) DropdownMenuItem(value: c.$1, child: Text(tr(c.$2, c.$3))),
@@ -427,7 +424,7 @@ class _OpsWorkflowDetailScreenState extends State<OpsWorkflowDetailScreen> {
             : RefreshIndicator(
                 onRefresh: _load,
                 child: ListView(padding: const EdgeInsets.fromLTRB(14, 14, 14, 100), children: [
-                  // ── الرأس: المرحلة والمالك والقفل ─────────────────────────
+                  // Header: stage, owner and lock
                   Wrap(spacing: 6, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
                     Chip2(tr(_stageLabels[w['stage']]?.$1 ?? 'مسودة', _stageLabels[w['stage']]?.$2 ?? 'Draft'), T.inkSoft),
                     if ((w['applicationStatus'] ?? '').toString().isNotEmpty)
@@ -437,7 +434,7 @@ class _OpsWorkflowDetailScreenState extends State<OpsWorkflowDetailScreen> {
                       Chip2(tr('يحرّره ${w['lockedByName'] ?? ''}', 'Being edited by ${w['lockedByName'] ?? ''}'), T.danger, icon: Icons.lock_outline),
                   ]),
                   const SizedBox(height: 10),
-                  // ── أزرارُ المراحل ─────────────────────────────────────────
+                  // Stage buttons
                   if (_transitions.isNotEmpty && !_editing) ...[
                     Wrap(spacing: 8, runSpacing: 8, children: [
                       for (final t in _transitions)
@@ -459,7 +456,7 @@ class _OpsWorkflowDetailScreenState extends State<OpsWorkflowDetailScreen> {
                       child: Text(tr('وضع التعديل — الصفّ مقفلٌ باسمك حتى تحفظ أو تلغي.', 'Editing — the row is locked to you until you save or cancel.'),
                           style: const TextStyle(fontSize: 12, color: T.inkSoft)),
                     ),
-                  // ── معاملةُ التخليص والمتابعات ─────────────────────────────
+                  // Clearance transaction and follow-ups
                   if (!_editing) ...[
                     WorkflowCustomsSection(
                       workflow: w,
@@ -475,7 +472,7 @@ class _OpsWorkflowDetailScreenState extends State<OpsWorkflowDetailScreen> {
                     ReportFollowUpsView(workflowId: widget.id, basePath: '/api/workflows/${widget.id}/follow-ups'),
                     const SizedBox(height: 10),
                   ],
-                  // ── المجموعات ──────────────────────────────────────────────
+                  // Groups
                   for (final s in opsWorkflowSections)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 10),
@@ -489,7 +486,7 @@ class _OpsWorkflowDetailScreenState extends State<OpsWorkflowDetailScreen> {
                           ]),
                           const SizedBox(height: 8),
                           for (final f in s.$5)
-                            // قيمةُ البيع لمن في قائمتها وحدَه — الخادمُ لا يرسلها لغيره.
+                            // Selling value only for those on its list; the server does not send it to anyone else.
                             if ((f.$1 != 'sellingValue' || const ['super_admin', 'admin'].contains(role) || (_myFields?.contains('sellingValue') ?? false))
                                 && (_seesAmounts || !_amountKeys.contains(f.$1)))
                               Padding(padding: const EdgeInsets.only(bottom: 10), child: _fieldView(f)),
@@ -498,7 +495,7 @@ class _OpsWorkflowDetailScreenState extends State<OpsWorkflowDetailScreen> {
                     ),
                   if (!_editing) JpTaskPanel(section: 'operations', kind: 'workflow', refId: widget.id),
                   const SizedBox(height: 10),
-                  // ── معلومات السجلّ ─────────────────────────────────────────
+                  // Record information
                   AppCard(
                     child: Wrap(spacing: 18, runSpacing: 10, children: [
                       _meta(tr('أنشأه', 'Created by'), _personName(w['createdBy']).isNotEmpty

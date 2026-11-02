@@ -8,11 +8,7 @@ import '../screens/customs_detail.dart' show customsFileUrl, customsPayStatus, c
 import 'theme.dart';
 import 'widgets.dart';
 
-/// نافذةُ المعاملة — كلُّ ما في معاملة التخليص للقراءة، من شاشة الماليّة.
-///
-/// شاشةُ التخليص لا تُفتح للماليّة، والمحاسبُ يحتاج أن يرى لا أن يعدّل. فهي
-/// ورقةٌ فوق شاشته، حيّةٌ على `customs:updated` — نفسُ نافذة الموقع
-/// (components/customs/ClearanceQuickView).
+/// Transaction window: read-only view of everything in a clearance transaction, opened from the finance screen. Finance cannot open the clearance screen and the accountant only needs to see. A sheet over their screen, live on `customs:updated`, same as the web ClearanceQuickView.
 Future<void> showClearanceQuickView(BuildContext context, String id) {
   return showModalBottomSheet(
     context: context,
@@ -51,7 +47,7 @@ const _margin = [
 num _n(dynamic v) => v is num ? v : num.tryParse('${v ?? ''}') ?? 0;
 String _money(dynamic v) =>
     _n(v).toStringAsFixed(_n(v) % 1 == 0 ? 0 : 2).replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (m) => ',');
-// الأرقامُ لاتينيّةٌ دائمًا، عربيّةً كانت الواجهةُ أو إنجليزيّة (صاحبُ الشركة، ٢٠٢٦/١٠/٢٧).
+// Numbers are always Latin digits, whether the UI is Arabic or English.
 String _arDigits(int n) => '$n';
 String _date(dynamic v) {
   final s = '${v ?? ''}';
@@ -74,8 +70,7 @@ class _QuickView extends StatefulWidget {
 
 class _QuickViewState extends State<_QuickView> {
   Map<String, dynamic>? _c;
-  // صافي الربح يأتي بجوار المعاملة لا فيها، ولمن يحقّ له وحدَه — فغيابُه هو
-  // الحارس: لا قائمةَ أدوارٍ تُكرَّر هنا.
+  // Net profit comes alongside the transaction, only for those entitled to it; its absence is the guard, so no role list is repeated here.
   num? _profit;
   String? _error;
   int _seq = 0;
@@ -145,7 +140,7 @@ class _QuickViewState extends State<_QuickView> {
     }
     final costs = Map<String, dynamic>.from(c['costs'] ?? const {});
     final rev = Map<String, dynamic>.from(c['revenue'] ?? const {});
-    // الدورةُ كما حسبها الخادم (pipelineOf): ما أُنجز وما أُغلِق والنسبة.
+    // Pipeline as computed by the server (pipelineOf): done, closed and percentage.
     final pipeline = Map<String, dynamic>.from(c['pipeline'] ?? const {});
     final steps = List<Map<String, dynamic>>.from((pipeline['steps'] ?? const []).map((e) => Map<String, dynamic>.from(e)));
     final cargo = '${c['cargoType'] ?? 'containers'}';
@@ -154,7 +149,7 @@ class _QuickViewState extends State<_QuickView> {
     final awaiting = invoiceNo.isNotEmpty && c['isCompleted'] != true && c['cancelled'] != true && c['transportInvoiceReceived'] != true;
     final stages = List<Map<String, dynamic>>.from((c['paymentStages'] ?? const []).map((e) => Map<String, dynamic>.from(e)))
       ..sort((a, b) => '${b['date'] ?? b['addedAt'] ?? ''}'.compareTo('${a['date'] ?? a['addedAt'] ?? ''}'));
-    // المرحلةُ نفسُها قد تُسدَّد على دفعات — تُرقَّم بترتيب إضافتها.
+    // The same stage can be paid in installments, numbered in order of addition.
     final payOrdinal = <dynamic, int>{};
     final payCount = <String, int>{};
     for (final s in (c['paymentStages'] ?? const [])) {
@@ -227,9 +222,9 @@ class _QuickViewState extends State<_QuickView> {
         ),
         const SizedBox(height: 8),
         Wrap(spacing: 5, runSpacing: 5, children: [
-          // المُغلَقةُ ليست من طريق هذه المعاملة — تُرسَم بقفلٍ لا بلون التأخّر.
+          // A closed stage is not on this transaction's path, so it is drawn with a lock, not the overdue color.
           for (final s in steps)
-            // مرحلةُ الوحدات تحمل عدّادَها: كم وحدةً أنجزتها من كم.
+            // A units stage carries its counter: units completed out of total.
             Chip2('${customsStageLabel('${s['key']}', cargo)}${s['unitsOf'] != null && s['locked'] != true ? ' ${_n(s['unitsDone']).round()}/${_n(s['unitsOf']).round()}' : ''}',
                 s['locked'] == true ? T.inkFaint : s['done'] == true ? T.success : pipeline['next'] == s['key'] ? T.warn : T.inkSoft,
                 icon: s['locked'] == true ? Icons.lock_outline : s['done'] == true ? Icons.check : null),

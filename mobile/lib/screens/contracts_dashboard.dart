@@ -6,8 +6,7 @@ import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 
-/// لوحة إدارة العقود — native: the contracted base, distributions and the
-/// missing-documents alerts, computed live by the same endpoint the web uses.
+/// Contracts management dashboard, native: the contracted base, distributions and the missing-documents alerts, computed live by the same endpoint the web uses.
 class ContractsDashboardScreen extends StatefulWidget {
   const ContractsDashboardScreen({super.key});
   @override

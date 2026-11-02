@@ -1,15 +1,7 @@
 'use client';
 /**
- * حساباتُ تطبيق التوصيل — مراجعةُ «غير المرتبط».
- *
- * ── لماذا ─────────────────────────────────────────────────────────────────
- * كلُّ حسابٍ على التطبيق (`B2CRep`) يجب أن يكون لرجلٍ في سجلّ النقل الخفيف: به
- * يُعرَض اسمُه من ملفّه في الموارد البشريّة، وتُجمَع طلباتُه له. والربطُ الآليُّ
- * (utils/b2cRepLink) لا يربط إلّا ما لا يلتبس — والباقي يُراجَع هنا بيد القسم:
- * يُربط بصاحبه، أو يُوقَف إن كان صاحبُه قد ترك العمل.
- *
- * و«مقترحٌ إيقافُه» اقتراحٌ يُعرَض لا إيقافٌ يُنفَّذ: لا طلبَ له منذ ستّين يومًا
- * ولا صفَّ له في السجلّ. القرارُ لمن يعرف الرجال.
+ * Delivery-app accounts review for unlinked accounts.
+ * Every B2CRep must map to a light-transport register person; auto-link (utils/b2cRepLink) only links unambiguous cases, the rest are linked or suspended by hand. "Suggested to suspend" is only a suggestion: no orders for 60 days and no register row.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '@/lib/api';

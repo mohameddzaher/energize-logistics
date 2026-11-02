@@ -1,7 +1,4 @@
-/**
- * An amount in Saudi riyals written out in Arabic for printed documents, with the
- * counted noun in its correct form: ثلاثة آلاف وأربعمائة ريال، خمسة عشر ريالًا.
- */
+/** An amount in Saudi riyals written out in Arabic for printed documents, with the counted noun in its correct form, for example three thousand four hundred riyals, or fifteen riyals. */
 const ONES = ['', 'واحد', 'اثنان', 'ثلاثة', 'أربعة', 'خمسة', 'ستة', 'سبعة', 'ثمانية', 'تسعة', 'عشرة'];
 const TEENS = ['عشرة', 'أحد عشر', 'اثنا عشر', 'ثلاثة عشر', 'أربعة عشر', 'خمسة عشر', 'ستة عشر', 'سبعة عشر', 'ثمانية عشر', 'تسعة عشر'];
 const TENS = ['', '', 'عشرون', 'ثلاثون', 'أربعون', 'خمسون', 'ستون', 'سبعون', 'ثمانون', 'تسعون'];
@@ -47,7 +44,7 @@ function integerWords(n) {
   return parts.join(' و');
 }
 
-/** A number read straight onto «ريال» drops its ending: ألفا، مائتا، أحد عشر ألف. */
+/** A number read straight onto the riyal noun drops its ending: dual forms of thousand and hundred, and the eleven-thousand form. */
 function joined(n) {
   const words = integerWords(n);
   if (n % 1000 === 200) return words.replace(/مائتان$/, 'مائتا');
@@ -55,7 +52,7 @@ function joined(n) {
   return words.replace(/ألفان$/, 'ألفا').replace(/ألفًا$/, 'ألف').replace(/مليونان$/, 'مليونا').replace(/مليونًا$/, 'مليون');
 }
 
-/** Noun for a total: the last two digits decide, a round thousand takes «ريال». */
+/** Noun for a total: the last two digits decide, and a round thousand takes the plain riyal form. */
 function riyalNoun(n) {
   if (n === 1) return 'ريال واحد';
   if (n === 2) return 'ريالان';

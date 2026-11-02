@@ -1,11 +1,7 @@
 'use client';
 /**
- * هويّةُ الشاحنة من سجلّ المركبات — وما يقوله جهازُ لوكيشن بجانبها.
- *
- * الشاحنةُ سجلٌّ واحدٌ في النظام كلِّه (VehicleMaster)، ومرآةُ Wialon مرجعٌ إليه
- * لا نسخةٌ منه. فاللوحةُ والماركةُ والطرازُ والسنةُ والشاسيه والقطاعُ والمستنداتُ
- * تُقرأ من السجلّ، وسنةُ الجهاز وشاسيهه تُعرضان «حسب الجهاز» — وحيث يختلفان
- * يُرفع العلَم، والتصحيحُ في السجلّ. راجع backend/src/services/ls2VehicleLink.js.
+ * Truck identity from the vehicle register, with what the tracking device says beside it.
+ * The truck is one record system-wide (VehicleMaster); the Wialon mirror references it. Plate, make, model, year, chassis, sector and documents come from the register; device year and chassis are shown as per-device, and a flag is raised where they differ. Fixes go in the register. See backend/src/services/ls2VehicleLink.js.
  */
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
@@ -17,7 +13,7 @@ import type { Lang, Vehicle } from '@/lib/ls2';
 
 const DOCS = ['vehicleLicense', 'inspection', 'insurance', 'operatingCard', 'authorization'] as const;
 
-/** علَمٌ صغير: الجهازُ يخالف السجلّ — أو الوحدةُ غير مربوطة به. */
+/** Small flag: the device disagrees with the register, or the unit is not linked to it. */
 export function ConflictFlag({ v, lang }: { v: Pick<Vehicle, 'registry' | 'conflicts'>; lang: Lang }) {
   const ar = lang === 'ar';
   if (!v.registry) {
@@ -39,7 +35,7 @@ function Field({ label, value, mono, warn, sub }: { label: string; value?: strin
   );
 }
 
-/** بطاقةُ الهويّة: السجلُّ أوّلًا، والجهازُ تحته حيث يُقارَن. */
+/** Identity card: register first, device beneath where compared. */
 export function RegistryIdentityCard({ v, lang }: { v: Pick<Vehicle, 'registry' | 'conflicts' | 'profile'>; lang: Lang }) {
   const ar = lang === 'ar';
   const r = v.registry;
@@ -88,11 +84,7 @@ export function RegistryIdentityCard({ v, lang }: { v: Pick<Vehicle, 'registry' 
 interface ConflictRow { unitId: number; plate: string; registryPlate: string; vehicleMaster: string | null; field: 'year' | 'vin'; registry: string; device: string; partial?: boolean }
 interface ConflictsRes { items: ConflictRow[]; unlinked: { unitId: number; plate: string }[]; counts: { year: number; vin: number; vinPartial: number; unlinked: number; units: number } }
 
-/**
- * «تعارضات البيانات» — كلُّ شاحنةٍ يخالف جهازُها السجلَّ في سنة الصنع أو رقم
- * الشاسيه. السجلُّ هو المرجع: من يفتح السطرَ يصحّح السجلَّ إن كان هو المخطئ،
- * فيختفي السطرُ في اللحظة نفسها (`vreg:updated`).
- */
+/** Data conflicts: trucks whose device disagrees with the register on year or chassis. The register is the reference; fixing it removes the row at once (`vreg:updated`). */
 export function RegistryConflictsPanel({ lang }: { lang: Lang }) {
   const ar = lang === 'ar';
   const [data, setData] = useState<ConflictsRes | null>(null);

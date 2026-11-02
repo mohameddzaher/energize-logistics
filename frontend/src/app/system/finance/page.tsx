@@ -1,11 +1,5 @@
 'use client';
-/**
- * الإدارة الماليّة — اللوحة.
- *
- * أهمُّ أرقام كلّ قسمٍ في بطاقةٍ تُفتح على صفحة مالياته. والأرقامُ هي نفسُ
- * بطاقات صفحة القسم (الخادمُ يقتطعها من الحمولة ذاتها)، فلا يختلف رقمُ اللوحة عن
- * رقم الصفحة. وتسمع كلَّ حركةٍ ماليّةٍ في أيّ قسم.
- */
+/** Finance management dashboard. The key figures of each department sit in a card that opens its finance page. They are the same as the department page cards (the server slices them from the same payload), so the dashboard figure never differs from the page figure. It listens to every financial movement in any department. */
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useLanguage } from '@/context/LanguageContext';

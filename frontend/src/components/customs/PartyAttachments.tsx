@@ -1,10 +1,7 @@
 'use client';
 /**
- * مرفقاتُ طرفٍ في التخليص — العميل أو الوكيل أو الناقل.
- *
- * سجلُّه التجاريّ وشهادتُه الضريبيّة وعقدُه وتفويضُه تُرفَق مرّةً في ملفّه، وتُقرأ
- * من كلّ معاملةٍ هو طرفٌ فيها (`ClearanceParties`) — لا تُعاد في كلّ معاملة.
- * والملفُّ يُفتَح في المتصفّح (صورةٌ أو PDF)، وما لا يُعرَض يُنزَّل.
+ * Party attachments in clearance (customer, agent or carrier).
+ * Commercial register, tax certificate, contract and authorization are attached once in the party's file and read from every transaction it takes part in (`ClearanceParties`), not repeated per transaction. A file opens in the browser (image or PDF); anything not displayable is downloaded.
  */
 import { useState } from 'react';
 import api from '@/lib/api';

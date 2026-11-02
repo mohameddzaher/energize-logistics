@@ -1,18 +1,7 @@
 'use client';
-// حياةُ فردة كاوتش — لا موضعُها الحاليّ فقط.
-//
-// السؤال الذي تجيب عنه هذه الشاشة ليس «أين هي الآن» — ذاك سطرٌ في الجدول — بل:
-// **كم عاشت، وعلى ماذا، وكم مشت.** فردةٌ عمرها سنتان على أربع عربيات ليست
-// كفردةٍ عمرها سنتان على واحدة؛ والفرق لا يُقرأ إلّا من السجلّ مجموعًا.
-//
-// وفتراتُ التركيب تُبنى من سجلّ الحركة نفسه: كلُّ تركيبٍ يفتح فترة، وأوّلُ
-// خروجٍ بعده يُغلقها. والمسافة = عدّاد العربية عند النزول ناقص عدّادها عند
-// التركيب، يُقرآن من جدول العدّاد اليوميّ لا من لحظة الحدث — الحدث قد يُسجَّل
-// بعد يومٍ من وقوعه فيحمل عدّادًا متأخّرًا.
-//
-// وما جرى للعربية **أثناء** وجود الفردة عليها منسوبٌ إلى الفردة: صيانةٌ ذلك
-// اليوم كانت الفردة تحتها، وإصلاحٌ كذلك. وهذا هو الفرق بين سجلّ فردةٍ وسجلّ
-// عربية، ولا يُعرف إلّا بمقاطعة التواريخ مع الفترات.
+// The life of a tire, not only its current position. The question this screen answers is not 'where is it now' (a table row) but how long it lived, on what, and how far it ran
+// A two-year-old tire on four trucks is not like one on a single truck; the difference only reads from the summed record. Mounting periods are built from the movement log: each mount opens a period and the first exit after it closes it
+// Distance = the truck's odometer at dismount minus at mount, read from the daily-odometer table, not from the event time (an event may be recorded a day late and carry a late odometer). What happened to the truck WHILE the tire was on it is attributed to the tire: maintenance that day, repairs likewise. That is the difference between a tire record and a truck record, and it only shows by intersecting dates with the periods.
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -35,7 +24,7 @@ interface Stint {
   from: string; to: string | null; endReason: string | null;
   odoStart: number | null; odoEnd: number | null;
   km: number | null; days: number | null; driver: string; current: boolean;
-  /** رُكّبت قبل أن يبدأ النظام: لا حدثَ لتركيبها ولا عدّادَ يومَها. */
+  /** Mounted before the system began: no mount event and no odometer for that day. */
   preSystem?: boolean;
 }
 interface Ev { _id: string; action: string; date: string; fromPlate: string | null; toPlate: string | null; fromPosition: string; toPosition: string; reason: string; notes: string; performedByName: string; odometerKm: number | null }
@@ -56,10 +45,7 @@ const END_AR: Record<string, string> = {
   scrapped: 'سكراب', damaged: 'تلفت', sold: 'بيعت', retired: 'خرجت',
 };
 
-/**
- * رابطُ العربية: صفحتُها بعنوان رقم الوحدة. وعربيةٌ خارج نظام التتبّع لا صفحةَ
- * لها، فيُفتح لها جدولُ كاوتشاتها في أصول الأسطول بدل صفحةٍ فارغة.
- */
+/** Truck link: its page by unit number. A truck outside the tracking system has no page, so its tire table in fleet assets opens instead of an empty page. */
 const vehicleHref = (unitId: number | null | undefined, plate: string) => (unitId != null
   ? `/system/ls2/${unitId}`
   : `/system/ls2/fleet-assets?tab=tires&q=${encodeURIComponent(plate)}`);
@@ -110,9 +96,8 @@ export default function TireProfilePage() {
 
   return (
     <div className="space-y-4 w-full pb-10" dir={isRTL ? 'rtl' : 'ltr'}>
-      {/* ── الترويسة ────────────────────────────────────────────────────── */}
-      {/* الترويسة بلون الشريط الجانبيّ نفسه (slate-900): لونان متقاربان في
-          شاشةٍ واحدة يُقرآن خطأً مطبعيًّا لا قرارًا. */}
+      {/* Header */}
+      {/* Header in the sidebar colour (slate-900): two close colours on one screen read as a typo, not a decision. */}
       <header className="rounded-2xl bg-slate-900 border border-slate-800 text-white shadow-lg overflow-hidden">
         <div className="px-5 py-4 flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-3.5 min-w-0">
@@ -135,7 +120,7 @@ export default function TireProfilePage() {
               </span>
             )}
             {ti.sensor === 'yes' && <span className="px-2.5 py-1 rounded-lg text-[11.5px] font-bold bg-white/15">{t('بحسّاس', 'Sensor')}</span>}
-            {/* تقريرٌ مطبوعٌ بترويسة الشركة — نفسُ ما في الشاشة، من المصدر نفسه. */}
+            {/* Printed report with the company letterhead: the same as the screen, from the same source. */}
             <ReportButton onDark subject="tire" id={ti._id} label={t('تقرير PDF', 'PDF report')} />
             <ExportMenu fileName={`tire-${ti.serial}`} lang={ar ? 'ar' : 'en'}
               options={[{
@@ -170,7 +155,7 @@ export default function TireProfilePage() {
         </div>
       </header>
 
-      {/* ── مجمل حياتها ─────────────────────────────────────────────────── */}
+      {/* Life summary */}
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-2.5">
         <Stat label={t('عمرها', 'Age')} value={`${num(T.ageDays)} ${t('يوم', 'd')}`} icon={<CalendarDays className="w-3.5 h-3.5" />} />
         <Stat label={t('عربيات ركبت عليها', 'Vehicles')} value={T.vehicles} icon={<Truck className="w-3.5 h-3.5" />} />
@@ -181,7 +166,7 @@ export default function TireProfilePage() {
         <Stat label={t('إصلاحات وهي عليها', 'Repairs while on')} value={T.repairs} icon={<AlertTriangle className="w-3.5 h-3.5" />} tone="#dc2626" />
       </div>
 
-      {/* ── أين هي الآن ─────────────────────────────────────────────────── */}
+      {/* Where it is now */}
       <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
         <p className="font-extrabold text-slate-900 text-[14.5px] flex items-center gap-1.5 mb-2">
           <MapPin className="w-4 h-4 text-slate-400" />{t('أين هي الآن', 'Where it is now')}
@@ -192,10 +177,7 @@ export default function TireProfilePage() {
             {ti.plate
               ? <Link href={vehicleHref(ti.unitId, ti.plate)} className="font-mono font-bold text-[#f37121] hover:underline">{ti.plate}</Link>
               : <span className="font-mono font-bold">{ti.trailerNumber ? `${t('تيدر', 'trailer')} ${ti.trailerNumber}` : '—'}</span>}
-            {/* ── والتيدر يُجرّ بعربية ────────────────────────────────────────
-                فردةُ التيدر تمشي معه لا مع العربية، فلوحةُ العربية فارغةٌ
-                عندها. وقول «تيدر ٣٩» وحدَه ناقص: مَن يقرأه لا يعرف أين هذا
-                التيدر اليوم ولا أيَّ عربيةٍ تجرّه. */}
+            {/* A trailer is pulled by a truck. A trailer tire travels with the trailer, not the truck, so the truck plate is empty on it. Saying only 'trailer 39' is incomplete: the reader cannot tell where the trailer is today or which truck pulls it. */}
             {!ti.plate && ti.trailerOnPlate && (
               <>
                 <span className="text-slate-500"> — {t('والتيدر على العربية', 'and the trailer is on')} </span>
@@ -217,7 +199,7 @@ export default function TireProfilePage() {
         {!!ti.notes && <p className="text-[12.5px] text-slate-500 mt-2 whitespace-pre-wrap">{ti.notes}</p>}
       </div>
 
-      {/* ── فترات التركيب ───────────────────────────────────────────────── */}
+      {/* Mounting periods */}
       <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
         <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between gap-2">
           <p className="font-extrabold text-slate-900 text-[14.5px] flex items-center gap-1.5">
@@ -286,7 +268,7 @@ export default function TireProfilePage() {
         )}
       </div>
 
-      {/* ── ما جرى للعربية وهي عليها ───────────────────────────────────── */}
+      {/* What happened to the truck while it was on */}
       <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
         <div className="px-4 py-3 bg-slate-50 border-b border-slate-200">
           <p className="font-extrabold text-slate-900 text-[14.5px] flex items-center gap-1.5">
@@ -321,7 +303,7 @@ export default function TireProfilePage() {
         </ScrollX>
       </div>
 
-      {/* ── السجلّ الخام ────────────────────────────────────────────────── */}
+      {/* Raw log */}
       <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
         <div className="px-4 py-3 bg-slate-50 border-b border-slate-200">
           <p className="font-extrabold text-slate-900 text-[14.5px] flex items-center gap-1.5">

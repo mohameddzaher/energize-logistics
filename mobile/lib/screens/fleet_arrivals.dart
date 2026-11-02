@@ -6,14 +6,8 @@ import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 
-/// المتوقع للوصول — نظيرةُ `/system/fleet/arrivals`.
-///
-/// ── السؤالُ الذي تجيب عنه ───────────────────────────────────────────────────
-/// «مَن يصل السبتَ في جدّة؟ وأيُّ السيارات ستكون فاضيةً وقتَها؟» — جوابان في
-/// شاشةٍ واحدة، فمن لا تكفيه الواصلةُ يُكمل من الفاضية بلا تنقّل.
-///
-/// وبطاقاتُ الأرقام تُضغَط: كلُّ بطاقةٍ تُفرِد جدولَها وتُخفي ما سواه — وكانت
-/// في الويب أرقامًا لا تؤدّي إلى شيء، و«مشغولة» بلا جدولٍ أصلًا.
+/// Expected arrivals, counterpart of `/system/fleet/arrivals`. It answers: who arrives Saturday in Jeddah, and which vehicles will be empty then. Two answers on one screen, so whoever finds the arrivals insufficient continues with the empty ones without navigating.
+/// The number cards are tappable: each shows its own table and hides the others. On the web they were numbers leading nowhere, and "busy" had no table at all.
 class FleetArrivalsScreen extends StatefulWidget {
   const FleetArrivalsScreen({super.key});
   @override

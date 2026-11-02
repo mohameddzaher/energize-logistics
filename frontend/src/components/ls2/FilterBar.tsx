@@ -1,23 +1,6 @@
 'use client';
-// شريط فلاتر واحد لكل الشاشات.
-//
-// كل صفحة كانت بتخترع فلاترها: واحدة كروت كبيرة، واحدة سلكت، وتالتة بحث نصّي
-// وبس — فاللي اتعوّد على شاشة يلاقي التانية مختلفة، وفيه شاشات (زي التيدرات)
-// ما كانش فيها فلتر أصلاً رغم إن اللي بيدوّر على «التيدرات الواقفة» بيسأل عليها
-// كل يوم.
-//
-// ── تلات قواعد ورا التصميم ──────────────────────────────────────────────────
-//
-// ١) **العدد على الشريحة نفسها.** الفلتر اللي ما بيقولش هيرجّع كام بيخلّي
-//    المستخدم يجرّب ويرجع. والشريحة اللي عددها صفر بتبان مطفية بدل ما تختفي —
-//    «مفيش تيدر واقف» معلومة، والاختفاء بيخلّيها سؤال.
-//
-// ٢) **الفلترة على العميل من نفس الليستة المعروضة.** الأعداد والنتيجة بيتحسبوا
-//    من نفس المصفوفة، فمستحيل الرقم على الشريحة يختلف عن عدد الصفوف اللي
-//    بتتفتح — وده أكتر تناقض بيوقّع الثقة في الشاشة.
-//
-// ٣) **الفلاتر بتتجمّع، والإلغاء بيبان.** لما يبقى فيه فلتر شغّال بيظهر زرار
-//    «إلغاء الفلترة» وعدد المعروض جنبه، فمحدش يقعد يدوّر على صف مخفي بفلتر نسيه.
+// One filter bar for all screens.
+// Rules: (1) the count sits on the chip itself, and a zero-count chip is dimmed rather than hidden, since 'none stopped' is information. (2) Filtering is client-side on the same displayed list, so a chip count always equals the rows it opens. (3) Filters combine and a clear-filters button shows the visible count, so no one hunts for a row hidden by a forgotten filter.
 import { useMemo } from 'react';
 import { Search, X } from 'lucide-react';
 import { flexNormalize } from '@/lib/flexMatch';
@@ -25,9 +8,9 @@ import { flexNormalize } from '@/lib/flexMatch';
 export type Chip = {
   key: string;
   label: string;
-  /** الشرط. لو مش موجود، الشريحة دي «الكل». */
+  /** The condition. If absent, this chip is 'all'. */
   test?: (row: any) => boolean;
-  /** لون التمييز — بيتاخد من نفس لوحة القسم. */
+  /** Accent color, taken from the same section palette. */
   tone?: 'slate' | 'green' | 'amber' | 'blue' | 'violet' | 'red' | 'sky' | 'orange';
 };
 
@@ -39,20 +22,13 @@ const TONES: Record<string, { on: string; off: string; dot: string }> = {
   violet: { on: 'bg-violet-600 text-white border-violet-600', off: 'bg-white text-violet-800 border-violet-200', dot: 'bg-violet-500' },
   red: { on: 'bg-rose-600 text-white border-rose-600', off: 'bg-white text-rose-800 border-rose-200', dot: 'bg-rose-500' },
   sky: { on: 'bg-sky-600 text-white border-sky-600', off: 'bg-white text-sky-800 border-sky-200', dot: 'bg-sky-500' },
-  // برتقاليٌّ بين الكهرمانيّ والورديّ: «حرج» أشدُّ من «تحذير» وأخفُّ من «منتهٍ»،
-  // وثلاثتُها تُقرأ متجاورةً في شريطٍ واحد فيجب أن تتدرّج بالعين لا أن تتشابه.
+  // Orange between amber and pink: 'critical' is stronger than 'warning' and weaker than 'expired'; the three sit side by side and must grade by eye.
   orange: { on: 'bg-orange-600 text-white border-orange-600', off: 'bg-white text-orange-800 border-orange-200', dot: 'bg-orange-500' },
 };
 
-/**
- * بيرجّع الصفوف بعد الفلترة + الأعداد لكل شريحة.
- * الأعداد بتتحسب على الليستة **قبل** الفلترة بالشرايح وبعد البحث — فالرقم
- * بيفضل معناه «لو دست هنا هتلاقي كام».
- */
+/** Returns the filtered rows plus counts per chip. Counts are computed on the list before chip filtering and after search, so the number means 'what you get if you click here'. */
 export function useChipFilter<T>(rows: T[], chips: Chip[], active: string, query: string, searchIn: (r: T) => (string | number | null | undefined)[]) {
-  // الطيُّ الموحَّد — راجع lib/flexMatch. كان هذا يطوي الهمزةَ والتاءَ ولا
-  // يطوي المسافة، فاللوحةُ المنسوخة من أبشر بمسافتين لا تجد نفسَها المخزَّنة
-  // بمسافةٍ واحدة: الخادمُ يُرجعها ثم يحذفها هذا السطر.
+  // Unified folding, see lib/flexMatch. This used to fold hamza and ta marbuta but not whitespace, so a plate pasted with two spaces did not match the stored one-space plate.
   const norm = flexNormalize;
 
   return useMemo(() => {
@@ -79,7 +55,7 @@ export default function FilterBar({
   shown: number;
   total: number;
   ar: boolean;
-  /** فلاتر إضافية خاصة بالصفحة (سلكت، مدة…) */
+  /** Extra page-specific filters (tracked, duration...) */
   children?: React.ReactNode;
 }) {
   const t = (a: string, e: string) => (ar ? a : e);

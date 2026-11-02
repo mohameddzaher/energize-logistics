@@ -8,11 +8,8 @@ import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 
-/// طلبات الأسطول — «أحتاج هذه الشاحنةَ وصيانتُها متأخّرة».
-///
-/// نظيرةُ `/system/ls2/fleet-requests`: الطلبُ يُرفَع من إنشاء الحمولة في إدارة
-/// الأسطول حين يمنعها الحارس، والقرارُ هنا — من يملك الصيانةَ هو من يأذن
-/// بتأجيلها، ويُسجَّل اسمُه مع السبب. وموافقةٌ واحدةٌ لحمولةٍ واحدة.
+/// Fleet requests: "I need this truck and its maintenance is overdue".
+/// Counterpart of `/system/ls2/fleet-requests`: the request is raised from load creation in fleet management when the guard blocks it, and the decision is here. Whoever owns maintenance authorizes its postponement, and his name is recorded with the reason. One approval covers one load.
 class Ls2FleetRequestsScreen extends StatefulWidget {
   const Ls2FleetRequestsScreen({super.key});
   @override
@@ -105,7 +102,7 @@ class _Ls2FleetRequestsScreenState extends State<Ls2FleetRequestsScreen> {
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
     final role = auth.role;
-    // القرارُ لمن يملك تعديلَ القسم — بدوره أو بمنحٍ من مصفوفة الصلاحيّات.
+    // Decision belongs to whoever can edit the section: by role or a grant from the permission matrix.
     final canDecide = _decideRoles.contains(role) || auth.canEditSection('Location Solutions');
 
     return AppScaffold(

@@ -1,8 +1,6 @@
-// ⚠️ مولَّد من backend/src/config/roles.js — متعدّلش الملف ده بالإيد.
-// عشان تحدّثه:  node backend/src/scripts/genFrontendRoles.js
-//
-// الهيكل الوظيفي: كل قسم له مدير وموظف. المديرين بينتهوا بـ `_manager`
-// والموظفين لأ — القاعدة دي هي اللي بيتحدد بيها مين يقعد في اجتماعات الإدارة.
+// Generated from backend/src/config/roles.js; do not edit by hand.
+// To update: node backend/src/scripts/genFrontendRoles.js
+// Org structure: each section has a manager and staff. Manager roles end in `_manager` and staff roles do not; that rule decides who sits in management meetings.
 
 export interface RoleDef { key: string; ar: string; en: string }
 export interface SectionRoles { section: string; manager: RoleDef; staff: RoleDef[]; trainee: RoleDef }
@@ -494,20 +492,20 @@ export const ALL_ROLE_DEFS: RoleDef[] = [
 export const ALL_ROLES: string[] = ALL_ROLE_DEFS.map((r) => r.key);
 export const MANAGER_ROLES: string[] = SECTION_ROLES.map((s) => s.manager.key);
 export const STAFF_ROLES: string[] = SECTION_ROLES.flatMap((s) => s.staff.map((x) => x.key));
-// متدرّبُ القسم: لا يرث شيئًا — يُفتَح له ما يُفتَح من صفحة الصلاحيّات.
+// Section trainee: inherits nothing; what is opened for him comes from the permissions page.
 export const TRAINEE_ROLES: string[] = SECTION_ROLES.map((s) => s.trainee.key);
 
 const AR: Record<string, string> = Object.fromEntries(ALL_ROLE_DEFS.map((r) => [r.key, r.ar]));
 const EN: Record<string, string> = Object.fromEntries(ALL_ROLE_DEFS.map((r) => [r.key, r.en]));
 
-/** اسم الدور للعرض. مفتاح مش معروف بيترجع مقروء بدل ما يظهر snake_case. */
+/** Role display name. An unknown key returns a readable name instead of snake_case. */
 export const roleLabel = (key?: string | null, lang: 'ar' | 'en' = 'ar'): string => {
   if (!key) return '';
   const m = lang === 'en' ? EN : AR;
   return m[key] || key.split('_').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
 };
 
-/** الأدوار مرتّبة حسب القسم — للقوائم المنسدلة، عشان المستخدم يلاقي دوره جنب قسمه. */
+/** Roles ordered by section, for dropdowns, so a user finds a role next to its section. */
 export const rolesGroupedBySection = (lang: 'ar' | 'en' = 'ar') => [
   { section: lang === 'ar' ? 'أدوار عامة' : 'General', roles: GLOBAL_ROLES.filter((r) => r.key !== 'client') },
   ...SECTION_ROLES.map((s) => ({ section: s.section, roles: [s.manager, ...s.staff, s.trainee] })),

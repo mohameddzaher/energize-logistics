@@ -1,43 +1,26 @@
 /**
- * personRef — مَن هذا الشخصُ في الموارد البشريّة؟ من أيّ قسمٍ جاء السؤال.
- *
- * الشخصُ سجلٌّ واحد (Employee)، وكلُّ قسمٍ يحمل إليه مرجعًا لا نسخة (صاحبُ
- * الشركة، ٢٠٢٦/١٠/٢١: «بيانات الشخص واحدة في كلّ مكان»). وحيث بقيت نسخةٌ من
- * الاسم أو الجوال على صفٍّ في قسمٍ آخر (النقل الخفيف، بطاقة السائق، ورقة
- * التفويض، القائد الفعليّ) فهي لقطةٌ تتبع الملفّ — يكتبها
- * utils/employeeIdentitySync.pushPersonChange عند كلّ حفظٍ في الموارد البشريّة.
- *
- * ── الربط ────────────────────────────────────────────────────────────────────
- * برقم الهويّة أوّلًا، في العمودين معًا (المقيمُ في `iqamaNumber` والسعوديُّ في
- * `nationalId`) — ثمّ بالاسم المطويّ مطابقةً تامّة، ولا يُقبَل اسمٌ يطابق أكثرَ
- * من ملفّ: التخمينُ بين اثنين أسوأُ من «لا أعرف».
- *
- * ── الاسم المعروض ────────────────────────────────────────────────────────────
- * اسمُ الموارد البشريّة يغلب: في الواجهة العربيّة `arabicName` إن كُتب وإلّا
- * الاسمُ الأوّل والأخير، وفي الإنجليزيّة الأوّلُ والأخير. واللقطةُ المخزَّنةُ في
- * الأقسام الأخرى هي الصيغةُ العربيّة (`canonicalName`).
- *
- * قسمٌ جديد: يخزّن `employee: ObjectId` (ومعه رقمُ الهويّة إن لزم) ويحلّه من هنا
- * عند الإنشاء، ويعرض الاسمَ من الملفّ بـ`displayName`، ويسمع `hr:employee`.
- * والمركبةُ كذلك من utils/vehicleRef ويسمع `vreg:updated`.
+ * personRef: who is this person in HR, whichever section asks.
+ * A person is one record (Employee) and every section holds a reference to it, not a copy. Where a name or phone copy remains on a row elsewhere (light transport, driver card, authorization sheet, actual driver) it is a snapshot that follows the file, written by utils/employeeIdentitySync.pushPersonChange on every HR save.
+ * Linking: by ID number first, in both columns (residents in `iqamaNumber`, Saudis in `nationalId`), then by exact folded name; a name matching more than one file is not accepted, since guessing between two is worse than not knowing.
+ * Display name: the HR name wins. In Arabic `arabicName` if set, else first and last; in English first and last. Snapshots stored in other sections use the Arabic form (`canonicalName`). New section: store `employee: ObjectId` (plus ID number if needed) resolved from here on create, show the name from the file via `displayName`, and listen to `hr:employee`. Vehicles likewise via utils/vehicleRef, listening to `vreg:updated`.
  */
 const S = (v) => String(v == null ? '' : v).trim();
 
-/** طيُّ الاسم للمطابقة: الهمزاتُ والتاءُ المربوطةُ والياءُ، بلا مسافاتٍ ولا رموز. */
+/** Fold a name for matching: hamza forms, ta marbuta and ya variants, with no spaces or symbols. */
 const foldName = (x) => S(x)
   .replace(/[أإآٱا]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه')
   .replace(/[ً-ْـ]/g, '')
   .replace(/[^؀-ۿa-zA-Z0-9]/g, '')
   .toLowerCase();
 
-/** أرقامُ هويّته — العمودان معًا، بلا فراغات. */
+/** Its ID numbers, both columns together, with no blanks. */
 const idsOf = (emp) => [...new Set([emp?.iqamaNumber, emp?.nationalId].map((x) => S(x).replace(/\s+/g, '')).filter(Boolean))];
 
-/** رقمُ هويّته الأساسيّ بحسب نوعها. */
+/** Its primary ID number according to its type. */
 const primaryId = (emp) => S(emp?.idType === 'national_id'
   ? (emp?.nationalId || emp?.iqamaNumber) : (emp?.iqamaNumber || emp?.nationalId)).replace(/\s+/g, '');
 
-/** الاسمُ كما يُعرض — `lang` = 'ar' | 'en'. */
+/** The name as displayed; `lang` = 'ar' | 'en'. */
 function displayName(emp, lang = 'ar') {
   if (!emp) return '';
   const fl = S(`${S(emp.firstName)} ${S(emp.lastName)}`).replace(/\s+/g, ' ');
@@ -45,14 +28,14 @@ function displayName(emp, lang = 'ar') {
   return S(emp.arabicName) || fl || S(emp.fullName);
 }
 
-/** الاسمُ الذي تُكتب به اللقطاتُ في الأقسام الأخرى. */
+/** The name used when writing snapshots in other sections. */
 const canonicalName = (emp) => displayName(emp, 'ar');
 
 const SELECT = 'firstName lastName arabicName iqamaNumber nationalId idType phone nationality project department employmentStatus isHrRecord vehiclePlate';
-// ملفُّ الموارد البشريّة الساري أوّلًا، ثمّ القائمُ على رأس عمله.
+// The active HR file first, then the one currently employed.
 const rank = (e) => (e.isHrRecord !== false ? 2 : 0) + (e.employmentStatus !== 'terminated' ? 1 : 0);
 
-/** الموظّفُ برقم هويّته (العمودان معًا) — أو null. */
+/** Employee by ID number (both columns), or null. */
 async function byIdNumber(id, select = SELECT) {
   const n = S(id).replace(/\s+/g, '');
   if (!n) return null;
@@ -62,7 +45,7 @@ async function byIdNumber(id, select = SELECT) {
   return rows.sort((a, b) => rank(b) - rank(a))[0];
 }
 
-/** الموظّفُ بالاسم المطويّ مطابقةً تامّة — ولا يُقبَل إلّا ملفٌّ واحد. */
+/** Employee by exact folded name; accepted only if exactly one file matches. */
 async function byExactName(name, select = SELECT) {
   const want = foldName(name);
   if (!want) return null;
@@ -72,12 +55,12 @@ async function byExactName(name, select = SELECT) {
   return hits.length === 1 ? hits[0] : null;
 }
 
-/** بابُ الربط الواحد: { idNumber, name } ← ملفُّ الموارد البشريّة أو null. */
+/** The single linking door: { idNumber, name } to the HR file or null. */
 async function resolve({ idNumber, name } = {}, select = SELECT) {
   return (await byIdNumber(idNumber, select)) || (S(idNumber) ? null : await byExactName(name, select));
 }
 
-/** حلٌّ دفعةً واحدة برقم الهويّة: Map من الرقم إلى الملفّ. */
+/** Batch resolution by ID number: Map from number to file. */
 async function resolveManyByIds(ids, select = SELECT) {
   const want = [...new Set((ids || []).map((x) => S(x).replace(/\s+/g, '')).filter(Boolean))];
   if (!want.length) return new Map();

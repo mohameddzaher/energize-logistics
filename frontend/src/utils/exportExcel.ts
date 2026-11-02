@@ -17,62 +17,43 @@ type ExportColumn = {
   transform?: (value: any, row: any) => any;
   width?: number;
   /**
-   * نوعُ الخانة في إكسل نفسِه، لا شكلُها على الشاشة.
-   *
-   * ── ولماذا يلزم ────────────────────────────────────────────────────────────
-   * كان كلُّ تاريخٍ يُكتب نصًّا («05/09/2026»)، فيفتح المستقبِلُ الملفَّ فيجد
-   * نوعَ الخانة `General`: لا تُفرَز زمنيًّا، ولا يُطرَح منها تاريخٌ آخر، ولا
-   * يُبنى عليها جدولٌ محوريّ. وهو ما يُشتكى منه: «التاريخ طالع general».
-   *
-   * فمن يُعلن `type: 'date'` تُكتب خانتُه كائنَ تاريخٍ حقيقيًّا بتنسيق عرضٍ
-   * `dd/mm/yyyy`، ويبقى ما تحته رقمًا يفهمه إكسل.
+   * Cell type in Excel itself, not its look on screen.
+   * Dates were written as text ("05/09/2026"), so the file opened with General cells: no chronological sort, no date arithmetic, no pivot tables.
+   * A column declaring type: 'date' is written as a real date object with display format dd/mm/yyyy, keeping a number Excel understands.
    */
   type?: 'text' | 'date' | 'number' | 'hijri';
 };
 
-// ── التاريخ الهجريّ ──────────────────────────────────────────────────────────
-// يُكتَب نصًّا بأمّ القرى، كما تحسبه الشاشة بالضبط (`lib/hijri`) — فما يراه
-// المستخدمُ في الصفحة هو ما يجده في الملفّ. التفصيلُ عند `type === 'hijri'` في
-// كاتب الخانات أدناه.
+// Hijri date: written as text in Umm al-Qura exactly as the screen computes it (lib/hijri), so the file matches the page. Details at type === 'hijri' in the cell writer below.
 
 /**
- * يُدخِل عمودَ «هجري» بعد كلّ عمودٍ ميلاديّ.
- *
- * طُلب أن يكون بجانب **كلّ** تاريخٍ في التصدير وتلقائيًّا. وكتابتُه عمودًا
- * عمودًا تعني أن يُنسى مع أوّل عمودٍ يُضاف بعد اليوم، فيخرج ملفٌّ نصفُ تواريخه
- * هجريّةٌ ونصفُها لا — وهو أسوأُ من غيابه كلِّه.
+ * Inserts a Hijri column after every Gregorian column.
+ * Required next to every date in an export, automatically. Adding it column by column gets forgotten with the next new column, producing a file with half its dates in Hijri, which is worse than none.
  */
 export const withHijri = (columns: ExportColumn[], suffixAr = ' (هجري)'): ExportColumn[] =>
   columns.flatMap((c, i) => {
     if (c.type !== 'date') return [c];
-    // ── ولا يُضاف هجريٌّ حيث يوجد هجريّ ──────────────────────────────────────
-    // رخصةُ السير والفحص يحملان تاريخًا هجريًّا **مكتوبًا على الورقة نفسِها**،
-    // وهو في التقرير المطلوب عمودٌ إلى جوار الميلاديّ. فإضافةُ محسوبٍ ثالثٍ
-    // بجانبهما تعطي عمودين هجريَّين قد يختلفان بيومٍ — والمكتوبُ على الورقة هو
-    // الحجّة، لا حسابُنا.
+    // No computed Hijri is added where a Hijri exists.
+    // Registration and inspection carry a Hijri date written on the paper itself, which the report shows as a column next to the Gregorian. A third computed column would give two Hijri columns that may differ by a day, and the paper is the authority.
     const near = [columns[i - 1], columns[i + 1]].some((n) => n && /هجري|hijri/i.test(n.header));
     if (near) return [c];
     return [c, {
       header: `${c.header}${suffixAr}`,
       key: c.key,
       width: c.width,
-      // القيمةُ هي القيمةُ نفسُها — التقويمُ يُبدَّل في العرض لا في المحتوى.
+      // The value is the same; the calendar changes in display, not in content.
       type: 'hijri' as const,
       transform: (raw: any, row: any) => (c.transform ? c.transform(raw, row) : raw),
     }];
   });
 
-const HEADER_BG = 'FF0F172A';   // slate-900 — كحلي غامق
+const HEADER_BG = 'FF0F172A';   // slate-900, dark navy.
 const HEADER_BORDER = 'FF334155';
 const ROW_BORDER = 'FFE2E8F0';
 const ZEBRA_BG = 'FFF8FAFC';
 const TITLE_FG = 'FF0F172A';
 
-/**
- * كتلةٌ من الجدول: ترويسةٌ وصفوف. الشيتُ الواحد قد يحمل أكثر من كتلة — ملخّصٌ
- * فوق وتفصيلٌ تحته — فيخرج الملفُّ ورقةً واحدةً تُقرأ من أعلاها إلى أسفلها بدل
- * ورقتين يُنتقل بينهما. (راجع `above` في exportMultiSheet.)
- */
+/** A table block: header and rows. One sheet can hold several blocks (summary above, detail below) so the file reads as one sheet top to bottom instead of two sheets. See above in exportMultiSheet. */
 export type ExportBlock = { title?: string; rows: Record<string, any>[]; columns: ExportColumn[] };
 
 function addStyledSheet(
@@ -85,11 +66,9 @@ function addStyledSheet(
 ) {
   // Excel sheet names: ≤31 chars, no []:*?/\
   const safe = String(name).replace(/[[\]:*?/\\]/g, ' ').slice(0, 31) || 'Sheet';
-  // `rightToLeft`: محتوى الشيتات عربيّ في معظمه، وبدونه يفتح العمود الأوّل على
-  // اليسار فتُقرأ الأعمدة معكوسةً عن ترتيبها على الشاشة.
+  // rightToLeft: sheet content is mostly Arabic, and without it the first column opens on the left so columns read reversed from the screen order.
   const ws = wb.addWorksheet(safe, { views: [{ state: 'frozen', ySplit: 1, rightToLeft: true }] });
-  // كلُّ الكتل في هذا الشيت، آخرُها الجدولُ الرئيسيّ — هو وحده الذي يُجمَّد
-  // ويُفلتَر، لأنّه هو الذي يُتصفَّح.
+  // All blocks in this sheet, the last being the main table; only it is frozen and filtered, because it is the one browsed.
   const blocks: ExportBlock[] = [...above, { title, rows: data, columns }];
   const widthOf = (col: ExportColumn, rows: Record<string, any>[]) => {
     if (col.width) return col.width;
@@ -103,9 +82,8 @@ function addStyledSheet(
     return Math.min(Math.max(longest + 4, 12), 46);
   };
 
-  // عرضُ العمود يُقاس على أطول قيمةٍ فيه لا على ترويسته وحدها: عمودٌ ترويسته
-  // «العميل» وقيمُه أسماء شركات كان يخرج بعرض ست خانات فتظهر كلّها مبتورة.
-  // ومع تعدُّد الكتل يُؤخذ أوسعُ ما تطلبه أيُّ كتلةٍ في العمود نفسه.
+  // Column width is measured on the longest value, not the header alone: a column headed with the customer label holding company names came out six characters wide and truncated.
+  // With multiple blocks, the widest need of any block in the same column is used.
   const widest: number[] = [];
   for (const b of blocks) {
     b.columns.forEach((col, i) => {
@@ -118,8 +96,7 @@ function addStyledSheet(
 
   const styleHeader = (r: number, count: number) => {
     const header = ws.getRow(r);
-    // ستّةٌ وعشرون تكفي سطرًا واحدًا وتقصّ الثاني. والعرضُ يُقاس على الترويسة
-    // أيضًا فأكثرُها يسع سطرًا — وما احتاج سطرَين لا يُقَصّ.
+    // Twenty-six characters fit one line and clip the second. Width also measures the header, so most fit on a line; whatever needs two lines is not clipped.
     header.height = 32;
     for (let c = 1; c <= count; c++) {
       const cell = header.getCell(c);
@@ -130,7 +107,7 @@ function addStyledSheet(
     }
   };
 
-  let cursor = 0;          // آخرُ صفٍّ كُتب
+  let cursor = 0;          // Last row written.
   let mainHeaderRow = 1;
   blocks.forEach((block, bi) => {
     const rows = block.rows || [];
@@ -158,27 +135,16 @@ function addStyledSheet(
         const raw = col.key.split('.').reduce((obj: any, k) => obj?.[k], row);
         const v = col.transform ? col.transform(raw, row) : (raw ?? '');
         const cell = r.getCell(i + 1);
-        // ── والهجريُّ يُكتَب كما يُقرأ على الشاشة ────────────────────────────
-        // كان يُكتَب خانةَ تاريخٍ ميلاديّةً بتنسيق `[$-060401]B2dd/mm/yyyy`، على
-        // أنّ التقويمَ شكلُ عرضٍ لا قيمة. وهو صحيحٌ في النظريّة وخاطئٌ في الملفّ:
-        //
-        //  • التنسيقُ أعرضُ من العمود فيخرج «#####» — وهو ما رآه المستخدم في
-        //    «تاريخ الميلاد الهجري» في كلّ صفٍّ تقريبًا.
-        //  • وتقويمُ إكسل `B2` ليس أمَّ القرى. فيختلف اليومُ عمّا على الشاشة،
-        //    فيُقرأ الملفُّ تاريخًا آخرَ لا يعرف أحدٌ من أين جاء.
-        //  • ولا يفهمه إلّا إكسل على ويندوز: Numbers وGoogle Sheets وLibreOffice
-        //    تُسقط التنسيقَ فيظهر التاريخُ ميلاديًّا في عمودٍ عنوانُه «هجري».
-        //
-        // فيُكتَب نصًّا كما تحسبه الشاشة (أمّ القرى، `lib/hijri`). ويبقى الفرزُ
-        // صحيحًا لأنّ الصيغةَ `yyyy-mm-dd` مصفوفةُ الأرقام: ترتيبُها الأبجديُّ
-        // هو ترتيبُها الزمنيُّ.
+        // Hijri is written as text, as the screen computes it (Umm al-Qura, lib/hijri).
+        // A Gregorian cell with format [$-060401]B2dd/mm/yyyy overflowed the column (#####), used Excel's B2 calendar (not Umm al-Qura) and was dropped by Numbers, Google Sheets and LibreOffice.
+        // Sorting stays correct since yyyy-mm-dd sorts alphabetically in time order.
         if (col.type === 'hijri' && v !== '' && v !== null && v !== undefined) {
           const d = v instanceof Date ? v : new Date(v);
           cell.value = (Number.isNaN(d.getTime()) ? String(v) : toHijri(d)) as any;
           return;
         }
         if (col.type === 'date' && v !== '' && v !== null && v !== undefined) {
-          // كائنُ تاريخٍ حقيقيٌّ وتنسيقُ عرض — لا نصٌّ يبدو تاريخًا.
+          // A real date object with a display format, not text that looks like a date.
           const d = v instanceof Date ? v : new Date(v);
           if (!Number.isNaN(d.getTime())) {
             cell.value = d;
@@ -193,8 +159,7 @@ function addStyledSheet(
         cell.value = (v ?? '') as any;
       });
       r.height = 20;
-      // الحواف والتظليل المتناوب: النطاقُ بعدد أعمدة الكتلة كي تبقى الخانات
-      // الفارغة محاطةً هي أيضًا (eachCell يتخطّاها).
+      // Borders and alternating shading: the range spans the block's column count so empty cells are also bordered (eachCell skips them).
       const zebra = (cursor - headerRow) % 2 === 1;
       for (let c = 1; c <= cols.length; c++) {
         const cell = r.getCell(c);
@@ -205,18 +170,13 @@ function addStyledSheet(
           left: { style: 'thin', color: { argb: ROW_BORDER } },
           right: { style: 'thin', color: { argb: ROW_BORDER } },
         };
-        // كل خانةٍ في المتن موسَّطة أفقيًّا ورأسيًّا. الشيت الذي يخرج بأرقامٍ
-        // على اليمين ونصوصٍ على اليسار وتواريخَ في الوسط يبدو مسوَّدةً لا
-        // مستندًا يُرسَل — وهذه الشيتات تُرسَل خارج الشركة.
-        //
-        // ولا لفَّ: ارتفاعُ الصفِّ ثابتٌ عند عشرين، فاللفُّ يطوي الاسمَ سطرَين
-        // ويُخفي الثاني — يُقرأ نصفُ الاسم ويُظنُّ أنّه كلُّه. والعرضُ يُقاس
-        // على أطولِ قيمةٍ في العمود (راجع `widthOf`)، فالمساحةُ تكفيه أصلًا.
+        // Every body cell is centered horizontally and vertically. A sheet with numbers right, text left and dates centered looks like a draft, and these sheets go outside the company.
+        // No wrapping: row height is fixed at twenty, so wrapping folds a name onto two lines and hides the second, which reads as half a name. Width is measured on the longest column value (see widthOf), so space is enough.
         cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: false };
       }
     }
 
-    if (!isMain) cursor += 1;   // سطرٌ فارغ يفصل الكتلة عمّا بعدها
+    if (!isMain) cursor += 1;   // Blank row separating the block from the next one.
   });
 
   ws.views = [{ state: 'frozen', ySplit: mainHeaderRow, rightToLeft: true }];

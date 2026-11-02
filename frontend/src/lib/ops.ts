@@ -1,9 +1,5 @@
-// Operations Platform (قسم الأوبريشن) — shared config + helpers.
-//
-// This section is a LIVE MIRROR of the external UPL field-ops system (B2B:
-// Fleet Management + 3PL). Our Next.js backend proxies every call to UPL at
-// /api/ops/* and broadcasts changes over socket.io, so these pages read/write
-// UPL directly while staying up to date without a refresh.
+// Operations Platform section: shared config and helpers.
+// A live mirror of the external UPL field-ops system (B2B: Fleet Management + 3PL). Our Next.js backend proxies every call to UPL at /api/ops and broadcasts changes over socket.io, so these pages read/write UPL directly while staying up to date without a refresh.
 
 import { canAccessSection, canEditSection, roleOf, permsOf, type RoleOrUser } from './sections';
 import {

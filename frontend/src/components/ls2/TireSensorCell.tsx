@@ -1,16 +1,7 @@
 'use client';
-// خلية «حساسات الكاوتش» — الرقم الواحد الذي يقول من برّه أين وصلت حملة تسليح
-// الأسطول بالحسّاسات: «٧ / ٥ / ٢».
-//
-//   أخضر  = فردةٌ مركَّبةٌ على الأرض وحسّاسها **يبثّ الآن**
-//   أحمر  = باقي مواضع الأرض، بلا تغطية
-//   الاستبن = عدده؛ أخضر إن كان مسلَّحًا، ورماديٌّ صامتٌ إن لم يكن
-//
-// وتُوضع في مكوّنٍ واحد تستدعيه الشاشتان بدل نسخها في كلٍّ منهما: لو نُسخت
-// لاختلف لونٌ أو حدٌّ في إحداهما بعد أوّل تعديل، فيظنّ القارئ أنهما رقمان.
-//
-// الأرقام كلها تأتي محسوبةً من الخادم (services/ls2TireSensors.js)؛ هنا عرضٌ
-// فقط — ولا يُشتقّ هنا شيء.
+// Tire sensors cell: one number summarizing fleet sensor rollout, e.g. 7 / 5 / 2.
+// Green = an installed on-ground tire whose sensor is transmitting now; red = remaining ground positions without coverage; spare = its count, green if armed, quiet grey if not.
+// One component shared by both screens so color and limits cannot drift. All numbers are computed on the server (services/ls2TireSensors.js); display only.
 import { useState } from 'react';
 import Link from 'next/link';
 import { X, TriangleAlert, CircleDot, ExternalLink, Loader2 } from 'lucide-react';
@@ -24,10 +15,7 @@ export default function TireSensorCell({ cov, plate, unitId, lang }: {
   lang: Lang;
 }) {
   const [open, setOpen] = useState(false);
-  // ── والتفصيلُ يُطلَب عند الفتح ───────────────────────────────────────────
-  // قائمةُ المواضع الناقصة والقنواتُ المعطوبة كانت ترافق كلَّ صفٍّ في الجدول
-  // (٤٦ ك.ب في القائمة كلّها) ولا تُقرأ إلّا إن فُتِحت نافذةُ شاحنةٍ واحدة.
-  // وحين تأتي مع الصفّ — كما في صفحة المركبة المفردة — لا يُطلَب شيء.
+  // Detail is requested on open: the missing-positions list and faulty channels were attached to every table row (46 KB for the whole list) but are read only when one truck dialog opens. When they come with the row, as on the single vehicle page, nothing is requested.
   const [detail, setDetail] = useState<TireSensorCoverage | null>(null);
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -42,7 +30,7 @@ export default function TireSensorCell({ cov, plate, unitId, lang }: {
     try {
       const r = await api.get<{ tireSensors: TireSensorCoverage }>(`/api/ls2/vehicles/${unitId}/tire-sensors`);
       setDetail(r.tireSensors || null);
-    } catch { setFailed(true); /* الأرقامُ الثلاثةُ معروضةٌ على أي حال */ } finally { setBusy(false); }
+    } catch { setFailed(true); /* The three numbers are shown regardless. */ } finally { setBusy(false); }
   };
 
   const spareOn = cov.spareWithSensor > 0;
@@ -50,7 +38,7 @@ export default function TireSensorCell({ cov, plate, unitId, lang }: {
     <>
       <button
         type="button"
-        // الصفّ نفسه يفتح ملف المركبة؛ لولا الإيقاف هنا لَما ظهرت النافذة أصلًا.
+        // The row itself opens the vehicle file; without stopping propagation here the dialog would not appear.
         onClick={(e) => { e.stopPropagation(); openDetail(); }}
         title={`${t.tireSensorsWorking}: ${cov.withSensor} · ${t.tireSensorsMissing}: ${cov.withoutSensor} · ${t.tireSensorsSpare}: ${cov.spare}`}
         className="inline-flex items-center gap-1 tabular-nums font-bold text-[13px] rounded-lg px-2 py-1 hover:bg-slate-100 transition-colors"
@@ -60,8 +48,7 @@ export default function TireSensorCell({ cov, plate, unitId, lang }: {
         <span className={cov.withoutSensor > 0 ? 'text-red-600' : 'text-slate-300'}>{cov.withoutSensor}</span>
         <span className="text-slate-300 font-normal">/</span>
         <span className={spareOn ? 'text-emerald-600' : 'text-slate-400 font-medium'}>{cov.spare}</span>
-        {/* الصامت لا يُدمَج في الأخضر ولا يُخفى: علامةٌ كهرمانية تقول إن جزءًا من
-            الأحمر حسّاساتٌ مركَّبةٌ معطّلة — وعلاجها استبدالٌ لا تركيب. */}
+        {/* The silent state is neither merged into green nor hidden: an amber mark says part of the red is installed but dead sensors, fixed by replacement not installation. */}
         {cov.silent > 0 && (
           <span className="ms-0.5 inline-flex items-center gap-0.5 text-amber-600 text-[11px] font-bold">
             <TriangleAlert className="w-3 h-3" />{cov.silent}
@@ -131,8 +118,7 @@ export default function TireSensorCell({ cov, plate, unitId, lang }: {
               <p className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">{t.tireSensorsAllCovered}</p>
             ) : null}
 
-            {/* المواضع التي لم تُجرَد بعد ليست «بلا حسّاس»: هي مجهولة، والفرق
-                يمنع أن يُقرأ نقصُ الجرد على أنه نقصُ تسليح. */}
+            {/* Positions not yet inventoried are not 'no sensor' but unknown; this keeps missing inventory from reading as missing rollout. */}
             {cov.unregistered > 0 && (
               <p className="text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
                 {cov.unregistered} {t.tireSensorsNotStocktaken}

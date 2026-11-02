@@ -1,9 +1,6 @@
 /**
- * الحروفُ الفارسيّةُ في الأسماء العربيّة تُردّ إلى العربيّة (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢).
- *
- * «شركة تنشيط للخدمات اللوچستية» بالجيم ذات النقاط الثلاث كانت مالكًا ثانيًا لاسمٍ
- * واحد: ٢٣٥٦ كشفًا عليها وخمسةُ آلافٍ على الأخرى، فتنقسم الشركةُ في كلّ عدٍّ وبحث.
- * وما يصل من المنصّة يمرّ من هنا فلا يعود الشكلُ الآخر.
+ * Persian letters in Arabic names are mapped back to Arabic.
+ * The company name spelled with the three-dot Persian jeem existed as a second owner of one name, splitting the company across counts and searches (2,356 sheets on one form and about five thousand on the other). Platform input passes through here so the variant does not return.
  */
 const MAP = { 'چ': 'ج', 'پ': 'ب', 'ڤ': 'ف', 'ک': 'ك', 'ی': 'ي', 'ۀ': 'ه' };
 const arLetters = (s) => String(s ?? '').replace(/[چپڤکیۀ]/g, (c) => MAP[c] || c);

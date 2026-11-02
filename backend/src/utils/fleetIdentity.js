@@ -1,29 +1,15 @@
 /**
- * fleetIdentity — شاحنةُ الأسطول وسائقُه يُقرآن من سجلّيهما لا من نسخة.
- *
- * ── القاعدة (صاحبُ الشركة، ٢٠٢٦/١٠/٢١) ──────────────────────────────────────
- * «سجلٌّ واحدٌ لكلّ مركبةٍ ولكلّ شخصٍ في النظام كلِّه؛ وأيُّ تعديلٍ يظهر في كلّ
- * مكانٍ فورًا». وكان الأسطولُ يحمل نسخًا: الماركةُ واللونُ على `FleetVehicle`
- * بلا صلةٍ بسجلّ المركبات، والاسمُ والجوالُ والإقامةُ والجنسيّةُ والإيبانُ على
- * `FleetDriver` بلا صلةٍ بملفّ الموارد البشريّة. فيُصحَّح الشيءُ هناك ويبقى
- * خطؤه هنا.
- *
- * ── فصار لكلٍّ منهما مرجع ─────────────────────────────────────────────────
- *   `FleetVehicle.vehicleMaster` ← VehicleMaster: الهويّةُ (اللوحة، الماركة،
- *       الطراز، السنة، الهيكل، اللون) والمستنداتُ وانتهاؤها — تُقرأ من هناك.
- *   `FleetDriver.employee` ← Employee: الاسمُ والجوالُ ورقمُ الهويّة والجنسيّةُ
- *       والإيبان — من الملفّ؛ وحالةُ العمل تتبع إجازتَه وإنهاءَ خدمته هناك.
- * والنصُّ المخزَّنُ على صفّ الأسطول يبقى احتياطًا لِمَن لم يُربط بعد، لا مصدرًا.
- *
- * ولا يمسّ هذا لقطاتِ البوليصة (`FleetShipment.vehiclePlate` …): البوليصةُ
- * مستندٌ قانونيٌّ يُقرأ كما صدر.
+ * fleetIdentity: a fleet truck and its driver are read from their registers, not from a copy.
+ * `FleetVehicle.vehicleMaster` supplies identity (plate, make, model, year, chassis, colour) and dated documents; `FleetDriver.employee` supplies name, phone, ID number, nationality and IBAN, and work status follows leave and termination there.
+ * Text stored on the fleet row is only a fallback for unlinked records.
+ * Waybill snapshots (`FleetShipment.vehiclePlate` ...) stay untouched: a waybill is a legal document read as issued.
  */
 const S = (v) => String(v == null ? '' : v).trim();
 const cache = require('./ttlCache');
 
-// ── المركبة ─────────────────────────────────────────────────────────────────
+// Vehicle
 
-/** ما يُقرأ من سجلّ المركبات لشاحنة الأسطول — الهويّةُ والمستنداتُ المؤرَّخة. */
+/** What is read from the vehicle register for a fleet truck: identity and dated documents. */
 const REGISTRY_SELECT = [
   'plateNumber', 'canonKey', 'brandAr', 'modelAr', 'modelYear', 'chassisNumber', 'colorAr',
   'sectorAr', 'serviceStatusAr', 'isActive',
@@ -34,14 +20,10 @@ const REGISTRY_SELECT = [
   'authorizedPerson.expiryDate', 'authorizedPerson.statusCode', 'authorizedPerson.name',
 ].join(' ');
 
-// اشتراكُ التتبّع خارج القائمة: تنبيهُه معطَّلٌ افتراضًا، وأسطولُنا على LS.
+// Tracking subscription is excluded from the list: its alert is off by default and our fleet is on LS.
 const FLEET_DOCS = ['insurance', 'operatingCard', 'vehicleLicense', 'inspection', 'authorization'];
 
-/**
- * عتباتُ التنبيه من إعدادات قسم المركبات — بالحساب نفسِه (`VDOC.stateOf`)
- * وإلّا قالت شاشتان لوثيقةٍ واحدةٍ حالتين. والمفتاحُ تحت `vreg:` فيُمسَح مع
- * كلّ تغييرٍ في إعداداتهم.
- */
+/** Alert thresholds from the vehicles section settings, using the same computation (`VDOC.stateOf`), otherwise two screens would give one document two states. The key is under `vreg:` so it is cleared with every change to their settings. */
 const docAlerts = () => cache.wrap('vreg:fleet-doc-alerts', 60000, async () => {
   const { VehicleRegistryConfig } = require('../models/VehicleMaster');
   const cfg = await VehicleRegistryConfig.findOne({ key: 'vehicle-registry' }).select('alerts').lean();
@@ -50,7 +32,7 @@ const docAlerts = () => cache.wrap('vreg:fleet-doc-alerts', 60000, async () => {
 
 const getPath = (o, p) => p.split('.').reduce((x, k) => (x == null ? x : x[k]), o);
 
-/** صورةُ المركبة كما يقرؤها الأسطول من السجلّ. */
+/** Vehicle image as the fleet reads it from the registry. */
 function registryView(vm, alerts = {}) {
   if (!vm) return null;
   const VDOC = require('../config/vehicleDocuments');
@@ -74,10 +56,7 @@ function registryView(vm, alerts = {}) {
   };
 }
 
-/**
- * يُلحق بكلّ صفٍّ من صفوف `FleetVehicle` صورتَه من السجلّ (`registry`)، وتُقرأ
- * الماركةُ واللونُ منه — والنسخةُ احتياطٌ لغير المربوط. سؤالٌ واحدٌ للصفوف كلِّها.
- */
+/** Attaches to each `FleetVehicle` row its registry image (`registry`) and reads make and colour from it; the copy is a fallback for unlinked ones. One query for all rows. */
 async function decorateVehicles(rows) {
   const list = (rows || []).filter(Boolean);
   const ids = [...new Set(list.map((v) => v.vehicleMaster && String(v.vehicleMaster._id || v.vehicleMaster)).filter(Boolean))];
@@ -97,7 +76,7 @@ async function decorateVehicles(rows) {
     v.registry = reg;
     v.linked = !!reg;
     if (reg) {
-      // ما في السجلّ هو الجواب؛ والنسخةُ تُقرأ إن كانت خانةُ السجلّ فارغة.
+      // What is in the registry is the answer; the copy is read only if the registry field is empty.
       v.brand = reg.brand || v.brand || '';
       v.color = reg.color || v.color || '';
     }
@@ -105,7 +84,7 @@ async function decorateVehicles(rows) {
   return rows;
 }
 
-/** هويّةُ مركبةٍ واحدة (لقطةُ البوليصة عند الإنشاء). */
+/** Identity of one vehicle (waybill snapshot at creation). */
 async function vehicleIdentity(fleetVehicle) {
   if (!fleetVehicle) return null;
   const row = { ...fleetVehicle };
@@ -178,7 +157,7 @@ async function decorateDrivers(rows) {
   return rows;
 }
 
-/** سائقٌ واحد — لقطةُ البوليصة عند الإنشاء تُقرأ من ملفّه. */
+/** One driver: the waybill snapshot at creation is read from his file. */
 async function driverIdentity(driver) {
   if (!driver) return null;
   const row = driver.toObject ? driver.toObject() : { ...driver };
@@ -186,12 +165,10 @@ async function driverIdentity(driver) {
   return row;
 }
 
-/** حقولٌ يملكها ملفُّ الموارد البشريّة متى رُبط السائق — لا تُكتب من الأسطول. */
+/** Fields owned by the HR file once the driver is linked; they are not written from the fleet. */
 const HR_OWNED_DRIVER_FIELDS = ['name', 'phone', 'iqama', 'nationality', 'iban'];
 
-/**
- * الموظّفُ الذي يحمل رقمَ الهويّة هذا — بالعمودين، لا يُقبَل إلّا واحدٌ بعينه.
- */
+/** The employee holding this ID number, matched in both columns; accepted only if exactly one. */
 async function employeeByIdNumber(idNumber) {
   const n = S(idNumber).replace(/\s+/g, '');
   if (!n) return null;
@@ -200,10 +177,7 @@ async function employeeByIdNumber(idNumber) {
   return rows.length === 1 ? rows[0] : null;
 }
 
-/**
- * يعلن تغييرًا في سجلّ المركبات بالطريقة التي يعلنه بها قسمُ المركبات: تُمسَح
- * مخازنُه ثمّ يُرسَل حدثُه (الإبطالُ قبل الإعلان — راجع announce-before-invalidate).
- */
+/** Announces a vehicle-register change the way the vehicles section does: its caches are cleared and then its event is sent (invalidate before announce; see announce-before-invalidate). */
 function announceRegistry() {
   require('./vehicleAnnounce').announceVehicles({ from: 'fleet' });
 }

@@ -1,26 +1,5 @@
 'use client';
-/**
- * حارسُ أخطاء الشاشات — بدل «Application error» التي لا تقول شيئًا.
- *
- * ── ولماذا كانت الصفحةُ تموت ────────────────────────────────────────────
- * لم يكن في التطبيق حارسُ أخطاءٍ أصلًا، فأيُّ استثناءٍ في أيّ شاشةٍ يُسقط
- * الصفحةَ إلى رسالةِ Next العامّة: «حدث استثناءٌ في المتصفّح — انظر الطرفيّة».
- * لا اسمَ للخطأ ولا موضع، ولا سبيلَ للعودة إلا إعادةُ التحميل باليد.
- *
- * ── وأكثرُها لم يكن عطبًا في الشيفرة ─────────────────────────────────────
- * ملفّاتُ الجافاسكربت مُوسَّمةٌ ببصمةِ محتواها (`1015-3027217d…js`). فحين
- * يُنشَر تحديثٌ جديد تختفي بصماتُ القديم من الاستضافة — والتبويبةُ المفتوحةُ
- * عند المستخدم ما زالت تشير إليها. فإن طلبت جزءًا لم يكن قد حُمّل بعد جاءها
- * ٤٠٤، وهو `ChunkLoadError`.
- *
- * وهذا يفسّر ما وُصف بالحرف: يقع في أقسامٍ شتّى، ولا يتكرّر إن أُعيدت
- * المحاولة — لأنّ إعادةَ التحميل تجلب البصماتِ الجديدة. وكثرةُ النشر في يومٍ
- * واحدٍ تكثّره.
- *
- * فمثلُ هذا يُعالَج بإعادة تحميلٍ واحدةٍ صامتة — مرّةً لا أكثر، وإلّا دارت
- * الصفحةُ في حلقةٍ إن كان العطبُ حقيقيًّا. وما سواه يُعرَض باسمه مع طريقٍ
- * للعودة.
- */
+/** Screen error boundary, instead of the uninformative Application error. The app had no error boundary, so any exception in any screen dropped the page to Next's generic message, with no error name or location and no way back except a manual reload. Most were not code defects: JavaScript files are named by a content hash, so when a new release is deployed the old hashes disappear from hosting while a user's open tab still points to them; requesting a not-yet-loaded chunk returns 404, a `ChunkLoadError`. It happens in varied sections and does not repeat on retry, since reloading fetches the new hashes, and frequent deploys in one day multiply it. So it is handled with one silent reload, once only, otherwise the page would loop if the defect were real. Anything else is shown by name with a way back. */
 import { useEffect, useState } from 'react';
 import { AlertTriangle, RefreshCw, ArrowRight } from 'lucide-react';
 import { reloadIfNewer } from '@/lib/appVersion';
@@ -37,25 +16,22 @@ export default function SystemError({ error, reset }: { error: Error & { digest?
 
   useEffect(() => {
     if (!stale) return;
-    // مرّةً واحدةً كلَّ دقيقة: لو تكرّر فالعطبُ ليس نشرًا، فيُعرَض ولا يُخفى.
+    // At most once per minute: if it repeats the defect is not a deploy, so it is shown, not hidden.
     let last = 0;
-    try { last = Number(sessionStorage.getItem(RELOAD_KEY) || 0); } catch { /* لا تخزين */ }
+    try { last = Number(sessionStorage.getItem(RELOAD_KEY) || 0); } catch { /* No storage. */ }
     if (Date.now() - last < 60000) return;
-    try { sessionStorage.setItem(RELOAD_KEY, String(Date.now())); } catch { /* لا يضرّ */ }
+    try { sessionStorage.setItem(RELOAD_KEY, String(Date.now())); } catch { /* Harmless. */ }
     window.location.reload();
   }, [stale]);
 
-  // ── والعطبُ في نسخةٍ قديمة يُصلَح بالتحديث ─────────────────────────────
-  // تبويبةٌ فُتحت قبل نشر الإصلاح تبقى تشغّل الشيفرةَ القديمة (ملفّاتُها لم
-  // تُحذف فلا ChunkLoadError). فإن كان المنشورُ أحدثَ حُدِّثت الصفحةُ مرّةً —
-  // ويصل الإصلاحُ بلا أن يُطلب من أحدٍ شيء (٢٠٢٦/١٠/٢٧).
+  // A defect in an old version is fixed by refreshing. A tab opened before the fix was deployed keeps running the old code (its files were not deleted, so no ChunkLoadError). If the deployed version is newer, the page refreshes once and the fix arrives without anyone being asked.
   const [updating, setUpdating] = useState(false);
   useEffect(() => {
     if (stale) return;
     reloadIfNewer().then((r) => { if (r) setUpdating(true); });
   }, [stale]);
 
-  // ويُبلَّغ الخادمُ ليُعرَف ما يقع فعلًا عند الناس — بلا انتظارٍ ولا تعطيل.
+  // The server is notified so what really happens to people is known, without waiting or blocking.
   useEffect(() => {
     if (stale) return;
     try {
@@ -73,7 +49,7 @@ export default function SystemError({ error, reset }: { error: Error & { digest?
           userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : '',
         }),
       }).catch(() => {});
-    } catch { /* التبليغُ لا يُسقط الشاشة */ }
+    } catch { /* Reporting never crashes the screen. */ }
   }, [error, stale]);
 
   if (stale || updating) {

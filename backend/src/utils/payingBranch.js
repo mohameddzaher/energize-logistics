@@ -1,32 +1,19 @@
 /**
- * الفرعُ المسدِّد — من معرّف الفرع إلى الاسم الذي يُكتب في الكشف.
- *
- * ── لماذا لا يُكتب `Branch.name` مباشرةً ──────────────────────────────────
- * عمودُ «الفرع المسدد» عربيٌّ في أربعةٍ وعشرين ألفَ صفّ: «جده»، «الرياض»،
- * «الدمام». وسجلاتُ الفروع إنجليزيّة: `Jeddah`, `Riyadh`, `Al Dammam`.
- *
- * فكتابةُ اسم السجلّ في العمود تُدخل «Jeddah» إلى جانب «جده» — قيمتان لفرعٍ
- * واحد، تنقسم عليهما كلُّ فلترةٍ وكلُّ تقريرٍ يُقرأ بالفرع، ولا يُلاحَظ إلّا
- * بعد أن يسأل أحدٌ لماذا لا تجمع الأرقام.
- *
- * والقائمةُ المرجعيّة `workflow_paying_branch` هي التي تُملأ منها الخانةُ حين
- * تُختار بيد، وفيها الاسمان معًا. فهي المرجعُ: يُطابَق الإنجليزيُّ ويُكتب
- * العربيُّ — فيتّفق ما تكتبه المحفظةُ مع ما يكتبه الموظّف.
- *
- * ── وما لا يُطابَق لا يُخمَّن ─────────────────────────────────────────────
- * فرعٌ لا نظيرَ له في القائمة يُترك فارغًا. الخانةُ الفارغة تُقرأ «لم يُسجَّل»
- * فتُملأ، أمّا اسمٌ بلغةٍ أخرى فيُقرأ فرعًا آخر ويفسد ما بُني عليه.
+ * Paying branch: from branch id to the name written on the manifest.
+ * The paying-branch column holds Arabic names in 24,000 rows, while branch records are English (`Jeddah`, `Riyadh`, `Al Dammam`). Writing `Branch.name` would put two values for one branch in the column, splitting every filter and report by branch, noticed only when totals stop adding up.
+ * The `workflow_paying_branch` lookup fills the field when picked by hand and holds both names, so it is the reference: the English name is matched and the Arabic one written, so wallet writes agree with manual entry.
+ * Unmatched branches are left empty, never guessed: empty reads as not recorded and gets filled, while a name in another language reads as a different branch and corrupts what is built on it.
  */
 
-/** يطوي الاسمَ الإنجليزيَّ: حالةُ الأحرف، والمسافات، و«Al » التعريف. */
+/** Folds the English name: case, spaces and the 'Al ' article. */
 const foldEn = (v) => String(v || '')
   .toLowerCase()
   .replace(/^al[\s-]+/, '')
   .replace(/[^a-z0-9]/g, '');
 
 /**
- * @param {*} branchId معرّفُ الفرع (من العهدة أو الحركة).
- * @returns {Promise<string>} الاسمُ العربيُّ كما يُكتب في العمود، أو '' إن لم يُعرَف.
+ * @param {*} branchId branch id (from custody or movement).
+ * @returns {Promise<string>} the Arabic name as written in the column, or '' if unknown.
  */
 async function arabicBranchName(branchId) {
   if (!branchId) return '';
@@ -40,22 +27,17 @@ async function arabicBranchName(branchId) {
   return matchPayingBranch(b.name, rows);
 }
 
-/** يطوي الاسمَ العربيّ: التشكيل والتاء المربوطة والألف والمسافات. */
+/** Folds the Arabic name: diacritics, ta marbuta, alef forms and spaces. */
 const foldAr = (v) => String(v || '')
   .replace(/[\u064B-\u0652\u0640]/g, '')
   .replace(/[أإآ]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي')
   .replace(/\s+/g, '');
 
-/**
- * ── النقلُ الثقيل فرعٌ كغيره (٢٠٢٦/١٠/٢٦) ─────────────────────────────────
- * «لما المحفظة بتتم كيوزر النقل الثقيل مبيتكتبش الفرع في الفرع المسدد». لم يكن
- * في القائمة المرجعيّة نظيرٌ له، وسجلُّه قد يُكتب «Heavy Trucks» أو «Heavy
- * Transport» أو بالعربيّة — فيُطابَق بأيٍّ منها إلى صفّ `heavy_trucks`.
- */
+/** Heavy transport is a branch like any other. Wallet entries by heavy-transport users left the paying branch unwritten because the lookup had no equivalent, and its record may be 'Heavy Trucks', 'Heavy Transport' or Arabic, so any of them matches to the `heavy_trucks` row. */
 const isHeavy = (name) => /heavy|fleet/i.test(String(name || ''))
   || foldAr(name).includes('ثقيل') || foldAr(name).includes('اسطول');
 
-/** اسمُ الفرع (إنجليزيًّا أو عربيًّا) → الاسمُ العربيُّ في القائمة، أو ''. */
+/** Branch name (English or Arabic) to the Arabic name in the list, or ''. */
 function matchPayingBranch(branchName, rows) {
   const key = foldEn(branchName);
   const ar = foldAr(branchName);

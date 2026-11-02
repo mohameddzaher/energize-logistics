@@ -1,14 +1,7 @@
 /**
- * طباعةُ جدولٍ إلى PDF — بأعمدته المختارة وصفوفه المحدَّدة.
- *
- * ── ولماذا نافذةُ طباعةٍ لا مكتبةُ PDF ────────────────────────────────────
- * مكتباتُ الـPDF في المتصفّح تكسر العربيّة: تفصل الحروفَ وتقلب اتّجاهَ السطر
- * حين يختلط الرقمُ بالنصّ. ومحرّكُ المتصفّح نفسُه يرسم العربيّةَ صحيحةً لأنّه
- * يرسمها كلَّ يوم — و«حفظ كـ PDF» في حواره يخرج ملفًّا سليمًا.
- *
- * والتقاريرُ الرسميّةُ المُترَوَّسة (كشفُ حساب العميل) تُبنى في الخادم
- * (`/api/reports`) حيث الترويسةُ والخطوطُ مضبوطة. وهذه لطباعة الجدول كما هو
- * على الشاشة — سريعةً، بلا رحلةٍ إلى الخادم.
+ * Prints a table to PDF with its chosen columns and selected rows.
+ * A print window is used instead of a PDF library: browser PDF libraries break Arabic, splitting letters and flipping line direction when digits mix with text. The browser engine renders Arabic correctly, and Save as PDF in its dialog gives a clean file.
+ * Official letterhead reports (customer statement) are built on the server (/api/reports) where letterhead and fonts are set. This is for printing the table as shown on screen, fast and with no server trip.
  */
 export type PrintColumn = { header: string; key: string; transform?: (value: any, row: any) => any; align?: 'start' | 'end' | 'center' };
 
@@ -18,7 +11,7 @@ export function printTable({ title, subtitle, columns, rows, ar, meta }: {
   columns: PrintColumn[];
   rows: Record<string, any>[];
   ar: boolean;
-  /** أسطرٌ تُطبع تحت العنوان: الفلاتر المطبَّقة، المدى الزمنيّ، عدد الصفوف. */
+  /** Lines printed under the title: applied filters, date range, row count. */
   meta?: string[];
 }) {
   const esc = (v: any) => String(v ?? '')
@@ -61,16 +54,14 @@ export function printTable({ title, subtitle, columns, rows, ar, meta }: {
 <footer><span>${esc(ar ? 'إنرجايز للخدمات اللوجستية' : 'Energize Logistics')}</span><span>${esc(printed)}</span></footer>
 </body></html>`;
 
-  // نافذةٌ مستقلّة: الطباعةُ من الصفحة نفسِها تحمل تنسيقَها كلَّه وقوائمَها.
+  // Separate window: printing from the page itself carries all its styling and menus.
   const w = window.open('', '_blank', 'width=1100,height=800');
-  if (!w) return false;                       // حاجبُ النوافذ — يُقال للمستخدم
+  if (!w) return false;                       // Popup blocker; the user is told.
   w.document.write(html);
   w.document.close();
-  // تُنتظر الرسمةُ قبل فتح حوار الطباعة، وإلّا طُبعت صفحةٌ فارغة. وللانتظار
-  // بابان — `onload` ومهلةٌ احتياطيّةٌ لمن لا يُطلقه بعد `document.write` —
-  // فيُحرَس بمرّةٍ واحدة، وإلّا فُتح الحوارُ مرّتين.
+  // Waits for rendering before opening the print dialog, otherwise a blank page prints. The wait has two paths, onload and a fallback timeout for browsers that do not fire it after document.write, so it is guarded to run once or the dialog would open twice.
   let done = false;
-  const go = () => { if (done) return; done = true; try { w.focus(); w.print(); } catch { /* أُغلقت النافذة */ } };
+  const go = () => { if (done) return; done = true; try { w.focus(); w.print(); } catch { /* Window was closed. */ } };
   w.onload = go;
   setTimeout(go, 400);
   return true;

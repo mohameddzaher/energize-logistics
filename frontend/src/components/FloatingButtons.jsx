@@ -4,14 +4,14 @@ import { useState, useEffect } from 'react'
 import { usePathname } from 'next/navigation'
 import { FaWhatsapp, FaArrowUp } from 'react-icons/fa'
 
-// واتساب للزوّار فقط — يختفي في صفحة الدخول وداخل السيستم (صاحبُ الشركة، ٢٠٢٦/١٠/٢٣).
+// WhatsApp button for visitors only; hidden on the login page and inside the system.
 const APP_PATHS = ['/system', '/login']
 
 export default function FloatingButtons() {
   const pathname = usePathname() || ''
   const [showScroll, setShowScroll] = useState(false)
 
-  // لما المستخدم ينزل تحت، نعرض زر ↑
+  // Show the scroll-up button once the user scrolls down.
   useEffect(() => {
     const handleScroll = () => {
       setShowScroll(window.scrollY > 300)
@@ -21,7 +21,7 @@ export default function FloatingButtons() {
     return () => window.removeEventListener('scroll', handleScroll)
   }, [])
 
-  // وظيفة الزر ↑ للعودة لأعلى الصفحة
+  // Scroll-to-top button handler.
   const scrollToTop = () => {
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
@@ -30,7 +30,7 @@ export default function FloatingButtons() {
 
   return (
     <div className="fixed bottom-5 right-5 flex flex-col gap-2.5 z-50">
-      {/* زر واتساب */}
+      {/* WhatsApp button. */}
       <a
         href="https://wa.me/+966540958433"
         target="_blank"
@@ -40,7 +40,7 @@ export default function FloatingButtons() {
         <FaWhatsapp className="text-xl" />
       </a>
 
-      {/* زر العودة للأعلى */}
+      {/* Scroll-to-top button. */}
       {/* {showScroll && (
         <button
           onClick={scrollToTop}

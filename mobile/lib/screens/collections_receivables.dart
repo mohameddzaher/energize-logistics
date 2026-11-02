@@ -16,11 +16,7 @@ import 'ops_workflow_detail.dart';
 import '../ui/export_sheet.dart';
 import '../resource/configs.dart' show collectionsCanEdit;
 
-// ── تفاصيلُ المديونيّة — شاشةُ كلِّ رقمٍ في لوحة التحصيل ─────────────────────
-// كان الرقمُ يفتح ورقةً سفليّةً تعيد الرقمَ نفسَه. والآن يفتح شاشةً كاملةً بصفوفه
-// — كصفحة الموقع `/system/collections-dept/dashboard/receivables`: الصفوفُ نفسُها
-// التي عدّت البطاقة (`/receivables/rows`)، بأعمدتها مختصرةً في بطاقة، وفلاترُها
-// قابلةٌ للإزالة، وفلاترُ أعمدةٍ وفرزٌ وبحث، ومجاميعُ النتيجة كلِّها.
+// Debt details: a screen for every number on the collections dashboard. A number used to open a bottom sheet repeating itself; it now opens a full screen of its rows, like the web page `/system/collections-dept/dashboard/receivables`: the same rows that counted the card (`/receivables/rows`), columns condensed in a card, removable filters, column filters, sorting and search, and totals for the whole result.
 
 const _payLabels = {
   'tax': ('ضريبي', 'Tax'),
@@ -63,12 +59,12 @@ String _date(dynamic v) {
   if (s.length < 10) return '—';
   final d = DateTime.tryParse(s);
   if (d == null) return s.substring(0, 10);
-  // يومُ الرياض: الخادمُ يحفظ منتصفَ ليل الرياض — +3 تعيده إلى يومه.
+  // Riyadh day: the server stores Riyadh midnight, and +3 returns it to its day.
   final r = d.toUtc().add(const Duration(hours: 3));
   return '${r.day.toString().padLeft(2, '0')}/${r.month.toString().padLeft(2, '0')}/${r.year}';
 }
 
-/// اسمُ عقدةٍ أو فلترٍ في رأس الشاشة.
+/// Name of a node or filter in the screen header.
 String _chipLabel(String k, String v) {
   final vals = v.split(',');
   String join(Map<String, (String, String)> m) => vals.map((x) => _lbl(m, x)).join('، ');
@@ -91,7 +87,7 @@ String _chipLabel(String k, String v) {
   }
 }
 
-/// فلاترُ الأعمدة المتاحة على الهاتف — قيمُها من `/receivables/column-options`.
+/// Column filters available on the phone; their values come from `/receivables/column-options`.
 const _colFilters = [
   ('officer', 'المسؤول', 'Collector', null),
   ('payKind', 'نوع الدفع', 'Payment type', _payLabels),
@@ -116,7 +112,7 @@ const _sorts = [
 ];
 
 class CollectionsReceivablesScreen extends StatefulWidget {
-  /// فلاترُ اللوحة والعقدةُ التي ضُغطت — كما يحملها رابطُ الموقع.
+  /// Dashboard filters and the node that was tapped, as the web URL carries them.
   final Map<String, String> query;
   final String title;
   const CollectionsReceivablesScreen({super.key, required this.query, required this.title});
@@ -139,7 +135,7 @@ class _CollectionsReceivablesScreenState extends State<CollectionsReceivablesScr
   int _seq = 0;
   void Function()? _onLive;
   final _search = TextEditingController();
-  Timer? _searchDeb; // البحثُ أثناء الكتابة — و✕ يُعيد القائمة كاملة
+  Timer? _searchDeb; // Search while typing; the clear button restores the full list.
 
   @override
   void initState() {
@@ -341,7 +337,7 @@ class _CollectionsReceivablesScreenState extends State<CollectionsReceivablesScr
               Chip2('${tr('الخطورة', 'Risk')}: ${_lbl(_riskLabels, '${r['risk'] ?? ''}')}', T.inkSoft),
               if (issue != 'none') Chip2(_lbl(_issueLabels, issue), T.navy, icon: Icons.gavel_rounded),
               if (att != null) Chip2(att > 0 ? '$att ${tr('مرفق', 'files')}' : tr('بلا مرفق', 'no file'), T.inkSoft, icon: Icons.attach_file_rounded),
-              // معاملةُ التخليص التي تخدمها كشوفُ الصفّ — كشارة الموقع.
+              // The clearance transaction served by the row's sheets, like the web badge.
               if (r['customs'] is List && (r['customs'] as List).isNotEmpty) CustomsLinkChips(r['customs']),
             ]),
             const SizedBox(height: 4),
@@ -433,7 +429,7 @@ class _CollectionsReceivablesScreenState extends State<CollectionsReceivablesScr
   }
 }
 
-/// تفصيلُ صفّ — كلُّ ما يُعرَف عنه، وفاتورةُ الدفتر بكشوفها، والمرفقات، وحالةُ القضيّة.
+/// Row detail: everything known about it, the ledger invoice with its sheets, attachments, and case status.
 class _ReceivableDetailScreen extends StatefulWidget {
   final Map<String, dynamic> row;
   const _ReceivableDetailScreen({required this.row});
@@ -520,7 +516,7 @@ class _ReceivableDetailScreenState extends State<_ReceivableDetailScreen> {
             kv(tr('القيمة', 'Value'), _money(r['total'])),
             kv(tr('المحصَّل', 'Collected'), _money(r['collected'])),
             kv(tr('المتبقّي', 'Remaining'), _money(r['remaining'])),
-            // ومعاملاتُ التخليص التي تخدمها كشوفُه.
+            // And the clearance transactions served by its sheets.
             if (r['customs'] is List && (r['customs'] as List).isNotEmpty) ...[
               const Divider(height: 18),
               Text(tr('التخليص الجمركي', 'Customs clearance'), style: const TextStyle(fontSize: 12.5, color: T.inkSoft)),
@@ -567,7 +563,7 @@ class _ReceivableDetailScreenState extends State<_ReceivableDetailScreen> {
               const SizedBox(height: 6),
               for (final x in reports)
                 InkWell(
-                  // الكشفُ يُضغط فتُفتح متابعاتُه — السجلُّ نفسُه في التشغيل والتخليص.
+                  // Tapping a sheet opens its follow-ups; the same record in operations and clearance.
                   onTap: () => showModalBottomSheet(
                     context: context,
                     isScrollControlled: true,
@@ -613,9 +609,7 @@ class _ReceivableDetailScreenState extends State<_ReceivableDetailScreen> {
   }
 }
 
-// ── القضايا — العملاءُ تحت التفاوض أو في القضاء ─────────────────────────────
-// كصفحة الموقع `/system/collections-dept/cases`: من `/receivables/cases`، والضغطُ
-// على عميلٍ يفتح فواتيرَه في شاشة تفاصيل المديونيّة بحالته.
+// Cases: customers under negotiation or in court. Like the web page `/system/collections-dept/cases`, from `/receivables/cases`; tapping a customer opens its invoices in the debt details screen with its status.
 class CollectionsCasesScreen extends StatefulWidget {
   const CollectionsCasesScreen({super.key});
   @override
@@ -625,17 +619,17 @@ class CollectionsCasesScreen extends StatefulWidget {
 class _CollectionsCasesScreenState extends State<CollectionsCasesScreen> {
   Map<String, dynamic>? _data;
   String? _error;
-  // الفلاترُ متعدّدةُ القيم كالموقع: الحالة، مسؤول التحصيل، نوع الدفع، الاستحقاق.
+  // Multi-value filters like the web: status, collection officer, payment type, due date.
   final Set<String> _state = {}, _officer = {}, _pay = {}, _due = {};
   String _q = '';
   int _seq = 0, _miniSeq = 0;
   String _busy = '';
-  // فواتيرُ عميلٍ تُفتَح تحت صفّه.
+  // A customer's invoices open under its row.
   String _open = '';
   Map<String, dynamic>? _mini;
   Timer? _tick;
-  Timer? _searchDeb; // مستقلٌّ عن مؤقِّت التحديث الحيّ — كان يُلغي بحثًا مُنتظِرًا
-  final _searchCtl = TextEditingController(); // النصُّ يبقى مطابقًا لـ_q
+  Timer? _searchDeb; // Independent of the live refresh timer: it used to cancel a pending search.
+  final _searchCtl = TextEditingController(); // Text stays equal to _q.
   void Function()? _onLive;
 
   @override
@@ -708,7 +702,7 @@ class _CollectionsCasesScreenState extends State<CollectionsCasesScreen> {
         },
       )));
 
-  /// تحت التفاوض أو قضايا — ببيانٍ يُكتب؛ أو رفعُ الحالة.
+  /// Under negotiation or cases: with a statement written; or raise the status.
   Future<void> _setIssue(Map<String, dynamic> p, String next) async {
     var note = '';
     if (next != 'none') {
@@ -798,7 +792,7 @@ class _CollectionsCasesScreenState extends State<CollectionsCasesScreen> {
     final rows = m != null && m['key'] == p['key'] ? [for (final r in (m['rows'] as List)) Map<String, dynamic>.from(r as Map)] : null;
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       const Divider(),
-      // شرائحُ العمر لهذا العميل — قيمٌ لا ألوان.
+      // Age buckets for this customer: values, not colors.
       Wrap(spacing: 10, runSpacing: 2, children: [
         for (final b in const ['d1_15', 'd16_30', 'd31_60', 'd61_90', 'd91_plus'])
           Text('${_lbl(_bandLabels, b)}: ${_money(bands[b])}', style: const TextStyle(fontSize: 11.5, color: T.inkSoft)),

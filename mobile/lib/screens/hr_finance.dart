@@ -15,17 +15,10 @@ import '../ui/widgets.dart';
 import 'hr_employee_profile.dart';
 import '../ui/search_field.dart';
 
-/// ماليّاتُ الموارد البشريّة — نظيرةُ `/system/finance/hr/residency` و`/system/hr/finance-follow`.
-///
-/// تبويبان في الجهتين:
-///   · رسومُ الإقامات ورخص العمل: كلُّ مستندٍ صفّ (الإقامةُ ورخصةُ العمل منفصلتان)،
-///     ما انتهى وما بقي عليه ٢٠ يومًا فأقلّ. الماليّةُ تحدّد صفًّا أو أكثر — أو كلَّ
-///     نتائج الفلتر — وتسجّل «تمّ دفع الرسوم»؛ والموارد البشريّة تقرأ الحالة.
-///   · الطلبات: الموارد البشريّة ترسل (موظّفون + ما يُحتاج لكلٍّ منهم + مرفقات)،
-///     والماليّةُ تجيب «تمّ» أو «لم يتمّ» بملاحظةٍ ومرفقات.
-///
-/// والأرقامُ كلُّها من الخادم: كلُّ مجموعةِ شرائح تُعَدّ بكلّ الفلاتر عدا فلترها
-/// (controllers/hrFinanceController) — كالموقع تمامًا.
+/// HR finance: counterpart of `/system/finance/hr/residency` and `/system/hr/finance-follow`, two tabs on both sides.
+/// Fees tab: each residence or work-permit document is a row (expired or within 20 days); finance marks rows as fees paid, HR reads the status.
+/// Requests tab: HR sends employees, needs and attachments; finance answers done or not done.
+/// Numbers come from the server: each facet set is counted under every filter except its own (controllers/hrFinanceController).
 class FinanceResidencyScreen extends StatelessWidget {
   const FinanceResidencyScreen({super.key});
   @override
@@ -66,7 +59,7 @@ class _Tabs extends StatelessWidget {
           appBarBottom: TabBar(
             isScrollable: true,
             tabAlignment: TabAlignment.start,
-            // بلا لونٍ صريح يأخذ المحدَّدُ لونَ الثيم (كحليّ) فيختفي على الشريط الكحليّ.
+            // Without an explicit colour the selected item takes the theme colour (navy) and vanishes on the navy bar.
             labelColor: Colors.white,
             unselectedLabelColor: Colors.white70,
             indicatorColor: T.orange,
@@ -105,9 +98,7 @@ void _snack(BuildContext context, String m) {
   if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  رسومُ الإقامات ورخص العمل
-// ═══════════════════════════════════════════════════════════════════════════
+// Residence and work-permit fees section.
 class HrDocFeesView extends StatefulWidget {
   final String listUrl;
   final String optionsUrl;
@@ -127,7 +118,7 @@ class _HrDocFeesViewState extends State<HrDocFeesView> with AutomaticKeepAliveCl
   String _doc = '';
   String _paid = '';
   String _q = '';
-  // الخانةُ في قائمةٍ تُطوى مع التمرير — النصُّ في متحكِّمٍ يبقى مع الكلمة.
+  // The field sits in a list that collapses on scroll; text lives in a controller so it survives.
   final _searchCtl = TextEditingController();
   Timer? _debounce;
   Map<String, String> _quick = {};
@@ -166,7 +157,7 @@ class _HrDocFeesViewState extends State<HrDocFeesView> with AutomaticKeepAliveCl
 
   String _qs(Map<String, String> m) => m.entries.where((e) => e.value.isNotEmpty).map((e) => '${e.key}=${Uri.encodeComponent(e.value)}').join('&');
 
-  /// فلترٌ جديد = نتائجُ جديدة: التحديدُ القديمُ لا يُحمَل إليها.
+  /// A new filter means new results: the old selection is not carried over.
   void _refilter(void Function() change) {
     setState(() { change(); _sel = {}; _all = false; });
     _load();
@@ -177,7 +168,7 @@ class _HrDocFeesViewState extends State<HrDocFeesView> with AutomaticKeepAliveCl
     try {
       final qs = _qs(_query);
       final d = await Api.instance.get('${widget.listUrl}${qs.isEmpty ? '' : '?$qs'}');
-      if (!mounted || mine != _seq) return; // ردٌّ قديمٌ سبقه أحدث
+      if (!mounted || mine != _seq) return; // An older response was overtaken by a newer one.
       setState(() { _d = Map<String, dynamic>.from(d as Map); _loading = false; _error = null; });
     } catch (e) {
       if (mounted && mine == _seq) setState(() { _loading = false; _error = e.toString(); });
@@ -407,7 +398,7 @@ class _HrDocFeesViewState extends State<HrDocFeesView> with AutomaticKeepAliveCl
     );
   }
 
-  // ── التصدير — أعمدةُ الموقع نفسُها (HrDocFees.tsx)، والمعروضُ أو الكلّ ──
+  // Export: same columns as the web (HrDocFees.tsx), shown rows or all.
   static Map<String, dynamic> _pay0(Map<String, dynamic> r) => r['payment'] is Map ? Map<String, dynamic>.from(r['payment'] as Map) : const {};
   static final _exportCols = [
     ExportCol('الرقم الوظيفي', 'Employee no.', (r) => r['employeeNumber'] ?? ''),
@@ -527,9 +518,7 @@ class _HrDocFeesViewState extends State<HrDocFeesView> with AutomaticKeepAliveCl
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  طلباتُ الموارد البشريّة إلى الماليّة
-// ═══════════════════════════════════════════════════════════════════════════
+// HR requests to finance section.
 const _reqStatus = {
   'pending': ('قيد الانتظار', 'Pending', T.warn),
   'done': ('تمّ', 'Done', T.success),
@@ -552,7 +541,7 @@ class _HrFinanceRequestsViewState extends State<HrFinanceRequestsView> with Auto
 
   late String _status = widget.finance ? 'pending' : '';
   String _q = '';
-  // الخانةُ تُهدَم مع الخطأ والتمرير — النصُّ في متحكِّمٍ يبقى مع الكلمة.
+  // The field is destroyed on error and on scroll; text lives in a controller so it survives.
   final _searchCtl = TextEditingController();
   Timer? _debounce;
   List<Map<String, dynamic>> _rows = [];

@@ -6,7 +6,7 @@
  */
 const ARABIC_DIGITS = /[٠-٩۰-۹]/g;
 
-/** Latin digits, no spaces, upper case: «c ١٢٣» and «C123» are one code. */
+/** Latin digits, no spaces, upper case: Arabic-Indic digits 'c 123' and 'C123' are one code. */
 function normCode(v) {
   return String(v == null ? '' : v)
     .replace(ARABIC_DIGITS, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d) >= 0 ? '٠١٢٣٤٥٦٧٨٩'.indexOf(d) : '۰۱۲۳۴۵۶۷۸۹'.indexOf(d)))

@@ -12,9 +12,7 @@ import '../ui/search_field.dart';
 import 'ls2_common.dart';
 import 'ls2_vehicle_detail.dart';
 
-/// الأسطول المباشر — نظيرُ /system/ls2/live: كلُّ شاحنةٍ بحالتها وسرعتها
-/// وأسخن فردة وحرارة الموتور والعداد و«كم في الفترة»، مع فلتر الحالة
-/// (يتحرك/خامل/متوقف/غير متصل) والفترة والبحث — حيٌّ على ls2:updated.
+/// Live fleet, counterpart of /system/ls2/live: each truck with its status, speed, hottest tyre, engine temperature, odometer and "how much in the period", with status filter (moving / idle / stopped / offline), period and search; live on ls2:updated.
 class Ls2LiveScreen extends StatefulWidget {
   final String status;
   const Ls2LiveScreen({super.key, this.status = ''});
@@ -112,7 +110,7 @@ class _Ls2LiveScreenState extends State<Ls2LiveScreen> {
       ],
       body: Column(children: [
         const SizedBox(height: 8),
-        // الفترةُ تحكم عمود «كم في الفترة» (عدّاد Wialon الحقيقيّ).
+        // The period drives the "how much in the period" column (the real Wialon odometer).
         Ls2RangeBar(value: _range, onChanged: (r) { setState(() { _range = r; _loading = true; }); _load(); }),
         Padding(
           padding: const EdgeInsets.fromLTRB(14, 4, 14, 0),

@@ -1,20 +1,7 @@
 'use client';
-// ── صفحةُ عائلةِ مستندٍ واحدة: بطاقات التشغيل، التفاويض، رخص السير… ──────────
-//
-// المشكلة التي تحلّها ليست نقصًا في البيانات. أرقام بطاقات التشغيل مسجَّلة على
-// مئتين وعشرين مركبة، وأرقام التفاويض على مئتين وإحدى وعشرين، وكلُّها في قاعدة
-// البيانات منذ الاستيراد. الذي كان ناقصًا هو **عمودٌ يعرضها**: قائمةُ المركبات
-// العامّة تعرض اللوحة والقطاع والمالك، فمن يفلتر على بطاقة التشغيل يحصل على
-// الصفوف الصحيحة ولا يرى رقمَ بطاقةٍ واحدة فيها — فيظنّ الملف لم يُستورَد.
-//
-// ولماذا صفحةٌ لكل عائلة لا أعمدةٌ إضافية في القائمة العامّة: أعمدةُ المستندات
-// الستّة مجتمعةً تجاوز الأربعين عمودًا، وجدولٌ بأربعين عمودًا لا يُقرأ. وفي
-// الملف المصدر كانت كلُّ عائلةٍ مجموعةً بلونها وحدها — والشاشة تتبع الورقة التي
-// يعرفها القسم.
-//
-// وكلُّ صفحةٍ من السبع لا تكتب من هذا شيئًا: تصف أعمدتها وتنتهي. لو نُسخ الهيكل
-// سبع مرات لافترقت النسخُ عند أوّل تعديل — يُصلَح ترتيبُ العنوان في واحدة ويبقى
-// في ستّ، ويُضاف زرُّ التجديد في واحدة ويغيب عن ستّ.
+// One document-family page: operating cards, authorizations, driving licences, etc.
+// The data was always in the database (operating-card numbers on 220 vehicles, authorizations on 221); what was missing was a column that shows it, since the general vehicles list shows plate, sector and owner only, so filtering by operating card returned the right rows without any card number. A page per family rather than extra columns, because the six document families together exceed forty columns and such a table is unreadable; this also follows the grouping in the source sheet.
+// Each of the seven pages only describes its columns. Copying the skeleton would let the copies diverge (title order fixed in one, renew button added to one).
 import { useState, useEffect, useCallback, useMemo, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
@@ -36,7 +23,7 @@ import { ReqToggle } from '@/components/vehicles/ReqToggle';
 import { LEAD, LEAD_2, useLeadOffset } from '@/components/vehicles/stickyLead';
 import { ArrowRight, RefreshCw, Plus, Pencil, Eraser, Trash2, X, Save, Search } from 'lucide-react';
 
-/** مجموعةٌ فارغةٌ ثابتة — لئلّا تُبنى واحدةٌ جديدة في كلّ رسمةٍ فتُعاد اللوحة. */
+/** A stable empty set, so a new one is not built every render and the panel reset. */
 const EMPTY_SET: Set<string> = new Set();
 
 import { VReg, DOC_TYPES, daysText, STATE_META, publicState, canEditVehicles, canAdminVehicles, isSharedPaper } from '@/lib/vehicleRegistry';
@@ -48,61 +35,50 @@ import HijriGregorianField from '@/components/vehicles/HijriGregorianField';
 import PersonSelect from '@/components/system/PersonSelect';
 import ScrollX from '@/components/system/ScrollX';
 
-/** عمودٌ واحد: كيف يُقرأ من المركبة، وكيف يُسمّى، وكيف يُرسَم. */
+/** One column: how it is read from the vehicle, named, and rendered. */
 export type DocColumn = {
   key: string;
   ar: string; en: string;
-  /** القيمة الخام — يُبنى منها العمود والتصدير معًا فلا يفترق الملفّ عن الشاشة. */
+  /** Raw value; the column and the export are both built from it so the file matches the screen. */
   get: (v: VReg) => string | number | null | undefined;
-  /** أرقامُ الأوراق تُقرأ يسارًا إلى يمين مهما كانت لغة الصفحة. */
+  /** Document numbers read left to right whatever the page language. */
   mono?: boolean;
   width?: number;
 };
 
 /**
- * حقلٌ واحد قابلٌ للتحرير من حقول هذه العائلة.
- *
- * وهو غيرُ `DocColumn` عمدًا: العمود يَعرِض وقد يكون محسوبًا («مفتوح — بلا سقف»
- * نصٌّ يُبنى من حقلين)، والحقل يُكتب فيُحفَظ فلا بدّ له من مسارٍ حقيقيّ في
- * المركبة. جعلُهما واحدًا كان يعني إمّا أعمدةً لا تُحرَّر أو حقولًا تُكتب في
- * لا مكان.
+ * One editable field of this family.
+ * Deliberately separate from `DocColumn`: a column displays and may be computed (an "open, no cap" text built from two fields), while a field is written and saved so it needs a real path on the vehicle. Merging them would give either columns that cannot be edited or fields written nowhere.
  */
 export type DocField = {
-  /** المسار في مستند المركبة: `operatingCard.cardNumber`. */
+  /** Path in the vehicle document, e.g. `operatingCard.cardNumber`. */
   path: string;
   ar: string; en: string;
   kind?: 'text' | 'date' | 'number' | 'flag';
-  /** خانةُ اختيارٍ تكتب نصًّا: «مفتوح» في `fuelCard.limitStatus` ليست صحيحًا/خطأً. */
+  /** A checkbox that writes text: "open" in `fuelCard.limitStatus` is not a true/false. */
   on?: string; off?: string;
   mono?: boolean;
-  /** يأخذ عرضَ الشبكة كلَّه — للأسماء الطويلة. */
+  /** Takes the full grid width, for long names. */
   wide?: boolean;
   hint?: string;
-  /**
-   * نوعُ قائمةٍ منسدلة يُملأ منها الحقل بدل الكتابة الحرّة — تُدار من
-   * «إعدادات القسم ← القوائم المنسدلة». الخانةُ الحرّة تُكتب بألف صيغة:
-   * «سائق نقل ثقيل» و«سائق ثقيل» و«سائق» ثلاثةُ مسمّياتٍ لواحد، فيصير الفلترُ
-   * ثلاثةَ خيارات. ويُخزَّن الاسمُ العربيّ لا المفتاح، لأنّ المخزَّن نصٌّ
-   * عربيٌّ منذ أوّل استيراد وتقرؤه الفلاتر والتصديرات.
-   */
+  /** Lookup list type that fills the field instead of free typing; managed from section settings, dropdown lists. Free text comes in many spellings (three job titles for one driver role make three filter options). The Arabic name is stored, not the key, since stored text has been Arabic since the first import and filters and exports read it. */
   lookup?: string;
-  /** رقمُ إقامة: يُعرَض تحته تاريخُ ميلاد صاحبه وجوالُه (IqamaPersonInfo). */
+  /** Iqama number: the owner's birth date and mobile are shown under it (IqamaPersonInfo). */
   personInfo?: boolean;
   /**
-   * ── خانةُ شخص: تُختار من الموظّفين ولا تُكتب (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢) ─────
-   * منسدلةٌ بالبحث (PersonSelect) تملأ الاسمَ وتملأ معه مساراتِ الهويّة والجوال
-   * والمسمّى — والخادمُ يرفض اسمًا لا يطابق موظّفًا (backend utils/vehiclePerson).
+   * Person field: picked from employees, not typed.
+   * A searchable dropdown (PersonSelect) fills the name and also the ID, mobile and job-title paths; the server rejects a name that does not match an employee (backend utils/vehiclePerson).
    */
   person?: { idPath: string; phonePath?: string; jobPath?: string };
-  /** تُقرأ ولا تُكتب — تُملأ من خانة الشخص. */
+  /** Read-only; filled from the person field. */
   readOnly?: boolean;
 };
 
-/** قراءةُ مسارٍ منقوط. `?.` لا يكفي هنا لأن المسار نصٌّ لا يُعرَف إلا وقت التشغيل. */
+/** Reads a dotted path. `?.` is not enough because the path is a string known only at runtime. */
 const readPath = (o: any, path: string) =>
   path.split('.').reduce((a: any, k) => (a == null ? a : a[k]), o);
 
-/** بناءُ كائنٍ متداخل من مسارٍ منقوط — **متداخلًا لا منقوطًا**، انظر أدناه. */
+/** Builds a nested object from a dotted path; nested rather than dotted, see below. */
 const writePath = (o: any, path: string, val: any) => {
   const ks = path.split('.');
   let cur = o;
@@ -112,11 +88,8 @@ const writePath = (o: any, path: string, val: any) => {
 };
 
 /**
- * ما يُرسَل إلى الخادم متداخلٌ دائمًا، لا `{'operatingCard.cardNumber': …}`.
- *
- * `express-mongo-sanitize` على الخادم يحذف كلَّ مفتاحٍ فيه نقطة قبل أن يصل إلى
- * المتحكّم، فالمسارُ المنقوط يُرسَل ويختفي في صمت: تظهر رسالةُ «تم الحفظ» ولا
- * يتغيّر شيء. والمتحكّم هو الذي يُسطِّح المتداخلَ إلى مساراتٍ فيدمج بدل أن يستبدل.
+ * What is sent to the server is always nested, never `{'operatingCard.cardNumber': ...}`.
+ * `express-mongo-sanitize` on the server drops every key containing a dot before it reaches the controller, so a dotted path is sent and silently vanishes: "saved" appears and nothing changes. The controller flattens the nested object to paths so it merges rather than replaces.
  */
 const buildPatch = (fields: DocField[], vals: Record<string, any>) => {
   const out: any = {};
@@ -132,17 +105,17 @@ const buildPatch = (fields: DocField[], vals: Record<string, any>) => {
   return out;
 };
 
-/** أوّلُ جزءٍ من كل مسار — الكائنُ الذي تعيش فيه العائلة (`gps`, `insurance`…). */
+/** First segment of each path: the object the family lives in (`gps`, `insurance`, ...). */
 const rootsOf = (fields: DocField[]) =>
   [...new Set(fields.map((f) => f.path.split('.')[0]).filter((r) => r))];
 
-/** أهذه المركبة مسجَّلٌ عليها شيءٌ من هذه العائلة أصلًا؟ */
+/** Does this vehicle have anything registered for this family at all? */
 const filled = (x: any) => x !== null && x !== undefined && x !== '';
 const hasDoc = (v: VReg, fields: DocField[], keyField?: string) => (keyField
   ? filled(readPath(v, keyField))
   : fields.some((f) => filled(readPath(v, f.path))));
 
-/** قيمةُ الحقل كما تقبلها خانةُ الإدخال — التاريخ يُقتطع إلى `YYYY-MM-DD`. */
+/** Field value as the input accepts it; a date is cut to `YYYY-MM-DD`. */
 const inputValue = (v: VReg | null, f: DocField) => {
   const raw = v ? readPath(v, f.path) : undefined;
   if (f.kind === 'flag') return !!raw && raw === (f.on ?? 'open');
@@ -152,9 +125,8 @@ const inputValue = (v: VReg | null, f: DocField) => {
 };
 
 /**
- * حالةُ هذا المستند على هذه المركبة، بالاسم الذي يفهمه `STATE_META`.
- * تُقرأ من `docStatuses` الذي يحسبه الخادم بعتبات الإعدادات — لا تُحسَب هنا،
- * وإلا لاختلفت ألوان هذه الشاشة عن شاشة التنبيهات على نفس المركبة نفسِها.
+ * State of this document on this vehicle, by the name `STATE_META` understands.
+ * Read from `docStatuses`, which the server computes with the settings thresholds; not computed here, or colours would differ from the alerts screen for the same vehicle.
  */
 const stateOf = (v: VReg, docKey: string) => {
   const s = v.docStatuses?.[docKey];
@@ -167,73 +139,41 @@ function DocumentFamilyPageInner({
   docKey, path, icon, titleAr, titleEn, subtitleAr, subtitleEn, columns, fileName, searchIn, chips, fields, keyField, rowAction, hideClear, personFill,
 }: {
   /**
-   * مفتاح المستند ذي تاريخ الانتهاء — أو `null` لعائلةٍ لا تنتهي.
-   *
-   * شريحةُ بترو اب من هذا الثاني: لها رقمٌ وحالةٌ وسقفُ صرف ولا تاريخَ انتهاء
-   * لها. وإقحامُها في عمود «الأيام المتبقية» كان سيجعل ثلاثمئة مركبة تظهر
-   * «بلا تاريخ» في شاشةٍ لا معنى للتاريخ فيها أصلًا — نقصٌ مُختلَق يُوهم أن
-   * ثَمّ عملًا مطلوبًا. ومعه يسقط زرُّ التجديد: لا يُجدَّد ما لا ينتهي.
+   * Key of the document that has an expiry date, or `null` for a family that does not expire.
+   * The petrol-card chip has a number, status and spending cap but no expiry date; putting it in the days-remaining column would show 300 vehicles as "no date" on a screen where a date is meaningless, a made-up gap implying work to do. The renew button is also dropped: what does not expire is not renewed.
    */
   docKey: string | null;
-  /** مسار هذه الصفحة — الفلاتر تعيش في عنوانها هي لا في عنوان غيرها. */
+  /** This page's path; filters live in its own URL, not another page's. */
   path: string;
   icon: React.ReactNode;
   titleAr: string; titleEn: string;
   subtitleAr: string; subtitleEn: string;
   columns: DocColumn[];
   fileName: string;
-  /** الحقول التي يمسّها البحث السريع فوق الجدول. */
+  /** Fields the quick search above the table covers. */
   searchIn?: (v: VReg) => (string | number | null | undefined)[];
-  /** شرائح خاصة بالعائلة — تحلّ محلّ شرائح الحالة حين لا مستندَ ينتهي. */
+  /** Family-specific chips; replace the status chips when no document expires. */
   chips?: Chip[];
-  /**
-   * بحثُ شخصٍ يملأ حقولَ هذه العائلة — يُعرَض في نموذج التحرير فوق الحقول.
-   * تردّ `map` خريطةَ «مسارُ الحقل → القيمة». راجع `PersonLookup`.
-   */
+  /** Person lookup that fills this family's fields, shown in the edit form above the fields. `map` returns a "field path to value" map. See `PersonLookup`. */
   personFill?: { label?: string; hint?: string; map: (p: FoundPerson) => Record<string, any> };
   /**
-   * حقولُ هذه العائلة وحدها — وبها وحدها تُفتَح الإضافةُ والتعديل والمسح.
-   *
-   * ولماذا لا تُفتَح استمارةُ المركبة الكاملة من هنا: فيها سبعةٌ وأربعون حقلًا
-   * تخصّ سبعَ عائلاتٍ أخرى، ومن يفتحها ليصحّح رقمَ بطاقة تشغيلٍ يمرّ على التأمين
-   * والفحص والوقود في طريقه — فتصير كلُّ صفحةٍ بابًا خلفيًّا إلى كل شيء، ويصير
-   * وجودُ سبع صفحاتٍ بلا معنى. تلك مهمّةُ صفحة السجل العامّة.
-   *
-   * وتركُها فارغةً يُبقي الصفحةَ للقراءة والتجديد كما كانت — لا تظهر أزرارٌ لا
-   * تعرف أين تكتب.
+   * This family's fields only; add, edit and clear open with these alone.
+   * The full vehicle form is not opened from here: it has 47 fields of seven other families, so each page would become a back door to everything, which is the job of the general register page. Leaving it empty keeps the page read/renew only, with no buttons that do not know where to write.
    */
   fields?: DocField[];
   /**
-   * الحقلُ الذي **وجودُه** يعني أنّ المستند موجود.
-   *
-   * ── ولماذا لا يكفي «أيُّ حقلٍ مملوء» ────────────────────────────────────────
-   * كان «عليها مستند» يعني أن أيَّ حقلٍ من حقول العائلة غيرُ فارغ. وفي شرائح
-   * الوقود عشرُ مركباتٍ مكتوبٌ عندها **حالةُ الشريحة** ولا شريحةَ لها — فتُحسب
-   * «عليها شريحة»، فتختفي من قائمة الاختيار عند الإضافة. وهو ما اشتُكي منه
-   * بالحرف: يُبحَث عن مركبةٍ لا شريحةَ لها فلا تظهر، مع أنّ الفلترَ فوق الجدول
-   * يقول إنّها هناك.
-   *
-   * فالمستندُ يوجد بوجود ما يُعرَّف به: رقمُ الشريحة، رقمُ الوثيقة، رقمُ
-   * البطاقة. وما عداه صفةٌ له لا وجودٌ لـه.
+   * The field whose presence means the document exists.
+   * "Any field filled" is not enough: ten vehicles have a fuel-chip status recorded but no chip, so they counted as having one and vanished from the add picker, while the filter above the table said they were there. A document exists by its identifier (chip number, policy number, card number); the rest are attributes.
    */
   keyField?: string;
   /**
-   * زرٌّ إضافيٌّ في صفّ العائلة — لفعلٍ يُقيَّد لا لخانةٍ تُفرَّغ.
-   *
-   * «نزعُ الشريحة» مثالُه: هو شرطٌ في إخلاء طرف الموظّف، فلا يصحّ أن يكون مسحًا
-   * صامتًا لخانة. يُنادي نقطتَه الخاصّة التي تُقيّد مَن نزعها ومتى.
+   * Extra button on a family row, for a restricted action rather than clearing a field.
+   * Chip removal is an example: it is a condition of employee clearance, so it cannot be a silent field clear. It calls its own endpoint that records who removed it and when.
    */
   rowAction?: (v: VReg, reload: () => void) => React.ReactNode;
   /**
-   * ── صفحةٌ لها فعلُها الخاصّ لا تعرض «مسح البيانات» ────────────────────────
-   *
-   * زرُّ المسح يفرّغ خانات المستند على المركبة — وهو المقصودُ في بطاقة تشغيلٍ
-   * كُتب رقمُها خطأً. أمّا في التفاويض فليس هو المقصود أبدًا: إلغاءُ التفويض
-   * فعلٌ له طرفان (ورقةُ المركبة وإسنادُ الموظّف)، والمسحُ يمسّ الأوّل ويترك
-   * الثاني — فيظنّ الضاغطُ أنّه ألغى ولم يُلغِ.
-   *
-   * ومَن رأى زرًّا اسمُه «مسح البيانات» وليس أمامَه غيرُه ضغطه: أحدَ عشرَ سطرًا
-   * في القاعدة أُلغيت هكذا فبقي أصحابُها مفوَّضين في ملفّاتهم.
+   * A page with its own action does not show "clear data".
+   * Clear empties the document fields on the vehicle, right for a mistyped operating card. For authorizations it is wrong: cancelling is two-sided (vehicle paper and employee assignment) and clear touches only the first, so the user thinks it was cancelled. Eleven rows were cleared this way and their owners stayed authorized in their files.
    */
   hideClear?: boolean;
 }) {
@@ -245,16 +185,16 @@ function DocumentFamilyPageInner({
   const sp = useSearchParams();
   const router = useRouter();
   const canEdit = canEditVehicles(user);
-  /** الحذف الحقيقيّ صلاحيةٌ أضيق من التعديل — وهذه هي القسمة نفسها في الخادم. */
+  /** Real delete is a narrower permission than edit; same split as on the server. */
   const canDelete = canAdminVehicles(user);
-  /** لا كتابةَ بلا حقولٍ معلومة: صفحةٌ لم تُصرّح بحقولها تبقى كما كانت. */
+  /** No writing without known fields: a page that did not declare fields stays as it was. */
   const editable = canEdit && !!fields?.length;
 
   const doc = docKey ? DOC_TYPES.find((d) => d.key === docKey) : undefined;
   const renewable = !!doc && canEdit;
-  /** أثَمّ ما يُفعَل بالصفّ أصلًا؟ فإن لم يكن، لا عمودَ إجراءاتٍ فارغًا يُرسَم. */
+  /** Is there anything to do on the row at all? If not, no empty actions column is drawn. */
   const hasRowActions = editable || !!rowAction;
-  // عرضُ عمود الإجراءات يُقاس لتقف اللوحةُ بجانبه — راجع components/vehicles/stickyLead.
+  // The actions column width is measured so the panel stops beside it; see components/vehicles/stickyLead.
   const lead = useLeadOffset();
   const hasLead = renewable || hasRowActions;
 
@@ -263,29 +203,17 @@ function DocumentFamilyPageInner({
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState(sp?.get('q') || '');
   const [chip, setChip] = useState('');
-  // ── الفلتر الداخليّ: مدى الأيام حتى الانتهاء ────────────────────────────────
-  //
-  // الفلتر الأساسيّ يجيب عن «أيّ مركبات؟» — قطاعًا ومدينةً ومالكًا. وهذا يجيب عن
-  // سؤالٍ آخر لا يُغني عنه: «ما الذي ينتهي قبل كذا يومًا؟» وهما يعملان معًا لا
-  // بدلًا من بعض: «بطاقات تشغيل النقل الثقيل في جدّة التي تنتهي خلال أسبوع»
-  // سؤالٌ واحد، وكان يحتاج شاشتين.
-  //
-  // ويُقرأ من العنوان كبقيّة الفلاتر، فالرابط يُرسَل ويُفتح على ما فُلتِر عليه.
+  // Inner filter: range of days until expiry.
+  // The main filter answers "which vehicles" (sector, city, owner); this answers "what expires within N days". They work together, e.g. heavy-transport operating cards in Jeddah expiring within a week, which used to need two screens. Read from the URL like other filters, so a link opens on what was filtered.
   const [within, setWithin] = useState(sp?.get('within') || '');
   const [includeExpired, setIncludeExpired] = useState(sp?.get('incExp') !== '0');
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [renewing, setRenewing] = useState<RenewTarget | null>(null);
   const [bulk, setBulk] = useState<RenewTarget[] | null>(null);
-  // ── تجديدُ الورقة المشتركة ────────────────────────────────────────────────
-  // وثيقةُ تأمينٍ واحدة تغطّي مئةً وثمانيًا وتسعين مركبة. «اختر ثمّ جدِّد» يعني
-  // مئةً وثمانٍ وتسعين تأشيرةً لحدثٍ واحد، وأيُّ مركبةٍ تُنسى تبقى «منتهية» وهي
-  // مؤمَّنة. فتُسأل الوثيقةُ بدل المركبات — راجع SharedPolicyRenewModal.
+  // Renewing a shared document.
+  // One insurance policy covers 198 vehicles; select-then-renew means 198 sign-offs for one event, and any vehicle forgotten stays expired though insured. So the policy is asked, not the vehicles; see SharedPolicyRenewModal.
   const [sharedOpen, setSharedOpen] = useState(false);
-  // ── فلترُ العمود على طريقة إكسل ───────────────────────────────────────────
-  // القمعُ في رأس العمود يفتح قيمَه فتُؤشَّر المطلوبة. والقيمةُ تُقرأ بدالّة
-  // العمود نفسِها التي تُرسم بها الخلية ويُصدَّر بها الملفّ — فما يُفلتَر عليه
-  // هو ما يُقرأ حرفًا بحرف. والصفوفُ هنا محمَّلةٌ كاملةً (limit=2000) فالقائمة
-  // كاملةٌ لا قائمةَ صفحةٍ واحدة.
+  // Excel-style column filter. The funnel in the header opens the values to tick. The value is read with the column's own function that renders the cell and exports the file, so what is filtered is what is read. Rows are loaded in full (limit=2000), so the list is complete, not one page.
   const [colFilters, setColFilters] = useState<Record<string, Set<string>>>({});
   const setColFilter = useCallback((key: string, sel: Set<string>) => {
     setColFilters((prev) => {
@@ -294,12 +222,10 @@ function DocumentFamilyPageInner({
       return next;
     });
   }, []);
-  /** استمارةُ العائلة: `vehicle: null` تعني «اختر المركبة أوّلًا» — أي إنشاء. */
+  /** Family form: `vehicle: null` means "pick the vehicle first", i.e. create. */
   const [form, setForm] = useState<{ vehicle: VReg | null } | null>(null);
 
-  // كل ما في العنوان فلترٌ يُمرَّر للخادم كما هو. القائمة المكتوبة بالاسم كانت
-  // تُسقِط أي فلترٍ خارجها في صمت، فتفتح الشاشةُ الأسطول كلَّه وهي تقول إنها
-  // مفلترة — ورقمٌ يفتح غير ما يقول أسوأ من رقمٍ لا يُضغَط.
+  // Everything in the URL is a filter passed to the server as is. A named whitelist silently dropped other filters, so the screen opened the whole fleet while claiming to be filtered; a number that opens something different from what it says is worse than a number that cannot be clicked.
   const UI_ONLY = ['limit', 'page', 'q'];
   const [filters, setFilters] = useState<FilterValues>(() =>
     Object.fromEntries([...(sp?.entries() || [])].filter(([k]) => !UI_ONLY.includes(k))));
@@ -312,11 +238,8 @@ function DocumentFamilyPageInner({
     return p.toString();
   }, [q, JSON.stringify(filters)]);
 
-  // ── ولا يكتب ردٌّ قديمٌ فوق ردٍّ أحدث ───────────────────────────────────
-  // البحثُ والشريحةُ والصفحةُ تُفلتَر على الخادم، فيُطلَق أكثرُ من طلبٍ في
-  // اللحظة نفسِها. والأوسعُ ردًّا أبطأُ وصولًا فيصل أخيرًا ويكتب فوق الأضيق —
-  // فيبدو الفلترُ وقد «فُكّ» بعد ثوانٍ بلا أن يمسَّ المستخدمُ شيئًا. ستُّ
-  // شاشاتٍ تمرّ من هنا. راجع hooks/useLatestRequest.
+  // An old response must not overwrite a newer one.
+  // Search, chip and page are filtered on the server so several requests fly at once; the broadest is slowest, arrives last and overwrites the narrower, so the filter appears to release after seconds untouched. Six screens go through here. See hooks/useLatestRequest.
   const guard = useLatestRequest();
   const load = useCallback(async () => {
     const mine = guard.begin();
@@ -324,8 +247,7 @@ function DocumentFamilyPageInner({
       const d = await api.get<{ vehicles: VReg[]; total: number }>(`/api/vehicle-registry?${qs}`);
       if (!guard.isCurrent(mine)) return;
       setRows(d.vehicles || []); setTotal(d.total || 0);
-      // الاختيارُ الذي خرج من النتيجة لا يبقى محفوظًا في الخفاء: من يفلتر ثم
-      // يضغط «تجديد جماعي» لا يقصد مركباتٍ لم تعد أمامه.
+      // A selection that left the result is not kept hidden: filtering then pressing bulk renew does not mean vehicles no longer in view.
       setPicked((prev) => new Set([...prev].filter((id) => (d.vehicles || []).some((v) => v._id === id))));
     } catch (e: any) { if (guard.isCurrent(mine)) notify(e?.message || 'Failed', 'error'); }
     finally { if (guard.isCurrent(mine)) setLoading(false); }
@@ -334,7 +256,7 @@ function DocumentFamilyPageInner({
   useEffect(() => { const h = setTimeout(load, 200); return () => clearTimeout(h); }, [load]);
   useSocket('vreg:updated', useCallback(() => load(), [load]));
 
-  // ما تختاره يعيش في العنوان: الرجوعُ والتقدّم يعملان، والرابط يُرسَل كما هو.
+  // What is chosen lives in the URL: back and forward work and the link is sent as is.
   useEffect(() => {
     const p = new URLSearchParams();
     if (q.trim()) p.set('q', q.trim());
@@ -344,20 +266,8 @@ function DocumentFamilyPageInner({
     syncUrl(path, p);
   }, [q, JSON.stringify(filters), within, includeExpired, path]);
 
-  // ── الشرائح: حالةُ **هذا** المستند وحده ──────────────────────────────────
-  // لا حالة المركبة العامّة: مركبةٌ تأمينها منتهٍ وبطاقةُ تشغيلها سارية ليست
-  // «منتهية» في صفحة بطاقات التشغيل، ولو عُدَّت كذلك لفتحت الشريحةُ صفوفًا لا
-  // علاقة لها بالعمل الذي فُتحت الشاشة من أجله.
-  // ── الشرائح: أربعٌ يقرؤها المستخدم ────────────────────────────────────────
-  //
-  // كانت عشرًا: ثلاثُ درجاتٍ للإلحاح تُقرأ شيئًا واحدًا، و«بلا تاريخ مسجَّل»
-  // منفصلةٌ عن «مطلوب» وهي منها، و«غير مطلوب» و«موجود» و«لدى جهةٍ أخرى» —
-  // شرائحُ لا يُفتَح شيءٌ منها. وقال صاحبُ القسم في «غير مطلوب»: «طالما غير
-  // مطلوب مش عايز أعرف عنه حاجة»، وفي «موجود»: «ماهي بيانات عادية».
-  //
-  // فبقي ما يُفتَح فعلًا: ما انتهى، وما قارب، وما هو سليم، وما ينقصنا. واسمُ
-  // المستند في الشريحة نفسِها — «التأمين منتهٍ» لا «منتهٍ» — لأنّ الشاشةَ
-  // الواحدةَ تعرض مستندًا واحدًا، و«منتهٍ» وحدَها تترك السائل يسأل: منتهٍ ماذا؟
+  // Chips show the state of this document only, not the general vehicle state: a vehicle with expired insurance but a valid operating card is not expired on the operating-cards page, or the chip would open rows unrelated to the screen's work.
+  // Four chips the user reads: expired, near, healthy, missing. There used to be ten: three urgency levels read as one, "no date" separate from "required" though part of it, and "not required", "present", "held elsewhere" which opened nothing. The document name is in the chip ("insurance expired", not "expired") because a screen shows one document and a bare "expired" leaves the question what.
   const famLabelShort = doc ? (ar ? doc.ar : doc.en) : '';
   const CHIPS: Chip[] = useMemo(() => (chips || (!docKey ? [{ key: '', label: t('الكل', 'All') }] : [
     { key: '', label: t('الكل', 'All') },
@@ -367,9 +277,7 @@ function DocumentFamilyPageInner({
       tone: 'red',
       test: (v: VReg) => stateOf(v, docKey).state === 'expired',
     },
-    // ── ثلاثُ شرائحَ بدل واحدة ─────────────────────────────────────────────
-    // «حرج» عملُ اليوم و«تحذير» عملُ الأسبوع و«قريب» تجهيزٌ للشهر القادم.
-    // وعتبةُ كلٍّ بالأيّام تُضبَط لهذا المستند من إعدادات القسم.
+    // Three chips instead of one: critical is today's work, warning is this week's, soon is preparation for next month. Each threshold in days is set per document in section settings.
     {
       key: 'critical', label: t('حرج', 'Critical'), tone: 'orange',
       test: (v: VReg) => stateOf(v, docKey).state === 'critical',
@@ -384,10 +292,7 @@ function DocumentFamilyPageInner({
     },
     { key: 'valid', label: t('ساري', 'Valid'), tone: 'green', test: (v: VReg) => stateOf(v, docKey).state === 'valid' },
     {
-      // ── «مطلوب» تجمع النقصين ─────────────────────────────────────────────
-      // مركبةٌ يلزمها المستندُ ولم يُستخرج، ومركبةٌ استُخرج لها ولا تاريخَ
-      // مسجَّلٌ له — كلتاهما عملٌ ينتظر، وفصلُهما في شريحتين يجعل قائمةَ العمل
-      // نصفين لا يُقرآن معًا. والتي لا يلزمها المستندُ أصلًا ليست منهما.
+      // "Required" merges both gaps: a vehicle that needs the document and has none, and one that has it with no recorded date. Both are pending work and splitting them makes the work list two halves not read together. A vehicle that does not need the document is in neither.
       key: 'needed',
       label: t('مطلوب — ناقص', 'Needed — missing'),
       tone: 'red',
@@ -395,12 +300,7 @@ function DocumentFamilyPageInner({
     },
   ])), [ar, docKey, chips, famLabelShort]);
 
-  // ── البحث يمرّ مرّتين، فلا بدّ أن يتّفقا ──────────────────────────────────
-  // الخادم يبحث في كلّ حقلٍ نصّيّ في المركبة، ثم تُصفَّى النتيجةُ هنا مرّةً
-  // أخرى بالنصّ نفسه. فلو كانت هذه الغربلةُ تنظر في حقلين فقط أسقطت ما وجده
-  // الخادم في حقلٍ ثالث — تكتب رقم هويّة المفوَّض فيصله الصفّ ثم تحذفه الشاشة.
-  // ولذلك تُجمع هنا **كلُّ** قيم الصفّ، وما يمرّره النداء يُضاف إليها لا يحلّ
-  // محلَّها.
+  // Search runs twice, so both must agree. The server searches every text field of the vehicle, then the result is filtered here again with the same text; if this pass looked at only two fields it would drop what the server found in a third (typing an authorized person's ID returns the row and the screen deletes it). So all row values are collected here, and what the caller passes is added, not substituted.
   const deepValues = (o: any, depth = 0): (string | number)[] => {
     if (o == null || depth > 3) return [];
     if (Array.isArray(o)) return o.flatMap((x) => deepValues(x, depth + 1));
@@ -415,12 +315,7 @@ function DocumentFamilyPageInner({
   );
   const chipFiltered = useChipFilter(rows, CHIPS, chip, q, search);
 
-  // ── ويُطبَّق مدى الأيام فوق الشرائح، لا بدلًا منها ──────────────────────────
-  // الترتيب مقصود: الشريحة تقول «منتهٍ» والمدى يقول «خلال سبعة» — واجتماعُهما
-  // «المنتهي أو الذي ينتهي خلال سبعة»، وهو ما يُسأل عنه فعلًا.
-  //
-  // والمركبة بلا تاريخٍ مسجَّل تخرج من أيّ مدًى: لا تاريخ لها يُقاس، وإدخالُها
-  // في «ينتهي خلال سبعة» يجعل الرقم يعِد بعملٍ لا يوجد.
+  // The days range applies on top of the chips, not instead of them. The order is intended: the chip says "expired" and the range says "within seven", together "expired or expiring within seven", which is what is asked. A vehicle with no recorded date leaves any range: it has no date to measure, and including it would make the number promise work that does not exist.
   const f = useMemo(() => {
     if (!docKey || within === '') return chipFiltered;
     const n = Number(within);
@@ -428,14 +323,13 @@ function DocumentFamilyPageInner({
     const shown = chipFiltered.shown.filter((v: VReg) => {
       const st = stateOf(v, docKey);
       if (st.days == null) return false;
-      if (st.days < 0) return includeExpired;   // المنتهي: يُضمّ أو يُستبعَد صراحةً
+      if (st.days < 0) return includeExpired;   // Expired: included or excluded explicitly.
       return st.days <= n;
     });
     return { ...chipFiltered, shown };
   }, [chipFiltered, docKey, within, includeExpired]);
 
-  // ── وفلاترُ الأعمدة فوق ذلك كلِّه ─────────────────────────────────────────
-  // آخرُ ما يُطبَّق، فيرى ما تركته الشرائحُ والمدّة — كما يفعل إكسل بالضبط.
+  // Column filters apply on top of everything, last, seeing what chips and period left, as Excel does.
   const colText = useCallback((c: DocColumn, v: VReg) => {
     const raw = c.get(v);
     return raw === null || raw === undefined || raw === '' ? '' : String(raw);
@@ -451,8 +345,7 @@ function DocumentFamilyPageInner({
   }, [f.shown, colFilters, columns, colText]);
   const colFilterCount = Object.keys(colFilters).length;
 
-  // صفٌّ مسطَّح للتصدير: نفس الدوالّ التي تُرسم بها الخلايا، فالملفّ لا يختلف
-  // عن الشاشة ولا يحتاج تعريفًا ثانيًا للأعمدة.
+  // Flat export row: the same functions that render the cells, so the file matches the screen with no second column definition.
   const flat = (v: VReg) => {
     const o: Record<string, any> = {};
     for (const c of columns) o[c.key] = c.get(v) ?? '';
@@ -475,22 +368,15 @@ function DocumentFamilyPageInner({
     vehicleId: v._id, plateNumber: v.plateNumber, docKey: docKey || '',
     docAr: doc?.ar, docEn: doc?.en, expiryDate: doc?.datePath(v) || null,
     documentNumber: doc?.numberOf(v) || '',
-    // التفويض له بدايةٌ تُجدَّد مع نهايته — والنافذة وحدها تعرف أيّ مستندٍ له
-    // بداية، فتُمرَّر القيمة الحاليّة لتُقارَن بالجديدة.
+    // An authorization has a start date that is renewed with its end; only the modal knows which document has a start, so the current value is passed to compare with the new one.
     startDate: docKey === 'authorization' ? (v.authorizedPerson?.startDate || null) : null,
   });
 
-  /** ما يُسمّى به المستند في التأكيدات والرسائل — اسمُه إن كان مستندًا، وإلا عنوانُ الصفحة. */
+  /** What the document is called in confirmations and messages: its name if it is a document, otherwise the page title. */
   const famLabel = doc ? (ar ? doc.ar : doc.en) : t(titleAr, titleEn);
 
-  // ── «حذف» في صفحة مستند: مسحُ المستند لا مسحُ المركبة ──────────────────────
-  //
-  // المركبة موجودةٌ في الواقع ولها لوحةٌ وهيكلٌ وحوادثُ وتفاويض؛ انتهاءُ بطاقة
-  // تشغيلها أو خطأٌ في رقمها لا يعني أنها لم تعد موجودة. وحذفُها من هنا كان
-  // يمحو معها ستَّ عائلاتٍ أخرى لا تظهر في هذه الشاشة أصلًا — وهو ضررٌ لا يراه
-  // الضاغطُ على الزرّ. فالإجراءُ المتلِف الصحيح هنا هو تفريغُ هذه العائلة وحدها،
-  // والمركبةُ تبقى في السجلّ صفًّا خانتُه فارغة — وهذا بالضبط ما تُظهره
-  // شريحةُ «بلا تاريخ مسجَّل» بوصفه عملًا مطلوبًا.
+  // "Delete" on a document page clears the document, not the vehicle.
+  // The vehicle exists in reality with plate, chassis, accidents and authorizations; an expired operating card or a typo does not mean it is gone. Deleting it from here wiped six other families not shown on this screen, harm the clicker cannot see. The right destructive action is to empty this family only; the vehicle stays in the register as a row with empty cells, which the "no recorded date" chip shows as work to do.
   const clearDoc = useCallback(async (v: VReg) => {
     if (!fields?.length) return;
     const ok = await confirm({
@@ -502,8 +388,7 @@ function DocumentFamilyPageInner({
         `The «${famLabel}» fields on vehicle ${v.plateNumber} will be emptied. The vehicle itself stays in the registry with its other documents, and appears here with no data.`),
     });
     if (!ok) return;
-    // ويُمسح معها `statusCode`: هو سببُ غياب التاريخ («غير مطلوب»، «لدى البنك»)،
-    // وإبقاؤه بعد تفريغٍ صريح يجعل الصفَّ يعتذر عن نقصٍ لم يعد قائمًا.
+    // `statusCode` is cleared too: it is the reason the date is missing ("not required", "held by the bank"); keeping it after an explicit clear makes the row excuse a gap that no longer exists.
     const patch = buildPatch(fields, {});
     for (const r of rootsOf(fields)) writePath(patch, `${r}.statusCode`, '');
     try {
@@ -513,8 +398,7 @@ function DocumentFamilyPageInner({
     } catch (e: any) { notify(e?.message || 'Failed', 'error'); }
   }, [fields, famLabel, confirm, notify, load, ar]);
 
-  // أرقامُ الوثائق المشتركة وعددُ مركبات كلٍّ منها — تُبنى من الصفوف المحمَّلة،
-  // فما يُعرَض للتجديد هو ما في الشاشة لا قائمةٌ من مصدرٍ آخر قد تختلف عنها.
+  // Shared document numbers and the vehicle count of each, built from the loaded rows so what is offered for renewal is what is on screen, not a list from another source that may differ.
   const sharedGroups = useMemo(() => {
     if (!docKey || !isSharedPaper(docKey) || !doc) return [];
     const m = new Map<string, { number: string; count: number; expiryDate?: string | null }>();
@@ -526,15 +410,14 @@ function DocumentFamilyPageInner({
       if (!g) m.set(n, { number: n, count: 1, expiryDate: exp });
       else {
         g.count += 1;
-        // أقربُ انتهاءٍ في المجموعة هو انتهاءُ الوثيقة عمليًّا.
+        // The nearest expiry in the group is effectively the document's expiry.
         if (exp && (!g.expiryDate || new Date(exp) < new Date(g.expiryDate))) g.expiryDate = exp;
       }
     }
     return [...m.values()].sort((a, b) => b.count - a.count);
   }, [rows, docKey, doc]);
 
-  // «اختيار كل المعروض» يعني المعروضَ بعد فلاتر الأعمدة أيضًا — وإلّا اختار
-  // صفوفًا لا يراها الضاغطُ على المربّع.
+  // "Select all shown" means shown after column filters too, otherwise it selects rows the clicker cannot see.
   const allShownPicked = shownRows.length > 0 && shownRows.every((v: VReg) => picked.has(v._id));
   const toggleAll = () => setPicked((p) => {
     const n = new Set(p);
@@ -579,12 +462,7 @@ function DocumentFamilyPageInner({
             {t('إضافة', 'Add')}
           </button>
         )}
-        {/* ── نطاقان لا واحد ────────────────────────────────────────────────
-            «المعروض» هو الشاشة بالضبط بعد الفلتر والشريحة والبحث وفلاتر
-            الأعمدة. و«الكلّ» هو السجلّ كلُّه بلا فلتر — كان لا سبيل إليه إلّا
-            بمسح كلّ فلترٍ باليد ثمّ التصدير ثمّ إعادتها. والأعمدةُ واحدةٌ في
-            الحالتين، وهي أعمدةُ الشاشة نفسُها، فأيُّ عمودٍ يُضاف هنا يظهر في
-            الملفّ بلا تعريفٍ ثانٍ. */}
+        {/* Two scopes, not one. "Shown" is exactly the screen after filter, chip, search and column filters. "All" is the whole register without filters, which could only be reached by clearing each filter, exporting, then restoring them. Columns are the same in both and are the screen's own, so a column added here appears in the file with no second definition. */}
         <ExportMenu fileName={fileName} lang={lang as 'ar' | 'en'}
           options={[
             {
@@ -620,10 +498,7 @@ function DocumentFamilyPageInner({
         />
       </div>
 
-      {/* ── الفلتر الداخليّ: «ما الذي ينتهي قبل كذا يومًا؟» ────────────────────
-          يعمل مع الفلتر الأساسيّ فوقه لا بدلًا منه، ومع شرائح الحالة تحته.
-          والمدّة رقمٌ يُكتب لا قائمةٌ ثابتة: الأزرار اختصارٌ للشائع، ومَن أراد
-          سبعةً وأربعين يومًا يكتبها. */}
+      {/* Inner filter: what expires before N days. Works with the main filter above and the status chips below. The period is a typed number, not a fixed list: the buttons are shortcuts for common values and anyone wanting 47 days types it. */}
       {!!docKey && (
         <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm flex flex-wrap items-center gap-2">
           <span className="text-[12.5px] font-bold text-slate-700">{t('ينتهي خلال', 'Expiring within')}</span>
@@ -669,12 +544,7 @@ function DocumentFamilyPageInner({
           <table className="w-full text-sm">
             <thead className="bg-slate-900 text-slate-200 text-[12.5px]">
               <tr>
-                {/* ── عمودُ الإجراءات أوّلًا وثابتًا ──────────────────────────
-                    كان آخرَ عمودٍ في جدولٍ يتجاوز عرضَ الشاشة، فمن أراد تعديلَ
-                    صفٍّ يراه أمامه لزمه أن يمرّر عرضًا إلى آخر الجدول ثم يعود.
-                    وهو مسارٌ يُقطَع لكلّ صفّ، ويُخطئ فيه الصفَّ من انزلق سطرًا
-                    أثناء التمرير. فصار أوّلَ ما يُقرأ، وثابتًا لا يجري مع
-                    التمرير — ومعه مربّعُ الاختيار، فهما فعلٌ واحدٌ على الصفّ. */}
+                {/* Actions column first and sticky. It used to be the last column in a table wider than the screen, so editing a row meant scrolling to the end and back for every row, and the wrong row was easy to hit after a slip. Now it is read first and does not scroll, together with the checkbox, since they are one action on the row. */}
                 {hasLead && (
                   <th ref={lead.ref} className={`${LEAD} bg-slate-900 px-3 py-3 text-start font-bold whitespace-nowrap`}>
                     <span className="inline-flex items-center gap-2">
@@ -687,7 +557,7 @@ function DocumentFamilyPageInner({
                   </th>
                 )}
                 {columns.map((c, i) => (
-                  // أوّلُ عمودٍ هو اللوحة — هويّةُ الصفّ، فتُثبَّت مع الإجراءات.
+                  // The first column is the plate, the row identity, pinned with the actions.
                   <th key={c.key}
                     className={`px-3 py-3 text-start font-bold whitespace-nowrap ${i === 0 ? `${LEAD_2} bg-slate-900` : ''}`}
                     style={i === 0 ? { insetInlineStart: hasLead ? lead.offset : 0 } : undefined}>
@@ -736,8 +606,7 @@ function DocumentFamilyPageInner({
                               <Pencil className="w-3.5 h-3.5" />
                             </button>
                           )}
-                          {/* المِمحاة لا سلّةُ المهملات: الأيقونةُ نفسها تقول إن
-                              الممسوح بياناتٌ لا مركبة. */}
+                          {/* An eraser, not a trash can: the icon itself says the cleared thing is data, not a vehicle. */}
                           {editable && !hideClear && hasDoc(v, fields!, keyField) && (
                             <button onClick={() => clearDoc(v)}
                               title={t('مسح بيانات هذا المستند', 'Clear this document')}
@@ -808,21 +677,14 @@ function DocumentFamilyPageInner({
   );
 }
 
-// `useSearchParams` يوجب حدَّ Suspense في موجِّه Next، وإلا صار البناءُ فشلًا
-// صريحًا عند أوّل تعديلٍ في غلاف القسم.
+// `useSearchParams` requires a Suspense boundary in the Next router, or the build fails at the first edit in the section shell.
 export default function DocumentFamilyPage(props: Parameters<typeof DocumentFamilyPageInner>[0]) {
   return <Suspense fallback={<Spinner />}><DocumentFamilyPageInner {...props} /></Suspense>;
 }
 
 
-// ── استمارةُ العائلة: إنشاءٌ وتعديل، وحذفُ المركبة خلف بابٍ مغلق ─────────────
-//
-// و«الإنشاء» هنا ليس إنشاءَ مركبة. المركبةُ تُولد في صفحة السجل العامّة بلوحتها
-// وهيكلها وقطاعها، ولا يصحّ أن تُولد من صفحة بطاقات التشغيل ببطاقةٍ ولوحةٍ فقط —
-// فتدخل الأسطولَ ناقصةَ الهوية من بابٍ جانبيّ. الذي ينقص فعلًا هو **مستندٌ لم
-// يُسجَّل بعد على مركبةٍ قائمة**: مئةٌ وخمسَ عشرة مركبةً بلا رقم بطاقة تشغيل،
-// وطريقُ إدخالها كان يمرّ باستمارة السبعة والأربعين حقلًا. فالإنشاء هنا: اختر
-// المركبة — والقائمةُ تبدأ بمن لا مستندَ له — ثم املأ حقول العائلة وحدها.
+// Family form: create and edit, with vehicle deletion behind a closed door.
+// "Create" here does not create a vehicle. A vehicle is born in the general register page with plate, chassis and sector; creating it from the operating-cards page with only a card and plate would add an identity-incomplete vehicle by a side door. What is actually missing is a document not yet registered on an existing vehicle (115 vehicles have no operating-card number), whose entry path used to go through the 47-field form. So create here means pick the vehicle (the list starts with those lacking the document) and fill this family's fields only.
 function DocFormModal({ vehicle, fields, keyField, famLabel, ar, canDelete, personFill, onClose, onDone }: {
   vehicle: VReg | null;
   fields: DocField[];
@@ -830,10 +692,7 @@ function DocFormModal({ vehicle, fields, keyField, famLabel, ar, canDelete, pers
   famLabel: string;
   ar: boolean;
   canDelete: boolean;
-  /**
-   * بحثُ شخصٍ يملأ حقولَ هذه العائلة — راجع `PersonLookup`.
-   * تردّ الدالّةُ خريطةَ «مسارُ الحقل → القيمة»، فتُملأ الخاناتُ من الجواب.
-   */
+  /** Person lookup that fills this family's fields; see `PersonLookup`. The function returns a "field path to value" map used to fill the inputs. */
   personFill?: { label?: string; hint?: string; map: (p: FoundPerson) => Record<string, any> };
   onClose: () => void;
   onDone: () => void;
@@ -847,26 +706,16 @@ function DocFormModal({ vehicle, fields, keyField, famLabel, ar, canDelete, pers
     () => Object.fromEntries(fields.map((f) => [f.path, inputValue(vehicle, f)])));
   const [saving, setSaving] = useState(false);
 
-  // ── «مطلوبٌ منّا هذا المستند على هذه المركبة؟» ─────────────────────────────
-  //
-  // كان يُسأل في استمارة سجل المركبات وحدَها. ومَن يراجع الفحصَ الدوريّ يفتح
-  // صفحة الفحص لا صفحةَ السجلّ: يرى مقطورةً «مطلوب — ناقص» وهي لا تُفحص أصلًا،
-  // فيلزمه أن يخرج من الشاشة إلى شاشةٍ أخرى ليصحّح ما رآه هنا. فصار السؤال حيث
-  // يُعدَّل المستند.
-  //
-  // والكائنُ الذي تعيش فيه العائلة هو موضعُ الجواب: `inspection.statusCode`
-  // لصفحة الفحص، و`gps.statusCode` لصفحة التتبّع — وهو الحقلُ نفسُه الذي يكتبه
-  // السجلّ ويقرؤه الخادم، فلا نسخةَ ثانية من الحقيقة.
+  // "Do we need this document on this vehicle?"
+  // This was asked only in the vehicle register form. Someone reviewing the inspection opens the inspection page, sees a trailer as "required, missing" though trailers are not inspected, and had to leave for another screen to fix it. Now the question is asked where the document is edited.
+  // The object holding the family has the answer: `inspection.statusCode` for inspection, `gps.statusCode` for tracking. It is the same field the register writes and the server reads, so there is one source of truth.
   const statusPath = `${rootsOf(fields)[0] || ''}.statusCode`;
   const initialNeed = String((target ? readPath(target, statusPath) : '') || '');
   const [need, setNeed] = useState(initialNeed);
-  // ولا يُكتب شيءٌ إلّا بضغطة: العدمُ اليوم يعني «مطلوب» ضمنًا، فكتابتُه من
-  // أنفسنا عند كلّ حفظٍ تغيّر صفوفًا لم يقصدها أحد.
+  // Nothing is written unless clicked: absence today implicitly means "required", so writing it ourselves on every save would change rows nobody intended.
   const needTouched = need !== initialNeed;
 
-  // ── قائمةُ الاختيار تُجلب غيرَ مفلترة ──────────────────────────────────────
-  // فلترُ الشاشة سؤالٌ عن **المعروض**، لا حدٌّ لما يجوز تسجيلُه: من يفلتر على
-  // «المنتهي» ثم يضغط «إضافة» لا يقصد أن يُمنع من مركبةٍ سارية.
+  // The picker list is fetched unfiltered. The screen filter is a question about what is shown, not a limit on what may be registered: someone who filters on "expired" and then clicks add does not mean to be blocked from a valid vehicle.
   const [pool, setPool] = useState<VReg[] | null>(null);
   const [pq, setPq] = useState('');
   const [onlyMissing, setOnlyMissing] = useState(true);
@@ -877,14 +726,13 @@ function DocFormModal({ vehicle, fields, keyField, famLabel, ar, canDelete, pers
       .catch((e: any) => notify(e?.message || 'Failed', 'error'));
   }, [creating, notify]);
 
-  // اختيارُ المركبة يُبحَث فيه باللوحة، فيُطوى كما تُطوى في كلّ بحثٍ آخر:
-  // مَن ينسخ اللوحة بمسافتين كان لا يجد مركبتَه هنا فيسجّل المستند على غيرها.
+  // The vehicle picker is searched by plate, so it is folded like every other search; someone pasting the plate with two spaces used to not find the vehicle and registered the document on another one.
   const candidates = useMemo(() => (pool || []).filter((v) => {
     if (onlyMissing && hasDoc(v, fields, keyField)) return false;
     return flexIncludes(pq, v.plateNumber, v.ownerNameAr, v.departmentAr, v.sectorAr);
   }).slice(0, 400), [pool, pq, onlyMissing, fields]);
 
-  /** اختيارُ مركبةٍ يملأ الاستمارة بما عليها فعلًا — لا بفراغٍ يمحو ما هو مسجَّل. */
+  /** Picking a vehicle fills the form with what is already on it, not with blanks that would erase what is registered. */
   const pick = (v: VReg) => {
     setTarget(v);
     setVals(Object.fromEntries(fields.map((f) => [f.path, inputValue(v, f)])));
@@ -903,10 +751,8 @@ function DocFormModal({ vehicle, fields, keyField, famLabel, ar, canDelete, pers
     } catch (e: any) { notify(e?.message || 'Failed', 'error'); } finally { setSaving(false); }
   };
 
-  // ── حذفُ المركبة نفسها: خلف إفصاحٍ وكتابةِ اللوحة بخطّ اليد ────────────────
-  // زرٌّ يُضغط بالخطأ في صفٍّ من ثلاثمئة صفّ يمحو مركبةً بحوادثها وتفاويضها
-  // وتاريخِ تجديداتها كلِّه. وكتابةُ اللوحة ليست تشديدًا شكليًّا: هي تُجبر على
-  // قراءة أيِّ صفٍّ يُحذَف قبل حذفه.
+  // Deleting the vehicle itself: behind a disclosure and a hand-typed plate.
+  // A misclick in a 300-row table would erase a vehicle with its accidents, authorizations and renewal history. Typing the plate is not formality: it forces reading which row is being deleted.
   const [showDanger, setShowDanger] = useState(false);
   const [typed, setTyped] = useState('');
   const [killing, setKilling] = useState(false);
@@ -944,7 +790,7 @@ function DocFormModal({ vehicle, fields, keyField, famLabel, ar, canDelete, pers
           )}
         </p>
 
-        {/* ── منتقي المركبة ─────────────────────────────────────────────── */}
+        {/* Vehicle picker. */}
         {creating && !target && (
           <div className="space-y-2">
             <div className="flex flex-wrap items-center gap-2">
@@ -954,8 +800,7 @@ function DocFormModal({ vehicle, fields, keyField, famLabel, ar, canDelete, pers
                   placeholder={t('ابحث بلوحة أو مالك أو إدارة…', 'Search plate, owner or department…')}
                   className={`${inp} ps-9`} />
               </div>
-              {/* الافتراضُ «التي بلا بيانات»: هي سببُ فتح النافذة. ومن أراد
-                  تصحيحَ مركبةٍ مسجَّلة يرفع العلامة — لا يُمنع منها. */}
+              {/* Default is "those without data": that is why the dialog was opened. Someone correcting a registered vehicle unticks it and is not blocked. */}
               <label className="flex items-center gap-1.5 text-[12.5px] text-slate-600 cursor-pointer">
                 <input type="checkbox" checked={onlyMissing} className="accent-[#f37121]"
                   onChange={(e) => setOnlyMissing(e.target.checked)} />
@@ -987,7 +832,7 @@ function DocFormModal({ vehicle, fields, keyField, famLabel, ar, canDelete, pers
           </div>
         )}
 
-        {/* ── حقول العائلة وحدها ────────────────────────────────────────── */}
+        {/* This family's fields only. */}
         {target && (
           <>
             {creating && hasDoc(target, fields) && (
@@ -996,8 +841,7 @@ function DocFormModal({ vehicle, fields, keyField, famLabel, ar, canDelete, pers
                    'This vehicle already has data for this document — saving will replace it.')}
               </p>
             )}
-            {/* السؤالُ قبل الخانات لا بعدها: جوابُه «غير مطلوب» يجعل ما تحته
-                بلا معنى، ومن أجاب به لا يُنتظَر منه أن يملأ تاريخًا. */}
+            {/* The question comes before the fields: answering "not required" makes what is below meaningless, and nobody who answered that is expected to fill a date. */}
             <div className="mb-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
               <ReqToggle ar={ar}
                 label={t(`هل «${famLabel}» مطلوبٌ على هذه المركبة؟`, `Is «${famLabel}» required on this vehicle?`)}
@@ -1008,8 +852,7 @@ function DocFormModal({ vehicle, fields, keyField, famLabel, ar, canDelete, pers
               </p>
             </div>
 
-            {/* ── ويُبحَث عن الشخص فتُملأ خاناتُه ──────────────────────────────
-                بدل أن يُكتب الاسمُ والإقامةُ والجوالُ بالأيدي في كلّ ورقة. */}
+            {/* Lookup of a person fills their fields, instead of typing name, iqama and mobile by hand on every paper. */}
             {personFill && (
               <PersonLookup ar={ar} label={personFill.label} hint={personFill.hint}
                 onPick={(pp) => setVals((prev) => ({ ...prev, ...personFill.map(pp) }))} />
@@ -1064,7 +907,7 @@ function DocFormModal({ vehicle, fields, keyField, famLabel, ar, canDelete, pers
                             {...(fl.mono ? { dir: 'ltr' } : {})} />
                         )
                       )}
-                      {/* رقمُ إقامةٍ يُعرَّف صاحبُه تحته: تاريخُ ميلاده وجوالُه. */}
+                      {/* Iqama number with the owner identified under it: birth date and mobile. */}
                       {fl.personInfo && <IqamaPersonInfo idNumber={vals[fl.path]} ar={ar} />}
                     </>
                   )}
@@ -1089,7 +932,7 @@ function DocFormModal({ vehicle, fields, keyField, famLabel, ar, canDelete, pers
           </>
         )}
 
-        {/* ── حذفُ المركبة كلِّها — لمن يملك الحذف، وفي التعديل وحده ─────── */}
+        {/* Delete the whole vehicle: only for those with delete permission, and only in edit. */}
         {!creating && canDelete && target && (
           <div className="mt-5 pt-4 border-t border-slate-200">
             {!showDanger ? (
@@ -1129,18 +972,11 @@ function DocFormModal({ vehicle, fields, keyField, famLabel, ar, canDelete, pers
 }
 
 /**
- * أعمدةٌ تتكرّر في كل عائلة: اللوحة أوّلًا، ثم ما يُعرَف به موضعُ المركبة،
- * ثم ما تُعرَف به المركبةُ نفسُها.
- *
- * ── ولماذا الماركةُ والطرازُ والموديل هنا لا في كلّ صفحةٍ على حدة ───────────
- * اللوحةُ تقول أيُّ صفٍّ هذا، ولا تقول أيُّ مركبةٍ هي. ومن يراجع الفحصَ أو
- * التأمين يسأل عن الشاحنة لا عن رقمها: «الهينو موديل ٢٠١٩» لا «٧٤٥٢ ب ن ا».
- * وكان الجوابُ يقتضي فتحَ صفحة المركبة أو العودةَ إلى السجلّ العامّ من كلّ
- * صفحةٍ من السبع. وهي ثلاثةُ حقولٍ نصّيّةٍ قصيرةٍ تصل مع الصفّ أصلًا، فلا
- * نداءَ ثانٍ ولا عمودَ يُملأ مرّتين.
+ * Columns repeated in every family: plate first, then what locates the vehicle, then what identifies it.
+ * Brand, model and year are here, not per page: the plate says which row, not which vehicle, and people reviewing inspection or insurance ask about the truck ("Hino 2019"), which used to mean opening the vehicle page or the general register from each of the seven pages. They are three short text fields that arrive with the row, so no second call and no column filled twice.
  */
 export const commonColumns = (): DocColumn[] => [
-  // هويّةُ المركبة بالترتيب المعتمد في صفحات القسم — راجع lib/vehicleColumns.
+  // Vehicle identity in the order used across section pages; see lib/vehicleColumns.
   { key: 'plateNumber', ar: 'رقم اللوحة', en: 'Plate', get: (v) => v.plateNumber, width: 16 },
   { key: 'chassisNumber', ar: 'رقم الهيكل', en: 'Chassis', get: (v) => v.chassisNumber, width: 22, mono: true },
   { key: 'serialNumber', ar: 'الرقم التسلسلي', en: 'Serial', get: (v) => v.serialNumber, width: 16, mono: true },

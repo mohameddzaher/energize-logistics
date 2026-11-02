@@ -23,9 +23,7 @@ const EXT_BY_MIME = {
 
 const ALLOWED_MIME = new Set(Object.keys(EXT_BY_MIME));
 
-// ── والفيديو لمن يطلبه صراحةً ────────────────────────────────────────────────
-// المستنداتُ لا فيديوَ فيها، فلا يُفتَح لها. وبلاغُ العطل (شاشةٌ تقطع، باورٌ
-// مفصول) يُفهَم من مقطعٍ قصيرٍ أكثرَ من صورة — فمن احتاجه مرّر `allowVideo`.
+// Video only for callers who ask for it explicitly. Documents have no video, so it is not opened for them. A fault report (flickering screen, disconnected power) is clearer from a short clip than a photo, so such callers pass `allowVideo`.
 const VIDEO_EXT_BY_MIME = {
   'video/mp4': 'mp4', 'video/quicktime': 'mov', 'video/webm': 'webm',
   'video/3gpp': '3gp', 'video/x-m4v': 'm4v',
@@ -41,7 +39,7 @@ const parseDataUrl = (dataUrl) => {
 
 // Save a base64 data URL under uploads/<subdir>.
 // Throws Error with a friendly message on validation failure.
-// `opts.allowVideo` يقبل مقاطعَ الفيديو، و`opts.maxBytes` يضيّق الحدَّ (لا يوسّعه).
+// `opts.allowVideo` accepts video clips, and `opts.maxBytes` narrows the limit (never widens it).
 const saveUploadFile = (dataUrl, subdir, originalName = '', opts = {}) => {
   const parsed = parseDataUrl(dataUrl);
   if (!parsed) throw new Error('Invalid file data');

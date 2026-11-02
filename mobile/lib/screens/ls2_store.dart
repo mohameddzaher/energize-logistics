@@ -12,20 +12,9 @@ import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import '../ui/search_field.dart';
 
-/// مخزن النقل الثقيل (LS2) — قطع الغيار: أصناف برصيد وسعر وحالة، حركات وارد/صادر
-/// (صادر على عربية / وارد من عربية)، إضافة أصناف، وسجل حركات. مطابق للويب.
-/// ومع كلّ صنفٍ موردُه ويومُ شرائه؛ والعددُ لا يتغيّر إلّا بحركة.
-/// شاشةُ المخزن — للنقل الثقيل وللنقل الخفيف معًا.
-///
-/// ── ولماذا شاشةٌ واحدة ──────────────────────────────────────────────────────
-/// سؤالُ المخزن واحدٌ في القسمين: ماذا عندنا، وكم بقي، ومن صرف ماذا على أيّ
-/// مركبة، وما الذي قارب النفاد. وآليّتُه واحدةٌ حرفًا بحرف — وارد وصادر، رصيدٌ
-/// بعد كلّ حركة، وتراجعٌ بحركةٍ معاكسةٍ لا بمسح. وأصنافُ المخزنين وأرصدتُهما
-/// منفصلةٌ في القاعدة (`warehouse`)، فلا يُقرأ رصيدُ أحدهما في الآخر.
-///
-/// فيُمرَّر `base` ولا تُنسَخ الشاشة — ونسخُها يعني شاشتين تفترقان أوّلَ إصلاح.
-/// The light-transport store keeps no prices, starts new items at zero (stock moves only
-/// via in/out) and records the supplier's own item name (owner's rules).
+/// Heavy-transport store (LS2) spare parts: items with balance, price, condition and supplier/purchase day, in/out movements, bulk add and movement log; matches the web.
+/// One screen serves heavy and light transport via `base`, since the mechanism is identical (in/out, balance after each movement, undo by opposite movement) and copies would diverge. The two stores' items and balances are separate in the database (`warehouse`).
+/// The light-transport store keeps no prices, starts new items at zero (stock moves only via in/out) and records the supplier's own item name.
 const _storeAddRoles = ['super_admin', 'admin', 'accountant', 'accounting_manager', 'cfo', 'vehicles_manager'];
 
 bool _isLightStore(String base) => base.contains('/light-transport/');
@@ -34,12 +23,8 @@ class Ls2StoreScreen extends StatefulWidget {
   final String base;
   final String titleAr;
   final String titleEn;
-  /// مصدرُ المركبات التي يُصرَف عليها: `heavy` أو `light`.
-  ///
-  /// ── وكان مصدرًا واحدًا للمخزنين ──────────────────────────────────────────
-  /// كانت القائمةُ تُجلَب من `/api/ls2/vehicles` دائمًا — أي شاحناتُ النقل
-  /// الثقيل — فمن يصرف قطعةَ دراجةٍ في مخزن النقل الخفيف يُعرَض له سبعٌ
-  /// وخمسون شاحنةً لا علاقةَ لها بما في يده، ولا تظهر دراجتُه أصلًا.
+  /// Source of the vehicles issued onto: `heavy` or `light`.
+  /// It used to be one source for both stores: the list was always fetched from `/api/ls2/vehicles` (the heavy-transport trucks), so someone issuing a bike part in the light-transport store saw 57 unrelated trucks and his bike never appeared.
   final String vehiclesKind;
   const Ls2StoreScreen({
     super.key,
@@ -74,24 +59,23 @@ class _Ls2StoreScreenState extends State<Ls2StoreScreen> {
   bool _loading = true;
   String? _error;
   String _q = '';
-  // متحكِّمُ البحث عند الشاشة: خطأٌ ثمّ إعادةُ محاولةٍ لا تُرجع الخانةَ فارغةً والكلمةُ تُرشِّح.
+  // The search controller lives at the screen level: an error then retry does not leave the field empty while the word still filters.
   final _searchCtl = TextEditingController();
   String _statusF = '';
   String _catF = '';
-  // يومُ الشراء والمورد — يُفلتَران في الخادم، لا فيما جُلب.
+  // Purchase day and supplier are filtered on the server, not on what was fetched.
   String _from = '';
   String _to = '';
   String _supplierF = '';
   List<Map<String, dynamic>> _suppliers = [];
-  // الطلبُ الأوسعُ أبطأ، فيصل بعد الأضيق ويكتب فوقه — فلا يُقبَل إلّا آخرُ طلب.
+  // A wider request is slower, so it arrives after the narrower one and overwrites it; only the last request is accepted.
   int _seq = 0;
   Timer? _debounce;
   late final void Function() _onLive;
-  // تحديدُ عدّة أصناف لحركةٍ جماعيّة (صادر أو وارد) — بالمعرّف لا بالصفّ، كي
-  // يبقى التحديدُ صحيحًا إن تغيّر الفلتر بعده (كالموقع).
+  // Selecting several items for a bulk movement (out or in): by id, not by row, so the selection stays correct if the filter changes afterwards (like the web).
   final Set<String> _picked = {};
 
-  /// نقاطُ الموردين بجوار نقاط المخزن: `/store` ← `/suppliers`.
+  /// Supplier endpoints beside the store endpoints: `/store` then `/suppliers`.
   String get _supBase => widget.base.replaceFirst(RegExp(r'/store$'), '/suppliers');
 
   @override
@@ -100,10 +84,10 @@ class _Ls2StoreScreenState extends State<Ls2StoreScreen> {
     _load();
     _loadPlates();
     _loadSuppliers();
-    // موردٌ يُضاف من شاشة «الموردون» أو مع صنفٍ جديدٍ يُعلَن بالحدث نفسِه.
+    // A supplier added from the suppliers screen or with a new item is announced by the same event.
     _onLive = () { _load(); _loadSuppliers(); };
     Live.instance.on('ls2:store', _onLive);
-    // لوحاتُ المركبات ووصفُها من سجلّ المركبات — تعديلٌ هناك يظهر هنا في الحال.
+    // Vehicle plates and their description from the vehicle register; an edit there shows here immediately.
     Live.instance.on('vreg:updated', _loadPlates);
   }
 
@@ -120,17 +104,17 @@ class _Ls2StoreScreenState extends State<Ls2StoreScreen> {
     try {
       final d = await Api.instance.get(_supBase);
       if (mounted) setState(() => _suppliers = List<Map<String, dynamic>>.from(d['suppliers'] ?? []));
-    } catch (_) {/* القائمةُ تبقى كما هي — ويُكتب اسمُ المورد يدًا */}
+    } catch (_) {/* The list stays as is; the supplier name is typed by hand. */}
   }
 
-  /// مفتاحُ اللوحة: السجلّان يكتبانها بصيغتين، فتُطابَق بحروفها وأرقامها.
+  /// Plate key: the two registers write plates in two formats, so they are matched by letters and digits.
   String _pk(dynamic v) => (v ?? '').toString().replaceAll(RegExp(r'[^0-9A-Za-z\u0621-\u064A]'), '').toUpperCase();
 
-  /// المركباتُ التي يُصرَف عليها — ومعها ما يُعرَف عنها (المشروعُ أوّلًا).
+  /// Vehicles issued onto, with what is known about them (project first).
   Future<void> _loadPlates() async {
     try {
       if (widget.vehiclesKind == 'light') {
-        // سجلُّ مركبات القسم موصولًا براكبها الحاليّ — ومنه المشروعُ والفرع.
+        // The department's vehicle register joined to its current rider, which gives project and branch.
         final d = await Api.instance.get('/api/light-transport/orders/options');
         final riders = <String, Map<String, dynamic>>{};
         for (final e in List<Map<String, dynamic>>.from(d['employees'] ?? [])) {
@@ -148,7 +132,7 @@ class _Ls2StoreScreenState extends State<Ls2StoreScreen> {
             'detail': [v['typeAr'], v['brand']].where((x) => (x ?? '').toString().isNotEmpty).join(' '),
           });
         }
-        // ولوحةٌ على موظّفٍ وليست في سجلّ المركبات تُضاف: الصرفُ عليها واقعٌ.
+        // A plate on an employee but not in the vehicle register is added: the spend on it happened.
         final have = rows.map((r) => _pk(r['plate'])).toSet();
         for (final e in riders.entries) {
           if (!have.contains(e.key)) {
@@ -164,9 +148,9 @@ class _Ls2StoreScreenState extends State<Ls2StoreScreen> {
         rows.sort((a, b) => a['plate'].toString().compareTo(b['plate'].toString()));
         if (mounted) setState(() => _plates = rows.where((r) => r['plate'].toString().isNotEmpty).toList());
       } else {
-        // النقطةُ تردّ `items` لا `vehicles` — وكانت القائمةُ تخرج فارغةً بلا خطأ.
+        // The endpoint returns `items`, not `vehicles`; the list used to come out empty with no error.
         final d = await Api.instance.get('/api/ls2/vehicles');
-        // والوصفُ من سجلّ المركبات: لوحتُها هناك وماركتُها وطرازُها (كما في الموقع).
+        // The description comes from the vehicle register: its plate, make and model (as on the web).
         final rows = List<Map<String, dynamic>>.from(d['items'] ?? []).map((v) {
               final reg = v['registry'] is Map ? Map<String, dynamic>.from(v['registry']) : <String, dynamic>{};
               final prof = v['profile'] is Map ? Map<String, dynamic>.from(v['profile']) : <String, dynamic>{};
@@ -182,13 +166,10 @@ class _Ls2StoreScreenState extends State<Ls2StoreScreen> {
             }).where((r) => r['plate'].toString().isNotEmpty).toList();
         if (mounted) setState(() => _plates = rows);
       }
-    } catch (_) { /* القائمةُ تبقى فارغةً وتُكتَب اللوحةُ يدًا */ }
+    } catch (_) { /* The list stays empty and the plate is typed by hand. */ }
   }
 
-  /// ── منتقي المركبة: قائمةٌ تُبحَث، ومعها مشروعُها ───────────────────────────
-  /// كان `Autocomplete` يُطابق النصَّ حرفيًّا على اللوحة وحدَها: لا يُبحَث
-  /// بمشروعٍ ولا باسم راكب، ولا يُعرَض شيءٌ غيرُ اللوحة — ومن يصرف يسأل «هذه
-  /// تبع أيّ مشروع؟».
+  /// Vehicle picker: a searchable list with its project. `Autocomplete` matched text literally on the plate only: no search by project or rider name, and nothing but the plate was shown, while whoever issues asks "which project is this for?".
   Future<Map<String, dynamic>?> _pickPlate() {
     return showModalBottomSheet<Map<String, dynamic>>(
       context: context,
@@ -297,10 +278,10 @@ class _Ls2StoreScreenState extends State<Ls2StoreScreen> {
     return AppScaffold(
       title: Text(tr(widget.titleAr, widget.titleEn)),
       actions: [
-        // فاتورةُ شراءٍ واحدةٌ فيها عدّةُ أصناف — تُكتب في نموذجٍ واحد.
+        // One purchase invoice with several items, written in one form.
         if (canAdd) IconButton(icon: const Icon(Icons.playlist_add), tooltip: tr('إضافة عدّة أصناف', 'Add several items'), onPressed: _openBulkCreate),
         IconButton(icon: const Icon(Icons.history), tooltip: tr('سجل الحركات', 'Movements'), onPressed: _openLog),
-        // نفسُ تصدير الموقع: المعروض (بعد الفلتر) أو كلُّ الأصناف.
+        // Same export as the web: shown (after the filter) or all items.
         IconButton(
           tooltip: tr('تصدير Excel', 'Export to Excel'),
           icon: const Icon(Icons.file_download_outlined),
@@ -316,7 +297,7 @@ class _Ls2StoreScreenState extends State<Ls2StoreScreen> {
           : _error != null
               ? ErrorRetry(message: _error!, onRetry: () { setState(() => _loading = true); _load(); })
               : Column(children: [
-                  // بطاقات
+                  // Cards.
                   Padding(
                     padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
                     child: Row(children: [
@@ -356,7 +337,7 @@ class _Ls2StoreScreenState extends State<Ls2StoreScreen> {
                         }),
                       ]),
                     ),
-                  // المورد ويومُ الشراء — يُرسَلان إلى الخادم.
+                  // Supplier and purchase day; sent to the server.
                   SizedBox(
                     height: 38,
                     child: ListView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: 12), children: [
@@ -422,7 +403,7 @@ class _Ls2StoreScreenState extends State<Ls2StoreScreen> {
                                       if (bought.isNotEmpty)
                                         Padding(padding: const EdgeInsets.only(top: 2), child: Text(bought, style: const TextStyle(fontSize: 11, color: T.inkSoft), maxLines: 1, overflow: TextOverflow.ellipsis)),
                                       const SizedBox(height: 8),
-                                      // العدد × سعر القطعة = الإجمالي
+                                      // Quantity times unit price equals total.
                                       Wrap(spacing: 14, runSpacing: 4, children: [
                                         _kv(tr('العدد', 'Qty'), '${it['quantity']} ${it['unit'] ?? ''}', T.ink),
                                         if (!_isLightStore(widget.base)) _kv(tr('سعر القطعة', 'Unit price'), _money(it['unitPrice']), T.inkSoft),
@@ -456,8 +437,7 @@ class _Ls2StoreScreenState extends State<Ls2StoreScreen> {
                             ),
                     ),
                   ),
-                  // شريطُ الإجراء الجماعيّ — يظهر فور تحديد أوّل صنف: صادرٌ ووارد
-                  // جنبًا إلى جنب، وكلاهما يقبل كميةً مختلفةً لكلّ صنف.
+                  // Bulk action bar: appears as soon as the first item is selected, out and in side by side, and both accept a different quantity per item.
                   if (canEdit && _picked.isNotEmpty)
                     SafeArea(
                       top: false,
@@ -486,7 +466,7 @@ class _Ls2StoreScreenState extends State<Ls2StoreScreen> {
     );
   }
 
-  // ── حذف صنف ──
+  // Delete an item.
   Future<void> _deleteItem(Map<String, dynamic> it) async {
     final ok = await showDialog<bool>(context: context, builder: (c) => AlertDialog(
       title: Text(tr('حذف الصنف «${it['name']}»؟', 'Delete "${it['name']}"?')),
@@ -504,7 +484,7 @@ class _Ls2StoreScreenState extends State<Ls2StoreScreen> {
     } catch (e) { _toast(e.toString()); }
   }
 
-  // ── حركة جماعيّة لعدّة أصناف ──
+  // Bulk movement for several items.
   Future<void> _openBulk(String kind) async {
     final sel = _items.where((x) => _picked.contains((x['_id'] ?? '').toString())).toList();
     if (sel.isEmpty) return;
@@ -519,7 +499,7 @@ class _Ls2StoreScreenState extends State<Ls2StoreScreen> {
     _loadSuppliers();
   }
 
-  // ── التصدير: المعروض أو الكلّ أو سجلّ الحركات ──
+  // Export: shown, all, or the movement log.
   List<ExportCol> get _itemCols => <ExportCol>[
     ExportCol('الكود', 'Code', (r) => r['code'] ?? ''),
     ExportCol('الصنف', 'Item', (r) => r['name'] ?? ''),
@@ -599,7 +579,7 @@ class _Ls2StoreScreenState extends State<Ls2StoreScreen> {
     if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
-  // ── حركة وارد/صادر ──
+  // In / out movement.
   Future<void> _openMovement(Map<String, dynamic> it, String type) async {
     final ok = await showModalBottomSheet<bool>(
       context: context, isScrollControlled: true, backgroundColor: Colors.white,
@@ -612,7 +592,7 @@ class _Ls2StoreScreenState extends State<Ls2StoreScreen> {
     _loadSuppliers();
   }
 
-  // ── إضافة/تعديل صنف ──
+  // Add / edit an item.
   Future<void> _openItemForm(Map<String, dynamic>? item) async {
     final saved = await showModalBottomSheet<bool>(
       context: context, isScrollControlled: true, backgroundColor: Colors.white,
@@ -625,7 +605,7 @@ class _Ls2StoreScreenState extends State<Ls2StoreScreen> {
     _loadSuppliers();
   }
 
-  // ── إضافة عدّة أصناف ──
+  // Add several items.
   Future<void> _openBulkCreate() async {
     final count = await Navigator.push<int>(context, MaterialPageRoute(
       fullscreenDialog: true,
@@ -637,9 +617,7 @@ class _Ls2StoreScreenState extends State<Ls2StoreScreen> {
     _loadSuppliers();
   }
 
-  // ── التراجع عن حركة ──
-  // الحركةُ المسجَّلةُ لا تُعدَّل (قرارُ الإدارة الماليّة) — الخطأُ يُصحَّح بحركةٍ
-  // معاكسةٍ بسببٍ مكتوب، وتبقى الاثنتان في السجلّ. ولا شاشةَ تعديلٍ هنا عن قصد.
+  // Undo a movement. A recorded movement is never edited (a finance-management decision); a mistake is corrected with an opposite movement with a written reason, and both stay in the log. There is deliberately no edit screen here.
   Future<bool> _reverse(Map<String, dynamic> m) async {
     final reason = TextEditingController();
     final isIn = m['type'] == 'in';
@@ -688,7 +666,7 @@ class _Ls2StoreScreenState extends State<Ls2StoreScreen> {
     }
   }
 
-  // ── سجل الحركات ──
+  // Movement log.
   Future<void> _openLog() async {
     final canEdit = _canEditStore(context.read<AuthProvider>());
     await showModalBottomSheet(
@@ -699,23 +677,19 @@ class _Ls2StoreScreenState extends State<Ls2StoreScreen> {
   }
 }
 
-// The API lets a «تعديل» grant on Location Solutions through and refuses a
-// «عرض» one — offer the write actions on exactly that line, so a read-only
-// user isn't handed buttons that 403.
+// The API lets an edit grant on Location Solutions through and refuses a view one; offer the write actions on exactly that line, so a read-only user isn't handed buttons that 403.
 bool _canEditStore(AuthProvider auth) =>
     const ['super_admin', 'admin', 'it_manager', 'operations_manager', 'operations_staff', 'moderator'].contains(auth.role)
     || auth.canEditSection('Location Solutions');
 
-// ═════════════════════════════════════════════════════════════════════════════
-// أدواتٌ مشتركةٌ بين النماذج: التاريخ، المورد، الفترة
-// ═════════════════════════════════════════════════════════════════════════════
+// Helpers shared by the forms: date, supplier, period.
 
 num _numOf(dynamic v) => v is num ? v : num.tryParse(v?.toString() ?? '') ?? 0;
 
 String _ymd(DateTime d) =>
     '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
-/// «اليوم» بتوقيت الرياض — لا بتوقيت الهاتف: يومُ الشراء يُقرأ في الخادم بالرياض.
+/// "Today" in Riyadh time, not the phone's: the purchase day is read on the server in Riyadh time.
 DateTime _riyadhNow() => DateTime.now().toUtc().add(const Duration(hours: 3));
 String _todayYmd() => _ymd(_riyadhNow());
 
@@ -726,12 +700,12 @@ String _dmy(dynamic v) {
   return s.substring(0, 10).split('-').reversed.join('/');
 }
 
-/// المعرّفُ يأتي نصًّا، أو كائنًا فيه `_id` إن وُصِل السجلُّ بمورده.
+/// The id arrives as a string, or as an object with `_id` if the record is joined to its supplier.
 String _idOf(dynamic v) => v is Map ? (v['_id'] ?? '').toString() : (v ?? '').toString();
 
 bool _isId(String v) => RegExp(r'^[0-9a-fA-F]{24}$').hasMatch(v);
 
-/// قيمةُ خانة المورد معرّفُ موردٍ قائمٍ أو اسمٌ جديد — والخادمُ ينشئ الجديد.
+/// The supplier field value is an existing supplier's id or a new name; the server creates the new one.
 Map<String, dynamic> _supplierBody(String v) => _isId(v) ? {'supplier': v} : {'supplier': '', 'supplierName': v};
 
 String _supplierLabel(List<Map<String, dynamic>> suppliers, String value, {String fallback = ''}) {
@@ -752,8 +726,7 @@ Widget _fchip(String label, bool selected, VoidCallback onTap) => Padding(
       ),
     );
 
-/// فلترُ الفترة: «اليوم»، «هذا الشهر»، أو فترةٌ تُنتقى (ويومٌ واحدٌ فترةٌ طرفاها
-/// واحد). والحدّان `YYYY-MM-DD` كما ينتظرهما الخادم.
+/// Period filter: "today", "this month", or a picked range (a single day is a range with equal ends). Both bounds are `YYYY-MM-DD` as the server expects.
 List<Widget> _periodChips(BuildContext context, String from, String to, void Function(String from, String to) onChanged) {
   final now = _riyadhNow();
   final today = _ymd(now);
@@ -792,7 +765,7 @@ List<Widget> _periodChips(BuildContext context, String from, String to, void Fun
   ];
 }
 
-/// خانةُ تاريخٍ تُفتَح على التقويم. القيمةُ `YYYY-MM-DD` أو فارغة.
+/// Date field opened on the calendar. Value is `YYYY-MM-DD` or empty.
 class _DateField extends StatelessWidget {
   final String label;
   final String value;
@@ -819,11 +792,11 @@ class _DateField extends StatelessWidget {
   }
 }
 
-/// خانةُ المورد: يُختار من القائمة، أو يُكتب اسمٌ جديدٌ فيُضاف مع الحفظ نفسِه.
+/// Supplier field: pick from the list, or type a new name, which is added with the same save.
 class _SupplierField extends StatelessWidget {
   final List<Map<String, dynamic>> suppliers;
   final String value;
-  /// اسمُ الموردِ المحفوظُ مع السجلّ — يُعرَض إن حُذف المورد من القائمة.
+  /// The supplier name saved with the record; shown if the supplier is deleted from the list.
   final String fallbackName;
   final ValueChanged<String> onChanged;
   const _SupplierField({required this.suppliers, required this.value, required this.onChanged, this.fallbackName = ''});
@@ -848,8 +821,7 @@ class _SupplierField extends StatelessWidget {
   }
 }
 
-/// يردّ معرّفَ موردٍ، أو اسمًا جديدًا (إن سُمح)، أو نصًّا فارغًا لـ«بلا مورد» —
-/// و`null` إن أُغلقت القائمةُ بلا اختيار.
+/// Returns a supplier id, a new name (if allowed), or an empty string for "no supplier"; `null` if the list was closed without a choice.
 Future<String?> _pickSupplier(BuildContext context, List<Map<String, dynamic>> suppliers, String current, {bool allowNew = true, String? noneLabel}) {
   return showModalBottomSheet<String>(
     context: context,
@@ -949,13 +921,9 @@ Widget _errBox(String msg) => Container(
       child: Text(msg, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: T.danger)),
     );
 
-// ═════════════════════════════════════════════════════════════════════════════
-// حركة وارد / صادر على صنفٍ واحد
-// ═════════════════════════════════════════════════════════════════════════════
+// In / out movement on a single item.
 
-// ── سببُ الصرف — اختيارٌ إجباريٌّ على كلّ صادر (٢٠٢٦/١٠/٢٦) ─────────────────
-// الأربعةُ نفسُها في الخادم (utils/storeIssueReasons) وفي الموقع، ويظهر السببُ
-// في ملفّ المركبة مع القطعة. والملاحظةُ الحرّة صارت اختياريّةً بجانبه.
+// Issue reason: a required choice on every out movement. The same four exist on the server (utils/storeIssueReasons) and on the web, and the reason shows in the vehicle file with the part. The free note is now optional beside it.
 const storeIssueReasons = [
   ('periodic_maintenance', 'صيانة دورية', 'Periodic maintenance'),
   ('accident', 'حادث', 'Accident'),
@@ -1005,8 +973,7 @@ class _IssueReasonPicker extends StatelessWidget {
 }
 
 
-/// النموذجُ يحفظ بنفسه ويبقى مفتوحًا إن رُفض: شريطُ التنبيه يظهر خلف الورقة
-/// المفتوحة فلا يُرى، فيُكتب الخطأُ فيها.
+/// The form saves by itself and stays open if rejected: the alert bar appears behind the open sheet and would not be seen, so the error is written inside it.
 class _MovementSheet extends StatefulWidget {
   final String base;
   final Map<String, dynamic> item;
@@ -1024,10 +991,9 @@ class _MovementSheet extends StatefulWidget {
 class _MovementSheetState extends State<_MovementSheet> {
   final _qty = TextEditingController(text: '1');
   final _reason = TextEditingController();
-  // سعرُ القطعة الواحدة في هذا الوارد — يبدأ بسعر الصنف المسجَّل، والخادمُ
-  // يحدّث به سعرَ الصنف. ولا واردَ بلا سعر (PRICE_REQUIRED).
+  // Unit price for this in movement: starts at the item's registered price, and the server updates the item's price with it. No in movement without a price (PRICE_REQUIRED).
   late final _price = TextEditingController(text: _numOf(widget.item['unitPrice']) > 0 ? '${widget.item['unitPrice']}' : '');
-  // المورد يبدأ بمورد الصنف، ويومُ الشراء اليومَ — وكلاهما للوارد وحدَه.
+  // Supplier starts as the item's supplier and purchase day as today; both apply to in movements only.
   late String _supplier = _idOf(widget.item['supplier']);
   String _date = _todayYmd();
   String _plate = '';
@@ -1096,13 +1062,13 @@ class _MovementSheetState extends State<_MovementSheet> {
             ),
             const SizedBox(height: 10),
             ],
-            // ممّن اشتُري ومتى — اختياريّان، ويُسجَّلان على الحركة نفسِها.
+            // From whom and when it was bought: optional, recorded on the movement itself.
             _SupplierField(suppliers: widget.suppliers, value: _supplier, fallbackName: (it['supplierName'] ?? '').toString(), onChanged: (v) => setState(() => _supplier = v)),
             const SizedBox(height: 10),
             _DateField(label: tr('تاريخ الشراء', 'Purchase date'), value: _date, onChanged: (v) => setState(() => _date = v)),
             const SizedBox(height: 10),
           ],
-          // ── المركبةُ تُنتقى من قائمةٍ تُبحَث، ومشروعُها يُقال تحتها ─────────
+          // Vehicle is picked from a searchable list, with its project shown below.
           OutlinedButton.icon(
             style: OutlinedButton.styleFrom(alignment: AlignmentDirectional.centerStart, minimumSize: const Size(double.infinity, 48)),
             onPressed: () async {
@@ -1163,11 +1129,8 @@ class _MovementSheetState extends State<_MovementSheet> {
   }
 }
 
-/// حركةٌ جماعيّة لعدّة أصناف — صادر أو وارد (نظيرُ BulkOutModal في الموقع).
-///
-/// الكميةُ بجوار كلّ صنف وافتراضُها ١، والرصيدُ المتوقَّع بعد الحركة يظهر قبل
-/// التأكيد. والصنفُ الذي لا يكفي رصيدُه يُعلَّم بالأحمر، والعمليّةُ كلُّها تُرفض
-/// إن بقي واحدٌ منها ناقصًا — والخادمُ يُعيد أيَّ صنفٍ رفضه بالاسم.
+/// Bulk movement for several items, out or in (counterpart of BulkOutModal on the web).
+/// Quantity beside each item, default 1, and the expected balance after the movement shows before confirming. An item with insufficient balance is marked red, and the whole operation is rejected if any is short; the server returns any rejected item by name.
 class _BulkMovementSheet extends StatefulWidget {
   final String base;
   final List<Map<String, dynamic>> items;
@@ -1365,9 +1328,7 @@ class _BulkMovementSheetState extends State<_BulkMovementSheet> {
   }
 }
 
-// ═════════════════════════════════════════════════════════════════════════════
-// صنفٌ جديد / تعديل صنف
-// ═════════════════════════════════════════════════════════════════════════════
+// New item / edit item.
 
 class _ItemFormSheet extends StatefulWidget {
   final String base;
@@ -1391,7 +1352,7 @@ class _ItemFormSheetState extends State<_ItemFormSheet> {
   late final _minQ = TextEditingController(text: widget.item?['minQuantity']?.toString() ?? '0');
   late final _notes = TextEditingController(text: widget.item?['notes']?.toString() ?? '');
   late String _supplier = _idOf(widget.item?['supplier']);
-  // صنفٌ جديدٌ يُشترى اليومَ في الغالب؛ والقائمُ يبقى على ما سُجِّل له.
+  // A new item is mostly bought today; an existing one keeps what was recorded.
   late String _date = widget.item == null ? _todayYmd() : _ymdOf(widget.item?['purchaseDate']);
   String? _nameErr;
   String? _priceErr;
@@ -1410,14 +1371,12 @@ class _ItemFormSheetState extends State<_ItemFormSheet> {
 
   Future<void> _save() async {
     if (_name.text.trim().isEmpty) { setState(() => _nameErr = tr('اسم الصنف مطلوب', 'Name required')); return; }
-    // صنفٌ جديدٌ بلا سعرٍ يرفضه الخادم — فيُقال هنا والنموذجُ مفتوح.
+    // A new item with no price is rejected by the server, so it is said here while the form is open.
     if (_isNew && !_light && (num.tryParse(_price.text.trim()) ?? 0) <= 0) {
       setState(() => _priceErr = tr('اكتب سعر القطعة الواحدة', 'Enter the price per piece'));
       return;
     }
-    // ── والعددُ لا يُرسَل عند التعديل ─────────────────────────────────────
-    // العددُ لا يتغيّر إلّا بحركةٍ مسجَّلةٍ باسم صاحبها؛ والخادمُ يتجاهله في
-    // التعديل، فلا يُعرَض ولا يُرسَل.
+    // The quantity is not sent on edit: it changes only by a movement recorded under its author, and the server ignores it on edit, so it is neither shown nor sent.
     final body = <String, dynamic>{
       'name': _name.text.trim(), 'category': _cat.text.trim(), 'code': _code.text.trim(),
       'unit': _unit.text.trim(),
@@ -1504,11 +1463,9 @@ class _ItemFormSheetState extends State<_ItemFormSheet> {
   }
 }
 
-// ═════════════════════════════════════════════════════════════════════════════
-// إضافة عدّة أصناف — فاتورةُ شراءٍ واحدة
-// ═════════════════════════════════════════════════════════════════════════════
+// Add several items: one purchase invoice.
 
-/// سطرٌ في الدفعة. متحكّماتُه تُنشأ معه مرّةً وتُتلَف معه — لا في البناء.
+/// A row in the batch. Its controllers are created with it and disposed with it, not in build.
 class _NewRow {
   static int _seq = 1;
   final int id = _seq++;
@@ -1520,15 +1477,14 @@ class _NewRow {
   final supName = TextEditingController();
   String unit = 'قطعة';
 
-  /// السطرُ الفارغُ تمامًا لا يُرسَل: ثلاثةُ أسطرٍ تُفتَح جاهزةً ولا يُلزَم بملئها.
+  /// A completely empty row is not sent: three rows open ready and none is forced to be filled.
   bool get filled => name.text.trim().isNotEmpty || price.text.trim().isNotEmpty || code.text.trim().isNotEmpty || supName.text.trim().isNotEmpty;
   num get total => (num.tryParse(qty.text.trim()) ?? 0) * (num.tryParse(price.text.trim()) ?? 0);
 
   void dispose() { name.dispose(); cat.dispose(); code.dispose(); qty.dispose(); price.dispose(); supName.dispose(); }
 }
 
-/// الموردُ ويومُ الشراء مرّةً في الأعلى، ولكلّ صنفٍ سطر. والخادمُ يقبل الدفعةَ
-/// كلَّها أو يرفضها كلَّها بأرقام الأسطر الناقصة — فيُكتب الخطأُ على سطره.
+/// Supplier and purchase day once at the top, a row per item. The server accepts the whole batch or rejects it all with the numbers of the incomplete rows, so the error is written on its row.
 class _BulkCreateScreen extends StatefulWidget {
   final String base;
   final List<Map<String, dynamic>> suppliers;
@@ -1561,7 +1517,7 @@ class _BulkCreateScreenState extends State<_BulkCreateScreen> {
 
   void _remove(_NewRow r) {
     setState(() { _rows.remove(r); _errors.remove(r.id); });
-    // يُتلَف بعد أن يخرج سطرُه من الشجرة، لا وخاناتُه ما زالت تقرؤه.
+    // Disposed after its row leaves the tree, not while its fields still read it.
     WidgetsBinding.instance.addPostFrameCallback((_) => r.dispose());
   }
 
@@ -1584,7 +1540,7 @@ class _BulkCreateScreenState extends State<_BulkCreateScreen> {
       if (mounted) Navigator.pop(context, count > 0 ? count : filled.length);
     } catch (e) {
       if (!mounted) return;
-      // رقمُ السطر في الردّ هو ترتيبُه فيما أُرسل (يبدأ من ١) — لا في الشاشة.
+      // The row number in the response is its order in what was sent (from 1), not on screen.
       final list = e is ApiException && e.data['errors'] is List ? e.data['errors'] as List : const [];
       setState(() {
         _busy = false;
@@ -1706,11 +1662,9 @@ class _BulkCreateScreenState extends State<_BulkCreateScreen> {
   }
 }
 
-// ═════════════════════════════════════════════════════════════════════════════
-// سجلّ الحركات
-// ═════════════════════════════════════════════════════════════════════════════
+// Movement log.
 
-/// الفلاترُ كلُّها في الخادم: السجلُّ أطولُ من أن يُجلَب كلُّه ثمّ يُصفّى هنا.
+/// All filters run on the server: the log is too long to fetch whole and filter here.
 class _LogSheet extends StatefulWidget {
   final String base;
   final List<Map<String, dynamic>> suppliers;
@@ -1788,18 +1742,18 @@ class _LogSheetState extends State<_LogSheet> {
         color: reversed ? T.inkFaint : T.ink,
         decoration: reversed ? TextDecoration.lineThrough : null)),
       subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        // الكمّيّةُ وسعرُ القطعة وإجماليُّ الحركة
+        // Quantity, unit price and movement total.
         Text([
           '${isIn ? '+' : '−'}${m['quantity']}${unit.isEmpty ? '' : ' $unit'}',
           if (m['unitPrice'] != null && !_isLightStore(widget.base)) '${tr('سعر القطعة', 'unit price')} ${_money(m['unitPrice'])}',
           if (m['total'] != null && !_isLightStore(widget.base)) '${tr('الإجمالي', 'total')} ${_money(m['total'])} ${tr('ر.س', 'SAR')}',
         ].join(' · '), style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: reversed ? T.inkFaint : T.inkSoft)),
-        // متى، وممّن، وعلى أيّ مركبة
+        // When, by whom, and on which vehicle.
         Text([
           _dmy(m['date'] ?? m['createdAt']),
           if ((m['supplierName'] ?? '').toString().isNotEmpty) '${tr('المورد', 'supplier')}: ${m['supplierName']}',
           if ((m['vehiclePlate'] ?? '').toString().isNotEmpty) '${tr('مركبة', 'vehicle')} ${m['vehiclePlate']}'
-              // ولوحتُها في سجلّ المركبات حين تختلف كتابتُها
+              // And its plate in the vehicle register when it is written differently.
               '${(m['vehicleRegistryPlate'] ?? '').toString().isNotEmpty && m['vehicleRegistryPlate'] != m['vehiclePlate'] ? ' (${m['vehicleRegistryPlate']})' : ''}',
           if ((m['performedByName'] ?? '').toString().isNotEmpty) m['performedByName'].toString(),
           if (storeIssueReasonLabel(m['issueReason']).isNotEmpty) storeIssueReasonLabel(m['issueReason']),
@@ -1827,7 +1781,7 @@ class _LogSheetState extends State<_LogSheet> {
 
   @override
   Widget build(BuildContext context) {
-    // قيمةُ الوارد فيما عُرض — والملغاةُ وحركةُ تراجعها لا تُحسَبان.
+    // Value of the in movements shown; cancelled ones and their reversal movements are not counted.
     final inValue = _movs
         .where((m) => m['type'] == 'in' && m['reversed'] != true && m['isReversal'] != true)
         .fold<num>(0, (a, m) => a + _numOf(m['total']));
@@ -1869,7 +1823,7 @@ class _LogSheetState extends State<_LogSheet> {
                 },
               ),
               ..._periodChips(context, _from, _to, (a, b) => _set(() { _from = a; _to = b; })),
-              // «لوحات غير معروفة» — مخزنُ النقل الثقيل وحدَه (راجع /store/unknown-plates).
+              // "Unknown plates": heavy-transport store only (see /store/unknown-plates).
               if (widget.base == '/api/ls2/store')
                 _fchip(tr('لوحات غير معروفة', 'Unknown plates'), false, () async {
                   final p = await showModalBottomSheet<String>(context: context, isScrollControlled: true, builder: (_) => const _UnknownPlatesSheet());
@@ -1893,8 +1847,7 @@ class _LogSheetState extends State<_LogSheet> {
   }
 }
 
-/// لوحاتٌ كُتبت على حركاتٍ ولا مركبةَ لها في سجلّ المركبات — لوحةٌ بكتابةٍ لا
-/// تُطابَق، أو اسمُ موردٍ أو ورشةٍ كُتب مكانَها. الضغطُ على لوحةٍ يفلتر السجلَّ بها.
+/// Plates written on movements with no vehicle in the vehicle register: a plate spelled so it does not match, or a supplier or workshop name typed in its place. Tapping a plate filters the log by it.
 class _UnknownPlatesSheet extends StatefulWidget {
   const _UnknownPlatesSheet();
   @override

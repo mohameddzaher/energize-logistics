@@ -1,12 +1,5 @@
 'use client';
-/**
- * النماذجُ والخطاباتُ الرسميّة — مكتبةُ أوراق الموارد البشريّة.
- *
- * كانت هذه الأوراقُ في محادثاتِ واتساب ومجلّداتٍ على أجهزةٍ شخصيّة: من يحتاج
- * «نموذج طلب إجازة» يسأل عنه، ومن أرسله يرسل آخرَ نسخةٍ عنده — فتُوقَّع نسخةٌ
- * قديمةٌ وتُعاد. فصار لها مكانٌ واحد، ولكلّ نموذجٍ رقمُ نسخةٍ يرتفع عند
- * استبداله: من يسأل «أهذه الأحدث؟» يقرأ الجواب.
- */
+/** Official forms and letters library for HR. Gives each form a single home and a version number that rises on replacement, so nobody signs an outdated copy. */
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
@@ -48,7 +41,7 @@ export default function HrFormsPage() {
   const [items, setItems] = useState<FormItem[]>([]);
   const [cats, setCats] = useState<Cat[]>([]);
   const [counts, setCounts] = useState<Record<string, number>>({});
-  // «الكل» = مجموعُ التصنيفات بلا فلترها (الخادم) — لا عددُ التصنيف المختار.
+  // "All" is the sum of categories without their filter (server), not the selected category's count.
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [cat, setCat] = useState('');
@@ -123,8 +116,7 @@ export default function HrFormsPage() {
     catch (e: any) { notify(e?.message || 'Error', 'error'); }
   };
 
-  // التنزيلُ يُعَدّ: النموذجُ الذي لا يُنزَّل إمّا لا يحتاجه أحدٌ أو لا يعرف
-  // أحدٌ أنّه هنا — والرقمُ يفرّق بينهما مع الزمن.
+  // Downloads are counted to show whether a form is used or unknown.
   const download = (it: FormItem) => {
     api.post(`/api/hr/forms/${it._id}/downloaded`, {}).catch(() => {});
     window.open(it.fileUrl, '_blank');

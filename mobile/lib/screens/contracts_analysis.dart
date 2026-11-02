@@ -6,8 +6,7 @@ import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 
-/// تحليل تشغيل الموردين — native: the category split, top vendors, wasted
-/// capacity and rep performance for the last three recorded months.
+/// Vendor operations analysis, native: the category split, top vendors, wasted capacity and rep performance for the last three recorded months.
 class ContractsAnalysisScreen extends StatefulWidget {
   const ContractsAnalysisScreen({super.key});
   @override
@@ -57,8 +56,7 @@ class _ContractsAnalysisScreenState extends State<ContractsAnalysisScreen> {
     }
   }
 
-  // الأرقامُ من الكشوف الفعليّة الآن (utils/liveVendorUtilisation في الخادم)، فرُفع
-  // زرُّ الإدخال كما رُفع من الموقع. تبقى الدالّةُ لا يناديها شيء.
+  // Figures now come from the live sheets (utils/liveVendorUtilisation on the server), so the entry button was removed as on the web. The function remains with no caller.
   // ignore: unused_element
   Future<void> _enterMonth() async {
     final now = DateTime.now();

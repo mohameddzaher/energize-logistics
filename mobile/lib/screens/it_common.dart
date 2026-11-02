@@ -6,10 +6,9 @@ import '../services/lang.dart';
 import '../ui/theme.dart';
 import '../ui/search_field.dart';
 
-/// أدواتٌ مشتركة بين شاشات تقنية المعلومات — نظيرُ lib/it.ts في الويب:
-/// تسمياتُ البلاغات، وتنسيقُ التاريخ وزمن الحلّ، ومنتقي الموظّف والتاريخ.
+/// Helpers shared by the IT screens, mirroring lib/it.ts on the web: ticket labels, date and resolution-time formatting, employee and date pickers.
 
-// ── التسميات — مطابقةٌ لـ TICKET_* في frontend/src/lib/it.ts ─────────────────
+// Labels: match TICKET_* in frontend/src/lib/it.ts.
 const ticketCategories = {
   'hardware': ('أجهزة', 'Hardware'),
   'software': ('برامج', 'Software'),
@@ -72,18 +71,18 @@ Color priorityColor(dynamic p) => switch ('$p') {
       _ => T.inkFaint,
     };
 
-// ── التنسيق ─────────────────────────────────────────────────────────────────
+// Formatting.
 String itDate(dynamic v) {
   final d = v == null ? null : DateTime.tryParse(v.toString())?.toLocal();
   return d == null ? '—' : '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
 }
 
-/// يومُ الشركة بصيغة YYYY-MM-DD.
+/// Company day as YYYY-MM-DD.
 String ymd(DateTime d) => '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 String todayYmd() => ymd(DateTime.now());
 String daysAgoYmd(int n) => ymd(DateTime.now().subtract(Duration(days: n)));
 
-/// زمنُ الحلّ — نظيرُ fmtDuration: صفرٌ يعني «نفس اليوم» لا «٠ د».
+/// Resolution time, like fmtDuration: zero means "same day", not "0 min".
 String fmtDuration(dynamic minutes, {bool en = false}) {
   if (minutes is! num || !minutes.isFinite) return '—';
   final m = minutes.round() < 0 ? 0 : minutes.round();
@@ -126,7 +125,7 @@ String itEmpName(dynamic e, {bool en = false}) {
 
 String idOf(dynamic v) => v == null ? '' : v is Map ? '${v['_id'] ?? ''}' : '$v';
 
-/// من يكتب في القسم — نظيرُ canEditIt: أدوارُ EDIT_ROLES في routes/it.js أو منحةُ «تعديل».
+/// Who writes in the section, like canEditIt: EDIT_ROLES in routes/it.js or an edit grant.
 bool canEditIt(BuildContext context) {
   final a = context.read<AuthProvider>();
   return const ['super_admin', 'admin', 'it_manager', 'it_specialist'].contains(a.role) || a.canEditSection('Software & IT');
@@ -134,7 +133,7 @@ bool canEditIt(BuildContext context) {
 
 String _fold(String s) => s.replaceAll(RegExp('[أإآ]'), 'ا').replaceAll('ى', 'ي').replaceAll('ة', 'ه').toLowerCase();
 
-// ── قوائمُ القسم — تُجلب مرّةً وتبقى في الذاكرة ─────────────────────────────
+// Section lists: fetched once and kept in memory.
 List<Map<String, dynamic>>? _employeesCache;
 Future<List<Map<String, dynamic>>> itEmployees() async {
   if (_employeesCache != null) return _employeesCache!;
@@ -147,7 +146,7 @@ Future<List<Map<String, dynamic>>> itEmployees() async {
   return _employeesCache!;
 }
 
-/// منتقي موظّف بالبحث — الاسم والرقم الوظيفي والإقامة والقسم، كـSearchableSelect في الويب.
+/// Searchable employee picker over name, employee number, iqama and department, like SearchableSelect on the web.
 Future<Map<String, dynamic>?> pickItEmployee(BuildContext context, {String? title}) async {
   final emps = await itEmployees();
   if (!context.mounted) return null;
@@ -161,7 +160,7 @@ Future<Map<String, dynamic>?> pickItEmployee(BuildContext context, {String? titl
   );
 }
 
-/// قائمةٌ قابلةٌ للبحث في ورقةٍ سفليّة — تعيد العنصرَ المختار.
+/// Searchable list in a bottom sheet; returns the chosen item.
 Future<Map<String, dynamic>?> pickFromList(
   BuildContext context, {
   required String title,
@@ -169,7 +168,7 @@ Future<Map<String, dynamic>?> pickFromList(
   required String Function(Map<String, dynamic>) label,
   String Function(Map<String, dynamic>)? hint,
 }) {
-  // الكلمةُ في متحكِّمٍ خارجَ الباني: لو أُعيد بناءُ اللوح (اللوحة تظهر) لا تُنسى.
+  // The search word lives in a controller outside the builder, so a rebuild of the sheet does not lose it.
   final ctl = TextEditingController();
   return showModalBottomSheet<Map<String, dynamic>>(
     context: context,
@@ -225,7 +224,7 @@ Future<Map<String, dynamic>?> pickFromList(
   ).whenComplete(ctl.dispose);
 }
 
-/// خانةُ تاريخ تُفتح بالضغط — القيمة YYYY-MM-DD أو فارغة.
+/// Date field opened by tap; value is YYYY-MM-DD or empty.
 class ItDateField extends StatelessWidget {
   final String label;
   final String value;
@@ -259,7 +258,7 @@ class ItDateField extends StatelessWidget {
   }
 }
 
-/// «من — إلى» في صفّ واحد، و«إلى» الفارغة تُقرأ «حتى اليوم» — كـDateRangeFilter.
+/// From and to on one row; an empty "to" reads as "until today", like DateRangeFilter.
 class ItDateRange extends StatelessWidget {
   final String from, to;
   final ValueChanged<String> onFrom, onTo;
@@ -272,7 +271,7 @@ class ItDateRange extends StatelessWidget {
       ]);
 }
 
-/// قائمةٌ منسدلة صغيرة بخيار «الكل» — للفلاتر.
+/// Small dropdown with an "All" option, for filters.
 class ItFilterDropdown extends StatelessWidget {
   final String label;
   final String value;
@@ -282,7 +281,7 @@ class ItFilterDropdown extends StatelessWidget {
   const ItFilterDropdown({super.key, required this.label, required this.value, required this.options, required this.onChanged, required this.allAr, required this.allEn});
   @override
   Widget build(BuildContext context) => DropdownButtonFormField<String>(
-        // المفتاحُ بالقيمة: «مسح الفلاتر» يُعيد بناء الخانة على قيمتها الجديدة.
+        // Keyed by value so "clear filters" rebuilds the field with its new value.
         key: ValueKey('$label=$value'),
         initialValue: options.containsKey(value) ? value : '',
         isExpanded: true,
@@ -295,7 +294,7 @@ class ItFilterDropdown extends StatelessWidget {
       );
 }
 
-/// اختيارُ نطاق التصدير — «المعروض» أو «الكل» — حين يكون في الشاشة فلتر، كـExportMenu.
+/// Export scope choice, shown or all, when the screen has a filter, like ExportMenu.
 Future<String?> pickExportScope(BuildContext context, {required bool filtered, String? allHint}) async {
   if (!filtered) return 'all';
   return showModalBottomSheet<String>(

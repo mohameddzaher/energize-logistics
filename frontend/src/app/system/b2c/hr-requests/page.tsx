@@ -1,6 +1,5 @@
 'use client';
-// طلباتُ قسم الأفراد إلى الموارد البشريّة — الجانبُ المُرسِل. الشاشةُ واحدةٌ
-// للطرفين (راجع components/hr/StaffRequests) كي لا تفترق الكلماتُ والحالات.
+// HR requests from the personnel department, sender side. One screen serves both parties (see components/hr/StaffRequests) so wording and statuses stay in sync.
 import StaffRequests from '@/components/hr/StaffRequests';
 
 export default function B2cHrRequestsPage() {

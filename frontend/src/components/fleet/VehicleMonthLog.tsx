@@ -1,13 +1,6 @@
 'use client';
-// سجلّ السيّارة الشهريّ — مكوّنٌ واحد يُقرأ في موضعين.
-//
-// في صفحة الحمولة يُعرض تحت متابعاتها: «هذه الشحنة أين هي» شيء، و«ماذا جرى
-// لهذه السيّارة هذا الشهر» شيءٌ آخر — عطلٌ يوم ٩ وإطارٌ يوم ١٤ وستُّ حمولاتٍ
-// بينها. وفي صفحة «سجلّات السيارات» يُعرض وحده لأيّ سيّارةٍ وأيّ فترة.
-//
-// والشهرُ يُقفل من نفسِه: متى جاء أوّلُ الشهر التالي صار ما قبله للقراءة فقط —
-// حقيقةٌ عن الزمن لا خانةٌ يضغطها أحد. وما يُضاف إلى شهرٍ مقفل يظهر موسومًا
-// «قيد متأخّر»، فلا يُدَسّ بين ما كُتب في حينه.
+// Vehicle monthly log: one component read in two places.
+// In the load page it shows under its follow-ups: where this shipment is differs from what happened to this vehicle this month (a breakdown on the 9th, a tire on the 14th, six loads between). In the vehicle-logs page it shows alone for any vehicle and period. A month closes itself: once the next month starts, the earlier one is read-only, a fact about time rather than a button. An entry added to a closed month is tagged as a late entry so it is not mixed with those written at the time.
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useLatestRequest } from '@/hooks/useLatestRequest';
@@ -35,7 +28,7 @@ export interface VehicleLogResponse {
   vehicle: { _id: string; plate: string; name?: string; trailerType?: string; supervisorName?: string; monthlyTarget?: number };
   period: LogPeriod;
   closed: boolean;
-  /** الخادم: هل يكتب هذا المستخدمُ في سجلّ هذه السيّارة (المشرفُ في سيّاراته وحدَها). */
+  /** From the server: whether this user writes in this vehicle's log (a supervisor only for their own vehicles). */
   canWrite?: boolean;
   kinds: { key: string; ar: string; en: string }[];
   timeline: LogRow[];
@@ -70,12 +63,12 @@ const money = (n?: number) => (Number(n) || 0).toLocaleString('en-US', { maximum
 export default function VehicleMonthLog({
   vehicle, month, from, to, date, canEdit, compact, shipmentId,
 }: {
-  vehicle: string;              // معرّف السيّارة أو لوحتها
+  vehicle: string;              // Vehicle id or plate.
   month?: string;               // YYYY-MM
   from?: string; to?: string; date?: string;
   canEdit: boolean;
-  compact?: boolean;            // داخل صفحة الحمولة
-  shipmentId?: string;          // لربط القيد بالحمولة المفتوحة
+  compact?: boolean;            // Inside the load page.
+  shipmentId?: string;          // To link the entry to the open load.
 }) {
   const { lang } = useLanguage();
   const ar = lang === 'ar';
@@ -94,7 +87,7 @@ export default function VehicleMonthLog({
   else qs.set('month', month || thisMonth());
   const query = qs.toString();
 
-  const guard = useLatestRequest(); // ردٌّ قديمٌ (فلترٌ سابق) لا يكتب فوق الأحدث
+  const guard = useLatestRequest(); // An old reply (earlier filter) does not overwrite the newest.
   const load = useCallback(async () => {
     if (!vehicle) { setLoading(false); return; }
     const mine = guard.begin();
@@ -150,8 +143,7 @@ export default function VehicleMonthLog({
     const m = data.kinds.find((x) => x.key === k);
     return m ? (ar ? m.ar : m.en) : k;
   };
-  // بأرقامٍ لاتينيّة دائمًا: الجدولُ يُقرأ ويُقارَن، والأرقامُ الهنديّة تختلف
-  // عرضًا فتتكسّر المحاذاة، ونصفُ من يقرأ الشاشة يكتب اللوحات بالإنجليزيّة.
+  // Always Latin digits: the table is read and compared, Arabic-Indic digits differ in width and break alignment, and half of the screen's readers type plates in English.
   const dtm = (s: string) => {
     const d = new Date(s);
     if (Number.isNaN(d.getTime())) return '—';
@@ -192,11 +184,7 @@ export default function VehicleMonthLog({
         </div>
       </div>
 
-      {/* ── ملخّص الشهر ──────────────────────────────────────────────────────
-          البطاقةُ تتّسع لرقمها: «١٢٤٬٥٠٠» أعرضُ من «٦»، وبعرضٍ ثابتٍ يخرج
-          الرقمُ من حدود بطاقته. فالعنوانُ يُقصّ إن ضاق (`truncate`) والرقمُ
-          لا يُقصّ أبدًا — يُلَفّ ويصغر خطُّه على الشاشات الضيّقة، لأنّ نصفَ
-          الرقم أسوأُ من رقمٍ صغير. */}
+      {/* Month summary. A card fits its number: a long figure is wider than a short one, and with a fixed width it overflows its card. The title truncates when narrow (`truncate`) while the number never does; it wraps and shrinks on narrow screens because half a number is worse than a small one. */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 mb-4">
         {([
           [t('حمولات', 'Loads'), String(s.loads), ''],
@@ -287,11 +275,7 @@ export default function VehicleMonthLog({
                     {r.lateEntry && (
                       <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-slate-200 text-slate-600">{t('قيد متأخّر', 'Late entry')}</span>
                     )}
-                    {/* ── متى وقع هذا؟ ────────────────────────────────────────
-                        هو أوّلُ ما يُسأل عنه في سجلّ، وكان أصغرَ ما في السطر
-                        وأبهتَه — رماديًّا فاتحًا بحجم أحدَ عشر. صار داكنًا
-                        بخانةٍ خاصّته وأرقامٍ متساوية العرض، فتُقرأ الأعمدةُ
-                        رأسيًّا. */}
+                    {/* When did this happen: the first thing asked in a log. It was the smallest and palest part of the row (light grey, 11px); now dark, in its own column with tabular digits so the columns read vertically. */}
                     <span className="ms-auto inline-flex items-center gap-1 shrink-0 px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 text-[12px] font-semibold tabular-nums">
                       <Clock3 className="w-3 h-3 text-slate-500" />
                       {dtm(r.at)}

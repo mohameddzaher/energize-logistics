@@ -1,14 +1,5 @@
 'use client';
-// مؤشرات أداء الموردين — CRM.
-//
-// Judged on whether we can actually hand them work: كام حمولة شالوا، ومستغلين
-// منهم قد إيه، والعقد والأوراق مكتملة ولا لأ، وعندهم كام سيارة، وآخر مرة
-// شغّلناهم إمتى.
-//
-// Volume comes from the Contracts section's monthly utilisation ledger (the
-// company's real record of orders given to each carrier) PLUS the shipment-
-// orders trial, joined on the Arabic-folded vendor name. Contract state comes
-// from the CRM vendor register and the contracts register together.
+// Vendor KPIs (CRM). Judged on whether we can actually hand them work: how many loads they carried, how well they are utilised, whether the contract and papers are complete, how many vehicles they have, and when we last used them. Volume comes from the Contracts section's monthly utilisation ledger (the company's real record of orders given to each carrier) plus the shipment-orders trial, joined on the Arabic-folded vendor name. Contract state comes from the CRM vendor register and the contracts register together.
 import { useState, useEffect, useCallback, useMemo, Fragment } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
@@ -24,7 +15,7 @@ import DateRangeFilter from '@/components/system/DateRangeFilter';
 import ScrollX from '@/components/system/ScrollX';
 
 interface Flag { key: string; ar: string; en: string }
-/** تفصيلُ الصفِّ الواحد — لا يُرسَل مع القائمة، يُجلب عند فتحه. */
+/** Detail of a single row: not sent with the list, fetched when opened. */
 interface RowDetail {
   breakdown: ScoreBreakdownItem[];
   checks: { hasPapers: boolean; vendorSigned: boolean; ourSigned: boolean; contractDated: boolean };
@@ -45,8 +36,7 @@ interface VendorKpi {
   avgCostPerLoad: number; routes: string[];
   lastLoad: string | null; daysSinceLastLoad: number | null; loadsPerMonth: number;
   score: number; band: string;
-  // مفاتيحُ العلامات فقط — نصُّها في `flagLabels` أعلى الحمولة، فلا يتكرّر
-  // النصُّ نفسُه ثلاثةَ آلافِ مرّة (كان ذلك وحدَه تسعَ مئةِ كيلوبايت).
+  // Flag keys only; their text is in `flagLabels` at the top of the payload, so the same text is not repeated thousands of times (that alone was about 900 KB).
   flags: string[];
 }
 
@@ -80,10 +70,7 @@ export default function CrmVendorKpisPage() {
   const [band, setBand] = useState('');
   const [onlyWorking, setOnlyWorking] = useState(false);
   const [open, setOpen] = useState<string | null>(null);
-  // ── تفصيلُ الصفِّ يُجلب عند فتحه ─────────────────────────────────────────
-  // تفصيلُ التقييم والعلاماتُ والخطوط لا تُعرض إلّا للصفِّ المفتوح، وكانت
-  // تُرسَل لثلاثة آلافٍ وخمسِ مئةٍ منهم: خمسةُ ميجابايت يهضمها الهاتف ليعرض
-  // صفًّا واحدًا. فتُجلب عند الفتح وتُحفظ، فلا تُجلب مرّتين.
+  // Row detail is fetched on open. Score detail, flags and lines are shown only for the open row, and sending them for about 3,500 vendors meant megabytes for a phone to render one row. They are fetched on open and cached, so never fetched twice.
   const [details, setDetails] = useState<Record<string, RowDetail>>({});
   const [detailLoading, setDetailLoading] = useState<string | null>(null);
   const openRow = useCallback(async (key: string) => {
@@ -93,10 +80,10 @@ export default function CrmVendorKpisPage() {
     try {
       const d = await api.get<RowDetail>(`/api/crm/kpis/vendors/detail?key=${encodeURIComponent(key)}&from=${from}&to=${to}`);
       setDetails((prev) => ({ ...prev, [key]: d }));
-    } catch { /* الصفُّ يبقى مفتوحًا بأرقامه، والتفصيلُ يُعاد طلبُه عند فتحٍ آخر */ }
+    } catch { /* The row stays open with its numbers; the detail is requested again on the next open. */ }
     setDetailLoading(null);
   }, [details, from, to]);
-  // فترةٌ جديدة = تفصيلٌ جديد.
+  // A new period means new detail.
   useEffect(() => { setDetails({}); }, [from, to]);
 
   const load = useCallback(async () => {
@@ -137,8 +124,7 @@ export default function CrmVendorKpisPage() {
     { header: tx('Head office', 'المقر'), key: 'headOffice', width: 18 },
     { header: tx('Mobile', 'الجوال'), key: 'mobile', width: 16 },
   ];
-  // التصنيف و«العاملون فقط» والبحث تُصفّي الجدول في المتصفّح بعد جلب الفترة
-  // كاملةً، فكان الزرُّ الواحد يصدّر شريحةً مصفّاةً باسم مؤشّرات الموردين كلِّهم.
+  // Band, workers-only and search filter the table in the browser after the whole period is fetched, so the single button used to export a filtered slice named as all vendor KPIs.
   const scope = exportScopeLabels(ar);
   const sheetName = tx('Vendor KPIs', 'مؤشرات الموردين');
   const exportOptions = [
@@ -226,8 +212,7 @@ export default function CrmVendorKpisPage() {
               {items.map((v) => {
                 const key = v._id || v.supplierId || v.name;
                 const isOpen = open === key;
-                // اسمُ التصنيفِ ولونُه من قائمة `bands` بمفتاح الصفّ — تُرسَل
-                // مرّةً واحدةً أعلى الحمولة بدل تكرارها في كلّ صفّ.
+                // Band name and colour come from the `bands` list by the row key; sent once at the top of the payload instead of repeating them in every row.
                 const bandDef = (data?.bands || []).find((b: any) => b.key === v.band);
                 const bandColor = (bandDef as any)?.color || '#94a3b8';
                 const bandLabel = ar ? (bandDef as any)?.ar : (bandDef as any)?.en;

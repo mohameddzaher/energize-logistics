@@ -48,12 +48,11 @@ export function useAssetVocab() {
   }, []);
 
   return useMemo(() => {
-    // النوعُ الملغى («ماوس وكيبورد») لا يُعرض خيارًا في أيّ قائمة، ويبقى اسمُه
-    // مقروءًا لصفٍّ قديمٍ لم يُقسَم — والخادمُ يرفض كتابتَه (config/itCustody).
+    // The retired type (mouse and keyboard) is not offered as an option in any list, but its name stays readable for an old row that was not split; the server rejects writing it (config/itCustody).
     const offered = types.filter((t) => !RETIRED_ASSET_TYPE_KEYS.includes(t.key));
     const label = (list: VocabOption[], key: string, lang: Lang) => {
       const hit = list.find((o) => o.key === key)
-        // صفُّ المرجعيّات المعطَّل لا يعود من الخادم — فالاسمُ من الخريطة الثابتة.
+        // A disabled references row is not returned by the server, so the name comes from the static map.
         || (CUSTODY_TYPES[key] ? { key, en: CUSTODY_TYPES[key].en, ar: CUSTODY_TYPES[key].ar } : undefined);
       // An unknown key means the row predates a rename — show the key rather
       // than an empty cell so it is obvious something needs fixing.

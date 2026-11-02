@@ -126,7 +126,7 @@ export default function B2CDashboard() {
   const [selectedRepId, setSelectedRepId] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'overview' | 'evaluation' | 'analytics'>('overview');
-  // مشاريعُ «إجمالي الطلبات» المختارة — فارغةٌ = كلُّها. يُختار أكثرُ من واحد.
+  // Selected projects of the total-orders figure; empty means all. More than one can be chosen.
   const [totalProjects, setTotalProjects] = useState<string[]>([]);
 
   const fetchOptions = useCallback(async () => {
@@ -279,15 +279,12 @@ export default function B2CDashboard() {
 
   const formatPct = (v: number) => `${(v || 0).toFixed(1)}%`;
 
-  // ── تصدير Excel ───────────────────────────────────────────────────────────
-  // اللوحة ليست جدولًا واحدًا: مناديبُ وأيامٌ وأشهرٌ ومشاريعُ وفروعٌ وتقييمات،
-  // ولكلٍّ منها مفتاحُه ووحدتُه. تُصدَّر كلُّ واحدةٍ في ورقةٍ مستقلّة لأن دمجها
-  // في ورقةٍ واحدة يُفقدها ترويستَها ومعناها.
+  // Excel export.
+  // The dashboard is not one table: reps, days, months, projects, branches and ratings each have their own key and unit. Each is exported to its own sheet, since merging them loses headers and meaning.
   const ar = lang === 'ar';
   const SCOPE = exportScopeLabels(ar);
 
-  // الملفّ يُفتح بعد أسابيع بعيدًا عن الشاشة وفلاترها، فيُكتب النطاق داخله
-  // صراحةً — وإلّا صار كلُّ ملفٍّ «أرقام B2C» بلا فترةٍ ولا مشروعٍ يُنسب إليه.
+  // The file is opened weeks later away from the screen and its filters, so the scope is written inside it; otherwise every file is 'B2C numbers' with no period or project attached.
   const scopeText = () => {
     const parts: string[] = [year && month ? `${monthNames[(month as number) - 1]} ${year}` : (ar ? 'كل الشهور' : 'All months')];
     if (project) parts.push(projects.find((p) => p._id === project)?.name || '');
@@ -414,8 +411,7 @@ export default function B2CDashboard() {
     { name: ar ? 'أيام الأسبوع' : 'Day of week', rows: (d?.byDayOfWeek || []) as any[], columns: dowCols },
   ];
   const evaluationSheets = (rows: any[]): ExportSheet[] => [{ name: T.evaluationTitle, rows, columns: evalCols }];
-  // الورقة الخاوية تُقرأ خطأً على أنّها بياناتٌ ضاعت، والشاشة نفسها لا تعرض
-  // مكانها إلّا «لا توجد بيانات» — فتُستبعَد من المصنَّف.
+  // An empty sheet reads as lost data, while the screen itself shows only 'no data' there, so empty sheets are left out of the workbook.
   const nonEmpty = (sheets: ExportSheet[]) => sheets.filter((sh) => (sh.rows || []).length > 0);
 
   const fetchEvaluationRows = async () => {
@@ -444,8 +440,7 @@ export default function B2CDashboard() {
         key: 'allTabs',
         label: ar ? 'كل التبويبات (بالفلتر الحالي)' : 'All tabs (current filter)',
         hint: scope,
-        // التقييمات لا تُجلَب إلّا عند فتح تبويبها، فلو بُني هذا الخيار من
-        // الذاكرة وحدها لخرج المصنَّف ناقصًا ورقةً كاملةً دون أن ينبّه أحد.
+        // Ratings are fetched only when their tab opens; building this option from memory alone would silently export a workbook missing a whole sheet.
         resolve: async () => {
           const evals = evaluations.length ? evaluations : await fetchEvaluationRows();
           return nonEmpty([...overviewSheets(d0, scope), ...analyticsListSheets(d0), ...evaluationSheets(evals)]);
@@ -455,9 +450,7 @@ export default function B2CDashboard() {
         key: 'unfiltered',
         label: SCOPE.all,
         hint: ar ? 'كل الفترات' : 'all periods',
-        // الشهرُ والمشروعُ والفرعُ والمندوبُ والمدى كلُّها تُطبَّق على الخادم،
-        // فالتصدير الشامل يجب أن يُعاد جلبه بلا معاملات — وإلّا صدّر شهرًا
-        // واحدًا تحت اسم «تصدير الكلّ».
+        // Month, project, branch, rep and range are all applied server-side, so the full export must refetch without parameters; otherwise it would export one month under the name 'export all'.
         resolve: async () => {
           const [d, ev] = await Promise.all([
             api.get<any>('/api/b2c/dashboard'),
@@ -496,7 +489,7 @@ export default function B2CDashboard() {
         </div>
       </div>
 
-      {/* تقريرُ تحقيق المناديب (الجهات، التوزيع، التحقيق حسب المشرف والمشروع) — حيٌّ من مدخلات الأوردرات */}
+      {/* Rep investigation report (parties, distribution, investigation by supervisor and project); live from order entry. */}
       <OrdersReport url="/api/b2c/entry" />
 
       {/* Filters bar */}
@@ -644,8 +637,7 @@ export default function B2CDashboard() {
         <>
           {/* KPIs */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            {/* «أيام العمل» و«متوسط الطلبات اليومي» و«الطاقة المستخدمة» رُفعت بطلب
-                صاحب الشركة (٢٠٢٦/١٠/١٩). والإجماليُّ صار بطاقةً بمشاريعها. */}
+            {/* Working days, daily order average and capacity used were raised at the company owner's request. The total became a card with its projects. */}
             <ProjectsTotalCard
               ar={lang === 'ar'} title={T.totalOrders} total={k!.totalOrders}
               projects={projects} byProject={dashboard.byProject || []} byDay={dashboard.byDay || []}
@@ -663,12 +655,12 @@ export default function B2CDashboard() {
             const below = (dashboard.byRep || []).filter((r) => r.workingDays > 0 && r.performancePercent < 80).sort((a, b) => a.performancePercent - b.performancePercent);
             const period = year && month ? `${monthLabel(`${year}-${String(month).padStart(2, '0')}`)}` : (arL ? 'كل الفترات المحددة' : 'Selected period');
             const loc = (r: RepStat) => r.branch || r.city || (arL ? 'بدون فرع' : 'No branch');
-            // حسب الفرع (الفرع والمدينة نفس الشيء عندنا).
+            // By branch (branch and city are the same thing here).
             const branchAgg: Record<string, { count: number; avg: number; sum: number }> = {};
             below.forEach((r) => { const k = loc(r); (branchAgg[k] ??= { count: 0, avg: 0, sum: 0 }); branchAgg[k].count += 1; branchAgg[k].sum += r.performancePercent; });
             Object.values(branchAgg).forEach((b) => { b.avg = b.count > 0 ? b.sum / b.count : 0; });
             const branchRows = Object.entries(branchAgg).sort((a, b) => b[1].count - a[1].count);
-            // كل مشروع → فروعه المتأثرة (بالتفصيل).
+            // Each project with its affected branches, in detail.
             const projBranch: Record<string, Record<string, number>> = {};
             below.forEach((r) => { const p = r.project || (arL ? 'بدون مشروع' : 'No project'); const b = loc(r); (projBranch[p] ??= {}); projBranch[p][b] = (projBranch[p][b] || 0) + 1; });
             const projRows = Object.entries(projBranch).sort((a, b) => Object.values(b[1]).reduce((s, n) => s + n, 0) - Object.values(a[1]).reduce((s, n) => s + n, 0));
@@ -682,7 +674,7 @@ export default function B2CDashboard() {
                     </div>
                     <button onClick={() => setShowBelow(false)} className="text-slate-400 hover:text-slate-700"><X className="w-5 h-5" /></button>
                   </div>
-                  {/* التفاصيل أولًا: أين تتركّز المشكلة */}
+                  {/* Details first: where the problem is concentrated. */}
                   <ScrollX className="overflow-auto">
                   {branchRows.length > 0 && (
                     <div className="px-5 py-3 bg-slate-50 border-b border-slate-100 space-y-3">
@@ -993,11 +985,8 @@ export default function B2CDashboard() {
 // ─── Sub-components ─────────────────────────────────────────────────────────
 
 /**
- * ── إجماليُّ الطلبات بمشاريعه ───────────────────────────────────────────────
- * الرقمُ الكبير، وتحته «حتى تاريخ» آخرِ يومٍ فيه طلبات (لا نهايةُ الشهر: الأيامُ
- * القادمة مكتوبةٌ في الشيت بأصفار). وتحته بطاقةٌ صغيرةٌ لكلّ مشروع بعدد طلباته؛
- * الضغطُ يختار مشروعًا أو أكثر فيصير الإجماليُّ مجموعَ المختار وحدَه.
- * والأرقامُ من `byProject` تحت فلاتر الصفحة نفسِها — فلا يخالف الإجماليُّ مشاريعَه.
+ * Total orders with its projects.
+ * The big number, under it 'as of' the last day with orders (not month end: future days are written as zeros in the sheet). Under that, a small card per project with its order count; clicking selects one or more projects and the total becomes the sum of the selection only. Figures come from `byProject` under the page's own filters, so the total never disagrees with its projects.
  */
 function ProjectsTotalCard({ ar, title, total, projects, byProject, byDay, selected, onToggle, onClear }: {
   ar: boolean; title: string; total: number;
@@ -1008,7 +997,7 @@ function ProjectsTotalCard({ ar, title, total, projects, byProject, byDay, selec
 }) {
   const rows = [
     ...byProject.map((p) => ({ id: String(p.projectId), name: p.name, color: p.color, orders: p.totalOrders || 0 })),
-    // ومشروعٌ نشطٌ بلا طلباتٍ في المعروض يظهر بصفر — لا يختفي.
+    // An active project with no orders in the displayed data shows zero and does not disappear.
     ...projects.filter((p) => !byProject.some((b) => String(b.projectId) === String(p._id)))
       .map((p) => ({ id: String(p._id), name: (ar && p.nameAr) || p.name, color: p.color, orders: 0 })),
   ];
@@ -1580,10 +1569,7 @@ function DailyCardsSection({
         <span className="text-slate-500 text-xs">{days.length} {tx.daysUnit}</span>
       </div>
 
-      {/* ── طلباتُ الشهر يومًا بيوم — رسمٌ صغيرٌ قبل الكروت ─────────────────
-          عمودٌ لكلّ يوم، والرقمُ عند المرور. للشهر المفتوح (أو آخرِ شهرٍ في
-          المدى إن كانت الشاشةُ على عدّة أشهر). الأيامُ القادمة أصفارٌ في الشيت
-          فتظهر أعمدةً فارغة — لا تُخفى، فيُرى أين وصل الشهر. */}
+      {/* Month orders day by day: a small chart before the cards. One bar per day, value on hover, for the open month (or the last month of the range when several are shown). Future days are zeros in the sheet and appear as empty bars, not hidden, so you can see how far the month has got. */}
       {(() => {
         const [mk, mdays] = sortedMonths[sortedMonths.length - 1] || [];
         if (!mk) return null;

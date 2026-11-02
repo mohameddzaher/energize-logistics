@@ -1,6 +1,5 @@
 'use client';
-// نسخة القسم من لوحة تقييم الأداء. الـAPI بيحصر النتيجة على فريق المدير اللي
-// داخل، فمفيش فلترة زيادة محتاجة هنا.
+// Section copy of the performance dashboard. The API already limits results to the signed-in manager's team, so no extra filtering is needed here.
 import { useLanguage } from '@/context/LanguageContext';
 import TeamBoard from '@/components/performance/TeamBoard';
 

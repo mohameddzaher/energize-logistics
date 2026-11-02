@@ -1,32 +1,8 @@
 /**
- * تحصيلُ المحفظة على الكشف النقديّ.
- *
- * ── القاعدة (صاحبُ الشركة) ─────────────────────────────────────────────────
- * مندوبٌ قبض من العميل فسجّل في المحفظة «تحصيلًا» برقم كشف التخريج. فإن كان
- * الكشفُ نقديًّا فقد حُصِّل — ويظهر «محصَّلًا» في فواتير الكاش لحظتَها، لا حين
- * يتذكّر قسمُ التحصيل أن يكتبه ثانيةً. والتاريخُ تاريخُ قيد المحفظة، والمبلغُ
- * مبلغُه (ومجموعُ القيود إن تعدّدت للكشف الواحد).
- *
- * وكان التحصيلُ في المحفظة لا يصل شيئًا: ستّةٌ وثلاثون قيدًا على كشوفٍ نقديّة،
- * ولا واحدٌ منها «محصَّل» في شاشة التحصيل — فيُطالَب العميلُ بمالٍ دفعه.
- *
- * ── يتبع القيدَ في الاتّجاهين ───────────────────────────────────────────────
- * يُسجَّل فيُكتب، ويُعدَّل مبلغُه أو تاريخُه أو رقمُ كشفه فيتبعه (ويُرفع عن
- * الكشف القديم)، ويُحذف فيُرفع التحصيلُ إن لم يبقَ للكشف قيدٌ آخر. ويتغيّر نوعُ
- * الكشف فيُعاد النظر: صار نقديًّا فيُحصَّل، وكفّ عن النقد فيُرفع.
- *
- * ── وما كتبته يدُ التحصيل لا يُمسّ ─────────────────────────────────────────
- * `collectedByWallet` على الكشف يقول إنّ التحصيلَ المكتوبَ عليه كتبته المحفظة.
- * فما ليس عليه هذا العلمُ — تحصيلٌ سجّله القسمُ بيده (تاريخٌ أو «محصَّل» من
- * الدفتر) — لا يُكتب فوقه ولا يُرفع. ومتى كتب القسمُ بيده على الكشف (سجّل أو
- * عدّل أو رفع التحصيل) صار العلمُ `false`: الكشفُ في يده، ولا تعود المحفظةُ
- * إليه (راجع handCollected و collectionsDeptController).
- *
- * ── والتاريخ ───────────────────────────────────────────────────────────────
- * يُكتب كما يكتبه زرُّ «تسجيل التحصيل» في القسم حرفًا: `new Date('YYYY-MM-DD')`
- * — منتصفُ ليل ذلك اليوم بالتوقيت العالميّ — فلا يختلف كشفٌ حصّلته المحفظةُ عن
- * كشفٍ حصّله القسمُ في أيّ فلترٍ أو عمرٍ أو تقرير. وإن تعدّدت القيودُ فآخرُ
- * تاريخٍ منها: التحصيلُ اكتمل بآخر دفعة.
+ * Wallet collection on a cash statement.
+ * Rule (owner): a rep collects from the customer and records a collection in the wallet with the settlement statement number. If the statement is cash it is collected, and shows as collected in cash invoices at that moment, not when the collections section remembers to enter it again. The date is the wallet entry's date and the amount is its amount (the sum of entries if several exist for one statement).
+ * The wallet collection used to reach nothing: 36 entries on cash statements, none shown as collected on the collections screen, so customers were chased for money they had paid.
+ * It follows the entry in both directions: recorded, it is written; amount, date or statement number edited, it follows (and is lifted from the old statement); deleted, the collection is lifted unless another entry remains for the statement. If the statement type changes it is reconsidered: became cash, collect; stopped being cash, lift. What the collections staff wrote by hand is never touched. `collectedByWallet` on the statement says the collection on it was written by the wallet. A collection without that flag, recorded by the department by hand (a date or collected from the ledger), is not overwritten or lifted. Once the department writes by hand on a statement (records, edits or lifts a collection) the flag becomes `false`: the statement is theirs and the wallet never returns to it (see handCollected and collectionsDeptController). Date: written exactly as the department's record-collection button does, `new Date('YYYY-MM-DD')`, midnight UTC of that day, so a wallet-collected statement and a department-collected one are identical in any filter, age or report. With several entries, the latest date: collection completed with the last payment.
  */
 const { flexSpaceRegex, flexNormalize } = require('./plateKey');
 const cache = require('./ttlCache');
@@ -35,15 +11,13 @@ const clean = (v) => String(v == null ? '' : v).trim();
 const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 const keyOf = (v) => flexNormalize(clean(v));
 
-// ── المطابقةُ كاملةً لا بالتضمين ─────────────────────────────────────────────
-// `flexSpaceRegex` تُطابق بالتضمين: «1234» تجد «12345». وذلك صحيحٌ في البحث،
-// وخطأٌ في جمع المال: يُضاف تحصيلُ كشفٍ إلى غيره. فتُثبَّت من الطرفين — ويبقى
-// التسامحُ مع المسافات الزائدة والرسم العربيّ كما هو.
+// Match the full number, not containment.
+// `flexSpaceRegex` matches by containment, so "1234" finds "12345". That is right for search and wrong for summing money: one statement's collection would be added to another's. So it is anchored on both ends, keeping tolerance for extra spaces and Arabic spelling.
 const exactFlex = (rn) => {
   const inner = flexSpaceRegex(clean(rn)).source;
   return new RegExp(`^[\\sً-ْـ]*(?:${inner})[\\sً-ْـ]*$`, 'i');
 };
-// أشكالُ الرقم التي تُطلب بالفهرس قبل اللجوء إلى التعبير.
+// Forms of the number that are looked up by index before falling back to the regex.
 const variantsOf = (rn) => {
   const t = clean(rn);
   const bare = t.replace(/\s+/g, '');
@@ -52,7 +26,7 @@ const variantsOf = (rn) => {
 
 const WF_FIELDS = 'reportNumber paymentType collectionDate collectedAmount cashCollectionStatus collectedByWallet invoiceNumber sellingValue';
 
-/** الكشفُ بهذا الرقم — بالفهرس أوّلًا، ثمّ بالتعبير (رقمٌ كُتب بمسافة). */
+/** The statement with this number: by index first, then by regex (a number written with a space). */
 async function findWorkflow(rn) {
   const OperationsWorkflow = require('../models/OperationsWorkflow');
   if (!clean(rn)) return null;
@@ -61,7 +35,7 @@ async function findWorkflow(rn) {
   return OperationsWorkflow.findOne({ reportNumber: exactFlex(rn) }).select(WF_FIELDS).lean();
 }
 
-/** يجمع قيودَ التحصيل: المبلغُ مجموعُها، والتاريخُ آخرُها. */
+/** Sums the collection entries: the amount is their total, the date is the latest. */
 const summarise = (rows) => {
   if (!rows || !rows.length) return null;
   const dates = rows.map((r) => clean(r.date).slice(0, 10)).filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d)).sort();
@@ -72,7 +46,7 @@ const summarise = (rows) => {
   };
 };
 
-/** قيودُ تحصيل المحفظة على هذا الكشف، مجموعةً — أو `null`. */
+/** The wallet collection entries on this statement, grouped, or `null`. */
 async function walletCollectionFor(reportNumber) {
   const rn = clean(reportNumber);
   if (!rn) return null;
@@ -83,29 +57,25 @@ async function walletCollectionFor(reportNumber) {
 }
 
 /**
- * أهذا الكشفُ في يد القسم؟ — العلمُ ثلاثُ حالات:
- *   `true`  كتبته المحفظة، فهي تتبعه وترفعه.
- *   `false` كتب فيه القسمُ بيده (سجّل التحصيلَ أو عدّله أو رفعه): لا تعود
- *           المحفظةُ إليه أبدًا — ولا حين يُرفع التحصيلُ بيدٍ عن قصد، فإعادتُه
- *           في أوّل مطابقةٍ نقضٌ لقرار القسم.
- *   غائبٌ   لم يمسّه أحد — إلّا أن يكون محصَّلًا من الدفتر أو الشيت، فهو للقسم.
+ * Is this statement in the department's hands? The flag has three states:
+ * `true`  the wallet wrote it, so it follows and lifts it.
+ * `false` the department wrote on it by hand (recorded, edited or lifted the collection): the wallet never returns to it, not even when the collection was deliberately lifted by hand, since restoring it at the first match would overrule the department.
+ * absent  nobody touched it, unless it is collected from the ledger or the sheet, in which case it is the department's.
  */
 const handCollected = (wf) => wf.collectedByWallet === false
   || (!wf.collectedByWallet && (!!wf.collectionDate || wf.cashCollectionStatus === 'collected'));
 
 /**
- * ما يجب أن يكون على الكشف — بلا كتابة. تقرؤه المزامنةُ وسكربتُ التعبئة معًا.
+ * What should be on the statement, with no writes. Read by both the sync and the backfill script.
  * @returns {{action: 'collect'|'update'|'undo'|'hand'|'none', set?: object}}
  */
 function plan(wf, wallet) {
   const owned = !!wf.collectedByWallet;
   if (wallet && wallet.date && wf.paymentType === 'cash') {
     if (handCollected(wf)) return { action: 'hand' };
-    const date = new Date(wallet.date); // كما يكتبه recordCollection — راجع الترويسة
-    // ── والقيدُ الأصغرُ من قيمة الكشف تحصيلٌ جزئيّ ───────────────────────────
-    // المندوبُ قبض بعضَ المال: يُكتب المبلغُ ولا يُكتب تاريخُ التحصيل، فيظهر
-    // الكشفُ «جزئيًّا» بباقيه — والتاريخُ يُكتب حين يبلغ المجموعُ القيمة (قيدٌ
-    // ثانٍ). والكشفُ الذي لا قيمةَ معروفةً له يكتمل بما قُبض، كما كان.
+    const date = new Date(wallet.date); // As recordCollection writes it; see the header
+    // An entry smaller than the statement value is a partial collection.
+    // The rep collected part of the money: the amount is written but not the collection date, so the statement shows as partial with its remainder. The date is written when the total reaches the value (a second entry). A statement with no known value completes with what was collected, as before.
     const value = Number(wf.sellingValue) || 0;
     const partial = value > 0 && wallet.amount < value - 0.005;
     const wantDate = partial ? null : date;
@@ -120,8 +90,8 @@ function plan(wf, wallet) {
       set: { collectionDate: wantDate, collectedAmount: wallet.amount, collectedByWallet: true },
     };
   }
-  // لا قيدَ بقي، أو لم يعد الكشفُ نقديًّا: يُرفع ما كتبته المحفظة وحدَه.
-  // والعلمُ يُمحى لا يُكتب `false`: تلك حالةُ «في يد القسم» (راجع handCollected).
+  // No entry remains, or the statement is no longer cash: lift only what the wallet wrote.
+  // The flag is cleared, not set to `false`: that is the "in the department's hands" state (see handCollected).
   if (owned) return { action: 'undo', set: { collectionDate: null, collectedAmount: 0 }, unset: { collectedByWallet: 1 } };
   return { action: 'none' };
 }
@@ -129,10 +99,7 @@ function plan(wf, wallet) {
 const AR = { collect: 'تحصيلٌ من المحفظة', update: 'تحديثُ تحصيل المحفظة', partial: 'تحصيلٌ جزئيّ من المحفظة', undo: 'رفعُ تحصيل المحفظة' };
 const ymd = (d) => (d ? new Date(d).toISOString().slice(0, 10) : '—');
 
-/**
- * يكتب الخطط، ثمّ الدفترَ والذاكرة، ثمّ يُعلن — بهذا الترتيب: الإعلانُ قبل
- * الإبطال يجعل المستمعَ يقرأ القديمَ ويتأخّر خطوة (announce-before-invalidate).
- */
+/** Writes the plans, then the ledger and cache, then announces, in that order: announcing before invalidating makes the listener read stale data and lag a step (announce-before-invalidate). */
 async function applyPlans(items, { user = null, reason = '' } = {}) {
   const todo = items.filter((x) => x.plan && x.plan.set);
   if (!todo.length) return [];
@@ -146,14 +113,14 @@ async function applyPlans(items, { user = null, reason = '' } = {}) {
     await OperationsWorkflow.updateOne({ _id: wf._id }, { $set, ...(p.unset ? { $unset: p.unset } : {}) });
   }
 
-  // دفترُ التحصيل (صفُّ الشحنة النقديّة) يتبع الكشف — ويُبطل ذاكرةَ القسم والدفتر.
+  // The collections ledger (the cash shipment row) follows the statement, and the department and ledger caches are invalidated.
   try {
     await require('../controllers/collectionsDeptController').syncLedgerFromWorkflows(
       todo.map(({ wf, plan: p }) => ({ _id: wf._id, invoiceNumber: wf.invoiceNumber, collectionDate: p.set.collectionDate })),
       { collectionDate: true },
     );
   } catch (e) { console.error('wallet→collections ledger sync:', e.message); }
-  // وذاكرةُ سير العمل وما يقرأ التحصيلَ — `clear` يختم الإبطالَ للعامل الآخر أيضًا.
+  // The workflow cache and whatever reads collection; `clear` stamps the invalidation for the other worker too.
   try {
     cache.clear('wf:');
     cache.clear('collections-dept:'); cache.clear('cdr:');
@@ -184,10 +151,7 @@ async function applyPlans(items, { user = null, reason = '' } = {}) {
 
   try {
     const { emitToAll } = require('../websocket/socketManager');
-    // بلا `_id`: شاشةُ التشغيل تستبدل الصفَّ بما يصلها في `workflow:updated`،
-    // فخبرٌ بمعرّفٍ ولا صفّ يمحو الصفَّ من الشاشة. فهذا لشاشة الكاش (تعيد
-    // الجلب)، و`bulkImported` لشاشة التشغيل (تعيد الجلب)، و`collections:changed`
-    // للوحة القسم.
+    // No `_id`: the operations screen replaces the row with what arrives in `workflow:updated`, so an event with an id but no row would erase the row from the screen. This one is for the cash screen (refetches), `bulkImported` is for the operations screen (refetches), and `collections:changed` is for the department board.
     emitToAll('workflow:updated', { bulk: true, collection: true, fromWallet: true });
     emitToAll('workflow:bulkImported', { fromWallet: true, collection: true, count: todo.length });
     emitToAll('collections:changed', { source: 'wallet', field: 'collectionDate', reportNumbers: todo.map((x) => x.wf.reportNumber) });
@@ -197,8 +161,8 @@ async function applyPlans(items, { user = null, reason = '' } = {}) {
 }
 
 /**
- * يُطابق تحصيلَ الكشوف بهذه الأرقام مع المحفظة ويكتب ما اختلف.
- * يُنادى بعد كلّ إنشاءٍ أو تعديلٍ أو نقلٍ أو حذفٍ لقيد تحصيل، وبعد تغيّر نوع الكشف.
+ * Matches the collection of statements with these numbers against the wallet and writes what differs.
+ * Called after every create, edit, move or delete of a collection entry, and after a statement type changes.
  * @param {string|string[]} reportNumbers
  */
 async function syncWalletCollection(reportNumbers, opts = {}) {
@@ -218,12 +182,9 @@ async function syncWalletCollection(reportNumbers, opts = {}) {
 }
 
 /**
- * المطابقةُ كلُّها: كلُّ قيد تحصيلٍ برقم كشف، وكلُّ كشفٍ كتبته المحفظة.
- * تُنادى بعد ما يغيّر نوعَ الدفع جملةً (المزامنة، صفحة «أنواع الدفع»، التصفير)،
- * وهي سكربتُ التعبئة نفسُه (`apply: false` للتجربة).
- *
- * `regexFallback`: رقمٌ لم يُوجد بالفهرس يُطلب بالتعبير — مسحٌ للمجموعة، فيُترك
- * في الدورات الدوريّة ويُستعمَل في السكربت.
+ * The whole match: every collection entry with a statement number, and every statement the wallet wrote.
+ * Called after anything that changes payment types in bulk (sync, the payment types page, reset), and it is the backfill script itself (`apply: false` for a dry run).
+ * `regexFallback`: a number not found by index is looked up by regex, a collection scan, so it is left off in periodic cycles and used in the script.
  */
 async function resyncAllWalletCollections({ apply = true, regexFallback = false, ...opts } = {}) {
   const WalletTransaction = require('../models/WalletTransaction');
@@ -231,7 +192,7 @@ async function resyncAllWalletCollections({ apply = true, regexFallback = false,
   const entries = await WalletTransaction.find({ type: 'collection', deliveryStatementNumber: { $nin: [null, ''] } })
     .select('deliveryStatementNumber amount date').lean();
 
-  const groups = new Map(); // المفتاحُ المطويّ → القيود
+  const groups = new Map(); // Folded key to entries
   for (const e of entries) {
     const k = keyOf(e.deliveryStatementNumber);
     if (!k) continue;
@@ -278,9 +239,8 @@ async function resyncAllWalletCollections({ apply = true, regexFallback = false,
   return summary;
 }
 
-// ── ومن المزامنة: مرّةً بعد أن تهدأ ─────────────────────────────────────────
-// استطلاعُ المنصّة يكتب كلَّ بضع ثوانٍ، وقد يغيّر نوعَ كشفٍ عليه تحصيلُ محفظة.
-// فتُجمَع النداءاتُ في واحدٍ بعد ثوانٍ — والمطابقةُ ثلاثةُ استعلاماتٍ صغيرة.
+// From the sync: once, after it settles.
+// Platform polling writes every few seconds and may change the type of a statement that has a wallet collection, so calls are coalesced into one a few seconds later; the match is three small queries.
 let pending = null;
 function scheduleResync(delayMs = 5000) {
   if (pending) return;

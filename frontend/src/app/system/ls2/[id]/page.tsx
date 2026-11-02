@@ -83,7 +83,7 @@ export default function Ls2VehicleDetailPage() {
   const load = useCallback(async () => {
     try {
       const got = await api.get<Detail>(`/api/ls2/vehicles/${id}`);
-      // جاء من رابط مهمّة JP (معرّفُ السجلّ): الصفحةُ وما تستدعيه تعمل برقم الوحدة.
+      // Arrived from a JP task link (record id): the page and what it calls work with the unit number.
       const unit = (got as any)?.vehicle?.unitId;
       if (/^[a-f0-9]{24}$/i.test(String(id)) && unit) { router.replace(`/system/ls2/${unit}`); return; }
       setD(got);
@@ -99,7 +99,7 @@ export default function Ls2VehicleDetailPage() {
   };
   useEffect(() => { load(); }, [load]);
   useSocket('ls2:updated', useCallback(() => load(), [load]));
-  // الهويّةُ والمستنداتُ من سجلّ المركبات — تعديلٌ هناك يظهر هنا في الحال.
+  // Identity and documents come from the vehicle register; an edit there shows here at once.
   useSocket('vreg:updated', useCallback(() => load(), [load]));
 
   // Distance for the chosen period (snapshots) + the daily trend series.
@@ -168,14 +168,13 @@ export default function Ls2VehicleDetailPage() {
     { label: t.gsm, value: v.gsmSignal != null ? `${Math.round((v.gsmSignal / 31) * 100)}%` : '—', icon: Satellite, accent: 'text-slate-700' },
   ];
 
-  // ── تصدير ملفّ الشاحنة ───────────────────────────────────────────────────
+  // Truck file export.
   const ar = lang === 'ar';
   const kvCols: ExportColumn[] = [
     { header: ar ? 'البند' : 'Field', key: 'item', width: 26 },
     { header: ar ? 'القيمة' : 'Value', key: 'value', width: 32 },
   ];
-  // هوية الشاحنة وقراءاتُها بندٌ وقيمة كما هي على الشاشة — كارتٌ لكل قراءة —
-  // فتُصدَّر صفًّا لكل بند لا عمودًا، وإلا خرج شيتٌ بصفٍّ واحدٍ وثلاثين عمودًا.
+  // Truck identity and readings are item/value cards on screen, so they export as one row per item, not a column each; otherwise the sheet would be one row of thirty columns.
   const infoSheet: ExportSheet = {
     name: t.identity,
     rows: ([
@@ -243,7 +242,7 @@ export default function Ls2VehicleDetailPage() {
     ],
   };
 
-  // التنبيهات المفتوحة وحدها — الشاشة لا تعرض المغلقة، والملفُّ صورةُ الشاشة.
+  // Open alerts only: the screen does not show closed ones and the file mirrors the screen.
   const alertSheet: ExportSheet = {
     name: t.alerts,
     rows: openAlerts as any[],
@@ -305,12 +304,10 @@ export default function Ls2VehicleDetailPage() {
           {pdfBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileDown className="w-4 h-4" />}
           {lang === 'ar' ? 'تحميل تقرير PDF' : 'Download PDF Report'}
         </button>
-        {/* التقرير الشامل — telemetry + maintenance + loads + income in one PDF */}
+        {/* Comprehensive report: telemetry + maintenance + loads + income in one PDF */}
         <ReportButton subject="vehicle" id={`u${v.unitId}`} label={lang === 'ar' ? 'التقرير الشامل' : 'Full report'} />
         <button type="button" onClick={() => load()} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm"><RefreshCw className="w-4 h-4" /> {t.refresh}</button>
-        {/* الرحلات والوقفات والمسافة اليومية كلّها محكومة بالمدة المختارة أعلاه،
-            فخيارٌ يحملها لا بدّ أن يُسمّي مداها؛ والخيار الأوّل حالةُ الشاحنة
-            الآن وحدها لمن يريد ملفًّا لا تتغيّر أرقامه بتغيّر المدة. */}
+        {/* Trips, stops and daily distance are all bound to the period chosen above, so an option carrying them must name its range; the first option is the truck's current state only, for a file whose numbers do not change with the period. */}
         <ExportMenu fileName={`ls2-vehicle-${v.plate || v.unitId}`} lang={lang as 'ar' | 'en'}
           options={[
             { key: 'now', label: ar ? 'حالة الشاحنة الآن' : 'Truck state now', sheets: [infoSheet, serviceSheet, tireSheet, alertSheet] },
@@ -340,7 +337,7 @@ export default function Ls2VehicleDetailPage() {
             <p className="text-[11px] text-slate-600 mt-0.5">{lang === 'ar' ? 'السائق الحالي على المركبة' : 'Currently on this vehicle'}</p>
           </div>
         </div>
-        {/* الهويّةُ من سجلّ المركبات، وما يقوله الجهازُ تحتها «حسب الجهاز» */}
+        {/* Identity comes from the vehicle register; what the device reports sits below as 'per device'. */}
         <div className="pt-3 mb-3 border-t border-slate-100"><RegistryIdentityCard v={v} lang={lang as Lang} /></div>
         {v.profile && (v.profile.vin || v.profile.brand || v.profile.simIccid) && (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-2 text-sm pt-3 border-t border-slate-100">
@@ -429,7 +426,7 @@ export default function Ls2VehicleDetailPage() {
         lang={lang as Lang} isRTL={isRTL} admin={isLs2Admin(user)}
       />
 
-      {/* عهدةُ النقل الثقيل المنسوبةُ إلى هذه الشاحنة — حيّةً مع الدفتر. */}
+      {/* Heavy-transport custody attributed to this truck, live with the ledger. */}
       <HtCustodyPanel by={{ vehicle: v.unitId }} ar={lang === 'ar'} />
 
       {/* Workshop asset registry: which physical tires (by serial) + trailer are
@@ -565,8 +562,7 @@ export default function Ls2VehicleDetailPage() {
             )}
           </div>
         </div>
-        {/* تغطية الحسّاسات بالرقم نفسه الظاهر في شاشتَي الأسطول — لأن من يفتح
-            ملف الشاحنة بعد أن رأى «٧ / ٥ / ٢» في القائمة يجب أن يجده هنا كما هو. */}
+        {/* Sensor coverage uses the same number shown on both fleet screens, so someone opening the truck file after seeing '7 / 5 / 2' in the list finds it unchanged. */}
         {v.tireSensors && (
           <div className="flex items-center gap-2 mb-3 text-xs text-slate-500">
             <span>{t.tireSensorsCol}:</span>
@@ -594,7 +590,7 @@ export default function Ls2VehicleDetailPage() {
         </div>
       </div>
 
-      {/* مهامّ JP المربوطة بهذه الشاحنة — تُضاف من هنا. */}
+      {/* JP tasks linked to this truck; added from here. */}
       {!!(v as any)._id && <JpTaskPanel section="ls2" kind="truck" refId={String((v as any)._id)} ar={ar} />}
 
       {svcModal && (

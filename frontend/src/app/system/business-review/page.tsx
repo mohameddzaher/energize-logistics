@@ -1,10 +1,6 @@
 'use client';
-// اجتماعات مراجعة الأعمال — the meetings list, and the section's front door.
-//
-// What you see depends on who you are, and the page says so rather than showing
-// an empty screen: the board and the secretariat see every round, a department
-// manager sees the rounds they sat in, and an employee is pointed at their own
-// delegated work — which is all they have here by design.
+// Business review meetings: the meetings list, and the section's front door.
+// What you see depends on who you are, and the page says so rather than showing an empty screen: the board and the secretariat see every round, a department manager sees the rounds they sat in, and an employee is pointed at their own delegated work - which is all they have here by design.
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useLanguage } from '@/context/LanguageContext';
@@ -38,7 +34,7 @@ export default function BusinessReviewPage() {
   const [q, setQ] = useState('');
   const [cadence, setCadence] = useState('');
   const [status, setStatus] = useState('');
-  // الوعاء اللي البطاقات بتوديك عليه — «مكتملة» / «لسه مفتوحة» / «قادمة» / «ملغاة».
+  // The bucket the cards lead to: completed, still open, upcoming or cancelled.
   const [bucket, setBucket] = useState('');
   const [counts, setCounts] = useState<any>(null);
   const [showNew, setShowNew] = useState(false);
@@ -165,8 +161,7 @@ export default function BusinessReviewPage() {
         </div>
       )}
 
-      {/* بطاقات بتفلتر — تدوس على «مكتملة» تشوف المكتملة بس. الأرقام محسوبة على
-          كل اجتماعاتك مش على الصفحة المعروضة، فهي بتوصف الشغل مش الفلتر. */}
+      {/* Cards that filter: click 'completed' to see only completed ones. Numbers are computed over all your meetings, not the displayed page, so they describe the work, not the filter. */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2.5">
         {MEETING_BUCKETS.map((b) => {
           const active = bucket === b.key;

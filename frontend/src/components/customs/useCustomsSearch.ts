@@ -4,18 +4,11 @@ import api from '@/lib/api';
 import { useLatestRequest } from '@/hooks/useLatestRequest';
 
 /**
- * ── البحثُ بكلّ ما في المعاملة، في كلّ شاشات التخليص ────────────────────────
- * الشاشاتُ تصفّي في المتصفّح ما عندها، وما عندها صفوفٌ مقلَّمة: لا بيانُ كلّ
- * حاوية، ولا إيصالُ إرجاعها، ولا طلباتُ الصرف، ولا الملاحظاتُ كلُّها. فكان
- * البحثُ برقمٍ من هذه يقول «لا نتائج» والمعاملةُ موجودة.
- *
- * فيُسأل الخادمُ عن المعرّفات المطابقة (`?ids=1&search=`) — من فهرسٍ واحدٍ
- * لكلّ نصٍّ في المعاملة (راجع SEARCH_INDEX_FIELDS في الخادم) — وتبقى الصفوفُ
- * وفلاترُها وعدّاداتُها في الشاشة كما هي. وإلى أن يصل الردّ يعمل البحثُ
- * المحلّيُّ على ما في الصفّ، فلا ينتظر الموظّفُ شيئًا ليرى أوّلَ النتائج.
+ * Search by everything in a transaction, across all clearance screens.
+ * Screens filter in the browser the rows they hold, and those rows are trimmed: no per-container statement, return receipt, payment requests or all notes. Searching by such a number used to report no results although the transaction existed. So the server is asked for matching ids (`?ids=1&search=`) from one index of all transaction text (see SEARCH_INDEX_FIELDS on the server), while rows, filters and counters stay on the screen. Until the reply arrives, local search runs on the row so the first results appear without waiting.
  */
 
-/** الطيُّ نفسُه في الخادم (utils/arabicSearch · searchKey). */
+/** Same fold as the server (utils/arabicSearch, searchKey). */
 export const searchKey = (v: unknown): string => String(v ?? '')
   .replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)))
   .replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)))
@@ -27,7 +20,7 @@ export const searchKey = (v: unknown): string => String(v ?? '')
   .replace(/ؤ/g, 'و')
   .replace(/[\s\-_./\\,:;#|'"()[\]{}–—]+/g, '');
 
-/** هل يطابق النصُّ إحدى القيم — كاملًا مطويًّا، أو كلُّ كلمةٍ فيه في قيمةٍ ما. */
+/** Whether the text matches one of the values: the whole folded text, or every word of it within some value. */
 export function matchesSearch(text: string, values: unknown[]): boolean {
   const whole = searchKey(text);
   if (!whole) return true;
@@ -39,11 +32,7 @@ export function matchesSearch(text: string, values: unknown[]): boolean {
 
 export type CustomsHits = { ids: Set<string>; parties: Set<string> };
 
-/**
- * المعاملاتُ (وأطرافُها) المطابقةُ لنصّ البحث من الخادم. `null` ما دام النصُّ
- * فارغًا أو الردُّ لم يصل — والشاشةُ حينها تكتفي بالبحث المحلّيّ.
- * `refreshKey`: ما يتغيّر حين تُعاد قراءةُ الصفوف، فيُعاد السؤالُ معها.
- */
+/** Transactions (and their parties) matching the search text, from the server. `null` while the text is empty or the reply has not arrived, in which case the screen uses local search only. `refreshKey` changes when rows are re-read, so the query repeats with them. */
 export function useCustomsSearch(text: string, refreshKey?: unknown): CustomsHits | null {
   const [hits, setHits] = useState<(CustomsHits & { q: string }) | null>(null);
   const { begin, isCurrent } = useLatestRequest();
@@ -55,10 +44,10 @@ export function useCustomsSearch(text: string, refreshKey?: unknown): CustomsHit
       try {
         const r = await api.get<{ ids?: string[]; parties?: string[] }>(`/api/customs-clearance?ids=1&search=${encodeURIComponent(q)}`);
         if (isCurrent(token)) setHits({ q, ids: new Set(r.ids || []), parties: new Set(r.parties || []) });
-      } catch { /* البحثُ المحلّيُّ يبقى */ }
+      } catch { /* Local search stays. */ }
     }, 250);
     return () => clearTimeout(timer);
   }, [q, refreshKey, begin, isCurrent]);
-  // ردٌّ لنصٍّ سابقٍ لا يُطبَّق على ما كُتب بعده.
+  // A reply for earlier text is not applied to later input.
   return hits && hits.q === q ? hits : null;
 }

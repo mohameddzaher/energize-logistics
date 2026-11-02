@@ -7,10 +7,10 @@ import 'section_dash.dart';
 
 String _iso(DateTime d) => '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
-/// مدى تواريخ التسويق — `DateRange` في lib/marketing.ts.
+/// Marketing date range, `DateRange` in lib/marketing.ts.
 typedef MarketingRange = ({DateTime from, DateTime to});
 
-/// من أوّل الشهر حتى اليوم — `thisMonthToDate()` في الويب (الافتراض).
+/// From the first of the month to today, like `thisMonthToDate()` on the web (the default).
 MarketingRange marketingThisMonth() {
   final n = DateTime.now();
   return (from: DateTime(n.year, n.month, 1), to: DateTime(n.year, n.month, n.day));
@@ -24,8 +24,7 @@ MarketingRange _lastN(int days) {
 
 String marketingRangeQs(MarketingRange r) => 'from=${_iso(r.from)}&to=${_iso(r.to)}';
 
-/// «من → إلى» مع الفترات السريعة — نظيرُ RangePicker في الويب، تستعمله لوحةُ
-/// التسويق والتقرير الدوري فتُقرأ الصفحتان بالطريقة نفسها.
+/// From/to with quick periods, counterpart of RangePicker on the web; used by the marketing dashboard and the periodic report so both pages read the same way.
 class MarketingRangePicker extends StatelessWidget {
   final MarketingRange value;
   final ValueChanged<MarketingRange> onChanged;
@@ -70,7 +69,7 @@ class MarketingRangePicker extends StatelessWidget {
   }
 }
 
-/// لوحةُ التسويق بمدى تواريخ — `/api/marketing/dashboard?from&to` كالويب.
+/// Marketing dashboard with a date range: `/api/marketing/dashboard?from&to`, as on the web.
 class MarketingDashboardScreen extends StatefulWidget {
   const MarketingDashboardScreen({super.key});
   @override

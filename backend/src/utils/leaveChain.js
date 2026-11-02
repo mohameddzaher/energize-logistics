@@ -1,21 +1,11 @@
 /**
- * سلسلةُ موافقات الإجازة — مَن يقرّر في كلّ محطّة.
- *
- * ── المحطّاتُ أربع ────────────────────────────────────────────────────────
- * المديرُ المباشر ← الموارد البشريّة ← الحسابات ← الإدارة العليا.
- *
- * وكانت محطّتين. فما يخصّ المالَ — سلفةٌ على الموظّف، أو مستحقّاتٌ تُصفَّى قبل
- * السفر — لم يكن يمرّ على الحسابات أصلًا، والإدارةُ العليا تعلم بالسفر بعد
- * وقوعه.
- *
- * ── و«طلبُ إيضاح» ليس رفضًا ───────────────────────────────────────────────
- * قد تقول الحسابات: «عليه مبلغٌ يُسدَّد أوّلًا». فالطلبُ لا يُرفَض ولا يُوافَق
- * عليه — يعود إلى صاحبه ليردّ أو يعدّل أو يرفع إيصالًا. فإذا ردّ عادت السلسلةُ
- * من أوّلها، لأنّ الطلبَ الذي وافق عليه المديرُ لم يعد هو الطلبَ نفسَه.
+ * Leave approval chain: who decides at each stage.
+ * Four stages: direct manager, HR, accounting, top management. Accounting was added because money matters (advances, settlements before travel) never reached it, and top management learned of travel after the fact.
+ * A clarification request is not a rejection: the request returns to the employee to reply, amend or attach a receipt, and when they reply the chain restarts from the beginning because the approved request is no longer the same request.
  */
 const { rolesOfSection } = require('../config/roles');
 
-// المحطّةُ ← الحالةُ المعلَّقة عندها.
+// Stage to the pending status held at it.
 const STAGES = ['manager', 'hr', 'finance', 'executive'];
 const PENDING_OF = {
   manager: 'pending_manager',
@@ -23,10 +13,7 @@ const PENDING_OF = {
   finance: 'pending_finance',
   executive: 'pending_executive',
 };
-// الطلبُ «مفتوح» ما لم يُبَتّ فيه نهائيًّا — في أيّ محطّةٍ وقف، أو مرتدًّا إلى
-// صاحبه للردّ. وهو المقياسُ الذي تُعَدّ به الطلباتُ المعلَّقة في كلّ لوحة؛ فلمّا
-// كانت القوائمُ تُكتب محطّتين في كلّ ملفّ، سقط ما بلغ الحساباتِ أو الإدارةَ من
-// كلّ عدّاد — يبدو منتهيًا وهو واقف.
+// A request is 'open' until finally decided: at any stage, or returned to the employee for a reply. This is the measure used to count pending requests on every dashboard; per-file two-stage lists used to drop requests that had reached accounting or management from every counter.
 const OPEN_STATUSES = [...Object.values(PENDING_OF), 'info_requested'];
 
 const NEXT_OF = { manager: 'hr', hr: 'finance', finance: 'executive', executive: 'done' };
@@ -35,18 +22,15 @@ const DECISION_FIELD = {
   finance: 'financeDecision', executive: 'executiveDecision',
 };
 
-// ── مَن يملك كلَّ محطّة ───────────────────────────────────────────────────
-// الأدوارُ تُقرأ من `config/roles` لا تُكتب هنا قائمةً ثانية تشيخ؛ فإذا زِيد
-// دورٌ إلى قسم الموارد البشريّة أو الحسابات دخل السلسلةَ من نفسه.
+// Who owns each stage: roles are read from `config/roles` rather than a second list that would go stale, so a role added to HR or accounting joins the chain automatically.
 const HR_ROLES = rolesOfSection('HR');
 const FINANCE_ROLES = rolesOfSection('Accounting');
 const EXEC_ROLES = ['super_admin', 'admin'];
 
-// ومَن يُمضي ما تعطّل. وليست `FULL_ACCESS_ROLES`: تقنيةُ المعلومات تملك النظامَ
-// كلَّه لأنّها تُصلحه، لا لتوقّع على إجازة أحد.
+// Who can push a stalled request through. Not `FULL_ACCESS_ROLES`: IT owns the whole system to fix it, not to sign anyone's leave.
 const OVERRIDE_ROLES = ['super_admin', 'admin'];
 
-/** أيملك هذا المستخدمُ البتَّ في هذه المحطّة على هذا الطلب؟ */
+/** Can this user decide this request at this stage? */
 function canActAt(stage, user, leave) {
   const role = user?.role || '';
   if (OVERRIDE_ROLES.includes(role)) return true;
@@ -58,9 +42,8 @@ function canActAt(stage, user, leave) {
 }
 
 /**
- * المحطّاتُ التي يملكها هذا المستخدم — تُبنى منها صفحةُ «طلبات تنتظرني».
- * ومحطّةُ المدير ليست دورًا بل صلةٌ بالطلب نفسه، فتُذكر لكلّ مستخدم ويُصفّيها
- * `inboxFilter` بـ `manager: user._id`.
+ * Stages this user owns; used to build the awaiting-me page.
+ * The manager stage is a relation to the request, not a role, so it is listed for every user and `inboxFilter` narrows it with `manager: user._id`.
  */
 function stagesFor(user) {
   const role = user?.role || '';
@@ -72,10 +55,7 @@ function stagesFor(user) {
   return out;
 }
 
-/**
- * شرطُ «الطلباتُ التي تنتظر هذا المستخدم» — استعلامٌ واحد لا حلقةٌ في Node.
- * محطّةُ المدير مقيَّدةٌ بطلبات فريقه؛ وسائرُ المحطّات بالدور.
- */
+/** Filter for requests awaiting this user: one query, not a Node loop. The manager stage is limited to their team's requests; other stages go by role. */
 function inboxFilter(user) {
   const stages = stagesFor(user);
   const or = [];
@@ -89,7 +69,7 @@ function inboxFilter(user) {
   return or.length ? { $or: or } : { _id: null };
 }
 
-/** يُقدِّم الطلبَ إلى المحطّة التالية بعد موافقةٍ في `stage`. */
+/** Advances the request to the next stage after an approval at `stage`. */
 function advance(leave, stage) {
   const next = NEXT_OF[stage];
   if (next === 'done') { leave.status = 'approved'; leave.currentStage = 'done'; return 'approved'; }
@@ -99,8 +79,8 @@ function advance(leave, stage) {
 }
 
 /**
- * يعيد الطلبَ إلى صاحبه بسؤال.
- * ولا تُمحى الموافقاتُ هنا — تُمحى حين يردّ، فيُعرَف من وافق قبل السؤال.
+ * Returns the request to its owner with a question.
+ * Approvals are not cleared here but when they reply, so it stays known who approved before the question.
  */
 function askEmployee(leave) {
   leave.status = 'info_requested';
@@ -108,8 +88,8 @@ function askEmployee(leave) {
 }
 
 /**
- * ردُّ الموظّف يعيد السلسلةَ من أوّلها.
- * والموافقاتُ السابقةُ تُمحى: الطلبُ تغيّر، فموافقةُ الأمس كانت على غيره.
+ * Employee reply restarts the chain from the start.
+ * Previous approvals are cleared: the request changed, so earlier approval was for a different one.
  */
 function restart(leave) {
   leave.managerDecision = undefined;

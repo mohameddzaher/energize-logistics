@@ -1,12 +1,6 @@
 "use client";
 
-/**
- * اليوم الوطني السعودي ٩٦ — ٢٣ سبتمبر ٢٠٢٦، وهويّتُه «عِزّنا بطبعنا».
- *
- * قسمٌ موسميٌّ في الصفحة الرئيسية: أخضرُ المناسبة لونُه الأوّل، والبرتقاليُّ
- * لونُ الشركة لمسةً فيه، على خلفيّة الموقع الداكنة. ويختفي وحدَه بعد انقضاء
- * المناسبة (HIDE_AFTER) فلا يبقى إعلانٌ عن عيدٍ مضى إن نُسي حذفُه.
- */
+/** Saudi National Day seasonal section on the home page, with the occasion's green as the primary color and the company orange as an accent on the dark site background. It hides itself after HIDE_AFTER so a stale holiday banner does not linger. */
 import { useEffect, useState } from "react";
 import Image from "next/image";
 

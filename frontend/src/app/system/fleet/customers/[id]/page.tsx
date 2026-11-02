@@ -1,5 +1,5 @@
 'use client';
-// ملف العميل — عميل واحد بكامل سجل رحلاته معنا وإحصائياته، وتعديل نوعه وتقييمنا له.
+// Customer file: one customer with their full trip history and statistics; edit their type and our rating.
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -62,8 +62,7 @@ export default function FleetCustomerProfilePage() {
   const [rating, setRating] = useState(0);
   const [payType, setPayType] = useState('');
 
-  // آخرُ ما جاء من الخادم: تحديثٌ حيّ (حمولةٌ حُفظت في أيّ مكان) لا يمسح اختيارًا
-  // لم يُحفَظ بعد — يُحدَّث الحقلُ الذي لم يلمسه المستخدمُ وحدَه.
+  // Latest server data: a live update (a load saved anywhere) must not overwrite a selection that is not saved yet; only fields the user has not touched are updated.
   const base = useRef({ type: '', rating: 0, payType: '' });
   const load = useCallback(async () => {
     try {
@@ -97,8 +96,7 @@ export default function FleetCustomerProfilePage() {
   if (loading) return <Spinner />;
   if (!data) return <div className="text-slate-500 p-8">{ar ? 'العميل غير موجود' : 'Not found'}</div>;
   const c = data.customer;
-  // ملفّ عميلٍ واحد: الجدول أدناه هو كامل سجلّ رحلاته، لا فلترَ عليه ولا ترقيم،
-  // فنطاقٌ ثانٍ لن يزيد صفًّا واحدًا وإنّما يوهم المصدِّرَ بأنّ أمامه اختيارًا.
+  // Single customer file: the table below is the whole trip history, with no filter or paging, so a second range would add no rows and only suggest a choice to the exporter.
   const scope = exportScopeLabels(ar);
   const exportOptions = [
     { key: 'all', label: scope.all, sheets: [{ name: TRIPS_SHEET, rows: data.shipments, columns: exportColumns }] },
@@ -113,7 +111,7 @@ export default function FleetCustomerProfilePage() {
           <button type="button" onClick={() => router.push('/system/fleet/customers')} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm"><ArrowRight className="w-4 h-4" /> {ar ? 'رجوع' : 'Back'}</button>
         </div>
       </PageHeader>
-      {/* العميلُ نفسُه في الأقسام الأخرى */}
+      {/* The same customer in other sections */}
       <CustomerPresence reg="fleet" id={String(c._id)} ar={ar} onChanged={load} />
 
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
@@ -125,9 +123,7 @@ export default function FleetCustomerProfilePage() {
         <StatCard label={ar ? 'آخر رحلة' : 'Last trip'} value={data.stats.lastTrip ? fmtD(data.stats.lastTrip) : '—'} />
       </div>
 
-      {/* ── المال ────────────────────────────────────────────────────────────
-          «الإيجار كامل» ما يستلمه السائق من العميل، و«الدخل» حصّتُنا منه؛
-          والفرق حصّة قسم الفروع. فصلُهما هنا يمنع قراءة الأول على أنّه الثاني. */}
+      {/* Money: full rent is what the driver receives from the customer, income is our share of it; the difference is the branches department's share. Keeping them apart prevents reading one as the other. */}
       {(data.stats.fullRent > 0 || data.stats.driverExpense > 0) && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <StatCard label={ar ? 'الإيجار كامل' : 'Full rent'} value={money(data.stats.fullRent)} />
@@ -141,11 +137,11 @@ export default function FleetCustomerProfilePage() {
         <ReportButton subject="customer" id={c.name} label={ar ? 'التقرير الشامل للعميل' : 'Full customer report'} />
       </div>
 
-      {/* حساب البوابة — العميل يتابع رحلاته وبوالصه بنفسه */}
+      {/* Portal account: the customer follows their own trips and waybills */}
       <PortalAccountCard source="fleet_customer" refId={id} name={c.name} />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* بيانات العميل + التقييم */}
+        {/* Customer data and rating */}
         <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm space-y-3">
           <p className="font-bold text-slate-900">{ar ? 'بيانات العميل' : 'Customer details'}</p>
           {c.phone && <p className="text-sm text-slate-600 flex items-center gap-2"><Phone className="w-3.5 h-3.5" /> <span className="font-mono">{c.phone}</span></p>}
@@ -189,7 +185,7 @@ export default function FleetCustomerProfilePage() {
           )}
         </div>
 
-        {/* توزيع الحالات */}
+        {/* Status distribution */}
         <div className="lg:col-span-2 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
           <p className="font-bold text-slate-900 mb-3">{ar ? 'حالات الرحلات' : 'Trip statuses'}</p>
           <div className="flex flex-wrap gap-2">
@@ -201,10 +197,7 @@ export default function FleetCustomerProfilePage() {
         </div>
       </div>
 
-      {/* ── الربط بالـCRM ───────────────────────────────────────────────────
-          العميل هنا وشركتُه في الـCRM سجلّان أُدخل كلٌّ منهما في قسمه؛ الاسم
-          المطبَّع هو ما يجمعهما. وحين يجمعهما يجب أن يُرى — لا أن يبقى وصلةً
-          في قاعدة البيانات لا أثر لها على الشاشة. */}
+      {/* CRM link: the customer here and its CRM company are two records entered in different sections, joined by the normalized name. Once joined, the link must be visible rather than a database link with no trace on screen. */}
       {data.crm && (
         <div className="rounded-2xl border border-sky-200 bg-sky-50/40 p-4 shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -229,7 +222,7 @@ export default function FleetCustomerProfilePage() {
         </div>
       )}
 
-      {/* ── تحليلات العميل ─────────────────────────────────────────────────── */}
+      {/* Customer analytics */}
       {data.stats.trips > 0 && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           <div className="lg:col-span-2 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -290,7 +283,7 @@ export default function FleetCustomerProfilePage() {
         </div>
       )}
 
-      {/* سجل الرحلات الكامل */}
+      {/* Full trip history */}
       <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
         <div className="px-4 py-3 bg-slate-50 border-b border-slate-100"><p className="font-bold text-slate-900">{ar ? 'سجل الرحلات الكامل' : 'Full trip history'} ({data.shipments.length})</p></div>
         <ScrollX>

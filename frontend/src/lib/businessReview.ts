@@ -1,8 +1,5 @@
-// اجتماعات مراجعة الأعمال — shared types, vocabulary and client.
-//
-// The vocabularies (cadences, statuses, priorities, departments) all come from
-// the SERVER via /meta, so adding a cadence or a department is a backend-only
-// change. What lives here is only what the browser needs to render them.
+// Business review meetings: shared types, vocabulary and client.
+// The vocabularies (cadences, statuses, priorities, departments) come from the SERVER via /meta, so adding a cadence or a department is a backend-only change. Only what the browser needs to render them lives here.
 import api from '@/lib/api';
 import { getSectionLabel } from '@/lib/translations';
 
@@ -15,10 +12,7 @@ export type Lang = 'ar' | 'en';
 // still the authority — this only decides which sidebar links are worth showing.
 const BR_EXECUTIVE_ROLES = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'moderator'];
 const BR_SECRETARY_ROLES = ['administration_manager', 'administration_staff'];
-// صورةُ `EXTRA_MANAGER_ROLES` في الخادم (config/businessReview) حرفًا بحرف. كانت
-// هنا `operations_staff` مديرًا — أصلحها الخادمُ منذ زمن وبقيت الشاشةُ على القديم،
-// فيرى موظّفُ العمليات بابَ اجتماعٍ يردّه الخادمُ عنه. والمديرُ الماليّ (cfo)
-// مديرٌ بلا لاحقة `_manager`.
+// Mirror of EXTRA_MANAGER_ROLES on the server (config/businessReview), kept identical. This list once treated operations_staff as a manager; the server fixed it while the screen kept the old rule, so staff saw a meeting entry the server rejected. The CFO role is a manager without the _manager suffix.
 const BR_EXTRA_MANAGER_ROLES = ['moderator', 'cfo'];
 
 /** Runs the forum: schedules meetings, writes minutes, raises actions. */
@@ -69,7 +63,7 @@ export interface BrAttendee {
   /** When the attendance was recorded, and by whom. */
   attendanceAt?: string | null;
   attendanceByName?: string;
-  /** Why they were not there (اعتذر ليه). */
+  /** Why they were not there (reason for absence). */
   excuseReason?: string;
   isChair?: boolean;
 }
@@ -102,8 +96,7 @@ export interface BrMeeting {
   meetingLink?: string;
   status: string;
   heldAt?: string | null;
-  // «اكتمل» غير «انعقد»: heldAt واقعة، completedAt حُكم من الإدارة إن كل شغل
-  // الاجتماع خلص. الاتنين محفوظين منفصلين عن قصد.
+  // Completed is distinct from held: heldAt is a fact, completedAt is management's judgement that all the meeting's work is done. They are stored separately on purpose.
   completedAt?: string | null;
   completedByName?: string;
   completionNote?: string;
@@ -154,7 +147,7 @@ export const brMeetings = (q: Record<string, string> = {}) => {
   const qs = new URLSearchParams(Object.entries(q).filter(([, v]) => v)).toString();
   return api.get<{
     meetings: BrMeeting[];
-    // محسوبة على النطاق كله مش على الصفحة المفلترة — البطاقة بتوصف الشغل، مش الفلتر.
+    // Computed over the whole scope, not the filtered page; the card describes the work, not the filter.
     counts?: { total: number; completed: number; open: number; upcoming: number; cancelled: number };
     canRunMeetings: boolean; participant: boolean;
   }>(`/api/business-review/meetings${qs ? `?${qs}` : ''}`);
@@ -165,13 +158,13 @@ export const brMeeting = (id: string) =>
   );
 export const brCreateMeeting = (body: any) => api.post<{ meeting: BrMeeting }>('/api/business-review/meetings', body);
 export const brUpdateMeeting = (id: string, body: any) => api.put<{ meeting: BrMeeting }>(`/api/business-review/meetings/${id}`, body);
-/** إقفال الاجتماع — السيرفر بيرفض لو لسه فيه بند أو تكليف مفتوح. */
+/** Closing the meeting; the server refuses while any item or assignment is still open. */
 export const brCompleteMeeting = (id: string, note = '') =>
   api.post<{ meeting: BrMeeting }>(`/api/business-review/meetings/${id}/complete`, { note });
 export const brReopenMeeting = (id: string) =>
   api.post<{ meeting: BrMeeting }>(`/api/business-review/meetings/${id}/reopen`, {});
 
-/** أوعية البطاقات — نفس مفاتيح الـ bucket اللي السيرفر بيفهمها. */
+/** Card buckets, using the same bucket keys the server understands. */
 export const MEETING_BUCKETS = [
   { key: '', ar: 'كل الاجتماعات', en: 'All meetings', countKey: 'total', color: '#0f172a' },
   { key: 'open', ar: 'ما زالت مفتوحة', en: 'Still open', countKey: 'open', color: '#f37121' },

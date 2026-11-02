@@ -6,12 +6,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import '../services/lang.dart';
 
-/// تصديرُ Excel في الجوّال — نظيرُ ExportMenu في الويب (صاحبُ الشركة، ٢٠٢٦/١٠/٢٥:
-/// «الموبايل متناسق مع الويب في كلّ شيء»).
-///
-/// الشاشةُ تُعطي الأعمدةَ (عنوانٌ + كيف تُقرأ القيمةُ من الصفّ) والصفوفَ المعروضة
-/// نفسَها — فما يُصدَّر هو ما يُرى تحت الفلتر، كما في الويب. ويُبنى الملفُّ في
-/// الجهاز ثمّ تُفتح نافذةُ المشاركة (واتساب، بريد، الملفّات…).
+/// Excel export on mobile, twin of the web ExportMenu. The screen supplies columns (title plus how to read the value from a row) and the displayed rows, so the export matches what is visible under the filter, as on the web. The file is built on the device, then the share sheet opens.
 class ExportCol {
   final String ar;
   final String en;
@@ -19,7 +14,7 @@ class ExportCol {
   const ExportCol(this.ar, this.en, this.value);
 }
 
-/// يبني ملفّ xlsx ويشاركه. `sheets` ورقةٌ أو أكثر: (اسم الورقة، الأعمدة، الصفوف).
+/// Builds an xlsx file and shares it. `sheets` is one or more sheets: (sheet name, columns, rows).
 Future<void> exportExcel(
   BuildContext context, {
   required String fileName,
@@ -44,9 +39,7 @@ Future<void> exportExcel(
   }
 }
 
-// ── ملفُّ xlsx يُبنى هنا: XML في zip، بلا مكتبة إكسل ────────────────────────
-// مكتبةُ excel تشترط إصداراتٍ قديمةً من archive يقوم عليها pdf/printing (البوليصة)
-// فتكسرها؛ والصيغةُ نفسُها بسيطة: ورقةٌ بخلايا نصّيّة/رقميّة وصفُّ عناوين عريض.
+// The xlsx is built here as XML in a zip with no Excel library: the excel package requires old archive versions that pdf/printing (waybill) depends on and would break them. The format is simple: text/number cells and a bold header row.
 String _esc(String v) => v
     .replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;')
     .replaceAll(RegExp(r'[\x00-\x08\x0B\x0C\x0E-\x1F]'), '');
@@ -62,7 +55,7 @@ String _cell(int r, int c, Object? v, {bool head = false}) {
   return '<c r="$ref" t="inlineStr"$style><is><t xml:space="preserve">${_esc(t)}</t></is></c>';
 }
 
-/// أوراقٌ: (اسم، صفوف) — الصفُّ الأوّل عناوين.
+/// Sheets: (name, rows); the first row is headers.
 List<int> buildXlsx(List<(String, List<List<Object?>>)> sheets, {bool rtl = false}) {
   final a = Archive();
   void add(String name, String xml) { final b = utf8.encode(xml); a.addFile(ArchiveFile(name, b.length, b)); }
@@ -70,7 +63,7 @@ List<int> buildXlsx(List<(String, List<List<Object?>>)> sheets, {bool rtl = fals
   for (var i = 0; i < sheets.length; i++) {
     final safe = sheets[i].$1.replaceAll(RegExp(r'[\\/?*\[\]:]'), ' ').trim();
     var base = safe.isEmpty ? 'Sheet${i + 1}' : safe;
-    if (base.length > 31) base = base.substring(0, 31); // حدُّ إكسل لاسم الورقة
+    if (base.length > 31) base = base.substring(0, 31); // Excel's limit for a sheet name
     while (names.contains(base)) { base = '${base.substring(0, base.length > 28 ? 28 : base.length)}-${i + 1}'; }
     names.add(base);
   }
@@ -117,7 +110,7 @@ List<int> buildXlsx(List<(String, List<List<Object?>>)> sheets, {bool rtl = fals
   return ZipEncoder().encode(a);
 }
 
-/// زرُّ التصدير في شريط الشاشة.
+/// Export button in the screen bar.
 class ExportButton extends StatelessWidget {
   final String fileName;
   final List<ExportCol> columns;

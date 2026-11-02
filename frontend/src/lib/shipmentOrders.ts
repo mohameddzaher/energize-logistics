@@ -1,10 +1,6 @@
 import type { PersonDocs } from '@/components/system/PersonDocDate';
-// Shared types + vocabulary for the Shipment Orders trial section (طلبات
-// الشحنات) — shipments created natively instead of on the external UPL system.
-//
-// The status keys deliberately match the ops mirror's so the team reads one
-// vocabulary, but this file owns its copy: the section must survive the ops
-// integration being turned off, which is its whole reason to exist.
+// Shared types and vocabulary for the Shipment Orders trial section: shipments created natively instead of on the external UPL system.
+// The status keys deliberately match the ops mirror's so the team reads one vocabulary, but this file owns its copy: the section must survive the ops integration being turned off, which is its whole reason to exist.
 
 import type { PaymentSubtype } from '@/lib/paymentKind';
 
@@ -27,7 +23,7 @@ export interface OrderCustomer {
 
 export interface FormFieldOption {
   key: string; ar: string; en: string;
-  /** ما يترتّب على الخيار: «نوع تأجير السائق» يقرّر طريقةَ الدفع. */
+  /** What the choice implies: the driver-hire type decides the payment method. */
   paymentMethod?: string;
 }
 
@@ -37,7 +33,7 @@ export interface FormField {
   labelAr: string;
   labelEn?: string;
   group: 'pickup_delivery' | 'shipment' | 'pricing_time' | 'payment';
-  // 'date' لا 'datetime': مواعيدُ الشحنة يومٌ لا لحظة — راجع models/ShipmentOrderField.
+  // 'date', not 'datetime': shipment dates are a day, not a moment; see models/ShipmentOrderField.
   inputType: 'select' | 'cards' | 'text' | 'number' | 'date' | 'datetime' | 'textarea';
   options: FormFieldOption[];
   required: boolean;
@@ -48,7 +44,7 @@ export interface FormField {
 
 export interface ShipmentOrder {
   _id: string;
-  waybillNumber: number; // رقم البوليصة
+  waybillNumber: number; // Waybill number.
   fromCity?: string; toCity?: string; addressFrom?: string; addressTo?: string;
   truckType?: string; cargoType?: string; truckLength?: string; quantity?: number | null;
   customer?: OrderCustomer | string | null;
@@ -57,16 +53,14 @@ export interface ShipmentOrder {
   agentName?: string;
   pickupTime?: string | null; startTime?: string | null; arrivalTime?: string | null;
   sellPrice?: number | null; buyPrice?: number | null;
-  /** «نوع الدفع» — مفاتيحُ سير عمل التشغيل (lib/paymentKind). حلّ محلَّ نوع التأجير في النموذج. */
+  /** Payment kind: the ops workflow keys (lib/paymentKind). It replaced the hire type in the form. */
   paymentSubtype?: '' | PaymentSubtype;
   driverRentType?: string; paymentMethod?: string; driverRentPrice?: number | null;
   branch?: string; status: string; notes?: string;
   customFields?: Record<string, unknown>;
   createdBy?: { firstName?: string; lastName?: string } | string | null;
   createdAt?: string;
-  // سجلُّ انتقالات الحالة: من أين إلى أين، ومتى، وبأيّ سبب، وبيد من.
-  // «متى صارت في الطريق؟» و«من أخّرها؟» سؤالان يُسألان بعد أسبوع، ولا جوابَ
-  // لهما إن حُفظت الحالةُ الأخيرةُ وحدَها.
+  // Status transition log: from where to where, when, why and by whom. When it became in transit and who delayed it are asked a week later, and cannot be answered if only the last status is kept.
   statusLog?: { _id?: string; from?: string; to?: string; note?: string; at?: string; by?: string; byName?: string; fileUrl?: string; fileName?: string; editedAt?: string | null; editedByName?: string }[];
 }
 
@@ -85,8 +79,7 @@ export const ORDER_STATUSES = [
   { key: 'cancelled', en: 'Cancelled', ar: 'ملغاة', bg: 'bg-red-100', text: 'text-red-700' },
 ] as const;
 
-// لونُ كلِّ حالةٍ رقمًا — البطاقاتُ تُلوَّن به مباشرةً، ولأنّ الحالةَ المُضافةَ
-// من الإعدادات تأتي بلونٍ رقميٍّ أيضًا فلا تحتاج الشاشةُ طريقين للتلوين.
+// Each status color as a number: cards are colored by it directly, and since a status added from settings also has a numeric color, the screen needs only one way to color.
 export const STATUS_HEX: Record<string, string> = {
   requesting: '#64748b', loading: '#d97706', uploaded: '#ca8a04', on_way: '#2563eb',
   arrived: '#4f46e5', bond_sent: '#0891b2', bond_received: '#059669',
@@ -99,16 +92,12 @@ export const statusLabel = (k: string | undefined, lang: Lang) => {
   return s ? (lang === 'ar' ? s.ar : s.en) : (k || '—');
 };
 
-// ── والتسميةُ تُضبَط من إعدادات القسم ─────────────────────────────────────────
-// المفاتيحُ أعلاه عقدٌ: التحليلاتُ تعدّ عليها والتنبيهاتُ تُطلق منها والمنصّةُ
-// الخارجيّة تتكلّم بها. أمّا الاسمُ الظاهرُ ولونُه وترتيبُه وأهو مُستعمَلٌ اليوم
-// فمن الإعدادات — ومن زاد حالةً حاديةَ عشرةَ ظهرت هنا معها.
+// Labels are set from section settings. The keys above are a contract: analytics counts on them, alerts fire from them and the external platform speaks them. The visible name, color, order and whether it is in use today come from settings, so a status added as an eleventh appears here too.
 export interface StatusVocab {
   key: string; ar: string; en: string; color: string; order: number; active: boolean; isCore: boolean;
 }
 
-// الأساسيّةُ كما هي في الشيفرة — تُعرَض حتى قبل أن يردّ الخادم، فلا تُرسَم
-// الشاشةُ فارغةً ثمّ تمتلئ.
+// The core ones as in code, shown even before the server replies so the screen is not drawn empty and then filled.
 export const FALLBACK_STATUS_VOCAB: StatusVocab[] = ORDER_STATUSES.map((s, i) => ({
   key: s.key, ar: s.ar, en: s.en, color: STATUS_HEX[s.key] || '#64748b', order: i, active: true, isCore: true,
 }));
@@ -133,14 +122,9 @@ export interface OrderSupplier {
   email?: string;
   notes?: string;
   vehicleCount?: number;
-  /** كم سائقًا يعمل عنده — يُقرأ قبل فتح ملفّه كما يُقرأ عددُ شاحناته. */
+  /** How many drivers work for him, read before opening his file like the truck count. */
   driverCount?: number;
-  /**
-   * ── أوراقُه المالية ──────────────────────────────────────────────────────
-   * المورّدُ ليس اسمًا ورقمَ هاتف: هو سجلٌّ تجاريٌّ وآيبانٌ يُحوَّل إليه المال،
-   * ومديرٌ له رقمُه — والاتّصالُ بالمالك في شأن فاتورةٍ يضيّع يومًا. وهي
-   * مكتوبةٌ عند أربعةٍ من كلّ خمسة، فتُقرأ من الصفّ قبل أن يُفتَح ملفّ.
-   */
+  /** His financial papers. A supplier is not just a name and phone: it is a commercial registration and an IBAN to transfer money to, and a manager with a number; calling the owner about an invoice wastes a day. Four of five have them written, so they are read from the row before a file is opened. */
   commercialRegister?: string;
   taxCard?: string;
   iban?: string;
@@ -150,29 +134,23 @@ export interface OrderSupplier {
   paymentTerms?: string;
 }
 
-/**
- * سائقُ شاحنةِ ناقل — سجلٌّ كان ناقصًا بالكامل.
- *
- * كان السائقُ اسمًا ورقمَ هاتفٍ مكتوبين على صفّ الشاحنة، فلا ملفَّ له ولا
- * رقمَ إقامةٍ ولا بطاقةَ تشغيلٍ ولا تاريخَ انتهائها. ومنصّةُ الأوبريشن تحمل
- * لكلٍّ ملفَّه، فاستُورد السجلُّ منها.
- */
+/** A carrier truck driver: a record that was entirely missing. The driver was a name and phone typed on the truck row, with no file, residency number, operating card or its expiry. The operations platform keeps each one's file, so the record was imported from it. */
 export interface OrderDriver extends PersonDocs {
   _id: string;
   name: string;
   phone?: string;
   email?: string;
   nationality?: string;
-  /** رقمُ الإقامة — به يُعرَف الرجلُ حين يتشابه الاسم. */
+  /** Residency number: identifies the man when names are similar. */
   residenceNumber?: string;
   driverCardNumber?: string;
-  /** انتهاءُ بطاقة التشغيل: سائقٌ بطاقتُه منتهيةٌ يُوقفه الطريقُ لا نحن. */
+  /** Operating card expiry: a driver with an expired card is stopped by the road, not by us. */
   driverCardExpiry?: string;
   companyName?: string;
   sponsorName?: string;
   supplier?: OrderSupplier | string | null;
   vehicle?: OrderVehicle | string | null;
-  /** ملفُّه في الموارد البشريّة إن كان موظّفَنا — والاسمُ والجوالُ والجنسيّةُ منه. */
+  /** His HR file if he is our employee; name, mobile and nationality come from it. */
   employee?: string | null;
   hr?: { _id: string; name: string; phone?: string; nationality?: string; idNumber?: string } | null;
   notes?: string;
@@ -183,22 +161,16 @@ export interface OrderVehicle {
   plate: string;
   name?: string;
   truckType?: string;
-  /** الماركةُ واللون — تُطبعان في «بيانات السيارة» من البوليصة. */
+  /** Make and color; printed in the vehicle data of the waybill. */
   brand?: string;
   color?: string;
   modelYear?: string;
   operationCardNumber?: string;
   operationCardExpiry?: string;
   supplier?: OrderSupplier | string | null;
-  /**
-   * لمن الشاحنة — صريحًا لا بالغياب.
-   *
-   * كان خلوُّ `supplier` يعني «من أسطولنا»، ثمّ وصلت ثلاثةَ عشرَ ألفَ شاحنةٍ
-   * من تاريخ الطلبات بلا مرجعِ مورّدٍ فقُرئت كأنّها أسطولُنا — وأسطولُنا
-   * ثمانٍ وخمسون. والغيابُ «لا أعلم» لا «ملكُنا».
-   */
+  /** Whose truck it is, explicit and not by absence. An empty `supplier` used to mean ours, then thirteen thousand trucks from order history arrived without a supplier reference and were read as our fleet, which is fifty-eight. Absence means unknown, not ours. */
   ownership?: 'supplier' | 'ours' | 'unknown';
-  /** شاحنتُنا في سجلّ المركبات — والماركةُ واللونُ وسنةُ الصنع منه. */
+  /** Our truck in the vehicle register; make, color and model year come from it. */
   vehicleMaster?: string | null;
   registry?: { _id: string; plateNumber: string; brand?: string; model?: string; modelYear?: string; color?: string } | null;
   defaultDriverName?: string;
@@ -241,7 +213,7 @@ export const SO_EDIT_ROLES = ['super_admin', 'admin', 'it_manager', 'it_speciali
 /** One shipment is one record: only these delete it, from either screen. */
 export const canDeleteShipments = (u: RoleOrUser) => ['super_admin', 'admin', 'operations_manager'].includes(roleOf(u));
 export const SO_ADMIN_ROLES = ['super_admin', 'admin', 'it_manager', 'operations_manager'];
-/** دمجُ المورّدين بالدور وحده — نظيرُ authorize.strict في الخادم (لا يُتراجَع عنه). */
+/** Merging suppliers is by role only; counterpart of authorize.strict on the server (not to be loosened). */
 export const canMergeSuppliers = (u: RoleOrUser) => [...SO_ADMIN_ROLES, 'shipment_orders_manager'].includes(roleOf(u));
 export const canEditOrders = (u: RoleOrUser) => SO_EDIT_ROLES.includes(roleOf(u)) || canEditSection(permsOf(u), 'Shipment Orders');
 export const canAdminOrders = (u: RoleOrUser) => SO_ADMIN_ROLES.includes(roleOf(u)) || canEditSection(permsOf(u), 'Shipment Orders');

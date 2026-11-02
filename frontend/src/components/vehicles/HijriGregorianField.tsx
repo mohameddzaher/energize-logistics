@@ -3,36 +3,20 @@ import { useState, useEffect } from 'react';
 import { toHijriPlain, fromHijri } from '@/lib/vehicleRegistry';
 
 /**
- * HijriGregorianField — خانتان لتاريخٍ واحد: هجريّةٌ وميلاديّة، كلٌّ تُسمِع الأخرى.
- *
- * ── لماذا اثنتان ───────────────────────────────────────────────────────────
- * أوراقُ المرور والفحص تُصدَر بالهجريّ، والموظّفُ يقرأ الورقةَ التي في يده.
- * وكانت الخانةُ ميلاديّةً وحدَها، فيحوّل بيده أو بهاتفه ثمّ يكتب — وكلُّ تحويلٍ
- * بيدٍ خطأٌ ينتظر. والعرضُ في الجداول كان بالتقويمين معًا أصلًا، فليكن الإدخالُ
- * كذلك.
- *
- * والمحفوظُ واحدٌ لا اثنان: الميلاديُّ هو ما يُخزَّن ويُحسَب به العمر، والهجريُّ
- * مشتقٌّ منه — راجع toHijri/fromHijri في lib/vehicleRegistry. فلا يفترقان أبدًا
- * كما يفترق عمودان يُملآن باليد.
- *
- * ويُكتب في أيِّهما شاء: ما يُكتب هجريًّا يصير ميلاديًّا في اللحظة، والعكس.
- * وما دام الهجريُّ ناقصًا (يكتب أوّلَ رقمين) لا يُمحى الميلاديُّ من تحته —
- * تُترَك الخانةُ كما هي حتى يكتمل ما يُقرأ.
+ * Paired Hijri and Gregorian inputs for one date; editing either updates the other.
+ * Only the Gregorian value is stored; the Hijri value is derived (toHijri/fromHijri in lib/vehicleRegistry). A partial Hijri entry leaves the Gregorian value untouched until it is complete.
  */
 export default function HijriGregorianField({
   value, onChange, ar, inp, min, max, autoFocus,
 }: {
   value: string; onChange: (v: string) => void; ar: boolean; inp: string;
-  /** حدودُ التاريخ الميلاديّ (`YYYY-MM-DD`) — تُطبَّق على الخانتين معًا. */
+  /** Gregorian date bounds (YYYY-MM-DD), applied to both inputs. */
   min?: string; max?: string; autoFocus?: boolean;
 }) {
   const [hijri, setHijri] = useState(() => toHijriPlain(value));
-  // ── والحدُّ يُطبَّق على الهجريّ كما يُطبَّق على الميلاديّ ─────────────────
-  // خانةُ التاريخ الميلاديّة تمنع ما دون `min` بنفسها، والهجريّةُ نصٌّ لا يعرف
-  // حدًّا. فلولا هذا الفحصُ لكُتب تاريخُ نهايةٍ قبل البداية بالهجريّ ومرّ.
+  // The min bound must also apply to the Hijri input: the Gregorian input enforces it natively, but the Hijri text input does not.
   const [outOfRange, setOutOfRange] = useState(false);
-  // التاريخُ قد يتغيّر من خارج الخانة (فتحُ صفٍّ آخر، أو زرُّ تجديد) — فالهجريُّ
-  // يتبعه ما دام المستخدمُ لا يكتب فيه الآن.
+  // The date can change from outside (another row opened, a renew button), so the Hijri text follows it unless the user is typing in it.
   const [typing, setTyping] = useState(false);
   useEffect(() => { if (!typing) setHijri(toHijriPlain(value)); }, [value, typing]);
 

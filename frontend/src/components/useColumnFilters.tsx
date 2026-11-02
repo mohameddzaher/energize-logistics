@@ -1,30 +1,15 @@
 'use client';
 /**
- * فلترُ الأعمدة على طريقة إكسل — بثلاثة أسطرٍ في أيّ جدول.
- *
- * ── لماذا خُطّاف لا نسخٌ في كلّ صفحة ────────────────────────────────────────
- * الجداولُ التي تستعمله اليومَ في قسمَي المركبات والتحصيل، ولكلٍّ أعمدتُه
- * ومصدرُ صفوفه. ونسخُ حالةِ الفلاتر
- * وتطبيقِها في كلٍّ منها يعني تسعَ نسخٍ تفترق: صفحةٌ تُطبّق الفلتر قبل الشريحة
- * وأخرى بعدها، وثالثةٌ ينساها صاحبُها في التصدير فيخرج الملفُّ بغير ما على
- * الشاشة. فالقاعدةُ مكتوبةٌ مرّةً هنا: الفلاتر آخرُ ما يُطبَّق — بعد البحث
- * والشرائح وكلّ شيء — كما يفعل إكسل بالضبط.
- *
- * الاستعمال:
- *   const cf = useColumnFilters<Row>();
- *   const shown = cf.apply(rows, { plate: (r) => r.plateNumber, state: (r) => label(r) });
- *   <th>الاسم {cf.header('plate', rows, (r) => r.plateNumber, ar)}</th>
- *
- * والقيمةُ تُقرأ بالدالّة نفسِها التي تُرسم بها الخليّةُ ويُكتب بها التصدير،
- * فما يُفلتَر عليه هو ما يُقرأ على الشاشة حرفًا بحرف.
+ * Excel-style column filter for any table, written once as a hook: filters apply last, after search and chips, and the value is read with the same function that renders the cell and writes the export.
+ * Usage: const cf = useColumnFilters<Row>(); cf.apply(rows, { plate: (r) => r.plateNumber }); cf.header('plate', rows, getter, ar)
  */
 import { useState, useCallback, useMemo } from 'react';
 import { ColumnFilter } from '@/components/ColumnFilter';
 
-/** مجموعةٌ فارغةٌ ثابتة — لئلّا تُبنى واحدةٌ جديدة في كلّ رسمةٍ فتُعاد اللوحة. */
+/** A stable empty set, so a new one is not built every render and the panel reset. */
 const EMPTY: Set<string> = new Set();
 
-/** النصُّ الذي يُفلتَر عليه: فارغٌ يعني «(فارغ)» في القائمة. */
+/** The text filtered on: empty means "(empty)" in the list. */
 export const cellText = (v: any): string =>
   (v === null || v === undefined || v === '' ? '' : String(v));
 
@@ -42,7 +27,7 @@ export function useColumnFilters<T = any>() {
   const clear = useCallback(() => setFilters({}), []);
   const count = Object.keys(filters).length;
 
-  /** يُطبَّق آخرًا: على ما تركته الشرائحُ والبحثُ لا على السجلّ الخام. */
+  /** Applied last: on what chips and search left, not on the raw records. */
   const apply = useCallback(
     (rows: T[], getters: Record<string, (r: T) => any>): T[] => {
       const keys = Object.keys(filters);
@@ -56,11 +41,8 @@ export function useColumnFilters<T = any>() {
   );
 
   /**
-   * القمعُ في رأس العمود. `rows` هي المعروضةُ قبل فلاتر الأعمدة.
-   *
-   * و`format` لعمودٍ قيمتُه رمزٌ ونصُّه غيرُه («valid» تُقرأ «ساري»): يُفلتَر
-   * على الرمز ويُعرَض النصّ، وإلّا صارت القائمةُ رموزًا إنجليزيّةً لا يعرفها
-   * من يقرأ الشاشة بالعربيّة.
+   * The funnel in the column header. `rows` are those shown before column filters.
+   * `format` is for a column whose value is a code but whose text differs ("valid" reads as the Arabic valid label): filter on the code and display the text, otherwise the list shows English codes.
    */
   const header = useCallback(
     (key: string, rows: T[], getter: (r: T) => any, ar: boolean, format?: (v: any) => string) => (
@@ -80,7 +62,7 @@ export function useColumnFilters<T = any>() {
     [filters, setFilter, clear, count, apply, header]);
 }
 
-/** زرُّ «امسح فلاتر الأعمدة» — يظهر حين يكون ثمّة ما يُمسَح. */
+/** "Clear column filters" button, shown when there is something to clear. */
 export function ClearColumnFilters({ count, onClear, ar }: { count: number; onClear: () => void; ar: boolean }) {
   if (!count) return null;
   return (

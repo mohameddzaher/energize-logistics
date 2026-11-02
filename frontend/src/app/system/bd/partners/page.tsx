@@ -120,9 +120,7 @@ export default function BdPartnersPage() {
     { header: ar ? 'الخدمات' : 'Services', key: 'services', transform: (v) => (v || []).join(', ') },
     { header: ar ? 'المسؤول' : 'Owner', key: 'ownerName', transform: (v, r) => v || userName(r.owner) },
   ];
-  // الفلترة على الخادم: ما في الذاكرة هو حصيلة البحث والحالة، لا السجلّ كلّه.
-  // ومَن أراد الكلّ كان عليه أن يمسح فلاتره أوّلًا ويعيد التصدير، فنُعيد النداء
-  // بلا معاملاتٍ نيابةً عنه حتى لا يخرج بملفٍّ ناقصٍ يحسبه كاملًا.
+  // Filtering is server-side: what is in memory is the search and status result, not the whole register. Whoever wanted everything had to clear filters first and re-export, so the call is repeated without parameters on their behalf, to avoid an incomplete file taken for complete.
   const fetchAllForExport = async () => {
     const d = await api.get<{ partners: BdPartner[] }>('/api/business-development/partners');
     return [{ name: 'Partners', rows: d.partners || [], columns: exportColumns }];

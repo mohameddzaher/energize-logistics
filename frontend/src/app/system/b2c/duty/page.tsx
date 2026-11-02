@@ -1,16 +1,8 @@
 'use client';
 /**
- * سجلُّ تفقّد بداية الدوام وتحليلُه — شاشةُ الإدارة.
- *
- * ── ما تجيب عنه ولا يجيب عنه تحليلُ الطلبات ──────────────────────────────
- * تحليلُ الطلبات يقيس ما أنتجه المندوب. وهذه تقيس شيئًا آخر: هل وقف المشرفُ
- * على رجاله قبل أن يخرجوا؟ والمقياسُ ليس عددَ التفقّدات بل نسبتَها إلى مَن كان
- * يجب أن يُفقَّد — عشرةٌ من عشرةٍ التزام، وعشرةٌ من ثلاثين تقصير. والمقامُ لا
- * يُقرأ من جدول التفقّد نفسِه لأنّ الصفَّ لا يُكتب أصلًا لمن أُهمل، فيُقرأ من
- * سجلّ المندوبين.
- *
- * ولذلك تبويبُ «لم يُفقَّدوا» أهمُّ ما يُفتَح صباحًا: هو وحدَه يُري الغائبَ عن
- * السجلّ، والسجلُّ لا يعرضه لأنّه ليس فيه.
+ * Duty-start check log and its analysis: the management screen.
+ * Order analysis measures what a rep produced; this measures whether the supervisor checked his men before they went out. The metric is the ratio of checks to those who should have been checked (ten of ten is compliance, ten of thirty is a shortfall). The denominator comes from the rep register, not the check table, because no row is written for anyone neglected.
+ * So the unchecked tab is the most important one in the morning: it alone shows who is missing from the log.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import MonthPicker from '@/components/system/MonthPicker';
@@ -36,19 +28,16 @@ interface Row {
   supervisorName?: string; supervisor?: { _id: string; firstName?: string; lastName?: string };
   rep?: {
     _id: string; englishName?: string; arabicName?: string; repId?: string;
-    /** مشرفُه المسؤول في السجلّ — غيرُ الذي تفقّده حين يقوم زميلُه مقامَه. */
+    /** The supervisor responsible in the register; differs from the one who checked when a colleague covers. */
     supervisor?: { _id: string; firstName?: string; lastName?: string } | null;
   };
-  /**
-   * موضوعُ التفقّد: صفُّه في سجلّ النقل الخفيف — كشفُ مناديبنا.
-   * و`rep` أعلاه لصفوفٍ قديمةٍ كُتبت بحساب تطبيق التوصيل.
-   */
+  /** Subject of the check: its row in the light-transport register, our reps' sheet. The `rep` above is for old rows written under the delivery app account. */
   ltEmployee?: {
     _id: string; name?: string; idNumber?: string; vehiclePlate?: string;
-    /** مشرفُ التفقّد — المسؤولُ عن هذا التفقّد. */
+    /** Check supervisor: the one responsible for this check. */
     dutySupervisorUser?: { _id: string; firstName?: string; lastName?: string } | null;
     dutySupervisorName?: string;
-    /** والتشغيليُّ — مسؤوليّةُ اليوم كلِّه، يُعرَض للعلم. */
+    /** Operations supervisor: responsible for the whole day, shown for information. */
     supervisorUser?: { _id: string; firstName?: string; lastName?: string } | null;
     supervisorName?: string;
   } | null;
@@ -60,9 +49,7 @@ interface Row {
   review?: { verdict?: string; note?: string; at?: string; by?: { firstName?: string; lastName?: string } };
 }
 
-// «المحتوى الإعلاني» صورةُ الخميس — تُقرأ هنا كنوعٍ رابع: عمودٌ في الجدول
-// وخيارٌ في الفلتر وشريطٌ في التحليل، فيُسأل «أرِني المحتوى الإعلانيّ لكلّ
-// دبّاب» فيُجاب. راجع b2cDutyController.
+// The advertising content photo (Thursday) is read here as a fourth type: a table column, a filter option and an analysis bar, so questions like advertising content per motorbike can be answered. See b2cDutyController.
 type PhotoKind = 'rep' | 'vehicle' | 'box' | 'ad';
 const KINDS: { key: PhotoKind; ar: string; en: string }[] = [
   { key: 'rep', ar: 'المندوب', en: 'Rider' },
@@ -72,16 +59,13 @@ const KINDS: { key: PhotoKind; ar: string; en: string }[] = [
 ];
 const kindOf = (p: { kind?: PhotoKind }) => p.kind || 'vehicle';
 
-/** اسمُ المندوب — من صفّ السجلّ، وإلّا من حساب التطبيق القديم. */
-// وتفقّدُ دبّابٍ لا راكبَ معروفًا له يُقرأ بلوحته.
+/** Rep name: from the register row, otherwise from the old app account. */
+// A check on a motorbike with no known rider is read by its plate.
 const nameOf = (r: Row, ar: boolean) => r.ltEmployee?.name
   || (ar ? (r.rep?.arabicName || r.rep?.englishName) : r.rep?.englishName)
   || (r.vehiclePlate ? (ar ? `دبّاب ${r.vehiclePlate}` : `Bike ${r.vehiclePlate}`) : '') || '—';
 
-/**
- * اسمُ المسؤول عن تفقّده — **مشرف التفقّد**، لا التشغيليّ.
- * التشغيليُّ مسؤوليّةُ اليوم كلِّه، وهذه شاشةُ ساعةٍ واحدة.
- */
+/** Name of the person responsible for the check: the check supervisor, not the operations one. Operations covers the whole day; this screen is for one hour. */
 const ownerOf = (r: Row) => {
   const d = r.ltEmployee?.dutySupervisorUser;
   if (d) return [d.firstName, d.lastName].filter(Boolean).join(' ');
@@ -89,17 +73,13 @@ const ownerOf = (r: Row) => {
   const p = r.rep?.supervisor;
   return p ? [p.firstName, p.lastName].filter(Boolean).join(' ') : '';
 };
-/** والمشرفُ التشغيليّ — يُصدَّر بجانبه فيُقرأ الفرقُ بينهما. */
+/** The operations supervisor, exported alongside so the difference can be read. */
 const opsOf = (r: Row) => {
   const o = r.ltEmployee?.supervisorUser;
   if (o) return [o.firstName, o.lastName].filter(Boolean).join(' ');
   return r.ltEmployee?.supervisorName || '';
 };
-/**
- * أتفقّده غيرُ مشرفه؟ — يُقال في الصفّ.
- * قيامُ مشرفٍ مقامَ زميله أمرٌ عاديٌّ في الميدان، لكنّه يُقرأ: مَن وقف على
- * الرجل، ومَن يبقى مسؤولًا عنه.
- */
+/** Was he checked by someone other than his supervisor? Shown in the row. A supervisor covering a colleague is normal in the field, but it is recorded: who stood over the man and who remains responsible. */
 const onBehalf = (r: Row) => {
   const owner = r.ltEmployee?.dutySupervisorUser?._id || r.rep?.supervisor?._id;
   const actor = r.supervisor?._id;
@@ -120,26 +100,19 @@ export default function DutyRegisterPage() {
 
   const [tab, setTab] = useState<'log' | 'gallery' | 'missing' | 'analysis'>('log');
   /**
-   * ── المدى يُسأل بالطريقة التي يُسأل بها ────────────────────────────────────
-   *
-   * كان خانتين: «من» و«إلى». ومَن يريد يومًا بعينه يكتب التاريخ مرّتين، ومَن
-   * يريد شهرًا يحسب أوّلَه وآخرَه بيده — وآخرُ الشهر ليس رقمًا واحدًا (ثمانيةٌ
-   * وعشرون، تسعةٌ وعشرون، ثلاثون، واحدٌ وثلاثون)، فمن كتب ٣٠ لشهر فبراير أخذ
-   * شهرًا ناقصًا ولم يعرف. والسؤالان الحقيقيّان: «يوم كذا» و«شهر كذا».
-   *
-   * فصار المدى يُختار بنوعه، والحدّان يُحسبان منه — و«من/إلى» يبقى لمن أراد
-   * مدًى لا يبدأ بأوّلِ شهرٍ ولا ينتهي بآخره.
+   * The range is asked the way it is asked.
+   * It used to be two fields, from and to: a single day meant typing the date twice and a month meant computing its first and last day by hand, and a month's end varies (28 to 31), so typing 30 for February gave a short month unnoticed. The real questions are a given day and a given month.
+   * The range is chosen by type and the bounds are computed from it; from/to remains for ranges that do not align to a month.
    */
   const [mode, setMode] = useState<'day' | 'month' | 'range'>('day');
   const [from, setFrom] = useState(todayKey());
   const [to, setTo] = useState(todayKey());
   const [supervisor, setSupervisor] = useState('');
   const [outcome, setOutcome] = useState('');
-  // نوعُ الصورة: يحصر السجلَّ فيمن له صورةٌ من هذا النوع، ويحصر المعرضَ فيه.
+  // Photo type: limits the log to people who have a photo of this type, and the gallery to it.
   const [photoKind, setPhotoKind] = useState<'' | PhotoKind>('');
 
-  // يومٌ واحد: الحدّان واحد. وشهرٌ: أوّلُه وآخرُه — وآخرُه يُحسَب لا يُفترَض
-  // (اليومُ صفرٌ من الشهر التالي هو آخرُ يومٍ في هذا الشهر).
+  // One day: both bounds equal. A month: its first and last day, with the last day computed, not assumed (day zero of the next month is the last day of this one).
   const pickDay = (d: string) => { setFrom(d); setTo(d); };
   const pickMonth = (m: string) => {
     const [y, mo] = m.split('-').map(Number);
@@ -154,28 +127,21 @@ export default function DutyRegisterPage() {
   const [missing, setMissing] = useState<any>(null);
   const [an, setAn] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  // ── والمعروضُ يبقى أثناء التحديث ─────────────────────────────────────────
-  // كان كلُّ تحميلٍ (تفقّدٌ جديدٌ من السوكِت، «عرض المزيد»، تغييرُ فلتر) يُخفي
-  // الجدولَ والصورَ والتحليلَ ويضع مكانها دوّارة — فتومض الشاشةُ كلُّها وترجع إلى
-  // أعلاها. فالدوّارةُ للتحميل الأوّل وحده، وما بعده يُبدَّل في مكانه.
+  // What is displayed stays during refresh.
+  // Every load (new check from the socket, show more, filter change) used to hide the table, photos and analysis behind a spinner, flashing the screen and returning to the top. The spinner is for the first load only; later loads swap in place.
   const [loaded, setLoaded] = useState(false);
   const guard = useLatestRequest();
   const [open, setOpen] = useState<Row | null>(null);
 
   /**
-   * ── والمدى الشهريُّ أكبرُ من صفحةٍ واحدة ──────────────────────────────────
-   *
-   * كان الطلبُ `limit=500` وصفحةً واحدة، والردُّ يحمل `total` فلا يُقرأ. ومئةٌ
-   * وسبعةٌ وأربعون مندوبًا تعني نحو ثلاثة آلاف تفقّدٍ في الشهر — فكان الجدولُ
-   * يعرض خمسمئة ويسكت عن الباقي، فيُقرأ النقصُ على أنّه الواقع.
-   *
-   * فتُطلَب الصفحاتُ معًا (`PAGE` لكلٍّ)، ويُقال كم عُرض من كم، ويُزاد بزرّ.
-   * والعددُ في التبويب من `total` لا من طول المصفوفة الواصلة.
+   * A monthly range is larger than one page.
+   * The request used `limit=500` as a single page and ignored `total` in the reply. With 147 reps there are around 3,000 checks a month, so the table showed 500 and stayed silent about the rest, reading the shortfall as reality.
+   * Pages are now fetched together (`PAGE` each), the display says how many of how many are shown, and a button loads more. The tab count comes from `total`, not the length of the array received.
    */
   const PAGE = 500;
   const [pages, setPages] = useState(1);
   const [total, setTotal] = useState(0);
-  // أيُّ تغييرٍ في الفلاتر يعيد العرضَ إلى صفحته الأولى.
+  // Any filter change returns the view to its first page.
   useEffect(() => { setPages(1); }, [from, to, supervisor, outcome, photoKind]);
 
   const qs = useMemo(() => {
@@ -196,14 +162,12 @@ export default function DutyRegisterPage() {
     setLoading(true);
     try {
       const [l, a, m] = await Promise.all([
-        // الصفحاتُ معًا لا واحدةً بعد واحدة: انتظارٌ واحدٌ لا ستّة.
+        // Pages are fetched together, not one after another: one wait, not six.
         Promise.all(Array.from({ length: pages }, (_, i) => api.get<{ rows: Row[]; total: number }>(`/api/b2c/duty?${qs}&page=${i + 1}`)))
           .then((parts) => ({ rows: parts.flatMap((x) => x.rows || []), total: parts[0]?.total || 0 })),
         api.get<any>(`/api/b2c/duty/analytics?from=${from}&to=${to}${supervisor ? `&supervisor=${supervisor}` : ''}`),
-        // ── ويومُ «مَن لم يُتفقَّد» داخل المدى ──────────────────────────────
-        // الشاشةُ تسأل عن يومٍ واحد: مَن لم يُتفقَّد فيه. وكان اليومُ هو `to`
-        // دائمًا — وهو في مدى الشهر آخرُ يومٍ فيه، وقد يكون في المستقبل: فيقال
-        // «لم يُتفقَّد أحد» عن يومٍ لم يأتِ. فإن كان اليومُ داخل المدى سُئل عنه.
+        // The unchecked day within the range.
+        // The screen asks about a single day: who was not checked on it. The day was always `to`, which in a month range is the last day and may be in the future, reporting no one unchecked on a day that has not come. If today is inside the range, today is asked about.
         api.get<any>(`/api/b2c/duty/missing?date=${missingDate}${supervisor ? `&supervisor=${supervisor}` : ''}`).catch(() => null),
       ]);
       if (!guard.isCurrent(mine)) return;
@@ -228,9 +192,8 @@ export default function DutyRegisterPage() {
     { header: t('اليوم', 'Day'), key: 'dateKey' },
     { header: t('المندوب', 'Rider'), key: 'rep', transform: (_: any, r: any) => nameOf(r, ar) },
     { header: t('رقم الهوية', 'ID number'), key: 'ltEmployee', transform: (v: any) => v?.idNumber || '' },
-    // ── ومن تفقّده ومن يُسأل عنه عمودان ──────────────────────────────────────
-    // صار أيُّ مشرفٍ يتفقّد أيَّ مندوب، فسؤالُ «مين عمل التفقّد ده؟» غيرُ سؤال
-    // «مين المسؤول عن الراجل ده؟». وعمودٌ واحدٌ كان يخلط الجوابين.
+    // Who checked and who is responsible are two columns.
+    // Any supervisor can now check any rep, so who did this check differs from who is responsible for this man; one column mixed the two answers.
     { header: t('المشرف الذي تفقّد', 'Checked by'), key: 'supervisorName' },
     { header: t('مشرف التفقد', 'Duty supervisor'), key: 'rep', transform: (_: any, r: any) => ownerOf(r) },
     { header: t('المشرف التشغيلي', 'Ops supervisor'), key: 'ltEmployee', transform: (_: any, r: any) => opsOf(r) },
@@ -272,15 +235,14 @@ export default function DutyRegisterPage() {
         </div>
       </div>
 
-      {/* الفلاتر */}
+      {/* Filters */}
       <div className="flex flex-wrap items-end gap-2 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
         <F label={t('المدى', 'Period')}>
           <select className={inp} value={mode}
             onChange={(e) => {
               const m = e.target.value as typeof mode;
               setMode(m);
-              // تغييرُ النوع يضبط الحدّين فورًا على الفترة المعروضة الآن، فلا
-              // تبقى الشاشةُ على مدًى لا يوافق ما تقوله الخانة.
+              // Changing the type immediately sets both bounds to the period currently shown, so the screen never stays on a range that disagrees with the field.
               if (m === 'day') pickDay(to);
               if (m === 'month') pickMonth(to.slice(0, 7));
             }}>
@@ -323,16 +285,16 @@ export default function DutyRegisterPage() {
         </F>
         <button type="button" onClick={() => { setMode('day'); pickDay(todayKey()); setSupervisor(''); setOutcome(''); setPhotoKind(''); }}
           className="pb-2 text-xs font-semibold text-slate-400 hover:text-[#f37121]">{t('اليوم', 'Today')}</button>
-        {/* الشهرُ الحاليُّ بضغطة: أكثرُ ما يُطلَب بعد اليوم. */}
+        {/* Current month in one click: the most requested after today. */}
         <button type="button" onClick={() => { setMode('month'); pickMonth(todayKey().slice(0, 7)); }}
           className="pb-2 text-xs font-semibold text-slate-400 hover:text-[#f37121]">{t('هذا الشهر', 'This month')}</button>
-        {/* والمدى المعروضُ مكتوبٌ صريحًا: مَن غيّر الشهرَ ثمّ نسي يقرأ ما يراه. */}
+        {/* The displayed range is written out explicitly so someone who changed the month and forgot can read what they see. */}
         <span className="pb-2 text-[11px] text-slate-400">
           {from === to ? from : `${from} → ${to}`}
         </span>
       </div>
 
-      {/* الأرقام */}
+      {/* Figures */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
         <K label={t('نسبة الالتزام', 'Compliance')} value={T.compliance != null ? `${T.compliance}%` : '—'}
           hint={t(`${T.checks || 0} من ${T.expected || 0}`, `${T.checks || 0} of ${T.expected || 0}`)}
@@ -349,7 +311,7 @@ export default function DutyRegisterPage() {
 
       <div className="flex flex-wrap gap-1.5">
         {([
-          // العددُ من `total`: الشارةُ تقول ما في المدى لا ما حُمِّل منه.
+          // Count comes from `total`: the badge shows what is in the range, not what was loaded.
           ['log', t('السجلّ', 'Register'), total || rows.length],
           ['gallery', t('الصور', 'Photos'), photos.length],
           ['missing', t('لم يُفقَّدوا', 'Not checked'), missing?.missing?.length ?? 0],
@@ -362,7 +324,7 @@ export default function DutyRegisterPage() {
         ))}
       </div>
 
-      {/* ما عُرض من المدى، وزرُّ الزيادة — فلا يُقرأ نقصُ الصفحة واقعًا. */}
+      {/* How much of the range is shown, and the load-more button, so the page shortfall is not read as reality. */}
       {total > rows.length && (
         <div className="flex items-center gap-3 text-xs text-slate-500">
           <span>{t(`يُعرَض ${rows.length} من ${total} تفقّدًا في هذا المدى`, `Showing ${rows.length} of ${total} checks in this period`)}</span>
@@ -391,8 +353,7 @@ export default function DutyRegisterPage() {
                 <tr key={r._id} onClick={() => setOpen(r)} className="cursor-pointer border-b border-slate-100 hover:bg-slate-50">
                   <td className="px-3 py-2 whitespace-nowrap text-xs text-slate-500">{r.dateKey}</td>
                   <td className="px-3 py-2 text-[13px] font-semibold text-slate-900">{nameOf(r, ar)}</td>
-                  {/* من تفقّده، ومعه مشرفُه المسؤول إن كان غيرَه — فيُقرأ
-                      «تفقّده فلان نيابةً عن فلان» من الصفّ بلا فتحه. */}
+                  {/* Who checked, with the responsible supervisor if different, so 'checked by A on behalf of B' reads from the row without opening it. */}
                   <td className="px-3 py-2 text-xs text-slate-600">
                     <span className="block">{r.supervisorName || '—'}</span>
                     {onBehalf(r) && (

@@ -1,28 +1,19 @@
 /**
- * ltRider — «مَن يركب هذه المركبة الآن؟» تعريفٌ واحد.
- *
- * ── التعريف (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢) ─────────────────────────────────────
- * راكبُ المركبة هو صفُّ «موظّفي النقل الخفيف» النشطُ الذي يشير `vehicle` فيه
- * إليها — أيًّا كانت حالةُ يومه: في إجازةٍ أو موقوفٌ أو في حادث، يبقى راكبَها
- * (الركوبُ غيرُ العمل). ومن انتهت خدمتُه في الموارد البشريّة والمركبةُ ما زالت
- * معه فهو «بانتظار التسليم» (utils/ltVehicleRelease) — لا راكبٌ ولا واقفة.
- *
- * و`VehicleMaster.actualDriver` (القائدُ الفعليّ) **مرآةٌ** لهذا الصفّ يكتبها
- * خطّافُ النموذج (models/LightTransport) — لا تُكتب من شاشة. فتغييرُ القائد
- * الفعليّ = تغييرُ ربط الصفّ بالمركبة، وهو ما تفعله `setRider` هنا (بأمر تشغيلٍ
- * يُفتح ويُغلق كما يفعل «أوامر التشغيل»)، فتتبعها المرآةُ واللوحةُ والقوائم.
+ * ltRider: who rides this vehicle now, one definition.
+ * The rider is the active light-transport row whose `vehicle` points to it, whatever the day's state (on leave, suspended, in an accident): riding is not working. Someone whose HR service ended while still holding the vehicle is awaiting handover (utils/ltVehicleRelease): neither rider nor idle.
+ * `VehicleMaster.actualDriver` is a mirror of this row written by the model hook (models/LightTransport), never from a screen. Changing the actual driver means changing the row's vehicle link, which `setRider` does (with an operating order opened and closed as operating orders do), and the mirror, dashboard and lists follow.
  */
 const S = (v) => String(v == null ? '' : v).trim();
 const who = (u) => [u?.firstName, u?.lastName].filter(Boolean).join(' ');
 
-/** حالةُ المركبة من راكبيها: `withRider` · `hold` · `idle`. */
+/** Vehicle state from its riders: `withRider`, `hold` or `idle`. */
 function vehicleState(riders = [], holders = []) {
   if (riders.length) return 'withRider';
   if (holders.length) return 'hold';
   return 'idle';
 }
 
-/** رقمُ أمر التشغيل التالي — بالصيغة نفسِها التي يكتبها «أوامر التشغيل». */
+/** Next operating-order number, in the same format the operating-orders screen writes. */
 async function nextOrderNumber() {
   const { LightTransportOrder } = require('../models/LightTransport');
   const last = await LightTransportOrder.findOne({ orderNumber: /^LT-/ }).sort({ orderNumber: -1 }).select('orderNumber').lean();
@@ -30,7 +21,7 @@ async function nextOrderNumber() {
   return `LT-${String(n).padStart(5, '0')}`;
 }
 
-/** يُبطل ما يُقرأ منه الراكبُ ثمّ يُعلن — الإبطالُ قبل الإعلان. */
+/** Invalidates what the rider is read from, then announces (invalidate before announce). */
 function announce() {
   require('./vehicleAnnounce').announceVehicles({ from: 'rider' }, {
     extraCaches: ['hr:', 'dash:'], events: [['hr:employee', { from: 'rider' }]],
@@ -38,10 +29,9 @@ function announce() {
 }
 
 /**
- * يجعل `ltId` راكبَ المركبة (أو يُنزل راكبيها إن كان `null`).
- * • الراكبُ الحاليُّ يُنزَل: يُغلق أمرُه ويُقيَّد في سجلّه أنّ مركبتَه أُعطيت لغيره.
- * • والجديدُ يُغلق أمرُه السابق (وتصير مركبتُه السابقة بلا راكب) ويُفتح له أمرٌ
- *   على هذه المركبة، ويُكتب الربطُ على صفّه — فيتبعه الخطّافُ إلى `actualDriver`.
+ * Makes `ltId` the vehicle's rider (or unseats its riders if `null`).
+ * - The current rider is unseated: their order is closed and their record notes the vehicle was given to someone else.
+ * - The new rider's previous order is closed (their previous vehicle becomes riderless), a new order is opened on this vehicle, and the link is written on their row; the hook carries it to `actualDriver`.
  * @returns {{ changed: boolean, rider: object|null, unseated: string[] }}
  */
 async function setRider(vehicleId, ltId, { user = null, reason = '', note = '', announce: doAnnounce = true } = {}) {
@@ -56,7 +46,7 @@ async function setRider(vehicleId, ltId, { user = null, reason = '', note = '', 
 
   const current = await LightTransportEmployee.find({ vehicle: vehicle._id, isActive: { $ne: false } });
   const out = { changed: false, rider: emp ? { _id: String(emp._id), name: emp.name, idNumber: emp.idNumber } : null, unseated: [] };
-  if (emp && current.length === 1 && String(current[0]._id) === String(emp._id)) return out; // هو راكبُها أصلًا
+  if (emp && current.length === 1 && String(current[0]._id) === String(emp._id)) return out; // Already the rider.
 
   for (const c of current) {
     if (emp && String(c._id) === String(emp._id)) continue;
@@ -97,7 +87,7 @@ async function setRider(vehicleId, ltId, { user = null, reason = '', note = '', 
     await emp.save();
     out.changed = true;
   }
-  // ومرآةٌ بقيت على المركبة بلا راكبٍ (نصٌّ قديم) تُمسَح — المرآةُ تتبع الصفّ.
+  // A mirror left on a riderless vehicle (stale text) is cleared; the mirror follows the row.
   if (!emp) {
     await VehicleMaster.updateOne({ _id: vehicle._id }, { $set: { 'actualDriver.name': '', 'actualDriver.idNumber': '' } });
   }

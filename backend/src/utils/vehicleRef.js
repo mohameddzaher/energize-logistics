@@ -1,23 +1,12 @@
 /**
- * vehicleRef — أيُّ مركبةٍ في سجلّ المركبات هذه؟ من أيّ قسمٍ جاء السؤال.
- *
- * المركبةُ سجلٌّ واحد (VehicleMaster)، وكلُّ قسمٍ يحمل إليه مرجعًا لا نسخة
- * (صاحبُ الشركة، ٢٠٢٦/١٠/٢١: «المركبة مرتبطة بحاجتها في أي قسم مهما كانت،
- * وحتى لو أضفت قسمًا جديدًا»). وهذا بابُ الربط الواحد: لوحةٌ عربيّةٌ أو
- * لاتينيّة ← معرّفُ المركبة، بالمفتاح الموحَّد (utils/plateKey canonicalPlateKey).
- *
- * ── قسمٌ جديد (قائمةُ الربط) ─────────────────────────────────────────────────
- *   ١) يخزّن مرجعَ المركبة (`vehicle`/`vehicleMaster: ObjectId`) ويحلّه من هنا عند
- *      الإنشاء (`resolve`)، ومرجعَ الشخص (`employee: ObjectId`) من utils/personRef.
- *   ٢) يعرض الهويّةَ والمستنداتِ من السجلّ نفسِه، والاسمَ من ملفّ الموارد البشريّة
- *      (`personRef.displayName`) — لا من نسخةٍ عنده.
- *   ٣) إن احتاج لقطةً (لوحةً أو اسمًا) للتاريخ أو البحث، فليُضِفها إلى
- *      `pushVehicleChange` هنا أو `employeeIdentitySync.pushPersonChange` كي تتبع المصدر.
- *   ٤) يسمع `vreg:updated` و`hr:employee` فيُعيد الجلب.
+ * vehicleRef: which vehicle in the vehicle registry is this, whichever section asks.
+ * A vehicle is one record (VehicleMaster) and every section holds a reference to it, not a copy (owner: a vehicle is linked to what it needs in any section, even one added later). This is the single linking door: an Arabic or Latin plate to the vehicle id, via the unified key (utils/plateKey canonicalPlateKey).
+ * New section checklist:
+ * 1) Store the vehicle reference (`vehicle`/`vehicleMaster: ObjectId`) resolved from here on create (`resolve`), and the person reference (`employee: ObjectId`) from utils/personRef. 2) Show identity and documents from the registry itself, and the name from the HR file (`personRef.displayName`), not from a local copy. 3) If a snapshot (plate or name) is needed for history or search, add it to `pushVehicleChange` here or `employeeIdentitySync.pushPersonChange` so it follows the source. 4) Listen to `vreg:updated` and `hr:employee` and refetch.
  */
 const { canonicalPlateKey } = require('./plateKey');
 
-/** معرّفُ المركبة في السجلّ للّوحة، أو null. يُرجع المستندَ إن طُلبت حقول. */
+/** Registry vehicle id for a plate, or null. Returns the document if fields are requested. */
 async function resolve(plate, select = '_id') {
   const key = canonicalPlateKey(plate);
   if (!key) return null;
@@ -25,7 +14,7 @@ async function resolve(plate, select = '_id') {
   return VehicleMaster.findOne({ canonKey: key }).select(select).lean();
 }
 
-/** حلٌّ دفعةً واحدة: Map من المفتاح الموحَّد إلى المركبة. */
+/** Batch resolution: Map from unified key to vehicle. */
 async function resolveMany(plates, select = '_id plateNumber canonKey') {
   const keys = [...new Set((plates || []).map(canonicalPlateKey).filter(Boolean))];
   if (!keys.length) return new Map();
@@ -35,16 +24,10 @@ async function resolveMany(plates, select = '_id plateNumber canonKey') {
 }
 
 /**
- * ── وتغييرُ اللوحة أو نوع التسجيل في السجلّ يصل نسخَه ──────────────────────────
- * صُحِّحت لوحةٌ في السجلّ فبقيت القديمةُ في صفّ النقل الخفيف وأمر التشغيل الساري
- * والحادث ولقطة ملفّ الموظّف — فيُبحث عنها بالجديدة فلا تُوجَد. تُنادى من خطّافات
- * models/VehicleMaster بعد كلّ كتابةٍ تمسّ `plateNumber` أو `registrationTypeAr`.
- *
- * ونوعُ المركبة في صفّ النقل الخفيف قائمةُ القسم («دراجة نارية» · «فان» · «كيا»)
- * لا نوعُ التسجيل («دراجة آلية» · «نقل عام» · «خاص») — فلا يُكتب فوقه إلّا إن كان
- * نسخةً حرفيّةً من القديم. أمّا أمرُ التشغيل فيحمل نوعَ التسجيل نفسَه.
- *
- * @param before  { plateNumber, registrationTypeAr } قبل الكتابة
+ * A plate or registration-type change in the registry reaches its copies.
+ * A plate corrected in the registry used to stay old in the light-transport row, the active operating order, the accident and the employee-file snapshot, so searching the new one found nothing. Called from models/VehicleMaster hooks after any write touching `plateNumber` or `registrationTypeAr`.
+ * The vehicle type on a light-transport row is the section's list (motorbike, van, Kia), not the registration type (motorised bike, public transport, private), so it is overwritten only when it is a literal copy of the old value. An operating order carries the registration type itself.
+ * @param before  { plateNumber, registrationTypeAr } before the write
  */
 async function pushVehicleChange(id, before = {}, { emit = true } = {}) {
   const S = (v) => String(v == null ? '' : v).trim();
@@ -63,7 +46,7 @@ async function pushVehicleChange(id, before = {}, { emit = true } = {}) {
   if (plateChanged && plate) {
     out.lt += (await LightTransportEmployee.updateMany({ vehicle: vm._id, vehiclePlate: { $ne: plate } }, { $set: { vehiclePlate: plate } })).modifiedCount || 0;
     out.orders += (await LightTransportOrder.updateMany({ vehicle: vm._id, status: LIVE, vehiclePlate: { $ne: plate } }, { $set: { vehiclePlate: plate } })).modifiedCount || 0;
-    // الحوادث: المربوطةُ بالمرجع، وغيرُ المربوطة التي تحمل مفتاحَ اللوحة القديمة.
+    // Accidents: those linked by reference, and unlinked ones carrying the old plate key.
     const { registryPlateKey } = require('./plateKey');
     const oldKey = registryPlateKey(before.plateNumber);
     const VehicleClaim = require('../models/VehicleClaim');
@@ -76,7 +59,7 @@ async function pushVehicleChange(id, before = {}, { emit = true } = {}) {
       const n = await VehicleClaim.countDocuments({ vehiclePlateKey: vm.plateKey, isActive: true });
       await VehicleMaster.updateMany({ plateKey: vm.plateKey }, { $set: { accidentCount: n } }, { timestamps: false });
     }
-    // ولقطةُ اللوحة على ملفّ الموظّف: صاحبُ الورقة، ومَن تحمل لقطتُه اللوحةَ القديمة.
+    // The plate snapshot on the employee file: the sheet's holder, and anyone whose snapshot carries the old plate.
     try {
       const VA = require('./vehicleAuthorization');
       const Employee = require('../models/Employee');
@@ -106,7 +89,7 @@ async function pushVehicleChange(id, before = {}, { emit = true } = {}) {
   }
 
   if (emit) {
-    // الباب المشترك: يمسح كلَّ ما يحمل المركبةَ ثمّ يُعلن (utils/vehicleAnnounce).
+    // Shared door: clears everything that carries the vehicle, then announces (utils/vehicleAnnounce).
     require('./vehicleAnnounce').announceVehicles({ vehicle: String(vm._id) }, {
       events: out.employees.map((e) => ['hr:employee', { id: e }]),
     });

@@ -54,7 +54,7 @@ export default function VehiclesDashboardPage() {
   useSocket('vehicle:updated', useCallback(() => load(), [load]));
   useSocket('vehicle:authorization', useCallback(() => load(), [load]));
   useSocket('vehicle:accident', useCallback(() => load(), [load]));
-  // المفوَّضُ يُقرأ من سجلّ المركبات — فتعديلُ السجلّ يصل هنا.
+  // The authorized person is read from the vehicle registry, so registry edits propagate here.
   useSocket('vreg:updated', useCallback(() => load(), [load]));
 
   if (!staff) return <div className="text-slate-500 p-8">{tx.notAuthorized}</div>;
@@ -96,10 +96,7 @@ export default function VehiclesDashboardPage() {
         <Link href="/system/vehicles/accidents"><StatCard label={tx.estimatedCostTotal} value={fmtSAR(t.estimatedAccidentCost)} accent="text-amber-700" /></Link>
         <Link href="/system/vehicles/accidents"><StatCard label={tx.actualCostTotal} value={fmtSAR(t.actualAccidentCost)} accent="text-red-600" /></Link>
         <Link href="/system/vehicles?status=authorized"><StatCard label={tx.activeAuthorizations} value={t.activeAuthorizations} accent="text-green-600" /></Link>
-        {/* ── الكارتُ يفتح ما تحته، وما تحته على الصفحة نفسِها ──────────────
-            قائمةُ التفاويض المنتهية مرسومةٌ في أسفل اللوحة. فلا يُذهَب بها إلى
-            صفحةٍ أخرى تُعيد حسابَها من سجلٍّ آخرَ فتعطي رقمًا مختلفًا — يُنزَل
-            إليها حيث هي. وحين لا يكون تحته شيء (صفر) يبقى رقمًا لا زرًّا. */}
+        {/* The card scrolls to what is under it on the same page. The expired-authorizations list is drawn at the bottom of the dashboard; linking to another page would recompute from a different register and show a different number. A zero count stays a plain number, not a button. */}
         {t.expiringAuthorizations > 0 ? (
           <button type="button" onClick={() => document.getElementById('expiring-auths')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
             className="text-start rounded-xl transition hover:opacity-80">

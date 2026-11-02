@@ -93,8 +93,7 @@ export default function ItSystemsPage() {
     { header: 'Cost', key: 'cost', width: 12 },
     { header: 'Period', key: 'costPeriod', transform: (v: any) => costPeriodLabel(v, 'en'), width: 12 },
   ];
-  // الحالة والنوع فلترتهما على الخادم، فالمحمَّل في الشاشة ليس سجلّ الأنظمة كلَّه؛
-  // «الكلّ» يعيد النداء بلا معاملات حتى لا يخرج ملفٌّ ناقصٌ باسم الكلّ.
+  // Status and type are server-filtered, so the loaded set is not the full systems register; 'all' re-calls without parameters to avoid a partial file.
   const fetchAllForExport = async () => {
     const d = await api.get<{ systems: ItSystem[] }>('/api/it/systems');
     return [{ name: 'Systems', rows: d.systems || [], columns: exportColumns }];
@@ -134,7 +133,7 @@ export default function ItSystemsPage() {
       </PageHeader>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        {/* والبطاقةُ تُصفّي الجدولَ على حالتها — الفلترُ قائمٌ في الشاشة أصلًا. */}
+        {/* The card filters the table by its status; the filter already exists on screen. */}
         <StatCard label={ar ? 'تعمل بشكل طبيعي' : 'Operational'} value={operational} accent="text-green-600"
           onClick={() => setStatusFilter((v) => (v === 'operational' ? '' : 'operational'))}
           active={statusFilter === 'operational'} hint={ar ? 'اضغط لعرضها' : 'tap to filter'} />
@@ -159,8 +158,7 @@ export default function ItSystemsPage() {
         <div className="w-full sm:w-48 shrink-0">
           <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
             <option value="">{ar ? 'كل الحالات' : 'All statuses'}</option>
-            {/* حالتان في خيارٍ واحد: هو ما تَعدُّه بطاقةُ «متوقفة أو متعثرة»
-                فوق — ولولاه لصار للقائمة قيمةٌ لا خيارَ لها فتبدو فارغة. */}
+            {/* Two statuses in one option: what the 'stalled or struggling' card counts above; without it the list would hold a value with no option and look empty. */}
             <option value="down,degraded">{ar ? 'متوقفة أو متعثرة' : 'Down or degraded'}</option>
             {optionsOf(SYSTEM_STATUSES).map((o) => <option key={o.key} value={o.key}>{ar ? o.ar : o.en}</option>)}
           </Select>

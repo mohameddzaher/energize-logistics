@@ -28,12 +28,10 @@ class AppScaffold extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        // العنوانُ الطويل بجوار أيقوناتٍ كثيرة يصغُر قليلًا ليُقرأ كاملًا بدل «التأمين الط…».
+        // Long titles next to many icons shrink slightly to stay fully readable instead of truncating.
         title: FittedBox(fit: BoxFit.scaleDown, alignment: AlignmentDirectional.centerStart, child: title),
         bottom: appBarBottom,
-        // زرُّ «كل الأقسام» في الشريط السفليّ («القائمة») وفي القائمة بحثُها — فلا
-        // يُكرَّران هنا: كانت أربعُ أيقوناتٍ للشاشة + اثنتان تقطع العنوان. وبحثُ
-        // التطبيق يبقى حيث للشاشة أيقونةٌ واحدةٌ أو لا شيء.
+        // The all-sections button is in the bottom bar (menu), and the menu has its own search, so neither is repeated here. App search stays only where the screen has one icon or none.
         actions: [
           ...?actions,
           if ((actions?.length ?? 0) < 2)
@@ -48,13 +46,13 @@ class AppScaffold extends StatelessWidget {
       ),
       endDrawer: const AppDrawer(),
       floatingActionButton: floatingActionButton,
-      // على الآيباد: المحتوى في عمودٍ مريحٍ وسطَ الشاشة بدل أن يتمدّد على عرضها كلّه.
+      // On iPad, content sits in a comfortable centered column instead of stretching full width.
       body: LayoutBuilder(
         builder: (c, box) => box.maxWidth > 860
             ? Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 820), child: body))
             : body,
       ),
-      // شريط سفلي ثابت في كل الصفحات — الرئيسية/ملفي/الإشعارات/القائمة.
+      // Fixed bottom bar on every page: home, profile, notifications, menu.
       bottomNavigationBar: const AppBottomNav(),
     );
   }
@@ -65,7 +63,7 @@ class AppScaffold extends StatelessWidget {
 class AppBottomNav extends StatelessWidget {
   const AppBottomNav({super.key});
 
-  // نفتح الوجهة مرة واحدة — لو إحنا عليها بالفعل مانكررهاش (تجنّب تكديس نسخ).
+  // Open the destination once; if already on it, do not push a duplicate.
   void _openOnce(BuildContext context, String name, WidgetBuilder builder) {
     if (ModalRoute.of(context)?.settings.name == name) return;
     Navigator.push(context, MaterialPageRoute(settings: RouteSettings(name: name), builder: builder));
@@ -175,7 +173,7 @@ class AppSearchDelegate extends SearchDelegate<void> {
         title: Text(matches[i].$2.title, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
         subtitle: Text(matches[i].$1, style: const TextStyle(fontSize: 11.5, color: T.inkFaint)),
         onTap: () {
-          // نلتقط الـ Navigator قبل close — بعدها context الخاص بشاشة البحث يبقى ميت.
+          // Capture the Navigator before close; the search screen's context is dead afterwards.
           final nav = Navigator.of(context);
           final b = matches[i].$2.builder;
           close(context, null);
@@ -226,7 +224,7 @@ class AppDrawer extends StatefulWidget {
 
 class _AppDrawerState extends State<AppDrawer> {
   String _q = '';
-  // أرقامٌ بجانب الصفحات (/api/nav-badges) — كالموقع: ما ينتظر صاحبَ الصفحة (٢٠٢٦/١٠/٢٢).
+  // Numbers beside pages (/api/nav-badges), like the web: items waiting on the page owner.
   Map<String, int> _badges = const {};
 
   @override
@@ -252,15 +250,15 @@ class _AppDrawerState extends State<AppDrawer> {
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
     final sections = sectionsFor(auth);
-    // موافقات فريقي تظهر؛ الشاشة نفسها تتحقق. الشريك (client) ليس موظفًا فلا يرى إجازات/طلبات.
+    // My team's approvals are shown and the screen verifies itself. A partner (client) is not an employee and sees no leave or requests.
     final selfPages = selfServicePages(true, isPartner: auth.role == 'client');
 
     void go(WidgetBuilder b) {
-      Navigator.pop(context); // اقفل الدرج
+      Navigator.pop(context); // Close the drawer.
       Navigator.push(context, MaterialPageRoute(builder: b));
     }
 
-    // نتائج البحث: كل الصفحات (خدمة ذاتية + كل الأقسام) المطابقة، مسطّحة.
+    // Search results: all matching pages (self-service and every section), flattened.
     final q = _fold(_q.trim());
     final List<(String, AppPage)> matches = [];
     if (q.isNotEmpty) {
@@ -287,17 +285,17 @@ class _AppDrawerState extends State<AppDrawer> {
             Text(auth.user?['email'] ?? '', style: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 11.5)),
           ]),
         ),
-        // بحث سريع في كل الأقسام والصفحات
+        // Quick search across all sections and pages.
         Padding(
           padding: const EdgeInsets.fromLTRB(12, 10, 12, 4),
-          // كان ✕ يمسح البحثَ ويترك الكلمةَ مكتوبةً في الخانة (بلا متحكِّم).
+          // The clear button used to wipe the search but leave the text in the field (no controller).
           child: SearchField(
             dense: true,
             hint: tr('ابحث عن قسم أو صفحة…', 'Search sections & pages…'),
             onChanged: (v) => setState(() => _q = v),
           ),
         ),
-        // نتائج البحث المسطّحة
+        // Flattened search results.
         if (q.isNotEmpty)
           Expanded(
             child: matches.isEmpty

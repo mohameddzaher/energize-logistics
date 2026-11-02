@@ -33,15 +33,14 @@ function LoginForm() {
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
         const loggedInUser = await login(email, password);
-        // ── المتصفّحُ يُعرض عليه حفظُ كلمة المرور ──────────────────────────────
-        // الدخولُ يتمّ بلا إعادة تحميل، فقد لا يعرف المتصفّحُ أنّه نجح فلا يسأل
-        // «حفظ كلمة المرور؟». فيُقال له صراحةً (Credential Management) حيث يُدعَم.
+        // Offer the browser to save the password.
+        // Login completes without a page reload, so the browser may not know it succeeded and never prompts; the Credential Management API tells it explicitly where supported.
         try {
           const W = window as any;
           if (W.PasswordCredential && navigator.credentials?.store) {
             await navigator.credentials.store(new W.PasswordCredential({ id: email, password, name: email }));
           }
-        } catch { /* المتصفّحُ يقرّر وحده — لا يمنع الدخول */ }
+        } catch { /* The browser decides on its own; this never blocks login. */ }
         router.push(returnTo || landingFor(loggedInUser));
         return;
       } catch (err: any) {

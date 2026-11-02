@@ -4,14 +4,9 @@ import '../config.dart';
 import '../services/lang.dart';
 import 'theme.dart';
 
-/// سلسلةُ موافقات الإجازة كما تُرى في التطبيق — توأمُ
-/// `frontend/src/components/hr/LeaveChain.tsx`.
-///
-/// كانت الموافقةُ محطّتين وشارةً واحدة. فصارت أربعًا، وصار للطلب تاريخٌ لا
-/// حالةٌ واحدة: مَن وافق ومتى، ومَن سأل وبمَ ردّ صاحبُه. وهو مكتوبٌ هنا مرّةً
-/// لا في كلّ شاشةٍ تعرض طلبًا.
+/// Leave approval chain as seen in the app, twin of frontend/src/components/hr/LeaveChain.tsx. Approval grew from two steps to four, and a request now has a history: who approved and when, who asked and how the owner replied. Defined once here, not per screen.
 
-/// المحطّاتُ بترتيبها: المفتاح، والاسمان، وحقلُ قرارها في المستند.
+/// Steps in order: key, the two names, and the document field holding its decision.
 const leaveStages = <({String key, String ar, String en, String decision})>[
   (key: 'manager', ar: 'المدير المباشر', en: 'Direct Manager', decision: 'managerDecision'),
   (key: 'hr', ar: 'الموارد البشرية', en: 'HR', decision: 'hrDecision'),
@@ -19,8 +14,7 @@ const leaveStages = <({String key, String ar, String en, String decision})>[
   (key: 'executive', ar: 'الإدارة العليا', en: 'Executive', decision: 'executiveDecision'),
 ];
 
-/// الحالةُ ← اسمُها ولونُها. تُقرأ عبر [leaveStatusOf] فلا تعود فارغةً أبدًا:
-/// قراءةُ لونٍ من مفتاحٍ ناقصٍ تُسقط الشاشةَ لا الخانة.
+/// Status to name and color. Read through [leaveStatusOf] so it is never empty: reading a color from a missing key crashes the screen.
 const leaveStatusMeta = <String, (String, String, Color)>{
   'pending_manager': ('عند المدير المباشر', 'With manager', Color(0xFFD97706)),
   'pending_hr': ('عند الموارد البشرية', 'With HR', Color(0xFF2563EB)),
@@ -37,12 +31,12 @@ const leaveStatusMeta = <String, (String, String, Color)>{
   return leaveStatusMeta[s] ?? (s.isEmpty ? '—' : s, s.isEmpty ? '—' : s, T.inkFaint);
 }
 
-/// أهي محطّةٌ قائمةٌ يُبَتُّ فيها؟ (المنتهيةُ والمرتدّةُ إلى صاحبها ليست كذلك.)
+/// Is it a live step awaiting a decision? (Finished and returned-to-owner are not.)
 bool leaveIsActionable(Object? status) => const [
       'pending_manager', 'pending_hr', 'pending_finance', 'pending_executive',
     ].contains((status ?? '').toString());
 
-/// أمفتوحٌ الطلبُ بعد؟ — لعدّادات «معلَّق» وزرّ الإلغاء.
+/// Is the request still open? Used for the pending counters and the cancel button.
 bool leaveIsOpen(Object? status) =>
     leaveIsActionable(status) || (status ?? '').toString() == 'info_requested';
 
@@ -55,7 +49,7 @@ String? _lastQuestionStage(Map<String, dynamic> l) {
   return null;
 }
 
-/// حالةُ محطّةٍ بعينها في هذا الطلب.
+/// State of a specific step in this request.
 String _stageState(Map<String, dynamic> l, String stage, String decisionField) {
   final d = l[decisionField];
   if (d is Map) {
@@ -68,7 +62,7 @@ String _stageState(Map<String, dynamic> l, String stage, String decisionField) {
   return 'waiting';
 }
 
-/// شريطةُ المحطّات الأربع — أين وقف الطلبُ ومَن وقّع.
+/// Strip of the four steps: where the request stopped and who signed.
 class LeaveChainBar extends StatelessWidget {
   const LeaveChainBar({super.key, required this.leave});
   final Map<String, dynamic> leave;
@@ -124,7 +118,7 @@ class LeaveChainBar extends StatelessWidget {
   }
 }
 
-/// حوارُ الطلب: سؤالُ محطّةٍ وردُّ صاحبه، بالأقدم أوّلًا.
+/// Request dialogue: a step's question and its owner's reply, oldest first.
 class LeaveThread extends StatelessWidget {
   const LeaveThread({super.key, required this.leave});
   final Map<String, dynamic> leave;

@@ -61,8 +61,7 @@ interface Transaction {
   purchaseDriverName: string;
   purchaseReceiptNumber: string;
   purchaseBranch: string;
-  // كشوفُ التخريج المستلَمة في قيد الاستلام. و`receivedDocNumber` للقيود
-  // التي كُتبت قبل أن يُسمح بأكثرَ من كشفٍ في القيد الواحد.
+  // Dispatch reports received in the receipt entry; receivedDocNumber is for entries written before more than one report per entry was allowed.
   receivedReportNumbers?: string[];
   receivedDocNumber?: string;
   reference: string;
@@ -89,12 +88,8 @@ const TYPE_CONFIG = {
   collection: { label: 'Collection', labelAr: 'تحصيل', icon: ArrowUpCircle, color: 'text-green-600', bg: 'bg-green-500/20' },
   expense: { label: 'Expense', labelAr: 'مصروف', icon: ArrowDownCircle, color: 'text-red-600', bg: 'bg-red-500/20' },
   purchase: { label: 'Purchase', labelAr: 'مشتريات', icon: ShoppingCart, color: 'text-blue-600', bg: 'bg-blue-500/20' },
-  // ── قيدُ استلام، لا حركةُ مال ────────────────────────────────────────────
-  // يُسجَّل ليُعرَف أنّ الموظّف استلم فاتورةً أو كشفًا بيده. وهو **خارج** رصيد
-  // العهدة تمامًا: لا يُجمَع ولا يُطرَح — ولذلك لونُه محايدٌ لا أخضرُ ولا أحمر،
-  // فاللونُ في هذه الشاشة يقول اتّجاهَ المال.
-  // ── واسمُ الزرّ يقول الفعلَ لا الشيء ──────────────────────────────────────
-  // «فاتورة ضريبية» تُقرأ كأنّها إصدارُ فاتورةٍ أو دفعُ قيمتها؛ والفعلُ استلامٌ.
+  // A receipt entry, not a money movement. It records that the employee received an invoice or report in hand and is outside the custody balance (neither added nor subtracted), so its color is neutral: color on this screen means money direction.
+  // The button names the action, receipt, since a tax invoice label reads as issuing or paying one.
   tax_invoice: { label: 'Tax invoices received', labelAr: 'استلام فاتورة ضريبية', icon: Receipt, color: 'text-slate-600', bg: 'bg-slate-200/70' },
 };
 
@@ -103,15 +98,12 @@ const getTodayStr = () => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
 
-/** اليومُ، ولا يسبق بدايةَ الدفتر — الخادمُ يردّ ما قبلها فلا تُطلَب أصلًا. */
+/** Today, and not before the ledger start; the server rejects earlier dates so they are not offered. */
 const startOfBook = (d: string) => (d < WALLET_START_DATE ? WALLET_START_DATE : d);
 
 /**
- * آخرُ يومٍ يُفتَح — الغد. مرآةُ `lastWritableDay` في الخادم.
- *
- * والغدُ داخلٌ لأنّ العملَ يتجاوز منتصفَ الليل: يُقفَل يومُ الفرع ثمّ يأتي قيدٌ
- * في الواحدة صباحًا، فهو قيدُ الغد بالتقويم لا بالعمل — ومنعُه يعني أن يُكتب
- * بتاريخٍ خاطئ أو لا يُكتب. وما بعده لا عملَ فيه بحال.
+ * Last day that can be opened: tomorrow. Mirrors lastWritableDay on the server.
+ * Tomorrow is allowed because work crosses midnight: a branch day is closed and then an entry arrives at 1 am, which is tomorrow by calendar. Blocking it forces a wrong date or no record.
  */
 const endOfBook = () => {
   const d = new Date(); d.setDate(d.getDate() + 1);
@@ -121,53 +113,28 @@ const endOfBook = () => {
 export default function WalletPage() {
   const { confirm, notify } = useDialog();
   const { user } = useAuth();
-  // والمصفوفةُ تُحسب كما تُحسب القائمة: دورٌ مُنح «تعديل» في هذا القسم يعدّل
-  // — وإلّا فُتحت الشاشةُ لدورٍ مصنوعٍ وامتنعت عنه أزرارُها (راجع فريق العمليات).
+  // The matrix is computed like the list: a role granted edit on this section can edit; otherwise the screen opens for a custom role while its buttons stay unavailable (see operations team).
   const isManager = ['super_admin', 'admin', 'operations_manager', 'operations_staff', ...FINANCE_FULL_ROLES].includes(user?.role || '')
     || canEditSection((user as any)?.permissions, 'Operations');
-  // عرضٌ فقط: المشرف، وقسمُ التحصيل (يرى الفروعَ ويفلتر ويصدّر، ولا يسجّل شيئًا).
-  // role-only: الخادمُ يردّ كتابتَهم بالدور نفسِه مهما مُنحوا (config/walletViewOnly).
+  // role-only: supervisor and collections view branches, filter and export but record nothing. The server rejects their writes by role whatever they are granted (config/walletViewOnly).
   const isReadOnly = user?.role === 'moderator' || WALLET_VIEW_ONLY_ROLES.includes(user?.role || '');
   /**
-   * ── مديرُ النظام وحدَه يعمل خارج نافذة الدفتر ────────────────────────────
-   *
-   * الحدّان — بدايةُ الدفتر والغد — حمايةٌ من الخطأ اليوميّ لا قاعدةٌ محاسبيّة:
-   * تاريخٌ يُكتب سهوًا، شاشةٌ تُفتَح على شهرٍ قادم فتخلق يومًا. ويبقى بعدهما
-   * تصحيحٌ حقيقيّ يحتاج بابًا — قيدٌ نُسي في يومٍ مضى — وبابٌ مغلقٌ على الجميع
-   * يُلتَفّ عليه بكتابة الحركة في يومٍ غير يومها لتمرّ، فيصير الدفترُ كاذبًا
-   * بطريقةٍ لا تُكتشَف.
-   *
-   * والخادمُ هو المانعُ فعلًا (`mayWorkOutsideBook`)؛ هذا يرفع القيدَ عن
-   * المنتقيات فقط، فلا تُعرَض له شاشةٌ تمنعه ممّا يملكه.
+   * Only the system admin works outside the ledger window. The two limits (ledger start, tomorrow) guard against everyday mistakes such as a typo date or a screen opened on a future month, not accounting rules. A real correction needs a door, and a door closed to everyone gets bypassed by writing the movement on another day, making the ledger falsely consistent.
+   * The server enforces it (mayWorkOutsideBook); this only lifts the limit on the pickers.
    */
   const freeDates = hasFinancePowers(user as any);
-  // مديرُ النظام أو دورٌ مُنح صلاحيّاتِه كاملةً من شاشة الصلاحيّات — يرسلها
-  // الخادمُ في `superAdminPowers`. وهي التي تُظهر زرَّ فتح اليوم وأزرارَ التعديل.
-  // مديرُ النظام وأهلُ المال: التعديلُ والحذفُ والنقلُ وإعادةُ الفتح — راجع lib/financeAuthority.
+  // System admin, or a role given full powers from the permissions screen; the server sends them as superAdminPowers. They show the open-day and edit buttons.
+  // System admin and finance: edit, delete, move and reopen. See lib/financeAuthority.
   const isSuperAdmin = hasFinancePowers(user as any);
   const isOpsManager = user?.role === 'operations_manager';
   /**
-   * ── ومَن يكتب في يومٍ أُقفل ──────────────────────────────────────────────
-   *
-   * الإقفالُ عَدٌّ للنقد وتثبيتٌ لرصيدٍ يُنقَل إلى الغد، وفرقُ عدٍّ يُعلَّل. فقيدٌ
-   * يُضاف إلى يومٍ أُقفل يُعيد حسابَ رصيده ورصيدِ كلِّ يومٍ بعده، ويجعل الفرقَ
-   * المُعلَّل رقمًا لا يوافق ما عُدّ في الخزنة.
-   *
-   * وكانت الأزرارُ تُعرَض على `isManager` — وفيه موظّفُ العمليّات، وهو أكثرُ من
-   * يسجّل. فمن أراد الكتابةَ في يومٍ أُقفل يطلب إعادةَ فتحه، وإعادةُ الفتح
-   * لمدير النظام. والخادمُ هو المانعُ (`mayWriteIntoClosedDay`) وهذا إخفاءٌ
-   * لا يُغني عنه.
+   * Who writes into a closed day. Closing counts cash and fixes a balance carried forward; an entry added to a closed day recomputes its balance and every later day and invalidates the explained difference. Buttons were shown on isManager, which includes operations staff, the most frequent recorders, so writing into a closed day means asking for a reopen, which is system admin only.
+   * The server enforces it (mayWriteIntoClosedDay); hiding is no substitute.
    */
-  // role-only: الكتابةُ في يومٍ مقفل سلطةٌ ماليّة يحرسها الخادمُ بالأسماء نفسِها.
+  // role-only: writing into a closed day is a financial authority the server guards by the same role names.
   const canWriteClosedDay = ['super_admin', 'admin', 'operations_manager', ...FINANCE_FULL_ROLES].includes(user?.role || '')
     || !!(user as any)?.superAdminPowers;
-  // ── ومَن لا يُقفَل على فرعٍ يختار الفرعَ الذي ينظر فيه ────────────────────
-  // كان الشرطُ «سوبر أدمن أو مدير عمليات» — قائمةٌ موجبةٌ تُنسى كلَّما دخل
-  // دورٌ جديد. فالمحاسبُ يفتح الصفحةَ فيقع على مسار «استعمل فرعَ حسابك»،
-  // وحسابُه بلا فرعٍ (والخمسةُ كلُّهم كذلك، وهو صواب: المحاسبةُ ليست في فرع)
-  // فيُقال له «لا فرعَ لحسابك — كلّم الإدارة»، ويقف عمله.
-  //
-  // فالسؤالُ صار عكسَه: مَن **يُقفَل** على فرعه؟ موظّفُ العمليات وحدَه.
+  // Who is locked to a branch vs. who picks the branch to view. The old rule (super admin or operations manager) was a positive list forgotten whenever a role was added, so accountants, who have no branch by design, hit a no-branch dead end. The question is inverted: only operations staff are locked to their branch.
   const canSelectBranch = canPickWalletBranch(user?.role);
 
   const { lang } = useLanguage();
@@ -181,19 +148,11 @@ export default function WalletPage() {
   const [loading, setLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState(() => startOfBook(getTodayStr()));
   /**
-   * ── يومٌ أو فترةٌ أو شهر ─────────────────────────────────────────────────
-   *
-   * المحفظةُ يوميّةٌ في أصلها: رصيدٌ يُفتَح ويُقفَل، وحركاتٌ تُضاف إلى يومها.
-   * وكان ذلك كلَّ ما تعرضه الشاشة — فمن أراد «كم صُرف هذا الشهر؟» صدّر إكسل
-   * وجمع فيه، والرقمُ موجودٌ في النظام.
-   *
-   * فأُضيف عرضان للقراءة: فترةٌ بين تاريخين، وشهرٌ بعينه. وهما للقراءة وحدَها
-   * عن قصد — لا تُضاف حركةٌ إلى «فترة» ولا يُقفَل «شهر»: الحركةُ تخصّ يومًا،
-   * والإقفالُ فعلُ يوم. فأزرارُ الكتابة تختفي فيهما بدل أن تُعرَض ثمّ تُردّ.
+   * Day, period or month. The wallet is daily by nature, and the screen showed only that, so a month's spending had to be exported and summed.
+   * Period and month are read-only on purpose: movements belong to a day and closing is a day action, so write buttons are hidden there rather than shown and rejected.
    */
   const [mode, setMode] = useState<'day' | 'range' | 'month'>('day');
-  // ولو فُتحت الشاشةُ قبل بداية الدفتر (ساعةُ جهازٍ مضبوطةٌ على الماضي) لبدأ
-  // العرضُ على تاريخٍ يردّه الخادم — فالحدُّ يُطبَّق على أوّل قيمةٍ أيضًا.
+  // If the screen opens before the ledger start (device clock set in the past), the view would start on a date the server rejects, so the limit applies to the first value too.
   const [rangeFrom, setRangeFrom] = useState(() => startOfBook(getTodayStr()));
   const [rangeTo, setRangeTo] = useState(getTodayStr());
   const [monthKey, setMonthKey] = useState(() => getTodayStr().slice(0, 7));
@@ -207,9 +166,7 @@ export default function WalletPage() {
   const [selectedBranch, setSelectedBranch] = useState('');
   const [branchUsers, setBranchUsers] = useState<{ _id: string; firstName: string; lastName: string }[]>([]);
 
-  // قائمة الفروع — تُقرأ **مرّة واحدة** وتخدم الغرضين: قائمة فرع نافذة الشراء،
-  // ومحدِّد الفرع لمن يملك اختياره. كانت تُطلب مرّتين من الخادم في كل فتحة،
-  // فتصل الاستجابتان في لحظتين مختلفتين ويعيد كلٌّ منهما رسم الصفحة.
+  // Branch list, read once for both uses: the purchase dialog's branch list and the branch picker. It was requested twice per open and the two responses landed at different times, each redrawing the page.
   const [branchList, setBranchList] = useState<{ _id: string; name: string }[]>([]);
   useEffect(() => {
     api.get<any>('/api/branches').then((data) => {
@@ -233,10 +190,10 @@ export default function WalletPage() {
     purchaseDeliveryStatementNumber: '', purchaseDriverName: '', purchaseReceiptNumber: '', purchaseBranch: '',
     // Amount-mismatch reason (when entered amount != expected dispatch-sheet value)
     mismatchReason: '' as '' | 'daily' | 'violation' | 'other', mismatchNote: '',
-    // قيدُ استلام فاتورةٍ أو كشف — معلومةٌ خارج الرصيد.
+    // Receipt entry of an invoice or report: information outside the balance.
     receivedDocType: 'invoice' as 'invoice' | 'report', receivedDocNumber: '',
     receivedReportNumbers: [] as string[],
-    // كلُّ كشفٍ وسندُه معًا — لا قائمتان تتزحزحان عن بعضهما عند أوّل حذف.
+    // Each report with its voucher together: not two lists that drift apart at the first delete.
     receivedReports: [] as { reportNumber: string; documentNumber: string }[],
     receivedDocSand: '',
   });
@@ -246,10 +203,10 @@ export default function WalletPage() {
     collectionSource: 'client' as 'client' | 'company', description: '',
     purchaseDeliveryStatementNumber: '', purchaseDriverName: '', purchaseReceiptNumber: '', purchaseBranch: '',
     mismatchReason: '' as '' | 'daily' | 'violation' | 'other', mismatchNote: '',
-    // قيدُ استلام فاتورةٍ أو كشف — معلومةٌ خارج الرصيد.
+    // Receipt entry of an invoice or report: information outside the balance.
     receivedDocType: 'invoice' as 'invoice' | 'report', receivedDocNumber: '',
     receivedReportNumbers: [] as string[],
-    // كلُّ كشفٍ وسندُه معًا — لا قائمتان تتزحزحان عن بعضهما عند أوّل حذف.
+    // Each report with its voucher together: not two lists that drift apart at the first delete.
     receivedReports: [] as { reportNumber: string; documentNumber: string }[],
     receivedDocSand: '',
   };
@@ -278,24 +235,19 @@ export default function WalletPage() {
   const [purchaseReportSearch, setPurchaseReportSearch] = useState('');
   const [purchaseReportMsg, setPurchaseReportMsg] = useState('');
   const [purchaseReportFound, setPurchaseReportFound] = useState(false);
-  /** شراءٌ سابقٌ على الكشف نفسِه — يُعرَف من البحث قبل ملء الاستمارة. */
+  /** An earlier purchase on the same report, found by search before the form is filled. */
   const [purchaseAlready, setPurchaseAlready] = useState<null | { amount: number; date: string; by: string; receipt: string; branch?: string }>(null);
-  /** حالةُ طلب الكشف — لا تُسجَّل مشترياتٌ قبل «استُلم السند». */
+  /** Report request status; no purchases are recorded before the voucher is received. */
   const [purchaseBond, setPurchaseBond] = useState<null | { ok: boolean; status: string }>(null);
   const [purchaseInvoiceAmount, setPurchaseInvoiceAmount] = useState<number | null>(null);
-  // Expected dispatch-sheet values for the amount-match alert: purchaseValue
-  // (سعر الشراء) for purchases, sellingValue (سعر البيع) for collections.
+  // Expected dispatch-sheet values for the amount-match alert: purchaseValue (purchase price) for purchases, sellingValue (selling price) for collections.
   const [expectedPurchaseValue, setExpectedPurchaseValue] = useState<number | null>(null);
-  // Collection report lookup (search كشف التخريج to fetch the selling price)
+  // Collection report lookup: search the dispatch report to fetch the selling price.
   const [collectionReportMsg, setCollectionReportMsg] = useState('');
   const [collectionReportFound, setCollectionReportFound] = useState(false);
 
-  // ─── LOAD USERS FOR BRANCH ─────────────────────────────────
-  //
-  // تفريغ المحفظة هنا وحده. كان يُفرَّغ مرّتين — مرّة عند تبدُّل الفرع ومرّة عند
-  // تبدُّل المستخدم الذي يتبعه — فتومض الشاشة فارغةً مرّتين قبل أن تمتلئ، وهو
-  // ما يبدو للمستخدم «تفتح وتلغبط وتفتح». والشاشة تبقى على حالة التحميل حتى
-  // تصل البيانات فعلًا بدل أن تعرض فراغًا ثم تعرض غيره.
+  // Load users for the branch.
+  // The wallet is cleared here only. It used to be cleared on branch change and again on the dependent user change, flashing the screen empty twice. The screen stays loading until data arrives instead of showing an empty state and then another.
   useEffect(() => {
     if (!canSelectBranch || !selectedBranch) return;
     setLoading(true);
@@ -303,25 +255,18 @@ export default function WalletPage() {
     setTransactions([]);
     setBranchUsers([]);
     api.get<any>(`/api/users?branch=${selectedBranch}`).then((data) => {
-      // يُقرأ موظّفو الفرع للعرض وحدَه — «مَن يعمل على هذه المحفظة» — لا
-      // لاختيار محفظةٍ منهم.
+      // Branch employees are read for display only (who works on this wallet), not to pick a wallet from them.
       const users = (data.users || data || []).filter((u: any) => ['operations_staff', 'operations_manager'].includes(u.role));
       setBranchUsers(users);
     }).catch(() => {
-      // ── وتعذُّرُ قراءةٍ للزينة لا يُقال خطأً ─────────────────────────────
-      // هذا السطرُ يعرض «مَن يعمل على هذه المحفظة» ولا شيءَ يتوقّف عليه.
-      // والمحاسبُ لا يملك قراءةَ المستخدمين، فكان يُردّ ٤٠٣ فيُرفَع شريطُ
-      // خطأٍ أحمرُ فوق عهدةٍ فُتحت وعُرضت كاملةً — يُقرأ «الصفحة فشلت» وهي
-      // لم تفشل. وأسوأُ منه أنّه كان يُطفئ رايةَ التحميل قبل أوانها.
+      // A failed read for decoration is not shown as an error. This line only shows who works on the wallet; accountants cannot read users, so the 403 raised a red error bar over a fully loaded custody page and also cleared the loading flag early.
       setBranchUsers([]);
     });
   }, [canSelectBranch, selectedBranch]);
 
   // ─── FETCH WALLET ──────────────────────────────────────────
   const fetchWallet = useCallback(async (showSpinner = true) => {
-    // ── يُختار الفرعُ وحدَه ─────────────────────────────────────────────────
-    // كان يُختار الفرعُ ثمّ الموظّف، فلا تُقرأ محفظةٌ حتّى يُختار شخصٌ بعينه —
-    // والنقدُ نقدُ الفرع يعمل عليه أكثرُ من موظّف. فالفرعُ يكفي.
+    // Only the branch is chosen. Picking a branch then an employee meant no wallet was read until a person was chosen, but the cash is the branch's and several employees work on it.
     if (canSelectBranch && !selectedBranch) {
       setLoading(false);
       setWallet(null);
@@ -338,11 +283,7 @@ export default function WalletPage() {
         setTransactions(data.transactions || []);
         setRangeSummary(null);
       } else {
-        // ── والشهرُ الجاري ينتهي عند حدّ الدفتر، لا في آخر أيّامه ─────────
-        // «سبتمبر» في الثاني عشر منه يعني ما وقع من سبتمبر، لا ثلاثين يومًا
-        // ثمانيةَ عشرَ منها لم تأتِ. والخادمُ يحدّ المدى كذلك ويُسقِط يومَ الغد
-        // الفارغ من العدّ — لكنّ الحدَّ هنا يجعل ما يُطلَب مطابقًا لما يُعرَض
-        // من أوّل نداء.
+        // The current month ends at the ledger limit, not its last day: September on the 12th means what has happened, not thirty days of which eighteen have not come. The server limits the range too; the limit here makes the request match the display from the first call.
         const monthEnd = `${monthKey}-${String(new Date(Number(monthKey.slice(0, 4)), Number(monthKey.slice(5, 7)), 0).getDate()).padStart(2, '0')}`;
         const cap = endOfBook();
         const [from, to] = mode === 'month'
@@ -353,10 +294,7 @@ export default function WalletPage() {
         const data = await api.get<any>(`/api/wallet/range?${p.toString()}`);
         const days: any[] = data.wallets || [];
         setTransactions(data.transactions || []);
-        // ── والرصيدُ لا يُجمَع ─────────────────────────────────────────────
-        // مجموعُ أرصدةِ الإقفال اليوميّة رقمٌ لا معنى له: إقفالُ أمسِ هو
-        // افتتاحُ اليوم، فجمعُهما يعدّ المالَ نفسَه مرّتين وثلاثًا. ورصيدُ
-        // الفترة افتتاحُ أوّلِ يومٍ فيها وإقفالُ آخرِه.
+        // Balances are not summed. Summing daily closing balances counts the same money repeatedly, since yesterday's closing is today's opening. A period balance is the first day's opening and the last day's closing.
         setRangeSummary({
           totalCollections: days.reduce((a, w) => a + (w.totalCollections || 0), 0),
           totalExpenses: days.reduce((a, w) => a + (w.totalExpenses || 0), 0),
@@ -365,7 +303,7 @@ export default function WalletPage() {
           openingFirst: days.length ? (days[0].openingBalance || 0) : 0,
           closingLast: days.length ? (days[days.length - 1].closingBalance || 0) : 0,
         });
-        // لا محفظةَ يومٍ في هذا العرض، فتُخفى بطاقاتُ اليوم وأزرارُ الكتابة.
+        // No day wallet in this view, so day cards and write buttons are hidden.
         setWallet(null);
       }
       // Clear any stale error banner on successful load
@@ -397,44 +335,21 @@ export default function WalletPage() {
 
   // ─── ADD TRANSACTION ───────────────────────────────────────
   /**
-   * ── ما يكفي لتسجيل الحركة، في تعريفٍ واحد ─────────────────────────────────
-   *
-   * كان الشرطُ «لها مبلغٌ أكبرُ من صفر» مكتوبًا في ثلاثة مواضع: خانةُ المبلغ،
-   * وتعطيلُ الزرّ، وحارسٌ صامتٌ في أوّل الدالّة. وقيدُ استلام الفواتير بلا
-   * مبلغٍ بطبيعته — فصُحّح موضعان وبقي الثالث، فكان الزرُّ يعمل ولا يحدث شيء
-   * عند الضغط: لا طلبَ ولا خطأَ ولا سبب.
-   *
-   * فالسؤالُ يُجاب مرّةً هنا، ويقرؤه الزرُّ والحارسُ معًا. ونوعٌ رابعٌ يُضاف
-   * غدًا يُعرَّف شرطُه في سطرٍ واحدٍ لا في ثلاثة.
+   * What is enough to record a movement, in one definition. The amount-greater-than-zero rule was written in three places (amount field, button disabling, a silent guard in the function). The invoice receipt entry has no amount, so two were fixed and the third left the button doing nothing on click.
+   * It is answered once here and read by both button and guard; a new type needs one line.
    */
   const canSubmitTx = txType === 'tax_invoice'
     ? (txForm.receivedReports.length > 0 || !!String(txForm.receivedDocNumber || '').trim())
-    // ── والمشترياتُ لكشفٍ وُجد فعلًا، ولم يُشترَ من قبل ──────────────────────
-    // لا يكفي أن يُكتب رقمٌ في الخانة: كُتب فيها رقمُ سيّارةٍ ورقمٌ عاديٌّ فمرّا،
-    // فصار في الدفتر شراءٌ لكشفٍ لا وجودَ له. فالزرُّ لا يعمل حتى يُبحَث عن
-    // الرقم ويظهر الكشف. والخادمُ يمنع أيضًا — الشاشةُ تُرشد وهو يمنع.
+    // Purchases need a report that exists and was not bought before. A typed number is not enough: a plate number and an ordinary number passed, leaving a purchase for a nonexistent report. The button stays off until the number is searched and the report appears. The server also blocks; the screen guides.
     : txType === 'purchase'
-      // ولا شراءَ قبل أن يُستلَم السند — الشرطُ نفسُه المطبَّق على تاريخ السداد
-      // في سير عمل التشغيل، لأنّ تسجيلَ الشراء هو ما يكتب ذلك التاريخ.
+      // No purchase before the voucher is received: the same condition applied to the payment date in the operations workflow, because recording the purchase is what writes that date.
       ? (!!txForm.amount && Number(txForm.amount) > 0 && purchaseReportFound
          && !purchaseAlready && purchaseBond?.ok !== false)
       : (!!txForm.amount && Number(txForm.amount) > 0);
 
   /**
-   * ── ولماذا لا يعمل الزرّ؟ يُقال عند الزرّ نفسِه ─────────────────────────────
-   *
-   * الشروطُ صحيحةٌ كلُّها، والرسائلُ التي تشرحها موجودةٌ — لكنّها عند خانة
-   * البحث في أعلى النافذة، والزرُّ في أسفلها بعد عشر خانات. فمن بحث عن الكشف
-   * ثمّ نزل يملأ المبلغَ ورقمَ السند يصل إلى زرٍّ باهتٍ لا يُضغط ولا يقول
-   * شيئًا — فيُقرأ «الصلاحية ناقصة» أو «النظام معطّل»، وهو في الحقيقة كشفٌ لم
-   * يُستلَم سندُه بعد.
-   *
-   * وحالةُ الكشف ليست ثابتة: `applicationStatus` مرآةٌ لمنصّة التشغيل تُكتب في
-   * كلّ مزامنة، فالكشفُ الذي مُنع اليومَ قد يُقبَل بعد ساعة. ومن لا يعرف السببَ
-   * لا يعرف أنّه ينتظر شيئًا بعينه — فيعيد المحاولة بلا فهم، أو يظنّ العطبَ في
-   * حسابه.
-   *
-   * فالسببُ يُقال حيث يُكتشَف المنع: تحت الزرّ، بنصِّ حالةِ الطلب الحاليّة.
+   * State why the button is disabled at the button itself. The messages exist but sit at the search field at the top while the button is ten fields below, so a user reads missing permission or system down when the report just has no received voucher.
+   * applicationStatus mirrors the operations platform and is written on every sync, so a blocked report may be accepted an hour later.
    */
   const blockReason: string | null = canSubmitTx ? null : (() => {
     const t = (a: string, e: string) => (lang === 'ar' ? a : e);
@@ -444,10 +359,7 @@ export default function WalletPage() {
     if (txType === 'purchase') {
       if (!purchaseReportFound) return t('ابحث عن رقم أمر النقل أوّلًا — الزرّ لا يعمل حتى يظهر أمر النقل', 'Search for the dispatch report first — the button stays off until it is found');
       if (purchaseAlready) {
-        // ── والعهدةُ التي دُفع منها أهمُّ من اسم الدافع ─────────────────────
-        // الدفعُ من عهدة فرعٍ غير فرع الكشف هو الغالب — ثلثا العمليّات. فمن
-        // يقرأ اسمًا وحدَه لا يعرف أين ذهب المال، ومن يقرأ «من عهدة الرياض»
-        // يعرف أين يسأل.
+        // The custody paid from matters more than the payer name. Paying from another branch's custody is the common case, so the name alone does not say where the money went.
         const where = purchaseAlready.branch ? t(` من عهدة ${purchaseAlready.branch}`, ` from the ${purchaseAlready.branch} wallet`) : '';
         const who = purchaseAlready.by ? t(` بواسطة ${purchaseAlready.by}`, ` by ${purchaseAlready.by}`) : '';
         const when = purchaseAlready.date ? t(` يوم ${purchaseAlready.date}`, ` on ${purchaseAlready.date}`) : '';
@@ -455,10 +367,7 @@ export default function WalletPage() {
           `هذا أمر النقل مدفوعٌ بالفعل: ${Number(purchaseAlready.amount || 0).toLocaleString()} ريال${where}${who}${when}. لا يُدفَع أمر النقل مرّتين — راجعه مع الفرع الذي دفعه إن كان هناك خطأ.`,
           `This report is already paid: ${Number(purchaseAlready.amount || 0).toLocaleString()} SAR${where}${who}${when}. A report is not paid twice — take it up with the branch that paid it if this is wrong.`);
       }
-      // ── وحالةُ السند لم تعد مانعًا ────────────────────────────────────
-      // كانت تردّ الحفظ حتّى تصير «استُلم السند». ومَن دفع فقد استلم الورقة:
-      // فالتسجيلُ هو الإعلان لا العكس — تُكتب الحالةُ بعد الحفظ عندنا وفي
-      // المنصّة معًا. والشاشةُ تقول ذلك قبل الحفظ (البطاقةُ الزرقاء أدناه).
+      // Voucher status no longer blocks saving. It used to reject until the status was received, but whoever paid has received the paper, so recording is the declaration: the status is written after saving, here and on the platform. The screen says so before saving (blue card below).
       if (!txForm.amount || Number(txForm.amount) <= 0) return t('اكتب مبلغ الشراء', 'Enter the purchase amount');
       return null;
     }
@@ -466,7 +375,7 @@ export default function WalletPage() {
     return null;
   })();
 
-  /** يُضيف الكشفَ وسندَه زوجًا — ويُستدعى من الزرّ ومن مفتاح الإدخال معًا. */
+  /** Adds the report and its voucher as a pair; called from both the button and the Enter key. */
   const addReceivedReport = () => {
     const n = String(txForm.receivedDocNumber || '').trim();
     if (!n) return;
@@ -490,17 +399,12 @@ export default function WalletPage() {
         type: txType,
         amount: Number(txForm.amount),
         notes: txForm.notes || undefined,
-        // ── وتُقيَّد الحركةُ على الفرع المعروض ──────────────────────────────
-        // كانت الصفحةُ **تقرأ** عهدةَ الفرع المختار و**تكتب** بلا فرع، فيقع
-        // القيدُ على فرع صاحب الحساب. ومَن لا فرعَ له — المحاسبةُ كلُّها — يُردّ
-        // «لا يوجد فرع محدَّد لهذه الحركة» بعد أن ملأ النموذج كلَّه.
-        //
-        // ويُقرأ ويُكتب على الفرع نفسِه: ما تراه هو ما تكتب فيه.
+        // Restrict the movement to the displayed branch. The page read the selected branch's custody but wrote without a branch, so the entry fell on the account holder's branch, and accounting, which has none, got a no-branch error after filling the whole form.
+        // Read and write on the same branch: what is seen is what is written.
         ...(selectedBranch ? { branchId: selectedBranch } : {}),
       };
       // Expected dispatch-sheet value for this transaction type (null = no lookup done).
-      // ما بقي في خانة الكتابة ولم يُضَف بعد يُحسب: مَن كتب رقمًا وضغط «حفظ»
-      // مباشرةً قصد إضافتَه — وإسقاطُه بصمتٍ يفقده كشفًا ظنّ أنّه سجّله.
+      // Whatever remains in the input but was not yet added is counted: someone who typed a number and pressed save meant to add it, and dropping it silently loses a report they thought was recorded.
       const pendingReport = String(txForm.receivedDocNumber || '').trim();
       const allPairs = [...txForm.receivedReports];
       if (pendingReport && !allPairs.some((x) => x.reportNumber === pendingReport)) {
@@ -511,8 +415,7 @@ export default function WalletPage() {
         setSubmitting(false);
         return;
       }
-      // التحصيلُ لا يُقارَن بقيمة الكشف (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢): المحصَّلُ يختلف عنها
-      // بطبيعته، فيُكتب كما هو بلا تنبيهٍ ولا سبب.
+      // Collections are not compared with the report value: the collected amount differs by nature, so it is recorded as is with no alert or reason.
       const expected = txType === 'purchase' ? expectedPurchaseValue : null;
       const isMismatch = expected != null && Math.abs(Number(txForm.amount) - expected) > 0.009;
       if (isMismatch) {
@@ -541,7 +444,7 @@ export default function WalletPage() {
         payload.itemName = txForm.itemName || undefined;
       }
       if (txType === 'tax_invoice') {
-        // بلا مبلغ: القيدُ يقول «استلمتُ»، ولا مالَ دخل ولا خرج.
+        // No amount: the entry says received; no money came in or out.
         payload.amount = 0;
         payload.receivedReports = allPairs;
       }
@@ -553,10 +456,7 @@ export default function WalletPage() {
 
       }
       const res = await api.post<{ unknownReports?: string[] }>('/api/wallet/transactions', payload);
-      // ── ورقمٌ لم يُعرَف يُقال قبل إغلاق النافذة ──────────────────────────
-      // القيدُ يُحفظ بكلّ ما كُتب، لكنّ رقمًا لا كشفَ له عندنا قد يكون خطأً
-      // مطبعيًّا. وإغلاقُ النافذة بصمتٍ يجعل الموظّفَ يظنّ أنّ السبعةَ خُتمت
-      // وقد خُتم منها خمسة.
+      // An unrecognized number is reported before the dialog closes. The entry saves everything typed, but a number with no report here may be a typo, and closing silently makes the employee think all seven were stamped when only five were.
       if (res?.unknownReports?.length) {
         setTxError(lang === 'ar'
           ? `حُفظ القيد — ولم نجد أوامر نقل بهذه الأرقام: ${res.unknownReports.join('، ')}`
@@ -682,8 +582,7 @@ export default function WalletPage() {
     });
   };
 
-  // Search كشف التخريج for PURCHASES — pulls the driver, branch and purchase
-  // price straight from the Operations Platform data and auto-fills them.
+  // Search the dispatch report for purchases: pulls driver, branch and purchase price straight from the operations platform data and auto-fills them.
   const handlePurchaseReportSearch = async () => {
     if (!purchaseReportSearch.trim()) return;
     setPurchaseReportMsg('');
@@ -700,19 +599,7 @@ export default function WalletPage() {
         // Auto-fill from the dispatch sheet (still editable if wrong).
         purchaseDriverName: data.driverName || f.purchaseDriverName,
         purchaseBranch: data.branch || f.purchaseBranch,
-        // ── والمبلغُ منها أيضًا ────────────────────────────────────────────
-        //
-        // خاناتُ هذه النافذة مرتَّبةٌ والمبلغُ أوّلُها، وخانةُ البحث عن الكشف
-        // تحته. فمن يسجّل شراءً يبدأ من الأسفل: يبحث بالكشف، فتظهر بياناتُه،
-        // فيكتب رقم السند — ويبقى المبلغُ فوق فارغًا، لأنّه مرّ عليه قبل أن
-        // يعرف الكشفَ أصلًا. ثمّ يصل إلى زرٍّ لا يُضغط ولا يقول شيئًا، فيُقرأ
-        // «الصلاحية ناقصة».
-        //
-        // وقيمةُ الشراء معلومةٌ في الكشف نفسِه — كانت تُعرَض سطرًا تحت الخانة
-        // («سعر الشراء: 1,000») ولا تُكتب فيها. فتُملأ كما يُملأ السائقُ والفرع
-        // من المصدر نفسِه، وتبقى قابلةً للتعديل إن اختلف المدفوع.
-        //
-        // ولا يُكتب فوق ما كُتب بيد: من أدخل مبلغًا قبل البحث قصده.
+        // The amount is filled from the report too. The amount field is first in the dialog with the report search below it; recording a purchase starts from the bottom, so the amount stayed empty and the button looked like missing permission. The purchase value is in the report itself, so it is filled like driver and branch and stays editable if the amount paid differs.
         amount: (f.amount && String(f.amount).trim() !== '')
           ? f.amount
           : (data.purchaseValue != null && Number(data.purchaseValue) > 0 ? String(data.purchaseValue) : f.amount),
@@ -729,8 +616,7 @@ export default function WalletPage() {
     }
   };
 
-  // Search كشف التخريج for COLLECTIONS — confirms the report exists; the amount
-  // collected is typed freely (no expected value, no mismatch reason).
+  // Search the dispatch report for collections: confirms the report exists; the amount collected is typed freely (no expected value, no mismatch reason).
   const handleCollectionReportSearch = async () => {
     const q = txForm.deliveryStatementNumber.trim();
     if (!q) return;
@@ -747,24 +633,14 @@ export default function WalletPage() {
     }
   };
 
-  // ── الملفُّ صورةُ الشاشة ───────────────────────────────────────────────────
-  //
-  // كان الجدولُ على الشاشة يعرض ستَّ عشرة خانة، والملفُّ يخرج بسبعٍ منها: لا
-  // العميل ولا «من» و«إلى» ولا نوعُ السيّارة وطولُها ورقمُها ولا تاريخُ الكشف.
-  // ومن يصدّر إنّما يصدّر ليُرسل أو ليراجع، فيرسل نصفَ ما رأى وهو يحسبه كلَّه.
-  // فترويسةُ كلِّ عمودٍ هنا تُقرأ من `L` نفسِها التي تكتب ترويسةَ الشاشة، فلا
-  // يفترقان بعدها لا في العدد ولا في التسمية.
-  //
-  // وهما كتلتان في ورقةٍ واحدة لا ورقتان: الملخّصُ فوق والحركاتُ تحته، كما
-  // تُقرأ الصفحة. ورقتان في ملفٍّ تعنيان أنّ من يفتحه يرى نصفَ الصورة ولا
-  // يدري أنّ نصفَها الآخرَ في لسانٍ ثانٍ.
+  // The file mirrors the screen. The table showed sixteen columns and the file exported seven (no customer, from/to, vehicle type, length, number, report date), so the sender sent half of what they saw. Each header is read from the same L that writes the screen header, so they cannot differ in count or naming.
+  // Summary and movements are two blocks on one sheet, as the page reads, not two sheets.
   const dash = (v: any) => (v === 0 ? 0 : (v || ''));
   const opDetail = (k: 'client' | 'from' | 'to' | 'carType' | 'length' | 'carNumber') =>
     ({ header: L[k], key: 'operationDetails', transform: (v: any) => dash(v?.[k]), width: 18 });
 
   const walletSummaryColumns = [
-    // المحفظةُ صارت للفرع: «المستخدم» لم يعد وصفًا ليوميّةٍ بل لحركة. راجع
-    // models/DailyWallet.
+    // The wallet now belongs to the branch: user describes a movement, not a daily ledger. See models/DailyWallet.
     { header: L.branch, key: 'branch.name', width: 20 },
     { header: ar ? 'التاريخ' : 'Date', key: 'date', width: 12 },
     { header: `${L.opening} (SAR)`, key: 'openingBalance', transform: fmt.money, width: 18 },
@@ -777,47 +653,15 @@ export default function WalletPage() {
     { header: ar ? 'فرق النقد (SAR)' : 'Cash Difference (SAR)', key: 'cashDifference', transform: (v: any, row: any) => (v != null ? fmt.money(v) : (row?.isClosed ? fmt.money(0) : L.open)), width: 20 },
   ];
 
-  // «التفاصيل» على الشاشة سطورٌ مركَّبة في خانةٍ واحدة، فتُكتب كما تُعرض —
-  // ومعها أعمدتُها المفردة، لأنّ الملفَّ يُفلتَر ويُجمَع والسطرُ المركَّب لا
-  // يُفلتَر عليه.
-  /**
-   * ── ولا عمودَ اسمُه «التفاصيل» ─────────────────────────────────────────────
-   *
-   * كان عمودًا واحدًا يجمع ثمانيةَ مصادرَ في فقرةٍ مفصولةٍ بخطوط: وصفٌ وعميلٌ
-   * وفاتورةٌ ومورّدٌ وبندُ مصروفٍ واسمُ صنفٍ وسائقٌ ورقمُ سند. وقيسَ عليه فبان
-   * أنّه لا يعمل:
-   *
-   *   ٨٢١ صفًّا من ٩٤٠ — الخانةُ فيها فارغةٌ تمامًا (٨٧٪).
-   *   وسبعُمئةٍ وتسعةٌ وتسعون منها مشترياتٌ، تفاصيلُها فارغةٌ عن آخرها — لأنّ
-   *   المشترياتِ تكتب بياناتها في أعمدتها: كشفٌ وسندٌ وسائقٌ وفرع.
-   *   وأربعةٌ من مصادره الثمانية لم يُكتب فيها صفٌّ واحدٌ قطّ: الفاتورةُ
-   *   المربوطة، والمورّدُ، واسمُ المورّد، وبندُ المصروف — بقايا تصميمٍ أقدمَ
-   *   كانت المحفظةُ فيه تسجّل مصروفاتٍ بمورّدين وبنود.
-   *
-   * وما بقي فيه شيئان مختلفان حُشرا في خانة: سطرٌ يقول ما هذا القيدُ («تحويل من
-   * الدمام إلى الرياض»، «كهرباء شهر أغسطس») — وهو `description` في التحصيل
-   * و`itemName` في المصروف، وهما شيءٌ واحدٌ للقارئ — واسمُ عميلٍ مربوط.
-   *
-   * فصارا عمودين يُفلتَر عليهما ويُجمَع تحتهما، و«من الشركة» وسمًا على نوع
-   * القيد لأنّه صفتُه لا تفصيلٌ فيه.
-   */
+  // Details on screen are lines composed into one cell, so they are written as displayed, together with their separate columns, since a composed line cannot be filtered or summed.
+  /** No column named details. It merged eight sources into one dashed paragraph (description, customer, invoice, supplier, expense item, item name, driver, voucher number). Measured, it did not work: 821 of 940 rows had it empty (87%), 799 of them purchases, whose data lives in their own columns (report, voucher, driver, branch), and four of the eight sources never had a single row written. */
   const statementOf = (tx: any) => tx?.description || tx?.itemName || '';
   const customerOf = (tx: any) => (tx?.customer ? `${tx.customer.companyName} (${tx.customer.customerNumber})` : '');
 
-  // ── ومصدرُ اسمِ السائق واحدٌ يُقرأ في ثلاثة مواضع ────────────────────────
-  // للسائق ثلاثةُ مواضعَ في القيد: سجلٌّ مربوطٌ (`driver`)، واسمٌ حرٌّ كُتب في
-  // مصروف (`driverName`)، واسمٌ يُكتب في نموذج المشتريات (`purchaseDriverName`).
-  // وهي واحدٌ للقارئ: «مَن السائق؟». فتُقرأ بدالّةٍ واحدةٍ يستعملها العمودُ
-  // والملفُّ والطباعة — ولو قُرئت في كلّ موضعٍ بسلسلةٍ خاصّة لافترقت.
+  // One driver source read in three places. A driver appears as a linked record (driver), a free name in an expense (driverName), or a name in the purchase form (purchaseDriverName). They mean one thing to the reader, so a single function is used by the column, the file and print.
   const driverOf = (tx: any) => tx?.driver?.name || tx?.driverName || tx?.purchaseDriverName || '';
 
-  /**
-   * ── قمعُ الأعمدة على طريقة إكسل ───────────────────────────────────────────
-   * جدولُ المحفظة تسعةَ عشرَ عمودًا، والسؤالُ اليوميُّ فيه «أرني مشترياتِ هذا
-   * السائق» أو «حركاتِ هذا الفرع» — وكان يُفعَل بالتصدير إلى إكسل والفلترة
-   * هناك. والقيمةُ المفلترةُ هي المقروءةُ في الصفّ حرفًا بحرف (نفسُ الدوالِّ
-   * أعلاه)، فلا يُفلتَر على شيءٍ لا يُرى. راجع hooks/useColumnFilters.
-   */
+  /** Excel-style column funnel. The wallet table has nineteen columns and the daily question is show this driver's purchases or this branch's movements, previously done by exporting to Excel. The filtered value is the one read in the row (same functions above). See hooks/useColumnFilters. */
   const cf = useColumnFilters<Transaction>({
     day: (tx) => (tx as any).date || '',
     type: (tx) => typeLabel(tx.type),
@@ -838,15 +682,7 @@ export default function WalletPage() {
   }, transactions, ar ? 'ar' : 'en');
   const shownTx = cf.apply(transactions);
 
-  /**
-   * ── كشوفُ اليوم كلُّها بنسخةٍ واحدة ───────────────────────────────────────
-   * «عايز آخد كشوف التخريج بتاعة يوم معيّن كلهم مع بعض» — وكان ذلك يُفعَل
-   * بقراءة الصفوف وكتابتها بيد. والأرقامُ تُنسَخ من **ما يُعرَض** لا من كلّ
-   * شيء: فإن فُلتر الجدولُ بالفرع أو بالسائق جاءت كشوفُ ذلك الفلتر وحدَها —
-   * وهو ما يُقصَد عادةً.
-   *
-   * وتُنسَخ مرتَّبةً وبلا تكرار، ويُقال كم رقمًا نُسِخ.
-   */
+  /** All of a day's reports in one copy. Numbers are copied from what is displayed, not from everything: filtering by branch or driver copies only that filter's reports, which is usually what is meant. They are sorted, deduplicated, and the count copied is shown. */
   const dayReportNumbers = () => {
     const nums = new Set<string>();
     for (const tx of shownTx) {
@@ -864,18 +700,13 @@ export default function WalletPage() {
       await navigator.clipboard.writeText(nums.join(sep));
       notify(ar ? `نُسِخ ${nums.length} أمر نقل` : `Copied ${nums.length} report numbers`, 'success');
     } catch {
-      // متصفّحٌ يمنع الحافظةَ بلا تفاعلٍ مباشر: يُعرَض النصُّ لِيُنسَخ بيد.
+      // The browser blocks the clipboard without a direct interaction: the text is shown to copy by hand.
       window.prompt(ar ? 'انسخ الأرقام:' : 'Copy the numbers:', nums.join(sep));
     }
   };
 
-  // ── ونقلُ حركةٍ إلى فرعٍ آخر أو يومٍ آخر ─────────────────────────────────
-  // اليوميّتان يُعاد حسابهما وتتدحرج أرصدتُهما في الخادم — راجع
-  // `moveTransaction`. والشاشةُ تسمع `wallet:transaction` فتُحدَّث وحدَها.
-  //
-  // والطرفان مستقلّان: يُفتَح الحقلان على ما هو قائمٌ الآن، فمن أراد يومًا آخرَ
-  // في الفرع نفسِه غيّر التاريخَ وحدَه. والزرُّ لا يعمل حتّى يتغيّر أحدُهما —
-  // ونقلٌ إلى حيث هو خطأٌ يردّه الخادم، فلا يُعرَض بابًا على الشاشة.
+  // Move a transaction to another branch or day. Both ledgers are recomputed and their balances roll on the server (see moveTransaction); the screen listens to wallet:transaction and refreshes itself.
+  // The two targets are independent: both fields open on the current values, so another day on the same branch changes only the date. The button stays off until one changes, since moving to where it already is is a server error.
   const [moving, setMoving] = useState<any | null>(null);
   const [moveTo, setMoveTo] = useState('');
   const [moveDate, setMoveDate] = useState('');
@@ -894,8 +725,7 @@ export default function WalletPage() {
       const r = await api.patch<any>(`/api/wallet/transactions/${moving._id}/move`, { branch: moveTo, date: moveDate });
       notify(r.message || (ar ? 'نُقلت الحركة' : 'Moved'), 'success');
       setMoving(null); setMoveTo(''); setMoveDate('');
-      // واليومُ المعروضُ قد لا يعود يحوي القيد — نُقل إلى غيره. فتُقرأ اليوميّةُ
-      // المعروضةُ من جديدٍ لتُظهر نقصانَه، والوجهةُ تُقرأ حين تُفتَح.
+      // The displayed day may no longer contain the entry since it moved, so the displayed ledger is re-read to show the reduction, and the destination is read when opened.
       await fetchWallet(false);
     } catch (e: any) { notify(e?.message || (ar ? 'تعذّر النقل' : 'Could not move'), 'error'); }
     setMoveBusy(false);
@@ -906,19 +736,17 @@ export default function WalletPage() {
     { header: ar ? 'التاريخ' : 'Date', key: 'date', transform: fmt.date, width: 12 },
     { header: L.time, key: 'createdAt', transform: (v: any) => (v ? new Date(v).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : ''), width: 8 },
     { header: L.type, key: 'type', transform: (v: any) => (v ? typeLabel(v) : ''), width: 14 },
-    // قيدُ الفاتورة الضريبيّة لا يمسّ الرصيد، والرقمُ فيه صفرٌ لا مبلغ —
-    // فيُكتب كما يُقرأ على الشاشة لا كصفرٍ يُجمَع مع المال.
+    // A tax invoice entry does not touch the balance and its number is a zero, not an amount, so it is written as read on screen and not as a zero summed with money.
     { header: `${L.amount} (SAR)`, key: 'amount', transform: (v: any, row: any) => (row?.type === 'tax_invoice' ? (ar ? 'خارج الرصيد' : 'off-balance') : fmt.money(v)), width: 15 },
     { header: ar ? 'البيان' : 'Statement', key: '_statement', transform: (_v: any, row: any) => dash(statementOf(row)), width: 34 },
     { header: ar ? 'العميل' : 'Customer', key: '_customer', transform: (_v: any, row: any) => dash(customerOf(row)), width: 26 },
-    // و«من الشركة» خانةُ نعم/لا تُجمَع، لا كلمةٌ داخل نصّ.
+    // From the company is a yes/no field that is summed, not a word inside text.
     { header: ar ? 'من الشركة' : 'From company', key: 'collectionSource',
       transform: (v: any) => (v === 'company' ? (ar ? 'نعم' : 'Yes') : ''), width: 12 },
     { header: L.deliveryStatementNumber, key: 'deliveryStatementNumber', transform: (v: any, row: any) => dash(v || row?.purchaseDeliveryStatementNumber), width: 20 },
-    // ورقمُ السند بجانب كشفه في الملفّ كما هو بجانبه على الشاشة: السؤالُ
-    // «أيُّ سندٍ لأيّ كشف؟» يُقرأ في خانتين متجاورتين لا في طرفَي الصفّ.
+    // The voucher number sits beside its report in the file as on screen, so which voucher belongs to which report reads in adjacent cells.
     { header: L.receipt, key: 'purchaseReceiptNumber', transform: (v: any) => dash(v), width: 15 },
-    // السائقُ بجانب سنده وكشفه في الملفّ كما هو بجانبهما على الشاشة.
+    // The driver sits beside the voucher and report in the file, as on screen.
     { header: L.driver, key: 'driver', transform: (_v: any, row: any) => dash(driverOf(row)), width: 18 },
     { header: L.branch, key: 'purchaseBranch', transform: (v: any, row: any) => dash(v || row?.operationDetails?.branch), width: 16 },
     opDetail('client'),
@@ -929,25 +757,15 @@ export default function WalletPage() {
     opDetail('carNumber'),
     { header: L.reportDate, key: 'operationDetails', transform: (v: any) => (v?.reportDate ? new Date(v.reportDate).toLocaleDateString('en-GB') : ''), width: 14 },
     { header: L.notes, key: 'notes', width: 25 },
-    // مَن سجّلها: المحفظةُ للفرع يعمل عليها أكثرُ من موظّف، فالملفُّ بلا اسمِ
-    // الفاعل يقول ماذا جرى ولا يقول من فعل.
+    // Who recorded it: the branch wallet is worked on by several employees, and a file without the actor says what happened but not who did it.
     { header: ar ? 'سجّلها' : 'Recorded by', key: 'user', transform: (v: any) => (v ? `${v.firstName || ''} ${v.lastName || ''}`.trim() : ''), width: 20 },
-    // ── وما لا يُكتب لا يُصدَّر ────────────────────────────────────────────
-    // كانت هنا ثمانيةُ أعمدةٍ تفكّ «التفاصيل». وقد رُفع منها ما لم يُكتب فيه
-    // صفٌّ واحدٌ قطّ في تسعِمئةٍ وأربعين قيدًا: المورّدُ، وبندُ المصروف، ورقمُ
-    // الفاتورة المربوطة وقيمتُها ورصيدُها. عمودٌ فارغٌ في كلّ صفٍّ لا يُقرأ —
-    // يُزاح ما بعده ويُطوَّل الملفُّ ويُسأل عنه كلَّ مرّة.
-    //
-    // والعميلُ و«البيان» صارا عمودين في الأعلى بجانب ما يخصّهما، فلا يُعادان.
+    // What is never written is not exported. Eight columns here unpacked details; those never written in any of 940 entries were removed (supplier, expense item, linked invoice number, value and balance). An empty column in every row is unread, shifts the rest and lengthens the file. Customer and statement became two columns near what they belong to, so are not repeated.
     { header: ar ? 'أوامر نقل الفاتورة الضريبيّة' : 'Received reports', key: 'receivedReportNumbers', transform: (v: any, row: any) => ((v?.length ? v : [row?.receivedDocNumber]).filter(Boolean).join(' , ')), width: 24 },
     { header: ar ? 'مرجع' : 'Reference', key: 'reference', width: 15 },
     { header: ar ? 'مُعلَّمة' : 'Flagged', key: 'isFlagged', transform: fmt.yesNo, width: 10 },
   ];
 
-  // ── التصديرُ بالزرّ الموحَّد ونطاقين ──────────────────────────────────────
-  // كانت لهذه الشاشة نافذتُها الخاصّة: شكلٌ آخرُ لزرٍّ يحمل في تسعين شاشةً شكلًا
-  // واحدًا، وخطوةٌ زائدةٌ قبل كلّ تصدير. والنطاقان هما ما يُطلب فعلًا: يومُ
-  // الشاشة، أو الدفترُ كلُّه.
+  // Export through the unified button with two scopes. This screen had its own dialog, a different button from the one on ninety screens and an extra step. The two scopes are what is asked for: the screen's day, or the whole ledger.
   const scope = exportScopeLabels(ar);
   const branchNameForFile = wallet?.branch?.name || 'wallet';
   const sheetName = ar ? 'المحفظة اليومية' : 'Daily Wallet';
@@ -970,9 +788,7 @@ export default function WalletPage() {
     const d = await api.get<any>(`/api/wallet/range?${params.toString()}`);
     return oneSheet(scope.all, (d.wallets || []) as Record<string, any>[], (d.transactions || []) as Record<string, any>[]);
   };
-  // ── والحدُّ المعروض هو الحدُّ المصدَّر ───────────────────────────────────
-  // كان التصديرُ خيارَين: يومٌ واحدٌ أو الدفترُ كلُّه. فمن نظر إلى شهرٍ على
-  // الشاشة ثمّ صدّر لم يجد شهرَه في القائمة — يصدّر الكلَّ ويحذف باليد.
+  // The displayed range is the exported range. Export had two options (one day or the whole ledger), so someone viewing a month found no month option and exported everything then deleted by hand.
   const shownLabel = mode === 'day' ? selectedDate
     : mode === 'month' ? monthKey : `${rangeFrom} → ${rangeTo}`;
 
@@ -981,21 +797,19 @@ export default function WalletPage() {
       ? {
         key: 'day',
         label: `${scope.shown} — ${selectedDate}`,
-        // ── والمصدَّرُ هو المعروضُ بقمع أعمدته ─────────────────────────
-        // فلتر العمود جزءٌ من «ما على الشاشة»: من فلتر بالسائق ثمّ صدّر
-        // يتوقّع ملفَّ ذلك السائق لا الدفترَ كلَّه.
+        // The export is what is displayed, including column funnels: a column filter is part of what is on screen, and someone who filtered by driver expects that driver's file, not the whole ledger.
         sheets: oneSheet(selectedDate, (wallet ? [wallet] : []) as Record<string, any>[], shownTx as unknown as Record<string, any>[]),
       }
       : {
         key: 'shown',
         label: `${scope.shown} — ${shownLabel}`,
-        // ما على الشاشة محمَّلٌ بالفعل، فلا يُطلَب من الخادم مرّةً ثانية.
+        // What is on screen is already loaded, so the server is not asked again.
         sheets: oneSheet(shownLabel, [] as Record<string, any>[], shownTx as unknown as Record<string, any>[]),
       },
     {
       key: 'all',
       label: scope.all,
-      // يُجلب عند الضغط لا قبله — لا يُحمَّل الدفترُ كلُّه لمن لن يصدّر.
+      // Fetched on click, not before: the whole ledger is not loaded for someone who will not export.
       resolve: () => rangeSheets('2000-01-01', '2100-12-31'),
     },
   ];
@@ -1025,10 +839,7 @@ export default function WalletPage() {
     );
   }
 
-  // ── و«لا محفظة» ليست «لا فرع» في عرض الفترة ──────────────────────────────
-  // عرضُ الفترة والشهر لا محفظةَ يومٍ له أصلًا (`setWallet(null)`)، فلو بقي هذا
-  // الشرطُ على حاله لَخرج موظّفُ الفرع — وهو أكثرُ من يستعمل الشاشة — إلى صفحة
-  // «لم يُعيَّن لك فرع» لمجرّد أنّه اختار «شهر».
+  // No wallet is not no branch in the period view. Period and month have no day wallet (setWallet(null)), so with the old condition a branch employee, the most frequent user, would land on the no-branch-assigned page just by choosing month.
   if (mode === 'day' && !wallet && !canSelectBranch) {
     return (
       <div className="min-h-[60vh] flex items-center justify-center">
@@ -1067,11 +878,10 @@ export default function WalletPage() {
                 className="px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#f37121]/50">
                 {allBranches.map((b) => <option key={b._id} value={b._id}>{b.name}</option>)}
               </select>
-              {/* منتقي الموظّف أُزيل: المحفظةُ للفرع. ومَن سجّل كلَّ حركةٍ
-                  يظهر في سطرها — «نعرف مين الموظّف» تبقى، والرصيدُ يصير واحدًا. */}
+              {/* The employee picker was removed: the wallet belongs to the branch. Each movement shows who recorded it, so the actor is still known and the balance is single. */}
             </>
           )}
-          {/* ── يومٌ أو فترةٌ أو شهر ─────────────────────────────────────── */}
+          {/* Day, period or month */}
           <div className="flex rounded-lg border border-slate-200 bg-white p-0.5">
             {([
               ['day', lang === 'ar' ? 'يوم' : 'Day'],
@@ -1088,11 +898,7 @@ export default function WalletPage() {
 
           {mode === 'day' && (
             <>
-              {/* ── ولا يُعرَض ما سيُرفَض ────────────────────────────────
-                  الدفترُ يبدأ في `WALLET_START_DATE`، والخادمُ يردّ كلَّ نداءٍ
-                  قبله. ولو بقي المنتقي مفتوحًا على الماضي لاختير أغسطسُ ثمّ
-                  رُدّ الطلبُ بخطأٍ أحمر — منعٌ يُكتشَف بعد الضغط بدل أن يُقرأ
-                  قبله. */}
+              {/* Do not offer what will be rejected. The ledger starts at WALLET_START_DATE and the server rejects any call before it; an open picker on the past let a month be chosen and then fail with a red error, a block found after the click instead of before. */}
               <input type="date" value={selectedDate} min={freeDates ? undefined : WALLET_START_DATE} max={freeDates ? undefined : endOfBook()} onChange={(e) => setSelectedDate(e.target.value)}
                 title={lang === 'ar' ? `دفتر العهدة يبدأ ${WALLET_START_DATE}` : `The wallet starts ${WALLET_START_DATE}`}
                 className="px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-900 text-sm [color-scheme:light] focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" aria-label={txx.selectDate} />
@@ -1202,18 +1008,14 @@ export default function WalletPage() {
                 className="flex items-center gap-2 px-4 py-2 bg-blue-500/20 text-blue-600 rounded-lg text-sm font-medium hover:bg-blue-500/30 transition-colors border border-blue-500/30">
                 <ShoppingCart className="w-4 h-4" /> {L.purchase}
               </button>
-              {/* ── واسمُ الزرّ من موضعٍ واحد ────────────────────────────────
-                  كان مكتوبًا هنا بيده وفي `TYPE_CONFIG` مرّةً أخرى. فلمّا
-                  صُحّح الاسمُ في الخريطة بقي الزرُّ يقول «فاتورة ضريبية» —
-                  والاسمُ في موضعين يُصحَّح في أحدهما ويُنسى في الآخر. */}
+              {/* The button name comes from one place. It was written here by hand and again in TYPE_CONFIG, so fixing the name in the map left the button saying tax invoice; a name in two places gets fixed in one. */}
               <button type="button" onClick={() => openTxModal('tax_invoice')}
                 className="flex items-center gap-2 px-4 py-2 bg-slate-200/70 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-300/70 transition-colors border border-slate-300">
                 <Receipt className="w-4 h-4" /> {typeLabel('tax_invoice')}
               </button>
             </>
           )}
-          {/* ولا يُترَك الفراغُ بلا تفسير: من أقفل يومَه يجب أن يعرف لماذا
-              اختفت الأزرار وما الطريق. */}
+          {/* The empty space is explained: whoever closed their day needs to know why the buttons disappeared and what to do. */}
           {wallet.isClosed && !canWriteClosedDay && (
             <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-[12.5px]">
               <Lock className="w-4 h-4 shrink-0" />
@@ -1228,10 +1030,7 @@ export default function WalletPage() {
               <Lock className="w-4 h-4" /> {L.closeDay}
             </button>
           )}
-          {/* ── وإعادةُ الفتح لمدير النظام وحدَه ────────────────────────────
-              يومٌ أُقفل صار رقمًا في دفترٍ مُقَرّ: فتحُه يُعيد كتابةَ رصيدِه ورصيدِ
-              كلِّ يومٍ بعده. وكان الزرُّ لثلاثة أدوار، فصار لمن يُسأل عن الدفتر.
-              راجع maySettle في الخادم — وهو الحارسُ، وهذا إخفاءٌ لا يُغني عنه. */}
+          {/* Reopening is for the system admin only. A closed day is a number in an approved ledger; opening it rewrites its balance and every later day. The button was for three roles, now only those who answer for the ledger. See maySettle on the server, the actual guard; this hiding is no substitute. */}
           {wallet.isClosed && isSuperAdmin && (
             <button type="button" onClick={handleReopenDay}
               className="flex items-center gap-2 px-4 py-2 bg-yellow-500/20 text-yellow-700 rounded-lg text-sm font-medium hover:bg-yellow-500/30 transition-colors border border-yellow-500/30 ms-auto">
@@ -1243,15 +1042,7 @@ export default function WalletPage() {
 
       </>)}
 
-      {/* ── بطاقاتُ الفترة ────────────────────────────────────────────────
-          تُعرض في عرضَي الفترة والشهر مكانَ بطاقات اليوم. والافتتاحُ والإقفال
-          طرفان لا مجموع — راجع تعليقَ `setRangeSummary`.
-
-          ── ولماذا هي خارج كتلة `wallet` ───────────────────────────────────
-          كانت داخلها، ومعها جدولُ الحركات كلُّه. وعرضُ الفترة والشهر لا محفظةَ
-          يومٍ له أصلًا (`setWallet(null)` في `fetchWallet`) — فكان الضغطُ على
-          «فترة» أو «شهر» يمحو محتوى الصفحة كلَّه: لا بطاقاتٍ ولا جدولَ حركات
-          ولا شيء، وتبقى الترويسةُ وحدها فوق بياضٍ فيبدو أنّ الشاشة عطبت. */}
+      {/* Period cards, shown in period and month views in place of the day cards. Opening and closing are endpoints, not a sum; see the setRangeSummary comment. They sit outside the wallet block: those views have no day wallet (setWallet(null) in fetchWallet), so inside it choosing period or month wiped the whole page content, leaving only the header over blank space. */}
       {rangeSummary && (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
           <RangeCard label={lang === 'ar' ? 'عدد الأيام' : 'Days'} value={rangeSummary.days} />
@@ -1270,10 +1061,7 @@ export default function WalletPage() {
           <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold text-sm flex items-center gap-2 mb-3">
             <Receipt className="w-4 h-4 text-[#f37121]" />
             {L.transactions} ({shownTx.length}{shownTx.length !== transactions.length ? ` / ${transactions.length}` : ''})
-            {/* ── وكشوفُ المعروض تُنسَخ بضغطة ──────────────────────────────
-                «عايز آخد أوامر النقل بتاعة يوم معيّن كلهم مع بعض» — تُجمَع
-                من الصفوف المعروضة (فإن فُلترت بالفرع أو بالسائق جاءت أوامر نقل
-                ذلك الفلتر وحدَها)، مرتَّبةً وبلا تكرار. */}
+            {/* Displayed reports copy in one click. Transport orders for a chosen day are gathered from the displayed rows (filtering by branch or driver copies only that filter's orders), sorted and deduplicated. */}
             <span className="ms-auto flex items-center gap-1.5">
               <button type="button" onClick={() => copyDayReports('\n')}
                 title={ar ? 'نسخ أوامر النقل المعروضة — كلٌّ في سطر (للصقها في إكسل)' : 'Copy the shown report numbers — one per line'}
@@ -1299,11 +1087,7 @@ export default function WalletPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-slate-900 border-b border-slate-200">
-                {/* ── واليومُ عمودٌ حين لا يكون اليومُ هو الشاشة ────────────
-                    في عرض اليوم التاريخُ في الترويسة، فعمودٌ يكرّره في كلّ
-                    سطرٍ زيادةٌ. وفي عرض الشهر تُسرَد حركاتُ ثلاثين يومًا في
-                    جدولٍ واحد — وبلا هذا العمود لا يُعرَف أيُّ حركةٍ من أيّ
-                    يوم، فيصير الجدولُ قائمةً لا تُراجَع. */}
+                {/* Day is a column when the day is not the screen. In day view the date is in the header, so a column repeating it is noise; in month view thirty days of movements share one table and without it you cannot tell which movement is from which day. */}
                 {mode !== 'day' && (
                   <th className="text-start text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{cf.head('day', lang === 'ar' ? 'اليوم' : 'Day')}</th>
                 )}
@@ -1312,18 +1096,9 @@ export default function WalletPage() {
                 <th className="text-start text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{cf.head('statement', ar ? 'البيان' : 'Statement')}</th>
                 <th className="text-start text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{cf.head('customer', ar ? 'العميل' : 'Customer')}</th>
                 <th className="text-start text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{cf.head('report', L.deliveryStatementNumber)}</th>
-                {/* ── ورقمُ السند عمودٌ بجانب كشفه ──────────────────────────
-                    كان مدفونًا في عمود «التفاصيل» مع سائقٍ ووصفٍ وعميل، فمن
-                    أراد أن يعرف أيَّ سندٍ كُتب لأيّ أمر نقلٍ قرأ فقرةً في
-                    كلّ صفّ وجمعها بعينه. وهو رقمٌ يُطابَق كما تُطابَق الأرقام —
-                    فله عمودُه بجانب أمر النقل الذي يخصّه، ويُفرَز ويُفلتَر ويخرج
-                    خانةً مستقلّةً في ملفّ إكسل. */}
+                {/* Voucher number is a column beside its report. It was buried in the details column with driver, description and customer, forcing a paragraph read per row to match vouchers to transport orders. It is matched like any number, so it sorts, filters and exports as its own Excel cell. */}
                 <th className="text-start text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{cf.head('receipt', L.receipt)}</th>
-                {/* ── والسائقُ عمودٌ كما صار رقمُ السند ────────────────────────
-                    كان مدفونًا في «التفاصيل» بين وصفٍ ومورّدٍ وبندِ مصروف، فمن
-                    أراد أن يعرف ماذا صُرف على سائقٍ بعينه قرأ فقرةً في كلّ صفّ.
-                    وهو اسمٌ يُفلتَر عليه ويُجمَع تحته — فله عمودُه، وخانتُه في
-                    الملفّ إلى جانب ما يخصّه لا في طرف الصفّ. */}
+                {/* Driver is a column like the voucher number. It was buried in details between description, supplier and expense item; it is a name to filter and sum on, so it has its own column and file cell beside what it relates to. */}
                 <th className="text-start text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{cf.head('driver', L.driver)}</th>
                 <th className="text-start text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{cf.head('branch', L.branch)}</th>
                 <th className="text-start text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{cf.head('client', L.client)}</th>
@@ -1335,9 +1110,7 @@ export default function WalletPage() {
                 <th className="text-start text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{L.reportDate}</th>
                 <th className="text-start text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{L.notes}</th>
                 <th className="text-start text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{L.time}</th>
-                {/* ── ومَن سجّلها ────────────────────────────────────────────
-                    المحفظةُ صارت للفرع يعمل عليها أكثرُ من موظّف، فالسطرُ هو
-                    ما يقول مَن فعل. وبدونه يصير النقدُ المشتركُ بلا مسؤول. */}
+                {/* Who recorded it. The wallet belongs to the branch and several employees work on it, so this line says who acted; without it shared cash has no owner. */}
                 <th className="text-start text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{cf.head('recordedBy', lang === 'ar' ? 'سجّلها' : 'Recorded by')}</th>
                 <th className="text-end text-slate-300 font-semibold px-4 py-3 whitespace-nowrap">{L.actions}</th>
               </tr>
@@ -1357,7 +1130,7 @@ export default function WalletPage() {
                       <div className="flex items-center gap-2">
                         <div className={`p-1 rounded ${cfg.bg}`}><Icon className={`w-3.5 h-3.5 ${cfg.color}`} /></div>
                         <span className={`text-xs font-medium capitalize ${cfg.color}`}>{typeLabel(tx.type)}</span>
-                        {/* «من الشركة» صفةُ التحصيل لا تفصيلٌ فيه — فهي وسمٌ عليه. */}
+                        {/* From the company is an attribute of the collection, not a detail in it, so it is a tag on it. */}
                         {tx.type === 'collection' && tx.collectionSource === 'company' && (
                           <span className="px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 text-[10px] font-semibold whitespace-nowrap">{L.fromCompany}</span>
                         )}
@@ -1372,8 +1145,7 @@ export default function WalletPage() {
                           : tx.amount.toLocaleString()}
                       </span>
                     </td>
-                    {/* البيان — سطرٌ يقول ما هذا القيد. وكشوفُ الفاتورة الضريبيّة
-                        وسومٌ تحته: هي كلُّ محتوى ذلك القيد، ولا نصَّ له غيرها. */}
+                    {/* The statement is one line saying what the entry is. Tax invoice reports are tags under it: they are the whole content of that entry and it has no other text. */}
                     <td className="px-4 py-3 text-slate-700 text-xs">
                       {statementOf(tx) ? <div>{statementOf(tx)}</div> : null}
                       {tx.type === 'tax_invoice' && (
@@ -1385,19 +1157,19 @@ export default function WalletPage() {
                       )}
                       {!statementOf(tx) && tx.type !== 'tax_invoice' && <span className="text-slate-300">—</span>}
                     </td>
-                    {/* العميل — عمودُه. راجع customerOf. */}
+                    {/* Customer: its own column. See customerOf. */}
                     <td className="px-4 py-3 text-slate-700 text-xs">
                       {customerOf(tx) || <span className="text-slate-300">—</span>}
                     </td>
                     {/* Delivery Statement # — its own column */}
                     <td className="px-4 py-3 text-slate-700 text-xs whitespace-nowrap">{tx.deliveryStatementNumber || tx.purchaseDeliveryStatementNumber || '—'}</td>
-                    {/* رقم السند — عمودُه. راجع الترويسة. */}
+                    {/* Voucher number: its own column. See the header. */}
                     <td className="px-4 py-3 text-xs whitespace-nowrap font-mono">
                       {tx.purchaseReceiptNumber
                         ? <span className="text-slate-800">{tx.purchaseReceiptNumber}</span>
                         : <span className="text-slate-300">—</span>}
                     </td>
-                    {/* السائق — عمودُه. راجع driverOf. */}
+                    {/* Driver: its own column. See driverOf. */}
                     <td className="px-4 py-3 text-xs whitespace-nowrap">
                       {driverOf(tx)
                         ? <span className="text-slate-700">{driverOf(tx)}</span>
@@ -1417,33 +1189,22 @@ export default function WalletPage() {
                     <td className="px-4 py-3 text-slate-800 text-xs whitespace-nowrap">
                       {new Date(tx.createdAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
                     </td>
-                    {/* مَن سجّل الحركة — المحفظةُ للفرع والمسؤوليّةُ للشخص. */}
+                    {/* Who recorded the movement: the wallet is the branch's and responsibility is personal. */}
                     <td className="px-4 py-3 text-slate-800 text-xs whitespace-nowrap">
                       {(tx as any).user
                         ? `${(tx as any).user.firstName || ''} ${(tx as any).user.lastName || ''}`.trim() || '—'
                         : '—'}
                     </td>
                     <td className="px-4 py-3 text-end">
-                      {/* عرضا الفترة والشهر للقراءة وحدَها: الحركةُ تخصّ
-                          يومًا، فلا تُعدَّل ولا تُحذف من شاشةٍ لا يومَ لها —
-                          و`wallet` فارغةٌ فيهما فلا تُقرأ حالتُها أصلًا. */}
-                      {/* ── وتصحيحُ حركةٍ سُجِّلت لمدير النظام وحدَه ──────────
-                          التسجيلُ عملُ اليوم يفعله من يمسك الصندوق؛ وتغييرُ ما
-                          سُجِّل إعادةُ كتابةٍ تحرّك رصيدَ اليوم وكلَّ يومٍ بعده
-                          وتُعيد حسابَ فروق العدّ على أيّامٍ أُقفلت. راجع
-                          maySettle — والخادمُ يردّ على أيّ حال. */}
+                      {/* Period and month views are read-only: a movement belongs to a day, so it cannot be edited or deleted from a screen with no day, and wallet is empty there so its state is not read. */}
+                      {/* Correcting a recorded movement is for the system admin only. Recording is daily work by whoever holds the cash box; changing a record rewrites it, moving that day's balance and every later day and recomputing count differences on closed days. See maySettle; the server rejects regardless. */}
                       {wallet && isSuperAdmin && (
                         <div className="flex items-center justify-end gap-1">
                           <button type="button" onClick={() => openEditTx(tx)}
                             className="p-1.5 rounded-lg text-slate-700 hover:text-[#f37121] hover:bg-slate-100 transition-colors" title={L.edit}>
                             <Pencil className="w-4 h-4" />
                           </button>
-                          {/* ── ونقلُ الحركة إلى فرعٍ آخر ──────────────────
-                              تُسجَّل مشترياتٌ على محفظة جدة وهي من الدمام،
-                              فكان العلاجُ حذفًا وإعادةَ كتابة — فيضيع من
-                              سجّلها ومتى. والنقلُ يُنسبها إلى يوميّة الفرع
-                              الجديد **في اليوم نفسِه** ويُعيد حسابَ الفرعين
-                              وأرصدةَ ما بعدهما. راجع moveTransactionBranch. */}
+                          {/* Move a movement to another branch. Purchases recorded on the Jeddah wallet that belong to Dammam used to be fixed by delete and rewrite, losing who recorded it and when. The move attributes it to the new branch's ledger on the same day and recomputes both branches and their later balances. See moveTransactionBranch. */}
                           <button type="button" onClick={() => openMove(tx)}
                             className="p-1.5 rounded-lg text-slate-700 hover:text-sky-600 hover:bg-slate-100 transition-colors"
                             title={ar ? 'نقل إلى فرع آخر' : 'Move to another branch'}>
@@ -1464,9 +1225,7 @@ export default function WalletPage() {
         </ScrollX>
       </div>
 
-      {/* ── نافذةُ نقلِ حركةٍ إلى فرعٍ آخر ────────────────────────────────────
-          تُفتَح من إجراءات الصفّ. والتاريخُ لا يتغيّر — النقلُ تصحيحُ مكانٍ لا
-          زمان، وتغييرُ اليوم معه يخفي خطأين في فعلٍ واحد. */}
+      {/* Dialog for moving a movement to another branch, opened from row actions. The date does not change: the move corrects place, not time, and changing the day too would hide two mistakes in one action. */}
       <AnimatePresence>
         {moving && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
@@ -1491,7 +1250,7 @@ export default function WalletPage() {
                     <span className="block text-[12px] font-semibold text-slate-600 mb-1">{ar ? 'الفرع' : 'Branch'}</span>
                     <select value={moveTo} onChange={(e) => setMoveTo(e.target.value)}
                       className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm">
-                      {/* والفرعُ الحاليُّ يبقى في القائمة: النقلُ قد يكون في التاريخ وحدَه. */}
+                      {/* The current branch stays in the list since the move may be for the date alone. */}
                       {branchList.map((b) => (
                         <option key={b._id} value={b._id}>{b.name}</option>
                       ))}
@@ -1521,8 +1280,7 @@ export default function WalletPage() {
         )}
       </AnimatePresence>
 
-      {/* النوافذُ كلُّها أفعالٌ على يومٍ بعينه — إضافةٌ وتعديلٌ وإقفال. ولا
-          يُفعَل شيءٌ من ذلك بـ«شهر»، فتبقى مشروطةً بوجود محفظةِ اليوم. */}
+      {/* All dialogs are actions on a specific day (add, edit, close). None apply to a month view, so they stay conditional on the day wallet existing. */}
       {wallet && (<>
       {/* ─── NEW TRANSACTION MODAL ────────────────────────────── */}
       <AnimatePresence>
@@ -1540,10 +1298,7 @@ export default function WalletPage() {
               </div>
 
               <div className="p-6 overflow-y-auto space-y-4">
-                {/* ── والأنواعُ أربعةٌ في المختار كما هي في الأزرار ────────
-                    كان الاستلامُ يُفتح من زرِّه وحدَه ولا يظهر بين الثلاثة في
-                    النافذة، فمن فتحها على «تحصيل» لم يجد طريقًا إليه وأغلق
-                    وبحث عنه في الصفحة. */}
+                {/* The four types in the picker match the buttons. Receipt used to open from its own button and was missing among the three in the dialog, so someone who opened it on collection found no way to it. */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   {(['collection', 'expense', 'purchase', 'tax_invoice'] as const).map((t) => {
                     const c = TYPE_CONFIG[t]; const I = c.icon;
@@ -1558,9 +1313,7 @@ export default function WalletPage() {
                   })}
                 </div>
 
-                {/* ── والمبلغُ لا يُسأل عنه في قيد الاستلام ────────────────
-                    لا مالَ في هذا القيد. وكانت الخانةُ تُعرَض مطلوبةً بنجمة،
-                    فيقف الموظّفُ أمام سؤالٍ لا جوابَ له ويكتب صفرًا ليمرّ. */}
+                {/* The amount is not asked for in a receipt entry. There is no money in it, and the field was shown as required, so the employee typed zero to get past a question with no answer. */}
                 {txType !== 'tax_invoice' && (
                 <div>
                   <label className="text-slate-500 text-xs mb-1 block">{L.amountSar} *</label>
@@ -1657,9 +1410,7 @@ export default function WalletPage() {
                   </div>
                 )}
 
-                {/* ── قيدُ استلام فاتورةٍ أو كشف ────────────────────────────
-                    معلومةٌ لا حركةُ مال: تُقال صراحةً في الشاشة كي لا يظنّها
-                    أحدٌ تحصيلًا ناقصًا. */}
+                {/* Receipt entry of an invoice or report: information, not a money movement. It is stated on screen so nobody takes it for an incomplete collection. */}
                 {txType === 'tax_invoice' && (
                   <>
                     <div className="rounded-lg bg-slate-100 border border-slate-200 p-3 text-[12.5px] text-slate-600">
@@ -1667,18 +1418,12 @@ export default function WalletPage() {
                         ? 'تسجيلُ استلام — تقول به إنّ أوامر نقل هذه الفواتير صارت بيدك. لا مبلغَ فيه، ولا يدخل رصيدَ العهدة ولا إقفالَ اليوم.'
                         : 'A receipt record — it says these reports are now in your hands. No amount, and it does not touch the wallet balance or the day’s close.'}
                     </div>
-                    {/* ── أرقامُ الكشوف، حزمةً ──────────────────────────────
-                        المندوبُ يأتي بسبعةٍ فيسجّلها دفعةً. وقيدٌ لكلّ أمر نقل
-                        يعني تكرارَ التاريخ والفرع سبعَ مرّات، ومَن يملّ يترك
-                        الباقيَ بلا تسجيل. */}
+                    {/* Report numbers as a batch. A representative brings seven and records them together; one entry per transport order repeats the date and branch seven times, and someone tired leaves the rest unrecorded. */}
                     <div>
                       <label className="text-slate-500 text-xs mb-1 block">
                         {lang === 'ar' ? 'أرقام أوامر النقل' : 'Dispatch report numbers'} *
                       </label>
-                      {/* ── ولكلّ كشفٍ سندُه ────────────────────────────────
-                          يُكتبان معًا فيُحفظان زوجًا، ويصل السندُ عمودَه في
-                          سير عمل التشغيل. وسندٌ واحدٌ يُنسَخ على الحزمة كلِّها
-                          كان سيُنسَب سندَ أمر نقل إلى ستّةٍ غيره. */}
+                      {/* Each report has its voucher. They are written together and saved as a pair, and the voucher reaches its column in the operations workflow. One voucher copied across the batch would attribute a transport order's voucher to six others. */}
                       <div className="flex gap-2">
                         <input type="text" value={txForm.receivedDocNumber}
                           onChange={(e) => setTxForm((f) => ({ ...f, receivedDocNumber: e.target.value }))}
@@ -1737,12 +1482,7 @@ export default function WalletPage() {
                           <Search className="w-4 h-4" />
                         </button>
                       </div>
-                      {/* ── إخبارٌ لا منع ──────────────────────────────────
-                          كان الشراءُ يُمنَع حتّى تصير الحالةُ «استُلم السند»،
-                          والموظّفُ يستلم السندَ بيده ويدفع في اللحظة نفسِها —
-                          فيُطلَب منه أن يفتح شاشةً أخرى ليُعلن ما فعله قبل أن
-                          يُسمَح له بتسجيله. فصار الحفظُ هو الإعلان، ويُقال له
-                          ما سيقع. */}
+                      {/* Inform, do not block. A purchase used to be blocked until status became voucher received, yet the employee receives the voucher and pays at the same moment, so they had to open another screen to declare what they did before recording it. Saving is now the declaration, and the user is told what will happen. */}
                       {purchaseBond && !purchaseBond.ok && (
                         <div className="mt-2 rounded-lg bg-blue-50 border border-blue-200 px-3 py-2">
                           <p className="text-[12.5px] font-bold text-blue-900">
@@ -1765,8 +1505,7 @@ export default function WalletPage() {
                           <p className="text-[12.5px] font-bold text-red-800">
                             {lang === 'ar' ? 'هذا أمر النقل سُجِّلت له مشترياتٌ من قبل' : 'This report already has a purchase'}
                           </p>
-                          {/* والعهدةُ التي دُفع منها: ثلثا المشتريات تُدفَع من عهدة
-                              فرعٍ غير فرع الكشف، فاسمُ الدافع وحدَه لا يقول أين ذهب المال. */}
+                          {/* The custody paid from: two thirds of purchases are paid from another branch's custody, so the payer name alone does not say where the money went. */}
                           <p className="text-[11.5px] text-red-700 mt-0.5">
                             {lang === 'ar'
                               ? `${purchaseAlready.amount.toLocaleString()} ريال بتاريخ ${purchaseAlready.date}`
@@ -1796,9 +1535,7 @@ export default function WalletPage() {
 
                     <div>
                       <label className="text-slate-500 text-xs mb-1 block">{L.driverName}</label>
-                      {/* يأتي من كشف التخريج، فلا يُعدَّل: بيانات الكشف مرتبطة برقمه،
-                          وتعديلها هنا يجعل السجل يقول شيئًا وأمر النقل يقول غيره — ولا
-                          أحد يعرف أيّهما الصحيح بعد شهر. */}
+                      {/* Comes from the dispatch report, so not editable: report data is tied to its number, and editing here makes the record say one thing and the transport order another, with no one knowing which is right a month later. */}
                       <input type="text" value={txForm.purchaseDriverName}
                         name="purchaseDriverName"
                         autoComplete="off"
@@ -1811,11 +1548,7 @@ export default function WalletPage() {
                         placeholder={L.enterDriverName} />
                     </div>
                     <div>
-                      {/* ── وخانةٌ واحدةٌ لرقم السند ──────────────────────────
-                          هذه هي «رقم السند» وكانت موجودةً من قبل — تُحفظ في
-                          العهدة ولا تخرج منها. فأُضيفت خانةٌ ثانيةٌ بالاسم
-                          نفسِه لتصل الكشف، فصار في النموذج سؤالان متطابقان.
-                          والصوابُ أن تصل هذه، لا أن تُستنسَخ. */}
+                      {/* One field for the voucher number. This one already existed and was saved in the custody without leaving it; a second field with the same name was added to reach the report, leaving two identical questions. The right fix is for this one to reach it, not to duplicate it. */}
                       <label className="text-slate-500 text-xs mb-1 block">
                         {L.receiptNumber}
                         <span className="text-slate-400 ms-1">{lang === 'ar' ? '— يُكتب في أمر النقل تلقائيًّا' : '— written onto the report'}</span>
@@ -1866,11 +1599,7 @@ export default function WalletPage() {
                     {txError}
                   </div>
                 )}
-                {/* ── سببُ تعطُّل الزرّ عند الزرّ ─────────────────────────────
-                    الرسائلُ التي تشرح المنع عند خانة البحث في أعلى النافذة،
-                    والزرُّ هنا بعد عشر خانات. فمن نزل يملأ المبلغَ ورقمَ السند
-                    وصل إلى زرٍّ باهتٍ لا يقول شيئًا — فقرأه «صلاحية ناقصة».
-                    راجع `blockReason`. */}
+                {/* Why the button is disabled, at the button. The explanatory messages sit at the search field at the top, ten fields above, so a user who filled the amount and voucher number reached a pale button saying nothing and read it as missing permission. See blockReason. */}
                 {blockReason && !submitting && (
                   <div className="mb-3 flex items-start gap-2 p-3 rounded-lg bg-amber-50 border border-amber-300">
                     <AlertTriangle className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
@@ -1879,10 +1608,7 @@ export default function WalletPage() {
                 )}
                 <div className="flex justify-end gap-3">
                   <button type="button" onClick={() => setShowTxModal(false)} className="px-4 py-2 text-slate-500 hover:text-slate-900 text-sm">{L.cancel}</button>
-                  {/* ── ولا يُعطَّل الحفظُ بمبلغٍ لا يُطلَب ────────────────────
-                      كان الشرطُ `!txForm.amount` على الأنواع كلِّها، وقيدُ
-                      الاستلام بلا مبلغ — فكان الزرُّ مطفأً أبدًا ولا سبيلَ إلى
-                      حفظه. يُختبَر ما يطلبه كلُّ نوعٍ لا ما يطلبه أكثرُها. */}
+                  {/* Do not disable save for an amount not asked for. The !txForm.amount condition applied to all types, and the receipt entry has no amount, so its button stayed off forever. Test what each type requires, not what most types require. */}
                   <button type="button" onClick={handleAddTransaction} disabled={submitting || !canSubmitTx}
                     title={blockReason || undefined}
                     className="flex items-center gap-2 px-4 py-2 bg-[#f37121] text-white rounded-lg text-sm font-medium hover:bg-[#e06010] transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
@@ -2097,9 +1823,7 @@ export default function WalletPage() {
 
       {/* ─── EXPORT MODAL ────────────────────────────────────── */}
       <AnimatePresence>
-        {/* نافذةُ التصدير الخاصّة أُزيلت: صار الزرُّ الموحَّد الذي تحمله
-            تسعون شاشةً، وبنطاقين — يومُ الشاشة أو الدفترُ كلُّه. راجع
-            `exportOptions` أعلاه. */}
+        {/* The dedicated export dialog was removed in favor of the unified button used on ninety screens with two scopes (the screen's day or the whole ledger). See exportOptions above. */}
       </AnimatePresence>
 
       {/* Confirm Modal (replaces browser (await confirm())) */}
@@ -2131,7 +1855,7 @@ export default function WalletPage() {
   );
 }
 
-/** بطاقةُ رقمٍ في عرض الفترة — راجع `rangeSummary`. */
+/** Number card in the period view. See rangeSummary. */
 const RangeCard = ({ label, value, money, tone }: { label: string; value: number | string; money?: boolean; tone?: string }) => (
   <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
     <p className={`text-lg font-extrabold ${tone || 'text-slate-900'}`}>

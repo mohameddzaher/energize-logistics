@@ -192,9 +192,7 @@ export default function BranchWalletDashboardPage() {
 
   const uniqueUsers = [...new Set(transactions.map((t) => `${t.user.firstName} ${t.user.lastName}`))];
 
-  // فلترا النوع والموظّف يعملان في الذاكرة على جدول الحركات وحده، وكان الزرّ
-  // يصدّر الحركاتِ كلَّها دائمًا مهما ضيّق المستخدمُ الجدولَ أمامه — فيخرج ملفٌّ
-  // لا يشبه الشاشة. النطاقان الآن يفصلان الحالتين، وشيتُ المحافظ لا يتأثّر بهما.
+  // The type and employee filters apply in memory to the movements table only, while export always dumped all movements. Two scopes now separate the cases; the wallet sheet ignores both.
   const scope = exportScopeLabels(lang === 'ar');
   const walletSheet = { name: 'Wallets', rows: wallets as unknown as Record<string, any>[], columns: walletColumns };
   const hasActiveFilters = !!typeFilter || !!userFilter;

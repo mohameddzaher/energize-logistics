@@ -1,26 +1,13 @@
 /**
- * المستحقّ — محسوبًا من كشوف التشغيل، وهي المستندُ الوحيد.
- *
- * ── لماذا هذا الملفّ ───────────────────────────────────────────────────────
- * كانت الصفحةُ الرئيسة وصفحتا «الفواتير المتأخّرة» و«تنبيهات الائتمان» تقرأ من
- * `Invoice` و`Payment` و`Customer` — جداولِ ورك فلو «العملاء والمالية» الذي
- * زال. فبقيت تعرض أصفارًا لا لأنّ الشركة لا تُحصّل، بل لأنّها تسأل جدولًا لا
- * يكتب فيه أحد.
- *
- * والمصدرُ الحيّ هو الكشف: `sellingValue` مستحقٌّ على العميل، و`collectionDate`
- * هو ما يقول إنّه حُصِّل. وهو المصدرُ نفسُه الذي يقرأ منه قسمُ التحصيل — فلا
- * تقول الرئيسةُ رقمًا ويقول القسمُ غيرَه.
- *
- * ── والتأخّرُ يُقاس بشروط الطرف ────────────────────────────────────────────
- * «متأخّر» ليست عمرًا مطلقًا: عميلٌ شرطُه تسعون يومًا لم يتأخّر في اليوم
- * الأربعين. فتُقرأ مهلتُه من سجلّه في قسم التحصيل، وتُستعمل ثلاثون يومًا لمن
- * لا شرطَ مكتوبًا له.
+ * Receivables computed from the operations sheets, the single source of truth.
+ * sellingValue is owed by the customer and collectionDate marks it collected, the same source the collections section reads.
+ * Overdue is measured against each party's own credit term, defaulting to 30 days when none is recorded.
  */
 const OperationsWorkflow = require('../models/OperationsWorkflow');
 const CollectionsParty = require('../models/CollectionsParty');
 const { fold } = require('../models/CollectionsParty');
 
-// الكشفُ الملغى لم يُنفَّذ ولم يصل عنه مال — فعدُّه دَينًا يقيّد ما لا وجودَ له.
+// A cancelled sheet was never executed and no money arrived, so counting it as debt would record something that does not exist.
 const NOT_CANCELLED = {
   executionStatus: { $nin: ['ملغي', 'ملغى', 'ملغاة', 'cancelled', 'canceled', 'Cancelled'] },
 };
@@ -28,7 +15,7 @@ const NOT_CANCELLED = {
 const DEFAULT_TERM_DAYS = 30;
 const r2 = (v) => Math.round((Number(v) || 0) * 100) / 100;
 
-/** «net_45» → 45 · «cash» → 0 · ما لا يُقرأ → الافتراضيّ. */
+/** Parses a credit-term code: net_45 gives 45, cash gives 0, anything unreadable gives the default. */
 function termDays(paymentTerms) {
   const t = String(paymentTerms || '').trim().toLowerCase();
   if (!t) return DEFAULT_TERM_DAYS;
@@ -37,7 +24,7 @@ function termDays(paymentTerms) {
   return m ? Number(m[1]) : DEFAULT_TERM_DAYS;
 }
 
-/** مهلةُ كلّ عميلٍ مفهرسةً بالاسم المطويّ — قراءةٌ واحدةٌ للسجلّ كلِّه. */
+/** Credit term per customer, indexed by folded name, from a single read of the whole register. */
 async function termsByParty() {
   const rows = await CollectionsParty.find({ kind: 'customer' })
     .select('_id nameKey name paymentTerms creditLimit status phone').lean();
@@ -54,12 +41,7 @@ const dateMatch = (from, to) => {
   return { reportDate: r };
 };
 
-/**
- * أرقامُ الصفحة الرئيسة.
- *
- * المفاتيحُ هي هي التي كانت تُقرأ من الفواتير، فالشاشةُ لا تتغيّر — المصدرُ
- * وحدَه هو الذي تغيّر.
- */
+/** Home-page figures. The keys match what used to be read from invoices, so the screen is unchanged; only the source changed. */
 async function dashboard({ dateFrom, dateTo } = {}) {
   const period = dateMatch(dateFrom, dateTo);
   const now = new Date();
@@ -68,8 +50,7 @@ async function dashboard({ dateFrom, dateTo } = {}) {
   const inPeriod = Object.keys(period).length ? period : { reportDate: { $gte: monthStart, $lte: now } };
 
   const [openAgg, periodAgg, yearAgg, parties] = await Promise.all([
-    // المستحقُّ كلُّه: ما لا تاريخَ تحصيلٍ له. لا يُقيَّد بمدًى — «كم لنا عند
-    // الناس» سؤالٌ عن الرصيد لا عن فترة.
+    // All receivables: rows with no collection date. Not limited to a range, since the question is the balance, not a period.
     OperationsWorkflow.aggregate([
       { $match: { ...NOT_CANCELLED, collectionDate: null, username: { $nin: [null, ''] } } },
       { $group: { _id: null, total: { $sum: { $ifNull: ['$sellingValue', 0] } }, n: { $sum: 1 } } },
@@ -81,7 +62,7 @@ async function dashboard({ dateFrom, dateTo } = {}) {
           _id: null,
           billed: { $sum: { $ifNull: ['$sellingValue', 0] } },
           collected: { $sum: { $cond: [{ $ifNull: ['$collectionDate', false] }, { $ifNull: ['$sellingValue', 0] }, 0] } },
-          // متوسّطُ أيّام التحصيل — DSO محسوبًا من الواقع لا من معادلة.
+          // Average days to collect (DSO), computed from actual data rather than a formula.
           daysSum: {
             $sum: {
               $cond: [
@@ -117,7 +98,7 @@ async function dashboard({ dateFrom, dateTo } = {}) {
     byTerm.set(t, (byTerm.get(t) || 0) + row.n);
   }
 
-  // الاثنان في موجةٍ واحدة: زمنُ الردّ تسعون جزءًا من الألف، والتتابعُ يضاعفه.
+  // Both run in one parallel wave: round-trip latency is about 90 ms and running them sequentially would double it.
   const [overdue, trailingDso] = await Promise.all([
     overdueCount(),
     (periodAgg[0]?.daysCount || 0) ? Promise.resolve(0) : dsoTrend({ months: 12 }).then((t) => t.dso),
@@ -130,10 +111,7 @@ async function dashboard({ dateFrom, dateTo } = {}) {
     monthlyBilled: r2(p.billed),
     yearlyCollected: r2(yearAgg[0]?.total || 0),
     collectionRate: p.billed > 0 ? Math.round((p.collected / p.billed) * 100) : 0,
-    // ── متوسّطُ الأيّام بين الكشف وتحصيله ────────────────────────────────
-    // محسوبٌ من الواقع لا مقدَّرٌ بمعادلة. وحين لا يكون في الفترة تحصيلٌ بعد
-    // (أوّلُ الشهر مثلًا) لا يُقال «صفر» — صفرٌ يُقرأ «نحصّل في يومه»، وهو
-    // عكسُ الحقيقة تمامًا. يُؤخَذ متوسّطُ الاثني عشر شهرًا الأخيرة.
+    // Average days between the sheet and its collection, computed from actual data. When the period has no collections yet (for example the start of a month) zero would read as collected same day, so the trailing 12-month average is used instead.
     dso: p.daysCount ? Math.round(p.daysSum / p.daysCount) : trailingDso,
     overdueCount: overdue,
     customerCount: activeCustomers,
@@ -141,7 +119,7 @@ async function dashboard({ dateFrom, dateTo } = {}) {
   };
 }
 
-/** تقادمُ المستحقّ بالأيّام منذ تاريخ الكشف. */
+/** Aging of receivables in days since the sheet date. */
 async function aging({ dateFrom, dateTo } = {}) {
   const [row] = await OperationsWorkflow.aggregate([
     {
@@ -178,7 +156,7 @@ async function aging({ dateFrom, dateTo } = {}) {
   return { buckets, total: r2(buckets.reduce((s, b) => s + b.amount, 0)) };
 }
 
-/** اتّجاهُ متوسّط أيّام التحصيل، شهرًا بشهر. */
+/** Month-by-month trend of average days to collect. */
 async function dsoTrend({ months = 12 } = {}) {
   const since = new Date();
   since.setMonth(since.getMonth() - months);
@@ -205,16 +183,8 @@ async function dsoTrend({ months = 12 } = {}) {
 }
 
 /**
- * الكشوفُ المتأخّرة — تجاوزت مهلةَ صاحبها ولم تُحصَّل.
- *
- * ── ولماذا لا تُقرأ الصفوفُ كلُّها ─────────────────────────────────────────
- * كُتبت أوّلًا بجلب كلّ كشفٍ مفتوحٍ إلى العقدة ثمّ حسابِ التأخّر فيها. وهي
- * سبعةٌ وعشرون ألفَ صفٍّ على عنقودٍ مقيَّد النطاق — فتجاوز الطلبُ مهلةَ nginx
- * ورجع ٥٠٢. والحسابُ لم يكن بطيئًا؛ النقلُ هو الذي كان.
- *
- * والمهلةُ تختلف بالطرف، فلا يكفي شرطٌ واحد. فتُقرأ أسماءُ من لهم كشوفٌ مفتوحة
- * (مئتان وبضع)، وتُجمَّع بمهلتها، ويُبنى شرطٌ واحدٌ فيه فرعٌ لكلّ مهلة — فتجري
- * الفلترةُ والترقيمُ في القاعدة، ولا يعود إلّا ما يُعرض.
+ * Overdue sheets: past their owner's credit term and not collected.
+ * Fetching every open sheet into Node and computing there made the request exceed the nginx timeout (502) because of transfer volume. Instead, party names with open sheets are grouped by term and one condition with a branch per term is built, so filtering and paging happen in the database.
  */
 async function overdueMatch({ dateFrom, dateTo } = {}) {
   const base = {
@@ -227,8 +197,7 @@ async function overdueMatch({ dateFrom, dateTo } = {}) {
     termsByParty(),
   ]);
 
-  // الاسمُ الخام → مهلتُه، مجموعًا بالمهلة فيصير الشرطُ فرعًا لكلّ قيمة لا
-  // فرعًا لكلّ اسم.
+  // Raw name to term, grouped by term so the condition has one branch per value rather than one per name.
   const byTerm = new Map();
   for (const row of names) {
     const raw = row._id;
@@ -244,8 +213,7 @@ async function overdueMatch({ dateFrom, dateTo } = {}) {
     reportDate: { ...(base.reportDate || {}), $lt: new Date(now - days * 86400000) },
   }));
 
-  // بلا فرعٍ واحد لا شيءَ متأخّر — و`$or: []` خطأٌ في mongo، فيُعاد شرطٌ
-  // مستحيلٌ صراحةً بدل أن يُرمى.
+  // With no branches nothing is overdue, and `$or: []` is a mongo error, so an explicitly impossible condition is returned instead of throwing.
   if (!branches.length) return { match: { _id: null }, terms };
   return { match: { ...base, $or: branches }, terms };
 }
@@ -257,7 +225,7 @@ async function overdueList({ page = 1, limit = 50, dateFrom, dateTo, sortBy = 'o
     OperationsWorkflow.countDocuments(match),
     OperationsWorkflow.find(match)
       .select('reportNumber reportDate username sellingValue branch fromLocation toLocation invoiceNumber')
-      // الأقدمُ أوّلًا هو «الأكثرُ تأخّرًا» — الترتيبُ في القاعدة لا في العقدة.
+      // Oldest first means most overdue; sorting is done in the database, not in Node.
       .sort(sortBy === 'balance' ? { sellingValue: -1 } : { reportDate: 1 })
       .skip((Number(page) - 1) * Number(limit))
       .limit(Number(limit))
@@ -304,10 +272,8 @@ async function overdueCount(opts = {}) {
 }
 
 /**
- * تنبيهاتُ الائتمان — مَن تجاوز حدَّه أو قاربه.
- *
- * الحدُّ مكتوبٌ في سجلّ الطرف، والمستحقُّ محسوبٌ من الكشوف. ومَن لا حدَّ له لا
- * يُنبَّه عليه: صفرٌ يعني «لم يُحدَّد» لا «ممنوع».
+ * Credit alerts: parties over or near their limit.
+ * The limit lives on the party record and the balance is computed from sheets. A party with no limit is not alerted: zero means not set, not forbidden.
  */
 async function creditAlerts() {
   const [parties, byCustomer] = await Promise.all([

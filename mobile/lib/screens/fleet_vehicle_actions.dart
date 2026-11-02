@@ -6,8 +6,7 @@ import '../services/lang.dart';
 import '../ui/theme.dart';
 import '../ui/search_field.dart';
 
-/// إجراءاتُ صفّ الشاحنة في «سيارات الأسطول» — نظيرُ عمودَي السائقين وزرّ
-/// «تعيين المشرف» في صفحة الويب /system/fleet/vehicles.
+/// Vehicle row actions in the fleet vehicles page: counterpart of the two driver columns and the assign-supervisor button on web page /system/fleet/vehicles.
 
 const _fleetEditRoles = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_staff', 'moderator', 'fleet_manager', 'fleet_supervisor'];
 const _fleetAdminRoles = ['super_admin', 'admin', 'it_manager', 'operations_manager', 'fleet_manager'];
@@ -25,9 +24,9 @@ Map<String, dynamic>? _seat(Map<String, dynamic> v, int n) {
   return null;
 }
 
-/// لوحُ اختيارٍ بحثيّ: (القيمة، النص، التلميح). يرجع القيمة أو null لو أُلغي.
+/// Searchable picker: (value, text, hint). Returns the value, or null if cancelled.
 Future<String?> _pick(BuildContext context, String title, List<(String, String, String)> options, String current) {
-  // الكلمةُ في متحكِّمٍ خارجَ الباني: لو أُعيد بناءُ اللوح (اللوحة تظهر) لا تُنسى.
+  // The search word is in a controller outside the builder, so a rebuild of the sheet (the keyboard appears) does not lose it.
   final ctl = TextEditingController();
   return showModalBottomSheet<String>(
     context: context, isScrollControlled: true, backgroundColor: Colors.white,
@@ -68,8 +67,7 @@ Future<String?> _pick(BuildContext context, String title, List<(String, String, 
   ).whenComplete(ctl.dispose);
 }
 
-/// «الطاقم»: المقعدان يُكتبان في نداءٍ واحد PATCH /vehicles/:id/drivers {first, second}
-/// — كي لا تمرّ القاعدةُ بلحظةٍ فيها رجلان في مقعدٍ واحد.
+/// Crew: the two seats are written in one call PATCH /vehicles/:id/drivers {first, second}, so the rule never passes through a moment with two men in one seat.
 Future<bool> openFleetVehicleCrew(BuildContext context, Map<String, dynamic> v) async {
   if (!_canEdit(context)) { _snack(context, tr('لا تملك صلاحية تعديل الطاقم', 'Not allowed to change the crew')); return false; }
   List<Map<String, dynamic>> drivers;
@@ -81,7 +79,7 @@ Future<bool> openFleetVehicleCrew(BuildContext context, Map<String, dynamic> v) 
     return false;
   }
   if (!context.mounted) return false;
-  // خيارُ السائق: اسمُه، وأين هو الآن — فلا يُسحَب رجلٌ من شاحنةٍ بلا علم.
+  // Driver option: their name and where they are now, so a man is not pulled from a truck unknowingly.
   final opts = <(String, String, String)>[
     ('', tr('المقعد شاغر', 'Seat empty'), ''),
     for (final d in drivers)
@@ -134,7 +132,7 @@ Future<bool> openFleetVehicleCrew(BuildContext context, Map<String, dynamic> v) 
   }
 }
 
-/// «تعيين المشرف» — مدير القسم يوزّع السيارات على المشرفين (PATCH /vehicles/:id/supervisor).
+/// Assign supervisor: the section manager distributes vehicles to supervisors (PATCH /vehicles/:id/supervisor).
 Future<bool> openFleetVehicleSupervisor(BuildContext context, Map<String, dynamic> v) async {
   if (!_canAdmin(context)) { _snack(context, tr('تعيين المشرف لمدير القسم', 'Only the section manager assigns supervisors')); return false; }
   List<Map<String, dynamic>> users;
@@ -165,8 +163,7 @@ Future<bool> openFleetVehicleSupervisor(BuildContext context, Map<String, dynami
   }
 }
 
-/// «إزالة» العميل كما في الويب: بلا حمولاتٍ يُحذف نهائيًّا (?purge=1)؛ ومع
-/// حمولاتٍ يُعطَّل فقط، لأنّ حذفه يترك بوليصاتٍ تشير إلى عميلٍ لا وجود له.
+/// Customer removal as on the web: with no loads it is deleted permanently (?purge=1); with loads it is only disabled, since deleting would leave waybills pointing at a nonexistent customer.
 Future<bool> removeFleetCustomer(BuildContext context, Map<String, dynamic> c) async {
   if (!_canAdmin(context)) { _snack(context, tr('لا تملك صلاحية الإزالة', 'Not allowed')); return false; }
   final trips = (c['trips'] as num? ?? 0).toInt();
@@ -190,7 +187,7 @@ Future<bool> removeFleetCustomer(BuildContext context, Map<String, dynamic> c) a
   }
 }
 
-/// «إعادة تفعيل» عميلٍ معطَّل.
+/// Reactivate a disabled customer.
 Future<bool> restoreFleetCustomer(BuildContext context, Map<String, dynamic> c) async {
   if (!_canAdmin(context)) { _snack(context, tr('لا تملك صلاحية الاستعادة', 'Not allowed')); return false; }
   try {

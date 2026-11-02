@@ -1,18 +1,15 @@
 /**
- * مراحلُ دورة التخليص كما يرسلها الخادم — وما يُشتقّ منها للعرض.
- *
- * القواعدُ (أيُّ المراحل تَلزم هذه المعاملة، وأيُّها أُغلِق، وكم النسبة) في
- * الخادم وحدَه: `pipelineOf` في backend/src/models/CustomsClearance. والشاشةُ
- * ترسم ما وصلها — فلا تُكتب القاعدةُ مرّتين فتختلفان.
+ * Customs clearance stages as sent by the server, and what is derived from them for display.
+ * The rules (which stages a transaction needs, which are closed, the percentage) live only on the server: pipelineOf in backend/src/models/CustomsClearance. The screen renders what it receives, so the rule is not written twice.
  */
 export interface PipelineStep {
   key: string; done: boolean; locked: boolean; reason?: string;
-  /** الطريقُ الآخر: يُضغَط فيتحوّل الاختيارُ إليه. */
+  /** The other route: clicking switches the selection to it. */
   switchable?: boolean;
-  /** مرحلةٌ تُعلَّم لكلّ وحدة — وهذه جمعُها: كم وحدةً أنجزتها من كم تَلزمها. */
+  /** A stage marked per unit; this is the total: how many units completed it out of how many need it. */
   perUnit?: boolean; unitsDone?: number; unitsOf?: number;
 }
-/** مراحلُ وحدةٍ واحدة (حاويةٍ أو سيّارة) من أوّل النقل. */
+/** Stages of a single unit (container or car) from the start of transport. */
 export interface UnitPipeline {
   index: number; route: '' | 'yard' | 'customer'; steps: PipelineStep[];
   done: number; total: number; percent: number; next: string;
@@ -21,18 +18,18 @@ export interface Pipeline {
   route: '' | 'yard' | 'customer';
   cargoType: 'containers' | 'vehicles';
   steps: PipelineStep[];
-  /** هل للمعاملة وحداتٌ تُتابَع كلٌّ على حدة — و`units` مراحلُ كلٍّ منها. */
+  /** Whether the transaction has units tracked individually; `units` holds each one's stages. */
   perUnit?: boolean; units?: UnitPipeline[]; mixedRoutes?: boolean;
   done: number; total: number; percent: number; next: string;
 }
 
 export type CargoType = 'containers' | 'vehicles';
 
-/** المراحلُ التي هي نقلٌ — لكلٍّ منها بيانُ سيّاراته في خانات الحاويات. */
+/** Stages that are transport; each has its cars' statement in the container fields. */
 export const TRANSPORT_LEGS = ['transport_to_yard', 'transport_to_customer', 'yard_to_customer'] as const;
 export const isTransportLeg = (key: string) => (TRANSPORT_LEGS as readonly string[]).includes(key);
 
-/** اسمُ المرحلة — و«الحاويات» تصير «السيّارات» في معاملة السيّارات. */
+/** Stage name; containers become cars in a car transaction. */
 export const stageName = (stages: Record<string, string>, key: string, cargoType?: string) => {
   const base = stages?.[key] || key;
   if (cargoType !== 'vehicles') return base;
@@ -44,10 +41,7 @@ export const unitWord = (cargoType: string | undefined, ar: boolean, plural = tr
   return ar ? (plural ? 'الحاويات' : 'الحاوية') : (plural ? 'Containers' : 'Container');
 };
 
-/**
- * ترقيمُ ما تكرّر: «سداد أجور الموانئ» دفعتان فهما (١) و(٢) — بترتيب ورودهما.
- * يردّ لكلّ عنصرٍ رقمَه بين أمثاله، أو صفرًا إن كان وحيدًا.
- */
+/** Numbering of repeated stages: a stage with two payments gets (1) and (2) in order of arrival. Returns each item's number among its peers, or 0 if it is alone. */
 export function ordinals<T>(list: T[], nameOf: (x: T) => string): number[] {
   const total = new Map<string, number>();
   for (const x of list) { const k = nameOf(x).trim(); total.set(k, (total.get(k) || 0) + 1); }
@@ -61,11 +55,7 @@ export function ordinals<T>(list: T[], nameOf: (x: T) => string): number[] {
   });
 }
 
-/**
- * اسمُ الملفّ عند تنزيله: «BL-123 - سداد أجور الموانئ (2).pdf».
- * كان يُنزَّل باسمه على القرص — أرقامٌ عشوائيّةٌ لا تقول من أيّ معاملةٍ هو ولا
- * أيَّ ورقة.
- */
+/** File name on download, like "BL-123 - port fees payment (2).pdf". It used to download under its disk name, random digits that say neither the transaction nor the document. */
 export function downloadName(ref: string | undefined, title: string | undefined, n: number, fileName?: string, fileUrl?: string) {
   const ext = (/\.([a-z0-9]{2,5})$/i.exec(fileName || '') || /\.([a-z0-9]{2,5})$/i.exec(fileUrl || '') || [])[1] || '';
   const clean = (v: string) => v.replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim();
@@ -73,17 +63,14 @@ export function downloadName(ref: string | undefined, title: string | undefined,
   return `${base}${n ? ` (${n})` : ''}${ext ? `.${ext.toLowerCase()}` : ''}`;
 }
 
-// ── مراحلُ السداد: ما يُكتب منها في التكاليف، وما يُعدّ فاتورةَ نقل ─────────────
-// مرآةُ `STAGE_COST` و`TRANSPORT_STAGE_KEYS` في backend/src/models/CustomsClearance.
-// المرحلةُ من الأولى طلبُ صرفٍ لا يُضاف بلا مبلغ (والخادمُ يرفضه: AMOUNT_REQUIRED)،
-// وحين تؤكّد الإدارةُ الماليّة دفعَه يُكتب مبلغُه في بنده من التكاليف.
+// Payment stages: which are written into costs and which count as a transport invoice.
+// Mirror of STAGE_COST and TRANSPORT_STAGE_KEYS in backend/src/models/CustomsClearance. Such a stage is a payment request that cannot be added without an amount (the server rejects it: AMOUNT_REQUIRED); when finance confirms payment, the amount is written to its cost item.
 export const AMOUNT_REQUIRED_STAGE_KEYS: ReadonlySet<string> = new Set([
   'doInvoicePaid', 'dutyPaid', 'portFeesPaid', 'unloadingFeesPaid', 'extension',
   'transportPortToCustomer', 'transportPortToYard', 'transportYardToCustomer',
   'appointmentBooking', 'inspection', 'exitPermit', 'consolidator', 'commissions', 'labourExpenses',
 ]);
-// «فاتورةُ النقل» التي تُنهى بها المعاملة: أيُّ مرحلةِ نقلٍ بمرفق — والقديمةُ
-// `transportInvoice` باقيةٌ لما سُجّل بها قبل تقسيم النقل إلى أجزائه الثلاثة.
+// The transport invoice that ends the transaction: any transport stage with an attachment. The old `transportInvoice` remains for records made before transport was split into three parts.
 export const TRANSPORT_STAGE_KEYS: ReadonlySet<string> = new Set([
   'transportInvoice', 'transportPortToCustomer', 'transportPortToYard', 'transportYardToCustomer',
 ]);

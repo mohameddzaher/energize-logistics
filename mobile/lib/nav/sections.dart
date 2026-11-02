@@ -134,7 +134,7 @@ import '../screens/fleet_driver_expenses.dart';
 
 import '../screens/fleet_assign.dart';
 
-// السوبر أدمن والأدمن يريان السيستمَ كلَّه (صاحبُ الشركة، ٢٠٢٦/١٠/٢٧).
+// Super admin and admin see the whole system.
 const _top = ['super_admin', 'admin'];
 
 /// NATIVE-ONLY navigation: a section appears here the day its screens are
@@ -145,13 +145,9 @@ class AppPage {
   final String enTitle;
   final IconData icon;
   final WidgetBuilder builder;
-  /// مسارُ الصفحة نفسِها في الويب — مفتاحُها في مصفوفة الصلاحيّات.
-  ///
-  /// صلاحيّاتُ الصفحات تُضبط مرّةً واحدةً من شاشةٍ واحدة، ومفتاحُها هناك مسارُ
-  /// الصفحة. فمن أُغلقت عنه صفحةٌ يجب ألّا يجدها في الهاتف — وإلّا كان الضبطُ
-  /// نصفَ ضبط، وهو أسوأُ من لا شيء لأنّه يُقرأ تامًّا.
-  ///
-  /// وشاشةٌ بلا مسارٍ (لا نظيرَ لها في الويب) تُعرَض كما كانت: القسمُ يحرسها.
+  /// The page's own path on the web, its key in the permissions matrix.
+  /// Page permissions are set once from one screen keyed by page path, so a page closed to a user must not appear on the phone either; otherwise the setting is half-applied, which is worse than none since it reads as complete.
+  /// A screen with no path (no web counterpart) is shown as before; the section guards it.
   final String? path;
   const AppPage(this.arTitle, this.enTitle, this.icon, this.builder, {this.path});
 
@@ -176,19 +172,15 @@ class AppSection {
 
 const _admins = ['super_admin', 'admin', 'it_manager', 'it_specialist'];
 
-/// عهدةُ النقل الخفيف ومركباتُه وإضافةُ موظّفيه: لمدير القطاع ونائبه ومدير
-/// النظام وأهل المال — بالدور وحدَه لا بمنح القسم، كحارس الخادم
-/// (`authorize.strict` في routes/lightTransport) وسطورِ القائمة في الموقع.
+/// Light transport custody, vehicles and staff adding: for the sector manager, deputy, system admin and finance, by role alone and not by section grant, like the server guard (authorize.strict in routes/lightTransport) and the website menu entries.
 const _ltOwners = ['super_admin', 'admin', 'b2c_manager', 'b2c_deputy', 'cfo', 'accounting_manager', 'accountant'];
 const _b2cSupervisors = ['b2c_rep_supervisor', 'b2c_inspection_supervisor'];
 
-/// عهدةُ النقل الثقيل: لمدير لوكيشن سوليوشن ومدير النظام وأهل المال — بالدور
-/// وحدَه، كحارس الخادم (`authorize.strict` في routes/htCustody).
+/// Heavy transport custody: for the Location Solutions manager, system admin and finance, by role alone, like the server guard (authorize.strict in routes/htCustody).
 const _htOwners = ['super_admin', 'admin', 'location_manager', 'cfo', 'accounting_manager', 'accountant'];
 
-/// ترتيبُ الأقسام في الشاشة — هو نفسُه في الموقع (SECTION_ORDER في layout.tsx).
-/// سلسلةُ العمل كما تجري: التشغيل، ثمّ الطلبات والمنصّة، ثمّ التحصيل، ثمّ
-/// الأسطول وتتبّعه، ثمّ ما يُسنِد ذلك كلَّه.
+/// Section order on the screen, the same as the website (SECTION_ORDER in layout.tsx).
+/// The work chain as it runs: operations, then orders and platform, then collections, then fleet and tracking, then what supports all of it.
 const _sectionOrder = <String>[
   'Operations',
   'Shipment Orders',
@@ -205,19 +197,18 @@ const _sectionOrder = <String>[
 
 List<AppSection> sectionsFor(AuthProvider auth) {
   final role = auth.role;
-  // الكتابةُ في فواتير التحصيل: أدوارُ الخادم نفسُها، أو منحُ القسم «تعديل».
+  // Writing collections invoices: the server's own roles, or a section grant of edit.
   collectionsCanEdit = const [..._admins, 'collections_manager', 'collections_staff', 'cfo', 'accounting_manager'].contains(role)
       || auth.canEditSection('Collections');
-  // و«تعديل القيمة» أضيق: بالدور وحدَه، لا يفتحه منحُ القسم (راجع configs).
+  // Amount editing is narrower: by role alone, a section grant does not open it (see configs).
   collectionsCanEditAmount = collectionsAmountEditRoles.contains(role);
-  // ── سجلُّ العملاء: شاشةٌ واحدةٌ في التشغيل وطلبات الشحنات والمبيعات ────────
-  // مَن يعدّل ومَن يزيل بقاعدة الويب نفسِها (canEditCustomers / canRemoveCustomers)
-  // وحارسِ `/api/customer-registry`: المندوبُ يقرأ ولا يكتب.
+  // Customers register: one screen in operations, shipment orders and sales.
+  // Who edits and who removes follows the web rule (canEditCustomers / canRemoveCustomers) and the /api/customer-registry guard: the rep reads but does not write.
   final customersCfg = customersRegisterCfg(
     canEdit: customerEditRoles.contains(role) || auth.canEditSection('Shipment Orders'),
     canDelete: customerRemoveRoles.contains(role) || auth.canEditSection('Shipment Orders'),
   );
-  // الهدفُ يضعه المدير، أو دورٌ من خارج فريق القسم مُنح «تعديلَه» (canSetTargets في الخادم).
+  // The target is set by the manager, or a role outside the section team granted edit (canSetTargets on the server).
   const salesTeam = ['super_admin', 'admin', 'sales_manager', 'sales_rep', 'operations_manager', 'operations_staff'];
   final canSetTargets = const ['super_admin', 'admin', 'sales_manager'].contains(role)
       || (auth.canEditSection('Sales') && !salesTeam.contains(role));
@@ -225,8 +216,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
     if (_top.contains(role)) return true;
     if (s.roles.contains(role)) return true;
     if (s.managed && auth.canAccessSection(s.key)) return true;
-    // وصفحةٌ أُشِّر عليها صراحةً تفتح قسمَها ولو لم تعرفه القائمة — راجع
-    // `isPageGranted`.
+    // A page explicitly marked opens its section even if the menu does not know it; see isPageGranted.
     if (s.pages.any((p) => auth.isPageGranted(p.path))) return true;
     return false;
   }
@@ -237,19 +227,18 @@ List<AppSection> sectionsFor(AuthProvider auth) {
       roles: const [..._admins, 'employee', 'operations_manager', 'operations_staff', 'moderator'],
       pages: [
         AppPage('التشغيل', 'Operations', Icons.workspaces_outline, (c) => const OpsWorkflowsScreen(), path: '/system/operations'),
-        // كشوفُ التشغيل بسعر بيعنا — صفحةٌ للإدارة، وصلاحيّتُها من الويب نفسِها
-        // (`path` مفتاحُها في مصفوفة الصلاحيّات، والخادمُ يحرسها فوق ذلك).
+        // Operations sheets at our selling price: a management page, with permission from the web (path is its key in the matrix, and the server guards it on top).
         AppPage('التشغيل — خاصّ', 'Operations — private', Icons.lock_outline, (c) => const OpsPrivateScreen(), path: '/system/operations/private'),
-        // العملاء — كانت في الويب تحت التشغيل وليست هنا: السجلُّ نفسُه بلا نسخ.
+        // Customers: on the web this was under operations and was missing here; the same register with no copies.
         AppPage('العملاء', 'Customers', Icons.people_outline, (c) => ResourceScreen(config: customersCfg), path: '/system/operations/customers'),
         AppPage('العهدة اليومية', 'Cash Wallet', Icons.account_balance_wallet_outlined, (c) => const CashWalletScreen(), path: '/system/wallet'),
         AppPage('لوحة المحفظة', 'Wallet Dashboard', Icons.pie_chart_outline, (c) => const WalletDashboardScreen(), path: '/system/wallet-dashboard'),
-        // الشكاوى العامّة — لمدير التشغيل أيضًا في الويب، ولا يرى قسمَ الإدارة.
+        // General complaints: on the web also for the operations manager, who does not see the administration section.
         if (role == 'operations_manager') AppPage('الشكاوى العامة', 'All Complaints', Icons.forum_outlined, (c) => const AdminComplaintsScreen(), path: '/system/complaints'),
-        // تنبيهاتُ الائتمان — في الويب ضمن «الرئيسية» بأدوار التشغيل نفسِها.
+        // Credit alerts: on the web under Home with the same operations roles.
         if (const ['super_admin', 'it_manager', 'it_specialist', 'admin', 'operations_manager', 'employee', 'moderator'].contains(role))
           AppPage('تنبيهات الائتمان', 'Credit Alerts', Icons.shield_outlined, (c) => const CreditAlertsScreen(), path: '/system/credit-alerts'),
-        // توحيدُ نوع الدفع لكلّ عميل — بأدوار الويب (layout.tsx)؛ والكتابةُ تُفحص في الشاشة.
+        // Unifying payment type per customer: with the web roles (layout.tsx); the write is checked in the screen.
         if (const ['super_admin', 'it_manager', 'it_specialist', 'admin', 'employee', 'operations_manager', 'operations_staff', 'moderator', 'cfo', 'accounting_manager', 'accountant', 'collections_manager', 'collections_staff'].contains(role))
           AppPage('أنواع الدفع', 'Payment Types', Icons.payments_outlined, (c) => const OpsPaymentTypesScreen(), path: '/system/operations/payment-types'),
         AppPage('التواصل مع العملاء', 'Customer Communication', Icons.forum_outlined, (c) => const CustomerRequestsScreen(), path: '/system/operations/customer-requests'),
@@ -260,19 +249,17 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         if (jpManager(role, 'operations') && !_top.contains(role)) AppPage('خطّة الإدارة (Management JP)', 'Management JP', Icons.workspace_premium_outlined, (c) => const JpScreen(scope: 'management'), path: '/system/operations/management-jp'),
       ],
     ),
-    // ── قسمُ التحصيل ────────────────────────────────────────────────────
-    // أربعُ صفحاتٍ لا أكثر، ومعها الثابتتان في كلّ قسم. وصفحةُ التشغيل من
-    // داخل قسمهم: الكشفُ ورقةُ عملهم اليوميّة، وبحثُها في قسمٍ لا يملكونه
-    // عملٌ يومي زائد.
+    // Collections section.
+    // Four pages only, plus the two fixed in every section. The operations page sits inside their section: the sheet is their daily working paper, and searching it from a section they do not own is extra daily work.
     AppSection(
       key: 'Collections', arTitle: 'التحصيل', enTitle: 'Collections', icon: Icons.request_quote_outlined,
       roles: const [..._admins, 'collections_manager', 'collections_staff', 'operations_manager', 'cfo', 'accounting_manager', 'accountant'],
       pages: [
         AppPage('لوحة التحصيل', 'Dashboard', Icons.dashboard_outlined, (c) => const CollectionsDashboardScreen(), path: '/system/collections-dept/dashboard'),
-        // الفواتيرُ قبل السجلّات: منها يعمل القسم.
+        // Invoices before registers: the section works from them.
         AppPage('الفواتير الضريبية', 'Tax Invoices', Icons.receipt_long_outlined, (c) => const CollectionsInvoicesScreen(kind: 'tax'), path: '/system/collections-dept/invoices/tax'),
         AppPage('فواتير الكاش', 'Cash Invoices', Icons.payments_outlined, (c) => const CollectionsInvoicesScreen(kind: 'cash'), path: '/system/collections-dept/invoices/cash'),
-        // سجلُّ الأعمار قبل السجلّات: هو ما يُفتح في الطريق قبل الزيارة.
+        // Aging register before registers: it is what gets opened on the road before a visit.
         AppPage('أعمار الديون', 'Aging', Icons.layers_outlined, (c) => const CollectionsAgingScreen(), path: '/system/collections-dept/aging'),
         AppPage('دفتر الفواتير', 'Invoice Ledger', Icons.menu_book_outlined, (c) => const CollectionsLedgerScreen(), path: '/system/collections-dept/ledger'),
         AppPage('الخطة اليومية', 'Daily Plan', Icons.event_available_outlined, (c) => const CollectionsPlanScreen(), path: '/system/collections-dept/plan'),
@@ -282,7 +269,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         AppPage('الموردون', 'Suppliers', Icons.local_shipping_outlined, (c) => ResourceScreen(config: collectionsSuppliersCfg), path: '/system/collections-dept/suppliers'),
         AppPage('ربط الحسابات', 'Account links', Icons.link, (c) => const PartyLinksScreen(), path: '/system/collections-dept/links'),
         AppPage('سير عمل التشغيل', 'Operations Workflow', Icons.workspaces_outline, (c) => const OpsWorkflowsScreen(), path: '/system/operations'),
-        // المحفظةُ عرضًا لقسم التحصيل (٢٠٢٦/١٠/٢٧) — راجع config/walletViewOnly في الخادم.
+        // The wallet is view-only for collections; see config/walletViewOnly on the server.
         if (const ['super_admin', 'admin', 'collections_manager', 'collections_staff', 'collections_trainee'].contains(role)) ...[
           AppPage('محفظة الفروع (عرض)', 'Branch wallets (view)', Icons.account_balance_wallet_outlined, (c) => const CashWalletScreen(), path: '/system/wallet'),
           AppPage('لوحة المحفظة (عرض)', 'Wallet dashboard (view)', Icons.pie_chart_outline, (c) => const WalletDashboardScreen(), path: '/system/wallet-dashboard'),
@@ -296,9 +283,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         AppPage('تقييم الأداء', 'KPIs', Icons.leaderboard_outlined, (c) => const TeamBoardScreen(section: 'Collections'), path: '/system/collections-dept/kpis'),
       ],
     ),
-    // اجتماعات مراجعة الأعمال — the managers/board forum. Broad `roles` because
-    // ordinary employees open it too, for work delegated to them; the screen
-    // itself shows only the tabs their tier qualifies for.
+    // Business review meetings: the managers/board forum. Broad `roles` because ordinary employees open it too, for work delegated to them; the screen itself shows only the tabs their tier qualifies for.
     AppSection(
       key: 'Business Review', arTitle: 'مراجعة الأعمال', enTitle: 'Business Review', icon: Icons.event_note_outlined,
       // No static role list on purpose: the section is `managed`, and the
@@ -329,18 +314,17 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         AppPage('اللوحة', 'Dashboard', Icons.dashboard_outlined, (c) => SectionDashScreen(spec: fleetDashSpec), path: '/system/fleet/dashboard'),
         AppPage('التحليلات', 'Analytics', Icons.insights_outlined, (c) => const FleetAnalyticsScreen(), path: '/system/fleet/dashboard'),
         AppPage('اللوحة الرئيسية', 'Board', Icons.grid_view_rounded, (c) => const FleetBoardScreen(), path: '/system/fleet/board'),
-        // المتوقع للوصول — بطاقاتٌ تُضغَط، كما في الويب.
+        // Expected arrivals: tappable cards, as on the web.
         AppPage('المتوقع للوصول', 'Expected arrivals', Icons.schedule_outlined, (c) => const FleetArrivalsScreen(), path: '/system/fleet/arrivals'),
         AppPage('الشحنات والمتابعة', 'Shipments', Icons.inventory_2_outlined, (c) => const FleetShipmentsScreen(), path: '/system/fleet'),
         AppPage('السائقون', 'Drivers', Icons.badge_outlined, (c) => ResourceScreen(config: fleetDriversCfg), path: '/system/fleet/drivers'),
         AppPage('تقييم السائقين', 'Driver KPIs', Icons.speed_outlined, (c) => const FleetDriverKpisScreen(), path: '/system/fleet/driver-kpis'),
         AppPage('السيارات', 'Vehicles', Icons.local_shipping_outlined, (c) => ResourceScreen(config: fleetVehiclesCfg), path: '/system/fleet/vehicles'),
-        // حالةُ المركبات بعد «السيارات»: الشاشتان عن الشاحنة نفسِها — إحداهما
-        // تقول ما هي، والأخرى كيف حالُها الآن.
+        // Vehicle status after Cars: the two screens are about the same truck, one says what it is and the other how it is now.
         AppPage('حالة المركبات', 'Vehicle Health', Icons.monitor_heart_outlined, (c) => const FleetHealthScreen(), path: '/system/fleet/health'),
         AppPage('سجلّات السيارات', 'Vehicle Logs', Icons.assignment_outlined, (c) => const FleetVehicleLogsScreen(), path: '/system/fleet/vehicle-logs'),
         AppPage('مصاريف السوّاق', 'Driver Expenses', Icons.account_balance_wallet_outlined, (c) => const FleetDriverExpensesScreen(), path: '/system/fleet/driver-expenses'),
-        // توزيعُ المشرفين — لمدير القسم ومن مُنح القسمَ تعديلًا (canAdminFleet في الويب).
+        // Supervisor distribution: for the section manager and anyone granted edit (canAdminFleet on the web).
         if (const ['super_admin', 'admin', 'it_manager', 'operations_manager', 'fleet_manager'].contains(role) || auth.canEditSection('Fleet Management'))
           AppPage('توزيع المشرفين', 'Assign Supervisors', Icons.manage_accounts_outlined, (c) => const FleetAssignScreen(), path: '/system/fleet/assign'),
         AppPage('العملاء', 'Customers', Icons.people_outline, (c) => ResourceScreen(config: fleetCustomersCfg), path: '/system/fleet/customers'),
@@ -428,14 +412,14 @@ List<AppSection> sectionsFor(AuthProvider auth) {
       pages: [
         AppPage('لوحة الموارد البشرية', 'HR Dashboard', Icons.space_dashboard_outlined, (c) => const HrDashboardScreen(), path: '/system/hr/master'),
         AppPage('الموظفون', 'Employees', Icons.people_alt_outlined, (c) => const HrEmployeesScreen(), path: '/system/hr/employees'),
-        // الأرشيف — مَن انتهت خدمتُه وخرج من النظام، والفريلانسرُ المنتهي. كالموقع.
+        // Archive: staff whose service ended and who left the system, and ended freelancers. Same as the website.
         AppPage('الأرشيف', 'Archive', Icons.archive_outlined, (c) => const HrArchiveScreen(), path: '/system/hr/archive'),
         AppPage('طلبات الإجازات', 'Leave Requests', Icons.event_available_outlined, (c) => const HrLeavesScreen(), path: '/system/hr/leaves'),
         AppPage('الإجازات', 'Leaves', Icons.event_note_outlined, (c) => const HrLeaveRegisterScreen(), path: '/system/hr/leave-register'),
         AppPage('طلبات الموظفين', 'Employee Requests', Icons.mark_email_unread_outlined, (c) => const HrRequestsScreen(), path: '/system/hr/requests'),
-        // طلباتُ الأقسام — الجانبُ المستقبِل. راجع screens/staff_requests.dart.
+        // Section requests: the receiving side. See screens/staff_requests.dart.
         AppPage('طلبات الأقسام', 'Section Requests', Icons.move_to_inbox_outlined, (c) => const StaffRequestsScreen(side: 'hr'), path: '/system/hr/staff-requests'),
-        // مكتبةُ النماذج والخطابات الرسميّة.
+        // Library of official forms and letters.
         AppPage('النماذج والخطابات', 'Forms & Letters', Icons.description_outlined, (c) => const HrFormsScreen(), path: '/system/hr/forms'),
         AppPage('متابعة المالية', 'Finance Follow-up', Icons.account_balance_outlined, (c) => const HrFinanceFollowScreen(), path: '/system/hr/finance-follow'),
         AppPage('التراخيص والاشتراكات', 'Licenses', Icons.workspace_premium_outlined, (c) => ResourceScreen(config: hrLicensesCfg), path: '/system/hr/licenses'),
@@ -445,7 +429,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         if (jpMember(role, 'hr')) AppPage('خطّة العمل (JP)', 'JP', Icons.event_available_outlined, (c) => const JpScreen(section: 'hr'), path: '/system/hr/jp'),
         if (jpManager(role, 'hr')) AppPage('لوحة JP', 'JP Dashboard', Icons.insights_outlined, (c) => const JpDashScreen(section: 'hr'), path: '/system/hr/jp-dashboard'),
         if (jpManager(role, 'hr') && !_top.contains(role)) AppPage('خطّة الإدارة (Management JP)', 'Management JP', Icons.workspace_premium_outlined, (c) => const JpScreen(scope: 'management'), path: '/system/hr/management-jp'),
-        // ماستر الموارد البشريّة ومجموعاتُه والعهد والإعدادات — بحارس الويب (أدوار HR + منحُ القسم).
+        // HR master, its groups, custody and settings, with the web guard (HR roles plus section grant).
         if (const ['super_admin', 'it_manager', 'it_specialist', 'admin', 'hr_manager', 'hr_specialist'].contains(role) || auth.canEditSection('HR')) ...[
           AppPage('ماستر الموارد البشرية', 'HR Master', Icons.grid_on_outlined, (c) => const HrMasterGridScreen(), path: '/system/hr/master/grid'),
           AppPage('انتهاءات المستندات', 'Document Expiries', Icons.event_busy_outlined, (c) => const HrExpiringScreen(), path: '/system/hr/master/expiring'),
@@ -474,7 +458,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         AppPage('أصول الأسطول', 'Fleet Assets', Icons.tire_repair_outlined, (c) => const Ls2FleetAssetsScreen(), path: '/system/ls2/fleet-assets'),
         AppPage('مخزن النقل الثقيل', 'Store', Icons.inventory_2_outlined, (c) => const Ls2StoreScreen(), path: '/system/ls2/store'),
         if (_htOwners.contains(role)) AppPage('عهدة النقل الثقيل', 'Heavy Transport Custody', Icons.account_balance_wallet_outlined, (c) => const HtCustodyScreen(), path: '/system/ls2/custody'),
-        // مَن تُشترى منه قطعُ الغيار — للمخزن الثقيل وحدَه.
+        // Who spare parts are bought from: heavy store only.
         AppPage('الموردون', 'Suppliers', Icons.storefront_outlined, (c) => const Ls2SuppliersScreen(), path: '/system/ls2/suppliers'),
         AppPage('الأسطول المباشر', 'Live Fleet', Icons.satellite_alt_outlined, (c) => const Ls2LiveScreen(), path: '/system/ls2/live'),
         AppPage('الكاوتش', 'Tires', Icons.tire_repair_outlined, (c) => const Ls2TiresScreen(), path: '/system/ls2/tires'),
@@ -485,7 +469,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         AppPage('تقييم السواقين', 'Driver Performance', Icons.speed_outlined, (c) => const Ls2DriverPerformanceScreen(), path: '/system/ls2/driver-performance'),
         AppPage('الحرارة', 'Temperature', Icons.thermostat_outlined, (c) => const Ls2TemperatureScreen(), path: '/system/ls2/temperature'),
         AppPage('التنبيهات', 'Alerts', Icons.notifications_active_outlined, (c) => const Ls2AlertsScreen(), path: '/system/ls2/alerts'),
-        // طلبُ تحميلٍ على شاحنةٍ صيانتُها متأخّرة — يُقرَّر هنا بالاسم.
+        // A loading request on a truck with overdue maintenance, decided here by name.
         AppPage('طلبات الأسطول', 'Fleet Requests', Icons.verified_user_outlined, (c) => const Ls2FleetRequestsScreen(), path: '/system/ls2/fleet-requests'),
         AppPage('الإعدادات', 'Settings', Icons.settings_outlined, (c) => const Ls2SettingsScreen(), path: '/system/ls2/settings'),
         if (jpMember(role, 'ls2')) AppPage('خطّة العمل (JP)', 'JP', Icons.event_available_outlined, (c) => const JpScreen(section: 'ls2'), path: '/system/ls2/jp'),
@@ -498,7 +482,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
       roles: const [..._admins, 'sales_manager', 'sales_rep', 'operations_manager', 'operations_staff'],
       pages: [
         AppPage('اللوحة', 'Dashboard', Icons.dashboard_outlined, (c) => const SalesDashboardScreen(), path: '/system/sales/dashboard'),
-        // العملاء — سجلُّ «التشغيل» و«طلبات الشحنات» نفسُه: بابٌ ثالثٌ لا نسخةٌ ثالثة.
+        // Customers: the same register as operations and shipment orders, a third entry point and not a third copy.
         AppPage('العملاء', 'Customers', Icons.people_outline, (c) => ResourceScreen(config: customersCfg), path: '/system/sales/customers'),
         AppPage('مسار البيع', 'Pipeline', Icons.view_kanban_outlined, (c) => const SalesPipelineScreen(), path: '/system/sales/pipeline'),
         AppPage('الأهداف', 'Targets', Icons.track_changes_outlined, (c) => ResourceScreen(config: salesTargetsCfg(canEdit: canSetTargets)), path: '/system/sales/targets'),
@@ -511,8 +495,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
       ],
     ),
     AppSection(
-      // الإدارة المالية — حلّت محلّ صفحات المحاسبة. والمفتاحُ `Accounting` باقٍ كي
-      // لا تُهاجَر صلاحيّاتٌ محفوظة؛ الاسمُ والصفحاتُ وحدَها تغيّرت.
+      // Finance management replaced the accounting pages. The Accounting key stays so saved permissions are not migrated; only the name and pages changed.
       key: 'Accounting', arTitle: 'الإدارة المالية', enTitle: 'Finance Management', icon: Icons.account_balance_outlined,
       roles: const [..._admins, 'cfo', 'accounting_manager', 'accountant'],
       pages: [
@@ -538,7 +521,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
       key: 'Procurement', arTitle: 'المشتريات', enTitle: 'Procurement', icon: Icons.shopping_bag_outlined,
       roles: const [..._admins, 'procurement_manager', 'procurement_staff'],
       pages: [
-        // سجلُّ موردي المشتريات — كان مدرجًا في العمليات وليس من عملها.
+        // Procurement vendors register: was listed under operations although not part of its work.
         AppPage('الموردون', 'Vendors', Icons.store_outlined, (c) => ResourceScreen(config: vendorsCfg), path: '/system/vendors'),
         AppPage('اللوحة', 'Dashboard', Icons.dashboard_outlined, (c) => SectionDashScreen(spec: procurementDashSpec), path: '/system/procurement/dashboard'),
         AppPage('طلبات الشراء', 'Requests', Icons.request_quote_outlined, (c) => const ProcRequestsScreen(), path: '/system/procurement/requests'),
@@ -553,19 +536,17 @@ List<AppSection> sectionsFor(AuthProvider auth) {
     ),
     AppSection(
       key: 'Vehicles', arTitle: 'المركبات والتفويضات', enTitle: 'Vehicles & Authorizations', icon: Icons.directions_car_outlined,
-      // ومديرُ القسم وموظّفُه (config/roles.js) — لم يكونا هنا فلا يريان قسمَهما.
+      // The section manager and staff (config/roles.js): they were not listed here, so they did not see their own section.
       roles: const [..._admins, 'vehicles_manager', 'vehicles_staff', 'hr_manager', 'hr_specialist', 'cfo', 'accounting_manager', 'accountant'],
       pages: [
-        // المركباتُ والتفويضاتُ والحوادث — الشاشاتُ مبنيّةٌ (vehicles_suite) ولم تكن في القائمة.
+        // Vehicles, authorizations and accidents: the screens exist (vehicles_suite) but were not in the menu.
         AppPage('لوحة المركبات', 'Vehicles Dashboard', Icons.dashboard_outlined, (c) => const SectionDashScreen(spec: vehiclesDashSpec), path: '/system/vehicles/dashboard'),
         AppPage('المركبات والتفويضات', 'Vehicles', Icons.directions_car_filled_outlined, (c) => const VehiclesListScreen(), path: '/system/vehicles'),
         AppPage('الحوادث', 'Accidents', Icons.car_crash_outlined, (c) => const AccidentsListScreen(), path: '/system/vehicles/accidents'),
         AppPage('تحليلات المركبات', 'Registry Analytics', Icons.insights_outlined, (c) => const VehicleRegistryDashboardScreen(), path: '/system/vehicles/registry/dashboard'),
         AppPage('سجل المركبات', 'Vehicle Registry', Icons.directions_car_outlined, (c) => const VehicleRegistryListScreen(), path: '/system/vehicles/registry'),
-        // ── صفحةٌ لكل عائلةِ مستند، كما في الموقع ─────────────────────────
-        // بياناتُها كلُّها كانت مخزَّنة ولا تجد عمودًا يعرضها: تفلتر على بطاقة
-        // التشغيل فتحصل على المركبات الصحيحة بلا رقمِ بطاقةٍ واحد. وجمعُها في
-        // شاشةٍ واحدة يجاوز الأربعين حقلًا فلا يُقرأ على هاتف.
+        // One page per document family, as on the website.
+        // Their data was all stored but had no column to show it: filtering on the operating card gives the right vehicles without any card number. One combined screen would exceed forty fields, unreadable on a phone.
         AppPage('تأمين المركبات', 'Vehicle Insurance', Icons.shield_outlined, (c) => VehicleDocumentsScreen(family: vehicleInsuranceFamily), path: '/system/vehicles/registry/insurance/vehicles'),
         AppPage('بطاقات التشغيل', 'Operating Cards', Icons.credit_card_outlined, (c) => VehicleDocumentsScreen(family: vehicleOperatingCardFamily), path: '/system/vehicles/registry/operating-cards'),
         AppPage('التفاويض', 'Authorisations', Icons.assignment_ind_outlined, (c) => VehicleDocumentsScreen(family: vehicleAuthorizationFamily), path: '/system/vehicles/registry/authorizations'),
@@ -595,8 +576,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
       key: 'Customs', arTitle: 'التخليص الجمركي', enTitle: 'Customs', icon: Icons.directions_boat_outlined,
       roles: const [..._admins, 'operations_manager', 'customs_manager', 'customs_officer'],
       pages: [
-        // لوحةُ القسم للفريق كلِّه وبلا أرقامٍ ماليّة؛ والتحليلاتُ (الأرباح) للإدارة
-        // وحدَها — الخادمُ يردّ غيرَ مدير النظام ومدير القسم بـ٤٠٣.
+        // Section dashboard for the whole team with no financial figures; analytics (profit) is for management only, and the server returns 403 to anyone except the system admin and section manager.
         AppPage('لوحة القسم', 'Section Dashboard', Icons.space_dashboard_outlined, (c) => const CustomsDashboardScreen(), path: '/system/customs/dashboard'),
         if (_top.contains(role) || role == 'customs_manager') AppPage('تحليلات قسم التخليص', 'Customs Analytics', Icons.insights_outlined, (c) => const CustomsAnalyticsScreen(), path: '/system/customs/analytics'),
         AppPage('الدليل', 'Guide', Icons.menu_book_outlined, (c) => const CustomsGuideScreen(), path: '/system/customs/guide'),
@@ -651,7 +631,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
       key: 'Shipment Orders', arTitle: 'طلبات الشحنات', enTitle: 'Shipment Orders', icon: Icons.assignment_outlined,
       roles: const [..._admins, 'operations_manager', 'operations_staff', 'moderator', 'shipment_orders_manager', 'shipment_orders_staff', 'shipment_orders_followup'],
       pages: [
-        // لوحةُ القسم أوّلًا، كما في الويب: «كيف حالُه اليوم؟» قبل الجدول.
+        // Section dashboard first, as on the web: how it is doing today, before the table.
         AppPage('لوحة الشحنات', 'Dashboard', Icons.dashboard_outlined, (c) => const ShipmentOrdersDashboardScreen(), path: '/system/shipment-orders/dashboard'),
         AppPage('الشحنات', 'Orders', Icons.assignment_outlined, (c) => const ShipmentOrdersScreen(), path: '/system/shipment-orders'),
         AppPage('مساعد الإنشاء', 'Create Assistant', Icons.smart_toy_outlined, (c) => const ShipmentOrdersChatScreen(), path: '/system/shipment-orders/chat'),
@@ -660,7 +640,7 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         AppPage('العملاء', 'Customers', Icons.people_outline, (c) => ResourceScreen(config: customersCfg), path: '/system/shipment-orders/customers'),
         AppPage('الموردون', 'Suppliers', Icons.business_outlined, (c) => ResourceScreen(config: shipmentOrdersSuppliersCfg), path: '/system/shipment-orders/fleet'),
         AppPage('الشاحنات', 'Vehicles', Icons.local_shipping_outlined, (c) => ResourceScreen(config: shipmentOrdersVehiclesCfg), path: '/system/shipment-orders/fleet'),
-        // السوّاق: سجلٌّ ثالثٌ في الصفحة نفسها على الويب (تبويب)، وشاشةٌ هنا.
+        // Driver: a third register in the same page on the web (a tab), a screen here.
         AppPage('السوّاق', 'Drivers', Icons.badge_outlined, (c) => ResourceScreen(config: shipmentOrdersDriversCfg), path: '/system/shipment-orders/fleet'),
         if (const ['super_admin', 'admin', 'operations_manager'].contains(role))
           AppPage('الصلاحيات', 'Permissions', Icons.verified_user_outlined, (c) => const ShipmentBranchAccessScreen(), path: '/system/shipment-orders/permissions'),
@@ -693,15 +673,13 @@ List<AppSection> sectionsFor(AuthProvider auth) {
     ),
     AppSection(
       key: 'B2C', arTitle: 'B2C', enTitle: 'B2C', icon: Icons.storefront_outlined,
-      // الباك يخدم داتا B2C لـ super_admin/admin + رؤوس B2C فقط؛ فمنستعرضهاش لـ IT
-      // (كانوا بيشوفوا القسم ببيانات صفر) — نطابق النطاق تمامًا.
-      // والمشرفان (التشغيليّ والتفقّديّ) يدخلان القسمَ لصفحاتهما الثلاث وحدَها:
-      // مدخلاتُ الأوردرات في مشاريعهما، والتفقّد وسجلُّه — كالموقع.
+      // The backend serves B2C data to super_admin/admin plus B2C heads only, so it is not shown to IT (they saw the section with zero data); the scope is matched exactly.
+      // The two supervisors (operations and duty check) enter the section for their three pages only: order entries in their projects, and the duty check and its log, as on the website.
       roles: const ['super_admin', 'admin', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead', 'b2c_rep_supervisor', 'b2c_inspection_supervisor'],
       pages: _b2cSupervisors.contains(role) ? [
         AppPage('مدخلات الأوردرات', 'Orders Entry', Icons.edit_calendar_outlined, (c) => const B2cDailyEntryScreen(), path: '/system/b2c/daily-entry'),
         AppPage('متابعة مناديب أمازون', 'Amazon Reps Attendance', Icons.how_to_reg_outlined, (c) => const B2cAmazonAttendanceScreen(), path: '/system/b2c/amazon-attendance'),
-        // شكاوى Media Go — بلاغاتُ أعطال الشاشات على الدبّابات، يراها حسابُ Media Go ويردّ.
+        // Media Go complaints: screen-fault reports on the tankers, seen and answered by the Media Go account.
         AppPage('شكاوى Media Go', 'Media Go Complaints', Icons.connected_tv_outlined, (c) => const MediaGoComplaintsScreen(), path: '/system/b2c/mediago-complaints'),
         AppPage('المحتوى الإعلاني', 'Ad Content', Icons.movie_outlined, (c) => const MediaGoAdsScreen(), path: '/system/b2c/mediago-ads'),
         AppPage('تفقّد بداية الدوام', 'Duty Start Check', Icons.photo_camera_outlined, (c) => const B2cDutyScreen(), path: '/system/b2c/duty/start'),
@@ -711,43 +689,40 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         AppPage('المشاريع', 'Projects', Icons.folder_special_outlined, (c) => ResourceScreen(config: b2cProjectsCfg), path: '/system/b2c/projects'),
         AppPage('مدخلات الأوردرات', 'Orders Entry', Icons.edit_calendar_outlined, (c) => const B2cDailyEntryScreen(), path: '/system/b2c/daily-entry'),
         AppPage('متابعة مناديب أمازون', 'Amazon Reps Attendance', Icons.how_to_reg_outlined, (c) => const B2cAmazonAttendanceScreen(), path: '/system/b2c/amazon-attendance'),
-        // شكاوى Media Go — بلاغاتُ أعطال الشاشات على الدبّابات، يراها حسابُ Media Go ويردّ.
+        // Media Go complaints: screen-fault reports on the tankers, seen and answered by the Media Go account.
         AppPage('شكاوى Media Go', 'Media Go Complaints', Icons.connected_tv_outlined, (c) => const MediaGoComplaintsScreen(), path: '/system/b2c/mediago-complaints'),
         AppPage('المحتوى الإعلاني', 'Ad Content', Icons.movie_outlined, (c) => const MediaGoAdsScreen(), path: '/system/b2c/mediago-ads'),
-        // تفقُّد بداية الدوام — أوّلُ ما يُفتَح صباحًا، فيُوضَع قبل ما دونه.
-        // والمشرفُ يفتحه واقفًا في المحطّة لا خلف مكتب، فالهاتفُ موضعُه الأصليّ.
+        // Start-of-shift duty check: the first thing opened in the morning, so it is placed before the rest.
+        // The supervisor opens it standing at the station, not at a desk, so the phone is its natural place.
         AppPage('تفقّد بداية الدوام', 'Duty Start Check', Icons.photo_camera_outlined, (c) => const B2cDutyScreen(), path: '/system/b2c/duty/start'),
-        // والسجلُّ بعدها: شاشةُ المشرف يُعمَل بها التفقّد، وهذه تُقرأ.
+        // The log after it: the supervisor screen performs the check, and this one is read.
         AppPage('سجل التفقّد', 'Duty Register', Icons.fact_check_outlined, (c) => const B2cDutyRegisterScreen(), path: '/system/b2c/duty'),
-        // مخزنُ القسم — الشاشةُ نفسُها بنطاقٍ آخر: آليّةُ المخزن واحدةٌ
-        // وأصنافُه وأرصدتُه منفصلةٌ عن مخزن النقل الثقيل.
+        // Department store: the same screen with a different scope; the store mechanism is shared but its items and balances are separate from the heavy transport store.
         AppPage('المخزن', 'Store', Icons.inventory_2_outlined,
             (c) => const Ls2StoreScreen(
                   base: '/api/light-transport/store',
                   titleAr: 'مخزن النقل الخفيف',
                   titleEn: 'Light Transport Store',
-                  // مركباتُ القسم ومشاريعُها — لا شاحناتُ النقل الثقيل.
+                  // Department vehicles and projects, not heavy transport trucks.
                   vehiclesKind: 'light',
                 ),
             path: '/system/b2c/light-transport/store'),
-        // عهدةُ القسم: الكاش وكارت المشتريات والورشة — حلّت محلَّ «عهد المشاريع».
+        // Department custody: cash, purchases card and workshop; replaced project custody.
         if (_ltOwners.contains(role)) AppPage('عهدة النقل الخفيف', 'Light Transport Custody', Icons.account_balance_wallet_outlined, (c) => const LtCustodyScreen(), path: '/system/b2c/light-transport/custody'),
-        // مركباتُ مشاريع القسم — نافذةٌ على سجلّ المركبات نفسِه: القائدُ الفعليّ والتفويض.
+        // Department project vehicles: a window on the vehicles register itself, the actual driver and the authorization.
         if (_ltOwners.contains(role)) AppPage('مركبات النقل الخفيف', 'Light Transport Vehicles', Icons.local_shipping_outlined, (c) => const B2cVehiclesScreen(), path: '/system/b2c/vehicles'),
-        // ويُبلِّغ القسمُ الموارد البشريّة بما رآه في الميدان — الجانبُ المُرسِل.
+        // The department reports to HR what it saw in the field: the sending side.
         AppPage('طلبات الموارد البشرية', 'HR Requests', Icons.send_outlined, (c) => const StaffRequestsScreen(side: 'section', section: 'B2C'), path: '/system/b2c/hr-requests'),
-        // ── سجلُّ القسم كلِّه لا مناديبَ التقارير وحدَهم ────────────────────
-        // «مناديب المبيعات» كانت تقرأ `B2CRep` — وهم مَن لهم تقاريرُ طلبات،
-        // فلا يظهر فيها مشرفٌ ولا ميكانيكيٌّ ولا عاملُ نظافة: أحدَ عشرَ من
-        // مئةٍ وواحدٍ وستّين. وتلك الصفحةُ صارت «تحليل الأوردرات» على الويب.
+        // The whole section register, not only report reps.
+        // Sales reps used to read B2CRep, those with order reports, so supervisors, mechanics and cleaners were missing (eleven of 161). That page became order analysis on the web.
         AppPage('موظفون النقل الخفيف', 'Light-transport Employees', Icons.two_wheeler_outlined, (c) => const LightTransportListScreen(), path: '/system/b2c/light-transport'),
-        // تأجيرُ اليوزرات — يُعَدّ في «إجمالي المناديب» بلوحة القسم. مطابقٌ للموقع.
+        // User rentals: counted in total reps on the section dashboard. Same as the website.
         if (const ['super_admin', 'admin', 'it_manager', 'it_specialist', 'b2c_manager', 'b2c_deputy', 'b2c_project_lead', 'cfo', 'accounting_manager', 'accountant'].contains(role)) AppPage('تأجير اليوزرات', 'User Rentals', Icons.key_outlined, (c) => ResourceScreen(config: ltUserRentalsCfg(canWrite: true, canDelete: const ['super_admin', 'admin', 'b2c_manager', 'b2c_deputy'].contains(role))), path: '/system/b2c/user-rentals'),
         AppPage('أوامر التشغيل', 'Operating Orders', Icons.assignment_ind_outlined, (c) => const LtOperatingOrdersScreen(), path: '/system/b2c/orders'),
         AppPage('تحليل الأوردرات', 'Orders Analysis', Icons.insights_outlined, (c) => const B2cOrdersAnalysisScreen(), path: '/system/b2c/orders-analysis'),
-        // السكنُ والقوائمُ المنسدلة — كما في «إعدادات القسم» على الويب.
+        // Housing and dropdown lists, as in section settings on the web.
         AppPage('إعدادات القسم', 'B2C settings', Icons.home_work_outlined, (c) => const LightTransportHousingScreen(), path: '/system/b2c/settings'),
-        // حساباتُ تطبيق التوصيل — تبويبٌ في «إعدادات القسم» على الويب: «غير مرتبط» يُراجَع.
+        // Delivery app accounts: a tab in section settings on the web; unlinked ones are reviewed.
         AppPage('حسابات التطبيق', 'App accounts', Icons.sports_motorsports_outlined, (c) => ResourceScreen(config: b2cRepsCfg(canEdit: _ltOwners.contains(role))), path: '/system/b2c/settings'),
         AppPage('الشكاوى', 'Complaints', Icons.report_outlined, (c) => const SectionWorkScreen(section: 'b2c', complaints: true), path: '/system/b2c/complaints'),
         AppPage('تقييم الأداء', 'KPIs', Icons.leaderboard_outlined, (c) => const TeamBoardScreen(section: 'B2C'), path: '/system/b2c/kpis'),
@@ -771,14 +746,14 @@ List<AppSection> sectionsFor(AuthProvider auth) {
       roles: const ['super_admin', 'admin'], managed: false,
       pages: [
         AppPage('النظرة التنفيذية', 'Overview', Icons.insights_outlined, (c) => const ExecutiveOverviewScreen()),
-        // خطّةُ الإدارة العليا إلى مديري الأقسام — ولوحتُها لمدير النظام وحدَه.
+        // Top management plan to department managers; its dashboard is for the system admin only.
         if (_top.contains(role)) AppPage('خطّة الإدارة (Management JP)', 'Management JP', Icons.event_available_outlined, (c) => const JpScreen(scope: 'management'), path: '/system/management-jp'),
         if (_top.contains(role)) AppPage('لوحة خطّة الإدارة', 'Management JP Dashboard', Icons.insights_outlined, (c) => const JpDashScreen(scope: 'management'), path: '/system/management-jp/dashboard'),
       ],
     ),
     AppSection(
       key: 'AdminTools', arTitle: 'الإدارة', enTitle: 'Admin', icon: Icons.admin_panel_settings_outlined,
-      // كالويب: أخصّائيُّ الـIT يرى المستخدمين والصلاحيّات وسجلَّ التدقيق والتوثيق.
+      // As on the web: the IT specialist sees users, permissions, the audit log and documentation.
       roles: const ['super_admin', 'admin', 'it_manager', 'it_specialist'], managed: false,
       pages: [
         AppPage('المستخدمون', 'Users', Icons.group_outlined, (c) => const AdminUsersScreen()),
@@ -787,13 +762,12 @@ List<AppSection> sectionsFor(AuthProvider auth) {
         AppPage('سجل التدقيق', 'Audit Log', Icons.fact_check_outlined, (c) => const AdminAuditScreen(), path: '/system/audit'),
         AppPage('الشكاوى', 'Complaints', Icons.forum_outlined, (c) => const AdminComplaintsScreen(), path: '/system/complaints'),
         AppPage('البيانات المرجعية', 'Reference Data', Icons.list_alt_outlined, (c) => const ReferenceDataScreen()),
-        // توثيقُ الـ API — السطحُ الداخليُّ يحرسه الخادمُ بـFULL_ACCESS_ROLES.
+        // API documentation: the internal surface is guarded by the server with FULL_ACCESS_ROLES.
         if (const ['super_admin', 'admin', 'it_manager', 'it_specialist'].contains(role))
           AppPage('توثيق الـ API', 'API Docs', Icons.menu_book_outlined, (c) => const ApiDocsScreen(), path: '/system/api-docs'),
       ],
     ),
-    // بوابة العميل/المورد — outside partners. `client` is the external role, and
-    // it appears in NO other section, so a partner's drawer is just this.
+    // Customer/supplier portal: outside partners. `client` is the external role, and it appears in NO other section, so a partner's drawer is just this.
     AppSection(
       key: 'Portal', arTitle: 'بوابتي', enTitle: 'My Portal', icon: Icons.storefront_outlined,
       roles: const ['client'], managed: false,
@@ -806,11 +780,10 @@ List<AppSection> sectionsFor(AuthProvider auth) {
   // A partner sees ONLY their portal — never a staff section, whatever the
   // permission matrix happens to say about their role.
   if (role == 'client') return all.where((s) => s.key == 'Portal').toList();
-  // وحسابُ Media Go لا قسمَ له: يدخل على شاشته مباشرةً (main.dart) ولا درجَ له.
+  // The Media Go account has no section: it enters its screen directly (main.dart) and has no drawer.
   if (role == mediagoRole) return const [];
-  // ── والصفحاتُ تُصفّى داخل القسم ───────────────────────────────────────────
-  // القسمُ يُفتَح، ثمّ تُحذَف منه الصفحاتُ التي أُغلقت لهذا الدور — والقسمُ الذي
-  // لم تبقَ فيه صفحةٌ يسقط كلُّه، فبطاقةٌ تُفتَح على فراغٍ أسوأُ من غيابها.
+  // Pages are filtered inside the section.
+  // The section opens, then pages closed for this role are removed; a section left with no pages is dropped entirely, since a card opening on nothing is worse than none.
   final visible = all.where(allowed).map((s) {
     final pages = s.pages.where((p) => auth.canAccessPage(p.path)).toList();
     if (pages.length == s.pages.length) return s;
@@ -820,15 +793,13 @@ List<AppSection> sectionsFor(AuthProvider auth) {
     );
   }).where((s) => s.pages.isNotEmpty).toList();
 
-  // ── والترتيبُ يُقال، ولا يُترك لترتيب الكود ────────────────────────────
-  // كانت الأقسامُ تظهر بترتيب كتابتها في هذه القائمة، فترتيبُ الشاشة أثرٌ
-  // جانبيٌّ لترتيب الملفّ: يُضاف قسمٌ في مكانه الطبيعيّ فيقفز في الشاشة بلا
-  // أن يقصد أحد. وهو الترتيبُ نفسُه في الموقع — والتطبيقُ والموقعُ شيءٌ واحد.
+  // Order is stated, not left to code order.
+  // Sections used to appear in the order written in this list, so screen order was a side effect of file order: adding a section in its natural place made it jump on screen unintentionally. This is the same order as the website; app and site are one thing.
   visible.sort((a, b) {
     final ia = _sectionOrder.indexOf(a.key);
     final ib = _sectionOrder.indexOf(b.key);
     if (ia == -1 && ib == -1) return 0;
-    if (ia == -1) return 1;                 // ما لم يُذكَر يأتي بعد المذكور
+    if (ia == -1) return 1;                 // Unlisted sections come after the listed ones.
     if (ib == -1) return -1;
     return ia.compareTo(ib);
   });
@@ -848,8 +819,7 @@ List<AppPage> selfServicePages(bool hasTeam, {bool isPartner = false}) => isPart
       AppPage('ملفي', 'My Profile', Icons.account_circle_outlined, (c) => const MyProfileScreen()),
       AppPage('الإشعارات', 'Notifications', Icons.notifications_outlined, (c) => const NotificationsScreen()),
       AppPage('مركز التقارير', 'Reports', Icons.assessment_outlined, (c) => const ReportsScreen()),
-      // المساعد: سؤالٌ عن أيّ شيءٍ في النظام — مواضيعُه وصلاحيّاتُه من مركز
-      // التقارير نفسِه، فلا يعرف شيئًا من عنده ولا يُري أحدًا ما لا يملك.
+      // Assistant: answers questions about anything in the system. Its topics and permissions come from the reports center itself, so it knows nothing on its own and shows nobody what they cannot access.
       AppPage('المساعد', 'Assistant', Icons.auto_awesome_outlined, (c) => const AssistantScreen(), path: '/system/assistant'),
       AppPage('إجازاتي', 'My Leaves', Icons.beach_access_outlined, (c) => const MyLeavesScreen()),
       AppPage('طلباتي', 'My Requests', Icons.description_outlined, (c) => const MyRequestsScreen()),

@@ -62,14 +62,9 @@ interface Workflow {
   country: string;
   operationsReview: string;
   paymentDate: string;
-  /** آخرُ مَن كتب تاريخ السداد أو عدّله — يُكتب في الخادم. */
+  /** Last user who wrote or edited the payment date; written by the server. */
   paymentDateByName?: string;
-  /**
-   * ── مسؤولُ البيانات كما يحسبه الخادم ──────────────────────────────────────
-   * من كتب تاريخَ السداد عندنا، فمن سجّل الشراءَ في المحفظة (هو من دفع
-   * ساعتَها)، وإلّا فـ«منقول من منصّة الأوبريشن» — فلا تُقرأ خانةٌ فارغةٌ
-   * «مجهولًا» وفي الصفّ تاريخٌ وفرعٌ ومبلغ. راجع workflowController.
-   */
+  /** Data owner as computed by the server: whoever wrote the payment date, else whoever recorded the wallet purchase (the payer at the time), else the value imported from the operations platform. This keeps a row with a date, branch and amount from reading as unknown. See workflowController. */
   dataOwnerShown?: string;
   dataOwnerFrom?: 'system' | 'wallet' | 'import' | '';
   paymentDateAt?: string;
@@ -81,9 +76,9 @@ interface Workflow {
   deliveryDate: string;
   accountingReview: string;
   paymentAmount: number;
-  // العائلةُ (cash | tax) — وفي نسخة التعديل قد تحمل أحدَ الأنواع الأربعة قبل الحفظ.
+  // Payment family (cash | tax); in edit mode it may hold any of the four kinds before saving.
   paymentType: string;
-  /** النوعُ المختار: «آجل - فاتورة» و«آجل - كاش» و«نقدي - 3PL» و«نقدي - HT» — راجع lib/paymentKind. */
+  /** Selected payment kind: credit-invoice, credit-cash, cash-3PL or cash-HT. See lib/paymentKind. */
   paymentSubtype?: string;
   collectedAmount: number;
   invoiceNumber: string;
@@ -98,9 +93,9 @@ interface Workflow {
   lockedByName: string;
   lockedAt: string | null;
   createdAt: string;
-  /** معاملةُ التخليص المرتبطة — نسخةٌ يكتبها الخادم (services/customsOpsLink). */
+  /** Linked customs transaction; a copy written by the server (services/customsOpsLink). */
   customsLink?: (CustomsLinkView & { clearance?: string | null }) | null;
-  /** عمودُ «التخليص» في الفلاتر — يُحسب في الخادم من `customsLink.refNumber`. */
+  /** Customs column in the filters; computed on the server from `customsLink.refNumber`. */
   customsRef?: string;
 }
 
@@ -112,11 +107,10 @@ const STAGE_CONFIG: Record<string, { label: string; color: string; bg: string }>
   completed: { label: 'Completed', color: 'text-green-600', bg: 'bg-green-500/20' },
 };
 
-// مرجعان ثابتان: العمود غير المفلتر والعمود الذي لم تُفتح قائمته يشتركان فيهما،
-// فلا يُنشأ في كل رسمةٍ مرجعٌ جديد يُبطل حسابات القائمة بلا سبب.
+// Two stable references shared by the unfiltered column and the column whose list was never opened, so each render does not create a new reference that invalidates the list computations.
 const EMPTY_SET = new Set<string>();
 const EMPTY_OPTIONS: ColumnFilterOption[] = [];
-// البطاقةُ الهادئة — نمطُ شجرة المديونيّة (components/collections/ReceivablesTree).
+// Quiet card style, same as the receivables tree (components/collections/ReceivablesTree).
 const CARD = 'flex w-full h-full min-w-0 items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 sm:px-5 py-3.5 text-start shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-colors hover:bg-slate-50/60';
 const CARD_ON = '!border-slate-900 !bg-slate-50 ring-1 ring-slate-900/10';
 const CARD_NUM = 'text-xl sm:text-2xl font-bold tabular-nums tracking-tight text-slate-900';
@@ -126,12 +120,8 @@ const CARD_SUB = 'text-[10.5px] leading-snug text-slate-400';
 const DATE_FIELDS = new Set(['reportDate', 'paymentDate', 'sendingDate', 'branchDeliveryDate', 'deliveryDate', 'invoiceDate', 'collectionDate']);
 const NUM_FIELDS = new Set(['purchaseValue', 'sellingValue', 'netInvoice', 'tax', 'totalInvoice', 'paymentAmount', 'collectedAmount']);
 
-// ── أعمدة التصدير ────────────────────────────────────────────────────────────
-// مكتوبةٌ هنا لا مشتقّةٌ من ترتيب الجدول، ليبقى الملفُّ ثابتَ الشكل.
-//
-// وأعمدةُ المال تُحذف منه لمن لا يملكها: الخادمُ لم يعد يرسلها أصلًا، فتركُها
-// في القائمة يُخرج ثمانيةَ أعمدةٍ فارغةٍ بعناوينها — وعمودٌ فارغٌ بعنوانٍ
-// يُقرأ «لا فاتورة لهذا الكشف»، وهو غيرُ «لا تُعرض لك».
+// Export columns
+// Listed explicitly rather than derived from table order so the file shape stays fixed. Money columns are dropped for users without access: the server no longer sends them, and empty titled columns would read as no invoice instead of not shown to you.
 const MONEY_EXPORT_KEYS = new Set([
   'netInvoice', 'tax', 'totalInvoice', 'invoiceDate', 'invoiceNotes', 'collectedAmount', 'collectionDate',
 ]);
@@ -181,10 +171,8 @@ const EXPORT_COLUMNS = [
   { header: 'تاريخ التحصيل', key: 'collectionDate', width: 12 },
 ];
 
-// ── أعمدةُ شريط الفلترة ──────────────────────────────────────────────────────
-// ما يُسأل عنه كلَّ يوم: العميل، والفرع، والمسار، ونوعُ الدفع، والحالة، والسائق
-// والسيارة، وهل على الكشف فاتورة. وبقيّةُ الأعمدة لها فلترُها على رأسها في الجدول.
-// (`invoiceState` عمودٌ محسوبٌ في الخادم: موجود / فارغ / بديلٌ مثل «no inv».)
+// Filter bar columns
+// The questions asked daily: customer, branch, route, payment kind, status, driver, vehicle, and whether the statement has an invoice. Other columns keep their own header filter. `invoiceState` is computed on the server: present, empty, or a placeholder such as no inv.
 const BAR_FIELDS: (FilterBarField & { money?: boolean })[] = [
   { key: 'username', ar: 'العميل', en: 'Customer' },
   { key: 'branch', ar: 'الفرع', en: 'Branch' },
@@ -198,7 +186,7 @@ const BAR_FIELDS: (FilterBarField & { money?: boolean })[] = [
   { key: 'truckType', ar: 'نوع الشاحنة', en: 'Truck type' },
   { key: 'payingBranch', ar: 'الفرع المسدِّد', en: 'Paying branch' },
   { key: 'invoiceState', ar: 'رقم الفاتورة', en: 'Invoice number' },
-  // معاملةُ التخليص: أرقامُ المعاملات، و«(فارغ)» = غيرُ مرتبط.
+  // Customs transaction: transaction numbers, and empty means not linked.
   { key: 'customsRef', ar: 'التخليص', en: 'Customs' },
 ];
 
@@ -208,8 +196,7 @@ export default function OperationsWorkflowPage() {
   const { lang } = useLanguage();
   const T = getOperationsTranslations(lang);
   const { notify } = useDialog();
-  // الرسالة نصٌّ واحد يُستعمل في التلميح وفي التنبيه — فلا يقول أحدهما شيئًا
-  // ويقول الآخر غيره.
+  // One message text is used for both the tooltip and the alert so they cannot disagree.
   const gateMsg = lang === 'ar'
     ? 'لا يُسجَّل تاريخ السداد إلا بعد أن تصبح حالة الشحنة «استُلم السند». السداد إقرارٌ بوصول المال، ولا يصل قبل استلام السند — وتسجيله قبله يجعل التقارير المالية تَعُدُّ مبلغًا لم يُقبَض.'
     : 'The payment date can only be recorded once the application status is “Bond received”. Recording it earlier makes the financial reports count money that has not arrived.';
@@ -231,7 +218,7 @@ export default function OperationsWorkflowPage() {
   const [searching, setSearching] = useState(false);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
-  // «باستثناء الملغاة» يثبت حتى يُلغى، ويُحفَظ للمستخدم (٢٠٢٦/١٠/٢٢).
+  // The exclude-cancelled toggle persists until turned off and is saved per user.
   // Which section's rows to show; both by default.
   const [origin, setOrigin] = useState('');
   const [excludeCancelled, setExcludeCancelled] = useState<boolean>(() => {
@@ -242,8 +229,7 @@ export default function OperationsWorkflowPage() {
     setPage(1);
     return !v;
   });
-  // عددُ الصفوف في الصفحة يختاره المستخدم ويُحفَظ له (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢).
-  // والخادمُ لا يقبل أكثرَ من ٥٠٠ — صفحةٌ أكبرُ تثقل الجدولَ ولا يقرؤها أحد.
+  // Rows per page is chosen by the user and saved for them. The server accepts at most 500; larger pages slow the table and nobody reads them.
   const [pageSize, setPageSize] = useState<number>(() => readPageSize('ops:pageSize'));
   const changePageSize = (n: number) => { setPageSize(n); setPage(1); savePageSize('ops:pageSize', n); };
   const [stageFilter, setStageFilter] = useState('');
@@ -251,11 +237,8 @@ export default function OperationsWorkflowPage() {
   const [searchInput, setSearchInput] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
-  // ── ثلاثةُ أوضاعٍ للفترة ────────────────────────────────────────────────────
-  // «كشوفُ هذا الشهر» و«كشوفُ يومِ كذا» سؤالان يُطرحان أكثرَ من المدى الحرّ،
-  // وكتابةُ كلٍّ منهما مدًى من طرفين عملٌ يتكرّر: آخرُ الشهر يُحسب باليد فيُخطأ
-  // في الثلاثين والواحد والثلاثين وشباط، واليومُ الواحد يُكتب مرّتين.
-  // فيُختار الوضعُ ويُشتقّ المدى منه — والمدى الحرُّ باقٍ لمن يريده.
+  // Three period modes
+  // This month and a given day are asked more often than a free range, and writing either as two endpoints is repetitive and error-prone (month ends, February, a day typed twice). The mode is chosen and the range derived from it; the free range remains.
   type DateMode = 'range' | 'month' | 'day';
   const [dateMode, setDateMode] = useState<DateMode>('range');
   const [monthKey, setMonthKey] = useState('');
@@ -281,13 +264,13 @@ export default function OperationsWorkflowPage() {
   };
   const switchMode = (m: DateMode) => {
     setDateMode(m);
-    // تبديلُ الوضع يمسح ما اختاره الوضعُ السابق: بقاؤه يعني فلترًا لا يراه أحد.
+    // Switching mode clears the previous mode's selection; keeping it would leave a filter nobody can see.
     setDateFrom(''); setDateTo(''); setMonthKey(''); setDayKey(''); setPage(1);
   };
   const [error, setError] = useState('');
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
-  // الجدولُ يُنزَل إليه من بطاقة العدد: «أرِني هذه الصفوف» لا «كم هي».
+  // Scroll to the table from a count card: show these rows, not just how many.
   const tableRef = useRef<HTMLDivElement>(null);
   // The actions column changes width with its row icons, so the pinned column reads it live.
   const pinObserver = useRef<ResizeObserver | null>(null);
@@ -306,8 +289,7 @@ export default function OperationsWorkflowPage() {
   const [showPendingOnly, setShowPendingOnly] = useState(false);
   // Bonds not arrived as of the end of the filtered period (even if they arrived later).
   const [showPendingAsOf, setShowPendingAsOf] = useState(false);
-  // ── التخليص: الكلّ / المرتبطة / غيرُ المرتبطة / معاملةٌ بعينها ────────────
-  // `customs` في الرابط: صفحةُ المعاملة تفتح الجدولَ على كشوفها (`?customs=<معرّفها>`).
+  // Customs filter: all / linked / not linked / one transaction. `customs` in the URL lets the transaction page open the table on its statements (`?customs=<id>`).
   const [customsMode, setCustomsMode] = useState('');
   useEffect(() => {
     try {
@@ -316,15 +298,12 @@ export default function OperationsWorkflowPage() {
     } catch { /* */ }
   }, []);
   const [editingId, setEditingId] = useState<string | null>(null);
-  // أيُّ صفٍّ يُحرَّر **الآن** — يقرؤه ردُّ حفظٍ وصل متأخّرًا (handleInlineSave).
+  // The row currently being edited; read by a save reply that arrives late (handleInlineSave).
   const editingRef = useRef<string | null>(null);
   useEffect(() => { editingRef.current = editingId; }, [editingId]);
 
-  // ── حالةُ حفظ كلّ صفّ — لا يضيع تعديلٌ بصمت (صاحبُ الشركة، ٢٠٢٦/١٠/٢٤) ──
-  // «اخترتُ النوع فلم يثبت» تكرّرت. فكلُّ حفظٍ له علامةٌ على صفّه: يُحفظ…،
-  // ثمّ ✓ حين يردّ الخادم، أو ✗ أحمرُ بزرّ «أعِد» إن تعذّر. وما انقطع بسبب الشبكة
-  // يُعاد وحدَه مرّتين قبل أن يُعلَن فشلُه. ولا تُغلَق الصفحةُ وفيها حفظٌ جارٍ أو
-  // فاشلٌ بلا تحذير. فلا يبقى تعديلٌ «ظنَّ صاحبُه أنّه حُفظ».
+  // Per-row save state
+  // A choice that silently failed to stick kept recurring, so every save marks its row: saving, then done when the server replies, or a red failure with a retry button. Network failures are retried twice automatically before being reported. The page cannot be closed with a save pending or failed without a warning.
   const [saveState, setSaveState] = useState<Record<string, 'saving' | 'saved' | 'failed'>>({});
   const failedPatches = useRef<Record<string, Record<string, any>>>({});
   const markSave = useCallback((id: string, st: 'saving' | 'saved' | 'failed' | null) => {
@@ -343,84 +322,61 @@ export default function OperationsWorkflowPage() {
     return () => window.removeEventListener('beforeunload', warn);
   }, [pendingSaves]);
   const [editData, setEditData] = useState<Partial<Workflow>>({});
-  // الصفُّ كما كان قبل التعديل — يُقارَن به عند الحفظ فلا يُرسَل إلّا ما تغيّر.
+  // The row as it was before editing; compared on save so only changed fields are sent.
   const [editBase, setEditBase] = useState<Partial<Workflow>>({});
   // Which field's input to auto-focus after a click-to-edit (so a single click
   // on a cell drops you straight into typing).
   const [focusField, setFocusField] = useState<string | null>(null);
-  // Fields pulled from the Operations Platform (read-only in this table — you
-  // edit them at the source). Everything else is manually entered here and is
-  // click-to-edit. المرحلة/stage is system-driven too.
+  // Fields pulled from the Operations Platform (read-only in this table; edit them at the source). Everything else is entered here and is click-to-edit. The stage is system-driven too.
   const SYSTEM_FIELDS = new Set<string>([
     'reportNumber', 'reportDate', 'fromLocation', 'toLocation', 'branch', 'carOwner',
     'carNumber', 'ownerType', 'executionStatus', 'applicationStatus', 'paymentMethod',
-    // (قيمةُ البيع ليست منها: يكتبها مَن يملكها هنا، وتُكتب في المنصّة معها.)
+    // The selling value is not among them: its owner writes it here and it is pushed to the platform with it.
     'username', 'userPhone', 'taxIndicator', 'purchaseValue', 'loadingTime',
     'driverName', 'driverPhone', 'truckType', 'truckSize', 'loadType', 'quantity',
     'reference', 'representativeName', 'stage',
   ]);
   const [confirmModal, setConfirmModal] = useState<{ message: string; onConfirm: () => void } | null>(null);
-  // ── تسجيلُ سدادٍ لدفعةٍ واحدة ─────────────────────────────────────────────
-  // السنداتُ تصل دفعةً بتاريخٍ واحدٍ وفرعٍ واحد، وكان يُفتح كلُّ صفٍّ ليُكتب
-  // فيه التاريخُ نفسُه — مئةُ فرصةِ خطأٍ لعملٍ واحد.
+  // Record payment for a batch
+  // Receipts arrive in batches with one date and one branch; opening each row to type the same date was many chances for error.
   const [showBulkPay, setShowBulkPay] = useState(false);
   const [bulkPay, setBulkPay] = useState({ paymentDate: '', payingBranch: '', paymentType: '', finalReportDestination: '', documentNumber: '', sendingDate: '', branchDeliveryDate: '', deliveryDate: '', operationsReview: '' });
-  // ── «كلُّ نتائج الفلتر» لا صفحةُ الخمسين وحدَها ─────────────────────────────
-  // الجدولُ صفحاتٌ من خمسين؛ والتحديدُ يطال الصفحةَ المعروضة. فإن اختير هذا
-  // أُرسلت شروطُ الجدول نفسُها، ويستخرج الخادمُ منها كلَّ ما يطابق — بعدده المؤكَّد.
+  // All filter results, not just the 50-row page
+  // The table pages by 50 and selection covers the shown page. When this is chosen the table's own conditions are sent and the server selects everything that matches, with a confirmed count.
   const [allMatching, setAllMatching] = useState(false);
   const [bulkPaying, setBulkPaying] = useState(false);
   const [bulkResult, setBulkResult] = useState<{ message: string; skipped: { reportNumber: string; reason: string }[]; more?: number } | null>(null);
-  // فلاتر الأعمدة على طريقة إكسل: اسم العمود ← مجموعة القيم الخام المسموح بها.
-  // تُرسَل إلى الخادم فيفلتر بها الجدولَ كلَّه، ولا تُطبَّق في المتصفح.
+  // Excel-style column filters: column name to the set of allowed raw values. Sent to the server, which filters the whole table; not applied in the browser.
   const [colFilters, setColFilters] = useState<Record<string, Set<string>>>({});
-  // قيم كل عمود كما يحسبها الخادم، مع عدد صفوف كل قيمة.
-  //
-  // كانت تُشتقّ من الصفوف المحمَّلة — وهي خمسون صفًّا — فتعرض «حالة الشحنة» ثلاثَ
-  // حالاتٍ من تسع؛ ثم عولج ذلك بتنزيل الجدول كلّه عند أول فلتر فصار فتحُ القائمة
-  // ينقل عشرات الآلاف من الصفوف ويجمّد التبويب. الحساب صار في القاعدة.
+  // Per-column values and row counts as computed by the server. Deriving them from the 50 loaded rows showed only some statuses, and downloading the whole table on the first filter froze the tab; the computation now runs in the database.
   const [colOptions, setColOptions] = useState<Record<string, { values: ColumnFilterOption[]; truncated: boolean }>>({});
   const [colLoading, setColLoading] = useState<Record<string, boolean>>({});
   const [openField, setOpenField] = useState<string | null>(null);
-  // عدّادُ فتحاتٍ لا مجرّد اسم العمود: إعادةُ فتح العمود نفسه يجب أن تُعيد طلب قيمه،
-  // وإلا بقيت القائمة على نتيجة بحثٍ سابق جزئية والمستخدم يظنّها كلَّ القيم.
+  // An open counter, not just the column name: reopening the same column must refetch its values, otherwise the list stays on a partial earlier search that the user takes for all values.
   const [openNonce, setOpenNonce] = useState(0);
-  // ترتيبُ وصول الردود ليس ترتيبَ إرسالها: بحثٌ سريع قد يسبق ردُّه ردَّ ما قبله،
-  // فتُعرض نتيجةُ حرفٍ قديم فوق نتيجة ما كتبه المستخدم. آخر طلبٍ وحده يُقبل.
+  // Replies can arrive out of order: a fast search may return before an earlier one, showing an old keystroke's result over the latest. Only the last request is accepted.
   const optionsSeq = useRef<Record<string, number>>({});
   const hasColFilters = Object.keys(colFilters).length > 0;
 
   const role = user?.role || '';
-  // أهلُ المال يملكون في هذه الصفحة ما يملكه مديرُ النظام — راجع lib/financeAuthority.
+  // Finance roles hold the same authority here as the system admin; see lib/financeAuthority.
   const full = ['super_admin', 'admin'].includes(role || '') || FINANCE_FULL_ROLES.includes(role || '');
   const canCreate = full || role === 'moderator';
   // role-only: the owner limited shipment deletion to these three; a section grant does not extend it.
   const canDelete = ['super_admin', 'admin', 'operations_manager'].includes(role);
 
-  // ── مَن يرى ماذا: يُسأل الخادمُ ولا يُخمَّن ───────────────────────────────
-  //
-  // كانت هذه الأسطرُ ثلاثَ قوائمِ أدوارٍ مكتوبةً بالإيد بجانب خريطةٍ رابعةٍ في
-  // `workflowController.ROLE_FIELD_ACCESS`. وأربعُ قوائمَ لشيءٍ واحدٍ تفترق
-  // حتمًا: قسمُ العمليات يملك الكتابةَ في أعمدة الفاتورة على الخادم منذ
-  // إصلاحِ «صح كانت تحفظ لا شيء»، ولا يراها في الجدول أصلًا — يكتب في عمودٍ
-  // لا يظهر له.
-  //
-  // فصارت تُقرأ من `/api/workflows/permissions`، وهي الخريطةُ نفسُها التي
-  // يفلتر بها الخادمُ ما يُحفظ. فلا يظهر عمودٌ لا يملكه أحد، ولا يُخفى عمودٌ
-  // يكتب فيه — وأيُّ دورٍ جديدٍ يأخذ حقولَه من أوّل يومٍ بلا سطرٍ يُضاف هنا.
+  // Who sees what: ask the server, do not guess
+  // These were three hand-written role lists next to a fourth map in `workflowController.ROLE_FIELD_ACCESS`, and four lists for one thing drift apart. For example Operations can write invoice columns on the server but could not see them in the table. They are now read from `/api/workflows/permissions`, the same map the server filters saves with, so a new role gets its fields from day one.
   const [myFields, setMyFields] = useState<Set<string> | null>(null);
   // What this reader may see (server-decided), independent of what it may write.
   const [view, setView] = useState<{ amounts?: boolean; selling?: boolean }>({});
   useEffect(() => {
     if (!role) return;
     let alive = true;
-    // `myFields` حقولُ هذا القارئ كما حسبها الخادم — وهي وحدَها التي تعرف
-    // الدورَ المصنوعَ من شاشة الصلاحيّات (لا مفتاحَ له في `roleAccess`).
-    // و`roleAccess` تبقى احتياطًا لنسخةِ خادمٍ أقدم.
+    // `myFields` is this reader's fields as computed by the server; it alone knows roles created from the permissions screen (no key in `roleAccess`). `roleAccess` stays as a fallback for an older server.
     api.get<{ roleAccess: Record<string, string[]>; myFields?: string[]; view?: { amounts?: boolean; selling?: boolean } }>('/api/workflows/permissions')
       .then((d) => { if (alive) { setMyFields(new Set(d?.myFields || d?.roleAccess?.[role] || [])); setView(d?.view || {}); } })
-      // تعذّرُ القراءة لا يفتح شيئًا: مجموعةٌ فارغةٌ تعني «لا حقول» فتبقى
-      // الأعمدةُ الماليّةُ مخفيّةً حتى يُعرف الجواب.
+      // A failed read opens nothing: an empty set means no fields, so financial columns stay hidden until the answer is known.
       .catch(() => { if (alive) setMyFields(new Set()); });
     return () => { alive = false; };
   }, [role]);
@@ -430,9 +386,8 @@ export default function OperationsWorkflowPage() {
   const canViewFinancials = full || !!view.amounts;
   const canEditAccountingReview = full || has('accountingReview');
   const canEditOperationsReview = full || has('operationsReview');
-  // ── قيمةُ البيع: لمن في قائمتها وحدَه ─────────────────────────────────────
-  // الخادمُ لا يرسلها لغيرهم أصلًا ولا يقبل كتابتَها منهم؛ والعمودُ يُخفى معها
-  // كي لا يُقرأ فراغُه «لا سعرَ لهذا الكشف».
+  // Selling value: only for users on its list
+  // The server neither sends it to others nor accepts writes from them, and the column is hidden with it so an empty cell is not read as no price.
   const canSeeSelling = has('sellingValue') || !!view.selling;
 
   // Columns a role may not see never reach the chooser, so it cannot offer them.
@@ -468,11 +423,7 @@ export default function OperationsWorkflowPage() {
     byOrigin: { orders: number; fleet: number };
   }>({ byOrigin: { orders: 0, fleet: 0 }, total: 0, pendingInvoices: 0, pendingBondReceived: 0, sumPurchaseValue: 0, pendingAsOf: 0, pendingAsOfDate: '', pendingAsOfFrom: '', byStage: {}, byStatus: {}, statusTotal: 0 });
 
-  // كل ما يفهمه الخادم من فلترة في مكانٍ واحد: يقرؤه الجدولُ والإحصاءاتُ وقوائمُ
-  // القيم والتصدير، فلا يفلتر أحدها على شرطٍ ويعرض الآخر نتيجة شرطٍ غيره.
-  //
-  // قيم كل عمود تُرسَل مكرَّرةً (`cf_x=a&cf_x=b`) لا مفصولةً بفاصلة، لأن القيم نفسها
-  // تحمل فواصل — أسماء ملّاك وملاحظات فواتير — فالفصل بفاصلة يقطعها نصفين.
+  // Everything the server understands as a filter lives in one place, read by the table, stats, value lists and export, so none filters on a condition the others do not. Column values are sent repeated (`cf_x=a&cf_x=b`), not comma-joined, because values contain commas (owner names, invoice notes).
   const buildParams = useCallback(() => {
     const params = new URLSearchParams();
     if (stageFilter) params.append('stage', stageFilter);
@@ -485,27 +436,15 @@ export default function OperationsWorkflowPage() {
     if (excludeCancelled) params.append('excludeCancelled', '1');
     if (origin) params.append('origin', origin);
     for (const [field, vals] of Object.entries(colFilters)) {
-      // مجموعةٌ أو مصفوفةٌ أو نصٌّ — كلُّها تُقرأ؛ قيمةٌ بشكلٍ غير متوقَّع كانت ترمي
-      // داخلَ الطلب فيُبتلَع الخطأ ولا تُعاد القائمةُ أبدًا.
+      // Accepts a set, array or string; an unexpected value shape used to throw inside the request, swallowing the error so the list was never returned.
       const list = vals instanceof Set || Array.isArray(vals) ? Array.from(vals as Iterable<string>) : (vals ? [String(vals)] : []);
       list.forEach((v) => params.append(`cf_${field}`, v));
     }
     return params;
   }, [origin, stageFilter, search, dateFrom, dateTo, showPendingOnly, showPendingAsOf, customsMode, colFilters, excludeCancelled]);
 
-  // ── ولا يكتب ردٌّ قديمٌ فوق ردٍّ أحدث ────────────────────────────────────
-  //
-  // البحثُ يغيّر `search` ويعيد `page` إلى الأولى، فينطلق طلبان: أحدهما بالبحث
-  // الجديد ورقمِ الصفحة القديم — ويعود فارغًا لأنّ نتيجةً واحدةً لا صفحةَ ثالثةَ
-  // لها. ومَن يصل أخيرًا هو الذي يُعرض. فيبحث المستخدم عن كشفٍ فلا يجده، ثمّ
-  // يخرج من الصفحة ويعود (فتصير الصفحةُ الأولى) فيجده.
-  //
-  // ويزيد الأمرَ أنّ استطلاع منصّة التشغيل يعمل كلَّ ستّ ثوانٍ، فيطلق طلبَ
-  // تحديثٍ ثالثًا يسابق الاثنين — وقد يحمل حالةً سابقةً للبحث فتُعرض القائمةُ
-  // كلُّها فوق نتيجةٍ مفلترة.
-  //
-  // فيُرقَّم كلُّ طلب، ولا يُعرض إلّا ردُّ آخرِ رقمٍ أُطلق. وهو شرطٌ لا يستغني
-  // عنه أيُّ جدولٍ يُفلتَر ويُحدَّث لحظيًّا في آن.
+  // A stale reply must not overwrite a newer one
+  // Search changes `search` and resets `page`, firing two requests: one with the new search and the old page, which returns empty. Whichever arrives last is shown, so a search could miss a statement until the page was reopened. The 6-second platform poll adds a third racing request that may carry pre-search state. Each request is numbered and only the latest reply is shown; any table that is filtered and live-updated needs this.
   const guard = useLatestRequest();
   const fetchWorkflows = useCallback(async (isBackground = false) => {
     const mySeq = guard.begin();
@@ -518,19 +457,14 @@ export default function OperationsWorkflowPage() {
       params.append('page', String(page));
       params.append('limit', String(pageSize));
       const data = await api.get<any>(`/api/workflows?${params.toString()}`);
-      if (!guard.isCurrent(mySeq)) return;   // سبقَه أحدثُ منه — يُهمَل
+      if (!guard.isCurrent(mySeq)) return;   // A newer request superseded this one; ignore it.
       setWorkflows(data.workflows || []);
       setTotal(data.total || 0);
     } catch (err: any) {
       console.error(err);
     } finally {
-      // ── ورايةُ الانشغال تُطفأ دائمًا ────────────────────────────────────
-      // كانت مربوطةً بحارس «الأحدث يفوز»، وهما أمران مختلفان: الحارسُ يقرّر
-      // **بياناتِ مَن** تُعرض، والرايةُ تقول إنّ الطلبَ الذي أشعلها انتهى.
-      //
-      // و`workflow:updated` يُبَثّ إلى كلّ من يفتح الصفحة عند أيّ تعديل، فمع
-      // فريقٍ يعمل عليها معًا لا يكاد طلبٌ ينتهي إلّا وقد سبقه أحدث — فلا
-      // يتحقّق `isCurrent` أبدًا، وتبقى الرايةُ مشتعلةً إلى الأبد.
+      // The busy flag is always cleared
+      // It was tied to the latest-wins guard, but they differ: the guard decides whose data is shown, the flag says the request that set it has finished. `workflow:updated` is broadcast to everyone on any edit, so with a team working a newer request nearly always supersedes, `isCurrent` never holds and the flag stays on forever.
       if (!isBackground) setSearching(false);
       if (guard.isCurrent(mySeq)) setLoading(false);
       initialLoadDone.current = true;
@@ -540,27 +474,14 @@ export default function OperationsWorkflowPage() {
   // Initial load
   useEffect(() => { fetchWorkflows(); }, [fetchWorkflows]);
 
-  // Fetch full-dataset aggregates (for the summary cards) whenever the server
-  // filters change. Reflects all matching rows, not just the loaded page.
-  // ── والبطاقاتُ تحتاج الحارسَ أكثرَ من الجدول ─────────────────────────────
-  //
-  // الجدولُ كان محروسًا (`guard` أعلاه) والبطاقاتُ بلا حارس. وهي أحقُّ به:
-  // أثقلُ استعلامٍ في الشاشة هو **بلا فلتر** — جمعٌ على خمسةٍ وثلاثين ألف صفّ —
-  // وهو الذي يُطلق عند أوّل فتحٍ للصفحة. فمن فتح الصفحةَ ثمّ فلتر بسرعة وصله
-  // ردُّ المفلتَر أوّلًا (صفوفُه قليلة) ثمّ وصل ردُّ ما قبل الفلتر فكتب فوقه.
-  //
-  // فتقول البطاقةُ «مجموع قيمة الشراء (حسب الفلتر) = ٦١ مليونًا» وهو مجموعُ
-  // الجدول كلِّه، والصحيحُ أربعةُ ملايين. ورقمٌ ماليٌّ مكتوبٌ عليه «حسب الفلتر»
-  // وهو غيرُ مفلتَرٍ أسوأُ من غياب البطاقة: يُقرأ ويُبنى عليه.
-  //
-  // وحارسُه مستقلٌّ عن حارس الجدول: مشترَكٌ واحدٌ يُبطل كلُّ نداءٍ فيه نداءَ
-  // الآخر، فيُسقِط أحدُهما ردَّ صاحبه.
+  // Fetch full-dataset aggregates for the summary cards whenever the server filters change; they reflect all matching rows, not just the loaded page.
+  // The cards need the guard more than the table: the heaviest query is the unfiltered one (aggregating tens of thousands of rows), fired on first open. A quick filter returns first, then the older unfiltered reply overwrote it, so a card labelled by-filter showed the whole-table total. A wrong financial number labelled filtered is worse than none. The guard is independent of the table's, since a shared one would let each call invalidate the other.
   const statsGuard = useLatestRequest();
   const fetchStats = useCallback(async () => {
     const mine = statsGuard.begin();
     try {
       const data = await api.get<any>(`/api/workflows/stats?${buildParams().toString()}`);
-      if (!statsGuard.isCurrent(mine)) return;   // سبقَه أحدثُ منه — يُهمَل
+      if (!statsGuard.isCurrent(mine)) return;   // A newer request superseded this one; ignore it.
       setStats({
         total: data.total || 0,
         byOrigin: { orders: data.byOrigin?.orders || 0, fleet: data.byOrigin?.fleet || 0 },
@@ -578,9 +499,7 @@ export default function OperationsWorkflowPage() {
   }, [buildParams, statsGuard]);
   useEffect(() => { fetchStats(); }, [fetchStats]);
 
-  // قيم عمودٍ واحد عند فتح قائمته. الطلب يحمل الفلاتر النشطة كلَّها فيُرجع الخادم
-  // القيم القابلة للوصول فعلًا — قائمةٌ تعرض قيمًا لا صفوف لها تدعو المستخدم إلى
-  // اختيارٍ يُرجع جدولًا فارغًا.
+  // Values of one column when its list opens. The request carries all active filters so the server returns only reachable values; a list of values with no rows invites a choice that yields an empty table.
   const fetchColOptions = useCallback(async (field: string, q = '') => {
     const seq = (optionsSeq.current[field] || 0) + 1;
     optionsSeq.current[field] = seq;
@@ -600,21 +519,18 @@ export default function OperationsWorkflowPage() {
     }
   }, [buildParams]);
 
-  // تغيُّرُ أي فلتر يُبطل القوائم المحفوظة؛ وقائمةُ العمود المفتوح تُعاد فورًا حتى
-  // يرى المستخدم أثرَ اختياره في القيم المتاحة بدل أن يبقى ينظر إلى قائمةٍ قديمة.
+  // Any filter change invalidates the cached lists; the open column's list is refetched immediately so the user sees the effect on available values.
   useEffect(() => {
     setColOptions((prev) => (openField && prev[openField] ? { [openField]: prev[openField] } : {}));
     if (openField) fetchColOptions(openField);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fetchColOptions, openField, openNonce]);
 
-  // اختيارُ الصفوف يُلغى مع كل تغيّر في الفلاتر أو الصفحة: الصفوف المؤشَّرة لم تعد
-  // معروضة، وحذفٌ جماعيّ يقع على صفوفٍ لا يراها المستخدم.
+  // Selection is cleared on any filter or page change: ticked rows are no longer shown, and a bulk delete would hit rows the user cannot see.
   useEffect(() => { setSelectedIds(new Set()); setAllMatching(false); }, [stageFilter, search, page, dateFrom, dateTo, showPendingOnly, showPendingAsOf, customsMode, colFilters]);
 
   const setColFilter = (field: string, set: Set<string>) => {
-    // الفلترة تُغيّر عدد الصفحات كلّه، والبقاءُ على الصفحة السابعة بعد فلترٍ نتيجته
-    // صفحتان يُظهر جدولًا فارغًا يبدو معه أن الفلتر لم يجد شيئًا.
+    // Filtering changes the page count; staying on page 7 after a filter with two pages of results would show an empty table that looks like no matches.
     setPage(1);
     setColFilters((prev) => {
       const next = { ...prev };
@@ -625,21 +541,16 @@ export default function OperationsWorkflowPage() {
 
   const clearColFilters = () => { setColFilters({}); setPage(1); };
 
-  // WebSocket real-time
-  // الصفُّ الجديد يُقحَم في أعلى القائمة — وهو صحيحٌ في العرض الكامل وحدَه.
-  // في نتيجةٍ مفلترةٍ أو في صفحةٍ غير الأولى يكون كذبًا: صفٌّ لا يطابق الشرطَ
-  // يظهر بين ما يطابقه. فيُترك للتحديث أن يأتي به إن كان يخصّ العرض.
+  // WebSocket real-time updates.
+  // A new row is inserted at the top, which is right only in the full view; in a filtered result or on a later page it is wrong because a non-matching row would appear among matches. Leave it to the refresh to bring it if it belongs to the view.
   const handleCreated = useCallback((wf: Workflow) => {
     const filtered = !!search || !!dateFrom || !!dateTo || showPendingOnly || !!customsMode || Object.keys(colFilters).length > 0;
     setTotal((t) => t + 1);
     if (filtered || page !== 1) return;
     setWorkflows((p) => [wf, ...p]);
   }, [search, dateFrom, dateTo, showPendingOnly, customsMode, colFilters, page]);
-  // ── صفٌّ كاملٌ يُستبدَل، وإشعارٌ مختصرٌ يُعيد التحميل ─────────────────────
-  // بعضُ البثّ يحمل الصفَّ كلَّه (تعديلٌ من الشاشة)، وبعضُه إشعارٌ قصير:
-  // `{ _id, fromWallet }` من المحفظة أو `{ bulk: true }` من التحصيل. كان القصيرُ
-  // يُوضَع مكانَ الصفّ فيفرغ الصفُّ على الشاشة حتّى التحديث، و`bulk` لا يحدّث
-  // شيئًا. فالقصيرُ يُعيد تحميلَ الصفحة في الخلفية — مجمَّعًا، فدفعةُ إشعاراتٍ = تحميلٌ واحد.
+  // Full row replaced, short notice reloads
+  // Some broadcasts carry the whole row (an edit from the screen); others are a short notice such as `{ _id, fromWallet }` from the wallet or `{ bulk: true }` from collections. The short one used to replace the row, blanking it until refresh, and `bulk` updated nothing. Short notices now reload the page in the background, batched so a burst causes one reload.
   const refetchSoon = useRef<ReturnType<typeof setTimeout> | null>(null);
   const handleUpdated = useCallback((wf: Workflow) => {
     if (wf && wf._id && (wf as any).reportNumber !== undefined) {
@@ -716,10 +627,8 @@ export default function OperationsWorkflowPage() {
   };
 
   /**
-   * ── شروطُ الجدول كما يقرؤها الخادم ──────────────────────────────────────
-   * البحثُ وفلاترُ الأعمدة وشريطُ الفلترة والمدى والبطاقات — كلُّها في
-   * `buildParams`، وهي نفسُها التي جلبت الجدولَ والعدد. والقيمُ المكرَّرة
-   * (`cf_x=a&cf_x=b`) مصفوفة.
+   * Table conditions as the server reads them
+   * Search, column filters, filter bar, range and cards all go through `buildParams`, the same one that fetched the table and count. Repeated values (`cf_x=a&cf_x=b`) are arrays.
    */
   const currentQuery = () => {
     const query: Record<string, string | string[]> = {};
@@ -729,10 +638,9 @@ export default function OperationsWorkflowPage() {
     });
     return query;
   };
-  // عددُ ما يقع عليه الإجراءُ الجماعيّ: المحدَّدُ في الصفحة، أو نتائجُ الفلتر كلُّها.
+  // Number of rows a bulk action targets: the selection on the page, or all filter results.
   const selectedCount = allMatching ? total : selectedIds.size;
-  // ما يُرسَل مع كلّ إجراءٍ جماعيّ: المعرّفات، أو الشروطُ والعددُ الذي أكّده المستخدم
-  // (الخادمُ يرفض إن صار الفلترُ يطابق أكثرَ منه — راجع idsForAllMatching).
+  // Sent with each bulk action: the ids, or the conditions plus the count the user confirmed (the server rejects if the filter now matches more; see idsForAllMatching).
   const selectionPayload = () => (allMatching
     ? { allMatching: true, query: currentQuery(), expectedCount: total }
     : { ids: Array.from(selectedIds) });
@@ -762,64 +670,49 @@ export default function OperationsWorkflowPage() {
     });
   };
 
-  // `over`: قيمٌ تُحفَظ فورًا مع ما في التعديل — اختيارُ نوع الدفع يُحفظ لحظةَ اختياره.
+  // `over`: values saved immediately along with the edit; a payment-kind choice is saved the moment it is chosen.
   const editDataState = editData;
   const handleInlineSave = async (over?: Record<string, any>) => {
     if (!editingId) return;
     const editData = { ...editDataState, ...(over || {}) };
-    // ── يُرسَل ما تغيّر لا الصفُّ كلُّه ──────────────────────────────────────
-    // كانت الشاشة تبعث المستندَ بأكمله — بمعرّفه ومُنشئه وأقفاله وتواريخ
-    // نظامه — فيُعاد كتابةُ ثلاثين حقلًا بقيمها نفسِها لتغيير حقلٍ واحد، ويُقرأ
-    // نصفُها «خارج صلاحيّتك» بلا داعٍ. والمقارنةُ بالنسخة قبل التعديل تجعل
-    // الطلبَ يحمل ما قصده المستخدم فقط.
+    // Send what changed, not the whole row
+    // The screen used to send the entire document, including id, creator, locks and system dates, rewriting thirty fields to change one and having half of them rejected as outside the role. Comparing with the pre-edit copy makes the request carry only what the user meant.
     const patch: Record<string, any> = {};
     for (const k of Object.keys(editData)) {
       const a = (editData as any)[k]; const b = (editBase as any)[k];
       if (a !== b && typeof a !== 'object') patch[k] = a;
     }
     if (!Object.keys(patch).length) { handleInlineCancel(); return; }
-    // ── وما أُرسل لا يُرسَل ثانيةً، ولا يُنتظَر لفتح صفٍّ آخر (٢٠٢٦/١٠/٢٤) ──
-    // كان الانتقالُ إلى صفٍّ آخر قبل وصول الردّ يرى الصفَّ «غيرَ محفوظ» فيعيد
-    // حفظَه وينتظره — فيتأخّر فتحُ الصفّ التالي ثانيتين أو أكثر، ويضغط المستخدمُ
-    // مرّةً أخرى أو ينتقل، فيضيع اختيارُه. فالمُرسَلُ يُعدّ أساسًا جديدًا فورًا.
+    // What was sent is not sent again nor awaited before opening another row
+    // Moving to another row before the reply made the row look unsaved, so it was saved again and awaited, delaying the next row by two seconds or more and losing the user's choice. A sent row becomes the new baseline immediately.
     setEditBase((prev) => ({ ...prev, ...patch }));
     try {
       const savedId = editingId;
       const r = await putWithRetry(savedId, patch);
-      // ما رفضه الخادمُ يُقال، ولا يُترك المستخدم يظنّ أنّه حُفظ.
+      // A server rejection is reported so the user does not assume it was saved.
       if (r && r.refusedMessage) setError(r.refusedMessage);
-      // قيمةُ البيع: يُقال أين كُتبت — في المنصّة وهنا، أم هنا وحدَه (كشفٌ ليس منها).
+      // Selling value: report where it was written, the platform and here, or here only (a statement not from the platform).
       if (r && typeof (r as any).sellingPlatform === 'boolean') {
         notify((r as any).sellingPlatform
           ? (lang === 'ar' ? 'حُفظت قيمة البيع هنا وفي منصّة التشغيل' : 'Selling value saved here and on the platform')
           : (lang === 'ar' ? 'حُفظت قيمة البيع — أمر النقل ليس من منصّة التشغيل' : 'Selling value saved — not a platform shipment'), 'success');
       }
-      // ── ولا يُغلق الردُّ صفًّا فُتح بعده (٢٠٢٦/١٠/٢٤) ──────────────────────
-      // كان ردُّ حفظ الصفّ (أ) يُغلق وضعَ التعديل كلَّه ولو وصل والموظّفةُ قد
-      // انتقلت إلى (ب) وفتحت قائمتَه: تُنزَع القائمةُ من تحت يدها فيضيع اختيارُها
-      // ولا يُرسَل — «نصّه بيتعمل ونصّه لا». فلا يُغلَق إلّا إن بقي التعديلُ على صفّه.
+      // A reply must not close a row opened after it
+      // The save reply for row A used to close all edit mode even if it arrived after the user moved to row B and opened its list, removing the list from under them and losing the choice. Edit mode closes only if it is still on the same row.
       if (editingRef.current === savedId) {
         setEditingId(null);
         setEditData({});
         setEditBase({});
         setFocusField(null);
       }
-      // ── والصفُّ يُكتب من ردِّ الحفظ، لا من طلبٍ جديد ────────────────────
-      // كان الحفظُ يُتبَع بجلب الصفحة كلِّها. وردُّ الحفظ **هو** الصفُّ بعد
-      // الحفظ — فيه ما كتبه المستخدمُ وما اشتقّه الخادمُ معه (تصفيرُ أعمدة
-      // الفاتورة في النقديّ، ونوعُ الدفع من ملفّ العميل). فالجلبُ يطلب ما في
-      // اليد، ويفتح معه سباقًا: ردٌّ أُطلق قبل الحفظ قد يصل بعده فيمسح
-      // التعديلَ من الشاشة — فيبدو أنّه لم يُحفظ وقد حُفظ.
+      // The row is written from the save reply, not a new fetch
+      // Save used to be followed by a full page fetch. The save reply is the row after saving, including what the server derived (zeroed invoice columns for cash, payment kind from the customer file). A fetch asks for what is already in hand and opens a race: a reply fired before the save can arrive after it and wipe the edit from the screen.
       if (r && r._id) setWorkflows((prev) => prev.map((w) => (w._id === savedId ? { ...w, ...r } : w)));
       fetchStats();
     } catch (err: any) { setError(err.message); }
   };
 
-  /**
-   * الحفظُ نفسُه — بعلامته على الصفّ، ومحاولتين أُخريين إن انقطعت الشبكة.
-   * خطأٌ من الخادم (صلاحيّة، قاعدة) لا يُعاد: يُقال كما هو ويبقى الصفُّ أحمرَ
-   * بزرّ «أعِد» حتى يُصحَّح. والنجاحُ يمسح ما فشل قبله على الصفّ نفسِه.
-   */
+  /** The save itself, marked on the row, with two more attempts if the network drops. A server error (permission, rule) is not retried: it is reported as is and the row stays red with a retry button until fixed. Success clears earlier failures on the same row. */
   const putWithRetry = async (id: string, patch: Record<string, any>) => {
     markSave(id, 'saving');
     let lastErr: any = null;
@@ -831,7 +724,7 @@ export default function OperationsWorkflowPage() {
         return r;
       } catch (err: any) {
         lastErr = err;
-        if (err && typeof err.status === 'number') break;     // ردَّ الخادمُ برفض — لا يُعاد
+        if (err && typeof err.status === 'number') break;     // The server rejected it; not retried.
         if (attempt < 2) await new Promise((res) => setTimeout(res, 1200 * (attempt + 1)));
       }
     }
@@ -856,21 +749,12 @@ export default function OperationsWorkflowPage() {
     setFocusField(null);
   };
 
-  // Enter row-edit mode from a single cell click and remember which field to
-  // focus. Skips locked rows.
-  //
-  // ── ومَدخلٌ واحدٌ إلى وضع التعديل ────────────────────────────────────────
-  // كان زرُّ القلم يفتح الوضعَ بنفسِه: يضبط `editingId` و`editData` **وينسى**
-  // `editBase`. فيقارن الحفظُ بنسخةٍ من صفٍّ سابقٍ أو بلا شيء، فيُرسل الصفَّ
-  // كلَّه — ستّةً وخمسين حقلًا فيها ما لا يملكه الدور — فيردّ الخادمُ أكثرَها
-  // ويظهر «رُفض» على تعديلٍ صحيح.
-  //
-  // فلا يُفتح الوضعُ إلّا من هنا: الثلاثةُ تُضبط معًا أو لا تُضبط.
+  // Enter row-edit mode from a single cell click and remember which field to focus; skips locked rows.
+  // Single entry to edit mode: the pen button used to set `editingId` and `editData` but forget `editBase`, so save compared against a stale or missing copy and sent the whole row (56 fields, some outside the role), and the server rejected most of them on a valid edit. The three are set together here or not at all.
   const beginEditField = async (wf: Workflow, field: string | null) => {
     if (isLockedByOther(wf)) return;
-    // ── ما عُدِّل في صفٍّ آخر يُحفظ قبل الانتقال (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢) ──
-    // كان الضغطُ على خانةٍ في صفٍّ آخر يرمي التعديلَ بلا حفظ: يظهر الاختيارُ
-    // في لحظته ثمّ يعود قديمًا عند الرجوع — فيبدو أنّ «نوع الدفع لا يتغيّر».
+    // Edits made in another row are saved before moving
+    // Clicking a cell in another row used to drop the edit unsaved: the choice showed at once then reverted, so payment kind seemed unchangeable.
     if (editingId && editingId !== wf._id) {
       const dirty = Object.keys(editData).some((k) => (editData as any)[k] !== (editBase as any)[k] && typeof (editData as any)[k] !== 'object');
       if (dirty) await handleInlineSave();
@@ -882,7 +766,7 @@ export default function OperationsWorkflowPage() {
     setFocusField(field);
   };
 
-  // Accounting review is a one-click checklist toggle (تم / not) — no row edit.
+  // Accounting review is a one-click checklist toggle (done / not); no row edit.
   const toggleAccountingReview = async (wf: Workflow) => {
     const next = wf.accountingReview ? '' : 'تم';
     // Optimistic update so the tick feels instant.
@@ -895,11 +779,9 @@ export default function OperationsWorkflowPage() {
     }
   };
 
-  // Operations review is a one-click checklist toggle (تم / not) — no row edit.
-  // ── حالةُ الطلب تُغيَّر من هنا، وتُكتب هناك ───────────────────────────────
-  // العمودُ مرآةُ منصّة التشغيل: الكتابةُ تذهب إليها أوّلًا (الخادم يتكفّل)،
-  // ثمّ يعود صفُّنا بما استقرّ هناك — فلا تتغيّر الخانةُ أمام العين ثمّ تعود
-  // في أوّل مزامنة. ولذلك لا تفاؤلَ في العرض هنا: تُنتظَر المنصّة.
+  // Operations review is a one-click checklist toggle (done / not); no row edit.
+  // Order status is changed here and written there
+  // The column mirrors the operations platform: the write goes to it first (the server handles it), then our row returns with what settled there, so the cell does not change then revert on the next sync. Hence no optimistic display; the platform is awaited.
   const [statusSaving, setStatusSaving] = useState<string | null>(null);
   const changeApplicationStatus = async (wf: Workflow, status: string) => {
     if (!status || status === wf.applicationStatus) return;
@@ -928,14 +810,11 @@ export default function OperationsWorkflowPage() {
   };
 
   const handleBulkPay = async () => {
-    // ما لم يُملأ لا يُرسَل: حقلٌ فارغٌ في الدفعة يعني «لا تلمس هذا العمود»،
-    // لا «امسح ما فيه» — ومسحُ مئةِ صفٍّ بالخطأ أسوأ من عدم كتابتها.
+    // Unfilled fields are not sent: an empty field in a batch means leave this column alone, not clear it, and clearing a hundred rows by mistake is worse than not writing them.
     const fields: Record<string, any> = Object.fromEntries(
       Object.entries(bulkPay).filter(([, v]) => String(v || '').trim()));
-    // ── و«إزالة العلامة» فراغٌ مقصود ────────────────────────────────────
-    // القاعدةُ أعلاه تُسقط الفارغَ لأنّه يعني «لا تلمس هذا العمود». ورفعُ
-    // علامة المراجعة فراغٌ **مطلوب**، فيُمرَّر صراحةً بقيمةٍ خاصّةٍ لا تلتبس
-    // بالخانة التي لم تُملأ.
+    // Clearing the mark is a deliberate empty value
+    // The rule above drops empties because they mean leave this column alone, but removing the review mark is a wanted empty, so it is passed explicitly with a special value that cannot be confused with an unfilled field.
     if (bulkPay.operationsReview === 'clear') fields.operationsReview = '';
     if (!Object.keys(fields).length) return;
     const run = async () => {
@@ -946,11 +825,8 @@ export default function OperationsWorkflowPage() {
           '/api/workflows/bulk-update', { ...selectionPayload(), fields });
         const skipped = r.skipped || [];
         setBulkResult({ message: r.message, skipped, more: Math.max(0, (r.skippedCount || skipped.length) - skipped.length) });
-        // ── ما حُفظ يظهر في اللحظة (صاحبُ الشركة، ٢٠٢٦/١٠/٢٦) ───────────────
-        // «عملت سيليكت لخمسين كشف… مراجعة التشغيل مش بتسمع»: الخادمُ كتبها
-        // كلَّها، والصفحةُ لم تُعِد طلبَ القائمة فبقيت الخاناتُ القديمة. فلا تنتظر
-        // الشاشةُ إعادةَ الطلب: الصفوفُ المحدَّدةُ تأخذ ما حُفظ فورًا (والمتروكُ
-        // يبقى كما هو)، ثمّ يُعاد الطلبُ مرّتين لما يشتقّه الخادمُ.
+        // Saved values show at once
+        // After selecting fifty statements, operations review did not update: the server wrote them all but the page did not refetch the list, so old cells remained. The screen does not wait for the refetch: selected rows take the saved values immediately (unset ones stay), then the list is refetched twice for server-derived values.
         if (picked) {
           const skippedNos = new Set(skipped.map((x) => String(x.reportNumber)));
           const shown: Record<string, any> = { ...fields };
@@ -966,17 +842,17 @@ export default function OperationsWorkflowPage() {
           setBulkPay({ paymentDate: '', payingBranch: '', paymentType: '', finalReportDestination: '', documentNumber: '', sendingDate: '', branchDeliveryDate: '', deliveryDate: '', operationsReview: '' });
         }
         fetchWorkflows(true); fetchStats();
-        // والعاملُ الآخرُ في الخادم يمسح ذاكرتَه خلال ثانية — إعادةٌ ثانيةٌ تلتقط ما فاته.
+        // The other server worker clears its cache within a second; the second refetch catches what the first missed.
         setTimeout(() => { fetchWorkflows(true); fetchStats(); }, 1500);
       } catch (err: any) {
-        // تغيّر العددُ بين التأكيد والتنفيذ (409): يُقال الجديدُ ويُحدَّث، ولا يُكتب شيء.
+        // The count changed between confirmation and execution (409): report the new count and refresh; nothing is written.
         setBulkResult({ message: err.message, skipped: [] });
         fetchWorkflows(true); fetchStats();
       }
       setBulkPaying(false);
     };
-    // ── «كلُّ نتائج الفلتر» تُؤكَّد بعددها ─────────────────────────────────
-    // آلافُ الكشوف بضغطة: يُقال العددُ بالضبط وما يُكتب، قبل أن يُكتب.
+    // All filter results are confirmed by count
+    // Thousands of statements in one click: state the exact count and what will be written before writing.
     if (allMatching) {
       const names = Object.keys(fields).length;
       setConfirmModal({
@@ -991,8 +867,7 @@ export default function OperationsWorkflowPage() {
   };
 
   const toggleSelect = (id: string) => {
-    // إلغاءُ صفٍّ من «كلّ النتائج» يعيد التحديدَ إلى ما في الصفحة: لا تُستثنى
-    // صفوفٌ من شرطٍ لا يُرى إلّا خمسون منه.
+    // Deselecting a row from all results reverts the selection to the page's rows; no rows are excluded from a condition of which only fifty are visible.
     setAllMatching(false);
     setSelectedIds((prev) => {
       const next = new Set(prev);
@@ -1014,22 +889,12 @@ export default function OperationsWorkflowPage() {
   };
 
   /**
-   * التصدير يمرّ بعميل الـAPI لا بـ`window.open`.
-   *
-   * كان يفتح تبويبًا على مسارٍ نسبيّ، والخادم على نطاقٍ غير نطاق الواجهة وكوكيز
-   * الجلسة مربوطةٌ بنطاقه وحده — فيصل الطلب إلى المستضيف بلا مصادقة ويردّ
-   * «Authentication required» في صفحةٍ بيضاء بدل أن ينزّل ملفًّا.
-   *
-   * وثلاثة نطاقات لا واحد: الصفحة المعروضة، أو ما طابق الفلتر كلَّه مهما بلغ
-   * عدده، أو الجدول كلّه. والفرق ليس ترفًا: تفلتر فيبقى مئتا صفٍّ وتعرض الشاشة
-   * خمسين، فتصديرُ «المعروض» يعطيك خُمس ما طلبتَ وأنت تحسبه كلَّه.
+   * Export goes through the API client, not `window.open`.
+   * The old way opened a tab on a relative path, but the server is on a different domain than the frontend and session cookies are bound to the server's, so the request arrived unauthenticated and returned Authentication required on a blank page. There are three scopes: the shown page, everything matching the filter, or the whole table. They differ: filtering to 200 rows while the screen shows 50 makes exporting the shown page give a fifth of what was asked.
    */
   /**
-   * الصفّ كما يُقرأ لا كما يُخزَّن.
-   *
-   * الحالات تُحفَظ بمفاتيحها الخام (`bond_received`) وتُعرَض مترجمة. والملفّ
-   * يذهب إلى مَن لا يفتح النظام — محاسبٍ أو مراجعٍ خارجيّ — فخروجُه بالمفاتيح
-   * يجعله غير مقروء لمن كُتب له.
+   * The row as read, not as stored.
+   * Statuses are stored as raw keys (`bond_received`) and shown translated. The file goes to people who do not open the system (an accountant, an external reviewer), so raw keys would be unreadable to them.
    */
   const exportRow = (w: Workflow) => ({
     ...w,
@@ -1053,7 +918,7 @@ export default function OperationsWorkflowPage() {
     accountingReview: w.accountingReview ? (lang === 'ar' ? 'تمّت' : 'Done') : '',
   });
 
-  /** الصفحةُ المعروضةُ وحدَها — صفوفُها في اليد، فتُبنى هنا في لحظة. */
+  /** The shown page only: its rows are in hand, so the file is built here immediately. */
   const exportSheets = async (onlySelected = false) => [{
     name: lang === 'ar' ? 'الطلبات' : 'Workflows',
     rows: (onlySelected ? workflows.filter((w) => selectedIds.has(w._id)) : workflows).map(exportRow) as unknown as Record<string, any>[],
@@ -1061,25 +926,16 @@ export default function OperationsWorkflowPage() {
   }];
 
   /**
-   * ── والجدولُ الكبيرُ يُبنى في الخادم ──────────────────────────────────────
-   * كان «الجدول كلّه» يطلب خمسةً وثلاثين ألفَ صفٍّ صفوفًا خامًا — سبعةً وثلاثين
-   * ميغابايتًا من JSON — ثمّ يبني المصنَّفَ في الخيط الذي يرسم الصفحة، فتتجمّد
-   * الشاشةُ حتى يفرغ. والقاعدةُ ليست البطيئة: الفرزُ على فهرسه اثنتان وأربعون
-   * ميلي‌ثانية.
-   *
-   * فصار الخادمُ يبنيه ويردُّ ملفًّا مضغوطًا، ولا يعبر المتصفّحَ إلّا الملفُّ
-   * نفسُه. والأعمدةُ والترجماتُ هناك هي هذه حرفًا بحرف، والحجبُ بالدور مطبَّقٌ
-   * في الخادم أيضًا — فلا يخرج في الملفّ مالٌ لا يُعرض على الشاشة.
+   * The large table is built on the server
+   * Exporting the whole table fetched about 35,000 raw rows (37 MB of JSON) and built the workbook on the rendering thread, freezing the screen. The database is not slow (the indexed sort takes 42 ms). The server now builds a compressed file and only that crosses the browser. Columns and translations there match these exactly, and role-based hiding is applied on the server too, so no money leaves in the file that the screen hides.
    */
   const downloadServerFile = async (scope: 'filtered' | 'all') => {
     const p = scope === 'all' ? new URLSearchParams() : buildParams();
     p.delete('page'); p.delete('limit');
     if (scope === 'all') p.set('scope', 'all');
 
-    // ── «الجدولُ كلُّه» يُبنى في الخلفيّة ──────────────────────────────────
-    // ستّةٌ وثلاثون ألفَ صفٍّ ونصفُ دقيقةِ بناء: لا يُنتظَر أمام شاشةٍ جامدة،
-    // ولا يضيع العملُ إن أُغلقت الصفحة. يُسجَّل الطلبُ، ويُنزَّل حين يجهز،
-    // ويصل إشعارٌ بالرابط على كلّ حال. راجع lib/backgroundExport.
+    // The whole table is built in the background
+    // About 36,000 rows and half a minute of building: do not wait before a frozen screen, and do not lose the work if the page closes. The request is recorded, downloaded when ready, and a notification with the link is sent anyway. See lib/backgroundExport.
     if (scope === 'all') {
       notify(lang === 'ar' ? 'جارٍ تجهيز الملف… سيُنزَّل تلقائياً، وسيصلك إشعار عند جهوزه.'
         : 'Preparing the file… it will download automatically, and you will get a notification.', 'info');
@@ -1102,30 +958,16 @@ export default function OperationsWorkflowPage() {
   const formatDate = (d: string) => d ? new Date(d).toLocaleDateString('en-GB') : '-';
   const formatMoney = (v: number) => v ? v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '-';
 
-  // كل أرقام البطاقات محسوبةٌ في الخادم على مجموعة الصفوف المطابقة كاملةً — لا على
-  // الخمسين صفًّا المعروضة. حسابُها من الصفوف المحمَّلة كان يجعلها تقول «٥٠» مهما
-  // كان في القاعدة، أو يُلزمنا بتنزيل الجدول كلّه لتصحّ.
+  // All card figures are computed on the server over the full matching row set, not the 50 shown rows. Computing from loaded rows would always show 50, or require downloading the whole table to be correct.
   /**
-   * ── بطاقاتُ حالة الشحنة ───────────────────────────────────────────────
-   *
-   * كانت في صفحة شحنات المنصّة وحدَها، وهي السؤالُ الأوّل هنا أيضًا: كم في
-   * الطريق؟ وكم وصلت ولم يصل سندُها؟ وكان مكانَها اختصارٌ إلى تلك الصفحة —
-   * بطاقةٌ تُنقَل إليها بدل أن تُجيب.
-   *
-   * والعددُ من الخادم على مجموعة الصفوف كاملةً، ويُحسَب تحت بقيّة الفلاتر عدا
-   * فلترِ الحالة نفسِه: من صفّى «في الطريق» يريد أن يرى بقيّةَ الحالات لينتقل
-   * إليها لا أصفارًا — وهذا ما يفعله إكسل.
+   * Shipment status cards
+   * These were only on the platform shipments page, yet are the first question here too: how many are on the way, how many arrived without a returned bond. The old shortcut sent users to that page instead of answering.
+   * Counts come from the server over the full row set under all other filters except the status filter itself: someone filtering on the way wants to see the other statuses to switch to, not zeros, as Excel does.
    */
   const statusSel = colFilters.applicationStatus || EMPTY_SET;
   /**
-   * ── والبطاقاتُ قائمةُ اختيارٍ لا زرُّ راديو ────────────────────────────────
-   * كانت الضغطةُ تكتب `new Set([key])` — أي تمسح ما قبلها وتضع واحدةً. فمن
-   * أراد «في الطريق» و«وصلت» معًا لم يكن له سبيل، وهو أوّلُ ما يُسأل عنه:
-   * «أرني ما هو خارجٌ الآن». والبنيةُ مجموعةٌ أصلًا؛ المنطقُ وحدَه كان مفردًا.
-   *
-   * فصارت تُضيف وتحذف: ضغطةٌ تُدخل الحالةَ، وأخرى تُخرجها، وإفراغُ المجموعة
-   * يعني «الكلّ» — ولا يُترك فلترٌ بمجموعةٍ فارغةٍ تُقرأ «لا شيء».
-   * و«الكلّ» تمسحها جميعًا.
+   * Cards are a multi-select, not a radio button
+   * A click used to write `new Set([key])`, replacing the previous choice, so on the way plus arrived together was impossible, and it is the most common question. A click now adds or removes a status, an empty set means all (a filter with an empty set would read as nothing), and the all card clears them.
    */
   const toggleStatusCard = (key: string) => {
     setColFilters((prev) => {
@@ -1144,24 +986,19 @@ export default function OperationsWorkflowPage() {
   const filteredRowsCount = stats.total || total;
   const filteredPurchaseSum = stats.sumPurchaseValue;
 
-  // عرضُ القيمة يُترجَم والفلترةُ تجري على القيمة الخام: القاعدة تخزّن `bond_received`
-  // والمستخدم يقرأ «استُلم السند»، فلو فلترنا على النصّ المعروض لتغيّرت نتيجةُ الفلتر
-  // بتغيّر لغة الواجهة.
+  // Display is translated while filtering uses the raw value: the database stores `bond_received` and the user reads its label, so filtering on displayed text would change results with the UI language.
   const colFormat = (field: string): ((v: any) => string) | undefined => {
     if (field === 'stage') return (v: any) => stageLabels[v] || v;
     if (field === 'executionStatus' || field === 'applicationStatus') return trStatus;
     if (field === 'paymentMethod') return trPayment;
-    // المخزَّنُ مفتاحٌ والمعروضُ اسمُه — الستُّ كلُّها (الأنواعُ الأربعة، و«ضريبي»/«كاش»
-    // لما بقي بلا نوع). والقائمةُ تقول ما تقوله الخانة.
+    // The stored value is a key and the displayed one its name, for all six (the four kinds, plus the legacy tax and cash for rows with no kind). The list says what the cell says.
     if (field === 'paymentType') return (v: any) => paymentKindLabel(v, lang === 'ar') || String(v || '');
-    // الخادم يجمّع التواريخ بيوم الرياض ويردّها «YYYY-MM-DD». إعادةُ تفسيرها
-    // بمنطقة المتصفح تُنقص يومًا لمن يفتح الصفحة غربَ غرينتش، فتُعرض كما هي.
+    // The server groups dates by Riyadh day and returns them as YYYY-MM-DD. Reinterpreting them in the browser timezone loses a day west of Greenwich, so they are shown as they are.
     if (DATE_FIELDS.has(field)) return (v: any) => {
       const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(v || ''));
       return m ? `${m[3]}/${m[2]}/${m[1]}` : formatDate(String(v || ''));
     };
-    // القيم تصل من الخادم نصوصًا؛ وتنسيقُ المال يحتاج رقمًا وإلا عُرض الرقم خامًّا
-    // بلا فواصل ولا كسور فبدا مختلفًا عن الرقم نفسه في الجدول.
+    // Values arrive from the server as strings; money formatting needs a number, otherwise the raw number shows without separators or decimals and differs from the same figure in the table.
     if (NUM_FIELDS.has(field)) return (v: any) => formatMoney(Number(v));
     return undefined;
   };
@@ -1188,11 +1025,8 @@ export default function OperationsWorkflowPage() {
   ));
 
   /**
-   * ── «تحديد كلّ النتائج» — النمطُ المعروف ─────────────────────────────────
-   * مربّعُ الرأس يحدّد الصفحةَ المعروضة (خمسين). فإن كانت نتائجُ الفلتر أكثرَ
-   * قيل ذلك تحت البحث وعُرض تحديدُها كلِّها؛ ومتى حُدِّدت صار كلُّ إجراءٍ
-   * جماعيٍّ (السدادُ والتعديلُ والحذفُ وتصديرُ المحدَّد) على الشرط في الخادم.
-   * (عنصرٌ لا مكوّنٌ معرَّفٌ داخل الرسم — راجع inline-components-remount.)
+   * Select all results: the familiar pattern
+   * The header checkbox selects the shown page (50). If filter results exceed it, that is stated under the search with an option to select them all; once selected, every bulk action (payment, edit, delete, export selection) runs on the condition on the server. (An element, not a component defined inside render; see inline-components-remount.)
    */
   const pageAllSelected = workflows.length > 0 && workflows.every((w) => selectedIds.has(w._id));
   const selectionBanner = (pageAllSelected || allMatching) && total > workflows.length ? (
@@ -1228,10 +1062,7 @@ export default function OperationsWorkflowPage() {
   return (
     <div className="space-y-4">
 
-      {/* ── بطاقاتُ الحالات الإحدى عشرة أُزيلت (صاحبُ الشركة، ٢٠٢٦/١٠/٢١) ──────
-          «الكل · قيد الطلب · … · ملغاة» صارت قيمًا في شريط الفلترة تحت البحث
-          («حالة الشحنة»)، بعددها بجانب كلٍّ منها — والسطرُ الواحد يتّسع للعميل
-          والفرع والمسار ونوع الدفع معها بدل أحد عشر مربّعًا لعمودٍ واحد. */}
+      {/* The eleven status cards were removed. All, ordered, ..., cancelled became values in the filter bar under search (shipment status), each with its count, and one line fits customer, branch, route and payment kind too instead of eleven boxes for one column. */}
 
       {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
@@ -1245,10 +1076,7 @@ export default function OperationsWorkflowPage() {
               {bulkDeleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />} {T.deleteCount} ({selectedCount.toLocaleString('en-US')})
             </button>
           )}
-          {/* ── تسجيلُ سدادٍ لدفعةٍ واحدة ────────────────────────────────────
-              يظهر حين يكون هناك ما هو محدَّد، ولا يُرسل إلّا ما مُلئ: الخانةُ
-              الفارغة تعني «لا تلمس هذا العمود» لا «امسحه». والخادمُ يفحص كلَّ
-              صفٍّ على حدة — ما لم يُستلم سندُه لا يُسجَّل سدادُه، ويُقال باسمه. */}
+          {/* Record payment for a batch Shown when something is selected, and only filled fields are sent: an empty field means leave this column alone, not clear it. The server checks each row separately: a row whose bond was not received gets no payment recorded and is reported by name. */}
           {selectedCount > 0 && (
             <div className="relative">
               <button type="button" onClick={() => { setShowBulkPay((p) => !p); setBulkResult(null); }}
@@ -1257,7 +1085,7 @@ export default function OperationsWorkflowPage() {
               </button>
               {showBulkPay && (
                 <div className="absolute top-full mt-2 end-0 bg-white border border-slate-200 rounded-xl shadow-xl z-50 p-4 w-[340px] max-w-[calc(100vw-2rem)] overflow-visible" onClick={(e) => e.stopPropagation()}>
-                  {/* على المحدَّد في هذه الصفحة، أم على كلّ نتائج الفلتر في كلّ الصفحات. */}
+                  {/* Applies to the selection on this page, or to all filter results across all pages. */}
                   <p className="text-sm font-bold text-slate-900 mb-1.5">{lang === 'ar' ? 'يُطبَّق على' : 'Apply to'}</p>
                   <div className="mb-2 flex overflow-hidden rounded-lg border border-slate-200 text-[12px] font-semibold">
                     <button type="button" onClick={() => setAllMatching(false)}
@@ -1284,21 +1112,18 @@ export default function OperationsWorkflowPage() {
                         onChange={(v) => setBulkPay((p) => ({ ...p, payingBranch: v }))}
                         placeholder={lang === 'ar' ? 'اختر الفرع' : 'Pick branch'} />
                     </div>
-                    {/* نوعُ الدفع — يُختار لكشوفٍ بعينها (اختيارُ يدٍ يثبت ولا يعيد الاشتقاقُ كتابتَه). */}
+                    {/* Payment kind, chosen for specific statements (a hand choice sticks and derivation does not overwrite it). */}
                     <div>
                       <label className="block text-xs font-semibold text-slate-600 mb-1">{lang === 'ar' ? 'نوع الدفع' : 'Payment type'}</label>
                       <select value={bulkPay.paymentType} onChange={(e) => setBulkPay((p) => ({ ...p, paymentType: e.target.value }))}
                         title={lang === 'ar' ? 'نوع الدفع' : 'Payment type'}
                         className="w-full px-2 py-2 rounded-lg border border-slate-300 text-sm bg-white">
                         <option value="">{lang === 'ar' ? '— لا يُغيَّر —' : '— leave unchanged —'}</option>
-                        {/* الأربعةُ وحدَها — «ضريبي»/«كاش» لا يُختاران بعد اليوم (راجع lib/paymentKind). */}
+                        {/* Only the four; the legacy tax and cash can no longer be chosen (see lib/paymentKind). */}
                         {PAYMENT_CHOICES.map((k) => <option key={k} value={k}>{paymentKindLabel(k, lang === 'ar')}</option>)}
                       </select>
                     </div>
-                    {/* ── ووجهةُ الكشف النهائيّة مع الفرع المسدِّد ─────────
-                        سؤالان متجاوران يُجابان في الجلسة الواحدة: مَن سدّد،
-                        وأين يستقرّ الملفُّ بعدها. وكان الثاني يُكتب صفًّا صفًّا
-                        بعد أن يُكتب الأوّلُ للخمسين دفعةً. */}
+                    {/* Final destination with the paying branch Two adjacent questions answered in one session: who paid, and where the file ends up. The second used to be written row by row after the first was written to fifty at once. */}
                     <div>
                       <label className="block text-xs font-semibold text-slate-600 mb-1">{lang === 'ar' ? 'وجهة أمر النقل النهائية' : 'Final destination'}</label>
                       <ManagedSelect type="workflow_final_destination" storeLabel noAdd value={bulkPay.finalReportDestination}
@@ -1311,11 +1136,7 @@ export default function OperationsWorkflowPage() {
                         placeholder={lang === 'ar' ? 'اختياري' : 'Optional'}
                         className="w-full px-2.5 py-2 rounded-lg bg-white border border-slate-200 text-slate-900 text-[13px] focus:outline-none focus:ring-2 focus:ring-[#f37121]/40" />
                     </div>
-                    {/* ── والتاريخان تحت بعضهما لا جنبَ بعضهما ────────────────
-                        كانا في عمودين داخل بطاقةٍ عرضُها ٣٢٠ بكسل، وخانةُ
-                        التاريخ لا تنضغط أكثرَ من حدٍّ — فيخرج «التسليم» من
-                        حافّة البطاقة. البطاقةُ أوسعُ قليلًا والتاريخان في سطرين،
-                        فلا يخرج شيءٌ مهما ضاقت الشاشة. */}
+                    {/* The two dates stack, not side by side They were two columns inside a 320px card, and a date field cannot compress below a limit, so delivery overflowed the card edge. The card is slightly wider and the dates take two lines, so nothing overflows however narrow the screen. */}
                     <div>
                       <label className="block text-xs font-semibold text-slate-600 mb-1">{lang === 'ar' ? 'تاريخ الإرسال' : 'Sending date'}</label>
                       <DateField ar={lang === 'ar'} label={lang === 'ar' ? 'تاريخ الإرسال' : 'Sending date'}
@@ -1326,12 +1147,7 @@ export default function OperationsWorkflowPage() {
                       <DateField ar={lang === 'ar'} label={lang === 'ar' ? 'تاريخ التسليم للفرع' : 'Delivered to branch'}
                         value={bulkPay.branchDeliveryDate} onChange={(v) => setBulkPay((p) => ({ ...p, branchDeliveryDate: v }))} />
                     </div>
-                    {/* ── ومراجعةُ التشغيل علامةٌ لا نصّ ──────────────────────
-                        الصفُّ الواحد يضعها بضغطةٍ تكتب «تم» أو تمسحها، والتصديرُ
-                        يقرؤها نعمًا أو لا. وكان زرُّ الدفعة صندوقَ نصٍّ حرًّا
-                        يكتب في العمود ما شاء — «راجعه أحمد» تُقرأ «تمّت» في
-                        الملفّ وفي الجدول. فصارت قائمةً بخيارين كالصفّ الواحد.
-                        و«إزالة العلامة» ليست فراغًا مُهمَلًا — راجع handleBulkPay. */}
+                    {/* Operations review is a mark, not text A single row sets it with a click that writes done or clears it, and the export reads it as yes or no. The batch button was a free text box that wrote anything into the column, so a note naming a person read as done in the file and table. It is now a two-option list like the single row. Removing the mark is not an ignored empty; see handleBulkPay. */}
                     {canEditOperationsReview && (
                       <div>
                         <label className="block text-xs font-semibold text-slate-600 mb-1">{T.thOpsReview}</label>
@@ -1345,12 +1161,7 @@ export default function OperationsWorkflowPage() {
                         </select>
                       </div>
                     )}
-                    {/* ── وتسليمُ العميل لا يُملأ جماعةً من هنا ────────────────
-                        منه تبدأ مهلةُ السداد لكلّ عميلٍ بمدّته، فهو واقعةٌ
-                        تُسجَّل لفاتورةٍ بعينها يوم تصل صاحبَها — يكتبها قسمُ
-                        التحصيل من زرّ «تسليم» في صفحة الفواتير. وكتابتُه على
-                        خمسين أمر نقل بتاريخٍ واحد تجعل خمسين مهلةً تبدأ في يومٍ
-                        لم يستلم فيه أحد. */}
+                    {/* Customer delivery is not bulk-filled from here The customer's payment term starts from it, so it is an event recorded per invoice on the day it reaches the customer, written by Collections from the Deliver button on the invoices page. Writing one date on fifty transport orders would start fifty terms on a day nobody received. */}
                   </div>
                   {bulkResult && (
                     <div className="mt-3 p-2 rounded-lg bg-slate-50 border border-slate-200 max-h-40 overflow-auto">
@@ -1378,15 +1189,9 @@ export default function OperationsWorkflowPage() {
               )}
             </div>
           )}
-          {/* رفعُ بيانات الفواتير من ورقة المبيعات — لمن يملك أعمدةَ الفاتورة. */}
+          {/* Upload invoice data from the sales sheet, for users who hold the invoice columns. */}
           {canViewFinancials && <InvoiceImportButton ar={lang === 'ar'} onDone={() => fetchWorkflows(true)} />}
-          {/* ── التصدير: الزرّ الموحَّد لا زرٌّ تكتبه هذه الصفحة بيدها ───────
-              كانت هذه الشاشة وحدها ترسم قائمتها الخاصّة، فبدت شريطَ نصٍّ بجانب
-              أزرار بقيّة النظام. والزرّ الموحَّد يحمل الأيقونة والسهم والحالة
-              نفسها في تسعين شاشة — واختلافُ شاشةٍ واحدة يجعل المستخدم يبحث عن
-              التصدير فيها كأنّها نظامٌ آخر.
-              وثلاثة نطاقات لا واحد، وعددُ كلٍّ بجانبه: تفلتر فيبقى مئتا صفّ
-              وتعرض الشاشة خمسين، فتصديرُ «المعروض» يعطيك خُمس ما طلبتَ. */}
+          {/* Export: the shared button, not a hand-written one This screen alone drew its own menu, looking like a text strip next to the system's buttons. The shared button has the same icon, arrow and state across ninety screens, and one differing screen makes users hunt for export as if it were another system. Three scopes with a count beside each: filtering to 200 rows while the screen shows 50 means exporting the shown page gives a fifth of what was asked. */}
           <ColumnChooser columns={chooserColumns} visible={visibleCols} onChange={setVisibleCols} ar={lang === 'ar'} />
           <ExportMenu
             fileName="operations"
@@ -1418,17 +1223,8 @@ export default function OperationsWorkflowPage() {
         </div>
       )}
 
-      {/* ── البطاقاتُ هادئة ─────────────────────────────────────────────────
-          كانت كلُّ بطاقةٍ بلونها (كهرمانيٌّ ووردٌ وأزرقُ وأخضر) فتتنافس على
-          العين ولا يُعرف أيُّها الإنذار — «لسنا في مدينة ملاهٍ» (صاحبُ الشركة).
-          فصارت كبطاقات شجرة المديونيّة: بيضاءُ وأرقامٌ بلون الحبر ونقطةٌ صغيرةٌ
-          للنوع، والأحمرُ للتناقض وحدَه. والمُفعَّلةُ يُحيطها إطارٌ داكن.
-          (وبطاقتا «سندات لم تصل — كاش/ضريبي» أُزيلتا: الإجماليُّ يكفي، والقسمةُ
-          على النوع في شريط الفلترة بعمود «نوع الدفع».) */}
-      {/* ── والبطاقاتُ فوق الفلاتر، في شبكةٍ متساوية ─────────────────────────
-          (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢): الأرقامُ أوّلًا ثمّ أدواتُ الفلترة والبحث.
-          وكانت صفًّا يلتفّ بعرض كلّ بطاقة فيخرج متفاوتًا؛ فصارت شبكةً: عمودٌ على
-          الشاشة الضيّقة جدًّا، واثنان على الهاتف، وأربعةٌ على الشاشة الواسعة. */}
+      {/* Quiet cards Each card used to have its own colour (amber, pink, blue, green), competing for the eye so the alert was unclear. They now match the receivables tree: white, ink-coloured numbers, a small type dot, and red only for a contradiction. The active card has a dark border. (The two bond-not-received cards for cash and tax were removed: the total is enough, and the split by kind is in the filter bar's payment kind column.) */}
+      {/* Cards sit above the filters in an equal grid Numbers first, then filter and search tools. They were a wrapping row whose widths came out uneven, so they are now a grid: one column on very narrow screens, two on phones, four on wide screens. */}
       <div className="grid grid-cols-1 min-[420px]:grid-cols-2 lg:grid-cols-4 gap-3">
         {/* Pending Invoices — over ALL matching rows (click to filter) */}
         <button
@@ -1436,9 +1232,7 @@ export default function OperationsWorkflowPage() {
           onClick={() => { setShowPendingOnly(!showPendingOnly); setShowPendingAsOf(false); setPage(1); }}
           className={`${CARD} ${showPendingOnly && !(statusSel.has('bond_received') && statusSel.size === 1) ? CARD_ON : ''}`}
         >
-          {/* ── الرقمُ يقول قاعدتَه ──────────────────────────────────────────
-              «سندات لم تصل» وحدَها لا تكفي لمطابقة الرقم بشيتٍ خارجيّ: هل
-              الملغاةُ داخلةٌ فيه؟ تُكتب القاعدةُ تحت الرقم فيُراجَع بلا سؤال. */}
+          {/* The figure states its rule Bonds not received alone does not let you reconcile the number with an external sheet: are cancelled ones included? The rule is written under the number so it can be checked without asking. */}
           <AlertCircle className="h-4 w-4 shrink-0 text-slate-400" />
           <div className="flex flex-col items-start">
             <span className={CARD_NUM}>{pendingCount.toLocaleString('en-US')}</span>
@@ -1468,9 +1262,7 @@ export default function OperationsWorkflowPage() {
           </div>
         </button>
 
-        {/* ── والرابعةُ: السندُ «وصل» ولا تاريخَ لسداده ───────────────────────
-            تقاطعُ «بلا تاريخ سداد» و«استُلم السند» هو موضعُ العمل: إمّا تاريخٌ
-            ناقصٌ يُكتب أو حالةٌ تُصحَّح. وهي التناقضُ الوحيد هنا — فلها الأحمر. */}
+        {/* Fourth card: bond received but no payment date The intersection of no payment date and bond received is where work is needed: a missing date to enter or a status to fix. It is the only contradiction here, so it gets red. */}
         <button
           type="button"
           onClick={() => {
@@ -1540,7 +1332,7 @@ export default function OperationsWorkflowPage() {
           </button>
         ))}
 
-        {/* ── مجموعُ قيمة الشراء — لمن يملك الحقلَ نفسَه (`purchaseValue`). */}
+        {/* Total purchase value, for users who hold the field itself (`purchaseValue`). */}
         {(full || has('purchaseValue')) && (
           <div className={`${CARD} cursor-default hover:bg-white`}>
             <FileSpreadsheet className="h-4 w-4 shrink-0 text-slate-400" />
@@ -1551,7 +1343,7 @@ export default function OperationsWorkflowPage() {
           </div>
         )}
 
-        {/* بطاقاتُ فحص الفواتير الأربع — لمن يملك أعمدةَ الفاتورة. راجع InvoiceCheckCards. */}
+        {/* The four invoice-check cards, for users who hold the invoice columns. See InvoiceCheckCards. */}
         {canViewFinancials && <InvoiceCheckCards ar={lang === 'ar'} />}
 
         {/* Clear all column filters */}
@@ -1580,28 +1372,15 @@ export default function OperationsWorkflowPage() {
             ? (v: any) => ({ has: lang === 'ar' ? 'عليه رقم فاتورة' : 'Has a number', none: lang === 'ar' ? 'فارغ' : 'Blank', placeholder: lang === 'ar' ? 'بديل (no inv / بدون)' : 'Placeholder (no inv)' } as Record<string, string>)[String(v)] || String(v)
             : colFormat(f))}
         />
-        {/* ── مِصفاةُ المراحل أُزيلت ────────────────────────────────────────
-            «مسودة / مرسل للتشغيل / التشغيل مكتمل / للتحصيلات / مكتمل» مراحلُ
-            صُمّمت حين كانت أوامر النقل تُنشأ عندنا وتتنقّل بين أقسامنا. وهي تصل
-            الآن من منصّة التشغيل وقد جرت هناك، فيبقى الجميعُ في «مسودة» أبدًا:
-            خمسةُ أزرارٍ أربعةٌ منها فارغةٌ دائمًا. والحالةُ الحقيقيّةُ عمودٌ في
-            الجدول له مِصفاتُه. */}
+        {/* The stage filter was removed The stages (draft / sent to operations / operations done / to collections / done) were designed when transport orders were created here and moved between our sections. They now arrive from the operations platform already past that, so everything stays draft: five buttons, four always empty. The real status is a table column with its own filters. */}
       </div>
 
-      {/* ── البحثُ فوق الجدول مباشرةً ──────────────────────────────────────────
-          كان في أعلى الصفحة فوق البطاقات والشريط، فيكتب المستخدمُ ثمّ ينزل ليرى
-          أثرَه. وهو سؤالٌ عن صفوف الجدول — فمكانُه حيث تتغيّر. */}
+      {/* Search directly above the table It was at the page top above the cards and bar, so the user typed then scrolled down to see the effect. It is a question about table rows, so it belongs where they change. */}
       <div className="flex flex-col gap-2">
-        {/* ── البحثُ والتخليصُ والمدى في صفٍّ واحد (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢) ─────
-            كان كلٌّ منها صفًّا وحدَه فطالت الصفحةُ قبل الجدول؛ فصارت صفًّا يلتفّ
-            على الشاشة الضيّقة. */}
+        {/* Search, customs and range on one row Each was its own row, making the page long before the table; they are now one row that wraps on narrow screens. */}
         <div className="flex flex-wrap items-center gap-2">
           <div className="relative min-w-[220px] flex-1 basis-[260px] max-w-xl" data-search-box>
-            {/* ── والمكبّرُ لا يُبدَّل بدوّارة ──────────────────────────────
-                كانت الأيقونةُ تصير دوّارةً عند كلّ تحديث، فترفرف الخانةُ وتفقد
-                علامتَها. وهي تكذب فوق ذلك: `searching` ترتفع مع تغيير الصفحة
-                والفلتر والمدى، فيُقال «البحثُ يعمل» لمن يقلّب الصفحات.
-                التحديثُ يُقال فوق الجدول — حيث يتغيّر ما يتغيّر. */}
+            {/* The magnifier is not swapped for a spinner The icon turned into a spinner on every refresh, so the field flickered and lost its mark. It was also wrong: `searching` rises on page, filter and range changes, so it claimed a search was running for someone paging. Refresh is shown above the table, where things change. */}
             <Search className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
             <input
               ref={searchInputRef}
@@ -1634,8 +1413,7 @@ export default function OperationsWorkflowPage() {
           {excludeCancelled ? <Check className="h-3.5 w-3.5" /> : <Ban className="h-3.5 w-3.5" />}
           {lang === 'ar' ? 'باستثناء الملغاة' : 'Excluding cancelled'}
         </button>
-        {/* ── التخليص بكلمة: الكلّ · المرتبطة · غيرُ المرتبطة ─────────────────
-              وفلترُ العمود «التخليص» يختار معاملةً بعينها. */}
+        {/* Customs by a word: all, linked, not linked. The customs column filter selects one specific transaction. */}
           <div className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white p-0.5 text-xs">
             <span className="px-2 text-slate-500">{lang === 'ar' ? 'التخليص' : 'Customs'}</span>
             {([['', lang === 'ar' ? 'الكلّ' : 'All'], ['linked', lang === 'ar' ? 'مرتبطة' : 'Linked'], ['unlinked', lang === 'ar' ? 'غير مرتبطة' : 'Not linked']] as const).map(([k, label]) => (
@@ -1653,8 +1431,8 @@ export default function OperationsWorkflowPage() {
             )}
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            {/* المدى الزمنيّ: يُفتح تقويمُه بالضغط، و«إلى» الفارغة تعني «حتى اليوم». */}
-            {/* الوضعُ ثمّ منتقيه — والمُختارُ يُترجَم إلى مدًى يفهمه الخادم. */}
+            {/* Date range: its calendar opens on click, and an empty To means until today. */}
+            {/* The mode and then its picker; the chosen value is translated into a range the server understands. */}
             <button type="button" aria-pressed={isToday} onClick={toggleToday}
               className={`px-3 py-2 rounded-lg border text-sm font-semibold whitespace-nowrap shrink-0 ${isToday ? 'border-[#f37121] bg-[#f37121] text-white' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'}`}>
               {lang === 'ar' ? 'اليوم' : 'Today'}
@@ -1669,9 +1447,7 @@ export default function OperationsWorkflowPage() {
               ))}
             </div>
             {dateMode === 'day' && (
-              /* الحقلُ المشترك: أيقونةٌ ظاهرةٌ تُضغَط، وتقويمٌ يُفتَح من أيّ موضع،
-                 ونصٌّ واحدٌ «dd/mm/yyyy» عند كلّ الناس — وكان حقلًا خامًا تُقرأ
-                 صيغتُه من جهاز المستخدم ولا يفتح تقويمَه إلّا بإصابة الأيقونة. */
+              /* Shared field: a visible clickable icon, a calendar opening from anywhere, and one dd/mm/yyyy text for everyone. It was a raw field whose format came from the user's device and whose calendar opened only by hitting the icon. */
               <DateField value={dayKey} onChange={applyDay} ar={lang === 'ar'}
                 label={lang === 'ar' ? 'اختر اليوم' : 'Pick day'} />
             )}
@@ -1690,17 +1466,9 @@ export default function OperationsWorkflowPage() {
 
       {/* Table */}
       <div className="relative bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-        {/* شريطُ التحديث: يجري على حافّة الجدول ولا يُفرغ ما تحته. */}
+        {/* Refresh bar: runs along the table edge without emptying what is under it. */}
         {searching && <div className="refresh-bar" aria-hidden="true" />}
-        {/* ── والعملُ لا يُمنع في أثناء التحديث ──────────────────────────────
-            كُتب هنا أوّلًا `pointer-events-none` مع تعتيمٍ إلى النصف، ليُمنع
-            فتحُ صفٍّ يوشك أن يُستبدَل. فعلقت الرايةُ مشتعلةً (انظر أعلاه)
-            وأُقفل الجدولُ في وجه القسم كلِّه.
-            
-            والدرسُ أكبرُ من العطل: مؤشّرُ حالةٍ لا يجوز أن يسحب القدرةَ على
-            العمل. أسوأُ ما يقع حين يُضغط صفٌّ أثناء التحديث أن يُعاد رسمُه —
-            وذلك أهونُ ألفَ مرّةٍ من شاشةٍ لا تستجيب. فالشريطُ وحدَه يقول
-            «جارٍ»، والجدولُ يبقى حيًّا. */}
+        {/* Work is not blocked during refresh This first used `pointer-events-none` with half opacity to prevent opening a row about to be replaced. The flag then stuck on (see above) and the table was locked for the whole section. A status indicator must not remove the ability to work: the worst that happens when a row is clicked during refresh is a redraw, far better than an unresponsive screen. Only the bar says in progress; the table stays live. */}
         <ScrollX aria-busy={searching}>
           <div ref={tableRef} className="scroll-mt-4" />
           <table className="w-full" style={{ minWidth: Math.max(960, visibleCols.length * 80) }}>
@@ -1726,8 +1494,7 @@ export default function OperationsWorkflowPage() {
                 {ColHead('branch', T.thBranch)}
                 {ColHead('carOwner', T.thCarOwner)}
                 {ColHead('carNumber', T.thCarNumber)}
-                {/* «نوع الملكية» و«حالة التنفيذ» و«طريقة الدفع» و«ض / غ ض» أُزيلت (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢):
-                    تصل من المنصّة ولا يُعمَل بها هنا — بدائلُها «نوع الدفع» و«حالة الشحنة». */}
+                {/* Ownership type, execution status, payment method and the tax / non-tax flag were removed: they come from the platform and are not used here; the replacements are payment kind and shipment status. */}
                 {ColHead('applicationStatus', T.thApplication)}
                 {ColHead('username', T.thUsername)}
                 {ColHead('userPhone', T.thUserPhone)}
@@ -1741,35 +1508,22 @@ export default function OperationsWorkflowPage() {
                 {ColHead('operationsReview', T.thOpsReview, 'text-yellow-400')}
                 {/* Manual Moderator */}
                 {ColHead('paymentDate', T.thPaymentDate, 'text-purple-300')}
-                {/* ── ومَن كتب التاريخ ─────────────────────────────────────
-                    «مسؤول البيانات»: آخرُ مَن سجّل تاريخ السداد أو عدّله. يُسأل
-                    عن صفٍّ فيُعرف صاحبُه بلا فتح سجلّ التعديلات — وهو غيرُ مَن
-                    سجّل المشتريات في العهدة اليوميّة. يُكتب في الخادم ولا يُعدَّل
-                    بيدٍ هنا (راجع paymentDateBy). */}
+                {/* Who wrote the date Data owner: the last person who recorded or edited the payment date. It answers who owns a row without opening the edit log, and differs from who recorded purchases in the daily custody wallet. Written by the server, not editable here (see paymentDateBy). */}
                 {ColHead('dataOwnerShown', lang === 'ar' ? 'مسؤول البيانات' : 'Data owner', 'text-purple-300')}
-                {/* الفلترُ على المعروض لا على `paymentDateByName` وحدَه: الخانةُ
-                    تُملأ من الاسم ثمّ مسجّلِ المحفظة ثمّ مصدرِ الاستيراد، وكانت
-                    القائمةُ على الحقل الخام «(فارغ)» لثمانيةٍ وثلاثين ألفًا مكتوبٌ
-                    فيها اسم. راجع backend/src/utils/dataOwnerIndex. */}
+                {/* Filter on the displayed value, not on `paymentDateByName` alone: the cell is filled from the name, then the wallet recorder, then the import source, and a list on the raw field showed empty for about 38,000 rows that do have a name. See backend/src/utils/dataOwnerIndex. */}
                 {ColHead('payingBranch', T.thPayingBranch, 'text-purple-300')}
-                {/* ما دُفع للمورّد، وبأيّ صفةٍ يُفوتَر العميل. والنوعُ هو ما
-                    يقرّر شكلَ بقيّة الصفّ: نقديٌّ لا يُفوتَر، وضريبيٌّ يُفوتَر. */}
+                {/* What was paid to the vendor and in what capacity the customer is invoiced. The kind decides the rest of the row: cash is not invoiced, tax is. */}
                 {ColHead('paymentAmount', T.thPaymentAmount, 'text-purple-300')}
                 {ColHead('paymentType', T.thPaymentType, 'text-purple-300')}
-                {/* وجهةُ الكشف النهائيّة — الفرعُ الذي يستقرّ عنده الملفّ في
-                    آخره. سؤالٌ غيرُ «مَن سدّد»: قد يُسدَّد في فرعٍ ويستقرّ في غيره. */}
+                {/* Final destination of the statement: the branch where the file ends up. A different question from who paid, since payment may be at one branch and the file settle at another. */}
                 {ColHead('finalReportDestination', lang === 'ar' ? 'وجهة أمر النقل النهائية' : 'Final destination', 'text-purple-300')}
                 {ColHead('documentNumber', T.thDocNumber, 'text-purple-300')}
-                {/* معاملةُ التخليص التي يخدمها الكشف — رقمُها · البوليصة · الحاويات. */}
+                {/* The customs transaction this statement serves: its number, waybill and containers. */}
                 {ColHead('customsRef', lang === 'ar' ? 'التخليص' : 'Customs', 'text-sky-300')}
                 {ColHead('sendingDate', T.thSendingDate, 'text-purple-300')}
-                {/* ── تسليمان لا تسليمٌ واحد ────────────────────────────────
-                    هذا تسليمُ أمر النقل إلى الفرع — عملُ التشغيل، ويأتي من شيت
-                    المتابعة. وتسليمُ الفاتورة إلى العميل عمودٌ آخرُ عند أعمدة
-                    التحصيل، ومنه وحدَه تبدأ مهلةُ السداد المتّفق عليها. */}
+                {/* Two deliveries, not one This is delivery of the transport order to the branch, Operations' work, coming from the follow-up sheet. Delivery of the invoice to the customer is another column among the collection columns, and only it starts the agreed payment term. */}
                 {ColHead('branchDeliveryDate', T.thBranchDeliveryDate, 'text-purple-300')}
-                {/* مراجعةُ الحسابات إقرارُ المحاسبة، فمكانُها مع أعمدة المال لا مع
-                    تسجيل السداد — ومَن لا يراها لا تصله من الخادم أصلًا. */}
+                {/* Accounts review is accounting's acknowledgement, so it sits with the money columns, not payment recording; users who cannot see it never receive it from the server. */}
                 {ColHead('accountingReview', T.thAccountingReview, 'text-purple-300')}
                 {/* Collections — financial columns, finance/owner roles only */}
                 {ColHead('invoiceNumber', T.thInvoiceNumber, 'text-green-400')}
@@ -1777,20 +1531,11 @@ export default function OperationsWorkflowPage() {
                 {ColHead('tax', T.thTax, 'text-green-400')}
                 {ColHead('totalInvoice', T.thTotalInvoice, 'text-green-400')}
                 {ColHead('invoiceDate', T.thInvoiceDate, 'text-green-400')}
-                {/* ── وتاريخُ التسليم قبل تاريخ التحصيل ──────────────────────
-                    كان بين تواريخ الإرسال، وهو آخرُ ما يُنتظر قبل التحصيل —
-                    وصفحةُ الفواتير الضريبيّة تقرؤه بجانبه. فالعينُ تجدهما معًا. */}
+                {/* Delivery date before collection date It was among the send dates, though it is the last thing awaited before collection, and the tax invoices page reads it next to collection. The eye now finds them together. */}
                 {ColHead('deliveryDate', T.thDeliveryDate, 'text-green-400')}
                 {ColHead('collectedAmount', T.thCollectedAmount, 'text-green-400')}
                 {ColHead('collectionDate', T.thCollectionDate, 'text-green-400')}
-                {/* ── عمودان حُذفا: «المرحلة» و«قفل» ──────────────────────────
-                    «المرحلة» حالةٌ يحسبها النظامُ من الصفّ نفسِه (أيَّ خاناتٍ
-                    مُلئت) — تُقرأ في سير العمل فلا تُقرّر شيئًا: مَن يعمل هنا
-                    يتابع «حالة الشحنة» و«تاريخ السداد»، لا مرحلةً مشتقّة.
-                    و«قفل» أيقونةٌ تقول إن كان الصفُّ مفتوحًا عند زميلٍ الآن؛
-                    والقفلُ نفسُه لم يُلغَ — هو يمنع التحريرَ المتزامن ويُقال
-                    لمن يحاول حينها — لكنّ عمودًا كاملًا في جدولٍ بأربعين
-                    عمودًا ليُقال «لا أحدَ يحرّره» ثمنٌ لا مقابلَ له. */}
+                {/* Two columns removed: stage and lock Stage is a state the system computes from the row itself (which cells are filled); it is read in the workflow and decides nothing, since users here follow shipment status and payment date. Lock is an icon showing whether a colleague has the row open; the lock itself remains (it blocks concurrent editing and tells whoever tries), but a whole column in a forty-column table to say nobody is editing is a cost with no return. */}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
@@ -1844,9 +1589,7 @@ export default function OperationsWorkflowPage() {
                                 <Trash2 className="w-3.5 h-3.5" />
                               </button>
                             )}
-                            {/* سهمُ نقل المرحلة أُزيل مع مراحل العمل: الكشوفُ
-                                تصل من منصّة التشغيل جاريةً، فلا تُنقَل بيننا
-                                بين مراحلَ نصنعها نحن. */}
+                            {/* The stage-move arrow was removed with the work stages: statements arrive from the operations platform already in progress, so they are not moved between stages we invent. */}
                           </>
                         )}
                       </div>
@@ -1858,16 +1601,8 @@ export default function OperationsWorkflowPage() {
                       // enters edit mode for the row and focuses that field. System
                       // cells keep the row's navigate-on-click behaviour.
                       const editableClass = 'cursor-text hover:bg-amber-50 rounded px-1 -mx-1';
-                      // ── ولا تُعرَض خانةٌ لن تُحفَظ ──────────────────────────
-                      // كان الحقلُ يُفتح للكتابة ثمّ يردّه الخادمُ ٤٠٣ لأنّ الدورَ
-                      // لا يملكه — فيكتب المستخدمُ ويضغط «صح» فلا يُحفظ شيء.
-                      // وقعت مع موظّف العمليات ثمّ مع المحاسب: قائمةُ الحقول
-                      // تُكتب دورًا دورًا فيُنسى فيها ما يعمله صاحبُها كلَّ يوم.
-                      //
-                      // فالشاشةُ تقرأ الخريطةَ نفسَها التي يفلتر بها الخادمُ
-                      // (`myFields`): ما لا يملكه الدورُ لا يُفتح أصلًا، ويُقال
-                      // سببُه عند المرور عليه. ولا تُصلَح القائمةُ مرّةً بعد
-                      // مرّة — يُقفل البابُ الذي منه تدخل الغلطة.
+                      // Do not show a cell that will not be saved
+                      // The field opened for typing, then the server returned 403 because the role lacked it, so the user typed, pressed OK and nothing saved. It happened to operations staff and then accounting: field lists are written role by role and one gets forgotten. The screen now reads the same map the server filters with (`myFields`): a field the role lacks never opens, and the reason is shown on hover. The list is not patched again and again; the door the mistake enters through is closed.
                       const owns = (field: keyof Workflow) =>
                         myFields === null || full || myFields.has(field as string);
                       const noPermMsg = lang === 'ar'
@@ -1882,7 +1617,7 @@ export default function OperationsWorkflowPage() {
                       };
                       const spanCls = (field: keyof Workflow, color: string) =>
                         `${color} ${!isEditing && !SYSTEM_FIELDS.has(field as string) && !locked && owns(field) ? editableClass : ''}`;
-                      // حقول كشف التخريج المسحوبة من النظام الخارجي غير قابلة للتعديل
+                      // Fields of the external-system clearance sheet are not editable.
                       const systemPulledFields = new Set(['fromLocation', 'toLocation', 'purchaseValue', 'carOwner', 'carNumber', 'ownerType']);
                       const textCell = (field: keyof Workflow, color = 'text-slate-700') => {
                         const isSystemPulled = (systemPulledFields.has(field as string) && wf.reportNumber) || !owns(field);
@@ -1905,12 +1640,8 @@ export default function OperationsWorkflowPage() {
                           </td>
                         );
                       };
-                      // ── وحالةُ الطلب قائمةٌ لا خانةَ كتابة ──────────────────
-                      // هي حالةُ الشحنة في منصّة التشغيل، وقيمُها معروفةٌ
-                      // محصورة. وكتابتُها نصًّا كانت تعني شيئين كلاهما خطأ:
-                      // قيمةٌ لا تعرفها المنصّة، أو تعديلٌ يُمسح في أوّل
-                      // مزامنة. فتُختار من قائمةٍ، وتُكتب في المنصّة نفسِها
-                      // (راجع changeApplicationStatus) فتراها الشاشتان معًا.
+                      // Order status is a list, not a free text cell
+                      // It is the shipment status in the operations platform and its values are a known finite set. Typed text meant a value the platform does not know, or an edit wiped on the first sync. It is chosen from a list and written to the platform itself (see changeApplicationStatus) so both screens see it.
                       const statusCell = () => {
                         const fromPlatform = (wf as any).externalSource === 'ops_upl' || !!(wf as any).shipmentOrder || !!(wf as any).fleetShipment;
                         const canSet = owns('applicationStatus') && fromPlatform && !locked;
@@ -1940,11 +1671,8 @@ export default function OperationsWorkflowPage() {
                           </td>
                         );
                       };
-                      // ── الفرعُ المسدِّد يُختار ولا يُكتب ───────────────────
-                      // كان حقلًا حرًّا، فدخلت فيه «جد» و«جدهخ» بجانب «جده»:
-                      // فرعٌ واحدٌ في ثلاثة صفوفٍ في كلّ تقرير. والقائمةُ تُدار
-                      // من القوائم المرجعيّة، فتُضاف قيمةٌ جديدةٌ حين تلزم بلا
-                      // أن يُفتح فيها بابُ الكتابة الحرّة ثانيةً.
+                      // Paying branch is chosen, not typed
+                      // It was a free field, so variants of the same city name got in beside the correct one: one branch in three rows in every report. The list is managed from reference lists, so a new value is added when needed without reopening free typing.
                       const lookupCell = (field: keyof Workflow, type: string, color = 'text-slate-700') => (
                         <td className="px-3 py-2.5 text-sm whitespace-nowrap min-w-[140px]" onClick={cellClick(field)}
                           title={!owns(field) ? noPermMsg : undefined}>
@@ -1957,14 +1685,10 @@ export default function OperationsWorkflowPage() {
                         </td>
                       );
                       const numCell = (field: keyof Workflow, color = 'text-slate-700') => {
-                        // مبلغُ السداد لكشفٍ دفعته المحفظة هو ما كتبه موظّفُ العهدة — يُعدَّل
-                        // من قيد المحفظة لا من هنا (والخادمُ يفرض ذلك أيضًا).
+                        // The payment amount for a statement paid by the wallet is what the custody clerk wrote; edit it from the wallet entry, not here (the server enforces this too).
                         const fromWallet = field === 'paymentAmount' && !!(wf as any).paidFromWallet;
-                        // ── الضريبةُ وإجماليُّها يُحسبان من الصافي ─────────────────────
-                        // الضريبةُ لا تُكتب أبدًا (صافٍ × ١٥٪)، والإجماليُّ لا يُكتب في الكشف
-                        // الضريبيّ (صافٍ + ضريبة). وفي الكاش يُكتب الإجماليُّ (صاحبُ الشركة،
-                        // ٢٠٢٦/١٠/٢٠). والخادمُ يشتقّهما كذلك — راجع applyBillingRules.
-                        // العائلةُ لا النوع: «نقدي - 3PL» كاشٌ في هذه القاعدة.
+                        // Tax and its total are computed from the net
+                        // Tax is never typed (net x 15%), and the total is not typed in a tax statement (net + tax). In cash the total is typed. The server derives them the same way; see applyBillingRules. Family, not kind: cash-3PL counts as cash in this rule.
                         const rowType = paymentFamily(paymentKindOf(isEditing ? (editData as any) : wf));
                         const derivedTax = field === 'tax' || (field === 'totalInvoice' && rowType !== 'cash');
                         const isSystemPulled = (systemPulledFields.has(field as string) && wf.reportNumber) || !owns(field) || fromWallet || derivedTax;
@@ -1986,10 +1710,8 @@ export default function OperationsWorkflowPage() {
                           </td>
                         );
                       };
-                      // ── تاريخ السداد لا يُكتب قبل استلام السند ────────────────
-                      // السداد يعني أن المال وصل، ولا يصل قبل استلام سند التسليم.
-                      // كتابته قبله تجعل التقارير المالية تعدّ مبلغًا لم يُقبَض —
-                      // فالحقل مقفل، ومكتوبٌ سببُ قفله لا مجرّد أنه مقفل.
+                      // Payment date is not typed before the bond is received
+                      // Payment means the money arrived, which cannot be before the delivery bond is received. Writing it earlier makes financial reports count an unreceived amount, so the field is locked and shows why, not just that it is locked.
                       const bondReceived = String(wf.applicationStatus || '').trim() === 'bond_received';
                       const dateCell = (field: keyof Workflow, color = 'text-slate-700') => {
                         const gated = (field === 'paymentDate' && !bondReceived) || !owns(field);
@@ -2005,17 +1727,8 @@ export default function OperationsWorkflowPage() {
                           </td>
                         );
                       };
-                      // ── نوعُ الدفع: كاشٌ أم ضريبيّ — يُكتب بيد ────────────
-                      // هو ما يقرّر شكلَ الكشف كلَّه: النقديُّ لا يُفوتَر ويصل
-                      // التحصيلَ في يومه، والضريبيُّ يُفوتَر ثمّ يُحصَّل بفاتورته.
-                      // وعمودُ «طريقة الدفع» القادمُ من المنصّة لا يقرّر شيئًا
-                      // من هذا — هذا هو المرجع.
-                      //
-                      // ولا يُملأ من ملفّ العميل: العميلُ الواحد يقول في حمولةٍ
-                      // «حاسبوني كاش» وفي أخرى «افتحوا فاتورة»، فالنوعُ صفةُ
-                      // الشحنة لا صفةُ الطرف. يكتبه مَن يعرف ما اتُّفق عليه في
-                      // هذه الحمولة، ويبقى مكتوبًا على الكشف فيُعرَف بعد سنةٍ
-                      // أيُّها كان نقدًا وأيُّها فاتورة.
+                      // Payment kind: cash or tax, typed by hand
+                      // It decides the whole shape of the statement: cash is not invoiced and reaches collections the same day, tax is invoiced then collected by its invoice. The payment-method column from the platform decides none of this; this is the reference. It is not filled from the customer file, because one customer may say cash on one load and open an invoice on another, so the kind belongs to the shipment, not the party. Whoever knows what was agreed for this load writes it, and it stays on the statement so that a year later it is clear which was cash and which invoiced.
                       const paymentTypeCell = () => (
                         <td className="px-3 py-2.5 text-sm whitespace-nowrap min-w-[120px]" onClick={cellClick('paymentType')}
                           title={!owns('paymentType') ? noPermMsg
@@ -2023,7 +1736,7 @@ export default function OperationsWorkflowPage() {
                               ? 'يُكتب لكل أمر نقل على حدة — العميل قد يحاسب كاشًا في حمولة وضريبيًّا في أخرى'
                               : 'Set per report — a customer may settle one load in cash and another by invoice')}>
                           {isEditing && owns('paymentType') ? (() => {
-                            // الأربعةُ تُختار؛ و«ضريبي»/«كاش» القائمُ يُرى في القائمة ولا يُختار.
+                            // The four kinds are selectable; an existing legacy tax or cash value is visible in the list but cannot be chosen.
                             const cur = paymentKindOf(editData as any);
                             return (
                               <select title={T.thPaymentType} className={ic}
@@ -2044,11 +1757,8 @@ export default function OperationsWorkflowPage() {
                         </td>
                       );
 
-                      // ── والكشفُ النقديُّ لا يُفوتَر ──────────────────────────
-                      // عميلُ الكاش يدفع في يده: لا سندَ ولا فاتورةَ ولا ضريبة.
-                      // فالأعمدةُ تُقرأ صفرًا وتُقفَل — والقفلُ يقول سببَه لا
-                      // مجرّدَ أنّه قفل، وإلّا حُسب عطلًا.
-                                            // Operations review is a one-click checkbox (checklist), not text.
+                      // A cash statement is not invoiced
+                      // A cash customer pays on the spot: no bond, invoice or tax. The columns read zero and are locked, and the lock states its reason, otherwise it would look broken. Operations review is a one-click checkbox (checklist), not text.
                       const operationsReviewCell = () => (
                         <td className="px-3 py-2.5 text-sm whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                           <input
@@ -2094,7 +1804,7 @@ export default function OperationsWorkflowPage() {
                         ) : textCell('username')}
                         {colOn('userPhone') && textCell('userPhone')}
                         {colOn('purchaseValue') && numCell('purchaseValue')}
-                        {/* تُكتب في منصّة التشغيل أوّلًا ثمّ هنا — راجع pushSellingValue. */}
+                        {/* Written to the operations platform first, then here; see pushSellingValue. */}
                         {colOn('sellingValue') && numCell('sellingValue', 'text-emerald-700')}
                         {colOn('driverName') && textCell('driverName')}
                         {colOn('truckType') && textCell('truckType')}
@@ -2127,8 +1837,7 @@ export default function OperationsWorkflowPage() {
                         {colOn('payingBranch') && lookupCell('payingBranch', 'workflow_paying_branch', 'text-purple-700')}
                         {colOn('paymentAmount') && numCell('paymentAmount', 'text-purple-700')}
                         {colOn('paymentType') && paymentTypeCell()}
-                        {/* ما بعده يُقفَل على الكشف النقديّ — والقفلُ يقول سببَه
-                            عند المرور عليه، فلا يُقرأ عطلًا. */}
+                        {/* Everything after this locks on a cash statement, and the lock states its reason on hover so it is not read as a fault. */}
                         {colOn('finalReportDestination') && lookupCell('finalReportDestination', 'workflow_final_destination', 'text-purple-700')}
                         {colOn('documentNumber') && textCell('documentNumber', 'text-purple-700')}
                         {colOn('customsRef') && (
@@ -2165,16 +1874,14 @@ export default function OperationsWorkflowPage() {
           </table>
         </ScrollX>
 
-        {/* التصفّح كلّه في الخادم — بما في ذلك حالة الفلترة. الصفحة الواحدة خمسون
-            صفًّا مهما بلغ عدد المطابق، فلا يُرسم في التبويب جدولٌ بعشرات الآلاف من
-            الصفوف يجمّده. */}
+        {/* Browsing is entirely on the server, including filter state. A page is fifty rows however many match, so the tab never renders a table of tens of thousands of rows that would freeze it. */}
         {total > 0 && (
           <TablePager className="px-4 py-2.5 border-t border-slate-200" page={page} pageSize={pageSize} total={total} ar={lang === 'ar'}
             onPage={setPage} onPageSize={changePageSize} note={hasColFilters ? (lang === 'ar' ? 'مُفلتر' : 'filtered') : undefined} />
         )}
       </div>
 
-      {/* عدّادُ المراحل أُزيل معها — أربعةٌ من خمسةٍ صفرٌ دائمًا. والإجماليُّ يبقى. */}
+      {/* The stage counter was removed with them: four of five were always zero. The total remains. */}
       <div className="flex flex-wrap gap-3 items-center">
         <div className="px-3 py-2 rounded-lg bg-slate-100 text-slate-700 text-xs font-medium">{T.total}: {(stats.total || total).toLocaleString()}</div>
         {hasColFilters && (

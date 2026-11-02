@@ -1,9 +1,6 @@
 'use client';
-// بوابة العميل — كل الرحلات.
-//
-// The full trip register for whichever service the partner is looking at, with
-// the بوليصة number on every row. Rows open the detail page, where the whole
-// story of the load is (route, truck, driver, status timeline, waybill PDF).
+// Customer portal: all trips.
+// The full trip register for the service being viewed, with the waybill number on every row. Rows open the detail page (route, truck, driver, status timeline, waybill PDF).
 import { useState, useEffect, useCallback, useMemo, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import api from '@/lib/api';
@@ -78,7 +75,7 @@ function ShipmentsInner() {
     return list;
   }, [items, status, q]);
 
-  // المبلغ للمورد وحده؛ العميل يرى رحلاته بلا أسعار (٢٠٢٦/١٠/٢٤).
+  // The amount is shown to the supplier only; the customer sees trips without prices.
   const showAmount = type === 'vendor';
   const isPlatform = type === 'platform';
   const colCount = showAmount || isPlatform ? 7 : 6;
@@ -114,8 +111,7 @@ function ShipmentsInner() {
     { header: tx('Status', 'الحالة'), key: 'status', transform: (v: string) => statusText(v, lang as Lang), width: 16 },
     ...(showAmount ? [{ header: tx('Amount', 'المبلغ'), key: 'buyPrice', transform: (v: any) => money(v), width: 14 }] : []),
   ];
-  // رحلات التبويب كلُّها محمّلة، وفلترا الحالة والبحث يقصّان في المتصفّح وحده؛
-  // «الكلّ» هنا يعني كلّ رحلات الخدمة المعروضة لا كلّ ما نجح فيه البحث.
+  // All of the tab's trips are loaded and the status and search filters trim in the browser only; "all" means every trip of the displayed service, not just what matched the search.
   const sheetName = tx('My shipments', 'شحناتي');
   const scope = exportScopeLabels(ar);
   const exportOptions = [

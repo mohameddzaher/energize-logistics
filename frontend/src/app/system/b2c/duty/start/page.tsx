@@ -1,12 +1,8 @@
 'use client';
 /**
- * تفقُّد بداية الدوام — شاشةُ المشرف.
- *
- * قائمتان: المناديبُ (سجلُّ النقل الخفيف) والدبّاباتُ (سجلُّ المركبات). والتفقّدُ
- * يقع على أيٍّ منهما، والاثنان مربوطان في الخادم: تفقّدُ دبّابٍ له راكبٌ (لوحتُه
- * في السجلّ أو مفوَّضٌ عليه) يظهر «تمّ» عند الراكب، وتفقّدُ مندوبٍ يظهر على دبّابه.
- *
- * والصورةُ تُلتقَط من الكاميرا ولا تُرفَع — راجع `components/b2c/LiveCamera`.
+ * Duty-start check: the supervisor's screen.
+ * Two lists: reps (light-transport register) and motorbikes (vehicles register). A check applies to either and the server links them: a check on a motorbike with a rider (plate in the register or authorised to him) shows done for the rider, and a check on a rep shows on his motorbike.
+ * The photo is captured from the camera and never uploaded; see `components/b2c/LiveCamera`.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useDialog } from '@/components/system/DialogProvider';
@@ -20,10 +16,8 @@ import {
 } from 'lucide-react';
 import LiveCamera, { type Shot } from '@/components/b2c/LiveCamera';
 
-// ── ثلاثٌ تُطلَب، ورابعةٌ يومَ الخميس ────────────────────────────────────────
-// صورُ المندوب والدبّاب والبوكس شرطُ بدء الدوام. و«المحتوى الإعلاني» لقطةُ
-// الملصق على الدبّاب: تُطلَب أسبوعيًّا يوم الخميس، فلا تظهر في غيره ولا تمنع
-// بدءَ الدوام، وتقبل أكثرَ من صورة. والخادمُ يردّها في غير يومها كذلك.
+// Three photos are required, a fourth on Thursday.
+// The rep, motorbike and box photos are required to start duty. Advertising content is a photo of the sticker on the motorbike: requested weekly on Thursday only, it does not block starting duty and accepts several photos. The server rejects it on other days too.
 type PhotoKind = 'rep' | 'vehicle' | 'box' | 'ad';
 type KindShot = Shot & { kind: PhotoKind };
 const REQUIRED_KINDS: { key: PhotoKind; ar: string; en: string; Icon: any }[] = [
@@ -32,7 +26,7 @@ const REQUIRED_KINDS: { key: PhotoKind; ar: string; en: string; Icon: any }[] = 
   { key: 'box', ar: 'صورة البوكس', en: 'Box photo', Icon: Package },
 ];
 const AD_KIND = { key: 'ad' as PhotoKind, ar: 'المحتوى الإعلاني', en: 'Ad content', Icon: Megaphone };
-/** الخميس = ٤ (الأحد صفر) — بتوقيت الجهاز، وهو يومُ المشرف. */
+/** Thursday = 4 (Sunday is 0), in the device timezone, which is the supervisor's day. */
 const isThursday = (d = new Date()) => d.getDay() === 4;
 
 type Outcome = 'started' | 'absent' | 'blocked';
@@ -45,24 +39,18 @@ interface Check {
 interface Rep {
   _id: string; englishName: string; arabicName?: string; repId?: string; phone?: string;
   branch?: { name?: string }; project?: { name?: string }; check: Check | null;
-  /**
-   * مركبتُه من سجلّ النقل الخفيف — المندوبُ قائدُ مركبةٍ بعينها، فلوحتُها
-   * تُقرأ ولا تُكتب. راجع `myReps` في الخادم.
-   */
+  /** His vehicle from the light-transport register: a rep drives a specific vehicle, so its plate is read and not typed. See `myReps` on the server. */
   vehicle?: { plate: string; typeAr: string; typeKey: string } | null;
-  /**
-   * `ownerName` = **مشرف التفقّد** المسؤول عنه — وبه تنقسم هذه الشاشة.
-   * `opsSupervisorName` = المشرف التشغيليّ، يُعرَض للعلم لا للقسمة.
-   */
+  /** `ownerName` = the check supervisor responsible for him, which splits this screen. `opsSupervisorName` = the operations supervisor, shown for information and not for splitting. */
   ownerName?: string;
   opsSupervisorName?: string;
   hasDutySupervisor?: boolean;
   mine?: boolean;
-  /** رقمُ هويّته/إقامته من سجلّ النقل الخفيف — يُبحَث به. */
+  /** His ID/residence number from the light-transport register; searchable. */
   idNumber?: string;
 }
 
-/** دبّابٌ من سجلّ المركبات — ومعه راكبُه إن عُرف. راجع `myReps` في الخادم. */
+/** A motorbike from the vehicles register, with its rider if known. See `myReps` on the server. */
 interface BikeRowT {
   _id: string; plate: string; sectorAr?: string; cityAr?: string; departmentAr?: string;
   authorizedName?: string; rider: { _id: string; name: string; idNumber?: string } | null; check: Check | null;
@@ -84,20 +72,17 @@ export default function DutyStartPage() {
   const [data, setData] = useState<{
     reps: Rep[]; dateKey: string; done: number; total: number;
     mineDone?: number; mineTotal?: number; carsExcluded?: number; unassigned?: number;
-    /** دبّاباتُ القسم — تُختار منها اللوحةُ لمن لا صلةَ لصفّه بالسجلّ. */
+    /** Department motorbikes: the plate is chosen from these for a row not linked to the register. */
     vehicleOptions?: { plate: string; typeAr: string; rider: string }[];
     bikes?: BikeRowT[];
   } | null>(null);
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState<Opened | null>(null);
-  // التفقّدُ بالمندوب أو بالدبّاب — والاثنان مربوطان في الخادم.
+  // Check by rep or by motorbike; the two are linked on the server.
   const [mode, setMode] = useState<'reps' | 'bikes'>('reps');
   /**
-   * ── «مناديبي» أو «الكلّ» ────────────────────────────────────────────────
-   * الإسنادُ باقٍ: لكلّ مندوبٍ مشرفُه، وهو ما يُسأل عنه. لكنّ أيَّ مشرفٍ يتفقّد
-   * أيَّ مندوب — يغيب زميلٌ، أو يقف على محطّةٍ فيها رجالُ غيره. فالشاشةُ تفتح
-   * على رجاله (عملُه اليوميّ) وتُفتَح على الكلّ بضغطة، ومن ليس من رجاله يُعلَّم
-   * باسم مشرفه كي يُعرَف أنّه ينوب عنه.
+   * My reps or All.
+   * Assignment remains: each rep has a supervisor who is asked about him. But any supervisor can check any rep (a colleague is absent, or he stands at a station with others' men). The screen opens on his own reps (daily work) and switches to all in one click; a rep who is not his is labelled with his supervisor's name so it is clear he is covering.
    */
   const [scope, setScope] = useState<'mine' | 'all'>('mine');
   const [q, setQ] = useState('');
@@ -106,7 +91,7 @@ export default function DutyStartPage() {
     try {
       const d: any = await api.get('/api/b2c/duty/my-reps');
       setData(d);
-      // مشرفٌ لا مناديبَ مُسنَدةً له كانت الشاشةُ تفتح عليه فارغةً — فتفتح على الكلّ.
+      // A supervisor with no assigned reps used to get an empty screen, so it opens on all.
       if (!d?.mineTotal) setScope('all');
     } catch { setData(null); }
     setLoading(false);
@@ -121,10 +106,8 @@ export default function DutyStartPage() {
     return all.filter((r) => {
       if (scope === 'mine' && !r.mine) return false;
       if (!term) return true;
-      // ── ويُبحَث بأيّ رقمٍ في يد السائل ───────────────────────────────────
-      // مَن يقف عند المحطّة يحمل ما وقع في يده: اسمَه، أو رقمَ هويّته أو
-      // إقامته، أو لوحةَ دبّابه، أو رقمَ حسابه على التطبيق. فالبحثُ يقبلها كلَّها
-      // — والرقمُ يُقارَن مجرَّدًا من الفواصل، فـ«2570614806» تجد «2570614806».
+      // Search by any number the asker has.
+      // Someone at the station holds whatever came to hand: name, ID or residence number, motorbike plate or app account number. Search accepts all of them, and numbers are compared with separators stripped.
       const digits = term.replace(/\D/g, '');
       const hay = [r.englishName, r.arabicName, r.repId, r.idNumber,
         r.vehicle?.plate, r.vehicle?.typeAr, r.ownerName, r.branch?.name, r.project?.name];
@@ -150,7 +133,7 @@ export default function DutyStartPage() {
   }, [data, q]);
   const bikesPending = useMemo(() => bikes.filter((b) => !b.check), [bikes]);
   const bikesDone = useMemo(() => bikes.filter((b) => b.check), [bikes]);
-  // فتحُ دبّاب: براكبه إن عُرف (فيُكتب التفقّدُ عليه أيضًا)، أو وحدَه.
+  // Opening a motorbike: with its rider if known (the check is written on him too), or alone.
   const openBike = (b: BikeRowT) => {
     const vehicle = { plate: b.plate, typeAr: 'دراجة آلية', typeKey: 'motorcycle' };
     const riderRep = b.rider ? all.find((r) => r._id === b.rider!._id) : null;
@@ -174,7 +157,7 @@ export default function DutyStartPage() {
             {t('لا يخرج المندوب إلا بثلاث صور: المندوب والدبّاب والبوكس — تُلتقط الآن ولا تُرفع من الجهاز.',
                'A rider only goes out after three photos: rider, bike and box — captured live, never uploaded.')}
           </p>
-          {/* ولماذا لا يظهر بعضُهم — يُقال، فلا يُحسَب نقصًا في البيانات. */}
+          {/* Why some people are not shown is stated, so it is not mistaken for missing data. */}
           {!!data?.unassigned && (
             <p className="mt-0.5 text-[11px] text-amber-700">
               {t(`${data.unassigned} مندوبًا بلا مشرف تفقّد — لا يظهرون في قائمة أحد. أُسندهم من «موظفون النقل الخفيف».`,
@@ -194,7 +177,7 @@ export default function DutyStartPage() {
         </Link>
       </div>
 
-      {/* التفقّدُ بالمندوب أو بالدبّاب. */}
+      {/* Check by rep or by motorbike. */}
       <div className="grid grid-cols-2 gap-2">
         {([['reps', t(`المناديب (${data?.total ?? 0})`, `Riders (${data?.total ?? 0})`), User],
           ['bikes', t(`الدبّابات (${data?.bikes?.length ?? 0})`, `Bikes (${data?.bikes?.length ?? 0})`), Bike]] as const).map(([k, label, Icon]) => (
@@ -206,7 +189,7 @@ export default function DutyStartPage() {
         ))}
       </div>
 
-      {/* نطاقُ العرض: رجالي أوّلًا — والعدّادان يخصّان المعروضَ لا السجلَّ كلَّه. */}
+      {/* Display scope: my reps first; both counters refer to what is shown, not the whole register. */}
       <div className="flex flex-wrap items-center gap-2">
         {mode === 'reps' && ([['mine', t(`تفقّدي أنا (${data?.mineTotal ?? 0})`, `My duty riders (${data?.mineTotal ?? 0})`)],
           ['all', t(`كل المناديب (${data?.total ?? 0})`, `All riders (${data?.total ?? 0})`)]] as const).map(([k, label]) => (
@@ -342,8 +325,7 @@ function RepRow({ rep, ar, onClick }: { rep: Rep; ar: boolean; onClick: () => vo
         <span className="block truncate text-[11px] text-slate-500">
           {[rep.repId, rep.branch?.name, rep.project?.name, rep.vehicle?.plate].filter(Boolean).join(' · ') || '—'}
         </span>
-        {/* ── ومن ليس من رجالي يُعلَّم باسم مشرفه ──────────────────────────────
-            أتفقّده جائزٌ، لكنّه نيابةٌ لا أصل — فيُقال قبل الضغط لا بعده. */}
+        {/* A rep who is not mine is labelled with his supervisor's name. Checking him is allowed but is covering, not the norm, so say so before the click and not after. */}
         {!rep.mine && (
           <span className="mt-0.5 inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold bg-amber-100 text-amber-800">
             {rep.ownerName
@@ -360,14 +342,9 @@ function RepRow({ rep, ar, onClick }: { rep: Rep; ar: boolean; onClick: () => vo
 }
 
 /**
- * الصورةُ بحجم الشاشة — تُفتَح من شريط المراجعة قبل الحفظ.
- *
- * مكوّنٌ على مستوى الملفّ لا داخلَ جسم الرسم: المعرَّفُ في الرسم يُبنى من جديدٍ
- * عند كلّ حالةٍ تتغيّر. راجع قاعدةَ «المكوّنات المضمَّنة».
- *
- * وطبقةٌ فوق النافذة لا نافذةٌ ثانية: التفقّدُ لم يُحفَظ بعد، فلا يُغلَق ما هو
- * فيه لتُرى صورة. والضغطُ في أيّ موضعٍ يغلق — واللمسُ على الهاتف لا يعرف زرًّا
- * صغيرًا في زاوية.
+ * Full-size photo, opened from the review strip before saving.
+ * A file-level component, not inside the render body, which would be rebuilt on every state change (inline components rule).
+ * It is an overlay, not a second dialog: the check is not saved yet, so what the user is in must not close to show a photo. A tap anywhere closes, since touch has no small corner button.
  */
 function PhotoViewer({ shot, ar, onClose }: { shot: { dataUrl: string; label: string }; ar: boolean; onClose: () => void }) {
   useEffect(() => {
@@ -394,11 +371,11 @@ function PhotoViewer({ shot, ar, onClose }: { shot: { dataUrl: string; label: st
 
 function CheckModal({ rep, bikeId, bikeOnly, ar, plates, onClose, onSaved }: {
   rep: Rep; ar: boolean;
-  /** تفقّدٌ فُتح من قائمة الدبّابات: الدبّابُ معروفٌ ولوحتُه لا تُغيَّر. */
+  /** A check opened from the motorbike list: the motorbike is known and its plate is not changed. */
   bikeId?: string;
-  /** دبّابٌ لا راكبَ معروفًا له — فلا صورةَ مندوب. */
+  /** A motorbike with no known rider, so no rep photo. */
   bikeOnly?: boolean;
-  /** دبّاباتُ القسم بلوحاتها وراكبها في السجلّ. */
+  /** Department motorbikes with their plates and register rider. */
   plates: { plate: string; typeAr: string; rider: string }[];
   onClose: () => void; onSaved: () => void;
 }) {
@@ -407,25 +384,23 @@ function CheckModal({ rep, bikeId, bikeOnly, ar, plates, onClose, onSaved }: {
   const [outcome, setOutcome] = useState<Outcome>(rep.check?.outcome || 'started');
   const [shots, setShots] = useState<KindShot[]>([]);
   const [kind, setKind] = useState<PhotoKind>(bikeOnly ? 'vehicle' : 'rep');
-  // دبّابٌ بلا راكبٍ معروف: صورةُ الدبّاب والبوكس — لا مندوبَ يُصوَّر. والخادمُ يقضي بالشيء نفسِه.
-  // الصورُ الثلاث في كلّ حال: المندوبُ والدبّابُ والبوكس (صاحبُ الشركة، ٢٠٢٦/١٠/٢٠).
+  // A motorbike with no known rider: motorbike and box photos only, no rep to photograph; the server enforces the same.
+  // Otherwise the three photos always apply: rep, motorbike and box.
   const NEEDED = REQUIRED_KINDS;
-  // المحفوظُ أوّلًا (تفقّدٌ يُعدَّل)، ثمّ سجلُّ القسم، ثمّ الافتراضُ الشائع.
+  // Saved value first (when editing a check), then the department register, then the common default.
   const [vehicleType, setVehicleType] = useState(
     rep.check?.vehicleType || rep.vehicle?.typeKey || 'motorcycle');
   const [plate, setPlate] = useState(rep.check?.vehiclePlate || rep.vehicle?.plate || '');
-  // ولوحةٌ جاءت من السجلّ تُعرَض مقروءةً، وتُفتَح للكتابة بضغطةٍ لمن خرج على
-  // مركبةٍ بديلة — فلا تُكتب كلَّ صباحٍ ولا تُحبَس حين تتغيّر.
+  // A plate that came from the register is shown read-only, and opened for typing with one click for someone out on a substitute vehicle, so it is not typed each morning and not locked when it changes.
   const fromRegister = !!rep.vehicle?.plate && !rep.check?.vehiclePlate;
   const [plateLocked, setPlateLocked] = useState(fromRegister);
   const [notes, setNotes] = useState(rep.check?.notes || '');
   const [saving, setSaving] = useState(false);
   const [loc, setLoc] = useState<{ lat: number; lng: number; accuracy?: number } | null>(null);
-  // الصورةُ المفتوحةُ بحجمها — تُفتَح بالضغط على مُصغَّرها في شريط المراجعة.
+  // The open photo at full size: opened by tapping its thumbnail in the review strip.
   const [preview, setPreview] = useState<{ dataUrl: string; label: string } | null>(null);
 
-  // الموضعُ يُطلَب بلا إلحاح: رفضُ الإذن لا يمنع التفقّد، لكنّه حين يوجد يجيب
-  // عن السؤال الذي لا تجيب عنه الصورةُ وحدَها — أكان المشرفُ هناك حقًّا؟
+  // Location is requested gently: refusing permission does not block the check, but when present it answers what the photo cannot, whether the supervisor was really there.
   useEffect(() => {
     if (!navigator.geolocation) return;
     navigator.geolocation.getCurrentPosition(
@@ -436,19 +411,17 @@ function CheckModal({ rep, bikeId, bikeOnly, ar, plates, onClose, onSaved }: {
 
   const needsPhoto = outcome === 'started';
   const already = (rep.check?.photos || []).length;
-  // كلُّ نوعٍ له صورتُه: المحفوظُ سابقًا يُحسب، والجديدُ يُضاف إليه.
+  // Each type has its own photo: previously saved ones count and new ones are added.
   const countOf = (k: PhotoKind) => shots.filter((s) => s.kind === k).length
     + (rep.check?.photos || []).filter((p) => (p.kind || 'vehicle') === k).length;
   const adDay = isThursday();
   const PHOTO_KINDS = adDay ? [...NEEDED, AD_KIND] : NEEDED;
-  // المطلوبُ للحفظ هو الثلاثةُ وحدَها — والإعلانيّ زيادةٌ لا شرط.
+  // Saving requires the three alone; advertising is an extra, not a requirement.
   const lacking = NEEDED.filter((k) => !countOf(k.key));
   /**
-   * ── ومَن لم يخرج يُسأل: لماذا ─────────────────────────────────────────────
-   * «بدأ الدوام» تشهد له ثلاثُ صور. و«لم يحضر»/«مُنع من الخروج» ليس لهما شاهدٌ
-   * إلّا كلمةُ المشرف — ويومُ دخلٍ كاملٌ يسقط بضغطةٍ لا يُعرَف سببُها، ثمّ يُسأل
-   * عنه بعد أسبوعٍ فلا جواب. فالسببُ شرطٌ لهما.
-   * والخادمُ يردّ كذلك (`NOTE_REQUIRED`) — وهذا منعٌ قبل الرحلة لا بدلٌ عنه.
+   * Someone who did not go out must say why.
+   * Started duty is evidenced by three photos. Did not attend or was prevented from going out has no witness but the supervisor's word, and a whole day of income can drop on a click whose reason is unknown and asked about a week later. So the reason is required for both.
+   * The server rejects it too (`NOTE_REQUIRED`); this is a pre-check, not a substitute.
    */
   const needsNote = outcome !== 'started';
   const noteMissing = needsNote && !notes.trim();
@@ -458,7 +431,7 @@ function CheckModal({ rep, bikeId, bikeOnly, ar, plates, onClose, onSaved }: {
     setSaving(true);
     try {
       await api.post('/api/b2c/duty', {
-        // الموضوعُ صفُّ سجلّ النقل الخفيف — كشفُ مناديبنا. راجع `myReps`.
+        // The subject is a row of the light-transport register, our reps' sheet. See `myReps`.
         ltEmployee: rep._id || undefined, vehicle: bikeId || undefined, outcome, vehicleType, vehiclePlate: plate,
         notes,
         photos: shots, location: loc || undefined,
@@ -515,19 +488,13 @@ function CheckModal({ rep, bikeId, bikeOnly, ar, plates, onClose, onSaved }: {
                    'Ad-content photos are available today (Thursday) only, and you may add more than one.')}
               </p>
             )}
-            {/* ── صورةٌ واحدةٌ لكلّ نوع ─────────────────────────────────────
-                كان الحدُّ صورتين لكلّ نوع، فيُصوَّر البوكسُ مرّتين وثلاثًا ولا
-                معنى لذلك: التفقّدُ يقول «هذا هو، وهذا دبّابُه، وهذا بوكسُه» —
-                ثلاثُ صورٍ لا أكثر. ومن أراد إعادةَ واحدةٍ يمسحها من شريط
-                المراجعة فيُفتَح التصويرُ لها وحدَها.
-                والإعلانيُّ يبقى متعدّدًا: الملصقُ يُصوَّر من أوجهٍ عدّة. */}
+            {/* One photo per type. The limit was two per type, so the box was photographed two or three times for no reason: the check says this is him, his motorbike and his box, three photos and no more. To redo one, delete it from the review strip and capture reopens for that one. Advertising stays multiple since the sticker is photographed from several angles. */}
             <LiveCamera ar={ar} max={kind === 'ad' ? 6 : 1}
               label={t(`التقاط ${PHOTO_KINDS.find((k) => k.key === kind)!.ar}`, `Capture ${PHOTO_KINDS.find((k) => k.key === kind)!.en}`)}
               shots={shots.filter((s) => s.kind === kind)}
               onShot={(s) => {
                 setShots((p) => [...p, { ...s, kind }]);
-                // بعد الالتقاط ينتقل إلى أوّل نوعٍ لم يُصوَّر بعد.
-                // الإعلانيُّ يتكرّر، فلا يُقفَز عنه بعد أوّل لقطة.
+                // After capture, move to the first type not yet photographed. Advertising repeats, so it is not skipped after the first shot.
                 const next = kind === 'ad' ? null : NEEDED.find((k) => k.key !== kind && !countOf(k.key));
                 if (next) setKind(next.key);
               }}
@@ -547,14 +514,7 @@ function CheckModal({ rep, bikeId, bikeOnly, ar, plates, onClose, onSaved }: {
               </p>
             )}
 
-            {/* ── ويراها الثلاثةَ قبل أن يحفظ ────────────────────────────────
-                كانت الشاشةُ تعرض صورَ النوع المختار وحدَه: يُصوّر المندوبَ ثمّ
-                الدبّابَ ثمّ البوكسَ، وكلُّ لقطةٍ تُخفي ما قبلها. فيحفظ وهو لم
-                يرَ الثلاثةَ معًا — وإن كانت إحداها مهزوزةً أو لغير صاحبها لم
-                يُعلَم إلّا بعد الحفظ.
-
-                فصارت كلُّها معروضةً في شريطٍ واحدٍ قبل الحفظ، مسمّاةً بنوعها،
-                وعلى كلٍّ منها زرُّ حذفٍ يعيد التقاطَها وحدَها. */}
+            {/* All three are visible before saving. The screen showed only the selected type's photos, each shot hiding the previous, so one saved without seeing all three together, and a blurry or wrong photo was noticed only after saving. All are now in one strip before saving, labelled by type, each with a delete button that redoes only that one. */}
             {!!shots.length && (
               <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-2.5">
                 <p className="mb-2 flex items-center gap-1.5 text-[11.5px] font-bold text-slate-700">
@@ -566,10 +526,7 @@ function CheckModal({ rep, bikeId, bikeOnly, ar, plates, onClose, onSaved }: {
                     const meta = [...REQUIRED_KINDS, AD_KIND].find((k) => k.key === sh.kind);
                     return (
                       <div key={`${sh.fileName}-${i}`} className="relative shrink-0">
-                        {/* ── والمُصغَّرُ يُفتَح ──────────────────────────────
-                            مراجعةٌ على صورةٍ بعرض عشرين بكسلًا ليست مراجعة: لا
-                            يُعرَف منها أمهزوزةٌ هي أم واضحة، ولا أهذا دبّابُه.
-                            فالضغطُ يفتحها بحجم الشاشة. */}
+                        {/* The thumbnail opens. Reviewing a photo 20 px wide is not a review: blur and which motorbike are not visible. A tap opens it full size. */}
                         <button type="button"
                           onClick={() => setPreview({ dataUrl: sh.dataUrl, label: meta ? (ar ? meta.ar : meta.en) : '' })}
                           title={t('اضغط لعرض الصورة', 'Tap to view')}
@@ -595,7 +552,7 @@ function CheckModal({ rep, bikeId, bikeOnly, ar, plates, onClose, onSaved }: {
                   {t('اضغط أيّ صورة لعرضها بحجمها · ✕ لمسحها وإعادة تصويرها',
                      'Tap a photo to view it full size · ✕ to delete and retake')}
                 </p>
-                {/* وما لم يُصوَّر بعد يُقال بالاسم، فلا يُبحَث عنه في الشرائح. */}
+                {/* What is not photographed yet is named, so it is not hunted for among the chips. */}
                 {!!lacking.length && (
                   <p className="mt-1.5 text-[11px] font-semibold text-amber-700">
                     {t(`ناقص: ${lacking.map((k) => k.ar).join(' · ')}`,
@@ -613,21 +570,14 @@ function CheckModal({ rep, bikeId, bikeOnly, ar, plates, onClose, onSaved }: {
 
         <div className="mt-3 grid grid-cols-2 gap-2.5">
           <Field label={t('نوع المركبة', 'Vehicle')}>
-            {/* ── والتفقّدُ للدبّابات ─────────────────────────────────────────
-                «سيّارة» لا تُختار هنا: الشاشةُ تسأل عن دبّابٍ وبوكسٍ، ومن مركبتُه
-                سيّارةٌ لا يظهر في القائمة أصلًا. وتبقى «أخرى» لمن لا مركبةَ
-                مسجَّلةً له فيُكتب وصفُها. */}
+            {/* Check applies to motorbikes. Car is not offered here: the screen asks about a motorbike and a box, and someone whose vehicle is a car does not appear in the list at all. Other remains for someone with no registered vehicle, whose description is typed. */}
             <select className={inp} value={vehicleType} onChange={(e) => setVehicleType(e.target.value)}
               disabled={plateLocked}>
               <option value="motorcycle">{t('دراجة نارية', 'Motorcycle')}</option>
               <option value="other">{t('أخرى', 'Other')}</option>
             </select>
           </Field>
-          {/* ── واللوحةُ تُختار لا تُكتب ─────────────────────────────────────
-              مركبتُه مكتوبةٌ في السجلّ فتُعرَض مملوءة. ومن لا صلةَ لصفّه بالسجلّ
-              (اسمٌ التبس على المطابقة) كان يكتبها بيده كلَّ صباحٍ — فتُكتب ناقصةً
-              أو بصيغةٍ أخرى. فصارت قائمةَ دبّابات القسم مع اسم راكبها في السجلّ:
-              يُختار مرّةً، ويحفظ الخادمُ الصلةَ فيجدها الغدُ مملوءة. */}
+          {/* Plate is chosen, not typed. His vehicle is in the register so it shows filled. Someone whose row is not linked to the register (a name that mismatched) used to type it each morning, incomplete or in another format. It is now a list of department motorbikes with the register rider's name: chosen once, and the server keeps the link so tomorrow it is filled. */}
           <Field label={t('اللوحة', 'Plate')}>
             {plateLocked ? (
               <input className={`${inp} bg-slate-50 font-mono`} value={plate} readOnly />
@@ -639,7 +589,7 @@ function CheckModal({ rep, bikeId, bikeOnly, ar, plates, onClose, onSaved }: {
                     {v.plate}{v.rider ? ` — ${v.rider.slice(0, 26)}` : ''}
                   </option>
                 ))}
-                {/* لوحةٌ محفوظةٌ سابقًا وليست في القائمة تبقى مختارةً لا تُمحى. */}
+                {/* A previously saved plate not in the list stays selected and is not erased. */}
                 {!!plate && !plates.some((v) => v.plate === plate) && (
                   <option value={plate}>{plate}</option>
                 )}
@@ -647,7 +597,7 @@ function CheckModal({ rep, bikeId, bikeOnly, ar, plates, onClose, onSaved }: {
             )}
           </Field>
         </div>
-        {/* من أين جاءت اللوحة، وكيف تُغيَّر — يُقال صراحةً لا يُخمَّن. */}
+        {/* Where the plate came from and how to change it is stated, not guessed. */}
         {rep.vehicle?.plate && !bikeId && (
           <p className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-slate-500">
             <Bike className="h-3 w-3" />
@@ -656,8 +606,8 @@ function CheckModal({ rep, bikeId, bikeOnly, ar, plates, onClose, onSaved }: {
                   `His vehicle in the light-transport register${rep.vehicle.typeAr ? ` — ${rep.vehicle.typeAr}` : ''}`)
               : t('عُدِّلت يدويًّا — خرج على مركبةٍ غير مركبته.', 'Edited by hand — he went out on another vehicle.')}
             <button type="button" onClick={() => setPlateLocked((v) => {
-              if (v) return false;                       // فُتحت للكتابة
-              setPlate(rep.vehicle?.plate || '');        // رجعت إلى مركبته
+              if (v) return false;                       // Opened for typing
+              setPlate(rep.vehicle?.plate || '');        // Returned to his vehicle
               setVehicleType(rep.vehicle?.typeKey || vehicleType);
               return true;
             })}
@@ -706,8 +656,7 @@ function CheckModal({ rep, bikeId, bikeOnly, ar, plates, onClose, onSaved }: {
             {t('حفظ التفقّد', 'Save check')}
           </button>
         </div>
-        {/* وسببُ المنعِ من الحفظ يُقال باسمه: «ناقص: صورة البوكس» أو «ناقص:
-            السبب» — لا زرٌّ باهتٌ بلا تفسير. */}
+        {/* The reason saving is blocked is named, such as missing box photo or missing reason, not a dimmed button with no explanation. */}
         {!canSave && (
           <p className="mt-1 text-end text-[11px] text-red-600">
             {t(`ناقص: ${[...(needsPhoto ? lacking.map((k) => k.ar) : []), ...(noteMissing ? ['السبب'] : [])].join('، ')}`,

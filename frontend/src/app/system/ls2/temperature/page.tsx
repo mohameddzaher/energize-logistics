@@ -51,9 +51,7 @@ export default function Ls2TemperaturePage() {
     { header: ar ? 'أعطال حساسات' : 'Sensor Faults', key: 'tireFaults', transform: (v) => v ?? '' },
     { header: ar ? 'الحالة' : 'Status', key: 'status', transform: (v) => { const st = statusStyle(v); return ar ? st.ar : st.en; } },
   ];
-  // الشاشة لا تعرض إلّا المركبات التي وصلت منها قراءةُ حرارة، بينما الخيار الوحيد
-  // القديم كان يصدّر الأسطول كلَّه — فيخرج الملفّ بصفوفٍ فارغةٍ لا يراها المستخدم
-  // على الشاشة ويحسب أنّها ناقصةُ القراءة. صار لكلّ معنًى نطاقُه وعدّادُه.
+  // The screen shows only vehicles that returned a temperature reading, while the old single option exported the whole fleet, producing a file with empty rows the user never saw on screen and took for missing readings. Each meaning now has its own scope and counter.
   const scope = exportScopeLabels(ar);
   const exportOptions = [
     {

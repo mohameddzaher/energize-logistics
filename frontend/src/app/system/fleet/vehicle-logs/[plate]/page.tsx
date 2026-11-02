@@ -1,10 +1,6 @@
 'use client';
-// سجلُّ سيّارةٍ واحدة — صفحةٌ قائمةٌ بذاتها.
-//
-// كان الضغطُ على صفٍّ في «سجلّات السيارات» يفتح السجلَّ **تحت** جدولٍ من ثمانٍ
-// وخمسين سيّارة، فيتغيّر الرابطُ ولا يظهر شيءٌ في الشاشة — والمستخدم ينتظر
-// صفحةً تُفتح. فصار للسيّارة صفحتُها: رابطٌ يُرسَل، وسهمُ رجوعٍ يعود، وفلترُ
-// فترةٍ يبقى في الرابط.
+// Single vehicle log: a standalone page.
+// Clicking a row in the vehicle logs used to open the log under a table of fifty-eight vehicles, so the URL changed but nothing visibly appeared and the user waited for a page to open. The vehicle now has its own page: a shareable link, a back arrow that returns, and a period filter kept in the URL.
 import { useState, Suspense } from 'react';
 import MonthPicker from '@/components/system/MonthPicker';
 import { useParams, useSearchParams, useRouter } from 'next/navigation';

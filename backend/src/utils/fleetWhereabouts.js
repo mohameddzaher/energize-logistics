@@ -1,31 +1,13 @@
 /**
- * أين هذه الشاحنةُ الآن، وإلى أين هي ذاهبة؟
- *
- * ── لماذا يحتاجها قسمٌ آخر ─────────────────────────────────────────────────
- * صفحةُ الصيانة في «لوكيشن سوليوشن» تقول إنّ صيانةَ شاحنةٍ تأخّرت أو قرُبت،
- * ثمّ تسكت عن السؤال الذي يليه في ذهن مسؤول الصيانة فورًا: **وأين هي؟** فإن
- * كانت في الطريق إلى الدمام فلا موعدَ لها اليوم، وإن كانت فرّغت ووصلت الرياض
- * فتُسحَب الآن قبل أن تُحمَّل من جديد. وبلا هذا العمود يُفتَح قسمُ إدارة
- * الأسطول في نافذةٍ ثانية ويُبحَث عن اللوحة واحدةً واحدة.
- *
- * ── والمصدرُ واحدٌ لا يُنسَخ ────────────────────────────────────────────────
- * الحقيقةُ في `FleetShipment`: حالةُ الحمولة وفروعُها ومدينتُها وآخرُ تواصلٍ
- * مع السائق والوصولُ المتوقّع. فلا يُخزَّن شيءٌ من ذلك في مرآة Wialon — يُقرأ
- * عند الطلب ويُجمَع على مفتاح اللوحة (`utils/plateKey`)، وهو نفسُ المفتاح الذي
- * يجمع عليه مخزنُ الورشة وسجلُّ الأصول (راجع ذلك الملفّ).
- *
- * والحالةُ تُترجَم إلى موضعٍ يُقرأ: «تُحمَّل في جدة» لا `loading`.
+ * Where a truck is now and where it is headed, derived from FleetShipment.
+ * Maintenance needs this next to overdue/due-soon work. Nothing is copied into the Wialon mirror; it is read on demand and grouped by `utils/plateKey`, the same key the workshop store and asset registry use.
  */
 const { plateKey } = require('./plateKey');
 
-// الحمولةُ الحيّة: ما لم يُفوتَر ولم يُلغَ. والسندُ المُرسَل/المستلَم يعني أنّها
-// فرّغت ووصلت — وهي حالةٌ تهمّ الصيانةَ أكثرَ من غيرها: الشاحنةُ فارغةٌ الآن.
+// Live load: not yet invoiced and not cancelled. A sent/received waybill means the truck has unloaded and arrived, which matters most to maintenance (the truck is empty).
 const LIVE_STATUSES = ['requesting', 'loading', 'uploaded', 'on_way', 'arrived', 'late', 'bond_sent', 'bond_received'];
 
-/**
- * موضعُ الشاحنة كما يُقرأ، مشتقًّا من حالة الحمولة.
- * `where` نصٌّ للعرض، و`phase` مفتاحٌ تُلوّن به الواجهةُ وتفلتر.
- */
+/** Truck whereabouts derived from the load status. `where` is display text; `phase` is the key the UI colours and filters by. */
 const placeOf = (trip) => {
   const from = trip.fromCity || '';
   const to = trip.toCity || '';
@@ -49,11 +31,7 @@ const placeOf = (trip) => {
   }
 };
 
-/**
- * خريطةُ مفتاحِ اللوحة ← أحدثِ حمولةٍ حيّةٍ عليها.
- * شاحنةٌ لها حمولتان حيّتان (يحدث حين يُنسى إقفالُ السابقة) تُقرأ بأحدثهما،
- * ويُقال عددُ الأخريات كي لا يُخفى التعارض.
- */
+/** Map of plate key to the newest live load. If a truck has several live loads (a previous one was never closed) the newest wins and the count of the others is reported so the conflict stays visible. */
 const liveTripsByPlateKey = async () => {
   const FleetShipment = require('../models/FleetModels').FleetShipment;
   const trips = await FleetShipment.find({ status: { $in: LIVE_STATUSES } })
@@ -86,7 +64,7 @@ const liveTripsByPlateKey = async () => {
   return map;
 };
 
-/** حمولةٌ فارغة — تُستعمل لمن لا حمولةَ له، فتقرأ الواجهةُ شكلًا واحدًا. */
+/** Empty load for trucks without one, so the UI reads a single shape. */
 const IDLE = { status: 'idle', phase: 'idle', whereAr: 'في الفراغ — بلا حمولة', whereEn: 'Idle — no load' };
 
 module.exports = { liveTripsByPlateKey, placeOf, LIVE_STATUSES, IDLE };

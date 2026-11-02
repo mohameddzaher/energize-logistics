@@ -42,10 +42,8 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-// ── حقولُ المستندات: قيمةٌ، أو حالةٌ تقول لماذا لا قيمة ─────────────────────────
-// الموظّفُ الجديد تُعلَّم مستنداتُه الفارغةُ «مطلوبة» في الخادم؛ ومن لا يحتاج
-// مستندًا يختار هنا «غير مطلوب» أو «لا يوجد». والفارغُ «تلقائي» يترك الحالة كما
-// هي. خارج الاستمارة عمدًا — مكوّنٌ يُعرَّف داخلها يُعاد إنشاؤه مع كلّ حرف.
+// Document fields: a value, or a status saying why there is no value.
+// A new employee's empty documents are marked "required" on the server; someone who needs no document picks "not required" or "none" here. Empty "auto" leaves the status as is. Outside the form on purpose: a component defined inside it is recreated on every character.
 const DOC_STATUS_FIELDS = new Set([
   'iqamaExpiry', 'iqamaProfession', 'passportNumber', 'passportExpiry', 'qiwaContractNumber', 'workPermitExpiry',
   'insuranceCompany', 'insuranceExpiry', 'licenseType', 'licenseExpiry', 'driverCardNumber', 'driverCardExpiry',
@@ -69,9 +67,7 @@ function DocInput({ k, label, type = 'text', form, set, mark, setMark, choices, 
       {STATUS_OPTS.map(([v, a, e]) => <option key={v} value={v}>{ar ? a : e}</option>)}
     </select>
   );
-  // ── تاريخُ المستند خانتان: الميلاديّةُ ثمّ الهجريّة ───────────────────────
-  // أوراقُ الإقامة والرخصة تُصدَر بالهجريّ، فيُكتب كما في الورقة ويُحفَظ
-  // ميلاديًّا (راجع DatePair). والحالةُ تحتهما كما كانت تحت الخانة الواحدة.
+  // A document date is two fields, Gregorian then Hijri. Residence and license papers are issued in Hijri, so it is typed as on the paper and stored as Gregorian (see DatePair). The status sits under them as it did under the single field.
   if (type === 'date') {
     return (
       <div className="col-span-full space-y-1">
@@ -115,7 +111,7 @@ export function EmployeeFormModal({ open, employee, onClose, onSaved }: {
   const [saving, setSaving] = useState(false);
   const [managers, setManagers] = useState<any[]>([]);
   const [branches, setBranches] = useState<any[]>([]);
-  // حالةُ كلّ حقلِ مستندٍ — تُقرأ من الملفّ وتُرسَل مع الحفظ (markStatus).
+  // Status of each document field; read from the file and sent with the save (markStatus).
   const [marks, setMarks] = useState<Record<string, string>>({});
   const setMark = useCallback((k: string, v: string) => setMarks((m) => ({ ...m, [k]: v })), []);
   const [choices, setChoices] = useState<ChoiceMap>({});
@@ -131,20 +127,8 @@ export function EmployeeFormModal({ open, employee, onClose, onSaved }: {
   }, [open]);
 
   /**
-   * ── النموذجُ يقرأ السجلَّ كاملًا، لا ما وصله من قائمة ─────────────────────
-   *
-   * كان يُبنى من الكائن الممرَّر إليه — وهو في صفحة القائمة **مقتطَعٌ**: تختار
-   * القائمةُ حقولًا بعينها لتخفّ، وليس فيها `idType`.
-   *
-   * فيُفتح تعديلُ موظّفٍ هويّتُه «هوية» فلا يجد النموذجُ نوعَها، فيقع على
-   * الافتراضيّ «إقامة» — ولأنّ خانةَ رقم الهويّة لا تُعرَض إلّا مع نوعها، يرى
-   * صاحبُها رقمَه وقد اختفى، وهو مكتوبٌ في الملفّ كما تركه.
-   *
-   * وأسوأُ من الاختفاء: مَن حفظ بعدها كتب «إقامة» فوق نوعه، فانقلبت هويّتُه.
-   *
-   * ولا يُعالَج بإضافة `idType` إلى اختيار القائمة — تلك قائمةٌ تُكتب بيدٍ
-   * ويُنسى منها الحقلُ التالي. النموذجُ يقرأ سجلَّه بنفسِه، فأيُّ حقلٍ يُضاف
-   * غدًا يعمل بلا سطرٍ يُضاف هنا.
+   * The form reads the full record, not what came from a list.
+   * It used to build from the passed object, which on the list page is trimmed: the list selects specific fields for speed and omits `idType`. Opening an employee whose identity type is national ID, the form fell back to the default (residence); since the ID number field only shows with its type, the owner saw the number vanish although it was stored. Worse, saving afterwards wrote residence over the real type and flipped the identity. Adding `idType` to the list's selection would not fix it, since that list is hand-written and the next field gets forgotten. The form reads its own record, so any new field works with no line added here.
    */
   useEffect(() => {
     if (!open) return;
@@ -163,19 +147,19 @@ export function EmployeeFormModal({ open, employee, onClose, onSaved }: {
       });
     };
 
-    // ما وصل يُعرَض فورًا حتى لا تُفتح نافذةٌ فارغة، ثمّ يحلّ محلَّه الكاملُ.
+    // What arrived is shown immediately so no empty window opens, then replaced by the full record.
     seed(employee);
     let alive = true;
     api.get<any>(`/api/hr/employees/${employee._id}`)
       .then((d) => { const full = d?.employee || d; if (alive && full?._id) seed(full); })
-      // وتعذُّرُ القراءة يُبقي المعروضَ كما هو — لا يُفرغ النموذج.
+      // A failed read keeps what is displayed; the form is not emptied.
       .catch(() => {});
     return () => { alive = false; };
   }, [open, employee]);
 
   const set = (k: string, v: any) => setForm((f: any) => ({ ...f, [k]: v }));
 
-  // أسماءُ الحقول التي ردَّها الخادمُ في آخر محاولة.
+  // Field names the server rejected in the last attempt.
   const [badFields, setBadFields] = useState<string[]>([]);
   const save = useCallback(async () => {
     setBadFields([]);
@@ -183,7 +167,7 @@ export function EmployeeFormModal({ open, employee, onClose, onSaved }: {
     setSaving(true);
     try {
       let saved: any;
-      // «تلقائي» على ملفٍّ قائم يرفع العلامة؛ وعلى جديدٍ لا يُرسَل فيعمل الافتراض.
+      // "Auto" on an existing file clears the mark; on a new one nothing is sent so the default applies.
       const markStatus: Record<string, string> = {};
       for (const k of DOC_STATUS_FIELDS) {
         if (marks[k]) markStatus[k] = marks[k];
@@ -195,8 +179,7 @@ export function EmployeeFormModal({ open, employee, onClose, onSaved }: {
       onSaved(saved?.employee);
       onClose();
     } catch (e: any) {
-      // الخادمُ يعيد أسماءَ الحقول التي ردَّها — تُلوَّن بعينها بدل أن يبحث
-      // المستخدم في أربعين خانةً عن الخطأ.
+      // The server returns the rejected field names, which are colored directly so the user does not hunt for the error across forty fields.
       setBadFields(Array.isArray(e?.fields) ? e.fields : []);
       notify(e.message, 'error');
     }
@@ -211,10 +194,7 @@ export function EmployeeFormModal({ open, employee, onClose, onSaved }: {
         <PrimaryButton onClick={save} disabled={saving || !form.firstName.trim() || !form.lastName.trim()}>{saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}{tx.save}</PrimaryButton>
       </>}>
       <Section title={tx.sectionPersonal}>
-        {/* ── المطلوبُ يُعلَّم قبل الحفظ لا بعده ────────────────────────────
-            كان النموذجُ لا يميّز مطلوبًا من اختياريّ، فيُملأ ويُرسَل ويُردّ.
-            النجمةُ تقول قبل الإرسال ما لا يمكن تركُه، والخانةُ الحمراءُ تقول
-            بعده أيَّ خانةٍ بالضبط ردّها الخادم. */}
+        {/* Required fields are marked before saving, not after. The form used to not distinguish required from optional, so it was filled, sent and rejected. The asterisk shows what cannot be left empty before sending, and the red field shows afterward which field the server rejected. */}
         <Field label={`${tx.firstName} *`}>
           <TextInput value={form.firstName} onChange={(e) => set('firstName', e.target.value)}
             className={badFields.includes('firstName') ? 'border-red-400 bg-red-50' : undefined} /></Field>
@@ -225,7 +205,7 @@ export function EmployeeFormModal({ open, employee, onClose, onSaved }: {
         <Field label={tx.employeeNumber}><TextInput value={form.employeeNumber} onChange={(e) => set('employeeNumber', e.target.value)} /></Field>
         <Field label={tx.gender}><Select value={form.gender} onChange={(e) => set('gender', e.target.value)}><option value="">—</option><option value="male">{tx.male}</option><option value="female">{tx.female}</option></Select></Field>
         <DatePair label={tx.dateOfBirth} value={form.dateOfBirth || ''} onChange={(v) => set('dateOfBirth', v)} ar={ar} />
-        {/* الجنسيّةُ والمدينةُ والمشروعُ قوائمُ مغلقةٌ فيها بحث — utils/hrLists في الخادم. */}
+        {/* Nationality, city and project are closed searchable lists (utils/hrLists on the server). */}
         <Field label={tx.nationality}><SearchableSelect value={form.nationality || ''} onChange={(v) => set('nationality', v)} placeholder={ar ? '— اختر —' : '— choose —'} searchPlaceholder={ar ? 'ابحث…' : 'Search…'} searchAfter={0}
           options={[...(form.nationality && !(choices.nationality || []).some((o) => o.value === form.nationality) ? [{ value: form.nationality, label: form.nationality }] : []), ...(choices.nationality || []).map((o) => ({ value: o.value, label: o.value }))]} /></Field>
       </Section>
@@ -254,9 +234,9 @@ export function EmployeeFormModal({ open, employee, onClose, onSaved }: {
 
       <Section title={tx.sectionJob}>
         <Field label={tx.jobTitle}><TextInput value={form.jobTitle} onChange={(e) => set('jobTitle', e.target.value)} /></Field>
-        {/* القسمُ من القائمة وحدَها — يضيف السوبر أدمن الأقسام من البيانات المرجعيّة. */}
+        {/* Department comes from the list only; the super admin adds departments from reference data. */}
         <Field label={tx.department}><ManagedSelect type="hr_department" storeLabel strict noAdd value={form.department} onChange={(v) => set('department', v)} /></Field>
-        {/* الفئةُ الوظيفيّة لموظّفي B2C والنقل الثقيل وحدَهم — إداري · سائق · فني. */}
+        {/* Job category applies only to B2C and heavy-transport employees: administrative, driver, technician. */}
         {['B2C', 'النقل الثقيل'].includes(form.department) && (
           <Field label={ar ? 'الفئة الوظيفية' : 'Staff category'}><ManagedSelect type="hr_staff_category" storeLabel strict noAdd value={form.staffCategory || ''} onChange={(v) => set('staffCategory', v)} /></Field>
         )}
@@ -267,10 +247,7 @@ export function EmployeeFormModal({ open, employee, onClose, onSaved }: {
         <Field label={tx.workLocation}><SearchableSelect value={form.workLocation || ''} onChange={(v) => set('workLocation', v)} placeholder={ar ? '— اختر —' : '— choose —'} searchPlaceholder={ar ? 'ابحث…' : 'Search…'} searchAfter={0}
           options={[...(form.workLocation && !(choices.workLocation || []).some((o) => o.value === form.workLocation) ? [{ value: form.workLocation, label: form.workLocation }] : []), ...(choices.workLocation || []).map((o) => ({ value: o.value, label: o.value }))]} /></Field>
         <Field label={tx.branch}><Select value={form.branch} onChange={(e) => set('branch', e.target.value)}><option value="">—</option>{branches.map((b) => <option key={b._id} value={b._id}>{b.name}</option>)}</Select></Field>
-        {/* ── فروع إضافية ────────────────────────────────────────────────────
-            موظّفون يعملون على أكثر من فرع فعلًا. حصرُهم في واحد كان يُخفيهم من
-            قوائم الفرع الآخر وكأنهم ليسوا منه. الأساسي أعلاه يبقى فرعهم المنسوب
-            في التقارير، وهذه تجعلهم يظهرون ويُختارون في الفروع كلها. */}
+        {/* Additional branches: employees who really work on more than one branch. Limiting them to one hid them from the other branch's lists as if they were not its own. The primary above stays the branch attributed in reports; these make them appear and be selectable in all their branches. */}
         <Field label={ar ? 'فروع إضافية يعمل عليها' : 'Also works at'}>
           <div className="flex flex-wrap gap-1.5">
             {branches.filter((b) => b._id !== form.branch).map((b) => {
@@ -295,8 +272,7 @@ export function EmployeeFormModal({ open, employee, onClose, onSaved }: {
           </p>
         </Field>
         <Field label={tx.directManager}><Select value={form.directManager} onChange={(e) => set('directManager', e.target.value)}><option value="">—</option>{managers.map((m) => <option key={m._id} value={m._id}>{m.firstName} {m.lastName}</option>)}</Select></Field>
-        {/* حالةُ التوظيف لا تُختار هنا: «يعمل» عند الإضافة، وتتغيّر بإنهاء الخدمة
-            (بحالةٍ من ثلاث) أو إعادة التفعيل من ملفّ الموظف. */}
+        {/* Employment status is not chosen here: "working" on creation, then changed by ending service (one of three statuses) or reactivation from the employee file. */}
         <Field label={tx.employmentStatus}>
           <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
             {ar ? (EMPLOYMENT_STATUS as any)[form.employmentStatus]?.ar || 'يعمل' : (EMPLOYMENT_STATUS as any)[form.employmentStatus]?.en || 'Active'}
@@ -321,7 +297,7 @@ export function EmployeeFormModal({ open, employee, onClose, onSaved }: {
         <DocInput k="bank" label={vtx.bank} cash form={form} set={set} mark={marks['bank'] || ''} setMark={setMark} choices={choices} ar={ar} />
         <Field label={ar ? 'المشروع' : 'Project'}><SearchableSelect value={form.project || ''} onChange={(v) => set('project', v)} placeholder={ar ? '— اختر —' : '— choose —'} searchPlaceholder={ar ? 'ابحث…' : 'Search…'} searchAfter={0}
           options={[...(form.project && !(choices.project || []).some((o) => o.value === form.project) ? [{ value: form.project, label: form.project }] : []), ...(choices.project || []).map((o) => ({ value: o.value, label: o.value }))]} /></Field>
-        {/* يُختار ولا يُكتب: سجلّاتُنا ومعها «فري لانسر» و«تدريب» — ومنه يُعرف النوع. */}
+        {/* Chosen, not typed: our own registers plus freelancer and training; the type is derived from it. */}
         <Field label={vtx.registerNumber}>
           <Select value={form.registerNumber || ''} onChange={(e) => set('registerNumber', e.target.value)}>
             <option value="">—</option>
@@ -343,7 +319,7 @@ export function EmployeeFormModal({ open, employee, onClose, onSaved }: {
       </Section>
 
       <Section title={vtx.sectionDriving}>
-        {/* لقطةٌ من سجلّ المركبات (التفويض) — تُعرض ولا تُكتب هنا، وإلّا افترقت عن الورقة. */}
+        {/* Snapshot from the vehicles register (authorization): shown, not written here, or it would diverge from the paper. */}
         <Field label={vtx.vehiclePlate}>
           <TextInput value={form.vehiclePlate || ''} readOnly disabled className="bg-slate-50 text-slate-600 cursor-not-allowed"
             title={ar ? 'تُقرأ من سجل المركبات — تُعدَّل بالتفويض' : 'Read from the vehicle registry — change it through the authorisation'} />

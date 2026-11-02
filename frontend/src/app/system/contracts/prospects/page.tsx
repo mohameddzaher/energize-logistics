@@ -1,7 +1,5 @@
 'use client';
-// تنشيط الموردين الجدد — the cold-outreach log: companies contacted but not
-// yet contracted. Full CRUD + one-click promotion («تحويل إلى مورد») that
-// creates the vendor record and stamps the prospect as converted.
+// New vendor outreach: the cold-outreach log of companies contacted but not yet contracted. Full CRUD plus one-click promotion to vendor, which creates the vendor record and stamps the prospect as converted.
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
@@ -103,8 +101,7 @@ export default function ProspectsPage() {
     converted: prospects.filter((p) => p.convertedVendor).length,
   };
 
-  // «الوجهات» و«الملاحظات» لا يتّسع لهما الجدول (الملاحظات مقصوصة بسطرين)، وهما
-  // بالضبط ما يحتاجه من يتابع التنشيط خارج الشاشة — فيخرجان كاملين في الملف.
+  // Destinations and notes do not fit the table (notes are clamped to two lines) and are what someone following up away from the screen needs, so they are exported in full.
   const cols: ExportColumn[] = [
     { header: ar ? 'اسم الشركة' : 'Company', key: 'companyName', width: 28 },
     { header: ar ? 'جهة الاتصال' : 'Contact', key: 'contactPerson', width: 18 },
@@ -112,8 +109,7 @@ export default function ProspectsPage() {
     { header: ar ? 'المقر' : 'HQ', key: 'headquarters', width: 16 },
     { header: ar ? 'الوجهات' : 'Destinations', key: 'destinations', width: 26 },
     { header: ar ? 'نوع السيارات' : 'Vehicles', key: 'vehicleType', width: 16 },
-    // نفس ترتيب الشارة على الشاشة: «تحوّل إلى مورد» يسبق حالة الاهتمام، لأن
-    // المحوَّل قد يكون مسجّلًا «مهتمًّا» فيبدو في الملف صفًّا ما زال قيد التنشيط.
+    // Same order as the on-screen badge: converted to vendor precedes the interest status, because a converted prospect may still be marked interested and would look like an active outreach row in the file.
     {
       header: ar ? 'الاهتمام' : 'Interest',
       key: 'interestStatus',
@@ -128,7 +124,7 @@ export default function ProspectsPage() {
     { header: ar ? 'ملاحظات' : 'Notes', key: 'notes', width: 40 },
   ];
   const sheetName = ar ? 'التنشيط' : 'Prospects';
-  // صياغة موحّدة لأسماء النطاقات عبر كل شاشات النظام: «الكلّ» هنا هو «الكلّ» هناك.
+  // Shared scope-name wording across all system screens: "All" here is "All" everywhere.
   const scope = exportScopeLabels(ar);
 
   return (
@@ -146,14 +142,13 @@ export default function ProspectsPage() {
               sheets: [{ name: sheetName, rows: filtered, columns: cols }],
             },
             {
-              // قائمة المكالمات التالية: المهتمّون الذين لم يُحوَّلوا بعد. تُبنى من
-              // نفس شرط بطاقة «مهتم» أعلى الصفحة كي يتطابق الملف مع العدّاد.
+              // Next-calls list: interested prospects not yet converted, built from the same condition as the interested card at the top so the file matches the counter.
               key: 'interested',
               label: ar ? 'المهتمّون غير المحوَّلين' : 'Interested, not yet converted',
               sheets: [{ name: sheetName, rows: prospects.filter((p) => p.isInterested === true && !p.convertedVendor), columns: cols }],
             },
             {
-              // الخادم يُرجع السجلّ كاملًا بلا ترقيم، فلا حاجة لإعادة جلبٍ هنا.
+              // The server returns the whole register without pagination, so no refetch is needed here.
               key: 'all',
               label: scope.all,
               sheets: [{ name: sheetName, rows: prospects, columns: cols }],

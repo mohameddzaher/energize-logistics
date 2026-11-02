@@ -8,12 +8,9 @@ import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import 'shipment_orders_common.dart';
 
-/// ── بطاقةُ الشحنة الكبيرة («بطاقات») ───────────────────────────────────────
-/// صاحبُ الشركة (٢٠٢٦/١٠/٢٦): «أغلبُهم من الجوّال — كلُّ شحنةٍ بطاقةٌ كبيرةٌ
-/// ببياناتها، بلا سحبٍ يمينًا ويسارًا؛ ومنها يغيّر الحالةَ ويتّصل ويكتب ملاحظة».
-/// تُقرأ على عرض ٣٢٠: كلُّ معلومةٍ سطرٌ بعنوانه، والأزرارُ ≥٤٤ نقطة.
+/// Large shipment card ("cards" view). Most users are on mobile, so each shipment is a large card with its data and no horizontal swiping; from it they change the status, call and write a note. Designed for a 320 width: each item is a titled line and buttons are at least 44 points.
 
-/// «منذ ٥ د» — وقتٌ نسبيٌّ قصير.
+/// Short relative time, e.g. "5 min ago".
 String soAgo(dynamic iso) {
   final d = DateTime.tryParse('${iso ?? ''}')?.toLocal();
   if (d == null) return '';
@@ -27,7 +24,7 @@ String soAgo(dynamic iso) {
   return soFmtDate(iso);
 }
 
-/// كلُّ ملاحظات المتابعة — الأحدثُ أوّلًا.
+/// All follow-up notes, newest first.
 List<Map<String, dynamic>> soFollowUpNotes(Map order) {
   final log = (order['statusLog'] as List?) ?? const [];
   return [
@@ -38,10 +35,7 @@ List<Map<String, dynamic>> soFollowUpNotes(Map order) {
 
 const _noteManagers = {'super_admin', 'admin', 'shipment_orders_manager', 'operations_manager'};
 
-/// ملاحظاتُ المتابعة — سجلٌّ يُضاف إليه ويُعدَّل ويُحذف، مثلُ نافذة الويب
-/// (٢٠٢٦/١٠/٢٦: «ممكن أضيف بعدها أو أعدّلها أو أمسحها»). يعدّل الملاحظةَ ويمسحها
-/// كاتبُها أو مديرُ القسم، والخادمُ يحرس القاعدةَ نفسَها. يرجّع الشحنةَ بعد آخر
-/// تغيير (أو null إن لم يتغيّر شيء).
+/// Follow-up notes: a log that can be added to, edited and deleted, like the web dialog. A note is edited or deleted by its author or the section manager, and the server guards the same rule. Returns the shipment after the last change (or null if nothing changed).
 Future<Map<String, dynamic>?> soQuickNote(BuildContext context, Map<String, dynamic> order) {
   return showModalBottomSheet<Map<String, dynamic>>(
     context: context,
@@ -216,7 +210,7 @@ class _NoteSheetState extends State<_NoteSheet> {
   }
 }
 
-/// سطرُ «آخر متابعة» المختصر — لوضع القائمة.
+/// Short "last follow-up" line for list mode.
 class SoLatestFollowUpLine extends StatelessWidget {
   final Map order;
   final VoidCallback? onTap;
@@ -254,9 +248,9 @@ class ShipmentOrderBigCard extends StatelessWidget {
   final bool selected;
   final VoidCallback onToggleSelect;
   final VoidCallback onOpen;
-  /// بعد حفظ متابعةٍ أو تعديل — يُعاد تحميلُ القائمة.
+  /// After saving or editing a follow-up, the list is reloaded.
   final VoidCallback onChanged;
-  /// بعد حفظ ملاحظة — الشحنةُ كما ردّها الخادم، فتتحدّث البطاقةُ فورًا.
+  /// After saving a note: the shipment as the server returned it, so the card updates immediately.
   final void Function(Map<String, dynamic> updated) onNoteSaved;
   final VoidCallback? onEdit;
 
@@ -275,8 +269,7 @@ class ShipmentOrderBigCard extends StatelessWidget {
 
   static String _s(dynamic v) => '${v ?? ''}'.trim();
 
-  // سطرُ معلومة: عنوانٌ بعرضٍ ثابت وقيمةٌ بخطٍّ واضح، وخطٌّ رفيعٌ بين الأسطر —
-  // (٢٠٢٦/١٠/٢٦: «الكلام عايم على بعضه… محتاج تناسق وترتيب ووضوح»).
+  // Info line: a fixed-width label and a clearly styled value, with a thin divider between lines (the text was crowded and needed alignment, order and clarity).
   Widget _line(IconData icon, String label, String value, {String sub = ''}) {
     if (value.isEmpty) return const SizedBox.shrink();
     return Container(
@@ -336,7 +329,7 @@ class ShipmentOrderBigCard extends StatelessWidget {
         ]),
       );
 
-  // زرٌّ بأيقونته وعنوانه — لا أيقونةٌ وحدَها يُخمَّن معناها.
+  // Button with its icon and label; an icon alone would have to be guessed.
   Widget _iconBtn(IconData icon, Color color, String label, VoidCallback? onTap) => Expanded(
         child: InkWell(
           onTap: onTap,
@@ -385,7 +378,7 @@ class ShipmentOrderBigCard extends StatelessWidget {
           topAccent: st.$4,
           padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            // ── الرأس: الرقم + المصدر + الحالة، ثمّ العميل ──
+            // Header: number + source + status, then the customer
             Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
               SizedBox(width: 40, height: 40, child: Checkbox(value: selected, onChanged: (_) => onToggleSelect())),
               const SizedBox(width: 4),
@@ -408,16 +401,16 @@ class ShipmentOrderBigCard extends StatelessWidget {
             Text(_s(o['customerName']).isEmpty ? '—' : _s(o['customerName']),
                 style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: T.ink, height: 1.3)),
             const SizedBox(height: 8),
-            // ── المسار في مربّعه: «من» فوق «إلى» ──
+            // The route in its box: "from" above "to"
             _route(_s(o['fromCity']), _s(o['toCity'])),
-            // ── المعلومات: سطرٌ لكلّ واحدة ──
+            // Info: one line for each
             _line(Icons.person_outline, tr('السائق', 'Driver'), _s(o['driverName']).isEmpty ? '—' : _s(o['driverName']), sub: phone),
             _line(Icons.local_shipping_outlined, tr('الشاحنة', 'Truck'), _s(o['truckType']).isEmpty ? '—' : _s(o['truckType']), sub: _s(o['vehiclePlate'])),
             _line(Icons.schedule, tr('الاستلام', 'Pickup'), soFmtDT(o['pickupTime'])),
             _line(Icons.inventory_2_outlined, tr('الحمولة', 'Cargo'), _s(o['cargoType'])),
             if (hasMoney)
               _line(Icons.payments_outlined, tr('بيع / شراء', 'Sell / Buy'), '${soMoney(o['sellPrice'])} / ${soMoney(o['buyPrice'])}'),
-            // ── الملاحظتان، كلٌّ باسمها ──
+            // The two notes, each under its own name
             if (tripNote.isNotEmpty)
               _noteBox(Icons.description_outlined, tr('ملاحظة أمر النقل', 'Transport order note'), tripNote, T.inkSoft),
             if (f != null)
@@ -429,7 +422,7 @@ class ShipmentOrderBigCard extends StatelessWidget {
                     meta: [if (_s(f['byName']).isNotEmpty) _s(f['byName']), soAgo(f['at'])].where((s) => s.isNotEmpty).join(' · ')),
               ),
             const SizedBox(height: 12),
-            // ── الأفعال: أزرارٌ كبيرة ──
+            // Actions: large buttons
             if (editor)
               Row(children: [
                 Expanded(child: SizedBox(height: 52, child: FilledButton.icon(

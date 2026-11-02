@@ -1,21 +1,11 @@
 'use client';
-// فلترُ مدًى زمنيّ موحَّد — يُفتح بالضغط، و«إلى» الفارغة تعني «حتى اليوم».
-//
-// ثلاث عللٍ كانت فيه:
-//
-// ١) أيقونةُ التقويم مقلوبة اللون (`invert`) على خلفيةٍ بيضاء، فتصير بيضاء على
-//    بيضاء — موجودةً وغيرَ مرئيّة. فيظنّ المستخدم أنّ الحقل نصٌّ يُكتب بالإصبع.
-//
-// ٢) والضغط على الحقل نفسه لا يفتح التقويم في متصفّحات كثيرة — يفتحه الضغط على
-//    الأيقونة وحدها، وهي غير مرئيّة. و`showPicker()` يفتحه من أيّ موضع.
-//
-// ٣) و«من» وحدها بلا «إلى» كانت تُقرأ مدًى مفتوحًا بلا نهاية، والمقصود دائمًا
-//    «حتى اليوم». فصار المكتوب في الشاشة هو المعنى: تظهر «حتى اليوم» مكان
-//    الفراغ، ولا يُترك للمستخدم أن يخمّن.
+// Unified date-range filter, opens on click; an empty "to" means until today.
+// Fixed: inverted calendar icon invisible on white; click on the field not opening the picker (showPicker() does);
+// and "from" without "to" reading as open-ended, so the until-today label replaces the blank.
 import { useRef } from 'react';
 import { CalendarDays, X } from 'lucide-react';
 
-/** يفتح التقويم الأصليّ من أيّ موضعٍ في الحقل، لا من الأيقونة وحدها. */
+/** Opens the native picker from anywhere in the field, not only the icon. */
 function openPicker(el: HTMLInputElement | null) {
   if (!el) return;
   try { (el as HTMLInputElement & { showPicker?: () => void }).showPicker?.(); }
@@ -29,7 +19,7 @@ export function DateField({ value, onChange, label, max, min, ar, placeholder }:
   max?: string;
   min?: string;
   ar: boolean;
-  /** ما يُكتب حين تكون الخانة فارغة — «حتى اليوم» مثلًا. */
+  /** Text shown when the input is empty, e.g. "until today". */
   placeholder?: string;
 }) {
   const ref = useRef<HTMLInputElement>(null);
@@ -38,8 +28,7 @@ export function DateField({ value, onChange, label, max, min, ar, placeholder }:
       <input
         ref={ref}
         type="date"
-        // القاعدةُ العامّة في globals.css تغطّي كلّ خانات التاريخ؛ وتُكتب هنا
-        // صراحةً أيضًا كي لا يكسرها تنسيقٌ محلّيٌّ في شاشةٍ ما.
+        // The global rule in globals.css covers all date inputs; it is repeated here so a local style cannot break it.
         dir="ltr"
         title={label}
         aria-label={label}
@@ -61,18 +50,12 @@ export function DateField({ value, onChange, label, max, min, ar, placeholder }:
       >
         <CalendarDays className="w-4 h-4" />
       </button>
-      {/* ── ولا نصَّ عربيًّا فوق تنسيق التاريخ ────────────────────────────────
-          كان يُكتب «من البداية» فوق `mm/dd/yyyy` الذي يرسمه المتصفّح، فيتراكب
-          نصّان في خانةٍ واحدةٍ ويختلف ارتفاعُها عن جاراتها في الصفّ. والاسمُ
-          صار خارجَ الخانة (انظر أدناه)، فبقيت الخانةُ لتنسيقها وحدَه. */}
+      {/* No Arabic text over the date format: the placeholder used to overlap the browser's mm/dd/yyyy and change the field height. The label now sits outside the field. */}
     </div>
   );
 }
 
-/**
- * مدًى كامل: «من» و«إلى» وزرُّ مسحٍ يظهر حين يكون فيه ما يُمسح.
- * و«إلى» الفارغة تُعرَض «حتى اليوم» — وهو ما يفعله الخادم فعلًا.
- */
+/** Full range: from, to, and a clear button when there is something to clear. An empty "to" shows "until today", which is what the server does. */
 export default function DateRangeFilter({ from, to, onFrom, onTo, ar, className = '' }: {
   from: string; to: string;
   onFrom: (v: string) => void; onTo: (v: string) => void;
@@ -80,18 +63,15 @@ export default function DateRangeFilter({ from, to, onFrom, onTo, ar, className 
 }) {
   return (
     <div className={`flex items-center gap-2 flex-wrap ${className}`}>
-      {/* «من» و«إلى» خارجَ الخانة لا داخلها: داخلَها يزاحمان التنسيقَ الذي
-          يرسمه المتصفّح فيتراكب نصّان، ويختلف ارتفاعُ الخانة عن جاراتها. */}
+      {/* The from/to labels sit outside the input; inside they overlap the browser format text and change the height. */}
       <span className="text-[12px] font-bold text-slate-600 shrink-0">{ar ? 'من' : 'From'}</span>
       <DateField ar={ar} value={from} onChange={onFrom} max={to || undefined}
         label={ar ? 'من تاريخ' : 'From date'} />
       <span className="text-[12px] font-bold text-slate-600 shrink-0">{ar ? 'إلى' : 'To'}</span>
-      {/* ولا يُقيَّد «إلى» باليوم: مَن يكتب تاريخًا أبعد يُقصَر عليه صامتًا
-          فيقرأ عددًا غير الذي طلبه ولا يعرف لماذا. الخادمُ يقف عند اللحظة
-          حين تكون الخانة فارغة، وهذا يكفي. */}
+      {/* "to" is not capped at today: a later date would be silently clamped and the count would differ from what was asked. The server stops at now when it is empty, which is enough. */}
       <DateField ar={ar} value={to} onChange={onTo} min={from || undefined}
         label={ar ? 'إلى تاريخ' : 'To date'} />
-      {/* «إلى» الفارغة تعني «حتى اليوم» — تُقال مرّةً بجانب الخانة لا فوقها. */}
+      {/* An empty "to" means until today, stated once beside the field. */}
       {!to && <span className="text-[11px] text-slate-400 shrink-0">{ar ? '(حتى اليوم)' : '(until today)'}</span>}
       {(from || to) && (
         <button type="button" onClick={() => { onFrom(''); onTo(''); }}

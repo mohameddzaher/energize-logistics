@@ -33,7 +33,7 @@ export default function ContractsPage() {
   const tx = getHrContractsTranslations(lang);
   const staff = isHRStaff(user);
 
-  // الإجراءات، الرقم الوظيفيّ، الاسم، الهويّة — ثابتةٌ على اليمين.
+  // Actions, employee number, name, ID: pinned on the right.
   const pin = usePinnedColumns(4);
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -46,19 +46,13 @@ export default function ContractsPage() {
   const [form, setForm] = useState<any>(EMPTY);
   const [saving, setSaving] = useState(false);
 
-  // ── السجلُّ يُحمَّل كاملًا، وحالةُ العقد فلترٌ كغيرها ─────────────────────────
-  // كانت «الحالة» وحدَها تُرسَل إلى الخادم وبقيّةُ الفلاتر تُحسَب من الصفوف
-  // المحمّلة. فمَن اختار «ساري» لم يبقَ في الذاكرة إلّا العقودُ السارية: خياراتُ
-  // اللوحة وأعدادُها تُحسَب على جزءٍ من السجلّ، و«حالة العقد» فيها قيمةٌ واحدة،
-  // والعنوانُ يقول «٢٦٥ عقدًا» والسجلُّ ثلاثمئة. فيُحمَّل السجلُّ كلُّه مرّةً
-  // (والخادمُ يسقفه بألفَين) وتُحسَب الخياراتُ كلُّها عليه.
+  // The whole register is loaded, and contract status is a filter like any other. Only status used to be sent to the server while the other filters were computed from loaded rows, so choosing 'active' left only active contracts in memory: panel options and counts were computed on part of the register, contract status had a single value, and the title said 265 contracts for a register of three hundred. So the whole register is loaded once (the server caps it at 2000) and all options are computed over it.
   const guard = useLatestRequest();
   const load = useCallback(async () => {
     const mine = guard.begin();
     try {
       const d = await api.get<{ contracts: Contract[] }>('/api/hr/contracts');
-      // تحديثان متتاليان من السوكِت: الأقدمُ قد يصل أخيرًا فيعيد الجدولَ إلى
-      // ما قبل التعديل الثاني.
+      // Two consecutive socket updates: the older may arrive last and revert the table to its state before the second edit.
       if (!guard.isCurrent(mine)) return;
       setContracts(d.contracts || []);
     } catch {}
@@ -66,10 +60,7 @@ export default function ContractsPage() {
   }, [guard]);
 
   useEffect(() => { load(); }, [load]);
-  // ── وما يُعدَّل في الماستر يصل هنا ──────────────────────────────────────
-  // شاشاتُ الماستر تكتب في الحقول نفسِها التي تعرضها هذه الشاشة، وتبثّ
-  // `hr:master`. وبلا هذا السطر تبقى هذه على أرقامها حتى يُحدِّثها أحدٌ بيده —
-  // فيُقرأ رقمان مختلفان للشيء نفسِه في شاشتين مفتوحتين.
+  // Master edits reach here. Master screens write the same fields this screen shows and broadcast `hr:master`. Without this line the screen keeps its numbers until someone refreshes it, and two open screens show different values for the same thing.
   useSocket('hr:contract', useCallback(() => load(), [load]));
   useSocket('hr:master', useCallback(() => load(), [load]));
   useEffect(() => { api.get<{ employees: Employee[] }>('/api/hr/employees').then((d) => setEmployees(d.employees || [])).catch(() => {}); }, []);
@@ -93,13 +84,13 @@ export default function ContractsPage() {
     setSaving(false);
   };
 
-  // ── نافذةُ التجديد ────────────────────────────────────────────────────────
+  // Renewal dialog
   const [renewing, setRenewing] = useState<Contract | null>(null);
   const [renewForm, setRenewForm] = useState({ startDate: '', endDate: '', annualLeaveDays: '', carryOver: true, contractProfession: '', contractNumber: '' });
   const [renewSaving, setRenewSaving] = useState(false);
   useEffect(() => {
     if (!renewing) return;
-    // يبدأ الجديدُ من اليوم التالي لنهاية القائم — وهو ما يُكتب يدويًّا كلَّ مرّة.
+    // The new contract starts the day after the current one ends; this is what was typed by hand every time.
     const next = renewing.endDate
       ? new Date(new Date(renewing.endDate).getTime() + 86400000).toISOString().slice(0, 10)
       : '';
@@ -107,8 +98,7 @@ export default function ContractsPage() {
     setRenewForm({
       startDate: next, endDate: after,
       annualLeaveDays: String(renewing.annualLeaveDays ?? ''), carryOver: true,
-      // تُملأ من العقد القائم: التجديدُ إبقاءٌ على ما هو قائمٌ إلّا ما يُغيَّر
-      // عمدًا — فمَن لا يمسّها يجدها كما كانت، ومَن يغيّرها يكتبها هنا مرّةً.
+      // Prefilled from the current contract: renewal keeps what exists except what is deliberately changed, so someone who does not touch a field finds it as it was, and one who changes it writes it once here.
       contractProfession: renewing.contractProfession || '',
       contractNumber: renewing.contractNumber || '',
     });
@@ -134,9 +124,8 @@ export default function ContractsPage() {
   };
 
   /**
-   * ── فسخُ العقد يُنهي الخدمة — فيُسأل عن حالة «لا يعمل» ───────────────────
-   * انتظار نقل الكفالة · شركة شقيقة · خروج نهائي. ومَن خارجَ النظام أو فريلانسر
-   * يُؤرشَف فورًا فلا يُسأل (الخادمُ يقضي بذلك أيضًا).
+   * Terminating a contract ends service, so the not-working status is asked.
+   * Options: awaiting sponsorship transfer, sister company, final exit. Someone already outside the system or a freelancer is archived immediately and is not asked (the server enforces this too).
    */
   const [ending, setEnding] = useState<Contract | null>(null);
   const [endKind, setEndKind] = useState('');
@@ -158,9 +147,8 @@ export default function ContractsPage() {
   };
 
   /**
-   * حذف عقد — لا «إنهاؤه».
-   * الإنهاء واقعةٌ في تاريخ الموظّف تبقى مسجّلةً؛ والحذف لعقدٍ أُدخل خطأً —
-   * موظّفٌ غير صحيح أو صفٌّ مكرَّر — ولا معنى لبقائه «منتهيًا» في سجلّه.
+   * Delete a contract, not terminate it.
+   * Termination is an event in the employee's history and stays recorded; deletion is for a contract entered by mistake (wrong employee or a duplicate row), which has no reason to stay as ended in his record.
    */
   const remove = async (c: Contract) => {
     if (!(await confirm(ar
@@ -170,15 +158,8 @@ export default function ContractsPage() {
     catch (e: any) { notify(e.message, 'error'); }
   };
 
-  // ── فلاترُ العقود ─────────────────────────────────────────────────────────
-  // تُحسَب من الصفوف المحمّلة: الصفحةُ تُحمَّل كاملةً وتُفلتَر محلّيًّا، فنداءٌ
-  // إلى الخادم ليعدّ ما بين يديها يصنع فرصةً لأن يختلف العددُ عن الجدول.
-  //
-  // ── وقارئٌ واحدٌ لكلّ عمود ──────────────────────────────────────────────────
-  // ما يُرسَم في الخانة هو ما يُفلتَر به في اللوحة وفي قمع العمود وما يُصدَّر.
-  // كانت اللوحةُ تقرأ `annualLeaveDays` رقمًا والجدولُ يعرض «غير مطلوب» من
-  // `annualLeaveText` — فيُختار «٠» ليظهر صفٌّ مكتوبٌ فيه «غير مطلوب». والقسمُ
-  // كان يُقرأ من عمودٍ لا يجلبه الخادم (راجع listContracts) فخرج فارغًا كلُّه.
+  // Contract filters. Computed from the loaded rows: the page is loaded whole and filtered locally, so a server call to count what it already holds risks the count differing from the table.
+  // One reader per column: what is drawn in the cell is what is filtered by in the panel and the column funnel and what is exported. The panel used to read `annualLeaveDays` as a number while the table showed the not-required text from `annualLeaveText`, so choosing 0 showed a row saying not required. Department was read from a column the server does not fetch (see listContracts), so it came out all empty.
   const read = useMemo(() => {
     const emp = (c: Contract) => (typeof c.employee === 'object' && c.employee ? c.employee : null) as any;
     const year = (v?: string) => { const d = v ? new Date(v) : null; return d && !isNaN(d.getTime()) ? String(d.getFullYear()) : ''; };
@@ -194,7 +175,7 @@ export default function ContractsPage() {
       type: (c: Contract) => (c.type === 'unlimited' ? tx.typeUnlimited : tx.typeFixed),
       startDate: (c: Contract) => gregCell(c.startDate),
       endDate: (c: Contract) => (c.endDate ? gregCell(c.endDate) : ''),
-      // التوأمُ الهجريُّ مشتقٌّ من التاريخ نفسِه — يُرسَم ويُفلتَر ويُصدَّر بالقارئ ذاتِه.
+      // The Hijri twin is derived from the same date: drawn, filtered and exported with the same reader.
       startDateHijri: (c: Contract) => hijriDay(c.startDate),
       endDateHijri: (c: Contract) => hijriDay(c.endDate),
       startYear: (c: Contract) => year(c.startDate),
@@ -206,10 +187,7 @@ export default function ContractsPage() {
     };
   }, [ar, lang, tx.typeUnlimited, tx.typeFixed, tx.daysShort]);
 
-  // كلُّ عمودٍ معروضٍ له فلتر. والأعمدةُ التي قيمتُها فريدةٌ لكلّ عقد (الرقم
-  // الوظيفيّ، الاسم، الهويّة، رقم العقد، التاريخُ بيومه) تُفلتَر من قمع رأس
-  // العمود ومن البحث — قائمةٌ من ثلاثمئةِ سطرٍ كلٌّ منها «١» لا تُختار منها
-  // قيمة. وللتاريخين هنا سنتُهما، وهي ما يُسأل به: «عقودُ تنتهي في ٢٠٢٧».
+  // Every displayed column has a filter. Columns whose value is unique per contract (employee number, name, ID, contract number, a full date) are filtered from the header funnel and search, since a list of three hundred entries each with a count of 1 is not a usable choice. The two dates use their year, which is how they are asked: contracts ending in 2027.
   const FILTER_DEFS: LocalFieldDef<Contract>[] = useMemo(() => [
     { key: 'status', ar: 'حالة العقد', en: 'Status', groupAr: 'العقد', groupEn: 'Contract', get: read.status },
     { key: 'type', ar: 'نوع العقد', en: 'Type', groupAr: 'العقد', groupEn: 'Contract', get: read.type },
@@ -224,8 +202,7 @@ export default function ContractsPage() {
     { key: 'project', ar: 'وحدة العمل', en: 'Business unit', groupAr: 'الموظف', groupEn: 'Employee', get: read.project },
   ], [read]);
 
-  // «الحالة» في الشريط فلترٌ محلّيٌّ كغيره — وتُستثنى من حساب قيمِ نفسِها في
-  // اللوحة كما تُستثنى كلُّ لوحةٍ من فلترها.
+  // Status in the bar is a local filter like the others, and is excluded from computing its own panel values, as every panel is excluded from its own filter.
   const byStatus = useMemo(
     () => (statusFilter ? contracts.filter((c) => c.status === statusFilter) : contracts), [contracts, statusFilter]);
 
@@ -236,8 +213,7 @@ export default function ContractsPage() {
     if (!search.trim()) return true;
     const n = empName(c.employee).toLowerCase();
     const emp = typeof c.employee === 'object' ? c.employee : null;
-    // البحثُ يشمل ما صار معروضًا: الهويّة كما في العقد والمهنة والسجلّ — وإلّا
-    // بقيت أعمدةٌ تُقرأ ولا تُبحث.
+    // Search covers what is now displayed: ID as in the contract, profession and register; otherwise there would be columns that are read but not searchable.
     return n.includes(search.toLowerCase())
       || (emp?.iqamaNumber || '').includes(search)
       || (emp?.employeeNumber || '').includes(search)
@@ -248,7 +224,7 @@ export default function ContractsPage() {
       || (c.contractProfession || '').toLowerCase().includes(search.toLowerCase());
   });
 
-  // «البداية الميلادي» لا تُقرأ — فالاسمُ الأساسيُّ «تاريخ البداية».
+  // A start-date Gregorian label is never read: the primary name is the start date.
   const START_LABEL = ar ? 'تاريخ البداية' : 'Start date';
   const END_LABEL = ar ? 'تاريخ النهاية' : 'End date';
   const startLabels = pairLabels(START_LABEL, ar);
@@ -261,7 +237,7 @@ export default function ContractsPage() {
     { header: ar ? 'رقم العقد' : 'Contract no.', key: 'contractNumber', width: 16, transform: (v: any) => v || '—' },
     { header: ar ? 'المهنة في العقد' : 'Contract profession', key: 'contractProfession', width: 22, transform: (v: any) => v || '—' },
     { header: tx.colType, key: 'type', width: 12 },
-    // كلُّ تاريخٍ عمودان متجاوران: الميلاديُّ ثمّ هجريُّه (راجع lib/hrDates).
+    // Each date is two adjacent columns: Gregorian, then its Hijri (see lib/hrDates).
     ...exportDatePair(START_LABEL, 'startDate', ar),
     ...exportDatePair(END_LABEL, 'endDate', ar),
     { header: tx.colAnnualLeave, key: 'annualLeaveDays', width: 14, transform: (v: any, r: any) => r?.annualLeaveText || v },
@@ -270,15 +246,11 @@ export default function ContractsPage() {
     { header: tx.colBasicSalary, key: 'basicSalary', width: 14 },
     { header: tx.colStatus, key: 'status', width: 12 },
   ];
-  /**
-   * قمعُ الأعمدة — القارئُ لكلّ عمودٍ هو الذي يُرسَم به، والقائمةُ من الصفوف
-   * بعد فلتر الصفحة. راجع hooks/useColumnFilters.
-   */
+  /** Column funnel: the reader of each column is what it is drawn with, and the list comes from rows after the page filter. See hooks/useColumnFilters. */
   const cf = useColumnFilters<any>(read, filtered, ar ? 'ar' : 'en');
   const shown = cf.apply(filtered);
 
-  // السجلُّ كلُّه في الذاكرة (راجع load)، فـ«الكلّ» يُصدَّر منها بلا نداءٍ ثانٍ؛
-  // و«المعروض» هو ما في الجدول بعد اللوحة والبحث وقمع الأعمدة جميعًا.
+  // The whole register is in memory (see load), so 'all' is exported from it with no second call; 'displayed' is what is in the table after the panel, search and column funnels.
   const scope = exportScopeLabels(ar);
   const exportOptions = [
     { key: 'shown', label: scope.shown, sheets: [{ name: 'Contracts', rows: shown, columns: exportColumns }] },
@@ -305,7 +277,7 @@ export default function ContractsPage() {
           </Select>
         </div>
         <div className="shrink-0">
-          {/* الخياراتُ وأعدادُها محسوبةٌ على السجلّ كلِّه بعد بقيّة الفلاتر — راجع lib/localFilters. */}
+          {/* Options and counts are computed over the whole register after the other filters. See lib/localFilters. */}
           <FilterPanel
             fields={filterFields}
             value={filters}
@@ -344,10 +316,7 @@ export default function ContractsPage() {
                 <td {...pin.td(0, 'px-4 py-3', BG)}>
                   <div className="flex items-center gap-1">
                     <button type="button" onClick={() => openEdit(c)} className="p-1.5 rounded-lg text-slate-700 hover:text-[#f37121] hover:bg-slate-100" title={tx.editTooltip}><Edit className="w-4 h-4" /></button>
-                    {/* ── التجديدُ فعلٌ مستقلٌّ عن التعديل ────────────────────
-                        كان العقدُ يُجدَّد بتعديل تاريخِ نهايته يدويًّا: لا أثرَ
-                        يقول متى جُدِّد ولا مَن جدّده ولا من أيّ تاريخ، ورصيدُ
-                        الإجازات يُقرأ على عقدٍ ممتدٍّ بلا سنةٍ جديدةٍ تُستحقّ. */}
+                    {/* Renewal is an action separate from editing. A contract used to be renewed by editing its end date by hand, leaving no trace of when, by whom, or from which date, and the leave balance was read on an extended contract with no new entitlement year. */}
                     {c.status === 'active' && (
                       <button type="button" onClick={() => setRenewing(c)} className="p-1.5 rounded-lg text-slate-700 hover:text-emerald-600 hover:bg-slate-100" title={ar ? 'تجديد العقد' : 'Renew contract'}><RefreshCw className="w-4 h-4" /></button>
                     )}
@@ -359,7 +328,7 @@ export default function ContractsPage() {
                 </td>
                 <td {...pin.td(1, 'px-4 py-3 text-slate-700 whitespace-nowrap', BG)}>{(c.employee as any)?.employeeNumber || '—'}</td>
                 <td {...pin.td(2, 'px-4 py-3 text-slate-900 font-medium whitespace-nowrap', BG)}>
-                  {/* حدٌّ أعلى وقصّ — راجع جدول الموظّفين. */}
+                  {/* Upper bound and clipping. See the employees table. */}
                   <span className="block max-w-[15rem] truncate" title={empName(c.employee, lang) || c.employeeNameAr || ''}>{empName(c.employee, lang) || c.employeeNameAr || '—'}</span>
                 </td>
                 <td {...pin.td(3, 'px-4 py-3 text-slate-700 whitespace-nowrap', BG)}>{c.iqamaNumber || (c.employee as any)?.iqamaNumber || (c.employee as any)?.nationalId || '—'}</td>
@@ -371,7 +340,7 @@ export default function ContractsPage() {
                 <td className="px-4 py-3 text-slate-700 whitespace-nowrap tabular-nums" dir="ltr">{hijriCell(c.startDate)}</td>
                 <td className="px-4 py-3 text-slate-700 whitespace-nowrap tabular-nums">{gregCell(c.endDate)}</td>
                 <td className="px-4 py-3 text-slate-700 whitespace-nowrap tabular-nums" dir="ltr">{hijriCell(c.endDate)}</td>
-                {/* «غير مطلوب» حالةٌ سليمة لا صفرٌ ناقص — تُكتب كما هي. */}
+                {/* Not required is a valid state, not a missing zero; written as is. */}
                 <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{c.annualLeaveText || `${c.annualLeaveDays} ${tx.daysShort}`}</td>
                 <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{c.probationText || (c.probationMonths ? `${c.probationMonths} ${ar ? 'شهر' : 'mo'}` : '—')}</td>
                 <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{c.sponsorRegistration || '—'}</td>
@@ -407,7 +376,7 @@ export default function ContractsPage() {
           </Field>
           <Field label={tx.fieldType}><Select value={form.type} onChange={(e) => set('type', e.target.value)}><option value="fixed">{tx.optFixedTerm}</option><option value="unlimited">{tx.typeUnlimited}</option></Select></Field>
           <Field label={tx.fieldDuration}><TextInput type="number" value={form.durationMonths} onChange={(e) => set('durationMonths', Number(e.target.value))} /></Field>
-          {/* خانتان لكلّ تاريخ — الميلاديّةُ ثمّ الهجريّة، وما يُرسَل ميلاديٌّ وحدَه. */}
+          {/* Two fields per date: Gregorian then Hijri; only the Gregorian is sent. */}
           <DatePair label={tx.fieldStartDate} value={form.startDate || ''} onChange={(v) => set('startDate', v)} ar={ar} />
           <DatePair label={tx.fieldEndDate} value={form.endDate || ''} onChange={(v) => set('endDate', v)} ar={ar} />
           <Field label={tx.fieldAnnualLeaveDays}><TextInput type="number" value={form.annualLeaveDays} onChange={(e) => set('annualLeaveDays', Number(e.target.value))} /></Field>
@@ -415,7 +384,7 @@ export default function ContractsPage() {
           <Field label={tx.fieldJobTitle}><TextInput value={form.jobTitle} onChange={(e) => set('jobTitle', e.target.value)} /></Field>
           <Field label={tx.fieldBasicSalary}><TextInput type="number" value={form.basicSalary} onChange={(e) => set('basicSalary', Number(e.target.value))} /></Field>
           <Field label={tx.fieldAllowances}><TextInput type="number" value={form.allowances} onChange={(e) => set('allowances', Number(e.target.value))} /></Field>
-          {/* بيانات ورقة العقد نفسِها — تُقرأ في الجدول، فتُصحَّح من هنا. */}
+          {/* Data of the contract sheet itself: read in the table, so corrected from here. */}
           <Field label={ar ? 'الهوية (كما في العقد)' : 'ID number (as on the contract)'}><TextInput value={form.iqamaNumber || ''} onChange={(e) => set('iqamaNumber', e.target.value)} /></Field>
           <Field label={ar ? 'المهنة في العقد' : 'Profession on the contract'}><TextInput value={form.contractProfession || ''} onChange={(e) => set('contractProfession', e.target.value)} /></Field>
           <Field label={ar ? 'رقم العقد' : 'Contract number'}><TextInput value={form.contractNumber || ''} onChange={(e) => set('contractNumber', e.target.value)} /></Field>
@@ -425,9 +394,7 @@ export default function ContractsPage() {
         <p className="text-xs text-slate-500">{tx.activeContractNote}</p>
       </Modal>
 
-      {/* ── نافذةُ التجديد ────────────────────────────────────────────────────
-          تُقترح تواريخُها من العقد القائم: يبدأ الجديدُ في اليوم التالي لنهايته
-          وينتهي بعد سنة. وهي التواريخُ التي تُكتب يدويًّا كلَّ مرّة. */}
+      {/* Renewal dialog. Dates are proposed from the current contract: the new one starts the day after it ends and runs one year. These are the dates typed by hand every time. */}
       <Modal open={!!renewing} onClose={() => setRenewing(null)}
         title={ar ? 'تجديد العقد' : 'Renew contract'}
         footer={<>
@@ -450,11 +417,7 @@ export default function ContractsPage() {
               value={renewForm.endDate} onChange={(v) => setRenewForm((f) => ({ ...f, endDate: v }))} />
             <Field label={ar ? 'أيام الإجازة السنوية' : 'Annual leave days'}>
               <TextInput type="number" value={renewForm.annualLeaveDays} onChange={(e) => setRenewForm((f) => ({ ...f, annualLeaveDays: e.target.value }))} /></Field>
-            {/* ── والمهنةُ تُراجَع هنا، اختياريّةً ──────────────────────────
-                التجديدُ هو اللحظةُ التي تتغيّر فيها المهنةُ فعلًا: يُرقّى
-                سائقٌ أو يُنقل إلى عملٍ آخر فيُكتب ذلك في العقد الجديد. وكانت
-                تُترك كما هي ثمّ يُفتح العقدُ الجديدُ بعد إنشائه ليُصحَّح.
-                مملوءةٌ سلفًا من العقد القائم — فمَن لا يريد تغييرها لا يمسّها. */}
+            {/* Profession is reviewed here, optionally. Renewal is when a profession really changes: a driver is promoted or moved to other work and it is written on the new contract. It used to be left as is and the new contract opened after creation to be corrected. Prefilled from the current contract, so someone who does not want to change it does not touch it. */}
             <Field label={ar ? 'المهنة في العقد (اختياري)' : 'Contract profession (optional)'}>
               <TextInput value={renewForm.contractProfession}
                 placeholder={ar ? 'كما في العقد الحالي' : 'as on the current contract'}
@@ -464,10 +427,7 @@ export default function ContractsPage() {
                 placeholder={ar ? 'رقم العقد الجديد في قوى' : 'new contract number'}
                 onChange={(e) => setRenewForm((f) => ({ ...f, contractNumber: e.target.value }))} /></Field>
           </div>
-          {/* ── ورصيدُ الإجازات غيرُ المستهلَك ──────────────────────────────
-              يتراكم من بداية العقد النشط، فعقدٌ جديدٌ يعني تراكمًا من الصفر —
-              وأيّامُ الموظّف الباقيةُ حقٌّ له لا تسقط بالتجديد. تُحسب لحظةَ
-              التجديد وتُثبَّت في العقد الجديد فيبدأ بها. */}
+          {/* Unused leave balance. It accumulates from the start of the active contract, so a new contract means accumulation from zero, while the employee's remaining days are his right and do not lapse on renewal. Computed at renewal time and fixed on the new contract, which starts with it. */}
           <label className="flex items-start gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3 cursor-pointer">
             <input type="checkbox" checked={renewForm.carryOver}
               onChange={(e) => setRenewForm((f) => ({ ...f, carryOver: e.target.checked }))}

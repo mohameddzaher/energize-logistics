@@ -1,31 +1,17 @@
 /**
- * مشرفو قطاع الأفراد — مَن هم، وكيف يُقرأ اسمُهم، وكيف يصل إليهم مناديبُهم.
- *
- * ── لماذا ملفٌّ واحد ───────────────────────────────────────────────────────
- * «المشرف» يُسأل عنه في ثلاثة مواضع: قائمةُ الاختيار في سجلّ النقل الخفيف،
- * وأمرُ التشغيل، وشاشةُ تفقّد بداية الدوام. وكان لكلٍّ منها مصدرُه: الأولان
- * يقرآن اسمًا من قائمةٍ مُدارة، والثالثةُ تقرأ حسابًا على النظام. فمن أُسند
- * إليه رجلٌ في السجلّ لم يكن يراه في التفقّد، ومن رأى رجلًا في التفقّد لم يكن
- * مكتوبًا في سجلّه — والسببُ أنّ الاسمَ ليس الحساب.
- *
- * فصار المصدرُ واحدًا: **الحسابُ على النظام**، ومنه يُشتَقُّ الاسمُ والملفّ.
- *
- * ── والاسمُ العربيُّ يجيء من ملفّ الموظّف ───────────────────────────────────
- * الحسابُ على النظام مكتوبٌ بالإنجليزيّة («Khaled Abdelsalam») والسجلُّ يُقرأ
- * بالعربيّة («خالد عباس»). والاسمُ العربيُّ موجودٌ أصلًا في ملفّ الموارد
- * البشريّة المربوط بالحساب (`linkedEmployee.arabicName`) — فيُقرأ منه، ولا
- * يُترجَم اسمٌ ولا يُكتب مرّتين. ومن لا ملفَّ له يُعرَض اسمُه كما في حسابه.
+ * B2C supervisors: who they are, how their name is read, and how their reps reach them.
+ * Single source is the system account (the name and employee file derive from it), so the register, the operating order and the duty check agree.
+ * The Arabic name comes from the linked HR file (`linkedEmployee.arabicName`), never translated or typed twice; accounts without a file show the account name.
  */
 const mongoose = require('mongoose');
 
 /**
- * أدوارُ الإشراف في القسم — نفسُها في شاشة التفقّد (`b2cDutyController`).
- * مشرفُ المناديب يقف على رجاله؛ ومديرُ المشروع ومديرُ القطاع يقفان مقامَه
- * حين يغيب، ويُسنَد إليهما مباشرةً في المشاريع الصغيرة.
+ * Supervisory roles in the department, same as the duty-check screen (`b2cDutyController`).
+ * Rep supervisors cover their riders; project and sector managers stand in when absent and can be assigned directly in small projects.
  */
 const SUPERVISOR_ROLES = ['b2c_rep_supervisor', 'b2c_inspection_supervisor', 'b2c_project_lead', 'b2c_manager', 'b2c_deputy'];
 
-/** ترتيبُ العرض: الأقربُ إلى الميدان أوّلًا. */
+/** Display order: closest to the field first. */
 const ROLE_ORDER = {
   b2c_rep_supervisor: 0, b2c_inspection_supervisor: 1, b2c_project_lead: 2, b2c_deputy: 3, b2c_manager: 4,
 };
@@ -37,7 +23,7 @@ const ROLE_AR = {
   b2c_manager: 'مدير القطاع',
 };
 
-/** طيُّ صور الحرف العربيّ — «أحمد» و«احمد» اسمٌ واحد. */
+/** Folds Arabic letter variants so alef forms of the same name compare equal. */
 const fold = (s) => String(s || '')
   .replace(/[ً-ْ]/g, '')
   .replace(/[أإآٱ]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه').replace(/ـ/g, '')
@@ -47,20 +33,9 @@ const fold = (s) => String(s || '')
   .toLowerCase();
 
 /**
- * ── وهيكلُ الاسم: «احمد يونس» و«Ahmed Younis» رجلٌ واحد ────────────────────
- *
- * السجلُّ عربيٌّ والحساباتُ إنجليزيّة، وبينهما ملفُّ الموظّف — فحين يكون الملفُّ
- * واحدًا فالربطُ بنيويٌّ لا ظنَّ فيه. لكنّ حسابًا قد لا يكون مربوطًا بملفٍّ بعد،
- * فلا يبقى إلّا الاسم.
- *
- * والمقارنةُ على **هيكل الحروف الساكنة**: تُنقَل العربيّةُ إلى حروفٍ لاتينيّة،
- * ثمّ تُنزَع الصوائتُ من الطرفين (a e i o u و«w» لأنّ الواوَ تُكتب «ou» و«oo»
- * و«u»)، ويُوحَّد ما يُكتب بحرفين («q/k»، «g/j»، «th/t»). فيبقى «hmd» و«yns»
- * من «احمد يونس» ومن «Ahmed Younis» سواءً.
- *
- * وهو تقريبٌ لا برهان — فلذلك **لا يُقبَل إلّا إن ردّ حسابًا واحدًا**، ويُطبَع
- * سببُ المطابقة في تقرير الربط ليُراجَع بالعين. والطريقُ البنيويُّ يُقدَّم عليه
- * دائمًا.
+ * Name skeleton: the same person is written in Arabic in the register and in English on accounts, so names are compared by consonant skeleton.
+ * Arabic is transliterated, vowels (a e i o u and w) are dropped from both sides, and digraphs (q/k, g/j, th/t) are unified.
+ * It is an approximation: accepted only when it returns exactly one account, the reason is printed in the link report, and the structural link always wins.
  */
 const AR2LAT = {
   ا: 'a', أ: 'a', إ: 'a', آ: 'a', ٱ: 'a', ء: '', ئ: 'y', ؤ: 'w',
@@ -70,30 +45,29 @@ const AR2LAT = {
   ه: 'h', ة: 'h', و: 'w', ي: 'y', ى: 'y',
 };
 
-/** الهيكلُ الساكن لكلمةٍ واحدة — بالعربيّة أو باللاتينيّة. */
+/** Consonant skeleton of one word, Arabic or Latin. */
 const skeleton = (word) => {
   let w = String(word || '').toLowerCase();
-  // النقلُ من العربيّة حرفًا حرفًا
+  // Letter-by-letter transliteration from Arabic
   w = [...w].map((ch) => (AR2LAT[ch] !== undefined ? AR2LAT[ch] : ch)).join('');
-  // ما يُكتب بحرفين في اللاتينيّة يُوحَّد مع مقابله المفرد
+  // Two-letter Latin spellings are unified with their single-letter counterpart
   w = w.replace(/ph/g, 'f').replace(/kh/g, 'k').replace(/gh/g, 'g')
     .replace(/sh/g, 's').replace(/ch/g, 's').replace(/th/g, 't')
     .replace(/q/g, 'k').replace(/j/g, 'g').replace(/x/g, 'ks');
-  // الصوائتُ تُنزَع: هي ما يختلف بين الكتابتين
+  // Vowels are dropped: they are what differs between the two spellings
   w = w.replace(/[aeiouwy]/g, '');
-  // حرفٌ مضاعفٌ حرفٌ واحد
+  // A doubled letter counts as one
   w = w.replace(/(.)\1+/g, '$1');
-  // أداةُ التعريف: «الهواري» تُكتب Elhawary وHawary وAl-Hawary — فتُنزَع اللامُ
-  // الأولى من الطرفين معًا، فيتساوى ما اختلف في كتابتها وحدَها.
+  // Definite article: the same name is written Elhawary, Hawary or Al-Hawary, so the leading 'l' is dropped from both sides.
   if (w.length > 2) w = w.replace(/^l/, '');
-  // والتاءُ في آخر الاسم («رحومة» → Rahoma) لا تُكتب لاتينيًّا.
+  // A final ta marbuta is not written in Latin.
   if (w.length > 2) w = w.replace(/h$/, '');
   return w;
 };
 
 /**
- * مفتاحُ الاسم للمطابقة: هيكلُ أوّلِ كلمةٍ وهيكلُ آخرِها.
- * الاسمُ يُكتب بمقطعين هنا وبأربعةٍ هناك، والثابتُ طرفاه.
+ * Name key for matching: skeleton of the first word plus skeleton of the last word.
+ * The same name has two parts in one source and four in another; only the ends are stable.
  */
 const nameSkeleton = (name) => {
   const words = fold(name).split(' ').filter((w) => w.length > 1);
@@ -104,16 +78,13 @@ const nameSkeleton = (name) => {
 };
 
 /**
- * قائمةُ المشرفين المتاحين للإسناد — حساباتٌ نشطةٌ بأدوار الإشراف.
- *
- * تُعاد بالاسم العربيّ (من ملفّ الموظّف) والإنجليزيّ معًا: الشاشةُ تعرض
- * العربيَّ ويُبحَث بأيّهما — فمن يعرف الحسابَ بالإنجليزيّة يجده كما يجده من
- * يعرف صاحبَه بالعربيّة.
+ * Supervisors available for assignment: active accounts with supervisory roles.
+ * Returned with both Arabic (from the employee file) and English names so the screen shows Arabic and search works with either.
  */
 const listSupervisors = async () => {
   const User = mongoose.model('User');
   const Employee = mongoose.model('Employee');
-  // المشرفُ المؤرشَف لا يُختار ولا يُعرَض — كأنّه حُذف.
+  // An archived supervisor is neither selectable nor shown, as if deleted.
   const { endedStaff, userArchived } = require('./endedStaff');
   const [all, sets] = await Promise.all([User.find({ role: { $in: SUPERVISOR_ROLES }, isActive: { $ne: false } })
     .select('firstName lastName email role linkedEmployee').lean(), endedStaff()]);
@@ -129,7 +100,7 @@ const listSupervisors = async () => {
     const ar = String(emp?.arabicName || '').trim();
     return {
       _id: String(u._id),
-      name: ar || en,                 // ما يُعرَض ويُحفَظ لقطةً
+      name: ar || en,                 // What is shown and stored as a snapshot
       nameEn: en,
       nameAr: ar,
       role: u.role,
@@ -143,10 +114,8 @@ const listSupervisors = async () => {
 };
 
 /**
- * حسابُ مشرفٍ بعينه → ما يُكتب في الصفّ.
- *
- * يردّ `null` لمن ليس مشرفًا أو لحسابٍ معطَّل: الإسنادُ إلى حسابٍ لا يفتح
- * الشاشةَ يعني رجلًا بلا مَن يتفقّده، وهو أسوأُ من «بلا مشرف» لأنّه لا يُرى.
+ * Maps a given supervisor account to what is written on the row.
+ * Returns `null` for a non-supervisor or disabled account: assigning to an account that cannot open the screen leaves the rider unchecked and invisible, worse than no supervisor.
  */
 const resolveSupervisor = async (userId) => {
   if (!userId || !mongoose.isValidObjectId(userId)) return null;
@@ -155,19 +124,9 @@ const resolveSupervisor = async (userId) => {
 };
 
 /**
- * ── ومندوبُ السجلّ هو مندوبُ التفقّد ──────────────────────────────────────
- *
- * سجلّانِ لرجلٍ واحد: `LightTransportEmployee` (سجلُّ القسم: هويّةٌ وكفالةٌ
- * وسكنٌ ومركبة) و`B2CRep` (حسابُه على تطبيق التوصيل، وعليه يقوم التفقّد
- * والامتثال). فإسنادُ مشرفٍ في الأوّل لا يُري المشرفَ رجلَه في الثاني.
- *
- * والمفتاحُ بينهما هو الاسمُ — لا هويّةٌ مشتركة: سجلُّ التطبيق لا يحمل رقمَ
- * هويّة. فيُطابَق الاسمُ مطويًّا (إنجليزيًّا كان أو عربيًّا)، ثمّ — إن لم
- * يُطابِق تامًّا — بأوّل كلمةٍ وآخرِها، لأنّ الاسمَ يُكتب بعددِ مقاطعَ مختلف
- * في السجلّين («HAMID ALI ARSHAD MEHMOOD» و«Hamid Mehmood»).
- *
- * والمطابقةُ الملتبسة (اسمٌ يردّ أكثرَ من صفّ) تُترَك: إسنادُ رجلٍ إلى مشرفٍ
- * ليس مشرفَه أسوأُ من عدم الإسناد.
+ * The register rep is the duty-check rep. `LightTransportEmployee` (department register) and `B2CRep` (delivery-app account used by duty check and compliance) are two records of one person, so assigning a supervisor in the first must reach the second.
+ * No shared ID exists (the app record has no ID number), so they are matched by folded name, then by first and last word when not exact.
+ * Ambiguous matches (name returns more than one row) are skipped: a wrong supervisor is worse than none.
  */
 const repKeys = (name) => {
   const k = fold(name);
@@ -175,8 +134,7 @@ const repKeys = (name) => {
   const w = k.split(' ').filter(Boolean);
   const keys = [k];
   if (w.length >= 2) keys.push(`${w[0]} ${w[w.length - 1]}`);
-  // والهيكلُ آخرًا: سجلُّ التطبيق يُكتب بالإنجليزيّة والسجلُّ عندنا بالعربيّة
-  // لبعض الرجال — «ANTOR MIA MD ABDUL HELIM» و«انتور ميا». راجع `skeleton`.
+  // Skeleton last: the app record is in English while ours is Arabic for some riders; see `skeleton`.
   const sk = nameSkeleton(name);
   if (sk) keys.push(`~${sk}`);
   return keys;
@@ -187,7 +145,7 @@ const buildRepIndex = async () => {
   const reps = await B2CRep.find({ isActive: { $ne: false } })
     .select('englishName arabicName supervisor ltEmployee').lean();
   const idx = new Map();
-  // الصلةُ المحفوظةُ تُفهرَس بمعرِّف صفّ القسم: مفتاحٌ قاطعٌ يُقدَّم على الاسم.
+  // The saved link is indexed by the department row id: a definitive key that takes priority over the name.
   for (const r of reps) if (r.ltEmployee) idx.set(`#${String(r.ltEmployee)}`, [r]);
   for (const r of reps) {
     for (const nm of [r.englishName, r.arabicName]) {
@@ -201,8 +159,8 @@ const buildRepIndex = async () => {
 };
 
 /**
- * الصفُّ الواحدُ المطابق، أو `null` إن لم يُطابِق أو التبس.
- * الصلةُ المحفوظةُ أوّلًا (`ltId`)، ثمّ الاسمُ — والاسمُ لا يُقبَل إلّا فردًا.
+ * The single matching row, or `null` when none matches or the match is ambiguous.
+ * Saved link first (`ltId`), then the name, which is accepted only when unique.
  */
 const findRep = (idx, name, ltId = null) => {
   if (ltId) {
@@ -217,8 +175,8 @@ const findRep = (idx, name, ltId = null) => {
 };
 
 /**
- * إسنادُ مشرفِ السجلّ إلى صفّ المندوب في سجلّ التطبيق.
- * لا يرمي أبدًا: الربطُ خدمةٌ للتفقّد، وفشلُه لا يمنع حفظَ الموظّف.
+ * Assigns the register supervisor to the rep row in the app register.
+ * Never throws: linking is a service to the duty check and its failure must not block saving the employee.
  */
 const syncRepSupervisor = async (name, supervisorUserId, { idx = null, ltId = null } = {}) => {
   try {
@@ -228,7 +186,7 @@ const syncRepSupervisor = async (name, supervisorUserId, { idx = null, ltId = nu
     if (!rep) return null;
     const want = supervisorUserId ? String(supervisorUserId) : null;
     const set = { supervisor: want || null };
-    // ومتى عُرف الصفُّ بالاسم، حُفظت الصلةُ فلا يُعاد الظنُّ في المرّة القادمة.
+    // Once a row is found by name, the link is saved so it is not guessed again.
     if (ltId && !rep.ltEmployee) set.ltEmployee = ltId;
     if (String(rep.supervisor || '') === String(want || '') && !set.ltEmployee) return { rep, changed: false };
     await B2CRep.updateOne({ _id: rep._id }, { $set: set });

@@ -102,7 +102,7 @@ class Chip2 extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
       decoration: BoxDecoration(color: color.withValues(alpha: 0.11), borderRadius: BorderRadius.circular(20)),
-      // نصٌّ واحد (لا Row) حتى يُختصر بـ«…» إذا ضاق المكان بدل أن يفيض.
+      // A single text (not a Row) so it truncates with an ellipsis when space is short instead of overflowing.
       child: Text.rich(
         TextSpan(children: [
           if (icon != null) ...[
@@ -248,10 +248,7 @@ class EmptyState extends StatelessWidget {
 }
 
 
-/// ── شارةُ حالة اليوم في قسم الأفراد (B2C) ──────────────────────────────────
-/// إجازة · موقوف · حادث تُكتب في «موظفو النقل الخفيف» وحدَه وتُنسَخ لقطةً إلى ملفّ
-/// الموارد البشريّة (`b2cOpStatus`) وإلى المركبة (`b2cRider.opStatus`) — فتُرى هنا
-/// حيث يُرى الإنسانُ أو مركبتُه (صاحبُ الشركة، ٢٠٢٦/١٠/٢١). والفراغُ «يعمل» فلا شارة.
+/// Today's status badge in the individuals (B2C) section. Leave, suspended and accident are written only in the light-transport staff list and copied as a snapshot to the HR file (`b2cOpStatus`) and the vehicle (`b2cRider.opStatus`), so they show wherever a person or their vehicle is seen. Empty means working, so no badge.
 Widget? b2cOpChip(dynamic status, {String who = ''}) {
   final s = (status ?? '').toString();
   final l = switch (s) {

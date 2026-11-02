@@ -1,13 +1,7 @@
 /**
- * حالات فردة الكاوتش — صورةُ config/tireStates.js في الخادم.
- *
- * المكانُ على محورٍ واحد (`status`)، والدرجة (`condition`) وصفٌ للفردة لا
- * لمكانها. وكانت خانة «في المصنع» تُعَدّ بالدرجة وخانة «تحت التجديد» بالحالة —
- * وصفان لموضعٍ واحد من مصدرين، فاختلطا.
- *
- * و«تحت التجديد» غير «في المصنع»: الأولى قرارٌ اتُّخذ والفردة في عهدة الورشة،
- * والثانية موضعٌ فعليّ خارج الشركة. ودمجُهما كان يجعل الورشة تعِد بفردةٍ ليست
- * عندها.
+ * Tire states: mirrors config/tireStates.js on the server.
+ * Location is on one axis (`status`), and grade (`condition`) describes the tire, not its place. The in-factory box used to be counted by grade and the under-retread box by status: two descriptions of one position from two sources, which got mixed.
+ * Under retread differs from in factory: the first is a decision already taken.
  */
 export type TireStateKey =
   | 'mounted' | 'new' | 'used' | 'under_renewal' | 'at_factory' | 'scrap' | 'damaged' | 'sold';
@@ -15,13 +9,13 @@ export type TireStateKey =
 export interface TireStateDef {
   key: TireStateKey;
   ar: string; en: string;
-  /** تُعَدّ ضمن «في المخزن»؟ */
+  /** Counted as in stock? */
   inStore: boolean;
-  /** لونُ النقطة في البطاقة ولون الرقم. */
+  /** Dot color on the card and the number color. */
   dot: string; text: string; chip: string;
 }
 
-/** الترتيب هنا هو ترتيب البطاقات: سُلَّمٌ من المركَّب إلى المنتهي، لا فرزٌ بالعدد. */
+/** Order here is the card order: a ladder from installed to finished, not a sort by count. */
 export const TIRE_STATES: TireStateDef[] = [
   { key: 'mounted', ar: 'مركّبة', en: 'Mounted', inStore: false, dot: 'bg-emerald-500', text: 'text-emerald-700', chip: 'bg-emerald-100 text-emerald-700' },
   { key: 'new', ar: 'الجديد', en: 'New', inStore: true, dot: 'bg-sky-500', text: 'text-sky-700', chip: 'bg-sky-100 text-sky-700' },
@@ -35,12 +29,12 @@ export const TIRE_STATES: TireStateDef[] = [
 
 const BY_KEY = new Map(TIRE_STATES.map((s) => [s.key, s]));
 
-/** الخانةُ التي تقع فيها الفردة — تعريفٌ واحد للعدّاد والفلتر والشارة. */
+/** The box a tire falls in: one definition for the counter, the filter and the badge. */
 export function tireState(t: { status?: string; condition?: string } | null | undefined): TireStateKey {
   const s = String(t?.status || '');
   if (s === 'mounted') return 'mounted';
-  if (s === 'in_repair') return 'under_renewal';                       // الاسم القديم
-  if (s === 'retired') return 'scrap';                                  // موروث
+  if (s === 'in_repair') return 'under_renewal';                       // Old name.
+  if (s === 'retired') return 'scrap';                                  // Legacy.
   if (['under_renewal', 'at_factory', 'scrap', 'damaged', 'sold'].includes(s)) return s as TireStateKey;
   return (t?.condition === 'new' ? 'new' : 'used');                     // spare
 }
@@ -51,15 +45,10 @@ export const tireStateLabel = (t: { status?: string; condition?: string }, ar: b
   return ar ? d.ar : d.en;
 };
 
-/** «في المخزن» = كلُّ ما هو عندنا وغيرُ مركَّب. والتالف والمباع خرجا من العهدة. */
+/** In stock means everything we hold that is not installed. Damaged and sold left custody. */
 export const isInStore = (t: { status?: string; condition?: string }) => !!tireStateDef(t).inStore;
 
-/**
- * وجهاتُ النزول من العربية — ستٌّ، لا أربع.
- * كانت «سليمة/مخزن» وجهةً واحدة لا يُعرف منها أنزلت الفردة جديدةً أم مستعملة،
- * وكانت «في المصنع» و«تحت التجديد» شيئًا واحدًا. ومن يُنزل الفردة هو وحده من
- * يعرف أيَّها.
- */
+/** Destinations when taking a tire off a truck: six, not four. Good/stock was one destination that did not say whether the tire came off new or used, and in factory and under retread were one thing. Only the person removing the tire knows which. */
 export const DISMOUNT_DESTINATIONS: { key: string; ar: string; en: string }[] = [
   { key: 'new', ar: 'الجديد (على الرفّ)', en: 'New (shelf)' },
   { key: 'used', ar: 'المستعمل (على الرفّ)', en: 'Used (shelf)' },
@@ -69,13 +58,7 @@ export const DISMOUNT_DESTINATIONS: { key: string; ar: string; en: string }[] = 
   { key: 'damaged', ar: 'التالف', en: 'Damaged' },
 ];
 
-/**
- * الحالات التي يُنقل إليها يدويًّا من شاشة المخزن — وهي وجهاتُ النزول ومعها
- * «المباع». وكانت هذه النافذة تعرض قائمةً ثالثة مختلفة عن الاثنتين: «في
- * المخزن» بلا تفريقٍ بين جديدٍ ومستعمل، و«معدومة» التي لا وجود لها في أيّ
- * شاشةٍ أخرى. ثلاثُ قوائم لشيءٍ واحد تعني أنّ ما يُختار في نافذةٍ لا يُوجد في
- * غيرها — ومَن أراد نقلَ فردةٍ إلى «المستعمل» لم يجدها.
- */
+/** States a tire can be moved to manually from the store screen: the removal destinations plus sold. This dialog used to show a third list different from the other two (in stock with no new/used split, and a scrapped state found nowhere else). Three lists for one thing means what is chosen in one dialog does not exist in another. */
 export const MANUAL_STATES: { key: string; ar: string; en: string; sub: string; subEn: string; cls: string }[] = [
   { key: 'new', ar: 'الجديد', en: 'New', sub: 'على الرفّ، لم تُستعمل بعد', subEn: 'On the shelf, unused', cls: 'border-sky-400 bg-sky-50' },
   { key: 'used', ar: 'المستعمل', en: 'Used', sub: 'على الرفّ، صالحة للتركيب', subEn: 'On the shelf, fit to mount', cls: 'border-indigo-400 bg-indigo-50' },

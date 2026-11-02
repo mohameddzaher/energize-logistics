@@ -1,34 +1,17 @@
 /**
- * مساراتُ العميل وأسعارُها — يتعلّمها النظامُ من العمل، ولا تُكتب في جدول.
- *
- * ── العلّة ──────────────────────────────────────────────────────────────────
- * سعرُ البيع الحقيقيّ لا يعرفه أحدٌ إلّا من كتبه: منصّةُ التشغيل تحمل سعرًا
- * مساويًا لسعر الشراء (فريقُ العمليّات هناك لا يرى ربحَنا)، وورقةُ الاتّفاق في
- * بريدٍ أو في رأس مندوب. فكان مَن ينشئ شحنةً يسأل زميلَه «كم أخذنا منهم آخر
- * مرّة من جدة للدمام؟».
- *
- * والجوابُ في العمل نفسِه: كلُّ شحنةٍ سُعِّرت هي اتّفاقٌ على مسارٍ بتاريخ. فتُقيَّد
- * في ملفّ العميل: مسارٌ واحدٌ بآخر سعر. ومن أيّ بابٍ جاءت الشحنةُ — أُنشئت
- * عندنا، أو جاءت من المنصّة، أو صُحِّح سعرُها في تقرير التشغيل الخاصّ — يتعلّم
- * الملفُّ منها.
- *
- * ── والأحدثُ يغلب ────────────────────────────────────────────────────────────
- * المسارُ الواحد يتكرّر بأسعارٍ تتغيّر؛ والمطلوبُ دائمًا آخرُ ما عُمل به. فيُقاس
- * بتاريخ **العمل** لا بلحظة الكتابة: استيرادٌ يجري اليوم عن شحنةٍ في مارس لا
- * يُسقط سعرًا اتُّفق عليه في أغسطس.
- *
- * ── والمدنُ تُطوى ───────────────────────────────────────────────────────────
- * «جدة» و«جده» و«جدة ‏» مدينةٌ واحدة، وثلاثةُ صفوفٍ لمسارٍ واحدٍ يجعل السعرَ
- * ثلاثةَ أسعار. فالمطابقةُ بالمفتاح المطويّ نفسِه الذي يطابق به بقيّةُ النظام.
+ * Customer routes and prices: learned from work, not typed in a table.
+ * The real selling price is unknown to the platform (it carries the purchase price), so every priced shipment is recorded in the customer file as one route with its latest price, from any source.
+ * The latest wins by the date of the work, not the write time, so a late import of an old shipment does not override a newer price.
+ * Cities are matched by the same folded key as the rest of the system, so spelling variants do not split a route.
  */
 const ShipmentOrderCustomer = require('../models/ShipmentOrderCustomer');
 
 const S = (v) => String(v ?? '').trim();
 
-/** مفتاحُ المدينة: يطوي الهمزةَ والتاءَ والمسافات — راجع CollectionsParty.fold. */
+/** City key: folds hamza, ta marbuta and spaces; see CollectionsParty.fold. */
 const cityKey = (v) => require('../models/CollectionsParty').fold(v);
 
-/** مفتاحُ المسار — الاتّجاه يهمّ: جدة←الرياض ليست الرياض←جدة. */
+/** Route key; direction matters: A to B is not B to A. */
 const routeKey = (from, to) => `${cityKey(from)}→${cityKey(to)}`;
 
 const num = (v) => {
@@ -37,11 +20,10 @@ const num = (v) => {
 };
 
 /**
- * يُسجّل مسارًا في ملفّ العميل — ويُحدِّث سعرَه إن كان هذا أحدثَ.
- *
- * @param {object} customer مستندُ العميل (mongoose) — يُحفَظ هنا
+ * Records a route in the customer file and updates its price if this one is newer.
+ * @param {object} customer customer document (mongoose), saved here
  * @param {object} o { fromCity, toCity, price, at, source }
- * @returns {'created'|'priced'|'seen'|'skipped'} ما الذي حدث
+ * @returns {'created'|'priced'|'seen'|'skipped'} what happened
  */
 function applyRoute(customer, { fromCity, toCity, price, at, source = '' }) {
   const from = S(fromCity);
@@ -62,9 +44,9 @@ function applyRoute(customer, { fromCity, toCity, price, at, source = '' }) {
   }
 
   found.hits = (found.hits || 1) + 1;
-  // بلا سعرٍ: المسارُ يُعرَف وقد رأيناه ثانيةً، ولا يُمسّ سعرُه.
+  // No price: the route is known and seen again; its price is untouched.
   if (!p) return 'seen';
-  // ── وسعرٌ بلا تاريخٍ سابقٍ يُقبَل، والأحدثُ يغلب ────────────────────────
+  // A price with no earlier date is accepted; the latest wins.
   const prev = found.at ? new Date(found.at) : null;
   if (found.price != null && prev && when < prev) return 'seen';
   found.price = p;
@@ -73,20 +55,14 @@ function applyRoute(customer, { fromCity, toCity, price, at, source = '' }) {
   return 'priced';
 }
 
-/**
- * يجد عميلًا بالاسم (أو يُنشئه) ثمّ يُسجّل المسار. يُستعمَل من المزامنة
- * والاستيراد حيث لا يكون بين يدينا إلّا اسمٌ.
- */
+/** Finds a customer by name (or creates it) then records the route. Used by sync and import where only a name is available. */
 async function learnRouteByName(customerName, route) {
   const name = S(customerName);
   if (!name) return null;
   const { fold } = require('../models/CollectionsParty');
   const key = fold(name);
 
-  // ── ولا تُقرأ القائمةُ كلُّها لكلّ شحنة ──────────────────────────────────
-  // المزامنةُ تنادي هذه الدالّة مئةَ مرّةٍ في الدورة الواحدة. وقراءةُ سجلّ
-  // العملاء في كلّ مرّةٍ قراءةُ الشيء نفسِه مئةَ مرّة. فيُحفَظ فهرسُ
-  // الأسماء المطويّة دقيقةً، ويُقرأ مستندُ العميل وحدَه بمعرّفه.
+  // The whole list is not read for every shipment: sync calls this about a hundred times per cycle, and reading the customer register each time would repeat the same read. The folded-name index is cached for a minute and only the customer document is read by id.
   const cache = require('./ttlCache');
   const index = await cache.wrap('so:customerNameIndex', 60000, async () => {
     const rows = await ShipmentOrderCustomer.find({ isActive: { $ne: false } }).select('name').lean();
@@ -105,7 +81,7 @@ async function learnRouteByName(customerName, route) {
   return res;
 }
 
-/** سعرُ المسار كما في ملفّ العميل — `null` إن لم يُسعَّر بعد. */
+/** Route price as in the customer file; `null` if not yet priced. */
 function priceFor(customer, fromCity, toCity) {
   if (!customer) return null;
   const k = routeKey(fromCity, toCity);
@@ -114,12 +90,8 @@ function priceFor(customer, fromCity, toCity) {
 }
 
 /**
- * ── شرائحُ السعر بعدد السيارات ──────────────────────────────────────────────
- *
- * `cleanTiers` تقرأ ما كُتب في الشاشة وتردّه مرتَّبًا، أو ترمي برسالةٍ تُعرَض:
- * عددٌ صحيحٌ من واحد، ونهايةٌ لا تسبق بدايتَها، وسعرٌ موجب، ولا شريحتان على
- * عددٍ واحد — فسعران لخمس سياراتٍ ليسا سعرًا. والشريحةُ الأخيرةُ وحدَها يجوز
- * أن تُترك بلا نهاية («فما فوق»).
+ * Price tiers by number of vehicles.
+ * `cleanTiers` reads what was typed on the screen and returns it sorted, or throws a displayable message: whole number from one, an end not before its start, a positive price, and no two tiers on the same count (two prices for five vehicles is not a price). Only the last tier may be left open-ended ('and above').
  */
 function cleanTiers(input) {
   const bad = (m) => Object.assign(new Error(m), { status: 400 });
@@ -142,7 +114,7 @@ function cleanTiers(input) {
   return rows;
 }
 
-/** سعرُ السيارة لعددٍ من السيارات — `null` إن لم تشمله شريحة. */
+/** Per-vehicle price for a number of vehicles; `null` if no tier covers it. */
 function tierPriceFor(tiers, trucks) {
   const n = Math.max(1, Number(trucks) || 1);
   for (const t of tiers || []) {
@@ -152,11 +124,8 @@ function tierPriceFor(tiers, trucks) {
 }
 
 /**
- * ── من يكتب سعرَ مسار ──────────────────────────────────────────────────────
- * أسعارُ الوجهات — السعرُ المتّفقُ عليه وشرائحُ عدد السيارات — يكتبها **مديرُ
- * العمليّات ومديرُ النظام وحدَهما** (قرارُ صاحب الشركة). غيرُهما يعدّل بياناتِ
- * العميل (الاسم والهاتف والتفضيلات) ولا يمسّ سعرًا. والسؤالُ هنا في موضعٍ واحدٍ
- * يقرؤه كلُّ بابٍ يصل إلى السعر.
+ * Who writes a route price.
+ * Destination prices (agreed price and vehicle-count tiers) are written only by the operations manager and the system admin. Others edit customer data (name, phone, preferences) but not prices. The check lives in one place read by every path that reaches a price.
  */
 const PRICE_EDITORS = ['super_admin', 'admin', 'operations_manager'];
 const canEditPrices = (role) => PRICE_EDITORS.includes(role);

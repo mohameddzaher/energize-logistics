@@ -5,8 +5,7 @@ import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import 'customs_detail.dart' show customsStages;
 
-/// دليل التخليص الجمركي — محتوى ثابت: دورة التخليص، المنصات، المستندات
-/// والبيانات المطلوبة، أوراق الوكيل، وقوالب البريد — نفس دليل الويب.
+/// Customs clearance guide: static content (clearance cycle, platforms, required documents and data, agent papers, email templates), same as the web guide.
 class CustomsGuideScreen extends StatelessWidget {
   const CustomsGuideScreen({super.key});
 
@@ -54,7 +53,7 @@ class CustomsGuideScreen extends StatelessWidget {
     return AppScaffold(
       title: Text(tr('دليل التخليص الجمركي', 'Customs Guide')),
       body: ListView(padding: const EdgeInsets.all(14), children: [
-        // ── دورة التخليص ──
+        // Clearance cycle.
         _card(Icons.route_outlined, tr('دورة التخليص', 'Clearance cycle'),
           Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             ...customsStages.asMap().entries.map((e) => Padding(
@@ -67,7 +66,7 @@ class CustomsGuideScreen extends StatelessWidget {
             )),
           ]),
         ),
-        // ── المنصات ──
+        // Platforms.
         _card(Icons.dns_outlined, tr('المنصات المستخدمة', 'Platforms'),
           Column(children: _platforms.map((p) => Padding(
             padding: const EdgeInsets.symmetric(vertical: 5),
@@ -77,13 +76,13 @@ class CustomsGuideScreen extends StatelessWidget {
             ]),
           )).toList()),
         ),
-        // ── المستندات المطلوبة ──
+        // Required documents.
         _bulletCard(Icons.description_outlined, tr('المستندات المطلوبة للمعاملات', 'Documents required'), _requiredDocs),
-        // ── البيانات المطلوبة على فسح ──
+        // Data required on the clearance platform.
         _bulletCard(Icons.list_alt_outlined, tr('البيانات المطلوبة لإنشاء المعاملة على فسح', 'Data required on Fasah'), _requiredData),
-        // ── أوراق الوكيل ──
+        // Agent papers.
         _bulletCard(Icons.folder_shared_outlined, tr('أوراق الوكيل', 'Agent papers'), _agentPapers),
-        // ── قوالب البريد ──
+        // Email templates.
         _card(Icons.mail_outline, tr('قوالب البريد للوكيل', 'Email templates'),
           Column(children: _emails.map((m) => Padding(
             padding: const EdgeInsets.only(bottom: 10),

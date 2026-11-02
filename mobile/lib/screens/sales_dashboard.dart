@@ -5,13 +5,13 @@ import '../ui/widgets.dart';
 import 'dash_specs.dart' show salesDashSpec;
 import 'section_dash.dart';
 
-/// الشهرُ بصيغة الخادم YYYY-MM — `thisPeriod()` في الويب.
+/// Month in the server format YYYY-MM, `thisPeriod()` on the web.
 String salesThisPeriod() {
   final n = DateTime.now();
   return '${n.year}-${n.month.toString().padLeft(2, '0')}';
 }
 
-/// منتقي الشهر — نظيرُ MonthPicker في الويب: الشهرُ الحاليّ وما قبله.
+/// Month picker, counterpart of MonthPicker on the web: the current month and earlier ones.
 class SalesMonthPicker extends StatelessWidget {
   final String value;
   final ValueChanged<String> onChanged;
@@ -53,8 +53,7 @@ class SalesMonthPicker extends StatelessWidget {
   }
 }
 
-/// لوحةُ المبيعات بشهرٍ يُختار — `/api/sales/dashboard?period=YYYY-MM` كالويب.
-/// اللوحةُ نفسُها (salesDashSpec) تُبنى من جديد مع كلّ شهر.
+/// Sales dashboard for a chosen month: `/api/sales/dashboard?period=YYYY-MM`, as on the web. The same dashboard (salesDashSpec) is rebuilt for each month.
 class SalesDashboardScreen extends StatefulWidget {
   const SalesDashboardScreen({super.key});
   @override

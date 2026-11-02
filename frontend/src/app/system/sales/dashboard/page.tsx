@@ -35,8 +35,7 @@ const STAGE_META: Record<string, { en: string; ar: string; color: string }> = {
   negotiation: { en: 'Negotiation', ar: 'تفاوض', color: '#f97316' },
 };
 
-// مؤشّرُ التغيّر عن الشهر السابق. معرَّفان خارج جسم الصفحة: مكوِّنٌ يُعرَّف داخل
-// الرسم هويّةٌ جديدةٌ في كلّ رسمة فيُهدَم ما تحته ويُبنى.
+// Change indicator versus the previous month. Defined outside the page body: a component defined inside render gets a new identity each render and its subtree is torn down and rebuilt.
 type Delta = { dir: 'up' | 'down' | 'flat'; txt: string };
 const deltaOf = (cur: number, prev: number, ar: boolean): Delta => {
   if (!prev && !cur) return { dir: 'flat', txt: '—' };
@@ -62,7 +61,7 @@ export default function SalesDashboardPage() {
   const [data, setData] = useState<Dash | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  // تبديلُ الشهر يُطلق طلبًا والسوكِت آخر: الأقدمُ لا يكتب فوق الأحدث.
+  // Switching month fires a request while the socket fires another; the older one never overwrites the newer.
   const guard = useLatestRequest();
 
   const load = useCallback(async () => {
@@ -73,13 +72,13 @@ export default function SalesDashboardPage() {
       setData(d); setError('');
     } catch (e: any) {
       if (!guard.isCurrent(mine)) return;
-      // كان الخطأُ يُبتلَع فتبقى الشاشةُ تدور بلا نهاية ولا سبب.
+      // The error used to be swallowed, leaving the screen spinning forever with no reason.
       setError(e?.message || 'Request failed');
     }
     setLoading(false);
   }, [period, guard]);
   useEffect(() => { load(); }, [load]);
-  // `sales:updated` نداءُ القسم الواحد: صفقةٌ تغيّرت أو هدفٌ وُضع — يصل كلَّ من يفتح القسم.
+  // `sales:updated` is the section-wide event: a changed deal or a new target reaches everyone who has the section open.
   useSocket('sales:updated', useCallback(() => load(), [load]));
 
   if (!isSalesStaff(user)) return <div className="text-slate-500 p-8">{tx.notAuthorized}</div>;
@@ -87,7 +86,7 @@ export default function SalesDashboardPage() {
   if (!data) return <div className="p-6"><ErrorNotice error={error || 'Request failed'} lang={lang} onRetry={load} /></div>;
 
   const wonDelta = deltaOf(data.wonValue, data.prevWonValue, ar);
-  // البطاقةُ تفتح قائمتَها على الشهر نفسِه الذي قُرئ فيه رقمُها.
+  // The card opens its list on the same month its number was read in.
   const perfHref = `/system/sales/performance?period=${data.period}`;
   const targetsHref = `/system/sales/targets?period=${data.period}`;
 

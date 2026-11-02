@@ -1,10 +1,6 @@
 'use client';
-// ── ملاحظاتُ المتابعة: سجلٌّ يُضاف إليه ويُعدَّل ويُحذف ────────────────────────
-// «كلّمتُ السائق: يصل بعد ساعتين» — تُقيَّد في سجلّ الشحنة (مَن، متى، ماذا)
-// ولا تمسّ الحالة، وهي غيرُ «ملاحظة البوليصة» التي تُطبَع في الورقة.
-// وتُعرَض كلُّها هنا لكلّ من يفتح الشحنة (٢٠٢٦/١٠/٢٦: «فتحت من اليوزر بتاعي مش
-// لاقي الملاحظة… ممكن أضيف بعدها أو أعدّلها أو أمسحها»). يعدّل الملاحظةَ ويمسحها
-// كاتبُها أو مديرُ القسم — والخادمُ يحرس القاعدةَ نفسَها.
+// Follow-up notes: a log that can be added to, edited and deleted.
+// A note such as 'called the driver, arrives in two hours' is recorded in the shipment log (who, when, what) and does not touch the status; it is not the waybill note printed on the paper. All are shown here to anyone opening the shipment. Edit and delete are for the author or the section manager; the server guards the same rule.
 import { useState } from 'react';
 import { X, Check, Loader2, Pencil, Trash2, MessageSquareText } from 'lucide-react';
 import api from '@/lib/api';
@@ -20,7 +16,7 @@ export default function NoteModal({ order, ar, onClose, onSaved }: {
   order: ShipmentOrder;
   ar: boolean;
   onClose: () => void;
-  /** الشحنةُ كما ردّها الخادم بعد كلّ تغيير — لتتحدّث البطاقةُ فورًا. */
+  /** The shipment as returned by the server after each change, so the card updates at once. */
   onSaved: (o: ShipmentOrder) => void;
 }) {
   const { user } = useAuth();
@@ -96,7 +92,7 @@ export default function NoteModal({ order, ar, onClose, onSaved }: {
         </div>
 
         <div className="p-5 space-y-3 overflow-y-auto">
-          {/* الإضافةُ أوّلًا: هي الفعلُ الأكثر. */}
+          {/* Adding comes first: it is the most frequent action. */}
           <textarea rows={3} value={text} maxLength={500} onChange={(e) => setText(e.target.value)}
             placeholder={ar ? 'اكتب ملاحظة جديدة… مثلًا: كلّمتُ السائق، يصل بعد ساعتين' : 'Write a new note… e.g. Called the driver, arriving in two hours'}
             className="w-full px-4 py-3 rounded-xl bg-white border border-slate-300 text-base text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />

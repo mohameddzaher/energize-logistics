@@ -22,7 +22,7 @@ interface UserRecord {
   email: string;
   firstName: string;
   lastName: string;
-  // الأدوار معرّفة في lib/roles.ts المولَّد — قائمة يدوية هنا كانت هتقدم.
+  // Roles come from the generated lib/roles.ts; a hand-written list here would go stale.
   role: string;
   branch?: { _id: string; name: string };
   remoteAccess?: string[];
@@ -226,8 +226,7 @@ export default function UsersPage() {
     { header: T.lastLogin, key: 'lastLogin', transform: fmt.datetime, width: 22 },
     { header: T.createdAt, key: 'createdAt', transform: fmt.date, width: 14 },
   ];
-  // `/api/users` بلا ترقيمٍ ولا فلترة، والشاشة تعرض ما جاء كاملًا؛ فما في الذاكرة
-  // هو الكلّ فعلًا، ونطاقٌ ثانٍ لن يزيد إلّا اسمًا على الملفّ نفسه.
+  // /api/users has no paging or filtering and the screen shows everything returned, so the in-memory list is the full set.
   const scope = exportScopeLabels(lang === 'ar');
   const exportOptions = [
     { key: 'all', label: scope.all, sheets: [{ name: T.title, rows: users, columns: exportColumns }] },
@@ -288,9 +287,7 @@ export default function UsersPage() {
 
   const fetchB2CHeads = async () => {
     try {
-      // كان `b2c_head` — واسمُه تغيّر إلى `b2c_manager` ولم يُبحث عنه هنا،
-      // فتعود القائمة فارغةً دائمًا وتقول الشاشة «لا يوجد» وأنت تنظر إلى
-      // مدير الـB2C في قائمة المستخدمين.
+      // Role key renamed from b2c_head to b2c_manager; the old key matched nothing and the list always came back empty.
       const data = await api.get<any>('/api/users?role=b2c_manager');
       setB2cHeads(data.users || []);
     } catch {
@@ -572,15 +569,12 @@ export default function UsersPage() {
     }));
   };
 
-  // ── الأدوار تأتي من الخادم ────────────────────────────────────────────────
-  // القائمة المكتوبة هنا انحرفت عن الحقيقة في الاتّجاهين: أربعةُ أدوار تعرضها
-  // ولا وجود لها (فيردّ الخادم «الدور غير صالح»)، وثلاثةٌ وعشرون دورًا صحيحًا
-  // لا تظهر فلا سبيل إلى إسنادها. وكلّ دورٍ يُضاف بعد اليوم كان سيغيب كذلك.
+  // Roles come from the server. The hard-coded list drifted both ways: it showed roles that do not exist (server rejects them) and hid valid ones, so they could not be assigned.
   const [serverRoles, setServerRoles] = useState<{ key: string; ar: string; en: string; section: string; isManager: boolean; distinct?: string }[]>([]);
   useEffect(() => {
     api.get<{ roles: typeof serverRoles }>('/api/users/roles')
       .then((r) => setServerRoles(r.roles || []))
-      .catch(() => { /* تبقى القائمة القديمة معروضةً بدل شاشةٍ بلا أدوار */ });
+      .catch(() => { /* Keep the legacy list visible rather than a screen with no roles. */ });
   }, []);
 
   const legacyRoleLabels: Record<string, string> = {
@@ -621,14 +615,13 @@ export default function UsersPage() {
     fleet_supervisor: lang === 'ar' ? 'مشرف أسطول' : 'Fleet Supervisor',
   };
 
-  // الاسم المعروض: من الخادم أوّلًا، ثم القائمة القديمة لأدوارٍ حُذفت وبقيت على
-  // حسابات قائمة، ثم المفتاح نفسه — فلا تظهر خانةٌ فارغة مكان دورٍ لا نعرفه.
+  // Display name: server first, then the legacy list for removed roles still on accounts, then the raw key, so no blank label appears.
   const roleLabels: Record<string, string> = Object.fromEntries([
     ...Object.entries(legacyRoleLabels),
     ...serverRoles.map((r) => [r.key, lang === 'ar' ? r.ar : r.en]),
   ]);
 
-  // خياراتُ الدور: الاسمُ بلغة الواجهة ومعه اسمُ قسمِه — كلاهما يُبحَث فيه.
+  // Role options: UI-language name plus its department name, both searchable.
   const roleOptions = (serverRoles.length
     ? serverRoles.filter((r) => r.key !== 'client')
     : Object.entries(legacyRoleLabels).filter(([v]) => v !== 'client')
@@ -636,17 +629,10 @@ export default function UsersPage() {
   ).map((r) => ({
     value: r.key,
     label: `${lang === 'ar' ? r.ar : r.en}${r.section ? ` — ${getSectionLabel(r.section, lang)}` : ''}`,
-    // `distinct` في config/roles مبرّرٌ داخليٌّ لوجود الدور (قاعدةُ مديرٍ وموظّفٍ
-    // لكلّ قسم) — لا وصفٌ يُعرَض لمن يُنشئ المستخدم (صاحبُ الشركة، ٢٠٢٦/١٠/٢٦).
+    // `distinct` in config/roles is an internal reason for the role (manager and staff per department), not a description for the user creator.
   }));
 
-  /**
-   * المديرُ المباشر يُقترَح من قسم الدور.
-   *
-   * اختيارُ «مدير مشروع - أفراد» يعني أن مديره مديرُ قطاع الأفراد — ولا معنى
-   * لأن يبحث المستخدم عنه في قائمةٍ فيها كلُّ موظّفي الشركة. يُقترَح ولا يُفرَض:
-   * الهيكل يُخالَف أحيانًا، والاقتراح يوفّر الشائع ولا يمنع النادر.
-   */
+  /** The direct manager is suggested from the role's department, not enforced: the org structure is sometimes bypassed, so the suggestion covers the common case. */
   const suggestManagerFor = (roleKey: string): string => {
     const def = serverRoles.find((r) => r.key === roleKey);
     if (!def || !def.section || def.isManager) return '';
@@ -670,10 +656,7 @@ export default function UsersPage() {
     });
   };
 
-  // ── ما يُبحَث فيه في كلّ عمود ────────────────────────────────────────────
-  // العمودُ يعرض شيئًا مركَّبًا (اسمٌ من حقلين، لقبُ دورٍ من خريطة، حالةٌ
-  // محسوبة)، والبحثُ كان يقرأ الحقلَ الخام باسم العمود — و`row.name` لا وجود
-  // له أصلًا. فمن بحث عن موظّفٍ باسمه لم يجده وهو معروضٌ أمامه في العمود نفسِه.
+  // Per-column search text. Columns show composed values (two-field name, role label from a map, computed status) and search used to read the raw field by column name; row.name does not exist.
   const columns = [
     {
       key: 'name',
@@ -696,8 +679,7 @@ export default function UsersPage() {
     {
       key: 'role',
       label: T.role,
-      // يُبحَث باللقب المعروض وبالمفتاح معًا، وباسم الشريك لحسابات البوّابة —
-      // مَن يقرأ «مدير التحصيل» يبحث بها لا بـ`collections_manager`.
+      // Search by the displayed label, the key, and the partner name for portal accounts, so users can type the label they see.
       search: (row: UserRecord) => [
         roleLabels[row.role], row.role,
         row.partner?.name, row.linkedCustomer?.companyName,
@@ -819,10 +801,7 @@ export default function UsersPage() {
           </button>
         </div>
       </div>
-      {/* نوع المستخدم — موظف عندنا، أم عميل/مورد من برّه.
-          Picking a partner swaps the whole rest of the form: no role, no
-          manager, no employee link — just WHICH customer or supplier this
-          login belongs to. */}
+      {/* User type: internal employee or external customer/supplier. Picking a partner swaps the rest of the form: no role, no manager, no employee link, only which customer or supplier the login belongs to. */}
       <div>
         <label className="block text-slate-700 text-sm font-medium mb-1.5">
           {lang === 'ar' ? 'نوع المستخدم' : 'User type'}
@@ -860,8 +839,7 @@ export default function UsersPage() {
         </div>
       </div>
 
-      {/* Partner picker — every customer/supplier register in one dropdown, each
-          row labelled with the register it came from ("عميل تخليص جمركي"…). */}
+      {/* Partner picker: every customer/supplier register in one dropdown, each row labelled with its source register (e.g. a customs-clearance customer). */}
       {formData.accountType !== 'employee' && (
         <div>
           <label className="block text-slate-700 text-sm font-medium mb-1.5">
@@ -931,10 +909,7 @@ export default function UsersPage() {
       {formData.accountType === 'employee' && (
       <div>
         <label className="block text-slate-700 text-sm font-medium mb-1.5">{T.role}</label>
-        {/* ── يُبحَث لا يُتصفَّح ────────────────────────────────────────────────
-            سبعةٌ وأربعون دورًا في قائمةٍ منسدلة تُقرأ بالتمرير. والبحثُ يشمل
-            اسمَ الدور واسمَ قسمِه معًا: من يكتب «أسطول» يجد مديرَه وموظّفَه،
-            ومن يكتب «مدير» يجد المديرين كلَّهم. */}
+        {/* Searchable instead of scrollable: dozens of roles in a dropdown. Search matches role name and department name together. */}
         <SearchableSelect
           value={formData.role}
           onChange={(role) => {
@@ -965,7 +940,7 @@ export default function UsersPage() {
             {lang === 'ar' ? 'المدير المباشر' : 'Direct Manager'}
             <span className="text-slate-500 text-xs font-normal ms-2">{lang === 'ar' ? '(اختياري — يُقترح تلقائيًا حسب القسم)' : '(optional — auto-suggested by role)'}</span>
           </label>
-          {/* البحثُ بالاسم أو بالدور: «مدير الأسطول» تجده بلقبه كما تجده باسمه. */}
+          {/* Search by name or by role label. */}
           <SearchableSelect
             value={formData.manager}
             onChange={(v) => setFormData({ ...formData, manager: v })}

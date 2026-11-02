@@ -7,8 +7,7 @@ import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import 'jp.dart' show JpTaskPanel;
 
-/// تفاصيل الفرصة (تطوير الأعمال) — بيانات الفرصة ومرحلتها في القمع،
-/// وسجل الأنشطة (اجتماعات/مكالمات/زيارات) مع إمكانية تسجيل نشاط جديد.
+/// Opportunity details (business development): opportunity data and funnel stage, and the activity log (meetings/calls/visits) with the ability to log a new activity.
 class BdOpportunityDetailScreen extends StatefulWidget {
   final String opportunityId;
   final String name;
@@ -130,7 +129,7 @@ class _BdOpportunityDetailScreenState extends State<BdOpportunityDetailScreen> {
     catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString()))); }
   }
 
-  // تسجيل/تعديل نشاط الفرصة — بالنتيجة والخطوة التالية. تعديل ⇒ PUT، جديد ⇒ POST.
+  // Log/edit an opportunity activity with outcome and next step. Edit is PUT, new is POST.
   Future<void> _logActivity({Map<String, dynamic>? row}) async {
     final isEdit = row != null;
     final title = TextEditingController(text: (row?['title'] ?? '').toString());

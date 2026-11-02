@@ -52,8 +52,7 @@ export default function ClientPaymentsPage() {
     { header: T.paymentMethod, key: 'paymentMethod', transform: (v: any) => v?.replace('_', ' ') || '', width: 16 },
     { header: T.reference, key: 'reference', width: 20 },
   ];
-  // `/api/payments` يرقّم افتراضيًّا بخمسين صفًّا والصفحة لا تعرض غيرها، فتصديرها
-  // كان يقدّم خمسين دفعةً على أنّها سجلّ السداد كلّه؛ «الكلّ» يعيد الجلب بلا سقفٍ عمليّ.
+  // `/api/payments` paginates 50 rows by default and the page shows only those, so exporting would present 50 payments as the whole payment record; "all" refetches with no practical cap.
   const fetchAllForExport = async () => {
     const d = await api.get<any>('/api/payments?page=1&limit=100000');
     return [{ name: 'Payments', rows: d.payments || [], columns: exportColumns }];

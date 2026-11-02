@@ -72,7 +72,7 @@ export default function CrmCompaniesPage() {
   useEffect(() => { load(); }, [load]);
   useEffect(() => { api.get<CrmOptions>('/api/crm/options').then(setOpts).catch(() => {}); }, []);
   useSocket('crm:company', useCallback(() => load(), [load]));
-  // بطاقةُ عميلٍ عُدِّلت في أيّ قسمٍ — تُعاد القائمة (مُمهَلةً).
+  // A customer card edited in any department reloads the list (debounced).
   const custTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useSocket('customers:changed', useCallback(() => {
     if (custTimer.current) clearTimeout(custTimer.current);
@@ -155,9 +155,7 @@ export default function CrmCompaniesPage() {
     { header: 'Owner', key: 'owner', transform: (v) => userName(v), width: 18 },
     { header: 'Created', key: 'createdAt', transform: fmt.date, width: 14 },
   ];
-  // البحث والحالة والمسؤول تُطبَّق كلّها على الخادم، فالمصدَّر من الذاكرة هو
-  // نتيجةُ الفلتر لا قاعدةُ العملاء؛ ومَن أراد الكلّ كان عليه مسحُ ثلاثة فلاتر
-  // قبل الضغط. الخادم يسقّف هذا المسار بألفَي شركة، عرضًا كان أم تصديرًا.
+  // Search, status and owner are all applied on the server, so the in-memory export is the filter result, not the customer base; wanting all means clearing three filters first. The server caps this route at 2000 companies, displayed or exported.
   const fetchAllForExport = async () => {
     const d = await api.get<{ companies: CrmCompany[] }>('/api/crm/companies');
     return [{ name: 'Companies', rows: d.companies || [], columns: exportColumns }];
@@ -169,10 +167,7 @@ export default function CrmCompaniesPage() {
     ...(hasActiveFilters ? [{ key: 'all', label: scope.all, resolve: fetchAllForExport }] : []),
   ];
 
-  /**
-   * قمعُ الأعمدة — والقائمةُ من `items` التي وصلت بعد فلتر الصفحة والبحث،
-   * فيعمل مع فلاتر القسم لا ضدَّها. راجع hooks/useColumnFilters.
-   */
+  /** Column filters, built from `items` as received after the page filter and search, so they work with the department filters, not against them. See hooks/useColumnFilters. */
   const cf = useColumnFilters<any>({
     code: (c) => c.customerCode || '',
     name: (c) => companyName(c, lang),

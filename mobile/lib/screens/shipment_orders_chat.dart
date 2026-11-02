@@ -8,10 +8,7 @@ import '../ui/widgets.dart';
 import 'shipment_orders.dart';
 import 'shipment_orders_common.dart';
 
-/// مساعدُ إنشاء الشحنة — نظيرُ /system/shipment-orders/chat في الويب: نموذجُ
-/// الإنشاء محادثةً، سؤالٌ في كلّ دور بشكله المضبوط في إعدادات النموذج، وفي
-/// الختام يُرسَل الحِملُ نفسُه إلى النقطة نفسِها (`POST /orders`). لا ذكاءَ
-/// اصطناعيًّا ولا خادمَ إضافيًّا: مشيٌ مكتوبٌ على تعريف الخانات.
+/// Shipment creation assistant, mirrors /system/shipment-orders/chat on web. The create form as a chat: one question per turn, shaped as configured in the form settings, and finally the same payload goes to the same endpoint (POST /orders). No AI or extra server, just a scripted walk over the slot definitions.
 class ShipmentOrdersChatScreen extends StatefulWidget {
   const ShipmentOrdersChatScreen({super.key});
   @override
@@ -28,7 +25,7 @@ const _fixedKeys = {'customer', 'waybillNumber', 'status', 'agentName', 'vehicle
 String _fold(String x) => x.toLowerCase()
     .replaceAll(RegExp('[أإآ]'), 'ا').replaceAll('ى', 'ي').replaceAll('ة', 'ه').replaceAll('ؤ', 'و').replaceAll('ئ', 'ي');
 
-/// خطوةٌ في المحادثة: العميل، ثمّ الشاحنة، ثمّ كلُّ خانةٍ مضبوطة، ثمّ الملخّص.
+/// Chat step: customer, then truck, then each configured slot, then the summary.
 class _Step {
   final String kind; // customer · vehicle · field · summary
   final Map<String, dynamic>? field;
@@ -80,7 +77,7 @@ class _ShipmentOrdersChatScreenState extends State<ShipmentOrdersChatScreen> {
       _customers = List<Map<String, dynamic>>.from(r[1]['customers'] ?? const []);
       _vehicles = List<Map<String, dynamic>>.from(r[2]['vehicles'] ?? const []);
     } catch (e) {
-      // بلا خاناتٍ تقفز المحادثةُ إلى الملخّص فتُقرأ «تمّ» وهي «فشل» — فيُقال.
+      // With no slots the chat jumps to the summary and would read as success while failing, so the failure is stated.
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e is ApiException ? e.message : tr('تعذّر تحميل النموذج', 'Failed to load the form'))));
     }
     if (!mounted) return;
@@ -131,7 +128,7 @@ class _ShipmentOrdersChatScreenState extends State<ShipmentOrdersChatScreen> {
 
   void _say(bool bot, String text) => _msgs.add((bot, text));
 
-  /// تُنادى من داخل `setState` دائمًا — تنقل الخطوةَ وتسأل سؤالَها.
+  /// Always called inside setState; moves to the step and asks its question.
   void _next() {
     _stepIdx = (_stepIdx + 1).clamp(0, _steps.length - 1);
     _askIfNeeded();
@@ -182,7 +179,7 @@ class _ShipmentOrdersChatScreenState extends State<ShipmentOrdersChatScreen> {
   void _answerField(Map f, dynamic value, String display) {
     _say(false, display);
     _answers['${f['key']}'] = value;
-    // مسارٌ مسعَّرٌ لهذا العميل؟ يُزرع سعرُ البيع لحظةَ تُعرف المدينتان.
+    // Priced route for this customer? The selling price is seeded as soon as both cities are known.
     final c = _customers.firstWhere((x) => '${x['_id']}' == _customerId, orElse: () => const {});
     if (c.isNotEmpty && (f['key'] == 'fromCity' || f['key'] == 'toCity')) {
       final from = _answers['fromCity'], to = _answers['toCity'];
@@ -217,7 +214,7 @@ class _ShipmentOrdersChatScreenState extends State<ShipmentOrdersChatScreen> {
         payload['newCustomer'] = {'name': _answers['newCustomerName'], 'phone': ''};
       }
       if (_vehicleId.isNotEmpty) payload['vehicle'] = _vehicleId;
-      // اليومُ يُرسَل ظهرًا — «2026-09-05» وحدَه يُقرأ منتصفَ الليل بغرينتش.
+      // The day is sent at noon: a bare date like 2026-09-05 is read as midnight GMT.
       for (final k in const ['pickupTime', 'startTime', 'arrivalTime']) {
         final v = '${_answers[k] ?? ''}';
         if (v.isEmpty) { payload[k] = null; continue; }
@@ -302,7 +299,7 @@ class _ShipmentOrdersChatScreenState extends State<ShipmentOrdersChatScreen> {
     }
 
     if (s.kind == 'vehicle') {
-      // شاحناتُ المورّدين وحدَها — أسطولُنا خارجُ هذا المسار الآن (كالويب).
+      // Supplier trucks only; our own fleet is outside this path for now (as on web).
       final list = _vehicles.where((v) => v['supplier'] != null).where((v) {
         if (q.isEmpty) return true;
         final sup = v['supplier'] is Map ? v['supplier']['name'] : '';
@@ -357,7 +354,7 @@ class _ShipmentOrdersChatScreenState extends State<ShipmentOrdersChatScreen> {
       ]);
     }
 
-    // خاناتُ الإعدادات
+    // Settings slots
     final f = s.field!;
     final required = f['required'] == true;
     final t = f['inputType'];
@@ -458,7 +455,7 @@ class _ShipmentOrdersChatScreenState extends State<ShipmentOrdersChatScreen> {
                 width: double.infinity,
                 padding: EdgeInsets.fromLTRB(12, 10, 12, 10 + MediaQuery.of(context).padding.bottom),
                 decoration: const BoxDecoration(color: T.canvas, border: Border(top: BorderSide(color: T.line))),
-                // لوحةُ الإدخال لا تأكل المحادثة على الشاشات القصيرة — تُمرَّر داخلها.
+                // The input panel does not eat the chat on short screens; it scrolls inside itself.
                 child: ConstrainedBox(
                   constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.35),
                   child: SingleChildScrollView(child: _controls()),

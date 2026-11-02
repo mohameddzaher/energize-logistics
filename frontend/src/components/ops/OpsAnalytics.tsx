@@ -1,19 +1,7 @@
 'use client';
 /**
- * لوحةُ مدير التشغيل — كما بناها لنفسه، وبأرقامنا حيّةً.
- *
- * ── من أين جاء هذا الترتيبُ بعينه ──────────────────────────────────────────
- * مديرُ التشغيل عمل لنفسه لوحةً في إكسل (ورقةُ `Dashboard` في تقرير الفروع)
- * وعمل بها شهورًا، فهذه ليست تخميننا لما يحتاجه: هي ما يفتحه كلَّ صباح،
- * بعنوانه وترتيبه. والحسابُ كلُّه في الخادم
- * (`backend/utils/opsAnalytics.js`) — فالشاشةُ تعرض ولا تحسب، ولا يختلف رقمٌ
- * بين «التشغيل — خاصّ» ولوحةِ طلبات الشحنات ولا بين الويب والهاتف.
- *
- * ── وما قيس عليه ───────────────────────────────────────────────────────────
- * طُوبقت أرقامُ سبتمبر بورقته صفًّا صفًّا: المبيعاتُ ٥٫٢ مليون، والهامشُ
- * ١٢٫٢٪، والرحلاتُ ٣٫٥ آلاف منها ٢٠٠١ محقَّقة (٥٧٪)، وأعلى مندوب «علاء عادل
- * ٢٠٩ · ١٠٫٤٪»، وأعلى عميل «صليهم ٢٨٢ · ١٤٫١٪»، وأعلى مورد «تنشيط ٦٦٠ ·
- * ٤٥٫٦٪»، وجدة «٨٨٦ · ٤٤٫٣٪». فمن انتقل من ورقته إلى هذه الشاشة يجد أرقامَه.
+ * Operations manager dashboard: as built for himself, with live numbers.
+ * The layout mirrors the Excel dashboard (the `Dashboard` sheet of the branches report) he used for months, so it is what he opens each morning. All computation is on the server (`backend/utils/opsAnalytics.js`), so the screen displays and never computes, and numbers do not differ across the private operations view, the shipment-orders board, web and mobile. September numbers were reconciled against his sheet row by row.
  */
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useLanguage } from '@/context/LanguageContext';
@@ -64,7 +52,7 @@ const ORANGE = '#f37121';
 const NAVY = '#12325c';
 
 const nf = (n: number) => Math.round(Number(n) || 0).toLocaleString('en-US');
-/** مبلغٌ مختصر: ٥٫٢ مليون لا ٥٢٣٤١٢٠ — البطاقةُ تُقرأ بلمحة. */
+/** Short amount: 5.2 million rather than 5234120, so a card reads at a glance. */
 const short = (n: number) => {
   const v = Number(n) || 0;
   const a = Math.abs(v);
@@ -87,7 +75,7 @@ function Kpi({ icon, label, value, sub, tone = NAVY }: {
   );
 }
 
-/** شريطٌ بنسبةٍ — يُقرأ قبل الرقم. */
+/** Percentage bar, read before the number. */
 function Bar2({ pct, tone = ORANGE }: { pct: number; tone?: string }) {
   return (
     <span className="block h-1.5 rounded-full bg-slate-100 overflow-hidden">
@@ -109,7 +97,7 @@ function Panel({ title, hint, right, children }: { title: string; hint?: string;
   );
 }
 
-/** صفٌّ في قائمةٍ مرتَّبة: اسمٌ وشريطٌ ورقمٌ ونسبة. */
+/** Row in a ranked list: name, bar, number and percentage. */
 function RankRow({ i, name, value, share, extra, tone = ORANGE }: {
   i: number; name: string; value: string; share: number; extra?: string; tone?: string;
 }) {
@@ -155,7 +143,7 @@ export default function OpsAnalytics({ base, liveEvent }: { base: string; liveEv
   useEffect(() => {
     api.get<any>(`${base}/filters`).then(setOpts).catch(() => {});
   }, [base]);
-  // حيّة: أيُّ تغييرٍ في التشغيل يُعيد القراءة.
+  // Live: any operations change triggers a re-read.
   useSocket(liveEvent || 'workflow:updated', useCallback(() => { load(); }, [load]));
 
   const set = (k: string, v: string) => setQ((x) => ({ ...x, [k]: v }));
@@ -173,7 +161,7 @@ export default function OpsAnalytics({ base, liveEvent }: { base: string; liveEv
 
   return (
     <div className={`space-y-4 ${busy ? 'opacity-60 transition-opacity' : 'transition-opacity'}`} dir={isRTL ? 'rtl' : 'ltr'}>
-      {/* ── الفلتر: المدّةُ أوّلًا، فهي أوّلُ ما يُسأل ─────────────────────── */}
+      {/* Filter: period first, since it is asked first */}
       <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-sm space-y-2.5">
         <div className="flex flex-wrap items-center gap-1.5">
           <span className="text-[11.5px] text-slate-500 me-1">{t('الفترة', 'Period')}</span>
@@ -241,7 +229,7 @@ export default function OpsAnalytics({ base, liveEvent }: { base: string; liveEv
         </p>
       </div>
 
-      {/* ① المال والرحلات */}
+      {/* 1. Money and trips */}
       <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-2.5">
         <Kpi icon={<Wallet className="w-3.5 h-3.5" />} label={t('إجمالي المبيعات', 'Total sales')} value={`${short(T.sell)}`} sub={t('إجمالي الإيراد', 'Total revenue')} tone={NAVY} />
         <Kpi icon={<ShoppingCart className="w-3.5 h-3.5" />} label={t('إجمالي تكلفة الشراء', 'Total buying cost')} value={`${short(T.buy)}`} sub={`${T.sell ? Math.round((T.buy / T.sell) * 1000) / 10 : 0}% ${t('من المبيعات', 'of sales')}`} tone="#64748b" />
@@ -253,7 +241,7 @@ export default function OpsAnalytics({ base, liveEvent }: { base: string; liveEv
         <Kpi icon={<TrendingUp className="w-3.5 h-3.5" />} label={t('متوسط الرحلات / يوم', 'Avg trips / day')} value={String(T.avgTripsPerDay)} sub={t('رحلة محققة', 'achieved trips')} tone="#7c3aed" />
       </div>
 
-      {/* ② الأهداف ③ أسبابُ عدم التحقيق */}
+      {/* 2. Targets, 3. Reasons for missed targets */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
         {[
           { key: 'trips', title: t('هدف الرحلات', 'Trips target'), got: T.achieved, target: G.periodTrips, pctv: G.tripsAchievementPct, gap: G.tripsGap, ytd: G.ytdTrips, annual: G.annualTrips, annualPct: G.annualTripsPct, remain: G.remainingTrips, fmt: nf },
@@ -304,7 +292,7 @@ export default function OpsAnalytics({ base, liveEvent }: { base: string; liveEv
         </Panel>
       </div>
 
-      {/* ④ الاتّجاه */}
+      {/* 4. Trend */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
         <Panel title={t('اتجاه المبيعات', 'Sales trend')}
           hint={t('بالألف — الشهر الجاري غير مكتمل', 'in thousands — current month incomplete')}
@@ -340,7 +328,7 @@ export default function OpsAnalytics({ base, liveEvent }: { base: string; liveEv
         </Panel>
       </div>
 
-      {/* ⑤ الفروع ⑥ المناديب */}
+      {/* 5. Branches, 6. Reps */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
         <Panel title={t('أداء الفروع', 'Branch performance')} hint={t(`${d.branches.list.length} فروع`, `${d.branches.list.length} branches`)}>
           <ScrollX>
@@ -396,7 +384,7 @@ export default function OpsAnalytics({ base, liveEvent }: { base: string; liveEv
         </Panel>
       </div>
 
-      {/* ⑦ العملاء والموردون */}
+      {/* 7. Customers and suppliers */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
         <Panel title={t('أعلى 10 عملاء', 'Top 10 clients')}
           hint={t(`${d.clients.count} عميلًا نشطًا · النسبة من رحلات العملاء`, `${d.clients.count} active · share of client trips`)}>
@@ -416,7 +404,7 @@ export default function OpsAnalytics({ base, liveEvent }: { base: string; liveEv
         </Panel>
       </div>
 
-      {/* ⑧ التوزيعات وأهمُّ المسارات */}
+      {/* 8. Distributions and top routes */}
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-3">
         {[['rentType', 'نوع الإيجار', 'Rent type'], ['payType', 'دفع العميل', 'Customer payment'], ['vendorType', 'نوع المورد', 'Vendor type']].map(([k, a, e]) => (
           <Panel key={k} title={t(a, e)} hint={t('من المحقق', 'of achieved')}>

@@ -6,15 +6,12 @@ import '../services/lang.dart';
 import 'theme.dart';
 import 'widgets.dart';
 
-/// «حساب البوابة» — نظيرُ PortalAccountCard في الويب: بطاقةٌ في ملفّ كلّ عميلٍ
-/// أو مورد تسأل الخادمَ هل لهذا الصفّ حسابُ دخولٍ للبوابة، فتعرض إنشاءه (بريد
-/// + كلمة مرور) أو الحسابَ مع تغيير كلمة المرور والإيقاف والحذف.
-/// الإدارةُ لأدوار ACCOUNT_ADMIN_ROLES في الخادم فقط.
+/// Portal account, twin of PortalAccountCard on the web: a card in each customer or supplier profile that asks the server whether this row has a portal login. It offers creating one (email + password), or shows the account with change password, suspend and delete. Management is limited to ACCOUNT_ADMIN_ROLES on the server.
 const _adminRoles = ['super_admin', 'admin', 'it_manager', 'it_specialist'];
 
 class PortalAccountCard extends StatefulWidget {
-  final String source; // مفتاحُ السجلّ: 'fleet_customer'، 'crm_company'…
-  final String refId;  // معرّفُ الصفّ
+  final String source; // Register key: 'fleet_customer', 'crm_company', etc.
+  final String refId;  // Row id
   final String? name;
   const PortalAccountCard({super.key, required this.source, required this.refId, this.name});
 

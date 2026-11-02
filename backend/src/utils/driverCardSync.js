@@ -1,36 +1,18 @@
 /**
- * بطاقةُ السائق سجلٌّ واحد — في قسم المركبات — ولقطتُها على ملفّ الموظّف تتبعه.
- *
- * ── لماذا ─────────────────────────────────────────────────────────────────────
- * بطاقةٌ جُدِّدت في المركبات حتّى ٢٠٢٧ بقيت في الموارد البشريّة على ٢٠٢٦ فظهرت
- * «منتهية» — لأنّ المزامنة كانت في مسارٍ واحدٍ (تعديل البطاقة) وبشرطٍ واحد (أن
- * تكون البطاقةُ مربوطةً بالموظّف بمعرّفه). وأغلبُ البطاقات مربوطةٌ برقم الهويّة
- * لا بالمعرّف، والإنشاءُ والحذف لا يمرّان بها أصلًا، والتعديلُ من الموارد
- * البشريّة لا يصل المركبات. فكان الرقمان يفترقان في كلّ اتّجاه.
- *
- * فالمزامنةُ هنا في الاتّجاهين، وتُنادى من كلّ مسارٍ يكتب:
- *   • المركبات ← الموارد البشريّة: `pushCardToEmployee` بعد إنشاء البطاقة أو
- *     تعديلها أو تجديدها، و`clearEmployeeCard` بعد حذفها.
- *   • الموارد البشريّة ← المركبات: `pushEmployeeToCard` بعد تعديل حقول البطاقة
- *     من الماستر أو من ملفّ الموظّف أو تجديدها — فتُكتب في السجلّ نفسه ثمّ
- *     تعود منه، فلا يبقى على الملفّ إلّا ما في السجلّ.
- *
- * والربطُ بالمعرّف إن وُجد، وإلّا برقم الهويّة في عمودَي الهويّة معًا (المقيم
- * في `iqamaNumber` والسعوديّ في `nationalId`) — ويُثبَّت المعرّفُ حين يُعرف.
+ * A driver card is one record, in the vehicles section; its snapshot on the employee file follows it.
+ * Sync used to run on one path under one condition, so cards renewed in vehicles stayed expired in HR. Now it is two-way and called from every writing path: `pushCardToEmployee` / `clearEmployeeCard` (vehicles to HR) and `pushEmployeeToCard` (HR to vehicles, written to the registry and read back).
+ * Linking is by id if present, otherwise by ID number in both columns (`iqamaNumber` for residents, `nationalId` for Saudis); the id is saved once known.
  */
 const CARD_FIELDS_ON_EMPLOYEE = ['driverCardNumber', 'driverCardType', 'driverCardExpiry'];
 
 const clean = (v) => String(v ?? '').trim();
 
-// الإبطالُ قبل الإعلان: كان الحدثُ يُرسَل ثمّ تُمسَح الذاكرة، فيجلب المستمعُ
-// الأسرعُ القائمةَ القديمة ويبقى متأخّرًا تغييرًا واحدًا.
+// Invalidate before announce: the event used to be sent and then the cache cleared, so the fastest listener fetched the old list and stayed one change behind.
 function emitAll() {
   require('./vehicleAnnounce').announceVehicles({}, { events: ['hr:master', 'hr:employee'] });
 }
 
-// جانبُ المركبات وحدَه — حين يُعلن المتحكّمُ (الموارد البشريّة) جانبَه بنفسه.
-// كانت كتابةُ البطاقة من الموارد البشريّة تُنادى بـ`emit: false` فلا تعلم بها
-// صفحةُ بطاقات السائقين حتى تُفتح من جديد.
+// Vehicles side only, when the controller (HR) announces its own side. HR's card write was called with `emit: false`, so the driver cards page did not know until reopened.
 function emitVehicles() {
   require('./vehicleAnnounce').announceVehicles({});
 }
@@ -46,40 +28,35 @@ async function employeeOfCard(card) {
   return Employee.findOne({ isHrRecord: { $ne: false }, $or: [{ iqamaNumber: id }, { nationalId: id }] });
 }
 
-/** تاريخٌ بتوقيت الرياض «YYYY-MM-DD» — والنصُّ يُترك كما هو. */
+/** A Riyadh-time date 'YYYY-MM-DD'; a string is left as is. */
 const ymdRiyadh = (v) => {
   if (v instanceof Date) return isNaN(v) ? '' : v.toLocaleDateString('en-CA', { timeZone: 'Asia/Riyadh' });
   return clean(v);
 };
 
-/** المركبات ← الموارد البشريّة. */
+/** Vehicles to HR. */
 async function pushCardToEmployee(card, { emit = true } = {}) {
   if (!card) return null;
   const emp = await employeeOfCard(card);
   if (!emp) return null;
   const DriverCard = require('../models/DriverCard');
   if (!card.employee) await DriverCard.updateOne({ _id: card._id }, { $set: { employee: emp._id } });
-  // سجلٌّ بلا رقمٍ ولا تاريخٍ (سائقٌ مُدرَجٌ لم تُصدَر بطاقتُه بعد) لا يُكتب منه شيء:
-  // لا جديدَ فيه، وكتابتُه تمحو ما في الملفّ من قرارٍ مثل «غير مطلوب».
+  // A record with no number and no date (a listed driver whose card is not issued yet) writes nothing: it has nothing new, and writing it would erase a decision on the file such as 'not required'.
   if (!clean(card.cardNumber) && !clean(card.expiryDate)) return null;
   const set = {
     driverCardNumber: clean(card.cardNumber),
     driverCardType: clean(card.cardType),
-    // التاريخُ في البطاقة كائنُ Date، والخانةُ في الملفّ نصٌّ «YYYY-MM-DD». كان
-    // يُكتب `String(date)` («Sat Oct 24 2026 03:00:00 GMT+0300…») فتقرؤه صفحةُ
-    // الانتهاءات وتعجز عنه عدّاداتُ اللوحة — فاختلف الرقمان بواحد.
+    // The card date is a Date object while the file field is a 'YYYY-MM-DD' string. `String(date)` used to be written ('Sat Oct 24 2026 03:00:00 GMT+0300...'), which the expiries page reads but the dashboard counters cannot, so the two numbers differed by one.
     driverCardExpiry: ymdRiyadh(card.expiryDate),
   };
   const same = CARD_FIELDS_ON_EMPLOYEE.every((k) => ymdRiyadh(emp[k]) === set[k]);
-  // بطاقةٌ موجودةٌ في السجلّ ليست «غير مطلوبة» ولا «مطلوبة» — هي متوفّرة.
-  // والعلاماتُ تُحفظ لكلّ خانةٍ باسمها (`driverCardExpiryStatus`…) — راجع
-  // hrFields.statusKeyOf. و«غير مطلوب» كانت تُكتب أحيانًا في خانة الرقم نفسِها.
+  // A card that exists in the registry is neither 'not required' nor 'required': it is available. Flags are stored per field by name (`driverCardExpiryStatus` ...); see hrFields.statusKeyOf. 'Not required' was sometimes written into the number field itself.
   const STATUS_KEYS = ['driverCardNumberStatus', 'driverCardExpiryStatus', 'driverCardStatusStatus'];
   const fs = emp.fieldStatus || new Map();
   const get = (k) => (typeof fs.get === 'function' ? fs.get(k) : fs[k]);
   const hasCard = !!clean(card.cardNumber);
   const staleStatus = hasCard && STATUS_KEYS.some((k) => get(k));
-  // المفرداتُ القائمة في الملفّ: «يوجد» / «لايوجد».
+  // Existing vocabulary on the file: the 'exists' and 'does not exist' words.
   if (hasCard) set.driverCardStatus = 'يوجد';
   const sameStatus = !hasCard || clean(emp.driverCardStatus) === 'يوجد';
   if (same && sameStatus && !staleStatus) return null;
@@ -91,7 +68,7 @@ async function pushCardToEmployee(card, { emit = true } = {}) {
   return { employee: emp._id, set };
 }
 
-/** حُذفت البطاقةُ من السجلّ فتُمسح لقطتُها من الملفّ. */
+/** The card was deleted from the registry, so its snapshot is cleared from the file. */
 async function clearEmployeeCard(card, { emit = true } = {}) {
   if (!card) return null;
   const emp = await employeeOfCard(card);
@@ -102,10 +79,7 @@ async function clearEmployeeCard(card, { emit = true } = {}) {
   return { employee: emp._id };
 }
 
-/**
- * الموارد البشريّة ← المركبات. `emp` بعد الحفظ. تُكتب البطاقة في السجلّ (أو
- * تُنشأ إن كُتب لها رقمٌ ولا سجلَّ لها) ثمّ تعود لقطتُها منه.
- */
+/** HR to vehicles. `emp` is after save. The card is written to the registry (or created if it has a number and no record) and its snapshot returns from there. */
 async function pushEmployeeToCard(emp, { userId = null, emit = true } = {}) {
   if (!emp) return null;
   const DriverCard = require('../models/DriverCard');
@@ -118,8 +92,7 @@ async function pushEmployeeToCard(emp, { userId = null, emit = true } = {}) {
     cardType: toStr(emp.driverCardType),
     expiryDate: toStr(emp.driverCardExpiry),
   };
-  // «مطلوب» / «غير مطلوب» / «لايوجد» كلماتٌ إداريّة تُكتب في الخانات أحيانًا —
-  // ليست تاريخًا ولا رقمَ بطاقة، فلا تُنشئ بطاقةً ولا تُكتب في السجلّ.
+  // Administrative words ('required', 'not required', 'does not exist') are sometimes typed into the fields: they are neither a date nor a card number, so they create no card and are not written to the registry.
   if (want.expiryDate && !/^\d{4}-\d{2}-\d{2}/.test(want.expiryDate)) want.expiryDate = '';
   if (want.cardNumber && !/\d/.test(want.cardNumber)) want.cardNumber = '';
   if (!card) {
@@ -129,15 +102,14 @@ async function pushEmployeeToCard(emp, { userId = null, emit = true } = {}) {
       ...want, createdBy: userId || undefined,
     });
   } else {
-    // الفارغُ لا يمحو السجلّ: خانةٌ مُسحت في الموارد البشريّة (أو كُتبت فيها
-    // كلمة) لا تحذف رقمَ بطاقةٍ قائمةٍ في المركبات — الحذفُ من هناك.
+    // Empty does not erase the registry: a field cleared in HR (or given a word) does not delete an existing card number in vehicles; deletion happens there.
     const real = Object.fromEntries(Object.entries(want).filter(([, v]) => v));
     const changed = Object.keys(real).some((k) => clean(card[k]) !== real[k]);
     if (!changed && String(card.employee || '') === String(emp._id)) return null;
     card.set({ ...real, employee: emp._id, lastModifiedBy: userId || card.lastModifiedBy });
     await card.save();
   }
-  // ثمّ تعود لقطةُ الملفّ من السجلّ — فيبقى الطرفان على قيمةٍ واحدة.
+  // Then the file snapshot returns from the registry, so both sides hold one value.
   await pushCardToEmployee(card, { emit: false });
   if (emit) emitAll(); else emitVehicles();
   return { card: card._id };

@@ -1,31 +1,22 @@
 /**
- * بحثٌ عربيٌّ لا يُعاقب من كتب الاسمَ كما يُنطَق.
- *
- * ── ما يُصلحه ───────────────────────────────────────────────────────────────
- * الاسمُ الواحد يُكتب بصورٍ: «إبراهيم» و«ابراهيم»، «حمزة» و«حمزه»، «يحيى»
- * و«يحيي». والبحثُ الحرفيُّ يجد واحدةً ويُخفي البقيّة — فيقول الموظّفُ «الاسم
- * مش موجود» وهو موجود. وكذلك الأرقامُ العربيّة: «٢٥٨٥» و«2585» رقمٌ واحد.
- *
- * والمسافاتُ تُرخى: لوحةُ الحرفين تُنسخ من أبشر بمسافتين وتُخزَّن بواحدة، وكان
- * الموظّفُ يمسح مسافةً بيده ليجد مركبتَه.
- *
- * ولا يُثبَّت الطرفان: البحثُ عن جزءٍ من اسمٍ أو رقمٍ هو الاستعمال الغالب.
+ * Arabic search tolerant of spelling variants (alef forms, ta marbuta vs ha, ya vs alef maqsura), Arabic-Indic vs Latin digits and extra spaces.
+ * Both ends are left unanchored because searching part of a name or number is the common case.
  */
 
-/** أرقامٌ عربيّةٌ إلى لاتينيّة — «٢٥٨٥» و«2585» شيءٌ واحد. */
+/** Arabic-Indic digits to Latin: the two forms of 2585 are the same number. */
 const westernDigits = (s) => String(s).replace(/[٠-٩]/g, (d) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d))
   .replace(/[۰-۹]/g, (d) => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d));
 
 /**
- * تعبيرٌ نمطيٌّ يتسامح مع صور الحروف العربيّة والمسافات.
- * @param {string} s نصُّ البحث كما كتبه المستخدم
+ * Regular expression tolerant of Arabic letter variants and spacing.
+ * @param {string} s search text as typed by the user
  * @returns {RegExp}
  */
 const arabicSearchRegex = (s) => {
   const body = westernDigits(String(s || '').trim())
-    // تُهرَّب رموزُ التعبير النمطيّ أوّلًا: نصٌّ فيه «(» يُنفَّذ على المجموعة كاملة.
+    // Regex symbols are escaped first: text containing an opening parenthesis would otherwise throw on the whole group.
     .replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-    // الحركاتُ والتطويلُ تُلغى: تُنسخ من مستنداتٍ وتُكتب بلا حركات.
+    // Diacritics and tatweel are ignored: text is copied from documents and typed without them.
     .replace(/[ً-ْـ]/g, '')
     .replace(/[اأإآٱ]/g, '[اأإآٱ]')
     .replace(/[هة]/g, '[هة]')
@@ -35,19 +26,15 @@ const arabicSearchRegex = (s) => {
   return new RegExp(body, 'i');
 };
 
-/** شرطُ `$or` على قائمة حقول — تُبنى مرّةً ويُعاد استعمالُها. */
+/** `$or` condition over a list of fields, built once and reusable. */
 const searchOr = (fields, s) => {
   const rx = arabicSearchRegex(s);
   return fields.map((f) => ({ [f]: rx }));
 };
 
 /**
- * مفتاحُ مقارنةٍ للبحث في الذاكرة: يُطوى النصُّ ونصُّ البحث بالطيّ نفسِه ثمّ
- * يُسأل «هل يحتوي هذا ذاك».
- *
- * وفوق ما يطويه `arabicSearchRegex` تسقط الفواصلُ كلُّها لا المسافاتُ وحدَها:
- * رقمُ الحاوية يُكتب «MSKU 123 4567» و«MSKU-1234567» و«MSKU1234567»، ورقمُ
- * البوليصة يُنسخ من الإيميل بشرطةٍ ومن الورقة بلا شرطة — وهو رقمٌ واحد.
+ * Comparison key for in-memory search: both the text and the query are folded the same way, then containment is tested.
+ * Beyond what `arabicSearchRegex` folds, all separators are dropped, not just spaces: a container number is written with spaces, with a dash or with none, and a waybill number is copied from email with a dash and from paper without; they are one number.
  */
 const searchKey = (s) => westernDigits(String(s == null ? '' : s))
   .toLowerCase()
@@ -56,7 +43,7 @@ const searchKey = (s) => westernDigits(String(s == null ? '' : s))
   .replace(/ة/g, 'ه')
   .replace(/[ىئ]/g, 'ي')
   .replace(/ؤ/g, 'و')
-  // المسافاتُ والشرطاتُ والنقاطُ والشُّرَط المائلة وما شابهها.
+  // Spaces, dashes, dots, slashes and similar separators.
   .replace(/[\s\-_./\\,:;#|'"()[\]{}–—]+/g, '');
 
 module.exports = { arabicSearchRegex, searchOr, westernDigits, searchKey };

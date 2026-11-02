@@ -1,11 +1,6 @@
 'use client';
-// تأمين المركبات — مركبةً مركبة.
-//
-// وهي غيرُ صفحة «وثائق تأمين المركبات» المجاورة: تلك تعرض الوثائق (تسعًا
-// وأربعين وثيقةً تغطّي ثلاثمئة وخمسًا وثلاثين مركبة) وتُجدَّد الوثيقةُ فيها
-// فتسري على كل مركباتها دفعةً واحدة. وهذه تعرض المركبات، لأن السؤال يأتي
-// بالاتجاهين: «ما الذي تغطّيه هذه الوثيقة؟» و«بأيّ وثيقةٍ هذه المركبة مؤمَّنة
-// وإلى متى وبكم؟». الثانية لم يكن لها جواب في أي شاشة.
+// Vehicle insurance, vehicle by vehicle.
+// This differs from the adjacent vehicle insurance documents page: that one lists documents (49 documents covering 335 vehicles), and renewing a document applies to all its vehicles at once. This one lists vehicles, because the question comes both ways: what does this document cover, and which document insures this vehicle, until when and for how much. The second had no answer on any screen.
 import { ShieldCheck } from 'lucide-react';
 import DocumentFamilyPage, { commonColumns, type DocColumn, type DocField } from '@/components/vehicles/DocumentFamilyPage';
 import { fmtDate, money } from '@/lib/vehicleRegistry';
@@ -18,26 +13,14 @@ const COLUMNS: DocColumn[] = [
   { key: 'coverageTypeAr', ar: 'نوع التأمين', en: 'Coverage type', get: (v) => v.insurance?.coverageTypeAr, width: 16 },
   {
     key: 'premiumSar', ar: 'قيمة التأمين', en: 'Premium', width: 16,
-    // مركبةٌ يسدّد قسطَها المموِّل ليست «بلا قسط»: هي مؤمَّنة والرقم عنده.
-    // تفريغُ الخانة كان يجعلها تُعدّ بلا تأمين في تقرير المدير المالي.
+    // A vehicle whose premium is paid by the financier is not "no premium": it is insured and the figure is with the financier. Blanking the field made it count as uninsured in the finance manager's report.
     get: (v) => (v.insurance?.premiumSar != null ? money(v.insurance.premiumSar)
       : v.insurance?.premiumStatusAr || ''),
   },
 ];
 
-// ── و«جهة سداد القسط» أُزيلت من الإدخال ─────────────────────────────────────
-// خانةٌ لا يُبنى عليها شيءٌ ولا تُقرأ في تقرير: لا تُفلتَر ولا تُجمَع ولا تدخل في
-// حسبة. وكلُّ خانةٍ في نموذجٍ ثمنُها وقتُ من يملؤه، وخانةٌ لا تُقرأ تُملأ مرّةً
-// ثمّ تُهمَل فتصير بيانًا قديمًا يُظنّ حديثًا. والقيمةُ المخزَّنةُ باقيةٌ في
-// السجلّ (يقرؤها عمودُ «قيمة التأمين» حين يدفعها المموِّل) — أُزيل إدخالُها لا
-// أثرُها.
-// ── والشركةُ تُختار لا تُكتب ─────────────────────────────────────────────────
-// «شركة التأمين» و«نوع التغطية» و«جهة سداد القسط» لها قوائمُ مُدارةٌ في إعدادات
-// القسم، والتعديلُ من صفحة سجل المركبات يستعملها. وكان التعديلُ من هذه الصفحة —
-// وهي الصفحةُ التي يُعدَّل منها التأمينُ فعلًا — خانةً حرّةً: فيُكتب الاسمُ الواحدُ
-// بألف صيغة («تكافل الراجحي» و«التكافل» و«الراجحي تكافل»)، فيصير في التقارير
-// ثلاثَ شركاتٍ وهي واحدة، ولا يُجمَع قسطُها ولا تُقارَن. والقائمةُ نفسُها تُضاف
-// إليها شركةٌ جديدةٌ من موضعها بلا مغادرة الشاشة.
+// "Premium payer" was removed from entry. It is a field nothing builds on and no report reads: it is not filtered, summed or used in any calculation. Each form field costs the filler time, and an unread field is filled once and then neglected, turning into stale data believed fresh. The stored value stays in the register (the insured-value column reads it when the financier pays); its entry was removed, not its trace.
+// The company is picked, not typed. Insurer, coverage type and premium payer have managed lists in section settings, and the edit from the vehicle registry page uses them. Editing from this page, where insurance is actually edited, was a free field, so one name was written in a thousand forms (three spellings of the same insurer), appearing as three companies in reports, so its premium is neither summed nor compared. A new company can be added to the list itself from where it is without leaving the screen.
 const FIELDS: DocField[] = [
   { path: 'insurance.policyNumber', ar: 'رقم وثيقة التأمين', en: 'Policy number', mono: true },
   { path: 'insurance.companyAr', ar: 'شركة التأمين', en: 'Insurer', lookup: 'vehicle_insurance_company' },

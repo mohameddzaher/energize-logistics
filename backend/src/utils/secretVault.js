@@ -1,19 +1,8 @@
 /**
- * secretVault — تخزين أسرار قابلة للاسترجاع (زي باسوورد إيميل الشركة).
- *
- * ليه تشفير مش هاش؟ باسوورد الدخول للسيستم بيتعمله hash لأننا محتاجين نتأكد منه
- * بس، مش نعرفه. الحاجة هنا مختلفة: ده باسوورد صندوق بريد على هوستنجر، وتقنية
- * المعلومات محتاجة **تقراه** عشان تديه للموظف أو تظبط له برنامج البريد. فـ bcrypt
- * مش هيفيد، والنص الصريح غير مقبول. الحل الوسط الصحيح: تشفير متماثل مع مفتاح
- * برّه قاعدة البيانات.
- *
- * AES-256-GCM: بيدّي سرية **و** كشف للتلاعب — لو حد عدّل الصف في مونجو، فك
- * التشفير بيفشل بدل ما يرجّع بيانات مضروبة.
- *
- * المفتاح جاي من `EMAIL_VAULT_KEY` (32 بايت hex أو base64). لو مش موجود، الحفظ
- * **بيترفض** بدل ما ينزل النص صريح — الفشل الصامت هنا معناه تسريب كلمات مرور.
- *
- *   توليد مفتاح:  node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+ * secretVault: storage for recoverable secrets (such as company mailbox passwords).
+ * Why encryption, not a hash: system login passwords are hashed because we only verify them. Here it is a Hostinger mailbox password that IT must read back to give to an employee or configure a mail client, so bcrypt is useless and plaintext unacceptable. The right middle ground is symmetric encryption with a key outside the database.
+ * AES-256-GCM gives confidentiality and tamper detection: if someone edits the row in Mongo, decryption fails instead of returning garbage.
+ * The key comes from `EMAIL_VAULT_KEY` (32 bytes, hex or base64). If missing, saving is rejected rather than storing plaintext; failing silently here would leak passwords. Generate a key: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
  */
 const crypto = require('crypto');
 
@@ -37,13 +26,10 @@ function getKey() {
   return cachedKey;
 }
 
-/** هل الخزنة جاهزة؟ الواجهة بتسأل عشان تقول للمستخدم بدل ما يكتب ويضيع شغله. */
+/** Whether the vault is ready; the UI asks so it can tell the user instead of losing their input. */
 const isReady = () => !!getKey();
 
-/**
- * تشفير نص. بيرجّع سلسلة واحدة `v1:iv:tag:ciphertext` بالـ base64 عشان تتخزن في
- * خانة واحدة من غير ما نحتاج نغيّر الـ schema لو الخوارزمية اتغيّرت بعدين.
- */
+/** Encrypt text. Returns one base64 string `v1:iv:tag:ciphertext` stored in a single field, so the schema need not change if the algorithm changes later. */
 function encrypt(plain) {
   const key = getKey();
   if (!key) {
@@ -54,17 +40,14 @@ function encrypt(plain) {
   }
   const text = String(plain ?? '');
   if (!text) return '';
-  const iv = crypto.randomBytes(12);                 // 96-bit IV، المقاس الموصى به لـ GCM
+  const iv = crypto.randomBytes(12);                 // 96-bit IV, the size recommended for GCM
   const cipher = crypto.createCipheriv(ALGO, key, iv);
   const enc = Buffer.concat([cipher.update(text, 'utf8'), cipher.final()]);
   const tag = cipher.getAuthTag();
   return [VERSION, iv.toString('base64'), tag.toString('base64'), enc.toString('base64')].join(':');
 }
 
-/**
- * فك التشفير. بيرجّع null لو مفيش قيمة، وبيرمي لو المفتاح غلط أو البيانات
- * اتلمست — أهون بكتير من إننا نرجّع حروف عشوائية على إنها كلمة المرور.
- */
+/** Decrypt. Returns null if there is no value, and throws if the key is wrong or the data was tampered with, which is far better than returning random characters as a password. */
 function decrypt(stored) {
   if (!stored) return '';
   const key = getKey();

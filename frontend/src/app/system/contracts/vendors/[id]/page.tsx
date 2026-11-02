@@ -1,8 +1,5 @@
 'use client';
-// ملف المورد — everything about one vendor in one place: contract state,
-// اتصال ومقر وأسطول، مرفقات ملف العقد (رفع/حذف)، التقييم اليدوي، التاريخ
-// التشغيلي الشهري (orders/utilisation/share), and the deep profile tables
-// imported from the hand-built Excel sheets, rendered generically.
+// Vendor file: everything about one vendor in one place: contract state, contact, headquarters and fleet, contract file attachments (upload/delete), manual rating, monthly operating history (orders/utilisation/share), and the deep profile tables imported from the hand-built Excel sheets, rendered generically.
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
@@ -28,9 +25,7 @@ const readFileAsDataUrl = (f: File) => new Promise<string>((resolve, reject) => 
   r.readAsDataURL(f);
 });
 
-// عنوان الجدول المستورد وتنسيق خليّته رُفعا خارج المكوّن لأن التصدير يسمّي بهما
-// أوراقه ويكتب بهما قيمه: لو بقيا داخله لخرج الملف بأسماء نوعٍ خام وبكسورٍ
-// عشرية مكان النسب المئوية التي يراها المستخدم على الشاشة.
+// The imported table title and cell formatting are hoisted out of the component because the export uses them to name sheets and write values; inside it the file would get raw type names and decimal fractions instead of the percentages shown on screen.
 const profileTableTitle = (type: string, ar: boolean) => ({
   branchDistribution: ar ? 'توزيع الطلبات حسب الفرع' : 'Orders by branch',
   monthlyDistribution: ar ? 'التوزيع الشهري' : 'Monthly distribution',
@@ -157,7 +152,7 @@ export default function VendorProfilePage() {
   const st = VENDOR_STATUS[vendor.status || 'unsigned'];
   const Back = isRTL ? ArrowRight : ArrowLeft;
 
-  // الجوال وحده يُعرض رابطًا، فيحمل نصَّه صراحةً: تصديرُ عقدة React ينتج «[object Object]».
+  // Only the mobile number is rendered as a link, so it carries its text explicitly: exporting a React node yields "[object Object]".
   const infoRows: { label: string; value: React.ReactNode; text?: string }[] = [
     { label: ar ? 'السجل التجاري' : 'CR number', value: vendor.crNumber || '—' },
     { label: ar ? 'نوع المورد' : 'Type', value: vendor.vendorType || '—' },
@@ -176,8 +171,7 @@ export default function VendorProfilePage() {
     { label: ar ? 'الحالة التشغيلية' : 'Operational status', value: vendor.operationalStatus || '—' },
   ];
 
-  // ملفُّ المورد عدّة جداول صغيرة لا جدولٌ واحد، فيخرج بورقةٍ لكلٍّ منها كما هي
-  // على الشاشة — تسطيحُها في ورقةٍ واحدة يخلط أعمدةً لا تشترك في معنى.
+  // The vendor file is several small tables, so it exports one sheet per table as on screen; flattening them into one sheet mixes columns that share no meaning.
   const labelValueCols = [
     { header: ar ? 'البند' : 'Item', key: 'label', width: 26 },
     { header: ar ? 'القيمة' : 'Value', key: 'value', width: 44 },
@@ -201,9 +195,7 @@ export default function VendorProfilePage() {
     columns: labelValueCols,
   }];
 
-  // الأوراق التالية تُضاف فقط إن كان لها ما يقابله على الشاشة: الصفحة تعرض
-  // «لا توجد مرفقات» و«لا توجد بيانات تشغيل» نصًّا، وورقةٌ فارغة في الملف تُقرأ
-  // خطأً على أنها بيانات مفقودة.
+  // The following sheets are added only if the screen shows the same: the page displays no-attachments and no-operating-data as text, and an empty sheet would read as missing data.
   if ((vendor.attachments || []).length) {
     sheets.push({
       name: ar ? 'المرفقات' : 'Attachments',
@@ -220,8 +212,7 @@ export default function VendorProfilePage() {
   if (utilisation.length) {
     sheets.push({
       name: ar ? 'التاريخ التشغيلي' : 'Monthly history',
-      // نسبة الاستغلال تُحسب صفًّا صفًّا كما في الجدول، وتُشتقّ حقلًا مستقلًّا كي
-      // لا يتكرّر مفتاح العمود «orders» مرّتين في الورقة نفسها.
+      // Utilisation percentage is computed row by row as in the table and derived as a separate field so the orders column key is not duplicated in one sheet.
       rows: utilisation.map((r) => ({ ...r, utilisationPct: r.expectedMonthlyCapacity ? pct(r.orders / r.expectedMonthlyCapacity) : '—' })),
       columns: [
         { header: ar ? 'الشهر' : 'Month', key: 'month', transform: (v, r) => (ar ? `${MONTH_AR[v]} ${r.year}` : `${r.year}-${String(v).padStart(2, '0')}`), width: 16 },
@@ -239,18 +230,15 @@ export default function VendorProfilePage() {
     if (!ptRows.length) continue;
     const keys = Object.keys(ptRows[0]);
     const heads: string[] = pt.sourceHeaders?.length === keys.length ? pt.sourceHeaders : keys;
-    // أسماء أوراق إكسل لا يجوز تكرارها، وبعض الموردين لهم أكثر من جدولٍ من النوع
-    // نفسه — فيُرقَّم المكرّر بدل أن يسقط الملفُّ كلُّه عند التوليد.
+    // Excel sheet names must be unique and some vendors have several tables of the same kind, so duplicates are numbered instead of failing the whole file at generation.
     let name = profileTableTitle(pt.type, ar);
     if (usedSheetNames.has(name)) { let n = 2; while (usedSheetNames.has(`${name} ${n}`)) n += 1; name = `${name} ${n}`; }
     usedSheetNames.add(name);
-    // مفاتيح هذه الجداول هي ترويسات ملفّات إكسل المستوردة، وقد تحمل نقطةً
-    // («No.» مثلًا) — والمصدِّر يقرأ المفتاح مسارًا منقّطًا، فتخرج الخانة فارغة.
-    // لذلك تُعاد تسمية الأعمدة داخليًّا وتُنسخ الصفوف عليها.
+    // Keys of these tables are headers of the imported Excel files and may contain a dot (such as No.), but the exporter reads keys as dotted paths and the cell would come out empty; so columns are renamed internally and rows are copied onto them.
     const safeRow = (r: any) => Object.fromEntries(keys.map((k, i) => [`c${i}`, r?.[k]]));
     sheets.push({
       name,
-      // صف الإجمالي جزءٌ من الجدول على الشاشة، فيُلحَق بآخر الصفوف لا يُسقَط.
+      // The totals row is part of the on-screen table, so it is appended to the end instead of being dropped.
       rows: (pt.totalRow ? [...ptRows, pt.totalRow] : ptRows).map(safeRow),
       columns: keys.map((k, i) => ({ header: String(heads[i] ?? k), key: `c${i}`, transform: (v: any) => fmtCell(v) })),
     });
@@ -397,7 +385,7 @@ export default function VendorProfilePage() {
         </div>
       )}
 
-      {/* مهامّ JP المربوطة بهذا المورّد — تُضاف من هنا. */}
+      {/* JP tasks linked to this vendor; added from here. */}
       <JpTaskPanel section="contracts" kind="vendor" refId={String(vendor._id)} ar={ar} />
 
       {/* Rating modal */}

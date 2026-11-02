@@ -4,53 +4,36 @@ const cookie = require('cookie');
 
 let io;
 
-// ── والحسابُ المحصورُ لا يسمع بثَّ الأقسام ──────────────────────────────────
-// البثُّ العامّ (`emitToAll`) يحمل صفوفَ الأقسام نفسَها — كشوفًا وقيودًا
-// وموظّفين. وحسابُ الشريك المحصور (config/scopedRoles) لا يرى من نظامنا إلّا
-// شاشتَه، فتُضمّ مقابسُه إلى غرفةٍ يُستثنى منها كلُّ بثٍّ عامّ، ويصلها ما
-// يُرسَل إلى دورها (`emitToRole`) أو إليه باسمه (`emitToUser`) فحسب.
+// Scoped partner accounts do not receive section broadcasts.
+// The global broadcast (`emitToAll`) carries section rows such as statements, entries and employees. A scoped partner account (config/scopedRoles) sees only its own screen, so its sockets join a room that excludes every global broadcast and receive only events sent to its role (`emitToRole`) or to the user (`emitToUser`).
 const SCOPED_ROOM = 'scoped-external';
 const broadcast = () => io.except(SCOPED_ROOM);
 
 const { isAllowedOrigin } = require('../config/cors');
 
 /**
- * ── والحدثُ يعبر بين العمّال ──────────────────────────────────────────────
- *
- * الإنتاجُ يعمل بعاملَين في وضع العنقود (pm2 cluster). و socket.io يبثّ داخل
- * العملية التي يعيش فيها وحدَها: يُعدَّل سائقٌ على العامل الأوّل فيصل الحدثُ
- * إلى المتّصلين به، ولا يصل إلى من اتّصل بالثاني أبدًا. فيبدو النظامُ حيًّا
- * لنصف المستخدمين وميّتًا للنصف الآخر — وهو تفسيرُ «ليه لازم أعمل ريفريش؟».
- * والأمرُ يشمل كلَّ شاشةٍ حيّة في النظام لا شاشةَ السائقين وحدَها.
- *
- * ولا يُضاف Redis لهذا: العنقودُ عندنا يدعم `watch`، وهو ما تعتمد عليه
- * `ttlCache` أصلًا في إبطال المخزن بين العمّال. فالمحوّلُ الرسميُّ لمونجو يفعل
- * الشيءَ نفسَه — مجموعةٌ محدودةُ الحجم وتيّارُ تغييرٍ عليها — بلا بنيةٍ جديدة.
- *
- * وإن تعذّر التركيبُ لأيّ سبب، يبقى البثُّ داخل العامل كما كان: نصفُ حيٍّ خيرٌ
- * من خادمٍ لا يقوم.
+ * Events cross between workers.
+ * Production runs two PM2 cluster workers and socket.io broadcasts only inside its own process, so a change on one worker never reaches clients on the other (half the users see a live system, half a stale one), on every live screen.
+ * The official Mongo adapter is used instead of Redis: a capped collection plus a change stream, which the cluster supports and ttlCache already relies on.
+ * If mounting fails, broadcasting stays within the worker.
  */
 const ADAPTER_COLL = 'socketevents';
 async function attachClusterAdapter(server) {
   try {
     const mongoose = require('mongoose');
-    // ── ويُنتظَر اتّصالُ مونجو ولا يُستسلَم عنده ─────────────────────────
-    // الخادمُ يفتح المقبسَ قبل أن يتّصل مونجو، فالانصرافُ عند أوّل نظرةٍ يعني
-    // ألّا يُركَّب المحوّلُ أبدًا — وهو ما حدث: نُشر التغييرُ ولم تُنشأ
-    // المجموعةُ أصلًا.
+    // Wait for the Mongo connection instead of giving up: the server opens the socket before Mongo connects, so bailing out on the first check meant the adapter was never mounted.
     if (mongoose.connection?.readyState !== 1) {
       await new Promise((resolve) => {
         const done = () => resolve();
         mongoose.connection.once('connected', done);
         mongoose.connection.once('open', done);
-        setTimeout(done, 30000);                     // لا يُنتظَر إلى الأبد
+        setTimeout(done, 30000);                     // Do not wait forever.
       });
     }
     if (mongoose.connection?.readyState !== 1) return false;
     const db = mongoose.connection.db;
 
-    // مجموعةٌ محدودةُ الحجم: الأحداثُ تُكتب وتُقرأ ثمّ لا تُحفَظ. تُنشأ مرّةً،
-    // ووجودُها مسبقًا ليس خطأً.
+    // Capped collection: events are written and read but not kept. Created once; already existing is not an error.
     try {
       await db.createCollection(ADAPTER_COLL, { capped: true, size: 1e6 });
     } catch (e) {
@@ -76,8 +59,7 @@ const initializeSocket = (server) => {
     },
   });
 
-  // يُركَّب بعد الإنشاء ولا يُنتظَر: الخادمُ يقوم فورًا، والمحوّلُ يلتحق بعد
-  // أن يتّصل مونجو.
+  // Mounted after creation without awaiting: the server starts immediately and the adapter attaches once Mongo is connected.
   attachClusterAdapter(io).then((ok) => {
     if (ok) console.log('socket.io: cluster adapter attached (mongo)');
   });
@@ -109,7 +91,7 @@ const initializeSocket = (server) => {
     if (socket.userRole) socket.join(`role:${socket.userRole}`);
     if (require('../config/scopedRoles').isScopedRole(socket.userRole)) {
       socket.join(SCOPED_ROOM);
-      // ولا ينضمّ إلى غرف اللوحات والعملاء والتشغيل — ما يُبَثّ فيها ليس له.
+      // Does not join the dashboard, customer and operations rooms; what is broadcast there is not for this account.
       return;
     }
 
@@ -152,18 +134,10 @@ const getIO = () => {
   return io;
 };
 
-// ── والإدارةُ الماليّة تسمع كلَّ مالٍ يتحرّك ────────────────────────────────
-// صفحاتُها تجمع مالَ الأقسام كلِّها، فأيُّ بثٍّ ماليٍّ في أيّ قسمٍ يمسح مخزنَها
-// ويُعلمها لتعيد القراءة. والمسحُ والإعلامُ يُجمَعان في نافذةٍ قصيرة: حفظُ كشفٍ
-// واحدٍ يبثّ ثلاثة أحداث، ولا معنى لثلاث قراءاتٍ متتالية.
-//
-// ── ولكلِّ حدثٍ أقسامُه لا الأقسامُ كلُّها ──────────────────────────────────
-// كان كلُّ حدثٍ يمسح مخزنَ الأقسام التسعة ويوقظ كلَّ صفحةٍ ماليّة. ومزامنةُ
-// منصّة التشغيل تبثّ `workflow:*` كلَّ ثوانٍ في ساعات العمل — فصفحةُ ماليات
-// التخليص، ولا شأنَ لها بكشوف التشغيل، كانت تُعاد من الصفر (ثانيتان) كلَّ
-// ثانيتين إلى عشر، ولا تستقرّ أمام المحاسب أبدًا. فصار كلُّ حدثٍ يسمّي الأقسامَ
-// التي تقرأ ما تغيّر (راجع مصادرَ كلِّ قسمٍ في financeController)، وما لم
-// يُسمَّ يمسح الكلَّ كما كان — فالخطأُ هنا قراءةٌ زائدة، لا رقمٌ قديم.
+// Finance listens to all money movement.
+// Its pages combine money from every section, so any financial broadcast in any section clears its cache and tells it to refetch. Clearing and notifying are coalesced in a short window because saving one statement emits three events.
+// Each event names the departments that read what changed (see each department's sources in financeController); an unnamed event clears all, so the error is an extra read, never a stale number.
+// This is needed because the operations platform sync broadcasts `workflow:*` every few seconds, which kept reloading unrelated finance pages.
 const FINANCE_DEPTS = [
   [/^(wallet:|workflow:|shipmentOrders:)/, ['operations', 'collections', 'fleet']],
   [/^fleet:/, ['fleet']],
@@ -193,43 +167,31 @@ const financeTouch = (event) => {
       const cache = require('../utils/ttlCache');
       if (!depts) cache.clear('finance:');
       else for (const d of depts) cache.clear(`finance:${d}:`);
-    } catch (e) { /* يكفي انتهاءُ المهلة */ }
-    // `depts` غائبٌ = الكلّ. والصفحةُ التي لا تعرف الحقلَ تعيد القراءةَ كما كانت.
+    } catch (e) { /* The timeout is enough. */ }
+    // Missing `depts` means all departments; a page that does not know the field refetches as before.
     if (io) broadcast().emit('finance:changed', { at: Date.now(), event: ev, ...(depts ? { depts } : {}) });
-    // ── والنافذةُ عشرُ ثوانٍ لا ثانيةٌ ونصف ─────────────────────────────────
-    // مزامنةُ منصّة التشغيل تبثّ كلَّ خمسٍ أو ستّ ثوانٍ في ساعات العمل، وكلُّ
-    // بثٍّ كان يوقظ كلَّ صفحةٍ ماليّةٍ مفتوحة. والحمولةُ نفسُها محفوظةٌ دقيقةً
-    // في الخادم، فالإيقاظُ الأسرعُ من ذلك لا يأتي برقمٍ جديد — يكلّف الهاتفَ
-    // نداءً وبيانات لا غير.
+    // The window is ten seconds, not one and a half.
+    // The operations sync broadcasts every five or six seconds in working hours, and each broadcast woke every open finance page. The payload is cached for a minute on the server, so faster wake-ups bring no new numbers, only extra calls and data on phones.
   }, 10000);
 };
 
-// ── والنظرةُ التنفيذيّة تسمع كلَّ قسم ─────────────────────────────────────
-// هي الشركةُ كلُّها في شاشة، فكلُّ حدثٍ في أيّ قسمٍ يعنيها — إلّا الإشعاراتِ
-// والمحادثاتِ وأحداثَ الكتابة، فلا رقمَ فيها. وتُجمَع الأحداثُ خمسَ ثوانٍ: مزامنةُ
-// المنصّة وحدها تبثّ عشراتٍ في الدقيقة.
+// The executive overview listens to every section.
+// It covers the whole company, so any event in any section matters, except notifications, chats and typing events, which carry no figures. Events are coalesced for five seconds because the platform sync alone emits dozens per minute.
 const EXEC_IGNORE = /^(notification|chat|remote:chat|typing|presence|user:|executive:|finance:changed|permissions:)/;
 let execTimer = null;
 const executiveTouch = (event) => {
   if (EXEC_IGNORE.test(String(event || '')) || execTimer) return;
   execTimer = setTimeout(() => {
     execTimer = null;
-    try { require('../utils/ttlCache').clear('exec:'); } catch (e) { /* يكفي انتهاءُ المهلة */ }
+    try { require('../utils/ttlCache').clear('exec:'); } catch (e) { /* The timeout is enough. */ }
     if (io) broadcast().emit('executive:changed', { at: Date.now(), event });
-    // النظرةُ التنفيذيّة صورةُ الشركة كلِّها ومخزنُها دقيقة — نصفُ دقيقةٍ
-    // تكفي، وكانت خمسَ ثوانٍ فتُعاد قراءتُها على الهاتف اثنتي عشرةَ مرّةً في
-    // الدقيقة بلا رقمٍ جديد.
+    // The executive overview is a company-wide snapshot with a one-minute cache, so half a minute is enough; the old five seconds caused twelve refetches per minute on phones with no new figures.
   }, 30000);
 };
 
 /**
- * ── والحمولةُ تُرسَل كما تُقرأ ──────────────────────────────────────────────
- * الخادمُ نسختان يصل بينهما مُحوِّلُ Mongo: الحدثُ يُكتب في مجموعةٍ بترميز BSON
- * وتقرؤه النسخةُ الأخرى. ووثيقةُ Mongoose تُرمَّز هناك **خامًا** لا عبر
- * `toJSON` — فتصل متّصلي النسخة الأخرى بلا حقولها المشتقّة (مراحلُ التخليص
- * `pipeline` اختفت من الشاشة بعد كلّ تعديل) وبما يحذفه `toJSON` عمدًا (ربحُ
- * المعاملة). ومتّصلو النسخة نفسِها يأخذونها صحيحة — فيظهر العطلُ لنصف الناس.
- * فتُحوَّل الحمولةُ إلى JSON صريحٍ مرّةً هنا: ما يخرج من أيّ نسخةٍ واحد.
+ * The payload is sent as it would be read.
+ * The two server instances are linked by the Mongo adapter, which encodes a Mongoose document as raw BSON, not through `toJSON`. Clients on the other instance would then miss derived fields (such as the customs `pipeline` stages) and receive what `toJSON` deliberately drops (transaction profit), while same-instance clients get it right. The payload is converted to explicit JSON once here so output is identical from either instance.
  */
 const plain = (data) => {
   if (data === undefined || data === null || typeof data !== 'object') return data;
@@ -243,20 +205,9 @@ const emitToAll = (event, data) => {
 };
 
 /**
- * البثُّ الذي يحترم ما يراه كلُّ دور.
- *
- * ── العلّة ──────────────────────────────────────────────────────────────────
- * الأعمدةُ الماليّة تُحجب عن غير أهلها في كلّ مسارٍ يمرّ بالخادم — القائمةُ
- * والتفصيلُ والتصديرُ وقوائمُ القيم والبحث. ثمّ يُعدَّل كشفٌ واحد، فيُبَثّ
- * المستندُ كاملًا إلى **كلّ** متّصل: رقمُ الفاتورة وصافيها وضريبتها تصل موظّفَ
- * العمليات في شاشته وقد مُنعت عنه في كلّ طلبٍ يطلبه.
- *
- * فالحجبُ لا يكون في مسارٍ ويُترك في آخر: بابٌ واحدٌ مفتوحٌ يُبطل الأبواب
- * المغلقةَ كلَّها.
- *
- * ── والحلُّ ────────────────────────────────────────────────────────────────
- * الحمولةُ تُبنى لكلّ دورٍ مرّةً واحدة، ثمّ تذهب لكلّ متّصلٍ حمولةُ دورِه —
- * وعددُ المتّصلين عشراتٌ لا آلاف، فالكلفةُ لا تُذكر.
+ * Broadcast that respects what each role may see.
+ * Financial columns are hidden from non-owners on every server path (list, detail, export, value lists, search), but a broadcast of the full document would leak invoice number, net and tax to every connected client, defeating all the other paths. One open path cancels all the closed ones.
+ * The payload is built once per role and each client gets its role's version; connected clients number in the dozens, so the cost is negligible.
  */
 const emitPerRole = (event, buildPayload) => {
   financeTouch(event);
@@ -277,7 +228,7 @@ const emitToUser = (userId, event, data) => {
   executiveTouch(event);
 };
 
-/** إلى كلِّ متّصلٍ بهذا الدور — وهو طريقُ الحساب المحصور الوحيدُ إلى الحدث الحيّ. */
+/** To every client with this role; it is the only route by which a scoped account receives live events. */
 const emitToRole = (role, event, data) => {
   if (io) io.to(`role:${role}`).emit(event, plain(data));
 };

@@ -51,12 +51,10 @@ export default function Ls2DriversPage() {
     setLoading(false);
   }, [range.from, range.to]);
   useEffect(() => { load(); }, [load]);
-  // ما يُكتب في القسم — من هذه الشاشة أو من غيرها — يظهر هنا في الحال. ونبضُ
-  // القياس عن بُعد (يحمل `vehicles`) لا يُعيد التحميل: يتكرّر كلَّ دقيقةٍ ولا يغيّر ما هنا.
+  // Anything written in the section, from this screen or elsewhere, appears here at once. The telemetry heartbeat (carries `vehicles`) does not reload: it repeats every minute and changes nothing here.
   useSocket('ls2:updated', useCallback((d: any) => { if (d?.vehicles === undefined) load(); }, [load]));
 
-  // السواقين: مين ماشي على مركبة حاليًا، ومين اتنقل بين أكتر من عربية في الفترة،
-  // ومين ما مشيش خالص — دي الأسئلة اللي بتتسأل على الكشف ده.
+  // Drivers: who is currently on a vehicle, who moved between several vehicles in the period, and who never drove; the questions asked of this sheet.
   const [dFilter, setDFilter] = useState('');
   const DRIVER_CHIPS: Chip[] = useMemo(() => [
     { key: '', label: ar ? 'الكل' : 'All' },

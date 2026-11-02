@@ -13,8 +13,7 @@ export const SERVICE_LABEL: Record<string, { ar: string; en: string }> = {
   finance: { ar: 'الفواتير والمدفوعات', en: 'Invoices & payments' },
 };
 
-// The shipment lifecycle, in the same words the operations team uses internally
-// — a customer asking "فين شحنتي؟" should get the same answer either way.
+// The shipment lifecycle, in the same words the operations team uses internally, so a customer asking where the shipment is gets the same answer either way.
 export const STATUS_LABEL: Record<string, { ar: string; en: string; color: string }> = {
   requesting: { ar: 'قيد الطلب', en: 'Requested', color: '#94a3b8' },
   loading: { ar: 'جارٍ التحميل', en: 'Loading', color: '#0ea5e9' },
@@ -56,11 +55,7 @@ export const CUSTOMS_STAGES: { key: string; ar: string; en: string }[] = [
 const LEGACY_CUSTOMS_STAGE: Record<string, string> = { containers_transported: 'transport_to_customer' };
 export const customsStageIndex = (stage: string) =>
   CUSTOMS_STAGES.findIndex((s) => s.key === (LEGACY_CUSTOMS_STAGE[stage] || stage));
-/**
- * مراحلُ معاملةٍ بعينها كما يرسلها الخادم (`pipeline`): ما يَلزمها وحدَه، وما
- * أُنجز منه. الدورةُ تتفرّع، فقائمةٌ ثابتةٌ تُري العميلَ مراحلَ ليست من طريقه.
- * وما لم يحمل `pipeline` (جوابٌ قديم) يُقرأ بموضع مرحلته في القائمة.
- */
+/** Stages of one transaction as sent by the server (`pipeline`): only the ones it needs and which are done. The cycle branches, so a fixed list would show the customer stages not on his path. Without `pipeline` (older reply) it is read by the stage's position in the list. */
 export interface PortalStep { key: string; ar: string; en: string; done: boolean }
 export function customsSteps(c: { stage?: string; cargoType?: string; pipeline?: { steps?: { key: string; done: boolean; locked: boolean }[]; percent?: number } }): { steps: PortalStep[]; percent: number; done: number } {
   const name = (key: string) => {

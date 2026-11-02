@@ -1,18 +1,11 @@
-// قوائمُ الموارد البشريّة في التطبيق — نظيرُ HrQuickFilters وSearchableSelect في الموقع.
-//
-// ١) `pickFromList` — قائمةٌ فيها بحث تُفتح من الأسفل وتُرجع الاختيار. منها تُختار
-//    خاناتُ القوائم المغلقة: القسم والجنسيّة والمدينة والمشروع (utils/hrLists في الخادم).
-// ٢) `PickField` — خانةُ نموذجٍ تفتح تلك القائمة.
-// ٣) `HrQuickFilters` — شرائحُ القسم · المدينة · حالة العمل · المشروع · الجنسية فوق
-//    اللوحة وقائمة الموظفين. تكتب في الفلتر نفسِه الذي تقرؤه لوحةُ الفلترة الكاملة
-//    والخادم (`buildFilter`) — فكلُّ رقمٍ يُحسَب عليها، كالموقع تمامًا.
+// HR pickers for the app, twin of HrQuickFilters and SearchableSelect on the web. (1) `pickFromList`: searchable bottom list returning the choice, used for closed-list fields: department, nationality, city, project (utils/hrLists on the server). (2) `PickField`: form field that opens it. (3) `HrQuickFilters`: department, city, work status, project and nationality chips above the dashboard and employee list. They write into the same filter the full filter sheet and the server (`buildFilter`) read, so every count matches the web.
 import 'package:flutter/material.dart';
 import '../services/api.dart';
 import '../services/lang.dart';
 import 'search_field.dart';
 import 'theme.dart';
 
-/// يفتح قائمةً فيها بحث ويُرجع ما اختير ('' = مسح، null = إلغاء).
+/// Opens a searchable list and returns the choice ('' = clear, null = cancel).
 Future<String?> pickFromList(BuildContext context, {required String title, required List<String> options, String current = ''}) {
   return showModalBottomSheet<String>(
     context: context,
@@ -81,7 +74,7 @@ class _PickSheetState extends State<_PickSheet> {
   }
 }
 
-/// خانةُ نموذجٍ تُختار قيمتُها من قائمةٍ فيها بحث.
+/// Form field whose value is picked from a searchable list.
 class PickField extends StatelessWidget {
   final String label;
   final String value;
@@ -92,7 +85,7 @@ class PickField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // القيمةُ القديمةُ التي ليست في القائمة تبقى ظاهرة — إخفاؤها يوهم أنّ الخانة فارغة.
+    // An old value not in the list stays visible; hiding it would suggest the field is empty.
     final opts = [if (value.isNotEmpty && !options.contains(value)) value, ...options];
     return InkWell(
       onTap: () async {
@@ -107,7 +100,7 @@ class PickField extends StatelessWidget {
   }
 }
 
-/// أسماءُ قائمةٍ مرجعيّة (`/api/lookups`) بنصّها العربيّ.
+/// Names of a reference list (`/api/lookups`) in their Arabic text.
 Future<List<String>> loadLookupNamesHr(String type) async {
   try {
     final d = await Api.instance.get('/api/lookups?type=${Uri.encodeComponent(type)}&active=true');
@@ -128,18 +121,17 @@ const hrQuickKeys = [
   ('iqamaProfession', 'المهنة في الإقامة', 'Iqama occupation'),
 ];
 
-/// شرائحُ الفلترة السريعة — كلُّ شريحةٍ تفتح قيمَها بأعدادها، وفيها بحثٌ واختيارٌ متعدّد.
+/// Quick filter chips: each opens its values with counts, with search and multi-select.
 class HrQuickFilters extends StatelessWidget {
   final Map<String, String> value;
   final ValueChanged<Map<String, String>> onChanged;
-  /// ثوابتُ النطاق — `scope=all` في قائمة الموظفين، كالموقع.
+  /// Scope constants: `scope=all` in the employee list, as on the web.
   final Map<String, String> params;
-  /// نقطةُ الخيارات — شاشاتٌ خارجَ ماستر الموارد البشريّة (رسومُ الإقامات في
-  /// الماليّة) تعدّ قيمَها على صفوفها هي، بالشكل نفسِه `{ filters: [...] }`.
+  /// Options endpoint: screens outside the HR master (residency fees in finance) count values over their own rows, in the same `{ filters: [...] }` shape.
   final String optionsUrl;
-  /// فلاترُ شاشةٍ أخرى بالشكل نفسِه (لوحةُ التخليص) — والافتراضُ فلاترُ الموارد البشريّة.
+  /// Filters of another screen in the same shape (clearance board); the default is the HR filters.
   final List<(String, String, String)> keys;
-  /// خياراتٌ جاءت مع ردّ الشاشة نفسِه (`filters: [{key, values: [{value,count,label}]}]`) — فلا نداءَ ثانٍ.
+  /// Options that came with the screen's own response (`filters: [{key, values: [{value,count,label}]}]`), so no second call.
   final List<Map<String, dynamic>>? facets;
   const HrQuickFilters({super.key, required this.value, required this.onChanged, this.params = const {}, this.optionsUrl = '/api/hr/master/filters', this.keys = hrQuickKeys, this.facets});
 

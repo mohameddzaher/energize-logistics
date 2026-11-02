@@ -59,9 +59,7 @@ export default function RecurringPage() {
     { header: 'Avg resolution', key: 'avgResolutionMinutes', transform: (v: any) => fmtDuration(v, 'en'), width: 16 },
     { header: 'Affected departments', key: 'affectedDepartments', transform: (v: any) => (v || []).join(', '), width: 32 },
   ];
-  // التصنيف يُفلتَر على الخادم، والتجميع نفسه يجري هناك: تصدير المعروض وحده كان
-  // يُخرج مجموعاتِ تصنيفٍ واحد باسم «المشكلات المتكرّرة» كلّها، فصار «الكلّ»
-  // نداءً بلا معامل التصنيف.
+  // Category is filtered on the server and aggregated there; export 'all' must call without the category parameter or it exports one recurring-issues group as everything.
   const fetchAllForExport = async () => {
     const d = await api.get<{ groups: RecurringGroup[] }>('/api/it/tickets/recurring');
     return [{ name: 'Recurring', rows: d.groups || [], columns: exportColumns }];

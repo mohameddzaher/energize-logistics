@@ -4,21 +4,18 @@ import 'package:url_launcher/url_launcher.dart';
 import '../services/lang.dart';
 import 'theme.dart';
 
-/// أزرار الاتصال/الواتساب لأي رقم — نستخدمها جنب السائق (وأي جهة اتصال) عشان
-/// نكلّمه أو نفتح شات واتساب فورًا بدون ما ننسخ الرقم.
-///
-/// تطبيع الرقم للواتساب: أرقام فقط، والصفر البادئ (محلي سعودي) يتحوّل لـ 966.
+/// Call and WhatsApp buttons for any number, shown beside the driver or any contact to call or open a WhatsApp chat without copying the number. WhatsApp normalization: digits only, and a leading zero (Saudi local) becomes 966.
 
 String _digits(String raw) => raw.replaceAll(RegExp(r'[^0-9+]'), '');
 
-/// الصيغة الدولية للواتساب (بدون + أو أصفار بادئة، مع كود الدولة).
+/// International WhatsApp format (no + or leading zeros, with country code).
 String waNumber(String raw) {
   var d = raw.replaceAll(RegExp(r'[^0-9]'), '');
   if (d.startsWith('00')) { d = d.substring(2); }
   if (d.startsWith('0')) {
-    d = '966${d.substring(1)}'; // محلي سعودي
+    d = '966${d.substring(1)}'; // Saudi local number
   } else if (d.length == 9 && d.startsWith('5')) {
-    d = '966$d'; // جوال بدون صفر
+    d = '966$d'; // Mobile number without the leading zero
   }
   return d;
 }
@@ -32,7 +29,7 @@ Future<void> _open(Uri uri) async {
 Future<void> callNumber(String phone) => _open(Uri.parse('tel:${_digits(phone)}'));
 Future<void> whatsappNumber(String phone) => _open(Uri.parse('https://wa.me/${waNumber(phone)}'));
 
-/// صفّ صغير فيه أيقونتَي اتصال + واتساب — يظهر فقط لو فيه رقم.
+/// Small row with call and WhatsApp icons; shown only when a number exists.
 class ContactButtons extends StatelessWidget {
   final String? phone;
   final double size;
@@ -56,20 +53,13 @@ class ContactButtons extends StatelessWidget {
   }
 }
 
-/// ── جوّالٌ سعوديّ: المفتاحُ على اليسار دائمًا ────────────────────────────────
-///
-/// الرقمُ يُكتب بالأرقام اللاتينيّة ويُقرأ من اليسار في كلّ لغة. وحين يكون
-/// الحقلُ داخل شاشةٍ عربيّة (`rtl`) يذهب `prefixText` إلى **يمينه** وتجيء
-/// الأرقامُ يسارَه: يُقرأ معكوسًا عمّا يُكتب، ومخالفًا لما يراه من يفتح
-/// الشاشةَ بالإنجليزيّة. فالحقلُ وحدَه `ltr`: «+966» يسارًا والأرقامُ بعده.
-///
-/// والمخزَّنُ في المتحكّم تسعُ خاناتٍ محليّة، والكاملُ يُؤخَذ بـ`saPhone`.
+/// Saudi mobile: prefix always on the left. Digits are Latin and read left to right in every language; in an RTL field `prefixText` would go to the right and read reversed. So the field alone is `ltr`: "+966" on the left, digits after it. The controller holds nine local digits; the full number comes from `saPhone`.
 class PhoneSA extends StatelessWidget {
   const PhoneSA({super.key, required this.controller, this.label, this.onChanged, this.hint = '5XXXXXXXX'});
 
   final TextEditingController controller;
   final String? label;
-  /// يُنادى بالرقم الكامل «+9665XXXXXXXX» أو بالفراغ.
+  /// Called with the full number "+9665XXXXXXXX" or with empty.
   final void Function(String full)? onChanged;
   final String hint;
 
@@ -103,7 +93,7 @@ class PhoneSA extends StatelessWidget {
   }
 }
 
-/// تسعُ خاناتٍ محليّة ← الرقمُ الكامل كما يُخزَّن في النظام.
+/// Nine local digits to the full number as stored in the system.
 String saPhone(String local) {
   var d = local.replaceAll(RegExp(r'\D'), '');
   if (d.startsWith('966')) d = d.substring(3);
@@ -112,7 +102,7 @@ String saPhone(String local) {
   return '+966${d.length > 9 ? d.substring(0, 9) : d}';
 }
 
-/// والعكسُ: ما يُعرَض في الحقل من رقمٍ مخزَّن.
+/// The reverse: the displayed field value from a stored number.
 String saLocal(String full) {
   var d = full.replaceAll(RegExp(r'\D'), '');
   if (d.startsWith('966')) d = d.substring(3);

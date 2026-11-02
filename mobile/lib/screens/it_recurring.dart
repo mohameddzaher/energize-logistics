@@ -10,11 +10,9 @@ import 'it_common.dart';
 import 'it_tickets.dart';
 import '../ui/search_field.dart';
 
-/// المشاكل المتكررة — تجميع التذاكر المتشابهة (بالبصمة) بعدد التكرار، لكشف
-/// الأعطال المزمنة. نفس /api/it/tickets/recurring على الويب: فلترُ التصنيف على
-/// الخادم، وبحثٌ في الشاشة، والمجموعةُ تُفتح على بلاغاتها، وتصديرُ المعروض أو الكلّ.
+/// Recurring issues: groups similar tickets (by fingerprint) with a repeat count, to expose chronic faults. Same as /api/it/tickets/recurring on the web: category filter on the server, search on the screen, a group opens its tickets, export shown or all.
 class ItRecurringScreen extends StatefulWidget {
-  /// اللوحة تفتح الشاشةَ على مجموعةٍ بعينها مفتوحة.
+  /// The dashboard opens the screen with a specific group open.
   final String? initialSig;
   const ItRecurringScreen({super.key, this.initialSig});
   @override

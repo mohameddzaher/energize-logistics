@@ -2,10 +2,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
-/// طباعة/مشاركة أي مستند (بوليصة، تفاصيل، …) كـ PDF عربي RTL من داخل التطبيق.
-/// `Printing.layoutPdf` بيفتح شيت النظام: طباعة (AirPrint)، حفظ، أو مشاركة.
-///
-/// نبنيه من عنوان + رقم + صفوف (label, value) عشان يشتغل لأي شاشة.
+/// Print or share any document (waybill, details, etc.) as an Arabic RTL PDF from inside the app. `Printing.layoutPdf` opens the system sheet (AirPrint, save, share). Built from title, number and (label, value) rows so it works for any screen.
 Future<void> printDocument({
   required String title,
   String? number,
@@ -30,7 +27,7 @@ Future<void> printDocument({
       build: (ctx) => pw.Column(
         crossAxisAlignment: pw.CrossAxisAlignment.stretch,
         children: [
-          // رأس الصفحة
+          // Page header
           pw.Container(
             padding: const pw.EdgeInsets.all(14),
             decoration: const pw.BoxDecoration(color: navy),
@@ -50,7 +47,7 @@ Future<void> printDocument({
             pw.Text(subtitle, style: const pw.TextStyle(color: PdfColors.grey700, fontSize: 11)),
           ],
           pw.SizedBox(height: 12),
-          // جدول التفاصيل
+          // Details table
           pw.Table(
             border: pw.TableBorder.all(color: line, width: 0.8),
             columnWidths: const {0: pw.FlexColumnWidth(2), 1: pw.FlexColumnWidth(3)},

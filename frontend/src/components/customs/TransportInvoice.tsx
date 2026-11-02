@@ -1,11 +1,7 @@
 'use client';
 /**
- * «بانتظار فاتورة النقل» — الشريطُ الأحمر على معاملةٍ فُوترت ولم تُنهَ.
- *
- * الفاتورةُ تصدر بلا انتظار فاتورة النقل (تتأخّر عند الناقل أسابيع)، وتذهب إلى
- * الإدارة الماليّة كأيّ فاتورة. والثمنُ ألّا يُنسى ما تأخّر: فيبقى هذا الشريطُ
- * أحمرَ في رأس المعاملة حتى تُرفَق فاتورةُ النقل — فتُنهى المعاملةُ عندها في
- * الحال — أو يُقال صراحةً إنّها لا تُنتظَر (نُقلت بسيّارات الشركة).
+ * Awaiting transport invoice: red bar on a transaction that is invoiced but not closed.
+ * The invoice issues without waiting for the transport invoice (weeks late at the carrier) and goes to Finance like any invoice. The cost of that is that the delay is not forgotten: the bar stays red in the transaction header until the transport invoice is attached (the transaction then closes immediately) or it is stated explicitly that none is awaited (moved by company vehicles).
  */
 import { useRef, useState } from 'react';
 import api from '@/lib/api';

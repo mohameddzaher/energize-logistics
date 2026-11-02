@@ -14,16 +14,13 @@ import { SearchableSelect } from '@/components/hr/HRKit';
 import { useLatestRequest } from '@/hooks/useLatestRequest';
 
 /**
- * ── ما يقوله الصفُّ يكتبه الخادم ─────────────────────────────────────────────
- * اسمُ الفعل والكيان والقسم، والسجلُّ الذي وقع عليه الفعل، وجملةُ ما تغيّر —
- * كلُّها تصل جاهزةً من `/api/audit` (راجع utils/auditDescribe في الخادم).
- * كانت تُبنى هنا من خرائطَ محلّيّة، والتطبيقُ يعرض السجلَّ نفسَه بمفاتيحه
- * الخام: شاشتان لسجلٍّ واحدٍ تقولان شيئين.
+ * The server writes what each row says.
+ * Action, entity and section names, the record acted on and the summary of what changed all arrive ready from `/api/audit` (see utils/auditDescribe on the server). They used to be built here from local maps while the mobile app showed the same log with raw keys: two screens saying two things about one log.
  */
 interface DetailRow {
   key: string;
   label: string;
-  /** `null` فارغ، و`undefined` لم يُسجَّل (أو مرجعٌ لم يُعرَف صاحبُه). */
+  /** `null` is empty; `undefined` was not recorded (or a reference whose owner is unknown). */
   before?: string | null;
   after?: string | null;
   kind: 'changed' | 'value' | 'cleared' | 'field';
@@ -39,12 +36,12 @@ interface AuditLog {
   entityLabel: string;
   entityId?: string;
   entityKey?: string;
-  /** القسمُ يحسبه الخادم من الكيان — خريطةٌ واحدة يقرؤها الفلترُ والعمود. */
+  /** The server computes the section from the entity: one map read by both the filter and the column. */
   section?: string;
   sectionLabel?: string;
-  /** على أيِّ سجلٍّ وقع الفعل: «كشف 89400»، اسمُ موظّف، لوحة. */
+  /** Which record the action was on: a statement number, an employee name, a plate. */
   subject?: string;
-  /** جملةُ ما جرى — تُعرَض في الخانة كما هي. */
+  /** Summary of what happened, shown in the cell as is. */
   summary?: string;
   kind?: 'none' | 'update' | 'create' | 'set' | 'delete' | 'fields' | 'bulk' | 'info';
   hasDetails?: boolean;
@@ -73,10 +70,8 @@ interface PaginationInfo {
 const PAGE_SIZE = 25;
 
 /**
- * ── اليومُ يومُ الشركة لا يومُ المتصفّح ──────────────────────────────────────
- * «اليوم» و«أمس» كانا يُحسَبان بساعة الجهاز، والخادمُ يقطع اليومَ بتوقيت
- * الرياض: من فتح الشاشةَ من بلدٍ آخر بعد منتصف ليلِه طلب يومًا لم يبدأ في
- * الرياض بعد. فاليومُ يُسأل عنه بالمنطقة نفسِها التي يُفلتَر بها.
+ * The day is the company's day, not the browser's.
+ * Today and yesterday were computed from the device clock while the server cuts the day in Riyadh time, so someone opening the screen from another country after their midnight asked for a day not yet begun in Riyadh. The day is computed in the same zone used for filtering.
  */
 const COMPANY_TZ = 'Asia/Riyadh';
 const companyDay = (offsetDays = 0) => {
@@ -103,10 +98,8 @@ export default function AuditPage() {
   // comes from /api/audit/options, not a hardcoded list.
   const [entityFilter, setEntityFilter] = useState('');
   const [userFilter, setUserFilter] = useState('');
-  // ── الفعلُ اختيارٌ لا بحثٌ نصّيّ ───────────────────────────────────────────
-  // الخانةُ كانت تبحث في المفتاح الإنجليزيّ (`update_workflow`) والعمودُ يعرض
-  // «تعديل عملية تشغيل»: من كتب ما يقرؤه لم يجد شيئًا. فصارت قائمةً بالأفعال
-  // الواقعة فعلًا داخل القسم والكيان المختارَين، بأسمائها المعروضة.
+  // Action is a select, not text search.
+  // The box searched the English key (`update_workflow`) while the column showed a translated label, so typing what you read found nothing. It is now a list of the actions that actually occurred within the chosen section and entity, with their displayed names.
   const [actionFilter, setActionFilter] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
@@ -114,26 +107,19 @@ export default function AuditPage() {
   const [options, setOptions] = useState<AuditOptions>({
     entities: [], sections: [], actions: [], users: [], branches: [], systemCount: 0, unnamedCount: 0,
   });
-  // ── القسمُ أوّلًا، والكيانُ تفصيلٌ داخله ──────────────────────────────────
-  // القائمةُ كانت خمسةً وثلاثين اسمَ نموذجٍ برمجيّ مسرودةً بلا ترتيب، وأربعةٌ
-  // منها تبدو للقارئ «B2C» مكرَّرةً أربعَ مرّات. والسؤالُ المقصودُ «أيُّ قسم؟»
-  // لا «أيُّ نموذج؟».
+  // Section first, entity as detail within it.
+  // The list was 35 unordered model names, four of which looked like the same B2C entry. The real question is which section, not which model.
   const [sectionFilter, setSectionFilter] = useState('');
-  // والفرعُ يُقرأ من فاعل القيد — راجع تعليقَ `branch` في auditController.
+  // The branch is read from the entry's actor; see the `branch` comment in auditController.
   const [branchFilter, setBranchFilter] = useState('');
-  // ── يومٌ واحد، أو مدّة ────────────────────────────────────────────────────
-  // «ماذا جرى يوم كذا؟» أكثرُ ما يُسأل، وكان يقتضي كتابةَ التاريخ نفسِه في
-  // خانتين. ومن كتبه في واحدةٍ حصل على كلِّ شيءٍ منذ ذلك اليوم وهو يظنّ أنّه
-  // فلتر يومًا.
+  // One day, or a range.
+  // What happened on a given day is the most common question and needed the date typed in both fields; typing it in one gave everything since that day, which looked like a one-day filter.
   const [dateMode, setDateMode] = useState<'day' | 'range'>('day');
   const [day, setDay] = useState('');
 
   const { sections, entities, actions, branches } = options;
 
-  /**
-   * الفلاتر كما تُرسَل — دالّةٌ واحدةٌ يقرؤها الجدولُ وقوائمُ الخيارات والتصدير.
-   * ثلاثُ نسخٍ منها كانت ستفترق عند أوّل فلترٍ يُضاف، فيُصدَّر غيرُ ما يُعرَض.
-   */
+  /** Filters as sent: one function read by the table, the option lists and the export. Three copies would diverge at the first added filter and export something other than what is shown. */
   const filterParams = useCallback(() => {
     const params = new URLSearchParams();
     params.set('lang', ar ? 'ar' : 'en');
@@ -142,8 +128,7 @@ export default function AuditPage() {
     if (userFilter) params.set('user', userFilter);
     if (branchFilter) params.set('branch', branchFilter);
     if (actionFilter) params.set('action', actionFilter);
-    // اليومُ الواحد يُرسَل حدًّا واحدًا، والخادمُ يجعله يومًا بطرفيه — فلا
-    // يُكتب التاريخُ مرّتين ولا يُنسى أحدُ الطرفين.
+    // A single day is sent as one bound and the server expands it to a full day, so the date is not typed twice and neither bound is forgotten.
     if (dateMode === 'day') { if (day) params.set('date', day); } else {
       if (dateFrom) params.set('dateFrom', dateFrom);
       if (dateTo) params.set('dateTo', dateTo);
@@ -152,10 +137,8 @@ export default function AuditPage() {
   }, [ar, entityFilter, sectionFilter, userFilter, branchFilter, actionFilter, dateMode, day, dateFrom, dateTo]);
 
   /**
-   * ── القوائمُ تتبع ما اختير ───────────────────────────────────────────────
-   * كانت تُجلَب مرّةً عند الفتح، فأعدادُها أعدادُ السجلّ كلِّه مهما فُلتر:
-   * يُختار «أمس» ويُقرأ أمام القسم عددُه منذ بدأ السجلّ. فتُعاد مع كلِّ تغييرٍ
-   * في الفلاتر، والخادمُ يحسب كلَّ قائمةٍ بالفلاتر الأخرى سواها.
+   * Option lists follow the selection.
+   * They were fetched once on open, so counts were for the whole log regardless of filter (choose yesterday and see the section's all-time count). They are refetched on each filter change, and the server counts each list with all other filters applied.
    */
   const optionsGuard = useLatestRequest();
   useEffect(() => {
@@ -169,18 +152,17 @@ export default function AuditPage() {
           systemCount: d.systemCount || 0, unnamedCount: d.unnamedCount || 0,
         });
       })
-      .catch(() => { /* القوائمُ تبقى على آخر ما وصل */ });
+      .catch(() => { /* Lists keep the last data received. */ });
   }, [filterParams, optionsGuard]);
 
-  /** كياناتُ القسم المختار وحدَها. */
+  /** Only entities of the selected section. */
   const entityOptions = useMemo(
     () => (sectionFilter ? entities.filter((e) => e.section === sectionFilter) : entities),
     [entities, sectionFilter],
   );
 
-  // ── الفلترُ التابع يسقط حين يتغيّر متبوعُه ────────────────────────────────
-  // الكيانُ داخل القسم، والفعلُ داخل الكيان: تغييرُ القسم مع بقاء كيانٍ من
-  // قسمٍ آخر كان يُبقي الجدولَ على الكيان القديم والقائمةُ تقول قسمًا جديدًا.
+  // A dependent filter resets when its parent changes.
+  // Entity is within section and action within entity; changing section while an entity from another section stayed left the table on the old entity while the list showed a new section.
   const changeSection = (v: string) => {
     setSectionFilter(v);
     if (entityFilter && v && entities.find((e) => e.key === entityFilter)?.section !== v) setEntityFilter('');
@@ -191,9 +173,7 @@ export default function AuditPage() {
     setActionFilter('');
   };
 
-  // لا يكتب ردٌّ قديمٌ فوق ردٍّ أحدث — راجع hooks/useLatestRequest. الفلاتر
-  // تتغيّر بنقراتٍ متتابعة، والطلبُ غيرُ المفلتَر أبطؤها: يصل آخرًا فيعرض
-  // السجلَّ كلَّه تحت فلترٍ مختار.
+  // A stale reply must not overwrite a newer one; see hooks/useLatestRequest. Filters change in quick succession and the unfiltered request is slowest, so it arrives last and would show the whole log under a chosen filter.
   const guard = useLatestRequest();
   const fetchLogs = useCallback(async (page = 1) => {
     const mine = guard.begin();
@@ -218,8 +198,7 @@ export default function AuditPage() {
     }
   }, [filterParams, guard, txx.failedToLoad]);
 
-  // أيُّ تغييرٍ في الفلاتر يعيد إلى الصفحة الأولى: الصفحةُ السابعةُ من نتيجةٍ
-  // لم يبقَ فيها إلّا صفحتان جدولٌ فارغ.
+  // Any filter change returns to page one: page seven of a result with only two pages is an empty table.
   useEffect(() => {
     fetchLogs(1);
   }, [fetchLogs]);
@@ -243,15 +222,14 @@ export default function AuditPage() {
   const hasActiveFilters = !!(entityFilter || sectionFilter || userFilter || branchFilter
     || actionFilter || (dateMode === 'day' ? day : (dateFrom || dateTo)));
 
-  /** اختصاراتُ ما يُسأل عنه فعلًا — أكثرُه «اليوم» و«أمس». */
+  /** Shortcuts for what is actually asked, mostly today and yesterday. */
   const setQuickDay = (offset: number) => {
     setDateMode('day'); setDay(companyDay(offset));
   };
   const setQuickRange = (days: number) => {
     setDateMode('range'); setDateFrom(companyDay(days - 1)); setDateTo(companyDay(0));
   };
-  // والتبديلُ بين «يوم» و«فترة» يحمل التاريخَ معه: من اختار يومًا ثمّ أراد
-  // توسيعَه لا يبدأ من خانتين فارغتين وجدولٍ عاد إلى كلِّ الوقت.
+  // Switching between day and range carries the date along, so widening a chosen day does not start from empty fields and an all-time table.
   const changeDateMode = (m: 'day' | 'range') => {
     if (m === dateMode) return;
     if (m === 'range' && day && !dateFrom && !dateTo) { setDateFrom(day); setDateTo(day); }
@@ -259,8 +237,7 @@ export default function AuditPage() {
     setDateMode(m);
   };
 
-  // حسابٌ محذوفٌ لم يُلتقَط اسمُه لا سطرَ له في قائمة الأشخاص — مجموعٌ مع أمثاله
-  // في خيارٍ واحد، فالنقرُ على اسمه يفتح ذلك الخيار لا قائمةً بلا اختيار.
+  // A deleted account whose name was not captured has no line in the people list; it is grouped with similar ones into a single option so clicking its name opens that option rather than an empty selection.
   const filterByActor = (log: AuditLog) => {
     if (!log.user) return;
     const listed = options.users.some((u) => u._id === log.user!._id);
@@ -280,9 +257,7 @@ export default function AuditPage() {
     { header: T.details, key: 'summary', width: 70 },
     { header: T.ipAddress, key: 'ipAddress', width: 16 },
   ];
-  // السجلّ مرقَّمٌ على الخادم بخمسةٍ وعشرين سطرًا، والسجلّ نفسه يبلغ عشرات الآلاف؛
-  // فتصدير ما في الذاكرة كان يعطي ربع دقيقةٍ من التاريخ ويُسمّيه «تحميل السجلّ».
-  // لذلك نُعيد الجلب بحدٍّ مفتوح قبل التصدير كلّما طُلب أكثر من الصفحة الحاضرة.
+  // The log is paginated on the server at 25 rows and has tens of thousands of entries, so exporting what is in memory gave a few minutes of history labelled as the full log. Refetch with an open limit before exporting whenever more than the current page is requested.
   const fetchForExport = async (withFilters: boolean) => {
     const params = withFilters ? filterParams() : new URLSearchParams({ lang: ar ? 'ar' : 'en' });
     params.set('page', '1');
@@ -297,8 +272,7 @@ export default function AuditPage() {
     ...(hasActiveFilters ? [{ key: 'all', label: scope.all, resolve: () => fetchForExport(false) }] : []),
   ];
 
-  // الوقتُ المعروض بتوقيت الشركة — هو الذي يُفلتَر به اليوم، فصفٌّ يُعرَض
-  // «١١:٤٠ م يوم ٨» بساعة المتصفّح قد يكون في فلتر يوم ٩.
+  // Displayed time is in company time, which is what the day filter uses; a row shown as 11:40 PM on the 8th by the browser clock may fall in the 9th filter.
   const formatTimestamp = (date: string) => {
     const d = new Date(date);
     return d.toLocaleDateString('en-US', {
@@ -337,7 +311,7 @@ export default function AuditPage() {
     return 'text-slate-500 bg-slate-500/10';
   };
 
-  /** عنوانُ التفصيل يقول نوعَ القيد قبل صفوفه. */
+  /** The detail title states the entry type before its rows. */
   const kindNote = (log: AuditLog): string => {
     const n = log.detail?.rows.length || 0;
     switch (log.kind) {
@@ -362,10 +336,8 @@ export default function AuditPage() {
   };
 
   /**
-   * ── التفصيلُ الكامل: الحقلُ، وما كان، وما صار ───────────────────────────────
-   * ثلاثةُ أعمدةٍ بأسماء الحقول كما تُقرأ في شاشاتها. وما لم يتغيّر من السجلّ
-   * مطويٌّ تحتها: يُفتَح لمن أراد أن يعرف حالَ السجلّ كلِّه ساعةَ التعديل،
-   * ولا يدفن التغييرَ تحته — وهو ما كان يجعل تعديلَ حقلين يُقرأ خمسين سطرًا.
+   * Full detail: field, before and after.
+   * Three columns with field names as read on their own screens. Unchanged parts of the record are collapsed beneath: open to see the whole record at edit time without burying the change (editing two fields used to read as fifty lines).
    */
   const renderDetail = (log: AuditLog) => {
     const d = log.detail;
@@ -441,8 +413,7 @@ export default function AuditPage() {
     setExpandedRow(expandedRow === id ? null : id);
   };
 
-  // الدائرةُ بملء الشاشة للفتح الأوّل وحدَه. كانت تعود كلَّما فرغ الجدول ثمّ
-  // تغيّر فلتر: تُزال لوحةُ الفلاتر من تحت يد المستخدم وتُبنى من جديد.
+  // Full-screen spinner only for the first open. It used to return whenever the table emptied and a filter changed, removing the filter panel from under the user and rebuilding it.
   if (!loadedOnce) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -522,9 +493,7 @@ export default function AuditPage() {
                   </button>
                 )}
               </div>
-              {/* ── الصفُّ الأوّل: مَن، ومن أيّ فرع، وفي أيّ قسم ────────────
-                  الترتيبُ مقصود: هذه هي الأسئلةُ الثلاثةُ التي يُفتَح السجلّ
-                  من أجلها. والكيانُ والفعلُ تفصيلٌ يأتي بعدها لمن أراده. */}
+              {/* First row: who, from which branch, in which section. The order is deliberate: these are the three questions the log is opened for; entity and action are detail after them. */}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {/* Person — the whole point: one user's own history */}
                 <div>
@@ -542,8 +511,7 @@ export default function AuditPage() {
                           + (u.deleted ? (ar ? ' (حساب محذوف)' : ' (deleted account)') : ''),
                         hint: `${u.email ? `${u.email} · ` : ''}${u.count.toLocaleString()}`,
                       })),
-                      // النظامُ فاعلٌ أيضًا (الإقفالُ التلقائيّ)، وقيودُه لم يكن
-                      // إليها سبيلٌ من هذه القائمة.
+                      // The system is also an actor (automatic closing), and its entries had no way to be reached from this list.
                       ...(options.systemCount || userFilter === 'system' ? [{
                         value: 'system', label: ar ? 'النظام (إجراءات تلقائية)' : 'System (automatic)',
                         hint: options.systemCount.toLocaleString(),
@@ -556,9 +524,7 @@ export default function AuditPage() {
                   />
                 </div>
 
-                {/* ── الفرع ────────────────────────────────────────────────
-                    القيدُ لا يحمل فرعًا، ولا ينبغي: الفعلُ قد يقع على شيءٍ لا
-                    فرعَ له. لكنّ **فاعلَه** له فرع، وهو المقصود بالسؤال. */}
+                {/* Branch. The entry carries no branch, and should not: the action may be on something with no branch. The actor has a branch, which is what the question means. */}
                 <div>
                   <label className="block text-slate-600 text-xs font-medium mb-1.5">{ar ? 'الفرع' : 'Branch'}</label>
                   <SearchableSelect
@@ -568,7 +534,7 @@ export default function AuditPage() {
                     options={[
                       { value: '', label: ar ? 'كل الفروع' : 'All branches' },
                       ...branches.map((b) => ({ value: b._id, label: b.name })),
-                      // الإدارةُ ومديرو النظام لا فرعَ لهم، ولهم نصفُ السجلّ.
+                      // Management and system admins have no branch, and account for half the log.
                       { value: 'none', label: ar ? 'بلا فرع (الإدارة العامة)' : 'No branch (head office)' },
                     ]}
                   />
@@ -577,9 +543,7 @@ export default function AuditPage() {
                   </p>
                 </div>
 
-                {/* ── القسم ────────────────────────────────────────────────
-                    ومعه عددُ قيوده: قائمةٌ بلا أعداد تُقرأ كلُّها سواء، فيُفتَح
-                    قسمٌ فيه أربعةُ قيودٍ بحثًا عمّا وقع في قسمٍ فيه أربعةُ آلاف. */}
+                {/* Section, with its entry count: a list without counts reads as all equal, so someone opens a section with four entries looking for what happened in one with four thousand. */}
                 <div>
                   <label className="block text-slate-600 text-xs font-medium mb-1.5">{ar ? 'القسم' : 'Section'}</label>
                   <SearchableSelect
@@ -598,7 +562,7 @@ export default function AuditPage() {
                 </div>
               </div>
 
-              {/* ── الصفُّ الثاني: التفصيل داخل القسم ───────────────────────── */}
+              {/* Second row: detail within the section */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {/* Entity Type — the entities that actually occur in the log */}
                 <div>
@@ -625,7 +589,7 @@ export default function AuditPage() {
                   />
                 </div>
 
-                {/* ── الإجراء — داخل القسم والكيان المختارَين ─────────────── */}
+                {/* Action, within the selected section and entity */}
                 <div>
                   <label className="block text-slate-600 text-xs font-medium mb-1.5">
                     {T.action}
@@ -648,7 +612,7 @@ export default function AuditPage() {
                 </div>
               </div>
 
-              {/* ── الزمن: يومٌ بعينه، أو مدّة ─────────────────────────────── */}
+              {/* Time: a specific day, or a range */}
               <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-3 space-y-3">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-slate-600 text-xs font-medium">{ar ? 'الزمن' : 'When'}</span>
@@ -691,7 +655,7 @@ export default function AuditPage() {
                   )}
                 </div>
 
-                {/* اختصاراتُ ما يُسأل عنه فعلًا — «اليوم» و«أمس» أكثرُه. */}
+                {/* Shortcuts for what is actually asked, mostly today and yesterday. */}
                 <div className="flex flex-wrap gap-1.5">
                   {([
                     [ar ? 'اليوم' : 'Today', () => setQuickDay(0)],
@@ -722,8 +686,7 @@ export default function AuditPage() {
                 <th className="px-4 py-3 text-start text-xs font-semibold text-slate-300 uppercase tracking-wider">{T.date}</th>
                 <th className="px-4 py-3 text-start text-xs font-semibold text-slate-300 uppercase tracking-wider">{T.user}</th>
                 <th className="px-4 py-3 text-start text-xs font-semibold text-slate-300 uppercase tracking-wider">{T.action}</th>
-                {/* القسمُ عمودٌ لا فلترٌ فقط: من يقرأ صفًّا يحتاج أن يعرف أين
-                    وقع قبل أن يعرف على أيّ نموذجٍ وقع. */}
+                {/* Section is a column and not only a filter: a reader needs to know where it happened before which model it happened on. */}
                 <th className="px-4 py-3 text-start text-xs font-semibold text-slate-300 uppercase tracking-wider">{ar ? 'القسم' : 'Section'}</th>
                 <th className="px-4 py-3 text-start text-xs font-semibold text-slate-300 uppercase tracking-wider">{T.entity}</th>
                 <th className="px-4 py-3 text-start text-xs font-semibold text-slate-300 uppercase tracking-wider">{T.details}</th>
@@ -770,8 +733,7 @@ export default function AuditPage() {
                             >
                               {log.user.firstName} {log.user.lastName}
                             </button>
-                            {/* حسابٌ أُزيل: الفعلُ فعلُ إنسانٍ وإن ذهب حسابُه —
-                                وتركُه بلا علامةٍ يجعل الاسمَ يبدو حسابًا قائمًا. */}
+                            {/* Removed account: the action is still a person's, and without a mark the name looks like an existing account. */}
                             {log.user.deleted && (
                               <span className="ms-1 text-[10px] text-amber-600">{ar ? '(حساب محذوف)' : '(deleted account)'}</span>
                             )}
@@ -793,7 +755,7 @@ export default function AuditPage() {
                         </span>
                       </td>
                       <td className="px-4 py-3 text-sm">
-                        {/* الضغطُ يفلتر على القسم — كما يفعل الاسمُ مع الشخص. */}
+                        {/* Click filters by section, as the name does for the person. */}
                         <button type="button"
                           onClick={(e) => { e.stopPropagation(); changeSection(log.section || ''); setShowFilters(true); }}
                           className="text-xs font-medium text-slate-600 hover:text-[#f37121] hover:underline text-start whitespace-nowrap">
@@ -801,8 +763,7 @@ export default function AuditPage() {
                         </button>
                       </td>
                       <td className="px-4 py-3 text-sm">
-                        {/* السجلُّ باسمه لا بمعرّفه: «كشف 89400» يُقرأ، وأربعةٌ
-                            وعشرون حرفًا لا تُقرأ. */}
+                        {/* The record by its name, not its id: a statement number is readable, a 24-character id is not. */}
                         <span className="font-medium text-xs text-slate-600">{log.entityLabel}</span>
                         {log.subject && (
                           <span className="text-slate-900 text-xs block max-w-[200px] break-words" dir="auto">

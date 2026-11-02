@@ -1,16 +1,7 @@
 'use client';
-// اختيارُ ملفّاتٍ للإرفاق — مكوّنٌ واحد لكلّ موضعٍ يُرفَق فيه شيء.
-//
-// ── لماذا الملفّ لا الرابط ───────────────────────────────────────────────────
-// الرابط يعيش خارج النظام: يُحذف من درايف أو تُسحب صلاحيتُه، فيبقى في السجلّ
-// سطرٌ يقول «أُرسلت الشهادة» ورابطٌ لا يفتح. والمرفق يعيش مع السجلّ نفسِه:
-// يُنسخ معه احتياطيًّا، ويبقى مقروءًا بعد سنة.
-//
-// والرابط يبقى مقبولًا حيث يُستعمل — بعضُ ما يُشارَك رابطٌ بطبعه — لكنّه لم يعد
-// الخيار الوحيد.
-//
-// ويُقرأ الملفّ إلى data URL في المتصفّح ويُرسَل في نفس الطلب: النظام كلُّه بلا
-// multer، والمسار الواحد أبسط من مسارين.
+// File picker for attachments: one component for every place that attaches something.
+// A file rather than a link: links live outside the system and break when deleted or unshared, while an attachment is stored and backed up with the record. Links remain accepted where natural.
+// The file is read to a data URL in the browser and sent in the same request (no multer anywhere; one path is simpler than two).
 import { useRef, useState } from 'react';
 import { useLanguage } from '@/context/LanguageContext';
 import { useDialog } from '@/components/system/DialogProvider';
@@ -73,8 +64,7 @@ export default function FilePicker({ files, onChange, max = 10, label }: {
               <span className={`w-6 h-6 rounded flex items-center justify-center shrink-0 ${f.mimeType.startsWith('image/') ? 'bg-sky-50 text-sky-600' : 'bg-slate-100 text-slate-500'}`}>
                 {f.mimeType.startsWith('image/') ? <ImageIcon className="w-3.5 h-3.5" /> : <FileText className="w-3.5 h-3.5" />}
               </span>
-              {/* الاسم يُكتب باليد: «IMG_2026.jpg» لا يقول شيئًا لمن يفتحه بعد
-                  شهر، و«صورة الإقامة» تقول كلَّ شيء. */}
+              {/* The name is typed by hand: a generic camera filename means nothing later, a descriptive name does. */}
               <input
                 value={f.title}
                 onChange={(e) => onChange(files.map((x, j) => (j === i ? { ...x, title: e.target.value } : x)))}
@@ -92,7 +82,7 @@ export default function FilePicker({ files, onChange, max = 10, label }: {
   );
 }
 
-/** عرضُ المرفقات المحفوظة على رسالةٍ أو سجلّ. */
+/** Displays the attachments saved on a message or record. */
 export function AttachmentList({ items }: { items?: { title?: string; fileUrl: string; fileName?: string; size?: number; mimeType?: string }[] }) {
   if (!items?.length) return null;
   return (

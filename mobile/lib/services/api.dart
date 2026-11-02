@@ -11,10 +11,8 @@ import '../config.dart';
 class ApiException implements Exception {
   final int status;
   final String message;
-  /// ── وما زاد على الرسالة يبقى معها ──────────────────────────────────────
-  /// بعضُ الردود رسالةٌ ومعها قرار: ٤٠٩ من إنشاء الحمولة تحمل ما فات من
-  /// الصيانة ورقمَ الطلب المعلّق، وتُبنى منها لوحةٌ لا سطرُ خطأ. وكان الجسدُ
-  /// يُطرَح فتُقرأ الرسالةُ وحدَها ويضيع الباقي — كما في الويب (`err.data`).
+  /// What goes beyond the message stays with it.
+  /// Some responses are a message with a decision attached: a 409 from load creation carries the missed maintenance and the pending order number, and a panel is built from it, not an error line. The body used to be discarded, so only the message was read and the rest lost, as on web (err.data).
   final Map<String, dynamic> data;
   ApiException(this.status, this.message, [this.data = const {}]);
   @override
@@ -68,12 +66,8 @@ class Api {
       if (token == null) return false;
       _accessToken = token;
       await _storage.write(key: 'accessToken', value: token);
-      // ── التوكن المجدَّد يُحفَظ، وإلا خرج المستخدم قسرًا كل نصف شهر ───────────
-      // الخادم يجدّد توكن التجديد حين يتجاوز نصف عمره ويرسل البديل هنا. كان
-      // البديل يُهمَل، فيبقى الهاتف على التوكن القديم حتى يُحذَف بعد مهلة
-      // السماح — ثم يفشل أوّل تجديدٍ بعده فيُطلَب من المستخدم كلمة سرّه من
-      // جديد بلا سبب يفهمه. هذا بالضبط ما كان يبدو «الجلسة بايظة، اعمل دخول
-      // وخروج».
+      // The renewed token is saved, otherwise the user is forced out every half month.
+      // The server renews the refresh token once it passes half its life and sends the replacement here. The replacement used to be ignored, so the phone stayed on the old token until it was deleted after the grace period, and the first refresh after that failed, asking the user for the password again for no reason they understand.
       final newRefresh = body['refreshToken'] as String?;
       if (newRefresh != null && newRefresh.isNotEmpty) {
         await _storage.write(key: 'refreshToken', value: newRefresh);
@@ -84,8 +78,7 @@ class Api {
     }
   }
 
-  // مهلة زمنية لكل طلب — على شبكة موبايل بطيئة أو متقطعة، طلب بلا مهلة يعلّق
-  // للأبد فتفضل الشاشة «بتلف». مع المهلة يتحوّل لخطأ يظهر مع زر إعادة المحاولة.
+  // Per-request timeout: on a slow or intermittent mobile network a request without one hangs forever and the screen keeps spinning. With a timeout it becomes an error shown with a retry button.
   static const _timeout = Duration(seconds: 25);
 
   Future<dynamic> _request(String method, String path, {Object? body, bool retried = false, Duration? timeout}) async {
@@ -107,7 +100,7 @@ class Api {
           res = await http.delete(uri, headers: _headers()).timeout(limit);
       }
     } on Exception {
-      // انقطاع/مهلة/فشل شبكة — رسالة عربية واضحة بدل تعليق الشاشة.
+      // Disconnect, timeout or network failure: a clear Arabic message instead of a hanging screen.
       throw ApiException(0, 'تعذّر الاتصال بالخادم — تأكد من الإنترنت وأعد المحاولة');
     }
 
@@ -126,7 +119,7 @@ class Api {
     throw ApiException(res.statusCode, msg, decoded is Map ? Map<String, dynamic>.from(decoded) : const {});
   }
 
-  // تحميل ملف ثنائي (PDF البوليصة مثلًا) بالمصادقة — يرجّع البايتات كما هي.
+  // Authenticated download of a binary file (e.g. the waybill PDF); returns the bytes as they are.
   Future<Uint8List> getBytes(String path, {bool retried = false}) async {
     final uri = Uri.parse('${AppConfig.apiBase}$path');
     late http.Response res;
@@ -143,10 +136,8 @@ class Api {
     throw ApiException(res.statusCode, 'تعذّر تحميل الملف (${res.statusCode})');
   }
 
-  /// إرسالُ طلبٍ يردّ ملفًّا ثنائيًّا — بوالصُ عدّةِ شحناتٍ في ملفٍّ واحد.
-  ///
-  /// والمهلةُ أوسعُ من مهلة النداءات العادية: كلُّ بوليصةٍ ترسيمٌ في متصفّحٍ
-  /// بلا واجهةٍ على الخادم، فستّون بوليصةً تقارب الأربعين ثانية.
+  /// Sends a request that returns a binary file: waybills of several shipments in one file.
+  /// The timeout is wider than for ordinary calls: each waybill is a render in a headless browser on the server, so sixty waybills take about forty seconds.
   Future<Uint8List> postBytes(String path, Object body, {bool retried = false}) async {
     final uri = Uri.parse('${AppConfig.apiBase}$path');
     late http.Response res;
@@ -162,19 +153,18 @@ class Api {
       throw ApiException(401, 'انتهت الجلسة — سجّل الدخول من جديد');
     }
     if (res.statusCode >= 200 && res.statusCode < 300) return res.bodyBytes;
-    // الخطأُ يعود JSON لا PDF — تُقرأ رسالتُه كما تُقرأ في النداءات العادية.
+    // The error comes back as JSON, not PDF; its message is read as in ordinary calls.
     String msg = 'تعذّر تحميل الملف (${res.statusCode})';
     try {
       final d = jsonDecode(utf8.decode(res.bodyBytes));
       if (d is Map && d['message'] != null) msg = d['message'].toString();
-    } catch (_) { /* ليس JSON */ }
+    } catch (_) { /* Not JSON */ }
     throw ApiException(res.statusCode, msg);
   }
 
   Future<dynamic> get(String path) => _request('GET', path);
   Future<dynamic> post(String path, [Object? body]) => _request('POST', path, body: body);
-  /// إرسالٌ يحمل مرفقاتٍ كبيرة (صورٌ ومقاطعُ base64) — عشراتُ الميغابايتات على
-  /// شبكة الهاتف لا تُرفع في خمسٍ وعشرين ثانية، فمهلتُها دقيقتان ونصف.
+  /// Sends large attachments (images and base64 clips): tens of megabytes on a phone network cannot upload in 25 seconds, so the timeout is two and a half minutes.
   Future<dynamic> postLong(String path, [Object? body]) =>
       _request('POST', path, body: body, timeout: const Duration(seconds: 150));
   Future<dynamic> patch(String path, [Object? body]) => _request('PATCH', path, body: body);

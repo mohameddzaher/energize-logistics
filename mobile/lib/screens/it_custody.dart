@@ -12,20 +12,16 @@ import '../ui/widgets.dart';
 import 'it_common.dart';
 import '../ui/search_field.dart';
 
-/// عهد الأجهزة (IT) — the custody register with the full action set, نظيرُ
-/// /system/it/custody: تسليمٌ (من المخزن أو جديد)، نقل، إرجاع، تالف، بيع وإرجاعُ
-/// المبيع، تعديل، حذف، السجلّ، استلامُ عهدة موظّفٍ دفعةً واحدة، عهدُ الموظّف، التصدير.
+/// IT device custody: the custody register with the full action set, counterpart of /system/it/custody: issue (from stock or new), transfer, return, damaged, sell and undo a sale, edit, delete, log, bulk receipt of an employee's custody, employee custody, export.
 class ItCustodyScreen extends StatefulWidget {
-  /// اللوحة تفتح الشاشةَ على كارتٍ أو زرٍّ بعينه.
+  /// The dashboard opens the screen on a specific card or button.
   final String initialBucket, initialStatus, initialCondition, initialOtherType;
   const ItCustodyScreen({super.key, this.initialBucket = '', this.initialStatus = '', this.initialCondition = '', this.initialOtherType = ''});
   @override
   State<ItCustodyScreen> createState() => _ItCustodyScreenState();
 }
 
-// شرائح الاتصال محذوفة من القائمة: خطوط الأرقام ليست من عهدة القسم، ووجودها
-// هنا كان يضيف أربعة وستين صفاً لا يملكها أحد فينا إلى كل عدّ.
-// مطابقة لـ TYPE_NAME_AR في backend/src/config/itCustody.js.
+// SIM lines are removed from the list: phone lines are not department custody, and including them added 64 rows nobody here owns to every count. Matches TYPE_NAME_AR in backend/src/config/itCustody.js.
 const custodyTypes = {
   'laptop': ('لابتوب', 'Laptop'),
   'desktop': ('حاسب مكتبي', 'Desktop'),
@@ -34,7 +30,7 @@ const custodyTypes = {
   'monitor': ('شاشة', 'Monitor'),
   'keyboard': ('كيبورد', 'Keyboard'),
   'mouse': ('ماوس', 'Mouse'),
-  'keyboard_mouse': ('ماوس وكيبورد', 'Keyboard & mouse'), // نوعٌ ملغًى — للصفوف القديمة وحدها
+  'keyboard_mouse': ('ماوس وكيبورد', 'Keyboard & mouse'), // Retired type, for old rows only.
   'headset': ('سماعة رأس', 'Headset'),
   'printer': ('طابعة', 'Printer'),
   'router': ('راوتر', 'Router'),
@@ -51,12 +47,7 @@ String custodyTypeLabel(dynamic t) {
   return e == null ? (t ?? '—').toString() : tr(e.$1, e.$2);
 }
 
-/// الفئات الخمس التي تُعرض ككروت بإجمالياتها.
-///
-/// السجل يخزّن النوع مفصّلاً (ماوس، كيبورد، شنطة…) ولا يمكن قراءة إجمالياته
-/// بالعين على خمسة عشر نوعاً. الدلو طبقة عرض تُشتق من النوع ولا تحلّ محله، حتى
-/// لا نفقد أن هذا ماوس وذاك كيبورد.
-/// مطابقة لـ BUCKETS في backend/src/config/itCustody.js.
+/// The five buckets shown as cards with totals. The register stores detailed types (mouse, keyboard, bag, ...), too many to read totals by eye. A bucket is a display layer derived from the type, not a replacement, so mouse vs keyboard is preserved. Matches BUCKETS in backend/src/config/itCustody.js.
 class CustodyBucket {
   final String key;
   final String ar;
@@ -70,8 +61,7 @@ class CustodyBucket {
 
 const custodyBuckets = <CustodyBucket>[
   CustodyBucket('laptops', 'لابتوبات', 'Laptops', 'laptop', ['laptop', 'desktop'], Icons.laptop_mac_rounded),
-  // الماوسُ وحدَه والكيبوردُ وحدَه، ولا طقم — نظيرُ config/itCustody. النوعُ
-  // القديم keyboard_mouse يُقرأ في دلو الكيبورد بشارته ولا يُكتب.
+  // Mouse alone and keyboard alone, no bundle, like config/itCustody. The old keyboard_mouse type is read in the keyboard bucket with its badge and never written.
   CustodyBucket('mice', 'ماوس', 'Mouse', 'mouse', ['mouse'], Icons.mouse_rounded),
   CustodyBucket('keyboards', 'كيبورد', 'Keyboard', 'keyboard', ['keyboard', 'keyboard_mouse'], Icons.keyboard_rounded),
   CustodyBucket('phones', 'موبايلات', 'Phones', 'phone', ['phone'], Icons.smartphone_rounded),
@@ -81,7 +71,7 @@ const custodyBuckets = <CustodyBucket>[
       ['laptop_bag', 'charger', 'cable', 'headset', 'printer', 'router', 'access_card', 'accessory', 'other'], Icons.inventory_2_rounded),
 ];
 
-/// أي نوع مجهول يسقط في «أخرى» بدل أن يختفي من العدّ.
+/// Any unknown type falls into "other" instead of disappearing from the count.
 String bucketOf(dynamic type) {
   final t = (type ?? '').toString().trim();
   for (final b in custodyBuckets) {
@@ -90,7 +80,7 @@ String bucketOf(dynamic type) {
   return 'other';
 }
 
-/// أنواع دلو «أخرى» — تغذّي الفلتر الثاني الذي يظهر عند اختياره.
+/// Types in the "other" bucket; they feed the second filter that appears when it is chosen.
 const otherBucketTypes = ['laptop_bag', 'charger', 'cable', 'headset', 'printer', 'router', 'access_card', 'accessory', 'other'];
 
 const custodyConditions = {
@@ -105,8 +95,7 @@ String conditionLabel(dynamic c) {
   return e == null ? (c ?? '—').toString() : tr(e.$1, e.$2);
 }
 
-/// اسم العرض مشتقّ من النوع والماركة بدل أن يُكتب باليد — «لابتوب Dell».
-/// الاسم الحرّ هو ما أنتج ستة وستين تهجئة لنفس الأجهزة في السجل.
+/// Display name derived from type and brand instead of typed by hand, e.g. "Laptop Dell". Free-text names produced 66 spellings of the same devices.
 String deriveAssetName(String type, String brand) {
   final base = custodyTypes[type] == null ? 'صنف آخر' : custodyTypes[type]!.$1;
   final b = brand.trim();
@@ -120,7 +109,7 @@ String empName(dynamic e) {
   return '${e['firstName'] ?? ''} ${e['lastName'] ?? ''}'.trim();
 }
 
-// أسماءُ حركات السجلّ — مطابقةٌ لـ ACTION_LABEL في صفحة الويب.
+// Log action names; match ACTION_LABEL on the web page.
 const _actionLabels = {
   'added_to_store': ('أُضيف إلى المستودع', 'Added to store', T.info),
   'assigned': ('سُلّم إلى موظف', 'Handed to employee', T.success),
@@ -128,7 +117,7 @@ const _actionLabels = {
   'returned': ('أُعيد إلى المستودع', 'Returned to store', T.info),
   'damaged': ('أُبلغ عن تلفه', 'Reported damaged', T.warn),
   'lost': ('أُبلغ عن فقده', 'Reported lost', T.danger),
-  // «retired» لم تعد تُكتب؛ تبقى لأن في السجل حركاتٍ قديمة كُتبت بها.
+  // "retired" is no longer written; kept because old log entries use it.
   'retired': ('سُجّل كتالف', 'Recorded faulty', T.inkFaint),
   'updated': ('عُدّلت بياناته', 'Details updated', T.violet),
   'sold': ('بيع', 'Sold', T.violet),
@@ -154,7 +143,7 @@ List<ExportCol> _custodyCols() => [
       ExportCol('القيمة للقطعة', 'Value (per unit)', (r) => r['value'] ?? 0),
       ExportCol('تاريخ التسليم', 'Assigned', (r) => '${r['assignedDate'] ?? ''}'.split('T').first),
       ExportCol('الحالة', 'Status', (r) => custodyStatusLabel(r['status'])),
-      // تفاصيلُ خطّ الجوّال — فارغةٌ لغيره.
+      // Mobile line details; empty for other types.
       ExportCol('الباقة', 'Package', (r) => (r['telecom'] as Map?)?['package'] ?? ''),
       ExportCol('المزوّد', 'Provider', (r) => (r['telecom'] as Map?)?['provider'] ?? ''),
       ExportCol('الرقم التسلسلي للشريحة', 'SIM serial', (r) => (r['telecom'] as Map?)?['iccid'] ?? ''),
@@ -170,8 +159,7 @@ class _ItCustodyScreenState extends State<ItCustodyScreen> {
   bool _loading = true;
   String? _error;
   String _q = '';
-  // الفلاتر كلها تُرسَل إلى الخادم، ويعود معها عددُ كل كارت وكل زر محسوباً على
-  // نفس المجموعة المفلترة — كل كارت يقول بالضبط كم صفاً سيفتحه الضغط عليه.
+  // All filters go to the server, which returns each card's and button's count over the same filtered set, so each card says exactly how many rows tapping it opens.
   late String _status = widget.initialStatus;
   late String _bucket = widget.initialBucket;
   late String _otherType = widget.initialOtherType;
@@ -182,7 +170,7 @@ class _ItCustodyScreenState extends State<ItCustodyScreen> {
   List<Map<String, dynamic>> _conditionCounts = [];
   int _shownTotal = 0;
   num _shownValue = 0;
-  // إجمالي السجل يُعرض بجانب الرقم المفلتر ليُعرف من أيٍّ اقتُطع، لا ليحلّ محلّه.
+  // Register total is shown beside the filtered number to show what it was cut from, not to replace it.
   int _registerTotal = 0;
   int _registerAssigned = 0;
   final _search = TextEditingController();
@@ -223,7 +211,7 @@ class _ItCustodyScreenState extends State<ItCustodyScreen> {
   Future<void> _load() async {
     final my = ++_seq;
     try {
-      // `scope=all` يضم المستودع: زر «المستودع» وكارت كل فئة يجب أن يعدّا المخزون أيضاً.
+      // `scope=all` includes the warehouse: the warehouse button and each category card must count stock too.
       final qs = <String, String>{'scope': 'all'};
       if (_bucket.isNotEmpty) qs['bucket'] = _bucket;
       if (_bucket == 'other' && _otherType.isNotEmpty) qs['otherType'] = _otherType;
@@ -258,7 +246,7 @@ class _ItCustodyScreenState extends State<ItCustodyScreen> {
     }
   }
 
-  // ما على الرفّ الآن — يُسلَّم منه في «تسليم عهدة».
+  // What is on the shelf now; issued from in "issue custody".
   Future<void> _loadStock() async {
     try {
       final d = await Api.instance.get('/api/it/stock');
@@ -331,7 +319,7 @@ class _ItCustodyScreenState extends State<ItCustodyScreen> {
                           hint: tr('ابحث بالجهاز أو الرقم التسلسلي أو الموظف…', 'Search item, serial or employee…'),
                         ),
                       ),
-                      // «المعروض» يصف القائمة، و«إجمالي السجل» يقول من أيٍّ اقتُطعت ويُرجع الكلَّ بالضغط.
+                      // "Shown" describes the list; "register total" says what it was cut from and restores everything on tap.
                       Padding(
                         padding: const EdgeInsets.fromLTRB(14, 8, 14, 0),
                         child: Row(children: [
@@ -342,7 +330,7 @@ class _ItCustodyScreenState extends State<ItCustodyScreen> {
                           _mini(tr('قيمة المعروض', 'Value shown'), fmtMoney(_shownValue), T.orange),
                         ]),
                       ),
-                      // ارتفاعُ الشريط من محتواه — يكبر مع حجم الخط ولا يفيض.
+                      // Bar height follows its content: grows with font size without overflowing.
                       SingleChildScrollView(
                         scrollDirection: Axis.horizontal,
                         padding: const EdgeInsets.fromLTRB(14, 10, 14, 4),
@@ -436,7 +424,7 @@ class _ItCustodyScreenState extends State<ItCustodyScreen> {
                         ),
                     ])),
                     if (filtered.isEmpty)
-                      // مسافةٌ تحتها حتى لا يغطّيها زرُّ «تسليم عهدة».
+                      // Space below so the "issue custody" button does not cover it.
                       SliverPadding(padding: const EdgeInsets.only(bottom: 90), sliver: SliverToBoxAdapter(child: EmptyState(icon: Icons.devices_other_outlined,
                           title: _anyFilter ? tr('لا توجد عهد مطابقة للفلتر الحالي.', 'Nothing matches the current filter.') : tr('لا توجد عهد مسجّلة.', 'No custody items found.'))))
                     else
@@ -501,7 +489,7 @@ class _ItCustodyScreenState extends State<ItCustodyScreen> {
             if (r['status'] == 'returned') Chip2('${tr('تالف', 'Faulty')} ${r['returnedDate'] != null ? itDate(r['returnedDate']) : ''}', T.danger),
             // Who recorded the return.
             if (r['status'] == 'returned' && r['returnedTo'] is Map) Chip2('${tr('سجّله', 'By')} ${'${r['returnedTo']['firstName'] ?? ''} ${r['returnedTo']['lastName'] ?? ''}'.trim()}', T.inkSoft, icon: Icons.person_pin_outlined),
-            // المُباعُ يقول ثمنَه في الوسم.
+            // A sold item shows its price in the badge.
             if (r['status'] == 'sold') Chip2('${tr('مُباع', 'Sold')}${r['soldPrice'] is num && r['soldPrice'] > 0 ? ' · ${fmtMoney(r['soldPrice'])}' : ''}', T.violet, icon: Icons.sell_outlined),
           ]),
         ]),
@@ -509,7 +497,7 @@ class _ItCustodyScreenState extends State<ItCustodyScreen> {
     );
   }
 
-  // ── details + actions — نفس أزرار صفّ الجدول في الويب ──
+  // Details and actions: the same buttons as the table row on the web.
   Future<void> _detailsSheet(BuildContext context, Map<String, dynamic> r, bool canEdit) async {
     final assigned = r['status'] == 'assigned';
     await showModalBottomSheet(
@@ -611,9 +599,9 @@ class _ItCustodyScreenState extends State<ItCustodyScreen> {
         )),
       );
 
-  // ── تسليم عهدة (من المخزن أو جديد) / تعديل ──
+  // Issue custody (from stock or new) / edit.
   Future<void> _custodyForm(BuildContext context, Map<String, dynamic>? editing) async {
-    // من المخزن هو الطريقُ الأفضل فهو الافتراضيّ — إلّا والرفُّ فارغ.
+    // From stock is the better path, so it is the default unless the shelf is empty.
     String mode = editing != null ? 'new' : (_stock.isNotEmpty ? 'stock' : 'new');
     Map<String, dynamic>? emp = editing?['employee'] is Map ? Map<String, dynamic>.from(editing!['employee']) : null;
     Map<String, dynamic>? picked;
@@ -659,7 +647,7 @@ class _ItCustodyScreenState extends State<ItCustodyScreen> {
                   ),
                   const SizedBox(height: 12),
                 ],
-                // الموظّفُ لا يتغيّر في التعديل — النقلُ إجراءٌ له سجلّه.
+                // The employee does not change on edit; transfer is its own action with its own log.
                 IgnorePointer(
                   ignoring: editing != null,
                   child: _picker(tr('الموظف', 'Employee'), emp == null ? '' : itEmpName(emp), () async {
@@ -709,7 +697,7 @@ class _ItCustodyScreenState extends State<ItCustodyScreen> {
                     Expanded(child: TextField(controller: serial, decoration: InputDecoration(labelText: tr('الرقم التسلسلي', 'Serial number')))),
                   ]),
                   const SizedBox(height: 10),
-                  // معاينةُ الاسم كما سيُحفظ — الاسمُ مشتقٌّ لا يُكتب.
+                  // Preview of the name as it will be saved; the name is derived, not typed.
                   Container(
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(color: T.line.withValues(alpha: 0.30), borderRadius: BorderRadius.circular(10)),
@@ -725,7 +713,7 @@ class _ItCustodyScreenState extends State<ItCustodyScreen> {
                     const SizedBox(width: 8),
                     Expanded(child: TextField(controller: value, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: tr('القيمة للقطعة الواحدة', 'Value per single unit')))),
                   ]),
-                  // خطُّ الجوّال يُوصَف بباقةٍ وعقدٍ وشريحةٍ ومفوَّضٍ لدى المزوّد.
+                  // A mobile line is described by plan, contract, SIM and the provider's authorized person.
                   if (type == 'sim') ...[
                     const SizedBox(height: 10),
                     LookupField(type: 'telecom_package', controller: pkg, label: tr('الباقة', 'Package')),
@@ -760,10 +748,10 @@ class _ItCustodyScreenState extends State<ItCustodyScreen> {
     if (ok != true || emp == null) return;
     try {
       if (editing == null && mode == 'stock') {
-        // نفسُ المستند يغادر الرفَّ إلى الموظّف — بسيرته ورقمه التسلسلي، وبلا حالةٍ فنّية.
+        // The same item leaves the shelf for the employee, with its history and serial number, and no technical condition.
         await Api.instance.post('/api/it/stock/${picked!['_id']}/assign', {'employee': emp!['_id'], 'assignedDate': assignedDate, 'notes': notes.text});
       } else {
-        // الاسمُ لا يُرسل: الخادمُ يشتقّه من النوع والماركة.
+        // The name is not sent: the server derives it from type and brand.
         final body = {
           'employee': emp!['_id'], 'type': type, 'condition': condition, 'brand': brand.text.trim(),
           'serialNumber': serial.text.trim(), 'specs': specs.text.trim(), 'value': num.tryParse(value.text.trim()) ?? 0,
@@ -847,9 +835,9 @@ class _ItCustodyScreenState extends State<ItCustodyScreen> {
         tr('تم الاسترجاع', 'Returned'));
   }
 
-  /// بيعُ صنفٍ من العهدة — المشتري موظّفٌ من القائمة أو اسمٌ حرٌّ، أحدُهما لا كلاهما.
+  /// Sell a custody item: the buyer is a listed employee or a free-text name, one of them not both.
   Future<void> _sell(BuildContext context, Map<String, dynamic> r) async {
-    // المشتري الافتراضيُّ هو حائزُه.
+    // The default buyer is its holder.
     Map<String, dynamic>? buyer = r['employee'] is Map ? Map<String, dynamic>.from(r['employee']) : null;
     final buyerName = TextEditingController();
     final price = TextEditingController(text: '${r['value'] ?? 0}');
@@ -889,7 +877,7 @@ class _ItCustodyScreenState extends State<ItCustodyScreen> {
     }, tr('تم البيع', 'Sold'));
   }
 
-  /// إرجاعُ المُباع: يُلغى البيعُ ويُردّ الثمن، فيعود الجهازُ نفسُه إلى المخزن.
+  /// Undo a sale: cancels the sale and refunds the price, and the same device returns to stock.
   Future<void> _unsell(BuildContext context, Map<String, dynamic> r) async {
     final refund = TextEditingController(text: '${r['soldPrice'] ?? 0}');
     final notes = TextEditingController();
@@ -912,7 +900,7 @@ class _ItCustodyScreenState extends State<ItCustodyScreen> {
         tr('رجع الصنف إلى المخزن', 'Item is back in stock'));
   }
 
-  /// «تالف» — يكتب البلاغ بسببه وخصمه، وينقل الصنف إلى «تالف».
+  /// "Damaged": records the report with its reason and deduction, and moves the item to damaged.
   Future<void> _faulty(BuildContext context, Map<String, dynamic> r) async {
     String kind = 'damaged';
     String date = todayYmd();
@@ -1011,7 +999,7 @@ class _ItCustodyScreenState extends State<ItCustodyScreen> {
     );
   }
 
-  /// عهدُ موظّفٍ واحد: ما بيده الآن وحركاتُه — /custody/by-employee/:id.
+  /// One employee's custody: what he holds now and his movements, /custody/by-employee/:id.
   Future<void> _byEmployee(BuildContext context, Map emp) async {
     Map d = {};
     try { d = await Api.instance.get('/api/it/custody/by-employee/${emp['_id']}'); } catch (_) {}
@@ -1020,7 +1008,7 @@ class _ItCustodyScreenState extends State<ItCustodyScreen> {
         List<Map<String, dynamic>>.from(d['history'] ?? []), held: List<Map<String, dynamic>>.from(d['assigned'] ?? []));
   }
 
-  /// مكتبُ الاستلام: يُختار الموظّف فتُعلَّم كلُّ عهده، ومن استلم بعضَها يرفع علامةَ ما لم يستلم.
+  /// Receipt desk: pick the employee and all his custody is marked; one who received some clears the mark for those not received.
   Future<void> _handover(BuildContext context) async {
     final emp = await pickItEmployee(context, title: tr('استلام عهدة من موظف', 'Receive custody from an employee'));
     if (emp == null || !context.mounted) return;
@@ -1112,7 +1100,7 @@ class _ItCustodyScreenState extends State<ItCustodyScreen> {
         'employee': emp['_id'], 'items': picked.toList(), 'date': date, 'condition': condition, 'notes': notes.text,
         'retire': outcome == 'faulty', 'outcome': outcome, 'price': num.tryParse(price.text.trim()) ?? 0,
       });
-      // ما بقي عليه يُقال صراحةً — وهو المقصودُ من الشاشة كلّها.
+      // What remains with him is stated explicitly; it is the point of the whole screen.
       final returned = d['returned'] ?? picked.length;
       final outstanding = ((d['outstanding'] as List?) ?? []).length;
       final verb = outcome == 'sold' ? tr('بيع', 'sold') : outcome == 'faulty' ? tr('سُجّل كتالف', 'recorded faulty') : tr('استلام', 'handed back');

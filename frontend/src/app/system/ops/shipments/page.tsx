@@ -46,7 +46,7 @@ const driverName = (s: Row, lang: 'en' | 'ar') => locName(s?.driver?.admin?.name
 const driverPhone = (s: Row) => s?.driver?.admin?.phone || s?.driver?.phone || '';
 const carOwnerName = (s: Row, lang: 'en' | 'ar') => s?.car?.owner?.owner_name || locName(s?.car?.owner?.owner?.name, lang) || '—';
 
-// نبضةٌ مكانَ الرقم في أوّل تحميلٍ فقط — لا «—» تُقرأ «لا شيء».
+// A pulse in place of the number on first load only, so a dash is not read as nothing.
 const CountSkeleton = () => <span className="inline-block h-6 w-12 rounded-md bg-slate-200 animate-pulse align-middle" />;
 
 export default function OpsShipmentsPage() {
@@ -71,10 +71,8 @@ export default function OpsShipmentsPage() {
   const [dateTo, setDateTo] = useState('');
   const [branchFilter, setBranchFilter] = useState('');
   const [branches, setBranches] = useState<Row[]>([]);
-  // ── الأرقامُ فورًا ────────────────────────────────────────────────────────
-  // تُقرأ آخرُ أرقامٍ رآها هذا المتصفّح لهذا الفلتر فتظهر لحظةَ الفتح، ثمّ يحلّ
-  // الجديدُ محلَّها. ولا تُمسح أبدًا إلى «—» أثناء التحديث: كانت كلُّ حركةٍ حيّة
-  // تُفرغ البطاقاتِ ثمّ تملؤها، فتومض الأرقامُ مرّةً بعد مرّة.
+  // Numbers appear immediately
+  // The last numbers this browser saw for this filter are read and shown at open, then replaced by the new ones. They are never cleared to a dash during refresh: every live event used to empty the cards and refill them, flashing the numbers repeatedly.
   const countsKey = (b: string, f: string, t: string) => `ops:counts:${b}|${f}|${t}`;
   const [counts, setCounts] = useState<Record<string, number>>(() => readLastSeen<Record<string, number>>(countsKey('', '', '')) || {});
   const [countsState, setCountsState] = useState<'loading' | 'ok' | 'error'>(() => (readLastSeen(countsKey('', '', '')) ? 'ok' : 'loading'));
@@ -137,22 +135,20 @@ export default function OpsShipmentsPage() {
         setCounts(map);
         writeLastSeen(ck, map);
       }
-      // الخادمُ ردَّ بآخر أرقامٍ عنده وهو يجلب الأحدث — يُسأل ثانيةً بعد لحظة.
+      // The server replied with its last numbers while fetching newer ones; ask again after a moment.
       if (dash?.stale && !retriedCounts.current) {
         retriedCounts.current = true;
         if (staleRetry.current) clearTimeout(staleRetry.current);
         staleRetry.current = setTimeout(() => { loadCounts(); }, 2500);
       } else if (!dash?.stale) retriedCounts.current = false;
-      // ── والصفر لا يُعرَض إلّا حين يكون جوابًا ──────────────────────────────
-      // البطاقات تُجلب من منصّة التشغيل الخارجيّة، وكان فشلُ النداء يُبتلع
-      // صامتًا فتبقى الأعداد أصفارًا — والمستخدم يقرأ الصفر حقيقةً: «لا شحنات
-      // اليوم». وصفرٌ كاذب يُبنى عليه قرار، فصار الفشل يُعلن ويُعاد.
+      // Zero is shown only when it is an answer
+      // The cards come from the external operations platform, and a failed call used to be swallowed silently, leaving counts at zero that users read as fact (no shipments today). A false zero drives decisions, so a failure is now announced and retried.
       setCountsState(dash?.upstreamUnavailable || !Object.keys(map).length ? 'error' : 'ok');
     } catch { setCountsState('error'); }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lang, branchFilter, dateFrom, dateTo]);
   useEffect(() => {
-    // فلترٌ جديد: أرقامُه الأخيرةُ فورًا إن رآها المتصفّحُ قبلُ، ثمّ الجديد.
+    // New filter: its last numbers appear immediately if the browser has seen them before, then the new ones.
     const seen = readLastSeen<Record<string, number>>(countsKey(branchFilter, dateFrom, dateTo));
     if (seen) { setCounts(seen); setCountsState('ok'); } else { setCountsState('loading'); }
     loadCounts();
@@ -202,8 +198,7 @@ export default function OpsShipmentsPage() {
     return m ? (lang === 'ar' ? m.ar : m.en) : (v || '—');
   };
 
-  // الأعمدة نفسها المعروضة في الجدول، مع رقم المرجع وهاتف السائق ومالك السيارة
-  // لأنّ من يراجع كشفًا خارج الشاشة يحتاج ما يتّصل به ويطابق عليه.
+  // The same columns shown in the table, plus the reference number, driver phone and vehicle owner, because someone reviewing a statement outside the screen needs what relates to it and what to match on.
   const SHIPMENT_COLUMNS: ExportColumn[] = [
     { header: lang === 'ar' ? 'أمر النقل' : 'Statement #', key: 'graduation_statement_num', width: 16 },
     { header: lang === 'ar' ? 'رقم المرجع' : 'Reference #', key: 'reference_num', width: 16 },
@@ -221,10 +216,7 @@ export default function OpsShipmentsPage() {
     { header: lang === 'ar' ? 'الإنشاء' : 'Created', key: 'created_at', width: 20, transform: (v) => fmtDateTime(v, lang) },
   ];
 
-  // الجدول مرقّم من الخادم (٢٥ صفًّا للصفحة)، فتصدير «كل النتائج» لا يجوز أن
-  // يُبنى من `items` — لا بدّ من إعادة الجلب بنفس الفلتر. ونحن نمرّ على الصفحات
-  // بحدٍّ ١٠٠ للصفحة لأنّ منصّة UPL الخارجية تتحقّق من المعاملات بصرامة ولا
-  // نضمن قبولها حدًّا أكبر؛ والسقف يمنع عشرات النداءات لو كان الفلتر واسعًا.
+  // The table is server-paginated (25 rows per page), so exporting all results cannot be built from `items`; it must refetch with the same filter. Pages are fetched with a limit of 100 because the external UPL platform validates parameters strictly and a larger limit may be rejected; the cap prevents dozens of calls when the filter is wide.
   const fetchAllFiltered = async (): Promise<Row[]> => {
     const PAGE_LIMIT = 100;
     const MAX_PAGES = 30;
@@ -245,8 +237,7 @@ export default function OpsShipmentsPage() {
       out.push(...(d.items || []));
       if (!d.items?.length || p >= (d.meta?.totalPages || 1)) break;
     }
-    // نفس المطابقة الدقيقة التي يطبّقها الجدول: بحث UPL العامّ ضبابيّ وقد يُعيد
-    // كشفًا آخر تصادف أن رقمًا فيه يحوي نفس الأرقام.
+    // Same exact match the table applies: the general UPL search is fuzzy and may return another statement that happens to contain the same digits.
     if (debounced && searchField === 'graduation') return out.filter((x) => String(x.graduation_statement_num) === debounced);
     if (debounced && searchField === 'reference') return out.filter((x) => String(x.reference_num) === debounced);
     return out;

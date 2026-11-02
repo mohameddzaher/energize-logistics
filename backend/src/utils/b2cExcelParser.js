@@ -257,11 +257,7 @@ const extractTargetsFromSheet = (sheet) => {
   return { monthly: 400, daily: 15 };
 };
 
-// Lenient numeric parsing — Excel/Sheets cells can carry the value as a
-// string with Arabic-Indic digits (٠-٩), Persian digits (۰-۹), thousands
-// separators, decimal commas, or stray whitespace. Without this, any of
-// those legitimate cells gets dropped to null/0 and the rep's total comes
-// out short by exactly one (or more) order.
+// Lenient numeric parsing: Excel/Sheets cells can carry the value as a string with Arabic-Indic digits, Persian digits, thousands separators, decimal commas or stray whitespace. Without this, any such legitimate cell is dropped to null/0 and the rep's total comes out short by one or more orders.
 const coerceNumeric = (v) => {
   if (typeof v === 'number') return Number.isFinite(v) ? v : null;
   let s = String(v == null ? '' : v).trim();

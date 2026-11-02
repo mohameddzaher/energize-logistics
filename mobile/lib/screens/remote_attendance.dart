@@ -9,8 +9,7 @@ import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import 'remote_filters.dart';
 
-/// الحضور والانصراف (العمل عن بُعد) — كالويب: الموظف يرى زرَّ اليوم وسجلَّه،
-/// والمشرف يرى سجلَّ الفريق بفلتر الموظف/من/إلى مع تصدير Excel.
+/// Attendance (remote work), as on the web: the employee sees today's button and their log; the supervisor sees the team log with an employee/from/to filter and Excel export.
 class RemoteAttendanceScreen extends StatelessWidget {
   const RemoteAttendanceScreen({super.key});
   @override
@@ -20,7 +19,7 @@ class RemoteAttendanceScreen extends StatelessWidget {
   }
 }
 
-// ── الموظف: زرٌّ كبير ───────────────────────────────────────────────────────
+// Employee: one big button
 class _EmployeeAttendance extends StatefulWidget {
   const _EmployeeAttendance();
   @override
@@ -181,7 +180,7 @@ class _AttRow extends StatelessWidget {
   }
 }
 
-// ── المشرف: حضور الفريق ─────────────────────────────────────────────────────
+// Supervisor: team attendance
 class _StaffAttendance extends StatefulWidget {
   const _StaffAttendance();
   @override
@@ -229,7 +228,7 @@ class _StaffAttendanceState extends State<_StaffAttendance> {
     ExportCol('الحالة', 'Status', (r) => r['status'] == 'present' ? tr('مكتمل', 'Complete') : tr('مفتوح', 'Open')),
   ];
 
-  /// كالويب: المعروض تحت الفلتر، أو سجلّ الفريق كلّه بنداءٍ جديد بلا فلتر.
+  /// As on the web: what is displayed under the filter, or the whole team log by a fresh unfiltered call.
   Future<void> _export() async {
     final filtered = _userId.isNotEmpty || _from != null || _to != null;
     String? scope = 'shown';
@@ -282,7 +281,7 @@ class _StaffAttendanceState extends State<_StaffAttendance> {
   }
 }
 
-/// «2027-09-13» → «13/9/2027» كبقيّة شاشات العمل عن بُعد.
+/// "2027-09-13" becomes "13/9/2027", like the other remote-work screens.
 String _dmy(dynamic v) {
   final d = v == null ? null : DateTime.tryParse('$v');
   return d == null ? (v ?? '—').toString() : '${d.day}/${d.month}/${d.year}';

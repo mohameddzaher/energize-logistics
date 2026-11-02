@@ -1,10 +1,6 @@
 'use client';
-// تحليلات طلبات الشحنات — الوساطةُ تُقاس بالفرق لا بالعدد.
-//
-// موديلُ العمل هنا غيرُ إدارة الأسطول: هناك السيّارةُ سيّارتُنا فالسؤالُ «هل
-// حقّقت هدفَها»، وهنا لا سيّارةَ لنا — نشتري الحمولةَ من مورّدٍ ونبيعها لعميل،
-// فالسؤالُ **«كم كان الفرق، وممّن»**: أيُّ عميلٍ يشتري أكثر، وأيُّ مورّدٍ ينفّذ
-// أرخص، وأيُّ مسارٍ هامشُه أعلى — وأيُّ شحنةٍ بيعُها أقلُّ من شرائها.
+// Shipment-orders analytics: brokerage is measured by the margin, not the count.
+// Unlike fleet management (our own trucks, did they hit target), here we buy the load from a supplier and sell it to a customer, so the question is how much margin and from whom: top customer, cheapest supplier, best route, and shipments sold below purchase.
 import { useState, useEffect, useCallback, Suspense } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
@@ -44,7 +40,7 @@ interface Data {
 function Inner() {
   const { lang, isRTL } = useLanguage();
   const ar = lang === 'ar';
-  // الحالاتُ كما ضُبطت في إعدادات القسم — لا نسخةٌ ثانيةٌ تتخلّف عنها.
+  // Statuses as configured in section settings, not a second copy that drifts.
   const statusVocab = useOrderStatuses();
   const t = (a: string, e: string) => (ar ? a : e);
   const { notify } = useDialog();
@@ -60,8 +56,7 @@ function Inner() {
   const [d, setD] = useState<Data | null>(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<'byCustomer' | 'bySupplier' | 'byRoute' | 'byTruckType' | 'byBranch'>('byCustomer');
-  // شحناتُنا أم شحناتُ المنصّة: خلطُهما يخفي أداءَنا داخل ثلاثةٍ وثلاثين ألفَ
-  // صفٍّ منقول، فيُقرأ متوسّطُهم على أنّه متوسّطُنا.
+  // Our shipments versus platform shipments: mixing them hides our performance inside tens of thousands of imported rows, and their average gets read as ours.
   const [source, setSource] = useState<'' | 'system' | 'platform'>(sp?.get('source') === 'system' ? 'system' : sp?.get('source') === 'platform' ? 'platform' : '');
 
   const query = (() => {
@@ -83,7 +78,7 @@ function Inner() {
 
   useEffect(() => { load(); }, [load]);
   useSocket('shipmentOrders:updated', useCallback(() => load(), [load]));
-  // الرابطُ يُكتب ولا يُنتقَل إليه — التنقّلُ يعيد بناء الشجرة مع كلّ فلتر.
+  // The URL is written but not navigated to; navigation would rebuild the tree on every filter change.
   useEffect(() => { syncUrl('/system/shipment-orders/analytics', query); // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query.toString()]);
 
@@ -126,7 +121,7 @@ function Inner() {
           ]} />
       </PageHeader>
 
-      {/* الفلاتر */}
+      {/* Filters */}
       <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm flex flex-wrap items-end gap-3">
         <div>
           <label className="block text-xs font-semibold text-slate-600 mb-1">{t('من', 'From')}</label>
@@ -135,7 +130,7 @@ function Inner() {
         </div>
         <div>
           <label className="block text-xs font-semibold text-slate-600 mb-1">{t('إلى', 'To')}</label>
-          {/* «إلى» مفتوحًا يعني حتى الآن، لا حتى منتصف ليل اليوم. */}
+          {/* An open "to" means until now, not until midnight of today. */}
           <input type="date" value={to} onChange={(e) => setTo(e.target.value)}
             className="px-3 py-2 rounded-lg bg-white border border-slate-200 text-sm [color-scheme:light] focus:outline-none focus:ring-2 focus:ring-[#f37121]/50" />
         </div>
@@ -170,7 +165,7 @@ function Inner() {
         </button>
       </div>
 
-      {/* الأرقام */}
+      {/* Numbers */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         <StatCard label={t('شحنات منفّذة', 'Live orders')} value={T.live} />
         <StatCard label={t('إجمالي البيع', 'Total sell')} value={money(T.sell)} accent="text-emerald-600" />
@@ -189,9 +184,7 @@ function Inner() {
         <StatCard label={t('بلا سعر كامل', 'Missing a price')} value={T.missingPrice} accent={T.missingPrice ? 'text-amber-600' : undefined} />
       </div>
 
-      {/* ── تنبيهٌ صريح ─────────────────────────────────────────────────────
-          بلا سعرِ بيعٍ أو شراءٍ لا يُحسب فرق. والرقمُ يُقرأ تامًّا وهو ناقص،
-          فيُقال العددُ بدل أن يُخفى. */}
+      {/* Explicit warning: without a sale or purchase price no margin is computed. A figure would read as complete while partial, so the count is stated instead of hidden. */}
       {!!T.missingPrice && (
         <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
           <AlertTriangle className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
@@ -202,7 +195,7 @@ function Inner() {
         </div>
       )}
 
-      {/* الترند */}
+      {/* Trend */}
       {d.byMonth.length > 1 && (
         <div className="rounded-2xl border border-slate-200 bg-white shadow-sm p-4">
           <p className="font-bold text-slate-900 mb-3">{t('الشهور: البيع والشراء والفرق', 'By month: sell, buy and spread')}</p>
@@ -223,7 +216,7 @@ function Inner() {
         </div>
       )}
 
-      {/* التجميعات */}
+      {/* Aggregations */}
       <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
         <div className="px-4 py-3 bg-slate-50 border-b border-slate-100 flex flex-wrap items-center gap-1.5">
           {TABS.map(([k, arL, enL]) => (
@@ -274,9 +267,7 @@ function Inner() {
         </ScrollX>
       </div>
 
-      {/* ── ترتيبُ السيلز التشغيليّ وأسبابُ الإلغاء (٢٠٢٦/١٠/٢٢) ──────────────
-          في المدّة المختارة نفسِها: مَن جاء بأكثر الشحنات المنفَّذة، وكم أُلغي له؛
-          ولماذا تُلغى الشحنات. */}
+      {/* Operational sales ranking and cancellation reasons for the selected period: who brought the most executed shipments and how many were cancelled, and why shipments are cancelled. */}
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
         <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden xl:col-span-2">
           <div className="px-4 py-3 border-b border-slate-100 flex items-center gap-2">
@@ -327,8 +318,7 @@ function Inner() {
         </div>
       </div>
 
-      {/* ── الشحنات الخاسرة ─────────────────────────────────────────────────
-          بيعٌ أقلُّ من شراء: ليست رقمًا في متوسّط، بل أمر نقل باسمها يُسأل عنها. */}
+      {/* Losing shipments: sold below purchase. Shown as individual transport orders to question, not as a figure inside an average. */}
       {!!d.losing.length && (
         <div className="rounded-2xl border border-red-200 bg-white shadow-sm overflow-hidden">
           <div className="px-4 py-3 bg-red-50 border-b border-red-100 flex items-center gap-2">

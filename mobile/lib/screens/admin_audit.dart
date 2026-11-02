@@ -6,16 +6,11 @@ import '../ui/export_sheet.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 
-/// سجلُّ التدقيق — نظيرُ /system/audit في الويب.
-///
-/// السجلُّ عشراتُ الآلاف من القيود، فالفلترةُ والترقيمُ عند الخادم: القسم ثمّ
-/// الكيانُ داخله ثمّ الفعلُ داخله، والشخص، والفرع، ويومٌ واحد أو مدّة. وقوائمُ
-/// الخيارات (/api/audit/options) تُعاد مع كلّ فلترٍ فتعدّ ما تحت الفلاتر الأخرى.
-/// والتصديرُ: الصفحةُ الحاضرة أو كلُّ ما يطابق (يُجلَب بحدٍّ مفتوح).
+/// Audit log, the counterpart of /system/audit on the web. The log holds tens of thousands of entries, so filtering and paging run on the server: section, then entity within it, then action, plus person, branch, and a single day or range. The option lists (/api/audit/options) are returned with each filter and count what remains under the other filters. Export covers the current page or everything matching (fetched with an open limit).
 const _pageSize = 25;
 
 String _companyDay([int offset = 0]) {
-  // اليومُ بتوقيت الرياض (+3) لا بساعة الجهاز — هو الذي يقطع به الخادم.
+  // The day is in Riyadh time (+3), not the device clock, because that is where the server cuts the day.
   final now = DateTime.now().toUtc().add(const Duration(hours: 3));
   final d = DateTime.utc(now.year, now.month, now.day).subtract(Duration(days: offset));
   return '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
@@ -64,7 +59,7 @@ class _AdminAuditScreenState extends State<AdminAuditScreen> {
     try {
       final d = await Api.instance.get('/api/audit/options?${_params()}');
       if (mounted && mine == _optSeq) setState(() => _opts = Map<String, dynamic>.from(d));
-    } catch (_) {/* تبقى القوائمُ على آخر ما وصل */}
+    } catch (_) {/* Lists keep the last result received. */}
   }
 
   Future<void> _load(int page) async {

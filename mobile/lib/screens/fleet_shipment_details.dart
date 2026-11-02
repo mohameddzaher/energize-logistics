@@ -13,9 +13,7 @@ import '../ui/vehicle_month_log.dart';
 import 'jp.dart' show JpTaskPanel;
 import 'fleet_new_shipment.dart';
 
-/// تفاصيل الشحنة — the SAME detail view the web opens: full info, the status
-/// control, the follow-up form, and the complete event history (إنشاء /
-/// تغييرات الحالة / تغيير سائق / متابعات) as a timeline.
+/// Shipment details: the SAME detail view the web opens: full info, the status control, the follow-up form, and the complete event history (creation / status changes / driver change / follow-ups) as a timeline.
 class FleetShipmentDetailsScreen extends StatefulWidget {
   final String shipmentId;
   const FleetShipmentDetailsScreen({super.key, required this.shipmentId});
@@ -37,8 +35,7 @@ const _statuses = {
   'cancelled': ('ملغاة', 'Cancelled', T.danger),
 };
 
-// أدوارُ القسم — نفس FLEET_EDIT_ROLES / FLEET_ADMIN_ROLES في الويب (lib/fleet.ts)
-// وفي routes/fleet.js: التعديلُ لـ EDIT، والحذفُ لـ ADMIN.
+// Section roles, same as FLEET_EDIT_ROLES / FLEET_ADMIN_ROLES on the web (lib/fleet.ts) and in routes/fleet.js: edit is for EDIT, delete for ADMIN.
 const _fleetEditRoles = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'operations_manager', 'operations_staff', 'moderator', 'fleet_manager', 'fleet_supervisor'];
 const _fleetAdminRoles = ['super_admin', 'admin', 'it_manager', 'operations_manager', 'fleet_manager'];
 
@@ -65,12 +62,12 @@ class _FleetShipmentDetailsScreenState extends State<FleetShipmentDetailsScreen>
   }
   final _location = TextEditingController();
   final _note = TextEditingController();
-  // وقتُ المتابعة (الآن افتراضًا) ومتوقّعُ الوصول (اختياري) — كنموذج الويب.
+  // Follow-up time (now by default) and expected arrival (optional), like the web form.
   DateTime _contactTime = DateTime.now();
   DateTime? _fuArrival;
   bool _busy = false;
 
-  // canEditFleet / canAdminFleet: الدورُ أو صلاحيةُ «تعديل» على القسم.
+  // canEditFleet / canAdminFleet: the role or an edit grant on the section.
   bool get _editor {
     final a = context.read<AuthProvider>();
     return _fleetEditRoles.contains(a.role) || a.canEditSection('Fleet Management');
@@ -82,12 +79,8 @@ class _FleetShipmentDetailsScreenState extends State<FleetShipmentDetailsScreen>
   bool _printing = false;
   late final void Function() _onLive;
 
-  /// الملاحظاتُ الجاهزة — تُقرأ من قوائم القسم لا من الشيفرة.
-  ///
-  /// كانت سبعةَ سطورٍ مكتوبةً هنا وثمانيةً في الويب، **ومختلفةً بينهما**:
-  /// «نايم — استراحة» في الجوّال و«متوقف — استراحة» في الموقع، فتخرج تقاريرُ
-  /// بصيغتين لنفس الحالة. صارت قائمةً واحدة تُدار من إعدادات الأسطول، وهذه
-  /// نسخةٌ احتياطيّة تُستعمل ما دام الجلبُ لم يصل فقط.
+  /// Ready notes: read from the section lists, not from code.
+  /// They used to be seven lines here and eight on the web, and they differed ("sleeping - rest" on mobile, "stopped - rest" on the site), so reports came out in two wordings for one state. Now one list managed from fleet settings; this is a fallback used only until the fetch arrives.
   static const _fallbackNotes = [
     'في الطريق إلى موقع التنزيل', 'في الطريق إلى موقع التحميل', 'حمَّل وتحرّك',
     'متوقف — استراحة', 'فارغ', 'متوقف — عُطل على الطريق', 'وصل موقع التنزيل', 'جارٍ التفريغ',
@@ -104,7 +97,7 @@ class _FleetShipmentDetailsScreenState extends State<FleetShipmentDetailsScreen>
           .where((x) => x.isNotEmpty)
           .toList();
       if (names.isNotEmpty && mounted) setState(() => _quickNotes = names);
-    } catch (_) { /* تبقى النسخةُ الاحتياطيّة */ }
+    } catch (_) { /* The fallback copy remains. */ }
   }
 
   @override
@@ -182,7 +175,7 @@ class _FleetShipmentDetailsScreenState extends State<FleetShipmentDetailsScreen>
     }
   }
 
-  // منتقي تاريخٍ ووقت — للمتابعة.
+  // Date and time picker for the follow-up.
   Future<DateTime?> _pickDateTime(DateTime? initial, {required DateTime first, required DateTime last}) async {
     final init = initial ?? DateTime.now();
     final d = await showDatePicker(
@@ -198,14 +191,14 @@ class _FleetShipmentDetailsScreenState extends State<FleetShipmentDetailsScreen>
 
   String _dtLocal(DateTime d) => '${d.day}/${d.month} ${d.hour}:${d.minute.toString().padLeft(2, '0')}';
 
-  // تعديل الحمولة — نفس شاشة الإنشاء بمعرّفها، ويُعاد الجلبُ عند العودة.
+  // Edit the load: the same screen as create, by its id; re-fetched on return.
   Future<void> _edit() async {
     final saved = await Navigator.push<bool>(context,
         MaterialPageRoute(builder: (c) => FleetNewShipmentScreen(editId: widget.shipmentId)));
     if (saved == true) _load();
   }
 
-  // حذف الحمولة — تأكيدٌ ثم DELETE ثم الرجوع للقائمة (تتحدّث عبر fleet:updated).
+  // Delete the load: confirm, DELETE, then back to the list (which updates via fleet:updated).
   Future<void> _delete(Map<String, dynamic> s) async {
     final ok = await showDialog<bool>(
       context: context,
@@ -238,8 +231,7 @@ class _FleetShipmentDetailsScreenState extends State<FleetShipmentDetailsScreen>
     return '${d.day}/${d.month} ${d.hour}:${d.minute.toString().padLeft(2, '0')}';
   }
 
-  // طباعة/مشاركة البوليصة — نفس ملف الويب بالضبط: الخادم يولّده على ترويسة
-  // الشركة بالختم (Puppeteer + pdf-lib)، ونطبع البايتات كما هي.
+  // Print/share the waybill: exactly the web file. The server generates it on the company letterhead with the stamp (Puppeteer + pdf-lib), and the bytes are printed as they are.
   Future<void> _print(Map<String, dynamic> s) async {
     final id = s['_id']?.toString();
     if (id == null) return;
@@ -281,14 +273,14 @@ class _FleetShipmentDetailsScreenState extends State<FleetShipmentDetailsScreen>
     }
   }
 
-  /// لوحةُ السيّارة قد تصل كائنًا مُعبّأً أو لقطةً نصّية — والسجلُّ يُطلب بأيّهما.
+  /// The vehicle plate may arrive as a populated object or a text snapshot; the log is requested with either.
   String get _vehiclePlate {
     final v = _shipment?['vehicle'];
     if (v is Map && (v['plate'] ?? '').toString().isNotEmpty) return v['plate'].toString();
     return (_shipment?['vehiclePlate'] ?? '').toString();
   }
 
-  /// شهرُ الحمولة لا الشهرُ الجاري: من يفتح بوليصةً من مايو يريد سجلَّ مايو.
+  /// The load's month, not the current month: whoever opens a May waybill wants the May log.
   String get _shipmentMonth {
     final d = DateTime.tryParse((_shipment?['loadDate'] ?? _shipment?['createdAt'] ?? '').toString());
     final x = d ?? DateTime.now();
@@ -334,7 +326,7 @@ class _FleetShipmentDetailsScreenState extends State<FleetShipmentDetailsScreen>
                   child: ListView(
                     padding: const EdgeInsets.all(14),
                     children: [
-                      // بطاقة المعلومات الرئيسية
+                      // Main information card.
                       FadeSlideIn(
                         child: AppCard(
                           topAccent: st.$3,
@@ -378,7 +370,7 @@ class _FleetShipmentDetailsScreenState extends State<FleetShipmentDetailsScreen>
                               if ((s['branch'] ?? '').toString().isNotEmpty)
                                 Chip2('${tr('الفرع', 'Branch')}: ${s['branch']}', T.inkSoft, icon: Icons.store_mall_directory_outlined),
                             ]),
-                            // اتصال/واتساب على رقم السائق مباشرة من التفاصيل.
+                            // Call/WhatsApp directly on the driver's number from the details.
                             Builder(builder: (_) {
                               final phone = (s['driverPhone'] ?? (s['driver'] is Map ? s['driver']['phone'] : null) ?? '').toString();
                               if (phone.isEmpty) return const SizedBox.shrink();
@@ -408,7 +400,7 @@ class _FleetShipmentDetailsScreenState extends State<FleetShipmentDetailsScreen>
                         ),
                       ),
                       const SizedBox(height: 12),
-                      // تسجيل متابعة — للمحرّرين فقط كالويب (والخادمُ يردّ غيرهم بـ403).
+                      // Record a follow-up: editors only, like the web (the server returns 403 for others).
                       if (_editor) FadeSlideIn(
                         delayMs: 80,
                         child: AppCard(
@@ -475,11 +467,7 @@ class _FleetShipmentDetailsScreenState extends State<FleetShipmentDetailsScreen>
                         ),
                       ),
                       if (_editor) const SizedBox(height: 12),
-                      // ── سجلّ السيّارة الشهريّ ────────────────────────────
-                      // أحداثُ هذه الشحنة أدناه تجيب «أين هي». وهذا يجيب
-                      // السؤال الآخر: ماذا جرى لهذه السيّارة هذا الشهر —
-                      // عطلٌ وإطارٌ وستُّ حمولاتٍ بينها. والشهرُ يُقفل مع
-                      // أوّل الشهر التالي.
+                      // Vehicle monthly log. This shipment's events below answer where it is; this answers the other question: what happened to this vehicle this month, such as a breakdown, a tire and six loads in between. The month closes at the start of the next one.
                       if (_vehiclePlate.isNotEmpty)
                         FadeSlideIn(
                           delayMs: 130,
@@ -491,7 +479,7 @@ class _FleetShipmentDetailsScreenState extends State<FleetShipmentDetailsScreen>
                           ),
                         ),
                       if (_vehiclePlate.isNotEmpty) const SizedBox(height: 12),
-                      // سجل الأحداث الكامل — نفس هيستوري السيستم.
+                      // Full event log, same as the system history.
                       FadeSlideIn(
                         delayMs: 140,
                         child: AppCard(

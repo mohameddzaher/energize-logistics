@@ -64,7 +64,7 @@ export default function MyProfilePage() {
     [tx.nationality, e.nationality],
     [tx.iqama, e.iqamaNumber],
     [tx.nationalId, e.nationalId],
-    // سطرُ التفاصيل يحمل التقويمين معًا، الميلاديَّ أوّلًا (lib/hrDates).
+    // The detail line carries both calendars, Gregorian first (lib/hrDates).
     [tx.hireDate, bothDates(e.hireDate, ar, '')],
     [tx.manager, e.directManagerName || userName(e.directManager)],
     [tx.phone, e.phone],
@@ -72,14 +72,14 @@ export default function MyProfilePage() {
   ];
   const iqamaB = expiryBadge(e.iqamaExpiry, lang);
 
-  // «من الميلادي» لا تُقرأ — فالاسمُ الأساسيُّ «تاريخ البداية/النهاية».
+  // The "from Gregorian" label is never shown; the main name is start/end date.
   const FROM_LABEL = ar ? 'تاريخ البداية' : 'Start date';
   const TO_LABEL = ar ? 'تاريخ النهاية' : 'End date';
   const fromLabels = pairLabels(FROM_LABEL, ar);
   const toLabels = pairLabels(TO_LABEL, ar);
   const leaveColumns: ExportColumn[] = [
     { header: tx.colType, key: 'leaveType', transform: (v) => leaveTypeLabel(v, lang), width: 18 },
-    // كلُّ تاريخٍ عمودان متجاوران: الميلاديُّ ثمّ هجريُّه المشتقّ.
+    // Each date is two adjacent columns: Gregorian, then its derived Hijri.
     ...exportDatePair(FROM_LABEL, 'startDate', ar),
     ...exportDatePair(TO_LABEL, 'endDate', ar),
     { header: tx.colDays, key: 'days', width: 10 },
@@ -91,8 +91,7 @@ export default function MyProfilePage() {
     { header: tx.colSerial, key: 'serialNumber', transform: (v) => v || '—', width: 18 },
     { header: tx.colStatus, key: 'status', transform: (v) => v === 'assigned' ? tx.badgeAssigned : tx.badgeReturned, width: 14 },
   ];
-  // ملفّ الموظّف عن نفسه: كلُّ ما يعرضه هذان الجدولان هو كلُّ ما عنده، بلا بحثٍ
-  // ولا فلتر. فنطاقٌ ثانٍ لن يزيد صفًّا واحدًا، وإنّما يوهم بأنّ المعروض ناقص.
+  // The employee's own file: everything these two tables show is everything he has, without search or filter, so a second scope would add no rows and only suggest the shown data is incomplete.
   const scope = exportScopeLabels(lang === 'ar');
   const leaveExportOptions = [
     { key: 'all', label: scope.all, sheets: [{ name: tx.tabLeaves, rows: data.leaves, columns: leaveColumns }] },
@@ -115,10 +114,7 @@ export default function MyProfilePage() {
 
       {b && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {/* ── ثلاثةٌ من الأربعة أرقامٌ لا صفوفَ تحتها ────────────────────
-              الرصيدُ السنويُّ بندُ سياسةٍ، والمستحقُّ حتى تاريخه حسابُ مدّة،
-              والمتاحُ فرقُ الاثنين. أمّا «المستهلك» فهو إجازاتٌ وقعت — ولها
-              قائمةٌ أسفلَ الصفحة، فهو وحدَه يُفتَح عليها. */}
+          {/* Three of the four numbers have no rows beneath them: annual balance is a policy item, accrued-to-date is a duration calculation, and available is their difference. Consumed is leave that happened and has a list below the page, so only it opens it. */}
           <StatCard label={tx.annual} value={`${b.entitlement} ${tx.dayUnit}`} />
           <StatCard label={tx.accrued} value={`${b.accrued} ${tx.dayUnit}`} accent="text-blue-600" />
           <Pick onClick={() => { setTab('leaves'); setTimeout(() => document.getElementById('me-leave-list')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60); }}>

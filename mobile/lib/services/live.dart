@@ -15,7 +15,7 @@ class Live {
   static final Live instance = Live._();
   io.Socket? _socket;
   final Map<String, List<void Function()>> _handlers = {};
-  // مستمعون يحتاجون حمولة الحدث (زي الإشعارات: العنوان والرسالة).
+  // Listeners that need the event payload (e.g. notification title and message).
   final Map<String, List<void Function(dynamic)>> _dataHandlers = {};
   bool _refreshing = false;
 
@@ -37,7 +37,7 @@ class Live {
       for (final h in List.of(_dataHandlers[event] ?? const [])) {
         h(data);
       }
-      // اشتراك بالبادئة: المفتاح 'b2c:*' يستقبل كل أحداث 'b2c:...'.
+      // Prefix subscription: key 'b2c:*' receives all 'b2c:...' events.
       for (final e in _handlers.entries) {
         if (e.key.endsWith(':*') && event.startsWith(e.key.substring(0, e.key.length - 1))) {
           for (final h in List.of(e.value)) {
@@ -46,7 +46,7 @@ class Live {
         }
       }
     });
-    // قبل كل محاولة إعادة اتصال: حدِّث التوكن في المصافحة.
+    // Refresh the token in the handshake before each reconnect attempt.
     _socket!.io.on('reconnect_attempt', (_) {
       _socket!.auth = {'token': Api.instance.accessToken};
     });
@@ -58,11 +58,11 @@ class Live {
     if (_refreshing) return;
     _refreshing = true;
     try {
-      // أي طلب عادي يمر بمسار التجديد التلقائي في العميل — يكفي لتحديث التوكن.
+      // Any normal request goes through the client's auto-refresh path, which is enough to renew the token.
       await Api.instance.get('/api/auth/me');
       _socket?.auth = {'token': Api.instance.accessToken};
       Future.delayed(const Duration(seconds: 1), () => _socket?.connect());
-    } catch (_) {/* سيُعاد تلقائيًا مع محاولة الاتصال القادمة */} finally {
+    } catch (_) {/* Retried automatically on the next connection attempt. */} finally {
       _refreshing = false;
     }
   }

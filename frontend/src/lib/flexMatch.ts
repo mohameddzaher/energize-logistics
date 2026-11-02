@@ -1,15 +1,5 @@
-// ── مطابقةٌ لا تبالي بالمسافات ولا بفروق الرسم ───────────────────────────────
-//
-// توأمُ `backend/src/utils/plateKey.js` في الواجهة. الخادمُ يبحث بـ`flexSpaceRegex`
-// فيُرجع الصفَّ الصحيح، ثمّ تُعيد الشاشةُ فلترةَ ما وصلها بمطابقةٍ حرفيّة —
-// فيُحذَف الصفُّ الذي وجده الخادمُ للتوّ وتخرج الشاشة فارغة. وهذا هو ما كان
-// يحدث في تبويبات المستندات كلِّها: البحثُ في «سجل المركبات» يجد اللوحة
-// و«بطاقات التشغيل» لا تجدها، وهما ينادِيان النداء نفسه.
-//
-// لوحةُ السعودية ثلاثةُ حروفٍ ورقم، والمقطورات حرفان فيُترك موضعُ الثالث
-// فارغًا — «أ ب  3499» بمسافتين. ونحن نخزّنها بمسافةٍ واحدة، والموظّف ينسخها
-// من أبشر بمسافتين. فتُنزع المسافاتُ من الطرفين معًا، وتُطوى معها الهمزةُ
-// والتاءُ المربوطة والأرقامُ العربيّة — لا يُطلب من أحدٍ أن يعرف كيف كُتب الصفّ.
+// Matching that ignores spaces and spelling variants.
+// Frontend twin of backend/src/utils/plateKey.js. The server searches with flexSpaceRegex and returns the right row, then the screen re-filtered it with a literal match, dropping the row the server just found and showing an empty screen. That happened in all the document tabs: registry search found the plate while operating cards did not, though they call the same endpoint. Saudi plates have three letters and a number, trailers two with the third slot left empty (two spaces); we store one space.
 export const flexNormalize = (v: unknown): string => String(v ?? '')
   .replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)))
   .replace(/[أإآٱ]/g, 'ا').replace(/[ةه]/g, 'ه').replace(/[ىئي]/g, 'ي').replace(/[ؤو]/g, 'و')
@@ -17,7 +7,7 @@ export const flexNormalize = (v: unknown): string => String(v ?? '')
   .replace(/\s+/g, '')
   .toLowerCase();
 
-/** هل يحوي أيٌّ من الحقول نصَّ البحث بعد الطيّ؟ نصٌّ فارغ يعني «الكلّ». */
+/** Whether any of the fields contains the search text after folding; empty text means all. */
 export const flexIncludes = (needle: unknown, ...fields: unknown[]): boolean => {
   const n = flexNormalize(needle);
   if (!n) return true;
@@ -25,23 +15,8 @@ export const flexIncludes = (needle: unknown, ...fields: unknown[]): boolean => 
 };
 
 /**
- * ── صيغةُ عرضِ اللوحة: واحدةٌ في النظام كلِّه ────────────────────────────────
- *
- * توأمُ `formatPlate` في `backend/src/utils/plateKey.js` — ولا بدّ من توأم:
- * البوليصةُ والتقريرُ يُرسمان في الخادم والجداولُ في المتصفّح، فلو اختلفت
- * القاعدتان قرأ الموظّفُ اللوحةَ على الشاشة بصيغةٍ وفي الورقة بأخرى.
- *
- * كانت تُكتب عندنا بأربع صيغ: «أ س ي 7357» في سجلّ المركبات، و«1080 RXA» في
- * إدارة الأسطول ولوكيشن سوليوشن، و«0749 jxa» و«0008» في شاحنات الناقلين —
- * وبينها فروقٌ لا معنى لها: مسافتان أو ثلاث، ولاتينيّةٌ صغيرةٌ أو كبيرة،
- * وأرقامٌ عربيّةٌ أو غربيّة.
- *
- * القاعدة: أرقامٌ غربيّةٌ، ولاتينيّةٌ كبيرةٌ ملتصقة، وعربيّةٌ مفصولةٌ بمسافة،
- * ومسافةٌ واحدةٌ بين الحروف والرقم.
- *
- * والذي **لا يُمسّ** الترتيبُ: «1611 ب ق ب» و«1080 RXA» مكتوبتان بالرقم أوّلًا،
- * وإعادةُ ترتيبهما تغييرٌ للبيان لا تنسيقٌ له — اللوحةُ تُطابَق بنصّها عند
- * الرفع والاستيراد. فيُضبَط الفراغُ والأبجديّةُ ويبقى الترتيبُ كما كُتب.
+ * One plate display format for the whole system; twin of formatPlate in backend/src/utils/plateKey.js.
+ * A twin is needed because waybills and reports render on the server while tables render in the browser; differing rules would show the plate one way on screen and another on paper. It used to be written in four formats with meaningless differences (two or three spaces, lower or upper case Latin, Arabic or Western digits). Rule: Western digits, Arabic letters spaced, Latin letters joined and uppercase.
  */
 export const formatPlate = (v: unknown): string => {
   if (v == null) return '';
@@ -52,14 +27,11 @@ export const formatPlate = (v: unknown): string => {
   const digits = digitsMatch[0];
   const before = raw.slice(0, digitsMatch.index).trim();
   const after = raw.slice((digitsMatch.index || 0) + digits.length).trim();
-  // الحروفُ العربيّةُ مفصولةٌ بمسافةٍ كما تُقرأ على اللوحة، واللاتينيّةُ ملتصقةٌ
-  // وكبيرةٌ كما تُكتب في الرخصة.
+  // Arabic letters are separated by a space as read on the plate; Latin letters are joined and uppercase as written on the licence.
   const tidy = (part: string) => (/[A-Za-z]/.test(part)
     ? part.replace(/\s+/g, '').toUpperCase()
     : part.split(/\s+/).filter(Boolean).join(' '));
-  // ── وما كان على الجانبين يبقى على الجانبين ──────────────────────────────
-  // «Car 4263 SNA» حروفٌ قبل الرقم وبعده. وأخذُ أحد الطرفين يُسقط الآخرَ —
-  // أي يحذف من اللوحة ما هو مكتوبٌ فيها، وهو إتلافٌ لا تنسيق.
+  // Letters on both sides of the number stay on both sides. E.g. "Car 4263 SNA" has letters before and after the number; keeping one side would delete part of what is written on the plate, which is destruction, not formatting.
   const head = before ? tidy(before) : '';
   const tail = after ? tidy(after) : '';
   if (!head && !tail) return digits;

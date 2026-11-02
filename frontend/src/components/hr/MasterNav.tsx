@@ -1,25 +1,6 @@
 'use client';
-// شريط تنقّل واحد بيربط صفحات ملف الموظفين ببعض.
-//
-// المشكلة اللي بيحلّها: الصفحات كانت جزر — تفتح الإقامات، تخلص، ترجع للقايمة
-// الجانبية، تدوّر على الجوازات. والأهم إنك ما كنتش شايف **فين الشغل**، فكنت
-// بتفتح صفحة صفحة تشوف فيها حاجة ناقصة ولا لأ.
-//
-// ── والرقمُ انتهاءاتٌ لا نقصٌ في البيانات ──────────────────────────────────
-//
-// كان الرقمُ «بياناتٌ ناقصة». فيقرأ المستخدمُ «الإقامات ٢» بالأحمر فيفهم أنّ
-// إقامتين انتهتا، ويدخل فيجد مئتين واثنتين وثلاثين — رقمان صحيحان يجيبان عن
-// سؤالين، ولا شيء يقول أيُّهما أيّ.
-//
-// والسؤالُ الذي يُطرح على هذا الشريط كلَّ صباح هو «ما الذي انتهى أو يوشك؟».
-// فصار الرقمُ ذلك: المنتهي والحرج والقريب (`needsAttention`) — وهو نفسُه الذي
-// تعدّه صفحةُ الانتهاءات وبطاقاتُ اللوحة، فلا يختلف رقمٌ عن رقم.
-//
-// والمجموعاتُ التي لا مستندَ لها (التواصل، البيانات البنكية…) لا انتهاءَ فيها،
-// فلا رقمَ لها — أَولى من رقمٍ يعني شيئًا آخر في نفس الموضع.
-//
-// العدّاد بيتقرا من نفس اندبوينت النظرة الشاملة اللي الصفحة الرئيسية بتستعمله،
-// فمفيش حساب تاني ممكن يختلف عنه.
+// One navigation bar linking the employee-file pages, so the user can see where the work is instead of opening page after page.
+// The number is expiries (expired, critical, near: `needsAttention`), not missing data. It matches the expiries page and dashboard cards. Groups without documents show no number. The counter reads from the same overview endpoint as the home page, so there is no second computation.
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useLanguage } from '@/context/LanguageContext';
@@ -38,14 +19,10 @@ export default function MasterNav() {
   const pathname = usePathname() || '';
   const [groups, setGroups] = useState<{ key: string; ar: string; en: string; count?: number }[]>([]);
   const [expiring, setExpiring] = useState(0);
-  // ── والرابطُ يحمل الشرطَ الذي عُدَّ به الرقم ────────────────────────────────
-  // الانتهاءاتُ تُعَدّ لكلّ مَن ليس في الأرشيف (`expiryScope`)، وحدُّ «القريب» هو
-  // `alert.warnDays`. وكلاهما يأتي من الخادم مع الرقم ويُكتب في الرابط كما هو،
-  // فلا يفتح «٤٥٩» صفحةً تعدّ قومًا آخرين أو مدّةً أخرى.
+  // The link carries the condition the number was counted with: scope is everyone not archived (`expiryScope`) and the near threshold is `alert.warnDays`. Both come from the server so the opened page counts the same people and period.
   const [scope, setScope] = useState<Record<string, string>>({});
   const [warnDays, setWarnDays] = useState<number | null>(null);
-  // تعديلان متتاليان يُطلقان قراءتين؛ والأقدمُ قد يصل أخيرًا فيُعيد الرقمَ إلى
-  // ما قبل التعديل الثاني. راجع hooks/useLatestRequest.
+  // Two quick edits fire two reads; the older may arrive last and revert the number. See hooks/useLatestRequest.
   const guard = useLatestRequest();
 
   const load = useCallback(async () => {
@@ -57,26 +34,24 @@ export default function MasterNav() {
       setWarnDays(o.alert?.warnDays ?? null);
       setGroups((o.groups || []).map((g: any) => ({
         key: g.key, ar: g.ar, en: g.en,
-        // المستنداتُ وحدَها لها انتهاءات؛ وغيرُها بلا رقم.
+        // Only documents have expiries; other groups have no number.
         count: g.needsAttention == null ? undefined : g.needsAttention,
       })));
       setExpiring(o.totals?.expiringSoon || 0);
-    } catch { /* الشريط مايوقفش الصفحة */ }
+    } catch { /* The bar must not stop the page. */ }
   }, [guard]);
   useEffect(() => { load(); }, [load]);
   useSocket('hr:master', load);
-  // العقدُ يُنشأ ويُفسخ من صفحة العقود؛ وكلاهما يحرّك «حالة العقد» وعددَ مَن
-  // تُتابَع مستنداتُهم.
+  // A contract is created and terminated from the contracts page; both change the contract status and the number of employees whose documents are tracked.
   useSocket('hr:contract', load);
 
   const scopeQs = new URLSearchParams(scope).toString();
 
   const items: Item[] = [
     { href: '/system/hr/master', ar: 'النظرة الشاملة', en: 'Overview', icon: <LayoutGrid className="w-3.5 h-3.5" /> },
-    // الرقمُ = المنتهي + ما ينتهي خلال `warnDays` — فالصفحةُ تُفتَح على المدّة نفسِها.
+    // Number = expired + expiring within `warnDays`, so the page opens on the same period.
     { href: `/system/hr/master/expiring${warnDays != null ? `?withinDays=${warnDays}` : ''}`, ar: 'الانتهاءات', en: 'Expiries', count: expiring, icon: <CalendarClock className="w-3.5 h-3.5" /> },
-    // والرابطُ يحمل الفلترَ الذي يُنتج الرقمَ نفسَه: من ضغط «٢٣٢» يجد اثنين
-    // وثلاثين ومئتين، لا الجدولَ كلَّه. راجع state=attention في الخادم.
+    // The link carries the filter that produces the same number, so the opened table is not the whole table. See state=attention on the server.
     ...groups.map((g) => ({
       href: g.count ? `/system/hr/master/${g.key}?state=attention${scopeQs ? `&${scopeQs}` : ''}` : `/system/hr/master/${g.key}`,
       ar: g.ar, en: g.en, count: g.count,

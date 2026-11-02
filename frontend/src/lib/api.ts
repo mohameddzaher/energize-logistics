@@ -116,11 +116,8 @@ class ApiClient {
         });
       }
 
-      // Try refresh on ANY 401 (not just TOKEN_EXPIRED)
-      //
-      // والاستثناء يُلتقَط هنا لا يُترَك يصعد: لو رمى التجديد (انقطاع شبكة) لم
-      // تُستدعَ processQueue أصلًا، فيبقى كلُّ طلبٍ في الطابور معلَّقًا إلى
-      // الأبد — دوائرُ تحميلٍ لا تنتهي حتى يصادف 401 آخر يفرّغ الطابور.
+      // Try refresh on ANY 401 (not just TOKEN_EXPIRED).
+      // The exception is caught here, not left to propagate: if refresh throws (network loss), processQueue is never called and every queued request hangs forever, leaving endless loading spinners until another 401 flushes the queue.
       let refreshed = false;
       try {
         refreshed = await this.refreshToken();
@@ -144,10 +141,8 @@ class ApiClient {
 
     if (!res.ok) {
       const error = await res.json().catch(() => ({ message: 'Request failed' }));
-      // ── وما زاد على الرسالة يبقى معها ──────────────────────────────────
-      // الخادمُ يعيد مع الرسالة أسماءَ الحقول التي ردَّها ورمزَ السبب، وكان
-      // يُبنى منه `Error` بالرسالة وحدَها فيضيع الباقي. فتبحث الشاشةُ في أربعين
-      // خانةً عن الخطأ بدل أن تلوّن خانتَه.
+      // Extra error detail stays with the message.
+      // The server returns the rejected field names and a reason code with the message; building an Error from the message alone lost them, so the screen would search 40 fields for the error instead of highlighting the field.
       const err = new Error(error.message || 'Request failed') as Error & {
         status?: number; fields?: string[]; code?: string; data?: any;
       };
@@ -181,11 +176,8 @@ class ApiClient {
   }
 
   /**
-   * تجديدٌ استباقيّ يناديه AuthContext كلّ اثنتي عشرة دقيقة.
-   *
-   * يمرّ من هنا لا بـ`fetch` على مسارٍ نسبيّ: الخادم على نطاقٍ غير نطاق
-   * الواجهة، وكوكيز الجلسة مربوطةٌ بنطاقه وحده — فالمسار النسبيّ يذهب إلى
-   * المستضيف بلا كوكيز فيردّ ٤٠١ ولا يجدّد شيئًا.
+   * Proactive refresh called by AuthContext every 12 minutes.
+   * Goes through here, not fetch on a relative path: the server is on a different domain than the frontend and the session cookie is bound to it, so a relative path reaches the host without cookies and gets a 401.
    */
   refreshSession(): Promise<boolean> {
     return this.refreshToken();
@@ -195,9 +187,7 @@ class ApiClient {
     return this.request<T>(endpoint, { ...options, method: 'GET' });
   }
 
-  // Fetch a binary endpoint (e.g. the server-rendered بوليصة PDF) as a Blob,
-  // carrying the session cookie and doing ONE silent refresh on a 401 — same
-  // recovery as request(), but returning bytes instead of JSON.
+  // Fetch a binary endpoint (e.g. the server-rendered waybill PDF) as a Blob, carrying the session cookie and doing ONE silent refresh on a 401 (same recovery as request()), but returning bytes instead of JSON.
   async getBlob(endpoint: string, retried = false): Promise<Blob> {
     const res = await fetch(`${this.baseUrl}${endpoint}`, {
       method: 'GET',
@@ -214,8 +204,7 @@ class ApiClient {
     return res.blob();
   }
 
-  // نظيرُ `getBlob` لطلبٍ يحمل جسمًا: البوالصُ الجماعيّةُ تُطلَب بقائمة
-  // معرّفاتٍ وتردّ ملفًّا واحدًا.
+  // Counterpart of getBlob for a request with a body: bulk waybills are requested with a list of ids and return one file.
   async postBlob(endpoint: string, data: unknown, retried = false): Promise<Blob> {
     const res = await fetch(`${this.baseUrl}${endpoint}`, {
       method: 'POST',

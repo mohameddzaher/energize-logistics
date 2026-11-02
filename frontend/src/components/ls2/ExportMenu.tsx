@@ -1,63 +1,34 @@
 'use client';
-// ExportMenu — زرّ التصدير الوحيد في المنصّة كلّها. كلّ صفحة تمرّر له «نطاقات»
-// (المعروض بعد الفلتر، الكلّ، الصفحة الحالية…)؛ نطاقٌ واحد يظهر زرًّا عاديًّا،
-// وأكثر يظهر قائمةً منسدلة بعدّاد صفوفٍ جنب كلّ نطاق. العدّاد هو بيت القصيد:
-// من يصدّر وهو يظنّ أنّه أخذ مئتَي صفٍّ بينما أخذ عشرين يخرج بملفٍّ خاطئ صامت.
-// كلّ نطاقٍ يحمل شيتاته، فيصحّ أن يكون النطاق مصنّفًا متعدّد الشيتات.
-// أسماء الملفّات يُلحَق بها تاريخ التصدير.
+// ExportMenu: the single export button of the platform. Pages pass 'scopes' (filtered view, all, current page...); one scope renders a plain button, several a dropdown with a row count beside each, so nobody exports 20 rows believing it was 200. Each scope carries its sheets, so a scope can be multi-sheet. File names get the export date appended.
 import { useEffect, useRef, useState } from 'react';
 import { useDialog } from '@/components/system/DialogProvider';
 import { FileSpreadsheet, ChevronDown } from 'lucide-react';
 import { exportMultiSheet, type ExportBlock } from '@/utils/exportExcel';
 
-// `type` يقرّر نوعَ الخانة في إكسل نفسِه: `date` تكتب كائنَ تاريخٍ حقيقيًّا بدل
-// نصٍّ يبدو تاريخًا — راجع utils/exportExcel.
-// `type` يقرّر نوعَ الخانة في إكسل نفسِه: `date` تكتب كائنَ تاريخٍ حقيقيًّا بدل
-// نصٍّ يبدو تاريخًا، و`hijri` تكتب التاريخَ نفسَه بتنسيقِ عرضٍ هجريّ — فيبقى
-// تاريخًا يُفرَز ويُحسَب. راجع utils/exportExcel.
+// `type` decides the Excel cell type: `date` writes a real date object instead of date-looking text, and `hijri` writes the date with a Hijri display format so it stays sortable and computable. See utils/exportExcel.
 export type ExportColumn = { header: string; key: string; transform?: (value: any, row: any) => any; width?: number; type?: 'text' | 'date' | 'number' | 'hijri' };
 export interface ExportSheet {
   name: string;
   rows: Record<string, any>[];
   columns: ExportColumn[];
-  /**
-   * كتلٌ تُطبَع فوق الجدول الرئيسيّ في الورقة نفسها — ملخّصٌ فوق وتفصيلٌ تحته.
-   * ورقتان في ملفٍّ واحد تعنيان أنّ من يفتحه يرى نصفَ الصورة ولا يعرف أنّ
-   * نصفَها الآخرَ في لسانٍ ثانٍ؛ والصفحةُ نفسُها تعرضهما فوق بعضهما.
-   * عدّادُ الصفوف في القائمة يعدّ `rows` وحدها — وهي الجدول الذي يُصدَّر.
-   */
+  /** Blocks printed above the main table in the same sheet: summary above, detail below. Two sheets would hide half the picture, and the page shows them stacked. The row counter in the list counts `rows` only, the exported table. */
   above?: ExportBlock[];
-  /** عنوانٌ يُطبع فوق ترويسة الجدول الرئيسيّ. */
+  /** Title printed above the main table header. */
   title?: string;
 }
 export interface ExportOption {
   key: string; label: string;
   sheets?: ExportSheet[];
-  /**
-   * بديل عن `sheets` لما البيانات ما تكونش محمّلة في الصفحة أصلاً — بتتجاب أول
-   * ما المستخدم يختار الخيار ده. مفيدة لما جلب البيانات نفسه عملية حسّاسة
-   * (مثلاً كلمات المرور) فما ينفعش تتحمّل مع كل فتح للصفحة.
-   */
+  /** Alternative to `sheets` when the data is not loaded in the page: fetched when the user picks the option. For sensitive fetches (e.g. passwords) that must not load on every page open. */
   resolve?: () => Promise<ExportSheet[]>;
-  /**
-   * بديلٌ عنهما معًا لما الملفَّ يبنيه الخادمُ ويُنزَّل جاهزًا.
-   *
-   * جدولٌ كبيرٌ يُبنى في المتصفّح ثمنُه مرّتان: يعبر الشبكةَ صفوفًا خامًا (عشراتُ
-   * الميغابايتات من JSON)، ثمّ يُبنى المصنَّفُ في الخيط الذي يرسم الصفحة فتتجمّد.
-   * فمن كان جدولُه بالآلاف يبنيه في الخادم ويردُّ ملفًّا — ولا يعبر هنا إلّا هو.
-   */
+  /** Alternative to both when the server builds the file and it downloads ready. A large table built in the browser crosses the network as raw JSON and then freezes the render thread while the workbook is built; thousands of rows are built on the server. */
   download?: () => Promise<void>;
   disabled?: boolean;
-  /** يتعرض جنب الاسم بدل عدّاد الصفوف لما العدد مش معروف قبل الجلب. */
+  /** Shown beside the name instead of a row count when the count is unknown before fetching. */
   hint?: string;
 }
 
-/**
- * أسماء النطاقات موحّدةً في مكانٍ واحد: أكثر من تسعين صفحةً تعرض هذه الخيارات،
- * ولو صاغت كلُّ صفحةٍ نصَّها بنفسها لاختلف معنى «الكلّ» من شاشةٍ إلى أخرى.
- * `page` تُستعمل حصرًا حين يكون الترقيم على الخادم ولا نملك إلّا صفوفَ الشاشة —
- * تسميتُها الصريحة هي التي تمنع الملفَّ من ادّعاء ما ليس فيه.
- */
+/** Scope names in one place: over ninety pages show these options, and separate wording would make 'all' mean different things. `page` is used only for server-side pagination where only the screen rows exist, so the file does not claim more than it has. */
 export const exportScopeLabels = (ar: boolean) => ({
   shown: ar ? 'تصدير المعروض (بعد الفلتر)' : 'Export shown (filtered)',
   all: ar ? 'تصدير الكلّ' : 'Export everything',
@@ -70,12 +41,9 @@ export default function ExportMenu({ fileName, options, lang = 'en', className =
   options: ExportOption[];
   lang?: 'en' | 'ar';
   className?: string;
-  /**
-   * مهجور: كان يفرّق بين شكلين، وقد وُحِّدا. يبقى في النوع كي لا تنكسر مئةٌ
-   * وثمانٍ وثلاثون شاشةٌ تمرّره، ولا أثر له.
-   */
+  /** Deprecated: used to distinguish two shapes, now unified. Kept in the type so the screens passing it do not break; it has no effect. */
   variant?: 'primary' | 'subtle';
-  /** نصّ الزرّ حين تكون الصفحة مترجِمةً له بنفسها؛ وإلّا فالنصّ الافتراضي. */
+  /** Button text when the page translates it itself; otherwise the default text. */
   label?: string;
 }) {
   const { notify } = useDialog();
@@ -107,8 +75,7 @@ export default function ExportMenu({ fileName, options, lang = 'en', className =
       setBusyKey(null);
     }
     setOpenMenu(false);
-    // يُعَدُّ ما فوق الجدول أيضًا: يومٌ فيه محفظةٌ بلا حركةٍ واحدة ملفٌّ صحيح —
-    // فيه رصيدُه الافتتاحيُّ وإقفالُه — وكان يُرفض بحجّة أن «لا بيانات».
+    // Counts what is above the table too: a day with a wallet and no movements is a valid file (opening and closing balance) and was rejected as 'no data'.
     const total = (sheets || []).reduce(
       (n, s) => n + (s.rows?.length || 0) + (s.above || []).reduce((m, b) => m + (b.rows?.length || 0), 0), 0);
     if (!total) { notify(ar ? 'لا توجد بيانات للتصدير' : 'No data to export'); return; }
@@ -116,16 +83,7 @@ export default function ExportMenu({ fileName, options, lang = 'en', className =
     exportMultiSheet((sheets || []).map((s) => ({ name: s.name, data: s.rows, columns: s.columns, above: s.above, title: s.title })), `${fileName}-${date}`);
   };
 
-  // ── شكلٌ واحد لزرّ التصدير في المنصّة كلّها ────────────────────────────────
-  //
-  // كان شكلين: رماديٌّ في سبعٍ وسبعين شاشة وأخضرُ في إحدى وستّين. والقسمةُ
-  // نفسُها هي العلّة — المستخدم ينتقل بين قسمين فيبحث عن التصدير كأنّه في
-  // نظامين، والرماديُّ الباهت يُقرأ نصًّا لا زرًّا فلا تقع عليه العين أصلًا.
-  //
-  // فصار واحدًا: أخضرُ صريح بأيقونة الجدول — لونٌ لا يحمله زرٌّ آخر في الشاشة،
-  // فيُعرَف من موضعه قبل أن يُقرأ. و`variant` باقٍ في الواجهة البرمجيّة كي لا
-  // تُعدَّل مئةٌ وثمانٍ وثلاثون شاشة، لكنّه لم يعد يفرّق شيئًا — والتوحيد الذي
-  // يحتاج تعديلَ كلّ نداءٍ لا يبقى موحَّدًا شهرًا.
+  // One export button look across the platform: a clear green with a table icon, a color no other button on the screen has. `variant` stays in the API so callers need no change, but it no longer differs.
   const btnCls = `inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white text-[13px] font-bold shadow-sm transition-colors disabled:opacity-60 ${className}`;
   const btnText = label || (ar ? 'تصدير Excel' : 'Export Excel');
 

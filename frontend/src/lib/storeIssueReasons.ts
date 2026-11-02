@@ -1,4 +1,4 @@
-// سببُ الصرف من المخزن — نظيرُ backend/src/utils/storeIssueReasons.js حرفًا.
+// Reason for stock issue; mirrors backend/src/utils/storeIssueReasons.js character for character.
 export const ISSUE_REASONS: { key: string; ar: string; en: string }[] = [
   { key: 'periodic_maintenance', ar: 'صيانة دورية', en: 'Periodic maintenance' },
   { key: 'accident', ar: 'حادث', en: 'Accident' },

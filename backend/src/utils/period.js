@@ -1,14 +1,6 @@
 /**
- * ── الشهرُ يُقرأ بأيّ صورةٍ كُتب، ولا يُسقِط الصفحة ────────────────────────
- *
- * حقلُ `month` في القاعدة رقمٌ من ١ إلى ١٢، وكان يُقرأ `Number(req.query.month)`
- * مباشرةً. فرابطٌ يحمل `month=2026-09` — وهي الصورةُ التي يكتبها الإنسانُ
- * ويحفظها في مفضّلته — يعطي `NaN`، فترفض Mongoose التحويلَ ويسقط النداءُ
- * بخطأ ٥٠٠: «تعذّر تحميل المعاملات»، والشاشةُ فارغةٌ بلا سبب. قيس على
- * البرودكشن في أربع نقاط (التخليص، تحليلاته، استغلال العقود، طلبات B2C).
- *
- * فالقراءةُ تقبل الصورتين: رقمَ الشهر وحدَه، و`YYYY-MM` فتُؤخذ منها السنةُ
- * أيضًا. وما لا يُفهَم يُهمَل — الفلترُ الخاطئ يُتجاهَل ولا يُسقِط شاشة.
+ * Month is parsed from any written form and never crashes the page.
+ * The DB `month` is a number 1-12 and was read as Number(req.query.month); a link with `month=2026-09` gave NaN, Mongoose rejected the cast and the call failed with a 500. Both forms are accepted (bare month number, or YYYY-MM which also yields the year); anything unparseable is ignored rather than failing the screen.
  */
 const parseMonth = (v) => {
   const s = String(v ?? '').trim();
@@ -22,7 +14,7 @@ const parseMonth = (v) => {
   return { month: Number.isInteger(n) && n >= 1 && n <= 12 ? n : null, year: null };
 };
 
-/** سنةٌ معقولة أو `null` — لا `NaN` يصل إلى القاعدة. */
+/** A plausible year or `null`; never NaN reaching the DB. */
 const parseYear = (v) => {
   const n = Number(String(v ?? '').trim());
   return Number.isInteger(n) && n >= 1900 && n <= 2999 ? n : null;

@@ -1,9 +1,5 @@
 'use client';
-// Periodic marketing report (التقرير الدوري) — the page a marketing manager
-// opens to answer "what did we do this week?": pick daily / weekly / monthly and
-// a date range, and every activity in the window is bucketed into periods with
-// its posts, impressions, clicks, leads, engagement and spend. Exportable to
-// Excel so it can be pasted straight into the management update.
+// Periodic marketing report: the page a marketing manager opens to answer 'what did we do this week?': pick daily / weekly / monthly and a date range, and every activity in the window is bucketed into periods with its posts, impressions, clicks, leads, engagement and spend. Exportable to Excel so it can be pasted into the management update.
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
@@ -58,9 +54,7 @@ export default function MarketingReportsPage() {
   if (loading && !r) return <Spinner />;
   if (!r) return <div className="text-slate-500 p-8">{ar ? 'لا توجد بيانات.' : 'No data.'}</div>;
 
-  // نطاقٌ واحد لا قائمة: صفوفُ هذا التقرير هي الفتراتُ التي يبنيها الخادم للمدى
-  // المختار، ولا فلترَ بعدها في المتصفّح — فخيار «المعروض» وخيار «الكلّ» سيخرجان
-  // بالملفّ نفسه حرفًا بحرف، وقائمةٌ من خيارين متطابقين تُوهم بفرقٍ لا وجود له.
+  // One scope, not a list: this report's rows are the periods the server builds for the chosen range with no browser-side filter after it, so 'displayed' and 'all' would export the identical file and two identical options imply a difference that does not exist.
   const scope = exportScopeLabels(ar);
   const exportOptions = [
     { key: 'all', label: scope.all, sheets: [{ name: ar ? 'التقرير' : 'Report', rows: r.rows as unknown as Record<string, unknown>[], columns: exportColumns }] },

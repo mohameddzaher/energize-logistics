@@ -1,28 +1,7 @@
 /**
- * auditDescribe — يقرأ `changes` في قيد المراجعة ويقول ما جرى.
- *
- * ── العلّة ──────────────────────────────────────────────────────────────────
- * عمودُ التفاصيل كان يسرد أوّلَ أربعةِ مفاتيحَ في القيد كما هي:
- *
- *     netInvoice: 0 · tax: 0 · totalInvoice: 0 · collectedAmount: 0 · +45
- *
- * وهذه ليست ما تغيّر — هي أوّلُ أربعةِ حقولٍ في **لقطة الكشف كاملةً قبل
- * التعديل**. تعديلُ الكشف يُقيَّد هكذا: `before` الكشفُ كلُّه (ستّةٌ وخمسون
- * حقلًا)، و`after` ما أُرسل وحدَه (حقلان إلى عشرة). فمن وحّد المفاتيح وقارن
- * عدّ كلَّ حقلٍ في اللقطة «تغييرًا» لأنّه غائبٌ عن `after`.
- *
- * ── القاعدة ─────────────────────────────────────────────────────────────────
- * ما تغيّر هو ما في `after` وخالف `before`. وما في `before` وحدَه سياقٌ: يُعرَف
- * منه السجلُّ (رقمُ الكشف، الاسم) ولا يُعدّ تغييرًا.
- *
- * ── والأشكالُ الواقعة فعلًا في القاعدة ───────────────────────────────────────
- *   { before:{…}, after:{…} }   تعديل            ← من كذا إلى كذا
- *   { after:{…} }               إنشاءٌ، أو تعديلٌ لم تُسجَّل قيمتُه السابقة
- *   { before:{…} }              حذف
- *   { after:[ 'حقل', … ] }      تعديلٌ سُجّلت أسماءُ حقوله بلا قيم
- *   { before:قيمة, after:قيمة, … }  قيمةٌ واحدةٌ تغيّرت ومعها بيان
- *   { waybillNumber, customerName }  بيانٌ مسطَّح
- *   null                        لا تفاصيل (دخول، خروج)
+ * auditDescribe: reads `changes` in an audit entry and says what happened.
+ * Rule: what changed is what is in `after` and differs from `before`; what is only in `before` is context (identifies the record) and is not a change. A sheet edit stores the whole sheet as `before` and only the sent fields as `after`.
+ * Shapes: {before,after}, {after}, {before}, {after:[names]}, flat statement, null.
  */
 
 const { getField: hrField } = require('../config/hrFields');
@@ -34,9 +13,7 @@ const {
   WORKFLOW_FIELDS, FIELD_LABELS, FIELD_VALUES_AR, VALUE_AR, humanise,
 } = require('../config/auditLabels');
 
-// ── ما لا يُقرأ ──────────────────────────────────────────────────────────────
-// معرّفاتٌ داخليّة وأختامُ وقتٍ ومشتقّاتٌ يكتبها النظامُ مع كلِّ حفظ: ليست فعلَ
-// المستخدم، وذكرُها يدفن فعلَه تحتها.
+// Not shown: internal ids, timestamps and derived fields the system writes on every save. They are not the user's action and listing them buries it.
 const NOISE = new Set([
   '_id', 'id', '__v', 'createdAt', 'updatedAt', 'createdBy', 'updatedBy', 'lastModifiedBy',
   'lockedBy', 'lockedByName', 'lockedAt', 'lastSyncedAt', 'externalId', 'externalSource',
@@ -45,10 +22,10 @@ const NOISE = new Set([
   'vehicleTypeShown', 'dataOwnerShown', 'bulk',
 ]);
 
-/** أعدادُ ما مسّه فعلٌ جماعيّ — وجودُ أحدها يجعل القيدَ «إجراءً جماعيًّا». */
+/** Counts of what a bulk action touched; the presence of any makes the entry a bulk action. */
 const COUNT_KEYS = ['count', 'changed', 'updated', 'reps', 'vehicles', 'exported', 'reportsChanged', 'lines', 'ordersDeleted'];
 
-/** ما يُعرَف به السجلُّ، بالترتيب — وبادئتُه حين لا يكفي الرقمُ وحدَه. */
+/** What identifies the record, in order, with its prefix when the number alone is not enough. */
 const SUBJECT_KEYS = [
   ['reportNumber', 'أمر نقل', 'Report'], ['refNumber', 'معاملة', 'Ref'], ['waybillNumber', 'بوليصة', 'Waybill'],
   ['order', 'أمر', 'Order'], ['claimId', 'حادث', 'Claim'], ['plateNumber', 'لوحة', 'Plate'],
@@ -64,13 +41,13 @@ const ISO_DATE = /^\d{4}-\d{2}-\d{2}(T[\d:.]+(Z|[+-]\d{2}:?\d{2})?)?$/;
 const isPlain = (v) => !!v && typeof v === 'object' && !Array.isArray(v) && !(v instanceof Date)
   && !(v._bsontype);
 
-/** الفراغُ بكلِّ صوره واحد: `null` و`''` و`[]` و`{}` لا فرقَ بينها عند القارئ. */
+/** All empties are one: null, empty string, empty array and empty object are the same to a reader. */
 const isEmpty = (v) => v === undefined || v === null
   || (typeof v === 'string' && v.trim() === '')
   || (Array.isArray(v) && v.length === 0)
   || (isPlain(v) && Object.keys(v).length === 0);
 
-/** صورةٌ واحدةٌ للقيمة تُقارَن بها — فلا يُعدّ `"3200"` و`3200` تغييرًا. */
+/** One canonical form of a value for comparison, so "3200" and 3200 are not a change. */
 const canon = (v) => {
   if (isEmpty(v)) return '';
   if (v instanceof Date) return dayOrInstant(v.toISOString());
@@ -86,15 +63,14 @@ const canon = (v) => {
   return JSON.stringify(v);
 };
 
-// «2026-10-07» و«2026-10-07T00:00:00.000Z» يومٌ واحدٌ كُتب بصيغتين: الواجهةُ
-// ترسل اليومَ والقاعدةُ تحفظه لحظة. فمنتصفُ الليل يُقارَن يومًا لا لحظة.
+// A date-only string and the same date as an ISO timestamp are one day written two ways: the UI sends the day and the database stores an instant. Midnight is compared as a day, not an instant.
 function dayOrInstant(s) {
   if (s.length <= 10) return s;
   if (/T00:00:00(\.0+)?(Z|\+00:?00)$/.test(s)) return s.slice(0, 10);
   return s;
 }
 
-/** هل تغيّر شيءٌ يراه القارئ؟ صفرٌ مقابلَ فراغٍ، و`false` مقابلَ فراغ: لا. */
+/** Did anything change that a reader can see? Zero versus empty, and false versus empty, are not a change. */
 const same = (a, b) => {
   const x = canon(a); const y = canon(b);
   if (x === y) return true;
@@ -115,10 +91,10 @@ function fieldLabel(key, entity, lang) {
     const d = vehicleDoc(key);
     if (d) return lang === 'en' ? d.en : d.ar;
   }
-  // صلاحيّاتُ الدور مفاتيحُها أسماءُ الأقسام نفسُها.
+  // Role permission keys are the section names themselves.
   if (SYSTEM_SECTION_KEYS.includes(key)) return systemSectionLabel(key, lang);
   if (FIELD_LABELS[key]) return FIELD_LABELS[key][i];
-  // حقلٌ عامٌّ لم يُكتب هنا قد يكون معرَّفًا في ملفّ الموظّف أو الكشف.
+  // A generic field not listed here may be an identifier in the employee file or the sheet.
   const f = hrField(key);
   if (f) return lang === 'en' ? f.en : f.ar;
   if (WORKFLOW_FIELDS[key]) return WORKFLOW_FIELDS[key][i];
@@ -131,10 +107,7 @@ const fmtNumber = (n, key) => {
   return String(n);
 };
 
-/**
- * القيمةُ كما تُقرأ. تعيد `null` للفراغ، و`undefined` لمرجعٍ داخليٍّ لم يُعرَف
- * صاحبُه — يُقال عنه «تغيّر» ولا يُعرَض رقمُه.
- */
+/** The value as read. Returns null for empty, and undefined for an internal reference whose owner is unknown, reported as changed without showing its id. */
 function fmtValue(v, key, ctx) {
   const { lang, refs } = ctx;
   const ar = lang !== 'en';
@@ -166,12 +139,12 @@ function fmtValue(v, key, ctx) {
   return String(v);
 }
 
-/** كائنٌ داخل حقل: مستوياتُ صلاحيّة، أو أعلامُ صفحات، أو إعداداتٌ صغيرة. */
+/** An object inside a field: permission levels, page flags or small settings. */
 function fmtObject(o, ctx) {
   const ar = ctx.lang !== 'en';
   const entries = Object.entries(o).filter(([k]) => !NOISE.has(k));
   const vals = entries.map(([, x]) => x);
-  // مصفوفةُ الصلاحيّات: يُذكَر ما أُتيح، و«بلا صلاحية» هي الأصلُ فلا تُسرَد.
+  // Permissions array: lists what was granted; no permission is the default and is not listed.
   if (vals.length && vals.every((x) => ['none', 'view', 'edit'].includes(x))) {
     const open = entries.filter(([, x]) => x !== 'none');
     if (!open.length) return ar ? 'لا صلاحية على أيّ قسم' : 'no access to any section';
@@ -191,7 +164,7 @@ function fmtObject(o, ctx) {
   return out.length > 400 ? `${out.slice(0, 400)}…` : (out || null);
 }
 
-/** اليومُ بتوقيت الشركة؛ ومعه الساعةُ حين تكون اللحظةُ هي المقصودة. */
+/** The day in company time, with the hour when the instant itself is what matters. */
 function fmtDate(s) {
   if (s.length <= 10) return s;
   const d = new Date(s);
@@ -205,7 +178,7 @@ function fmtDate(s) {
 
 const q = (v, lang) => (lang === 'en' ? `"${v}"` : `«${v}»`);
 
-/** سطرٌ واحدٌ يُقرأ: «صافي الفاتورة: من «0» إلى «3,200»». */
+/** One readable line, for example: net invoice from 0 to 3,200. */
 function rowText(r, lang) {
   const ar = lang !== 'en';
   const changedOnly = ar ? 'تغيّر' : 'changed';
@@ -230,8 +203,7 @@ function rowText(r, lang) {
 
 function subjectOf(changes, log, ctx) {
   const ar = ctx.lang !== 'en';
-  // الاسمُ المقروء من جدول السجلّ أوّلًا: «العنوان: آيبان» في قيد مستندٍ عنوانُ
-  // المستند لا اسمُ الموظّف صاحبِه.
+  // The name read from the record table first: in a document entry, a title field means the document's title, not the owning employee's name.
   if (ctx.subjectHint) return { key: '', text: ctx.subjectHint };
   const pools = [];
   if (isPlain(changes)) {
@@ -250,8 +222,7 @@ function subjectOf(changes, log, ctx) {
     }
   }
   if (log.entityKey) {
-    // المفتاحُ النصّيّ يُقرأ بما هو: رقمُ فاتورةٍ في قيود التحصيل، واسمُ دورٍ في
-    // قيود الصلاحيّات.
+    // A string key is read as it is: an invoice number in collections entries, a role name in permission entries.
     const k = String(log.entityKey);
     if (/^record_(collection|delivery)$/.test(log.action || '')) return { key: '', text: ar ? `فاتورة ${k}` : `Invoice ${k}` };
     if (log.entity === 'RolePermission' || log.entity === 'CustomRole') return { key: '', text: (ar ? ROLE_AR[k] : ROLE_EN[k]) || k };
@@ -261,16 +232,12 @@ function subjectOf(changes, log, ctx) {
 }
 
 /**
- * يصف قيدًا واحدًا.
- *
- * @param {object} log   القيد (action, entity, entityKey, changes)
- * @param {object} ctx   { lang, refs: {id→اسم}, subjectHint }
- * @returns {{ kind, subject, summary, rows, unchanged, bulkCount }}
- *   kind:      none | update | create | set | delete | fields | bulk | info
- *   rows:      ما يُعرَض — كلُّ صفٍّ { key, label, before, after, kind, text }
- *   unchanged: بقيّةُ اللقطة التي لم تتغيّر (للعرض الموسَّع فقط)
+ * Describes one entry.
+ * @param {object} log the entry (action, entity, entityKey, changes)
+ * @param {object} ctx { lang, refs: {id: name}, subjectHint }
+ * @returns {{ kind, subject, summary, rows, unchanged, bulkCount }} kind is none|update|create|set|delete|fields|bulk|info; rows are { key, label, before, after, kind, text }; unchanged is the unchanged snapshot (expanded view only)
  */
-/** كلماتُ المسار — للعنوان لا للتوجيه. ما لا يُعرَف يُكتب كما هو مفصولًا. */
+/** Path words, for the title and not for routing; unknown words are written as they are, separated. */
 const ROUTE_WORDS = {
   shipments: ['شحنة', 'Shipment'], followups: ['متابعة', 'Follow-up'], drivers: ['سائق', 'Driver'], trucks: ['شاحنة', 'Truck'],
   vehicles: ['مركبة', 'Vehicle'], events: ['حدث', 'Event'], swap: ['تبديل', 'Swap'], seat: ['تسكين', 'Seat'], waybills: ['بوليصة', 'Waybill'],
@@ -298,10 +265,8 @@ function describe(log, ctx = {}) {
   const out = { kind: 'none', subject: '', summary: '', rows: [], unchanged: [], bulkCount: null };
   const subj = subjectOf(ch, log, c);
   out.subject = subj.text;
-  // ── قيدُ شبكة الأمان يُقرأ بما فُعل لا بمساره ──────────────────────────────
-  // كان يُعرَض كما خُزِّن: «POST /api/fleet/shipments/:id/followups · path: … ·
-  // sent: contact time: …». فالعنوانُ يُبنى من المسار بكلماتٍ (القسم › الشحنة ›
-  // متابعة)، والتفصيلُ هو ما أُرسل — حقلًا حقلًا بأسمائه العربيّة.
+  // A safety-net entry is read by what was done, not by its path.
+  // It used to display as stored: method, path, sent and contact time. The title is now built from the path in words (section, shipment, follow-up) and the detail is what was sent, field by field with display names.
   if (/^api_/.test(action) && isPlain(ch)) {
     out.subject = routeLabel(String(ch.details || ''), entity, lang) || out.subject;
     ch = isPlain(ch.sent) ? ch.sent : {};
@@ -324,7 +289,7 @@ function describe(log, ctx = {}) {
   };
 
   if (hasB && hasA && isPlain(ch.before) && isPlain(ch.after)) {
-    // ── تعديل: ما في `after` وخالف `before` ───────────────────────────────
+    // Update: what is in `after` and differs from `before`.
     out.kind = 'update';
     const { before, after } = ch;
     for (const k of Object.keys(after).filter(visible)) {
@@ -335,8 +300,7 @@ function describe(log, ctx = {}) {
         if (b === a && b !== undefined) continue;
         rows.push({ key: k, label: L(k), before: b, after: a, kind: 'changed' });
       } else if (a !== null) {
-        // غائبٌ عن اللقطة السابقة: إمّا كان فارغًا وإمّا لم تُلتقَط قيمتُه —
-        // فتُذكَر القيمةُ الجديدة ولا يُدَّعى سابقٌ لم يُسجَّل.
+        // Absent from the previous snapshot: either it was empty or its value was not captured, so the new value is stated and no earlier value is claimed.
         rows.push({ key: k, label: L(k), before: undefined, after: a === undefined ? undefined : a, kind: a === undefined ? 'changed' : 'value' });
       }
     }
@@ -348,13 +312,13 @@ function describe(log, ctx = {}) {
     }
     info(ch, extras);
   } else if (hasA && Array.isArray(ch.after)) {
-    // ── أسماءُ حقولٍ بلا قيم ───────────────────────────────────────────────
+    // Field names without values.
     out.kind = 'fields';
     for (const k of ch.after.filter((x) => typeof x === 'string').filter(visible)) {
       rows.push({ key: k, label: L(k), before: undefined, after: undefined, kind: 'field' });
     }
   } else if (hasB && hasA) {
-    // ── قيمةٌ واحدةٌ تغيّرت، ومعها بيانُها (تجديد وثيقة، رصيدٌ افتتاحيّ) ──
+    // One value changed, with its context (document renewal, opening balance).
     out.kind = 'update';
     info(ch, extras);
     const vk = /balance|opening/i.test(action) ? 'openingBalance' : (/renew|expiry/i.test(action) ? 'expiry' : 'value');
@@ -366,16 +330,15 @@ function describe(log, ctx = {}) {
       if (v) out.unchanged.push({ key: vk, label, value: v });
     }
   } else if (hasA && isPlain(ch.after)) {
-    // ── `after` وحدَه: إنشاءٌ، أو تعديلٌ لم تُسجَّل قيمتُه السابقة ─────────
-    // الفعلُ يقول أيَّهما: «create_…» إنشاء، «update_…» تعديل، وما عداهما
-    // (إقفال يوم، إلغاء تفويض) بيانٌ يكفيه اسمُ الفعل عنوانًا.
+    // `after` only: create, or an update whose previous value was not recorded.
+    // The action tells which: create_ is create, update_ is update, and anything else (day close, authorization cancel) is a statement whose action name is enough as a title.
     const creating = /^(create|add|log_|wallet_transaction|bulk_import)/.test(action);
     const editing = /^(update|edit|set_|correct)/.test(action);
     out.kind = creating ? 'create' : (editing ? 'set' : 'info');
     for (const k of Object.keys(ch.after).filter(visible)) {
       const v = F(ch.after[k], k);
       if (v === null) {
-        // في التعديل، القيمةُ الفارغةُ خبرٌ: الحقلُ أُفرغ. وفي الإنشاء لا خبرَ فيها.
+        // In an update an empty value is information: the field was cleared. In a create it carries none.
         if (editing) rows.push({ key: k, label: L(k), before: undefined, after: null, kind: 'cleared' });
         continue;
       }
@@ -383,7 +346,7 @@ function describe(log, ctx = {}) {
     }
     info(ch, extras);
   } else if (hasB && isPlain(ch.before)) {
-    // ── `before` وحدَه: حذف ────────────────────────────────────────────────
+    // `before` only: delete.
     out.kind = 'delete';
     for (const k of Object.keys(ch.before).filter(visible)) {
       const v = F(ch.before[k], k);
@@ -392,12 +355,12 @@ function describe(log, ctx = {}) {
     }
     info(ch, extras);
   } else {
-    // ── بيانٌ مسطَّح ───────────────────────────────────────────────────────
+    // Flat statement.
     out.kind = 'info';
     info(ch, Object.keys(ch).filter((k) => visible(k) && k !== 'before' && k !== 'after'));
   }
 
-  // ── الإجراءُ الجماعيّ: كم سجلًّا مسّ ───────────────────────────────────────
+  // Bulk action: how many records it touched.
   const pool = { ...(isPlain(ch.before) ? ch.before : {}), ...(isPlain(ch.after) ? ch.after : {}), ...ch };
   const countKey = COUNT_KEYS.find((k) => typeof pool[k] === 'number');
   if (countKey && (pool[countKey] > 1 || ch.bulk === true || /bulk|apply_|cleanup|export|assign_.*supervisor/.test(action))) {
@@ -408,8 +371,8 @@ function describe(log, ctx = {}) {
   for (const r of rows) r.text = rowText(r, lang);
   out.rows = rows;
 
-  // ── الجملةُ القصيرة ────────────────────────────────────────────────────────
-  // ما يُعرَف به السجلُّ يظهر في عمود الكيان، فلا يُكرَّر هنا متى وُجد غيرُه.
+  // The short sentence.
+  // What identifies the record shows in the entity column, so it is not repeated here when something else exists.
   const told = rows.filter((r) => !(r.key === subj.key && r.kind === 'value'));
   const list = told.length ? told : rows;
   const SHOW = 3;

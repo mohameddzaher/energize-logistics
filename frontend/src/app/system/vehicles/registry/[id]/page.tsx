@@ -1,24 +1,6 @@
 'use client';
-// ملفّ المركبة — الشاشة الشاملة، لا ملخّصٌ يُحيل إلى غيره.
-//
-// كانت تعرض حقلًا أو حقلين من كلّ عائلة مستندات، فمَن أراد بيانات التتبّع أو
-// التفويض ذهب إلى صفحتهما وبحث باللوحة. وأسوأ من النقص أنّها كانت تقرأ الحقل
-// الخطأ: «جهاز GPS» من `gps.deviceId` وهو فارغٌ في المركبات الأربعين والمئتين
-// كلِّها — الجهاز في `deviceModel` — فكانت كلُّ مركبةٍ عليها جهازٌ تقول
-// «غير مركّب»، وهي جملةٌ تُقرأ حقيقةً لا خطأَ عرض.
-//
-// ── ولماذا هذا القدر من التباين ──────────────────────────────────────────────
-// الشاشة الأولى كانت رماديّةً متساوية: التسمية والقيمة بالوزن نفسه تقريبًا،
-// وحدودٌ باهتة، وعناوينُ لا تُفرّق كارتًا عن كارت. فالعين لا تجد أين تقع،
-// وقراءةُ رقم بطاقة التشغيل تحتاج بحثًا لا نظرة.
-//
-// فالقيمة الآن أغمق وأثقل من تسميتها بدرجتين، والأرقام الرسميّة بخطٍّ ثابت
-// العرض لأنّها تُقارَن بأخرى وتُنسَخ، وكلُّ كارتٍ له شريطُ لونٍ علويّ من لون
-// حالة مستنده — فالمنتهي يُرى أحمرَ قبل أن يُقرأ.
-//
-// وكلُّ ما هنا حيٌّ: كلُّ تعديلٍ في أيّ صفحةٍ من صفحات القسم يبثّ `vreg:updated`
-// (إحدى عشرة عمليّةً كلُّها تبثّه)، ونداءُ المركبة الواحدة بلا ذاكرةٍ مؤقّتة —
-// فما يُكتب في صفحة التفاويض يظهر هنا في اللحظة نفسها بلا تحديث.
+// Vehicle file: the comprehensive screen, not a summary linking elsewhere. Values are darker and heavier than labels, official numbers are monospaced, and each card has a top bar in its document-status colour.
+// Live: every registry edit broadcasts `vreg:updated` and the single-vehicle call is uncached, so changes elsewhere appear at once.
 import B2cOpBadge from '@/components/b2c/B2cOpBadge';
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
@@ -42,20 +24,10 @@ import {
 } from 'lucide-react';
 import ScrollX from '@/components/system/ScrollX';
 
-/** لونُ عائلةٍ حين لا يكون لها مستندٌ بحالة — للهوية والملكية. */
+/** Family colour when it has no document with a status (identity and ownership). */
 const NEUTRAL = '#64748b';
 
-/**
- * ── لبناتُ العرض على مستوى الملفّ لا داخلَ جسم الرسم ─────────────────────────
- *
- * كانت `Row` و`Section` و`DateRow` تُعرَّف داخل مكوّن الصفحة. والدالّةُ
- * المعرَّفةُ في جسم الرسم تُبنى من جديدٍ عند كلّ حالةٍ تتغيّر، فتراها React
- * نوعًا جديدًا كلَّ مرّة: تهدم الشجرةَ كلَّها وتبنيها. وأثرُ ذلك يُرى في أوّل
- * خانةِ إدخال — حرفٌ يُكتب في الملاحظات فتُهدَم الخانةُ وتُبنى، فيضيع المؤشّرُ
- * وتقفز الصفحةُ إلى أوّلها. وهو نفسُه سببُ الوميض وإعادة الجلب في غيرها.
- *
- * فمكانُها هنا: نوعُها ثابتٌ فلا يُعاد التركيب، ويُمرَّر إليها ما تحتاجه.
- */
+/** Presentational pieces at module level, not inside the render body. Row, Section and DateRow were defined inside the page component, so each state change created a new component type and React remounted the whole tree: typing in notes lost the caret and scrolled the page to the top, and caused flicker and refetches. At module level their type is stable and inputs are passed as props. */
 function Row({ label, children, mono }: { label: string; children: React.ReactNode; mono?: boolean }) {
   return (
     <div className="flex items-baseline justify-between gap-4 py-[7px] border-b border-slate-100 last:border-0">
@@ -69,7 +41,7 @@ function Row({ label, children, mono }: { label: string; children: React.ReactNo
 
 const valOf = (x: unknown) => (x === null || x === undefined || x === '' ? <span className="text-slate-300 font-normal">—</span> : (x as React.ReactNode));
 
-/** تاريخُ مستندٍ بحالته وأيامه — نفس ما تعرضه صفحة العائلة، من نفس المصدر. */
+/** A document's date with its status and days, same data and source as the family page. */
 function DocDateRow({ label, date, st, ar }: {
   label: string; date?: string | null; st?: { status?: string; days?: number | null }; ar: boolean;
 }) {
@@ -123,12 +95,9 @@ export default function VehicleRegistryDetail() {
   const id = String(params?.id || '');
   const [v, setV] = useState<VReg | null>(null);
   const [loading, setLoading] = useState(true);
-  // ── التجديد من الملفّ نفسه ────────────────────────────────────────────────
-  // كان المستند يُرى منتهيًا هنا ثم يُخرَج إلى شاشة عائلته ليُجدَّد — والشاشتان
-  // تفتحان النافذة ذاتها. فمن يقف على الملفّ ويرى الأحمر يجدّده من موضعه.
+  // Renew from the file itself. An expired document used to send the user to its family screen, which opens the same dialog, so the user renews from where the red is seen.
   const [renewing, setRenewing] = useState<RenewTarget | null>(null);
-  // مسوّدةُ الملاحظة — تُزامَن مع ما يصل من الخادم، ويبقى ما يكتبه المستخدمُ
-  // إن كان قد بدأ الكتابة (حدثٌ حيٌّ لا يمحو سطرًا نصفَ مكتوب).
+  // Note draft: synced with what arrives from the server, but keeps what the user already started typing (a live event must not wipe a half-written line).
   const [noteDraft, setNoteDraft] = useState('');
   const [noteTouched, setNoteTouched] = useState(false);
   const [savingNote, setSavingNote] = useState(false);
@@ -140,30 +109,29 @@ export default function VehicleRegistryDetail() {
   useEffect(() => { load(); }, [load]);
   useEffect(() => { if (!noteTouched) setNoteDraft(v?.notesAr || ''); }, [v?.notesAr, noteTouched]);
 
-  /** تُحفَظ الملاحظةُ وحدَها — لا يُرسَل الملفُّ كلُّه فيُخاطر بخاناتٍ لم تُقرأ. */
+  /** Only the note is saved, not the whole file, to avoid overwriting fields that were not read. */
   const saveNote = useCallback(async () => {
     setSavingNote(true);
     try {
       await api.put(`/api/vehicle-registry/${id}`, { notesAr: noteDraft });
       setNoteTouched(false);
       await load();
-    } catch (e) { /* الرسالةُ تصل من الحارس العامّ */ }
+    } catch (e) { /* The message is shown by the global guard. */ }
     setSavingNote(false);
   }, [id, noteDraft, load]);
-  // كلُّ ما يمسّ المركبة يبثّ هذا الحدث: التعديل، التجديد، الحوادث، الإعدادات.
+  // Anything touching the vehicle broadcasts this event: edits, renewals, accidents, settings.
   useSocket('vreg:updated', useCallback(() => load(), [load]));
 
   if (loading) return <Spinner />;
   if (!v) return <div className="p-8 text-slate-500">{t('المركبة غير موجودة', 'Not found')}</div>;
 
-  // لبناتُ العرضِ مرفوعةٌ إلى مستوى الملفّ — راجع تعليقَها هناك.
+  // Presentational pieces are defined at module level; see the comment there.
   const val = (x: unknown) => (x === null || x === undefined || x === '' ? <span className="text-slate-300 font-normal">—</span> : (x as React.ReactNode));
   const DateRow = ({ label, date, docKey }: { label: string; date?: string | null; docKey: string }) => (
     <DocDateRow label={label} date={date} st={v.docStatuses?.[docKey]} ar={ar} />
   );
 
-  // ملفُّ المركبة يُصدَّر شيتًا واحدًا مسطَّحًا: حقلٌ في كل صفّ — وهو الشكل
-  // الذي يُلصَق في بريدٍ أو يُطبع، لا جدولٌ عرضُه ستّون عمودًا.
+  // The vehicle file exports as one flat sheet, one field per row: the shape pasted into email or printed, not a sixty-column table.
   const flat = [
     [t('رقم اللوحة', 'Plate'), v.plateNumber],
     [t('رقم الهيكل', 'Chassis'), v.chassisNumber],
@@ -201,7 +169,7 @@ export default function VehicleRegistryDetail() {
   const authOn = !!(auth?.name || auth?.authorizationNumber);
   const docAccent = (key: string) => statusColor(v.docStatuses?.[key]?.status || 'none');
 
-  /** صفحةُ عائلة كلّ مستند — البطاقةُ تفتحها مفلترةً على هذه المركبة. */
+  /** Family page for each document; the card opens it filtered to this vehicle. */
   const DOC_PAGE: Record<string, string> = {
     insurance: 'insurance/vehicles',
     operatingCard: 'operating-cards',
@@ -213,23 +181,14 @@ export default function VehicleRegistryDetail() {
   const openDocPage = (key: string) =>
     router.push(`/system/vehicles/registry/${DOC_PAGE[key] || 'expiring'}?q=${encodeURIComponent(v.plateNumber)}`);
 
-  /**
-   * ── النواقصُ التي تُعمَل ─────────────────────────────────────────────────
-   *
-   * ما في `missingItems` ثلاثةُ أصناف: مستندٌ ناقصٌ باسمه (يُعمَل)، ووصفٌ لا
-   * عملَ فيه («نوع اللوحة: نقل عام»)، وشرطُ منصّةٍ مكتوبٌ جملةً طويلةً جاءت مع
-   * الشيت («أن تكون مالكًا أو مستخدمًا فعليًّا…»). والأخيران يُقرآن نقصًا وليسا
-   * كذلك، فيُخفيان النقصَ الحقيقيَّ بينهما.
-   *
-   * فيبقى ما يُطابق مستندًا نعرفه — وله عندئذٍ بابٌ يُفتَح ويُستكمَل منه.
-   */
+  /** Actionable gaps. missingItems holds three kinds: a named missing document (actionable), a non-actionable description (plate type), and a platform condition written as a long sentence from the sheet. The last two read as gaps but are not, and hide the real ones. Only entries matching a known document remain, each with a door to open and complete it. */
   const realGaps = ((): { key: string; label: string; reason?: string; href?: string }[] => {
     const out: { key: string; label: string; reason?: string; href?: string }[] = [];
     const seen = new Set<string>();
     for (const mi of (v.missingItems || [])) {
       const item = String(mi.item || '').trim();
       if (!item) continue;
-      // جملةٌ طويلةٌ ليست اسمَ مستند — شرطُ منصّةٍ لا يُعمَل به من هنا.
+      // A long sentence that is not a document name: a platform condition, not actionable from here.
       if (item.length > 34 || item.includes(':')) continue;
       const doc = DOC_TYPES.find((d) => item.includes(d.ar) || d.ar.includes(item));
       if (!doc) continue;
@@ -242,7 +201,7 @@ export default function VehicleRegistryDetail() {
         href: `/system/vehicles/registry/${DOC_PAGE[doc.key] || 'expiring'}?q=${encodeURIComponent(v.plateNumber)}`,
       });
     }
-    // ومستندٌ منتهٍ أو غائبٌ نقصٌ ولو لم يُكتب في القائمة — الحالةُ هي الخبر.
+    // An expired or absent document is a gap even if it is not in the list; the status is the signal.
     for (const d of DOC_TYPES) {
       if (seen.has(d.key)) continue;
       const st = v.docStatuses?.[d.key]?.status;
@@ -256,8 +215,7 @@ export default function VehicleRegistryDetail() {
       });
     }
     return out;
-    // حسابٌ عاديٌّ لا خطّاف: الموضعُ بعد عودةٍ مبكّرة، وخطّافٌ هنا يكسر
-    // ترتيبَ الخطّافات (React #310). وهي ستّةُ بنودٍ لا تحتاج تذكّرًا.
+    // Plain computation, not a hook: this sits after an early return and a hook here would break hook order (React #310). Only six items, so no memoization is needed.
   })();
 
   const renewTarget = (key: string): RenewTarget => {
@@ -271,16 +229,15 @@ export default function VehicleRegistryDetail() {
     };
   };
 
-  // أسوأُ حالةِ مستندٍ على المركبة — هي عنوانُ حالتها في الترويسة.
+  // Worst document state on the vehicle; it is the vehicle's status headline in the header.
   const worst = v.overallStatus || 'none';
   const worstMeta = statusMeta(worst);
   const outOfService = !!v.serviceStatusAr && !/في الخدمة|مستخدم/.test(v.serviceStatusAr);
 
   return (
     <div className="space-y-4 w-full pb-10" dir={isRTL ? 'rtl' : 'ltr'}>
-      {/* ── الترويسة: اللوحة هي البطل ─────────────────────────────────────── */}
-      {/* الترويسة بلون الشريط الجانبيّ نفسه (slate-900): لونان متقاربان في
-          شاشةٍ واحدة يُقرآن خطأً مطبعيًّا لا قرارًا. */}
+      {/* Header: the plate is the hero. */}
+      {/* Header uses the same colour as the sidebar (slate-900); two near colours on one screen read as a typo, not a decision. */}
       <header className="rounded-2xl bg-slate-900 border border-slate-800 text-white shadow-lg overflow-hidden">
         <div className="px-5 py-4 flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-3.5 min-w-0">
@@ -289,7 +246,7 @@ export default function VehicleRegistryDetail() {
             </span>
             <div className="min-w-0">
               <h1 className="text-2xl font-black tracking-tight font-mono leading-none">{v.plateNumber}</h1>
-              {/* راكبُها من قسم الأفراد وحالتُه اليوم — تُكتب في «موظفو النقل الخفيف». */}
+              {/* Its rider from the individuals department and his status today; written in the light-transport employees register. */}
               {!!(v as any).b2cRider?.opStatus && (
                 <span className="mt-1.5 inline-block"><B2cOpBadge status={(v as any).b2cRider.opStatus} ar={ar} who={(v as any).b2cRider.name} /></span>
               )}
@@ -326,7 +283,7 @@ export default function VehicleRegistryDetail() {
         </div>
       </header>
 
-      {/* ── حالة المستندات: تُقرأ من بعيد ─────────────────────────────────── */}
+      {/* Document status, readable from a distance. */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2.5">
         {DOC_TYPES.map((d) => {
           const st = v.docStatuses?.[d.key];
@@ -335,8 +292,7 @@ export default function VehicleRegistryDetail() {
           return (
             <div key={d.key} className="group rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden hover:border-slate-300 hover:shadow transition-all">
               <div className="h-1.5" style={{ background: meta.color }} />
-              {/* البطاقةُ مدخلٌ لا لافتة: ضغطةٌ تفتح صفحة عائلتها مفلترةً على هذه
-                  المركبة، وزرُّ التجديد يجدّدها من مكانها بلا مغادرة الملفّ. */}
+              {/* The card is an entry point, not a banner: a click opens its family page filtered to this vehicle, and the renew button renews in place without leaving the file. */}
               <button type="button" onClick={() => openDocPage(d.key)}
                 className="w-full text-start p-3 cursor-pointer">
                 <p className="text-[11.5px] font-bold text-slate-500 mb-1.5 truncate">{ar ? d.ar : d.en}</p>
@@ -361,15 +317,7 @@ export default function VehicleRegistryDetail() {
         })}
       </div>
 
-      {/* ── نواقصُ المركبة: ما يُعمَل، لا ما كُتب في الشيت ────────────────────
-          كانت القائمةُ تخلط ثلاثةَ أشياء: نقصًا حقيقيًّا («الفحص الدوري ·
-          مطلوب»)، ووصفًا لا يُعمَل به («نوع اللوحة: نقل عام»)، وشرطًا مكتوبًا
-          بلغة المنصّة لا يفهمه قارئُه («أن تكون مالكًا أو مستخدمًا فعليًّا…»).
-          فتُقرأ كلُّها تحت عنوانٍ واحدٍ فلا يُعرَف ما المطلوبُ فعلُه.
-
-          فبقي النقصُ وحدَه، ومعه بابُه: كلُّ بندٍ مستنَدٌ معروفٌ يفتح صفحتَه
-          مباشرةً — يُجدَّد من هناك لا يُقرأ هنا. وما لا يُعرَف له مستندٌ لا
-          يُعرَض أصلًا. */}
+      {/* Vehicle gaps: what to do, not what the sheet said. The list mixed a real gap (periodic inspection required), a non-actionable description (plate type), and a platform condition the reader cannot parse, all under one heading. Only the gap remains, with its door: each known document opens its page directly; entries without a known document are not shown. */}
       {!!realGaps.length && (
         <div className="rounded-2xl border-2 border-amber-300 bg-amber-50 p-4 shadow-sm">
           <p className="font-extrabold text-amber-900 mb-2.5 flex items-center gap-1.5 text-[14px]">
@@ -415,14 +363,13 @@ export default function VehicleRegistryDetail() {
         </Section>
 
         <Section isRTL={isRTL} title={t('الملكية والحيازة', 'Ownership')} icon={<Building2 className="w-4 h-4" />} accent={NEUTRAL}>
-          {/* الشركةُ المالكة تُختار في نافذة التعديل ولم يكن لها سطرٌ هنا. */}
+          {/* The owning company is chosen in the edit dialog and had no line here. */}
           <Row label={t('الشركة المالكة', 'Owning company')}>{val(v.ownerCompanyAr)}</Row>
           <Row label={t('المالك', 'Owner')}>{val(v.ownerNameAr)}</Row>
           <Row label={t('السجل التجاري', 'Commercial reg.')} mono>{val(v.commercialRegistration)}</Row>
           <Row label={t('حالة الحيازة', 'Possession')}>{val(v.possessionStatusAr)}</Row>
           <Row label={t('حالة تم', 'Tam status')}>{val(v.tamStatusAr)}</Row>
-          {/* الحوادث تُقرأ من سجلّ مطالبات هذا القسم لا من سجلّ قسمٍ آخر —
-              والعدّاد محسوبٌ من المطالبات الفعّالة، فالرقم يفتح ما يعدّه. */}
+          {/* Accidents are read from this section's claims register, not another section's; the counter counts active claims, so the number opens what it counts. */}
           <Row label={t('الحوادث والمطالبات', 'Accidents & claims')}>
             <Link href={`/system/vehicles/registry/claims?q=${encodeURIComponent(v.plateNumber)}`}
               className={`inline-flex items-center gap-1 hover:underline ${v.accidentCount ? 'text-red-600' : 'text-slate-900'}`}>
@@ -431,7 +378,7 @@ export default function VehicleRegistryDetail() {
           </Row>
         </Section>
 
-        {/* ── التتبّع: نفس أعمدة صفحة أجهزة التتبّع بالضبط ─────────────────── */}
+        {/* Tracking: exactly the same columns as the tracking devices page. */}
         <Section isRTL={isRTL} title={t('جهاز التتبّع GPS', 'GPS tracking')} icon={<Satellite className="w-4 h-4" />}
           accent={gpsOn ? docAccent('gps') : NEUTRAL}
           href={gpsOn ? `/system/vehicles/registry/gps?q=${encodeURIComponent(v.plateNumber)}` : undefined}
@@ -448,7 +395,7 @@ export default function VehicleRegistryDetail() {
           <DateRow label={t('انتهاء الاشتراك', 'Subscription expiry')} date={v.gps?.expiryDate} docKey="gps" />
         </Section>
 
-        {/* ── التفويض: نفس أعمدة صفحة التفاويض ─────────────────────────────── */}
+        {/* Authorization: the same columns as the authorizations page. */}
         <Section isRTL={isRTL} title={t('التفويض بالقيادة', 'Driving authorisation')} icon={<IdCard className="w-4 h-4" />}
           accent={authOn ? docAccent('authorization') : NEUTRAL}
           href={authOn ? `/system/vehicles/registry/authorizations?q=${encodeURIComponent(v.plateNumber)}` : undefined}
@@ -487,11 +434,7 @@ export default function VehicleRegistryDetail() {
           </Row>
         </Section>
 
-        {/* ── بطاقةُ التشغيل ورخصةُ السير: مستندان لا مستند ─────────────────
-            كانا في بطاقةٍ واحدةٍ عنوانُها يجمعهما ورابطُها يفتح صفحةَ بطاقات
-            التشغيل وحدَها — فتاريخُ رخصةِ السير يُقرأ تحت عنوان غيرِه ولا
-            يُوصل إلى صفحته. وهما مستندان مستقلّان: لكلٍّ تاريخُه وحالتُه
-            وصفحتُه وتجديدُه، فلكلٍّ بطاقتُه. */}
+        {/* Operating card and travel licence are two documents, not one. They shared a card whose title covered both and whose link opened only the operating cards page, so the licence date read under another title with no link to its page. Each has its own date, status, page and renewal, so each gets a card. */}
         <Section isRTL={isRTL} title={t('بطاقة التشغيل', 'Operating card')} icon={<FileText className="w-4 h-4" />}
           accent={docAccent('operatingCard')}
           href={`/system/vehicles/registry/operating-cards?q=${encodeURIComponent(v.plateNumber)}`}
@@ -505,7 +448,7 @@ export default function VehicleRegistryDetail() {
           href={`/system/vehicles/registry/licenses?q=${encodeURIComponent(v.plateNumber)}`}
           hrefLabel={t('صفحة رخص السير', 'Licences page')}>
           <DateRow label={t('تاريخ الانتهاء', 'Expiry')} date={v.vehicleLicense?.expiryDate} docKey="vehicleLicense" />
-          {/* الهجريُّ المكتوبُ في الرخصة أوّلًا — والمحسوبُ إن لم يُسجَّل. */}
+          {/* The Hijri date written on the licence first; the computed one if none is recorded. */}
           <Row label={t('تاريخ الانتهاء (هجري)', 'Expiry (Hijri)')} mono>
             {val(v.vehicleLicense?.expiryDateHijri || toHijri(v.vehicleLicense?.expiryDate))}
           </Row>
@@ -522,11 +465,7 @@ export default function VehicleRegistryDetail() {
           </Row>
         </Section>
 
-        {/* ── والملاحظةُ تُكتب من هنا، والكارتُ يظهر ولو كانت فارغة ──────────
-            كان يختفي متى خلت الملاحظة، فيُفتَح الملفُّ فلا يُرى للملاحظات موضعٌ
-            أصلًا — ويُظنّ أنّ الميزةَ غيرُ موجودة. وهي تُكتب حيث تُقرأ: مَن
-            يقف على الملفّ ويرى ما يستدعي ملاحظةً يكتبها في موضعها، لا يعود
-            إلى الجدول ويفتح نافذةَ تعديل. */}
+        {/* Notes are written from here and the card shows even when empty. It used to vanish when there were no notes, so the feature looked missing. Notes are written where they are read, without going back to the table and opening an edit dialog. */}
         <Section isRTL={isRTL} title={t('ملاحظات', 'Notes')} icon={<FileText className="w-4 h-4" />} accent={NEUTRAL}>
           {!canEdit ? (
             <p className="text-[13.5px] text-slate-800 whitespace-pre-wrap leading-relaxed pt-1">
@@ -558,10 +497,10 @@ export default function VehicleRegistryDetail() {
         </Section>
       </div>
 
-      {/* ملفّات المركبة — صورُ ما سبق من مستندات */}
+      {/* Vehicle files: images of the documents above. */}
       <VehicleDocuments vehicleId={v._id} canEdit={canEdit} />
 
-      {/* سجلّ التجديدات — الأثر يُقرأ إلى الوراء: أي رقمٍ كان قبل أيّ رقم */}
+      {/* Renewal history: the trail reads backwards, which number came before which. */}
       {!!v.renewals?.length && (
         <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
           <div className="px-4 py-3 bg-slate-50 border-b border-slate-200">
@@ -573,12 +512,7 @@ export default function VehicleRegistryDetail() {
           <ScrollX>
             <table className="w-full text-[13px]">
               <thead className="bg-slate-100 text-slate-600 text-[11.5px] uppercase tracking-wide">
-                {/* ── والملاحظةُ والإيصالُ عمودان هنا ─────────────────────────
-                    نافذةُ التجديد تسأل عن ملاحظةٍ ورقمِ إيصال وتحفظهما فعلًا في
-                    `renewals[]`، ولم يكن في النظام كلِّه موضعٌ واحدٌ يقرؤهما:
-                    خمسةُ مواضعَ تكتب ولا موضعٌ يعرض. فمن كتب ملاحظةً عند
-                    التجديد رآها تُبتلَع — وهذا مكانُها الطبيعيّ: سطرُ التجديد
-                    الذي تشرحه. */}
+                {/* Note and receipt are columns here. The renewal dialog asks for a note and receipt number and saves them in `renewals[]`, but nothing in the system displayed them (five writers, no reader); this is their natural place, the renewal line they explain. */}
                 <tr>{[t('المستند', 'Document'), t('الانتهاء السابق', 'Previous expiry'), t('الانتهاء الجديد', 'New expiry'), t('الرقم السابق', 'Previous no.'), t('الرقم الجديد', 'New no.'), t('التكلفة', 'Cost'), t('رقم الإيصال', 'Reference'), t('ملاحظة', 'Note'), t('بواسطة', 'By'), t('التاريخ', 'Date')]
                   .map((h) => <th key={h} className="px-3 py-2.5 text-start font-bold whitespace-nowrap">{h}</th>)}</tr>
               </thead>
@@ -603,7 +537,7 @@ export default function VehicleRegistryDetail() {
         </div>
       )}
 
-      {/* مهامّ JP المربوطة بهذه المركبة — تُضاف من هنا. */}
+      {/* JP tasks linked to this vehicle; added from here. */}
       <JpTaskPanel section="vehicles" kind="vehicle" refId={String(v._id)} ar={ar} />
 
       {renewing && (

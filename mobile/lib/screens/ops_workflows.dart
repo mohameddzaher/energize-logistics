@@ -17,20 +17,17 @@ import '../ui/list_pager.dart';
 import 'ops_workflow_detail.dart';
 import 'ops_workflow_new.dart';
 
-/// التشغيل — سيرُ عمل الكشوف (نظيرُ /system/operations): البطاقات، شريطُ
-/// الفلترة وفلاترُ الأعمدة، الفترة (يوم / شهر / مدى)، التحديدُ والإجراءاتُ
-/// الجماعيّة (تسجيلُ السداد والحذف و«كلُّ نتائج الفلتر»)، التصديرُ بنطاقاته،
-/// الطلبُ الجديد والاستيراد، وأقفالُ الصفوف حيّةً.
+/// Operations workflow of statements (counterpart of /system/operations): cards, filter bar and column filters, period (day / month / range), selection and bulk actions (record payment, delete, "everything matching the filter"), export in its scopes, new request and import, and live row locks.
 class OpsWorkflowsScreen extends StatefulWidget {
   const OpsWorkflowsScreen({super.key});
   @override
   State<OpsWorkflowsScreen> createState() => _OpsWorkflowsScreenState();
 }
 
-/// أهلُ المال يملكون في هذه الصفحة ما يملكه مديرُ النظام (lib/financeAuthority).
+/// Finance roles hold the same powers on this page as the system admin (lib/financeAuthority).
 const _financeFullRoles = ['cfo', 'accounting_manager', 'accountant'];
 
-/// أعمدةُ شريط الفلترة — نفسُ أعمدة الويب (WorkflowFilterBar).
+/// Filter bar columns, same as the web (WorkflowFilterBar).
 const _barFields = [
   ('username', 'العميل', 'Customer', false),
   ('branch', 'الفرع', 'Branch', false),
@@ -47,8 +44,8 @@ const _barFields = [
   ('customsRef', 'التخليص', 'Customs', false),
 ];
 
-/// بقيّةُ أعمدة الجدول — لكلٍّ فلترُه على رأسه في الويب (ColHead).
-/// (المفتاح، العربيّ، الإنجليزيّ، مالٌ؟)
+/// Remaining table columns; each has its filter on its header on the web (ColHead).
+/// (key, Arabic label, English label, is money)
 const _colFields = [
   ('reportNumber', 'رقم أمر النقل', 'Report #', false),
   ('reportDate', 'تاريخ أمر النقل', 'Report date', false),
@@ -79,7 +76,7 @@ const _colFields = [
 const _dateFields = {'reportDate', 'paymentDate', 'sendingDate', 'branchDeliveryDate', 'deliveryDate', 'invoiceDate', 'collectionDate'};
 const _numFields = {'purchaseValue', 'sellingValue', 'netInvoice', 'tax', 'totalInvoice', 'paymentAmount', 'collectedAmount'};
 
-/// أعمدةُ تصدير الصفحة — مكتوبةٌ لا مشتقّة، وأعمدةُ المال تُحذف لمن لا يملكها.
+/// Page export columns: written out, not derived, and money columns are dropped for those without access.
 const _moneyExportKeys = {'netInvoice', 'tax', 'totalInvoice', 'invoiceDate', 'invoiceNotes', 'collectionDate'};
 const _exportCols = [
   ('reportNumber', 'رقم الطلب', 'Report #'), ('reportDate', 'تاريخ الطلب', 'Report date'), ('fromLocation', 'من', 'From'),
@@ -96,7 +93,7 @@ const _exportCols = [
   ('invoiceDate', 'تاريخ الفاتورة', 'Invoice date'), ('collectionDate', 'تاريخ التحصيل', 'Collection date'),
 ];
 
-/// بطاقاتُ فحص الفواتير الأربع — نفسُ بطاقات الويب (InvoiceCheckCards).
+/// The four invoice-check cards, same as the web (InvoiceCheckCards).
 const _checkKinds = [
   ('gaps', 'فواتير لم تُفوتَر', 'Missing invoice numbers', T.violet),
   ('missing-reports', 'فواتير بأوامر نقل غير موجودة', 'Invoices citing missing reports', T.warn),
@@ -122,7 +119,7 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
   String _origin = '';
   String _customs = '';
   final OpsPeriod _period = OpsPeriod();
-  /// حقولُ هذا الدور كما يحسبها الخادم — `null` حتى يصل الجواب.
+  /// This role's fields as computed by the server; `null` until the reply arrives.
   Set<String>? _myFields;
   Map<String, dynamic>? _checks;
   int _page = 1;
@@ -162,13 +159,13 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
   void initState() {
     super.initState();
     _load();
-    // دفعةُ إشعاراتٍ = تحميلٌ واحد (الاستطلاعُ يبثّ كلَّ بضع ثوانٍ).
+    // A batch of notifications triggers a single load (polling broadcasts every few seconds).
     _onLive = () {
       _liveTimer?.cancel();
       _liveTimer = Timer(const Duration(milliseconds: 600), () { if (mounted) _load(background: true); });
     };
     _onUpdated = (d) {
-      // صفٌّ كاملٌ يُستبدَل في مكانه؛ والإشعارُ المختصرُ يعيد التحميل.
+      // A whole row is replaced in place; the short notification triggers a reload.
       if (d is Map && d['_id'] != null && d.containsKey('reportNumber')) {
         final i = _rows.indexWhere((r) => r['_id'] == d['_id']);
         if (i >= 0 && mounted) { setState(() => _rows[i] = Map<String, dynamic>.from(d)); return; }
@@ -238,7 +235,7 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
     super.dispose();
   }
 
-  /// شروطُ القائمة كلُّها كما يرسلها الويب (buildParams).
+  /// All list conditions as the web sends them (buildParams).
   List<(String, String)> _params({String? skip}) {
     final (from, to) = _period.dates;
     return [
@@ -259,7 +256,7 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
   int _seq = 0;
   int _statsSeq = 0;
   Future<void> _load({bool background = false}) async {
-    // الأحدثُ يفوز — للجدول وللبطاقات حارسان مستقلّان.
+    // Latest wins; the table and the cards have independent guards.
     final mine = ++_seq;
     final mineStats = ++_statsSeq;
     if (!background && !_loading && mounted) setState(() => _refreshing = true);
@@ -291,7 +288,7 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
     await statsF;
   }
 
-  /// تغيُّرُ أيّ فلتر: الصفحةُ الأولى، ويُلغى التحديد (صفوفٌ لم تعد معروضة).
+  /// Any filter change goes to the first page and clears the selection (rows no longer displayed).
   void _reload() {
     setState(() { _page = 1; _sel.clear(); _allMatching = false; });
     _load();
@@ -330,7 +327,7 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
     _pickFilter(k, tr(f.$2, f.$3));
   }
 
-  /// بطاقاتُ الحالة قائمةُ اختيار: ضغطةٌ تُدخل وأخرى تُخرج، و'' تمسح.
+  /// Status cards are a selection list: one tap adds, another removes, and '' clears.
   void _toggleStatus(String key) {
     if (key.isEmpty) { _cf.remove('applicationStatus'); return; }
     final cur = Set<String>.from(_cf['applicationStatus'] ?? const {});
@@ -353,7 +350,7 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
     setState(() => _rows[i] = {..._rows[i], ...(row is Map && row['_id'] != null ? Map<String, dynamic>.from(row) : (fallback ?? const {}))});
   }
 
-  // ── إجراءاتُ الصفّ الواحد ───────────────────────────────────────────────
+  // Single-row actions
   Future<void> _openDetail(Map<String, dynamic> w, {bool edit = false}) async {
     await Navigator.push(context, MaterialPageRoute(builder: (_) => OpsWorkflowDetailScreen(id: '${w['_id']}', initial: w, startInEdit: edit)));
     if (mounted) _load(background: true);
@@ -365,7 +362,7 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
     catch (e) { if (mounted) opsSnack(context, opsErr(e), error: true); }
   }
 
-  /// قيمةُ البيع — في منصّة التشغيل وهنا معًا (PUT /api/workflows/:id).
+  /// Selling value, written to the operations platform and here together (PUT /api/workflows/:id).
   Future<void> _editSelling(Map<String, dynamic> w) async {
     final ctrl = TextEditingController(text: (w['sellingValue'] ?? '').toString());
     final v = await showDialog<String>(
@@ -417,7 +414,7 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
     }).catchError((_) {});
   }
 
-  /// نوعُ الدفع — الأربعةُ وحدَها تُختار، والخادمُ يطبّق قواعدها.
+  /// Payment kind: only the four are selectable, and the server applies their rules.
   Future<void> _editPaymentType(Map<String, dynamic> w) async {
     final cur = opsPaymentKindOf(w);
     final picked = await showModalBottomSheet<String>(
@@ -445,7 +442,7 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
 
   Future<void> _toggleReview(Map<String, dynamic> w, String field) async {
     final next = (w[field] ?? '').toString().isNotEmpty ? '' : 'تم';
-    _patchRow('${w['_id']}', null, {field: next}); // تفاؤلٌ: العلامةُ فوريّة
+    _patchRow('${w['_id']}', null, {field: next}); // Optimistic: the mark is immediate
     try {
       await Api.instance.put('/api/workflows/${w['_id']}', {field: next});
     } catch (e) {
@@ -454,7 +451,7 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
     }
   }
 
-  /// حالةُ الطلب — تُكتب في منصّة التشغيل أوّلًا ثمّ تعود (لا تفاؤل هنا).
+  /// Order status is written to the operations platform first, then comes back (no optimism here).
   Future<void> _changeAppStatus(Map<String, dynamic> w) async {
     if (!_hasStatus(w)) {
       opsSnack(context, tr('أمر نقل ليس من منصّة التشغيل', 'Not a platform shipment'));
@@ -532,7 +529,7 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
     if (i != null) await actions[i].$4();
   }
 
-  // ── التحديدُ والإجراءاتُ الجماعيّة ───────────────────────────────────────
+  // Selection and bulk actions
   int get _selectedCount => _allMatching ? _total : _sel.length;
 
   Map<String, dynamic> _selectionPayload() => _allMatching
@@ -573,7 +570,7 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
     }
   }
 
-  /// تسجيلُ سدادٍ لدفعةٍ واحدة — الخانةُ الفارغة تعني «لا تلمس هذا العمود».
+  /// Record a payment for a batch; an empty field means leave that column untouched.
   Future<void> _bulkPay() async {
     final date = TextEditingController(), send = TextEditingController(), bdel = TextEditingController();
     final branch = TextEditingController(), dest = TextEditingController(), doc = TextEditingController();
@@ -611,7 +608,7 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
             if (send.text.trim().isNotEmpty) 'sendingDate': send.text.trim(),
             if (bdel.text.trim().isNotEmpty) 'branchDeliveryDate': bdel.text.trim(),
             if (opsReview == 'تم') 'operationsReview': 'تم',
-            // «إزالة العلامة» فراغٌ مقصود.
+            // "Remove the mark" is deliberately blank.
             if (opsReview == 'clear') 'operationsReview': '',
           };
           if (fields.isEmpty) return;
@@ -622,7 +619,7 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
             if (!ok) return;
           }
           set(() { running = true; resultMsg = null; skipped = []; });
-          // ما حُفظ يظهر في اللحظة على الكشوف المحدَّدة — لا ينتظر إعادةَ القائمة (٢٠٢٦/١٠/٢٦).
+          // What was saved shows immediately on the selected statements, without waiting for the list reload.
           final picked = _allMatching ? null : Set<String>.of(_sel);
           try {
             final r = await Api.instance.post('/api/workflows/bulk-update', {..._selectionPayload(), 'fields': fields});
@@ -649,7 +646,7 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
             resultMsg = opsErr(e);
           }
           if (mounted) _load(background: true);
-          // والعاملُ الآخرُ في الخادم يمسح ذاكرتَه خلال ثانية — إعادةٌ ثانيةٌ تلتقط ما فاته.
+          // The other server worker clears its cache within a second; a second reload picks up what it missed.
           Future.delayed(const Duration(milliseconds: 1500), () { if (mounted) _load(background: true); });
           if (c.mounted) set(() => running = false);
         }
@@ -735,7 +732,7 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
     for (final c in [date, send, bdel, branch, dest, doc]) { c.dispose(); }
   }
 
-  // ── التصدير ──────────────────────────────────────────────────────────────
+  // Export
   dynamic _exportValue(Map<String, dynamic> w, String k) {
     final v = w[k];
     switch (k) {
@@ -793,7 +790,7 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
     if (done == true && mounted) _load(background: true);
   }
 
-  // ── فحوصُ الفواتير ───────────────────────────────────────────────────────
+  // Invoice checks
   Future<void> _openCheck(String kind, String title) async {
     List<dynamic> rows = [];
     bool busy = true;
@@ -904,7 +901,7 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
     final contradictionOn = _pendingOnly && statusSel.length == 1 && statusSel.contains('bond_received');
     final colActive = _cf.keys.where((k) => !_barFields.any((b) => b.$1 == k)).length;
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      // ارتفاعُ الشريط يتبع محتواه (حجمُ خطّ النظام) — لا ارتفاعَ ثابتًا يقصّ البطاقات.
+      // Bar height follows its content (system font size); a fixed height would clip the cards.
       SingleChildScrollView(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.fromLTRB(14, 10, 14, 0),
@@ -925,7 +922,7 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
                 }(),
                 active: _pendingAsOf,
                 onTap: () { _pendingAsOf = !_pendingAsOf; if (_pendingAsOf) _pendingOnly = false; _reload(); }),
-            // التناقض: سندٌ لم يصل وحالتُه «استُلم السند».
+            // Contradiction: a voucher that has not arrived while its status says voucher received.
             _statCard(tr('سند لم يصل وحالته «استُلم السند»', 'Pending bond, status says received'), '$pbr', pbr > 0 ? T.danger : T.line,
                 sub: tr('تاريخُ السداد ناقص أو الحالة خطأ', 'missing payment date or wrong status'),
                 alarm: pbr > 0, active: contradictionOn,
@@ -995,7 +992,7 @@ class _OpsWorkflowsScreenState extends State<OpsWorkflowsScreen> {
           ]),
         ),
       ),
-      // ── شريطُ التحديد ──────────────────────────────────────────────────
+      // Selection bar
       if (_sel.isNotEmpty || _allMatching)
         Container(
           margin: const EdgeInsets.fromLTRB(14, 6, 14, 0),

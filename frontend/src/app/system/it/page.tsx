@@ -149,14 +149,14 @@ export default function ItDashboardPage() {
       </PageHeader>
 
       <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
-        {/* وكلُّ بطاقةٍ تؤدّي إلى صفوفها: البلاغاتُ بحالتها، والعهدُ، والأنظمة. */}
+        {/* Each card links to its rows: reports by status, custody, and systems. */}
         <StatCard label={ar ? 'بلاغات مفتوحة' : 'Open tickets'} value={t?.openTickets ?? 0} accent="text-amber-600"
           href="/system/it/tickets?status=open" hint={ar ? 'اضغط لعرضها' : 'tap to open'} />
         <StatCard label={ar ? 'قيد التنفيذ' : 'In progress'} value={t?.inProgress ?? 0} accent="text-blue-600"
           href="/system/it/tickets?status=in_progress" hint={ar ? 'اضغط لعرضها' : 'tap to open'} />
         <StatCard label={ar ? 'تم حلها في الفترة' : 'Resolved this period'} value={t?.resolvedThisPeriod ?? 0} accent="text-green-600"
           href="/system/it/tickets?status=resolved" hint={ar ? 'اضغط لعرضها' : 'tap to open'} />
-        {/* متوسطُ الزمن ليس صفوفًا — يُفتَح الجدولُ كلُّه ليُقرأ منه. */}
+        {/* Average time is not rows; the whole table opens to read it. */}
         <StatCard label={ar ? 'متوسط زمن الحل' : 'Avg resolution'} value={fmtDuration(t?.avgResolutionMinutes, lang)} accent="text-[#f37121]"
           href="/system/it/tickets" hint={ar ? 'كل البلاغات' : 'all tickets'} />
         <StatCard label={ar ? 'عهد مسلّمة' : 'Assets assigned'} value={t?.assetsAssigned ?? 0} accent="text-indigo-600"
@@ -165,11 +165,7 @@ export default function ItDashboardPage() {
           href="/system/it/systems" hint={ar ? 'الأنظمة' : 'systems'} />
       </div>
 
-      {/* ── العهد ───────────────────────────────────────────────────────────
-          كروت العهد وأزرارها كاملة على اللوحة: القسم يُسأل عن أعداد العهد أكثر
-          مما يُسأل عن البلاغات، وإرسال المستخدم إلى صفحة أخرى ليعرف كم لابتوباً
-          لدينا يجعل اللوحة صفحة عبور لا لوحة. الأرقام محسوبة في الخادم من نفس
-          التجميع الذي تقرأه صفحة العهد، والضغط ينقل إليها على نفس الفلتر. */}
+      {/* Custody cards and buttons sit on the dashboard because custody counts are asked more than reports; numbers come from the same server aggregation as the custody page, and a click opens it with the same filter. */}
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-semibold text-slate-900 flex items-center gap-2">
@@ -199,7 +195,7 @@ export default function ItDashboardPage() {
         />
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {/* الحالة الفنية — فلتر قائم بذاته في صفحة العهد، ومختصره هنا. */}
+          {/* Technical condition is its own filter on the custody page; shortened here. */}
           <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-5">
             <p className="text-xs font-semibold text-slate-500 mb-3">{ar ? 'حسب الحالة الفنية' : 'By condition'}</p>
             {(custody?.byCondition || []).length === 0 ? (
@@ -217,7 +213,7 @@ export default function ItDashboardPage() {
             )}
           </div>
 
-          {/* تفصيل «أخرى» — الكارت وحده يقول «١٤٠ صنفاً آخر» ولا يقول ما هي. */}
+          {/* Breakdown of 'other': the card alone gives a count without saying what the items are. */}
           <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-5">
             <p className="text-xs font-semibold text-slate-500 mb-3">
               {ar ? `تفصيل «${bucketLabel('other', lang)}»` : `Inside "${bucketLabel('other', lang)}"`}
@@ -227,8 +223,7 @@ export default function ItDashboardPage() {
             ) : (
               <div className="flex flex-wrap gap-2">
                 {(custody?.otherKinds || []).map((k) => (
-                  // الرابط يحمل النوع المفصّل كذلك: كان يفتح دلو «أخرى» كله،
-                  // فيضغط المستخدم على «شنطة لابتوب ٣٤» ويجد أمامه ٦٣ صفاً.
+                  // The link also carries the detailed type; otherwise it opened the whole 'other' bucket.
                   <Link key={k.key} href={`/system/it/custody?bucket=other&otherType=${k.key}`}
                     className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600 hover:border-[#f37121]/50 hover:bg-[#f37121]/5">
                     {custodyTypeLabel(k.key, lang)}

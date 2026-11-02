@@ -3,10 +3,7 @@ import '../services/api.dart';
 import '../services/lang.dart';
 import 'theme.dart';
 
-/// «أسعار التعاقد مع العميل» — ورقةٌ تُفتح من عقد العميل وحدَه (partyKind ==
-/// 'customer'). نموذجُ العقود العامّ لا يكتب مصفوفاتٍ متداخلة (وجهاتُ النقل)،
-/// فالأسعارُ هنا: تُقرأ من صفّ العقد في القائمة، وتُحفَظ PUT بـ`{pricing}` وحدَه.
-/// تردّ true إن حُفظ شيء.
+/// Customer contract pricing: a sheet opened from a customer contract only (partyKind == 'customer'). The generic contract form cannot write nested arrays (transport destinations), so prices are read from the contract row in the list and saved by PUT with `{pricing}` alone. Returns true if anything was saved.
 Future<bool> editCustomsContractPricing(BuildContext context, Map<String, dynamic> contract) async {
   final saved = await showModalBottomSheet<bool>(
     context: context,
@@ -37,7 +34,7 @@ class _Route {
 class _PricingSheetState extends State<_PricingSheet> {
   late final Map<String, dynamic> _p =
       widget.contract['pricing'] is Map ? Map<String, dynamic>.from(widget.contract['pricing']) : {};
-  // الفارغُ (null) غيرُ متّفقٍ عليه — يبقى فارغًا لا صفرًا.
+  // Empty (null) means not agreed; it stays empty, not zero.
   late final TextEditingController _fee = TextEditingController(text: _p['clearanceFeePerContainer'] == null ? '' : '${_p['clearanceFeePerContainer']}');
   late final TextEditingController _toYard = TextEditingController(text: _p['portToYard'] == null ? '' : '${_p['portToYard']}');
   late final TextEditingController _yardToCustomer = TextEditingController(text: _p['yardToCustomer'] == null ? '' : '${_p['yardToCustomer']}');
@@ -59,7 +56,7 @@ class _PricingSheetState extends State<_PricingSheet> {
     super.dispose();
   }
 
-  // '' يعود null في الخادم (cleanPricing) — «لم يُتّفق على سعر».
+  // '' becomes null on the server (cleanPricing): no price agreed.
   dynamic _num(TextEditingController c) {
     final t = c.text.trim();
     return t.isEmpty ? '' : (num.tryParse(t) ?? '');
@@ -129,7 +126,7 @@ class _PricingSheetState extends State<_PricingSheet> {
                     onPressed: () {
                       final gone = _routes.removeAt(e.key);
                       setState(() {});
-                      // تُتلَف ضوابطُه بعد أن تُرفع خاناتُه من الشجرة، لا قبلها.
+                      // Controllers are disposed after its fields are lifted out of the tree, not before.
                       WidgetsBinding.instance.addPostFrameCallback((_) => gone.dispose());
                     },
                   ),

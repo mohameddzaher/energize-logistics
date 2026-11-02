@@ -5,9 +5,7 @@ import '../services/lang.dart';
 import '../screens/reports.dart';
 import 'theme.dart';
 
-/// «تقرير» — نظيرُ ReportButton في الويب: يفتح تقرير PDF الشامل لأيّ ملفٍّ
-/// (عميل، مورد، مركبة، سائق، موظّف) عن آخر ١٢ شهرًا، والسهمُ يفتح مركزَ
-/// التقارير لمن يريد تغيير الفترة. الملفُّ يُولَّد في الخادم على الترويسة.
+/// Report button, twin of ReportButton on the web: opens the comprehensive PDF report of any profile (customer, supplier, vehicle, driver, employee) for the last 12 months; the arrow opens the reports center to change the period. The file is generated on the server on the letterhead.
 class ReportButton extends StatefulWidget {
   final String subject; // vehicle | tire | driver | customer | vendor | employee | section
   final String id;

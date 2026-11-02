@@ -11,9 +11,7 @@ import '../ui/stat_grid.dart';
 import 'wallet_branch.dart';
 import 'wallet_common.dart';
 
-/// لوحة المحفظة — نظرة كل الفروع على العهدة: يومٌ أو شهرٌ أو فترة، والتحصيلات
-/// والمصروفات والمشتريات والرصيد والفروقات لكل فرع، ونقرةُ الفرع تفتح لوحتَه.
-/// مطابقة لصفحة الويب /system/wallet-dashboard.
+/// Wallet dashboard: all branches' view of custody for a day, a month or a period, with collections, expenses, purchases, balance and differences per branch; tapping a branch opens its dashboard. Matches the web page /system/wallet-dashboard.
 class WalletDashboardScreen extends StatefulWidget {
   const WalletDashboardScreen({super.key});
   @override
@@ -25,7 +23,7 @@ class _WalletDashboardScreenState extends State<WalletDashboardScreen> {
   bool _loading = true;
   String? _error;
   String _q = '';
-  // متحكِّمٌ للشاشة: الخانةُ تعود بنصِّها بعد التحميل
+  // Screen-owned controller: the field regains its text after loading
   final _searchCtl = TextEditingController();
   int _seq = 0;
   String _mode = 'single'; // single | month | range
@@ -55,7 +53,7 @@ class _WalletDashboardScreenState extends State<WalletDashboardScreen> {
     super.dispose();
   }
 
-  /// مدى الفترة المختارة (من، إلى) — واليومُ مدًى من يومٍ واحد.
+  /// Range of the selected period (from, to); a day is a one-day range.
   (String, String) get _bounds {
     if (_mode == 'month') return ('${walletMonthKey(_month)}-01', walletMonthEnd(_month));
     if (_mode == 'range') return (walletDayKey(_from), walletDayKey(_to));
@@ -95,7 +93,7 @@ class _WalletDashboardScreenState extends State<WalletDashboardScreen> {
 
   num _sum(String key) => _branches.fold<num>(0, (a, b) => a + walletNum(b[key]));
 
-  // ── أعمدةُ التصدير — هي أعمدةُ الموقع ─────────────────────────────────────
+  // Export columns, the web columns
   List<ExportCol> get _cols => [
         ExportCol('الفرع', 'Branch', (r) => r['branch'] is Map ? '${r['branch']['name'] ?? ''}' : ''),
         ExportCol('رمز الفرع', 'Branch code', (r) => r['branch'] is Map ? '${r['branch']['code'] ?? ''}' : ''),
@@ -138,7 +136,7 @@ class _WalletDashboardScreenState extends State<WalletDashboardScreen> {
     await exportExcel(context, fileName: 'Wallet_Dashboard_${_periodLabel.replaceAll(' → ', '_to_')}', sheets: [('Branches', _cols, rows)]);
   }
 
-  /// لوحةُ الفرع على الفترة نفسِها — والشهرُ يُفتح مدًى من أوّله إلى آخره.
+  /// Branch dashboard on the same period; a month opens as a range from its first day to its last.
   void _openBranch(Map<String, dynamic> b) {
     final branch = Map<String, dynamic>.from(b['branch'] ?? {});
     final id = '${branch['_id'] ?? ''}';
@@ -237,7 +235,7 @@ class _WalletDashboardScreenState extends State<WalletDashboardScreen> {
             else if (_error != null)
               ErrorRetry(message: _error!, onRetry: () => _load())
             else ...[
-              // ── الميزانُ يُقرأ كسطر حساب: افتتاحيٌّ + تحصيلاتٌ − مصروفاتٌ − مشترياتٌ = ختاميّ.
+              // The balance reads as an account line: opening + collections - expenses - purchases = closing.
               StatGrid(
             spacing: 8,
             children: [
@@ -246,7 +244,7 @@ class _WalletDashboardScreenState extends State<WalletDashboardScreen> {
                   _tile(tr('إجمالي المصروفات', 'Expenses'), walletMoney(_sum('totalExpenses')), T.danger, Icons.money_off_outlined),
                   _tile(tr('إجمالي المشتريات', 'Purchases'), walletMoney(_sum('totalPurchases')), T.info, Icons.shopping_cart_outlined),
                   _tile(tr('صافي الحركة', 'Net movement'), walletMoney(net), net >= 0 ? T.success : T.danger, Icons.trending_up),
-                  // تسويةُ الجرد تظهر حين تكون — الصفرُ لا يُعرض.
+                  // The stocktake adjustment shows when present; zero is not shown.
                   if (adj.abs() > 0.01) _tile(tr('تسوية جرد', 'Stock-take adj.'), walletMoney(adj), T.warn, Icons.warning_amber_outlined),
                   _tile(tr('الرصيد الختامي', 'Closing balance'), walletMoney(_sum('closingBalance')), T.warn, Icons.account_balance_wallet),
                   _tile(tr('المحافظ النشطة', 'Active wallets'), '${_sum('activeWallets')}', T.ink, Icons.people_outline),

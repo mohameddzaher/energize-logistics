@@ -7,15 +7,7 @@ import '../services/live.dart';
 import 'file_upload.dart';
 import 'theme.dart';
 
-/// «متابعات الكشف» — نظيرُ components/operations/ReportFollowUps في الموقع.
-///
-/// سجلٌّ واحدٌ على كشف التشغيل يكتبه التشغيلُ والتخليصُ والتحصيل، ولكلّ قسمٍ
-/// بابُه إليه (`basePath`) لأنّ كلًّا منهم يصل إلى الكشف بحارس قسمه:
-///   /api/workflows/:id/follow-ups
-///   /api/customs-clearance/:id/ops-reports/:reportId/follow-ups
-///   /api/collections-dept/reports/:reportId/follow-ups
-/// مَن يرى الكشفَ يكتب متابعة ومعها مرفقٌ اختياريّ؛ والحذفُ لكاتبها أو للإدارة
-/// (`canDelete` من الخادم). ويتحدّث على `workflow:followUps`.
+/// Report follow-ups, twin of components/operations/ReportFollowUps on the web. One log on an operations report written by operations, clearance and collections. Each section has its own base path (`basePath`) since each reaches the report through its own section guard: /api/workflows/:id/follow-ups, /api/customs-clearance/:id/ops-reports/:reportId/follow-ups, /api/collections-dept/reports/:reportId/follow-ups. Anyone who sees the report can add a follow-up with an optional attachment; deleting is for the author or admins (`canDelete` from the server). Live on `workflow:followUps`.
 class ReportFollowUpsView extends StatefulWidget {
   final String basePath;
   final String workflowId;

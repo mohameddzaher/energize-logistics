@@ -1,21 +1,11 @@
 /**
- * مفرداتُ حالات الشحنة — العقدُ في الشيفرة، والتسميةُ في الإعدادات.
- *
- * ── لماذا الاثنان معًا ─────────────────────────────────────────────────────
- * طُلب أن تُضبَط حالاتُ الشحنة من إعدادات القسم. والحالةُ في الوقت نفسِه ليست
- * تسميةً تُبدَّل: `arrived` تعدّها التحليلات، و`late` تُطلق منها التنبيهات،
- * و`bond_received` يقف عليها شرطُ المشتريات في المحفظة — والمنصّةُ الخارجيّة
- * تتكلّم بهذه المفاتيح نفسِها. فحذفُ مفتاحٍ من شاشةٍ يُسكت منطقًا في قسمٍ آخر.
- *
- * فالمفاتيحُ العشرةُ مكتوبةٌ هنا ولا تُحذَف. والذي يملكه القسمُ من إعداداته:
- * **الاسمُ الظاهر ولونُه وترتيبُه وأهو مُستعمَلٌ اليوم** — ويملك أن يزيد حالةً
- * حاديةَ عشرةَ من عنده، فتُقبَل في الحفظ وتظهر في البطاقات وفي كلّ قائمة.
- *
- * والمخزَّنُ على الشحنة هو **المفتاح** لا الاسم: تُعاد تسميةُ «وصلت» غدًا فلا
- * يتغيّر شيءٌ في ثلاثةٍ وثلاثين ألفَ سجلّ.
+ * Vocabulary of shipment statuses: the contract is in code and the label is in settings.
+ * Why both: the section's settings were asked to control shipment statuses, but a status is not just a label. `arrived` is counted by analytics, `late` triggers alerts, `bond_received` gates the purchasing condition in the wallet, and the external platform speaks these same keys. Deleting a key from a screen would silence logic in another section.
+ * So the ten keys are written here and cannot be deleted. What the section owns in its settings is the display name, colour, order and whether it is currently in use, and it may add an eleventh status of its own, which is accepted on save and shown in cards and every list.
+ * What is stored on a shipment is the key, not the name: renaming "arrived" tomorrow changes nothing in the 33,000 records.
  */
 
-// العشرةُ الأساسيّة — تُطابق مرآةَ منصّة التشغيل حرفًا بحرف.
+// The ten base statuses, matching the operations platform mirror exactly.
 const CORE = [
   { key: 'requesting', en: 'Requesting', ar: 'قيد الطلب', color: '#64748b' },
   { key: 'loading', en: 'Loading', ar: 'جاري التحميل', color: '#d97706' },
@@ -32,11 +22,8 @@ const CORE = [
 const CORE_KEYS = new Set(CORE.map((s) => s.key));
 
 /**
- * القائمةُ كما يراها المستخدمُ الآن: الأساسيّةُ بتسمياتها المضبوطة، ثمّ ما زاده.
- *
- * وتُقرأ من القاعدة في كلّ نداء بلا ذاكرة: القائمةُ عشرةُ صفوفٍ، وذاكرةٌ لها
- * تعني أنّ من عدّل تسميةً في الإعدادات لا يراها إلّا بعد دقيقة — وهو بالضبط ما
- * تعنيه كلمةُ «حيّ» في الطلب.
+ * The list as the user sees it now: base statuses with their configured labels, then any added ones.
+ * Read from the DB on every call, uncached: the list is ten rows, and caching would make someone who edits a label in settings see it only after a minute, which defeats "live".
  */
 async function statusVocabulary({ includeInactive = false } = {}) {
   let rows = [];
@@ -49,7 +36,7 @@ async function statusVocabulary({ includeInactive = false } = {}) {
   const byKey = new Map(rows.map((r) => [r.key, r]));
   const out = [];
 
-  // الأساسيّةُ أوّلًا وبترتيب دورتها إن لم يُعَد ترتيبُها.
+  // Base statuses first, in their cycle order unless reordered.
   CORE.forEach((s, i) => {
     const r = byKey.get(s.key);
     byKey.delete(s.key);
@@ -89,11 +76,8 @@ async function statusVocabulary({ includeInactive = false } = {}) {
 }
 
 /**
- * أتُقبَل هذه الحالةُ في الحفظ؟
- *
- * المفتاحُ الأساسيُّ يُقبَل دائمًا وإن أُخفي من الشاشة — سجلَّاتٌ قديمةٌ تحمله،
- * ورفضُه في التعديل يمنع حفظَ شحنةٍ لم يمسَّ أحدٌ حالتَها. وما زاده القسمُ
- * يُقبَل ما دام قائمًا غيرَ محذوف.
+ * Is this status accepted on save?
+ * A base key is always accepted even if hidden from the screen: old records carry it, and rejecting it on edit would block saving a shipment whose status nobody touched. A section-added status is accepted while it exists and is not deleted.
  */
 async function isValidStatus(key) {
   const k = String(key || '').trim();

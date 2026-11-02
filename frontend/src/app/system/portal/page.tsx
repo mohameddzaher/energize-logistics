@@ -1,11 +1,6 @@
 'use client';
-// بوابة العميل / المورد — الصفحة الرئيسية.
-//
-// What the partner sees the moment they log in. Everything here is decided by
-// what they actually have with us: a heavy-transport customer gets loads and
-// waybills, a customs customer gets containers and clearance stages, a supplier
-// gets the loads they carried for us. Nobody sees an empty tab for a service
-// they don't buy.
+// Customer/supplier portal home.
+// Everything is decided by what the partner actually has with us: heavy transport gets loads and waybills, customs gets containers and clearance stages, a supplier gets the loads they carried. No empty tab for a service they do not buy.
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import api from '@/lib/api';
@@ -91,7 +86,7 @@ export default function PortalHomePage() {
         </p>
       </div>
 
-      {/* الخدمات — only the ones this partner actually uses */}
+      {/* Services: only the ones this partner actually uses */}
       {!!data.services.length && (
         <div className="flex flex-wrap gap-2">
           {data.services.map((s) => {
@@ -100,7 +95,7 @@ export default function PortalHomePage() {
               : s.key === 'finance' ? '/system/portal/invoices'
                 : s.key === 'operations' ? '/system/portal/shipments?type=platform'
                   : `/system/portal/shipments?type=${s.key === 'heavy_transport' ? 'heavy' : (isVendor ? 'vendor' : 'orders')}`;
-            // «منصة الأوبريشن» اسمٌ داخلي — العميل يراها «رحلات النقل».
+            // The operations platform is an internal name; the customer sees it as transport trips.
             const label = s.key === 'operations' ? tx('Transport trips', 'رحلات النقل') : (ar ? s.ar : s.en);
             return (
               <button
@@ -123,7 +118,7 @@ export default function PortalHomePage() {
         </div>
       )}
 
-      {/* الأرقام */}
+      {/* Numbers */}
       <div className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-6 gap-3">
         {isVendor ? (
           <>
@@ -139,7 +134,7 @@ export default function PortalHomePage() {
             <KpiTile label={tx('Shipments', 'إجمالي الشحنات')} value={(t.shipments || 0).toLocaleString()} icon={<Truck className="w-4 h-4" />} />
             <KpiTile label={tx('In transit', 'في الطريق')} value={(t.inTransit || 0).toLocaleString()} accent="#f59e0b" icon={<MapPin className="w-4 h-4" />} />
             <KpiTile label={tx('Delivered', 'تم التسليم')} value={(t.delivered || 0).toLocaleString()} accent="#16a34a" icon={<CheckCircle2 className="w-4 h-4" />} />
-            {/* بلا أيّ مبلغ للعميل — أعدادٌ فقط (٢٠٢٦/١٠/٢٤). */}
+            {/* No amounts for the customer, counts only. */}
             {!!t.platformTrips && (
               <KpiTile label={tx('Transport trips', 'رحلات النقل')} value={(t.platformTrips || 0).toLocaleString()} accent="#6366f1" icon={<ClipboardList className="w-4 h-4" />} />
             )}
@@ -154,7 +149,7 @@ export default function PortalHomePage() {
         )}
       </div>
 
-      {/* الشحنات الجارية */}
+      {/* Active shipments */}
       {!!data.inTransit?.length && (
         <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
           <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold inline-flex items-center gap-2 mb-3">
@@ -185,7 +180,7 @@ export default function PortalHomePage() {
         </div>
       )}
 
-      {/* الحركة الشهرية */}
+      {/* Monthly activity */}
       {!!data.monthly.length && (
         <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
           <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold inline-flex items-center gap-2 mb-4">
@@ -208,7 +203,7 @@ export default function PortalHomePage() {
         </div>
       )}
 
-      {/* أحدث السجلات لكل خدمة */}
+      {/* Latest records per service */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
         {!!data.recent.platformTrips?.length && (
           <RecentList

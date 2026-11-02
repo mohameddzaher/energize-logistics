@@ -1,13 +1,7 @@
 'use client';
-// تقييم أداء السائقين — Location Solutions.
-//
-// Scores every driver on what the trucks themselves reported: عدد الرحلات،
-// مدة الوصول، مدة التحميل والانتظار، أيام العمل، المسافة، والالتزام بالسرعة.
-//
-// Two depths on purpose. The default pass uses the daily-odometer mirror we
-// already store, so the page opens instantly. "التحليل التفصيلي" additionally
-// runs Wialon's trip report for each truck — that is one upstream report per
-// truck, so it is a button, not a default. One driver's own card is always deep.
+// Driver performance evaluation (Location Solutions). Scores every driver on what the trucks themselves reported: trip count, arrival time, loading and waiting time, working days, distance and speed compliance
+// Two depths on purpose. The default pass uses the daily-odometer mirror we already store, so the page opens instantly
+// The detailed analysis additionally runs Wialon's trip report for each truck (one upstream report per truck), so it is a button, not a default. One driver's own card is always deep.
 import { useState, useEffect, useCallback, useMemo, Fragment } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
@@ -102,8 +96,7 @@ export default function Ls2DriverPerformancePage() {
     setLoading(false);
   }, [range.from, range.to, deep]);
   useEffect(() => { load(); }, [load]);
-  // ما يُكتب في القسم — من هذه الشاشة أو من غيرها — يظهر هنا في الحال. ونبضُ
-  // القياس عن بُعد (يحمل `vehicles`) لا يُعيد التحميل: يتكرّر كلَّ دقيقةٍ ولا يغيّر ما هنا.
+  // Anything written in the section, from this screen or elsewhere, appears here at once. The telemetry heartbeat (carries `vehicles`) does not reload: it repeats every minute and changes nothing here.
   useSocket('ls2:updated', useCallback((d: any) => { if (d?.vehicles === undefined) load(); }, [load]));
 
   const toggle = async (name: string) => {

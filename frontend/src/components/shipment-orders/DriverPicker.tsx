@@ -1,13 +1,6 @@
 'use client';
-// ── خانةُ السائق في إنشاء الشحنة — واحدةٌ للشاحنة الأولى ولـ«+ شاحنة أخرى» ────
-// (٢٠٢٦/١٠/٢٦) «بحث برقم جوال السائق زي البحث بالاسم»، و«زر إضافة سائق زي
-// المورّد»، ثمّ «تأكّد إن + شاحنة أخرى ماتشنج مع التعديلات». فالخانةُ مكوّنٌ
-// واحد يستعمله الصفّان، فلا يفترقان مرّةً أخرى.
-//
-// بلا كتابة: سوّاقُ الشاحنة/المورّد المختار (`contextDrivers`). ومع الكتابة: بحثٌ
-// عند الخادم في السوّاق كلِّهم بالاسم والجوال (كيفما كُتب) والإقامة. والاسمُ غيرُ
-// المسجَّل يُكتب ويمضي (`allowCustom`). و«سائق جديد» يسجّله فورًا — ومن كان
-// مسجَّلًا بنفس الجوال أو الإقامة يُختار بدل تكراره (`reuse`).
+// Driver field in shipment creation: one for the first truck and for 'add another truck'. A single component used by both rows so they cannot drift.
+// Without typing: drivers of the chosen truck/supplier (`contextDrivers`). With typing: server search across all drivers by name, mobile (any format) and residency. An unregistered name is written and proceeds (`allowCustom`). 'New driver' registers at once, and one already registered with the same mobile or residency is picked instead of duplicated (`reuse`).
 import { useCallback, useState } from 'react';
 import { UserPlus, Loader2, Check } from 'lucide-react';
 import api from '@/lib/api';
@@ -16,10 +9,7 @@ import { useDialog } from '@/components/system/DialogProvider';
 import { useLatestRequest } from '@/hooks/useLatestRequest';
 import type { OrderDriver } from '@/lib/shipmentOrders';
 
-// ── «0» ليس قيمة (٢٠٢٦/١٠/٢٦: «لما يختارون السائق ما يبغون يظهر 0») ────────
-// سجلُّ السوّاق المستورَد يحمل «0» و«-» حيث لا قيمة — في الجوال والإقامة وتاريخ
-// بطاقة التشغيل. فكانت تُعرض «0» بجانب الاسم، و«بطاقة التشغيل حتى 0»، ويُملأ
-// جوالُ الشحنة «0». فالفارغُ المقنَّع يُعامَل فارغًا، والتاريخُ تاريخٌ أو لا شيء.
+// '0' is not a value: the imported driver register holds '0' and '-' where there is no value, in mobile, residency and operating card date. They displayed as '0' beside the name, 'card until 0', and filled the shipment mobile with '0'. A masked blank is treated as blank, and a date is a date or nothing.
 export const realVal = (v: unknown) => {
   const t = String(v ?? '').trim();
   return /^(0+|-+|null|undefined|nan|n\/a)$/i.test(t) ? '' : t;
@@ -33,7 +23,7 @@ export default function DriverPicker({
   value, onPick, contextDrivers, supplierId, vehicleId, ar, compact, placeholder,
 }: {
   value: string;
-  /** السائقُ المختار — مسجَّلًا (`_id` ومعه جوّاله) أو اسمًا كُتب كما هو. */
+  /** Selected driver: registered (`_id` with mobile) or a name typed as is. */
   onPick: (d: { name: string; phone?: string; driver?: OrderDriver }) => void;
   contextDrivers: OrderDriver[];
   supplierId?: string;
@@ -59,14 +49,11 @@ export default function DriverPicker({
     try {
       const d = await api.get<{ drivers: OrderDriver[] }>(`/api/shipment-orders/drivers?limit=40&q=${encodeURIComponent(term)}`);
       if (guard.isCurrent(mine)) setHits(d.drivers || []);
-    } catch { /* تبقى القائمةُ كما كانت */ }
+    } catch { /* The list stays as it was. */ }
     finally { if (guard.isCurrent(mine)) setBusy(false); }
   }, [guard]);
 
-  // ── «موجودٌ بالفعل» تنبيهٌ لا اختيارٌ صامت (٢٠٢٦/١٠/٢٦) ────────────────────
-  // الخادمُ يردّ القائمَ إن طابق جوالًا أو إقامةً أو اسمًا مطويًّا. فيُسأل: نختاره؟
-  // والاسمُ وحدَه قد يكون شخصًا آخر («محمد» كثير) فيُسمَح بإضافته؛ أمّا الجوالُ
-  // والإقامةُ فرجلٌ واحدٌ لا يُسجَّل مرّتين.
+  // 'Already exists' is a warning, not a silent pick: the server returns the existing driver if it matches a mobile, residency or folded name. Name alone may be another person (many with the same name), so adding is allowed; mobile and residency identify one man, who is not registered twice.
   const { confirm } = useDialog();
   const save = async (force = false) => {
     const name = form.name.trim();

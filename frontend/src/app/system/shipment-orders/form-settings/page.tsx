@@ -1,8 +1,5 @@
-// الرابطُ القديم يبقى حيًّا ويقود إلى مكانه الجديد.
-//
-// كانت إعداداتُ النموذج صفحةً مستقلّة، فصارت تبويبًا داخل «إعدادات القسم» —
-// كما طُلب أن تُجمع الإعداداتُ في مكانٍ واحد. لكنّ الرابطَ القديم محفوظٌ في
-// مفضّلات الناس، وحذفُه يعطي 404 لا سببَ له. فيُحوَّل بدل أن يُكسر.
+// Old URL kept alive and redirected to its new place.
+// Form settings became a tab inside section settings, but the old link is bookmarked, and removing it would give a pointless 404.
 import { redirect } from 'next/navigation';
 
 export default function Page() {

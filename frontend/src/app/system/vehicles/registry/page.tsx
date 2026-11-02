@@ -1,5 +1,5 @@
 'use client';
-// قائمة سجل المركبات — فلاتر متعددة، بحث، حالة كل مركبة، وتعديل/إضافة/حذف.
+// Vehicle register list: multiple filters, search, per-vehicle status, edit/add/delete.
 import B2cOpBadge from '@/components/b2c/B2cOpBadge';
 import { useState, useEffect, useCallback, useMemo, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -21,16 +21,12 @@ import { useColumnFilters, ClearColumnFilters } from '@/components/useColumnFilt
 import { useLatestRequest } from '@/hooks/useLatestRequest';
 import ManagedSelect from '@/components/system/ManagedSelect';
 import PersonLookup from '@/components/vehicles/PersonLookup';
-// السؤالُ نفسُه يُطرَح هنا وفي استمارة كلّ صفحةِ عائلة، فتعريفُه واحد — راجع
-// components/vehicles/ReqToggle.
+// The same question is asked here and in every family page form, so it has one definition. See components/vehicles/ReqToggle.
 import { ReqToggle } from '@/components/vehicles/ReqToggle';
 import { LEAD, LEAD_CELL, LEAD_2, useLeadOffset } from '@/components/vehicles/stickyLead';
 import { Car, Plus, Edit, Trash2, BarChart3, CalendarClock, X, Save, ArrowRight, Columns3, Check } from 'lucide-react';
 import ScrollX from '@/components/system/ScrollX';
-// ── وكلُّ تاريخٍ هنا بتقويمين ───────────────────────────────────────────────
-// أوراقُ المرور والفحص تُصدَر بالهجريّ، والموظّفُ يقرأ ما في يده. وكانت الخانةُ
-// ميلاديّةً وحدَها فيحوّل بيده أو بهاتفه ثمّ يكتب — وكلُّ تحويلٍ بيدٍ خطأٌ ينتظر.
-// والمحفوظُ واحدٌ لا اثنان: الميلاديُّ يُخزَّن، والهجريُّ واجهةُ إدخالٍ وقراءة.
+// Every date has two calendars: papers are issued in Hijri and typing a hand conversion invites errors. Gregorian is stored; Hijri is an input and display layer.
 import HijriGregorianField from '@/components/vehicles/HijriGregorianField';
 import PersonSelect from '@/components/system/PersonSelect';
 
@@ -44,68 +40,48 @@ function VehicleRegistryListInner() {
   const sp = useSearchParams();
   const router = useRouter();
   const { notify, confirm } = useDialog();
-  // A grant of «تعديل» on المركبات has to bring the actions with it — the API
-  // already accepts the calls (rbac lets a section grant through), so hiding the
-  // buttons only made the section look read-only to people who aren't.
+  // An edit grant on vehicles has to bring the actions with it: the API already accepts the calls, so hiding the buttons only made the section look read-only.
   const grant = canEditSection((user as any)?.permissions, 'Vehicles');
   const canEdit = canEditVehicles(user);
   const canDelete = canAdminVehicles(user);
 
   const [rows, setRows] = useState<VReg[]>([]);
-  // ── فلترُ العمود على طريقة إكسل ───────────────────────────────────────────
-  // القيمةُ تُقرأ بالتعبير نفسِه الذي تُرسم به الخليّة، فما يُفلتَر عليه هو ما
-  // يُقرأ على الشاشة حرفًا بحرف. راجع components/useColumnFilters.
+  // Excel-style column filter: the value is read with the same expression the cell renders, so what is filtered is what is seen. See components/useColumnFilters.
   const cf = useColumnFilters<VReg>();
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState(sp?.get('q') || '');
   const [editing, setEditing] = useState<VReg | null>(null);
   const [showForm, setShowForm] = useState(false);
-  // ── الجدولُ يحمل كلَّ عمود، ويُعرَض منه ما يُختار ──────────────────────────
-  // طُلب أن تكون هذه الصفحة «العنصر الأساسيّ للقسم»: فيها كلُّ بيانٍ يخصّ
-  // المركبة. وسبعةٌ وأربعون عمودًا مفتوحةً دائمًا تجعل القراءةَ تمريرًا أفقيًّا
-  // بلا نهاية، فالأعمدةُ كلُّها موجودةٌ وتُفتَح بضغطة — والاختيارُ يبقى في
-  // المتصفّح، فلا يُعاد ضبطُه كلَّ صباح.
+  // The table carries every column and shows the chosen ones; 47 always-open columns force endless horizontal scrolling. The choice persists in the browser.
   const [visibleCols, setVisibleCols] = useState<string[]>(BASE_COLUMN_KEYS);
   const [colsOpen, setColsOpen] = useState(false);
   useEffect(() => {
     try {
       const saved = localStorage.getItem('vreg:cols');
       if (saved) { const a = JSON.parse(saved); if (Array.isArray(a) && a.length) setVisibleCols(a); }
-    } catch { /* تفضيلُ عرضٍ لا شرط */ }
+    } catch { /* Display preference, not a condition */ }
   }, []);
   const toggleCol = (key: string) => setVisibleCols((prev) => {
     const next = prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key];
-    try { localStorage.setItem('vreg:cols', JSON.stringify(next)); } catch { /* تفضيلٌ لا شرط */ }
+    try { localStorage.setItem('vreg:cols', JSON.stringify(next)); } catch { /* Preference, not a condition */ }
     return next;
   });
   const setColsAll = (on: boolean) => {
     const next = on ? REGISTRY_COLUMNS.map((c) => c.key) : BASE_COLUMN_KEYS;
     setVisibleCols(next);
-    try { localStorage.setItem('vreg:cols', JSON.stringify(next)); } catch { /* تفضيلٌ لا شرط */ }
+    try { localStorage.setItem('vreg:cols', JSON.stringify(next)); } catch { /* Preference, not a condition */ }
   };
   const shownCols = useMemo(() => REGISTRY_COLUMNS.filter((c) => visibleCols.includes(c.key)), [visibleCols]);
 
-  // ── اللوحةُ أوّلَ الجدول، وترتيبُ التصدير لا يُمَسّ ────────────────────────
-  //
-  // ترتيبُ `REGISTRY_COLUMNS` هو ترتيبُ التقرير المطلوب حرفيًّا — الملفُّ يُفتَح
-  // إلى جانب ملفّاتٍ سابقةٍ ويُقارَن عمودًا بعمود، فلا يُعاد ترتيبُه. واللوحةُ
-  // فيه في الموضع السابع.
-  //
-  // لكنّ الشاشة ليست الملفّ: هنا يُمرَّر عرضًا بين سبعةٍ وأربعين عمودًا، واللوحةُ
-  // هي هويّةُ الصفّ التي بدونها لا يُعرَف أيُّ تاريخٍ لأيّ مركبة. وتثبيتُها في
-  // موضعها السابع كان يعني أن تنزلق تحتها الأعمدةُ الستّةُ التي قبلها فتختفي.
-  // فتُرسَم أوّلًا في الجدول وحدَه، ويبقى الملفُّ على ترتيبه.
+  // The panel is first in the table, but export order is untouched. REGISTRY_COLUMNS order is the required report order, compared column by column with earlier files.
+  // On screen the plate is the row identity, so it is drawn first in the table only.
   const plateCol = useMemo(() => shownCols.find((c) => c.key === 'plateNumber') || null, [shownCols]);
   const restCols = useMemo(() => shownCols.filter((c) => c.key !== 'plateNumber'), [shownCols]);
   const lead = useLeadOffset();
   const hasLead = canEdit || canDelete;
 
-  // كل فلاتر العنوان تُمرَّر كما هي إلى الخادم.
-  //
-  // كانت تُمرَّر قائمةٌ مكتوبة بالاسم، فأي فلتر خارجها — المدينة، الإدارة،
-  // المفوَّض، مدى الانتهاء — يسقط في صمت: تضغط «١٠ منتهية» فيفتح الجدول ٣٣٥.
-  // الرقم الذي يفتح غير ما يقول أسوأ من ألا يكون قابلًا للضغط أصلًا.
+  // All header filters pass to the server as they are. A named whitelist silently dropped any filter outside it (city, department, authorized person, expiry range) so a clicked number opened a different list.
   const UI_ONLY = ['limit', 'page'];
   const [filters, setFilters] = useState<FilterValues>(() =>
     Object.fromEntries([...(sp?.entries() || [])].filter(([k]) => k !== 'q' && !UI_ONLY.includes(k))));
@@ -118,9 +94,7 @@ function VehicleRegistryListInner() {
     return p.toString();
   }, [q, JSON.stringify(filters)]);
 
-  // ── ولا يكتب ردٌّ قديمٌ فوق ردٍّ أحدث ──────────────────────────────────────
-  // ردُّ «كلّ المركبات» أبطأُ من ردّ البحث ويبدأ قبله، فيهبط فوقه فتعود القائمةُ
-  // كاملةً بعد أن ظهرت النتيجة. راجع hooks/useLatestRequest.
+  // Ignore stale responses: the slower all-vehicles reply starts first and would overwrite the search result. See hooks/useLatestRequest.
   const guard = useLatestRequest();
   const load = useCallback(async () => {
     const mine = guard.begin();
@@ -135,8 +109,7 @@ function VehicleRegistryListInner() {
 
   useEffect(() => { const t = setTimeout(load, 200); return () => clearTimeout(t); }, [load]);
 
-  // ما تختاره هنا يعيش في العنوان: ترفع شرطًا أو تضيف آخر فيعمل الرجوعُ والتقدّم
-  // ويبقى ما بنيتَه إن حدّثتَ الصفحة.
+  // Selections live in the URL so back/forward works and a page refresh keeps what was built.
   useEffect(() => {
     const p = new URLSearchParams();
     if (q.trim()) p.set('q', q.trim());
@@ -144,7 +117,7 @@ function VehicleRegistryListInner() {
     syncUrl('/system/vehicles/registry', p);
   }, [q, JSON.stringify(filters)]);
 
-  /** الرجوع إلى النظرة الشاملة حاملًا الفلتر الحاليّ — لا مُلقيًا به. */
+  /** Back to the overview carrying the current filter instead of dropping it. */
   const backToOverview = () => {
     const p = new URLSearchParams(
       Object.entries(filters).filter(([, v]) => v !== '' && v != null) as [string, string][]).toString();
@@ -152,8 +125,7 @@ function VehicleRegistryListInner() {
   };
   useSocket('vreg:updated', useCallback(() => load(), [load]));
 
-  // أسماء مقروءة للفلاتر التي لا تأتي من الخادم — بدونها تظهر الشريحة بمفتاحها
-  // البرمجي («missingDocDate: insurance») ولا يقرؤه أحد.
+  // Readable names for filters that do not come from the server; otherwise the chip shows its code key.
   const EXTRA_LABELS: Record<string, { ar: string; en: string; values?: Record<string, { ar: string; en: string }> }> = {
     missing: { ar: 'ينقصها بيانات', en: 'Missing data', values: { 1: { ar: 'ينقصها بيانات', en: 'Missing data' } } },
     logistiGaps: { ar: 'نواقص لوجستي', en: 'Logisti gaps', values: {
@@ -174,22 +146,15 @@ function VehicleRegistryListInner() {
     insurancePolicy: { ar: 'وثيقة التأمين', en: 'Policy' },
   };
 
-  // أعمدة التصدير — نفس أعمدة الجدول ومعها ما يُسأل عنه خارج الشاشة (الهيكل،
-  // أرقام المستندات، المفوَّض، القسط). تواريخ المستندات تُبنى من DOC_TYPES نفسها
-  // التي يبني منها الخادمُ حالاتِها، فلا يفترق مستندٌ ظهر في «الانتهاءات» عن
-  // عمودٍ لا وجود له في الملفّ.
-  // آخرُ ما يُطبَّق: فوق البحث والفلاتر، كما يفعل إكسل.
-  // الفلترُ يقرأ الخليّةَ بالتعبير نفسِه الذي تُرسَم به — راجع vehicleColumns.
+  // Export columns: the table columns plus fields asked about off-screen. Document dates are built from the same DOC_TYPES the server builds states from.
+  // Applied last, above search and filters, as Excel does; the filter reads the cell with the same expression it renders. See vehicleColumns.
   const GETTERS = useMemo(
     () => Object.fromEntries(REGISTRY_COLUMNS.map((c) => [c.key, c.get])) as Record<string, (v: VReg) => any>,
     [],
   );
   const shownRows = cf.apply(rows, GETTERS);
 
-  // ── أعمدةُ التصدير هي أعمدةُ الجدول نفسُها ────────────────────────────────
-  // تعريفٌ واحدٌ في `lib/vehicleColumns` يخدم الاثنين، فلا يفترق ملفٌّ عن شاشة.
-  // و`withHijri` يُدخل عمودًا هجريًّا بعد كلّ تاريخٍ ميلاديّ تلقائيًّا — إلّا حيث
-  // يوجد هجريٌّ مكتوبٌ على الورقة أصلًا (رخصة السير والفحص).
+  // Export columns equal the table columns: one definition in lib/vehicleColumns serves both. withHijri adds a Hijri column after each Gregorian date, except where the paper already carries a Hijri value (license and inspection).
   const toExport = useCallback((list: typeof REGISTRY_COLUMNS): ExportColumn[] => withHijri(
     list.map((c): ExportColumn => ({
       header: ar ? c.ar : c.en,
@@ -197,20 +162,14 @@ function VehicleRegistryListInner() {
       width: c.width,
       type: c.type,
       transform: (_v, row: any) => {
-        // العمودُ الهجريُّ يُصدَّر بتاريخه الميلاديّ ليصير خانةَ تاريخٍ حقيقيّة
-        // تُعرَض هجريًّا — لا نصًّا هجريًّا نوعُه General. راجع VCol.raw.
+        // The Hijri column exports its Gregorian date so it is a real date cell displayed as Hijri, not General-type text. See VCol.raw.
         const val = c.raw ? c.raw(row) : c.get(row);
         return val === null || val === undefined ? '' : val;
       },
     })),
   ), [ar]);
 
-  // ── «المعروض» يعني المعروض: صفوفًا وأعمدة ─────────────────────────────────
-  // الفلترُ يختار الصفوف، وزرُّ «الأعمدة» يختار الأعمدة. وتصديرُ سبعةٍ وأربعين
-  // عمودًا لمن ترك أربعةً على الشاشة يُخرج ملفًّا لا يشبه ما بين يديه — وذلك
-  // نصفُ عملٍ بعد نصفٍ: يُفلتَر على الشاشة ثمّ يُحذَف بالإيد في إكسل.
-  //
-  // و«الكل» يبقى الكلَّ: كلُّ صفٍّ وكلُّ عمود. اسمُه يقول ذلك.
+  // Export what is shown, rows and columns: the filter picks rows, the columns button picks columns. The all option stays every row and every column.
   const shownExportCols = useMemo(() => toExport(shownCols), [toExport, shownCols]);
   const allExportCols = useMemo(() => toExport(REGISTRY_COLUMNS), [toExport]);
 
@@ -233,8 +192,7 @@ function VehicleRegistryListInner() {
         <div className="flex items-center gap-2">
           <Link href="/system/vehicles/registry/dashboard" className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm"><BarChart3 className="w-4 h-4" /> {ar ? 'التحليلات' : 'Analytics'}</Link>
           <Link href="/system/vehicles/registry/expiring" className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm"><CalendarClock className="w-4 h-4" /> {ar ? 'الانتهاءات والتجديد' : 'Expiries & Renewals'}</Link>
-          {/* ── اختيارُ الأعمدة ────────────────────────────────────────────
-              الجدولُ يحمل كلَّ عمودٍ في السجلّ؛ وهذا ما يُعرَض منه. */}
+          {/* Column picker: the table carries every register column; this controls which are shown. */}
           <div className="relative">
             <button onClick={() => setColsOpen((o) => !o)}
               className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm">
@@ -271,9 +229,7 @@ function VehicleRegistryListInner() {
               {
                 key: 'all', label: exportScopeLabels(ar).all,
                 hint: ar ? `كل المركبات · ${REGISTRY_COLUMNS.length} عمودًا` : `all vehicles · ${REGISTRY_COLUMNS.length} cols`,
-                // «الكل» لا يُبنى من الصفوف المحمّلة: هذه ثمرةُ الفلتر الحاليّ
-                // وسقفُها ٢٠٠٠ صف، فبناؤه منها يُخرج ملفًّا اسمُه «الكل» وفيه
-                // ما نجا من الفلتر وحده.
+                // The all export is not built from loaded rows, which are the current filter result capped at 2000.
                 resolve: async () => {
                   const d = await api.get<{ vehicles: VReg[] }>('/api/vehicle-registry?limit=5000');
                   return [{ name: ar ? 'المركبات' : 'Vehicles', rows: (d.vehicles || []) as any[], columns: allExportCols }];
@@ -301,17 +257,13 @@ function VehicleRegistryListInner() {
           <table className="w-full text-sm">
             <thead className="bg-slate-900 text-slate-300 text-xs">
               <tr>
-                {/* ── الإجراءاتُ أوّلًا وثابتة ─────────────────────────────────
-                    الجدولُ يحمل سبعةً وأربعين عمودًا، وكانت أزرارُ التعديل
-                    والحذف خلفَها كلِّها: من أراد تعديلَ صفٍّ يراه أمامه لزمه
-                    أن يمرّر عرضًا إلى آخر الجدول ثم يعود — لكلّ صفّ. وهي
-                    رحلةٌ يُخطَأ فيها الصفُّ عند أوّل انزلاقٍ سطرًا. */}
+                {/* Actions first and fixed: with 47 columns the edit/delete buttons were at the far end, forcing horizontal scrolling for each row. */}
                 {hasLead && (
                   <th ref={lead.ref} className={`${LEAD} bg-slate-900 px-3 py-2.5 text-start font-semibold whitespace-nowrap`}>
                     {ar ? 'إجراءات' : 'Actions'}
                   </th>
                 )}
-                {/* واللوحةُ بجانبها — هويّةُ الصفّ تبقى ظاهرةً مهما مُرِّر. */}
+                {/* The plate sits beside them so row identity stays visible while scrolling. */}
                 {plateCol && (
                   <th className={`${LEAD_2} bg-slate-900 px-3 py-2.5 text-start font-semibold whitespace-nowrap`}
                     style={{ insetInlineStart: hasLead ? lead.offset : 0 }}>
@@ -342,19 +294,18 @@ function VehicleRegistryListInner() {
                       </div>
                     </td>
                   )}
-                  {/* اللوحةُ تفتح المركبة: هي مفتاحُ الصفّ ومَن يقرأ الجدولَ يبحث بها. */}
+                  {/* The plate opens the vehicle: it is the row key people search by. */}
                   {plateCol && (() => {
                     const text = String(plateCol.get(v) ?? '') || v.plateNumber;
                     return (
                       <td className={`${LEAD_2} px-3 py-2 whitespace-nowrap bg-white group-hover:bg-slate-50`}
                         style={{ insetInlineStart: hasLead ? lead.offset : 0 }}>
                         <Link href={`/system/vehicles/registry/${v._id}`} className="text-[#f37121] hover:underline font-mono font-semibold">{text}</Link>
-                        {/* راكبُها من قسم الأفراد في إجازةٍ أو موقوفٌ أو في حادث — يُكتب هناك. */}
+                        {/* The rider's leave, suspension or accident status is written in the personnel section. */}
                         {!!(v as any).b2cRider?.opStatus && (
                           <span className="ms-1.5 align-middle"><B2cOpBadge status={(v as any).b2cRider.opStatus} ar={ar} /></span>
                         )}
-                        {/* النقطةُ تقول «هنا عمل»، وتفصيلُه في صفحة المركبة
-                            حيث يُقرأ شرطًا شرطًا. */}
+                        {/* The dot means there is work here; detail is on the vehicle page. */}
                         {!!v.logistiGaps?.length && (
                           <span title={ar ? `ينقصها لمنصّة لوجستي: ${v.logistiGaps.join(' · ')}` : `Logisti gaps: ${v.logistiGaps.join(' · ')}`}
                             className="ms-1.5 inline-block w-1.5 h-1.5 rounded-full bg-violet-500 align-middle" />
@@ -365,7 +316,7 @@ function VehicleRegistryListInner() {
                   {restCols.map((c) => {
                     const val = c.get(v);
                     const text = val === null || val === undefined || val === '' ? '' : String(val);
-                    // تاريخُ التأمين يحمل لونَ حالته — هو أكثرُ ما يُنظَر إليه.
+                    // The insurance date carries its status color; it is the most looked-at value.
                     if (c.key === 'insExpiry' && text) {
                       return (
                         <td key={c.key} className="px-3 py-2 whitespace-nowrap text-xs">
@@ -373,7 +324,7 @@ function VehicleRegistryListInner() {
                         </td>
                       );
                     }
-                    // الأيامُ المتبقية: السالبُ منتهٍ، والقريبُ يُنبَّه عليه.
+                    // Days left: negative means expired, near values are flagged.
                     if (c.key.endsWith('Days') && text !== '') {
                       const n = Number(val);
                       const tone = n < 0 ? 'text-red-600 font-semibold' : n <= 30 ? 'text-amber-600 font-semibold' : 'text-slate-500';
@@ -400,20 +351,10 @@ function VehicleRegistryListInner() {
   );
 }
 
-// ── `L` و`Card` خارج المكوِّن، وهذا ليس ترتيبًا ───────────────────────────────
-//
-// كانا يُعرَّفان داخل `VehicleForm`. ودالّةُ مكوِّنٍ تُعرَّف داخل عرضٍ تولَد
-// بهويّةٍ جديدة في كلّ حرفٍ يُكتب، فيرى React نوعًا مختلفًا فيهدم الشجرة كلَّها
-// ويبنيها: ستٌّ وثلاثون خانةً وخمسَ عشرة قائمةً تُهدَم وتُبنى عند كلّ ضغطة.
-//
-// وأثرُه هو ما اشتكى منه المستخدم بالحرف: الخانةُ التي يكتب فيها تُحذف من
-// الصفحة، فيذهب التركيزُ إلى أوّل المستند — و`Tab` بعدها لا تنتقل إلى الخانة
-// التالية بل تقفز إلى أعلى الصفحة. ومعه بطءٌ ظاهر، إذ تُعيد كلُّ قائمةٍ
-// منسدلةٍ نداءَ `/api/lookups` من جديد مع كلّ حرف.
+// L and Card are defined outside the component on purpose. Defined inside VehicleForm they get a new identity each render, so React remounts every input per keystroke: focus is lost, Tab jumps to the page top, and every dropdown refetches /api/lookups.
 const inp = 'w-full px-3 py-2 rounded-lg border border-slate-200 text-sm';
 const L = ({ children }: { children: React.ReactNode }) => <label className="block text-xs font-semibold text-slate-600 mb-1">{children}</label>;
-// بطاقةُ قسم: عنوانٌ واضحٌ وإطارٌ يحدّ ما يخصّه — بدل خطٍّ رفيعٍ يفصل ستّةً
-// وثلاثين خانةً مسكوبةً في شبكةٍ واحدة.
+// Section card: clear title and a frame, instead of a thin line between 36 fields in one grid.
 const Card = ({ title, extra, children }: { title: string; extra?: React.ReactNode; children: React.ReactNode }) => (
   <section className="rounded-xl border border-slate-200 bg-slate-50/40">
     <header className="px-4 py-2.5 border-b border-slate-200 bg-white rounded-t-xl flex items-center justify-between gap-3 flex-wrap">
@@ -424,18 +365,14 @@ const Card = ({ title, extra, children }: { title: string; extra?: React.ReactNo
   </section>
 );
 
-/** قيمتان «فارغتان» واحدةٌ: لا يُعَدّ تغييرًا أن يصير `undefined` نصًّا فارغًا. */
+/** Two empty values are equal: undefined becoming an empty string is not a change. */
 const same = (a: any, b: any) => {
   const n = (x: any) => (x === undefined || x === null || x === '' ? '' : JSON.stringify(x));
   return n(a) === n(b);
 };
 const isPlainObj = (x: any) => !!x && typeof x === 'object' && !Array.isArray(x);
 
-/**
- * الفرقُ بين الصفّ كما فُتح وما في النافذة الآن — بعمقٍ واحد، لأنّ حقولَ المركبة
- * إمّا خانةٌ في أعلاها وإمّا خانةٌ في مستندٍ (`insurance.companyAr`). والخادمُ
- * يدمج الكائنَ الفرعيّ ولا يستبدله، فإرسالُ خانةٍ واحدةٍ منه آمن.
- */
+/** Diff between the row as opened and the dialog now, one level deep: fields are top-level or inside a document (insurance.companyAr). The server merges the sub-object, so sending one field is safe. */
 const patchOf = (orig: any, cur: any) => {
   const out: Record<string, any> = {};
   for (const k of Object.keys(cur || {})) {
@@ -459,25 +396,16 @@ function VehicleForm({ vehicle, onClose, onSaved }: { vehicle: VReg | null; onCl
   const setSub = (o: string, k: string, v: any) => setF((p: any) => ({ ...p, [o]: { ...(p[o] || {}), [k]: v } }));
 
   /**
-   * ── والتاريخان يتبعان أحدهما الآخر ────────────────────────────────────────
-   * رخصةُ السير والفحصُ لكلٍّ خانتان: ميلاديّةٌ يقرؤها النظامُ ويحسب بها
-   * الانتهاء، وهجريّةٌ مكتوبةٌ على الورقة. وكانتا منفصلتين تمامًا: يكتب
-   * الموظّفُ «١٤٤٨/٠٤/٠٤» في الهجريّة ويحفظ، فتبقى الميلاديّةُ فارغةً —
-   * والحسابُ كلُّه على الميلاديّة، فالمستندُ الذي كُتب تاريخُه يُقرأ «بلا
-   * تاريخ» ولا يظهر في انتهاءٍ ولا تنبيه. سطرٌ مكتوبٌ بالكامل ولا أثرَ له.
-   *
-   * فالهجريُّ يُملي الميلاديَّ فورَ أن يصير قابلًا للقراءة (`fromHijri` يقلب
-   * جدولَ أمّ القرى الذي في المتصفّح، فالذهابُ والإياب متّفقان). والعكسُ يُكتب
-   * أيضًا — لكن لا يُطمَس هجريٌّ مكتوبٌ باليد: ما على الورقة هو الحجّة، وحسابُنا
-   * قد يخالفه بيوم.
+   * The two dates follow each other. License and inspection each have a Gregorian field (used for expiry maths) and a Hijri one (as on paper). Typing only Hijri left Gregorian empty and the document read as dateless.
+   * Hijri fills Gregorian once readable (fromHijri inverts the browser Umm al-Qura table); the reverse is written too but never overwrites a hand-typed Hijri, since the paper is authoritative and our computation may differ by a day.
    */
-  /** ما يُقرأ من الهجريّ المكتوب: تاريخٌ ميلاديّ، أو سببُ تعذّره. */
+  /** What the typed Hijri yields: a Gregorian date, or the reason it cannot. */
   const hijriHint = (text?: string) => {
     const t = String(text || '').trim();
     if (!t) return null;
     const greg = fromHijri(t);
     if (greg) return { ok: true, text: greg };
-    // العددُ ناقصٌ بعد: لا يُقال «غير صالح» وهو يكتب.
+    // Still incomplete: do not call it invalid while typing.
     if (!/\d.*\D.*\d.*\D.*\d/.test(t)) return null;
     return { ok: false, text: ar ? 'تاريخ غير موجود في التقويم — راجعه' : 'no such date in the calendar' };
   };
@@ -493,7 +421,7 @@ function VehicleForm({ vehicle, onClose, onSaved }: { vehicle: VReg | null; onCl
     setF((p: any) => {
       const cur = p[o] || {};
       const hadHijri = String(cur.expiryDateHijri || '').trim();
-      // الهجريُّ يُملأ إن كان فارغًا، ولا يُستبدَل إن كُتب.
+      // Hijri is filled when empty, never replaced when typed.
       const next = date && !hadHijri ? toHijriPlain(date) : cur.expiryDateHijri;
       return { ...p, [o]: { ...cur, expiryDate: date, expiryDateHijri: next || '' } };
     });
@@ -501,10 +429,7 @@ function VehicleForm({ vehicle, onClose, onSaved }: { vehicle: VReg | null; onCl
 
   const save = async () => {
     if (!f.plateNumber?.trim()) { notify(ar ? 'رقم اللوحة مطلوب' : 'Plate required', 'error'); return; }
-    // ── يُرسَل ما تغيّر وحدَه ────────────────────────────────────────────
-    // كانت النافذةُ ترسل الصفَّ كلَّه كما جاء من الجدول: كلُّ حقلٍ لم يُلمَس
-    // يُكتب فوق ما في القاعدة بقيمته القديمة — فتعديلٌ جرى في صفحةٍ أخرى بين
-    // فتح النافذة وحفظها يُمحى في صمت. والآن يُرسَل الفرقُ فقط.
+    // Send only what changed. Sending the whole row overwrote untouched fields with stale values, silently erasing edits made elsewhere while the dialog was open.
     const patch = vehicle ? patchOf(vehicle, f) : f;
     if (vehicle && !Object.keys(patch).length) { notify(ar ? 'لا تغييرات للحفظ' : 'Nothing changed', 'info'); onClose(); return; }
     setSaving(true);
@@ -522,15 +447,8 @@ function VehicleForm({ vehicle, onClose, onSaved }: { vehicle: VReg | null; onCl
           <h3 className="font-bold text-lg">{vehicle ? (ar ? 'تعديل مركبة' : 'Edit vehicle') : (ar ? 'إضافة مركبة' : 'Add vehicle')}</h3>
           <button onClick={onClose}><X className="w-5 h-5 text-slate-400" /></button>
         </div>
-        {/* ── الحقول ذات الاختيارات صارت قوائم لا كتابةً حرّة ─────────────────
-            الحقل الحرّ يُكتب بألف صيغة: «مرسيدس» و«MercedesBenz» و«MERCEDES»
-            ثلاثةُ صفوف لشيءٍ واحد، فيصير في الفلتر ثلاثةَ خيارات وفي التحليل
-            ثلاثَ ماركات. والقائمة تُدار من إعدادات القسم، ومَن ينقصه خيارٌ
-            يضيفه من داخلها فيراه كلُّ من بعده. */}
-        {/* ── الأقسامُ بطاقاتٌ لا خطوطٌ باهتة ──────────────────────────────────
-            كانت ستّةُ أقسامٍ تُرسَم شبكةً واحدةً متّصلة يفصلها خطٌّ رفيعٌ وعنوانٌ
-            رماديّ، فتبدو ستّةً وثلاثين خانةً مسكوبةً على بعضها ولا يُعرف أين
-            ينتهي التأمينُ ويبدأ المستند. فصار لكلّ قسمٍ بطاقتُه بعنوانها. */}
+        {/* Choice fields are lists, not free text: free text yields variants of one value (three spellings, three filter options, three brands). Lists are managed in section settings and new options added inline are shared. */}
+        {/* Sections are cards, not faint lines: a thin divider and gray title made 36 fields blur together. */}
         <div className="space-y-4">
         <Card title={ar ? 'بيانات المركبة' : 'Vehicle'}>
           <div><L>{ar ? 'رقم اللوحة *' : 'Plate *'}</L><input className={inp} value={f.plateNumber} onChange={(e) => set('plateNumber', e.target.value)} /></div>
@@ -538,8 +456,7 @@ function VehicleForm({ vehicle, onClose, onSaved }: { vehicle: VReg | null; onCl
           <div><L>{ar ? 'الرقم التسلسلي' : 'Serial'}</L><input className={inp} value={f.serialNumber || ''} onChange={(e) => set('serialNumber', e.target.value)} /></div>
           <div><L>{ar ? 'القطاع' : 'Sector'}</L><ManagedSelect storeLabel type="vehicle_sector" value={f.sectorAr || ''} onChange={(v) => set('sectorAr', v)} /></div>
           <div><L>{ar ? 'نوع التسجيل' : 'Registration type'}</L><ManagedSelect storeLabel type="vehicle_registration_type" value={f.registrationTypeAr || ''} onChange={(v) => set('registrationTypeAr', v)} /></div>
-          {/* الشركةُ المالكة: المجموعةُ شركتان، والقائمةُ مُدارةٌ من المرجعيّات
-              فتُضاف ثالثةٌ بلا تعديلِ شيفرة. */}
+          {/* Owning company: the group has two companies; the list is managed from reference data so a third needs no code change. */}
           <div><L>{ar ? 'الشركة المالكة' : 'Owning company'}</L><ManagedSelect storeLabel type="vehicle_owner_company" value={f.ownerCompanyAr || ''} onChange={(v) => set('ownerCompanyAr', v)} /></div>
           <div><L>{ar ? 'الماركة' : 'Brand'}</L><ManagedSelect storeLabel type="vehicle_brand" value={f.brandAr || ''} onChange={(v) => set('brandAr', v)} /></div>
           <div><L>{ar ? 'الطراز' : 'Model'}</L><input className={inp} value={f.modelAr || ''} onChange={(e) => set('modelAr', e.target.value)} /></div>
@@ -549,9 +466,7 @@ function VehicleForm({ vehicle, onClose, onSaved }: { vehicle: VReg | null; onCl
           <div><L>{ar ? 'حالة الحيازة' : 'Possession'}</L><ManagedSelect storeLabel type="vehicle_possession_status" value={f.possessionStatusAr || ''} onChange={(v) => set('possessionStatusAr', v)} /></div>
           <div><L>{ar ? 'الإدارة' : 'Department'}</L><ManagedSelect storeLabel type="vehicle_department" value={f.departmentAr || ''} onChange={(v) => set('departmentAr', v)} /></div>
           <div><L>{ar ? 'المدينة' : 'City'}</L><ManagedSelect storeLabel type="vehicle_city" value={f.cityAr || ''} onChange={(v) => set('cityAr', v)} /></div>
-          {/* ── والمالكُ يُبحَث عنه أيضًا ────────────────────────────────────
-              كثيرٌ من المركبات مسجَّلةٌ باسم موظّفٍ عندنا — فيُبحَث عنه بدل أن
-              يُكتب اسمُه بصيغةٍ لا تطابق ملفَّه. */}
+          {/* The owner is searched too: many vehicles are registered under an employee, so search by employee rather than typing a name that does not match their file. */}
           <div className="sm:col-span-2 lg:col-span-3">
             <PersonLookup ar={ar}
               label={ar ? 'ابحث عن المالك (موظف عندنا) فيُملأ اسمه' : 'Find the owner (our employee)'}
@@ -560,15 +475,10 @@ function VehicleForm({ vehicle, onClose, onSaved }: { vehicle: VReg | null; onCl
               onPick={(pp) => set('ownerNameAr', pp.name || '')} />
           </div>
           <div><L>{ar ? 'المالك' : 'Owner'}</L><input className={inp} value={f.ownerNameAr || ''} onChange={(e) => set('ownerNameAr', e.target.value)} /></div>
-          {/* ── السجلُّ التجاريّ ────────────────────────────────────────────
-              رقمٌ تُجمَّع به المركباتُ في صفحة السجلّات وتُفلتَر به القوائم،
-              ولم تكن له خانةٌ هنا — فيُقرأ في مكانٍ ولا يُصحَّح في أيّ مكان. */}
+          {/* Commercial register: the number vehicles are grouped and filtered by on the records page; it had no field here, so it could be read but not corrected. */}
           <div><L>{ar ? 'السجل التجاري' : 'Commercial register'}</L><input className={inp} value={f.commercialRegistration || ''} onChange={(e) => set('commercialRegistration', e.target.value)} /></div>
-          {/* «حالة تم» عمودٌ في التقرير المطلوب وشرطٌ في منصّة لوجستي — كان
-              يُقرأ في الجدول ولا يُصحَّح في أيّ مكان. */}
-          {/* وقيمُها قائمةٌ لا كتابة: «مالك» أو «مستخدم» — القائمةُ نفسُها التي
-              تُكتب بها حالةُ الحيازة. خانةٌ حرّةٌ هنا كانت تُخرج «مالك » و«مالكة»
-              قيمتين في فلتر العمود لشيءٍ واحد. */}
+          {/* The done-status is a column in the required report and a condition on the logistics platform; it was readable but not correctable anywhere. */}
+          {/* Values come from a list (owner or user), the same list used for possession status. A free field produced near-duplicate values in the column filter. */}
           <div><L>{ar ? 'حالة تم' : 'Tam status'}</L><ManagedSelect storeLabel type="vehicle_possession_status" value={f.tamStatusAr || ''} onChange={(v) => set('tamStatusAr', v)} /></div>
         </Card>
 
@@ -585,8 +495,7 @@ function VehicleForm({ vehicle, onClose, onSaved }: { vehicle: VReg | null; onCl
         </Card>
 
         <Card title={ar ? 'المستندات' : 'Documents'}>
-          {/* ثلاثةُ مستنداتٍ في بطاقةٍ واحدة، ولكلٍّ صفحتُه وشريحةُ عمله — فلا
-              يكفيها سؤالٌ واحدٌ في الترويسة. */}
+          {/* Three documents in one card, each with its own page and work slice, so one header question is not enough. */}
           <div className="md:col-span-2 flex flex-wrap items-center gap-x-5 gap-y-2 -mt-1 mb-1">
             <ReqToggle ar={ar} label={ar ? 'بطاقة التشغيل' : 'Operating card'}
               code={f.operatingCard?.statusCode || ''} onChange={(v) => setSub('operatingCard', 'statusCode', v)} />
@@ -600,12 +509,10 @@ function VehicleForm({ vehicle, onClose, onSaved }: { vehicle: VReg | null; onCl
           <div><L>{ar ? 'انتهاء رخصة السير' : 'Licence expiry'}</L><HijriGregorianField value={(f.vehicleLicense?.expiryDate || '').slice(0, 10)} onChange={(v) => setGreg('vehicleLicense', v || null)} ar={ar} inp={inp} /></div>
           <div><L>{ar ? 'حالة الفحص' : 'Inspection status'}</L><ManagedSelect storeLabel type="vehicle_inspection_status" value={f.inspection?.statusAr || ''} onChange={(v) => setSub('inspection', 'statusAr', v)} /></div>
           <div><L>{ar ? 'انتهاء الفحص' : 'Inspection expiry'}</L><HijriGregorianField value={(f.inspection?.expiryDate || '').slice(0, 10)} onChange={(v) => setGreg('inspection', v || null)} ar={ar} inp={inp} /></div>
-          {/* ── والهجريُّ المكتوبُ على الورقة يُكتب كما هو ────────────────────
-              لا يُحسَب: الورقةُ تحمل تاريخًا هجريًّا مطبوعًا، وهو الحجّة. وحسابُنا
-              قد يخالفه بيوم، فيُكتب ما على الورقة ويبقى المحسوبُ للتصدير. */}
+          {/* The Hijri date written on paper is stored as is, not computed: the paper is authoritative and our computation may differ by a day. The computed value remains for export. */}
           <div><L>{ar ? 'انتهاء رخصة السير (هجري)' : 'Licence expiry (Hijri)'}</L><input className={inp} placeholder="1447/07/22"
             value={f.vehicleLicense?.expiryDateHijri || ''} onChange={(e) => setHijri('vehicleLicense', e.target.value)} />
-            {/* والأثرُ يُرى وهو يكتب: الميلاديُّ الذي مُلئ، أو سببُ عدم ملئه. */}
+            {/* The effect shows while typing: the Gregorian value filled, or why it was not. */}
             {(() => { const h = hijriHint(f.vehicleLicense?.expiryDateHijri); return h ? (
               <p className={`mt-1 text-[11px] ${h.ok ? 'text-emerald-700' : 'text-amber-700'}`}>
                 {h.ok ? (ar ? `الميلادي: ${h.text}` : `Gregorian: ${h.text}`) : h.text}
@@ -613,7 +520,7 @@ function VehicleForm({ vehicle, onClose, onSaved }: { vehicle: VReg | null; onCl
           </div>
           <div><L>{ar ? 'انتهاء الفحص (هجري)' : 'Inspection expiry (Hijri)'}</L><input className={inp} placeholder="1447/07/22"
             value={f.inspection?.expiryDateHijri || ''} onChange={(e) => setHijri('inspection', e.target.value)} />
-            {/* والأثرُ يُرى وهو يكتب: الميلاديُّ الذي مُلئ، أو سببُ عدم ملئه. */}
+            {/* The effect shows while typing: the Gregorian value filled, or why it was not. */}
             {(() => { const h = hijriHint(f.inspection?.expiryDateHijri); return h ? (
               <p className={`mt-1 text-[11px] ${h.ok ? 'text-emerald-700' : 'text-amber-700'}`}>
                 {h.ok ? (ar ? `الميلادي: ${h.text}` : `Gregorian: ${h.text}`) : h.text}
@@ -622,15 +529,7 @@ function VehicleForm({ vehicle, onClose, onSaved }: { vehicle: VReg | null; onCl
 
         </Card>
 
-        {/* ── الوقودُ شيءٌ والتتبّعُ شيءٌ آخر ─────────────────────────────────
-            كانا بطاقةً واحدةً عنوانُها «الوقود والتتبّع»، وفوقها سؤالٌ واحدٌ
-            عن «اشتراك التتبّع». فمن أراد أن يقول «هذه المركبة لا شريحةَ وقودٍ
-            مطلوبةٌ عليها» لم يجد أين يقولها، ومن ضغط «غير مطلوب» ظنّ أنه
-            علّم الاثنين — وهو يعلّم التتبّعَ وحده.
-            وهما ليسا قريبَين أصلًا: شريحةُ بترو اب حسابُ صرفٍ لا تنتهي ولا
-            تُجدَّد، واشتراكُ التتبّع مستندٌ له تاريخُ انتهاءٍ وتنبيهٌ وتجديد
-            وصفحةٌ مستقلّة. ولكلٍّ صفحتُه في القسم منذ البداية — فبقاؤهما
-            مدموجَين هنا وحدَه كان يخالف ما تعرضه بقيّةُ الشاشات. */}
+        {/* Fuel and tracking are separate. The fuel card account never expires or renews, while a tracking subscription has expiry, alert, renewal and its own page. Merging them made marking not required apply to tracking only. */}
         <Card title={ar ? 'شريحة الوقود — بترو اب' : 'Fuel card — Petro App'}
           extra={<ReqToggle ar={ar} label={ar ? 'شريحة الوقود' : 'Fuel card'}
             code={f.fuelCard?.statusCode || ''} onChange={(v) => setSub('fuelCard', 'statusCode', v)} />}>
@@ -638,13 +537,10 @@ function VehicleForm({ vehicle, onClose, onSaved }: { vehicle: VReg | null; onCl
           <div><L>{ar ? 'رقم شريحة الوقود' : 'Fuel card no.'}</L><input className={inp} value={f.fuelCard?.cardNumber || ''} onChange={(e) => setSub('fuelCard', 'cardNumber', e.target.value)} /></div>
           <div><L>{ar ? 'حالة الشريحة' : 'Card status'}</L><ManagedSelect storeLabel type="vehicle_fuel_card_status" value={f.fuelCard?.statusAr || ''} onChange={(v) => setSub('fuelCard', 'statusAr', v)} /></div>
           <div><L>{ar ? 'نوع الاستهلاك' : 'Consumption type'}</L><ManagedSelect storeLabel type="vehicle_consumption_type" value={f.fuelCard?.consumptionTypeAr || ''} onChange={(v) => setSub('fuelCard', 'consumptionTypeAr', v)} /></div>
-          {/* ── وما كان يُحرَّر في صفحة بترو اب وحدَها ────────────────────────
-              «حد الاستهلاك» و«اللوحة على الفاتورة» يُفتَحان هناك ولا أثرَ لهما
-              هنا، فمن فتح المركبةَ من سجلّها لم يجد ما يصحّحه. وهذه الصفحةُ هي
-              التي يُفتَح منها كلُّ شيء. */}
+          {/* Fields previously editable only on the fuel-card page (consumption limit, plate on invoice) are editable here too, since this page opens everything. */}
           <div><L>{ar ? 'رقم اللوحة في فاتورة بترو اب' : 'Plate on Petro App invoice'}</L><input className={inp} value={f.fuelCard?.plateOnInvoiceAr || ''} onChange={(e) => setSub('fuelCard', 'plateOnInvoiceAr', e.target.value)} /></div>
           <div><L>{ar ? 'حد الاستهلاك (ر.س)' : 'Consumption limit (SAR)'}</L><input type="number" className={inp} value={f.fuelCard?.limitSar ?? ''} onChange={(e) => setSub('fuelCard', 'limitSar', e.target.value ? Number(e.target.value) : null)} /></div>
-          {/* «مفتوح» علامةٌ لا رقم: صفرٌ يعني «ممنوع الصرف» وفراغٌ يعني «لا نعلم». */}
+          {/* Open is a marker, not a number: zero means spending forbidden, empty means unknown. */}
           <div className="flex items-end pb-1">
             <label className="flex items-center gap-2 text-sm text-slate-700">
               <input type="checkbox" className="w-4 h-4 accent-[#f37121]"
@@ -663,8 +559,7 @@ function VehicleForm({ vehicle, onClose, onSaved }: { vehicle: VReg | null; onCl
           <div><L>{ar ? 'شركة الـGPS' : 'GPS provider'}</L><ManagedSelect storeLabel type="vehicle_gps_provider" value={f.gps?.provider || ''} onChange={(v) => setSub('gps', 'provider', v)} /></div>
           <div><L>{ar ? 'جهاز GPS' : 'GPS device'}</L><ManagedSelect storeLabel type="vehicle_gps_device" value={f.gps?.deviceModel || ''} onChange={(v) => setSub('gps', 'deviceModel', v)} /></div>
           <div><L>{ar ? 'سريال GPS' : 'GPS serial'}</L><input className={inp} value={f.gps?.serialImei || ''} onChange={(e) => setSub('gps', 'serialImei', e.target.value)} /></div>
-          {/* حالةُ الجهاز غيرُ حالة الاشتراك: جهازٌ مسروق قد يكون اشتراكه ساريًا،
-              واشتراكٌ منتهٍ لا يعني أن الجهاز نُزع. */}
+          {/* Device status differs from subscription status: a stolen device can have a valid subscription, and an expired subscription does not mean the device was removed. */}
           <div><L>{ar ? 'حالة جهاز GPS' : 'GPS device status'}</L><ManagedSelect storeLabel type="vehicle_gps_device_status" value={f.gps?.deviceStatusAr || ''} onChange={(v) => setSub('gps', 'deviceStatusAr', v)} /></div>
           <div><L>{ar ? 'انتهاء اشتراك GPS' : 'GPS expiry'}</L><HijriGregorianField value={(f.gps?.expiryDate || '').slice(0, 10)} onChange={(v) => setSub('gps', 'expiryDate', v || null)} ar={ar} inp={inp} /></div>
         </Card>
@@ -672,7 +567,7 @@ function VehicleForm({ vehicle, onClose, onSaved }: { vehicle: VReg | null; onCl
         <Card title={ar ? 'التفويض بالقيادة' : 'Driving authorisation'}
           extra={<ReqToggle ar={ar} label={ar ? 'هل نطلبه؟' : 'Do we need it?'}
             code={f.authorizedPerson?.statusCode || ''} onChange={(v) => setSub('authorizedPerson', 'statusCode', v)} />}>
-          {/* المفوَّضُ يُختار من الموظّفين (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢): إقامتُه وجوالُه من ملفّه. */}
+          {/* The authorized person is picked from employees; residence and phone come from the employee file. */}
           <div><L>{ar ? 'اسم المفوَّض' : 'Authorised person'}</L>
             <PersonSelect endpoint="/api/vehicle-registry/people" ar={ar} clearLabel={ar ? 'بلا تفويض' : 'No authorisation'}
               idNumber={f.authorizedPerson?.iqamaNumber || ''} name={f.authorizedPerson?.name || ''}
@@ -705,11 +600,8 @@ function VehicleForm({ vehicle, onClose, onSaved }: { vehicle: VReg | null; onCl
   );
 }
 
-// `useSearchParams` يوجب حدَّ Suspense في موجِّه Next. كانت الصفحة تنجو صدفةً
-// لأن غلاف القسم يعود قبل المحتوى أثناء التوليد المسبق — وأيّ تعديلٍ في بوّابة
-// الدخول كان سيحوّلها إلى فشل بناءٍ صريح.
-// أعمدةُ الجدول وقارئُ كلٍّ منها في `lib/vehicleColumns` — تعريفٌ واحدٌ يخدم
-// الجدولَ والفلترَ والتصدير، فلا يفترق ملفٌّ عن شاشة.
+// useSearchParams requires a Suspense boundary in the Next router. The page only survived because the section shell returns before content during prerender.
+// Table columns and their readers live in lib/vehicleColumns: one definition for table, filter and export.
 
 export default function VehicleRegistryList() {
   return <Suspense fallback={<Spinner />}><VehicleRegistryListInner /></Suspense>;

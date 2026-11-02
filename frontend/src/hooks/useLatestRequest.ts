@@ -2,41 +2,9 @@
 import { useRef, useCallback, useMemo } from 'react';
 
 /**
- * حارسُ الطلب الأحدث — لا يكتب ردٌّ قديمٌ فوق ردٍّ أحدث.
- *
- * ── العلّة ──────────────────────────────────────────────────────────────────
- * أيُّ جدولٍ يُفلتَر على الخادم ويُحدَّث لحظيًّا يُطلق أكثرَ من طلبٍ في اللحظة
- * نفسِها: البحثُ يغيّر النصَّ ويعيد الصفحةَ إلى الأولى، فينطلق طلبٌ بالبحث
- * الجديد ورقمِ الصفحة القديم — ويعود فارغًا. ويسابقُهما تحديثٌ من السوكِت.
- *
- * والشبكةُ لا تحفظ الترتيب: مَن يصل أخيرًا هو الذي يُعرض. فيبحث المستخدم عن
- * صفٍّ فلا يجده، ثمّ يخرج من الصفحة ويعود فيجده — لأنّ الخروجَ يعيد كلَّ شيءٍ
- * إلى بدايته فينطلق طلبٌ واحدٌ لا يسابقه أحد.
- *
- * ── الاستعمال ──────────────────────────────────────────────────────────────
- *   const guard = useLatestRequest();
- *   const load = useCallback(async () => {
- *     const mine = guard.begin();
- *     const d = await api.get(...);
- *     if (!guard.isCurrent(mine)) return;   // سبقَه أحدثُ منه
- *     setRows(d.rows);
- *   }, [..., guard]);
- *
- * ── والمُرجَعُ ثابتٌ بين الرسمات ─────────────────────────────────────────────
- * الدالّتان ثابتتان بأنفسهما، أمّا الكائنُ الذي يحملهما فكان يُبنى جديدًا في كلّ
- * رسمة. ومَن كتب `guard` في قائمة اعتماد `useCallback` — وهو الصوابُ الذي يطلبه
- * لِنتر React نفسُه — صار له طلبٌ جديدٌ في كلّ رسمة:
- *
- *     الرسمةُ ← كائنٌ جديد ← `fetchRows` جديدة ← `useEffect` يعمل ← `setRows`
- *     ← رسمةٌ جديدة ← …
- *
- * حلقةٌ لا تنتهي: مئاتُ الطلبات في الدقيقة على الخادم، وجدولٌ يُعاد بناؤه بلا
- * توقّف. وأسوأُ منها أنّ الحلقتين تتسابقان عند البحث — واحدةٌ تحمل النصَّ
- * الجديد وأخرى أُطلقت قبله بلا نصّ — فيفوز آخرُ الواصلين ويظهر الجدولُ غيرَ
- * مفلتَر، فيبدو البحثُ معطَّلًا وهو يعمل.
- *
- * فيُثبَّت الكائنُ هنا مرّةً واحدة. الحارسُ الذي وُضع ليمنع سباقَ الطلبات لا
- * يجوز أن يكون هو سببَه — ومَن يستعمله غدًا لا يحتاج أن يعرف هذا كلَّه.
+ * Latest-request guard: an old response never overwrites a newer one.
+ * A server-filtered, live-updated table fires several requests at once (a search changes the text and resets to page 1, so a request with the new search and old page returns empty, racing a socket refresh). The network does not preserve order, so the last to arrive wins.
+ * Usage: const mine = guard.begin(); await ...; if (!guard.isCurrent(mine)) return;
  */
 export function useLatestRequest() {
   const seq = useRef(0);

@@ -1,12 +1,7 @@
 'use client';
 /**
- * مخزن النقل الخفيف — قطعُ غيار الدرّاجات ومستلزماتُ المناديب.
- *
- * ── ولماذا الشاشةُ نفسُها ───────────────────────────────────────────────────
- * سؤالُ المخزن واحدٌ في القسمين: ماذا عندنا، وكم بقي، ومن صرف ماذا على أيّ
- * مركبة، وما الذي قارب النفاد. فآليّتُه مكتوبةٌ مرّةً (`StoreScreen`) ويُمرَّر
- * لها نطاقُ القسم — وأصنافُ المخزنين وأرصدتُهما منفصلةٌ في القاعدة
- * (`warehouse`)، فلا يُقرأ رصيدُ أحدهما في الآخر ولا يُجمعان في رقم.
+ * Light-transport store: motorcycle spare parts and rep supplies.
+ * The store question is the same in both departments: what we have, what is left, who issued what on which vehicle, what is nearly out. So the mechanics are written once (`StoreScreen`) and take the department scope. Items and balances of the two stores are separate in the database (`warehouse`), so one balance is never read in the other or summed.
  */
 import { useAuth } from '@/context/AuthContext';
 import StoreScreen from '@/components/store/StoreScreen';
@@ -23,14 +18,9 @@ export default function LightTransportStorePage() {
       noPrices: true, noInitialQty: true, supplierItemName: true,
       subtitleAr: 'قطع الغيار والمستلزمات — الرصيد والحركات', subtitleEn: 'Parts & supplies — stock & movements',
       /**
-       * ── المركباتُ ومشاريعُها ──────────────────────────────────────────────
-       * المركباتُ التي يُصرَف عليها هي مركباتُ القسم (الدرّاجاتُ ومركباتُ
-       * المناديب، لا شاحنات لوكيشن سوليوشن). وكان المصدرُ لوحاتِ الموظّفين
-       * وحدَها: فمركبةٌ لا راكبَ لها لا تظهر أصلًا، ولا يُعرَف مشروعُ ما ظهر.
-       *
-       * فصار من `orders/options`: سجلُّ مركبات القسم كاملًا (بنوعها وماركتها)
-       * موصولًا براكبها الحاليّ — ومنه المشروعُ والفرعُ. والوصلُ بمفتاح اللوحة
-       * لأنّ السجلّين يكتبانها بصيغتين.
+       * Vehicles and their projects.
+       * Issue targets are the department's vehicles (motorcycles and rep vehicles, not Location Solutions trucks). The source used to be employees' plates only, so a vehicle without a rider never appeared and the project of those shown was unknown.
+       * Now it comes from `orders/options`: the full department vehicle register (with type and make) joined to the current rider, giving project and branch. Joined by plate key because the two registers write plates in different formats.
        */
       plateSource: {
         url: '/api/light-transport/orders/options',
@@ -51,7 +41,7 @@ export default function LightTransportStorePage() {
               detail: [v.typeAr, v.brand].filter(Boolean).join(' '),
             };
           });
-          // ولوحةٌ على موظّفٍ وليست في سجلّ المركبات تُضاف: الصرفُ عليها واقعٌ.
+          // A plate that belongs to an employee but is missing from the vehicle register is added: the issue has already happened.
           const have = new Set(rows.map((r: any) => key(r.plate)));
           for (const [k, e] of riderOf) {
             if (!have.has(k) && e.vehiclePlate) {

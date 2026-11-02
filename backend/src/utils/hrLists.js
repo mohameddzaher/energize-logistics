@@ -1,27 +1,14 @@
 /**
- * hrLists — خاناتُ ملفّ الموظّف التي تُختار من قائمةٍ ولا تُكتب.
- *
- * ── القاعدة (صاحبُ الشركة، ٢٠٢٦/١٠/١٩) ──────────────────────────────────────
- * القسمُ والجنسيّةُ والمدينةُ والمشروعُ قوائمُ مغلقة في كلّ شاشةٍ تكتبها — الماستر،
- * وملفّ الموظّف، والتطبيق — وفيها بحث. والقائمةُ صفوفُ `Lookup` تُدار من
- * «القوائم المرجعيّة» (الأقسامُ للسوبر أدمن وحدَه — config/lookupTypes ← superOnly).
- *
- * والمخزَّنُ في الملفّ هو الاسمُ العربيّ كما كان منذ الاستيراد — تقرؤه الفلاترُ
- * والتصديراتُ والتقاريرُ مباشرةً. فلذلك:
- *   · تغييرُ اسم بندٍ يُكتب على ملفّات أصحابه في اللحظة نفسِها (`renamed`)؛
- *   · والبندُ الذي عليه موظّفون لا يُحذف ولا يُوقَف (`usage`).
- *
- * ── والمشروعُ قائمتان ──────────────────────────────────────────────────────
- * مشاريعُ B2C (`lt_project`: كيتا، امازون، هنجرستيشن…) يملكها قسمُ B2C، ومشروعُ
- * موظّف B2C يُقرأ من سجلّه هناك ويُكتب فيه (models/LightTransport ← hook، و
- * `projectToB2C` هنا). وبقيّةُ المشاريع (`hr_project`) للموارد البشريّة.
+ * hrLists: employee-file fields picked from a list, not typed.
+ * Department, nationality, city and project are closed lists backed by `Lookup` rows (departments super-admin only: config/lookupTypes superOnly). The file stores the Arabic name, so renaming an item rewrites the files holding it (`renamed`) and an item in use cannot be deleted or disabled (`usage`).
+ * Projects are two lists: B2C `lt_project` (owned by B2C; an employee's project is read from and written to the B2C record, models/LightTransport hook and `projectToB2C`) and HR `hr_project`.
  */
 const cache = require('./ttlCache');
 
 const NO_DEPARTMENT = 'بدون قسم';
 const B2C_UNSET = '(غير محدد)';
 
-/** خانةُ الملفّ → قوائمُها (الأولى هي التي تُدار من الموارد البشريّة). */
+/** File field to its lists (the first is the one managed by HR). */
 const FIELD_LISTS = {
   department: ['hr_department'],
   nationality: ['hr_nationality'],
@@ -31,14 +18,14 @@ const FIELD_LISTS = {
   staffCategory: ['hr_staff_category'],
   registerNumber: ['hr_register', 'hr_register_kind'],
 };
-/** قائمةٌ → خاناتُ الملفّ التي تحمل أسماءَها. */
+/** List to the file fields that hold its names. */
 const LIST_FIELDS = Object.entries(FIELD_LISTS).reduce((m, [field, types]) => {
   for (const t of types) (m[t] = m[t] || []).push(field);
   return m;
 }, {});
 const isHrList = (type) => !!LIST_FIELDS[type];
 
-/** أسماءُ قائمةٍ (العربيّة) — بترتيبها. */
+/** Names (Arabic) of a list, in order. */
 const namesOf = (type) => cache.wrap(`hrlists:${type}`, 30000, async () => {
   const Lookup = require('../models/Lookup');
   const rows = await Lookup.find({ type, isActive: true, deleted: { $ne: true } })
@@ -46,7 +33,7 @@ const namesOf = (type) => cache.wrap(`hrlists:${type}`, 30000, async () => {
   return rows.map((r) => String(r.nameAr || '').trim()).filter((n) => n && n !== B2C_UNSET);
 });
 
-/** خياراتُ خانةٍ: قوائمُها مجموعةً بلا تكرار. */
+/** Options of a field: its lists combined without duplicates. */
 async function optionsFor(field) {
   const types = FIELD_LISTS[field] || [];
   const out = [];
@@ -62,9 +49,8 @@ const LABELS = { registerNumber: 'رقم السجل التجاري', staffCatego
 const MANAGER = { registerNumber: 'السوبر أدمن', staffCategory: 'السوبر أدمن', department: 'السوبر أدمن', nationality: 'الموارد البشريّة', branchName: 'الموارد البشريّة', workLocation: 'الموارد البشريّة', project: 'الموارد البشريّة (ومشاريع B2C من قسم B2C)' };
 
 /**
- * رسالةُ رفضٍ إن لم تكن القيمةُ من القائمة، وإلّا null.
- * الفارغُ مقبول. وما كان في الملفّ من قبل ولم يتغيّر لا يُرفض — فحفظُ خانةٍ أخرى
- * في ملفٍّ قديمٍ لا يتعطّل بقيمةٍ قديمة.
+ * Rejection message if the value is not in the list, otherwise null.
+ * Empty is accepted. A value already in the file and unchanged is not rejected, so saving another field on an old file is not blocked by a stale value.
  */
 async function fieldError(field, value, previous) {
   if (!FIELD_LISTS[field]) return null;
@@ -75,7 +61,7 @@ async function fieldError(field, value, previous) {
   return `${LABELS[field]} «${v}» ليس في القائمة — اختر منها (يضيف إليها ${MANAGER[field]} من القوائم المرجعيّة)`;
 }
 
-/** يفحص كلَّ خانات القوائم في جسمٍ مُرسَل. يُرجع أوّلَ رسالة رفض. */
+/** Checks every list field in a submitted body; returns the first rejection message. */
 async function bodyError(body, current = {}) {
   for (const f of Object.keys(FIELD_LISTS)) {
     if (body[f] === undefined) continue;
@@ -85,7 +71,7 @@ async function bodyError(body, current = {}) {
   return null;
 }
 
-/** كم ملفًّا يحمل هذا الاسم في خانات هذه القائمة — ومنهم في الأرشيف. */
+/** How many files carry this name in this list's fields, including archived ones. */
 async function usage(type, name) {
   const Employee = require('../models/Employee');
   const { ARCHIVED } = require('./hrEngagement');
@@ -97,7 +83,7 @@ async function usage(type, name) {
     Employee.countDocuments(q),
     Employee.countDocuments({ $and: [q, ARCHIVED] }),
   ]);
-  // مشاريعُ B2C يحملها سجلُّ B2C أيضًا.
+  // B2C projects are also held by the B2C record.
   if (type === 'lt_project') {
     const { LightTransportEmployee } = require('../models/LightTransport');
     const lt = await LightTransportEmployee.countDocuments({ projectAr: n });
@@ -115,7 +101,7 @@ const bust = (payload) => {
   } catch (_) { /* */ }
 };
 
-/** الاسمُ الجديدُ على كلّ ملفٍّ يحمل القديم، ثمّ تتحدّث الشاشاتُ المفتوحة. */
+/** Applies the new name to every file holding the old one, then open screens refresh. */
 async function renamed(type, from, to) {
   forget();
   const a = String(from || '').trim(); const b = String(to || '').trim();
@@ -135,11 +121,7 @@ async function renamed(type, from, to) {
   return { touched };
 }
 
-/**
- * ── مشروعُ موظّف B2C ──────────────────────────────────────────────────────
- * مَن له صفٌّ في سجلّ B2C مشروعُه هناك. فإن غيّرته الموارد البشريّة كُتب هناك
- * أيضًا — والعكسُ في hook السجلّ. ولا يُختار له إلّا مشروعٌ من مشاريع B2C.
- */
+/** B2C employee project: whoever has a row in the B2C record has their project there. If HR changes it, it is written there too (the reverse is in the record hook). Only a B2C project can be chosen for them. */
 async function b2cRowOf(employeeId) {
   const { LightTransportEmployee } = require('../models/LightTransport');
   return LightTransportEmployee.findOne({ employee: employeeId }).select('_id projectAr employee');
@@ -158,10 +140,9 @@ async function projectToB2C(employee, value) {
   const v = String(value ?? '').trim() || B2C_UNSET;
   if (String(row.projectAr || '') === v) return false;
   row.projectAr = v;
-  row.$locals.fromHr = true; // لا يُعاد إلى الملفّ ما جاء منه
+  row.$locals.fromHr = true; // Not written back to the file it came from.
   await row.save();
-  // ذاكرتا القسم (لوحتُه ولوحةُ الطلبات — مشروعُ حسابِ طلباته تبعه) تُمحَيان قبل
-  // الإعلان، وإلّا فتحت شاشاتُ B2C المشروعَ القديم حتى تنقضي الذاكرة.
+  // The section caches (its dashboard and the orders dashboard, whose account project follows) are cleared before announcing; otherwise B2C screens would show the old project until the cache expires.
   for (const p of ['lt:', 'b2c:']) { try { cache.clear(p); } catch (_) { /* */ } }
   try {
     const { emitToAll } = require('../websocket/socketManager');
@@ -170,17 +151,13 @@ async function projectToB2C(employee, value) {
   } catch (_) { /* */ }
   return true;
 }
-/** مشروعُ سجلّ B2C كما يُكتب في الملفّ. */
+/** B2C record project as written in the file. */
 const projectFromB2C = (projectAr) => {
   const v = String(projectAr || '').trim();
   return v === B2C_UNSET ? '' : v;
 };
 
-/**
- * ── الفئةُ الوظيفيّة لقسمين وحدَهما ──────────────────────────────────────────
- * B2C والنقل الثقيل — يُعرفان بمفتاحيهما في قائمة الأقسام (light_transport ·
- * heavy_transport) لا باسميهما، فلا يُبطلُ تغييرُ الاسم القاعدة.
- */
+/** Job category applies to two departments only: B2C and heavy transport. They are identified by their department-list keys (light_transport, heavy_transport), not by name, so renaming does not break the rule. */
 const categoryDepartments = () => cache.wrap('hrlists:catdeps', 30000, async () => {
   const Lookup = require('../models/Lookup');
   const rows = await Lookup.find({ type: 'hr_department', key: { $in: ['light_transport', 'heavy_transport'] }, deleted: { $ne: true } }).select('nameAr').lean();

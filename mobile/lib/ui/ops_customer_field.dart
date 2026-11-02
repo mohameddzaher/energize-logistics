@@ -3,9 +3,7 @@ import '../services/api.dart';
 import '../services/lang.dart';
 import 'hr_quick.dart';
 
-/// «العميل» in the operations workflow: picked from the approved customer names, never typed.
-/// Mirrors web CustomerNamePicker; the server refuses other names (CUSTOMER_NOT_APPROVED).
-// Read on every open, so a customer added a moment ago is listed.
+/// Customer in the operations workflow: picked from the approved customer names, never typed. Mirrors web CustomerNamePicker; the server refuses other names (CUSTOMER_NOT_APPROVED). Read on every open, so a customer added a moment ago is listed.
 Future<List<String>> _loadNames() => Api.instance.get('/api/workflows/customer-names')
     .then((d) => List<String>.from(((d as Map)['names'] as List? ?? const []).map((e) => '$e')))
     .catchError((_) => <String>[]);

@@ -12,10 +12,9 @@ import 'hr_common.dart';
 import 'hr_master.dart';
 import '../ui/search_field.dart';
 
-/// شاشاتُ الموارد البشريّة التشغيليّة — نظيرُ /system/hr/contracts و/custody
-/// و/settings و«تسليم صنفٍ من المخزون» في الموقع: الأفعالُ نفسُها على النقاط نفسِها.
+/// HR operations screens, counterpart of /system/hr/contracts, /custody, /settings and "issue a stock item" on the web: same actions on the same endpoints.
 
-// ── مفرداتُ العهدة والمخزون — CUSTODY_TYPES/CONDITIONS (تُقرأ من المرجعيّات) ──
+// Custody and stock vocabulary: CUSTODY_TYPES/CONDITIONS (read from the lookups).
 const _fallbackTypes = [
   ('laptop', 'حاسب محمول', 'Laptop'), ('desktop', 'حاسب مكتبي', 'Desktop'), ('phone', 'هاتف', 'Phone'),
   ('tablet', 'تابلت', 'Tablet'), ('sim', 'شريحة اتصال', 'SIM Card'), ('monitor', 'شاشة', 'Monitor'),
@@ -26,7 +25,7 @@ const _fallbackTypes = [
 ];
 const _fallbackConditions = [('new', 'جديد', 'New'), ('good', 'جيد', 'Good'), ('fair', 'مقبول', 'Fair'), ('damaged', 'تالف', 'Damaged')];
 
-/// أنواعُ الأصناف وحالاتُها — من `/api/lookups` (asset_type/asset_condition) وإلّا الثابتة.
+/// Item types and conditions from `/api/lookups` (asset_type/asset_condition), falling back to the constants.
 class HrAssetVocab {
   static List<(String, String, String)> types = _fallbackTypes;
   static List<(String, String, String)> conditions = _fallbackConditions;
@@ -41,7 +40,7 @@ class HrAssetVocab {
     }
     final t = await one('asset_type');
     final c = await one('asset_condition');
-    // «ماوس وكيبورد» الملغى لا يُعرض خيارًا (RETIRED_ASSET_TYPE_KEYS).
+    // The retired "mouse and keyboard" type is not offered as an option (RETIRED_ASSET_TYPE_KEYS).
     if (t.isNotEmpty) types = t.where((x) => x.$1 != 'keyboard_mouse').toList();
     if (c.isNotEmpty) conditions = c;
     _loaded = true;
@@ -70,9 +69,7 @@ Widget _drop(String label, String value, List<(String, String, String)> opts, Va
   );
 }
 
-// ══════════════════════════════════════════════════════════════════════════════
-// تسليمُ صنفٍ من مخزون الموارد البشريّة لموظّف — POST /api/hr/stock/:id/assign
-// ══════════════════════════════════════════════════════════════════════════════
+// Issue an HR stock item to an employee: POST /api/hr/stock/:id/assign.
 Future<bool> hrStockAssign(BuildContext context, Map<String, dynamic> item) async {
   await HrAssetVocab.load();
   if (!context.mounted) return false;
@@ -111,9 +108,7 @@ Future<bool> hrStockAssign(BuildContext context, Map<String, dynamic> item) asyn
   }
 }
 
-// ══════════════════════════════════════════════════════════════════════════════
-// عقود الموظفين — /system/hr/contracts (+ تبويب «بيانات العقود»)
-// ══════════════════════════════════════════════════════════════════════════════
+// Employee contracts: /system/hr/contracts (plus the contract data tab).
 class HrContractsScreen extends StatelessWidget {
   const HrContractsScreen({super.key});
   @override
@@ -148,7 +143,7 @@ class _ContractsListState extends State<_ContractsList> with AutomaticKeepAliveC
   bool _loading = true;
   String? _error;
   String _q = '';
-  // الخانةُ تُهدَم مع التحميل والتمرير — النصُّ في متحكِّمٍ يبقى مع الكلمة.
+  // The field is destroyed on load and scroll; text lives in a controller so it survives.
   final _searchCtl = TextEditingController();
   String _status = '';
   String _type = '';
@@ -190,7 +185,7 @@ class _ContractsListState extends State<_ContractsList> with AutomaticKeepAliveC
   String _name(Map<String, dynamic> c) { final n = hrEmpName(c['employee']); return n.isNotEmpty ? n : '${c['employeeNameAr'] ?? ''}'; }
   String _idNo(Map<String, dynamic> c) => '${c['iqamaNumber'] ?? ''}'.isNotEmpty ? '${c['iqamaNumber']}' : '${_emp(c)['iqamaNumber'] ?? _emp(c)['nationalId'] ?? ''}';
 
-  /// ساري · منتهي — ومَن انقضت مدّتُه ولم يُجدَّد يُقرأ «منتهي» (contractBadge).
+  /// Valid or expired; a contract past its term and not renewed reads expired (contractBadge).
   (String, Color) _badge(Map<String, dynamic> c) {
     final end = '${c['endDate'] ?? ''}';
     final today = hrIso(DateTime.now());
@@ -230,7 +225,7 @@ class _ContractsListState extends State<_ContractsList> with AutomaticKeepAliveC
         ExportCol('الحالة', 'Status', (r) => r['status'] ?? ''),
       ];
 
-  // ── إنشاء / تعديل عقد — نموذجُ الموقع بحقوله كلِّها ──────────────────────────
+  // Create or edit a contract: the web form with all its fields.
   Future<void> _form([Map<String, dynamic>? c]) async {
     Map<String, dynamic>? emp = c == null ? null : _emp(c);
     String type = '${c?['type'] ?? 'fixed'}' == 'unlimited' ? 'unlimited' : 'fixed';
@@ -247,7 +242,7 @@ class _ContractsListState extends State<_ContractsList> with AutomaticKeepAliveC
         style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(46), alignment: AlignmentDirectional.centerStart),
         icon: const Icon(Icons.person_search_outlined),
         label: Text(emp == null || emp!.isEmpty ? tr('اختر الموظف *', 'Select an employee *') : hrEmpName(emp)),
-        // الموظّفُ لا يُبدَّل في عقدٍ قائم — كالموقع.
+        // The employee cannot be changed on an existing contract, like the web.
         onPressed: c != null ? null : () async { final e = await pickHrEmployee(s); if (e != null) setS(() => emp = e); },
       ),
       const SizedBox(height: 10),
@@ -288,7 +283,7 @@ class _ContractsListState extends State<_ContractsList> with AutomaticKeepAliveC
     } catch (e) { if (mounted) hrSnack(context, e.toString()); }
   }
 
-  // ── التجديد: يُقفَل الحاليُّ «منتهيًا» ويُنشأ ساري يليه ويُقيَّد في السجلّ ──
+  // Renewal: the current contract is closed as expired, a new valid one follows it and is recorded in the log.
   Future<void> _renew(Map<String, dynamic> c) async {
     final endOld = hrParse(c['endDate']);
     DateTime? start = endOld?.add(const Duration(days: 1));
@@ -331,7 +326,7 @@ class _ContractsListState extends State<_ContractsList> with AutomaticKeepAliveC
     } catch (e) { if (mounted) hrSnack(context, e.toString()); }
   }
 
-  // ── فسخُ العقد يُنهي الخدمة — فيُسأل عن حالة «لا يعمل» ─────────────────────
+  // Terminating a contract ends service, so the "not working" state is asked.
   Future<void> _terminate(Map<String, dynamic> c) async {
     String kind = '';
     final reason = TextEditingController();
@@ -463,9 +458,7 @@ class _ContractsListState extends State<_ContractsList> with AutomaticKeepAliveC
   }
 }
 
-// ══════════════════════════════════════════════════════════════════════════════
-// عهد الموظفين — /system/hr/custody (/api/hr/assets، حيٌّ على hr:asset)
-// ══════════════════════════════════════════════════════════════════════════════
+// Employee custody: /system/hr/custody (/api/hr/assets, live on hr:asset).
 class HrCustodyScreen extends StatefulWidget {
   const HrCustodyScreen({super.key});
   @override
@@ -477,7 +470,7 @@ class _HrCustodyScreenState extends State<HrCustodyScreen> {
   bool _loading = true;
   String? _error;
   String _q = '';
-  // الخانةُ تُهدَم مع التحميل والتمرير — النصُّ في متحكِّمٍ يبقى مع الكلمة.
+  // The field is destroyed on load and scroll; text lives in a controller so it survives.
   final _searchCtl = TextEditingController();
   String _status = '';
   String _source = '';
@@ -512,7 +505,7 @@ class _HrCustodyScreenState extends State<HrCustodyScreen> {
   }
 
   bool _itOwned(Map<String, dynamic> a) => a['issuedBySection'] == 'it';
-  /// ما سلّمه قسمُ التقنية يُقرأ هنا ولا يُعدَّل (عدا الشريحة) — كالموقع.
+  /// What IT issued is read-only here (except the SIM), like the web.
   bool _locked(Map<String, dynamic> a) => _itOwned(a) && a['type'] != 'sim';
   String _idOf(dynamic e) => e is! Map ? '—' : '${(e['idType'] == 'national_id' ? (e['nationalId'] ?? e['iqamaNumber']) : (e['iqamaNumber'] ?? e['nationalId'])) ?? '—'}';
 
@@ -733,9 +726,7 @@ class _HrCustodyScreenState extends State<HrCustodyScreen> {
   }
 }
 
-// ══════════════════════════════════════════════════════════════════════════════
-// إعدادات الموارد البشرية — /system/hr/settings
-// ══════════════════════════════════════════════════════════════════════════════
+// HR settings: /system/hr/settings.
 class HrSettingsScreen extends StatefulWidget {
   const HrSettingsScreen({super.key});
   @override
@@ -793,7 +784,7 @@ class _HrSettingsScreenState extends State<HrSettingsScreen> {
           : RefreshIndicator(
               onRefresh: _load,
               child: ListView(padding: const EdgeInsets.all(14), children: [
-                // ── أنواع الإجازات (تُدار من صفحتها) ──
+                // Leave types (managed from their own page).
                 AppCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Row(children: [
                     const Icon(Icons.event_note_outlined, color: T.orange, size: 18),
@@ -815,7 +806,7 @@ class _HrSettingsScreenState extends State<HrSettingsScreen> {
                   if (_types.isEmpty) Text(tr('لا أنواع بعد', 'No types yet'), style: const TextStyle(color: T.inkFaint)),
                 ])),
                 const SizedBox(height: 12),
-                // ── عتبات التنبيه ──
+                // Alert thresholds.
                 AppCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Row(children: [
                     const Icon(Icons.notifications_active_outlined, color: T.orange, size: 18),
@@ -836,7 +827,7 @@ class _HrSettingsScreenState extends State<HrSettingsScreen> {
                   FilledButton(onPressed: _saving ? null : _save, child: Text(_saving ? tr('جارٍ الحفظ…', 'Saving…') : tr('حفظ', 'Save'))),
                 ])),
                 const SizedBox(height: 12),
-                // ── قوائم القسم — ReferenceDataManager module="hr" alsoType="jp_task_hr" ──
+                // Department lists, ReferenceDataManager module="hr" alsoType="jp_task_hr".
                 const FleetReferenceLists(module: 'hr', alsoType: 'jp_task_hr'),
               ]),
             ),

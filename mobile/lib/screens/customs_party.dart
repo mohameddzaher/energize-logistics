@@ -17,16 +17,12 @@ import 'customs_detail.dart' show CustomsDetailScreen, customsStageLabel;
 import 'fleet_customer_presence.dart' show CustomerPresence;
 import 'jp.dart' show JpTaskPanel;
 
-/// أطرافُ التخليص — العميلُ ووكيلُ الشحن والناقل: ملفُّ الطرف (بياناتُه
-/// ومرفقاتُه)، وبطاقةُ أطراف المعاملة في تفاصيلها. نظيرُ `PartyAttachments`
-/// و`ClearanceParties` و`customs/parties/[id]` على الموقع.
-///
-/// السجلُّ التجاريُّ والشهادةُ الضريبيّةُ والعقدُ تُرفَق مرّةً في ملفّ الطرف،
-/// وتُقرأ من كلّ معاملةٍ هو طرفٌ فيها — لا تُعاد في كلّ معاملة.
+/// Customs parties: customer, shipping agent and carrier. The party profile (data and attachments) and the transaction parties card in its details. Counterpart of `PartyAttachments`, `ClearanceParties` and `customs/parties/[id]` on the web.
+/// The commercial register, tax certificate and contract are attached once in the party profile and read from every transaction the party is in; they are not repeated per transaction.
 
 const _editRoles = ['super_admin', 'admin', 'operations_manager', 'customs_manager', 'customs_officer'];
 
-/// مَن يعدّل في التخليص — القسمةُ نفسُها في الخادم (EDIT_ROLES) ومعها منحُ المصفوفة.
+/// Who edits customs: the same split as on the server (EDIT_ROLES) plus the matrix grant.
 bool canEditCustoms(BuildContext context) {
   final auth = context.watch<AuthProvider>();
   return _editRoles.contains(auth.role) || auth.canEditSection('Customs');
@@ -35,8 +31,7 @@ bool canEditCustoms(BuildContext context) {
 List<Map<String, dynamic>> _maps(dynamic v) =>
     v is List ? [for (final e in v) if (e is Map) Map<String, dynamic>.from(e)] : [];
 
-/// يفتح ملفًّا من `/api/uploads/...` للعرض (الصورةُ وPDF تُعرَضان) — لا يُفرَض
-/// تنزيلُه. والمتصفّحُ داخل التطبيق أوّلًا، ثمّ متصفّحُ الجهاز إن تعذّر.
+/// Opens a file from `/api/uploads/...` for viewing (images and PDF display), not forced to download. The in-app browser first, then the device browser if that fails.
 Future<void> customsOpenFile(BuildContext context, dynamic fileUrl) async {
   final u = '${fileUrl ?? ''}';
   if (u.isEmpty) return;
@@ -50,8 +45,7 @@ Future<void> customsOpenFile(BuildContext context, dynamic fileUrl) async {
   if (!ok) messenger.showSnackBar(SnackBar(content: Text(tr('تعذّر فتح الملفّ', 'Could not open the file'))));
 }
 
-/// مرفقاتُ طرفٍ: قائمةٌ تُفتَح باللمس، ورفعُ ملفٍّ أو أكثر باسمٍ اختياريّ، وحذفٌ
-/// بتأكيد — والكتابةُ لمن يعدّل في التخليص وحدَه. تردّ القائمةَ الجديدة بـ`onChanged`.
+/// Party attachments: a list opened by tap, upload of one or more files with an optional name, and delete with confirmation; writing is for customs editors only. Returns the new list via `onChanged`.
 class CustomsPartyAttachments extends StatefulWidget {
   final String partyId;
   final List<Map<String, dynamic>> items;
@@ -85,7 +79,7 @@ class _CustomsPartyAttachmentsState extends State<CustomsPartyAttachments> {
   Future<void> _upload() async {
     final files = await pickFilesAsDataUrls();
     if (files.isEmpty || !mounted) return;
-    // الاسمُ المكتوبُ لملفٍّ واحد؛ وفي الدفعة يُسمّى كلُّ ملفٍّ باسمه.
+    // The typed name applies to a single file; in a batch each file is named by its own name.
     final title = _title.text.trim();
     setState(() => _busy = true);
     try {
@@ -204,14 +198,14 @@ class _CustomsPartyAttachmentsState extends State<CustomsPartyAttachments> {
   }
 }
 
-/// اسمُ الدور وأيقونتُه.
+/// Role name and icon.
 (String, IconData) _kindMeta(String kind) => switch (kind) {
       'agent' => (tr('وكيل الشحن', 'Shipping agent'), Icons.directions_boat_outlined),
       'carrier' => (tr('الناقل', 'Carrier'), Icons.local_shipping_outlined),
       _ => (tr('العميل', 'Customer'), Icons.people_outline),
     };
 
-/// بياناتُ الطرف: تواصلُه وسجلُّه ورقمُه الضريبيّ وعنوانُه — ما كُتب منها وحدَه.
+/// Party data: contact, register, tax number and address; only what was written.
 List<Widget> _partyDetails(Map<String, dynamic> p) {
   String s(String k) => '${p[k] ?? ''}'.trim();
   Widget line(String text, {IconData? icon, VoidCallback? onTap, bool ltr = false}) => InkWell(
@@ -230,7 +224,7 @@ List<Widget> _partyDetails(Map<String, dynamic> p) {
       );
   final place = [s('city'), s('address')].where((x) => x.isNotEmpty).join(' — ');
   return [
-    // جهاتُ التواصل كلُّها — كلُّ مسؤولٍ ببريده وجوّاله ووصفه (٢٠٢٦/١٠/٢٢).
+    // All contacts: each contact person with email, mobile and description.
     for (final c in (p['contacts'] is List && (p['contacts'] as List).isNotEmpty
         ? List<Map>.from(p['contacts'] as List)
         : [{'name': s('contactPerson'), 'email': s('email'), 'phone': s('phone')}])) ...[
@@ -252,8 +246,7 @@ List<Widget> _partyDetails(Map<String, dynamic> p) {
   ];
 }
 
-/// بطاقةُ أطراف المعاملة — «بيانات العملاء والناقلين ومرفقاتهم» في تفاصيلها.
-/// تُقرأ من ملفّ كلّ طرف (`/:id/parties-card`)، فما يُرفَع هنا يُرفَع في ملفّه.
+/// Transaction parties card: customer, carrier data and their attachments in its details. Read from each party's file (`/:id/parties-card`), so what is uploaded here is uploaded in its file.
 class CustomsClearanceParties extends StatefulWidget {
   final String clearanceId;
   const CustomsClearanceParties({super.key, required this.clearanceId});
@@ -284,7 +277,7 @@ class _CustomsClearancePartiesState extends State<CustomsClearanceParties> {
       final d = await Api.instance.get('/api/customs-clearance/${widget.clearanceId}/parties-card');
       if (mounted && d is Map) setState(() => _d = Map<String, dynamic>.from(d));
     } catch (_) {
-      // البطاقةُ زيادة: تعذُّرها لا يحجب المعاملة.
+      // The card is an extra: its failure does not block the transaction.
     }
   }
 
@@ -356,7 +349,7 @@ class _CustomsClearancePartiesState extends State<CustomsClearanceParties> {
   }
 }
 
-/// ملفُّ الطرف — بياناتُه وأرقامُ تعامله ومرفقاتُه (`GET /parties/:id`).
+/// Party profile: data, dealing numbers and attachments (`GET /parties/:id`).
 class CustomsPartyScreen extends StatefulWidget {
   final String partyId;
   final String name;
@@ -419,7 +412,7 @@ class _CustomsPartyScreenState extends State<CustomsPartyScreen> {
 
   num _num(dynamic v) => v is num ? v : num.tryParse('${v ?? ''}') ?? 0;
 
-  /// أرقامُ الطرف، ونموُّه بالشهر، والتجميعات، وكلُّ معاملاته — كملفّ الطرف في الموقع.
+  /// Party numbers, monthly growth, aggregations, and all its transactions, like the party profile on the web.
   List<Widget> _profileExtras(String kind, Map<String, dynamic> t) {
     final d = _d ?? const {};
     final seesMoney = d['money'] == true;
@@ -579,7 +572,7 @@ class _CustomsPartyScreenState extends State<CustomsPartyScreen> {
               : RefreshIndicator(
                   onRefresh: _load,
                   child: ListView(padding: const EdgeInsets.all(14), children: [
-                    // العميلُ نفسُه في الأقسام الأخرى، وحسابُ بوابته — كالموقع.
+                    // The same customer in other sections, and its portal account, like the web.
                     if (kind == 'customer') ...[
                       CustomerPresence(reg: 'customs', id: '${p['_id'] ?? widget.partyId}', onChanged: _load),
                       if (_crmId(p).isNotEmpty) ...[
@@ -606,7 +599,7 @@ class _CustomsPartyScreenState extends State<CustomsPartyScreen> {
                       ]),
                     ),
                     const SizedBox(height: 12),
-                    // مرفقاتُ الطرف — سجلُّه وشهادتُه وعقدُه؛ تُقرأ كذلك من كلّ معاملةٍ هو طرفٌ فيها.
+                    // Party attachments: register, certificate and contract; also read from every transaction the party is in.
                     AppCard(
                       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                         Text(tr('المرفقات', 'Attachments'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
@@ -622,7 +615,7 @@ class _CustomsPartyScreenState extends State<CustomsPartyScreen> {
                       ]),
                     ),
                     ..._profileExtras(kind, totals),
-                    // عقودُنا معه — ولا عقودَ بيننا وبين وكلاء الشحن (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢).
+                    // Our contracts with them; there are no contracts between us and shipping agents.
                     if (kind != 'agent') ...[
                       const SizedBox(height: 12),
                       CustomsPartyContracts(partyId: '${p['_id'] ?? widget.partyId}', partyName: name, partyKind: kind, canEdit: canEdit),

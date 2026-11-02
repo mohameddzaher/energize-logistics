@@ -1,12 +1,7 @@
 'use client';
-// تقييم أداء السائقين — إدارة الأسطول.
-//
-// The business half of a driver's record: كام حمولة شال، عمل كام، وصل في الموعد
-// ولا اتأخر، اتلغى منه كام، والمتابعة معاه كانت منتظمة ولا لأ.
-//
-// The telemetry half (how he actually drives — trip duration, loading time,
-// speed) lives in Location Solutions → تقييم أداء السائقين. Same people, two
-// questions; neither one answers the other.
+// Driver performance evaluation, fleet management.
+// The business half of a driver's record: loads carried, work done, on-time vs late arrival, cancellations, and whether follow-up was regular.
+// The telemetry half (how he actually drives: trip duration, loading time, speed) lives in Location Solutions driver evaluation. Same people, two questions; neither answers the other.
 import { useState, useEffect, useCallback, useMemo, Fragment } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
@@ -39,10 +34,9 @@ interface DriverKpi {
   score: number; band: string; bandAr: string; bandEn: string; bandColor: string;
   breakdown: ScoreBreakdownItem[];
   noActivity?: boolean;
-  // ── هدفُ السائق: حمولاتٌ ومسافة ──────────────────────────────────────────
-  // السيّارةُ تُقاس بالدخل، والسائقُ لا يملك السعر: يملك أن يشيل ويمشي.
+  // Driver target: loads and distance. A vehicle is measured by income, but a driver does not control price; he controls loading and driving.
   km: number;
-  /** كم من مسافته جاء من حمولةٍ تسمّيه، والباقي من مقعده على المركبة. */
+  /** How much of his distance came from loads that name him; the rest is from his seat on the vehicle. */
   kmFromLoads?: number;
   targetLoads?: number;
   targetKm?: number;
@@ -78,12 +72,11 @@ export default function FleetDriverKpisPage() {
 
   const [data, setData] = useState<Payload | null>(null);
   const [loading, setLoading] = useState(true);
-  // نفس عنصر الفترة المستعمل في بقية القسم — كان هنا منتقي شهرٍ وحده، فتعذّر
-  // سؤالُ «كيف كان أداء السائقين أمس» أو «خلال هذا الأسبوع» أصلًا.
+  // Same period control as the rest of the section. It used to be a month picker alone, which made 'how did drivers do yesterday' or 'this week' impossible.
   const [period, setPeriod] = useState<Period>({ preset: 'this_month', from: '', to: '', day: '' });
   const [q, setQ] = useState('');
   const [showIdle, setShowIdle] = useState(true);
-  // «أرِني مَن لم يحقّق» — تُضغط البطاقةُ فيقتصر الجدولُ عليهم.
+  // Show who missed target: clicking the card restricts the table to them.
   const [targetFilter, setTargetFilter] = useState<'all' | 'achieved' | 'below'>('all');
   const [open, setOpen] = useState<string | null>(null);
 
@@ -97,7 +90,7 @@ export default function FleetDriverKpisPage() {
   }, [periodQS]);
   useEffect(() => { load(); }, [load]);
   useSocket('fleet:updated', load);
-  // الشاحنةُ من سجلّ المركبات والسائقُ من الموارد البشريّة: يُعاد الجلبُ متى تغيّر أحدُهما.
+  // Trucks come from the vehicle register and drivers from HR: refetch when either changes.
   useSocket('vreg:updated', load);
   useSocket('fleet:drivers', load);
   useSocket('fleet:vehicles', load);
@@ -137,9 +130,7 @@ export default function FleetDriverKpisPage() {
     { header: tx('Truck', 'المركبة'), key: 'vehicle', transform: (v: any) => v?.plate || '—', width: 14 },
     { header: tx('Phone', 'الجوال'), key: 'phone', width: 16 },
   ];
-  // البحثُ وإخفاءُ الخاملين يفلتران في الذاكرة على قائمة الفترة كلّها؛ من صدّر
-  // وهو يظنّ أنّه أخذ السائقين جميعًا بينما البحث فعّالٌ يخرج بملفٍّ ناقصٍ صامت،
-  // فصار لكلّ نطاقٍ عدّادُه الظاهر.
+  // Search and hiding idle drivers filter in memory over the whole period list. Exporting while a search is active could silently produce a partial file, so each scope has its own visible counter.
   const scope = exportScopeLabels(ar);
   const sheetName = tx('Driver KPIs', 'تقييم السائقين');
   const allRows = (data?.items || []) as unknown as Record<string, any>[];
@@ -181,9 +172,9 @@ export default function FleetDriverKpisPage() {
             <KpiTile label={tx('Loads', 'الحمولات')} value={data.summary.totalTrips.toLocaleString()} icon={<Target className="w-4 h-4" />} />
             <KpiTile label={tx('Income', 'الدخل')} value={data.summary.totalIncome.toLocaleString()} accent="#16a34a" sub={`${tx('expenses', 'مصروفات')}: ${data.summary.totalExpense.toLocaleString()}`} />
             <KpiTile label={tx('Late loads', 'حمولات متأخرة')} value={data.summary.lateTrips} accent="#ef4444" icon={<AlertTriangle className="w-4 h-4" />} />
-            {/* المسافةُ مقروءةٌ من عدّادات المركبات، لا مقدَّرةٌ من أسماء المدن. */}
+            {/* Distance is read from vehicle odometers, not estimated from city names. */}
             <KpiTile label={tx('Distance driven', 'المسافة المقطوعة')} value={`${(data.summary.totalKm || 0).toLocaleString()} ${tx('km', 'كم')}`} accent="#6366f1" />
-            {/* ── ومَن حقّق ومَن لم يحقّق: بطاقتان تُضغطان فتُصفّيان الجدول ── */}
+            {/* Met / missed target: two cards that filter the table when clicked. */}
             <button type="button" onClick={() => setTargetFilter((f) => (f === 'achieved' ? 'all' : 'achieved'))}
               className={`text-start rounded-xl transition-shadow ${targetFilter === 'achieved' ? 'ring-2 ring-emerald-500' : 'hover:shadow-md'}`}>
               <KpiTile label={tx('On target', 'حقّقوا الهدف')} value={data.summary.driversAchieved} accent="#16a34a" />
@@ -194,7 +185,7 @@ export default function FleetDriverKpisPage() {
             </button>
           </div>
 
-          {/* الهدفُ يُقال صراحةً: من يقرأ «دون الهدف» يسأل «الهدف كام؟». */}
+          {/* State the target explicitly: whoever reads 'under target' asks what the target is. */}
           <p className="text-[12px] text-slate-500">
             {tx(
               `Target per driver per month: ${data.summary.defaultDriverMonthlyLoads} loads and ${(data.summary.defaultDriverMonthlyKm || 0).toLocaleString()} km — set in fleet settings, and overridable per driver. Distance is read from each truck's odometer.`,
@@ -265,9 +256,7 @@ export default function FleetDriverKpisPage() {
                         <ScoreBadge score={d.score} band={ar ? d.bandAr : d.bandEn} color={d.bandColor} size="sm" />
                         <div className="mt-1"><ScoreBar value={d.score} color={d.bandColor} height={4} /></div>
                       </td>
-                      {/* ── حقّق أو لم يحقّق، بكلمة ─────────────────────────
-                          «مين حقّق ومين لأ» سؤالُ الشاشة الأوّل، وكان جوابُه
-                          يُستنتَج بمقارنة أعمدةٍ في الرأس. */}
+                      {/* Met or missed, in a word. It is the screen's first question and used to be inferred by comparing columns in the header. */}
                       <td className="px-3 py-2 whitespace-nowrap">
                         {d.achieved == null ? (
                           <span className="text-slate-300 text-xs">{tx('no target', 'بلا هدف')}</span>
@@ -286,7 +275,7 @@ export default function FleetDriverKpisPage() {
                         {!!d.targetLoads && <span className="text-slate-400">/{d.targetLoads}</span>}
                         {d.sharedTrips > 0 && <span className="text-[10px] text-slate-400 ms-1">({d.sharedTrips} {tx('shared', 'مشتركة')})</span>}
                       </td>
-                      {/* المسافةُ من عدّاد المركبة — لا تقديرَ من أسماء المدن. */}
+                      {/* Distance from the vehicle odometer, not estimated from city names. */}
                       <td className="px-3 py-2 text-sm text-slate-700 tabular-nums whitespace-nowrap">
                         {(d.km || 0).toLocaleString()}
                         {!!d.targetKm && <span className="text-slate-400">/{d.targetKm.toLocaleString()}</span>}

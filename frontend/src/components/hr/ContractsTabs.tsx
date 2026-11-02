@@ -1,14 +1,6 @@
 'use client';
-// تبويبا العقود.
-//
-// كان في القائمة مدخلان: «العقود» و«بيانات العقود» — والمستخدم لا يعرف أيّهما
-// يفتح، فيفتح واحدًا ويحسبه كلّ الحكاية. وهما في الحقيقة وجهان لشيء واحد:
-//
-//   العقود            سجلّ العمل: إنشاء العقد وتجديده وإنهاؤه.
-//   بيانات العقود     أعمدة العقد في ملف الموارد البشرية وحالة كلٍّ منها
-//                     (رقم قوى · المهنة · تاريخ الانتهاء) وما ينقص منها.
-//
-// فصارا مدخلًا واحدًا وتبويبين — والفرق بينهما مكتوبٌ تحتهما لا مُخمَّن.
+// Contracts tabs.
+// The menu had two entries, Contracts and Contract data, and users did not know which to open and took one as the whole story. They are two views of one thing: Contracts is the work register (create, renew, end a contract); Contract data shows the contract columns in the HR file and the state of each (Qiwa number, profession, end date) and what is missing. So they are one entry with two tabs, and the difference is written under them.
 import { useRouter, usePathname } from 'next/navigation';
 import { useLanguage } from '@/context/LanguageContext';
 

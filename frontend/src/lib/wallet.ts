@@ -1,18 +1,11 @@
 import { SECTION_ROLES } from '@/lib/roles';
 /**
- * مَن يرى عهدةَ الفروع، ومَن يختار الفرعَ الذي يراه.
- *
- * ── لماذا في ملفٍّ واحد ────────────────────────────────────────────────────
- * كانت هذه القوائمُ مكتوبةً بيدٍ في ثلاثة مواضع: رابطُ العهدة في القائمة،
- * ورابطُ لوحتها، وشرطُ ظهور محدِّد الفرع داخل الصفحة. وأُضيف المحاسبُ في
- * الخادم ونُسي في الثلاثة — ففُتحت له النقاطُ ولم تُفتح له الشاشة: لا يجد
- * الرابطَ في القائمة، ومن يصل بالعنوان يُقال له «لا فرعَ لحسابك».
- *
- * قائمةٌ تُكتب ثلاثَ مرّات تُصحَّح مرّةً وتُنسى مرّتين.
+ * Who sees branch custody and who picks the branch to view.
+ * The lists were hand-written in three places (menu link, dashboard link, branch selector condition). The accountant was added on the server but missed in all three, so endpoints opened but the screen did not. One list is fixed once; three get forgotten.
  */
 
 
-/** مَن يفتح صفحةَ العهدة اليوميّة (مرآةُ `walletReadRoles` في الخادم). */
+/** Who opens the daily custody page (mirror of walletReadRoles on the server). */
 export const WALLET_ROLES = [
   'super_admin', 'admin', 'it_manager', 'it_specialist',
   'operations_manager', 'operations_staff', 'moderator',
@@ -20,7 +13,7 @@ export const WALLET_ROLES = [
   'collections_manager', 'collections_staff', 'collections_trainee',
 ];
 
-/** ومَن يفتح لوحتَها — نظرةُ الفروع كلِّها (مرآةُ `overviewRoles`). */
+/** Who opens its dashboard, the all-branches view (mirror of overviewRoles). */
 export const WALLET_DASHBOARD_ROLES = [
   'super_admin', 'admin', 'it_manager', 'it_specialist',
   'operations_manager', 'moderator',
@@ -28,26 +21,16 @@ export const WALLET_DASHBOARD_ROLES = [
   'collections_manager', 'collections_staff', 'collections_trainee',
 ];
 
-/**
- * ── قسمُ التحصيل يرى المحفظة ولا يلمسها (٢٠٢٦/١٠/٢٧) ─────────────────────────
- * مرآةُ `config/walletViewOnly` في الخادم — وهو الحارسُ الذي يردّ أيَّ كتابة.
- * هنا تُخفى الأزرارُ فقط: لا تحصيلَ ولا مصروفَ ولا مشترياتٍ ولا إقفال.
- */
+/** Collections department sees the wallet read-only. Mirror of config/walletViewOnly on the server, which is the guard that rejects any write; here only the buttons are hidden (no collect, expense, purchases or close). */
 export const WALLET_VIEW_ONLY_ROLES = (() => {
-  // فريقُ التحصيل كلُّه — مديرُه وموظّفوه ومتدرّبُه — من هيكل الأدوار (lib/roles، المولَّد من الخادم).
+  // The whole collections team (manager, staff, trainee) from the role structure (lib/roles, generated from the server).
   const c = SECTION_ROLES.find((x) => x.section === 'Collections');
   return c ? [c.manager.key, ...c.staff.map((r) => r.key), c.trainee.key] : ['collections_manager', 'collections_staff', 'collections_trainee'];
 })();
 
 /**
- * ── ومَن يُقفَل على فرعه ────────────────────────────────────────────────────
- * موظّفُ العمليات وحدَه: عهدتُه عهدةُ فرعه، ولا شأنَ له بغيره. وما عداه يختار
- * الفرعَ الذي ينظر فيه.
- *
- * وكُتب الشرطُ عكسًا عن قصد — «مَن يُقفَل» لا «مَن يختار». القائمةُ الموجبةُ
- * تُنسى كلَّما دخل دورٌ جديد، فيقف صاحبُه أمام صفحةٍ تقول له «لا فرعَ لحسابك»
- * وهو لا يملك فرعًا ولا يُفترَض أن يملك. والقائمةُ السالبةُ تُصيب الجديدَ من
- * أوّل يوم.
+ * Who is locked to their branch: operations staff only, whose custody is their branch's custody. Everyone else picks the branch.
+ * Written as the negative on purpose: a positive list is forgotten when a role is added and leaves its holder on a no-branch page, while a negative list covers new roles from day one.
  */
 export const BRANCH_LOCKED_ROLES = ['operations_staff'];
 
@@ -55,13 +38,8 @@ export const canPickWalletBranch = (role?: string | null) =>
   !!role && !BRANCH_LOCKED_ROLES.includes(role);
 
 /**
- * ── أوّلُ يومٍ للدفتر — مرآةُ `config/walletStart.js` في الخادم ───────────────
- *
- * الخادمُ هو الذي يمنع فعلًا: يردّ كلَّ قراءةٍ وكتابةٍ قبل هذا اليوم. وهذه
- * النسخةُ لا تمنع شيئًا — وظيفتُها ألّا تُعرَض على المستخدم تواريخُ سيُرفَض
- * اختيارُها. فمنتقي التاريخ يبدأ من هنا، والشاشةُ لا تسأل عمّا لا جوابَ له.
- *
- * ولماذا لا يُجلَب من الخادم: الشاشةُ تحتاجه **قبل** أوّل نداء لترسم منتقيَ
- * التاريخ، فجلبُه يعني ومضةً يُفتَح فيها الماضي ثمّ يُغلَق.
+ * First day of the ledger, mirror of config/walletStart.js on the server.
+ * The server enforces it by rejecting reads and writes before this day. This copy only keeps the date picker from offering dates that would be rejected.
+ * It is not fetched from the server because the picker needs it before the first call, and fetching would flash the past open then closed.
  */
 export const WALLET_START_DATE = '2026-09-01';

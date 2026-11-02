@@ -1,19 +1,12 @@
 'use client';
 /**
- * منسدلةٌ فيها بحث — لأيّ قائمةِ خيارات.
- *
- * ── ولماذا في كلّ منسدلة ──────────────────────────────────────────────────
- * `<select>` الأصليّة تكفي لخمسة خيارات. وقوائمُنا عملاءُ وموظّفون وفروع —
- * مئاتٌ أحيانًا — فيصير اختيارُ اسمٍ تمريرًا طويلًا بالفأرة. والمستخدم يعرف
- * الاسمَ الذي يريد؛ ينقصه أن يكتبه.
- *
- * وهذه لخياراتٍ تُمرَّر كما هي، بخلاف `SearchableManagedSelect` التي تجلب
- * قائمتَها من `/api/lookups` وتُضيف إليها.
+ * Dropdown with search for any option list.
+ * A native <select> is fine for five options, but our lists (customers, employees, branches) run to hundreds, and users know the name they want and just need to type it. This takes options as passed, unlike `SearchableManagedSelect` which fetches its list from `/api/lookups` and lets users add to it.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDown, Search, X } from 'lucide-react';
 
-// الطيُّ العربيّ: من كتب «احمد» يجد «أحمد»، ومن كتب «شركه» يجد «شركة».
+// Arabic folding: searching one spelling of alef or ha/ta-marbuta finds the other.
 const fold = (s: string) => String(s || '').toLowerCase()
   .replace(/[أإآ]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه').replace(/ؤ/g, 'و').replace(/ئ/g, 'ي')
   .replace(/[ً-ْ]/g, '').replace(/\s+/g, ' ').trim();
@@ -27,7 +20,7 @@ export default function SearchSelect({
   onChange: (v: string) => void;
   options: SearchOption[];
   placeholder?: string;
-  /** نصُّ الخيار الفارغ — «الكل» في الفلاتر، أو غيابُه في حقلٍ مطلوب. */
+  /** Label of the empty option: "all" in filters, or absent in a required field. */
   allLabel?: string;
   ar: boolean;
   disabled?: boolean;

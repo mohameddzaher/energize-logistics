@@ -11,8 +11,7 @@ import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import 'jp.dart' show JpTaskPanel;
 
-/// تفاصيل الحملة (التسويق) — الميزانية والإنفاق والعائد ومقاييسها المشتقة
-/// (CTR/CPL/ROAS)، مع أنشطة الحملة.
+/// Marketing campaign details: budget, spend, return and derived metrics (CTR/CPL/ROAS), with the campaign's activities.
 class MarketingCampaignDetailScreen extends StatefulWidget {
   final String campaignId;
   final String name;
@@ -29,7 +28,7 @@ const _campaignStatus = {
   'cancelled': ('ملغاة', 'Cancelled', T.danger),
 };
 
-// أدوارُ التسويق كما في الويب (lib/marketing.ts) — التعديلُ لـ canEditMarketing.
+// Marketing roles as on the web (lib/marketing.ts); editing needs canEditMarketing.
 const _mktAdminRoles = ['super_admin', 'admin', 'it_manager', 'it_specialist', 'marketing_manager', 'marketing_specialist', 'bd_manager'];
 bool canEditMarketing(AuthProvider a) => _mktAdminRoles.contains(a.role) || a.canEditSection('Marketing');
 
@@ -101,7 +100,7 @@ class _MarketingCampaignDetailScreenState extends State<MarketingCampaignDetailS
 
   void _snack(String m) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
 
-  /// تعديلُ الحملة — نفس حقول التعديل في صفحة الويب (PUT /campaigns/:id).
+  /// Edit campaign: same fields as the web edit page (PUT /campaigns/:id).
   Future<void> _edit() async {
     final c = Map<String, dynamic>.from(_campaign ?? {});
     await showCrmForm(
@@ -142,7 +141,7 @@ class _MarketingCampaignDetailScreenState extends State<MarketingCampaignDetailS
     );
   }
 
-  /// الحذفُ من صفحة الحملة — تُحذف معها أنشطتها وأرقامها.
+  /// Delete from the campaign page; its activities and figures are deleted with it.
   Future<void> _remove() async {
     final ok = await showDialog<bool>(context: context, builder: (c) => AlertDialog(
       title: Text(tr('حذف الحملة', 'Delete campaign')),
@@ -164,7 +163,7 @@ class _MarketingCampaignDetailScreenState extends State<MarketingCampaignDetailS
     return '${k ?? ''}';
   }
 
-  /// «ملف الحملة كاملًا»: البيانات والأرقام في ورقة، والأنشطة في ورقة.
+  /// Full campaign file: data and figures on one sheet, activities on another.
   void _export() {
     final c = _campaign ?? {};
     final brief = <Map<String, dynamic>>[

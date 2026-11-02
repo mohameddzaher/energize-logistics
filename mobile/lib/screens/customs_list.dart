@@ -12,14 +12,8 @@ import '../ui/widgets.dart';
 import 'customs_detail.dart';
 import '../ui/search_field.dart';
 
-/// معاملاتُ التخليص — نظيرُ `/system/customs` في الموقع (page.tsx).
-///
-/// كالموقع: المعاملاتُ كلُّها دفعةً واحدة والفلاترُ على الجهاز (السنة والشهر
-/// والحالة والفوترة والإرجاع والعميل والوكيل والميناء والفرع والمرحلة والمدّة)،
-/// والبحثُ بما في الصفّ هنا وبالباقي من فهرس الخادم (`?ids=1&search=`).
-/// وزرُّ «المعاملات القادمة» بعدد ما قرُب موعدُه، والملاحظةُ تُكتب من الصفّ،
-/// والتصديرُ بالأعمدة نفسِها (المعروض أو الكلّ). وحيّة على
-/// customs:created / customs:updated / customs:deleted.
+/// Customs transactions, counterpart of `/system/customs` on the web (page.tsx).
+/// As on the web: all transactions in one batch and the filters run on the device (year, month, status, invoicing, return, customer, agent, port, branch, stage, period). Search covers the row contents here and the rest through the server index (`?ids=1&search=`). The upcoming-transactions button shows the count of those nearing their date, notes are written from the row, and export uses the same columns (displayed or all). Live on customs:created / customs:updated / customs:deleted.
 class CustomsListScreen extends StatefulWidget {
   const CustomsListScreen({super.key});
   @override
@@ -33,7 +27,7 @@ num _n(dynamic v) => v is num ? v : num.tryParse('${v ?? ''}') ?? 0;
 String _money(dynamic v) => _n(v).round().toString().replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (m) => ',');
 String _ymd(DateTime d) => d.toIso8601String().substring(0, 10);
 
-/// الطيُّ نفسُه في الخادم (utils/arabicSearch · searchKey).
+/// Same folding as on the server (utils/arabicSearch · searchKey).
 String _key(dynamic v) {
   var s = '${v ?? ''}';
   const ar = '٠١٢٣٤٥٦٧٨٩', fa = '۰۱۲۳۴۵۶۷۸۹';
@@ -69,7 +63,7 @@ const _returnLabel = {
   'due': ('يقترب موعدها', 'Due soon'), 'open': ('في المهلة', 'Within window'), 'none': ('بلا موعد', 'No deadline'),
 };
 
-/// الأوراقُ الخمس للمعاملة القادمة — قائمةُ «الأوراق المطلوبة» نفسُها (`documents`).
+/// The five papers of an upcoming transaction, the same list as the required-papers `documents`.
 const customsDocKeys = [
   ('bl', 'البوليصة', 'Bill of lading'),
   ('commercialInvoice', 'الفاتورة', 'Invoice'),
@@ -92,7 +86,7 @@ class _CustomsListScreenState extends State<CustomsListScreen> {
   String _hitsQ = '';
   Timer? _debounce;
   int _seq = 0, _searchSeq = 0;
-  // الفلاتر — أسماؤها كأسماء الموقع.
+  // Filters, named as on the web.
   final Map<String, String> _f = {};
   late final void Function() _onCreated;
   late final void Function(dynamic) _onUpdated;
@@ -104,7 +98,7 @@ class _CustomsListScreenState extends State<CustomsListScreen> {
     _loadAlerts();
     _loadParties();
     _onCreated = () { _load(); _loadAlerts(); };
-    // تعديلُ معاملةٍ قادمة لا يمسّ جدولَ الجارية — تكفي النافذة (كالموقع).
+    // Editing an upcoming transaction does not touch the ongoing table; the dialog is enough, as on the web.
     _onUpdated = (p) {
       final c = p is Map && p['clearance'] is Map ? p['clearance'] as Map : null;
       if (c?['upcoming'] != true) _load();
@@ -131,7 +125,7 @@ class _CustomsListScreenState extends State<CustomsListScreen> {
       final d = await Api.instance.get('/api/customs-clearance');
       if (!mounted || mine != _seq) return;
       setState(() { _list = _maps(d['clearances']); _loading = false; _error = null; });
-      // البحثُ في الخادم يُعاد مع كلّ قراءةٍ للقائمة — كالموقع (refreshKey).
+      // The server search is repeated with every list read, as on the web (refreshKey).
       if (_search.text.trim().isNotEmpty) _runServerSearch();
     } catch (e) {
       if (mounted && mine == _seq) setState(() { _loading = false; _error = e.toString(); });
@@ -170,10 +164,10 @@ class _CustomsListScreenState extends State<CustomsListScreen> {
       final r = await Api.instance.get('/api/customs-clearance?ids=1&search=${Uri.encodeQueryComponent(q)}');
       if (!mounted || mine != _searchSeq) return;
       setState(() { _hits = {for (final x in (r['ids'] as List? ?? const [])) '$x'}; _hitsQ = q; });
-    } catch (_) {/* البحثُ المحلّيُّ يبقى */}
+    } catch (_) {/* Local search remains. */}
   }
 
-  // ── ما يُشتقّ من الصفّ — كالموقع حرفًا ─────────────────────────────────────
+  // Values derived from the row, identical to the web.
   bool _invoiced(Map r) => r['invoiced'] == true || _s(r, 'saleInvoiceNumber').isNotEmpty;
   (String, String) _invoiceState(Map r) {
     if (_s(r, 'saleInvoiceNumber').isNotEmpty) return (tr('مفوترة', 'Invoiced'), _s(r, 'saleInvoiceNumber'));
@@ -249,7 +243,7 @@ class _CustomsListScreenState extends State<CustomsListScreen> {
         final next = c['pipeline'] is Map ? '${(c['pipeline'] as Map)['next'] ?? ''}' : '';
         if (c['isCompleted'] == true || c['cancelled'] == true || next != f['stage']) return false;
       }
-      // المدى بتاريخ المعاملة لا بيوم إدخالها.
+      // Range is by transaction date, not by entry date.
       final from = f['from'] ?? '', to = f['to'] ?? '';
       if (from.isNotEmpty || to.isNotEmpty) {
         final d = _s(c, 'date').isNotEmpty ? _s(c, 'date') : (_s(c, 'createdAt').length >= 10 ? _s(c, 'createdAt').substring(0, 10) : '');
@@ -261,7 +255,7 @@ class _CustomsListScreenState extends State<CustomsListScreen> {
     }).toList();
   }
 
-  // ── التصدير — أعمدةُ الموقع نفسُها ──────────────────────────────────────────
+  // Export: the same columns as the web.
   List<ExportCol> _exportCols(bool seesMoney) => [
         ExportCol('رقم البوليصة', 'BL number', (r) => _s(r, 'blNumber').isEmpty ? '—' : r['blNumber']),
         ExportCol('رقم المعاملة', 'Ref number', (r) => r['refNumber'] ?? ''),
@@ -310,7 +304,7 @@ class _CustomsListScreenState extends State<CustomsListScreen> {
     await exportExcel(context, fileName: 'customs-clearances', sheets: [(tr('التخليص الجمركي', 'Customs Clearance'), _exportCols(seesMoney), rows)]);
   }
 
-  // ── الفلاتر ─────────────────────────────────────────────────────────────────
+  // Filters.
   Future<void> _openFilters() async {
     final years = {for (final c in _list) if (_s(c, 'periodYear').isNotEmpty) _s(c, 'periodYear')}.toList()..sort((a, b) => b.compareTo(a));
     final invoiceStatuses = {for (final c in _list) if (_invoiceState(c).$1.isNotEmpty) _invoiceState(c).$1}.toList()..sort();
@@ -393,7 +387,7 @@ class _CustomsListScreenState extends State<CustomsListScreen> {
     if (res != null && mounted) setState(() { _f..clear()..addAll(res); });
   }
 
-  // ── الإنشاء: جاريةٌ أو قادمة ─────────────────────────────────────────────────
+  // Create: ongoing or upcoming.
   Future<void> _create({required bool upcoming}) async {
     final res = await showModalBottomSheet<Map<String, dynamic>>(
       context: context,
@@ -407,7 +401,7 @@ class _CustomsListScreenState extends State<CustomsListScreen> {
     if (res == null || !mounted) return;
     _load();
     _loadAlerts();
-    // القادمةُ تبقى في نافذتها، والجاريةُ تُفتَح — كالموقع.
+    // An upcoming one stays in its dialog and an ongoing one opens, as on the web.
     if (upcoming) {
       _openUpcoming();
     } else if (res['_id'] != null) {
@@ -445,7 +439,7 @@ class _CustomsListScreenState extends State<CustomsListScreen> {
     }
   }
 
-  /// ملاحظةٌ تُكتب من الصفّ — سجلُّ المعاملة نفسُه (يُقرأ كاملًا عند الفتح).
+  /// Note written from the row: the transaction's own log (read in full on open).
   void _openNotes(Map<String, dynamic> c, bool canEdit) {
     showModalBottomSheet<void>(
       context: context,
@@ -508,7 +502,7 @@ class _CustomsListScreenState extends State<CustomsListScreen> {
             Chip2(c['branch'] == 'dammam' ? tr('الدمام', 'Dammam') : tr('جدة', 'Jeddah'), T.inkSoft),
           ]),
           const SizedBox(height: 6),
-          // ── الملاحظةُ الأخيرة، وتُكتب من هنا — كعمود «ملاحظات» في الموقع.
+          // The latest note, written from here, like the notes column on the web.
           InkWell(
             onTap: canEdit || note != null ? () => _openNotes(c, canEdit) : null,
             child: Container(
@@ -535,7 +529,7 @@ class _CustomsListScreenState extends State<CustomsListScreen> {
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
-    // كالموقع: الأرباحُ للإدارة، والتعديلُ والحذفُ بالأدوار أو بمنح المصفوفة.
+    // As on the web: profits for management; edit and delete by roles or by matrix grant.
     final seesMoney = ['super_admin', 'admin', 'customs_manager'].contains(auth.role);
     final canEdit = _editRoles.contains(auth.role) || auth.canEditSection('Customs');
     final canDelete = _deleteRoles.contains(auth.role) || auth.canEditSection('Customs');
@@ -545,7 +539,7 @@ class _CustomsListScreenState extends State<CustomsListScreen> {
     return AppScaffold(
       title: Text(tr('التخليص الجمركي', 'Customs Clearance')),
       actions: [
-        // شارةُ ما اقترب موعدُه — رقمٌ يبقى أمام العين ما دام هناك عمل.
+        // Badge of those nearing their date: a number that stays in view while work remains.
         IconButton(
           tooltip: tr('المعاملات القادمة (${_alerts['total'] ?? 0})', 'Upcoming (${_alerts['total'] ?? 0})'),
           onPressed: _openUpcoming,
@@ -630,8 +624,7 @@ class _CustomsListScreenState extends State<CustomsListScreen> {
   }
 }
 
-/// نموذجُ الإنشاء — كنافذة الموقع: الفرعُ والبوليصةُ والعميلُ والوكيلُ من ملفّيهما
-/// ونوعُ المعاملة وعددُ وحداتها، وللقادمة تاريخُها المتوقَّع وأوراقُها الخمس.
+/// Create form, like the web dialog: branch, waybill, customer and agent from their files, transaction type and unit count; for an upcoming one, its expected date and its five papers.
 class _CreateSheet extends StatefulWidget {
   final bool upcoming;
   final List<Map<String, dynamic>> customers, agents;
@@ -813,7 +806,7 @@ class _CreateSheetState extends State<_CreateSheet> {
   }
 }
 
-/// ملاحظاتُ معاملةٍ من صفّ الجدول — نفسُ سجلّ المعاملة (ClearanceNotes compact).
+/// Notes of a transaction from a table row: the same transaction log (ClearanceNotes compact).
 class _NotesSheet extends StatefulWidget {
   final String clearanceId, ref;
   final bool canEdit;
@@ -936,9 +929,7 @@ class _NotesSheetState extends State<_NotesSheet> {
   }
 }
 
-/// المعاملاتُ القادمة — نظيرُ UpcomingPanel في الموقع: كلُّها مرتَّبةً بالأقرب،
-/// ومع كلّ واحدة ما بقي على موعدها، وتاريخُها وفرعُها يُعدَّلان في مكانهما،
-/// وأوراقُها الخمسُ تُعلَّم، وتُحوَّل إلى جارية (بسؤال) أو تُحذَف.
+/// Upcoming transactions, counterpart of UpcomingPanel on the web: all ordered by nearest, each with the time left, its date and branch editable in place, its five papers markable, and convertible to ongoing (with a prompt) or deletable.
 class CustomsUpcomingScreen extends StatefulWidget {
   final bool canEdit, canDelete;
   const CustomsUpcomingScreen({super.key, required this.canEdit, required this.canDelete});
@@ -952,7 +943,7 @@ class _CustomsUpcomingScreenState extends State<CustomsUpcomingScreen> {
   bool _loading = true;
   String _busy = '';
   int _seq = 0;
-  // العلامةُ تظهر في الحال والحفظُ خلفها؛ وطلباتُ المعاملة الواحدة تُصَفّ.
+  // The mark shows at once and saving follows behind; requests for one transaction are queued.
   final Map<String, Map<String, dynamic>> _local = {};
   final Map<String, Future<void>> _queue = {};
   late final void Function() _onLive;
@@ -1196,7 +1187,7 @@ class _CustomsUpcomingScreenState extends State<CustomsUpcomingScreen> {
                                 onSelected: widget.canEdit ? (on) => _toggleDoc(raw, k.$1, on) : null,
                               ),
                           ]),
-                          // ملاحظاتُ المعاملة القادمة — تُكتب وتُعدَّل من هنا (كالويب، ٢٠٢٦/١٠/٢٦).
+                          // Notes of an upcoming transaction: written and edited from here, as on the web.
                           const SizedBox(height: 8),
                           InkWell(
                             borderRadius: BorderRadius.circular(10),

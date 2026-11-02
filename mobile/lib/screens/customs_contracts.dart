@@ -8,11 +8,9 @@ import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import 'customs_party.dart' show customsOpenFile;
 
-/// عقودُ التخليص على الجوّال — نظيرُ components/customs/CustomsContracts:
-///   • مرفقاتُ العقد: رفعُ الموقَّع (POST /contracts/:id/files بـdata URL كالموقع)،
-///     وفتحُه، وحذفُه (DELETE /contracts/:id/files/:attId).
-///   • لوحةُ «عقودُنا معه» في ملفّ الطرف: عقودُه وحدَها، وإنشاءٌ وتعديلٌ وحذف،
-///     والأسعارُ لعقد العميل — مصدرٌ واحدٌ مع صفحة العقود (customs:contract).
+/// Customs contracts on mobile, counterpart of components/customs/CustomsContracts:
+/// - Contract attachments: upload the signed copy (POST /contracts/:id/files with a data URL, like the web), open it, delete it (DELETE /contracts/:id/files/:attId).
+/// - "Our contracts with them" panel in the party profile: only its contracts, with create/edit/delete; prices apply to the customer contract. Same source as the contracts page (customs:contract).
 
 List<Map<String, dynamic>> _maps(dynamic v) =>
     v is List ? [for (final e in v) if (e is Map) Map<String, dynamic>.from(e)] : [];
@@ -33,7 +31,7 @@ const _basis = [
   ('per_month', 'شهريًّا', 'Per month'), ('per_shipment', 'للشحنة', 'Per shipment'),
 ];
 
-/// مرفقاتُ العقد — ورقةٌ تُفتح من صفّه. تردّ true إن تغيّر شيء.
+/// Contract attachments sheet, opened from its row. Returns true if anything changed.
 Future<bool> manageCustomsContractFiles(BuildContext context, Map<String, dynamic> contract, {bool canEdit = true}) async {
   final changed = await showModalBottomSheet<bool>(
     context: context,
@@ -58,7 +56,7 @@ class _FilesSheetState extends State<_FilesSheet> {
 
   String get _id => '${widget.contract['_id']}';
 
-  /// يُعاد العقدُ من القائمة بعد كلّ كتابة — الخادمُ لا يردّ المرفقات دائمًا.
+  /// The contract is re-read from the list after every write; the server does not always return attachments.
   Future<void> _refresh() async {
     try {
       final d = await Api.instance.get('/api/customs-clearance/contracts?party=${Uri.encodeQueryComponent(_s(widget.contract, 'party'))}');
@@ -152,7 +150,7 @@ class _FilesSheetState extends State<_FilesSheet> {
   }
 }
 
-/// «عقودُنا معه» في ملفّ الطرف — عقودُ طرفٍ واحد (`?party=`)، ويُملأ الطرفُ تلقائيًّا.
+/// "Our contracts with them" in the party profile: contracts of one party (`?party=`), with the party filled in automatically.
 class CustomsPartyContracts extends StatefulWidget {
   final String partyId, partyName, partyKind;
   final bool canEdit;
@@ -171,7 +169,7 @@ class _CustomsPartyContractsState extends State<CustomsPartyContracts> {
     super.initState();
     _onLive = () => _load();
     _load();
-    // عقدٌ كُتب من صفحة العقود يظهر هنا في اللحظة، والعكسُ كذلك.
+    // A contract written from the contracts page appears here instantly, and the reverse.
     Live.instance.on('customs:contract', _onLive);
   }
 
@@ -284,7 +282,7 @@ class _CustomsPartyContractsState extends State<CustomsPartyContracts> {
   }
 }
 
-/// نموذجُ العقد — خاناتُ نموذج الموقع، والطرفُ هو صاحبُ الملفّ.
+/// Contract form: the web form fields; the party is the profile owner.
 class _ContractForm extends StatefulWidget {
   final Map<String, dynamic>? contract;
   final String partyId;

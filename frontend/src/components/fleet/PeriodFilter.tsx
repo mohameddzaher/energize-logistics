@@ -1,13 +1,6 @@
 'use client';
-// فلتر الفترة الزمنية — عنصرٌ واحد لكل صفحات إدارة الأسطول.
-//
-// كل شاشةٍ كانت تحسب مداها بنفسها، فيسأل المستخدم عن «هذا الشهر» في القائمة
-// وعن «هذا الشهر» في التحليلات فيأخذ رقمين لا يتّفقان. الحلّ أن الواجهة لا
-// ترسل حدودًا أصلًا: ترسل **اسم الفترة** (`preset`) والخادم يحسمها وحده
-// (resolvePeriod في fleetController)، فيستحيل أن تختلف شاشتان في معنى «أمس».
-//
-// ولذلك أيضًا لا يوجد هنا حسابُ تواريخ: أيّ سطرٍ يحسب بداية الشهر في المتصفّح
-// يفتح البابَ لعودة الاختلاف نفسه من حيث أُغلق.
+// Period filter: one component for all fleet-management pages.
+// Each screen used to compute its own range, so "this month" in the list and in analytics gave two disagreeing numbers. The UI sends no bounds, only the period name (`preset`), and the server resolves it (resolvePeriod in fleetController), so two screens cannot differ on what "yesterday" means. Hence no date arithmetic here: any line computing month start in the browser reopens the same mismatch.
 import { CalendarRange } from 'lucide-react';
 
 export type Period = { preset: string; from: string; to: string; day: string };
@@ -16,8 +9,7 @@ export const EMPTY_PERIOD: Period = { preset: '', from: '', to: '', day: '' };
 
 type PresetDef = { key: string; ar: string; en: string; future?: boolean };
 
-// نفس المفاتيح المعرَّفة في الخادم حرفيًّا — أيّ مفتاحٍ لا يعرفه يسقط إلى
-// الافتراضي بصمت، فالتطابق هنا شرطٌ لا تجميل.
+// Keys match the server's definitions exactly: an unknown key silently falls back to the default, so the match is a requirement.
 export const PERIOD_PRESETS: PresetDef[] = [
   { key: 'today', ar: 'اليوم', en: 'Today' },
   { key: 'yesterday', ar: 'أمس', en: 'Yesterday' },
@@ -38,7 +30,7 @@ export const presetLabel = (key: string, ar: boolean) => {
   return ar ? 'الفترة' : 'Period';
 };
 
-/** ما يُرسَل إلى الخادم — القيم الفارغة تُحذف كي لا تلوّث عنوان الصفحة. */
+/** What is sent to the server; empty values are dropped to keep the page URL clean. */
 export const periodParams = (p: Period): Record<string, string> => {
   const out: Record<string, string> = {};
   if (p.day) { out.day = p.day; return out; }
@@ -47,7 +39,7 @@ export const periodParams = (p: Period): Record<string, string> => {
   return out;
 };
 
-/** يُقرأ من عنوان الصفحة، فيعود الرجوع بزرّ المتصفّح إلى الفترة نفسها. */
+/** Read from the page URL, so the browser back button returns to the same period. */
 export const periodFromParams = (sp: URLSearchParams | null): Period => ({
   preset: sp?.get('preset') || '',
   from: sp?.get('from') || '',
@@ -63,16 +55,15 @@ export default function PeriodFilter({
   value: Period;
   onChange: (p: Period) => void;
   lang?: 'en' | 'ar';
-  /** شاشة «المتوقع للوصول» تسأل عن الآتي لا الماضي، فتحتاج فتراتٍ مستقبلية. */
+  /** The expected-arrival screen asks about the future, not the past, so it needs future periods. */
   showFuture?: boolean;
   className?: string;
 }) {
   const ar = lang === 'ar';
-  // الفترات المستقبلية تُخفى افتراضيًّا: «غدًا» بلا معنًى في شاشةٍ تحلّل ما مضى.
+  // Future periods are hidden by default: "tomorrow" is meaningless on a screen that analyzes the past.
   const presets = PERIOD_PRESETS.filter((p) => showFuture || !p.future);
 
-  // اختيار زرٍّ يمسح المدى واليوم، واختيار يومٍ أو مدًى يمسح الزرّ — ثلاثتها
-  // تعني الفترة نفسها، فبقاؤها معًا يترك المستخدم لا يدري أيَّها الفاعل.
+  // Choosing a button clears the range and the day; choosing a day or range clears the button. All three mean the same period, and keeping them together leaves the user unsure which applies.
   const pickPreset = (key: string) =>
     onChange(value.preset === key ? EMPTY_PERIOD : { preset: key, from: '', to: '', day: '' });
   const pickDay = (day: string) => onChange({ preset: '', from: '', to: '', day });
@@ -119,11 +110,7 @@ export default function PeriodFilter({
   );
 }
 
-/**
- * شريطٌ يُظهر الفترة التي حسمها **الخادم** لا التي ظنّتها الواجهة.
- * وجوده ليس تزيينًا: حين تفتح شاشة التحليلات على «الشهر الحالي» ضمنًا وتبحث عن
- * حمولةٍ من الشهر الماضي، تخرج الأرقام أصفارًا ولا شيء على الشاشة يقول لماذا.
- */
+/** A bar showing the period the server resolved, not the one the UI assumed. It is not decoration: opening analytics on an implicit "current month" and searching for last month's load yields zeros with nothing on screen saying why. */
 export function PeriodBanner({ period, lang = 'ar', count }: {
   period?: { from?: string; to?: string; preset?: string } | null;
   lang?: 'en' | 'ar';
@@ -132,8 +119,7 @@ export function PeriodBanner({ period, lang = 'ar', count }: {
   const ar = lang === 'ar';
   if (!period?.from) return null;
   const d = (v?: string) => (v ? new Date(v).toLocaleDateString(ar ? 'ar-EG-u-nu-latn' : 'en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '');
-  // نهاية المدى حصرية في الخادم، فيُطرح منها يومٌ عند العرض وإلا بدا المدى
-  // أطول بيومٍ ممّا يُحسب به فعلًا.
+  // The range end is exclusive on the server, so a day is subtracted for display; otherwise the range would look one day longer than what is computed.
   const toShown = period.to ? new Date(new Date(period.to).getTime() - 1) : null;
   const isAll = period.preset === 'all';
   return (

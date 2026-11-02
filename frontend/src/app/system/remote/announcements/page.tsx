@@ -39,9 +39,7 @@ export default function RemoteAnnouncementsPage() {
   }, []);
   useEffect(() => { load(); }, [load]);
 
-  // ── التعديل ───────────────────────────────────────────────────────────────
-  // الإعلان الذي فيه خطأ كان علاجُه حذفَه ونشرَه من جديد — فيصل الفريقَ إشعارٌ
-  // ثانٍ عن الخبر نفسه فيُقرأ خبرًا جديدًا. والتعديل لا يُشعر أحدًا.
+  // Editing: fixing a wrong announcement meant deleting and republishing it, which sent the team a second notification that read as new news. Editing notifies no one.
   const [editingId, setEditingId] = useState<string | null>(null);
 
   const openEdit = (a: Announcement) => {

@@ -4,10 +4,7 @@ import '../services/lang.dart';
 import '../ui/theme.dart';
 import '../ui/search_field.dart';
 
-/// زرُّ «إضافة» في «عملاء العقود» — نظيرُ زرَّي الويب: «إضافة عميل» و«اقتراحات»
-/// (عملاء يشحنون معنا ولا سجلّ لهم: GET /api/contracts/customers/suggestions،
-/// مرتّبون بعدد شحناتهم، يُضاف أحدُهم بضغطةٍ ثمّ تُكمَل بياناتُ عقده بالتعديل).
-/// يرجع true إن أُضيف شيء فتُعاد قراءةُ القائمة.
+/// "Add" button in contract customers, the counterpart of the two web buttons: add customer and suggestions (customers who ship with us and have no record: GET /api/contracts/customers/suggestions, sorted by shipment count; one is added in a tap and its contract data completed by editing). Returns true if something was added so the list reloads.
 Future<bool?> openContractsCustomerCreate(BuildContext context) {
   return showModalBottomSheet<bool>(
     context: context, isScrollControlled: true, backgroundColor: Colors.white,
@@ -35,7 +32,7 @@ class _CreateSheet extends StatefulWidget {
 class _CreateSheetState extends State<_CreateSheet> {
   List<Map<String, dynamic>>? _sugs;
   String _q = '';
-  final _searchCtl = TextEditingController(); // النصُّ يبقى مطابقًا لـ_q بعد تبديل التبويب
+  final _searchCtl = TextEditingController(); // Text stays equal to _q after switching tabs.
   String? _adding;
   bool _added = false, _saving = false;
   final _name = TextEditingController(), _sector = TextEditingController(), _contact = TextEditingController(),

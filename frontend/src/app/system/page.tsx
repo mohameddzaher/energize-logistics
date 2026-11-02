@@ -1,9 +1,5 @@
 'use client';
-/**
- * /system — لا شاشةَ هنا، بل توجيهٌ إلى أوّل صفحةٍ لصاحب الحساب: صفحةُ الدخول
- * المضبوطةُ لدوره، وإلّا صفحةُ قسمه (راجع lib/roleRoutes). وكانت «لوحة التحكم»
- * هي هذا الاحتياط، فلمّا حُذفت صار لكلّ دورٍ مدخلُه.
- */
+/** /system: no screen here, only a redirect to the account's first page: the login page configured for its role, otherwise its section page (see lib/roleRoutes). The control dashboard used to be this fallback; once it was removed each role got its own entry. */
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';

@@ -39,7 +39,7 @@ export default function VehiclesPage() {
   const sp = useSearchParams();
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const cf = useColumnFilters<any>();
-  // عرضُ عمود الإجراءات يُقاس لتقف اللوحةُ بجانبه — راجع components/vehicles/stickyLead.
+  // Actions column width is measured so the plate column can stick beside it; see components/vehicles/stickyLead.
   const lead = useLeadOffset();
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState(sp?.get('branch') || '');
@@ -66,7 +66,7 @@ export default function VehiclesPage() {
   useEffect(() => { load(); }, [load]);
   useSocket('vehicle:updated', useCallback(() => load(), [load]));
   useSocket('vehicle:authorization', useCallback(() => load(), [load]));
-  // المفوَّضُ واللوحةُ يُقرآن من سجلّ المركبات (registryIndex) — فتعديلُ السجلّ يصل هنا.
+  // Authorized person and plate are read from the vehicle registry (registryIndex), so registry edits propagate here.
   useSocket('vreg:updated', useCallback(() => load(), [load]));
 
   useEffect(() => {
@@ -109,10 +109,7 @@ export default function VehiclesPage() {
     { header: tx.department, key: 'department', width: 16 },
     { header: tx.project, key: 'project', width: 16 },
   ];
-  // ── قمعُ العمود ───────────────────────────────────────────────────────────
-  // القيمةُ تُقرأ بالتعبير نفسِه الذي تُرسم به الخليّة، فما يُفلتَر عليه هو ما
-  // يُقرأ. والخُطّاف قبل أيّ `return` مبكّر — خُطّافٌ بعد شرطٍ يخالف ترتيبَ
-  // الخطّافات فينهار المكوّن عند أوّل تغيّرٍ في الشرط.
+  // Column funnel. The value is read with the same expression the cell renders. The hook is placed before any early return: a hook after a condition breaks hook order and crashes the component when the condition changes.
   const GETTERS: Record<string, (v: any) => any> = {
     plate: (v) => v.plateNumber,
     type: (v) => vehicleTypeLabel(v.type, lang),
@@ -123,9 +120,7 @@ export default function VehiclesPage() {
   };
   const shownRows = cf.apply(vehicles as any[], GETTERS);
 
-  // البحث والنوع والحالة تُطبَّق على الخادم، ولوحةُ المؤشّرات تفتح هذه الصفحة
-  // مفلترةً مسبقًا بـ ?status=/?type=؛ فمَن دخل من كارتٍ وصدّر كان يأخذ شريحةً
-  // من الأسطول وهو يظنّه الأسطول كلَّه. «الكلّ» يعيد النداء بلا معاملات.
+  // Search, type and status apply on the server, and the KPI dashboard opens this page pre-filtered via ?status=/?type=; exporting from a card would export a slice believed to be the whole fleet. "All" repeats the call without params.
   const hasActiveFilters = !!(search.trim() || typeFilter || statusFilter);
   const fetchAllForExport = async () => {
     const d = await api.get<{ vehicles: Vehicle[] }>('/api/vehicles');
@@ -173,14 +168,14 @@ export default function VehiclesPage() {
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-slate-900 border-b border-slate-200 text-slate-300">
-              {/* الإجراءاتُ أوّلًا وثابتة — راجع components/vehicles/stickyLead. */}
+              {/* Actions first and sticky (components/vehicles/stickyLead). */}
               <th ref={lead.ref} className={`${LEAD} bg-slate-900 text-start font-semibold px-4 py-3`}>{tx.actions}</th>
-              {/* الترويسةُ تحمل قمعَ كلِّ عمود — راجع components/useColumnFilters. */}
+              {/* Header carries a per-column filter funnel (components/useColumnFilters). */}
               {([
                 ['plate', tx.plateNumber], ['type', tx.type], ['makeModel', `${tx.make}/${tx.model}`],
                 ['authorizedTo', tx.authorizedTo], ['department', tx.department], ['status', tx.status],
               ] as [string, string][]).map(([key, label], i) => (
-                // اللوحةُ تُثبَّت مع الإجراءات — هويّةُ الصفّ تبقى ظاهرة.
+                // The plate is pinned with the actions so the row identity stays visible.
                 <th key={key}
                   className={`text-start font-semibold px-4 py-3 ${i === 0 ? `${LEAD_2} bg-slate-900` : ''}`}
                   style={i === 0 ? { insetInlineStart: lead.offset } : undefined}>

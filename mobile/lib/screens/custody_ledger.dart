@@ -13,18 +13,12 @@ import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import '../ui/search_field.dart';
 
-/// دفترُ العهدة — الكاش، وكارت المشتريات، والورشة. شاشةٌ واحدةٌ لعهدتين:
-/// النقلُ الخفيف (`LtCustodyScreen`) والنقلُ الثقيل (`HtCustodyScreen`)، مطابقةٌ
-/// لـ`components/system/CustodyLedger` في الموقع. وما يختلف بينهما في `CustodyCfg`.
-///
-/// ثلاثةُ حساباتٍ في أعلى الشاشة، ولكلٍّ واردُه وصادرُه ورصيدُه. والقواعدُ في
-/// الخادم وتصل هنا في `rules`: الشاشةُ ترسم ما يُسمَح به ولا تعيد كتابتَه.
-/// والثقيلُ يزيد السيّارة: الواردُ أو الصادرُ يُنسب — اختيارًا — إلى شاحنةٍ من
-/// أسطول لوكيشن سوليوشن، تُختار من قائمةٍ فيها بحث.
+/// Custody ledger: cash, purchase card and workshop. One screen for two custodies: light transport (`LtCustodyScreen`) and heavy transport (`HtCustodyScreen`), matching `components/system/CustodyLedger` on the web. Differences live in `CustodyCfg`.
+/// Three accounts at the top, each with its incoming, outgoing and balance. Rules come from the server in `rules`; the screen draws what is allowed and does not reimplement it.
+/// Heavy transport adds the vehicle: an entry can optionally be tied to a truck from the fleet, picked from a searchable list.
 class CustodyCfg {
   final String api, event, titleAr, titleEn, repAr, repEn, missingAr, missingEn;
-  /// يطابق حارسَ المسار في الخادم (`CUSTODY_ROLES`). العهدةُ مالٌ لا تُفتَح بمنح
-  /// القسم، وتعديلُ قيدٍ مسجَّلٍ وحذفُه يقرّرهما الخادم (`canEdit` / `canDelete`).
+  /// Matches the server route guard (`CUSTODY_ROLES`). Custody is money, so it is not opened by section grant; editing and deleting a recorded entry is decided by the server (`canEdit` / `canDelete`).
   final Set<String> roles;
   final bool vehicles;
   const CustodyCfg({
@@ -88,7 +82,7 @@ String _ymd(DateTime d) => '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.
 List<Map<String, dynamic>> _attachments(Map? e) =>
     [for (final a in (e?['attachments'] as List? ?? const [])) Map<String, dynamic>.from(a as Map)];
 
-/// الملفُّ يُقدَّم على `/api/uploads/...` من الخادم نفسِه، فيُفتح بتطبيقٍ خارجيّ.
+/// The file is served from `/api/uploads/...` on the same server, so it opens in an external app.
 void _openFile(dynamic fileUrl) {
   final u = (fileUrl ?? '').toString();
   if (u.isEmpty) return;
@@ -110,7 +104,7 @@ class _CustodyLedgerScreenState extends State<CustodyLedgerScreen> {
   String _account = 'cash';
   String _direction = '';
   String _q = '';
-  // الخانةُ تُطوى مع التمرير فيُعاد بناؤها — النصُّ في متحكِّمٍ لا يضيع.
+  // The field collapses on scroll and is rebuilt; text kept in a controller is not lost.
   final _searchCtl = TextEditingController();
   DateTimeRange? _range;
   String? _error;
@@ -127,7 +121,7 @@ class _CustodyLedgerScreenState extends State<CustodyLedgerScreen> {
     if (cfg.vehicles) _loadCars();
   }
 
-  // سيّاراتُ الأسطول للقائمة — مرّةً واحدة.
+  // Fleet vehicles for the picker, fetched once.
   Future<void> _loadCars() async {
     try {
       final r = await Api.instance.get('${cfg.api}/vehicles');
@@ -144,7 +138,7 @@ class _CustodyLedgerScreenState extends State<CustodyLedgerScreen> {
   }
 
   Future<void> _load() async {
-    // آخرُ طلبٍ هو الذي يُعرَض: الفلترُ الأوسعُ أبطأ، وجوابُه يصل بعد الأضيق.
+    // Only the latest request is shown: the broader filter is slower and its reply arrives after the narrower one.
     final mine = ++_seq;
     final p = <String, String>{
       'account': _account,
@@ -194,7 +188,7 @@ class _CustodyLedgerScreenState extends State<CustodyLedgerScreen> {
     catch (err) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err.toString()))); }
   }
 
-  // وبـ`entry` يصير النموذجُ تعديلًا لقيدٍ مسجَّل — على حسابِ القيد لا الحسابِ المعروض.
+  // With `entry` the form edits a recorded entry, using the entry's account rather than the displayed one.
   Future<void> _open(String direction, {Map<String, dynamic>? entry}) async {
     final rules = Map<String, dynamic>.from(_d!['rules'] as Map);
     final saved = await showModalBottomSheet<bool>(
@@ -241,7 +235,7 @@ class _CustodyLedgerScreenState extends State<CustodyLedgerScreen> {
     final sources = List.from((rules['inSources'] as Map)[_account] ?? const []);
     final toCash = List.from(rules['toCash'] ?? const []).contains(_account);
     return ListView(padding: const EdgeInsets.all(14), keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag, children: [
-      // ── الحساباتُ الثلاثة بالعرض ──────────────────────────────────────────
+      // The three accounts, displayed.
       Row(children: [
         for (final a in _accounts) ...[
           Expanded(child: _accountCard(a, Map<String, dynamic>.from(balances[a.$1] as Map))),
@@ -267,7 +261,7 @@ class _CustodyLedgerScreenState extends State<CustodyLedgerScreen> {
         ]),
       ],
       const SizedBox(height: 12),
-      // ── الفلاتر ───────────────────────────────────────────────────────────
+      // Filters.
       SearchField(
         controller: _searchCtl, dense: true,
         onChanged: (v) { _q = v; _debounce?.cancel(); _debounce = Timer(const Duration(milliseconds: 350), _load); },
@@ -333,7 +327,7 @@ class _CustodyLedgerScreenState extends State<CustodyLedgerScreen> {
                 const SizedBox(width: 8),
                 Text('${isIn ? '+' : '−'}${_money(e['amount'])}', textDirection: TextDirection.ltr, style: TextStyle(fontWeight: FontWeight.w900, fontSize: 13.5, color: color)),
               ]),
-              // المرفقاتُ وأزرارُ القيد في سطرٍ تحته: لا تُضيِّق النصَّ على الشاشات الصغيرة.
+              // Attachments and entry buttons go on a line below so they do not squeeze the text on small screens.
               if (files.isNotEmpty || (canEdit && e['source'] != 'opening') || canDelete)
                 Padding(
                   padding: const EdgeInsetsDirectional.only(start: 43, top: 4),
@@ -384,7 +378,7 @@ class _CustodyLedgerScreenState extends State<CustodyLedgerScreen> {
   }
 }
 
-/// مرفقٌ يُضغَط فيُفتَح — وبـ`onRemove` تظهر علامةُ الإزالة (في النموذج وحدَه).
+/// Tappable attachment that opens; `onRemove` shows the remove mark (in the form only).
 class _FileChip extends StatelessWidget {
   final String label;
   final VoidCallback? onTap;
@@ -417,10 +411,8 @@ class _FileChip extends StatelessWidget {
   }
 }
 
-/// نموذجُ القيد: واردٌ (من أين) أو صادرٌ (إلى مَن) — بأقلّ ما يُكتب.
-///
-/// وبـ`entry` يصير تعديلًا لقيدٍ مسجَّل: يُصحَّح المبلغُ واليومُ والبيانُ والمندوبُ
-/// والمرفقات. ونوعُ القيد لا يتغيّر — ما كُتب في غير موضعه يُحذَف ويُكتب من جديد.
+/// Entry form: incoming (from where) or outgoing (to whom), with minimal typing.
+/// With `entry` it edits a recorded entry: amount, day, description, rep and attachments can be corrected. The entry type cannot change; a wrongly placed entry is deleted and rewritten.
 class _EntrySheet extends StatefulWidget {
   final CustodyCfg cfg;
   final List<Map<String, dynamic>> cars;
@@ -443,7 +435,7 @@ class _EntrySheetState extends State<_EntrySheet> {
   late String _target = (widget.entry?['target'] ?? 'rep').toString();
   late String _vehicle = widget.entry?['vehicleUnitId'] == null ? '' : widget.entry!['vehicleUnitId'].toString();
   CustodyCfg get cfg => widget.cfg;
-  // السيّارةُ على كلّ واردٍ وصادر — إلّا التحويلَ بين حسابين: مالٌ انتقل لا سيّارةَ له.
+  // Vehicle on every incoming and outgoing entry, except a transfer between two accounts: moved money has no vehicle.
   bool get _transfer => _isIn ? (_source == 'card' || _source == 'workshop') : _target == 'cash';
   bool get _withCar => cfg.vehicles && !_transfer && widget.entry?['transferId'] == null;
   Map<String, dynamic>? _rep;
@@ -456,7 +448,7 @@ class _EntrySheetState extends State<_EntrySheet> {
 
   bool get _isIn => widget.direction == 'in';
   bool get _editing => widget.entry != null;
-  // المندوبُ يُسأل عنه في الصادر إلى مندوب، وفي واردِ الكاش من مندوب.
+  // The rep is asked for on outgoing-to-rep and on incoming cash from a rep.
   bool get _needsRep => _isIn ? _source == 'rep' : _target == 'rep';
   String? get _entryDate {
     final s = (widget.entry?['date'] ?? '').toString();
@@ -466,7 +458,7 @@ class _EntrySheetState extends State<_EntrySheet> {
   @override
   void initState() {
     super.initState();
-    // قيدُ مندوبٍ يُفتَح للتعديل: تُجلَب بياناتُه برقمه المسجَّل كما لو كُتب الآن.
+    // Opening a rep entry for edit: rep data is fetched by the stored ID number as if just typed.
     if (_editing && _needsRep && _id.text.trim().length >= 8) {
       _repState = 'loading';
       _fetchRep(_id.text.trim(), ++_seq, Duration.zero);
@@ -476,7 +468,7 @@ class _EntrySheetState extends State<_EntrySheet> {
   @override
   void dispose() { _timer?.cancel(); _amount.dispose(); _id.dispose(); _detail.dispose(); super.dispose(); }
 
-  // رقمُ الإقامة يُكتب فتأتي بياناتُ المندوب من الموارد البشريّة — بلا زرّ بحث.
+  // Typing the residency number fetches the rep data from HR, with no search button.
   void _lookup(String raw) {
     final id = raw.replaceAll(RegExp(r'\s+'), '');
     _timer?.cancel();
@@ -497,7 +489,7 @@ class _EntrySheetState extends State<_EntrySheet> {
     });
   }
 
-  // تغييرُ النوع يُسقط المندوبَ المعروض: رقمُه يُعاد البحثُ به إن بقي مطلوبًا.
+  // Changing the type drops the displayed rep; the number is looked up again if still required.
   void _retype(VoidCallback change) {
     setState(change);
     if (_needsRep && _rep == null && _id.text.trim().isNotEmpty) _lookup(_id.text);
@@ -518,7 +510,7 @@ class _EntrySheetState extends State<_EntrySheet> {
     if (_needsRep && _rep == null) return _say(tr('اكتب رقمَ إقامة ${cfg.repAr}', 'Enter the ${cfg.repEn.toLowerCase()}’s ID number'));
     if (!_isIn && _target == 'company' && detail.isEmpty) return _say(tr('اكتب البيان: ما الصرف؟', 'Enter what it was spent on'));
     setState(() => _saving = true);
-    // الاسمُ بلا امتداده عنوانًا — كما في الموقع.
+    // Name without its extension as the title, as on the web.
     final sent = [
       for (final f in _files) {'fileName': f.fileName, 'title': f.fileName.replaceFirst(RegExp(r'\.[^.]+$'), ''), 'dataUrl': f.dataUrl},
     ];
@@ -557,7 +549,7 @@ class _EntrySheetState extends State<_EntrySheet> {
     final transfer = _isIn ? (_source == 'card' || _source == 'workshop') : _target == 'cash';
     final needDetail = !_isIn && _target == 'company';
     final kept = _attachments(widget.entry).where((a) => !_removed.contains(a['_id'].toString())).toList();
-    // المرفقاتُ للصادر (فاتورة، إيصال، صورة تحويل) — ولواردِ المندوب كذلك.
+    // Attachments for outgoing (invoice, receipt, transfer image), and for incoming from a rep as well.
     final canAttach = !_isIn || _source == 'rep' || _attachments(widget.entry).isNotEmpty;
     return SafeArea(
       child: SingleChildScrollView(
@@ -685,8 +677,7 @@ String _carLabelOf(List<Map<String, dynamic>> cars, String unitId, {String fallb
   return fallback.isNotEmpty ? fallback : '#$unitId';
 }
 
-/// قائمةُ سيّارات الأسطول وفيها بحث — باللوحة أو الاسم أو السائق. تردّ رقمَ الوحدة،
-/// أو '' لـ«بدون سيارة / الكلّ»، أو null إن أُغلقت بلا اختيار.
+/// Searchable fleet vehicle list, by plate, name or driver. Returns the unit number, '' for "no vehicle / all", or null if closed without a choice.
 Future<String?> pickCustodyVehicle(BuildContext context, List<Map<String, dynamic>> cars, {required String current, required String noneLabel}) {
   return showModalBottomSheet<String>(
     context: context,
@@ -707,7 +698,7 @@ class _VehiclePicker extends StatefulWidget {
 
 class _VehiclePickerState extends State<_VehiclePicker> {
   String _q = '';
-  // الطيُّ العربيّ كما في الموقع: «احمد» تجد «أحمد».
+  // Arabic letter folding as on the web, so a search without hamza still finds the name with it.
   static String _fold(String s) => s.toLowerCase()
       .replaceAll(RegExp('[أإآ]'), 'ا').replaceAll('ى', 'ي').replaceAll('ة', 'ه').replaceAll('ؤ', 'و').replaceAll('ئ', 'ي')
       .replaceAll(RegExp(r'\s+'), ' ').trim();

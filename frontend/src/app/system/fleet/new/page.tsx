@@ -1,8 +1,5 @@
 'use client';
-// إنشاء حمولة — booking one of OUR trucks. Picking the vehicle answers most of
-// the form on the spot: its seated drivers (with their status), trailer type,
-// GPS type, plate. Picking a driver seated on another truck moves him here —
-// the swap the operations team asked to do WITHOUT visiting the drivers page.
+// Create load: booking one of OUR trucks. Picking the vehicle answers most of the form on the spot: its seated drivers (with status), trailer type, GPS type and plate. Picking a driver seated on another truck moves him here, the swap operations asked to do without visiting the drivers page.
 import { useState, useEffect, useMemo, useCallback, useRef, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
@@ -48,7 +45,7 @@ function CreateFleetShipmentInner() {
   const [branches, setBranches] = useState<{ _id: string; name: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  // اليوم جمعة؟ لإظهار زر بونص الجمعة تلقائيًا وقت الإنشاء.
+  // Is today Friday? Shows the Friday bonus button automatically at creation time.
   const isFriday = new Date().getDay() === 5;
 
   const [customerId, setCustomerId] = useState('');
@@ -59,10 +56,8 @@ function CreateFleetShipmentInner() {
   const [driverId, setDriverId] = useState('');
   const [secondDriverId, setSecondDriverId] = useState('');
   /**
-   * ── شاحنةٌ فات موعدُ صيانتها: مانعٌ لا شارة ───────────────────────────────
-   * الخادمُ يردّ ٤٠٩ بما فات واسمِه. وهذا ما يُعرَض: ما الصيانةُ، وكم تجاوزت،
-   * وزرٌّ يرفع الطلبَ إلى مدير الصيانة في «طلبات الأسطول». ولا يُحمَّل إلّا بعد
-   * موافقةٍ — تُستهلَك بهذه الحمولة وحدَها.
+   * A truck with overdue maintenance: a blocker, not a badge.
+   * The server replies 409 with what is overdue and its name. The screen shows which maintenance, how far overdue, and a button that raises the request to the maintenance manager in fleet requests. Loading proceeds only after approval, consumed by this load alone.
    */
   const [form, setForm] = useState<Record<string, any>>({ status: 'requesting' });
 
@@ -107,14 +102,12 @@ function CreateFleetShipmentInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editId]);
 
-  // العملاء يتحدّثون لحظيًا: أي عميل جديد (من هنا أو من صفحة العملاء) يظهر فورًا
-  // في القائمة المنسدلة بلا إعادة تحميل.
+  // Customers update live: a new customer (from here or the customers page) appears in the dropdown immediately without reload.
   const reloadCustomers = useCallback(async () => {
     try { const c = await api.get<{ customers: FleetCustomer[] }>('/api/fleet/customers'); setCustomers(c.customers || []); } catch { /* noop */ }
   }, []);
   useSocket('fleet:customers', reloadCustomers);
-  // والشاحنةُ والسائق كذلك: ماركتُها ولونُها من سجلّ المركبات، واسمُه وإقامتُه
-  // من الموارد البشريّة — وهي ما تُكتب في البوليصة، فتُقرأ كما هي الآن.
+  // Same for the truck and driver: make and color come from the vehicle register, name and residency from HR; they are what is written on the waybill, so they are read as they are now.
   const reloadCrew = useCallback(async () => {
     try {
       const [v, d] = await Promise.all([
@@ -133,11 +126,8 @@ function CreateFleetShipmentInner() {
   const set = (k: string, v: any) => setForm((f) => ({ ...f, [k]: v }));
   const vehicle = useMemo(() => vehicles.find((v) => v._id === vehicleId) || null, [vehicles, vehicleId]);
   const customer = useMemo(() => customers.find((c) => c._id === customerId) || null, [customers, customerId]);
-  // اختيار عميلٍ يملأ ما اتُّفق عليه معه: فئتَه ونوعَ الدفع. وكلاهما يبقى
-  // قابلًا للتعديل هنا — الاتفاق افتراضٌ لحمولةٍ جديدة لا قيدٌ عليها، فالعميل
-  // الضريبيّ قد يدفع حمولةً واحدة كاشًا.
-  // وفي التعديل: عميلُ الحمولة المحمَّل ليس «اختيارًا» — نوعُ دفعها وفئتُها كما
-  // حُفظا (كان يُعاد إلى افتراض العميل فيُحفظ كاشٌ ضريبيًّا بلا أن يلمسه أحد).
+  // Choosing a customer fills what was agreed with them: category and payment type. Both stay editable, since the agreement is a default for a new load, not a constraint (a tax customer may pay one load in cash).
+  // When editing, the loaded shipment's customer is not a 'selection': its payment type and category stay as saved (they used to reset to the customer default, saving a tax customer's load as cash without anyone touching it).
   useEffect(() => {
     if (!customer) return;
     if (loadedCustomer.current && loadedCustomer.current === customerId) return;
@@ -153,12 +143,7 @@ function CreateFleetShipmentInner() {
 
   /**
    * Picking the truck seats its own drivers into the two slots automatically.
-   *
-   * ── والرتبةُ تأتي من سجلّ الشاحنة لا من ترتيب الوصول ─────────────────────
-   * `seatsOf` تقرأ المقعدَ المكتوب (الأوّل/الثاني)، وكانت الخانتان تُملآن
-   * بأوّلِ مَن يصل من القاعدة — فتُطبَع البوليصةُ أحيانًا باسم السائق الثاني
-   * في موضع الأساسيّ. وتغييرُ الخانة هنا يُعيد ترتيبَ مقاعد الشاحنة عند
-   * الحفظ: مَن اختير أساسيًّا للحمولة هو سائقُها الأوّل.
+   * Rank comes from the truck record, not arrival order. `seatsOf` reads the written seat (first/second); the slots used to be filled by whoever arrived first from the base, so a waybill could print the second driver in the primary position. Changing a slot here reorders the truck's seats on save: whoever is chosen primary for the load is its first driver.
    */
   const applyVehicle = (id: string) => {
     setVehicleId(id);
@@ -270,7 +255,7 @@ function CreateFleetShipmentInner() {
       </PageHeader>
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-5 items-start">
-        {/* العميل */}
+        {/* Customer */}
         {card(ar ? 'العميل' : 'Customer', UserIcon, (
           <div className="space-y-3">
             {!newCustomerOpen ? (
@@ -322,7 +307,7 @@ function CreateFleetShipmentInner() {
           </div>
         ))}
 
-        {/* السيارة — the answer machine */}
+        {/* Vehicle: the answer machine */}
         {card(ar ? 'السيارة' : 'Vehicle', Truck, (
           <div className="space-y-3">
             <SearchableSelect value={vehicleId} onChange={applyVehicle} searchAfter={0}
@@ -332,8 +317,7 @@ function CreateFleetShipmentInner() {
               options={vehicles.map((v) => ({
                 value: v._id,
                 label: v.plate,
-                // شارة ملونة واضحة: أخضر متاحة، كهرماني عليها حمولة، أزرق تفريغ.
-                // نصها يُبحث فيه أيضًا — اكتب «جدة» تجد سيارات جدة فورًا.
+                // Clear colored badge: green available, amber has a load, blue unloading. Its text is searchable too: type a city to find that city's vehicles at once.
                 badge: vehicleAvailabilityText(v, lang as Lang),
                 tone: (v.trip ? (v.atDestination ? 'info' : 'busy') : 'ok') as 'ok' | 'busy' | 'info',
                 hint: [
@@ -370,7 +354,7 @@ function CreateFleetShipmentInner() {
                 </div>
               </div>
             )}
-            {/* تنبيه: السيارة المختارة عليها حمولة نشطة بالفعل */}
+            {/* Warning: the selected vehicle already has an active load */}
             {vehicle?.trip && (
               <div className={`rounded-lg border px-3 py-2.5 text-xs font-medium ${vehicle.atDestination ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-amber-200 bg-amber-50 text-amber-800'}`}>
                 {vehicle.atDestination
@@ -386,7 +370,7 @@ function CreateFleetShipmentInner() {
         ))}
       </div>
 
-      {/* السائقون */}
+      {/* Drivers */}
       {card(ar ? 'السائقون' : 'Drivers', UsersIcon, (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {([
@@ -422,7 +406,7 @@ function CreateFleetShipmentInner() {
         </div>
       ))}
 
-      {/* المسار والتوقيت */}
+      {/* Route and timing */}
       {card(ar ? 'المسار والتوقيت' : 'Route & timing', MapPin, (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <div>
@@ -444,7 +428,7 @@ function CreateFleetShipmentInner() {
         </div>
       ))}
 
-      {/* الحالة والمشرف */}
+      {/* Status and supervisor */}
       {card(ar ? 'الحالة والمشرف' : 'Status & supervisor', ShieldCheck, (
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div>
@@ -455,8 +439,7 @@ function CreateFleetShipmentInner() {
           </div>
           <div>
             <label className={labelCls}>{ar ? 'المشرف' : 'Supervisor'}</label>
-            {/* مشرف السيارة المعيَّن يتولّى الحمولة تلقائيًا؛ وإن لم يكن لها
-                مشرف بعد تُختم باسم منشئها. يُعرض هنا كي لا يكون مفاجأة. */}
+            {/* The vehicle's assigned supervisor takes the load automatically; if it has none yet, the load is stamped with its creator. Shown here so it is not a surprise. */}
             <input
               value={vehicle?.supervisorName || `${user?.firstName || ''} ${user?.lastName || ''}`.trim()}
               readOnly disabled className={inputCls + ' opacity-70'} />
@@ -484,7 +467,7 @@ function CreateFleetShipmentInner() {
         </div>
       ))}
 
-      {/* بيانات الحمولة والتسعير */}
+      {/* Load data and pricing */}
       {card(ar ? 'بيانات الحمولة والتسعير' : 'Load & pricing', UsersIcon, (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           <div>
@@ -523,7 +506,7 @@ function CreateFleetShipmentInner() {
             <input type="number" min={0} value={form.driverExpense ?? ''} onChange={(e) => set('driverExpense', e.target.value)}
               className={inputCls} placeholder="0" />
           </div>
-          {/* بونص الجمعة — يظهر بارزًا يوم الجمعة؛ زر واحد يزوّد المصروف تلقائيًا على الخادم. */}
+          {/* Friday bonus: prominent on Friday; one button adds the expense automatically on the server. */}
           <div className="sm:col-span-2 flex items-end">
             <button type="button" onClick={() => set('fridayBonus', !form.fridayBonus)}
               className={`w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg text-sm font-semibold border transition-colors ${
@@ -556,14 +539,8 @@ function CreateFleetShipmentInner() {
         </div>
       </div>
 
-      {/* ── لوحةُ المنع: ما فات، وزرٌّ يرفع الطلب ───────────────────────────────
-          لا تُحمَّل شاحنةٌ فات موعدُ صيانتها بلا إذن. والمنعُ وحدَه لا يكفي:
-          الحمولةُ قد تكون ساعتين إلى جدّة، ومديرُ الصيانة قد يقول «امشِ بها
-          وأحضِرها الخميس». فهذا هو ذلك الحوارُ مكتوبًا. */}
-      {/* ── ولا لوحةَ «صيانةٌ متأخّرة — التحميل يحتاج موافقة» ────────────────
-          كانت شاحنةٌ فات موعدُ صيانتها تُردّ بـ409 فتُعرَض هذه اللوحةُ ويُرفَع
-          الطلبُ إلى مدير الصيانة. رُفع المنعُ بطلب المستخدم، فلم يبقَ ما
-          يُعرَض: التحميلُ يمضي، والشارةُ على بطاقة الشاحنة تبقى تُعلِم. */}
+      {/* Block panel: what is overdue, and a button that raises the request. A truck with overdue maintenance is not loaded without permission. Blocking alone is not enough: the load may be two hours to Jeddah and the maintenance manager may say go and bring it Thursday. This is that conversation, written. */}
+      {/* The 'maintenance overdue, loading needs approval' panel is gone. A truck with overdue maintenance used to get a 409, showing this panel and raising a request to the maintenance manager. The block was lifted on request, so nothing is shown: loading proceeds and the badge on the truck card still warns. */}
     </div>
   );
 }

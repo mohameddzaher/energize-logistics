@@ -1,11 +1,7 @@
 'use client';
 /**
- * الأرشيف — مَن انتهت خدمتُه وخرج من النظام، والفريلانسرُ الذي انتهت خدمتُه.
- *
- * المؤرشَفُ لا يظهر في أيّ شاشةٍ أخرى ولا رقمٍ — هنا وحدَه (وكارتُه في لوحة
- * الموارد البشريّة). والأرشفةُ لا تمحو: ملفُّه كاملٌ يُفتَح من هنا. والترتيب:
- * إنهاءُ الخدمة ← «خروج من النظام» (من ملفّ الموظّف) ← الأرشيف. راجع
- * backend/src/controllers/hrArchiveController.
+ * Archive: staff whose service ended and who left the system, plus freelancers whose service ended.
+ * Archived staff appear on no other screen or figure, only here (and its card on the HR dashboard). Archiving erases nothing: the full file opens from here. Order: end of service, then 'leave system' (from the employee file), then archive. See backend/src/controllers/hrArchiveController.
  */
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';

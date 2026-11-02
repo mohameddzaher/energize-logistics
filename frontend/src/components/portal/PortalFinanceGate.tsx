@@ -1,9 +1,6 @@
 'use client';
-// بوابة العميل — بوّابةُ صفحات الفواتير والمدفوعات.
-//
-// البوابةُ بلا أسعار للعميل (٢٠٢٦/١٠/٢٤): الخادم لا يعرض خدمة `finance` إلا لمن
-// يحقّ له رؤيتها. فمن فتح رابط الفواتير أو المدفوعات مباشرةً بلا هذه الخدمة يرى
-// «غير متاح» — والصفحة نفسها لا تُركَّب أصلًا، فلا يُطلب من الخادم أيّ مبلغ.
+// Customer portal gate for the invoices and payments pages.
+// The portal shows no prices to the customer: the server exposes the `finance` service only to those entitled to it. Opening the invoices or payments link directly without it shows 'unavailable', and the page is not mounted at all, so no amount is requested.
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import api from '@/lib/api';

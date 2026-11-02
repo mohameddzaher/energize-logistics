@@ -93,8 +93,7 @@ export const PRIORITY_STYLE: Record<string, { bg: string; text: string; en: stri
 export const vendorName = (v: any) => (!v ? '—' : typeof v === 'string' ? v : v.name || v.companyName || v.vendorName || '—');
 export const userName = (u: any) => (!u ? '—' : typeof u === 'string' ? u : `${u.firstName || ''} ${u.lastName || ''}`.trim() || '—');
 export const money = (v?: number | null, currency = 'SAR') => `${(Number(v) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currency}`;
-// «اليوم» يوم الرياض لا يوم غرينتش: `toISOString()` كانت تعطي أمسِ بين منتصف
-// الليل والثالثة فجرًا. المرجعُ واحدٌ الآن في `lib/companyDay`.
+// Today means the Riyadh day, not the Greenwich day: toISOString() gave yesterday between midnight and 03:00. The single reference is now lib/companyDay.
 export { today } from './companyDay';
 export const fmtDate = (v?: string | null) => (v ? new Date(v).toLocaleDateString('en-GB') : '—');
 export { pick };

@@ -1,8 +1,5 @@
 'use client';
-/**
- * عُدّةُ «المحتوى الإعلاني» — الأنواعُ والعارضُ والمصغّراتُ والكاميرا الحيّة،
- * تشترك فيها القائمةُ وصفحةُ الطلب (app/system/b2c/mediago-ads).
- */
+/** Toolkit for the ads content feature: types, viewer, thumbnails and live camera, shared by the list and the request page (app/system/b2c/mediago-ads). */
 import { useEffect, useRef, useState } from 'react';
 import { X, ChevronLeft, ChevronRight, Play, Trash2, Camera, Check, Circle, Square } from 'lucide-react';
 
@@ -88,11 +85,7 @@ export function Thumbs({ files, onOpen, onRemove }: { files: AdFile[]; onOpen: (
   );
 }
 
-/**
- * ── الكاميرا الحيّة (٢٠٢٦/١٠/٢٢) ─────────────────────────────────────────────
- * تُصوَّر الصورُ أو الفيديو من الجهاز نفسِه بلا رفعِ ملفّ: صورةٌ بعد صورة، أو
- * فيديو يتوقّف وحدَه عند ١٥ ثانية. ويُردّ ما صُوِّر بصيغة الرفع نفسِها.
- */
+/** Live camera: photos or video from the device itself without file upload; photo after photo, or video that stops automatically at 15 seconds. The result is returned in the same upload format. */
 export type Shot = { dataUrl: string; fileName: string; durationSec?: number };
 export function LiveCamera({ mode, ar, onDone, onClose }: { mode: 'photo' | 'video'; ar: boolean; onDone: (shots: Shot[]) => void; onClose: () => void }) {
   const t = (a: string, e: string) => (ar ? a : e);
@@ -106,7 +99,7 @@ export function LiveCamera({ mode, ar, onDone, onClose }: { mode: 'photo' | 'vid
   const [recording, setRecording] = useState(false);
   const [secs, setSecs] = useState(0);
   const [facing, setFacing] = useState<'environment' | 'user'>('environment');
-  // الأزرارُ مغلقةٌ حتى تعمل الكاميرا — ضغطةٌ قبلها كانت تضيع بلا أثر.
+  // Buttons stay disabled until the camera is running; a press before then was lost.
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
@@ -138,13 +131,13 @@ export function LiveCamera({ mode, ar, onDone, onClose }: { mode: 'photo' | 'vid
   const start = () => {
     if (!stream.current) return;
     const type = ['video/mp4', 'video/webm;codecs=vp9', 'video/webm'].find((x) => (window as any).MediaRecorder?.isTypeSupported?.(x)) || '';
-    // ٢٫٥ ميغابت: ١٥ ثانيةً ≈ ٥ ميغا — تحت حدّ الخادم بكثير.
+    // 2.5 Mbps: 15 seconds is about 5 MB, well under the server limit.
     const r = new MediaRecorder(stream.current, { ...(type ? { mimeType: type } : {}), videoBitsPerSecond: 2_500_000 });
     chunks.current = [];
     r.ondataavailable = (e) => { if (e.data.size) chunks.current.push(e.data); };
     r.onstop = () => {
       const dur = Math.min(MAX_VIDEO_SEC, (Date.now() - startedAt.current) / 1000);
-      // الخادمُ يقرأ «data:video/webm;base64» — فلا يُترَك «;codecs=…» في النوع.
+      // The server reads data:video/webm;base64, so the ;codecs=... suffix is stripped from the type.
       const base = (r.mimeType || 'video/webm').split(';')[0];
       const blob = new Blob(chunks.current, { type: base });
       const fr = new FileReader();

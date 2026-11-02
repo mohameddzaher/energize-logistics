@@ -262,9 +262,7 @@ export default function NewOperationsPage() {
     XLSX.writeFile(wb, 'operations-import-template.xlsx');
   };
 
-  // الصفوف المعروضة هنا نتيجةُ مطابقةٍ للأعمدة العربية ثم تعديلٍ يدويّ، ولا
-  // تُحفَظ في أيّ مكان قبل الضغط على «استيراد» — فالتصدير هو السبيل الوحيد إلى
-  // مراجعتها أو حفظ نسخةٍ منها قبل رفعها.
+  // Rows shown here are the result of Arabic-column matching plus manual edits and are not saved anywhere before Import; export is the only way to review or keep a copy.
   const exportCols = (defs: FieldDef[]): ExportColumn[] =>
     defs.map((f) => ({ header: ar ? f.label : f.labelEn, key: f.key, width: 18 }));
 
@@ -296,8 +294,7 @@ export default function NewOperationsPage() {
                 { key: 'preview', label: ar ? 'أعمدة المعاينة' : 'Preview columns', sheets: [{ name: ar ? 'المعاينة' : 'Preview', rows: importRows, columns: exportCols(PREVIEW_COLUMNS) }] },
                 {
                   key: 'all',
-                  // المعاينة تُظهر ثمانية أعمدة فقط بينما الاستيراد يرفع كلَّ
-                  // الحقول المُطابَقة، فالتصدير المختصر وحده يُخفي ما سيُرفع.
+                  // The preview shows only eight columns while import uploads every matched field, so a short export alone hides part of what will be uploaded.
                   label: ar ? `كل الحقول (${ALL_FIELDS.length} عموداً)` : `All fields (${ALL_FIELDS.length} columns)`,
                   sheets: [{ name: ar ? 'كل الحقول' : 'All fields', rows: importRows, columns: exportCols(ALL_FIELDS) }],
                 },

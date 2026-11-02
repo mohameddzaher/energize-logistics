@@ -12,8 +12,7 @@ import '../ui/file_upload.dart';
 import '../ui/leave_chain.dart';
 import '../ui/export_sheet.dart';
 
-/// إجازاتي — the self-service leave page: balance cards, request history and
-/// a new-request sheet. Same endpoints the web uses (/api/hr/me/leaves).
+/// My leaves: the self-service leave page with balance cards, request history and a new-request sheet. Same endpoints as the web (/api/hr/me/leaves).
 class MyLeavesScreen extends StatefulWidget {
   const MyLeavesScreen({super.key});
   @override
@@ -26,7 +25,7 @@ class _MyLeavesScreenState extends State<MyLeavesScreen> {
   Map<String, dynamic>? _balance;
   bool _loading = true;
   String? _error;
-  // ── «طلبات فريقي» لمن يدير غيرَه — تبويبٌ كالموقع ─────────────────────────
+  // "My team's requests" tab for managers, as on the web
   bool _hasTeam = false;
   List<Map<String, dynamic>> _team = [];
   int _tab = 0;
@@ -82,7 +81,7 @@ class _MyLeavesScreenState extends State<MyLeavesScreen> {
     );
   }
 
-  /// ما دام معلَّقًا ولم يمسَّه قرارٌ فهو ملكُ صاحبه: يُعدَّل أو يُحذف (كالموقع).
+  /// While pending and untouched by any decision, the request belongs to its owner: editable or deletable (as on the web).
   bool _editable(Map<String, dynamic> l) =>
       ['pending_manager', 'pending_hr'].contains(l['status'])
       && !(l['managerDecision'] is Map && l['managerDecision']['at'] != null)
@@ -109,7 +108,7 @@ class _MyLeavesScreenState extends State<MyLeavesScreen> {
   String _statusName(dynamic s) { final st = leaveStatusOf(s); return tr(st.$1, st.$2); }
   String _userName(dynamic u) => u is Map ? '${u['firstName'] ?? ''} ${u['lastName'] ?? ''}'.trim() : '';
 
-  // أعمدةُ تصدير الموقع: النوع · البداية والنهاية بتقويميهما · الأيّام · الحالة.
+  // Web export columns: type, start and end in both calendars, days, status.
   List<ExportCol> _cols({bool team = false}) => [
         if (team) ExportCol('الموظف', 'Employee', (r) => _userName(r['requester'])),
         ExportCol('النوع', 'Type', (r) => _typeName(r['leaveType'])),
@@ -121,7 +120,7 @@ class _MyLeavesScreenState extends State<MyLeavesScreen> {
         ExportCol('الحالة', 'Status', (r) => _statusName(r['status'])),
       ];
 
-  /// مراجعةُ طلبِ مرؤوسٍ عند محطّة المدير — PATCH decision {decision, note}.
+  /// Review a subordinate's request at the manager's stage: PATCH decision {decision, note}.
   Future<void> _review(Map<String, dynamic> l) async {
     final note = TextEditingController();
     final d = await showDialog<String>(
@@ -166,10 +165,8 @@ class _MyLeavesScreenState extends State<MyLeavesScreen> {
     ]);
   }
 
-  /// الردُّ على استفسارِ محطّةٍ — نصٌّ ومرفقٌ واحد.
-  ///
-  /// وبإرساله تبدأ السلسلةُ من المدير المباشر من جديد وتُمحى الموافقاتُ
-  /// السابقة: الطلبُ بعد الردّ لم يعد الطلبَ الذي وافقوا عليه.
+  /// Reply to a stage's inquiry: text and one attachment.
+  /// Sending restarts the chain from the direct manager and clears earlier approvals, since the request after the reply is no longer the one they approved.
   Future<void> _reply(Map<String, dynamic> l) async {
     final text = TextEditingController();
     PickedFile? file;
@@ -335,8 +332,7 @@ class _MyLeavesScreenState extends State<MyLeavesScreen> {
                                       padding: const EdgeInsets.only(top: 2),
                                       child: Text(l['reason'], style: const TextStyle(fontSize: 12, color: T.inkFaint)),
                                     ),
-                                  // مرفقاتُ الطلب وقراريه — تُحمَّل في أيّ وقت،
-                                  // فما أُرفق مرّةً لا يُطلب مرّةً أخرى.
+                                  // Request attachments and its two decisions; loadable any time, so what was attached once is not requested again.
                                   ...[
                                     ...List<Map<String, dynamic>>.from((l['attachments'] as List? ?? const []).map((e) => Map<String, dynamic>.from(e as Map))),
                                     ...List<Map<String, dynamic>>.from(((l['managerDecision'] is Map ? l['managerDecision']['attachments'] : null) as List? ?? const []).map((e) => Map<String, dynamic>.from(e as Map))),
@@ -364,9 +360,7 @@ class _MyLeavesScreenState extends State<MyLeavesScreen> {
                                   LeaveChainBar(leave: l),
                                   const SizedBox(height: 8),
                                   LeaveThread(leave: l),
-                                  // ── محطّةٌ سألت بدل أن ترفض ────────────────
-                                  // الطلبُ عاد إلى صاحبه ليردّ أو يرفع سندًا،
-                                  // وبردّه يبدأ من المدير المباشر من جديد.
+                                  // A stage asked instead of rejecting. The request returns to its owner to reply or add proof, and the reply restarts from the direct manager.
                                   if (l['status'] == 'info_requested')
                                     SizedBox(
                                       width: double.infinity,
@@ -448,7 +442,7 @@ class _MyLeavesScreenState extends State<MyLeavesScreen> {
 class _NewLeaveSheet extends StatefulWidget {
   final List<Map<String, dynamic>> types;
   final Future<void> Function() onDone;
-  /// طلبٌ قائمٌ يُعدَّل (PUT /api/hr/me/leaves/:id) — وإلّا طلبٌ جديد.
+  /// Existing request being edited (PUT /api/hr/me/leaves/:id); otherwise a new request.
   final Map<String, dynamic>? editing;
   const _NewLeaveSheet({required this.types, required this.onDone, this.editing});
   @override
@@ -461,11 +455,9 @@ class _NewLeaveSheetState extends State<_NewLeaveSheet> {
   DateTime? _end;
   final _reason = TextEditingController();
   bool _busy = false;
-  // ── سندُ الطلب ──────────────────────────────────────────────────────────
-  // الإجازة المرضيّة تُطلب بتقرير. كان يُرسَل على الواتساب فيضيع، ثمّ يُسأل
-  // عنه بعد شهرين. يعيش مع الطلب نفسِه ويُقرأ من ملفّ الموظّف بعدها.
+  // Request proof. A sick leave needs a report; it used to be sent over WhatsApp and got lost, then asked for two months later. It now lives with the request and is read from the employee file afterwards.
   final List<PickedFile> _files = [];
-  // مرفقاتُ الطلب المحفوظة: ما يُزال منها يُرسَل في removeAttachments (كالموقع).
+  // Saved request attachments: removed ones are sent in removeAttachments (as on the web).
   List<Map<String, dynamic>> _kept = [];
 
   @override
@@ -481,10 +473,7 @@ class _NewLeaveSheetState extends State<_NewLeaveSheet> {
     }
   }
 
-  /// سياسة الإخطار المسبق — planned leave must be requested a month ahead; the
-  /// kinds you cannot plan (مرضية/طارئة) carry requiresAdvanceNotice:false and
-  /// may start today. The backend enforces this; the sheet just refuses to let
-  /// the employee pick a date that would be rejected.
+  /// Advance-notice policy: planned leave must be requested a month ahead; kinds you cannot plan (sick/emergency) carry requiresAdvanceNotice:false and may start today. The backend enforces this; the sheet just refuses dates that would be rejected.
   Map<String, dynamic>? get _chosen {
     for (final t in widget.types) {
       if (t['_id'].toString() == _type) return t;

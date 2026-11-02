@@ -31,21 +31,14 @@ const MODULE_LABELS: Record<string, { en: string; ar: string }> = {
 
 const EMPTY = { nameEn: '', nameAr: '', color: '#f37121', isActive: true };
 
-/**
- * الشاشة نفسها تخدم مكانين: الصفحة العامّة لكلّ القوائم، وتبويبًا داخل إعدادات
- * قسمٍ بعينه حين يُمرَّر `module`. ونسخُها مرّتين يعني أن يُصلَح عيبٌ في إحداهما
- * ويبقى في الأخرى — وقوائمُ المرجع بالذات لا تحتمل شاشتين تختلفان.
- */
+/** The same screen serves two places: the global page for all lists, and a tab inside a section's settings when `module` is passed. Copying it would let a fix land in one and not the other, and reference lists cannot tolerate two diverging screens. */
 export default function ReferenceDataManager({ module: onlyModule, type: onlyType, alsoType, embedded }: {
   module?: string;
-  /** قائمةٌ من وحدةٍ أخرى تُعرَض مع قوائم القسم — مهامُّ خطّة العمل (jp_task_<القسم>). */
+  /** A list from another module shown with the section's lists: work-plan tasks (jp_task_<section>). */
   alsoType?: string;
   /**
-   * قائمةٌ واحدةٌ بعينها.
-   *
-   * تبويبٌ في إعدادات قسمٍ عن شيءٍ واحد — «حالات الشحنة» مثلًا — لا يريد عمودَ
-   * اختيارِ القائمة بجانبه: القائمةُ معروفةٌ من عنوان التبويب، وعمودٌ فيه اسمٌ
-   * واحدٌ يسأل سؤالًا لا جواب له.
+   * A single specific list.
+   * A settings tab about one thing (e.g. shipment statuses) does not need the list-selection column; the list is known from the tab title.
    */
   type?: string;
   embedded?: boolean;
@@ -112,9 +105,7 @@ export default function ReferenceDataManager({ module: onlyModule, type: onlyTyp
   };
 
   const remove = async (it: LookupItem) => {
-    // القيمةُ المبذورةُ تُحذَف أيضًا — يعلَّم عليها في الخادم بشاهدةٍ فلا يعيدها
-    // البذرُ عند الإقلاع. وكان الحذفُ ممنوعًا عنها فتمتلئ القائمةُ بقيمٍ لا
-    // تُستعمل ولا تُزال. والتأكيدُ يذكر أنّها من الافتراضيّات.
+    // A seeded value can also be deleted: it is marked on the server with a tombstone so seeding does not re-add it at startup. Deletion used to be blocked, filling the list with unused values. The confirmation mentions it is a default.
     if (!(await confirm(it.isSystem
       ? `${tx.confirmDelete}\n${ar ? '(قيمة افتراضية — لن تعود بعد الحذف)' : '(a default value — it will not come back)'}`
       : tx.confirmDelete))) return;
@@ -128,9 +119,7 @@ export default function ReferenceDataManager({ module: onlyModule, type: onlyTyp
     { header: tx.colKey, key: 'key', width: 22 },
     { header: tx.colStatus, key: 'isActive', transform: (v: any) => (v ? tx.active : tx.inactive), width: 14 },
   ];
-  // القائمة المختارة تصل من الخادم كاملةً بلا ترقيمٍ ولا فلتر، والشريط الجانبيّ
-  // تنقّلٌ بين قوائم مستقلّة لا فلترةٌ على قائمةٍ واحدة؛ فنطاقٌ ثانٍ هنا سيصدّر
-  // الملفّ نفسه تحت اسمٍ آخر، وهو أسوأ من نطاقٍ واحد صريح.
+  // The selected list arrives complete from the server with no paging or filter, and the side bar navigates between independent lists rather than filtering one; a second scope here would export the same file under another name, which is worse than one explicit scope.
   const scope = exportScopeLabels(ar);
   const exportOptions = [
     {
@@ -167,7 +156,7 @@ export default function ReferenceDataManager({ module: onlyModule, type: onlyTyp
         </PageHeader>
       )}
 
-      {/* عمودُ الاختيار يسقط حين تكون القائمةُ واحدة: اسمُها في عنوان التبويب. */}
+      {/* The selection column is dropped when there is a single list; its name is in the tab title. */}
       <div className={onlyType ? '' : 'grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-6'}>
         {/* Left rail: lists grouped by module */}
         <div className={`space-y-4 ${onlyType ? 'hidden' : ''}`}>

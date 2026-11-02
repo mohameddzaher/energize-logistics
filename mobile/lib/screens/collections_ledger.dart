@@ -12,13 +12,7 @@ import 'collection_attachments.dart';
 import 'collections_aging.dart' show bandLabel;
 import 'collections_invoices.dart' show openTaxInvoice;
 
-// ═════════════════════════════════════════════════════════════════════════
-// دفترُ الفواتير — كلُّ فاتورةٍ وما جرى لها. نظيرُ /system/collections-dept/ledger.
-// متى فُوتِرت، ومتى وصلت العميل، ومتى حُصِّلت — وأين ضاعت الأيّام بينها.
-// الفلاترُ (الحالة، النوع، الموظّف، الشريحة، محصَّلة؟، الفترة بأيّ تاريخ) من
-// `/ledger/invoices/filters` وعلى الخادم، وعددُ الصفوف المحمَّلة اختيار، والتصديرُ
-// للمحمَّل أو لكلّ نتائج الفلتر.
-// ═════════════════════════════════════════════════════════════════════════
+// Invoice ledger: every invoice and what happened to it. When it was invoiced, when it reached the customer, when it was collected, and where the days between were lost. Counterpart of /system/collections-dept/ledger. Filters (status, type, employee, bucket, collected?, period by any date) come from `/ledger/invoices/filters` and run on the server; the number of loaded rows is a choice, and export covers the loaded rows or all filter results.
 
 String _s(Map r, String k) => '${r[k] ?? ''}';
 num _num(dynamic v) => v is num ? v : num.tryParse('${v ?? ''}') ?? 0;
@@ -31,7 +25,7 @@ String _dt(dynamic v) {
 }
 String _ymd(DateTime d) => '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
-/// الاستحقاقُ بكلام — «متأخّرة ١٢ يومًا» لا «−١٢».
+/// Due date in words: "12 days overdue", not "-12".
 String _dueWords(dynamic d) {
   if (d == null) return '—';
   final n = _num(d).toInt();
@@ -55,8 +49,8 @@ class _CollectionsLedgerScreenState extends State<CollectionsLedgerScreen> {
   String? _error;
   String _search = '', _status = '', _kind = '', _officer = '', _band = '', _open = '', _dateField = 'invoiceDate', _from = '', _to = '';
   Timer? _deb;
-  Timer? _searchDeb; // مؤقِّتُ البحث مستقلٌّ — كان التحديثُ الحيّ يُلغي بحثًا مُنتظِرًا
-  final _searchCtl = TextEditingController(); // النصُّ يبقى مطابقًا لـ_search
+  Timer? _searchDeb; // Search timer is independent: a live refresh used to cancel a pending search.
+  final _searchCtl = TextEditingController(); // Text stays equal to _search.
   late final void Function() _onLive;
 
   @override
@@ -225,7 +219,7 @@ class _CollectionsLedgerScreenState extends State<CollectionsLedgerScreen> {
             ]),
             Text('${_s(r, 'partyCode')} ${_s(r, 'partyName')}'.trim(), style: const TextStyle(fontSize: 12.5, color: T.inkSoft)),
             const SizedBox(height: 4),
-            // المحطّاتُ الثلاث وما بينها من أيّام: عملُنا ثمّ مهلةُ العميل.
+            // The three milestones and the days between them: our work, then the customer's term.
             Text([
               '${tr('فُوترت', 'Invoiced')} ${_dt(r['invoiceDate']).isEmpty ? '—' : _dt(r['invoiceDate'])}',
               '${r['daysInvoiceToDelivery'] ?? '—'}${tr('ي', 'd')} →',
@@ -311,7 +305,7 @@ class _CollectionsLedgerScreenState extends State<CollectionsLedgerScreen> {
                           ]),
                         ),
                         const SizedBox(height: 6),
-                        // الفترةُ تُقاس بأيّ تاريخٍ يريده السائل.
+                        // The period is measured by whichever date the asker wants.
                         Row(children: [
                           Expanded(
                             child: DropdownButtonFormField<String>(
@@ -335,7 +329,7 @@ class _CollectionsLedgerScreenState extends State<CollectionsLedgerScreen> {
                           )),
                           if (_from.isNotEmpty) IconButton(icon: const Icon(Icons.close, size: 18), onPressed: () { setState(() { _from = ''; _to = ''; }); _refilter(); }),
                         ]),
-                        // Wrap لا Row: الرقائقُ تنزل لسطرٍ ثانٍ على الشاشات الضيّقة بدل أن تفيض.
+                        // Wrap, not Row: the chips drop to a second line on narrow screens instead of overflowing.
                         Wrap(spacing: 4, runSpacing: 2, crossAxisAlignment: WrapCrossAlignment.center, children: [
                           Padding(
                             padding: const EdgeInsetsDirectional.only(end: 2),

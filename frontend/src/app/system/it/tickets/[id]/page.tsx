@@ -106,8 +106,7 @@ export default function TicketDetailPage() {
         subtitle={`${ticket.ticketNumber || ''} · ${fmtDate(ticket.reportedAt)}`}
       >
         <div className="flex items-center gap-2">
-          {/* الحذف من صفحة التذكرة نفسها: من فتحها ورآها مكرّرةً أو مفتوحةً
-              بالخطأ هو مَن يعرف أنّها كذلك — لا مَن يمرّ على القائمة. */}
+          {/* Delete from the ticket page itself: whoever opened a duplicate or mistaken ticket knows it is one, not someone scanning the list. */}
           <button type="button" onClick={removeTicket} title={ar ? 'حذف التذكرة' : 'Delete ticket'}
             className="p-2 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50">
             <Trash2 className="w-4 h-4" />
@@ -229,7 +228,7 @@ export default function TicketDetailPage() {
         )}
       </div>
 
-      {/* مهامّ JP المربوطة بهذا البلاغ — تُضاف من هنا. */}
+      {/* JP tasks linked to this ticket; added from here. */}
       <JpTaskPanel section="it" kind="ticket" refId={String(ticket._id)} ar={ar} />
     </div>
   );

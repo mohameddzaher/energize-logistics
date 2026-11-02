@@ -47,8 +47,8 @@ const accessFor = async (role, key) => {
     const view = SECTION_KEYS.filter((k) => acc[k] === 'view');
     const none = SECTION_KEYS.filter((k) => acc[k] === 'none');
 
-    // eslint-disable-next-line no-await-in-loop
     // Reports
+    // eslint-disable-next-line no-await-in-loop
     const subjects = [];
     for (const s of subjectMeta()) {
       const sections = SUBJECT_SECTIONS[s.key];
@@ -89,8 +89,8 @@ const accessFor = async (role, key) => {
       if (extra.length) {
         problems.push(`«${stf.ar}» يفتح ما لا يفتحه مديرُه «${mgr.ar}»: ${extra.map(sectionLabel).join('، ')}`);
         if (FIX) {
-          // eslint-disable-next-line no-await-in-loop
           // Raise the manager to his staff's level, never lower the staff: removing access someone uses today breaks work, while granting the manager what his team sees breaks nothing. The system admin can tighten afterwards via the matrix.
+          // eslint-disable-next-line no-await-in-loop
           const RolePermission = require('../models/RolePermission');
           // eslint-disable-next-line no-await-in-loop
           const doc = await RolePermission.findOne({ role: mgr.role }) || new RolePermission({ role: mgr.role, sections: {} });

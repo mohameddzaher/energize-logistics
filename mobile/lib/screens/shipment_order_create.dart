@@ -11,18 +11,15 @@ import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import 'so_driver_picker.dart';
 
-/// إنشاء/تعديل طلب شحنة — نفس نموذج الويب: الحقول تُبنى من إعدادات النموذج
-/// (/fields)، اختيار العميل يسحب سعر المسار المتفق عليه وقيمه الافتراضية،
-/// واختيار الشاحنة يملأ السائق وهاتفه، مع إنشاء عميل أو شاحنة جديدة في المكان.
+/// Create/edit a shipment order, same form as the web: fields are built from the form settings (/fields), choosing the customer pulls the agreed route price and its defaults, choosing the truck fills the driver and his phone, and a new customer or truck can be created in place.
 
 const _systemKeys = {
   'fromCity', 'toCity', 'addressFrom', 'addressTo', 'truckType', 'cargoType',
   'truckLength', 'quantity', 'driverName', 'driverPhone', 'vehicleName',
   'pickupTime', 'startTime', 'arrivalTime', 'sellPrice', 'buyPrice',
-  // «نوع الدفع» (paymentSubtype) حلّ محلَّ «نوع تأجير السائق» في النموذج —
-  // خياراتُه الأربعةُ تصل من الخادم (/fields) بمفاتيح سير عمل التشغيل.
+  // Payment kind (paymentSubtype) replaced the driver rental type in the form; its four options arrive from the server (/fields) with the operations workflow keys.
   'paymentSubtype', 'driverRentType', 'paymentMethod', 'branch', 'notes',
-  // البوليصةُ والحاويةُ (مربوطتان بالتخليص) والسلفة — ٢٠٢٦/١٠/٢٦.
+  // Waybill and container (linked to clearance) and advance.
   'advanceAmount', 'blNumber', 'containerNumber',
 };
 
@@ -52,12 +49,10 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
   bool _saving = false;
 
   Map<String, dynamic>? _customer;
-  // السيلز التشغيليّ — مَن جاء بالحمولة، من فريق المبيعات أو العمليّات (٢٠٢٦/١٠/٢٢).
+  // Operational sales: who brought the load, from the sales team or operations.
   Map<String, dynamic>? _salesRep;
   List<Map<String, dynamic>> _salesReps = const [];
-  // ── المورّدُ أوّلًا، ثمّ شاحنتُه ────────────────────────────────────────────
-  // كما في الويب: يُعرَف المورّدُ أوّلًا ثمّ أيُّ شاحنةٍ من شاحناته — فتُقصَر
-  // القائمةُ على ما يخصّه بدل مئات اللوحات معًا.
+  // Supplier first, then its truck. As on the web: the supplier is known first and then which of its trucks, so the list is limited to its own instead of hundreds of plates together.
   Map<String, dynamic>? _supplier;
   Map<String, dynamic>? _vehicle;
   bool _savingSupplier = false;
@@ -68,15 +63,8 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
   final _nvPlate = TextEditingController();
   final _nvName = TextEditingController();
 
-  /// ── الحمولةُ الواحدةُ على عدّةِ شاحنات ────────────────────────────────────
-  ///
-  /// العميلُ يطلب حمولةً تخرج على خمسِ شاحنات: العميلُ والمسارُ والسعرُ والموعدُ
-  /// واحد، ويختلف المورّدُ والشاحنةُ والسائق. وكان الموظّفُ يخرج من النموذج
-  /// ويعيد كتابةَ العشرين خانةً خمسَ مرّات.
-  ///
-  /// وكلُّ شاحنةٍ تصير **طلبًا مستقلًّا** برقم بوليصته من العدّاد نفسِه — لا
-  /// طلبٌ أبٌ ولا رابطٌ بينها: كلُّ شاحنةٍ تمضي وحدَها وتصل وحدَها وتُحاسَب
-  /// وحدَها.
+  /// One load on several trucks. The customer asks for a load leaving on five trucks: customer, route, price and date are the same, while supplier, truck and driver differ. Employees used to leave the form and retype twenty fields five times.
+  /// Each truck becomes an independent order with its waybill number from the same counter, with no parent order or link between them: each truck goes, arrives and is billed on its own.
   final List<Map<String, dynamic>> _extraTrucks = [];
 
   final Map<String, dynamic> _form = {};
@@ -84,9 +72,7 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
   final Set<String> _missing = {};
 
   bool get _editing => widget.order != null;
-  // ── الفلوسُ بعد الحفظ لمن يسمح له الخادم (صاحبُ الشركة، ٢٠٢٦/١٠/٢٨) ───────
-  // عند الإنشاء يكتبها مَن ينشئ الشحنة؛ وفي التعديل تُقفَل لغير مديري النظام
-  // ومدير التشغيل. القائمةُ من الخادم (/money-editors) — نظيرُ الموقع.
+  // Money after saving, for whoever the server allows. On create, whoever creates the shipment writes it; on edit it is locked for anyone but system admins and the operations manager. The list comes from the server (/money-editors), as on the web.
   List<String> _moneyFields = const [];
   bool _canEditMoney = true;
   bool _moneyLocked(String k) => _editing && !_canEditMoney && _moneyFields.contains(k);
@@ -101,11 +87,11 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
     } catch (_) {}
   }
 
-  // ── وخيارٌ يضيفه زميلٌ يظهر هنا بلا إعادة فتح (`shipmentOrders:fields`) ──
+  // An option a colleague adds appears here without reopening (`shipmentOrders:fields`).
   late final void Function() _onFields = _reloadFields;
   // An edit on the customers or suppliers page reaches the open form at once.
   late final void Function() _onRegisters = _reloadRegisters;
-  // سوّاقُ الشاحنة المختارة، فإن لم يُسجَّل لها سائقٌ فسوّاقُ مورّدها.
+  // Drivers of the selected truck; if none is registered for it, its supplier's drivers.
   List<Map<String, dynamic>> _drivers = [];
   bool _savingCustomer = false;
 
@@ -158,7 +144,7 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
     } catch (_) {}
   }
 
-  /// كما في الويب: سوّاقُ الشاحنة أوّلًا، فإن لم يكن لها سائقٌ فسوّاقُ المورّد.
+  /// As on the web: the truck's drivers first; if it has none, the supplier's drivers.
   Future<void> _chooseDriver({bool startWithNew = false}) async {
     final d = await pickShipmentDriver(context,
         local: _drivers, supplierId: _supplier?['_id']?.toString(), vehicleId: _vehicle?['_id']?.toString(), startWithNew: startWithNew);
@@ -206,8 +192,7 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
     }
   }
 
-  /// العميلُ الجديد يُسجَّل حين يُكتب اسمُه لا حين تُحفَظ الشحنة — فيراه
-  /// التحصيلُ وصفحةُ العملاء وزملاؤه في اللحظة نفسِها.
+  /// A new customer is registered when the name is typed, not when the shipment is saved, so collections, the customers page and colleagues see it at once.
   Future<void> _saveCustomer() async {
     final name = _ncName.text.trim();
     if (name.isEmpty) {
@@ -234,7 +219,7 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
     }
   }
 
-  /// خيارٌ جديد في قائمةٍ — يُحفَظ في تعريف الحقل (إعدادات القسم) ويُختار فورًا.
+  /// A new option in a list: saved in the field definition (section settings) and selected immediately.
   /// A searchable sheet over a field's options; returns the chosen key.
   Future<String?> _searchOption(String label, List<Map<String, dynamic>> options, String current) async {
     final ctl = TextEditingController();
@@ -307,7 +292,7 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
   TextEditingController _ctrl(String key) =>
       _ctrls.putIfAbsent(key, () => TextEditingController(text: (_form[key] ?? '').toString()));
 
-  /// متحكّمُ جوّالٍ سعوديّ: يُعرَض محليًّا («5XXXXXXXX») ويُخزَّن كاملًا.
+  /// Saudi mobile controller: displayed locally ("5XXXXXXXX") and stored in full.
   TextEditingController _phoneCtrl(String key) =>
       _ctrls.putIfAbsent(key, () => TextEditingController(text: saLocal((_form[key] ?? '').toString())));
 
@@ -316,11 +301,7 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
       final results = await Future.wait([
         Api.instance.get('/api/shipment-orders/fields'),
         Api.instance.get('/api/shipment-orders/customers?picker=1').catchError((_) => <String, dynamic>{}),
-        // ── ولا تُحمَّل القائمتان كلَّهما ──────────────────────────────────
-        // في السجلّ ثلاثةَ عشرَ ألفَ شاحنةٍ وثلاثةُ آلاف مورّد، وكان يُطلَب
-        // الكلُّ فيصل حدُّ الخادم (ألفٌ) ثمّ يُبحَث في الواصل — فمن اختار
-        // مورّدًا لم تكن شاحناتُه في الألف رأى قائمةً فارغة. فصار البحثُ عند
-        // الخادم، وشاحناتُ المورّد تُطلَب بمعرّفه.
+        // The two lists are not both loaded. The registry holds 13 thousand trucks and 3 thousand suppliers; everything used to be requested, hit the server cap (1000), and was searched among what arrived, so someone who picked a supplier whose trucks were not in the thousand saw an empty list. Search now happens on the server, and a supplier's trucks are requested by its id.
         Api.instance.get('/api/shipment-orders/vehicles?limit=80&ownership=supplier').catchError((_) => <String, dynamic>{}),
         Api.instance.get('/api/shipment-orders/suppliers?limit=60&fresh=1').catchError((_) => <String, dynamic>{}),
       ]);
@@ -330,8 +311,7 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
         _customers = List<Map<String, dynamic>>.from(results[1]['customers'] ?? []);
         _vehicles = List<Map<String, dynamic>>.from(results[2]['vehicles'] ?? []);
         _suppliers = List<Map<String, dynamic>>.from(results[3]['suppliers'] ?? []);
-        // ── والاستلامُ والبدايةُ اليومَ حتى يُقال غيرُ ذلك ──────────────────
-        // الشحنةُ تُسجَّل ساعةَ تُحجَز، فيومُها هو اليوم في كلّ مرّةٍ تقريبًا.
+        // Pickup and start default to today until changed. A shipment is recorded when it is booked, so its day is today almost every time.
         if (!_editing) {
           final t = DateTime.now();
           final iso = '${t.year}-${t.month.toString().padLeft(2, '0')}-${t.day.toString().padLeft(2, '0')}';
@@ -350,8 +330,7 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
               if (c['_id'] == cid) _customer = c;
             }
           }
-          // الشاحنةُ والمورّدُ يصلان مسمَّيين من `getOrder` — فيُبذران في
-          // القائمتين، وإلّا ظهرت خانتان فارغتان وهما مختارتان.
+          // The truck and supplier arrive named from `getOrder`, so seed them into the two lists; otherwise two empty fields would show while both are selected.
           if (o['vehicle'] is Map) {
             _vehicle = Map<String, dynamic>.from(o['vehicle']);
             if (!_vehicles.any((x) => x['_id'] == _vehicle!['_id'])) _vehicles = [_vehicle!, ..._vehicles];
@@ -371,7 +350,7 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
 
   String _fold(String s) => s.replaceAll(RegExp('[أإآ]'), 'ا').replaceAll('ى', 'ي').replaceAll('ة', 'ه').toLowerCase();
 
-  // اختيار العميل يسحب الافتراضيات وسعر المسار المتفق عليه فورًا.
+  // Choosing the customer pulls the defaults and the agreed route price immediately.
   void _applyCustomer(Map<String, dynamic> c) {
     setState(() {
       _customer = c;
@@ -407,14 +386,10 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
     setState(() {
       _vehicle = v;
       _newVehicle = false;
-      // ── واختيارُ الشاحنة يُسمّي مالكَها، ولا يُبدّل المورّدَ المختار ────
-      // يُملأ المورّدُ من المالك حين لم يُختَر بعد. ومن اختاره أوّلًا فذاك
-      // قرارُ صفقة، وكان يُستبدَل صامتًا بمالك الشاحنة — فتُحفَظ الشحنةُ على
-      // مورّدٍ لم يتّفق معه أحد.
+      // Choosing a truck names its owner but does not replace the chosen supplier. The supplier is filled from the owner only if none is chosen yet. A supplier chosen first is a deal decision, and it used to be silently replaced by the truck owner, saving the shipment on a supplier nobody agreed with.
       final sup = v['supplier'];
       if (sup is Map && _supplier == null) {
-        // المورّدُ يصل مع الشاحنة مسمَّى (`populate`)، فلا يُبحَث عنه في صفحةٍ
-        // قد لا يكون فيها — وكان يُبحَث فيها فيبقى فارغًا وله مورّدٌ معروف.
+        // The supplier arrives with the truck named (`populate`), so it is not searched in a page it may not be in; it used to be searched there and stayed empty though the supplier was known.
         _supplier = Map<String, dynamic>.from(sup);
         if (!_suppliers.any((x) => x['_id'] == _supplier!['_id'])) _suppliers = [_supplier!, ..._suppliers];
       } else if (sup != null && _supplier == null) {
@@ -442,14 +417,9 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
     _fillDriverDetails();
   }
 
-  /// ── وقائمةٌ لا تُحمَّل كلُّها: البحثُ يُرسَل إلى الخادم ─────────────────────
-  ///
-  /// `_pickSheet` يبحث في قائمةٍ في اليد، وهو الصوابُ لمئةِ عميل. أمّا ثلاثةَ
-  /// عشرَ ألفَ شاحنةٍ وثلاثةُ آلافِ مورّدٍ فلا تُحمَّل، فالبحثُ فيها بحثٌ في
-  /// الصفحةِ الواصلة يقول «لا نتائج» عن صفٍّ مسجَّل. فهذا يسأل الخادمَ بعد
-  /// سكونِ الكتابة، ويعرض ما ردّه كما هو.
-  ///
-  /// و`seq` تمنع سباقَ الردود: ردُّ «مح» الواصلُ متأخّرًا لا يمحو نتائجَ «محمد».
+  /// A list that is not fully loaded: search is sent to the server.
+  /// `_pickSheet` searches a list in hand, which is right for a hundred customers. Thirteen thousand trucks and three thousand suppliers are not loaded, so searching them is searching the arrived page, which says "no results" about a registered row. This asks the server after typing pauses and shows its reply as is.
+  /// `seq` prevents reply races: a late reply for a short prefix does not wipe the results for the full name.
   Future<Map<String, dynamic>?> _pickRemote(
     String title,
     Future<List<Map<String, dynamic>>> Function(String q) fetch,
@@ -458,7 +428,7 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
     String? hint,
     List<Map<String, dynamic>> initial = const [],
   }) {
-    // الحالةُ خارج builder: إعادةُ بناء النافذة لا تُصفِّرها والخانةُ ما زالت مكتوبة
+    // State kept outside the builder: rebuilding the dialog does not reset it while the field still has text.
     var rows = List<Map<String, dynamic>>.from(initial);
     var busy = false;
     var seq = 0;
@@ -523,10 +493,8 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
     );
   }
 
-  /// إضافةُ شاحنةٍ أخرى للحمولة نفسِها: مورّدُها وشاحنتُه وسائقُه.
-  ///
-  /// السؤالان بالترتيب نفسِه الذي في البطاقة أعلاه — المورّدُ ثمّ شاحنتُه —
-  /// والسائقُ يُملأ من الشاحنة المسجَّلة ويبقى قابلًا للتصحيح.
+  /// Add another truck to the same load: its supplier, truck and driver.
+  /// The two questions are in the same order as the card above (supplier, then its truck); the driver is filled from the registered truck and stays correctable.
   Future<void> _addExtraTruck() async {
     final sup = await _pickRemote(
       tr('الموردين', 'suppliers'),
@@ -546,7 +514,7 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
         return List<Map<String, dynamic>>.from(d['vehicles'] ?? []);
       },
       (v) => (v['plate'] ?? '').toString(),
-      // مالكُها وسائقُها — كما يُقرآن في بطاقة «مالك السيارة».
+      // Its owner and driver, as read in the truck-owner card.
       sub: (v) {
         final sup = v['supplier'];
         final owner = sup is Map ? (sup['name'] ?? '').toString() : '';
@@ -557,9 +525,7 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
     if (!mounted) return;
     var dName = soRealVal(veh?['defaultDriverName']);
     var dPhone = soRealVal(veh?['defaultDriverPhone']);
-    // ── والسائقُ كالشاحنة الأولى (٢٠٢٦/١٠/٢٦) ───────────────────────────────
-    // شاحنةٌ بلا سائقٍ مسجَّل تفتح خانةَ السائق نفسَها: بحثٌ بالاسم والجوال
-    // والإقامة، و«سائق جديد». ويُغلَق بلا اختيارٍ فيُضاف بلا سائق.
+    // The driver works like the first truck's. A truck with no registered driver opens the same driver field: search by name, phone and residence number, and "new driver". Closing without a choice adds it with no driver.
     if (dName.isEmpty) {
       final d = await pickShipmentDriver(context, local: const [], supplierId: sup['_id']?.toString(), vehicleId: veh?['_id']?.toString());
       if (!mounted) return;
@@ -593,7 +559,7 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
     if (ok == true && mounted) setState(() { t['blNumber'] = bl.text.trim(); t['containerNumber'] = cn.text.trim(); });
   }
 
-  /// تغييرُ سائق شاحنةٍ إضافيّة — بالخانة نفسِها.
+  /// Change the driver of an additional truck, using the same field.
   Future<void> _changeExtraDriver(int i) async {
     final t = _extraTrucks[i];
     final d = await pickShipmentDriver(context, local: const [],
@@ -603,7 +569,7 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
   }
 
   Future<P?> _pickSheet<P>(String title, List<P> items, String Function(P) label, {String Function(P)? sub}) {
-    String q = ''; // خارج builder كي لا تُصفَّر والخانةُ مكتوبة
+    String q = ''; // Outside the builder so it is not reset while the field has text
     return showModalBottomSheet<P>(
       context: context,
       isScrollControlled: true,
@@ -647,13 +613,12 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
     );
   }
 
-  /// مورّدٌ جديد يُسجَّل في لحظته — لا عند حفظ الشحنة.
-  ///
-  /// من أضافه ثمّ ترك النموذج يجب أن يجده في صفحة المورّدين، ويجده زميلُه.
+  /// A new supplier is registered immediately, not when the shipment is saved.
+  /// Whoever added it and then left the form must find it on the suppliers page, and so must a colleague.
   Future<void> _addSupplier() async {
     final nameC = TextEditingController();
     final phoneC = TextEditingController();
-    // سائقُه يُسجَّل معه — والفريلانسرُ بلا اسمِ سائقٍ هو نفسُه السائق.
+    // Its driver is registered with it; a freelancer with no driver name is himself the driver.
     final dNameC = TextEditingController();
     final dPhoneC = TextEditingController();
     final dIqamaC = TextEditingController();
@@ -780,8 +745,7 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
     if (_newCustomer && _ncName.text.trim().isNotEmpty) {
       payload['newCustomer'] = {'name': _ncName.text.trim(), 'phone': saPhone(_ncPhone.text)};
     }
-    // المورّدُ المختارُ يُرسَل ولو كانت الشاحنةُ مسجّلة: آلافٌ منها مجهولةُ
-    // المالك، ومن يحجز الحمولةَ يعرفه — فيكتبه الخادمُ في السجلّ مرّةً.
+    // The chosen supplier is sent even if the truck is registered: thousands of trucks have an unknown owner, and whoever books the load knows it, so the server writes it to the registry once.
     if (_supplier != null) payload['supplierChoice'] = _supplier!['_id'];
     if (_vehicle != null) payload['vehicle'] = _vehicle!['_id'];
     if (_newVehicle && _nvPlate.text.trim().isNotEmpty) {
@@ -791,7 +755,7 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
         'supplierId': _supplier?['_id'],
       };
     }
-    // القيم اليدوية للسائق تبقى إن لم تأتِ من شاحنة مسجلة.
+    // Manual driver values are kept if they did not come from a registered truck.
     for (final k in ['driverName', 'driverPhone']) {
       if ((_form[k] ?? '').toString().isNotEmpty) payload[k] = _form[k];
     }
@@ -799,9 +763,7 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
       if (_editing) {
         await Api.instance.put('/api/shipment-orders/orders/${widget.order!['_id']}', payload);
       } else if (_extraTrucks.isNotEmpty) {
-        // الصفُّ الأوّلُ شاحنةٌ كالبقيّة فيُرسَل معها في القائمة نفسِها — ولو
-        // أُنشئ وحدَه ثمّ أُرسلت البقيّةُ لحُفظ الأوّلُ ورُفضت الثانيةُ ولا
-        // يعرف الموظّفُ أين وقف.
+        // The first row is a truck like the rest and is sent with them in the same list. If it were created alone and the rest sent after, the first would be saved and the second rejected, and the employee would not know where it stopped.
         final body = Map<String, dynamic>.from(payload)
           ..remove('waybillDetails')
           ..remove('vehicle')
@@ -873,9 +835,7 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
       );
     }
 
-    // ── طريقةُ الدفع تُقرأ ولا تُختار ────────────────────────────────────────
-    // تتبع «نوع تأجير السائق»: راجعةٌ ⇒ آجل، وقدامٌ ⇒ كاش — والقاعدةُ على
-    // الخيار نفسِه في إعدادات القسم (`option.paymentMethod`).
+    // Payment method is read, not chosen. It follows the driver rental type: return means deferred, forward means cash. The rule lives on the option itself in the section settings (`option.paymentMethod`).
     if (k == 'paymentMethod') {
       final options = List<Map<String, dynamic>>.from(f['options'] ?? []);
       final cur = (_form[k] ?? '').toString();
@@ -894,7 +854,7 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
     if (type == 'select' || type == 'cards') {
       final options = List<Map<String, dynamic>>.from(f['options'] ?? []);
       final current = (_form[k] ?? '').toString();
-      // ── وما ليس في القائمة يُضاف من مكانه (كالويب) — يُكتب في الإعدادات نفسِها.
+      // What is not in the list is added in place (as on the web), written to the settings themselves.
       // Long lists (e.g. the From / To cities) open a searchable sheet instead of a dropdown.
       if (options.length > 15) {
         final cur = options.firstWhere((o) => o['key'] == current, orElse: () => const {});
@@ -928,7 +888,7 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
         onChanged: (v) => setState(() {
           _form[k] = v;
           if (k == 'fromCity' || k == 'toCity') _applyRoutePrice();
-          // نوعُ التأجير يكتب طريقةَ الدفع معه.
+          // The rental type writes the payment method with it.
           if (k == 'driverRentType') {
             final opt = options.firstWhere((o) => o['key'] == v, orElse: () => const {});
             final pay = (opt['paymentMethod'] ?? '').toString();
@@ -936,7 +896,7 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
           }
         }),
       ),
-        // «الفرع» فروعُ الشركة — لا يُضاف إليها من هنا (`locked`، ٢٠٢٦/١٠/٢٧).
+        // Branch is the company's branches; nothing is added to them from here (`locked`).
         if (f['locked'] != true) Align(
           alignment: AlignmentDirectional.centerStart,
           child: TextButton(
@@ -948,9 +908,7 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
       ]);
     }
 
-    // ── و«يوم» غيرُ «لحظة» ──────────────────────────────────────────────────
-    // مواعيدُ الشحنة تُكتب باليوم: أحدٌ لا يعرف أنّ الاستلام ٧:٤٢، ومن سُئل عن
-    // ساعةٍ كتب واحدةً ليمضي.
+    // A day, not a moment. Shipment dates are written by day: nobody knows the pickup was at 7:42, and anyone asked for an hour wrote one to move on.
     if (type == 'date') {
       final current = (_form[k] ?? '').toString();
       final dt = DateTime.tryParse(current)?.toLocal();
@@ -1028,7 +986,7 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
           : _error != null
               ? ErrorRetry(message: _error!, onRetry: () { setState(() => _loading = true); _load(); })
               : ListView(padding: const EdgeInsets.all(14), children: [
-                  // ── العميل ──
+                  // Customer
                   FadeSlideIn(
                     child: AppCard(
                       topAccent: _missing.contains('customer') ? T.danger : T.navy,
@@ -1084,10 +1042,7 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
                           ),
                         ],
                         const Divider(height: 18),
-                        // ── والمورّدُ تحتَه كما في الويب ──────────────────
-                        // طرفا الصفقة في بطاقةٍ واحدة: مَن تُحمَل له ومَن
-                        // تُحمَل منه. وكان المورّدُ في بطاقة الشاحنة فيُقرأ
-                        // وصفًا لها لا طرفًا في العقد.
+                        // Supplier below it, as on the web. The two parties of the deal are in one card: who it is hauled for and who it is hauled from. The supplier used to sit in the truck card, so it read as a description of the truck rather than a party to the contract.
                         Row(children: [
                           Expanded(
                             child: OutlinedButton.icon(
@@ -1125,7 +1080,7 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  // ── الشاحنة ──
+                  // Truck
                   FadeSlideIn(
                     delayMs: 40,
                     child: AppCard(
@@ -1180,10 +1135,7 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
                           TextField(controller: _nvName, decoration: InputDecoration(labelText: tr('وصف الشاحنة', 'Truck description'))),
                         ],
                         const SizedBox(height: 8),
-                        // ── ومالكُها يُقرأ لا يُكتب ───────────────────────
-                        // مالكُ الشاحنة في السجلّ خبرٌ عنها، والمورّدُ المتّفقُ
-                        // معه قرارٌ في الصفقة — وقد يختلفان (مورّدٌ يُخرجها على
-                        // شاحنةِ غيره)، فيُقال ذلك قبل الحفظ لا بعده.
+                        // Its owner is read, not written. The truck owner in the registry is a fact about the truck, while the supplier agreed with is a deal decision, and they may differ (a supplier hauling on another's truck), so say so before saving, not after.
                         if (_vehicle != null) ...[
                           Builder(builder: (_) {
                             final sup = _vehicle!['supplier'];
@@ -1210,16 +1162,13 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
                           }),
                           const SizedBox(height: 8),
                         ],
-                        // الاسمُ في سطرٍ كاملٍ والجوالُ تحته (٢٠٢٦/١٠/٢٦): كانا نصفَين في صفٍّ
-                        // واحد، وأيقونتا البحث و«سائق جديد» تأكلان نصفَ الاسم فيُقصّ.
+                        // Name on a full line with the mobile below it: they were two halves of one row, and the search and "new driver" icons ate half the name and clipped it.
                         TextField(
                               controller: _ctrl('driverName'),
                               onChanged: (v) => _form['driverName'] = v,
                               decoration: InputDecoration(
                                 labelText: tr('اسم السائق', 'Driver name'),
-                                // المسجَّلون اقتراحاتٌ لا حصر: من ليس في السجلّ يُكتب اسمُه. والبحثُ
-                                // في السوّاق كلِّهم بالاسم والجوال والإقامة، و«سائق جديد» يسجّله
-                                // (٢٠٢٦/١٠/٢٦) — راجع so_driver_picker.
+                                // Registered drivers are suggestions, not a restriction: someone not in the registry has his name typed. Search covers all drivers by name, mobile and residence number, and "new driver" registers him (see so_driver_picker).
                                 suffixIcon: Row(mainAxisSize: MainAxisSize.min, children: [
                                   IconButton(
                                     icon: const Icon(Icons.person_search, size: 21),
@@ -1237,10 +1186,7 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
                         const SizedBox(height: 8),
                         Row(children: [
                           Expanded(
-                            // ── مفتاحُ الدولة يسارَ الأرقام في كلّ لغة ─────
-                            // `PhoneSA` واحدٌ لكلّ جوّالٍ في التطبيق: الحقلُ
-                            // `ltr` فيبقى «+966» يسارًا والأرقامُ بعده، تسعُ
-                            // خاناتٍ لا أكثر، والمخزَّنُ كاملٌ دائمًا.
+                            // Country code to the left of the digits in every language. One `PhoneSA` for every mobile in the app: the field is `ltr`, so "+966" stays on the left with the digits after it, nine digits at most, and the stored value is always the full number.
                             child: PhoneSA(
                               controller: _phoneCtrl('driverPhone'),
                               label: tr('هاتف السائق', 'Driver phone'),
@@ -1248,13 +1194,13 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
                             ),
                           ),
                           const SizedBox(width: 4),
-                          // اتصال/واتساب على رقم السائق مباشرة.
+                          // Call/WhatsApp directly on the driver's number.
                           ContactButtons(phone: (_form['driverPhone'] ?? _ctrls['driverPhone']?.text ?? '').toString(), compact: true),
                         ]),
                       ]),
                     ),
                   ),
-                  // ── الحقول من الإعدادات، مجموعة مجموعة ──
+                  // Fields from the settings, group by group
                   ..._groups.map((g) {
                     final gf = _fields.where((f) => f['group'] == g.$1 && !_fixedKeys.contains(f['key'])).toList();
                     if (gf.isEmpty) return const SizedBox.shrink();
@@ -1270,9 +1216,7 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
                             ]),
                             const SizedBox(height: 10),
                             ...gf.map((f) => Padding(padding: const EdgeInsets.only(bottom: 10), child: _fieldInput(f))),
-                            // ── البوليصةُ والحاوية — مربوطتان بالتخليص (٢٠٢٦/١٠/٢٦) ──
-                            // اختياريّتان: تُكتبان هنا فتُربط الشحنةُ بمعاملة التخليص التي
-                            // تحملهما، وتُكتب الشحنةُ في المعاملة فتُملآن هنا وحدَهما.
+                            // Waybill and container, linked to clearance. Optional: written here, the shipment is linked to the clearance transaction carrying them, and when the shipment is written in the transaction they are filled here on their own.
                             if (g.$1 == 'pickup_delivery') ...[
                               TextField(
                                 controller: _ctrl('blNumber'),
@@ -1308,9 +1252,7 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
                     );
                   }),
                   const SizedBox(height: 16),
-                  // ── الحمولةُ على عدّةِ شاحنات ──────────────────────────────
-                  // تُضاف الشاحنةُ وتُرى قبل الحفظ، وكلٌّ تصير شحنةً مستقلّةً
-                  // برقم بوليصتها — نفسُ العميل والمسار والسعر والموعد.
+                  // One load on several trucks. A truck is added and seen before saving, and each becomes an independent shipment with its own waybill number: same customer, route, price and date.
                   if (!_editing) ...[
                     if (_extraTrucks.isNotEmpty)
                       AppCard(
@@ -1323,7 +1265,7 @@ class _ShipmentOrderCreateScreenState extends State<ShipmentOrderCreateScreen> {
                                   'each truck becomes its own shipment with its own waybill'),
                               style: const TextStyle(fontSize: 11, color: T.inkFaint)),
                           const Divider(height: 18),
-                          // الشاحنةُ الأولى تُعرَض للعلم: تُحرَّر في بطاقتها أعلاه.
+                          // The first truck is shown for information; it is edited in its card above.
                           Row(children: [
                             const Text('1 · ', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12)),
                             Expanded(child: Text(

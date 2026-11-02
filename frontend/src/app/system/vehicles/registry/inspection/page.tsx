@@ -1,35 +1,19 @@
 'use client';
-// الفحص الدوري — متى ينتهي فحصُ كل مركبة.
-//
-// و«غير مطلوب» هنا حالةٌ سليمة لا نقص: المقطورة لا تُفحص كما تُفحص الشاحنة.
-// عدُّها نقصًا يضخّم رقمَ العمل المطلوب في وجه الإدارة بمركباتٍ لا عمل عليها.
+// Periodic inspection: when each vehicle's inspection expires.
+// "Not required" is a healthy state here, not a gap: a trailer is not inspected like a truck. Counting it as a gap inflates the required-work number shown to management with vehicles that need no work.
 import { ClipboardCheck } from 'lucide-react';
 import DocumentFamilyPage, { commonColumns, type DocColumn, type DocField } from '@/components/vehicles/DocumentFamilyPage';
 import { fmtDate, toHijri } from '@/lib/vehicleRegistry';
 
-// ── ولا عمودَ «حالة الفحص» ───────────────────────────────────────────────────
-// كان عمودًا نصّيًّا يُقرأ «ناجح» أو «غير مطلوب»، وعمودُ الحالة المحسوب من تاريخ
-// الانتهاء يقول الشيء نفسَه بأحدثَ منه: «منتهٍ» و«قارب على الانتهاء» و«ساري»
-// و«غير مطلوب» — محسوبةً اليومَ لا مكتوبةً في آخر استيراد. وعمودان يقولان
-// شيئًا واحدًا ويفترقان بعد أوّل تجديد يجعلان القارئ يسأل أيَّهما يصدّق.
-// والحقلُ نفسُه باقٍ يُكتب في الاستمارة — الذي رُفع عرضُه لا تسجيلُه.
+// No "inspection status" column. It was a text column reading pass or not-required, while the status column computed from the expiry date says the same thing more currently: expired, near expiry, valid, not required, computed today and not written at the last import. Two columns saying one thing diverge after the first renewal and leave the reader unsure which to trust. The field itself is still written in the form; its display was removed, not its recording.
 const COLUMNS: DocColumn[] = [
   ...commonColumns(),
   { key: 'expiryDate', ar: 'تاريخ انتهاء الفحص (ميلادي)', en: 'Inspection expiry (Gregorian)', get: (v) => fmtDate(v.inspection?.expiryDate), width: 18 },
-  // يُشتقّ من الميلاديّ لا يُكتب: عمودٌ يُملأ مرّتين يفترق عند أوّل تجديد.
+  // Derived from the Gregorian date, not typed: a column filled twice diverges at the first renewal.
   { key: 'expiryDateHijri', ar: 'تاريخ انتهاء الفحص (هجري)', en: 'Inspection expiry (Hijri)', mono: true, get: (v) => toHijri(v.inspection?.expiryDate), width: 18 },
 ];
 
-// ── ولا تُكتب «حالة الفحص» بيد ─────────────────────────────────────────────
-// رُفعت من العمود لأنّها تقول ما يقوله عمودُ الحالة المحسوب، ثمّ بقيت في نموذج
-// التعديل — فيُفتَح التعديلُ فتُرى خانةٌ لحالةٍ لا تُكتب باليد أصلًا: هي مشتقّةٌ
-// من تاريخ الانتهاء ومن «غير مطلوب»، تُحسَب اليومَ لا تُملأ. ووجودُها في النموذج
-// دعوةٌ لأن يكتب أحدُهم فيها ما يخالف التاريخَ تحتها.
-//
-// فلم يبقَ في النموذج إلّا ما يُكتب فعلًا: تاريخُ الانتهاء — بالهجريّ أو
-// بالميلاديّ، وكلٌّ يُسمِع الآخر. راجع HijriGregorianField.
-//
-// والحقلُ نفسُه باقٍ في القاعدة كما استُورد؛ الذي رُفع عرضُه وتحريرُه لا محوُه.
+// Inspection status is not hand-written: it is derived from the expiry date and not-required, so it is removed from the edit form to avoid values that contradict the date. Only the expiry date remains, Hijri or Gregorian, each filling the other (HijriGregorianField). The stored field stays in the database as imported.
 const FIELDS: DocField[] = [
   { path: 'inspection.expiryDate', ar: 'تاريخ انتهاء الفحص', en: 'Inspection expiry', kind: 'date' },
 ];

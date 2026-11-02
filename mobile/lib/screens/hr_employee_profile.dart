@@ -20,9 +20,7 @@ import '../config.dart';
 import 'hr_all_fields.dart';
 import 'jp.dart' show JpTaskPanel;
 
-/// ملف الموظف الكامل — the same profile the web opens: identity + job data,
-/// contracts, leaves, custody assets, documents & renewals — in tabs, with
-/// an edit sheet for the main fields.
+/// Full employee file, the same profile the web opens: identity and job data, contracts, leaves, custody assets, documents and renewals in tabs, with an edit sheet for the main fields.
 class HrEmployeeProfileScreen extends StatefulWidget {
   final String employeeId;
   const HrEmployeeProfileScreen({super.key, required this.employeeId});
@@ -32,7 +30,7 @@ class HrEmployeeProfileScreen extends StatefulWidget {
 }
 
 const _empStatus = {
-  // «حالة العمل»: يعمل أو لا يعمل (= إنهاءُ الخدمة بحالةٍ من ثلاث) — كالموقع.
+  // Work status: working or not working (not working = service ended, with one of three states), like the web.
   'active': ('يعمل', 'Working', T.success),
   'on_leave': ('إجازة', 'On leave', T.info),
   'suspended': ('موقوف (قديم)', 'Suspended (legacy)', T.warn),
@@ -48,7 +46,7 @@ class _HrEmployeeProfileScreenState extends State<HrEmployeeProfileScreen> {
   void initState() {
     super.initState();
     _load();
-    // تعديلُ الماستر أو ملفّ الموظّف أو بطاقةِ السائق من المركبات يصل هنا فورًا.
+    // A master edit, employee file edit or driver card edit from vehicles arrives here immediately.
     Live.instance.on('hr:master', _onLive);
     Live.instance.on('hr:employee', _onLive);
   }
@@ -81,7 +79,7 @@ class _HrEmployeeProfileScreenState extends State<HrEmployeeProfileScreen> {
     ('driverCard', 'بطاقة التشغيل', 'Driver card'), ('ajeer', 'أجير', 'Ajeer'),
   ];
 
-  // تجديد مستند: اختيار النوع + تاريخ انتهاء جديد (+ رقم اختياري) → POST renew.
+  // Renew a document: pick the type and a new expiry date (optional number), then POST renew.
   Future<void> _renewDoc() async {
     String docType = 'iqama';
     DateTime? newExpiry;
@@ -138,7 +136,7 @@ class _HrEmployeeProfileScreenState extends State<HrEmployeeProfileScreen> {
     }
   }
 
-  // رفع مستند: اختيار ملف (PDF/صورة/…) → base64 + العنوان والتصنيف → POST.
+  // Upload a document: pick a file (PDF, image, ...), send base64 with title and category, then POST.
   Future<void> _uploadDocument() async {
     final picked = await pickFileAsDataUrl();
     if (picked == null || !mounted) return;
@@ -201,7 +199,7 @@ class _HrEmployeeProfileScreenState extends State<HrEmployeeProfileScreen> {
     }
   }
 
-  /// فتحُ الملفّ المرفوع (يُقدَّم من `/api/uploads/...`) بمتصفّح الجهاز.
+  /// Opens the uploaded file (served from `/api/uploads/...`) in the device browser.
   Future<void> _openDocument(Map<String, dynamic> doc) async {
     final u = '${doc['fileUrl'] ?? ''}';
     if (u.isEmpty) return;
@@ -209,8 +207,7 @@ class _HrEmployeeProfileScreenState extends State<HrEmployeeProfileScreen> {
     if (!ok && mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('تعذّر فتح الملف', 'Could not open the file'))));
   }
 
-  /// تعديلُ بيانات الملفّ (الاسم · التصنيف · الانتهاء · الملاحظات) — PUT /api/hr/documents/:id
-  /// كنموذج «تعديل ملف» في الموقع. الملفُّ نفسُه لا يُستبدل من هنا ولا هناك.
+  /// Edit file metadata (name, category, expiry, notes): PUT /api/hr/documents/:id, like the web edit-file form. The file itself cannot be replaced from here or on the web.
   Future<void> _editDocument(Map<String, dynamic> doc) async {
     final title = TextEditingController(text: '${doc['title'] ?? ''}');
     final notes = TextEditingController(text: '${doc['notes'] ?? ''}');
@@ -286,11 +283,8 @@ class _HrEmployeeProfileScreenState extends State<HrEmployeeProfileScreen> {
     catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString()))); }
   }
 
-  // إنهاء الخدمة: سبب + تاريخ → POST terminate.
-  //
-  // ── ويُسأل إخلاءُ الطرف أوّلًا ────────────────────────────────────────────
-  // الموظّفُ قد يحمل عهدةً أو تفويضَ مركبة. وإنهاءُ خدمته قبل تسويتها يترك
-  // المركبةَ باسم مَن لم يعد موظّفًا. فيُعرض ما يحمله قبل أن يُكتب سبب.
+  // End of service: reason and date, then POST terminate.
+  // Clearance is asked first: the employee may hold custody or a vehicle authorization, and ending service before settling them leaves the vehicle under a non-employee. So show what he holds before a reason is written.
   Future<void> _terminate() async {
     Map<String, dynamic>? clearance;
     try {
@@ -323,8 +317,7 @@ class _HrEmployeeProfileScreenState extends State<HrEmployeeProfileScreen> {
     if (!mounted) return;
     final reason = TextEditingController();
     DateTime when = DateTime.now();
-    // «لا يعمل» وحالاتُه الثلاث — شرطٌ للإنهاء، إلّا مَن هو خارج النظام أو فريلانسر
-    // (يُؤرشَف فورًا). مطابقٌ للموقع ولـ TERMINATION_KINDS في الخادم.
+    // "Not working" with its three states is required for termination, except for someone outside the system or a freelancer (archived immediately). Matches the web and TERMINATION_KINDS on the server.
     final archivesNow = _outOfSystem || _freelance;
     String kind = '';
     const kinds = [
@@ -383,9 +376,8 @@ class _HrEmployeeProfileScreenState extends State<HrEmployeeProfileScreen> {
     }
   }
 
-  // إعادة تفعيل موظف منتهي الخدمة.
-  /// حذفُ السجلّ نهائيًّا — لسجلٍّ أُدخل خطأً أو مكرَّرًا، لا لمن ترك العمل.
-  /// والخادمُ يرفض مَن في عهدته شيءٌ أو تفويضُ مركبة (EXIT_BLOCKED) برسالته.
+  // Reactivate an employee whose service ended.
+  // Permanent delete: for a record entered by mistake or duplicated, not for someone who left. The server refuses (EXIT_BLOCKED, with its message) anyone holding custody or a vehicle authorization.
   Future<void> _deleteEmployee() async {
     final ok = await showDialog<bool>(
       context: context,
@@ -431,10 +423,9 @@ class _HrEmployeeProfileScreenState extends State<HrEmployeeProfileScreen> {
     }
   }
 
-  // ── الأرشيف: إنهاءُ الخدمة ← خروجٌ من النظام ← الأرشيف — كالموقع ─────────
-  // والفريلانسرُ لا خروجَ له: إنهاءُ خدمته يؤرشفه (utils/hrEngagement في الخادم).
+  // Archive flow: end of service, then out of the system, then archive, like the web. A freelancer has no exit step: ending service archives him (utils/hrEngagement on the server).
   bool get _terminated => _emp['employmentStatus'] == 'terminated';
-  /// فريقُ الموارد البشريّة بالدور أو بمنح القسم — isHRStaff في الموقع.
+  /// HR team by role or department grant; isHRStaff on the web.
   bool get _hrStaff {
     final a = context.read<AuthProvider>();
     return const ['super_admin', 'admin', 'hr_manager', 'hr_specialist'].contains(a.role) || a.canAccessSection('HR');
@@ -452,10 +443,10 @@ class _HrEmployeeProfileScreenState extends State<HrEmployeeProfileScreen> {
     }
   }
 
-  /// مَن ليس على كفالتنا (فريلانسر، متدرّب، غير محدّد) — رقمُ سجلّه ليس سجلًّا تجاريًّا.
+  /// Not on our sponsorship (freelancer, trainee, unspecified): the registration number is not a commercial registration.
   bool get _notSponsored => !RegExp(r'^\s*\d{6,}\s*$').hasMatch('${_emp['registerNumber'] ?? ''}');
 
-  /// تحويلٌ إلى كفالتنا: يُختار سجلٌّ من سجلّاتنا التجاريّة — كالموقع.
+  /// Convert to our sponsorship: pick one of our commercial registrations, like the web.
   Future<void> _sponsor() async {
     final regs = await loadLookupNamesHr('hr_register');
     if (!mounted) return;
@@ -514,7 +505,7 @@ class _HrEmployeeProfileScreenState extends State<HrEmployeeProfileScreen> {
     );
   }
 
-  // عقد جديد للموظف — نوع/تواريخ/راتب/بدلات/إجازة سنوية، بنفس حقول نموذج الويب.
+  // New employee contract: type, dates, salary, allowances, annual leave, same fields as the web form.
   void _newContract() {
     final jobTitle = TextEditingController(text: (_emp['jobTitle'] ?? '').toString());
     final basicSalary = TextEditingController();
@@ -640,7 +631,7 @@ class _HrEmployeeProfileScreenState extends State<HrEmployeeProfileScreen> {
       child: AppScaffold(
         title: Text(_loading ? tr('ملف الموظف', 'Employee') : _name),
         actions: [
-          // «تقرير الموظف» PDF — لفريق الموارد البشريّة كالموقع.
+          // Employee report PDF, for the HR team as on the web.
           if (!_loading && _hrStaff) ReportButton(subject: 'employee', id: '${_emp['_id'] ?? widget.employeeId}', compact: true),
           IconButton(icon: const Icon(Icons.post_add_outlined), tooltip: tr('عقد جديد', 'New contract'), onPressed: _loading ? null : _newContract),
           IconButton(icon: const Icon(Icons.edit_outlined), tooltip: tr('تعديل', 'Edit'), onPressed: _loading ? null : _edit),
@@ -682,7 +673,7 @@ class _HrEmployeeProfileScreenState extends State<HrEmployeeProfileScreen> {
                     const Icon(Icons.verified_outlined, size: 18, color: T.navy), const SizedBox(width: 10),
                     Text(tr('تحويل على كفالتنا', 'Move to our sponsorship')),
                   ])),
-                // «يعمل» ↔ «شركة شقيقة» — والثالثةُ «لا يعمل» هي إنهاءُ الخدمة. كالموقع.
+                // Working vs sister company; the third state, not working, is end of service. Like the web.
                 if (!_terminated)
                   PopupMenuItem(value: 'sister', child: Row(children: [
                     const Icon(Icons.apartment_outlined, size: 18, color: T.cyan), const SizedBox(width: 10),
@@ -698,7 +689,7 @@ class _HrEmployeeProfileScreenState extends State<HrEmployeeProfileScreen> {
                     const Icon(Icons.unarchive_outlined, size: 18, color: T.success), const SizedBox(width: 10),
                     Text(tr('إعادة إلى النظام', 'Return to the system')),
                   ])),
-                // الحذفُ لمدير النظام وحدَه — والخادمُ يردّ غيرَه بـ٤٠٥.
+                // Delete is for the system admin only; the server answers others with 405.
                 if (const ['super_admin', 'admin'].contains(context.read<AuthProvider>().role))
                   PopupMenuItem(value: 'delete', child: Row(children: [
                     const Icon(Icons.delete_forever_outlined, size: 18, color: T.danger), const SizedBox(width: 10),
@@ -714,7 +705,7 @@ class _HrEmployeeProfileScreenState extends State<HrEmployeeProfileScreen> {
           unselectedLabelColor: Colors.white60,
           tabs: [
             Tab(text: tr('البيانات', 'Info')),
-            // كلُّ خانات الماستر — نظيرُ «البيانات» في الموقع لفريق الموارد البشريّة.
+            // All master fields, like the "Data" tab on the web for the HR team.
             Tab(text: tr('كل البيانات', 'All data')),
             Tab(text: '${tr('العقود', 'Contracts')} (${contracts.length})'),
             Tab(text: '${tr('الإجازات', 'Leaves')} (${leaves.length})'),
@@ -731,7 +722,7 @@ class _HrEmployeeProfileScreenState extends State<HrEmployeeProfileScreen> {
             : _error != null
                 ? ErrorRetry(message: _error!, onRetry: () { setState(() => _loading = true); _load(); })
                 : TabBarView(children: [
-                    // ── البيانات ──
+                    // Data tab.
                     RefreshIndicator(
                       onRefresh: _load,
                       child: ListView(padding: const EdgeInsets.all(14), children: [
@@ -752,11 +743,11 @@ class _HrEmployeeProfileScreenState extends State<HrEmployeeProfileScreen> {
                                       style: const TextStyle(fontSize: 12.5, color: T.inkSoft)),
                                 ]),
                               ),
-                              // «لا يعمل» يحمل حالتَه: انتظار نقل الكفالة · شركة شقيقة · خروج نهائي.
+                              // "Not working" carries its state: awaiting sponsorship transfer, sister company or final exit.
                               Chip2(_terminated && '${_emp['workStatusText'] ?? ''}'.contains('—') ? '${_emp['workStatusText']}'
                                   : (_emp['sisterCompany'] == true && !_terminated ? tr('شركة شقيقة', 'Sister company') : tr(st.$1, st.$2)), st.$3),
                               if (_archived) Chip2(tr('في الأرشيف', 'Archived'), T.inkFaint, icon: Icons.archive_outlined),
-                              // حالتُه اليوم في قسم الأفراد — تُكتب هناك وتُرى هنا.
+                              // His status today in the personnel section; written there, shown here.
                               if (b2cOpChip(_emp['b2cOpStatus']) != null) b2cOpChip(_emp['b2cOpStatus'])!,
                             ]),
                           ),
@@ -814,7 +805,7 @@ class _HrEmployeeProfileScreenState extends State<HrEmployeeProfileScreen> {
                         JpTaskPanel(section: 'hr', kind: 'employee', refId: '${_emp['_id'] ?? widget.employeeId}'),
                       ]),
                     ),
-                    // ── العقود ──
+                    // Contracts tab.
                     HrAllFieldsTab(employeeId: widget.employeeId, canEdit: true),
                     _listTab(contracts, Icons.description_outlined, tr('لا توجد عقود', 'No contracts'), (c0) {
                       return AppCard(
@@ -830,7 +821,7 @@ class _HrEmployeeProfileScreenState extends State<HrEmployeeProfileScreen> {
                         ]),
                       );
                     }),
-                    // ── الإجازات ──
+                    // Leaves tab.
                     Column(children: [
                       if (_hrStaff)
                         Padding(
@@ -867,8 +858,7 @@ class _HrEmployeeProfileScreenState extends State<HrEmployeeProfileScreen> {
                       );
                     })),
                     ]),
-                    // ── العهد ──
-                    // والعهدةُ بالمال من دفتر النقل الثقيل فوق العهد العينيّة — حيّةً مع الدفتر.
+                    // Custody tab. Money custody from the heavy-transport ledger is shown above in-kind custody, live with the ledger.
                     Column(children: [
                       ConstrainedBox(
                         constraints: const BoxConstraints(maxHeight: 320),
@@ -894,7 +884,7 @@ class _HrEmployeeProfileScreenState extends State<HrEmployeeProfileScreen> {
                       );
                     })),
                     ]),
-                    // ── المستندات ──
+                    // Documents tab.
                     _listTab(documents, Icons.folder_open_outlined, tr('لا توجد مستندات — استخدم «رفع مستند» من القائمة', 'No documents — use "Upload document" from the menu'), (doc) {
                       final cat = hrDocCategories.where((x) => x.$1 == doc['category']).toList();
                       return Pressable(
@@ -920,9 +910,9 @@ class _HrEmployeeProfileScreenState extends State<HrEmployeeProfileScreen> {
                         ),
                       );
                     }),
-                    // ── المركبات ──
+                    // Vehicles tab.
                     _EmployeeVehiclesTab(employeeId: widget.employeeId),
-                    // ── السجل: التجديدات + سجلّ التغييرات (/audit) — كالموقع ──
+                    // History tab: renewals plus the change log (/audit), like the web.
                     _HistoryTab(employeeId: widget.employeeId, renewals: renewals, staff: _hrStaff, fileName: 'employee-${_emp['employeeNumber'] ?? widget.employeeId}'),
                   ]),
       ),
@@ -943,7 +933,7 @@ class _HrEmployeeProfileScreenState extends State<HrEmployeeProfileScreen> {
   }
 }
 
-/// تعديل الحقول الأساسية — PUT /api/hr/employees/:id (الخادم يتجاهل ما لا يعرفه).
+/// Edit the main fields: PUT /api/hr/employees/:id (the server ignores unknown fields).
 class EditEmployeeSheet extends StatefulWidget {
   final Map<String, dynamic>? employee;
   final Future<void> Function() onDone;
@@ -968,10 +958,7 @@ class _EditEmployeeSheetState extends State<EditEmployeeSheet> {
     ('iqamaNumber', 'رقم الإقامة', 'Iqama'),
   ];
 
-  // ── المستندات: قيمةٌ، أو حالةٌ تقول لماذا لا قيمة — كاستمارة الموقع ────────
-  // الموظّفُ الجديد تُعلَّم مستنداتُه الفارغةُ «مطلوبة» في الخادم، ومن لا يحتاج
-  // مستندًا يختار «غير مطلوب». وحقولُ الاختيار قائمةٌ من القيم المستعملة
-  // (/api/hr/master/choices)، وللبنك «راتب نقدي».
+  // Documents: a value, or a status explaining why there is none, like the web form. A new employee's empty documents are marked "required" on the server; one who needs no document picks "not required". Choice fields are lists of used values (/api/hr/master/choices); the bank allows "cash salary".
   static const _docs = [
     ('passportNumber', 'رقم الجواز', 'Passport no.', false),
     ('passportExpiry', 'انتهاء الجواز', 'Passport expiry', true),
@@ -1003,7 +990,7 @@ class _EditEmployeeSheetState extends State<EditEmployeeSheet> {
       return RegExp(r'^\d{4}-\d{2}-\d{2}').hasMatch(t) ? t.substring(0, 10) : t;
     }
     _d = {for (final f in _docs) f.$1: TextEditingController(text: asText(widget.employee?[f.$1]))};
-    // القسمُ من قائمة الأقسام وحدَها (يضيفها السوبر أدمن) — لا يُكتب.
+    // Department comes only from the department list (added by the super admin); it cannot be typed.
     for (final k in ['department', 'staffCategory', 'registerNumber', 'nationality', 'branchName', 'project', 'bank', 'socialInsuranceStatus', 'insuranceCompany', 'licenseType']) {
       _pick[k] = (widget.employee?[k] ?? '').toString();
     }
@@ -1049,7 +1036,7 @@ class _EditEmployeeSheetState extends State<EditEmployeeSheet> {
             readOnly: f.$4,
             decoration: InputDecoration(
               labelText: tr(f.$2, f.$3),
-              // تحت التاريخ المختار ما يوافقه هجريًّا — والمُرسَل ميلاديٌّ وحدَه.
+              // The matching Hijri date shows under the chosen date; only the Gregorian value is sent.
               helperText: f.$4 && hijriHint(_d[k]!.text, ar: Lang.instance.ar).isNotEmpty ? hijriHint(_d[k]!.text, ar: Lang.instance.ar) : null,
               suffixIcon: f.$4 ? const Icon(Icons.calendar_today_outlined, size: 18) : null,
             ),
@@ -1086,7 +1073,7 @@ class _EditEmployeeSheetState extends State<EditEmployeeSheet> {
         'employmentStatus': _status,
         for (final f in _docs) if (!_choiceKeys.contains(f.$1)) f.$1: _d[f.$1]!.text.trim(),
         for (final e in _pick.entries) e.key: e.value,
-        // «تلقائي» على ملفٍّ قائم يرفع العلامة؛ وعلى جديدٍ لا يُرسَل فيعمل الافتراض.
+        // "Auto" on an existing file clears the flag; on a new one nothing is sent so the default applies.
         'markStatus': {
           for (final f in _docs)
             if (_marks[f.$1] != null) f.$1: _marks[f.$1]! else if (!isNew) f.$1: 'clear',
@@ -1124,10 +1111,9 @@ class _EditEmployeeSheetState extends State<EditEmployeeSheet> {
                   padding: const EdgeInsets.only(bottom: 10),
                   child: TextField(controller: _c[f.$1], decoration: InputDecoration(labelText: tr(f.$2, f.$3))),
                 )),
-            // القسمُ والجنسيّةُ والمدينةُ والمشروعُ قوائمُ مغلقةٌ فيها بحث (utils/hrLists في الخادم).
-            // ورقمُ السجل التجاري يُختار كذلك: سجلّاتُنا و«فري لانسر» و«تدريب» — ومنه يُعرف النوع.
+            // Department, nationality, city and project are closed, searchable lists (utils/hrLists on the server). The commercial registration number is picked too: our registrations, freelancer and training; the engagement type derives from it.
             for (final k in const [('department', 'القسم', 'Department'), ('staffCategory', 'الفئة الوظيفية', 'Staff category'), ('registerNumber', 'رقم السجل التجاري', 'Commercial register'), ('nationality', 'الجنسية', 'Nationality'), ('branchName', 'المدينة', 'City'), ('project', 'المشروع', 'Project')])
-              // الفئةُ الوظيفيّة لموظّفي B2C والنقل الثقيل وحدَهم.
+              // Job category applies to B2C and heavy-transport employees only.
               if (k.$1 != 'staffCategory' || const ['B2C', 'النقل الثقيل'].contains(_pick['department'] ?? ''))
               Padding(
                 padding: const EdgeInsets.only(bottom: 10),
@@ -1161,8 +1147,8 @@ class _EditEmployeeSheetState extends State<EditEmployeeSheet> {
   }
 }
 
-// تبويب مركبات الموظف: التفويض الحالي + سجل التفاويض + الحوادث.
-// /api/vehicles/by-employee/:id → { current, authorizations, accidents }
+// Employee vehicles tab: current authorization, authorization history and accidents.
+// /api/vehicles/by-employee/:id returns { current, authorizations, accidents }.
 class _EmployeeVehiclesTab extends StatefulWidget {
   final String employeeId;
   const _EmployeeVehiclesTab({required this.employeeId});
@@ -1181,7 +1167,7 @@ class _EmployeeVehiclesTabState extends State<_EmployeeVehiclesTab> with Automat
   void initState() {
     super.initState();
     _load();
-    // التفويضُ يُكتب من المركبات ومن مركبات B2C ومن صفحة المركبة — فيصل هنا في الحال.
+    // Authorizations are written from vehicles, B2C vehicles and the vehicle page, so they arrive here immediately.
     for (final e in _liveEvents) { Live.instance.on(e, _onLive); }
   }
 
@@ -1215,7 +1201,7 @@ class _EmployeeVehiclesTabState extends State<_EmployeeVehiclesTab> with Automat
     super.build(context);
     if (_loading) return ListView(padding: const EdgeInsets.all(14), children: const [Shimmer(height: 90), SizedBox(height: 10), Shimmer(height: 90)]);
     if (_error != null) return ErrorRetry(message: _error!, onRetry: () { setState(() => _loading = true); _load(); });
-    // الحاليُّ من ورقة التفويض في سجلّ المركبات (المرجع) — كما في الموقع.
+    // The current one comes from the authorization sheet in the vehicle register (the authority), as on the web.
     final currents = _d?['currents'] is List
         ? List<Map<String, dynamic>>.from(_d!['currents'])
         : (_d?['current'] is Map ? [Map<String, dynamic>.from(_d!['current'])] : <Map<String, dynamic>>[]);
@@ -1256,7 +1242,7 @@ class _EmployeeVehiclesTabState extends State<_EmployeeVehiclesTab> with Automat
                   Expanded(child: Text(_plate(a['vehicle']), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13))),
                   Text('${_dt(a['startDate'])} → ${a['endDate'] != null ? _dt(a['endDate']) : '…'}', style: const TextStyle(fontSize: 11.5, color: T.inkSoft)),
                   const SizedBox(width: 8),
-                  // «ساري» في السجلّ القديم وتخالفه ورقةُ التفويض: ليس ساريًا.
+                  // "Valid" in the old log that the authorization sheet contradicts: not valid.
                   a['stale'] == true
                       ? Chip2(tr('غير سارٍ', 'Not current'), T.inkFaint)
                       : Chip2(a['status'] == 'active' ? tr('نشط', 'Active') : tr('منتهٍ', 'Ended'), a['status'] == 'active' ? T.success : T.inkFaint),
@@ -1286,8 +1272,7 @@ class _EmployeeVehiclesTabState extends State<_EmployeeVehiclesTab> with Automat
   }
 }
 
-/// حالةُ العقد كما تُعرَض: «ساري» المخزَّنةُ لا يغيّرها مرورُ الوقت، فعقدٌ انقضت
-/// مدّتُه ولم يُجدَّد يُعرَض بما هو عليه — مطابقٌ لـ`contractBadge` في الموقع.
+/// Contract state as displayed: the stored "valid" never changes with time, so a contract past its end and not renewed is shown as expired. Matches `contractBadge` on the web.
 Widget _contractChip(Map c) {
   final status = (c['status'] ?? '').toString();
   final end = (c['endDate'] ?? '').toString();
@@ -1295,13 +1280,13 @@ Widget _contractChip(Map c) {
   if (status == 'active' && end.length >= 10 && end.substring(0, 10).compareTo(today) < 0) {
     return Chip2(tr('منتهي', 'Expired'), T.danger);
   }
-  // حالتان لا غير (٢٠٢٦/١٠/١٩): ساري أو منتهي — «مفسوخ» و«مجدَّد» القديمان منتهيان.
+  // Only two states: valid or expired; the old "terminated" and "renewed" count as expired.
   if (status.isEmpty) return const Chip2('—', T.inkFaint);
   return status == 'active' ? Chip2(tr('ساري', 'Active'), T.success) : Chip2(tr('منتهي', 'Expired'), T.inkFaint);
 }
 
 
-/// تصنيفاتُ ملفّات الموظّف — DOCUMENT_CATEGORIES في الموقع.
+/// Employee file categories; DOCUMENT_CATEGORIES on the web.
 const hrDocCategories = [
   ('iqama', 'صورة الإقامة', 'Iqama'), ('passport', 'صورة الجواز', 'Passport'),
   ('license', 'رخصة القيادة', 'Driving License'), ('driverCard', 'كارت السائق', 'Driver Card'),
@@ -1329,8 +1314,7 @@ String _auditLabel(dynamic k) { final m = _auditActions['$k']; return m == null 
 String _userName(dynamic u) => u is Map ? '${u['firstName'] ?? ''} ${u['lastName'] ?? ''}'.trim() : '';
 String _dd(dynamic v) { final g = gregDay(v); final h = hijriDay(v); return g.isEmpty ? '—' : (h.isEmpty ? g : '$g · $h ${tr('هـ', 'AH')}'); }
 
-/// تبويبُ «السجل»: التجديدات، وسجلُّ التغييرات من GET /api/hr/employees/:id/audit
-/// (لفريق الموارد البشريّة وحدَه — الخادمُ لا يُتيحه لغيرهم). ومعه التصدير.
+/// History tab: renewals and the change log from GET /api/hr/employees/:id/audit (HR team only, the server refuses others), with export.
 class _HistoryTab extends StatefulWidget {
   final String employeeId;
   final List<Map<String, dynamic>> renewals;

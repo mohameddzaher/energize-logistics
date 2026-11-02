@@ -1,15 +1,8 @@
 'use client';
 /**
- * إعداداتُ قسم الأفراد والنقل الخفيف.
- *
- * ما يتكرّر في القسم يُضبَط من هنا، وما يُغيَّر يظهر في الشاشات في اللحظة نفسها
- * (كلُّ كتابةٍ تبثّ `lt:updated`، والقوائمُ تُقرأ من مصدرها في كلّ فتحة).
- *
- * ── والسكنُ غرفٌ لا رقمٌ واحد ───────────────────────────────────────────────
- * «السكنُ يأخذ كم موظّفًا؟» ليس سؤالًا واحدًا: غرفةُ المناديب تسع ثمانيةً وغرفةُ
- * المشرفين ثلاثة. فسعةُ السكن مجموعُ غرفه، والإسكانُ يُرَدّ إن كانت الغرفةُ
- * مكتملةً أو كانت لنوعٍ آخرَ من الموظّفين — وإلّا صار العددُ المكتوب هنا زينةً
- * ووُضع في غرفةٍ أحدَ عشرَ وهي تسع ثمانية.
+ * Settings for the personnel and light-transport department.
+ * Recurring values are set here and changes show on the screens at once (each write broadcasts `lt:updated`; lists are read from source on every open).
+ * Housing is rooms, not a single number: a rep room holds eight and a supervisors room three. Housing capacity is the sum of its rooms, and a placement is rejected if the room is full or meant for another kind of employee; otherwise the number written here would be decoration and eleven could be put in a room that holds eight.
  */
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/context/AuthContext';
@@ -108,10 +101,10 @@ export default function B2CSettingsPage() {
           ))}
       </div>
 
-      {/* القوائمُ المرجعيّةُ الخاصّةُ بهذا القسم وحدَه — لا قوائمُ النظام كلِّه. */}
+      {/* Reference lists specific to this department only, not the whole system's lists. */}
       {tab === 'lists' && <ReferenceDataManager module="b2c" alsoType="jp_task_b2c" embedded />}
 
-      {/* حساباتُ تطبيق التوصيل: «غير مرتبط» يُراجَع ويُربط بصاحبه أو يُوقَف. */}
+      {/* Delivery-app accounts: an unlinked account is reviewed and linked to its owner or suspended. */}
       {tab === 'accounts' && <B2CAccountsReview ar={ar} canEdit={canEdit} />}
 
       {tab === 'housing' && (
@@ -154,7 +147,7 @@ export default function B2CSettingsPage() {
                       )}
                     </div>
 
-                    {/* الإشغالُ رقمًا وشريطًا — «باقي كم» هو ما يُسأل عنه. */}
+                    {/* Occupancy as a number and a bar; the remaining count is what people ask about. */}
                     <div className="mt-3 flex items-baseline gap-3 flex-wrap">
                       <span className="text-[22px] font-extrabold tabular-nums text-slate-900">{h.occupied || 0}</span>
                       <span className="text-slate-400 text-[13px]">{t('من', 'of')} {h.totalCapacity || 0}</span>
@@ -225,7 +218,7 @@ export default function B2CSettingsPage() {
               </p>
             </div>
 
-            {/* ── الغرفُ ─────────────────────────────────────────────────── */}
+            {/* Rooms. */}
             <div className="md:col-span-2 space-y-2">
               <div className="flex items-center justify-between">
                 <p className="text-sm font-bold text-slate-800">{t('الغرف', 'Rooms')}</p>
@@ -260,7 +253,7 @@ export default function B2CSettingsPage() {
                     <button type="button" onClick={() => delRoom(i)} title={t('حذف الغرفة', 'Remove room')}
                       className="p-2 rounded-lg text-slate-400 hover:text-red-600 hover:bg-white"><X className="w-4 h-4" /></button>
                   </div>
-                  {/* والغرفةُ المأهولةُ لا تُصغَّر دون سكّانها — الخادمُ يردّ ذلك بسببه. */}
+                  {/* An occupied room cannot be shrunk below its occupants; the server rejects it with the reason. */}
                   {(r.occupied || 0) > 0 && (
                     <p className="col-span-12 text-[11px] text-slate-500">
                       {t(`يسكنها الآن ${r.occupied} — لا تُخفَّض السعة دونهم.`, `${r.occupied} living here now — capacity cannot go below that.`)}

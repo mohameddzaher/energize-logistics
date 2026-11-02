@@ -12,12 +12,7 @@ import '../ui/widgets.dart';
 import '../ui/search_field.dart';
 import 'wallet_common.dart';
 
-/// المحفظة اليومية (النقدية) — محفظة الفرع اليومية: التحصيلات والمصروفات
-/// والمشتريات، مع تسجيل حركة وإغلاق اليوم — /api/wallet/daily.
-/// نظيرُ /system/wallet في الموقع: يومٌ أو فترةٌ أو شهر، ومحدِّدُ الفرع،
-/// وتعديلُ الحركة وحذفُها ونقلُها، وإعادةُ فتح اليوم، والتصدير.
-// أهلُ المال يملكون في المحفظة ما يملكه مديرُ النظام — مرآةُ
-// backend/src/config/financeAuthority.js؛ والخادمُ هو الحارس.
+/// Daily cash wallet: the branch's daily wallet with collections, expenses and purchases, with transaction entry and day closing, /api/wallet/daily. The counterpart of /system/wallet on the web: a day, period or month, branch selector, edit, delete and move of a transaction, reopening a day, and export. Finance staff hold the same wallet powers as the system admin; mirrors backend/src/config/financeAuthority.js. The server is the guard.
 const _financeFullRoles = ['cfo', 'accounting_manager', 'accountant'];
 bool _financePowers(String role) => const ['super_admin', 'admin'].contains(role) || _financeFullRoles.contains(role);
 
@@ -31,10 +26,7 @@ const _txTypes = {
   'collection': ('تحصيل', 'Collection', T.success, Icons.south_west),
   'expense': ('مصروف', 'Expense', T.danger, Icons.north_east),
   'purchase': ('مشتريات', 'Purchase', T.info, Icons.shopping_bag_outlined),
-  // ── واستلامُ الفواتير الضريبيّة ─────────────────────────────────────────
-  // اسمُ الزرّ يقول الفعلَ لا الشيء: «فاتورة ضريبية» تُقرأ كأنّها إصدارٌ أو
-  // دفعُ قيمة، والفعلُ استلام. وهو قيدٌ بلا مبلغ: يقول إنّ كشوفَ هذه الفواتير
-  // صارت بيد الموظّف، ولا يدخل رصيدَ العهدة ولا إقفالَ اليوم.
+  // Receiving tax invoices. The button name states the action, not the thing: "tax invoice" reads like issuing or paying a value, but the action is receipt. It is an entry with no amount: it records that the sheets of these invoices are now with the employee, and does not touch the custody balance or day closing.
   'tax_invoice': ('استلام فاتورة ضريبية', 'Tax invoices received', T.inkFaint, Icons.receipt_long_outlined),
 };
 
@@ -45,7 +37,7 @@ String _typeLabel(dynamic t) {
 
 String _money(dynamic v) => walletMoney(v);
 
-/// البيانُ والعميلُ والسائقُ — الأعمدةُ نفسُها في الموقع (statementOf / customerOf / driverOf).
+/// Statement, customer and driver: the same columns as the web (statementOf / customerOf / driverOf).
 String _statementOf(Map t) => '${t['description'] ?? ''}'.isNotEmpty ? '${t['description']}' : '${t['itemName'] ?? ''}';
 String _customerOf(Map t) => t['customer'] is Map ? '${t['customer']['companyName'] ?? ''} (${t['customer']['customerNumber'] ?? ''})' : '';
 String _driverOf(Map t) {
@@ -63,33 +55,28 @@ class _CashWalletScreenState extends State<CashWalletScreen> {
   List<Map<String, dynamic>> _rangeWallets = [];
   bool _loading = true;
   String? _error;
-  int _seq = 0; // ردٌّ أقدمُ لا يكتب فوق أحدث حين يتبدّل الفرعُ أو التاريخ.
-  /// ── أوّلُ يومٍ للدفتر — مرآةُ `config/walletStart.js` في الخادم ─────────────
-  ///
-  /// الخادمُ هو المانعُ فعلًا: يردّ كلَّ قراءةٍ وكتابةٍ قبل هذا اليوم. وهذه
-  /// النسخةُ لا تمنع شيئًا — وظيفتُها ألّا يُعرَض على المستخدم تاريخٌ سيُرفَض
-  /// اختيارُه، فيكتشف المنعَ بعد الضغط بدل أن يقرأه قبله.
+  int _seq = 0; // An older reply does not overwrite a newer one when the branch or date changes.
+  /// First day of the ledger, mirroring `config/walletStart.js` on the server. The server is the real blocker and rejects any read or write before this day. This copy blocks nothing; it only avoids offering a date whose selection will be rejected, so the block is not discovered after tapping.
   static final DateTime walletStart = DateTime(2026, 9, 1);
 
   static DateTime _startOfBook(DateTime d) => d.isBefore(walletStart) ? walletStart : d;
 
-  // ── يومٌ أو فترةٌ أو شهر ─────────────────────────────────────────────────
-  // الفترةُ والشهرُ للقراءة وحدَها: الحركةُ تخصّ يومًا، والإقفالُ فعلُ يوم.
+  // A day, a period or a month. Period and month are read-only: a transaction belongs to a day, and closing is a day action.
   String _mode = 'day';
   DateTime _date = _startOfBook(DateTime.now());
   DateTime _from = _startOfBook(DateTime.now());
   DateTime _to = DateTime.now();
   DateTime _month = DateTime(DateTime.now().year, DateTime.now().month);
 
-  // محدِّدُ الفرع — لمن لا يُقفَل على فرعه (موظّفُ العمليات وحدَه يُقفَل).
+  // Branch selector for users not locked to their branch (only an operations employee is locked).
   List<Map<String, dynamic>> _branches = [];
   String _branchId = '';
   int _branchUsers = 0;
 
-  // تصفيةٌ محلّيّة على الحركات المعروضة (نظيرُ فلاتر الأعمدة في الموقع).
+  // Local filtering of the displayed transactions (like the web column filters).
   String _typeFilter = '';
   String _q = '';
-  final _searchCtl = TextEditingController(); // النصُّ يبقى مطابقًا لـ_q بعد التحميل (الخانةُ داخل فرع «ما بعد التحميل»)
+  final _searchCtl = TextEditingController(); // Text stays equal to _q after loading (the field is inside the "after loading" branch).
 
   late final void Function() _onLive;
   static const _events = ['wallet:transaction', 'wallet:transactionDeleted', 'wallet:dayClosed', 'wallet:dayReopened'];
@@ -99,13 +86,13 @@ class _CashWalletScreenState extends State<CashWalletScreen> {
   AuthProvider get _auth => context.read<AuthProvider>();
   String get _role => _auth.role;
   bool get _superPowers => _auth.user?['superAdminPowers'] == true;
-  /// مديرُ النظام وأهلُ المال: التعديلُ والحذفُ والنقلُ وإعادةُ الفتح (hasFinancePowers).
+  /// System admin and finance staff: edit, delete, move and reopen (hasFinancePowers).
   bool get _finance => _financePowers(_role) || _superPowers;
   bool get _isManager => const ['super_admin', 'admin', 'operations_manager', 'operations_staff', ..._financeFullRoles].contains(_role)
       || _auth.canEditSection('Operations');
-  // عرضٌ فقط: المشرف، وقسمُ التحصيل (٢٠٢٦/١٠/٢٧) — والخادمُ يردّ كتابتَهم بالدور.
+  // View only: the supervisor and the collections section; the server rejects their writes by role.
   bool get _readOnly => const ['moderator', 'collections_manager', 'collections_staff', 'collections_trainee'].contains(_role);
-  /// الكتابةُ في يومٍ أُقفل سلطةٌ ماليّة — role-only كما في الخادم (`mayWriteIntoClosedDay`).
+  /// Writing into a closed day is a financial authority; role-only as on the server (`mayWriteIntoClosedDay`).
   bool get _canWriteClosedDay => const ['super_admin', 'admin', 'operations_manager', ..._financeFullRoles].contains(_role) || _superPowers;
   bool get _canSelectBranch => _role.isNotEmpty && _role != 'operations_staff';
 
@@ -128,7 +115,7 @@ class _CashWalletScreenState extends State<CashWalletScreen> {
     super.dispose();
   }
 
-  /// قائمةُ الفروع تُقرأ مرّةً واحدة وتخدم الغرضين: محدِّدُ الفرع، وفرعُ المشتريات.
+  /// The branch list is read once and serves both purposes: the branch selector and the purchase branch.
   Future<void> _init() async {
     try {
       final d = await Api.instance.get('/api/branches');
@@ -138,11 +125,11 @@ class _CashWalletScreenState extends State<CashWalletScreen> {
         _branchId = '${_branches.first['_id']}';
         _loadBranchUsers();
       }
-    } catch (_) { /* تبقى القائمةُ فارغة. */ }
+    } catch (_) { /* The list stays empty. */ }
     await _load();
   }
 
-  /// موظّفو الفرع للعرض وحدَه — «مَن يعمل على هذه المحفظة». وتعذُّرُ قراءتِه لا يُقال خطأً.
+  /// Branch staff for display only: "who works on this wallet". A failed read is not reported as an error.
   Future<void> _loadBranchUsers() async {
     final id = _branchId;
     try {
@@ -161,7 +148,7 @@ class _CashWalletScreenState extends State<CashWalletScreen> {
     if (_mode == 'month') {
       var end = walletMonthEnd(_month);
       final cap = walletDayKey(DateTime.now().add(const Duration(days: 1)));
-      // والشهرُ الجاري ينتهي عند حدّ الدفتر، لا في آخر أيّامه.
+      // The current month ends at the ledger limit, not on its last day.
       if (!_finance && end.compareTo(cap) > 0) end = cap;
       return ('${walletMonthKey(_month)}-01', end);
     }
@@ -216,9 +203,7 @@ class _CashWalletScreenState extends State<CashWalletScreen> {
     if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
   }
 
-  // ── نقلُ حركةٍ إلى فرعٍ آخر أو يومٍ آخر — لأهل المال ──────────────────────
-  // نظيرُ «نقل» في الموقع. واليوميّتان يُعاد حسابهما وتتدحرج أرصدتُهما في
-  // الخادم — راجع `moveTransaction`.
+  // Move a transaction to another branch or day, for finance staff. Like "move" on the web. Both daily records are recomputed and their balances roll forward on the server; see `moveTransaction`.
   Future<void> _moveTransaction(Map<String, dynamic> t) async {
     final fromBranch = (t['branch'] ?? '').toString();
     final fromDate = (t['date'] ?? _dateKey).toString();
@@ -288,7 +273,7 @@ class _CashWalletScreenState extends State<CashWalletScreen> {
     );
   }
 
-  // ── تعديلُ حركةٍ سُجِّلت — لأهل المال وحدَهم (maySettle في الخادم) ─────────
+  // Edit a recorded transaction, for finance staff only (maySettle on the server)
   Future<void> _editTransaction(Map<String, dynamic> t) async {
     final type = '${t['type']}';
     final amount = TextEditingController(text: '${t['amount'] ?? ''}');
@@ -300,7 +285,7 @@ class _CashWalletScreenState extends State<CashWalletScreen> {
     final pDriver = TextEditingController(text: '${t['purchaseDriverName'] ?? ''}');
     final pReceipt = TextEditingController(text: '${t['purchaseReceiptNumber'] ?? ''}');
     String pBranch = '${t['purchaseBranch'] ?? ''}';
-    // والقيمةُ التاريخيّةُ تبقى في القائمة وإن لم توافق فرعًا قائمًا.
+    // A historical value stays in the list even if it matches no existing branch.
     final branchNames = <String>{if (pBranch.isNotEmpty) pBranch, ..._branches.map((b) => '${b['name'] ?? ''}').where((x) => x.isNotEmpty)}.toList();
     bool busy = false;
     await showModalBottomSheet(
@@ -404,7 +389,7 @@ class _CashWalletScreenState extends State<CashWalletScreen> {
     }
   }
 
-  // ── وإعادةُ الفتح لأهل المال وحدَهم — يومٌ أُقفل صار رقمًا في دفترٍ مُقَرّ ────
+  // Reopening is for finance staff only: a closed day has become a figure in an approved ledger.
   Future<void> _reopenDay() async {
     final id = _wallet?['_id'];
     if (id == null) return;
@@ -453,7 +438,7 @@ class _CashWalletScreenState extends State<CashWalletScreen> {
     if (saved == true) _load(spinner: false);
   }
 
-  /// كشوفُ التخريج في الحركات المعروضة — مرتَّبةً وبلا تكرار. نظيرُ الزرّ في الموقع.
+  /// Clearance sheets in the displayed transactions, sorted and deduplicated. The counterpart of the web button.
   List<String> _reportNumbers(List<Map<String, dynamic>> txs) {
     final out = <String>{};
     for (final t in txs) {
@@ -499,7 +484,7 @@ class _CashWalletScreenState extends State<CashWalletScreen> {
         return AlertDialog(
           title: Text(tr('إغلاق اليوم', 'Close day')),
           content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            // الرصيدُ المتوقّعُ للمدير وحدَه — كما في الموقع: الموظّفُ يعدّ ما بيده ولا يُلقَّن الرقم.
+            // The expected balance is for the manager only, as on the web: the employee counts what is in hand and is not handed the figure.
             if (_isManager) ...[
               Text('${tr('الرصيد النقدي المتوقع', 'Expected cash balance')}: ${_money(expected)} ${tr('ر.س', 'SAR')}', style: const TextStyle(fontSize: 12.5, color: T.inkSoft)),
               const SizedBox(height: 10),
@@ -530,7 +515,7 @@ class _CashWalletScreenState extends State<CashWalletScreen> {
         'differenceReason': '',
         'differenceNotes': notes.text.trim(),
       });
-      // ومَن ليس مديرًا ينتقل إلى الغد بعد الإقفال — كما في الموقع.
+      // A non-manager moves to tomorrow after closing, as on the web.
       if (!_isManager) {
         setState(() => _date = _date.add(const Duration(days: 1)));
       }
@@ -540,7 +525,7 @@ class _CashWalletScreenState extends State<CashWalletScreen> {
     }
   }
 
-  // ── التصدير — أعمدةُ الموقع نفسُها (walletSummaryColumns / txColumns) ──────
+  // Export: the same columns as the web (walletSummaryColumns / txColumns)
   List<ExportCol> get _summaryCols => [
         ExportCol('الفرع', 'Branch', (r) => r['branch'] is Map ? '${r['branch']['name'] ?? ''}' : ''),
         ExportCol('التاريخ', 'Date', (r) => '${r['date'] ?? ''}'),
@@ -644,7 +629,7 @@ class _CashWalletScreenState extends State<CashWalletScreen> {
   }
 
   Future<void> _pickDay() async {
-    // والغدُ داخلٌ: العملُ يتجاوز منتصفَ الليل. ومديرُ النظام وأهلُ المال بلا حدّ.
+    // Tomorrow is allowed because work passes midnight. The system admin and finance staff have no limit.
     final v = await showDatePicker(
         context: context,
         initialDate: _date,
@@ -761,7 +746,7 @@ class _CashWalletScreenState extends State<CashWalletScreen> {
             Row(children: [
               Text('${tr('الحركات', 'Transactions')} (${shown.length})', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
               const Spacer(),
-              // ── وكشوفُ المعروض تُنسَخ بضغطة — نظيرُ الزرّ في الموقع.
+              // Displayed sheets are copied in one tap, the counterpart of the web button.
               if (shown.isNotEmpty)
                 TextButton.icon(
                   onPressed: () => _copyReports(shown),
@@ -827,7 +812,7 @@ class _CashWalletScreenState extends State<CashWalletScreen> {
           ]),
         ),
       ),
-      // فرقُ العدّ — للمدير وحدَه، كما في الموقع.
+      // Counting difference: manager only, as on the web.
       if (_isManager && closed && w['cashDifference'] != null && diff != 0) ...[
         const SizedBox(height: 10),
         AppCard(
@@ -844,7 +829,7 @@ class _CashWalletScreenState extends State<CashWalletScreen> {
       ],
       if (!_readOnly) ...[
         const SizedBox(height: 10),
-        // ولا يُترَك الفراغُ بلا تفسير: من أقفل يومَه يعرف لماذا اختفت الأزرار.
+        // The empty space is explained: whoever closed the day knows why the buttons disappeared.
         if (closed && !_canWriteClosedDay)
           Container(
             padding: const EdgeInsets.all(10),
@@ -867,7 +852,7 @@ class _CashWalletScreenState extends State<CashWalletScreen> {
     ];
   }
 
-  /// بطاقاتُ الفترة — والرصيدُ لا يُجمَع: افتتاحُ أوّلِ يومٍ وإقفالُ آخرِه.
+  /// Period cards; the balance is not summed: it is the opening of the first day and the closing of the last.
   Widget _rangeCards() {
     num s(String k) => _rangeWallets.fold<num>(0, (a, w) => a + walletNum(w[k]));
     final opening = _rangeWallets.isEmpty ? 0 : walletNum(_rangeWallets.first['openingBalance']);
@@ -924,7 +909,7 @@ class _CashWalletScreenState extends State<CashWalletScreen> {
                 Text(meta, style: const TextStyle(fontSize: 10.5, color: T.inkFaint)),
                 if (op.isNotEmpty) Text(op, style: const TextStyle(fontSize: 10.5, color: T.inkSoft)),
                 if ('${t['notes'] ?? ''}'.isNotEmpty) Text('${t['notes']}', style: const TextStyle(fontSize: 10.5, color: T.inkSoft), maxLines: 2, overflow: TextOverflow.ellipsis),
-                // الكشوفُ المستلَمة هي كلُّ محتوى قيد الاستلام، فتُعرَض في سطره.
+                // Received sheets are the whole content of the receipt entry, so they are shown on its line.
                 if (t['type'] == 'tax_invoice')
                   Text(
                     ((t['receivedReportNumbers'] as List?)?.isNotEmpty == true
@@ -955,10 +940,7 @@ class _CashWalletScreenState extends State<CashWalletScreen> {
       );
 }
 
-/// نموذجُ الحركة — نظيرُ نافذة الإضافة في الموقع، نوعًا نوعًا:
-/// التحصيلُ من العميل (بكشفٍ يُبحث عنه) أو من الشركة (ببيان)، والمصروفُ بصنفه،
-/// والمشترياتُ لكشفٍ وُجد فعلًا ولم يُشترَ ولا يُسجَّل قبل استلام السند،
-/// واستلامُ الفواتير الضريبيّة أزواجًا (كشفٌ وسندُه) بلا مبلغ.
+/// Transaction form, the counterpart of the web add dialog, type by type: collection from a customer (by a searched sheet) or from the company (with a statement), an expense with its category, purchases for a sheet that exists and was not bought and cannot be recorded before the voucher is received, and receipt of tax invoices as pairs (sheet and its voucher) with no amount.
 class _TxForm extends StatefulWidget {
   final String type;
   final String date;
@@ -987,7 +969,7 @@ class _TxFormState extends State<_TxForm> {
   bool _busy = false;
   String _err = '';
 
-  // بحثُ الكشف
+  // Sheet search
   String _collMsg = '';
   bool _collFound = false;
   String _pMsg = '';
@@ -1065,7 +1047,7 @@ class _TxFormState extends State<_TxForm> {
       if (_notes.text.trim().isNotEmpty) 'notes': _notes.text.trim(),
       if (widget.branchId.isNotEmpty) 'branchId': widget.branchId,
     };
-    // ما بقي في خانة الكتابة ولم يُضَف يُحسب: مَن كتبه وضغط «تسجيل» قصد إضافتَه.
+    // Whatever remains in the input and was not added still counts: someone who typed it and pressed Record meant to add it.
     final pairs = [..._received];
     final pending = _rReport.text.trim();
     if (pending.isNotEmpty && !pairs.any((x) => x.$1 == pending)) pairs.add((pending, _rSand.text.trim()));
@@ -1218,7 +1200,7 @@ class _TxFormState extends State<_TxForm> {
                      'A receipt record — these reports are now in your hands. No amount, and it does not touch the wallet balance or the day’s close.'),
                   style: const TextStyle(fontSize: 11.5, color: T.inkSoft)),
               ),
-              // ولكلّ كشفٍ سندُه — يُكتبان معًا فيُحفظان زوجًا.
+              // Each sheet has its voucher; they are written together so they are saved as a pair.
               Row(children: [
                 Expanded(child: _field(_rReport, 'رقم أمر النقل', 'Report number', onSubmit: _addReceived)),
                 const SizedBox(width: 6),

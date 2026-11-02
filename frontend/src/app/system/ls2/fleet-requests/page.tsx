@@ -1,14 +1,8 @@
 'use client';
 /**
- * طلبات الأسطول — «أحتاج هذه الشاحنةَ وصيانتُها متأخّرة».
- *
- * ── ما تجيب عنه هذه الشاشة ──────────────────────────────────────────────────
- * مرآةُ لوكيشن سوليوشن تقول عن شاحنةٍ إنّ موعدَ صيانتها فات. وصار ذلك مانعًا
- * من التحميل في إدارة الأسطول — لا شارةً حمراءَ تُقرأ وتُهمَل. ومن احتاجها
- * رفع طلبًا، فهذه هي الطلبات: ما فات، ومن طلب، وما الحمولةُ المنتظرة، ولماذا.
- *
- * والقرارُ هنا لا هناك: من يملك الصيانةَ هو من يأذن بتأجيلها، ويُسجَّل اسمُه
- * مع القرار وسببِه. وموافقةٌ واحدةٌ لحمولةٍ واحدة — ثمّ تُستهلَك.
+ * Fleet requests: 'I need this truck but its maintenance is overdue'
+ * The Location Solutions mirror says a truck's maintenance date has passed, which now blocks loading in fleet management rather than showing a red badge that gets ignored. Whoever needs the truck raises a request; these are the requests: what is overdue, who asked, the waiting load, and why
+ * The decision is made here: whoever owns maintenance authorizes postponing it, and their name is recorded with the decision and reason. One approval covers one load and is then consumed.
  */
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import Link from 'next/link';
@@ -57,8 +51,7 @@ export default function Ls2FleetRequestsPage() {
   const [note, setNote] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState('');
 
-  // القرارُ لمن يملك تعديلَ القسم — بدوره أو بمنحٍ من مصفوفة الصلاحيّات. كانت
-  // قائمةَ أسماءٍ وحدَها، فمَن مُنح القسمَ فتح الصفحةَ ولم يجد زرَّي القرار.
+  // The decision belongs to whoever can edit the section, by role or by a permissions-matrix grant. It used to be a name list alone, so someone granted the section opened the page and found no decision buttons.
   const canDecide = !!user && (DECIDE_ROLES.includes(user.role) || isLs2Admin(user));
 
   const load = useCallback(async () => {
@@ -104,14 +97,14 @@ export default function Ls2FleetRequestsPage() {
 
       {summary && (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          {/* والبطاقةُ تُفتَح على صفوفها: ضغطةٌ تُبدّل الحالةَ المعروضة. */}
+          {/* A card opens on its rows: a click switches the displayed status. */}
           <StatCard label={t('معلّقة', 'Pending')} value={summary.pending} accent={summary.pending ? 'text-amber-600' : undefined}
             onClick={() => setStatus('pending')} active={status === 'pending'} hint={t('اضغط لعرضها', 'tap to open')} />
           <StatCard label={t('مُوافَق عليها', 'Approved')} value={summary.approved} accent="text-emerald-600"
             onClick={() => setStatus('approved')} active={status === 'approved'} hint={t('اضغط لعرضها', 'tap to open')} />
           <StatCard label={t('مرفوضة', 'Rejected')} value={summary.rejected} accent="text-red-600"
             onClick={() => setStatus('rejected')} active={status === 'rejected'} hint={t('اضغط لعرضها', 'tap to open')} />
-          {/* موافقةٌ لم تُستعمَل بعد = شاحنةٌ مفتوحةٌ لحمولةٍ واحدة. */}
+          {/* An approval not yet used = a truck open for one load. */}
           <StatCard label={t('موافقات لم تُستعمَل', 'Unused approvals')} value={summary.openApprovals} accent="text-slate-900"
             onClick={() => setStatus('approved')} active={status === 'approved'}
             hint={t('من المُوافَق عليها', 'within approved')} />
@@ -160,7 +153,7 @@ export default function Ls2FleetRequestsPage() {
                 <span className="text-slate-600">{r.reason || t('بلا سبب مكتوب', 'no reason given')}</span>
               </p>
 
-              {/* ما الحمولةُ المنتظرة: «ساعتان إلى جدّة» ليست «١٤٠٠ كم إلى جيزان». */}
+              {/* What the waiting load is: 'two hours to Jeddah' is not '1400 km to Jizan'. */}
               {(r.load?.toCity || r.load?.customerName) && (
                 <p className="mt-1 text-xs text-slate-600">
                   {t('الحمولة', 'Load')}: {[r.load?.customerName, [r.load?.fromCity, r.load?.toCity].filter(Boolean).join(' ← '), r.load?.loadDate]

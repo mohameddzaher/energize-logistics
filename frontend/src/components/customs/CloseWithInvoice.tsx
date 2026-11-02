@@ -1,25 +1,8 @@
 'use client';
 /**
- * إصدارُ فاتورة العميل (الفوترة).
- *
- * ── الفرقُ الذي تقوم عليه هذه الشاشة ───────────────────────────────────────
- * «مراحل السداد» ما **ندفعه** نحن: طلباتُ صرفٍ تجيبها الإدارةُ الماليّة —
- * «سدّدنا النقلَ ١٨٠٠، وهذا إيصالُه». وهذه الشاشةُ ما **نقبضه**: يُكتب سعرُ
- * البيع لكلّ بندٍ — «نفوتر النقلَ ٢٢٠٠» — ومعه مرفقُه إن وُجد.
- *
- * وبهما تُبنى فاتورةٌ واحدةٌ تذهب إلى الماليّة (القاعدةُ في
- * backend/utils/customsInvoice، والحسابُ هناك لا هنا كي لا يختلف رقمان):
- *   بنودُ مراحل السداد كما هي بلا ضريبة — إلّا ما له سعرُ بيعٍ فيُؤخَذ من هنا
- *   + بنودُ البيع × ١٫١٥
- *   = إجماليُّ الفاتورة.
- *
- * ── والفوترةُ غيرُ الإنهاء ─────────────────────────────────────────────────
- * كانت الفاتورةُ لا تصدر قبل «فاتورة النقل» بسعرها ومرفقها، وهي تتأخّر عند
- * الناقل فتتأخّر معها فاتورةُ العميل. فصار: تصدر الفاتورةُ بما هو معروف،
- * ويُقال عند بند النقل «لم تُستلَم بعد»، وتُنهى المعاملةُ حين تُرفَق لاحقًا.
- *
- * والمعاينةُ أدناه تُحسَب بالقاعدة نفسِها قبل الحفظ — فمن يُصدر يرى الفاتورةَ
- * التي سيقرؤها المحاسبُ، لا رقمًا يكتشفه بعدها.
+ * Issuing the customer invoice (billing).
+ * Payment stages are what we pay (payment requests answered by Finance); this screen is what we collect: a selling price per item, with an optional attachment. One invoice goes to Finance, computed in backend/utils/customsInvoice (not here, so two numbers cannot differ): payment-stage items as they are without tax, except items with a selling price taken from here, plus selling items x 1.15, equals the invoice total.
+ * Billing is separate from closing: the invoice issues with what is known, the transport item shows "not received yet", and the transaction closes when the transport invoice is attached later. The preview below uses the same rule before saving.
  */
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { X, Loader2, Paperclip, Receipt, AlertTriangle } from 'lucide-react';
@@ -32,7 +15,7 @@ export interface StageEntry { key: string; label: string; amount: number | null;
 const money = (n: number) => (Math.round((n || 0) * 100) / 100).toLocaleString('en-US', { minimumFractionDigits: 2 });
 const VAT = 0.15;
 
-// فاتورةُ النقل: بندُها القديم أو أيُّ جزءٍ من أجزاء النقل الثلاثة — راجع TRANSPORT_STAGE_KEYS.
+// Transport invoice: its legacy item or any of the three transport parts; see TRANSPORT_STAGE_KEYS.
 const isTransportKey = (k: string) => TRANSPORT_STAGE_KEYS.has(k);
 
 export default function CloseWithInvoice({
@@ -40,7 +23,7 @@ export default function CloseWithInvoice({
 }: {
   open: boolean; onClose: () => void; clearanceId: string;
   stages: StageEntry[]; ar: boolean;
-  /** فاتورةُ النقل وصلت من قبل (من مراحل السداد أو أُرفقت) — فلا يُسأل عنها. */
+  /** Transport invoice already arrived (from payment stages or attached), so it is not asked for. */
   transportReceived?: boolean;
   onDone: (clearance: any) => void; notify: (m: string, tone?: any) => void;
 }) {
@@ -48,7 +31,7 @@ export default function CloseWithInvoice({
   const [defs, setDefs] = useState<SaleDef[]>([]);
   const [rows, setRows] = useState<Record<string, { amount: string; note: string; file?: { dataUrl: string; fileName: string } }>>({});
   const [busy, setBusy] = useState(false);
-  // ما أُرفِق في إصدارٍ سابق — يبقى ويُعرَض، فلا يُظنّ أنّه سقط.
+  // Attachments from an earlier issue remain and are shown so they do not look lost.
   const [kept, setKept] = useState<Record<string, string>>({});
   const fileFor = useRef<string>('');
   const inputRef = useRef<HTMLInputElement>(null);
@@ -58,7 +41,7 @@ export default function CloseWithInvoice({
     api.get<{ saleItemDefs: SaleDef[]; invoice: any }>(`/api/customs-clearance/${clearanceId}/invoice`)
       .then((d) => {
         setDefs(d.saleItemDefs || []);
-        // ما كُتب قبلًا يُقرأ لا يُمحى — إعادةُ الإقفال لا تبدأ من فراغ.
+        // Previously written values are read, not wiped, so re-closing does not start from empty.
         const pre: typeof rows = {};
         const files: Record<string, string> = {};
         (d.invoice?.lines || []).filter((l: any) => l.from === 'sale').forEach((l: any) => {
@@ -81,13 +64,12 @@ export default function CloseWithInvoice({
     fr.readAsDataURL(f);
   };
 
-  // المعاينة: بالقاعدة نفسِها — ما له سعرُ بيعٍ لا يُحسَب من التكلفة.
+  // Preview uses the same rule: an item with a selling price is not computed from cost.
   const preview = useMemo(() => {
     const priced = Object.entries(rows)
       .filter(([, v]) => v && String(v.amount).trim() !== '' && Number.isFinite(Number(v.amount)))
       .map(([key, v]) => ({ key, amount: Number(v.amount) }));
-    // البنودُ الثلاثةُ لا علاقةَ لها بمراحل السداد (٢٠٢٦/١٠/٢٢): مراحلُ السداد كلُّها
-    // تمرّ كما هي، والبنودُ فوقها — لا يحلّ أحدُهما محلَّ الآخر (utils/customsInvoice).
+    // The three items are unrelated to payment stages: all payment stages pass through as they are and these items sit on top; neither replaces the other (utils/customsInvoice).
     const overridden = new Set(priced.map((x) => x.key));
     const passLines = (stages || [])
       .filter((p) => Number.isFinite(Number(p.amount)) && Number(p.amount) !== 0);
@@ -103,7 +85,7 @@ export default function CloseWithInvoice({
       hasLines: priced.length > 0 || passLines.length > 0,
     };
   }, [rows, stages, defs, ar]);
-  // فاتورةُ النقل حاضرةٌ الآن؟ وصلت من قبل، أو أُرفقت في هذه النافذة.
+  // Is the transport invoice present now: arrived earlier or attached in this window.
 
   const save = async () => {
     const saleItems = Object.entries(rows)
@@ -113,7 +95,7 @@ export default function CloseWithInvoice({
     setBusy(true);
     try {
       const d = await api.patch<any>(`/api/customs-clearance/${clearanceId}/invoice`, { saleItems });
-      // طلبٌ إلى الإدارة الماليّة لا فاتورة (٢٠٢٦/١٠/٢٢): المعاملةُ تُفوتَر حين تقول الماليّةُ ذلك.
+      // A request to Finance, not an invoice: the transaction is invoiced when Finance says so.
       notify(d.closed
         ? t('أُرسل طلبُ الفوترة إلى الإدارة الماليّة وأُغلقت المعاملة', 'Invoice request sent to Finance — transaction closed')
         : t('أُرسل طلبُ الفوترة إلى الإدارة الماليّة', 'Invoice request sent to Finance'), 'success');
@@ -167,10 +149,7 @@ export default function CloseWithInvoice({
                       {r.file ? r.file.fileName.slice(0, 18) : kept[d.key] ? t('مُرفَق — استبدال', 'Attached — replace') : t('إرفاق', 'Attach')}
                     </button>
                   </div>
-                  {/* ── فاتورةُ النقل ليست شرطًا ────────────────────────────
-                      تُصدَر الفاتورةُ بدونها، ويُقال ذلك هنا قبل الضغط: ما
-                      الذي سيقع للمعاملة إن أُرفقت الآن، وما الذي يقع إن لم
-                      تُرفَق. */}
+                  {/* The transport invoice is not a precondition. The invoice issues without it, and this states before clicking what happens to the transaction if it is attached now versus not. */}
 
                 </div>
               );
@@ -180,7 +159,7 @@ export default function CloseWithInvoice({
               onChange={(e) => pick(e.target.files?.[0] || null)} />
           </div>
 
-          {/* المعاينةُ قبل الحفظ — بالقاعدة نفسِها التي يحسب بها الخادم. */}
+          {/* Preview before saving, using the same rule the server computes with. */}
           <div className="rounded-xl bg-slate-50 border border-slate-200 p-3.5 space-y-1.5">
             <p className="text-[12px] font-bold text-slate-800">{t('معاينة الفاتورة', 'Invoice preview')}</p>
             {preview.passLines.map((p, i) => (

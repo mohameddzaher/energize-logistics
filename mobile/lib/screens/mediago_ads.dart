@@ -1,8 +1,6 @@
-// المحتوى الإعلانيّ — صفحةٌ مشتركةٌ مع Media Go (كالموقع: /system/b2c/mediago-ads، ٢٠٢٦/١٠/٢٢).
-//
-// Media Go تطلب تصويرَ إعلانٍ على مركباتنا، ونحن نصوّر لكلّ مركبةٍ تحقّقَها (صورًا أو
-// فيديو حتى ١٥ ثانية) ونراجعه ثمّ «تمّ» فيصلها مركبةً مركبة، وتردّ بملاحظة.
-// والحسابُ كلُّه في الخادم (backend/controllers/mediagoAdController).
+// Advertising content, a page shared with Media Go (as on the web: /system/b2c/mediago-ads).
+// Media Go requests ad filming on our vehicles; we capture each vehicle's proof (photos or video up to 15 seconds), review it, then mark it done and it reaches them vehicle by vehicle; they reply with a note.
+// All computation is server-side (backend/controllers/mediagoAdController).
 import 'dart:async';
 import 'dart:convert';
 import 'package:file_picker/file_picker.dart';
@@ -39,7 +37,7 @@ Color _tone(String s) => switch (s) {
 
 class MediaGoAdsScreen extends StatefulWidget {
   const MediaGoAdsScreen({super.key, this.embedded = false});
-  /// داخلَ بيتِ حساب Media Go (له شريطُه) — بلا قائمةٍ جانبيّة.
+  /// Inside the Media Go account shell (it has its own bar); no side drawer.
   final bool embedded;
   @override
   State<MediaGoAdsScreen> createState() => _MediaGoAdsScreenState();
@@ -107,7 +105,7 @@ class _MediaGoAdsScreenState extends State<MediaGoAdsScreen> {
             : RefreshIndicator(
                 onRefresh: _load,
                 child: ListView(keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag, padding: const EdgeInsets.fromLTRB(14, 12, 14, 90), children: [
-                  // بحثُ الخادم بتأخيرٍ قصير — وعدّادُ الطلبات يقبل آخرَ ردٍّ وحدَه.
+                  // Server search with a short delay; the request counter accepts only the latest response.
                   SearchField(controller: _q, dense: true, hint: tr('ابحث بالإعلان أو الطلب أو اللوحة…', 'Search ad, request or plate…'),
                       onChanged: (_) { _debounce?.cancel(); _debounce = Timer(const Duration(milliseconds: 350), _load); }),
                   const SizedBox(height: 8),
@@ -125,7 +123,7 @@ class _MediaGoAdsScreenState extends State<MediaGoAdsScreen> {
                   ])),
                   const SizedBox(height: 8),
                   if (items.isEmpty) Padding(padding: const EdgeInsets.all(30), child: EmptyState(icon: Icons.movie_outlined, title: _q.text.trim().isNotEmpty ? tr('لا نتائج مطابقة للبحث', 'No matches') : tr('لا طلبات هنا', 'No requests here'))),
-                  // جدولٌ لا بطاقات (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢) — والضغطُ على الصفّ يفتح صفحتَه.
+                  // A table, not cards (company owner's choice); tapping a row opens its page.
                   if (items.isNotEmpty)
                     AppCard(
                       padding: EdgeInsets.zero,
@@ -176,7 +174,7 @@ class _MediaGoAdsScreenState extends State<MediaGoAdsScreen> {
   }
 }
 
-// ── طلبٌ جديد ────────────────────────────────────────────────────────────────
+// New request
 class MediaGoAdCreateScreen extends StatefulWidget {
   const MediaGoAdCreateScreen({super.key, this.meta});
   final Map? meta;
@@ -190,7 +188,7 @@ class _MediaGoAdCreateScreenState extends State<MediaGoAdCreateScreen> {
   final List<Map<String, dynamic>> _picked = [];
   List<Map<String, dynamic>> _opts = const [];
   bool _busy = false;
-  // آخرُ بحثٍ وحدَه يُكتب — ردٌّ أقدمُ يصل متأخّرًا لا يمحو الأحدث.
+  // Only the latest search is written; an older reply arriving late does not overwrite the newer one.
   int _vSeq = 0;
   Timer? _vDebounce;
 
@@ -256,7 +254,7 @@ class _MediaGoAdCreateScreenState extends State<MediaGoAdCreateScreen> {
               dense: true, value: _picked.any((x) => x['_id'] == v['_id']),
               onChanged: (on) => setState(() => on == true ? _picked.add(v) : _picked.removeWhere((x) => x['_id'] == v['_id'])),
               title: Text('${v['plateNumber']}', style: const TextStyle(fontWeight: FontWeight.w700)),
-              // Media Go يصلها رقمُ المركبة وحده — فلا سطرَ ثانٍ عندها.
+              // Media Go receives only the vehicle number, so there is no second line for them.
               subtitle: () { final sub = [if ('${v['serialNumber'] ?? ''}'.isNotEmpty) '#${v['serialNumber']}', '${v['project'] ?? ''}'].where((x) => x.isNotEmpty).join(' · '); return sub.isEmpty ? null : Text(sub); }(),
             ),
           ])),
@@ -281,7 +279,7 @@ class _MediaGoAdCreateScreenState extends State<MediaGoAdCreateScreen> {
   }
 }
 
-// ── الطلبُ مفتوحًا ───────────────────────────────────────────────────────────
+// Open request
 class MediaGoAdDetailScreen extends StatefulWidget {
   const MediaGoAdDetailScreen({super.key, required this.id});
   final String id;
@@ -326,8 +324,7 @@ class _MediaGoAdDetailScreenState extends State<MediaGoAdDetailScreen> {
     if (mounted) setState(() => _busy = '');
   }
 
-  /// تصويرٌ حيّ أو رفعٌ من الجهاز — والنوعُ نوعُ الطلب وحده (صورٌ فقط أو فيديو فقط).
-  /// الكاميرا في الصور تعود صورةً بعد صورة حتى يُلغى، والفيديو تقطعه عند ١٥ ثانية.
+  /// Live capture or upload from the device; the type is the request's type only (photos only or video only). In photo mode the camera returns photo after photo until cancelled; video is cut at 15 seconds.
   Future<void> _shoot(String url, String want, String src) async {
     final files = <Map<String, dynamic>>[];
     String vmime(String name) {
@@ -496,7 +493,7 @@ class _MediaGoAdDetailScreenState extends State<MediaGoAdDetailScreen> {
   }
 }
 
-/// العارضُ داخل التطبيق: الصورُ تُكبَّر وتُقلَّب، والفيديو يُشغَّل بمشغّل الجهاز.
+/// In-app viewer: photos can be zoomed and swiped; video plays in the device player.
 class _AdGallery extends StatelessWidget {
   const _AdGallery({required this.files, required this.start});
   final List<Map<String, dynamic>> files;
@@ -522,7 +519,7 @@ class _AdGallery extends StatelessWidget {
       );
 }
 
-/// بيتُ حساب Media Go — شاشتاه: الشكاوى والمحتوى الإعلانيّ (كالموقع، scopedRoles).
+/// Media Go account shell, two screens: complaints and advertising content (as on the web, scopedRoles).
 class MediaGoPartnerHome extends StatefulWidget {
   const MediaGoPartnerHome({super.key, required this.complaints});
   final Widget complaints;

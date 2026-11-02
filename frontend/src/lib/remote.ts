@@ -10,7 +10,7 @@ export const isRemoteStaff = (u: RoleOrUser) =>
 
 export const isRemoteEmployee = (role?: string | null) => role === 'remote_employee';
 
-// Minutes → "Xh Ym" / "X س Y د"
+// Minutes to "Xh Ym" or the Arabic equivalent.
 export const fmtDuration = (minutes: number, lang: 'en' | 'ar' = 'en') => {
   const m = Math.max(0, Math.round(minutes || 0));
   const h = Math.floor(m / 60);

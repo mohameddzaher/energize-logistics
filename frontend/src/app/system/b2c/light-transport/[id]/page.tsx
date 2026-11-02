@@ -1,15 +1,8 @@
 'use client';
 /**
- * ملفُّ موظّفِ النقل الخفيف.
- *
- * ── العلّة ──────────────────────────────────────────────────────────────────
- * الجدولُ يقول أين هو اليوم، ولا يقول كيف صار هناك. و«نقلناه من مشروعٍ إلى
- * مشروع» و«أنزلناه عن المركبة وأركبنا غيره» أسئلةٌ تُسأل بعد شهور — عند خلافٍ
- * على مخالفة، أو على أجرة، أو على عهدة — وخانةٌ تُستبدَل لا تحفظ جوابها.
- *
- * فهنا ملفُّه كاملًا: بياناتُه، وما هو عليه الآن، وأوامرُ تشغيله من الأحدث إلى
- * الأقدم، وسجلُّ كلّ نقلٍ بصاحبه ووقته. وملفُّه في الموارد البشريّة رابطٌ واحدٌ
- * من هنا — فالإنسانُ سجلٌّ واحدٌ لا اثنان.
+ * Light-transport employee file.
+ * The table shows where he is now, not how he got there; project moves and vehicle reassignments get asked about months later (fines, fares, custody), and an overwritten field keeps no answer.
+ * So the file holds his data, current state, operating orders newest first, and every move with author and time. His HR file is one link from here: one person, one record.
  */
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
@@ -33,10 +26,7 @@ import TransferProjectModal from '@/components/b2c/TransferProjectModal';
 
 const NEUTRAL = '#64748b';
 
-/**
- * تاريخُ وثيقةٍ بحالتها — مكوّنٌ على مستوى الملفّ لا داخلَ جسم الرسم.
- * راجع قاعدةَ «المكوّنات المضمَّنة»: المعرَّفُ في الرسم يُبنى من جديدٍ كلَّ مرّة.
- */
+/** Document date with its status. File-level component, not inside the render body: a component defined in render is rebuilt on every render. */
 function DocValue({ doc, ar }: { doc?: LTDoc; ar: boolean }) {
   if (!doc || !doc.expiryDate) {
     return <span className="text-slate-300">{ar ? 'غير مسجَّلة' : 'Not recorded'}</span>;
@@ -52,10 +42,7 @@ function DocValue({ doc, ar }: { doc?: LTDoc; ar: boolean }) {
   );
 }
 
-/**
- * سطرُ البيانات والقسمُ خارجَ جسم الصفحة: داخلَه يصيران مكوِّنين جديدين في كلّ رسمة،
- * فيُهدَم الملفُّ كلُّه ويُبنى مع كلّ تحديثٍ من السوكِت (ثلاثةُ مستمعين هنا).
- */
+/** Data row and section live outside the page body: inside, they become new components on each render and the whole file remounts on every socket update (three listeners here). */
 function Row({ label, children, mono }: { label: string; children: React.ReactNode; mono?: boolean }) {
   return (
     <div className="flex items-baseline justify-between gap-4 py-[7px] border-b border-slate-100 last:border-0">
@@ -107,12 +94,12 @@ export default function LightTransportProfile() {
 
   const load = useCallback(async () => {
     try { const d = await getLTEmployee(id); setE(d.employee); setOrders(d.orders || []); }
-    catch { /* تبقى الشاشةُ على ما لديها */ }
+    catch { /* The screen keeps what it already has. */ }
     finally { setLoading(false); }
   }, [id]);
   useEffect(() => { load(); }, [load]);
   useSocket('lt:updated', useCallback(() => load(), [load]));
-  // أوردراتُه حسب المشروع — تتحدّث مع كلّ إدخالٍ ومع كلّ نقل.
+  // His orders by project; refreshed on every entry and every move.
   const [months, setMonths] = useState<LTRepMonth[]>([]);
   const loadOrders = useCallback(() => { if (id) getLTRepOrders(id).then((d) => setMonths(d.months || [])).catch(() => {}); }, [id]);
   useEffect(() => { loadOrders(); }, [loadOrders]);
@@ -177,7 +164,7 @@ export default function LightTransportProfile() {
                 <span className={`px-2 py-0.5 rounded-full text-[11.5px] font-bold ${e.staffKind === 'rep' ? 'bg-indigo-500/25 text-indigo-200' : 'bg-teal-500/25 text-teal-200'}`}>
                   {ar ? KIND_AR[e.staffKind || ''] : KIND_EN[e.staffKind || '']}
                 </span>
-                {/* ومن أين جاء خبرُ الحالة — فلا يُسأل «مَن غيّرها؟». */}
+                {/* Where the status news came from, so nobody has to ask who changed it. */}
                 {e.statusSource === 'hr' && (
                   <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-white/10 text-white/70">
                     {t('الحالة من الموارد البشرية', 'status from HR')}
@@ -201,7 +188,7 @@ export default function LightTransportProfile() {
                   ],
                 }],
               }]} />
-            {/* «نقل مشروع» — لمن يملكه وحدَه، ومن هنا وحدَه (صاحبُ الشركة، ٢٠٢٦/١٠/١٩). */}
+            {/* Project move: only for those who own it, and only from here. */}
             {canTransferLT(user as any) && (
               <button type="button" onClick={() => setTransfer(true)}
                 className="flex items-center gap-1.5 rounded-lg bg-[#f37121] px-3 py-2 text-sm font-semibold text-white hover:bg-[#e06010]">
@@ -227,9 +214,7 @@ export default function LightTransportProfile() {
           <Row label={t('الجوال', 'Phone')} mono>{val(e.phone)}</Row>
           <Row label={t('تاريخ التعيين', 'Hire date')} mono>{val(fmtDate(e.hireDate))}</Row>
           <Row label={t('على الكفالة / فري لانسر', 'Sponsored / freelance')}>{val((e as any).contractTypeShown || e.contractTypeAr)}</Row>
-          {/* ── والسجلُّ الذي هو على كفالته ──────────────────────────────────
-              الشركةُ لها أكثرُ من سجلٍّ تجاريّ، ومن ليس على كفالتنا لا سجلَّ له.
-              وهو سؤالٌ يُسأل عند التفتيش وعند التأمين. */}
+          {/* The commercial registration he is sponsored under. The company has several registrations and non-sponsored staff have none; asked during inspections and insurance. */}
           <Row label={t('رقم السجل', 'Register')} mono>{val(e.registerNumber)}</Row>
           <Row label={t('ملفّ الموارد البشرية', 'HR file')}>
             {e.hrLinked
@@ -242,7 +227,7 @@ export default function LightTransportProfile() {
           <Row label={t('الوظيفة', 'Job')}>{val(e.jobTitleAr)}</Row>
           <Row label={t('المشروع', 'Project')}>{val(e.projectAr)}</Row>
           <Row label={t('الفرع', 'Branch')}>{val(e.cityAr)}</Row>
-          {/* والمشرفُ حسابٌ على النظام: من لا حسابَ له لا يرى رجالَه في التفقّد. */}
+          {/* The supervisor is a system account: without one, his riders do not appear in the duty check. */}
           <Row label={t('المشرف', 'Supervisor')}>
             {e.supervisorName ? (
               <span className="inline-flex items-center gap-2">
@@ -263,10 +248,7 @@ export default function LightTransportProfile() {
           <Row label={t('نوع المركبة', 'Type')}>{val(e.vehicleTypeAr || e.vehicle?.registrationTypeAr)}</Row>
           <Row label={t('الرقم التسلسلي', 'Serial')} mono>{val(e.vehicle?.serialNumber)}</Row>
           <Row label={t('الماركة', 'Brand')}>{val([e.vehicle?.brandAr, e.vehicle?.modelAr].filter(Boolean).join(' '))}</Row>
-          {/* ── بطاقةُ التشغيل والفحصُ تُقرآن من ملفّ الرجل ────────────────────
-              الوثيقتان على المركبة، لكنّ الموقوفَ صباحًا هو الرجل — فمن يفتح
-              ملفَّه يجب أن يرى أقريبٌ انتهاؤهما أم مضى، بعتبات قسم المركبات
-              نفسِها لا بعتباتٍ ثانيةٍ تُكتب هنا. */}
+          {/* Operating card and inspection are read from the rider's file. Both documents sit on the vehicle, but the rider is the one stopped in the morning, so show whether they are near expiry or past it, using the vehicles section's own thresholds. */}
           <Row label={t('رقم كارت التشغيل', 'Operating card no.')} mono>{val(e.operatingCard?.number)}</Row>
           <Row label={t('انتهاء كارت التشغيل', 'Operating card expiry')}>
             <DocValue doc={e.operatingCard} ar={ar} />
@@ -290,9 +272,7 @@ export default function LightTransportProfile() {
         )}
       </div>
 
-      {/* ── أوامرُ التشغيل ───────────────────────────────────────────────────
-          واحدٌ سارٍ والباقي مُغلَق. والمُغلَقُ لا يُمحى: هو جوابُ «على أيّ مركبةٍ
-          كان في شهر كذا؟». */}
+      {/* Operating orders. One active, the rest closed. A closed order is never erased: it answers which vehicle he was on in a given month. */}
       <section className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
         <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between gap-3">
           <p className="font-extrabold text-slate-900 flex items-center gap-1.5 text-[14.5px]">
@@ -344,9 +324,7 @@ export default function LightTransportProfile() {
         )}
       </section>
 
-      {/* ── أوردراتُه حسب المشروع ─────────────────────────────────────────────
-          المندوبُ قد يعمل في أكثرَ من مشروعٍ في الشهر الواحد، والأوردرُ يبقى على
-          مشروعه يومَ كُتب — فلا يتحرّك ماضيه إذا نُقل. */}
+      {/* His orders by project. A rep may work on several projects in one month, and an order stays on the project it was written under, so its past does not move when he is transferred. */}
       <section className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
         <div className="px-4 py-3 bg-slate-50 border-b border-slate-200">
           <p className="font-extrabold text-slate-900 text-[14.5px]">{t('الأوردرات حسب المشروع', 'Orders by project')}</p>
@@ -371,9 +349,7 @@ export default function LightTransportProfile() {
         ) : <p className="px-4 py-6 text-center text-sm text-slate-400">{t('لا توجد أوردرات مسجَّلة لهذا المندوب', 'No orders recorded')}</p>}
       </section>
 
-      {/* ── سجلُّ النقل ──────────────────────────────────────────────────────
-          كلُّ تغييرٍ في مشروعٍ أو فرعٍ أو مشرفٍ أو مركبةٍ أو سكنٍ أو حالةٍ يُقيَّد
-          بصاحبه ووقته — وهو ما يُقرأ حين يُسأل «إمتى نقلناه؟». */}
+      {/* Move log. Every change of project, branch, supervisor, vehicle, housing or status is recorded with author and time, to answer when he was moved. */}
       <section className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
         <div className="px-4 py-3 bg-slate-50 border-b border-slate-200">
           <p className="font-extrabold text-slate-900 flex items-center gap-1.5 text-[14.5px]">
@@ -413,7 +389,7 @@ export default function LightTransportProfile() {
         </div>
       </section>
 
-      {/* مهامّ JP المربوطة بهذا المندوب — تُضاف من هنا. */}
+      {/* JP tasks linked to this rep; added from here. */}
       <JpTaskPanel section="b2c" kind="rep" refId={String(e._id)} ar={ar} />
     </div>
   );

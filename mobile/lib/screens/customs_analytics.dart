@@ -10,12 +10,8 @@ import '../ui/stat_grid.dart';
 import '../ui/widgets.dart';
 import 'customs_detail.dart' show customsStageLabel;
 
-/// تحليلاتُ قسم التخليص — نظيرُ `/system/customs/analytics` في الموقع.
-///
-/// الإيراداتُ والتكاليفُ والأرباح، **للإدارة وحدَها** (مديرُ النظام ومديرُ القسم)
-/// — والحارسُ في الخادم: من لا يملكها يُردّ بـ403 فتُقال له «لوحة القسم».
-/// الفلاترُ كالموقع: السريعةُ متعدّدةُ القيم بأعدادها، وقوائمُ المرحلة والمدينة
-/// والعملة ونوع الفاتورة وبلد المنشأ وحالة الفوترة والسنة، والمدّةُ بالشهر.
+/// Customs analytics, counterpart of `/system/customs/analytics` on the web.
+/// Revenue, costs and profit, for management only (system admin and section manager); the server guard returns 403 for others, who are shown the section dashboard. Filters as on the web: multi-value quick filters with counts, lists for stage, city, currency, invoice type, origin country, billing status and year, and a monthly period.
 class CustomsAnalyticsScreen extends StatefulWidget {
   const CustomsAnalyticsScreen({super.key});
   @override
@@ -48,7 +44,7 @@ const _tabs = [
   ('byBranch', 'حسب الفرع', 'By branch'),
 ];
 
-/// القوائمُ الإضافيّة (مفتاحُ النداء، مفتاحُ الخيارات في /filters، العنوان).
+/// Extra lists (call key, options key in /filters, title).
 const _selects = [
   ('stage', 'stage', 'كل المراحل', 'All stages'),
   ('city', 'city', 'كل المدن', 'All cities'),
@@ -105,7 +101,7 @@ class _CustomsAnalyticsScreenState extends State<CustomsAnalyticsScreen> {
     Api.instance.get('/api/customs-clearance/filters').then((r) {
       if (mounted && r is Map && r['options'] is Map) setState(() => _opts = Map<String, dynamic>.from(r['options']));
     }).catchError((_) {});
-    // حيّة: كلُّ تعديلٍ في التخليص يُعيد الأرقام — كالموقع.
+    // Live: every customs change refreshes the numbers, like the web.
     for (final e in const ['customs:created', 'customs:updated', 'customs:deleted']) {
       Live.instance.on(e, _onLive);
     }
@@ -120,7 +116,7 @@ class _CustomsAnalyticsScreenState extends State<CustomsAnalyticsScreen> {
   }
 
   Future<void> _load() async {
-    // كلُّ فلترٍ طلبٌ — والأقدمُ لا يكتب فوق الأحدث.
+    // Each filter is a request; an older reply never overwrites a newer one.
     final mine = ++_seq;
     final q = _f.entries.where((e) => e.value.isNotEmpty).map((e) => '${e.key}=${Uri.encodeQueryComponent(e.value)}').join('&');
     try {
@@ -166,7 +162,7 @@ class _CustomsAnalyticsScreenState extends State<CustomsAnalyticsScreen> {
         ExportCol('الربح', 'Profit', (r) => _n(r['profit'])),
       ];
 
-  /// التصدير: الجدولُ المعروض، أو كلُّ التجميعات ورقةً لكلٍّ — كقائمة الموقع.
+  /// Export: the displayed table, or all aggregations with one sheet each, like the web menu.
   Future<void> _export() async {
     final pick = await showModalBottomSheet<String>(
       context: context,
@@ -259,7 +255,7 @@ class _CustomsAnalyticsScreenState extends State<CustomsAnalyticsScreen> {
                 onChanged: (v) => _set({..._f, s.$1: v ?? ''}..removeWhere((_, x) => x.isEmpty)),
               ),
             ),
-          // المدّةُ بشهر المعاملة: شهرٌ أو فترةُ أشهر (كالموقع: month / range).
+          // Period by transaction month: one month or a range of months (month / range, as on the web).
           Row(children: [
             Expanded(child: _monthButton(tr('من', 'From'), _f['from'] ?? '', (v) => _set({..._f, 'from': v}..remove('year')..remove('month')))),
             const SizedBox(width: 8),
@@ -271,7 +267,7 @@ class _CustomsAnalyticsScreenState extends State<CustomsAnalyticsScreen> {
     );
   }
 
-  /// يختار شهرًا: «من» أوّلُ يومٍ فيه، و«إلى» آخرُه — كما يرسل PeriodFilter في الموقع.
+  /// Picks a month: "from" is its first day and "to" its last, as PeriodFilter sends on the web.
   Widget _monthButton(String label, String value, void Function(String) onPicked) => OutlinedButton(
         onPressed: () async {
           final d = await showDatePicker(

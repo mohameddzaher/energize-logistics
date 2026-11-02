@@ -1,20 +1,8 @@
 /**
- * vehiclePerson — الشخصُ على المركبة يُختار من الموظّفين، ولا يُكتب بيد.
- *
- * ── ما وقع (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢) ──────────────────────────────────────
- * «مركبات بلا راكب» في لوحة B2C تفتح مركباتٍ في عمود «اسم القائد الفعلي»
- * أسماءٌ عليها. والسببُ أنّ الاسمَ خانةٌ نصّيّة: كُتب فيها «غيرمستخدم»، وكُتب
- * فيها اسمُ رجلٍ لم يُربط بالمركبة في سجلّ القسم، وبقي فيها اسمُ رجلٍ انتقل إلى
- * مركبةٍ أخرى. فطلب: القائدُ الفعليّ والمفوَّضُ وكلُّ خانةِ شخصٍ على مركبة —
- * منسدلةٌ من موظّفي القسم بالبحث، فتتوحّد البيانات.
- *
- * ── القاعدة ──────────────────────────────────────────────────────────────────
- * • الخانةُ تُرسَل مرجعًا (معرِّفُ ملفّ الموارد البشريّة أو صفّ النقل الخفيف) أو
- *   رقمَ هويّة — ويُقرأ منها الاسمُ والهويّةُ والجوال. والاسمُ وحدَه يُقبل إن طابق
- *   موظّفًا واحدًا بعينه (العملاءُ القدامى يرسلون الاسم)، وإلّا رُفض برسالةٍ واضحة.
- * • لا يُختار مؤرشَفٌ ولا منتهي الخدمة: لا يُسلَّم مركبةً من خرج من العمل.
- * • ومنها تُبنى المنسدلةُ نفسُها (`options`): موظّفو النقل الخفيف أوّلًا لمركبات
- *   القسم، ثمّ موظّفو الموارد البشريّة — فما يُعرَض هو ما يُقبَل.
+ * vehiclePerson: the person on a vehicle is chosen from employees, never typed by hand.
+ * What happened: in the B2C board's vehicles-without-rider view, vehicles were opened by names in the actual-driver column. The name was a text field: someone typed "not used", someone's name had never been linked to the vehicle in the section register, and a man who had moved to another vehicle stayed in it. The request: the actual driver, the authorized person and every person field on a vehicle become a searchable dropdown of the section's employees, so the data is unified.
+ * Rules:
+ * - A field is sent as a reference (HR file id or light-transport row) or an ID number, and the name, ID and phone are read from it. A bare name is accepted only if it matches exactly one employee (older clients send names), otherwise rejected with a clear message. - An archived or ended employee cannot be chosen: a vehicle is not handed to someone who left. - The dropdown itself is built from here (`options`): light-transport employees first for the section's vehicles, then HR employees, so what is shown is what is accepted.
  */
 const mongoose = require('mongoose');
 const PR = require('./personRef');
@@ -23,7 +11,7 @@ const S = (v) => String(v == null ? '' : v).trim();
 const idKey = (v) => S(v).replace(/[٠-٩]/g, (d) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d)).replace(/\s+/g, '');
 const bad = (message) => Object.assign(new Error(message), { status: 400, bad: true });
 
-/** نصوصٌ وُضعت مكانَ الاسم وليست أسماء — «غير مستخدم» و«لا يوجد» و«-». */
+/** Texts put in place of a name that are not names: "not used", "none", "-". */
 const PLACEHOLDER_RX = /^(?:[-–—_.\s0]*|غير\s*مستخدم[ةه]?|غيرمستخدم[ةه]?|لا\s*يوجد|لايوجد|بدون|بلا|غير\s*محدد|n\/?a|none|null|nil|unused|not\s*used|-+)$/i;
 const isPlaceholder = (v) => PLACEHOLDER_RX.test(S(v));
 
@@ -34,7 +22,7 @@ async function archiveSets() {
   return require('./endedStaff').endedStaff();
 }
 
-/** منتهي الخدمة؟ من ملفّه، وإلّا من سجلّ القسم لمن لا ملفَّ له. */
+/** Ended? From his file, otherwise from the section register for someone with no file. */
 const hrEnded = (e) => !!e && e.employmentStatus === 'terminated';
 const ltEnded = (l, hr) => (hr ? hrEnded(hr) : /انهاء|إنهاء/.test(S(l?.workStatusAr)));
 
@@ -54,12 +42,10 @@ function shape({ hr, lt }) {
 }
 
 /**
- * يحسم الشخصَ المرسَل — أو يرمي خطأً برسالةٍ تُعرَض كما هي.
- *
+ * Resolves the submitted person, or throws an error whose message is shown as is.
  * @param input  { employeeId?, ltId?, idNumber?, name? }
- * @param opts.needLt   الراكبُ لا يكون إلّا من سجلّ النقل الخفيف.
- * @param opts.label    اسمُ الخانة في الرسالة («القائد الفعلي»، «المفوَّض»).
- * @returns null إن كانت الخانةُ فارغةً (تفريغ)، وإلّا الشخص.
+ * @param opts.needLt   the rider can only come from the light-transport register.
+ * @param opts.label    the field's name in the message (actual driver, authorized person). @returns null if the field is empty (clearing), otherwise the person.
  */
 async function resolvePerson(input = {}, { needLt = false, label = 'الشخص' } = {}) {
   const Employee = require('../models/Employee');
@@ -87,7 +73,7 @@ async function resolvePerson(input = {}, { needLt = false, label = 'الشخص' 
     if (!lt && !hr) throw bad(`${label}: رقم الهوية ${idNumber} لا يطابق أيَّ موظّف — اختره من القائمة`);
   }
   if (!lt && !hr && name) {
-    // الاسمُ وحدَه: يُقبل إن طابق موظّفًا واحدًا بعينه، وإلّا يُرفض.
+    // Name only: accepted if it matches exactly one employee, otherwise rejected.
     const want = PR.foldName(name);
     const lts = (await LightTransportEmployee.find({ isActive: { $ne: false } }).select(LT_SELECT).lean())
       .filter((l) => PR.foldName(l.name) === want);
@@ -98,7 +84,7 @@ async function resolvePerson(input = {}, { needLt = false, label = 'الشخص' 
       if (!hr) throw bad(`${label}: «${name}» ليس موظّفًا مسجَّلًا — اختره من القائمة، ومن لا يظهر فيها يُضاف من الموارد البشرية أو من موظّفي النقل الخفيف أوّلًا`);
     }
   }
-  // ويُكمَل الطرفُ الآخر: صفُّ القسم يشير إلى ملفّه، والملفُّ يُعرَف صفُّه برقم الهويّة.
+  // The other side is completed too: the section row points to his file, and the file finds his row by ID number.
   if (lt && !hr && lt.employee) hr = await Employee.findById(lt.employee).select(HR_SELECT).lean();
   if (hr && !lt) {
     const ids = PR.idsOf(hr);
@@ -123,10 +109,8 @@ async function resolvePerson(input = {}, { needLt = false, label = 'الشخص' 
 }
 
 /**
- * خياراتُ المنسدلة: `scope = 'lt'` موظّفو النقل الخفيف أوّلًا ثمّ الموارد البشريّة،
- * و`scope = 'hr'` الموارد البشريّة ثمّ من لا ملفَّ له من النقل الخفيف. والمنتهون
- * والمؤرشَفون ليسوا خيارًا — هم ما يرفضه `resolvePerson`.
- * `q` يضيّق القائمة (اسم أو رقم هويّة)، والفراغُ يردّها كلَّها.
+ * Dropdown options: `scope = 'lt'` is light-transport employees first, then HR; `scope = 'hr'` is HR, then light-transport people with no file. Ended and archived staff are not options, matching what `resolvePerson` rejects.
+ * `q` narrows the list (name or ID number); empty returns all.
  */
 async function options({ scope = 'lt', q = '' } = {}) {
   const Employee = require('../models/Employee');
@@ -178,7 +162,7 @@ async function options({ scope = 'lt', q = '' } = {}) {
   };
   const byName = (a, b) => S(a.name).localeCompare(S(b.name), 'ar');
   if (scope === 'hr') {
-    // الموارد البشريّة أوّلًا — ومَن في القسم منهم يُقرأ بصفّه (مشروعُه ومركبتُه).
+    // HR first; those in the section are read by their row (project and vehicle).
     const ltOfHr = new Map(ltRows.filter((l) => l.employee).map((l) => [String(l.employee._id || l.employee), l]));
     for (const e of [...hrs].sort((a, b) => byName({ name: PR.canonicalName(a) }, { name: PR.canonicalName(b) }))) {
       const l = ltOfHr.get(String(e._id));

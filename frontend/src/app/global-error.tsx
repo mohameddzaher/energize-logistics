@@ -1,16 +1,14 @@
 'use client';
 /**
- * آخرُ حارس: خطأٌ في التخطيط الجذر نفسِه.
- *
- * حارسُ `/system` يغطّي الشاشات؛ وهذا يغطّي ما يقع قبلها — فلا تبقى حالٌ
- * تُعرَض فيها رسالةُ Next العامّة.
+ * Last-resort guard for an error in the root layout itself.
+ * The `/system` guard covers screens; this covers what happens before them, so Next's generic message is never shown.
  */
 import { useEffect } from 'react';
 
 export default function GlobalError({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
   useEffect(() => {
     const s = `${error?.name || ''} ${error?.message || ''}`;
-    // نشرٌ جديدٌ والتبويبةُ قديمة — إعادةُ تحميلٍ واحدةٍ تكفي. راجع system/error.
+    // New deploy with a stale tab: one reload is enough. See system/error.
     if (/ChunkLoadError|Loading chunk|dynamically imported module/i.test(s)) {
       let last = 0;
       try { last = Number(sessionStorage.getItem('chunk-reload-at') || 0); } catch { /* */ }

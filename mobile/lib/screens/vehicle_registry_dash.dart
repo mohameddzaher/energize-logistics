@@ -15,7 +15,7 @@ import 'vehicle_driver_cards.dart' show VehicleDriverCardsScreen;
 import 'vehicle_expiring.dart';
 import 'vehicle_registry.dart';
 
-// ══════════════════ لوحة التحليلات ══════════════════
+// Analytics dashboard
 class VehicleRegistryDashboardScreen extends StatefulWidget {
   const VehicleRegistryDashboardScreen({super.key});
   @override
@@ -72,7 +72,7 @@ class _VRDashState extends State<VehicleRegistryDashboardScreen> {
     final buckets = Map<String, dynamic>.from(d['docBuckets'] ?? {});
     final sectors = List<Map<String, dynamic>>.from(d['bySector'] ?? []);
     return ListView(padding: const EdgeInsets.all(14), children: [
-      // فلتر القطاع
+      // Sector filter
       SingleChildScrollView(
         scrollDirection: Axis.horizontal,
         child: Row(children: sectors.map((s) {
@@ -180,7 +180,7 @@ class _VRDashState extends State<VehicleRegistryDashboardScreen> {
       MaterialPageRoute(builder: (_) => VehicleRegistryListScreen(filters: filters, filterLabel: label)));
   void _openAlerts() => Navigator.push(context, MaterialPageRoute(builder: (_) => const VehicleRegistryAlertsScreen()));
 
-  // كروتٌ بصفوفٍ متساوية الارتفاع تكبر مع النصّ (لا نسبةَ ثابتة تقصّ المحتوى).
+  // Cards in equal-height rows that grow with the text (no fixed ratio that clips content).
   Widget _tileGrid(List<Widget> tiles) => StatGrid(spacing: 8, minTileWidth: 140, minColumns: 2, maxColumns: 5, children: tiles);
 
   Widget _tile(String label, String value, Color color, IconData icon, {VoidCallback? onTap}) => Pressable(
@@ -202,9 +202,8 @@ class _VRDashState extends State<VehicleRegistryDashboardScreen> {
       );
 }
 
-// ══════════════════ الانتهاءات والتجديد ══════════════════
-// الاسمُ الداخليّ باقٍ (القائمةُ والنظرةُ الشاملة تفتحانه)، والشاشةُ نفسُها
-// صارت توأمَ صفحة الموقع — راجع vehicle_expiring.dart.
+// Expiries and renewal
+// The internal name stays (the list and the overview open it), while the screen itself became the twin of the web page; see vehicle_expiring.dart.
 class VehicleRegistryAlertsScreen extends StatelessWidget {
   final String? doc, state;
   const VehicleRegistryAlertsScreen({super.key, this.doc, this.state});
@@ -212,8 +211,8 @@ class VehicleRegistryAlertsScreen extends StatelessWidget {
   Widget build(BuildContext context) => VehicleExpiringScreen(doc: doc, state: state);
 }
 
-// ══════════════════ إعدادات القسم ══════════════════
-// تبويبان كالموقع: «القوائم المرجعية» (قوائمُ القسم المنسدلة) و«عتبات التنبيه».
+// Section settings
+// Two tabs as on web: reference lists (the section's dropdown lists) and alert thresholds.
 const _settingsDocs = [
   ('insurance', 'تأمين المركبات', 'Vehicle insurance'),
   ('operatingCard', 'بطاقات التشغيل', 'Operating cards'),
@@ -270,7 +269,7 @@ class _VRSettingsState extends State<VehicleRegistrySettingsScreen> {
           }
         }
         _counts = Map<String, dynamic>.from(d['counts'] ?? {});
-        // قوائمُ القسم وحدَها — ومعها قائمةُ أنواع مهامّ JP للقسم.
+        // The section's lists only, plus the section's JP task types list.
         _types = List<Map<String, dynamic>>.from(r[1]['types'] ?? [])
             .where((t) => t['module'] == 'vehicles' || t['type'] == 'jp_task_vehicles').toList();
         _loading = false; _error = null;
@@ -378,7 +377,7 @@ class _VRSettingsState extends State<VehicleRegistrySettingsScreen> {
                   num('criticalDays', 'حرج (يوم)', 'Critical (days)'),
                 ]),
                 const SizedBox(height: 8),
-                // المدى الفعليّ مكتوبًا صريحًا — لا ثلاثةُ أرقامٍ يُحسب مداها في الرأس.
+                // The effective range is written out explicitly, not three numbers whose range is computed in the header.
                 Text('${tr('حرج', 'Crit')} ≤$crit · ${tr('تحذير', 'Warn')}${warn > crit ? ' ${crit + 1}–$warn' : ' — ${tr('معطَّلة', 'off')}'} · '
                     '${tr('قريب', 'Soon')}${soon > warn ? ' ${warn + 1}–$soon' : ' — ${tr('معطَّلة', 'off')}'}',
                     style: const TextStyle(fontSize: 11.5, color: T.inkSoft)),

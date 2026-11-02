@@ -1,15 +1,7 @@
 'use client';
 /**
- * التحليلُ بالأقسام — صفٌّ لكلّ قسمٍ بأرقامه كلِّها.
- *
- * ── لماذا جدولٌ بجانب الفلتر ────────────────────────────────────────────────
- * اللوحةُ تُفلتَر بالقسم فتقول كلَّ شيءٍ عن قسمٍ واحد. والسؤالُ الذي يُسأل أوّلًا
- * ليس «ما حالُ التشغيل؟» بل **«أيُّ الأقسام أسوأ؟»** — وجوابُه لا يُقرأ إلّا
- * بالأقسام متجاورةً في شاشةٍ واحدة. وبغيره تُفتَح اللوحةُ ستًّا وعشرين مرّةً.
- *
- * وكلُّ رقمٍ يفتح صفوفَه بقسمه: لا رقمَ تُقرأ ورقتُه في مكانٍ آخر. و«اكتمالُ
- * البيانات» نسبةٌ تقارن الأقسامَ مهما اختلفت أعدادُها — قسمٌ من مئةٍ وتسعةٍ
- * وثمانين ناقصُه اثنان وخمسون أفضلُ حالًا من قسمٍ من ثلاثةٍ ناقصُه ستّة.
+ * Analysis by department: one row per department with all its figures.
+ * The dashboard filters by department and describes one department; but the first question is which departments are worst, which is only readable with departments side by side on one screen (otherwise it opens 26 times). Every number opens its rows with its department. Data completeness is a ratio that compares departments regardless of size: 52 missing out of 189 is better than 6 missing out of 3.
  */
 import { useMemo, useState } from 'react';
 import { Building2, ArrowUpDown } from 'lucide-react';
@@ -27,11 +19,7 @@ export interface DeptAnalysis { departments: DeptRow[]; fieldsPerEmployee: numbe
 
 type SortKey = keyof DeptRow;
 
-/**
- * رقمٌ يُضغَط فيفتح صفوفَه، وصفرٌ لا يُضغَط — الضغطُ على صفرٍ يفتح جدولًا فارغًا
- * فيُقرأ عطلًا. وهو خارجَ جسم الجدول: داخلَه يصير مكوِّنًا جديدًا في كلّ رسمة
- * فتُهدَم خلايا الجدول كلُّها وتُبنى مع كلّ تحديث.
- */
+/** A number that is clickable opens its rows; a zero is not clickable because opening an empty table reads as a fault. Defined outside the table body: inside it, it would be a new component each render and all table cells would be torn down and rebuilt on each update. */
 function Cell({ n, q, tone = '', onOpen }: { n: number; q?: Record<string, string>; tone?: string; onOpen: (q: Record<string, string>) => void }) {
   return (
     <td className="px-3 py-2 text-end tabular-nums">
@@ -48,9 +36,9 @@ export default function DepartmentAnalysis({
 }: {
   data: DeptAnalysis;
   ar: boolean;
-  /** يفتح الصفوفَ وراء رقمٍ بعينه: القسمُ + أيُّ شرطٍ آخر. */
+  /** Opens the rows behind one number: the department plus any other condition. */
   onOpen: (q: Record<string, string>) => void;
-  /** يقصر اللوحةَ كلَّها على قسمٍ واحد. */
+  /** Restricts the whole dashboard to a single department. */
   onFilter: (dept: string) => void;
   active?: string;
 }) {
@@ -118,8 +106,7 @@ export default function DepartmentAnalysis({
               {rows.map((r) => {
                 const dept = r.department || '';
                 const q = dept ? { department: dept } : { department: '—' };
-                // الجدولُ يُعَدّ بلا فلتر القسم (الخادم)، فيبقى كلُّ قسمٍ صفًّا والمختارُ
-                // — واحدًا أو أكثر من الفلترة السريعة — مُعلَّمًا بينها.
+                // The table is counted without the department filter (server), so every department stays a row and the selected one(s) from the quick filter are marked among them.
                 const on = !!active && String(active).split(',').includes(dept);
                 return (
                   <tr key={dept || '—'} className={`border-b border-slate-100 ${on ? 'bg-[#f37121]/5' : 'hover:bg-slate-50'}`}>

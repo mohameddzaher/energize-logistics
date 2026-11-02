@@ -1,13 +1,7 @@
 'use client';
 /**
- * حالاتُ الشحنة كما هي مضبوطةٌ الآن — تقرؤها كلُّ شاشةٍ في القسم.
- *
- * التسميةُ واللونُ والترتيبُ ومَن مُستعمَلٌ منها تُضبط من إعدادات القسم، فلا
- * تُكتب في شاشةٍ ثمّ تُنسى في أخرى. والمفاتيحُ نفسُها في الشيفرة — راجع
- * `backend/src/utils/shipmentOrderStatuses`.
- *
- * وتبدأ من القائمة المكتوبة لا من فراغ: الشاشةُ تُرسَم كاملةً من أوّل إطار،
- * ثمّ يصحّحها الخادمُ إن كانت تسميةٌ قد غُيّرت.
+ * Shipment statuses as currently configured, read by every screen in the section.
+ * Label, colour, order and usage are set in section settings; the keys are in code (backend/src/utils/shipmentOrderStatuses). Starts from the built-in list so the screen renders fully from the first frame, then the server corrects any renamed label.
  */
 import { useState, useEffect, useCallback } from 'react';
 import api from '@/lib/api';
@@ -24,7 +18,7 @@ export function useOrderStatuses(includeInactive = false) {
   }, [includeInactive]);
 
   useEffect(() => { load(); }, [load]);
-  // تُعدَّل من صفحة الإعدادات، فتصل هنا في اللحظة نفسِها بلا إعادة تحميل.
+  // Edited from the settings page, so changes arrive here at once without a reload.
   useSocket('lookup:changed', useCallback((p: any) => {
     if (!p?.type || p.type === 'so_status') load();
   }, [load]));

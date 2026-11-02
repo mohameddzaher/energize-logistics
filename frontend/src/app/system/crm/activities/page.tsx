@@ -86,9 +86,7 @@ export default function CrmActivitiesPage() {
     { header: T.date, key: 'date', transform: fmt.datetime, width: 18 },
     { header: txx.by, key: 'createdBy', transform: (v) => userName(v), width: 18 },
   ];
-  // البحث والنوع يُطبَّقان على الخادم، فما في الذاكرة نتيجةُ الفلتر لا السجلّ كلّه؛
-  // ومَن أراد الكلّ كان عليه مسحُ فلاتره ثمّ إعادة التصدير، ولن يتنبّه إلى ذلك أحد.
-  // ملاحظة: الخادم يسقّف هذا المسار بخمسمئة نشاطٍ في كلّ الأحوال، معروضًا كان أم مصدَّرًا.
+  // Search and type are applied on the server, so what is in memory is the filter result, not the whole log; someone wanting everything would have to clear filters and re-export, and nobody would notice. Note: the server caps this route at 500 activities in all cases, displayed or exported.
   const fetchAllForExport = async () => {
     const d = await api.get<{ activities: CrmActivity[] }>('/api/crm/activities');
     return [{ name: 'Activities', rows: d.activities || [], columns: exportColumns }];

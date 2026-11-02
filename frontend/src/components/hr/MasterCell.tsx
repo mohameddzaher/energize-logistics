@@ -1,18 +1,8 @@
 'use client';
 /**
- * خانةُ الماستر — تعرض القيمةَ أو حالتَها («مطلوب»، «غير مطلوب»)، والضغطُ يفتحها
- * للتعديل. مشتركةٌ بين جدول الماستر الشامل وصفحات المجموعات، فلا يُعدَّل الحقلُ
- * في شاشةٍ بطريقةٍ وفي أخرى بغيرها.
- *
- * ── وحقولُ الاختيار قائمةٌ لا نصٌّ حرّ ─────────────────────────────────────────
- * نوعُ الرخصة والبنكُ وحالةُ التأمين كانت تُكتب بيد، فصار البنكُ الواحد خمسَ
- * صيغٍ والرخصةُ «دراجة الية» و«دراجة اليه» قيمتين. القائمةُ من القيم المستعملة
- * فعلًا (GET /api/hr/master/choices)، ومعها «أخرى…» لقيمةٍ جديدة. وللبنك «راتب
- * نقدي» — القيمةُ المخزَّنة لها منذ الاستيراد «cash».
- *
- * والحفظُ يمرّ بـ PUT /master/employee/:id/fields، الذي يبثّ `hr:master`
- * و`hr:employee` فتتحدّث بقيّةُ صفحات القسم ولوحتُه فورًا — ويكتب بطاقةَ السائق في
- * سجلّ المركبات (utils/driverCardSync).
+ * Master cell: shows the value or its state (required, not required); click opens it for editing. Shared by the master table and the group pages so a field is edited the same way everywhere.
+ * Choice fields are lists, not free text: license type, bank and insurance status were typed by hand and produced variants. Options come from values actually used (GET /api/hr/master/choices) plus 'other...' for a new value. The bank cash option is stored as 'cash'.
+ * Saving goes through PUT /master/employee/:id/fields, which broadcasts `hr:master` and `hr:employee` and writes the driver card to the vehicle register (utils/driverCardSync).
  */
 import { useState } from 'react';
 import { Check, X, UserCheck } from 'lucide-react';
@@ -20,15 +10,15 @@ import { useDialog } from '@/components/system/DialogProvider';
 import api from '@/lib/api';
 import { updateEmployeeFields, statusMeta, statusLabel, fmtDate, toDateInput } from '@/lib/hrMaster';
 
-// `strict`: قائمةٌ مغلقة (القسم) — لا «أخرى…» ولا كتابة. راجع utils/hrDepartments في الخادم.
-// `readOnly`: يُقرأ ولا يُكتب من الخانة (المركبة — لقطةٌ من سجلّ المركبات).
+// `strict`: closed list (department), no 'other...' and no typing; see utils/hrDepartments on the server.
+// `readOnly`: read but not written from the cell (vehicle is a snapshot from the vehicle register).
 export type MasterField = { key: string; ar: string; en: string; type: string; choice?: boolean; cashPayroll?: boolean; strict?: boolean; readOnly?: boolean };
 export type Choices = Record<string, { value: string; count: number }[]>;
 
 const CASH = 'cash';
 export const displayValue = (f: MasterField, raw: any, ar: boolean) => {
   if (f.type === 'date') return fmtDate(raw);
-  // المبلغُ بفواصل الآلاف — والصفرُ فراغٌ (قيمةُ المخطَّط الافتراضيّة).
+  // Amount with thousands separators; zero is blank (the schema default).
   if (f.type === 'number') return Number(raw) ? Number(raw).toLocaleString('en-US') : '—';
   if (f.cashPayroll && String(raw || '').trim().toLowerCase() === CASH) return ar ? 'راتب نقدي' : 'Cash payroll';
   return raw || '—';
@@ -45,19 +35,15 @@ export default function MasterCell({ id, f, raw, st, choices, ar, canEdit, onSav
   const [val, setVal] = useState('');
   const [free, setFree] = useState(false);
   const [busy, setBusy] = useState(false);
-  // حالةُ الخانة تُختار مع قيمتها: «غير مطلوب» لمن لا يحتاج المستند، إلخ.
+  // Cell state is chosen together with its value, e.g. 'not required' for someone who does not need the document.
   const [mark, setMark] = useState('');
   const opts = (choices?.[f.key] || []).filter((o) => !(f.cashPayroll && o.value.toLowerCase() === CASH));
 
-  // «حالة العمل» و«حالة النظام» تُقرآن ولا تُكتبان من الخانة: تتغيّران بإنهاء
-  // الخدمة وإعادة التفعيل والخروج من النظام وحدَها (صاحبُ الشركة، ٢٠٢٦/١٠/١٩).
+  // Work status and system status are read-only in the cell: they change only through termination, reactivation and leaving the system.
   const locked = LOCKED_KEYS.has(f.key) || !!f.readOnly;
   const { confirm } = useDialog();
-  // ── و«لا يعمل» تُرجَع من خانتها ────────────────────────────────────────────
-  // الخانةُ مقفلة، لكنّ مَن يقرأ «لا يعمل» في الماستر يريد أن يُرجعه من مكانه:
-  // زرُّ «إعادته للخدمة» هو إعادةُ التفعيل نفسُها (العقدُ يعود، ومن الأرشيف يعود
-  // داخلَ النظام) — لا كتابةٌ في الخانة (صاحبُ الشركة، ٢٠٢٦/١٠/١٩).
-  // Leave statuses («لا يعمل — إجازة / لم يعد من الإجازة») are not a termination: no reinstate.
+  // 'Not working' is reversed from its cell: the reinstate button is the same reactivation (contract returns, archived returns inside the system), not a cell write.
+  // Leave statuses (on leave / did not return) are not a termination: no reinstate.
   const reinstatable = canEdit && f.key === 'workStatusText' && /^لا يعمل/.test(String(raw || '')) && !/الإجازة|إجازة/.test(String(raw || ''));
   const reinstate = async () => {
     if (!(await confirm({ message: t('إعادة هذا الموظف إلى الخدمة؟ تصير حالته «يعمل» ويعود عقده كما كان.', 'Return this employee to service? Status becomes “working” and the contract is restored.'), confirmLabel: t('إعادته للخدمة', 'Reinstate') }))) return;
@@ -70,9 +56,8 @@ export default function MasterCell({ id, f, raw, st, choices, ar, canEdit, onSav
   };
   const start = () => {
     if (!canEdit || locked) return;
-    // التاريخ غير المقروء («مطلوب» مكتوبةً في خانة تاريخ) يُفتح فارغًا ليُصحَّح.
-    // الهجريُّ يُعرَض ويُحرَّر نصًّا «yyyy-mm-dd» — لا حقلَ تاريخٍ أصليًّا
-    // للتقويم الهجريّ في المتصفّح.
+    // An unreadable date (the 'required' text typed into a date cell) opens empty to be corrected.
+    // Hijri is shown and edited as 'yyyy-mm-dd' text, since browsers have no native Hijri date input.
     const v = f.type === 'date' ? toDateInput(raw) : String(raw ?? '');
     setVal(v);
     setMark('');

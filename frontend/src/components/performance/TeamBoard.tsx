@@ -1,14 +1,7 @@
 'use client';
-// TeamBoard — the manager's KPI evaluation board (لوحة تقييم الأداء).
-//
-// One component, mounted from every section's own /kpis page as well as the
-// central /system/performance page. The API decides who is listed: a section
-// page shows the employees of the HR department(s) that section owns, and the
-// cards are grouped under the department written in each employee's HR file.
-//
-// Shows the period's headline numbers, then one card per team member with a
-// colour bar telling you at a glance whether they've been graded and how they
-// scored. Clicking a card opens that person's evaluation form.
+// TeamBoard: the manager's KPI evaluation board.
+// One component mounted from every section's own /kpis page and the central /system/performance page. The API decides who is listed: a section page shows employees of the HR department(s) that section owns, with cards grouped under the department in each HR file.
+// Shows the period's headline numbers, then one card per member with a color bar for graded or not and the score. Clicking a card opens that person's evaluation form.
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
@@ -93,10 +86,8 @@ export default function TeamBoard({ title, subtitle, department, section, showSc
   subtitle?: string;
   department?: string;
   /**
-   * قسمُ النظام الذي تخصّه هذه الصفحة.
-   *
-   * الخادمُ يقرأ هذا فيردّ موظّفي الأقسام التي تملكها هذه الصفحة بحسب ملفّاتهم
-   * في الموارد البشريّة — راجع config/performanceDepartments في الخادم.
+   * The system section this page belongs to.
+   * The server reads it and returns the employees of the departments this page owns, by their HR files; see config/performanceDepartments on the server.
    */
   section?: string;
   showScopeToggle?: boolean;
@@ -111,9 +102,7 @@ export default function TeamBoard({ title, subtitle, department, section, showSc
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState('');
   const [filter, setFilter] = useState<'all' | 'pending' | 'draft' | 'done'>('all');
-  // مبدّلُ النطاق للصفحة المركزيّة وحدَها: صفحةُ القسم نطاقُها قسمُها، فلو
-  // بقي المبدّلُ فيها لقال «كل الموظفين» ثمّ عرض فريقَ القسم، أو انقلب إلى
-  // «المديرين» فعادت الشاشةُ إلى ما كانت عليه من خلط.
+  // Scope toggle for the central page only: a section page is scoped to its own section, so a toggle there would say 'all employees' yet show the section team, or flip to 'managers' and bring back the old mixed screen.
   // Only full-access users get the toggle; everyone else is scoped by the API.
   const canToggleScope = !!showScopeToggle && isPerfFull(user?.role);
   const [scope, setScope] = useState<Scope>('managers');
@@ -147,9 +136,7 @@ export default function TeamBoard({ title, subtitle, department, section, showSc
     return rows;
   }, [data, filter, q]);
 
-  // ── البطاقاتُ تحت أقسامها ────────────────────────────────────────────────
-  // القسمُ ما كُتب في ملفّ الموظّف، بترتيب الخادم (الأكبرُ أوّلًا و«بدون قسم»
-  // آخرًا). والعنوانُ يظهر متى تعدّدت الأقسام؛ قائمةُ قسمٍ واحدٍ لا تحتاجه.
+  // Cards under their departments: the department is what is written in the employee file, in server order (largest first, 'no department' last). The heading appears only when several departments exist.
   const grouped = useMemo(() => {
     const by = new Map<string, TeamMember[]>();
     for (const m of members) {

@@ -117,8 +117,7 @@ function vehicleRows(items: Vehicle[], ar: boolean, pick: (iv: ServiceInterval) 
       odometerKm: v.odometerKm ?? '',
       odometerAt: v.lastMessageAt || '', // WHEN that odometer was read (live telemetry)
       status: statusText(v.maintenanceStatus, ar),
-      // ومن يقرأ الورقةَ في الورشة يحتاج أن يعرف أين الشاحنةُ قبل أن يحدّد
-      // موعدًا — راجع العمودَ نفسَه في الجدول.
+      // Whoever reads the sheet in the workshop needs to know where the truck is before setting an appointment; see the same column in the table.
       whereNow: v.whereabouts ? (ar ? v.whereabouts.whereAr : v.whereabouts.whereEn) : '',
       whereEta: v.whereabouts?.expectedArrival || '',
       whereWaybill: v.whereabouts?.waybillNumber || '',
@@ -181,9 +180,7 @@ function vehicleColumns(ar: boolean, items: Vehicle[]): ExportColumn[] {
   return cols;
 }
 
-// الأعمدة المسطّحة للتقارير الثلاثة (متأخر / قريب / معًا): صف واحد لكل خدمة
-// مستحقة، بلا أعمدة لا تخص التقرير — «متأخرة بـ» لا تظهر في تقرير القريبة،
-// و«المتبقي» لا يظهر في تقرير المتأخرات.
+// Flat columns for the three reports (overdue / upcoming / both): one row per due service, with no columns foreign to the report; 'overdue by' does not appear in the upcoming report and 'remaining' not in the overdue one.
 function flatReportColumns(ar: boolean, kind: 'overdue' | 'due' | 'both'): ExportColumn[] {
   const cols: ExportColumn[] = [
     { header: ar ? 'اللوحة' : 'Plate', key: 'plate', width: 13 },
@@ -308,10 +305,8 @@ export default function Ls2MaintenancePage() {
     try { const res = await api.get<{ deferrals: DeferralLike[] }>('/api/ls2/deferrals'); setDeferrals(res.deferrals || []); } catch { /* keep */ }
   }, []);
   const load = useCallback(async () => {
-    // الجدولُ كلُّه مبنيٌّ على فترات الخدمة، فتُطلَب صراحةً.
-    // ── ومعها: أين هي الآن ────────────────────────────────────────────────
-    // «صيانتُها تأخّرت» نصفُ الجواب؛ ونصفُه الآخر أنّها في الطريق إلى جدة أو
-    // فرّغت ووصلت الرياض. تأتي مع نفس النداء من حمولات إدارة الأسطول الحيّة.
+    // The whole table is built on service intervals, so they are requested explicitly.
+    // And where each truck is now: 'its maintenance is late' is half the answer; the other half is that it is on the way to Jeddah or unloaded and reached Riyadh. It arrives in the same call, from live fleet-management loads.
     try { const res = await api.get<{ items: Vehicle[] }>('/api/ls2/vehicles?include=intervals,whereabouts'); setItems(res.items || []); } catch { /* keep */ }
     loadDeferrals();
     setLoading(false);
@@ -358,8 +353,7 @@ export default function Ls2MaintenancePage() {
         <ExportMenu
           fileName="ls2-maintenance" lang={lang as Lang}
           options={[
-            // ثلاثة تقارير مسطّحة نظيفة: كل صف = خدمة مستحقة فعلًا — لا شيء
-            // «سليم» يزاحم القائمة، ولا مصفوفة أعمدة لكل خدمة.
+            // Three clean flat reports: every row is a service actually due; nothing 'healthy' crowds the list and there is no column matrix per service.
             {
               key: 'overdue', label: lang === 'ar' ? 'المتأخرات فقط (فات موعدها)' : 'Overdue only',
               sheets: [{ name: lang === 'ar' ? 'المتأخرات' : 'Overdue', rows: intervalRows(items, (iv) => iv.statusLevel === 'overdue'), columns: flatReportColumns(lang === 'ar', 'overdue') }],
@@ -467,10 +461,7 @@ export default function Ls2MaintenancePage() {
                           </div>
                         )}
                       </td>
-                      {/* ── أين هي الآن ──────────────────────────────────────
-                          من قسم إدارة الأسطول: حالةُ حمولتها الحيّة مترجَمةً
-                          إلى موضع. والفارغةُ خضراءُ لأنّها القابلةُ للسحب إلى
-                          الورشة الآن بلا تعطيل حمولة. */}
+                      {/* Where it is now: from fleet management, its live load status translated into a place. An empty truck is green because it can be pulled to the workshop now without disrupting a load. */}
                       <td className="px-4 py-3 whitespace-nowrap">
                         {(() => {
                           const w = v.whereabouts;

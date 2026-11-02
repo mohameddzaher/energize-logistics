@@ -9,10 +9,8 @@ import '../ui/export_sheet.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 
-/// إعداد تقييم الأداء — للمدير العام وحده (/system/performance/settings).
-///
-/// ثلاثة أشياء هنا ولا مكان غيرها: نماذج المؤشرات (وأوزانها مجموعها ١٠٠٪)،
-/// شرائح الأداء، وجدول البونص لكل طبقة مع طبقة كل قسم.
+/// Performance evaluation setup, general manager only (/system/performance/settings).
+/// Three things live here: indicator templates (weights sum to 100%), performance bands, and the bonus table per tier with each section's tier.
 
 const _bandColors = ['red', 'amber', 'blue', 'emerald', 'slate'];
 
@@ -151,7 +149,7 @@ class _PerformanceSettingsScreenState extends State<PerformanceSettingsScreen> w
     if (ok != true) return;
     try {
       final r = await Api.instance.delete('/api/performance/templates/${t['_id']}');
-      // نموذجٌ عليه تقييماتٌ يُعطَّل بدل أن يُحذف — والخادم يقول ذلك.
+      // A template with evaluations is disabled instead of deleted, and the server says so.
       _snack(r is Map && r['deactivated'] == true ? (r['message'] ?? tr('تم تعطيل النموذج', 'Template deactivated')).toString() : tr('تم الحذف', 'Deleted'));
       _load();
     } catch (e) {
@@ -159,7 +157,7 @@ class _PerformanceSettingsScreenState extends State<PerformanceSettingsScreen> w
     }
   }
 
-  // ── التصدير: التبويب الحالي أو الكل (٥ شيتات) — كالويب ─────────────────────
+  // Export: current tab or all (5 sheets), as on the web
   Future<void> _export() async {
     final k = await showModalBottomSheet<String>(
       context: context,
@@ -240,7 +238,7 @@ class _PerformanceSettingsScreenState extends State<PerformanceSettingsScreen> w
 
   @override
   Widget build(BuildContext context) {
-    // للمدير العام وحده — كـ canConfigurePerf في الويب وحارس الخادم.
+    // General manager only, like canConfigurePerf on the web and the server guard.
     if (!const ['super_admin', 'admin'].contains(context.watch<AuthProvider>().role)) {
       return AppScaffold(
         title: Text(tr('إعداد تقييم الأداء', 'Performance configuration')),
@@ -458,7 +456,7 @@ class _PerformanceSettingsScreenState extends State<PerformanceSettingsScreen> w
   }
 }
 
-// ── محرّر النموذج ────────────────────────────────────────────────────────────
+// Template editor
 class _TemplateEditor extends StatefulWidget {
   final Map<String, dynamic> template;
   final List<String> departments;

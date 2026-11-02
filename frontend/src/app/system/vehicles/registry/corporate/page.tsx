@@ -1,8 +1,6 @@
 'use client';
-// وثائق التأمين على مستوى الشركة — مش مربوطة بعربية.
-//
-// تأمين البضائع وخيانة الأمانة. انتهاء واحدة منها بيوقّف الشغل كله، مش عربية
-// واحدة — عشان كده لها صفحتها وبتظهر في النظرة الشاملة جنب مستندات المركبات.
+// Company-level insurance documents, not tied to a vehicle.
+// Cargo insurance and breach-of-trust. Expiry of one of them stops the whole operation, not one vehicle, so they have their own page and appear in the overview beside vehicle documents.
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useLanguage } from '@/context/LanguageContext';
@@ -26,8 +24,7 @@ export default function CorporatePoliciesPage() {
   const t = (a: string, e: string) => (ar ? a : e);
   const router = useRouter();
   const { notify, confirm, prompt } = useDialog();
-  // كان زر التجديد ظاهرًا لكل من يفتح الصفحة، والسيرفر وحده يرفض — فيُقال للمستخدم
-  // «ممنوع» بعد أن ملأ النموذج. البوابة نفسها المستعملة في بقية شاشات القسم.
+  // The renew button was visible to everyone who opens the page while only the server rejected it, so users were told "forbidden" after filling the form. Uses the same gate as the other section screens.
   const { user } = useAuth();
   const canEdit = canEditVehicles(user);
   const canDelete = canAdminVehicles(user);
@@ -35,11 +32,11 @@ export default function CorporatePoliciesPage() {
   const [rows, setRows] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [renewing, setRenewing] = useState<any | null>(null);
-  // الوثيقةُ تُكتب: `{}` وثيقةٌ جديدة، وسجلٌّ تعديل.
+  // The document form: `{}` is a new document, a record is an edit.
   const [editing, setEditing] = useState<any | null>(null);
-  // ولوحةُ المشمولين لوثيقةٍ تغطّي أشخاصًا لا مركبات.
+  // And the covered-persons panel, for a policy that covers people, not vehicles.
   const [roster, setRoster] = useState<any | null>(null);
-  // وثائق الشركة قليلة لكنها تُجدَّد معًا عادةً — من نفس الوسيط وفي نفس اليوم.
+  // Company documents are few but usually renewed together, from the same broker on the same day.
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [bulk, setBulk] = useState(false);
 
@@ -51,7 +48,7 @@ export default function CorporatePoliciesPage() {
   useEffect(() => { load(); }, [load]);
   useSocket('vreg:updated', useCallback(() => { load(); }, [load]));
 
-  /** إنهاءُ العقد: يُسأل عن السبب فيُقيَّد في سجلّ الوثيقة — لا يُغلَق بصمت. */
+  /** Contract termination: the reason is asked and recorded in the document log; it is not closed silently. */
   const endPolicy = useCallback(async (p: any) => {
     const ok = await confirm({
       message: t(`يُنهى العقدُ مع «${p.companyAr || p.scopeAr}»؟ لن تعود الوثيقةُ تُطالِب بتجديد.`,
@@ -72,8 +69,7 @@ export default function CorporatePoliciesPage() {
   if (loading) return <Spinner />;
   const chosen = rows.filter((p) => picked.has(p._id));
 
-  // أعمدةُ الملفّ هي ما تعرضه البطاقة — ومعها ما لا يتّسع لها: أرقامُ الوثيقة
-  // كلُّها، والإجماليُّ المحسوب، وأسماءُ المشمولين.
+  // Export columns are what the card shows plus what does not fit on it: all the document numbers, the computed total, and the covered names.
   const cols: ExportColumn[] = [
     { header: t('الوثيقة', 'Policy'), key: 'scopeAr', width: 30 },
     { header: t('المؤمَّن له', 'Policyholder'), key: 'policyholderAr', width: 26 },
@@ -147,10 +143,7 @@ export default function CorporatePoliciesPage() {
                 <Fact label={t('شركة التأمين', 'Insurer')} value={p.companyAr} />
                 <Fact label={t('ينتهي في', 'Expires')} value={fmtDate(p.expiryDate)} />
                 <Fact label={t('المتبقي', 'Remaining')} value={daysText(p.daysRemaining, ar)} color={m.color} />
-                {/* ── القسطُ يُقرأ كما يُشترى ────────────────────────────────
-                    وثيقةُ خيانة الأمانة تُسعَّر لكلّ سائقٍ سنويًّا، والإجماليُّ
-                    مشتقٌّ من عدد المشمولين — يزيد بمن يدخل وينقص بمن يخرج. أمّا
-                    إجماليٌّ مكتوبٌ يدًا فيصدق يومَ كُتب ويكذب في اليوم التالي. */}
+                {/* The premium reads as it is bought. The breach-of-trust policy is priced per driver per year and the total is derived from the covered count, rising and falling as drivers join and leave; a hand-written total is correct the day it is written and wrong the next. */}
                 <Fact
                   label={subjectOf(p) === 'drivers' && p.premiumPerPersonSar != null
                     ? t('القسط لكل سائق سنويًّا (ر.س)', 'Premium per driver / yr')
@@ -232,10 +225,7 @@ export default function CorporatePoliciesPage() {
 
               {canEdit && (
                 <div className="flex items-center gap-2 mt-4">
-                  {/* ── والإنهاءُ فعلٌ غيرُ التجديد ────────────────────────────
-                      لم يكن للوثيقة إلّا التجديد، فما أُنهي بقرارٍ يبقى في
-                      الانتهاءات يُطالِب بتجديد شيءٍ أُغلق — ويُقرأ التنبيهُ
-                      إهمالًا وهو قرار. */}
+                  {/* Termination is a different action from renewal. A document could only be renewed, so one ended by decision stayed in expiries asking for renewal of something closed, and the alert read as neglect when it was a decision. */}
                   {p.endedAt ? (
                     <button onClick={() => reopen(p)}
                       className="flex-1 py-2 rounded-lg bg-slate-100 text-slate-700 text-sm font-semibold inline-flex items-center justify-center gap-2">
@@ -358,11 +348,7 @@ function RenewModal({ p, ar, t, onClose, onDone, notify }: any) {
   );
 }
 
-// ── تجديد عدة وثائق شركة بتاريخ واحد ─────────────────────────────────────────
-// لا يوجد endpoint جماعي لهذه الوثائق، فالتنفيذ نداءات متتابعة. والمتتابع يعني
-// أن الفشل قد يقع في المنتصف، وقول «تم» عندها يترك وثيقة منتهية يظنّها صاحبها
-// مجدَّدة — وانتهاء واحدة من هذه يوقف العمل كله. لذلك: عدّاد أثناء التنفيذ،
-// وأسماء صريحة لما لم يُجدَّد، وإعادة المحاولة تمسّ ما فشل وحده.
+// Renew several company documents with one date. There is no bulk endpoint for these documents, so execution is sequential calls, and a failure can land in the middle; saying "done" then would leave an expired document that its owner believes renewed, and one of these expiring stops the whole operation. So: a running counter, explicit names of what was not renewed, and retry touches only what failed.
 function BulkRenewModal({ policies, ar, onClose, onDone, onReload }: {
   policies: any[]; ar: boolean; onClose: () => void; onDone: () => void; onReload: () => void;
 }) {
@@ -469,10 +455,7 @@ function BulkRenewModal({ policies, ar, onClose, onDone, onReload }: {
   );
 }
 
-// ── استمارةُ الوثيقة ─────────────────────────────────────────────────────────
-//
-// كانت الصفحةُ تعرض وتجدّد ولا تكتب. فرقمُ وثيقةٍ خطأٌ أو شركةُ تأمينٍ تغيّرت
-// أو قسطٌ صحيحٌ يحتاج فتحَ قاعدة البيانات — وهذا ليس ما تُبنى له شاشة.
+// Document form. The page used to display and renew but not write, so a wrong document number, a changed insurer, or a correct premium needed database access, which is not what a screen is for.
 function PolicyForm({ p, ar, t, onClose, onDone, notify }: any) {
   const isNew = !p?._id;
   const d = (v: any) => (v ? new Date(v).toISOString().slice(0, 10) : '');
@@ -483,9 +466,7 @@ function PolicyForm({ p, ar, t, onClose, onDone, notify }: any) {
     policyNumbers: (p?.policyNumbers || []).join('، '),
     startDate: d(p?.startDate),
     expiryDate: d(p?.expiryDate),
-    // ── القسطُ: للرأس أو مقطوعًا، لا الاثنان ────────────────────────────────
-    // وثيقةٌ تُشترى بالرأس يُكتب سعرُ رأسها ويُحسب إجماليُّها؛ وكتابةُ الاثنين
-    // تجعل الشاشةَ تعرض رقمين لا يُعرف أيُّهما الصحيح.
+    // Premium: per head or lump sum, not both. A per-head policy has its head price written and the total computed; writing both makes the screen show two numbers with no way to know which is right.
     subject: (p?.coverageSubject || (p?.coversDrivers ? 'drivers' : 'other')) as Subject,
     premiumPerPersonSar: p?.premiumPerPersonSar ?? '',
     premiumPerVehicleSar: p?.premiumPerVehicleSar ?? '',
@@ -512,8 +493,7 @@ function PolicyForm({ p, ar, t, onClose, onDone, notify }: any) {
         premiumPerPersonSar: f.subject === 'drivers' ? num(f.premiumPerPersonSar) : null,
         premiumPerVehicleSar: f.subject === 'vehicles' ? num(f.premiumPerVehicleSar) : null,
         vehicleCount: f.subject === 'vehicles' ? num(f.vehicleCount) : null,
-        // السائقون يُحسب إجماليُّهم من القائمة؛ والسيّاراتُ من السعر × العدد إن
-        // كُتبا، وإلّا فالإجماليُّ المكتوب.
+        // Driver totals are computed from the list; for cars it is price times count when both are written, otherwise the written total.
         premiumSar: f.subject === 'drivers' ? null
           : f.subject === 'vehicles' && vehTotal != null ? vehTotal : num(f.premiumSar),
       };
@@ -612,13 +592,8 @@ function PolicyForm({ p, ar, t, onClose, onDone, notify }: any) {
   );
 }
 
-// ── قائمةُ المشمولين ─────────────────────────────────────────────────────────
-//
-// «تأمين خيانة الأمانة ل 58 سائق» — عددٌ في اسمٍ لا يُسأل: أيُّ ثمانيةٍ وخمسين؟
-// ومَن دخل الشهرَ الماضي وليس فيهم؟ فالأسماءُ هنا، والضمُّ والإخراجُ بضغطة.
-//
-// ولا تُنسَخ القائمةُ على الوثيقة: تُكتب في `DriverCard.fidelity` — سجلٌّ واحدٌ
-// تقرؤه صفحةُ بطاقات السائقين وشاشةُ التفاويض معًا، فلا يفترق ثلاثةُ سجلّات.
+// Covered list: names, not a count in a policy name, with add and remove in one click.
+// The list is not copied onto the document: it is stored in `DriverCard.fidelity`, one record read by both the driver cards page and the authorizations screen, so records do not diverge.
 function DriverRoster({ p, ar, t, onClose, onChanged, notify, canEdit }: any) {
   const [q, setQ] = useState('');
   const [busyId, setBusyId] = useState<string | null>(null);

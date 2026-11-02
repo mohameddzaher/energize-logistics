@@ -15,12 +15,10 @@ import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import 'vehicle_registry.dart' show VehicleRegistryDetailScreen;
 
-/// بطاقاتُ السائقين — سجلٌّ في قسم المركبات (نظير /system/vehicles/driver-cards).
-///
-/// البطاقةُ وثيقةٌ تنتهي ويُطالَب بتجديدها، ولها سجلٌّ لوجستيٌّ تُصدَر تحته.
-/// الخادمُ يشتقّ hasCard وstate وdaysLeft وvehicleClass — لا تُحسب هنا.
+/// Driver cards: a register in the vehicles section (mirrors /system/vehicles/driver-cards).
+/// A card is a document that expires and must be renewed, and it has a logistics record under which it is issued. The server derives hasCard, state, daysLeft and vehicleClass; they are not computed here.
 
-// خيانة الأمانة: «مطلوب» سائقٌ يعمل والوثيقةُ لا تغطّيه.
+// Breach of trust cover: 'required' means a working driver whom the policy does not cover.
 const _fidelity = {
   'covered': ('مشمول', 'Covered', T.success),
   'required': ('مطلوب ضمُّه', 'Required', T.danger),
@@ -28,7 +26,7 @@ const _fidelity = {
 };
 (String, String, Color) _fid(dynamic s) => _fidelity['${s ?? ''}'] ?? _fidelity['']!;
 
-// نوعُ النقل — يشتقّه الخادم من نوع تسجيل المركبات المفوَّضة له.
+// Transport type: derived by the server from the registration type of the vehicles authorized to him.
 const _vclass = {
   'heavy': ('نقل ثقيل', 'Heavy', Color(0xFF4F46E5)),
   'light': ('مركبة خاصة', 'Private', Color(0xFF0D9488)),
@@ -37,7 +35,7 @@ const _vclass = {
 };
 (String, String, Color) _vc(dynamic s) => _vclass['${s ?? 'none'}'] ?? _vclass['none']!;
 
-// شرائحُ الانتهاء بأسمائها لا بأعداد أيّامها — العتبةُ تُضبَط من إعدادات القسم.
+// Expiry chips by name, not by day counts; the threshold is set in section settings.
 const _state = {
   'expired': ('منتهية', 'Expired', T.danger),
   'critical': ('حرجة', 'Critical', Color(0xFFEA580C)),
@@ -48,14 +46,14 @@ const _state = {
 };
 (String, String, Color) _st(dynamic s) => _state['${s ?? ''}'] ?? _state['unknown']!;
 
-// أدوارُ التعديل كما في الويب (canEdit) — والخادمُ يحرس بـADMIN نفسها.
+// Edit roles as on web (canEdit); the server guards with the same ADMIN roles.
 const _editRoles = ['super_admin', 'admin', 'vehicles_manager', 'hr_manager'];
 
 String _s(dynamic v) => v == null ? '' : '$v';
 String _d10(dynamic v) { final s = _s(v); return s.length >= 10 ? s.substring(0, 10) : s; }
 
 class VehicleDriverCardsScreen extends StatefulWidget {
-  /// شريحةُ حالةٍ تُفتح بها الشاشة — من كارت «بطاقة السائق» في النظرة الشاملة.
+  /// Initial status chip the screen opens with, from the driver card in the overview.
   final String initialState;
   const VehicleDriverCardsScreen({super.key, this.initialState = ''});
   @override
@@ -117,7 +115,7 @@ class _VehicleDriverCardsScreenState extends State<VehicleDriverCardsScreen> {
       if (_fState.isNotEmpty && c['state'] != _fState) return false;
       final has = c['hasCard'] == true;
       final vc = _s(c['vehicleClass']);
-      // «خفيف» يجمع الدرّاجةَ والمركبةَ الخاصّة — كقسمة الكارت.
+      // 'Light' covers the motorbike and the private vehicle, like the card split.
       if (_fClass == 'light') {
         if (!has || !['light', 'motorcycle'].contains(vc)) return false;
       } else if (_fClass == 'heavy') {
@@ -147,7 +145,7 @@ class _VehicleDriverCardsScreenState extends State<VehicleDriverCardsScreen> {
         ExportCol('الاسم', 'Name', (r) => r['name']),
         ExportCol('جوال أبشر', 'Absher phone', (r) => r['absherPhone']),
         ExportCol('السجل اللوجستي', 'Logistic register', (r) => r['logisticRegister']),
-        // الملفُّ يقول ما تقوله الخليّة: الفراغُ «مطلوبة» لا سهوٌ في الإدخال.
+        // The file says what the cell says: empty means 'required', not an entry omission.
         ExportCol('رقم البطاقة', 'Card number', (r) => r['hasCard'] == true ? r['cardNumber'] : tr('مطلوبة — لم تُستخرج', 'Needed — not issued')),
         ExportCol('له بطاقة', 'Has card', (r) => r['hasCard'] == true ? tr('نعم', 'Yes') : tr('لا', 'No')),
         ExportCol('نوع البطاقة', 'Card type', (r) => r['cardType']),
@@ -281,7 +279,7 @@ class _VehicleDriverCardsScreenState extends State<VehicleDriverCardsScreen> {
             ? Text('—', style: v)
             : InkWell(onTap: () => callNumber(phone), child: Row(children: [const Icon(Icons.phone, size: 14, color: T.orange), const SizedBox(width: 4), Text(phone, style: v.copyWith(color: T.orange))]))),
         kv(tr('السجل اللوجستي', 'Register'), Text(_s(c['logisticRegister']).isEmpty ? '—' : _s(c['logisticRegister']), style: v)),
-        // الفراغُ يقول «مطلوبة» — الحالُ تُشتقّ ولا تُكتب كلمةً في خانة رقم.
+        // Empty reads as 'required'; the state is derived, and a word is not written into a number field.
         kv(tr('رقم البطاقة', 'Card no.'), c['hasCard'] == true
             ? Text(_s(c['cardNumber']), style: v.copyWith(fontFamily: 'monospace'))
             : Align(alignment: AlignmentDirectional.centerStart, child: Chip2(tr('مطلوبة — لم تُستخرج', 'Needed — not issued'), T.danger))),
@@ -290,11 +288,11 @@ class _VehicleDriverCardsScreenState extends State<VehicleDriverCardsScreen> {
         kv(tr('الانتهاء', 'Expiry'), Text(_s(c['expiryDate']).isEmpty ? '—' : _s(c['expiryDate']), style: v)),
         kv(tr('المتبقي', 'Days left'), Text(c['daysLeft'] == null ? '—' : '${c['daysLeft']}', style: v)),
         kv(tr('خيانة الأمانة', 'Fidelity'), Align(alignment: AlignmentDirectional.centerStart, child: Chip2(tr(fi.$1, fi.$2), fi.$3))),
-        // وانتهاءُ إقامته ورخصةِ قيادته — من ملفّه في الموارد البشريّة.
+        // Iqama and driving licence expiry come from his HR profile.
         for (final (ar, en, which) in [('انتهاء الإقامة', 'Iqama expiry', 'iqama'), ('انتهاء رخصة القيادة', 'Licence expiry', 'license')])
           kv(tr(ar, en), Align(alignment: AlignmentDirectional.centerStart,
               child: Chip2(personDocValue(c, which).$1, personDocValue(c, which).$2))),
-        // اللوحاتُ تُفتَح: الصفُّ يجيب «ما بيده؟» ثمّ يوصل إليه.
+        // Plates are openable: the row answers 'what does he hold?' and then leads to it.
         kv(tr('التفاويض', 'Authorisations'), auths.isEmpty
             ? Text('—', style: v.copyWith(color: T.inkFaint))
             : Wrap(spacing: 4, runSpacing: 4, children: [
@@ -311,7 +309,7 @@ class _VehicleDriverCardsScreenState extends State<VehicleDriverCardsScreen> {
                     ),
                   ),
               ])),
-        // الخلافُ يُعرَض ولا يُبتلَع: سجلُّ الإسناد الأقدم يسمّي له لوحةً أخرى.
+        // The disagreement is shown, not swallowed: the older assignment log names a different plate for him.
         if (stale.isNotEmpty)
           Padding(padding: const EdgeInsets.only(top: 3), child: Text('⚠ ${tr('سجلٌّ أقدم:', 'older register:')} ${stale.join(' · ')}', style: const TextStyle(fontSize: 11, color: T.warn))),
         kv(tr('الموظف', 'Employee'), emp != null
@@ -341,7 +339,7 @@ class _VehicleDriverCardsScreenState extends State<VehicleDriverCardsScreen> {
               : RefreshIndicator(
                   onRefresh: _load,
                   child: ListView(keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag, padding: const EdgeInsets.fromLTRB(14, 12, 14, 90), children: [
-                    // البطاقاتُ تُفلتِر بالضغط: الرقمُ الذي يُقرأ هو الذي يُفتح.
+                    // Cards filter on tap: the number that is read is the one that opens.
                     Wrap(spacing: 8, runSpacing: 8, children: [
                       _stat(tr('إجمالي السائقين', 'Total drivers'), t['drivers'] ?? t['total'] ?? 0, T.ink,
                           onTap: () => setState(() { _fState = ''; _fFid = ''; _fHas = ''; _fClass = ''; }), on: _fState.isEmpty && _fFid.isEmpty && _fHas.isEmpty && _fClass.isEmpty),
@@ -352,7 +350,7 @@ class _VehicleDriverCardsScreenState extends State<VehicleDriverCardsScreen> {
                       _stat(tr('تحذير', 'Warning'), t['warning'], const Color(0xFFD97706), onTap: () => setState(() => _fState = 'warning'), on: _fState == 'warning'),
                       _stat(tr('قريبة', 'Soon'), t['upcoming'], const Color(0xFF0284C7), onTap: () => setState(() => _fState = 'upcoming'), on: _fState == 'upcoming'),
                       _stat(tr('سارية', 'Valid'), t['valid'], T.success, onTap: () => setState(() => _fState = 'valid'), on: _fState == 'valid'),
-                      // الشخصُ لا المركبة: خيانةُ أمانته وقسمةُ النقل.
+                      // The person, not the vehicle: his breach-of-trust cover and the transport split.
                       _stat(tr('لديهم وثيقة خيانة الأمانة', 'Have a fidelity policy'), t['fidelityCovered'], T.success, onTap: () => setState(() => _fFid = 'covered'), on: _fFid == 'covered'),
                       _stat(tr('ليس لديهم وثيقة خيانة الأمانة', 'No fidelity policy'), t['fidelityRequired'], T.danger, onTap: () => setState(() => _fFid = 'required'), on: _fFid == 'required'),
                       _stat(tr('سائقين النقل الثقيل', 'Heavy-transport drivers'), t['heavy'], const Color(0xFF4F46E5), onTap: () => setState(() => _fClass = _fClass == 'heavy' ? '' : 'heavy'), on: _fClass == 'heavy'),
@@ -395,7 +393,7 @@ class _VehicleDriverCardsScreenState extends State<VehicleDriverCardsScreen> {
   }
 }
 
-// ══════════════════ نموذج البطاقة ══════════════════
+// Card form
 class _CardEditor extends StatefulWidget {
   final Map<String, dynamic>? card;
   const _CardEditor({this.card});
@@ -411,7 +409,7 @@ class _CardEditorState extends State<_CardEditor> {
   late final _phone = TextEditingController(text: _s(c['absherPhone']));
   late final _reg = TextEditingController(text: _s(c['logisticRegister']));
   late final _cardNo = TextEditingController(text: _s(c['cardNumber']));
-  // بطاقةٌ جديدة تبدأ «سنوية» كما في الويب.
+  // A new card starts as annual, as on web.
   late final _type = TextEditingController(text: widget.card == null ? 'سنوية' : _s(c['cardType']));
   late final _transport = TextEditingController(text: _s(c['transportTypeAr']));
   late final _policy = TextEditingController(text: _s(fd0['policyNumber']));
@@ -469,7 +467,7 @@ class _CardEditorState extends State<_CardEditor> {
         ),
       );
 
-  // الشخصُ المختار من البحث يملأ الخانات — والمكتوبُ يُستبدل كما في الويب.
+  // The person picked from search fills the fields, and typed text is replaced, as on web.
   void _onPick(Map p) {
     setState(() {
       if (_s(p['idNumber']).isNotEmpty) _id.text = _s(p['idNumber']);
@@ -481,7 +479,7 @@ class _CardEditorState extends State<_CardEditor> {
     });
   }
 
-  // ما يُعرَف عن صاحب الرقم يملأ الفارغَ فقط (تاريخ الميلاد والجوال).
+  // What is known about the number's owner fills only the empty fields (birth date and mobile).
   void _onFound(Map p) {
     setState(() {
       if (_dob.isEmpty && _s(p['dateOfBirth']).isNotEmpty) _dob = _d10(p['dateOfBirth']);
@@ -547,7 +545,7 @@ class _CardEditorState extends State<_CardEditor> {
             gap,
             TextField(controller: _name, decoration: InputDecoration(labelText: tr('الاسم', 'Name'))),
             gap,
-            // الربطُ بالموظّف يجعل تجديدَ البطاقة يُحدِّث ملفَّه معه.
+            // Linking to the employee makes renewing the card update his profile too.
             InkWell(
               onTap: _pickEmployee,
               child: InputDecorator(
@@ -561,7 +559,7 @@ class _CardEditorState extends State<_CardEditor> {
             gap,
             TextField(controller: _reg, decoration: InputDecoration(labelText: tr('السجل اللوجستي', 'Logistic register'))),
             gap,
-            // ولا تُكتب كلمةٌ في خانة رقم — الفراغُ يُقرأ «مطلوبة» في الجدول.
+            // A word is not written into a number field: empty reads as 'required' in the table.
             TextField(
               controller: _cardNo,
               onChanged: (_) => setState(() {}),
@@ -575,14 +573,14 @@ class _CardEditorState extends State<_CardEditor> {
             gap,
             LookupField(type: 'vehicle_driver_card_type', controller: _type, label: tr('نوع البطاقة', 'Card type')),
             gap,
-            // نوعُ النقل المكتوب يغلب المشتقَّ من مركباته.
+            // A written transport type wins over the one derived from his vehicles.
             LookupField(type: 'vehicle_transport_type', controller: _transport, label: tr('نوع النقل', 'Transport type')),
             gap,
             _dateField(tr('تاريخ الانتهاء', 'Expiry date'), _expiry, (x) => _expiry = x),
             gap,
             _dateField(tr('تاريخ الميلاد', 'Date of birth'), _dob, (x) => _dob = x),
             gap,
-            // خيانةُ الأمانة: موقعُ هذا السائق من وثيقة الشركة الواحدة.
+            // Breach of trust cover: this driver's place in the single company policy.
             DropdownButtonFormField<String>(
               initialValue: _fidStatus,
               decoration: InputDecoration(labelText: tr('خيانة الأمانة', 'Fidelity insurance')),
@@ -661,7 +659,7 @@ class _EmpPickerState extends State<_EmpPicker> {
   }
 }
 
-// ══════════════════ بحثُ الشخص (نظير PersonLookup في الويب) ══════════════════
+// Person lookup (mirrors PersonLookup on web)
 const _sourceAr = {'hr': 'الموارد البشرية', 'light_transport': 'النقل الخفيف', 'driver_card': 'بطاقة سائق'};
 const _sourceEn = {'hr': 'HR', 'light_transport': 'Light transport', 'driver_card': 'Driver card'};
 
@@ -676,7 +674,7 @@ class _PersonLookupState extends State<_PersonLookup> {
   final _q = TextEditingController();
   bool _busy = false;
   List<Map>? _people;
-  int _seq = 0; // آخرُ بحثٍ يفوز
+  int _seq = 0; // The latest search wins
 
   @override
   void dispose() { _q.dispose(); super.dispose(); }
@@ -773,8 +771,7 @@ class _PersonLookupState extends State<_PersonLookup> {
   }
 }
 
-/// ما يُعرَف عن صاحب الرقم تحت الخانة — كـIqamaPersonInfo، ومعه onFound
-/// ليملأ تاريخَ الميلاد والجوالَ الفارغين كما يفعل الويب.
+/// What is known about the number's owner, under the field, like IqamaPersonInfo, with onFound to fill the empty birth date and mobile as web does.
 class _IdInfo extends StatefulWidget {
   final TextEditingController controller;
   final void Function(Map p) onFound;
@@ -839,7 +836,7 @@ class _IdInfoState extends State<_IdInfo> {
         Text(_s(p['name']), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12.5)),
         Text('${tr('تاريخ الميلاد', 'Date of birth')}: ${dob.length >= 10 ? dob.substring(0, 10).split('-').reversed.join('/') : tr('غير مسجَّل', 'not recorded')}', style: const TextStyle(fontSize: 12)),
         Text('${tr('الجوال', 'Mobile')}: ${phone.isEmpty ? tr('غير مسجَّل', 'not recorded') : phone}', style: const TextStyle(fontSize: 12)),
-        // وانتهاءُ الإقامة ورخصةِ القيادة — بالميلاديّ، والمنتهيةُ بالأحمر (٢٠٢٦/١٠/٢٧).
+        // Iqama and driving licence expiry, in Gregorian; expired ones in red.
         for (final e in [('انتهاء الإقامة', 'Iqama expiry', _s(p['iqamaExpiry'])), ('انتهاء رخصة القيادة', 'Driving licence expiry', _s(p['licenseExpiry']))])
           Builder(builder: (_) {
             final d = e.$3.length >= 10 ? e.$3.substring(0, 10) : '';

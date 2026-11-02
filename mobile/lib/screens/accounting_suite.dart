@@ -6,7 +6,7 @@ import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import '../ui/search_field.dart';
 
-/// الحسابات — شجرة الحسابات ودفتر اليومية (عرض وإنشاء قيد متوازن).
+/// Accounts: chart of accounts and journal ledger (view and create a balanced entry).
 
 String _money(dynamic v) {
   final n = (v is num) ? v : num.tryParse(v?.toString() ?? '') ?? 0;
@@ -21,7 +21,7 @@ const _accTypes = {
   'expense': ('مصروفات', 'Expenses', T.orange),
 };
 
-// ── شجرة الحسابات ───────────────────────────────────────────────────────────
+// Chart of accounts
 class AccountsScreen extends StatefulWidget {
   const AccountsScreen({super.key});
   @override
@@ -34,7 +34,7 @@ class _AccountsScreenState extends State<AccountsScreen> {
   String? _error;
   String _q = '';
   String _type = '';
-  final _searchCtl = TextEditingController(); // النصُّ يبقى مطابقًا لـ_q بعد التحميل
+  final _searchCtl = TextEditingController(); // Text stays equal to _q after loading.
 
   @override
   void initState() { super.initState(); _load(); }
@@ -252,7 +252,7 @@ class _AccountsScreenState extends State<AccountsScreen> {
   }
 }
 
-// ── دفتر اليومية ────────────────────────────────────────────────────────────
+// Journal ledger
 class JournalScreen extends StatefulWidget {
   const JournalScreen({super.key});
   @override
@@ -265,7 +265,7 @@ class _JournalScreenState extends State<JournalScreen> {
   bool _loading = true;
   String? _error;
   String _q = '';
-  final _searchCtl = TextEditingController(); // النصُّ يبقى مطابقًا لـ_q بعد التحميل
+  final _searchCtl = TextEditingController(); // Text stays equal to _q after loading.
 
   @override
   void initState() { super.initState(); _load(); }
@@ -295,7 +295,7 @@ class _JournalScreenState extends State<JournalScreen> {
 
   String _accLabel(Map<String, dynamic> a) => '${a['code'] ?? ''} · ${tr((a['nameAr'] ?? a['nameEn'] ?? '').toString(), (a['nameEn'] ?? a['nameAr'] ?? '').toString())}';
 
-  // إنشاء قيد متوازن — بندان فأكثر، ولا يُرسل إلا إذا تساوى المدين والدائن.
+  // Create a balanced entry: two or more lines, sent only when debit equals credit.
   Future<void> _createEntry() async {
     final memo = TextEditingController();
     DateTime date = DateTime.now();
@@ -510,8 +510,7 @@ class _JournalScreenState extends State<JournalScreen> {
   }
 }
 
-// ── التقارير المالية ────────────────────────────────────────────────────────
-// ميزان المراجعة · الأرباح والخسائر · الذمم المدينة · الذمم الدائنة (تبويبات).
+// Financial reports: Trial balance, profit and loss, receivables, payables (tabs).
 class AccountingReportsScreen extends StatelessWidget {
   const AccountingReportsScreen({super.key});
   @override
@@ -683,8 +682,7 @@ class _ReportViewState extends State<_ReportView> with AutomaticKeepAliveClientM
       ]);
 }
 
-// ── كشف حساب (Ledger) ───────────────────────────────────────────────────────
-// حركات حساب واحد مع الرصيد الجاري. /api/accounting/ledger/:id
+// Account statement (ledger) Movements of one account with the running balance. /api/accounting/ledger/:id
 class LedgerScreen extends StatefulWidget {
   final Map<String, dynamic> account;
   const LedgerScreen({super.key, required this.account});

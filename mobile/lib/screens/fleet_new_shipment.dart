@@ -7,11 +7,8 @@ import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import '../ui/search_field.dart';
 
-/// إنشاء حمولة — the same flow the web form runs: pick the customer (or add a
-/// new one inline), pick the vehicle from a live-availability list (carrying
-/// its drivers with it), route, dates, notes → POST /api/fleet/shipments.
-/// ومع `editId` هي شاشةُ التعديل نفسُها كالويب (`/system/fleet/new?id=`):
-/// تُملأ من GET /api/fleet/shipments/:id وتُحفظ بـ PUT.
+/// Create a load, the same flow the web form runs: pick the customer (or add a new one inline), pick the vehicle from a live-availability list (carrying its drivers with it), route, dates, notes, POST /api/fleet/shipments.
+/// With `editId` it is the same edit screen as the web (`/system/fleet/new?id=`): filled from GET /api/fleet/shipments/:id and saved with PUT.
 class FleetNewShipmentScreen extends StatefulWidget {
   final String? editId;
   const FleetNewShipmentScreen({super.key, this.editId});
@@ -19,7 +16,7 @@ class FleetNewShipmentScreen extends StatefulWidget {
   State<FleetNewShipmentScreen> createState() => _FleetNewShipmentScreenState();
 }
 
-// حالاتُ الحمولة — نفس FLEET_STATUSES في الويب.
+// Load statuses, same as FLEET_STATUSES on the web.
 const _statusOptions = [
   ('requesting', 'قيد الطلب', 'Requesting'),
   ('loading', 'جاري التحميل', 'Loading'),
@@ -38,7 +35,7 @@ const _cities = ['جدة', 'الرياض', 'الدمام', 'مكة', 'المدي
 class _FleetNewShipmentScreenState extends State<FleetNewShipmentScreen> {
   List<Map<String, dynamic>> _customers = [];
   List<Map<String, dynamic>> _vehicles = [];
-  List<Map<String, dynamic>> _drivers = []; // كلّ سائقي القسم — كقائمة الويب
+  List<Map<String, dynamic>> _drivers = []; // All section drivers, like the web list.
   bool _loading = true;
   bool get _isEdit => (widget.editId ?? '').isNotEmpty;
   String _status = 'requesting';
@@ -50,18 +47,18 @@ class _FleetNewShipmentScreenState extends State<FleetNewShipmentScreen> {
 
   Map<String, dynamic>? _vehicle;
   String _driverId = '';
-  String _secondDriverId = ''; // السائق الثاني (اختياري — للوصول الأسرع)
+  String _secondDriverId = ''; // Second driver (optional, for faster arrival).
 
   final _fromCity = TextEditingController();
   final _toCity = TextEditingController();
   DateTime _loadDate = DateTime.now();
   DateTime? _expectedArrival;
   final _notes = TextEditingController();
-  // حقول الحمولة/التسعير:
-  final _vehicleRent = TextEditingController();   // إيجار السيارة = دخل القسم
-  final _fullRent = TextEditingController();       // الإيجار كامل (اختياري)
-  final _driverExpense = TextEditingController();  // مصروف السائق
-  Map<String, dynamic>? _rentTypeItem;             // عنصر قائمة نوع الإيجار
+  // Load/pricing fields.
+  final _vehicleRent = TextEditingController();   // Vehicle rent = section income.
+  final _fullRent = TextEditingController();       // Full rent (optional).
+  final _driverExpense = TextEditingController();  // Driver expense.
+  Map<String, dynamic>? _rentTypeItem;             // Rent type list item.
   Map<String, dynamic>? _paymentTypeItem;
   Map<String, dynamic>? _loadTypeItem;
   String _customerType = '';                       // heavy / branch
@@ -76,7 +73,7 @@ class _FleetNewShipmentScreenState extends State<FleetNewShipmentScreen> {
       ? ''
       : (Lang.instance.ar ? (it['nameAr'] ?? it['nameEn']) : (it['nameEn'] ?? it['nameAr'])).toString();
 
-  // الفرق بين الإيجار كامل وإيجار السيارة يذهب لقسم الفروع (سيناريو 3PL).
+  // The difference between full rent and vehicle rent goes to the branches section (3PL scenario).
   int get _branchShare {
     final rent = num.tryParse(_vehicleRent.text.trim()) ?? 0;
     final full = num.tryParse(_fullRent.text.trim()) ?? 0;
@@ -84,7 +81,7 @@ class _FleetNewShipmentScreenState extends State<FleetNewShipmentScreen> {
     return diff > 0 ? diff.round() : 0;
   }
 
-  // زر اختيار (نوع العميل) بشكل شريحة.
+  // Chip-style choice button (customer type).
   Widget _segBtn(String label, bool active, VoidCallback onTap) => Pressable(
         onTap: onTap,
         child: AnimatedContainer(
@@ -100,7 +97,7 @@ class _FleetNewShipmentScreenState extends State<FleetNewShipmentScreen> {
         ),
       );
 
-  // قائمة مرجعية منسدلة بحث (نوع الإيجار/الدفع/الحمولة) عبر _pickSheet.
+  // Searchable reference dropdown (rent/payment/load type) through _pickSheet.
   Widget _lkPicker(String label, Map<String, dynamic>? selected, List<Map<String, dynamic>> items, void Function(Map<String, dynamic>?) onPick) => Pressable(
         onTap: () async {
           final v = await _pickSheet<Map<String, dynamic>>(
@@ -151,7 +148,7 @@ class _FleetNewShipmentScreenState extends State<FleetNewShipmentScreen> {
         Api.instance.get('/api/branches?active=true').catchError((_) => <String, dynamic>{'branches': []}),
         Api.instance.get('/api/fleet/drivers').catchError((_) => <String, dynamic>{'drivers': []}),
       ]);
-      // التعديل: الحمولةُ نفسُها بعد القوائم، لتُطابَق عناصرُها عليها.
+      // Edit: the load itself is applied after the lists, so its items can be matched against them.
       final ship = _isEdit
           ? (await Api.instance.get('/api/fleet/shipments/${widget.editId}'))['shipment'] as Map<String, dynamic>?
           : null;
@@ -168,16 +165,14 @@ class _FleetNewShipmentScreenState extends State<FleetNewShipmentScreen> {
         _loading = false;
       });
     } catch (e) {
-      // العميل والسيارة أساسيان للنموذج — إن فشل جلبهما نعرض إعادة المحاولة
-      // بدل نموذج فارغ صامت.
+      // Customer and vehicle are essential to the form; if fetching them fails a retry is shown instead of a silent empty form.
       if (mounted) setState(() { _loading = false; _error = e.toString(); });
     }
   }
 
   String _idOf(dynamic v) => v is Map ? (v['_id'] ?? '').toString() : (v ?? '').toString();
 
-  // مفتاحُ قائمةٍ محفوظٌ على الحمولة → عنصرُه؛ وإن خرج من القائمة النشطة يبقى
-  // كما هو كي لا يُمحى عند الحفظ.
+  // A list key stored on the load maps to its item; if it left the active list it stays as is so it is not erased on save.
   Map<String, dynamic>? _lkItem(List<Map<String, dynamic>> items, dynamic key) {
     final k = (key ?? '').toString();
     if (k.isEmpty) return null;
@@ -192,17 +187,13 @@ class _FleetNewShipmentScreenState extends State<FleetNewShipmentScreen> {
     return n == n.roundToDouble() ? n.round().toString() : n.toString();
   }
 
-  /// يملأ النموذج من الحمولة المحفوظة — كل ما يملؤه الويب.
-  ///
-  /// ── عميلُ الحمولة المحمَّل ليس «اختيارًا» ──
-  /// نوعُ الدفع وفئةُ العميل يُقرآن كما حُفظا على الحمولة، ولا يُعادان إلى
-  /// افتراض العميل (كان ذلك يحفظ كاشًا ضريبيًّا بلا أن يلمسه أحد). افتراضُ
-  /// العميل يُطبَّق فقط حين يختار المستخدمُ عميلًا من القائمة.
+  /// Fills the form from the saved load, everything the web fills.
+  /// A loaded load's customer is not a "choice": payment type and customer class are read as saved on the load and are not reset to the customer default (that used to save a taxed cash load without anyone touching it). The customer default applies only when the user picks a customer from the list.
   void _prefill(Map<String, dynamic> o) {
     _status = (o['status'] ?? 'requesting').toString();
     _fromCity.text = (o['fromCity'] ?? '').toString();
     _toCity.text = (o['toCity'] ?? '').toString();
-    // اليومُ كما يقرؤه الويب (toISOString().slice(0,10)) — تاريخُ غرينتش.
+    // The day as the web reads it (toISOString().slice(0,10)), a GMT date.
     final ld = DateTime.tryParse((o['loadDate'] ?? '').toString())?.toUtc();
     if (ld != null) _loadDate = DateTime(ld.year, ld.month, ld.day);
     _expectedArrival = DateTime.tryParse((o['expectedArrival'] ?? '').toString())?.toLocal();
@@ -213,7 +204,7 @@ class _FleetNewShipmentScreenState extends State<FleetNewShipmentScreen> {
     _vehicleRent.text = _numText(o['price']);
     _fullRent.text = _numText(o['fullRent']);
     _customerType = (o['customerType'] ?? '').toString();
-    // المصروفُ المعروض يشمل بونصَ الجمعة أصلًا؛ والخادمُ يضيفه/يرفعه عند قلب العلَم.
+    // The displayed expense already includes the Friday bonus; the server adds or removes it when the flag flips.
     _driverExpense.text = _numText(o['driverExpense']);
     _fridayBonus = o['fridayBonus'] == true;
     final br = (o['branch'] ?? '').toString();
@@ -233,7 +224,7 @@ class _FleetNewShipmentScreenState extends State<FleetNewShipmentScreen> {
           ? hit.first
           : {'_id': vid, 'plate': (o['vehicle'] is Map ? o['vehicle']['plate'] : null) ?? o['vehiclePlate'] ?? ''};
     }
-    // السائقان كما على الحمولة — ومن خرج من نطاق القائمة يُضاف إليها ليظهر اسمُه.
+    // The two drivers as on the load; one outside the list scope is added to it so the name shows.
     for (final key in ['driver', 'secondDriver']) {
       final d = o[key];
       final id = _idOf(d);
@@ -261,8 +252,7 @@ class _FleetNewShipmentScreenState extends State<FleetNewShipmentScreen> {
     return d['vehicle'] is Map ? Map<String, dynamic>.from(d['vehicle']) : null;
   }
 
-  /// اختيارُ الشاحنة يُجلس سائقَيها في الخانتين — والرتبةُ من مقعدها المكتوب
-  /// (الأوّل/الثاني) لا من ترتيب الوصول، كـ seatsOf في الويب.
+  /// Choosing the truck seats its two drivers in the two fields; rank comes from the written seat (first/second), not arrival order, like seatsOf on the web.
   void _applyVehicle(Map<String, dynamic> v) {
     _vehicle = v;
     final ds = List<Map<String, dynamic>>.from(v['drivers'] ?? []);
@@ -273,7 +263,7 @@ class _FleetNewShipmentScreenState extends State<FleetNewShipmentScreen> {
     _secondDriverId = second.isNotEmpty ? (second.first['_id'] ?? '').toString() : '';
   }
 
-  // تنبيهُ النقل: سائقٌ على شاحنةٍ أخرى يُنقل إلى هذه عند الحفظ — يُقال قبلها.
+  // Transfer notice: a driver on another truck is moved to this one on save, and is told before.
   String _moveHint(String id) {
     if (id.isEmpty || _vehicle == null) return '';
     final d = _driverOf(id);
@@ -287,7 +277,7 @@ class _FleetNewShipmentScreenState extends State<FleetNewShipmentScreen> {
     return '';
   }
 
-  /// خانةُ سائق: قائمةُ كلّ السائقين (مع «— بدون —»)، شارةُ حالته، واتصال.
+  /// Driver field: list of all drivers (with "none"), status badge, and call.
   Widget _driverSlot(String label, String id, String otherId, void Function(String) onPick) {
     final d = _driverOf(id);
     final hint = _moveHint(id);
@@ -323,7 +313,7 @@ class _FleetNewShipmentScreenState extends State<FleetNewShipmentScreen> {
             ),
           ),
         ),
-        // اتصال/واتساب على رقم السائق المختار مباشرة.
+        // Call/WhatsApp directly on the chosen driver's number.
         if (d != null) ContactButtons(phone: (d['phone'] ?? d['mobile'] ?? '').toString(), compact: true),
       ]),
       if (d != null && d['working'] != null) Padding(
@@ -348,8 +338,7 @@ class _FleetNewShipmentScreenState extends State<FleetNewShipmentScreen> {
     ]);
   }
 
-  /// سطر توافر السيارة — مطابق لسطر الويب: «متاحة — في جدة» / «عليها حمولة
-  /// إلى الرياض» / «وصلت نطاق الوجهة — تفريغ».
+  /// Vehicle availability line, same as the web line: available in Jeddah / loaded to Riyadh / reached destination area, unloading.
   (String, Color) _availability(Map<String, dynamic> v) {
     final trip = v['trip'] as Map<String, dynamic>?;
     if (trip != null) {
@@ -455,7 +444,7 @@ class _FleetNewShipmentScreenState extends State<FleetNewShipmentScreen> {
     final edit = _isEdit;
     num? n(TextEditingController c) => c.text.trim().isEmpty ? null : (num.tryParse(c.text.trim()) ?? 0);
     try {
-      // التعديلُ يرسل كلَّ الحقول كالويب (الفارغُ يُفرِّغ)؛ الإنشاءُ ما امتلأ فقط.
+      // Edit sends all fields like the web (an empty value clears); create sends only what is filled.
       final body = <String, dynamic>{
         if (_customer != null) 'customer': _customer!['_id'],
         if (_newCustomer)
@@ -466,8 +455,7 @@ class _FleetNewShipmentScreenState extends State<FleetNewShipmentScreen> {
         'status': _status,
         'fromCity': _fromCity.text.trim(),
         'toCity': _toCity.text.trim(),
-        // اليومُ وحدَه كما في الويب — وقتٌ محلّيٌّ بلا إزاحة يُقرأ في الخادم بتوقيت
-        // غرينتش، فحمولةُ ١٠:٣٠ مساءً كانت تُسجَّل في اليوم التالي.
+        // Day only, as on the web: a local time without offset is read on the server as GMT, so a 10:30 PM load was recorded on the next day.
         'loadDate': '${_loadDate.year.toString().padLeft(4, '0')}-${_loadDate.month.toString().padLeft(2, '0')}-${_loadDate.day.toString().padLeft(2, '0')}',
         if (edit || _expectedArrival != null) 'expectedArrival': _expectedArrival?.toUtc().toIso8601String(),
         if (edit || _rentTypeItem != null) 'rentType': _rentTypeItem?['key'] ?? '',
@@ -476,8 +464,7 @@ class _FleetNewShipmentScreenState extends State<FleetNewShipmentScreen> {
         if (edit || n(_vehicleRent) != null) 'price': n(_vehicleRent) ?? 0,
         if (edit || n(_fullRent) != null) 'fullRent': n(_fullRent) ?? 0,
         if (edit || _customerType.isNotEmpty) 'customerType': _customerType,
-        // في التعديل: المصروفُ كما يظهر (يشمل البونص)، والعلَمُ كما هو — والخادمُ
-        // يضيف البونصَ أو يرفعه إن انقلب العلَم.
+        // On edit: the expense as displayed (bonus included) and the flag as is; the server adds or removes the bonus if the flag flips.
         if (edit || n(_driverExpense) != null) 'driverExpense': n(_driverExpense) ?? 0,
         if (edit || _fridayBonus) 'fridayBonus': _fridayBonus,
         if (edit || (_branch != null && _branch!.isNotEmpty)) 'branch': _branch ?? '',
@@ -492,9 +479,7 @@ class _FleetNewShipmentScreenState extends State<FleetNewShipmentScreen> {
         Navigator.pop(context, true);
       }
     } catch (e) {
-      // (لا مانعَ صيانةٍ بعد اليوم: كانت شاحنةٌ فات موعدُ صيانتها تُردّ بـ409
-      //  فتُعرَض لوحةٌ ويُرفَع الطلبُ إلى مدير الصيانة. رُفع المنعُ بطلب
-      //  المستخدم في الطرفين معًا — الخادمِ والويبِ والتطبيق.)
+      // No maintenance block after today: a truck past its maintenance date used to be rejected with 409, showing a panel and raising a request to the maintenance manager. The block was lifted on both sides together: server, web and app.
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
       }
@@ -539,7 +524,7 @@ class _FleetNewShipmentScreenState extends State<FleetNewShipmentScreen> {
           : ListView(
               padding: const EdgeInsets.all(16),
               children: [
-                // ── العميل ──
+                // Customer.
                 Text(tr('العميل', 'Customer'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
                 const SizedBox(height: 8),
                 if (!_newCustomer)
@@ -555,9 +540,7 @@ class _FleetNewShipmentScreenState extends State<FleetNewShipmentScreen> {
                         _customer = c;
                         final ct = (c['customerType'] ?? '').toString();
                         if (ct.isNotEmpty) { _customerType = ct; }
-                        // نوع الدفع المتفق عليه معه يُملأ تلقائيًّا، ويبقى
-                        // قابلًا للتعديل هنا: العميل الضريبيّ قد يدفع حمولةً
-                        // واحدة كاشًا، فالاتفاق افتراضٌ لا قيد.
+                        // The agreed payment type is filled in automatically and stays editable here: a taxed customer may pay one load in cash, so the agreement is a default, not a constraint.
                         final pt = (c['paymentType'] ?? '').toString();
                         if (pt.isNotEmpty) {
                           final hit = _paymentTypes.where((x) => (x['key'] ?? '').toString() == pt);
@@ -599,7 +582,7 @@ class _FleetNewShipmentScreenState extends State<FleetNewShipmentScreen> {
                 ),
                 const Divider(height: 24),
 
-                // ── السيارة والسائق ──
+                // Vehicle and driver.
                 Text(tr('السيارة والسائق', 'Vehicle & driver'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
                 const SizedBox(height: 8),
                 Pressable(
@@ -634,7 +617,7 @@ class _FleetNewShipmentScreenState extends State<FleetNewShipmentScreen> {
                     ]),
                   ),
                 ),
-                // السائقان — الأوّل والثاني (اختياري — للوصول الأسرع)، كخانتي الويب.
+                // The two drivers, first and second (optional, for faster arrival), like the two web fields.
                 const SizedBox(height: 8),
                 _driverSlot(tr('السائق الأول', 'First driver'), _driverId, _secondDriverId,
                     (id) => setState(() => _driverId = id)),
@@ -643,7 +626,7 @@ class _FleetNewShipmentScreenState extends State<FleetNewShipmentScreen> {
                     (id) => setState(() => _secondDriverId = id)),
                 const Divider(height: 24),
 
-                // ── خط السير والمواعيد ──
+                // Route and appointments.
                 Text(tr('خط السير والمواعيد', 'Route & dates'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
                 const SizedBox(height: 8),
                 _cityField(_fromCity, tr('مدينة التحميل *', 'From city *')),
@@ -655,7 +638,7 @@ class _FleetNewShipmentScreenState extends State<FleetNewShipmentScreen> {
                   style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(48), alignment: AlignmentDirectional.centerStart),
                   label: Text('${tr('تاريخ التحميل', 'Load date')}: ${_loadDate.day}/${_loadDate.month}/${_loadDate.year}'),
                   onPressed: () async {
-                    // في التعديل قد يسبق التاريخُ المحفوظ نافذةَ الأيّام السبعة — لا ينكسر المنتقي.
+                    // On edit the saved date may precede the seven-day window; the picker does not break.
                     final min = DateTime.now().subtract(const Duration(days: 7));
                     final first = _loadDate.isBefore(min) ? _loadDate : min;
                     final d = await showDatePicker(context: context, initialDate: _loadDate, firstDate: first, lastDate: DateTime.now().add(const Duration(days: 90)));
@@ -680,7 +663,7 @@ class _FleetNewShipmentScreenState extends State<FleetNewShipmentScreen> {
                   },
                 ),
                 const SizedBox(height: 10),
-                // الحالة — كقائمة الويب في «الحالة والمشرف».
+                // Status, like the web list in "status and supervisor".
                 DropdownButtonFormField<String>(
                   key: ValueKey('status-$_status'),
                   initialValue: _statusOptions.any((x) => x.$1 == _status) ? _status : null,
@@ -689,10 +672,10 @@ class _FleetNewShipmentScreenState extends State<FleetNewShipmentScreen> {
                   onChanged: (v) => setState(() => _status = v ?? 'requesting'),
                 ),
                 const SizedBox(height: 16),
-                // ── الحمولة والتسعير ──
+                // Load and pricing.
                 Text(tr('الحمولة والتسعير', 'Load & pricing'), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
                 const SizedBox(height: 8),
-                // نوع العميل — عملاء النقل الثقيل (عملاء القسم) / عملاء الفروع
+                // Customer type: heavy transport customers (section customers) / branch customers.
                 Text(tr('نوع العميل', 'Customer type'), style: const TextStyle(fontSize: 12.5, color: T.inkFaint, fontWeight: FontWeight.w600)),
                 const SizedBox(height: 6),
                 Row(children: [
@@ -712,7 +695,7 @@ class _FleetNewShipmentScreenState extends State<FleetNewShipmentScreen> {
                       style: const TextStyle(fontSize: 12, color: T.warn, fontWeight: FontWeight.w600)),
                 ),
                 const SizedBox(height: 10),
-                // نوع الإيجار / نوع الدفع — قوائم مرجعية قابلة للتعديل
+                // Rent type / payment type: editable reference lists.
                 Row(children: [
                   Expanded(child: _lkPicker(tr('نوع الإيجار', 'Rent type'), _rentTypeItem, _rentTypes, (v) => setState(() => _rentTypeItem = v))),
                   const SizedBox(width: 10),
@@ -721,7 +704,7 @@ class _FleetNewShipmentScreenState extends State<FleetNewShipmentScreen> {
                 const SizedBox(height: 10),
                 _lkPicker(tr('نوع الحمولة', 'Load type'), _loadTypeItem, _loadTypes, (v) => setState(() => _loadTypeItem = v)),
                 const SizedBox(height: 10),
-                // الفرع — من فروع الشركة
+                // Branch: from the company branches.
                 Pressable(
                   onTap: () async {
                     final b = await _pickSheet<Map<String, dynamic>>(
@@ -745,7 +728,7 @@ class _FleetNewShipmentScreenState extends State<FleetNewShipmentScreen> {
                 const SizedBox(height: 10),
                 TextField(controller: _driverExpense, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: InputDecoration(labelText: tr('مصروف السائق', 'Driver expense'))),
                 const SizedBox(height: 10),
-                // بونص الجمعة — يضيف مبلغًا لمصروف السائق في يوم الجمعة
+                // Friday bonus: adds an amount to the driver expense on Friday.
                 Pressable(
                   onTap: () => setState(() => _fridayBonus = !_fridayBonus),
                   child: AppCard(

@@ -95,9 +95,7 @@ export default function CrmTasksPage() {
     { header: T.priority, key: 'priority', width: 10 },
     { header: T.status, key: 'status', width: 12 },
   ];
-  // «مهامّي» والحالة والبحث كلّها تُطبَّق على الخادم، فتصديرُ ما في الذاكرة وأنت
-  // على تبويب «مهامّي» يعطي مهامَّك وحدها من غير أن يذكر الملفُّ ذلك.
-  // والخادم يسقّف هذا المسار بخمسمئة مهمّةٍ في الحالتين.
+  // "My tasks", status and search are all applied on the server, so exporting memory on the my-tasks tab gives only your tasks without the file saying so. The server caps this route at 500 tasks in both cases.
   const fetchAllForExport = async () => {
     const d = await api.get<{ tasks: CrmTask[] }>('/api/crm/tasks');
     return [{ name: 'Tasks', rows: d.tasks || [], columns: exportColumns }];

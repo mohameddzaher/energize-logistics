@@ -6,7 +6,7 @@ import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import '../ui/search_field.dart';
 
-// أسماءُ الأقسام لعناوين المجموعات (MODULE_LABELS في الويب) — لا مفاتيحَ خام.
+// Section names for the group headings (MODULE_LABELS on the web), not raw keys.
 const _moduleLabels = {
   'procurement': ('المشتريات', 'Procurement'),
   'crm': ('إدارة العملاء', 'CRM'),
@@ -30,9 +30,7 @@ String _moduleLabel(String k) {
   return m == null ? k : tr(m.$1, m.$2);
 }
 
-/// البيانات المرجعية — إدارة كل القوائم المنسدلة القابلة للتعديل في النظام.
-/// مطابقة لصفحة الويب /system/settings/reference-data: قائمة الأنواع مجمّعة
-/// حسب الوحدة، وكل نوع يُفتح على محرّر قيمه (إضافة/تعديل/حذف).
+/// Reference data: management of every editable dropdown list in the system. Mirrors web /system/settings/reference-data: the type list grouped by module, and each type opens a editor for its values (add/edit/delete).
 class ReferenceDataScreen extends StatefulWidget {
   const ReferenceDataScreen({super.key});
   @override
@@ -121,7 +119,7 @@ class _ReferenceDataScreenState extends State<ReferenceDataScreen> {
   }
 }
 
-/// محرّر قيم قائمة مرجعية واحدة — إضافة/تعديل/حذف (لو canManage).
+/// Editor for the values of one reference list: add/edit/delete (if canManage).
 class LookupValuesScreen extends StatefulWidget {
   final String type, title;
   final bool canManage;

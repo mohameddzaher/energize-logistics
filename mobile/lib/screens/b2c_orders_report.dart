@@ -5,10 +5,7 @@ import '../services/live.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 
-/// تقريرُ تحقيق المناديب — في لوحة B2C، نظيرُ OrdersReport في الموقع.
-///
-/// عددُ المناديب حسب الجهة، وأوردراتُ اليوم والشهر، وملخّصُ التحقيق حسب المشرف والمشروع —
-/// من مدخلات الأوردرات (GET /api/b2c/entry?report=1)، ويتحدّث مع كلّ إدخال.
+/// Rider verification report on the B2C dashboard, the counterpart of OrdersReport on the web. Rider count per entity, today's and the month's orders, and a verification summary by supervisor and project, from order entry (GET /api/b2c/entry?report=1); updates with every entry.
 class B2cOrdersReportCard extends StatefulWidget {
   const B2cOrdersReportCard({super.key});
   @override
@@ -42,8 +39,7 @@ class _B2cOrdersReportCardState extends State<B2cOrdersReportCard> {
 
   String _pct(dynamic p) => p == null ? '—' : '${((p as num) * 100).round()}%';
 
-  /// مناديبُ رقمٍ بعينه — بالقاعدة نفسِها التي يُفلتر بها جدولُ الموقع:
-  /// «بلا مشرف» / «بلا مشروع» فلترٌ لا مسحُ فلتر، والكروتُ تعدّ مَن على رأس العمل.
+  /// Riders of a given number, using the same rule that filters the web table: "no supervisor" / "no project" is a filter, not a cleared filter, and the cards count those on the job.
   void _open(String title, bool Function(Map<String, dynamic> r) test, {bool onlyWorking = true}) {
     final rows = List<Map<String, dynamic>>.from((_d?['rows'] as List? ?? const []).map((e) => Map<String, dynamic>.from(e as Map)))
         .where((r) => (!onlyWorking || r['ended'] != true) && test(r))
@@ -102,7 +98,7 @@ class _B2cOrdersReportCardState extends State<B2cOrdersReportCard> {
     final summary = List<Map<String, dynamic>>.from(d['summary'] ?? []);
     final tot = Map<String, dynamic>.from(d['summaryTotal'] ?? {});
     String s(dynamic v) => (v ?? '').toString();
-    // صفُّ الملخّص يطابق مندوبَه: «—» عند الخادم = بلا مشرف، والمشروعُ الفارغ = بلا مشروع.
+    // A summary row matches its riders: "—" from the server means no supervisor, and an empty project means no project.
     bool inGroup(Map<String, dynamic> r, Map<String, dynamic> g) =>
         s(r['supervisorName']) == (s(g['supervisor']) == '—' ? '' : s(g['supervisor'])) && s(r['projectAr']) == s(g['project']);
     return Padding(

@@ -1,9 +1,6 @@
 'use client';
-// بوابة العميل — معاملات التخليص الجمركي.
-//
-// A customs customer's real question is "المعاملة وصلت لفين؟". So each file is
-// drawn as its position on the 11-stage pipeline, with the documents checklist,
-// the container/declaration numbers and the dates behind it.
+// Customer portal: customs clearance files.
+// A customs customer's real question is where the file has reached, so each file is drawn as its position on the 11-stage pipeline with its documents checklist, container/declaration numbers and dates.
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import api from '@/lib/api';
 import { useLanguage } from '@/context/LanguageContext';
@@ -87,8 +84,7 @@ export default function PortalCustomsPage() {
     { header: tx('Exporter', 'الشركة المصدّرة'), key: 'exporterCompany', width: 24 },
     { header: tx('Opened', 'تاريخ الفتح'), key: 'createdAt', transform: (v: string) => fmtDate(v), width: 14 },
   ];
-  // `/api/portal/customs` يسلّم معاملات العميل كلَّها دفعةً واحدة، وفلترُ المرحلة
-  // والبحث يعملان في المتصفّح؛ فالزرّ الواحد كان يصدّر المرحلة المختارة ويسمّيها الملفَّ كلَّه.
+  // `/api/portal/customs` returns all of the customer's files at once and the stage filter and search run in the browser; a single export button would otherwise export only the selected stage and call it the whole file.
   const sheetName = tx('My customs files', 'معاملات التخليص');
   const scope = exportScopeLabels(ar);
   const exportOptions = [
@@ -137,7 +133,7 @@ export default function PortalCustomsPage() {
 
       <div className="space-y-3">
         {filtered.map((c) => {
-          // مراحلُ هذه المعاملة بعينها: من الخادم، لا من قائمةٍ ثابتة.
+          // Stages of this particular file come from the server, not a fixed list.
           const flow = customsSteps(c);
           const pct = flow.percent;
           const nextStep = flow.steps.find((s) => !s.done);

@@ -25,13 +25,7 @@ export default function Ls2TiresPage() {
   const [problemsOnly, setProblemsOnly] = useState('');
   const [q, setQ] = useState('');
   const [expanded, setExpanded] = useState<number | null>(null);
-  /**
-   * ── وعتباتُ الضغط تُقرأ من إعدادات القسم ────────────────────────────────────
-   * كان «أقلّ ضغط» يُلوَّن برقمٍ مكتوبٍ في الشاشة (٩٠)، بينما تنبيهاتُ القسم
-   * تُحسَب بعتبةٍ تُضبَط في الإعدادات. فيُغيَّر الرقمُ هناك ولا يتغيّر اللونُ هنا:
-   * شاشةٌ تقول «طبيعيّ» وتنبيهٌ يقول «منخفض» عن الإطار نفسِه.
-   * فتُقرأ العتباتُ من مصدرها، وتُحدَّث مع أيّ تعديلٍ في الإعدادات.
-   */
+  /** Pressure thresholds are read from the department settings. 'Lowest pressure' used to be coloured by a number typed in the screen (90) while department alerts use a threshold set in settings, so changing it there left the colour here unchanged: the screen said 'normal' while an alert said 'low' for the same tire. The thresholds are read from their source and refreshed on any settings change. */
   const [th, setTh] = useState<{ tirePressureMinPsi: number; tirePressureCriticalPsi: number; tirePressureMaxPsi: number; tireTempC: number; tireTempCriticalC: number }>({
     tirePressureMinPsi: 90, tirePressureCriticalPsi: 60, tirePressureMaxPsi: 150,
     tireTempC: 75, tireTempCriticalC: 85,
@@ -41,24 +35,21 @@ export default function Ls2TiresPage() {
       const r = await api.get<{ settings?: { thresholds?: any }; thresholds?: any }>('/api/ls2/settings');
       const t2 = r.thresholds || r.settings?.thresholds;
       if (t2) setTh((p2) => ({ ...p2, ...t2 }));
-    } catch { /* تبقى الافتراضاتُ — ولا تُعطَّل الشاشة */ }
+    } catch { /* Defaults remain; the screen is not disabled. */ }
   }, []);
 
   const load = useCallback(async () => {
-    // قراءةُ كلّ فردةٍ تُطلَب صراحةً: هذه الشاشةُ وحدَها تعرضها، والقائمةُ
-    // العاديّة لا تحملها إلى بقيّة الشاشات.
+    // Each tire's reading is requested explicitly: only this screen shows it and the regular list does not carry it to other screens.
     try { const res = await api.get<{ items: Vehicle[] }>('/api/ls2/vehicles?include=tires'); setItems(res.items || []); } catch { /* keep */ }
     setLoading(false);
   }, []);
   useEffect(() => { load(); }, [load]);
   useEffect(() => { loadThresholds(); }, [loadThresholds]);
-  // وتعديلُ الإعدادات يُرسَل بنفس الحدث (`settings: true`) — فتُعاد قراءةُ
-  // العتبات معه، ولا تبقى الشاشةُ تُلوّن بعتبةٍ قديمة.
+  // A settings edit is sent with the same event (`settings: true`), so thresholds are re-read with it and the screen never colours with an old threshold.
   useSocket('ls2:updated', useCallback(() => { load(); loadThresholds(); }, [load, loadThresholds]));
 
   const ar = lang === 'ar';
-  // «المشاكل فقط» كانت تلات مشاكل مخلوطة في تبديل واحد، فاللي بيدوّر على الحرارة
-  // بيلاقي معاها الضغط والأعطال. بقى كل واحدة شريحة لوحدها بعددها.
+  // 'Problems only' mixed three problems in one toggle, so someone looking for temperature also got pressure and faults. Each is now its own chip with its count.
   const HOT = (v: any) => v.maxTireTempC != null && v.maxTireTempC >= 75;
   const LOW = (v: any) => v.minTirePressurePsi != null && v.minTirePressurePsi < 90;
   const TIRE_CHIPS: Chip[] = useMemo(() => [
@@ -141,7 +132,7 @@ export default function Ls2TiresPage() {
                     <td className="px-4 py-3 text-slate-800 whitespace-nowrap">{v.driver || '—'}</td>
                     <td className="px-4 py-3 text-center text-slate-800">{v.tireCount || 0}</td>
                     <td className="px-4 py-3 text-end">{v.maxTireTempC != null ? <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${tireTempColor(v.maxTireTempC, th.tireTempC, th.tireTempCriticalC)}`}>{v.maxTireTempC}°C</span> : '—'}</td>
-                    {/* اللونُ من عتبات القسم لا من رقمٍ مكتوبٍ هنا — راجع `th`. */}
+                    {/* Colour comes from the department thresholds, not a number typed here; see `th`. */}
                     <td className="px-4 py-3 text-end">
                       {v.minTirePressurePsi != null
                         ? <span className={`px-2 py-0.5 rounded-full text-xs font-medium tabular-nums ${tirePressColor(v.minTirePressurePsi, th.tirePressureMinPsi, th.tirePressureCriticalPsi, th.tirePressureMaxPsi)}`}>{v.minTirePressurePsi} psi</span>

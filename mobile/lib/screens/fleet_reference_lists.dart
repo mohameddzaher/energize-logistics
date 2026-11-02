@@ -5,9 +5,7 @@ import '../ui/theme.dart';
 import '../ui/widgets.dart';
 import 'reference_data.dart';
 
-/// قوائمُ القسم المنسدلة — نظيرُ `<ReferenceDataManager module="fleet" alsoType="jp_task_fleet" embedded />`
-/// في إعدادات الأسطول على الويب: نوعُ الإيجار والدفع والحمولة وملاحظاتُ المتابعة
-/// الجاهزة، كلُّ قائمةٍ تُفتح فتُضاف قيمُها وتُعدَّل وتُعطَّل من هنا.
+/// Section dropdown lists, counterpart of `<ReferenceDataManager module="fleet" alsoType="jp_task_fleet" embedded />` in the fleet settings on the web: rent, payment and load types and the ready follow-up notes; each list opens so its values can be added, edited and disabled from here.
 class FleetReferenceLists extends StatefulWidget {
   final String module;
   final String? alsoType;
@@ -37,7 +35,7 @@ class _FleetReferenceListsState extends State<FleetReferenceLists> {
   @override
   Widget build(BuildContext context) {
     if (_types.isEmpty) return const SizedBox.shrink();
-    // Material شفّافٌ بين البطاقة وListTile — وإلّا اختفى أثرُ اللمس تحت لون البطاقة.
+    // A transparent Material between the card and ListTile, otherwise the touch effect disappears under the card colour.
     return AppCard(
       child: Material(type: MaterialType.transparency, child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Row(children: [

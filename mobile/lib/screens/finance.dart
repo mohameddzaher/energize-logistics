@@ -14,9 +14,7 @@ import '../ui/clearance_quick_view.dart';
 import 'hr_finance.dart' show FinanceResidencyScreen;
 import '../ui/search_field.dart';
 
-/// الإدارة المالية — مالُ كلّ قسمٍ في موضعٍ واحد، من الحمولة نفسِها التي
-/// تعرضها صفحاتُ الموقع (/api/finance). فلا يختلف رقمٌ بين الهاتف والموقع.
-/// وتسمع `finance:changed`: أيُّ حركةٍ ماليّةٍ في أيّ قسمٍ تُعيد القراءة.
+/// Finance management: each section's money in one place, from the same payload the web pages show (/api/finance), so no number differs between phone and web. Listens to `finance:changed`: any financial movement in any section triggers a re-read.
 
 const financeDepts = <(String, String, String, IconData)>[
   ('operations', 'ماليات التشغيل', 'Operations finance', Icons.assignment_outlined),
@@ -32,7 +30,7 @@ const financeDepts = <(String, String, String, IconData)>[
 
 String _pad(int n) => n.toString().padLeft(2, '0');
 
-/// الفتراتُ الجاهزة — بتوقيت الجهاز، وهو توقيتُ الرياض عند المستخدمين.
+/// Preset periods, in device time, which is Riyadh time for the users.
 (String, String) _range(String key) {
   final now = DateTime.now();
   final today = '${now.year}-${_pad(now.month)}-${_pad(now.day)}';
@@ -231,7 +229,7 @@ class _FinanceDeptScreenState extends State<FinanceDeptScreen> {
   void initState() {
     super.initState();
     _load();
-    // الخبرُ يسمّي أقسامَه — وما لا يخصّ هذا القسمَ لا يعيد قراءتَه.
+    // The event names its sections; a section it does not concern does not re-read.
     _onLive = (p) {
       final depts = p is Map ? p['depts'] : null;
       if (depts is List && !depts.contains(widget.dept)) return;
@@ -264,7 +262,7 @@ class _FinanceDeptScreenState extends State<FinanceDeptScreen> {
     return 'finance-${widget.dept}-${p['from'] ?? ''}-${p['to'] ?? ''}';
   }
 
-  /// التصديرُ الكامل كالموقع: ورقةُ الملخّص ثمّ ورقةٌ لكلّ جدول.
+  /// Full export as on the web: a summary sheet, then a sheet per table.
   void _exportAll() {
     final d = _d;
     if (d == null) return;
@@ -316,13 +314,12 @@ class _FinanceDeptScreenState extends State<FinanceDeptScreen> {
                       child: ListView(
                         padding: const EdgeInsets.fromLTRB(14, 8, 14, 24),
                         children: [
-                          // ── مدخلُ الإقامات ورخص العمل — فوق ماليّات الموارد البشريّة كالموقع.
+                          // Entry for residencies and work permits, above the HR finance, as on the web.
                           if (widget.dept == 'hr') ...[
                             const _HrDocsBanner(),
                             const SizedBox(height: 12),
                           ],
-                          // ── التخليص: طلباتُ الصرف، ثمّ طلباتُ الفوترة، ثمّ فواتيرُ العملاء —
-                          // بترتيب صفحة الموقع (finance/customs/page.tsx).
+                          // Customs: disbursement requests, then billing requests, then customer invoices, in the order of the web page (finance/customs/page.tsx).
                           if (widget.dept == 'customs') ...[
                             const _CustomsPaymentRequests(),
                             const SizedBox(height: 12),
@@ -364,7 +361,7 @@ class _FinanceDeptScreenState extends State<FinanceDeptScreen> {
                                   key: ValueKey('${widget.dept}-${t['key']}'),
                                   table: t,
                                   fileName: _fileName,
-                                  // صفُّ معاملةِ تخليص يفتح نافذتَها هنا — كـ onOpenRow في الموقع.
+                                  // A customs transaction row opens its dialog here, like onOpenRow on the web.
                                   onOpenRow: widget.dept == 'customs'
                                       ? (r) { if ('${r['_customsId'] ?? ''}'.isNotEmpty) showClearanceQuickView(context, '${r['_customsId']}'); }
                                       : null,
@@ -379,7 +376,7 @@ class _FinanceDeptScreenState extends State<FinanceDeptScreen> {
   }
 }
 
-/// ورقةُ تصديرٍ لجدولٍ ماليّ — الأعمدةُ بعناوينها، والتاريخُ نصًّا، والنسبةُ بمنزلةٍ واحدة.
+/// Export sheet for a financial table: columns with their headings, the date as text, and percentage with one decimal place.
 (String, List<ExportCol>, List<Map<String, dynamic>>) _finSheet(Map<String, dynamic> t, [List<Map<String, dynamic>>? rows]) {
   final cols = List<Map<String, dynamic>>.from(t['columns'] ?? []);
   final name = tr('${t['ar']}', '${t['en']}');
@@ -405,9 +402,7 @@ class _FinanceDeptScreenState extends State<FinanceDeptScreen> {
 String _foldFin(dynamic v) => '${v ?? ''}'
     .replaceAll(RegExp('[أإآ]'), 'ا').replaceAll(RegExp('[ةه]'), 'ه').replaceAll(RegExp('[ىي]'), 'ي').toLowerCase();
 
-/// جدولٌ على الهاتف — نظيرُ FinanceTable: بحثٌ، وفرزٌ بعمود، ومجموعُ أعمدة المال
-/// والأعداد للمعروض، وصفوفٌ تُعرض مئةً مئة («عرض المزيد») بلا سقف، وتصديرُ الجدول
-/// وحدَه — المعروضُ بعد البحث أو كلُّه.
+/// Phone table, counterpart of FinanceTable: search, sort by column, totals of money and count columns for what is displayed, rows shown 100 at a time ("show more") with no cap, and export of the table alone: what is displayed after search, or all.
 class _FinTableCard extends StatefulWidget {
   const _FinTableCard({super.key, required this.table, required this.fileName, this.onOpenRow});
   final Map<String, dynamic> table;
@@ -420,7 +415,7 @@ class _FinTableCard extends StatefulWidget {
 class _FinTableCardState extends State<_FinTableCard> {
   static const _page = 100;
   String _q = '';
-  // الجدولُ يُطوى فتُهدَم خانتُه — النصُّ في متحكِّمٍ يبقى مع الكلمة.
+  // The table collapses and its field is destroyed; text kept in a controller survives with the word.
   final _searchCtl = TextEditingController();
   int _limit = _page;
   String? _sortKey;
@@ -545,7 +540,7 @@ class _FinTableCardState extends State<_FinTableCard> {
               onPressed: () => setState(() => _limit += _page * 3),
               child: Text(tr('عرض المزيد (${shown.length - _limit} متبقي)', 'Show more (${shown.length - _limit} left)')),
             ),
-          // المجموعُ في الذيل لأعمدة المال والأعداد — للمعروض بعد البحث.
+          // Footer total for money and count columns, for what is displayed after search.
           if (shown.isNotEmpty && totalCols.isNotEmpty)
             Container(
               margin: const EdgeInsets.only(top: 8),
@@ -567,7 +562,7 @@ class _FinTableCardState extends State<_FinTableCard> {
   }
 }
 
-/// مدخلُ «الإقامات ورخص العمل» فوق ماليّات الموارد البشريّة — أرقامُه حيّة (`hr-finance:changed`).
+/// Entry for residencies and work permits above the HR finance; its numbers are live (`hr-finance:changed`).
 class _HrDocsBanner extends StatefulWidget {
   const _HrDocsBanner();
   @override
@@ -599,7 +594,7 @@ class _HrDocsBannerState extends State<_HrDocsBanner> {
       final d = await Api.instance.get('/api/finance/hr-docs/summary');
       if (!mounted || mine != _seq) return;
       setState(() => _s = Map<String, dynamic>.from(d as Map));
-    } catch (_) {/* البطاقةُ تبقى بلا أرقام */}
+    } catch (_) {/* The card stays without numbers. */}
   }
 
   @override
@@ -641,8 +636,7 @@ class _HrDocsBannerState extends State<_HrDocsBanner> {
   }
 }
 
-/// طلباتُ صرف التخليص — نظيرُ CustomsPaymentRequests: خمسُ قوائم، وبحثٌ على
-/// الخادم، والسجلُّ المنقول، وصفحاتٌ بخمسين، وإثباتُ دفعٍ بملفٍّ أو أكثر.
+/// Customs disbursement requests, counterpart of CustomsPaymentRequests: five lists, server-side search, the transferred log, pages of fifty, and proof of payment with one or more files.
 String _fmtAmt(dynamic v) {
   if (v == null) return '—';
   final n = v is num ? v : num.tryParse('$v') ?? 0;
@@ -696,7 +690,7 @@ class _CustomsPaymentRequestsState extends State<_CustomsPaymentRequests> {
   void initState() {
     super.initState();
     _load();
-    // قرارُ زميلٍ أو طلبٌ جديدٌ من التخليص يظهر هنا في اللحظة.
+    // A colleague's decision or a new request from customs appears here instantly.
     _onLive = () => _load();
     Live.instance.on('customs:updated', _onLive);
   }
@@ -771,7 +765,7 @@ class _CustomsPaymentRequestsState extends State<_CustomsPaymentRequests> {
                   label: Text(tr('إرفاق ملفات', 'Attach files')),
                   onPressed: () async {
                     final got = await pickFilesAsDataUrls();
-                    // ٢٠ ميجا للملفّ كالموقع — وما زاد يُقال ولا يُرسَل.
+                    // 20 MB per file as on the web; larger ones are reported and not sent.
                     final ok = got.where((f) => f.sizeBytes <= 20 * 1024 * 1024).toList();
                     if (ok.length < got.length && c.mounted) {
                       ScaffoldMessenger.of(c).showSnackBar(SnackBar(content: Text(tr('ملفٌّ أكبر من 20 ميجابايت لم يُرفق', 'A file over 20MB was skipped'))));
@@ -878,7 +872,7 @@ class _CustomsPaymentRequestsState extends State<_CustomsPaymentRequests> {
           },
           hint: tr('رقم معاملة، عميل، بند…', 'Transaction, customer, item…'),
         ),
-        // علاماتُ «تم» المنقولة من شيت الماستر — ليست قراراتٍ من الماليّة.
+        // "Done" marks carried over from the master sheet; they are not Finance decisions.
         if (legacyN > 0)
           CheckboxListTile(
             dense: true,
@@ -927,7 +921,7 @@ class _CustomsPaymentRequestsState extends State<_CustomsPaymentRequests> {
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
             Expanded(child: Text('${r['customerName'] ?? '—'}', style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800))),
-            // رقمُ المعاملة يفتح تفاصيلَها هنا — شاشةُ التخليص لا تُفتح للماليّة.
+            // The transaction number opens its details here; the customs screen is not opened for Finance.
             InkWell(
               onTap: () => showClearanceQuickView(context, '${r['clearanceId']}'),
               child: Padding(
@@ -992,8 +986,7 @@ class _CustomsPaymentRequestsState extends State<_CustomsPaymentRequests> {
   }
 }
 
-/// طلباتُ الفوترة — نظيرُ CustomsInvoiceRequests: أربعُ حالاتٍ والكلّ، وبنودُ
-/// الفاتورة تُفتح تحتها، والقرارُ لما ينتظر وحدَه (والسببُ شرطٌ للإعادة والرفض).
+/// Billing requests, counterpart of CustomsInvoiceRequests: four states and all, invoice items open under each, and the decision applies only to those awaiting (a reason is required for return and reject).
 const _invStatus = <String, (String, String, Color)>{
   'pending': ('بانتظار الفوترة', 'Awaiting invoicing', T.warn),
   'invoiced': ('تمّت الفوترة', 'Invoiced', T.success),
@@ -1237,8 +1230,7 @@ class _CustomsInvoiceRequestsState extends State<_CustomsInvoiceRequests> {
   }
 }
 
-/// فواتيرُ عملاء التخليص — نظيرُ CustomsCustomerInvoices: ما أصدره القسمُ ليُفوتَر
-/// (حتّى ٣٠٠)، وما لم تصل فاتورةُ نقله بالأحمر وله زرُّ تصفيةٍ وحدَه.
+/// Customs customer invoices, counterpart of CustomsCustomerInvoices: what the section issued for invoicing (up to 300); those whose transport invoice has not arrived are red and have their own filter button.
 class _CustomsCustomerInvoices extends StatefulWidget {
   const _CustomsCustomerInvoices();
   @override

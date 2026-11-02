@@ -12,10 +12,7 @@ import 'b2c_orders_report.dart';
 import 'b2c_vehicles.dart';
 import 'light_transport_list.dart';
 
-/// لوحةُ قسم الأفراد — مطابقةٌ لـ `/system/b2c/dashboard`: فلاترٌ سريعة فوقها،
-/// الموظفون بفئاتهم وكفالتهم، حالةُ العمل، المركبات والتفويض، المناديبُ حسب
-/// المشروع، تقريرُ الأوردرات، التوزيعات (تُفلتِر اللوحةَ بضغطة)، «ما يحتاج عملًا»،
-/// والسكن — وكلُّ رقمٍ يفتح أصحابَه. وتصديرُ أرقام اللوحة Excel.
+/// Individuals section dashboard, matching `/system/b2c/dashboard`: quick filters on top, employees by category and sponsorship, work status, vehicles and authorization, riders per project, orders report, distributions (tap to filter the dashboard), items needing action, and housing. Every number opens its owners, and the dashboard figures export to Excel.
 class B2cDashboardScreen extends StatefulWidget {
   const B2cDashboardScreen({super.key});
   @override
@@ -79,7 +76,7 @@ class _B2cDashboardScreenState extends State<B2cDashboardScreen> {
     _load();
   }
 
-  // ── الأرقامُ تفتح أصحابَها: الناسُ (في الخدمة وحدَهم ما لم يُطلَب المنتهي) أو المركبات ──
+  // Numbers open their owners: people (only those in service unless ended is requested) or vehicles
   void _people(String title, [Map<String, String> extra = const {}]) {
     final includeEnded = (_f['status'] ?? '').split(',').contains('إنهاء خدمة');
     final q = {..._f, if (!includeEnded) 'inService': '1', ...extra}..removeWhere((k, v) => v.isEmpty);
@@ -202,7 +199,7 @@ class _B2cDashboardScreenState extends State<B2cDashboardScreen> {
         ),
       );
 
-  /// توزيعٌ يُفلتِر اللوحةَ بضغطة (المشروع، الفرع، الوظيفة، المشرف، نوع المركبة).
+  /// A distribution that filters the dashboard on tap (project, branch, job, supervisor, vehicle type).
   Widget _breakdown(String title, Map<String, dynamic> data, {String? filterKey}) {
     final rows = data.entries.where((e) => _i(e.value) > 0 && e.key != '—').toList()
       ..sort((a, b) { final c = _i(b.value).compareTo(_i(a.value)); return c != 0 ? c : a.key.compareTo(b.key); });

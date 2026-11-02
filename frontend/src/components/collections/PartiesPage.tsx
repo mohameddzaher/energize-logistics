@@ -1,9 +1,6 @@
 'use client';
 import { EmailList } from '@/components/collections/SendStatementModal';
-// أطرافُ التحصيل — الصفحةُ نفسُها تخدم العملاءَ والموردين.
-//
-// البنيةُ واحدة (اسمٌ، تواصلٌ، مستحقٌّ، ملفٌّ يُفتح) والفرقُ اتّجاهُ المال.
-// وصفحتان متطابقتان بملفّين تعنيان إصلاحَ كلّ عطلٍ مرّتين ثمّ نسيانَ إحداهما.
+// Collection parties: one page serves customers and suppliers. The structure is the same (name, contact, amount due, a profile that opens) and only the money direction differs. Two identical pages in two files would mean fixing every fault twice and forgetting one.
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
@@ -43,23 +40,16 @@ export default function CollectionsPartiesPage({ kind }: { kind: PartyKind }) {
   const W = kindWords(kind, ar);
 
   const canEdit = canEditCollections(user);
-  // الحذفُ كالتعديل: منحُ «تعديل» على قسمٍ يمرّ كلَّ نقطةٍ فيه على الخادم،
-  // فزرٌّ مخفيٌّ بشرطٍ أضيق يُخفي فعلًا مسموحًا لا يمنعه.
+  // Delete is treated like edit: edit permission on a section passes every endpoint in it on the server, so a button hidden by a narrower condition hides an allowed action that nothing blocks.
   const canDelete = canEdit;
 
-  // ── وسجلُّ الموردين يُقرأ بلا أرقام لمن يُحصِّل ──────────────────────────
-  // الاسمُ والتواصلُ والهويّةُ التجاريّة شغلٌ مشترك؛ أمّا ما ندفعه لهم فليس
-  // شأنَ التحصيل. فالصفحةُ تبقى مفتوحةً وتسقط أعمدةُ المال وحدَها — إخفاؤها
-  // كلِّها كان سيمنع بحثًا مشروعًا عن رقمِ مورّدٍ أو سجلِّه.
+  // The suppliers register is read without figures for collectors. Name, contact and commercial identity are shared work, but what we pay them is not collections' concern. The page stays open and only the money columns are dropped; hiding them all would block a legitimate search for a supplier's number or record.
   const hideMoney = kind === 'supplier' && receivablesOnly(user);
 
-  // تحديدُ صفوفٍ للتصدير والطباعة والإسناد.
+  // Row selection for export, print and assignment.
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
-  // ── ومسؤولُ التحصيل يُختار لا يُكتب ──────────────────────────────────────
-  // كان يُكتب بالإيد في كلّ حساب، فيصير «Hossam» و«hossam» و«حسام» ثلاثةَ
-  // موظّفين في التقارير — واللوحةُ تُجمّع على النصّ حرفًا بحرف. فتُقرأ الأسماءُ
-  // القائمة وتُعرَض قائمةً، مع إبقاء الكتابة لمن يُدخل موظّفًا جديدًا.
+  // The collection owner is picked, not typed. It was typed by hand per account, so "Hossam", "hossam" and the Arabic spelling counted as three employees in reports, while the dashboard groups by exact text. The existing names are read and shown as a list, keeping typing for someone entering a new employee.
   const [officers, setOfficers] = useState<string[]>([]);
   useEffect(() => {
     if (kind !== 'customer') return;
@@ -67,9 +57,7 @@ export default function CollectionsPartiesPage({ kind }: { kind: PartyKind }) {
       .then((d) => setOfficers(d.officers || [])).catch(() => {});
   }, [kind]);
 
-  // ── وإسنادُ حساباتٍ دفعةً واحدة ─────────────────────────────────────────
-  // «افتح حسابات ياسر، علّم على عشرةٍ منها، اجعلها لحسام» — عملُ المدير بعد
-  // قراءة لوحة التقييم، وكان يقتضي فتحَ كلّ حسابٍ وتعديلَه وحدَه.
+  // Bulk assignment of accounts: open one employee's accounts, tick ten, assign them to another. This is the manager's job after reading the scorecard, and used to mean opening and editing each account separately.
   const [assignTo, setAssignTo] = useState('');
   const [assigning, setAssigning] = useState(false);
   const assignSelected = async () => {
@@ -79,7 +67,7 @@ export default function CollectionsPartiesPage({ kind }: { kind: PartyKind }) {
       const r = await api.put<{ updated: number }>('/api/collections-dept/ledger/team/assign', {
         parties: [...selected], officer: assignTo,
       });
-      // الفارغُ يرفع الإسناد — فيعود الحسابُ إلى مدير القسم، لا إلى «لا أحد».
+      // Empty clears the assignment, so the account returns to the department manager, not to nobody.
       notify(t(`أُسند ${r.updated} حسابًا إلى ${assignTo || 'مدير القسم'}`,
         `${r.updated} accounts assigned to ${assignTo || 'the dept. manager'}`));
       setSelected(new Set());
@@ -98,31 +86,26 @@ export default function CollectionsPartiesPage({ kind }: { kind: PartyKind }) {
   const [editing, setEditing] = useState<Partial<CollectionsParty> | null>(null);
   const [saving, setSaving] = useState(false);
 
-  // الفلاترُ خلف زرّ: أحدَ عشرَ فلترًا مبسوطةً تزاحم الجدولَ الذي جاء المستخدمُ
-  // لأجله. والبحثُ يبقى ظاهرًا لأنّه ما يُستعمَل كلَّ مرّة.
+  // Filters sit behind a button: eleven open filters crowd the table users came for. Search stays visible because it is used every time.
   const [showFilters, setShowFilters] = useState(false);
   const [status, setStatus] = useState('');
   const [city, setCity] = useState('');
   const [partyType, setPartyType] = useState('');
   const [active, setActive] = useState('');
   const [onlyDue, setOnlyDue] = useState(false);
-  // مجاميعُ العملاء من الخادم على ما طابق الفلترَ كلِّه — لا مجموعُ الصفحة المعروضة.
+  // Customer totals come from the server over everything matching all filters, not the sum of the displayed page.
   const [serverTotals, setServerTotals] = useState<ServerTotals | null>(null);
 
-  // ── ورقمٌ في لوحةٍ يجب أن يفتح صفوفَه ────────────────────────────────────
-  // لوحةُ تقييم الفريق تعرض «حسابات ٥٧» و«(بلا مسؤول) ١٢» ولا سبيلَ إلى ما
-  // تحتها. فتُقرأ الوجهةُ من الرابط هنا — `?assignedTo=<معرّف|none>` —
-  // فتُفتح الصفحةُ على تلك الحسابات بعينها لا على السجلّ كلِّه.
+  // A number on a board must open its rows. The team scorecard shows accounts count and "(no owner)" count with no way into them. The destination is read from the URL (?assignedTo=<id|none>), so the page opens on exactly those accounts, not the whole register.
   const searchParams = useSearchParams();
-  // اسمُ المسؤول كما تعرفه لوحةُ التقييم — أو «none» لمن لا مسؤولَ له.
+  // Owner name as the scorecard knows it, or none for accounts with no owner.
   const [assignedTo, setAssignedTo] = useState(searchParams?.get('officer') || '');
   const [assignedLabel, setAssignedLabel] = useState(searchParams?.get('officer') || '');
-  // يقصر القائمةَ على أصحاب أكواد الحسابات، فيطابق ما تحسبه لوحةُ التقييم.
+  // Limits the list to holders of account codes, matching what the scorecard counts.
   const [hasCode, setHasCode] = useState(searchParams?.get('hasCode') === 'true');
   const activeCount = [status, city, partyType, active, assignedTo].filter(Boolean).length + (onlyDue ? 1 : 0);
 
-  // ترتيبُ وصول الردود ليس ترتيبَ إرسالها: بحثٌ سريعٌ قد يسبق ردُّه ردَّ ما
-  // قبله، فتُعرض نتيجةُ حرفٍ قديم فوق ما كتبه المستخدم.
+  // Responses can arrive out of order: a quick search may answer before an earlier one, so a stale character's result would show over what the user typed.
   const { begin, isCurrent } = useLatestRequest();
 
   const load = useCallback(async () => {
@@ -137,7 +120,7 @@ export default function CollectionsPartiesPage({ kind }: { kind: PartyKind }) {
       if (active) p.set('active', active);
       if (assignedTo) p.set('officer', assignedTo);
       if (hasCode) p.set('hasCode', 'true');
-      // «عليه مستحقّ» شرطٌ على القائمة كلِّها، فيُطبَّق في الخادم لا على المئة المحمَّلة.
+      // "Has amount due" is a condition over the whole list, so it applies on the server, not to the hundred loaded rows.
       if (onlyDue && kind === 'customer') p.set('owing', 'true');
       const d = await api.get<{ parties: CollectionsParty[]; total: number; pages: number; totals?: ServerTotals | null }>(
         `/api/collections-dept/parties?${p.toString()}`,
@@ -155,14 +138,14 @@ export default function CollectionsPartiesPage({ kind }: { kind: PartyKind }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [kind, page, q, status, city, partyType, active, assignedTo, hasCode, onlyDue]);
 
-  // البحثُ يُمهَل: نداءُ الخادم عند كلّ حرفٍ إسرافٌ على عنقودٍ مقيَّد.
+  // Search is debounced: a server call per character is wasteful on a constrained cluster.
   const first = useRef(true);
   useEffect(() => {
     if (first.current) { first.current = false; load(); return; }
     const id = setTimeout(load, 300);
     return () => clearTimeout(id);
   }, [load]);
-  // بطاقةُ عميلٍ عُدِّلت في أيّ قسمٍ — تُعاد القائمة (مُمهَلةً).
+  // A customer card edited in any section reloads the list (debounced).
   const custTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useSocket('customers:changed', useCallback(() => {
     if (custTimer.current) clearTimeout(custTimer.current);
@@ -170,13 +153,10 @@ export default function CollectionsPartiesPage({ kind }: { kind: PartyKind }) {
   }, [load]));
   useEffect(() => () => { if (custTimer.current) clearTimeout(custTimer.current); }, []);
 
-  // تغييرُ الفلتر يعيد إلى الصفحة الأولى: البقاءُ على الصفحة السابعة بعد فلترٍ
-  // يعيد صفّين هو ما يجعل الشاشة تظهر فارغةً بلا سبب.
+  // A filter change returns to page one: staying on page seven after a filter that returns two rows leaves the screen empty for no visible reason.
   useEffect(() => { setPage(1); }, [q, status, city, partyType, active, onlyDue]);
 
-  // ── وفلاتُر الأعمدة آخرُ ما يُطبَّق ──────────────────────────────────────
-  // بعد البحث وشريحةِ «عليه مستحقّ» وكلِّ شيء — كما يفعل إكسل. و`base` هي ما
-  // يقرؤه القمعُ ليبني قائمتَه، فتبقى بقيّةُ القيم معروضةً بعد اختيار واحدة.
+  // Column filters are applied last, after search, the has-amount-due chip and everything else, as Excel does. base is what the funnel reads to build its list, so the other values stay visible after one is picked.
   const cf = useColumnFilters<CollectionsParty>();
   const base = useMemo(() => (onlyDue && kind !== 'customer' ? rows.filter((r) => (r.outstanding || 0) > 0) : rows), [rows, onlyDue, kind]);
 
@@ -202,16 +182,14 @@ export default function CollectionsPartiesPage({ kind }: { kind: PartyKind }) {
     } catch (e: any) { notify(e?.message || t('تعذّر الحذف', 'Could not delete'), 'error'); }
   };
 
-  // ── مصدرٌ واحدٌ للأعمدة ────────────────────────────────────────────────
-  // الشاشةُ والتصديرُ والطباعةُ تقرأ من هنا، فما يُرى هو ما يخرج.
+  // Single source of columns. Screen, export and print read from here, so what is seen is what leaves.
   type Col = ExportColumn & { align?: 'start' | 'end'; cell?: (r: any) => React.ReactNode };
 
   const nameCell = (p: any) => (
     <span className="font-semibold text-slate-900">
       {p.name}
       {p.isActive === false && <span className="ms-1.5 text-[10px] text-slate-400">({t('معطَّل', 'inactive')})</span>}
-      {/* الاسمُ الواحدُ كُتب بصيغتين في الكشوف — يُقال، لأنّ من يبحث عن الصيغة
-          الأخرى يظنّها طرفًا آخر. */}
+      {/* One name was written in two forms in the statements; stated, because someone searching for the other form would take it for a different party. */}
       {p.nameVariants && p.nameVariants.length > 1 && (
         <span className="block text-[10px] text-slate-400 font-normal" title={p.nameVariants.join(' · ')}>
           {t(`${p.nameVariants.length} صيغ للاسم مدمجة`, `${p.nameVariants.length} name spellings merged`)}
@@ -237,13 +215,9 @@ export default function CollectionsPartiesPage({ kind }: { kind: PartyKind }) {
   );
 
   const allCols: Col[] = [
-    // ── الترتيب: ما يُعمَل به أوّلًا، وما تخلو منه أكثرُ الشركات في الآخر ──
-    // (صاحبُ الشركة، ٢٠٢٦/١٠/٢٧): السجلُّ التجاريُّ والرقمُ الضريبيُّ والآيبان
-    // وشروطُ السداد فارغةٌ لأغلب العملاء، فلا تتقدّم على ما يُبحث عنه.
+    // Order: what is worked with first, and what most companies leave empty last. Commercial register, tax number, IBAN and payment terms are empty for most customers, so they do not come ahead of what is searched for.
     { header: t('الاسم', 'Name'), key: 'name', width: 32, cell: nameCell },
-    // ── والكودُ بجانب الاسم ─────────────────────────────────────────────
-    // هو ما يُنسَخ من الورقة ويُبحَث به. وسجلُّ العميل قد يكون بلا كود فيُقرأ
-    // من فواتير الدفتر (codeShown في الخادم).
+    // Code next to the name: it is what is copied from the paper and searched. A customer record may have no code, so it is read from the ledger invoices (codeShown on the server).
     { header: t('الكود', 'Code'), key: 'code', width: 16,
       transform: (v: any, r: any) => r.codeShown || v || '',
       cell: (p: any) => ((p.codeShown || p.code)
@@ -252,7 +226,7 @@ export default function CollectionsPartiesPage({ kind }: { kind: PartyKind }) {
     ...(kind === 'customer' ? [{
       header: t('نوع الدفع', 'Payment type'), key: 'paymentType', width: 14,
       transform: (v: any) => paymentTypeLabel(v, ar),
-      // نوعُ الحساب — في أيّ دفترٍ يجلس، لا قاعدةٌ على شحناته.
+      // Account type: which ledger it sits in, not a rule on its shipments.
       cell: (p: any) => (p.paymentType ? (
         <span className={`px-2 py-0.5 rounded text-[11px] font-medium ${
           p.paymentType === 'cash' ? 'bg-emerald-50 text-emerald-700' : 'bg-sky-50 text-sky-700'}`}>
@@ -264,7 +238,7 @@ export default function CollectionsPartiesPage({ kind }: { kind: PartyKind }) {
     { header: t('الحالة', 'Status'), key: 'status', width: 14 },
     { header: t('التقييم', 'Grade'), key: 'grade', width: 10 },
     { header: t('مهلة السداد', 'Credit days'), key: 'creditDays', width: 12, align: 'end' },
-    // الملفُّ لا يخرج بما لا يُعرَض على الشاشة.
+    // The file does not export what is not shown on screen.
     ...(hideMoney ? [] : ([
       { header: t('أوامر نقل', 'Reports'), key: 'reports', width: 10, align: 'end',
         cell: (p: any) => (
@@ -294,8 +268,7 @@ export default function CollectionsPartiesPage({ kind }: { kind: PartyKind }) {
     (r: any) => (c.transform ? c.transform(r[c.key], r) : r[c.key])]));
   const shown = cf.apply(base, getters);
 
-  // والمجاميعُ تتبع ما بقي على الشاشة بعد القمع: مجموعٌ لصفوفٍ لا تُرى مجموعٌ
-  // يُقرأ على أنّه مجموعُ المعروض وليس هو.
+  // Totals follow what remains on screen after the funnel: a total over rows not visible would be read as the total of what is shown, and it is not.
   const totals = useMemo(() => shown.reduce((a, r) => ({
     reports: a.reports + (r.reports || 0),
     total: a.total + (r.total || 0),
@@ -305,14 +278,13 @@ export default function CollectionsPartiesPage({ kind }: { kind: PartyKind }) {
 
   const sums = serverTotals && !cf.count ? { reports: totals.reports, ...serverTotals } : totals;
 
-  // الاسمُ والكودُ ثابتان: الكودُ هو ما يُبحَث به، واختيارٌ محفوظٌ قديمٌ كان يُخفيه.
+  // Name and code are fixed: the code is what is searched, and an old saved selection used to hide it.
   const ALWAYS = ['name', 'code'];
   const chooserCols: ChooserColumn[] = allCols.map((c) => ({ key: c.key, label: c.header, locked: ALWAYS.includes(c.key) }));
   const { visible, setVisible } = useVisibleColumns(`collections:parties:${kind}:cols`, chooserCols);
   const visibleCols = allCols.filter((c) => ALWAYS.includes(c.key) || visible.includes(c.key));
 
-  // التصديرُ والطباعةُ يتبعان ما على الشاشة: الأعمدةُ المختارة، والصفوفُ
-  // المحدَّدة إن حُدِّدت.
+  // Export and print follow the screen: selected columns, and selected rows if any.
   const selectedRows = shown.filter((r) => selected.has(r._id));
   const printNow = () => {
     const rowsToPrint = selected.size ? selectedRows : shown;
@@ -329,7 +301,7 @@ export default function CollectionsPartiesPage({ kind }: { kind: PartyKind }) {
     if (!ok) notify(t('المتصفّح منع فتح نافذة الطباعة — اسمح بالنوافذ المنبثقة.', 'The browser blocked the print window — allow pop-ups.'), 'error');
   };
 
-  // التصديرُ يأخذ الأعمدةَ المختارة — راجع allCols و ColumnChooser.
+  // Export takes the selected columns; see allCols and ColumnChooser.
   const cols: ExportColumn[] = visibleCols;
 
   const Icon = kind === 'supplier' ? Truck : Users;
@@ -348,9 +320,7 @@ export default function CollectionsPartiesPage({ kind }: { kind: PartyKind }) {
         title={W.title}
         subtitle={t('اضغط على أيّ اسم ليُفتح ملفُّه الكامل بكشوفه وأرقامه', 'Tap any name for its full profile')}
       >
-        {/* ── نطاقان لا واحد ────────────────────────────────────────────────
-            المعروضُ يخرج فورًا، والسجلُّ كلُّه يُجلب عند الضغط لا قبله — فلا
-            يُحمَّل خمسةُ آلافِ صفٍّ لمن فتح الصفحة ولن يصدّر. */}
+        {/* Two scopes: shown exports immediately, and the whole register is fetched on click, not before, so five thousand rows are not loaded for someone who will not export. */}
         <ClearColumnFilters count={cf.count} onClear={cf.clear} ar={ar} />
         <ColumnChooser columns={chooserCols} visible={visible} onChange={setVisible} ar={ar} />
         <button type="button" onClick={printNow}
@@ -376,8 +346,7 @@ export default function CollectionsPartiesPage({ kind }: { kind: PartyKind }) {
                   `/api/collections-dept/parties?kind=${kind}&limit=500&page=1`,
                 );
                 let all = d.parties || [];
-                // خمسةُ آلافِ صفٍّ لا تُطلب في نداءٍ واحد: الحدُّ خمسُمئة، فتُقرأ
-                // صفحةً صفحةً حتى تنتهي.
+                // Five thousand rows are not requested in one call: the limit is 500, so they are read page by page until done.
                 let p = 2;
                 for (;;) {
                   const more = await api.get<{ parties: CollectionsParty[]; pages: number }>(
@@ -426,9 +395,7 @@ export default function CollectionsPartiesPage({ kind }: { kind: PartyKind }) {
         </button>
       </div>
 
-      {/* ── ولا تُعرَض قائمةٌ مقصوصةٌ بلا أن تقول ─────────────────────────
-          من جاء من لوحة الفريق يرى حسابات موظّفٍ واحد. ولو لم تُعلن الشاشةُ
-          ذلك لظنّ أنّ هذا كلُّ ما في السجلّ. */}
+      {/* A truncated list is never shown without saying so: someone arriving from the team scorecard sees one employee's accounts, and without a notice would think it is the whole register. */}
       {assignedTo && (
         <div className="flex items-center gap-2">
           <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#f37121]/10 text-[#f37121] text-sm font-semibold">
@@ -482,9 +449,7 @@ export default function CollectionsPartiesPage({ kind }: { kind: PartyKind }) {
         </div>
       )}
 
-      {/* ── ما هو محدَّد، وماذا يُفعَل به ──────────────────────────────────
-          «افتح حسابات ياسر، علّم على عشرةٍ منها، اجعلها لحسام» — يُقرأ التقييم
-          ويُتصرَّف في الشاشة نفسِها، لا بفتح كلّ حسابٍ على حدة. */}
+      {/* What is selected and what is done with it: read the scorecard and act on the same screen (open an employee's accounts, tick ten, assign to another) instead of opening each account separately. */}
       {selected.size > 0 && (
         <div className="flex flex-wrap items-center gap-2 bg-white border border-[#f37121]/30 rounded-xl p-3 shadow-sm">
           <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#f37121]/10 text-[#f37121] text-sm font-semibold">
@@ -515,7 +480,7 @@ export default function CollectionsPartiesPage({ kind }: { kind: PartyKind }) {
           <table className="w-full text-sm">
             <thead className="table-head">
               <tr>
-                {/* تحديدُ صفحةٍ كاملةً بضغطة. */}
+                {/* Select a whole page with one click. */}
                 <th className="px-3 py-2.5 w-10">
                   <input type="checkbox" className="accent-[#f37121]"
                     checked={shown.length > 0 && shown.every((r) => selected.has(r._id))}
@@ -552,7 +517,7 @@ export default function CollectionsPartiesPage({ kind }: { kind: PartyKind }) {
                       })} />
                   </td>
                   {visibleCols.map((c) => (
-                    // الاسمُ يأخذ عرضًا يُقرأ فيه في سطرٍ أو اثنين، لا عمودًا ضيّقًا يتكسّر أسطرًا.
+                    // The name gets a width readable in one or two lines, not a narrow column that wraps into many.
                     <td key={c.key} className={`px-3 py-2.5 ${c.align === 'end' ? 'text-end' : ''} ${c.key === 'name' ? 'min-w-[260px] max-w-[360px] leading-snug' : 'whitespace-nowrap'}`}>
                       {c.cell ? c.cell(p) : (
                         <span className="text-slate-600">
@@ -608,9 +573,7 @@ export default function CollectionsPartiesPage({ kind }: { kind: PartyKind }) {
           </PrimaryButton>
         </>}
       >
-        {/* ── بطاقاتٌ لا خاناتٌ مسكوبة ────────────────────────────────────────
-            ثلاثةٌ وعشرون حقلًا في شبكةٍ واحدةٍ لا يُعرف أين ينتهي التواصلُ
-            وتبدأ الهويّةُ التجاريّة. */}
+        {/* Cards, not a spilled grid: twenty-three fields in one grid make it unclear where contact ends and commercial identity begins. */}
         <div className="space-y-4">
           <Card title={t('الأساس', 'Basics')}>
             <div className="sm:col-span-2">
@@ -622,11 +585,7 @@ export default function CollectionsPartiesPage({ kind }: { kind: PartyKind }) {
               <ManagedSelect type="collections_party_type" value={editing?.partyType || ''}
                 onChange={(v) => setEditing((p) => ({ ...p, partyType: v }))} storeLabel placeholder={t('— اختر —', '— select —')} />
             </Field>
-            {/* ── نوعُ الحساب لا نوعُ الشحنة ────────────────────────────────
-                يقول في أيّ دفترٍ يجلس الحساب، ومنه يُولَّد كودُه: النقديُّ
-                `C####` والضريبيُّ `1104####`. ولا يقرّر نوعَ دفعِ أمر نقل بعينه —
-                ذاك يُكتب على أمر النقل في سير عمل التشغيل، لأنّ العميلَ الواحد
-                يحاسب كاشًا في حمولةٍ وضريبيًّا في أخرى. */}
+            {/* Account type, not shipment type. It says which ledger the account sits in and generates its code: cash C#### and tax 1104####. It does not decide how a specific transport order is paid; that is written on the transport order in the operations workflow, since one customer pays cash on one load and tax on another. */}
             {kind === 'customer' && (
               <Field label={t('نوع الحساب', 'Account type')}>
                 <Select value={editing?.paymentType || ''}
@@ -641,10 +600,7 @@ export default function CollectionsPartiesPage({ kind }: { kind: PartyKind }) {
               <ManagedSelect type="collections_city" value={editing?.city || ''}
                 onChange={(v) => setEditing((p) => ({ ...p, city: v }))} storeLabel placeholder={t('— اختر —', '— select —')} />
             </Field>
-            {/* ── والكودُ يُولَّد إن تُرك ────────────────────────────────────
-                لكلّ حسابٍ كودٌ يُعرَف به في المحاسبة: النقديُّ `C####`
-                والضريبيُّ `1104####`. يُترك فارغًا فيأخذ التاليَ في سلسلة
-                نوعِه من نفسِه، ويُكتب بيدٍ عند الاستيراد أو التصحيح. */}
+            {/* The code is generated if left empty. Each account has an accounting code: cash C#### and tax 1104####. Left empty it takes the next number in its type's series; it is entered by hand during import or correction. */}
             {kind === 'customer' && (
               <Field label={t('الكود', 'Code')}>
                 <TextInput value={editing?.code || ''} onChange={(e) => setEditing((p) => ({ ...p, code: e.target.value }))}
@@ -670,15 +626,11 @@ export default function CollectionsPartiesPage({ kind }: { kind: PartyKind }) {
               <Field label={t('فرع العميل', 'Location')}>
                 <TextInput value={editing?.hoLocation || ''} onChange={(e) => setEditing((p) => ({ ...p, hoLocation: e.target.value }))} />
               </Field>
-              {/* ── المهلةُ تُعَدّ من التسليم ───────────────────────────────
-                  لا من تاريخ الفاتورة: لا تبدأ مهلةُ الثلاثين قبل أن تصل
-                  الورقةُ العميلَ. والفرقُ بينهما هو الفرقُ بين «متأخّر»
-                  و«لم يستلم بعد»، فيُقال في عنوان الحقل لا في وثيقة. */}
+              {/* The term counts from delivery, not the invoice date: the thirty-day term does not start before the paper reaches the customer. The difference is between late and not yet received, so it is stated in the field label, not a document. */}
               <Field label={t('مهلة السداد — من يوم تسليم الفاتورة للعميل', 'Credit days — from customer delivery')}>
                 <TextInput type="number" value={editing?.creditDays ?? ''} onChange={(e) => setEditing((p) => ({ ...p, creditDays: e.target.value === '' ? undefined : Number(e.target.value) }))} />
               </Field>
-              {/* ورفعُ الحدّ من هنا: التنبيهُ يقول «قارب حدَّه»، والقرارُ إمّا
-                  ملاحقتُه أو رفعُ سقفه — فيكون الاثنان في متناول اليد. */}
+              {/* Raising the limit from here: the alert says near its limit and the decision is either to chase or to raise the cap, so both are at hand. */}
               <Field label={t('حد الائتمان', 'Credit limit')}>
                 <TextInput type="number" value={editing?.creditLimit ?? ''} onChange={(e) => setEditing((p) => ({ ...p, creditLimit: e.target.value === '' ? undefined : Number(e.target.value) }))} />
               </Field>
@@ -695,7 +647,7 @@ export default function CollectionsPartiesPage({ kind }: { kind: PartyKind }) {
             <Field label={t('الجوال', 'Phone')}>
               <TextInput value={editing?.phone || ''} onChange={(e) => setEditing((p) => ({ ...p, phone: e.target.value }))} />
             </Field>
-            {/* أكثرُ من بريد — إليها كلِّها يُرسَل كشفُ الحساب (٢٠٢٦/١٠/٢٤). */}
+            {/* More than one email; the account statement is sent to all of them. */}
             <div className="sm:col-span-2">
               <EmailList ar={ar} label={t('البريد الإلكتروني (يمكن أكثر من بريد)', 'Emails (more than one allowed)')}
                 value={editing?.emails && editing.emails.length ? editing.emails : (editing?.email ? [editing.email] : [])}
@@ -707,8 +659,7 @@ export default function CollectionsPartiesPage({ kind }: { kind: PartyKind }) {
             <Field label={t('جوال المسؤول', 'Contact phone')}>
               <TextInput value={editing?.contactPhone || ''} onChange={(e) => setEditing((p) => ({ ...p, contactPhone: e.target.value }))} />
             </Field>
-            {/* محاسبُ الطرف مفصولٌ عن مسؤول التواصل: الاتّصالُ بالمالك في شأن
-                سندٍ يضيّع يومًا. */}
+            {/* The party's accountant is separate from the contact owner: calling the owner about a voucher wastes a day. */}
             <Field label={t('محاسب الطرف', 'Their accountant')}>
               <TextInput value={editing?.accountantName || ''} onChange={(e) => setEditing((p) => ({ ...p, accountantName: e.target.value }))} />
             </Field>

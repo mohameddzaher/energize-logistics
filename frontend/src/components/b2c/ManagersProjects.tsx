@@ -1,11 +1,5 @@
 'use client';
-/**
- * مشاريعُ المشرفين ومديري المشاريع (صاحبُ الشركة، ٢٠٢٦/١٠/١٩).
- *
- * لكلّ حسابِ إشرافٍ في القسم مشروعٌ أو أكثر — ومنه يرى في «مدخلات الأوردرات»
- * مناديبَ مشاريعه وحدَها ويكتب لهم. والإسنادُ لنائب مدير القطاع ومدير القسم
- * والإدارة (`canEdit` من الخادم)، وغيرُهم يرى ولا يغيّر.
- */
+/** Projects of supervisors and project managers. Each supervision account has one or more projects and sees and writes only its own reps in order entry. Assignment is for the sector deputy, department head and management (canEdit from the server); others view only. */
 import { useCallback, useEffect, useState } from 'react';
 import { Modal } from '@/components/hr/HRKit';
 import { useDialog } from '@/components/system/DialogProvider';

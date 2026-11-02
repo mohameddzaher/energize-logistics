@@ -33,7 +33,7 @@ const idOf = (e: any) => (e?.idType === 'national_id' ? (e?.nationalId || e?.iqa
 const BG = 'bg-white group-hover:bg-slate-100';
 
 export default function CustodyPage() {
-  // الإجراءات، الرقم الوظيفيّ، الاسم، الهويّة — ثابتةٌ على اليمين.
+  // Actions, employee number, name, ID: pinned on the right.
   const pin = usePinnedColumns(4);
   const { confirm, notify, prompt } = useDialog();
   const { user } = useAuth();
@@ -65,9 +65,7 @@ export default function CustodyPage() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
-  // ── الحالةُ تُفلتَر هنا لا في الخادم ───────────────────────────────────────
-  // كانت تُرسَل إلى الخادم، والرقمُ في رأس الصفحة يُعَدّ على ما رجع: يُختار
-  // «مُغلَق» فيقول الرأسُ «٠ مفتوح». فيُجلَب الكلُّ مرّةً ويُفلتَر الجدولُ وحدَه.
+  // Status is filtered here, not on the server. It used to be sent to the server while the header count was computed on what came back, so choosing closed made the header say 0 open. So everything is fetched once and only the table is filtered.
   const assets = statusFilter ? allAssets.filter((a) => a.status === statusFilter) : allAssets;
   useSocket('hr:asset', useCallback(() => load(), [load]));
   useEffect(() => { api.get<{ employees: Employee[] }>('/api/hr/employees').then((d) => setEmployees(d.employees || [])).catch(() => {}); }, []);
@@ -97,12 +95,7 @@ export default function CustodyPage() {
     .filter((a) => !sourceFilter || (sourceFilter === 'it' ? isItOwned(a) : !isItOwned(a)))
     .filter((a) => !search.trim() || a.name.toLowerCase().includes(search.toLowerCase()) || (a.serialNumber || '').toLowerCase().includes(search.toLowerCase()) || empName(a.employee).toLowerCase().includes(search.toLowerCase()));
 
-  /**
-   * ── وقمعُ الأعمدة على ما يُقرأ في الصفّ ───────────────────────────────────
-   * القارئُ لكلّ عمودٍ هو نفسُه الذي يُرسَم به — وإلّا فلتر على شيءٍ غيرِ
-   * المعروض. والقائمةُ تُبنى من `filtered` (بعد فلتر المصدر والبحث)، فيعمل
-   * القمعُ **مع** فلاتر الصفحة لا ضدَّها. راجع hooks/useColumnFilters.
-   */
+  /** Column funnel on what is read in the row. The reader of each column is the one it is drawn with, otherwise the filter works on something other than what is displayed. The list is built from `filtered` (after source filter and search), so the funnel works with the page filters, not against them. See hooks/useColumnFilters. */
   const cf = useColumnFilters<any>({
     employeeNumber: (a) => (a.employee as any)?.employeeNumber || '',
     employee: (a) => empName(a.employee, lang),
@@ -124,14 +117,12 @@ export default function CustodyPage() {
     { header: 'Brand', key: 'brand', width: 14 },
     { header: 'Condition', key: 'condition', width: 12 },
     { header: 'Status', key: 'status', width: 12 },
-    // كلُّ تاريخٍ عمودان متجاوران: الميلاديُّ ثمّ هجريُّه المشتقّ (lib/hrDates).
+    // Each date is two adjacent columns: Gregorian, then its derived Hijri (lib/hrDates).
     ...exportDatePair(tx.fieldAssignedDate, 'assignedDate', ar),
     ...exportDatePair(tx.fieldReturnedDate, 'returnedDate', ar),
     { header: 'Source', key: 'issuedBySection', transform: (v: any) => (v === 'it' ? tx.sourceIt : tx.sourceHr), width: 20 },
   ];
-  // فلتر الحالة (مُسلَّمة/مُعادة) يُطبَّق على الخادم، فما في الذاكرة ليس كلّ
-  // العهد؛ لولا إعادة الجلب بلا الفلتر لخرج ملفُّ «الكلّ» وهو نصفُ السجلّ.
-  // أمّا البحث وفلتر المصدر فيعملان في الذاكرة، فـ«المعروض» صادقٌ بلا جلب.
+  // The status filter (delivered/returned) is applied on the server, so what is in memory is not all custody; without refetching without the filter the all file would export half the register. Search and source filter work in memory, so displayed is accurate with no fetch.
   const fetchAllAssets = async () => {
     const d = await api.get<{ assets: Asset[] }>('/api/hr/assets');
     return [{ name: 'Custody', rows: d.assets || [], columns: exportColumns }];
@@ -205,7 +196,7 @@ export default function CustodyPage() {
                 </td>
                 <td {...pin.td(1, 'px-4 py-3 text-slate-700 whitespace-nowrap', BG)}>{(a.employee as any)?.employeeNumber || '—'}</td>
                 <td {...pin.td(2, 'px-4 py-3 text-slate-900 font-medium whitespace-nowrap', BG)}>
-                  {/* حدٌّ أعلى وقصّ — راجع جدول الموظّفين. */}
+                  {/* Upper bound and clipping. See the employees table. */}
                   <span className="block max-w-[15rem] truncate" title={empName(a.employee, lang)}>{empName(a.employee, lang)}</span>
                 </td>
                 <td {...pin.td(3, 'px-4 py-3 text-slate-700 whitespace-nowrap', BG)}>{idOf(a.employee)}</td>
@@ -248,7 +239,7 @@ export default function CustodyPage() {
           <Field label={tx.fieldBrand}><TextInput value={form.brand} onChange={(e) => set('brand', e.target.value)} /></Field>
           <Field label={tx.fieldModel}><TextInput value={form.model} onChange={(e) => set('model', e.target.value)} /></Field>
           <Field label={tx.fieldCondition}><Select value={form.condition} onChange={(e) => set('condition', e.target.value)}>{conditions.map((c) => <option key={c.key} value={c.key}>{ar ? c.ar : c.en}</option>)}</Select></Field>
-          {/* خانتان في صفٍّ واحد: الميلاديّةُ ثمّ الهجريّة — وما يُرسَل ميلاديٌّ وحدَه. */}
+          {/* Two fields in one row: Gregorian then Hijri; only the Gregorian is sent. */}
           <DatePair label={tx.fieldAssignedDate} value={form.assignedDate || ''} onChange={(v) => set('assignedDate', v)} ar={ar} />
           <Field label={tx.fieldValue}><TextInput type="number" value={form.value} onChange={(e) => set('value', Number(e.target.value))} /></Field>
           <Field label={tx.fieldNotes} span2><TextArea rows={2} value={form.notes} onChange={(e) => set('notes', e.target.value)} /></Field>

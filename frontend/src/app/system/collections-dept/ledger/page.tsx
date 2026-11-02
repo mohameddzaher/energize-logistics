@@ -1,16 +1,8 @@
 'use client';
 /**
- * دفترُ الفواتير — كلُّ فاتورةٍ وما جرى لها.
- *
- * ── ولماذا ثلاثةُ أعمدةٍ للأيّام ───────────────────────────────────────────
- * الفاتورةُ تمرّ بثلاث محطّات: تُفوتَر، ثمّ تُسلَّم للعميل، ثمّ تُحصَّل. والسؤالُ
- * الذي يُدير القسمَ هو **أين تضيع الأيّام**: أفي تجهيز الفاتورة وتسليمها، أم
- * عند العميل بعد أن استلمها؟
- *
- * فالعمودان يفصلان: «من الفوترة إلى التسليم» عملُنا نحن، و«من التسليم إلى
- * التحصيل» مهلةُ العميل. وجمعُهما في رقمٍ واحد يخفي أيَّهما المتأخّر.
- *
- * ولا يُخزَّن أيٌّ منها: فروقُ تواريخَ تُحسب عند القراءة، فلا يبقى رقمٌ يشيخ.
+ * Invoice ledger: every invoice and what happened to it.
+ * Three day columns because an invoice passes three stations (invoiced, delivered, collected): invoicing to delivery is our work, delivery to collection is the customer's grace; one summed number hides which is late.
+ * None is stored: date differences are computed on read, so no number goes stale.
  */
 import { useState, useEffect, useCallback } from 'react';
 import { useLanguage } from '@/context/LanguageContext';
@@ -40,11 +32,8 @@ export default function LedgerInvoicesPage() {
   const [total, setTotal] = useState(0);
   const [pages, setPages] = useState(1);
   const [page, setPage] = useState(1);
-  // ── وفلترُ الأعمدة يرى ما حُمِّل ─────────────────────────────────────────
-  // الدفترُ يُحمَّل صفحةً صفحة (عشرةُ آلافٍ وثمانمئةٍ وثمانٍ وثمانون فاتورة)،
-  // وقمعُ العمود لا يعرف إلّا ما بين يديه. فخمسون صفًّا تجعل القائمةَ تعرض
-  // خمسين قيمةً ويظنّها القارئُ كلَّ القيم. ولذلك صار عددُ الصفوف اختيارًا
-  // ظاهرًا، ومكتوبٌ تحت الفلاتر على كم صفًّا تعمل.
+  // The column filter sees what is loaded.
+  // The ledger loads page by page (10,888 invoices), and the column funnel knows only what it holds. Fifty rows would make the list show fifty values, read as all values. So the row count is a visible choice, with a line under the filters saying how many rows they work on.
   const [size, setSize] = useState(200);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -91,8 +80,7 @@ export default function LedgerInvoicesPage() {
   const active = !!(search || status || kind || officer || band || open || from || to);
   const clear = () => { setInput(''); setSearch(''); setStatus(''); setKind(''); setOfficer(''); setBand(''); setOpen(''); setFrom(''); setTo(''); setPage(1); };
 
-  // ── مصدرٌ واحدٌ للأعمدة ────────────────────────────────────────────────
-  // الشاشةُ والتصديرُ والطباعةُ تقرأ من هنا، فما يُرى هو ما يخرج.
+  // One source for the columns: screen, export and print all read from here, so what is seen is what comes out.
   type Col = ExportColumn & { align?: 'start' | 'end' | 'center'; cell?: (r: any) => React.ReactNode };
 
   const allCols: Col[] = [
@@ -142,7 +130,7 @@ export default function LedgerInvoicesPage() {
         ? <span className="inline-flex items-center gap-1 text-xs text-slate-500" title={r.reportNumbers.join(', ')}><Link2 className="w-3 h-3" />{r.reportNumbers.length}</span>
         : <span className="text-xs text-slate-500">—</span>) },
     { header: ar ? 'ملاحظات' : 'Comments', key: 'comments', width: 32 },
-    // ── مرفقاتُ الفاتورة — العددُ للصفوف المحمَّلة (راجع useAttachmentCounts) ──
+    // Invoice attachments; the count applies to loaded rows (see useAttachmentCounts).
     { header: ar ? 'المرفقات' : 'Files', key: 'attachments', width: 12, align: 'center',
       transform: (_v: any, r: any) => att.counts[r.invoiceNumber] || 0,
       cell: (r) => (
@@ -151,9 +139,8 @@ export default function LedgerInvoicesPage() {
       ) },
   ];
 
-  // ── القيمةُ التي يُفلتَر عليها هي القيمةُ التي تُقرأ ──────────────────────
-  // تُشتقّ من تعريف العمود نفسِه: `transform` إن وُجدت، وإلّا الحقلُ الخام. فلا
-  // تفترق قائمةُ القمع عمّا في الخليّة، ولا تُكتب مرّتين فتفترقا لاحقًا.
+  // The value filtered on is the value read.
+  // Derived from the column's own definition: `transform` if present, else the raw field. So the funnel list never differs from the cell, and is not written twice and left to drift.
   const cf = useColumnFilters<LedgerInvoice>();
   const getters = Object.fromEntries(allCols.map((c) => [c.key,
     (r: any) => (c.transform ? c.transform(r[c.key], r) : r[c.key])]));
@@ -173,7 +160,7 @@ export default function LedgerInvoicesPage() {
     });
   };
 
-  // التصديرُ يأخذ الأعمدةَ المختارة — راجع allCols و ColumnChooser.
+  // Export takes the chosen columns; see allCols and ColumnChooser.
   const cols: ExportColumn[] = visibleCols;
 
   if (loading) return <div className="flex items-center justify-center py-24"><Loader2 className="w-6 h-6 animate-spin text-[#f37121]" /></div>;
@@ -241,8 +228,7 @@ export default function LedgerInvoicesPage() {
           </select>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {/* الفترةُ تُقاس بأيّ تاريخٍ يريده السائل: «فُوتِر في أغسطس» غيرُ
-              «حُصِّل في أغسطس»، والخلطُ بينهما يقلب أيَّ تقرير. */}
+          {/* The period is measured by whichever date the asker wants: 'invoiced in August' differs from 'collected in August', and mixing them flips any report. */}
           <select title={ar ? 'الفترة محسوبة بـ' : 'Period measured by'} value={dateField} onChange={(e) => { setDateField(e.target.value); setPage(1); }}
             className="px-3 py-2 rounded-lg border border-slate-300 text-sm bg-white">
             <option value="invoiceDate">{ar ? 'تاريخ الفوترة' : 'Invoice date'}</option>
@@ -280,7 +266,7 @@ export default function LedgerInvoicesPage() {
                 resolve: async () => {
                   const p = params(); p.append('page', '1'); p.append('limit', '5000');
                   const d = await api.get<any>(`/api/collections-dept/ledger/invoices?${p.toString()}`);
-                  // العددُ معروفٌ للصفحة المحمَّلة وحدَها — فلا يُصدَّر صفرًا كاذبًا لغيرها.
+                  // The count is known only for the loaded page, so it is not exported as a false zero for the rest.
                   return [{ name: ar ? 'الفواتير' : 'Invoices', rows: d.rows || [], columns: cols.filter((c) => c.key !== 'attachments') }];
                 } },
             ]} />
@@ -293,8 +279,7 @@ export default function LedgerInvoicesPage() {
           <table className="w-full min-w-[1500px]">
             <thead>
               <tr className="table-head border-b border-slate-200">
-                {/* قمعُ الفلتر يقرأ `rows` — المعروضَ قبل فلاتر الأعمدة — فتبقى
-                    بقيّةُ القيم في القائمة بعد اختيار واحدة، كما في إكسل. */}
+                {/* The filter funnel reads `rows` (what is shown before the column filters), so the other values stay in the list after one is picked, as in Excel. */}
                 {visibleCols.map((c) => (
                   <th key={c.key} className={`${th}${c.align === 'end' ? ' text-end' : c.align === 'center' ? ' text-center' : ''}`}>
                     <span className="inline-flex items-center gap-1">

@@ -81,11 +81,11 @@ export default function ServicesPage() {
 
   return (
     <main className="pt-8 min-h-screen bg-gray-900 text-white py-6 px-6 sm:px-10 relative overflow-hidden scroll-smooth">
-      {/* خلفية ثابتة */}
+      {/* Fixed background */}
       <div className="absolute top-[-100px] right-[-100px] w-[300px] h-[300px] bg-[#f37121]/20 rounded-full blur-[100px] opacity-60 z-0" />
 
       <div className="relative z-10 max-w-6xl mx-auto text-center">
-        {/* العنوان */}
+        {/* Title */}
         <h1
           id="services-top"
           className="text-3xl font-bold mb-10 pt-6 scroll-mt-20"
@@ -93,7 +93,7 @@ export default function ServicesPage() {
           Our <span className="text-[#f37121]">Services</span>
         </h1>
 
-        {/* ✅ كروت الخدمات (Responsive) */}
+        {/* Service cards (responsive) */}
         <div className="flex flex-wrap justify-center gap-8 mt-7">
           {services.map((s) => (
             <div
@@ -115,7 +115,7 @@ export default function ServicesPage() {
           ))}
         </div>
 
-        {/* تفاصيل الخدمات */}
+        {/* Service details */}
         <div className="mt-20 mb-16 space-y-20 text-left sm:text-center">
           {services.map((s) => (
             <section

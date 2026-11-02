@@ -1,10 +1,5 @@
 'use client';
-// كروت العهد وأزرار الحالة الثلاثة والفلاتر — قطعة واحدة تستعملها صفحة العهد
-// ولوحة القسم معاً.
-//
-// السبب في استخراجها: اللوحة وصفحة العهد تعرضان نفس الإجماليات، ونسختان من
-// نفس العدّ تفترقان عند أول تعديل — فيقرأ المستخدم رقمين لشيء واحد ولا يعود
-// يثق في أيّهما. الحساب في الخادم، والعرض هنا، والشاشتان تقرآن من الاثنين.
+// Custody cards, three status buttons and filters: one piece shared by the custody page and the section dashboard. Totals are computed on the server and only displayed here, so the two screens cannot show different numbers.
 import { CUSTODY_BUCKETS, CUSTODY_STATUSES, CUSTODY_STATE_KEYS, custodyStatusLabel, Lang } from '@/lib/it';
 import { Laptop, Keyboard, Mouse, Smartphone, Tablet, Monitor, Package, UserCheck, Boxes, AlertOctagon, BadgeDollarSign } from 'lucide-react';
 
@@ -24,12 +19,11 @@ const STATE_ICON: Record<string, React.ElementType> = {
   assigned: UserCheck,
   in_stock: Boxes,
   returned: AlertOctagon,
-  // خرج من ملكنا ببيع — لا في عهدةٍ ولا على الرفّ. راجع CUSTODY_STATUSES.
+  // Left our ownership through a sale: neither in custody nor on the shelf. See CUSTODY_STATUSES.
   sold: BadgeDollarSign,
 };
 
-// لون لكل زر حالة. الحالة المختارة تُملأ، وغير المختارة تبقى هادئة — الفرق
-// البصري هو ما يقول للمستخدم إن الجدول تحته مفلتر أصلاً.
+// One color per status button. The selected one is filled and the others stay quiet, showing the table below is already filtered.
 const STATE_TONE: Record<string, { on: string; dot: string }> = {
   assigned: { on: 'border-amber-400 bg-amber-50 text-amber-800 ring-1 ring-amber-300', dot: 'text-amber-600' },
   in_stock: { on: 'border-blue-400 bg-blue-50 text-blue-800 ring-1 ring-blue-300', dot: 'text-blue-600' },
@@ -57,8 +51,7 @@ export function CustodyCards({
           <button
             key={b.key}
             type="button"
-            // الضغط على كارت مُفعَّل يلغيه: بلا ذلك يعلق المستخدم في فلتر لا
-            // يجد له زر إغلاق.
+            // Clicking an active card clears it; otherwise the user is stuck in a filter with no close button.
             onClick={() => onPick(on ? '' : b.key)}
             className={`group text-start rounded-xl border p-4 transition-all ${
               on

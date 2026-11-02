@@ -17,7 +17,7 @@ function sweep() {
 }
 
 function get(key) {
-  maybePoll();                 // ما أبطله عاملٌ آخر يُمسَح هنا — راجع syncStamps
+  maybePoll();                 // What another worker invalidated is cleared here; see syncStamps
   const e = store.get(key);
   if (!e) return undefined;
   if (e.exp <= Date.now()) { store.delete(key); return undefined; }
@@ -33,29 +33,17 @@ function set(key, val, ttlMs) {
 function clearLocal(prefix) {
   if (!prefix) { store.clear(); inflight.clear(); return; }
   for (const k of store.keys()) if (k.startsWith(prefix)) store.delete(k);
-  // الوعود الجارية تُسقَط معها: وعدٌ بدأ قبل الكتابة سيكتب نتيجته القديمة فوق
-  // ذاكرةٍ أُبطلت للتوّ، فتعود الشاشة إلى ما قبل التعديل بلا سبب ظاهر.
+  // In-flight promises are dropped too: one started before the write would store its old result over the cache just invalidated, and the screen would revert to pre-edit data for no visible reason.
   for (const k of inflight.keys()) if (k.startsWith(prefix)) inflight.delete(k);
 }
 
-// ── والإبطالُ يعبر إلى العامل الآخر ──────────────────────────────────────────
-//
-// البرودكشن يعمل بعاملَين (PM2 cluster)، ولكلٍّ ذاكرتُه. فمن أغلق تنبيهًا أصاب
-// نداؤه عاملًا واحدًا فمسح ذاكرته وحدَه، والقراءةُ التالية توزَّع بالتناوب —
-// فيرى المستخدم التنبيهَ يختفي ويعود ويختفي. قِيس ذلك: اثنتا عشرة قراءةً بعد
-// إغلاق تنبيهٍ واحد أعطت ٤٣ و٤٢ بالتناوب اثنتَي عشرةَ مرّةً بلا استثناء.
-//
-// وهذا يمسّ كلَّ إبطالٍ في المنصّة لا التنبيهاتِ وحدها: سجلُّ المركبات وفلاترُ
-// الكشوف واللوحاتُ كلُّها — أيُّ كتابةٍ يتلوها قراءةٌ تقع على العامل الآخر
-// تُرجع ما قبل الكتابة.
-//
-// فيُقيَّد الإبطالُ في القاعدة المشتركة (ختمٌ لكلّ بادئة)، ويقرأ كلُّ عاملٍ
-// الأختامَ مرّةً في الثانية على الأكثر فيمسح عنده ما مُسح عند غيره. استعلامٌ
-// صغيرٌ واحدٌ في الثانية لكلّ عامل، وحدُّ التأخّر ثانيةٌ واحدة — بدل صفحةٍ
-// تكذب نصفَ المرّات.
+// Invalidation crosses to the other worker.
+// Prod runs two workers (PM2 cluster), each with its own cache. A call that closed an alert hit one worker and cleared only its cache, and the next read alternated between workers, so the alert disappeared, came back and disappeared. Measured: twelve reads after closing one alert gave 43 and 42 alternately, twelve times with no exception.
+// This affects every invalidation on the platform, not only alerts (vehicle registry, statement filters, boards): any write followed by a read on the other worker returns pre-write data.
+// So invalidation is recorded in the shared DB (one stamp per prefix) and each worker reads the stamps at most once a second and clears locally what was cleared elsewhere. One small query per second per worker, with a one-second staleness bound, instead of a page that lies half the time.
 const STAMP_COLL = 'cachestamps';
 const POLL_MS = 1000;
-const seen = new Map();          // البادئة → آخرُ ختمٍ عرفناه
+const seen = new Map();          // Prefix to the last stamp seen
 let lastPoll = 0;
 let polling = false;
 
@@ -66,16 +54,9 @@ const db = () => {
   } catch (_) { return null; }
 };
 
-// ── والأدقُّ من الاستطلاع: تيّارُ التغيير ────────────────────────────────────
-//
-// الاستطلاعُ مرّةً في الثانية يترك نافذةً: عاملٌ استطلع قبل الإبطال بمئتَي جزءٍ
-// من الثانية يخدم من ذاكرته حتى تنقضي ثانيته. قِيس ذلك: قراءتان قديمتان من كلّ
-// أربع، لا واحدة.
-//
-// و«cachestamps» مجموعةٌ صغيرة في عنقودٍ يدعم `watch`، فيُفتَح عليها تيّارُ
-// تغييرٍ واحدٌ لكلّ عامل: كتابةُ ختمٍ في أيّ عاملٍ تصل الآخرَ في مِلّي ثانية بلا
-// استعلامٍ أصلًا. والاستطلاعُ يبقى شبكةَ أمان — إن لم يدعم العنقودُ التيّارَ أو
-// انقطع، عاد الأمرُ إلى ثانيةٍ واحدة بدل أن يسقط الاتّساقُ كلُّه.
+// Better than polling: a change stream.
+// Polling once a second leaves a window: a worker that polled 200 ms before the invalidation serves its cache until its second elapses (measured: two stale reads out of every four, not one).
+// `cachestamps` is a small collection on a cluster that supports `watch`, so one change stream per worker is opened on it: a stamp written by any worker reaches the other in milliseconds with no query. Polling stays as a safety net: if the cluster lacks change streams or the stream drops, behaviour falls back to one second instead of losing consistency entirely.
 let watcher = null;
 function startWatch() {
   const d = db();
@@ -86,7 +67,7 @@ function startWatch() {
       const id = ev.documentKey?._id;
       if (!id) return;
       const at = ev.fullDocument?.at ? new Date(ev.fullDocument.at).getTime() : Date.now();
-      if (seen.get(id) === at) return;              // ختمُنا نحن
+      if (seen.get(id) === at) return;              // Our own stamp
       seen.set(id, at);
       clearLocal(id === '*' ? undefined : id);
     });
@@ -95,7 +76,7 @@ function startWatch() {
   } catch (_) { watcher = null; }
 }
 
-/** يُقرأ الأختامُ ويُمسَح محلّيًّا ما أبطله عاملٌ آخر. لا يرمي أبدًا. */
+/** Reads the stamps and clears locally what another worker invalidated. Never throws. */
 async function syncStamps() {
   const d = db();
   if (!d) return;
@@ -105,23 +86,18 @@ async function syncStamps() {
     for (const r of rows) {
       const prev = seen.get(r._id);
       const at = r.at ? new Date(r.at).getTime() : 0;
-      // ── ولا يُستثنى الختمُ الذي نراه أوّلَ مرّة ──────────────────────────
-      // كان يُسجَّل بلا مسحٍ حتى لا تُمحى الذاكرةُ عند الإقلاع. وهو خطأ: عند
-      // الإقلاع الذاكرةُ فارغةٌ أصلًا فالمسحُ لا يكلّف شيئًا، أمّا العاملُ الذي
-      // خزّن قبل أن يرى ختمَ زميله فهذه أوّلُ مرّةٍ يراه — وهي بالضبط المرّةُ
-      // التي يجب أن يمسح فيها. وبهذا الاستثناء بقي التناوبُ كما هو بعد النشر:
-      // ٤٣ و٤٢ اثنتَي عشرةَ مرّة.
-      //
-      // وختمُنا نحن لا يُعيدنا إلى المسح: `clear` يسجّله في `seen` قبل كتابته.
+      // A stamp seen for the first time is not exempt.
+      // It used to be recorded without clearing, so the cache would not be wiped at startup. That was wrong: at startup the cache is empty anyway so clearing costs nothing, but a worker that cached before it ever saw its peer's stamp is seeing it for the first time, which is exactly when it must clear. With that exemption the alternation persisted after deploy (43 and 42, twelve times).
+      // Our own stamp does not make us clear again: `clear` records it in `seen` before writing it.
       if (prev === undefined || at > prev) {
         seen.set(r._id, at);
         clearLocal(r._id === '*' ? undefined : r._id);
       }
     }
-  } catch (_) { /* الذاكرةُ تحسينٌ لا شرط */ }
+  } catch (_) { /* The cache is an optimisation, not a requirement */ }
 }
 
-/** يُنادى من `get`: يستدعي المزامنة في الخلفيّة مرّةً في الثانية على الأكثر. */
+/** Called from `get`: triggers background sync at most once a second. */
 function maybePoll() {
   const now = Date.now();
   if (polling || now - lastPoll < POLL_MS) return;
@@ -131,16 +107,9 @@ function maybePoll() {
 }
 
 /**
- * مزامنةٌ تُنتظَر قبل خدمة الطلب — تُنادى من وسيطٍ على كلّ نداء.
- *
- * ── ولماذا تُنتظَر ولا تُترك في الخلفيّة ───────────────────────────────────
- * المزامنةُ في الخلفيّة تترك **أوّلَ** قراءةٍ بعد الإبطال قديمةً: العاملُ الساكن
- * لا يستيقظ إلّا بطلب، فيخدم الطلبَ من ذاكرته ثمّ يزامن. وأوّلُ قراءةٍ بعد
- * الكتابة هي بالضبط ما يفعله المستخدم — يضغط «إغلاق» فتُعاد الصفحةُ فورًا.
- * قِيس ذلك بعد النشر: أوّلُ قراءةٍ ٤٣ والإحدى عشرةُ بعدها ٤٢.
- *
- * فتُنتظَر مرّةً في الثانية على الأكثر: استعلامٌ صغيرٌ واحدٌ يتحمّله طلبٌ واحدٌ
- * كلَّ ثانية، وبقيّةُ الطلبات تقارن رقمًا ولا تنتظر شيئًا.
+ * A sync that is awaited before serving the request, called from middleware on every call.
+ * Why awaited and not left in the background: a background sync leaves the first read after an invalidation stale, because an idle worker only wakes on a request, serves it from its cache and then syncs. The first read after a write is exactly what the user does: press close and the page reloads immediately. Measured after deploy: first read 43, the eleven after it 42.
+ * So it is awaited at most once a second: one small query borne by one request per second, while the other requests compare a number and wait for nothing.
  */
 async function syncIfDue() {
   const now = Date.now();
@@ -156,17 +125,15 @@ function clear(prefix) {
   if (!d) return;
   const key = prefix || '*';
   const at = Date.now();
-  seen.set(key, at);            // ختمُنا نحن — لئلّا نمسح مرّةً ثانيةً بسببه
+  seen.set(key, at);            // Our own stamp, so we do not clear a second time because of it
   d.collection(STAMP_COLL)
     .updateOne({ _id: key }, { $set: { at: new Date(at) } }, { upsert: true })
-    .catch(() => { /* الإبطالُ المحلّيُّ تمّ، والعبورُ تحسين */ });
+    .catch(() => { /* Local invalidation is done; propagation is an optimisation */ });
 }
 
 /**
- * ── `clear` يُنتظَر — للسكربتات ──────────────────────────────────────────────
- * سكربتٌ يكتب في القاعدة ثمّ يُغلق اتّصالَه لا ذاكرةَ له يمسحها؛ ما يلزمه أن
- * يصل ختمُه إلى العاملَين. و`clear` يكتب الختمَ ولا ينتظره، فيُغلَق الاتّصالُ
- * قبل وصوله ولا يدري به أحد. فهنا يُنتظَر حتى يُكتب.
+ * `clear` awaited, for scripts.
+ * A script that writes to the DB and then closes its connection has no cache to clear; what it needs is for its stamp to reach both workers. `clear` writes the stamp without awaiting it, so the connection closes before it arrives and nobody learns of it. Here it is awaited until written.
  */
 async function clearShared(prefix) {
   clearLocal(prefix);
@@ -179,19 +146,10 @@ async function clearShared(prefix) {
   return true;
 }
 
-// ── الطلعة الواحدة (single-flight) ───────────────────────────────────────────
-//
-// كان `wrap` يقرأ الذاكرة ثم يحسب — وبينهما فجوة. فحين يفتح أربعون موظفًا
-// اللوحةَ نفسها في الثانية نفسها (وهذا ما يحدث صباحًا بالضبط) يخيب ظنّهم جميعًا
-// في الذاكرة، فتُحسب النتيجة نفسها أربعين مرّة على قاعدة البيانات. القياس تحت
-// أربعين مستخدمًا متزامنًا: من ٣ إلى ٦٫٦ ثانية عند ٩٥٪ — وكلّها انتظارٌ لعملٍ
-// مكرَّر لا لعملٍ لازم.
-//
-// الآن يُحفَظ **الوعد** لا النتيجة وحدها: أوّل طالبٍ يبدأ الحساب، ومَن جاء بعده
-// وهو جارٍ ينتظر الوعد نفسه. حسابٌ واحد يخدم الأربعين.
-//
-// والوعد يُنزَع عند الفشل: لو بقي محفوظًا لورث كلُّ طالبٍ لاحقٍ خطأً وقع مرّةً
-// واحدة، فيصير عطلٌ عابر عطلًا دائمًا حتى تنتهي المهلة.
+// Single-flight.
+// `wrap` used to read the cache and then compute, with a gap between. When forty staff open the same board in the same second (as happens every morning) they all miss, and the same result is computed forty times against the DB. Measured under forty concurrent users: 3 to 6.6 seconds at p95, all of it waiting on duplicated work.
+// Now the promise is stored, not just the result: the first caller starts the computation and anyone arriving while it runs awaits the same promise. One computation serves all forty.
+// The promise is removed on failure: if kept, every later caller would inherit an error that happened once, turning a transient fault into a persistent one until the TTL ends.
 const inflight = new Map();
 
 async function wrap(key, ttlMs, producer) {
@@ -215,14 +173,8 @@ async function wrap(key, ttlMs, producer) {
 }
 
 /**
- * ── القديمُ يُقدَّم والجديدُ يُحسب في الخلف ─────────────────────────────────
- *
- * لوحاتٌ يُعاد جلبُها مع كلّ خبرٍ حيّ (مزامنةُ التشغيل تبثّ كلَّ ثوانٍ) كانت
- * تنتهي صلاحيّتُها كلَّ دقيقة، فيدفع أوّلُ فاتحٍ بعدها حسابَها كاملًا — ثوانٍ
- * أمام دائرة تحميل. فهنا يُقدَّم آخرُ جوابٍ فورًا ما دام أحدثَ من `maxMs`،
- * وإن تجاوز `freshMs` يُعاد حسابُه في الخلف مرّةً واحدة (single-flight)
- * فيجده الطالبُ التالي جديدًا. ولا ينتظر أحدٌ إلّا حين لا يوجد جوابٌ أصلًا —
- * أوّلَ مرّة، أو بعد `clear` حقيقيّ من كتابةٍ في القسم.
+ * Serve the stale value and recompute in the background.
+ * Boards refetched on every live event (operations sync broadcasts every few seconds) expired every minute, and the first opener afterwards paid the full computation, seconds in front of a loading spinner. Here the last answer is served immediately while younger than `maxMs`, and once past `freshMs` it is recomputed once in the background (single-flight) so the next caller finds it fresh. Nobody waits except when there is no answer at all: the first time, or after a real `clear` from a write in the section.
  */
 async function wrapStale(key, freshMs, maxMs, producer) {
   const hit = get(key);
@@ -238,7 +190,7 @@ async function wrapStale(key, freshMs, maxMs, producer) {
     return p;
   };
   if (hit !== undefined && hit && typeof hit === 'object' && 'at' in hit) {
-    if (Date.now() - hit.at > freshMs) run().catch(() => { /* القديمُ يبقى مقدَّمًا */ });
+    if (Date.now() - hit.at > freshMs) run().catch(() => { /* The stale value stays served */ });
     return hit.val;
   }
   return run();

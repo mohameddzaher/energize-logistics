@@ -28,7 +28,7 @@ const EMPTY = {
 const unitsOf = (a: Asset & { quantity?: number }) => (a.quantity && a.quantity > 0 ? a.quantity : 1);
 
 export default function HRStockPage() {
-  // الإجراءات والاسم ثابتان على اليمين — كبقيّة جداول القسم.
+  // Actions and name stay pinned to the right, like the other section tables.
   const pin = usePinnedColumns(2);
   const { confirm, notify } = useDialog();
   const { user } = useAuth();
@@ -56,10 +56,7 @@ export default function HRStockPage() {
   const [assigning, setAssigning] = useState<Asset | null>(null);
   const [assignForm, setAssignForm] = useState({ employee: '', assignedDate: '', condition: 'good', notes: '' });
 
-  // ── المخزنُ كلُّه يُقرأ مرّةً، والنوعُ والحالةُ يُفلتَران هنا ─────────────────
-  // كانا يُرسَلان إلى الخادم والكروتُ تُعَدّ على ما رجع: يُضغَط «التالف» فيصير
-  // «الأصناف» — وضغطُه يرفع الفلاتر ويفتح المخزنَ كلَّه — عددَ التالف وحدَه. رقمٌ
-  // يقول غيرَ ما يفتحه. فالكروتُ تُعَدّ بلا فلترها، وضغطُها لا يطلب شيئًا.
+  // The whole store is read once and type and status are filtered here. They used to go to the server while the cards were counted on the result, so pressing "damaged" turned "items" (which clears filters and opens the whole store) into the damaged count alone: a number that says other than what it opens. Cards are counted without their own filter and pressing one requests nothing.
   const load = useCallback(async () => {
     try {
       const d = await api.get<{ items: Asset[] }>('/api/hr/stock');
@@ -127,9 +124,7 @@ export default function HRStockPage() {
     { header: 'Location', key: 'location', width: 18 },
     { header: 'Value', key: 'value', width: 12 },
   ];
-  // فلترا النوع والحالة يمرّان على الخادم، فما في الذاكرة قطعةٌ من المخزن لا
-  // المخزنُ كلُّه؛ وجردٌ يُسمّى «الكلّ» وهو نوعٌ واحد خطأٌ لا يُكتشف إلّا متأخّرًا.
-  // والبحث في الذاكرة، فـ«المعروض» لا يحتاج جلبًا.
+  // Type and status filters go through the server, so memory holds a piece of the store, not all of it; an inventory named "All" that is one type is an error found late. Search is in memory, so "shown" needs no fetch.
   const fetchAllStock = async () => {
     const d = await api.get<{ items: Asset[] }>('/api/hr/stock');
     return [{ name: 'Stock', rows: d.items || [], columns: exportColumns }];
@@ -142,8 +137,7 @@ export default function HRStockPage() {
       : { key: 'all', label: scope.all, sheets: [{ name: 'Stock', rows: items, columns: exportColumns }] },
   ];
 
-  // قمعُ الأعمدة — القيمُ كما تُقرأ في الصفّ، والقائمةُ بعد فلتر الصفحة.
-  // راجع hooks/useColumnFilters.
+  // Column funnel: values as read in the row, list after the page filter. See hooks/useColumnFilters.
   const cf = useColumnFilters<any>({
     item: (a) => a.name || '',
     type: (a) => typeLabel(a.type, lang),
@@ -157,8 +151,7 @@ export default function HRStockPage() {
   if (!staff) return <div className="text-slate-500 p-8">{tx.notAuthorized}</div>;
   if (loading) return <Spinner />;
 
-  // الوحداتُ والقيمةُ والتالفُ على النوع المختار بلا فلتر الحالة؛ و«الأصناف» —
-  // وضغطُه يرفع كلَّ فلتر — على المخزن كلِّه، فيقول عددَ ما يفتحه.
+  // Units, value and damaged are for the selected type without the status filter; "items" (pressing it clears every filter) is for the whole store, so it states how many rows it opens.
   const totalUnits = ofType.reduce((s, a) => s + unitsOf(a), 0);
   const totalValue = ofType.reduce((s, a) => s + (a.value || 0) * unitsOf(a), 0);
   const damaged = ofType.filter((a) => a.condition === 'damaged').length;
@@ -177,8 +170,7 @@ export default function HRStockPage() {
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        {/* «الوحدات» و«القيمة» مجموعان لا شريحةَ تحتهما تُفتَح — يبقيان رقمين
-            يُقرآن. و«الأصناف» و«التالف» صفوفٌ تُفتَح. */}
+        {/* Units and value are totals with no slice beneath them to open, so they stay readable numbers. Items and damaged are rows that open. */}
         <StatCard label={tx.statUnits} value={totalUnits} accent="text-[#f37121]" />
         <Pick on={!typeFilter && !conditionFilter && !search}
           onClick={() => { setTypeFilter(''); setConditionFilter(''); setSearch(''); }}>
@@ -289,7 +281,7 @@ export default function HRStockPage() {
               }))}
             />
           </Field>
-          {/* خانتان: الميلاديّةُ ثمّ الهجريّة — وما يُرسَل ميلاديٌّ وحدَه. */}
+          {/* Two cells: Gregorian then Hijri; only the Gregorian is sent. */}
           <DatePair label={tx.fieldHandoverDate} value={assignForm.assignedDate} onChange={(v) => setAssignForm({ ...assignForm, assignedDate: v })} ar={ar} />
           <Field label={tx.fieldConditionAtHandover}>
             <Select value={assignForm.condition} onChange={(e) => setAssignForm({ ...assignForm, condition: e.target.value })}>

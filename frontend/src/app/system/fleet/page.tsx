@@ -1,8 +1,5 @@
 'use client';
-// الحمولات — the fleet section's main list. Inline status, follow-up recency at
-// a glance, filter by supervisor, and بوليصة output: one per row (download or
-// print), or tick several — across searches and pages — and download or print
-// them together in one server-rendered file.
+// Loads: the fleet section's main list. Inline status, follow-up recency at a glance, filter by supervisor, and waybill output: one per row (download or print), or tick several, across searches and pages, and download or print them together in one server-rendered file.
 import { useState, useEffect, useCallback, useMemo, Suspense } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -28,7 +25,7 @@ import type { DispatchSheetRow } from '@/lib/dispatchSheetExcelParser';
 import ScrollX from '@/components/system/ScrollX';
 import { printPdfBlob } from '@/utils/printPdfBlob';
 
-// One shipment → one بوليصة sheet row. Untracked sheet fields stay blank.
+// One shipment is one waybill sheet row. Untracked sheet fields stay blank.
 const toSheetRow = (s: FleetShipment): DispatchSheetRow => ({
   rowIndex: 1,
   rentalType: s.rentType || '',
@@ -50,8 +47,7 @@ const toSheetRow = (s: FleetShipment): DispatchSheetRow => ({
   missingRequired: [],
 });
 
-// أعمدة تصدير الحمولات — معرَّفة مرة واحدة لأن الصفحة تصدّر مرّتين: الصفحة
-// المعروضة، وكل ما يطابق الفلتر مجلوبًا من الخادم. تعريفان يفترقان يومًا ما.
+// Loads export columns: defined once because the page exports twice (the displayed page, and everything matching the filter fetched from the server); two definitions would eventually diverge.
 const SHIPMENT_COLUMNS = [
   { header: 'Transport order', key: 'waybillNumber', width: 10 },
   { header: 'Customer', key: 'customerName', width: 26 },
@@ -71,7 +67,7 @@ const SHIPMENT_COLUMNS = [
   { header: 'Status', key: 'status', transform: (v: any) => fleetStatusLabel(v, 'en'), width: 14 },
 ];
 
-// بوليصة-100001-اسم العميل-22-7-2026
+// Waybill file name pattern: waybill, number, customer name, date
 const waybillFileName = (s: FleetShipment) => {
   const d = new Date(s.loadDate || s.createdAt || Date.now());
   return `أمر نقل-${s.waybillNumber}-${s.customerName || 'عميل'}-${d.getDate()}-${d.getMonth() + 1}-${d.getFullYear()}`;
@@ -96,8 +92,7 @@ function FleetShipmentsInner() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  // كل فلاتر القائمة تعيش في عنوان الصفحة: يفتح المستخدم حمولةً ثم يرجع بزرّ
-  // المتصفّح فيجد قائمته كما تركها، ويُرسِل الرابط لغيره فيرى ما يراه بالضبط.
+  // All list filters live in the page URL: the user opens a load, returns with the browser back button and finds the list as left, and a shared link shows exactly what the sender sees.
   const [search, setSearch] = useState(() => sp?.get('q') || '');
   const [debounced, setDebounced] = useState(search);
   const [statusFilter, setStatusFilter] = useState(() => sp?.get('status') || '');
@@ -119,16 +114,8 @@ function FleetShipmentsInner() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   /**
-   * ── قائمةُ التحديد: خريطةٌ لا مجموعةُ معرّفات ────────────────────────────
-   *
-   * كانت `Set<string>` من المعرّفات، والتنزيلُ يقرأ صفوفَها من `shipments` —
-   * أي من **الصفحة المعروضة وحدَها**. فمن يعلّم عشرين بوليصةً ثمّ يبحث عن
-   * الحادية والعشرين يبقى تعليمُه محفوظًا في الذاكرة ويخرج الملفُّ ببوليصتين:
-   * الصفّان الباقيان على الشاشة بعد البحث. وهذا حرفيًّا ما اشتُكي منه.
-   *
-   * فصارت خريطةً تحمل **الصفَّ نفسَه** مع معرّفه: ما عُلّم مرّةً يبقى معروفًا
-   * بكامل بياناته ولو غاب عن الشاشة — فيُنزَّل ويُطبَع ويُعَدّ ويُسمَّى ملفُّه
-   * بلا رجوعٍ إلى القائمة الحاضرة.
+   * Selection is a map, not a set of ids. It used to be a `Set<string>` and download read rows from `shipments`, i.e. the displayed page only. Ticking twenty waybills then searching for a twenty-first kept the ticks in memory but produced a file with two waybills: the rows remaining on screen after the search.
+   * The map holds the row itself with its id, so anything ticked once stays fully known even when off screen: it can be downloaded, printed, counted and named without going back to the current list.
    */
   const [picked, setPicked] = useState<Map<string, FleetShipment>>(new Map());
   const [showPicked, setShowPicked] = useState(false);
@@ -140,7 +127,7 @@ function FleetShipmentsInner() {
     return () => clearTimeout(t);
   }, [search]);
 
-  // الفلاتر بلا صفحة — تُستعمل للجلب وللعنوان وللتصدير الشامل معًا.
+  // Filters without the page: used for the fetch, the URL and the full export together.
   const filterParams = useMemo(() => {
     const p: Record<string, string> = { ...periodParams(period) };
     if (debounced.trim()) p.q = debounced.trim();
@@ -152,7 +139,7 @@ function FleetShipmentsInner() {
     return p;
   }, [debounced, statusFilter, excludeCancelled, cityFilter, customerFilter, supervisorFilter, period]);
 
-  const guard = useLatestRequest(); // ردٌّ قديمٌ (فلترٌ سابق) لا يكتب فوق الأحدث
+  const guard = useLatestRequest(); // A stale response (previous filter) must not overwrite the latest one
   const load = useCallback(async () => {
     const mine = guard.begin();
     try {
@@ -173,8 +160,7 @@ function FleetShipmentsInner() {
     const qs = new URLSearchParams(filterParams).toString();
     router.replace(`/system/fleet${qs ? `?${qs}` : ''}`, { scroll: false });
   }, [filterParams, router]);
-  // أيّ تغيير في الفلاتر يعيد الترقيم إلى أوّله، وإلا بقي المستخدم على صفحةٍ
-  // رقمها أكبر من نتائج الفلتر الجديد فتظهر القائمة فارغةً بلا سبب ظاهر.
+  // Any filter change resets paging to the start; otherwise the user stays on a page number beyond the new results and the list looks empty for no visible reason.
   useEffect(() => { setPage(1); }, [filterParams]);
   useSocket('fleet:updated', useCallback(() => load(), [load]));
   useEffect(() => {
@@ -208,7 +194,7 @@ function FleetShipmentsInner() {
   const downloadOne = async (s: FleetShipment) => {
     setDownloadingId(s._id);
     try {
-      // نفس ملف الموبايل بالضبط: الخادم يولّد البوليصة على الترويسة بالختم.
+      // Same file as the mobile app: the server generates the waybill on the letterhead with the stamp.
       const blob = await api.getBlob(`/api/fleet/shipments/${s._id}/waybill.pdf?lang=${ar ? 'ar' : 'en'}`);
       const gen = await import('@/lib/dispatchSheetGenerator');
       gen.triggerDownload(blob, `${waybillFileName(s)}.pdf`);
@@ -216,23 +202,11 @@ function FleetShipmentsInner() {
     setDownloadingId(null);
   };
 
-  // ── والبوالصُ الكثيرةُ تُطلَب مرّةً وتُبنى في الخادم ──────────────────────
-  //
-  // كانت تُرسَم في المتصفّح واحدةً واحدة بـ`html2canvas`: يُركَّب الجدولُ في
-  // الصفحة ويُرسَّم بمقياسٍ عالٍ ثمّ يُنزَع، مرّةً لكلّ كشف. والترسيمُ على
-  // الخيط الرئيسيّ، فثلاثون كشفًا تعني ثلاثين تجمّدًا تبدو كإعادة تحميلٍ
-  // متكرّرة.
-  //
-  // والخادمُ يرسم البوليصةَ الواحدة أصلًا بالملفّ نفسِه (زرُّ الصفّ يناديه).
-  // فصار الجماعيُّ نداءً واحدًا يردّ **ملفًّا واحدًا** فيه صفحةٌ لكلّ بوليصة.
+  // Many waybills are requested once and built on the server. They used to be rendered in the browser one by one with `html2canvas`: the table mounted in the page, rendered at high scale, then removed, once per sheet, on the main thread, so thirty sheets meant thirty freezes that looked like repeated reloads.
+  // The server already renders a single waybill with the same file (the row button calls it), so bulk is one call returning one file with a page per waybill.
   /**
-   * البوالصُ المعلَّمة → ملفٌّ واحد. والحدُّ في الخادم مئةٌ في النداء (كلُّ
-   * بوليصةٍ ترسيمٌ في متصفّحٍ بلا واجهة)، فما زاد يُقسَّم دفعاتٍ متتابعة —
-   * ولا يُقال للمستخدم «الحدُّ مئة» ويُترَك واقفًا أمام مئةٍ وعشرين.
-   *
-   * والدفعةُ ستّون لا مئة: الخادمُ يرسم ستًّا معًا بنحو أربع ثوانٍ للواحدة،
-   * فمئةٌ تعني قريبًا من دقيقةٍ وربع، وnginx يقطع بعد مئةٍ وعشرين ثانية. ستّون
-   * تبقى في نصف المهلة على خادمٍ مشغول.
+   * Ticked waybills become one file. The server caps a call at one hundred (each waybill is a render in a headless browser), so larger selections are split into sequential batches rather than telling the user the cap and leaving them stuck at 120.
+   * Batches are sixty, not a hundred: the server renders six at once at about four seconds each, so a hundred is near 75 seconds and nginx cuts off after 120. Sixty stays within half the timeout on a busy server.
    */
   const CHUNK = 60;
   const pickedRows = useMemo(() => Array.from(picked.values()), [picked]);
@@ -266,7 +240,7 @@ function FleetShipmentsInner() {
     setBulkProgress('');
   };
 
-  /** الطباعةُ من السيستم مباشرةً على الطابعة المتّصلة — بلا مرورٍ بالتنزيلات. */
+  /** Print straight from the system to the connected printer, without going through downloads. */
   const printPicked = async () => {
     if (!picked.size) return;
     setBulkBusy(true);
@@ -274,8 +248,7 @@ function FleetShipmentsInner() {
     try {
       const blobs = await buildPickedPdfs();
       for (const b of blobs) {
-        // دفعةً بعد دفعة: حوارُ الطباعة واحدٌ لكلّ ملفّ، وفتحُها معًا يخفي
-        // بعضَها خلف بعض.
+        // One batch after another: the print dialog is per file, and opening them together hides some behind others.
         const ok = await printPdfBlob(b);
         if (!ok) { notify(ar ? 'تعذّر فتح حوار الطباعة — حمّل الملفّ واطبعه.' : 'Could not open the print dialog.', 'error'); break; }
       }
@@ -284,7 +257,7 @@ function FleetShipmentsInner() {
     setBulkProgress('');
   };
 
-  /** طباعةُ بوليصةٍ واحدةٍ من صفّها — نفس ملفِّ التنزيل، إلى الطابعة. */
+  /** Print one waybill from its row: the same file as the download, sent to the printer. */
   const printOne = async (s: FleetShipment) => {
     setDownloadingId(s._id);
     try {
@@ -302,8 +275,7 @@ function FleetShipmentsInner() {
       return n;
     });
 
-  // «تحديد الكل» يخصّ الصفحةَ المعروضة: يضيفها إلى المعلَّم أو يرفعها منه —
-  // ولا يمسح تعليمًا على صفحةٍ أخرى، وإلّا ضاع ما جُمع بضغطةٍ واحدة.
+  // Select all applies to the displayed page: it adds it to or removes it from the selection and never clears ticks on another page, otherwise what was gathered in one click is lost.
   const pageAllPicked = shipments.length > 0 && shipments.every((s) => picked.has(s._id));
   const togglePage = (on: boolean) =>
     setPicked((p) => {
@@ -312,13 +284,12 @@ function FleetShipmentsInner() {
       return n;
     });
 
-  // كم من المعلَّم غائبٌ عن الشاشة الآن — يُقال صراحةً كي يثق المستخدمُ أنّ
-  // بحثَه لم يُلغِ تعليمَه.
+  // How many selected rows are off screen right now, stated so the user trusts that their search did not cancel their selection.
   const pickedOffScreen = pickedRows.filter((s) => !shipments.some((x) => x._id === s._id)).length;
 
   if (loading) return <Spinner />;
 
-  // المجموعتان تُكتبان مرّةً: البطاقةُ تعدُّ ما يفلتره الزرُّ نفسُه.
+  // The two groups are written once: the card counts what the button itself filters.
   const IN_FLIGHT_KEYS = ['loading', 'uploaded', 'on_way'];
   const DONE_KEYS = ['arrived', 'bond_sent', 'bond_received', 'invoiced'];
   const IN_FLIGHT = IN_FLIGHT_KEYS.join(',');
@@ -356,8 +327,7 @@ function FleetShipmentsInner() {
               key: 'filtered',
               label: ar ? 'كل الحمولات حسب الفلتر الحالي' : 'Everything under the current filter',
               hint: String(total),
-              // القائمة مرقّمة، فالتصدير «الشامل» يجب أن يُجلَب من الخادم لا أن
-              // يُبنى من الصفحة المعروضة — وإلا صدّر ٢٥ صفًّا باسم «الكل».
+              // The list is paged, so the full export must be fetched from the server, not built from the displayed page, otherwise it would export 25 rows labelled all.
               resolve: async () => {
                 const qs = new URLSearchParams({ ...filterParams, page: '1', limit: '2000' });
                 const d = await api.get<{ shipments: FleetShipment[] }>(`/api/fleet/shipments?${qs}`);
@@ -374,10 +344,7 @@ function FleetShipmentsInner() {
 
       {error && <ErrorNotice error={error} lang={lang} onRetry={load} />}
 
-      {/* ── والبطاقةُ تُصفّي الجدولَ تحتها ───────────────────────────────────
-          «قيد التنفيذ» ثلاثُ حالاتٍ مجموعة، و«وصلت/مكتملة» أربع — والخادمُ صار
-          يقبل عدّةَ حالاتٍ في الفلتر (`status=a,b,c`) فتُفتَح البطاقةُ على
-          صفوفها كما تُقرأ. */}
+      {/* The card filters the table below. 'In progress' groups three statuses and 'arrived/completed' four; the server now accepts several statuses in the filter (`status=a,b,c`) so the card opens onto its rows as read. */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <StatCard label={ar ? 'إجمالي الحمولات' : 'Total shipments'} value={total} accent="text-[#f37121]"
           onClick={() => { setStatusFilter(''); setPage(1); }} active={!statusFilter}
@@ -393,7 +360,7 @@ function FleetShipmentsInner() {
           active={statusFilter === 'cancelled'} hint={ar ? 'اضغط لعرضها' : 'tap to open'} />
       </div>
 
-      {/* الوجهات الحالية — "عدد السيارات المتّجهة إلى جدة" دون بحث. الضغط يرشح القائمة. */}
+      {/* Current destinations: number of vehicles heading to a city, without searching. Clicking filters the list. */}
       {(stats?.byDestination?.length || 0) > 0 && (
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs font-semibold text-slate-600">{ar ? 'الوجهات الآن:' : 'Destinations now:'}</span>
@@ -440,15 +407,11 @@ function FleetShipmentsInner() {
         </div>
       </div>
 
-      {/* الفترة: نفس العنصر ونفس المعاني المستعملة في تحليل الحمولات وتحليل
-          السيارة — «هذا الشهر» هنا هو «هذا الشهر» هناك حرفيًّا. */}
+      {/* Period: the same control and meanings used in loads analysis and vehicle analysis; 'this month' here is literally 'this month' there. */}
       <PeriodFilter value={period} onChange={setPeriod} lang={ar ? 'ar' : 'en'} />
       <PeriodBanner period={resolvedPeriod} lang={ar ? 'ar' : 'en'} count={total} />
 
-      {/* ── شريطُ المعلَّم ─────────────────────────────────────────────────
-          التعليمُ يعبر البحثَ والترقيم، فيلزم أن يُرى: عددُه، وكم منه غائبٌ
-          عن الشاشة الآن، وقائمتُه بأرقام أوامر النقل لمن يريد التحقّق أو رفعَ
-          واحدةٍ بعينها. وبغير هذا الشريط يظنّ من بحث أنّ تعليمَه ضاع. */}
+      {/* Selection bar. Selection survives search and paging, so it must be visible: its count, how many are off screen now, and the list of transport-order numbers for anyone verifying or removing one. Without it, a user who searched thinks their selection was lost. */}
       {picked.size > 0 && (
         <div className="rounded-xl border-2 border-[#f37121]/40 bg-orange-50 p-3 space-y-2">
           <div className="flex flex-wrap items-center gap-2">
@@ -504,8 +467,7 @@ function FleetShipmentsInner() {
             {[
               ar ? 'رقم أمر النقل' : 'Transport order',
               ar ? 'العميل' : 'Customer',
-              // «من» و«إلى» عمودان: السهمُ في العربيّة يشير يسارًا والنصُّ يجري
-              // يمينًا فيُقرأ عكسَه، وعمودان يُفرَزان ويُفلتَران ويُصدَّران.
+              // From and To are separate columns: an Arabic arrow points left while the text runs right-to-left and reads backwards, and two columns can be sorted, filtered and exported.
               ar ? 'من' : 'From',
               ar ? 'إلى' : 'To',
               ar ? 'اللوحة' : 'Plate',

@@ -11,17 +11,9 @@ import '../ui/widgets.dart';
 import '../ui/export_sheet.dart';
 import 'jp.dart' show JpTaskPanel;
 
-/// ملفُّ موظّف النقل الخفيف — مطابقٌ لصفحة الويب
-/// `/system/b2c/light-transport/[id]`.
-///
-/// ── لماذا ملفٌّ لا سطرٌ في قائمة ────────────────────────────────────────────
-/// القائمةُ تقول أين هو اليوم ولا تقول كيف صار هناك. و«نقلناه من مشروعٍ إلى
-/// مشروع» و«أنزلناه عن المركبة وأركبنا غيره» أسئلةٌ تُسأل بعد شهور — عند خلافٍ
-/// على مخالفةٍ أو أجرةٍ أو عهدة — وخانةٌ تُستبدَل لا تحفظ جوابها.
-///
-/// فهنا: ما هو عليه الآن، وأوامرُ تشغيله من الأحدث، وسجلُّ كلّ نقلٍ بصاحبه
-/// ووقته. وحالتُه تأتي مشتقّةً من الخادم (`workStatusShown`) — تُكتب في القسم
-/// وتغلبها الموارد البشريّةُ حين تقول «أُنهيت خدمتُه».
+/// Light-transport employee profile, matching the web page `/system/b2c/light-transport/[id]`.
+/// A profile rather than a list row: the list says where he is today, not how he got there. "We moved him between projects" and "we took him off the vehicle and seated another" are questions asked months later, over a dispute about a violation, fare or custody, and a field that is overwritten does not keep its answer.
+/// So: his current state, his operating orders newest first, and the log of every transfer with its author and time. His status is derived on the server (`workStatusShown`): written in the section and overridden by HR when it says his service ended.
 class LightTransportProfileScreen extends StatefulWidget {
   final String id;
   const LightTransportProfileScreen({super.key, required this.id});
@@ -37,7 +29,7 @@ String _day(dynamic v) {
   return '${d.day}/${d.month}/${d.year}';
 }
 
-/// أسبابُ قيدِ السجلّ بلغةٍ تُقرأ — لا مفاتيحُ إنجليزيّةٌ في شاشةٍ عربيّة.
+/// Reasons for a register restriction in readable text, not English keys on an Arabic screen.
 const _kindAr = {
   'created': 'أُنشئ السجلّ',
   'project': 'نقلٌ بين المشاريع',
@@ -66,7 +58,7 @@ class _LightTransportProfileScreenState extends State<LightTransportProfileScree
   void initState() {
     super.initState();
     _load();
-    // ما يمسّ القسمَ أو ملفَّ الموارد البشريّة يمسّ ما يُعرَض هنا.
+    // Anything touching the section or the HR file touches what is shown here.
     Live.instance.on('lt:*', _onLive);
     Live.instance.on('hr:employee', _onLive);
     Live.instance.on('b2c:order:upserted', _onLive);
@@ -82,7 +74,7 @@ class _LightTransportProfileScreenState extends State<LightTransportProfileScree
     super.dispose();
   }
 
-  /// «نقل المشروع» — الطريقُ الوحيدُ لتغيير مشروع المندوب، ولمن يملكه وحدَه (كالموقع).
+  /// "Transfer project": the only way to change a rider's project, and only for those who hold it (as on the web).
   Future<void> _transfer(Map<String, dynamic> e) async {
     if (await transferLtProject(context, e)) await _load();
   }
@@ -92,7 +84,7 @@ class _LightTransportProfileScreenState extends State<LightTransportProfileScree
   Future<void> _load() async {
     try {
       final d = await Api.instance.get('/api/light-transport/employees/${widget.id}') as Map<String, dynamic>;
-      // أوردراتُه موزّعةً على مشاريعه شهرًا شهرًا — من الأوردرات نفسِها (كالموقع).
+      // His orders spread across his projects month by month, from the orders themselves (as on the web).
       List months = const [];
       try { months = ((await Api.instance.get('/api/light-transport/employees/${widget.id}/orders'))['months'] as List?) ?? const []; } catch (_) {}
       if (!mounted) return;
@@ -114,7 +106,7 @@ class _LightTransportProfileScreenState extends State<LightTransportProfileScree
     return d == null ? '' : d.toIso8601String().substring(0, 10);
   }
 
-  /// صفوفُ التصدير — البنودُ نفسُها التي يصدّرها الموقع وبترتيبها.
+  /// Export rows: the same items the web exports, in its order.
   List<Map<String, dynamic>> _flat(Map<String, dynamic> e) {
     final kind = _s(e, 'staffKind');
     Map<String, dynamic>? m(String k) => (e[k] as Map?)?.cast<String, dynamic>();
@@ -165,7 +157,7 @@ class _LightTransportProfileScreenState extends State<LightTransportProfileScree
     return AppScaffold(
       title: Text(e == null ? tr('ملف الموظف', 'Employee') : _s(e, 'name')),
       actions: [
-        // تصديرُ ملفّ الموظف (البند · القيمة) — كزرّ «تصدير» في الموقع.
+        // Export of the employee file (item, value), like the web export button.
         if (e != null)
           ExportButton(
             fileName: 'lt-${_s(e, 'idNumber')}',
@@ -187,7 +179,7 @@ class _LightTransportProfileScreenState extends State<LightTransportProfileScree
               : RefreshIndicator(
                   onRefresh: _load,
                   child: ListView(padding: const EdgeInsets.all(14), children: [
-                    // ── الترويسة ───────────────────────────────────────────
+                    // Header.
                     AppCard(
                       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                         Text(_s(e, 'name'), style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
@@ -197,7 +189,7 @@ class _LightTransportProfileScreenState extends State<LightTransportProfileScree
                           Chip2(_s(e, 'staffKind') == 'rep' ? 'مندوب' : 'إداري',
                               _s(e, 'staffKind') == 'rep' ? T.orange : T.navy),
                           if (_s(e, 'vehiclePlate').isNotEmpty) Chip2(_s(e, 'vehiclePlate'), T.navy),
-                          // ومن أين جاء خبرُ الحالة — فلا يُسأل «مَن غيّرها؟».
+                          // Where the status came from, so nobody has to ask who changed it.
                           if (_s(e, 'statusSource') == 'hr')
                             Chip2(tr('الحالة من الموارد البشرية', 'status from HR'), T.inkFaint),
                           if (e['hrLinked'] == false)
@@ -216,7 +208,7 @@ class _LightTransportProfileScreenState extends State<LightTransportProfileScree
                         _row(tr('الجوال', 'Phone'), _s(e, 'phone'), mono: true),
                         _row(tr('تاريخ التعيين', 'Hire date'), _day(e['hireDate']), mono: true),
                         _row(tr('نوع التعاقد', 'Contract'), _s(e, 'contractTypeAr')),
-                        // الشركةُ لها أكثرُ من سجلّ، ومن ليس على كفالتنا لا سجلَّ له.
+                        // A company has more than one register, and someone not on our sponsorship has none.
                         _row(tr('رقم السجل (الكفالة)', 'Register'), _s(e, 'registerNumber'), mono: true),
                       ]),
                     ),
@@ -252,7 +244,7 @@ class _LightTransportProfileScreenState extends State<LightTransportProfileScree
                     ],
                     const SizedBox(height: 10),
 
-                    // ── أوامرُ التشغيل: واحدٌ سارٍ والباقي مُغلَق ────────────
+                    // Operating orders: one is active and the rest are closed.
                     AppCard(
                       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                         Row(children: [
@@ -297,9 +289,7 @@ class _LightTransportProfileScreenState extends State<LightTransportProfileScree
                     ),
                     const SizedBox(height: 10),
 
-                    // ── الأوردرات حسب المشروع ─────────────────────────────────
-                    // المندوبُ قد يعمل في أكثرَ من مشروعٍ في الشهر، والأوردرُ يبقى على
-                    // مشروعه يومَ كُتب — فلا يتحرّك ماضيه إذا نُقل.
+                    // Orders by project. A rider may work on more than one project in a month, and an order stays on the project it was written under, so its past does not move if he is transferred.
                     AppCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                       Text(tr('الأوردرات حسب المشروع', 'Orders by project'), style: const TextStyle(fontWeight: FontWeight.w800)),
                       const SizedBox(height: 6),
@@ -317,10 +307,7 @@ class _LightTransportProfileScreenState extends State<LightTransportProfileScree
                     ])),
                     const SizedBox(height: 10),
 
-                    // ── سجلُّ النقل ─────────────────────────────────────────
-                    // كلُّ تغييرٍ في مشروعٍ أو فرعٍ أو مشرفٍ أو مركبةٍ أو سكنٍ
-                    // أو حالةٍ يُقيَّد بصاحبه ووقته — وهو ما يُقرأ حين يُسأل
-                    // «إمتى نقلناه؟».
+                    // Transfer log. Every change of project, branch, supervisor, vehicle, housing or status is recorded with its author and time; this is what is read when asked "when did we move him?".
                     AppCard(
                       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                         Text(tr('سجل الملف', 'File history'), style: const TextStyle(fontWeight: FontWeight.w800)),
@@ -380,11 +367,10 @@ class _LightTransportProfileScreenState extends State<LightTransportProfileScree
   }
 }
 
-/// مَن يملك «نقل المشروع» — نائبُ مدير القطاع ومديرُ القسم والسوبر أدمن والأدمن (وأهلُ المال).
+/// Who holds "transfer project": deputy sector manager, section manager, super admin, admin (and finance roles).
 const ltTransferRoles = ['super_admin', 'admin', 'b2c_manager', 'b2c_deputy', 'cfo', 'accounting_manager', 'accountant'];
 
-/// «نقل المشروع» — من ملفّ المندوب ومن قائمة موظفي النقل الخفيف. يُرجع true إن نُقل.
-/// ومن يومه تُكتب أوردراتُه على مشروعه الجديد، ويظهر عند مديري ذلك المشروع في الحال.
+/// "Transfer project", from the rider's profile and from the light-transport employee list. Returns true if moved. From then his orders are written on the new project and show at that project's managers at once.
 Future<bool> transferLtProject(BuildContext context, Map<String, dynamic> e) async {
   String s(String k) => (e[k] ?? '').toString();
   final projects = (await loadLookupNamesHr('lt_project')).where((p) => p != s('projectAr')).toList();

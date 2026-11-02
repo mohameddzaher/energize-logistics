@@ -1,11 +1,7 @@
 'use client';
 /**
- * بلاغُ Media Go صفحةً كاملة — /system/b2c/mediago-complaints/[id].
- *
- * هي ما يفتحه حسابُ Media Go حين يضغط بلاغًا (لا نافذة): معرضٌ كبير، وكتلُ
- * المعلومات، والحالةُ والمحادثةُ والمسار بجانبها، وتنزل تحت بعضها على الهاتف.
- * ويصلها موظّفونا أيضًا من «فتح كصفحة». نقاطُها نقاطُ القائمة نفسُها — والصفحةُ
- * فرعٌ منها في خريطة الصفحات (genPageApis)، وفي سياج الحساب المحصور.
+ * A Media Go complaint as a full page, /system/b2c/mediago-complaints/[id].
+ * What a Media Go account opens when it clicks a complaint (no dialog): a large gallery, info blocks, with status, conversation and path beside them, stacked on phones. Our staff reach it through the open-as-page action. Its endpoints are the list's own; the page is a child of it in the page map (genPageApis) and in the restricted-account fence.
  */
 import { useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';

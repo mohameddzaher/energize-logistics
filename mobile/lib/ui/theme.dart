@@ -9,7 +9,7 @@ class T {
   static const orange = Color(0xFFF37121);
   static const canvas = Color(0xFFF4F6FA);
   static const card = Colors.white;
-  // أغمقُ درجةً (٢٠٢٦/١٠/٢٣) — «الكلام باهت والفاصل لا يُرى»، كلوحات الموقع ([data-dash]).
+  // One shade darker so text is not faint and dividers are visible, like the web dashboards ([data-dash]).
   static const line = Color(0xFFCBD5E1);
   static const ink = Color(0xFF0F172A);
   static const inkSoft = Color(0xFF475569);
@@ -47,8 +47,7 @@ class T {
         elevation: 0,
         titleTextStyle: GoogleFonts.ibmPlexSansArabic(fontSize: 18, fontWeight: FontWeight.w700, color: Colors.white),
       ),
-      // خلفية كحلي + نص أبيض دايمًا — بدون foregroundColor كانت الأزرار الـ tonal
-      // (زي «تأكيد الاطلاع») بتاخد نص غامق على خلفية كحلي فيختفي.
+      // Navy background with always-white text; without foregroundColor the tonal buttons (e.g. acknowledge) took dark text on navy and vanished.
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
           backgroundColor: navy,
@@ -70,7 +69,7 @@ class T {
         focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: navy, width: 1.6)),
         labelStyle: GoogleFonts.ibmPlexSansArabic(color: inkSoft),
       ),
-      // مقبض سحب + حواف مدوّرة لكل الشيتات → المستخدم يقدر يقفلها بسهولة.
+      // Drag handle and rounded corners on all sheets so users can dismiss them easily.
       bottomSheetTheme: const BottomSheetThemeData(
         showDragHandle: true,
         dragHandleColor: line,
@@ -78,7 +77,7 @@ class T {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
         clipBehavior: Clip.antiAlias,
       ),
-      // قوائم منسدلة أوضح (خلفية بيضاء + حواف مدوّرة).
+      // Clearer dropdowns (white background, rounded corners).
       dropdownMenuTheme: DropdownMenuThemeData(
         menuStyle: MenuStyle(
           backgroundColor: WidgetStateProperty.all(Colors.white),

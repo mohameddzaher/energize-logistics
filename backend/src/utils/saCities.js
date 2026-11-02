@@ -1,11 +1,6 @@
 /**
- * saCities — turning a live GPS point into "السيارة في جدة الآن".
- *
- * The Location Solutions feed gives exact coordinates; what the operations team
- * thinks in is CITIES. Each entry is a city centre + a radius that covers its
- * metro/port/industrial sprawl, so `cityForPoint` answers "which city is this
- * truck inside right now?" and `sameCity` matches that against the free-text
- * toCity typed on a shipment (hamza/ta-marbuta variants folded: جده == جدة).
+ * saCities: turning a live GPS point into "the truck is in Jeddah now".
+ * The Location Solutions feed gives exact coordinates; what the operations team thinks in is CITIES. Each entry is a city centre + a radius that covers its metro/port/industrial sprawl, so `cityForPoint` answers "which city is this truck inside right now?" and `sameCity` matches that against the free-text toCity typed on a shipment (hamza/ta-marbuta variants folded, so the two spellings of Jeddah match).
  */
 
 const CITIES = [
@@ -22,7 +17,7 @@ const CITIES = [
   { name: 'الجبيل', lat: 27.0046, lng: 49.646, radiusKm: 30 },
   { name: 'الأحساء', lat: 25.3833, lng: 49.5866, radiusKm: 35 },
   { name: 'الخرج', lat: 24.1483, lng: 47.305, radiusKm: 20 },
-  { name: 'القصيم', lat: 26.326, lng: 43.975, radiusKm: 35 }, // بريدة/عنيزة
+  { name: 'القصيم', lat: 26.326, lng: 43.975, radiusKm: 35 }, // Buraidah/Unaizah
   { name: 'حائل', lat: 27.5114, lng: 41.7208, radiusKm: 25 },
   { name: 'تبوك', lat: 28.3838, lng: 36.555, radiusKm: 25 },
   { name: 'أبها', lat: 18.2465, lng: 42.5117, radiusKm: 20 },
@@ -44,7 +39,7 @@ const CITIES = [
   { name: 'الرس', lat: 25.8697, lng: 43.4977, radiusKm: 15 },
 ];
 
-// المسافة بالكيلومتر بين نقطتين (haversine).
+// Distance in kilometres between two points (haversine).
 const distanceKm = (lat1, lng1, lat2, lng2) => {
   const R = 6371;
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
@@ -65,9 +60,7 @@ const cityForPoint = (lat, lng) => {
   return best ? best.city : null;
 };
 
-// Free-text city comparison: fold hamza forms, ta marbuta and alif maqsura so
-// "جده" matches "جدة" and "مكه" matches "مكة المكرمة" (prefix containment both
-// ways covers "الدمام" vs "الدمام - الميناء").
+// Free-text city comparison: fold hamza forms, ta marbuta and alif maqsura so the two spellings of Jeddah match and a short Mecca name matches the full one (prefix containment both ways covers a city name versus the same name with a port suffix).
 const fold = (s) => String(s || '')
   .toLowerCase().trim()
   .replace(/[أإآ]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه')

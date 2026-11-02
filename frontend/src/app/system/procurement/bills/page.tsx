@@ -49,11 +49,8 @@ export default function VendorBillsPage() {
   useSocket('procurement:bill', useCallback(() => load(), [load]));
 
   const total = (Number(form.subtotal) || 0) + (Number(form.vatAmount) || 0);
-  // ── التعديل ───────────────────────────────────────────────────────────────
-  // كانت الفاتورة تُسجَّل وتُسدَّد وتُحذف ولا تُصحَّح: رقمٌ كُتب خطأً علاجُه حذفُ
-  // الفاتورة كلّها. والتعديل في الخادم يعكس قيد الذمم الدائنة ثم يُرحِّله من
-  // جديد، فلا يُقفَل الشهر بميزانٍ لا يطابق فواتيره. والمورّد لا يُغيَّر: ذاك
-  // التزامٌ لجهةٍ أخرى، يُحذف ويُسجَّل باسمها.
+  // Editing: a bill could be recorded, paid and deleted but not corrected, so a wrong number meant deleting the whole bill.
+  // The server reverses the payables entry and reposts it, so a closed month still matches its bills. The vendor cannot be changed since that is an obligation to another party; delete and re-record under the right one.
   const [editing, setEditing] = useState<VendorBill | null>(null);
   const openCreate = () => { setEditing(null); setForm({ vendor: '', vendorInvoiceNumber: '', subtotal: 0, vatAmount: 0, billDate: today(), dueDate: '', category: '', notes: '' }); setShowModal(true); };
   const openEdit = (b: VendorBill) => {
@@ -99,8 +96,7 @@ export default function VendorBillsPage() {
     { header: tx.due, key: 'dueDate', width: 14, transform: (v) => fmtDate(v) },
     { header: tx.status, key: 'status', width: 14, transform: (v) => statusLabel(v) },
   ];
-  // البحثُ وحالةُ الفاتورة يُطبَّقان على الخادم، فما في الذاكرة هو نتيجة الفلتر لا
-  // السجلّ كلّه؛ ولذلك يُجلَب «الكلّ» من جديدٍ بلا معاملاتٍ بدل تصدير المعروض باسمه.
+  // Search and bill status are applied on the server, so the in-memory list is a filter result, not the full record; "all" refetches without params instead of exporting the visible rows under that name.
   const hasActiveFilters = !!(search.trim() || statusF);
   const fetchAllForExport = async () => {
     const d = await api.get<{ bills: VendorBill[] }>('/api/procurement/bills');

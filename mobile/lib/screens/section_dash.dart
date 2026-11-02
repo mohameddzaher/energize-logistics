@@ -7,8 +7,7 @@ import '../ui/search_field.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 
-/// لوحة قسم عامة — spec-driven: كل قسم يعرّف endpoint + بطاقات أرقام +
-/// توزيعات (breakdowns) + قوائم مختصرة، والشاشة ترسمها بنفس هوية التطبيق.
+/// Generic section dashboard, spec-driven: each section defines an endpoint + number cards + breakdowns + short lists, and the screen draws them in the app's identity.
 
 num _dig(Map<String, dynamic> d, String path) {
   dynamic cur = d;
@@ -27,13 +26,12 @@ class DashStat {
   final IconData icon;
   final Color color;
   final bool money;
-  /// العقدةُ التي يفتحها الضغطُ — تُضمّ إلى الفلاتر المختارة وتُسلَّم إلى
-  /// `DashSpec.onDrill` (شاشةٌ كاملة). وبدونها تُفتَح ورقةُ المؤشّرات القديمة.
+  /// The node opened by a tap: joined with the selected filters and handed to `DashSpec.onDrill` (a full screen). Without it, the old indicators sheet opens.
   final Map<String, String>? drill;
   const DashStat(this.ar, this.en, this.path, this.icon, this.color, {this.money = false, this.drill});
 }
 
-/// توزيع حسب الحالة: قائمة صفوف {_id|key, count} تتحول إلى شرائح ملونة.
+/// Distribution by status: a list of rows {_id|key, count} turned into colored chips.
 class DashBreakdown {
   final String ar, en, path;
   final String idKey, countKey;
@@ -41,27 +39,25 @@ class DashBreakdown {
   const DashBreakdown(this.ar, this.en, this.path, {this.idKey = '_id', this.countKey = 'count', this.labels});
 }
 
-/// قائمة مختصرة (أحدث العناصر): تعرض عنوانًا وسطرًا فرعيًا من كل صف.
+/// Short list (latest items): shows a title and a subtitle line from each row.
 class DashList {
   final String ar, en, path;
   final String Function(Map<String, dynamic>) title;
   final String Function(Map<String, dynamic>)? subtitle;
-  /// ما يفتحه الضغطُ على السطر — وبدونه تُعرَض تفاصيلُه كما هي.
-  /// (لوحةُ الأفراد: المشروعُ يفتح مناديبَه في سجلّ الموظّفين — كالموقع.)
+  /// What a tap on the line opens; without it, its details are shown as they are.
+  /// (Individuals dashboard: a project opens its reps in the employee register, like the site.)
   final void Function(BuildContext context, Map<String, dynamic> row)? onTap;
-  /// كـ`DashStat.drill` لسطرٍ: العقدةُ من الصفّ، تُفتَح عبر `DashSpec.onDrill`.
+  /// Like `DashStat.drill` for a line: the node comes from the row, opened via `DashSpec.onDrill`.
   final Map<String, String> Function(Map<String, dynamic> row)? drill;
   const DashList(this.ar, this.en, this.path, this.title, {this.subtitle, this.onTap, this.drill});
 }
 
-/// فلترٌ متعدّدُ الاختيار فوق اللوحة — خياراتُه وعدّاداتُها من جواب اللوحة نفسِه
-/// (`optionsPath` قائمةُ `{value, label?, count}`)، والمختارُ يُرسَل `key=a,b`.
-/// كلُّ رقمٍ في اللوحة يأتي من الخادم تحت الفلاتر، فلا يُحسب شيءٌ هنا.
+/// Multi-select filter above the dashboard. Its options and counts come from the dashboard's own response (`optionsPath` is a list of `{value, label?, count}`), and the selection is sent as `key=a,b`. Every number on the dashboard comes from the server under the filters, so nothing is computed here.
 class DashFilter {
   final String key, ar, en, optionsPath;
-  /// تسمياتٌ ثابتةٌ لقيمٍ معروفة (نوعُ الدفع، الاستحقاق…) — وإلّا `label` الخيار.
+  /// Fixed labels for known values (payment kind, due date, ...); otherwise the option's `label`.
   final Map<String, (String, String)>? labels;
-  /// قائمةٌ من ثلاثة خيارات لا تحتاج بحثًا.
+  /// A three-option list needs no search.
   final bool searchable;
   const DashFilter(this.key, this.ar, this.en, this.optionsPath, {this.labels, this.searchable = true});
 }
@@ -72,16 +68,15 @@ class DashSpec {
   final List<DashStat> stats;
   final List<DashBreakdown> breakdowns;
   final List<DashList> lists;
-  /// بطاقةٌ خاصّةٌ فوق الأرقام (مثلًا: إجماليُّ الطلبات بمشاريعه) — تُبنى من الجواب.
+  /// A special card above the numbers (e.g. total orders with their projects), built from the response.
   final Widget Function(Map<String, dynamic> data)? header;
-  /// بطاقةٌ تحت الأرقام — لما يُقرأ بعدها (مثلًا: تقريرُ تحقيق المناديب تحت أرقام
-  /// الموظفين والمركبات في لوحة B2C).
+  /// A card below the numbers, for what is read after them (e.g. the reps achievement report under the staff and vehicle numbers on the B2C dashboard).
   final Widget Function(Map<String, dynamic> data)? afterStats;
-  /// فلاترُ فوق اللوحة — تُرسَل مع النداء، والأرقامُ كلُّها تحتها.
+  /// Filters above the dashboard; sent with the call, and all the numbers sit under them.
   final List<DashFilter> filters;
-  /// ما يفتحه رقمٌ له `drill`: يُعطى العنوانَ والفلاترَ المختارةَ مضمومةً إلى العقدة.
+  /// What a number with a `drill` opens: given the title and the selected filters joined to the node.
   final void Function(BuildContext context, String title, Map<String, String> query)? onDrill;
-  /// كـ`afterStats`، ومعه فاتحُ العقدة — لجدولٍ خاناتُه أرقامٌ تُفتَح.
+  /// Like `afterStats`, plus the node opener, for a table whose cells are numbers that open.
   final Widget Function(Map<String, dynamic> data, void Function(String title, Map<String, String> node) open)? afterStatsDrill;
   const DashSpec({
     required this.arTitle,
@@ -111,8 +106,7 @@ class _SectionDashScreenState extends State<SectionDashScreen> {
   bool _loading = true;
   String? _error;
   void Function()? _onLive;
-  // الفلاترُ المختارة — والعدّادُ يمنع ردًّا قديمًا من الكتابة فوق أحدث
-  // (أبطأُ الردود غيرُ المفلتَر الذي أُطلق أوّلَ الفتح).
+  // Selected filters; the counter stops a stale reply from overwriting a newer one (the slowest reply is the unfiltered one fired at open).
   final Map<String, Set<String>> _sel = {};
   int _seq = 0;
 
@@ -150,7 +144,7 @@ class _SectionDashScreenState extends State<SectionDashScreen> {
     }
   }
 
-  /// الفلاترُ المختارةُ مفصولةً بفواصل — كما يقرؤها الخادم.
+  /// Selected filters joined by commas, as the server reads them.
   Map<String, String> get _selQuery => {
         for (final e in _sel.entries)
           if (e.value.isNotEmpty) e.key: e.value.join(','),
@@ -168,7 +162,7 @@ class _SectionDashScreenState extends State<SectionDashScreen> {
     return s.isEmpty ? v : s;
   }
 
-  // قائمةُ الفلتر: بحثٌ واختيارٌ متعدّد، وبجانب كلّ خيارٍ عددُه تحت الفلاتر الأخرى.
+  // Filter list: search and multi-select, with each option's count under the other filters beside it.
   void _openFilter(DashFilter f) {
     final opts = _rows(f.optionsPath);
     final picked = {...(_sel[f.key] ?? <String>{})};
@@ -279,7 +273,7 @@ class _SectionDashScreenState extends State<SectionDashScreen> {
     if (cur is List) {
       return List<Map<String, dynamic>>.from(cur.whereType<Map>().map((e) => Map<String, dynamic>.from(e)));
     }
-    // خرائط عدّ من نمط {status: count} أو {stage: {count, value}} تتحول إلى صفوف.
+    // Count maps of the form {status: count} or {stage: {count, value}} turned into rows.
     if (cur is Map) {
       return cur.entries
           .map((e) => <String, dynamic>{
@@ -296,7 +290,7 @@ class _SectionDashScreenState extends State<SectionDashScreen> {
       final s = n.toStringAsFixed(0).replaceAllMapped(RegExp(r'(\d)(?=(\d{3})+$)'), (m) => '${m[1]},');
       return '$s ${tr('ر.س', 'SAR')}';
     }
-    // فاصلُ الآلاف للأعداد كلّها لا للمال وحدَه: ١٢٤٥٠ تُقرأ 12,450.
+    // Thousands separator for all counts, not money only: 12450 reads as 12,450.
     final whole = n.truncateToDouble() == n;
     final parts = n.toStringAsFixed(whole ? 0 : 1).split('.');
     final head = parts[0].replaceAllMapped(RegExp(r'(\d)(?=(\d{3})+$)'), (m) => '${m[1]},');
@@ -312,8 +306,7 @@ class _SectionDashScreenState extends State<SectionDashScreen> {
     return s;
   }
 
-  // شيت بطاقة رقم: القيمة كبيرة + كل مؤشرات اللوحة في سياق واحد (المختار مُبرَز)
-  // بدل الشيت الفاضي القديم.
+  // Number-card sheet: the value large plus all the dashboard indicators in one context (the selected one highlighted), instead of the old empty sheet.
   void _openStatDetails(int index) {
     final spec = widget.spec;
     final sel = spec.stats[index];
@@ -373,7 +366,7 @@ class _SectionDashScreenState extends State<SectionDashScreen> {
     );
   }
 
-  // شيت تفاصيل لأي صف/كارت — يعرض كل الحقول القابلة للقراءة مفتاح: قيمة.
+  // Details sheet for any row/card: shows every readable field as key: value.
   void _openDetails(String title, Map<String, dynamic> row, {String? big}) {
     final entries = row.entries.where((e) {
       final k = e.key;
@@ -386,7 +379,7 @@ class _SectionDashScreenState extends State<SectionDashScreen> {
       isScrollControlled: true,
       builder: (c) => SafeArea(
         child: ConstrainedBox(
-          // نحبس ارتفاع الشيت ونخليه قابل للتمرير — عشان الصفوف الكتيرة ماتعملش overflow.
+          // Cap the sheet height and make it scrollable, so many rows do not overflow.
           constraints: BoxConstraints(maxHeight: MediaQuery.of(c).size.height * 0.75),
           child: SingleChildScrollView(
             child: Padding(

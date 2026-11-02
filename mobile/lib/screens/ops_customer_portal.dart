@@ -2,10 +2,7 @@ import 'package:flutter/material.dart';
 import '../services/lang.dart';
 import '../ui/portal_account_card.dart';
 
-/// «حساب البوابة» من سطر العميل في سجلّ العملاء — نظيرُ زرّ المفتاح في
-/// CustomersRegister على الويب: نافذةٌ فيها PortalAccountCard لسجلّ
-/// `shipment_order_customer` (الإنشاءُ والإيقافُ والحذفُ لمديري الحسابات وحدَهم،
-/// والبطاقةُ نفسُها تقرّر ذلك).
+/// Portal account from a customer row in the customer register, counterpart of the key button in CustomersRegister on the web: a dialog with PortalAccountCard for the `shipment_order_customer` record (create, suspend and delete are for account managers only, and the card itself decides that).
 Future<bool> openCustomerPortalLogin(BuildContext context, Map<String, dynamic> row) async {
   await showModalBottomSheet(
     context: context,

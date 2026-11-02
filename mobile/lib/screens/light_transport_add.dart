@@ -5,14 +5,10 @@ import '../ui/file_upload.dart';
 import '../ui/lookup_field.dart';
 import '../ui/theme.dart';
 
-/// إضافةُ موظّفٍ إلى سجلّ النقل الخفيف — ومعها ملفُّه في الموارد البشريّة.
-///
-/// الخادمُ (`createEmployee` في lightTransportController) يربطه بملفّه إن كانت
-/// هويّتُه في الموارد البشريّة، وإلّا يُنشئ له ملفًّا في قسم B2C ويُشعِرهم
-/// ليُكملوه. ومستنداتُه تُحفَظ في ذلك الملفّ: اسمٌ لكلّ مستند، وقد تتعدّد.
-/// مطابقٌ لنموذج «إضافة موظف» في `/system/b2c/light-transport`.
-///
-/// يردّ `true` إن حُفظ.
+/// Add an employee to the light-transport register, together with his HR file.
+/// The server (`createEmployee` in lightTransportController) links him to his HR file if his identity is there, otherwise creates a file in the B2C section and notifies them to complete it. His documents are saved in that file: a name per document, possibly several.
+/// Matches the "add employee" form at `/system/b2c/light-transport`.
+/// Returns `true` if saved.
 Future<bool?> showLtAddEmployee(BuildContext context) => showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
@@ -21,7 +17,7 @@ Future<bool?> showLtAddEmployee(BuildContext context) => showModalBottomSheet<bo
       builder: (_) => const _LtAddEmployeeSheet(),
     );
 
-/// سطرُ مستند: اسمُه (ومتحكّمُه يعيش مع السطر) والملفُّ المختار.
+/// A document row: its name (the controller lives with the row) and the chosen file.
 class _Doc {
   final title = TextEditingController();
   PickedFile? file;
@@ -76,7 +72,7 @@ class _LtAddEmployeeSheetState extends State<_LtAddEmployeeSheet> {
     if (f == null || !mounted) return;
     setState(() {
       doc.file = f;
-      // الاسمُ الفارغ يُملأ من اسم الملفّ بلا امتداده — ويبقى قابلًا للتعديل.
+      // An empty name is filled from the file name without its extension and stays editable.
       if (doc.title.text.trim().isEmpty) doc.title.text = f.fileName.replaceFirst(RegExp(r'\.[^.]+$'), '');
     });
   }
@@ -153,7 +149,7 @@ class _LtAddEmployeeSheetState extends State<_LtAddEmployeeSheet> {
             Expanded(child: _dateField(tr('تاريخ الميلاد', 'Date of birth'), _birthDate, birth: true)),
           ]),
           gap,
-          // القيمُ الثابتةُ قوائمُ مُدارةٌ من إعدادات القسم، وتُخزَّن بنصِّها العربيّ.
+          // Fixed values are lists managed from the section settings and stored with their Arabic text.
           Row(children: [
             Expanded(child: LookupField(type: 'lt_project', controller: _project, label: tr('المشروع', 'Project'))),
             const SizedBox(width: 10),
@@ -175,7 +171,7 @@ class _LtAddEmployeeSheetState extends State<_LtAddEmployeeSheet> {
             )),
           ]),
           const SizedBox(height: 14),
-          // ── مستنداتُ الموظّف ──────────────────────────────────────────────
+          // Employee documents.
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(10),
@@ -205,7 +201,7 @@ class _LtAddEmployeeSheetState extends State<_LtAddEmployeeSheet> {
                     IconButton(
                       visualDensity: VisualDensity.compact, tooltip: tr('إزالة', 'Remove'),
                       icon: const Icon(Icons.close, size: 18, color: T.inkFaint),
-                      // المتحكّمُ يُتلَف بعد أن يُرفَع حقلُه عن الشاشة، لا قبله.
+                      // The controller is disposed after its field leaves the screen, not before.
                       onPressed: () { setState(() => _docs.remove(d)); WidgetsBinding.instance.addPostFrameCallback((_) => d.title.dispose()); },
                     ),
                   ]),

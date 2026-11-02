@@ -1,20 +1,7 @@
 /**
- * reportSources — كل نوع تقرير، ومن أين يجمع بياناته.
- *
- * One builder per SUBJECT (عربية، سائق، عميل، مورد، موظف، قسم). Each builder
- * returns the same shape:
- *
- *   { title, subtitle, meta, blocks[] }
- *
- * …which reportBuilder turns into a PDF, and which the frontend also renders as
- * an on-screen preview. That is the whole point of the split: the report is
- * DESCRIBED once and consumed twice, so what you see on screen is exactly what
- * comes out of the printer, on the web and on the phone alike.
- *
- * Adding a new subject = adding one entry to SUBJECTS with an `options` (what
- * can be reported on) and a `build` (the report itself). Nothing else in the
- * system needs to change — the routes, the report centre page and the mobile
- * screen are all driven by this list.
+ * reportSources: each report type and where it gathers data.
+ * One builder per SUBJECT returns { title, subtitle, meta, blocks[] }, which reportBuilder renders to PDF and the frontend renders as preview, so the report is described once and consumed twice.
+ * A new subject is one entry in SUBJECTS with `options` and `build`.
  */
 const { money, num, dt, dtm, pct } = require('./reportBuilder');
 const { startOfDay, endOfDay } = require('../utils/companyDay');
@@ -23,7 +10,7 @@ const {
   SHIPMENT_STATUS_AR, EMPLOYMENT_STATUS_AR, statusLabel,
 } = require('../config/constants');
 const { nameKey, nameRegex } = require('../utils/nameKey');
-// صيغةُ عرض اللوحة واحدةٌ في النظام كلِّه — راجع `utils/plateKey`.
+// The plate display format is the same across the whole system; see utils/plateKey.
 const { formatPlate, flexSpaceRegex: flexPlate } = require('../utils/plateKey');
 
 const COMPANY = 'تنشيط للخدمات اللوجستية · Energize Logistics';
@@ -32,27 +19,19 @@ const T = (ar, en, lang) => (lang === 'en' ? en : ar);
 // A period every builder shares. Defaults to the last 12 months, which is the
 // span most of these questions are actually asked over.
 /**
- * ── الفترةُ تُسأل بالطريقة التي يُسأل بها ────────────────────────────────────
- *
- * كانت خانتين: «من» و«إلى». ومَن يريد يومًا بعينه يكتب التاريخ مرّتين، ومَن
- * يريد شهرًا يحسب أوّلَه وآخرَه بيده — وآخرُ الشهر ليس رقمًا واحدًا (٢٨ · ٢٩ ·
- * ٣٠ · ٣١)، فمن كتب ٣٠ لفبراير أخذ شهرًا ناقصًا ولم يعرف. والسؤالُ الحقيقيّ
- * «يوم كذا» أو «شهر كذا» أو «هذا العام».
- *
- * فالفترةُ تُطلَب باسمها (`period=this_month`) أو بيومها (`day=YYYY-MM-DD`) أو
- * بشهرها (`month=YYYY-MM`)، والحدّان يُحسبان هنا وحدَهما — فلا تختلف شاشتان
- * في معنى «الشهر الماضي»، ولا يُكتب الحسابُ مرّةً في كلّ تقرير.
+ * The period is asked the way people ask it.
+ * Two from/to fields made users type a date twice for one day, or compute month ends by hand (28, 29, 30, 31), so a wrong end date silently shortened the month. A period is now requested by name (period=this_month), by day (day=YYYY-MM-DD) or by month (month=YYYY-MM), and both bounds are computed here only, so screens agree on what last month means.
  */
 const PERIOD_PRESETS = ['today', 'yesterday', 'this_week', 'this_month', 'last_month', 'this_quarter', 'this_year', 'last_year', 'last_12m', 'all'];
 
-/** أوّلُ الشهر وآخرُه من «YYYY-MM» — واليومُ صفرٌ من التالي هو آخرُ هذا. */
+/** First and last instant of a month from YYYY-MM; day zero of the next month is the last day of this one. */
 const monthBounds = (m) => {
   const [y, mo] = String(m).split('-').map(Number);
   if (!y || !mo) return null;
   return { from: `${m}-01`, to: `${m}-${String(new Date(y, mo, 0).getDate()).padStart(2, '0')}` };
 };
 
-/** اسمُ الفترة → حدّاها بتقويم الرياض. */
+/** Period name to its two bounds in the Riyadh calendar. */
 function presetBounds(preset) {
   const key = (d) => {
     const p = (n) => String(n).padStart(2, '0');
@@ -71,14 +50,14 @@ function presetBounds(preset) {
     case 'this_year': return { from: key(new Date(y, 0, 1)), to: key(new Date(y, 11, 31)) };
     case 'last_year': return { from: key(new Date(y - 1, 0, 1)), to: key(new Date(y - 1, 11, 31)) };
     case 'last_12m': { const d = new Date(now); d.setFullYear(d.getFullYear() - 1); return { from: key(d), to: key(now) }; }
-    // «الكلّ» مخرجٌ صريحٌ من كلّ مدى: من يسأل عن تاريخ المركبة كلِّه يسأله.
+    // All is an explicit escape from every range: someone asking for a vehicle's full history gets it.
     case 'all': return { from: '2000-01-01', to: key(now) };
     default: return null;
   }
 }
 
 function resolvePeriod(query = {}) {
-  // اسمُ الفترة أو يومُها أو شهرُها — ثمّ «من/إلى» لمن أراد مدًى لا اسمَ له.
+  // Period name, day or month first, then from/to for a range that has no name.
   const named = query.period && PERIOD_PRESETS.includes(String(query.period))
     ? presetBounds(String(query.period))
     : null;
@@ -87,10 +66,8 @@ function resolvePeriod(query = {}) {
   const picked = named || day || month;
   if (picked) { query = { ...query, from: picked.from, to: picked.to }; }
 
-  // ── الحدُّ بتوقيت الرياض لا بتوقيت الخادم ──────────────────────────────────
-  // `new Date('2026-01-01T00:00:00')` بلا منطقةٍ تُقرأ بتوقيت الجهاز الذي
-  // يشغّل الخادم: نتيجةٌ على حاسوب المطوّر وأخرى على الخادم، وكلتاهما ليست
-  // منتصفَ ليل الرياض. فيُبنى الحدُّ من تقويم الشركة صراحةً.
+  // Bounds use Riyadh time, not server time.
+  // `new Date('2026-01-01T00:00:00')` with no zone is read in the host machine's zone, so developer and server results differ and neither is Riyadh midnight. The bound is built explicitly from the company calendar.
   const to = (query.to && endOfDay(query.to)) || new Date();
   const from = (query.from && startOfDay(query.from))
     || new Date(new Date(to).setFullYear(to.getFullYear() - 1));
@@ -115,19 +92,9 @@ const inRange = (v, from, to) => {
   return d >= from && d <= to;
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// 1) تقرير مركبة — one truck, everything about it
-// ─────────────────────────────────────────────────────────────────────────────
-// Our trucks live in three places at once: Location Solutions has the telemetry
-// and the manufacturer service plan, Fleet Management has the loads and the
-// money they earned, and the workshop/asset registry has the tires and repairs.
-// Nothing links them by id — the join is the plate. So the report joins on the
-// normalised plate digits and says clearly which sources it actually found.
-//
-// ── والمصدر الثالث: سجلّ المركبات ───────────────────────────────────────────
-// وهو الأوسع: ٣٣٥ مركبةً، منها ٢٧٣ لا أثر لها في التتبّع ولا في الأسطول —
-// دراجاتٌ وسيّاراتُ إدارات. وكان التقرير يعرف مصدرين فقط، فيردّ على ثلاثة
-// أرباع السجلّ «لا توجد بيانات» وهي بياناتٌ كاملة أمام عينَي من يطلبها.
+// 1) Vehicle report: one truck, everything about it.
+// Trucks live in three places: Location Solutions has telemetry and the manufacturer service plan, Fleet Management has loads and earnings, and the workshop/asset registry has tires and repairs. Nothing links them by id; the join is the plate. The report joins on normalised plate digits and states which sources it found.
+// The third source is the vehicle register, the broadest one: most of its vehicles have no trace in tracking or fleet (bikes and department cars). Without it the report said no data for most of the register although the data was complete.
 async function vehicleOptions(q) {
   const Ls2Vehicle = require('../models/Ls2Vehicle');
   const { FleetVehicle } = require('../models/FleetModels');
@@ -152,8 +119,7 @@ async function vehicleOptions(q) {
     if (cur) { cur.sources.push('fleet'); cur.detail = [cur.detail, v.trailerType].filter(Boolean).join(' · '); }
     else byKey.set(k, { id: k, name: v.plate || v.name, detail: [v.trailerType, v.supervisorName].filter(Boolean).join(' · '), sources: ['fleet'] });
   }
-  // السجلّ يُطابَق بمفتاحه هو (بالحروف): أرقامُ الدرّاجات تتصادم مع أرقام
-  // التريلات، ومفتاحُ الأرقام وحدَه يجعل الدرّاجة والتريلا مركبةً واحدة.
+  // The register is matched by its own key (letters included): bike numbers collide with trailer numbers, and a digits-only key would merge a bike and a trailer into one vehicle.
   const regByDigits = new Map();
   for (const v of reg) {
     const digits = plateKey(v.plateNumber);
@@ -161,8 +127,7 @@ async function vehicleOptions(q) {
   }
   for (const v of reg) {
     const digits = plateKey(v.plateNumber);
-    // مركبةُ التتبّع/الأسطول تُعرَف بأرقامها؛ فإن كان الرقمُ فريدًا في السجلّ
-    // فهي هي، وإلّا فمدخلٌ مستقلٌّ بمفتاح السجلّ كي لا تُدمَج مركبتان.
+    // A tracking/fleet vehicle is identified by its digits; if the number is unique in the register it is that vehicle, otherwise it is a separate entry keyed by the register key so two vehicles are not merged.
     const k = (digits && byKey.has(digits) && regByDigits.get(digits) === 1) ? digits : `r${registryPlateKey(v.plateNumber)}`;
     const detail = [v.vehicleTypeAr, v.brandAr, v.departmentAr || v.cityAr, v.authorizedPerson?.name].filter(Boolean).join(' · ');
     const cur = byKey.get(k);
@@ -172,8 +137,7 @@ async function vehicleOptions(q) {
   return [...byKey.values()].sort((a, b) => String(a.name).localeCompare(String(b.name), 'ar'));
 }
 
-/** عتباتُ التنبيه المحفوظةُ في إعدادات قسم المركبات — المصدرُ نفسُه الذي
- *  تقرأه الشاشات، فالورقةُ المطبوعةُ تقول ما تقوله الشاشة. */
+/** Alert thresholds saved in the vehicles section settings, the same source the screens read, so the printed sheet matches the screen. */
 async function vehicleAlertSettings() {
   try {
     const { VehicleRegistryConfig } = require('../models/VehicleMaster');
@@ -209,36 +173,20 @@ async function buildVehicleReport(id, query, lang) {
   const ls2 = allLs2.find((v) => matches(v, 'u', v.unitId)) || null;
   const fleet = allFleet.find((v) => matches(v, 'f', v._id)) || null;
 
-  // ── والسجلّ ─────────────────────────────────────────────────────────────
-  // يُطابَق بمفتاحه هو (حروفٌ وأرقام) لا بالأرقام وحدها: «ل أ 1080» درّاجة
-  // و«أ ص ر 1080» تريلا، ومفتاحُ الأرقام وحدَه يجعلهما مركبةً واحدة فتُقيَّد
-  // حادثةُ الدرّاجة على التريلا. ويُقبل `r<key>` من المُنتقي، واللوحةُ الخام
-  // كما يكتبها الإنسان مهما تعدّدت مسافاتها.
-  //
-  // ويُستعلَم عنه بالمفتاح المخزَّن لا بمسح السجلّ كلّه: ٣٣٥ مستندًا كاملًا في
-  // كلّ تقريرٍ ثمنٌ ثقيل على وصلةٍ محدودة، وسطرٌ واحدٌ يكفي.
+  // The register.
+  // Matched by its own key (letters and digits), not digits alone: a bike plate and a trailer plate can share digits, and a digits-only key would merge them and attach the bike's accident to the trailer. The `r<key>` form from the picker is accepted, and the raw plate is taken as a person types it, regardless of extra spaces.
+  // Queried by the stored key rather than scanning the whole register: full documents for every vehicle on each report is costly on a limited link, and one row is enough.
   const wantedReg = registryPlateKey(String(id).replace(/^r(?=[^\s])/, '')) || registryPlateKey(id);
   let reg = wantedReg
     ? await VehicleMaster.findOne({ $or: [{ plateKey: wantedReg }, { plateNumber: String(id).trim() }] }).lean()
     : null;
-  // ── وأخيرًا بالأرقام، والتصادمُ يُحسَم بالقطاع لا بالحظّ ──────────────────
-  //
-  // لوكيشن سوليوشن تكتب اللوحةَ باللاتينيّة («1080 RXA») وسجلُّ المركبات
-  // بالعربيّة («أ ص ر 1080»)، فلا يلتقي المفتاحان. ويبقى التطابقُ بالأرقام،
-  // وهي تتصادم: «١٠٨٠» تريلا في النقل الثقيل ودرّاجةٌ في النقل الخفيف. وكان
-  // التصادمُ يُترَك — وهو صوابٌ في نفسه، إذ لا تُقيَّد بياناتُ درّاجةٍ على
-  // تريلا — لكنّه كان يُخرج تقريرَ الشاحنة بلا رقمٍ تسلسليٍّ ولا قطاعٍ ولا
-  // مستندات، وهي مكتوبةٌ في السجلّ.
-  //
-  // والحاسمُ موجود: لوكيشن سوليوشن مرآةُ أسطولنا الثقيل وحدَه (ثمانٍ وخمسون
-  // شاحنة)، فلا تكون وحدةٌ فيها درّاجةً أبدًا. فمن جاء من هناك يُطابَق في
-  // النقل الثقيل، فيبقى التصادمُ محسومًا بسببٍ لا بترجيح.
+  // Finally by digits, with collisions resolved by sector, not by chance.
+  // Location Solutions writes plates in Latin and the vehicle register in Arabic, so the keys never meet and digit matching remains, which can collide (a trailer in heavy transport and a bike in light transport). Skipping collisions was correct in itself but left the truck report without serial number, sector and documents that exist in the register.
+  // Location Solutions mirrors only the heavy fleet, so a unit from there is never a bike; it is matched in heavy transport, which resolves the collision by reason rather than guess.
   if (!reg && (ls2 || fleet)) {
     const digits = plateKey((ls2 || fleet).plate);
     if (digits) {
-      // والأرقامُ تُطلَب أينما وقعت في المفتاح ثمّ تُطابَق بالضبط: اللوحةُ
-      // تُكتب «أ ص ر 1080» فينتهي مفتاحُها بالأرقام، وتُكتب «1611 ب ق ب»
-      // فينتهي بالحروف — ومطابقةُ «تنتهي بالأرقام» وحدَها تُسقط الثانية.
+      // Digits are searched wherever they sit in the key and then matched exactly: a plate written with letters first ends in digits, one written with digits first ends in letters, and an ends-with-digits match alone would miss the second.
       const candidates = await VehicleMaster.find({ plateKey: new RegExp(digits) }).limit(20).lean();
       const hits = candidates.filter((v) => plateKey(v.plateNumber) === digits);
       if (hits.length === 1) [reg] = hits;
@@ -261,9 +209,8 @@ async function buildVehicleReport(id, query, lang) {
     items: [
       [t('رقم اللوحة', 'Plate'), formatPlate(plate)],
       [t('الاسم في النظام', 'Unit name'), ls2?.name || fleet?.name],
-      // ── ونوعُها ماركتُها وطرازُها ──────────────────────────────────────
-      // `vehicleTypeAr` خانةٌ في النموذج لم تُملأ قطّ: فارغةٌ في ٣٣٧ من ٣٣٧.
-      // والنوعُ الذي يُقصَد ويُكتب في سجلّ الحوادث هو «سينو / رأس».
+      // Type is make and model.
+      // `vehicleTypeAr` is a model field that was never filled (empty on every row). The type people mean and write in the accident log is the make and body type.
       [t('نوع المركبة', 'Vehicle type'),
         [reg?.brandAr, reg?.modelAr].filter(Boolean).join(' / ') || reg?.vehicleTypeAr || fleet?.trailerType],
       [t('القطاع', 'Sector'), reg?.sectorAr],
@@ -288,17 +235,13 @@ async function buildVehicleReport(id, query, lang) {
     ],
   });
 
-  // ── مستندات السجلّ ────────────────────────────────────────────────────────
-  // الجدولُ هو التقرير عمليًّا: ما يسأل عنه من يطبع ورقةَ مركبةٍ هو متى تنتهي
-  // أوراقُها. والحالةُ تُحسب لحظةَ الطباعة لا تُقرأ من خانة — «ساري» المخزَّنة
-  // منذ شهرين قد تكون «منتهية» اليوم.
+  // Register documents.
+  // The table is effectively the report: what someone printing a vehicle sheet asks is when its papers expire. Status is computed at print time, not read from a field, since a stored valid from two months ago may be expired today.
   if (reg) {
     const VDOC = require('../config/vehicleDocuments');
     const at = (obj, path) => String(path || '').split('.').reduce((o, k) => (o == null ? o : o[k]), obj);
-    // ── وعتباتُ التنبيه من إعداداتِ القسم ─────────────────────────────────
-    // كان يُقرأ `reg.alertSettings` — حقلٌ لا وجودَ له في النظام كلِّه — فكلُّ
-    // تقريرٍ مطبوعٍ يُحسَب بعتبات الشِّفرة الافتراضيّة (٧/٣٠/٩٠) لا بما ضبطه
-    // القسم. فالورقةُ تقول «حرج» والشاشةُ تقول «قريب» عن المستند نفسِه.
+    // Alert thresholds come from the section settings.
+    // The code read `reg.alertSettings`, a field that does not exist anywhere, so every printed report used the code defaults (7/30/90) rather than the section's, and the paper said critical while the screen said near for the same document.
     const alerts = await vehicleAlertSettings();
     const rows = VDOC.DOCUMENTS.map((d) => {
       const expiry = at(reg, d.path);
@@ -339,7 +282,7 @@ async function buildVehicleReport(id, query, lang) {
       });
     }
 
-    // التفويض وتفاصيله — من يقود، وبأيّ ورقة، وإلى متى.
+    // Authorization details: who drives, under which paper, and until when.
     if (reg.authorizedPerson?.name || reg.authorizedPerson?.authorizationNumber) {
       blocks.push({ kind: 'section', text: t('التفويض', 'Authorisation') });
       blocks.push({
@@ -355,7 +298,7 @@ async function buildVehicleReport(id, query, lang) {
       });
     }
 
-    // التأمين وشريحة الوقود والتتبّع — تفاصيلُ لا تسعها خانةُ التاريخ وحدها.
+    // Insurance, fuel card and tracking: details a date field alone cannot hold.
     blocks.push({ kind: 'section', text: t('التأمين والاشتراكات', 'Insurance & subscriptions') });
     blocks.push({
       kind: 'kv',
@@ -373,7 +316,7 @@ async function buildVehicleReport(id, query, lang) {
       ],
     });
 
-    // التجديدات — بما صُرف عليها. «جدّدتها لغاية إمتى وبكام؟»
+    // Renewals with what was spent on them: renewed until when, and at what cost.
     const renewals = (reg.renewals || [])
       .filter((r) => !from || !r.at || (new Date(r.at) >= from && new Date(r.at) <= to))
       .sort((a, b) => new Date(b.at || 0) - new Date(a.at || 0));
@@ -381,8 +324,7 @@ async function buildVehicleReport(id, query, lang) {
       blocks.push({ kind: 'section', text: t('سجلّ التجديدات', 'Renewals') });
       blocks.push({
         kind: 'table',
-        // والملاحظةُ معها: هي تفسيرُ السطر («جُدِّدت بورقةٍ مؤقّتة»)، وبلا
-        // تفسيرٍ يصير السطرُ تاريخًا ومبلغًا لا يُعرَف سببُهما.
+        // The note comes with it: it explains the line (for example renewed with a temporary paper); without it the line is a date and amount with no known reason.
         head: [t('المستند', 'Document'), t('التاريخ', 'Done at'), t('الانتهاء السابق', 'Previous expiry'), t('الانتهاء الجديد', 'New expiry'), t('التكلفة', 'Cost'), t('ملاحظة', 'Note'), t('نفّذه', 'By')],
         rows: renewals.map((r) => {
           const d = VDOC.getDoc(r.document);
@@ -399,7 +341,7 @@ async function buildVehicleReport(id, query, lang) {
       });
     }
 
-    // المطالبات والحوادث المقيَّدة على هذه المركبة.
+    // Claims and accidents recorded against this vehicle.
     const VehicleClaim = require('../models/VehicleClaim');
     const claimQ = { $or: [{ vehicle: reg._id }, { vehiclePlateKey: registryPlateKey(reg.plateNumber) }] };
     if (from) claimQ.accidentDate = { $gte: from, $lte: to };
@@ -418,10 +360,10 @@ async function buildVehicleReport(id, query, lang) {
       emptyText: t('لا حوادث مسجّلة على هذه المركبة في هذه الفترة.', 'No accidents recorded for this vehicle in this period.'),
     });
 
-    // التفاويض التاريخيّة من سجلّ التفاويض (مجموعة Vehicle المنفصلة).
+    // Historical authorizations from the authorization log (the separate Vehicle collection).
     const Vehicle = require('../models/Vehicle');
     const VehicleAuthorization = require('../models/VehicleAuthorization');
-    require('../models/Employee'); // يُسجَّل قبل populate — وإلّا سقط التقرير كلُّه
+    require('../models/Employee'); // Registered before populate, otherwise the whole report fails.
     const legacy = await Vehicle.findOne({ plateNumber: reg.plateNumber }).lean();
     if (legacy) {
       const auths = await VehicleAuthorization.find({ vehicle: legacy._id })
@@ -570,9 +512,7 @@ async function buildVehicleReport(id, query, lang) {
     });
   }
 
-  // ملاحظةُ المصدر الغائب تُقال مرّةً واحدة لا مرّتين: أكثرُ مركبات السجلّ
-  // درّاجاتٌ وسيّاراتُ إدارات، ولا يُنتظر لها تتبّعٌ ولا حمولات، فتحذيرُها
-  // على كلّ ورقةٍ ضجيجٌ يُخفي التحذير الذي يعني شيئًا.
+  // The missing-source note is stated once, not twice: most register vehicles are bikes and department cars that are not expected to have tracking or loads, so warning on every sheet is noise that hides the warning that matters.
   if (!ls2 && !fleet) {
     blocks.push({ kind: 'note', text: t('هذه المركبة مسجَّلة في سجلّ المركبات فقط — لا تتبّع ولا حمولات مرتبطة بها.', 'This vehicle exists in the vehicle registry only — no telemetry or load data is linked to it.') });
   } else {
@@ -588,9 +528,7 @@ async function buildVehicleReport(id, query, lang) {
   };
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// 2) تقرير سائق — telemetry + the loads he carried
-// ─────────────────────────────────────────────────────────────────────────────
+// 2) Driver report: telemetry plus the loads he carried.
 async function driverOptions(q) {
   const Ls2Vehicle = require('../models/Ls2Vehicle');
   const Ls2DriverAssignment = require('../models/Ls2DriverAssignment');
@@ -600,8 +538,7 @@ async function driverOptions(q) {
     Ls2DriverAssignment.find({}).select('driver').lean(),
     FleetDriver.find(q ? { name: nameRegex(q) } : {}).select('name phone vehicle working iqama').populate('vehicle', 'plate').lean(),
   ]);
-  // السائقُ المؤرشَف لا يُختار موضوعًا لتقرير — كأنّه حُذف. يُعرَف برقم إقامته في
-  // سجلّ الأسطول، ويسقط اسمُه معه من كلّ مصدر (أسماءُ الشاحنات نصٌّ بلا رقم).
+  // An archived driver is not selectable as a report subject, as if deleted. He is identified by residence number in the fleet register, and his name drops out of every source (truck names are text without a number).
   const archSets = await require('../utils/endedStaff').endedStaff();
   const { idNumberArchived } = require('../utils/endedStaff');
   const goneKeys = new Set(fleetDrivers.filter((d) => idNumberArchived(archSets, d.iqama)).map((d) => nameKey(d.name)).filter(Boolean));
@@ -741,22 +678,12 @@ async function buildDriverReport(id, query, lang) {
   };
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// 3) تقرير عميل — everything we did for them, across every section
-// ─────────────────────────────────────────────────────────────────────────────
-// Reuses the portal's identity resolution, so a customer report and what that
-// customer sees when they log in are computed from exactly the same join.
+// 3) Customer report: everything done for them, across every section.
+// Reuses the portal's identity resolution, so the customer report and what the customer sees on login come from exactly the same join.
 
-// ── الحسابُ الماليّ للطرف من دفاتر التشغيل والتحصيل ──────────────────────────
-//
-// كان تقريرُ العميل يقرأ المالَ من `Invoice`/`Payment` — جدولا قسمٍ حُذف وهما
-// فارغان — فيخرج «المفوتر ٠ · المحصّل ٠» لعميلٍ عليه مئاتُ الآلاف. والمالُ
-// الحقيقيُّ في ثلاثة مواضع: كشوفُ التشغيل (قيمةُ البيع وتاريخُ التحصيل، أو قيمةُ
-// الشراء وتاريخُ السداد للمورد)، ودفترُ فواتير التحصيل، ولقطةُ الأعمار في ملفّ
-// الطرف. والتعريفاتُ نفسُها التي في `collectionsDeptController` — لا ثانية.
-//
-// والأسماءُ تُقرأ بـ`distinct` لا صفًّا صفًّا: كان البحثُ عن اسمٍ يقرأ مئةَ ألف
-// كشفٍ ليطويها في الذاكرة، فيستغرق التقريرُ دقيقةً ونصفًا على قاعدةٍ مُقيَّدة النقل.
+// Financial account of a party from the operations and collections ledgers, not Invoice/Payment (tables of a removed section, empty).
+// Money lives in operations sheets, the collections invoice ledger and the aging snapshot on the party record; definitions match collectionsDeptController.
+// Names are read with `distinct` instead of folding every sheet in memory.
 const PARTY_FIELD = { customer: 'username', supplier: 'carOwner' };
 const PARTY_VALUE = { customer: 'sellingValue', supplier: 'purchaseValue' };
 const PARTY_CLOSED = { customer: 'collectionDate', supplier: 'paymentDate' };
@@ -796,7 +723,7 @@ async function partyFinanceBlocks(kind, key, displayName, from, to, t) {
       ? OperationsWorkflow.find({ [field]: { $in: sheetNames }, fleetShipment: null, ...SHEET_NOT_CANCELLED, ...inPeriod })
         .select(`${valueF} ${closedF} paymentType`).lean()
       : [],
-    // المتبقّي اليوم لا يُحصر في الفترة: دَينٌ من العام الماضي دَينٌ اليوم.
+    // The remaining balance today is not limited to the period: last year's debt is still debt today.
     sheetNames.length
       ? OperationsWorkflow.aggregate([
         { $match: { [field]: { $in: sheetNames }, ...SHEET_NOT_CANCELLED, [closedF]: null } },
@@ -918,8 +845,7 @@ async function buildCustomerReport(id, query, lang) {
   const fin = finance.filter((c) => nameKey(c.companyName) === key);
   const fc = fleetCust.filter((c) => nameKey(c.name) === key);
   const co = crm.filter((c) => nameKey(c.name) === key);
-  // طرفُ التحصيل: فيه كودُ الحساب وحدُّ الائتمان — وهما ما كان يُقرأ من السجلّ
-  // المالي الذي زال. ويُطابَق بالاسم المطويّ كما تُطابَق بقيّةُ السجلّات.
+  // Collections party: holds the account code and credit limit, which used to be read from the removed finance register. Matched by folded name like the other registers.
   const CollectionsPartyM = require('../models/CollectionsParty');
   const parties = await CollectionsPartyM.find({ kind: 'customer' }).select('name code creditLimit creditTerm').lean();
   const party = parties.find((p) => nameKey(p.name) === key) || null;
@@ -957,9 +883,7 @@ async function buildCustomerReport(id, query, lang) {
   const finIds = fin.map((c) => c._id);
   const fcIds = fc.map((c) => c._id);
 
-  // الأسماءُ المكتوبة لهذا العميل في كلّ مجموعة تُعرَف من قائمة أسمائها المميّزة،
-  // فيُسأل عنها بالتطابق في القاعدة بدل قراءة كلّ شحنات الفترة وطيِّها هنا —
-  // كانت طلباتُ الشحن وحدها تنقل ثلاثة آلاف صفٍّ في عشر ثوانٍ لتُبقي خمسة.
+  // The names written for this customer in each collection are found from the list of distinct names and queried by exact match in the database, instead of reading all the period's shipments and folding them here; shipment orders alone moved thousands of rows in seconds to keep a handful.
   const { FleetShipment: FS2 } = require('../models/FleetModels');
   const [fleetNames, orderNames, customsNames] = await Promise.all([
     distinctNames(FS2, 'customerName'),
@@ -1009,10 +933,8 @@ async function buildCustomerReport(id, query, lang) {
     kind: 'kv',
     items: [
       [t('الاسم', 'Name'), displayName],
-      // ── ورقمُ العميل وحدودُه من سجلّ التحصيل ───────────────────────────
-      // كانت تُقرأ من `Customer` — سجلِّ قسمِ «العملاء والمالية» الذي زال،
-      // وفيه اليومَ صفرُ صفوف. فكانت خمسُ خاناتٍ تُطبَع فارغةً في كلّ تقريرِ
-      // عميل، والأرقامُ موجودةٌ في سجلّ أطراف التحصيل.
+      // Customer number and limits from the collections register.
+      // They were read from `Customer`, the register of a removed section, which now has zero rows, so five fields printed empty on every customer report. The numbers exist in the collections parties register.
       [t('رقم العميل', 'Customer no.'), party?.code || fin[0]?.customerNumber],
       [t('نوع العميل', 'Type'), fc[0] ? (fc[0].customerType === 'branch' ? t('عميل فروع', 'Branch customer') : t('نقل ثقيل', 'Heavy transport')) : null],
       [t('الهاتف', 'Phone'), fin[0]?.phone || fc[0]?.phone || co[0]?.phone],
@@ -1043,7 +965,7 @@ async function buildCustomerReport(id, query, lang) {
       { label: t('المحصّل', 'Collected'), value: money(paymentsP.reduce((s, p) => s + (Number(p.amount) || 0), 0) + (fin$.invCollected || fin$.closed || 0)) },
     ],
   });
-  // لا تُضاف فقرةُ «الحساب المالي» هنا: كشفُ حساب التحصيل أدناه يحملها كاملة.
+  // No financial-account paragraph is added here: the collections statement below carries it in full.
   if (outstanding > 0) {
     blocks.push({
       kind: 'note',
@@ -1122,29 +1044,19 @@ async function buildCustomerReport(id, query, lang) {
     });
   }
 
-  // ── كشفُ حسابِ التحصيل ────────────────────────────────────────────────
-  //
-  // قسمُ التحصيل لا يعمل على `Invoice` و`Payment`؛ يعمل على دفتر الفواتير
-  // (`CollectionInvoice`) وعلى كشوف التشغيل نفسِها — فالكشفُ هو المستند
-  // وتاريخُ تحصيله عمودٌ فيه. فكانت الفقرةُ المالـيّةُ أعلاه تُطبَع فارغةً
-  // لعملاءَ عليهم مئاتُ الآلاف، لأنّها تسأل مجموعتين مهجورتين.
-  //
-  // وهذا هو كشفُ الحساب الذي يُطبَع ويُرسَل: ما فُوتِر في الفترة، وما حُصّل
-  // منه، وما بقي — ومعه ما دار من متابعاتٍ مع العميل، فالمطالبةُ تُسنَد بما
-  // قيل ومتى.
+  // Collections account statement.
+  // The collections section works on the invoice ledger (`CollectionInvoice`) and the operations sheets themselves, where the sheet is the document and its collection date is a column. The financial paragraph above printed empty for customers owing hundreds of thousands because it queried two abandoned collections.
+  // This is the statement that is printed and sent: what was invoiced in the period, what was collected, what remains, plus the follow-ups held with the customer, so a claim is backed by what was said and when.
   {
     const CollectionInvoice = require('../models/CollectionInvoice');
     const CollectionsParty = require('../models/CollectionsParty');
     const CollectionsFollowUp = require('../models/CollectionsFollowUp');
     const OperationsWorkflow = require('../models/OperationsWorkflow');
 
-    // مفتاحُ ملفّ التحصيل مطويٌّ بطيّه هو (بلا مسافات)، ومفتاحُ التقرير يُبقيها —
-    // فيُسأل بالاثنين، وإلّا ضاع كلُّ عميلٍ في اسمه مسافة.
+    // The collections file key is folded with its own folding (no spaces) while the report key keeps spaces, so both are queried; otherwise any customer whose name contains a space is lost.
     const party = await CollectionsParty.findOne({ kind: 'customer', nameKey: { $in: [key, CollectionsParty.fold(displayName || '')] } }).select('_id name').lean();
 
-    // الفواتيرُ الضريبيّة من الدفتر — بالاسم المطويّ، فتلتقي صيغُ الاسم كلُّها.
-    // الصيغُ المطابقة من الأسماء المتمايزة، ثمّ الفواتيرُ بها — كانت تُقرأ
-    // أربعون ألف فاتورةٍ لتُطوى هنا، فيستغرق التقريرُ نصفَ دقيقة.
+    // Tax invoices from the ledger, by folded name so all name variants meet. Matching variants are taken from distinct names and then their invoices read; folding tens of thousands of invoices here took about half a minute.
     const ledgerNames = (await distinctNames(CollectionInvoice, 'partyName')).filter((n) => nameKey(n) === key);
     const ledgerMine = ledgerNames.length || party
       ? await CollectionInvoice.find({ $or: [
@@ -1154,13 +1066,9 @@ async function buildCustomerReport(id, query, lang) {
       : [];
     const ledgerP = ledgerMine.filter((i) => inWin(i.invoiceDate));
 
-    // ── والصيغُ تُعرَف أوّلًا ثمّ تُسأل القاعدةُ بها ──────────────────────
-    // الطيُّ العربيُّ دالّةُ جافاسكربت لا تفهمها القاعدة، فلا يُطابَق الاسمُ
-    // المطويُّ في استعلام. وقراءةُ كشوفِ الفترة كلِّها ثمّ طيُّها في الذاكرة
-    // تحتاج حدًّا، والحدُّ يقطع صامتًا فينقص كشفُ الحساب بلا أن يقول.
-    //
-    // فتُقرأ الأسماءُ المتمايزة وحدَها — وهي مئات — وتُطوى هنا، ثمّ تُسأل
-    // القاعدةُ بالصيغ المطابقة نصًّا. فلا حدَّ ولا نقص.
+    // Variants are identified first, then the database is queried with them.
+    // Arabic folding is a JavaScript function the database cannot run, so a folded name cannot be matched in a query. Reading all the period's sheets and folding in memory needs a limit, and a limit cuts silently, leaving the statement short without saying so.
+    // Instead only the distinct names (hundreds) are read and folded here, and the database is queried with the matching literal variants: no limit and no shortfall.
     const allNames = await distinctNames(OperationsWorkflow, 'username');
     const myNames = allNames.filter((n) => nameKey(n) === key);
     const cashP = myNames.length ? await OperationsWorkflow.find({
@@ -1171,8 +1079,7 @@ async function buildCustomerReport(id, query, lang) {
       .lean() : [];
 
     const isCollected = (i) => !!i.collectionDate || /collected/i.test(i.status || '');
-    // المستحقُّ يُحسب على العمر كلِّه لا على الفترة: ما بقي على العميل باقٍ
-    // وإن فُوتِر قبل أوّل يومٍ في الكشف.
+    // Receivables are computed over all time, not the period: what the customer still owes remains owed even if invoiced before the statement's first day.
     const invoicedAll = ledgerMine.reduce((a, i) => a + (Number(i.total) || 0), 0);
     const collectedAll = ledgerMine.filter(isCollected).reduce((a, i) => a + (Number(i.total) || 0), 0);
     const dueAll = invoicedAll - collectedAll;
@@ -1232,9 +1139,8 @@ async function buildCustomerReport(id, query, lang) {
       });
     }
 
-    // ── والمتابعاتُ جزءٌ من الكشف ────────────────────────────────────────
-    // «كلّمناه يوم كذا فوعد بكذا» هو سندُ المطالبة. وطبعُ الأرقام بلا ما دار
-    // بيننا وبينه يجعل الكشفَ ورقةَ أرقامٍ لا ملفَّ مطالبة.
+    // Follow-ups are part of the statement.
+    // A record of a call and the promise made is the basis of a claim; printing numbers without what passed between us and the customer makes the statement a sheet of figures rather than a claim file.
     if (party) {
       const fus = await CollectionsFollowUp.find({ party: party._id, date: { $gte: from, $lte: to } })
         .populate('collector', 'firstName lastName')
@@ -1283,9 +1189,7 @@ async function buildCustomerReport(id, query, lang) {
   };
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// 4) تقرير مورد — the 3PL carrier's file
-// ─────────────────────────────────────────────────────────────────────────────
+// 4) Vendor report: the 3PL carrier's file.
 async function vendorOptions(q) {
   const CrmVendor = require('../models/CrmVendor');
   const { ContractVendor } = require('../models/ContractModels');
@@ -1303,8 +1207,7 @@ async function vendorOptions(q) {
     if (!k) continue;
     if (!byKey.has(k)) byKey.set(k, { id: k, name: v.name, detail: [v.vendorType, v.headquarters].filter(Boolean).join(' · ') });
   }
-  // موردو التحصيل (مُلّاكُ الشاحنات في الكشوف) لهم حسابٌ ماليٌّ حقيقيّ، وكثيرٌ
-  // منهم ليس في سجلّ العقود — فيُعرَضون في الاختيار كذلك.
+  // Collections vendors (truck owners on the sheets) have a real financial account and many are not in the contracts register, so they are offered in the picker too.
   const CollectionsParty = require('../models/CollectionsParty');
   const sup = await CollectionsParty.find({ kind: 'supplier', ...(q ? { name: nameRegex(q) } : {}) }).select('name code').lean();
   for (const v of sup) {
@@ -1326,14 +1229,14 @@ async function buildVendorReport(id, query, lang) {
   const [crmAll, cvAll, utilisation, suppliers] = await Promise.all([
     CrmVendor.find({}).lean(),
     ContractVendor.find({}).lean(),
-    // من الكشوف الفعليّة — راجع utils/liveVendorUtilisation.
+    // From the actual sheets; see utils/liveVendorUtilisation.
     require('../utils/liveVendorUtilisation').liveUtilisationRows({ nameKey: key }),
     ShipmentOrderSupplier.find({}).select('name').lean(),
   ]);
   const v = crmAll.find((x) => nameKey(x.name) === key) || null;
   const cv = cvAll.find((x) => (x.nameKey || nameKey(x.name)) === key) || null;
   let displayName = v?.name || cv?.name;
-  // الموردُ في دفاتر التحصيل وكشوف التشغيل موردٌ وإن لم يكن في سجلّ العقود.
+  // A vendor in the collections ledgers and operations sheets is a vendor even if absent from the contracts register.
   if (!displayName) {
     const OperationsWorkflow = require('../models/OperationsWorkflow');
     displayName = (await distinctNames(OperationsWorkflow, 'carOwner')).find((n) => nameKey(n) === key);
@@ -1432,15 +1335,13 @@ async function buildVendorReport(id, query, lang) {
   };
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// 5) تقرير موظف — the HR file, printable
-// ─────────────────────────────────────────────────────────────────────────────
+// 5) Employee report: the HR file, printable.
 async function employeeOptions(q) {
   const Employee = require('../models/Employee');
   const filter = q
     ? { $or: [{ firstName: nameRegex(q) }, { lastName: nameRegex(q) }, { arabicName: nameRegex(q) }, { employeeNumber: nameRegex(q) }, { iqamaNumber: nameRegex(q) }] }
     : {};
-  // المؤرشَفُ لا يُختار موضوعًا لتقرير — كأنّه حُذف.
+  // An archived employee is not selectable as a report subject, as if deleted.
   const rows = await Employee.find(require('../utils/hrEngagement').withoutArchived(filter))
     .select('firstName lastName arabicName employeeNumber jobTitle department employmentStatus').limit(500).lean();
   return rows.map((e) => ({
@@ -1485,7 +1386,7 @@ async function buildEmployeeReport(id, query, lang) {
   const active = contracts.find((c) => c.status === 'active') || contracts[0] || null;
   const takenAll = leaves.filter((l) => l.status === 'approved')
     .reduce((s, l) => s + ((l.leaveType?.affectsBalance ?? true) ? (l.days || 0) : 0), 0);
-  // الرصيدُ يُعَدّ من يوم مباشرة العمل لا من تاريخ العقد — راجع utils/leaveBalance.
+  // The balance is counted from the work start date, not the contract date; see utils/leaveBalance.
   const balance = active
     ? computeBalance(active, takenAll, new Date(), { workStartDate: e.actualWorkStartDate || '', contracts: contracts.length })
     : null;
@@ -1636,14 +1537,8 @@ async function buildEmployeeReport(id, query, lang) {
   };
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// 6) تقرير قسم — a whole department in one sheet
-// ─────────────────────────────────────────────────────────────────────────────
-// Every section already owns a dashboard endpoint; rather than reimplement each
-// one, the department report calls that section's own controller in-process and
-// renders whatever it returned. That means a section report can never disagree
-// with the section's own screen, and a new section becomes reportable by adding
-// one row here.
+// 6) Department report: a whole department in one sheet.
+// Every section already owns a dashboard endpoint; instead of reimplementing each, the report calls that section's controller in-process and renders its result. A section report therefore cannot disagree with the section's own screen, and a new section becomes reportable by adding one row here.
 const SECTION_REPORTS = [
   {
     key: 'fleet', ar: 'إدارة الأسطول', en: 'Fleet Management',
@@ -1659,7 +1554,7 @@ const SECTION_REPORTS = [
         FleetDriver.find({ isActive: { $ne: false } }).select('iqama').lean(),
         endedStaff(),
       ]);
-      // مَن انتهت خدمتُه في الموارد البشريّة ليس من السائقين — كلوحة القسم.
+      // Someone whose service ended in HR is not counted among drivers, same as the department board.
       const drivers = driverRows.filter((d) => !idNumberEnded(ended, d.iqama)).length;
       const live = ships.filter((s) => s.status !== 'cancelled');
       const income = live.reduce((s, x) => s + (Number(x.price) || 0), 0);
@@ -1878,13 +1773,8 @@ async function buildSectionReport(id, query, lang, user) {
 }
 
 
-// ─────────────────────────────────────────────────────────────────────────────
-// 7) محضر اجتماع مراجعة الأعمال — the official record, printable and signable
-// ─────────────────────────────────────────────────────────────────────────────
-// This one is USER-SCOPED: you can only print a meeting you were entitled to
-// read. The rule is the section's own (config/businessReview.js), not a second
-// copy — the board and the secretariat get every round, a department head gets
-// the rounds they sat in, and an employee gets none.
+// 7) Business review meeting minutes: the official record, printable and signable.
+// USER-SCOPED: a user can print only a meeting they were entitled to read. The rule is the section's own (config/businessReview.js), not a copy: the board and secretariat get every round, a department head gets the rounds they sat in, and an employee gets none.
 function brVisibleFilter(user) {
   const { canRunMeetings } = require('../config/businessReview');
   return canRunMeetings(user) ? {} : { 'attendees.user': user._id };
@@ -2168,11 +2058,8 @@ async function buildMeetingReport(id, query, lang, user) {
 // The registry every consumer reads
 // ─────────────────────────────────────────────────────────────────────────────
 
-// ── فردة كاوتش ───────────────────────────────────────────────────────────────
-//
-// التقرير المطبوع لفردةٍ واحدة: أين هي، وعلى أيّ عربياتٍ كانت، وكم مشت على كلٍّ
-// منها، وما جرى للعربية وهي عليها. وهو نفسُ ما تعرضه شاشةُ الفردة — والمصدرُ
-// واحد (getTireProfile) كي لا يفترق مطبوعٌ عن شاشة.
+// A single tire.
+// The printed report for one tire: where it is, which vehicles it was on, how far it ran on each, and what happened to the vehicle meanwhile. It matches the tire screen and uses one source (getTireProfile) so print and screen cannot diverge.
 async function tireOptions(q) {
   const Ls2TireAsset = require('../models/Ls2TireAsset');
   const filter = q
@@ -2191,8 +2078,7 @@ async function buildTireReport(id, query, lang) {
   const { tireState, TIRE_STATES } = require('../config/tireStates');
   const assets = require('../controllers/ls2AssetsController');
 
-  // يُستدعى المتحكّم نفسُه بردٍّ صوريّ: منطقُ الفترات والكيلومترات مكتوبٌ مرّةً
-  // واحدة، ونسخُه هنا يعني أن يُصحَّح في أحدهما ويبقى الخطأ في الآخر.
+  // The controller itself is called with a stub response: period and kilometre logic is written once, and a copy here would let a fix land in one place while the bug stays in the other.
   const data = await new Promise((resolve, reject) => {
     assets.getTireProfile(
       { params: { id }, query: {}, body: {}, user: query.__user || {} },
@@ -2286,14 +2172,8 @@ async function buildTireReport(id, query, lang) {
   };
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// شحنةٌ واحدة — قصّةُ بوليصةٍ من طلبها إلى تسليمها
-//
-// ── ولماذا تقريرٌ لشحنةٍ واحدة ──────────────────────────────────────────────
-// يُسأل عن بوليصةٍ بعينها: مَن العميل، ومَن حملها، وبكم بِيعت وبكم اشتُريت،
-// ومتى تحرّكت ومتى وصلت، ومَن غيّر حالتَها ومتى. وكان الجوابُ يُجمَع من ثلاث
-// شاشاتٍ باليد، أو تُصوَّر الشاشةُ وتُرسَل. وهي الورقةُ التي تُطلَب في نزاعٍ
-// مع عميلٍ أو ناقل، فيُحتاج إليها مرتّبةً مختومة.
+// A single shipment: the story of a waybill from order to delivery.
+// Answers questions about one waybill: who the customer is, who carried it, selling and purchase price, when it moved and arrived, and who changed its status and when. It used to be assembled by hand from three screens or by screenshot. It is the paper requested in a dispute with a customer or carrier, so it must be orderly and stamped.
 async function shipmentOptions(q) {
   const ShipmentOrder = require('../models/ShipmentOrder');
   const filter = {};
@@ -2326,19 +2206,10 @@ async function buildShipmentReport(id, query, lang) {
     .lean();
   if (!o) return null;
 
-  // ── والمراجعُ لا تكفي: الطلباتُ المستوردةُ تحمل أسماءً لا مراجع ──────────
-  //
-  // سبعةٌ وثلاثون ألفَ طلبٍ، ثلاثةٌ منها تحمل مرجعَ عميل. والباقي جاء من منصّة
-  // التشغيل بأسماءٍ لقطةً: `customerName` و`supplierName` و`vehiclePlate`.
-  // فكان التقريرُ يطبع «جوال العميل» و«جوال المورّد» و«الماركة» و«اللون»
-  // و«بطاقة التشغيل» فارغةً دائمًا — وهي مكتوبةٌ في سجلّاتنا، تُقرأ بالاسم
-  // واللوحة كما تقرؤها البوليصة.
-  // والمطابقةُ مطويّةٌ لا حرفيّة: اللقطةُ تُكتب «شركه» والسجلُّ «شركة»، وتُنسخ
-  // اللوحةُ بمسافتين. والمطابقةُ الحرفيّةُ تُخرج فارغًا عن صفٍّ موجود — وهو ما
-  // كان يقع: ستُّمئةٍ وثمانيةُ عملاءَ لهم جوّالٌ ولا يظهر منه واحد.
-  //
-  // ولوحةُ الشحنة قد تكون في `vehicleName` وحدَه ومعها وصفٌ («1111 ABC — مرسيدس»)،
-  // فتُنتزَع اللوحةُ منه بمفتاحها لا بنصّه كلِّه.
+  // References are not enough: imported orders carry names, not references.
+  // Of about 37,000 orders only three carry a customer reference; the rest came from the operations platform with snapshot names: customerName, supplierName and vehiclePlate. The report therefore printed customer phone, supplier phone, make, colour and the operating card empty, although our records hold them; they are now read by name and plate as the waybill does.
+  // Matching is folded, not literal: a snapshot writes one spelling and the register another, and plates get copied with double spaces. Literal matching returned empty for existing rows.
+  // A shipment's plate may exist only in `vehicleName` with a description (for example plate then make), so the plate is extracted by its key, not the whole text.
   const plateOf = (v) => {
     const raw = String(v || '');
     const m = raw.match(/[\u0621-\u064AA-Za-z0-9\s]+/);
@@ -2367,8 +2238,7 @@ async function buildShipmentReport(id, query, lang) {
   blocks.push({
     kind: 'kv',
     items: [
-      // ورقمُ البوليصة: شحناتُنا تُرقَّم من ٥٠٠، وشحناتُ المنصّة رقمُها رقمُ
-      // كشف تخريجها — وهو الذي يعرفه الفريقُ عنها ويُسأل به.
+      // Waybill number: our shipments are numbered from 500, while platform shipments use the number of the sheet they were released on, which is what the team knows them by.
       [t('رقم البوليصة', 'Waybill no.'), o.waybillNumber || o.reference || o.graduationNumber],
       [t('رقم أمر النقل', 'Graduation no.'), o.graduationNumber],
       [t('العميل', 'Customer'), o.customerName || cust?.name],
@@ -2416,7 +2286,7 @@ async function buildShipmentReport(id, query, lang) {
       [t('سعر البيع', 'Sell price'), o.sellPrice != null ? money(o.sellPrice) : null],
       [t('سعر الشراء', 'Buy price'), o.buyPrice != null ? money(o.buyPrice) : null],
       [t('الهامش', 'Margin'), (o.sellPrice != null && o.buyPrice != null) ? money(Number(o.sellPrice) - Number(o.buyPrice)) : null],
-      // «نوع الدفع» حلّ محلَّ نوع التأجير في نموذج الإنشاء؛ والقديمُ يُقرأ لما سُجِّل به.
+      // Payment type replaced rental type in the create form; the old field is still read for records saved with it.
       [t('نوع الدفع', 'Payment type'), require('../utils/shipmentOrderPayment').subtypeLabel(o.paymentSubtype, lang) || null],
       [t('نوع تأجير السائق', 'Rental type'), o.driverRentType],
       [t('طريقة الدفع', 'Payment'), o.paymentMethod],
@@ -2424,9 +2294,8 @@ async function buildShipmentReport(id, query, lang) {
     ],
   });
 
-  // ── ومسيرةُ الحالة: مَن قال «وصلت» ومتى ───────────────────────────────────
-  // الحالةُ الحاليّةُ تقول أين هي الآن، ولا تقول كم بقيت في كلّ مرحلةٍ ولا مَن
-  // حرّكها — وهو ما يُسأل عنه في النزاع.
+  // Status history: who said it arrived, and when.
+  // The current status says where it is now, not how long it stayed in each stage or who moved it, which is what a dispute asks.
   const hist = Array.isArray(o.statusHistory) ? o.statusHistory : [];
   if (hist.length) {
     blocks.push({ kind: 'section', text: t('مسيرة الحالة', 'Status trail') });
@@ -2455,8 +2324,7 @@ async function buildShipmentReport(id, query, lang) {
   };
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// ناقلٌ (مورّدُ شاحنات) — شاحناتُه وسوّاقُه وما حمله لنا
+// Carrier (truck supplier): its trucks, drivers and what it carried for us.
 async function carrierOptions(q) {
   const Sup = require('../models/ShipmentOrderSupplier');
   const rows = await Sup.find({ isActive: { $ne: false }, ...(q ? { name: nameRegex(q) } : {}) })
@@ -2566,11 +2434,10 @@ async function buildCarrierReport(id, query, lang) {
   };
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// مندوبُ النقل الخفيف — ملفُّه ومركبتُه وتفقّداتُه
+// Light transport rep: file, vehicle and inspections.
 async function riderOptions(q) {
   const { LightTransportEmployee } = require('../models/LightTransport');
-  // المندوبُ المؤرشَف لا يُختار موضوعًا لتقرير — كأنّه حُذف.
+  // An archived rep is not selectable as a report subject, as if deleted.
   const AH = require('../utils/archivedHidden');
   const rows = await LightTransportEmployee
     .find(AH.andAll({ isActive: { $ne: false }, ...(q ? { $or: [{ name: nameRegex(q) }, { idNumber: nameRegex(q) }, { vehiclePlate: nameRegex(q) }] } : {}) }, AH.notArchivedRow(await AH.endedStaff())))
@@ -2629,9 +2496,8 @@ async function buildRiderReport(id, query, lang) {
     ],
   });
 
-  // ── تفقّدُ بداية الدوام في الفترة ──────────────────────────────────────────
-  // الالتزامُ يُقاس بالأيّام التي خرج فيها بتفقّدٍ مقابل أيّام الفترة، ومَن
-  // مُنع من الخروج أو لم يحضر يُقال بسببه كما كُتب وقتَه.
+  // Duty-start inspection in the period.
+  // Compliance is measured as days he went out with an inspection against days in the period; a blocked or absent rep is reported with the reason as recorded at the time.
   const checks = await B2CDutyCheck.find({ ltEmployee: e._id, dateKey: { $gte: fromKey, $lte: toKey } })
     .select('dateKey outcome supervisorName notes photos vehiclePlate').sort({ dateKey: -1 }).limit(200).lean();
   blocks.push({ kind: 'section', text: `${t('تفقّد بداية الدوام', 'Duty start checks')} · ${fromKey} → ${toKey}` });
@@ -2674,26 +2540,17 @@ const SUBJECTS = [
   { key: 'section', ar: 'قسم', en: 'Department', icon: 'layers', options: sectionOptions, build: buildSectionReport, searchable: false },
   // userScoped: the list of meetings you may print depends on who you are.
   { key: 'meeting', ar: 'محضر اجتماع', en: 'Meeting minutes', icon: 'calendar', options: meetingOptions, build: buildMeetingReport, searchable: true, userScoped: true },
-  // ── مواضيعُ أُضيفت بعد أن صار في النظام ما يُجيب عنها ──────────────────────
-  // الشحنةُ الواحدة: ورقةٌ تُطلَب في نزاعٍ مع عميلٍ أو ناقل. والناقلُ: شاحناتُه
-  // وسوّاقُه وما حمله لنا — وهي سجلّاتٌ لم تكن موجودةً قبل استيراد الناقلين.
-  // والمندوب: ملفُّه ومركبتُه والتزامُه بتفقّد بداية الدوام.
+  // Subjects added once the system held data to answer them.
+  // Single shipment: the paper requested in a dispute with a customer or carrier. Carrier: its trucks, drivers and what it carried for us, records that did not exist before carrier import. Rep: file, vehicle and compliance with duty-start inspection.
   { key: 'shipment', ar: 'شحنة', en: 'Shipment', icon: 'file', options: shipmentOptions, build: buildShipmentReport, searchable: true },
   { key: 'carrier', ar: 'ناقل (مورّد شاحنات)', en: 'Carrier', icon: 'store', options: carrierOptions, build: buildCarrierReport, searchable: true },
   { key: 'rider', ar: 'مندوب نقل خفيف', en: 'Rider', icon: 'user', options: riderOptions, build: buildRiderReport, searchable: true },
 ];
 
 /**
- * ── والتقريرُ يقول ما يَعرف، لا ما لا يَعرف ────────────────────────────────
- *
- * كلُّ بانٍ يسرد خاناتِ موضوعه كلَّها ويترك الخاليَ `null`، فتُطبَع شُرَطًا.
- * وفي سجلّاتٍ استُوردت من خارجٍ لا يحمل كلَّ ما نحمله، يصير نصفُ الورقة شُرَطًا
- * — فتُقرأ «التقرير فارغ» وهي مملوءةٌ بما نعرفه فعلًا.
- *
- * فتُحذَف الخانةُ الخالية، ويُحذَف العنوانُ الذي خلا ما تحته. وما بقي حقائقُ
- * مكتوبة. وما ليس عندنا يُعرَف من سجلّ مصدره لا من شُرَطٍ في ورقةٍ تُطبَع.
- *
- * ولا يُحذَف رقمٌ قيمتُه صفر: الصفرُ خبرٌ («لا حوادث») لا فراغ.
+ * The report states what it knows, not what it does not.
+ * Each builder lists all of its subject's fields and leaves empty ones `null`, printed as dashes. For externally imported records that lack some of what we hold, half the sheet becomes dashes and reads as an empty report although it is full of what we do know.
+ * Empty fields are dropped, as is a heading with nothing under it. A zero number is kept: zero is information (no accidents), not a blank.
  */
 const pruneEmpty = (doc) => {
   if (!doc || !Array.isArray(doc.blocks)) return doc;
@@ -2707,7 +2564,7 @@ const pruneEmpty = (doc) => {
     if (b.kind === 'table' && !(b.rows || []).length) continue;
     kept.push(b);
   }
-  // عنوانُ قسمٍ لم يبقَ تحته شيءٌ يُحذَف معه.
+  // A section heading with nothing left under it is dropped with it.
   const out = [];
   for (let i = 0; i < kept.length; i += 1) {
     const b = kept[i];
@@ -2720,8 +2577,7 @@ const pruneEmpty = (doc) => {
 const getSubject = (key) => {
   const sub = SUBJECTS.find((s) => s.key === key);
   if (!sub) return null;
-  // التنقيةُ هنا لا عند كلّ منادٍ: التقاريرُ والمساعدُ والهاتفُ يبنون بالدالّة
-  // نفسِها، فلو نُقّيت عند أحدهم اختلفت الورقةُ عن الشاشة.
+  // Cleaning happens here, not at each caller: reports, the assistant and the phone all build with the same function, so cleaning at one caller would make the paper differ from the screen.
   return { ...sub, build: async (...args) => pruneEmpty(await sub.build(...args)) };
 };
 const subjectMeta = () => SUBJECTS.map((s) => ({ key: s.key, ar: s.ar, en: s.en, icon: s.icon, searchable: s.searchable }));

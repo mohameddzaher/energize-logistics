@@ -1,11 +1,8 @@
 'use client';
-// Performance settings — super-admin only (إعداد المؤشرات).
-//
-// Three things live here, and nowhere else:
-//   1. النماذج — the criteria each department is graded on, their weights and
-//      their 1..5 wording. A form whose weights don't total 100% cannot be saved.
-//   2. الشرائح — the performance bands (0-70 / 70-80 / 80-90 / 90-100).
-//   3. الطبقات — the bonus table per tier, and which tier each department sits in.
+// Performance settings (super-admin only). Three things live here:
+// 1. Forms: criteria per department, weights and 1..5 wording; weights must total 100% to save.
+// 2. Bands: the performance bands (0-70 / 70-80 / 80-90 / 90-100).
+// 3. Tiers: the bonus table per tier and each department tier.
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useDialog } from '@/components/system/DialogProvider';
 import { useAuth } from '@/context/AuthContext';
@@ -153,9 +150,8 @@ export default function PerformanceSettingsPage() {
     { key: 'tiers', ar: 'الطبقات والبونص', en: 'Tiers & bonus' },
   ] as const;
 
-  // ---- Export sheets -------------------------------------------------------
-  // بُنيت بعد بوّابة canConfigurePerf أعلاه لا قبلها: جدول البونص أرقام تعويضات،
-  // فلو حُسبت الشيتات قبل الحارس لصار في الصفحة ملفٌّ ماليّ جاهزٌ لمن لا يرى الشاشة.
+  // Export sheets
+  // Built after the canConfigurePerf gate above, not before: the bonus table holds compensation figures, so computing the sheets before the guard would leave a ready financial file for someone who cannot see the screen.
   const scope = exportScopeLabels(ar);
   const templatesSheet: ExportSheet = {
     name: ar ? 'النماذج' : 'Templates',
@@ -173,8 +169,7 @@ export default function PerformanceSettingsPage() {
     ] as ExportColumn[],
   };
 
-  // شيتٌ ثانٍ للمؤشرات لأن كل نموذج يحوي عدّة مؤشرات، وحشرُها في خانةٍ واحدة
-  // بجوار النموذج يمنع فرزَها أو مراجعة أوزانها — وهي أصل حساب الدرجة.
+  // A second sheet for the indicators because each form holds several, and packing them in one cell beside the form prevents sorting them or reviewing their weights, which are the basis of the score.
   const criteriaRows = templates.flatMap((tpl) =>
     [...(tpl.criteria || [])].sort((a, b) => (a.order ?? 0) - (b.order ?? 0)).map((c, i) => ({
       template: tpl.nameAr || tpl.name, department: tpl.department, tier: tpl.tier,
@@ -200,8 +195,7 @@ export default function PerformanceSettingsPage() {
     ] as ExportColumn[],
   };
 
-  // حدّ الاستحقاق قيمةٌ مفردة لا جدول، وهو يعيش في شاشة الشرائح نفسها، فأُلحق
-  // عمودًا بها: شريحةٌ بلا حدّ الاستحقاق لا يُفهم منها مَن يستحقّ البونص أصلًا.
+  // The eligibility threshold is a single value, not a table, and lives on the bands screen itself, so it is attached as a column there: a band without it does not say who earns the bonus at all.
   const bandsSheet: ExportSheet = {
     name: ar ? 'الشرائح' : 'Bands',
     rows: settings.bands as any[],
@@ -223,8 +217,7 @@ export default function PerformanceSettingsPage() {
       { header: ar ? 'الاسم' : 'Name', key: 'ar', width: 24 },
       { header: ar ? 'بالإنجليزية' : 'English', key: 'en', width: 22 },
       { header: ar ? 'السقف (رواتب)' : 'Cap (salaries)', key: 'cap', width: 14 },
-      // عمودٌ لكل شريحة كما تُرسم على الشاشة تمامًا، لأن الشرائح تُضاف وتُحذف من
-      // الإعدادات نفسها، فقائمةٌ ثابتةٌ هنا كانت ستُسقط أيّ شريحةٍ جديدة بصمت.
+      // One column per band exactly as drawn on screen, because bands are added and removed from the settings themselves, so a fixed list here would silently drop any new band.
       ...settings.bands.map((b) => ({
         header: `${ar ? 'بونص' : 'Bonus'} — ${ar ? b.ar : b.en}`,
         key: 'bonus', transform: (v: any) => v?.[b.key] ?? 0, width: 16,

@@ -1,28 +1,20 @@
 /**
- * خياراتُ فلترةٍ محسوبةٌ من صفوفٍ في الشاشة.
- *
- * ── لماذا محلّيًّا ────────────────────────────────────────────────────────────
- * شاشاتُ الموارد البشريّة الصغيرة (العقود، العهد، التراخيص، المخزون) تُحمَّل
- * كاملةً ثمّ تُفلتَر في المتصفّح. فنداءٌ إلى الخادم ليحسب أعدادَ قيمٍ بين يدي
- * الشاشة أصلًا عملٌ بلا فائدة — ويصنع فرصةً لأن يختلف العددُ عن الجدول، وهو
- * أسوأُ ما في لوحةِ فلترة.
- *
- * والقاعدةُ نفسُها: عددُ كلّ قيمةٍ يُحسب **بعد بقيّة الفلاتر**، فما يُرى هو ما
- * يُحصَّل عند الضغط.
+ * Filter options computed from the rows on screen.
+ * Why local: the small HR screens (contracts, custody, licenses, stock) load fully and filter in the browser, so a server call to count values already on screen is wasted work.
  */
 import type { FilterFieldDef, FilterValues } from '@/components/system/FilterPanel';
 
 export interface LocalFieldDef<T> {
   key: string; ar: string; en: string;
   groupAr?: string; groupEn?: string;
-  /** القيمةُ المعروضة لهذا الصفّ — والفلترةُ تُقارَن بها نفسِها. */
+  /** The value displayed for this row; filtering compares against the same value. */
   get: (row: T) => string | number | boolean | null | undefined;
 }
 
 const show = (v: unknown) => (v === true ? 'نعم' : v === false ? 'لا'
   : (v === null || v === undefined || v === '' ? '—' : String(v)));
 
-/** أيمرّ هذا الصفُّ من الفلاتر كلِّها؟ `skip` يُستثنى لحساب أعداد حقله. */
+/** Whether the row passes all filters; `skip` is excluded to compute that field's own counts. */
 export function passes<T>(row: T, defs: LocalFieldDef<T>[], values: FilterValues, skip?: string) {
   return defs.every((d) => {
     if (d.key === skip) return true;
@@ -32,11 +24,11 @@ export function passes<T>(row: T, defs: LocalFieldDef<T>[], values: FilterValues
   });
 }
 
-/** الصفوفُ الباقية بعد الفلاتر. */
+/** Rows remaining after the filters. */
 export const applyLocalFilters = <T>(rows: T[], defs: LocalFieldDef<T>[], values: FilterValues) =>
   rows.filter((r) => passes(r, defs, values));
 
-/** خياراتُ اللوحة: كلُّ قيمةٍ وعددُها بعد بقيّة الفلاتر. */
+/** Panel options: each value and its count after the other filters. */
 export function localFilterFields<T>(rows: T[], defs: LocalFieldDef<T>[], values: FilterValues): FilterFieldDef[] {
   return defs.map((d) => {
     const counts = new Map<string, number>();

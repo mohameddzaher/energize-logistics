@@ -10,8 +10,7 @@ import '../ui/widgets.dart';
 import '../ui/search_field.dart';
 import 'ls2_common.dart';
 
-/// سائقو لوكيشن سوليوشن — كيلومترات الفترة لكل سائق، مركبته الحالية،
-/// وتفاصيل السائق (مركباته وتاريخ تنقلاته).
+/// Location Solutions drivers: kilometres per driver for the period, his current vehicle, and driver details (his vehicles and movement history).
 class Ls2DriversScreen extends StatefulWidget {
   const Ls2DriversScreen({super.key});
   @override
@@ -23,7 +22,7 @@ class _Ls2DriversScreenState extends State<Ls2DriversScreen> {
   bool _loading = true;
   String? _error;
   String _q = '';
-  // متحكِّمُ البحث عند الشاشة: تغييرُ الفترة يُعيد التحميل فلا تعود الخانةُ فارغةً والكلمةُ تُرشِّح.
+  // The search controller lives at the screen level: a period change reloads, so the field is not left empty while the word still filters.
   final _searchCtl = TextEditingController();
   String _chip = '';
   DateTimeRange _range = ls2ThisMonthToDate();
@@ -34,7 +33,7 @@ class _Ls2DriversScreenState extends State<Ls2DriversScreen> {
   void initState() {
     super.initState();
     _load();
-    // نبضُ القياس (يحمل `vehicles`) يتكرّر كلَّ دقيقةٍ ولا يغيّر ما هنا.
+    // The telemetry pulse (carries `vehicles`) repeats every minute and changes nothing here.
     _onLive = (d) { if (!(d is Map && d.containsKey('vehicles'))) _load(); };
     Live.instance.onData('ls2:updated', _onLive);
   }

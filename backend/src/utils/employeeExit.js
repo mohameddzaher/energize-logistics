@@ -1,31 +1,17 @@
 /**
- * ما يمنع خروجَ موظّف — قاعدةٌ واحدةٌ لإنهاء الخدمة وللحذف معًا.
- *
- * ── ما وقع ─────────────────────────────────────────────────────────────────
- * أُضيف في الموارد البشريّة سجلٌّ باسم شركةٍ لا باسم موظّف، ليُسجَّل عليه جهازٌ
- * سُلِّم لأحد أفرادها. ثمّ حُذف السجلُّ لأنّه لا يخصّ الموارد البشريّة — فاختفى
- * الموظّف وبقيت عهدتُه مسجَّلةً، تظهر في سجلّ تقنية المعلومات باسمٍ محذوفٍ لا
- * يقرؤه أحد.
- *
- * ── ولماذا القاعدةُ واحدةٌ للفعلين ─────────────────────────────────────────
- * إنهاءُ الخدمة كان محروسًا بالعهدة، والحذفُ بلا حارسٍ البتّة — وهو الأشدّ:
- * الإنهاءُ يُبقي السجلَّ فيبقى الأثرُ مقروءًا، والحذفُ يمحوه فتصير العهدةُ بلا
- * صاحب.
- *
- * وحارسان مكتوبان في موضعين يفترقان: أُضيف تفويضُ المركبات إلى أحدهما ونُسي
- * في الآخر، فيُمنع من إنهاء الخدمة ويُسمح له بالحذف. فالسؤالُ يُجاب مرّةً
- * ويقرؤه الاثنان.
+ * What blocks an employee from leaving: one rule for both termination and deletion.
+ * A record named after a company, not an employee, was added in HR to register a device handed to one of its members. The record was then deleted as not HR's, so the employee vanished while his custody stayed registered and showed in the IT register under a deleted name nobody can read.
+ * Termination was guarded by custody while deletion had no guard at all, and deletion is worse: termination keeps the record and the trace stays readable, deletion erases it and custody loses its owner.
+ * Two guards in two places drift: vehicle authorization was added to one and forgotten in the other, so someone was blocked from termination but allowed to be deleted. The question is answered once and both read it.
  */
 
 /**
- * ما يمنع خروجَ هذا الموظّف اليوم.
+ * What blocks this employee from leaving today.
  * @returns {Promise<{blocked:boolean, assets:number, authorizations:number, reasons:string[]}>}
  */
 async function employeeExitBlockers(employeeId) {
   const Asset = require('../models/Asset');
-  // التفويضُ من مصدره الواحد (utils/vehicleAuthorization): ورقةُ المركبة، والإسنادُ
-  // القديم لمركبةٍ لا ورقةَ لها فقط. كان يُعَدّ الإسنادُ «الساري» وحدَه، فمُنع
-  // إنهاءُ خدمة مَن أُلغي تفويضُه من المركبات أو B2C وبقي إسنادُه مفتوحًا.
+  // Authorization from its single source (utils/vehicleAuthorization): the vehicle sheet, and the legacy assignment only for a vehicle with no sheet. Only the 'active' assignment used to be counted, so someone whose authorization was cancelled from vehicles or B2C was blocked from termination while his assignment stayed open.
   const { currentFor } = require('./vehicleAuthorization');
 
   const [assets, held] = await Promise.all([
@@ -41,10 +27,8 @@ async function employeeExitBlockers(employeeId) {
 }
 
 /**
- * ── وردُّ العهدة إلى المستودع ───────────────────────────────────────────────
- * يُستدعى بعد أن يُقرَّر الحذفُ فعلًا. العهدةُ لا تُحذف — هي أصلٌ للشركة، وسجلُّها
- * يُقرأ بعد سنة. تعود إلى المستودع بحالة `in_stock` ويُقيَّد في ملاحظاتها لماذا
- * عادت، فلا تبقى «مع فلانٍ» وفلانٌ لم يعد موجودًا.
+ * Returning custody to the store.
+ * Called once deletion is decided. Custody is never deleted: it is a company asset and its record is read a year later. It returns to the store as `in_stock` and the reason is noted, so it does not stay 'with someone' who no longer exists.
  */
 async function returnEmployeeAssetsToStore(employeeId, { note } = {}) {
   const Asset = require('../models/Asset');

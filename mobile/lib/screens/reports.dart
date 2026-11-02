@@ -8,13 +8,8 @@ import '../ui/search_field.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 
-/// مركز التقارير — the mobile half of the reporting engine.
-///
-/// Same contract as the web (`/api/reports/*`): the backend DESCRIBES a report
-/// as blocks and RENDERS the same blocks to PDF. This screen draws the blocks on
-/// the phone and prints the server's PDF — so a report opened on a phone is the
-/// identical document to one opened on a desktop, down to the letterhead.
-///
+/// Reports center, the mobile half of the reporting engine.
+/// Same contract as the web (`the /api/reports routes`): the backend DESCRIBES a report as blocks and RENDERS the same blocks to PDF. This screen draws the blocks on the phone and prints the server's PDF, so a report opened on a phone is the identical document to one opened on a desktop, down to the letterhead.
 /// Adding a block kind on the server means adding one case to `ReportBlock` here.
 
 const _icons = <String, IconData>{
@@ -52,7 +47,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
   List<Map<String, dynamic>> _options = [];
   bool _optionsLoading = false;
   String _q = '';
-  // نصُّ البحث في متحكِّمٍ يملكه الشاشة — يبقى ظاهرًا عند إعادة فتح النافذة
+  // Search text lives in a controller owned by the screen, so it stays visible when the dialog is reopened.
   final _searchCtl = TextEditingController();
   Timer? _qT;
   int _optSeq = 0;
@@ -106,7 +101,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
   Future<void> _loadOptions() async {
     if (_subject.isEmpty) return;
-    final seq = ++_optSeq; // آخرُ ردٍّ فقط يُطبَّق
+    final seq = ++_optSeq; // Only the last reply is applied.
     setState(() => _optionsLoading = true);
     try {
       final qs = _q.trim().isEmpty ? '' : '?q=${Uri.encodeComponent(_q.trim())}';
@@ -161,11 +156,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
     if (mounted) setState(() => _pdfBusy = false);
   }
 
-  /// ── الفترةُ تُسأل بالطريقة التي يُسأل بها ────────────────────────────────
-  ///
-  /// كان المدى يُختار بتقويمين: من يريد «هذا الشهر» يحسب أوّلَه وآخرَه بيده،
-  /// وآخرُ الشهر ليس رقمًا واحدًا (٢٨ · ٢٩ · ٣٠ · ٣١). فتُعرَض الفتراتُ بأسمائها
-  /// ويُحسَب حدّاها — بنفس أسماء الموقع وحسابِه (`resolvePeriod` في الخادم).
+  /// The period is asked the way it is thought of. A range used to be picked with two calendars: anyone wanting "this month" computed its first and last day by hand, and a month's end is not one number (28, 29, 30, 31). So periods are shown by name and their two ends computed, with the same names and calculation as the site (`resolvePeriod` on the server).
   static const _presets = <(String, String, String)>[
     ('today', 'اليوم', 'Today'),
     ('yesterday', 'أمس', 'Yesterday'),
@@ -427,11 +418,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
   }
 }
 
-/// One report block, drawn to match what the PDF prints.
-/// كتلةُ وثيقةٍ واحدة — عنوانٌ أو خاناتٌ أو جدول.
-///
-/// عامّةٌ لا خاصّة: المساعدُ يعرض وثيقةَ التقرير نفسَها، فلو رسمها بكودٍ ثانٍ
-/// لاختلفت الشاشتان في عرضِ الشيء الواحد عند أوّل تعديل.
+/// One report block, drawn to match what the PDF prints: a heading, fields or a table.
+/// Public, not private: the assistant renders the same report document, and a second drawing code would make the two screens diverge on the first change.
 class ReportBlock extends StatelessWidget {
   final Map<String, dynamic> block;
   const ReportBlock({super.key, required this.block});

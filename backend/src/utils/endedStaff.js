@@ -1,19 +1,8 @@
 /**
- * endedStaff — مَن انتهت خدمتُه، من ملفّه في الموارد البشريّة.
- *
- * ── القاعدة (صاحبُ الشركة، ٢٠٢٦/١٠/١٩) ──────────────────────────────────────
- * الموارد البشريّة وحدَها تكتب حالةَ العمل وإنهاءَ الخدمة. ولوحتُها تعرض
- * المنتهين في كارتهم — ذاك عملُها. أمّا لوحاتُ الأقسام الأخرى فلا تعدّ إلّا مَن
- * هو على رأس العمل: السائقون والمناديب وحمَلةُ التفاويض والفِرَق.
- *
- * ── ولماذا ثلاثُ مجموعات ───────────────────────────────────────────────────
- * سجلّاتُ الأقسام لا ترتبط بالملفّ بطريقةٍ واحدة:
- *   · بمرجعٍ إلى الملفّ (`employee`)            ← `ids`
- *   · برقم الهويّة وحدَه (سائقو الأسطول، المفوَّضون) ← `idNumbers` (العمودان معًا:
- *     iqamaNumber و nationalId — راجع identity-number-two-columns)
- *   · بحساب الدخول (`User.linkedEmployee`)     ← `userIds` (الفِرَقُ المبنيّةُ من الحسابات)
- *
- * تُقرأ مرّةً وتُحفَظ ثلاثين ثانية: لوحاتٌ كثيرةٌ تسأل في الطلب نفسِه.
+ * endedStaff: staff whose service ended, from their HR file.
+ * HR alone writes work status; its dashboard shows ended staff, while other sections count only people on duty.
+ * Three sets because records link differently: `ids` (reference to the file), `idNumbers` (ID number only, both columns iqamaNumber and nationalId), `userIds` (login account, `User.linkedEmployee`).
+ * Read once and cached for thirty seconds since many dashboards ask in one request.
  */
 const cache = require('./ttlCache');
 
@@ -36,10 +25,8 @@ async function load() {
     ? await User.find({ linkedEmployee: { $in: [...ids] } }).select('_id').lean()
     : [];
   /**
-   * ── والأرشيفُ أشدّ: كأنّه حُذف ──────────────────────────────────────────
-   * المنتهي لا يُعَدّ في اللوحات ويبقى في القوائم للمراجعة. والمؤرشَفُ (انتهت
-   * خدمتُه وخرج من النظام، أو فريلانسرٌ منتهٍ) لا يظهر في أيّ صفحةٍ ولا قائمةٍ ولا
-   * منسدلة — إلّا صفحةَ الأرشيف (صاحبُ الشركة، ٢٠٢٦/١٠/١٩). راجع utils/hrEngagement.
+   * Archive is stronger, as if deleted.
+   * Ended staff are not counted on dashboards but stay in lists for review. Archived staff (service ended and left the system, or an ended freelancer) appear on no page, list or dropdown except the archive page. See utils/hrEngagement.
    */
   const { ARCHIVED } = require('./hrEngagement');
   const arch = await Employee.find(ARCHIVED).select('_id iqamaNumber nationalId').lean();
@@ -53,26 +40,26 @@ async function load() {
   };
 }
 
-/** { ids, idNumbers, userIds } — مجموعاتٌ من النصوص. */
+/** { ids, idNumbers, userIds }: sets of strings. */
 const endedStaff = () => cache.wrap('endedstaff:all', TTL, load);
 
-/** رقمُ هويّةٍ لمنتهٍ؟ (يُطبَّع بلا مسافات) */
+/** Is this ID number an ended employee's? (normalized without spaces) */
 const idNumberEnded = (sets, n) => !!n && sets.idNumbers.has(String(n).replace(/\s+/g, ''));
-/** مرجعُ ملفٍّ لمنتهٍ؟ يقبل المعرِّفَ أو الوثيقةَ المأهولة. */
+/** Is this file reference an ended employee's? Accepts an id or a populated document. */
 const employeeEnded = (sets, ref) => {
   if (!ref) return false;
   if (typeof ref === 'object' && ref.employmentStatus) return ref.employmentStatus === 'terminated';
   return sets.ids.has(String(ref._id || ref));
 };
-/** حسابُ دخولٍ مربوطٌ بملفّ منتهٍ؟ */
+/** Is this login account linked to an ended employee's file? */
 const userEnded = (sets, user) => !!user && sets.userIds.has(String(user._id || user));
 
-/** مؤرشَف؟ بمرجع الملفّ (أو الوثيقة المأهولة) أو برقم الهويّة. */
-// بالمعرِّف دائمًا: الوثيقةُ المأهولة قد لا تحمل الحقولَ التي يُعرَف بها الأرشيف.
+/** Archived? By file reference (or populated document) or by ID number. */
+// Always by id: a populated document may lack the fields that identify the archive.
 const employeeArchived = (sets, ref) => !!ref && sets.archivedIds.has(String(ref._id || ref));
 const idNumberArchived = (sets, n) => !!n && sets.archivedIdNumbers.has(String(n).replace(/\s+/g, ''));
 const userArchived = (sets, user) => !!user && sets.archivedUserIds.has(String(user._id || user));
-/** شرطُ استعلامٍ يُسقط المؤرشَفين من مجموعةٍ تحمل مرجعَ الملفّ في `field`. */
+/** Query condition that drops archived staff from a collection holding the file reference in `field`. */
 const notArchivedRef = (sets, field = 'employee') => ({ [field]: { $nin: [...sets.archivedIds].map((x) => new (require('mongoose').Types.ObjectId)(x)) } });
 
 module.exports = { endedStaff, idNumberEnded, employeeEnded, userEnded, employeeArchived, idNumberArchived, userArchived, notArchivedRef };

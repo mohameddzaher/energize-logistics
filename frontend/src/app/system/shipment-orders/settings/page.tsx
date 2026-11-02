@@ -1,12 +1,6 @@
 'use client';
-// إعدادات قسم طلبات الشحنات — القسمُ كلُّه يُضبط من هنا.
-//
-// كانت «إعدادات النموذج» صفحةً وحدَها، وبقيّةُ ما يُضبط في القسم لا موضعَ له:
-// أرقامُ البوالص من أين تبدأ، وقوائمُ المدن وأنواع الشاحنات، والحالاتُ التي
-// تمرّ بها الشحنة. فمن أراد ضبطَ شيءٍ بحث عنه، أو لم يجده أصلًا.
-//
-// وكلُّه ديناميكيّ: ما يُغيَّر هنا يظهر في نموذج الإنشاء وفي الجداول في اللحظة
-// نفسِها، بلا نشرةٍ برمجيّة.
+// Shipment-orders section settings: the whole section is configured from here.
+// Form settings used to be a page of their own while the rest had no place: waybill number start, city and truck-type lists, and the statuses a shipment passes through. Everything is dynamic: changes show in the create form and tables at once, with no code release.
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
@@ -31,7 +25,7 @@ export default function ShipmentOrdersSettingsPage() {
   const admin = canAdminOrders(user);
 
   const [tab, setTab] = useState<Tab>('form');
-  // تشمل المُطفأة: صفحةُ الضبط تُري ما أُخفي كي يُعاد.
+  // Includes switched-off items: the settings page shows what was hidden so it can be restored.
   const statusVocab = useOrderStatuses(true);
   const [counter, setCounter] = useState<{ next: number; start: number } | null>(null);
   const [loading, setLoading] = useState(true);
@@ -41,7 +35,7 @@ export default function ShipmentOrdersSettingsPage() {
     try {
       const d = await api.get<{ next: number; start: number }>('/api/shipment-orders/counter');
       setCounter(d);
-    } catch { /* اختياريّ */ }
+    } catch { /* Optional */ }
     setLoading(false);
   }, []);
   useEffect(() => { load(); }, [load]);
@@ -130,9 +124,7 @@ export default function ShipmentOrdersSettingsPage() {
           <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-3 flex items-center gap-2">
             <Hash className="w-4 h-4 text-[#f37121]" /> {t('ترقيم أوامر النقل', 'Transport order numbering')}
           </h3>
-          {/* ── الرقمُ لا يُنقَص ولا يُعاد ──────────────────────────────────────
-              رقمُ أمر النقل يُكتب على ورقٍ يُسلَّم للسائق ويُحاسَب عليه. وتكرارُه
-              يعني بوليصتين بالرقم نفسِه في يدين — فلا يُقبَل إلّا التقديم. */}
+          {/* The number is never lowered or repeated. The transport order number is written on paper handed to the driver and billed against; a repeat means two waybills with the same number in two hands, so only moving forward is accepted. */}
           <p className="text-sm text-slate-500 mb-4">
             {t('رقمُ أمر النقل يُكتب على ورقٍ يُسلَّم للسائق ويُحاسَب عليه، فلا يُعاد رقمٌ صُرف. يمكن تقديمُ العدّاد إلى رقمٍ أكبر، ولا يمكن إرجاعُه.',
                'The waybill number goes on paper handed to a driver and is accounted for, so a used number is never reissued. The counter may be moved forward, never back.')}
@@ -166,15 +158,7 @@ export default function ShipmentOrdersSettingsPage() {
 
       {tab === 'statuses' && (
         <div className="space-y-4">
-          {/* ── ما يُملَك منها وما لا يُملَك ────────────────────────────────────
-              الحالةُ مفتاحٌ وتسمية. المفتاحُ عقدٌ: التحليلاتُ تعدّ على
-              `arrived`، والتنبيهاتُ تُطلق من `late`، وشرطُ المشتريات في
-              المحفظة يقف على `bond_received`، والمنصّةُ الخارجيّة تتكلّم بها.
-              فالعشرةُ مكتوبةٌ في الشيفرة ولا تُحذف.
-
-              والتسميةُ واللونُ والترتيبُ وأهي مُستعمَلةٌ اليوم — كلُّها هنا،
-              ويُزاد عليها. وما يُغيَّر يظهر في البطاقات وفي نموذج الإنشاء وفي
-              التطبيق في اللحظة نفسِها. */}
+          {/* What can and cannot be owned. A status is a key plus a label. The key is a contract: analytics count on `arrived`, alerts fire from `late`, the wallet purchase condition depends on `bond_received`, and the external platform speaks them. So the ten built-in statuses are in code and cannot be deleted. Label, color, order and whether it is used today are all editable here and can be extended; changes show in cards, the create form and the app at once. */}
           <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
             <h3 className="bg-slate-900 px-3 py-2 rounded-lg text-white font-semibold mb-3 flex items-center gap-2">
               <ListChecks className="w-4 h-4 text-[#f37121]" /> {t('دورةُ الشحنة الآن', 'The lifecycle as it stands')}
@@ -202,10 +186,7 @@ export default function ShipmentOrdersSettingsPage() {
             <ReferenceDataManager module="shipment_orders" type="so_status" embedded />
           </div>
 
-          {/* ── ولماذا لا يُغيَّر المفتاحُ نفسُه ────────────────────────────────
-              المخزَّنُ على الشحنة هو المفتاح. فتُعاد تسميةُ «وصلت» غدًا ولا
-              يتغيّر شيءٌ في السجلّات؛ أمّا تغييرُ المفتاح فيترك كلَّ شحنةٍ قديمةٍ
-              تشير إلى حالةٍ لا وجودَ لها. */}
+          {/* Why the key itself is not changed: the shipment stores the key. Renaming the arrived label changes nothing in records, whereas changing the key would leave every old shipment pointing at a status that does not exist. */}
           <p className="text-[12px] text-slate-500 leading-relaxed">
             {t('المخزَّن على الشحنة هو المفتاح لا الاسم — فتغييرُ التسمية آمنٌ على السجلّات كلِّها، مهما كثرت. وإخفاءُ حالةٍ يُخرجها من الشاشات ولا يمسّ شحنةً تحملها.',
                'What a shipment stores is the key, not the label — renaming is safe across every record, however many. Hiding a status takes it off the screens without touching a shipment that carries it.')}

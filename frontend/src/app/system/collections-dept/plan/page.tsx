@@ -1,13 +1,5 @@
 'use client';
-/**
- * الخطّةُ اليوميّة — «مَن أزور اليوم، وماذا حدث».
- *
- * ── لماذا صفٌّ ليومٍ وعميل ─────────────────────────────────────────────────
- * في ورقتهم عمودٌ لكلّ يومٍ تحت كلّ عميل. والوحدةُ الحقيقيّة (عميلٌ × يوم):
- * يكتب المديرُ خطّةَ الغد لموظّفيه، أو يكتب الموظّفُ خطّتَه بنفسه، فيأتي الصباحُ
- * ويعرف كلٌّ ما أمامه بلا سؤال. وبعد الفعل يُكتب ما حدث وكم حُصِّل — وهو الأثرُ
- * الذي يُقرأ في التقييم وفي ملفّ العميل.
- */
+/** Daily plan: who to visit today and what happened. One row per customer per day, so a manager can write tomorrow's plan or staff can write their own, and the outcome (what happened, how much was collected) is what evaluation and the customer file read. */
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useLanguage } from '@/context/LanguageContext';
@@ -27,18 +19,13 @@ const REQUEST_TYPES: { v: string; ar: string; en: string }[] = [
 const today = () => new Date().toISOString().slice(0, 10);
 const addDays = (d: string, n: number) => new Date(new Date(d).getTime() + n * 86400000).toISOString().slice(0, 10);
 
-/**
- * ── والمدى يُختار بكلمةٍ لا بتاريخين ──────────────────────────────────────
- * «أرِني اليوم» و«أرِني هذا الشهر» سؤالان يُطرحان كلَّ يوم، وكان جوابُهما
- * حسابَ تاريخين وكتابتَهما في خانتين. فصارت أزرارًا، والتاريخان يبقيان لمن
- * يريد فترةً بعينها.
- */
+/** The range is picked by a keyword instead of two dates; the date inputs remain for a custom period. */
 const ymd = (d: Date) => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 const PRESETS: { key: string; ar: string; en: string; range: () => [string, string] }[] = [
   { key: 'today', ar: 'اليوم', en: 'Today', range: () => [today(), today()] },
   { key: 'yesterday', ar: 'أمس', en: 'Yesterday', range: () => [addDays(today(), -1), addDays(today(), -1)] },
   { key: 'week', ar: 'هذا الأسبوع', en: 'This week', range: () => {
-    const n = new Date(); const back = (n.getDay() + 1) % 7;           // الأسبوعُ يبدأ السبت
+    const n = new Date(); const back = (n.getDay() + 1) % 7;           // Week starts on Saturday.
     return [ymd(new Date(n.getTime() - back * 86400000)), today()];
   } },
   { key: 'month', ar: 'هذا الشهر', en: 'This month', range: () => {
@@ -69,9 +56,7 @@ export default function CollectionsPlanPage() {
   const [adding, setAdding] = useState(false);
   const [q, setQ] = useState('');
   const [hits, setHits] = useState<any[]>([]);
-  // ── والموظّفُ هو مَن فتح الشاشة ────────────────────────────────────────
-  // كان يُكتب بالإيد في كلّ مهمّة، وهو في تسعٍ من كلّ عشرٍ صاحبُ الحساب نفسُه
-  // الذي يكتبها. فيُملأ باسم الداخل، ويُغيَّر لمن يكتب خطّةَ غيره.
+  // The assignee defaults to the signed-in user, who is usually the account owner; it can be changed when writing someone else's plan.
   const myName = [user?.firstName, user?.lastName].filter(Boolean).join(' ').trim();
   const blankForm = () => ({
     party: '', partyName: '', date: today(), requestType: 'Visit',
@@ -81,9 +66,7 @@ export default function CollectionsPlanPage() {
   const [err, setErr] = useState('');
   const [preset, setPreset] = useState('week');
 
-  // ── وما حدث يُكتب بعد الفعل ────────────────────────────────────────────
-  // «كلّمتُه فقال إنّه يسدّد الخميس» هو ثمرةُ الزيارة، وكانت الشاشةُ تعرف
-  // «تمّت» ولا تعرف ماذا قيل. فبعدها يُفتَح هذا: ما حدث، وكم قُبض.
+  // What happened is recorded after the visit (what was said, how much was collected); the screen used to know only "done".
   const [logging, setLogging] = useState<CollectionTask | null>(null);
   const [logForm, setLogForm] = useState({ action: '', collected: '', notes: '' });
 
@@ -102,7 +85,7 @@ export default function CollectionsPlanPage() {
   useEffect(() => { load(); }, [load]);
   useEffect(() => { api.get<any>('/api/collections-dept/ledger/team').then((d) => setOfficers((d.officers || []).map((o: any) => o.officer).filter(Boolean))).catch(() => {}); }, []);
 
-  // البحثُ عن العميل عند الإضافة — يُمهَل حتى يتوقّف الكتابة.
+  // Customer search on add is debounced until typing stops.
   useEffect(() => {
     if (!q.trim()) { setHits([]); return; }
     const t = setTimeout(async () => {
@@ -137,7 +120,7 @@ export default function CollectionsPlanPage() {
         action: logForm.action,
         notes: logForm.notes,
         collected: Number(logForm.collected) || 0,
-        // كتابةُ ما حدث تعني أنّها تمّت — ولا يُطلَب ضغطُ زرٍّ ثانٍ لقول ذلك.
+        // Writing the outcome implies the task is done, so no second button press is needed.
         status: 'Done',
       });
       setLogging(null); load();
@@ -148,7 +131,7 @@ export default function CollectionsPlanPage() {
     try { await api.delete(`/api/collections-dept/ledger/tasks/${t._id}`); load(); } catch (e: any) { setErr(e.message); }
   };
 
-  // تُجمَع باليوم: الشاشةُ تُقرأ يومًا يومًا كما يُقرأ التقويم.
+  // Grouped by day, since the screen is read day by day like a calendar.
   const byDay = rows.reduce((m: Record<string, CollectionTask[]>, t) => {
     (m[t.date] = m[t.date] || []).push(t); return m;
   }, {});
@@ -174,7 +157,7 @@ export default function CollectionsPlanPage() {
       </div>
 
       <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-sm space-y-3">
-        {/* المدى بكلمة — واليومان يبقيان لمن يريد فترةً بعينها. */}
+        {/* Range by keyword; the two dates remain for a custom period. */}
         <div className="flex flex-wrap items-center gap-2">
           <CalendarDays className="w-4 h-4 text-slate-400" />
           {PRESETS.map((ps) => (
@@ -251,7 +234,7 @@ export default function CollectionsPlanPage() {
             </div>
             <div>
               <label className="block text-xs text-slate-500 mb-1">{ar ? 'الموظف' : 'Officer'}</label>
-              {/* يبدأ باسم الداخل — ويُغيَّر لمن يكتب خطّةَ غيره. */}
+              {/* Defaults to the signed-in user; changeable when writing someone else's plan. */}
               <SearchSelect ar={ar} value={form.officerName}
                 onChange={(v) => setForm((f) => ({ ...f, officerName: v }))}
                 placeholder={ar ? 'مسؤول الحساب' : 'account owner'}
@@ -259,9 +242,7 @@ export default function CollectionsPlanPage() {
             </div>
           </div>
 
-          {/* ── والملاحظةُ تُكتب مع الخطّة أو بعدها ────────────────────────
-              «قال إنّه يسدّد بعد الجرد» يُكتب قبل الزيارة توجيهًا، وبعدها
-              نتيجةً. فهي هنا اختياريّةٌ، وتُملأ بعد الفعل من زرّ «ما حدث». */}
+          {/* The note is optional: written before the visit as guidance, after it as the result; filled after the action from the outcome button. */}
           <div>
             <label className="block text-xs text-slate-500 mb-1">{ar ? 'ملاحظة (اختياري)' : 'Note (optional)'}</label>
             <textarea rows={2} value={form.notes}
@@ -295,7 +276,7 @@ export default function CollectionsPlanPage() {
                       ? (ar ? REQUEST_TYPES.find((x) => x.v === t.requestType)!.ar : t.requestType)
                       : (t.requestType || (ar ? 'مهمة' : 'task'))}
                   </span>
-                  {/* واسمُ العميل بابُ ملفّه. */}
+                  {/* The customer name links to the customer file. */}
                   <span className="text-sm font-medium flex-1 min-w-[180px]">
                     <span className="font-mono text-[11px] text-slate-400 me-1">{t.partyCode}</span>
                     {t.party ? (
@@ -322,7 +303,7 @@ export default function CollectionsPlanPage() {
                     </div>
                   )}
                 </div>
-                {/* ما حدث والملاحظةُ تحت السطر: نصٌّ يُقرأ لا خانةٌ في جدول. */}
+                {/* Outcome and note sit under the row as readable text, not table cells. */}
                 {(t.action || (t as any).notes) && (
                   <div className="mt-1.5 ms-1 ps-2 border-s-2 border-slate-100 space-y-0.5">
                     {t.action && <p className="text-[13px] text-slate-700">{t.action}</p>}
@@ -335,9 +316,7 @@ export default function CollectionsPlanPage() {
         </div>
       ))}
 
-      {/* ── ما حدث ──────────────────────────────────────────────────────────
-          الزيارةُ ثمرتُها ما قيل فيها. وكانت الشاشةُ تعرف «تمّت» ولا تعرف
-          ماذا قيل، فيبقى ما اتُّفق عليه في رأس من زار وحدَه. */}
+      {/* Outcome: the visit's result is what was said, which the screen did not capture before. */}
       {logging && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4" onClick={() => setLogging(null)}>
           <div className="bg-white rounded-xl shadow-xl w-full max-w-lg p-5 space-y-3" onClick={(e) => e.stopPropagation()} dir={isRTL ? 'rtl' : 'ltr'}>

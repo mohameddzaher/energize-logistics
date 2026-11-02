@@ -1,11 +1,5 @@
 'use client';
-// مؤشرات أداء العملاء — CRM.
-//
-// One row per CRM company, but the numbers come from five sections at once:
-// invoices and payments from finance, loads from إدارة الأسطول, orders from
-// طلبات الشحنات, files from التخليص الجمركي, and deals/activities from the CRM
-// itself. The backend joins them by the Arabic-folded company name, because
-// nothing links those registers by id.
+// Customer KPIs (CRM). One row per CRM company, but the numbers come from five sections at once: invoices and payments from finance, loads from fleet management, orders from shipment orders, files from customs clearance, and deals/activities from the CRM itself. The backend joins them by the Arabic-folded company name, because nothing links those registers by id.
 import { useState, useEffect, useCallback, useMemo, Fragment } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
@@ -21,7 +15,7 @@ import DateRangeFilter from '@/components/system/DateRangeFilter';
 import ScrollX from '@/components/system/ScrollX';
 
 interface Flag { key: string; ar: string; en: string }
-/** تفصيلُ الصفِّ الواحد — لا يُرسَل مع القائمة، يُجلب عند فتحه. */
+/** Detail of a single row: not sent with the list, fetched when opened. */
 interface RowDetail { breakdown: ScoreBreakdownItem[]; flags: Flag[] }
 interface CustomerKpi {
   _id: string; name: string; arabicName: string; type: string; status: string;
@@ -40,7 +34,7 @@ interface CustomerKpi {
   lastTouch: string | null; daysSinceLastTouch: number | null;
   prevRevenue: number; revenueGrowthPct: number | null; shipmentGrowthPct: number | null;
   score: number; band: string;
-  // مفاتيحُ العلامات فقط — نصُّها في `flagLabels` أعلى الحمولة.
+  // Flag keys only; their text is in `flagLabels` at the top of the payload.
   flags: string[];
 }
 
@@ -86,7 +80,7 @@ export default function CrmCustomerKpisPage() {
   const [band, setBand] = useState('');
   const [service, setService] = useState('');
   const [open, setOpen] = useState<string | null>(null);
-  // تفصيلُ التقييم يُجلب عند فتح الصفِّ وحدَه — راجع صفحةَ الموردين.
+  // Score detail is fetched only when the row is opened; see the vendors page.
   const [details, setDetails] = useState<Record<string, RowDetail>>({});
   const [detailLoading, setDetailLoading] = useState<string | null>(null);
   const openRow = useCallback(async (key: string) => {
@@ -96,12 +90,12 @@ export default function CrmCustomerKpisPage() {
     try {
       const d = await api.get<RowDetail>(`/api/crm/kpis/customers/detail?key=${encodeURIComponent(key)}&from=${from}&to=${to}`);
       setDetails((prev) => ({ ...prev, [key]: d }));
-    } catch { /* الأرقامُ باقيةٌ، والتفصيلُ يُعاد طلبُه */ }
+    } catch { /* The numbers stay; the detail is requested again. */ }
     setDetailLoading(null);
   }, [details, from, to]);
   useEffect(() => { setDetails({}); }, [from, to]);
 
-  // اسمُ التصنيف من قائمة `bands` — يُستعمل في التصدير كما في الجدول.
+  // Band name from the `bands` list, used in the export as in the table.
   const bandLabelOf = useCallback((k: string) => {
     const b: any = (data?.bands || []).find((x: any) => x.key === k);
     return (ar ? b?.ar : b?.en) || k || '';
@@ -145,8 +139,7 @@ export default function CrmCustomerKpisPage() {
     { header: tx('Days since contact', 'أيام منذ آخر تواصل'), key: 'daysSinceLastTouch', transform: (v: number | null) => v ?? '—', width: 18 },
     { header: tx('Owner', 'المسؤول'), key: 'owner', width: 20 },
   ];
-  // التصنيف والخدمة والبحث تُصفّي الجدول في المتصفّح بعد جلب الفترة كاملةً،
-  // فكان الزرُّ الواحد يصدّر شريحةً مصفّاةً باسم «مؤشّرات العملاء» بلا تمييز.
+  // Band, service and search filter the table in the browser after the whole period is fetched, so the single button used to export a filtered slice named as all customer KPIs without any distinction.
   const scope = exportScopeLabels(ar);
   const sheetName = tx('Customer KPIs', 'مؤشرات العملاء');
   const exportOptions = [

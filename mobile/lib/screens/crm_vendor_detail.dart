@@ -9,8 +9,7 @@ import '../ui/report_button.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 
-/// تفاصيلُ مورد CRM (3PL) — نظيرُ نافذة التفاصيل في /system/crm/vendors:
-/// بياناتُه، التقرير الشامل للمورد، وحسابُ البوابة (المورد يتابع حمولاته).
+/// CRM vendor (3PL) details, counterpart of the details dialog in /system/crm/vendors: data, full vendor report, and portal account (the vendor tracks its loads).
 class CrmVendorDetailScreen extends StatefulWidget {
   final Map<String, dynamic> vendor;
   const CrmVendorDetailScreen({super.key, required this.vendor});

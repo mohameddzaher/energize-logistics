@@ -1,39 +1,22 @@
 'use client';
 /**
- * اختيارُ الأعمدة الظاهرة — والمعروضُ هو ما يُصدَّر ويُطبَع.
- *
- * ── ولماذا لا يكفي التصدير ────────────────────────────────────────────────
- * الجداولُ عندنا واسعة، ومن يطبع كشفًا لعميلٍ لا يريد أربعين عمودًا؛ يريد
- * ستّة. وكان الحلُّ الوحيد أن يُصدَّر الكلُّ ثمّ تُحذف الأعمدةُ في إكسل يدويًّا
- * في كلّ مرّة.
- *
- * فالاختيارُ هنا واحدٌ يحكم الشاشةَ والتصديرَ والطباعةَ معًا: ما تراه هو ما
- * يخرج. واختيارُ الأعمدة يُحفَظ لصاحبه (localStorage) فلا يُعاد ضبطُه كلَّ
- * صباح — وهو تفضيلُ عرضٍ يخصّ المتصفّح، لا بيانات.
+ * Column chooser: the visible columns are also what is exported and printed.
+ * One choice drives screen, export and print so what you see is what comes out. Saved per browser in localStorage (a view preference, not data).
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Columns3, Search, X } from 'lucide-react';
 
-export type ChooserColumn = { key: string; label: string; /** عمودٌ لا يُخفى — كالمفتاح الذي يُعرَف به الصفّ. */ locked?: boolean };
+export type ChooserColumn = { key: string; label: string; /** A column that cannot be hidden, e.g. the row key. */ locked?: boolean };
 
 /**
- * يقرأ الاختيارَ المحفوظ ويحفظه.
- *
- * ── والمحفوظُ لا يُقصّ على ما وصل من الأعمدة حتى الآن ──────────────────────
- * كان يُقرأ مرّةً واحدةً عند أوّل رسمة ويُصفّى على الأعمدة القائمة لحظتَها.
- * وأعمدةُ ماستر الموارد البشريّة تصل من الخادم **بعد** أوّل رسمة — فكانت
- * القائمةُ لحظةَ القراءة أربعةَ أعمدةٍ ثابتة، فيُقصّ الاختيارُ المحفوظُ عليها
- * ويضيع: يختار المستخدمُ عشرين عمودًا، يحدّث الصفحةَ، فيجد أربعة.
- *
- * فالمحفوظُ يبقى كما كُتب، و«الظاهر» يُشتقّ منه ومن الأعمدة القائمة في كلّ
- * رسمة — فمتى وصلت الأعمدةُ ظهر اختيارُه كاملًا.
- *
- * `defaults`: ما يظهر لمن لم يختر بعد (وإلّا فالكلّ).
+ * Reads and saves the stored selection.
+ * The saved value is kept as written and the visible set is derived from it on every render, because HR master columns arrive from the server after the first render and filtering at read time lost the choice.
+ * `defaults`: columns shown before any choice (all if omitted).
  */
 export function useVisibleColumns(storageKey: string, columns: ChooserColumn[], opts?: { defaults?: string[] }) {
   const allKeys = useMemo(() => columns.map((c) => c.key), [columns]);
-  // `undefined` = لم يُقرأ التخزينُ بعد · `null` = لا اختيارَ محفوظًا.
+  // `undefined` = storage not read yet; `null` = no saved selection.
   const [saved, setSaved] = useState<string[] | null | undefined>(undefined);
 
   useEffect(() => {
@@ -41,7 +24,7 @@ export function useVisibleColumns(storageKey: string, columns: ChooserColumn[], 
       const raw = localStorage.getItem(storageKey);
       const parsed = raw ? JSON.parse(raw) : null;
       setSaved(Array.isArray(parsed) && parsed.length ? parsed.map(String) : null);
-    } catch { setSaved(null); /* متصفّحٌ يمنع التخزين — تُعرض الافتراضيّة */ }
+    } catch { setSaved(null); /* Storage blocked by the browser: show the defaults. */ }
   }, [storageKey]);
 
   const defaults = opts?.defaults;
@@ -56,7 +39,7 @@ export function useVisibleColumns(storageKey: string, columns: ChooserColumn[], 
 
   const set = (next: string[]) => {
     setSaved(next);
-    try { localStorage.setItem(storageKey, JSON.stringify(next)); } catch { /* لا يضرّ */ }
+    try { localStorage.setItem(storageKey, JSON.stringify(next)); } catch { /* Ignore storage errors. */ }
   };
   const isOn = (k: string) => visible.includes(k);
   return { visible, setVisible: set, isOn };
@@ -90,19 +73,18 @@ export default function ColumnChooser({ columns, visible, onChange, ar }: {
     return s ? columns.filter((c) => c.label.toLowerCase().includes(s)) : columns;
   }, [columns, q]);
 
-  // الأعمدةُ تُحفظ بترتيب تعريفها لا بترتيب الضغط، وإلّا قفز عمودٌ أُعيد
-  // إظهارُه إلى آخر الجدول.
+  // Save columns in definition order, not click order, so a re-shown column does not jump to the end.
   const inOrder = (keys: string[]) => columns.filter((c) => keys.includes(c.key)).map((c) => c.key);
 
   const toggle = (k: string) => {
     if (columns.find((c) => c.key === k)?.locked) return;
     const next = visible.includes(k) ? visible.filter((x) => x !== k) : inOrder([...visible, k]);
-    // العمودُ الأخير لا يُطفأ: جدولٌ بلا أعمدةٍ ليس اختيارًا بل عطب.
+    // The last visible column cannot be turned off; an empty table is a fault, not a choice.
     if (!next.length) return;
     onChange(next);
   };
 
-  /** يُبقي المثبَّتَ وحدَه — أو العمودَ الأوّل إن لم يكن ثمّ مثبَّت. */
+  /** Keep only the pinned column, or the first column if none is pinned. */
   const hideAll = () => {
     const locked = columns.filter((c) => c.locked).map((c) => c.key);
     onChange(locked.length ? locked : columns.slice(0, 1).map((c) => c.key));

@@ -1,16 +1,8 @@
 'use client';
 /**
- * شاشةُ المخزن — قطعُ الغيار: أصنافٌ برصيدٍ وسعر، حركاتُ وارد/صادر، وسجلُّ
- * حركاتٍ لا يُعدَّل بل يُعكَس.
- *
- * ── ولماذا مكوّنٌ لا صفحة ───────────────────────────────────────────────────
- * المخزنُ مخزنان: النقلُ الثقيل والنقلُ الخفيف. وآليّتُهما واحدةٌ حرفًا بحرف
- * — وارد وصادر، رصيدٌ بعد كلّ حركة، عتبةُ نقص، وتراجعٌ بحركةٍ معاكسةٍ لا
- * بمسحٍ — وأصنافُهما وأرصدتُهما مختلفة. فنسخُ الشاشةِ لمخزنٍ ثانٍ يعني شاشتين
- * تفترقان أوّلَ إصلاحٍ يُجرى على إحداهما.
- *
- * فالنطاقُ يُمرَّر: `base` مسارُ النقاط، و`plateSource` مصدرُ لوحات المركبات
- * التي يُصرَف عليها، و`canEditOf` حارسُ الصلاحيّة — فلكلّ قسمٍ حارسُه.
+ * Store screen for spare parts: items with balance and price, in/out movements, and a movement log that is reversed, not edited.
+ * A component, not a page: there are two stores (heavy and light transport) with identical mechanics (in/out, balance after each movement, shortage threshold, reversal by opposite movement not deletion) but different items and balances. Copying the screen would let two screens drift.
+ * Scope is passed: `base` endpoint path, `plateSource` for the vehicles issued to, and `canEditOf` as the permission guard per section.
  */
 import { useState, useEffect, useCallback, useMemo, createContext, useContext } from 'react';
 import { useLanguage } from '@/context/LanguageContext';
@@ -21,20 +13,20 @@ import SelectionBar from '@/components/ls2/SelectionBar';
 import { SearchableSelect } from '@/components/hr/HRKit';
 import { formatPlate } from '@/lib/flexMatch';
 
-/** مركبةٌ يُصرَف عليها: لوحتُها وما يُعرَف عنها. */
+/** A vehicle issued to: its plate and what is known about it. */
 export interface PlateRow {
   plate: string;
-  /** المشروعُ الذي تعمل فيه — يُعرَض في القائمة وتحت الخانة. */
+  /** The project it works in, shown in the list and under the field. */
   project?: string;
-  /** راكبُها الآن. */
+  /** Its current rider. */
   rider?: string;
-  /** الفرع/المدينة. */
+  /** Branch/city. */
   city?: string;
-  /** وصفٌ حرٌّ (النوعُ والماركة) لمن لا مشروعَ له. */
+  /** Free description (type and make) for one with no project. */
   detail?: string;
 }
 
-/** مفتاحُ المطابقة: اللوحةُ تُكتب بصيغٍ مختلفةٍ في سجلّين. */
+/** Matching key: a plate is written in different forms in two registers. */
 const plateKeyOf = (v: unknown) => String(v ?? '').replace(/[^0-9A-Za-z\u0621-\u064A]/g, '').toUpperCase();
 import { useDialog } from '@/components/system/DialogProvider';
 import { Spinner, PageHeader, StatCard } from '@/components/hr/HRKit';
@@ -48,15 +40,12 @@ import { useLatestRequest } from '@/hooks/useLatestRequest';
 import { useColumnFilters, ClearColumnFilters } from '@/components/useColumnFilters';
 import { ISSUE_REASONS, issueReasonLabel } from '@/lib/storeIssueReasons';
 
-/** موردٌ كما يردّه `/suppliers`. */
+/** Supplier as returned by `/suppliers`. */
 export type Supplier = { _id: string; name: string; phone?: string; city?: string; taxNumber?: string; notes?: string; items?: number; purchases?: number; units?: number; total?: number; lastPurchase?: string };
 const dmy = (d?: string) => (d ? String(d).slice(0, 10).split('-').reverse().join('/') : '—');
 const todayYmd = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Riyadh' });
 
-/**
- * خانةُ المورد: يُختار من القائمة، أو يُكتب اسمٌ جديدٌ فيُضاف مع الحفظ نفسِه.
- * القيمةُ معرّفُ المورد أو الاسمُ المكتوب — والخادمُ يميّز بينهما.
- */
+/** Supplier field: picked from the list, or a new name typed and added with the same save. The value is the supplier id or the typed name; the server tells them apart. */
 function SupplierSelect({ suppliers, value, onChange, ar }: { suppliers: Supplier[]; value: string; onChange: (v: string) => void; ar: boolean }) {
   return (
     <SearchableSelect value={value} onChange={onChange} searchAfter={0}
@@ -78,8 +67,7 @@ type Movement = {
   _id: string; item: string; itemName: string; type: 'in' | 'out'; quantity: number;
   vehiclePlate?: string; vehicleRegistryPlate?: string; reason?: string; issueReason?: string; balanceAfter: number; performedByName?: string; createdAt: string;
   date?: string; supplierName?: string; unitPrice?: number | null; total?: number | null; unit?: string;
-  // التراجع — السيرفر هو اللي بيقرر الحركة دي ينفع يترجع فيها ولا لأ، فالواجهة
-  // ما تعيدش بناء القاعدة دي عندها.
+  // Reversal: the server decides whether a movement can be reversed, so the UI does not rebuild that rule.
   reversed?: boolean; reversedByName?: string; reversalReason?: string;
   canReverse?: boolean; isReversal?: boolean;
 };
@@ -93,41 +81,25 @@ const STATUS: Record<string, { ar: string; en: string; cls: string }> = {
 };
 
 export type StoreScope = {
-  /** مسارُ نقاط المخزن — «/api/ls2/store» أو «/api/light-transport/store». */
+  /** Store endpoint base: '/api/ls2/store' or '/api/light-transport/store'. */
   base: string;
-  /**
-   * مسارُ نقاط الموردين — يُكتب نصًّا صريحًا في صفحة كلّ مخزن: خريطةُ «صفحة ← نقاط»
-   * تُبنى من النصوص المكتوبة، ومسارٌ يُشتقّ بالحساب لا تراه فيُرفَض لمن فُتحت له
-   * الصفحةُ وحدَها (راجع page-api-map).
-   */
+  /** Suppliers endpoint base, written as an explicit string in each store page: the page-to-endpoint map is built from written text, and a computed path is not seen and would be rejected for users granted only the page (see page-api-map). */
   suppliersBase: string;
   titleAr: string;
   titleEn: string;
   subtitleAr: string;
   subtitleEn: string;
-  /** من أين تُجلَب لوحاتُ المركبات التي يُصرَف عليها. */
-  /**
-   * ── مصدرُ المركبات التي يُصرَف عليها ──────────────────────────────────────
-   * كان يردّ لوحاتٍ عاريةً تُعرَض في `datalist`. واللوحةُ وحدَها لا تكفي
-   * من يصرف: الصنفُ يُصرَف على مركبةٍ، والمركبةُ تعمل في **مشروع** — والمصروفُ
-   * يُحمَّل على ذلك المشروع. فمن يصرف يسأل «هذه المركبةُ تبع أيّ مشروع؟» ولا
-   * يجد الجوابَ إلّا بفتح شاشةٍ أخرى والعودة.
-   *
-   * فصار المصدرُ يردّ صفوفًا: اللوحةُ ومشروعُها وراكبُها وفرعُها — تُعرَض في
-   * القائمة وتحت الخانة بعد الاختيار.
-   */
+  /** Where the vehicle plates issued to are fetched from. */
+  /** Source of vehicles issued to. It used to return bare plates in a `datalist`, but an item is issued to a vehicle and the vehicle works in a project that bears the cost, so the issuer needs the project without opening another screen. It now returns rows: plate, project, rider and branch, shown in the list and under the field after picking. */
   plateSource: { url: string; rows: (data: any) => PlateRow[] };
-  /** حارسا القسم: من يرى الشاشة، ومن يكتب فيها. */
+  /** Section guards: who sees the screen and who writes in it. */
   canSee: (user: any) => boolean;
   canEdit: (user: any) => boolean;
   /** Who may add items, when narrower than who may edit. */
   canAdd?: (user: any) => boolean;
-  /** اسمُ ملفّ التصدير. */
+  /** Export file name. */
   fileName: string;
-  /**
-   * «لوحاتٌ غير معروفة» — لوحاتٌ كُتبت على حركاتٍ ولا مركبةَ لها في سجلّ
-   * المركبات. اختياريّ: يُعرض مع سجلّ الحركات حيث يُمرَّر.
-   */
+  /** Unknown plates: plates written on movements with no vehicle in the vehicle register. Optional: shown with the movement log where passed. */
   unknownPlatesUrl?: string;
   /** No unit prices or totals anywhere (light transport store). */
   noPrices?: boolean;
@@ -148,11 +120,7 @@ export default function StoreScreen({ scope }: { scope: StoreScope }) {
   const ar = lang === 'ar';
   const { user } = useAuth();
   const { notify, confirm } = useDialog();
-  // Gate on the SECTION, not on a hand-written role list. A role the super admin
-  // grants «تعديل» on Location Solutions gets وارد/صادر/تعديل/حذف here without a
-  // code change — which is what the permissions page promises and what the API
-  // already honours (rbac lets a section grant through). The old list silently
-  // broke that promise: the section opened, the actions stayed hidden.
+  // Gate on the SECTION, not on a hand-written role list. A role granted edit on Location Solutions by the super admin gets in/out/edit/delete here without a code change, as the permissions page promises and the API already honours (rbac lets a section grant through). The old list silently broke this: the section opened but the actions stayed hidden.
   const canEdit = scope.canEdit(user);
   const canAdd = scope.canAdd ? scope.canAdd(user) : canEdit;
 
@@ -167,10 +135,9 @@ export default function StoreScreen({ scope }: { scope: StoreScope }) {
   const [priceMin, setPriceMin] = useState('');
   const [priceMax, setPriceMax] = useState('');
   const [move, setMove] = useState<{ item: Item; type: 'in' | 'out' } | null>(null);
-  // تحديد أكتر من صنف وصادر واحد عليهم — الصنف بينزل منه قطعة واحدة.
-  // الاختيار بالـ _id مش بالصف، عشان يفضل شغّال لو الفلتر اتغيّر بعد الاختيار.
+  // Select several items and issue one of each: one piece leaves each. Selection is by _id, not row, so it survives a filter change.
   const [picked, setPicked] = useState<Set<string>>(new Set());
-  // الحركة الجماعية: 'out' صادر · 'in' وارد · null مغلقة
+  // Bulk movement: 'out' issue, 'in' receipt, null closed
   const [bulkKind, setBulkKind] = useState<null | 'in' | 'out'>(null);
   const togglePick = (id: string) => setPicked((p) => {
     const n = new Set(p); if (n.has(id)) n.delete(id); else n.add(id); return n;
@@ -180,7 +147,7 @@ export default function StoreScreen({ scope }: { scope: StoreScope }) {
   const [addMany, setAddMany] = useState(false);
   const [showLog, setShowLog] = useState(false);
   const [movements, setMovements] = useState<Movement[]>([]);
-  // يومُ الشراء (يومٌ / شهرٌ / فترة) والمورد — يُفلتَران في الخادم.
+  // Purchase day (day / month / range) and supplier are filtered on the server.
   const [period, setPeriod] = useState<{ from: string; to: string }>({ from: '', to: '' });
   const [supplierF, setSupplierF] = useState('');
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
@@ -190,13 +157,13 @@ export default function StoreScreen({ scope }: { scope: StoreScope }) {
   }, [supBase]);
   useEffect(() => { loadSuppliers(); }, [loadSuppliers]);
   useSocket('ls2:store', loadSuppliers);
-  // فلاترُ سجلّ الحركات — في الخادم كذلك، فالسجلُّ أطولُ من أن يُجلَب كلُّه.
+  // Movement log filters, also on the server, since the log is too long to fetch whole.
   const [logF, setLogF] = useState<{ type: string; from: string; to: string; q: string; supplier: string }>({ type: '', from: '', to: '', q: '', supplier: '' });
   const itemsReq = useLatestRequest();
   const logReq = useLatestRequest();
 
   const load = useCallback(async () => {
-    // الطلبُ الأوسعُ أبطأ، فيصل بعد الأضيق ويكتب فوقه — راجع useLatestRequest.
+    // A wider request is slower, arrives after the narrower one and overwrites it; see useLatestRequest.
     const token = itemsReq.begin();
     const qs = new URLSearchParams();
     if (q.trim()) qs.set('q', q.trim());
@@ -216,9 +183,7 @@ export default function StoreScreen({ scope }: { scope: StoreScope }) {
 
   useEffect(() => { const t = setTimeout(load, 200); return () => clearTimeout(t); }, [load]);
   useSocket('ls2:store', useCallback(() => load(), [load]));
-  // `/api/ls2/vehicles` يردّ `items` لا `vehicles` — فقائمةُ اللوحات هنا كانت
-  // فارغةً دائمًا منذ أوّل يوم، ولا خطأَ يظهر: مفتاحٌ غيرُ موجودٍ يعطي قائمةً فارغة.
-  // لوحاتُ المركبات التي يُصرَف عليها — من سجلّ القسم نفسِه لا من سجلٍّ آخر.
+  // `/api/ls2/vehicles` returns `items`, not `vehicles`; the plate list was always empty with no error, since a missing key gives an empty list. Vehicle plates issued to come from the section's own register, not another one.
   const loadPlates = useCallback(() => {
     api.get<any>(scope.plateSource.url)
       .then((d) => setPlates(scope.plateSource.rows(d) || []))
@@ -239,8 +204,7 @@ export default function StoreScreen({ scope }: { scope: StoreScope }) {
   }, [logF]);
   useEffect(() => { if (showLog) loadLog(); }, [showLog, loadLog]);
   useSocket('ls2:store', useCallback(() => { if (showLog) loadLog(); }, [showLog, loadLog]));
-  // المركبةُ سجلٌّ واحد: لوحتُها في سجلّ المركبات تُقرأ مع كلّ حركة، فتعديلٌ هناك
-  // يظهر في قائمة اللوحات وفي السجلّ في الحال.
+  // A vehicle is one record: its plate in the vehicle register is read with each movement, so an edit there shows in the plate list and the log at once.
   useSocket('vreg:updated', useCallback(() => { loadPlates(); if (showLog) loadLog(); }, [loadPlates, showLog, loadLog]));
 
   const shown = useMemo(() => items.filter((i) =>
@@ -318,7 +282,7 @@ export default function StoreScreen({ scope }: { scope: StoreScope }) {
         </div>
       </PageHeader>
 
-      {/* بطاقات — قابلة للفلترة */}
+      {/* Cards, filterable */}
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3">
         <button onClick={() => setStatusF('')} className="text-start"><StatCard label={ar ? 'عدد الأصناف' : 'Items'} value={totals?.items ?? items.length} accent="text-[#f37121]" /></button>
         <StatCard label={ar ? 'إجمالي القطع' : 'Total units'} value={money(totals?.totalUnits)} />
@@ -431,8 +395,7 @@ export default function StoreScreen({ scope }: { scope: StoreScope }) {
         </ScrollX>
       </div>
 
-      {/* شريط الإجراء الجماعي — ثابت أسفل الشاشة، يظهر فور اختيار أول صنف.
-          الصادر والوارد جنبًا إلى جنب: كلاهما يقبل كمية مختلفة لكل صنف. */}
+      {/* Bulk action bar: fixed at the screen bottom, shown once the first item is selected. Issue and receipt side by side; both accept a different quantity per item. */}
       {canEdit && (
         <SelectionBar
           count={picked.size} ar={ar}
@@ -466,17 +429,15 @@ export default function StoreScreen({ scope }: { scope: StoreScope }) {
   );
 }
 
-// سجل الحركات — ومن هنا بالظبط بيتم التراجع أو التصحيح.
-//
-// الحركة الملغية بتفضل ظاهرة ومشطوبة، مش بتختفي: الرصيد اتغيّر فعلاً وقتها،
-// وإخفاء السطر معناه إن اللي بيراجع المخزن مش هيفهم الرقم جه منين.
+// Movement log: reversal and correction happen here.
+// A reversed movement stays visible and struck through instead of disappearing: the balance did change then, and hiding the row would leave the store auditor unable to see where the number came from.
 function MovementsLog({ movements, ar, canEdit, onChanged, base, f, setF, suppliers }: {
   movements: Movement[]; ar: boolean; canEdit: boolean; plates: PlateRow[]; onChanged: () => void; base: string;
   f: { type: string; from: string; to: string; q: string; supplier: string };
   setF: (fn: (p: any) => any) => void; suppliers: Supplier[];
 }) {
   const [undoing, setUndoing] = useState<Movement | null>(null);
-  // فلاترُ الأعمدة على طريقة إكسل — آخرُ ما يُطبَّق، بعد فلاتر الخادم.
+  // Excel-style column filters, applied last, after the server filters.
   const cf = useColumnFilters<Movement>();
   const getters: Record<string, (m: Movement) => any> = {
     month: (m) => String(m.date || '').slice(0, 7),
@@ -559,7 +520,7 @@ function MovementsLog({ movements, ar, canEdit, onChanged, base, f, setF, suppli
                 {!noPrices && <td className="px-3 py-1.5 font-semibold text-emerald-700 whitespace-nowrap">{m.total != null ? money(m.total) : '—'}</td>}
                 <td className="px-3 py-1.5 text-slate-500 whitespace-nowrap">
                   {m.vehiclePlate || '—'}
-                  {/* ولوحتُها في سجلّ المركبات حين تختلف كتابتُها */}
+                  {/* and its plate in the vehicle register when the spelling differs */}
                   {m.vehicleRegistryPlate && m.vehicleRegistryPlate !== m.vehiclePlate ? <span className="block text-[10px] text-slate-400">{m.vehicleRegistryPlate}</span> : null}
                 </td>
                 <td className="px-3 py-1.5 text-slate-600">{m.balanceAfter}</td>
@@ -584,9 +545,7 @@ function MovementsLog({ movements, ar, canEdit, onChanged, base, f, setF, suppli
   );
 }
 
-// التراجع عن حركة. مفيش حقول تتعدّل هنا عن قصد — السبب بس، وهو إجباري.
-// لو الكمية الصح مختلفة، بيتراجع عن الغلط وبعدين يسجّل حركة جديدة عادية؛
-// الاتنين بيبانوا باسم صاحبهم بدل ما رقم واحد يتغيّر في الخفا.
+// Reverse a movement. No fields are editable on purpose, only the reason, which is required. If the right quantity differs, the wrong one is reversed and a new normal movement is recorded; both appear under their authors' names instead of one number changing silently.
 function ReverseModal({ m, ar, onClose, onDone, base }: { m: Movement; ar: boolean; onClose: () => void; onDone: () => void; base: string }) {
   const { notify } = useDialog();
   const [reason, setReason] = useState('');
@@ -635,18 +594,9 @@ function ReverseModal({ m, ar, onClose, onDone, base }: { m: Movement; ar: boole
   );
 }
 
-// صادر لأكتر من صنف مرة واحدة — **نفس** إنبوتس الصادر المفرد (العربية والسبب)،
-// بس بتتطبّق على كل اللي اتحدّد. الصنف بينزل منه قطعة واحدة؛ اللي عايز كميات
-// مختلفة بيستعمل الصادر المفرد، والحركتين بيدخلوا نفس السجل بنفس الشكل.
-// حركة جماعية لعدة أصناف — صادر أو وارد.
-//
-// الكمية بجوار كل صنف، وافتراضها ١ لأن هذا هو الغالب؛ ومن يحتاج أكثر يكتبه على
-// صنفه وحده دون أن يمسّ الباقي. ونفس الشاشة تخدم الوارد، لأن التوريد أيضًا قد
-// يحمل كميات مختلفة لكل صنف.
-//
-// الرصيد المتوقَّع بعد الحركة يظهر بجانب كل سطر قبل التأكيد — فلا يُفاجأ أحد
-// بالنتيجة بعد الحفظ. والصنف الذي لا يكفي رصيده يُعلَّم بالأحمر، والعملية كلها
-// ترفض إن بقي واحد منها ناقصًا.
+// Issue for several items at once: the same inputs as the single issue (vehicle and reason), applied to everything selected. One piece leaves each item; different quantities use the single issue, and both movements enter the same log in the same shape.
+// Bulk movement of several items, issue or receipt. Quantity beside each item defaults to 1 as the common case and is edited per item. The same screen serves receipts, since a supply may also carry different quantities.
+// The expected balance after the movement shows beside each line before confirming. An item with insufficient balance is marked red, and the whole operation is refused if any remain short.
 function BulkOutModal({ items, plates, ar, kind = 'out', onClose, onDone, base, suppliers }: {
   suppliers: Supplier[];
   items: Item[]; plates: PlateRow[]; ar: boolean; kind?: 'in' | 'out';
@@ -662,7 +612,7 @@ function BulkOutModal({ items, plates, ar, kind = 'out', onClose, onDone, base, 
   const [date, setDate] = useState(todayYmd());
   const [qty, setQty] = useState<Record<string, string>>(
     () => Object.fromEntries(items.map((i) => [i._id, '1'])));
-  // الواردُ بسعر قطعته — يبدأ بسعر كلّ صنفٍ المسجَّل.
+  // Receipt with the piece price: starts from each item's registered price.
   const [price, setPrice] = useState<Record<string, string>>(
     () => Object.fromEntries(items.map((i) => [i._id, i.unitPrice ? String(i.unitPrice) : ''])));
   const [busy, setBusy] = useState(false);
@@ -803,24 +753,16 @@ function BulkOutModal({ items, plates, ar, kind = 'out', onClose, onDone, base, 
 
 
 /**
- * ── منتقي المركبة: قائمةٌ تُبحَث، وتحتها مشروعُها ─────────────────────────────
- *
- * كان `<input list>` — و`datalist` في المتصفّحات ليس قائمةً منسدلة: لا يُفتَح
- * بضغطةٍ موثوقة، ولا يُظهر إلّا اللوحةَ عاريةً، ويُقصّ بعد خمسةٍ أو ستّة في
- * بعضها. وقائمةُ مئتي مركبةٍ بلا بحثٍ لا تُستعمَل أصلًا.
- *
- * فصارت `SearchableSelect`: تُبحَث باللوحة أو بالمشروع أو باسم الراكب،
- * و`allowCustom` يبقي بابَ كتابةِ لوحةٍ ليست في السجلّ مفتوحًا (مركبةٌ أُدخلت
- * اليومَ ولم تُسجَّل بعد) — ومن كتبها يُقال له صريحًا إنّها ليست في السجلّ.
- *
- * وتحت الخانة سطرٌ يقول مشروعَ المركبة المختارة وراكبَها وفرعَها: السؤالُ الذي
- * يُسأل بعد الاختيار مباشرةً — «على حساب أيّ مشروع؟» — فيُجاب في موضعه.
+ * Vehicle picker: a searchable list with its project beneath.
+ * It was `<input list>`, but a browser `datalist` is not a dropdown: it does not open reliably, shows only the bare plate and is truncated after five or six in some. A list of two hundred vehicles without search is unusable.
+ * Now `SearchableSelect`, searched by plate, project or rider name; `allowCustom` keeps typing a plate that is not in the register open (a vehicle entered today and not yet registered), and the writer is told it is not in the register.
+ * Below the field a line shows the selected vehicle's project, rider and branch, answering 'on which project's account?' in place.
  */
 function PlatePicker({ plates, value, onChange, ar, label }: {
   plates: PlateRow[]; value: string; onChange: (v: string) => void; ar: boolean; label: string;
 }) {
   const t = (a: string, e: string) => (ar ? a : e);
-  // المختارةُ تُطابَق بمفتاح اللوحة: «١٢٣٤ ا ب ج» و«1234 ABC» لوحةٌ واحدة.
+  // The selected one is matched by plate key: the Arabic-letter and Latin forms of a plate are the same plate.
   const hit = plates.find((p) => plateKeyOf(p.plate) === plateKeyOf(value)) || null;
   return (
     <div>
@@ -842,7 +784,7 @@ function PlatePicker({ plates, value, onChange, ar, label }: {
             .filter(Boolean).join(' · '),
         }))}
       />
-      {/* ومشروعُها يُقال في مكانه — لا يُبحَث عنه في شاشةٍ أخرى. */}
+      {/* and its project is stated in place, not searched on another screen. */}
       {value.trim() ? (
         hit ? (
           <p className="mt-1.5 text-[11.5px] text-slate-700 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5">
@@ -864,9 +806,7 @@ function PlatePicker({ plates, value, onChange, ar, label }: {
   );
 }
 
-// ── سببُ الصرف — اختيارٌ إجباريٌّ على كلّ صادر (٢٠٢٦/١٠/٢٦) ─────────────────
-// الأربعةُ نفسُها في الخادم (backend utils/storeIssueReasons) وفي التطبيق، ويظهر
-// السببُ في ملفّ المركبة مع القطعة. والملاحظةُ الحرّة صارت اختياريّةً بجانبه.
+// Issue reason: a required choice on every issue. The same four exist on the server (backend utils/storeIssueReasons) and in the app, and the reason shows in the vehicle file with the part. The free note is now optional beside it.
 function IssueReasonPicker({ value, onChange, ar }: { value: string; onChange: (v: string) => void; ar: boolean }) {
   return (
     <div>
@@ -893,7 +833,7 @@ function MovementModal({ move, plates, ar, onClose, onDone, base, suppliers }: {
   const { notify } = useDialog();
   const isIn = move.type === 'in';
   const [qty, setQty] = useState('1');
-  // سعرُ القطعة في هذا الوارد — يبدأ بسعر الصنف المسجَّل ويُصحَّح إن تغيّر.
+  // Piece price in this receipt: starts from the item's registered price and is corrected if it changed.
   const [price, setPrice] = useState(move.item.unitPrice ? String(move.item.unitPrice) : '');
   const { noPrices } = useStoreFlags();
   const [plate, setPlate] = useState('');
@@ -1012,11 +952,7 @@ function ItemFormModal({ item, ar, onClose, onSaved, base, suppliers }: { item: 
   );
 }
 
-/**
- * إضافةُ عدّة أصنافٍ دفعةً واحدة — فاتورةُ شراءٍ فيها عشرةُ أصنافٍ تُكتب في جدولٍ
- * واحد: الموردُ ويومُ الشراء مرّةً فوقه، ولكلّ صنفٍ سطر. والخادمُ يقبل الدفعةَ
- * كلَّها أو يرفضها كلَّها بأرقام الأسطر الناقصة.
- */
+/** Add several items at once: a purchase invoice with ten items is typed in one table, with supplier and purchase day once above and a row per item. The server accepts the whole batch or rejects it all with the numbers of the incomplete rows. */
 type NewRow = { id: number; name: string; supplierItemName: string; category: string; code: string; quantity: string; unit: string; unitPrice: string };
 let rowSeq = 1;
 const blankRow = (): NewRow => ({ id: rowSeq++, name: '', supplierItemName: '', category: '', code: '', quantity: '1', unit: 'قطعة', unitPrice: '' });
@@ -1035,7 +971,7 @@ function BulkCreateModal({ ar, onClose, onSaved, base, suppliers }: { ar: boolea
       .then((d) => { const u = (d.items || []).map((x) => x.nameAr).filter(Boolean); if (u.length) setUnits(u); }).catch(() => {});
   }, []);
   const setRow = (id: number, k: keyof NewRow, v: string) => setRows((p) => p.map((r) => (r.id === id ? { ...r, [k]: v } : r)));
-  // السطرُ الفارغُ تمامًا لا يُرسَل: ثلاثةُ أسطرٍ تُفتَح جاهزةً ولا يُلزَم بملئها.
+  // A fully empty row is not sent: three rows open ready and need not be filled.
   const filled = rows.filter((r) => r.name.trim() || r.unitPrice || r.code.trim() || r.supplierItemName.trim());
   const total = filled.reduce((a, r) => a + (Number(r.quantity) || 0) * (Number(r.unitPrice) || 0), 0);
 
@@ -1113,13 +1049,7 @@ function BulkCreateModal({ ar, onClose, onSaved, base, suppliers }: { ar: boolea
   );
 }
 
-/**
- * ── لوحاتٌ غير معروفة ────────────────────────────────────────────────────────
- * كلُّ ما كُتب في خانة المركبة ولا مركبةَ له في سجلّ المركبات: لوحةٌ بكتابةٍ
- * لا تُطابَق، أو اسمُ موردٍ أو ورشةٍ كُتب مكانَ اللوحة. تُحلّ في الخادم عند كلّ
- * طلب، فما يُصحَّح في السجلّ يخرج من القائمة في الحال. والضغطُ على لوحةٍ يفلتر
- * السجلَّ بها ليُرى أين كُتبت.
- */
+/** Unknown plates: anything written in the vehicle field with no vehicle in the register, either a plate in a spelling that does not match or a supplier or workshop name written in place of a plate. Resolved on the server per request, so a fix in the register leaves the list at once. Clicking a plate filters the log by it to see where it was written. */
 function UnknownPlates({ url, ar, onPick }: { url: string; ar: boolean; onPick: (plate: string) => void }) {
   const [data, setData] = useState<{ plates: { plate: string; movements: number; last: string }[]; total: number; movements: number } | null>(null);
   const [open, setOpen] = useState(false);

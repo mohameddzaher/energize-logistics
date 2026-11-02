@@ -64,8 +64,7 @@ export default function Ls2LivePage() {
       { header: ar ? 'الوقود %' : 'Fuel %', key: 'fuelPct', transform: (v) => v ?? '', width: 10 },
       { header: ar ? 'حرارة الموتور' : 'Coolant °C', key: 'coolantC', transform: (v) => v ?? '', width: 13 },
       { header: ar ? 'أقصى حرارة كاوتش' : 'Max tire temp °C', key: 'maxTireTempC', transform: (v) => v ?? '', width: 16 },
-      // نصٌّ واحد «٧ / ٥ / ٢» لا ثلاثة أعمدة: الملف يُقرأ كما تُقرأ الشاشة،
-      // ومن أراد التفصيل ففي الشاشة نافذته.
+      // One text '7 / 5 / 2' instead of three columns: the file reads as the screen does, and the detail is in the screen's dialog.
       { header: ar ? 'حساسات الكاوتش (يعمل/بدون/استبن)' : 'Tire sensors (ok/none/spare)', key: 'tireSensors.label', transform: (v) => v ?? '', width: 26 },
       { header: ar ? 'حساس مركّب لا يبثّ' : 'Fitted but silent', key: 'tireSensors.silent', transform: (v) => v ?? '', width: 16 },
       { header: ar ? 'الوزن كجم' : 'Weight kg', key: 'weightKg', transform: (v) => v ?? '', width: 12 },
@@ -158,7 +157,7 @@ export default function Ls2LivePage() {
                         <span><span className="text-slate-700 font-medium">{v.maxTirePressurePsi}</span><span className={`text-xs ${v.minTirePressurePsi != null && v.minTirePressurePsi < 90 ? 'text-red-500 font-medium' : 'text-slate-700'}`}> / {v.minTirePressurePsi}</span><span className="text-[10px] text-slate-700"> psi</span></span>
                       ) : <span className="text-slate-300">—</span>}
                     </td>
-                    {/* تغطية الحسّاسات — الرقم محسوبٌ في الخادم، والخلية تفتح تفصيل المواضع الناقصة. */}
+                    {/* Sensor coverage: the number is computed on the server and the cell opens the missing-position detail. */}
                     <td className="px-4 py-3 text-center whitespace-nowrap">
                       <TireSensorCell cov={v.tireSensors} plate={v.plate || v.name} unitId={v.unitId} lang={lang as Lang} />
                     </td>

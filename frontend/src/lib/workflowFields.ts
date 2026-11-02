@@ -1,11 +1,6 @@
 /**
- * حقولُ كشف التشغيل بمجموعاتها — كما تعرضها صفحةُ الكشف.
- *
- * كانت هذه القائمةُ داخل صفحة الكشف (`/system/operations/[id]`)، ثمّ صار الكشفُ
- * يُعرض كاملًا ويُعدَّل في صفحة معاملة التخليص أيضًا (components/customs/
- * LinkedOpsReports). فخرجت إلى هنا كي لا تكون قائمتين تفترقان عند أوّل حقلٍ
- * جديد. ومَن يرى ماذا ويكتب ماذا لا يُقرأ من هنا: يقوله الخادم حقلًا حقلًا
- * (`stripRowFor` و`fieldsForRole` في backend/src/controllers/workflowController).
+ * Operations sheet fields with their groups, as shown by the sheet page.
+ * Extracted from the sheet page because the customs clearance transaction page also shows and edits the full sheet (components/customs/LinkedOpsReports), so one list avoids drift. Who sees and writes what comes from the server per field (stripRowFor, fieldsForRole in workflowController).
  */
 export type WorkflowFieldType = 'date' | 'number' | 'ptype' | undefined;
 export interface WorkflowField { key: string; label: string; labelEn: string; type?: WorkflowFieldType }
@@ -60,7 +55,7 @@ export const WORKFLOW_SECTIONS: WorkflowSection[] = [
     fields: [
       { key: 'paymentDate', label: 'تاريخ السداد', labelEn: 'Payment Date', type: 'date' },
       { key: 'payingBranch', label: 'الفرع المسدد', labelEn: 'Paying Branch' },
-      // الستُّ تُعرَض والأربعةُ تُختار — راجع lib/paymentKind.
+      // Six are shown and four are selectable; see lib/paymentKind.
       { key: 'paymentType', label: 'نوع الدفع', labelEn: 'Payment Type', type: 'ptype' },
       { key: 'finalReportDestination', label: 'وجهه أمر النقل النهائي', labelEn: 'Final Report Dest.' },
       { key: 'documentNumber', label: 'رقم السند', labelEn: 'Document Number' },

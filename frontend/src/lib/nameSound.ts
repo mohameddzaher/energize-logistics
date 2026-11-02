@@ -1,8 +1,4 @@
-/**
- * Matches a name across scripts: accounts are mostly in English and people search in
- * Arabic, so «اسلام الدسوقي» has to find "Eslam Eldesoky". Both sides reduce to the same
- * consonant skeleton. Mirrored in mobile/lib/ui/name_sound.dart; keep the two in step.
- */
+/** Matches a name across scripts: accounts are mostly in English and people search in Arabic, so an Arabic spelling of Eslam Eldesoky has to find "Eslam Eldesoky". Both sides reduce to the same consonant skeleton. Mirrored in mobile/lib/ui/name_sound.dart; keep the two in step. */
 const ARABIC: Record<string, string> = {
   ب: 'b', ت: 't', ث: 's', ج: 'g', ح: 'h', خ: 'h', د: 'd', ذ: 'd', ر: 'r', ز: 'z', س: 's', ش: 's', ص: 's',
   ض: 'd', ط: 't', ظ: 'z', غ: 'g', ف: 'f', ق: 'k', ك: 'k', ل: 'l', م: 'm', ن: 'n', ه: 'h', ة: 'h',
@@ -18,7 +14,7 @@ const consonants = (word: string): string => {
   return out.replace(/(.)\1+/g, '$1');
 };
 
-// The article drops only when a real name is left: «الدسوقي» = Desoky, but «الين» = Aleen.
+// The article drops only when a real name is left: the Arabic form of Desoky matches Desoky, but the Arabic Aleen keeps its article.
 const skeleton = (word: string): string => {
   const bare = consonants(word.replace(/^(ال|al|el)/i, ''));
   return bare.length >= 2 ? bare : consonants(word);

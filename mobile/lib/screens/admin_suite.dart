@@ -12,8 +12,7 @@ import '../ui/search_field.dart';
 import 'package:provider/provider.dart';
 import '../services/auth.dart';
 
-/// أدوات الإدارة — المستخدمون (إنشاء/تعديل/قفل/حذف)، مصفوفة الصلاحيات
-/// (دور × قسم: بدون/عرض/تحرير)، والإشعارات الشخصية.
+/// Admin tools: users (create/edit/lock/delete), permissions matrix (role by section: none/view/edit), and personal notifications.
 
 const roleLabels = {
   'super_admin': ('المدير العام', 'Super Admin'),
@@ -68,11 +67,7 @@ const roleLabels = {
   'contracts_staff': ('موظف العقود', 'Contracts Staff'),
 };
 
-/// الأدوارُ كما يقبلها الخادم (/api/users/roles) — تشمل كلَّ دورٍ جديدٍ وكلَّ نوع
-/// مستخدمٍ صُنع من شاشة الصلاحيّات. كانت القائمةُ أعلاه وحدَها مصدرَ الاختيار،
-/// فنقصها أحدَ عشر دورًا وبقي فيها دوران أُدمجا من زمن — فلا يُنشأ من الهاتف
-/// مستخدمٌ للمركبات أو للوكيشن سوليوشن، ويُرفض من يُختار له دورٌ قديم. والقائمةُ
-/// الثابتة احتياطٌ حين لا يصل الخادم.
+/// Roles as the server accepts them (/api/users/roles), including every new role and every user type created from the permissions screen. The static list above was the only source before, so it lacked eleven roles and still held two long-merged ones; users for vehicles or Location Solutions could not be created from the phone and an old role was rejected. The static list is the fallback when the server is unreachable.
 List<(String, String, String)> serverRoles = [];
 
 Future<void> loadServerRoles() async {
@@ -81,10 +76,10 @@ Future<void> loadServerRoles() async {
     serverRoles = List<Map<String, dynamic>>.from(d['roles'] ?? [])
         .map((r) => ('${r['key']}', '${r['ar'] ?? r['key']}', '${r['en'] ?? r['key']}'))
         .toList();
-  } catch (_) {/* تبقى القائمة الثابتة */}
+  } catch (_) {/* The static list remains. */}
 }
 
-/// مفاتيحُ الأدوار للاختيار: من الخادم إن وصل، وإلّا من القائمة الثابتة.
+/// Role keys to choose from: from the server if it responds, otherwise the static list.
 List<String> roleKeys() => serverRoles.isNotEmpty ? serverRoles.map((r) => r.$1).toList() : roleLabels.keys.toList();
 
 String roleLabel(dynamic r) {
@@ -97,7 +92,7 @@ String roleLabel(dynamic r) {
 
 String _fold(String s) => s.replaceAll(RegExp('[أإآ]'), 'ا').replaceAll('ى', 'ي').replaceAll('ة', 'ه').toLowerCase();
 
-// ── المستخدمون ──────────────────────────────────────────────────────────────
+// Users
 class AdminUsersScreen extends StatefulWidget {
   const AdminUsersScreen({super.key});
   @override
@@ -110,7 +105,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
   String? _error;
   String _q = '';
   String _role = '';
-  final _searchCtl = TextEditingController(); // النصُّ يبقى مطابقًا لـ_q بعد التحميل
+  final _searchCtl = TextEditingController(); // Text stays equal to _q after loading.
 
   late final void Function() _onLive;
 
@@ -150,9 +145,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
     }
   }
 
-  // النموذجُ كاملًا في شاشةٍ — كالويب: نوعُ الحساب (موظّف/عميل/مورد)، والدور،
-  // والمديرُ المباشر (يُقترَح من الهيكل)، وربطُ ملفّ الموظّف، والفرع، ومشاريعُ
-  // B2C وفروعُه، وعملاءُ الموظّف، وصفحاتُ العمل عن بُعد.
+  // The full form on one screen, like the web: account type (employee/customer/supplier), role, direct manager (suggested from the org chart), employee file link, branch, B2C projects and branches, the employee's customers, and remote-work pages.
   Future<void> _editSheet(Map<String, dynamic>? u) async {
     final changed = await Navigator.of(context).push<bool>(MaterialPageRoute(
       builder: (_) => _UserFormScreen(user: u, users: _rows),
@@ -181,7 +174,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
     }
   }
 
-  // إعادة تعيين كلمة المرور (٨ أحرف على الأقل) — POST /users/:id/reset-password.
+  // Password reset (at least 8 characters): POST /users/:id/reset-password.
   Future<void> _resetPassword(Map<String, dynamic> u) async {
     final pass = TextEditingController();
     final ok = await showDialog<bool>(
@@ -212,7 +205,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
     }
   }
 
-  // قفل/فك قفل الحساب — POST /users/:id/lock (تبديل).
+  // Lock/unlock the account: POST /users/:id/lock (toggle).: Roles and permissions
   Future<void> _toggleLock(Map<String, dynamic> u) async {
     try {
       await Api.instance.post('/api/users/${u['_id']}/lock', {});
@@ -332,12 +325,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
   }
 }
 
-// ── الأدوار والصلاحيّات ─────────────────────────────────────────────────────
-// نظيرُ /system/permissions في الويب: طبقتان — **القسم** (ممنوع/مشاهدة/تعديل)
-// يقرّر القراءةَ والكتابة، و**الصفحة** (مفتوحة/مغلقة) تقرّر أين داخلَ ما منحه
-// القسم. وصفحةُ الدخول للدور، وأنواعُ المستخدمين المصنوعة (إنشاء/حذف).
-// الحفظُ PUT واحدٌ بالخريطة كاملةً `{sections, pages, pagesAll:true, homePage}`
-// — بلا `pages` كان الهاتفُ يحفظ الأقسامَ ويترك الصفحاتِ على حالها.
+// Counterpart of /system/permissions on the web, in two layers: the section (none/view/edit) decides read and write, and the page (open/closed) decides where inside what the section grants. Also the login page per role and the created user types (create/delete). Saving is one PUT of the whole map `{sections, pages, pagesAll:true, homePage}`; without `pages` the phone saved sections and left pages unchanged.
 const _sectionAr = {
   'Main': 'الرئيسية', 'Operations': 'العمليات', 'Collections': 'التحصيل', 'Operations Platform': 'منصة الأوبريشن (B2B)',
   'B2C': 'B2C', 'Workshop': 'الورشة', 'Admin': 'الإدارة', 'Tools': 'الأدوات', 'Portal': 'البوابة', 'Remote': 'العمل عن بُعد',
@@ -414,7 +402,7 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
   }
   bool _isCustom(String r) => ((_d?['roleLabels'] as Map?)?[r] as Map?)?['custom'] == true;
 
-  // تغييرُ القسم يجرّ صفحاتِه معه، كالويب.
+  // Changing a section carries its pages along, like the web.
   void _setLevel(String section, String level) => setState(() {
     _draft[section] = level;
     for (final p in _catalog.where((x) => x['section'] == section)) { _pageDraft[p['key']] = level != 'none'; }
@@ -429,7 +417,7 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
     for (final p in _catalog.where((x) => x['section'] == section)) { _pageDraft[p['key']] = on; }
   });
 
-  // صفحةٌ في قسمٍ غيرِ ممنوح: الضغطةُ تمنحه «مشاهدة» وتفتح هذه الصفحةَ وحدَها.
+  // Page in a section that is not granted: tapping grants view on the section and opens only that page.
   void _openOnePage(String section, String key) {
     setState(() {
       _draft[section] = 'view';
@@ -591,7 +579,7 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
   @override
   Widget build(BuildContext context) {
     final me = context.watch<AuthProvider>().role;
-    // role-only كالويب: من يضبط المصفوفةَ لا يُمنَحها منها، وصنعُ الأنواع لمدير النظام.
+    // role-only like the web: whoever sets the matrix is not granted access through it, and creating types is for the system admin.
     final isSuper = const ['super_admin', 'admin', 'it_manager', 'it_specialist'].contains(me);
     final canMakeRoles = const ['super_admin', 'admin'].contains(me);
     final catalog = _catalog;
@@ -612,7 +600,7 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
           ? ListView(padding: const EdgeInsets.all(14), children: const [Shimmer(height: 48), SizedBox(height: 10), Shimmer(), SizedBox(height: 10), Shimmer()])
           : _error != null
               ? ErrorRetry(message: _error!, onRetry: () { setState(() => _loading = true); _load(); })
-              // عرضٌ أقصى على الشاشات العريضة (آيباد) بدل التمدّد بكامل العرض.
+              // Maximum width on wide screens (iPad) instead of stretching full width.
               : Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 760), child: Column(children: [
                   Padding(
                     padding: const EdgeInsets.fromLTRB(14, 12, 14, 4),
@@ -714,7 +702,7 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
                     padding: const EdgeInsets.fromLTRB(14, 8, 14, 8),
                     decoration: const BoxDecoration(color: Colors.white, border: Border(top: BorderSide(color: T.line))),
                     child: Column(mainAxisSize: MainAxisSize.min, children: [
-                      // أوّلُ شاشةٍ تُفتَح للدور — من صفحاته المفتوحة.
+                      // First screen opened for the role, taken from its open pages.
                       DropdownButtonFormField<String>(
                         initialValue: _home.isEmpty || granted.any((p) => p['key'] == _home) ? _home : '',
                         isExpanded: true,
@@ -732,7 +720,7 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
                             : const SizedBox()),
                         TextButton(onPressed: !_dirty || _saving ? null : _seed, child: Text(tr('تراجع', 'Reset'))),
                         FilledButton.icon(
-                          // الزرُّ في صفّ: عرضٌ أدنى محدود (الثيم يجعله بعرضٍ لانهائي).
+                          // The button sits in a row: bounded minimum width (the theme makes it infinite).
                           style: FilledButton.styleFrom(backgroundColor: T.orange, minimumSize: const Size(0, 44)),
                           onPressed: !_dirty || _saving ? null : _save,
                           icon: _saving ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.save_outlined, size: 18),
@@ -746,7 +734,7 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
   }
 }
 
-// ── الإشعارات ───────────────────────────────────────────────────────────────
+// Notifications
 class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({super.key});
   @override
@@ -773,7 +761,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         _loading = false;
         _error = null;
       });
-      NotificationService.instance.setUnread(_unread); // مزامنة الشارة
+      NotificationService.instance.setUnread(_unread); // Badge sync
     } catch (e) {
       if (mounted) setState(() { _loading = false; _error = e.toString(); });
     }
@@ -860,7 +848,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   }
 }
 
-// ── نموذجُ المستخدم ─────────────────────────────────────────────────────────
+// User form
 const _remotePages = [
   ('attendance', 'الحضور والانصراف', 'Attendance'), ('dashboard', 'لوحتي', 'My Dashboard'), ('leave', 'الإجازات', 'Leave'),
   ('chat', 'الرسائل', 'Messages'), ('tasks', 'مهامي', 'My Tasks'), ('report', 'التقرير اليومي', 'Daily Report'),
@@ -945,7 +933,7 @@ class _UserFormScreenState extends State<_UserFormScreen> {
     setState(() { _branchOpts = r[0]; _projectOpts = r[1]; _customerOpts = r[2]; _b2cHeads = r[3]; _remoteManagers = r[4]; });
   }
 
-  // المديرُ يُقترَح من الهيكل عند الإنشاء — يُقترَح ولا يُفرَض.
+  // The manager is suggested from the org chart on create; suggested, not forced.
   Future<void> _onRole(String role) async {
     setState(() { _role = role; _linkedCustomer = ''; _customers = []; });
     if (const ['super_admin', 'admin', 'client'].contains(role)) { setState(() => _manager = ''); return; }
@@ -1106,7 +1094,7 @@ class _UserFormScreenState extends State<_UserFormScreen> {
     return AppScaffold(
       title: Text(isNew ? tr('مستخدم جديد', 'New user') : tr('تعديل المستخدم', 'Edit user')),
       body: ListView(padding: const EdgeInsets.fromLTRB(16, 12, 16, 40), children: [
-        // ── نوعُ الحساب ──
+        // Account type
         SegmentedButton<String>(
           showSelectedIcon: false,
           segments: [
@@ -1219,7 +1207,7 @@ class _UserFormScreenState extends State<_UserFormScreen> {
   }
 }
 
-/// لوحُ بحثٍ عام: يُعيد الجلب مع كلّ كتابة (مؤجَّلًا)، وردٌّ أقدم لا يغلب أحدث.
+/// Generic search sheet: refetches on each keystroke (debounced); an older reply never beats a newer one.
 class _SearchSheet extends StatefulWidget {
   const _SearchSheet({required this.title, required this.fetch, required this.label, this.sub, this.disabled, this.minChars = 0});
   final String title;
@@ -1244,7 +1232,7 @@ class _SearchSheetState extends State<_SearchSheet> {
   void dispose() { _t?.cancel(); super.dispose(); }
 
   Future<void> _run(String q) async {
-    // يُلغي أيَّ ردٍّ سابقٍ ما زال في الطريق (حتى عند المسح)
+    // Cancels any earlier reply still in flight (also when clearing).
     if (q.trim().length < widget.minChars) { _seq++; setState(() { _rows = const []; _loading = false; }); return; }
     final mine = ++_seq;
     setState(() => _loading = true);

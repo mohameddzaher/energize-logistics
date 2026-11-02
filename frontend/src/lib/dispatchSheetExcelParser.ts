@@ -2,22 +2,22 @@ import * as XLSX from 'xlsx';
 
 export interface DispatchSheetRow {
   rowIndex: number;          // 1-based excel row number (data row, not header)
-  rentalType: string;        // نوع الايجار
-  carBrand: string;          // الماركه
-  carColor: string;          // لون السياره
-  carType: string;           // نوع السياره
-  plateNumber: string;       // رقم السياره
-  driverAdvance: string;     // سلفه السائق
-  driverPhone: string;       // جوال السائق
-  driverIqama: string;       // رقم الاقامه
-  driverNationality: string; // جنسيه السائق
-  driverName: string;        // اسم السائق
-  customerName: string;      // اسم العميل
-  branch: string;            // الفرع
-  toLocation: string;        // الي
-  fromLocation: string;      // من
-  date: string;              // التاريخ (formatted d/m/yyyy)
-  dispatchNumber: string;    // كشف التخريج
+  rentalType: string;        // Rental type
+  carBrand: string;          // Brand
+  carColor: string;          // Vehicle colour
+  carType: string;           // Vehicle type
+  plateNumber: string;       // Vehicle number
+  driverAdvance: string;     // Driver advance
+  driverPhone: string;       // Driver mobile
+  driverIqama: string;       // Iqama number
+  driverNationality: string; // Driver nationality
+  driverName: string;        // Driver name
+  customerName: string;      // Customer name
+  branch: string;            // Branch
+  toLocation: string;        // To
+  fromLocation: string;      // From
+  date: string;              // Date (formatted d/m/yyyy)
+  dispatchNumber: string;    // Dispatch statement
   missingRequired: string[]; // names of required fields that are empty/missing
 }
 
@@ -100,8 +100,7 @@ const formatDate = (d: Date): string => {
   return `${day}/${month}/${year}`;
 };
 
-// Convert Arabic-Indic digits (٠-٩) to Western (0-9). The spec wants Western
-// digits in all output.
+// Convert Arabic-Indic digits to Western (0-9). The spec wants Western digits in all output.
 const toWesternDigits = (s: string): string =>
   s.replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x0660))
    .replace(/[۰-۹]/g, (d) => String(d.charCodeAt(0) - 0x06F0));

@@ -26,7 +26,7 @@ const idOf = (e: any) => (e?.idType === 'national_id' ? (e?.nationalId || e?.iqa
 const BG = 'bg-white group-hover:bg-slate-100';
 
 export default function HRLeavesPage() {
-  // الإجراءات، الرقم الوظيفيّ، الاسم، الهويّة — ثابتةٌ على اليمين.
+  // Actions, employee number, name and ID stay pinned to the right.
   const pin = usePinnedColumns(4);
   const { notify, confirm } = useDialog();
   const { user } = useAuth();
@@ -46,13 +46,13 @@ export default function HRLeavesPage() {
   const [review, setReview] = useState<LeaveRequest | null>(null);
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
-  // ورقةُ القرار: تقريرُ الطبيب المعتمد، أو خطابُ الرفض بسببه.
+  // Decision paper: the approved doctor's report, or the rejection letter with its reason.
   const [files, setFiles] = useState<PickedFile[]>([]);
   const [types, setTypes] = useState<any[]>([]);
   const [mySigs, setMySigs] = useState<Signature[]>([]);
   const [signWith, setSignWith] = useState('');
   const [pdfBusy, setPdfBusy] = useState('');
-  // ── تعديلُ إجازةٍ وحذفُها — تصحيحُ السجلّ لا قرارٌ فيه ───────────────────
+  // Edit and delete a leave: a record correction, not a decision.
   const [editing, setEditing] = useState<LeaveRequest | null>(null);
   const [editForm, setEditForm] = useState<any>({ leaveType: '', startDate: '', endDate: '', reason: '' });
   const [editSaving, setEditSaving] = useState(false);
@@ -65,14 +65,12 @@ export default function HRLeavesPage() {
     } catch {}
     setLoading(false);
   }, []);
-  // ── الحالةُ تُفلتَر هنا لا في الخادم ───────────────────────────────────────
-  // كانت تُرسَل إلى الخادم و«N قيد المراجعة» في رأس الصفحة يُعَدّ على ما رجع:
-  // يُختار «معتمدة» فيصير الرقمُ صفرًا. فيُجلَب الكلُّ ويُفلتَر الجدولُ وحدَه.
+  // Status is filtered client-side. Sent to the server, the "N under review" header count was computed on the filtered result and dropped to zero; so fetch all and filter only the table.
   const leaves = statusFilter ? allLeaves.filter((l) => l.status === statusFilter) : allLeaves;
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => { api.get<{ signatures: Signature[] }>('/api/auth/signatures').then((r) => setMySigs(r.signatures || [])).catch(() => {}); }, []);
-  // نافذةُ التعديل تحتاج الأنواعَ وحدَها، لا قائمةَ الموظّفين.
+  // The edit dialog needs only the types, not the employee list.
   useEffect(() => {
     if (!editing || types.length) return;
     api.get<{ leaveTypes: any[] }>('/api/hr/leave-types').then((d) => setTypes(d.leaveTypes || []))
@@ -136,7 +134,7 @@ export default function HRLeavesPage() {
 
   const decide = async (decision: 'approved' | 'rejected' | 'info') => {
     if (!review) return;
-    // «استفسار» بلا نصٍّ يصل الموظّفَ سؤالًا فارغًا، فلا يدري بمَ يردّ.
+    // An inquiry without text reaches the employee as an empty question, so text is required.
     if (decision === 'info' && !note.trim()) {
       notify(ar ? 'اكتب استفسارك حتى يعرف الموظّف بمَ يردّ.' : 'Write your question so the employee knows what to answer.', 'error');
       return;
@@ -174,15 +172,13 @@ export default function HRLeavesPage() {
     return empName(l.employee).toLowerCase().includes(q) || userName(l.requester).toLowerCase().includes(q)
       || String(l.employee?.employeeNumber || '').includes(q);
   });
-  // معلَّقٌ = واقفٌ عند إحدى المحطّات الأربع، أو مرتدٌّ إلى صاحبه للردّ.
-  // كان الحسابُ محطّتين فقط، فما بلغ الحساباتِ أو الإدارةَ لم يُعدّ معلَّقًا وسقط
-  // من العدّاد — يبدو منتهيًا وهو واقف.
+  // Pending means waiting at one of the four stages or returned to its owner. Counting only two stages dropped requests at accounts or management from the counter, making them look finished.
   const OPEN = ['pending_manager', 'pending_hr', 'pending_finance', 'pending_executive', 'info_requested'];
   const pendingCount = allLeaves.filter((l) => OPEN.includes(l.status)).length;
-  // ولا يبتّ من هنا إلا في محطّةٍ قائمة؛ الخادمُ يتحقّق أنّها محطّةُ القارئ.
+  // Decisions are made only at an existing stage; the server verifies it is the reader's stage.
   const actionable = (l: LeaveRequest | null) => !!l && ['pending_manager', 'pending_hr', 'pending_finance', 'pending_executive'].includes(l.status);
 
-  // «من الميلادي» لا تُقرأ — فالاسمُ الأساسيُّ «تاريخ البداية/النهاية».
+  // The "from Gregorian" label is never shown; the main name is start/end date.
   const FROM_LABEL = ar ? 'تاريخ البداية' : 'Start date';
   const TO_LABEL = ar ? 'تاريخ النهاية' : 'End date';
   const fromLabels = pairLabels(FROM_LABEL, ar);
@@ -190,15 +186,14 @@ export default function HRLeavesPage() {
   const exportColumns: ExportColumn[] = [
     { header: 'Employee', key: 'employee', transform: (v: any) => empName(v), width: 22 },
     { header: 'Type', key: 'leaveType', transform: (v: any) => leaveTypeLabel(v, 'en'), width: 16 },
-    // كلُّ تاريخٍ عمودان متجاوران: الميلاديُّ ثمّ هجريُّه المشتقّ (lib/hrDates).
+    // Each date is two adjacent columns: Gregorian, then its derived Hijri (lib/hrDates).
     ...exportDatePair(FROM_LABEL, 'startDate', ar),
     ...exportDatePair(TO_LABEL, 'endDate', ar),
     { header: 'Days', key: 'days', width: 8 },
     { header: 'Status', key: 'status', width: 16 },
     { header: 'Reason', key: 'reason', width: 28 },
   ];
-  // فلتر الحالة يمرّ على الخادم، فحين يكون «قيد الاعتماد» مثلًا لا تحمل الذاكرة
-  // سواه؛ فـ«الكلّ» يعيد النداء بلا حالةٍ وإلّا خرج سجلُّ الإجازات مبتورًا.
+  // Status filter runs on the server, so with e.g. "pending" memory holds nothing else. "All" re-fetches without status, otherwise the leave register is exported truncated.
   const fetchAllLeaves = async () => {
     const d = await api.get<{ leaves: LeaveRequest[] }>('/api/hr/leaves');
     return [{ name: 'Leaves', rows: d.leaves || [], columns: exportColumns }];
@@ -251,10 +246,7 @@ export default function HRLeavesPage() {
             <th {...pin.th(2, 'text-start font-semibold px-4 py-3 whitespace-nowrap')}>{tx.colEmployee}</th>
             <th {...pin.th(3, 'text-start font-semibold px-4 py-3 whitespace-nowrap')}>{ar ? 'الهوية / الإقامة' : 'ID / Iqama'}</th>
             <th className="text-start font-semibold px-4 py-3">{tx.colType}</th>
-            {/* ── ومن/إلى عمودان لا عمود ────────────────────────────────────
-                «١٤/٠٩ → ١٩/٠٩» في خانةٍ واحدة يُقرأ سطرًا واحدًا، ولا يُفرَز
-                ولا يُقارَن بجاره. والسؤالان مختلفان: متى يبدأ غيابُه، ومتى
-                يعود. فعمودان يُقرآن ويُرتَّبان. */}
+            {/* From and To are two columns: a combined range in one cell cannot be sorted or compared, and the questions differ (when absence starts, when it ends). */}
             <th className="text-start font-semibold px-4 py-3 whitespace-nowrap">{fromLabels[0]}</th>
             <th className="text-start font-semibold px-4 py-3 whitespace-nowrap">{fromLabels[1]}</th>
             <th className="text-start font-semibold px-4 py-3 whitespace-nowrap">{toLabels[0]}</th>
@@ -285,9 +277,7 @@ export default function HRLeavesPage() {
                   </td>
                   <td {...pin.td(1, 'px-4 py-3 text-slate-700 whitespace-nowrap', BG)}>{(l.employee as any)?.employeeNumber || '—'}</td>
                   <td {...pin.td(2, 'px-4 py-3 text-slate-900 font-medium whitespace-nowrap', BG)}>
-                    {/* حدٌّ أعلى وقصّ: الاسمُ الرباعيُّ بلا حدٍّ يمدّ العمودَ
-                        حتّى تختفي الأعمدةُ التي يُفتَح الجدولُ من أجلها.
-                        والاسمُ كاملًا في التلميح. */}
+                    {/* Cap the width and truncate: an uncapped long name hides the columns the table exists for. The full name is in the tooltip. */}
                     <span className="block max-w-[15rem] truncate" title={empName(l.employee, lang)}>{empName(l.employee, lang)}</span>
                   </td>
                   <td {...pin.td(3, 'px-4 py-3 text-slate-700 whitespace-nowrap', BG)}>{idOf(l.employee)}</td>
@@ -369,7 +359,7 @@ export default function HRLeavesPage() {
         </div> : undefined}>
         {review && (
           <div className="space-y-3 text-sm">
-            {/* أين وقف الطلبُ ومَن وقّع — قبل أيّ حقلٍ آخر. */}
+            {/* Where the request stands and who signed, before any other field. */}
             <LeaveChainBar leave={review} lang={ar ? 'ar' : 'en'} />
             <Row k={tx.fieldEmployee} v={empName(review.employee, lang)} />
             <Row k={tx.fieldRequester} v={userName(review.requester)} />
@@ -380,18 +370,14 @@ export default function HRLeavesPage() {
             <Row k={tx.fieldAccrued} v={`${review.balanceSnapshot?.accrued ?? '—'} ${tx.dayUnit}`} />
             <Row k={tx.fieldRemainingAfter} v={`${review.balanceSnapshot?.remainingAfter ?? '—'} ${tx.dayUnit}`} danger={typeof review.balanceSnapshot?.remainingAfter === 'number' && review.balanceSnapshot.remainingAfter < 0} />
             <Row k={tx.fieldStatus} v={<Badge style={LEAVE_STATUS[review.status]} lang={lang} />} />
-            {/* ── ولكلِّ نصٍّ صاحبُه في عنوانه ──────────────────────────────
-                في النافذة نصّان: ما كتبه الموظّفُ في طلبه، وما يكتبه المراجعُ
-                مع قراره. وكانا «السبب» و«ملاحظة (اختياري)» — لا يقول أيٌّ
-                منهما لمن هو، فيُقرآن شيئًا واحدًا مكرَّرًا. */}
+            {/* Each text has its owner in its label: the employee's request text versus the reviewer's decision note were both generic and read as duplicates. */}
             {review.reason && (
               <div className="border-t border-slate-200 pt-3">
                 <span className="text-slate-500">{ar ? 'سبب الموظّف في طلبه' : 'Employee’s reason'}: </span>
                 <span className="text-slate-900">{review.reason}</span>
               </div>
             )}
-            {/* سندُ الطلب يُقرأ قبل البتّ فيه: تقريرُ الطبيب لا يُطلب على
-                الواتساب ثمّ يُوافَق هنا على غير أساس. */}
+            {/* The supporting document is read before deciding, so approval is never given on a doctor's report requested over chat. */}
             {!!((review as any).attachments || []).length && (
               <div className="border-t border-slate-200 pt-3">
                 <p className="text-slate-500 text-xs mb-1">{ar ? 'مرفقات الموظّف' : 'Employee attachments'}</p>
@@ -420,12 +406,7 @@ export default function HRLeavesPage() {
                       onChange={(e) => setSignWith(e.target.checked ? (mySigs.find((s) => s.isDefault)?._id || mySigs[0]?._id || '') : '')} />
                     <PenTool className="w-4 h-4 text-[#f37121]" /> {t('Sign this approval', 'أوقّع على الموافقة')}
                   </label>
-                  {/* ── ولا يُقال «اعمل توقيعًا أوّلًا» بلا باب ──────────────
-                      كانت الخانةُ معطّلةً والجملةُ تحتها تحيل إلى «الإعدادات»
-                      ولا رابطَ إليها، وصفحةُ الإعدادات نفسُها كانت مخفيّةً عن
-                      أكثر الأدوار — فيقف المدير أمام بابٍ مغلقٍ لا مقبضَ له.
-                      صار السطرُ رابطًا يفتحها في تبويبٍ جديد فلا يضيع ما كُتب
-                      في المراجعة. */}
+                  {/* The disabled field referred to Settings with no link, and Settings was hidden from most roles. It is now a link opening Settings in a new tab, so the review text is not lost. */}
                   {mySigs.length === 0 && (
                     <p className="text-xs text-slate-500 mt-1">
                       {t('You have no signature yet — ', 'ما عندكش توقيع لسه — ')}

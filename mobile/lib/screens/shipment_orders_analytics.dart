@@ -11,8 +11,7 @@ import '../ui/widgets.dart';
 import 'shipment_order_detail.dart';
 import 'shipment_orders_common.dart';
 
-/// تحليلاتُ طلبات الشحنات — نظيرُ /system/shipment-orders/analytics:
-/// الوساطةُ تُقاس بالفرق — كم اشترينا، وبكم بعنا، وممّن.
+/// Shipment orders analytics, mirrors /system/shipment-orders/analytics. Brokerage is measured by the difference: what we bought, what we sold for, and from whom.
 class ShipmentOrdersAnalyticsScreen extends StatefulWidget {
   const ShipmentOrdersAnalyticsScreen({super.key});
   @override
@@ -147,7 +146,7 @@ class _ShipmentOrdersAnalyticsScreenState extends State<ShipmentOrdersAnalyticsS
               : RefreshIndicator(
                   onRefresh: _load,
                   child: ListView(keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag, padding: const EdgeInsets.all(14), children: [
-                    // ── الفلاتر ──
+                    // Filters
                     AppCard(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                       Wrap(spacing: 6, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
                         ActionChip(avatar: const Icon(Icons.event, size: 15), label: Text(_from.isEmpty ? tr('من', 'From') : _from), onPressed: () => _pickDate(true)),
@@ -178,7 +177,7 @@ class _ShipmentOrdersAnalyticsScreenState extends State<ShipmentOrdersAnalyticsS
                       ]),
                     ])),
                     const SizedBox(height: 10),
-                    // ── الأرقام ──
+                    // Figures
                     GridView.count(
                       crossAxisCount: 3, shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
                       mainAxisSpacing: 6, crossAxisSpacing: 6, childAspectRatio: 1.45,
@@ -206,7 +205,7 @@ class _ShipmentOrdersAnalyticsScreenState extends State<ShipmentOrdersAnalyticsS
                             '${t['missingPrice']} order(s) are missing a sell or buy price — they are excluded from the spread, so the profit above does not include them.'),
                             style: const TextStyle(fontSize: 12.5, color: Color(0xFF92400E))),
                       ),
-                    // ── الشهور ──
+                    // Months
                     if (byMonth.length > 1)
                       Padding(padding: const EdgeInsets.only(top: 10), child: AppCard(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                         Text(tr('الشهور: البيع والشراء والفرق', 'By month: sell, buy and spread'), style: const TextStyle(fontWeight: FontWeight.w800)),
@@ -222,7 +221,7 @@ class _ShipmentOrdersAnalyticsScreenState extends State<ShipmentOrdersAnalyticsS
                             ]),
                         ]),
                       ]))),
-                    // ── التجميعات ──
+                    // Groupings
                     Padding(padding: const EdgeInsets.only(top: 10), child: AppCard(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                       SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: [
                         for (final x in _tabs)
@@ -250,7 +249,7 @@ class _ShipmentOrdersAnalyticsScreenState extends State<ShipmentOrdersAnalyticsS
                                 style: const TextStyle(fontSize: 11, color: T.inkFaint)),
                           ])),
                     ]))),
-                    // ── ترتيبُ السيلز التشغيليّ ──
+                    // Operations sales ranking
                     Padding(padding: const EdgeInsets.only(top: 10), child: AppCard(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                       Text(tr('ترتيب السيلز التشغيلي', 'Operational sales ranking'), style: const TextStyle(fontWeight: FontWeight.w800)),
                       Text(tr('بالشحنات المنفَّذة في المدّة', 'by executed shipments in the period'), style: const TextStyle(fontSize: 11, color: T.inkFaint)),
@@ -266,7 +265,7 @@ class _ShipmentOrdersAnalyticsScreenState extends State<ShipmentOrdersAnalyticsS
                             trailing: Text(soMoney(r['margin']), style: TextStyle(fontWeight: FontWeight.w800, color: _n(r['margin']) < 0 ? T.danger : T.success)),
                           ),
                     ]))),
-                    // ── أسبابُ الإلغاء ──
+                    // Cancellation reasons
                     Padding(padding: const EdgeInsets.only(top: 10), child: AppCard(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                       Row(children: [
                         Text(tr('أسباب الإلغاء', 'Cancellation reasons'), style: const TextStyle(fontWeight: FontWeight.w800)),
@@ -284,7 +283,7 @@ class _ShipmentOrdersAnalyticsScreenState extends State<ShipmentOrdersAnalyticsS
                           LinearProgressIndicator(value: (_n(x['pct']).clamp(0, 100)) / 100, minHeight: 5, color: T.danger, backgroundColor: T.line.withValues(alpha: 0.4)),
                         ])),
                     ]))),
-                    // ── الشحناتُ الخاسرة: بوليصةٌ باسمها يُسأل عنها ──
+                    // Losing shipments: a waybill is listed by name so it can be queried
                     if (losing.isNotEmpty)
                       Padding(padding: const EdgeInsets.only(top: 10), child: AppCard(topAccent: T.danger, child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                         Row(children: [

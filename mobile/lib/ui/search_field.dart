@@ -1,13 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/lang.dart';
 
-/// خانةُ البحث الموحَّدة في التطبيق (صاحبُ الشركة، ٢٠٢٦/١٠/٢٥: «سيرش كتير كنت
-/// بعمله… بيلغي المحتوى ومبعرفش أقفله»).
-///
-/// ما كان يحدث: خانةُ بحثٍ بلا متحكِّم تُعاد رسمُها (تحميل/خطأ/تحديثٌ حيّ) فتعود
-/// فارغة والكلمةُ ما زالت تُرشِّح القائمةَ في الخلفية — محتوى يختفي بلا سببٍ ظاهر
-/// ولا خانةٌ تُمسَح. هنا: النصُّ في متحكِّمٍ يملكه صاحبُ الشاشة أو الخانةُ نفسُها
-/// فلا يضيع، وزرُّ ✕ يمسح ويُغلق اللوحة في ضغطة، و«بحث» في اللوحة يُغلقها.
+/// Unified search field in the app. An uncontrolled field was rebuilt on loading, error or live update, came back empty while the text still filtered the list, so content vanished with no cleared field. Here the text lives in a controller owned by the screen or the field itself so it is not lost, the clear button clears and closes the sheet in one tap, and Search in the sheet closes it.
 class SearchField extends StatefulWidget {
   final ValueChanged<String> onChanged;
   final TextEditingController? controller;

@@ -14,14 +14,10 @@ import 'hr_common.dart';
 import 'hr_employee_profile.dart';
 import '../ui/search_field.dart';
 
-/// ماستر الموارد البشريّة في التطبيق — نظيرُ /system/hr/master/[group] و
-/// /master/expiring و/master/grid وتحليلِ الأقسام في الموقع.
-///
-/// كلُّها تقرأ من الخادم نفسِه (/api/hr/master/*) بالفلاتر نفسِها، وتكتب بالطريق
-/// نفسِه (PATCH …/fields، POST renew وrenew-bulk) — فيبثّ الخادمُ `hr:master`
-/// و`hr:employee` وتتحدّث الشاشاتُ كلُّها في الموقع والتطبيق معًا.
+/// HR master in the app: counterpart of /system/hr/master/[group], /master/expiring, /master/grid and department analysis on the web.
+/// All read from the same server endpoints (the /api/hr/master endpoints) with the same filters and write through the same paths (PATCH .../fields, POST renew and renew-bulk), so the server broadcasts `hr:master` and `hr:employee` and web and app refresh together.
 
-// ── حالاتُ الخانة وحالاتُ التاريخ — STATUS_META/STATE_META في lib/hrMaster ──
+// Field states and date states; STATUS_META/STATE_META in lib/hrMaster.
 const hrStatusMeta = {
   'required': ('مطلوب', 'Required', T.danger),
   'not_required': ('غير مطلوب', 'Not required', T.inkSoft),
@@ -44,10 +40,10 @@ String hrStatusLabel(String k) { final m = hrStatusMeta[k]; return m == null ? k
 String hrStateLabel(String k) { final m = hrStateMeta[k]; return m == null ? k : tr(m.$1, m.$2); }
 Color hrStateColor(String? k) => hrStateMeta[k ?? '']?.$3 ?? T.inkSoft;
 
-/// المجموعاتُ التي لها تاريخُ انتهاء فيصحّ فيها التجديد — RENEWABLE_GROUPS.
+/// Groups with an expiry date, so renewal applies; RENEWABLE_GROUPS.
 const hrRenewableGroups = {'iqama', 'passport', 'contract', 'workPermit', 'medicalInsurance', 'healthCertificate', 'driverCard', 'drivingLicense', 'visa', 'ajeer'};
 
-/// اسمُ عمود المدّة لكلّ انتهاء — EXPIRY_FIELDS.
+/// Remaining-days column name per expiry; EXPIRY_FIELDS.
 const hrExpiryFields = {
   'iqamaExpiry': ('المدة بالأيام — الإقامة', 'Days left — Iqama'),
   'passportExpiry': ('المدة بالأيام — الجواز', 'Days left — Passport'),
@@ -59,7 +55,7 @@ const hrExpiryFields = {
   'licenseExpiry': ('المدة بالأيام — رخصة القيادة', 'Days left — Driving licence'),
 };
 
-/// الأيّامُ حتى التاريخ — سالبٌ لما مضى، و`null` لما لا تاريخَ له.
+/// Days until the date: negative if past, `null` if it has no date.
 int? hrDaysUntil(dynamic v) {
   final d = hrParse(v);
   if (d == null) return null;
@@ -81,7 +77,7 @@ String _fmtDate(dynamic v) {
   return d == null ? (v == null || '$v'.isEmpty ? '—' : '$v') : hrIso(d);
 }
 
-/// قيمةُ الخانة كما تُعرض — displayValue في MasterCell.
+/// Cell value as displayed; displayValue in MasterCell.
 String hrDisplayValue(Map<String, dynamic> f, dynamic raw) {
   if (f['type'] == 'date') return _fmtDate(raw);
   if (f['type'] == 'number') { final n = num.tryParse('${raw ?? ''}'); return n == null || n == 0 ? '—' : '$n'; }
@@ -92,10 +88,7 @@ String hrDisplayValue(Map<String, dynamic> f, dynamic raw) {
 
 const _lockedKeys = {'workStatusText', 'systemStatus', 'employmentStatus'};
 
-/// ── تعديلُ خانةٍ واحدة — MasterCell ──────────────────────────────────────────
-/// القيمةُ وحالتُها («غير مطلوب»…) تُختاران معًا، والحفظُ PATCH …/fields.
-/// و«حالة العمل» و«داخل النظام» لا تُكتبان من الخانة؛ و«لا يعمل» يُرجَع منها
-/// بإعادة التفعيل نفسِها. يردّ true إن تغيّر شيء.
+/// Edit a single field, like MasterCell. The value and its status ("not required", ...) are chosen together; save is PATCH .../fields. Work status and in-system are not written from the cell, and "not working" is reverted through reactivation. Returns true if anything changed.
 Future<bool> hrEditCell(BuildContext context, {
   required String employeeId,
   required Map<String, dynamic> field,
@@ -206,14 +199,12 @@ const _filterLabels = {
 };
 Map<String, String> get _extraLabels => {for (final e in _filterLabels.entries) e.key: tr(e.value.$1, e.value.$2)};
 
-// ══════════════════════════════════════════════════════════════════════════════
-// صفحةُ مجموعة: الإقامات، الجوازات، العقود، التأمين، البنوك… — /master/[group]
-// ══════════════════════════════════════════════════════════════════════════════
+// Group page: residences, passports, contracts, insurance, banks, ... at /master/[group].
 class HrMasterGroupScreen extends StatefulWidget {
   final String group;
-  /// ما يُحمَل من الرقم المضغوط: فلاتر اللوحة + field/status/state/withinDays.
+  /// Carried from the tapped number: dashboard filters plus field/status/state/withinDays.
   final Map<String, String> initial;
-  /// داخلَ تبويبٍ (بيانات العقود) — بلا شريط عنوانٍ خاصّ.
+  /// Inside a tab (contract data): no title bar of its own.
   final bool embedded;
   const HrMasterGroupScreen({super.key, required this.group, this.initial = const {}, this.embedded = false});
   @override
@@ -244,7 +235,7 @@ class _HrMasterGroupScreenState extends State<HrMasterGroupScreen> {
   int _seq = 0;
   Timer? _debounce;
   final _withinCtrl = TextEditingController();
-  // الخانةُ في قائمةٍ تُطوى مع التمرير — النصُّ في متحكِّمٍ يبقى مع الكلمة.
+  // The field sits in a list that collapses on scroll; text lives in a controller so it survives.
   final _searchCtl = TextEditingController();
   late final void Function() _onLive;
 
@@ -271,7 +262,7 @@ class _HrMasterGroupScreenState extends State<HrMasterGroupScreen> {
     _load();
     hrLoadChoices().then((c) { if (mounted) setState(() => _choices = c); });
     _onLive = () => _load();
-    // وما يُكتب في صفحة العقود (إنشاءٌ، فسخٌ، حذف) يغيّر «حالة العقد» هنا.
+    // What is written on the contracts page (create, terminate, delete) changes the contract status here.
     Live.instance.on('hr:master', _onLive);
     Live.instance.on('hr:contract', _onLive);
   }
@@ -287,13 +278,13 @@ class _HrMasterGroupScreenState extends State<HrMasterGroupScreen> {
 
   Map<String, String> _params({bool bare = false}) => bare ? {} : {
     'q': _q.trim(), 'field': _field, 'status': _status, 'state': _state, 'withinDays': _within,
-    // «غير نشط» هنا حالةُ خانةٍ لا حالةُ توظيف — راجع legacyEmploymentStatus في الخادم.
+    // "Inactive" here is a field state, not an employment status; see legacyEmploymentStatus on the server.
     'statusKind': 'cell',
     'includeExpired': _includeExpired ? '1' : '0',
     ..._filters,
   };
 
-  /// العدّاداتُ والجدولُ ردٌّ واحدٌ محروس — الأقدمُ لا يكتب فوق الأحدث.
+  /// Counters and table come from one guarded response; an older one never overwrites a newer one.
   Future<void> _load() async {
     final mine = ++_seq;
     try {
@@ -305,13 +296,13 @@ class _HrMasterGroupScreenState extends State<HrMasterGroupScreen> {
     }
   }
 
-  /// التحديدُ يسقط مع تغيّر الفلاتر: صفٌّ خرج من النتيجة لا يبقى محدَّدًا بلا أن يُرى.
+  /// Selection is cleared when filters change, so a row that left the result is not left selected unseen.
   void _changed(VoidCallback f) {
     setState(() { f(); _picked.clear(); });
     _load();
   }
 
-  // ── التصدير: المعروض، أو المجموعة كاملةً بلا فلاتر ─────────────────────────
+  // Export: what is shown, or the whole group without filters.
   List<ExportCol> get _exportCols {
     final fields = _fields;
     final keys = fields.map((f) => '${f['key']}').toSet();
@@ -325,8 +316,7 @@ class _HrMasterGroupScreenState extends State<HrMasterGroupScreen> {
       ExportCol('الرقم الوظيفي', 'Employee no.', (r) => r['employeeNumber'] ?? ''),
       ExportCol('الاسم', 'Name', (r) => r['name'] ?? ''),
       ExportCol('رقم الهوية', 'ID number', (r) => r['iqamaNumber'] ?? ''),
-      // السجلُّ التجاريُّ الذي عليه الموظّف — كالويب (٢٠٢٦/١٠/٢٧).
-      // بقاعدة الارتباط نفسِها (backend utils/hrEngagement) — كالويب.
+      // The commercial registration the employee is on, like the web. Uses the same link rule (backend utils/hrEngagement).
       ExportCol('السجل', 'Commercial register', (r) {
         final v = '${r['registerNumber'] ?? ''}'.trim();
         if (v.isEmpty) return tr('غير محدّد', 'Not specified');
@@ -364,11 +354,11 @@ class _HrMasterGroupScreenState extends State<HrMasterGroupScreen> {
     exportExcel(context, fileName: 'hr-$g', sheets: [(_title, _exportCols, rows)]);
   }
 
-  // ── تجديد مستندٍ واحد: يكتب التاريخ الجديد ويترك أثرًا مَن جدّده ومن أيّ تاريخ ──
+  // Renew a single document: writes the new date and records who renewed it and from which date.
   Future<void> _renew(Map<String, dynamic> r) async {
     final ef = '${_group['expiryField'] ?? ''}';
     final cur = ef.isEmpty ? null : hrParse(((r['values'] as Map?) ?? const {})[ef]);
-    // سنةٌ من الانتهاء القائم إن كان في المستقبل، وإلّا سنةٌ من اليوم.
+    // One year from the existing expiry if it is in the future, otherwise one year from today.
     final now = DateTime.now();
     final from = cur != null && cur.isAfter(now) ? cur : now;
     DateTime? when = DateTime(from.year + 1, from.month, from.day);
@@ -397,7 +387,7 @@ class _HrMasterGroupScreenState extends State<HrMasterGroupScreen> {
     } catch (e) { if (mounted) hrSnack(context, e.toString()); }
   }
 
-  // ── تجديد دفعةٍ بتاريخٍ واحد: كلُّه أو لا شيء، وأسبابُ الرفض بأرقام سطورها ──
+  // Bulk renewal with one date: all or nothing, with rejection reasons by row number.
   Future<void> _bulkRenew() async {
     final rows = _rows.where((r) => _picked.contains('${r['_id']}')).toList();
     if (rows.isEmpty) return;
@@ -438,18 +428,18 @@ class _HrMasterGroupScreenState extends State<HrMasterGroupScreen> {
     } catch (e) { if (mounted) hrSnack(context, e.toString()); }
   }
 
-  // ── إضافة / تعديل بيانات المجموعة — HrGroupFormModal ─────────────────────────
+  // Add or edit group data, HrGroupFormModal.
   Future<void> _groupForm(Map<String, dynamic>? row) async {
     final fields = _fields.where((f) => f['readOnly'] != true && f['type'] != 'hijri' && !_lockedKeys.contains(f['key'])).toList();
     Map<String, dynamic>? target = row;
     if (target == null) {
-      // القائمةُ بلا فلاتر الشاشة: مَن ينقصه المستندُ غالبًا خارجَ الفلتر القائم.
+      // The list ignores the screen filters: an employee missing the document is often outside the current filter.
       List<Map<String, dynamic>> pool;
       try { pool = List<Map<String, dynamic>>.from((await Api.instance.get('/api/hr/master/records/$g'))['rows'] ?? []); }
       catch (e) { if (mounted) hrSnack(context, e.toString()); return; }
       int filled(Map<String, dynamic> r) => fields.where((f) => ((r['statuses'] as Map?) ?? const {})[f['key']] == 'filled').length;
       int req(Map<String, dynamic> r) => fields.where((f) => ((r['statuses'] as Map?) ?? const {})[f['key']] == 'required').length;
-      // مَن لا بيانات له في المجموعة أوّلًا — هو غرضُ الشاشة.
+      // Employees with no data in the group come first; that is the screen's purpose.
       pool.sort((a, b) { final x = filled(a) - filled(b); return x != 0 ? x : ((b['missing'] as List?)?.length ?? 0) - ((a['missing'] as List?)?.length ?? 0); });
       if (!mounted) return;
       target = await pickHrEmployee(context, rows: pool,
@@ -510,7 +500,7 @@ class _HrMasterGroupScreenState extends State<HrMasterGroupScreen> {
                 },
               ) : null),
             ),
-          // العَلَمُ الإداريُّ بجانب الحقل: «لا ينطبق على هذا الموظّف» قرارٌ يُتَّخذ أمام الخانة.
+          // The administrative flag next to the field: "does not apply to this employee" is a decision made at the field.
           DropdownButtonFormField<String>(
             initialValue: marks['${f['key']}'] ?? 'keep',
             isDense: true,
@@ -527,7 +517,7 @@ class _HrMasterGroupScreenState extends State<HrMasterGroupScreen> {
       ),
     ]));
     if (!ok) return;
-    // ما تغيّر وحدَه يُرسَل — والمُعلَّمُ يُرسَل بقيمته الحاليّة (الخادمُ يرفض طلبًا بلا حقول).
+    // Only changed fields are sent, and a flagged field is sent with its current value (the server rejects a request with no fields).
     final changed = fields.where((f) => (form['${f['key']}'] ?? '') != (base['${f['key']}'] ?? '')).map((f) => '${f['key']}').toSet();
     final marked = marks.entries.where((e) => e.value != 'keep').map((e) => e.key).toSet();
     if (changed.isEmpty && marked.isEmpty) { if (mounted) hrSnack(context, tr('لا يوجد تغيير لحفظه', 'Nothing changed')); return; }
@@ -542,7 +532,7 @@ class _HrMasterGroupScreenState extends State<HrMasterGroupScreen> {
     } catch (e) { if (mounted) hrSnack(context, e.toString()); }
   }
 
-  // ── تفريغ بيانات المجموعة عند موظّفٍ واحد — لا حذفُ موظّف ──────────────────
+  // Clear the group's data for one employee; this does not delete the employee.
   Future<void> _clear(Map<String, dynamic> r) async {
     final fields = _fields.where((f) => f['readOnly'] != true && f['type'] != 'hijri' && !_lockedKeys.contains(f['key'])).toList();
     final vals = Map<String, dynamic>.from((r['values'] as Map?) ?? const {});
@@ -700,7 +690,7 @@ class _HrMasterGroupScreenState extends State<HrMasterGroupScreen> {
             ]),
           ),
         const SizedBox(height: 8),
-        // عدّاداتُ الحالة لكلّ حقل — الضغطُ ينزل إلى أصحابه.
+        // Status counters per field; tapping drills into its owners.
         Text(tr('حالة كل حقل لدى ${sum['population'] ?? rows.length} موظفًا — اضغط أي رقم لعرض أصحابه', 'Status of every field across ${sum['population'] ?? rows.length} employees — tap a number to list them'),
             style: const TextStyle(fontSize: 11.5, color: T.inkFaint)),
         const SizedBox(height: 6),
@@ -713,7 +703,7 @@ class _HrMasterGroupScreenState extends State<HrMasterGroupScreen> {
               padding: const EdgeInsets.only(bottom: 6),
               child: AppCard(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                // الاسمُ والأرقامُ في سطرٍ واحد — بطاقةٌ لكلّ حقلٍ بسطرين كانت تملأ الشاشة فراغًا.
+                // Name and numbers on one line; a two-line card per field filled the screen with empty space.
                 child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
                   Expanded(child: Text(Lang.instance.ar ? '${f['ar']}' : '${f['en']}', style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800))),
                   const SizedBox(width: 8),
@@ -755,7 +745,7 @@ class _HrMasterGroupScreenState extends State<HrMasterGroupScreen> {
               ),
           ]),
         const SizedBox(height: 10),
-        // ── البحثُ والحقلُ والحالةُ والمدّة ──
+        // Search, field, status and window.
         SearchField(
           controller: _searchCtl, dense: true,
           onChanged: (v) {
@@ -824,7 +814,7 @@ class _HrMasterGroupScreenState extends State<HrMasterGroupScreen> {
         ],
         Row(children: [
           if (_q.isNotEmpty || _field.isNotEmpty || _status.isNotEmpty || _state.isNotEmpty || _within.isNotEmpty)
-            // «إلغاء الفلترة» يمسح الكلمةَ أيضًا — كان يظهر بسببها ولا يمسحها.
+            // "Clear filters" also clears the search word; it used to show because of it without clearing it.
             TextButton(onPressed: () => _changed(() { _debounce?.cancel(); _q = ''; _searchCtl.clear(); _field = ''; _status = ''; _state = ''; _within = ''; _withinCtrl.clear(); }), child: Text(tr('إلغاء الفلترة', 'Clear'))),
           const Spacer(),
           Text('${rows.length} ${tr('موظف', 'people')}', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5)),
@@ -890,9 +880,7 @@ class _HrMasterGroupScreenState extends State<HrMasterGroupScreen> {
   }
 }
 
-// ══════════════════════════════════════════════════════════════════════════════
-// الانتهاءات — /master/expiring
-// ══════════════════════════════════════════════════════════════════════════════
+// Expiries section, /master/expiring.
 class HrExpiringScreen extends StatefulWidget {
   final Map<String, String> initial;
   const HrExpiringScreen({super.key, this.initial = const {}});
@@ -1152,22 +1140,20 @@ class _HrExpiringScreenState extends State<HrExpiringScreen> {
   }
 }
 
-// ══════════════════════════════════════════════════════════════════════════════
-// الماستر: صفٌّ لكلّ موظّف بكلّ الأعمدة — /master/grid
-// ══════════════════════════════════════════════════════════════════════════════
+// Master grid: a row per employee with all columns, /master/grid.
 class HrMasterGridScreen extends StatefulWidget {
   const HrMasterGridScreen({super.key});
   @override
   State<HrMasterGridScreen> createState() => _HrMasterGridScreenState();
 }
 
-/// ما يظهر لمن لم يختر أعمدتَه — الأساسيُّ الذي يُسأل عنه كلَّ يوم (كالموقع).
+/// Default columns for someone who picked none: the basics asked about daily (as on the web).
 const _defaultGridCols = [
   'employeeNumber', 'name', 'iqamaNumber', 'nationality', 'jobTitle', 'department', 'branchName', 'project', 'systemStatus',
   'hireDate', 'hireDateHijri', 'iqamaExpiry', 'iqamaExpiryHijri', 'iqamaExpiry__days',
   'contractEndDate', 'contractEndDateHijri', 'contractEndDate__days',
 ];
-// اختيارُ الأعمدة يبقى ما دام التطبيقُ مفتوحًا.
+// Column selection persists while the app stays open.
 List<String>? _gridVisibleMemo;
 
 class _GCol {
@@ -1196,7 +1182,7 @@ class _HrMasterGridScreenState extends State<HrMasterGridScreen> {
   List<String> _visible = _gridVisibleMemo ?? _defaultGridCols;
   int _seq = 0;
   Timer? _debounce;
-  // الخانةُ تُهدَم مع الخطأ — النصُّ في متحكِّمٍ يبقى مع الكلمة.
+  // The field is destroyed on error; text lives in a controller so it survives.
   final _searchCtl = TextEditingController();
   late final void Function() _onLive;
 
@@ -1223,7 +1209,7 @@ class _HrMasterGridScreenState extends State<HrMasterGridScreen> {
     final p = <String>['page=${page ?? _page}', 'limit=$limit'];
     if (_q.trim().isNotEmpty) p.add('q=${Uri.encodeQueryComponent(_q.trim())}');
     for (final e in _colFilters.entries) { for (final v in e.value) { p.add('cf_${e.key}=${Uri.encodeQueryComponent(v)}'); } }
-    // فلاترُ الشريط مُرسَلةً — ما لم يكن للعمود نفسِه فلترٌ من رأسه.
+    // Strip filters are sent, unless the column itself has a header filter.
     for (final e in _quick.entries) {
       if (e.value.isEmpty || e.key == skipQuick || _colFilters.containsKey(e.key)) continue;
       p.add('${e.key}=${Uri.encodeQueryComponent(e.value)}');
@@ -1330,7 +1316,7 @@ class _HrMasterGridScreenState extends State<HrMasterGridScreen> {
                   activeColor: T.orange,
                   title: Text(x.label, style: const TextStyle(fontSize: 13)),
                   onChanged: (v) => setS(() {
-                    // الميلاديُّ وهجريُّه يُختاران معًا — كالموقع.
+                    // Gregorian and its Hijri date are chosen together, like the web.
                     final twin = x.hijriOf ?? (all.any((y) => y.hijriOf == x.key) ? all.firstWhere((y) => y.hijriOf == x.key).key : null);
                     if (v == true) { sel.add(x.key); if (twin != null) sel.add(twin); } else { sel.remove(x.key); if (twin != null) sel.remove(twin); }
                   }),
@@ -1347,7 +1333,7 @@ class _HrMasterGridScreenState extends State<HrMasterGridScreen> {
     if (ok == true && mounted) setState(() { _visible = [for (final x in all) if (sel.contains(x.key)) x.key]; _gridVisibleMemo = _visible; });
   }
 
-  /// قيمُ عمودٍ للفلتر: من كلّ الموظّفين المطابقين لبقيّة الفلاتر، لا من الصفحة.
+  /// Values of a column for the filter: from all employees matching the other filters, not from the page.
   Future<void> _filterColumn(_GCol c) async {
     final p = <String>['field=${Uri.encodeQueryComponent(c.key)}'];
     if (_q.trim().isNotEmpty) p.add('q=${Uri.encodeQueryComponent(_q.trim())}');
@@ -1529,9 +1515,7 @@ class _HrMasterGridScreenState extends State<HrMasterGridScreen> {
   }
 }
 
-// ══════════════════════════════════════════════════════════════════════════════
-// تحليلُ الأقسام — DepartmentAnalysis: «أيُّ الأقسام أسوأ؟»
-// ══════════════════════════════════════════════════════════════════════════════
+// Department analysis, DepartmentAnalysis: which departments are worst.
 const _deptSorts = [
   ('total', 'الكل', 'All'), ('active', 'على رأس العمل', 'Active'), ('ended', 'منتهي خدماته', 'Ended'),
   ('contracts', 'عقود سارية', 'Contracts'), ('completeness', 'اكتمال البيانات', 'Data complete'),
@@ -1543,9 +1527,9 @@ const _deptSorts = [
 
 class HrDeptAnalysis extends StatefulWidget {
   final Map<String, dynamic> data;
-  /// يفتح الصفوفَ وراء رقمٍ بعينه: القسمُ + أيُّ شرطٍ آخر.
+  /// Opens the rows behind one number: the department plus any other condition.
   final void Function(Map<String, String> q) onOpen;
-  /// يقصر اللوحةَ كلَّها على قسمٍ واحد (والضغطةُ الثانية ترفعه).
+  /// Restricts the whole dashboard to one department (a second tap lifts it).
   final void Function(String dept) onFilter;
   final String active;
   const HrDeptAnalysis({super.key, required this.data, required this.onOpen, required this.onFilter, this.active = ''});

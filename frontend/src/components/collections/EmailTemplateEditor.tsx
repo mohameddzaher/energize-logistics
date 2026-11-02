@@ -1,10 +1,5 @@
 'use client';
-/**
- * قالبُ بريد كشف الحساب — يكتبه القسمُ ويعدّله متى شاء (صاحبُ الشركة، ٢٠٢٦/١٠/٢٤).
- *
- * الخاناتُ بين قوسين تُملأ عند الإرسال من الكشف نفسِه (اسمُ العميل، المستحقّ…).
- * والحفظُ يصل أوّلَ رسالةٍ بعده: الخادمُ يقرأ القالبَ من القاعدة في كلّ مسودّة.
- */
+/** Statement email template, written and edited by the department at will. Bracketed fields are filled at send time from the statement itself (customer name, amount due...). A save reaches the next message because the server reads the template from the database for every draft. */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import api from '@/lib/api';
 import { useDialog } from '@/components/system/DialogProvider';
@@ -28,7 +23,7 @@ export default function EmailTemplateEditor({ ar, canEdit }: { ar: boolean; canE
     api.get<Tpl>('/api/collections-dept/email-template').then((x) => { setTpl(x); setSubject(x.subject); setBody(x.body); setSig(x.signature || ''); setSigImg(x.signatureImage || ''); setSigImgName(x.signatureImageName || ''); }).catch(() => {});
   }, []);
   useEffect(() => { load(); }, [load]);
-  // زميلٌ حفظ القالبَ من شاشةٍ أخرى — يُقرأ الجديد ما لم يكن هنا تعديلٌ لم يُحفظ.
+  // A colleague saved the template from another screen; the new one is read unless there is an unsaved local edit.
   useSocket('collections:changed', useCallback((d: any) => {
     if (d?.source === 'email-template' && tpl && subject === tpl.subject && body === tpl.body && sig === (tpl.signature || '') && sigImg === (tpl.signatureImage || '')) load();
   }, [load, tpl, subject, body, sig, sigImg]));
@@ -79,7 +74,7 @@ export default function EmailTemplateEditor({ ar, canEdit }: { ar: boolean; canE
           ))}
         </div>
       </div>
-      {/* ── التوقيع: يُلحَق بآخر كلّ رسالة ──────────────────────────────── */}
+      {/* Signature: appended to the end of every message. */}
       <div className="rounded-xl border border-slate-200 p-3 space-y-2">
         <p className="text-[12.5px] font-semibold text-slate-700">{t('التوقيع — يُضاف في آخر كلّ رسالة', 'Signature — added to the end of every email')}</p>
         <textarea rows={4} value={sig} onChange={(e) => setSig(e.target.value)} disabled={!canEdit} dir="auto"

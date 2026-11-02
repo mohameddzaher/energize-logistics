@@ -10,13 +10,7 @@ import '../ui/widgets.dart';
 import '../ui/search_field.dart';
 import 'collections_party.dart';
 
-// ═════════════════════════════════════════════════════════════════════════
-// سجلُّ أعمار الديون — نظيرُ components/collections/AgingPage.
-// صفٌّ لكلّ حساب: كودُه ومَن يتولّاه وتقييمُه، وحدُّه وكم استُهلك منه، ومهلتُه،
-// ثمّ دَينُه موزَّعًا على شرائح العمر. الشرائحُ أزرارُ فلترة، والفلاترُ (الموظّف،
-// التقييم، القسم، الفرع، المهلة) والفرزُ (ومنه «المستهلك من الحد») على الخادم،
-// والتصديرُ للصفحة أو لكلّ نتائج الفلتر. والصفُّ يفتح ملفَّ الحساب.
-// ═════════════════════════════════════════════════════════════════════════
+// Debt aging register, the counterpart of components/collections/AgingPage. One row per account: its code, who handles it and its rating, its limit and how much was used, its term, then its debt split into age buckets. Buckets are filter buttons; filters (employee, rating, department, branch, term) and sorting (including "used of limit") run on the server, and export covers the page or all filter results. A row opens the account file.
 
 String _s(Map r, String k) => '${r[k] ?? ''}';
 num _num(dynamic v) => v is num ? v : num.tryParse('${v ?? ''}') ?? 0;
@@ -58,8 +52,8 @@ class _CollectionsAgingScreenState extends State<CollectionsAgingScreen> {
   String _search = '', _officer = '', _grade = '', _department = '', _location = '', _creditDays = '', _band = '';
   String _sort = 'outstanding', _dir = 'desc';
   Timer? _deb;
-  Timer? _searchDeb; // مؤقِّتُ البحث مستقلٌّ — كان التحديثُ الحيّ يُلغي بحثًا مُنتظِرًا
-  final _searchCtl = TextEditingController(); // النصُّ يبقى مطابقًا لـ_search
+  Timer? _searchDeb; // Search timer is independent: a live refresh used to cancel a pending search.
+  final _searchCtl = TextEditingController(); // Text stays equal to _search.
   late final void Function() _onLive;
 
   @override
@@ -144,7 +138,7 @@ class _CollectionsAgingScreenState extends State<CollectionsAgingScreen> {
           ExportCol(bandLabels[b]?.$1 ?? b, bandLabels[b]?.$2 ?? b, (r) => _num(((r['bands'] as Map?) ?? const {})[b])),
       ];
 
-  /// الصفحةُ وحدَها، أو كلُّ نتائج الفلتر من الخادم — يُسمّى النطاقُ باسمه.
+  /// The page only, or all filter results from the server; the scope is named explicitly.
   Future<void> _export() async {
     final scope = await showModalBottomSheet<String>(
       context: context,
@@ -254,7 +248,7 @@ class _CollectionsAgingScreenState extends State<CollectionsAgingScreen> {
             else if (_num(r['cashOutstanding']) > 0)
               Text(tr('نقدي', 'cash'), style: const TextStyle(fontSize: 11, color: T.success)),
             const SizedBox(height: 6),
-            // ── استهلاكُ الحدّ: يُقرأ في السطر — قرارٌ قبل الشحنة التالية ───────
+            // Limit usage: read on the line, a decision before the next shipment
             if (_num(r['creditLimit']) > 0) ...[
               Row(children: [
                 Expanded(
@@ -302,7 +296,7 @@ class _CollectionsAgingScreenState extends State<CollectionsAgingScreen> {
                     child: RefreshIndicator(
                       onRefresh: _load,
                       child: ListView(padding: const EdgeInsets.all(12), keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag, children: [
-                        // البطاقاتُ تعكس الفلترَ النشط.
+                        // Cards reflect the active filter.
                         Row(children: [
                           for (final c in [
                             (tr('حسابات', 'Accounts'), _m(_total), T.ink),
@@ -331,7 +325,7 @@ class _CollectionsAgingScreenState extends State<CollectionsAgingScreen> {
                             )),
                         ]),
                         const SizedBox(height: 10),
-                        // ── الشرائحُ أزرارُ فلترة ─────────────────────────────
+                        // Buckets are filter buttons
                         Wrap(spacing: 6, runSpacing: 6, children: [
                           ChoiceChip(label: Text('${tr('الكل', 'All')} · ${_m(_totals['outstanding'])}'), selected: _band.isEmpty,
                               onSelected: (_) { setState(() => _band = ''); _refilter(); }),

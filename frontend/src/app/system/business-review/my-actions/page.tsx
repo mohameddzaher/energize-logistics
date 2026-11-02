@@ -1,9 +1,6 @@
 'use client';
-// بنودي — a department manager's own board.
-//
-// Everything the board asked of ME, in due-date order, with the two things a
-// manager actually does about them: report progress, or hand pieces of the work
-// to the team. What the team then sees is only their own piece.
+// My items: a department manager's own board.
+// Everything the board asked of ME, in due-date order, with the two things a manager actually does about them: report progress, or hand pieces of the work to the team. What the team then sees is only their own piece.
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useLanguage } from '@/context/LanguageContext';
 import { useDialog } from '@/components/system/DialogProvider';

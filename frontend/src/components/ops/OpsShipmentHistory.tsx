@@ -32,7 +32,7 @@ export default function OpsShipmentHistory({ filterKey, filterValue }: { filterK
   const { lang } = useLanguage();
   const tx = opsText(lang);
 
-  // آخرُ أعدادٍ رآها المتصفّح لهذا السائق/العميل تظهر فورًا — راجع lib/lastSeen.
+  // The latest counts the browser saw for this driver or customer show immediately; see lib/lastSeen.
   const [counts, setCounts] = useState<Record<string, number>>(() => readLastSeen<Record<string, number>>(`ops:hist:${filterKey}=${filterValue}`) || {});
   const [ships, setShips] = useState<Row[]>([]);
   const [meta, setMeta] = useState<Paginated<unknown>['meta'] | null>(null);

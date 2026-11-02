@@ -1,16 +1,7 @@
 'use client';
 /**
- * مرفقاتُ المطالبة — ورقُها، ولكلٍّ اسمٌ يكتبه صاحبُه.
- *
- * ── العلّة ──────────────────────────────────────────────────────────────────
- * المطالبةُ تُدار بالأرقام: المقدَّرُ والمتوقّعُ استردادُه والفارق. وأمّا الورقُ
- * الذي تُبنى عليه هذه الأرقام — تقريرُ نجم، وصورُ الضرر، وعرضُ الورشة، وخطابُ
- * الشركة — فكان يبقى في بريدِ مَن تابعها أو هاتفِه. فإن سُئلت المطالبةُ عن
- * حجّتها بعد سنةٍ لم يكن في النظام منها شيء، ويُعاد جمعُها من الناس.
- *
- * والاسمُ يُكتب ولا يُشتقُّ من الملفّ: ثلاثُ صورٍ اسمُها `IMG_20260114` لا تُقرأ،
- * و«تقرير نجم» و«صورة الصدام الأمامي» و«خطاب الرفض» تُقرأ. فاسمُ الملفّ يُقترَح
- * ويُصحّحه صاحبُه، ويُعدَّل بعد الرفع في موضعه بلا نافذة.
+ * Claim attachments: the paperwork, each with a name typed by its owner.
+ * Claims are managed by numbers, but the papers behind them (Najm report, damage photos, workshop quote, insurer letter) stayed in the follower's email or phone, so a year later the system had none of it. The name is typed rather than derived from the file (`IMG_20260114` is unreadable, a descriptive name is not); the filename is suggested, corrected by the owner, and editable in place after upload.
  */
 import { useRef, useState } from 'react';
 import { useLanguage } from '@/context/LanguageContext';
@@ -25,8 +16,7 @@ export interface ClaimAttachment {
   mimeType?: string; size?: number; uploadedByName?: string; uploadedAt?: string;
 }
 
-// الحدُّ نفسُه المكتوبُ في الخادم (utils/fileStore) — يُقال هنا قبل الرفع، فلا
-// تُرفَع عشرون ميجابايت لتُردَّ.
+// Same limit as the server (utils/fileStore), checked before upload so a too-large file is not sent and rejected.
 const MAX_BYTES = 20 * 1024 * 1024;
 
 const sizeText = (n?: number) => {
@@ -40,7 +30,7 @@ export default function ClaimAttachments({ claimId, attachments, canEdit, canMan
   claimId: string;
   attachments: ClaimAttachment[];
   canEdit: boolean;
-  /** تعديلُ اسم المرفق وحذفُه — للإدارة والماليّة وحدَهم (canEditClaims). */
+  /** Rename and delete attachments: management and finance only (canEditClaims). */
   canManage?: boolean;
   onChange: (claim: any) => void;
 }) {
@@ -68,7 +58,7 @@ export default function ClaimAttachments({ claimId, attachments, canEdit, canMan
           r.onerror = () => res('');
           r.readAsDataURL(f);
         });
-        // الاسمُ المقترَح: اسمُ الملفّ بلا امتداده — يُصحّحه صاحبُه بعد الرفع.
+        // Suggested name: the file name without its extension; corrected after upload.
         if (dataUrl) files.push({ dataUrl, fileName: f.name, title: f.name.replace(/\.[^.]+$/, '') });
       }
       if (!files.length) { setBusy(false); return; }
@@ -120,7 +110,7 @@ export default function ClaimAttachments({ claimId, attachments, canEdit, canMan
           </h2>
           {canEdit && (
             <>
-              {/* أكثرُ من ملفٍّ في المرّة: الحادثةُ الواحدةُ ورقُها عدّةُ صفحات. */}
+              {/* More than one file at a time: one incident has several pages. */}
               <input ref={inputRef} type="file" multiple hidden
                 accept="image/*,.pdf,.doc,.docx,.xls,.xlsx"
                 onChange={(e) => pick(e.target.files)} aria-label={t('إرفاق ملفات', 'Attach files')} />
@@ -149,7 +139,7 @@ export default function ClaimAttachments({ claimId, attachments, canEdit, canMan
                   <FileText className="w-4 h-4 text-slate-400 shrink-0" />
                   <div className="min-w-0 flex-1">
                     {canManage ? (
-                      // يُعدَّل الاسمُ في موضعه: لا نافذةَ لتصحيح كلمة.
+                      // The name is edited in place, no dialog for fixing a word.
                       <input defaultValue={a.title || a.fileName || ''}
                         onBlur={(e) => rename(a, e.target.value)}
                         aria-label={t('اسم المرفق', 'Attachment name')}

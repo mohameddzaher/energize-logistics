@@ -70,7 +70,7 @@ export default function Ls2SettingsPage() {
     try {
       const [s, v] = await Promise.all([
         api.get<any>('/api/ls2/settings'),
-        // أسماءُ خدمات الأسطول تُستخرَج من الفترات، فتُطلَب صراحةً.
+        // Fleet service names are extracted from the intervals, so they are requested explicitly.
         api.get<{ items: Vehicle[] }>('/api/ls2/vehicles?include=intervals'),
       ]);
       setThresholds(s.thresholds || {});
@@ -85,8 +85,7 @@ export default function Ls2SettingsPage() {
     setLoading(false);
   }, []);
   useEffect(() => { load(); }, [load]);
-  // ما يُكتب في القسم — من هذه الشاشة أو من غيرها — يظهر هنا في الحال. ونبضُ
-  // القياس عن بُعد (يحمل `vehicles`) لا يُعيد التحميل: يتكرّر كلَّ دقيقةٍ ولا يغيّر ما هنا.
+  // Anything written in the section, from this screen or elsewhere, appears here at once. The telemetry heartbeat (carries `vehicles`) does not reload: it repeats every minute and changes nothing here.
   useSocket('ls2:updated', useCallback((d: any) => { if (d?.settings) load(); }, [load]));
 
   // Warn before leaving with edits still in the form.
@@ -135,7 +134,7 @@ export default function Ls2SettingsPage() {
   const TABS: { key: Tab; label: string; icon: any; badge?: string }[] = [
     { key: 'thresholds', label: t.alertThresholds, icon: Bell },
     { key: 'checklists', label: t.periodicServices, icon: ListChecks, badge: taskCount ? String(taskCount) : undefined },
-    // قوائمُ القسم المنسدلة: ماركاتُ الكاوتش ومقاساتُه ووحداتُ أصناف المخزن.
+    // Department dropdown lists: tire brands and sizes, and store item units.
     { key: 'lists', label: ar ? 'القوائم المنسدلة' : 'Dropdown lists', icon: List },
   ];
 

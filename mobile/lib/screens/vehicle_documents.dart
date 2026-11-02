@@ -17,59 +17,45 @@ import '../ui/export_sheet.dart';
 import '../ui/lookup_field.dart';
 import 'vehicle_renew.dart';
 
-/// ── شاشةُ عائلةِ مستندٍ واحدة، نظيرُ صفحات المستندات في الموقع ─────────────
-///
-/// المشكلة التي تحلّها ليست نقصًا في البيانات: أرقام بطاقات التشغيل والتفاويض
-/// ووثائق التأمين مسجَّلةٌ كلُّها منذ الاستيراد، وكانت لا تجد في أي شاشة عمودًا
-/// يعرضها. فيفلتر المستخدم على بطاقة التشغيل فيحصل على المركبات الصحيحة بلا
-/// رقمِ بطاقةٍ واحد، فيظنّ الملف لم يُستورَد.
-///
-/// وعائلةٌ واحدةٌ في الشاشة لا المستندات الستّة مجتمعة: مجموعُها يجاوز الأربعين
-/// حقلًا، وهي في الملف المصدر مجموعةٌ عائلةً عائلة بلونها — والشاشة تتبع الورقة
-/// التي يعرفها القسم.
-///
-/// ولماذا شاشةٌ واحدةٌ موصوفةٌ بالبيانات لا سبعُ شاشات منسوخة: النسخُ يفترق عند
-/// أوّل تعديل — يُصلَح زرُّ التجديد في واحدة ويبقى معطوبًا في ستّ.
+/// One document family screen, mirrors the document pages on web.
+/// The problem it solves is not missing data: operating card, authorization and insurance numbers have all been recorded since import, but no screen had a column showing them, so filtering on the operating card gave the right vehicles with no card number and looked like the file was not imported.
+/// One family per screen, not all six documents together: together they exceed 40 fields, and the source file groups them family by family with its own colour, so the screen follows the sheet the department knows.
+/// One data-described screen instead of seven copies: copies diverge at the first edit, fixing the renew button in one and leaving it broken in six.
 
-/// حقلٌ يُعرَض في بطاقة المركبة: كيف يُقرأ من المركبة وكيف يُسمّى.
+/// A field shown on the vehicle card: how it is read from the vehicle and how it is named.
 class DocField {
   final String ar, en;
   final String Function(Map v) get;
 
-  /// أرقامُ الأوراق تُقرأ يسارًا إلى يمين مهما كانت لغة الشاشة.
+  /// Document numbers are read left to right whatever the screen language.
   final bool mono;
   const DocField(this.ar, this.en, this.get, {this.mono = false});
 }
 
-/// حقلٌ من حقول العائلة **يُكتب** — وهو غيرُ `DocField` الذي يُعرَض.
-///
-/// العرضُ قد يكون محسوبًا: «مفتوح — بلا سقف» نصٌّ يُبنى من حقلين، ولا يُكتب في
-/// أيّ منهما بهذه الصيغة. أمّا ما يُكتب فلا بدّ له من مسارٍ حقيقيّ في المركبة،
-/// وإلا حُفظ في لا مكان وعاد الصفُّ كما كان بعد التحديث.
+/// A family field that is written, distinct from the displayed DocField.
+/// Display can be computed (the 'open - no cap' text is built from two fields and is not written into either), but anything written needs a real path on the vehicle, otherwise it is saved nowhere and the row returns unchanged after refresh.
 class DocEditField {
-  /// المسار في مستند المركبة: `operatingCard.cardNumber`.
+  /// Path in the vehicle document: operatingCard.cardNumber.
   final String path;
   final String ar, en;
 
   /// text · date · number · flag
   final String kind;
 
-  /// خانةُ الاختيار تكتب نصًّا لا صحيحًا/خطأً: «مفتوح» في `fuelCard.limitStatus`.
+  /// The checkbox writes text, not a boolean: 'open' in fuelCard.limitStatus.
   final String on, off;
   final bool mono;
 
-  /// نوعُ قائمةٍ منسدلة يُملأ منها الحقل بدل الكتابة الحرّة، تُدار من
-  /// «إعدادات القسم ← القوائم المنسدلة». يُخزَّن الاسمُ العربيّ لا المفتاح،
-  /// لأنّ المخزَّن نصٌّ عربيٌّ منذ أوّل استيراد وتقرؤه الفلاتر والتصديرات.
+  /// A dropdown type fills the field instead of free typing, managed from section settings, dropdown lists. The Arabic name is stored, not the key, because stored values have been Arabic text since the first import and filters and exports read them.
   final String? lookup;
 
-  /// رقمُ إقامة: يُعرَض تحته تاريخُ ميلاد صاحبه وجوالُه (`IqamaPersonInfo`).
+  /// Iqama number: shows the holder's birth date and mobile beneath it (IqamaPersonInfo).
   final bool personInfo;
   const DocEditField(this.path, this.ar, this.en,
       {this.kind = 'text', this.on = 'open', this.off = '', this.mono = false, this.lookup, this.personInfo = false});
 }
 
-/// شريحةُ تصفيةٍ محلّيةٍ فوق الصفوف المحمَّلة.
+/// Local filter chip over the loaded rows.
 class DocChip {
   final String key, ar, en;
   final Color tone;
@@ -78,12 +64,8 @@ class DocChip {
 }
 
 class DocFamily {
-  /// مفتاح المستند ذي تاريخ الانتهاء — أو `null` لعائلةٍ لا تنتهي.
-  ///
-  /// شريحةُ بترو اب من هذا الثاني: لها رقمٌ وحالةٌ وسقفُ صرف ولا تاريخَ انتهاء.
-  /// وإقحامُها في عمود «الأيام المتبقية» يجعل الأسطول كلَّه يظهر «بلا تاريخ» في
-  /// شاشةٍ لا معنى للتاريخ فيها — نقصٌ مُختلَق يُوهم أن ثَمّ عملًا مطلوبًا.
-  /// ومعه يسقط زرُّ التجديد: لا يُجدَّد ما لا ينتهي.
+  /// Key of the expiry-dated document, or null for a family that does not expire.
+  /// The Petro App chip belongs to the latter: it has a number, a status and a spending cap but no expiry date. Forcing it into the days-left column makes the whole fleet show 'no date' on a screen where dates mean nothing, a fabricated gap implying work is due. The renew button is also dropped, since what does not expire is not renewed.
   final String? docKey;
   final String arTitle, enTitle;
   final IconData icon;
@@ -91,40 +73,28 @@ class DocFamily {
   final List<String> Function(Map v) searchIn;
   final List<DocChip>? chips;
 
-  /// حقولُ هذه العائلة وحدها — وبها وحدها تُفتَح الإضافةُ والتعديل والمسح.
-  ///
-  /// ولا تُفتَح من هنا استمارةُ المركبة الكاملة: فيها سبعةٌ وأربعون حقلًا تخصّ
-  /// سبعَ عائلاتٍ أخرى، ومن فتحها ليصحّح رقمَ بطاقةٍ مرّ على التأمين والفحص في
-  /// طريقه — فتصير كلُّ شاشةٍ بابًا خلفيًّا إلى كل شيء. تلك شاشةُ سجل المركبات.
+  /// Fields of this family only; add, edit and clear open with these alone.
+  /// The full vehicle form is not opened from here: it has 47 fields belonging to seven other families, and someone fixing a card number would pass through insurance and inspection, making every screen a back door to everything. That is the vehicle register screen.
   final List<DocEditField> editable;
 
-  /// الحقلُ الذي **وجودُه** يعني أنّ المستند موجود.
-  ///
-  /// كان «عليها مستند» يعني أنّ أيَّ حقلٍ من حقول العائلة غيرُ فارغ. وفي شرائح
-  /// الوقود عشرُ مركباتٍ مكتوبٌ عندها **حالةُ الشريحة** ولا شريحةَ لها — فتُحسب
-  /// «عليها شريحة» وتختفي من قائمة الاختيار عند الإضافة، مع أنّ الشريحةَ فوق
-  /// الجدول تقول إنّها هناك.
+  /// The field whose presence means the document exists.
+  /// Previously any non-empty family field meant 'has a document'. In fuel chips, ten vehicles have a chip status but no chip, so they counted as having one and vanished from the add picker even though the chip above the table said it was there.
   final String? keyField;
 
-  /// هل هذا المستند ورقةٌ واحدةٌ تغطّي عدّة مركبات؟
-  ///
-  /// وثيقةُ تأمينٍ واحدة تغطّي مئةً وثمانيًا وتسعين مركبة، ورقمُها واحدٌ عليها
-  /// كلِّها، وتجديدُها حدثٌ واحد. أمّا بطاقةُ التشغيل والتفويض فورقةٌ لكلّ
-  /// مركبةٍ برقمها، ورقمٌ واحدٌ على مئةٍ منها يجعل المئةَ نسخةً من ورقةٍ واحدة.
-  /// نسخةٌ من `sharedNumber` في الخادم، والخادمُ يرفض المخالف.
+  /// Is this document one sheet covering many vehicles?
+  /// One insurance policy covers 198 vehicles with a single number and its renewal is one event. Operating cards and authorizations are one sheet per vehicle with its own number; one number across a hundred of them makes a hundred copies of one sheet. Copy of sharedNumber on the server, which rejects violations.
   final bool sharedPaper;
 
-  /// اسمُ ملفّ التصدير — نفسُ fileName في صفحة الموقع.
+  /// Export file name, same as fileName in the web page.
   final String fileName;
 
-  /// صفحةٌ لها فعلُها الخاصّ لا تعرض «مسح البيانات» (التفاويض: إلغاءُ التفويض
-  /// فعلٌ له طرفان، والمسحُ يمسّ الأوّل ويترك الثاني).
+  /// A page with its own action does not show 'clear data' (authorizations: revoking has two sides and clearing touches only the first).
   final bool hideClear;
 
-  /// زرّا «تفويض / إلغاء التفويض» على الصفّ — صفحةُ التفاويض وحدَها.
+  /// Authorize / revoke buttons on the row; authorizations page only.
   final bool authActions;
 
-  /// اسمُ المستند في الشريحة — «التأمين منتهٍ» لا «منتهٍ».
+  /// Document name in the chip: 'insurance expired' not just 'expired'.
   String get docLabelAr => docKey == null ? arTitle : renewDocLabelAr(docKey!);
   String get docLabelEn => docKey == null ? enTitle : renewDocLabelEn(docKey!);
   const DocFamily({
@@ -144,25 +114,18 @@ class DocFamily {
   });
 }
 
-/// ── «مطلوبٌ منّا هذا المستند؟» — زرّان لا قائمة ───────────────────────────────
-///
-/// ليست كلُّ مركبةٍ في السجلّ مركبتَنا: منها ما هو لموظّفٍ لا نركّب له إلّا
-/// شريحةَ تتبّع، فتأمينُها وبطاقةُ تشغيلها ليست نقصًا عندنا. وكان الصمتُ يُقرأ
-/// نقصًا، فتُظهر شريحةُ العمل عشراتِ الصفوف أكثرُها لا عملَ فيه.
-///
-/// توأمُ `components/vehicles/ReqToggle` على الموقع، ويكتب الحقلَ نفسَه
-/// (`<root>.statusCode`) — فما يُعلَّم من التطبيق يُقرأ في الموقع وفي النظرة
-/// الشاملة، ولا نسخةَ ثانية من الحقيقة.
+/// Is this document required of us? Two buttons, not a list.
+/// Not every vehicle in the register is ours: some belong to an employee and only get a tracking chip, so their insurance and operating card are not a gap for us. Silence used to read as a gap, so the chip work list showed dozens of rows mostly needing no work.
+/// Twin of components/vehicles/ReqToggle on web, writing the same field (<root>.statusCode), so what is marked in the app is read on web and in the overview, with no second copy of the truth.
 class ReqToggle extends StatelessWidget {
   final String label, code;
   final ValueChanged<String> onChanged;
   const ReqToggle({super.key, required this.label, required this.code, required this.onChanged});
 
-  /// أوضاعٌ مسجَّلةٌ تعني «غير مطلوب» — كما يقرؤها الخادم.
+  /// Recorded states that mean 'not required', as the server reads them.
   static bool _off(String c) => c == 'not_required' || c == 'not_in_use';
 
-  /// وضعٌ ثالثٌ محفوظ («لدى البنك»، «نشط») لا يُداس عليه بزرَّين: سجّله
-  /// الاستيرادُ أو مستخدمٌ قبلنا، وليس «مطلوب» ولا «غير مطلوب».
+  /// A third saved state ('with the bank', 'active') is not overwritten by two buttons: it was recorded by the import or by a user before us, and is neither required nor not required.
   static bool _other(String c) => c.isNotEmpty && !_off(c) && c != 'required' && c != 'none';
 
   @override
@@ -216,12 +179,11 @@ class ReqToggle extends StatelessWidget {
 
 String _s(dynamic v) => (v == null) ? '' : v.toString();
 
-/// ماركةُ المركبة وطرازُها وموديلها في سطرٍ واحد تحت اللوحة — توأمُ الأعمدة
-/// الثلاثة التي تتكرّر في كلّ صفحةِ عائلةٍ على الموقع (`commonColumns`).
+/// Vehicle make, model and year on one line under the plate; twin of the three columns repeated on every family page on web (commonColumns).
 String _identity(Map v) =>
     [_s(v['brandAr']), _s(v['modelAr']), _s(v['modelYear'])].where((x) => x.isNotEmpty).join(' · ');
 Map _sub(Map v, String k) => (v[k] is Map) ? v[k] as Map : const {};
-/// قراءةُ مسارٍ منقوط — المسار نصٌّ لا يُعرَف إلا وقت التشغيل.
+/// Reads a dotted path; the path is text known only at runtime.
 dynamic _readPath(Map v, String path) {
   dynamic cur = v;
   for (final k in path.split('.')) {
@@ -231,11 +193,8 @@ dynamic _readPath(Map v, String path) {
   return cur;
 }
 
-/// ما يُرسَل إلى الخادم **متداخلٌ دائمًا**، لا `{'gps.serialImei': …}`.
-///
-/// `express-mongo-sanitize` على الخادم يحذف كلَّ مفتاحٍ فيه نقطة قبل أن يصل إلى
-/// المتحكّم، فالمسارُ المنقوط يُرسَل ويختفي في صمت: تظهر «تم الحفظ» ولا يتغيّر
-/// شيء. والمتحكّم هو الذي يُسطِّح المتداخلَ فيدمج بدل أن يستبدل الكائنَ كلَّه.
+/// What is sent to the server is always nested, never {'gps.serialImei': ...}.
+/// express-mongo-sanitize on the server strips any key containing a dot before it reaches the controller, so a dotted path is sent and silently vanishes: 'saved' shows and nothing changes. The controller flattens the nested object so it merges instead of replacing the whole object.
 void _writePath(Map<String, dynamic> out, String path, dynamic val) {
   final ks = path.split('.');
   Map<String, dynamic> cur = out;
@@ -265,11 +224,11 @@ Map<String, dynamic> _buildPatch(List<DocEditField> fields, Map<String, dynamic>
   return out;
 }
 
-/// أوّلُ جزءٍ من كل مسار — الكائنُ الذي تعيش فيه العائلة (`gps`, `insurance`…).
+/// First segment of each path: the object the family lives in (gps, insurance...).
 List<String> _rootsOf(List<DocEditField> fields) =>
     fields.map((f) => f.path.split('.').first).toSet().toList();
 
-/// أهذه المركبة مسجَّلٌ عليها شيءٌ من هذه العائلة أصلًا؟
+/// Does this vehicle have anything recorded for this family at all?
 bool _hasDoc(Map v, List<DocEditField> fields, [String? keyField]) {
   if (keyField != null) {
     final x = _readPath(v, keyField);
@@ -281,7 +240,7 @@ bool _hasDoc(Map v, List<DocEditField> fields, [String? keyField]) {
   });
 }
 
-/// كلُّ قيم الصفّ النصّيّة والرقميّة حتى عمق ٣ — كـ deepValues في الموقع.
+/// All text and numeric row values to depth 3, like deepValues on web.
 List<String> _deepValues(dynamic o, [int depth = 0]) {
   if (o == null || depth > 3) return const [];
   if (o is List) return o.expand((x) => _deepValues(x, depth + 1)).toList();
@@ -291,19 +250,16 @@ List<String> _deepValues(dynamic o, [int depth = 0]) {
   return (o is String || o is num) ? ['$o'] : const [];
 }
 
-/// الطيُّ الموحَّد — راجع services/flex_match.
+/// Unified folding; see services/flex_match.
 String _fold(String s) => flexFold(s);
 
-/// حالةُ هذا المستند على هذه المركبة كما حسبها الخادم بعتبات الإعدادات.
-/// لا تُحسَب هنا، وإلا اختلفت ألوانُ هذه الشاشة عن شاشة التنبيهات على المركبة
-/// نفسِها — والمستخدم يرى الشاشتين في اليوم نفسه.
+/// This document's state on this vehicle as computed by the server with the settings thresholds. Not computed here, otherwise this screen's colours would differ from the vehicle's alerts screen, which the user sees the same day.
 Map<String, dynamic> _state(Map v, String docKey) {
   final st = (v['docStatuses'] is Map) ? (v['docStatuses'][docKey] as Map?) : null;
   return {'status': _s(st?['status']).isEmpty ? 'none' : _s(st?['status']), 'days': st?['days']};
 }
 
-/// حالةُ المستند بمفردات صفحات العائلات في الموقع (`stateOf`): `none` ← missing،
-/// و`not_required` ← not_applicable. وجدولُ عرضِها `stateMetaOf` لا يعود فارغًا.
+/// Document state in the vocabulary of the web family pages (stateOf): none maps to missing, not_required maps to not_applicable. The display table stateMetaOf is never empty.
 String docStateKey(Map v, String docKey) {
   final s = _s(_state(v, docKey)['status']);
   if (s == 'none' || s.isEmpty) return 'missing';
@@ -322,15 +278,14 @@ const _stateMeta = {
   'not_applicable': ('غير مطلوب', 'Not applicable', Color(0xFF64748B)),
 };
 
-/// توأمُ `stateMeta` — اسمٌ ولون، وما لا يُعرَف يُعرض رماديًّا باسمه.
+/// Twin of stateMeta: a name and a colour; an unknown state shows grey with its own name.
 (String, Color) stateMetaOf(String? s) {
   final m = _stateMeta[s ?? 'valid'];
   if (m == null) return ((s ?? '—'), const Color(0xFF64748B));
   return (tr(m.$1, m.$2), m.$3);
 }
 
-/// «مطلوبٌ منّا هذا المستند؟» كما يقرؤه الموقع (`docNeed`):
-/// have · required · not_required · unknown.
+/// Is this document required of us, as web reads it (docNeed): have, required, not_required, unknown.
 String _docNeed(Map v, String docKey) {
   if (docDateOf(v, docKey) != null && docDateOf(v, docKey)!.isNotEmpty) return 'have';
   final root = docKey == 'authorization' ? 'authorizedPerson' : docKey;
@@ -342,7 +297,7 @@ String _docNeed(Map v, String docKey) {
 
 class VehicleDocumentsScreen extends StatefulWidget {
   final DocFamily family;
-  /// بحثٌ مسبَق — ملفُّ المركبة يفتح الصفحةَ على لوحتها (`?q=` في الموقع).
+  /// Preset search: the vehicle profile opens the page on its plate (?q= on web).
   final String? initialQuery;
   const VehicleDocumentsScreen({super.key, required this.family, this.initialQuery});
   @override
@@ -353,10 +308,10 @@ class _VehicleDocumentsScreenState extends State<VehicleDocumentsScreen> {
   List<Map<String, dynamic>> _rows = [];
   Map<String, String> _filters = {};
   late String _q = widget.initialQuery ?? '';
-  // نصُّ البحث في متحكِّمٍ يملكه الشاشة: الظاهرُ = المُرشِّح دائمًا
+  // Search text lives in a screen-owned controller: what is shown is always the filter.
   late final _searchCtl = TextEditingController(text: _q);
   String _chip = '';
-  // «ينتهي خلال» — يعمل فوق الشرائح لا بدلًا منها، كالموقع.
+  // 'Expires within' works on top of the chips, not instead of them, as on web.
   String _within = '';
   final _withinCtl = TextEditingController();
   bool _includeExpired = true;
@@ -383,7 +338,7 @@ class _VehicleDocumentsScreenState extends State<VehicleDocumentsScreen> {
     super.dispose();
   }
 
-  // البحثُ والفلاترُ على الخادم كالموقع، وردٌّ قديمٌ لا يكتب فوق أحدث.
+  // Search and filters run on the server like web, and a stale response does not overwrite a newer one.
   Future<void> _load() async {
     final mine = ++_seq;
     try {
@@ -397,7 +352,7 @@ class _VehicleDocumentsScreenState extends State<VehicleDocumentsScreen> {
         _total = (d['total'] ?? 0) as int;
         _loading = false;
         _error = null;
-        // الاختيارُ الذي خرج من النتيجة لا يبقى محفوظًا في الخفاء.
+        // A selection that dropped out of the result does not stay saved invisibly.
         _picked.removeWhere((id) => !_rows.any((v) => _s(v['_id']) == id));
       });
     } catch (e) {
@@ -410,23 +365,14 @@ class _VehicleDocumentsScreenState extends State<VehicleDocumentsScreen> {
     if (f.chips != null) return f.chips!;
     final k = f.docKey;
     if (k == null) return const [DocChip('', 'الكل', 'All', T.navy)];
-    // ── أربعُ شرائحَ يقرؤها المستخدم ───────────────────────────────────────
-    //
-    // كانت خمسًا، وثلاثٌ منها شيءٌ واحدٌ بثلاث درجاتٍ من الإلحاح: «ينتهي قريبًا
-    // جدًا» و«قارب على الانتهاء» و«على الرادار». وسأل صاحبُ القسم: «يا ساري يا
-    // قارب على الانتهاء يا منتهي» — وهو محقّ، والشريحةُ التي تحتاج شرحًا ليست
-    // فلترًا. فصارت باسمٍ واحد، واللونُ وحدَه يفرّق الدرجات.
-    //
-    // و«بلا تاريخ مسجَّل» انضمّت إلى «مطلوب»: كلتاهما عملٌ ينتظر، وفصلُهما يجعل
-    // قائمةَ العمل نصفين لا يُقرآن معًا. والاسمُ يحمل اسمَ المستند — «التأمين
-    // منتهٍ» لا «منتهٍ» — لأنّ «منتهٍ» وحدَها تترك السائل يسأل: منتهٍ ماذا؟
-    // توأمُ هذا في components/vehicles/DocumentFamilyPage.tsx.
+    // Four chips the user reads.
+    // There used to be five, three of them one thing at three urgency levels: expiring very soon, close to expiring, on the radar. The department head asked 'is it valid, close to expiring, or expired', and a chip needing explanation is not a filter. So it is one name, with colour alone distinguishing the degrees.
+    // 'No date recorded' joined 'required': both are pending work, and separating them splits the work list in two. The name carries the document name ('insurance expired', not just 'expired') so the reader does not ask 'expired what'. Twin in components/vehicles/DocumentFamilyPage.tsx.
     return [
       const DocChip('', 'الكل', 'All', T.navy),
       DocChip('expired', '${f.docLabelAr} منتهٍ', '${f.docLabelEn} expired', T.danger,
           (v) => docStateKey(v, k) == 'expired'),
-      // ثلاثُ شرائحَ بدل واحدة: «حرج» عملُ اليوم و«تحذير» عملُ الأسبوع و«قريب»
-      // تجهيزٌ للشهر القادم — كالموقع.
+      // Three chips instead of one: critical is today's work, warning is the week's, soon is preparation for next month, as on web.
       DocChip('critical', 'حرج', 'Critical', const Color(0xFFEA580C), (v) => docStateKey(v, k) == 'critical'),
       DocChip('warning', 'تحذير', 'Warning', const Color(0xFFF59E0B), (v) => docStateKey(v, k) == 'warning'),
       DocChip('upcoming', 'قريب', 'Upcoming', const Color(0xFF0EA5E9), (v) => docStateKey(v, k) == 'upcoming'),
@@ -436,17 +382,13 @@ class _VehicleDocumentsScreenState extends State<VehicleDocumentsScreen> {
     ];
   }
 
-  // ── مَن يكتب في القسم: نفس القسمة التي في الخادم وفي الموقع ───────────────
-  // ثلاث قوائم متفرّقة كانت تفترق عند أوّل دورٍ جديد، فمديرُ المركبات يرى قسمه
-  // ولا يقدر يعدّل فيه من الجوّال وحده.
+  // Who writes in the section: the same split as on the server and on web. Three scattered lists used to diverge at the first new role, so the vehicles manager saw the section but could not edit it from mobile alone.
   static const _editRoles = {'super_admin', 'admin', 'vehicles_manager', 'vehicles_staff',
     'hr_manager', 'hr_specialist', 'cfo', 'accounting_manager', 'accountant'};
   static const _adminRoles = {'super_admin', 'admin', 'vehicles_manager', 'hr_manager'};
 
-  /// نزعُ شريحة بترو اب — فعلٌ يُقيَّد باسم من نزعها وتاريخه.
-  ///
-  /// وهو شرطٌ في إخلاء طرف الموظّف، فلا يصحّ أن يكون مسحًا صامتًا لخانة: تُفرَّغ
-  /// فيسقط الشرط، ولا يبقى بعد شهرين جوابٌ لـ«مَن نزعها ومتى؟».
+  /// Removing a Petro App chip is an action recorded with who removed it and when.
+  /// It is a condition of employee clearance, so it cannot be a silent field wipe: emptying it drops the condition, and two months later there is no answer to 'who removed it and when?'.
   Future<void> _removeChip(Map<String, dynamic> v) async {
     final card = _s(_sub(v, 'fuelCard')['cardNumber']);
     final who = _s(_sub(v, 'authorizedPerson')['name']);
@@ -479,19 +421,14 @@ class _VehicleDocumentsScreenState extends State<VehicleDocumentsScreen> {
     }
   }
 
-  /// اختيارُ المركبة التي يُسجَّل عليها المستند.
-  ///
-  /// و«الإنشاء» هنا ليس إنشاءَ مركبة: المركبةُ تُولد في شاشة سجل المركبات بلوحتها
-  /// وهيكلها وقطاعها، ولا يصحّ أن تُولد من شاشة بطاقات التشغيل ببطاقةٍ فقط فتدخل
-  /// الأسطولَ ناقصةَ الهوية من بابٍ جانبيّ. الذي ينقص فعلًا مستندٌ لم يُسجَّل بعد
-  /// على مركبةٍ قائمة — فالقائمة تبدأ بمن لا مستندَ له.
+  /// Choosing the vehicle the document is registered on.
+  /// 'Create' here does not create a vehicle: a vehicle is born on the vehicle register screen with plate, chassis and sector, and must not be born from the operating card screen with a card only, entering the fleet with incomplete identity through a side door. What is actually missing is a document not yet recorded on an existing vehicle, so the list starts with those lacking one.
   Future<Map<String, dynamic>?> _pickVehicle() async {
     final fields = widget.family.editable;
     List<Map<String, dynamic>>? pool;
     var onlyMissing = true;
     var q = '';
-    // القائمةُ تُجلب غيرَ مفلترة: فلترُ الشاشة سؤالٌ عن المعروض، لا حدٌّ لما
-    // يجوز تسجيلُه — من يفلتر على «المنتهي» لا يقصد منعَ مركبةٍ سارية.
+    // The list is fetched unfiltered: the screen filter is a question about what is displayed, not a limit on what may be registered. Filtering on 'expired' does not mean forbidding a valid vehicle.
     Api.instance.get('/api/vehicle-registry?limit=2000').then((d) {
       pool = List<Map<String, dynamic>>.from(d['vehicles'] ?? []);
     }).catchError((_) { pool = <Map<String, dynamic>>[]; });
@@ -502,7 +439,7 @@ class _VehicleDocumentsScreenState extends State<VehicleDocumentsScreen> {
       backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (c) => StatefulBuilder(builder: (c, setSheet) {
-        // إعادةُ الرسم حتى تصل القائمة — لا مؤقّت ولا تحميلٌ مسبق قبل الفتح.
+        // Rebuilds until the list arrives; no timer and no preload before opening.
         if (pool == null) {
           Future.delayed(const Duration(milliseconds: 120), () { if (c.mounted) setSheet(() {}); });
         }
@@ -525,8 +462,7 @@ class _VehicleDocumentsScreenState extends State<VehicleDocumentsScreen> {
                 onChanged: (v) => setSheet(() => q = v),
                 hint: tr('ابحث بلوحة أو مالك أو إدارة…', 'Search plate, owner or department…'),
               ),
-              // الافتراضُ «التي بلا بيانات»: هي سببُ فتح الشاشة. ومن أراد تصحيح
-              // مركبةٍ مسجَّلة يرفع العلامة — لا يُمنع منها.
+              // Default is 'those without data', the reason the screen is opened. Whoever wants to correct a registered vehicle clears the flag, which is allowed.
               SwitchListTile(
                 dense: true,
                 contentPadding: EdgeInsets.zero,
@@ -559,7 +495,7 @@ class _VehicleDocumentsScreenState extends State<VehicleDocumentsScreen> {
     );
   }
 
-  /// استمارةُ العائلة — حقولُها وحدها، على مركبةٍ قائمة.
+  /// Family form: its own fields only, on an existing vehicle.
   Future<void> _editDoc(Map<String, dynamic>? row) async {
     final fields = widget.family.editable;
     if (fields.isEmpty) return;
@@ -571,21 +507,13 @@ class _VehicleDocumentsScreenState extends State<VehicleDocumentsScreen> {
     final target = v;
     final vals = <String, dynamic>{};
     final ctrls = <String, TextEditingController>{};
-    // ── «مطلوبٌ منّا هذا المستند على هذه المركبة؟» ────────────────────────────
-    //
-    // كان يُسأل في استمارة سجل المركبات وحدَها — وهي شاشةٌ لا يفتحها مَن يراجع
-    // الفحصَ الدوريّ: يرى مقطورةً «مطلوب — ناقص» وهي لا تُفحص أصلًا، فيلزمه أن
-    // يخرج من الشاشة إلى شاشةٍ أخرى ليصحّح ما رآه هنا. فصار السؤال حيث يُعدَّل
-    // المستند، على الموقع وفي التطبيق معًا.
-    //
-    // والكائنُ الذي تعيش فيه العائلة هو موضعُ الجواب: `inspection.statusCode`
-    // لشاشة الفحص و`gps.statusCode` لشاشة التتبّع — وهو الحقلُ نفسُه الذي يكتبه
-    // السجلّ ويقرؤه الخادم، فلا نسخةَ ثانية من الحقيقة.
+    // Is this document required of us on this vehicle?
+    // It used to be asked only in the vehicle register form, which a periodic-inspection reviewer does not open: they see a trailer as 'required - missing' though trailers are not inspected, and must leave for another screen to fix it. Now the question is where the document is edited, on web and in the app.
+    // The answer lives in the object holding the family: inspection.statusCode for the inspection screen and gps.statusCode for the tracking screen. It is the same field the register writes and the server reads, so no second copy of the truth.
     final statusPath = '${_rootsOf(fields).first}.statusCode';
     final initialNeed = _s(_readPath(target, statusPath));
     var need = initialNeed;
-    // القوائمُ المنسدلة تُجلب قبل فتح الورقة: جلبُها داخل `build` يعيد النداء
-    // مع كلّ إعادة رسم، وهو ما يجعل خانةً واحدةً تنادي الخادم عشراتِ المرّات.
+    // Dropdown lists are fetched before the sheet opens: fetching inside build repeats the call on every rebuild, making one field hit the server dozens of times.
     final lookups = <String, List<String>>{};
     for (final f in fields.where((x) => x.lookup != null)) {
       if (lookups.containsKey(f.lookup)) continue;
@@ -596,7 +524,7 @@ class _VehicleDocumentsScreenState extends State<VehicleDocumentsScreen> {
             .where((x) => x.isNotEmpty).toList();
       } catch (_) { lookups[f.lookup!] = const []; }
     }
-    // جلبُ القوائم انتظارٌ على الشبكة، وقد تُغلق الشاشة أثناءه.
+    // Fetching lists is a network wait, and the screen may close during it.
     if (!mounted) { for (final ctl in ctrls.values) { ctl.dispose(); } return; }
     for (final f in fields) {
       final raw = _readPath(target, f.path);
@@ -608,8 +536,7 @@ class _VehicleDocumentsScreenState extends State<VehicleDocumentsScreen> {
         vals[f.path] = raw == null ? '' : '$raw';
         ctrls[f.path] = TextEditingController(text: '$raw' == 'null' ? '' : '${raw ?? ''}');
       }
-      // الحقلُ ذو القائمة يُكتب من `vals` مباشرةً — ولو استمع لمراقبٍ نصّيّ
-      // لأعاد الكتابةَ فوق ما اختير من القائمة.
+      // A list field is written straight from vals; if it listened to a text watcher it would overwrite what was chosen from the list.
       if (f.lookup == null && (f.kind == 'number' || f.kind == 'text')) {
         ctrls[f.path]!.addListener(() => vals[f.path] = ctrls[f.path]!.text);
       }
@@ -629,8 +556,7 @@ class _VehicleDocumentsScreenState extends State<VehicleDocumentsScreen> {
                   style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
               Text(_s(target['plateNumber']), style: const TextStyle(fontSize: 12.5, color: T.inkFaint)),
               const SizedBox(height: 12),
-              // السؤالُ قبل الخانات لا بعدها: جوابُه «غير مطلوب» يجعل ما تحته
-              // بلا معنى، ومن أجاب به لا يُنتظَر منه أن يملأ تاريخًا.
+              // The question comes before the fields: answering 'not required' makes what is beneath meaningless, and nobody who answered so is expected to fill a date.
               ReqToggle(
                 label: tr('هل هذا المستند مطلوبٌ على هذه المركبة؟', 'Is this document required on this vehicle?'),
                 code: need,
@@ -666,9 +592,7 @@ class _VehicleDocumentsScreenState extends State<VehicleDocumentsScreen> {
                 if (f.lookup != null) {
                   final opts = lookups[f.lookup] ?? const <String>[];
                   final cur = '${vals[f.path] ?? ''}';
-                  // القيمةُ المحفوظةُ التي خرجت من القائمة تبقى خيارًا يتيمًا:
-                  // إسقاطُها من الشاشة يجعل الحقل يبدو فارغًا وهو ليس كذلك،
-                  // فيُحفَظ الفراغ فوق قيمةٍ صحيحة عند أوّل تعديلٍ لحقلٍ آخر.
+                  // A saved value that left the list remains as an orphan option: dropping it from the screen makes the field look empty when it is not, and the empty is then saved over a valid value on the first edit of another field.
                   final items = [if (cur.isNotEmpty && !opts.contains(cur)) cur, ...opts];
                   return Padding(
                     padding: const EdgeInsets.only(bottom: 10),
@@ -682,10 +606,8 @@ class _VehicleDocumentsScreenState extends State<VehicleDocumentsScreen> {
                     ),
                   );
                 }
-                // ── المفوَّضُ يُختار من الموظّفين لا يُكتب ──────────────────────
-                // كالموقع (PersonSelect): الاسمُ ورقمُ الإقامة يُملآن معًا من ملفّ
-                // الموظّف، والخادمُ يرفض اسمًا لا يطابق موظّفًا. فالخانتان تُقرآن
-                // ولا تُكتبان، ويُختار من القائمة أو يُفرَّغ.
+                // The delegate is chosen from employees, not typed.
+                // Like web (PersonSelect): name and iqama number are filled together from the employee profile, and the server rejects a name not matching an employee. So both fields are read-only; pick from the list or clear.
                 if (f.path == 'authorizedPerson.name' && ctrls[f.path] != null) {
                   final nameCtl = ctrls[f.path]!;
                   final idCtl = ctrls['authorizedPerson.iqamaNumber'];
@@ -716,7 +638,7 @@ class _VehicleDocumentsScreenState extends State<VehicleDocumentsScreen> {
                   padding: const EdgeInsets.only(bottom: 10),
                   child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                     TextField(
-                      // رقمُ إقامة المفوَّض يتبع اختيارَه — لا يُكتب بيد.
+                      // The delegate's iqama number follows the choice; never typed by hand.
                       readOnly: f.path == 'authorizedPerson.iqamaNumber',
                       controller: ctrls[f.path],
                       keyboardType: f.kind == 'number' ? TextInputType.number : TextInputType.text,
@@ -743,8 +665,7 @@ class _VehicleDocumentsScreenState extends State<VehicleDocumentsScreen> {
     if (ok != true) return;
     try {
       final patch = _buildPatch(fields, vals);
-      // ولا يُكتب شيءٌ إلّا بضغطة: العدمُ اليوم يعني «مطلوب» ضمنًا، فكتابتُه من
-      // أنفسنا عند كلّ حفظٍ تغيّر صفوفًا لم يقصدها أحد.
+      // Nothing is written without a tap: absence today implicitly means 'required', so writing it ourselves on every save would change rows nobody meant to.
       if (need != initialNeed) _writePath(patch, statusPath, need);
       await Api.instance.put('/api/vehicle-registry/${target['_id']}', patch);
       await _load();
@@ -754,10 +675,8 @@ class _VehicleDocumentsScreenState extends State<VehicleDocumentsScreen> {
     }
   }
 
-  // ── «حذف» في شاشة مستند: مسحُ المستند لا مسحُ المركبة ─────────────────────
-  // المركبة موجودةٌ في الواقع ولها لوحةٌ وحوادثُ وتفاويض؛ خطأٌ في رقم بطاقتها
-  // لا يعني أنها لم تعد موجودة، وحذفُها من هنا يمحو معها ستَّ عائلاتٍ لا تظهر
-  // في هذه الشاشة أصلًا — ضررٌ لا يراه الضاغطُ على الزرّ.
+  // 'Delete' on a document screen clears the document, not the vehicle.
+  // The vehicle exists in reality with a plate, accidents and authorizations. A wrong card number does not mean it no longer exists, and deleting it from here wipes six families not shown on this screen, damage the person tapping cannot see.
   Future<void> _clearDoc(Map<String, dynamic> v) async {
     final fields = widget.family.editable;
     if (fields.isEmpty) return;
@@ -781,8 +700,7 @@ class _VehicleDocumentsScreenState extends State<VehicleDocumentsScreen> {
     );
     if (ok != true) return;
     final patch = _buildPatch(fields, const {});
-    // ويُمسح معها `statusCode`: هو سببُ غياب التاريخ («غير مطلوب»، «لدى البنك»)،
-    // وإبقاؤه بعد تفريغٍ صريح يجعل الصفَّ يعتذر عن نقصٍ لم يعد قائمًا.
+    // statusCode is cleared too: it is the reason the date is absent ('not required', 'with the bank'), and keeping it after an explicit clear makes the row apologise for a gap that no longer exists.
     for (final r in _rootsOf(fields)) { _writePath(patch, '$r.statusCode', ''); }
     try {
       await Api.instance.put('/api/vehicle-registry/${v['_id']}', patch);
@@ -793,9 +711,8 @@ class _VehicleDocumentsScreenState extends State<VehicleDocumentsScreen> {
     }
   }
 
-  // ── حذفُ المركبة نفسها: لمن يملك الحذف، وبكتابة اللوحة بخطّ اليد ───────────
-  // زرٌّ يُضغط بالخطأ في قائمةٍ من ثلاثمئة يمحو مركبةً بحوادثها وتفاويضها وسجلّ
-  // تجديداتها كلِّه. وكتابةُ اللوحة تُجبر على قراءة أيِّ صفٍّ يُحذَف قبل حذفه.
+  // Deleting the vehicle itself: only for whoever holds delete rights, and by typing the plate by hand.
+  // A button tapped by mistake in a list of 300 erases a vehicle with its accidents, authorizations and whole renewal history. Typing the plate forces reading the row before it is deleted.
   Future<void> _deleteVehicle(Map<String, dynamic> v) async {
     final plate = _s(v['plateNumber']).trim();
     final typed = TextEditingController();
@@ -839,19 +756,13 @@ class _VehicleDocumentsScreenState extends State<VehicleDocumentsScreen> {
     }
   }
 
-  /// ── تجديدُ ورقةٍ واحدةٍ تغطّي مركباتٍ كثيرة ────────────────────────────────
-  ///
-  /// وثيقةُ تأمينٍ واحدة تغطّي مئةً وثمانيًا وتسعين مركبة. وتجديدُها مركبةً
-  /// مركبةً ليس تجديدًا للوثيقة: هو مئةٌ وثمانٍ وتسعون عمليّةً لحدثٍ واحد،
-  /// وأيُّ مركبةٍ تُنسى تبقى في الشاشة «منتهية» وهي مؤمَّنةٌ فعلًا.
-  ///
-  /// فتُسأل الوثيقةُ لا المركبات: تُعرَض الأرقامُ وأمام كلٍّ عددُ مركباته،
-  /// ويُكتب التاريخُ مرّةً. والرقمُ الجديد يسري على الجميع وهو صحيحٌ هنا وحده —
-  /// هي وثيقةٌ واحدة؛ والخادمُ يرفضه لأيّ مستندٍ ورقتُه لكلّ مركبة.
+  /// Renewing one sheet that covers many vehicles.
+  /// One insurance policy covers 198 vehicles. Renewing vehicle by vehicle is not renewing the policy: it is 198 operations for one event, and any vehicle forgotten stays 'expired' on screen though insured.
+  /// So the policy is asked, not the vehicles: the numbers are listed with each one's vehicle count and the date is written once. The new number applies to all and is valid only here, since it is one policy; the server rejects it for any document that has a sheet per vehicle.
   Future<void> _renewSharedPaper() async {
     final k = widget.family.docKey;
     if (k == null) return;
-    // المجموعاتُ تُبنى من الصفوف المحمَّلة، فما يُعرَض هو ما في الشاشة.
+    // Groups are built from the loaded rows, so what is listed is what is on screen.
     final groups = <String, ({int count, dynamic expiry})>{};
     for (final v in _rows) {
       final n = _numberOf(v, k);
@@ -920,7 +831,7 @@ class _VehicleDocumentsScreenState extends State<VehicleDocumentsScreen> {
                   label: Text('${tr('تاريخ الانتهاء الجديد', 'New expiry')}: '
                       '${when == null ? tr('اختر', 'pick') : when!.toIso8601String().split('T').first}'),
                   onPressed: () async {
-                    // سنةٌ من انتهائها الحالي إن كانت سارية، وإلّا سنةٌ من اليوم.
+                    // One year from its current expiry if valid, otherwise one year from today.
                     final cur = DateTime.tryParse('${g.expiry ?? ''}');
                     final base = (cur != null && cur.isAfter(DateTime.now())) ? cur : DateTime.now();
                     final d = await showDatePicker(
@@ -977,8 +888,7 @@ class _VehicleDocumentsScreenState extends State<VehicleDocumentsScreen> {
     }
   }
 
-  /// تجديدٌ يقبل الرقم الجديد: بطاقة التشغيل تخرج برقمٍ جديد كل مرة، والتفويض
-  /// كذلك أحيانًا. وتركُ الخانة فارغة يعني «الرقم هو هو» — لا محوَه.
+  /// Renewal accepting a new number: the operating card comes out with a new number each time, and sometimes the authorization too. An empty field means the number is unchanged, not erased.
   Future<void> _renew(Map v) async {
     final k = widget.family.docKey;
     if (k == null) return;
@@ -995,7 +905,7 @@ class _VehicleDocumentsScreenState extends State<VehicleDocumentsScreen> {
     }
   }
 
-  // ── التفاويض: تفويضٌ وإلغاءٌ على الصفّ — فعلان لا خانتان تُمسحان ──────────
+  // Authorizations: authorize and revoke on the row, two actions rather than two fields to clear
   Future<void> _revokeAuth(Map v) async {
     final who = _s(_sub(v, 'authorizedPerson')['name']);
     final ok = await showDialog<bool>(
@@ -1102,7 +1012,7 @@ class _VehicleDocumentsScreenState extends State<VehicleDocumentsScreen> {
     }
   }
 
-  // ── التصدير: «المعروض» بعد الفلتر والشريحة والبحث، و«الكلّ» السجلّ كلّه ─────
+  // Export: 'shown' is after filter, chip and search; 'all' is the whole register
   List<ExportCol> get _exportCols {
     final f = widget.family;
     final k = f.docKey;
@@ -1148,8 +1058,7 @@ class _VehicleDocumentsScreenState extends State<VehicleDocumentsScreen> {
     await exportExcel(context, fileName: f.fileName, sheets: [(title.length > 28 ? title.substring(0, 28) : title, _exportCols, rows)]);
   }
 
-  // اسمُ رقم المستند ومسارُه — نفس ما يعرّفه الخادم في config/vehicleDocuments.
-  // ورخصةُ السير والفحص لا رقم لهما، فلا خانةَ لهما في نافذة التجديد.
+  // Name and path of the document number, as the server defines them in config/vehicleDocuments. The driving licence and inspection have no number, so no field in the renewal dialog.
   String _numberOf(Map v, String k) => switch (k) {
         'insurance' => _s(_sub(v, 'insurance')['policyNumber']),
         'operatingCard' => _s(_sub(v, 'operatingCard')['cardNumber']),
@@ -1171,16 +1080,14 @@ class _VehicleDocumentsScreenState extends State<VehicleDocumentsScreen> {
   Widget build(BuildContext context) {
     final f = widget.family;
     final auth = context.watch<AuthProvider>();
-    // لا كتابةَ بلا حقولٍ معلومة: عائلةٌ لم تُصرّح بحقولها تبقى للقراءة والتجديد
-    // كما كانت — فلا يظهر زرٌّ لا يعرف أين يكتب.
+    // No writing without known fields: a family that did not declare its fields stays read and renew only, so no button appears that does not know where to write.
     final canEdit = f.editable.isNotEmpty
         && (_editRoles.contains(auth.role) || auth.canEditSection('Vehicles'));
-    /// الحذف الحقيقيّ صلاحيةٌ أضيق من التعديل — وهذه هي القسمة نفسها في الخادم.
+    /// Real delete is a narrower permission than edit; the same split as on the server.
     final canDelete = _adminRoles.contains(auth.role)
         || (auth.role != 'client' && auth.canEditSection('Vehicles'));
-    // ── البحث يمرّ مرّتين فلا بدّ أن يتّفقا ───────────────────────────────
-    // الخادمُ يبحث في كلّ حقلٍ نصّيّ، ثمّ تُصفّى النتيجةُ هنا بكلّ قيم الصفّ
-    // (كـ deepValues في الموقع) — وإلّا أسقطت الشاشةُ ما وجده الخادم.
+    // Search passes twice, so both must agree.
+    // The server searches every text field, then the result is filtered here with all row values (like deepValues on web), otherwise the screen would drop what the server found.
     final q = _fold(_q);
     final searched = q.isEmpty
         ? _rows
@@ -1188,7 +1095,7 @@ class _VehicleDocumentsScreenState extends State<VehicleDocumentsScreen> {
     final chips = _chips;
     final active = chips.firstWhere((c) => c.key == _chip, orElse: () => chips.first);
     final chipped = active.test == null ? searched : searched.where((v) => active.test!(v)).toList();
-    // ── ومدى الأيام فوق الشرائح لا بدلًا منها؛ وما لا تاريخَ له يخرج من أيّ مدًى.
+    // The day range works on top of the chips, not instead of them; a row with no date is excluded from any range.
     final k0 = f.docKey;
     final withinN = int.tryParse(_within);
     final rows = (k0 == null || withinN == null) ? chipped : chipped.where((v) {
@@ -1232,7 +1139,7 @@ class _VehicleDocumentsScreenState extends State<VehicleDocumentsScreen> {
         label: Text(tr('إضافة', 'Add')),
       ),
       body: Column(children: [
-          // البحثُ خارج فرع التحميل/الخطأ — لا يُعاد رسمُه فارغًا
+          // Search sits outside the loading/error branch so it is not rebuilt empty
                   Padding(
                     padding: const EdgeInsets.fromLTRB(14, 12, 14, 6),
                     child: Row(children: [
@@ -1248,8 +1155,7 @@ class _VehicleDocumentsScreenState extends State<VehicleDocumentsScreen> {
                         ),
                       ),
                       const SizedBox(width: 8),
-                      // نفس فلاتر الموقع بالضبط: تأتي من الخادم وأعدادُها محسوبة
-                      // بعد بقيّة الفلاتر، فلا يفترق ما يراه المستخدم هنا عمّا يراه هناك.
+                      // Exactly the web filters: they come from the server with counts computed after the other filters, so what the user sees here does not differ from what they see there.
                       Badge(
                         isLabelVisible: _filters.isNotEmpty,
                         label: Text('${_filters.length}'),
@@ -1274,7 +1180,7 @@ class _VehicleDocumentsScreenState extends State<VehicleDocumentsScreen> {
           : _error != null
               ? ErrorRetry(message: _error!, onRetry: () { setState(() => _loading = true); _load(); })
               : Column(children: [
-                  // ── «ما الذي ينتهي قبل كذا يومًا؟» — يعمل مع الفلتر والشرائح.
+                  // 'What expires within N days?' works together with the filter and chips.
                   if (k0 != null)
                     Padding(
                       padding: const EdgeInsets.fromLTRB(14, 0, 14, 4),
@@ -1370,7 +1276,7 @@ class _VehicleDocumentsScreenState extends State<VehicleDocumentsScreen> {
                           ? ListView(children: [const SizedBox(height: 80), EmptyState(icon: f.icon, title: tr('لا نتائج مطابقة', 'No matching rows'))])
                           : ListView.separated(
                               keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-                              // مسافةٌ سفليّة حتى لا يغطّي زرُّ الإضافة آخرَ بطاقة.
+                              // Bottom padding so the add button does not cover the last card.
                               padding: const EdgeInsets.fromLTRB(14, 14, 14, 90),
                               itemCount: rows.length,
                               separatorBuilder: (_, __) => const SizedBox(height: 8),
@@ -1394,11 +1300,8 @@ class _VehicleDocumentsScreenState extends State<VehicleDocumentsScreen> {
                                       Expanded(flex: 6, child: meta == null ? const SizedBox() : Align(alignment: AlignmentDirectional.centerEnd,
                                           child: Chip2(st!['days'] == null ? meta.$1 : '${meta.$1} · ${daysText(st['days'])}', meta.$2))),
                                     ]),
-                                    // ── ومَن هذه المركبة، لا رقمُها وحده ──────────────────────
-                                    // اللوحةُ تقول أيُّ صفٍّ هذا ولا تقول أيُّ مركبةٍ هي، ومن
-                                    // يراجع الفحصَ أو التأمين يسأل عن الشاحنة: «الهينو موديل
-                                    // ٢٠١٩» لا «٧٤٥٢ ب ن ا». وهي ثلاثةُ حقولٍ تصل مع الصفّ
-                                    // أصلًا — نفسُها التي صارت أعمدةً ثابتةً في الموقع.
+                                    // Which vehicle this is, not just its number.
+                                    // The plate says which row this is but not which vehicle; someone reviewing inspection or insurance asks about the truck ('Hino model 2019'), not the plate. These are three fields that arrive with the row anyway, the same ones that became fixed columns on web.
                                     if (_identity(v).isNotEmpty)
                                       Padding(
                                         padding: const EdgeInsets.only(top: 2),
@@ -1449,12 +1352,8 @@ class _VehicleDocumentsScreenState extends State<VehicleDocumentsScreen> {
                                               icon: const Icon(Icons.autorenew_rounded, size: 17),
                                               label: Text(tr('تجديد', 'Renew')),
                                             ),
-                                          // ── نزعُ الشريحة فعلٌ يُقيَّد ────────
-                                          // شرطٌ في إخلاء طرف الموظّف: لا تُنهى
-                                          // خدمتُه والشريحةُ في يده — ولو كانت
-                                          // المركبةُ مركبتَه، فالشريحةُ شريحتُنا
-                                          // وتصرف من حسابنا. وشرطٌ يُبنى على
-                                          // خانةٍ فارغةٍ لا يُثبت شيئًا.
+                                          // Removing the chip is a recorded action.
+                                          // It is a condition of employee clearance: service does not end while the chip is in his hand, and even if the vehicle is his, the chip is ours and billed to our account. A condition built on an empty field proves nothing.
                                           if (canEdit
                                               && f.keyField == 'fuelCard.cardNumber'
                                               && _s(_sub(v, 'fuelCard')['cardNumber']).isNotEmpty)
@@ -1470,8 +1369,7 @@ class _VehicleDocumentsScreenState extends State<VehicleDocumentsScreen> {
                                               icon: const Icon(Icons.edit_outlined, size: 18),
                                               onPressed: () => _editDoc(v),
                                             ),
-                                          // المِمحاة لا سلّةُ المهملات: الأيقونةُ
-                                          // نفسها تقول إن الممسوح بياناتٌ لا مركبة.
+                                          // An eraser, not a trash can: the icon itself says that data is cleared, not a vehicle.
                                           if (canEdit && !f.hideClear && _hasDoc(v, f.editable, f.keyField))
                                             IconButton(
                                               tooltip: tr('مسح بيانات هذا المستند', 'Clear this document'),
@@ -1504,9 +1402,8 @@ class _VehicleDocumentsScreenState extends State<VehicleDocumentsScreen> {
   }
 }
 
-// ══════════════════ العائلات السبع ══════════════════
-// نفس الأعمدة ونفس الترتيب ونفس الأسماء التي في الموقع — من يفتح الشاشتين في
-// اليوم نفسه لا يجد جدولين مختلفين لبياناتٍ واحدة.
+// The seven families
+// Same columns, order and names as on web, so someone opening both screens the same day does not find two different tables for the same data.
 
 final vehicleInsuranceFamily = DocFamily(
   docKey: 'insurance',
@@ -1519,16 +1416,14 @@ final vehicleInsuranceFamily = DocFamily(
     DocField('تاريخ انتهاء التأمين', 'Insurance expiry', (v) => fmtDate(_sub(v, 'insurance')['expiryDate'])),
     DocField('شركة التأمين', 'Insurer', (v) => _s(_sub(v, 'insurance')['companyAr'])),
     DocField('نوع التأمين', 'Coverage type', (v) => _s(_sub(v, 'insurance')['coverageTypeAr'])),
-    // مركبةٌ يسدّد قسطَها المموِّل ليست «بلا قسط»: هي مؤمَّنة والرقم عنده.
+    // A vehicle whose instalment is paid by the financier is not 'no instalment': it is insured and the number is with them.
     DocField('قيمة التأمين', 'Premium', (v) {
       final ins = _sub(v, 'insurance');
       return ins['premiumSar'] != null ? money(ins['premiumSar']) : _s(ins['premiumStatusAr']);
     }),
   ],
   searchIn: (v) => [_s(v['plateNumber']), _s(_sub(v, 'insurance')['policyNumber']), _s(_sub(v, 'insurance')['companyAr']), _s(v['ownerNameAr'])],
-  // و«قيمة التأمين» خانتان لا واحدة: رقمٌ حين ندفعه نحن، ونصٌّ حين يدفعه المموِّل
-  // («ملكية بنك الراجحي»). دمجُهما يجبر المدخِل على ترك الرقم فارغًا فتُعدّ
-  // المركبة بلا تأمين وهي مؤمَّنة.
+  // Insurance value is two fields, not one: a number when we pay, text when the financier pays ('owned by Al Rajhi Bank'). Merging them forces the entry person to leave the number empty, so the vehicle is counted uninsured while it is insured.
   editable: const [
     DocEditField('insurance.policyNumber', 'رقم وثيقة التأمين', 'Policy number', mono: true),
     DocEditField('insurance.companyAr', 'شركة التأمين', 'Insurer', lookup: 'vehicle_insurance_company'),
@@ -1551,8 +1446,7 @@ final vehicleOperatingCardFamily = DocFamily(
     DocField('المالك', 'Owner', (v) => _s(v['ownerNameAr'])),
   ],
   searchIn: (v) => [_s(v['plateNumber']), _s(_sub(v, 'operatingCard')['cardNumber']), _s(v['ownerNameAr']), _s(v['departmentAr'])],
-  // الرقمُ والتاريخ هما البطاقةُ كلُّها — والإدارةُ والمالك يُعرَضان ولا يُكتبان
-  // من هنا: هما هويّةُ المركبة لا مستندُها.
+  // The number and date are the whole card; administration and owner are shown but not written from here, since they are the vehicle's identity, not its document.
   editable: const [
     DocEditField('operatingCard.cardNumber', 'رقم بطاقة التشغيل', 'Operating card number', mono: true),
     DocEditField('operatingCard.expiryDate', 'تاريخ الانتهاء', 'Expiry date', kind: 'date'),
@@ -1572,10 +1466,8 @@ final vehicleAuthorizationFamily = DocFamily(
     DocField('رقم التفويض', 'Authorisation number', (v) => _s(_sub(v, 'authorizedPerson')['authorizationNumber']), mono: true),
     DocField('تاريخ بداية التفويض', 'Start date', (v) => fmtDate(_sub(v, 'authorizedPerson')['startDate'])),
     DocField('تاريخ نهاية التفويض', 'End date', (v) => fmtDate(_sub(v, 'authorizedPerson')['expiryDate'])),
-    // ── والسائقُ نفسُه ──────────────────────────────────────────────────────
-    // التفويضُ ورقةٌ على مركبة، لكنّه يُعطى لشخص. وثلاثةُ أشياء تخصّ ذلك
-    // الشخص: ورقتُه هذه، وبطاقةُ سائقه، وخيانةُ أمانته — ولا يقود بواحدةٍ
-    // منها ناقصة. يجمعها الخادمُ برقم الإقامة.
+    // And the driver himself.
+    // An authorization is a paper on a vehicle but is given to a person. Three things concern that person: this paper, his driver card and his breach-of-trust cover, and he does not drive with any one missing. The server gathers them by iqama number.
     DocField('بطاقة السائق', 'Driver card', (v) {
       final c = _sub(v, 'driverCard');
       if (c.isEmpty) return _s(_sub(v, 'authorizedPerson')['iqamaNumber']).isEmpty ? '' : 'لا بطاقة';
@@ -1591,7 +1483,7 @@ final vehicleAuthorizationFamily = DocFamily(
         _ => 'غير محدَّد',
       };
     }),
-    // وانتهاءُ إقامته ورخصةِ قيادته من ملفّه في الموارد البشريّة (٢٠٢٦/١٠/٢٧).
+    // Iqama and driving licence expiry come from his HR profile.
     DocField('انتهاء الإقامة', 'Iqama expiry', (v) => _sub(v, 'personDocs').isEmpty ? '' : personDocValue(_sub(v, 'personDocs'), 'iqama').$1),
     DocField('انتهاء رخصة القيادة', 'Licence expiry', (v) => _sub(v, 'personDocs').isEmpty ? '' : personDocValue(_sub(v, 'personDocs'), 'license').$1),
   ],
@@ -1600,13 +1492,11 @@ final vehicleAuthorizationFamily = DocFamily(
     _s(_sub(v, 'authorizedPerson')['iqamaNumber']), _s(_sub(v, 'authorizedPerson')['authorizationNumber']),
     _s(_sub(v, 'driverCard')['cardNumber']),
   ],
-  // ورقةُ التفويض كاملةً: مَن، وبأيّ إقامة، وبأيّ رقم، ومن متى إلى متى. واسمٌ
-  // بلا رقمِ تفويضٍ ولا مدّة لا يُثبِت صفةَ السائق أمام أحد.
+  // The full authorization paper: who, under which iqama and number, and from when to when. A name with no authorization number or period proves nothing about the driver's standing.
   editable: const [
     DocEditField('authorizedPerson.name', 'اسم المفوَّض', 'Authorised person'),
     DocEditField('authorizedPerson.iqamaNumber', 'رقم الإقامة', 'Iqama number', mono: true, personInfo: true),
-    // المسمّى قائمةٌ لا خانةٌ حرّة: «سائق نقل ثقيل» في سبعٍ وخمسين مركبة
-    // و«مندوب توصيل» في ثلاثٍ وعشرين — والخانةُ الحرّة تجعلها عشرين مسمًّى.
+    // Job title is a list, not a free field: 'heavy transport driver' on 57 vehicles and 'delivery rep' on 23, and a free field turns those into twenty titles.
     DocEditField('authorizedPerson.jobTitleAr', 'المسمّى الوظيفي لقائد المركبة', 'Driver job title',
         lookup: 'vehicle_job_title'),
     DocEditField('authorizedPerson.authorizationNumber', 'رقم التفويض', 'Authorisation number', mono: true),
@@ -1616,22 +1506,19 @@ final vehicleAuthorizationFamily = DocFamily(
 );
 
 final vehicleFuelCardFamily = DocFamily(
-  // لا تاريخ انتهاء لشريحة الوقود، فلا عمودَ حالةٍ ولا زرَّ تجديد.
+  // A fuel chip has no expiry date, so no status column and no renew button.
   docKey: null,
   fileName: 'vehicle-fuel-cards',
   arTitle: 'بترو اب — شرائح الوقود', enTitle: 'Petro App Cards',
   icon: Icons.local_gas_station_outlined,
-  // وجودُ الشريحة رقمُها لا أيُّ خانةٍ مملوءة — عشرُ مركباتٍ عندها حالةُ شريحةٍ
-  // ولا شريحة، فكانت تختفي من قائمة الإضافة.
+  // Chip presence is its number, not any filled field: ten vehicles have a chip status but no chip, and they used to vanish from the add list.
   keyField: 'fuelCard.cardNumber',
   fields: [
-    // مَن يقود المركبة ورقمُ إقامته: مراجعةُ الوقود تسأل «مَن صرف؟» لا «أيُّ
-    // مركبةٍ صرفت»، وكان الجوابُ في شاشةٍ أخرى.
+    // Who drives the vehicle and his iqama number: fuel review asks 'who fuelled', not 'which vehicle', and the answer used to be on another screen.
     DocField('اسم القائد / المفوَّض', 'Driver / authorised', (v) => _s(_sub(v, 'authorizedPerson')['name'])),
     DocField('رقم الإقامة', 'Iqama number', (v) => _s(_sub(v, 'authorizedPerson')['iqamaNumber']), mono: true),
     DocField('شريحة بترو اب', 'Petro App chip', (v) => _s(_sub(v, 'fuelCard')['cardNumber']), mono: true),
-    // اللوحةُ في الفاتورة تُكتب بصيغةٍ أخرى، وهي المفتاح الوحيد لمطابقة بند
-    // الفاتورة بالمركبة — فليست تكرارًا للوحة.
+    // The plate on the invoice is written in another format and is the only key to match an invoice line to the vehicle, so this is not a duplicate of the plate.
     DocField('رقم اللوحة في فاتورة بترو اب', 'Plate on invoice', (v) => _s(_sub(v, 'fuelCard')['plateOnInvoiceAr'])),
     DocField('حالة الشريحة', 'Chip status', (v) => _s(_sub(v, 'fuelCard')['statusAr'])),
     DocField('نوع الاستهلاك', 'Consumption type', (v) => _s(_sub(v, 'fuelCard')['consumptionTypeAr'])),
@@ -1645,8 +1532,7 @@ final vehicleFuelCardFamily = DocFamily(
     _s(v['plateNumber']), _s(_sub(v, 'fuelCard')['cardNumber']), _s(_sub(v, 'fuelCard')['plateOnInvoiceAr']),
     _s(_sub(v, 'authorizedPerson')['name']), _s(_sub(v, 'authorizedPerson')['iqamaNumber']),
   ],
-  // «مفتوح» علامةٌ لا رقم: صفرٌ في خانة السقف يعني «ممنوع الصرف»، وفراغٌ يعني
-  // «لا نعلم» — وكلاهما عكسُ المقصود. فالعلامةُ مفتاحٌ يكتب `open`.
+  // 'Open' is a flag, not a number: zero in the cap field means 'spending forbidden' and blank means 'unknown', both the opposite of the intent. So the flag is a switch that writes open.
   editable: const [
     DocEditField('fuelCard.cardNumber', 'رقم شريحة بترو اب', 'Petro App chip number', mono: true),
     DocEditField('fuelCard.plateOnInvoiceAr', 'رقم اللوحة في فاتورة بترو اب', 'Plate on Petro App invoice'),
@@ -1659,10 +1545,8 @@ final vehicleFuelCardFamily = DocFamily(
   chips: [
     const DocChip('', 'الكل', 'All', T.navy),
     DocChip('has', 'لها شريحة', 'Has a chip', T.success, (v) => _s(_sub(v, 'fuelCard')['cardNumber']).isNotEmpty),
-    // ── و«بلا شريحة» قائمةُ عملٍ لا جَرْد ─────────────────────────────────────
-    // المركبةُ التي عُلِّمت «غير مطلوب» لا شريحةَ لها ولا عملَ عليها: ليست
-    // مركبتَنا، أو لا تصرف من حسابنا. وعدُّها في «بلا شريحة» يضخّم الرقمَ
-    // بصفوفٍ لا يُفتَح منها شيء.
+    // 'No chip' is a work list, not an inventory.
+    // A vehicle marked 'not required' has no chip and no work on it: it is not ours or does not draw from our account. Counting it under 'no chip' inflates the number with rows from which nothing can be opened.
     DocChip('none', 'بلا شريحة — مطلوبة', 'No chip — needed', T.danger,
         (v) => _s(_sub(v, 'fuelCard')['cardNumber']).isEmpty
             && !ReqToggle._off(_s(_sub(v, 'fuelCard')['statusCode']))),
@@ -1681,15 +1565,14 @@ final vehicleGpsFamily = DocFamily(
   icon: Icons.satellite_alt_outlined,
   fields: [
     DocField('جهاز GPS', 'GPS device', (v) => _s(_sub(v, 'gps')['deviceModel'])),
-    // حالةُ الجهاز غيرُ حالة الاشتراك: جهازٌ مسروق قد يكون اشتراكه ساريًا.
+    // Device status differs from subscription status: a stolen device can have a valid subscription.
     DocField('حالة جهاز GPS', 'Device status', (v) => _s(_sub(v, 'gps')['deviceStatusAr'])),
     DocField('شركة الـGPS', 'GPS provider', (v) => _s(_sub(v, 'gps')['provider'])),
     DocField('سريال GPS', 'GPS serial', (v) => _s(_sub(v, 'gps')['serialImei']), mono: true),
     DocField('تاريخ انتهاء الـGPS', 'Subscription expiry', (v) => fmtDate(_sub(v, 'gps')['expiryDate'])),
   ],
   searchIn: (v) => [_s(v['plateNumber']), _s(_sub(v, 'gps')['serialImei']), _s(_sub(v, 'gps')['deviceModel']), _s(_sub(v, 'gps')['provider'])],
-  // وحالةُ الجهاز حقلٌ مستقلّ عن تاريخ الاشتراك: جهازٌ مسروق باشتراكٍ ساري وضعٌ
-  // قائم، ولو اشتُقّت إحداهما من الأخرى لضاع.
+  // Device status is a field independent of the subscription date: a stolen device with a valid subscription is a real state, and deriving one from the other would lose it.
   editable: const [
     DocEditField('gps.deviceModel', 'جهاز GPS', 'GPS device', lookup: 'vehicle_gps_device'),
     DocEditField('gps.deviceStatusAr', 'حالة جهاز GPS', 'Device status', lookup: 'vehicle_gps_device_status'),
@@ -1706,15 +1589,13 @@ final vehicleLicenceFamily = DocFamily(
   arTitle: 'رخص السير', enTitle: 'Vehicle Licences',
   icon: Icons.description_outlined,
   fields: [
-    // الرخصة تُطبَع بالهجريّ والنظام يحسب بالميلاديّ؛ عرضُ أحدهما وحده يجعل
-    // الموظف يقارن ما في يده بما في الشاشة فلا يتطابقان.
+    // The licence is printed in Hijri while the system computes in Gregorian; showing only one makes the employee compare what is in hand with the screen and they do not match.
     DocField('انتهاء رخصة السير (ميلادي)', 'Licence expiry (Gregorian)', (v) => fmtDate(_sub(v, 'vehicleLicense')['expiryDate'])),
     DocField('انتهاء رخصة السير (هجري)', 'Licence expiry (Hijri)', (v) => _s(_sub(v, 'vehicleLicense')['expiryDateHijri']), mono: true),
     DocField('المالك', 'Owner', (v) => _s(v['ownerNameAr'])),
   ],
   searchIn: (v) => [_s(v['plateNumber']), _s(v['ownerNameAr']), _s(_sub(v, 'vehicleLicense')['expiryDateHijri'])],
-  // التاريخان يُكتبان معًا لا أحدُهما: من أدخل واحدًا وترك الآخر أعاد الخلافَ
-  // الذي جاء العمودان لرفعه.
+  // Both dates are written together, not just one: entering one and leaving the other brings back the disagreement the two columns were added to remove.
   editable: const [
     DocEditField('vehicleLicense.expiryDate', 'انتهاء رخصة السير (ميلادي)', 'Licence expiry (Gregorian)', kind: 'date'),
     DocEditField('vehicleLicense.expiryDateHijri', 'انتهاء رخصة السير (هجري)', 'Licence expiry (Hijri)', mono: true),
@@ -1726,18 +1607,14 @@ final vehicleInspectionFamily = DocFamily(
   fileName: 'vehicle-inspection',
   arTitle: 'الفحص الدوري', enTitle: 'Periodic Inspection',
   icon: Icons.fact_check_outlined,
-  // ── ولا سطرَ «حالة الفحص» ──────────────────────────────────────────────────
-  // كان نصًّا يُقرأ «ناجح» أو «غير مطلوب»، وشارةُ الحالة أعلى البطاقة تقول
-  // الشيء نفسَه بأحدثَ منه: محسوبةً من تاريخ الانتهاء اليومَ لا مكتوبةً في آخر
-  // استيراد. وسطران يقولان شيئًا واحدًا ويفترقان بعد أوّل تجديد يجعلان القارئ
-  // يسأل أيَّهما يصدّق. والحقلُ نفسُه باقٍ يُكتب في الاستمارة.
+  // No 'inspection status' line.
+  // It was text reading 'passed' or 'not required', and the status badge at the top of the card says the same thing more currently: computed from the expiry date today, not written at the last import. Two lines saying one thing that diverge after the first renewal leave the reader unsure which to trust. The field itself remains and is written in the form.
   fields: [
     DocField('تاريخ انتهاء الفحص (ميلادي)', 'Inspection expiry (Gregorian)', (v) => fmtDate(_sub(v, 'inspection')['expiryDate'])),
     DocField('تاريخ انتهاء الفحص (هجري)', 'Inspection expiry (Hijri)', (v) => _s(_sub(v, 'inspection')['expiryDateHijri']), mono: true),
   ],
   searchIn: (v) => [_s(v['plateNumber']), _s(v['ownerNameAr']), _s(_sub(v, 'inspection')['statusAr'])],
-  // حالةُ الفحص تُكتب نصًّا كما في الملف المصدر ولا تُشتقّ من التاريخ: المقطورةُ
-  // لا تُفحص أصلًا، وتاريخُها الفارغ ليس رسوبًا.
+  // Inspection status is written as text as in the source file and not derived from the date: a trailer is not inspected at all, and its empty date is not a failure.
   editable: const [
     DocEditField('inspection.statusAr', 'حالة الفحص', 'Inspection status'),
     DocEditField('inspection.expiryDate', 'تاريخ انتهاء الفحص (ميلادي)', 'Inspection expiry (Gregorian)', kind: 'date'),
@@ -1745,9 +1622,7 @@ final vehicleInspectionFamily = DocFamily(
   ],
 );
 
-/// ما يُعرَف عن صاحب رقم الإقامة — تاريخُ ميلاده وجوالُه — تحت الخانة لحظةَ
-/// يُكتب الرقم. يُقرأ من `person-lookup` (الموارد البشريّة وسجلّ النقل الخفيف
-/// وبطاقات السائقين) ويُطابَق بالرقم كاملًا. مطابقٌ لـ`IqamaPersonInfo` في الموقع.
+/// What is known about the iqama number's owner (birth date and mobile) shown under the field as the number is typed. Read from person-lookup (HR, the light transport register and driver cards) and matched on the full number. Matches IqamaPersonInfo on web.
 class IqamaPersonInfo extends StatefulWidget {
   final TextEditingController controller;
   const IqamaPersonInfo({super.key, required this.controller});
@@ -1819,7 +1694,7 @@ class _IqamaPersonInfoState extends State<IqamaPersonInfo> {
         const SizedBox(height: 2),
         Text('${tr('تاريخ الميلاد', 'Date of birth')}: ${dob.length >= 10 ? dob.substring(0, 10).split('-').reversed.join('/') : tr('غير مسجَّل', 'not recorded')}', style: const TextStyle(fontSize: 12)),
         Text('${tr('الجوال', 'Mobile')}: ${phone.isEmpty ? tr('غير مسجَّل', 'not recorded') : phone}', style: const TextStyle(fontSize: 12)),
-        // وانتهاءُ الإقامة ورخصةِ القيادة — بالميلاديّ، والمنتهيةُ بالأحمر (٢٠٢٦/١٠/٢٧).
+        // Iqama and driving licence expiry, in Gregorian; expired ones in red.
         for (final e in [('انتهاء الإقامة', 'Iqama expiry', '${p['iqamaExpiry'] ?? ''}'), ('انتهاء رخصة القيادة', 'Driving licence expiry', '${p['licenseExpiry'] ?? ''}')])
           Builder(builder: (_) {
             final d = e.$3.length >= 10 ? e.$3.substring(0, 10) : '';

@@ -5,12 +5,7 @@ import '../services/lang.dart';
 import '../ui/contact.dart';
 import '../ui/theme.dart';
 
-/// ── اختيارُ السائق في إنشاء الشحنة (٢٠٢٦/١٠/٢٦) — نظيرُ خانة الموقع ──────────
-/// «بحث برقم جوال السائق زي البحث بالاسم»، و«زر إضافة سائق زي المورّد».
-/// بلا كتابة: سوّاقُ الشاحنة/المورّد المختار. ومع الكتابة: بحثٌ عند الخادم في
-/// السوّاق كلِّهم بالاسم والجوال (كيفما كُتب) والإقامة. و«سائق جديد» يسجّله فورًا
-/// — ومن كان مسجَّلًا بنفس الجوال أو الإقامة يُختار بدل تكراره (`reuse`).
-/// «0» و«-» ليسا قيمة — السجلُّ المستورَد يحملهما حيث لا شيء (٢٠٢٦/١٠/٢٦).
+/// Driver picker in shipment creation, mirrors the web location field: search by driver mobile number like by name, and an add-driver button like the supplier one. With no input: drivers of the selected truck/supplier. With input: server search across all drivers by name, mobile (any format) and iqama. 'New driver' registers at once; one already registered with the same mobile or iqama is picked instead of duplicated (reuse). '0' and '-' are not values: imported records carry them where there is nothing.
 String soRealVal(dynamic v) {
   final t = '${v ?? ''}'.trim();
   return RegExp(r'^(0+|-+|null|nan|n/a)$', caseSensitive: false).hasMatch(t) ? '' : t;
@@ -78,8 +73,7 @@ class _DriverSheetState extends State<_DriverSheet> {
     } catch (_) { if (mounted && mine == _seq) setState(() => _loading = false); }
   }
 
-  /// «موجودٌ بالفعل» تنبيهٌ لا اختيارٌ صامت: نختاره؟ والاسمُ وحدَه قد يكون شخصًا
-  /// آخر فيُسمَح بإضافته؛ أمّا الجوالُ والإقامةُ فرجلٌ واحد.
+  /// 'Already exists' is a prompt, not a silent pick. A name alone may be a different person so adding is allowed; the same mobile or iqama is the same man.
   Future<void> _save({bool force = false}) async {
     final name = _name.text.trim();
     if (name.isEmpty) return;

@@ -1,20 +1,9 @@
 'use client';
 /**
- * موظّفو النقل الخفيف — سجلُّ القسم.
- *
- * ── العلّة ──────────────────────────────────────────────────────────────────
- * كان القسمُ يُدار من شيتَي إكسل: واحدٌ للموظّفين وآخرُ للمركبات وتفاويضها،
- * يُرسَلان بالبريد ويُنسخان ويُعدَّلان في أكثرَ من نسخة. والسؤالُ البسيط — «كم
- * مندوبًا في مشروع كيتا بجدة؟» — جوابُه فرزٌ يدويّ، و«مَن على كفالة السجلّ
- * الفلانيّ؟» لا جوابَ له إلّا بالعدّ.
- *
- * وكانت الصفحةُ التي هنا («مناديب المبيعات») تعرض مناديبَ تقارير الطلبات وحدَهم
- * — أي جزءًا من القسم — فلا يظهر فيها مشرفٌ ولا ميكانيكيٌّ ولا عاملُ نظافة،
- * وهم أحدَ عشرَ من مئةٍ وواحدٍ وستّين.
- *
- * فالسجلُّ هنا كلُّ من يعمل في النقل الخفيف، بكلّ ما يُسأل عنه: مشروعُه وفرعُه
- * ومشرفُه ومركبتُه وسجلُّ كفالته وسكنُه. والإنسانُ نفسُه في الموارد البشريّة
- * والمركبةُ في سجلّ المركبات — راجع تعليقَ backend/models/LightTransport.
+ * Light-transport employees: the department register.
+ * The department ran on two Excel sheets (employees; vehicles and authorizations) that were mailed, copied and edited in several versions, so simple questions needed manual sorting or counting.
+ * The old page here listed only reps from order reports, leaving out supervisors, mechanics and cleaners (11 of 161).
+ * The register now covers everyone in light transport: project, branch, supervisor, vehicle, sponsorship registration and housing. The person stays in HR and the vehicle in the vehicle register; see backend/models/LightTransport.
  */
 import { useState, useEffect, useCallback, useMemo, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -41,13 +30,13 @@ import {
   type LTEmployee, type LTOptions, type LTDoc,
 } from '@/lib/lightTransport';
 
-/** أسماءُ مفاتيح الفلترة في شرائح «الفلاتر الشغّالة». */
+/** Filter key names used by the active-filter chips. */
 const CHIP_KEY_AR: Record<string, string> = {
   project: 'المشروع', city: 'الفرع', jobTitle: 'الوظيفة', contractType: 'نوع التعاقد', register: 'السجل',
   vehicleType: 'نوع المركبة', supervisor: 'المشرف', dutySupervisor: 'مشرف التفقد', staffKind: 'النوع',
   status: 'الحالة', housing: 'السكن', hasVehicle: 'المركبة', hiredFrom: 'التعيين من', hiredTo: 'التعيين إلى',
   contractKind: 'العقد', doc: 'الوثيقة', inService: 'الخدمة',
-  // من فلاتر لوحة القسم (٢٠٢٦/١٠/٢١).
+  // From the department dashboard filters.
   rep: 'المندوب', vehicle: 'المركبة', auth: 'التفويض', cr: 'السجل التجاري', engagement: 'الارتباط', category: 'الفئة',
 };
 const CHIP_KEY_EN: Record<string, string> = {
@@ -57,7 +46,7 @@ const CHIP_KEY_EN: Record<string, string> = {
   contractKind: 'Contract', doc: 'Document', inService: 'Service',
   rep: 'Rep', vehicle: 'Vehicle', auth: 'Authorisation', cr: 'Register', engagement: 'Engagement', category: 'Category',
 };
-/** قيمُ فلاتر اللوحة بأسمائها — المفاتيحُ هي ما يرسله الخادم (utils/b2cBoard). */
+/** Dashboard filter values by name; the keys are what the server sends (utils/b2cBoard). */
 const BOARD_VALUE_AR: Record<string, Record<string, string>> = {
   auth: { authorized: 'مفوَّض', expired: 'تفويض منتهٍ', none: 'بلا تفويض' },
   engagement: { sponsored: 'على الكفالة', freelance: 'فريلانسر', trainee: 'متدرّب', users: 'يوزرات', none: 'غير محدد' },
@@ -69,12 +58,7 @@ const BOARD_VALUE_EN: Record<string, Record<string, string>> = {
   category: { rep: 'Rep', admin: 'Admin', tech: 'Technician', none: 'Uncategorised' },
 };
 
-/**
- * ── الكارتُ وقائمةُ الفلتر خارجَ جسم الصفحة ─────────────────────────────────
- * كانا يُعرَّفان داخل الصفحة فيصيران مكوِّنًا جديدًا في كلّ رسمة: تُهدَم الكروتُ
- * وتُبنى مع كلّ ضغطةٍ وكلّ ردّ، وتُغلَق القائمةُ المفتوحةُ تحت يد المستخدم إن وصل
- * تحديثٌ من السوكِت. راجع ذاكرة «inline components remount».
- */
+/** Card and filter list live outside the page body: defined inside, they become a new component on every render, so cards remount on each click or reply and an open list closes under the user when a socket update arrives. See the inline components remount rule. */
 function Stat({ label, value, accent, onClick, on }: { label: string; value: any; accent?: string; onClick?: () => void; on?: boolean }) {
   return (
     <button type="button" onClick={onClick} disabled={!onClick}
@@ -86,7 +70,7 @@ function Stat({ label, value, accent, onClick, on }: { label: string; value: any
   );
 }
 
-/** قائمةُ اختيارٍ واحدةُ الشكل — قيمُها من السجلّ نفسِه. */
+/** A single-shape select list; values come from the register itself. */
 function Filter({ value, onChange, label, list }: { value: string; onChange: (v: string) => void; label: string; list: string[] }) {
   return (
     <select value={value} onChange={(e) => onChange(e.target.value)} aria-label={label}
@@ -107,43 +91,39 @@ function LightTransportEmployeesInner() {
   const canEdit = canEditLT(user as any);
 
   const [rows, setRows] = useState<LTEmployee[]>([]);
-  // إجماليُّ الخادم يبقى معروضًا في «س من ص» ليُعرَف أنّ المعروضَ جزءٌ منه.
+  // The server total stays shown as 'x of y' so the displayed rows read as part of it.
   const [serverTotal, setServerTotal] = useState(0);
   const [options, setOptions] = useState<LTOptions>({ project: [], city: [], jobTitle: [], contractType: [], register: [], vehicleType: [], supervisor: [], supervisorsUnlinked: [], housing: [] });
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<Partial<LTEmployee> | null>(null);
   const [managersOpen, setManagersOpen] = useState(false);
   const [transferring, setTransferring] = useState<LTEmployee | null>(null);
-  // مشروعُ الصفّ قبل التعديل — لا يتغيّر من النموذج (راجع «نقل مشروع»).
+  // The row's project before editing; the form cannot change it (see the project-move action).
   const origProject = editing?._id ? String(rows.find((r) => r._id === editing._id)?.projectAr || '') : '';
-  // ── إضافةُ موظّفٍ تُنشئ ملفَّه في الموارد البشريّة ─────────────────────────
-  // فهي لمدير القطاع ونائبه ومدير النظام وأهل المال — يطابق حارسَ المسار في
-  // routes/lightTransport. ومعها مستنداتُه: اسمٌ لكلّ ملفّ، وقد تتعدّد.
-  // role-only: إنشاءُ ملفٍّ في الموارد البشريّة لا يُفتَح بمنح القسم؛ الخادمُ يحرسه بـ`authorize.strict`.
+  // Adding an employee creates his HR file.
+  // Restricted to sector manager, deputy, system admin and finance roles, matching the route guard in routes/lightTransport. Documents come with it: a name per file, possibly several.
+  // role-only: creating an HR file is not opened by a section grant; the server guards it with `authorize.strict`.
   const canAdd = ['super_admin', 'admin', 'b2c_manager', 'b2c_deputy', 'cfo', 'accounting_manager', 'accountant'].includes(String(user?.role || ''));
   const [docs, setDocs] = useState<NewDoc[]>([]);
   const [saving, setSaving] = useState(false);
 
-  // ── الفلاتر ───────────────────────────────────────────────────────────────
-  // كلُّها في الخادم: الجدولُ مئةٌ وواحدٌ وستّون صفًّا اليوم وسيكبر، والأعدادُ في
-  // الكاردات تُحسَب على ما بعد الفلترة — فما يُقرأ في الكارد هو ما في الجدول.
+  // Filters.
+  // All server-side: the table has 161 rows today and will grow. Card counts are computed after filtering, so what the card says is what the table has.
   const [q, setQ] = useState('');
   const [dq, setDq] = useState('');
   /**
-   * ── والفلترُ يُورَث من اللوحة ───────────────────────────────────────────
-   * «أعرف أنّهم تسعة — أريد التسعةَ أنفسَهم»: زرُّ اللوحة ينقل فلترَه في الرابط،
-   * فتُفتَح القائمةُ على الجواب نفسِه لا على كلّ القسم. ويُقرأ مرّةً عند الفتح
-   * ثمّ تُمسك الشاشةُ حالتَها — وإلّا أعاد الرابطُ كتابةَ ما يغيّره المستخدم.
+   * Filter inherited from the dashboard.
+   * The dashboard button carries its filter in the URL so the list opens on the same answer, not the whole department. Read once on open, then the screen keeps its own state; otherwise the URL would rewrite what the user changes.
    */
   const sp = useSearchParams();
   const [f, setF] = useState<Record<string, string>>(() => {
     const keys = ['project', 'city', 'jobTitle', 'contractType', 'register', 'vehicleType',
       'supervisor', 'dutySupervisor', 'staffKind', 'status', 'housing', 'hasVehicle', 'hiredFrom', 'hiredTo',
-      // مشتقّان يُحسَبان على الصفوف لا على القاعدة — راجع `LOCAL_KEYS`.
+      // Two derived keys computed on rows, not in the database; see `LOCAL_KEYS`.
       'contractKind', 'doc',
-      // من أرقام «إجمالي المناديب» في اللوحة: في الخدمة وحدَهم — راجع `listEmployees`.
+      // From the dashboard's total-reps figures: only people in service; see `listEmployees`.
       'inService',
-      // ومن فلاتر اللوحة وكروتها (٢٠٢٦/١٠/٢١): تُطبَّق في الخادم بمعناها في اللوحة.
+      // From the dashboard filters and cards; applied server-side with the dashboard's meaning.
       'rep', 'vehicle', 'auth', 'cr', 'engagement', 'category'];
     const init: Record<string, string> = {};
     for (const k of keys) { const v = sp?.get(k); if (v) init[k] = v; }
@@ -151,10 +131,8 @@ function LightTransportEmployeesInner() {
   });
   const setFilter = (k: string, v: string) => setF((p) => ({ ...p, [k]: p[k] === v ? '' : v }));
   /**
-   * ── وبطاقةُ المناديب تفلتر على المناديب معها ───────────────────────────────
-   * أرقامُ البطاقات كلِّها — خلا الإجمال وقسمتَه — محسوبةٌ على المناديب وحدَهم
-   * (راجع `ltTotalsOf`). فلو فلترت الشرطَ وحدَه لعرض الجدولُ إداريًّا لا يُعَدُّ
-   * في الرقم فوقه: رقمٌ وجدولٌ يقولان شيئين. فالشرطُ والنوعُ يُضبَطان معًا.
+   * The reps card filters on reps together with the condition.
+   * All card figures except the total and its split are computed on reps only (see `ltTotalsOf`). Filtering the condition alone would show an administrative row the number above does not count. So condition and type are set together.
    */
   const repFilter = (k: string, v: string) => setF((p) => (
     p[k] === v ? { ...p, [k]: '', staffKind: '' } : { ...p, [k]: v, staffKind: 'rep' }
@@ -164,16 +142,13 @@ function LightTransportEmployeesInner() {
 
   useEffect(() => { const h = setTimeout(() => setDq(q), 350); return () => clearTimeout(h); }, [q]);
 
-  // كلُّ نداءٍ مفلترٍ يحتاج حارسَه: النداءُ غيرُ المفلتر أبطأُ فيصل آخرًا ويكتب
-  // إجماليَّه فوق المفلتر — راجع hooks/useLatestRequest.
+  // Every filtered call needs its own guard: the unfiltered call is slower, arrives last and overwrites the filtered total. See hooks/useLatestRequest.
   const guard = useLatestRequest();
   const load = useCallback(async () => {
-    // الأبطأُ يصل آخرًا: نداءٌ بلا فلترٍ يُطلَب أوّلًا ويردّ بعد المفلتر فيكتب
-    // إجماليَّه فوقه. فتُقرأ الردودُ بترتيب طلبها لا بترتيب وصولها.
+    // The slowest arrives last: an unfiltered call fired first replies after the filtered one and overwrites its total. Read replies in request order, not arrival order.
     const token = guard.begin();
     try {
-      // مفاتيحُ الكروت لا تُرسَل (`LOCAL_KEYS`): تُطبَّق هنا بمعنى الخادم نفسِه
-      // (`ltPasses`)، لتُعَدّ كلُّ مجموعةٍ بلا فلترها — راجع `ltFacetedTotals`.
+      // Card keys are not sent (`LOCAL_KEYS`): applied here with the server's meaning (`ltPasses`) so each group is counted without its own filter; see `ltFacetedTotals`.
       const d = await getLTEmployees({ ...serverFilters(f), q: dq });
       if (!guard.isCurrent(token)) return;
       setRows(d.employees || []);
@@ -183,31 +158,24 @@ function LightTransportEmployeesInner() {
       if (guard.isCurrent(token)) notify(e?.message || t('تعذّر التحميل', 'Could not load'), 'error');
     }
     if (guard.isCurrent(token)) setLoading(false);
-    // ضغطُ كارتٍ لا يطلب من الخادم شيئًا: مفاتيحُ الكروت محلّيّة، فيتبدّل الجدولُ
-    // في مكانه بلا ردٍّ ينتظره ولا رسمةٍ وسيطة.
+    // Clicking a card asks the server for nothing: card keys are local, so the table changes in place with no pending reply or intermediate render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(serverFilters(f)), dq, guard]);
   useEffect(() => { load(); }, [load]);
   useSocket('lt:updated', useCallback(() => load(), [load]));
-  // وما يمسّ ملفَّ الموارد البشريّة يمسّ الحالةَ المعروضةَ هنا.
+  // Anything touching the HR file touches the status shown here.
   useSocket('hr:employee', useCallback(() => load(), [load]));
 
   /**
-   * ── فلاترُ الكروت تُحسَب هنا لا في القاعدة ──────────────────────────────────
-   *
-   * «على الكفالة / فري لانسر» و«كارتٌ منتهي» مشتقّان، وبقيّةُ الكروت (النوع،
-   * الحالة، المركبة، السكن، مشرف التفقّد) تُعَدّ كلُّ مجموعةٍ منها بلا فلترها —
-   * وذلك يحتاج الصفوفَ قبل فلتر الكارت. فتُطبَّق كلُّها بـ`ltPasses`، بالمعنى
-   * الذي يطبّقها به الخادم، فيقرأ الكارتُ والجدولُ الشيءَ نفسَه.
+   * Card filters are computed here, not in the database.
+   * The sponsored/freelancer and expired-card cards are derived, and the other cards (type, status, vehicle, housing, inspection supervisor) count each group without its own filter, which needs the rows before the card filter. All are applied with `ltPasses`, the same meaning the server uses, so card and table read the same thing.
    */
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const localFiltered = useMemo(() => rows.filter((r) => ltPasses(r, f)), [rows, JSON.stringify(f)]);
 
   /**
-   * ── والإسنادُ يقع على مجموعة ──────────────────────────────────────────────
-   * توزيعُ الإشراف يقع على محطّةٍ أو مشروعٍ لا على رجلٍ رجل، وصفًّا صفًّا يعني
-   * فتحَ نافذةٍ مئةً وسبعًا وأربعين مرّة. فتُعلَّم صفوفٌ ويُسنَد لها دفعةً —
-   * والتعليمُ يعبر الفلترَ والبحثَ لأنّه يحفظ الصفَّ لا معرِّفَه وحدَه.
+   * Assignment targets a group.
+   * Supervision is distributed per station or project, not per man; row by row would mean opening a dialog 147 times. Rows are marked and assigned in one batch; marking survives filter and search because it stores the row, not just its id.
    */
   const [picked, setPicked] = useState<Map<string, LTEmployee>>(new Map());
   const [assigning, setAssigning] = useState(false);
@@ -222,12 +190,11 @@ function LightTransportEmployeesInner() {
     return o;
   }, []);
   const shown = cf.apply(localFiltered, getters);
-  // والأعدادُ تتبع فلترَ العمود كما تتبع الشرائح — لكنّ كلَّ مجموعةِ كروتٍ تُعَدّ
-  // بلا فلترها هي، فلا يتحرّك الرقمُ المضغوطُ ولا جيرانُه. راجع `ltFacetedTotals`.
+  // Counts follow the column filter as they follow the chips, but each card group is counted without its own filter, so the pressed figure and its neighbours do not move. See `ltFacetedTotals`.
   const colFiltered = cf.apply(rows, getters);
   const totals = ltFacetedTotals(colFiltered, f);
 
-  // عمودا الإقامة والرخصة يُصدَّران تاريخًا وحالةً في عمودين لكلٍّ منهما.
+  // Residency and licence columns export as a date and a status, two columns each.
   const exportColumns: ExportColumn[] = LT_COLUMNS.flatMap((c): ExportColumn[] => (
     c.key === 'iqamaExp' ? personDocExportColumns(ar).slice(0, 2)
       : c.key === 'licenseExp' ? personDocExportColumns(ar).slice(2)
@@ -250,7 +217,7 @@ function LightTransportEmployeesInner() {
     try {
       const body: any = { ...editing };
       delete body._id; delete body.vehicle; delete body.employee; delete body.supervisor;
-      // الاسمُ لقطةٌ يكتبها الخادمُ من الحساب — ولا يُرسَل كي لا يفترق عنه.
+      // The name is a snapshot the server writes from the account; not sent, so it cannot diverge.
       delete body.supervisorName;
       body.supervisorUser = supervisorIdOf(editing) || '';
       delete body.dutySupervisorName;
@@ -302,7 +269,7 @@ function LightTransportEmployeesInner() {
 
   if (loading) return <Spinner />;
 
-  /** قيمةُ الفلتر كما تُقرأ: لا معرِّفَ مشرفٍ ولا مفتاحَ إنجليزيٍّ في الشريحة. */
+  /** Filter value as read by people: no supervisor id and no English key in the chip. */
   const chipValue = (k: string, v: string) => {
     if (k === 'contractKind') return ar ? ({ sponsored: 'على الكفالة', freelance: 'فري لانسر', users: 'يوزرات', none: 'بلا نوع عقد' } as Record<string, string>)[v] || v
       : ({ sponsored: 'Sponsored', freelance: 'Freelance', none: 'No contract type' } as Record<string, string>)[v] || v;
@@ -344,7 +311,7 @@ function LightTransportEmployeesInner() {
         title={t('موظفون النقل الخفيف', 'Light-transport employees')}
         subtitle={t(`${serverTotal} موظفًا — المندوبون والإداريون معًا`, `${serverTotal} employees — reps and admin together`)}>
         <ExportMenu fileName="light-transport" lang={ar ? 'ar' : 'en'} variant="subtle" label={t('تصدير Excel', 'Export')} options={exportOptions} />
-        {/* مَن يرى أيَّ مشروعٍ في «مدخلات الأوردرات» — يُسنَد هنا لكلّ مشرفٍ ومديرِ مشروع. */}
+        {/* Who sees which project in order entry; assigned here per supervisor and project manager. */}
         <button type="button" onClick={() => setManagersOpen(true)}
           className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:border-[#f37121]">
           {t('مشاريع المشرفين', 'Supervisors’ projects')}
@@ -352,17 +319,9 @@ function LightTransportEmployeesInner() {
         {canAdd && <PrimaryButton onClick={() => { setDocs([]); setEditing({}); }}><Plus className="w-4 h-4" /> {t('إضافة موظف', 'Add employee')}</PrimaryButton>}
       </PageHeader>
 
-      {/* ── الكاردات تُفلتِر، لا تُخبِر وحدَها ──────────────────────────────────
-          «أريد أن أعرف كم على الكفالة، ثمّ مَن هم» — فكلُّ رقمٍ هنا يُضغَط
-          فيُفلتَر الجدولُ عليه، وتُعاد الأعدادُ محسوبةً على ما بقي. */}
-      {/* ── الإجمالُ وقسمتُه: الصفُّ الوحيدُ عن القسم كلِّه ───────────────────── */}
-      {/* ── و«بلا وظيفة» عددٌ قائمٌ بذاته ───────────────────────────────────
-          كان النوعان «مندوب» و«إداريّ» فقط، والثاني فرعَ الباقي: فصار من لا
-          وظيفةَ مكتوبةً له إداريًّا. قالت البطاقةُ «إداريّون وفنيّون: ٣٨»
-          وفيهم تسعةَ عشرَ بلا وظيفة — والإداريّون ستّة، ومعهم خمسةُ مشرفين
-          وثلاثةُ ميكانيكيّين وثلاثةُ سائقين وعاملا نظافة.
-          «لا أعرف» ليست تصنيفًا: تُعرَض عددًا يُملأ، لا رقمًا يتضخّم داخل
-          غيره. وضغطُها يفتحهم بأسمائهم. */}
+      {/* Cards filter, they do not just report. Each figure is clickable and filters the table, and counts are recomputed on what remains. */}
+      {/* The total and its split: the only row about the whole department. */}
+      {/* 'No job title' is its own count. There were only two types, rep and administrative, with the second as the remainder, so anyone without a job title became administrative; the administrative card overstated (38, of which 19 had no title; only 6 were truly administrative). 'Unknown' is not a category: shown as a count to be filled, not inflated inside another number. Clicking it lists them by name. */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
         <Stat label={t('الإجمالي', 'Total')} value={totals.total} onClick={clearFilters} on={!activeCount} />
         <Stat label={t('مناديب', 'Reps')} value={totals.reps} accent="text-indigo-600"
@@ -374,7 +333,7 @@ function LightTransportEmployeesInner() {
         <Stat label={t('بلا وظيفة مكتوبة', 'No job title')} value={totals.unknownKind ?? 0} accent="text-rose-600"
           onClick={() => setFilter('staffKind', 'unknown')} on={f.staffKind === 'unknown'} />
       </div>
-      {/* والأساسُ يُكتب، لا يُخمَّن: ما بعد الإجمال وقسمتِه عن المناديب وحدَهم. */}
+      {/* The base is written explicitly, not guessed: figures after the total and its split are about reps only. */}
       <p className="-mt-1 text-[11.5px] text-slate-500">
         {t(`البطاقات التالية محسوبةٌ على المناديب (${totals.reps}) — لا تشمل ${totals.admins} إداريًّا وفنيًّا ومشرفًا ولا ${totals.drivers ?? 0} سائقًا ولا ${totals.unknownKind ?? 0} بلا وظيفةٍ مكتوبة، فليست لهم مركبةٌ ولا كارت تشغيل. وضغطُ أيٍّ منها يفلتر على المناديب أيضًا.`,
            `The cards below are computed on reps (${totals.reps}) — excluding ${totals.admins} admin/technical, ${totals.drivers ?? 0} drivers and ${totals.unknownKind ?? 0} with no job title, who have no vehicle or operating card. Pressing one also filters to reps.`)}
@@ -388,9 +347,8 @@ function LightTransportEmployeesInner() {
           onClick={() => repFilter('hasVehicle', 'no')} on={f.hasVehicle === 'no'} />
         <Stat label={t('في إجازة', 'On leave')} value={totals.onLeave} accent="text-sky-600"
           onClick={() => repFilter('status', 'إجازة')} on={f.status === 'إجازة'} />
-        {/* «أُنهيت خدمتهم» ليس كارتًا هنا: المنتهي لا يُعَدّ في أرقام القسم — يبقى
-            صفُّه في الجدول ليُراجَع، ومكانُ عدِّه لوحةُ الموارد البشريّة. */}
-        {/* ومن له ملفٌّ في الموارد البشريّة ومن يملكه القسم — فرقٌ يُسأل عنه. */}
+        {/* Ended service is not a card: ended staff are not counted in department figures. Their rows stay in the table for review; counting them belongs to the HR dashboard. */}
+        {/* Who has an HR file versus who the department owns: a difference people ask about. */}
         <Stat label={t('لهم ملفّ في الموارد البشرية', 'Have an HR file')} value={totals.hrLinked} accent="text-slate-900" />
         <Stat label={t('بلا ملفّ (القسم يملكهم)', 'Owned by the section')} value={totals.ownedHere} accent="text-violet-600" />
         <Stat label={t('لهم سكن', 'Housed')} value={totals.housed} accent="text-slate-900"
@@ -399,14 +357,7 @@ function LightTransportEmployeesInner() {
           onClick={() => repFilter('housing', 'none')} on={f.housing === 'none'} />
       </div>
 
-      {/* ── نوعُ التعاقد ووثيقتا المركبة: كاردات ثابتة ────────────────────────
-          «كم على الكفالة وكم فري لانسر» يُسأل أوّلَ ما تُفتَح الشاشة، وكان
-          جوابُه يحتاج فتحَ قائمةِ الفلترة واختيارَ كلٍّ على حدة. وهما — كسائر
-          الكاردات — محسوبان على ما بعد الفلترة: من فلتر على مشروعٍ قرأ كفالةَ
-          هذا المشروع وحدَه.
-
-          ومعهما كارتُ التشغيل والفحص: الوثيقتان على المركبة، والموقوفُ صباحًا
-          هو الرجل — فعددُ من انتهت وثيقتُه يُقرأ هنا لا في قسمٍ آخر. */}
+      {/* Contract type and vehicle documents: fixed cards. How many are sponsored and how many freelance is the first question on opening, and answering it needed opening the filter list and picking each. Like other cards, they are computed after filtering. Also the operating-card and inspection card: the documents sit on the vehicle but the rider is the one stopped in the morning, so the expired count is read here. */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
         <Stat label={t('على الكفالة', 'On sponsorship')} value={totals.sponsored} accent="text-slate-900"
           onClick={() => repFilter('contractKind', 'sponsored')} on={f.contractKind === 'sponsored'} />
@@ -420,14 +371,12 @@ function LightTransportEmployeesInner() {
           onClick={() => repFilter('doc', 'inspection-gap')} on={f.doc === 'inspection-gap'} />
         <Stat label={t('فحص قريب', 'Inspection due soon')} value={totals.inspectionSoon} accent="text-amber-600"
           onClick={() => repFilter('doc', 'inspection-soon')} on={f.doc === 'inspection-soon'} />
-        {/* من لا مشرفَ تفقّدٍ له لا يظهر لأحدٍ في شاشة التفقّد — يُتابَع حتى يصفر. */}
+        {/* A rider with no inspection supervisor appears to nobody on the duty-check screen; tracked until it reaches zero. */}
         <Stat label={t('بلا مشرف تفقد', 'No duty supervisor')} value={totals.noDutySupervisor} accent="text-red-600"
           onClick={() => repFilter('dutySupervisor', 'none')} on={f.dutySupervisor === 'none'} />
       </div>
 
-      {/* ── الفلاترُ الشغّالةُ مكتوبةً ──────────────────────────────────────────
-          من فُتحت له القائمةُ من رقمٍ في اللوحة يرى لماذا هي أقصر — وكلُّ فلترٍ
-          يُرفَع بضغطة. الفلترُ الخفيُّ يجعل الجدولَ يُقرأ ناقصًا. */}
+      {/* Active filters written out. Whoever arrived from a dashboard number sees why the list is shorter, and each filter clears in one click. A hidden filter makes the table read as incomplete. */}
       {Object.entries(f).some(([, v]) => v) && (
         <div className="flex flex-wrap items-center gap-2 rounded-xl border border-[#f37121]/30 bg-[#f37121]/5 px-3 py-2.5">
           <span className="text-[12px] font-bold text-slate-700">{t('الفلاتر الشغّالة:', 'Active filters:')}</span>
@@ -445,7 +394,7 @@ function LightTransportEmployeesInner() {
         </div>
       )}
 
-      {/* ── الفلاتر ───────────────────────────────────────────────────────── */}
+      {/* Filters. */}
       <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-sm flex flex-wrap gap-2.5 items-center">
         <div className="flex-1 min-w-[230px]">
           <SearchInput value={q} onChange={setQ}
@@ -457,11 +406,8 @@ function LightTransportEmployeesInner() {
         <Filter value={f.contractType || ''} onChange={(v) => setF((p) => ({ ...p, contractType: v }))} label={t('كل أنواع التعاقد', 'All contracts')} list={options.contractType} />
         <Filter value={f.register || ''} onChange={(v) => setF((p) => ({ ...p, register: v }))} label={t('كل السجلات', 'All registers')} list={options.register} />
         <Filter value={f.vehicleType || ''} onChange={(v) => setF((p) => ({ ...p, vehicleType: v }))} label={t('كل أنواع المركبات', 'All vehicle types')} list={options.vehicleType} />
-        {/* ── وفلترُ المشرف بالحساب لا بالاسم ─────────────────────────────
-            المشرفُ صار حسابًا على النظام، فالفلترُ بمعرِّفه — فلا يفترق صفٌّ
-            عن صفٍّ لأنّ الاسمَ كُتب بصيغتين. ومن كُتب في السجلّ ولا حسابَ له
-            بعد يبقى في آخر القائمة كي لا يختفي صفُّه من شاشةٍ كان يُرى فيها. */}
-        {/* مشرفُ التفقّد: مَن يقف على الرجل صباحًا — تُقسَم به شاشةُ التفقّد. */}
+        {/* Supervisor filter by account, not by name. The supervisor is now a system account, so the filter uses its id and rows do not split over two spellings. A name written in the register with no account yet stays at the end of the list so its row does not vanish from a screen where it was visible. */}
+        {/* Inspection supervisor: who stands over the rider in the morning; splits the duty-check screen. */}
         <select value={f.dutySupervisor || ''} onChange={(e) => setF((p) => ({ ...p, dutySupervisor: e.target.value }))}
           aria-label={t('كل مشرفي التفقد', 'All duty supervisors')}
           className="px-3 py-2 rounded-lg bg-white border border-slate-200 text-sm text-slate-800">
@@ -485,8 +431,7 @@ function LightTransportEmployeesInner() {
             </optgroup>
           )}
         </select>
-        {/* قائمةُ الحالات من الصفوف كلِّها لا من تجميع المناديب: التجميعُ صار
-            عنهم وحدَهم، فحالةٌ لا يحملها إلّا إداريٌّ تسقط من القائمة فلا تُفلتَر. */}
+        {/* Status list is built from all rows, not from the reps aggregate: the aggregate is now reps-only, so a status held only by an administrative row would drop out and be unfilterable. */}
         <Filter value={f.status || ''} onChange={(v) => setF((p) => ({ ...p, status: v }))} label={t('كل الحالات', 'All statuses')}
           list={[...new Set(rows.map((r) => String(r.workStatusShown || '')).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ar'))} />
         <select value={f.housing || ''} onChange={(e) => setF((p) => ({ ...p, housing: e.target.value }))} aria-label={t('السكن', 'Housing')}
@@ -495,7 +440,7 @@ function LightTransportEmployeesInner() {
           <option value="none">{t('بلا سكن', 'Unhoused')}</option>
           {options.housing.map((h) => <option key={h._id} value={h._id}>{h.name}</option>)}
         </select>
-        {/* وبالمواعيد: تاريخُ التعيين من/إلى — والحدُّ الأعلى شاملٌ لليوم نفسِه. */}
+        {/* By dates: hire date from/to; the upper bound includes the day itself. */}
         <input type="date" value={f.hiredFrom || ''} onChange={(e) => setF((p) => ({ ...p, hiredFrom: e.target.value }))}
           aria-label={t('التعيين من', 'Hired from')} className="px-3 py-2 rounded-lg bg-white border border-slate-200 text-sm text-slate-800 [color-scheme:light]" />
         <input type="date" value={f.hiredTo || ''} onChange={(e) => setF((p) => ({ ...p, hiredTo: e.target.value }))}
@@ -508,8 +453,7 @@ function LightTransportEmployeesInner() {
         )}
         <ClearColumnFilters count={cf.count} onClear={cf.clear} ar={ar} />
         <span className="text-xs text-slate-500 tabular-nums">{t(`${shown.length} من ${serverTotal}`, `${shown.length} of ${serverTotal}`)}</span>
-        {/* المنتهون صفوفٌ تُراجَع لا أرقامٌ تُعَدّ — فيُقال كم منهم في الجدول، كي لا
-            يُقرأ فرقُ ما بين «الإجمالي» وعددِ الصفوف خطأً. */}
+        {/* Ended staff are rows to review, not numbers to count, so say how many are in the table, to avoid misreading the gap between the total and the row count. */}
         {f.status !== 'إنهاء خدمة' && shown.some((r) => r.workStatusShown === 'إنهاء خدمة') && (
           <span className="text-xs text-slate-400 tabular-nums">
             {t(`منهم ${shown.filter((r) => r.workStatusShown === 'إنهاء خدمة').length} منتهي الخدمة — لا يُعَدّون في الكروت`,
@@ -518,7 +462,7 @@ function LightTransportEmployeesInner() {
         )}
       </div>
 
-      {/* شريطُ المعلَّم: عددُه، وكم منه خارجَ الفلتر الحاليّ، وزرُّ الإسناد. */}
+      {/* Marked-rows bar: their count, how many are outside the current filter, and the assign button. */}
       {canEdit && picked.size > 0 && (
         <div className="rounded-xl border-2 border-[#f37121]/40 bg-orange-50 p-3 space-y-2">
           <div className="flex flex-wrap items-center gap-2">
@@ -544,9 +488,7 @@ function LightTransportEmployeesInner() {
         </div>
       )}
 
-      {/* ── نافذةُ الإسناد: أحدُهما أو كلاهما ───────────────────────────────
-          ما يُترَك فارغًا لا يُمَسّ — فمن يوزّع التفقّد لا يُسقِط الإشرافَ
-          التشغيليَّ بسكوته عنه. */}
+      {/* Assignment dialog: either or both. A field left empty is untouched, so whoever distributes the inspection does not drop operational supervision by omitting it. */}
       {assigning && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4" onClick={() => setAssigning(false)}>
           <div className="w-full max-w-md rounded-2xl bg-white p-4 space-y-3" onClick={(ev) => ev.stopPropagation()}>
@@ -615,7 +557,7 @@ function LightTransportEmployeesInner() {
                 <tr><td colSpan={LT_COLUMNS.length + (canEdit ? 1 : 0)} className="px-4 py-12 text-center">
                   <p className="text-slate-800 font-semibold">{t('لا نتائج', 'No results')}</p>
                   {(activeCount > 0 || cf.count > 0) && (
-                    // ولا يُقال «لا نتائج» بلا ذكرِ ما يحجب — الفلترُ يبقى فيُقرأ الفراغُ عطلًا.
+                    // Never show 'no results' without naming what hides them: the filter stays visible so an empty list is not read as a fault.
                     <button type="button" onClick={() => { clearFilters(); cf.clear(); }}
                       className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#f37121] text-white text-[12.5px] font-bold">
                       <RotateCcw className="w-3.5 h-3.5" /> {t(`فيه ${activeCount + cf.count} فلترًا شغّالًا — امسحها`, `${activeCount + cf.count} filters active — clear them`)}
@@ -637,7 +579,7 @@ function LightTransportEmployeesInner() {
                           aria-label={e.name} />
                         <button type="button" onClick={() => setEditing(e)} title={t('تعديل', 'Edit')}
                           className="p-1.5 rounded-lg text-slate-600 hover:text-[#f37121] hover:bg-slate-100"><Pencil className="w-4 h-4" /></button>
-                        {/* «نقل المشروع» من الجدول نفسِه — لمن يملكه وحدَه. */}
+                        {/* Project move from the table itself; only for those who own it. */}
                         {canTransferLT(user as any) && (
                           <button type="button" onClick={() => setTransferring(e)} title={t('نقل المشروع', 'Transfer project')}
                             className="p-1.5 rounded-lg text-slate-600 hover:text-[#f37121] hover:bg-slate-100"><ArrowLeftRight className="w-4 h-4" /></button>
@@ -665,9 +607,8 @@ function LightTransportEmployeesInner() {
                             <button type="button" onClick={() => router.push(`/system/b2c/light-transport/${e._id}`)}
                               className="font-semibold text-slate-800 hover:text-[#f37121] text-start">{v || '—'}</button>
                           )
-                          // ── والتاريخُ وحدَه لا يُقرأ ──────────────────────
-                          // «١٤ / ١١ / ٢٠٢٦» لا تقول أقريبٌ هو أم مضى؛ فتُكتب
-                          // معه حالتُه بعتبات قسم المركبات نفسِها.
+                          // A date alone is not readable.
+                          // A bare date does not say whether it is near or past, so its status is written beside it with the vehicles section's own thresholds.
                           : c.key === 'iqamaExp' ? <PersonDocDate ar={ar} date={e.iqamaExpiry} state={e.iqamaState} />
                           : c.key === 'licenseExp' ? <PersonDocDate ar={ar} date={e.licenseExpiry} state={e.licenseState} />
                           : (c.key === 'operatingCardExpiry' || c.key === 'inspectionExpiry')
@@ -698,12 +639,8 @@ function LightTransportEmployeesInner() {
             <Field label={t('الاسم', 'Name')}>
               <TextInput value={editing.name || ''} onChange={(ev) => setEditing((p) => ({ ...p!, name: ev.target.value }))} />
             </Field>
-            {/* ── والقيمُ الثابتةُ قوائمُ مُدارة ────────────────────────────────
-                تُضبَط من «إعدادات القسم»، ويُضاف إليها من موضعها بـ«+ إضافة».
-                الخانةُ الحرّةُ تكتب الواحدةَ بألف صيغة فتصير في التقارير عدّةَ
-                مشاريع وهي مشروعٌ واحد. */}
-            {/* والمشروعُ يُختار عند الإضافة؛ وبعدها لا يتغيّر إلّا بـ«نقل مشروع» من صفحة
-                المندوب، وممّن يملكه (صاحبُ الشركة، ٢٠٢٦/١٠/١٩). */}
+            {/* Fixed values are managed lists. Set from the department settings and extended in place with the add button. A free field spells one value a thousand ways, so reports show several projects for one. */}
+            {/* The project is chosen on add; afterwards it changes only through the project-move action on the rep's page, by whoever owns it. */}
             <Field label={t('المشروع', 'Project')}>
               <ManagedSelect storeLabel type="lt_project" value={editing.projectAr || ''}
                 disabled={!!editing._id && !!origProject}
@@ -720,8 +657,7 @@ function LightTransportEmployeesInner() {
               <ManagedSelect storeLabel type="lt_job_title" value={editing.jobTitleAr || ''}
                 onChange={(v) => setEditing((p) => ({ ...p!, jobTitleAr: v }))} />
             </Field>
-            {/* على الكفالة / فري لانسر: لمن له ملفٌّ في الموارد البشريّة يُقرأ من «رقم
-                السجل التجاري» هناك ولا يُكتب هنا. ويُكتب هنا لمن لا ملفَّ له وحدَه. */}
+            {/* Sponsored / freelancer: for someone with an HR file it is read from the commercial registration number there and not written here. It is written here only for people without an HR file. */}
             <Field label={t('على الكفالة / فري لانسر', 'Sponsored / freelance')}>
               {(editing as any).hrLinked ? (
                 <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
@@ -741,11 +677,7 @@ function LightTransportEmployeesInner() {
               <ManagedSelect storeLabel type="lt_vehicle_type" value={editing.vehicleTypeAr || ''}
                 onChange={(v) => setEditing((p) => ({ ...p!, vehicleTypeAr: v }))} />
             </Field>
-            {/* ── حالةُ العمل: يعمل · إجازة · موقوف · حادث ──────────────────────
-                تُكتب من هنا (صاحبُ الشركة، ٢٠٢٦/١٠/٢١) وتُقيَّد في سجلّ الموظّف،
-                وتظهر في ملفّه بالموارد البشريّة وعلى مركبته في قسم المركبات.
-                «موقوف» توقّفٌ تشغيليّ من القسم وحدَه. والإجازةُ من أيّ الجهتين:
-                إجازةُ الموارد البشريّة تُقرأ هنا ولا تُكتب. والمنتهي لا حالةَ له. */}
+            {/* Work status: working, on leave, suspended, accident. Written from here and recorded in the employee log; shown in his HR file and on his vehicle in the vehicles section. Suspended is an operational stop owned by this department only. Leave can come from either side: HR leave is read here, not written. Ended staff have no status. */}
             {editing._id && (
               <Field label={t('حالة العمل', 'Work status')}>
                 {(editing as any).workStatusShown === 'إنهاء خدمة' ? (
@@ -768,10 +700,7 @@ function LightTransportEmployeesInner() {
                 )}
               </Field>
             )}
-            {/* ── المشرفُ حسابٌ يُختار، لا اسمٌ يُكتب ──────────────────────
-                القائمةُ حساباتُ الإشراف في القسم (مشرف مناديب · مدير مشروع ·
-                مدير القطاع). ومن يُختار هنا يرى هذا الرجلَ في تفقّد بداية
-                الدوام — فالإسنادُ في موضعٍ واحدٍ يظهر في الشاشتين. */}
+            {/* Supervisor is an account to pick, not a name to type. The list is the department's supervision accounts (rep supervisor, project manager, sector manager). Whoever is picked here sees this man in the start-of-shift check, so assignment in one place shows on both screens. */}
             <Field label={t('المشرف التشغيلي', 'Ops supervisor')}>
               <Select value={supervisorIdOf(editing) || ''}
                 onChange={(ev: any) => setEditing((p) => ({ ...p!, supervisorUser: ev.target.value || null }))}>
@@ -787,10 +716,7 @@ function LightTransportEmployeesInner() {
                 </p>
               )}
             </Field>
-            {/* ── ومشرفُ التفقّد غيرُ التشغيليّ ────────────────────────────────
-                التشغيليُّ مسؤوليّةُ اليوم كلِّه، ومشرفُ التفقّد مَن يقف على
-                المحطّة صباحًا فيصوّره قبل أن يخرج — وبه وحدَه تنقسم شاشةُ
-                تفقّد بداية الدوام. */}
+            {/* Inspection supervisor differs from the operational one. Operational is responsibility for the whole day; the inspection supervisor stands at the station in the morning and photographs him before he goes out. Only this one splits the start-of-shift check screen. */}
             <Field label={t('مشرف التفقد', 'Duty supervisor')}>
               <Select value={dutySupervisorIdOf(editing) || ''}
                 onChange={(ev: any) => setEditing((p) => ({ ...p!, dutySupervisorUser: ev.target.value || null }))}>
@@ -865,8 +791,7 @@ function LightTransportEmployeesInner() {
                    'On save his HR file is created (department B2C) if he has none; HR completes the rest.')}
               </p>
             )}
-            {/* المركبةُ تُسنَد بأمر تشغيل لا من هنا: الإسنادُ فعلٌ له تاريخٌ
-                وتفويضٌ يُنقَل، لا خانةٌ تُكتب. */}
+            {/* The vehicle is assigned by an operating order, not from here: assignment is an act with history and a transferable authorization, not a field to type. */}
             <p className="md:col-span-2 text-[11.5px] text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
               {t('المركبة والمشرف والسكن تُسنَد أيضًا بأمر تشغيل — فيُقيَّد التاريخ ويُنقَل التفويض في سجلّ المركبات.',
                  'Vehicle, supervisor and housing are also assigned by an operating order, which records the move and transfers authorisation in the vehicle registry.')}
@@ -882,7 +807,7 @@ function LightTransportEmployeesInner() {
   );
 }
 
-/** مستندٌ جديدٌ في استمارة الإضافة: اسمُه وملفُّه. */
+/** A new document in the add form: its name and its file. */
 type NewDoc = { id: number; title: string; file: File | null };
 const readAsDataUrl = (file: File) => new Promise<string>((resolve, reject) => {
   const r = new FileReader(); r.onload = () => resolve(String(r.result)); r.onerror = () => reject(new Error('read')); r.readAsDataURL(file);
@@ -903,10 +828,8 @@ const uploadDataUrl = async (file: File): Promise<string> => {
 };
 
 /**
- * خليّةُ تاريخِ وثيقة: التاريخُ وحالتُه.
- *
- * مكوّنٌ على مستوى الملفّ لا داخلَ جسم الرسم — المكوّنُ المعرَّف في الرسم يُبنى
- * من جديدٍ عند كلّ حالةٍ تتغيّر. راجع قاعدةَ «المكوّنات المضمَّنة».
+ * Document date cell: the date and its status.
+ * File-level component, not inside the render body, since a component defined in render is rebuilt whenever state changes. See the inline components rule.
  */
 function DocCell({ doc, text, ar }: { doc?: LTDoc; text: string; ar: boolean }) {
   if (!doc || doc.state === 'missing' || !text) {

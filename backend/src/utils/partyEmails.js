@@ -1,12 +1,10 @@
 /**
- * بريدُ العميل — أكثرُ من عنوان (صاحبُ الشركة، ٢٠٢٦/١٠/٢٤).
- *
- * `emails` قائمتُه، و`email` القديمُ يبقى أوّلَها فلا ينكسر ما يقرؤه. فكلُّ من
- * يريد «إلى من يُرسَل» يقرأ من هنا، وكلُّ حفظٍ يمرّ على `normalizeEmails`.
+ * Customer emails: more than one address.
+ * `emails` is the list and the legacy `email` stays as its first item so existing readers do not break. Anyone needing the recipients reads from here, and every save goes through `normalizeEmails`.
  */
 const RX = /^[^\s@<>()[\],;:"]+@[^\s@<>()[\],;:"]+\.[^\s@<>()[\],;:"]{2,}$/;
 
-/** قائمةٌ نظيفة: تُفصَل بالفاصلة أو السطر، تُصغَّر، يُحذف المكرَّرُ والتالف. */
+/** Clean list: split by comma or newline, lower-cased, duplicates and malformed removed. */
 function normalizeEmails(input) {
   const raw = Array.isArray(input) ? input : String(input || '').split(/[\s,;،]+/);
   const out = [];
@@ -17,10 +15,10 @@ function normalizeEmails(input) {
   return out.slice(0, 10);
 }
 
-/** كلُّ بريدٍ معروفٍ للطرف — القائمةُ ثمّ القديم. */
+/** Every known email for the party: the list, then the legacy one. */
 const emailsOf = (p = {}) => normalizeEmails([...(p.emails || []), p.email || '']);
 
-/** يضبط الحقلين معًا في جسم الحفظ إن أُرسل أحدُهما. */
+/** Sets both fields together in a save body if either is sent. */
 function applyEmails(body) {
   if (body.emails === undefined && body.email === undefined) return body;
   const list = normalizeEmails(body.emails !== undefined ? body.emails : body.email);

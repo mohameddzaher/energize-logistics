@@ -1,13 +1,7 @@
 'use client';
 /**
- * فواتيرُ عملاء التخليص — ما أصدره القسمُ ليُفوتَر.
- *
- * «طلبات الصرف» أعلاه ما ندفعه؛ وهذه ما نقبضه: كلُّ معاملةٍ أصدر قسمُ التخليص
- * فاتورتَها تظهر هنا برقمها ومجاميعها (محسوبةً في الخادم — utils/customsInvoice).
- *
- * والفاتورةُ تصدر بلا انتظار فاتورة النقل، فتصل إلى هنا كأيّ فاتورة. وما لم تصل
- * فاتورةُ نقله بعدُ يُلوَّن بالأحمر — ليُعرَف أنّ في المعاملة ورقةً ما زالت
- * منتظَرة، لا ليُؤخَّر تحصيلُها.
+ * Customs customer invoices: what the section issued to be invoiced.
+ * Payment requests above are what we pay; these are what we collect. Each transaction whose invoice the clearance section issued appears with its number and totals (computed on the server, utils/customsInvoice). The invoice issues without waiting for the transport invoice, so it arrives like any invoice; one whose transport invoice has not arrived is colored red to show a paper is still awaited, not to delay its collection.
  */
 import { useCallback, useEffect, useState } from 'react';
 import { useLanguage } from '@/context/LanguageContext';
@@ -38,7 +32,7 @@ export default function CustomsCustomerInvoices({ onOpen }: { onOpen: (id: strin
     try {
       const d = await api.get<{ invoices: Inv[]; summary: any }>('/api/customs-clearance/invoices?limit=300');
       setRows(d.invoices || []); setSummary(d.summary || {});
-    } catch { /* الصفحةُ تبقى بما فيها */ }
+    } catch { /* The page keeps what it has. */ }
     setLoading(false);
   }, []);
   useEffect(() => { load(); }, [load]);

@@ -1,38 +1,9 @@
 'use client';
 /**
- * ScrollX — حاويةُ جدولٍ عريض، بشريطِ تمريرٍ أفقيٍّ **فوقه** أيضًا.
- *
- * ── لماذا ──────────────────────────────────────────────────────────────────
- * شريطُ التمرير الأفقيّ في المتصفّح يقع أسفلَ الجدول. وجداولُ التحصيل طويلة:
- * مَن أراد عمودًا خارج الشاشة في الصفوف الأولى نزل إلى آخر الجدول ليسحب، ثمّ صعد
- * يبحث عن صفّه. فهنا شريطٌ ثانٍ أعلى الجدول مربوطٌ به — يتحرّكان معًا —
- * ويلتصق بأعلى الشاشة وأنت تنزل، ومعه سهمان يقفزان صفحةً من الأعمدة.
- *
- * ولا يظهر إلّا إن كان الجدولُ أعرضَ من مكانه؛ فالجدولُ الذي يتّسع لا يُثقَل بشيء.
- *
- * ── ولا يظهر على الهاتف واللوحيّ ──────────────────────────────────────────
- * على الشاشة الصغيرة يُمرَّر الجدولُ بالإصبع مباشرةً، فالشريطُ لا يزيد شيئًا —
- * بل يأخذ من عرضٍ ضيّقٍ أصلًا، ويلتقط سحبةَ الإصبع فوقه فلا يتحرّك المحتوى.
- * فيظهر من عرض الحاسوب المحمول (١٢٨٠ بكسل، شاشة ١٣ بوصة) فصاعدًا.
- *
- * ── ولماذا «يطفو» ولا يلتصق ────────────────────────────────────────────────
- * `position: sticky` لا يعمل هنا: بطاقاتُ الجداول `overflow-hidden` و<main>
- * `overflow-x-auto`، وكلاهما يصير حاويةَ تمريرٍ لا تتحرّك فيلتصق الشريطُ بها لا
- * بالشاشة. فحين يتجاوز رأسُ الجدول أعلى الشاشة يُثبَّت الشريطُ `fixed` تحت
- * ترويسة النظام بعرض الجدول نفسِه، ويعود مكانَه حين يرجع الجدولُ إلى الأعلى.
- *
- * ── الاتّجاه ────────────────────────────────────────────────────────────────
- * في العربيّة يبدأ الجدولُ من اليمين و`scrollLeft` سالبٌ (كروم/سفاري/فايرفوكس
- * الحديثة). والشريطان في الاتّجاه نفسِه فتُنسَخ القيمةُ بينهما كما هي؛ أمّا
- * السهمان فيُحسبان بالقيمة المطلقة ليصحّا في الاتّجاهين.
- *
- * ── والشريطُ مرسومٌ لا شريطَ المتصفّح ──────────────────────────────────────
- * شريطُ النظام على الماك (ولوحةُ اللمس) يختفي حتى تتحرّك، فيبدو المكانُ فارغًا
- * ولا يُعرف أنّ هنا ما يُسحب. فالمسارُ والمقبضُ هنا مرسومان دائمًا: المقبضُ
- * يُسحب، والضغطُ على المسار يقفز إليه، وعجلةُ الفأرة فوقه تحرّك الجدول أفقيًّا.
- *
- * الاستعمال: ضعه مكان `<div className="overflow-x-auto">`، وتمرَّر إليه بقيّةُ
- * الخصائص (className، aria-busy…) كما هي.
+ * ScrollX: wide-table container with a horizontal scrollbar above the table too, linked to it, shown only when the table overflows and from laptop width (1280px) up.
+ * It floats (position: fixed under the header) rather than sticky because overflow-hidden cards and overflow-x-auto <main> become the scroll container.
+ * In Arabic scrollLeft is negative; the bars share direction so values copy as is, arrows use absolute values.
+ * The bar is drawn by us because the macOS overlay scrollbar hides until scrolled. Replace `<div className="overflow-x-auto">`; other props pass through.
  */
 import { useCallback, useEffect, useRef, useState, type HTMLAttributes } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
@@ -42,9 +13,8 @@ export default function ScrollX({ className = '', children, ...rest }: HTMLAttri
   const main = useRef<HTMLDivElement>(null);
   const [float, setFloat] = useState<{ top: number; left: number; width: number } | null>(null);
   const top = useRef<HTMLDivElement>(null);
-  const [thumb, setThumb] = useState({ size: 100, pos: 0 });   // بالنسبة المئويّة من المسار
-  // شاشةُ حاسوبٍ محمولٍ فأكبر. يُقاس بالاستعلام لا بحدثِ تغييرِ الحجم وحدَه،
-  // فيصحّ عند أوّل رسمٍ وعند تدوير اللوحيّ.
+  const [thumb, setThumb] = useState({ size: 100, pos: 0 });   // As a percentage of the track.
+  // Laptop-size screen or larger. Measured with a media query, not only the resize event, so it is right on first render and on tablet rotation.
   const [wide, setWide] = useState(false);
   useEffect(() => {
     if (typeof window === 'undefined' || !window.matchMedia) return;
@@ -62,15 +32,15 @@ export default function ScrollX({ className = '', children, ...rest }: HTMLAttri
     if (!el) return;
     setOver(el.scrollWidth > el.clientWidth + 1);
     const max = el.scrollWidth - el.clientWidth;
-    // حجمُ المقبض = الظاهرُ من الجدول؛ وموضعُه = ما مضى منه (من بدايته).
+    // Handle size = visible part of the table; position = amount scrolled from the start.
     const size = el.scrollWidth ? Math.max(8, (el.clientWidth / el.scrollWidth) * 100) : 100;
     const progress = max > 0 ? Math.min(1, Math.abs(el.scrollLeft) / max) : 0;
     setThumb({ size, pos: progress * (100 - size) });
     const rtl = getComputedStyle(el).direction === 'rtl';
-    const pos = Math.abs(el.scrollLeft);                 // المسافةُ من بداية الجدول
+    const pos = Math.abs(el.scrollLeft);                 // Distance from the table start.
     const atStart = pos <= 1;
     const atEnd = pos >= max - 1;
-    // البداية يمينٌ في العربيّة ويسارٌ في الإنجليزيّة.
+    // The start is the right side in Arabic and the left in English.
     setEdge(rtl ? { right: !atStart, left: !atEnd } : { left: !atStart, right: !atEnd });
   }, []);
 
@@ -85,10 +55,10 @@ export default function ScrollX({ className = '', children, ...rest }: HTMLAttri
     return () => ro.disconnect();
   }, [measure]);
 
-  // لا شريطَ إلّا حين يكون الجدولُ أعرضَ من مكانه **والشاشةُ حاسوب**.
+  // Show the bar only when the table is wider than its container and the screen is desktop-size.
   const show = over && wide;
 
-  // الطفو: رأسُ الجدول فوق حافّة الشاشة وجسمُه ما زال ظاهرًا.
+  // Floating: the table header is above the screen edge and its body is still visible.
   useEffect(() => {
     const place = () => {
       const w = wrap.current;
@@ -108,13 +78,13 @@ export default function ScrollX({ className = '', children, ...rest }: HTMLAttri
       window.removeEventListener('resize', place);
     };
   }, []);
-  // الشريطُ يتغيّر عرضُه حين يطفو ويعود — فيُعاد القياسُ ويُعاد الموضع.
+  // The bar width changes when it floats and returns, so remeasure and reposition.
   useEffect(() => {
     measure();
   }, [float, measure]);
   const sync = () => measure();
 
-  // التقدّمُ ٠..١ من بداية الجدول ← scrollLeft بحسب الاتّجاه.
+  // Progress 0..1 from the table start, converted to scrollLeft according to direction.
   const setProgress = (p: number) => {
     const el = main.current;
     if (!el) return;
@@ -130,7 +100,7 @@ export default function ScrollX({ className = '', children, ...rest }: HTMLAttri
     const r = tr.getBoundingClientRect();
     const rtl = getComputedStyle(el).direction === 'rtl';
     const size = (thumb.size / 100) * r.width;
-    const x = rtl ? r.right - clientX : clientX - r.left;   // المسافةُ من بداية المسار
+    const x = rtl ? r.right - clientX : clientX - r.left;   // Distance from the track start.
     return (x - size / 2) / Math.max(1, r.width - size);
   };
   const drag = useRef<{ startX: number; startScroll: number } | null>(null);
@@ -144,13 +114,12 @@ export default function ScrollX({ className = '', children, ...rest }: HTMLAttri
   const onThumbMove = (e: React.PointerEvent) => {
     const d = drag.current; const el = main.current; const tr = top.current;
     if (!d || !el || !tr) return;
-    // بكسلُ المسار = (عرضُ الجدول ÷ عرضِ المسار) بكسلٍ من الجدول.
+    // One track pixel equals (table width / track width) table pixels.
     const ratio = el.scrollWidth / Math.max(1, tr.clientWidth);
     el.scrollLeft = d.startScroll + (e.clientX - d.startX) * ratio;
   };
   const onThumbUp = () => { drag.current = null; };
-  // العجلةُ فوق الشريط تحرّك الجدول أفقيًّا لا الصفحةَ عموديًّا — مستمعٌ أصليّ
-  // غيرُ سلبيّ، لأنّ مستمعَ React سلبيٌّ ولا يمنع تمريرَ الصفحة.
+  // The wheel over the bar scrolls the table horizontally instead of the page vertically. A native non-passive listener is needed because React's listener is passive and cannot prevent page scroll.
   useEffect(() => {
     const tr = top.current;
     if (!tr) return;

@@ -1,19 +1,7 @@
 'use client';
 /**
- * أعمدةٌ ثابتة على يمين جداول الموارد البشريّة — الإجراءات، ثمّ الرقم الوظيفيّ
- * والاسم والهويّة — والباقي يتحرّك تحتها.
- *
- * جداولُ القسم أعرضُ من الشاشة (الماستر وحده عشراتُ الأعمدة)، ومن مرّر إلى
- * تاريخٍ في آخر الجدول لم يعد يعرف لمن هو، ولا يجد زرَّ التعديل إلّا بالعودة.
- * فتُثبَّت هويّةُ الصفّ وأفعالُه في الأوّل.
- *
- * ── العرضُ يُقاس ولا يُفترَض ────────────────────────────────────────────────
- * لتثبيت أعمدةٍ متجاورة لا بدّ لكلٍّ أن يعرف أين ينتهي ما قبله. والعرضُ يتغيّر
- * باللغة وطول الأسماء، فيُقاس من الترويسة بـ ResizeObserver ويُجمع. و`start`
- * لا `left`: يتبع اتّجاه الصفحة فيصحّ في العربيّة والإنجليزيّة.
- *
- * والخليّةُ الثابتة تحمل خلفيّةً صريحة — وإلّا رُئيت الأعمدةُ الجارية من تحتها.
- * والصفُّ يحمل `group` ليبقى تلوينُ المرور عليه في الجزء الثابت كذلك.
+ * Pinned columns at the start of HR tables: actions, employee number, name and ID, while the rest scrolls under them.
+ * Tables are wider than the screen, so row identity and actions stay visible. Widths are measured from the header with ResizeObserver and summed, since they vary by language and name length. `start` rather than `left` follows page direction. Pinned cells have an explicit background; the row carries `group` so hover tinting covers the pinned part.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
@@ -41,14 +29,14 @@ export function usePinnedColumns(count: number) {
 
   const offset = useCallback((i: number) => widths.slice(0, i).reduce((a, b) => a + b, 0), [widths]);
 
-  /** خصائصُ ترويسةِ العمود الثابت رقم i. */
+  /** Header props of pinned column i. */
   const th = useCallback((i: number, extra = '') => ({
     ref: refs[i],
     className: `sticky z-30 bg-slate-900 ${i === count - 1 ? 'border-e border-slate-600' : ''} ${extra}`,
     style: { insetInlineStart: offset(i) },
   }), [refs, offset, count]);
 
-  /** خصائصُ خليّةِ العمود الثابت رقم i في صفّ. */
+  /** Cell props of pinned column i in a row. */
   const td = useCallback((i: number, extra = '', bg = 'bg-white group-hover:bg-slate-50') => ({
     className: `sticky z-20 ${bg} ${i === count - 1 ? 'border-e border-slate-200' : ''} ${extra}`,
     style: { insetInlineStart: offset(i) },

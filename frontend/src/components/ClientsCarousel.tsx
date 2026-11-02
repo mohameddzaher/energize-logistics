@@ -4,7 +4,7 @@ import { motion } from 'framer-motion'
 import Image from 'next/image'
 
 export default function ClientsCarousel() {
-  // ✅ تأكد إن الأسماء دي بتطابق فعلاً الصور اللي عندك
+  // Assumes these names match the actual image files.
   const logos = [
     '/images/clients/unnamed.jpg',
     '/images/clients/client2.jpg',

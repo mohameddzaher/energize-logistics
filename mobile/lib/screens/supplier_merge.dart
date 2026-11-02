@@ -6,17 +6,13 @@ import '../services/auth.dart';
 import '../services/lang.dart';
 import '../ui/theme.dart';
 
-/// ── دمجُ مورّدَين (٢٠٢٦/١٠/٢٦) — نظيرُ SupplierMergeModal في الموقع ──────────
-/// «فيه اتنين مورد بنفس الاسم… دول نفس الشخص، وحّدهم وضيف بياناتهم على بعض».
-/// يُختار المورّدُ الآخر (المكرَّرُ باسمه أوّلًا)، ثمّ أيُّهما يبقى، ثمّ يدمج
-/// الخادم: الخاناتُ الفارغةُ تُملأ والمختلفةُ تُضاف إلى الملاحظات، وتنتقل
-/// الشاحناتُ والسائقون والشحناتُ إلى الباقي (POST /suppliers/:id/merge).
+/// Merging two suppliers, mirrors SupplierMergeModal on web: two suppliers with the same name are the same person, unify and combine their data. Pick the other supplier (the same-named duplicate first), then which one stays, then the server merges: empty fields are filled, differing ones are appended to notes, and trucks, drivers and shipments move to the survivor (POST /suppliers/:id/merge).
 String supplierNameKey(dynamic v) => '${v ?? ''}'
     .replaceAll(RegExp('[ً-ْـ]'), '')
     .replaceAll(RegExp('[أإآ]'), 'ا').replaceAll('ة', 'ه').replaceAll('ى', 'ي')
     .replaceAll(RegExp(r'\s+'), ' ').trim().toLowerCase();
 
-/// الدمجُ بالدور وحده — نظيرُ authorize.strict في الخادم (لا يُتراجَع عنه).
+/// Merge is role-only, like authorize.strict on the server (irreversible).
 const _mergeRoles = {'super_admin', 'admin', 'it_manager', 'operations_manager', 'shipment_orders_manager'};
 
 Future<bool> openSupplierMerge(BuildContext context, Map<String, dynamic> supplier) async {
@@ -56,7 +52,7 @@ class _MergeSheetState extends State<_MergeSheet> {
   void initState() {
     super.initState();
     _keepId = _id(_me);
-    // المكرَّرُ باسمه يُقترح أوّلًا.
+    // The same-named duplicate is suggested first.
     _search('${_me['name'] ?? ''}', twins: true);
   }
 

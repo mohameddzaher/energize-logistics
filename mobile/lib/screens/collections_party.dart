@@ -18,13 +18,7 @@ import 'collections_send.dart';
 import 'fleet_customer_presence.dart';
 import 'jp.dart' show JpTaskPanel;
 
-// ═════════════════════════════════════════════════════════════════════════
-// ملفُّ الطرف — عميلًا كان أو موردًا. نظيرُ /system/collections-dept/parties/[id].
-//
-// أرقامُه، وبياناتُه، وحركتُه بالشهر، وفواتيرُه ومديونيّتُه من دفتر التحصيل،
-// ومتابعاتُه (تُضاف وتُقفَل وتُحذف)، وشغلُه من كلّ باب، وكشوفُه بصفحاتها —
-// و«إرسال كشف حساب» و«كشف حساب PDF» بمداه، والتصدير.
-// ═════════════════════════════════════════════════════════════════════════
+// Party file, customer or supplier. Counterpart of /system/collections-dept/parties/[id]. Its figures, data, monthly movement, invoices and debt from the collections ledger, follow-ups (added, closed, deleted), work from every door, and its sheets with paging, plus send account statement and account statement PDF over a range, and export.
 
 String _s(Map r, String k) => '${r[k] ?? ''}';
 num _num(dynamic v) => v is num ? v : num.tryParse('${v ?? ''}') ?? 0;
@@ -60,7 +54,7 @@ class _CollectionsPartyScreenState extends State<CollectionsPartyScreen> {
   int _seq = 0;
   List<Map<String, dynamic>> _fus = [];
   bool _showPaid = false;
-  // مدى كشف الحساب — يبدأ على الشهر الجاري.
+  // Statement range: starts on the current month.
   late DateTime _stFrom = DateTime(DateTime.now().year, DateTime.now().month, 1);
   DateTime _stTo = DateTime.now();
   late final void Function(dynamic) _onParty;
@@ -71,7 +65,7 @@ class _CollectionsPartyScreenState extends State<CollectionsPartyScreen> {
     super.initState();
     _load();
     _loadFollowUps();
-    // تعديلُ الطرف من أيّ شاشة، وبريدُ كشفٍ أُرسل إليه — يظهر هنا في لحظته.
+    // Party edits from any screen and statement emails sent to it show here at once.
     _onParty = (d) { if (d is! Map || '${d['id'] ?? ''}'.isEmpty || '${d['id']}' == widget.id) _load(); };
     _onChanged = (d) {
       if (d is Map && d['source'] == 'email' && ('${d['party'] ?? ''}'.isEmpty || '${d['party']}' == widget.id)) _load();
@@ -103,7 +97,7 @@ class _CollectionsPartyScreenState extends State<CollectionsPartyScreen> {
       final d = await Api.instance.get('/api/collections-dept/parties/${widget.id}/follow-ups');
       if (!mounted) return;
       setState(() => _fus = [for (final f in (d['followUps'] as List? ?? const [])) Map<String, dynamic>.from(f as Map)]);
-    } catch (_) {/* الملفُّ يُقرأ ولو تعذّرت المتابعات */}
+    } catch (_) {/* The file is read even if follow-ups fail. */}
   }
 
   void _snack(Object e, String fallback) {
@@ -279,7 +273,7 @@ class _CollectionsPartyScreenState extends State<CollectionsPartyScreen> {
           Text([_s(p, 'city'), _s(p, 'partyType'), _s(p, 'status')].where((x) => x.isNotEmpty).join(' · '),
               style: const TextStyle(color: T.inkSoft)),
           const SizedBox(height: 8),
-          // ── كشفُ حسابٍ PDF بمداه — «اطبعه لي عن شهر ٨» ──────────────────
+          // Account statement PDF over a range: "print it for month 8"
           if (customer)
             AppCard(
               padding: const EdgeInsets.all(10),
@@ -356,7 +350,7 @@ class _CollectionsPartyScreenState extends State<CollectionsPartyScreen> {
               for (final n in p['nameVariants'] as List) Text('· $n', style: const TextStyle(fontSize: 12, color: T.inkSoft)),
               Text(tr('كلُّها مجموعةٌ في هذا الملف', 'All merged into this profile'), style: const TextStyle(fontSize: 11, color: T.inkFaint)),
             ]),
-          // ── الحركةُ بالشهر — أشرطةٌ بدل المنحنى ─────────────────────────────
+          // Monthly movement: bars instead of a curve
           if (monthly.isNotEmpty)
             _section(tr('الحركة بالشهر', 'Monthly movement'), [
               Wrap(spacing: 10, children: [
@@ -386,7 +380,7 @@ class _CollectionsPartyScreenState extends State<CollectionsPartyScreen> {
                   ]),
                 ),
             ]),
-          // ── فواتيرُه ومديونيّتُه من دفتر التحصيل ──────────────────────────
+          // Its invoices and debt from the collections ledger
           if (_num(mt['count']) > 0)
             _section(tr('الفواتير والمديونية (${mt['count']})', 'Invoices & debt (${mt['count']})'), [
               Wrap(spacing: 6, runSpacing: 4, children: [
@@ -429,7 +423,7 @@ class _CollectionsPartyScreenState extends State<CollectionsPartyScreen> {
                         'Showing the latest ${invoices.length} of ${mt['count']} — the full list is in the statement PDF.'),
                     style: const TextStyle(fontSize: 11, color: T.inkFaint)),
             ]),
-          // ── المتابعات ─────────────────────────────────────────────────────
+          // Follow-ups
           AppCard(
             padding: const EdgeInsets.all(12),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -477,7 +471,7 @@ class _CollectionsPartyScreenState extends State<CollectionsPartyScreen> {
             ]),
           ),
           const SizedBox(height: 10),
-          // ── شغلُه معنا من كلّ باب ────────────────────────────────────────
+          // Its work with us from every door
           if (loads.isNotEmpty)
             _workPanel(tr('حمولات بأسطولنا', 'Loads on our fleet'), loads, [
               ('waybillNumber', false), ('shipmentDate', true), ('__route', false), ('price', false), ('status', false),
@@ -486,7 +480,7 @@ class _CollectionsPartyScreenState extends State<CollectionsPartyScreen> {
             _workPanel(tr('طلبات الشحنات', 'Shipment orders'), orders, [
               ('orderNumber', false), ('orderDate', true), ('__route', false), (customer ? 'sellPrice' : 'buyPrice', false), ('status', false),
             ]),
-          // ── الكشوف ────────────────────────────────────────────────────────
+          // Sheets
           AppCard(
             padding: const EdgeInsets.all(12),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -526,7 +520,7 @@ class _CollectionsPartyScreenState extends State<CollectionsPartyScreen> {
             ]),
           ),
           const SizedBox(height: 10),
-          // مهامّ JP المربوطة بهذا الطرف — تُضاف من هنا.
+          // JP tasks linked to this party, added from here.
           JpTaskPanel(section: 'collections', kind: 'collParty', refId: _s(p, '_id').isNotEmpty ? _s(p, '_id') : widget.id),
         ]),
       ),
@@ -554,7 +548,7 @@ class _CollectionsPartyScreenState extends State<CollectionsPartyScreen> {
       );
 }
 
-/// «كشف حساب PDF» للعميل بالمدى المختار — تقريرُ الخادم نفسُه (ReportButton).
+/// Account statement PDF for the customer over the chosen range, the same server report (ReportButton).
 class _StatementButton extends StatefulWidget {
   final String name, from, to;
   const _StatementButton({required this.name, required this.from, required this.to});
@@ -587,7 +581,7 @@ class _StatementButtonState extends State<_StatementButton> {
   }
 }
 
-/// متابعةٌ جديدة — النوعُ والحالةُ والملاحظات، وما حُصِّل، والوعدُ بتاريخه ومبلغه.
+/// New follow-up: type, status and notes, what was collected, and the promise with its date and amount.
 class _FollowUpSheet extends StatefulWidget {
   final String partyId;
   const _FollowUpSheet({required this.partyId});
@@ -685,11 +679,7 @@ class _FollowUpSheetState extends State<_FollowUpSheet> {
   }
 }
 
-// ═════════════════════════════════════════════════════════════════════════
-// إسنادُ حساباتٍ إلى موظّف تحصيل — جماعيًّا، كشريط التحديد في صفحة العملاء/الموردين.
-// يبدأ بما اختير من الصفّ، ويُضاف إليه بالبحث. تركُ الموظّف فارغًا يُعيدها إلى
-// مدير القسم (غير مُسنَدة). PUT /ledger/team/assign بالجسم نفسِه.
-// ═════════════════════════════════════════════════════════════════════════
+// Assigning accounts to a collection employee in bulk, like the selection bar on the customers/suppliers page. Starts from what was chosen in the row and adds to it by search. Leaving the employee empty returns them to the section manager (unassigned). PUT /ledger/team/assign with the same body.
 Future<bool> openCollectionsBulkAssign(BuildContext context, {required String kind, Map<String, dynamic>? initial}) async {
   final r = await Navigator.push<bool>(context, MaterialPageRoute(builder: (_) => CollectionsBulkAssignScreen(kind: kind, initial: initial)));
   return r == true;

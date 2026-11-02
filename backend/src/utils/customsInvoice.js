@@ -1,31 +1,15 @@
 /**
- * فاتورةُ العميل لمعاملةِ تخليص — تُشتقّ ولا تُخزَّن.
- *
- * ── القاعدةُ كما قيلت ──────────────────────────────────────────────────────
- *   بنودُ «مراحل السداد» بمبالغها **كما هي** (بلا ضريبة)، إلّا بندًا له سعرُ
- *   بيعٍ عند الإقفال فيُؤخَذ من هناك ولا يُكرَّر هنا،
- *   + بنودُ الإقفال مجموعةً × (١ + الضريبة)
- *   = إجماليُّ الفاتورة.
- *
- * والفرقُ بين القائمتين هو الفرقُ بين ما ندفعه وما نقبضه: فاتورةُ النقل
- * نسدّدها ١٨٠٠ ونفوترها ٢٢٠٠. فلو جُمعت القائمتان كما هما لحُسِب النقلُ مرّتين.
- *
- * ── ولماذا تُحسَب عند القراءة ───────────────────────────────────────────────
- * الإجماليُّ دالّةُ البنود. فلو خُزِّن ثمّ عُدِّل بندٌ أو أُضيف مرحلةُ سدادٍ
- * متأخّرةٌ لصار الرقمُ المخزَّنُ كذبًا لا يُعلن عن نفسه. والحسابُ هنا، ومن
- * يقرأ الفاتورةَ يقرأ ما تقوله بنودُها اليوم.
- *
- * ── وما يُحسَب لا يُخفى ─────────────────────────────────────────────────────
- * كلُّ سطرٍ يقول من أين جاء (`from`: مرحلةُ سدادٍ أم بندُ إقفال) وأخاضعٌ
- * للضريبة أم لا — فمن يراجع الفاتورةَ يرى القاعدةَ مطبَّقةً سطرًا سطرًا، لا
- * رقمًا واحدًا يصدّقه أو يكذّبه.
+ * Customer invoice for a clearance transaction: derived, not stored.
+ * Total = payment-stage items at their amounts (no tax; an item with a closing sale price takes it from there) + closing items summed x (1 + tax). The lists differ because they are what we pay versus what we bill, so adding both would count transport twice.
+ * Computed on read because a stored total would silently go stale after an item edit.
+ * Each line states its source (`from`) and whether it is taxable.
  */
 
 const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
 /**
- * يبني فاتورةَ معاملةٍ من بنودها.
- * @param {object} clearance مستندُ `CustomsClearance` (lean أو وثيقة)
+ * Builds a transaction invoice from its items.
+ * @param {object} clearance `CustomsClearance` document (lean or document)
  * @returns {{lines:Array, cost:object, sale:object, totals:object, warnings:Array}}
  */
 const buildClearanceInvoice = (clearance) => {
@@ -33,22 +17,19 @@ const buildClearanceInvoice = (clearance) => {
   const sale = (clearance?.saleItems || []).filter((x) => x && (x.key || x.label));
   const stages = (clearance?.paymentStages || []).filter((x) => x && (x.key || x.label));
 
-  // ── البنودُ الثلاثةُ لا علاقةَ لها بمراحل السداد (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢) ──
-  // «حجزُ الموعد» في مراحل السداد ما ندفعه للمورّد، و«حجزُ الموعد» في الفاتورة ما
-  // نفوتره للعميل — بندان لا يحلّ أحدُهما محلَّ الآخر. فلا يُستثنى من السداد شيء.
+  // The three items are unrelated to the payment stages. A stage such as appointment booking is what we pay the supplier, while the invoice item with the same name is what we bill the customer; neither replaces the other, so nothing is excluded from payment.
   const overridden = new Set();
 
   const lines = [];
   const warnings = [];
 
-  // ① بنودُ مراحل السداد — بمبالغها كما هي، بلا ضريبة.
+  // 1. Payment-stage items: at their amounts as they are, no tax.
   for (const p of stages) {
     const key = String(p.key || '');
-    if (key && overridden.has(key)) continue;          // سعرُه يأتي من بند البيع
+    if (key && overridden.has(key)) continue;          // Its price comes from the sale item
     const amount = Number(p.amount);
     if (!Number.isFinite(amount) || amount === 0) {
-      // مرحلةٌ بلا مبلغ ليست خطأً (ميلٌ أُرسل، إرجاعٌ تمّ) — لا تدخل الفاتورة
-      // ويُقال عددُها كي لا يُظنّ أنّها سقطت.
+      // A stage with no amount is not an error (a mile sent, a return done): it is left out of the invoice and counted so nobody assumes it was dropped.
       warnings.push({ code: 'STAGE_NO_AMOUNT', label: p.label || key });
       continue;
     }
@@ -66,7 +47,7 @@ const buildClearanceInvoice = (clearance) => {
     });
   }
 
-  // ② بنودُ الإقفال — مجموعةً ثمّ تُضاف الضريبة.
+  // 2. Closing items: summed together, then tax is added.
   for (const s of sale) {
     const amount = Number(s.amount);
     if (!Number.isFinite(amount)) continue;
@@ -95,7 +76,7 @@ const buildClearanceInvoice = (clearance) => {
     invoiceAt: clearance?.saleInvoiceAt || null,
     vatRate,
     lines,
-    // الجانبان مفصولان في الجواب كما هما في القاعدة — فمن يراجع يرى القسمة.
+    // The two sides are separate in the response as in the rule, so a reviewer sees the split.
     passThrough: { count: stageLines.length, net: stageSum, vat: 0, total: stageSum },
     billed: { count: saleLines.length, net: saleNet, vat: saleVat, total: round2(saleNet + saleVat) },
     totals: {
@@ -108,23 +89,16 @@ const buildClearanceInvoice = (clearance) => {
 };
 
 /**
- * ── مالُ المعاملة في التحليلات وماليّات القسم (صاحبُ الشركة، ٢٠٢٦/١٠/٢٢) ─────
- *   التكلفةُ = مجموعُ مبالغ «مراحل السداد» (ما ندفعه) — والمرفوضُ منها ليس تكلفة.
- *   الإيرادُ = إجماليُّ فاتورة العميل (`buildClearanceInvoice`) — ولا إيرادَ لمعاملةٍ
- *             لم تُفوتَر بعد.
- *   الربحُ  = الإيرادُ − ضريبتُه − التكلفة (الضريبةُ للدولة لا لنا)، للمفوتَرة وحدَها.
- * كان الإيرادُ «التكاليف + بنود الهامش القديمة»، وتلك البنودُ لا تُملأ في المعاملات
- * الجديدة، فخرج الإيرادُ مساويًا للتكاليف والربحُ صفرًا دائمًا.
- * والمعاملاتُ المستوردةُ من الماستر (بلا مبالغَ في مراحلها ولا فاتورة) تُقرأ كما
- * كُتبت: `costs.total` و`revenue.totalInvoiced` و`revenue.profit`.
- * يحتاج من المعاملة: paymentStages.key/amount/payStatus، saleItems، saleInvoiceNumber،
- * saleVatRate، costs.total، revenue.totalInvoiced/profit.
+ * Transaction money in analytics and department finance.
+ * Cost = sum of payment-stage amounts (rejected excluded). Revenue = customer invoice total (`buildClearanceInvoice`), none until invoiced. Profit = revenue - its tax - cost, invoiced only.
+ * Transactions imported from master are read as written: `costs.total`, `revenue.totalInvoiced`, `revenue.profit`.
+ * Needs: paymentStages.key/amount/payStatus, saleItems, saleInvoiceNumber, saleVatRate, costs.total, revenue.
  */
 const moneyOf = (c) => {
   const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
   const stages = (c?.paymentStages || []).filter((p) => p && p.payStatus !== 'rejected'
     && p.amount !== null && p.amount !== undefined && p.amount !== '' && Number(p.amount) !== 0 && Number.isFinite(Number(p.amount)));
-  // مفوترةٌ حين تقول الماليّةُ «تمّت الفوترة» (رقمُ الفاتورة) — طلبُ الفوترة وحدَه ليس إيرادًا.
+  // Invoiced when finance says it was invoiced (invoice number); an invoicing request alone is not revenue.
   const billed = !!c?.saleInvoiceNumber;
   if (!stages.length && !billed) {
     const revenue = num(c?.revenue?.totalInvoiced);
@@ -132,12 +106,12 @@ const moneyOf = (c) => {
     return { legacy: true, cost: round2(cost), revenue: round2(revenue), vat: 0, profit: round2(revenue - cost) };
   }
   const cost = stages.length ? round2(stages.reduce((a, p) => a + Number(p.amount), 0)) : round2(num(c?.costs?.total));
-  // لم تُفوتَر: تكلفتُها قائمةٌ وإيرادُها لم يأتِ — فلا ربحَ يُحسب لها ولا خسارة بعد.
+  // Not invoiced: its cost stands and its revenue has not come, so no profit or loss is computed yet.
   if (!billed) return { legacy: false, cost, revenue: 0, vat: 0, profit: 0, pending: true };
   const inv = buildClearanceInvoice(c);
   return { legacy: false, cost, revenue: inv.totals.grand, vat: inv.totals.vat, profit: round2(inv.totals.grand - inv.totals.vat - cost) };
 };
-/** حقولُ `moneyOf` سوى `costs` و`revenue` — يختارهما المستدعي كاملتين (ومعهما تتصادم أجزاؤهما في `select`). */
+/** `moneyOf` fields other than `costs` and `revenue`; the caller selects those two whole (their sub-paths collide in `select`). */
 const MONEY_SELECT = 'paymentStages.key paymentStages.label paymentStages.amount paymentStages.payStatus '
   + 'saleItems.key saleItems.label saleItems.amount saleInvoiceNumber saleVatRate';
 

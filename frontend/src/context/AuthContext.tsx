@@ -20,19 +20,16 @@ interface User {
   // (sectionKey → 'none' | 'view' | 'edit'). Drives sidebar visibility and
   // client-side edit gating. See lib/sections.ts.
   permissions?: Record<string, 'none' | 'view' | 'edit'>;
-  // ── وأيُّ الشاشات تُفتَح ────────────────────────────────────────────────────
-  // القسمُ يقول ماذا يُفعَل والصفحةُ تقول أين: مسارُ الصفحة ← مسموحةٌ أو لا.
-  // الصفحةُ الغائبةُ من الخريطة مسموحةٌ (الخادمُ يرسلها كاملةً؛ والغيابُ يعني
-  // نسخةً أقدمَ من الواجهة، فلا تُخفى شاشةٌ بسببه).
+  // Which screens open: the section says what can be done and the page says where; page path maps to allowed or not.
+  // A page missing from the map is allowed (the server sends it in full; absence means an older frontend, so no screen is hidden because of it).
   pageAccess?: Record<string, boolean>;
-  // ما أُشِّر عليه صراحةً في مصفوفة الصفحات — يسبق قوائمَ الأدوار في الشريط.
+  // Pages explicitly ticked in the page matrix take precedence over the role lists in the nav bar.
   pagesGranted?: string[];
-  // أوّلُ شاشةٍ تُفتَح لصاحب هذا الدور، إن ضُبطت له واحدة.
+  // First screen opened for this role, if one is set.
   homePage?: string;
-  // اسمُ الدور المصنوع بلغتيه — جدولُ الترجمة في الواجهة لا يعرف ما صُنع بعد بنائه.
+  // Display name of a custom role in both languages; the frontend translation table does not know roles created after the build.
   roleLabel?: { ar: string; en: string } | null;
-  // تفضيلاتُ العرض المحفوظة في الحساب (PATCH /api/auth/me/prefs) — النقطةُ في
-  // المفتاح تصل ‹:›، مثل `shipmentOrders:view`.
+  // Display preferences saved on the account (PATCH /api/auth/me/prefs); a dot in the key arrives as a colon, e.g. `shipmentOrders:view`.
   uiPrefs?: Record<string, string>;
 }
 
@@ -48,14 +45,8 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
-// ── لماذا نحتفظ بالمستخدم في التبويب ────────────────────────────────────────
-// الواجهة كلها كانت تنتظر /api/auth/me عند **كل** فتح صفحة. ومع انتهاء توكن
-// الوصول (ربع ساعة) تصير الرحلة ثلاثًا متتالية — me ثم refresh ثم me — قبل أن
-// تبدأ الصفحة تحميل بياناتها أصلًا. هذا سبب «الصفحات بتقعد تحمّل كتير».
-//
-// الحلّ: نسخة من المستخدم في تخزين التبويب، فتُرسَم الشاشة فورًا ويُتحقَّق منها
-// في الخلفية. وهي للعرض فقط — كل طلب إلى الخادم يتحقّق من هويّته بنفسه، فلا
-// تمنح النسخة صلاحيةً ولا تُغني عن تحقّق، ولو كانت قديمة صحّحها التحقّق بعد لحظة.
+// Why the user is kept in the tab.
+// Every page open waited on /api/auth/me, and once the 15-minute access token expired it became three sequential calls (me, refresh, me) before the page started loading data. A copy of the user in tab storage lets the screen render at once and be verified in the background. It is display-only: every server request verifies identity itself, and a stale copy is corrected by the verification.
 const CACHE_KEY = 'auth:user';
 const readCached = (): User | null => {
   if (typeof window === 'undefined') return null;
@@ -69,26 +60,21 @@ const writeCached = (u: User | null) => {
   try {
     if (u) sessionStorage.setItem(CACHE_KEY, JSON.stringify(u));
     else sessionStorage.removeItem(CACHE_KEY);
-  } catch { /* وضع التصفّح الخاص يرفض الكتابة — الشاشة تعمل بدونها */ }
+  } catch { /* Private browsing mode rejects writes; the screen works without them. */ }
 };
 
-// في الخادم لا `useLayoutEffect` (يحذّر React)؛ وفي المتصفّح هو المطلوب.
+// On the server useLayoutEffect warns in React; in the browser it is what is needed.
 const useIsoLayoutEffect = typeof window !== 'undefined' ? useLayoutEffect : useEffect;
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  // ── النسخةُ المحفوظة تُقرأ بعد الترطيب لا قبله ─────────────────────────────
-  // كانت تُقرأ في القيمة الابتدائيّة: الخادمُ يرسم «لا مستخدم، جارٍ التحميل»،
-  // والمتصفّحُ في أوّل رسمٍ يرى المستخدمَ من sessionStorage — رسمان مختلفان
-  // لأوّل لقطة، فيرمي React خطأَ الترطيب (#418) في كلّ إعادة تحميلٍ لتبويبٍ
-  // مسجَّل، ويرمي ما رسمه الخادمُ ويعيد الشجرةَ كلَّها من الصفر. فتبدأ الحالةُ
-  // كما رسمها الخادم، وتُطبَّق النسخةُ في `useLayoutEffect` — بعد الترطيب وقبل
-  // أن يُرسَم شيءٌ على الشاشة، فلا وميضَ ولا انتظار.
+  // The stored copy is read after hydration, not before.
+  // Reading it in the initial state made the server render no user (loading) while the browser's first paint saw the user from sessionStorage. That mismatch throws React hydration error #418 on every reload and discards the whole tree. So state starts as the server rendered it and the copy is applied in useLayoutEffect: after hydration, before paint, with no flash.
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [loginKey, setLoginKey] = useState(0);
   useIsoLayoutEffect(() => {
     const c = readCached();
-    // لا ننتظر إن كانت لدينا نسخة: نرسم ونتحقّق في الخلفية.
+    // Do not wait when a copy exists: render and verify in the background.
     if (c) { setUser((u) => u || c); setLoading(false); }
   }, []);
 
@@ -100,11 +86,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       writeCached(data.user);
       connectSocket();
     } catch (e: any) {
-      // ── انقطاعُ الشبكة ليس خروجًا ─────────────────────────────────────────
-      // كان أيّ فشلٍ هنا يمحو المستخدم: مهلةٌ انتهت، أو إعادةُ تشغيل الخادم،
-      // أو حزمةٌ ضاعت من الواي-فاي — فتُقذَف إلى شاشة الدخول وجلستُك سليمة
-      // تمامًا. الخروج لا يكون إلا حين يقول الخادمُ نفسه إن الجلسة لم تعد
-      // مقبولة؛ وما عدا ذلك تُترَك النسخةُ المحفوظة ويُعاد المحاولة لاحقًا.
+      // A network failure is not a logout.
+      // Any failure here used to clear the user (timeout, server restart, lost packet) and send them to login with a valid session. Logout happens only when the server itself says the session is no longer accepted; otherwise the stored copy stays and a retry follows.
       if (e?.message === 'Authentication required' || e?.status === 401 || e?.status === 403) {
         setUser(null);
         writeCached(null);
@@ -116,26 +99,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     refreshUser().finally(() => setLoading(false));
   }, [refreshUser]);
 
-  // تجديد استباقي: توكن الوصول يعيش ربع ساعة، فنُجدِّده كل اثنتي عشرة دقيقة.
-  // بدونه يصطدم أوّل طلب بعد انتهائه بـ401 فيدفع رحلتين إضافيتين — وهو ما يجعل
-  // فتح صفحة بعد فترة سكون أبطأ من فتحها أثناء العمل.
+  // Proactive refresh: the access token lives 15 minutes, so it is renewed every 12. Otherwise the first request after expiry hits a 401 and costs two extra round trips, making a page opened after idle slower than during work.
   useEffect(() => {
     if (!user) return undefined;
-    // عبر عميل الـAPI لا بمسارٍ نسبيّ: الواجهة على نطاق والخادم على نطاقٍ آخر،
-    // وكوكيز الجلسة مربوطةٌ بنطاق الخادم وحده — فالمسار النسبيّ كان يصل إلى
-    // Netlify بلا كوكيز فيردّ 401 ولا يجدّد شيئًا. كان يعمل محليًّا وحده، حيث
-    // كلّ شيء على أصلٍ واحد.
+    // Goes through the API client, not a relative path: the frontend and server are on different domains and the session cookie is bound to the server domain, so a relative path reached the host without cookies and got a 401. It only worked locally, where everything shares one origin.
     const id = setInterval(() => { api.refreshSession().catch(() => {}); }, 12 * 60 * 1000);
     return () => clearInterval(id);
   }, [user]);
 
-  // ── والتبويباتُ تتبع الحسابَ لا تبقى على صاحبها القديم ──────────────────
-  // كوكيزُ الجلسة واحدةٌ للمتصفّح كلِّه. فمن دخل بحسابٍ آخرَ في تبويبٍ (يجرّب
-  // شاشةَ المدير الماليّ مثلًا) صارت تبويباتُه الأخرى تعمل بالحساب الجديد وهي
-  // ترسم الحسابَ القديم: صفحةُ المستخدمين تقول «لا يوجد مستخدمين»، والنظرةُ
-  // التنفيذيّة تُرفَض كلَّ ثوانٍ — ويبدو النظامُ معطَّلًا وهو سليم. فيُعلَن
-  // الدخولُ والخروجُ لكلّ التبويبات: الخروجُ يُخرجها، والدخولُ بحسابٍ غيرِ
-  // حسابها يعيد تحميلَها به.
+  // Tabs follow the account instead of keeping the old user.
+  // The session cookie is shared by the whole browser, so signing in as another account in one tab makes the other tabs act as the new account while rendering the old one (empty users page, executive view rejected every few seconds). Login and logout are broadcast to all tabs: logout signs them out, and login as a different account reloads them.
   const userIdRef = useRef<string | null>(null);
   useEffect(() => { userIdRef.current = user?._id ?? null; }, [user]);
   const channelRef = useRef<BroadcastChannel | null>(null);
@@ -158,7 +131,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => { ch.close(); channelRef.current = null; };
   }, []);
   const announce = (msg: { type: 'login' | 'logout'; id?: string }) => {
-    try { channelRef.current?.postMessage(msg); } catch { /* تبويبٌ واحدٌ لا يحتاجها */ }
+    try { channelRef.current?.postMessage(msg); } catch { /* A single tab does not need it. */ }
   };
 
   const login = async (email: string, password: string): Promise<User> => {

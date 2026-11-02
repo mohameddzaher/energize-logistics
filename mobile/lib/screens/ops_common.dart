@@ -8,11 +8,9 @@ import '../services/lang.dart';
 import '../ui/theme.dart';
 import '../ui/search_field.dart';
 
-/// ما تشترك فيه شاشاتُ التشغيل: الحالات، أنواعُ الدفع، فلاترُ الأعمدة،
-/// أوضاعُ الفترة، وتصديرُ ملفّات الخادم — نظيرُ lib/ops.ts وlib/paymentKind
-/// وColumnFilter وbackgroundExport في الويب.
+/// Shared by the operations screens: statuses, payment kinds, column filters, period modes and server-file export. Counterpart of lib/ops.ts, lib/paymentKind, ColumnFilter and backgroundExport on the web.
 
-/// حالاتُ الطلب في منصّة التشغيل — نفسُ قائمة الويب (lib/ops.ts).
+/// Order statuses in the operations platform, same list as the web (lib/ops.ts).
 const opsAppStatuses = {
   'requesting': ('قيد الطلب', 'Requesting', T.inkFaint),
   'loading': ('جاري التحميل', 'Loading', T.warn),
@@ -31,7 +29,7 @@ String opsStatusLabel(dynamic v) {
   return st != null ? tr(st.$1, st.$2) : (v ?? '').toString();
 }
 
-/// طريقةُ الدفع القادمةُ من المنصّة (PAYMENT_METHODS).
+/// Payment method coming from the platform (PAYMENT_METHODS).
 String opsPayMethodLabel(dynamic v) {
   final s = (v ?? '').toString();
   if (s == 'cash') return tr('كاش', 'Cash');
@@ -39,7 +37,7 @@ String opsPayMethodLabel(dynamic v) {
   return s;
 }
 
-/// ── نوعُ الدفع: ستُّ قيمٍ تُعرَض وأربعٌ تُختار (lib/paymentKind) ──────────────
+/// Payment kind: six values are displayed and four are selectable (lib/paymentKind)
 const opsPaymentChoices = [
   ('deferred_invoice', 'آجل - فاتورة', 'Deferred – invoice', 'tax'),
   ('deferred_cash', 'آجل - كاش', 'Deferred – cash', 'cash'),
@@ -59,7 +57,7 @@ String opsPaymentKindLabel(dynamic k) {
   return '';
 }
 
-/// ما تعرضه الخانة: النوعُ إن وُجد، وإلّا العائلة.
+/// What the cell shows: the kind if present, otherwise the family.
 String opsPaymentKindOf(Map<String, dynamic> w) {
   final pt = (w['paymentType'] ?? '').toString();
   if (opsIsSubtype(pt)) return pt;
@@ -93,7 +91,7 @@ String opsDateTime(dynamic v) {
 
 String opsYmd(DateTime d) => '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
-/// اسمُ قيمةٍ محلّيّة من المنصّة: نصٌّ أو {ar,en} أو علاقةٌ تحمل اسمَها في `name`.
+/// Name of a platform-local value: a string, {ar,en}, or a relation carrying its name in `name`.
 String opsLoc(dynamic v) {
   if (v == null) return '';
   if (v is String || v is num) return v.toString();
@@ -114,9 +112,7 @@ void opsSnack(BuildContext context, String msg, {bool error = false}) {
 
 String opsErr(Object e) => e is ApiException ? e.message : e.toString();
 
-/// ── شروطُ القائمة أزواجًا (مفتاح، قيمة) ─────────────────────────────────────
-/// القيمُ المكرّرة (`cf_x=a&cf_x=b`) تُرسل مكرّرةً كما في الويب، وتُحوَّل إلى
-/// خريطةٍ (قيمةٌ أو قائمة) حين تُرسل في جسم الطلب (allMatching، التصدير الخلفيّ).
+/// List conditions as (key, value) pairs. Repeated values (`cf_x=a&cf_x=b`) are sent repeated as on the web, and converted to a map (value or list) when sent in a request body (allMatching, background export).
 String opsQs(List<(String, String)> p) =>
     p.map((x) => '${x.$1}=${Uri.encodeQueryComponent(x.$2)}').join('&');
 
@@ -135,10 +131,10 @@ Map<String, dynamic> opsQueryMap(List<(String, String)> p) {
   return out;
 }
 
-/// ── خيارُ فترة: يومٌ أو شهرٌ أو مدى ─────────────────────────────────────────
+/// Period choice: day, month or range
 enum OpsDateMode { day, month, range }
 
-/// المدى المشتقّ من الوضع — `(from, to)` بصيغة YYYY-MM-DD أو (null, null).
+/// Range derived from the mode: `(from, to)` as YYYY-MM-DD, or (null, null).
 class OpsPeriod {
   OpsDateMode mode;
   DateTime? day;
@@ -168,7 +164,7 @@ class OpsPeriod {
   void clear() { day = null; month = null; range = null; }
 }
 
-/// منتقي الشهر — سنةٌ وأشهرُها الاثنا عشر (نظيرُ MonthPicker في الويب).
+/// Month picker: a year and its twelve months (counterpart of MonthPicker on the web).
 Future<DateTime?> opsPickMonth(BuildContext context, DateTime? initial) {
   var year = (initial ?? DateTime.now()).year;
   return showDialog<DateTime>(
@@ -206,7 +202,7 @@ Future<DateTime?> opsPickMonth(BuildContext context, DateTime? initial) {
   );
 }
 
-/// شريطُ الفترة: يوم / شهر / مدى ثمّ منتقيه. يغيّر `period` ثمّ ينادي `onChanged`.
+/// Period bar: day / month / range, then its picker. Changes `period` then calls `onChanged`.
 class OpsPeriodBar extends StatefulWidget {
   final OpsPeriod period;
   final VoidCallback onChanged;
@@ -260,7 +256,7 @@ class _OpsPeriodBarState extends State<OpsPeriodBar> {
           selected: period.mode == m,
           onSelected: (_) {
             if (period.mode == m) return;
-            // تبديلُ الوضع يمسح ما اختاره السابق — بقاؤه فلترٌ لا يراه أحد.
+            // Switching mode clears what the previous one selected, since a lingering filter would be invisible.
             final had = period.dates.$1 != null;
             setState(() { period.mode = m; period.clear(); });
             if (had) onChanged();
@@ -284,7 +280,7 @@ class _OpsPeriodBarState extends State<OpsPeriodBar> {
             icon: const Icon(Icons.close, size: 18),
           )
         : null;
-    // على الشاشات الضيّقة (أو بخطٍّ مكبَّر) يَنزل زرُّ التاريخ سطرًا تحت الأوضاع.
+    // On narrow screens (or with a large font) the date button wraps to a line below the modes.
     return LayoutBuilder(builder: (context, c) {
       final narrow = c.maxWidth < 330 * MediaQuery.textScalerOf(context).scale(1);
       if (!narrow) return Row(children: [...chips, Expanded(child: button), if (clear != null) clear]);
@@ -297,8 +293,7 @@ class _OpsPeriodBarState extends State<OpsPeriodBar> {
   }
 }
 
-/// ── قائمةُ قيم عمودٍ بأعدادها — `/api/workflows/filters` ──────────────────
-/// الطلبُ يحمل الفلاترَ النشطة كلَّها عدا فلترِ العمود نفسِه (كما في الويب).
+/// A column's values with counts, `/api/workflows/filters`. The request carries all active filters except the column's own filter (as on the web).
 Future<Set<String>?> opsPickColumnFilter(
   BuildContext context, {
   required String field,
@@ -314,7 +309,7 @@ Future<Set<String>?> opsPickColumnFilter(
   bool started = false;
   bool truncated = false;
   int seq = 0;
-  // بحثٌ أثناء الكتابة بتأخيرٍ قصير — وبعد إغلاق اللوحة لا يُرسَم شيء.
+  // Search while typing with a short debounce; nothing is drawn after the sheet is closed.
   Timer? debounce;
   bool closed = false;
   Future<void> fetch(StateSetter set) async {
@@ -407,7 +402,7 @@ Future<Set<String>?> opsPickColumnFilter(
   return ok == true ? picked : null;
 }
 
-/// قائمةُ أعمدة الفلترة: يُختار العمودُ ثمّ قيمُه.
+/// Filterable column list: pick the column, then its values.
 Future<String?> opsPickFilterField(BuildContext context, List<(String, String, String)> fields, Map<String, Set<String>> active) {
   return showModalBottomSheet<String>(
     context: context,
@@ -437,7 +432,7 @@ Future<String?> opsPickFilterField(BuildContext context, List<(String, String, S
   );
 }
 
-/// ── خياراتُ التصدير — نظيرُ ExportMenu: كلُّ خيارٍ عنوانُه ودالّتُه ────────
+/// Export options, counterpart of ExportMenu: each option has a title and a callback
 Future<void> opsExportMenu(BuildContext context, List<(String, Future<void> Function())> options) async {
   final pick = await showModalBottomSheet<int>(
     context: context,
@@ -463,7 +458,7 @@ Future<void> opsExportMenu(BuildContext context, List<(String, Future<void> Func
   await options[pick].$2();
 }
 
-/// ملفٌّ من الخادم (بايتات) يُحفظ ثمّ تُفتح نافذةُ المشاركة.
+/// A file from the server (bytes) is saved, then the share sheet opens.
 Future<void> opsShareBytes(BuildContext context, List<int> bytes, String fileName) async {
   final dir = await getTemporaryDirectory();
   final file = File('${dir.path}/$fileName');
@@ -471,7 +466,7 @@ Future<void> opsShareBytes(BuildContext context, List<int> bytes, String fileNam
   await SharePlus.instance.share(ShareParams(files: [XFile(file.path, mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')]));
 }
 
-/// تصديرُ «كلّ ما طابق الفلتر» يبنيه الخادم ملفًّا (GET <path>/export).
+/// Exporting everything matching the filter: the server builds the file (GET <path>/export).
 Future<void> opsServerExport(BuildContext context, String path, String fileStem) async {
   final messenger = ScaffoldMessenger.of(context);
   messenger.showSnackBar(SnackBar(content: Text(tr('جارٍ تجهيز الملف…', 'Preparing the file…'))));
@@ -484,8 +479,7 @@ Future<void> opsServerExport(BuildContext context, String path, String fileStem)
   }
 }
 
-/// «الجدولُ كلُّه» يُبنى في الخلفيّة — يُسجَّل الطلبُ، ويُسأل عنه، ثمّ يُنزَّل
-/// (lib/backgroundExport). ويصل إشعارٌ بالرابط من الخادم على كلّ حال.
+/// The whole table is built in the background: the request is registered, polled, then downloaded (lib/backgroundExport). The server also sends a notification with the link anyway.
 Future<void> opsBackgroundExport(BuildContext context, String kind, Map<String, dynamic> query) async {
   final messenger = ScaffoldMessenger.of(context);
   messenger.showSnackBar(SnackBar(content: Text(tr('جارٍ تجهيز الملف… سيُفتح حين يجهز، وسيصلك إشعار.', 'Preparing the file… it opens when ready, and you will get a notification.'))));

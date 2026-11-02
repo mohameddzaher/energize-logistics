@@ -6,11 +6,8 @@ import '../ui/app_scaffold.dart';
 import '../ui/theme.dart';
 import '../ui/widgets.dart';
 
-/// النظرة التنفيذية — الشركةُ كلُّها في شاشة، من النقطة نفسِها التي يقرؤها
-/// الموقع (/api/analytics/executive): كلُّ قسمٍ من مصدره الحيّ، فلا يختلف رقمٌ
-/// بين الهاتف والموقع. وكانت تنادي ثماني لوحات أوّلُها تقرأ جداولَ قسمٍ زال.
-///
-/// وتسمع `executive:changed` و`finance:changed` فتُعيد القراءة لحظةَ يتحرّك شيء.
+/// Executive overview: the whole company on one screen, from the same endpoint the web reads (/api/analytics/executive); each section from its live source, so no number differs between phone and web. It used to call eight dashboards, the first reading tables of a removed section.
+/// Listens to `executive:changed` and `finance:changed` and re-reads the moment something moves.
 class ExecutiveOverviewScreen extends StatefulWidget {
   const ExecutiveOverviewScreen({super.key});
   @override

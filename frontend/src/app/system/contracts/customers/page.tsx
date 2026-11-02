@@ -1,18 +1,6 @@
 'use client';
 import { useSearchParams } from 'next/navigation';
-/**
- * عملاءُ العقود — الطرفُ الآخر من كلّ صفقة.
- *
- * ── ما كان ناقصًا ────────────────────────────────────────────────────────────
- * القسمُ كان يعرف نصفَ عمله: سجلٌّ كاملٌ للمورّدين بعقودهم ووثائقهم وحصصهم،
- * وأمّا العملاء فلا سجلَّ لهم إلّا صفوفًا في «عقود الأقسام» تُبحَث بالاسم. فسؤالُ
- * كلّ أسبوع — «فلانٌ عقدُه موقَّعٌ وإلى متى؟» — لا جوابَ له إلّا في ورقة.
- *
- * ── والصفُّ مربوطٌ لا منسوخ ────────────────────────────────────────────────────
- * ما يخصّ العقدَ يُكتب هنا؛ وما عداه يُقرأ من مصدره في كلّ فتحة: كم شحنةً شحن
- * معنا وبكم (من كشوف التشغيل)، ومهلتُه ومحصِّلُه (من التحصيل)، وكم عقدًا مرفوعًا
- * له (من عقود الأقسام). ورقمٌ منسوخٌ يشيخ في يومه.
- */
+/** Contract customers: the other party of every deal. Previously the department had a full vendor register but customers were only rows in department contracts searched by name, so there was no answer to whether a customer's contract is signed and until when. Contract-specific fields are written here; the rest is read from its source on every open (shipments and value from operations statements, credit term and collector from collections, uploaded contracts from department contracts), because a copied number goes stale within a day. */
 import { useState, useEffect, useCallback, useMemo, useRef, Suspense } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
@@ -57,7 +45,7 @@ function ContractCustomersInner() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [q, setQ] = useState('');
-  // الفلترُ يُورَث من الرابط: بطاقةُ «عملاء موقّعون» في لوحة القسم تؤدّي إليهم.
+  // The filter is inherited from the URL: the signed customers card on the department dashboard links here.
   const [statusFilter, setStatusFilter] = useState<'' | 'signed' | 'pending' | 'unsigned' | 'expiring'>(() => {
     const v = sp?.get('filter') || '';
     return (['signed', 'pending', 'unsigned', 'expiring'].includes(v) ? v : '') as any;
@@ -83,7 +71,7 @@ function ContractCustomersInner() {
   }, []);
   useEffect(() => { load(); }, [load]);
   useSocket('contracts:updated', useCallback(() => load(), [load]));
-  // بطاقةُ عميلٍ عُدِّلت في أيّ قسمٍ — تُعاد القائمة (مُمهَلةً).
+  // A customer card edited in any department reloads the list (debounced).
   const custTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useSocket('customers:changed', useCallback(() => {
     if (custTimer.current) clearTimeout(custTimer.current);
@@ -207,9 +195,7 @@ function ContractCustomersInner() {
           ]} />
         {canEdit && (
           <>
-            {/* ── ولا يُملأ السجلُّ بالكتابة من ورقة ────────────────────────────
-                العملاءُ معروفون: هم من تحمل كشوفُنا أسماءهم. فيُقترَحون مرتّبين
-                بحجمهم — الأكبرُ أوّلًا، وهو مَن يُسأل عن عقده أوّلًا. */}
+            {/* The register is not filled by typing from a sheet: customers are known from the names on our statements, so they are suggested ordered by volume, largest first, as the one asked about first. */}
             <button type="button" onClick={openSuggest}
               className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[#f37121]/10 text-[#f37121] hover:bg-[#f37121]/20 text-sm font-semibold">
               <Sparkles className="w-4 h-4" /> {t('عملاء بلا سجل', 'Unregistered customers')}
@@ -221,7 +207,7 @@ function ContractCustomersInner() {
 
       {error && <ErrorNotice error={error} lang={lang} onRetry={load} />}
 
-      {/* البطاقاتُ فلترٌ أيضًا: «أرِني غيرَ الموقَّعين» سؤالٌ يُسأل كلَّ أسبوع. */}
+      {/* The cards double as filters, since showing the unsigned ones is a weekly question. */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
         {([
           ['', t('كل العملاء', 'All customers'), counts.total, 'text-[#f37121]'],
@@ -269,8 +255,7 @@ function ContractCustomersInner() {
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap">
                     <span className={`text-xs font-semibold rounded-full px-2.5 py-1 ${st.cls}`}>{ar ? st.ar : st.en}</span>
-                    {/* الوثائقُ الناقصةُ تُقال مع الحالة: عقدٌ موقَّعٌ بلا سجلٍّ
-                        تجاريٍّ ليس عقدًا مكتملًا، وهي أوّلُ ما يُسأل عنه. */}
+                    {/* Missing documents are shown with the status: a signed contract without a commercial register is not a complete contract and is the first thing asked. */}
                     {c.status === 'signed' && !c.documentsReceived && (
                       <span className="ms-1.5 text-[11px] text-amber-600">{t('وثائق ناقصة', 'docs missing')}</span>
                     )}
@@ -285,8 +270,7 @@ function ContractCustomersInner() {
                   </td>
                   <td className="px-4 py-3 text-slate-700 tabular-nums whitespace-nowrap">
                     {c.paymentTermDays ? t(`${c.paymentTermDays} يوم`, `${c.paymentTermDays} days`) : '—'}
-                    {/* ومهلةُ التحصيل إن اختلفت عمّا في العقد — الاختلافُ نفسُه
-                        هو الخبر: أحدُ الرقمين خطأ ويُطالَب به عميل. */}
+                    {/* A collection term that differs from the contract is itself the news: one of the two numbers is wrong and a customer is being chased on it. */}
                     {c.collectionsTerms && String(c.collectionsTerms) !== String(c.paymentTermDays) && (
                       <span className="block text-[11px] text-amber-600">{t('التحصيل:', 'collections:')} {c.collectionsTerms}</span>
                     )}
@@ -330,7 +314,7 @@ function ContractCustomersInner() {
         </table>
       </ScrollX>
 
-      {/* ── الاقتراحات ─────────────────────────────────────────────────────── */}
+      {/* Suggestions section. */}
       <Modal open={suggestOpen} onClose={() => setSuggestOpen(false)}
         title={t('عملاء يشحنون معنا ولا سجل لهم', 'Customers shipping with us, not registered')}
         footer={<button type="button" onClick={() => setSuggestOpen(false)} className="px-4 py-2 text-slate-500 text-sm">{t('إغلاق', 'Close')}</button>}>
@@ -368,7 +352,7 @@ function ContractCustomersInner() {
         )}
       </Modal>
 
-      {/* ── الإضافة والتعديل ───────────────────────────────────────────────── */}
+      {/* Add and edit section. */}
       <Modal open={showForm} onClose={() => setShowForm(false)}
         title={editing ? t(`تعديل — ${editing.name}`, `Edit — ${editing.name}`) : t('إضافة عميل', 'Add customer')}
         footer={<>
@@ -398,9 +382,7 @@ function ContractCustomersInner() {
           <Field label={t('السجل التجاري', 'CR number')}><TextInput value={form.crNumber} onChange={(e) => set('crNumber', e.target.value)} /></Field>
           <Field label={t('الرقم الضريبي', 'VAT number')}><TextInput value={form.taxNumber} onChange={(e) => set('taxNumber', e.target.value)} /></Field>
 
-          {/* ── التوقيعان ────────────────────────────────────────────────────
-              العقدُ عقدٌ حين يوقّعه الطرفان. وفصلُهما ليس تفصيلًا: «أرسلناه ولم
-              يعُد» هي أكثرُ الحالات، ولا تُقال بخانةٍ واحدة. */}
+          {/* The two signatures: a contract is a contract only when both parties sign. They are separate because sent but not returned is the most common state and one field cannot express it. */}
           <div className="sm:col-span-2 rounded-xl border border-slate-200 bg-slate-50 p-3 space-y-2">
             <p className="text-[12.5px] font-bold text-slate-700">{t('حالة العقد', 'Contract state')}</p>
             {([
@@ -433,6 +415,6 @@ function ContractCustomersInner() {
 }
 
 export default function ContractCustomersPage() {
-  // useSearchParams يحتاج حدَّ Suspense في موجّه التطبيقات.
+  // useSearchParams needs a Suspense boundary in the app router.
   return <Suspense fallback={<Spinner />}><ContractCustomersInner /></Suspense>;
 }

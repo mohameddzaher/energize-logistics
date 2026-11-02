@@ -1,23 +1,5 @@
 'use client';
-/**
- * تفاصيلُ المديونيّة — صفحةُ كلِّ رقمٍ في لوحة التحصيل.
- *
- * ── لماذا صفحةٌ لا نافذة ────────────────────────────────────────────────────
- * كان الرقمُ يفتح نافذةً بثلاث مئة صفٍّ وأعمدةٍ مختصرة، لا تُرسَل لأحدٍ ولا
- * يُرجَع إليها، ولا فلترَ فيها ولا مجموع. وطلبُ صاحب الشركة (٢٠٢٦/١٠/٢١): الرقمُ
- * يفتح صفحةً بجدولٍ كامل — كلُّ ما يُعرَف عن الفاتورة أو الكشف، وفلترُ الأعمدة
- * وفرزُها، وصفُّ مجاميع، وتصدير.
- *
- * ── الرابطُ هو الحالة ───────────────────────────────────────────────────────
- * فلاترُ اللوحة، والعقدةُ التي ضُغطت، والبحثُ، وقموعُ الأعمدة (`cf_<عمود>`)،
- * والفرزُ والصفحة — كلُّها في الرابط ولا شيءَ غيره. فيُرسَل الرابطُ فيرى المرسَلُ
- * إليه الصفوفَ نفسَها، ويُحفَظ في المفضّلة، ويرجع زرُّ «اللوحة» إليها بفلاترها.
- *
- * ── والصفوفُ صفوفُ البطاقة ──────────────────────────────────────────────────
- * من `/receivables/rows`، وهو يقرأ الاشتقاقَ نفسَه الذي عدّ البطاقة
- * (collectionsReceivablesController: loadBase → passes → nodeOf). فالعددُ
- * والقيمةُ في رأس الصفحة هما رقمُ البطاقة نفسُه ما دامت القموعُ والبحثُ فارغة.
- */
+/** Debt details: the page behind every number on the collections board. A number used to open a dialog with 300 rows and short columns, which could not be sent or revisited and had no filter or total. It now opens a page with a full table: everything known about the invoice or statement, column filters and sort, a totals row and export. The URL is the state: board filters, the clicked node, search, column funnels (cf_<column>), sort and page are all in the URL and nothing else, so a sent link shows the same rows, can be bookmarked, and the Dashboard button returns with its filters. Rows are the card's rows: from /receivables/rows, which reads the same derivation that counted the card (collectionsReceivablesController: loadBase, passes, nodeOf), so the header count and value equal the card's while funnels and search are empty. */
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
@@ -57,7 +39,7 @@ export interface RecvRow {
   basis: 'delivery' | 'invoice' | 'payment'; dueDate: string | null; daysLate: number | null;
   dueState: string; age: number | null; ageBand: string; risk: string;
   attachments: number | null;
-  /** معاملاتُ التخليص التي تخدمها كشوفُ الصفّ — راجع services/customsOpsLink. */
+  /** Customs transactions served by the row's statements; see services/customsOpsLink. */
   customs?: CustomsLinkView[];
 }
 interface RowsResp {
@@ -69,7 +51,7 @@ interface RowsResp {
 const EMPTY_SET: Set<string> = new Set();
 const EMPTY_OPTS: ColumnFilterOption[] = [];
 const PAGE_SIZES = [50, 100, 200, 500];
-/** ما لا يُرسَل إلى قائمة قيم العمود: الصفحةُ والفرزُ لا يغيّران القيم. */
+/** Not sent to the column values list: page and sort do not change the values. */
 const VIEW_KEYS = ['page', 'limit', 'sort', 'dir'];
 
 const RISK_CLS: Record<string, string> = {
@@ -83,7 +65,7 @@ const ISSUE_CLS: Record<string, string> = {
   legal: 'bg-[#7c2d12]/10 text-[#7c2d12]',
 };
 
-/** عمودٌ في الجدول: رأسُه، وفرزُه، وقمعُه، وخليّتُه، وكيف يُصدَّر. */
+/** A table column: header, sort, funnel, cell and how it exports. */
 interface Col {
   key: string; ar: string; en: string;
   sort?: string; filter?: string; align?: 'end' | 'center';
@@ -100,7 +82,7 @@ export default function ReceivablesPage() {
   const canEdit = canEditCollections(user);
   const { notify, prompt } = useDialog();
 
-  // ── الرابطُ هو الحالة ───────────────────────────────────────────────────
+  // The URL is the state.
   const searchParams = useSearchParams();
   const qs = searchParams?.toString() || '';
   const params = useMemo(() => new URLSearchParams(qs), [qs]);
@@ -118,10 +100,10 @@ export default function ReceivablesPage() {
   const page = Math.max(1, Number(params.get('page')) || 1);
   const limit = PAGE_SIZES.includes(Number(params.get('limit'))) ? Number(params.get('limit')) : 100;
   const qParam = params.get('q') || '';
-  // بطاقةُ نوعٍ نقديّ: الصفُّ كشفُ تخريجٍ لا فاتورة.
+  // Cash type card: the row is a clearance statement, not an invoice.
   const reportsMode = !!params.get('subtype') && paymentFamily(params.get('subtype')) === 'cash';
 
-  /** يغيّر الرابطَ في مكانه — وكلُّ تغييرٍ غيرِ الصفحة يعيد إلى الأولى. */
+  /** Changes the URL in place; any change other than page returns to page one. */
   const update = useCallback((mut: (p: URLSearchParams) => void, keepPage = false) => {
     const p = new URLSearchParams(qs);
     mut(p);
@@ -135,12 +117,7 @@ export default function ReceivablesPage() {
     Object.entries(filtersToQuery(f)).forEach(([k, v]) => p.set(k, v));
   }), [update]);
 
-  // ── البحثُ يُمهَل ثمّ يُكتب في الرابط ──────────────────────────────────
-  // ── ولا يُقرأ الرابطُ فوق ما يُكتب (٢٠٢٦/١٠/٢٤) ─────────────────────────
-  // كان الرابطُ يُكتب بعد ٣٥٠ م.ث ثمّ يُقرأ فيُكتب فوق الخانة — فمَن كتب «١٢»
-  // والرابطُ لم يحمل بعدُ إلّا «١» وجد «٢» قد مُحي («أكتب رقمين يتمسح واحد»).
-  // فالخانةُ تأخذ من الرابط ما جاء من خارجها وحدَه (مسحُ الفلاتر، الرجوع، رابطٌ
-  // مُرسَل)، لا صدى ما كتبته هي.
+  // Search is debounced then written to the URL, and the URL is not read over what is being typed. The URL was written after 350 ms and then read back over the field, so someone who typed 12 while the URL held only 1 saw the 2 wiped. The field takes from the URL only what came from outside (clear filters, back, a sent link), not the echo of its own typing.
   const [q, setQ] = useState(qParam);
   const pushedQ = useRef(qParam);
   useEffect(() => { if (qParam !== pushedQ.current) { pushedQ.current = qParam; setQ(qParam); } }, [qParam]);
@@ -153,7 +130,7 @@ export default function ReceivablesPage() {
     return () => clearTimeout(id);
   }, [q, qParam, update]);
 
-  // ── الصفوف ──────────────────────────────────────────────────────────────
+  // Rows.
   const [data, setData] = useState<RowsResp | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState('');
@@ -174,7 +151,7 @@ export default function ReceivablesPage() {
   }, [qs, limit, guard]);
   useEffect(() => { load(); }, [load]);
 
-  // ── خياراتُ شريط الفلاتر: من جواب اللوحة تحت فلاترها (لا تحت العقدة) ──────
+  // Filter bar options: from the board response under its filters, not under the node.
   const [facets, setFacets] = useState<{ facets?: Facets; manager?: { name: string } | null } | null>(null);
   const facetGuard = useLatestRequest();
   const filterQs = useMemo(() => new URLSearchParams(filtersToQuery(filters)).toString(), [filters]);
@@ -183,11 +160,11 @@ export default function ReceivablesPage() {
     try {
       const d = await api.get<{ facets?: Facets; manager?: { name: string } | null }>(`/api/collections-dept/receivables/overview?${filterQs}`);
       if (facetGuard.isCurrent(mine)) setFacets({ facets: d.facets, manager: d.manager });
-    } catch { /* القوائمُ زيادة — الجدولُ لا يتوقّف عليها */ }
+    } catch { /* Lists are extra; the table does not depend on them. */ }
   }, [filterQs, facetGuard]);
   useEffect(() => { loadFacets(); }, [loadFacets]);
 
-  // ── حيّة: كلُّ كتابةٍ في القسم تعيد القراءة بعد هدوء الدفعة ──────────────
+  // Live: every write in the section reloads after the batch settles.
   const tick = useRef<ReturnType<typeof setTimeout> | null>(null);
   const soon = useCallback(() => {
     if (tick.current) clearTimeout(tick.current);
@@ -200,7 +177,7 @@ export default function ReceivablesPage() {
   useSocket('collections:changed', soon);
   useSocket('collections:attachments', soon);
 
-  // ── قموعُ الأعمدة: القيمُ من الخادم تحت كلِّ فلترٍ إلّا قمعَ العمود نفسِه ──
+  // Column funnels: values from the server under every filter except the column's own funnel.
   const [colOptions, setColOptions] = useState<Record<string, { values: ColumnFilterOption[]; truncated: boolean }>>({});
   const [colLoading, setColLoading] = useState<Record<string, boolean>>({});
   const optSeq = useRef<Record<string, number>>({});
@@ -215,7 +192,7 @@ export default function ReceivablesPage() {
       if (search) p.set('cq', search);
       const d = await api.get<{ values: ColumnFilterOption[]; truncated: boolean }>(`/api/collections-dept/receivables/column-options?${p.toString()}`);
       if (optSeq.current[col] === seq) setColOptions((o) => ({ ...o, [col]: d }));
-    } catch { /* القمعُ يبقى بما فيه */ }
+    } catch { /* The funnel keeps its contents. */ }
     if (optSeq.current[col] === seq) setColLoading((p) => ({ ...p, [col]: false }));
   }, [qs]);
   const setColFilter = useCallback((col: string, sel: Set<string>) => update((p) => {
@@ -230,7 +207,7 @@ export default function ReceivablesPage() {
     else { p.delete('sort'); p.delete('dir'); }
   }, true);
 
-  // ── حالةُ الخلاف تُصنَّف من الصفّ — وهي صفةُ العميل، فكلُّ فواتيره تتبعه ──
+  // Dispute state is classified from the row; it is a customer attribute, so all its invoices follow it.
   const setIssue = async (r: RecvRow, state: 'none' | 'negotiating' | 'legal') => {
     if (!r.party) { notify(t('هذه الفاتورة بلا حسابٍ مربوط', 'This invoice has no linked account'), 'error'); return; }
     let note = '';
@@ -255,7 +232,7 @@ export default function ReceivablesPage() {
     setBusy('');
   };
 
-  /** الصفُّ يُفتَح بتفصيله: الفاتورةُ الضريبيّة بصفحتها، والكشفُ النقديُّ بكشفه. */
+  /** The row opens with its detail: a tax invoice with its page, a cash statement with its statement. */
   const openRow = (r: RecvRow) => {
     if (r.source === 'workflow') router.push(`/system/operations/${r._id}`);
     else if (r.kind === 'tax') router.push(`/system/collections-dept/invoices/tax/${encodeURIComponent(r.invoiceNumber)}`);
@@ -263,7 +240,7 @@ export default function ReceivablesPage() {
     else if (r.party) router.push(`/system/collections-dept/parties/${r.party}`);
   };
 
-  // ── الأعمدة ─────────────────────────────────────────────────────────────
+  // Columns.
   const bandLabel = (k: string) => {
     if (k === 'nodate') return t('بلا تاريخ', 'No date');
     const b = BANDS.find((x) => x.key === k);
@@ -275,7 +252,7 @@ export default function ReceivablesPage() {
   };
   const issueLabel = (k: string) => t(...(ISSUE_LABELS[k] || ISSUE_LABELS.none));
   const dueLabel = (k: string) => (DUE_LABELS[k] ? t(...DUE_LABELS[k]) : k);
-  // قيمُ القمع رموزٌ في الخادم — وتُعرَض بأسمائها.
+  // Funnel values are codes on the server and are displayed by their names.
   const FORMAT: Record<string, (v: any) => string> = {
     payKind: (v) => (v ? paymentKindLabel(v, ar) : t('(فارغ)', '(blank)')),
     ageBand: (v) => bandLabel(String(v)),
@@ -295,7 +272,7 @@ export default function ReceivablesPage() {
           <button type="button" onClick={(e) => { e.stopPropagation(); openRow(r); }}
             className="font-semibold text-[#f37121] hover:underline">{r.invoiceNumber || '—'}</button>
           <span className="block text-[10px] text-slate-400">{r.source === 'workflow' || r.kind === 'cash' ? t('أمر نقل', 'exit report') : t('فاتورة', 'invoice')}</span>
-          {/* ومعاملةُ التخليص إن كانت كشوفُه نقلًا لحاوياتها. */}
+          {/* And the customs transaction, if its statements transport its containers. */}
           {r.customs && r.customs.length ? <span className="mt-0.5 block"><CustomsLinkBadges links={r.customs} ar={ar} /></span> : null}
         </span>
       ),
@@ -461,7 +438,7 @@ export default function ReceivablesPage() {
     return d.rows || [];
   };
 
-  // ── رأسُ الصفحة: من أيّ بطاقةٍ جاءت، وما الفلاترُ عليها — وكلٌّ يُزال ──────
+  // Page header: which card it came from and the filters on it, each removable.
   const chips: { key: string; label: string; remove: () => void }[] = [
     ...node.map(([k, v]) => ({ key: `n:${k}`, label: nodeLabel(k, v, ar), remove: () => update((p) => p.delete(k)) })),
     ...(filters.officer.length ? [{ key: 'officer', label: `${t('المسؤول', 'Collector')}: ${filters.officer.join('، ')}`, remove: () => setFilters({ ...filters, officer: [] }) }] : []),
@@ -510,7 +487,7 @@ export default function ReceivablesPage() {
         />
       </PageHeader>
 
-      {/* من أين جاء الجدول — كلُّ شريحةٍ تُزال وحدَها */}
+      {/* Where the table came from: each chip is removed on its own. */}
       <div className="flex flex-wrap items-center gap-1.5">
         <button type="button" onClick={() => router.push(backHref)} className="text-[12px] text-slate-500 hover:text-slate-900">
           {t('لوحة التحصيل', 'Collections dashboard')}
@@ -531,7 +508,7 @@ export default function ReceivablesPage() {
 
       <ReceivablesFilterBar filters={filters} onChange={setFilters} facets={facets?.facets} ar={ar} manager={facets?.manager} />
 
-      {/* المجاميعُ على النتيجة كلِّها — وهي رقمُ البطاقة ما دامت القموعُ والبحثُ فارغة */}
+      {/* Totals are over the whole result, and equal the card's number while funnels and search are empty. */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {[
           [t('العدد', 'Count'), data ? (reportsMode ? `${money(data.total)} ${t('أمر نقل', 'reports')}` : unitsOf({ count: data.total, value: data.value, tax: data.taxCount, cash: data.cashCount }, ar)) : '—'],
@@ -653,7 +630,7 @@ export default function ReceivablesPage() {
   );
 }
 
-/** أسماءُ قموع الأعمدة في رأس الصفحة. */
+/** Names of the column funnels in the page header. */
 const COL_TITLES: Record<string, [string, string]> = {
   customer: ['العميل', 'Customer'], code: ['الكود', 'Code'], officer: ['المسؤول', 'Collector'],
   payKind: ['نوع الدفع', 'Payment type'], invoiceDate: ['الإصدار', 'Issued'], deliveryDate: ['التسليم', 'Delivered'],
@@ -662,7 +639,7 @@ const COL_TITLES: Record<string, [string, string]> = {
   issue: ['حالة القضية', 'Case state'], attach: ['المرفقات', 'Files'], number: ['الرقم', 'Number'],
 };
 
-/** «YYYY-MM-DD» من الخادم (يومُ الرياض) — يُعرَض كما هو بلا إعادة تفسير. */
+/** YYYY-MM-DD from the server (Riyadh day), shown as is without reinterpretation. */
 function ymdLabel(v: any) {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(v || ''));
   return m ? `${m[3]}/${m[2]}/${m[1]}` : (v ? String(v) : '—');

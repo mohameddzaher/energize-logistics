@@ -403,7 +403,8 @@ export const getLTEmployees = (q: Record<string, string> = {}) =>
   api.get<{ employees: LTEmployee[]; totals: LTTotals; options: LTOptions }>(`/api/light-transport/employees${qs(q) ? `?${qs(q)}` : ''}`);
 export const getLTEmployee = (id: string) =>
   api.get<{ employee: LTEmployee; orders: LTOrder[] }>(`/api/light-transport/employees/${id}`);
-export const createLTEmployee = (body: any) => api.post<{ employee: LTEmployee }>(`/api/light-transport/employees`, body);
+// Attachments ride in the body, so a slow phone connection needs more than the default wait.
+export const createLTEmployee = (body: any) => api.post<{ employee: LTEmployee }>(`/api/light-transport/employees`, body, { timeoutMs: 180000 });
 export const updateLTEmployee = (id: string, body: any) => api.put<{ employee: LTEmployee }>(`/api/light-transport/employees/${id}`, body);
 /**
  * إسنادُ مشرفٍ لعدّة موظّفين دفعةً — تشغيليٌّ أو مشرفُ تفقّدٍ أو كلاهما.

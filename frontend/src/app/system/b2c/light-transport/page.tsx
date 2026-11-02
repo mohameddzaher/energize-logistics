@@ -259,7 +259,9 @@ function LightTransportEmployeesInner() {
       else {
         const ready = docs.filter((x) => x.file);
         if (ready.some((x) => !x.title.trim())) { notify(t('اكتب اسمَ كلّ مستندٍ مرفق', 'Name every attached document'), 'error'); setSaving(false); return; }
-        body.files = await Promise.all(ready.map(async (x) => ({ title: x.title.trim(), fileName: x.file!.name, dataUrl: await readAsDataUrl(x.file!) })));
+        body.files = await Promise.all(ready.map(async (x) => ({ title: x.title.trim(), fileName: x.file!.name, dataUrl: await uploadDataUrl(x.file!) })));
+        const mb = body.files.reduce((n: number, f: any) => n + f.dataUrl.length, 0) / 1048576;
+        if (mb > 22) { notify(t(`المرفقاتُ كبيرة (${Math.round(mb)} ميغابايت) — الحدُّ ٢٢. احذف بعضَها أو أرفقها من ملفّه بعد الحفظ.`, `Attachments are too large (${Math.round(mb)} MB, limit 22). Remove some or add them from the profile after saving.`), 'error'); setSaving(false); return; }
         const r: any = await createLTEmployee(body);
         if (r?.hrCreated) notify(t('أُنشئ ملفُّه في الموارد البشريّة — وصلهم إشعارٌ لإكمال بياناته.', 'His HR file was created — HR has been notified to complete it.'), 'success');
       }
@@ -885,6 +887,20 @@ type NewDoc = { id: number; title: string; file: File | null };
 const readAsDataUrl = (file: File) => new Promise<string>((resolve, reject) => {
   const r = new FileReader(); r.onload = () => resolve(String(r.result)); r.onerror = () => reject(new Error('read')); r.readAsDataURL(file);
 });
+
+/** Phone photos are several MB each; a document stays readable at 2000px JPEG. Non-images go as they are. */
+const uploadDataUrl = async (file: File): Promise<string> => {
+  if (!/^image\/(jpeg|png|webp|heic)/i.test(file.type) || file.size < 600 * 1024) return readAsDataUrl(file);
+  try {
+    const bmp = await createImageBitmap(file);
+    const k = Math.min(1, 2000 / Math.max(bmp.width, bmp.height));
+    const c = document.createElement('canvas');
+    c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
+    c.getContext('2d')!.drawImage(bmp, 0, 0, c.width, c.height);
+    const out = c.toDataURL('image/jpeg', 0.82);
+    return out.length < file.size * 1.37 ? out : readAsDataUrl(file);
+  } catch { return readAsDataUrl(file); }
+};
 
 /**
  * خليّةُ تاريخِ وثيقة: التاريخُ وحالتُه.

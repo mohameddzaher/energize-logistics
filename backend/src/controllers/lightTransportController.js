@@ -864,7 +864,13 @@ exports.createEmployee = async (req, res) => {
     }
     doc.employee = hr._id;
     doc.history.push({ kind: 'created', by: req.user?._id, byName: byName(req.user), note: hrCreated ? 'أُنشئ في القسم، وأُنشئ ملفُّه في الموارد البشريّة' : 'أُنشئ ومُرتبطٌ بملفّ الموارد البشريّة' });
-    await doc.save();
+    try {
+      await doc.save();
+    } catch (e) {
+      // No HR file without its light-transport row: a retry would otherwise find a file and no employee.
+      if (hrCreated) await Employee.deleteOne({ _id: hr._id }).catch(() => {});
+      throw e;
+    }
 
     if (stored.length) {
       const EmployeeDocument = require('../models/EmployeeDocument');

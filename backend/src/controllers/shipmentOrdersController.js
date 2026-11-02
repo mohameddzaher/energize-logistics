@@ -2320,10 +2320,13 @@ exports.listFields = async (req, res) => {
       branch.options = await companyBranchOptions();
       branch.locked = true;
     }
-    // «From / To» are the owner's list (config/shipmentCities), not options typed in settings.
-    const cities = require('../config/shipmentCities').map((c) => ({ key: c, ar: c, en: c }));
+    // «From / To» start from the owner's list (config/shipmentCities); cities added in the section settings join it.
+    const base = require('../config/shipmentCities');
     for (const f of fields) {
-      if (f.key === 'fromCity' || f.key === 'toCity') { f.options = cities; f.inputType = 'select'; f.locked = true; }
+      if (f.key !== 'fromCity' && f.key !== 'toCity') continue;
+      const added = (f.options || []).filter((o) => o && (o.ar || o.key) && !base.includes(o.ar || o.key));
+      f.options = [...base.map((c) => ({ key: c, ar: c, en: c })), ...added];
+      f.inputType = 'select';
     }
     res.json({ fields });
   } catch (error) {

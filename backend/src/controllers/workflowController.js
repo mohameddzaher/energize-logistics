@@ -141,7 +141,8 @@ const FIELDS_TTL = 60 * 1000;
 const fieldsCache = require('../utils/ttlCache');
 
 // Every data and follow-up user moves a shipment's status here, whatever their branch.
-const STATUS_ROLES = [...require('../config/roles').DATA_ROLES, 'shipment_orders_followup'];
+// The fleet team moves the status of the loads they run.
+const STATUS_ROLES = [...require('../config/roles').DATA_ROLES, 'shipment_orders_followup', 'fleet_manager', 'fleet_supervisor'];
 const fieldsForRole = async (role) => {
   const fields = await baseFieldsForRole(role);
   return STATUS_ROLES.includes(role) && !fields.includes('applicationStatus') ? [...fields, 'applicationStatus'] : fields;
@@ -1820,6 +1821,7 @@ async function pushApplicationStatus(workflow, status, actor) {
   return row || { applicationStatus: status };
 }
 exports.pushApplicationStatus = pushApplicationStatus;
+exports.STATUS_ROLES = STATUS_ROLES;
 
 exports.updateApplicationStatus = async (req, res) => {
   try {

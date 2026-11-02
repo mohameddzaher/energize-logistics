@@ -32,7 +32,7 @@ const allWorkflowRoles = [
 ];
 // Readers: the data team and shipment follow-up open every manifest in full
 // (minus what the controller strips: selling price, invoice amounts).
-const readWorkflowRoles = [...allWorkflowRoles, ...require('../config/roles').DATA_ROLES, 'shipment_orders_followup'];
+const readWorkflowRoles = [...allWorkflowRoles, ...require('../config/roles').DATA_ROLES, 'shipment_orders_followup', 'fleet_manager', 'fleet_supervisor'];
 
 // List & export
 router.get('/export', authorize(...readWorkflowRoles), workflowController.exportWorkflows);

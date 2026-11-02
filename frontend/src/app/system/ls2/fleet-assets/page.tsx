@@ -467,11 +467,12 @@ export default function Ls2FleetAssetsPage() {
           options={[
             { key: 'tab', label: ar ? 'التبويب الحالي (بعد الفلتر)' : 'Current tab (filtered)', sheets: [currentTabExport()!] },
             {
-              key: 'all', label: ar ? 'كل الأصول (3 شيتات)' : 'All assets (3 sheets)',
+              key: 'all', label: ar ? 'كل الأصول مع سجل الحركات (4 شيتات)' : 'All assets with the movement log (4 sheets)',
               sheets: [
                 { name: ar ? 'السطحات' : 'Flatbeds', rows: flatbeds, columns: flatbedCols },
                 { name: ar ? 'التيدرات' : 'Trailers', rows: trailers, columns: trailerCols },
                 { name: ar ? 'الكاوتشات' : 'Tires', rows: tires, columns: tireCols },
+                { name: ar ? 'سجل الحركات' : 'History', rows: events, columns: eventCols },
               ],
             },
           ]}

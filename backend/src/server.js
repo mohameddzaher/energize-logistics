@@ -220,6 +220,10 @@ app.use('/api/staff-requests', require('./routes/staffRequests'));
 app.use('/api/audit', auditRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/assistant', assistantRoutes);
+// Status roles change a status even with read-only access to Operations; the controller still checks the role.
+app.patch('/api/workflows/:id/application-status', authenticate, (req, res, next) => (
+  require('./controllers/workflowController').STATUS_ROLES.includes(req.user.role) && require('mongoose').isValidObjectId(req.params.id)
+    ? require('./controllers/workflowController').updateApplicationStatus(req, res) : next()));
 app.use('/api/workflows', authenticate, sectionGate('Operations'), workflowRoutes);
 // Operations private: the same statements at our selling price, part of the operations section with a narrower permission inside it (see routes/operationsPrivate).
 // Section guard on both read and write. Writes used to be unguarded because the price was a page-specific column (PrivateSellingPrice); it is now the statement's own column (sellingValue) written via the workflow path, so it is guarded like /api/workflows and nobody gains here what they lack there. The column permission itself is checked in setSellingValue.

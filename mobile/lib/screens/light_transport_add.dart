@@ -88,9 +88,12 @@ class _LtAddEmployeeSheetState extends State<_LtAddEmployeeSheet> {
     if (idNumber.isEmpty) return _say(tr('اكتب رقمَ الهوية أو الإقامة', 'Enter the ID / iqama number'));
     final ready = _docs.where((d) => d.file != null).toList();
     if (ready.any((d) => d.title.text.trim().isEmpty)) return _say(tr('اكتب اسمَ كلّ مستندٍ مرفق', 'Name every attached document'));
+    final mb = ready.fold<int>(0, (n, d) => n + d.file!.dataUrl.length) / 1048576;
+    if (mb > 22) return _say(tr('المرفقاتُ كبيرة (${mb.round()} ميغابايت) — الحدُّ ٢٢. احذف بعضَها أو أرفقها من ملفّه بعد الحفظ.', 'Attachments are too large (${mb.round()} MB, limit 22). Remove some or add them from the profile after saving.'));
     setState(() => _saving = true);
     try {
-      final r = await Api.instance.post('/api/light-transport/employees', {
+      // Attachments ride in the body: the long timeout keeps a slow upload from failing half way.
+      final r = await Api.instance.postLong('/api/light-transport/employees', {
         'name': name,
         'idNumber': idNumber,
         if (_hireDate.isNotEmpty) 'hireDate': _hireDate,

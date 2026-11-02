@@ -240,8 +240,7 @@
       "apis": [
         "/api/collections-dept/attachments",
         "/api/collections-dept/ledger/invoices",
-        "/api/collections-dept/ledger/invoices/filters",
-        "/api/reports"
+        "/api/collections-dept/ledger/invoices/filters"
       ],
       "wildcard": false
     },
@@ -295,8 +294,7 @@
         "/api/jp/projects",
         "/api/jp/tasks",
         "/api/lookups/types",
-        "/api/partners/account",
-        "/api/reports"
+        "/api/partners/account"
       ],
       "wildcard": false
     },
@@ -316,8 +314,7 @@
         "/api/jp/projects",
         "/api/jp/tasks",
         "/api/lookups/types",
-        "/api/partners/account",
-        "/api/reports"
+        "/api/partners/account"
       ],
       "wildcard": false
     },
@@ -2045,8 +2042,7 @@
         "/api/hr/master/filters",
         "/api/hr/master/grid",
         "/api/hr/master/grid/options",
-        "/api/hr/master/overview",
-        "/api/reports"
+        "/api/hr/master/overview"
       ],
       "wildcard": false
     },
@@ -2110,7 +2106,6 @@
         "/api/jp/tasks",
         "/api/lookups/types",
         "/api/ls2/custody",
-        "/api/uploads/...",
         "/api/vehicles/by-employee"
       ],
       "wildcard": false

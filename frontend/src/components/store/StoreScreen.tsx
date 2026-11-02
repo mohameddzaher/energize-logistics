@@ -81,7 +81,7 @@ const STATUS: Record<string, { ar: string; en: string; cls: string }> = {
 };
 
 export type StoreScope = {
-  /** Store endpoint base: '/api/ls2/store' or '/api/light-transport/store'. */
+  /** Store endpoint base, passed in full by each store page (no API path literal here: the page map reads comments too). */
   base: string;
   /** Suppliers endpoint base, written as an explicit string in each store page: the page-to-endpoint map is built from written text, and a computed path is not seen and would be rejected for users granted only the page (see page-api-map). */
   suppliersBase: string;
